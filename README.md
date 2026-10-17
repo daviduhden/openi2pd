@@ -44,3 +44,11 @@ Report issues at <https://github.com/daviduhden/open-i2pd/issues>.
 
 Open I2Pd is distributed under the [BSD 3-Clause license](LICENSE).
 Copyright and attribution for the original i2pd contributors are preserved.
+
+## Continuous integration
+
+Three workflows cover Windows (Clang, UCRT and libc++), Linux and Android on
+Ubuntu, and OpenBSD (Clang and LibreSSL). Native builds run five basic HTTP,
+encoding and encryption tests once. Android cross-compiles an arm64 binary
+with the NDK; no emulator is started. Android dependencies are cached and
+built in Release mode only. UPnP support uses the default enabled setting.

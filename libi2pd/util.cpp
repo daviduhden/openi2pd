@@ -108,7 +108,7 @@ const char *inet_ntop_xp(int af, const void *src, char *dst, socklen_t size)
 
 #else /* !_WIN32 => UNIX */
 #include <sys/types.h>
-#ifdef ANDROID
+#if defined(ANDROID) && (!defined(__ANDROID_API__) || __ANDROID_API__ < 24)
 #include "ifaddrs.h"
 #else
 #include <ifaddrs.h>

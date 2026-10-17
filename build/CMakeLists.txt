@@ -49,6 +49,13 @@ option(WITH_THREADSANITIZER "Build with thread sanitizer unix only"   OFF)
 option(WITH_UNDEFSANITIZER  "Build with undefined sanitizer unix only" OFF)
 option(BUILD_TESTING        "Build tests"                             OFF)
 
+if(ANDROID)
+  add_definitions(-DANDROID)
+  if(WITH_BINARY)
+    add_definitions(-DANDROID_BINARY)
+  endif()
+endif()
+
 IF(BUILD_TESTING)
   enable_testing()
 ENDIF()
@@ -375,6 +382,9 @@ message(STATUS "  UNDEFSANITIZER   : ${WITH_UNDEFSANITIZER}")
 message(STATUS "---------------------------------------")
 
 target_link_libraries(libi2pd PUBLIC ZLIB::ZLIB OpenSSL::SSL OpenSSL::Crypto ${Boost_LIBRARIES} Threads::Threads)
+if(WIN32)
+  target_link_libraries(libi2pd PUBLIC ws2_32 iphlpapi)
+endif()
 
 if(WITH_BINARY)
   if(WIN32)

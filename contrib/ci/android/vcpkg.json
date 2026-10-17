@@ -1,0 +1,20 @@
+{
+  "builtin-baseline": "bf19794383e8fb95eba5aa553235bc8ec2271688",
+  "dependencies": [
+    "boost-algorithm",
+    "boost-asio",
+    "boost-atomic",
+    "boost-beast",
+    "boost-dynamic-bitset",
+    "boost-filesystem",
+    "boost-lexical-cast",
+    "boost-logic",
+    "boost-program-options",
+    "boost-property-tree",
+    "boost-smart-ptr",
+    "boost-static-assert",
+    "miniupnpc",
+    "openssl",
+    "zlib"
+  ]
+}
