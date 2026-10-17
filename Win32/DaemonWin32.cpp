@@ -1,7 +1,7 @@
 /*
 * Copyright (c) 2013-2025, The PurpleI2P Project
 *
-* This file is part of Purple i2pd project and licensed under BSD3
+* This file is part of Open I2Pd and licensed under BSD3
 *
 * See full license text in LICENSE file at top of project tree
 */
@@ -29,7 +29,6 @@ namespace util
 		setlocale(LC_CTYPE, "");
 		SetConsoleCP(1251);
 		SetConsoleOutputCP(1251);
-		//setlocale(LC_ALL, "Russian");
 		setlocale(LC_TIME, "C");
 
 		i2p::log::SetThrowFunction ([](const std::string& s)
@@ -61,7 +60,6 @@ namespace util
 		setlocale(LC_CTYPE, "");
 		SetConsoleCP(1251);
 		SetConsoleOutputCP(1251);
-		//setlocale(LC_ALL, "Russian");
 		setlocale(LC_TIME, "C");
 #ifdef WIN32_APP
 		if (!i2p::win32::StartWin32App (isDaemon)) return false;

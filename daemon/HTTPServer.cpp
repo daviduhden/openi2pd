@@ -1,7 +1,7 @@
 /*
 * Copyright (c) 2013-2026, The PurpleI2P Project
 *
-* This file is part of Purple i2pd project and licensed under BSD3
+* This file is part of Open I2Pd and licensed under BSD3
 *
 * See full license text in LICENSE file at top of project tree
 */
@@ -92,7 +92,6 @@ namespace http {
 	const char HTTP_COMMAND_KILLSTREAM[] = "closestream";
 	const char HTTP_COMMAND_LIMITTRANSIT[] = "limittransit";
 	const char HTTP_COMMAND_GET_REG_STRING[] = "get_reg_string";
-	const char HTTP_COMMAND_SETLANGUAGE[] = "setlanguage";
 	const char HTTP_COMMAND_RELOAD_CSS[] = "reload_css";
 	const char HTTP_COMMAND_EXPIRELEASE[] = "expirelease";
 
@@ -193,26 +192,14 @@ namespace http {
 			LoadExtCSS();
 		}
 
-		// Page language
-		std::string currLang = i2p::client::context.GetLanguage ()->GetLanguage(); // get current used language
-		auto it = i2p::i18n::languages.find(currLang);
-		// fallback to default English, if language is not supported
-		if (it == i2p::i18n::languages.end()) {
-			it = i2p::i18n::languages.find("english");
-		}
-		std::string langCode = it->second.ShortCode;
-
-		// Right to Left language option
-		bool rtl = i2p::client::context.GetLanguage ()->GetRTL();
-
 		s <<
 			"<!DOCTYPE html>\r\n"
-			"<html lang=\"" << langCode << "\"" << (rtl ? " dir=\"rtl\"" : "") << ">\r\n"
+			"<html lang=\"en\">\r\n"
 			"<head>\r\n" /* TODO: Find something to parse html/template system. This is horrible. */
 			"  <meta charset=\"UTF-8\">\r\n"
 			"  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\r\n"
 			"  <link rel=\"shortcut icon\" href=\"" << itoopieFavicon << "\">\r\n"
-			"  <title>" << tr(/* tr: Webconsole page title */ "Purple I2P Webconsole") << "</title>\r\n";
+			"  <title>" << tr(/* tr: Webconsole page title */ "Open I2Pd Webconsole") << "</title>\r\n";
 		GetStyles(s);
 		if (theme == "black")
 		{
@@ -228,7 +215,7 @@ namespace http {
 		s <<
 			"</head>\r\n"
 			"<body>\r\n"
-			"<div class=\"header\">" << tr("<b>i2pd</b> webconsole") << "</div>\r\n"
+			"<div class=\"header\">" << tr("<b>Open I2Pd</b> webconsole") << "</div>\r\n"
 			"<div class=\"wrapper\">\r\n"
 			"<div class=\"menu\">\r\n"
 			"  <a href=\"" << webroot << "\">" << tr("Main page") << "</a><br><br>\r\n"
@@ -883,25 +870,6 @@ namespace http {
 		s << "  <button type=\"submit\">" << tr("Change") << "</button>\r\n";
 		s << "</form>\r\n<br>\r\n";
 
-		// get current used language
-		std::string currLang = i2p::client::context.GetLanguage ()->GetLanguage();
-
-		s << "<b>"
-		  << tr("Change language")
-		  << "</b><br>\r\n"
-		  << "<form method=\"get\" action=\"" << webroot << "\">\r\n"
-		  << "  <input type=\"hidden\" name=\"cmd\" value=\"" << HTTP_COMMAND_SETLANGUAGE << "\">\r\n"
-		  << "  <input type=\"hidden\" name=\"token\" value=\"" << token << "\">\r\n"
-		  << "  <select name=\"lang\" id=\"lang\">\r\n";
-
-		for (const auto& it: i2p::i18n::languages)
-			s << "    <option value=\"" << it.first << "\"" << ((it.first.compare(currLang) == 0) ? " selected" : "") << ">" << it.second.LocaleName << "</option>\r\n";
-
-		s << "  </select>\r\n"
-		  << "  <button type=\"submit\">"
-		  << tr("Change")
-		  << "</button>\r\n"
-		  << "</form>\r\n<br>\r\n";
 
 	}
 
@@ -1654,14 +1622,6 @@ namespace http {
 
 			s << "<a href=\"" << webroot << "?page=local_destination&b32=" << b32 << "\">" << tr("Return to destination page") << "</a>\r\n";
 			return;
-		}
-		else if (cmd == HTTP_COMMAND_SETLANGUAGE)
-		{
-			std::string lang = params["lang"];
-			std::string currLang = i2p::client::context.GetLanguage ()->GetLanguage();
-
-			if (currLang.compare(lang) != 0)
-				i2p::i18n::SetLanguage(lang);
 		}
 		else if (cmd == HTTP_COMMAND_RELOAD_CSS)
 		{

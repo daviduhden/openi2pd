@@ -1,7 +1,7 @@
 /*
 * Copyright (c) 2013-2026, The PurpleI2P Project
 *
-* This file is part of Purple i2pd project and licensed under BSD3
+* This file is part of Open I2Pd and licensed under BSD3
 *
 * See full license text in LICENSE file at top of project tree
 */
@@ -18,31 +18,16 @@
 #include "I2PEndian.h"
 #include "Timestamp.h"
 
-#if !defined (__FreeBSD__) && !defined(_MSC_VER)
+#if !defined(_MSC_VER)
 #include <pthread.h>
 #endif
 
-#if defined(__OpenBSD__) || defined(__FreeBSD__)
+#if defined(__OpenBSD__)
 #include <pthread_np.h>
 #endif
 
 #ifdef __OpenBSD__
 #include <net/if.h>
-#endif
-
-#if defined(__APPLE__)
-# include <AvailabilityMacros.h>
-#endif
-
-#if defined(__HAIKU__)
-#include <gnu/pthread.h>
-#include <posix/pthread.h>
-#include <posix/sys/sockio.h>
-#include <posix/sys/ioctl.h>
-#ifndef _DEFAULT_SOURCE
-#define _DEFAULT_SOURCE
-#include <bsd/ifaddrs.h>
-#endif
 #endif
 
 #ifdef _WIN32
@@ -194,20 +179,9 @@ namespace util
 	}
 
 	void SetThreadName (const char *name) {
-#if defined(__APPLE__)
-# if (!defined(MAC_OS_X_VERSION_10_6) || \
-		(MAC_OS_X_VERSION_MAX_ALLOWED < 1060) || \
-		defined(__POWERPC__))
-		/* pthread_setname_np is not there on <10.6 and all PPC.
-		So do nothing. */
-# else
-		pthread_setname_np((char*)name);
-# endif
-#elif defined(__FreeBSD__) || defined(__OpenBSD__)
+#if   defined(__OpenBSD__)
 		pthread_set_name_np(pthread_self(), name);
-#elif defined(__NetBSD__)
-		pthread_setname_np(pthread_self(), "%s", (void *)name);
-#elif !defined(__gnu_hurd__)
+#else
 	#if defined(_MSC_VER)
 		THREADNAME_INFO info;
 		info.dwType = 0x1000;

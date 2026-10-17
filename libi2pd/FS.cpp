@@ -1,24 +1,13 @@
 /*
 * Copyright (c) 2013-2026, The PurpleI2P Project
 *
-* This file is part of Purple i2pd project and licensed under BSD3
+* This file is part of Open I2Pd and licensed under BSD3
 *
 * See full license text in LICENSE file at top of project tree
 */
 
 #include <algorithm>
 #include <fstream>
-
-#if defined(MAC_OSX)
-#if !STD_FILESYSTEM
-#include <boost/system/system_error.hpp>
-#endif
-#include <TargetConditionals.h>
-#endif
-
-#if defined(__HAIKU__)
-#include <FindDirectory.h>
-#endif
 
 #ifdef _WIN32
 #include <shlobj.h>
@@ -91,7 +80,7 @@ namespace fs {
 			return;
 		}
 
-#if !defined(MAC_OSX) && !defined(ANDROID)
+#if !defined(ANDROID)
 		// with 'service' option
 		if (isService) {
 #ifdef _WIN32
@@ -152,18 +141,6 @@ namespace fs {
 					dataDir = (fs_lib::path(localAppData)/appName).string();
 			}
 		}
-		return;
-#elif defined(MAC_OSX)
-		char *home = getenv("HOME");
-		dataDir = (home != NULL && strlen(home) > 0) ? home : "";
-		dataDir += "/Library/Application Support/" + appName;
-		return;
-#elif defined(__HAIKU__)
-		char home[PATH_MAX]; // /boot/home/config/settings
-		if (find_directory(B_USER_SETTINGS_DIRECTORY, -1, false, home, PATH_MAX) == B_OK)
-			dataDir = std::string(home) + "/" + appName;
-		else
-			dataDir = "/tmp/" + appName;
 		return;
 #else /* other unix */
 #if defined(ANDROID)
@@ -314,22 +291,8 @@ namespace fs {
 				auto p = root + i2p::fs::dirSep + prefix1 + chars[i];
 				if (fs_lib::exists(p))
 					continue;
-#if TARGET_OS_SIMULATOR
-				// ios simulator fs says it is case sensitive, but it is not
-				boost::system::error_code ec;
-				if (fs_lib::create_directory(p, ec))
-					continue;
-				switch (ec.value()) {
-					case boost::system::errc::file_exists:
-					case boost::system::errc::success:
-						continue;
-					default:
-						throw boost::system::system_error( ec, __func__ );
-				}
-#else
 				if (fs_lib::create_directory(p))
 					continue; /* ^ throws exception on failure */
-#endif
 				return false;
 			}
 		}

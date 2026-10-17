@@ -1,7 +1,7 @@
 /*
 * Copyright (c) 2013-2026, The PurpleI2P Project
 *
-* This file is part of Purple i2pd project and licensed under BSD3
+* This file is part of Open I2Pd and licensed under BSD3
 *
 * See full license text in LICENSE file at top of project tree
 */
@@ -20,7 +20,7 @@
 #ifndef STD_FILESYSTEM
 #	if (_WIN32 && __GNUG__) // MinGW GCC somehow incorrectly converts paths
 #		define STD_FILESYSTEM 0
-#	elif (!TARGET_OS_SIMULATOR && __has_include(<filesystem>)) // supports std::filesystem
+#	elif __has_include(<filesystem>) // supports std::filesystem
 #		define STD_FILESYSTEM 1
 #	else
 #		define STD_FILESYSTEM 0

@@ -1,7 +1,7 @@
 /*
 * Copyright (c) 2013-2024, The PurpleI2P Project
 *
-* This file is part of Purple i2pd project and licensed under BSD3
+* This file is part of Open I2Pd and licensed under BSD3
 *
 * See full license text in LICENSE file at top of project tree
 */
@@ -9,7 +9,7 @@
 #ifndef _VERSION_H_
 #define _VERSION_H_
 
-#define CODENAME "Purple"
+#define CODENAME "Open"
 
 #define XSTRINGIZE(x) STRINGIZE(x)
 #define STRINGIZE(x) #x

@@ -1,7 +1,7 @@
 /*
 * Copyright (c) 2021-2025, The PurpleI2P Project
 *
-* This file is part of Purple i2pd project and licensed under BSD3
+* This file is part of Open I2Pd and licensed under BSD3
 *
 * See full license text in LICENSE file at top of project tree
 */
@@ -77,7 +77,7 @@ namespace i18n
 			std::function<int(int)> m_Formula;
 	};
 
-	void SetLanguage(const std::string &lang);
+	void Initialize();
 	std::string_view translate (std::string_view arg);
 	std::string translate (const std::string& arg, const std::string& arg2, int n);
 } // i18n

@@ -2,9 +2,7 @@
 
 SYS := $(shell $(CXX) -dumpmachine)
 
-ifneq (, $(findstring darwin, $(SYS)))
-	SHARED_SUFFIX = dylib
-else ifneq (, $(findstring mingw, $(SYS))$(findstring windows-gnu, $(SYS))$(findstring cygwin, $(SYS)))
+ifneq (, $(findstring mingw, $(SYS))$(findstring windows-gnu, $(SYS))$(findstring cygwin, $(SYS)))
 	SHARED_SUFFIX = dll
 else
 	SHARED_SUFFIX = so
@@ -27,6 +25,10 @@ LANG_SRC_DIR := i18n
 DAEMON_SRC_DIR := daemon
 
 # import source files lists
+ifeq ($(SYS),)
+  $(error Unable to determine the compiler target)
+endif
+
 include filelist.mk
 
 USE_STATIC      := $(or $(USE_STATIC),no)
@@ -36,9 +38,6 @@ TORRENTS        := $(or $(TORRENTS),yes)
 
 # for debugging purposes only, when commit hash needed in trunk builds in i2pd version string
 USE_GIT_VERSION := $(or $(USE_GIT_VERSION),no)
-
-# for MacOS only, waiting for "1", not "yes"
-HOMEBREW        := $(or $(HOMEBREW),0)
 
 ifeq ($(DEBUG),yes)
 	CXX_DEBUG = -g
@@ -51,23 +50,13 @@ ifneq (, $(DESTDIR))
 	PREFIX = $(DESTDIR)
 endif
 
-ifneq (, $(findstring darwin, $(SYS)))
-	ifeq ($(HOMEBREW),1)
-		include Makefile.homebrew
-	else
-		include Makefile.osx
-	endif
-else ifneq (, $(findstring mingw, $(SYS))$(findstring windows-gnu, $(SYS))$(findstring cygwin, $(SYS)))
+ifneq (, $(findstring mingw, $(SYS))$(findstring windows-gnu, $(SYS))$(findstring cygwin, $(SYS)))
 	DAEMON_SRC += Win32/DaemonWin32.cpp Win32/Win32App.cpp Win32/Win32Service.cpp Win32/Win32NetState.cpp
 	include Makefile.mingw
-else ifneq (, $(findstring linux, $(SYS))$(findstring gnu, $(SYS)))
+else ifneq (, $(findstring linux, $(SYS)))
 	include Makefile.linux
-else ifneq (, $(findstring freebsd, $(SYS))$(findstring openbsd, $(SYS)))
-	include Makefile.bsd
-else ifneq (, $(findstring haiku, $(SYS)))
-	include Makefile.haiku
-else ifneq (, $(findstring solaris, $(SYS)))
-	include Makefile.solaris
+else ifneq (, $(findstring openbsd, $(SYS)))
+	include Makefile.openbsd
 else # not supported
 	$(error Not supported platform)
 endif
@@ -76,7 +65,7 @@ INCFLAGS += -I$(LIB_SRC_DIR) -I$(LIB_CLIENT_SRC_DIR) -I$(LANG_SRC_DIR)
 NEEDED_CXXFLAGS += -MMD -MP
 
 ifeq ($(USE_GIT_VERSION),yes)
-	GIT_VERSION := $(shell git describe --tags)
+	GIT_VERSION := $(shell git describe --tags --always)
 	DEFINES += -DGITVER=$(GIT_VERSION)
 endif
 
@@ -160,7 +149,7 @@ clean:
 strip: $(I2PD) $(SHLIB) $(SHLIB_CLIENT) $(SHLIB_LANG)
 	strip $^
 
-LATEST_TAG=$(shell git describe --tags --abbrev=0 openssl)
+LATEST_TAG=$(shell git describe --tags --always --abbrev=0 HEAD)
 BRANCH=$(shell git rev-parse --abbrev-ref HEAD)
 dist:
 	git archive --format=tar.gz -9 --worktree-attributes \

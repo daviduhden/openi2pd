@@ -1,7 +1,7 @@
 /*
 * Copyright (c) 2013-2025, The PurpleI2P Project
 *
-* This file is part of Purple i2pd project and licensed under BSD3
+* This file is part of Open I2Pd and licensed under BSD3
 *
 * See full license text in LICENSE file at top of project tree
 */
@@ -33,7 +33,7 @@ namespace client
 	const uint64_t I2P_CONTROL_TOKEN_LIFETIME = 60*60; // 1 hour, in seconds
 	const long I2P_CONTROL_CERTIFICATE_VALIDITY = 365*10; // 10 years
 	const char I2P_CONTROL_CERTIFICATE_COMMON_NAME[] = "i2pd.i2pcontrol";
-	const char I2P_CONTROL_CERTIFICATE_ORGANIZATION[] = "Purple I2P";
+	const char I2P_CONTROL_CERTIFICATE_ORGANIZATION[] = "Open I2Pd";
 
 	class I2PControlService: public I2PControlHandlers
 	{

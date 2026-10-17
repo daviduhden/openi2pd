@@ -1,5 +1,5 @@
 # Copyright (c) 2017-2023, The PurpleI2P Project
-# This file is part of Purple i2pd project and licensed under BSD3
+# This file is part of Open I2Pd and licensed under BSD3
 # See full license text in LICENSE file at top of project tree
 
 # Based on the Qt 5 processor detection code, so should be very accurate
@@ -74,94 +74,17 @@ set(archdetect_c_code "
 #error cmake_ARCH unknown
 ")
 
-# Set ppc_support to TRUE before including this file on ppc and ppc64
-# will be treated as invalid architectures since they are no longer supported by Apple
-
+# Read the target architecture from compiler diagnostics, without executing code.
 function(target_architecture output_var)
-    if(APPLE AND CMAKE_OSX_ARCHITECTURES)
-        # On OS X we use CMAKE_OSX_ARCHITECTURES *if* it was set
-        # First let's normalize the order of the values
-
-        # Note that it's not possible to compile PowerPC applications if you are using
-        # the OS X SDK version 10.7 or later - you'll need 10.4/10.5/10.6 for that, so we
-        # disable it by default. Also, ppc64 is not supported in 10.6.
-        # See this page for more information:
-        # http://stackoverflow.com/questions/5333490/how-can-we-restore-ppc-ppc64-as-well-as-full-10-4-10-5-sdk-support-to-xcode-4
-
-        # Architecture defaults to i386 or ppc on OS X 10.5 and earlier, depending on the CPU type detected at runtime.
-        # On OS X 10.6+ the default is x86_64 if the CPU supports it, i386 otherwise; 10.6 also supports ppc.
-
-        foreach(osx_arch ${CMAKE_OSX_ARCHITECTURES})
-            if("${osx_arch}" STREQUAL "ppc" AND ppc_support)
-                set(osx_arch_ppc TRUE)
-            elseif("${osx_arch}" STREQUAL "ppc64" AND ppc_support)
-                set(osx_arch_ppc64 TRUE)
-            elseif("${osx_arch}" STREQUAL "i386")
-                set(osx_arch_i386 TRUE)
-            elseif("${osx_arch}" STREQUAL "x86_64")
-                set(osx_arch_x86_64 TRUE)
-            elseif("${osx_arch}" STREQUAL "arm64")
-                set(osx_arch_arm64 TRUE)
-            else()
-                message(FATAL_ERROR "Invalid OS X arch name: ${osx_arch}")
-            endif()
-        endforeach()
-
-        # Now add all the architectures in our normalized order
-        if(osx_arch_ppc)
-            list(APPEND ARCH ppc)
-        endif()
-
-        if(osx_arch_ppc64)
-            list(APPEND ARCH ppc64)
-        endif()
-
-        if(osx_arch_i386)
-            list(APPEND ARCH i386)
-        endif()
-
-        if(osx_arch_x86_64)
-            list(APPEND ARCH x86_64)
-        endif()
-
-        if(osx_arch_arm64)
-            list(APPEND ARCH arm64)
-        endif()
-    else()
-        file(WRITE "${CMAKE_BINARY_DIR}/arch.c" "${archdetect_c_code}")
-
-        enable_language(C)
-
-        # Detect the architecture in a rather creative way...
-        # This compiles a small C program which is a series of ifdefs that selects
-        # a particular #error preprocessor directive whose message string contains
-        # the target architecture. The program will always fail to compile (both because
-        # file is not a valid C program, and obviously because of the presence of
-        # the #error preprocessor directives... but by exploiting the preprocessor in this
-        # way, we can detect the correct target architecture even when cross-compiling,
-        # since the program itself never needs to be run (only the compiler/preprocessor)
-        try_run(
-            run_result_unused
-            compile_result_unused
-            "${CMAKE_BINARY_DIR}"
-            "${CMAKE_BINARY_DIR}/arch.c"
-            COMPILE_OUTPUT_VARIABLE ARCH
-            CMAKE_FLAGS CMAKE_OSX_ARCHITECTURES=${CMAKE_OSX_ARCHITECTURES}
-        )
-
-        # Parse the architecture name from the compiler output
-        string(REGEX MATCH "cmake_ARCH ([a-zA-Z0-9_]+)" ARCH "${ARCH}")
-
-        # Get rid of the value marker leaving just the architecture name
-        string(REPLACE "cmake_ARCH " "" ARCH "${ARCH}")
-
-        # If we are compiling with an unknown architecture this variable should
-        # already be set to "unknown" but in the case that it's empty (i.e. due
-        # to a typo in the code), then set it to unknown
-        if (NOT ARCH)
-            set(ARCH unknown)
-        endif()
+    file(WRITE "${CMAKE_BINARY_DIR}/arch.c" "${archdetect_c_code}")
+    try_compile(compile_result_unused
+        "${CMAKE_BINARY_DIR}"
+        "${CMAKE_BINARY_DIR}/arch.c"
+        OUTPUT_VARIABLE ARCH)
+    string(REGEX MATCH "cmake_ARCH ([a-zA-Z0-9_]+)" ARCH "${ARCH}")
+    string(REPLACE "cmake_ARCH " "" ARCH "${ARCH}")
+    if(NOT ARCH)
+        set(ARCH unknown)
     endif()
-
     set(${output_var} "${ARCH}" PARENT_SCOPE)
 endfunction()

@@ -1,7 +1,7 @@
 /*
 * Copyright (c) 2013-2026, The PurpleI2P Project
 *
-* This file is part of Purple i2pd project and licensed under BSD3
+* This file is part of Open I2Pd and licensed under BSD3
 *
 * See full license text in LICENSE file at top of project tree
 */
@@ -30,10 +30,8 @@ namespace config {
 
 #if defined(_WIN32)
 #define path_to_file(file) "%appdata%\\i2pd\\" #file
-#elif defined(MAC_OSX)
-#define path_to_file(file) "~/Library/Application Support/i2pd/" #file
-#elif defined(__HAIKU__)
-#define path_to_file(file) "~/config/settings/i2pd/" #file
+#elif defined(__OpenBSD__)
+#define path_to_file(file) "~/.i2pd/" #file " or /var/i2pd/" #file
 #else
 #define path_to_file(file) "~/.i2pd/" #file " or /var/lib/i2pd/" #file
 #endif
@@ -94,12 +92,7 @@ namespace config {
 		options_description limits("Limits options");
 		limits.add_options()
 			("limits.coresize", value<uint32_t>()->default_value(0),          "Maximum size of corefile in Kb (0 - use system limit)")
-#if defined(__HAIKU__)
-			// Haiku's system default is 512, so we set 4096 explicitly
-			("limits.openfiles", value<uint16_t>()->default_value(4096),		"Maximum number of open files (4096 by default)")
-#else
 			("limits.openfiles", value<uint16_t>()->default_value(0),         "Maximum number of open files (0 - use system default)")
-#endif
 			("limits.transittunnels", value<uint32_t>()->default_value(25000), "Maximum active transit tunnels (default:25000)")
 			("limits.zombies", value<double>()->default_value(0),             "Minimum percentage of successfully created tunnels under which tunnel cleanup is paused (default [%]: 0.00)")
 			("limits.ntcpsoft", value<uint16_t>()->default_value(0),          "Ignored")
@@ -118,7 +111,6 @@ namespace config {
 			("http.strictheaders", value<bool>()->default_value(true),          "Enable strict host checking on WebUI")
 			("http.hostname", value<std::string>()->default_value("localhost"), "Expected hostname for WebUI")
 			("http.webroot", value<std::string>()->default_value("/"),          "WebUI root path (default: / )")
-			("http.lang", value<std::string>()->default_value("english"),       "WebUI language (default: english )")
 			("http.showTotalTCSR", value<bool>()->default_value(false),         "Show additional value with total TCSR since router's start (default: false)")
 			("http.theme", value<std::string>()->default_value("light"), 	    "Theme for http web console")
 		;
@@ -471,13 +463,13 @@ namespace config {
 
 		if (!ignoreUnknown && (m_Options.count("help") || m_Options.count("h")))
 		{
-			std::cout << "i2pd version " << I2PD_VERSION << " (" << I2P_VERSION << ")" << std::endl;
+			std::cout << "Open I2Pd version " << I2PD_VERSION << " (" << I2P_VERSION << ")" << std::endl;
 			std::cout << m_OptionsDesc;
 			exit(EXIT_SUCCESS);
 		}
 		else if (m_Options.count("version"))
 		{
-			std::cout << "i2pd version " << I2PD_VERSION << " (" << I2P_VERSION << ")" << std::endl;
+			std::cout << "Open I2Pd version " << I2PD_VERSION << " (" << I2P_VERSION << ")" << std::endl;
 			std::cout << "Boost version "
 					  << BOOST_VERSION / 100000     << "."  // maj. version
 					  << BOOST_VERSION / 100 % 1000 << "."  // min. version

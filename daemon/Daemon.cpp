@@ -1,7 +1,7 @@
 /*
 * Copyright (c) 2013-2026, The PurpleI2P Project
 *
-* This file is part of Purple i2pd project and licensed under BSD3
+* This file is part of Open I2Pd and licensed under BSD3
 *
 * See full license text in LICENSE file at top of project tree
 */
@@ -165,8 +165,8 @@ namespace util
 		if (logclftime)
 			i2p::log::Logger().SetTimeFormat ("[%d/%b/%Y:%H:%M:%S %z]");
 
-#if defined(WIN32_APP) || defined(__HAIKU__)
-		// Win32 app with GUI or Haiku supports only logging to file
+#if defined(WIN32_APP)
+		// The Windows GUI logs to a file
 		logs = "file";
 #else
 		if (isDaemon && (logs == "" || logs == "stdout"))
@@ -194,7 +194,7 @@ namespace util
 			// use stdout -- default
 		}
 
-		LogPrint(eLogNone,  "i2pd v", VERSION, " (", I2P_VERSION, ") starting...");
+		LogPrint(eLogNone,  "Open I2Pd v", VERSION, " (", I2P_VERSION, ") starting...");
 		LogPrint(eLogDebug, "FS: Main config file: ", config);
 		LogPrint(eLogDebug, "FS: Data directory: ", datadir);
 		LogPrint(eLogDebug, "FS: Certificates directory: ", certsdir);
@@ -378,8 +378,7 @@ namespace util
 			}
 		}
 
-		std::string httpLang; i2p::config::GetOption("http.lang", httpLang);
-		i2p::i18n::SetLanguage(httpLang);
+		i2p::i18n::Initialize();
 
 		return true;
 	}

@@ -1,7 +1,7 @@
 /*
 * Copyright (c) 2013-2026, The PurpleI2P Project
 *
-* This file is part of Purple i2pd project and licensed under BSD3
+* This file is part of Open I2Pd and licensed under BSD3
 *
 * See full license text in LICENSE file at top of project tree
 */
@@ -455,7 +455,7 @@ namespace crypto
 	}
 
 
-	// ГОСТ Р 34.11
+	// GOST R 34.11
 	struct GOSTR3411_256_Hash
 	{
 		static void CalculateHash (const uint8_t * buf, size_t len, uint8_t * digest)
@@ -476,7 +476,7 @@ namespace crypto
 		enum { hashLen = 64 };
 	};
 
-	// ГОСТ Р 34.10
+	// GOST R 34.10
 	const size_t GOSTR3410_256_PUBLIC_KEY_LENGTH = 64;
 	const size_t GOSTR3410_512_PUBLIC_KEY_LENGTH = 128;
 

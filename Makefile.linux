@@ -9,7 +9,7 @@ LDFLAGS ?= ${LD_DEBUG}
 ## -std=c++11. If you want to remove this variable please do so in a way that allows setting
 ## custom FDLAGS to work at build-time.
 
-# detect proper flag for c++20/с++23 support by compilers
+# detect proper flag for c++20/c++23 support by compilers
 CXXVER := $(shell $(CXX) -dumpversion)
 ifneq ($(findstring clang,$(CXX)),)
 	NEEDED_CXXFLAGS += -std=c++20

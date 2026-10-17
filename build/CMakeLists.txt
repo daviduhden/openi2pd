@@ -25,11 +25,17 @@ include(Version)
 set_version("${LIBI2PD_SRC_DIR}/version.h" PROJECT_VERSION)
 
 project(
-  i2pd
+  OpenI2Pd
   VERSION ${PROJECT_VERSION}
-  HOMEPAGE_URL "https://i2pd.website/"
+  HOMEPAGE_URL "https://github.com/daviduhden/open-i2pd"
   LANGUAGES C CXX
 )
+
+if(NOT CMAKE_SYSTEM_NAME MATCHES "^(Windows|Linux|OpenBSD|Android)$")
+  message(FATAL_ERROR "Open I2Pd supports Windows, Linux, OpenBSD and Android")
+endif()
+
+set(I2PD_EXECUTABLE i2pd)
 
 # configurable options
 option(WITH_HARDENING       "Use hardening compiler flags"            OFF)
@@ -99,7 +105,7 @@ if(WITH_LIBRARY)
 endif()
 
 include_directories(${LANG_SRC_DIR})
-FILE(GLOB LANG_SRC ${LANG_SRC_DIR}/*.cpp)
+set(LANG_SRC ${LANG_SRC_DIR}/English.cpp ${LANG_SRC_DIR}/I18N.cpp)
 add_library(libi2pdlang ${LANG_SRC})
 set_target_properties(libi2pdlang PROPERTIES PREFIX "")
 
@@ -149,17 +155,10 @@ endif()
 
 if(WITH_GIT_VERSION)
   include(GetGitRevisionDescription)
-  git_describe(GIT_VERSION)
+  git_describe(GIT_VERSION --always)
   add_definitions(-DGITVER=${GIT_VERSION})
 endif()
 
-if(APPLE)
-  add_definitions(-DMAC_OSX)
-endif()
-
-if(HAIKU)
-  add_definitions(-D_DEFAULT_SOURCE -D_GNU_SOURCE)
-endif()
 
 if(MSVC)
   add_definitions(-DWINVER=0x0600)
@@ -189,15 +188,13 @@ elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
     set(CMAKE_REQUIRED_FLAGS "${CMAKE_REQUIRED_FLAGS} -stdlib=libstdc++") # required for <atomic>
     list(APPEND CMAKE_REQUIRED_LIBRARIES "stdc++") # required to link with -stdlib=libstdc++
   endif()
-  if(NOT APPLE)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-const-variable -Wno-overloaded-virtual -Wno-c99-extensions")
-  endif()
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-const-variable -Wno-overloaded-virtual -Wno-c99-extensions")
 endif()
 
 # compiler flags customization(by system)
 if(UNIX)
   list(APPEND DAEMON_SRC "${DAEMON_SRC_DIR}/UnixDaemon.cpp")
-  if(NOT(CMAKE_SYSTEM_NAME STREQUAL "OpenBSD" OR APPLE))
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     # "'sleep_for' is not a member of 'std::this_thread'" in gcc 4.7/4.8
     add_definitions("-D_GLIBCXX_USE_NANOSLEEP=1")
   endif()
@@ -231,13 +228,6 @@ if(NOT "${_SANITIZE_FLAGS}" STREQUAL "")
 
   # Is this really needed? Compiler (and CXX flags) used to link
   #set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${_X}")
-endif()
-
-# Use std::atomic instead of GCC builtins on macOS PowerPC:
-# For more information refer to: https://github.com/PurpleI2P/i2pd/issues/1726#issuecomment-1306335111
-# This has been fixed in Boost 1.81, nevertheless we retain the setting for the sake of compatibility.
-if(APPLE AND CMAKE_OSX_ARCHITECTURES MATCHES "ppc")
-  add_definitions(-DBOOST_SP_USE_STD_ATOMIC)
 endif()
 
 # libraries
@@ -388,9 +378,9 @@ target_link_libraries(libi2pd PUBLIC ZLIB::ZLIB OpenSSL::SSL OpenSSL::Crypto ${B
 
 if(WITH_BINARY)
   if(WIN32)
-    add_executable("${PROJECT_NAME}" WIN32 ${DAEMON_SRC} ${WIN32_RC})
+    add_executable("${I2PD_EXECUTABLE}" WIN32 ${DAEMON_SRC} ${WIN32_RC})
   else()
-    add_executable("${PROJECT_NAME}" ${DAEMON_SRC})
+    add_executable("${I2PD_EXECUTABLE}" ${DAEMON_SRC})
   endif()
 
   if(WIN32)
@@ -403,15 +393,15 @@ if(WITH_BINARY)
 
   if(WITH_STATIC)
     if(NOT MSVC)
-      set_target_properties("${PROJECT_NAME}" PROPERTIES LINK_FLAGS "-static")
+      set_target_properties("${I2PD_EXECUTABLE}" PROPERTIES LINK_FLAGS "-static")
     endif()
   endif()
 
   if(WITH_HARDENING AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    set_target_properties("${PROJECT_NAME}" PROPERTIES LINK_FLAGS "-z relro -z now")
+    set_target_properties("${I2PD_EXECUTABLE}" PROPERTIES LINK_FLAGS "-z relro -z now")
   endif()
 
-  set_target_properties("${PROJECT_NAME}" PROPERTIES CXX_STANDARD ${I2PD_CXX_STANDARD})
+  set_target_properties("${I2PD_EXECUTABLE}" PROPERTIES CXX_STANDARD ${I2PD_CXX_STANDARD})
 
   # FindBoost pulls pthread for thread which is broken for static linking at least on Ubuntu 15.04
   list(GET Boost_LIBRARIES -1 LAST_Boost_LIBRARIES)
@@ -430,10 +420,10 @@ if(WITH_BINARY)
     set(DL_LIB ${CMAKE_DL_LIBS})
   endif()
 
-  target_link_libraries("${PROJECT_NAME}" libi2pd libi2pdclient libi2pdlang ${Boost_LIBRARIES} OpenSSL::SSL OpenSSL::Crypto ${MINIUPNPC_LIBRARY} ZLIB::ZLIB Threads::Threads ${MINGW_EXTRA} ${DL_LIB} ${CMAKE_REQUIRED_LIBRARIES})
+  target_link_libraries("${I2PD_EXECUTABLE}" libi2pd libi2pdclient libi2pdlang ${Boost_LIBRARIES} OpenSSL::SSL OpenSSL::Crypto ${MINIUPNPC_LIBRARY} ZLIB::ZLIB Threads::Threads ${MINGW_EXTRA} ${DL_LIB} ${CMAKE_REQUIRED_LIBRARIES})
 
-  install(TARGETS "${PROJECT_NAME}" RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT Runtime)
-  set(APPS "\${CMAKE_INSTALL_PREFIX}/bin/${PROJECT_NAME}${CMAKE_EXECUTABLE_SUFFIX}")
+  install(TARGETS "${I2PD_EXECUTABLE}" RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT Runtime)
+  set(APPS "\${CMAKE_INSTALL_PREFIX}/bin/${I2PD_EXECUTABLE}${CMAKE_EXECUTABLE_SUFFIX}")
   set(DIRS "${Boost_LIBRARY_DIR};${OPENSSL_INCLUDE_DIR}/../bin;${ZLIB_INCLUDE_DIR}/../bin;/mingw32/bin")
 endif()
 

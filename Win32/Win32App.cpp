@@ -1,7 +1,7 @@
 /*
 * Copyright (c) 2013-2025, The PurpleI2P Project
 *
-* This file is part of Purple i2pd project and licensed under BSD3
+* This file is part of Open I2Pd and licensed under BSD3
 *
 * See full license text in LICENSE file at top of project tree
 */
@@ -94,8 +94,8 @@ namespace win32
 		nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP | NIF_INFO;
 		nid.uCallbackMessage = WM_TRAYICON;
 		nid.hIcon = LoadIcon (GetModuleHandle(NULL), MAKEINTRESOURCE (MAINICON));
-		strcpy (nid.szTip, "i2pd");
-		if (notify) strcpy (nid.szInfo, "i2pd is starting");
+		strcpy (nid.szTip, "Open I2Pd");
+		if (notify) strcpy (nid.szInfo, "Open I2Pd is starting");
 		Shell_NotifyIcon(NIM_ADD, &nid );
 	}
 
@@ -136,7 +136,7 @@ namespace win32
 					{
 						std::stringstream text;
 						text << "Version: " << I2PD_VERSION << " " << CODENAME;
-						MessageBox( hWnd, TEXT(text.str ().c_str ()), TEXT("i2pd"), MB_ICONINFORMATION | MB_OK );
+						MessageBox( hWnd, TEXT(text.str ().c_str ()), TEXT("Open I2Pd"), MB_ICONINFORMATION | MB_OK );
 						return 0;
 					}
 					case ID_EXIT:
@@ -148,16 +148,16 @@ namespace win32
 					{
 						i2p::context.SetAcceptsTunnels (true);
 						std::stringstream text;
-						text << "I2Pd now accept transit tunnels";
-						MessageBox( hWnd, TEXT(text.str ().c_str ()), TEXT("i2pd"), MB_ICONINFORMATION | MB_OK );
+						text << "Open I2Pd now accept transit tunnels";
+						MessageBox( hWnd, TEXT(text.str ().c_str ()), TEXT("Open I2Pd"), MB_ICONINFORMATION | MB_OK );
 						return 0;
 					}
 					case ID_DECLINE_TRANSIT:
 					{
 						i2p::context.SetAcceptsTunnels (false);
 						std::stringstream text;
-						text << "I2Pd now decline new transit tunnels";
-						MessageBox( hWnd, TEXT(text.str ().c_str ()), TEXT("i2pd"), MB_ICONINFORMATION | MB_OK );
+						text << "Open I2Pd now decline new transit tunnels";
+						MessageBox( hWnd, TEXT(text.str ().c_str ()), TEXT("Open I2Pd"), MB_ICONINFORMATION | MB_OK );
 						return 0;
 					}
 					case ID_GRACEFUL_SHUTDOWN:
@@ -182,8 +182,8 @@ namespace win32
 					{
 						i2p::client::context.ReloadConfig();
 						std::stringstream text;
-						text << "I2Pd reloading configs...";
-						MessageBox( hWnd, TEXT(text.str ().c_str ()), TEXT("i2pd"), MB_ICONINFORMATION | MB_OK );
+						text << "Open I2Pd reloading configs...";
+						MessageBox( hWnd, TEXT(text.str ().c_str ()), TEXT("Open I2Pd"), MB_ICONINFORMATION | MB_OK );
 						return 0;
 					}
 					case ID_CONSOLE:
@@ -318,9 +318,9 @@ namespace win32
 	bool StartWin32App (bool isWinService)
 	{
 		g_isWinService = isWinService;
-		if (FindWindow (I2PD_WIN32_CLASSNAME, TEXT("i2pd")))
+		if (FindWindow (I2PD_WIN32_CLASSNAME, TEXT("Open I2Pd")))
 		{
-			MessageBox(NULL, TEXT("I2Pd is running already"), TEXT("Warning"), MB_OK);
+			MessageBox(NULL, TEXT("Open I2Pd is running already"), TEXT("Warning"), MB_OK);
 			return false;
 		}
 		// register main window
@@ -341,7 +341,7 @@ namespace win32
 		wclx.lpszClassName = I2PD_WIN32_CLASSNAME;
 		RegisterClassEx (&wclx);
 		// create new window
-		if (!CreateWindow(I2PD_WIN32_CLASSNAME, TEXT("i2pd"), WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX, 100, 100, 350, 210, NULL, NULL, hInst, NULL))
+		if (!CreateWindow(I2PD_WIN32_CLASSNAME, TEXT("Open I2Pd"), WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX, 100, 100, 350, 210, NULL, NULL, hInst, NULL))
 		{
 			MessageBox(NULL, "Failed to create main window", TEXT("Warning!"), MB_ICONERROR | MB_OK | MB_TOPMOST);
 			return false;
@@ -365,7 +365,7 @@ namespace win32
 
 	void StopWin32App ()
 	{
-		HWND hWnd = FindWindow (I2PD_WIN32_CLASSNAME, TEXT("i2pd"));
+		HWND hWnd = FindWindow (I2PD_WIN32_CLASSNAME, TEXT("Open I2Pd"));
 		if (hWnd)
 			PostMessage (hWnd, WM_COMMAND, MAKEWPARAM(ID_EXIT, 0), 0);
 		else if(!g_isWinService)
@@ -375,7 +375,7 @@ namespace win32
 
 	bool GracefulShutdown ()
 	{
-		HWND hWnd = FindWindow (I2PD_WIN32_CLASSNAME, TEXT("i2pd"));
+		HWND hWnd = FindWindow (I2PD_WIN32_CLASSNAME, TEXT("Open I2Pd"));
 		if (hWnd)
 			PostMessage (hWnd, WM_COMMAND, MAKEWPARAM(ID_GRACEFUL_SHUTDOWN, 0), 0);
 		return hWnd;
@@ -383,7 +383,7 @@ namespace win32
 
 	bool StopGracefulShutdown ()
 	{
-		HWND hWnd = FindWindow (I2PD_WIN32_CLASSNAME, TEXT("i2pd"));
+		HWND hWnd = FindWindow (I2PD_WIN32_CLASSNAME, TEXT("Open I2Pd"));
 		if (hWnd)
 			PostMessage (hWnd, WM_COMMAND, MAKEWPARAM(ID_STOP_GRACEFUL_SHUTDOWN, 0), 0);
 		return hWnd;

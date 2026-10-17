@@ -1,7 +1,7 @@
 /*
 * Copyright (c) 2013-2026, The PurpleI2P Project
 *
-* This file is part of Purple i2pd project and licensed under BSD3
+* This file is part of Open I2Pd and licensed under BSD3
 *
 * See full license text in LICENSE file at top of project tree
 */
@@ -183,9 +183,6 @@ namespace client
 		if (m_Socket && m_Socket->is_open ())
 		{
 			boost::system::error_code ec;
-		#ifdef MAC_OSX
-			m_Socket->cancel ();
-		#endif
 			m_Socket->shutdown(boost::asio::ip::tcp::socket::shutdown_send, ec); // avoid RST
 			m_Socket->close ();
 		}

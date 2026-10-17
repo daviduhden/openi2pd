@@ -1,12 +1,9 @@
 enable_testing()
-find_package(Check 0.9.10 REQUIRED)
-include_directories(${CHECK_INCLUDE_DIRS})
-
-# Compiler flags:
-if(APPLE)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0 -g -Wl,-undefined,dynamic_lookup")
+set(CMAKE_CXX_STANDARD ${I2PD_CXX_STANDARD})
+if(MSVC)
+  add_compile_options(/UNDEBUG)
 else()
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0 -g -Wl,--unresolved-symbols=ignore-in-object-files")
+  add_compile_options(-UNDEBUG)
 endif()
 
 set(TEST_PATH ${CMAKE_CURRENT_BINARY_DIR})
@@ -90,7 +87,6 @@ set(LIBS
   OpenSSL::Crypto
   ZLIB::ZLIB
   Threads::Threads
-  ${CHECK_LDFLAGS}
   ${CMAKE_REQUIRED_LIBRARIES}
 )
 

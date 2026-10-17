@@ -5,8 +5,8 @@ Summary:       C++ daemon for accessing the I2P network
 Conflicts:     i2pd-git
 
 License:       BSD
-URL:           https://github.com/PurpleI2P/i2pd
-Source0:       https://github.com/PurpleI2P/i2pd/archive/%{version}/%name-%version.tar.gz
+URL:           https://github.com/daviduhden/open-i2pd
+Source0:       https://github.com/daviduhden/open-i2pd/archive/%{version}/%name-%version.tar.gz
 
 Provides: group(i2pd) = %{version}-%{release}
 Provides:  user(i2pd) = %{version}-%{release}
@@ -35,7 +35,7 @@ C++ implementation of I2P.
 
 
 %prep
-%setup -q
+%setup -q -n open-i2pd-%{version}
 
 
 %build

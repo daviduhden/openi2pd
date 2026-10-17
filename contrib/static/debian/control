@@ -4,7 +4,7 @@ Priority: optional
 Maintainer: r4sas <r4sas@i2pmail.org>
 Build-Depends: debhelper-compat (= 13)
 Standards-Version: 4.5.1
-Homepage: https://i2pd.website/
+Homepage: https://github.com/daviduhden/open-i2pd
 Rules-Requires-Root: binary-targets
 
 Package: i2pd

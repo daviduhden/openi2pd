@@ -1,7 +1,7 @@
 /*
 * Copyright (c) 2013-2025, The PurpleI2P Project
 *
-* This file is part of Purple i2pd project and licensed under BSD3
+* This file is part of Open I2Pd and licensed under BSD3
 *
 * See full license text in LICENSE file at top of project tree
 */
@@ -136,24 +136,7 @@ namespace util
 
 			int gracefulShutdownInterval; // in seconds
 	};
-#if !defined(__HAIKU__)
 	#define Daemon i2p::util::DaemonUnix::Instance()
-#else
-	class DaemonHaiku: public DaemonUnix
-	{
-		public:
-			
-			static DaemonHaiku& Instance ()
-			{
-				static DaemonHaiku instance;
-				return instance;
-			}	
-			
-			bool start ();
-			void run ();
-	};	
-#define Daemon i2p::util::DaemonHaiku::Instance()
-#endif
 	
 #endif
 }
