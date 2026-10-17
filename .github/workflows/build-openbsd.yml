@@ -1,0 +1,49 @@
+name: Build on OpenBSD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: openbsd-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: OpenBSD 7.9 / UPnP ${{ matrix.with_upnp }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        with_upnp: ['ON', 'OFF']
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build and test in OpenBSD
+        uses: vmactions/openbsd-vm@v1
+        with:
+          release: '7.9'
+          arch: x86_64
+          cpu: 2
+          mem: 6144
+          copyback: false
+          prepare: |
+            set -eu
+            pkg_add cmake boost miniupnpc
+          run: |
+            set -eu
+            uname -a
+            cmake -S build -B build-output \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DWITH_UPNP=${{ matrix.with_upnp }} \
+              -DBUILD_TESTING=ON
+            cmake --build build-output --parallel 2
+            ctest --test-dir build-output --output-on-failure
+            ./build-output/i2pd --version
