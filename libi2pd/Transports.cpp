@@ -1371,8 +1371,8 @@ namespace transport
 			[isHighBandwidth, this](std::shared_ptr<const Peer> peer)->bool
 			{
 				// check if connected and high bandwidth if required
-				if (peer->router || !peer->IsConnected () || !peer->isEligible ||
-					peer->sessions.empty () || (isHighBandwidth && !peer->isHighBandwidth)) return false;
+				if (!peer->IsConnected () || !peer->isEligible ||
+					(isHighBandwidth && !peer->isHighBandwidth)) return false;
 				auto session = peer->sessions.front ();
 				// check if session not overloaded, slow or bandwidth exceeded
 				if (session->GetSendQueueSize () > PEER_ROUTER_INFO_OVERLOAD_QUEUE_SIZE ||
