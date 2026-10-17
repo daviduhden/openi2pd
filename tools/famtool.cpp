@@ -35,6 +35,12 @@ namespace
 		CryptoGuard () { i2p::crypto::InitCrypto (false); }
 		~CryptoGuard () { i2p::crypto::TerminateCrypto (); }
 	};
+
+	struct FileCloser
+	{
+		void operator() (FILE * file) const { if (file) std::fclose (file); }
+	};
+	using FilePtr = std::unique_ptr<FILE, FileCloser>;
 }
 
 static void usage(const std::string & name)
@@ -337,13 +343,13 @@ int main(int argc, char * argv[])
 			return 1;
 		}
 
-		std::unique_ptr<FILE, decltype(&std::fclose)> privf (std::fopen(privkey.c_str(), "w"), std::fclose);
+		FilePtr privf (std::fopen(privkey.c_str(), "w"));
 		if(!privf) {
 			std::fprintf(stderr, "cannot open %s: %s\n", privkey.c_str(), std::strerror(errno));
 			return 1;
 		}
 
-		std::unique_ptr<FILE, decltype(&std::fclose)> certf (std::fopen(certfile.c_str(), "w"), std::fclose);
+		FilePtr certf (std::fopen(certfile.c_str(), "w"));
 		if(!certf) {
 			std::fprintf(stderr, "cannot open %s: %s\n", certfile.c_str(), std::strerror(errno));
 			return 1;
@@ -416,7 +422,7 @@ int main(int argc, char * argv[])
 
 		LocalRouterInfo ri;
 		ri.SetRouterIdentity (identity);
-		if (!ri.Update (routerInfo.GetBuffer (), routerInfo.GetBufferLen ())) {
+		if (!ri.Update (routerInfo.GetBuffer (), routerInfo.GetBufferLen ()) || ri.IsUnreachable ()) {
 			std::cerr << "invalid router info " << infofile << std::endl;
 			return 1;
 		}
@@ -472,7 +478,7 @@ int main(int argc, char * argv[])
 
 		LocalRouterInfo ri;
 		ri.SetRouterIdentity (identity);
-		if (!ri.Update (routerInfo.GetBuffer (), routerInfo.GetBufferLen ())) {
+		if (!ri.Update (routerInfo.GetBuffer (), routerInfo.GetBufferLen ()) || ri.IsUnreachable ()) {
 			std::cout << "invalid router info " << infofile << std::endl;
 			return 1;
 		}

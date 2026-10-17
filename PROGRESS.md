@@ -140,3 +140,15 @@ then `TODO.md` and `ROADMAP.md`, then verify the code state.
   (famtool/keyinfo/autoconf), OpenBSD UnixDaemon/SSU2/transports. Coordinator
   will review their diffs and fix cross-component build failures before
   declaring anything integrated.
+
+### Subagent results integrated
+
+- Android: Java 17 records/switch/lifecycle/concurrency/config hardening;
+  static javac-with-stubs and XML checks only. Device/Gradle validation pending.
+- Tools: `famtool` RAII/OpenSSL error paths/family signature checks;
+  `keyinfo` b33 bounds; `autoconf_i2pd` bounded input and file error handling.
+  Manual smoke tests reported; full Android/OpenBSD builds pending.
+- OpenBSD: pidfile O_CLOEXEC/O_NOFOLLOW/regular-file/permission checks,
+  rlimit error handling, signal error handling, SSU2/Transport minor type fixes.
+- Coordinator fixed a follow-up `keyinfo` b33 header bounds check and rebuilt:
+  CMake 149/149 targets and 19/19 CTest passed on Linux/GCC 16.

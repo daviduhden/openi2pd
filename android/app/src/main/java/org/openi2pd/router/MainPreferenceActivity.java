@@ -1,6 +1,5 @@
 package org.openi2pd.router;
 
-import android.os.Build;
 import android.os.Bundle;
 import android.preference.CheckBoxPreference;
 import android.preference.EditTextPreference;
@@ -16,14 +15,11 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
-import java.io.FileReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.io.StringReader;
 import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.AtomicMoveNotSupportedException;
-import java.nio.file.Files;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Predicate;
@@ -106,7 +102,8 @@ public class MainPreferenceActivity extends PreferenceActivity {
             throw new IOException("configuration file is too large");
         }
         StringBuilder text = new StringBuilder((int) Math.min(length, 64L * 1024L));
-        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+        try (BufferedReader reader = new BufferedReader(
+                new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8))) {
             char[] buffer = new char[4096];
             int read;
             while ((read = reader.read(buffer)) != -1) {
@@ -242,7 +239,8 @@ public class MainPreferenceActivity extends PreferenceActivity {
             case POSITIVE_INTEGER -> MainPreferenceActivity::isValidPositiveInteger;
             case ADDRESS -> value -> !value.isEmpty() && value.length() <= 255;
             case KEY_NAME -> value -> !value.isEmpty() && value.length() <= 255
-                    && !value.contains("..");
+                    && !value.contains("..") && !value.startsWith("/")
+                    && !value.startsWith("\\");
             case FORWARD_NAME, TEXT -> value -> !value.isEmpty();
         };
     }
@@ -365,7 +363,7 @@ public class MainPreferenceActivity extends PreferenceActivity {
             }
             replaceFile(temporary, configFile);
             return true;
-        } catch (IOException e) {
+        } catch (IOException | RuntimeException e) {
             Log.e(TAG, "unable to write configuration", e);
             return false;
         } finally {
@@ -376,20 +374,20 @@ public class MainPreferenceActivity extends PreferenceActivity {
     }
 
     private static void replaceFile(File source, File target) throws IOException {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            try {
-                Files.move(source.toPath(), target.toPath(),
-                        StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
-                return;
-            } catch (AtomicMoveNotSupportedException e) {
-                Files.move(source.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING);
-                return;
-            }
+        // rename(2) is atomic and replaces an existing target on Android's
+        // app-private filesystems. Avoid java.nio.file here because it is only
+        // available from API 26 while minSdk is 24.
+        if (source.renameTo(target)) {
+            return;
         }
-        // java.nio.file is only guaranteed from API 26; rename(2) is atomic on
-        // the app-private Linux filesystem used by older releases.
-        if (!source.renameTo(target)) {
-            throw new IOException("unable to replace configuration file");
+        // Fallback for unusual filesystems where rename cannot replace a file.
+        try (FileInputStream in = new FileInputStream(source);
+             FileOutputStream out = new FileOutputStream(target)) {
+            byte[] buffer = new byte[8192];
+            int read;
+            while ((read = in.read(buffer)) != -1) {
+                out.write(buffer, 0, read);
+            }
         }
     }
 
@@ -425,7 +423,7 @@ public class MainPreferenceActivity extends PreferenceActivity {
             result.append(line);
             first = false;
         }
-        if (content.endsWith("\n")) {
+        if (content.endsWith("\n") && result.length() > 0) {
             result.append('\n');
         }
         return result.toString();
@@ -450,7 +448,14 @@ public class MainPreferenceActivity extends PreferenceActivity {
             }
             output.add(line);
         }
-        return String.join("\n", output);
+        StringBuilder joined = new StringBuilder(content.length());
+        for (int i = 0; i < output.size(); i++) {
+            if (i > 0) {
+                joined.append('\n');
+            }
+            joined.append(output.get(i));
+        }
+        return joined.toString();
     }
 
     private static boolean isSectionHeader(String line) {

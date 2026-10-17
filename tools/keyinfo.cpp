@@ -41,11 +41,10 @@ static void printB33OfflineKeys (const i2p::data::PrivateKeys& keys, const i2p::
 	if (!blindedVerifier) return;
 
 	const uint8_t * buf = batch.GetBuffer ();
-	if (!buf) return;
+	if (!buf || batch.GetLen () < i2p::data::B33_OFFLINE_KEYS_HEADER_LENGTH) return;
 
 	size_t offset = i2p::data::B33_OFFLINE_KEYS_HEADER_LENGTH;
-	if (batchLen - offset < 2) return;
-	uint16_t numKeys = bufbe16toh (buf + offset); offset += 2;
+	uint16_t numKeys = bufbe16toh (buf + offset - 2);
 	std::string firstDate, lastDate;
 	bool complete = true;
 	for (uint16_t i = 0; i < numKeys; i++)

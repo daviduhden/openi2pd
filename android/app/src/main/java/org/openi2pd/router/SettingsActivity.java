@@ -87,6 +87,7 @@ public class SettingsActivity extends Activity {
         }
     }
 
+    @Override
     public void onCreate(Bundle savedInstanceState) {
         Log.d(TAG, "onCreate");
         super.onCreate(savedInstanceState);

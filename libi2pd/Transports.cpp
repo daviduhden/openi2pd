@@ -1324,7 +1324,7 @@ namespace transport
 				if (!found)
 				{
 					// still not found, try from the beginning to inds[1]
-					for (auto i = 0; i < inds[1]; i++)
+					for (size_t i = 0; i < inds[1]; i++)
 					{
 						auto& [ident, peer] = peers[i];
 						if (!peer->isDone && ts > peer->lastSelectionTime + PEER_SELECTION_MIN_INTERVAL)

@@ -25,7 +25,6 @@ import android.content.res.AssetManager;
 import android.net.ConnectivityManager;
 import android.net.Network;
 import android.net.NetworkCapabilities;
-import android.os.Build;
 import android.util.Log;
 
 /**
@@ -151,7 +150,7 @@ public class DaemonWrapper {
         this.appStorageRoots = Collections.unmodifiableList(roots);
 
         setState(State.starting);
-        startDaemon();
+        startDaemonInternal();
     }
 
     public void addStateChangeListener(StateUpdateListener listener) {
@@ -262,8 +261,15 @@ public class DaemonWrapper {
             return false;
         }
 
-        I2PD_JNI.setDataDir(candidate.getAbsolutePath());
-        dataDir = candidate;
+        try {
+            synchronized (lock) {
+                I2PD_JNI.setDataDir(candidate.getAbsolutePath());
+                dataDir = candidate;
+            }
+        } catch (RuntimeException | LinkageError e) {
+            Log.e(TAG, "unable to set data directory", e);
+            return false;
+        }
         if (Boolean.TRUE.equals(updateAssets)) {
             processAssets();
         }
@@ -308,16 +314,24 @@ public class DaemonWrapper {
     }
 
     public void startDaemon() {
+        startDaemonInternal();
+    }
+
+    private void startDaemonInternal() {
+        StateChange change;
         synchronized (lock) {
             if (startThreadRunning) {
                 return;
             }
-            if (state != State.stopped && state != State.starting) {
+            if (state != State.stopped && state != State.starting
+                    && state != State.startFailed) {
                 return;
             }
             startThreadRunning = true;
             stopRequested.set(false);
+            change = setStateLocked(State.starting);
         }
+        notifyListeners(change);
 
         Thread thread = new Thread(this::startDaemonBlocking, "i2pdDaemonStart");
         thread.setDaemon(true);
@@ -333,7 +347,8 @@ public class DaemonWrapper {
         } catch (Throwable tr) {
             lastThrowable = tr;
             synchronized (lock) {
-                change = setStateLocked(State.startFailed);
+                change = setStateLocked(stopRequested.get()
+                        ? State.stopped : State.startFailed);
                 startThreadRunning = false;
             }
             notifyListeners(change);
@@ -367,7 +382,8 @@ public class DaemonWrapper {
         } catch (Throwable tr) {
             lastThrowable = tr;
             synchronized (lock) {
-                change = setStateLocked(State.startFailed);
+                change = setStateLocked(stopRequested.get()
+                        ? State.stopped : State.startFailed);
             }
         } finally {
             synchronized (lock) {

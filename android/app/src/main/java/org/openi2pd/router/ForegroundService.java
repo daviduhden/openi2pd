@@ -20,13 +20,15 @@ import android.util.Log;
 import androidx.annotation.RequiresApi;
 import androidx.core.app.NotificationCompat;
 
+import java.lang.ref.WeakReference;
+
 public class ForegroundService extends Service {
     private static final String TAG = "FgService";
     private static final String CHANNEL_ID = "i2pd_service";
     private static final int NOTIFICATION = 1;
     private static final Object LOCK = new Object();
 
-    private static volatile ForegroundService instance;
+    private static volatile WeakReference<ForegroundService> instance;
     private static volatile DaemonWrapper daemon;
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
@@ -49,7 +51,7 @@ public class ForegroundService extends Service {
         }
         ForegroundService current;
         synchronized (LOCK) {
-            current = instance;
+            current = instance == null ? null : instance.get();
         }
         if (current != null) {
             current.mainHandler.post(current::syncDaemonListener);
@@ -83,7 +85,7 @@ public class ForegroundService extends Service {
         super.onCreate();
         notificationManager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
         synchronized (LOCK) {
-            instance = this;
+            instance = new WeakReference<>(this);
         }
         syncDaemonListener();
     }
@@ -91,6 +93,17 @@ public class ForegroundService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         Log.d(TAG, "received start id " + startId);
+        DaemonWrapper current;
+        synchronized (LOCK) {
+            current = daemon;
+        }
+        if (current == null && intent == null) {
+            // START_STICKY restarted the service after process death. Without
+            // the Activity there is no daemon to display, so do not leave a
+            // misleading permanent notification.
+            stopSelf();
+            return START_NOT_STICKY;
+        }
         syncDaemonListener();
         return START_STICKY;
     }
@@ -110,7 +123,7 @@ public class ForegroundService extends Service {
             current.removeStateChangeListener(daemonStateUpdatedListener);
         }
         synchronized (LOCK) {
-            if (instance == this) {
+            if (instance != null && instance.get() == this) {
                 instance = null;
             }
         }
@@ -184,8 +197,10 @@ public class ForegroundService extends Service {
                 new Intent(this, I2PDActivity.class),
                 FLAG_IMMUTABLE | FLAG_UPDATE_CURRENT);
 
-        String channelId = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
-                ? createNotificationChannel() : "";
+        String channelId = "";
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            channelId = createNotificationChannel();
+        }
 
         NotificationCompat.Builder builder = new NotificationCompat.Builder(this, channelId)
                 .setOngoing(true)
@@ -218,7 +233,7 @@ public class ForegroundService extends Service {
 
     @RequiresApi(Build.VERSION_CODES.O)
     private String createNotificationChannel() {
-        CharSequence channelName = "I2Pd service";
+        CharSequence channelName = getText(R.string.app_name);
         NotificationChannel channel = new NotificationChannel(
                 CHANNEL_ID, channelName, NotificationManager.IMPORTANCE_LOW);
         channel.setLockscreenVisibility(Notification.VISIBILITY_PRIVATE);

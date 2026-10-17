@@ -147,7 +147,7 @@ Priority values: `P0` critical, `P1` high, `P2` normal, `P3` low.
 - [x] **[TOOL-004]** Add tools smoke test to CTest.
   - Status Implemented; passed on Linux.
 - [ ] **[TOOL-005]** Audit all remaining tools (`vain`, `autoconf_i2pd`, `keyinfo`, `famtool`, family/address tools) for memory/concurrency/security.
-  - Priority P1; Status In progress.
+  - Priority P1; Status In progress. `famtool`, `keyinfo`, `autoconf_i2pd` hardened and manually smoke-tested; `vain` concurrency fixed; address tools still pending.
 - [ ] **[TOOL-006]** Add per-tool regression tests beyond smoke coverage.
   - Priority P2; Status Pending.
 - [x] **[FIREWALL-001]** Refactor routerinfo into endpoint model and four backends.
@@ -203,9 +203,9 @@ Priority values: `P0` critical, `P1` high, `P2` normal, `P3` low.
 - [ ] **[AND-008]** Build APK/DEX and run Android Lint/Error Prone.
   - Priority P0; Status Blocked on SDK.
 - [ ] **[AND-009]** Refactor Java sources (records, switch expressions, sealed types, lifecycle separation).
-  - Priority P1; Status In progress.
+  - Priority P1; Status In progress; Android agent implemented records/switch/lifecycle/concurrency/config hardening; Android build pending.
 - [ ] **[AND-010]** Audit JNI references, exceptions, threads and shutdown races.
-  - Priority P0; Status In progress.
+  - Priority P0; Status In progress; ScopedUtfChars/status snapshot added; device tests pending.
 - [ ] **[AND-011]** Test service lifecycle, rotation, background execution and restart.
   - Priority P1; Status Pending.
 - [ ] **[AND-012]** Document exact JDK/Gradle/AGP/SDK/NDK matrix and Java 25 vs ART limitations.
@@ -216,7 +216,7 @@ Priority values: `P0` critical, `P1` high, `P2` normal, `P3` low.
 - [x] **[OBSD-001]** Preserve pledge/unveil and add TUI socket path without new promises.
   - Status Implemented / validation pending.
 - [ ] **[OBSD-002]** Validate pledge/unveil with non-default user/datadir and TUI socket.
-  - Priority P0; Status Blocked on OpenBSD environment.
+  - Priority P0; Status Blocked on OpenBSD environment; static UnixDaemon/pidfile hardening implemented.
 - [ ] **[OBSD-003]** Re-test SSU2 MTU discovery and IPv4/IPv6 on OpenBSD.
   - Priority P0; Status Pending.
 - [ ] **[OBSD-004]** Validate LibreSSL build (no PQ assumptions) and port recipe.

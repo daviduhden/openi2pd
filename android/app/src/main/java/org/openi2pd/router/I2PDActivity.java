@@ -133,8 +133,15 @@ public class I2PDActivity extends Activity {
         I2CPState = findViewById(R.id.service_i2cp_box);
 
         DaemonWrapper current = getOrCreateDaemon(this);
-        ForegroundService.init(current);
         current.addStateChangeListener(daemonStateUpdatedListener);
+        if (savedInstanceState == null
+                && (current.getState() == DaemonWrapper.State.stopped
+                || current.getState() == DaemonWrapper.State.startFailed)) {
+            // A previous "stop" no longer kills the process, so restart the
+            // daemon when the user launches the app again.
+            current.startDaemon();
+        }
+        ForegroundService.init(current);
 
         try {
             ContextCompat.startForegroundService(this,
@@ -211,8 +218,17 @@ public class I2PDActivity extends Activity {
         }
         try {
             statusExecutor.execute(() -> {
-                StatusSnapshot snapshot = queryStatus(current);
-                statusQueryPending.set(false);
+                StatusSnapshot result;
+                try {
+                    result = queryStatus(current);
+                } catch (Throwable tr) {
+                    result = new StatusSnapshot(stackTrace(tr), current.getState(),
+                            current.getDaemonStartResult(), "", ServiceStates.NONE,
+                            current.getGracefulStopRemainingMillis());
+                } finally {
+                    statusQueryPending.set(false);
+                }
+                final StatusSnapshot snapshot = result;
                 mainHandler.post(() -> applyStatus(snapshot));
             });
         } catch (RejectedExecutionException e) {
@@ -317,9 +333,13 @@ public class I2PDActivity extends Activity {
         if (bound) {
             return;
         }
-        bindService(new Intent(this, ForegroundService.class), connection,
-                Context.BIND_AUTO_CREATE);
-        bound = true;
+        try {
+            bound = bindService(new Intent(this, ForegroundService.class), connection,
+                    Context.BIND_AUTO_CREATE);
+        } catch (RuntimeException e) {
+            Log.e(TAG, "unable to bind foreground service", e);
+            bound = false;
+        }
     }
 
     private void doUnbindService() {
@@ -339,10 +359,6 @@ public class I2PDActivity extends Activity {
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
         getMenuInflater().inflate(R.menu.options_main, menu);
-        MenuItem battery = menu.findItem(R.id.action_battery_otimizations);
-        if (battery != null) {
-            battery.setVisible(isBatteryOptimizationsOpenOsDialogApiAvailable());
-        }
         return true;
     }
 
@@ -356,10 +372,6 @@ public class I2PDActivity extends Activity {
                     ? R.string.action_cancel_graceful_stop : R.string.action_graceful_stop);
         }
         return super.onPrepareOptionsMenu(menu);
-    }
-
-    private boolean isBatteryOptimizationsOpenOsDialogApiAvailable() {
-        return Build.VERSION.SDK_INT >= Build.VERSION_CODES.M;
     }
 
     @Override
@@ -467,6 +479,8 @@ public class I2PDActivity extends Activity {
                 current.beginGracefulShutdown(GRACEFUL_DELAY_MILLIS);
                 if (current.getState() == DaemonWrapper.State.stopped) {
                     mainHandler.post(this::finishApplication);
+                } else {
+                    mainHandler.post(this::updateGraceTicker);
                 }
             } catch (Throwable tr) {
                 Log.e(TAG, "unable to begin graceful shutdown", tr);
@@ -504,9 +518,7 @@ public class I2PDActivity extends Activity {
         boolean questionEnabled = getPreferences().getBoolean(
                 BATTERY_OPTIMIZATION_PREFERENCE, true);
         Log.d(TAG, "battery optimization question enabled=" + questionEnabled);
-        if (!isKnownIgnoringBatteryOptimizations()
-                && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
-                && questionEnabled) {
+        if (!isKnownIgnoringBatteryOptimizations() && questionEnabled) {
             var builder = new AlertDialog.Builder(this);
             builder.setTitle(R.string.battery_optimizations_enabled);
             builder.setMessage(R.string.battery_optimizations_enabled_dialog);
@@ -535,9 +547,6 @@ public class I2PDActivity extends Activity {
     }
 
     private boolean isKnownIgnoringBatteryOptimizations() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
-            return false;
-        }
         final PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
         if (powerManager == null) {
             Log.d(TAG, "battery optimization: POWER_SERVICE==null");
