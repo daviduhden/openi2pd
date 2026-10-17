@@ -7,10 +7,37 @@
 #include<fstream>
 #include<limits>
 #include<regex>
+#include<iomanip>
+#include<cstddef>
 
-#define CIN_CLEAR std::cin.clear(); std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
 #define HTTP_SUPPORTS_LANGUAGE "german, italian, polish, portuguese, russian, spanish, turkish, turkmen, ukrainian, uzbek"
 namespace AutoConf {
+	constexpr std::size_t MAX_INPUT_LENGTH = 4096;
+
+	// Discard the rest of the current input line without letting a terminal
+	// EOF leave the stream in a state that would make the next read hang.
+	inline void ClearInputLine(void) noexcept {
+		std::cin.clear();
+		std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+		if (std::cin.eof()) std::cin.clear(std::ios::goodbit);
+	}
+
+	// Read a single whitespace-delimited token with an explicit upper bound.
+	// Returns false on EOF or when the token does not fit in MAX_INPUT_LENGTH.
+	inline bool ReadToken(std::string & token) {
+		token.clear();
+		if (!(std::cin >> std::setw(static_cast<int>(MAX_INPUT_LENGTH) + 1) >> token)) {
+			ClearInputLine();
+			return false;
+		}
+		if (token.size() >= MAX_INPUT_LENGTH && std::cin.peek() != '\n' && std::cin.peek() != std::char_traits<char>::eof()) {
+			ClearInputLine();
+			return false;
+		}
+		ClearInputLine();
+		return true;
+	}
+
 	//
 	namespace Regexps {
 			//const std::regex port("\\d{1,5}");
@@ -110,11 +137,15 @@ const std::map<std::string, AsksT> Texts = // maybe vector better
 
 // Functions
 bool AskYN(void) noexcept {
-	char answ; 
-	std::cout << " ? (y/n) ";
-	std::cin >> answ;
-	CIN_CLEAR;
-        switch(answ) {
+	for (;;) {
+		char answ;
+		std::cout << " ? (y/n) ";
+		if (!(std::cin >> answ)) {
+			ClearInputLine();
+			return false;
+		}
+		ClearInputLine();
+		switch(answ) {
 		case 'y':
 		case 'Y':
 			return true;
@@ -122,34 +153,38 @@ bool AskYN(void) noexcept {
 		case 'N':
 			return false;
 		default:
-			return AskYN(); // stack overflow, would use while(true)
+			// keep asking instead of consuming the stack with recursion
+			break;
+		}
 	}
 }
 std::string GetLanguage(void) noexcept {
-	std::string lang;
-	std::cout << "Language/Язык:\r\nru - русский\r\nen - английский\r\n";
-	std::cin >> lang;
-	CIN_CLEAR; 
-	if (Texts.find(lang) != Texts.end()) {
-		return lang;
-	} else { 
+	for (;;) {
+		std::string lang;
+		std::cout << "Language/Язык:\r\nru - русский\r\nen - английский\r\n";
+		if (!ReadToken(lang)) {
+			std::cerr << "Input error, using English" << std::endl;
+			return "en";
+		}
+		if (Texts.find(lang) != Texts.end()) {
+			return lang;
+		}
 		std::cerr << "Not correct language, try again" << std::endl;
-		return GetLanguage(); // stack overflow
 	}
 }
 
 bool IsOnlyYggdrasil(const std::string & lang) noexcept {
-	unsigned short answ;
-	std::cout << AutoConf::Texts.at(lang).at("WelcomeText") << std::endl;
-	std::cin >> answ; 	
-	CIN_CLEAR; 
-	switch(answ) {
-		case 1:
+	for (;;) {
+		std::string answ;
+		std::cout << AutoConf::Texts.at(lang).at("WelcomeText") << std::endl;
+		if (!ReadToken(answ)) {
+			// keep the default clearnet configuration on input failure
 			return false;
-		case 2:
+		}
+		if (answ == "1")
+			return false;
+		if (answ == "2")
 			return true;
-		default: 
-		return IsOnlyYggdrasil(lang);
 	}
 }
 
@@ -173,19 +208,20 @@ main(void) {
 				#define ASKYN_MACRO(A,B,C, REGEX) { \
 					std::cout << AutoConf::Texts.at(lang).at(A); \
 					if(AskYN()) { \
-								while(1) {\
+								for (;;) { \
 								std::cout << AutoConf::Texts.at(lang).at(B) << "\r\n"; \
 								std::string inp; \
-								std::cin >> inp;\ 
-								CIN_CLEAR; \
-									std::smatch bmatch;\
-									std::regex_match(inp, bmatch, REGEX);\
-									if (bmatch.length() > 0) {\
-										conf << C "=" << inp << "\r\n"; \ 
-										break;\
-									}else {std::cerr<<"No correct input"<<std::endl;}\
+								if (!AutoConf::ReadToken(inp)) { \
+									std::cerr << "No correct input" << std::endl; \
+									break; \
 								} \
-					}\
+									std::smatch bmatch; \
+									if (std::regex_match(inp, bmatch, REGEX) && !bmatch.empty() && bmatch[0].matched) { \
+										conf << C "=" << inp << "\r\n"; \
+										break; \
+									}else {std::cerr<<"No correct input"<<std::endl;} \
+								} \
+					} \
 				};
 				ASKYN_MACRO("TunConfYN","TunConf","tunconf", AutoConf::Regexps::path);
 				ASKYN_MACRO("TunnelsDirYN","TunnelsDir","tunnelsdir",AutoConf::Regexps::path);
@@ -205,9 +241,14 @@ main(void) {
 				// TODO: - to constexpr or just const and use this const in text formating
 				#define ASK_TEXT(A, B) {\
 					std::cout << AutoConf::Texts.at(lang).at(A) << std::endl;\
-					std::string inp; std::cin >> inp;CIN_CLEAR;  if (inp != "-") {\
+					std::string inp; \
+					if (AutoConf::ReadToken(inp)) { \
+						if (inp != "-") { \
 							conf << B "=" << inp << "\r\n";\
-					}\
+						} \
+					} else { \
+						std::cerr << "No correct input" << std::endl; \
+					} \
 				}
 				ASK_TEXT("FamilyUsing","family");
 				ASK_BOOL("BeFloodfillYN", "floodfill");
@@ -238,11 +279,28 @@ main(void) {
 	std::cout << "Save File: (\"i2pd_.conf\"):";
 	std::string outFileName;
 	std::cin.clear();
-	std::getline(std::cin, outFileName);  
+	if (!std::getline(std::cin, outFileName)) outFileName.clear();
+	if (outFileName.size() > AutoConf::MAX_INPUT_LENGTH) {
+		std::cerr << "file name too long" << std::endl;
+		return 1;
+	}
 	//TODO: to constxpr
 	if (outFileName.length() == 0) outFileName = "i2pd_.conf";
-	std::ofstream confFile(outFileName); 
+	std::ofstream confFile(outFileName, std::ios::binary | std::ios::trunc);
+	if (!confFile) {
+		std::cerr << "cannot open " << outFileName << std::endl;
+		return 1;
+	}
 	confFile << conf.str();
+	if (!confFile) {
+		std::cerr << "cannot write " << outFileName << std::endl;
+		return 1;
+	}
 	confFile.close();
+	if (!confFile) {
+		std::cerr << "cannot close " << outFileName << std::endl;
+		return 1;
+	}
+	return 0;
 }
 #endif

@@ -1,6 +1,6 @@
 [Unit]
 Description=Open I2Pd router
-Documentation=man:i2pd(1) https://github.com/daviduhden/open-i2pd
+Documentation=man:i2pd(1) https://github.com/daviduhden/openi2pd
 Wants=network.target
 After=network.target network-online.target
 

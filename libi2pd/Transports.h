@@ -59,7 +59,7 @@ namespace transport
 			i2p::util::MemoryPoolMt<i2p::crypto::X25519Keys> m_KeysPool;
 			std::list<std::shared_ptr<i2p::crypto::X25519Keys> > m_Queue;
 
-			bool m_IsRunning;
+			std::atomic<bool> m_IsRunning;
 			std::unique_ptr<std::thread> m_Thread;
 			std::condition_variable m_Acquired;
 			std::mutex m_AcquiredMutex;
@@ -71,13 +71,13 @@ namespace transport
 	const int PEER_SELECTION_MIN_INTERVAL = 20; // in seconds
 	struct Peer
 	{
-		int numAttempts;
+		std::atomic<int> numAttempts;
 		std::shared_ptr<const i2p::data::RouterInfo> router;
 		std::list<std::shared_ptr<TransportSession> > sessions;
 		uint64_t creationTime, nextRouterInfoUpdateTime, lastSelectionTime;
 		std::list<std::shared_ptr<i2p::I2NPMessage> > delayedMessages;
 		std::vector<i2p::data::RouterInfo::SupportedTransports> priority;
-		bool isHighBandwidth, isEligible, isDone;
+		std::atomic<bool> isHighBandwidth, isEligible, isDone;
 
 		Peer (std::shared_ptr<const i2p::data::RouterInfo> r, uint64_t ts):
 			numAttempts (0), router (r), creationTime (ts),

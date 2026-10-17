@@ -1,6 +1,6 @@
 Format: http://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: i2pd
-Source: https://github.com/daviduhden/open-i2pd
+Source: https://github.com/daviduhden/openi2pd
 
 Files: *
 Copyright: 2013-2023 PurpleI2P

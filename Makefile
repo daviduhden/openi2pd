@@ -45,4 +45,4 @@ clean:
 	${CMAKE} -E remove_directory ${BUILD_DIR}
 
 dist:
-	git archive --format=tar.gz -9 --prefix=open-i2pd/ HEAD -o open-i2pd.tar.gz
+	git archive --format=tar.gz -9 --prefix=openi2pd/ HEAD -o openi2pd.tar.gz

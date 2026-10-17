@@ -51,7 +51,7 @@ router runs without a terminal, stdin or the TUI. See the
 The former HTTP administrative console has been removed. The I2P HTTP proxy,
 HTTP tunnels, reseeding and I2PControl remain available.
 
-Report issues at <https://github.com/daviduhden/open-i2pd/issues>.
+Report issues at <https://github.com/daviduhden/openi2pd/issues>.
 
 ## License
 

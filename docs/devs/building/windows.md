@@ -121,7 +121,7 @@ the directory Boost was unpacked to, e.g., C:\dev\boost.
 
 If you are planning on building only particular variant, e.g. Debug only and static linking,
 and/or you are out of space/time, you might consider `--build-type=minimal`.
-Take a look at [appveyor.yml](../appveyor.yml) for details on how test builds are done.
+The maintained Windows build helper is `build_mingw.cmd`; CI workflows are manual-only.
 
 ### Building OpenSSL
 

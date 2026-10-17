@@ -12,7 +12,7 @@ Version:        %{ver}
 Release:        %{rel}
 Summary:        I2P router written in C++ (static build)
 License:        BSD-3-Clause
-URL:            https://github.com/daviduhden/open-i2pd
+URL:            https://github.com/daviduhden/openi2pd
 Source0:        i2pd-%{_target_cpu}
 Requires(pre):  /usr/sbin/useradd
 Requires(pre):  /usr/sbin/groupadd

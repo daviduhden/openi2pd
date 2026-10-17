@@ -176,3 +176,38 @@ needed or change deferred with rationale; **Removed** = attack surface deleted.
   exercised; a second UID was not available).
 
 See `testing.md` for exact commands and the honest status of each check.
+
+## Recent findings (post-initial audit)
+
+### S-12 — `vain` found-state and key-selection races (Medium, Fixed)
+
+- **Location:** `tools/vain.cpp`, `tools/vanity.hpp`.
+- **Cause:** plain `bool found`, `FoundNonce`, `hashescounter` and `fKeyId`
+  were written by all worker threads; the thread-to-key mapping also reused
+  key 0 for two worker indices.
+- **Impact:** data races, wrong key file association and potential undefined
+  behavior during vanity generation.
+- **Fix:** atomic found/hash/nonce/key-id state, single-winner
+  `exchange` publication, per-thread key index. Remaining raw key-buffer arrays
+  are documented as a pending RAII task (`DEF-007`).
+
+### S-13 — Log file write removed from the core (Medium/High mitigation, Implemented)
+
+- **Location:** `privsep/LogWorker.*`, `daemon/Daemon.cpp`, `libi2pd/Log.*`.
+- **Cause:** the monolithic core opened and wrote logs while also handling
+  network traffic and long-term keys.
+- **Fix:** optional isolated log worker; core sends structured records over a
+  bounded `AF_UNIX/SOCK_SEQPACKET` channel. Worker file mode is `umask 0077`,
+  OpenBSD `unveil`/`pledge` exclude `inet`/`dns`. Failure drops logs rather than
+  reopening the file in the core.
+- **Residual:** the rest of the process still combines network, persistence and
+  keys; this is not full privilege separation.
+
+### S-14 — JNI string handling (Low/Medium, Fixed)
+
+- **Location:** `android/app/src/main/cpp/i2pd_android.cpp`.
+- **Cause:** `GetStringUTFChars` results were not checked and not managed by
+  RAII.
+- **Fix:** `ScopedUtfChars` releases on all paths; null/exception paths return
+  without using the pointer. Further JNI lifecycle/restart testing remains
+  pending.

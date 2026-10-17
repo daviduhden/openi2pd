@@ -4,13 +4,14 @@ site_author: Open I2Pd contributors
 docs_dir: .
 site_dir: ../build-output/docs
 
-repo_url: https://github.com/daviduhden/open-i2pd
+repo_url: https://github.com/daviduhden/openi2pd
 
 nav:
   - Home: index.md
   - Fork documentation:
       - Overview: README.md
       - Architecture: architecture.md
+      - Architecture decisions: architecture/README.md
       - Interoperability: INTEROPERABILITY.md
       - Legacy interoperability notes: interop-matrix.md
       - Dependencies: dependencies.md
@@ -81,7 +82,12 @@ nav:
       - Hacking: devs/hacking.md
       - i2pd-specific changes: devs/i2pd-specifics.md
   - Protocols: protocols/README.md
-  - Security: security/README.md
+  - Security:
+      - Overview: security/README.md
+      - Privilege separation: security/privilege-separation.md
+      - IPC protocol: security/ipc-protocol.md
+      - Process capabilities: security/process-capabilities.md
+      - Threat model: security/threat-model.md
   - About:
       - Community: about/community.md
       - History: about/history.md

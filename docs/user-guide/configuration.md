@@ -36,7 +36,7 @@ i2pd.conf:
 You are also encouraged to see the commented config with examples of all options in ``contrib/i2pd.conf``.
 
 Options specified on the command line take precedence over those in the config file.
-If you are upgrading your very old router (< 2.3.0) see also [this](config_opts_after_2.3.0.md) page.
+If you are upgrading your very old router (< 2.3.0) see also [upstream options](https://i2pd.readthedocs.io/en/latest/user-guide/configuration/) page.
 
 Available options
 -----------------

@@ -1,82 +1,89 @@
 package org.openi2pd.router;
 
 import android.app.Activity;
+import android.content.ActivityNotFoundException;
 import android.content.ComponentName;
+import android.content.Context;
 import android.content.Intent;
-import android.content.pm.PackageManager;
-import android.content.pm.ResolveInfo;
-import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
-import android.provider.Settings;
 import android.util.Log;
 import android.view.MenuItem;
-import android.view.View;
 import android.widget.Button;
-import android.widget.CompoundButton;
 import android.widget.Switch;
-
+import android.widget.Toast;
 
 import java.io.File;
-import java.util.List;
-import java.util.Objects;
-
-
-//import org.openi2pd.router.iniedotr.IniEditor;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.util.Locale;
 
 public class SettingsActivity extends Activity {
-    private String TAG = "i2pdSrvcSettings";
-    private File cacheDir;
-    public static String onBootFileName = "/onBoot"; // just file, empty, if exist the do autostart, if not then no.
+    private static final String TAG = "i2pdServices";
+    public static final String onBootFileName = "onBoot";
 
-    //https://gist.github.com/chandruark/3165a5ee3452f2b9ec7736cf1b4c5ea6
-    private void addAutoStartupSwitch() {
-
-        try {
-            Intent intent = new Intent();
-            String manufacturer = android.os.Build.MANUFACTURER .toLowerCase();
-
-            switch (manufacturer){
-                case "xiaomi":
-                    intent.setComponent(new ComponentName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity"));
-                    break;
-                case "oppo":
-                    intent.setComponent(new ComponentName("com.coloros.safecenter", "com.coloros.safecenter.permission.startup.StartupAppListActivity"));
-                    break;
-                case "vivo":
-                    intent.setComponent(new ComponentName("com.vivo.permissionmanager", "com.vivo.permissionmanager.activity.BgStartUpManagerActivity"));
-                    break;
-                case "Letv":
-                    intent.setComponent(new ComponentName("com.letv.android.letvsafe", "com.letv.android.letvsafe.AutobootManageActivity"));
-                    break;
-                case "Honor":
-                    intent.setComponent(new ComponentName("com.huawei.systemmanager", "com.huawei.systemmanager.optimize.process.ProtectActivity"));
-                    break;
-                case "oneplus":
-                    intent.setComponent(new ComponentName("com.oneplus.security", "com.oneplus.security.chainlaunch.view.ChainLaunchAppListAct‌​ivity"));
-                    break;
-            }
-
-            List<ResolveInfo> list = getPackageManager().queryIntentActivities(intent, PackageManager.MATCH_DEFAULT_ONLY);
-            if (list.size() > 0) {
-                startActivity(intent);
-            }
-        } catch (Exception e) {
-            Log.e("exceptionAutostarti2pd" , String.valueOf(e));
+    /**
+     * Autostart marker, stored in app-private files rather than cache so the
+     * system cannot clear it and silently disable autostart.
+     */
+    public static File getOnBootFile(Context context) {
+        Context appContext = context.getApplicationContext();
+        if (appContext == null) {
+            appContext = context;
         }
-
+        File marker = new File(appContext.getFilesDir(), onBootFileName);
+        if (marker.isFile()) {
+            return marker;
+        }
+        File legacy = new File(appContext.getCacheDir(), onBootFileName);
+        if (legacy.isFile()) {
+            try (FileOutputStream out = new FileOutputStream(marker)) {
+                // The marker is empty; its existence is the setting.
+                out.flush();
+            } catch (IOException e) {
+                Log.w(TAG, "unable to migrate autostart marker", e);
+                return legacy;
+            }
+            if (!legacy.delete()) {
+                Log.w(TAG, "unable to remove legacy autostart marker");
+            }
+        }
+        return marker;
     }
 
-    //@Override
-    private void requestPermission() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            if (!Settings.canDrawOverlays(this)) {
-                Intent intent = new Intent(
-                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                        Uri.parse("package:" + getPackageName())
-                );
-                startActivityForResult(intent, 232);
-            }
+    private void addAutoStartupSwitch() {
+        String manufacturer = Build.MANUFACTURER == null
+                ? "" : Build.MANUFACTURER.toLowerCase(Locale.ROOT);
+
+        ComponentName component = switch (manufacturer) {
+            case "xiaomi" -> new ComponentName("com.miui.securitycenter",
+                    "com.miui.permcenter.autostart.AutoStartManagementActivity");
+            case "oppo" -> new ComponentName("com.coloros.safecenter",
+                    "com.coloros.safecenter.permission.startup.StartupAppListActivity");
+            case "vivo" -> new ComponentName("com.vivo.permissionmanager",
+                    "com.vivo.permissionmanager.activity.BgStartUpManagerActivity");
+            case "letv" -> new ComponentName("com.letv.android.letvsafe",
+                    "com.letv.android.letvsafe.AutobootManageActivity");
+            case "honor" -> new ComponentName("com.huawei.systemmanager",
+                    "com.huawei.systemmanager.optimize.process.ProtectActivity");
+            case "oneplus" -> new ComponentName("com.oneplus.security",
+                    "com.oneplus.security.chainlaunch.view.ChainLaunchAppListActivity");
+            default -> null;
+        };
+        if (component == null) {
+            return;
+        }
+
+        Intent intent = new Intent().setComponent(component);
+        try {
+            // Do not pre-resolve: package-visibility filtering can hide the
+            // vendor activity even though it can be launched. Start it and let
+            // ActivityNotFoundException report the unsupported case.
+            startActivity(intent);
+        } catch (ActivityNotFoundException e) {
+            Log.d(TAG, "autostart settings activity not available on this device");
+        } catch (RuntimeException e) {
+            Log.w(TAG, "unable to open autostart settings", e);
         }
     }
 
@@ -84,51 +91,58 @@ public class SettingsActivity extends Activity {
         Log.d(TAG, "onCreate");
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_settings);
-        Objects.requireNonNull(getActionBar()).setDisplayHomeAsUpEnabled(true);
-        Switch autostart_switch = findViewById(R.id.autostart_enable);
-        Button openPreferences = findViewById(R.id.OpenPreferences);
-        cacheDir = getApplicationContext().getCacheDir();
-        File onBoot = new File(cacheDir.getAbsolutePath() + onBootFileName);
-        openPreferences.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View view) {
-                Intent intent = new Intent(SettingsActivity.this, MainPreferenceActivity.class);
-                startActivity(intent);
-            }
-        });
-        autostart_switch.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
-            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                // do something, the isChecked will be
-                // true if the switch is in the On position
-                if (isChecked) {
-                    if (!onBoot.exists()) {
-                        requestPermission();
-                        addAutoStartupSwitch();
 
-                        try {
-                            if (!onBoot.createNewFile())
-                                Log.d(TAG, "Cant create new wile on: "+onBoot.getAbsolutePath());
-                        } catch (Exception e) {
-                            Log.e(TAG, "error: " + e.toString());
-                        }
+        if (getActionBar() != null) {
+            getActionBar().setDisplayHomeAsUpEnabled(true);
+        }
+
+        Switch autostartSwitch = findViewById(R.id.autostart_enable);
+        Button openPreferences = findViewById(R.id.OpenPreferences);
+        File onBoot = getOnBootFile(getApplicationContext());
+
+        // Set the initial state before installing the listener so restoring the
+        // switch does not trigger manufacturer-specific settings screens.
+        autostartSwitch.setChecked(onBoot.isFile());
+        openPreferences.setOnClickListener(view ->
+                startActivity(new Intent(SettingsActivity.this,
+                        MainPreferenceActivity.class)));
+        autostartSwitch.setOnCheckedChangeListener(
+                (buttonView, isChecked) -> {
+                    if (!setAutostart(onBoot, isChecked)) {
+                        buttonView.setChecked(!isChecked);
                     }
-                } else {
-                    if (onBoot.exists())
-                        onBoot.delete();
-                }
-            }
-        });
-        if(onBoot.exists())
-            autostart_switch.setChecked(true);
+                });
     }
 
-    public boolean onOptionsItemSelected(MenuItem item) {
-        int id = item.getItemId();
+    private boolean setAutostart(File onBoot, boolean enabled) {
+        if (enabled) {
+            if (onBoot.isFile()) {
+                return true;
+            }
+            try (FileOutputStream out = new FileOutputStream(onBoot)) {
+                out.flush();
+            } catch (IOException e) {
+                Log.e(TAG, "unable to create autostart marker", e);
+                Toast.makeText(this, R.string.autostart_marker_failed,
+                        Toast.LENGTH_SHORT).show();
+                return false;
+            }
+            addAutoStartupSwitch();
+            return true;
+        }
+        if (onBoot.isFile() && !onBoot.delete()) {
+            Log.w(TAG, "unable to delete autostart marker");
+            return false;
+        }
+        return true;
+    }
 
-        if (id == android.R.id.home) {
+    @Override
+    public boolean onOptionsItemSelected(MenuItem item) {
+        if (item.getItemId() == android.R.id.home) {
             finish();
             return true;
         }
-        return false;
+        return super.onOptionsItemSelected(item);
     }
 }

@@ -163,6 +163,11 @@ namespace log {
 	void Log::Process(std::shared_ptr<LogMsg> msg)
 	{
 		if (!msg) return;
+		if (m_Sink)
+		{
+			m_Sink (msg->level, msg->timestamp, msg->text);
+			return;
+		}
 		std::hash<std::thread::id> hasher;
 		unsigned short short_tid;
 		short_tid = (short) (hasher(msg->tid) % 1000);

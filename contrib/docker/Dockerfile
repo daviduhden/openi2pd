@@ -10,7 +10,7 @@ RUN cmake -S build -B build-output -G Ninja \
 
 FROM alpine:latest
 LABEL org.opencontainers.image.title="Open I2Pd"
-LABEL org.opencontainers.image.source="https://github.com/daviduhden/open-i2pd"
+LABEL org.opencontainers.image.source="https://github.com/daviduhden/openi2pd"
 LABEL org.opencontainers.image.licenses="BSD-3-Clause"
 RUN apk add --no-cache boost-filesystem boost-system boost-program_options boost-date_time boost-thread boost-iostreams boost-json boost-url openssl miniupnpc libstdc++ \
     && adduser -S -h /home/i2pd i2pd \

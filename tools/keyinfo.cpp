@@ -1,6 +1,7 @@
 #include "Identity.h"
 #include "I2PEndian.h"
 #include "LeaseSet.h"
+#include "Crypto.h"
 #include <iostream>
 #include <fstream>
 #include <string>
@@ -12,31 +13,93 @@
 #include "common/file.hpp"
 #include "common/key.hpp"
 
+namespace
+{
+	struct InputWiper
+	{
+		std::vector<uint8_t>& data;
+		~InputWiper () { i2p::tools::Wipe (data); }
+	};
+
+	struct CryptoGuard
+	{
+		CryptoGuard () { i2p::crypto::InitCrypto (false); }
+		~CryptoGuard () { i2p::crypto::TerminateCrypto (); }
+	};
+}
 
 // version || ident hash || number of keys, then per day expires || transient signature type ||
 // transient public key || signature by that day's blinded key || transient private key
 static void printB33OfflineKeys (const i2p::data::PrivateKeys& keys, const i2p::data::BlindedPublicKey& blindedKey)
 {
 	const auto& batch = keys.GetB33OfflineKeys ();
-	if (!batch.GetLen ()) return;
+	const size_t batchLen = batch.GetLen ();
+	if (batchLen < i2p::data::B33_OFFLINE_KEYS_HEADER_LENGTH) return;
+
 	std::unique_ptr<i2p::crypto::Verifier> blindedVerifier (
 		i2p::data::IdentityEx::CreateVerifier (blindedKey.GetBlindedSigType ()));
 	if (!blindedVerifier) return;
+
 	const uint8_t * buf = batch.GetBuffer ();
-	size_t offset = i2p::data::B33_OFFLINE_KEYS_HEADER_LENGTH - 2;
+	if (!buf) return;
+
+	size_t offset = i2p::data::B33_OFFLINE_KEYS_HEADER_LENGTH;
+	if (batchLen - offset < 2) return;
 	uint16_t numKeys = bufbe16toh (buf + offset); offset += 2;
 	std::string firstDate, lastDate;
+	bool complete = true;
 	for (uint16_t i = 0; i < numKeys; i++)
 	{
+		// the record starts with expires(4) + transient signature type(2)
+		if (offset > batchLen || batchLen - offset < i2p::data::OFFLINE_SIGNATURE_HEADER_LENGTH)
+		{
+			complete = false;
+			break;
+		}
+
 		std::unique_ptr<i2p::crypto::Verifier> transientVerifier (
 			i2p::data::IdentityEx::CreateVerifier (bufbe16toh (buf + offset + 4)));
-		if (!transientVerifier) return;
-		char date[9];
-		i2p::util::GetDateString (bufbe32toh (buf + offset) - i2p::data::SECONDS_PER_DAY, date);
+		if (!transientVerifier)
+		{
+			complete = false;
+			break;
+		}
+
+		const size_t publicKeyLen = transientVerifier->GetPublicKeyLen ();
+		const size_t offlineSignatureLen = blindedVerifier->GetSignatureLen ();
+		const size_t privateKeyLen = transientVerifier->GetPrivateKeyLen ();
+		if (!publicKeyLen || !offlineSignatureLen || !privateKeyLen)
+		{
+			complete = false;
+			break;
+		}
+
+		const size_t recordLen = i2p::data::OFFLINE_SIGNATURE_HEADER_LENGTH +
+			publicKeyLen + offlineSignatureLen + privateKeyLen;
+		if (recordLen > batchLen - offset)
+		{
+			complete = false;
+			break;
+		}
+
+		const uint32_t expires = bufbe32toh (buf + offset);
+		if (expires < i2p::data::SECONDS_PER_DAY)
+		{
+			complete = false;
+			break;
+		}
+
+		char date[9]{};
+		i2p::util::GetDateString (expires - i2p::data::SECONDS_PER_DAY, date);
 		if (!i) firstDate = date;
 		lastDate = date;
-		offset += i2p::data::OFFLINE_SIGNATURE_HEADER_LENGTH + transientVerifier->GetPublicKeyLen () +
-			blindedVerifier->GetSignatureLen () + transientVerifier->GetPrivateKeyLen ();
+		offset += recordLen;
+	}
+
+	if (!complete)
+	{
+		std::cout << "b33 offline keys: invalid or truncated data" << std::endl;
+		return;
 	}
 	std::cout << "b33 offline keys: " << numKeys << " days, " << firstDate << " to " << lastDate << std::endl;
 }
@@ -92,6 +155,12 @@ int main(int argc, char * argv[])
 		std::cerr << "missing private key file" << std::endl;
 		return 2;
 	}
+	if (optind + 1 != argc) {
+		std::cerr << "unexpected extra argument: " << argv[optind + 1] << std::endl;
+		return printHelp(argv[0], 2);
+	}
+
+	CryptoGuard cryptoGuard;
 
 	std::string fname(argv[optind]);
 	i2p::data::PrivateKeys keys;
@@ -100,12 +169,11 @@ int main(int argc, char * argv[])
 		std::cout << input.error () << std::endl;
 		return 2;
 	}
+	InputWiper inputWiper { *input };
 	if (!keys.FromBuffer(input->data (), input->size ())) {
-		i2p::tools::Wipe (*input);
 		std::cout << "bad key file format" << std::endl;
 		return 3;
 	}
-	i2p::tools::Wipe (*input);
 
 	auto dest = keys.GetPublic();
 	if(!dest) {
@@ -124,6 +192,11 @@ int main(int argc, char * argv[])
 		{
 			std::cout << "Offline signature" << std::endl;
 			const auto& offlineSignature = keys.GetOfflineSignature ();
+			if (offlineSignature.size () < i2p::data::OFFLINE_SIGNATURE_HEADER_LENGTH)
+			{
+				std::cout << "Invalid offline signature" << std::endl;
+				return 3;
+			}
 			std::cout << "Expires: " << ConvertTime (bufbe32toh(offlineSignature.data ())) << std::endl;
 			std::cout << "Transient Signature Type: " << SigTypeToName(bufbe16toh(offlineSignature.data () + 4)) << std::endl;
 		}
@@ -150,6 +223,5 @@ int main(int argc, char * argv[])
 			std::cout << "Invalid signature type " << SigTypeToName (dest->GetSigningKeyType ()) << std::endl;
 	}
 
-	i2p::crypto::TerminateCrypto ();
 	return 0;
 }

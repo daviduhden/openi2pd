@@ -14,6 +14,7 @@
 #include <ctime>
 #include <deque>
 #include <string>
+#include <string_view>
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -70,6 +71,8 @@ namespace log {
 	inline constexpr size_t LOG_RECENT_CAPACITY = 512;
 	inline constexpr size_t LOG_RECENT_TEXT_LIMIT = 512;
 
+	using SinkFunction = std::function<void (LogLevel, std::time_t, std::string_view)>;
+
 	class Log
 	{
 		private:
@@ -92,6 +95,7 @@ namespace log {
 			mutable std::mutex m_RecentMutex;
 			std::deque<LogRecord> m_Recent;
 			uint64_t m_RecentSequence;
+			SinkFunction m_Sink;
 
 		private:
 
@@ -162,6 +166,13 @@ namespace log {
 
 			/** @brief Reopen log file */
 			void Reopen();
+
+			/**
+			 * Route processed records to an external sink (privilege-separated
+			 * log worker). When set, the process never opens or writes a log
+			 * file itself. Must be configured before Start().
+			 */
+			void SetSink (SinkFunction sink) { m_Sink = std::move (sink); }
 
 			/**
 			 * @brief Copy up to @a max records with sequence greater than @a after

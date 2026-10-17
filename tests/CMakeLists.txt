@@ -3,7 +3,14 @@ enable_testing()
 function(i2pd_add_test name)
   add_executable(${name} "${name}.cpp")
   target_compile_features(${name} PRIVATE cxx_std_23)
-  target_include_directories(${name} PRIVATE "${PROJECT_ROOT}/tools")
+  if(name STREQUAL "test-privsep-protocol")
+    target_sources(${name} PRIVATE "${PROJECT_ROOT}/privsep/Channel.cpp")
+  elseif(name STREQUAL "test-privsep-log")
+    target_sources(${name} PRIVATE
+      "${PROJECT_ROOT}/privsep/Channel.cpp"
+      "${PROJECT_ROOT}/privsep/LogWorker.cpp")
+  endif()
+  target_include_directories(${name} PRIVATE "${PROJECT_ROOT}" "${PROJECT_ROOT}/tools")
   target_link_libraries(${name} PRIVATE libi2pd libi2pdclient libi2pdlang i2pd_warnings)
   if(MSVC)
     target_compile_options(${name} PRIVATE /UNDEBUG)
@@ -31,6 +38,10 @@ set(I2PD_TESTS
   test-tui-protocol
   test-routerinfo-firewall
 )
+
+if(UNIX)
+  list(APPEND I2PD_TESTS test-privsep-protocol test-privsep-log)
+endif()
 
 foreach(test IN LISTS I2PD_TESTS)
   i2pd_add_test(${test})

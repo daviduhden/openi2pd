@@ -31,7 +31,7 @@ Resources
 ---------
 
 * [Fork documentation](README.md)
-* [Source and issues](https://github.com/daviduhden/open-i2pd)
+* [Source and issues](https://github.com/daviduhden/openi2pd)
 * [Upstream wiki](https://github.com/PurpleI2P/i2pd/wiki)
 * [I2P specifications](https://i2p.net/en/docs/specs/)
 * [Upstream i2pd](https://github.com/PurpleI2P/i2pd)

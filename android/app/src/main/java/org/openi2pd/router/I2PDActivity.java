@@ -2,27 +2,30 @@ package org.openi2pd.router;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
-import java.util.Timer;
-import java.util.TimerTask;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.atomic.AtomicBoolean;
 
+import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.ActivityNotFoundException;
 import android.content.ComponentName;
 import android.content.Context;
-import android.Manifest;
 import android.content.Intent;
 import android.content.ServiceConnection;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.net.ConnectivityManager;
 import android.net.Uri;
-import android.os.Bundle;
 import android.os.Build;
+import android.os.Bundle;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.os.PowerManager;
-import android.preference.PreferenceManager;
 import android.provider.Settings;
 import android.util.Log;
 import android.view.Menu;
@@ -32,14 +35,21 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
+import androidx.core.content.ContextCompat;
 
 import static android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS;
 
 public class I2PDActivity extends Activity {
     private static final String TAG = "i2pdActvt";
-    public static final int GRACEFUL_DELAY_MILLIS = 10 * 60 * 1000;
+    public static final int GRACEFUL_DELAY_MILLIS =
+            (int) DaemonWrapper.GRACEFUL_STOP_DELAY_MILLIS;
     public static final String PACKAGE_URI_SCHEME = "package:";
     private static final int REQUEST_POST_NOTIFICATIONS = 3;
+    private static final String BATTERY_OPTIMIZATION_PREFERENCE =
+            "show_battery_optimization";
+
+    private static final Object DAEMON_LOCK = new Object();
+    private static volatile DaemonWrapper daemon;
 
     private TextView textView;
     private CheckBox HTTPProxyState;
@@ -48,203 +58,304 @@ public class I2PDActivity extends Activity {
     private CheckBox SAMState;
     private CheckBox I2CPState;
 
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private final AtomicBoolean statusQueryPending = new AtomicBoolean(false);
+    private final AtomicBoolean finishing = new AtomicBoolean(false);
 
-    private static volatile DaemonWrapper daemon;
+    private final ExecutorService statusExecutor = Executors.newSingleThreadExecutor(runnable -> {
+        Thread thread = new Thread(runnable, "i2pdStatus");
+        thread.setDaemon(true);
+        return thread;
+    });
 
-    private final DaemonWrapper.StateUpdateListener daemonStateUpdatedListener = new DaemonWrapper.StateUpdateListener() {
+    private final ExecutorService controlExecutor = Executors.newSingleThreadExecutor(runnable -> {
+        Thread thread = new Thread(runnable, "i2pdControl");
+        thread.setDaemon(true);
+        return thread;
+    });
+
+    private boolean bound;
+    private boolean lastGracefulState;
+
+    private final Runnable graceTicker = new Runnable() {
         @Override
-        public void daemonStateUpdate(DaemonWrapper.State oldValue, DaemonWrapper.State newValue) {
+        public void run() {
+            if (isFinishing() || isDestroyed()) {
+                return;
+            }
             updateStatusText();
+            DaemonWrapper current = daemon;
+            if (current != null && current.isGracefulShutdownScheduled()) {
+                mainHandler.postDelayed(this, 1000L);
+            }
         }
     };
 
-    private void updateStatusText() {
-        runOnUiThread(() -> {
-            try {
-                if (textView == null)
-                    return;
-
-                Throwable tr = daemon.getLastThrowable();
-                if (tr != null) {
-                    textView.setText(throwableToString(tr));
-                    return;
-                }
-
-                DaemonWrapper.State state = daemon.getState();
-
-                if (daemon.isStartedOkay()) {
-                    HTTPProxyState.setChecked(I2PD_JNI.getHTTPProxyState());
-                    SOCKSProxyState.setChecked(I2PD_JNI.getSOCKSProxyState());
-                    BOBState.setChecked(I2PD_JNI.getBOBState());
-                    SAMState.setChecked(I2PD_JNI.getSAMState());
-                    I2CPState.setChecked(I2PD_JNI.getI2CPState());
-                }
-
-                String startResultStr = DaemonWrapper.State.startFailed.equals(state) ? String.format(": %s", daemon.getDaemonStartResult()) : "";
-                String graceStr = DaemonWrapper.State.gracefulShutdownInProgress.equals(state) ? String.format(": %s %s", formatGraceTimeRemaining(), getText(R.string.remaining)) : "";
-                String summary = "";
-                if (daemon.isStartedOkay()) {
-                    try {
-                        summary = "\n" + I2PD_JNI.getStatusSummary();
-                    } catch (Throwable ignored) {
-                    }
-                }
-                textView.setText(String.format("%s%s%s%s", getText(state.getStatusStringResourceId()), startResultStr, graceStr, summary));
-            } catch (Throwable tr) {
-                Log.e(TAG,"error ignored",tr);
-            }
-        });
+    private record ServiceStates(boolean httpProxy, boolean socksProxy, boolean bob,
+                                 boolean sam, boolean i2cp) {
+        private static final ServiceStates NONE = new ServiceStates(false, false, false, false, false);
     }
 
-    private static volatile long graceStartedMillis;
-    private static final Object graceStartedMillis_LOCK = new Object();
-    private Menu optionsMenu;
+    private record StatusSnapshot(String errorText, DaemonWrapper.State state, String startResult,
+                                  String summary, ServiceStates services,
+                                  long graceRemainingMillis) {
+    }
 
-    private static String formatGraceTimeRemaining() {
-        long remainingSeconds;
-        synchronized (graceStartedMillis_LOCK) {
-            remainingSeconds = Math.round(Math.max(0, graceStartedMillis + GRACEFUL_DELAY_MILLIS - System.currentTimeMillis()) / 1000.0D);
+    private final DaemonWrapper.StateUpdateListener daemonStateUpdatedListener =
+            (oldValue, newValue) -> mainHandler.post(() -> {
+                updateGraceTicker();
+                updateStatusText();
+            });
+
+    private final ServiceConnection connection = new ServiceConnection() {
+        @Override
+        public void onServiceConnected(ComponentName className, IBinder service) {
+            // The daemon is process-wide; binding only keeps the notification
+            // service alive while the UI is visible.
         }
-        long remainingMinutes = (long) Math.floor(remainingSeconds / 60.0D);
-        long remSec = remainingSeconds - remainingMinutes * 60;
-        return remainingMinutes + ":" + (remSec / 10) + remSec % 10;
-    }
+
+        @Override
+        public void onServiceDisconnected(ComponentName className) {
+            // Same-process service, so this only happens if the process dies.
+        }
+    };
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
         Log.d(TAG, "onCreate");
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        startService(new Intent(this, ForegroundService.class));
-        textView = (TextView) findViewById(R.id.appStatusText);
-        HTTPProxyState = (CheckBox) findViewById(R.id.service_httpproxy_box);
-        SOCKSProxyState = (CheckBox) findViewById(R.id.service_socksproxy_box);
-        BOBState = (CheckBox) findViewById(R.id.service_bob_box);
-        SAMState = (CheckBox) findViewById(R.id.service_sam_box);
-        I2CPState = (CheckBox) findViewById(R.id.service_i2cp_box);
+        textView = findViewById(R.id.appStatusText);
+        HTTPProxyState = findViewById(R.id.service_httpproxy_box);
+        SOCKSProxyState = findViewById(R.id.service_socksproxy_box);
+        BOBState = findViewById(R.id.service_bob_box);
+        SAMState = findViewById(R.id.service_sam_box);
+        I2CPState = findViewById(R.id.service_i2cp_box);
 
-        if (daemon == null) {
-            ConnectivityManager connectivityManager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
-            daemon = new DaemonWrapper(this, getAssets(), connectivityManager);
+        DaemonWrapper current = getOrCreateDaemon(this);
+        ForegroundService.init(current);
+        current.addStateChangeListener(daemonStateUpdatedListener);
+
+        try {
+            ContextCompat.startForegroundService(this,
+                    new Intent(this, ForegroundService.class));
+        } catch (RuntimeException e) {
+            Log.e(TAG, "unable to start foreground service", e);
         }
-        ForegroundService.init(daemon);
 
-        daemon.addStateChangeListener(daemonStateUpdatedListener);
-        daemonStateUpdatedListener.daemonStateUpdate(DaemonWrapper.State.uninitialized, daemon.getState());
-
-        if (Build.VERSION.SDK_INT >= 33 &&
-            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQUEST_POST_NOTIFICATIONS);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},
+                    REQUEST_POST_NOTIFICATIONS);
         }
 
         doBindService();
-
-        final Timer gracefulQuitTimer = getGracefulQuitTimer();
-        if (gracefulQuitTimer != null) {
-            long gracefulStopAtMillis;
-            synchronized (graceStartedMillis_LOCK) {
-                gracefulStopAtMillis = graceStartedMillis + GRACEFUL_DELAY_MILLIS;
-            }
-            rescheduleGraceStop(gracefulQuitTimer, gracefulStopAtMillis);
-        }
-
+        updateGraceTicker();
+        updateStatusText();
         openBatteryOptimizationDialogIfNeeded();
     }
 
     @Override
+    protected void onResume() {
+        super.onResume();
+        doBindService();
+        updateGraceTicker();
+        updateStatusText();
+    }
+
+    @Override
     protected void onDestroy() {
-        super.onDestroy();
+        Log.d(TAG, "onDestroy");
+        DaemonWrapper current = daemon;
+        if (current != null) {
+            current.removeStateChangeListener(daemonStateUpdatedListener);
+        }
+        doUnbindService();
+        mainHandler.removeCallbacksAndMessages(null);
+        statusExecutor.shutdownNow();
+        controlExecutor.shutdown();
         textView = null;
-        ForegroundService.deinit();
-        daemon.removeStateChangeListener(daemonStateUpdatedListener);
-        //cancelGracefulStop0();
+        super.onDestroy();
+    }
+
+    private static DaemonWrapper getOrCreateDaemon(Context context) {
+        synchronized (DAEMON_LOCK) {
+            if (daemon == null) {
+                Context appContext = context.getApplicationContext();
+                if (appContext == null) {
+                    appContext = context;
+                }
+                ConnectivityManager connectivityManager =
+                        (ConnectivityManager) appContext.getSystemService(
+                                Context.CONNECTIVITY_SERVICE);
+                daemon = new DaemonWrapper(appContext, appContext.getAssets(), connectivityManager);
+            }
+            return daemon;
+        }
+    }
+
+    /**
+     * Query native state off the UI thread and publish an immutable snapshot.
+     */
+    private void updateStatusText() {
+        if (isFinishing() || isDestroyed()) {
+            return;
+        }
+        final DaemonWrapper current = daemon;
+        if (current == null) {
+            return;
+        }
+        if (!statusQueryPending.compareAndSet(false, true)) {
+            return;
+        }
         try {
-            doUnbindService();
-        } catch (IllegalArgumentException ex) {
-            Log.e(TAG, "throwable caught and ignored", ex);
-            if (ex.getMessage().startsWith("Service not registered: " + org.openi2pd.router.I2PDActivity.class.getName())) {
-                Log.i(TAG, "Service not registered exception seems to be normal, not a bug it seems.");
+            statusExecutor.execute(() -> {
+                StatusSnapshot snapshot = queryStatus(current);
+                statusQueryPending.set(false);
+                mainHandler.post(() -> applyStatus(snapshot));
+            });
+        } catch (RejectedExecutionException e) {
+            statusQueryPending.set(false);
+        }
+    }
+
+    private static StatusSnapshot queryStatus(DaemonWrapper current) {
+        DaemonWrapper.State state = current.getState();
+        Throwable throwable = current.getLastThrowable();
+        String errorText = throwable == null ? null : stackTrace(throwable);
+        String startResult = current.getDaemonStartResult();
+        boolean started = current.isStartedOkay();
+
+        ServiceStates services = ServiceStates.NONE;
+        String summary = "";
+        long graceRemaining = current.getGracefulStopRemainingMillis();
+        if (started && errorText == null) {
+            try {
+                services = new ServiceStates(
+                        I2PD_JNI.getHTTPProxyState(),
+                        I2PD_JNI.getSOCKSProxyState(),
+                        I2PD_JNI.getBOBState(),
+                        I2PD_JNI.getSAMState(),
+                        I2PD_JNI.getI2CPState());
+                summary = I2PD_JNI.getStatusSummary();
+            } catch (Throwable tr) {
+                errorText = stackTrace(tr);
+            }
+        }
+        return new StatusSnapshot(errorText, state, startResult, summary, services, graceRemaining);
+    }
+
+    private void applyStatus(StatusSnapshot snapshot) {
+        if (isFinishing() || isDestroyed() || textView == null) {
+            return;
+        }
+        try {
+            if (snapshot.errorText() != null) {
+                textView.setText(snapshot.errorText());
+                return;
+            }
+
+            DaemonWrapper.State state = snapshot.state() != null
+                    ? snapshot.state() : DaemonWrapper.State.uninitialized;
+            boolean started = state.isStartedOkay();
+            if (started) {
+                ServiceStates services = snapshot.services();
+                HTTPProxyState.setChecked(services.httpProxy());
+                SOCKSProxyState.setChecked(services.socksProxy());
+                BOBState.setChecked(services.bob());
+                SAMState.setChecked(services.sam());
+                I2CPState.setChecked(services.i2cp());
+            }
+
+            String startResultStr = state == DaemonWrapper.State.startFailed
+                    ? String.format(": %s", snapshot.startResult()) : "";
+            String graceStr = state == DaemonWrapper.State.gracefulShutdownInProgress
+                    ? String.format(": %s %s",
+                    formatGraceTimeRemaining(snapshot.graceRemainingMillis()),
+                    getText(R.string.remaining)) : "";
+            String summary = started && snapshot.summary() != null
+                    ? "\n" + snapshot.summary() : "";
+            textView.setText(String.format("%s%s%s%s",
+                    getText(state.getStatusStringResourceId()),
+                    startResultStr, graceStr, summary));
+
+            boolean graceful = state == DaemonWrapper.State.gracefulShutdownInProgress;
+            if (graceful != lastGracefulState) {
+                lastGracefulState = graceful;
+                invalidateOptionsMenu();
             }
         } catch (Throwable tr) {
-            Log.e(TAG, "throwable caught and ignored", tr);
+            Log.e(TAG, "error updating status", tr);
         }
     }
 
-    private void cancelGracefulStop0() {
-        Timer gracefulQuitTimer = getGracefulQuitTimer();
-        if (gracefulQuitTimer != null) {
-            gracefulQuitTimer.cancel();
-            setGracefulQuitTimer(null);
+    private void updateGraceTicker() {
+        mainHandler.removeCallbacks(graceTicker);
+        DaemonWrapper current = daemon;
+        if (current != null && current.isGracefulShutdownScheduled()) {
+            mainHandler.postDelayed(graceTicker, 1000L);
         }
     }
 
-    private CharSequence throwableToString(Throwable tr) {
-        StringWriter sw = new StringWriter(8192);
-        PrintWriter pw = new PrintWriter(sw);
-        tr.printStackTrace(pw);
-        pw.close();
+    private static String formatGraceTimeRemaining(long remainingMillis) {
+        long remainingSeconds = Math.round(Math.max(0L, remainingMillis) / 1000.0D);
+        long remainingMinutes = remainingSeconds / 60;
+        long remSec = remainingSeconds - remainingMinutes * 60;
+        return remainingMinutes + ":" + (remSec / 10) + remSec % 10;
+    }
+
+    private static String stackTrace(Throwable tr) {
+        StringWriter sw = new StringWriter(4096);
+        try (PrintWriter pw = new PrintWriter(sw)) {
+            tr.printStackTrace(pw);
+        }
         return sw.toString();
     }
 
-    // private LocalService mBoundService;
-
-    private ServiceConnection mConnection = new ServiceConnection() {
-        public void onServiceConnected(ComponentName className, IBinder service) {
-            /* This is called when the connection with the service has been
-               established, giving us the service object we can use to
-               interact with the service.  Because we have bound to a explicit
-               service that we know is running in our own process, we can
-               cast its IBinder to a concrete class and directly access it. */
-            // mBoundService = ((LocalService.LocalBinder)service).getService();
-
-            /* Tell the user about this for our demo. */
-            // Toast.makeText(Binding.this, R.string.local_service_connected,
-            // Toast.LENGTH_SHORT).show();
-        }
-
-        public void onServiceDisconnected(ComponentName className) {
-            /* This is called when the connection with the service has been
-               unexpectedly disconnected -- that is, its process crashed.
-               Because it is running in our same process, we should never
-               see this happen. */
-            // mBoundService = null;
-            // Toast.makeText(Binding.this, R.string.local_service_disconnected,
-            // Toast.LENGTH_SHORT).show();
-        }
-    };
-
-    private static volatile boolean mIsBound;
-
     private void doBindService() {
-        synchronized (I2PDActivity.class) {
-            if (mIsBound)
-                return;
-            // Establish a connection with the service.  We use an explicit
-            // class name because we want a specific service implementation that
-            // we know will be running in our own process (and thus won't be
-            // supporting component replacement by other applications).
-            bindService(new Intent(this, ForegroundService.class), mConnection, Context.BIND_AUTO_CREATE);
-            mIsBound = true;
+        if (bound) {
+            return;
         }
+        bindService(new Intent(this, ForegroundService.class), connection,
+                Context.BIND_AUTO_CREATE);
+        bound = true;
     }
 
     private void doUnbindService() {
-        synchronized (I2PDActivity.class) {
-            if (mIsBound) {
-                // Detach our existing connection.
-                unbindService(mConnection);
-                mIsBound = false;
-            }
+        if (!bound) {
+            return;
+        }
+        bound = false;
+        try {
+            unbindService(connection);
+        } catch (IllegalArgumentException e) {
+            Log.i(TAG, "service was not registered when unbinding");
+        } catch (Throwable tr) {
+            Log.e(TAG, "unable to unbind foreground service", tr);
         }
     }
 
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
-        // Inflate the menu; this adds items to the action bar if it is present.
         getMenuInflater().inflate(R.menu.options_main, menu);
-        menu.findItem(R.id.action_battery_otimizations).setVisible(isBatteryOptimizationsOpenOsDialogApiAvailable());
-        this.optionsMenu = menu;
+        MenuItem battery = menu.findItem(R.id.action_battery_otimizations);
+        if (battery != null) {
+            battery.setVisible(isBatteryOptimizationsOpenOsDialogApiAvailable());
+        }
         return true;
+    }
+
+    @Override
+    public boolean onPrepareOptionsMenu(Menu menu) {
+        MenuItem graceful = menu.findItem(R.id.action_graceful_stop);
+        if (graceful != null) {
+            DaemonWrapper current = daemon;
+            boolean inProgress = current != null && current.isGracefulShutdownScheduled();
+            graceful.setTitle(inProgress
+                    ? R.string.action_cancel_graceful_stop : R.string.action_graceful_stop);
+        }
+        return super.onPrepareOptionsMenu(menu);
     }
 
     private boolean isBatteryOptimizationsOpenOsDialogApiAvailable() {
@@ -259,12 +370,7 @@ public class I2PDActivity extends Activity {
                 yield true;
             }
             case R.id.action_graceful_stop -> {
-                synchronized (graceStartedMillis_LOCK) {
-                    if (getGracefulQuitTimer() != null)
-                        cancelGracefulStop();
-                    else
-                        i2pdGracefulStop();
-                }
+                toggleGracefulStop();
                 yield true;
             }
             case R.id.action_battery_otimizations -> {
@@ -284,151 +390,140 @@ public class I2PDActivity extends Activity {
     }
 
     private void onActionBatteryOptimizations() {
-        if (isBatteryOptimizationsOpenOsDialogApiAvailable()) {
-            try {
-                startActivity(new Intent(ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
-            } catch (ActivityNotFoundException e) {
-                Log.e(TAG, "BATT_OPTIM_DIALOG_ActvtNotFound", e);
-                Toast.makeText(this, R.string.os_version_does_not_support_battery_optimizations_show_os_dialog_api, Toast.LENGTH_SHORT).show();
-            }
+        try {
+            startActivity(new Intent(ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
+        } catch (ActivityNotFoundException e) {
+            Log.e(TAG, "battery optimisation settings activity missing", e);
+            Toast.makeText(this,
+                    R.string.os_version_does_not_support_battery_optimizations_show_os_dialog_api,
+                    Toast.LENGTH_SHORT).show();
         }
     }
 
     private void onReloadTunnelsConfig() {
         Log.i(TAG, "reloading tunnels");
-        daemon.reloadTunnelsConfigs();
+        DaemonWrapper current = daemon;
+        if (current != null) {
+            runControl(current::reloadTunnelsConfigs);
+        }
         Toast.makeText(this, R.string.tunnels_reloading, Toast.LENGTH_SHORT).show();
     }
 
-    private void i2pdStop() {
-        cancelGracefulStop0();
-        Log.i(TAG, "stopping");
-        textView.setText(getText(R.string.stopping));
-        new Thread(() -> {
-            try {
-                daemon.stopDaemon();
-            } catch (Throwable tr) {
-                Log.e(TAG, "", tr);
-            }
-            quit();
-        }, "stop").start();
+    private void runControl(Runnable task) {
+        try {
+            controlExecutor.execute(task);
+        } catch (RejectedExecutionException e) {
+            Log.w(TAG, "control task rejected after shutdown");
+        }
     }
 
-    private static volatile Timer gracefulQuitTimer;
+    private void i2pdStop() {
+        mainHandler.removeCallbacks(graceTicker);
+        Log.i(TAG, "stopping");
+        if (textView != null) {
+            textView.setText(R.string.stopping);
+        }
+        final DaemonWrapper current = daemon;
+        if (current == null) {
+            finishApplication();
+            return;
+        }
+        runControl(() -> {
+            try {
+                current.stopDaemon();
+            } catch (Throwable tr) {
+                Log.e(TAG, "unable to stop daemon", tr);
+            }
+            mainHandler.post(this::finishApplication);
+        });
+    }
 
-    private void i2pdGracefulStop() {
-        if (daemon.getState() == DaemonWrapper.State.stopped) {
+    private void toggleGracefulStop() {
+        DaemonWrapper current = daemon;
+        if (current == null) {
+            return;
+        }
+        if (current.isGracefulShutdownScheduled()) {
+            cancelGracefulStop(current);
+        } else {
+            beginGracefulStop(current);
+        }
+    }
+
+    private void beginGracefulStop(DaemonWrapper current) {
+        if (current.getState() == DaemonWrapper.State.stopped) {
             Toast.makeText(this, R.string.already_stopped, Toast.LENGTH_SHORT).show();
             return;
         }
-        if (getGracefulQuitTimer() != null) {
-            Toast.makeText(this, R.string.graceful_stop_is_already_in_progress, Toast.LENGTH_SHORT).show();
+        if (current.isGracefulShutdownScheduled()) {
+            Toast.makeText(this, R.string.graceful_stop_is_already_in_progress,
+                    Toast.LENGTH_SHORT).show();
             return;
         }
         Log.i(TAG, "graceful stopping");
         Toast.makeText(this, R.string.graceful_stop_is_in_progress, Toast.LENGTH_SHORT).show();
-        new Thread(() -> {
+        runControl(() -> {
             try {
-                if (daemon.isStartedOkay()) {
-                    daemon.stopAcceptingTunnels();
-                    long gracefulStopAtMillis;
-                    synchronized (graceStartedMillis_LOCK) {
-                        graceStartedMillis = System.currentTimeMillis();
-                        gracefulStopAtMillis = graceStartedMillis + GRACEFUL_DELAY_MILLIS;
-                    }
-                    rescheduleGraceStop(null, gracefulStopAtMillis);
-                } else
-                    i2pdStop();
-            } catch (Throwable tr) {
-                Log.e(TAG, "", tr);
-            }
-        }, "gracInit").start();
-    }
-
-    private void cancelGracefulStop()
-    {
-        cancelGracefulStop0();
-        Log.i(TAG, "canceling graceful stop");
-        new Thread(() -> {
-            try {
-                if (daemon.isStartedOkay()) {
-                    daemon.startAcceptingTunnels();
-                    runOnUiThread(() -> Toast.makeText(this, R.string.shutdown_canceled, Toast.LENGTH_SHORT).show());
-                } else
-                    i2pdStop();
-            } catch (Throwable tr) {
-                Log.e(TAG, "", tr);
-            }
-        }, "gracCancel").start();
-    }
-
-    private void rescheduleGraceStop(Timer gracefulQuitTimerOld, long gracefulStopAtMillis) {
-        if (gracefulQuitTimerOld != null)
-            gracefulQuitTimerOld.cancel();
-
-        if (daemon.getTransitTunnelsCount() <= 0) { // no tunnels left
-            Log.i(TAG, "no transit tunnels left, stopping");
-            i2pdStop();
-            return;
-        }
-
-        final Timer gracefulQuitTimer = new Timer(true);
-        setGracefulQuitTimer(gracefulQuitTimer);
-        gracefulQuitTimer.schedule(new TimerTask() {
-
-            @Override
-            public void run() {
-                i2pdStop();
-            }
-
-        }, Math.max(0, gracefulStopAtMillis - System.currentTimeMillis()));
-        final TimerTask tickerTask = new TimerTask() {
-            @Override
-            public void run() {
-                updateStatusText();
-            }
-        };
-        gracefulQuitTimer.scheduleAtFixedRate(tickerTask, 0/*start delay*/, 1000/*millis period*/);
-    }
-
-    private static Timer getGracefulQuitTimer() {
-        return gracefulQuitTimer;
-    }
-
-    private void setGracefulQuitTimer(Timer gracefulQuitTimer) {
-        I2PDActivity.gracefulQuitTimer = gracefulQuitTimer;
-        runOnUiThread(() -> {
-            Menu menu = optionsMenu;
-            if (menu != null) {
-                MenuItem item = menu.findItem(R.id.action_graceful_stop);
-                if (item != null) {
-                    synchronized (graceStartedMillis_LOCK) {
-                        item.setTitle(getGracefulQuitTimer() != null ? R.string.action_cancel_graceful_stop : R.string.action_graceful_stop);
-                    }
+                current.beginGracefulShutdown(GRACEFUL_DELAY_MILLIS);
+                if (current.getState() == DaemonWrapper.State.stopped) {
+                    mainHandler.post(this::finishApplication);
                 }
+            } catch (Throwable tr) {
+                Log.e(TAG, "unable to begin graceful shutdown", tr);
+            }
+        });
+    }
+
+    private void cancelGracefulStop(DaemonWrapper current) {
+        Log.i(TAG, "cancelling graceful stop");
+        runControl(() -> {
+            try {
+                current.cancelGracefulShutdown();
+                boolean started = current.isStartedOkay();
+                if (!started) {
+                    current.stopDaemon();
+                }
+                mainHandler.post(() -> {
+                    if (isFinishing() || isDestroyed()) {
+                        return;
+                    }
+                    if (started) {
+                        Toast.makeText(this, R.string.shutdown_canceled, Toast.LENGTH_SHORT).show();
+                    } else {
+                        finishApplication();
+                    }
+                });
+            } catch (Throwable tr) {
+                Log.e(TAG, "unable to cancel graceful shutdown", tr);
             }
         });
     }
 
     @SuppressLint("BatteryLife")
     private void openBatteryOptimizationDialogIfNeeded() {
-        boolean questionEnabled = getPreferences().getBoolean(getBatteryOptimizationPreferenceKey(), true);
-        Log.d(TAG, "BATT_OPTIM_questionEnabled==" + questionEnabled);
+        boolean questionEnabled = getPreferences().getBoolean(
+                BATTERY_OPTIMIZATION_PREFERENCE, true);
+        Log.d(TAG, "battery optimization question enabled=" + questionEnabled);
         if (!isKnownIgnoringBatteryOptimizations()
-                && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M
+                && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
                 && questionEnabled) {
-            AlertDialog.Builder builder = new AlertDialog.Builder(this);
+            var builder = new AlertDialog.Builder(this);
             builder.setTitle(R.string.battery_optimizations_enabled);
             builder.setMessage(R.string.battery_optimizations_enabled_dialog);
             builder.setPositiveButton(R.string.continue_str, (dialog, which) -> {
                 try {
-                    startActivity(new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse(PACKAGE_URI_SCHEME + getPackageName())));
+                    startActivity(new Intent(
+                            Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                            Uri.parse(PACKAGE_URI_SCHEME + getPackageName())));
                 } catch (ActivityNotFoundException e) {
-                    Log.e(TAG, "BATT_OPTIM_ActvtNotFound", e);
-                    Toast.makeText(this, R.string.device_does_not_support_disabling_battery_optimizations, Toast.LENGTH_SHORT).show();
+                    Log.e(TAG, "battery optimisation request activity missing", e);
+                    Toast.makeText(this,
+                            R.string.device_does_not_support_disabling_battery_optimizations,
+                            Toast.LENGTH_SHORT).show();
                 }
             });
-            builder.setOnDismissListener(dialog -> setNeverAskForBatteryOptimizationsAgain());
+            builder.setOnDismissListener(
+                    dialog -> setNeverAskForBatteryOptimizationsAgain());
             final AlertDialog dialog = builder.create();
             dialog.setCanceledOnTouchOutside(false);
             dialog.show();
@@ -436,52 +531,43 @@ public class I2PDActivity extends Activity {
     }
 
     private void setNeverAskForBatteryOptimizationsAgain() {
-        getPreferences().edit().putBoolean(getBatteryOptimizationPreferenceKey(), false).apply();
+        getPreferences().edit().putBoolean(BATTERY_OPTIMIZATION_PREFERENCE, false).apply();
     }
 
-    protected boolean isKnownIgnoringBatteryOptimizations() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            final PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
-            if (pm == null) {
-                Log.d(TAG, "BATT_OPTIM: POWER_SERVICE==null");
-                return false;
-            }
-            boolean ignoring = pm.isIgnoringBatteryOptimizations(getPackageName());
-            Log.d(TAG, "BATT_OPTIM: ignoring==" + ignoring);
-            return ignoring;
-        } else {
-            Log.d(TAG, "BATT_OPTIM: old SDK version==" + Build.VERSION.SDK_INT);
+    private boolean isKnownIgnoringBatteryOptimizations() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) {
             return false;
         }
+        final PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
+        if (powerManager == null) {
+            Log.d(TAG, "battery optimization: POWER_SERVICE==null");
+            return false;
+        }
+        boolean ignoring = powerManager.isIgnoringBatteryOptimizations(getPackageName());
+        Log.d(TAG, "battery optimization: ignoring=" + ignoring);
+        return ignoring;
     }
 
-    protected SharedPreferences getPreferences() {
-        return PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
+    private SharedPreferences getPreferences() {
+        // Same file as PreferenceManager.getDefaultSharedPreferences(), without
+        // depending on the deprecated android.preference helper.
+        return getSharedPreferences(getPackageName() + "_preferences", MODE_PRIVATE);
     }
 
-    private String getBatteryOptimizationPreferenceKey() {
-        @SuppressLint("HardwareIds") String device = Settings.Secure.getString(getContentResolver(), Settings.Secure.ANDROID_ID);
-        return "show_battery_optimization" + (device == null ? "" : device);
-    }
-
-    private void quit() {
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                finishAndRemoveTask();
-            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.JELLY_BEAN) {
-                finishAffinity();
-            } else {
-                // moveTaskToBack(true);
-                finish();
-            }
-        } catch (Throwable tr) {
-            Log.e(TAG, "", tr);
+    private void finishApplication() {
+        if (!finishing.compareAndSet(false, true)) {
+            return;
         }
         try {
-            daemon.stopDaemon();
+            finishAndRemoveTask();
         } catch (Throwable tr) {
-            Log.e(TAG, "", tr);
+            Log.e(TAG, "unable to finish task", tr);
+            finish();
         }
-        System.exit(0);
+        try {
+            stopService(new Intent(this, ForegroundService.class));
+        } catch (Throwable tr) {
+            Log.e(TAG, "unable to stop foreground service", tr);
+        }
     }
 }

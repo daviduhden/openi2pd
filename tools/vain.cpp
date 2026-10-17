@@ -9,7 +9,8 @@
 
 // some global vars in vanitygen.hpp
 static std::string foundAddress{};
-static unsigned short fKeyId = 0;
+static std::atomic<unsigned short> fKeyId{0};
+static std::mutex foundMutex;
 static struct{
         bool reg=false;
         int threads=-1;
@@ -175,7 +176,7 @@ Orignal is sensei of crypto ;)
 	char addr[53];
 	uint32_t state1[8];
 
-	while(throughput-- and !found)
+	while(throughput-- and !found.load ())
 	{
 		memcpy (state1, state, 32);
 		// calculate hash of block with nonce
@@ -193,19 +194,22 @@ Orignal is sensei of crypto ;)
 		if(	( options.reg ? !NotThat(addr, options.regex) : !NotThat(addr,prefix) ) )
 		{
 		 	ByteStreamToBase32 ((uint8_t*)hash, 32, addr, 52);
-			std::cout << "Address found " << addr << " in " << id_thread << std::endl;
-			found=true;
-			FoundNonce=*nonce;
-			foundAddress = addr;
+			if (!found.exchange (true))
+			{
+				std::cout << "Address found " << addr << " in " << id_thread << std::endl;
+				FoundNonce.store (*nonce);
+				std::lock_guard<std::mutex> lock (foundMutex);
+				foundAddress = addr;
+				fKeyId.store (static_cast<unsigned short> (id_thread));
+			}
 		 	// From there place we get a nonce, for some one a byte.
-			fKeyId = id_thread;
 		 	return true;
 		 }
 
 
 		(*nonce)++;
-		hashescounter++;
-		if (found) // for another threads (?)
+		hashescounter.fetch_add (1, std::memory_order_relaxed);
+		if (found.load ()) // for another threads (?)
 		{
 			break;
 		}
@@ -394,7 +398,7 @@ int main (int argc, char * argv[])
      	std::cout << "Start vanity generator in " << options.threads << " threads" << std::endl;
      // there we start to change byte in our private key. we can change another bytes too 
      // but we just change 1 byte in all key. So. TODO: change all bytes not one?
-     	while(!found)
+	while(!found.load ())
      	{//while
      		{//stack(for destructors(vector/thread))
      
@@ -409,7 +413,7 @@ int main (int argc, char * argv[])
      				// thoughtput is our magic number that we increment on 1000 everytime
      				// so we just change a one a byte in key and convert private key to address
      				// after we check it.
-				auto n = j != 0 ? j-1 : 0  ;
+				auto n = j;
 				std::cout << "Use " << n << " key" << std::endl;
 				
      				threads[j] = std::thread(thread_find,KeyBufs[ n ],argv[1],j,thoughtput);
@@ -423,7 +427,7 @@ int main (int argc, char * argv[])
      			// So I put it ^^^
      			for(unsigned int j = 0; j < (unsigned int)options.threads;j++)
      				threads[j].join();
-     			if(FoundNonce == 0)
+			if(FoundNonce.load () == 0)
      			{
      	 			//keys = i2p::data::PrivateKeys::CreateRandomKeys (options.signature);
      				//RAND_bytes( KeyBuf+MutateByte , 90 ); // FoundNonce is
@@ -437,9 +441,10 @@ int main (int argc, char * argv[])
      	// before we write result we would to create private.dat a file. dump file. we can use for it keygen
      	// so.
 	// std::cout << fKeyId << std::endl;
-	auto KeyBuf = KeyBufs[fKeyId - 1 < 0 ? 0 : fKeyId - 1];
-     	memcpy (KeyBuf + MutateByte, &FoundNonce, 4);
-     	std::cout << "Hashes: " << hashescounter << std::endl;
+	auto KeyBuf = KeyBufs[fKeyId.load ()];
+	const uint32_t foundNonce = FoundNonce.load ();
+	memcpy (KeyBuf + MutateByte, &foundNonce, 4);
+	std::cout << "Hashes: " << hashescounter.load () << std::endl;
      
      	// IDK. what for acetone change this line to if (options.output...empty() ... assign
      	// cplusplus.com/reference/string/string/assign yes we can. but I would don't change this
@@ -477,7 +482,7 @@ int main (int argc, char * argv[])
 
      do {
 		doSearch();
-		if(found) 
+		if(found.load ())
 		{
 			//TODO: an another variable for file count and found keys as found keys by one runs
 			//foundKeys++;

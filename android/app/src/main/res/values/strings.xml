@@ -52,6 +52,13 @@
     <string name="settings_section0">Common settings</string>
     <string name="settings_section_tunnels">Tunnels</string>
 
+    <string name="for_security_reasons_changes_are_not_allowed">For security reasons, changes are not allowed. If you really want this, open the config.</string>
+    <string name="invalid_config_value">Invalid value; the change was not saved.</string>
+    <string name="config_read_failed">Could not read the configuration file. Changes are disabled.</string>
+    <string name="config_write_failed">Could not write the configuration file.</string>
+    <string name="config_path_invalid">Configuration path is not in app-specific storage. Aborting.</string>
+    <string name="autostart_marker_failed">Could not enable start at boot.</string>
+
     <string name="autostart_enabled">Start at boot</string>
     <string name="add_tunnel_button">Add tunnel</string>
     <string name="add_tunnel">Tunnels management</string>

@@ -7,7 +7,11 @@
 */
 
 #include <stdlib.h>
+#include <string_view>
 #include "Daemon.h"
+#ifndef _WIN32
+#include "privsep/RunWorker.h"
+#endif
 
 #if defined(QT_GUI_LIB)
 namespace i2p
@@ -25,6 +29,10 @@ int main( int argc, char* argv[] )
 #else
 int main( int argc, char* argv[] )
 {
+#ifndef _WIN32
+	if (argc == 3 && std::string_view (argv[1]) == "--privsep-worker")
+		return i2p::privsep::RunWorker (argv[2]);
+#endif
 	if (Daemon.init(argc, argv))
 	{
 		if (Daemon.start())

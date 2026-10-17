@@ -91,7 +91,21 @@ pending migration in `docs/REBRANDING.md`.
 Exit criteria: documentation builds without a server; all upstream commits
 pinned; no stale web-console instructions.
 
-### 7. OpenBSD and CI
+### 7. Privilege separation
+
+1. IPC/channel/log worker foundation (implemented).
+2. Supervisor process and pidfd/restart policy.
+3. Storage worker and typed persistence migration.
+4. Network worker and router-core event boundary.
+5. Crypto worker/key-handle evaluation.
+6. OpenBSD per-process policies; Linux seccomp/Landlock; Windows backend.
+7. Negative capability tests and dynamic validation.
+
+Exit criteria: the four invariants in the privilege-separation request hold for
+every supported platform, with evidence from OS-level capability tests. Until
+then the monolithic core remains a documented residual risk.
+
+### 8. OpenBSD and CI
 
 1. Validate CMake/Ninja, LibreSSL, pledge/unveil, MTU and custom datadir.
 2. Run manual GitHub workflows on all platforms.

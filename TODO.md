@@ -4,6 +4,12 @@ Persistent task inventory for the Open I2Pd fork. IDs are stable. A checked
 box does **not** replace the status field: dynamic validation is tracked
 separately.
 
+Subagent ownership: Architecture=coordinator; C++23=B; Security=C; IPC/M=coordinator+IPC; I2P=A; Build/DEPS=D; TUI=E; Tools/FW=F; Docs=G; Android=H; OpenBSD/I; Branding/LEGAL=J/K; CI=J; Tests=C/G/F.
+
+Area ID map: `CPP`=B, `SEC`=C, `I2P`=A, `DEPS`/`BUILD`=D, `TUI`=E,
+`TOOLS`/`FW`=F, `DOCS`=G, `ANDROID`=H, `OBSD`=I, `BRAND`/`LEGAL`=J/K,
+`CI`=J, `TEST`=C/G, `PRIVSEP`=M.
+
 Status values: `Pending`, `In progress`, `Blocked`, `Implemented / validation
 pending`, `Statically reviewed`, `Validated`, `Dropped (reason)`.
 
@@ -254,6 +260,37 @@ Priority values: `P0` critical, `P1` high, `P2` normal, `P3` low.
 - [ ] **[REBRAND-010]** Scan built binaries/APKs for residual brand strings.
   - Priority P2; Status Blocked on builds.
 
+## M. Privilege separation (multiprocess)
+
+- [x] **[PRIVSEP-001]** Audit current process capabilities and document gaps.
+  - Status Implemented; `docs/security/privilege-separation.md`, `process-capabilities.md`.
+- [x] **[PRIVSEP-002]** Implement versioned, bounded internal IPC framing and channel (AF_UNIX/SOCK_SEQPACKET, peer UID, CLOEXEC).
+  - Status Implemented / protocol tests passed on Linux; malformed/fuzz pending.
+- [x] **[PRIVSEP-003]** Implement spawned log worker with structured records and OpenBSD pledge/unveil policy.
+  - Status Implemented; live Linux test confirmed core had no log fd and worker had the only log write fd.
+- [x] **[PRIVSEP-004]** Add `--privsep-worker` exec entry point and parent spawn/configure/shutdown.
+  - Status Implemented; no auto-restart yet. `test-privsep-log` passed.
+- [ ] **[PRIVSEP-005]** Add dedicated supervisor process with pidfd/waitpid, restart backoff and channel policy.
+  - Priority P0; Status Pending.
+- [ ] **[PRIVSEP-006]** Implement storage worker with typed allowlisted operations; migrate netDb/profiles/keys persistence.
+  - Priority P0; Status Pending; core must lose persistent-write capability.
+- [ ] **[PRIVSEP-007]** Implement network worker owning NTCP2/SSU2 sockets; core must lose direct network access.
+  - Priority P0; Status Pending; state-machine ownership and nonce safety must be designed first.
+- [ ] **[PRIVSEP-008]** Implement crypto worker/key handles for long-term operations, or document the boundary if latency makes it non-viable.
+  - Priority P1; Status Pending.
+- [ ] **[PRIVSEP-009]** Add per-process OpenBSD pledge/unveil policies for storage/network/core/crypto/supervisor.
+  - Priority P0; Status Pending.
+- [ ] **[PRIVSEP-010]** Add Linux seccomp/Landlock/namespaces/pidfd/cgroup limits and negative capability tests.
+  - Priority P1; Status Pending.
+- [ ] **[PRIVSEP-011]** Implement Windows ncalrpc/Named Pipes/Restricted token backend.
+  - Priority P2; Status Pending.
+- [ ] **[PRIVSEP-012]** Define Android process/UID limitations and migration.
+  - Priority P2; Status Pending.
+- [ ] **[PRIVSEP-013]** Add IPC fuzzing, queue saturation, malformed message, descriptor-transfer and restart tests.
+  - Priority P1; Status Pending.
+- [ ] **[PRIVSEP-014]** Enforce no silent fallback on OpenBSD and remove the monolithic path for enabled privsep.
+  - Priority P0; Status Pending.
+
 ## Known defects / findings not yet fixed
 
 - [ ] **[DEF-001]** Non-atomic tunnel/router status fields read by TUI (data race under C++ memory model).
@@ -262,5 +299,7 @@ Priority values: `P0` critical, `P1` high, `P2` normal, `P3` low.
 - [ ] **[DEF-004]** `routerinfo` firewall backends not yet dynamically syntax-checked.
 - [ ] **[DEF-005]** Full Java I2P differential audit not yet performed.
 - [ ] **[DEF-006]** Android manifest still allows cleartext? Removed; verify merged manifest.
-- [ ] **[DEF-007]** `tools/vain` retains raw buffer arrays and global mutable state; audit pending.
+- [ ] **[DEF-007]** `tools/vain` retains raw buffer arrays; found/hash counters/key selection were made atomic/unique, deeper RAII rewrite pending.
 - [ ] **[DEF-008]** `famtool` family certificate/private-key handling needs deeper review.
+- [ ] **[DEF-009]** Core process still combines network, filesystem and long-term keys; only logging is separated.
+- [ ] **[DEF-010]** Log worker has no automatic restart/backoff and no explicit queue quota.

@@ -31,6 +31,16 @@ was created.
 - `android/README.md`, `docs/devs/building/android.md` — integrated build
   instructions.
 
+### Privilege separation
+
+- `privsep/Protocol.h`, `Channel.{h,cpp}`, `LogWorker.{h,cpp}`,
+  `Worker.{h,cpp}`, `RunWorker.{h,cpp}` — IPC, log worker and child lifecycle.
+- `daemon/i2pd.cpp`, `daemon/Daemon.cpp`, `libi2pd/Log.*` — worker entrypoint,
+  spawn/configure/shutdown and external log sink.
+- `tests/test-privsep-protocol.cpp`, `tests/test-privsep-log.cpp` — framing/bounds/channel and worker regression.
+- `docs/security/privilege-separation.md`, `ipc-protocol.md`,
+  `process-capabilities.md`, `threat-model.md`.
+
 ### Documentation
 
 - `docs/architecture.md`
@@ -47,7 +57,8 @@ was created.
 - `docs/INTEROPERABILITY.md`
 - `docs/android-modernization.md`
 - `docs/REBRANDING.md`
-- `TODO.md`, `ROADMAP.md`, `PROGRESS.md`
+- `TODO.md`, `ROADMAP.md`, `PROGRESS.md`, `AGENTS.md`
+- `docs/architecture/README.md`
 - `contrib/artwork/open-i2pd-icon.svg`
 - `docs/tools/` (per-tool documentation)
 - `docs/developer-guide/`, `docs/protocols/`, `docs/security/` (integrated

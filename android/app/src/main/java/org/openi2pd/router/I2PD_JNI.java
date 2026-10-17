@@ -1,10 +1,20 @@
 package org.openi2pd.router;
 
-public class I2PD_JNI {
+public final class I2PD_JNI {
+    private static boolean loaded;
+
+    private I2PD_JNI() {
+        // Native entry points only.
+    }
+
     public static native String getABICompiledWith();
 
-    public static void loadLibraries() {
+    public static synchronized void loadLibraries() {
+        if (loaded) {
+            return;
+        }
         System.loadLibrary("i2pd");
+        loaded = true;
     }
 
     /**

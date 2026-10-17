@@ -25,9 +25,9 @@ ExtraDiskSpaceRequired=15
 AppID={{09F80FCB-ED87-4A5E-8539-16C38DFEC7F8}
 AppVerName={#I2Pd_AppName}
 AppCopyright=Copyright (c) 2013-2024, The PurpleI2P Project
-AppPublisherURL=https://github.com/daviduhden/open-i2pd
-AppSupportURL=https://github.com/daviduhden/open-i2pd/issues
-AppUpdatesURL=https://github.com/daviduhden/open-i2pd/releases
+AppPublisherURL=https://github.com/daviduhden/openi2pd
+AppSupportURL=https://github.com/daviduhden/openi2pd/issues
+AppUpdatesURL=https://github.com/daviduhden/openi2pd/releases
 
 VersionInfoProductVersion={#I2Pd_Ver}
 VersionInfoVersion={#I2Pd_Ver}

@@ -31,19 +31,21 @@
         <receiver
             android:enabled="true"
             android:name="org.openi2pd.router.receivers.BootUpReceiver"
-            android:exported="true"
+            android:exported="false"
             android:permission="android.permission.RECEIVE_BOOT_COMPLETED">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </receiver>
-        <activity android:name=".SettingsActivity" />
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="false" />
 
         <receiver
             android:name=".NetworkStateChangeReceiver"
             android:label="NetworkChangeReceiver"
-            android:exported="true" >
+            android:exported="false" >
             <intent-filter>
                 <action android:name="android.net.conn.CONNECTIVITY_CHANGE"
                     tools:ignore="BatteryLife" />
@@ -68,6 +70,7 @@
 
         <activity
             android:name=".MainPreferenceActivity"
+            android:exported="false"
             android:label="Settings"
             >
         </activity>

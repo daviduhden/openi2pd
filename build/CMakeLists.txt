@@ -11,7 +11,7 @@ set_version("${PROJECT_ROOT}/libi2pd/version.h" PROJECT_VERSION)
 project(
   OpenI2Pd
   VERSION ${PROJECT_VERSION}
-  HOMEPAGE_URL "https://github.com/daviduhden/open-i2pd"
+  HOMEPAGE_URL "https://github.com/daviduhden/openi2pd"
   LANGUAGES C CXX
 )
 
@@ -194,6 +194,10 @@ if(UNIX)
   list(APPEND DAEMON_SOURCES
     "${DAEMON_DIR}/TuiServer.cpp"
     "${DAEMON_DIR}/UnixDaemon.cpp"
+    "${PROJECT_ROOT}/privsep/Channel.cpp"
+    "${PROJECT_ROOT}/privsep/LogWorker.cpp"
+    "${PROJECT_ROOT}/privsep/RunWorker.cpp"
+    "${PROJECT_ROOT}/privsep/Worker.cpp"
   )
 endif()
 
@@ -330,7 +334,7 @@ elseif(WITH_BINARY)
     add_executable(i2pd ${DAEMON_SOURCES})
   endif()
   target_compile_features(i2pd PRIVATE cxx_std_23)
-  target_include_directories(i2pd PRIVATE ${DAEMON_DIR} ${LANG_DIR})
+  target_include_directories(i2pd PRIVATE ${PROJECT_ROOT} ${DAEMON_DIR} ${LANG_DIR})
   target_link_libraries(i2pd PRIVATE libi2pd libi2pdclient libi2pdlang i2pd_warnings)
   if(WITH_UPNP)
     target_compile_definitions(i2pd PRIVATE USE_UPNP)
@@ -414,8 +418,14 @@ if(WITH_BINARY)
     COMPONENT Runtime)
   install(FILES
     "${PROJECT_ROOT}/ChangeLog" "${PROJECT_ROOT}/LICENSE" "${PROJECT_ROOT}/README.md"
+    "${PROJECT_ROOT}/TODO.md" "${PROJECT_ROOT}/ROADMAP.md" "${PROJECT_ROOT}/PROGRESS.md"
     DESTINATION ${CMAKE_INSTALL_DOCDIR}
     COMPONENT Documentation)
+  install(DIRECTORY "${PROJECT_ROOT}/docs/"
+    DESTINATION ${CMAKE_INSTALL_DOCDIR}/docs
+    COMPONENT Documentation
+    FILES_MATCHING PATTERN "*.md" PATTERN "*.png" PATTERN "*.ico"
+    PATTERN "Doxyfile" EXCLUDE)
   if(UNIX)
     install(FILES "${PROJECT_ROOT}/debian/i2pd.1"
       DESTINATION ${CMAKE_INSTALL_MANDIR}/man1

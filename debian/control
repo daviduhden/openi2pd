@@ -4,9 +4,9 @@ Priority: optional
 Maintainer: Open I2Pd maintainers <daviduhden@users.noreply.github.com>
 Build-Depends: debhelper (>= 12~), cmake (>= 3.22), ninja-build, libboost-atomic-dev, libboost-filesystem-dev, libboost-program-options-dev (>= 1.83) | libboost-program-options1.81-dev, libboost-json-dev (>= 1.83) | libboost-json1.81-dev, libboost-url-dev (>= 1.83) | libboost-url1.81-dev, libminiupnpc-dev, libssl-dev (>= 3.0), zlib1g-dev
 Standards-Version: 4.3.0
-Homepage: https://github.com/daviduhden/open-i2pd
-Vcs-Git: https://github.com/daviduhden/open-i2pd.git
-Vcs-Browser: https://github.com/daviduhden/open-i2pd
+Homepage: https://github.com/daviduhden/openi2pd
+Vcs-Git: https://github.com/daviduhden/openi2pd.git
+Vcs-Browser: https://github.com/daviduhden/openi2pd
 
 Package: i2pd
 Architecture: any

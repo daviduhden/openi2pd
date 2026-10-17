@@ -9,7 +9,7 @@ See [developer section documentation](../devs/building/requirements.md) for how 
 ## Installation from prebuilt packages
 
 The easiest way to install Open I2Pd is by using precompiled packages and binaries.
-Use packages from your operating-system distribution, or build from source. Release artifacts, when published, are on the [Open I2Pd releases page](https://github.com/daviduhden/open-i2pd/releases).
+Use packages from your operating-system distribution, or build from source. Release artifacts, when published, are on the [Open I2Pd releases page](https://github.com/daviduhden/openi2pd/releases).
 
 
 ## Windows
@@ -20,7 +20,7 @@ Build with the instructions in [Windows](../devs/building/windows.md), or use ar
 ## Android
 
 Build the integrated Android app from `android/` with OpenJDK 25, the Android
-SDK and NDK r27+. See [Android app](devs/building/android.md). The upstream
+SDK and NDK r27+. See [Android app](../devs/building/android.md). The upstream
 F-Droid package has a different application ID and is not an update path for
 this fork.
 

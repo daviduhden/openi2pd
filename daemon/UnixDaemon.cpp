@@ -116,6 +116,7 @@ namespace i2p
 	{
 		bool DaemonUnix::start()
 		{
+			pidFH = -1; // no PID lock yet
 			if (isDaemon)
 			{
 				pid_t pid;
@@ -148,16 +149,23 @@ namespace i2p
 				}
 
 				// point std{in,out,err} descriptors to /dev/null
-				freopen("/dev/null", "r", stdin);
-				freopen("/dev/null", "w", stdout);
-				freopen("/dev/null", "w", stderr);
+				if (!freopen("/dev/null", "r", stdin) ||
+					!freopen("/dev/null", "w", stdout) ||
+					!freopen("/dev/null", "w", stderr))
+				{
+					LogPrint(eLogError, "Daemon: Could not redirect standard descriptors: ", strerror(errno));
+					return false;
+				}
 			}
 
 			// set proc limits
 			struct rlimit limit;
 			uint16_t nfiles; i2p::config::GetOption("limits.openfiles", nfiles);
-			getrlimit(RLIMIT_NOFILE, &limit);
-			if (nfiles == 0) {
+			if (getrlimit(RLIMIT_NOFILE, &limit) != 0)
+			{
+				LogPrint(eLogError, "Daemon: Can't get max number of open files: ", strerror(errno));
+			}
+			else if (nfiles == 0) {
 				LogPrint(eLogInfo, "Daemon: Using system limit in ", limit.rlim_cur, " max open files");
 			} else if (nfiles <= limit.rlim_max) {
 				limit.rlim_cur = nfiles;
@@ -173,16 +181,15 @@ namespace i2p
 			uint32_t cfsize; i2p::config::GetOption("limits.coresize", cfsize);
 			if (cfsize) // core file size set
 			{
-				cfsize *= 1024;
-				getrlimit(RLIMIT_CORE, &limit);
-				if (cfsize <= limit.rlim_max) {
-					limit.rlim_cur = cfsize;
+				uint64_t coreSize = (uint64_t)cfsize * 1024;
+				if (getrlimit(RLIMIT_CORE, &limit) != 0)
+					LogPrint(eLogError, "Daemon: Can't get max size of coredump: ", strerror(errno));
+				else if (coreSize <= limit.rlim_max) {
+					limit.rlim_cur = coreSize;
 					if (setrlimit(RLIMIT_CORE, &limit) != 0) {
 						LogPrint(eLogError, "Daemon: Can't set max size of coredump: ", strerror(errno));
-					} else if (cfsize == 0) {
-						LogPrint(eLogInfo, "Daemon: coredumps disabled");
 					} else {
-						LogPrint(eLogInfo, "Daemon: Set max size of core files to ", cfsize / 1024, "Kb");
+						LogPrint(eLogInfo, "Daemon: Set max size of core files to ", cfsize, "Kb");
 					}
 				} else {
 					LogPrint(eLogError, "Daemon: limits.coresize exceeds system limit: ", limit.rlim_max);
@@ -191,16 +198,52 @@ namespace i2p
 
 			// Pidfile
 			// this code is c-styled and a bit ugly, but we need fd for locking pidfile
+
+			// Close and remove the PID file if startup fails after locking it.
+			auto abortStart = [this]() {
+				if (pidFH >= 0)
+				{
+					close(pidFH);
+					pidFH = -1;
+				}
+				if (!pidfile.empty())
+					i2p::fs::Remove(pidfile);
+				return false;
+			};
+
 			i2p::config::GetOption("pidfile", pidfile);
 			if (pidfile == "") {
 				pidfile = i2p::fs::DataDirPath("i2pd.pid");
 			}
 			if (pidfile != "") {
-				pidFH = open(pidfile.c_str(), O_RDWR | O_CREAT, 0600);
+				int flags = O_RDWR | O_CREAT | O_CLOEXEC;
+#ifdef O_NOFOLLOW
+				// Do not follow a symlink planted in a writable directory.
+				flags |= O_NOFOLLOW;
+#endif
+				pidFH = open(pidfile.c_str(), flags, 0600);
 				if (pidFH < 0)
 				{
 					LogPrint(eLogError, "Daemon: Could not create pid file ", pidfile, ": ", strerror(errno));
 					std::cerr << "i2pd: Could not create pid file " << pidfile << ": " << strerror(errno) << std::endl;
+					return false;
+				}
+
+				// An existing file might not have been created by us and might
+				// have wider permissions; only a regular file is acceptable.
+				struct stat pidStat;
+				if (fstat(pidFH, &pidStat) != 0 || !S_ISREG(pidStat.st_mode))
+				{
+					LogPrint(eLogError, "Daemon: Pid file ", pidfile, " is not a regular file");
+					std::cerr << "i2pd: Pid file " << pidfile << " is not a regular file" << std::endl;
+					close(pidFH); pidFH = -1;
+					return false;
+				}
+				if (fchmod(pidFH, 0600) != 0)
+				{
+					LogPrint(eLogError, "Daemon: Can't restrict permissions of pid file ", pidfile, ": ", strerror(errno));
+					std::cerr << "i2pd: Can't restrict permissions of pid file " << pidfile << ": " << strerror(errno) << std::endl;
+					close(pidFH); pidFH = -1;
 					return false;
 				}
 
@@ -218,17 +261,32 @@ namespace i2p
 				{
 					LogPrint(eLogError, "Daemon: Could not lock pid file ", pidfile, ": ", strerror(errno));
 					std::cerr << "i2pd: Could not lock pid file " << pidfile << ": " << strerror(errno) << std::endl;
+					// Another instance owns the file, so do not unlink it.
+					close(pidFH); pidFH = -1;
 					return false;
 				}
 
 				char pid[16];
-				snprintf(pid, 16, "%d\n", getpid());
-				ftruncate(pidFH, 0);
-				if (write(pidFH, pid, strlen(pid)) < 0)
+				int pidLen = snprintf(pid, sizeof(pid), "%d\n", getpid());
+				if (pidLen <= 0 || pidLen >= (int)sizeof(pid) || ftruncate(pidFH, 0) != 0)
 				{
 					LogPrint(eLogCritical, "Daemon: Could not write pidfile ", pidfile, ": ", strerror(errno));
 					std::cerr << "i2pd: Could not write pidfile " << pidfile << ": " << strerror(errno) << std::endl;
-					return false;
+					return abortStart();
+				}
+				size_t written = 0;
+				while (written < (size_t)pidLen)
+				{
+					ssize_t n = pwrite(pidFH, pid + written, pidLen - written, written);
+					if (n < 0 && errno == EINTR) continue;
+					if (n <= 0) break;
+					written += n;
+				}
+				if (written != (size_t)pidLen)
+				{
+					LogPrint(eLogCritical, "Daemon: Could not write pidfile ", pidfile, ": ", strerror(errno));
+					std::cerr << "i2pd: Could not write pidfile " << pidfile << ": " << strerror(errno) << std::endl;
+					return abortStart();
 				}
 			}
 			gracefulShutdownInterval = 0; // not specified
@@ -248,30 +306,36 @@ namespace i2p
 				sigaddset (&daemonSignals, SIGCONT);
 			}
 			int error = pthread_sigmask (SIG_BLOCK, &daemonSignals, nullptr);
-			if (error) return SignalError ("pthread_sigmask", error);
+			if (error) { SignalError ("pthread_sigmask", error); return abortStart(); }
 			// Inherited SIG_IGN dispositions could discard a blocked signal.
 			struct sigaction sa{};
 			sa.sa_handler = SIG_DFL;
 			sigemptyset (&sa.sa_mask);
 			for (int sig = 1; sig < NSIG; ++sig)
 				if (sigismember (&daemonSignals, sig) == 1 && sigaction (sig, &sa, nullptr) == -1)
-					return SignalError ("sigaction", errno);
+				{
+					SignalError ("sigaction", errno);
+					return abortStart();
+				}
 #else
 			// Signal handler
-			struct sigaction sa;
+			struct sigaction sa{};
 			sa.sa_handler = handle_signal;
 			sigemptyset(&sa.sa_mask);
 			sa.sa_flags = SA_RESTART;
-			sigaction(SIGHUP, &sa, 0);
-			sigaction(SIGUSR1, &sa, 0);
-			sigaction(SIGABRT, &sa, 0);
-			sigaction(SIGTERM, &sa, 0);
-			sigaction(SIGINT, &sa, 0);
-			sigaction(SIGPIPE, &sa, 0);
+			for (int sig : {SIGHUP, SIGUSR1, SIGABRT, SIGTERM, SIGINT, SIGPIPE})
+				if (sigaction(sig, &sa, nullptr) == -1)
+				{
+					LogPrint(eLogError, "Daemon: Can't install handler for signal ", sig, ": ", strerror(errno));
+					return abortStart();
+				}
 			if (handleTSTP)
 			{
-				sigaction(SIGTSTP, &sa, 0);
-				sigaction(SIGCONT, &sa, 0);
+				if (sigaction(SIGTSTP, &sa, nullptr) == -1 || sigaction(SIGCONT, &sa, nullptr) == -1)
+				{
+					LogPrint(eLogError, "Daemon: Can't install handler for job-control signals: ", strerror(errno));
+					return abortStart();
+				}
 			}
 
 #endif
@@ -315,12 +379,12 @@ namespace i2p
 				if (!policy.empty ())
 				{
 					std::vector<std::string> lines;
-					if (!readPolicy ("openbsd.pledge_file", lines)) return false;
+					if (!readPolicy ("openbsd.pledge_file", lines)) return abortStart();
 					promises.clear ();
 					for (const auto& line : lines) promises += line + " ";
 				}
 			}
-			if (useUnveil && !readPolicy ("openbsd.unveil_file", extraPaths)) return false;
+			if (useUnveil && !readPolicy ("openbsd.unveil_file", extraPaths)) return abortStart();
 			if (useUnveil)
 			{
 				// Coalesce aliases before unveil: repeated rules may only reduce
@@ -349,16 +413,16 @@ namespace i2p
 					return true;
 				};
 				if (!allow (i2p::fs::GetDataDir (), "rwc") ||
-					!allow (i2p::fs::GetCertsDir (), "r") || !allow (pidfile, "rwc")) return false;
+					!allow (i2p::fs::GetCertsDir (), "r") || !allow (pidfile, "rwc")) return abortStart();
 				for (const char * option : {"conf", "tunconf", "tunnelsdir", "reseed.file", "reseed.zipfile"})
 				{
 					std::string path; i2p::config::GetOption (option, path);
-					if (!allow (path, "r")) return false;
+					if (!allow (path, "r")) return abortStart();
 				}
 				for (const char * option : {"logfile", "addressbook.hostsfile", "tui.socket"})
 				{
 					std::string path; i2p::config::GetOption (option, path);
-					if (!allow (path, "rwc")) return false;
+					if (!allow (path, "rwc")) return abortStart();
 				}
 				bool control; i2p::config::GetOption ("i2pcontrol.enabled", control);
 				if (control)
@@ -367,13 +431,13 @@ namespace i2p
 					{
 						std::string path; i2p::config::GetOption (option, path);
 						if (!path.empty () && path.front () != '/') path = i2p::fs::DataDirPath (path);
-						if (!allow (path, "rwc")) return false;
+						if (!allow (path, "rwc")) return abortStart();
 					}
 					uint16_t port; i2p::config::GetOption ("i2pcontrol.port", port);
 					if (!port)
 					{
 						std::string path; i2p::config::GetOption ("i2pcontrol.address", path);
-						if (!allow (path, "rwc")) return false;
+						if (!allow (path, "rwc")) return abortStart();
 					}
 				}
 				bool outproxy; i2p::config::GetOption ("socksproxy.outproxy.enabled", outproxy);
@@ -381,29 +445,36 @@ namespace i2p
 				if (outproxy && !port)
 				{
 					std::string path; i2p::config::GetOption ("socksproxy.outproxy", path);
-					if (!allow (path, "w")) return false;
+					if (!allow (path, "w")) return abortStart();
 				}
 				// miniupnpc consults MiniSSDPD before multicast discovery.
-				if (upnp && !allow ("/var/run/minissdpd.sock", "w")) return false;
+				if (upnp && !allow ("/var/run/minissdpd.sock", "w")) return abortStart();
 				for (const auto& path : extraPaths)
-					if (!allow (path, "rwc")) return false;
+					if (!allow (path, "rwc")) return abortStart();
 				for (const auto& rule : rules)
 					if (unveil (rule.first.c_str (), rule.second.c_str ()) == -1)
-						return fail ("Daemon: unveil " + rule.first + ": " + strerror (errno));
+					{
+						fail ("Daemon: unveil " + rule.first + ": " + strerror (errno));
+						return abortStart();
+					}
 				if (unveil (nullptr, nullptr) == -1)
 				{
-					return fail (std::string ("Daemon: unveil lock: ") + strerror (errno));
+					fail (std::string ("Daemon: unveil lock: ") + strerror (errno));
+					return abortStart();
 				}
 			}
 			// fork/setsid/setrlimit and PID locking are complete; no proc,
 			// id, chown, descriptor passing or error promise is needed.
 			if (usePledge && pledge (promises.c_str (), nullptr) == -1)
 			{
-				return fail (std::string ("Daemon: pledge: ") + strerror (errno));
+				fail (std::string ("Daemon: pledge: ") + strerror (errno));
+				return abortStart();
 			}
 #endif
 
-			return Daemon_Singleton::start();
+			if (!Daemon_Singleton::start())
+				return abortStart();
+			return true;
 		}
 
 		bool DaemonUnix::stop()
@@ -412,7 +483,11 @@ namespace i2p
 			// Keep the PID lock while router data is still being saved.
 			bool stopped = Daemon_Singleton::stop();
 			i2p::fs::Remove(pidfile);
-			close (pidFH);
+			if (pidFH >= 0)
+			{
+				close (pidFH);
+				pidFH = -1;
+			}
 			return stopped;
 #else
 			i2p::fs::Remove(pidfile);
@@ -451,7 +526,7 @@ namespace i2p
 							running = false;
 							break;
 						}
-						g_PendingSignals[received] = 1;
+						g_PendingSignals[(received > 0 && received < NSIG) ? received : sig] = 1;
 						if (!running) break;
 					}
 				if (!running) break;

@@ -100,6 +100,12 @@ namespace config {
 			("limits.ntcpthreads", value<uint16_t>()->default_value(1),       "Ignored")
 		;
 
+		options_description privsep("Privilege-separation options (Unix only)");
+		privsep.add_options()
+			("privsep.enabled", value<bool>()->default_value(false),      "Enable the isolated log worker (default: false)")
+			("privsep.log", value<bool>()->default_value(true),           "Isolate log writing in a worker process")
+		;
+
 		options_description tui("Local TUI options (Unix only)");
 #if defined(ANDROID)
 		const bool tuiDefault = false; // the Android app does not ship i2pd-tui
@@ -408,6 +414,7 @@ namespace config {
 		m_OptionsDesc
 			.add(general)
 			.add(limits)
+			.add(privsep)
 			.add(tui)
 			.add(httpproxy)
 			.add(socksproxy)

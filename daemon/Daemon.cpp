@@ -39,6 +39,8 @@
 #include "I2PControl.h"
 #ifndef _WIN32
 #include "TuiServer.h"
+#include "privsep/LogWorker.h"
+#include "privsep/Worker.h"
 #endif
 #include "ClientContext.h"
 #include "Crypto.h"
@@ -71,6 +73,11 @@ namespace util
 
 #ifndef _WIN32
 		std::unique_ptr<i2p::tui::Server> tuiServer;
+		std::unique_ptr<i2p::privsep::LogSink> logSink;
+		std::unique_ptr<i2p::privsep::ChildProcess> logWorker;
+		bool privsepLog = false;
+		bool privsepSyslog = false;
+		std::string privsepLogPath;
 #endif
 		std::unique_ptr<i2p::client::I2PControlService> m_I2PControlService;
 		std::unique_ptr<i2p::transport::UPnP> UPnP;
@@ -177,6 +184,13 @@ namespace util
 			logs = "file";
 #endif
 
+#ifndef _WIN32
+		bool privsepEnabled = false, privsepLogEnabled = false;
+		i2p::config::GetOption ("privsep.enabled", privsepEnabled);
+		i2p::config::GetOption ("privsep.log", privsepLogEnabled);
+		d.privsepLog = privsepEnabled && privsepLogEnabled && !logstream;
+#endif
+
 		i2p::log::Logger().SetLogLevel(loglevel);
 		if (logstream) {
 			LogPrint(eLogInfo, "Log: Sending messages to std::ostream");
@@ -188,11 +202,17 @@ namespace util
 			i2p::config::SetOption ("logfile", logfile);
 #endif
 			LogPrint(eLogInfo, "Log: Sending messages to ", logfile);
-			i2p::log::Logger().SendTo (logfile);
+#ifndef _WIN32
+			if (d.privsepLog) d.privsepLogPath = logfile;
+			else
+#endif
+				i2p::log::Logger().SendTo (logfile);
 #ifndef _WIN32
 		} else if (logs == "syslog") {
 			LogPrint(eLogInfo, "Log: Sending messages to syslog");
-			i2p::log::Logger().SendTo("open-i2pd", LOG_DAEMON);
+			if (d.privsepLog) d.privsepSyslog = true;
+			else
+				i2p::log::Logger().SendTo("open-i2pd", LOG_DAEMON);
 #endif
 		} else {
 			// use stdout -- default
@@ -389,6 +409,32 @@ namespace util
 
 	bool Daemon_Singleton::start()
 	{
+#ifndef _WIN32
+		if (d.privsepLog)
+		{
+			auto spawned = i2p::privsep::SpawnLogWorker ();
+			if (!spawned)
+			{
+				std::cerr << "Daemon: cannot spawn privilege-separated log worker: "
+					<< spawned.error () << std::endl;
+				return false;
+			}
+			d.logWorker = std::make_unique<i2p::privsep::ChildProcess> (std::move (*spawned));
+			d.logSink = std::make_unique<i2p::privsep::LogSink> (
+				std::move (d.logWorker->ChannelFd ()));
+			auto configured = d.logSink->Configure (d.privsepSyslog, d.privsepLogPath, "open-i2pd");
+			if (!configured)
+			{
+				std::cerr << "Daemon: cannot configure log worker: " << configured.error () << std::endl;
+				d.logSink.reset ();
+				d.logWorker.reset ();
+				return false;
+			}
+			auto* sink = d.logSink.get ();
+			i2p::log::Logger ().SetSink ([sink] (LogLevel level, std::time_t timestamp,
+				std::string_view text) { sink->Write (static_cast<uint8_t> (level), timestamp, text); });
+		}
+#endif
 		i2p::log::Logger().Start();
 		LogPrint(eLogInfo, "Daemon: Starting NetDB");
 		i2p::data::netdb.Start();
@@ -514,6 +560,18 @@ namespace util
 		i2p::data::netdb.Stop();
 		i2p::crypto::TerminateCrypto ();
 		i2p::log::Logger().Stop();
+#ifndef _WIN32
+		if (d.logSink)
+		{
+			(void) d.logSink->Shutdown ();
+			d.logSink.reset ();
+		}
+		if (d.logWorker)
+		{
+			d.logWorker->Stop ();
+			d.logWorker.reset ();
+		}
+#endif
 
 		return true;
 	}

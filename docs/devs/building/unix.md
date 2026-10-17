@@ -9,8 +9,8 @@ Make sure the dependencies from [requirements](requirements.md) are installed.
 ## Clone and build
 
 ```sh
-git clone https://github.com/daviduhden/open-i2pd.git
-cd open-i2pd
+git clone https://github.com/daviduhden/openi2pd.git
+cd openi2pd
 cmake -S build -B build-output -G Ninja \
   -DCMAKE_BUILD_TYPE=Release
 cmake --build build-output --parallel

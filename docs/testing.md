@@ -40,7 +40,7 @@ This is a Linux/GCC 16 build only. See the final result section below.
 ctest --test-dir /tmp/opencode/i2pd-new --output-on-failure
 ```
 
-Executed: **17/17 passed**, including `tools-smoke` (`ctest --test-dir
+Executed: **19/19 passed**, including `tools-smoke` (`ctest --test-dir
 /tmp/opencode/i2pd-new --output-on-failure`), including `test-tui-protocol`
 and `i2pd-version`. The HTTP tests include new regressions for:
 
@@ -206,7 +206,7 @@ No Java router is available in this environment. The matrix in
 |---|---|
 | Baseline compile (before changes) | Passed |
 | Modified compile (Linux/GCC 16) | Passed |
-| Unit tests and `tools-smoke` | 17/17 passed (Linux/GCC 16) |
+| Unit tests and `tools-smoke` | 19/19 passed (Linux/GCC 16) |
 | ASan/UBSan/TSan | Prepared, not run |
 | Fuzzers | Targets prepared, not run |
 | OpenBSD build/runtime | Not run |
@@ -218,9 +218,12 @@ No Java router is available in this environment. The matrix in
 ## Final result of this environment
 
 - **Linux/GCC 16 configure and build:** passed.
-- **CTest:** 17/17 passed, including the integrated tools smoke test and firewall backend test.
+- **CTest:** 19/19 passed, including the integrated tools smoke test and firewall backend test.
 - **CMake install:** passed into a temporary prefix (`i2pd`, `i2pd-tui`,
   libraries, headers, configs, certificates, man page).
+- **Privilege-separated logging:** live Linux run with `privsep.enabled=true`;
+  the core process had no log-file descriptor and the worker had the only write
+  descriptor. OpenBSD pledge/unveil was not dynamically tested.
 - **POSIX make front-end:** full `bmake` build and `bmake test` passed on
   Linux/GCC 16 (17/17 tests, including tools and firewall).
 - **TUI runtime:** a router was started with a temporary datadir; the socket
@@ -231,9 +234,9 @@ No Java router is available in this environment. The matrix in
 - **Integrated tools:** `keygen`, `keyinfo`, `offlinekeys`, `i2pbase64`,
   `regaddr`, `verifyhost`, `x25519` passed a manual round trip and the
   `tools-smoke` CTest.
-- **Documentation links:** converted/imported Markdown checked with `rg` for
-  stale web-console paths; MkDocs build not executed.
-- **Not validated:** ASan/UBSan/TSan, fuzzers, OpenBSD, Windows, Android APK/JNI build, live Java interoperability, multi-UID rejection.
+- **Documentation links:** converted/imported Markdown checked with a recursive
+  relative-link script; all internal links resolve. MkDocs build not executed.
+- **Not validated:** ASan/UBSan/TSan, fuzzers, OpenBSD, Windows, Android APK/JNI build, live Java interoperability, multi-UID rejection, and the full multiprocess privilege-separation invariants. Only the isolated log worker was exercised.
 - **Java reference:** stable tag `i2p-2.13.0` cloned read-only; only static
   inspection performed. No Java router was executed.
 

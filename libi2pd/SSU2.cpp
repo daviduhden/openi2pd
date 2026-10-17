@@ -331,7 +331,12 @@ namespace transport
 		}
 		catch (std::exception& ex )
 		{
-			LogPrint (eLogWarning, "SSU2: Failed to bind to ", localEndpoint, ": ", ex.what(), ". Actual endpoint is ", socket.local_endpoint ());
+			boost::system::error_code ec;
+			auto actualEndpoint = socket.local_endpoint (ec);
+			if (ec)
+				LogPrint(eLogWarning, "SSU2: Failed to bind to ", localEndpoint, ": ", ex.what());
+			else
+				LogPrint (eLogWarning, "SSU2: Failed to bind to ", localEndpoint, ": ", ex.what(), ". Actual endpoint is ", actualEndpoint);
 			// we can continue without binding being firewalled
 		}
 		return socket;
@@ -421,7 +426,13 @@ namespace transport
 				}
 				else
 				{
-					auto ep = socket.local_endpoint ();
+					boost::system::error_code lec;
+					auto ep = socket.local_endpoint (lec);
+					if (lec)
+					{
+						LogPrint (eLogError, "SSU2: Can't determine local endpoint: ", lec.message ());
+						return;
+					}
 					LogPrint (eLogCritical, "SSU2: Reopening socket in HandleReceivedFrom: code ", ecode.value(), ": ", ecode.message ());
 					OpenSocket (ep);
 					Receive (socket);
@@ -752,17 +763,23 @@ namespace transport
 		else
 		{
 			// check pending sessions if it's SessionCreated or Retry
-			auto it1 = m_PendingOutgoingSessions.find (senderEndpoint);
-			if (it1 != m_PendingOutgoingSessions.end ())
+			std::shared_ptr<SSU2Session> pending;
 			{
-				if (it1->second->GetState () == eSSU2SessionStateSessionRequestSent &&
-					it1->second->ProcessSessionCreated (buf, len))
+				std::lock_guard<std::mutex> l(m_PendingOutgoingSessionsMutex);
+				auto it1 = m_PendingOutgoingSessions.find (senderEndpoint);
+				if (it1 != m_PendingOutgoingSessions.end ())
+					pending = it1->second;
+			}
+			if (pending)
+			{
+				if (pending->GetState () == eSSU2SessionStateSessionRequestSent &&
+					pending->ProcessSessionCreated (buf, len))
 				{
 					std::lock_guard<std::mutex> l(m_PendingOutgoingSessionsMutex);
-					m_PendingOutgoingSessions.erase (it1); // we are done with that endpoint
+					m_PendingOutgoingSessions.erase (senderEndpoint); // we are done with that endpoint
 				}
 				else
-					it1->second->ProcessRetry (buf, len);
+					pending->ProcessRetry (buf, len);
 			}
 			else if (!i2p::transport::transports.IsInReservedRange(senderEndpoint.address ()) && senderEndpoint.port () &&
 				!i2p::transport::transports.IsBanned (senderEndpoint.address ()))
@@ -1173,12 +1190,15 @@ namespace transport
 					it++;
 			}
 
-			for (auto it = m_ConnectedRecently.begin (); it != m_ConnectedRecently.end (); )
 			{
-				if (ts > it->second + SSU2_MAX_HOLE_PUNCH_EXPIRATION)
-					it = m_ConnectedRecently.erase (it);
-				else
-					it++;
+				std::lock_guard<std::mutex> l(m_ConnectedRecentlyMutex);
+				for (auto it = m_ConnectedRecently.begin (); it != m_ConnectedRecently.end (); )
+				{
+					if (ts > it->second + SSU2_MAX_HOLE_PUNCH_EXPIRATION)
+						it = m_ConnectedRecently.erase (it);
+					else
+						it++;
+				}
 			}
 
 			for (auto it = m_RequestedPeerTests.begin (); it != m_RequestedPeerTests.end ();)
@@ -1229,8 +1249,15 @@ namespace transport
 					resentPacketsNum += it.second->Resend (ts);
 				if (resentPacketsNum > SSU2_MAX_RESEND_PACKETS) break;
 			}
-			for (auto it: m_PendingOutgoingSessions)
-				it.second->Resend (ts);
+			std::vector<std::shared_ptr<SSU2Session> > pendingSessions;
+			{
+				std::lock_guard<std::mutex> l(m_PendingOutgoingSessionsMutex);
+				pendingSessions.reserve (m_PendingOutgoingSessions.size ());
+				for (const auto& it: m_PendingOutgoingSessions)
+					pendingSessions.push_back (it.second);
+			}
+			for (const auto& session: pendingSessions)
+				session->Resend (ts);
 			ScheduleResend (resentPacketsNum > SSU2_MAX_RESEND_PACKETS);
 		}
 	}
@@ -1597,6 +1624,7 @@ namespace transport
 
 	void SSU2Server::ProcessNextPacketFromProxy (uint8_t * buf, size_t len)
 	{
+		if (len < SOCKS5_UDP_IPV4_REQUEST_HEADER_SIZE) return;
 		if (buf[2]) // FRAG
 		{
 			LogPrint (eLogWarning, "SSU2: Proxy packet fragmentation is not supported");

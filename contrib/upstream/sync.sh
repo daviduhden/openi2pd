@@ -14,7 +14,7 @@ TOOLS_REPO=https://github.com/PurpleI2P/i2pd-tools
 TOOLS_COMMIT=ca7ece8da86aa80b58fce6fa64375bfd75cbf843
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
-TMP=${TMPDIR:-/tmp}/open-i2pd-upstream.$$
+TMP=${TMPDIR:-/tmp}/openi2pd-upstream.$$
 trap 'rm -rf "$TMP"' EXIT HUP INT TERM
 mkdir -p "$TMP"
 

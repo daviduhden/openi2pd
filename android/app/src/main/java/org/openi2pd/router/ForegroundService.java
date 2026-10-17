@@ -1,59 +1,74 @@
 package org.openi2pd.router;
 
 import static android.app.PendingIntent.FLAG_IMMUTABLE;
+import static android.app.PendingIntent.FLAG_UPDATE_CURRENT;
 
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.app.Service;
-import android.content.Context;
 import android.content.Intent;
+import android.content.pm.ServiceInfo;
 import android.os.Binder;
 import android.os.Build;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
+import android.util.Log;
+
 import androidx.annotation.RequiresApi;
 import androidx.core.app.NotificationCompat;
-import android.util.Log;
 
 public class ForegroundService extends Service {
     private static final String TAG = "FgService";
-    private volatile boolean shown;
-    private static ForegroundService instance;
+    private static final String CHANNEL_ID = "i2pd_service";
+    private static final int NOTIFICATION = 1;
+    private static final Object LOCK = new Object();
+
+    private static volatile ForegroundService instance;
     private static volatile DaemonWrapper daemon;
-    private static final Object initDeinitLock = new Object();
+
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    private volatile boolean shown;
+    private volatile boolean destroyed;
+
+    private NotificationManager notificationManager;
+    private DaemonWrapper listeningDaemon;
 
     private final DaemonWrapper.StateUpdateListener daemonStateUpdatedListener =
-            new DaemonWrapper.StateUpdateListener() {
+            (oldValue, newValue) -> updateNotificationText();
 
-                @Override
-                public void daemonStateUpdate(DaemonWrapper.State oldValue, DaemonWrapper.State newValue) {
-                    updateNotificationText();
-                }
-            };
-
-    private void updateNotificationText() {
-        try {
-            synchronized (initDeinitLock) {
-                if (shown) cancelNotification();
-                showNotification();
-            }
-        } catch (Throwable tr) {
-            Log.e(TAG,"error ignored",tr);
+    /**
+     * Hand a (process-wide) daemon to the service. The service keeps the
+     * daemon reference for its own lifetime and never stores an Activity.
+     */
+    public static void init(DaemonWrapper daemon) {
+        synchronized (LOCK) {
+            ForegroundService.daemon = daemon;
+        }
+        ForegroundService current;
+        synchronized (LOCK) {
+            current = instance;
+        }
+        if (current != null) {
+            current.mainHandler.post(current::syncDaemonListener);
         }
     }
 
-
-    private NotificationManager notificationManager;
-
-    // Unique Identification Number for the Notification.
-    // We use it on Notification start, and to cancel it.
-    private static final int NOTIFICATION = 1;
+    /**
+     * @deprecated listener lifetime is owned by the service; kept for binary
+     * compatibility with older callers.
+     */
+    @Deprecated
+    public static void deinit() {
+        // No-op: removing the listener on Activity destroy would silently stop
+        // notification updates while the service is still running.
+    }
 
     /**
-     * Class for clients to access.  Because we know this service always
-     * runs in the same process as its clients, we don't need to deal with
-     * IPC.
+     * Class for clients to access. Because this service always runs in the same
+     * process as its clients, no IPC is involved.
      */
     public class LocalBinder extends Binder {
         ForegroundService getService() {
@@ -61,126 +76,157 @@ public class ForegroundService extends Service {
         }
     }
 
-    public static void init(DaemonWrapper daemon) {
-        ForegroundService.daemon = daemon;
-        initCheck();
-    }
-
-    private static void initCheck() {
-        synchronized (initDeinitLock) {
-            if (instance != null && daemon != null) instance.setListener();
-        }
-    }
+    private final IBinder binder = new LocalBinder();
 
     @Override
     public void onCreate() {
-        notificationManager = (NotificationManager)getSystemService(NOTIFICATION_SERVICE);
-        instance = this;
-        initCheck();
-    }
-
-    private void setListener() {
-        daemon.addStateChangeListener(daemonStateUpdatedListener);
-        updateNotificationText();
+        super.onCreate();
+        notificationManager = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+        synchronized (LOCK) {
+            instance = this;
+        }
+        syncDaemonListener();
     }
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        Log.d("ForegroundService", "Received start id " + startId + ": " + intent);
+        Log.d(TAG, "received start id " + startId);
+        syncDaemonListener();
         return START_STICKY;
     }
 
     @Override
+    public IBinder onBind(Intent intent) {
+        return binder;
+    }
+
+    @Override
     public void onDestroy() {
+        destroyed = true;
         cancelNotification();
-        deinitCheck();
-        instance = null;
+        DaemonWrapper current = listeningDaemon;
+        listeningDaemon = null;
+        if (current != null) {
+            current.removeStateChangeListener(daemonStateUpdatedListener);
+        }
+        synchronized (LOCK) {
+            if (instance == this) {
+                instance = null;
+            }
+        }
+        mainHandler.removeCallbacksAndMessages(null);
+        super.onDestroy();
     }
 
-    public static void deinit() {
-        deinitCheck();
+    /**
+     * Attach the listener to the currently configured daemon. Runs on the main
+     * thread so listener registration cannot race notification updates.
+     */
+    private void syncDaemonListener() {
+        if (destroyed) {
+            return;
+        }
+        DaemonWrapper current;
+        synchronized (LOCK) {
+            current = daemon;
+        }
+        if (current != listeningDaemon) {
+            if (listeningDaemon != null) {
+                listeningDaemon.removeStateChangeListener(daemonStateUpdatedListener);
+            }
+            listeningDaemon = current;
+            if (current != null) {
+                current.addStateChangeListener(daemonStateUpdatedListener);
+            }
+        }
+        updateNotificationText();
     }
 
-    private static void deinitCheck() {
-        synchronized (initDeinitLock) {
-            if (daemon != null && instance != null)
-                daemon.removeStateChangeListener(instance.daemonStateUpdatedListener);
+    private void updateNotificationText() {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            mainHandler.post(this::updateNotificationText);
+            return;
+        }
+        if (destroyed) {
+            return;
+        }
+        try {
+            showNotification();
+        } catch (Throwable tr) {
+            Log.e(TAG, "unable to update notification", tr);
         }
     }
 
     private void cancelNotification() {
-        synchronized (initDeinitLock) {
-            // Cancel the persistent notification.
+        if (!shown) {
+            return;
+        }
+        if (notificationManager != null) {
             notificationManager.cancel(NOTIFICATION);
-
-            stopForeground(true);
-
-            // Tell the user we stopped.
-            //Toast.makeText(this, R.string.i2pd_service_stopped, Toast.LENGTH_SHORT).show();
-            shown = false;
         }
+        stopForeground(STOP_FOREGROUND_REMOVE);
+        shown = false;
     }
 
-    @Override
-    public IBinder onBind(Intent intent) {
-        return mBinder;
-    }
-
-    // This is the object that receives interactions from clients.  See
-    // RemoteService for a more complete example.
-    private final IBinder mBinder = new LocalBinder();
-
-    /**
-     * Show a notification while this service is running.
-     */
     private void showNotification() {
-        synchronized (initDeinitLock) {
-            if (daemon != null) {
-                // In this sample, we'll use the same text for the ticker and the expanded notification
-                CharSequence text = getText(daemon.getState().getStatusStringResourceId());
-
-                // The PendingIntent to launch our activity if the user selects this notification
-                PendingIntent contentIntent = PendingIntent.getActivity(this, 0,
-                        new Intent(this, I2PDActivity.class),
-                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ? FLAG_IMMUTABLE : 0);
-
-                // If earlier version channel ID is not used
-                // https://developer.android.com/reference/android/support/v4/app/NotificationCompat.Builder.html#NotificationCompat.Builder(android.content.Context)
-                String channelId = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O ? createNotificationChannel() : "";
-
-                // Set the info for the views that show in the notification panel.
-                NotificationCompat.Builder builder = new NotificationCompat.Builder(this, channelId)
-                        .setOngoing(true)
-                        .setSmallIcon(R.drawable.ic_notification_icon); // the status icon
-                builder = builder.setPriority(Notification.PRIORITY_DEFAULT);
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP)
-                    builder = builder.setCategory(Notification.CATEGORY_SERVICE);
-                Notification notification = builder
-                        .setTicker(text) // the status text
-                        .setWhen(System.currentTimeMillis()) // the time stamp
-                        .setContentTitle(getText(R.string.app_name)) // the label of the entry
-                        .setContentText(text) // the contents of the entry
-                        .setContentIntent(contentIntent) // The intent to send when the entry is clicked
-                        .build();
-
-                // Send the notification.
-                //mNM.notify(NOTIFICATION, notification);
-                startForeground(NOTIFICATION, notification);
-                shown = true;
-            }
+        DaemonWrapper current;
+        synchronized (LOCK) {
+            current = daemon;
         }
+        if (destroyed) {
+            return;
+        }
+
+        CharSequence text = current != null
+                ? getText(current.getState().getStatusStringResourceId())
+                : getText(R.string.uninitialized);
+        PendingIntent contentIntent = PendingIntent.getActivity(this, 0,
+                new Intent(this, I2PDActivity.class),
+                FLAG_IMMUTABLE | FLAG_UPDATE_CURRENT);
+
+        String channelId = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                ? createNotificationChannel() : "";
+
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, channelId)
+                .setOngoing(true)
+                .setSmallIcon(R.drawable.ic_notification_icon)
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                .setCategory(NotificationCompat.CATEGORY_SERVICE)
+                .setTicker(text)
+                .setWhen(System.currentTimeMillis())
+                .setContentTitle(getText(R.string.app_name))
+                .setContentText(text)
+                .setContentIntent(contentIntent);
+        Notification notification = builder.build();
+
+        if (shown && notificationManager != null) {
+            // Update the existing foreground notification in place. Calling
+            // stopForeground/startForeground on every state change can hit
+            // background-start restrictions on newer Android releases.
+            notificationManager.notify(NOTIFICATION, notification);
+            return;
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(NOTIFICATION, notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
+        } else {
+            startForeground(NOTIFICATION, notification);
+        }
+        shown = true;
     }
 
     @RequiresApi(Build.VERSION_CODES.O)
-    private synchronized String createNotificationChannel() {
-        String channelId = getString(R.string.app_name);
+    private String createNotificationChannel() {
         CharSequence channelName = "I2Pd service";
-        NotificationChannel chan = new NotificationChannel(channelId, channelName, NotificationManager.IMPORTANCE_LOW);
-        //chan.setLightColor(Color.PURPLE);
-        chan.setLockscreenVisibility(Notification.VISIBILITY_PRIVATE);
-        NotificationManager service = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
-        if (service != null) service.createNotificationChannel(chan);
-        else Log.e(TAG, "error: NOTIFICATION_SERVICE is null");
-        return channelId;
+        NotificationChannel channel = new NotificationChannel(
+                CHANNEL_ID, channelName, NotificationManager.IMPORTANCE_LOW);
+        channel.setLockscreenVisibility(Notification.VISIBILITY_PRIVATE);
+        if (notificationManager != null) {
+            notificationManager.createNotificationChannel(channel);
+        } else {
+            Log.e(TAG, "NOTIFICATION_SERVICE is null");
+        }
+        return CHANNEL_ID;
     }
 }

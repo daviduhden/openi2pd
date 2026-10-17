@@ -667,17 +667,21 @@ namespace transport
 			LogPrint (eLogInfo, "Transports: No compatible addresses available");
 			if (!i2p::context.IsLimitedConnectivity () && peer->router->IsReachableFrom (i2p::context.GetRouterInfo ()))
 				i2p::data::netdb.SetUnreachable (ident, true); // we are here because all connection attempts failed but router claimed them
+			{
+				std::lock_guard<std::mutex> l(m_PeersMutex);
+				m_Peers.erase (ident);
+			}
 			peer->Done ();
-			std::lock_guard<std::mutex> l(m_PeersMutex);
-			m_Peers.erase (ident);
 			return false;
 		}
 		else if (i2p::data::IsRouterBanned (ident))
 		{
 			LogPrint (eLogWarning, "Transports: Router ", ident.ToBase64 (), " is banned. Peer dropped");
+			{
+				std::lock_guard<std::mutex> l(m_PeersMutex);
+				m_Peers.erase (ident);
+			}
 			peer->Done ();
-			std::lock_guard<std::mutex> l(m_PeersMutex);
-			m_Peers.erase (ident);
 			return false;
 		}
 		else // otherwise request RI
@@ -946,10 +950,15 @@ namespace transport
 			auto remoteIdentity = session->GetRemoteIdentity ();
 			if (!remoteIdentity) return;
 			auto ident = remoteIdentity->GetIdentHash ();
-			auto it = m_Peers.find (ident);
-			if (it != m_Peers.end ())
+			std::shared_ptr<Peer> peer;
 			{
-				auto peer = it->second;
+				std::lock_guard<std::mutex> l(m_PeersMutex);
+				auto it = m_Peers.find (ident);
+				if (it != m_Peers.end ())
+					peer = it->second;
+			}
+			if (peer)
+			{
 				if (peer->numAttempts > 1)
 				{
 					// exclude failed transports
@@ -972,10 +981,8 @@ namespace transport
 								});
 					i2p::data::netdb.SetUnreachable (ident, false); // clear unreachable
 				}
-				peer->numAttempts = 0;
-				peer->router = nullptr; // we don't need RouterInfo after successive connect
 				bool sendDatabaseStore = true;
-				if (it->second->delayedMessages.size () > 0)
+				if (peer->delayedMessages.size () > 0)
 				{
 					// check if first message is our DatabaseStore (publishing)
 					auto firstMsg = peer->delayedMessages.front ();
@@ -987,7 +994,12 @@ namespace transport
 					session->SendLocalRouterInfo ();
 				else
 					session->SetTerminationTimeout (10); // most likely it's publishing, no follow-up messages expected, set timeout to 10 seconds
-				peer->sessions.push_back (session);
+				{
+					std::lock_guard<std::mutex> l(m_PeersMutex);
+					peer->numAttempts = 0;
+					peer->router = nullptr; // we don't need RouterInfo after successive connect
+					peer->sessions.push_back (session);
+				}
 				session->SendI2NPMessages (peer->delayedMessages); // send and clear
 			}
 			else // incoming connection or peer test
@@ -1010,8 +1022,10 @@ namespace transport
 				auto peer = std::make_shared<Peer>(r, ts);
 				peer->sessions.push_back (session);
 				peer->router = nullptr;
-				std::lock_guard<std::mutex> l(m_PeersMutex);
-				m_Peers.emplace (ident, peer);
+				{
+					std::lock_guard<std::mutex> l(m_PeersMutex);
+					m_Peers.emplace (ident, peer);
+				}
 			}
 			if (IsCheckReserved ())
 			{
@@ -1035,12 +1049,20 @@ namespace transport
 			auto remoteIdentity = session->GetRemoteIdentity ();
 			if (!remoteIdentity) return;
 			auto ident = remoteIdentity->GetIdentHash ();
-			auto it = m_Peers.find (ident);
-			if (it != m_Peers.end ())
+			std::shared_ptr<Peer> peer;
+			bool wasConnected = false;
 			{
-				auto peer = it->second;
-				bool wasConnected = peer->IsConnected ();
-				peer->sessions.remove (session);
+				std::lock_guard<std::mutex> l(m_PeersMutex);
+				auto it = m_Peers.find (ident);
+				if (it != m_Peers.end ())
+				{
+					peer = it->second;
+					wasConnected = peer->IsConnected ();
+					peer->sessions.remove (session);
+				}
+			}
+			if (peer)
+			{
 				if (!peer->IsConnected ())
 				{
 					if (peer->delayedMessages.size () > 0)
@@ -1053,7 +1075,7 @@ namespace transport
 					{
 						{
 							std::lock_guard<std::mutex> l(m_PeersMutex);
-							m_Peers.erase (it);
+							m_Peers.erase (ident);
 						}
 						// delete buffer of just disconnected router
 						auto r = i2p::data::netdb.FindRouter (ident);
@@ -1103,9 +1125,9 @@ namespace transport
 			if (peer)
 				for (const auto& session : peer->sessions)
 					if (session) activeTransports |= session->GetTransportType ();
-			peers.push_back (PeerSnapshot{ident, peer ? peer->numAttempts : 0,
+			peers.push_back (PeerSnapshot{ident, peer ? peer->numAttempts.load () : 0,
 				peer ? peer->sessions.size () : 0, activeTransports,
-				peer ? peer->isHighBandwidth : false});
+				peer ? peer->isHighBandwidth.load () : false});
 		}
 		return peers;
 	}
@@ -1234,75 +1256,56 @@ namespace transport
 	template<typename Filter>
 	std::shared_ptr<const i2p::data::RouterInfo> Transports::GetRandomPeer (Filter filter, i2p::data::PeerOrdering * peerOrdering) const
 	{
-		std::vector<std::pair<i2p::data::IdentHash, std::shared_ptr<Peer> > > peers;
-		{
-			// copy peers to temporary vector
-			std::lock_guard<std::mutex> l(m_PeersMutex);
-			if (m_Peers.empty()) return nullptr;
-			peers.reserve (m_Peers.size ());
-			peers.assign (m_Peers.begin(), m_Peers.end());
-		}
-		auto ts = i2p::util::GetSecondsSinceEpoch ();
 		bool found = false;
 		i2p::data::IdentHash foundIdent;
-		uint16_t inds[3];
-		RAND_bytes ((uint8_t *)inds, sizeof (inds));
-		auto count = peers.size ();
-		if (!count) return nullptr;
-		inds[0] %= count;
-		auto& [ident, peer] = peers[inds[0]];
-		// try random peer
-		if (!peer->isDone && ts > peer->lastSelectionTime + PEER_SELECTION_MIN_INTERVAL)
 		{
-			bool eligibleForFirstHop = peerOrdering ? peerOrdering->IsFirstHop (ident) : true;
-			if (eligibleForFirstHop && filter (peer))
+			// Hold the peer lock while selecting: session lists and peers are
+			// modified on the transports thread.
+			std::lock_guard<std::mutex> l(m_PeersMutex);
+			auto count = m_Peers.size ();
+			if (!count) return nullptr;
+			std::vector<std::pair<i2p::data::IdentHash, std::shared_ptr<Peer> > > peers;
+			peers.reserve (count);
+			peers.assign (m_Peers.begin(), m_Peers.end());
+
+			auto ts = i2p::util::GetSecondsSinceEpoch ();
+			size_t inds[3];
+			RAND_bytes ((uint8_t *)inds, sizeof (inds));
+			inds[0] %= count;
+			auto& [ident, peer] = peers[inds[0]];
+			// try random peer
+			if (!peer->isDone && ts > peer->lastSelectionTime + PEER_SELECTION_MIN_INTERVAL)
 			{
-				foundIdent = ident;
-				peer->lastSelectionTime = ts;
-				found = true;
-			}
-		}
-		if (!found)
-		{
-			// try some peers around
-			if (inds[0])
-			{
-				// before
-				inds[1] %= inds[0];
-				inds[1] = (inds[1] + inds[0])/2;
-			}
-			else
-				inds[1] = 0;
-			if (inds[0] < peers.size () - 1)
-			{
-				// after
-				inds[2] %= (peers.size () - 1 - inds[0]);
-				inds[2] /= 2;
-				inds[2] += inds[0];
-			}
-			else
-				inds[2] = inds[0];
-			// from inds[1] to inds[2]
-			for (auto i = inds[1]; i < inds[2]; i++)
-			{
-				auto& [ident, peer] = peers[i];
-				if (!peer->isDone && ts > peer->lastSelectionTime + PEER_SELECTION_MIN_INTERVAL)
+				bool eligibleForFirstHop = peerOrdering ? peerOrdering->IsFirstHop (ident) : true;
+				if (eligibleForFirstHop && filter (peer))
 				{
-					bool eligibleForFirstHop = peerOrdering ? peerOrdering->IsFirstHop (ident) : true;
-					if (eligibleForFirstHop && filter (peer))
-					{
-						foundIdent = ident;
-						peer->lastSelectionTime = ts;
-						found = true;
-						break;
-					}
+					foundIdent = ident;
+					peer->lastSelectionTime = ts;
+					found = true;
 				}
 			}
-
 			if (!found)
 			{
-				// still not found, try from the beginning to inds[1]
-				for (auto i = 0; i < inds[1]; i++)
+				// try some peers around
+				if (inds[0])
+				{
+					// before
+					inds[1] %= inds[0];
+					inds[1] = (inds[1] + inds[0])/2;
+				}
+				else
+					inds[1] = 0;
+				if (inds[0] < peers.size () - 1)
+				{
+					// after
+					inds[2] %= (peers.size () - 1 - inds[0]);
+					inds[2] /= 2;
+					inds[2] += inds[0];
+				}
+				else
+					inds[2] = inds[0];
+				// from inds[1] to inds[2]
+				for (auto i = inds[1]; i < inds[2]; i++)
 				{
 					auto& [ident, peer] = peers[i];
 					if (!peer->isDone && ts > peer->lastSelectionTime + PEER_SELECTION_MIN_INTERVAL)
@@ -1320,8 +1323,8 @@ namespace transport
 
 				if (!found)
 				{
-					// still not found, try from inds[2] to the end
-					for (auto i = inds[2]; i < peers.size (); i++)
+					// still not found, try from the beginning to inds[1]
+					for (auto i = 0; i < inds[1]; i++)
 					{
 						auto& [ident, peer] = peers[i];
 						if (!peer->isDone && ts > peer->lastSelectionTime + PEER_SELECTION_MIN_INTERVAL)
@@ -1333,6 +1336,26 @@ namespace transport
 								peer->lastSelectionTime = ts;
 								found = true;
 								break;
+							}
+						}
+					}
+
+					if (!found)
+					{
+						// still not found, try from inds[2] to the end
+						for (auto i = inds[2]; i < peers.size (); i++)
+						{
+							auto& [ident, peer] = peers[i];
+							if (!peer->isDone && ts > peer->lastSelectionTime + PEER_SELECTION_MIN_INTERVAL)
+							{
+								bool eligibleForFirstHop = peerOrdering ? peerOrdering->IsFirstHop (ident) : true;
+								if (eligibleForFirstHop && filter (peer))
+								{
+									foundIdent = ident;
+									peer->lastSelectionTime = ts;
+									found = true;
+									break;
+								}
 							}
 						}
 					}

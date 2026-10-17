@@ -585,7 +585,7 @@ namespace i2p
 				updated = true;
 			}
 			addr = (*addresses)[i2p::data::RouterInfo::eSSU2V6Idx];
-			if (addr && (addr->host != host || !addr->ssu->mtu))
+			if (addr && addr->ssu && (addr->host != host || !addr->ssu->mtu))
 			{
 				addr->host = host;
 #ifdef __OpenBSD__
@@ -642,7 +642,7 @@ namespace i2p
 	void RouterContext::ClearSSU2Introducers (bool v4)
 	{
 		auto addr = m_RouterInfo.GetSSU2Address (v4);
-		if (addr && !addr->ssu->introducers.empty ())
+		if (addr && addr->ssu && !addr->ssu->introducers.empty ())
 		{
 			addr->ssu->introducers.clear ();
 			UpdateRouterInfo ();

@@ -102,3 +102,41 @@ then `TODO.md` and `ROADMAP.md`, then verify the code state.
 - Android Gradle config parsed to the missing-SDK check; no APK built.
 - Next: build/validate Android package, add config/data migration, decide
   executable rename.
+
+## Session 5 — privilege separation foundation
+
+- Audited monolithic capabilities and created `docs/security/` reports.
+- Added `privsep/`: versioned bounded IPC, AF_UNIX/SOCK_SEQPACKET channel,
+  peer-UID check, CLOEXEC, pidfd-aware child wrapper, log worker.
+- Integrated `privsep.enabled`/`privsep.log`: router now spawns an exec'ed log
+  worker before logger start when enabled; core does not open the configured
+  log file.
+- Live Linux verification: core had no log descriptor; worker had the only
+  write descriptor; router logged through IPC.
+- Added `test-privsep-protocol` and `test-privsep-log`; full CTest 19/19 passed on Linux/GCC 16.
+- OpenBSD worker policy: unveil(log file) + pledge without inet/dns. Core
+  policy and network/storage/core workers remain pending.
+- This is an intermediate stage, not the requested final multiprocess
+  architecture. See TODO PRIVSEP-005..014.
+- `tools/vain`: found/hash/FoundNonce/fKeyId made atomic, duplicate
+  per-thread key index fixed, live one-character search wrote a valid key.
+- `bmake test` also passed 19/19 after these changes.
+
+## Session 6 — parallel subagents and consolidation
+
+- Coordinator launched independent subagents for Android Java, tools
+  hardening (`famtool`, `keyinfo`, `autoconf_i2pd`), and OpenBSD SSU2/MTU
+  review. Scopes were disjoint; no commits allowed.
+- Added `AGENTS.md` (subagent rules/ownership) and
+  `docs/architecture/README.md` (ADRs and current runtime diagram).
+- Continued coordinator work on IPC/logging foundation, `vain` concurrency
+  hardening, README/TODO/ROADMAP/PROGRESS linking.
+- All 19 CTest tests and `bmake test` passed before/after the logging changes;
+  Android and OpenBSD runtime validation remain blocked.
+- Multiprocess architecture remains deferred by explicit instruction; the log
+  worker is the only implemented separation and is not a claim of full
+  privilege separation.
+- Subagent scopes in progress: Android Java/lifecycle, tools
+  (famtool/keyinfo/autoconf), OpenBSD UnixDaemon/SSU2/transports. Coordinator
+  will review their diffs and fix cross-component build failures before
+  declaring anything integrated.
