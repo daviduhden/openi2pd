@@ -32,7 +32,7 @@ endif
 include filelist.mk
 
 USE_STATIC      := $(or $(USE_STATIC),no)
-USE_UPNP        := $(or $(USE_UPNP),no)
+USE_UPNP        := $(or $(USE_UPNP),yes)
 DEBUG           := $(or $(DEBUG),yes)
 TORRENTS        := $(or $(TORRENTS),yes)
 

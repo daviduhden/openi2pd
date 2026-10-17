@@ -14,14 +14,15 @@ and data directories remain compatible. OpenBSD services store data in
 ## Build
 
 Install a C++20 compiler, CMake, Boost, OpenSSL or LibreSSL, and zlib.
-MiniUPnPC is optional. From the repository root:
+UPnP support is compiled in by default and requires MiniUPnPC. From the repository root:
 
 ```sh
 cmake -S build -B build-output -DCMAKE_BUILD_TYPE=Release
 cmake --build build-output --parallel
 ```
 
-Enable UPnP with `-DWITH_UPNP=ON`. To build and run the unit tests, add
+To omit UPnP support, use `-DWITH_UPNP=OFF` with CMake or `USE_UPNP=no`
+with GNU Make. To build and run the unit tests, add
 `-DBUILD_TESTING=ON` and run `ctest --test-dir build-output --output-on-failure`.
 GNU Make is also supported. Windows build instructions are in
 [build_mingw.cmd](build/build_mingw.cmd).

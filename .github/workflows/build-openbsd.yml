@@ -15,13 +15,9 @@ concurrency:
 
 jobs:
   build:
-    name: OpenBSD 7.9 / UPnP ${{ matrix.with_upnp }}
+    name: OpenBSD 7.9
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    strategy:
-      fail-fast: false
-      matrix:
-        with_upnp: ['ON', 'OFF']
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -42,8 +38,8 @@ jobs:
             uname -a
             cmake -S build -B build-output \
               -DCMAKE_BUILD_TYPE=Release \
-              -DWITH_UPNP=${{ matrix.with_upnp }} \
               -DBUILD_TESTING=ON
+            grep -q '^WITH_UPNP:BOOL=ON$' build-output/CMakeCache.txt
             cmake --build build-output --parallel 2
             ctest --test-dir build-output --output-on-failure
             ./build-output/i2pd --version

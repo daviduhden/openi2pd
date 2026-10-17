@@ -7,6 +7,10 @@ endif
 INCFLAGS = -I/usr/local/include/
 LDFLAGS = ${LD_DEBUG} -Wl,-rpath,/usr/local/lib -L/usr/local/lib
 LDLIBS = -lssl -lcrypto -lz -lpthread -lboost_program_options
+ifeq ($(USE_UPNP),yes)
+	DEFINES += -DUSE_UPNP
+	LDLIBS += -lminiupnpc
+endif
 ifeq ($(TORRENTS),yes)
 	LDLIBS += -lboost_json -lboost_url
 endif
