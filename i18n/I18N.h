@@ -77,7 +77,8 @@ namespace i18n
 			std::function<int(int)> m_Formula;
 	};
 
-	void Initialize();
+	// Retained for native Android integration; the web console always uses English.
+	void SetLanguage(const std::string&);
 	std::string_view translate (std::string_view arg);
 	std::string translate (const std::string& arg, const std::string& arg2, int n);
 } // i18n

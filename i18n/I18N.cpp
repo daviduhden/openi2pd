@@ -15,7 +15,7 @@ namespace i2p
 {
 namespace i18n
 {
-	void Initialize()
+	void SetLanguage(const std::string&)
 	{
 		i2p::client::context.SetLanguage (english::GetLocale());
 		setlocale(LC_NUMERIC, "C");

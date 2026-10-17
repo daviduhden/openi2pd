@@ -378,7 +378,7 @@ namespace util
 			}
 		}
 
-		i2p::i18n::Initialize();
+		i2p::i18n::SetLanguage("english");
 
 		return true;
 	}
