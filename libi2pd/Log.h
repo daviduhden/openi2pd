@@ -9,15 +9,20 @@
 #ifndef LOG_H__
 #define LOG_H__
 
+#include <array>
+#include <cstdint>
 #include <ctime>
+#include <deque>
 #include <string>
 #include <iostream>
 #include <fstream>
 #include <sstream>
 #include <chrono>
 #include <memory>
+#include <mutex>
 #include <thread>
 #include <functional>
+#include <vector>
 #include "Queue.h"
 
 #ifndef _WIN32
@@ -49,6 +54,22 @@ namespace log {
 
 	struct LogMsg; /* forward declaration */
 
+	/**
+	 * A bounded, sanitized copy of a recent log message. Exposed to local
+	 * administrative interfaces (the TUI); it never contains more than
+	 * LOG_RECENT_TEXT_LIMIT bytes of the original message.
+	 */
+	struct LogRecord
+	{
+		uint64_t sequence;
+		std::time_t timestamp;
+		LogLevel level;
+		std::string text;
+	};
+
+	inline constexpr size_t LOG_RECENT_CAPACITY = 512;
+	inline constexpr size_t LOG_RECENT_TEXT_LIMIT = 512;
+
 	class Log
 	{
 		private:
@@ -64,6 +85,13 @@ namespace log {
 			std::string m_TimeFormat;
 			volatile bool m_IsRunning;
 			std::thread * m_Thread;
+
+			// Administrative snapshot ring. Append() is called from arbitrary
+			// router threads, so it is protected by its own mutex and does not
+			// depend on the logging thread making progress.
+			mutable std::mutex m_RecentMutex;
+			std::deque<LogRecord> m_Recent;
+			uint64_t m_RecentSequence;
 
 		private:
 
@@ -134,6 +162,12 @@ namespace log {
 
 			/** @brief Reopen log file */
 			void Reopen();
+
+			/**
+			 * @brief Copy up to @a max records with sequence greater than @a after
+			 * @note Thread-safe. Intended for the local TUI IPC service.
+			 */
+			std::vector<LogRecord> GetRecent (uint64_t after, size_t max) const;
 	};
 
 	/**

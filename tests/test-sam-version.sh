@@ -43,7 +43,8 @@ IN+=("MIN=31 MAX=31")
 EXP+=("OK VERSION=3.1")
 
 
-for i in $(seq 0 $((${#IN[@]} - 1))); do
+i=0
+while [ "$i" -lt "${#IN[@]}" ]; do
 	printf "HELLO VERSION ${IN[$i]} - "
 
 	# Observed output
@@ -54,6 +55,7 @@ for i in $(seq 0 $((${#IN[@]} - 1))); do
 	else
 		printf "received $OBS\n"
 	fi
+	i=$((i + 1))
 done
 
 

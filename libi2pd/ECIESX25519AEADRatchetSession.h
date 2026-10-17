@@ -257,7 +257,7 @@ namespace garlic
 
 		public:
 
-			// for HTTP only
+			// for administrative views
 			int GetState () const { return (int)m_State; }
 			i2p::data::IdentHash GetDestination () const
 			{

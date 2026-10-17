@@ -6,11 +6,13 @@
 * See full license text in LICENSE file at top of project tree
 */
 
+#include <array>
 #include <string.h>
 #include <random>
 #include <fstream>
 #include <sstream>
-#include <utility> // for C++20 with boost < 1.81
+#include <utility>
+#include <vector>
 #include <boost/asio.hpp>
 #include <boost/asio/ssl.hpp>
 #include <boost/algorithm/string.hpp>
@@ -211,107 +213,133 @@ namespace data
 	const char SU3_MAGIC_NUMBER[]="I2Psu3";
 	int Reseeder::ProcessSU3Stream (std::istream& s)
 	{
-		char magicNumber[7];
-		s.read (magicNumber, 7); // magic number and zero byte 6
-		if (strcmp (magicNumber, SU3_MAGIC_NUMBER))
+		auto readExact = [&s] (void * buffer, size_t size) -> bool
 		{
-			LogPrint (eLogError, "Reseed: Unexpected SU3 magic number");
+			s.read (static_cast<char *> (buffer), static_cast<std::streamsize> (size));
+			return s.good () && static_cast<size_t> (s.gcount ()) == size;
+		};
+		auto skip = [&s] (std::streamoff size) -> bool
+		{
+			s.seekg (size, std::ios::cur);
+			return s.good ();
+		};
+
+		char magicNumber[7];
+		if (!readExact (magicNumber, sizeof (magicNumber)) || memcmp (magicNumber, SU3_MAGIC_NUMBER, sizeof (magicNumber)) != 0)
+		{
+			LogPrint (eLogError, "Reseed: Unexpected or truncated SU3 header");
 			return 0;
 		}
-		s.seekg (1, std::ios::cur); // su3 file format version
-		SigningKeyType signatureType;
-		s.read ((char *)&signatureType, 2); // signature type
-		signatureType = be16toh (signatureType);
-		uint16_t signatureLength;
-		s.read ((char *)&signatureLength, 2); // signature length
-		signatureLength = be16toh (signatureLength);
-		s.seekg (1, std::ios::cur); // unused
-		uint8_t versionLength;
-		s.read ((char *)&versionLength, 1); // version length
-		s.seekg (1, std::ios::cur); // unused
-		uint8_t signerIDLength;
-		s.read ((char *)&signerIDLength, 1); // signer ID length
-		uint64_t contentLength;
-		s.read ((char *)&contentLength, 8); // content length
-		contentLength = be64toh (contentLength);
+		if (!skip (1)) return 0; // su3 file format version
+		uint16_t signatureTypeRaw = 0, signatureLengthRaw = 0;
+		if (!readExact (&signatureTypeRaw, sizeof (signatureTypeRaw)) ||
+			!readExact (&signatureLengthRaw, sizeof (signatureLengthRaw)))
+			return 0;
+		SigningKeyType signatureType = static_cast<SigningKeyType> (be16toh (signatureTypeRaw));
+		uint16_t signatureLength = be16toh (signatureLengthRaw);
+		if (signatureLength > 8192)
+		{
+			LogPrint (eLogError, "Reseed: SU3 signature length too large: ", signatureLength);
+			return 0;
+		}
+		if (!skip (1)) return 0; // unused
+		uint8_t versionLength = 0;
+		if (!readExact (&versionLength, sizeof (versionLength))) return 0;
+		if (!skip (1)) return 0; // unused
+		uint8_t signerIDLength = 0;
+		if (!readExact (&signerIDLength, sizeof (signerIDLength))) return 0;
+		uint64_t contentLengthRaw = 0;
+		if (!readExact (&contentLengthRaw, sizeof (contentLengthRaw))) return 0;
+		uint64_t contentLength = be64toh (contentLengthRaw);
 		if (contentLength > MAX_RESEED_CONTENT_LENGTH)
 		{
 			LogPrint (eLogError, "Reseed: SU3 content length too large: ", contentLength);
 			return 0;
 		}
-		s.seekg (1, std::ios::cur); // unused
-		uint8_t fileType;
-		s.read ((char *)&fileType, 1); // file type
+		if (!skip (1)) return 0; // unused
+		uint8_t fileType = 0;
+		if (!readExact (&fileType, sizeof (fileType))) return 0;
 		if (fileType != 0x00) // zip file
 		{
 			LogPrint (eLogError, "Reseed: Can't handle file type ", (int)fileType);
 			return 0;
 		}
-		s.seekg (1, std::ios::cur); // unused
-		uint8_t contentType;
-		s.read ((char *)&contentType, 1); // content type
+		if (!skip (1)) return 0; // unused
+		uint8_t contentType = 0;
+		if (!readExact (&contentType, sizeof (contentType))) return 0;
 		if (contentType != 0x03) // reseed data
 		{
 			LogPrint (eLogError, "Reseed: Unexpected content type ", (int)contentType);
 			return 0;
 		}
-		s.seekg (12, std::ios::cur); // unused
+		if (!skip (12)) return 0; // unused
 
-		s.seekg (versionLength, std::ios::cur); // skip version
-		char signerID[256];
-		s.read (signerID, signerIDLength); // signerID
+		if (!skip (versionLength)) return 0; // skip version
+		std::array<char, 256> signerID{};
+		if (signerIDLength >= signerID.size ()) return 0;
+		if (!readExact (signerID.data (), signerIDLength)) return 0;
 		signerID[signerIDLength] = 0;
 
 		bool verify; i2p::config::GetOption("reseed.verify", verify);
 		if (verify)
 		{
 			//try to verify signature
-			auto it = m_SigningKeys.find (signerID);
+			auto it = m_SigningKeys.find (signerID.data ());
 			if (it != m_SigningKeys.end ())
 			{
 				// TODO: implement all signature types
 				if (signatureType == SIGNING_KEY_TYPE_RSA_SHA512_4096 && signatureLength >= SHA512_DIGEST_LENGTH)
 				{
-					size_t pos = s.tellg ();
-					size_t tbsLen = pos + contentLength;
-					uint8_t * tbs = new uint8_t[tbsLen];
+					auto pos = s.tellg ();
+					if (pos < 0) return 0;
+					const size_t headerLen = static_cast<size_t> (pos);
+					if (contentLength > MAX_RESEED_CONTENT_LENGTH ||
+						headerLen > MAX_RESEED_CONTENT_LENGTH - contentLength)
+						return 0;
+					const size_t tbsLen = headerLen + static_cast<size_t> (contentLength);
+					std::vector<uint8_t> tbs (tbsLen);
+					std::vector<uint8_t> signature (signatureLength);
 					s.seekg (0, std::ios::beg);
-					s.read ((char *)tbs, tbsLen);
-					uint8_t * signature = new uint8_t[signatureLength];
-					s.read ((char *)signature, signatureLength);
+					if (!readExact (tbs.data (), tbs.size ()) ||
+						!readExact (signature.data (), signature.size ()))
+						return 0;
+
 					// RSA-raw
 					{
 						// calculate digest
-						uint8_t digest[SHA512_DIGEST_LENGTH];
-						SHA512 (tbs, tbsLen, digest);
+						std::array<uint8_t, SHA512_DIGEST_LENGTH> digest{};
+						SHA512 (tbs.data (), tbsLen, digest.data ());
 						// encrypt signature
 						BN_CTX * bnctx = BN_CTX_new ();
 						BIGNUM * s = BN_new (), * n = BN_new ();
-						BN_bin2bn (signature, signatureLength, s);
+						if (!bnctx || !s || !n)
+						{
+							if (bnctx) BN_CTX_free (bnctx);
+							if (s) BN_free (s);
+							if (n) BN_free (n);
+							return 0;
+						}
+						BN_bin2bn (signature.data (), signatureLength, s);
 						BN_bin2bn (it->second, 512, n); // RSA 4096 assumed
 						BN_mod_exp (s, s, i2p::crypto::GetRSAE (), n, bnctx); // s = s^e mod n
-						uint8_t * enSigBuf = new uint8_t[signatureLength];
-						i2p::crypto::bn2buf (s, enSigBuf, signatureLength);
+						std::vector<uint8_t> enSigBuf (signatureLength);
+						i2p::crypto::bn2buf (s, enSigBuf.data (), signatureLength);
 						// digest is right aligned
 						// we can't use RSA_verify due wrong padding in SU3
-						if (memcmp (enSigBuf + (signatureLength - SHA512_DIGEST_LENGTH), digest, SHA512_DIGEST_LENGTH))
+						if (memcmp (enSigBuf.data () + (signatureLength - SHA512_DIGEST_LENGTH), digest.data (), SHA512_DIGEST_LENGTH))
 							LogPrint (eLogWarning, "Reseed: SU3 signature verification failed");
 						else
 							verify = false; // verified
-						delete[] enSigBuf;
 						BN_free (s); BN_free (n);
 						BN_CTX_free (bnctx);
 					}
-
-					delete[] signature;
-					delete[] tbs;
 					s.seekg (pos, std::ios::beg);
 				}
 				else
 					LogPrint (eLogWarning, "Reseed: Signature type ", signatureType, " is not supported");
 			}
 			else
-				LogPrint (eLogWarning, "Reseed: Certificate for ", signerID, " not loaded");
+				LogPrint (eLogWarning, "Reseed: Certificate for ", signerID.data (), " not loaded");
 		}
 
 		if (verify) // not verified
@@ -330,27 +358,30 @@ namespace data
 	int Reseeder::ProcessZIPStream (std::istream& s, uint64_t contentLength)
 	{
 		int numFiles = 0;
-		size_t contentPos = s.tellg ();
+		auto contentPosition = s.tellg ();
+		if (contentPosition < 0) return 0;
+		size_t contentPos = static_cast<size_t> (contentPosition);
 		// not !eof: seekg clears eofbit, so a stream broken in the middle of a
 		// header stays not-eof forever and the loop never ends
 		while (s.good ())
 		{
-			uint32_t signature;
-			s.read ((char *)&signature, 4);
+			uint32_t signature = 0;
+			s.read ((char *)&signature, sizeof (signature));
+			if (s.gcount () != static_cast<std::streamsize> (sizeof (signature))) break;
 			signature = le32toh (signature);
 			if (signature == ZIP_HEADER_SIGNATURE)
 			{
 				// next local file
 				s.seekg (2, std::ios::cur); // version
-				uint16_t bitFlag;
+				uint16_t bitFlag = 0;
 				s.read ((char *)&bitFlag, 2);
 				bitFlag = le16toh (bitFlag);
-				uint16_t compressionMethod;
+				uint16_t compressionMethod = 0;
 				s.read ((char *)&compressionMethod, 2);
 				compressionMethod = le16toh (compressionMethod);
 				s.seekg (4, std::ios::cur); // skip fields we don't care about
-				uint32_t compressedSize, uncompressedSize;
-				uint32_t crc_32;
+				uint32_t compressedSize = 0, uncompressedSize = 0;
+				uint32_t crc_32 = 0;
 				s.read ((char *)&crc_32, 4);
 				crc_32 = le32toh (crc_32);
 				s.read ((char *)&compressedSize, 4);

@@ -482,11 +482,7 @@ namespace client
 			return addr->IsValid () ? addr : nullptr;
 		}
 		else
-#if __cplusplus >= 202002L // C++20
 		if (address.ends_with (".i2p"))
-#else
-		if (address.find (".i2p") != std::string::npos)
-#endif
 		{
 			if (!m_IsEnabled) return nullptr;
 			auto addr = FindAddress (address);

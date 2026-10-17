@@ -10,7 +10,7 @@ DefaultDirName={pf}\Open I2Pd
 DefaultGroupName=Open I2Pd
 UninstallDisplayIcon={app}\I2Pd.exe
 OutputDir=.
-OutputBaseFilename=setup_i2pd_v{#I2Pd_TextVer}
+OutputBaseFilename=setup_open-i2pd_v{#I2Pd_TextVer}
 
 LicenseFile=..\LICENSE
 SetupIconFile=..\Win32\mask.ico
@@ -35,16 +35,14 @@ VersionInfoVersion={#I2Pd_Ver}
 CloseApplications=yes
 
 [Files]
-Source: ..\i2pd_x32.exe; DestDir: {app}; DestName: i2pd.exe; Flags: ignoreversion; Check: not IsWin64; MinVersion: 6.0
-Source: ..\i2pd_x64.exe; DestDir: {app}; DestName: i2pd.exe; Flags: ignoreversion; Check: IsWin64; MinVersion: 6.0
-Source: ..\i2pd_xp.exe; DestDir: {app}; DestName: i2pd.exe; Flags: ignoreversion; Check: not IsWin64; OnlyBelowVersion: 6.0
+Source: ..\i2pd_x32.exe; DestDir: {app}; DestName: i2pd.exe; Flags: ignoreversion; Check: not IsWin64; MinVersion: 10.0
+Source: ..\i2pd_x64.exe; DestDir: {app}; DestName: i2pd.exe; Flags: ignoreversion; Check: IsWin64; MinVersion: 10.0
 Source: ..\README.md; DestDir: {app}; DestName: Readme.txt; Flags: onlyifdoesntexist
 Source: ..\contrib\i2pd.conf; DestDir: {userappdata}\i2pd; Flags: onlyifdoesntexist
 Source: ..\contrib\subscriptions.txt; DestDir: {userappdata}\i2pd; Flags: onlyifdoesntexist
 Source: ..\contrib\tunnels.conf; DestDir: {userappdata}\i2pd; Flags: onlyifdoesntexist
 Source: ..\contrib\certificates\*; DestDir: {userappdata}\i2pd\certificates; Flags: onlyifdoesntexist recursesubdirs createallsubdirs
 Source: ..\contrib\tunnels.d\*; DestDir: {userappdata}\i2pd\tunnels.d; Flags: onlyifdoesntexist recursesubdirs createallsubdirs
-Source: ..\contrib\webconsole\*; DestDir: {userappdata}\i2pd\webconsole; Flags: onlyifdoesntexist recursesubdirs createallsubdirs
 
 [Icons]
 Name: {group}\Open I2Pd; Filename: {app}\i2pd.exe

@@ -623,7 +623,7 @@ namespace garlic
 		// payload
 		uint8_t digest[32];
 		SHA256 (buf, payloadSize, digest);
-		if (memcmp (payloadHash, digest, 32)) // payload hash doesn't match
+		if (CRYPTO_memcmp (payloadHash, digest, 32)) // payload hash doesn't match
 		{
 			LogPrint (eLogError, "Garlic: Wrong payload hash");
 			return;

@@ -396,11 +396,7 @@ namespace client
 		SAMSessionType type = SAMSessionType::eSAMSessionTypeUnknown;
 		i2p::datagram::DatagramVersion datagramVersion = i2p::datagram::eDatagramV1;
 		if (style == SAM_VALUE_STREAM) type = SAMSessionType::eSAMSessionTypeStream;
-#if __cplusplus >= 202002L // C++20
 		else if (style.starts_with (SAM_VALUE_DATAGRAM))
-#else
-		else if (style.substr (0, SAM_VALUE_DATAGRAM.size ()) == SAM_VALUE_DATAGRAM)
-#endif
 		{
 			// DATAGRAM, DATAGRAM1, DATAGRAM2, DATAGRAM3
 			type = SAMSessionType::eSAMSessionTypeDatagram;
@@ -919,11 +915,7 @@ namespace client
 			SAMSessionType type = SAMSessionType::eSAMSessionTypeUnknown;
 			i2p::datagram::DatagramVersion datagramVersion = i2p::datagram::eDatagramV1;
 			if (style == SAM_VALUE_STREAM) type = SAMSessionType::eSAMSessionTypeStream;
-#if __cplusplus >= 202002L // C++20
 			else if (style.starts_with (SAM_VALUE_DATAGRAM))
-#else
-			else if (style.substr (0, SAM_VALUE_DATAGRAM.size ()) == SAM_VALUE_DATAGRAM)
-#endif
 			{
 				// DATAGRAM, DATAGRAM1, DATAGRAM2, DATAGRAM3
 				type = SAMSessionType::eSAMSessionTypeDatagram;

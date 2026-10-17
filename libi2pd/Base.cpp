@@ -6,6 +6,8 @@
 * See full license text in LICENSE file at top of project tree
 */
 
+#include <array>
+#include <cstdint>
 #include <stdlib.h>
 #include <string.h>
 
@@ -27,8 +29,6 @@ namespace data
 	{
 		return T32;
 	}
-
-	static void iT64Build(void);
 
 	/*
 	*
@@ -56,15 +56,26 @@ namespace data
 	}
 
 	/*
-	* Reverse Substitution Table (built in run time)
-	*/
-	static char iT64[256];
-	static int isFirstTime = 1;
-
-	/*
 	* Padding
 	*/
 	static constexpr char P64 = '=';
+
+	/*
+	* Reverse Substitution Table (build time). A value of -1 marks a byte
+	* that is not part of the alphabet. Building it with consteval removes
+	* the previous lazy initialisation, which raced when two threads decoded
+	* base64 for the first time concurrently.
+	*/
+	static consteval std::array<int8_t, 256> BuildReverseTable ()
+	{
+		std::array<int8_t, 256> table;
+		table.fill (-1);
+		for (size_t i = 0; i < sizeof (T64); ++i)
+			table[static_cast<uint8_t> (T64[i])] = static_cast<int8_t> (i);
+		table[static_cast<uint8_t> (P64)] = 0;
+		return table;
+	}
+	static constexpr auto IT64 = BuildReverseTable ();
 
 	/*
 	*
@@ -79,63 +90,42 @@ namespace data
 	    size_t InCount 				// Number of bytes in the input buffer
 	)
 	{
-		unsigned char * ps;
-		unsigned char   acc_1;
-		unsigned char   acc_2;
-		int             i;
-		int             n;
-		int             m;
+		if (!InCount) return {};
+		if (!InBuffer) return {};
 
-		ps = (unsigned char *)InBuffer;
-		n = InCount / 3;
-		m = InCount % 3;
-		size_t outCount = m ? (4 * (n + 1)) : (4 * n);
-
+		const size_t n = InCount / 3;
+		const size_t m = InCount % 3;
 		std::string out;
-		out.reserve (outCount);
-		for ( i = 0; i < n; i++ )
-		{
-			acc_1 = *ps++;
-			acc_2 = (acc_1 << 4) & 0x30;
-			acc_1 >>= 2;                 // base64 digit #1
-			out.push_back (T64[acc_1]);
-			acc_1 = *ps++;
-			acc_2 |= acc_1 >> 4;         // base64 digit #2
-			out.push_back (T64[acc_2]);
-			acc_1 &= 0x0f;
-			acc_1 <<= 2;
-			acc_2 = *ps++;
-			acc_1 |= acc_2 >> 6;         // base64 digit #3
-			out.push_back (T64[acc_1]);
-			acc_2 &= 0x3f;               // base64 digit #4
-			out.push_back (T64[acc_2]);
-		}
-		if ( m == 1 )
-		{
-			acc_1 = *ps++;
-			acc_2 = (acc_1 << 4) & 0x3f; // base64 digit #2
-			acc_1 >>= 2;                 // base64 digit #1
-			out.push_back (T64[acc_1]);
-			out.push_back (T64[acc_2]);
-			out.push_back (P64);
-			out.push_back (P64);
+		out.reserve (m ? 4 * (n + 1) : 4 * n);
 
-		}
-		else if ( m == 2 )
+		const uint8_t * ps = InBuffer;
+		for (size_t i = 0; i < n; ++i)
 		{
-			acc_1 = *ps++;
-			acc_2 = (acc_1 << 4) & 0x3f;
-			acc_1 >>= 2;                 // base64 digit #1
-			out.push_back (T64[acc_1]);
-			acc_1 = *ps++;
-			acc_2 |= acc_1 >> 4;         // base64 digit #2
-			out.push_back (T64[acc_2]);
-			acc_1 &= 0x0f;
-			acc_1 <<= 2;                 // base64 digit #3
-			out.push_back (T64[acc_1]);
+			const uint8_t b0 = *ps++;
+			const uint8_t b1 = *ps++;
+			const uint8_t b2 = *ps++;
+			out.push_back (T64[b0 >> 2]);
+			out.push_back (T64[((b0 & 0x03) << 4) | (b1 >> 4)]);
+			out.push_back (T64[((b1 & 0x0f) << 2) | (b2 >> 6)]);
+			out.push_back (T64[b2 & 0x3f]);
+		}
+		if (m == 1)
+		{
+			const uint8_t b0 = *ps++;
+			out.push_back (T64[b0 >> 2]);
+			out.push_back (T64[(b0 & 0x03) << 4]);
+			out.push_back (P64);
 			out.push_back (P64);
 		}
-
+		else if (m == 2)
+		{
+			const uint8_t b0 = *ps++;
+			const uint8_t b1 = *ps++;
+			out.push_back (T64[b0 >> 2]);
+			out.push_back (T64[((b0 & 0x03) << 4) | (b1 >> 4)]);
+			out.push_back (T64[(b1 & 0x0f) << 2]);
+			out.push_back (P64);
+		}
 		return out;
 	}
 
@@ -150,75 +140,46 @@ namespace data
 	*/
 	size_t Base64ToByteStream (		// Number of output bytes
 		std::string_view base64Str,	// BASE64 encoded string
-	    uint8_t * OutBuffer, 		// output buffer length
-	    size_t len					// length of output buffer
+		std::span<uint8_t> outBuffer	// destination with explicit size
 	)
 	{
-		unsigned char * pd;
-		unsigned char   acc_1;
-		unsigned char   acc_2;
-		size_t          outCount;
+		// Keep the I2P base64 framing: length must be a multiple of four,
+		// padding is only allowed at the end, and every other byte must be
+		// in the alphabet. Rejecting invalid input here is important because
+		// these strings come from RouterInfo and LeaseSet records received
+		// from untrusted peers.
+		if (base64Str.empty () || base64Str.size () % 4 != 0) return 0;
+		if (base64Str.front () == P64) return 0;
 
-		if (base64Str.empty () || base64Str[0] == P64) return 0;
-		auto d = std::div (base64Str.length (), 4);
-		if (!d.rem)
-			outCount = 3 * d.quot;
-		else
-			return 0;
+		size_t padding = 0;
+		if (base64Str.ends_with ("==")) padding = 2;
+		else if (base64Str.back () == P64) padding = 1;
 
-		if (isFirstTime) iT64Build();
+		const size_t encodedChars = base64Str.size () - padding;
+		for (size_t i = 0; i < encodedChars; ++i)
+			if (base64Str[i] == P64 || IT64[static_cast<uint8_t> (base64Str[i])] < 0) return 0;
+		for (size_t i = encodedChars; i < base64Str.size (); ++i)
+			if (base64Str[i] != P64) return 0;
 
-		auto pos = base64Str.find_last_not_of (P64);
-		if (pos == base64Str.npos) return 0;
-		outCount -= (base64Str.length () - pos - 1);
-		if (outCount > len) return 0;
+		const size_t outCount = base64Str.size () / 4 * 3 - padding;
+		if (outCount > outBuffer.size ()) return 0;
 
-		auto ps = base64Str.begin ();
-		pd = OutBuffer;
-		auto endOfOutBuffer = OutBuffer + outCount;
-		for (int i = 0; i < d.quot; i++)
+		size_t written = 0;
+		for (size_t i = 0; i < base64Str.size (); i += 4)
 		{
-			acc_1 = iT64[uint8_t(*ps++)];
-			acc_2 = iT64[uint8_t(*ps++)];
-			acc_1 <<= 2;
-			acc_1 |= acc_2 >> 4;
-			*pd++ = acc_1;
-			if (pd >= endOfOutBuffer)
-				break;
+			const uint32_t v =
+				(static_cast<uint32_t> (IT64[static_cast<uint8_t> (base64Str[i])]) << 18) |
+				(static_cast<uint32_t> (IT64[static_cast<uint8_t> (base64Str[i + 1])]) << 12) |
+				(static_cast<uint32_t> (IT64[static_cast<uint8_t> (base64Str[i + 2])]) << 6) |
+				 static_cast<uint32_t> (IT64[static_cast<uint8_t> (base64Str[i + 3])]);
 
-			acc_2 <<= 4;
-			acc_1 = iT64[uint8_t(*ps++)];
-			acc_2 |= acc_1 >> 2;
-			*pd++ = acc_2;
-			if (pd >= endOfOutBuffer)
-				break;
-
-			acc_2 = iT64[uint8_t(*ps++)];
-			acc_2 |= acc_1 << 6;
-			*pd++ = acc_2;
+			if (written < outCount) outBuffer[written++] = static_cast<uint8_t> (v >> 16);
+			if (written < outCount) outBuffer[written++] = static_cast<uint8_t> (v >> 8);
+			if (written < outCount) outBuffer[written++] = static_cast<uint8_t> (v);
 		}
-
-		return outCount;
+		return written;
 	}
 
-
-	/*
-	*
-	* iT64
-	* ----
-	* Reverse table builder. P64 character is replaced with 0
-	*
-	*
-	*/
-
-	static void iT64Build()
-	{
-		int i;
-		isFirstTime = 0;
-		for ( i = 0; i < 256; i++ ) iT64[i] = -1;
-		for ( i = 0; i < 64; i++ ) iT64[(uint8_t)T64[i]] = i;
-		iT64[(uint8_t)P64] = 0;
-	}
 
 	size_t Base32ToByteStream (std::string_view base32Str, uint8_t * outBuf, size_t outLen)
 	{
@@ -249,6 +210,8 @@ namespace data
 
 	std::string ByteStreamToBase32 (const uint8_t * inBuf, size_t len)
 	{
+		if (!len) return {};
+		if (!inBuf) return {};
 		std::string out;
 		out.reserve ((len * 8 + 4) / 5);
 		size_t pos = 1;

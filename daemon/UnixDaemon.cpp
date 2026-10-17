@@ -355,7 +355,7 @@ namespace i2p
 					std::string path; i2p::config::GetOption (option, path);
 					if (!allow (path, "r")) return false;
 				}
-				for (const char * option : {"logfile", "addressbook.hostsfile"})
+				for (const char * option : {"logfile", "addressbook.hostsfile", "tui.socket"})
 				{
 					std::string path; i2p::config::GetOption (option, path);
 					if (!allow (path, "rwc")) return false;

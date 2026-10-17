@@ -1,13 +1,30 @@
 #!/usr/bin/make -f
-#export DH_VERBOSE=1
+# CMake is the only supported build system. This file is executed by
+# debhelper, not by the project's POSIX make front-end.
 export DEB_BUILD_MAINT_OPTIONS = hardening=+all
-
-include /usr/share/dpkg/architecture.mk
-
-export DEB_CXXFLAGS_MAINT_APPEND  = -Wall -pedantic
+export DEB_CXXFLAGS_MAINT_APPEND = -Wall -pedantic
 export DEB_LDFLAGS_MAINT_APPEND =
 
 %:
 	dh $@
 
+override_dh_auto_configure:
+	cmake -S build -B build-debian -G Ninja \
+		-DCMAKE_BUILD_TYPE=RelWithDebInfo \
+		-DCMAKE_INSTALL_PREFIX=/usr \
+		-DWITH_LIBRARY=OFF \
+		-DWITH_TUI=ON \
+		-DBUILD_TESTING=OFF
+
+override_dh_auto_build:
+	cmake --build build-debian --parallel
+
+override_dh_auto_test:
+	# Router tests need network fixtures; unit tests are run by CTest in CI.
+	@true
+
+override_dh_auto_clean:
+	cmake -E remove_directory build-debian
+
 override_dh_auto_install:
+	DESTDIR=$(CURDIR)/debian/i2pd cmake --install build-debian

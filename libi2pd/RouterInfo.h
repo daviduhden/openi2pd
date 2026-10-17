@@ -18,7 +18,7 @@
 #include <array>
 #include <iostream>
 #include <memory>
-#include <utility> // for C++20 with boost < 1.81
+#include <utility>
 #include <boost/asio.hpp>
 #ifndef __cpp_lib_atomic_shared_ptr
 #include <boost/shared_ptr.hpp>
@@ -69,7 +69,11 @@ namespace data
 	const uint8_t COST_SSU2_DIRECT = 8;
 	const uint8_t COST_SSU2_NON_PUBLISHED = 15;
 
-	const size_t MAX_RI_BUFFER_SIZE = 3072; // if RouterInfo exceeds 3K we consider it as malformed, might extend later
+	// I2P Java RouterInfo.MAX_UNCOMPRESSED_SIZE is 4096 (RouterInfo.java, 2.13.0).
+// Keep the same upper bound so a valid Java RouterInfo with many address
+// properties is not rejected by the C++ parser. NTCP2's on-wire handshake
+// still limits its own RI payload independently.
+const size_t MAX_RI_BUFFER_SIZE = 4096;
 	const int HIGH_CONGESTION_INTERVAL = 15*60; // in seconds, 15 minutes
 	const int INTRODUCER_UPDATE_INTERVAL = 20*60*1000; // in milliseconds, 20 minutes
 

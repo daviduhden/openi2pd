@@ -102,7 +102,7 @@ namespace data
 			void Encrypt (const uint8_t * data, uint8_t * encrypted) const;
 			bool IsDestination () const { return true; };
 
-			// used in webconsole
+			// used by administrative views
 			void ExpireLease () { m_ExpirationTime = i2p::util::GetSecondsSinceEpoch (); };
 
 		protected:
@@ -155,7 +155,7 @@ namespace data
 		public:
 
 			LeaseSet2 (uint8_t storeType): LeaseSet (true), m_StoreType (storeType),
-				m_EncryptionType (0), m_PreferredEncryptionType (0) {}; // for HTTPServer only
+				m_EncryptionType (0), m_PreferredEncryptionType (0) {}; // for administrative views only
 			LeaseSet2 (uint8_t storeType, const uint8_t * buf, size_t len, bool storeLeases = true,
 				std::shared_ptr<LocalDestination> dest = nullptr, CryptoKeyType preferredCrypto = CRYPTO_KEY_TYPE_ECIES_X25519_AEAD);
 			LeaseSet2 (const uint8_t * buf, size_t len, std::shared_ptr<const BlindedPublicKey> key,

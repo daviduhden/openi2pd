@@ -1,0 +1,105 @@
+plugins {
+    id 'com.android.application'
+}
+
+dependencies {
+    implementation 'androidx.core:core:1.19.1'
+    implementation 'org.apache.commons:commons-configuration2:2.15.1'
+}
+
+android {
+    namespace 'org.openi2pd.router'
+    compileSdk 37
+
+    defaultConfig {
+        applicationId "org.openi2pd.router"
+        targetSdk 37
+        // Android 7.0: getifaddrs is available and the app remains usable on
+        // devices that still receive I2P traffic. No newer API is required by
+        // the modernized Java code.
+        minSdk 24
+        versionCode 2610000
+        versionName "2.61.0"
+
+        // NDK r27+ provides C++23 and getifaddrs at this API level.
+        ndkVersion project.findProperty("i2pd.ndkVersion") ?: "27.2.12479018"
+
+        ndk {
+            abiFilters "arm64-v8a", "armeabi-v7a", "x86_64", "x86"
+        }
+
+        externalNativeBuild {
+            cmake {
+                arguments "-DI2PD_BUILD_JNI=ON"
+                def extraArgs = project.findProperty("i2pd.cmakeArgs")
+                if (extraArgs) arguments extraArgs.split("\\s+")
+            }
+        }
+    }
+
+    splits {
+        abi {
+            enable true
+            reset()
+            include "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
+            universalApk true
+        }
+    }
+
+    buildTypes {
+        release {
+            // Distribution signs the APK (F-Droid/release process).
+            // No keystore or password is stored in the repository.
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-project.txt'
+        }
+        debug {
+            jniDebuggable = true
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path "src/main/cpp/CMakeLists.txt"
+        }
+    }
+
+    compileOptions {
+        // JDK 25 is the build/toolchain minimum. Java 17 is the highest
+        // language level supported by the current D8/R8 Android pipeline;
+        // Java 25-only APIs are not used at runtime.
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    lint {
+        abortOnError true
+        checkReleaseBuilds true
+        disable 'DuplicatePlatformClasses'
+    }
+}
+
+java {
+    toolchain {
+        // OpenJDK 25+ is the build minimum. This is the JDK that compiles the
+        // Java sources, not the ART runtime level used by the APK.
+        languageVersion = JavaLanguageVersion.of(25)
+    }
+}
+
+ext.abiCodes = ['armeabi-v7a': 1, 'x86': 2, 'arm64-v8a': 3, 'x86_64': 4]
+ext.baseVersionCode = 2610000
+
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        variant.outputs.each { output ->
+            def abi = output.filters.find {
+                it.filterType == com.android.build.api.variant.FilterConfiguration.FilterType.ABI
+            }?.identifier
+            def baseAbiVersionCode = project.ext.abiCodes.get(abi)
+            if (baseAbiVersionCode != null) {
+                output.versionCode.set(project.ext.baseVersionCode + baseAbiVersionCode)
+            }
+        }
+    }
+}

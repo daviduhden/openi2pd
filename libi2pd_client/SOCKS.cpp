@@ -989,11 +989,7 @@ namespace proxy
 	{
 		const auto& localEndpoint = GetLocalEndpoint ();
 		uint16_t port = localEndpoint.port ();
-#if __cplusplus >= 202002L // C++20
 		while (m_UDPPorts.contains (port))
-#else
-		while (m_UDPPorts.count (port) > 0)
-#endif
 			port++;
 		m_UDPPorts.insert (port);
 

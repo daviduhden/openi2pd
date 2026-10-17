@@ -71,7 +71,7 @@ namespace log {
 	Log::Log():
 	m_Destination(eLogStdout), m_MinLevel(eLogInfo),
 	m_LogStream (nullptr), m_Logfile(""), m_HasColors(true), m_TimeFormat("%H:%M:%S"),
-	m_IsRunning (false), m_Thread (nullptr)
+	m_IsRunning (false), m_Thread (nullptr), m_RecentSequence (0)
 	{
 	}
 
@@ -208,7 +208,37 @@ namespace log {
 
 	void Log::Append(std::shared_ptr<i2p::log::LogMsg> & msg)
 	{
+		if (msg)
+		{
+			// Make a bounded copy before handing the message to the writer.
+			// Control characters are flattened so a malformed log line cannot
+			// inject terminal escapes into an administrative client.
+			std::string text = msg->text.substr (0, LOG_RECENT_TEXT_LIMIT);
+			for (auto& ch : text)
+				if (static_cast<unsigned char> (ch) < 0x20 && ch != '\t')
+					ch = ' ';
+			{
+				std::lock_guard<std::mutex> l (m_RecentMutex);
+				m_Recent.push_back (LogRecord{++m_RecentSequence, msg->timestamp, msg->level, std::move (text)});
+				while (m_Recent.size () > LOG_RECENT_CAPACITY)
+					m_Recent.pop_front ();
+			}
+		}
 		m_Queue.Put(msg);
+	}
+
+	std::vector<LogRecord> Log::GetRecent (uint64_t after, size_t max) const
+	{
+		std::vector<LogRecord> result;
+		std::lock_guard<std::mutex> l (m_RecentMutex);
+		result.reserve (std::min (max, m_Recent.size ()));
+		for (const auto& record : m_Recent)
+		{
+			if (record.sequence <= after) continue;
+			result.push_back (record);
+			if (result.size () >= max) break;
+		}
+		return result;
 	}
 
 	void Log::SendTo (const std::string& path)

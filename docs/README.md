@@ -7,15 +7,30 @@ The binary and configuration options retain the `i2pd` name.
 - [Client tunnels](../contrib/tunnels.conf)
 - [Tunnel examples](../contrib/tunnels.d)
 - [OpenBSD service configuration](../contrib/openbsd)
+- [Architecture and refactoring report](architecture.md)
+- [I2P Java interoperability matrix](interop-matrix.md)
+- [Dependency and minimum-version inventory](dependencies.md)
+- [C++23 migration](cpp23-migration.md)
+- [CMake and POSIX Make migration](build-system.md)
+- [TUI and IPC design](tui-ipc.md)
+- [Security audit](security-audit.md)
+- [Test and validation plan](testing.md)
+- [Files created, modified and removed](files-changed.md)
+- [Attribution and personal-reference audit](attribution-audit.md)
+- [Rebranding and inherited identity](REBRANDING.md)
+- [Upstream provenance and synchronization](upstream-sync.md)
 
-Use `i2pd --help` to list configuration options. The web console is available
-at <http://127.0.0.1:7070/> by default.
+Use `i2pd --help` to list configuration options. The HTTP administrative
+console has been removed. Router status is available through the local,
+read-only `i2pd-tui` ncurses client; the I2P HTTP proxy on port 4444 is a
+separate service and remains available.
 
 For a user process, data is stored in `~/.i2pd` on Linux and OpenBSD. With
 `--service`, OpenBSD uses `/var/i2pd`, while Linux uses `/var/lib/i2pd`.
 `--datadir` overrides these defaults. Windows uses the application data folder;
-Android retains its native application's data directory handling.
+The Android app uses an app-specific `open-i2pd` directory.
 
-The [upstream English manual](https://i2pd.readthedocs.io/en/latest/) covers
-shared I2P protocols and configuration. Platform and language support in this
-fork follows this repository's README.
+Automatic CI is suspended during the refactoring; see the README. The
+[upstream English manual](https://i2pd.readthedocs.io/en/latest/) covers shared
+I2P protocols and configuration. Platform and language support in this fork
+follows this repository's README.

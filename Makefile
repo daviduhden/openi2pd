@@ -1,176 +1,48 @@
-.DEFAULT_GOAL := all
+# Portable POSIX make front-end for the CMake build.
+#
+# This file intentionally uses only POSIX make syntax: no wildcard(), shell(),
+# patsubst(), ifeq or other GNU extensions. It is usable with BSD make on
+# OpenBSD. CMake is the source of build rules.
+#
+# The default generator is Ninja because CMake's "Unix Makefiles" generator
+# emits GNU make syntax. Ninja is therefore required by this convenience
+# front-end; invoking CMake directly remains possible with any generator that
+# matches the local make implementation.
+#
+#   make
+#   make BUILD_DIR=build-release CMAKE_FLAGS="-DCMAKE_BUILD_TYPE=Release"
+#   make test
+#   make install
+#
+# Parallelism is controlled with CMAKE_BUILD_PARALLEL_LEVEL, not make -j.
 
-SYS := $(shell $(CXX) -dumpmachine)
+BUILD_DIR ?= build-output
+CMAKE ?= cmake
+CMAKE_GENERATOR ?= Ninja
+CMAKE_FLAGS ?=
 
-ifneq (, $(findstring mingw, $(SYS))$(findstring windows-gnu, $(SYS))$(findstring cygwin, $(SYS)))
-	SHARED_SUFFIX = dll
-else
-	SHARED_SUFFIX = so
-endif
+all:
+	${CMAKE} -S build -B ${BUILD_DIR} -G ${CMAKE_GENERATOR} ${CMAKE_FLAGS}
+	${CMAKE} --build ${BUILD_DIR}
 
-SHLIB := libi2pd.$(SHARED_SUFFIX)
-ARLIB := libi2pd.a
-SHLIB_LANG := libi2pdlang.$(SHARED_SUFFIX)
-ARLIB_LANG := libi2pdlang.a
-SHLIB_CLIENT := libi2pdclient.$(SHARED_SUFFIX)
-ARLIB_CLIENT := libi2pdclient.a
-SHLIB_WRAP := libi2pdwrapper.$(SHARED_SUFFIX)
-ARLIB_WRAP := libi2pdwrapper.a
-I2PD := i2pd
+router:
+	${CMAKE} -S build -B ${BUILD_DIR} -G ${CMAKE_GENERATOR} ${CMAKE_FLAGS}
+	${CMAKE} --build ${BUILD_DIR} --target i2pd
 
-LIB_SRC_DIR := libi2pd
-LIB_CLIENT_SRC_DIR := libi2pd_client
-WRAP_SRC_DIR := libi2pd_wrapper
-LANG_SRC_DIR := i18n
-DAEMON_SRC_DIR := daemon
+tui:
+	${CMAKE} -S build -B ${BUILD_DIR} -G ${CMAKE_GENERATOR} -DWITH_TUI=ON ${CMAKE_FLAGS}
+	${CMAKE} --build ${BUILD_DIR} --target i2pd-tui
 
-# import source files lists
-ifeq ($(SYS),)
-  $(error Unable to determine the compiler target)
-endif
+test:
+	${CMAKE} -S build -B ${BUILD_DIR} -G ${CMAKE_GENERATOR} -DBUILD_TESTING=ON ${CMAKE_FLAGS}
+	${CMAKE} --build ${BUILD_DIR}
+	ctest --test-dir ${BUILD_DIR} --output-on-failure
 
-include filelist.mk
-
-USE_STATIC      := $(or $(USE_STATIC),no)
-USE_UPNP        := $(or $(USE_UPNP),yes)
-DEBUG           := $(or $(DEBUG),yes)
-TORRENTS        := $(or $(TORRENTS),yes)
-
-# for debugging purposes only, when commit hash needed in trunk builds in i2pd version string
-USE_GIT_VERSION := $(or $(USE_GIT_VERSION),no)
-
-ifeq ($(DEBUG),yes)
-	CXX_DEBUG = -g
-else
-	CXX_DEBUG = -Os
-	LD_DEBUG = -s
-endif
-
-ifneq (, $(DESTDIR))
-	PREFIX = $(DESTDIR)
-endif
-
-ifneq (, $(findstring mingw, $(SYS))$(findstring windows-gnu, $(SYS))$(findstring cygwin, $(SYS)))
-	DAEMON_SRC += Win32/DaemonWin32.cpp Win32/Win32App.cpp Win32/Win32Service.cpp Win32/Win32NetState.cpp
-	include Makefile.mingw
-else ifneq (, $(findstring linux, $(SYS)))
-	include Makefile.linux
-else ifneq (, $(findstring openbsd, $(SYS)))
-	include Makefile.openbsd
-else # not supported
-	$(error Not supported platform)
-endif
-
-INCFLAGS += -I$(LIB_SRC_DIR) -I$(LIB_CLIENT_SRC_DIR) -I$(LANG_SRC_DIR)
-NEEDED_CXXFLAGS += -MMD -MP
-
-ifeq ($(USE_GIT_VERSION),yes)
-	GIT_VERSION := $(shell git describe --tags --always)
-	DEFINES += -DGITVER=$(GIT_VERSION)
-endif
-
-LIB_OBJS        += $(patsubst %.cpp,obj/%.o,$(LIB_SRC))
-LIB_CLIENT_OBJS += $(patsubst %.cpp,obj/%.o,$(LIB_CLIENT_SRC))
-LANG_OBJS       += $(patsubst %.cpp,obj/%.o,$(LANG_SRC))
-DAEMON_OBJS     += $(patsubst %.cpp,obj/%.o,$(DAEMON_SRC))
-WRAP_LIB_OBJS   += $(patsubst %.cpp,obj/%.o,$(WRAP_LIB_SRC))
-DEPS            += $(LIB_OBJS:.o=.d) $(LIB_CLIENT_OBJS:.o=.d) $(LANG_OBJS:.o=.d) $(DAEMON_OBJS:.o=.d) $(WRAP_LIB_OBJS:.o=.d)
-
-## Build all code (libi2pd, libi2pdclient, libi2pdlang), link it to .a and build binary
-all: $(ARLIB) $(ARLIB_CLIENT) $(ARLIB_LANG) $(I2PD)
-
-mk_obj_dir:
-	@mkdir -p obj/$(LIB_SRC_DIR)
-	@mkdir -p obj/$(LIB_CLIENT_SRC_DIR)
-	@mkdir -p obj/$(LANG_SRC_DIR)
-	@mkdir -p obj/$(DAEMON_SRC_DIR)
-	@mkdir -p obj/$(WRAP_SRC_DIR)
-	@mkdir -p obj/Win32
-
-api: $(SHLIB) $(ARLIB)
-client: $(SHLIB_CLIENT) $(ARLIB_CLIENT)
-lang:  $(SHLIB_LANG) $(ARLIB_LANG)
-api_client: api client lang
-wrapper: api_client $(SHLIB_WRAP) $(ARLIB_WRAP)
-
-## NOTE: The NEEDED_CXXFLAGS are here so that CXXFLAGS can be specified at build time
-## **without** overwriting the CXXFLAGS which we need in order to build.
-## For example, when adding 'hardening flags' to the build
-## (e.g. -fstack-protector-strong -Wformat -Werror=format-security), we do not want to remove
-## -std=c++11. If you want to remove this variable please do so in a way that allows setting
-## custom FLAGS to work at build-time.
-
-obj/%.o: %.cpp | mk_obj_dir
-	$(CXX) $(CXXFLAGS) $(NEEDED_CXXFLAGS) $(DEFINES) $(INCFLAGS) -c -o $@ $<
-
-# '-' is 'ignore if missing' on first run
--include $(DEPS)
-
-$(I2PD): $(DAEMON_OBJS) $(ARLIB) $(ARLIB_CLIENT) $(ARLIB_LANG)
-	$(CXX) $(DEFINES) $(LDFLAGS) -o $@ $^ $(LDLIBS)
-
-$(SHLIB): $(LIB_OBJS)
-ifneq ($(USE_STATIC),yes)
-	$(CXX) $(LDFLAGS) -shared -o $@ $^ $(LDLIBS)
-endif
-
-$(SHLIB_CLIENT): $(LIB_CLIENT_OBJS) $(SHLIB) $(SHLIB_LANG)
-ifneq ($(USE_STATIC),yes)
-	$(CXX) $(LDFLAGS) -shared -o $@ $^ $(LDLIBS) $(SHLIB) $(SHLIB_LANG)
-endif
-
-$(SHLIB_WRAP): $(WRAP_LIB_OBJS)
-ifneq ($(USE_STATIC),yes)
-	$(CXX) $(LDFLAGS) -shared -o $@ $^ $(LDLIBS)
-endif
-
-$(SHLIB_LANG): $(LANG_OBJS)
-ifneq ($(USE_STATIC),yes)
-	$(CXX) $(LDFLAGS) -shared -o $@ $^ $(LDLIBS)
-endif
-
-$(ARLIB): $(LIB_OBJS)
-	$(AR) -r $@ $^
-
-$(ARLIB_CLIENT): $(LIB_CLIENT_OBJS)
-	$(AR) -r $@ $^
-
-$(ARLIB_WRAP): $(WRAP_LIB_OBJS)
-	$(AR) -r $@ $^
-
-$(ARLIB_LANG): $(LANG_OBJS)
-	$(AR) -r $@ $^
+install:
+	${CMAKE} --install ${BUILD_DIR}
 
 clean:
-	$(RM) -r obj
-	$(RM) -r docs/generated
-	$(RM) $(I2PD) $(SHLIB) $(ARLIB) $(SHLIB_CLIENT) $(ARLIB_CLIENT) $(SHLIB_LANG) $(ARLIB_LANG) $(SHLIB_WRAP) $(ARLIB_WRAP)
+	${CMAKE} -E remove_directory ${BUILD_DIR}
 
-strip: $(I2PD) $(SHLIB) $(SHLIB_CLIENT) $(SHLIB_LANG)
-	strip $^
-
-LATEST_TAG=$(shell git describe --tags --always --abbrev=0 HEAD)
-BRANCH=$(shell git rev-parse --abbrev-ref HEAD)
 dist:
-	git archive --format=tar.gz -9 --worktree-attributes \
-	    --prefix=i2pd_$(LATEST_TAG)/ $(LATEST_TAG) -o i2pd_$(LATEST_TAG).tar.gz
-
-last-dist:
-	git archive --format=tar.gz -9 --worktree-attributes \
-	    --prefix=i2pd_$(LATEST_TAG)/ $(BRANCH) -o ../i2pd_$(LATEST_TAG).orig.tar.gz
-
-doxygen:
-	doxygen -s docs/Doxyfile
-
-.PHONY: all
-.PHONY: clean
-.PHONY: doxygen
-.PHONY: dist
-.PHONY: last-dist
-.PHONY: api
-.PHONY: api_client
-.PHONY: client
-.PHONY: lang
-.PHONY: mk_obj_dir
-.PHONY: install
-.PHONY: strip
+	git archive --format=tar.gz -9 --prefix=open-i2pd/ HEAD -o open-i2pd.tar.gz

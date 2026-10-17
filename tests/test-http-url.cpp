@@ -112,6 +112,19 @@ int main() {
   assert(url->query == "");
   delete url;
 
+  /* the whole port must be numeric and in range */
+  url = new URL;
+  assert(url->parse("http://site.com:123abc/") == false);
+  delete url;
+
+  url = new URL;
+  assert(url->parse("http://site.com:0/") == false);
+  delete url;
+
+  url = new URL;
+  assert(url->parse("http://site.com:65536/") == false);
+  delete url;
+
   url = new URL;
   assert(url->parse("http://user:password@site.com:84/asdasd/@17#frag") == true);
   assert(url->schema == "http");

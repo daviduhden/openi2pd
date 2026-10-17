@@ -277,3 +277,12 @@ android/libs/
 
 qt/build-*.sh*
 
+
+# Android app build artifacts and local configuration
+android/.gradle/
+android/.idea/
+android/build/
+android/app/build/
+android/local.properties
+android/**/*.jks
+android/**/*.keystore

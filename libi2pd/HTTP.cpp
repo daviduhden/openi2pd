@@ -7,6 +7,7 @@
 */
 
 #include <algorithm>
+#include <optional>
 #include <utility>
 #include <stdio.h>
 #include <ctime>
@@ -68,21 +69,36 @@ namespace http
 		if (!line.empty ()) tokens.push_back (line);
 	}
 
-	static std::pair<std::string, std::string> parse_header_line(std::string_view line)
+	static bool is_header_name(std::string_view name)
 	{
-		std::size_t pos = 0;
-		std::size_t len = 1; /*: */
-		std::size_t max = line.length();
-		if ((pos = line.find(':', pos)) == std::string::npos)
-			return std::pair{"", ""}; // no ':' found
-		if (pos + 1 < max) // ':' at the end of header is valid
+		// RFC 9110 token: no controls, separators or whitespace.
+		static constexpr std::string_view separators = "()<>@,;:\\\"/[]?={} \t";
+		if (name.empty ()) return false;
+		for (unsigned char ch : name)
 		{
-			while ((pos + len) < max && isspace(line.at(pos + len)))
-				len++;
-			if (len == 1)
-				return std::pair{"", ""}; // no following space, but something else
+			if (ch <= 0x20 || ch >= 0x7f) return false;
+			if (separators.find (static_cast<char> (ch)) != std::string_view::npos) return false;
 		}
-		return std::pair{std::string (line.substr(0, pos)), std::string (line.substr(pos + len))};
+		return true;
+	}
+
+	static std::optional<std::pair<std::string, std::string>> parse_header_line(std::string_view line)
+	{
+		const auto pos = line.find (':');
+		if (pos == std::string_view::npos) return std::nullopt;
+
+		const auto name = line.substr (0, pos);
+		if (!is_header_name (name)) return std::nullopt;
+
+		// RFC 9110 allows zero or more optional whitespace characters after
+		// the colon. Requiring a space here rejected valid peers such as
+		// "Host:example.i2p".
+		auto value = line.substr (pos + 1);
+		while (!value.empty () && (value.front () == ' ' || value.front () == '\t'))
+			value.remove_prefix (1);
+		while (!value.empty () && (value.back () == ' ' || value.back () == '\t'))
+			value.remove_suffix (1);
+		return std::pair{std::string (name), std::string (value)};
 	}
 
 	void gen_rfc7231_date(std::string & out) {
@@ -164,7 +180,7 @@ namespace http
 
 				port = 0;
 				auto res = std::from_chars (port_str.data(), port_str.data() + port_str.size(), port);
-				if (res.ec != std::errc())
+				if (res.ec != std::errc() || res.ptr != port_str.data() + port_str.size() || port == 0)
 					return false;
 
 				if (pos_c == std::string::npos)
@@ -361,10 +377,8 @@ namespace http
 			{
 				std::string_view line = str.substr(pos, eol - pos);
 				auto p = parse_header_line(line);
-				if (p.first.length () > 0)
-					headers.push_back (p);
-				else
-					return -1;
+				if (!p) return -1;
+				headers.push_back (std::move (*p));
 			}
 			pos = eol + CRLF.length();
 			if (pos >= eoh)
@@ -461,15 +475,23 @@ namespace http
 
 	long int HTTPMsg::content_length() const
 	{
-		unsigned long int length = 0;
 		auto it = headers.find("Content-Length");
 		if (it == headers.end())
 			return -1;
-		errno = 0;
-		length = std::strtoul(it->second.c_str(), (char **) NULL, 10);
-		if (errno != 0)
+
+		// strtoul accepted signs, whitespace and trailing garbage, so a
+		// malformed value could be interpreted as a different length by our
+		// parser than by the next hop. Parse the complete decimal value or
+		// reject it. The upper bound also keeps a hostile header from being
+		// turned into a huge reservation by callers.
+		static constexpr unsigned long MAX_CONTENT_LENGTH = 64UL * 1024 * 1024;
+		unsigned long length = 0;
+		const auto* begin = it->second.data ();
+		const auto* end = begin + it->second.size ();
+		auto result = std::from_chars (begin, end, length);
+		if (result.ec != std::errc () || result.ptr != end || length > MAX_CONTENT_LENGTH)
 			return -1;
-		return length;
+		return static_cast<long int> (length);
 	}
 
 	int HTTPRes::parse(const char *buf, size_t len)
@@ -511,10 +533,8 @@ namespace http
 			{
 				std::string_view line = str.substr(pos, eol - pos);
 				auto p = parse_header_line(line);
-				if (p.first.length () > 0)
-					headers.insert (p);
-				else
-					return -1;
+				if (!p) return -1;
+				headers.insert (std::move (*p));
 			}
 			pos = eol + CRLF.length();
 			if (pos >= eoh)
@@ -609,31 +629,33 @@ namespace http
 
 	bool MergeChunkedResponse (std::istream& in, std::ostream& out)
 	{
+		static constexpr size_t MAX_CHUNK_SIZE = 10 * 1024 * 1024;
 		std::string hexLen;
+		std::vector<char> buf;
 		while (!in.eof ())
 		{
-			std::getline (in, hexLen);
-			long len = 0;
-			try
-			{
-				len = std::stoi (hexLen, nullptr, 16);
-			}
-			catch (std::exception& ex)
-			{
+			if (!std::getline (in, hexLen)) return false;
+			// Chunk extensions are separated by ';'.
+			if (auto semicolon = hexLen.find (';'); semicolon != std::string::npos)
+				hexLen.resize (semicolon);
+			while (!hexLen.empty () && (hexLen.back () == '\r' || hexLen.back () == ' ' || hexLen.back () == '\t'))
+				hexLen.pop_back ();
+			if (hexLen.empty ()) return false;
+
+			size_t len = 0;
+			auto result = std::from_chars (hexLen.data (), hexLen.data () + hexLen.size (), len, 16);
+			if (result.ec != std::errc () || result.ptr != hexLen.data () + hexLen.size ())
 				return false;
-			}
 			if (!len) return true; // end of stream
-			if (len < 0 || len > 10 * 1024 * 1024) /* < 10Mb */
+			if (len > MAX_CHUNK_SIZE)
 				return false; /* too large chunk */
-			char * buf = new char[len];
-			in.read (buf, len);
-			if (in.gcount () != len) /* chunk is shorter than announced */
-			{
-				delete[] buf;
+
+			buf.resize (len);
+			in.read (buf.data (), static_cast<std::streamsize> (len));
+			if (in.gcount () != static_cast<std::streamsize> (len)) /* chunk is shorter than announced */
 				return false;
-			}
-			out.write (buf, len);
-			delete[] buf;
+			out.write (buf.data (), static_cast<std::streamsize> (len));
+			if (!out) return false;
 			std::getline (in, hexLen); // read \r\n after chunk
 		}
 		return true;

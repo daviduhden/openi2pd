@@ -387,7 +387,7 @@ namespace stream
 			i2p::data::GzipInflator m_Inflator;
 			i2p::data::GzipDeflator m_Deflator;
 
-			// for HTTP only
+			// for administrative views
 			const decltype(m_Streams)& GetStreams () const { return m_Streams; };
 
 			// copy for other threads, unlike GetStreams which hands out the map itself

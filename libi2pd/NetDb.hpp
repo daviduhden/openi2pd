@@ -10,6 +10,7 @@
 #define NETDB_H__
 // this file is called NetDb.hpp to resolve conflict with libc's netdb.h on case insensitive fs
 #include <inttypes.h>
+#include <atomic>
 #include <unordered_set>
 #include <unordered_map>
 #include <string>
@@ -114,10 +115,25 @@ namespace data
 			void Reseed ();
 			Families& GetFamilies () { return m_Families; };
 
-			// for web interface
-			int GetNumRouters () const { return m_RouterInfos.size (); };
-			int GetNumFloodfills () const { return m_Floodfills.GetSize (); };
-			int GetNumLeaseSets () const { return m_LeaseSets.size (); };
+			// Counts for administrative interfaces. The containers are
+			// mutated by several NetDb threads, so every read takes the
+			// corresponding mutex instead of racing with insert/erase.
+			int GetNumRouters () const
+			{
+				std::lock_guard<std::mutex> l (m_RouterInfosMutex);
+				return static_cast<int> (m_RouterInfos.size ());
+			}
+			int GetNumFloodfills () const
+			{
+				std::lock_guard<std::mutex> l (m_FloodfillsMutex);
+				return static_cast<int> (m_Floodfills.GetSize ());
+			}
+			int GetNumLeaseSets () const
+			{
+				std::lock_guard<std::mutex> l (m_LeaseSetsMutex);
+				return static_cast<int> (m_LeaseSets.size ());
+			}
+			bool IsReseeding () const { return m_IsReseeding.load (std::memory_order_relaxed); }
 
 			/** visit all lease sets we currently store */
 			void VisitLeaseSets(LeaseSetVisitor v);
@@ -193,6 +209,8 @@ namespace data
 
 			GzipInflator m_Inflator;
 			Reseeder * m_Reseeder;
+			std::mutex m_ReseedMutex;
+			std::atomic<bool> m_IsReseeding{false};
 			Families m_Families;
 			i2p::fs::HashedStorage m_Storage;
 

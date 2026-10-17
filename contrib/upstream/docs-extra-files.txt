@@ -1,0 +1,3 @@
+LICENSE	docs/LICENSE.i2pd-docs-en
+README.md	docs/UPSTREAM-README.md
+mkdocs.yml	docs/mkdocs.yml

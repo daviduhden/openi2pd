@@ -36,8 +36,10 @@
 #include "Garlic.h"
 #include "Streaming.h"
 #include "Destination.h"
-#include "HTTPServer.h"
 #include "I2PControl.h"
+#ifndef _WIN32
+#include "TuiServer.h"
+#endif
 #include "ClientContext.h"
 #include "Crypto.h"
 #include "UPnP.h"
@@ -67,7 +69,9 @@ namespace util
 		Daemon_Singleton_Private() {};
 		~Daemon_Singleton_Private() {};
 
-		std::unique_ptr<i2p::http::HTTPServer> httpServer;
+#ifndef _WIN32
+		std::unique_ptr<i2p::tui::Server> tuiServer;
+#endif
 		std::unique_ptr<i2p::client::I2PControlService> m_I2PControlService;
 		std::unique_ptr<i2p::transport::UPnP> UPnP;
 		std::unique_ptr<i2p::util::NTPTimeSync> m_NTPSync;
@@ -141,7 +145,7 @@ namespace util
 		i2p::config::SetOption ("conf", AbsolutePath (config));
 		for (const char * option : {"tunconf", "tunnelsdir", "certsdir", "logfile", "pidfile",
 			"reseed.file", "reseed.zipfile", "addressbook.hostsfile",
-			"openbsd.pledge_file", "openbsd.unveil_file"})
+			"tui.socket", "openbsd.pledge_file", "openbsd.unveil_file"})
 		{
 			std::string path;
 			i2p::config::GetOption (option, path);
@@ -188,7 +192,7 @@ namespace util
 #ifndef _WIN32
 		} else if (logs == "syslog") {
 			LogPrint(eLogInfo, "Log: Sending messages to syslog");
-			i2p::log::Logger().SendTo("i2pd", LOG_DAEMON);
+			i2p::log::Logger().SendTo("open-i2pd", LOG_DAEMON);
 #endif
 		} else {
 			// use stdout -- default
@@ -420,23 +424,6 @@ namespace util
 			return false;
 		}
 
-		bool http; i2p::config::GetOption("http.enabled", http);
-		if (http) {
-			std::string httpAddr; i2p::config::GetOption("http.address", httpAddr);
-			uint16_t    httpPort; i2p::config::GetOption("http.port", httpPort);
-			LogPrint(eLogInfo, "Daemon: Starting Webconsole at ", httpAddr, ":", httpPort);
-			try
-			{
-				d.httpServer = std::unique_ptr<i2p::http::HTTPServer>(new i2p::http::HTTPServer(httpAddr, httpPort));
-				d.httpServer->Start();
-			}
-			catch (std::exception& ex)
-			{
-				LogPrint (eLogCritical, "Daemon: Failed to start Webconsole: ", ex.what ());
-				ThrowFatal ("Unable to start webconsole at ", httpAddr, ":", httpPort, ": ", ex.what ());
-			}
-		}
-
 		LogPrint(eLogInfo, "Daemon: Starting Tunnels");
 		i2p::tunnel::tunnels.Start();
 
@@ -445,6 +432,24 @@ namespace util
 
 		LogPrint(eLogInfo, "Daemon: Starting Client");
 		i2p::client::context.Start ();
+
+#ifndef _WIN32
+		bool tuiEnabled; i2p::config::GetOption ("tui.enabled", tuiEnabled);
+		if (tuiEnabled)
+		{
+			std::string socketPath; i2p::config::GetOption ("tui.socket", socketPath);
+			if (socketPath.empty ())
+				socketPath = i2p::fs::DataDirPath ("i2pd-tui.sock");
+			// The TUI is optional: a failure to create its local socket must
+			// never prevent the router from running headless.
+			d.tuiServer = std::make_unique<i2p::tui::Server> (socketPath);
+			if (!d.tuiServer->Start ())
+			{
+				LogPrint (eLogWarning, "Daemon: TUI IPC disabled, router continues without it");
+				d.tuiServer.reset ();
+			}
+		}
+#endif
 
 		// I2P Control Protocol
 		bool i2pcontrol; i2p::config::GetOption("i2pcontrol.enabled", i2pcontrol);
@@ -469,13 +474,15 @@ namespace util
 	bool Daemon_Singleton::stop()
 	{
 		LogPrint(eLogInfo, "Daemon: Shutting down");
-		// these two serve pages from their own threads, they must go before
-		// anything they read is taken apart
-		if (d.httpServer) {
-			LogPrint(eLogInfo, "Daemon: Stopping HTTP Server");
-			d.httpServer->Stop();
-			d.httpServer = nullptr;
+		// These two own threads and read router state, so they must stop
+		// before the subsystems they observe are torn down.
+#ifndef _WIN32
+		if (d.tuiServer) {
+			LogPrint(eLogInfo, "Daemon: Stopping TUI IPC");
+			d.tuiServer->Stop();
+			d.tuiServer = nullptr;
 		}
+#endif
 		if (d.m_I2PControlService)
 		{
 			LogPrint(eLogInfo, "Daemon: Stopping I2PControl");

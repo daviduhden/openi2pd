@@ -31,15 +31,30 @@ int main() {
   assert(Base64ToByteStream("", (uint8_t *) out, sizeof(out)) == 0);
 
   in = "dGVzdA=="; /* valid b64 */
-  assert(Base64ToByteStream(in, (uint8_t *) out, sizeof(out)) == 4);
+  std::span<uint8_t> span_out(reinterpret_cast<uint8_t *>(out), sizeof(out));
+  assert(Base64ToByteStream(in, span_out) == 4);
   assert(memcmp(out, "test", 4) == 0);
+  /* a short span must be rejected before any write */
+  assert(Base64ToByteStream(in, span_out.first(3)) == 0);
 
   in = "dGVzdA=";  /* invalid b64 : not padded */
   assert(Base64ToByteStream(in, (uint8_t *) out, sizeof(out)) == 0);
 
   in = "dG/z.A=="; /* invalid b64 : char not from alphabet */
-//  assert(Base64ToByteStream(in, strlen(in), (uint8_t *) out, sizeof(out)) == 0);
-//  ^^^ fails, current implementation not checks acceptable symbols
+  assert(Base64ToByteStream(in, (uint8_t *) out, sizeof(out)) == 0);
+
+  in = "===="; /* padding cannot start a quartet */
+  assert(Base64ToByteStream(in, (uint8_t *) out, sizeof(out)) == 0);
+
+  in = "A==="; /* padding must be at the end */
+  assert(Base64ToByteStream(in, (uint8_t *) out, sizeof(out)) == 0);
+
+  in = "dGVzdA"; /* missing padding is outside this wire format */
+  assert(Base64ToByteStream(in, (uint8_t *) out, sizeof(out)) == 0);
+
+  /* The reverse table used to be initialized lazily and raced on first use. */
+  assert(Base64ToByteStream("dGVzdA==", (uint8_t *) out, sizeof(out)) == 4);
+  assert(memcmp(out, "test", 4) == 0);
 
   return 0;
 }

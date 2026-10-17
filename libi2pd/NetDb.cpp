@@ -10,7 +10,7 @@
 #include <fstream>
 #include <vector>
 #include <map>
-#include <utility> // for C++20 with boost < 1.81
+#include <utility>
 #include <boost/asio.hpp>
 #include <stdexcept>
 
@@ -493,6 +493,19 @@ namespace data
 
 	void NetDb::Reseed ()
 	{
+		// Reseed can be requested by the NetDb thread and by I2PControl at
+		// the same time. Never build or use m_Reseeder concurrently; a
+		// second request is simply ignored while one is in progress.
+		std::unique_lock<std::mutex> lock (m_ReseedMutex, std::try_to_lock);
+		if (!lock.owns_lock ()) return;
+		if (m_IsReseeding.exchange (true)) return;
+
+		struct ReseedGuard
+		{
+			std::atomic<bool>& flag;
+			~ReseedGuard () { flag.store (false); }
+		} guard{m_IsReseeding};
+
 		if (!m_Reseeder)
 		{
 			m_Reseeder = new Reseeder ();

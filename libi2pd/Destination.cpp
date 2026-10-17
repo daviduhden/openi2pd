@@ -1661,11 +1661,7 @@ namespace client
 
 	bool ClientDestination::SupportsEncryptionType (i2p::data::CryptoKeyType keyType) const
 	{
-#if __cplusplus >= 202002L // C++20
 		return m_EncryptionKeys.contains (keyType);
-#else
-		return m_EncryptionKeys.count (keyType) > 0;
-#endif
 	}
 
 	i2p::data::CryptoKeyType ClientDestination::GetRatchetsHighestCryptoType () const

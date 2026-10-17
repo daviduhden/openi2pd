@@ -22,7 +22,7 @@
 #include <memory>
 #include <atomic>
 #include <random>
-#include <utility> // for C++20 with boost < 1.81
+#include <utility>
 #include <boost/asio.hpp>
 #include "TransportSession.h"
 #include "SSU2.h"
@@ -118,6 +118,20 @@ namespace transport
 	};
 
 	const uint64_t SESSION_CREATION_TIMEOUT = 15; // in seconds
+	/**
+	 * Immutable copy of the transport peer table for administrative views.
+	 * It intentionally contains no RouterInfo pointers or session objects:
+	 * the caller cannot retain router state or race with peer cleanup.
+	 */
+	struct PeerSnapshot
+	{
+		i2p::data::IdentHash ident;
+		int numAttempts;
+		size_t numSessions;
+		uint8_t transports; // bitmask of active TransportSession transports
+		bool isHighBandwidth;
+	};
+
 	const int PEER_TEST_INTERVAL = 68*60; // in seconds
 	const int PEER_TEST_INTERVAL_VARIANCE = 3*60; // in seconds
 	const int PEER_TEST_DELAY_INTERVAL = 20; // in milliseconds
@@ -185,7 +199,8 @@ namespace transport
 			uint32_t GetOutBandwidth15s () const { return m_OutBandwidth15s; };
 			uint32_t GetTransitBandwidth15s () const { return m_TransitBandwidth15s; };
 			int GetCongestionLevel (bool longTerm) const;
-			size_t GetNumPeers () const { return m_Peers.size (); };
+			size_t GetNumPeers () const;
+			std::vector<PeerSnapshot> GetPeersSnapshot (size_t max) const;
 			std::shared_ptr<const i2p::data::RouterInfo> GetRandomPeer (bool isHighBandwidth, i2p::data::PeerOrdering * peerOrdering = nullptr) const;
 
 			/** get a trusted first hop for restricted routes */
@@ -280,7 +295,7 @@ namespace transport
 
 		public:
 
-			// for HTTP only
+			// for administrative views
 			const NTCP2Server * GetNTCP2Server () const { return m_NTCP2Server; };
 			SSU2Server * GetSSU2Server () const { return m_SSU2Server; };
 			const decltype(m_Peers)& GetPeers () const { return m_Peers; };

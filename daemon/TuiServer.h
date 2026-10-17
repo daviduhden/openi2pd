@@ -1,0 +1,65 @@
+/*
+* Copyright (c) 2013-2026, The PurpleI2P Project
+*
+* This file is part of Open I2Pd and licensed under BSD3
+*
+* See full license text in LICENSE file at top of project tree
+*/
+
+#ifndef TUI_SERVER_H__
+#define TUI_SERVER_H__
+
+#ifndef _WIN32
+
+#include <atomic>
+#include <memory>
+#include <stop_token>
+#include <string>
+#include <sys/types.h>
+#include <thread>
+
+namespace i2p
+{
+namespace tui
+{
+	/**
+	 * Local, read-only administrative channel for i2pd-tui.
+	 *
+	 * The router owns the listening socket and all snapshot collection. The
+	 * TUI is a separate process and can disappear, hang or misbehave without
+	 * affecting the daemon: every request is bounded, handled sequentially
+	 * and written with a send timeout. Only a peer with the daemon's effective
+	 * UID is accepted, on top of a 0600 socket in the data directory.
+	 */
+	class Server
+	{
+		public:
+
+			explicit Server (std::string socketPath);
+			~Server ();
+
+			Server (const Server&) = delete;
+			Server& operator= (const Server&) = delete;
+
+			bool Start ();
+			void Stop ();
+
+		private:
+
+			void Run (std::stop_token stopToken);
+			void HandleClient (int clientFd, std::stop_token stopToken);
+			bool IsTrustedPeer (int clientFd) const;
+
+			std::string m_Path;
+			int m_ListenFd{-1};
+			dev_t m_Device{0};
+			ino_t m_Inode{0};
+			bool m_HasIdentity{false};
+			std::jthread m_Thread;
+	};
+}
+}
+
+#endif // _WIN32
+
+#endif // TUI_SERVER_H__

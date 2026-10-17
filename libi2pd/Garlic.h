@@ -174,7 +174,7 @@ namespace garlic
 
 		public:
 
-			// for HTTP only
+			// for administrative views
 			virtual size_t GetNumOutgoingTags () const { return 0; };
 	};
 	//using GarlicRoutingSessionPtr = std::shared_ptr<GarlicRoutingSession>;
@@ -229,7 +229,7 @@ namespace garlic
 
 		public:
 
-			// for HTTP only
+			// for administrative views
 			size_t GetNumOutgoingTags () const { return m_SessionTags.size (); };
 	};
 	typedef std::shared_ptr<ElGamalAESSession> ElGamalAESSessionPtr;
@@ -340,7 +340,7 @@ namespace garlic
 
 		public:
 
-			// for HTTP only
+			// for administrative views
 			size_t GetNumIncomingTags () const { return m_Tags.size (); }
 			size_t GetNumIncomingECIESx25519Tags () const { return m_ECIESx25519Tags.size (); }
 			// thread-safe snapshots, safe to iterate without holding any lock

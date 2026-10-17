@@ -163,7 +163,7 @@ namespace tunnel
 
 		public:
 
-			// for HTTP and I2PControl; thread-safe snapshot, safe to iterate without holding any lock
+			// for administrative views and I2PControl; thread-safe snapshot, safe to iterate without holding any lock
 			std::vector<std::shared_ptr<TransitTunnel> > GetTransitTunnelsList () const
 			{
 				std::lock_guard<std::mutex> l(m_TransitTunnelsMutex);

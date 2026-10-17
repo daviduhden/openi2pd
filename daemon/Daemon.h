@@ -45,7 +45,7 @@ namespace util
 
 		bool IsService () const;
 
-		// d-pointer for httpServer, httpProxy, etc.
+		// d-pointer for the optional IPC service and UPnP/NTP helpers
 		class Daemon_Singleton_Private;
 		Daemon_Singleton_Private &d;
 

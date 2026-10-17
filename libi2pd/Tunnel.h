@@ -327,7 +327,7 @@ namespace tunnel
 
 		public:
 
-			// for HTTP only; thread-safe snapshots, safe to iterate without holding any lock
+			// for administrative views; thread-safe snapshots, safe to iterate without holding any lock
 			std::vector<std::shared_ptr<OutboundTunnel> > GetOutboundTunnelsList () const
 			{
 				std::lock_guard<std::mutex> l(m_TunnelsMutex);

@@ -8,7 +8,6 @@
 # Short-Description: C++ daemon for accessing the I2P network
 ### END INIT INFO
 
-# Author: hagen <hagen@i2pmail.org>
 
 PATH=/sbin:/usr/sbin:/bin:/usr/bin
 DESC=i2pd                 # Introduce a short description here

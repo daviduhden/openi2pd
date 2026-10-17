@@ -48,7 +48,7 @@ namespace config {
 		options_description general("General options");
 		general.add_options()
 			("help",                                                          "Show this message")
-			("version",                                                       "Show i2pd version")
+			("version",                                                       "Show Open I2Pd version")
 			("conf", value<std::string>()->default_value(""),                 "Path to main i2pd config file (default: try " path_to_file(i2pd.conf) ")")
 			("tunconf", value<std::string>()->default_value(""),              "Path to config with tunnels list and options (default: try " path_to_file(tunnels.conf) ")")
 			("tunnelsdir", value<std::string>()->default_value(""),           "Path to extra tunnels' configs folder (default: " path_to_file(tunnels.d))
@@ -100,19 +100,15 @@ namespace config {
 			("limits.ntcpthreads", value<uint16_t>()->default_value(1),       "Ignored")
 		;
 
-		options_description httpserver("HTTP Server options");
-		httpserver.add_options()
-			("http.enabled", value<bool>()->default_value(true),                "Enable or disable webconsole")
-			("http.address", value<std::string>()->default_value("127.0.0.1"),  "Webconsole listen address")
-			("http.port", value<uint16_t>()->default_value(7070),               "Webconsole listen port")
-			("http.auth", value<bool>()->default_value(false),                  "Enable Basic HTTP auth for webconsole")
-			("http.user", value<std::string>()->default_value("i2pd"),          "Username for basic auth")
-			("http.pass", value<std::string>()->default_value(""),              "Password for basic auth (default: random, see logs)")
-			("http.strictheaders", value<bool>()->default_value(true),          "Enable strict host checking on WebUI")
-			("http.hostname", value<std::string>()->default_value("localhost"), "Expected hostname for WebUI")
-			("http.webroot", value<std::string>()->default_value("/"),          "WebUI root path (default: / )")
-			("http.showTotalTCSR", value<bool>()->default_value(false),         "Show additional value with total TCSR since router's start (default: false)")
-			("http.theme", value<std::string>()->default_value("light"), 	    "Theme for http web console")
+		options_description tui("Local TUI options (Unix only)");
+#if defined(ANDROID)
+		const bool tuiDefault = false; // the Android app does not ship i2pd-tui
+#else
+		const bool tuiDefault = true;
+#endif
+		tui.add_options()
+			("tui.enabled", value<bool>()->default_value(tuiDefault),       "Enable the local read-only TUI IPC socket")
+			("tui.socket", value<std::string>()->default_value(""),       "Path to the TUI UNIX socket (default: datadir/i2pd-tui.sock)")
 		;
 
 		options_description httpproxy("HTTP Proxy options");
@@ -412,7 +408,7 @@ namespace config {
 		m_OptionsDesc
 			.add(general)
 			.add(limits)
-			.add(httpserver)
+			.add(tui)
 			.add(httpproxy)
 			.add(socksproxy)
 			.add(shareddest)

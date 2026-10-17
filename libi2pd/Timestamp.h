@@ -13,7 +13,7 @@
 #include <thread>
 #include <vector>
 #include <string>
-#include <utility> // for C++20 with boost < 1.81
+#include <utility>
 #include <boost/asio.hpp>
 #include <boost/asio/steady_timer.hpp> // for boost 1.89
 

@@ -172,7 +172,7 @@ namespace tunnel
 				return !m_InboundTunnels.empty ();
 			}
 
-			// for HTTP only; thread-safe snapshots, safe to iterate without holding any lock
+			// for administrative views; thread-safe snapshots, safe to iterate without holding any lock
 			std::vector<std::shared_ptr<OutboundTunnel> > GetOutboundTunnelsList () const
 			{
 				std::unique_lock<std::mutex> l(m_OutboundTunnelsMutex);

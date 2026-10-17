@@ -1,0 +1,97 @@
+site_name: Open I2Pd documentation
+site_description: Documentation for the Open I2Pd router, libraries, TUI and tools
+site_author: Open I2Pd contributors
+docs_dir: .
+site_dir: ../build-output/docs
+
+repo_url: https://github.com/daviduhden/open-i2pd
+
+nav:
+  - Home: index.md
+  - Fork documentation:
+      - Overview: README.md
+      - Architecture: architecture.md
+      - Interoperability: INTEROPERABILITY.md
+      - Legacy interoperability notes: interop-matrix.md
+      - Dependencies: dependencies.md
+      - C++23: cpp23-migration.md
+      - Build system: build-system.md
+      - TUI and IPC: tui-ipc.md
+      - Android modernization: android-modernization.md
+      - Security audit: security-audit.md
+      - Testing: testing.md
+      - Files changed: files-changed.md
+      - Attribution audit: attribution-audit.md
+      - Rebranding audit: REBRANDING.md
+      - Upstream synchronization: upstream-sync.md
+  - User Guide:
+      - Installing: user-guide/install.md
+      - Running: user-guide/run.md
+      - Configuring: user-guide/configuration.md
+      - I2P tunnels: user-guide/tunnels.md
+      - Family: user-guide/family.md
+      - FAQ: user-guide/FAQ.md
+  - How-To / Tutorials:
+      - Anonymous websites: tutorials/http.md
+      - Anonymous IRC: tutorials/irc.md
+      - XMPP: tutorials/xmpp.md
+      - Monero over I2P: tutorials/Monero.md
+      - Filesharing:
+          - Built-in torrent client: tutorials/Filesharing/built-inTorrent.md
+          - Software: tutorials/Filesharing/Software.md
+          - qBittorrent: tutorials/Filesharing/qBittorrent.md
+      - RetroShare: tutorials/retroshare.md
+      - Yggdrasil-only mode: tutorials/yggdrasil-only-mode.md
+      - Encrypted LeaseSet2: tutorials/blinded-addresse.md
+      - Glossary: tutorials/glossary.md
+  - Tools:
+      - Overview: tools/README.md
+      - autoconf_i2pd: tools/autoconf_i2pd.md
+      - b33address: tools/b33address.md
+      - b33offlinekeys: tools/b33offlinekeys.md
+      - famtool: tools/famtool.md
+      - i2pbase64: tools/i2pbase64.md
+      - keygen: tools/keygen.md
+      - keyinfo: tools/keyinfo.md
+      - offlinekeys: tools/offlinekeys.md
+      - regaddr: tools/regaddr.md
+      - regaddr_3ld: tools/regaddr_3ld.md
+      - regaddralias: tools/regaddralias.md
+      - routerinfo: tools/routerinfo.md
+      - vain: tools/vain.md
+      - verifyhost: tools/verifyhost.md
+      - x25519: tools/x25519.md
+      - i2pdctl: tools/i2pdctl.md
+  - Developer:
+      - Guide: developer-guide/README.md
+      - Requirements: devs/building/requirements.md
+      - Unix: devs/building/unix.md
+      - Windows: devs/building/windows.md
+      - Android app: devs/building/android.md
+      - Cross compilation: devs/building/cross.md
+      - iOS: devs/building/ios.md
+      - Qt GUI: devs/building/qt-desktop-gui.md
+      - HaikuOS: devs/building/haikuos.md
+      - API selection: devs/api/index.md
+      - SAM: devs/api/SAM.md
+      - BOB: devs/api/BOB.md
+      - I2CP: devs/api/I2CP.md
+      - I2PControl: devs/api/I2PControl.md
+      - libi2pd: devs/api/libi2pd.md
+      - Hacking: devs/hacking.md
+      - i2pd-specific changes: devs/i2pd-specifics.md
+  - Protocols: protocols/README.md
+  - Security: security/README.md
+  - About:
+      - Community: about/community.md
+      - History: about/history.md
+      - License: about/license.md
+      - Contributing: about/contributing.md
+
+copyright: CC-BY-SA 4.0 for upstream documentation; BSD-3-Clause for the router code.
+
+theme: readthedocs
+
+markdown_extensions:
+  - toc:
+      permalink: true

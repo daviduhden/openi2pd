@@ -31,7 +31,7 @@ namespace i18n
 				std::function<int(int)> formula
 			): m_Language (language), m_RTL (rtl), m_Strings (strings), m_Plurals (plurals), m_Formula (formula) { };
 
-			// Get activated language name for webconsole
+			// Get activated language name for administrative views
 			std::string GetLanguage() const
 			{
 				return m_Language;
@@ -77,7 +77,7 @@ namespace i18n
 			std::function<int(int)> m_Formula;
 	};
 
-	// Retained for native Android integration; the web console always uses English.
+	// Retained for native Android integration; the local TUI always uses English.
 	void SetLanguage(const std::string&);
 	std::string_view translate (std::string_view arg);
 	std::string translate (const std::string& arg, const std::string& arg2, int n);

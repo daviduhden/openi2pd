@@ -112,6 +112,60 @@ int main() {
   assert(req->GetNumHeaders("content-type") == 1);
   delete req;
 
+  /* RFC 9110: optional whitespace after ':' may be absent */
+  buf =
+    "GET / HTTP/1.1\r\n"
+    "Host:example.i2p\r\n"
+    "Content-Length: 0\r\n"
+    "\r\n";
+  len = strlen(buf);
+  req = new HTTPReq;
+  assert((ret = req->parse(buf, len)) == len);
+  assert(req->GetHeader("Host") == "example.i2p");
+  assert(req->GetHeader("Content-Length") == "0");
+  delete req;
+
+  /* A field name containing separators is not a valid token. */
+  buf =
+    "GET / HTTP/1.1\r\n"
+    "Bad Header: value\r\n"
+    "\r\n";
+  len = strlen(buf);
+  req = new HTTPReq;
+  assert((ret = req->parse(buf, len)) == -1);
+  delete req;
+
+  /* Malformed Content-Length values must never be silently coerced. */
+  buf =
+    "GET / HTTP/1.1\r\n"
+    "Content-Length: 12x\r\n"
+    "\r\n";
+  len = strlen(buf);
+  req = new HTTPReq;
+  assert((ret = req->parse(buf, len)) == len);
+  assert(req->GetHeader("Content-Length") == "12x");
+  delete req;
+  {
+    HTTPMsg msg;
+    msg.headers["Content-Length"] = "12x";
+    assert(msg.content_length() == -1);
+  }
+
+  buf =
+    "GET / HTTP/1.1\r\n"
+    "Content-Length: -1\r\n"
+    "\r\n";
+  len = strlen(buf);
+  req = new HTTPReq;
+  assert((ret = req->parse(buf, len)) == len);
+  assert(req->GetHeader("Content-Length") == "-1");
+  delete req;
+  {
+    HTTPMsg msg;
+    msg.headers["Content-Length"] = "-1";
+    assert(msg.content_length() == -1);
+  }
+
   /* test: UpdateHeader case-insensitivity */
   req = new HTTPReq;
   req->AddHeader("Content-Type", "text/plain");

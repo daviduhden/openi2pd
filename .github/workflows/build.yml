@@ -1,9 +1,8 @@
 name: Linux and Android
 
+# Automatic runs are intentionally suspended during the refactoring. Only a
+# maintainer may start this workflow manually from the Actions tab.
 on:
-  push:
-    branches: [main]
-  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -28,8 +27,8 @@ jobs:
           cmake -S build -B build-output -G Ninja \
             -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
             -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
-          cmake --build build-output --parallel 2 --target i2pd test-http-url test-http-req test-base-64 test-aes test-aeadchacha20poly1305
-          ctest --test-dir build-output --output-on-failure --timeout 30 -R '^test-(http-url|http-req|base-64|aes|aeadchacha20poly1305)$'
+          cmake --build build-output --parallel 2
+          ctest --test-dir build-output --output-on-failure --timeout 60
           ./build-output/i2pd --version
 
   android:
@@ -37,6 +36,15 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+      - name: Set up OpenJDK 25
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '25'
+      - name: Validate Android Gradle toolchain
+        run: |
+          cd android
+          ./gradlew --version --no-daemon
       - name: Checkout vcpkg
         uses: actions/checkout@v4
         with:

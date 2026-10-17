@@ -20,7 +20,7 @@
 #include <string>
 #include <functional>
 #include <future>
-#include <utility> // for C++20 with boost < 1.81
+#include <utility>
 #include <boost/asio.hpp>
 #include "Identity.h"
 #include "TunnelPool.h"
@@ -238,7 +238,7 @@ namespace client
 
 		public:
 
-			// for HTTP only
+			// for administrative views
 			int GetNumRemoteLeaseSets () const { std::lock_guard<std::mutex> lock(m_RemoteLeaseSetsMutex); return m_RemoteLeaseSets.size (); };
 			// copy for other threads, unlike GetLeaseSets which hands out the container itself
 			std::vector<std::shared_ptr<i2p::data::LeaseSet> > GetLeaseSetsList () const
@@ -363,7 +363,7 @@ namespace client
 
 		public:
 
-			// for HTTP only
+			// for administrative views
 			std::vector<std::shared_ptr<const i2p::stream::Stream> > GetAllStreams () const;
 			bool DeleteStream (uint32_t recvStreamID);
 	};

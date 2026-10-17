@@ -27,5 +27,20 @@ int main() {
 
   assert(MergeChunkedResponse(truncated, out2) == false);
 
+  /* chunk extensions are legal and must be ignored */
+  std::stringstream extended("3;foo=bar\r\nabc\r\n0\r\n\r\n");
+  std::stringstream out3;
+  assert(MergeChunkedResponse(extended, out3) == true);
+  assert(out3.str() == "abc");
+
+  /* non-hex and trailing garbage must be rejected, not partially parsed */
+  std::stringstream invalid("zz\r\nabc\r\n0\r\n\r\n");
+  std::stringstream out4;
+  assert(MergeChunkedResponse(invalid, out4) == false);
+
+  std::stringstream trailing("3x\r\nabc\r\n0\r\n\r\n");
+  std::stringstream out5;
+  assert(MergeChunkedResponse(trailing, out5) == false);
+
   return 0;
 }

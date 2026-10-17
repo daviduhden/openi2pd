@@ -119,9 +119,6 @@ namespace client
 		public:
 
 			I2PServiceHandler(std::shared_ptr<I2PService> parent) : m_Service(parent)
-#if __cplusplus < 202002L // C++20
-				, m_Dead ATOMIC_FLAG_INIT // {0}
-#endif
 			{ }
 			virtual ~I2PServiceHandler() { }
 			//If you override this make sure you call it from the children

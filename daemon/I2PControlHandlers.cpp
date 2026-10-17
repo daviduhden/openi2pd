@@ -190,7 +190,7 @@ namespace client
 
 	void I2PControlHandlers::NetDbActivePeersHandler (std::ostringstream& results)
 	{
-		InsertParam (results, "i2p.router.netdb.activepeers", (int)i2p::transport::transports.GetPeers ().size ());
+		InsertParam (results, "i2p.router.netdb.activepeers", (int)i2p::transport::transports.GetNumPeers ());
 	}
 
 	void I2PControlHandlers::NetDbFloodfillsHandler (std::ostringstream& results)

@@ -24,7 +24,6 @@
 
 #define ID_ABOUT 2000
 #define ID_EXIT 2001
-#define ID_CONSOLE 2002
 #define ID_APP 2003
 #define ID_GRACEFUL_SHUTDOWN 2004
 #define ID_STOP_GRACEFUL_SHUTDOWN 2005
@@ -50,7 +49,6 @@ namespace win32
 	static void ShowPopupMenu (HWND hWnd, POINT *curpos, int wDefaultItem)
 	{
 		HMENU hPopup = CreatePopupMenu();
-		InsertMenu (hPopup, -1, MF_BYPOSITION | MF_STRING, ID_CONSOLE, "Open &console");
 		InsertMenu (hPopup, -1, MF_BYPOSITION | MF_STRING, ID_DATADIR, "Open &datadir");
 		InsertMenu (hPopup, -1, MF_BYPOSITION | MF_STRING, ID_APP, "&Show app");
 		InsertMenu (hPopup, -1, MF_BYPOSITION | MF_STRING, ID_ABOUT, "&About...");
@@ -67,7 +65,7 @@ namespace win32
 		else
 			InsertMenu (hPopup, -1, MF_BYPOSITION | MF_STRING, ID_STOP_GRACEFUL_SHUTDOWN, "Stop &graceful shutdown");
 		InsertMenu (hPopup, -1, MF_BYPOSITION | MF_STRING, ID_EXIT, "E&xit");
-		SetMenuDefaultItem (hPopup, ID_CONSOLE, FALSE);
+		SetMenuDefaultItem (hPopup, ID_APP, FALSE);
 		SendMessage (hWnd, WM_INITMENUPOPUP, (WPARAM)hPopup, 0);
 
 		POINT p;
@@ -184,15 +182,6 @@ namespace win32
 						std::stringstream text;
 						text << "Open I2Pd reloading configs...";
 						MessageBox( hWnd, TEXT(text.str ().c_str ()), TEXT("Open I2Pd"), MB_ICONINFORMATION | MB_OK );
-						return 0;
-					}
-					case ID_CONSOLE:
-					{
-						char buf[30];
-						std::string httpAddr; i2p::config::GetOption("http.address", httpAddr);
-						uint16_t httpPort; i2p::config::GetOption("http.port", httpPort);
-						snprintf(buf, 30, "http://%s:%d", httpAddr.c_str(), httpPort);
-						ShellExecute(NULL, "open", buf, NULL, NULL, SW_SHOWNORMAL);
 						return 0;
 					}
 					case ID_APP:

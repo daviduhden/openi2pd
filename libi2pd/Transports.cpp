@@ -1082,12 +1082,32 @@ namespace transport
 	bool Transports::IsConnected (const i2p::data::IdentHash& ident) const
 	{
 		std::lock_guard<std::mutex> l(m_PeersMutex);
-#if __cplusplus >= 202002L // C++20
 		return m_Peers.contains (ident);
-#else
-		auto it = m_Peers.find (ident);
-		return it != m_Peers.end ();
-#endif
+	}
+
+	size_t Transports::GetNumPeers () const
+	{
+		std::lock_guard<std::mutex> l(m_PeersMutex);
+		return m_Peers.size ();
+	}
+
+	std::vector<PeerSnapshot> Transports::GetPeersSnapshot (size_t max) const
+	{
+		std::vector<PeerSnapshot> peers;
+		std::lock_guard<std::mutex> l(m_PeersMutex);
+		peers.reserve (std::min (max, m_Peers.size ()));
+		for (const auto& [ident, peer] : m_Peers)
+		{
+			if (peers.size () >= max) break;
+			uint8_t activeTransports = 0;
+			if (peer)
+				for (const auto& session : peer->sessions)
+					if (session) activeTransports |= session->GetTransportType ();
+			peers.push_back (PeerSnapshot{ident, peer ? peer->numAttempts : 0,
+				peer ? peer->sessions.size () : 0, activeTransports,
+				peer ? peer->isHighBandwidth : false});
+		}
+		return peers;
 	}
 
 	void Transports::UpdatePeerParams (std::shared_ptr<const i2p::data::RouterInfo> r)
@@ -1422,11 +1442,7 @@ namespace transport
 	{
 		if (m_TrustedRouters.empty ()) return false;
 		std::lock_guard<std::mutex> l(m_TrustedRoutersMutex);
-#if __cplusplus >= 202002L // C++20
 		if (m_TrustedRouters.contains (ih))
-#else
-		if (m_TrustedRouters.count (ih) > 0)
-#endif
 			return true;
 		return false;
 	}

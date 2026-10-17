@@ -1,28 +1,12 @@
-cmake_minimum_required(VERSION 3.7)
+cmake_minimum_required(VERSION 3.22)
 
-if(${CMAKE_VERSION} VERSION_LESS 3.22)
-  cmake_policy(VERSION ${CMAKE_MAJOR_VERSION}.${CMAKE_MINOR_VERSION})
-else()
-  cmake_policy(VERSION 3.22)
-endif()
-
-# for debugging
-#set(CMAKE_VERBOSE_MAKEFILE on)
-
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-set(CMAKE_CXX_EXTENSIONS OFF)
-
-# paths
+# The project deliberately keeps its CMake entry point in build/ for
+# compatibility with existing package recipes.
+set(PROJECT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/..")
 set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake_modules")
-set(CMAKE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/..")
-
-set(LIBI2PD_SRC_DIR ${CMAKE_SOURCE_DIR}/libi2pd)
-set(LIBI2PD_CLIENT_SRC_DIR ${CMAKE_SOURCE_DIR}/libi2pd_client)
-set(LANG_SRC_DIR ${CMAKE_SOURCE_DIR}/i18n)
-set(DAEMON_SRC_DIR ${CMAKE_SOURCE_DIR}/daemon)
 
 include(Version)
-set_version("${LIBI2PD_SRC_DIR}/version.h" PROJECT_VERSION)
+set_version("${PROJECT_ROOT}/libi2pd/version.h" PROJECT_VERSION)
 
 project(
   OpenI2Pd
@@ -35,426 +19,438 @@ if(NOT CMAKE_SYSTEM_NAME MATCHES "^(Windows|Linux|OpenBSD|Android)$")
   message(FATAL_ERROR "Open I2Pd supports Windows, Linux, OpenBSD and Android")
 endif()
 
-set(I2PD_EXECUTABLE i2pd)
+# C++23 is a hard requirement. There is no fallback: accepting an older
+# standard would silently disable std::expected and other guarantees used by
+# the administrative IPC code.
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
-# configurable options
-option(WITH_HARDENING       "Use hardening compiler flags"            OFF)
-option(WITH_LIBRARY         "Build library"                           ON)
-option(WITH_BINARY          "Build binary"                            ON)
-option(WITH_STATIC          "Static build"                            OFF)
-option(WITH_UPNP            "Include support for UPnP client"         ON)
-option(WITH_GIT_VERSION     "Use git commit info as version"          OFF)
-option(WITH_ADDRSANITIZER   "Build with address sanitizer unix only"  OFF)
-option(WITH_THREADSANITIZER "Build with thread sanitizer unix only"   OFF)
-option(WITH_UNDEFSANITIZER  "Build with undefined sanitizer unix only" OFF)
-option(BUILD_TESTING        "Build tests"                             OFF)
-
-if(ANDROID)
-  add_definitions(-DANDROID)
-  if(WITH_BINARY)
-    add_definitions(-DANDROID_BINARY)
-  endif()
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 13)
+  message(FATAL_ERROR "GCC 13 or newer is required for C++23 (found ${CMAKE_CXX_COMPILER_VERSION})")
+elseif(CMAKE_CXX_COMPILER_ID MATCHES "Clang" AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 17)
+  message(FATAL_ERROR "Clang 17 or newer is required for C++23 (found ${CMAKE_CXX_COMPILER_VERSION})")
+elseif(MSVC AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 19.35)
+  message(FATAL_ERROR "Visual Studio 2022 17.5 (19.35) or newer is required for C++23")
 endif()
 
-IF(BUILD_TESTING)
-  enable_testing()
-ENDIF()
+option(WITH_HARDENING       "Use hardening compiler flags"                 OFF)
+option(WITH_LIBRARY         "Install libraries and headers"                ON)
+option(WITH_BINARY          "Build the router executable"                  ON)
+if(DEFINED WITH_TUI)
+  set(_i2pd_tui_default "${WITH_TUI}")
+else()
+  set(_i2pd_tui_default ON)
+endif()
+option(I2PD_BUILD_TUI       "Build the ncurses TUI when available"         ${_i2pd_tui_default})
+option(I2PD_BUILD_TOOLS     "Build i2pd auxiliary tools"                   ON)
+option(I2PD_BUILD_JNI       "Build the Android JNI library"                  OFF)
+option(I2PD_BUILD_TESTS     "Build i2pd tests (alias of BUILD_TESTING)"    OFF)
+option(WITH_STATIC          "Link the router executable statically"        OFF)
+option(WITH_UPNP            "Include support for the UPnP client"          ON)
+option(WITH_TORRENTS        "Include the BitTorrent client"                ON)
+option(WITH_GIT_VERSION     "Use git commit info as version"               OFF)
+option(WITH_ADDRSANITIZER   "Build with AddressSanitizer (Unix)"           OFF)
+option(WITH_THREADSANITIZER "Build with ThreadSanitizer (Unix)"            OFF)
+option(WITH_UNDEFSANITIZER  "Build with UndefinedBehaviorSanitizer (Unix)" OFF)
+option(BUILD_TESTING        "Build unit and protocol tests"                OFF)
 
-# Handle paths nicely
 include(GNUInstallDirs)
 
-# Architecture
-include(TargetArch)
-target_architecture(ARCHITECTURE)
+# Keep the historical option names working while exposing the canonical
+# I2PD_BUILD_* names requested by the integrated tree.
+if(I2PD_BUILD_TESTS)
+  set(BUILD_TESTING ON CACHE BOOL "Build unit and protocol tests" FORCE)
+endif()
+set(WITH_TUI "${I2PD_BUILD_TUI}")
+include(CTest)
 
-include(CheckAtomic)
+if(ANDROID)
+  set(WITH_TORRENTS OFF)
+  set(WITH_TUI OFF)
+endif()
 
 if(WITH_STATIC)
   if(MSVC)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
   endif()
+  set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
+  set(Boost_USE_STATIC_LIBS ON)
+  set(OPENSSL_USE_STATIC_LIBS ON)
+  set(ZLIB_USE_STATIC_LIBS ON)
+  set(MINIUPNPC_USE_STATIC_LIBS ON)
+  set(BUILD_SHARED_LIBS OFF)
 endif()
 
-include_directories(${LIBI2PD_SRC_DIR})
-FILE(GLOB LIBI2PD_SRC ${LIBI2PD_SRC_DIR}/*.cpp)
-add_library(libi2pd ${LIBI2PD_SRC})
-set_target_properties(libi2pd PROPERTIES PREFIX "")
-
-if(WITH_LIBRARY)
-  install(TARGETS libi2pd
-    EXPORT libi2pd
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    COMPONENT Libraries)
-
-  FILE(GLOB LIBI2PD_HEADERS ${LIBI2PD_SRC_DIR}/*.h*)
-  install(FILES ${LIBI2PD_HEADERS}
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/libi2pd
-    COMPONENT Libraries)
-endif()
-
-include_directories(${LIBI2PD_CLIENT_SRC_DIR})
-FILE(GLOB CLIENT_SRC ${LIBI2PD_CLIENT_SRC_DIR}/*.cpp)
-add_library(libi2pdclient ${CLIENT_SRC})
-set_target_properties(libi2pdclient PROPERTIES PREFIX "")
-
-if(WITH_LIBRARY)
-  install(TARGETS libi2pdclient
-    EXPORT libi2pdclient
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    COMPONENT Libraries)
-
-  FILE(GLOB LIBI2PD_CLIENT_HEADERS ${LIBI2PD_CLIENT_SRC_DIR}/*.h*)
-  install(FILES ${LIBI2PD_CLIENT_HEADERS}
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/libi2pdclient
-    COMPONENT Libraries)
-endif()
-
-include_directories(${LANG_SRC_DIR})
-set(LANG_SRC ${LANG_SRC_DIR}/English.cpp ${LANG_SRC_DIR}/I18N.cpp)
-add_library(libi2pdlang ${LANG_SRC})
-set_target_properties(libi2pdlang PROPERTIES PREFIX "")
-
-if(WITH_LIBRARY)
-  install(TARGETS libi2pdlang
-    EXPORT libi2pdlang
-    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    COMPONENT Libraries)
-
-  FILE(GLOB LANG_HEADERS ${LANG_SRC_DIR}/*.h*)
-  install(FILES ${LANG_HEADERS}
-    DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/libi2pdlang
-    COMPONENT Libraries)
-endif()
-
-include_directories(${DAEMON_SRC_DIR})
-
-set(DAEMON_SRC
-  "${DAEMON_SRC_DIR}/Daemon.cpp"
-  "${DAEMON_SRC_DIR}/HTTPServer.cpp"
-  "${DAEMON_SRC_DIR}/I2PControl.cpp"
-  "${DAEMON_SRC_DIR}/I2PControlHandlers.cpp"
-  "${DAEMON_SRC_DIR}/i2pd.cpp"
-  "${DAEMON_SRC_DIR}/UPnP.cpp"
-)
-
-if(WIN32)
-  set(WIN32_SRC_DIR ${CMAKE_SOURCE_DIR}/Win32)
-  include_directories(${WIN32_SRC_DIR})
-
-  list(APPEND DAEMON_SRC
-    "${WIN32_SRC_DIR}/DaemonWin32.cpp"
-    "${WIN32_SRC_DIR}/Win32App.cpp"
-    "${WIN32_SRC_DIR}/Win32Service.cpp"
-    "${WIN32_SRC_DIR}/Win32NetState.cpp"
-  )
-
-  file(GLOB WIN32_RC ${WIN32_SRC_DIR}/*.rc)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DWIN32_APP -DWIN32_LEAN_AND_MEAN -DNOMINMAX")
-
-endif()
-
-if(WITH_UPNP)
-  add_definitions(-DUSE_UPNP)
-endif()
-
-if(WITH_GIT_VERSION)
-  include(GetGitRevisionDescription)
-  git_describe(GIT_VERSION --always)
-  add_definitions(-DGITVER=${GIT_VERSION})
-endif()
-
-
-if(MSVC)
-  add_definitions(-DWINVER=0x0600)
-  add_definitions(-D_WIN32_WINNT=0x0600)
-else()
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Winvalid-pch -Wno-unused-parameter -Wno-uninitialized")
-  set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -pedantic")
-  # TODO: The following is incompatible with static build and enabled hardening for OpenWRT.
-  # Multiple definitions of __stack_chk_fail(libssp & libc)
-  if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-    set(CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL} -flto -s")
-  endif()
-  set(CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL} -ffunction-sections -fdata-sections")
-  set(CMAKE_EXE_LINKER_FLAGS_MINSIZEREL "-Wl,--gc-sections") # -flto is added from above
-endif()
-
-if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pipe")
-  if(WITH_HARDENING)
-    add_definitions("-D_FORTIFY_SOURCE=2")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wformat -Wformat-security -Werror=format-security")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fstack-protector --param ssp-buffer-size=4")
-  endif()
-elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-  # more tweaks
-  if(LINUX)
-    set(CMAKE_REQUIRED_FLAGS "${CMAKE_REQUIRED_FLAGS} -stdlib=libstdc++") # required for <atomic>
-    list(APPEND CMAKE_REQUIRED_LIBRARIES "stdc++") # required to link with -stdlib=libstdc++
-  endif()
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-unused-const-variable -Wno-overloaded-virtual -Wno-c99-extensions")
-endif()
-
-# compiler flags customization(by system)
-if(UNIX)
-  list(APPEND DAEMON_SRC "${DAEMON_SRC_DIR}/UnixDaemon.cpp")
-  if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    # "'sleep_for' is not a member of 'std::this_thread'" in gcc 4.7/4.8
-    add_definitions("-D_GLIBCXX_USE_NANOSLEEP=1")
-  endif()
-endif()
-
-set(_SANITIZE_FLAGS "")
-
-if(WITH_ADDRSANITIZER)
-  list(APPEND _SANITIZE_FLAGS -fsanitize=address)
-endif()
-
-if(WITH_THREADSANITIZER)
-  if(WITH_ADDRSANITIZER)
-    message(FATAL_ERROR "thread sanitizer option cannot be combined with address sanitizer")
-  else()
-    list(APPEND _SANITIZE_FLAGS -fsanitize=thread)
-  endif()
-endif()
-
-if(WITH_UNDEFSANITIZER)
-  list(APPEND _SANITIZE_FLAGS -fsanitize=undefined)
-  list(APPEND _SANITIZE_FLAGS -fno-sanitize=vptr)
-  list(APPEND _SANITIZE_FLAGS -fno-sanitize=enum)
-endif()
-
-if(NOT "${_SANITIZE_FLAGS}" STREQUAL "")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-omit-frame-pointer")
-
-  list(JOIN _SANITIZE_FLAGS " " _X)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${_X}")
-
-  # Is this really needed? Compiler (and CXX flags) used to link
-  #set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${_X}")
-endif()
-
-# libraries
+include(CheckAtomic)
+set(I2PD_EXTRA_LIBS ${CMAKE_REQUIRED_LIBRARIES})
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 
-if(WITH_STATIC)
-  if(NOT MSVC)
-    set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
-  endif()
-
-  set(Boost_USE_STATIC_LIBS ON)
-  if(MSVC)
-    set(Boost_USE_STATIC_RUNTIME ON)
-  else()
-    set(Boost_USE_STATIC_RUNTIME OFF)
-  endif()
-
-  if(MSVC)
-    set(OPENSSL_MSVC_STATIC_RT ON)
-  endif()
-  set(OPENSSL_USE_STATIC_LIBS ON)
-
-  set(ZLIB_USE_STATIC_LIBS ON)
-  if(MSVC)
-    set(ZLIB_NAMES zlibstatic zlibstat)
-  else()
-    set(ZLIB_NAMES libz zlibstatic zlibstat zlib z)
-  endif()
-
-  if(WITH_UPNP)
-    set(MINIUPNPC_USE_STATIC_LIBS ON)
-    add_definitions(-DMINIUPNP_STATICLIB)
-  endif()
-
-  set(BUILD_SHARED_LIBS OFF)
-
-  if(${CMAKE_CXX_COMPILER} MATCHES ".*-openwrt-.*")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
-    # set(CMAKE_THREAD_LIBS_INIT "gcc_eh -Wl,--whole-archive -lpthread -Wl,--no-whole-archive")
-    set(CMAKE_THREAD_LIBS_INIT "gcc_eh -Wl,-u,pthread_create,-u,pthread_once,-u,pthread_mutex_lock,-u,pthread_mutex_unlock,-u,pthread_join,-u,pthread_equal,-u,pthread_detach,-u,pthread_cond_wait,-u,pthread_cond_signal,-u,pthread_cond_destroy,-u,pthread_cond_broadcast,-u,pthread_cancel")
-  endif()
-else()
-  # TODO: Consider separate compilation for LIBI2PD_SRC for library.
-  # No need in -fPIC overhead for binary if not interested in library
-  # HINT: revert c266cff CMakeLists.txt: compilation speed up
-  if(NOT MSVC)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fPIC")
-  endif()
-  add_definitions(-DBOOST_ATOMIC_DYN_LINK -DBOOST_FILESYSTEM_DYN_LINK -DBOOST_PROGRAM_OPTIONS_DYN_LINK)
-  if(WIN32)
-    set(Boost_USE_STATIC_LIBS OFF)
-    set(Boost_USE_STATIC_RUNTIME OFF)
-  endif()
+find_package(Boost 1.74 REQUIRED COMPONENTS atomic filesystem program_options)
+if(WITH_TORRENTS AND NOT ANDROID)
+  find_package(Boost 1.81 REQUIRED COMPONENTS json url)
 endif()
-
-find_package(Boost REQUIRED COMPONENTS atomic filesystem program_options OPTIONAL_COMPONENTS json url)
-
-if(NOT DEFINED Boost_FOUND)
-  message(SEND_ERROR "Boost is not found, or your boost version was below 1.46. Please download Boost!")
-endif()
-
-if(Boost_json_FOUND AND NOT WITH_STATIC)
-  add_definitions(-DBOOST_JSON_DYN_LINK)
-endif() 
-
-if(Boost_url_FOUND AND NOT WITH_STATIC)
-  add_definitions(-DBOOST_URL_DYN_LINK)
-endif() 
-
 find_package(OpenSSL REQUIRED)
-if(NOT DEFINED OPENSSL_FOUND)
-  message(SEND_ERROR "Could not find OpenSSL. Please download and install it first!")
-endif()
-
-if(OPENSSL_VERSION VERSION_GREATER_EQUAL "3.0.0")
-  add_definitions(-DOPENSSL_SUPPRESS_DEPRECATED)
-endif()
+find_package(ZLIB REQUIRED)
 
 if(WITH_UPNP)
-  find_package(MiniUPnPc REQUIRED)
+  find_package(MiniUPnPc)
   if(NOT MINIUPNPC_FOUND)
-    message(SEND_ERROR "Could not find MiniUPnPc. Please download and install it first!")
-  else()
-    include_directories(SYSTEM ${MINIUPNPC_INCLUDE_DIR})
+    message(FATAL_ERROR "MiniUPnPc was requested but its headers/library were not found")
   endif()
 endif()
 
-find_package(ZLIB)
-if(ZLIB_FOUND)
-  link_directories(${ZLIB_ROOT}/lib)
+set(LIBI2PD_DIR "${PROJECT_ROOT}/libi2pd")
+set(LIBI2PD_CLIENT_DIR "${PROJECT_ROOT}/libi2pd_client")
+set(LANG_DIR "${PROJECT_ROOT}/i18n")
+set(DAEMON_DIR "${PROJECT_ROOT}/daemon")
+set(TUI_DIR "${PROJECT_ROOT}/tui")
+
+# Explicit source lists: a configure-time glob silently changed the ABI and
+# build graph whenever a file was added or removed.
+set(LIBI2PD_SOURCES
+  "${LIBI2PD_DIR}/api.cpp"
+  "${LIBI2PD_DIR}/Base.cpp"
+  "${LIBI2PD_DIR}/Blinding.cpp"
+  "${LIBI2PD_DIR}/Config.cpp"
+  "${LIBI2PD_DIR}/Crypto.cpp"
+  "${LIBI2PD_DIR}/CryptoKey.cpp"
+  "${LIBI2PD_DIR}/Datagram.cpp"
+  "${LIBI2PD_DIR}/Destination.cpp"
+  "${LIBI2PD_DIR}/ECIESX25519AEADRatchetSession.cpp"
+  "${LIBI2PD_DIR}/Ed25519.cpp"
+  "${LIBI2PD_DIR}/Elligator.cpp"
+  "${LIBI2PD_DIR}/Family.cpp"
+  "${LIBI2PD_DIR}/FS.cpp"
+  "${LIBI2PD_DIR}/Garlic.cpp"
+  "${LIBI2PD_DIR}/Gost.cpp"
+  "${LIBI2PD_DIR}/Gzip.cpp"
+  "${LIBI2PD_DIR}/HTTP.cpp"
+  "${LIBI2PD_DIR}/I2NPProtocol.cpp"
+  "${LIBI2PD_DIR}/I2PEndian.cpp"
+  "${LIBI2PD_DIR}/Identity.cpp"
+  "${LIBI2PD_DIR}/IdentMetrics.cpp"
+  "${LIBI2PD_DIR}/KadDHT.cpp"
+  "${LIBI2PD_DIR}/LeaseSet.cpp"
+  "${LIBI2PD_DIR}/Log.cpp"
+  "${LIBI2PD_DIR}/NetDb.cpp"
+  "${LIBI2PD_DIR}/NetDbRequests.cpp"
+  "${LIBI2PD_DIR}/NTCP2.cpp"
+  "${LIBI2PD_DIR}/PostQuantum.cpp"
+  "${LIBI2PD_DIR}/Profiling.cpp"
+  "${LIBI2PD_DIR}/Reseed.cpp"
+  "${LIBI2PD_DIR}/RouterContext.cpp"
+  "${LIBI2PD_DIR}/RouterInfo.cpp"
+  "${LIBI2PD_DIR}/Signature.cpp"
+  "${LIBI2PD_DIR}/SSU2.cpp"
+  "${LIBI2PD_DIR}/SSU2OutOfSession.cpp"
+  "${LIBI2PD_DIR}/SSU2Session.cpp"
+  "${LIBI2PD_DIR}/Streaming.cpp"
+  "${LIBI2PD_DIR}/Timestamp.cpp"
+  "${LIBI2PD_DIR}/TransitTunnel.cpp"
+  "${LIBI2PD_DIR}/Transports.cpp"
+  "${LIBI2PD_DIR}/TunnelBase.cpp"
+  "${LIBI2PD_DIR}/TunnelConfig.cpp"
+  "${LIBI2PD_DIR}/Tunnel.cpp"
+  "${LIBI2PD_DIR}/TunnelEndpoint.cpp"
+  "${LIBI2PD_DIR}/TunnelGateway.cpp"
+  "${LIBI2PD_DIR}/TunnelPool.cpp"
+  "${LIBI2PD_DIR}/util.cpp"
+)
+
+set(LIBI2PD_CLIENT_SOURCES
+  "${LIBI2PD_CLIENT_DIR}/AddressBook.cpp"
+  "${LIBI2PD_CLIENT_DIR}/BOB.cpp"
+  "${LIBI2PD_CLIENT_DIR}/ClientContext.cpp"
+  "${LIBI2PD_CLIENT_DIR}/HTTPProxy.cpp"
+  "${LIBI2PD_CLIENT_DIR}/I2CP.cpp"
+  "${LIBI2PD_CLIENT_DIR}/I2PService.cpp"
+  "${LIBI2PD_CLIENT_DIR}/I2PTunnel.cpp"
+  "${LIBI2PD_CLIENT_DIR}/MatchedDestination.cpp"
+  "${LIBI2PD_CLIENT_DIR}/SAM.cpp"
+  "${LIBI2PD_CLIENT_DIR}/SOCKS.cpp"
+  "${LIBI2PD_CLIENT_DIR}/Torrents.cpp"
+  "${LIBI2PD_CLIENT_DIR}/TorrentsDHT.cpp"
+  "${LIBI2PD_CLIENT_DIR}/TorrentsRPC.cpp"
+  "${LIBI2PD_CLIENT_DIR}/TorrentsTunnel.cpp"
+  "${LIBI2PD_CLIENT_DIR}/UDPTunnel.cpp"
+  "${LANG_DIR}/I18N.cpp"
+)
+
+set(LANG_SOURCES
+  "${LANG_DIR}/English.cpp"
+)
+
+set(DAEMON_SOURCES
+  "${DAEMON_DIR}/Daemon.cpp"
+  "${DAEMON_DIR}/I2PControl.cpp"
+  "${DAEMON_DIR}/I2PControlHandlers.cpp"
+  "${DAEMON_DIR}/i2pd.cpp"
+  "${DAEMON_DIR}/UPnP.cpp"
+)
+
+if(UNIX)
+  list(APPEND DAEMON_SOURCES
+    "${DAEMON_DIR}/TuiServer.cpp"
+    "${DAEMON_DIR}/UnixDaemon.cpp"
+  )
 endif()
 
-# C++ standard to use, based on compiler and version of boost
-if(NOT MSVC)
-# check for c++23, c++20 support
-  include(CheckCXXCompilerFlag)
-
-  CHECK_CXX_COMPILER_FLAG("-std=c++23" CXX23_SUPPORTED)
-  CHECK_CXX_COMPILER_FLAG("-std=c++20" CXX20_SUPPORTED)
-
-  if(CXX23_SUPPORTED)
-    set(I2PD_CXX_STANDARD 23)
-  elseif(CXX20_SUPPORTED)
-    set(I2PD_CXX_STANDARD 20)
-  else()
-    message(SEND_ERROR "C++23 nor C++20 standard not seems to be supported by compiler. Too old version?")
-  endif()
-else()
-  # fix: error C2039: 'string_view': is not a member of 'std'
-  # MSVC defaults to C++20
-  set(I2PD_CXX_STANDARD 20)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /Zc:__cplusplus")
-endif()
-
-set_target_properties(libi2pd libi2pdclient libi2pdlang PROPERTIES CXX_STANDARD ${I2PD_CXX_STANDARD})
-
-# load includes
-include_directories(SYSTEM ${Boost_INCLUDE_DIRS} ${OPENSSL_INCLUDE_DIR} ${ZLIB_INCLUDE_DIR})
-
-# show summary
-message(STATUS "---------------------------------------")
-message(STATUS "Build type         : ${CMAKE_BUILD_TYPE}")
-message(STATUS "Compiler vendor    : ${CMAKE_CXX_COMPILER_ID}")
-message(STATUS "Compiler version   : ${CMAKE_CXX_COMPILER_VERSION}")
-message(STATUS "Compiler path      : ${CMAKE_CXX_COMPILER}")
-message(STATUS "Architecture       : ${ARCHITECTURE}")
-message(STATUS "Compiler flags     : ${CMAKE_CXX_FLAGS}")
-message(STATUS "C++ standard       : ${I2PD_CXX_STANDARD}")
-message(STATUS "Install prefix:    : ${CMAKE_INSTALL_PREFIX}")
-message(STATUS "Options:")
-message(STATUS "  HARDENING        : ${WITH_HARDENING}")
-message(STATUS "  LIBRARY          : ${WITH_LIBRARY}")
-message(STATUS "  BINARY           : ${WITH_BINARY}")
-message(STATUS "  STATIC BUILD     : ${WITH_STATIC}")
-message(STATUS "  UPnP             : ${WITH_UPNP}")
-if(WITH_GIT_VERSION)
-message(STATUS "  GIT VERSION      : ${WITH_GIT_VERSION} (${GIT_VERSION})")
-else()
-message(STATUS "  GIT VERSION      : ${WITH_GIT_VERSION}")
-endif()
-message(STATUS "  ADDRSANITIZER    : ${WITH_ADDRSANITIZER}")
-message(STATUS "  THREADSANITIZER  : ${WITH_THREADSANITIZER}")
-message(STATUS "  UNDEFSANITIZER   : ${WITH_UNDEFSANITIZER}")
-message(STATUS "---------------------------------------")
-
-target_link_libraries(libi2pd PUBLIC ZLIB::ZLIB OpenSSL::SSL OpenSSL::Crypto ${Boost_LIBRARIES} Threads::Threads)
 if(WIN32)
+  list(APPEND DAEMON_SOURCES
+    "${PROJECT_ROOT}/Win32/DaemonWin32.cpp"
+    "${PROJECT_ROOT}/Win32/Win32App.cpp"
+    "${PROJECT_ROOT}/Win32/Win32Service.cpp"
+    "${PROJECT_ROOT}/Win32/Win32NetState.cpp"
+  )
+  list(APPEND DAEMON_SOURCES "${PROJECT_ROOT}/Win32/Resource.rc")
+endif()
+
+# Common compiler diagnostics. These are not global flags: each target gets
+# the same interface plus its own definitions.
+add_library(i2pd_warnings INTERFACE)
+if(MSVC)
+  target_compile_options(i2pd_warnings INTERFACE /W4 /permissive- /Zc:__cplusplus)
+else()
+  target_compile_options(i2pd_warnings INTERFACE
+    -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-uninitialized
+  )
+  if(WITH_HARDENING)
+    target_compile_options(i2pd_warnings INTERFACE
+      -fstack-protector-strong -Wformat -Wformat-security -Werror=format-security
+    )
+    target_compile_definitions(i2pd_warnings INTERFACE _FORTIFY_SOURCE=2)
+    target_link_options(i2pd_warnings INTERFACE -Wl,-z,relro -Wl,-z,now)
+  endif()
+endif()
+
+function(i2pd_enable_sanitizers target)
+  if(WITH_ADDRSANITIZER)
+    target_compile_options(${target} PRIVATE -fsanitize=address -fno-omit-frame-pointer)
+    target_link_options(${target} PRIVATE -fsanitize=address)
+  endif()
+  if(WITH_THREADSANITIZER)
+    if(WITH_ADDRSANITIZER)
+      message(FATAL_ERROR "ThreadSanitizer cannot be combined with AddressSanitizer")
+    endif()
+    target_compile_options(${target} PRIVATE -fsanitize=thread -fno-omit-frame-pointer)
+    target_link_options(${target} PRIVATE -fsanitize=thread)
+  endif()
+  if(WITH_UNDEFSANITIZER)
+    target_compile_options(${target} PRIVATE -fsanitize=undefined -fno-sanitize=vptr -fno-sanitize=enum)
+    target_link_options(${target} PRIVATE -fsanitize=undefined)
+  endif()
+endfunction()
+
+add_library(libi2pd STATIC ${LIBI2PD_SOURCES})
+set_target_properties(libi2pd PROPERTIES PREFIX "" POSITION_INDEPENDENT_CODE ON)
+target_include_directories(libi2pd
+  PUBLIC
+    $<BUILD_INTERFACE:${LIBI2PD_DIR}>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/libi2pd>
+  PRIVATE
+    ${LANG_DIR}
+)
+target_compile_features(libi2pd PUBLIC cxx_std_23)
+target_link_libraries(libi2pd
+  PUBLIC
+    OpenSSL::SSL OpenSSL::Crypto ZLIB::ZLIB
+    Boost::atomic Boost::filesystem Boost::program_options
+    Threads::Threads ${I2PD_EXTRA_LIBS}
+)
+target_link_libraries(libi2pd PRIVATE $<BUILD_INTERFACE:i2pd_warnings>)
+i2pd_enable_sanitizers(libi2pd)
+if(WITH_UPNP)
+  target_compile_definitions(libi2pd PRIVATE USE_UPNP)
+endif()
+if(OPENSSL_VERSION MATCHES "^[0-9]+\\.[0-9]+" AND OPENSSL_VERSION VERSION_GREATER_EQUAL 3.0.0)
+  target_compile_definitions(libi2pd PRIVATE OPENSSL_SUPPRESS_DEPRECATED)
+endif()
+if(WIN32)
+  target_compile_definitions(libi2pd PRIVATE WIN32_APP WIN32_LEAN_AND_MEAN NOMINMAX)
   target_link_libraries(libi2pd PUBLIC ws2_32 iphlpapi)
 endif()
+if(ANDROID)
+  target_compile_definitions(libi2pd PUBLIC ANDROID)
+endif()
 
-if(WITH_BINARY)
+add_library(libi2pdclient STATIC ${LIBI2PD_CLIENT_SOURCES})
+set_target_properties(libi2pdclient PROPERTIES PREFIX "" POSITION_INDEPENDENT_CODE ON)
+target_include_directories(libi2pdclient
+  PUBLIC
+    $<BUILD_INTERFACE:${LIBI2PD_CLIENT_DIR}>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/libi2pdclient>
+  PRIVATE
+    ${LANG_DIR}
+)
+target_compile_features(libi2pdclient PUBLIC cxx_std_23)
+target_link_libraries(libi2pdclient PUBLIC libi2pd Threads::Threads)
+target_link_libraries(libi2pdclient PRIVATE $<BUILD_INTERFACE:i2pd_warnings>)
+i2pd_enable_sanitizers(libi2pdclient)
+if(NOT WITH_TORRENTS OR ANDROID)
+  target_compile_definitions(libi2pdclient PUBLIC NO_TORRENTS)
+elseif(TARGET Boost::json AND TARGET Boost::url)
+  target_link_libraries(libi2pdclient PRIVATE Boost::json Boost::url)
+endif()
+
+add_library(libi2pdlang STATIC ${LANG_SOURCES})
+set_target_properties(libi2pdlang PROPERTIES PREFIX "" POSITION_INDEPENDENT_CODE ON)
+target_include_directories(libi2pdlang
+  PUBLIC
+    $<BUILD_INTERFACE:${LANG_DIR}>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/libi2pdlang>
+  PRIVATE
+    ${LIBI2PD_DIR}
+)
+target_compile_features(libi2pdlang PUBLIC cxx_std_23)
+target_link_libraries(libi2pdlang PRIVATE $<BUILD_INTERFACE:i2pd_warnings>)
+i2pd_enable_sanitizers(libi2pdlang)
+# The translation glue uses the active client language and therefore lives in
+# libi2pdclient; the language data library stays free of client dependencies.
+target_link_libraries(libi2pdclient PUBLIC libi2pdlang)
+
+if(I2PD_BUILD_JNI AND ANDROID)
+  add_library(i2pd_jni SHARED
+    "${PROJECT_ROOT}/android/app/src/main/cpp/DaemonAndroid.cpp"
+    "${PROJECT_ROOT}/android/app/src/main/cpp/i2pd_android.cpp"
+  )
+  set_target_properties(i2pd_jni PROPERTIES OUTPUT_NAME i2pd PREFIX "lib")
+  target_compile_features(i2pd_jni PRIVATE cxx_std_23)
+  target_include_directories(i2pd_jni PRIVATE
+    "${PROJECT_ROOT}/android/app/src/main/cpp" ${DAEMON_DIR} ${LANG_DIR})
+  target_compile_definitions(i2pd_jni PRIVATE ANDROID)
+  target_link_libraries(i2pd_jni PRIVATE libi2pd libi2pdclient libi2pdlang log)
+  i2pd_enable_sanitizers(i2pd_jni)
+  install(TARGETS i2pd_jni LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT Runtime)
+elseif(WITH_BINARY)
   if(WIN32)
-    add_executable("${I2PD_EXECUTABLE}" WIN32 ${DAEMON_SRC} ${WIN32_RC})
+    add_executable(i2pd WIN32 ${DAEMON_SOURCES})
   else()
-    add_executable("${I2PD_EXECUTABLE}" ${DAEMON_SRC})
+    add_executable(i2pd ${DAEMON_SOURCES})
   endif()
-
+  target_compile_features(i2pd PRIVATE cxx_std_23)
+  target_include_directories(i2pd PRIVATE ${DAEMON_DIR} ${LANG_DIR})
+  target_link_libraries(i2pd PRIVATE libi2pd libi2pdclient libi2pdlang i2pd_warnings)
+  if(WITH_UPNP)
+    target_compile_definitions(i2pd PRIVATE USE_UPNP)
+    target_link_libraries(i2pd PRIVATE ${MINIUPNPC_LIBRARY})
+    target_include_directories(i2pd PRIVATE ${MINIUPNPC_INCLUDE_DIR})
+  endif()
   if(WIN32)
-    list(APPEND MINGW_EXTRA "wsock32" "ws2_32" "iphlpapi")
-    # OpenSSL may require Crypt32 library on MSVC build, which is not added by CMake lesser than 3.21
-    if(MSVC AND ${CMAKE_VERSION} VERSION_LESS 3.21)
-      list(APPEND MINGW_EXTRA "crypt32")
-    endif()
+    target_compile_definitions(i2pd PRIVATE
+      WIN32_APP WIN32_LEAN_AND_MEAN NOMINMAX WINVER=0x0A00 _WIN32_WINNT=0x0A00
+    )
+    target_link_libraries(i2pd PRIVATE wsock32 ws2_32 iphlpapi crypt32 gdi32 ole32 uuid)
   endif()
-
-  if(WITH_STATIC)
-    if(NOT MSVC)
-      set_target_properties("${I2PD_EXECUTABLE}" PROPERTIES LINK_FLAGS "-static")
-    endif()
+  if(WITH_STATIC AND NOT MSVC)
+    target_link_options(i2pd PRIVATE -static)
   endif()
-
-  if(WITH_HARDENING AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    set_target_properties("${I2PD_EXECUTABLE}" PROPERTIES LINK_FLAGS "-z relro -z now")
-  endif()
-
-  set_target_properties("${I2PD_EXECUTABLE}" PROPERTIES CXX_STANDARD ${I2PD_CXX_STANDARD})
-
-  # FindBoost pulls pthread for thread which is broken for static linking at least on Ubuntu 15.04
-  list(GET Boost_LIBRARIES -1 LAST_Boost_LIBRARIES)
-  if(${LAST_Boost_LIBRARIES} MATCHES ".*pthread.*")
-    list(REMOVE_AT Boost_LIBRARIES -1)
-  endif()
-
-  # synchronization library is incompatible with Windows 7
-  if(WIN32)
-    get_target_property(BOOSTFSLIBS Boost::filesystem INTERFACE_LINK_LIBRARIES)
-    list(REMOVE_ITEM BOOSTFSLIBS synchronization)
-    set_target_properties(Boost::filesystem PROPERTIES INTERFACE_LINK_LIBRARIES "${BOOSTFSLIBS}")
-  endif()
-
-  if(WITH_STATIC)
-    set(DL_LIB ${CMAKE_DL_LIBS})
-  endif()
-
-  target_link_libraries("${I2PD_EXECUTABLE}" libi2pd libi2pdclient libi2pdlang ${Boost_LIBRARIES} OpenSSL::SSL OpenSSL::Crypto ${MINIUPNPC_LIBRARY} ZLIB::ZLIB Threads::Threads ${MINGW_EXTRA} ${DL_LIB} ${CMAKE_REQUIRED_LIBRARIES})
-
-  install(TARGETS "${I2PD_EXECUTABLE}" RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT Runtime)
-  set(APPS "\${CMAKE_INSTALL_PREFIX}/bin/${I2PD_EXECUTABLE}${CMAKE_EXECUTABLE_SUFFIX}")
-  set(DIRS "${Boost_LIBRARY_DIR};${OPENSSL_INCLUDE_DIR}/../bin;${ZLIB_INCLUDE_DIR}/../bin;/mingw32/bin")
+  i2pd_enable_sanitizers(i2pd)
 endif()
 
-if(BUILD_TESTING)
-  add_subdirectory(${CMAKE_SOURCE_DIR}/tests ${CMAKE_CURRENT_BINARY_DIR}/tests)
+if(WITH_TUI AND UNIX)
+  set(CURSES_NEED_WIDE TRUE)
+  find_package(Curses)
+  if(CURSES_FOUND)
+    add_executable(i2pd-tui
+      "${TUI_DIR}/main.cpp"
+      "${TUI_DIR}/TuiClient.cpp"
+    )
+    target_compile_features(i2pd-tui PRIVATE cxx_std_23)
+    target_include_directories(i2pd-tui PRIVATE "${LIBI2PD_DIR}" ${CURSES_INCLUDE_DIRS})
+    target_link_libraries(i2pd-tui PRIVATE ${CURSES_LIBRARIES} Threads::Threads i2pd_warnings)
+    i2pd_enable_sanitizers(i2pd-tui)
+  else()
+    message(WARNING "ncurses not found: building without i2pd-tui")
+  endif()
 endif()
 
+# Installation
 if(WITH_LIBRARY)
+  install(TARGETS libi2pd libi2pdclient libi2pdlang
+    EXPORT i2pd-targets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    COMPONENT Libraries
+  )
+  install(DIRECTORY "${LIBI2PD_DIR}/" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/libi2pd
+    FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp")
+  install(DIRECTORY "${LIBI2PD_CLIENT_DIR}/" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/libi2pdclient
+    FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp")
+  install(DIRECTORY "${LANG_DIR}/" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/libi2pdlang
+    FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp")
+
   include(CMakePackageConfigHelpers)
   write_basic_package_version_file(
     "${CMAKE_CURRENT_BINARY_DIR}/i2pdConfigVersion.cmake"
-    VERSION ${Upstream_VERSION}
-    COMPATIBILITY AnyNewerVersion)
-
-  configure_file(cmake/i2pdConfig.cmake
-    "${CMAKE_CURRENT_BINARY_DIR}/i2pdConfig.cmake")
-
+    VERSION ${PROJECT_VERSION}
+    COMPATIBILITY SameMajorVersion)
+  configure_file(cmake/i2pdConfig.cmake "${CMAKE_CURRENT_BINARY_DIR}/i2pdConfig.cmake" @ONLY)
+  install(EXPORT i2pd-targets
+    FILE i2pd-targets.cmake
+    NAMESPACE i2pd::
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/i2pd)
   install(FILES
-      "${CMAKE_CURRENT_BINARY_DIR}/i2pdConfig.cmake"
-      "${CMAKE_CURRENT_BINARY_DIR}/i2pdConfigVersion.cmake"
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/i2pd
-    COMPONENT Libraries)
+    "${CMAKE_CURRENT_BINARY_DIR}/i2pdConfig.cmake"
+    "${CMAKE_CURRENT_BINARY_DIR}/i2pdConfigVersion.cmake"
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/i2pd)
 endif()
 
+if(WITH_BINARY)
+  install(TARGETS i2pd RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT Runtime)
+  install(FILES
+    "${PROJECT_ROOT}/contrib/i2pd.conf"
+    "${PROJECT_ROOT}/contrib/subscriptions.txt"
+    "${PROJECT_ROOT}/contrib/tunnels.conf"
+    DESTINATION ${CMAKE_INSTALL_SYSCONFDIR}/i2pd
+    COMPONENT Runtime)
+  install(DIRECTORY "${PROJECT_ROOT}/contrib/tunnels.d/"
+    DESTINATION ${CMAKE_INSTALL_SYSCONFDIR}/i2pd/tunnels.conf.d
+    COMPONENT Runtime)
+  install(DIRECTORY "${PROJECT_ROOT}/contrib/certificates/"
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/i2pd/certificates
+    COMPONENT Runtime)
+  install(FILES
+    "${PROJECT_ROOT}/ChangeLog" "${PROJECT_ROOT}/LICENSE" "${PROJECT_ROOT}/README.md"
+    DESTINATION ${CMAKE_INSTALL_DOCDIR}
+    COMPONENT Documentation)
+  if(UNIX)
+    install(FILES "${PROJECT_ROOT}/debian/i2pd.1"
+      DESTINATION ${CMAKE_INSTALL_MANDIR}/man1
+      COMPONENT Documentation)
+  endif()
+endif()
+
+if(TARGET i2pd-tui)
+  install(TARGETS i2pd-tui RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT Runtime)
+endif()
+
+if(I2PD_BUILD_TOOLS)
+  add_subdirectory("${PROJECT_ROOT}/tools" "${CMAKE_CURRENT_BINARY_DIR}/tools")
+endif()
+
+if(BUILD_TESTING)
+  add_subdirectory("${PROJECT_ROOT}/tests" "${CMAKE_CURRENT_BINARY_DIR}/tests")
+endif()
+
+message(STATUS "---------------------------------------")
+message(STATUS "Build type         : ${CMAKE_BUILD_TYPE}")
+message(STATUS "Compiler           : ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}")
+message(STATUS "C++ standard       : ${CMAKE_CXX_STANDARD}")
+message(STATUS "Install prefix     : ${CMAKE_INSTALL_PREFIX}")
+message(STATUS "Build router       : ${WITH_BINARY}")
+message(STATUS "Build libraries    : ${WITH_LIBRARY}")
+message(STATUS "UPnP               : ${WITH_UPNP}")
+message(STATUS "Torrents           : ${WITH_TORRENTS}")
+message(STATUS "Tools              : ${I2PD_BUILD_TOOLS}")
+message(STATUS "Android JNI        : ${I2PD_BUILD_JNI}")
+if(TARGET i2pd-tui)
+  message(STATUS "TUI                : ON (i2pd-tui)")
+else()
+  message(STATUS "TUI                : OFF")
+endif()
+message(STATUS "Tests              : ${BUILD_TESTING}")
+message(STATUS "Sanitizers         : ASan=${WITH_ADDRSANITIZER} TSan=${WITH_THREADSANITIZER} UBSan=${WITH_UNDEFSANITIZER}")
+message(STATUS "---------------------------------------")

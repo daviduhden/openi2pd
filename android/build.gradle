@@ -1,0 +1,29 @@
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        // AGP 9.4 is the current stable line (October 2026).
+        classpath 'com.android.tools.build:gradle:9.4.1'
+    }
+}
+
+def minimumJdk = 25
+def currentJdk = JavaVersion.current().majorVersion.toInteger()
+if (currentJdk < minimumJdk) {
+    throw new GradleException(
+        "Open I2Pd Android requires OpenJDK ${minimumJdk} or newer to run Gradle " +
+        "(found ${JavaVersion.current()}). Set JAVA_HOME to a JDK ${minimumJdk}+ installation.")
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+tasks.register('clean', Delete) {
+    delete rootProject.layout.buildDirectory
+}

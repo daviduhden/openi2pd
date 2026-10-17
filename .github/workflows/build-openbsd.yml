@@ -1,9 +1,8 @@
 name: OpenBSD
 
+# Automatic runs are intentionally suspended during the refactoring. Only a
+# maintainer may start this workflow manually from the Actions tab.
 on:
-  push:
-    branches: [main]
-  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -28,11 +27,11 @@ jobs:
           copyback: false
           prepare: |
             set -eu
-            pkg_add cmake boost miniupnpc
+            pkg_add cmake ninja boost miniupnpc
           run: |
             set -eu
-            cmake -S build -B build-output \
+            cmake -S build -B build-output -G Ninja \
               -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
               -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
-            cmake --build build-output --parallel 2 --target i2pd test-http-url test-http-req test-base-64 test-aes test-aeadchacha20poly1305
-            ctest --test-dir build-output --output-on-failure --timeout 30 -R '^test-(http-url|http-req|base-64|aes|aeadchacha20poly1305)$'
+            cmake --build build-output --parallel 2
+            ctest --test-dir build-output --output-on-failure --timeout 60
