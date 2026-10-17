@@ -22,7 +22,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends clang cmake ninja-build libboost-all-dev libssl-dev zlib1g-dev libminiupnpc-dev
+          sudo apt-get install -y --no-install-recommends clang cmake ninja-build libboost-dev libboost-atomic-dev libboost-filesystem-dev libboost-program-options-dev libboost-json-dev libboost-url-dev libssl-dev zlib1g-dev libminiupnpc-dev
       - name: Build and run basic tests
         run: |
           cmake -S build -B build-output -G Ninja \
