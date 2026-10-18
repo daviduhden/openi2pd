@@ -30,6 +30,7 @@ Source files:
 - `libi2pd/TuiProtocol.h` — protocol constants, parser, framing, escaping.
 - `daemon/TuiServer.{h,cpp}` — UNIX socket, peer checks, snapshot collection.
 - `tui/TuiClient.{h,cpp}` — options, config lookup, socket client.
+- `tui/Theme.h` — semantic ncurses roles, capability detection, colour pairs.
 - `tui/main.cpp` — ncurses views, refresh loop, key handling.
 
 ## Configuration
@@ -140,6 +141,129 @@ need. `router.hash` is the public IdentHash.
 - Connection failure is shown in the footer; reconnect is retried every 2 s.
 - `SIGWINCH` sets a flag and redraws; `SIGINT`/`SIGTERM` exit cleanly. The
   router is not signalled when the TUI exits.
+
+## Theme and terminal capabilities
+
+`tui/Theme.h` is the only place that calls `start_color()`,
+`use_default_colors()`, `init_pair()` or `init_extended_pair()`.  Views ask for
+a semantic role and never name a raw `COLOR_*` constant.  The header is
+header-only, so the explicit CMake target source list does not change.  The
+text identity is the lowercase word `openi2pd`; the bitmap/vector mark is not
+rendered in a terminal.
+
+The palette source is `assets/branding/colors.md`.  The TUI uses its semantic
+tokens rather than the sampled logo accents, because the sampled teal/blue do
+not meet normal-text contrast on a light surface.
+
+| Role | Foreground | Background | Emphasis |
+|---|---|---|---|
+| `HeaderBar` | `on-surface` | `surface-variant` | — |
+| `Title` | `on-surface` | `surface-variant` | bold |
+| `StatusBar` | `on-surface-variant` | `surface-variant` | — |
+| `SelectedRow` | `on-primary-container` | `selected` | bold |
+| `SelectedTab` | `on-primary-container` | `primary-container` | bold |
+| `PanelBorder` | `outline` | terminal default | — |
+| `Primary` | `primary` | terminal default | bold |
+| `Secondary` | `secondary` | terminal default | bold |
+| `Success` | `success` | terminal default | bold |
+| `Warning` | `warning` | terminal default | bold |
+| `Error` | `error` | terminal default | bold |
+| `Disabled` | `disabled` | terminal default | dim |
+| `Muted` | `on-surface-variant` | terminal default | dim |
+| `TorrentProgress` | `success` | terminal default | bold |
+| `TorrentDownload` | `primary` | terminal default | bold |
+| `TorrentUpload` | `secondary` | terminal default | — |
+| `LogDebug` | `on-surface-variant` | terminal default | dim |
+| `LogInfo` | terminal default | terminal default | — |
+| `LogWarning` | `warning` | terminal default | bold |
+| `LogError` | `error` | terminal default | bold |
+| `LogCritical` | `background` (dark) / `on-primary` (light) | `error` | bold |
+
+`PanelBorder` is reserved for framed views; the current views do not draw
+panel frames.  Light and dark token sets are selected with a `COLORFGBG`
+heuristic (falling back to dark when it is absent or unparsable).  A light
+terminal that does not export `COLORFGBG` can set it explicitly, for example
+`COLORFGBG='0;15'`.  Bars and selected rows always have an explicit
+foreground/background pair, so they stay readable even when the heuristic is
+wrong.  In monochrome, errors add underlining to bold so warning and error rows
+remain distinguishable.
+
+### Fallback order
+
+| Capability | Detection | Rendering |
+|---|---|---|
+| Direct colour / truecolor | extended colour functions are available and `COLORS >= 0x1000000` | RGB-packed colour indices through `init_extended_pair()`; 8-colour ANSI if pair setup fails |
+| 256 colours | `COLORS >= 256` | nearest xterm 6×6×6 cube or grey-ramp entry |
+| 16 colours | `COLORS >= 16` | ANSI 0–15, bright variants where useful |
+| 8 colours | `COLORS >= 8` | ANSI 0–7 |
+| Monochrome | no colour support, `start_color()` failure, or `COLORS < 8` | reverse, bold, underline and dim only |
+
+The 8/16-colour modes use standard ANSI approximations rather than exact brand
+hex values; the 256-colour mode selects the nearest xterm cube or grey-ramp
+entry.  This keeps the TUI readable on terminals that cannot represent the
+brand palette exactly.  The ANSI fallbacks are:
+
+- header/status: white on blue;
+- selected row/tab: black on cyan (8 colours) or bright cyan (16 colours);
+- primary: cyan (dark) or bright blue (light);
+- secondary: bright blue (dark) or cyan (light);
+- success/progress: green;
+- warning: yellow; error: red;
+- download: cyan/blue; upload: blue/magenta;
+- muted/disabled: dim white (dark) or dim black (light);
+- critical: white on red.
+
+Additional safety rules:
+
+- `use_default_colors()` is attempted after `start_color()`.  `-1`
+  foreground/background is used only when it returned `OK`.  Otherwise the
+  theme uses an explicit black/white pair selected from the background hint.
+- Colour pairs are allocated from 1 up to `min(COLOR_PAIRS - 1, 63)`.  A role
+  that cannot obtain a pair falls back to its monochrome attributes, so a
+  restricted terminal loses colour but not legibility.
+- If direct-colour pair initialisation fails, the theme falls back to the
+  8-colour ANSI strategy and then monochrome.  RGB-packed indices are not
+  valid 256-colour palette entries.  A build without
+  `NCURSES_EXT_COLORS`/`NCURSES_EXT_FUNCS` also uses 8-colour ANSI on a
+  direct-colour terminfo.
+- `init_extended_color()` is not used to redefine palette slots.  Redefining
+  slots would mutate the user's terminal palette; truecolor output uses
+  ncurses direct-colour indices instead.  This keeps the no-raw-ANSI rule and
+  avoids leaving the terminal in a modified colour state after `endwin()`.
+- `Theme.h` is guarded by `NCURSES_EXT_COLORS`/`NCURSES_EXT_FUNCS` for extended
+  APIs and uses only ncursesw interfaces available on OpenBSD.  No escape
+  sequence is written by the TUI.
+
+### Validation checklist
+
+Static checks (can be run without a terminal):
+
+- `git diff --check`.
+- Search `tui/` for `\033`, `\x1b`, `printf`-style colour strings, ad-hoc
+  `init_pair()` calls and raw `COLOR_*` uses outside `tui/Theme.h`.
+- Confirm `tui/Theme.h` includes `<ncurses.h>` itself and only uses guarded
+  extended-colour calls.
+- Compile `i2pd-tui` against ncursesw on Linux and OpenBSD (not run in this
+  static edit).
+
+Dynamic checks (not run in this environment):
+
+- `TERM=vt100` / a monochrome terminfo: header, selected row and tabs remain
+  distinguishable by reverse/bold; log levels remain readable.
+- `TERM=xterm` (8 colours): distinguish primary/secondary, success, warning,
+  error, progress, download and upload rows.
+- `TERM=xterm-16color` and `TERM=xterm-256color`: check selected row/tab and
+  log colours against the terminal background.
+- `TERM=xterm-direct` on a direct-colour terminal: confirm truecolor is used
+  and that a failed pair initialisation falls back to 8-colour ANSI.
+- `COLORFGBG=0;15` (light) and `COLORFGBG=15;0` (dark), then unset it: confirm
+  the light/dark token choice and explicit bar backgrounds.
+- Cycle log levels with `l`, select torrent rows, open torrent details, resize
+  the terminal and reconnect the daemon.
+- Run with a default-colour-less terminal description to exercise the explicit
+  black/white fallback, if one is available locally.
+
+No live TUI session or visual comparison has been executed for this change.
 
 ## Known limitations
 

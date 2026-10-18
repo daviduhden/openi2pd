@@ -1,8 +1,14 @@
-# Open I2Pd
+# openi2pd
 
-Open I2Pd is an independent fork of [i2pd](https://github.com/PurpleI2P/i2pd),
+<img src="assets/branding/logo-horizontal.svg" alt="openi2pd logo" width="360">
+
+openi2pd is an independent fork of [i2pd](https://github.com/PurpleI2P/i2pd),
 a C++ implementation of the I2P router. I2P provides encrypted, anonymous
 communication for applications and services.
+
+`openi2pd` is the product and visual identity. The logo, color tokens and usage
+rules are documented in [docs/branding](docs/branding/README.md), with the
+canonical palette in [assets/branding/colors.md](assets/branding/colors.md).
 
 The supported platforms are **Windows, Linux, OpenBSD and Android**. The TUI
 and documentation are in English. OpenSSL and LibreSSL are supported. The HTTP
@@ -57,7 +63,9 @@ Report issues at <https://github.com/daviduhden/openi2pd/issues>.
 
 ## License
 
-Open I2Pd is distributed under the [BSD 3-Clause license](LICENSE).
+openi2pd source is distributed under the [BSD 3-Clause license](LICENSE)
+(`SPDX-License-Identifier: BSD-3-Clause`). Documentation and imported
+third-party components retain their respective licenses.
 Copyright and attribution for the original i2pd contributors are preserved.
 
 ## Continuous integration

@@ -1,10 +1,14 @@
-![Open I2Pd](img/logo.png)
+# openi2pd
 
+<img src="img/logo.png" alt="openi2pd logo" width="360">
 
-Open I2Pd
-=========
+openi2pd is an independent fork of the i2pd C++ router implementation.
 
-Open I2Pd is an independent fork of the i2pd C++ router implementation.
+The name `openi2pd` and its geometric node/tunnel mark are the project's
+product and visual identity. See the [visual identity overview](branding/README.md),
+[logo usage](branding/logo-usage.md), [brand colors](branding/colors.md) and
+[asset inventory](branding/assets.md). The canonical color tokens and contrast
+checks live in [assets/branding/colors.md](assets/branding/colors.md).
 
 I2P (Invisible Internet Protocol) is a universal anonymous network layer. 
 All communications over I2P are anonymous and end-to-end encrypted, participants
@@ -30,7 +34,7 @@ Features
 Resources
 ---------
 
-* [Fork documentation](README.md)
+* [Visual identity](branding/README.md)
 * [Source and issues](https://github.com/daviduhden/openi2pd)
 * [Upstream wiki](https://github.com/PurpleI2P/i2pd/wiki)
 * [I2P specifications](https://i2p.net/en/docs/specs/)

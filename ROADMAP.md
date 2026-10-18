@@ -185,6 +185,7 @@ Exit criteria: OpenBSD build/runtime evidence and manual CI results recorded.
 - **M7:** Torrent TUI parity and Perl migration complete without web/JS/Python;
   CI validates the deferred builds/tests.
 - **M5:** OpenBSD and manual CI evidence recorded.
+- **M8:** openi2pd visual identity is consistent across Android, TUI, docs and packaging; SVG/contrast/device checks are recorded.
 - **M6:** Documentation and TODO set closed with no unclassified items.
 
 ## Change control

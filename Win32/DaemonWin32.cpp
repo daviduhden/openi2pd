@@ -1,7 +1,9 @@
 /*
 * Copyright (c) 2013-2025, The PurpleI2P Project
+* Copyright (c) 2026, David Uhden Collado
+* SPDX-License-Identifier: BSD-3-Clause
 *
-* This file is part of Open I2Pd and licensed under BSD3
+* This file is part of openi2pd and licensed under BSD-3-Clause
 *
 * See full license text in LICENSE file at top of project tree
 */
@@ -33,7 +35,7 @@ namespace util
 
 		i2p::log::SetThrowFunction ([](const std::string& s)
 			{
-				MessageBox(0, TEXT(s.c_str ()), TEXT("Open I2Pd"), MB_ICONERROR | MB_TASKMODAL | MB_OK );
+				MessageBox(0, TEXT(s.c_str ()), TEXT("openi2pd"), MB_ICONERROR | MB_TASKMODAL | MB_OK );
 			}
 		);
 

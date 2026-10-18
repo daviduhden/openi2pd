@@ -65,6 +65,29 @@ integration.
    - dynamic validations required.
 7. Do not mark a task validated unless it was actually executed.
 
+## Visual identity
+
+- The official identity is **openi2pd** with the supplied geometric node/tunnel
+  mark. Do not redesign it, replace it with the old i2pd/PurpleI2P artwork, or
+  invent a new brand.
+- `assets/branding/colors.md` is the single color source. Use semantic tokens,
+  not arbitrary brand hex values, in Android, TUI, docs and packaging.
+- SVG masters must stay real vector geometry: no embedded PNG, no runtime font
+  dependency, and no automatic pixel-to-thousands-of-polygons tracing.
+- `assets/branding/logo-original.png` is the supplied reference and must not be
+  modified. Preserve copyright, license, attribution and technical identifiers.
+- Keep protocol names, binary names, configuration/data paths and persistence
+  formats unchanged unless a separate migration task is approved.
+
+## Licensing
+
+- Project code/config files must carry the two `LICENSE` copyright lines and
+  `SPDX-License-Identifier: BSD-3-Clause`.
+- Documentation remains CC-BY-SA-4.0 as declared in its license file.
+  Third-party files retain their own SPDX/license notices; do not relicense
+  Apache-2.0, BSL-1.0, Windows SDK, OpenBSD ports or imported components.
+- Preserve `LICENSE`, `NOTICE`-equivalent attribution, copyright and SPDX text.
+
 ## Persistent project constraints
 
 - Native code is C++23; CMake is primary and the root Makefile is a POSIX

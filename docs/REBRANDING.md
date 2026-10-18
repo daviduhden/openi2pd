@@ -1,8 +1,8 @@
-# Rebranding and inherited-identity audit
+# openi2pd identity and inherited-brand audit
 
-Project identity used for this fork: **Open I2Pd** (already present in README,
-CMake `project(OpenI2Pd ...)`, TUI title and Windows metadata). No new brand
-name was invented.
+Project identity used for this fork: **openi2pd**. The official geometric
+node/tunnel mark and palette are defined in `assets/branding/`; technical
+identifiers remain unchanged for compatibility and provenance.
 
 This audit separates brand identity from technical identifiers required for
 protocol interoperability, binary compatibility, persisted data and legal
@@ -19,9 +19,9 @@ provenance.
 | Executable | `i2pd` | **Retained temporarily**; rename requires a migration/alias plan (TODO REBRAND-005) |
 | Config/data paths | `i2pd.conf`, `~/.i2pd`, `/var/lib/i2pd`, `i2pd.log`, `i2pd-tui.sock` | **Retained temporarily**; migration plan required (TODO REBRAND-006) |
 | Android application identity | `org.purplei2p.i2pd`, PurpleI2P package/namespace | **Renamed** to `org.openi2pd.router` |
-| Android visible name | `i2pd` | **Renamed** to `Open I2Pd` |
-| Visual identity | i2pd/PurpleI2P app icon, docs logo, favicon, screenshots | **Replaced with neutral placeholder / removed** |
-| Service description | `C++ daemon ...` | **Renamed** to `Open I2Pd router`; new systemd alias `open-i2pd.service` |
+| Android visible name | `i2pd` | **Renamed** to `openi2pd` |
+| Visual identity | i2pd/PurpleI2P app icon, docs logo, favicon, screenshots | **Replaced with the supplied openi2pd mark** |
+| Service description | `C++ daemon ...` | **Renamed** to `openi2pd router`; new systemd alias `open-i2pd.service` |
 | Marketing/support links | Personal PPA/COPR/F-Droid/donation links | **Removed**; distribution/source links retained |
 | Upstream release links | Release artifacts of PurpleI2P | **Replaced** by fork/source guidance where user-facing |
 
@@ -34,13 +34,12 @@ provenance.
 - Java package directory and all imports/manifest entries updated.
 - JNI header and exported function symbols updated to
   `Java_org_openi2pd_router_I2PD_1JNI_*`.
-- App label `Open I2Pd`; Fastlane title/short description updated.
+- App label and visible identity use `openi2pd`; Fastlane title/short description updated.
 - App-specific data directory `i2pd` → `open-i2pd`.
 - WebView console, `[http]` preferences, permission gates and broad storage
   permissions removed (previous work).
-- Placeholder neutral app icon generated from
-  `contrib/artwork/open-i2pd-icon.svg`; old mipmap PNGs, adaptive vector and
-  Fastlane screenshots removed.
+- Official openi2pd symbol, adaptive icon, legacy mipmaps and splash resources
+  are generated from `assets/branding/`; old placeholder artwork removed.
 - No signing keys or certificates were changed or generated.
 
 **Migration warning:** changing `applicationId` means Android treats this as a
@@ -50,13 +49,13 @@ app-specific directory and copy it into the new one.
 
 ### Desktop/daemon/TUI/tools
 
-- Visible TUI and Windows titles already used `Open I2Pd`.
+- Visible TUI, Windows metadata and documentation use `openi2pd` while the\n  `i2pd` executable and technical identifiers remain unchanged.
 - Systemd unit description updated; `Alias=open-i2pd.service` added while the
   historical `i2pd.service` filename remains for package upgrades.
 - AppArmor/OpenRC/Upstart/Dinit descriptions updated where they contained
   product branding; paths to the `i2pd` binary remain technical.
-- Neutral placeholder icon `contrib/artwork/open-i2pd-icon.svg`; Windows
-  `mask.ico` regenerated from it. Documentation logo/favicon replaced.
+- Official symbol/icon resources are generated from `assets/branding/`; Windows
+  ICO, desktop icon and documentation favicon/logo replaced.
 - Tool executable names (`routerinfo`, `keygen`, etc.) remain; they are CLI
   interfaces, not i2pd branding.
 - No I2P service endpoints, reseed URLs, certificates or trust anchors were
@@ -102,8 +101,8 @@ app-specific directory and copy it into the new one.
   `~/.i2pd`/`/var/lib/i2pd` → new paths (TODO REBRAND-006).
 - [ ] Rename Debian/RPM source/package names with `Provides/Replaces` and
   changelog migration (TODO REBRAND-007).
-- [ ] Replace placeholder icon with a defined project identity when supplied
-  (TODO REBRAND-008).
+- [x] Replace placeholder icon with the supplied openi2pd identity
+  (BRAND-001..004; visual validation pending).
 - [ ] Scan compiled artifacts/APKs for residual brand strings when builds are
   available.
 - [ ] Android migration from old applicationId (TODO REBRAND-009).

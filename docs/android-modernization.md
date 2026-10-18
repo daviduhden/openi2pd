@@ -83,6 +83,50 @@ RouterService (started + bound, non-exported, same process)
   lists/charts.
 - Logs use the existing `Log::GetRecent` ring via JNI; no keys or private data.
 
+## Visual identity
+
+- The launcher icon is generated from the official vector master
+  `assets/branding/symbol.svg`; no raster tracing or embedded bitmap is used in
+  the vector layers.
+- `mipmap-anydpi-v26/ic_launcher.xml` is an adaptive icon with an opaque
+  `@color/ic_launcher_background` (`openi2pd-white`) background and a 108dp
+  `drawable/ic_launcher_foreground.xml` layer. The mark is scaled into a 68dp
+  box centred in the 108dp layer, inside the 66dp foreground safe zone.
+- `mipmap-anydpi-v33/ic_launcher.xml` adds the same adaptive icon with a
+  `<monochrome>` layer for themed icons. The themed layer is the 108dp
+  `drawable/ic_launcher_monochrome.xml`, using the same safe-zone geometry as
+  the foreground.
+- Legacy launcher bitmaps are generated from the same master at mdpi 48,
+  hdpi 72, xhdpi 96, xxhdpi 144 and xxxhdpi 192 pixels. They are opaque
+  8-bit sRGB PNGs on a white rounded plate; only the plate corners are
+  transparent. The inherited generic `logo.*` mipmaps were removed.
+- `drawable/ic_logo.xml` is now the full-colour symbol. The About screen shows
+  it on a white rounded plate so the navy/white mark stays legible in both
+  light and dark themes.
+- The notification and Quick Settings icon is the single-colour
+  `drawable/ic_logo_monochrome.xml`; the old `ic_notification_icon.xml` and the
+  coloured Quick Settings tile icon were replaced.
+- Android 12+ splash configuration lives in `values-v31/themes.xml` and uses
+  only platform attributes (`windowSplashScreenBackground`,
+  `windowSplashScreenAnimatedIcon`, `windowSplashScreenIconBackgroundColor`,
+  `windowSplashScreenAnimationDuration`). No `core-splashscreen` or other
+  dependency was added; API 24-30 keep the branded `windowBackground`.
+- `values/colors.xml` and `values-night/colors.xml` now carry the semantic
+  palette from `assets/branding/colors.md`: primary/on-primary/containers,
+  secondary, tertiary, background/surface/on-surface, variants, outline,
+  selected, focus, disabled, error, warning, success and chart colors.
+  Surface-container roles map to existing palette tokens instead of new brand
+  hex values.
+- `themes.xml` wires the expanded Material 3 roles, control highlight/normal/
+  activated colors and the branded window background. Dynamic color remains
+  enabled in `MainActivity`; when it is unavailable, the branded `brand_*`
+  resources are the complete fallback. The launcher icon, splash and
+  notification icon are deliberately not dynamically recoloured.
+- The user-facing label is `openi2pd` (`app_name` and the About licence
+  summary). The application ID `org.openi2pd.router`, Java packages, service
+  actions, JNI symbol names, configuration/data paths and protocol names are
+  unchanged.
+
 ## Configuration and storage
 
 - `RouterConfigStore` centralizes bounded INI read/write, atomic replacement,
@@ -107,6 +151,13 @@ RouterService (started + bound, non-exported, same process)
   CI.
 - The Java 25 probe passed javac/D8/R8 checks; see `docs/android-java25.md`.
 - All Android XML resources parse with `xmllint`/Python `ElementTree`.
+- The visual-identity pass added the brand icon, splash, palette and About
+  logo. All `android/app/src/main/res/**/*.xml` files parse with `xmllint`
+  after those edits; a local resource-reference scan found no missing
+  `drawable`, `layout`, `menu`, `mipmap`, `xml`, `color`, `dimen`, `string`,
+  `bool` or `id` references, and `git diff --check` was clean. These are static
+  checks only: AAPT2 resource linking, PNG crunching, Lint and APK packaging
+  were **not** run.
 - Pure-JVM tests under `android/app/src/test/` cover the native parsers, state
   mapping/control enablement, INI value validation and immutable snapshot/log
   bounds. Running `:i2pd:testDebugUnitTest` reached resource linking but AAPT2
@@ -118,6 +169,16 @@ RouterService (started + bound, non-exported, same process)
 ## Pending
 
 - CI: `:i2pd:assembleDebug`, `:i2pd:testDebugUnitTest`, `:i2pd:lintDebug`.
+- AAPT2/APK: link the new adaptive icon (`mipmap-anydpi-v26`/`-v33`), legacy
+  PNG mipmaps, `<monochrome>` layer and `values-v31` splash attributes; inspect
+  the packaged resources and install the APK on API 24/25 (legacy bitmap) and
+  API 26+/33+ (adaptive/themed icon).
+- Lint: run `IconLocation`, adaptive-icon, monochrome, splash-screen, NewApi
+  and unused-resource checks; the palette intentionally defines tokens that
+  current views do not yet consume.
+- Device: verify launcher masks/crops, the Android 12+ splash on light and dark
+  themes, themed icons, dynamic colour on/off fallback, notification small
+  icon, Quick Settings tile tint and the About logo in both themes.
 - Device: FGS start/stop/restart, the `specialUse` type on API 34+,
   rotation, process death, notification permission, boot/autostart
   restrictions, TalkBack and font scaling. A Play-distributed build needs the

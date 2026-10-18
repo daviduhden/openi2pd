@@ -120,7 +120,7 @@ cmake --build build-output --parallel
 ```
 
 The OpenBSD service layout and `pledge`/`unveil` notes are in
-[contrib/openbsd](../../../contrib/openbsd/README.md). Do not use `gmake`: it is
+[contrib/openbsd](https://github.com/daviduhden/openi2pd/blob/master/contrib/openbsd/README.md). Do not use `gmake`: it is
 not required by this tree.
 
 ## unsupported platforms

@@ -1,4 +1,4 @@
-# Java 25 on Android (Open I2Pd)
+# Java 25 on Android (openi2pd)
 
 Status: toolchain verification, 2026-10-18. This document covers the Android
 build toolchain and Java 25 language/class-file compatibility only. It does
@@ -98,6 +98,25 @@ The dependency coordinates above were checked against Google Maven and Maven
 Central; every POM returned HTTP 200. `:i2pd:dependencies` resolved the
 `debugCompileClasspath` without a failure.
 
+## Visual identity resources
+
+The branding pass did not change the Java 25/Gradle toolchain or add a
+dependency. It added source resources only:
+
+- adaptive launcher icon (`mipmap-anydpi-v26/ic_launcher.xml`, plus a v33
+  `<monochrome>` variant), a 108dp vector foreground generated from
+  `assets/branding/symbol.svg`, legacy PNG mipmaps at mdpi/hdpi/xhdpi/xxhdpi/
+  xxxhdpi, and `values-v31/themes.xml` for the platform Android 12+ splash;
+- semantic light/dark palettes in `values/colors.xml` and
+  `values-night/colors.xml`, wired into the existing Material 3 theme;
+- a full-colour About mark and a single-colour notification/Quick Settings
+  mark; the manifest label is now `openi2pd` while the application ID and Java
+  packages are unchanged.
+
+These are XML/PNG resources, not Java APIs. AAPT2 resource linking, APK
+packaging, Lint, PNG crunching and device rendering were not run here; see the
+pending list below.
+
 ## Java 25 probe and verifier
 
 The probe is in `android/tools/java25-probe/`. It is not part of the app and is
@@ -164,7 +183,7 @@ That synthetic build was `BUILD SUCCESSFUL`. The APK reports
 `minSdkVersion:'24'`, `targetSdkVersion:'37'`, `compileSdkVersion='37'`; its
 class files are major 69; its DEX files are version 037; and dexdump shows
 D8-generated synthetic record and type-switch classes. This is evidence for
-the toolchain, **not** for the Open I2Pd app APK.
+the toolchain, **not** for the openi2pd app APK.
 
 ## AGP 9.4.1 / Gradle 9.8.1 / JDK 25 investigation
 
@@ -254,9 +273,16 @@ Android Lint alone is not a complete check for JDK-only APIs.
 ## Pending dynamic validation
 
 - Run `:i2pd:assembleDebug`, resource linking and `:i2pd:lintDebug` in CI.
+- AAPT2: link the new adaptive icon, legacy mipmaps, `<monochrome>` layer,
+  `values-v31` splash attributes and palette resources; verify the packaged
+  resource table and APK contents. This was not run locally.
+- Lint: icon location/adaptive-icon/splash/NewApi checks and unused-resource
+  warnings for the semantic tokens that views do not consume yet.
+- Device: launcher mask/crop, Android 12+ splash in light/dark, themed icon,
+  dynamic-colour fallback, notification small icon, Quick Settings tint and the
+  About mark on API 24 and current API levels.
 - Exercise AGP's own D8/R8 on the real app (debug and minified release) and
   verify the resulting DEX at `minSdk 24`.
-- Run Android Lint (not run).
 - Run the prepared pure-JVM tests and future instrumentation tests in CI.
 - Build the native JNI library (NDK/CMake dependency set not exercised here).
 - Verify runtime behavior on API 24 and a current API level, including records

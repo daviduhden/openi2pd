@@ -1,0 +1,113 @@
+/*
+ * Copyright (c) 2013-2026, The PurpleI2P Project
+ * Copyright (c) 2026, David Uhden Collado
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
+/*
+ * openi2pd documentation palette for the Read the Docs MkDocs theme.
+ * Numeric values mirror assets/branding/colors.md; that file is canonical.
+ */
+:root {
+  --oi-teal: #00B2B4;
+  --oi-blue: #078DE4;
+  --oi-navy: #162737;
+  --oi-primary: #007C7A;
+  --oi-primary-container: #C8F5F2;
+  --oi-secondary: #0067B1;
+  --oi-surface: #FFFFFF;
+  --oi-background: #F7FAFC;
+  --oi-on-surface: #162737;
+  --oi-on-surface-variant: #3F5263;
+  --oi-outline: #5C6E7E;
+  --oi-error: #B3261E;
+  --oi-warning: #8A5A00;
+  --oi-success: #1E6B45;
+}
+
+body,
+.rst-content {
+  color: var(--oi-on-surface);
+  background: var(--oi-background);
+}
+
+.wy-nav-top,
+.wy-side-nav-search {
+  background-color: var(--oi-navy);
+  color: #FFFFFF;
+}
+
+.wy-nav-top a,
+.wy-side-nav-search a,
+.wy-side-nav-search input[type="text"] {
+  color: #FFFFFF;
+}
+
+.wy-side-nav-search input[type="text"] {
+  background: rgba(255, 255, 255, 0.10);
+  border-color: var(--oi-outline);
+}
+
+.rst-content a {
+  color: var(--oi-secondary);
+}
+
+.rst-content a:hover,
+.rst-content a:focus-visible {
+  color: var(--oi-primary);
+}
+
+.rst-content a:focus-visible,
+.wy-menu-vertical a:focus-visible {
+  outline: 2px solid var(--oi-secondary);
+  outline-offset: 2px;
+}
+
+.rst-content h1,
+.rst-content h2,
+.rst-content h3 {
+  color: var(--oi-navy);
+}
+
+.rst-content code {
+  background: var(--oi-primary-container);
+  color: var(--oi-on-surface);
+}
+
+.rst-content .admonition.warning,
+.rst-content details.warning {
+  border-color: var(--oi-warning);
+}
+
+.rst-content .admonition.error,
+.rst-content details.error {
+  border-color: var(--oi-error);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --oi-primary: #59D8D4;
+    --oi-primary-container: #00504E;
+    --oi-secondary: #7CC7FF;
+    --oi-background: #0B141C;
+    --oi-surface: #101C26;
+    --oi-on-surface: #E4EDF4;
+    --oi-on-surface-variant: #C3D1DC;
+    --oi-outline: #91A2B1;
+    --oi-error: #FFB4AB;
+    --oi-warning: #FFD48A;
+    --oi-success: #7ADFA0;
+  }
+  body,
+  .rst-content {
+    color: var(--oi-on-surface);
+    background: var(--oi-background);
+  }
+  .rst-content h1,
+  .rst-content h2,
+  .rst-content h3 {
+    color: var(--oi-on-surface);
+  }
+  .rst-content code {
+    background: var(--oi-primary-container);
+  }
+}

@@ -1,1 +1,1 @@
-I2P router for the Open I2Pd project
+I2P router for the openi2pd project

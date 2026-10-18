@@ -1,4 +1,4 @@
-Running Open I2Pd
+Running openi2pd
 ============
 
 Starting, stopping and reloading configuration
@@ -14,12 +14,12 @@ To display all available options:
 
     ./i2pd --help
 
-Open I2Pd can be controlled with signals. The process ID by is written to the file `~/.i2pd/i2pd.pid` or 
+openi2pd can be controlled with signals. The process ID by is written to the file `~/.i2pd/i2pd.pid` or
 `/var/run/i2pd/i2pd.pid` by default. You can use `kill` utility to send signals like this:
 
     kill -INT $( cat /var/run/i2pd/i2pd.pid )
 
-Open I2Pd supports the following signals:
+openi2pd supports the following signals:
 
 * INT - Graceful shutdown. i2pd will wait for up to 10 minutes and stop. Send a second INT signal to shutdown i2pd immediately.
 * HUP - Reload tunnels configuration files.
@@ -61,7 +61,7 @@ To enable/disable autostart of i2pd upon bootup:
 Recommended way to run i2pd built from source
 ---------------------------------------------
 
-The following commands display the recommended way to run i2pd built from source, without a package manager. Installing i2pd this 
+The following commands display the recommended way to run i2pd built from source, without a package manager. Installing i2pd this
 way will ensure all i2pd-related files are stored at `$HOME/dist`.
 
     mkdir $HOME/dist

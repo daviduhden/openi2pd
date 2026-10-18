@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2013-2026, The PurpleI2P Project
+ * Copyright (c) 2026, David Uhden Collado
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
 package org.openi2pd.router;
 
 import android.content.Context;
@@ -58,9 +63,7 @@ public class LogAdapter extends ListAdapter<LogEntry, LogAdapter.Holder> {
         colorError = MaterialColors.getColor(context,
                 androidx.appcompat.R.attr.colorError,
                 ContextCompat.getColor(context, R.color.brand_error));
-        colorWarn = MaterialColors.getColor(context,
-                com.google.android.material.R.attr.colorTertiary,
-                ContextCompat.getColor(context, R.color.brand_tertiary));
+        colorWarn = ContextCompat.getColor(context, R.color.brand_warning);
         colorInfo = MaterialColors.getColor(context,
                 androidx.appcompat.R.attr.colorPrimary,
                 ContextCompat.getColor(context, R.color.brand_primary));

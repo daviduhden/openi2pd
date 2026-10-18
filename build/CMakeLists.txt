@@ -1,3 +1,6 @@
+# Copyright (c) 2013-2026, The PurpleI2P Project
+# Copyright (c) 2026, David Uhden Collado
+# SPDX-License-Identifier: BSD-3-Clause
 cmake_minimum_required(VERSION 3.22)
 
 # The project deliberately keeps its CMake entry point in build/ for
@@ -210,6 +213,8 @@ if(WIN32)
     "${PROJECT_ROOT}/Win32/Win32NetState.cpp"
   )
   list(APPEND DAEMON_SOURCES "${PROJECT_ROOT}/Win32/Resource.rc")
+  set_source_files_properties("${PROJECT_ROOT}/Win32/Resource.rc" PROPERTIES
+    OBJECT_DEPENDS "${PROJECT_ROOT}/Win32/openi2pd.ico")
 endif()
 
 # Common compiler diagnostics. These are not global flags: each target gets
@@ -264,6 +269,11 @@ target_link_libraries(libi2pd
     Boost::atomic Boost::filesystem Boost::program_options
     Threads::Threads ${I2PD_EXTRA_LIBS}
 )
+if(WIN32)
+  # Transports uses AcceptEx/GetAcceptExSockaddrs; static consumers (tools)
+  # also need mswsock to resolve them.
+  target_link_libraries(libi2pd PUBLIC mswsock ws2_32)
+endif()
 target_link_libraries(libi2pd PRIVATE $<BUILD_INTERFACE:i2pd_warnings>)
 i2pd_enable_sanitizers(libi2pd)
 if(WITH_UPNP)
@@ -417,6 +427,19 @@ if(WITH_BINARY)
   install(DIRECTORY "${PROJECT_ROOT}/contrib/certificates/"
     DESTINATION ${CMAKE_INSTALL_DATADIR}/i2pd/certificates
     COMPONENT Runtime)
+  if(UNIX)
+    install(FILES "${PROJECT_ROOT}/contrib/openi2pd.desktop"
+      DESTINATION ${CMAKE_INSTALL_DATADIR}/applications
+      COMPONENT Runtime)
+    install(FILES "${PROJECT_ROOT}/assets/branding/symbol.svg"
+      DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps
+      RENAME openi2pd.svg
+      COMPONENT Runtime)
+    install(FILES "${PROJECT_ROOT}/contrib/artwork/openi2pd-256.png"
+      DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/256x256/apps
+      RENAME openi2pd.png
+      COMPONENT Runtime)
+  endif()
   install(FILES
     "${PROJECT_ROOT}/ChangeLog" "${PROJECT_ROOT}/LICENSE" "${PROJECT_ROOT}/README.md"
     "${PROJECT_ROOT}/TODO.md" "${PROJECT_ROOT}/ROADMAP.md" "${PROJECT_ROOT}/PROGRESS.md"
@@ -425,8 +448,11 @@ if(WITH_BINARY)
   install(DIRECTORY "${PROJECT_ROOT}/docs/"
     DESTINATION ${CMAKE_INSTALL_DOCDIR}/docs
     COMPONENT Documentation
-    FILES_MATCHING PATTERN "*.md" PATTERN "*.png" PATTERN "*.ico"
+    FILES_MATCHING PATTERN "*.md" PATTERN "*.png" PATTERN "*.ico" PATTERN "*.css" PATTERN "*.svg"
     PATTERN "Doxyfile" EXCLUDE)
+  install(DIRECTORY "${PROJECT_ROOT}/assets/branding/"
+    DESTINATION ${CMAKE_INSTALL_DOCDIR}/assets/branding
+    COMPONENT Documentation)
   if(UNIX)
     install(FILES "${PROJECT_ROOT}/debian/i2pd.1"
       DESTINATION ${CMAKE_INSTALL_MANDIR}/man1

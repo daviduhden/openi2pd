@@ -283,8 +283,8 @@ subsystem owner in the ownership table unless a task says otherwise. The
   - Priority P1; Status Pending; affects daemon FS/config, OpenBSD unveil, Android assets.
 - [ ] **[REBRAND-007]** Rename Debian/RPM package identities with Provides/Replaces and migration.
   - Priority P2; Status Pending; packaging tests required.
-- [ ] **[REBRAND-008]** Replace placeholder icon with a defined project identity when supplied.
-  - Priority P3; Status Blocked on design specification.
+- [x] **[REBRAND-008]** Replace placeholder icon with a defined project identity when supplied.
+  - Priority P3; Status Implemented via BRAND-001..004; visual/device validation pending.
 - [ ] **[REBRAND-009]** Add Android migration from old applicationId/data directory.
   - Priority P1; Status Pending; requires device test.
 - [ ] **[REBRAND-010]** Scan built binaries/APKs for residual brand strings.
@@ -350,6 +350,44 @@ when there is no older ID.
 | `CI-*` | alias of existing `GOV-*` |
 | `TEST-*` | existing tests plus new tasks |
 
+## P. CI follow-up from the first manual runs
+
+- [ ] **[CI-002]** Re-run Linux/Android, Windows and OpenBSD workflows after the portability fixes.
+  - Priority P0; Status Blocked by “no commit/push” instruction; local fixes made, CI not re-run.
+- [ ] **[CI-003]** Android vcpkg/CMake: install `boost-json`/`boost-url`, chainload the NDK CMake toolchain and verify an ARM64 binary link.
+  - Priority P0; Status Implemented locally; CI validation pending.
+- [ ] **[CI-004]** Stabilize `i2pdctl` tests: raw B/s formatting and full ANSI/CSI stripping from OpenSSL diagnostics.
+  - Priority P0; Status Implemented locally; local/CI test execution pending.
+- [ ] **[CI-005]** Windows tools link `mswsock`/`ws2_32` through libi2pd for AcceptEx/GetAcceptExSockaddrs.
+  - Priority P0; Status Implemented locally; CI validation pending.
+- [ ] **[CI-006]** OpenBSD `Protocol.h` U64 name collides with OpenSSL `sha.h` macro; rename the codec method.
+  - Priority P0; Status Implemented locally; CI validation pending.
+
+## Q. openi2pd visual identity
+
+- [ ] **[BRAND-001]** Reconstruct the supplied logo as real vector geometry: full lockup, standalone symbol and horizontal lockup; preserve the original PNG as reference.
+  - Priority P0; Status Implemented / static; `assets/branding/logo.svg`, `symbol.svg`, `logo-horizontal.svg`; visual review pending.
+- [ ] **[BRAND-002]** Produce light, dark and monochrome variants plus PNG rasterizations; verify transparency, no embedded raster and no runtime font dependency.
+  - Priority P0; Status Implemented / static; SVG XML parse clean; rendered PNG review pending.
+- [ ] **[BRAND-003]** Establish one canonical color source with light/dark semantic tokens, error/warning/success, selection/focus/disabled and contrast checks.
+  - Priority P0; Status Implemented / static; `assets/branding/colors.md`; WCAG ratios calculated.
+- [ ] **[BRAND-004]** Replace Android legacy icons, add adaptive/launcher/splash resources and map Material 3 light/dark theme to the official palette.
+  - Priority P0; Status Implemented / static; Android agent completed; APK/AAPT2/Lint/device validation pending.
+- [ ] **[BRAND-005]** Add a centralized ncurses theme with 8/16/256-color and monochrome fallbacks; no raw ANSI or bitmap logo dependency.
+  - Priority P1; Status Implemented / static; TUI agent completed; terminal matrix validation pending.
+- [ ] **[BRAND-006]** Integrate logo/naming into README, MkDocs, installation/build/Android/TUI/tools/security docs using relative asset paths.
+  - Priority P1; Status Implemented / static; Documentation agent completed; link check passed; MkDocs visual/build pending.
+- [ ] **[BRAND-007]** Update desktop, Windows, Android, CMake and package icon/install metadata without changing protocol or data identifiers.
+  - Priority P1; Status Implemented / static; Packaging agent completed; Windows/CMake/desktop runtime validation pending.
+- [ ] **[BRAND-008]** Remove obsolete inherited logos/icons only after replacement; preserve copyright, license, attribution, provenance and protocol diagrams.
+  - Priority P0; Status Implemented / static for icons/logos; source comments and technical identifiers intentionally preserved; security/review pass pending.
+- [ ] **[BRAND-009]** Validate SVG/XML, no embedded rasters, transparent/light/dark rendering, small-size legibility, color consistency, Android/TUI capability and packaging references.
+  - Priority P0; Status Static checks passed (SVG/XML, no raster, contrast, links, MkDocs strict, desktop validation); dynamic visual/device checks required.
+- [ ] **[BRAND-010]** Legal/provenance audit for the supplied logo and generated assets; do not claim ownership beyond the project’s rights.
+  - Priority P0; Status Pending; preserve upstream notices; document source provenance.
+- [ ] **[BRAND-011]** Final cross-component consistency audit; keep the integration open until Android, TUI, docs, packaging and legacy cleanup use the same identity.
+  - Priority P0; Status Pending; no completion claim before validation.
+
 ## Q. Architecture and cross-platform follow-up
 
 - [ ] **[ARCH-001]** Keep the shared-interface ownership map current for `RouterContext`, transport APIs, crypto APIs, `TuiProtocol`, `privsep/Protocol`, JNI and CMake.
@@ -378,6 +416,8 @@ when there is no older ID.
   - Priority P1; Status Pending; see REBRAND-005..007.
 - [ ] **[LEGAL-001]** Audit new torrent/Perl/Android/CI files for required copyright, license and provenance notices.
   - Priority P0; Status In progress; preserve BSD-3-Clause and upstream notices.
+- [x] **[LEGAL-002]** Add the LICENSE copyright lines and `SPDX-License-Identifier: BSD-3-Clause` to project source/config files; retain third-party and CC-BY-SA notices.
+  - Priority P0; Status Implemented / static; code/config headers added; third-party exceptions documented; no compiler/license-scanner run.
 - [ ] **[CI-001]** Keep workflows `workflow_dispatch`-only, actions SHA-pinned, checkout credentials disabled and workflow lint clean.
   - Priority P0; Status Implemented; zizmor/yamllint clean; re-run after workflow edits.
 

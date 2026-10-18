@@ -1,7 +1,7 @@
-Open I2Pd configuration
+openi2pd configuration
 ==================
 
-Open I2Pd can be configured via either command-line arguments or config files.
+openi2pd can be configured via either command-line arguments or config files.
 Modifying `i2pd.conf` is just a way of passing command line arguments to i2pd at boot;
 for example, running i2pd with argument `--port=10123` and setting option `port = 10123` in config file will have
 the same effect.
@@ -10,7 +10,7 @@ There are two separate config files: `i2pd.conf` and `tunnels.conf`. `i2pd.conf`
 you configure all options. `tunnels.conf` is the tunnel configuration file, where you configure I2P hidden services
 and client tunnels. The `tunnels.conf` options are documented [here](tunnels.md).
 
-This documentation describes the Open I2Pd fork: C++23, CMake/ Ninja (with a
+This documentation describes the openi2pd fork: C++23, CMake/ Ninja (with a
 POSIX make front-end), no HTTP administrative console, and the local
 `i2pd-tui` client.
 
@@ -343,4 +343,4 @@ Local addressbook
 
 There is also a special addressbook config file in the working directory at `addressbook/local.csv`.
 It lets your routers to work as a resolver for 3ld domains if you run that 2ld address on your router and it' presented in addressbook.
-Only Open I2Pd can resolve such addresses, by sending special datagram requests.
+Only openi2pd can resolve such addresses, by sending special datagram requests.

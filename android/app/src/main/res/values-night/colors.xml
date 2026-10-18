@@ -1,32 +1,71 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Copyright (c) 2013-2026, The PurpleI2P Project
+  Copyright (c) 2026, David Uhden Collado
+  SPDX-License-Identifier: BSD-3-Clause
+-->
 <resources>
-    <color name="brand_primary">#4DDBC9</color>
-    <color name="brand_on_primary">#003731</color>
-    <color name="brand_primary_container">#005048</color>
-    <color name="brand_on_primary_container">#74F8E5</color>
-    <color name="brand_secondary">#B1CCC6</color>
-    <color name="brand_on_secondary">#1C3531</color>
-    <color name="brand_secondary_container">#334B47</color>
-    <color name="brand_on_secondary_container">#CCE8E3</color>
-    <color name="brand_tertiary">#A5CCDF</color>
-    <color name="brand_on_tertiary">#073544</color>
-    <color name="brand_tertiary_container">#244C5C</color>
-    <color name="brand_on_tertiary_container">#C1E8FC</color>
+    <!--
+        Canonical openi2pd dark palette. Values come from
+        assets/branding/colors.md. Keep every resource name in sync with
+        values/colors.xml.
+    -->
+
+    <!-- Core logo palette (graphic accents, not text colors). -->
+    <color name="brand_teal">#00B2B4</color>
+    <color name="brand_blue">#078DE4</color>
+    <color name="brand_navy">#162737</color>
+    <color name="brand_white">#FFFFFF</color>
+
+    <!-- Primary roles. -->
+    <color name="brand_primary">#59D8D4</color>
+    <color name="brand_on_primary">#003735</color>
+    <color name="brand_primary_container">#00504E</color>
+    <color name="brand_on_primary_container">#C8F5F2</color>
+
+    <!-- Secondary roles. -->
+    <color name="brand_secondary">#7CC7FF</color>
+    <color name="brand_on_secondary">#002F4F</color>
+    <color name="brand_secondary_container">#004A73</color>
+    <color name="brand_on_secondary_container">#D3E9FF</color>
+
+    <!-- Tertiary roles (strong secondary text and neutral containers). -->
+    <color name="brand_tertiary">#B7C7D6</color>
+    <color name="brand_on_tertiary">#1B2B3A</color>
+    <color name="brand_tertiary_container">#273746</color>
+    <color name="brand_on_tertiary_container">#DCE7EF</color>
+
+    <!-- Background and surface roles. -->
+    <color name="brand_background">#0B141C</color>
+    <color name="brand_on_background">#E4EDF4</color>
+    <color name="brand_surface">#101C26</color>
+    <color name="brand_on_surface">#E4EDF4</color>
+    <color name="brand_surface_variant">#273746</color>
+    <color name="brand_on_surface_variant">#C3D1DC</color>
+    <color name="brand_outline">#91A2B1</color>
+    <color name="brand_outline_variant">#273746</color>
+
+    <!-- Material 3 surface containers mapped to palette tokens. -->
+    <color name="brand_surface_container_lowest">#0B141C</color>
+    <color name="brand_surface_container_low">#101C26</color>
+    <color name="brand_surface_container">#101C26</color>
+    <color name="brand_surface_container_high">#273746</color>
+    <color name="brand_surface_container_highest">#273746</color>
+
+    <!-- Interaction and semantic state roles. -->
+    <color name="brand_selected">#123B3A</color>
+    <color name="brand_focus">#7CC7FF</color>
+    <color name="brand_disabled">#4A5A69</color>
     <color name="brand_error">#FFB4AB</color>
     <color name="brand_on_error">#690005</color>
+    <!-- Material 3 error containers; the palette defines the error foreground. -->
     <color name="brand_error_container">#93000A</color>
     <color name="brand_on_error_container">#FFDAD6</color>
-    <color name="brand_surface">#191C1B</color>
-    <color name="brand_on_surface">#E0E3E1</color>
-    <color name="brand_surface_variant">#3F4947</color>
-    <color name="brand_on_surface_variant">#BEC9C6</color>
-    <color name="brand_outline">#899390</color>
-    <color name="brand_outline_variant">#3F4947</color>
-    <color name="brand_surface_container_low">#1E2120</color>
-    <color name="brand_surface_container">#232625</color>
-    <color name="brand_surface_container_high">#2D3130</color>
+    <color name="brand_warning">#FFD48A</color>
+    <color name="brand_success">#7ADFA0</color>
 
-    <color name="chart_download">#4DDBC9</color>
-    <color name="chart_upload">#A5CCDF</color>
-    <color name="chart_grid">#3F4947</color>
+    <!-- Charts use semantic accents, never the low-contrast raw logo accents. -->
+    <color name="chart_download">#59D8D4</color>
+    <color name="chart_upload">#7CC7FF</color>
+    <color name="chart_grid">#273746</color>
 </resources>

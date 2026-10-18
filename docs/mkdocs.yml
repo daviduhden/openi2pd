@@ -1,15 +1,26 @@
-site_name: Open I2Pd documentation
-site_description: Documentation for the Open I2Pd router, libraries, TUI and tools
-site_author: Open I2Pd contributors
+# Copyright (c) 2013-2026, The PurpleI2P Project
+# Copyright (c) 2026, David Uhden Collado
+# SPDX-License-Identifier: BSD-3-Clause
+site_name: openi2pd documentation
+site_description: Documentation for the openi2pd router, libraries, TUI and tools
+site_author: openi2pd contributors
 docs_dir: .
 site_dir: ../build-output/docs
+exclude_docs: |
+  /README.md
+extra_css:
+  - stylesheets/brand.css
 
 repo_url: https://github.com/daviduhden/openi2pd
 
 nav:
   - Home: index.md
   - Fork documentation:
-      - Overview: README.md
+      - Branding:
+          - Overview: branding/README.md
+          - Logo usage: branding/logo-usage.md
+          - Colors: branding/colors.md
+          - Assets: branding/assets.md
       - Architecture: architecture.md
       - Architecture decisions: architecture/README.md
       - Interoperability: INTEROPERABILITY.md
@@ -27,9 +38,11 @@ nav:
           - Testing: torrent/testing.md
       - Perl migration: development/perl-migration.md
       - Android modernization: android-modernization.md
+      - Android JNI status: android-jni-status.md
       - Android Java 25: android-java25.md
       - Security audit: security-audit.md
       - Testing: testing.md
+      - OpenBSD validation: security/openbsd-validation.md
       - CI policy: ci.md
       - Files changed: files-changed.md
       - Attribution audit: attribution-audit.md
@@ -106,7 +119,10 @@ nav:
 
 copyright: CC-BY-SA 4.0 for upstream documentation; BSD-3-Clause for the router code.
 
-theme: readthedocs
+theme:
+  name: readthedocs
+  favicon: img/favicon.ico
+  logo: img/logo.png
 
 markdown_extensions:
   - toc:

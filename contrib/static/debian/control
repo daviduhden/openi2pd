@@ -1,7 +1,7 @@
 Source: i2pd
 Section: net
 Priority: optional
-Maintainer: Open I2Pd maintainers <daviduhden@users.noreply.github.com>
+Maintainer: openi2pd maintainers <daviduhden@users.noreply.github.com>
 Build-Depends: debhelper-compat (= 13)
 Standards-Version: 4.5.1
 Homepage: https://github.com/daviduhden/openi2pd

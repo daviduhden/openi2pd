@@ -1,5 +1,7 @@
 # Copyright (c) 2017-2023, The PurpleI2P Project
-# This file is part of Open I2Pd and licensed under BSD3
+# Copyright (c) 2026, David Uhden Collado
+# SPDX-License-Identifier: BSD-3-Clause
+# This file is part of openi2pd and licensed under BSD-3-Clause
 # See full license text in LICENSE file at top of project tree
 
 # Based on the Qt 5 processor detection code, so should be very accurate

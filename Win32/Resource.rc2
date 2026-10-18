@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2013-2026, The PurpleI2P Project
+ * Copyright (c) 2026, David Uhden Collado
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
 #ifdef APSTUDIO_INVOKED
 #error this file is not editable by Microsoft Visual C++
 #endif //APSTUDIO_INVOKED
@@ -21,13 +26,13 @@ BEGIN
     BEGIN
         BLOCK "040904b0"
         BEGIN
-            VALUE "CompanyName", "Open I2Pd contributors"
-            VALUE "FileDescription", "C++ daemon for accessing the I2P network"
+            VALUE "CompanyName", "openi2pd contributors"
+            VALUE "FileDescription", "openi2pd I2P router"
             VALUE "FileVersion", I2PD_VERSION
             VALUE "InternalName", CODENAME
-            VALUE "LegalCopyright", "Copyright (C) 2013-2023, The PurpleI2P Project"
+            VALUE "LegalCopyright", "Copyright (C) 2013-2026, The PurpleI2P Project; Copyright (C) 2026, David Uhden Collado"
             VALUE "OriginalFilename", "i2pd"
-            VALUE "ProductName", "Open I2Pd"
+            VALUE "ProductName", "openi2pd"
             VALUE "ProductVersion", I2P_VERSION
         END
     END

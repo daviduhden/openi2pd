@@ -1,10 +1,10 @@
 i2pd (2.61.0-2) unstable; urgency=medium
 
-  * Open I2Pd fork: C++23, CMake/Ninja, POSIX make front-end.
+  * openi2pd fork: C++23, CMake/Ninja, POSIX make front-end.
   * Removed the HTTP administrative console; added the local ncurses TUI.
   * Integrated i2pd-tools and i2pd_docs_en into the main tree.
 
- -- Open I2Pd maintainers <daviduhden@users.noreply.github.com>  Sat, 17 Oct 2026 12:00:00 +0000
+ -- openi2pd maintainers <daviduhden@users.noreply.github.com>  Sat, 17 Oct 2026 12:00:00 +0000
 
 i2pd (2.61.0-1) unstable; urgency=medium
 

@@ -1,3 +1,6 @@
+# Copyright (c) 2013-2026, The PurpleI2P Project
+# Copyright (c) 2026, David Uhden Collado
+# SPDX-License-Identifier: BSD-3-Clause
 %global debug_package %{nil}
 %global __os_install_post %{nil}
 %global _build_id_links none

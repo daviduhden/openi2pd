@@ -1,7 +1,9 @@
 /*
 * Copyright (c) 2013-2026, The PurpleI2P Project
+* Copyright (c) 2026, David Uhden Collado
+* SPDX-License-Identifier: BSD-3-Clause
 *
-* This file is part of Open I2Pd and licensed under BSD3
+* This file is part of openi2pd and licensed under BSD-3-Clause
 *
 * See full license text in LICENSE file at top of project tree
 */
@@ -35,12 +37,15 @@
 #include <ncurses.h>
 
 #include "Log.h"
+#include "Theme.h"
 #include "TuiProtocol.h"
 #include "version.h"
 
 namespace
 {
 	using namespace std::chrono_literals;
+	using i2p::tui::Theme;
+	using i2p::tui::ThemeRole;
 
 	volatile std::sig_atomic_t g_Resize = 0;
 	volatile std::sig_atomic_t g_Stop = 0;
@@ -558,15 +563,16 @@ namespace
 		}
 	}
 
-	int LevelAttribute (int level)
+	int LevelAttribute (const Theme& theme, int level)
 	{
 		switch (level)
 		{
-			case eLogCritical:
-			case eLogError: return COLOR_PAIR (2);
-			case eLogWarning: return COLOR_PAIR (3);
-			case eLogDebug: return COLOR_PAIR (4);
-			default: return 0;
+			case eLogCritical: return theme.Attributes (ThemeRole::LogCritical);
+			case eLogError: return theme.Attributes (ThemeRole::LogError);
+			case eLogWarning: return theme.Attributes (ThemeRole::LogWarning);
+			case eLogDebug: return theme.Attributes (ThemeRole::LogDebug);
+			case eLogInfo: return theme.Attributes (ThemeRole::LogInfo);
+			default: return A_NORMAL;
 		}
 	}
 
@@ -867,8 +873,8 @@ namespace
 	{
 		public:
 
-			explicit App (i2p::tui::ClientOptions options):
-				m_Options (std::move (options)), m_Client (m_Options.socketPath)
+			explicit App (i2p::tui::ClientOptions options, const Theme& theme):
+				m_Options (std::move (options)), m_Client (m_Options.socketPath), m_Theme (theme)
 			{
 				m_NextConnect = std::chrono::steady_clock::now ();
 				m_NextRefresh = m_NextConnect;
@@ -949,6 +955,7 @@ namespace
 
 			i2p::tui::ClientOptions m_Options;
 			i2p::tui::Client m_Client;
+			const Theme& m_Theme;
 			bool m_Connected = false;
 			std::string m_Error;
 			std::chrono::steady_clock::time_point m_NextConnect;
@@ -1913,21 +1920,20 @@ namespace
 
 	void App::DrawHeader (int width)
 	{
-		attrset (A_REVERSE | A_BOLD);
-		PutLine (0, " Open I2Pd TUI ", width);
-		attrset (A_NORMAL);
+		PutLine (0, " openi2pd TUI ", width, m_Theme.Attributes (ThemeRole::Title));
 
 		int column = 18;
 		for (size_t i = 0; i < TAB_NAMES.size (); ++i)
 		{
 			if (column >= width) break;
 			std::string label = " " + std::to_string (i + 1) + ":" + std::string (TAB_NAMES[i]) + " ";
-			if (static_cast<size_t> (m_Tab) == i) attrset (A_REVERSE | A_BOLD);
+			attrset (m_Theme.Attributes (static_cast<size_t> (m_Tab) == i ?
+				ThemeRole::SelectedTab : ThemeRole::HeaderBar));
 			move (0, column);
 			addnstr (label.c_str (), width - column);
-			if (static_cast<size_t> (m_Tab) == i) attrset (A_NORMAL);
 			column += static_cast<int> (label.size ());
 		}
+		attrset (A_NORMAL);
 	}
 
 	void App::DrawFooter (int height, int width)
@@ -1940,9 +1946,7 @@ namespace
 			line += " | a/A add p start/stop R reannounce d/D remove x/z all / search s sort ? help";
 		else
 			line += " | q quit, Tab/1-7 switch, r refresh, ? help";
-		attrset (A_REVERSE);
-		PutLine (height - 1, line, width);
-		attrset (A_NORMAL);
+		PutLine (height - 1, line, width, m_Theme.Attributes (ThemeRole::StatusBar));
 	}
 
 	void App::DrawTorrentContext (int width)
@@ -1986,7 +1990,7 @@ namespace
 					std::to_string (m_TorrentDht.numBuckets) + " buckets, " +
 					std::to_string (m_TorrentDht.numTorrents) + " torrents";
 		}
-		PutLine (1, line, width, A_BOLD);
+		PutLine (1, line, width, m_Theme.Attributes (ThemeRole::Title));
 	}
 
 	void App::DrawStatus (int top, int height, int width)
@@ -1996,7 +2000,7 @@ namespace
 		{
 			if (row >= top + height) return;
 			move (row, 1);
-			attrset (A_BOLD);
+			attrset (m_Theme.Attributes (ThemeRole::Primary));
 			addnstr (std::string (label).c_str (), 24);
 			attrset (A_NORMAL);
 			auto text = TruncateUtf8 (SanitizeText (value), width > 26 ? width - 26 : 0);
@@ -2032,7 +2036,7 @@ namespace
 	{
 		int row = top;
 		std::string header = "  Peer hash                                      Sess Attempts Transports High";
-		PutLine (row++, header, width, A_BOLD);
+		PutLine (row++, header, width, m_Theme.Attributes (ThemeRole::Primary));
 		if (m_Peers.empty ()) PutLine (row, "  no known peers", width);
 		int visible = std::max (0, height - 1);
 		int start = std::max (0, static_cast<int> (m_Peers.size ()) - visible - m_Scroll);
@@ -2054,7 +2058,8 @@ namespace
 	void App::DrawTunnels (int top, int height, int width)
 	{
 		int row = top;
-		PutLine (row++, "  Tunnel ID   Dir      State         Hops  Created", width, A_BOLD);
+		PutLine (row++, "  Tunnel ID   Dir      State         Hops  Created", width,
+			m_Theme.Attributes (ThemeRole::Primary));
 		if (m_Tunnels.empty ()) PutLine (row, "  no tunnels", width);
 		int visible = std::max (0, height - 1);
 		int start = std::max (0, static_cast<int> (m_Tunnels.size ()) - visible - m_Scroll);
@@ -2090,7 +2095,8 @@ namespace
 		if (!m_Destinations.empty ())
 		{
 			if (row < top + height) PutLine (row++, "", width);
-			if (row < top + height) PutLine (row++, "  Local destinations (b32):", width, A_BOLD);
+			if (row < top + height) PutLine (row++, "  Local destinations (b32):", width,
+				m_Theme.Attributes (ThemeRole::Primary));
 			for (const auto& destination : m_Destinations)
 			{
 				if (row >= top + height) break;
@@ -2108,7 +2114,8 @@ namespace
 		int lines = std::max (0, height - 1);
 		int start = std::max (0, static_cast<int> (visible.size ()) - lines - m_Scroll);
 		int row = top;
-		PutLine (row++, "  Time      Level  Message (l cycles filter: debug/info/warn/error/critical)", width, A_BOLD);
+		PutLine (row++, "  Time      Level  Message (l cycles filter: debug/info/warn/error/critical)", width,
+			m_Theme.Attributes (ThemeRole::Primary));
 		if (visible.empty ())
 		{
 			PutLine (row, "  no log records at this level", width);
@@ -2119,13 +2126,14 @@ namespace
 			const auto& record = *visible[i];
 			move (row, 0);
 			clrtoeol ();
+			const int attributes = LevelAttribute (m_Theme, record.level);
+			if (attributes) attrset (attributes);
 			std::string prefix = "  " + Timestamp (record.timestamp) + " " +
 				std::string (LevelName (record.level)) + "  ";
 			auto safePrefix = TruncateUtf8 (prefix, width, false);
 			addnstr (safePrefix.c_str (), static_cast<int> (safePrefix.size ()));
 			int remaining = width - DisplayWidth (safePrefix);
 			auto message = TruncateUtf8 (SanitizeText (record.text), std::max (0, remaining), true);
-			attrset (LevelAttribute (record.level));
 			if (!message.empty ()) addnstr (message.c_str (), static_cast<int> (message.size ()));
 			attrset (A_NORMAL);
 			++row;
@@ -2184,15 +2192,20 @@ namespace
 	{
 		if (!m_Connected)
 		{
-			PutLine (top, "  daemon is disconnected; torrent state is unavailable", width);
-			PutLine (top + 1, "  reconnecting automatically - see the footer for details", width);
+			PutLine (top, "  daemon is disconnected; torrent state is unavailable", width,
+				m_Theme.Attributes (ThemeRole::Error));
+			PutLine (top + 1, "  reconnecting automatically - see the footer for details", width,
+				m_Theme.Attributes (ThemeRole::Muted));
 			return;
 		}
 		if (m_TorrentTunnels.empty ())
 		{
-			PutLine (top, "  No torrent service tunnel is available on this router.", width, A_BOLD);
-			PutLine (top + 1, "  Start a torrent client tunnel in i2pd, then press r.", width);
-			PutLine (top + 2, "  Torrent administration does not open any files or network links here.", width);
+			PutLine (top, "  No torrent service tunnel is available on this router.", width,
+				m_Theme.Attributes (ThemeRole::Warning));
+			PutLine (top + 1, "  Start a torrent client tunnel in i2pd, then press r.", width,
+				m_Theme.Attributes (ThemeRole::Muted));
+			PutLine (top + 2, "  Torrent administration does not open any files or network links here.", width,
+				m_Theme.Attributes (ThemeRole::Muted));
 			return;
 		}
 
@@ -2212,7 +2225,7 @@ namespace
 		if (layout.showPeers) header += column ("Peers S/L", TORRENT_PEERS_COLS);
 		if (layout.showRatio) header += column ("Ratio/ETA", TORRENT_RATIO_COLS);
 		if (layout.showError) header += column ("Error", TORRENT_ERROR_COLS);
-		PutLine (top, header, width, A_BOLD);
+		PutLine (top, header, width, m_Theme.Attributes (ThemeRole::Primary));
 
 		if (!m_TorrentsLoaded)
 		{
@@ -2245,9 +2258,20 @@ namespace
 			if (layout.showSize) line += column (HumanBytes (torrent.total), TORRENT_SIZE_COLS, true);
 			char progress[32];
 			snprintf (progress, sizeof (progress), "%.1f%%", torrent.percent);
-			line += column (progress, TORRENT_PROGRESS_COLS, true);
-			if (layout.showDown) line += column (HumanRateShort (torrent.downRate), TORRENT_DOWN_COLS, true);
-			if (layout.showUp) line += column (HumanRateShort (torrent.upRate), TORRENT_UP_COLS, true);
+			std::string progressText = column (progress, TORRENT_PROGRESS_COLS, true);
+			line += progressText;
+			std::string downText;
+			std::string upText;
+			if (layout.showDown)
+			{
+				downText = column (HumanRateShort (torrent.downRate), TORRENT_DOWN_COLS, true);
+				line += downText;
+			}
+			if (layout.showUp)
+			{
+				upText = column (HumanRateShort (torrent.upRate), TORRENT_UP_COLS, true);
+				line += upText;
+			}
 			if (layout.showPeers)
 			{
 				char peers[64];
@@ -2260,7 +2284,37 @@ namespace
 				std::string error = torrent.error.empty () ? std::string () : "! " + torrent.error;
 				line += column (error, TORRENT_ERROR_COLS);
 			}
-			PutLine (row++, line, width, selected ? A_REVERSE : 0);
+			PutLine (row, line, width, selected ? m_Theme.Attributes (ThemeRole::SelectedRow) : 0);
+
+			if (!selected)
+			{
+				// Progress and rate columns are ASCII, so their byte count
+				// equals their display width; overlaying them only changes
+				// colour, not layout.
+				auto overlay = [&] (int at, const std::string& text, ThemeRole role)
+				{
+					if (at >= width || text.empty ()) return;
+					const int bytes = std::min (static_cast<int> (text.size ()), width - at);
+					attrset (m_Theme.Attributes (role));
+					mvaddnstr (row, at, text.c_str (), bytes);
+					attrset (A_NORMAL);
+				};
+
+				int columnOffset = 2 + layout.name + TORRENT_STATUS_COLS;
+				if (layout.showSize) columnOffset += TORRENT_SIZE_COLS;
+				const ThemeRole progressRole = torrent.percent >= 99.95 ?
+					ThemeRole::Success : ThemeRole::TorrentProgress;
+				overlay (columnOffset, progressText, progressRole);
+				columnOffset += TORRENT_PROGRESS_COLS;
+				if (layout.showDown)
+				{
+					overlay (columnOffset, downText, ThemeRole::TorrentDownload);
+					columnOffset += TORRENT_DOWN_COLS;
+				}
+				if (layout.showUp)
+					overlay (columnOffset, upText, ThemeRole::TorrentUpload);
+			}
+			++row;
 		}
 	}
 
@@ -2424,7 +2478,8 @@ namespace
 		}
 
 		int row = top;
-		PutLine (row++, "  " + FitUtf8 (info->name, std::max (1, width - 2)), width, A_BOLD);
+		PutLine (row++, "  " + FitUtf8 (info->name, std::max (1, width - 2)), width,
+			m_Theme.Attributes (ThemeRole::Primary));
 
 		static constexpr std::array<std::string_view, 4> tabNames = {"General", "Files", "Peers", "Trackers"};
 		std::string tabs = "  ";
@@ -2465,7 +2520,7 @@ namespace
 			int available = std::max (0, width - DisplayWidth (label) - 1);
 			auto input = TailUtf8 (m_InputBuffer, available);
 			std::string line = " " + label + input;
-			attrset (A_REVERSE | A_BOLD);
+			attrset (m_Theme.Attributes (ThemeRole::SelectedRow));
 			PutLine (row, line, width);
 			attrset (A_NORMAL);
 			int column = std::min (width - 1, DisplayWidth (line));
@@ -2484,7 +2539,7 @@ namespace
 				return;
 			}
 			std::string line = " " + std::string (m_StatusError ? "! " : "> ") + m_StatusMessage;
-			PutLine (row, line, width, m_StatusError ? (COLOR_PAIR (2) | A_BOLD) : A_BOLD);
+			PutLine (row, line, width, m_Theme.Attributes (m_StatusError ? ThemeRole::Error : ThemeRole::Success));
 		}
 	}
 
@@ -2496,7 +2551,9 @@ namespace
 		{
 			erase ();
 			curs_set (0);
+			attrset (m_Theme.Attributes (ThemeRole::Error));
 			mvaddnstr (0, 0, "Terminal too small", std::max (0, width));
+			attrset (A_NORMAL);
 			refresh ();
 			m_Dirty = false;
 			return;
@@ -2786,7 +2843,7 @@ int main (int argc, char* argv[])
 	if (options->showHelp)
 	{
 		std::printf (
-			"i2pd-tui " VERSION " - local console for the Open I2Pd router\n"
+			"i2pd-tui " VERSION " - local console for the openi2pd router\n"
 			"\n"
 			"Usage: i2pd-tui [--socket PATH] [--datadir PATH] [--conf PATH] [--service]\n"
 			"\n"
@@ -2828,17 +2885,13 @@ int main (int argc, char* argv[])
 	keypad (stdscr, TRUE);
 	curs_set (0);
 	timeout (200);
-	if (has_colors ())
-	{
-		start_color ();
-		use_default_colors ();
-		init_pair (1, COLOR_CYAN, -1);
-		init_pair (2, COLOR_RED, -1);
-		init_pair (3, COLOR_YELLOW, -1);
-		init_pair (4, COLOR_BLUE, -1);
-	}
+	// The central theme owns start_color(), use_default_colors() and all
+	// colour-pair allocation.  It degrades to 16/8 colours or monochrome
+	// attributes when the terminal cannot provide the requested combination.
+	i2p::tui::Theme theme;
+	theme.Init ();
 
-	App app (*resolved);
+	App app (*resolved, theme);
 	int result = app.Run ();
 	endwin ();
 	return result;

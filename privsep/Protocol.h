@@ -1,7 +1,9 @@
 /*
 * Copyright (c) 2026, The PurpleI2P Project
+* Copyright (c) 2026, David Uhden Collado
+* SPDX-License-Identifier: BSD-3-Clause
 *
-* This file is part of Open I2Pd and licensed under BSD3
+* This file is part of openi2pd and licensed under BSD-3-Clause
 */
 
 #ifndef I2PD_PRIVSEP_PROTOCOL_H__
@@ -74,7 +76,7 @@ namespace i2p::privsep
 				U16 (static_cast<uint16_t> (value >> 16));
 				U16 (static_cast<uint16_t> (value & 0xffff));
 			}
-			void U64 (uint64_t value)
+			void U64BE (uint64_t value)
 			{
 				U32 (static_cast<uint32_t> (value >> 32));
 				U32 (static_cast<uint32_t> (value & 0xffffffff));
@@ -115,7 +117,7 @@ namespace i2p::privsep
 				auto lo = U16 (); if (!lo) return i2p::unexpected (lo.error ());
 				return (static_cast<uint32_t> (*hi) << 16) | *lo;
 			}
-			i2p::expected<uint64_t, ProtocolError> U64 ()
+			i2p::expected<uint64_t, ProtocolError> U64BE ()
 			{
 				auto hi = U32 (); if (!hi) return i2p::unexpected (hi.error ());
 				auto lo = U32 (); if (!lo) return i2p::unexpected (lo.error ());
@@ -188,7 +190,7 @@ namespace i2p::privsep
 	{
 		PayloadWriter writer;
 		writer.U8 (level);
-		writer.U64 (static_cast<uint64_t> (timestamp));
+		writer.U64BE (static_cast<uint64_t> (timestamp));
 		writer.String (text);
 		return writer.Data ();
 	}
@@ -198,7 +200,7 @@ namespace i2p::privsep
 	{
 		PayloadReader reader (payload);
 		auto level = reader.U8 (); if (!level) return i2p::unexpected (level.error ());
-		auto timestamp = reader.U64 (); if (!timestamp) return i2p::unexpected (timestamp.error ());
+		auto timestamp = reader.U64BE (); if (!timestamp) return i2p::unexpected (timestamp.error ());
 		auto text = reader.String (); if (!text) return i2p::unexpected (text.error ());
 		if (!reader.Done ()) return i2p::unexpected (ProtocolError{ErrorCode::BadField, "trailing log data"});
 		return std::tuple{*level, static_cast<int64_t> (*timestamp), std::string (*text)};

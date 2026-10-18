@@ -1,3 +1,6 @@
+# Copyright (c) 2013-2026, The PurpleI2P Project
+# Copyright (c) 2026, David Uhden Collado
+# SPDX-License-Identifier: BSD-3-Clause
 enable_testing()
 
 function(i2pd_add_test name)

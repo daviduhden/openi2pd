@@ -1,4 +1,8 @@
 #!/usr/bin/env perl
+# Copyright (c) 2013-2026, The PurpleI2P Project
+# Copyright (c) 2026, David Uhden Collado
+# SPDX-License-Identifier: BSD-3-Clause
+#
 #
 # i2pdctl - command line client for the I2PControl JSON-RPC service.
 #
@@ -7,7 +11,7 @@
 # HTTP::Tiny, IPC::Open3) plus the system openssl binary for HTTPS when
 # IO::Socket::SSL is not available.  It never falls back to cleartext.
 #
-# Part of Open I2Pd; see the LICENSE file in the project root.
+# Part of openi2pd; see the LICENSE file in the project root.
 
 use strict;
 use warnings;
@@ -516,6 +520,11 @@ sub _stderr_hint {
     return undef unless defined $stderr && $stderr =~ /\S/;
     my ($line) = grep { /\S/ } split /\r?\n/, $stderr;
     return undef unless defined $line;
+    # OpenSSL may colorize diagnostics. Strip complete CSI/OSC sequences
+    # before replacing remaining control characters, otherwise the printable
+    # "[31m" residue reaches the operator and breaks stable diagnostics.
+    $line =~ s/\e\[[0-?]*[ -\/]*[@-~]//g;
+    $line =~ s/\e\][^\a]*(?:\a|\e\\)//g;
     $line =~ s/[\x00-\x1f\x7f\x80-\x9f]+/ /g;
     $line =~ s/\A\s+//;
     $line =~ s/\s+\z//;
@@ -902,16 +911,16 @@ sub _print_info {
     }
 
     if (exists $router->{'i2p.router.net.total.received.bytes'}) {
-        printf "Received: %s (%s B/s)  /  Sent: %s (%s B/s)\n",
+        printf "Received: %s (%d B/s)  /  Sent: %s (%d B/s)\n",
             _humanize_size(_int_value($router->{'i2p.router.net.total.received.bytes'})),
-            _humanize_size(_int_value($router->{'i2p.router.net.bw.inbound.1s'})),
+            _int_value($router->{'i2p.router.net.bw.inbound.1s'}),
             _humanize_size(_int_value($router->{'i2p.router.net.total.sent.bytes'})),
-            _humanize_size(_int_value($router->{'i2p.router.net.bw.outbound.1s'}));
+            _int_value($router->{'i2p.router.net.bw.outbound.1s'});
     }
     else {
-        printf "Received: %s B/s  /  Sent: %s B/s\n",
-            _humanize_size(_int_value($router->{'i2p.router.net.bw.inbound.1s'})),
-            _humanize_size(_int_value($router->{'i2p.router.net.bw.outbound.1s'}));
+        printf "Received: %d B/s  /  Sent: %d B/s\n",
+            _int_value($router->{'i2p.router.net.bw.inbound.1s'}),
+            _int_value($router->{'i2p.router.net.bw.outbound.1s'});
     }
 
     my $known  = _display($router->{'i2p.router.netdb.knownpeers'});

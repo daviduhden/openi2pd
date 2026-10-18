@@ -1,4 +1,4 @@
-> **Platform note:** this page is retained from upstream i2pd documentation for reference. Open I2Pd does not build or test this platform; use upstream i2pd for support.
+> **Platform note:** this page is retained from upstream i2pd documentation for reference. openi2pd does not build or test this platform; use upstream i2pd for support.
 
 Building on iOS
 ===================

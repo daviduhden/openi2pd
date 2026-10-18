@@ -1,5 +1,8 @@
+# Copyright (c) 2013-2026, The PurpleI2P Project
+# Copyright (c) 2026, David Uhden Collado
+# SPDX-License-Identifier: BSD-3-Clause
 [Unit]
-Description=Open I2Pd router
+Description=openi2pd router
 Documentation=man:i2pd(1) https://github.com/daviduhden/openi2pd
 Wants=network.target
 After=network.target network-online.target

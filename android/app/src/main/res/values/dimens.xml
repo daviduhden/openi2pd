@@ -1,4 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Copyright (c) 2013-2026, The PurpleI2P Project
+  Copyright (c) 2026, David Uhden Collado
+  SPDX-License-Identifier: BSD-3-Clause
+-->
 <resources>
     <dimen name="margin_tiny">4dp</dimen>
     <dimen name="margin_small">8dp</dimen>
@@ -13,4 +18,6 @@
     <dimen name="log_row_padding">12dp</dimen>
     <dimen name="touch_target">48dp</dimen>
     <dimen name="card_content_padding">16dp</dimen>
+    <dimen name="about_logo_size">96dp</dimen>
+    <dimen name="about_logo_padding">12dp</dimen>
 </resources>

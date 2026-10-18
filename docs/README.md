@@ -1,7 +1,18 @@
-# Open I2Pd documentation
+# openi2pd documentation
 
-See the [README](../README.md) for supported platforms and build instructions.
-The binary and configuration options retain the `i2pd` name.
+See the [documentation home](index.md) for supported platforms and build instructions.
+`openi2pd` is the product identity; the binary and configuration options retain
+the `i2pd` name for compatibility.
+
+## Brand
+
+- [Visual identity overview](branding/README.md)
+- [Logo usage](branding/logo-usage.md)
+- [Brand colors](branding/colors.md) — canonical palette in
+  [assets/branding/colors.md](assets/branding/colors.md)
+- [Asset inventory](branding/assets.md)
+
+## Documentation
 
 - [Router configuration](../contrib/i2pd.conf)
 - [Client tunnels](../contrib/tunnels.conf)

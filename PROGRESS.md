@@ -342,3 +342,73 @@ then `TODO.md` and `ROADMAP.md`, then verify the code state.
 - Master tracking and docs are updated; no active subagent remains.
 - No compiler, CTest, Gradle/AAPT2, APK, Lint, sanitizer, fuzz, OpenBSD or
   device test was run. CI/user must execute the prepared commands.
+
+
+### Session 9 — openi2pd visual identity
+
+- Supplied `logo.png` (1254×1254 RGBA) preserved unchanged as
+  `assets/branding/logo-original.png`.
+- Reconstructed the symbol and lockup as real vector paths (no embedded image,
+  no runtime font): full, symbol-only, horizontal, monochrome, light and dark
+  variants; generated `logo.png` and `symbol.png` from the SVG masters.
+- Added canonical palette/contrast data in `assets/branding/colors.md` and
+  identity documentation under `docs/branding/`.
+- Launched disjoint Android UI, TUI, Documentation and Packaging branding
+  passes. No commit, push, Gradle, native build or visual/device test has been
+  performed for this branding work.
+
+### CI follow-up (uncommitted)
+
+- First manual run: Linux/Android, Windows and OpenBSD failed.
+- Second run after portable `Expected`/`std::thread` fixes: Android still linked
+  native code against ARM vcpkg libraries; OpenBSD hit OpenSSL's `U64` macro
+  collision; Windows tools lacked `mswsock`; Perl transport tests exposed a
+  B/s formatting bug and ANSI residue.
+- Local fixes: NDK chainload + `boost-json`/`boost-url`, `U64BE` codec names,
+  `mswsock` propagation, raw rate formatting and CSI stripping.
+- Current instruction forbids commit/push, so these fixes and the CI rerun are
+  pending. No local build/test was run.
+
+### Branding subagent results (static)
+
+- **Android:** official symbol vector in launcher/notification/About; adaptive
+  icon API 26/33, legacy PNG mipmaps, Android 12 splash, semantic light/dark
+  Material 3 palette, `openi2pd` app label and About license text. AAPT2,
+  Lint, APK/device and Java compile still pending.
+- **Documentation:** README/docs index/nav use `openi2pd` and relative branding
+  links; repository link checks and MkDocs nav path checks passed statically.
+- **Packaging:** Windows multi-size ICO, desktop entry, favicon/icon, CMake
+  installs, Windows metadata and Debian description updated. Windows resource,
+  CMake install, desktop and package builds not run.
+- **TUI:** centralized theme module with semantic roles and 8/16/256/direct/
+  monochrome fallbacks; no raw ANSI or bitmap logo; terminal matrix pending.
+
+### License headers (uncommitted)
+
+- Added `Copyright (c) 2013-2026, The PurpleI2P Project` and
+  `Copyright (c) 2026, David Uhden Collado` with
+  `SPDX-License-Identifier: BSD-3-Clause` to project C/C++/Java/Python-free
+  scripts, CMake, Makefiles, Android XML/Gradle, desktop/service/Windows
+  resources and workflow/config sources.
+- Updated the existing `BSD3` wording to `BSD-3-Clause`; root, Android and
+  tools license files and Debian copyright metadata were aligned.
+- Third-party files (`build/cmake_modules/FindCheck`, `GetGitRevisionDescription`,
+  Windows SDK `winres.h`, Gradle wrapper Apache-2.0, OpenBSD ports copies) were
+  left under their existing notices; documentation remains CC-BY-SA-4.0.
+- No license scanner or compiler was run; the static header inventory reports
+  only expected third-party/no-SPDX exceptions.
+
+### Branding review and license pass
+
+- Security/review findings were addressed statically: Read-the-Docs CSS
+  selectors, docs asset mirror with strict MkDocs build, documented Android
+  semantic tokens, genuine navy `logo-dark`, softened-white `logo-light`
+  (`#FFFFFF`), TUI disabled/warning contrast, Windows copyright wording and
+  explicit artwork license metadata.
+- `mkdocs build --strict` completed with only informational unused-page notes.
+- Added LICENSE copyright lines and `SPDX-License-Identifier: BSD-3-Clause` to
+  project code/config; third-party Apache/BSL/Windows-SDK/OpenBSD-port files
+  retain their notices; documentation stays CC-BY-SA-4.0.
+- No compiler, Android AAPT2/Lint/device, Windows resource, or visual/terminal
+  test was executed; replacement assets remain uncommitted and HEAD is
+  therefore not a releaseable branding state.

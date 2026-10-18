@@ -13,7 +13,7 @@ Reference implementation audited statically in this session:
 | Newer stable | None found at audit time (GitHub latest release still 2.13.0) |
 
 The Java tree is **not** vendored and is not a build/runtime dependency of
-Open I2Pd. No Java code was modified.
+openi2pd. No Java code was modified.
 
 Status vocabulary:
 
@@ -26,7 +26,7 @@ Status vocabulary:
 
 ## Matrix
 
-| Area | Specification | I2P Java reference | Open I2Pd reference | Java behavior (static) | Open I2Pd behavior | Difference | Interoperability consequence | Priority | Change / tests | Validation |
+| Area | Specification | I2P Java reference | openi2pd reference | Java behavior (static) | openi2pd behavior | Difference | Interoperability consequence | Priority | Change / tests | Validation |
 |---|---|---|---|---|---|---|---|---|---|---|
 | NTCP2 version negotiation | `spec/ntcp2` | `router/.../transport/ntcp/NTCPTransport.java`, `InboundEstablishState.java`, `OutboundNTCP2State.java` | `libi2pd/NTCP2.cpp` `SetVersion`, SessionRequest/Confirmed | `NTCP2_INT_VERSION=2`, `PQ_INT_VERSION=4`; publishes `v=2` and `pq=4`; accepts 2–5 internally | Publishes `v=2`, `pq` 3–5; accepts same range with OpenSSL PQ | None found; i2pd supports 3 and 5 beyond Java's 4 but negotiates down | Compatible when PQ availability matches; otherwise version 2 | P0 | Existing version tests; no change | Needs dynamic PQ/non-PQ session test |
 | NTCP2 handshake/frames | `spec/ntcp2` | `OutboundNTCP2State`, `InboundEstablishState`, `NTCP2Payload` | `libi2pd/NTCP2.cpp` | X25519/ML-KEM, obfuscation, length bounds, 65516 max message | Same structure; separate implementation; data-phase block headers now require 3 bytes before reading a size | None found | Compatible (static) | P0 | Frame header bound fixed; existing code | Needs dynamic session |
@@ -62,7 +62,7 @@ Status vocabulary:
   transports and reseed.
 - **C++ before:** `libi2pd/RouterInfo.h`, `MAX_RI_BUFFER_SIZE = 3072`.
 - **Impact:** a valid Java RouterInfo between 3073 and 4096 bytes could be
-  rejected by Open I2Pd, preventing netDb/floodfill visibility.
+  rejected by openi2pd, preventing netDb/floodfill visibility.
 - **Fix:** `MAX_RI_BUFFER_SIZE` raised to 4096 with a comment referencing the
   Java constant. NTCP2 handshake-specific limits remain separate.
 - **Security:** buffers remain fixed-size and all parsers still enforce the cap;

@@ -1,4 +1,4 @@
-Installing Open I2Pd
+Installing openi2pd
 ==========
 
 ## Building from source
@@ -8,8 +8,8 @@ See [developer section documentation](../devs/building/requirements.md) for how 
 
 ## Installation from prebuilt packages
 
-The easiest way to install Open I2Pd is by using precompiled packages and binaries.
-Use packages from your operating-system distribution, or build from source. Release artifacts, when published, are on the [Open I2Pd releases page](https://github.com/daviduhden/openi2pd/releases).
+The easiest way to install openi2pd is by using precompiled packages and binaries.
+Use packages from your operating-system distribution, or build from source. Release artifacts, when published, are on the [openi2pd releases page](https://github.com/daviduhden/openi2pd/releases).
 
 
 ## Windows

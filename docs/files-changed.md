@@ -41,6 +41,16 @@ was created.
 - `docs/security/privilege-separation.md`, `ipc-protocol.md`,
   `process-capabilities.md`, `threat-model.md`.
 
+### Visual identity
+
+- `assets/branding/` — vector logo masters (`logo.svg`,
+  `logo-horizontal.svg`, `symbol.svg`, light/dark/monochrome variants),
+  rasterized `logo.png`/`symbol.png`, the supplied `logo-original.png`
+  reference, and canonical `colors.md`.
+- `docs/branding/` — [overview](branding/README.md),
+  [logo usage](branding/logo-usage.md), [colors](branding/colors.md) and
+  [asset inventory](branding/assets.md).
+
 ### Documentation
 
 - `docs/architecture.md`
@@ -59,7 +69,7 @@ was created.
 - `docs/REBRANDING.md`
 - `TODO.md`, `ROADMAP.md`, `PROGRESS.md`, `AGENTS.md`
 - `docs/architecture/README.md`
-- `contrib/artwork/open-i2pd-icon.svg`
+- `contrib/artwork/open-i2pd-icon.svg` (now generated from `assets/branding/symbol.svg`)
 - `docs/tools/` (per-tool documentation)
 - `docs/developer-guide/`, `docs/protocols/`, `docs/security/` (integrated
   documentation indexes)
@@ -133,7 +143,8 @@ version branches; comment-only changes are included:
 | `contrib/docker/Dockerfile`, `i2pd-docker.conf` | removed console port/config |
 | `contrib/openbsd/README.md` | TUI socket, sandbox and rc.d notes |
 | `contrib/openbsd/i2pd.rc`, `i2pd.login` | OpenBSD rc.d service/login class from wip-openbsd-ports |
-| `README.md`, `docs/README.md` | C++23/CMake/TUI/manual-CI documentation |
+| `README.md`, `docs/README.md` | C++23/CMake/TUI/manual-CI documentation; openi2pd logo, naming and branding links |
+| `docs/index.md`, `docs/mkdocs.yml` | openi2pd identity statement, branding links and MkDocs Branding nav |
 | `.github/workflows/build.yml`, `build-openbsd.yml`, `build-windows.yml` | manual-only triggers, Ninja, TUI/Perl test targets, pinned actions, no credential persistence |
 | `.yamllint.yml` | workflow lint policy |
 | `docs/android-java25.md`, `docs/android-modernization.md` | Java 25, ART/D8/R8 and UI/architecture status |
@@ -169,3 +180,30 @@ version branches; comment-only changes are included:
 - `libi2pd_wrapper/` and public library headers.
 - Torrent engine and I2P-only transport code under `libi2pd_client/`.
 - Historical `ChangeLog` references to the web console.
+
+## Validation state
+
+- Static link/image path checks were run against the working tree for the
+  documentation changes listed above.
+- Visual validation is **pending**: no MkDocs build, browser render, SVG/PNG
+  rendering, logo clear-space check or packaging/Android asset review was run
+  in this environment.
+
+## Visual identity additions (openi2pd)
+
+| Path | Change |
+|---|---|
+| `assets/branding/` | Vector lockup/symbol/horizontal/light/dark/monochrome, PNG masters, original reference and canonical colors |
+| `docs/branding/` | Identity overview, usage, canonical-color link and asset inventory |
+| `docs/stylesheets/brand.css` | MkDocs semantic palette |
+| `tui/Theme.h`, `tui/main.cpp` | Central ncurses theme and semantic roles |
+| Android `values/colors.xml`, `values-night/colors.xml`, `themes.xml`, `values-v31/themes.xml` | Material 3 light/dark palette and platform splash |
+| Android `mipmap-anydpi-v26|v33/ic_launcher.xml`, `mipmap-*/ic_launcher.png`, launcher/notification/logo vectors | Official adaptive/legacy/themed icons |
+| `Win32/openi2pd.ico`, `Win32/Resource.rc*`, `build/win_installer.iss` | Windows icon and user-facing metadata |
+| `contrib/openi2pd.desktop`, `contrib/artwork/open-i2pd-icon.svg`, `openi2pd-256.png`, `docs/img/logo.png`, `docs/img/favicon.ico` | Desktop, documentation and packaging artwork |
+| `tools/scripts/validate-branding.pl` | Static file/SVG/PNG validation |
+| `README.md`, `docs/README.md`, `docs/index.md`, `docs/mkdocs.yml` | Brand navigation, logo and naming |
+
+## License header pass
+
+Project C/C++/Java, scripts, CMake/Make, Android resources/Gradle, desktop/service/Windows resources and workflow/config files now carry the two copyright lines from `LICENSE` and `SPDX-License-Identifier: BSD-3-Clause`. Existing third-party files retain their own notices: Apache-2.0 Gradle wrapper, BSL-1.0 CMake module, New-BSD CMake module, Windows SDK header, OpenBSD ports copies, and CC-BY-SA documentation.

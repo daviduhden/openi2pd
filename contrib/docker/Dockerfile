@@ -1,3 +1,6 @@
+# Copyright (c) 2013-2026, The PurpleI2P Project
+# Copyright (c) 2026, David Uhden Collado
+# SPDX-License-Identifier: BSD-3-Clause
 FROM alpine:latest AS builder
 RUN apk add --no-cache build-base cmake ninja boost-dev openssl-dev zlib-dev miniupnpc-dev
 WORKDIR /src
@@ -9,7 +12,7 @@ RUN cmake -S build -B build-output -G Ninja \
     && strip build-output/i2pd
 
 FROM alpine:latest
-LABEL org.opencontainers.image.title="Open I2Pd"
+LABEL org.opencontainers.image.title="openi2pd"
 LABEL org.opencontainers.image.source="https://github.com/daviduhden/openi2pd"
 LABEL org.opencontainers.image.licenses="BSD-3-Clause"
 RUN apk add --no-cache boost-filesystem boost-system boost-program_options boost-date_time boost-thread boost-iostreams boost-json boost-url openssl miniupnpc libstdc++ \

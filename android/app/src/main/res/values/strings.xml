@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Copyright (c) 2013-2026, The PurpleI2P Project
+  Copyright (c) 2026, David Uhden Collado
+  SPDX-License-Identifier: BSD-3-Clause
+-->
 <resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
-    <string name="app_name" translatable="false">Open I2Pd</string>
+    <string name="app_name" translatable="false">openi2pd</string>
 
     <string name="action_start">Start</string>
     <string name="action_stop">Stop</string>
@@ -192,7 +197,7 @@
     <string name="about_build_release">Release build</string>
     <string name="about_data_directory_label">Data directory</string>
     <string name="about_license_label">License</string>
-    <string name="about_license_summary">Open I2Pd is distributed under the BSD 3-Clause license. Copyright and attribution notices from the upstream i2pd-android project are preserved in the source and license files.</string>
+    <string name="about_license_summary">openi2pd is distributed under the BSD 3-Clause license. Copyright and attribution notices from the upstream i2pd-android project are preserved in the source and license files.</string>
     <string name="about_repository_label">Source repository</string>
     <string name="about_data_unavailable">Not available</string>
     <string name="repository_url" translatable="false">https://github.com/daviduhden/openi2pd</string>

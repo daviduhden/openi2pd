@@ -1,4 +1,7 @@
-description "Open I2Pd router"
+# Copyright (c) 2013-2026, The PurpleI2P Project
+# Copyright (c) 2026, David Uhden Collado
+# SPDX-License-Identifier: BSD-3-Clause
+description "openi2pd router"
 
 start on runlevel [2345]
 stop on runlevel [016] or unmounting-filesystem

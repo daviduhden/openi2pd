@@ -1,3 +1,8 @@
+/*
+ * Copyright (c) 2013-2026, The PurpleI2P Project
+ * Copyright (c) 2026, David Uhden Collado
+ * SPDX-License-Identifier: BSD-3-Clause
+ */
 package org.openi2pd.router;
 
 import static android.app.PendingIntent.FLAG_IMMUTABLE;
@@ -782,7 +787,7 @@ public class RouterService extends Service {
         NotificationCompat.Builder builder =
                 new NotificationCompat.Builder(this, CHANNEL_ID)
                         .setOngoing(true)
-                        .setSmallIcon(R.drawable.ic_notification_icon)
+                        .setSmallIcon(R.drawable.ic_logo_monochrome)
                         .setPriority(NotificationCompat.PRIORITY_DEFAULT)
                         .setCategory(NotificationCompat.CATEGORY_SERVICE)
                         .setTicker(text)

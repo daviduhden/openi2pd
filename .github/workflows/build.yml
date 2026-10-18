@@ -1,3 +1,6 @@
+# Copyright (c) 2013-2026, The PurpleI2P Project
+# Copyright (c) 2026, David Uhden Collado
+# SPDX-License-Identifier: BSD-3-Clause
 ---
 name: Linux and Android
 
@@ -36,6 +39,7 @@ jobs:
       - name: Validate Perl i2pdctl
         run: |
           perl -c tools/scripts/i2pdctl
+          perl tools/scripts/validate-branding.pl
           prove -v tools/tests/i2pdctl.t
 
   android:
@@ -78,6 +82,7 @@ jobs:
         run: |
           cmake -S build -B build-android -G Ninja \
             -DCMAKE_TOOLCHAIN_FILE="$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_CHAINLOAD_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
             -DVCPKG_MANIFEST_DIR="$GITHUB_WORKSPACE/contrib/ci/android" \
             -DVCPKG_OVERLAY_TRIPLETS="$GITHUB_WORKSPACE/contrib/ci/android" \
             -DVCPKG_TARGET_TRIPLET=arm64-android \

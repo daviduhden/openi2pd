@@ -1,6 +1,8 @@
 /**
  * This code is licensed under the MCGSI Public License
  * Copyright 2018 Jeff Becker
+ * Copyright (c) 2026, David Uhden Collado
+ * SPDX-License-Identifier: BSD-3-Clause
  *
  * Kovri go write your own code
  *

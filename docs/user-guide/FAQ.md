@@ -18,10 +18,10 @@ A deeper technical introduction of I2P can be found [here](https://geti2p.net/en
 
 While [Java I2P](https://geti2p.net) and i2pd are both clients for the I2P network, i2pd has some big differences and advantages:
 
-* Java I2P has built-in applications for torrents, e-mail and so on. Open I2Pd is just a router which you can use with other software through I2CP interface.
+* Java I2P has built-in applications for torrents, e-mail and so on. openi2pd is just a router which you can use with other software through I2CP interface.
 * i2pd does not require Java. It's written in C++.
 * i2pd consumes less memory and CPU.
-* Open I2Pd can be compiled everywhere gcc or clang presented (including Raspberry and routers).
+* openi2pd can be compiled everywhere gcc or clang presented (including Raspberry and routers).
 * i2pd has some major optimizations for faster cryptography which leads to less consumption of processor time and energy.
 
 ## Why is the I2P network so slow and unstable sometimes?
@@ -31,7 +31,7 @@ random computers in the way to its final destination. If one of those computers
 is shut down, or experiences connectivity problems, it can take some time for your
 I2P router to discover and fix that issue. 
 
-## Help! Open I2Pd is not working. What do I do?
+## Help! openi2pd is not working. What do I do?
 
 First of all, synchronize system clock on your machine with Internet.
 

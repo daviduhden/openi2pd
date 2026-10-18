@@ -4,7 +4,7 @@ Community
 This fork is developed in its own repository:
 
 * [Source and issue tracker](https://github.com/daviduhden/openi2pd)
-* [Documentation](../README.md)
+* [Documentation](../index.md)
 * [I2P network specifications](https://i2p.net/en/docs/specs/)
 
 Upstream i2pd community channels and social-media accounts are intentionally

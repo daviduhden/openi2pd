@@ -1,6 +1,6 @@
 # Architecture decisions
 
-This directory records cross-component decisions for the Open I2Pd fork.
+This directory records cross-component decisions for the openi2pd fork.
 
 ## ADR-001 — Monolithic runtime with an isolated logging worker (interim)
 
@@ -36,7 +36,7 @@ This directory records cross-component decisions for the Open I2Pd fork.
 
 - **Status:** Implemented / build validation blocked on Android SDK.
 - **Decision:** Application ID/namespace `org.openi2pd.router`, UI name
-  `Open I2Pd`, app-specific storage, no WebView console, no broad storage
+  `openi2pd`, app-specific storage, no WebView console, no broad storage
   permission. Build with OpenJDK 25, Gradle 9.8.1, AGP 9.4.1, compile/target
   SDK 37, minSdk 24, Java source level 17 (D8/R8 limit), NDK r27+.
 - **Consequences:** Existing upstream app cannot update in place; migration is
@@ -54,7 +54,7 @@ This directory records cross-component decisions for the Open I2Pd fork.
 ## ADR-005 — Repository identity and provenance
 
 - **Status:** Implemented; executable/config path rename deferred.
-- **Decision:** Use the existing Open I2Pd identity. Preserve copyright and
+- **Decision:** Use the existing openi2pd identity. Preserve copyright and
   upstream provenance. Rename Android app identity and user-visible branding;
   keep `i2pd` binary, library names and persisted paths until a dual-read
   migration and compatibility launcher exist.

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: BSD-3-Clause
 # - Try to find the CHECK libraries
 #  Once done this will define
 #

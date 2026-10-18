@@ -1,6 +1,6 @@
 # Build requirements
 
-Open I2Pd requires:
+openi2pd requires:
 
 * A C++23 compiler: GCC 13+, Clang 17+, or MSVC 19.35 (VS 2022 17.5)+.
 * CMake 3.22 or newer.

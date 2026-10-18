@@ -1,5 +1,8 @@
 #!/usr/bin/env perl
-# Part of Open I2Pd; see the LICENSE file in the project root.
+# Copyright (c) 2013-2026, The PurpleI2P Project
+# Copyright (c) 2026, David Uhden Collado
+# SPDX-License-Identifier: BSD-3-Clause
+# Part of openi2pd; see the LICENSE file in the project root.
 #
 # Regression tests for tools/scripts/i2pdctl.
 #

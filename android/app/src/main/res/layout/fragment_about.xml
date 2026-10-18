@@ -1,4 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Copyright (c) 2013-2026, The PurpleI2P Project
+  Copyright (c) 2026, David Uhden Collado
+  SPDX-License-Identifier: BSD-3-Clause
+-->
 <androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
@@ -16,6 +21,16 @@
         android:paddingTop="@dimen/screen_padding"
         android:paddingEnd="@dimen/screen_padding"
         android:paddingBottom="@dimen/screen_padding_bottom">
+
+        <ImageView
+            android:layout_width="@dimen/about_logo_size"
+            android:layout_height="@dimen/about_logo_size"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginBottom="@dimen/margin_medium"
+            android:background="@drawable/bg_logo_plate"
+            android:contentDescription="@string/app_name"
+            android:padding="@dimen/about_logo_padding"
+            android:src="@drawable/ic_logo" />
 
         <TextView
             android:layout_width="match_parent"

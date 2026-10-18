@@ -3,8 +3,14 @@ Upstream-Name: i2pd
 Source: https://github.com/daviduhden/openi2pd
 
 Files: *
-Copyright: 2013-2023 PurpleI2P
-License: BSD-3-clause
+Copyright: 2013-2026 PurpleI2P
+           2026 David Uhden Collado
+License: BSD-3-Clause
+
+Files: assets/branding/*
+Copyright: 2013-2026 PurpleI2P
+           2026 David Uhden Collado
+License: BSD-3-Clause
 
 Files: debian/*
 Copyright: 2013-2015 Kill Your TV <killyourtv@i2pmail.org>
@@ -13,8 +19,9 @@ Copyright: 2013-2015 Kill Your TV <killyourtv@i2pmail.org>
            2017-2020 Yangfl <mmyangfl@gmail.com>
 License: GPL-2+
 
-License: BSD-3-clause
- Copyright (c) 2013-2023, The PurpleI2P Project
+License: BSD-3-Clause
+ Copyright (c) 2013-2026, The PurpleI2P Project
+ Copyright (c) 2026, David Uhden Collado
  .
  All rights reserved.
  .

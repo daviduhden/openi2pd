@@ -1,7 +1,9 @@
 /*
 * Copyright (c) 2026, The PurpleI2P Project
+* Copyright (c) 2026, David Uhden Collado
+* SPDX-License-Identifier: BSD-3-Clause
 *
-* This file is part of Open I2Pd and licensed under BSD3
+* This file is part of openi2pd and licensed under BSD-3-Clause
 */
 
 #include "Worker.h"

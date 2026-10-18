@@ -1,3 +1,6 @@
+# Copyright (c) 2013-2026, The PurpleI2P Project
+# Copyright (c) 2026, David Uhden Collado
+# SPDX-License-Identifier: BSD-3-Clause
 # Portable POSIX make front-end for the CMake build.
 #
 # This file intentionally uses only POSIX make syntax: no wildcard(), shell(),

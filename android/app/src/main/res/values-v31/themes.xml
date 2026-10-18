@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Copyright (c) 2013-2026, The PurpleI2P Project
+  Copyright (c) 2026, David Uhden Collado
+  SPDX-License-Identifier: BSD-3-Clause
+-->
+<resources>
+    <!--
+        Android 12+ system splash. The platform starting window uses the app
+        icon; no core-splashscreen dependency is added. The adaptive
+        foreground sits on the same white plate as the launcher icon, over the
+        branded background, then the activity theme continues unchanged.
+    -->
+    <style name="Theme.OpenI2Pd" parent="Theme.OpenI2Pd.Base">
+        <item name="android:windowSplashScreenBackground">@color/brand_background</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@color/ic_launcher_background</item>
+        <item name="android:windowSplashScreenAnimationDuration">200</item>
+    </style>
+</resources>

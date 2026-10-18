@@ -1,32 +1,78 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Copyright (c) 2013-2026, The PurpleI2P Project
+  Copyright (c) 2026, David Uhden Collado
+  SPDX-License-Identifier: BSD-3-Clause
+-->
 <resources>
-    <color name="brand_primary">#006A60</color>
+    <!--
+        Canonical openi2pd palette. Values come from assets/branding/colors.md.
+        The brand_* resource prefix is kept so existing view code and themes do
+        not depend on window/theme state; it is not a second color source.
+    -->
+
+    <!-- Core logo palette (graphic accents, not text colors). -->
+    <color name="brand_teal">#00B2B4</color>
+    <color name="brand_blue">#078DE4</color>
+    <color name="brand_navy">#162737</color>
+    <color name="brand_white">#FFFFFF</color>
+
+    <!-- Primary roles. -->
+    <color name="brand_primary">#007C7A</color>
     <color name="brand_on_primary">#FFFFFF</color>
-    <color name="brand_primary_container">#74F8E5</color>
-    <color name="brand_on_primary_container">#00201C</color>
-    <color name="brand_secondary">#4A635F</color>
+    <color name="brand_primary_container">#C8F5F2</color>
+    <color name="brand_on_primary_container">#003735</color>
+
+    <!-- Secondary roles. -->
+    <color name="brand_secondary">#0067B1</color>
     <color name="brand_on_secondary">#FFFFFF</color>
-    <color name="brand_secondary_container">#CCE8E3</color>
-    <color name="brand_on_secondary_container">#05201C</color>
-    <color name="brand_tertiary">#3E6374</color>
+    <color name="brand_secondary_container">#D3E9FF</color>
+    <color name="brand_on_secondary_container">#002F4F</color>
+
+    <!-- Tertiary roles (strong text and neutral containers). -->
+    <color name="brand_tertiary">#162737</color>
     <color name="brand_on_tertiary">#FFFFFF</color>
-    <color name="brand_tertiary_container">#C1E8FC</color>
-    <color name="brand_on_tertiary_container">#001F2A</color>
-    <color name="brand_error">#BA1A1A</color>
+    <color name="brand_tertiary_container">#DCE7EF</color>
+    <color name="brand_on_tertiary_container">#162737</color>
+
+    <!-- Background and surface roles. -->
+    <color name="brand_background">#F7FAFC</color>
+    <color name="brand_on_background">#162737</color>
+    <color name="brand_surface">#FFFFFF</color>
+    <color name="brand_on_surface">#162737</color>
+    <color name="brand_surface_variant">#DCE7EF</color>
+    <color name="brand_on_surface_variant">#3F5263</color>
+    <color name="brand_outline">#5C6E7E</color>
+    <color name="brand_outline_variant">#DCE7EF</color>
+
+    <!--
+        Material 3 surface containers. The palette has no extra container
+        tokens; these map to surface, background and surface-variant so the
+        theme never invents independent brand values.
+    -->
+    <color name="brand_surface_container_lowest">#FFFFFF</color>
+    <color name="brand_surface_container_low">#FFFFFF</color>
+    <color name="brand_surface_container">#F7FAFC</color>
+    <color name="brand_surface_container_high">#DCE7EF</color>
+    <color name="brand_surface_container_highest">#DCE7EF</color>
+
+    <!-- Interaction and semantic state roles. -->
+    <color name="brand_selected">#D6F4F1</color>
+    <color name="brand_focus">#0067B1</color>
+    <color name="brand_disabled">#A7B5C0</color>
+    <color name="brand_error">#B3261E</color>
     <color name="brand_on_error">#FFFFFF</color>
+    <!-- Material 3 error containers; the palette defines the error foreground. -->
     <color name="brand_error_container">#FFDAD6</color>
     <color name="brand_on_error_container">#410002</color>
-    <color name="brand_surface">#FAFDFB</color>
-    <color name="brand_on_surface">#191C1B</color>
-    <color name="brand_surface_variant">#DAE5E1</color>
-    <color name="brand_on_surface_variant">#3F4947</color>
-    <color name="brand_outline">#6F7977</color>
-    <color name="brand_outline_variant">#BEC9C6</color>
-    <color name="brand_surface_container_low">#F4F7F5</color>
-    <color name="brand_surface_container">#EEF1EF</color>
-    <color name="brand_surface_container_high">#E8EBE9</color>
+    <color name="brand_warning">#8A5A00</color>
+    <color name="brand_success">#1E6B45</color>
 
-    <color name="chart_download">#006A60</color>
-    <color name="chart_upload">#3E6374</color>
-    <color name="chart_grid">#BEC9C6</color>
+    <!-- Charts use semantic accents, never the low-contrast raw logo accents. -->
+    <color name="chart_download">#007C7A</color>
+    <color name="chart_upload">#0067B1</color>
+    <color name="chart_grid">#DCE7EF</color>
+
+    <!-- Launcher/splash plate. The master mark uses white negative space. -->
+    <color name="ic_launcher_background">#FFFFFF</color>
 </resources>

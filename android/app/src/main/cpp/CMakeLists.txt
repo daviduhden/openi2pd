@@ -1,3 +1,6 @@
+# Copyright (c) 2013-2026, The PurpleI2P Project
+# Copyright (c) 2026, David Uhden Collado
+# SPDX-License-Identifier: BSD-3-Clause
 # Android app entry point. The router itself is built by the main CMake graph;
 # this wrapper only enables the JNI target and disables host-only components.
 cmake_minimum_required(VERSION 3.22)

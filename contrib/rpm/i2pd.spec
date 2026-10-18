@@ -1,3 +1,6 @@
+# Copyright (c) 2013-2026, The PurpleI2P Project
+# Copyright (c) 2026, David Uhden Collado
+# SPDX-License-Identifier: BSD-3-Clause
 Name:          i2pd
 Version:       2.61.0
 Release:       2%{?dist}
@@ -137,8 +140,8 @@ getent passwd i2pd >/dev/null || \
 
 
 %changelog
-* Sat Oct 17 2026 Open I2Pd maintainers <daviduhden@users.noreply.github.com> - 2.61.0-2
-- Open I2Pd fork: C++23, CMake/Ninja, POSIX make, ncurses TUI.
+* Sat Oct 17 2026 openi2pd maintainers <daviduhden@users.noreply.github.com> - 2.61.0-2
+- openi2pd fork: C++23, CMake/Ninja, POSIX make, ncurses TUI.
 - Removed the HTTP administrative console.
 - Integrated i2pd-tools and i2pd_docs_en.
 
