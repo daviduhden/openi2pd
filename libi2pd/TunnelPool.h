@@ -55,137 +55,145 @@ namespace tunnel
 	/** interface for custom tunnel peer selection algorithm */
 	struct ITunnelPeerSelector
 	{
-		virtual ~ITunnelPeerSelector() {};
-		virtual bool SelectPeers(Path & peers, int hops, bool isInbound) = 0;
+		virtual ~ITunnelPeerSelector () { };
+		virtual bool SelectPeers (Path & peers, int hops, bool isInbound) = 0;
 	};
 
-	class TunnelPool: public std::enable_shared_from_this<TunnelPool> // per local destination
+	class TunnelPool : public std::enable_shared_from_this<TunnelPool> // per local destination
 	{
-		typedef std::function<std::shared_ptr<const i2p::data::RouterInfo>(std::shared_ptr<const i2p::data::RouterInfo>, bool, bool)> SelectHopFunc;
-		public:
+		typedef std::function<std::shared_ptr<const i2p::data::RouterInfo> (
+			std::shared_ptr<const i2p::data::RouterInfo>, bool, bool)>
+			SelectHopFunc;
 
-			TunnelPool (int numInboundHops, int numOutboundHops, int numInboundTunnels,
-				int numOutboundTunnels, int inboundVariance, int outboundVariance, bool isHighBandwidth);
-			~TunnelPool ();
+	public:
+		TunnelPool (int numInboundHops, int numOutboundHops, int numInboundTunnels, int numOutboundTunnels,
+			int inboundVariance, int outboundVariance, bool isHighBandwidth);
+		~TunnelPool ();
 
-			std::shared_ptr<i2p::garlic::GarlicDestination> GetLocalDestination () const { return m_LocalDestination; };
-			void SetLocalDestination (std::shared_ptr<i2p::garlic::GarlicDestination> destination) { m_LocalDestination = destination; };
-			void SetExplicitPeers (std::vector<i2p::data::IdentHash> explicitPeers);
-			void SetTrustedRouters (std::vector<i2p::data::IdentHash> routers);
-			void SetInboundPeerOrderingKey (const uint8_t * key);
-			void SetOutboundPeerOrderingKey (const uint8_t * key);
+		std::shared_ptr<i2p::garlic::GarlicDestination> GetLocalDestination () const { return m_LocalDestination; };
+		void SetLocalDestination (std::shared_ptr<i2p::garlic::GarlicDestination> destination)
+		{
+			m_LocalDestination = destination;
+		};
+		void SetExplicitPeers (std::vector<i2p::data::IdentHash> explicitPeers);
+		void SetTrustedRouters (std::vector<i2p::data::IdentHash> routers);
+		void SetInboundPeerOrderingKey (const uint8_t * key);
+		void SetOutboundPeerOrderingKey (const uint8_t * key);
 
-			void CreateTunnels ();
-			void TunnelCreated (std::shared_ptr<InboundTunnel> createdTunnel);
-			void TunnelExpired (std::shared_ptr<InboundTunnel> expiredTunnel);
-			void TunnelCreated (std::shared_ptr<OutboundTunnel> createdTunnel);
-			void TunnelExpired (std::shared_ptr<OutboundTunnel> expiredTunnel);
-			void RecreateInboundTunnel (std::shared_ptr<InboundTunnel> tunnel);
-			void RecreateOutboundTunnel (std::shared_ptr<OutboundTunnel> tunnel);
-			std::vector<std::shared_ptr<InboundTunnel> > GetInboundTunnels (int num) const;
-			std::shared_ptr<OutboundTunnel> GetNextOutboundTunnel (std::shared_ptr<OutboundTunnel> excluded = nullptr,
-				i2p::data::RouterInfo::CompatibleTransports compatible = i2p::data::RouterInfo::eAllTransports);
-			std::shared_ptr<InboundTunnel> GetNextInboundTunnel (std::shared_ptr<InboundTunnel> excluded = nullptr,
-				i2p::data::RouterInfo::CompatibleTransports compatible = i2p::data::RouterInfo::eAllTransports);
-			std::pair<std::shared_ptr<OutboundTunnel>, bool> GetNewOutboundTunnel (std::shared_ptr<OutboundTunnel> old);
-			void ManageTunnels (uint64_t ts);
-			void ProcessGarlicMessage (std::shared_ptr<I2NPMessage> msg);
-			void ProcessDeliveryStatus (std::shared_ptr<I2NPMessage> msg);
-			void ProcessTunnelTest (std::shared_ptr<I2NPMessage> msg);
-			bool ProcessTunnelTest (uint32_t msgID, uint64_t timestamp);
+		void CreateTunnels ();
+		void TunnelCreated (std::shared_ptr<InboundTunnel> createdTunnel);
+		void TunnelExpired (std::shared_ptr<InboundTunnel> expiredTunnel);
+		void TunnelCreated (std::shared_ptr<OutboundTunnel> createdTunnel);
+		void TunnelExpired (std::shared_ptr<OutboundTunnel> expiredTunnel);
+		void RecreateInboundTunnel (std::shared_ptr<InboundTunnel> tunnel);
+		void RecreateOutboundTunnel (std::shared_ptr<OutboundTunnel> tunnel);
+		std::vector<std::shared_ptr<InboundTunnel>> GetInboundTunnels (int num) const;
+		std::shared_ptr<OutboundTunnel> GetNextOutboundTunnel (std::shared_ptr<OutboundTunnel> excluded = nullptr,
+			i2p::data::RouterInfo::CompatibleTransports compatible = i2p::data::RouterInfo::eAllTransports);
+		std::shared_ptr<InboundTunnel> GetNextInboundTunnel (std::shared_ptr<InboundTunnel> excluded = nullptr,
+			i2p::data::RouterInfo::CompatibleTransports compatible = i2p::data::RouterInfo::eAllTransports);
+		std::pair<std::shared_ptr<OutboundTunnel>, bool> GetNewOutboundTunnel (std::shared_ptr<OutboundTunnel> old);
+		void ManageTunnels (uint64_t ts);
+		void ProcessGarlicMessage (std::shared_ptr<I2NPMessage> msg);
+		void ProcessDeliveryStatus (std::shared_ptr<I2NPMessage> msg);
+		void ProcessTunnelTest (std::shared_ptr<I2NPMessage> msg);
+		bool ProcessTunnelTest (uint32_t msgID, uint64_t timestamp);
 
-			bool IsExploratory () const;
-			bool IsActive () const { return m_IsActive; };
-			void SetActive (bool isActive) { m_IsActive = isActive; };
-			void DetachTunnels ();
+		bool IsExploratory () const;
+		bool IsActive () const { return m_IsActive; };
+		void SetActive (bool isActive) { m_IsActive = isActive; };
+		void DetachTunnels ();
 
-			int GetNumInboundTunnels () const { return m_NumInboundTunnels; };
-			int GetNumOutboundTunnels () const { return m_NumOutboundTunnels; };
-			int GetNumInboundHops() const { return m_NumInboundHops; };
-			int GetNumOutboundHops() const { return m_NumOutboundHops; };
+		int GetNumInboundTunnels () const { return m_NumInboundTunnels; };
+		int GetNumOutboundTunnels () const { return m_NumOutboundTunnels; };
+		int GetNumInboundHops () const { return m_NumInboundHops; };
+		int GetNumOutboundHops () const { return m_NumOutboundHops; };
 
-			/** i2cp reconfigure */
-			bool Reconfigure(int inboundHops, int outboundHops, int inboundQuant, int outboundQuant);
+		/** i2cp reconfigure */
+		bool Reconfigure (int inboundHops, int outboundHops, int inboundQuant, int outboundQuant);
 
-			void SetCustomPeerSelector(ITunnelPeerSelector * selector);
-			void UnsetCustomPeerSelector();
-			bool HasCustomPeerSelector();
+		void SetCustomPeerSelector (ITunnelPeerSelector * selector);
+		void UnsetCustomPeerSelector ();
+		bool HasCustomPeerSelector ();
 
-			/** @brief make this tunnel pool yield tunnels that fit latency range [min, max] */
-			void RequireLatency(int min, int max) { m_MinLatency = min; m_MaxLatency = max; }
+		/** @brief make this tunnel pool yield tunnels that fit latency range [min, max] */
+		void RequireLatency (int min, int max)
+		{
+			m_MinLatency = min;
+			m_MaxLatency = max;
+		}
 
-			/** @brief return true if this tunnel pool has a latency requirement */
-			bool HasLatencyRequirement() const { return m_MinLatency > 0 && m_MaxLatency > 0; }
+		/** @brief return true if this tunnel pool has a latency requirement */
+		bool HasLatencyRequirement () const { return m_MinLatency > 0 && m_MaxLatency > 0; }
 
-			/** @brief get the lowest latency tunnel in this tunnel pool regardless of latency requirements */
-			std::shared_ptr<InboundTunnel> GetLowestLatencyInboundTunnel(std::shared_ptr<InboundTunnel> exclude = nullptr) const;
-			std::shared_ptr<OutboundTunnel> GetLowestLatencyOutboundTunnel(std::shared_ptr<OutboundTunnel> exclude = nullptr) const;
+		/** @brief get the lowest latency tunnel in this tunnel pool regardless of latency requirements */
+		std::shared_ptr<InboundTunnel> GetLowestLatencyInboundTunnel (
+			std::shared_ptr<InboundTunnel> exclude = nullptr) const;
+		std::shared_ptr<OutboundTunnel> GetLowestLatencyOutboundTunnel (
+			std::shared_ptr<OutboundTunnel> exclude = nullptr) const;
 
-			// for overriding tunnel peer selection
-			std::shared_ptr<const i2p::data::RouterInfo> SelectNextHop (std::shared_ptr<const i2p::data::RouterInfo> prevHop, bool reverse, bool endpoint);
-			bool StandardSelectPeers(Path & path, int numHops, bool inbound, SelectHopFunc nextHop);
+		// for overriding tunnel peer selection
+		std::shared_ptr<const i2p::data::RouterInfo> SelectNextHop (
+			std::shared_ptr<const i2p::data::RouterInfo> prevHop, bool reverse, bool endpoint);
+		bool StandardSelectPeers (Path & path, int numHops, bool inbound, SelectHopFunc nextHop);
 
-		private:
+	private:
+		void TestTunnels (uint64_t ts);
+		void CreateTunnels (uint64_t ts);
+		void CreateInboundTunnel (uint64_t ts);
+		void CreateOutboundTunnel (uint64_t ts);
+		template <class TTunnels>
+		typename TTunnels::value_type GetNextTunnel (TTunnels & tunnels, typename TTunnels::value_type excluded,
+			i2p::data::RouterInfo::CompatibleTransports compatible);
+		bool SelectPeers (Path & path, bool isInbound);
+		bool SelectExplicitPeers (Path & path, bool isInbound);
+		bool ValidatePeers (std::vector<std::shared_ptr<const i2p::data::IdentityEx>> & peers) const;
+		std::shared_ptr<const i2p::data::RouterInfo> SelectTrustedRouter (bool inbound) const;
 
-			void TestTunnels (uint64_t ts);
-			void CreateTunnels (uint64_t ts);
-			void CreateInboundTunnel (uint64_t ts);
-			void CreateOutboundTunnel (uint64_t ts);
-			template<class TTunnels>
-			typename TTunnels::value_type GetNextTunnel (TTunnels& tunnels,
-				typename TTunnels::value_type excluded, i2p::data::RouterInfo::CompatibleTransports compatible);
-			bool SelectPeers (Path& path, bool isInbound);
-			bool SelectExplicitPeers (Path& path, bool isInbound);
-			bool ValidatePeers (std::vector<std::shared_ptr<const i2p::data::IdentityEx> >& peers) const;
-			std::shared_ptr<const i2p::data::RouterInfo> SelectTrustedRouter (bool inbound) const;
+	private:
+		std::shared_ptr<i2p::garlic::GarlicDestination> m_LocalDestination;
+		int m_NumInboundHops, m_NumOutboundHops, m_NumInboundTunnels, m_NumOutboundTunnels, m_InboundVariance,
+			m_OutboundVariance;
+		std::vector<i2p::data::IdentHash> m_ExplicitPeers, m_TrustedRouters;
+		mutable std::mutex m_InboundTunnelsMutex;
+		std::set<std::shared_ptr<InboundTunnel>, TunnelCreationTimeCmp> m_InboundTunnels; // recent tunnel appears first
+		mutable std::mutex m_OutboundTunnelsMutex;
+		std::set<std::shared_ptr<OutboundTunnel>, TunnelCreationTimeCmp> m_OutboundTunnels;
+		mutable std::mutex m_TestsMutex;
+		std::map<uint32_t, std::pair<std::shared_ptr<OutboundTunnel>, std::shared_ptr<InboundTunnel>>> m_Tests;
+		bool m_IsActive, m_IsHighBandwidth;
+		uint64_t m_NextManageTime; // in seconds
+		std::mutex m_CustomPeerSelectorMutex;
+		ITunnelPeerSelector * m_CustomPeerSelector;
+		std::mt19937 m_Rng; // for tunnel selection
+		i2p::data::PeerOrdering m_InboundPeerOrdering, m_OutboundPeerOrdering;
 
-		private:
+		int m_MinLatency = 0; // if > 0 this tunnel pool will try building tunnels with minimum latency by ms
+		int m_MaxLatency = 0; // if > 0 this tunnel pool will try building tunnels with maximum latency by ms
 
-			std::shared_ptr<i2p::garlic::GarlicDestination> m_LocalDestination;
-			int m_NumInboundHops, m_NumOutboundHops, m_NumInboundTunnels, m_NumOutboundTunnels,
-				m_InboundVariance, m_OutboundVariance;
-			std::vector<i2p::data::IdentHash> m_ExplicitPeers, m_TrustedRouters;
-			mutable std::mutex m_InboundTunnelsMutex;
-			std::set<std::shared_ptr<InboundTunnel>, TunnelCreationTimeCmp> m_InboundTunnels; // recent tunnel appears first
-			mutable std::mutex m_OutboundTunnelsMutex;
-			std::set<std::shared_ptr<OutboundTunnel>, TunnelCreationTimeCmp> m_OutboundTunnels;
-			mutable std::mutex m_TestsMutex;
-			std::map<uint32_t, std::pair<std::shared_ptr<OutboundTunnel>, std::shared_ptr<InboundTunnel> > > m_Tests;
-			bool m_IsActive, m_IsHighBandwidth;
-			uint64_t m_NextManageTime; // in seconds
-			std::mutex m_CustomPeerSelectorMutex;
-			ITunnelPeerSelector * m_CustomPeerSelector;
-			std::mt19937 m_Rng; // for tunnel selection
-			i2p::data::PeerOrdering m_InboundPeerOrdering, m_OutboundPeerOrdering;
+	public:
+		bool HasOutboundTunnels () const
+		{
+			std::unique_lock<std::mutex> l (m_OutboundTunnelsMutex);
+			return !m_OutboundTunnels.empty ();
+		}
+		bool HasInboundTunnels () const
+		{
+			std::unique_lock<std::mutex> l (m_InboundTunnelsMutex);
+			return !m_InboundTunnels.empty ();
+		}
 
-			int m_MinLatency = 0; // if > 0 this tunnel pool will try building tunnels with minimum latency by ms
-			int m_MaxLatency = 0; // if > 0 this tunnel pool will try building tunnels with maximum latency by ms
-
-		public:
-
-			bool HasOutboundTunnels () const
-			{
-				std::unique_lock<std::mutex> l(m_OutboundTunnelsMutex);
-				return !m_OutboundTunnels.empty ();
-			}
-			bool HasInboundTunnels () const
-			{
-				std::unique_lock<std::mutex> l(m_InboundTunnelsMutex);
-				return !m_InboundTunnels.empty ();
-			}
-
-			// for administrative views; thread-safe snapshots, safe to iterate without holding any lock
-			std::vector<std::shared_ptr<OutboundTunnel> > GetOutboundTunnelsList () const
-			{
-				std::unique_lock<std::mutex> l(m_OutboundTunnelsMutex);
-				return std::vector<std::shared_ptr<OutboundTunnel> > (m_OutboundTunnels.begin (), m_OutboundTunnels.end ());
-			}
-			std::vector<std::shared_ptr<InboundTunnel> > GetInboundTunnelsList () const
-			{
-				std::unique_lock<std::mutex> l(m_InboundTunnelsMutex);
-				return std::vector<std::shared_ptr<InboundTunnel> > (m_InboundTunnels.begin (), m_InboundTunnels.end ());
-			}
-
+		// for administrative views; thread-safe snapshots, safe to iterate without holding any lock
+		std::vector<std::shared_ptr<OutboundTunnel>> GetOutboundTunnelsList () const
+		{
+			std::unique_lock<std::mutex> l (m_OutboundTunnelsMutex);
+			return std::vector<std::shared_ptr<OutboundTunnel>> (m_OutboundTunnels.begin (), m_OutboundTunnels.end ());
+		}
+		std::vector<std::shared_ptr<InboundTunnel>> GetInboundTunnelsList () const
+		{
+			std::unique_lock<std::mutex> l (m_InboundTunnelsMutex);
+			return std::vector<std::shared_ptr<InboundTunnel>> (m_InboundTunnels.begin (), m_InboundTunnels.end ());
+		}
 	};
 }
 }

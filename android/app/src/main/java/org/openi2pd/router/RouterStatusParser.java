@@ -21,7 +21,6 @@ import java.util.Map;
  * as a path, command or format string.</p>
  */
 final class RouterStatusParser {
-
     private static final int MAX_ADDRESSES = 32;
     private static final int MAX_RAW_LENGTH = 128 * 1024;
     private static final int MAX_LOG_TEXT_LENGTH = 16 * 1024;
@@ -34,13 +33,11 @@ final class RouterStatusParser {
      * Parse the newline-separated {@code key=value} snapshot produced by
      * {@code I2PD_JNI.getStatusSnapshot()}.
      */
-    static RouterSnapshot parseStatus(String raw, DaemonWrapper.State state,
-                                      ServiceStates services, long graceRemainingMillis,
-                                      String errorText, String startResult) {
+    static RouterSnapshot parseStatus(String raw, DaemonWrapper.State state, ServiceStates services,
+            long graceRemainingMillis, String errorText, String startResult) {
         Map<String, String> values = parseFields(raw);
 
-        DaemonWrapper.State safeState =
-                state == null ? DaemonWrapper.State.uninitialized : state;
+        DaemonWrapper.State safeState = state == null ? DaemonWrapper.State.uninitialized : state;
         boolean started = safeState.isStartedOkay();
 
         String status = bound(firstNonEmpty(values.get("status"), "Unknown"), 64);
@@ -50,8 +47,7 @@ final class RouterStatusParser {
         // The native error snapshot uses statusCode=-1. If a key is missing
         // from a malformed snapshot, do not report a failed router as online
         // just because the Java state says the native process started.
-        boolean online = booleanValue(values.get("online"),
-                started && statusCode >= 0);
+        boolean online = booleanValue(values.get("online"), started && statusCode >= 0);
         boolean ntcp2 = booleanValue(values.get("ntcp2"), false);
         boolean ssu2 = booleanValue(values.get("ssu2"), false);
         int peers = intValue(values.get("peers"), 0, false);
@@ -72,33 +68,10 @@ final class RouterStatusParser {
         appendAddresses(values.get("ipv4"), addresses);
         appendAddresses(values.get("ipv6"), addresses);
 
-        return new RouterSnapshot(
-                safeState,
-                started,
-                online,
-                status,
-                statusCode,
-                routerError,
-                uptime,
-                peers,
-                routers,
-                inbound,
-                outbound,
-                transit,
-                reseeding,
-                ntcp2,
-                ssu2,
-                inRate,
-                outRate,
-                inRate15,
-                outRate15,
-                totalIn,
-                totalOut,
-                totalTransit,
-                addresses,
-                services == null ? ServiceStates.NONE : services,
-                graceRemainingMillis,
-                errorText,
+        return new RouterSnapshot(safeState, started, online, status, statusCode, routerError,
+                uptime, peers, routers, inbound, outbound, transit, reseeding, ntcp2, ssu2, inRate,
+                outRate, inRate15, outRate15, totalIn, totalOut, totalTransit, addresses,
+                services == null ? ServiceStates.NONE : services, graceRemainingMillis, errorText,
                 startResult);
     }
 
@@ -130,8 +103,7 @@ final class RouterStatusParser {
             if (text.length() > MAX_LOG_TEXT_LENGTH) {
                 text = text.substring(0, MAX_LOG_TEXT_LENGTH);
             }
-            entries.add(new LogEntry(sequence, timestamp,
-                    normalizeLevel(parts[2]), text));
+            entries.add(new LogEntry(sequence, timestamp, normalizeLevel(parts[2]), text));
         }
         return entries;
     }
@@ -181,8 +153,7 @@ final class RouterStatusParser {
     }
 
     private static String stripBrackets(String host) {
-        if (host.length() >= 2 && host.charAt(0) == '['
-                && host.charAt(host.length() - 1) == ']') {
+        if (host.length() >= 2 && host.charAt(0) == '[' && host.charAt(host.length() - 1) == ']') {
             return host.substring(1, host.length() - 1);
         }
         return host;
@@ -200,8 +171,7 @@ final class RouterStatusParser {
     }
 
     private static String normalizeError(String error) {
-        if (error == null || error.isEmpty()
-                || "none".equalsIgnoreCase(error)
+        if (error == null || error.isEmpty() || "none".equalsIgnoreCase(error)
                 || "ok".equalsIgnoreCase(error)) {
             return "";
         }
@@ -217,29 +187,29 @@ final class RouterStatusParser {
     private static String normalizeLevel(String raw) {
         String level = raw == null ? "" : raw.trim().toLowerCase(Locale.ROOT);
         switch (level) {
-            case "0":
-            case "none":
-                return "none";
-            case "1":
-            case "2":
-            case "critical":
-            case "err":
-            case "error":
-                return "error";
-            case "3":
-            case "warning":
-            case "warn":
-                return "warn";
-            case "4":
-            case "information":
-            case "info":
-                return "info";
-            case "5":
-            case "debug":
-            case "trace":
-                return "debug";
-            default:
-                return level.isEmpty() ? "info" : level;
+        case "0":
+        case "none":
+            return "none";
+        case "1":
+        case "2":
+        case "critical":
+        case "err":
+        case "error":
+            return "error";
+        case "3":
+        case "warning":
+        case "warn":
+            return "warn";
+        case "4":
+        case "information":
+        case "info":
+            return "info";
+        case "5":
+        case "debug":
+        case "trace":
+            return "debug";
+        default:
+            return level.isEmpty() ? "info" : level;
         }
     }
 
@@ -270,18 +240,18 @@ final class RouterStatusParser {
             return fallback;
         }
         switch (value.trim().toLowerCase(Locale.ROOT)) {
-            case "1":
-            case "true":
-            case "yes":
-            case "on":
-                return true;
-            case "0":
-            case "false":
-            case "no":
-            case "off":
-                return false;
-            default:
-                return fallback;
+        case "1":
+        case "true":
+        case "yes":
+        case "on":
+            return true;
+        case "0":
+        case "false":
+        case "no":
+        case "off":
+            return false;
+        default:
+            return fallback;
         }
     }
 }

@@ -20,28 +20,28 @@ namespace i2p
 {
 namespace qt
 {
-	int RunQT (int argc, char* argv[]);
+	int RunQT (int argc, char * argv[]);
 }
 }
 
-int main( int argc, char* argv[] )
+int main (int argc, char * argv[])
 {
 	return i2p::qt::RunQT (argc, argv);
 }
 #else
-int main( int argc, char* argv[] )
+int main (int argc, char * argv[])
 {
 #ifndef _WIN32
 	if (argc == 4 && std::string_view (argv[1]) == "--privsep-worker")
 		return i2p::privsep::RunWorker (argv[2], argv[3]);
 #endif
-	if (Daemon.init(argc, argv))
+	if (Daemon.init (argc, argv))
 	{
-		if (Daemon.start())
+		if (Daemon.start ())
 			Daemon.run ();
 		else
 			return EXIT_FAILURE;
-		Daemon.stop();
+		Daemon.stop ();
 	}
 	return EXIT_SUCCESS;
 }
@@ -50,13 +50,8 @@ int main( int argc, char* argv[] )
 #ifdef _WIN32
 #include <windows.h>
 
-int CALLBACK WinMain(
-	_In_ HINSTANCE hInstance,
-	_In_ HINSTANCE hPrevInstance,
-	_In_ LPSTR     lpCmdLine,
-	_In_ int       nCmdShow
-	)
+int CALLBACK WinMain (_In_ HINSTANCE hInstance, _In_ HINSTANCE hPrevInstance, _In_ LPSTR lpCmdLine, _In_ int nCmdShow)
 {
-	return main(__argc, __argv);
+	return main (__argc, __argv);
 }
 #endif

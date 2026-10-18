@@ -23,18 +23,9 @@ import java.util.Locale;
  * safe to show on the UI thread.</p>
  */
 public final class UiFormat {
-
     private static final int MAX_ERROR_LENGTH = 240;
 
-    public enum RouterState {
-        UNKNOWN,
-        STOPPED,
-        STARTING,
-        CONNECTED,
-        DEGRADED,
-        STOPPING,
-        ERROR
-    }
+    public enum RouterState { UNKNOWN, STOPPED, STARTING, CONNECTED, DEGRADED, STOPPING, ERROR }
 
     private UiFormat() {
         // Static helpers only.
@@ -47,10 +38,10 @@ public final class UiFormat {
         }
         return switch (snapshot.state()) {
             case uninitialized, starting -> RouterState.STARTING;
-            case startedOkay -> snapshot.online()
-                    ? RouterState.CONNECTED
-                    : (snapshot.routerStatusCode() < 0
-                    ? RouterState.ERROR : RouterState.DEGRADED);
+            case startedOkay ->
+                snapshot.online() ? RouterState.CONNECTED
+                                  : (snapshot.routerStatusCode() < 0 ? RouterState.ERROR
+                                                                     : RouterState.DEGRADED);
             case startFailed -> RouterState.ERROR;
             case gracefulShutdownInProgress -> RouterState.STOPPING;
             case stopped -> RouterState.STOPPED;
@@ -71,8 +62,7 @@ public final class UiFormat {
 
     public static boolean isRunning(@Nullable RouterSnapshot snapshot) {
         RouterState state = stateOf(snapshot);
-        return state == RouterState.CONNECTED
-                || state == RouterState.DEGRADED
+        return state == RouterState.CONNECTED || state == RouterState.DEGRADED
                 || state == RouterState.STOPPING;
     }
 
@@ -88,10 +78,8 @@ public final class UiFormat {
 
     public static boolean canStop(@Nullable RouterSnapshot snapshot) {
         RouterState state = stateOf(snapshot);
-        return state == RouterState.CONNECTED
-                || state == RouterState.DEGRADED
-                || state == RouterState.STARTING
-                || state == RouterState.STOPPING;
+        return state == RouterState.CONNECTED || state == RouterState.DEGRADED
+                || state == RouterState.STARTING || state == RouterState.STOPPING;
     }
 
     public static boolean canRestart(@Nullable RouterSnapshot snapshot) {
@@ -102,12 +90,12 @@ public final class UiFormat {
     public static boolean gracefulActive(@Nullable RouterSnapshot snapshot) {
         return snapshot != null
                 && (snapshot.graceRemainingMillis() > 0L
-                || snapshot.state() == DaemonWrapper.State.gracefulShutdownInProgress);
+                        || snapshot.state() == DaemonWrapper.State.gracefulShutdownInProgress);
     }
 
     @NonNull
-    public static String statusSubtitle(@NonNull Context context,
-                                        @Nullable RouterSnapshot snapshot) {
+    public static String statusSubtitle(
+            @NonNull Context context, @Nullable RouterSnapshot snapshot) {
         if (snapshot == null) {
             return context.getString(R.string.status_service_connecting);
         }
@@ -115,45 +103,42 @@ public final class UiFormat {
         return switch (state) {
             case STARTING -> context.getString(R.string.status_router_starting);
             case STOPPED -> context.getString(R.string.status_router_stopped);
-            case STOPPING -> context.getString(R.string.status_router_graceful,
-                    grace(context, snapshot.graceRemainingMillis()));
-            case CONNECTED -> snapshot.reseeding()
-                    ? context.getString(R.string.status_router_reseeding)
-                    : context.getString(R.string.status_router_online);
+            case STOPPING ->
+                context.getString(R.string.status_router_graceful,
+                        grace(context, snapshot.graceRemainingMillis()));
+            case CONNECTED ->
+                snapshot.reseeding() ? context.getString(R.string.status_router_reseeding)
+                                     : context.getString(R.string.status_router_online);
             case DEGRADED -> context.getString(R.string.status_router_degraded);
             case ERROR -> {
-                String detail = firstNonEmpty(snapshot.routerError(),
-                        snapshot.errorText(), snapshot.startResult());
+                String detail = firstNonEmpty(
+                        snapshot.routerError(), snapshot.errorText(), snapshot.startResult());
                 yield detail.isEmpty()
                         ? context.getString(R.string.state_error)
-                        : context.getString(R.string.status_start_failed_format,
-                        summarize(detail));
+                        : context.getString(R.string.status_start_failed_format, summarize(detail));
             }
             case UNKNOWN -> context.getString(R.string.status_service_connecting);
         };
     }
 
     @Nullable
-    public static String warningText(@NonNull Context context,
-                                     @Nullable RouterSnapshot snapshot) {
+    public static String warningText(@NonNull Context context, @Nullable RouterSnapshot snapshot) {
         if (snapshot == null) {
             return null;
         }
         RouterState state = stateOf(snapshot);
         if (state == RouterState.ERROR) {
-            String detail = firstNonEmpty(snapshot.routerError(),
-                    snapshot.errorText(), snapshot.startResult());
+            String detail = firstNonEmpty(
+                    snapshot.routerError(), snapshot.errorText(), snapshot.startResult());
             if (!detail.isEmpty()) {
-                return context.getString(R.string.warning_start_failed_format,
-                        summarize(detail));
+                return context.getString(R.string.warning_start_failed_format, summarize(detail));
             }
             return context.getString(R.string.warning_service_disconnected);
         }
         if (state == RouterState.CONNECTED || state == RouterState.DEGRADED) {
             String error = snapshot.errorText();
             if (!TextUtils.isEmpty(error)) {
-                return context.getString(R.string.warning_error_format,
-                        summarize(error));
+                return context.getString(R.string.warning_error_format, summarize(error));
             }
             if (!snapshot.online()) {
                 return context.getString(R.string.warning_offline);
@@ -163,21 +148,19 @@ public final class UiFormat {
     }
 
     @NonNull
-    public static String connectivity(@NonNull Context context,
-                                      @Nullable RouterSnapshot snapshot) {
+    public static String connectivity(@NonNull Context context, @Nullable RouterSnapshot snapshot) {
         if (snapshot == null || stateOf(snapshot) == RouterState.UNKNOWN) {
             return context.getString(R.string.value_unknown);
         }
         if (stateOf(snapshot) == RouterState.STARTING) {
             return context.getString(R.string.value_unknown);
         }
-        return context.getString(snapshot.online()
-                ? R.string.status_online : R.string.status_offline);
+        return context.getString(
+                snapshot.online() ? R.string.status_online : R.string.status_offline);
     }
 
     @NonNull
-    public static String transports(@NonNull Context context,
-                                    @Nullable RouterSnapshot snapshot) {
+    public static String transports(@NonNull Context context, @Nullable RouterSnapshot snapshot) {
         if (snapshot == null) {
             return context.getString(R.string.value_unknown);
         }
@@ -202,8 +185,7 @@ public final class UiFormat {
 
     @NonNull
     public static String published(@NonNull Context context, boolean value) {
-        return context.getString(value
-                ? R.string.value_published : R.string.value_not_published);
+        return context.getString(value ? R.string.value_published : R.string.value_not_published);
     }
 
     @NonNull
@@ -222,8 +204,8 @@ public final class UiFormat {
         } else if (isIpv6(host) && !host.startsWith("[")) {
             host = "[" + host + "]";
         }
-        return context.getString(R.string.address_format,
-                transport, host, address.port(), published(context, address.published()));
+        return context.getString(R.string.address_format, transport, host, address.port(),
+                published(context, address.published()));
     }
 
     public static boolean isIpv6(@Nullable String host) {
@@ -277,16 +259,13 @@ public final class UiFormat {
         }
         long minutes = value / 60L;
         if (minutes < 60L) {
-            return context.getString(R.string.duration_minutes_seconds,
-                    minutes, value % 60L);
+            return context.getString(R.string.duration_minutes_seconds, minutes, value % 60L);
         }
         long hours = minutes / 60L;
         if (hours < 24L) {
-            return context.getString(R.string.duration_hours_minutes,
-                    hours, minutes % 60L);
+            return context.getString(R.string.duration_hours_minutes, hours, minutes % 60L);
         }
-        return context.getString(R.string.duration_days_hours,
-                hours / 24L, hours % 24L);
+        return context.getString(R.string.duration_days_hours, hours / 24L, hours % 24L);
     }
 
     @NonNull
@@ -298,9 +277,8 @@ public final class UiFormat {
     }
 
     @NonNull
-    public static String addressList(@NonNull Context context,
-                                     @Nullable List<AddressInfo> addresses,
-                                     boolean ipv6) {
+    public static String addressList(
+            @NonNull Context context, @Nullable List<AddressInfo> addresses, boolean ipv6) {
         if (addresses == null || addresses.isEmpty()) {
             return context.getString(R.string.network_no_addresses);
         }
@@ -314,9 +292,8 @@ public final class UiFormat {
             }
             result.append(address(context, address));
         }
-        return result.length() == 0
-                ? context.getString(R.string.network_no_addresses)
-                : result.toString();
+        return result.length() == 0 ? context.getString(R.string.network_no_addresses)
+                                    : result.toString();
     }
 
     public static boolean hasAddress(@Nullable List<AddressInfo> addresses, boolean ipv6) {
@@ -347,8 +324,8 @@ public final class UiFormat {
             return "";
         }
         for (String value : values) {
-            if (!TextUtils.isEmpty(value) && !"N/A".equals(value)
-                    && !"None".equals(value) && !"ok".equalsIgnoreCase(value)) {
+            if (!TextUtils.isEmpty(value) && !"N/A".equals(value) && !"None".equals(value)
+                    && !"ok".equalsIgnoreCase(value)) {
                 return value;
             }
         }

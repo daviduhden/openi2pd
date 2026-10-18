@@ -22,13 +22,13 @@
 extern "C" int LLVMFuzzerTestOneInput (const uint8_t * data, size_t size)
 {
 	i2p::data::IdentityEx identity;
-	(void) identity.FromBuffer (data, size);
+	(void)identity.FromBuffer (data, size);
 
 	uint64_t expires = 0;
-	(void) i2p::data::LeaseSetBufferValidate (data, size, expires);
-	(void) i2p::GetI2NPMessageLength (data, size);
+	(void)i2p::data::LeaseSetBufferValidate (data, size, expires);
+	(void)i2p::GetI2NPMessageLength (data, size);
 
 	i2p::data::RouterInfo routerInfo (data, size);
-	(void) routerInfo.IsUnreachable ();
+	(void)routerInfo.IsUnreachable ();
 	return 0;
 }

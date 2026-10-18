@@ -21,8 +21,8 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t * data, size_t size)
 		auto response = i2p::tui::MakeResponse (i2p::tui::ResponseStatus::Ok, payload);
 		auto newline = response.find ('\n');
 		if (newline != std::string::npos)
-			(void) i2p::tui::ParseResponseHeader (std::string_view (response).substr (0, newline));
+			(void)i2p::tui::ParseResponseHeader (std::string_view (response).substr (0, newline));
 	}
-	(void) i2p::tui::ParseResponseHeader (input);
+	(void)i2p::tui::ParseResponseHeader (input);
 	return 0;
 }

@@ -17,16 +17,16 @@
 
 namespace
 {
-	bool ParseDays (const char * text, int& days)
-	{
-		int value = 0;
-		std::string_view input (text);
-		auto result = std::from_chars (input.data (), input.data () + input.size (), value);
-		if (result.ec != std::errc () || result.ptr != input.data () + input.size ()) return false;
-		if (value < 1 || value > 3650) return false;
-		days = value;
-		return true;
-	}
+bool ParseDays (const char * text, int & days)
+{
+	int value = 0;
+	std::string_view input (text);
+	auto result = std::from_chars (input.data (), input.data () + input.size (), value);
+	if (result.ec != std::errc () || result.ptr != input.data () + input.size ()) return false;
+	if (value < 1 || value > 3650) return false;
+	days = value;
+	return true;
+}
 }
 
 int main (int argc, char * argv[])
@@ -78,8 +78,7 @@ int main (int argc, char * argv[])
 		return 2;
 	}
 
-	const uint32_t expires = i2p::util::GetSecondsSinceEpoch () +
-		static_cast<uint32_t> (days) * 24u * 60u * 60u;
+	const uint32_t expires = i2p::util::GetSecondsSinceEpoch () + static_cast<uint32_t> (days) * 24u * 60u * 60u;
 	auto offlineKeys = keys.CreateOfflineKeys (type, expires);
 	std::vector<uint8_t> buffer (offlineKeys.GetFullLen ());
 	const size_t len = offlineKeys.ToBuffer (buffer.data (), buffer.size ());
@@ -92,9 +91,10 @@ int main (int argc, char * argv[])
 		return 3;
 	}
 
-	std::cout << "Offline keys for destination " << offlineKeys.GetPublic ()->GetIdentHash ().ToBase32 () << " created" << std::endl
-		<< "Signature type: " << SigTypeToName (type) << " (" << type << ")" << std::endl
-		<< "Days: " << days << std::endl;
+	std::cout << "Offline keys for destination " << offlineKeys.GetPublic ()->GetIdentHash ().ToBase32 () << " created"
+			  << std::endl
+			  << "Signature type: " << SigTypeToName (type) << " (" << type << ")" << std::endl
+			  << "Days: " << days << std::endl;
 	i2p::crypto::TerminateCrypto ();
 	return 0;
 }

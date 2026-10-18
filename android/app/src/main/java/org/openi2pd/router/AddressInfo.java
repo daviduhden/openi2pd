@@ -12,7 +12,6 @@ package org.openi2pd.router;
  * brackets used in the native wire format are removed before publication.</p>
  */
 public record AddressInfo(String transport, String host, int port, boolean published) {
-
     public AddressInfo {
         transport = transport == null ? "" : transport;
         host = host == null ? "" : host;

@@ -30,7 +30,6 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
  * would pretend to report or toggle the live value.</p>
  */
 public class TunnelsFragment extends Fragment {
-
     private RouterViewModel viewModel;
 
     private TextView tunnelsIn;
@@ -45,9 +44,8 @@ public class TunnelsFragment extends Fragment {
 
     @Nullable
     @Override
-    public View onCreateView(@NonNull LayoutInflater inflater,
-                             @Nullable ViewGroup container,
-                             @Nullable Bundle savedInstanceState) {
+    public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container,
+            @Nullable Bundle savedInstanceState) {
         return inflater.inflate(R.layout.fragment_tunnels, container, false);
     }
 
@@ -66,22 +64,22 @@ public class TunnelsFragment extends Fragment {
 
         reloadTunnels.setOnClickListener(ignored -> {
             viewModel.reloadTunnels();
-            Toast.makeText(requireContext(), R.string.tunnels_reloading,
-                    Toast.LENGTH_SHORT).show();
+            Toast.makeText(requireContext(), R.string.tunnels_reloading, Toast.LENGTH_SHORT).show();
         });
 
         gracefulStop.setOnClickListener(ignored -> {
             if (UiFormat.gracefulActive(lastSnapshot)) {
                 viewModel.cancelGracefulStop();
                 Toast.makeText(requireContext(), R.string.toast_graceful_cancelled,
-                        Toast.LENGTH_SHORT).show();
+                             Toast.LENGTH_SHORT)
+                        .show();
             } else {
                 confirm(R.string.confirm_graceful_title, R.string.confirm_graceful_message,
                         R.string.action_graceful_stop, () -> {
                             viewModel.beginGracefulStop();
-                            Toast.makeText(requireContext(),
-                                    R.string.toast_graceful_started,
-                                    Toast.LENGTH_SHORT).show();
+                            Toast.makeText(requireContext(), R.string.toast_graceful_started,
+                                         Toast.LENGTH_SHORT)
+                                    .show();
                         });
             }
         });
@@ -96,8 +94,8 @@ public class TunnelsFragment extends Fragment {
             tunnelsIn.setText(UiFormat.count(requireContext(), snapshot.inboundTunnels()));
             tunnelsOut.setText(UiFormat.count(requireContext(), snapshot.outboundTunnels()));
             tunnelsTransit.setText(UiFormat.count(requireContext(), snapshot.transitTunnels()));
-            long total = (long) snapshot.inboundTunnels()
-                    + snapshot.outboundTunnels() + snapshot.transitTunnels();
+            long total = (long) snapshot.inboundTunnels() + snapshot.outboundTunnels()
+                    + snapshot.transitTunnels();
             tunnelsTotal.setText(UiFormat.count(requireContext(), total));
         } else {
             tunnelsIn.setText(R.string.value_unknown);
@@ -107,8 +105,8 @@ public class TunnelsFragment extends Fragment {
         }
 
         boolean gracefulActive = UiFormat.gracefulActive(snapshot);
-        gracefulStop.setText(gracefulActive
-                ? R.string.action_cancel_graceful_stop : R.string.action_graceful_stop);
+        gracefulStop.setText(gracefulActive ? R.string.action_cancel_graceful_stop
+                                            : R.string.action_graceful_stop);
         gracefulStop.setEnabled(gracefulActive || UiFormat.canRestart(snapshot));
         reloadTunnels.setEnabled(UiFormat.isConnected(snapshot));
 
@@ -121,8 +119,8 @@ public class TunnelsFragment extends Fragment {
         }
     }
 
-    private void confirm(@StringRes int title, @StringRes int message,
-                         @StringRes int positive, @NonNull Runnable action) {
+    private void confirm(@StringRes int title, @StringRes int message, @StringRes int positive,
+            @NonNull Runnable action) {
         new MaterialAlertDialogBuilder(requireContext())
                 .setTitle(title)
                 .setMessage(message)

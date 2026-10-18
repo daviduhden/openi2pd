@@ -94,157 +94,164 @@ namespace client
 
 	class ClientContext
 	{
-		public:
+	public:
+		ClientContext ();
+		~ClientContext ();
 
-			ClientContext ();
-			~ClientContext ();
+		void Start ();
+		void Stop ();
 
-			void Start ();
-			void Stop ();
+		void ReloadConfig ();
 
-			void ReloadConfig ();
+		std::shared_ptr<ClientDestination> GetSharedLocalDestination () const { return m_SharedLocalDestination; };
+		std::shared_ptr<ClientDestination> CreateNewLocalDestination (bool isPublic = false, // transient
+			i2p::data::SigningKeyType sigType = i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519,
+			i2p::data::CryptoKeyType cryptoType = i2p::data::CRYPTO_KEY_TYPE_ELGAMAL,
+			const i2p::util::Mapping * params = nullptr); // used by SAM only
+		std::shared_ptr<ClientDestination> CreateNewLocalDestination (boost::asio::io_context & service,
+			bool isPublic = false, i2p::data::SigningKeyType sigType = i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519,
+			i2p::data::CryptoKeyType cryptoType = i2p::data::CRYPTO_KEY_TYPE_ELGAMAL,
+			const i2p::util::Mapping * params = nullptr); // same as previous but on external io_service
+		std::shared_ptr<ClientDestination> CreateNewLocalDestination (
+			const i2p::data::PrivateKeys & keys, bool isPublic = true, const i2p::util::Mapping * params = nullptr);
+		std::shared_ptr<ClientDestination> CreateNewLocalDestination (boost::asio::io_context & service,
+			const i2p::data::PrivateKeys & keys, bool isPublic = true,
+			const i2p::util::Mapping * params = nullptr); // same as previous but on external io_service
+		std::shared_ptr<ClientDestination> CreateNewMatchedTunnelDestination (
+			const i2p::data::PrivateKeys & keys, const std::string & name, const i2p::util::Mapping * params = nullptr);
+		void DeleteLocalDestination (std::shared_ptr<ClientDestination> destination);
+		bool ReplaceLocalDestinationHash (
+			const i2p::data::IdentHash & oldIdentHash, const i2p::data::IdentHash & newIdentHash);
+		std::shared_ptr<ClientDestination> FindLocalDestination (const i2p::data::IdentHash & destination) const;
+		bool LoadPrivateKeys (i2p::data::PrivateKeys & keys, std::string_view filename,
+			i2p::data::SigningKeyType sigType = i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519,
+			i2p::data::CryptoKeyType cryptoType = i2p::data::CRYPTO_KEY_TYPE_ELGAMAL);
 
-			std::shared_ptr<ClientDestination> GetSharedLocalDestination () const { return m_SharedLocalDestination; };
-			std::shared_ptr<ClientDestination> CreateNewLocalDestination (bool isPublic = false, // transient
-				i2p::data::SigningKeyType sigType = i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519,
-				i2p::data::CryptoKeyType cryptoType = i2p::data::CRYPTO_KEY_TYPE_ELGAMAL,
-				const i2p::util::Mapping * params = nullptr); // used by SAM only
-			std::shared_ptr<ClientDestination> CreateNewLocalDestination (boost::asio::io_context& service,
-				bool isPublic = false, i2p::data::SigningKeyType sigType = i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519,
-				i2p::data::CryptoKeyType cryptoType = i2p::data::CRYPTO_KEY_TYPE_ELGAMAL,
-				const i2p::util::Mapping * params = nullptr); // same as previous but on external io_service
-			std::shared_ptr<ClientDestination> CreateNewLocalDestination (const i2p::data::PrivateKeys& keys, bool isPublic = true,
-				const i2p::util::Mapping * params = nullptr);
-			std::shared_ptr<ClientDestination> CreateNewLocalDestination (boost::asio::io_context& service,
-				const i2p::data::PrivateKeys& keys, bool isPublic = true,
-				const i2p::util::Mapping * params = nullptr); // same as previous but on external io_service
-			std::shared_ptr<ClientDestination> CreateNewMatchedTunnelDestination(const i2p::data::PrivateKeys &keys,
-				const std::string & name, const i2p::util::Mapping * params = nullptr);
-			void DeleteLocalDestination (std::shared_ptr<ClientDestination> destination);
-			bool ReplaceLocalDestinationHash (const i2p::data::IdentHash& oldIdentHash, const i2p::data::IdentHash& newIdentHash);
-			std::shared_ptr<ClientDestination> FindLocalDestination (const i2p::data::IdentHash& destination) const;
-			bool LoadPrivateKeys (i2p::data::PrivateKeys& keys, std::string_view filename,
-				i2p::data::SigningKeyType sigType = i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519,
-				i2p::data::CryptoKeyType cryptoType = i2p::data::CRYPTO_KEY_TYPE_ELGAMAL);
+		AddressBook & GetAddressBook () { return m_AddressBook; };
+		const BOBCommandChannel * GetBOBCommandChannel () const { return m_BOBCommandChannel; };
+		const SAMBridge * GetSAMBridge () const { return m_SamBridge; };
+		const I2CPServer * GetI2CPServer () const { return m_I2CPServer; };
 
-			AddressBook& GetAddressBook () { return m_AddressBook; };
-			const BOBCommandChannel * GetBOBCommandChannel () const { return m_BOBCommandChannel; };
-			const SAMBridge * GetSAMBridge () const { return m_SamBridge; };
-			const I2CPServer * GetI2CPServer () const { return m_I2CPServer; };
+		std::vector<std::shared_ptr<DatagramSessionInfo>> GetForwardInfosFor (const i2p::data::IdentHash & destination);
 
-			std::vector<std::shared_ptr<DatagramSessionInfo> > GetForwardInfosFor(const i2p::data::IdentHash & destination);
+		// i18n
+		std::shared_ptr<const i2p::i18n::Locale> GetLanguage () { return m_Language; };
+		void SetLanguage (const std::shared_ptr<const i2p::i18n::Locale> language) { m_Language = language; };
 
-			// i18n
-			std::shared_ptr<const i2p::i18n::Locale> GetLanguage () { return m_Language; };
-			void SetLanguage (const std::shared_ptr<const i2p::i18n::Locale> language) { m_Language = language; };
+	private:
+		void ReadTunnels ();
+		void ReadTunnels (const std::string & tunConf, int & numClientTunnels, int & numServerTunnels);
+		int ReadTunnelsBySection (const std::string & tunConf, boost::property_tree::ptree & pt);
+		void AddSection (
+			boost::property_tree::ptree & pt, const std::string & name, const std::string & chunk, int & numSections);
+		void ReadHttpProxy ();
+		void ReadSocksProxy ();
+		// take the proxy out under the lock, so it can be stopped without holding it
+		std::shared_ptr<I2PService> DetachHttpProxy ();
+		std::shared_ptr<I2PService> DetachSocksProxy ();
+		template <typename Section, typename Type>
+		std::string GetI2CPOption (const Section & section, const std::string & name, const Type & value) const;
+		template <typename Section>
+		std::string GetI2CPStringOption (const Section & section, const std::string & name,
+			const std::string & value) const; // GetI2CPOption with string default value
+		template <typename Section>
+		void ReadI2CPOptionsGroup (
+			const Section & section, const std::string & group, i2p::util::Mapping & options) const;
+		template <typename Section>
+		void ReadI2CPOptions (
+			const Section & section, bool isServer, i2p::util::Mapping & options) const; // for tunnels
+		void ReadI2CPOptionsFromConfig (
+			const std::string & prefix, i2p::util::Mapping & options) const; // for HTTP and SOCKS proxy
 
-		private:
+		void VisitTunnels (bool clean);
 
-			void ReadTunnels ();
-			void ReadTunnels (const std::string& tunConf, int& numClientTunnels, int& numServerTunnels);
-			int ReadTunnelsBySection (const std::string& tunConf, boost::property_tree::ptree& pt);
-			void AddSection (boost::property_tree::ptree& pt, const std::string& name, const std::string& chunk, int& numSections);
-			void ReadHttpProxy ();
-			void ReadSocksProxy ();
-			// take the proxy out under the lock, so it can be stopped without holding it
-			std::shared_ptr<I2PService> DetachHttpProxy ();
-			std::shared_ptr<I2PService> DetachSocksProxy ();
-			template<typename Section, typename Type>
-			std::string GetI2CPOption (const Section& section, const std::string& name, const Type& value) const;
-			template<typename Section>
-			std::string GetI2CPStringOption (const Section& section, const std::string& name, const std::string& value) const; // GetI2CPOption with string default value
-			template<typename Section>
-			void ReadI2CPOptionsGroup (const Section& section, const std::string& group, i2p::util::Mapping& options) const;
-			template<typename Section>
-			void ReadI2CPOptions (const Section& section, bool isServer, i2p::util::Mapping& options) const; // for tunnels
-			void ReadI2CPOptionsFromConfig (const std::string& prefix, i2p::util::Mapping& options) const; // for HTTP and SOCKS proxy
-
-
-			void VisitTunnels (bool clean);
-
-			void CreateNewSharedLocalDestination ();
-			void AddLocalDestination (std::shared_ptr<ClientDestination> localDestination);
-
-#ifndef NO_TORRENTS
-			std::shared_ptr<i2p::torrents::TorrentsRPCServer> CreateTorrentsRPCServer (std::string_view address, uint16_t port);
-#endif
-
-		private:
-
-			mutable std::mutex m_DestinationsMutex;
-			std::map<i2p::data::IdentHash, std::shared_ptr<ClientDestination> > m_Destinations;
-			std::shared_ptr<ClientDestination>  m_SharedLocalDestination;
-
-			AddressBook m_AddressBook;
-
-			mutable std::mutex m_ProxyMutex;
-			std::shared_ptr<I2PService> m_HttpProxy, m_SocksProxy;
-			std::map<boost::asio::ip::tcp::endpoint, std::shared_ptr<I2PService> > m_ClientTunnels; // local endpoint -> tunnel
-			std::map<std::pair<i2p::data::IdentHash, int>, std::shared_ptr<I2PServerTunnel> > m_ServerTunnels; // <destination,port> -> tunnel
-
-			std::mutex m_ForwardsMutex;
-			std::map<boost::asio::ip::udp::endpoint, std::shared_ptr<I2PUDPClientTunnel> > m_ClientForwards; // local endpoint -> udp tunnel
-			std::map<std::pair<i2p::data::IdentHash, int>, std::shared_ptr<I2PUDPServerTunnel> > m_ServerForwards; // <destination,port> -> udp tunnel
+		void CreateNewSharedLocalDestination ();
+		void AddLocalDestination (std::shared_ptr<ClientDestination> localDestination);
 
 #ifndef NO_TORRENTS
-			std::unordered_map<i2p::data::IdentHash, std::shared_ptr<i2p::torrents::TorrentsTunnel> > m_TorrentsTunnels; // local destination -> torrents tunnel
-			mutable std::mutex m_TorrentsTunnelsMutex;
-			std::unordered_map<uint16_t, std::shared_ptr<i2p::torrents::TorrentsRPCServer> > m_TorrentsRPCServers;
+		std::shared_ptr<i2p::torrents::TorrentsRPCServer> CreateTorrentsRPCServer (
+			std::string_view address, uint16_t port);
 #endif
 
-			SAMBridge * m_SamBridge;
-			BOBCommandChannel * m_BOBCommandChannel;
-			I2CPServer * m_I2CPServer;
+	private:
+		mutable std::mutex m_DestinationsMutex;
+		std::map<i2p::data::IdentHash, std::shared_ptr<ClientDestination>> m_Destinations;
+		std::shared_ptr<ClientDestination> m_SharedLocalDestination;
 
+		AddressBook m_AddressBook;
 
-			// i18n
-			std::shared_ptr<const i2p::i18n::Locale> m_Language;
+		mutable std::mutex m_ProxyMutex;
+		std::shared_ptr<I2PService> m_HttpProxy, m_SocksProxy;
+		std::map<boost::asio::ip::tcp::endpoint, std::shared_ptr<I2PService>>
+			m_ClientTunnels; // local endpoint -> tunnel
+		std::map<std::pair<i2p::data::IdentHash, int>, std::shared_ptr<I2PServerTunnel>>
+			m_ServerTunnels; // <destination,port> -> tunnel
 
-		public:
+		std::mutex m_ForwardsMutex;
+		std::map<boost::asio::ip::udp::endpoint, std::shared_ptr<I2PUDPClientTunnel>>
+			m_ClientForwards; // local endpoint -> udp tunnel
+		std::map<std::pair<i2p::data::IdentHash, int>, std::shared_ptr<I2PUDPServerTunnel>>
+			m_ServerForwards; // <destination,port> -> udp tunnel
 
-			// for HTTP; thread-safe snapshot, safe to iterate without holding any lock
-			std::vector<std::pair<i2p::data::IdentHash, std::shared_ptr<ClientDestination> > > GetDestinationsList () const
-			{
-				std::lock_guard<std::mutex> l(m_DestinationsMutex);
-				return std::vector<std::pair<i2p::data::IdentHash, std::shared_ptr<ClientDestination> > > (m_Destinations.begin (), m_Destinations.end ());
-			}
-			const decltype(m_ClientTunnels)& GetClientTunnels () const { return m_ClientTunnels; };
-			const decltype(m_ServerTunnels)& GetServerTunnels () const { return m_ServerTunnels; };
-			const decltype(m_ClientForwards)& GetClientForwards () const { return m_ClientForwards; }
-			const decltype(m_ServerForwards)& GetServerForwards () const { return m_ServerForwards; }
 #ifndef NO_TORRENTS
-			// Stable, sorted copy of the configured torrents tunnels. Callers
-			// iterate this without holding any ClientContext lock; the TUI
-			// tunnel index is an index into this vector.
-			std::vector<std::shared_ptr<i2p::torrents::TorrentsTunnel> > GetTorrentsTunnelsSnapshot () const
-			{
-				std::lock_guard<std::mutex> l (m_TorrentsTunnelsMutex);
-				std::vector<std::shared_ptr<i2p::torrents::TorrentsTunnel> > snapshot;
-				snapshot.reserve (m_TorrentsTunnels.size ());
-				for (const auto& it : m_TorrentsTunnels)
-					if (it.second) snapshot.push_back (it.second);
-				std::sort (snapshot.begin (), snapshot.end (),
-					[](const auto& first, const auto& second)
-					{
-						auto firstName = std::string_view (first->GetName ());
-						auto secondName = std::string_view (second->GetName ());
-						if (firstName != secondName) return firstName < secondName;
-						return first.get () < second.get ();
-					});
-				return snapshot;
-			}
-			const decltype(m_TorrentsRPCServers)& GetTorrentsRPCServers () const { return m_TorrentsRPCServers; }
+		std::unordered_map<i2p::data::IdentHash, std::shared_ptr<i2p::torrents::TorrentsTunnel>>
+			m_TorrentsTunnels; // local destination -> torrents tunnel
+		mutable std::mutex m_TorrentsTunnelsMutex;
+		std::unordered_map<uint16_t, std::shared_ptr<i2p::torrents::TorrentsRPCServer>> m_TorrentsRPCServers;
 #endif
-			std::shared_ptr<const I2PService> GetHttpProxy () const
-			{
-				std::lock_guard<std::mutex> l(m_ProxyMutex);
-				return m_HttpProxy;
-			}
-			std::shared_ptr<const I2PService> GetSocksProxy () const
-			{
-				std::lock_guard<std::mutex> l(m_ProxyMutex);
-				return m_SocksProxy;
-			}
+
+		SAMBridge * m_SamBridge;
+		BOBCommandChannel * m_BOBCommandChannel;
+		I2CPServer * m_I2CPServer;
+
+		// i18n
+		std::shared_ptr<const i2p::i18n::Locale> m_Language;
+
+	public:
+		// for HTTP; thread-safe snapshot, safe to iterate without holding any lock
+		std::vector<std::pair<i2p::data::IdentHash, std::shared_ptr<ClientDestination>>> GetDestinationsList () const
+		{
+			std::lock_guard<std::mutex> l (m_DestinationsMutex);
+			return std::vector<std::pair<i2p::data::IdentHash, std::shared_ptr<ClientDestination>>> (
+				m_Destinations.begin (), m_Destinations.end ());
+		}
+		const decltype (m_ClientTunnels) & GetClientTunnels () const { return m_ClientTunnels; };
+		const decltype (m_ServerTunnels) & GetServerTunnels () const { return m_ServerTunnels; };
+		const decltype (m_ClientForwards) & GetClientForwards () const { return m_ClientForwards; }
+		const decltype (m_ServerForwards) & GetServerForwards () const { return m_ServerForwards; }
+#ifndef NO_TORRENTS
+		// Stable, sorted copy of the configured torrents tunnels. Callers
+		// iterate this without holding any ClientContext lock; the TUI
+		// tunnel index is an index into this vector.
+		std::vector<std::shared_ptr<i2p::torrents::TorrentsTunnel>> GetTorrentsTunnelsSnapshot () const
+		{
+			std::lock_guard<std::mutex> l (m_TorrentsTunnelsMutex);
+			std::vector<std::shared_ptr<i2p::torrents::TorrentsTunnel>> snapshot;
+			snapshot.reserve (m_TorrentsTunnels.size ());
+			for (const auto & it : m_TorrentsTunnels)
+				if (it.second) snapshot.push_back (it.second);
+			std::sort (snapshot.begin (), snapshot.end (),
+				[] (const auto & first, const auto & second)
+				{
+					auto firstName = std::string_view (first->GetName ());
+					auto secondName = std::string_view (second->GetName ());
+					if (firstName != secondName) return firstName < secondName;
+					return first.get () < second.get ();
+				});
+			return snapshot;
+		}
+		const decltype (m_TorrentsRPCServers) & GetTorrentsRPCServers () const { return m_TorrentsRPCServers; }
+#endif
+		std::shared_ptr<const I2PService> GetHttpProxy () const
+		{
+			std::lock_guard<std::mutex> l (m_ProxyMutex);
+			return m_HttpProxy;
+		}
+		std::shared_ptr<const I2PService> GetSocksProxy () const
+		{
+			std::lock_guard<std::mutex> l (m_ProxyMutex);
+			return m_SocksProxy;
+		}
 	};
 
 	extern ClientContext context;

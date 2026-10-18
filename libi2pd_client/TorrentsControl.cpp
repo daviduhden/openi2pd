@@ -23,8 +23,8 @@ namespace torrents
 		bool IsUnreservedMagnetChar (char ch)
 		{
 			auto uch = static_cast<unsigned char> (ch);
-			return (uch >= 'A' && uch <= 'Z') || (uch >= 'a' && uch <= 'z') ||
-				(uch >= '0' && uch <= '9') || ch == '-' || ch == '.' || ch == '_' || ch == '~';
+			return (uch >= 'A' && uch <= 'Z') || (uch >= 'a' && uch <= 'z') || (uch >= '0' && uch <= '9') || ch == '-'
+				|| ch == '.' || ch == '_' || ch == '~';
 		}
 
 		std::string PercentEncodeMagnetName (std::string_view name)
@@ -61,7 +61,7 @@ namespace torrents
 		return out;
 	}
 
-	std::string BuildTorrentMagnet (const std::array<uint8_t, 20>& infoHash, std::string_view name)
+	std::string BuildTorrentMagnet (const std::array<uint8_t, 20> & infoHash, std::string_view name)
 	{
 		std::string magnet = "magnet:?xt=urn:btih:";
 		magnet += ToHexString (std::span<const uint8_t> (infoHash.data (), infoHash.size ()));
@@ -73,8 +73,8 @@ namespace torrents
 		return magnet;
 	}
 
-	bool ReadTorrentFileBounded (const std::filesystem::path& path, size_t maxBytes,
-		std::vector<uint8_t>& content, std::string& error)
+	bool ReadTorrentFileBounded (
+		const std::filesystem::path & path, size_t maxBytes, std::vector<uint8_t> & content, std::string & error)
 	{
 		content.clear ();
 		error.clear ();

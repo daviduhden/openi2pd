@@ -71,8 +71,7 @@ static void TestFields ()
 	assert (payload == "key=line\\nwith\\\\slash\n");
 
 	auto position = payload.find ('=');
-	auto decoded = UnescapeValue (std::string_view (payload).substr (position + 1,
-		payload.size () - position - 2));
+	auto decoded = UnescapeValue (std::string_view (payload).substr (position + 1, payload.size () - position - 2));
 	assert (decoded == "line\nwith\\slash");
 
 	// A response built by the daemon must round-trip through the parser.
@@ -84,7 +83,6 @@ static void TestFields ()
 	assert (header->payloadSize == payload.size ());
 	assert (frame.substr (newline + 1) == payload);
 }
-
 
 static void TestTorrentRequests ()
 {

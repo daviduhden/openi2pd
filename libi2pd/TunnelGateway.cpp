@@ -21,8 +21,9 @@ namespace i2p
 {
 namespace tunnel
 {
-	TunnelGatewayBuffer::TunnelGatewayBuffer ():
-		m_CurrentTunnelDataMsg (nullptr), m_RemainingSize (0)
+	TunnelGatewayBuffer::TunnelGatewayBuffer ()
+		: m_CurrentTunnelDataMsg (nullptr)
+		, m_RemainingSize (0)
 	{
 	}
 
@@ -31,7 +32,7 @@ namespace tunnel
 		ClearTunnelDataMsgs ();
 	}
 
-	void TunnelGatewayBuffer::PutI2NPMsg (const TunnelMessageBlock& block)
+	void TunnelGatewayBuffer::PutI2NPMsg (const TunnelMessageBlock & block)
 	{
 		bool messageCreated = false;
 		if (!m_CurrentTunnelDataMsg)
@@ -49,7 +50,7 @@ namespace tunnel
 
 		// create delivery instructions
 		uint8_t di[43]; // max delivery instruction length is 43 for tunnel
-		size_t diLen = 1;// flag
+		size_t diLen = 1; // flag
 		if (block.deliveryType != eDeliveryTypeLocal) // tunnel or router
 		{
 			if (block.deliveryType == eDeliveryTypeTunnel)
@@ -72,8 +73,8 @@ namespace tunnel
 			size_t numFollowOnFragments = fullMsgLen / TUNNEL_DATA_MAX_PAYLOAD_SIZE;
 			// length of bytes doesn't fit full tunnel message
 			// every follow-on fragment adds 7 bytes
-			size_t nonFit = (fullMsgLen + numFollowOnFragments*7) % TUNNEL_DATA_MAX_PAYLOAD_SIZE;
-			if (!nonFit || nonFit > m_RemainingSize || m_RemainingSize < fullMsgLen/5)
+			size_t nonFit = (fullMsgLen + numFollowOnFragments * 7) % TUNNEL_DATA_MAX_PAYLOAD_SIZE;
+			if (!nonFit || nonFit > m_RemainingSize || m_RemainingSize < fullMsgLen / 5)
 			{
 				CompleteCurrentTunnelDataMessage ();
 				CreateCurrentTunnelDataMessage ();
@@ -85,11 +86,11 @@ namespace tunnel
 			htobe16buf (di + diLen, msg->GetLength ());
 			diLen += 2; // size
 			memcpy (m_CurrentTunnelDataMsg->buf + m_CurrentTunnelDataMsg->len, di, diLen);
-			memcpy (m_CurrentTunnelDataMsg->buf + m_CurrentTunnelDataMsg->len + diLen, msg->GetBuffer (), msg->GetLength ());
+			memcpy (m_CurrentTunnelDataMsg->buf + m_CurrentTunnelDataMsg->len + diLen, msg->GetBuffer (),
+				msg->GetLength ());
 			m_CurrentTunnelDataMsg->len += diLen + msg->GetLength ();
 			m_RemainingSize -= diLen + msg->GetLength ();
-			if (!m_RemainingSize)
-				CompleteCurrentTunnelDataMessage ();
+			if (!m_RemainingSize) CompleteCurrentTunnelDataMessage ();
 		}
 		else
 		{
@@ -129,15 +130,18 @@ namespace tunnel
 					htobuf32 (buf + 1, msgID); //Message ID
 					htobe16buf (buf + 5, s); // size
 					memcpy (buf + 7, msg->GetBuffer () + size, s);
-					m_CurrentTunnelDataMsg->len += s+7;
+					m_CurrentTunnelDataMsg->len += s + 7;
 					if (isLastFragment)
 					{
-						if(m_RemainingSize < (s+7)) {
-							LogPrint (eLogError, "TunnelGateway: remaining size overflow: ", m_RemainingSize, " < ", s+7);
-						} else {
-							m_RemainingSize -= s+7;
-							if (m_RemainingSize == 0)
-								CompleteCurrentTunnelDataMessage ();
+						if (m_RemainingSize < (s + 7))
+						{
+							LogPrint (
+								eLogError, "TunnelGateway: remaining size overflow: ", m_RemainingSize, " < ", s + 7);
+						}
+						else
+						{
+							m_RemainingSize -= s + 7;
+							if (m_RemainingSize == 0) CompleteCurrentTunnelDataMessage ();
 						}
 					}
 					else
@@ -180,13 +184,12 @@ namespace tunnel
 		m_CurrentTunnelDataMsg->offset = m_CurrentTunnelDataMsg->len - TUNNEL_DATA_MSG_SIZE - I2NP_HEADER_SIZE;
 		uint8_t * buf = m_CurrentTunnelDataMsg->GetPayload ();
 		// original IV (16 bytes)
-		if (!m_Rng) m_Rng = std::make_unique<std::mt19937>(i2p::util::GetRngSeed ());
-		for (size_t offset = 4; offset < 20; offset += 4)
-			htobuf32 (buf + offset, (*m_Rng)());
+		if (!m_Rng) m_Rng = std::make_unique<std::mt19937> (i2p::util::GetRngSeed ());
+		for (size_t offset = 4; offset < 20; offset += 4) htobuf32 (buf + offset, (*m_Rng) ());
 		memcpy (payload + size, buf + 4, 16); // copy IV for checksum
 		uint8_t hash[32];
-		SHA256(payload, size+16, hash);
-		memcpy (buf+20, hash, 4); // checksum
+		SHA256 (payload, size + 16, hash);
+		memcpy (buf + 20, hash, 4); // checksum
 		payload[-1] = 0; // zero
 		ptrdiff_t paddingSize = payload - buf - 25; // 25 = 24 + 1
 		if (paddingSize > 0)
@@ -194,14 +197,15 @@ namespace tunnel
 			// non-zero padding
 			if (!m_NonZeroRandomBuffer) // first time?
 			{
-				m_NonZeroRandomBuffer = std::make_unique<std::array<uint8_t, TUNNEL_DATA_MAX_PAYLOAD_SIZE + 1> >(); // multiple of 4
+				m_NonZeroRandomBuffer
+					= std::make_unique<std::array<uint8_t, TUNNEL_DATA_MAX_PAYLOAD_SIZE + 1>> (); // multiple of 4
 				for (size_t offset = 0; offset < TUNNEL_DATA_MAX_PAYLOAD_SIZE + 1; offset += 4)
-					htobuf32 (m_NonZeroRandomBuffer->data() + offset, (*m_Rng)());
-				for (auto& it: *m_NonZeroRandomBuffer)
-					if (!it) it = (uint8_t)((*m_Rng)() % 255 + 1);
+					htobuf32 (m_NonZeroRandomBuffer->data () + offset, (*m_Rng) ());
+				for (auto & it : *m_NonZeroRandomBuffer)
+					if (!it) it = (uint8_t)((*m_Rng) () % 255 + 1);
 			}
-			auto randomOffset = (*m_Rng)() % (TUNNEL_DATA_MAX_PAYLOAD_SIZE - paddingSize + 1);
-			memcpy (buf + 24, m_NonZeroRandomBuffer->data() + randomOffset, paddingSize);
+			auto randomOffset = (*m_Rng) () % (TUNNEL_DATA_MAX_PAYLOAD_SIZE - paddingSize + 1);
+			memcpy (buf + 24, m_NonZeroRandomBuffer->data () + randomOffset, paddingSize);
 		}
 
 		// we can't fill message header yet because encryption is required
@@ -209,7 +213,7 @@ namespace tunnel
 		m_CurrentTunnelDataMsg = nullptr;
 	}
 
-	void TunnelGateway::SendTunnelDataMsg (const TunnelMessageBlock& block)
+	void TunnelGateway::SendTunnelDataMsg (const TunnelMessageBlock & block)
 	{
 		if (block.data)
 		{
@@ -218,19 +222,18 @@ namespace tunnel
 		}
 	}
 
-	void TunnelGateway::PutTunnelDataMsg (const TunnelMessageBlock& block)
+	void TunnelGateway::PutTunnelDataMsg (const TunnelMessageBlock & block)
 	{
-		if (block.data)
-			m_Buffer.PutI2NPMsg (block);
+		if (block.data) m_Buffer.PutI2NPMsg (block);
 	}
 
 	void TunnelGateway::SendBuffer ()
 	{
 		// create list or tunnel messages
 		m_Buffer.CompleteCurrentTunnelDataMessage ();
-		std::list<std::shared_ptr<I2NPMessage> > newTunnelMsgs;
-		const auto& tunnelDataMsgs = m_Buffer.GetTunnelDataMsgs ();
-		for (auto& tunnelMsg : tunnelDataMsgs)
+		std::list<std::shared_ptr<I2NPMessage>> newTunnelMsgs;
+		const auto & tunnelDataMsgs = m_Buffer.GetTunnelDataMsgs ();
+		for (auto & tunnelMsg : tunnelDataMsgs)
 		{
 			auto newMsg = CreateEmptyTunnelDataMsg (false);
 			m_Tunnel.EncryptTunnelMsg (tunnelMsg, newMsg);
@@ -242,7 +245,7 @@ namespace tunnel
 		}
 		m_Buffer.ClearTunnelDataMsgs ();
 		// send
-		if (!m_Sender) m_Sender = std::make_unique<TunnelTransportSender>();
+		if (!m_Sender) m_Sender = std::make_unique<TunnelTransportSender> ();
 		m_Sender->SendMessagesTo (m_Tunnel.GetNextIdentHash (), std::move (newTunnelMsgs));
 	}
 }

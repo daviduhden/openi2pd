@@ -29,22 +29,28 @@ namespace i2p
 {
 namespace client
 {
-	LeaseSetDestination::LeaseSetDestination (boost::asio::io_context& service,
-		bool isPublic, const i2p::util::Mapping * params):
-		m_Service (service), m_IsPublic (isPublic), m_PublishReplyToken (0),
-		m_LastSubmissionTime (0), m_PublishConfirmationTimer (m_Service),
-		m_PublishVerificationTimer (m_Service), m_PublishDelayTimer (m_Service), m_CleanupTimer (m_Service),
-		m_LeaseSetType (DEFAULT_LEASESET_TYPE), m_AuthType (i2p::data::ENCRYPTED_LEASESET_AUTH_TYPE_NONE)
+	LeaseSetDestination::LeaseSetDestination (
+		boost::asio::io_context & service, bool isPublic, const i2p::util::Mapping * params)
+		: m_Service (service)
+		, m_IsPublic (isPublic)
+		, m_PublishReplyToken (0)
+		, m_LastSubmissionTime (0)
+		, m_PublishConfirmationTimer (m_Service)
+		, m_PublishVerificationTimer (m_Service)
+		, m_PublishDelayTimer (m_Service)
+		, m_CleanupTimer (m_Service)
+		, m_LeaseSetType (DEFAULT_LEASESET_TYPE)
+		, m_AuthType (i2p::data::ENCRYPTED_LEASESET_AUTH_TYPE_NONE)
 	{
-		int inLen   = DEFAULT_INBOUND_TUNNEL_LENGTH;
-		int inQty   = DEFAULT_INBOUND_TUNNELS_QUANTITY;
-		int outLen  = DEFAULT_OUTBOUND_TUNNEL_LENGTH;
-		int outQty  = DEFAULT_OUTBOUND_TUNNELS_QUANTITY;
-		int inVar   = DEFAULT_INBOUND_TUNNELS_LENGTH_VARIANCE;
-		int outVar  = DEFAULT_OUTBOUND_TUNNELS_LENGTH_VARIANCE;
+		int inLen = DEFAULT_INBOUND_TUNNEL_LENGTH;
+		int inQty = DEFAULT_INBOUND_TUNNELS_QUANTITY;
+		int outLen = DEFAULT_OUTBOUND_TUNNEL_LENGTH;
+		int outQty = DEFAULT_OUTBOUND_TUNNELS_QUANTITY;
+		int inVar = DEFAULT_INBOUND_TUNNELS_LENGTH_VARIANCE;
+		int outVar = DEFAULT_OUTBOUND_TUNNELS_LENGTH_VARIANCE;
 		int numTags = DEFAULT_TAGS_TO_SEND;
 		bool isHighBandwidth = true;
-		std::shared_ptr<std::vector<i2p::data::IdentHash> > explicitPeers;
+		std::shared_ptr<std::vector<i2p::data::IdentHash>> explicitPeers;
 		std::string_view explicitPeersStr, trustedRoutersStr, inboundRandomKeyStr, outboundRandomKeyStr;
 		try
 		{
@@ -57,7 +63,8 @@ namespace client
 				params->Get (I2CP_PARAM_INBOUND_TUNNELS_LENGTH_VARIANCE, inVar);
 				params->Get (I2CP_PARAM_OUTBOUND_TUNNELS_LENGTH_VARIANCE, outVar);
 				params->Get (I2CP_PARAM_TAGS_TO_SEND, numTags);
-				LogPrint (eLogInfo, "Destination: Parameters for tunnel set to: ", inQty, " inbound (", inLen, " hops), ", outQty, " outbound (", outLen, " hops), ", numTags, " tags");
+				LogPrint (eLogInfo, "Destination: Parameters for tunnel set to: ", inQty, " inbound (", inLen,
+					" hops), ", outQty, " outbound (", outLen, " hops), ", numTags, " tags");
 				int ratchetsInboundTags = 0;
 				if (params->Get (I2CP_PARAM_RATCHET_INBOUND_TAGS, ratchetsInboundTags))
 				{
@@ -83,7 +90,8 @@ namespace client
 					int authType = 0;
 					if (params->Get (I2CP_PARAM_LEASESET_AUTH_TYPE, authType))
 					{
-						if (authType >= i2p::data::ENCRYPTED_LEASESET_AUTH_TYPE_NONE && authType <= i2p::data::ENCRYPTED_LEASESET_AUTH_TYPE_PSK)
+						if (authType >= i2p::data::ENCRYPTED_LEASESET_AUTH_TYPE_NONE
+							&& authType <= i2p::data::ENCRYPTED_LEASESET_AUTH_TYPE_PSK)
 							m_AuthType = authType;
 						else
 							LogPrint (eLogError, "Destination: Unknown auth type: ", authType);
@@ -92,10 +100,10 @@ namespace client
 				auto leaseSetPrivKey = (*params)[I2CP_PARAM_LEASESET_PRIV_KEY];
 				if (!leaseSetPrivKey.empty ())
 				{
-					m_LeaseSetPrivKey.reset (new i2p::data::Tag<32>());
+					m_LeaseSetPrivKey.reset (new i2p::data::Tag<32> ());
 					if (m_LeaseSetPrivKey->FromBase64 (leaseSetPrivKey) != 32)
 					{
-						LogPrint(eLogCritical, "Destination: Invalid value i2cp.leaseSetPrivKey: ", leaseSetPrivKey);
+						LogPrint (eLogCritical, "Destination: Invalid value i2cp.leaseSetPrivKey: ", leaseSetPrivKey);
 						m_LeaseSetPrivKey.reset (nullptr);
 					}
 				}
@@ -106,14 +114,12 @@ namespace client
 		}
 		catch (std::exception & ex)
 		{
-			LogPrint(eLogError, "Destination: Unable to parse parameters for destination: ", ex.what());
+			LogPrint (eLogError, "Destination: Unable to parse parameters for destination: ", ex.what ());
 		}
 		SetNumTags (numTags);
 		m_Pool = i2p::tunnel::tunnels.CreateTunnelPool (inLen, outLen, inQty, outQty, inVar, outVar, isHighBandwidth);
-		if (!explicitPeersStr.empty ())
-			m_Pool->SetExplicitPeers (i2p::data::ExtractIdentHashes (explicitPeersStr));
-		if (!trustedRoutersStr.empty ())
-			m_Pool->SetTrustedRouters (i2p::data::ExtractIdentHashes (trustedRoutersStr));
+		if (!explicitPeersStr.empty ()) m_Pool->SetExplicitPeers (i2p::data::ExtractIdentHashes (explicitPeersStr));
+		if (!trustedRoutersStr.empty ()) m_Pool->SetTrustedRouters (i2p::data::ExtractIdentHashes (trustedRoutersStr));
 		if (!inboundRandomKeyStr.empty ())
 		{
 			uint8_t key[32]; // might be 32 bytes, but only first 16 bytes are used
@@ -126,7 +132,7 @@ namespace client
 			if (i2p::data::Base64ToByteStream (outboundRandomKeyStr, key, 32) >= 16)
 				m_Pool->SetOutboundPeerOrderingKey (key);
 		}
-		if(params)
+		if (params)
 		{
 			int maxLatency = 0;
 			if (params->Get (I2CP_PARAM_MAX_TUNNEL_LATENCY, maxLatency))
@@ -137,8 +143,9 @@ namespace client
 					if (minLatency > 0 && maxLatency > 0)
 					{
 						// set tunnel pool latency
-						LogPrint(eLogInfo, "Destination: Requiring tunnel latency [", minLatency, "ms, ", maxLatency, "ms]");
-						m_Pool->RequireLatency(minLatency, maxLatency);
+						LogPrint (
+							eLogInfo, "Destination: Requiring tunnel latency [", minLatency, "ms, ", maxLatency, "ms]");
+						m_Pool->RequireLatency (minLatency, maxLatency);
 					}
 				}
 			}
@@ -147,10 +154,8 @@ namespace client
 
 	LeaseSetDestination::~LeaseSetDestination ()
 	{
-		if (m_Pool)
-			i2p::tunnel::tunnels.DeleteTunnelPool (m_Pool);
-		for (auto& it: m_LeaseSetRequests)
-			it.second->Complete (nullptr);
+		if (m_Pool) i2p::tunnel::tunnels.DeleteTunnelPool (m_Pool);
+		for (auto & it : m_LeaseSetRequests) it.second->Complete (nullptr);
 	}
 
 	void LeaseSetDestination::Start ()
@@ -161,8 +166,8 @@ namespace client
 		m_Pool->SetLocalDestination (shared_from_this ());
 		m_Pool->SetActive (true);
 		m_CleanupTimer.expires_after (std::chrono::seconds (DESTINATION_CLEANUP_TIMEOUT));
-		m_CleanupTimer.async_wait (std::bind (&LeaseSetDestination::HandleCleanupTimer,
-			shared_from_this (), std::placeholders::_1));
+		m_CleanupTimer.async_wait (
+			std::bind (&LeaseSetDestination::HandleCleanupTimer, shared_from_this (), std::placeholders::_1));
 	}
 
 	void LeaseSetDestination::Stop ()
@@ -180,24 +185,23 @@ namespace client
 		CleanUp (); // GarlicDestination
 	}
 
-
-	bool LeaseSetDestination::Reconfigure (const i2p::util::Mapping& params)
+	bool LeaseSetDestination::Reconfigure (const i2p::util::Mapping & params)
 	{
 		bool dontPublishLeaseSet = !m_IsPublic;
-		params.Get(I2CP_PARAM_DONT_PUBLISH_LEASESET, dontPublishLeaseSet);
+		params.Get (I2CP_PARAM_DONT_PUBLISH_LEASESET, dontPublishLeaseSet);
 		m_IsPublic = !dontPublishLeaseSet;
 		auto numTags = GetNumTags ();
 		params.Get (I2CP_PARAM_TAGS_TO_SEND, numTags);
 		auto numRatchetInboundTags = GetNumRatchetInboundTags ();
 		params.Get (I2CP_PARAM_RATCHET_INBOUND_TAGS, numRatchetInboundTags);
-		auto pool = GetTunnelPool();
-		auto inLen = pool->GetNumInboundHops();
+		auto pool = GetTunnelPool ();
+		auto inLen = pool->GetNumInboundHops ();
 		params.Get (I2CP_PARAM_INBOUND_TUNNEL_LENGTH, inLen);
-		auto outLen = pool->GetNumOutboundHops();
+		auto outLen = pool->GetNumOutboundHops ();
 		params.Get (I2CP_PARAM_OUTBOUND_TUNNEL_LENGTH, outLen);
-		auto inQuant = pool->GetNumInboundTunnels();
+		auto inQuant = pool->GetNumInboundTunnels ();
 		params.Get (I2CP_PARAM_INBOUND_TUNNELS_QUANTITY, inQuant);
-		auto outQuant = pool->GetNumOutboundTunnels();
+		auto outQuant = pool->GetNumOutboundTunnels ();
 		params.Get (I2CP_PARAM_OUTBOUND_TUNNELS_QUANTITY, outQuant);
 		int minLatency = 0;
 		params.Get (I2CP_PARAM_MIN_TUNNEL_LATENCY, minLatency);
@@ -206,46 +210,47 @@ namespace client
 
 		SetNumTags (numTags);
 		SetNumRatchetInboundTags (numRatchetInboundTags);
-		pool->RequireLatency(minLatency, maxLatency);
-		return pool->Reconfigure(inLen, outLen, inQuant, outQuant);
+		pool->RequireLatency (minLatency, maxLatency);
+		return pool->Reconfigure (inLen, outLen, inQuant, outQuant);
 	}
 
-	std::shared_ptr<i2p::data::LeaseSet> LeaseSetDestination::FindLeaseSet (const i2p::data::IdentHash& ident)
+	std::shared_ptr<i2p::data::LeaseSet> LeaseSetDestination::FindLeaseSet (const i2p::data::IdentHash & ident)
 	{
 		std::shared_ptr<i2p::data::LeaseSet> remoteLS;
 		{
-			std::lock_guard<std::mutex> lock(m_RemoteLeaseSetsMutex);
+			std::lock_guard<std::mutex> lock (m_RemoteLeaseSetsMutex);
 			auto it = m_RemoteLeaseSets.find (ident);
-			if (it != m_RemoteLeaseSets.end ())
-				remoteLS = it->second;
+			if (it != m_RemoteLeaseSets.end ()) remoteLS = it->second;
 		}
 
 		if (remoteLS)
 		{
 			if (!remoteLS->IsExpired ())
 			{
-				if (remoteLS->ExpiresSoon())
+				if (remoteLS->ExpiresSoon ())
 				{
-					LogPrint(eLogDebug, "Destination: Lease Set expires soon, updating before expire");
+					LogPrint (eLogDebug, "Destination: Lease Set expires soon, updating before expire");
 					// update now before expiration for smooth handover
 					auto s = shared_from_this ();
-					RequestDestination(ident, [s, ident] (std::shared_ptr<i2p::data::LeaseSet> ls) {
-						if(ls && !ls->IsExpired())
+					RequestDestination (ident,
+						[s, ident] (std::shared_ptr<i2p::data::LeaseSet> ls)
 						{
-							ls->PopulateLeases();
+							if (ls && !ls->IsExpired ())
 							{
-								std::lock_guard<std::mutex> _lock(s->m_RemoteLeaseSetsMutex);
-								s->m_RemoteLeaseSets[ident] = ls;
+								ls->PopulateLeases ();
+								{
+									std::lock_guard<std::mutex> _lock (s->m_RemoteLeaseSetsMutex);
+									s->m_RemoteLeaseSets[ident] = ls;
+								}
 							}
-						}
-					});
+						});
 				}
 				return remoteLS;
 			}
 			else
 			{
 				LogPrint (eLogWarning, "Destination: Remote LeaseSet expired");
-				std::lock_guard<std::mutex> lock(m_RemoteLeaseSetsMutex);
+				std::lock_guard<std::mutex> lock (m_RemoteLeaseSetsMutex);
 				m_RemoteLeaseSets.erase (ident);
 				return nullptr;
 			}
@@ -256,33 +261,33 @@ namespace client
 	std::shared_ptr<const i2p::data::LocalLeaseSet> LeaseSetDestination::GetLeaseSet ()
 	{
 		if (!m_Pool) return nullptr;
-		if (!m_LeaseSet)
-			UpdateLeaseSet ();
+		if (!m_LeaseSet) UpdateLeaseSet ();
 		auto ls = GetLeaseSetMt ();
 		return (ls && ls->GetInnerLeaseSet ()) ? ls->GetInnerLeaseSet () : ls; // always non-encrypted
 	}
 
 	std::shared_ptr<const i2p::data::LocalLeaseSet> LeaseSetDestination::GetLeaseSetMt ()
 	{
-		std::lock_guard<std::mutex> l(m_LeaseSetMutex);
+		std::lock_guard<std::mutex> l (m_LeaseSetMutex);
 		return m_LeaseSet;
 	}
 
 	void LeaseSetDestination::SetLeaseSet (std::shared_ptr<const i2p::data::LocalLeaseSet> newLeaseSet)
 	{
 		{
-			std::lock_guard<std::mutex> l(m_LeaseSetMutex);
+			std::lock_guard<std::mutex> l (m_LeaseSetMutex);
 			m_LeaseSet = newLeaseSet;
 		}
 		i2p::garlic::GarlicDestination::SetLeaseSetUpdated ();
 		if (m_IsPublic)
 		{
 			auto s = shared_from_this ();
-			boost::asio::post (m_Service, [s](void)
-			{
-				s->m_PublishVerificationTimer.cancel ();
-				s->Publish ();
-			});
+			boost::asio::post (m_Service,
+				[s] (void)
+				{
+					s->m_PublishVerificationTimer.cancel ();
+					s->Publish ();
+				});
 		}
 	}
 
@@ -306,10 +311,7 @@ namespace client
 		memcpy (data.k, key, 32);
 		memcpy (data.t, tag, 32);
 		auto s = shared_from_this ();
-		boost::asio::post (m_Service, [s,data](void)
-			{
-				s->AddSessionKey (data.k, data.t);
-			});
+		boost::asio::post (m_Service, [s, data] (void) { s->AddSessionKey (data.k, data.t); });
 		return true;
 	}
 
@@ -323,10 +325,7 @@ namespace client
 		memcpy (data.k, key, 32);
 		data.t = tag;
 		auto s = shared_from_this ();
-		boost::asio::post (m_Service, [s,data](void)
-			{
-				s->AddECIESx25519Key (data.k, data.t);
-			});
+		boost::asio::post (m_Service, [s, data] (void) { s->AddECIESx25519Key (data.k, data.t); });
 	}
 
 	void LeaseSetDestination::ProcessGarlicMessage (std::shared_ptr<I2NPMessage> msg)
@@ -334,27 +333,28 @@ namespace client
 		if (!msg) return;
 		bool empty = false;
 		{
-			std::lock_guard<std::mutex> l(m_IncomingMsgsQueueMutex);
+			std::lock_guard<std::mutex> l (m_IncomingMsgsQueueMutex);
 			empty = m_IncomingMsgsQueue.empty ();
 			m_IncomingMsgsQueue.push_back (msg);
 		}
 		if (empty)
-			boost::asio::post (m_Service, [s = shared_from_this ()]()
-			{
-				std::list<std::shared_ptr<I2NPMessage> > receivedMsgs;
+			boost::asio::post (m_Service,
+				[s = shared_from_this ()] ()
 				{
-					std::lock_guard<std::mutex> l(s->m_IncomingMsgsQueueMutex);
-					s->m_IncomingMsgsQueue.swap (receivedMsgs);
-				}
-			    for (auto& it: receivedMsgs)
-			    	s->HandleGarlicMessage (it);
-			});
+					std::list<std::shared_ptr<I2NPMessage>> receivedMsgs;
+					{
+						std::lock_guard<std::mutex> l (s->m_IncomingMsgsQueueMutex);
+						s->m_IncomingMsgsQueue.swap (receivedMsgs);
+					}
+					for (auto & it : receivedMsgs) s->HandleGarlicMessage (it);
+				});
 	}
 
 	void LeaseSetDestination::ProcessDeliveryStatusMessage (std::shared_ptr<I2NPMessage> msg)
 	{
 		uint32_t msgID = bufbe32toh (msg->GetPayload () + DELIVERY_STATUS_MSGID_OFFSET);
-		boost::asio::post (m_Service, std::bind (&LeaseSetDestination::HandleDeliveryStatusMessage, shared_from_this (), msgID));
+		boost::asio::post (
+			m_Service, std::bind (&LeaseSetDestination::HandleDeliveryStatusMessage, shared_from_this (), msgID));
 	}
 
 	void LeaseSetDestination::HandleI2NPMessage (const uint8_t * buf, size_t len)
@@ -366,44 +366,37 @@ namespace client
 		}
 		I2NPMessageType typeID = (I2NPMessageType)(buf[I2NP_HEADER_TYPEID_OFFSET]);
 		uint32_t msgID = bufbe32toh (buf + I2NP_HEADER_MSGID_OFFSET);
-		LeaseSetDestination::HandleCloveI2NPMessage (typeID, buf + I2NP_HEADER_SIZE,
-			GetI2NPMessageLength(buf, len) - I2NP_HEADER_SIZE, msgID, nullptr);
+		LeaseSetDestination::HandleCloveI2NPMessage (
+			typeID, buf + I2NP_HEADER_SIZE, GetI2NPMessageLength (buf, len) - I2NP_HEADER_SIZE, msgID, nullptr);
 	}
 
-	bool LeaseSetDestination::HandleCloveI2NPMessage (I2NPMessageType typeID, const uint8_t * payload,
-		size_t len, uint32_t msgID, i2p::garlic::ECIESX25519AEADRatchetSession * from)
+	bool LeaseSetDestination::HandleCloveI2NPMessage (I2NPMessageType typeID, const uint8_t * payload, size_t len,
+		uint32_t msgID, i2p::garlic::ECIESX25519AEADRatchetSession * from)
 	{
 		switch (typeID)
 		{
-			case eI2NPData:
-				HandleDataMessage (payload, len, from);
+		case eI2NPData: HandleDataMessage (payload, len, from); break;
+		case eI2NPDeliveryStatus:
+			if (len >= DELIVERY_STATUS_SIZE)
+				HandleDeliveryStatusMessage (bufbe32toh (payload + DELIVERY_STATUS_MSGID_OFFSET));
 			break;
-			case eI2NPDeliveryStatus:
-				if (len >= DELIVERY_STATUS_SIZE)
-					HandleDeliveryStatusMessage (bufbe32toh (payload + DELIVERY_STATUS_MSGID_OFFSET));
+		case eI2NPTunnelTest:
+			if (m_Pool && len >= TUNNEL_TEST_SIZE)
+				m_Pool->ProcessTunnelTest (bufbe32toh (payload + TUNNEL_TEST_MSGID_OFFSET),
+					bufbe64toh (payload + TUNNEL_TEST_TIMESTAMP_OFFSET));
 			break;
-			case eI2NPTunnelTest:
-				if (m_Pool && len >= TUNNEL_TEST_SIZE)
-					m_Pool->ProcessTunnelTest (bufbe32toh (payload + TUNNEL_TEST_MSGID_OFFSET), bufbe64toh (payload + TUNNEL_TEST_TIMESTAMP_OFFSET));
+		case eI2NPDatabaseStore: HandleDatabaseStoreMessage (payload, len, from); break;
+		case eI2NPDatabaseSearchReply: HandleDatabaseSearchReplyMessage (payload, len); break;
+		case eI2NPShortTunnelBuildReply: // might come as garlic encrypted
+			i2p::HandleI2NPMessage (CreateI2NPMessage (typeID, payload, len, msgID));
 			break;
-			case eI2NPDatabaseStore:
-				HandleDatabaseStoreMessage (payload, len, from);
-			break;
-			case eI2NPDatabaseSearchReply:
-				HandleDatabaseSearchReplyMessage (payload, len);
-			break;
-			case eI2NPShortTunnelBuildReply: // might come as garlic encrypted
-				i2p::HandleI2NPMessage (CreateI2NPMessage (typeID, payload, len, msgID));
-			break;
-			default:
-				LogPrint (eLogWarning, "Destination: Unexpected I2NP message type ", typeID);
-				return false;
+		default: LogPrint (eLogWarning, "Destination: Unexpected I2NP message type ", typeID); return false;
 		}
 		return true;
 	}
 
-	void LeaseSetDestination::HandleDatabaseStoreMessage (const uint8_t * buf, size_t len,
-		i2p::garlic::ECIESX25519AEADRatchetSession * from)
+	void LeaseSetDestination::HandleDatabaseStoreMessage (
+		const uint8_t * buf, size_t len, i2p::garlic::ECIESX25519AEADRatchetSession * from)
 	{
 		if (len < DATABASE_STORE_HEADER_SIZE)
 		{
@@ -427,120 +420,123 @@ namespace client
 		std::shared_ptr<LeaseSetRequest> request;
 		switch (buf[DATABASE_STORE_TYPE_OFFSET])
 		{
-			case i2p::data::NETDB_STORE_TYPE_LEASESET: // 1
-			case i2p::data::NETDB_STORE_TYPE_STANDARD_LEASESET2: // 3
+		case i2p::data::NETDB_STORE_TYPE_LEASESET: // 1
+		case i2p::data::NETDB_STORE_TYPE_STANDARD_LEASESET2: // 3
+		{
+			LogPrint (eLogDebug, "Destination: Remote LeaseSet");
+			std::lock_guard<std::mutex> lock (m_RemoteLeaseSetsMutex);
+			auto it = m_RemoteLeaseSets.find (key);
+			if (it != m_RemoteLeaseSets.end ()
+				&& it->second->GetStoreType () == buf[DATABASE_STORE_TYPE_OFFSET]) // update only if same type
 			{
-				LogPrint (eLogDebug, "Destination: Remote LeaseSet");
-				std::lock_guard<std::mutex> lock(m_RemoteLeaseSetsMutex);
-				auto it = m_RemoteLeaseSets.find (key);
-				if (it != m_RemoteLeaseSets.end () &&
-					it->second->GetStoreType () == buf[DATABASE_STORE_TYPE_OFFSET]) // update only if same type
+				leaseSet = it->second;
+				if (leaseSet->IsNewer (buf + offset, len - offset))
 				{
-					leaseSet = it->second;
-					if (leaseSet->IsNewer (buf + offset, len - offset))
-					{
-						leaseSet->Update (buf + offset, len - offset, shared_from_this(), true);
-						if (leaseSet->IsValid () && leaseSet->GetIdentHash () == key && !leaseSet->IsExpired ())
-							LogPrint (eLogDebug, "Destination: Remote LeaseSet updated");
-						else
-						{
-							LogPrint (eLogDebug, "Destination: Remote LeaseSet update failed");
-							m_RemoteLeaseSets.erase (it);
-							leaseSet = nullptr;
-						}
-					}
-					else
-						LogPrint (eLogDebug, "Destination: Remote LeaseSet is older. Not updated");
-				}
-				else
-				{
-					// add or replace
-					if (buf[DATABASE_STORE_TYPE_OFFSET] == i2p::data::NETDB_STORE_TYPE_LEASESET)
-					{
-						leaseSet = std::make_shared<i2p::data::LeaseSet> (buf + offset, len - offset); // LeaseSet
-						if (!SupportsEncryptionType (i2p::data::CRYPTO_KEY_TYPE_ELGAMAL) || from) // LeaseSet1 can't come from ECIESx25519 session
-							leaseSet->SetIsIncompatibleCrypto (true);
-					}
+					leaseSet->Update (buf + offset, len - offset, shared_from_this (), true);
+					if (leaseSet->IsValid () && leaseSet->GetIdentHash () == key && !leaseSet->IsExpired ())
+						LogPrint (eLogDebug, "Destination: Remote LeaseSet updated");
 					else
 					{
-						leaseSet = std::make_shared<i2p::data::LeaseSet2> (buf[DATABASE_STORE_TYPE_OFFSET],
-							buf + offset, len - offset, true, shared_from_this (),
-						    from ? from->GetRemoteStaticKeyType () : GetPreferredCryptoType () ); // LeaseSet2
-						if (from)
-						{
-							uint8_t pub[32];
-							leaseSet->Encrypt (nullptr, pub);
-							if (!memcmp (from->GetRemoteStaticKey (), pub, 32))
-								from->SetDestination (leaseSet->GetIdentHash ());
-							else
-							{
-								LogPrint (eLogError, "Destination: Remote LeaseSet static key mismatch");
-								leaseSet = nullptr;
-							}
-						}
-					}
-					if (leaseSet && leaseSet->IsValid () && leaseSet->GetIdentHash () == key && !leaseSet->IsExpired ())
-					{
-						if (leaseSet->GetIdentHash () != GetIdentHash ())
-						{
-							LogPrint (eLogDebug, "Destination: New remote LeaseSet added");
-							m_RemoteLeaseSets.insert_or_assign (key, leaseSet);
-							if (from)
-								from->SetDestination (key);
-						}
-						else
-							LogPrint (eLogDebug, "Destination: Own remote LeaseSet dropped");
-					}
-					else
-					{
-						LogPrint (eLogError, "Destination: New remote LeaseSet failed");
+						LogPrint (eLogDebug, "Destination: Remote LeaseSet update failed");
+						m_RemoteLeaseSets.erase (it);
 						leaseSet = nullptr;
 					}
 				}
-				break;
+				else
+					LogPrint (eLogDebug, "Destination: Remote LeaseSet is older. Not updated");
 			}
-			case i2p::data::NETDB_STORE_TYPE_ENCRYPTED_LEASESET2: // 5
+			else
 			{
-				auto it2 = m_LeaseSetRequests.find (key);
-				if (it2 != m_LeaseSetRequests.end ())
+				// add or replace
+				if (buf[DATABASE_STORE_TYPE_OFFSET] == i2p::data::NETDB_STORE_TYPE_LEASESET)
 				{
-					request = it2->second;
-					m_LeaseSetRequests.erase (it2);
-					if (request->requestedBlindedKey)
-					{
-						auto ls2 = std::make_shared<i2p::data::LeaseSet2> (buf + offset, len - offset,
-							request->requestedBlindedKey, shared_from_this (),
-						    m_LeaseSetPrivKey ? ((const uint8_t *)*m_LeaseSetPrivKey) : nullptr, GetPreferredCryptoType ());
-						if (ls2->IsValid () && !ls2->IsExpired ())
-						{
-							leaseSet = ls2;
-							std::lock_guard<std::mutex> lock(m_RemoteLeaseSetsMutex);
-							m_RemoteLeaseSets[ls2->GetIdentHash ()] = ls2; // ident is not key
-							m_RemoteLeaseSets[key] = ls2; // also store as key for next lookup
-						}
-						else
-							LogPrint (eLogError, "Destination: New remote encrypted LeaseSet2 failed");
-					}
-					else
-					{
-						// publishing verification doesn't have requestedBlindedKey
-						auto localLeaseSet = GetLeaseSetMt ();
-						if (localLeaseSet->GetStoreHash () == key)
-						{
-							auto ls = std::make_shared<i2p::data::LeaseSet2> (i2p::data::NETDB_STORE_TYPE_ENCRYPTED_LEASESET2,
-								localLeaseSet->GetBuffer (), localLeaseSet->GetBufferLen (), false);
-							leaseSet = ls;
-						}
-						else
-							LogPrint (eLogWarning, "Destination: Encrypted LeaseSet2 received for request without blinded key");
-					}
+					leaseSet = std::make_shared<i2p::data::LeaseSet> (buf + offset, len - offset); // LeaseSet
+					if (!SupportsEncryptionType (i2p::data::CRYPTO_KEY_TYPE_ELGAMAL)
+						|| from) // LeaseSet1 can't come from ECIESx25519 session
+						leaseSet->SetIsIncompatibleCrypto (true);
 				}
 				else
-					LogPrint (eLogWarning, "Destination: Couldn't find request for encrypted LeaseSet2");
-				break;
+				{
+					leaseSet = std::make_shared<i2p::data::LeaseSet2> (buf[DATABASE_STORE_TYPE_OFFSET], buf + offset,
+						len - offset, true, shared_from_this (),
+						from ? from->GetRemoteStaticKeyType () : GetPreferredCryptoType ()); // LeaseSet2
+					if (from)
+					{
+						uint8_t pub[32];
+						leaseSet->Encrypt (nullptr, pub);
+						if (!memcmp (from->GetRemoteStaticKey (), pub, 32))
+							from->SetDestination (leaseSet->GetIdentHash ());
+						else
+						{
+							LogPrint (eLogError, "Destination: Remote LeaseSet static key mismatch");
+							leaseSet = nullptr;
+						}
+					}
+				}
+				if (leaseSet && leaseSet->IsValid () && leaseSet->GetIdentHash () == key && !leaseSet->IsExpired ())
+				{
+					if (leaseSet->GetIdentHash () != GetIdentHash ())
+					{
+						LogPrint (eLogDebug, "Destination: New remote LeaseSet added");
+						m_RemoteLeaseSets.insert_or_assign (key, leaseSet);
+						if (from) from->SetDestination (key);
+					}
+					else
+						LogPrint (eLogDebug, "Destination: Own remote LeaseSet dropped");
+				}
+				else
+				{
+					LogPrint (eLogError, "Destination: New remote LeaseSet failed");
+					leaseSet = nullptr;
+				}
 			}
-			default:
-				LogPrint (eLogError, "Destination: Unexpected client's DatabaseStore type ", buf[DATABASE_STORE_TYPE_OFFSET], ", dropped");
+			break;
+		}
+		case i2p::data::NETDB_STORE_TYPE_ENCRYPTED_LEASESET2: // 5
+		{
+			auto it2 = m_LeaseSetRequests.find (key);
+			if (it2 != m_LeaseSetRequests.end ())
+			{
+				request = it2->second;
+				m_LeaseSetRequests.erase (it2);
+				if (request->requestedBlindedKey)
+				{
+					auto ls2 = std::make_shared<i2p::data::LeaseSet2> (buf + offset, len - offset,
+						request->requestedBlindedKey, shared_from_this (),
+						m_LeaseSetPrivKey ? ((const uint8_t *)*m_LeaseSetPrivKey) : nullptr, GetPreferredCryptoType ());
+					if (ls2->IsValid () && !ls2->IsExpired ())
+					{
+						leaseSet = ls2;
+						std::lock_guard<std::mutex> lock (m_RemoteLeaseSetsMutex);
+						m_RemoteLeaseSets[ls2->GetIdentHash ()] = ls2; // ident is not key
+						m_RemoteLeaseSets[key] = ls2; // also store as key for next lookup
+					}
+					else
+						LogPrint (eLogError, "Destination: New remote encrypted LeaseSet2 failed");
+				}
+				else
+				{
+					// publishing verification doesn't have requestedBlindedKey
+					auto localLeaseSet = GetLeaseSetMt ();
+					if (localLeaseSet->GetStoreHash () == key)
+					{
+						auto ls
+							= std::make_shared<i2p::data::LeaseSet2> (i2p::data::NETDB_STORE_TYPE_ENCRYPTED_LEASESET2,
+								localLeaseSet->GetBuffer (), localLeaseSet->GetBufferLen (), false);
+						leaseSet = ls;
+					}
+					else
+						LogPrint (
+							eLogWarning, "Destination: Encrypted LeaseSet2 received for request without blinded key");
+				}
+			}
+			else
+				LogPrint (eLogWarning, "Destination: Couldn't find request for encrypted LeaseSet2");
+			break;
+		}
+		default:
+			LogPrint (eLogError, "Destination: Unexpected client's DatabaseStore type ",
+				buf[DATABASE_STORE_TYPE_OFFSET], ", dropped");
 		}
 
 		if (!request)
@@ -568,10 +564,11 @@ namespace client
 		}
 		i2p::data::IdentHash key (buf);
 		int num = buf[32]; // num
-		size_t maxNum = (len - 33)/32;
+		size_t maxNum = (len - 33) / 32;
 		if ((size_t)num > maxNum)
 		{
-			LogPrint (eLogWarning, "Destination: Declared number of peer hashes ", num, " exceeds message size, reduced to ", maxNum);
+			LogPrint (eLogWarning, "Destination: Declared number of peer hashes ", num,
+				" exceeds message size, reduced to ", maxNum);
 			num = maxNum;
 		}
 		LogPrint (eLogDebug, "Destination: DatabaseSearchReply for ", key.ToBase64 (), " num=", num);
@@ -581,7 +578,7 @@ namespace client
 			auto request = it->second;
 			for (int i = 0; i < num; i++)
 			{
-				i2p::data::IdentHash peerHash (buf + 33 + i*32);
+				i2p::data::IdentHash peerHash (buf + 33 + i * 32);
 				if (!request->excluded.count (peerHash) && !i2p::data::netdb.FindRouter (peerHash))
 				{
 					LogPrint (eLogInfo, "Destination: Found new floodfill, request it");
@@ -594,8 +591,8 @@ namespace client
 			LogPrint (eLogWarning, "Destination: Request for ", key.ToBase64 (), " not found");
 	}
 
-	void LeaseSetDestination::SendNextLeaseSetRequest (const i2p::data::IdentHash& key,
-		std::shared_ptr<LeaseSetRequest> request)
+	void LeaseSetDestination::SendNextLeaseSetRequest (
+		const i2p::data::IdentHash & key, std::shared_ptr<LeaseSetRequest> request)
 	{
 		bool found = false;
 		if (request->excluded.size () < MAX_NUM_FLOODFILLS_PER_REQUEST)
@@ -603,14 +600,15 @@ namespace client
 			auto floodfill = i2p::data::netdb.GetClosestFloodfill (key, request->excluded);
 			if (floodfill)
 			{
-				LogPrint (eLogInfo, "Destination: Requesting ", key.ToBase64 (), " at ", floodfill->GetIdentHash ().ToBase64 ());
-				if (SendLeaseSetRequest (key, floodfill, request))
-					found = true;
+				LogPrint (eLogInfo, "Destination: Requesting ", key.ToBase64 (), " at ",
+					floodfill->GetIdentHash ().ToBase64 ());
+				if (SendLeaseSetRequest (key, floodfill, request)) found = true;
 			}
 		}
 		if (!found)
 		{
-			LogPrint (eLogInfo, "Destination: ", key.ToBase64 (), " was not found on ", MAX_NUM_FLOODFILLS_PER_REQUEST, " floodfills");
+			LogPrint (eLogInfo, "Destination: ", key.ToBase64 (), " was not found on ", MAX_NUM_FLOODFILLS_PER_REQUEST,
+				" floodfills");
 			request->Complete (nullptr);
 			m_LeaseSetRequests.erase (key);
 		}
@@ -620,14 +618,14 @@ namespace client
 	{
 		if (msgID == m_PublishReplyToken)
 		{
-			LogPrint (eLogDebug, "Destination: Publishing LeaseSet confirmed for ", GetIdentHash().ToBase32());
+			LogPrint (eLogDebug, "Destination: Publishing LeaseSet confirmed for ", GetIdentHash ().ToBase32 ());
 			m_ExcludedFloodfills.clear ();
 			m_PublishReplyToken = 0;
 			// schedule verification
-			m_PublishVerificationTimer.expires_after (std::chrono::seconds(PUBLISH_VERIFICATION_TIMEOUT +
-				GetRng ()() % PUBLISH_VERIFICATION_TIMEOUT_VARIANCE));
-			m_PublishVerificationTimer.async_wait (std::bind (&LeaseSetDestination::HandlePublishVerificationTimer,
-			shared_from_this (), std::placeholders::_1));
+			m_PublishVerificationTimer.expires_after (std::chrono::seconds (
+				PUBLISH_VERIFICATION_TIMEOUT + GetRng () () % PUBLISH_VERIFICATION_TIMEOUT_VARIANCE));
+			m_PublishVerificationTimer.async_wait (std::bind (
+				&LeaseSetDestination::HandlePublishVerificationTimer, shared_from_this (), std::placeholders::_1));
 		}
 		else
 			i2p::garlic::GarlicDestination::HandleDeliveryStatusMessage (msgID);
@@ -636,7 +634,7 @@ namespace client
 	void LeaseSetDestination::SetLeaseSetUpdated (bool post)
 	{
 		if (post)
-			boost::asio::post (m_Service, [s = shared_from_this ()]() { s->UpdateLeaseSet (); });
+			boost::asio::post (m_Service, [s = shared_from_this ()] () { s->UpdateLeaseSet (); });
 		else
 			UpdateLeaseSet ();
 	}
@@ -657,11 +655,12 @@ namespace client
 		auto ts = i2p::util::GetSecondsSinceEpoch ();
 		if (ts < m_LastSubmissionTime + PUBLISH_MIN_INTERVAL)
 		{
-			LogPrint (eLogDebug, "Destination: Publishing LeaseSet is too fast. Wait for ", PUBLISH_MIN_INTERVAL, " seconds");
+			LogPrint (
+				eLogDebug, "Destination: Publishing LeaseSet is too fast. Wait for ", PUBLISH_MIN_INTERVAL, " seconds");
 			m_PublishDelayTimer.cancel ();
-			m_PublishDelayTimer.expires_after (std::chrono::seconds(PUBLISH_MIN_INTERVAL));
-			m_PublishDelayTimer.async_wait (std::bind (&LeaseSetDestination::HandlePublishDelayTimer,
-				shared_from_this (), std::placeholders::_1));
+			m_PublishDelayTimer.expires_after (std::chrono::seconds (PUBLISH_MIN_INTERVAL));
+			m_PublishDelayTimer.async_wait (
+				std::bind (&LeaseSetDestination::HandlePublishDelayTimer, shared_from_this (), std::placeholders::_1));
 			return;
 		}
 		auto floodfill = i2p::data::netdb.GetClosestFloodfill (leaseSet->GetStoreHash (), m_ExcludedFloodfills);
@@ -679,7 +678,8 @@ namespace client
 		{
 			if (m_Pool->HasInboundTunnels () && m_Pool->HasOutboundTunnels ())
 			{
-				LogPrint (eLogInfo, "Destination: No compatible tunnels with ", floodfill->GetIdentHash ().ToBase64 (), ". Trying another floodfill");
+				LogPrint (eLogInfo, "Destination: No compatible tunnels with ", floodfill->GetIdentHash ().ToBase64 (),
+					". Trying another floodfill");
 				m_ExcludedFloodfills.insert (floodfill->GetIdentHash ());
 				floodfill = i2p::data::netdb.GetClosestFloodfill (leaseSet->GetStoreHash (), m_ExcludedFloodfills);
 				if (floodfill)
@@ -688,8 +688,7 @@ namespace client
 					if (outbound)
 					{
 						inbound = m_Pool->GetNextInboundTunnel (nullptr, floodfill->GetCompatibleTransports (true));
-						if (!inbound)
-							LogPrint (eLogError, "Destination: Can't publish LeaseSet. No inbound tunnels");
+						if (!inbound) LogPrint (eLogError, "Destination: Can't publish LeaseSet. No inbound tunnels");
 					}
 					else
 						LogPrint (eLogError, "Destination: Can't publish LeaseSet. No outbound tunnels");
@@ -711,22 +710,26 @@ namespace client
 		m_ExcludedFloodfills.insert (floodfill->GetIdentHash ());
 		LogPrint (eLogDebug, "Destination: Publish LeaseSet of ", GetIdentHash ().ToBase32 ());
 		RAND_bytes ((uint8_t *)&m_PublishReplyToken, 4);
-		auto msg = WrapMessageForRouter (floodfill, i2p::CreateDatabaseStoreMsg (leaseSet, m_PublishReplyToken, inbound));
+		auto msg
+			= WrapMessageForRouter (floodfill, i2p::CreateDatabaseStoreMsg (leaseSet, m_PublishReplyToken, inbound));
 		auto s = shared_from_this ();
-		msg->onDrop = [s]()
-			{
-				boost::asio::post (s->GetService (), [s]()
-					{
-						s->m_PublishConfirmationTimer.cancel ();
-						s->HandlePublishConfirmationTimer (boost::system::error_code(), 0);
-					});
-			};
+		msg->onDrop = [s] ()
+		{
+			boost::asio::post (s->GetService (),
+				[s] ()
+				{
+					s->m_PublishConfirmationTimer.cancel ();
+					s->HandlePublishConfirmationTimer (boost::system::error_code (), 0);
+				});
+		};
 		uint64_t publishConfirmationTimeout = PUBLISH_CONFIRMATION_TIMEOUT;
-		publishConfirmationTimeout += inbound->LatencyIsKnown() ? (uint64_t)(inbound->GetMeanLatency())/1000LL :
-			inbound->GetNumHops ()*(uint64_t)(i2p::tunnel::HIGH_LATENCY_PER_HOP)/1000LL;
-		publishConfirmationTimeout += outbound->LatencyIsKnown() ? (uint64_t)(outbound->GetMeanLatency())/1000LL :
-			outbound->GetNumHops ()*(uint64_t)(i2p::tunnel::HIGH_LATENCY_PER_HOP)/1000LL;
-		m_PublishConfirmationTimer.expires_after (std::chrono::milliseconds(publishConfirmationTimeout));
+		publishConfirmationTimeout += inbound->LatencyIsKnown ()
+			? (uint64_t)(inbound->GetMeanLatency ()) / 1000LL
+			: inbound->GetNumHops () * (uint64_t)(i2p::tunnel::HIGH_LATENCY_PER_HOP) / 1000LL;
+		publishConfirmationTimeout += outbound->LatencyIsKnown ()
+			? (uint64_t)(outbound->GetMeanLatency ()) / 1000LL
+			: outbound->GetNumHops () * (uint64_t)(i2p::tunnel::HIGH_LATENCY_PER_HOP) / 1000LL;
+		m_PublishConfirmationTimer.expires_after (std::chrono::milliseconds (publishConfirmationTimeout));
 		m_PublishConfirmationTimer.async_wait (std::bind (&LeaseSetDestination::HandlePublishConfirmationTimer,
 			shared_from_this (), std::placeholders::_1, publishConfirmationTimeout));
 		outbound->SendTunnelDataMsgTo (floodfill->GetIdentHash (), 0, msg);
@@ -737,84 +740,92 @@ namespace client
 	{
 		m_ExcludedFloodfills.clear ();
 		m_PublishReplyToken = 1; // dummy non-zero value
-		LogPrint (eLogInfo, "Destination: Can't publish LeaseSet because destination is not ready. Try publishing again after ", PUBLISH_RETRY_INTERVAL, " milliseconds");
-		m_PublishConfirmationTimer.expires_after (std::chrono::milliseconds(PUBLISH_RETRY_INTERVAL));
+		LogPrint (eLogInfo,
+			"Destination: Can't publish LeaseSet because destination is not ready. Try publishing again after ",
+			PUBLISH_RETRY_INTERVAL, " milliseconds");
+		m_PublishConfirmationTimer.expires_after (std::chrono::milliseconds (PUBLISH_RETRY_INTERVAL));
 		m_PublishConfirmationTimer.async_wait (std::bind (&LeaseSetDestination::HandlePublishConfirmationTimer,
 			shared_from_this (), std::placeholders::_1, PUBLISH_RETRY_INTERVAL));
 	}
 
-	void LeaseSetDestination::HandlePublishConfirmationTimer (const boost::system::error_code& ecode, uint64_t publishConfirmationTimeout)
+	void LeaseSetDestination::HandlePublishConfirmationTimer (
+		const boost::system::error_code & ecode, uint64_t publishConfirmationTimeout)
 	{
 		if (ecode != boost::asio::error::operation_aborted)
 		{
 			if (m_PublishReplyToken)
 			{
-				LogPrint (eLogWarning, "Destination: Publish confirmation was not received in ", publishConfirmationTimeout, " milliseconds or failed. will try again");
+				LogPrint (eLogWarning, "Destination: Publish confirmation was not received in ",
+					publishConfirmationTimeout, " milliseconds or failed. will try again");
 				m_PublishReplyToken = 0;
 				Publish ();
 			}
 		}
 	}
 
-	void LeaseSetDestination::HandlePublishVerificationTimer (const boost::system::error_code& ecode)
+	void LeaseSetDestination::HandlePublishVerificationTimer (const boost::system::error_code & ecode)
 	{
 		if (ecode != boost::asio::error::operation_aborted)
 		{
 			auto ls = GetLeaseSetMt ();
 			if (!ls)
 			{
-				LogPrint (eLogWarning, "Destination: Couldn't verify LeaseSet for ", GetIdentHash().ToBase32());
+				LogPrint (eLogWarning, "Destination: Couldn't verify LeaseSet for ", GetIdentHash ().ToBase32 ());
 				return;
 			}
 			auto s = shared_from_this ();
 			RequestLeaseSet (ls->GetStoreHash (),
-				[s, ls](std::shared_ptr<const i2p::data::LeaseSet> leaseSet)
+				[s, ls] (std::shared_ptr<const i2p::data::LeaseSet> leaseSet)
 				{
 					if (leaseSet)
 					{
 						if (*ls == *leaseSet)
 						{
 							// we got latest LeaseSet
-							LogPrint (eLogDebug, "Destination: Published LeaseSet verified for ", s->GetIdentHash().ToBase32());
-							s->m_PublishVerificationTimer.expires_after (std::chrono::seconds(PUBLISH_REGULAR_VERIFICATION_INTERNAL));
-							s->m_PublishVerificationTimer.async_wait (std::bind (&LeaseSetDestination::HandlePublishVerificationTimer, s, std::placeholders::_1));
+							LogPrint (eLogDebug, "Destination: Published LeaseSet verified for ",
+								s->GetIdentHash ().ToBase32 ());
+							s->m_PublishVerificationTimer.expires_after (
+								std::chrono::seconds (PUBLISH_REGULAR_VERIFICATION_INTERNAL));
+							s->m_PublishVerificationTimer.async_wait (std::bind (
+								&LeaseSetDestination::HandlePublishVerificationTimer, s, std::placeholders::_1));
 							return;
 						}
 						else
-							LogPrint (eLogDebug, "Destination: LeaseSet is different than just published for ", s->GetIdentHash().ToBase32());
+							LogPrint (eLogDebug, "Destination: LeaseSet is different than just published for ",
+								s->GetIdentHash ().ToBase32 ());
 					}
 					else
-						LogPrint (eLogWarning, "Destination: Couldn't find published LeaseSet for ", s->GetIdentHash().ToBase32());
+						LogPrint (eLogWarning, "Destination: Couldn't find published LeaseSet for ",
+							s->GetIdentHash ().ToBase32 ());
 					// we have to publish again
 					s->Publish ();
 				});
 		}
 	}
 
-	void LeaseSetDestination::HandlePublishDelayTimer (const boost::system::error_code& ecode)
+	void LeaseSetDestination::HandlePublishDelayTimer (const boost::system::error_code & ecode)
 	{
-		if (ecode != boost::asio::error::operation_aborted)
-			Publish ();
+		if (ecode != boost::asio::error::operation_aborted) Publish ();
 	}
 
-	bool LeaseSetDestination::RequestDestination (const i2p::data::IdentHash& dest, RequestComplete requestComplete)
+	bool LeaseSetDestination::RequestDestination (const i2p::data::IdentHash & dest, RequestComplete requestComplete)
 	{
 		if (!m_Pool || !IsReady ())
 		{
-			if (requestComplete)
-				boost::asio::post (m_Service, [requestComplete](void){requestComplete (nullptr);});
+			if (requestComplete) boost::asio::post (m_Service, [requestComplete] (void) { requestComplete (nullptr); });
 			return false;
 		}
-		boost::asio::post (m_Service, std::bind (&LeaseSetDestination::RequestLeaseSet, shared_from_this (), dest, requestComplete, nullptr));
+		boost::asio::post (m_Service,
+			std::bind (&LeaseSetDestination::RequestLeaseSet, shared_from_this (), dest, requestComplete, nullptr));
 		return true;
 	}
 
-	bool LeaseSetDestination::RequestDestinationWithEncryptedLeaseSet (std::shared_ptr<const i2p::data::BlindedPublicKey> dest, RequestComplete requestComplete)
+	bool LeaseSetDestination::RequestDestinationWithEncryptedLeaseSet (
+		std::shared_ptr<const i2p::data::BlindedPublicKey> dest, RequestComplete requestComplete)
 	{
 		if (!dest || !m_Pool || !IsReady ())
 		{
-			if (requestComplete)
-				boost::asio::post (m_Service, [requestComplete](void){requestComplete (nullptr);});
+			if (requestComplete) boost::asio::post (m_Service, [requestComplete] (void) { requestComplete (nullptr); });
 			return false;
 		}
 		auto storeHash = dest->GetStoreHash ();
@@ -822,17 +833,19 @@ namespace client
 		if (leaseSet)
 		{
 			if (requestComplete)
-				boost::asio::post (m_Service, [requestComplete, leaseSet](void){requestComplete (leaseSet);});
+				boost::asio::post (m_Service, [requestComplete, leaseSet] (void) { requestComplete (leaseSet); });
 			return true;
 		}
-		boost::asio::post (m_Service, std::bind (&LeaseSetDestination::RequestLeaseSet, shared_from_this (), storeHash, requestComplete, dest));
+		boost::asio::post (m_Service,
+			std::bind (&LeaseSetDestination::RequestLeaseSet, shared_from_this (), storeHash, requestComplete, dest));
 		return true;
 	}
 
-	void LeaseSetDestination::CancelDestinationRequest (const i2p::data::IdentHash& dest, bool notify)
+	void LeaseSetDestination::CancelDestinationRequest (const i2p::data::IdentHash & dest, bool notify)
 	{
 		auto s = shared_from_this ();
-		boost::asio::post (m_Service, [dest, notify, s](void)
+		boost::asio::post (m_Service,
+			[dest, notify, s] (void)
 			{
 				auto it = s->m_LeaseSetRequests.find (dest);
 				if (it != s->m_LeaseSetRequests.end ())
@@ -844,13 +857,14 @@ namespace client
 			});
 	}
 
-	void LeaseSetDestination::CancelDestinationRequestWithEncryptedLeaseSet (std::shared_ptr<const i2p::data::BlindedPublicKey> dest, bool notify)
+	void LeaseSetDestination::CancelDestinationRequestWithEncryptedLeaseSet (
+		std::shared_ptr<const i2p::data::BlindedPublicKey> dest, bool notify)
 	{
-		if (dest)
-			CancelDestinationRequest (dest->GetStoreHash (), notify);
+		if (dest) CancelDestinationRequest (dest->GetStoreHash (), notify);
 	}
 
-	void LeaseSetDestination::RequestLeaseSet (const i2p::data::IdentHash& dest, RequestComplete requestComplete, std::shared_ptr<const i2p::data::BlindedPublicKey> requestedBlindedKey)
+	void LeaseSetDestination::RequestLeaseSet (const i2p::data::IdentHash & dest, RequestComplete requestComplete,
+		std::shared_ptr<const i2p::data::BlindedPublicKey> requestedBlindedKey)
 	{
 		std::unordered_set<i2p::data::IdentHash> excluded;
 		auto floodfill = i2p::data::netdb.GetClosestFloodfill (dest, excluded);
@@ -858,17 +872,18 @@ namespace client
 		{
 			auto request = std::make_shared<LeaseSetRequest> (m_Service);
 			request->requestedBlindedKey = requestedBlindedKey; // for encrypted LeaseSet2
-			if (requestComplete)
-				request->requestComplete.push_back (requestComplete);
+			if (requestComplete) request->requestComplete.push_back (requestComplete);
 			auto ts = i2p::util::GetMillisecondsSinceEpoch ();
-			auto ret = m_LeaseSetRequests.insert (std::pair<i2p::data::IdentHash, std::shared_ptr<LeaseSetRequest> >(dest,request));
+			auto ret = m_LeaseSetRequests.insert (
+				std::pair<i2p::data::IdentHash, std::shared_ptr<LeaseSetRequest>> (dest, request));
 			if (ret.second) // inserted
 			{
 				request->requestTime = ts;
 				if (!SendLeaseSetRequest (dest, floodfill, request))
 				{
 					// try another
-					LogPrint (eLogWarning, "Destination: Couldn't send LeaseSet request to ", floodfill->GetIdentHash ().ToBase64 (), ". Trying another");
+					LogPrint (eLogWarning, "Destination: Couldn't send LeaseSet request to ",
+						floodfill->GetIdentHash ().ToBase64 (), ". Trying another");
 					request->excluded.insert (floodfill->GetIdentHash ());
 					floodfill = i2p::data::netdb.GetClosestFloodfill (dest, request->excluded);
 					if (!SendLeaseSetRequest (dest, floodfill, request))
@@ -900,15 +915,19 @@ namespace client
 		}
 	}
 
-	bool LeaseSetDestination::SendLeaseSetRequest (const i2p::data::IdentHash& dest,
+	bool LeaseSetDestination::SendLeaseSetRequest (const i2p::data::IdentHash & dest,
 		std::shared_ptr<const i2p::data::RouterInfo> nextFloodfill, std::shared_ptr<LeaseSetRequest> request)
 	{
 		if (!request->replyTunnel || !request->replyTunnel->IsEstablished ())
-			request->replyTunnel = m_Pool->GetNextInboundTunnel (nullptr, nextFloodfill->GetCompatibleTransports (false)); // outbound from floodfill
-		if (!request->replyTunnel) LogPrint (eLogWarning, "Destination: Can't send LeaseSet request, no compatible inbound tunnels found");
+			request->replyTunnel = m_Pool->GetNextInboundTunnel (
+				nullptr, nextFloodfill->GetCompatibleTransports (false)); // outbound from floodfill
+		if (!request->replyTunnel)
+			LogPrint (eLogWarning, "Destination: Can't send LeaseSet request, no compatible inbound tunnels found");
 		if (!request->outboundTunnel || !request->outboundTunnel->IsEstablished ())
-			request->outboundTunnel = m_Pool->GetNextOutboundTunnel (nullptr, nextFloodfill->GetCompatibleTransports (true)); // inbound from floodfill
-		if (!request->outboundTunnel) LogPrint (eLogWarning, "Destination: Can't send LeaseSet request, no compatible outbound tunnels found");
+			request->outboundTunnel = m_Pool->GetNextOutboundTunnel (
+				nullptr, nextFloodfill->GetCompatibleTransports (true)); // inbound from floodfill
+		if (!request->outboundTunnel)
+			LogPrint (eLogWarning, "Destination: Can't send LeaseSet request, no compatible outbound tunnels found");
 
 		if (request->replyTunnel && request->outboundTunnel)
 		{
@@ -924,38 +943,32 @@ namespace client
 			auto msg = WrapMessageForRouter (nextFloodfill,
 				CreateLeaseSetDatabaseLookupMsg (dest, request->excluded, request->replyTunnel, replyKey, replyTag));
 			auto s = shared_from_this ();
-			msg->onDrop = [s, dest, request]()
-				{
-					boost::asio::post (s->GetService (), [s, dest, request]()
-						{
-							s->SendNextLeaseSetRequest (dest, request);
-						});
-				};
-			request->outboundTunnel->SendTunnelDataMsgs (
-				{
-					i2p::tunnel::TunnelMessageBlock
-					{
-						i2p::tunnel::eDeliveryTypeRouter,
-						nextFloodfill->GetIdentHash (), 0, msg
-					}
-				});
+			msg->onDrop = [s, dest, request] ()
+			{
+				boost::asio::post (
+					s->GetService (), [s, dest, request] () { s->SendNextLeaseSetRequest (dest, request); });
+			};
+			request->outboundTunnel->SendTunnelDataMsgs ({ i2p::tunnel::TunnelMessageBlock {
+				i2p::tunnel::eDeliveryTypeRouter, nextFloodfill->GetIdentHash (), 0, msg } });
 
 			uint64_t requestLeaseSetTimeout = LEASESET_REQUEST_TIMEOUT;
-			requestLeaseSetTimeout += request->replyTunnel->LatencyIsKnown() ? (uint64_t)(request->replyTunnel->GetMeanLatency())/1000LL :
-				request->replyTunnel->GetNumHops ()*(uint64_t)(i2p::tunnel::HIGH_LATENCY_PER_HOP)/1000LL;
-			requestLeaseSetTimeout += request->outboundTunnel->LatencyIsKnown() ? (uint64_t)(request->outboundTunnel->GetMeanLatency())/1000LL :
-				request->outboundTunnel->GetNumHops ()*(uint64_t)(i2p::tunnel::HIGH_LATENCY_PER_HOP)/1000LL;
-			request->requestTimeoutTimer.expires_after (std::chrono::milliseconds(requestLeaseSetTimeout));
-			request->requestTimeoutTimer.async_wait (std::bind (&LeaseSetDestination::HandleRequestTimeoutTimer,
-				shared_from_this (), std::placeholders::_1, dest));
+			requestLeaseSetTimeout += request->replyTunnel->LatencyIsKnown ()
+				? (uint64_t)(request->replyTunnel->GetMeanLatency ()) / 1000LL
+				: request->replyTunnel->GetNumHops () * (uint64_t)(i2p::tunnel::HIGH_LATENCY_PER_HOP) / 1000LL;
+			requestLeaseSetTimeout += request->outboundTunnel->LatencyIsKnown ()
+				? (uint64_t)(request->outboundTunnel->GetMeanLatency ()) / 1000LL
+				: request->outboundTunnel->GetNumHops () * (uint64_t)(i2p::tunnel::HIGH_LATENCY_PER_HOP) / 1000LL;
+			request->requestTimeoutTimer.expires_after (std::chrono::milliseconds (requestLeaseSetTimeout));
+			request->requestTimeoutTimer.async_wait (std::bind (
+				&LeaseSetDestination::HandleRequestTimeoutTimer, shared_from_this (), std::placeholders::_1, dest));
 		}
 		else
 			return false;
 		return true;
 	}
 
-	void LeaseSetDestination::HandleRequestTimeoutTimer (const boost::system::error_code& ecode,
-		const i2p::data::IdentHash& dest)
+	void LeaseSetDestination::HandleRequestTimeoutTimer (
+		const boost::system::error_code & ecode, const i2p::data::IdentHash & dest)
 	{
 		if (ecode != boost::asio::error::operation_aborted)
 		{
@@ -979,7 +992,8 @@ namespace client
 				}
 				else
 				{
-					LogPrint (eLogWarning, "Destination: ", dest.ToBase64 (), " was not found within ", MAX_LEASESET_REQUEST_TIMEOUT, " seconds");
+					LogPrint (eLogWarning, "Destination: ", dest.ToBase64 (), " was not found within ",
+						MAX_LEASESET_REQUEST_TIMEOUT, " seconds");
 					done = true;
 				}
 
@@ -993,29 +1007,30 @@ namespace client
 		}
 	}
 
-	void LeaseSetDestination::HandleCleanupTimer (const boost::system::error_code& ecode)
+	void LeaseSetDestination::HandleCleanupTimer (const boost::system::error_code & ecode)
 	{
 		if (ecode != boost::asio::error::operation_aborted)
 		{
 			CleanupExpiredTags ();
 			CleanupRemoteLeaseSets ();
 			CleanupDestination ();
-			m_CleanupTimer.expires_after (std::chrono::seconds (DESTINATION_CLEANUP_TIMEOUT +
-				GetRng ()() % DESTINATION_CLEANUP_TIMEOUT_VARIANCE));
-			m_CleanupTimer.async_wait (std::bind (&LeaseSetDestination::HandleCleanupTimer,
-				shared_from_this (), std::placeholders::_1));
+			m_CleanupTimer.expires_after (std::chrono::seconds (
+				DESTINATION_CLEANUP_TIMEOUT + GetRng () () % DESTINATION_CLEANUP_TIMEOUT_VARIANCE));
+			m_CleanupTimer.async_wait (
+				std::bind (&LeaseSetDestination::HandleCleanupTimer, shared_from_this (), std::placeholders::_1));
 		}
 	}
 
 	void LeaseSetDestination::CleanupRemoteLeaseSets ()
 	{
 		auto ts = i2p::util::GetMillisecondsSinceEpoch ();
-		std::lock_guard<std::mutex> lock(m_RemoteLeaseSetsMutex);
+		std::lock_guard<std::mutex> lock (m_RemoteLeaseSetsMutex);
 		for (auto it = m_RemoteLeaseSets.begin (); it != m_RemoteLeaseSets.end ();)
 		{
 			if (it->second->IsEmpty () || ts > it->second->GetExpirationTime ()) // leaseset expired
 			{
-				LogPrint (eLogDebug, "Destination: Remote LeaseSet ", it->second->GetIdentHash ().ToBase64 (), " expired");
+				LogPrint (
+					eLogDebug, "Destination: Remote LeaseSet ", it->second->GetIdentHash ().ToBase64 (), " expired");
 				it = m_RemoteLeaseSets.erase (it);
 			}
 			else
@@ -1023,21 +1038,28 @@ namespace client
 		}
 	}
 
-	ClientDestination::ClientDestination (boost::asio::io_context& service, const i2p::data::PrivateKeys& keys,
-		bool isPublic, const i2p::util::Mapping * params):
-		LeaseSetDestination (service, isPublic, params),
-		m_Keys (keys), m_PreferredCryptoType (0), m_StreamingAckDelay (DEFAULT_INITIAL_ACK_DELAY),
-		m_StreamingOutboundSpeed (DEFAULT_MAX_OUTBOUND_SPEED),
-		m_StreamingInboundSpeed (DEFAULT_MAX_INBOUND_SPEED),
-		m_StreamingMaxConcurrentStreams (DEFAULT_MAX_CONCURRENT_STREAMS),
-		m_StreamingMaxConnsPerMinute (DEFAULT_MAX_CONNS_PER_MINUTE),
-		m_StreamingMaxWindowSize (i2p::stream::MAX_WINDOW_SIZE),
-		m_StreamingMaxResends (i2p::stream::MAX_NUM_RESEND_ATTEMPTS),
-		m_IsStreamingAnswerPings (DEFAULT_ANSWER_PINGS), m_IsStreamingDontSign (DEFAULT_DONT_SIGN),
-		m_LastPort (0), m_RefCounter (0), m_LastPublishedTimestamp (0), m_ReadyChecker(service)
+	ClientDestination::ClientDestination (boost::asio::io_context & service, const i2p::data::PrivateKeys & keys,
+		bool isPublic, const i2p::util::Mapping * params)
+		: LeaseSetDestination (service, isPublic, params)
+		, m_Keys (keys)
+		, m_PreferredCryptoType (0)
+		, m_StreamingAckDelay (DEFAULT_INITIAL_ACK_DELAY)
+		, m_StreamingOutboundSpeed (DEFAULT_MAX_OUTBOUND_SPEED)
+		, m_StreamingInboundSpeed (DEFAULT_MAX_INBOUND_SPEED)
+		, m_StreamingMaxConcurrentStreams (DEFAULT_MAX_CONCURRENT_STREAMS)
+		, m_StreamingMaxConnsPerMinute (DEFAULT_MAX_CONNS_PER_MINUTE)
+		, m_StreamingMaxWindowSize (i2p::stream::MAX_WINDOW_SIZE)
+		, m_StreamingMaxResends (i2p::stream::MAX_NUM_RESEND_ATTEMPTS)
+		, m_IsStreamingAnswerPings (DEFAULT_ANSWER_PINGS)
+		, m_IsStreamingDontSign (DEFAULT_DONT_SIGN)
+		, m_LastPort (0)
+		, m_RefCounter (0)
+		, m_LastPublishedTimestamp (0)
+		, m_ReadyChecker (service)
 	{
 		if (keys.IsOfflineSignature () && GetLeaseSetType () == i2p::data::NETDB_STORE_TYPE_LEASESET)
-			SetLeaseSetType (i2p::data::NETDB_STORE_TYPE_STANDARD_LEASESET2); // offline keys can be published with LS2 only
+			SetLeaseSetType (
+				i2p::data::NETDB_STORE_TYPE_STANDARD_LEASESET2); // offline keys can be published with LS2 only
 
 		// extract encryption type params for LS2
 		std::set<i2p::data::CryptoKeyType> encryptionKeyTypes;
@@ -1048,15 +1070,15 @@ namespace client
 			{
 				// comma-separated values
 				std::vector<std::string> values;
-				boost::split(values, encryptionTypesStr, boost::is_any_of(","));
-				for (auto& it1: values)
+				boost::split (values, encryptionTypesStr, boost::is_any_of (","));
+				for (auto & it1 : values)
 				{
 					try
 					{
-						i2p::data::CryptoKeyType cryptoType = std::stoi(it1);
+						i2p::data::CryptoKeyType cryptoType = std::stoi (it1);
 #if OPENSSL_PQ
-						if (cryptoType <= i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD ||
-							i2p::crypto::IsMLKEMSupported (cryptoType))
+						if (cryptoType <= i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD
+							|| i2p::crypto::IsMLKEMSupported (cryptoType))
 #else
 						if (cryptoType <= i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD) // skip PQ keys if not supported
 #endif
@@ -1066,7 +1088,7 @@ namespace client
 							encryptionKeyTypes.insert (cryptoType);
 						}
 					}
-					catch (std::exception& ex)
+					catch (std::exception & ex)
 					{
 						LogPrint (eLogInfo, "Destination: Unexpected crypto type ", it1, ". ", ex.what ());
 						continue;
@@ -1077,7 +1099,7 @@ namespace client
 		// if no encryption type specified use 0,4 or 0,4,6 if post quantum
 		if (encryptionKeyTypes.empty ())
 		{
-			encryptionKeyTypes.insert ( { GetIdentity ()->GetCryptoKeyType (),
+			encryptionKeyTypes.insert ({ GetIdentity ()->GetCryptoKeyType (),
 #if OPENSSL_PQ
 				i2p::data::CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD,
 #endif
@@ -1089,7 +1111,7 @@ namespace client
 #endif
 		}
 
-		for (auto& it: encryptionKeyTypes)
+		for (auto & it : encryptionKeyTypes)
 		{
 #if OPENSSL_PQ
 			if (it > i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD && !i2p::crypto::IsMLKEMSupported (it)) continue;
@@ -1105,8 +1127,7 @@ namespace client
 			m_EncryptionKeys.emplace (it, encryptionKey);
 		}
 
-		if (IsPublic ())
-			LogPrint (eLogInfo, "Destination: Local address ", GetIdentHash().ToBase32 (), " created");
+		if (IsPublic ()) LogPrint (eLogInfo, "Destination: Local address ", GetIdentHash ().ToBase32 (), " created");
 
 		try
 		{
@@ -1115,17 +1136,19 @@ namespace client
 				// extract streaming params
 				params->Get (I2CP_PARAM_STREAMING_INITIAL_ACK_DELAY, m_StreamingAckDelay);
 				params->Get (I2CP_PARAM_STREAMING_MAX_OUTBOUND_SPEED, m_StreamingOutboundSpeed);
-				if (m_StreamingOutboundSpeed > DEFAULT_MAX_OUTBOUND_SPEED) m_StreamingOutboundSpeed = DEFAULT_MAX_OUTBOUND_SPEED;
+				if (m_StreamingOutboundSpeed > DEFAULT_MAX_OUTBOUND_SPEED)
+					m_StreamingOutboundSpeed = DEFAULT_MAX_OUTBOUND_SPEED;
 				params->Get (I2CP_PARAM_STREAMING_MAX_INBOUND_SPEED, m_StreamingInboundSpeed);
-				if (m_StreamingInboundSpeed > DEFAULT_MAX_INBOUND_SPEED) m_StreamingInboundSpeed  = DEFAULT_MAX_INBOUND_SPEED;
+				if (m_StreamingInboundSpeed > DEFAULT_MAX_INBOUND_SPEED)
+					m_StreamingInboundSpeed = DEFAULT_MAX_INBOUND_SPEED;
 				params->Get (I2CP_PARAM_STREAMING_MAX_CONCURRENT_STREAMS, m_StreamingMaxConcurrentStreams);
 				params->Get (I2CP_PARAM_STREAMING_MAX_CONNS_PER_MINUTE, m_StreamingMaxConnsPerMinute);
-				if (params->Get (I2CP_PARAM_STREAMING_MAX_WINDOW_SIZE, m_StreamingMaxWindowSize) &&
-					(m_StreamingMaxWindowSize < i2p::stream::MIN_WINDOW_SIZE))
-						m_StreamingMaxWindowSize = i2p::stream::MIN_WINDOW_SIZE;
+				if (params->Get (I2CP_PARAM_STREAMING_MAX_WINDOW_SIZE, m_StreamingMaxWindowSize)
+					&& (m_StreamingMaxWindowSize < i2p::stream::MIN_WINDOW_SIZE))
+					m_StreamingMaxWindowSize = i2p::stream::MIN_WINDOW_SIZE;
 				params->Get (I2CP_PARAM_STREAMING_ANSWER_PINGS, m_IsStreamingAnswerPings);
 				params->Get (I2CP_PARAM_STREAMING_DONT_SIGN, m_IsStreamingDontSign);
-                params->Get (I2CP_PARAM_STREAMING_MAX_RESENDS, m_StreamingMaxResends);
+				params->Get (I2CP_PARAM_STREAMING_MAX_RESENDS, m_StreamingMaxResends);
 
 				if (GetLeaseSetType () == i2p::data::NETDB_STORE_TYPE_ENCRYPTED_LEASESET2)
 				{
@@ -1133,7 +1156,7 @@ namespace client
 					auto authType = GetAuthType ();
 					if (authType > 0)
 					{
-						m_AuthKeys = std::make_shared<std::vector<i2p::data::AuthPublicKey> >();
+						m_AuthKeys = std::make_shared<std::vector<i2p::data::AuthPublicKey>> ();
 						if (authType == i2p::data::ENCRYPTED_LEASESET_AUTH_TYPE_DH)
 							ReadAuthKey (I2CP_PARAM_LEASESET_CLIENT_DH, params);
 						else if (authType == i2p::data::ENCRYPTED_LEASESET_AUTH_TYPE_PSK)
@@ -1153,13 +1176,11 @@ namespace client
 		}
 		catch (std::exception & ex)
 		{
-			LogPrint(eLogCritical, "Destination: Unable to parse parameters for destination: ", ex.what());
+			LogPrint (eLogCritical, "Destination: Unable to parse parameters for destination: ", ex.what ());
 		}
 	}
 
-	ClientDestination::~ClientDestination ()
-	{
-	}
+	ClientDestination::~ClientDestination () { }
 
 	void ClientDestination::Start ()
 	{
@@ -1169,8 +1190,7 @@ namespace client
 		LeaseSetDestination::Start ();
 		m_StreamingDestination = std::make_shared<i2p::stream::StreamingDestination> (GetSharedFromThis ()); // TODO:
 		m_StreamingDestination->Start ();
-		for (auto& it: m_StreamingDestinationsByPorts)
-			it.second->Start ();
+		for (auto & it : m_StreamingDestinationsByPorts) it.second->Start ();
 	}
 
 	void ClientDestination::Stop ()
@@ -1179,23 +1199,23 @@ namespace client
 		// inside handlers of this destination, so the teardown goes there. A
 		// stopped service would never run it, in that case there is nobody left
 		// to race with and it is done right here
-		auto& service = GetService ();
+		auto & service = GetService ();
 		if (!service.stopped () && !service.get_executor ().running_in_this_thread ())
 		{
 			// the promise is shared because the wait below is bounded: a service
 			// stopped right after the check would never run the handler, and a
 			// stack promise would be gone by then
-			auto done = std::make_shared<std::promise<void> >();
+			auto done = std::make_shared<std::promise<void>> ();
 			auto future = done->get_future ();
-			boost::asio::post (service, [this, done]()
+			boost::asio::post (service,
+				[this, done] ()
 				{
 					StopInternal ();
 					done->set_value ();
 				});
-			if (future.wait_for (std::chrono::seconds (STOP_ON_SERVICE_TIMEOUT)) == std::future_status::ready)
-				return;
-			LogPrint (eLogError, "Destination: Service didn't stop the destination in ",
-				STOP_ON_SERVICE_TIMEOUT, " seconds");
+			if (future.wait_for (std::chrono::seconds (STOP_ON_SERVICE_TIMEOUT)) == std::future_status::ready) return;
+			LogPrint (
+				eLogError, "Destination: Service didn't stop the destination in ", STOP_ON_SERVICE_TIMEOUT, " seconds");
 			return;
 		}
 		StopInternal ();
@@ -1203,15 +1223,15 @@ namespace client
 
 	void ClientDestination::StopInternal ()
 	{
-		LogPrint(eLogDebug, "Destination: Stopping destination ", GetIdentHash().ToBase32(), ".b32.i2p");
-		m_ReadyChecker.cancel();
-		LogPrint(eLogDebug, "Destination: -> Stopping Streaming Destination");
+		LogPrint (eLogDebug, "Destination: Stopping destination ", GetIdentHash ().ToBase32 (), ".b32.i2p");
+		m_ReadyChecker.cancel ();
+		LogPrint (eLogDebug, "Destination: -> Stopping Streaming Destination");
 		m_StreamingDestination->Stop ();
 		//m_StreamingDestination->SetOwner (nullptr);
 		m_StreamingDestination = nullptr;
 
-		LogPrint(eLogDebug, "Destination: -> Stopping Streaming Destination by ports");
-		for (auto& it: m_StreamingDestinationsByPorts)
+		LogPrint (eLogDebug, "Destination: -> Stopping Streaming Destination by ports");
+		for (auto & it : m_StreamingDestinationsByPorts)
 		{
 			it.second->Stop ();
 			//it.second->SetOwner (nullptr);
@@ -1221,14 +1241,14 @@ namespace client
 
 		if (m_DatagramDestination)
 		{
-			LogPrint(eLogDebug, "Destination: -> Stopping Datagram Destination");
+			LogPrint (eLogDebug, "Destination: -> Stopping Datagram Destination");
 			m_DatagramDestination = nullptr;
 		}
 		LeaseSetDestination::Stop ();
-		LogPrint(eLogDebug, "Destination: -> Stopping done");
+		LogPrint (eLogDebug, "Destination: -> Stopping done");
 	}
 
-	void ClientDestination::SetPrivateKeys (const i2p::data::PrivateKeys& keys)
+	void ClientDestination::SetPrivateKeys (const i2p::data::PrivateKeys & keys)
 	{
 		if (m_StreamingDestination) m_StreamingDestination->Stop (); // close all streams
 		CleanUp (); // delete sessions and tags
@@ -1236,7 +1256,7 @@ namespace client
 		if (pool) pool->DetachTunnels ();
 		m_Keys = keys;
 		// update static keys
-		for (auto it: m_EncryptionKeys)
+		for (auto it : m_EncryptionKeys)
 			if (it.second)
 			{
 				it.second->GenerateKeys ();
@@ -1245,29 +1265,30 @@ namespace client
 		if (m_StreamingDestination) m_StreamingDestination->Start ();
 	}
 
-	void ClientDestination::UpdateOfflineSignature (const i2p::data::PrivateKeys& keys)
+	void ClientDestination::UpdateOfflineSignature (const i2p::data::PrivateKeys & keys)
 	{
 		// Adopt a newer offline transient of the same identity in place, on the
 		// destination's service so it stays single-threaded with LeaseSet and stream
 		// signing. Only the transient is refreshed, the identity is unchanged.
 		if (!keys.IsOfflineSignature ()) return;
-		boost::asio::post (GetService (), [s = GetSharedFromThis (), keys]()
-		{
-			if (!s->m_Keys.IsOfflineSignature ()) return;
-			if (keys.GetPublic ()->GetIdentHash () != s->GetIdentHash ()) return;
-			const auto& next = keys.GetOfflineSignature ();
-			const auto& cur = s->m_Keys.GetOfflineSignature ();
-			if (next == cur) return; // same transient
-			if (bufbe32toh (next.data ()) < bufbe32toh (cur.data ())) return; // do not shorten validity
-			LogPrint (eLogInfo, "Destination: Refreshing offline signature for ",
-				s->GetIdentHash ().ToBase32 (), ", transient expires ", bufbe32toh (next.data ()));
-			s->m_Keys.UpdateOfflineSignature (keys);
-			s->UpdateLeaseSet ();
-		});
+		boost::asio::post (GetService (),
+			[s = GetSharedFromThis (), keys] ()
+			{
+				if (!s->m_Keys.IsOfflineSignature ()) return;
+				if (keys.GetPublic ()->GetIdentHash () != s->GetIdentHash ()) return;
+				const auto & next = keys.GetOfflineSignature ();
+				const auto & cur = s->m_Keys.GetOfflineSignature ();
+				if (next == cur) return; // same transient
+				if (bufbe32toh (next.data ()) < bufbe32toh (cur.data ())) return; // do not shorten validity
+				LogPrint (eLogInfo, "Destination: Refreshing offline signature for ", s->GetIdentHash ().ToBase32 (),
+					", transient expires ", bufbe32toh (next.data ()));
+				s->m_Keys.UpdateOfflineSignature (keys);
+				s->UpdateLeaseSet ();
+			});
 	}
 
-	void ClientDestination::HandleDataMessage (const uint8_t * buf, size_t len,
-		i2p::garlic::ECIESX25519AEADRatchetSession * from)
+	void ClientDestination::HandleDataMessage (
+		const uint8_t * buf, size_t len, i2p::garlic::ECIESX25519AEADRatchetSession * from)
 	{
 		if (len < 14) // 4-byte length prefix, then fromPort/toPort/protocol read at offsets up to 9 past it
 		{
@@ -1275,9 +1296,9 @@ namespace client
 			return;
 		}
 		uint32_t length = bufbe32toh (buf);
-		if(length > len - 4)
+		if (length > len - 4)
 		{
-			LogPrint(eLogError, "Destination: Data message length ", length, " exceeds buffer length ", len);
+			LogPrint (eLogError, "Destination: Data message length ", length, " exceeds buffer length ", len);
 			return;
 		}
 		buf += 4;
@@ -1286,38 +1307,38 @@ namespace client
 			toPort = bufbe16toh (buf + 6); // destination
 		switch (buf[9])
 		{
-			case PROTOCOL_TYPE_STREAMING:
+		case PROTOCOL_TYPE_STREAMING:
+		{
+			// streaming protocol
+			if (toPort != m_LastPort || !m_LastStreamingDestination)
 			{
-				// streaming protocol
-				if (toPort != m_LastPort || !m_LastStreamingDestination)
-				{
-					m_LastStreamingDestination = GetStreamingDestination (toPort);
-					if (!m_LastStreamingDestination)
-						m_LastStreamingDestination = m_StreamingDestination; // if no destination on port use default
-					m_LastPort = toPort;
-				}
-				if (m_LastStreamingDestination)
-					m_LastStreamingDestination->HandleDataMessagePayload (buf, length, from);
-				else
-					LogPrint (eLogError, "Destination: Missing streaming destination");
+				m_LastStreamingDestination = GetStreamingDestination (toPort);
+				if (!m_LastStreamingDestination)
+					m_LastStreamingDestination = m_StreamingDestination; // if no destination on port use default
+				m_LastPort = toPort;
 			}
+			if (m_LastStreamingDestination)
+				m_LastStreamingDestination->HandleDataMessagePayload (buf, length, from);
+			else
+				LogPrint (eLogError, "Destination: Missing streaming destination");
+		}
+		break;
+		case PROTOCOL_TYPE_DATAGRAM:
+		case PROTOCOL_TYPE_RAW:
+		case PROTOCOL_TYPE_DATAGRAM2:
+		case PROTOCOL_TYPE_DATAGRAM3:
+			// datagram protocol
+			if (m_DatagramDestination)
+				m_DatagramDestination->HandleDataMessagePayload (fromPort, toPort, buf, length, buf[9], from);
+			else
+				LogPrint (eLogError, "Destination: Missing datagram destination");
 			break;
-			case PROTOCOL_TYPE_DATAGRAM:
-			case PROTOCOL_TYPE_RAW:
-			case PROTOCOL_TYPE_DATAGRAM2:
-			case PROTOCOL_TYPE_DATAGRAM3:
-				// datagram protocol
-				if (m_DatagramDestination)
-					m_DatagramDestination->HandleDataMessagePayload (fromPort, toPort, buf, length, buf[9], from);
-				else
-					LogPrint (eLogError, "Destination: Missing datagram destination");
-			break;
-			default:
-				LogPrint (eLogError, "Destination: Data: Unexpected protocol ", buf[9]);
+		default: LogPrint (eLogError, "Destination: Data: Unexpected protocol ", buf[9]);
 		}
 	}
 
-	void ClientDestination::CreateStream (StreamRequestComplete streamRequestComplete, const i2p::data::IdentHash& dest, uint16_t port)
+	void ClientDestination::CreateStream (
+		StreamRequestComplete streamRequestComplete, const i2p::data::IdentHash & dest, uint16_t port)
 	{
 		if (!streamRequestComplete)
 		{
@@ -1328,26 +1349,24 @@ namespace client
 		if (leaseSet)
 		{
 			auto stream = (!leaseSet->IsIncompatibleCrypto ()) ? CreateStream (leaseSet, port) : nullptr;
-			boost::asio::post (GetService (), [streamRequestComplete, stream]()
-				{
-					streamRequestComplete(stream);
-				});
+			boost::asio::post (GetService (), [streamRequestComplete, stream] () { streamRequestComplete (stream); });
 		}
 		else
 		{
 			auto s = GetSharedFromThis ();
 			RequestDestination (dest,
-				[s, streamRequestComplete, port](std::shared_ptr<const i2p::data::LeaseSet> ls)
+				[s, streamRequestComplete, port] (std::shared_ptr<const i2p::data::LeaseSet> ls)
 				{
 					if (ls && !ls->IsIncompatibleCrypto ())
-						streamRequestComplete(s->CreateStream (ls, port));
+						streamRequestComplete (s->CreateStream (ls, port));
 					else
 						streamRequestComplete (nullptr);
 				});
 		}
 	}
 
-	void ClientDestination::CreateStream (StreamRequestComplete streamRequestComplete, std::shared_ptr<const i2p::data::BlindedPublicKey> dest, uint16_t port)
+	void ClientDestination::CreateStream (StreamRequestComplete streamRequestComplete,
+		std::shared_ptr<const i2p::data::BlindedPublicKey> dest, uint16_t port)
 	{
 		if (!streamRequestComplete)
 		{
@@ -1356,51 +1375,54 @@ namespace client
 		}
 		auto s = GetSharedFromThis ();
 		RequestDestinationWithEncryptedLeaseSet (dest,
-			[s, streamRequestComplete, port](std::shared_ptr<i2p::data::LeaseSet> ls)
+			[s, streamRequestComplete, port] (std::shared_ptr<i2p::data::LeaseSet> ls)
 			{
 				if (ls && !ls->IsIncompatibleCrypto ())
-					streamRequestComplete(s->CreateStream (ls, port));
+					streamRequestComplete (s->CreateStream (ls, port));
 				else
 					streamRequestComplete (nullptr);
 			});
 	}
 
-	template<typename Dest>
-	std::shared_ptr<i2p::stream::Stream> ClientDestination::CreateStreamSync (const Dest& dest, uint16_t port)
+	template <typename Dest>
+	std::shared_ptr<i2p::stream::Stream> ClientDestination::CreateStreamSync (const Dest & dest, uint16_t port)
 	{
 		volatile bool done = false;
 		std::shared_ptr<i2p::stream::Stream> stream;
 		std::condition_variable streamRequestComplete;
 		std::mutex streamRequestCompleteMutex;
 		CreateStream (
-			[&done, &streamRequestComplete, &streamRequestCompleteMutex, &stream](std::shared_ptr<i2p::stream::Stream> s)
-		    {
+			[&done, &streamRequestComplete, &streamRequestCompleteMutex, &stream] (
+				std::shared_ptr<i2p::stream::Stream> s)
+			{
 				stream = s;
-				std::unique_lock<std::mutex> l(streamRequestCompleteMutex);
+				std::unique_lock<std::mutex> l (streamRequestCompleteMutex);
 				streamRequestComplete.notify_all ();
 				done = true;
 			},
-		    dest, port);
+			dest, port);
 		while (!done)
 		{
-			std::unique_lock<std::mutex> l(streamRequestCompleteMutex);
-			if (!done)
-				streamRequestComplete.wait (l);
+			std::unique_lock<std::mutex> l (streamRequestCompleteMutex);
+			if (!done) streamRequestComplete.wait (l);
 		}
 		return stream;
 	}
 
-	std::shared_ptr<i2p::stream::Stream> ClientDestination::CreateStream (const i2p::data::IdentHash& dest, uint16_t port)
+	std::shared_ptr<i2p::stream::Stream> ClientDestination::CreateStream (
+		const i2p::data::IdentHash & dest, uint16_t port)
 	{
 		return CreateStreamSync (dest, port);
 	}
 
-	std::shared_ptr<i2p::stream::Stream> ClientDestination::CreateStream (std::shared_ptr<const i2p::data::BlindedPublicKey> dest, uint16_t port)
+	std::shared_ptr<i2p::stream::Stream> ClientDestination::CreateStream (
+		std::shared_ptr<const i2p::data::BlindedPublicKey> dest, uint16_t port)
 	{
 		return CreateStreamSync (dest, port);
 	}
 
-	std::shared_ptr<i2p::stream::Stream> ClientDestination::CreateStream (std::shared_ptr<const i2p::data::LeaseSet> remote, uint16_t port)
+	std::shared_ptr<i2p::stream::Stream> ClientDestination::CreateStream (
+		std::shared_ptr<const i2p::data::LeaseSet> remote, uint16_t port)
 	{
 		if (m_StreamingDestination)
 			return m_StreamingDestination->CreateNewOutgoingStream (remote, port);
@@ -1408,7 +1430,7 @@ namespace client
 			return nullptr;
 	}
 
-	void ClientDestination::SendPing (const i2p::data::IdentHash& to)
+	void ClientDestination::SendPing (const i2p::data::IdentHash & to)
 	{
 		if (m_StreamingDestination)
 		{
@@ -1419,7 +1441,7 @@ namespace client
 			{
 				auto s = m_StreamingDestination;
 				RequestDestination (to,
-					[s](std::shared_ptr<const i2p::data::LeaseSet> ls)
+					[s] (std::shared_ptr<const i2p::data::LeaseSet> ls)
 					{
 						if (ls) s->SendPing (ls);
 					});
@@ -1431,7 +1453,7 @@ namespace client
 	{
 		auto s = m_StreamingDestination;
 		RequestDestinationWithEncryptedLeaseSet (to,
-			[s](std::shared_ptr<const i2p::data::LeaseSet> ls)
+			[s] (std::shared_ptr<const i2p::data::LeaseSet> ls)
 			{
 				if (ls) s->SendPing (ls);
 			});
@@ -1442,40 +1464,36 @@ namespace client
 		if (port)
 		{
 			auto it = m_StreamingDestinationsByPorts.find (port);
-			if (it != m_StreamingDestinationsByPorts.end ())
-				return it->second;
+			if (it != m_StreamingDestinationsByPorts.end ()) return it->second;
 		}
 		else // if port is zero, use default destination
 			return m_StreamingDestination;
 		return nullptr;
 	}
 
-	void ClientDestination::AcceptStreams (const i2p::stream::StreamingDestination::Acceptor& acceptor)
+	void ClientDestination::AcceptStreams (const i2p::stream::StreamingDestination::Acceptor & acceptor)
 	{
-		if (m_StreamingDestination)
-			m_StreamingDestination->SetAcceptor (acceptor);
+		if (m_StreamingDestination) m_StreamingDestination->SetAcceptor (acceptor);
 	}
 
 	void ClientDestination::StopAcceptingStreams ()
 	{
-		if (m_StreamingDestination)
-			m_StreamingDestination->ResetAcceptor ();
+		if (m_StreamingDestination) m_StreamingDestination->ResetAcceptor ();
 	}
 
 	bool ClientDestination::IsAcceptingStreams () const
 	{
-		if (m_StreamingDestination)
-			return m_StreamingDestination->IsAcceptorSet ();
+		if (m_StreamingDestination) return m_StreamingDestination->IsAcceptorSet ();
 		return false;
 	}
 
-	void ClientDestination::AcceptOnce (const i2p::stream::StreamingDestination::Acceptor& acceptor)
+	void ClientDestination::AcceptOnce (const i2p::stream::StreamingDestination::Acceptor & acceptor)
 	{
-		if (m_StreamingDestination)
-			m_StreamingDestination->AcceptOnce (acceptor);
+		if (m_StreamingDestination) m_StreamingDestination->AcceptOnce (acceptor);
 	}
 
-	std::shared_ptr<i2p::stream::StreamingDestination> ClientDestination::CreateStreamingDestination (uint16_t port, bool gzip)
+	std::shared_ptr<i2p::stream::StreamingDestination> ClientDestination::CreateStreamingDestination (
+		uint16_t port, bool gzip)
 	{
 		auto dest = std::make_shared<i2p::stream::StreamingDestination> (GetSharedFromThis (), port, gzip);
 		if (port)
@@ -1500,24 +1518,25 @@ namespace client
 		return nullptr;
 	}
 
-	std::shared_ptr<i2p::datagram::DatagramDestination> ClientDestination::CreateDatagramDestination (bool gzip,
-		i2p::datagram::DatagramVersion version)
+	std::shared_ptr<i2p::datagram::DatagramDestination> ClientDestination::CreateDatagramDestination (
+		bool gzip, i2p::datagram::DatagramVersion version)
 	{
 		if (!m_DatagramDestination)
 		{
 			if (!GetNumRatchetInboundTags ())
-				SetNumRatchetInboundTags (i2p::garlic::ECIESX25519_MAX_NUM_GENERATED_TAGS); // set max tags if not specified
-			m_DatagramDestination = std::make_shared<i2p::datagram::DatagramDestination> (GetSharedFromThis (), gzip, version);
+				SetNumRatchetInboundTags (
+					i2p::garlic::ECIESX25519_MAX_NUM_GENERATED_TAGS); // set max tags if not specified
+			m_DatagramDestination
+				= std::make_shared<i2p::datagram::DatagramDestination> (GetSharedFromThis (), gzip, version);
 		}
 		return m_DatagramDestination;
 	}
 
-	std::vector<std::shared_ptr<const i2p::stream::Stream> > ClientDestination::GetAllStreams () const
+	std::vector<std::shared_ptr<const i2p::stream::Stream>> ClientDestination::GetAllStreams () const
 	{
-		std::vector<std::shared_ptr<const i2p::stream::Stream> > ret;
-		if (m_StreamingDestination)
-			ret = m_StreamingDestination->GetStreamsList ();
-		for (auto& it: m_StreamingDestinationsByPorts)
+		std::vector<std::shared_ptr<const i2p::stream::Stream>> ret;
+		if (m_StreamingDestination) ret = m_StreamingDestination->GetStreamsList ();
+		for (auto & it : m_StreamingDestinationsByPorts)
 		{
 			auto streams = it.second->GetStreamsList ();
 			ret.insert (ret.end (), streams.begin (), streams.end ());
@@ -1528,9 +1547,9 @@ namespace client
 	void ClientDestination::PersistTemporaryKeys (std::shared_ptr<i2p::crypto::LocalEncryptionKey> keys)
 	{
 		if (!keys) return;
-		std::string ident = GetIdentHash().ToBase32();
-		std::string path  = i2p::fs::DataDirPath("destinations", ident + "." + std::to_string (keys->keyType) + ".dat");
-		std::ifstream f(path, std::ifstream::binary);
+		std::string ident = GetIdentHash ().ToBase32 ();
+		std::string path = i2p::fs::DataDirPath ("destinations", ident + "." + std::to_string (keys->keyType) + ".dat");
+		std::ifstream f (path, std::ifstream::binary);
 		if (f)
 		{
 			size_t len = 0;
@@ -1539,7 +1558,7 @@ namespace client
 			else if (keys->keyType == i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD)
 			{
 				f.seekg (0, std::ios::end);
-				len = f.tellg();
+				len = f.tellg ();
 				f.seekg (0, std::ios::beg);
 			}
 
@@ -1547,22 +1566,23 @@ namespace client
 			{
 				char pub[256], priv[256];
 				f.read (pub, 256);
-				memcpy (keys->pub.data(), pub, keys->pub.size());
+				memcpy (keys->pub.data (), pub, keys->pub.size ());
 				f.read (priv, 256);
 				memcpy (keys->priv.data (), priv, keys->priv.size ());
 			}
 			else
 			{
-				f.read ((char *)keys->pub.data(), keys->pub.size());
-				f.read ((char *)keys->priv.data(), keys->priv.size());
+				f.read ((char *)keys->pub.data (), keys->pub.size ());
+				f.read ((char *)keys->priv.data (), keys->priv.size ());
 			}
 			if (f)
 				return;
 			else
-				LogPrint(eLogWarning, "Destination: Can't read keys from ", path);
+				LogPrint (eLogWarning, "Destination: Can't read keys from ", path);
 		}
 
-		LogPrint (eLogInfo, "Destination: Creating new temporary keys of type ", keys->keyType, " for address ", ident, ".b32.i2p");
+		LogPrint (eLogInfo, "Destination: Creating new temporary keys of type ", keys->keyType, " for address ", ident,
+			".b32.i2p");
 		memset (keys->priv.data (), 0, keys->priv.size ());
 		memset (keys->pub.data (), 0, keys->pub.size ());
 		keys->GenerateKeys ();
@@ -1573,11 +1593,10 @@ namespace client
 			f1.write ((char *)keys->pub.data (), keys->pub.size ());
 			f1.write ((char *)keys->priv.data (), keys->priv.size ());
 		}
-		if (!f1)
-			LogPrint(eLogError, "Destination: Can't save keys to ", path);
+		if (!f1) LogPrint (eLogError, "Destination: Can't save keys to ", path);
 	}
 
-	void ClientDestination::CreateNewLeaseSet (const std::vector<std::shared_ptr<i2p::tunnel::InboundTunnel> >& tunnels)
+	void ClientDestination::CreateNewLeaseSet (const std::vector<std::shared_ptr<i2p::tunnel::InboundTunnel>> & tunnels)
 	{
 		std::shared_ptr<i2p::data::LocalLeaseSet> leaseSet;
 		if (GetLeaseSetType () == i2p::data::NETDB_STORE_TYPE_LEASESET)
@@ -1585,9 +1604,11 @@ namespace client
 			auto it = m_EncryptionKeys.find (i2p::data::CRYPTO_KEY_TYPE_ELGAMAL);
 			if (it != m_EncryptionKeys.end ())
 			{
-				leaseSet = std::make_shared<i2p::data::LocalLeaseSet> (GetIdentity (), it->second->pub.data (), tunnels);
+				leaseSet
+					= std::make_shared<i2p::data::LocalLeaseSet> (GetIdentity (), it->second->pub.data (), tunnels);
 				// sign
-				Sign (leaseSet->GetBuffer (), leaseSet->GetBufferLen () - leaseSet->GetSignatureLen (), leaseSet->GetSignature ());
+				Sign (leaseSet->GetBuffer (), leaseSet->GetBufferLen () - leaseSet->GetSignatureLen (),
+					leaseSet->GetSignature ());
 			}
 			else
 				LogPrint (eLogError, "Destinations: Wrong encryption key type for LeaseSet type 1");
@@ -1607,14 +1628,13 @@ namespace client
 				preferredSection = m_EncryptionKeys.begin ()->second; // only key
 			else
 			{
-				for (const auto& it: m_EncryptionKeys)
+				for (const auto & it : m_EncryptionKeys)
 					if (it.first == m_PreferredCryptoType)
 						preferredSection = it.second;
 					else
 						keySections.push_front (it.second); // higher key type should appear first
 			}
-			if (preferredSection)
-				keySections.push_front (preferredSection); // make preferred first
+			if (preferredSection) keySections.push_front (preferredSection); // make preferred first
 
 			auto publishedTimestamp = i2p::util::GetSecondsSinceEpoch ();
 			if (publishedTimestamp <= m_LastPublishedTimestamp)
@@ -1638,7 +1658,8 @@ namespace client
 		if (m_DatagramDestination) m_DatagramDestination->CleanUp ();
 	}
 
-	bool ClientDestination::Decrypt (const uint8_t * encrypted, uint8_t * data, i2p::data::CryptoKeyType preferredCrypto) const
+	bool ClientDestination::Decrypt (
+		const uint8_t * encrypted, uint8_t * data, i2p::data::CryptoKeyType preferredCrypto) const
 	{
 		std::shared_ptr<i2p::crypto::LocalEncryptionKey> encryptionKey;
 		if (!m_EncryptionKeys.empty ())
@@ -1648,11 +1669,9 @@ namespace client
 			else
 			{
 				auto it = m_EncryptionKeys.find (preferredCrypto);
-				if (it != m_EncryptionKeys.end ())
-					encryptionKey = it->second;
+				if (it != m_EncryptionKeys.end ()) encryptionKey = it->second;
 			}
-			if (!encryptionKey)
-				encryptionKey = m_EncryptionKeys.rbegin ()->second;
+			if (!encryptionKey) encryptionKey = m_EncryptionKeys.rbegin ()->second;
 		}
 		if (encryptionKey)
 			return encryptionKey->decryptor->Decrypt (encrypted, data);
@@ -1676,50 +1695,46 @@ namespace client
 	const uint8_t * ClientDestination::GetEncryptionPublicKey (i2p::data::CryptoKeyType keyType) const
 	{
 		auto it = m_EncryptionKeys.find (keyType);
-		if (it != m_EncryptionKeys.end ())
-			return it->second->pub.data ();
+		if (it != m_EncryptionKeys.end ()) return it->second->pub.data ();
 		return nullptr;
 	}
 
-	void ClientDestination::ReadAuthKey (const std::string& group, const i2p::util::Mapping * params)
+	void ClientDestination::ReadAuthKey (const std::string & group, const i2p::util::Mapping * params)
 	{
-		for (const auto& it: params->GetOptions ())
+		for (const auto & it : params->GetOptions ())
 			if (it.first.length () >= group.length () && !it.first.compare (0, group.length (), group))
 			{
 				auto pos = it.second.find (':');
 				if (pos != std::string::npos)
 				{
 					i2p::data::AuthPublicKey pubKey;
-					if (pubKey.FromBase64 (it.second.substr (pos+1)))
+					if (pubKey.FromBase64 (it.second.substr (pos + 1)))
 						m_AuthKeys->push_back (pubKey);
 					else
-						LogPrint (eLogCritical, "Destination: Unexpected auth key: ", it.second.substr (pos+1));
+						LogPrint (eLogCritical, "Destination: Unexpected auth key: ", it.second.substr (pos + 1));
 				}
 			}
 	}
 
 	bool ClientDestination::DeleteStream (uint32_t recvStreamID)
 	{
-		if (m_StreamingDestination->DeleteStream (recvStreamID))
-			return true;
-		for (auto it: m_StreamingDestinationsByPorts)
-			if (it.second->DeleteStream (recvStreamID))
-				return true;
+		if (m_StreamingDestination->DeleteStream (recvStreamID)) return true;
+		for (auto it : m_StreamingDestinationsByPorts)
+			if (it.second->DeleteStream (recvStreamID)) return true;
 		return false;
 	}
 
-	RunnableClientDestination::RunnableClientDestination (const i2p::data::PrivateKeys& keys,
-		bool isPublic, const i2p::util::Mapping * params):
-		RunnableService ("Destination"), ClientDestination (GetIOService (), keys, isPublic, params)
+	RunnableClientDestination::RunnableClientDestination (
+		const i2p::data::PrivateKeys & keys, bool isPublic, const i2p::util::Mapping * params)
+		: RunnableService ("Destination")
+		, ClientDestination (GetIOService (), keys, isPublic, params)
 	{
-		if (!GetNickname ().empty ())
-			RunnableService::SetName (GetNickname ());
+		if (!GetNickname ().empty ()) RunnableService::SetName (GetNickname ());
 	}
 
 	RunnableClientDestination::~RunnableClientDestination ()
 	{
-		if (IsRunning ())
-			Stop ();
+		if (IsRunning ()) Stop ();
 	}
 
 	void RunnableClientDestination::Start ()

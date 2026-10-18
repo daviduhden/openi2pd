@@ -110,18 +110,18 @@ public final class RouterConfigStore {
             return def;
         }
         switch (value.trim().toLowerCase(Locale.ROOT)) {
-            case "1":
-            case "true":
-            case "yes":
-            case "on":
-                return true;
-            case "0":
-            case "false":
-            case "no":
-            case "off":
-                return false;
-            default:
-                return def;
+        case "1":
+        case "true":
+        case "yes":
+        case "on":
+            return true;
+        case "0":
+        case "false":
+        case "no":
+        case "off":
+            return false;
+        default:
+            return def;
         }
     }
 
@@ -131,8 +131,7 @@ public final class RouterConfigStore {
      * files or I/O failure.
      */
     public synchronized boolean setOption(String key, String value) {
-        if (!isSafeKey(key) || !isSafeValue(value) || isSecretKey(key)
-                || configFile == null) {
+        if (!isSafeKey(key) || !isSafeValue(value) || isSecretKey(key) || configFile == null) {
             return false;
         }
         key = canonicalKey(key);
@@ -181,8 +180,7 @@ public final class RouterConfigStore {
             return ApplyMode.RESTART;
         }
         String lower = key.toLowerCase(Locale.ROOT);
-        if (lower.startsWith("tunnels.") || "tunnelsdir".equals(lower)
-                || "tunnels".equals(lower)) {
+        if (lower.startsWith("tunnels.") || "tunnelsdir".equals(lower) || "tunnels".equals(lower)) {
             return ApplyMode.RELOAD_TUNNELS;
         }
         return ApplyMode.RESTART;
@@ -210,8 +208,8 @@ public final class RouterConfigStore {
             // '[' and ']' are allowed inside a value (IPv6 literals); a
             // section header would have to start the line, which the writer
             // never produces for a value.
-            if (c == '\r' || c == '\n' || c == '=' || c == '#'
-                    || c == ';' || Character.isISOControl(c)) {
+            if (c == '\r' || c == '\n' || c == '=' || c == '#' || c == ';'
+                    || Character.isISOControl(c)) {
                 return false;
             }
         }
@@ -239,10 +237,8 @@ public final class RouterConfigStore {
         }
         for (int i = 0; i < key.length(); i++) {
             char c = key.charAt(i);
-            boolean allowed = (c >= 'a' && c <= 'z')
-                    || (c >= 'A' && c <= 'Z')
-                    || (c >= '0' && c <= '9')
-                    || c == '.' || c == '_' || c == '-';
+            boolean allowed = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+                    || (c >= '0' && c <= '9') || c == '.' || c == '_' || c == '-';
             if (!allowed) {
                 return false;
             }
@@ -256,15 +252,10 @@ public final class RouterConfigStore {
             return true;
         }
         String lower = key.toLowerCase(Locale.ROOT);
-        return lower.contains("secret")
-                || lower.contains("password")
-                || lower.contains("passphrase")
-                || lower.contains("privatekey")
-                || lower.contains("private_key")
-                || lower.contains("keystore")
-                || lower.endsWith(".keys")
-                || "keys".equals(lower)
-                || lower.contains("auth");
+        return lower.contains("secret") || lower.contains("password")
+                || lower.contains("passphrase") || lower.contains("privatekey")
+                || lower.contains("private_key") || lower.contains("keystore")
+                || lower.endsWith(".keys") || "keys".equals(lower) || lower.contains("auth");
     }
 
     private String readConfigText() {
@@ -284,8 +275,7 @@ public final class RouterConfigStore {
             return null;
         }
         long modified = file.lastModified();
-        if (cachedText != null && modified == cachedModified
-                && length == cachedLength) {
+        if (cachedText != null && modified == cachedModified && length == cachedLength) {
             return cachedText;
         }
         try (FileInputStream in = new FileInputStream(file)) {
@@ -386,8 +376,8 @@ public final class RouterConfigStore {
             }
         }
 
-        StringBuilder result = new StringBuilder(text.length() + flatKey.length()
-                + value.length() + 8);
+        StringBuilder result =
+                new StringBuilder(text.length() + flatKey.length() + value.length() + 8);
         if (match >= 0) {
             for (int i = 0; i < lines.length; i++) {
                 if (i > 0) {
@@ -514,8 +504,7 @@ public final class RouterConfigStore {
     }
 
     private static boolean isSectionHeader(String trimmed) {
-        return trimmed.length() > 2 && trimmed.charAt(0) == '['
-                && trimmed.indexOf(']') > 1;
+        return trimmed.length() > 2 && trimmed.charAt(0) == '[' && trimmed.indexOf(']') > 1;
     }
 
     private static String sectionName(String trimmed) {

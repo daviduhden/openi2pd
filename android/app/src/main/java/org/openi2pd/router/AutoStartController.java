@@ -94,8 +94,7 @@ public final class AutoStartController {
      *                           so it is safe to call on a worker thread.
      * @return {@code false} only when the marker itself could not be changed
      */
-    public static boolean setEnabled(Context context, boolean enabled,
-                                     boolean showVendorSettings) {
+    public static boolean setEnabled(Context context, boolean enabled, boolean showVendorSettings) {
         Objects.requireNonNull(context, "context");
         Context appContext = applicationContext(context);
         File marker = getMarker(appContext);
@@ -156,22 +155,28 @@ public final class AutoStartController {
     }
 
     private static void openVendorAutostart(Context context) {
-        String manufacturer = Build.MANUFACTURER == null
-                ? "" : Build.MANUFACTURER.toLowerCase(Locale.ROOT);
+        String manufacturer =
+                Build.MANUFACTURER == null ? "" : Build.MANUFACTURER.toLowerCase(Locale.ROOT);
 
         ComponentName component = switch (manufacturer) {
-            case "xiaomi" -> new ComponentName("com.miui.securitycenter",
-                    "com.miui.permcenter.autostart.AutoStartManagementActivity");
-            case "oppo" -> new ComponentName("com.coloros.safecenter",
-                    "com.coloros.safecenter.permission.startup.StartupAppListActivity");
-            case "vivo" -> new ComponentName("com.vivo.permissionmanager",
-                    "com.vivo.permissionmanager.activity.BgStartUpManagerActivity");
-            case "letv" -> new ComponentName("com.letv.android.letvsafe",
-                    "com.letv.android.letvsafe.AutobootManageActivity");
-            case "honor" -> new ComponentName("com.huawei.systemmanager",
-                    "com.huawei.systemmanager.optimize.process.ProtectActivity");
-            case "oneplus" -> new ComponentName("com.oneplus.security",
-                    "com.oneplus.security.chainlaunch.view.ChainLaunchAppListActivity");
+            case "xiaomi" ->
+                new ComponentName("com.miui.securitycenter",
+                        "com.miui.permcenter.autostart.AutoStartManagementActivity");
+            case "oppo" ->
+                new ComponentName("com.coloros.safecenter",
+                        "com.coloros.safecenter.permission.startup.StartupAppListActivity");
+            case "vivo" ->
+                new ComponentName("com.vivo.permissionmanager",
+                        "com.vivo.permissionmanager.activity.BgStartUpManagerActivity");
+            case "letv" ->
+                new ComponentName("com.letv.android.letvsafe",
+                        "com.letv.android.letvsafe.AutobootManageActivity");
+            case "honor" ->
+                new ComponentName("com.huawei.systemmanager",
+                        "com.huawei.systemmanager.optimize.process.ProtectActivity");
+            case "oneplus" ->
+                new ComponentName("com.oneplus.security",
+                        "com.oneplus.security.chainlaunch.view.ChainLaunchAppListActivity");
             default -> null;
         };
         if (component == null) {

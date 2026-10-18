@@ -20,17 +20,19 @@
 #include <inttypes.h>
 
 #ifndef STD_FILESYSTEM
-#	if (_WIN32 && __GNUG__) // MinGW GCC somehow incorrectly converts paths
-#		define STD_FILESYSTEM 0
-#	elif __has_include(<filesystem>) // supports std::filesystem
-#		define STD_FILESYSTEM 1
-#	else
-#		define STD_FILESYSTEM 0
-#	endif
+#if (_WIN32 && __GNUG__) // MinGW GCC somehow incorrectly converts paths
+#define STD_FILESYSTEM 0
+#elif __has_include(<filesystem>) // supports std::filesystem
+#define STD_FILESYSTEM 1
+#else
+#define STD_FILESYSTEM 0
+#endif
 #endif
 
-namespace i2p {
-namespace fs {
+namespace i2p
+{
+namespace fs
+{
 	extern std::string dirSep;
 
 	/**
@@ -51,49 +53,50 @@ namespace fs {
 	 */
 	class HashedStorage
 	{
-		protected:
+	protected:
+		std::string root; /**< path to storage with it's name included */
+		std::string name; /**< name of the storage */
+		std::string prefix1; /**< hashed directory prefix */
+		std::string prefix2; /**< prefix of file in storage */
+		std::string suffix; /**< suffix of file in storage (extension) */
 
-			std::string root;    /**< path to storage with it's name included */
-			std::string name;    /**< name of the storage */
-			std::string prefix1; /**< hashed directory prefix */
-			std::string prefix2; /**< prefix of file in storage */
-			std::string suffix;  /**< suffix of file in storage (extension) */
+	public:
+		typedef std::function<void (const std::string &)> FilenameVisitor;
+		HashedStorage (const char * n, const char * p1, const char * p2, const char * s)
+			: name (n)
+			, prefix1 (p1)
+			, prefix2 (p2)
+			, suffix (s) { };
 
-		public:
-
-			typedef std::function<void(const std::string &)> FilenameVisitor;
-			HashedStorage(const char *n, const char *p1, const char *p2, const char *s):
-				name(n), prefix1(p1), prefix2(p2), suffix(s) {};
-
-			/** create subdirs in storage */
-			bool Init(const char* chars, size_t cnt);
-			const std::string & GetRoot() const { return root; }
-			const std::string & GetName() const { return name; }
-			/** set directory where to place storage directory */
-			void SetPlace(const std::string & path);
-			/** path to file with given ident */
-			std::string Path(const std::string & ident) const;
-			/** remove file by ident */
-			void Remove(const std::string & ident);
-			/** find all files in storage and store list in provided vector */
-			void Traverse(std::vector<std::string> & files);
-			/** visit every file in this storage with a visitor */
-			void Iterate(FilenameVisitor v);
+		/** create subdirs in storage */
+		bool Init (const char * chars, size_t cnt);
+		const std::string & GetRoot () const { return root; }
+		const std::string & GetName () const { return name; }
+		/** set directory where to place storage directory */
+		void SetPlace (const std::string & path);
+		/** path to file with given ident */
+		std::string Path (const std::string & ident) const;
+		/** remove file by ident */
+		void Remove (const std::string & ident);
+		/** find all files in storage and store list in provided vector */
+		void Traverse (std::vector<std::string> & files);
+		/** visit every file in this storage with a visitor */
+		void Iterate (FilenameVisitor v);
 	};
 
 	/** @brief Returns current application name, default 'i2pd' */
 	const std::string & GetAppName ();
 	/** @brief Set application name, affects autodetection of datadir */
-	void SetAppName (const std::string& name);
+	void SetAppName (const std::string & name);
 
 	/** @brief Returns datadir path */
-	const std::string & GetDataDir();
+	const std::string & GetDataDir ();
 
 	/** @brief Returns certsdir path */
-	const std::string & GetCertsDir();
+	const std::string & GetCertsDir ();
 
 	/** @brief Returns datadir path in UTF-8 encoding */
-	const std::string GetUTF8DataDir();
+	const std::string GetUTF8DataDir ();
 
 	/**
 	 * @brief Set datadir either from cmdline option or using autodetection
@@ -107,7 +110,7 @@ namespace fs {
 	 *   Mac: /Library/Application Support/i2pd/ or ~/Library/Application Support/i2pd/
 	 *   Unix: /var/lib/i2pd/ (system=1) >> ~/.i2pd/ or /tmp/i2pd/
 	 */
-	void DetectDataDir(const std::string & cmdline_datadir, bool isService = false);
+	void DetectDataDir (const std::string & cmdline_datadir, bool isService = false);
 
 	/**
 	 * @brief Set certsdir either from cmdline option or using autodetection
@@ -120,12 +123,12 @@ namespace fs {
 	 *   Mac: /Library/Application Support/i2pd/ or ~/Library/Application Support/i2pd/certificates
 	 *   Unix: /var/lib/i2pd/certificates (system=1) >> ~/.i2pd/ or /tmp/i2pd/certificates
 	 */
-	void SetCertsDir(const std::string & cmdline_certsdir);
+	void SetCertsDir (const std::string & cmdline_certsdir);
 
 	/**
 	 * @brief Create subdirectories inside datadir
 	 */
-	bool Init();
+	bool Init ();
 
 	/**
 	 * @brief Get list of files in directory
@@ -133,14 +136,14 @@ namespace fs {
 	 * @param files Vector to store found files
 	 * @return true on success and false if directory not exists
 	 */
-	bool ReadDir(const std::string & path, std::vector<std::string> & files);
+	bool ReadDir (const std::string & path, std::vector<std::string> & files);
 
 	/**
 	 * @brief Remove file with given path
 	 * @param path Absolute path to file
 	 * @return true on success, false if file not exists, throws exception on error
 	 */
-	bool Remove(const std::string & path);
+	bool Remove (const std::string & path);
 
 	bool Rename (std::string_view from, std::string_view to);
 
@@ -149,22 +152,22 @@ namespace fs {
 	 * @param path Absolute path to file
 	 * @return true if file exists, false otherwise
 	 */
-	bool Exists(const std::string & path);
+	bool Exists (const std::string & path);
 
 	uint32_t GetLastUpdateTime (const std::string & path); // seconds since epoch
 
-	bool CreateDirectory (const std::string& path);
-	std::filesystem::path CreatePrivateFile (const std::filesystem::path& path);
+	bool CreateDirectory (const std::string & path);
+	std::filesystem::path CreatePrivateFile (const std::filesystem::path & path);
 
-	template<typename T>
-	void _ExpandPath(std::stringstream & path, T c) {
+	template <typename T> void _ExpandPath (std::stringstream & path, T c)
+	{
 		path << i2p::fs::dirSep << c;
 	}
 
-	template<typename T, typename ... Other>
-	void _ExpandPath(std::stringstream & path, T c, Other ... other) {
-		_ExpandPath(path, c);
-		_ExpandPath(path, other ...);
+	template <typename T, typename... Other> void _ExpandPath (std::stringstream & path, T c, Other... other)
+	{
+		_ExpandPath (path, c);
+		_ExpandPath (path, other...);
 	}
 
 	/**
@@ -175,23 +178,23 @@ namespace fs {
 	 * i2p::fs::Path("test")             -> '/tmp/i2pd/test'
 	 * i2p::fs::Path("test", "file.txt") -> '/tmp/i2pd/test/file.txt'
 	 */
-	template<typename ... Other>
-	std::string DataDirPath(Other ... components) {
-		std::stringstream s("");
-		s << i2p::fs::GetDataDir();
-		_ExpandPath(s, components ...);
+	template <typename... Other> std::string DataDirPath (Other... components)
+	{
+		std::stringstream s ("");
+		s << i2p::fs::GetDataDir ();
+		_ExpandPath (s, components...);
 
-		return s.str();
+		return s.str ();
 	}
 
-	template<typename Storage, typename... Filename>
-	std::string StorageRootPath (const Storage& storage, Filename... filenames)
+	template <typename Storage, typename... Filename>
+	std::string StorageRootPath (const Storage & storage, Filename... filenames)
 	{
-		std::stringstream s("");
+		std::stringstream s ("");
 		s << storage.GetRoot ();
-		_ExpandPath(s, filenames...);
+		_ExpandPath (s, filenames...);
 
-		return s.str();
+		return s.str ();
 	}
 
 } // fs

@@ -42,7 +42,9 @@ public final class Java25Probe {
 
     static class Base {
         final int value;
-        Base(int value) { this.value = value; }
+        Base(int value) {
+            this.value = value;
+        }
     }
 
     /** JEP 513: validate before the explicit super(...) invocation. */
@@ -57,9 +59,7 @@ public final class Java25Probe {
 
     public static void main(String[] args) {
         List<Event> events = List.of(
-                new Started("router", 1L),
-                new Started("router", 0L),
-                new Stopped(2L, "shutdown"));
+                new Started("router", 1L), new Started("router", 0L), new Stopped(2L, "shutdown"));
         System.out.println(describeAll(events));
         System.out.println("validated=" + new Validated(25).value);
     }

@@ -34,57 +34,44 @@ namespace i2p
 {
 namespace crypto
 {
-	constexpr uint8_t elgp_[256]=
-	{
-		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xC9, 0x0F, 0xDA, 0xA2, 0x21, 0x68, 0xC2, 0x34,
-		0xC4, 0xC6, 0x62, 0x8B, 0x80, 0xDC, 0x1C, 0xD1, 0x29, 0x02, 0x4E, 0x08, 0x8A, 0x67, 0xCC, 0x74,
-		0x02, 0x0B, 0xBE, 0xA6, 0x3B, 0x13, 0x9B, 0x22, 0x51, 0x4A, 0x08, 0x79, 0x8E, 0x34, 0x04, 0xDD,
-		0xEF, 0x95, 0x19, 0xB3, 0xCD, 0x3A, 0x43, 0x1B, 0x30, 0x2B, 0x0A, 0x6D, 0xF2, 0x5F, 0x14, 0x37,
-		0x4F, 0xE1, 0x35, 0x6D, 0x6D, 0x51, 0xC2, 0x45, 0xE4, 0x85, 0xB5, 0x76, 0x62, 0x5E, 0x7E, 0xC6,
-		0xF4, 0x4C, 0x42, 0xE9, 0xA6, 0x37, 0xED, 0x6B, 0x0B, 0xFF, 0x5C, 0xB6, 0xF4, 0x06, 0xB7, 0xED,
-		0xEE, 0x38, 0x6B, 0xFB, 0x5A, 0x89, 0x9F, 0xA5, 0xAE, 0x9F, 0x24, 0x11, 0x7C, 0x4B, 0x1F, 0xE6,
-		0x49, 0x28, 0x66, 0x51, 0xEC, 0xE4, 0x5B, 0x3D, 0xC2, 0x00, 0x7C, 0xB8, 0xA1, 0x63, 0xBF, 0x05,
-		0x98, 0xDA, 0x48, 0x36, 0x1C, 0x55, 0xD3, 0x9A, 0x69, 0x16, 0x3F, 0xA8, 0xFD, 0x24, 0xCF, 0x5F,
-		0x83, 0x65, 0x5D, 0x23, 0xDC, 0xA3, 0xAD, 0x96, 0x1C, 0x62, 0xF3, 0x56, 0x20, 0x85, 0x52, 0xBB,
-		0x9E, 0xD5, 0x29, 0x07, 0x70, 0x96, 0x96, 0x6D, 0x67, 0x0C, 0x35, 0x4E, 0x4A, 0xBC, 0x98, 0x04,
-		0xF1, 0x74, 0x6C, 0x08, 0xCA, 0x18, 0x21, 0x7C, 0x32, 0x90, 0x5E, 0x46, 0x2E, 0x36, 0xCE, 0x3B,
-		0xE3, 0x9E, 0x77, 0x2C, 0x18, 0x0E, 0x86, 0x03, 0x9B, 0x27, 0x83, 0xA2, 0xEC, 0x07, 0xA2, 0x8F,
-		0xB5, 0xC5, 0x5D, 0xF0, 0x6F, 0x4C, 0x52, 0xC9, 0xDE, 0x2B, 0xCB, 0xF6, 0x95, 0x58, 0x17, 0x18,
-		0x39, 0x95, 0x49, 0x7C, 0xEA, 0x95, 0x6A, 0xE5, 0x15, 0xD2, 0x26, 0x18, 0x98, 0xFA, 0x05, 0x10,
-		0x15, 0x72, 0x8E, 0x5A, 0x8A, 0xAC, 0xAA, 0x68, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF
-	};
+	constexpr uint8_t elgp_[256] = { 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xC9, 0x0F, 0xDA, 0xA2, 0x21, 0x68,
+		0xC2, 0x34, 0xC4, 0xC6, 0x62, 0x8B, 0x80, 0xDC, 0x1C, 0xD1, 0x29, 0x02, 0x4E, 0x08, 0x8A, 0x67, 0xCC, 0x74,
+		0x02, 0x0B, 0xBE, 0xA6, 0x3B, 0x13, 0x9B, 0x22, 0x51, 0x4A, 0x08, 0x79, 0x8E, 0x34, 0x04, 0xDD, 0xEF, 0x95,
+		0x19, 0xB3, 0xCD, 0x3A, 0x43, 0x1B, 0x30, 0x2B, 0x0A, 0x6D, 0xF2, 0x5F, 0x14, 0x37, 0x4F, 0xE1, 0x35, 0x6D,
+		0x6D, 0x51, 0xC2, 0x45, 0xE4, 0x85, 0xB5, 0x76, 0x62, 0x5E, 0x7E, 0xC6, 0xF4, 0x4C, 0x42, 0xE9, 0xA6, 0x37,
+		0xED, 0x6B, 0x0B, 0xFF, 0x5C, 0xB6, 0xF4, 0x06, 0xB7, 0xED, 0xEE, 0x38, 0x6B, 0xFB, 0x5A, 0x89, 0x9F, 0xA5,
+		0xAE, 0x9F, 0x24, 0x11, 0x7C, 0x4B, 0x1F, 0xE6, 0x49, 0x28, 0x66, 0x51, 0xEC, 0xE4, 0x5B, 0x3D, 0xC2, 0x00,
+		0x7C, 0xB8, 0xA1, 0x63, 0xBF, 0x05, 0x98, 0xDA, 0x48, 0x36, 0x1C, 0x55, 0xD3, 0x9A, 0x69, 0x16, 0x3F, 0xA8,
+		0xFD, 0x24, 0xCF, 0x5F, 0x83, 0x65, 0x5D, 0x23, 0xDC, 0xA3, 0xAD, 0x96, 0x1C, 0x62, 0xF3, 0x56, 0x20, 0x85,
+		0x52, 0xBB, 0x9E, 0xD5, 0x29, 0x07, 0x70, 0x96, 0x96, 0x6D, 0x67, 0x0C, 0x35, 0x4E, 0x4A, 0xBC, 0x98, 0x04,
+		0xF1, 0x74, 0x6C, 0x08, 0xCA, 0x18, 0x21, 0x7C, 0x32, 0x90, 0x5E, 0x46, 0x2E, 0x36, 0xCE, 0x3B, 0xE3, 0x9E,
+		0x77, 0x2C, 0x18, 0x0E, 0x86, 0x03, 0x9B, 0x27, 0x83, 0xA2, 0xEC, 0x07, 0xA2, 0x8F, 0xB5, 0xC5, 0x5D, 0xF0,
+		0x6F, 0x4C, 0x52, 0xC9, 0xDE, 0x2B, 0xCB, 0xF6, 0x95, 0x58, 0x17, 0x18, 0x39, 0x95, 0x49, 0x7C, 0xEA, 0x95,
+		0x6A, 0xE5, 0x15, 0xD2, 0x26, 0x18, 0x98, 0xFA, 0x05, 0x10, 0x15, 0x72, 0x8E, 0x5A, 0x8A, 0xAC, 0xAA, 0x68,
+		0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF };
 
 	constexpr int elgg_ = 2;
 
-	constexpr uint8_t dsap_[128]=
-	{
-		0x9c, 0x05, 0xb2, 0xaa, 0x96, 0x0d, 0x9b, 0x97, 0xb8, 0x93, 0x19, 0x63, 0xc9, 0xcc, 0x9e, 0x8c,
-		0x30, 0x26, 0xe9, 0xb8, 0xed, 0x92, 0xfa, 0xd0, 0xa6, 0x9c, 0xc8, 0x86, 0xd5, 0xbf, 0x80, 0x15,
-		0xfc, 0xad, 0xae, 0x31, 0xa0, 0xad, 0x18, 0xfa, 0xb3, 0xf0, 0x1b, 0x00, 0xa3, 0x58, 0xde, 0x23,
-		0x76, 0x55, 0xc4, 0x96, 0x4a, 0xfa, 0xa2, 0xb3, 0x37, 0xe9, 0x6a, 0xd3, 0x16, 0xb9, 0xfb, 0x1c,
-		0xc5, 0x64, 0xb5, 0xae, 0xc5, 0xb6, 0x9a, 0x9f, 0xf6, 0xc3, 0xe4, 0x54, 0x87, 0x07, 0xfe, 0xf8,
-		0x50, 0x3d, 0x91, 0xdd, 0x86, 0x02, 0xe8, 0x67, 0xe6, 0xd3, 0x5d, 0x22, 0x35, 0xc1, 0x86, 0x9c,
-		0xe2, 0x47, 0x9c, 0x3b, 0x9d, 0x54, 0x01, 0xde, 0x04, 0xe0, 0x72, 0x7f, 0xb3, 0x3d, 0x65, 0x11,
-		0x28, 0x5d, 0x4c, 0xf2, 0x95, 0x38, 0xd9, 0xe3, 0xb6, 0x05, 0x1f, 0x5b, 0x22, 0xcc, 0x1c, 0x93
-	};
+	constexpr uint8_t dsap_[128] = { 0x9c, 0x05, 0xb2, 0xaa, 0x96, 0x0d, 0x9b, 0x97, 0xb8, 0x93, 0x19, 0x63, 0xc9, 0xcc,
+		0x9e, 0x8c, 0x30, 0x26, 0xe9, 0xb8, 0xed, 0x92, 0xfa, 0xd0, 0xa6, 0x9c, 0xc8, 0x86, 0xd5, 0xbf, 0x80, 0x15,
+		0xfc, 0xad, 0xae, 0x31, 0xa0, 0xad, 0x18, 0xfa, 0xb3, 0xf0, 0x1b, 0x00, 0xa3, 0x58, 0xde, 0x23, 0x76, 0x55,
+		0xc4, 0x96, 0x4a, 0xfa, 0xa2, 0xb3, 0x37, 0xe9, 0x6a, 0xd3, 0x16, 0xb9, 0xfb, 0x1c, 0xc5, 0x64, 0xb5, 0xae,
+		0xc5, 0xb6, 0x9a, 0x9f, 0xf6, 0xc3, 0xe4, 0x54, 0x87, 0x07, 0xfe, 0xf8, 0x50, 0x3d, 0x91, 0xdd, 0x86, 0x02,
+		0xe8, 0x67, 0xe6, 0xd3, 0x5d, 0x22, 0x35, 0xc1, 0x86, 0x9c, 0xe2, 0x47, 0x9c, 0x3b, 0x9d, 0x54, 0x01, 0xde,
+		0x04, 0xe0, 0x72, 0x7f, 0xb3, 0x3d, 0x65, 0x11, 0x28, 0x5d, 0x4c, 0xf2, 0x95, 0x38, 0xd9, 0xe3, 0xb6, 0x05,
+		0x1f, 0x5b, 0x22, 0xcc, 0x1c, 0x93 };
 
-	constexpr uint8_t dsaq_[20]=
-	{
-		0xa5, 0xdf, 0xc2, 0x8f, 0xef, 0x4c, 0xa1, 0xe2, 0x86, 0x74, 0x4c, 0xd8, 0xee, 0xd9, 0xd2, 0x9d,
-		0x68, 0x40, 0x46, 0xb7
-	};
+	constexpr uint8_t dsaq_[20] = { 0xa5, 0xdf, 0xc2, 0x8f, 0xef, 0x4c, 0xa1, 0xe2, 0x86, 0x74, 0x4c, 0xd8, 0xee, 0xd9,
+		0xd2, 0x9d, 0x68, 0x40, 0x46, 0xb7 };
 
-	constexpr uint8_t dsag_[128]=
-	{
-		0x0c, 0x1f, 0x4d, 0x27, 0xd4, 0x00, 0x93, 0xb4, 0x29, 0xe9, 0x62, 0xd7, 0x22, 0x38, 0x24, 0xe0,
-		0xbb, 0xc4, 0x7e, 0x7c, 0x83, 0x2a, 0x39, 0x23, 0x6f, 0xc6, 0x83, 0xaf, 0x84, 0x88, 0x95, 0x81,
-		0x07, 0x5f, 0xf9, 0x08, 0x2e, 0xd3, 0x23, 0x53, 0xd4, 0x37, 0x4d, 0x73, 0x01, 0xcd, 0xa1, 0xd2,
-		0x3c, 0x43, 0x1f, 0x46, 0x98, 0x59, 0x9d, 0xda, 0x02, 0x45, 0x18, 0x24, 0xff, 0x36, 0x97, 0x52,
-		0x59, 0x36, 0x47, 0xcc, 0x3d, 0xdc, 0x19, 0x7d, 0xe9, 0x85, 0xe4, 0x3d, 0x13, 0x6c, 0xdc, 0xfc,
-		0x6b, 0xd5, 0x40, 0x9c, 0xd2, 0xf4, 0x50, 0x82, 0x11, 0x42, 0xa5, 0xe6, 0xf8, 0xeb, 0x1c, 0x3a,
-		0xb5, 0xd0, 0x48, 0x4b, 0x81, 0x29, 0xfc, 0xf1, 0x7b, 0xce, 0x4f, 0x7f, 0x33, 0x32, 0x1c, 0x3c,
-		0xb3, 0xdb, 0xb1, 0x4a, 0x90, 0x5e, 0x7b, 0x2b, 0x3e, 0x93, 0xbe, 0x47, 0x08, 0xcb, 0xcc, 0x82
-	};
+	constexpr uint8_t dsag_[128] = { 0x0c, 0x1f, 0x4d, 0x27, 0xd4, 0x00, 0x93, 0xb4, 0x29, 0xe9, 0x62, 0xd7, 0x22, 0x38,
+		0x24, 0xe0, 0xbb, 0xc4, 0x7e, 0x7c, 0x83, 0x2a, 0x39, 0x23, 0x6f, 0xc6, 0x83, 0xaf, 0x84, 0x88, 0x95, 0x81,
+		0x07, 0x5f, 0xf9, 0x08, 0x2e, 0xd3, 0x23, 0x53, 0xd4, 0x37, 0x4d, 0x73, 0x01, 0xcd, 0xa1, 0xd2, 0x3c, 0x43,
+		0x1f, 0x46, 0x98, 0x59, 0x9d, 0xda, 0x02, 0x45, 0x18, 0x24, 0xff, 0x36, 0x97, 0x52, 0x59, 0x36, 0x47, 0xcc,
+		0x3d, 0xdc, 0x19, 0x7d, 0xe9, 0x85, 0xe4, 0x3d, 0x13, 0x6c, 0xdc, 0xfc, 0x6b, 0xd5, 0x40, 0x9c, 0xd2, 0xf4,
+		0x50, 0x82, 0x11, 0x42, 0xa5, 0xe6, 0xf8, 0xeb, 0x1c, 0x3a, 0xb5, 0xd0, 0x48, 0x4b, 0x81, 0x29, 0xfc, 0xf1,
+		0x7b, 0xce, 0x4f, 0x7f, 0x33, 0x32, 0x1c, 0x3c, 0xb3, 0xdb, 0xb1, 0x4a, 0x90, 0x5e, 0x7b, 0x2b, 0x3e, 0x93,
+		0xbe, 0x47, 0x08, 0xcb, 0xcc, 0x82 };
 
 	constexpr int rsae_ = 65537;
 
@@ -102,8 +89,8 @@ namespace crypto
 		// RSA
 		BIGNUM * rsae;
 
-		CryptoConstants (const uint8_t * elgp_, int elgg_, const uint8_t * dsap_,
-			const uint8_t * dsaq_, const uint8_t * dsag_, int rsae_)
+		CryptoConstants (const uint8_t * elgp_, int elgg_, const uint8_t * dsap_, const uint8_t * dsaq_,
+			const uint8_t * dsag_, int rsae_)
 		{
 			elgp = BN_new ();
 			BN_bin2bn (elgp_, 256, elgp);
@@ -121,11 +108,16 @@ namespace crypto
 
 		~CryptoConstants ()
 		{
-			BN_free (elgp); BN_free (elgg); BN_free (dsap); BN_free (dsaq); BN_free (dsag); BN_free (rsae);
+			BN_free (elgp);
+			BN_free (elgg);
+			BN_free (dsap);
+			BN_free (dsaq);
+			BN_free (dsag);
+			BN_free (rsae);
 		}
 	};
 
-	static const CryptoConstants& GetCryptoConstants ()
+	static const CryptoConstants & GetCryptoConstants ()
 	{
 		static CryptoConstants cryptoConstants (elgp_, elgg_, dsap_, dsaq_, dsag_, rsae_);
 		return cryptoConstants;
@@ -141,26 +133,26 @@ namespace crypto
 		return true;
 	}
 
-// RSA
-	#define rsae GetCryptoConstants ().rsae
+	// RSA
+#define rsae GetCryptoConstants ().rsae
 	const BIGNUM * GetRSAE ()
 	{
 		return rsae;
 	}
 
-// DSA
-	#define dsap GetCryptoConstants ().dsap
-	#define dsaq GetCryptoConstants ().dsaq
-	#define dsag GetCryptoConstants ().dsag
+	// DSA
+#define dsap GetCryptoConstants ().dsap
+#define dsaq GetCryptoConstants ().dsaq
+#define dsag GetCryptoConstants ().dsag
 #if !defined(LIBRESSL_VERSION_NUMBER) && OPENSSL_VERSION_NUMBER >= 0x30000000L // since 3.0.0
 	EVP_PKEY * CreateDSA (BIGNUM * pubKey, BIGNUM * privKey)
 	{
 		EVP_PKEY * pkey = nullptr;
 		int selection = EVP_PKEY_KEY_PARAMETERS;
-		auto bld = OSSL_PARAM_BLD_new();
-		OSSL_PARAM_BLD_push_BN(bld, OSSL_PKEY_PARAM_FFC_P, dsap);
-		OSSL_PARAM_BLD_push_BN(bld, OSSL_PKEY_PARAM_FFC_Q, dsaq);
-		OSSL_PARAM_BLD_push_BN(bld, OSSL_PKEY_PARAM_FFC_G, dsag);
+		auto bld = OSSL_PARAM_BLD_new ();
+		OSSL_PARAM_BLD_push_BN (bld, OSSL_PKEY_PARAM_FFC_P, dsap);
+		OSSL_PARAM_BLD_push_BN (bld, OSSL_PKEY_PARAM_FFC_Q, dsaq);
+		OSSL_PARAM_BLD_push_BN (bld, OSSL_PKEY_PARAM_FFC_G, dsag);
 		if (pubKey)
 		{
 			OSSL_PARAM_BLD_push_BN (bld, OSSL_PKEY_PARAM_PUB_KEY, pubKey);
@@ -171,15 +163,15 @@ namespace crypto
 			OSSL_PARAM_BLD_push_BN (bld, OSSL_PKEY_PARAM_PRIV_KEY, privKey);
 			selection = EVP_PKEY_KEYPAIR;
 		}
-		auto params = OSSL_PARAM_BLD_to_param(bld);
+		auto params = OSSL_PARAM_BLD_to_param (bld);
 
-		EVP_PKEY_CTX *ctx = EVP_PKEY_CTX_new_from_name (NULL, "DSA", NULL);
-		EVP_PKEY_fromdata_init(ctx);
-        EVP_PKEY_fromdata(ctx, &pkey, selection, params);
+		EVP_PKEY_CTX * ctx = EVP_PKEY_CTX_new_from_name (NULL, "DSA", NULL);
+		EVP_PKEY_fromdata_init (ctx);
+		EVP_PKEY_fromdata (ctx, &pkey, selection, params);
 
-		EVP_PKEY_CTX_free(ctx);
-		OSSL_PARAM_free(params);
-		OSSL_PARAM_BLD_free(bld);
+		EVP_PKEY_CTX_free (ctx);
+		OSSL_PARAM_free (params);
+		OSSL_PARAM_BLD_free (bld);
 		return pkey;
 	}
 #else
@@ -192,17 +184,17 @@ namespace crypto
 	}
 #endif
 
-// DH/ElGamal
+	// DH/ElGamal
 
 #if !IS_X86_64
 	const int ELGAMAL_SHORT_EXPONENT_NUM_BITS = 226;
-	const int ELGAMAL_SHORT_EXPONENT_NUM_BYTES = ELGAMAL_SHORT_EXPONENT_NUM_BITS/8+1;
+	const int ELGAMAL_SHORT_EXPONENT_NUM_BYTES = ELGAMAL_SHORT_EXPONENT_NUM_BITS / 8 + 1;
 #endif
 	const int ELGAMAL_FULL_EXPONENT_NUM_BITS = 2048;
-	const int ELGAMAL_FULL_EXPONENT_NUM_BYTES = ELGAMAL_FULL_EXPONENT_NUM_BITS/8;
+	const int ELGAMAL_FULL_EXPONENT_NUM_BYTES = ELGAMAL_FULL_EXPONENT_NUM_BITS / 8;
 
-	#define elgp GetCryptoConstants ().elgp
-	#define elgg GetCryptoConstants ().elgg
+#define elgp GetCryptoConstants ().elgp
+#define elgg GetCryptoConstants ().elgg
 
 	static BN_MONT_CTX * g_MontCtx = nullptr;
 	static void PrecalculateElggTable (BIGNUM * table[][255], int len) // table is len's array of array of 255 bignums
@@ -219,11 +211,11 @@ namespace crypto
 			if (!i)
 				BN_to_montgomery (table[0][0], elgg, montCtx, ctx);
 			else
-				BN_mod_mul_montgomery (table[i][0], table[i-1][254], table[i-1][0], montCtx, ctx);
+				BN_mod_mul_montgomery (table[i][0], table[i - 1][254], table[i - 1][0], montCtx, ctx);
 			for (int j = 1; j < 255; j++)
 			{
 				table[i][j] = BN_new ();
-				BN_mod_mul_montgomery (table[i][j], table[i][j-1], table[i][0], montCtx, ctx);
+				BN_mod_mul_montgomery (table[i][j], table[i][j - 1], table[i][0], montCtx, ctx);
 			}
 		}
 		BN_MONT_CTX_free (montCtx);
@@ -252,14 +244,12 @@ namespace crypto
 		{
 			if (res)
 			{
-				if (exp[i])
-					BN_mod_mul_montgomery (res, res, table[len-1-i][exp[i]-1], montCtx, ctx);
+				if (exp[i]) BN_mod_mul_montgomery (res, res, table[len - 1 - i][exp[i] - 1], montCtx, ctx);
 			}
 			else if (exp[i])
-				res = BN_dup (table[len-i-1][exp[i]-1]);
+				res = BN_dup (table[len - i - 1][exp[i] - 1]);
 		}
-		if (res)
-			BN_from_montgomery (res, res, montCtx, ctx);
+		if (res) BN_from_montgomery (res, res, montCtx, ctx);
 		BN_MONT_CTX_free (montCtx);
 		return res;
 	}
@@ -274,9 +264,9 @@ namespace crypto
 		return ret;
 	}
 
-	static BIGNUM * (* g_ElggTable)[255] = nullptr;
+	static BIGNUM * (*g_ElggTable)[255] = nullptr;
 
-// x25519
+	// x25519
 	X25519Keys::X25519Keys ()
 	{
 		m_Ctx = EVP_PKEY_CTX_new_id (NID_X25519, NULL);
@@ -349,7 +339,7 @@ namespace crypto
 		}
 	}
 
-// ElGamal
+	// ElGamal
 	void ElGamalEncrypt (const uint8_t * key, const uint8_t * data, uint8_t * encrypted)
 	{
 		BN_CTX * ctx = BN_CTX_new ();
@@ -382,8 +372,8 @@ namespace crypto
 		// create m
 		uint8_t m[255];
 		m[0] = 0xFF;
-		memcpy (m+33, data, 222);
-		SHA256 (m+33, 222, m+1);
+		memcpy (m + 33, data, 222);
+		SHA256 (m + 33, 222, m + 1);
 		// calculate b = b1*m mod p
 		BN_bin2bn (m, 255, b);
 		BN_mod_mul (b, b1, b, elgp, ctx);
@@ -402,9 +392,10 @@ namespace crypto
 	{
 		BN_CTX * ctx = BN_CTX_new ();
 		BN_CTX_start (ctx);
-		BIGNUM * x = BN_CTX_get (ctx), * a = BN_CTX_get (ctx), * b = BN_CTX_get (ctx);
+		BIGNUM *x = BN_CTX_get (ctx), *a = BN_CTX_get (ctx), *b = BN_CTX_get (ctx);
 		BN_bin2bn (key, 256, x);
-		BN_sub (x, elgp, x); BN_sub_word (x, 1); // x = elgp - x- 1
+		BN_sub (x, elgp, x);
+		BN_sub_word (x, 1); // x = elgp - x- 1
 		BN_bin2bn (encrypted + 1, 256, a);
 		BN_bin2bn (encrypted + 258, 256, b);
 		// m = b*(a^x mod p) mod p
@@ -428,7 +419,7 @@ namespace crypto
 		RAND_bytes (priv, 256);
 #else
 		// lower 226 bits (28 bytes and 2 bits) only. short exponent
-		auto numBytes = (ELGAMAL_SHORT_EXPONENT_NUM_BITS)/8 + 1; // 29
+		auto numBytes = (ELGAMAL_SHORT_EXPONENT_NUM_BITS) / 8 + 1; // 29
 		auto numZeroBytes = 256 - numBytes;
 		RAND_bytes (priv + numZeroBytes, numBytes);
 		memset (priv, 0, numZeroBytes);
@@ -443,25 +434,25 @@ namespace crypto
 		BN_CTX_free (ctx);
 	}
 
-// ECIES
+	// ECIES
 	void ECIESEncrypt (const EC_GROUP * curve, const EC_POINT * key, const uint8_t * data, uint8_t * encrypted)
 	{
 		BN_CTX * ctx = BN_CTX_new ();
 		BN_CTX_start (ctx);
 		BIGNUM * q = BN_CTX_get (ctx);
-		EC_GROUP_get_order(curve, q, ctx);
+		EC_GROUP_get_order (curve, q, ctx);
 		int len = BN_num_bytes (q);
 		BIGNUM * k = BN_CTX_get (ctx);
 		BN_rand_range (k, q); // 0 < k < q
 		// point for shared secret
 		auto p = EC_POINT_new (curve);
 		EC_POINT_mul (curve, p, k, nullptr, nullptr, ctx);
-		BIGNUM * x = BN_CTX_get (ctx), * y = BN_CTX_get (ctx);
+		BIGNUM *x = BN_CTX_get (ctx), *y = BN_CTX_get (ctx);
 		EC_POINT_get_affine_coordinates (curve, p, x, y, nullptr);
 		encrypted[0] = 0;
 		bn2buf (x, encrypted + 1, len);
 		bn2buf (y, encrypted + 1 + len, len);
-		RAND_bytes (encrypted + 1 + 2*len, 256 - 2*len);
+		RAND_bytes (encrypted + 1 + 2 * len, 256 - 2 * len);
 		// encryption key and iv
 		EC_POINT_mul (curve, p, nullptr, key, k, ctx);
 		EC_POINT_get_affine_coordinates (curve, p, x, y, nullptr);
@@ -471,9 +462,10 @@ namespace crypto
 		SHA256 (keyBuf, len, shared);
 		// create buffer
 		uint8_t m[256];
-		m[0] = 0xFF; m[255] = 0xFF;
-		memcpy (m+33, data, 222);
-		SHA256 (m+33, 222, m+1);
+		m[0] = 0xFF;
+		m[255] = 0xFF;
+		memcpy (m + 33, data, 222);
+		SHA256 (m + 33, 222, m + 1);
 		// encrypt
 		CBCEncryption encryption;
 		encryption.SetKey (shared);
@@ -490,10 +482,10 @@ namespace crypto
 		BN_CTX * ctx = BN_CTX_new ();
 		BN_CTX_start (ctx);
 		BIGNUM * q = BN_CTX_get (ctx);
-		EC_GROUP_get_order(curve, q, ctx);
+		EC_GROUP_get_order (curve, q, ctx);
 		int len = BN_num_bytes (q);
 		// point for shared secret
-		BIGNUM * x = BN_CTX_get (ctx), * y = BN_CTX_get (ctx);
+		BIGNUM *x = BN_CTX_get (ctx), *y = BN_CTX_get (ctx);
 		BN_bin2bn (encrypted + 1, len, x);
 		BN_bin2bn (encrypted + 1 + len, len, y);
 		auto p = EC_POINT_new (curve);
@@ -539,7 +531,7 @@ namespace crypto
 	{
 		BN_CTX * ctx = BN_CTX_new ();
 		BIGNUM * q = BN_new ();
-		EC_GROUP_get_order(curve, q, ctx);
+		EC_GROUP_get_order (curve, q, ctx);
 		priv = BN_new ();
 		BN_rand_range (priv, q);
 		pub = EC_POINT_new (curve);
@@ -548,7 +540,7 @@ namespace crypto
 		BN_CTX_free (ctx);
 	}
 
-// AES
+	// AES
 	ECBEncryption::ECBEncryption ()
 	{
 		m_Ctx = EVP_CIPHER_CTX_new ();
@@ -556,13 +548,12 @@ namespace crypto
 
 	ECBEncryption::~ECBEncryption ()
 	{
-		if (m_Ctx)
-			EVP_CIPHER_CTX_free (m_Ctx);
+		if (m_Ctx) EVP_CIPHER_CTX_free (m_Ctx);
 	}
 
 	void ECBEncryption::Encrypt (const uint8_t * in, uint8_t * out)
 	{
-		EVP_EncryptInit_ex (m_Ctx, EVP_aes_256_ecb(), NULL, m_Key, NULL);
+		EVP_EncryptInit_ex (m_Ctx, EVP_aes_256_ecb (), NULL, m_Key, NULL);
 		EVP_CIPHER_CTX_set_padding (m_Ctx, 0);
 		int len;
 		EVP_EncryptUpdate (m_Ctx, out, &len, in, 16);
@@ -576,19 +567,17 @@ namespace crypto
 
 	ECBDecryption::~ECBDecryption ()
 	{
-		if (m_Ctx)
-			EVP_CIPHER_CTX_free (m_Ctx);
+		if (m_Ctx) EVP_CIPHER_CTX_free (m_Ctx);
 	}
 
 	void ECBDecryption::Decrypt (const uint8_t * in, uint8_t * out)
 	{
-		EVP_DecryptInit_ex (m_Ctx, EVP_aes_256_ecb(), NULL, m_Key, NULL);
+		EVP_DecryptInit_ex (m_Ctx, EVP_aes_256_ecb (), NULL, m_Key, NULL);
 		EVP_CIPHER_CTX_set_padding (m_Ctx, 0);
 		int len;
 		EVP_DecryptUpdate (m_Ctx, out, &len, in, 16);
 		EVP_DecryptFinal_ex (m_Ctx, out + len, &len);
 	}
-
 
 	CBCEncryption::CBCEncryption ()
 	{
@@ -597,14 +586,13 @@ namespace crypto
 
 	CBCEncryption::~CBCEncryption ()
 	{
-		if (m_Ctx)
-			EVP_CIPHER_CTX_free (m_Ctx);
+		if (m_Ctx) EVP_CIPHER_CTX_free (m_Ctx);
 	}
 
 	void CBCEncryption::Encrypt (const uint8_t * in, size_t len, const uint8_t * iv, uint8_t * out)
 	{
 		// len/16
-		EVP_EncryptInit_ex (m_Ctx, EVP_aes_256_cbc(), NULL, m_Key, iv);
+		EVP_EncryptInit_ex (m_Ctx, EVP_aes_256_cbc (), NULL, m_Key, iv);
 		EVP_CIPHER_CTX_set_padding (m_Ctx, 0);
 		int l;
 		EVP_EncryptUpdate (m_Ctx, out, &l, in, len);
@@ -618,14 +606,13 @@ namespace crypto
 
 	CBCDecryption::~CBCDecryption ()
 	{
-		if (m_Ctx)
-			EVP_CIPHER_CTX_free (m_Ctx);
+		if (m_Ctx) EVP_CIPHER_CTX_free (m_Ctx);
 	}
 
 	void CBCDecryption::Decrypt (const uint8_t * in, size_t len, const uint8_t * iv, uint8_t * out)
 	{
 		// len/16
-		EVP_DecryptInit_ex (m_Ctx, EVP_aes_256_cbc(), NULL, m_Key, iv);
+		EVP_DecryptInit_ex (m_Ctx, EVP_aes_256_cbc (), NULL, m_Key, iv);
 		EVP_CIPHER_CTX_set_padding (m_Ctx, 0);
 		int l;
 		EVP_DecryptUpdate (m_Ctx, out, &l, in, len);
@@ -648,25 +635,27 @@ namespace crypto
 		m_IVDecryption.Decrypt (iv, out); // double iv
 	}
 
-// AEAD/ChaCha20/Poly1305
+	// AEAD/ChaCha20/Poly1305
 
-	static bool AEADChaCha20Poly1305 (EVP_CIPHER_CTX * ctx, const uint8_t * msg, size_t msgLen,
-		const uint8_t * ad, size_t adLen, const uint8_t * key, const uint8_t * nonce, uint8_t * buf, size_t len, bool encrypt)
+	static bool AEADChaCha20Poly1305 (EVP_CIPHER_CTX * ctx, const uint8_t * msg, size_t msgLen, const uint8_t * ad,
+		size_t adLen, const uint8_t * key, const uint8_t * nonce, uint8_t * buf, size_t len, bool encrypt)
 	{
 		if (!ctx || len < msgLen || (encrypt && len - msgLen < 16)) return false;
 		// EVP update lengths are int in both OpenSSL and LibreSSL.
-		if (msgLen > (size_t)std::numeric_limits<int>::max () ||
-			adLen > (size_t)std::numeric_limits<int>::max ()) return false;
+		if (msgLen > (size_t)std::numeric_limits<int>::max () || adLen > (size_t)std::numeric_limits<int>::max ())
+			return false;
 		int outlen = 0, finalLen = 0;
 		if (encrypt)
 		{
-			if (EVP_EncryptInit_ex (ctx, EVP_chacha20_poly1305 (), nullptr, nullptr, nullptr) != 1 ||
-				EVP_CIPHER_CTX_ctrl (ctx, EVP_CTRL_AEAD_SET_IVLEN, 12, nullptr) != 1 ||
-				EVP_EncryptInit_ex (ctx, nullptr, nullptr, key, nonce) != 1) return false;
+			if (EVP_EncryptInit_ex (ctx, EVP_chacha20_poly1305 (), nullptr, nullptr, nullptr) != 1
+				|| EVP_CIPHER_CTX_ctrl (ctx, EVP_CTRL_AEAD_SET_IVLEN, 12, nullptr) != 1
+				|| EVP_EncryptInit_ex (ctx, nullptr, nullptr, key, nonce) != 1)
+				return false;
 			if (adLen && EVP_EncryptUpdate (ctx, nullptr, &outlen, ad, (int)adLen) != 1) return false;
 			outlen = 0;
 			if (msgLen && EVP_EncryptUpdate (ctx, buf, &outlen, msg, (int)msgLen) != 1) return false;
-			if (outlen != (int)msgLen || EVP_EncryptFinal_ex (ctx, buf + outlen, &finalLen) != 1 || finalLen != 0) return false;
+			if (outlen != (int)msgLen || EVP_EncryptFinal_ex (ctx, buf + outlen, &finalLen) != 1 || finalLen != 0)
+				return false;
 			return EVP_CIPHER_CTX_ctrl (ctx, EVP_CTRL_AEAD_GET_TAG, 16, buf + msgLen) == 1;
 		}
 #if defined(LIBRESSL_VERSION_NUMBER) && LIBRESSL_VERSION_NUMBER < 0x4000000fL
@@ -678,10 +667,11 @@ namespace crypto
 			msg = m.data ();
 		}
 #endif
-		if (EVP_DecryptInit_ex (ctx, EVP_chacha20_poly1305 (), nullptr, nullptr, nullptr) != 1 ||
-			EVP_CIPHER_CTX_ctrl (ctx, EVP_CTRL_AEAD_SET_IVLEN, 12, nullptr) != 1 ||
-			EVP_DecryptInit_ex (ctx, nullptr, nullptr, key, nonce) != 1 ||
-			EVP_CIPHER_CTX_ctrl (ctx, EVP_CTRL_AEAD_SET_TAG, 16, (void *)(msg + msgLen)) != 1) return false;
+		if (EVP_DecryptInit_ex (ctx, EVP_chacha20_poly1305 (), nullptr, nullptr, nullptr) != 1
+			|| EVP_CIPHER_CTX_ctrl (ctx, EVP_CTRL_AEAD_SET_IVLEN, 12, nullptr) != 1
+			|| EVP_DecryptInit_ex (ctx, nullptr, nullptr, key, nonce) != 1
+			|| EVP_CIPHER_CTX_ctrl (ctx, EVP_CTRL_AEAD_SET_TAG, 16, (void *)(msg + msgLen)) != 1)
+			return false;
 		if (adLen && EVP_DecryptUpdate (ctx, nullptr, &outlen, ad, (int)adLen) != 1) return false;
 		outlen = 0;
 		if (msgLen && EVP_DecryptUpdate (ctx, buf, &outlen, msg, (int)msgLen) != 1) return false;
@@ -704,8 +694,7 @@ namespace crypto
 
 	AEADChaCha20Poly1305Encryptor::~AEADChaCha20Poly1305Encryptor ()
 	{
-		if (m_Ctx)
-			EVP_CIPHER_CTX_free (m_Ctx);
+		if (m_Ctx) EVP_CIPHER_CTX_free (m_Ctx);
 	}
 
 	bool AEADChaCha20Poly1305Encryptor::Encrypt (const uint8_t * msg, size_t msgLen, const uint8_t * ad, size_t adLen,
@@ -714,18 +703,17 @@ namespace crypto
 		return AEADChaCha20Poly1305 (m_Ctx, msg, msgLen, ad, adLen, key, nonce, buf, len, true);
 	}
 
-	void AEADChaCha20Poly1305Encryptor::Encrypt (const std::vector<std::pair<uint8_t *, size_t> >& bufs,
+	void AEADChaCha20Poly1305Encryptor::Encrypt (const std::vector<std::pair<uint8_t *, size_t>> & bufs,
 		const uint8_t * key, const uint8_t * nonce, uint8_t * mac)
 	{
 		if (bufs.empty ()) return;
 		int outlen = 0;
-		EVP_EncryptInit_ex(m_Ctx, EVP_chacha20_poly1305(), 0, 0, 0);
-		EVP_CIPHER_CTX_ctrl(m_Ctx, EVP_CTRL_AEAD_SET_IVLEN, 12, 0);
-		EVP_EncryptInit_ex(m_Ctx, NULL, NULL, key, nonce);
-		for (const auto& it: bufs)
-			EVP_EncryptUpdate(m_Ctx, it.first, &outlen, it.first, it.second);
-		EVP_EncryptFinal_ex(m_Ctx, NULL, &outlen);
-		EVP_CIPHER_CTX_ctrl(m_Ctx, EVP_CTRL_AEAD_GET_TAG, 16, mac);
+		EVP_EncryptInit_ex (m_Ctx, EVP_chacha20_poly1305 (), 0, 0, 0);
+		EVP_CIPHER_CTX_ctrl (m_Ctx, EVP_CTRL_AEAD_SET_IVLEN, 12, 0);
+		EVP_EncryptInit_ex (m_Ctx, NULL, NULL, key, nonce);
+		for (const auto & it : bufs) EVP_EncryptUpdate (m_Ctx, it.first, &outlen, it.first, it.second);
+		EVP_EncryptFinal_ex (m_Ctx, NULL, &outlen);
+		EVP_CIPHER_CTX_ctrl (m_Ctx, EVP_CTRL_AEAD_GET_TAG, 16, mac);
 	}
 
 	AEADChaCha20Poly1305Decryptor::AEADChaCha20Poly1305Decryptor ()
@@ -735,8 +723,7 @@ namespace crypto
 
 	AEADChaCha20Poly1305Decryptor::~AEADChaCha20Poly1305Decryptor ()
 	{
-		if (m_Ctx)
-			EVP_CIPHER_CTX_free (m_Ctx);
+		if (m_Ctx) EVP_CIPHER_CTX_free (m_Ctx);
 	}
 
 	bool AEADChaCha20Poly1305Decryptor::Decrypt (const uint8_t * msg, size_t msgLen, const uint8_t * ad, size_t adLen,
@@ -745,23 +732,24 @@ namespace crypto
 		return AEADChaCha20Poly1305 (m_Ctx, msg, msgLen, ad, adLen, key, nonce, buf, len, false);
 	}
 
-	static void ChaCha20 (EVP_CIPHER_CTX *ctx, const uint8_t * msg, size_t msgLen, const uint8_t * key, const uint8_t * nonce, uint8_t * out)
+	static void ChaCha20 (EVP_CIPHER_CTX * ctx, const uint8_t * msg, size_t msgLen, const uint8_t * key,
+		const uint8_t * nonce, uint8_t * out)
 	{
 		uint32_t iv[4];
-		iv[0] = htole32 (1); memcpy (iv + 1, nonce, 12); // counter | nonce
-		EVP_EncryptInit_ex(ctx, EVP_chacha20 (), NULL, key, (const uint8_t *)iv);
+		iv[0] = htole32 (1);
+		memcpy (iv + 1, nonce, 12); // counter | nonce
+		EVP_EncryptInit_ex (ctx, EVP_chacha20 (), NULL, key, (const uint8_t *)iv);
 		int outlen = 0;
-		EVP_EncryptUpdate(ctx, out, &outlen, msg, msgLen);
-		EVP_EncryptFinal_ex(ctx, NULL, &outlen);
+		EVP_EncryptUpdate (ctx, out, &outlen, msg, msgLen);
+		EVP_EncryptFinal_ex (ctx, NULL, &outlen);
 	}
 
 	void ChaCha20 (const uint8_t * msg, size_t msgLen, const uint8_t * key, const uint8_t * nonce, uint8_t * out)
 	{
-		EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new ();
+		EVP_CIPHER_CTX * ctx = EVP_CIPHER_CTX_new ();
 		ChaCha20 (ctx, msg, msgLen, key, nonce, out);
 		EVP_CIPHER_CTX_free (ctx);
 	}
-
 
 	ChaCha20Context::ChaCha20Context ()
 	{
@@ -770,17 +758,17 @@ namespace crypto
 
 	ChaCha20Context::~ChaCha20Context ()
 	{
-		if (m_Ctx)
-			EVP_CIPHER_CTX_free (m_Ctx);
+		if (m_Ctx) EVP_CIPHER_CTX_free (m_Ctx);
 	}
 
-	void ChaCha20Context::operator ()(const uint8_t * msg, size_t msgLen, const uint8_t * key, const uint8_t * nonce, uint8_t * out)
+	void ChaCha20Context::operator() (
+		const uint8_t * msg, size_t msgLen, const uint8_t * key, const uint8_t * nonce, uint8_t * out)
 	{
 		ChaCha20 (m_Ctx, msg, msgLen, key, nonce, out);
 	}
 
-	void HKDF (const uint8_t * salt, const uint8_t * key, size_t keyLen, std::string_view info,
-		uint8_t * out, size_t outLen)
+	void HKDF (
+		const uint8_t * salt, const uint8_t * key, size_t keyLen, std::string_view info, uint8_t * out, size_t outLen)
 	{
 		HKDFContext ctx;
 		ctx (salt, key, keyLen, info, out, outLen);
@@ -793,15 +781,14 @@ namespace crypto
 
 	HKDFContext::~HKDFContext ()
 	{
-		if (m_Ctx)
-			EVP_PKEY_CTX_free (m_Ctx);
+		if (m_Ctx) EVP_PKEY_CTX_free (m_Ctx);
 	}
 
-	void HKDFContext::operator ()(const uint8_t * salt, const uint8_t * key, size_t keyLen,
-		std::string_view info, uint8_t * out, size_t outLen)
+	void HKDFContext::operator() (
+		const uint8_t * salt, const uint8_t * key, size_t keyLen, std::string_view info, uint8_t * out, size_t outLen)
 	{
 		EVP_PKEY_derive_init (m_Ctx);
-		EVP_PKEY_CTX_set_hkdf_md (m_Ctx, EVP_sha256());
+		EVP_PKEY_CTX_set_hkdf_md (m_Ctx, EVP_sha256 ());
 		if (key && keyLen)
 		{
 			EVP_PKEY_CTX_set1_hkdf_salt (m_Ctx, salt, 32);
@@ -811,24 +798,24 @@ namespace crypto
 		{
 			// zerolen
 			EVP_PKEY_CTX_hkdf_mode (m_Ctx, EVP_PKEY_HKDEF_MODE_EXPAND_ONLY);
-			uint8_t tempKey[32]; unsigned int len;
-			HMAC(EVP_sha256(), salt, 32, nullptr, 0, tempKey, &len);
+			uint8_t tempKey[32];
+			unsigned int len;
+			HMAC (EVP_sha256 (), salt, 32, nullptr, 0, tempKey, &len);
 			EVP_PKEY_CTX_set1_hkdf_key (m_Ctx, tempKey, len);
 		}
-		if (info.length () > 0)
-			EVP_PKEY_CTX_add1_hkdf_info (m_Ctx, (const uint8_t *)info.data (), info.length ());
+		if (info.length () > 0) EVP_PKEY_CTX_add1_hkdf_info (m_Ctx, (const uint8_t *)info.data (), info.length ());
 		EVP_PKEY_derive (m_Ctx, out, &outLen);
 	}
 
-// Noise
+	// Noise
 
 	void NoiseSymmetricState::Init (const uint8_t * ck, const uint8_t * hh, const uint8_t * pub)
 	{
 		// pub is Bob's public static key, hh = SHA256(h)
 		memcpy (m_CK, ck, 32);
 
-		EVP_MD_CTX *ctx = EVP_MD_CTX_new ();
-		EVP_DigestInit_ex(ctx, EVP_sha256 (), NULL);
+		EVP_MD_CTX * ctx = EVP_MD_CTX_new ();
+		EVP_DigestInit_ex (ctx, EVP_sha256 (), NULL);
 		EVP_DigestUpdate (ctx, hh, 32);
 		EVP_DigestUpdate (ctx, pub, 32);
 		EVP_DigestFinal_ex (ctx, m_H, nullptr); // h = MixHash(pub) = SHA256(hh || pub)
@@ -838,21 +825,20 @@ namespace crypto
 
 	void NoiseSymmetricState::MixHash (const uint8_t * buf, size_t len)
 	{
-		EVP_MD_CTX *ctx = EVP_MD_CTX_new ();
-		EVP_DigestInit_ex(ctx, EVP_sha256 (), NULL);
+		EVP_MD_CTX * ctx = EVP_MD_CTX_new ();
+		EVP_DigestInit_ex (ctx, EVP_sha256 (), NULL);
 		EVP_DigestUpdate (ctx, m_H, 32);
 		EVP_DigestUpdate (ctx, buf, len);
 		EVP_DigestFinal_ex (ctx, m_H, nullptr);
 		EVP_MD_CTX_free (ctx);
 	}
 
-	void NoiseSymmetricState::MixHash (const std::vector<std::pair<uint8_t *, size_t> >& bufs)
+	void NoiseSymmetricState::MixHash (const std::vector<std::pair<uint8_t *, size_t>> & bufs)
 	{
-		EVP_MD_CTX *ctx = EVP_MD_CTX_new ();
-		EVP_DigestInit_ex(ctx, EVP_sha256 (), NULL);
+		EVP_MD_CTX * ctx = EVP_MD_CTX_new ();
+		EVP_DigestInit_ex (ctx, EVP_sha256 (), NULL);
 		EVP_DigestUpdate (ctx, m_H, 32);
-		for (const auto& it: bufs)
-			EVP_DigestUpdate (ctx, it.first, it.second);
+		for (const auto & it : bufs) EVP_DigestUpdate (ctx, it.first, it.second);
 		EVP_DigestFinal_ex (ctx, m_H, nullptr);
 		EVP_MD_CTX_free (ctx);
 	}
@@ -894,65 +880,51 @@ namespace crypto
 		return ret;
 	}
 
-	void InitNoiseNState (NoiseSymmetricState& state, const uint8_t * pub)
+	void InitNoiseNState (NoiseSymmetricState & state, const uint8_t * pub)
 	{
 		static constexpr char protocolName[] = "Noise_N_25519_ChaChaPoly_SHA256"; // 31 chars
-		static constexpr uint8_t hh[32] =
-		{
-			0x69, 0x4d, 0x52, 0x44, 0x5a, 0x27, 0xd9, 0xad, 0xfa, 0xd2, 0x9c, 0x76, 0x32, 0x39, 0x5d, 0xc1,
-			0xe4, 0x35, 0x4c, 0x69, 0xb4, 0xf9, 0x2e, 0xac, 0x8a, 0x1e, 0xe4, 0x6a, 0x9e, 0xd2, 0x15, 0x54
-		}; // hh = SHA256(protocol_name || 0)
+		static constexpr uint8_t hh[32] = { 0x69, 0x4d, 0x52, 0x44, 0x5a, 0x27, 0xd9, 0xad, 0xfa, 0xd2, 0x9c, 0x76,
+			0x32, 0x39, 0x5d, 0xc1, 0xe4, 0x35, 0x4c, 0x69, 0xb4, 0xf9, 0x2e, 0xac, 0x8a, 0x1e, 0xe4, 0x6a, 0x9e, 0xd2,
+			0x15, 0x54 }; // hh = SHA256(protocol_name || 0)
 		state.Init ((const uint8_t *)protocolName, hh, pub); // ck = protocol_name || 0
 	}
 
-	void InitNoiseXKState (NoiseSymmetricState& state, const uint8_t * pub)
+	void InitNoiseXKState (NoiseSymmetricState & state, const uint8_t * pub)
 	{
-		static constexpr uint8_t protocolNameHash[32] =
-		{
-			0x72, 0xe8, 0x42, 0xc5, 0x45, 0xe1, 0x80, 0x80, 0xd3, 0x9c, 0x44, 0x93, 0xbb, 0x91, 0xd7, 0xed,
-			0xf2, 0x28, 0x98, 0x17, 0x71, 0x21, 0x8c, 0x1f, 0x62, 0x4e, 0x20, 0x6f, 0x28, 0xd3, 0x2f, 0x71
-		}; // SHA256 ("Noise_XKaesobfse+hs2+hs3_25519_ChaChaPoly_SHA256")
-		static constexpr uint8_t hh[32] =
-		{
-			0x49, 0xff, 0x48, 0x3f, 0xc4, 0x04, 0xb9, 0xb2, 0x6b, 0x11, 0x94, 0x36, 0x72, 0xff, 0x05, 0xb5,
-			0x61, 0x27, 0x03, 0x31, 0xba, 0x89, 0xb8, 0xfc, 0x33, 0x15, 0x93, 0x87, 0x57, 0xdd, 0x3d, 0x1e
-		}; // SHA256 (protocolNameHash)
+		static constexpr uint8_t protocolNameHash[32] = { 0x72, 0xe8, 0x42, 0xc5, 0x45, 0xe1, 0x80, 0x80, 0xd3, 0x9c,
+			0x44, 0x93, 0xbb, 0x91, 0xd7, 0xed, 0xf2, 0x28, 0x98, 0x17, 0x71, 0x21, 0x8c, 0x1f, 0x62, 0x4e, 0x20, 0x6f,
+			0x28, 0xd3, 0x2f, 0x71 }; // SHA256 ("Noise_XKaesobfse+hs2+hs3_25519_ChaChaPoly_SHA256")
+		static constexpr uint8_t hh[32] = { 0x49, 0xff, 0x48, 0x3f, 0xc4, 0x04, 0xb9, 0xb2, 0x6b, 0x11, 0x94, 0x36,
+			0x72, 0xff, 0x05, 0xb5, 0x61, 0x27, 0x03, 0x31, 0xba, 0x89, 0xb8, 0xfc, 0x33, 0x15, 0x93, 0x87, 0x57, 0xdd,
+			0x3d, 0x1e }; // SHA256 (protocolNameHash)
 		state.Init (protocolNameHash, hh, pub);
 	}
 
-	void InitNoiseXKState1 (NoiseSymmetricState& state, const uint8_t * pub)
+	void InitNoiseXKState1 (NoiseSymmetricState & state, const uint8_t * pub)
 	{
-		static constexpr uint8_t protocolNameHash[32] =
-		{
-			0xb1, 0x37, 0x22, 0x81, 0x74, 0x23, 0xa8, 0xfd, 0xf4, 0x2d, 0xf2, 0xe6, 0x0e, 0xd1, 0xed, 0xf4,
-			0x1b, 0x93, 0x07, 0x1d, 0xb1, 0xec, 0x24, 0xa3, 0x67, 0xf7, 0x84, 0xec, 0x27, 0x0d, 0x81, 0x32
-		}; // SHA256 ("Noise_XKchaobfse+hs1+hs2+hs3_25519_ChaChaPoly_SHA256")
-		static constexpr uint8_t hh[32] =
-		{
-			0xdc, 0x85, 0xe6, 0xaf, 0x7b, 0x02, 0x65, 0x0c, 0xf1, 0xf9, 0x0d, 0x71, 0xfb, 0xc6, 0xd4, 0x53,
-			0xa7, 0xcf, 0x6d, 0xbf, 0xbd, 0x52, 0x5e, 0xa5, 0xb5, 0x79, 0x1c, 0x47, 0xb3, 0x5e, 0xbc, 0x33
-		}; // SHA256 (protocolNameHash)
+		static constexpr uint8_t protocolNameHash[32] = { 0xb1, 0x37, 0x22, 0x81, 0x74, 0x23, 0xa8, 0xfd, 0xf4, 0x2d,
+			0xf2, 0xe6, 0x0e, 0xd1, 0xed, 0xf4, 0x1b, 0x93, 0x07, 0x1d, 0xb1, 0xec, 0x24, 0xa3, 0x67, 0xf7, 0x84, 0xec,
+			0x27, 0x0d, 0x81, 0x32 }; // SHA256 ("Noise_XKchaobfse+hs1+hs2+hs3_25519_ChaChaPoly_SHA256")
+		static constexpr uint8_t hh[32] = { 0xdc, 0x85, 0xe6, 0xaf, 0x7b, 0x02, 0x65, 0x0c, 0xf1, 0xf9, 0x0d, 0x71,
+			0xfb, 0xc6, 0xd4, 0x53, 0xa7, 0xcf, 0x6d, 0xbf, 0xbd, 0x52, 0x5e, 0xa5, 0xb5, 0x79, 0x1c, 0x47, 0xb3, 0x5e,
+			0xbc, 0x33 }; // SHA256 (protocolNameHash)
 		state.Init (protocolNameHash, hh, pub);
 	}
 
-	void InitNoiseIKState (NoiseSymmetricState& state, const uint8_t * pub)
+	void InitNoiseIKState (NoiseSymmetricState & state, const uint8_t * pub)
 	{
-		static constexpr uint8_t protocolNameHash[32] =
-		{
-			0x4c, 0xaf, 0x11, 0xef, 0x2c, 0x8e, 0x36, 0x56, 0x4c, 0x53, 0xe8, 0x88, 0x85, 0x06, 0x4d, 0xba,
-			0xac, 0xbe, 0x00, 0x54, 0xad, 0x17, 0x8f, 0x80, 0x79, 0xa6, 0x46, 0x82, 0x7e, 0x6e, 0xe4, 0x0c
-		}; // SHA256("Noise_IKelg2+hs2_25519_ChaChaPoly_SHA256"), 40 bytes
-		static constexpr uint8_t hh[32] =
-		{
-			0x9c, 0xcf, 0x85, 0x2c, 0xc9, 0x3b, 0xb9, 0x50, 0x44, 0x41, 0xe9, 0x50, 0xe0, 0x1d, 0x52, 0x32,
-			0x2e, 0x0d, 0x47, 0xad, 0xd1, 0xe9, 0xa5, 0x55, 0xf7, 0x55, 0xb5, 0x69, 0xae, 0x18, 0x3b, 0x5c
-		}; // SHA256 (protocolNameHash)
+		static constexpr uint8_t protocolNameHash[32] = { 0x4c, 0xaf, 0x11, 0xef, 0x2c, 0x8e, 0x36, 0x56, 0x4c, 0x53,
+			0xe8, 0x88, 0x85, 0x06, 0x4d, 0xba, 0xac, 0xbe, 0x00, 0x54, 0xad, 0x17, 0x8f, 0x80, 0x79, 0xa6, 0x46, 0x82,
+			0x7e, 0x6e, 0xe4, 0x0c }; // SHA256("Noise_IKelg2+hs2_25519_ChaChaPoly_SHA256"), 40 bytes
+		static constexpr uint8_t hh[32] = { 0x9c, 0xcf, 0x85, 0x2c, 0xc9, 0x3b, 0xb9, 0x50, 0x44, 0x41, 0xe9, 0x50,
+			0xe0, 0x1d, 0x52, 0x32, 0x2e, 0x0d, 0x47, 0xad, 0xd1, 0xe9, 0xa5, 0x55, 0xf7, 0x55, 0xb5, 0x69, 0xae, 0x18,
+			0x3b, 0x5c }; // SHA256 (protocolNameHash)
 		state.Init (protocolNameHash, hh, pub);
 	}
 
-// init and terminate
+	// init and terminate
 
-/*	std::vector <std::unique_ptr<std::mutex> > m_OpenSSLMutexes;
+	/*	std::vector <std::unique_ptr<std::mutex> > m_OpenSSLMutexes;
 	static void OpensslLockingCallback(int mode, int type, const char * file, int line)
 	{
 		if (type > 0 && (size_t)type < m_OpenSSLMutexes.size ())
@@ -966,17 +938,17 @@ namespace crypto
 
 	void InitCrypto (bool precomputation)
 	{
-/*		auto numLocks = CRYPTO_num_locks();
+		/*		auto numLocks = CRYPTO_num_locks();
 		for (int i = 0; i < numLocks; i++)
 			m_OpenSSLMutexes.emplace_back (new std::mutex);
 		CRYPTO_set_locking_callback (OpensslLockingCallback);*/
 		if (precomputation)
 		{
 #if IS_X86_64
-			g_ElggTable = new BIGNUM * [ELGAMAL_FULL_EXPONENT_NUM_BYTES][255];
+			g_ElggTable = new BIGNUM *[ELGAMAL_FULL_EXPONENT_NUM_BYTES][255];
 			PrecalculateElggTable (g_ElggTable, ELGAMAL_FULL_EXPONENT_NUM_BYTES);
 #else
-			g_ElggTable = new BIGNUM * [ELGAMAL_SHORT_EXPONENT_NUM_BYTES][255];
+			g_ElggTable = new BIGNUM *[ELGAMAL_SHORT_EXPONENT_NUM_BYTES][255];
 			PrecalculateElggTable (g_ElggTable, ELGAMAL_SHORT_EXPONENT_NUM_BYTES);
 #endif
 		}
@@ -993,9 +965,10 @@ namespace crypto
 				ELGAMAL_SHORT_EXPONENT_NUM_BYTES
 #endif
 			);
-			delete[] g_ElggTable; g_ElggTable = nullptr;
+			delete[] g_ElggTable;
+			g_ElggTable = nullptr;
 		}
-/*		CRYPTO_set_locking_callback (nullptr);
+		/*		CRYPTO_set_locking_callback (nullptr);
 		m_OpenSSLMutexes.clear ();*/
 	}
 }

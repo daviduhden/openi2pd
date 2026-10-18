@@ -79,11 +79,8 @@ namespace tui
 
 		constexpr Rgb FromHex (unsigned int value)
 		{
-			return {
-				static_cast<int> ((value >> 16) & 0xFFu),
-				static_cast<int> ((value >> 8) & 0xFFu),
-				static_cast<int> (value & 0xFFu)
-			};
+			return { static_cast<int> ((value >> 16) & 0xFFu), static_cast<int> ((value >> 8) & 0xFFu),
+				static_cast<int> (value & 0xFFu) };
 		}
 
 		// Semantic tokens from assets/branding/colors.md.  The logo accents
@@ -149,52 +146,30 @@ namespace tui
 
 			switch (role)
 			{
-				case ThemeRole::HeaderBar:
-					return {onSurface, surfaceVariant};
-				case ThemeRole::Title:
-					return {onSurface, surfaceVariant};
-				case ThemeRole::StatusBar:
-					return {onSurfaceVariant, surfaceVariant};
-				case ThemeRole::SelectedRow:
-					return {onPrimaryContainer, selected};
-				case ThemeRole::SelectedTab:
-					return {onPrimaryContainer, primaryContainer};
-				case ThemeRole::PanelBorder:
-					return {outline, background, false, true};
-				case ThemeRole::Primary:
-					return {primary, background, false, true};
-				case ThemeRole::Secondary:
-					return {secondary, background, false, true};
-				case ThemeRole::Success:
-					return {success, background, false, true};
-				case ThemeRole::Warning:
-					return {warning, background, false, true};
-				case ThemeRole::Error:
-					return {error, background, false, true};
-				case ThemeRole::Disabled:
-					return {disabled, background, false, true};
-				case ThemeRole::Muted:
-					return {onSurfaceVariant, background, false, true};
-				case ThemeRole::TorrentProgress:
-					return {success, background, false, true};
-				case ThemeRole::TorrentDownload:
-					return {primary, background, false, true};
-				case ThemeRole::TorrentUpload:
-					return {secondary, background, false, true};
-				case ThemeRole::LogDebug:
-					return {onSurfaceVariant, background, false, true};
-				case ThemeRole::LogInfo:
-					return {onSurface, background, true, true};
-				case ThemeRole::LogWarning:
-					return {warning, background, false, true};
-				case ThemeRole::LogError:
-					return {error, background, false, true};
-				case ThemeRole::LogCritical:
-					return {light ? LightOnPrimary : background, error};
-				case ThemeRole::Count:
-					break;
+			case ThemeRole::HeaderBar: return { onSurface, surfaceVariant };
+			case ThemeRole::Title: return { onSurface, surfaceVariant };
+			case ThemeRole::StatusBar: return { onSurfaceVariant, surfaceVariant };
+			case ThemeRole::SelectedRow: return { onPrimaryContainer, selected };
+			case ThemeRole::SelectedTab: return { onPrimaryContainer, primaryContainer };
+			case ThemeRole::PanelBorder: return { outline, background, false, true };
+			case ThemeRole::Primary: return { primary, background, false, true };
+			case ThemeRole::Secondary: return { secondary, background, false, true };
+			case ThemeRole::Success: return { success, background, false, true };
+			case ThemeRole::Warning: return { warning, background, false, true };
+			case ThemeRole::Error: return { error, background, false, true };
+			case ThemeRole::Disabled: return { disabled, background, false, true };
+			case ThemeRole::Muted: return { onSurfaceVariant, background, false, true };
+			case ThemeRole::TorrentProgress: return { success, background, false, true };
+			case ThemeRole::TorrentDownload: return { primary, background, false, true };
+			case ThemeRole::TorrentUpload: return { secondary, background, false, true };
+			case ThemeRole::LogDebug: return { onSurfaceVariant, background, false, true };
+			case ThemeRole::LogInfo: return { onSurface, background, true, true };
+			case ThemeRole::LogWarning: return { warning, background, false, true };
+			case ThemeRole::LogError: return { error, background, false, true };
+			case ThemeRole::LogCritical: return { light ? LightOnPrimary : background, error };
+			case ThemeRole::Count: break;
 			}
-			return {onSurface, background, true, true};
+			return { onSurface, background, true, true };
 		}
 
 		struct AnsiSpec
@@ -225,86 +200,61 @@ namespace tui
 
 			switch (role)
 			{
-				case ThemeRole::HeaderBar:
-				case ThemeRole::Title:
-				case ThemeRole::StatusBar:
-					return {brightWhite, blue};
-				case ThemeRole::SelectedRow:
-				case ThemeRole::SelectedTab:
-					return {black, brightCyan};
-				case ThemeRole::PanelBorder:
-					return {light ? blue : gray, 0, false, true};
-				case ThemeRole::Primary:
-					return {light ? brightBlue : brightCyan, 0, false, true};
-				case ThemeRole::Secondary:
-					return {light ? cyan : brightBlue, 0, false, true};
-				case ThemeRole::Success:
-					return {light ? green : brightGreen, 0, false, true};
-				case ThemeRole::Warning:
-					// 8/16-colour amber is not reproducible on a light terminal;
-					// use default black with the bold warning label instead.
-					return {light ? black : brightYellow, 0, false, true};
-				case ThemeRole::Error:
-					return {light ? red : brightRed, 0, false, true};
-				case ThemeRole::Disabled:
-					return {light ? black : gray, 0, false, true};
-				case ThemeRole::Muted:
-					return {light ? black : white, 0, false, true};
-				case ThemeRole::TorrentProgress:
-					return {light ? green : brightGreen, 0, false, true};
-				case ThemeRole::TorrentDownload:
-					return {light ? brightBlue : brightCyan, 0, false, true};
-				case ThemeRole::TorrentUpload:
-					return {light ? magenta : brightBlue, 0, false, true};
-				case ThemeRole::LogDebug:
-					return {light ? black : gray, 0, false, true};
-				case ThemeRole::LogInfo:
-					return {0, 0, true, true};
-				case ThemeRole::LogWarning:
-					return {light ? yellow : brightYellow, 0, false, true};
-				case ThemeRole::LogError:
-					return {light ? red : brightRed, 0, false, true};
-				case ThemeRole::LogCritical:
-					return {brightWhite, light ? red : brightRed};
-				case ThemeRole::Count:
-					break;
+			case ThemeRole::HeaderBar:
+			case ThemeRole::Title:
+			case ThemeRole::StatusBar: return { brightWhite, blue };
+			case ThemeRole::SelectedRow:
+			case ThemeRole::SelectedTab: return { black, brightCyan };
+			case ThemeRole::PanelBorder: return { light ? blue : gray, 0, false, true };
+			case ThemeRole::Primary: return { light ? brightBlue : brightCyan, 0, false, true };
+			case ThemeRole::Secondary: return { light ? cyan : brightBlue, 0, false, true };
+			case ThemeRole::Success: return { light ? green : brightGreen, 0, false, true };
+			case ThemeRole::Warning:
+				// 8/16-colour amber is not reproducible on a light terminal;
+				// use default black with the bold warning label instead.
+				return { light ? black : brightYellow, 0, false, true };
+			case ThemeRole::Error: return { light ? red : brightRed, 0, false, true };
+			case ThemeRole::Disabled: return { light ? black : gray, 0, false, true };
+			case ThemeRole::Muted: return { light ? black : white, 0, false, true };
+			case ThemeRole::TorrentProgress: return { light ? green : brightGreen, 0, false, true };
+			case ThemeRole::TorrentDownload: return { light ? brightBlue : brightCyan, 0, false, true };
+			case ThemeRole::TorrentUpload: return { light ? magenta : brightBlue, 0, false, true };
+			case ThemeRole::LogDebug: return { light ? black : gray, 0, false, true };
+			case ThemeRole::LogInfo: return { 0, 0, true, true };
+			case ThemeRole::LogWarning: return { light ? yellow : brightYellow, 0, false, true };
+			case ThemeRole::LogError: return { light ? red : brightRed, 0, false, true };
+			case ThemeRole::LogCritical: return { brightWhite, light ? red : brightRed };
+			case ThemeRole::Count: break;
 			}
-			return {0, 0, true, true};
+			return { 0, 0, true, true };
 		}
 
 		inline int MonoAttributes (ThemeRole role)
 		{
 			switch (role)
 			{
-				case ThemeRole::HeaderBar:
-				case ThemeRole::StatusBar:
-					return A_REVERSE;
-				case ThemeRole::Title:
-				case ThemeRole::SelectedRow:
-				case ThemeRole::SelectedTab:
-				case ThemeRole::LogCritical:
-					return A_REVERSE | A_BOLD;
-				case ThemeRole::PanelBorder:
-				case ThemeRole::Disabled:
-				case ThemeRole::Muted:
-				case ThemeRole::LogDebug:
-					return A_DIM;
-				case ThemeRole::Primary:
-				case ThemeRole::Secondary:
-				case ThemeRole::Success:
-				case ThemeRole::Warning:
-				case ThemeRole::TorrentProgress:
-				case ThemeRole::TorrentDownload:
-				case ThemeRole::LogWarning:
-					return A_BOLD;
-				case ThemeRole::Error:
-				case ThemeRole::LogError:
-					return A_BOLD | A_UNDERLINE;
-				case ThemeRole::TorrentUpload:
-					return A_BOLD | A_UNDERLINE;
-				case ThemeRole::LogInfo:
-				case ThemeRole::Count:
-					break;
+			case ThemeRole::HeaderBar:
+			case ThemeRole::StatusBar: return A_REVERSE;
+			case ThemeRole::Title:
+			case ThemeRole::SelectedRow:
+			case ThemeRole::SelectedTab:
+			case ThemeRole::LogCritical: return A_REVERSE | A_BOLD;
+			case ThemeRole::PanelBorder:
+			case ThemeRole::Disabled:
+			case ThemeRole::Muted:
+			case ThemeRole::LogDebug: return A_DIM;
+			case ThemeRole::Primary:
+			case ThemeRole::Secondary:
+			case ThemeRole::Success:
+			case ThemeRole::Warning:
+			case ThemeRole::TorrentProgress:
+			case ThemeRole::TorrentDownload:
+			case ThemeRole::LogWarning: return A_BOLD;
+			case ThemeRole::Error:
+			case ThemeRole::LogError: return A_BOLD | A_UNDERLINE;
+			case ThemeRole::TorrentUpload: return A_BOLD | A_UNDERLINE;
+			case ThemeRole::LogInfo:
+			case ThemeRole::Count: break;
 			}
 			return A_NORMAL;
 		}
@@ -313,44 +263,38 @@ namespace tui
 		{
 			switch (role)
 			{
-				case ThemeRole::Title:
-				case ThemeRole::SelectedRow:
-				case ThemeRole::SelectedTab:
-				case ThemeRole::Primary:
-				case ThemeRole::Secondary:
-				case ThemeRole::Success:
-				case ThemeRole::Warning:
-				case ThemeRole::Error:
-				case ThemeRole::TorrentProgress:
-				case ThemeRole::TorrentDownload:
-				case ThemeRole::LogWarning:
-				case ThemeRole::LogError:
-				case ThemeRole::LogCritical:
-					return A_BOLD;
-				case ThemeRole::Disabled:
-				case ThemeRole::Muted:
-				case ThemeRole::LogDebug:
-					return A_DIM;
-				case ThemeRole::HeaderBar:
-				case ThemeRole::StatusBar:
-				case ThemeRole::PanelBorder:
-				case ThemeRole::TorrentUpload:
-				case ThemeRole::LogInfo:
-				case ThemeRole::Count:
-					break;
+			case ThemeRole::Title:
+			case ThemeRole::SelectedRow:
+			case ThemeRole::SelectedTab:
+			case ThemeRole::Primary:
+			case ThemeRole::Secondary:
+			case ThemeRole::Success:
+			case ThemeRole::Warning:
+			case ThemeRole::Error:
+			case ThemeRole::TorrentProgress:
+			case ThemeRole::TorrentDownload:
+			case ThemeRole::LogWarning:
+			case ThemeRole::LogError:
+			case ThemeRole::LogCritical: return A_BOLD;
+			case ThemeRole::Disabled:
+			case ThemeRole::Muted:
+			case ThemeRole::LogDebug: return A_DIM;
+			case ThemeRole::HeaderBar:
+			case ThemeRole::StatusBar:
+			case ThemeRole::PanelBorder:
+			case ThemeRole::TorrentUpload:
+			case ThemeRole::LogInfo:
+			case ThemeRole::Count: break;
 			}
 			return A_NORMAL;
 		}
 
 		// Standard xterm values for the first 256 palette entries.
-		inline bool PaletteRgb (int index, int& r, int& g, int& b)
+		inline bool PaletteRgb (int index, int & r, int & g, int & b)
 		{
-			static constexpr int ANSI[16][3] = {
-				{0, 0, 0}, {128, 0, 0}, {0, 128, 0}, {128, 128, 0},
-				{0, 0, 128}, {128, 0, 128}, {0, 128, 128}, {192, 192, 192},
-				{128, 128, 128}, {255, 0, 0}, {0, 255, 0}, {255, 255, 0},
-				{0, 0, 255}, {255, 0, 255}, {0, 255, 255}, {255, 255, 255}
-			};
+			static constexpr int ANSI[16][3] = { { 0, 0, 0 }, { 128, 0, 0 }, { 0, 128, 0 }, { 128, 128, 0 },
+				{ 0, 0, 128 }, { 128, 0, 128 }, { 0, 128, 128 }, { 192, 192, 192 }, { 128, 128, 128 }, { 255, 0, 0 },
+				{ 0, 255, 0 }, { 255, 255, 0 }, { 0, 0, 255 }, { 255, 0, 255 }, { 0, 255, 255 }, { 255, 255, 255 } };
 			if (index < 0) return false;
 			if (index < 16)
 			{
@@ -362,7 +306,7 @@ namespace tui
 			if (index < 232)
 			{
 				const int value = index - 16;
-				const int steps[6] = {0, 95, 135, 175, 215, 255};
+				const int steps[6] = { 0, 95, 135, 175, 215, 255 };
 				r = steps[(value / 36) % 6];
 				g = steps[(value / 6) % 6];
 				b = steps[value % 6];
@@ -379,7 +323,7 @@ namespace tui
 			return false;
 		}
 
-		inline int DistanceSquared (const Rgb& colour, int r, int g, int b)
+		inline int DistanceSquared (const Rgb & colour, int r, int g, int b)
 		{
 			const int dr = colour.r - r;
 			const int dg = colour.g - g;
@@ -387,7 +331,7 @@ namespace tui
 			return dr * dr + dg * dg + db * db;
 		}
 
-		inline int RgbTo256 (const Rgb& colour)
+		inline int RgbTo256 (const Rgb & colour)
 		{
 			int best = 16;
 			int bestDistance = 1 << 30;
@@ -405,18 +349,18 @@ namespace tui
 			return best;
 		}
 
-		inline int PackRgb (const Rgb& colour)
+		inline int PackRgb (const Rgb & colour)
 		{
 			return ((colour.r & 0xFF) << 16) | ((colour.g & 0xFF) << 8) | (colour.b & 0xFF);
 		}
 
 		inline bool DetectLightBackground ()
 		{
-			const char* value = std::getenv ("COLORFGBG");
+			const char * value = std::getenv ("COLORFGBG");
 			if (!value || !*value) return false;
 
 			int last = -1;
-			const char* cursor = value;
+			const char * cursor = value;
 			while (*cursor)
 			{
 				while (*cursor && (*cursor < '0' || *cursor > '9')) ++cursor;
@@ -440,225 +384,216 @@ namespace tui
 
 	class Theme
 	{
-		public:
+	public:
+		bool Init ()
+		{
+			m_RolePair.fill (0);
+			m_Colors = 0;
+			m_PairCount = 0;
+			m_DefaultColors = false;
+			m_BackgroundKnown = false;
+			m_LightBackground = theme_detail::DetectLightBackground ();
+			const char * colorfgbg = std::getenv ("COLORFGBG");
+			m_BackgroundKnown = colorfgbg != nullptr && *colorfgbg != '\0';
+			m_Mode = Mode::Monochrome;
 
-			bool Init ()
+			if (!has_colors ()) return false;
+			if (start_color () == ERR) return false;
+
+			m_Colors = COLORS;
+			m_PairCount = COLOR_PAIRS;
+			// Default colours are safe only when the terminal background is
+			// known. Otherwise use explicit pairs so dark text is never drawn
+			// on a light background (or vice versa).
+			m_DefaultColors = (use_default_colors () == OK) && m_BackgroundKnown;
+			if (COLORS < 8) return false;
+
+			m_Mode = SelectMode ();
+			for (;;)
 			{
-				m_RolePair.fill (0);
-				m_Colors = 0;
-				m_PairCount = 0;
-				m_DefaultColors = false;
-				m_BackgroundKnown = false;
-				m_LightBackground = theme_detail::DetectLightBackground ();
-				const char* colorfgbg = std::getenv ("COLORFGBG");
-				m_BackgroundKnown = colorfgbg != nullptr && *colorfgbg != '\0';
-				m_Mode = Mode::Monochrome;
-
-				if (!has_colors ()) return false;
-				if (start_color () == ERR) return false;
-
-				m_Colors = COLORS;
-				m_PairCount = COLOR_PAIRS;
-				// Default colours are safe only when the terminal background is
-				// known. Otherwise use explicit pairs so dark text is never drawn
-				// on a light background (or vice versa).
-				m_DefaultColors = (use_default_colors () == OK) && m_BackgroundKnown;
-				if (COLORS < 8) return false;
-
-				m_Mode = SelectMode ();
-				for (;;)
-				{
-					const std::size_t configured = InitPairs ();
-					if (configured > 0 || m_Mode == Mode::Monochrome) break;
-					switch (m_Mode)
-					{
-						case Mode::TrueColor: m_Mode = Mode::Ansi8; break;
-						case Mode::Palette256: m_Mode = COLORS >= 16 ? Mode::Ansi16 : Mode::Ansi8; break;
-						case Mode::Ansi16: m_Mode = Mode::Ansi8; break;
-						case Mode::Ansi8: m_Mode = Mode::Monochrome; break;
-						case Mode::Monochrome: break;
-					}
-					if (m_Mode == Mode::Monochrome) break;
-				}
-				return m_Mode != Mode::Monochrome;
-			}
-
-			int Attributes (ThemeRole role) const
-			{
-				const std::size_t index = static_cast<std::size_t> (role);
-				if (index >= RoleCount) return A_NORMAL;
-				if (m_Mode == Mode::Monochrome || m_RolePair[index] == 0)
-					return theme_detail::MonoAttributes (role);
-				return COLOR_PAIR (m_RolePair[index]) | theme_detail::Emphasis (role);
-			}
-
-			void Apply (ThemeRole role) const
-			{
-				attrset (Attributes (role));
-			}
-
-			bool HasColors () const { return m_Mode != Mode::Monochrome; }
-			int Colors () const { return m_Colors; }
-			int ColorPairs () const { return m_PairCount; }
-			bool UsesDefaultColors () const { return m_DefaultColors; }
-			bool UsesTrueColor () const { return m_Mode == Mode::TrueColor; }
-			bool LightBackground () const { return m_LightBackground; }
-
-			const char* CapabilityName () const
-			{
+				const std::size_t configured = InitPairs ();
+				if (configured > 0 || m_Mode == Mode::Monochrome) break;
 				switch (m_Mode)
 				{
-					case Mode::TrueColor: return "direct-color";
-					case Mode::Palette256: return "xterm-256";
-					case Mode::Ansi16: return "ansi-16";
-					case Mode::Ansi8: return "ansi-8";
-					case Mode::Monochrome: return "monochrome";
+				case Mode::TrueColor: m_Mode = Mode::Ansi8; break;
+				case Mode::Palette256: m_Mode = COLORS >= 16 ? Mode::Ansi16 : Mode::Ansi8; break;
+				case Mode::Ansi16: m_Mode = Mode::Ansi8; break;
+				case Mode::Ansi8: m_Mode = Mode::Monochrome; break;
+				case Mode::Monochrome: break;
 				}
-				return "unknown";
+				if (m_Mode == Mode::Monochrome) break;
 			}
+			return m_Mode != Mode::Monochrome;
+		}
 
-			static const char* RoleName (ThemeRole role)
+		int Attributes (ThemeRole role) const
+		{
+			const std::size_t index = static_cast<std::size_t> (role);
+			if (index >= RoleCount) return A_NORMAL;
+			if (m_Mode == Mode::Monochrome || m_RolePair[index] == 0) return theme_detail::MonoAttributes (role);
+			return COLOR_PAIR (m_RolePair[index]) | theme_detail::Emphasis (role);
+		}
+
+		void Apply (ThemeRole role) const { attrset (Attributes (role)); }
+
+		bool HasColors () const { return m_Mode != Mode::Monochrome; }
+		int Colors () const { return m_Colors; }
+		int ColorPairs () const { return m_PairCount; }
+		bool UsesDefaultColors () const { return m_DefaultColors; }
+		bool UsesTrueColor () const { return m_Mode == Mode::TrueColor; }
+		bool LightBackground () const { return m_LightBackground; }
+
+		const char * CapabilityName () const
+		{
+			switch (m_Mode)
 			{
-				switch (role)
-				{
-					case ThemeRole::HeaderBar: return "header-bar";
-					case ThemeRole::Title: return "title";
-					case ThemeRole::StatusBar: return "status-bar";
-					case ThemeRole::SelectedRow: return "selected-row";
-					case ThemeRole::SelectedTab: return "selected-tab";
-					case ThemeRole::PanelBorder: return "panel-border";
-					case ThemeRole::Primary: return "primary";
-					case ThemeRole::Secondary: return "secondary";
-					case ThemeRole::Success: return "success";
-					case ThemeRole::Warning: return "warning";
-					case ThemeRole::Error: return "error";
-					case ThemeRole::Disabled: return "disabled";
-					case ThemeRole::Muted: return "muted";
-					case ThemeRole::TorrentProgress: return "torrent-progress";
-					case ThemeRole::TorrentDownload: return "torrent-download";
-					case ThemeRole::TorrentUpload: return "torrent-upload";
-					case ThemeRole::LogDebug: return "log-debug";
-					case ThemeRole::LogInfo: return "log-info";
-					case ThemeRole::LogWarning: return "log-warning";
-					case ThemeRole::LogError: return "log-error";
-					case ThemeRole::LogCritical: return "log-critical";
-					case ThemeRole::Count: break;
-				}
-				return "unknown";
+			case Mode::TrueColor: return "direct-color";
+			case Mode::Palette256: return "xterm-256";
+			case Mode::Ansi16: return "ansi-16";
+			case Mode::Ansi8: return "ansi-8";
+			case Mode::Monochrome: return "monochrome";
 			}
+			return "unknown";
+		}
 
-		private:
-
-			enum class Mode
+		static const char * RoleName (ThemeRole role)
+		{
+			switch (role)
 			{
-				Monochrome = 0,
-				Ansi8,
-				Ansi16,
-				Palette256,
-				TrueColor
-			};
+			case ThemeRole::HeaderBar: return "header-bar";
+			case ThemeRole::Title: return "title";
+			case ThemeRole::StatusBar: return "status-bar";
+			case ThemeRole::SelectedRow: return "selected-row";
+			case ThemeRole::SelectedTab: return "selected-tab";
+			case ThemeRole::PanelBorder: return "panel-border";
+			case ThemeRole::Primary: return "primary";
+			case ThemeRole::Secondary: return "secondary";
+			case ThemeRole::Success: return "success";
+			case ThemeRole::Warning: return "warning";
+			case ThemeRole::Error: return "error";
+			case ThemeRole::Disabled: return "disabled";
+			case ThemeRole::Muted: return "muted";
+			case ThemeRole::TorrentProgress: return "torrent-progress";
+			case ThemeRole::TorrentDownload: return "torrent-download";
+			case ThemeRole::TorrentUpload: return "torrent-upload";
+			case ThemeRole::LogDebug: return "log-debug";
+			case ThemeRole::LogInfo: return "log-info";
+			case ThemeRole::LogWarning: return "log-warning";
+			case ThemeRole::LogError: return "log-error";
+			case ThemeRole::LogCritical: return "log-critical";
+			case ThemeRole::Count: break;
+			}
+			return "unknown";
+		}
 
-			static constexpr std::size_t RoleCount = static_cast<std::size_t> (ThemeRole::Count);
+	private:
+		enum class Mode
+		{
+			Monochrome = 0,
+			Ansi8,
+			Ansi16,
+			Palette256,
+			TrueColor
+		};
 
-			Mode SelectMode () const
+		static constexpr std::size_t RoleCount = static_cast<std::size_t> (ThemeRole::Count);
+
+		Mode SelectMode () const
+		{
+			if (COLORS >= 0x1000000)
 			{
-				if (COLORS >= 0x1000000)
-				{
 #if defined(NCURSES_EXT_COLORS) && defined(NCURSES_EXT_FUNCS)
-					// xterm-direct style terminfo uses RGB-packed colour
-					// indices.  Direct colour is passed through
-					// init_extended_pair(); we do not call
-					// init_extended_color() because that would redefine
-					// slots in the user's terminal palette.
-					return Mode::TrueColor;
+				// xterm-direct style terminfo uses RGB-packed colour
+				// indices.  Direct colour is passed through
+				// init_extended_pair(); we do not call
+				// init_extended_color() because that would redefine
+				// slots in the user's terminal palette.
+				return Mode::TrueColor;
 #else
-					// The non-extended API cannot address RGB-packed
-					// indices.  Only the first eight ANSI colours are safe.
-					return Mode::Ansi8;
-#endif
-				}
-				if (COLORS >= 256) return Mode::Palette256;
-				if (COLORS >= 16) return Mode::Ansi16;
+				// The non-extended API cannot address RGB-packed
+				// indices.  Only the first eight ANSI colours are safe.
 				return Mode::Ansi8;
+#endif
 			}
+			if (COLORS >= 256) return Mode::Palette256;
+			if (COLORS >= 16) return Mode::Ansi16;
+			return Mode::Ansi8;
+		}
 
-			bool ResolveColors (ThemeRole role, int& foreground, int& background) const
+		bool ResolveColors (ThemeRole role, int & foreground, int & background) const
+		{
+			if (m_Mode == Mode::TrueColor)
 			{
-				if (m_Mode == Mode::TrueColor)
-				{
-					const auto spec = theme_detail::SpecFor (role, m_LightBackground);
-					foreground = (spec.defaultForeground && m_DefaultColors) ?
-						-1 : theme_detail::PackRgb (spec.foreground);
-					background = (spec.defaultBackground && m_DefaultColors) ?
-						-1 : theme_detail::PackRgb (spec.background);
-					return true;
-				}
-
-				if (m_Mode == Mode::Palette256)
-				{
-					const auto spec = theme_detail::SpecFor (role, m_LightBackground);
-					foreground = (spec.defaultForeground && m_DefaultColors) ?
-						-1 : theme_detail::RgbTo256 (spec.foreground);
-					background = (spec.defaultBackground && m_DefaultColors) ?
-						-1 : theme_detail::RgbTo256 (spec.background);
-					return true;
-				}
-
-				const auto spec = theme_detail::AnsiFor (role, m_LightBackground, m_Mode == Mode::Ansi16);
-				foreground = (spec.defaultForeground && m_DefaultColors) ? -1 : spec.foreground;
-				background = (spec.defaultBackground && m_DefaultColors) ? -1 : spec.background;
-				if (spec.defaultForeground && !m_DefaultColors)
-					foreground = m_LightBackground ? COLOR_BLACK : COLOR_WHITE;
-				if (spec.defaultBackground && !m_DefaultColors)
-					background = m_LightBackground ? COLOR_WHITE : COLOR_BLACK;
+				const auto spec = theme_detail::SpecFor (role, m_LightBackground);
+				foreground = (spec.defaultForeground && m_DefaultColors) ? -1 : theme_detail::PackRgb (spec.foreground);
+				background = (spec.defaultBackground && m_DefaultColors) ? -1 : theme_detail::PackRgb (spec.background);
 				return true;
 			}
 
-			std::size_t InitPairs ()
+			if (m_Mode == Mode::Palette256)
 			{
-				m_RolePair.fill (0);
-				if (m_Mode == Mode::Monochrome) return 0;
-
-				int pair = 1;
-				std::size_t configured = 0;
-				for (std::size_t index = 0; index < RoleCount; ++index)
-				{
-					const auto role = static_cast<ThemeRole> (index);
-					if (role == ThemeRole::LogInfo) continue;
-					if (pair >= COLOR_PAIRS || pair > 63) break;
-
-					int foreground = -1;
-					int background = -1;
-					if (!ResolveColors (role, foreground, background)) continue;
-
-					bool ok = false;
-					if (m_Mode == Mode::TrueColor)
-					{
-#if defined(NCURSES_EXT_COLORS) && defined(NCURSES_EXT_FUNCS)
-						ok = (init_extended_pair (pair, foreground, background) == OK);
-#endif
-					}
-					else
-					{
-						ok = (init_pair (static_cast<short> (pair), static_cast<short> (foreground),
-							static_cast<short> (background)) == OK);
-					}
-					if (!ok) continue;
-
-					m_RolePair[index] = static_cast<short> (pair);
-					++pair;
-					++configured;
-				}
-				return configured;
+				const auto spec = theme_detail::SpecFor (role, m_LightBackground);
+				foreground
+					= (spec.defaultForeground && m_DefaultColors) ? -1 : theme_detail::RgbTo256 (spec.foreground);
+				background
+					= (spec.defaultBackground && m_DefaultColors) ? -1 : theme_detail::RgbTo256 (spec.background);
+				return true;
 			}
 
-			Mode m_Mode = Mode::Monochrome;
-			int m_Colors = 0;
-			int m_PairCount = 0;
-			bool m_DefaultColors = false;
-			bool m_BackgroundKnown = false;
-			bool m_LightBackground = false;
-			std::array<short, RoleCount> m_RolePair{};
+			const auto spec = theme_detail::AnsiFor (role, m_LightBackground, m_Mode == Mode::Ansi16);
+			foreground = (spec.defaultForeground && m_DefaultColors) ? -1 : spec.foreground;
+			background = (spec.defaultBackground && m_DefaultColors) ? -1 : spec.background;
+			if (spec.defaultForeground && !m_DefaultColors) foreground = m_LightBackground ? COLOR_BLACK : COLOR_WHITE;
+			if (spec.defaultBackground && !m_DefaultColors) background = m_LightBackground ? COLOR_WHITE : COLOR_BLACK;
+			return true;
+		}
+
+		std::size_t InitPairs ()
+		{
+			m_RolePair.fill (0);
+			if (m_Mode == Mode::Monochrome) return 0;
+
+			int pair = 1;
+			std::size_t configured = 0;
+			for (std::size_t index = 0; index < RoleCount; ++index)
+			{
+				const auto role = static_cast<ThemeRole> (index);
+				if (role == ThemeRole::LogInfo) continue;
+				if (pair >= COLOR_PAIRS || pair > 63) break;
+
+				int foreground = -1;
+				int background = -1;
+				if (!ResolveColors (role, foreground, background)) continue;
+
+				bool ok = false;
+				if (m_Mode == Mode::TrueColor)
+				{
+#if defined(NCURSES_EXT_COLORS) && defined(NCURSES_EXT_FUNCS)
+					ok = (init_extended_pair (pair, foreground, background) == OK);
+#endif
+				}
+				else
+				{
+					ok = (init_pair (static_cast<short> (pair), static_cast<short> (foreground),
+							  static_cast<short> (background))
+						== OK);
+				}
+				if (!ok) continue;
+
+				m_RolePair[index] = static_cast<short> (pair);
+				++pair;
+				++configured;
+			}
+			return configured;
+		}
+
+		Mode m_Mode = Mode::Monochrome;
+		int m_Colors = 0;
+		int m_PairCount = 0;
+		bool m_DefaultColors = false;
+		bool m_BackgroundKnown = false;
+		bool m_LightBackground = false;
+		std::array<short, RoleCount> m_RolePair { };
 	};
 }
 }

@@ -15,21 +15,21 @@
 
 namespace
 {
-	struct CryptoGuard
-	{
-		CryptoGuard () { i2p::crypto::InitCrypto (false); }
-		~CryptoGuard () { i2p::crypto::TerminateCrypto (); }
-	};
+struct CryptoGuard
+{
+	CryptoGuard () { i2p::crypto::InitCrypto (false); }
+	~CryptoGuard () { i2p::crypto::TerminateCrypto (); }
+};
 
-	std::optional<std::string_view> FindValue (std::string_view record, std::string_view key)
-	{
-		const auto marker = record.find (key);
-		if (marker == std::string_view::npos) return std::nullopt;
-		auto value = record.substr (marker + key.size ());
-		const auto end = value.find ('#');
-		if (end != std::string_view::npos) value = value.substr (0, end);
-		return value;
-	}
+std::optional<std::string_view> FindValue (std::string_view record, std::string_view key)
+{
+	const auto marker = record.find (key);
+	if (marker == std::string_view::npos) return std::nullopt;
+	auto value = record.substr (marker + key.size ());
+	const auto end = value.find ('#');
+	if (end != std::string_view::npos) value = value.substr (0, end);
+	return value;
+}
 }
 
 int main (int argc, char * argv[])
@@ -60,8 +60,7 @@ int main (int argc, char * argv[])
 	}
 
 	auto sigStart = record.find ("#sig=");
-	if (sigStart == std::string::npos)
-		sigStart = record.find ("!sig=");
+	if (sigStart == std::string::npos) sigStart = record.find ("!sig=");
 	if (sigStart == std::string::npos)
 	{
 		std::cout << "Destination signature not found." << std::endl;
@@ -106,9 +105,9 @@ int main (int argc, char * argv[])
 		}
 		const std::string_view hostNoOldSig (record.data (), oldSigStart);
 		std::vector<uint8_t> oldSignature (oldIdentity.GetSignatureLen ());
-		if (i2p::data::Base64ToByteStream (*oldSig, oldSignature) != oldSignature.size () ||
-			!oldIdentity.Verify (reinterpret_cast<const uint8_t *> (hostNoOldSig.data ()),
-				hostNoOldSig.size (), oldSignature.data ()))
+		if (i2p::data::Base64ToByteStream (*oldSig, oldSignature) != oldSignature.size ()
+			|| !oldIdentity.Verify (
+				reinterpret_cast<const uint8_t *> (hostNoOldSig.data ()), hostNoOldSig.size (), oldSignature.data ()))
 		{
 			std::cout << "Invalid old destination signature." << std::endl;
 			return 1;

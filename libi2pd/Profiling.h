@@ -36,7 +36,7 @@ namespace data
 	const char PEER_PROFILE_USAGE_CONNECTED[] = "connected";
 	const char PEER_PROFILE_USAGE_DUPLICATED[] = "duplicated";
 
-	const int PEER_PROFILE_EXPIRATION_TIMEOUT = 36*60*60; // in seconds (1.5 days)
+	const int PEER_PROFILE_EXPIRATION_TIMEOUT = 36 * 60 * 60; // in seconds (1.5 days)
 	const int PEER_PROFILE_AUTOCLEAN_TIMEOUT = 1500; // in seconds (25 minutes)
 	const int PEER_PROFILE_AUTOCLEAN_VARIANCE = 900; // in seconds (15 minutes)
 	const int PEER_PROFILE_OBSOLETE_PROFILES_CLEAN_TIMEOUT = 5400; // in seconds (1.5 hours)
@@ -52,75 +52,77 @@ namespace data
 
 	class RouterProfile
 	{
-		public:
+	public:
+		RouterProfile ();
 
-			RouterProfile ();
+		void Save (const IdentHash & identHash);
+		void Load (const IdentHash & identHash);
 
-			void Save (const IdentHash& identHash);
-			void Load (const IdentHash& identHash);
+		bool IsBad ();
+		bool IsUnreachable ();
+		bool IsReal () const { return m_HasConnected || m_NumTunnelsAgreed > 0 || m_NumTunnelsDeclined > 0; }
 
-			bool IsBad ();
-			bool IsUnreachable ();
-			bool IsReal () const { return m_HasConnected || m_NumTunnelsAgreed > 0 || m_NumTunnelsDeclined > 0; }
+		void TunnelBuildResponse (uint8_t ret);
+		void TunnelNonReplied (int tunnelLength);
 
-			void TunnelBuildResponse (uint8_t ret);
-			void TunnelNonReplied (int tunnelLength);
+		void Unreachable (bool unreachable);
+		void Connected ();
+		void Duplicated ();
 
-			void Unreachable (bool unreachable);
-			void Connected ();
-			void Duplicated ();
+		uint64_t GetLastUpdateTime () const { return m_LastUpdateTime; };
+		bool IsUpdated () const { return m_IsUpdated; };
+		void SetUpdated (bool updated) { m_IsUpdated = updated; }
+		uint64_t GetLastAccessTime () const { return m_LastAccessTime; };
+		void SetLastAccessTime (uint64_t ts) { m_LastAccessTime = ts; };
+		uint64_t GetLastPersistTime () const { return m_LastPersistTime; };
+		void SetLastPersistTime (uint64_t ts) { m_LastPersistTime = ts; };
 
-			uint64_t GetLastUpdateTime () const { return m_LastUpdateTime; };
-			bool IsUpdated () const { return m_IsUpdated; };
-			void SetUpdated (bool updated) { m_IsUpdated = updated; }
-			uint64_t GetLastAccessTime () const { return m_LastAccessTime; };
-			void SetLastAccessTime (uint64_t ts) { m_LastAccessTime = ts; };
-			uint64_t GetLastPersistTime () const { return m_LastPersistTime; };
-			void SetLastPersistTime (uint64_t ts) { m_LastPersistTime = ts; };
+		bool IsUseful () const;
+		bool IsDuplicated () const { return m_IsDuplicated; };
 
-			bool IsUseful() const;
-			bool IsDuplicated () const { return m_IsDuplicated; };
+		const boost::asio::ip::udp::endpoint & GetLastEndpoint () const { return m_LastEndpoint; }
+		void SetLastEndpoint (const boost::asio::ip::udp::endpoint & ep) { m_LastEndpoint = ep; }
+		bool HasLastEndpoint (bool v4) const
+		{
+			return !m_LastEndpoint.address ().is_unspecified () && m_LastEndpoint.port ()
+				&& ((v4 && m_LastEndpoint.address ().is_v4 ()) || (!v4 && m_LastEndpoint.address ().is_v6 ()));
+		}
 
-			const boost::asio::ip::udp::endpoint& GetLastEndpoint () const { return m_LastEndpoint; }
-			void SetLastEndpoint (const boost::asio::ip::udp::endpoint& ep) { m_LastEndpoint = ep; }
-			bool HasLastEndpoint (bool v4) const { return !m_LastEndpoint.address ().is_unspecified () && m_LastEndpoint.port () &&
-				((v4 && m_LastEndpoint.address ().is_v4 ()) || (!v4 && m_LastEndpoint.address ().is_v6 ())); }
+	private:
+		void UpdateTime ();
 
-		private:
+		bool IsAlwaysDeclining () const { return !m_NumTunnelsAgreed && m_NumTunnelsDeclined >= 5; };
+		bool IsLowPartcipationRate () const;
+		bool IsLowReplyRate () const;
+		bool IsDeclinedRecently (uint64_t ts);
 
-			void UpdateTime ();
-
-			bool IsAlwaysDeclining () const { return !m_NumTunnelsAgreed && m_NumTunnelsDeclined >= 5; };
-			bool IsLowPartcipationRate () const;
-			bool IsLowReplyRate () const;
-			bool IsDeclinedRecently (uint64_t ts);
-
-		private:
-
-			bool m_IsUpdated;
-			uint64_t m_LastDeclineTime, m_LastUnreachableTime, m_LastUpdateTime,
-				m_LastAccessTime, m_LastPersistTime; // in seconds
-			// participation
-			uint32_t m_NumTunnelsAgreed;
-			uint32_t m_NumTunnelsDeclined;
-			float m_NumTunnelsNonReplied; // per one hop tunnel, 2 hops tunnel adds 0.5
-			// usage
-			uint32_t m_NumTimesTaken;
-			uint32_t m_NumTimesRejected;
-			bool m_HasConnected; // successful trusted(incoming or NTCP2) connection
-			bool m_IsDuplicated;
-			// connectivity
-			boost::asio::ip::udp::endpoint m_LastEndpoint; // SSU2 for non-published addresses
+	private:
+		bool m_IsUpdated;
+		uint64_t m_LastDeclineTime, m_LastUnreachableTime, m_LastUpdateTime, m_LastAccessTime,
+			m_LastPersistTime; // in seconds
+		// participation
+		uint32_t m_NumTunnelsAgreed;
+		uint32_t m_NumTunnelsDeclined;
+		float m_NumTunnelsNonReplied; // per one hop tunnel, 2 hops tunnel adds 0.5
+		// usage
+		uint32_t m_NumTimesTaken;
+		uint32_t m_NumTimesRejected;
+		bool m_HasConnected; // successful trusted(incoming or NTCP2) connection
+		bool m_IsDuplicated;
+		// connectivity
+		boost::asio::ip::udp::endpoint m_LastEndpoint; // SSU2 for non-published addresses
 	};
 
-	std::shared_ptr<RouterProfile> GetRouterProfile (const IdentHash& identHash);
-	bool IsRouterBanned (const IdentHash& identHash); // check only existing profiles
-	bool IsRouterDuplicated (const IdentHash& identHash); // check only existing profiles
+	std::shared_ptr<RouterProfile> GetRouterProfile (const IdentHash & identHash);
+	bool IsRouterBanned (const IdentHash & identHash); // check only existing profiles
+	bool IsRouterDuplicated (const IdentHash & identHash); // check only existing profiles
 	void InitProfilesStorage ();
 	std::future<void> DeleteObsoleteProfiles ();
 	void SaveProfiles ();
 	std::future<void> PersistProfiles ();
-	bool UpdateRouterProfile (const IdentHash& identHash, std::function<void (std::shared_ptr<RouterProfile>)> update); // return true if updated immediately, and false if postponed
+	bool UpdateRouterProfile (const IdentHash & identHash,
+		std::function<void (std::shared_ptr<RouterProfile>)>
+			update); // return true if updated immediately, and false if postponed
 	std::future<void> FlushPostponedRouterProfileUpdates ();
 }
 }

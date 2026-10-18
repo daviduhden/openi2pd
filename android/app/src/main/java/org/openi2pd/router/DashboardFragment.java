@@ -29,7 +29,6 @@ import com.google.android.material.progressindicator.LinearProgressIndicator;
  * destructive actions require confirmation.
  */
 public class DashboardFragment extends Fragment {
-
     private RouterViewModel viewModel;
 
     private TextView statusTitle;
@@ -53,9 +52,8 @@ public class DashboardFragment extends Fragment {
 
     @Nullable
     @Override
-    public View onCreateView(@NonNull LayoutInflater inflater,
-                             @Nullable ViewGroup container,
-                             @Nullable Bundle savedInstanceState) {
+    public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container,
+            @Nullable Bundle savedInstanceState) {
         return inflater.inflate(R.layout.fragment_dashboard, container, false);
     }
 
@@ -85,36 +83,37 @@ public class DashboardFragment extends Fragment {
 
         buttonStart.setOnClickListener(ignored -> {
             viewModel.startRouter();
-            Toast.makeText(requireContext(), R.string.toast_starting,
-                    Toast.LENGTH_SHORT).show();
+            Toast.makeText(requireContext(), R.string.toast_starting, Toast.LENGTH_SHORT).show();
         });
-        buttonStop.setOnClickListener(ignored ->
-                confirm(R.string.confirm_stop_title, R.string.confirm_stop_message,
+        buttonStop.setOnClickListener(ignored
+                -> confirm(R.string.confirm_stop_title, R.string.confirm_stop_message,
                         R.string.action_stop, () -> {
                             viewModel.stopRouter();
                             Toast.makeText(requireContext(), R.string.toast_stopping,
-                                    Toast.LENGTH_SHORT).show();
+                                         Toast.LENGTH_SHORT)
+                                    .show();
                         }));
-        buttonRestart.setOnClickListener(ignored ->
-                confirm(R.string.confirm_restart_title, R.string.confirm_restart_message,
+        buttonRestart.setOnClickListener(ignored
+                -> confirm(R.string.confirm_restart_title, R.string.confirm_restart_message,
                         R.string.action_restart, () -> {
                             viewModel.restartRouter();
                             Toast.makeText(requireContext(), R.string.toast_restarting,
-                                    Toast.LENGTH_SHORT).show();
+                                         Toast.LENGTH_SHORT)
+                                    .show();
                         }));
         buttonGraceful.setOnClickListener(ignored -> {
             if (UiFormat.gracefulActive(lastSnapshot)) {
                 viewModel.cancelGracefulStop();
                 Toast.makeText(requireContext(), R.string.toast_graceful_cancelled,
-                        Toast.LENGTH_SHORT).show();
+                             Toast.LENGTH_SHORT)
+                        .show();
             } else {
-                confirm(R.string.confirm_graceful_title,
-                        R.string.confirm_graceful_message,
+                confirm(R.string.confirm_graceful_title, R.string.confirm_graceful_message,
                         R.string.action_graceful_stop, () -> {
                             viewModel.beginGracefulStop();
-                            Toast.makeText(requireContext(),
-                                    R.string.toast_graceful_started,
-                                    Toast.LENGTH_SHORT).show();
+                            Toast.makeText(requireContext(), R.string.toast_graceful_started,
+                                         Toast.LENGTH_SHORT)
+                                    .show();
                         });
             }
         });
@@ -138,12 +137,12 @@ public class DashboardFragment extends Fragment {
         chipConnectivity.setText(UiFormat.connectivity(context, snapshot));
         chipTransports.setText(UiFormat.transports(context, snapshot));
 
-        boolean busy = snapshot == null
-                || state == UiFormat.RouterState.STARTING
+        boolean busy = snapshot == null || state == UiFormat.RouterState.STARTING
                 || state == UiFormat.RouterState.STOPPING;
         statusProgress.setVisibility(busy ? View.VISIBLE : View.GONE);
-        statusProgress.setContentDescription(getString(state == UiFormat.RouterState.STOPPING
-                ? R.string.state_stopping : R.string.state_starting));
+        statusProgress.setContentDescription(
+                getString(state == UiFormat.RouterState.STOPPING ? R.string.state_stopping
+                                                                 : R.string.state_starting));
 
         String warning = UiFormat.warningText(context, snapshot);
         if (warning == null || warning.isEmpty()) {
@@ -157,9 +156,9 @@ public class DashboardFragment extends Fragment {
             metricUptime.setText(UiFormat.duration(context, snapshot.uptimeSeconds()));
             metricPeers.setText(UiFormat.count(context, snapshot.peers()));
             metricRouters.setText(UiFormat.count(context, snapshot.routers()));
-            metricTunnels.setText(getString(R.string.metric_tunnels_value,
-                    snapshot.inboundTunnels(), snapshot.outboundTunnels(),
-                    snapshot.transitTunnels()));
+            metricTunnels.setText(
+                    getString(R.string.metric_tunnels_value, snapshot.inboundTunnels(),
+                            snapshot.outboundTunnels(), snapshot.transitTunnels()));
             metricReseed.setText(UiFormat.yesNo(context, snapshot.reseeding()));
             metricDownload.setText(UiFormat.rate(context, snapshot.inRate()));
             metricUpload.setText(UiFormat.rate(context, snapshot.outRate()));
@@ -178,13 +177,13 @@ public class DashboardFragment extends Fragment {
         buttonRestart.setEnabled(UiFormat.canRestart(snapshot));
 
         boolean gracefulActive = UiFormat.gracefulActive(snapshot);
-        buttonGraceful.setText(gracefulActive
-                ? R.string.action_cancel_graceful_stop : R.string.action_graceful_stop);
+        buttonGraceful.setText(gracefulActive ? R.string.action_cancel_graceful_stop
+                                              : R.string.action_graceful_stop);
         buttonGraceful.setEnabled(gracefulActive || UiFormat.canRestart(snapshot));
     }
 
-    private void confirm(@StringRes int title, @StringRes int message,
-                         @StringRes int positive, @NonNull Runnable action) {
+    private void confirm(@StringRes int title, @StringRes int message, @StringRes int positive,
+            @NonNull Runnable action) {
         new MaterialAlertDialogBuilder(requireContext())
                 .setTitle(title)
                 .setMessage(message)

@@ -24,7 +24,7 @@ namespace i2p
 {
 namespace http
 {
-	constexpr std::string_view CRLF = "\r\n";         /**< HTTP line terminator */
+	constexpr std::string_view CRLF = "\r\n"; /**< HTTP line terminator */
 	constexpr std::string_view HTTP_EOH = "\r\n\r\n"; /**< HTTP end-of-headers mark */
 
 	// case-insensitive comparator for HTTP header names (RFC 7230)
@@ -34,7 +34,7 @@ namespace http
 
 		bool operator() (std::string_view a, std::string_view b) const
 		{
-			return boost::ilexicographical_compare(a, b);
+			return boost::ilexicographical_compare (a, b);
 		}
 	};
 
@@ -51,26 +51,40 @@ namespace http
 		std::string frag;
 		bool ipv6;
 
-		URL(): schema(""), user(""), pass(""), host(""), port(0), path(""), hasquery(false), query(""), frag(""), ipv6(false) {};
-		URL (std::string_view url): URL () { parse (url); };
-		URL (const URL& ) = default;
-		URL (URL&& ) = default;
-		URL& operator=(const URL& ) = default;
+		URL ()
+			: schema ("")
+			, user ("")
+			, pass ("")
+			, host ("")
+			, port (0)
+			, path ("")
+			, hasquery (false)
+			, query ("")
+			, frag ("")
+			, ipv6 (false) { };
+		URL (std::string_view url)
+			: URL ()
+		{
+			parse (url);
+		};
+		URL (const URL &) = default;
+		URL (URL &&) = default;
+		URL & operator= (const URL &) = default;
 
 		/**
 		 * @brief Tries to parse url from string
 		 * @return true on success, false on invalid url
 		 */
-		bool parse (const char *str, std::size_t len = 0);
+		bool parse (const char * str, std::size_t len = 0);
 		bool parse (std::string_view url);
 
 		/**
 		 * @brief Parse query part of url to key/value map
 		 * @note Honestly, this should be implemented with std::multimap
 		 */
-		bool parse_query(std::map<std::string, std::string> & params) const;
+		bool parse_query (std::map<std::string, std::string> & params) const;
 
-		void create_query (const std::map<std::string, std::string>& params);
+		void create_query (const std::map<std::string, std::string> & params);
 
 		/**
 		 * @brief Serialize URL structure to url
@@ -81,53 +95,58 @@ namespace http
 		/**
 		 * @brief return true if the host is inside i2p
 		 */
-		bool is_i2p() const;
+		bool is_i2p () const;
 	};
 
 	struct HTTPMsg
 	{
 		std::map<std::string, std::string, CaseInsensitiveLess> headers;
 
-		void add_header(const char *name, const std::string & value, bool replace = false);
-		void add_header(const char *name, const char *value, bool replace = false);
-		void del_header(const char *name);
-		std::string get_header(const std::string& name) const;
+		void add_header (const char * name, const std::string & value, bool replace = false);
+		void add_header (const char * name, const char * value, bool replace = false);
+		void del_header (const char * name);
+		std::string get_header (const std::string & name) const;
 
 		/** @brief Returns declared message length or -1 if unknown */
-		long int content_length() const;
+		long int content_length () const;
 	};
 
 	struct HTTPReq
 	{
-		std::list<std::pair<std::string, std::string> > headers;
+		std::list<std::pair<std::string, std::string>> headers;
 		std::string version;
 		std::string method;
 		std::string uri;
 
-		HTTPReq (): version("HTTP/1.0"), method("GET"), uri("/") {};
+		HTTPReq ()
+			: version ("HTTP/1.0")
+			, method ("GET")
+			, uri ("/") { };
 
 		/**
 		 * @brief Tries to parse HTTP request from string
 		 * @return -1 on error, 0 on incomplete query, >0 on success
 		 * @note Positive return value is a size of header
 		 */
-		int parse(const char *buf, size_t len);
-		int parse(std::string_view buf);
+		int parse (const char * buf, size_t len);
+		int parse (std::string_view buf);
 
 		/** @brief Serialize HTTP request to string */
-		std::string to_string() const;
-		void write(std::ostream & o) const;
+		std::string to_string () const;
+		void write (std::ostream & o) const;
 
-		void AddHeader (const std::string& name, const std::string& value);
-		void UpdateHeader (const std::string& name, const std::string& value);
-		void RemoveHeader (const std::string& name, const std::string& exempt); // remove all headers starting with name, but exempt
-		void RemoveHeader (const std::string& name) { RemoveHeader (name, ""); };
+		void AddHeader (const std::string & name, const std::string & value);
+		void UpdateHeader (const std::string & name, const std::string & value);
+		void RemoveHeader (
+			const std::string & name, const std::string & exempt); // remove all headers starting with name, but exempt
+		void RemoveHeader (const std::string & name) { RemoveHeader (name, ""); };
 		std::string GetHeader (std::string_view name) const;
 		size_t GetNumHeaders (std::string_view name) const;
 		size_t GetNumHeaders () const { return headers.size (); };
 	};
 
-	struct HTTPRes : HTTPMsg {
+	struct HTTPRes : HTTPMsg
+	{
 		std::string version;
 		std::string status;
 		unsigned short int code;
@@ -140,15 +159,20 @@ namespace http
 		 */
 		std::string body;
 
-		HTTPRes (): version("HTTP/1.1"), status("OK"), code(200) {}
+		HTTPRes ()
+			: version ("HTTP/1.1")
+			, status ("OK")
+			, code (200)
+		{
+		}
 
 		/**
 		 * @brief Tries to parse HTTP response from string
 		 * @return -1 on error, 0 on incomplete query, >0 on success
 		 * @note Positive return value is a size of header
 		 */
-		int parse(const char *buf, size_t len);
-		int parse(const std::string_view buf);
+		int parse (const char * buf, size_t len);
+		int parse (const std::string_view buf);
 
 		/**
 		 * @brief Serialize HTTP response to string
@@ -157,13 +181,13 @@ namespace http
 		 * @note If @a body is set and Content-Length header is missing,
 		 *   this header will be added, based on body's length
 		 */
-		std::string to_string();
+		std::string to_string ();
 
 		/** @brief Checks that response declared as chunked data */
-		bool is_chunked() const ;
+		bool is_chunked () const;
 
 		/** @brief Checks that response contains compressed data */
-		bool is_gzipped(bool includingI2PGzip = true) const;
+		bool is_gzipped (bool includingI2PGzip = true) const;
 	};
 
 	/**
@@ -171,7 +195,7 @@ namespace http
 	 * @param code HTTP code [100, 599]
 	 * @return Immutable string with status
 	 */
-	std::string_view HTTPCodeToStatus(int code);
+	std::string_view HTTPCodeToStatus (int code);
 
 	/**
 	 * @brief Replaces %-encoded characters in string with their values
@@ -179,7 +203,7 @@ namespace http
 	 * @param null If set to true - decode also %00 sequence, otherwise - skip
 	 * @return Decoded string
 	 */
-	std::string UrlDecode(std::string_view url, bool null = false);
+	std::string UrlDecode (std::string_view url, bool null = false);
 
 	/**
 	 * @brief Merge HTTP response content with Transfer-Encoding: chunked
@@ -187,9 +211,9 @@ namespace http
 	 * @param out Output stream
 	 * @return true on success, false otherwise
 	 */
-	bool MergeChunkedResponse (std::istream& in, std::ostream& out);
+	bool MergeChunkedResponse (std::istream & in, std::ostream & out);
 
-	std::string CreateBasicAuthorizationString (const std::string& user, const std::string& pass);
+	std::string CreateBasicAuthorizationString (const std::string & user, const std::string & pass);
 
 } // http
 } // i2p

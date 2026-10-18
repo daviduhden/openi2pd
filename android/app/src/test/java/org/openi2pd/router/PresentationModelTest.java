@@ -19,7 +19,6 @@ import java.util.List;
  * defensive bounds that keep malformed native input out of the UI.
  */
 public class PresentationModelTest {
-
     @Test
     public void addressInfoNormalizesNullsAndPorts() {
         AddressInfo negative = new AddressInfo(null, null, -1, false);
@@ -35,8 +34,7 @@ public class PresentationModelTest {
 
     @Test
     public void logEntryClampsNegativeNumbersAndMessageLength() {
-        LogEntry entry = new LogEntry(-5L, -1L, "  warn  ",
-                "x".repeat(17_000));
+        LogEntry entry = new LogEntry(-5L, -1L, "  warn  ", "x".repeat(17_000));
         assertEquals(0L, entry.sequence());
         assertEquals(0L, entry.timestampSeconds());
         assertEquals("warn", entry.level());
@@ -63,10 +61,8 @@ public class PresentationModelTest {
         List<AddressInfo> addresses = new ArrayList<>();
         addresses.add(new AddressInfo("NTCP2", "192.0.2.1", 1234, true));
 
-        RouterSnapshot snapshot = new RouterSnapshot(
-                DaemonWrapper.State.startedOkay, true, true, "OK", 0, "",
-                10L, 1, 2, 3, 4, 5, false, true, true,
-                6L, 7L, 8L, 9L, 10L, 11L, 12L,
+        RouterSnapshot snapshot = new RouterSnapshot(DaemonWrapper.State.startedOkay, true, true,
+                "OK", 0, "", 10L, 1, 2, 3, 4, 5, false, true, true, 6L, 7L, 8L, 9L, 10L, 11L, 12L,
                 addresses, ServiceStates.NONE, 0L, "", "ok");
         addresses.clear();
 
@@ -76,10 +72,8 @@ public class PresentationModelTest {
 
     @Test
     public void serviceStatesNoneIsAllDisabled() {
-        assertTrue(!ServiceStates.NONE.httpProxy()
-                && !ServiceStates.NONE.socksProxy()
-                && !ServiceStates.NONE.bob()
-                && !ServiceStates.NONE.sam()
+        assertTrue(!ServiceStates.NONE.httpProxy() && !ServiceStates.NONE.socksProxy()
+                && !ServiceStates.NONE.bob() && !ServiceStates.NONE.sam()
                 && !ServiceStates.NONE.i2cp());
     }
 }

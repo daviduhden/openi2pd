@@ -18,16 +18,14 @@ import android.util.Log;
  * service from it is permitted on modern Android.</p>
  */
 public class I2PdQSTileService extends TileService {
-
     private static final String TAG = "I2PdQSTileService";
 
     @Override
     public void onClick() {
         super.onClick();
         boolean wasRunning = RouterService.isRouterRunning();
-        boolean delivered = wasRunning
-                ? RouterService.requestStop(this)
-                : RouterService.requestStart(this);
+        boolean delivered =
+                wasRunning ? RouterService.requestStop(this) : RouterService.requestStart(this);
         if (!delivered) {
             // Do not show a state the service never accepted (Android 12+
             // background-start restrictions and Android 15 BOOT_COMPLETED

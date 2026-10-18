@@ -21,35 +21,35 @@ namespace i2p
 {
 namespace i18n
 {
-namespace english // language namespace
-{
-	// language name in lowercase
-	static std::string language = "english";
-
-	// See for language plural forms here:
-	// https://localization-guide.readthedocs.io/en/latest/l10n/pluralforms.html
-	static int plural (int n) {
-		return n != 1 ? 1 : 0;
-	}
-
-	// Right to Left language?
-	static bool rtl = false;
-
-	static const LocaleStrings strings
+	namespace english // language namespace
 	{
-		{"", ""},
-	};
+		// language name in lowercase
+		static std::string language = "english";
 
-	static std::map<std::string, std::vector<std::string>> plurals
-	{
-		{"", {"", ""}},
-	};
+		// See for language plural forms here:
+		// https://localization-guide.readthedocs.io/en/latest/l10n/pluralforms.html
+		static int plural (int n)
+		{
+			return n != 1 ? 1 : 0;
+		}
 
-	std::shared_ptr<const i2p::i18n::Locale> GetLocale()
-	{
-		return std::make_shared<i2p::i18n::Locale>(language, rtl, strings, plurals, [] (int n)->int { return plural(n); });
-	}
+		// Right to Left language?
+		static bool rtl = false;
 
-} // language
+		static const LocaleStrings strings {
+			{ "", "" },
+		};
+
+		static std::map<std::string, std::vector<std::string>> plurals {
+			{ "", { "", "" } },
+		};
+
+		std::shared_ptr<const i2p::i18n::Locale> GetLocale ()
+		{
+			return std::make_shared<i2p::i18n::Locale> (
+				language, rtl, strings, plurals, [] (int n) -> int { return plural (n); });
+		}
+
+	} // language
 } // i18n
 } // i2p

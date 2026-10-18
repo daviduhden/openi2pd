@@ -16,35 +16,13 @@ import java.util.List;
  * counters and status strings only; no native handle, socket, key material or
  * file path is ever part of it.</p>
  */
-public record RouterSnapshot(
-        DaemonWrapper.State state,
-        boolean nativeStarted,
-        boolean online,
-        String routerStatus,
-        int routerStatusCode,
-        String routerError,
-        long uptimeSeconds,
-        int peers,
-        int routers,
-        int inboundTunnels,
-        int outboundTunnels,
-        int transitTunnels,
-        boolean reseeding,
-        boolean ntcp2,
-        boolean ssu2,
-        long inRate,
-        long outRate,
-        long inRate15,
-        long outRate15,
-        long totalReceived,
-        long totalSent,
-        long totalTransit,
-        List<AddressInfo> addresses,
-        ServiceStates services,
-        long graceRemainingMillis,
-        String errorText,
-        String startResult) {
-
+public record RouterSnapshot(DaemonWrapper.State state, boolean nativeStarted, boolean online,
+        String routerStatus, int routerStatusCode, String routerError, long uptimeSeconds,
+        int peers, int routers, int inboundTunnels, int outboundTunnels, int transitTunnels,
+        boolean reseeding, boolean ntcp2, boolean ssu2, long inRate, long outRate, long inRate15,
+        long outRate15, long totalReceived, long totalSent, long totalTransit,
+        List<AddressInfo> addresses, ServiceStates services, long graceRemainingMillis,
+        String errorText, String startResult) {
     public RouterSnapshot {
         state = state == null ? DaemonWrapper.State.uninitialized : state;
         routerStatus = routerStatus == null ? "" : routerStatus;
@@ -78,36 +56,10 @@ public record RouterSnapshot(
      * only reads already-cached Java state from {@link DaemonWrapper}.
      */
     public static RouterSnapshot empty(DaemonWrapper.State state, String errorText,
-                                       String startResult, long graceRemainingMillis) {
-        DaemonWrapper.State safeState =
-                state == null ? DaemonWrapper.State.uninitialized : state;
-        return new RouterSnapshot(
-                safeState,
-                safeState.isStartedOkay(),
-                false,
-                "",
-                0,
-                "",
-                0L,
-                0,
-                0,
-                0,
-                0,
-                0,
-                false,
-                false,
-                false,
-                0L,
-                0L,
-                0L,
-                0L,
-                0L,
-                0L,
-                0L,
-                Collections.emptyList(),
-                ServiceStates.NONE,
-                graceRemainingMillis,
-                errorText,
-                startResult);
+            String startResult, long graceRemainingMillis) {
+        DaemonWrapper.State safeState = state == null ? DaemonWrapper.State.uninitialized : state;
+        return new RouterSnapshot(safeState, safeState.isStartedOkay(), false, "", 0, "", 0L, 0, 0,
+                0, 0, 0, false, false, false, 0L, 0L, 0L, 0L, 0L, 0L, 0L, Collections.emptyList(),
+                ServiceStates.NONE, graceRemainingMillis, errorText, startResult);
     }
 }

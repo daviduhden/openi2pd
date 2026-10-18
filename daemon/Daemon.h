@@ -25,23 +25,20 @@ namespace util
 	class Daemon_Singleton
 	{
 	public:
-
-		virtual bool init (int argc, char* argv[], std::shared_ptr<std::ostream> logstream);
-		virtual bool init (int argc, char* argv[]);
+		virtual bool init (int argc, char * argv[], std::shared_ptr<std::ostream> logstream);
+		virtual bool init (int argc, char * argv[]);
 		virtual bool start ();
 		virtual bool stop ();
-		virtual void run () {};
-		
+		virtual void run () { };
+
 		virtual int GetGracefulShutdownInterval () const { return 0; };
 		void setDataDir (std::string_view path);
-		
+
 	public:
-		
 		bool isDaemon;
 		bool running;
 
 	protected:
-
 		Daemon_Singleton ();
 		virtual ~Daemon_Singleton ();
 
@@ -49,10 +46,9 @@ namespace util
 
 		// d-pointer for the optional IPC service and UPnP/NTP helpers
 		class Daemon_Singleton_Private;
-		Daemon_Singleton_Private &d;
+		Daemon_Singleton_Private & d;
 
 	private:
-
 #ifndef _WIN32
 		// Bounded in-process restart monitor for the isolated log worker.
 		// These are process-local helpers, not a separate supervisor process.
@@ -64,90 +60,85 @@ namespace util
 		std::string DaemonDataDir;
 	};
 
-	void PrintMainWindowText (std::stringstream& s); // for GUI
-	
-#if defined(QT_GUI_LIB) // check if QT
-#define Daemon i2p::util::DaemonQT::Instance()
-	// dummy, invoked from RunQT
-	class DaemonQT: public i2p::util::Daemon_Singleton
-	{
-		public:
+	void PrintMainWindowText (std::stringstream & s); // for GUI
 
-			static DaemonQT& Instance()
-			{
-				static DaemonQT instance;
-				return instance;
-			}
+#if defined(QT_GUI_LIB) // check if QT
+#define Daemon i2p::util::DaemonQT::Instance ()
+	// dummy, invoked from RunQT
+	class DaemonQT : public i2p::util::Daemon_Singleton
+	{
+	public:
+		static DaemonQT & Instance ()
+		{
+			static DaemonQT instance;
+			return instance;
+		}
 	};
 
 #elif defined(_WIN32)
-#define Daemon i2p::util::DaemonWin32::Instance()
+#define Daemon i2p::util::DaemonWin32::Instance ()
 	class DaemonWin32 : public Daemon_Singleton
 	{
-		public:
+	public:
+		static DaemonWin32 & Instance ()
+		{
+			static DaemonWin32 instance;
+			return instance;
+		}
 
-			static DaemonWin32& Instance()
-			{
-				static DaemonWin32 instance;
-				return instance;
-			}
-	
-			bool init(int argc, char* argv[]);
-			bool start();
-			bool stop();
-			void run ();
+		bool init (int argc, char * argv[]);
+		bool start ();
+		bool stop ();
+		void run ();
 
-			int GetGracefulShutdownInterval () const;
+		int GetGracefulShutdownInterval () const;
 
-		public:
-		
-			bool isGraceful;
+	public:
+		bool isGraceful;
 
-		private:
-
-			DaemonWin32 (): isGraceful(false) {}
+	private:
+		DaemonWin32 ()
+			: isGraceful (false)
+		{
+		}
 	};
 #elif (defined(ANDROID) && !defined(ANDROID_BINARY))
-#define Daemon i2p::util::DaemonAndroid::Instance()
+#define Daemon i2p::util::DaemonAndroid::Instance ()
 	// dummy, invoked from android/jni/DaemonAndroid.*
-	class DaemonAndroid: public i2p::util::Daemon_Singleton
+	class DaemonAndroid : public i2p::util::Daemon_Singleton
 	{
-		public:
-
-			static DaemonAndroid& Instance()
-			{
-				static DaemonAndroid instance;
-				return instance;
-			}
+	public:
+		static DaemonAndroid & Instance ()
+		{
+			static DaemonAndroid instance;
+			return instance;
+		}
 	};
 #else // Unix-like systems, including Linux
 	class DaemonUnix : public Daemon_Singleton
 	{
-		public:
+	public:
+		static DaemonUnix & Instance ()
+		{
+			static DaemonUnix instance;
+			return instance;
+		}
 
-			static DaemonUnix& Instance()
-			{
-				static DaemonUnix instance;
-				return instance;
-			}
+		bool start ();
+		bool stop ();
+		void run ();
 
-			bool start();
-			bool stop();
-			void run ();
+		int GetGracefulShutdownInterval () const { return gracefulShutdownInterval; };
 
-			int GetGracefulShutdownInterval () const { return gracefulShutdownInterval; };
-			
-		private:
+	private:
+		std::string pidfile;
+		int pidFH;
 
-			std::string pidfile;
-			int pidFH;
-
-		public:
-
-			int gracefulShutdownInterval; // in seconds
+	public:
+		int gracefulShutdownInterval; // in seconds
 	};
-	#define Daemon i2p::util::DaemonUnix::Instance()
-	
+#define Daemon i2p::util::DaemonUnix::Instance ()
+
 #endif
 }
 }

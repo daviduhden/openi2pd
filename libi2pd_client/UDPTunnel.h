@@ -50,16 +50,16 @@ namespace client
 	const uint64_t I2P_UDP_SEND_RATE_INTERVAL = 200; // in milliseconds
 	const uint64_t I2P_UDP_SEND_RATE_EXPIRATION_TIMEOUT = 5000; // in milliseconds
 	const uint32_t I2P_UDP_MAX_NUM_ACK_TIMEOUTS = 3; // in a row, before routing path gets reset
-	const uint64_t I2P_UDP_PEER_PATH_RESET_TIMEOUT = 4*I2P_UDP_MAX_UNACKED_DATAGRAM_TIME; // silence, in milliseconds
+	const uint64_t I2P_UDP_PEER_PATH_RESET_TIMEOUT = 4 * I2P_UDP_MAX_UNACKED_DATAGRAM_TIME; // silence, in milliseconds
 
 	/** max size for i2p udp */
-	const size_t I2P_UDP_MAX_MTU = 64*1024;
+	const size_t I2P_UDP_MAX_MTU = 64 * 1024;
 	/** local socket buffers, not datagram size */
-	const size_t I2P_UDP_SOCKET_BUFFER_SIZE = 4*1024*1024;
+	const size_t I2P_UDP_SOCKET_BUFFER_SIZE = 4 * 1024 * 1024;
 
 	// handlers of both sides are queued on sockets and can outlive the object
 	// they belong to, so they hold it by a shared pointer
-	struct UDPConnection: public std::enable_shared_from_this<UDPConnection>
+	struct UDPConnection : public std::enable_shared_from_this<UDPConnection>
 	{
 		std::shared_ptr<i2p::datagram::DatagramDestination> m_Destination;
 		std::weak_ptr<i2p::datagram::DatagramSession> m_LastDatagramSession;
@@ -67,7 +67,8 @@ namespace client
 		i2p::data::IdentHash Identity;
 		bool isIdentity = false;
 		uint32_t m_NextSendPacketNum = 1, m_LastReceivedPacketNum = 0;
-		std::list<std::pair<uint32_t, uint64_t> > m_UnackedDatagrams; // list of sent but not acked repliable datagrams(seqn, timestamp) in ascending order
+		std::list<std::pair<uint32_t, uint64_t>>
+			m_UnackedDatagrams; // list of sent but not acked repliable datagrams(seqn, timestamp) in ascending order
 		uint64_t m_RTT = 0, m_RTTVar = 0; // milliseconds, smoothed
 		uint64_t m_MinRTT = 0, m_MinRTTCandidate = 0, m_MinRTTUpdateTime = 0; // path delay, without queueing
 		uint64_t m_LastReceivedTime = 0; // milliseconds, any datagram from the peer
@@ -83,13 +84,20 @@ namespace client
 		uint64_t m_LastWindowProbeTime = 0; // milliseconds
 		uint32_t m_NumWindowDrops = 0, m_NumAckTimeouts = 0;
 
-		UDPConnection (boost::asio::io_context& service, std::shared_ptr<i2p::datagram::DatagramDestination> destination):
-			m_Destination (destination), m_LastRepliableDatagramTime (0), m_AckTimer (service) {};
-		void SetIdentity (const i2p::data::IdentHash& ident) { Identity = ident; isIdentity = true; };
+		UDPConnection (
+			boost::asio::io_context & service, std::shared_ptr<i2p::datagram::DatagramDestination> destination)
+			: m_Destination (destination)
+			, m_LastRepliableDatagramTime (0)
+			, m_AckTimer (service) { };
+		void SetIdentity (const i2p::data::IdentHash & ident)
+		{
+			Identity = ident;
+			isIdentity = true;
+		};
 		void SetMaxWindow (size_t w) { m_MaxWindow = w; };
 
 		virtual ~UDPConnection () { Stop (); };
-		virtual void Start () {};
+		virtual void Start () { };
 		virtual void Stop ();
 
 		void Acked (uint32_t seqn);
@@ -105,7 +113,7 @@ namespace client
 		std::shared_ptr<i2p::datagram::DatagramSession> GetDatagramSession ();
 	};
 
-	struct UDPSession: public UDPConnection // for server side
+	struct UDPSession : public UDPConnection // for server side
 	{
 		boost::asio::ip::udp::socket IPSocket;
 		boost::asio::ip::udp::endpoint FromEndpoint;
@@ -117,14 +125,13 @@ namespace client
 
 		uint8_t m_Buffer[I2P_UDP_MAX_MTU];
 
-		UDPSession(boost::asio::ip::udp::endpoint localEndpoint,
+		UDPSession (boost::asio::ip::udp::endpoint localEndpoint,
 			const std::shared_ptr<i2p::client::ClientDestination> & localDestination,
-			const boost::asio::ip::udp::endpoint& remote, const i2p::data::IdentHash& ident,
-			uint16_t ourPort, uint16_t theirPort);
-		void HandleReceived(const boost::system::error_code & ecode, std::size_t len);
-		void Receive();
+			const boost::asio::ip::udp::endpoint & remote, const i2p::data::IdentHash & ident, uint16_t ourPort,
+			uint16_t theirPort);
+		void HandleReceived (const boost::system::error_code & ecode, std::size_t len);
+		void Receive ();
 	};
-
 
 	/** read only info about a datagram session */
 	struct DatagramSessionInfo
@@ -152,133 +159,130 @@ namespace client
 	/** server side udp tunnel, many i2p inbound to 1 ip outbound */
 	class I2PUDPServerTunnel
 	{
-		public:
+	public:
+		I2PUDPServerTunnel (const std::string & name, std::shared_ptr<i2p::client::ClientDestination> localDestination,
+			const boost::asio::ip::address & localAddress, const boost::asio::ip::udp::endpoint & forwardTo,
+			uint16_t port, bool gzip);
+		~I2PUDPServerTunnel ();
 
-			I2PUDPServerTunnel (const std::string & name,
-				std::shared_ptr<i2p::client::ClientDestination> localDestination,
-				const boost::asio::ip::address& localAddress,
-				const boost::asio::ip::udp::endpoint& forwardTo, uint16_t port, bool gzip);
-			~I2PUDPServerTunnel ();
+		/** expire stale udp conversations */
+		void ExpireStale (const uint64_t delta = I2P_UDP_SESSION_TIMEOUT);
+		void Start ();
+		void Stop ();
+		const char * GetName () const { return m_Name.c_str (); }
+		std::vector<std::shared_ptr<DatagramSessionInfo>> GetSessions ();
+		std::shared_ptr<ClientDestination> GetLocalDestination () const { return m_LocalDest; }
 
-			/** expire stale udp conversations */
-			void ExpireStale (const uint64_t delta=I2P_UDP_SESSION_TIMEOUT);
-			void Start ();
-			void Stop ();
-			const char * GetName () const { return m_Name.c_str(); }
-			std::vector<std::shared_ptr<DatagramSessionInfo> > GetSessions ();
-			std::shared_ptr<ClientDestination> GetLocalDestination () const { return m_LocalDest; }
+		void SetUniqueLocal (bool isUniqueLocal = true) { m_IsUniqueLocal = isUniqueLocal; }
+		void SetMaxWindow (size_t w) { m_MaxWindow = w; }
 
-			void SetUniqueLocal (bool isUniqueLocal = true) { m_IsUniqueLocal = isUniqueLocal; }
-			void SetMaxWindow (size_t w) { m_MaxWindow = w; }
+	private:
+		void HandleRecvFromI2P (const i2p::data::IdentityEx & from, uint16_t fromPort, uint16_t toPort,
+			const uint8_t * buf, size_t len, const i2p::util::Mapping * options);
+		void HandleRecvFromI2PRaw (uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len);
+		UDPSessionPtr ObtainUDPSession (const i2p::data::IdentityEx & from, uint16_t localPort, uint16_t remotePort);
+		uint32_t GetSessionIndex (uint16_t fromPort, uint16_t toPort) const
+		{
+			return ((uint32_t)fromPort << 16) + toPort;
+		}
 
-		private:
+		void ScheduleStatsTimer ();
+		void HandleStatsTimer (const boost::system::error_code & ecode);
+		void ScheduleCleanupTimer ();
+		void HandleCleanupTimer (const boost::system::error_code & ecode);
 
-			void HandleRecvFromI2P (const i2p::data::IdentityEx& from, uint16_t fromPort, uint16_t toPort,
-				const uint8_t * buf, size_t len, const i2p::util::Mapping * options);
-			void HandleRecvFromI2PRaw (uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len);
-			UDPSessionPtr ObtainUDPSession (const i2p::data::IdentityEx& from, uint16_t localPort, uint16_t remotePort);
-			uint32_t GetSessionIndex (uint16_t fromPort, uint16_t toPort) const { return ((uint32_t)fromPort << 16) + toPort; }
+	private:
+		bool m_IsUniqueLocal;
+		const std::string m_Name;
+		boost::asio::ip::address m_LocalAddress;
+		boost::asio::ip::udp::endpoint m_RemoteEndpoint;
+		std::mutex m_SessionsMutex;
+		std::unordered_map<uint32_t, UDPSessionPtr> m_Sessions; // (from port, to port)->session
+		std::shared_ptr<i2p::client::ClientDestination> m_LocalDest;
+		UDPSessionPtr m_LastSession;
+		uint16_t m_inPort;
+		bool m_Gzip;
+		bool m_IsStarted = false; // a tunnel that never started shares nothing to tear down
+		uint32_t m_NumRawNoSession = 0;
+		size_t m_MaxWindow = I2P_UDP_MIN_MAX_NUM_UNACKED_DATAGRAMS;
+		std::unique_ptr<boost::asio::steady_timer> m_StatsTimer;
+		std::unique_ptr<boost::asio::steady_timer> m_CleanupTimer;
 
-			void ScheduleStatsTimer ();
-			void HandleStatsTimer (const boost::system::error_code& ecode);
-			void ScheduleCleanupTimer ();
-			void HandleCleanupTimer (const boost::system::error_code& ecode);
-
-		private:
-
-			bool m_IsUniqueLocal;
-			const std::string m_Name;
-			boost::asio::ip::address m_LocalAddress;
-			boost::asio::ip::udp::endpoint m_RemoteEndpoint;
-			std::mutex m_SessionsMutex;
-			std::unordered_map<uint32_t, UDPSessionPtr> m_Sessions; // (from port, to port)->session
-			std::shared_ptr<i2p::client::ClientDestination> m_LocalDest;
-			UDPSessionPtr m_LastSession;
-			uint16_t m_inPort;
-			bool m_Gzip;
-			bool m_IsStarted = false; // a tunnel that never started shares nothing to tear down
-			uint32_t m_NumRawNoSession = 0;
-			size_t m_MaxWindow = I2P_UDP_MIN_MAX_NUM_UNACKED_DATAGRAMS;
-			std::unique_ptr<boost::asio::steady_timer> m_StatsTimer;
-			std::unique_ptr<boost::asio::steady_timer> m_CleanupTimer;
-
-		public:
-
-			bool isUpdated; // transient, used during reload only
+	public:
+		bool isUpdated; // transient, used during reload only
 	};
 
-	class I2PUDPClientTunnel: public UDPConnection
+	class I2PUDPClientTunnel : public UDPConnection
 	{
-		public:
+	public:
+		I2PUDPClientTunnel (std::string_view name, std::string_view remoteDest,
+			const boost::asio::ip::udp::endpoint & localEndpoint,
+			std::shared_ptr<i2p::client::ClientDestination> localDestination, uint16_t remotePort, bool gzip,
+			i2p::datagram::DatagramVersion datagramVersion);
+		~I2PUDPClientTunnel ();
 
-			I2PUDPClientTunnel (std::string_view name, std::string_view remoteDest,
-				const boost::asio::ip::udp::endpoint& localEndpoint, std::shared_ptr<i2p::client::ClientDestination> localDestination,
-				uint16_t remotePort, bool gzip, i2p::datagram::DatagramVersion datagramVersion);
-			~I2PUDPClientTunnel ();
+		void Start () override;
+		void Stop () override;
+		const char * GetName () const { return m_Name.c_str (); }
+		std::vector<std::shared_ptr<DatagramSessionInfo>> GetSessions ();
 
-			void Start () override;
-			void Stop () override;
-			const char * GetName () const { return m_Name.c_str(); }
-			std::vector<std::shared_ptr<DatagramSessionInfo> > GetSessions ();
+		bool IsLocalDestination (const i2p::data::IdentHash & destination) const
+		{
+			return destination == m_LocalDest->GetIdentHash ();
+		}
+		std::shared_ptr<ClientDestination> GetLocalDestination () const { return m_LocalDest; }
+		inline void SetLocalDestination (std::shared_ptr<ClientDestination> dest)
+		{
+			if (m_LocalDest) m_LocalDest->Release ();
+			if (dest) dest->Acquire ();
+			m_LocalDest = dest;
+		}
+		const boost::asio::ip::udp::endpoint & GetLocalEndpoint () const { return m_LocalEndpoint; };
 
-			bool IsLocalDestination (const i2p::data::IdentHash & destination) const { return destination == m_LocalDest->GetIdentHash(); }
-			std::shared_ptr<ClientDestination> GetLocalDestination () const { return m_LocalDest; }
-			inline void SetLocalDestination (std::shared_ptr<ClientDestination> dest)
-			{
-				if (m_LocalDest) m_LocalDest->Release ();
-				if (dest) dest->Acquire ();
-				m_LocalDest = dest;
-			}
-			const boost::asio::ip::udp::endpoint& GetLocalEndpoint () const { return m_LocalEndpoint; };
+		void ExpireStale (const uint64_t delta = I2P_UDP_SESSION_TIMEOUT);
+		void SetKeepAliveInterval (uint32_t keepAliveInterval);
 
-			void ExpireStale (const uint64_t delta=I2P_UDP_SESSION_TIMEOUT);
-			void SetKeepAliveInterval (uint32_t keepAliveInterval);
+	private:
+		typedef std::pair<boost::asio::ip::udp::endpoint, uint64_t> UDPConvo;
+		void RecvFromLocal ();
+		void HandleRecvFromLocal (const boost::system::error_code & e, std::size_t transferred);
+		void HandleRecvFromI2P (const i2p::data::IdentityEx & from, uint16_t fromPort, uint16_t toPort,
+			const uint8_t * buf, size_t len, const i2p::util::Mapping * options);
+		void HandleRecvFromI2PRaw (uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len);
+		void TryResolving ();
 
-		private:
+		void ScheduleKeepAliveTimer ();
+		void HandleKeepAliveTimer (const boost::system::error_code & ecode);
 
-			typedef std::pair<boost::asio::ip::udp::endpoint, uint64_t> UDPConvo;
-			void RecvFromLocal ();
-			void HandleRecvFromLocal (const boost::system::error_code & e, std::size_t transferred);
-			void HandleRecvFromI2P (const i2p::data::IdentityEx& from, uint16_t fromPort, uint16_t toPort,
-				const uint8_t * buf, size_t len, const i2p::util::Mapping * options);
-			void HandleRecvFromI2PRaw (uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len);
-			void TryResolving ();
+		void ScheduleStatsTimer ();
+		void HandleStatsTimer (const boost::system::error_code & ecode);
+		void ScheduleCleanupTimer ();
+		void HandleCleanupTimer (const boost::system::error_code & ecode);
 
-			void ScheduleKeepAliveTimer ();
-			void HandleKeepAliveTimer (const boost::system::error_code& ecode);
+	private:
+		const std::string m_Name;
+		std::mutex m_SessionsMutex;
+		std::unordered_map<uint16_t, std::shared_ptr<UDPConvo>> m_Sessions; // maps i2p port -> local udp convo
+		const std::string m_RemoteDest;
+		std::shared_ptr<i2p::client::ClientDestination> m_LocalDest;
+		const boost::asio::ip::udp::endpoint m_LocalEndpoint;
+		std::thread * m_ResolveThread;
+		std::unique_ptr<boost::asio::ip::udp::socket> m_LocalSocket;
+		boost::asio::ip::udp::endpoint m_RecvEndpoint;
+		uint8_t m_RecvBuff[I2P_UDP_MAX_MTU];
+		uint16_t RemotePort, m_LastPort;
+		bool m_cancel_resolve;
+		bool m_Gzip;
+		bool m_IsStarted = false; // see the comment in I2PUDPServerTunnel
+		i2p::datagram::DatagramVersion m_DatagramVersion;
+		std::shared_ptr<UDPConvo> m_LastSession;
+		uint32_t m_KeepAliveInterval = 0;
+		std::unique_ptr<boost::asio::steady_timer> m_KeepAliveTimer;
+		std::unique_ptr<boost::asio::steady_timer> m_StatsTimer;
 
-			void ScheduleStatsTimer ();
-			void HandleStatsTimer (const boost::system::error_code& ecode);
-			void ScheduleCleanupTimer ();
-			void HandleCleanupTimer (const boost::system::error_code& ecode);
-
-		private:
-
-			const std::string m_Name;
-			std::mutex m_SessionsMutex;
-			std::unordered_map<uint16_t, std::shared_ptr<UDPConvo> > m_Sessions; // maps i2p port -> local udp convo
-			const std::string m_RemoteDest;
-			std::shared_ptr<i2p::client::ClientDestination> m_LocalDest;
-			const boost::asio::ip::udp::endpoint m_LocalEndpoint;
-			std::thread * m_ResolveThread;
-			std::unique_ptr<boost::asio::ip::udp::socket> m_LocalSocket;
-			boost::asio::ip::udp::endpoint m_RecvEndpoint;
-			uint8_t m_RecvBuff[I2P_UDP_MAX_MTU];
-			uint16_t RemotePort, m_LastPort;
-			bool m_cancel_resolve;
-			bool m_Gzip;
-			bool m_IsStarted = false; // see the comment in I2PUDPServerTunnel
-			i2p::datagram::DatagramVersion m_DatagramVersion;
-			std::shared_ptr<UDPConvo> m_LastSession;
-			uint32_t m_KeepAliveInterval = 0;
-			std::unique_ptr<boost::asio::steady_timer> m_KeepAliveTimer;
-			std::unique_ptr<boost::asio::steady_timer> m_StatsTimer;
-
-		public:
-
-			bool isUpdated; // transient, used during reload only
+	public:
+		bool isUpdated; // transient, used during reload only
 	};
-
 
 }
 }

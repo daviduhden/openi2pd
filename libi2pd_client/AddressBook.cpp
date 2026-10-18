@@ -43,54 +43,54 @@ namespace i2p
 namespace client
 {
 	// TODO: this is actually proxy class
-	class AddressBookFilesystemStorage: public AddressBookStorage
+	class AddressBookFilesystemStorage : public AddressBookStorage
 	{
-		public:
+	public:
+		AddressBookFilesystemStorage ()
+			: storage ("addressbook", "b", "", "b32")
+		{
+			i2p::config::GetOption ("persist.addressbook", m_IsPersist);
+			if (m_IsPersist) i2p::config::GetOption ("addressbook.hostsfile", m_HostsFile);
+		}
+		std::shared_ptr<const i2p::data::IdentityEx> GetAddress (const i2p::data::IdentHash & ident) override;
+		void AddAddress (std::shared_ptr<const i2p::data::IdentityEx> address) override;
+		void RemoveAddress (const i2p::data::IdentHash & ident) override;
+		void CleanUpCache () override;
 
-			AddressBookFilesystemStorage (): storage("addressbook", "b", "", "b32")
-			{
-				i2p::config::GetOption("persist.addressbook", m_IsPersist);
-				if (m_IsPersist)
-					i2p::config::GetOption("addressbook.hostsfile", m_HostsFile);
-			}
-			std::shared_ptr<const i2p::data::IdentityEx> GetAddress (const i2p::data::IdentHash& ident) override;
-			void AddAddress (std::shared_ptr<const i2p::data::IdentityEx> address) override;
-			void RemoveAddress (const i2p::data::IdentHash& ident) override;
-			void CleanUpCache () override;
+		bool Init () override;
+		int Load (Addresses & addresses) override;
+		int LoadLocal (Addresses & addresses) override;
+		int Save (const Addresses & addresses) override;
 
-			bool Init () override;
-			int Load (Addresses& addresses) override;
-			int LoadLocal (Addresses& addresses) override;
-			int Save (const Addresses& addresses) override;
+		void SaveEtag (const i2p::data::IdentHash & subscription, const std::string & etag,
+			const std::string & lastModified) override;
+		bool GetEtag (
+			const i2p::data::IdentHash & subscription, std::string & etag, std::string & lastModified) override;
+		void ResetEtags () override;
 
-			void SaveEtag (const i2p::data::IdentHash& subscription, const std::string& etag, const std::string& lastModified) override;
-			bool GetEtag (const i2p::data::IdentHash& subscription, std::string& etag, std::string& lastModified) override;
-			void ResetEtags () override;
+	private:
+		int LoadFromFile (const std::string & filename,
+			Addresses & addresses); // returns -1 if can't open file, otherwise number of records
 
-		private:
-
-			int LoadFromFile (const std::string& filename, Addresses& addresses); // returns -1 if can't open file, otherwise number of records
-
-		private:
-
-			i2p::fs::HashedStorage storage;
-			std::string etagsPath, indexPath, localPath;
-			bool m_IsPersist = false;
-			std::string m_HostsFile; // file to dump hosts.txt, empty if not used
-			std::unordered_map<i2p::data::IdentHash, std::pair<std::vector<uint8_t>, uint64_t> > m_FullAddressCache; // ident hash -> (full ident buffer, last access timestamp)
-			std::mutex m_FullAddressCacheMutex;
+	private:
+		i2p::fs::HashedStorage storage;
+		std::string etagsPath, indexPath, localPath;
+		bool m_IsPersist = false;
+		std::string m_HostsFile; // file to dump hosts.txt, empty if not used
+		std::unordered_map<i2p::data::IdentHash, std::pair<std::vector<uint8_t>, uint64_t>>
+			m_FullAddressCache; // ident hash -> (full ident buffer, last access timestamp)
+		std::mutex m_FullAddressCacheMutex;
 	};
 
-	bool AddressBookFilesystemStorage::Init()
+	bool AddressBookFilesystemStorage::Init ()
 	{
-		storage.SetPlace(i2p::fs::GetDataDir());
+		storage.SetPlace (i2p::fs::GetDataDir ());
 		// init storage
-		if (storage.Init(i2p::data::GetBase32SubstitutionTable(), 32))
+		if (storage.Init (i2p::data::GetBase32SubstitutionTable (), 32))
 		{
 			// init ETags
 			etagsPath = i2p::fs::StorageRootPath (storage, "etags");
-			if (!i2p::fs::Exists (etagsPath))
-				i2p::fs::CreateDirectory (etagsPath);
+			if (!i2p::fs::Exists (etagsPath)) i2p::fs::CreateDirectory (etagsPath);
 			// init address files
 			indexPath = i2p::fs::StorageRootPath (storage, "addresses.csv");
 			localPath = i2p::fs::StorageRootPath (storage, "local.csv");
@@ -99,52 +99,53 @@ namespace client
 		return false;
 	}
 
-	std::shared_ptr<const i2p::data::IdentityEx> AddressBookFilesystemStorage::GetAddress (const i2p::data::IdentHash& ident)
+	std::shared_ptr<const i2p::data::IdentityEx> AddressBookFilesystemStorage::GetAddress (
+		const i2p::data::IdentHash & ident)
 	{
 		auto ts = i2p::util::GetMonotonicSeconds ();
 		{
-			std::lock_guard<std::mutex> l(m_FullAddressCacheMutex);
+			std::lock_guard<std::mutex> l (m_FullAddressCacheMutex);
 			auto it = m_FullAddressCache.find (ident);
 			if (it != m_FullAddressCache.end ())
 			{
 				it->second.second = ts;
-				return std::make_shared<i2p::data::IdentityEx>(it->second.first.data (), it->second.first.size ());
+				return std::make_shared<i2p::data::IdentityEx> (it->second.first.data (), it->second.first.size ());
 			}
 		}
 
 		if (!m_IsPersist)
 		{
-			LogPrint(eLogDebug, "Addressbook: Persistence is disabled");
+			LogPrint (eLogDebug, "Addressbook: Persistence is disabled");
 			return nullptr;
 		}
-		std::string filename = storage.Path(ident.ToBase32());
-		std::ifstream f(filename, std::ifstream::binary);
+		std::string filename = storage.Path (ident.ToBase32 ());
+		std::ifstream f (filename, std::ifstream::binary);
 		if (!f.is_open ())
 		{
-			LogPrint(eLogDebug, "Addressbook: Requested, but not found: ", filename);
+			LogPrint (eLogDebug, "Addressbook: Requested, but not found: ", filename);
 			return nullptr;
 		}
 
-		f.seekg (0,std::ios::end);
+		f.seekg (0, std::ios::end);
 		size_t len = f.tellg ();
 		if (len < i2p::data::DEFAULT_IDENTITY_SIZE)
 		{
 			LogPrint (eLogError, "Addressbook: File ", filename, " is too short: ", len);
 			return nullptr;
 		}
-		f.seekg(0, std::ios::beg);
-		std::vector<uint8_t> buf(len);
-		f.read((char *)buf.data (), len);
+		f.seekg (0, std::ios::beg);
+		std::vector<uint8_t> buf (len);
+		f.read ((char *)buf.data (), len);
 		if (!f)
 		{
 			LogPrint (eLogError, "Addressbook: Couldn't read ", filename);
 			return nullptr;
 		}
 		{
-			std::lock_guard<std::mutex> l(m_FullAddressCacheMutex);
+			std::lock_guard<std::mutex> l (m_FullAddressCacheMutex);
 			m_FullAddressCache.try_emplace (ident, buf, ts);
 		}
-		return std::make_shared<i2p::data::IdentityEx>(buf.data (), len);
+		return std::make_shared<i2p::data::IdentityEx> (buf.data (), len);
 	}
 
 	void AddressBookFilesystemStorage::AddAddress (std::shared_ptr<const i2p::data::IdentityEx> address)
@@ -154,16 +155,15 @@ namespace client
 		std::vector<uint8_t> buf;
 		if (!len) return; // invalid address
 		{
-			std::lock_guard<std::mutex> l(m_FullAddressCacheMutex);
-			auto [it, inserted] = m_FullAddressCache.try_emplace (address->GetIdentHash(), len, i2p::util::GetMonotonicSeconds ());
-			if (inserted)
-				address->ToBuffer (it->second.first.data (), len);
-			if (m_IsPersist)
-				buf = it->second.first;
+			std::lock_guard<std::mutex> l (m_FullAddressCacheMutex);
+			auto [it, inserted]
+				= m_FullAddressCache.try_emplace (address->GetIdentHash (), len, i2p::util::GetMonotonicSeconds ());
+			if (inserted) address->ToBuffer (it->second.first.data (), len);
+			if (m_IsPersist) buf = it->second.first;
 		}
 		if (m_IsPersist && !buf.empty ())
 		{
-			std::string path = storage.Path(address->GetIdentHash().ToBase32());
+			std::string path = storage.Path (address->GetIdentHash ().ToBase32 ());
 			std::ofstream f (path, std::ofstream::binary | std::ofstream::out);
 			if (!f.is_open ())
 			{
@@ -174,17 +174,17 @@ namespace client
 		}
 	}
 
-	void AddressBookFilesystemStorage::RemoveAddress (const i2p::data::IdentHash& ident)
+	void AddressBookFilesystemStorage::RemoveAddress (const i2p::data::IdentHash & ident)
 	{
 		{
-			std::lock_guard<std::mutex> l(m_FullAddressCacheMutex);
+			std::lock_guard<std::mutex> l (m_FullAddressCacheMutex);
 			m_FullAddressCache.erase (ident);
 		}
 		if (!m_IsPersist) return;
-		storage.Remove( ident.ToBase32() );
+		storage.Remove (ident.ToBase32 ());
 	}
 
-	int AddressBookFilesystemStorage::LoadFromFile (const std::string& filename, Addresses& addresses)
+	int AddressBookFilesystemStorage::LoadFromFile (const std::string & filename, Addresses & addresses)
 	{
 		int num = 0;
 		std::ifstream f (filename, std::ifstream::in); // in text mode
@@ -194,37 +194,37 @@ namespace client
 		while (!f.eof ())
 		{
 			std::string s;
-			getline(f, s);
-			if (!s.length()) continue; // skip empty line
+			getline (f, s);
+			if (!s.length ()) continue; // skip empty line
 
-			std::size_t pos = s.find(',');
+			std::size_t pos = s.find (',');
 			if (pos != std::string::npos)
 			{
-				std::string name = s.substr(0, pos++);
-				std::string addr = s.substr(pos);
+				std::string name = s.substr (0, pos++);
+				std::string addr = s.substr (pos);
 
-				addresses[name] = std::make_shared<Address>(addr);
+				addresses[name] = std::make_shared<Address> (addr);
 				num++;
 			}
 		}
 		return num;
 	}
 
-	int AddressBookFilesystemStorage::Load (Addresses& addresses)
+	int AddressBookFilesystemStorage::Load (Addresses & addresses)
 	{
 		int num = LoadFromFile (indexPath, addresses);
 		if (num < 0)
 		{
-			LogPrint(eLogWarning, "Addressbook: Can't open ", indexPath);
+			LogPrint (eLogWarning, "Addressbook: Can't open ", indexPath);
 			return 0;
 		}
-		LogPrint(eLogInfo, "Addressbook: Using index file ", indexPath);
+		LogPrint (eLogInfo, "Addressbook: Using index file ", indexPath);
 		LogPrint (eLogInfo, "Addressbook: ", num, " addresses loaded from storage");
 
 		return num;
 	}
 
-	int AddressBookFilesystemStorage::LoadLocal (Addresses& addresses)
+	int AddressBookFilesystemStorage::LoadLocal (Addresses & addresses)
 	{
 		int num = LoadFromFile (localPath, addresses);
 		if (num < 0) return 0;
@@ -232,11 +232,11 @@ namespace client
 		return num;
 	}
 
-	int AddressBookFilesystemStorage::Save (const Addresses& addresses)
+	int AddressBookFilesystemStorage::Save (const Addresses & addresses)
 	{
-		if (addresses.empty())
+		if (addresses.empty ())
 		{
-			LogPrint(eLogWarning, "Addressbook: Not saving empty addressbook");
+			LogPrint (eLogWarning, "Addressbook: Not saving empty addressbook");
 			return 0;
 		}
 
@@ -246,7 +246,7 @@ namespace client
 			std::ofstream f (indexPath, std::ofstream::out); // in text mode
 			if (f.is_open ())
 			{
-				for (const auto& it: addresses)
+				for (const auto & it : addresses)
 				{
 					if (it.second->IsValid ())
 					{
@@ -272,14 +272,13 @@ namespace client
 			std::ofstream f (m_HostsFile, std::ofstream::out); // in text mode
 			if (f.is_open ())
 			{
-				for (const auto& it: addresses)
+				for (const auto & it : addresses)
 				{
 					std::shared_ptr<const i2p::data::IdentityEx> addr;
 					if (it.second->IsIdentHash ())
 					{
 						addr = GetAddress (it.second->identHash);
-						if (addr)
-							f << it.first << "=" << addr->ToBase64 () << std::endl;
+						if (addr) f << it.first << "=" << addr->ToBase64 () << std::endl;
 					}
 				}
 			}
@@ -290,18 +289,20 @@ namespace client
 		return num;
 	}
 
-	void AddressBookFilesystemStorage::SaveEtag (const i2p::data::IdentHash& subscription, const std::string& etag, const std::string& lastModified)
+	void AddressBookFilesystemStorage::SaveEtag (
+		const i2p::data::IdentHash & subscription, const std::string & etag, const std::string & lastModified)
 	{
 		std::string fname = etagsPath + i2p::fs::dirSep + subscription.ToBase32 () + ".txt";
 		std::ofstream f (fname, std::ofstream::out | std::ofstream::trunc);
 		if (f)
 		{
 			f << etag << std::endl;
-			f<< lastModified << std::endl;
+			f << lastModified << std::endl;
 		}
 	}
 
-	bool AddressBookFilesystemStorage::GetEtag (const i2p::data::IdentHash& subscription, std::string& etag, std::string& lastModified)
+	bool AddressBookFilesystemStorage::GetEtag (
+		const i2p::data::IdentHash & subscription, std::string & etag, std::string & lastModified)
 	{
 		std::string fname = etagsPath + i2p::fs::dirSep + subscription.ToBase32 () + ".txt";
 		std::ifstream f (fname, std::ofstream::in);
@@ -317,8 +318,7 @@ namespace client
 		LogPrint (eLogError, "Addressbook: Resetting eTags");
 		for (fs_lib::directory_iterator it (etagsPath); it != fs_lib::directory_iterator (); ++it)
 		{
-			if (!fs_lib::is_regular_file (it->status ()))
-				continue;
+			if (!fs_lib::is_regular_file (it->status ())) continue;
 			fs_lib::remove (it->path ());
 		}
 	}
@@ -326,7 +326,7 @@ namespace client
 	void AddressBookFilesystemStorage::CleanUpCache ()
 	{
 		auto ts = i2p::util::GetMonotonicSeconds ();
-		std::lock_guard<std::mutex> l(m_FullAddressCacheMutex);
+		std::lock_guard<std::mutex> l (m_FullAddressCacheMutex);
 		for (auto it = m_FullAddressCache.begin (); it != m_FullAddressCache.end ();)
 		{
 			if (ts > it->second.second + ADDRESS_CACHE_EXPIRATION_TIMEOUT)
@@ -336,25 +336,23 @@ namespace client
 		}
 	}
 
-//---------------------------------------------------------------------
+	//---------------------------------------------------------------------
 
-	Address::Address (std::string_view b32):
-		addressType (eAddressInvalid)
+	Address::Address (std::string_view b32)
+		: addressType (eAddressInvalid)
 	{
 		if (b32.length () <= B33_ADDRESS_THRESHOLD)
 		{
-			if (identHash.FromBase32 (b32) > 0)
-				addressType = eAddressIndentHash;
+			if (identHash.FromBase32 (b32) > 0) addressType = eAddressIndentHash;
 		}
 		else
 		{
-			blindedPublicKey = std::make_shared<i2p::data::BlindedPublicKey>(b32);
-			if (blindedPublicKey->IsValid ())
-				addressType = eAddressBlindedPublicKey;
+			blindedPublicKey = std::make_shared<i2p::data::BlindedPublicKey> (b32);
+			if (blindedPublicKey->IsValid ()) addressType = eAddressBlindedPublicKey;
 		}
 	}
 
-	Address::Address (const i2p::data::IdentHash& hash)
+	Address::Address (const i2p::data::IdentHash & hash)
 	{
 		addressType = eAddressIndentHash;
 		identHash = hash;
@@ -364,42 +362,41 @@ namespace client
 	{
 		switch (addressType)
 		{
-			case eAddressIndentHash:
-				return identHash.ToBase32 ();
+		case eAddressIndentHash: return identHash.ToBase32 (); break;
+		case eAddressBlindedPublicKey:
+			if (blindedPublicKey) return blindedPublicKey->ToB33 ();
 			break;
-			case eAddressBlindedPublicKey:
-				if (blindedPublicKey)
-					return blindedPublicKey->ToB33 ();
-			break;
-			default: ;
+		default:;
 		}
 		return "";
 	}
 
-	bool Address::operator==(const Address& other) const
+	bool Address::operator== (const Address & other) const
 	{
 		if (addressType != other.addressType) return false;
 		switch (addressType)
 		{
-			case eAddressIndentHash:
-				return identHash == other.identHash;
+		case eAddressIndentHash: return identHash == other.identHash; break;
+		case eAddressBlindedPublicKey:
+			if (blindedPublicKey && other.blindedPublicKey
+				&& blindedPublicKey->GetPublicKeyLen () == other.blindedPublicKey->GetPublicKeyLen ()
+				&& blindedPublicKey->GetSigType () == other.blindedPublicKey->GetSigType ()
+				&& blindedPublicKey->GetBlindedSigType () == other.blindedPublicKey->GetBlindedSigType ())
+				return !memcmp (blindedPublicKey->GetPublicKey (), other.blindedPublicKey->GetPublicKey (),
+					blindedPublicKey->GetPublicKeyLen ());
 			break;
-			case eAddressBlindedPublicKey:
-				if (blindedPublicKey && other.blindedPublicKey &&
-					blindedPublicKey->GetPublicKeyLen () == other.blindedPublicKey->GetPublicKeyLen () &&
-					blindedPublicKey->GetSigType () == other.blindedPublicKey->GetSigType () &&
-					blindedPublicKey->GetBlindedSigType () == other.blindedPublicKey->GetBlindedSigType ())
-					return !memcmp (blindedPublicKey->GetPublicKey (), other.blindedPublicKey->GetPublicKey (),
-						blindedPublicKey->GetPublicKeyLen ());
-			break;
-			default: ;
+		default:;
 		}
 		return false;
 	}
 
-	AddressBook::AddressBook (): m_Storage(nullptr), m_IsLoaded (false),
-		m_NumRetries (0), m_DefaultSubscription (nullptr), m_SubscriptionsUpdateTimer (nullptr),
-		m_IsEnabled (true)
+	AddressBook::AddressBook ()
+		: m_Storage (nullptr)
+		, m_IsLoaded (false)
+		, m_NumRetries (0)
+		, m_DefaultSubscription (nullptr)
+		, m_SubscriptionsUpdateTimer (nullptr)
+		, m_IsEnabled (true)
 	{
 	}
 
@@ -410,12 +407,11 @@ namespace client
 
 	void AddressBook::Start ()
 	{
-		i2p::config::GetOption("addressbook.enabled", m_IsEnabled);
+		i2p::config::GetOption ("addressbook.enabled", m_IsEnabled);
 		if (m_IsEnabled)
 		{
-			if (!m_Storage)
-				m_Storage = new AddressBookFilesystemStorage;
-			m_Storage->Init();
+			if (!m_Storage) m_Storage = new AddressBookFilesystemStorage;
+			m_Storage->Init ();
 			LoadHosts (); /* try storage, then hosts.txt, then download */
 			StartSubscriptions ();
 			StartLookups ();
@@ -445,14 +441,15 @@ namespace client
 		bool isDownloading = m_Downloading.valid ();
 		if (isDownloading)
 		{
-			if (m_Downloading.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+			if (m_Downloading.wait_for (std::chrono::seconds (0)) == std::future_status::ready)
 				isDownloading = false;
 			else
 			{
 				LogPrint (eLogInfo, "Addressbook: Subscriptions are downloading, abort");
 				for (int i = 0; i < 30; i++)
 				{
-					if (m_Downloading.wait_for(std::chrono::seconds(1)) == std::future_status::ready) // wait for 1 seconds
+					if (m_Downloading.wait_for (std::chrono::seconds (1))
+						== std::future_status::ready) // wait for 1 seconds
 					{
 						isDownloading = false;
 						LogPrint (eLogInfo, "Addressbook: Subscriptions download complete");
@@ -477,78 +474,71 @@ namespace client
 
 	std::shared_ptr<const Address> AddressBook::GetAddress (std::string_view address)
 	{
-		auto pos = address.find(".b32.i2p");
+		auto pos = address.find (".b32.i2p");
 		if (pos != std::string::npos)
 		{
-			auto addr = std::make_shared<const Address>(address.substr (0, pos));
+			auto addr = std::make_shared<const Address> (address.substr (0, pos));
 			return addr->IsValid () ? addr : nullptr;
 		}
-		else
-		if (address.ends_with (".i2p"))
+		else if (address.ends_with (".i2p"))
 		{
 			if (!m_IsEnabled) return nullptr;
 			auto addr = FindAddress (address);
-			if (!addr)
-				LookupAddress (address); // TODO:
+			if (!addr) LookupAddress (address); // TODO:
 			return addr;
 		}
 		// if not .b32 we assume full base64 address
 		i2p::data::IdentityEx dest;
-		if (!dest.FromBase64 (address))
-			return nullptr;
-		return std::make_shared<const Address>(dest.GetIdentHash ());
+		if (!dest.FromBase64 (address)) return nullptr;
+		return std::make_shared<const Address> (dest.GetIdentHash ());
 	}
 
 	std::shared_ptr<const Address> AddressBook::FindAddress (std::string_view address)
 	{
-		std::lock_guard<std::mutex> l(m_AddressBookMutex);
+		std::lock_guard<std::mutex> l (m_AddressBookMutex);
 		auto it = m_Addresses.find (address);
-		if (it != m_Addresses.end ())
-			return it->second;
+		if (it != m_Addresses.end ()) return it->second;
 		return nullptr;
 	}
 
-	bool AddressBook::RecordExists (const std::string& address, const std::string& jump)
+	bool AddressBook::RecordExists (const std::string & address, const std::string & jump)
 	{
-		auto addr = FindAddress(address);
-		if (!addr)
-			return false;
+		auto addr = FindAddress (address);
+		if (!addr) return false;
 
-		auto pos = jump.find(".b32.i2p");
+		auto pos = jump.find (".b32.i2p");
 		if (pos != std::string::npos)
 		{
 			i2p::data::IdentHash identHash;
-			if (identHash.FromBase32(jump.substr (0, pos)) && identHash == addr->identHash)
-				return true;
+			if (identHash.FromBase32 (jump.substr (0, pos)) && identHash == addr->identHash) return true;
 		}
 		else
 		{
 			i2p::data::IdentityEx ident;
-			if (ident.FromBase64 (jump) && ident.GetIdentHash () == addr->identHash)
-				return true;
+			if (ident.FromBase64 (jump) && ident.GetIdentHash () == addr->identHash) return true;
 		}
 
 		return false;
 	}
 
-	void AddressBook::InsertAddress (const std::string& address, const std::string& jump)
+	void AddressBook::InsertAddress (const std::string & address, const std::string & jump)
 	{
-		std::lock_guard<std::mutex> l(m_AddressBookMutex);
-		auto pos = jump.find(".b32.i2p");
+		std::lock_guard<std::mutex> l (m_AddressBookMutex);
+		auto pos = jump.find (".b32.i2p");
 		if (pos != std::string::npos)
 		{
-			m_Addresses[address] = std::make_shared<Address>(jump.substr (0, pos));
-			LogPrint (eLogInfo, "Addressbook: Added ", address," -> ", jump);
+			m_Addresses[address] = std::make_shared<Address> (jump.substr (0, pos));
+			LogPrint (eLogInfo, "Addressbook: Added ", address, " -> ", jump);
 		}
 		else
 		{
 			// assume base64
-			auto ident = std::make_shared<i2p::data::IdentityEx>();
+			auto ident = std::make_shared<i2p::data::IdentityEx> ();
 			if (ident->FromBase64 (jump))
 			{
 				if (m_Storage) m_Storage->AddAddress (ident);
-				m_Addresses[address] = std::make_shared<Address>(ident->GetIdentHash ());
-				LogPrint (eLogInfo, "Addressbook: Added ", address," -> ", ToAddress(ident->GetIdentHash ()));
+				m_Addresses[address] = std::make_shared<Address> (ident->GetIdentHash ());
+				LogPrint (eLogInfo, "Addressbook: Added ", address, " -> ", ToAddress (ident->GetIdentHash ()));
 			}
 			else
 				LogPrint (eLogError, "Addressbook: Malformed address ", jump);
@@ -560,7 +550,7 @@ namespace client
 		if (m_Storage) m_Storage->AddAddress (address);
 	}
 
-	std::shared_ptr<const i2p::data::IdentityEx> AddressBook::GetFullAddress (const std::string& address)
+	std::shared_ptr<const i2p::data::IdentityEx> AddressBook::GetFullAddress (const std::string & address)
 	{
 		auto addr = GetAddress (address);
 		if (!addr || !addr->IsIdentHash ()) return nullptr;
@@ -577,7 +567,7 @@ namespace client
 		}
 
 		// then try hosts.txt
-		std::ifstream f (i2p::fs::DataDirPath("hosts.txt"), std::ifstream::in); // in text mode
+		std::ifstream f (i2p::fs::DataDirPath ("hosts.txt"), std::ifstream::in); // in text mode
 		if (f.is_open ())
 		{
 			LoadHostsFromStream (std::move (f), false);
@@ -588,29 +578,27 @@ namespace client
 		m_Storage->ResetEtags ();
 	}
 
-	bool AddressBook::LoadHostsFromStream (std::istream&& f, bool is_update)
+	bool AddressBook::LoadHostsFromStream (std::istream && f, bool is_update)
 	{
-		std::unique_lock<std::mutex> l(m_AddressBookMutex);
+		std::unique_lock<std::mutex> l (m_AddressBookMutex);
 		int numAddresses = 0;
 		bool incomplete = false;
 		std::string s;
 		while (!f.eof ())
 		{
-			getline(f, s);
+			getline (f, s);
 
-			if (!s.length() || s[0] == '#')
-				continue; // skip empty or comment line
+			if (!s.length () || s[0] == '#') continue; // skip empty or comment line
 
-			size_t pos = s.find('=');
+			size_t pos = s.find ('=');
 
 			if (pos != std::string::npos)
 			{
-				std::string_view name = std::string_view(s).substr(0, pos++);
-				std::string_view addr = std::string_view(s).substr(pos);
+				std::string_view name = std::string_view (s).substr (0, pos++);
+				std::string_view addr = std::string_view (s).substr (pos);
 
-				size_t pos = addr.find('#');
-				if (pos != addr.npos)
-					addr = addr.substr(0, pos); // remove comments
+				size_t pos = addr.find ('#');
+				if (pos != addr.npos) addr = addr.substr (0, pos); // remove comments
 				if (name.ends_with (".b32.i2p"))
 				{
 					LogPrint (eLogError, "Addressbook: Skipped adding of b32 address: ", name);
@@ -624,7 +612,7 @@ namespace client
 				}
 
 				auto ident = std::make_shared<i2p::data::IdentityEx> ();
-				if (!ident->FromBase64(addr))
+				if (!ident->FromBase64 (addr))
 				{
 					LogPrint (eLogError, "Addressbook: Malformed address ", addr, " for ", name);
 					incomplete = f.eof ();
@@ -634,7 +622,8 @@ namespace client
 				auto it = m_Addresses.find (name);
 				if (it != m_Addresses.end ()) // already exists ?
 				{
-					if (it->second->IsIdentHash () && it->second->identHash != ident->GetIdentHash () && // address changed?
+					if (it->second->IsIdentHash () && it->second->identHash != ident->GetIdentHash ()
+						&& // address changed?
 						ident->GetSigningKeyType () != i2p::data::SIGNING_KEY_TYPE_DSA_SHA1) // don't replace by DSA
 					{
 						if (m_Storage)
@@ -648,10 +637,9 @@ namespace client
 				}
 				else
 				{
-					m_Addresses.emplace (name, std::make_shared<Address>(ident->GetIdentHash ()));
+					m_Addresses.emplace (name, std::make_shared<Address> (ident->GetIdentHash ()));
 					if (m_Storage) m_Storage->AddAddress (ident);
-					if (is_update)
-						LogPrint (eLogInfo, "Addressbook: Added new host: ", name);
+					if (is_update) LogPrint (eLogInfo, "Addressbook: Added new host: ", name);
 				}
 			}
 			else
@@ -676,7 +664,7 @@ namespace client
 				std::string s;
 				while (!f.eof ())
 				{
-					getline(f, s);
+					getline (f, s);
 					if (s.empty () || s[0] == '#') continue; // skip empty line or comment
 					m_Subscriptions.push_back (std::make_shared<AddressBookSubscription> (*this, s));
 				}
@@ -687,13 +675,13 @@ namespace client
 			{
 				LogPrint (eLogInfo, "Addressbook: Loading subscriptions from config");
 				// using config file items
-				std::string subscriptionURLs; i2p::config::GetOption("addressbook.subscriptions", subscriptionURLs);
+				std::string subscriptionURLs;
+				i2p::config::GetOption ("addressbook.subscriptions", subscriptionURLs);
 				std::vector<std::string> subsList;
-				boost::split(subsList, subscriptionURLs, boost::is_any_of(","), boost::token_compress_on);
+				boost::split (subsList, subscriptionURLs, boost::is_any_of (","), boost::token_compress_on);
 
-				for (const auto& s: subsList)
-					if (!s.empty ())
-						m_Subscriptions.push_back (std::make_shared<AddressBookSubscription> (*this, s));
+				for (const auto & s : subsList)
+					if (!s.empty ()) m_Subscriptions.push_back (std::make_shared<AddressBookSubscription> (*this, s));
 				LogPrint (eLogInfo, "Addressbook: ", m_Subscriptions.size (), " subscriptions urls loaded");
 			}
 		}
@@ -706,7 +694,7 @@ namespace client
 		if (!m_Storage) return;
 		AddressBookStorage::Addresses localAddresses;
 		m_Storage->LoadLocal (localAddresses);
-		for (const auto& it: localAddresses)
+		for (const auto & it : localAddresses)
 		{
 			if (!it.second->IsIdentHash ()) continue; // skip blinded for now
 			auto dot = it.first.find ('.');
@@ -727,8 +715,8 @@ namespace client
 						else
 						{
 							// create new resolver
-							resolver = std::make_shared<AddressResolver>(dest);
-							m_Resolvers.insert (std::make_pair(it1->second->identHash, resolver));
+							resolver = std::make_shared<AddressResolver> (dest);
+							m_Resolvers.insert (std::make_pair (it1->second->identHash, resolver));
 						}
 						resolver->AddAddress (it.first, it.second->identHash);
 					}
@@ -737,7 +725,8 @@ namespace client
 		}
 	}
 
-	bool AddressBook::GetEtag (const i2p::data::IdentHash& subscription, std::string& etag, std::string& lastModified)
+	bool AddressBook::GetEtag (
+		const i2p::data::IdentHash & subscription, std::string & etag, std::string & lastModified)
 	{
 		if (m_Storage)
 			return m_Storage->GetEtag (subscription, etag, lastModified);
@@ -745,11 +734,13 @@ namespace client
 			return false;
 	}
 
-	void AddressBook::DownloadComplete (bool success, const i2p::data::IdentHash& subscription, const std::string& etag, const std::string& lastModified)
+	void AddressBook::DownloadComplete (bool success, const i2p::data::IdentHash & subscription,
+		const std::string & etag, const std::string & lastModified)
 	{
 		m_NumRetries++;
-		int nextUpdateTimeout = m_NumRetries*CONTINIOUS_SUBSCRIPTION_RETRY_TIMEOUT;
-		if (m_NumRetries > CONTINIOUS_SUBSCRIPTION_MAX_NUM_RETRIES || nextUpdateTimeout > CONTINIOUS_SUBSCRIPTION_UPDATE_TIMEOUT)
+		int nextUpdateTimeout = m_NumRetries * CONTINIOUS_SUBSCRIPTION_RETRY_TIMEOUT;
+		if (m_NumRetries > CONTINIOUS_SUBSCRIPTION_MAX_NUM_RETRIES
+			|| nextUpdateTimeout > CONTINIOUS_SUBSCRIPTION_UPDATE_TIMEOUT)
 			nextUpdateTimeout = CONTINIOUS_SUBSCRIPTION_UPDATE_TIMEOUT;
 		if (success)
 		{
@@ -763,9 +754,9 @@ namespace client
 		}
 		if (m_SubscriptionsUpdateTimer)
 		{
-			m_SubscriptionsUpdateTimer->expires_after (std::chrono::minutes(nextUpdateTimeout));
-			m_SubscriptionsUpdateTimer->async_wait (std::bind (&AddressBook::HandleSubscriptionsUpdateTimer,
-				this, std::placeholders::_1));
+			m_SubscriptionsUpdateTimer->expires_after (std::chrono::minutes (nextUpdateTimeout));
+			m_SubscriptionsUpdateTimer->async_wait (
+				std::bind (&AddressBook::HandleSubscriptionsUpdateTimer, this, std::placeholders::_1));
 		}
 	}
 
@@ -777,10 +768,10 @@ namespace client
 		auto dest = i2p::client::context.GetSharedLocalDestination ();
 		if (dest)
 		{
-			m_SubscriptionsUpdateTimer = std::make_unique<boost::asio::steady_timer>(dest->GetService ());
-			m_SubscriptionsUpdateTimer->expires_after (std::chrono::minutes(INITIAL_SUBSCRIPTION_UPDATE_TIMEOUT));
-			m_SubscriptionsUpdateTimer->async_wait (std::bind (&AddressBook::HandleSubscriptionsUpdateTimer,
-				this, std::placeholders::_1));
+			m_SubscriptionsUpdateTimer = std::make_unique<boost::asio::steady_timer> (dest->GetService ());
+			m_SubscriptionsUpdateTimer->expires_after (std::chrono::minutes (INITIAL_SUBSCRIPTION_UPDATE_TIMEOUT));
+			m_SubscriptionsUpdateTimer->async_wait (
+				std::bind (&AddressBook::HandleSubscriptionsUpdateTimer, this, std::placeholders::_1));
 		}
 		else
 			LogPrint (eLogCritical, "Addressbook: Can't start subscriptions: missing shared local destination");
@@ -788,8 +779,7 @@ namespace client
 
 	void AddressBook::StopSubscriptions ()
 	{
-		if (m_SubscriptionsUpdateTimer)
-			m_SubscriptionsUpdateTimer->cancel ();
+		if (m_SubscriptionsUpdateTimer) m_SubscriptionsUpdateTimer->cancel ();
 	}
 
 	void AddressBook::ResetTimers ()
@@ -803,10 +793,10 @@ namespace client
 			m_SubscriptionsUpdateTimer = nullptr;
 			if (dest)
 			{
-				m_SubscriptionsUpdateTimer = std::make_unique<boost::asio::steady_timer>(dest->GetService ());
-				m_SubscriptionsUpdateTimer->expires_after (std::chrono::minutes(INITIAL_SUBSCRIPTION_UPDATE_TIMEOUT));
-				m_SubscriptionsUpdateTimer->async_wait (std::bind (&AddressBook::HandleSubscriptionsUpdateTimer,
-					this, std::placeholders::_1));
+				m_SubscriptionsUpdateTimer = std::make_unique<boost::asio::steady_timer> (dest->GetService ());
+				m_SubscriptionsUpdateTimer->expires_after (std::chrono::minutes (INITIAL_SUBSCRIPTION_UPDATE_TIMEOUT));
+				m_SubscriptionsUpdateTimer->async_wait (
+					std::bind (&AddressBook::HandleSubscriptionsUpdateTimer, this, std::placeholders::_1));
 			}
 		}
 		if (m_AddressCacheUpdateTimer)
@@ -817,17 +807,19 @@ namespace client
 		}
 	}
 
-	void AddressBook::HandleSubscriptionsUpdateTimer (const boost::system::error_code& ecode)
+	void AddressBook::HandleSubscriptionsUpdateTimer (const boost::system::error_code & ecode)
 	{
 		if (ecode != boost::asio::error::operation_aborted)
 		{
 			auto dest = i2p::client::context.GetSharedLocalDestination ();
-			if (!dest) {
-				LogPrint(eLogWarning, "Addressbook: Missing local destination, skip subscription update");
+			if (!dest)
+			{
+				LogPrint (eLogWarning, "Addressbook: Missing local destination, skip subscription update");
 				return;
 			}
 			bool isDownloading = m_Downloading.valid ();
-			if (isDownloading && m_Downloading.wait_for(std::chrono::seconds(0)) == std::future_status::ready) // still active?
+			if (isDownloading
+				&& m_Downloading.wait_for (std::chrono::seconds (0)) == std::future_status::ready) // still active?
 			{
 				m_Downloading.get ();
 				isDownloading = false;
@@ -838,26 +830,27 @@ namespace client
 				{
 					// download it from default subscription
 					LogPrint (eLogInfo, "Addressbook: Trying to download it from default subscription.");
-					std::string defaultSubURL; i2p::config::GetOption("addressbook.defaulturl", defaultSubURL);
+					std::string defaultSubURL;
+					i2p::config::GetOption ("addressbook.defaulturl", defaultSubURL);
 					if (!m_DefaultSubscription)
-						m_DefaultSubscription = std::make_shared<AddressBookSubscription>(*this, defaultSubURL);
-					m_Downloading = std::async (std::launch::async,
-						std::bind (&AddressBookSubscription::CheckUpdates, m_DefaultSubscription));
+						m_DefaultSubscription = std::make_shared<AddressBookSubscription> (*this, defaultSubURL);
+					m_Downloading = std::async (
+						std::launch::async, std::bind (&AddressBookSubscription::CheckUpdates, m_DefaultSubscription));
 				}
 				else if (!m_Subscriptions.empty ())
 				{
 					// pick random subscription
-					auto ind = rand () % m_Subscriptions.size();
-					m_Downloading = std::async (std::launch::async,
-						std::bind (&AddressBookSubscription::CheckUpdates, m_Subscriptions[ind]));
+					auto ind = rand () % m_Subscriptions.size ();
+					m_Downloading = std::async (
+						std::launch::async, std::bind (&AddressBookSubscription::CheckUpdates, m_Subscriptions[ind]));
 				}
 			}
 			else
 			{
 				// try it again later
-				m_SubscriptionsUpdateTimer->expires_after (std::chrono::minutes(INITIAL_SUBSCRIPTION_RETRY_TIMEOUT));
-				m_SubscriptionsUpdateTimer->async_wait (std::bind (&AddressBook::HandleSubscriptionsUpdateTimer,
-					this, std::placeholders::_1));
+				m_SubscriptionsUpdateTimer->expires_after (std::chrono::minutes (INITIAL_SUBSCRIPTION_RETRY_TIMEOUT));
+				m_SubscriptionsUpdateTimer->async_wait (
+					std::bind (&AddressBook::HandleSubscriptionsUpdateTimer, this, std::placeholders::_1));
 			}
 		}
 	}
@@ -868,10 +861,10 @@ namespace client
 		if (dest)
 		{
 			auto datagram = dest->GetDatagramDestination ();
-			if (!datagram)
-				datagram = dest->CreateDatagramDestination ();
-			datagram->SetReceiver (std::bind (&AddressBook::HandleLookupResponse, this,
-				std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4, std::placeholders::_5),
+			if (!datagram) datagram = dest->CreateDatagramDestination ();
+			datagram->SetReceiver (
+				std::bind (&AddressBook::HandleLookupResponse, this, std::placeholders::_1, std::placeholders::_2,
+					std::placeholders::_3, std::placeholders::_4, std::placeholders::_5),
 				ADDRESS_RESPONSE_DATAGRAM_PORT);
 		}
 	}
@@ -890,8 +883,7 @@ namespace client
 	{
 		std::shared_ptr<const Address> addr;
 		auto dot = address.find ('.');
-		if (dot != std::string::npos)
-			addr = FindAddress (address.substr (dot + 1));
+		if (dot != std::string::npos) addr = FindAddress (address.substr (dot + 1));
 		if (!addr || !addr->IsIdentHash ()) // TODO:
 		{
 			LogPrint (eLogError, "Addressbook: Can't find domain for ", address);
@@ -907,23 +899,26 @@ namespace client
 				uint32_t nonce;
 				RAND_bytes ((uint8_t *)&nonce, 4);
 				{
-					std::unique_lock<std::mutex> l(m_LookupsMutex);
+					std::unique_lock<std::mutex> l (m_LookupsMutex);
 					m_Lookups[nonce] = address;
 				}
-				LogPrint (eLogDebug, "Addressbook: Lookup of ", address, " to ", addr->identHash.ToBase32 (), " nonce=", nonce);
+				LogPrint (eLogDebug, "Addressbook: Lookup of ", address, " to ", addr->identHash.ToBase32 (),
+					" nonce=", nonce);
 				size_t len = address.length () + 9;
 				uint8_t * buf = new uint8_t[len];
 				memset (buf, 0, 4);
 				htobe32buf (buf + 4, nonce);
 				buf[8] = address.length ();
 				memcpy (buf + 9, address.data (), address.length ());
-				datagram->SendDatagramTo (buf, len, addr->identHash, ADDRESS_RESPONSE_DATAGRAM_PORT, ADDRESS_RESOLVER_DATAGRAM_PORT);
+				datagram->SendDatagramTo (
+					buf, len, addr->identHash, ADDRESS_RESPONSE_DATAGRAM_PORT, ADDRESS_RESOLVER_DATAGRAM_PORT);
 				delete[] buf;
 			}
 		}
 	}
 
-	void AddressBook::HandleLookupResponse (const i2p::data::IdentityEx& from, uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len)
+	void AddressBook::HandleLookupResponse (
+		const i2p::data::IdentityEx & from, uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len)
 	{
 		if (len < 44)
 		{
@@ -931,10 +926,11 @@ namespace client
 			return;
 		}
 		uint32_t nonce = bufbe32toh (buf + 4);
-		LogPrint (eLogDebug, "Addressbook: Lookup response received from ", from.GetIdentHash ().ToBase32 (), " nonce=", nonce);
+		LogPrint (eLogDebug, "Addressbook: Lookup response received from ", from.GetIdentHash ().ToBase32 (),
+			" nonce=", nonce);
 		std::string address;
 		{
-			std::unique_lock<std::mutex> l(m_LookupsMutex);
+			std::unique_lock<std::mutex> l (m_LookupsMutex);
 			auto it = m_Lookups.find (nonce);
 			if (it != m_Lookups.end ())
 			{
@@ -945,11 +941,11 @@ namespace client
 		if (address.length () > 0)
 		{
 			// TODO: verify from
-			i2p::data::IdentHash hash(buf + 8);
+			i2p::data::IdentHash hash (buf + 8);
 			if (!hash.IsZero ())
 			{
-				std::lock_guard<std::mutex> l(m_AddressBookMutex);
-				m_Addresses[address] = std::make_shared<Address>(hash);
+				std::lock_guard<std::mutex> l (m_AddressBookMutex);
+				m_Addresses[address] = std::make_shared<Address> (hash);
 			}
 			else
 				LogPrint (eLogInfo, "AddressBook: Lookup response: ", address, " not found");
@@ -961,14 +957,13 @@ namespace client
 		if (!m_AddressCacheUpdateTimer)
 		{
 			auto dest = i2p::client::context.GetSharedLocalDestination ();
-			if(dest)
-				m_AddressCacheUpdateTimer = std::make_unique<boost::asio::steady_timer>(dest->GetService ());
+			if (dest) m_AddressCacheUpdateTimer = std::make_unique<boost::asio::steady_timer> (dest->GetService ());
 		}
 		if (m_AddressCacheUpdateTimer)
 		{
-			m_AddressCacheUpdateTimer->expires_after (std::chrono::seconds(ADDRESS_CACHE_UPDATE_INTERVAL ));
+			m_AddressCacheUpdateTimer->expires_after (std::chrono::seconds (ADDRESS_CACHE_UPDATE_INTERVAL));
 			m_AddressCacheUpdateTimer->async_wait (
-				[this](const boost::system::error_code& ecode)
+				[this] (const boost::system::error_code & ecode)
 				{
 					if (ecode != boost::asio::error::operation_aborted)
 					{
@@ -979,14 +974,15 @@ namespace client
 		}
 	}
 
-	AddressBookSubscription::AddressBookSubscription (AddressBook& book, std::string_view link):
-		m_Book (book), m_Link (link)
+	AddressBookSubscription::AddressBookSubscription (AddressBook & book, std::string_view link)
+		: m_Book (book)
+		, m_Link (link)
 	{
 	}
 
 	void AddressBookSubscription::CheckUpdates ()
 	{
-		i2p::util::SetThreadName("Addressbook");
+		i2p::util::SetThreadName ("Addressbook");
 
 		bool result = MakeRequest ();
 		m_Book.DownloadComplete (result, m_Ident, m_Etag, m_LastModified);
@@ -997,9 +993,9 @@ namespace client
 		i2p::http::URL url;
 		// must be run in separate thread
 		LogPrint (eLogInfo, "Addressbook: Downloading hosts database from ", m_Link);
-		if (!url.parse(m_Link))
+		if (!url.parse (m_Link))
 		{
-			LogPrint(eLogError, "Addressbook: Failed to parse url: ", m_Link);
+			LogPrint (eLogError, "Addressbook: Failed to parse url: ", m_Link);
 			return false;
 		}
 		auto addr = m_Book.GetAddress (url.host);
@@ -1012,7 +1008,7 @@ namespace client
 			m_Ident = addr->identHash;
 		// save url parts for later use
 		std::string dest_host = url.host;
-		int         dest_port = url.port ? url.port : 80;
+		int dest_port = url.port ? url.port : 80;
 		// try to create stream to addressbook site
 		auto stream = i2p::client::context.GetSharedLocalDestination ()->CreateStream (m_Ident, dest_port);
 		if (!stream)
@@ -1020,25 +1016,28 @@ namespace client
 			LogPrint (eLogWarning, "Addressbook: LeaseSet for address ", url.host, " not found");
 			return false;
 		}
-		i2p::util::Defer d ([stream]()
+		i2p::util::Defer d (
+			[stream] ()
 			{
 				// destroy stream in destination's thread on exit
-				boost::asio::post (i2p::client::context.GetSharedLocalDestination ()->GetService (), [s = std::move (stream)](){});
+				boost::asio::post (
+					i2p::client::context.GetSharedLocalDestination ()->GetService (), [s = std::move (stream)] () { });
 			});
-		if (m_Etag.empty() && m_LastModified.empty())
+		if (m_Etag.empty () && m_LastModified.empty ())
 		{
 			m_Book.GetEtag (m_Ident, m_Etag, m_LastModified);
-			LogPrint (eLogDebug, "Addressbook: Loaded for ", url.host, ": ETag: ", m_Etag, ", Last-Modified: ", m_LastModified);
+			LogPrint (eLogDebug, "Addressbook: Loaded for ", url.host, ": ETag: ", m_Etag,
+				", Last-Modified: ", m_LastModified);
 		}
 		// create http request & send it
-		boost::beast::http::request<boost::beast::http::string_body> req (boost::beast::http::verb::get, url.to_string (true), 11); // HTTP 1.1
+		boost::beast::http::request<boost::beast::http::string_body> req (
+			boost::beast::http::verb::get, url.to_string (true), 11); // HTTP 1.1
 		req.set (boost::beast::http::field::host, dest_host);
 		req.set (boost::beast::http::field::user_agent, "Wget/1.11.4");
 		req.set (boost::beast::http::field::accept_encoding, "gzip");
 		req.set ("X-Accept-Encoding", "x-i2p-gzip;q=1.0, identity;q=0.5, deflate;q=0, gzip;q=0, *;q=0");
-		if (!m_Etag.empty())
-			req.set (boost::beast::http::field::if_none_match, m_Etag); // If-None-Match
-		if (!m_LastModified.empty())
+		if (!m_Etag.empty ()) req.set (boost::beast::http::field::if_none_match, m_Etag); // If-None-Match
+		if (!m_LastModified.empty ())
 			req.set (boost::beast::http::field::if_modified_since, m_LastModified); // If-Modified-Since
 		req.keep_alive (false); // Connection: close
 
@@ -1046,43 +1045,44 @@ namespace client
 		std::future<size_t> sending = boost::beast::http::async_write (httpStream, req, boost::asio::use_future);
 		try
 		{
-			size_t bytes_transferred = sending.get();
+			size_t bytes_transferred = sending.get ();
 			if (!bytes_transferred)
 			{
-				LogPrint(eLogWarning, "Addressbook: HTTP request to ", dest_host, " was not sent");
+				LogPrint (eLogWarning, "Addressbook: HTTP request to ", dest_host, " was not sent");
 				return false;
 			}
 		}
-		catch (std::exception& ex)
+		catch (std::exception & ex)
 		{
-			LogPrint(eLogWarning, "Addressbook: Send HTTP request exception: ", ex.what ());
+			LogPrint (eLogWarning, "Addressbook: Send HTTP request exception: ", ex.what ());
 			return false;
 		}
 		boost::beast::flat_buffer receiveBuffer;
 		boost::beast::http::response<boost::beast::http::string_body> res;
-		std::future<size_t> receiving = boost::beast::http::async_read (httpStream, receiveBuffer, res, boost::asio::use_future);
+		std::future<size_t> receiving
+			= boost::beast::http::async_read (httpStream, receiveBuffer, res, boost::asio::use_future);
 		try
 		{
-			size_t bytes_transferred = receiving.get();
+			size_t bytes_transferred = receiving.get ();
 			if (!bytes_transferred)
 			{
-				LogPrint(eLogWarning, "Addressbook: HTTP response from ", dest_host, " was not received");
+				LogPrint (eLogWarning, "Addressbook: HTTP response from ", dest_host, " was not received");
 				return false;
 			}
 		}
-		catch (std::exception& ex)
+		catch (std::exception & ex)
 		{
-			LogPrint(eLogWarning, "Addressbook: Receive HTTP response exception: ", ex.what ());
+			LogPrint (eLogWarning, "Addressbook: Receive HTTP response exception: ", ex.what ());
 			return false;
 		}
 		stream->AsyncClose ();
 		// check result
 		if (res.result () != boost::beast::http::status::ok)
 		{
-			if (res.result_int() == 304)
+			if (res.result_int () == 304)
 				LogPrint (eLogInfo, "Addressbook: No updates from ", dest_host, ", code 304");
 			else
-				LogPrint (eLogWarning, "Addressbook: Response code ", res.result_int(), " from ", dest_host);
+				LogPrint (eLogWarning, "Addressbook: Response code ", res.result_int (), " from ", dest_host);
 			return false;
 		}
 		// update Etag and Last-Modified
@@ -1092,34 +1092,34 @@ namespace client
 		if (!lastModified.empty ()) m_LastModified = std::string (lastModified);
 		// parse response
 		LogPrint (eLogInfo, "Addressbook: Got update from ", dest_host);
-		if (boost::iequals (res[boost::beast::http::field::content_encoding], "gzip") ||
-			boost::iequals (res[boost::beast::http::field::content_encoding], "x-i2p-gzip"))
+		if (boost::iequals (res[boost::beast::http::field::content_encoding], "gzip")
+			|| boost::iequals (res[boost::beast::http::field::content_encoding], "x-i2p-gzip"))
 		{
 			std::stringstream unzipped;
 			i2p::data::GzipInflator inflator;
-			inflator.Inflate ((const uint8_t *)res.body().data(), res.body().size(), unzipped);
-			if (unzipped.fail())
+			inflator.Inflate ((const uint8_t *)res.body ().data (), res.body ().size (), unzipped);
+			if (unzipped.fail ())
 			{
-				LogPrint(eLogError, "Addressbook: Can't gunzip http response");
+				LogPrint (eLogError, "Addressbook: Can't gunzip http response");
 				return false;
 			}
 			m_Book.LoadHostsFromStream (std::move (unzipped), true);
 		}
 		else
-			m_Book.LoadHostsFromStream (std::stringstream(res.body ()), true);
+			m_Book.LoadHostsFromStream (std::stringstream (res.body ()), true);
 		return true;
 	}
 
-	AddressResolver::AddressResolver (std::shared_ptr<ClientDestination> destination):
-		m_LocalDestination (destination)
+	AddressResolver::AddressResolver (std::shared_ptr<ClientDestination> destination)
+		: m_LocalDestination (destination)
 	{
 		if (m_LocalDestination)
 		{
 			auto datagram = m_LocalDestination->GetDatagramDestination ();
-			if (!datagram)
-				datagram = m_LocalDestination->CreateDatagramDestination ();
-			datagram->SetReceiver (std::bind (&AddressResolver::HandleRequest, this,
-				std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4, std::placeholders::_5),
+			if (!datagram) datagram = m_LocalDestination->CreateDatagramDestination ();
+			datagram->SetReceiver (
+				std::bind (&AddressResolver::HandleRequest, this, std::placeholders::_1, std::placeholders::_2,
+					std::placeholders::_3, std::placeholders::_4, std::placeholders::_5),
 				ADDRESS_RESOLVER_DATAGRAM_PORT);
 		}
 	}
@@ -1129,12 +1129,12 @@ namespace client
 		if (m_LocalDestination)
 		{
 			auto datagram = m_LocalDestination->GetDatagramDestination ();
-			if (datagram)
-				datagram->ResetReceiver (ADDRESS_RESOLVER_DATAGRAM_PORT);
+			if (datagram) datagram->ResetReceiver (ADDRESS_RESOLVER_DATAGRAM_PORT);
 		}
 	}
 
-	void AddressResolver::HandleRequest (const i2p::data::IdentityEx& from, uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len)
+	void AddressResolver::HandleRequest (
+		const i2p::data::IdentityEx & from, uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len)
 	{
 		if (len < 9 || len < buf[8] + 9U)
 		{
@@ -1157,10 +1157,11 @@ namespace client
 		else
 			memset (response + 8, 0, 32); // not found
 		memset (response + 40, 0, 4); // set expiration time to zero
-		m_LocalDestination->GetDatagramDestination ()->SendDatagramTo (response, 44, from.GetIdentHash(), toPort, fromPort);
+		m_LocalDestination->GetDatagramDestination ()->SendDatagramTo (
+			response, 44, from.GetIdentHash (), toPort, fromPort);
 	}
 
-	void AddressResolver::AddAddress (const std::string& name, const i2p::data::IdentHash& ident)
+	void AddressResolver::AddAddress (const std::string & name, const i2p::data::IdentHash & ident)
 	{
 		m_LocalAddresses[name] = ident;
 	}

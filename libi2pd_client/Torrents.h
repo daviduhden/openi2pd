@@ -41,16 +41,18 @@ namespace torrents
 	// BEncoded
 	std::pair<std::string_view, size_t> ExtractByteString (std::string_view buf);
 	std::pair<int64_t, size_t> ExtractInteger (std::string_view buf);
-	size_t ParseDictionary (std::string_view buf, std::function<size_t (std::string_view key, std::string_view buf)> handler = nullptr, size_t depth = 0);
-	std::pair<std::map<std::string_view, std::string_view>, size_t> ExtractDictionary (std::string_view buf); // decoded keys, encoded values
-	size_t ParseList (std::string_view buf, std::function<size_t (std::string_view buf)> handler = nullptr, size_t depth = 0);
+	size_t ParseDictionary (std::string_view buf,
+		std::function<size_t (std::string_view key, std::string_view buf)> handler = nullptr, size_t depth = 0);
+	std::pair<std::map<std::string_view, std::string_view>, size_t> ExtractDictionary (
+		std::string_view buf); // decoded keys, encoded values
+	size_t ParseList (
+		std::string_view buf, std::function<size_t (std::string_view buf)> handler = nullptr, size_t depth = 0);
 	std::pair<std::vector<std::string_view>, size_t> ParseStringList (std::string_view buf);
 	std::string CreateByteString (std::string_view str);
 	std::string CreateInteger (int64_t v);
-	std::string CreateDictionary (const std::vector<std::pair<std::string_view, std::string_view> >& items);
-	std::string CreateList (const std::vector<std::string>& items);
-	template<size_t sz>
-	std::pair<size_t, bool> ParseByteArray (std::string_view buf, std::array<uint8_t, sz>& arr)
+	std::string CreateDictionary (const std::vector<std::pair<std::string_view, std::string_view>> & items);
+	std::string CreateList (const std::vector<std::string> & items);
+	template <size_t sz> std::pair<size_t, bool> ParseByteArray (std::string_view buf, std::array<uint8_t, sz> & arr)
 	{
 		auto [str, len] = ExtractByteString (buf);
 		if (len && str.size () >= sz)
@@ -61,16 +63,15 @@ namespace torrents
 		return { len, false };
 	}
 
-
 	constexpr size_t REQUEST_BLOCK_SIZE = 16384;
-	constexpr size_t MIN_PIECE_LENGTH = 16*1024; // 16K
-	constexpr size_t MAX_PIECE_LENGTH = 256*1024*1024; // 256M
-	constexpr size_t MAX_NUM_TORRENT_PIECES = 1024*1024; // 1M
-	constexpr size_t MAX_TORRENT_LENGTH = MAX_PIECE_LENGTH*MAX_NUM_TORRENT_PIECES; // 256T
+	constexpr size_t MIN_PIECE_LENGTH = 16 * 1024; // 16K
+	constexpr size_t MAX_PIECE_LENGTH = 256 * 1024 * 1024; // 256M
+	constexpr size_t MAX_NUM_TORRENT_PIECES = 1024 * 1024; // 1M
+	constexpr size_t MAX_TORRENT_LENGTH = MAX_PIECE_LENGTH * MAX_NUM_TORRENT_PIECES; // 256T
 	constexpr size_t MAX_NUM_TORRENT_FILES = 10000;
 	constexpr uint16_t TORRENT_PORT = 6881; //  not used by required by protocol
-	constexpr int MIN_TRACKER_REQUESTS_INTERVAL = 15*1000; // in milliseconds
-	constexpr int MAX_TRACKER_REQUESTS_INTERVAL = 24*3600*1000; // in milliseconds
+	constexpr int MIN_TRACKER_REQUESTS_INTERVAL = 15 * 1000; // in milliseconds
+	constexpr int MAX_TRACKER_REQUESTS_INTERVAL = 24 * 3600 * 1000; // in milliseconds
 	constexpr int DHT_TORRENT_UPDATE_INTERVAL = 880; // in seconds
 	constexpr int DHT_TORRENT_UPDATE_INTERVAL_VARIANCE = 130; // in seconds
 	constexpr int DHT_TORRENT_INITIAL_UPDATE_INTERVAL = 100; // in seconds
@@ -132,32 +133,33 @@ namespace torrents
 
 	class TorrentFile
 	{
-		public:
+	public:
+		TorrentFile (const std::filesystem::path & fullFilePath, size_t fileLength)
+			: m_FullFilePath (fullFilePath)
+			, m_FileLength (fileLength)
+			, m_IsPart (true)
+			, m_LastAccessTime (0)
+			, m_LastFlushTime (0) { };
 
-			TorrentFile (const std::filesystem::path & fullFilePath, size_t fileLength):
-				m_FullFilePath (fullFilePath), m_FileLength (fileLength), m_IsPart (true),
-				m_LastAccessTime (0), m_LastFlushTime (0) {};
+		bool Save (size_t offset, const uint8_t * buf, size_t len);
+		bool Load (size_t offset, uint8_t * buf, size_t len);
+		void Complete ();
+		void Open ();
+		void Close ();
 
-			bool Save (size_t offset, const uint8_t * buf, size_t len);
-			bool Load (size_t offset, uint8_t * buf, size_t len);
-			void Complete ();
-			void Open ();
-			void Close ();
+		const std::filesystem::path & GetFullFilePath () const { return m_FullFilePath; }
+		void SetFullPath (const std::filesystem::path & p) { m_FullFilePath = p; }
+		size_t GetFileLength () const { return m_FileLength; }
+		uint64_t GetLastAccessTime () const { return m_LastAccessTime; }
+		void SetIsPart (bool isPart) { m_IsPart = isPart; }
+		void UpdateFullPath (const std::filesystem::path & rootDir);
 
-			const std::filesystem::path& GetFullFilePath () const { return m_FullFilePath; }
-			void SetFullPath (const std::filesystem::path& p) { m_FullFilePath = p; }
-			size_t GetFileLength () const { return m_FileLength; }
-			uint64_t GetLastAccessTime () const { return m_LastAccessTime; }
-			void SetIsPart (bool isPart) { m_IsPart = isPart; }
-			void UpdateFullPath (const std::filesystem::path& rootDir);
-
-		private:
-
-			std::filesystem::path m_FullFilePath;
-			size_t m_FileLength;
-			bool m_IsPart;
-			std::fstream m_File;
-			uint64_t m_LastAccessTime, m_LastFlushTime; // monotonic seconds
+	private:
+		std::filesystem::path m_FullFilePath;
+		size_t m_FileLength;
+		bool m_IsPart;
+		std::fstream m_File;
+		uint64_t m_LastAccessTime, m_LastFlushTime; // monotonic seconds
 	};
 
 	struct PieceFileFragment // fragment to save to/load from file
@@ -167,10 +169,14 @@ namespace torrents
 		size_t fragmentOffset; // from start of piece
 		size_t fragmentSize;
 
-		PieceFileFragment (std::shared_ptr<TorrentFile> file1, size_t fileOffset1, size_t fragmentOffset1, size_t fragmentSize1):
-			file (file1), fileOffset (fileOffset1), fragmentOffset (fragmentOffset1), fragmentSize (fragmentSize1) {};
-		PieceFileFragment (PieceFileFragment&& ) = default;
-		PieceFileFragment (const PieceFileFragment& ) = default;
+		PieceFileFragment (
+			std::shared_ptr<TorrentFile> file1, size_t fileOffset1, size_t fragmentOffset1, size_t fragmentSize1)
+			: file (file1)
+			, fileOffset (fileOffset1)
+			, fragmentOffset (fragmentOffset1)
+			, fragmentSize (fragmentSize1) { };
+		PieceFileFragment (PieceFileFragment &&) = default;
+		PieceFileFragment (const PieceFileFragment &) = default;
 	};
 
 	class PeerConnection;
@@ -183,48 +189,50 @@ namespace torrents
 			Requested
 		};
 
-		public:
+	public:
+		Piece (size_t size, const uint8_t * hash);
+		Piece (Piece &&) = default;
+		~Piece ();
 
-			Piece (size_t size, const uint8_t * hash);
-			Piece (Piece&& ) = default;
-			~Piece ();
+		bool IsComplete () const { return !m_Blocks; }
+		void Complete ()
+		{
+			m_Blocks = nullptr;
+			m_IsRequested = false;
+		}
+		bool VerifyHash () const;
+		void SetIsSending (bool isSending);
+		uint64_t GetLastActivityTimestamp () const { return m_LastActivityTimestamp; }
+		bool IsRequested () const { return m_IsRequested; }
+		size_t GetNumPeers () const { return m_NumPeers; }
+		void SetNumPeers (size_t numPeers) { m_NumPeers = numPeers; }
 
-			bool IsComplete () const { return !m_Blocks; }
-			void Complete () { m_Blocks = nullptr; m_IsRequested = false; }
-			bool VerifyHash () const;
-			void SetIsSending (bool isSending);
-			uint64_t GetLastActivityTimestamp () const { return m_LastActivityTimestamp; }
-			bool IsRequested () const { return m_IsRequested; }
-			size_t GetNumPeers () const { return m_NumPeers; }
-			void SetNumPeers (size_t numPeers) { m_NumPeers = numPeers; }
+		void BlockReceived (const uint8_t * block, size_t len, size_t offset);
+		void Dump (PieceFileFragment && fragment);
+		bool Load (PieceFileFragment && fragment);
+		const uint8_t * GetData () const { return m_Data; }
+		size_t GetSize () const { return m_Size; }
+		bool HasBlock (size_t offset) const;
+		std::pair<size_t, size_t>
+		GetNextBlockToRequest (); // return (offset, len) of next buffer, len = 0 if no next buffer
+		void ClearAllRequests ();
+		void InvalidateAllBlocks ();
+		void Reset ();
 
-			void BlockReceived (const uint8_t * block, size_t len, size_t offset);
-			void Dump (PieceFileFragment&& fragment);
-			bool Load (PieceFileFragment&& fragment);
-			const uint8_t * GetData () const { return m_Data; }
-			size_t GetSize () const { return m_Size; }
-			bool HasBlock (size_t offset) const;
-			std::pair<size_t, size_t> GetNextBlockToRequest (); // return (offset, len) of next buffer, len = 0 if no next buffer
-			void ClearAllRequests ();
-			void InvalidateAllBlocks ();
-			void Reset ();
+	private:
+		bool IsAvailable (int block) const;
+		size_t GetNumBlocks (size_t len) const;
+		void NewDataBuffer ();
+		void DeleteDataBuffer ();
+		void UpdateDataBuffer (uint8_t * newData);
 
-		private:
-
-			bool IsAvailable (int block) const;
-			size_t GetNumBlocks (size_t len) const;
-			void NewDataBuffer ();
-			void DeleteDataBuffer ();
-			void UpdateDataBuffer (uint8_t * newData);
-
-		private:
-
-			size_t m_Size;
-			uint8_t * m_Data, m_Hash[SHA_DIGEST_LENGTH];
-			std::unique_ptr<std::vector<BlockStatus> > m_Blocks;
-			bool m_IsSending, m_IsRequested;
-			uint64_t m_LastActivityTimestamp; // monotonic seconds
-			size_t m_NumPeers; // where this piece is available
+	private:
+		size_t m_Size;
+		uint8_t *m_Data, m_Hash[SHA_DIGEST_LENGTH];
+		std::unique_ptr<std::vector<BlockStatus>> m_Blocks;
+		bool m_IsSending, m_IsRequested;
+		uint64_t m_LastActivityTimestamp; // monotonic seconds
+		size_t m_NumPeers; // where this piece is available
 	};
 
 	enum TorrentStatus
@@ -246,134 +254,153 @@ namespace torrents
 		eNumTorrentErrors
 	};
 
-	constexpr std::array<std::string_view, eNumTorrentErrors> TorrentErrorStr
-	{
-		"", "Malformed metaInfo", "Non supported version"
-	};
+	constexpr std::array<std::string_view, eNumTorrentErrors> TorrentErrorStr { "", "Malformed metaInfo",
+		"Non supported version" };
 
 	using RequestedBlock = std::tuple<uint32_t, uint32_t, uint32_t>; // (index, offset, len)
 	class PeerConnection;
 	class Torrent final
 	{
-		using TrackerStats = std::tuple<std::unordered_set<i2p::data::IdentHash>,
-			int, uint64_t, int, int, uint64_t, std::string>;
-			// (peers, interval, next tracker request time in monotonic milliseconds,
-			//  seeders, leechers, last update time in seconds since epoch, error)
-		public:
+		using TrackerStats
+			= std::tuple<std::unordered_set<i2p::data::IdentHash>, int, uint64_t, int, int, uint64_t, std::string>;
+		// (peers, interval, next tracker request time in monotonic milliseconds,
+		//  seeders, leechers, last update time in seconds since epoch, error)
+	public:
+		using InfoHash = std::array<uint8_t, SHA_DIGEST_LENGTH>;
 
-			using InfoHash = std::array<uint8_t, SHA_DIGEST_LENGTH>;
+		Torrent (std::string_view buf);
+		Torrent (const InfoHash & infoHash);
+		size_t ParseInfo (std::string_view buf);
+		std::string CreateTorrentFileContent () const;
+		void ParseTrackerResponse (size_t trackerID, std::string_view buf);
+		void HandleDatagramTrackerResponse (size_t trackerID, uint32_t interval, const uint8_t * hashes,
+			size_t hashesLen, int numSeeders, int numLeechers);
 
-			Torrent (std::string_view buf);
-			Torrent (const InfoHash& infoHash);
-			size_t ParseInfo (std::string_view buf);
-			std::string CreateTorrentFileContent () const;
-			void ParseTrackerResponse (size_t trackerID, std::string_view buf);
-			void HandleDatagramTrackerResponse (size_t trackerID, uint32_t interval,
-				const uint8_t * hashes, size_t hashesLen, int numSeeders, int numLeechers);
+		bool IsComplete () const { return m_IsComplete; }
+		void SetComplete ();
+		bool IsStopped () const { return m_IsStopped; }
+		void SetStopped (bool stopped) { m_IsStopped = stopped; }
+		bool IsActive () const { return !m_Connections.empty (); }
+		TorrentStatus GetStatus () const;
+		bool IsSingleFile () const { return m_IsSingleFile; };
 
-			bool IsComplete () const { return m_IsComplete; }
-			void SetComplete ();
-			bool IsStopped () const { return m_IsStopped; }
-			void SetStopped (bool stopped) { m_IsStopped = stopped; }
-			bool IsActive () const { return !m_Connections.empty (); }
-			TorrentStatus GetStatus () const;
-			bool IsSingleFile () const { return m_IsSingleFile; };
+		std::string_view GetAnnounce () const { return m_Announce; }
+		void SetAnnounce (std::string_view announce) { m_Announce = announce; }
+		int GetAnnounceTrackerID () const { return m_AnnounceTrackerID; }
+		void SetAnnounceTrackerID (int trackerID) { m_AnnounceTrackerID = trackerID; }
+		std::string_view GetName () const { return m_Name; }
+		void SetName (std::string_view name) { m_Name = AdjustName (name); }
+		bool IsValid () const { return !m_Name.empty () && m_PieceLength && (m_Length || !m_Files.empty ()); }
+		TorrentError GetError () const { return m_Error; }
+		std::string_view GetErrorStr () const { return TorrentErrorStr[m_Error]; }
+		void SetError (TorrentError error) { m_Error = error; }
+		const std::filesystem::path & GetFullPath () const { return m_FullPath; }
+		void SetFullPath (const std::filesystem::path & fullPath) { m_FullPath = fullPath; }
+		const std::list<std::shared_ptr<TorrentFile>> & GetFiles () const { return m_Files; }
+		std::list<std::shared_ptr<TorrentFile>> & GetFiles () { return m_Files; }
+		size_t GetLength () const { return m_Length; }
+		size_t GetPieceLength () const { return m_PieceLength; }
+		int GetInterval (size_t trackerID) const
+		{
+			return (trackerID < m_TrackerStats.size ()) ? std::get<1> (m_TrackerStats[trackerID])
+														: MIN_TRACKER_REQUESTS_INTERVAL;
+		}
+		void SetInterval (size_t trackerID, int interval);
+		const std::vector<uint8_t> GetInfo () const { return m_Info; }
+		const InfoHash & GetInfoHash () const { return m_InfoHash; }
+		size_t GetLeft () const;
+		std::string GetHexStringInfoHash () const; // in url format
+		size_t GetNumPieces () const { return m_Pieces.size (); }
+		Piece & GetPiece (int index) { return m_Pieces[index]; }
+		std::pair<std::vector<uint8_t>, boost::logic::tribool>
+		CreateBitfield () const; // (bitfield, true - all false - none)
+		bool ApplyBitfield (const std::vector<uint8_t> & bitfield); // return true if complete
+		std::unordered_set<i2p::data::IdentHash> GetNonConnectedPeers ();
+		std::unordered_set<i2p::data::IdentHash> GetNonConnectedPeers (size_t trackerID);
+		RequestedBlock GetNextBlockToRequest (std::shared_ptr<PeerConnection> conn, bool skipRequested = true);
+		std::vector<PieceFileFragment> GetPieceFileFragments (int index) const;
+		std::vector<size_t> GetFilesCompleted () const; // completed size per file
+		bool UpdateStatus (uint64_t ts); // return true if complete
+		uint64_t GetNextUpdateStatusTime () { return m_NextUpdateStatusTime; }
+		void SetNextUpdateStatusTime (uint64_t nextUpdateStatusTime) { m_NextUpdateStatusTime = nextUpdateStatusTime; }
+		uint64_t GetNextReconnectTime () { return m_NextReconnectTime; }
+		void SetNextReconnectTime (uint64_t nextReconnectTime) { m_NextReconnectTime = nextReconnectTime; }
+		uint64_t GetNextDHTUpdateTime () { return m_NextDHTUpdateTime; }
+		void SetNextDHTUpdateTime (uint64_t nextDHTUpdateTime) { m_NextDHTUpdateTime = nextDHTUpdateTime; }
+		uint64_t GetLastDHTAnnounceTime () const { return m_LastDHTAnnounceTime; }
+		void SetLastDHTAnnounceTime (uint64_t lastDHTAnnounceTime) { m_LastDHTAnnounceTime = lastDHTAnnounceTime; }
+		bool AddConnection (std::shared_ptr<PeerConnection> conn);
+		void RemoveConnection (std::shared_ptr<PeerConnection> conn);
+		std::list<std::shared_ptr<PeerConnection>> GetConnections ();
+		bool IsConnectedToPeer (const i2p::data::IdentHash & peer);
 
-			std::string_view GetAnnounce () const { return m_Announce; }
-			void SetAnnounce (std::string_view announce) { m_Announce = announce; }
-			int GetAnnounceTrackerID () const { return m_AnnounceTrackerID; }
-			void SetAnnounceTrackerID (int trackerID) { m_AnnounceTrackerID = trackerID; }
-			std::string_view GetName () const { return m_Name; }
-			void SetName (std::string_view name) { m_Name = AdjustName (name); }
-			bool IsValid () const { return !m_Name.empty () && m_PieceLength && (m_Length || !m_Files.empty ()); }
-			TorrentError GetError () const { return m_Error; }
-			std::string_view GetErrorStr () const { return TorrentErrorStr[m_Error]; }
-			void SetError (TorrentError error) { m_Error = error; }
-			const std::filesystem::path& GetFullPath () const { return m_FullPath; }
-			void SetFullPath (const std::filesystem::path& fullPath) { m_FullPath = fullPath; }
-			const std::list<std::shared_ptr<TorrentFile> >& GetFiles () const { return m_Files; }
-			std::list<std::shared_ptr<TorrentFile> >& GetFiles () { return m_Files; }
-			size_t GetLength () const { return m_Length; }
-			size_t GetPieceLength () const { return m_PieceLength; }
-			int GetInterval (size_t trackerID) const { return (trackerID < m_TrackerStats.size ()) ? std::get<1>(m_TrackerStats[trackerID]) : MIN_TRACKER_REQUESTS_INTERVAL; }
-			void SetInterval (size_t trackerID, int interval);
-			const std::vector<uint8_t> GetInfo () const { return m_Info; }
-			const InfoHash& GetInfoHash () const { return m_InfoHash; }
-			size_t GetLeft () const;
-			std::string GetHexStringInfoHash () const; // in url format
-			size_t GetNumPieces () const { return m_Pieces.size (); }
-			Piece& GetPiece (int index) { return m_Pieces[index]; }
-			std::pair<std::vector<uint8_t>, boost::logic::tribool> CreateBitfield () const; // (bitfield, true - all false - none)
-			bool ApplyBitfield (const std::vector<uint8_t>& bitfield); // return true if complete
-			std::unordered_set<i2p::data::IdentHash> GetNonConnectedPeers ();
-			std::unordered_set<i2p::data::IdentHash> GetNonConnectedPeers (size_t trackerID);
-			RequestedBlock GetNextBlockToRequest (std::shared_ptr<PeerConnection> conn, bool skipRequested = true);
-			std::vector<PieceFileFragment> GetPieceFileFragments (int index) const;
-			std::vector<size_t> GetFilesCompleted () const; // completed size per file
-			bool UpdateStatus (uint64_t ts); // return true if complete
-			uint64_t GetNextUpdateStatusTime () { return m_NextUpdateStatusTime; }
-			void SetNextUpdateStatusTime (uint64_t nextUpdateStatusTime) { m_NextUpdateStatusTime = nextUpdateStatusTime; }
-			uint64_t GetNextReconnectTime () { return m_NextReconnectTime; }
-			void SetNextReconnectTime (uint64_t nextReconnectTime) { m_NextReconnectTime = nextReconnectTime; }
-			uint64_t GetNextDHTUpdateTime () { return m_NextDHTUpdateTime; }
-			void SetNextDHTUpdateTime (uint64_t nextDHTUpdateTime) { m_NextDHTUpdateTime = nextDHTUpdateTime; }
-			uint64_t GetLastDHTAnnounceTime () const { return m_LastDHTAnnounceTime; }
-			void SetLastDHTAnnounceTime (uint64_t lastDHTAnnounceTime) { m_LastDHTAnnounceTime = lastDHTAnnounceTime; }
-			bool AddConnection (std::shared_ptr<PeerConnection> conn);
-			void RemoveConnection (std::shared_ptr<PeerConnection> conn);
-			std::list<std::shared_ptr<PeerConnection> > GetConnections ();
-			bool IsConnectedToPeer (const i2p::data::IdentHash& peer);
+		uint64_t GetNextTrackerRequestTime (size_t trackerID) const;
+		void SetNextTrackerRequestTime (size_t trackerID, uint64_t ts);
+		size_t GetUploaded () const { return m_Uploaded; }
+		void AddUploaded (size_t add) { m_Uploaded += add; }
+		size_t GetDownloaded () const { return m_Downloaded; }
+		void AddDownloaded (size_t add) { m_Downloaded += add; }
 
-			uint64_t GetNextTrackerRequestTime (size_t trackerID) const;
-			void SetNextTrackerRequestTime (size_t trackerID, uint64_t ts);
-			size_t GetUploaded () const { return m_Uploaded; }
-			void AddUploaded (size_t add) { m_Uploaded += add; }
-			size_t GetDownloaded () const { return m_Downloaded; }
-			void AddDownloaded (size_t add) { m_Downloaded += add; }
+		void SaveTorrentResumeFile ();
 
-			void SaveTorrentResumeFile ();
+		void StartCountingPeers ();
+		void ApplyPeerRemoteBitfield (const boost::dynamic_bitset<> & peerRemoteBitfield);
+		bool HasIncompletePieces (
+			const boost::dynamic_bitset<> & peerRemoteBitfield) const; // if remote bitfie;d has incomplete pieces
 
-			void StartCountingPeers ();
-			void ApplyPeerRemoteBitfield (const boost::dynamic_bitset<>& peerRemoteBitfield);
-			bool HasIncompletePieces (const boost::dynamic_bitset<>& peerRemoteBitfield) const; // if remote bitfie;d has incomplete pieces
+		uint64_t GetDownloadRate ();
+		uint64_t GetUploadRate ();
+		int GetNumDownloadingFromPeers ();
+		int GetNumUploadingToPeers ();
 
-			uint64_t GetDownloadRate ();
-			uint64_t GetUploadRate ();
-			int GetNumDownloadingFromPeers ();
-			int GetNumUploadingToPeers ();
+		int GetNumSeeders (size_t trackerID) const
+		{
+			return (trackerID < m_TrackerStats.size ()) ? std::get<3> (m_TrackerStats[trackerID]) : 0;
+		}
+		int GetNumLeechers (size_t trackerID) const
+		{
+			return (trackerID < m_TrackerStats.size ()) ? std::get<4> (m_TrackerStats[trackerID]) : 0;
+		}
+		int GetNumPeers (size_t trackerID) const
+		{
+			return (trackerID < m_TrackerStats.size ()) ? std::get<0> (m_TrackerStats[trackerID]).size () : 0;
+		}
+		uint64_t GetLastTrackerUpdateTime (size_t trackerID) const
+		{
+			return (trackerID < m_TrackerStats.size ()) ? std::get<5> (m_TrackerStats[trackerID]) : 0;
+		}
+		std::string GetTrackerError (size_t trackerID) const
+		{
+			return (trackerID < m_TrackerStats.size ()) ? std::get<6> (m_TrackerStats[trackerID]) : "";
+		}
+		void SetTrackerError (size_t trackerID, std::string_view error);
 
-			int GetNumSeeders (size_t trackerID) const { return (trackerID < m_TrackerStats.size ()) ? std::get<3>(m_TrackerStats[trackerID]) : 0; }
-			int GetNumLeechers (size_t trackerID) const { return (trackerID < m_TrackerStats.size ()) ? std::get<4>(m_TrackerStats[trackerID]) : 0; }
-			int GetNumPeers (size_t trackerID) const { return (trackerID < m_TrackerStats.size ()) ? std::get<0>(m_TrackerStats[trackerID]).size () : 0; }
-			uint64_t GetLastTrackerUpdateTime (size_t trackerID) const { return (trackerID < m_TrackerStats.size ()) ? std::get<5>(m_TrackerStats[trackerID]) : 0; }
-			std::string GetTrackerError (size_t trackerID) const { return (trackerID < m_TrackerStats.size ()) ? std::get<6>(m_TrackerStats[trackerID]) : ""; }
-			void SetTrackerError (size_t trackerID, std::string_view error);
+	private:
+		Torrent ();
+		size_t ParsePieces (std::string_view buf);
+		size_t ParsePeers (size_t trackerID, std::string_view buf);
+		size_t ParseFiles (std::string_view buf);
+		static std::string AdjustName (
+			std::string_view name); // name field from torrent file before to become file path
+		void CheckTrackerStatsSize (size_t trackerID);
 
-		private:
-
-			Torrent ();
-			size_t ParsePieces (std::string_view buf);
-			size_t ParsePeers (size_t trackerID, std::string_view buf);
-			size_t ParseFiles (std::string_view buf);
-			static std::string AdjustName (std::string_view name); // name field from torrent file before to become file path
-			void CheckTrackerStatsSize (size_t trackerID);
-
-		private:
-
-			std::string m_Name, m_Announce;
-			int m_AnnounceTrackerID; // -1 not set
-			std::filesystem::path m_FullPath;
-			size_t m_Length, m_PieceLength;
-			std::vector<uint8_t> m_Info; // for BEP9
-			InfoHash m_InfoHash; // SHA1
-			std::vector<Piece> m_Pieces;
-			std::vector<TrackerStats> m_TrackerStats;
-			std::unordered_map<i2p::data::IdentHash, std::weak_ptr<PeerConnection> > m_Connections; // remote ident hash -> connection
-			bool m_IsComplete, m_IsStopped, m_IsSingleFile;
-			std::list<std::shared_ptr<TorrentFile> > m_Files;
-			size_t m_Uploaded, m_Downloaded;
-			uint64_t m_NextUpdateStatusTime, m_NextReconnectTime, m_NextDHTUpdateTime, m_LastDHTAnnounceTime; // in monotonic seconds
-			TorrentError m_Error;
+	private:
+		std::string m_Name, m_Announce;
+		int m_AnnounceTrackerID; // -1 not set
+		std::filesystem::path m_FullPath;
+		size_t m_Length, m_PieceLength;
+		std::vector<uint8_t> m_Info; // for BEP9
+		InfoHash m_InfoHash; // SHA1
+		std::vector<Piece> m_Pieces;
+		std::vector<TrackerStats> m_TrackerStats;
+		std::unordered_map<i2p::data::IdentHash, std::weak_ptr<PeerConnection>>
+			m_Connections; // remote ident hash -> connection
+		bool m_IsComplete, m_IsStopped, m_IsSingleFile;
+		std::list<std::shared_ptr<TorrentFile>> m_Files;
+		size_t m_Uploaded, m_Downloaded;
+		uint64_t m_NextUpdateStatusTime, m_NextReconnectTime, m_NextDHTUpdateTime,
+			m_LastDHTAnnounceTime; // in monotonic seconds
+		TorrentError m_Error;
 	};
 
 	enum PeerConnectionOrigin
@@ -385,132 +412,134 @@ namespace torrents
 	};
 
 	class TorrentsTunnel;
-	class PeerConnection: public i2p::client::I2PServiceHandler, public std::enable_shared_from_this<PeerConnection>
+	class PeerConnection : public i2p::client::I2PServiceHandler, public std::enable_shared_from_this<PeerConnection>
 	{
-		using ExtendedMessageHandler = void (PeerConnection::*)(const uint8_t * buf, size_t len);
+		using ExtendedMessageHandler = void (PeerConnection::*) (const uint8_t * buf, size_t len);
 
-		public:
+	public:
+		using PeerID = std::array<uint8_t, 20>;
 
-			using PeerID = std::array<uint8_t, 20>;
+		PeerConnection (
+			std::shared_ptr<i2p::client::I2PService> owner, std::shared_ptr<i2p::stream::Stream> stream); // incoming
+		PeerConnection (std::shared_ptr<i2p::client::I2PService> owner, std::shared_ptr<i2p::stream::Stream> stream,
+			std::shared_ptr<Torrent> torrent, PeerConnectionOrigin origin = ePeerConnectionOriginTracker); // outgoing
+		~PeerConnection ();
 
-			PeerConnection (std::shared_ptr<i2p::client::I2PService> owner,  std::shared_ptr<i2p::stream::Stream> stream); // incoming
-			PeerConnection (std::shared_ptr<i2p::client::I2PService> owner,  std::shared_ptr<i2p::stream::Stream> stream,
-				std::shared_ptr<Torrent> torrent, PeerConnectionOrigin origin = ePeerConnectionOriginTracker); // outgoing
-			~PeerConnection ();
+		void Connect ();
+		void Close ();
+		void ReceiveHandshake ();
+		void CheckKeepAlive (uint64_t ts);
 
-			void Connect ();
-			void Close ();
-			void ReceiveHandshake ();
-			void CheckKeepAlive (uint64_t ts);
+		bool IsEstablished () const { return m_IsEstablished; };
+		bool IsPieceAvailable (size_t ind) const;
+		std::shared_ptr<i2p::stream::Stream> GetStream () const { return m_Stream; }
+		std::shared_ptr<Torrent> GetTorrent () const { return m_Torrent; }
+		int GetLastRequestedPieceIndex () const { return m_LastRequestedPieceIndex; }
+		int ResetSuggestedPieceIndex ()
+		{
+			auto index = m_SuggestedPieceIndex;
+			m_SuggestedPieceIndex = -1;
+			return index;
+		}
+		const boost::dynamic_bitset<> & GetRemoteBitfield () const { return m_RemoteBitfield; }
+		const PeerID & GetRemotePeerID () const { return m_RemotePeerID; }
+		std::string_view GetRemoteName () const { return m_RemoteName; }
+		std::optional<i2p::data::IdentHash> GetRemoteIdentHash () const;
+		PeerConnectionOrigin GetOrigin () const { return m_Origin; }
 
-			bool IsEstablished () const { return m_IsEstablished; };
-			bool IsPieceAvailable (size_t ind) const;
-			std::shared_ptr<i2p::stream::Stream> GetStream () const { return m_Stream; }
-			std::shared_ptr<Torrent> GetTorrent () const { return m_Torrent; }
-			int GetLastRequestedPieceIndex () const { return m_LastRequestedPieceIndex; }
-			int ResetSuggestedPieceIndex () { auto index = m_SuggestedPieceIndex; m_SuggestedPieceIndex = -1; return index; }
-			const boost::dynamic_bitset<>& GetRemoteBitfield () const  { return m_RemoteBitfield; }
-			const PeerID& GetRemotePeerID () const { return m_RemotePeerID; }
-			std::string_view GetRemoteName () const { return m_RemoteName; }
-			std::optional<i2p::data::IdentHash> GetRemoteIdentHash () const;
-			PeerConnectionOrigin GetOrigin () const { return m_Origin; }
+		// stats
+		void ResetStats ();
+		uint64_t GetDownloadRate () const { return m_DownloadRate; }
+		uint64_t GetUploadRate () const { return m_UploadRate; }
+		bool IsDownloading () const { return m_IsInterested && !m_IsChoked; }
+		bool IsUploading () const { return m_IsRemoteInterested && !m_IsRemoteChoked; }
+		bool IsInterested () const { return m_IsInterested; }
+		bool IsRemoteInterested () const { return m_IsRemoteInterested; }
+		bool IsChoked () const { return m_IsChoked; }
+		bool IsRemoteChoked () const { return m_IsRemoteChoked; }
+		size_t GetDownloaded () const { return m_Downloaded; }
+		size_t GetUploaded () const { return m_Uploaded; }
 
-			// stats
-			void ResetStats ();
-			uint64_t GetDownloadRate () const { return m_DownloadRate; }
-			uint64_t GetUploadRate () const { return m_UploadRate; }
-			bool IsDownloading () const { return m_IsInterested && !m_IsChoked; }
-			bool IsUploading () const { return m_IsRemoteInterested && !m_IsRemoteChoked; }
-			bool IsInterested () const  { return m_IsInterested; }
-			bool IsRemoteInterested () const  { return m_IsRemoteInterested; }
-			bool IsChoked () const  { return m_IsChoked; }
-			bool IsRemoteChoked () const  { return m_IsRemoteChoked; }
-			size_t GetDownloaded () const { return m_Downloaded; }
-			size_t GetUploaded () const { return m_Uploaded; }
+	private:
+		void Terminate ();
+		void ScheduleHandshakeReceiveTimer ();
+		std::shared_ptr<TorrentsTunnel> GetTorrentsTunnel () const;
 
-		private:
+		void WriteToStream (const uint8_t * buf, size_t len);
+		void StreamReceive ();
+		void HandleStreamReceive (const boost::system::error_code & ecode, size_t bytes_transferred);
+		void HandleReceived ();
+		size_t HandleNextMsg (size_t offset);
 
-			void Terminate ();
-			void ScheduleHandshakeReceiveTimer ();
-			std::shared_ptr<TorrentsTunnel> GetTorrentsTunnel () const;
+		size_t HandleHandshakeMsg ();
+		void SendHandshakeMsg ();
 
-			void WriteToStream (const uint8_t * buf, size_t len);
-			void StreamReceive ();
-			void HandleStreamReceive (const boost::system::error_code& ecode, size_t bytes_transferred);
-			void HandleReceived ();
-			size_t HandleNextMsg (size_t offset);
+		void HandleHaveMsg (const uint8_t * buf, size_t len);
+		void SendHaveMsg (uint32_t index);
+		void HandleBitfieldMsg (const uint8_t * buf, size_t len);
+		void SendBitfieldMsg (const uint8_t * bitfield, size_t bitfieldLen);
+		void HandleHaveAllMsg ();
+		void SendHaveAllMsg ();
+		void HandleHaveNoneMsg ();
+		void SendHaveNoneMsg ();
+		void HandlePieceMsg (const uint8_t * buf, size_t len);
+		void SendPieceMsg (uint32_t index, uint32_t offset, const uint8_t * data, size_t len);
+		void HandleRejectRequestMsg (const uint8_t * buf, size_t len);
+		void SendRejectRequestMsg (uint32_t index, uint32_t offset, uint32_t len);
+		void HandleRequestMsg (const uint8_t * buf, size_t len);
+		void SendRequestMsg (uint32_t index, uint32_t offset, uint32_t len);
+		size_t FillRequestMsg (uint8_t * buf, uint32_t index, uint32_t offset, uint32_t len);
+		void SendInterestedMsg ();
+		void SendNotinterestedMsg ();
+		void SendUnchokeMsg ();
+		void SendChokeMsg ();
+		void HandleChokeMsg ();
+		void HandleSuggestPieceMsg (const uint8_t * buf, size_t len);
+		void HandleAllowedFastMsg (const uint8_t * buf, size_t len);
+		void HandleExtendedMsg (const uint8_t * buf, size_t len);
+		void SendExtendedMsg (uint8_t extendedMsgID = 0, std::string_view payload = "", std::string_view data = "");
+		void AddExtendedMsgHandler (std::string_view extensionName, int64_t msgID);
+		void HandleUtMetadataExtension (const uint8_t * buf, size_t len); // BEP9
+		void RequestUtMetadata (); // BEP9
+		void HandleI2PPEXExtension (const uint8_t * buf, size_t len); // BEP11
+		void NotifyPEXPeers (); // BEP11
+		void HandleI2PDHTExtension (const uint8_t * buf, size_t len); // BEP5
+		void SendDHTPortAdvertisement ();
 
-			size_t HandleHandshakeMsg ();
-			void SendHandshakeMsg ();
+		std::optional<RequestedBlock> GetNextBlockToRequest ();
+		bool RequestNextBlocks ();
+		bool SendRequestedBlock (const RequestedBlock & requestedBlock);
 
-			void HandleHaveMsg (const uint8_t * buf, size_t len);
-			void SendHaveMsg (uint32_t index);
-			void HandleBitfieldMsg (const uint8_t * buf, size_t len);
-			void SendBitfieldMsg (const uint8_t * bitfield, size_t bitfieldLen);
-			void HandleHaveAllMsg ();
-			void SendHaveAllMsg ();
-			void HandleHaveNoneMsg ();
-			void SendHaveNoneMsg ();
-			void HandlePieceMsg (const uint8_t * buf, size_t len);
-			void SendPieceMsg (uint32_t index, uint32_t offset, const uint8_t * data, size_t len);
-			void HandleRejectRequestMsg (const uint8_t * buf, size_t len);
-			void SendRejectRequestMsg (uint32_t index, uint32_t offset, uint32_t len);
-			void HandleRequestMsg (const uint8_t * buf, size_t len);
-			void SendRequestMsg (uint32_t index, uint32_t offset, uint32_t len);
-			size_t FillRequestMsg (uint8_t * buf, uint32_t index, uint32_t offset, uint32_t len);
-			void SendInterestedMsg ();
-			void SendNotinterestedMsg ();
-			void SendUnchokeMsg ();
-			void SendChokeMsg ();
-			void HandleChokeMsg ();
-			void HandleSuggestPieceMsg (const uint8_t * buf, size_t len);
-			void HandleAllowedFastMsg (const uint8_t * buf, size_t len);
-			void HandleExtendedMsg (const uint8_t * buf, size_t len);
-			void SendExtendedMsg (uint8_t extendedMsgID = 0, std::string_view payload = "", std::string_view data = "");
-			void AddExtendedMsgHandler (std::string_view extensionName, int64_t msgID);
-			void HandleUtMetadataExtension (const uint8_t * buf, size_t len); // BEP9
-			void RequestUtMetadata (); // BEP9
-			void HandleI2PPEXExtension (const uint8_t * buf, size_t len); // BEP11
-			void NotifyPEXPeers (); // BEP11
-			void HandleI2PDHTExtension (const uint8_t * buf, size_t len); // BEP5
-			void SendDHTPortAdvertisement ();
-
-			std::optional<RequestedBlock> GetNextBlockToRequest ();
-			bool RequestNextBlocks ();
-			bool SendRequestedBlock (const RequestedBlock& requestedBlock);
-
-		private:
-
-			std::shared_ptr<i2p::stream::Stream> m_Stream;
-			PeerConnectionOrigin m_Origin;
-			uint8_t m_ReceiveBuffer[PEER_CONNECTION_RECEIVE_BUFFER_SIZE];
-			size_t m_ReceiveBufferOffset, m_NextMsgLength;
-			std::shared_ptr<Torrent> m_Torrent;
-			PeerID m_RemotePeerID;
-			std::string m_RemoteName; // from BEP10
-			size_t m_MaxNumRequests; // min or from BEP10
-			boost::dynamic_bitset<> m_RemoteBitfield;
-			bool m_IsHandshakeSent, m_IsEstablished, m_IsChoked, m_IsRemoteChoked,
-				m_IsInterested, m_IsRemoteInterested;
-			uint64_t m_LastReceiveTime, m_LastSendTime; // monotonic seconds
-			size_t m_NumRequests, m_NumPieces; // outgoing
-			std::list<RequestedBlock> m_IncomingRequestsQueue;
-			int m_LastRequestedPieceIndex;
-			std::unique_ptr<boost::asio::steady_timer> m_HandshakeReceiveTimer;
-			// BEP10
-			std::unordered_map<uint8_t, PeerConnection::ExtendedMessageHandler> m_ExtendedMessageHandlers;
-			uint8_t m_RemoteMsgIDUtMetadata, m_RemoteMsgIDI2PPEX, m_RemoteMsgIDI2PDHT;
-			// BEP9
-			size_t m_RemoteMetadataSize;
-			std::vector<uint8_t> m_RemoteMetadata;
-			// BEP6
-			bool m_IsFast;
-			int m_SuggestedPieceIndex;
-			// stats
-			uint64_t m_DownloadRate, m_UploadRate; // B/sec
-			uint64_t m_LastBlockDownloadTimestamp, m_LastBlockUploadTimestamp; // monotonic milliseconds
-			size_t m_ReceivedSinceLastTimestamp, m_SentSinceLastTimestamp; // bytes
-			size_t m_Downloaded, m_Uploaded; // bytes
+	private:
+		std::shared_ptr<i2p::stream::Stream> m_Stream;
+		PeerConnectionOrigin m_Origin;
+		uint8_t m_ReceiveBuffer[PEER_CONNECTION_RECEIVE_BUFFER_SIZE];
+		size_t m_ReceiveBufferOffset, m_NextMsgLength;
+		std::shared_ptr<Torrent> m_Torrent;
+		PeerID m_RemotePeerID;
+		std::string m_RemoteName; // from BEP10
+		size_t m_MaxNumRequests; // min or from BEP10
+		boost::dynamic_bitset<> m_RemoteBitfield;
+		bool m_IsHandshakeSent, m_IsEstablished, m_IsChoked, m_IsRemoteChoked, m_IsInterested, m_IsRemoteInterested;
+		uint64_t m_LastReceiveTime, m_LastSendTime; // monotonic seconds
+		size_t m_NumRequests, m_NumPieces; // outgoing
+		std::list<RequestedBlock> m_IncomingRequestsQueue;
+		int m_LastRequestedPieceIndex;
+		std::unique_ptr<boost::asio::steady_timer> m_HandshakeReceiveTimer;
+		// BEP10
+		std::unordered_map<uint8_t, PeerConnection::ExtendedMessageHandler> m_ExtendedMessageHandlers;
+		uint8_t m_RemoteMsgIDUtMetadata, m_RemoteMsgIDI2PPEX, m_RemoteMsgIDI2PDHT;
+		// BEP9
+		size_t m_RemoteMetadataSize;
+		std::vector<uint8_t> m_RemoteMetadata;
+		// BEP6
+		bool m_IsFast;
+		int m_SuggestedPieceIndex;
+		// stats
+		uint64_t m_DownloadRate, m_UploadRate; // B/sec
+		uint64_t m_LastBlockDownloadTimestamp, m_LastBlockUploadTimestamp; // monotonic milliseconds
+		size_t m_ReceivedSinceLastTimestamp, m_SentSinceLastTimestamp; // bytes
+		size_t m_Downloaded, m_Uploaded; // bytes
 	};
 }
 }

@@ -41,19 +41,13 @@ import java.util.concurrent.Executors;
  * settings never performs file I/O on the UI thread.</p>
  */
 public class SettingsFragment extends PreferenceFragmentCompat {
-
     private static final ExecutorService CONFIG_IO = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "i2pd-settings-io");
         thread.setDaemon(true);
         return thread;
     });
 
-    private enum Kind {
-        TEXT,
-        ADDRESS,
-        PORT,
-        POSITIVE_INTEGER
-    }
+    private enum Kind { TEXT, ADDRESS, PORT, POSITIVE_INTEGER }
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
 
@@ -65,8 +59,7 @@ public class SettingsFragment extends PreferenceFragmentCompat {
     private int loadGeneration;
 
     @Override
-    public void onCreatePreferences(@Nullable Bundle savedInstanceState,
-                                    @Nullable String rootKey) {
+    public void onCreatePreferences(@Nullable Bundle savedInstanceState, @Nullable String rootKey) {
         setPreferencesFromResource(R.xml.preferences_root, rootKey);
     }
 
@@ -111,19 +104,16 @@ public class SettingsFragment extends PreferenceFragmentCompat {
             values.put("ssu2.enabled", localStore.getString("ssu2.enabled", "true"));
             values.put("notransit", localStore.getString("notransit", "false"));
             values.put("floodfill", localStore.getString("floodfill", "false"));
-            values.put("limits.transittunnels",
-                    localStore.getString("limits.transittunnels", "3000"));
+            values.put(
+                    "limits.transittunnels", localStore.getString("limits.transittunnels", "3000"));
             values.put("bandwidth", localStore.getString("bandwidth", "L"));
             values.put("log", localStore.getString("log", "info"));
-            values.put("httpproxy.enabled",
-                    localStore.getString("httpproxy.enabled", "true"));
-            values.put("httpproxy.address",
-                    localStore.getString("httpproxy.address", "127.0.0.1"));
+            values.put("httpproxy.enabled", localStore.getString("httpproxy.enabled", "true"));
+            values.put("httpproxy.address", localStore.getString("httpproxy.address", "127.0.0.1"));
             values.put("httpproxy.port", localStore.getString("httpproxy.port", "4444"));
-            values.put("socksproxy.enabled",
-                    localStore.getString("socksproxy.enabled", "false"));
-            values.put("socksproxy.address",
-                    localStore.getString("socksproxy.address", "127.0.0.1"));
+            values.put("socksproxy.enabled", localStore.getString("socksproxy.enabled", "false"));
+            values.put(
+                    "socksproxy.address", localStore.getString("socksproxy.address", "127.0.0.1"));
             values.put("socksproxy.port", localStore.getString("socksproxy.port", "4447"));
             values.put("sam.enabled", localStore.getString("sam.enabled", "false"));
             values.put("sam.address", localStore.getString("sam.address", "127.0.0.1"));
@@ -156,20 +146,17 @@ public class SettingsFragment extends PreferenceFragmentCompat {
 
         bindSwitch("noTransitPreference", "notransit", false);
         bindSwitch("floodfillPreference", "floodfill", false);
-        bindText("transitTunnelPreference", "limits.transittunnels", "3000",
-                Kind.POSITIVE_INTEGER);
+        bindText("transitTunnelPreference", "limits.transittunnels", "3000", Kind.POSITIVE_INTEGER);
 
         bindList("bandwidthPreference", "bandwidth", "L");
         bindList("logLevelPreference", "log", "info");
 
         bindSwitch("httpProxyEnablePreference", "httpproxy.enabled", true);
-        bindText("httpProxyAddressPreference", "httpproxy.address", "127.0.0.1",
-                Kind.ADDRESS);
+        bindText("httpProxyAddressPreference", "httpproxy.address", "127.0.0.1", Kind.ADDRESS);
         bindText("httpProxyPortPreference", "httpproxy.port", "4444", Kind.PORT);
 
         bindSwitch("socksProxyEnablePreference", "socksproxy.enabled", false);
-        bindText("socksProxyAddressPreference", "socksproxy.address", "127.0.0.1",
-                Kind.ADDRESS);
+        bindText("socksProxyAddressPreference", "socksproxy.address", "127.0.0.1", Kind.ADDRESS);
         bindText("socksProxyPortPreference", "socksproxy.port", "4447", Kind.PORT);
 
         bindSwitch("samEnablePreference", "sam.enabled", false);
@@ -194,23 +181,20 @@ public class SettingsFragment extends PreferenceFragmentCompat {
             Context appContext = requireContext().getApplicationContext();
             final int generation = loadGeneration;
             CONFIG_IO.execute(() -> {
-                boolean applied = AutoStartController.setEnabled(
-                        appContext, enabledValue, false);
+                boolean applied = AutoStartController.setEnabled(appContext, enabledValue, false);
                 mainHandler.post(() -> {
-                    if (viewDestroyed || !isAdded()
-                            || generation != loadGeneration) {
+                    if (viewDestroyed || !isAdded() || generation != loadGeneration) {
                         return;
                     }
                     if (!applied) {
-                        Toast.makeText(requireContext(),
-                                R.string.pref_autostart_failed,
-                                Toast.LENGTH_SHORT).show();
+                        Toast.makeText(requireContext(), R.string.pref_autostart_failed,
+                                     Toast.LENGTH_SHORT)
+                                .show();
                         preference.setChecked(previous);
                         return;
                     }
                     if (enabledValue) {
-                        AutoStartController.openVendorAutostartSettings(
-                                requireContext());
+                        AutoStartController.openVendorAutostartSettings(requireContext());
                     }
                 });
             });
@@ -241,28 +225,26 @@ public class SettingsFragment extends PreferenceFragmentCompat {
         });
     }
 
-    private void bindSwitch(@NonNull String key, @NonNull String configKey,
-                            boolean defaultValue) {
+    private void bindSwitch(@NonNull String key, @NonNull String configKey, boolean defaultValue) {
         SwitchPreferenceCompat preference = findPreference(key);
         if (preference == null) {
             return;
         }
-        preference.setChecked(RouterConfigStore.parseBoolean(
-                configValues.get(configKey), defaultValue));
+        preference.setChecked(
+                RouterConfigStore.parseBoolean(configValues.get(configKey), defaultValue));
         preference.setOnPreferenceChangeListener((changed, newValue) -> {
             if (!(newValue instanceof Boolean value)) {
                 return false;
             }
             boolean previous = preference.isChecked();
             persist(configKey, Boolean.toString(value),
-                    () -> showApplyMode(configKey),
-                    () -> preference.setChecked(previous));
+                    () -> showApplyMode(configKey), () -> preference.setChecked(previous));
             return true;
         });
     }
 
-    private void bindList(@NonNull String key, @NonNull String configKey,
-                          @NonNull String defaultValue) {
+    private void bindList(
+            @NonNull String key, @NonNull String configKey, @NonNull String defaultValue) {
         ListPreference preference = findPreference(key);
         if (preference == null) {
             return;
@@ -278,20 +260,19 @@ public class SettingsFragment extends PreferenceFragmentCompat {
             }
             String value = newValue.toString().trim();
             if (!RouterConfigStore.isSafeValue(value)) {
-                Toast.makeText(requireContext(), R.string.pref_save_failed,
-                        Toast.LENGTH_SHORT).show();
+                Toast.makeText(requireContext(), R.string.pref_save_failed, Toast.LENGTH_SHORT)
+                        .show();
                 return false;
             }
             String previous = preference.getValue();
             persist(configKey, value,
-                    () -> showApplyMode(configKey),
-                    () -> preference.setValue(previous));
+                    () -> showApplyMode(configKey), () -> preference.setValue(previous));
             return true;
         });
     }
 
     private void bindText(@NonNull String key, @NonNull String configKey,
-                          @NonNull String defaultValue, @NonNull Kind kind) {
+            @NonNull String defaultValue, @NonNull Kind kind) {
         EditTextPreference preference = findPreference(key);
         if (preference == null) {
             return;
@@ -302,14 +283,13 @@ public class SettingsFragment extends PreferenceFragmentCompat {
         preference.setOnPreferenceChangeListener((changed, newValue) -> {
             String value = newValue == null ? "" : newValue.toString().trim();
             if (!isValid(value, kind)) {
-                Toast.makeText(requireContext(), validationMessage(kind),
-                        Toast.LENGTH_SHORT).show();
+                Toast.makeText(requireContext(), validationMessage(kind), Toast.LENGTH_SHORT)
+                        .show();
                 return false;
             }
             String previous = preference.getText();
             persist(configKey, value,
-                    () -> showApplyMode(configKey),
-                    () -> preference.setText(previous));
+                    () -> showApplyMode(configKey), () -> preference.setText(previous));
             return true;
         });
     }
@@ -325,8 +305,8 @@ public class SettingsFragment extends PreferenceFragmentCompat {
         preference.setSummary(R.string.pref_port_summary);
     }
 
-    private void persist(@NonNull String key, @NonNull String value,
-                         @NonNull Runnable onSuccess, @NonNull Runnable onFailure) {
+    private void persist(@NonNull String key, @NonNull String value, @NonNull Runnable onSuccess,
+            @NonNull Runnable onFailure) {
         RouterConfigStore localStore = store;
         if (localStore == null) {
             onFailure.run();
@@ -336,15 +316,14 @@ public class SettingsFragment extends PreferenceFragmentCompat {
         CONFIG_IO.execute(() -> {
             boolean saved = localStore.setOption(key, value);
             mainHandler.post(() -> {
-                if (viewDestroyed || !isAdded()
-                        || generation != loadGeneration) {
+                if (viewDestroyed || !isAdded() || generation != loadGeneration) {
                     return;
                 }
                 if (saved) {
                     onSuccess.run();
                 } else {
-                    Toast.makeText(requireContext(), R.string.pref_save_failed,
-                            Toast.LENGTH_SHORT).show();
+                    Toast.makeText(requireContext(), R.string.pref_save_failed, Toast.LENGTH_SHORT)
+                            .show();
                     onFailure.run();
                 }
             });
@@ -352,8 +331,7 @@ public class SettingsFragment extends PreferenceFragmentCompat {
     }
 
     private boolean isValid(@NonNull String value, @NonNull Kind kind) {
-        if (value.isEmpty() || value.length() > 512
-                || !RouterConfigStore.isSafeValue(value)) {
+        if (value.isEmpty() || value.length() > 512 || !RouterConfigStore.isSafeValue(value)) {
             return false;
         }
         return switch (kind) {
@@ -399,9 +377,8 @@ public class SettingsFragment extends PreferenceFragmentCompat {
         }
         for (int i = 0; i < value.length(); i++) {
             char c = value.charAt(i);
-            boolean allowed = Character.isLetterOrDigit(c)
-                    || c == '.' || c == ':' || c == '-' || c == '_'
-                    || c == '[' || c == ']' || c == '%';
+            boolean allowed = Character.isLetterOrDigit(c) || c == '.' || c == ':' || c == '-'
+                    || c == '_' || c == '[' || c == ']' || c == '%';
             if (!allowed) {
                 return false;
             }
@@ -429,15 +406,15 @@ public class SettingsFragment extends PreferenceFragmentCompat {
             return;
         }
         switch (mode) {
-            case HOT -> Toast.makeText(requireContext(), R.string.pref_apply_hot,
-                    Toast.LENGTH_SHORT).show();
-            case RELOAD_TUNNELS -> Toast.makeText(requireContext(),
-                    R.string.pref_apply_reload, Toast.LENGTH_SHORT).show();
-            case RESTART -> {
-                Toast.makeText(requireContext(), R.string.pref_apply_restart,
-                        Toast.LENGTH_SHORT).show();
-                showRestartDialog();
-            }
+        case HOT ->
+            Toast.makeText(requireContext(), R.string.pref_apply_hot, Toast.LENGTH_SHORT).show();
+        case RELOAD_TUNNELS ->
+            Toast.makeText(requireContext(), R.string.pref_apply_reload, Toast.LENGTH_SHORT).show();
+        case RESTART -> {
+            Toast.makeText(requireContext(), R.string.pref_apply_restart, Toast.LENGTH_SHORT)
+                    .show();
+            showRestartDialog();
+        }
         }
     }
 
@@ -450,8 +427,8 @@ public class SettingsFragment extends PreferenceFragmentCompat {
         builder.setTitle(R.string.pref_restart_required_title);
         builder.setMessage(R.string.pref_restart_required_message);
         builder.setNegativeButton(R.string.pref_later, null);
-        builder.setPositiveButton(R.string.pref_restart_now,
-                (dialog, which) -> viewModel.restartRouter());
+        builder.setPositiveButton(
+                R.string.pref_restart_now, (dialog, which) -> viewModel.restartRouter());
         builder.setOnDismissListener(dialog -> restartDialogShown = false);
         builder.show();
     }

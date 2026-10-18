@@ -33,14 +33,12 @@ import java.io.File;
  * directory follows the application-specific storage layout.
  */
 public class AboutFragment extends Fragment {
-
     private static final String DATA_DIRECTORY_NAME = "open-i2pd";
 
     @Nullable
     @Override
-    public View onCreateView(@NonNull LayoutInflater inflater,
-                             @Nullable ViewGroup container,
-                             @Nullable Bundle savedInstanceState) {
+    public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container,
+            @Nullable Bundle savedInstanceState) {
         return inflater.inflate(R.layout.fragment_about, container, false);
     }
 
@@ -57,26 +55,27 @@ public class AboutFragment extends Fragment {
 
         version.setText(versionText(context));
         abi.setText(abiText());
-        buildType.setText(isDebuggable(context)
-                ? R.string.about_build_debug : R.string.about_build_release);
+        buildType.setText(
+                isDebuggable(context) ? R.string.about_build_debug : R.string.about_build_release);
         dataDirectory.setText(dataDirectory(context));
         license.setText(R.string.about_license_summary);
 
-        view.findViewById(R.id.button_open_repository).setOnClickListener(ignored ->
-                openUrl(getString(R.string.repository_url)));
-        view.findViewById(R.id.button_open_license).setOnClickListener(ignored ->
-                openUrl(getString(R.string.license_url)));
+        view.findViewById(R.id.button_open_repository)
+                .setOnClickListener(ignored -> openUrl(getString(R.string.repository_url)));
+        view.findViewById(R.id.button_open_license)
+                .setOnClickListener(ignored -> openUrl(getString(R.string.license_url)));
     }
 
     @NonNull
     private String versionText(@NonNull Context context) {
         try {
-            PackageInfo info = context.getPackageManager()
-                    .getPackageInfo(context.getPackageName(), 0);
+            PackageInfo info =
+                    context.getPackageManager().getPackageInfo(context.getPackageName(), 0);
             String name = TextUtils.isEmpty(info.versionName)
-                    ? context.getString(R.string.value_unknown) : info.versionName;
-            return context.getString(R.string.about_version_format,
-                    name, PackageInfoCompat.getLongVersionCode(info));
+                    ? context.getString(R.string.value_unknown)
+                    : info.versionName;
+            return context.getString(R.string.about_version_format, name,
+                    PackageInfoCompat.getLongVersionCode(info));
         } catch (PackageManager.NameNotFoundException | RuntimeException exception) {
             return context.getString(R.string.value_unknown);
         }
@@ -114,8 +113,8 @@ public class AboutFragment extends Fragment {
         try {
             startActivity(intent);
         } catch (RuntimeException exception) {
-            Toast.makeText(requireContext(), R.string.no_browser_available,
-                    Toast.LENGTH_SHORT).show();
+            Toast.makeText(requireContext(), R.string.no_browser_available, Toast.LENGTH_SHORT)
+                    .show();
         }
     }
 }

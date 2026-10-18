@@ -19,7 +19,7 @@ namespace i2p
 {
 namespace data
 {
-	IdentHash CreateRoutingKey (const IdentHash& ident, bool nextDay)
+	IdentHash CreateRoutingKey (const IdentHash & ident, bool nextDay)
 	{
 		uint8_t buf[41]; // ident + yyyymmdd
 		memcpy (buf, (const uint8_t *)ident, 32);
@@ -28,15 +28,15 @@ namespace data
 		else
 			i2p::util::GetCurrentDate ((char *)(buf + 32));
 		IdentHash key;
-		SHA256(buf, 40, key);
+		SHA256 (buf, 40, key);
 		return key;
 	}
 
-	XORMetric operator^(const IdentHash& key1, const IdentHash& key2)
+	XORMetric operator^ (const IdentHash & key1, const IdentHash & key2)
 	{
 		XORMetric m;
 
-		const uint64_t * hash1 = key1.GetLL (), * hash2 = key2.GetLL ();
+		const uint64_t *hash1 = key1.GetLL (), *hash2 = key2.GetLL ();
 		m.metric_ll[0] = hash1[0] ^ hash2[0];
 		m.metric_ll[1] = hash1[1] ^ hash2[1];
 		m.metric_ll[2] = hash1[2] ^ hash2[2];
@@ -72,7 +72,7 @@ namespace data
 #endif
 	}
 
-	int PeerOrdering::CalculatePeerOrderingGroup (const IdentHash& routerIdent)
+	int PeerOrdering::CalculatePeerOrderingGroup (const IdentHash & routerIdent)
 	{
 		uint8_t hash[16];
 #if OPENSSL_SIPHASH
@@ -86,7 +86,7 @@ namespace data
 		return hash[0] & 0x03;
 	}
 
-	int PeerOrdering::GetPeerOrderingGroup (const IdentHash& routerIdent)
+	int PeerOrdering::GetPeerOrderingGroup (const IdentHash & routerIdent)
 	{
 		auto ts = i2p::util::GetSecondsSinceEpoch ();
 		auto it = m_OrderingGroups.find (routerIdent);
@@ -96,7 +96,7 @@ namespace data
 			return it->second.first;
 		}
 		int group = CalculatePeerOrderingGroup (routerIdent);
-		m_OrderingGroups.emplace (routerIdent, std::pair{group, ts});
+		m_OrderingGroups.emplace (routerIdent, std::pair { group, ts });
 		return group;
 	}
 

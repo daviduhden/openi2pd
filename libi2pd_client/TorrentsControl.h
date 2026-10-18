@@ -36,7 +36,7 @@ namespace torrents
 	inline constexpr size_t MAX_CONTROL_TRACKERS = 100;
 	inline constexpr size_t MAX_CONTROL_FILE_BYTES = 32 * 1024 * 1024;
 	inline constexpr size_t MAX_CONTROL_ARGUMENT = 2048;
-	inline constexpr std::chrono::milliseconds CONTROL_DEFAULT_TIMEOUT{2000};
+	inline constexpr std::chrono::milliseconds CONTROL_DEFAULT_TIMEOUT { 2000 };
 
 	enum class TorrentCommandKind
 	{
@@ -151,14 +151,14 @@ namespace torrents
 
 	// Builds a display-only magnet from an info hash and an optional name. The
 	// name is percent-encoded; no tracker or filesystem data is included.
-	std::string BuildTorrentMagnet (const std::array<uint8_t, 20>& infoHash, std::string_view name);
+	std::string BuildTorrentMagnet (const std::array<uint8_t, 20> & infoHash, std::string_view name);
 
 	// Reads a local .torrent file for TORRENT-ADD-FILE. The caller is the
 	// daemon; the TUI never reads the file. Symlinks, non-regular files,
 	// non-.torrent names, empty files and files larger than maxBytes are
 	// rejected. On failure a human-readable reason is written to error.
-	bool ReadTorrentFileBounded (const std::filesystem::path& path, size_t maxBytes,
-		std::vector<uint8_t>& content, std::string& error);
+	bool ReadTorrentFileBounded (
+		const std::filesystem::path & path, size_t maxBytes, std::vector<uint8_t> & content, std::string & error);
 }
 }
 

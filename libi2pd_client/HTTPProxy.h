@@ -15,33 +15,32 @@ namespace i2p
 {
 namespace proxy
 {
-	class HTTPProxy: public i2p::client::TCPIPAcceptor
+	class HTTPProxy : public i2p::client::TCPIPAcceptor
 	{
-		public:
+	public:
+		HTTPProxy (const std::string & name, const std::string & address, uint16_t port, const std::string & outproxy,
+			bool addresshelper, bool senduseragent, std::shared_ptr<i2p::client::ClientDestination> localDestination);
+		HTTPProxy (const std::string & name, const std::string & address, uint16_t port,
+			std::shared_ptr<i2p::client::ClientDestination> localDestination = nullptr)
+			: HTTPProxy (name, address, port, "", true, false, localDestination) { };
+		~HTTPProxy () { };
 
-			HTTPProxy(const std::string& name, const std::string& address, uint16_t port, const std::string & outproxy,
-				bool addresshelper, bool senduseragent, std::shared_ptr<i2p::client::ClientDestination> localDestination);
-			HTTPProxy(const std::string& name, const std::string& address, uint16_t port, std::shared_ptr<i2p::client::ClientDestination> localDestination = nullptr) :
-				HTTPProxy(name, address, port, "", true, false, localDestination) {} ;
-			~HTTPProxy() {};
+		// picks the next outproxy, so several of them are used in turn
+		std::string GetOutproxyURL ();
+		bool GetHelperSupport () const { return m_Addresshelper; }
+		bool GetSendUserAgent () const { return m_SendUserAgent; }
 
-			// picks the next outproxy, so several of them are used in turn
-			std::string GetOutproxyURL();
-			bool GetHelperSupport() const { return m_Addresshelper; }
-			bool GetSendUserAgent () const { return m_SendUserAgent; }
+	protected:
+		// Implements TCPIPAcceptor
+		std::shared_ptr<i2p::client::I2PServiceHandler> CreateHandler (
+			std::shared_ptr<boost::asio::ip::tcp::socket> socket) override;
+		const char * GetName () const override { return m_Name.c_str (); }
 
-		protected:
-
-			// Implements TCPIPAcceptor
-			std::shared_ptr<i2p::client::I2PServiceHandler> CreateHandler(std::shared_ptr<boost::asio::ip::tcp::socket> socket) override;
-			const char* GetName() const override { return m_Name.c_str (); }
-
-		private:
-
-			std::string m_Name;
-			std::vector<std::string> m_OutproxyUrls;
-			size_t m_NextOutproxy;
-			bool m_Addresshelper, m_SendUserAgent;
+	private:
+		std::string m_Name;
+		std::vector<std::string> m_OutproxyUrls;
+		size_t m_NextOutproxy;
+		bool m_Addresshelper, m_SendUserAgent;
 	};
 } // http
 } // i2p

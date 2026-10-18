@@ -20,75 +20,80 @@
 class CNetworkListManagerEvent final : public INetworkListManagerEvents
 {
 public:
-	CNetworkListManagerEvent() : m_ref(1) { }
-	~CNetworkListManagerEvent() { }
-
-	HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void **ppvObject)
+	CNetworkListManagerEvent ()
+		: m_ref (1)
 	{
-		if (IsEqualIID(riid, IID_IUnknown)) {
+	}
+	~CNetworkListManagerEvent () { }
+
+	HRESULT STDMETHODCALLTYPE QueryInterface (REFIID riid, void ** ppvObject)
+	{
+		if (IsEqualIID (riid, IID_IUnknown))
+		{
 			*ppvObject = (IUnknown *)this;
-		} else if (IsEqualIID(riid ,IID_INetworkListManagerEvents)) {
+		}
+		else if (IsEqualIID (riid, IID_INetworkListManagerEvents))
+		{
 			*ppvObject = (INetworkListManagerEvents *)this;
-		} else {
+		}
+		else
+		{
 			return E_NOINTERFACE;
 		}
-		AddRef();
+		AddRef ();
 		return S_OK;
 	}
 
-	ULONG STDMETHODCALLTYPE AddRef()
-	{
-		return (ULONG)InterlockedIncrement(&m_ref);
-	}
+	ULONG STDMETHODCALLTYPE AddRef () { return (ULONG)InterlockedIncrement (&m_ref); }
 
-	ULONG STDMETHODCALLTYPE Release()
+	ULONG STDMETHODCALLTYPE Release ()
 	{
-		LONG Result = InterlockedDecrement(&m_ref);
-		if (Result == 0)
-			delete this;
+		LONG Result = InterlockedDecrement (&m_ref);
+		if (Result == 0) delete this;
 		return (ULONG)Result;
 	}
 
-	virtual HRESULT STDMETHODCALLTYPE ConnectivityChanged(NLM_CONNECTIVITY newConnectivity)
+	virtual HRESULT STDMETHODCALLTYPE ConnectivityChanged (NLM_CONNECTIVITY newConnectivity)
 	{
-		if (newConnectivity == NLM_CONNECTIVITY_DISCONNECTED) {
+		if (newConnectivity == NLM_CONNECTIVITY_DISCONNECTED)
+		{
 			i2p::transport::transports.SetOnline (false);
-			LogPrint(eLogInfo, "NetState: disconnected from network");
+			LogPrint (eLogInfo, "NetState: disconnected from network");
 		}
 
-		if (((int)newConnectivity & (int)NLM_CONNECTIVITY_IPV4_INTERNET) != 0) {
+		if (((int)newConnectivity & (int)NLM_CONNECTIVITY_IPV4_INTERNET) != 0)
+		{
 			i2p::transport::transports.SetOnline (true);
-			LogPrint(eLogInfo, "NetState: connected to internet with IPv4 capability");
+			LogPrint (eLogInfo, "NetState: connected to internet with IPv4 capability");
 		}
 
-		if (((int)newConnectivity & (int)NLM_CONNECTIVITY_IPV6_INTERNET) != 0) {
+		if (((int)newConnectivity & (int)NLM_CONNECTIVITY_IPV6_INTERNET) != 0)
+		{
 			i2p::transport::transports.SetOnline (true);
-			LogPrint(eLogInfo, "NetState: connected to internet with IPv6 capability");
+			LogPrint (eLogInfo, "NetState: connected to internet with IPv6 capability");
 		}
 
-		if (
-			(((int)newConnectivity & (int)NLM_CONNECTIVITY_IPV4_INTERNET) == 0) &&
-			(((int)newConnectivity & (int)NLM_CONNECTIVITY_IPV6_INTERNET) == 0)
-		) {
+		if ((((int)newConnectivity & (int)NLM_CONNECTIVITY_IPV4_INTERNET) == 0)
+			&& (((int)newConnectivity & (int)NLM_CONNECTIVITY_IPV6_INTERNET) == 0))
+		{
 			i2p::transport::transports.SetOnline (false);
-			LogPrint(eLogInfo, "NetState: connected without internet access");
+			LogPrint (eLogInfo, "NetState: connected without internet access");
 		}
 
 		return S_OK;
 	}
 
 private:
-
 	LONG m_ref;
 };
 
-void SubscribeToEvents();
-void UnSubscribeFromEvents();
+void SubscribeToEvents ();
+void UnSubscribeFromEvents ();
 
 #else // WINVER == 0x0501
 
-void SubscribeToEvents() { }
-void UnSubscribeFromEvents() { }
+void SubscribeToEvents () { }
+void UnSubscribeFromEvents () { }
 
 #endif // WINVER
 #endif

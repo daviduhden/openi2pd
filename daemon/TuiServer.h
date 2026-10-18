@@ -34,30 +34,28 @@ namespace tui
 	 */
 	class Server
 	{
-		public:
+	public:
+		explicit Server (std::string socketPath);
+		~Server ();
 
-			explicit Server (std::string socketPath);
-			~Server ();
+		Server (const Server &) = delete;
+		Server & operator= (const Server &) = delete;
 
-			Server (const Server&) = delete;
-			Server& operator= (const Server&) = delete;
+		bool Start ();
+		void Stop ();
 
-			bool Start ();
-			void Stop ();
+	private:
+		void Run ();
+		void HandleClient (int clientFd);
+		bool IsTrustedPeer (int clientFd) const;
 
-		private:
-
-			void Run ();
-			void HandleClient (int clientFd);
-			bool IsTrustedPeer (int clientFd) const;
-
-			std::string m_Path;
-			int m_ListenFd{-1};
-			dev_t m_Device{0};
-			ino_t m_Inode{0};
-			bool m_HasIdentity{false};
-			std::thread m_Thread;
-			std::atomic<bool> m_Stop{false};
+		std::string m_Path;
+		int m_ListenFd { -1 };
+		dev_t m_Device { 0 };
+		ino_t m_Inode { 0 };
+		bool m_HasIdentity { false };
+		std::thread m_Thread;
+		std::atomic<bool> m_Stop { false };
 	};
 }
 }

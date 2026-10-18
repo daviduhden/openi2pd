@@ -13,12 +13,12 @@
 
 namespace i2p::privsep
 {
-	/**
+/**
 	 * Entry point for an exec'ed worker process. The channel descriptor is
 	 * passed as an argument rather than through the environment so the
 	 * post-fork child never needs setenv().
 	 */
-	int RunWorker (std::string_view role, std::string_view fdArgument);
+int RunWorker (std::string_view role, std::string_view fdArgument);
 }
 
 #endif

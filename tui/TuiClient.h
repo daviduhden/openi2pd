@@ -31,7 +31,7 @@ namespace tui
 	};
 
 	/** Parse command line options without depending on the router's config code. */
-	i2p::expected<ClientOptions, std::string> ParseOptions (int argc, char* argv[]);
+	i2p::expected<ClientOptions, std::string> ParseOptions (int argc, char * argv[]);
 
 	/** Resolve the socket path from --socket, the config file, or the data dir. */
 	i2p::expected<ClientOptions, std::string> ResolveSocket (ClientOptions options);
@@ -52,33 +52,31 @@ namespace tui
 
 	class Client
 	{
-		public:
+	public:
+		explicit Client (std::string socketPath);
+		~Client ();
 
-			explicit Client (std::string socketPath);
-			~Client ();
+		Client (const Client &) = delete;
+		Client & operator= (const Client &) = delete;
 
-			Client (const Client&) = delete;
-			Client& operator= (const Client&) = delete;
+		bool IsConnected () const { return m_Fd >= 0; }
+		i2p::expected<void, std::string> Connect ();
+		void Disconnect ();
 
-			bool IsConnected () const { return m_Fd >= 0; }
-			i2p::expected<void, std::string> Connect ();
-			void Disconnect ();
-
-			/**
+		/**
 			 * Send one command and return its response payload. Transport and
 			 * protocol failures close the connection and report the matching
 			 * kind. A well-formed remote error response keeps the connection
 			 * usable and is reported as RequestErrorKind::Remote.
 			 */
-			i2p::expected<std::string, RequestError> Request (std::string_view command);
+		i2p::expected<std::string, RequestError> Request (std::string_view command);
 
-		private:
+	private:
+		i2p::expected<std::string, std::string> ReadLine (size_t limit);
+		i2p::expected<std::string, std::string> ReadExact (size_t size);
 
-			i2p::expected<std::string, std::string> ReadLine (size_t limit);
-			i2p::expected<std::string, std::string> ReadExact (size_t size);
-
-			std::string m_Path;
-			int m_Fd{-1};
+		std::string m_Path;
+		int m_Fd { -1 };
 	};
 }
 }

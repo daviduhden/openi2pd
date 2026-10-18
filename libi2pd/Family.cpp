@@ -34,9 +34,7 @@ namespace data
 #endif
 	}
 
-	Families::Families ()
-	{
-	}
+	Families::Families () { }
 
 	Families::~Families ()
 	{
@@ -44,7 +42,7 @@ namespace data
 			if (it.second.first) EVP_PKEY_free (it.second.first);
 	}
 
-	void Families::LoadCertificate (const std::string& filename)
+	void Families::LoadCertificate (const std::string & filename)
 	{
 		SSL_CTX * ctx = SSL_CTX_new (TLS_method ());
 		int ret = SSL_CTX_use_certificate_file (ctx, filename.c_str (), SSL_FILETYPE_PEM);
@@ -57,7 +55,7 @@ namespace data
 				std::shared_ptr<i2p::crypto::Verifier> verifier;
 				// extract issuer name
 				char name[100];
-				X509_NAME_oneline (X509_get_issuer_name(cert), name, 100);
+				X509_NAME_oneline (X509_get_issuer_name (cert), name, 100);
 				char * cn = strstr (name, "CN=");
 				if (cn)
 				{
@@ -66,11 +64,12 @@ namespace data
 					if (family) family[0] = 0;
 					auto pkey = X509_get_pubkey (cert);
 					if (pkey)
-					{	
+					{
 						int curve = GetFamilyKeyCurve (pkey);
 						if (curve == NID_X9_62_prime256v1)
-						{	
-							if (!m_SigningKeys.emplace (cn, std::make_pair(pkey, (int)m_SigningKeys.size () + 1)).second)
+						{
+							if (!m_SigningKeys.emplace (cn, std::make_pair (pkey, (int)m_SigningKeys.size () + 1))
+									.second)
 							{
 								EVP_PKEY_free (pkey);
 								LogPrint (eLogError, "Family: Duplicated family name ", cn);
@@ -81,7 +80,7 @@ namespace data
 							EVP_PKEY_free (pkey);
 							LogPrint (eLogWarning, "Family: elliptic curve ", curve, " is not supported");
 						}
-					}	
+					}
 				}
 			}
 			SSL_free (ssl);
@@ -93,19 +92,22 @@ namespace data
 
 	void Families::LoadCertificates ()
 	{
-		std::string certDir = i2p::fs::GetCertsDir() + i2p::fs::dirSep + "family";
+		std::string certDir = i2p::fs::GetCertsDir () + i2p::fs::dirSep + "family";
 
 		std::vector<std::string> files;
 		int numCertificates = 0;
 
-		if (!i2p::fs::ReadDir(certDir, files)) {
-			LogPrint(eLogWarning, "Family: Can't load family certificates from ", certDir);
+		if (!i2p::fs::ReadDir (certDir, files))
+		{
+			LogPrint (eLogWarning, "Family: Can't load family certificates from ", certDir);
 			return;
 		}
 
-		for (const std::string & file : files) {
-			if (file.size () < 4 || file.compare(file.size() - 4, 4, ".crt") != 0) {
-				LogPrint(eLogWarning, "Family: ignoring file ", file);
+		for (const std::string & file : files)
+		{
+			if (file.size () < 4 || file.compare (file.size () - 4, 4, ".crt") != 0)
+			{
+				LogPrint (eLogWarning, "Family: ignoring file ", file);
 				continue;
 			}
 			LoadCertificate (file);
@@ -114,8 +116,8 @@ namespace data
 		LogPrint (eLogInfo, "Family: ", numCertificates, " certificates loaded");
 	}
 
-	bool Families::VerifyFamily (const std::string& family, const IdentHash& ident,
-		std::string_view signature, const char * key) const
+	bool Families::VerifyFamily (
+		const std::string & family, const IdentHash & ident, std::string_view signature, const char * key) const
 	{
 		uint8_t buf[100], signatureBuf[64];
 		size_t len = family.length ();
@@ -126,41 +128,40 @@ namespace data
 		}
 		auto it = m_SigningKeys.find (family);
 		if (it != m_SigningKeys.end () && it->second.first)
-		{	
+		{
 			memcpy (buf, family.c_str (), len);
 			memcpy (buf + len, (const uint8_t *)ident, 32);
 			len += 32;
 			auto signatureBufLen = Base64ToByteStream (signature, signatureBuf, 64);
 			if (signatureBufLen == 64)
 			{
-				ECDSA_SIG * sig = ECDSA_SIG_new();
+				ECDSA_SIG * sig = ECDSA_SIG_new ();
 				ECDSA_SIG_set0 (sig, BN_bin2bn (signatureBuf, 32, NULL), BN_bin2bn (signatureBuf + 32, 32, NULL));
 				uint8_t sign[72];
 				uint8_t * s = sign;
 				auto l = i2d_ECDSA_SIG (sig, &s);
-				ECDSA_SIG_free(sig);
+				ECDSA_SIG_free (sig);
 				EVP_MD_CTX * ctx = EVP_MD_CTX_create ();
-				EVP_DigestVerifyInit (ctx, NULL, EVP_sha256(), NULL, it->second.first);
+				EVP_DigestVerifyInit (ctx, NULL, EVP_sha256 (), NULL, it->second.first);
 				auto ret = EVP_DigestVerify (ctx, sign, l, buf, len) == 1;
 				EVP_MD_CTX_destroy (ctx);
 				return ret;
-			}	
-		}	
+			}
+		}
 		// TODO: process key
 		return true;
 	}
 
-	FamilyID Families::GetFamilyID (const std::string& family) const
+	FamilyID Families::GetFamilyID (const std::string & family) const
 	{
 		auto it = m_SigningKeys.find (family);
-		if (it != m_SigningKeys.end ())
-			return it->second.second;
+		if (it != m_SigningKeys.end ()) return it->second.second;
 		return 0;
 	}
 
-	std::string CreateFamilySignature (const std::string& family, const IdentHash& ident)
+	std::string CreateFamilySignature (const std::string & family, const IdentHash & ident)
 	{
-		auto filename = i2p::fs::DataDirPath("family", (family + ".key"));
+		auto filename = i2p::fs::DataDirPath ("family", (family + ".key"));
 		std::string sig;
 		SSL_CTX * ctx = SSL_CTX_new (TLS_method ());
 		int ret = SSL_CTX_use_PrivateKey_file (ctx, filename.c_str (), SSL_FILETYPE_PEM);
@@ -179,19 +180,19 @@ namespace data
 
 				size_t l = 72;
 				EVP_MD_CTX * mdctx = EVP_MD_CTX_create ();
-				EVP_DigestSignInit (mdctx, NULL, EVP_sha256(), NULL, pkey);
+				EVP_DigestSignInit (mdctx, NULL, EVP_sha256 (), NULL, pkey);
 				EVP_DigestSign (mdctx, sign, &l, buf, len);
 				EVP_MD_CTX_destroy (mdctx);
 
 				const uint8_t * s1 = sign;
 				ECDSA_SIG * sig1 = d2i_ECDSA_SIG (NULL, &s1, l);
-				const BIGNUM * r, * s;
+				const BIGNUM *r, *s;
 				ECDSA_SIG_get0 (sig1, &r, &s);
 				i2p::crypto::bn2buf (r, signature, 32);
 				i2p::crypto::bn2buf (s, signature + 32, 32);
-				ECDSA_SIG_free(sig1);
+				ECDSA_SIG_free (sig1);
 				sig = ByteStreamToBase64 (signature, 64);
-			}	
+			}
 			else if (family.length () + 32 > 100)
 				LogPrint (eLogError, "Family: ", family, " is too long");
 			else

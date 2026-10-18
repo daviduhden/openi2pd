@@ -43,7 +43,8 @@ enum LogLevel
 	eNumLogLevels
 };
 
-enum LogType {
+enum LogType
+{
 	eLogStdout = 0,
 	eLogStream,
 	eLogFile,
@@ -52,8 +53,10 @@ enum LogType {
 #endif
 };
 
-namespace i2p {
-namespace log {
+namespace i2p
+{
+namespace log
+{
 
 	struct LogMsg; /* forward declaration */
 
@@ -77,110 +80,107 @@ namespace log {
 
 	class Log
 	{
-		private:
+	private:
+		enum LogType m_Destination;
+		enum LogLevel m_MinLevel;
+		std::shared_ptr<std::ostream> m_LogStream;
+		std::string m_Logfile;
+		std::time_t m_LastTimestamp;
+		char m_LastDateTime[64];
+		i2p::util::Queue<std::shared_ptr<LogMsg>> m_Queue;
+		bool m_HasColors;
+		std::string m_TimeFormat;
+		volatile bool m_IsRunning;
+		std::thread * m_Thread;
 
-			enum LogType m_Destination;
-			enum LogLevel m_MinLevel;
-			std::shared_ptr<std::ostream> m_LogStream;
-			std::string m_Logfile;
-			std::time_t m_LastTimestamp;
-			char m_LastDateTime[64];
-			i2p::util::Queue<std::shared_ptr<LogMsg> > m_Queue;
-			bool m_HasColors;
-			std::string m_TimeFormat;
-			volatile bool m_IsRunning;
-			std::thread * m_Thread;
+		// Administrative snapshot ring. Append() is called from arbitrary
+		// router threads, so it is protected by its own mutex and does not
+		// depend on the logging thread making progress.
+		mutable std::mutex m_RecentMutex;
+		std::deque<LogRecord> m_Recent;
+		uint64_t m_RecentSequence;
+		SinkFunction m_Sink;
 
-			// Administrative snapshot ring. Append() is called from arbitrary
-			// router threads, so it is protected by its own mutex and does not
-			// depend on the logging thread making progress.
-			mutable std::mutex m_RecentMutex;
-			std::deque<LogRecord> m_Recent;
-			uint64_t m_RecentSequence;
-			SinkFunction m_Sink;
+	private:
+		/** prevent making copies */
+		Log (const Log &);
+		const Log & operator= (const Log &);
 
-		private:
+		void Run ();
+		void Process (std::shared_ptr<LogMsg> msg);
 
-			/** prevent making copies */
-			Log (const Log &);
-			const Log& operator=(const Log&);
-
-			void Run ();
-			void Process (std::shared_ptr<LogMsg> msg);
-
-			/**
+		/**
 			 * @brief Makes formatted string from unix timestamp
 			 * @param ts Second since epoch
 			 *
 			 * This function internally caches the result for last provided value
 			 */
-			const char * TimeAsString(std::time_t ts);
+		const char * TimeAsString (std::time_t ts);
 
-		public:
+	public:
+		Log ();
+		~Log ();
 
-			Log ();
-			~Log ();
+		LogType GetLogType () const { return m_Destination; };
+		LogLevel GetLogLevel () const { return m_MinLevel; };
 
-			LogType GetLogType () const { return m_Destination; };
-			LogLevel GetLogLevel () const { return m_MinLevel; };
+		void Start ();
+		void Stop ();
 
-			void Start ();
-			void Stop ();
-
-			/**
+		/**
 			 * @brief Sets minimal allowed level for log messages
 			 * @param level String with wanted minimal msg level
 			 */
-			void SetLogLevel (const std::string& level);
+		void SetLogLevel (const std::string & level);
 
-			/**
+		/**
 			 * @brief Sets log destination to logfile
 			 * @param path Path to logfile
 			 */
-			void SendTo (const std::string &path);
+		void SendTo (const std::string & path);
 
-			/**
+		/**
 			 * @brief Sets log destination to given output stream
 			 * @param os Output stream
 			 */
-			void SendTo (std::shared_ptr<std::ostream> os);
+		void SendTo (std::shared_ptr<std::ostream> os);
 
-			/**
+		/**
 			 * @brief Sets format for timestamps in log
 			 * @param format String with timestamp format
 			 */
-			void SetTimeFormat (std::string format) { m_TimeFormat = format; };
+		void SetTimeFormat (std::string format) { m_TimeFormat = format; };
 
-	#ifndef _WIN32
-			/**
+#ifndef _WIN32
+		/**
 			 * @brief Sets log destination to syslog
 			 * @param name Wanted program name
 			 * @param facility Wanted log category
 			 */
-			void SendTo (const char *name, int facility);
-	#endif
+		void SendTo (const char * name, int facility);
+#endif
 
-			/**
+		/**
 			 * @brief Format log message and write to output stream/syslog
 			 * @param msg Pointer to processed message
 			 */
-			void Append(std::shared_ptr<i2p::log::LogMsg> &);
+		void Append (std::shared_ptr<i2p::log::LogMsg> &);
 
-			/** @brief Reopen log file */
-			void Reopen();
+		/** @brief Reopen log file */
+		void Reopen ();
 
-			/**
+		/**
 			 * Route processed records to an external sink (privilege-separated
 			 * log worker). When set, the process never opens or writes a log
 			 * file itself. Must be configured before Start().
 			 */
-			void SetSink (SinkFunction sink) { m_Sink = std::move (sink); }
+		void SetSink (SinkFunction sink) { m_Sink = std::move (sink); }
 
-			/**
+		/**
 			 * @brief Copy up to @a max records with sequence greater than @a after
 			 * @note Thread-safe. Intended for the local TUI IPC service.
 			 */
-			std::vector<LogRecord> GetRecent (uint64_t after, size_t max) const;
+		std::vector<LogRecord> GetRecent (uint64_t after, size_t max) const;
 	};
 
 	/**
@@ -190,18 +190,24 @@ namespace log {
 	 * We creating it somewhere with LogPrint(),
 	 * then put in MsgQueue for later processing.
 	 */
-	struct LogMsg {
+	struct LogMsg
+	{
 		std::time_t timestamp;
-		std::string text;    /**< message text as single string */
-		LogLevel level;      /**< message level */
+		std::string text; /**< message text as single string */
+		LogLevel level; /**< message level */
 		std::thread::id tid; /**< id of thread that generated message */
 
-		LogMsg (LogLevel lvl, std::time_t ts, std::string&& txt): timestamp(ts), text(std::move(txt)), level(lvl) {}
+		LogMsg (LogLevel lvl, std::time_t ts, std::string && txt)
+			: timestamp (ts)
+			, text (std::move (txt))
+			, level (lvl)
+		{
+		}
 	};
 
-	Log & Logger();
+	Log & Logger ();
 
-	typedef std::function<void (const std::string&)> ThrowFunction;
+	typedef std::function<void (const std::string &)> ThrowFunction;
 	ThrowFunction GetThrowFunction ();
 	void SetThrowFunction (ThrowFunction f);
 } // log
@@ -209,14 +215,13 @@ namespace log {
 
 inline bool CheckLogLevel (LogLevel level) noexcept
 {
-	return level <= i2p::log::Logger().GetLogLevel ();
-}	
+	return level <= i2p::log::Logger ().GetLogLevel ();
+}
 
 /** internal usage only -- folding args array to single string */
-template<typename TValue>
-void LogPrint (std::stringstream& s, TValue&& arg) noexcept
+template <typename TValue> void LogPrint (std::stringstream & s, TValue && arg) noexcept
 {
-	s << std::forward<TValue>(arg);
+	s << std::forward<TValue> (arg);
 }
 
 /**
@@ -224,31 +229,29 @@ void LogPrint (std::stringstream& s, TValue&& arg) noexcept
  * @param level Message level (eLogError, eLogInfo, ...)
  * @param args Array of message parts
  */
-template<typename... TArgs>
-void LogPrint (LogLevel level, TArgs&&... args) noexcept
+template <typename... TArgs> void LogPrint (LogLevel level, TArgs &&... args) noexcept
 {
-	if (!CheckLogLevel (level)) return; 
+	if (!CheckLogLevel (level)) return;
 
 	// fold message to single string
 	std::stringstream ss;
-	(LogPrint (ss, std::forward<TArgs>(args)), ...);
-	auto msg = std::make_shared<i2p::log::LogMsg>(level, std::time(nullptr), std::move(ss).str());
-	msg->tid = std::this_thread::get_id();
-	i2p::log::Logger().Append(msg);
+	(LogPrint (ss, std::forward<TArgs> (args)), ...);
+	auto msg = std::make_shared<i2p::log::LogMsg> (level, std::time (nullptr), std::move (ss).str ());
+	msg->tid = std::this_thread::get_id ();
+	i2p::log::Logger ().Append (msg);
 }
 
 /**
  * @brief Throw fatal error message with the list of arguments
  * @param args Array of message parts
  */
-template<typename... TArgs>
-void ThrowFatal (TArgs&&... args) noexcept
+template <typename... TArgs> void ThrowFatal (TArgs &&... args) noexcept
 {
 	auto f = i2p::log::GetThrowFunction ();
 	if (!f) return;
 	// fold message to single string
-	std::stringstream ss("");
-	(LogPrint (ss, std::forward<TArgs>(args)), ...);
+	std::stringstream ss ("");
+	(LogPrint (ss, std::forward<TArgs> (args)), ...);
 	f (ss.str ());
 }
 

@@ -30,26 +30,22 @@ import java.util.Objects;
  * native logger and is only formatted for display here.
  */
 public class LogAdapter extends ListAdapter<LogEntry, LogAdapter.Holder> {
-
     private static final int MAX_LEVEL_LENGTH = 12;
 
-    private static final DiffUtil.ItemCallback<LogEntry> DIFF =
-            new DiffUtil.ItemCallback<>() {
-                @Override
-                public boolean areItemsTheSame(@NonNull LogEntry oldItem,
-                                               @NonNull LogEntry newItem) {
-                    return oldItem.sequence() == newItem.sequence();
-                }
+    private static final DiffUtil.ItemCallback<LogEntry> DIFF = new DiffUtil.ItemCallback<>() {
+        @Override
+        public boolean areItemsTheSame(@NonNull LogEntry oldItem, @NonNull LogEntry newItem) {
+            return oldItem.sequence() == newItem.sequence();
+        }
 
-                @Override
-                public boolean areContentsTheSame(@NonNull LogEntry oldItem,
-                                                  @NonNull LogEntry newItem) {
-                    return oldItem.sequence() == newItem.sequence()
-                            && oldItem.timestampSeconds() == newItem.timestampSeconds()
-                            && Objects.equals(oldItem.level(), newItem.level())
-                            && Objects.equals(oldItem.message(), newItem.message());
-                }
-            };
+        @Override
+        public boolean areContentsTheSame(@NonNull LogEntry oldItem, @NonNull LogEntry newItem) {
+            return oldItem.sequence() == newItem.sequence()
+                    && oldItem.timestampSeconds() == newItem.timestampSeconds()
+                    && Objects.equals(oldItem.level(), newItem.level())
+                    && Objects.equals(oldItem.message(), newItem.message());
+        }
+    };
 
     private final java.text.DateFormat timeFormat;
     private final int colorError;
@@ -60,12 +56,10 @@ public class LogAdapter extends ListAdapter<LogEntry, LogAdapter.Holder> {
     public LogAdapter(@NonNull Context context) {
         super(DIFF);
         timeFormat = DateFormat.getTimeFormat(context);
-        colorError = MaterialColors.getColor(context,
-                androidx.appcompat.R.attr.colorError,
+        colorError = MaterialColors.getColor(context, androidx.appcompat.R.attr.colorError,
                 ContextCompat.getColor(context, R.color.brand_error));
         colorWarn = ContextCompat.getColor(context, R.color.brand_warning);
-        colorInfo = MaterialColors.getColor(context,
-                androidx.appcompat.R.attr.colorPrimary,
+        colorInfo = MaterialColors.getColor(context, androidx.appcompat.R.attr.colorPrimary,
                 ContextCompat.getColor(context, R.color.brand_primary));
         colorDebug = MaterialColors.getColor(context,
                 com.google.android.material.R.attr.colorOnSurfaceVariant,
@@ -75,8 +69,8 @@ public class LogAdapter extends ListAdapter<LogEntry, LogAdapter.Holder> {
     @NonNull
     @Override
     public Holder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-        View view = LayoutInflater.from(parent.getContext())
-                .inflate(R.layout.item_log, parent, false);
+        View view =
+                LayoutInflater.from(parent.getContext()).inflate(R.layout.item_log, parent, false);
         return new Holder(view);
     }
 
@@ -104,9 +98,8 @@ public class LogAdapter extends ListAdapter<LogEntry, LogAdapter.Holder> {
                     ? timeFormat.format(new Date(entry.timestampSeconds() * 1000L))
                     : context.getString(R.string.value_unknown);
             String rawLevel = entry.level() == null ? "" : entry.level().trim();
-            String levelText = rawLevel.isEmpty()
-                    ? context.getString(R.string.value_unknown)
-                    : rawLevel.toUpperCase(Locale.getDefault());
+            String levelText = rawLevel.isEmpty() ? context.getString(R.string.value_unknown)
+                                                  : rawLevel.toUpperCase(Locale.getDefault());
             if (levelText.length() > MAX_LEVEL_LENGTH) {
                 levelText = levelText.substring(0, MAX_LEVEL_LENGTH);
             }
@@ -124,8 +117,8 @@ public class LogAdapter extends ListAdapter<LogEntry, LogAdapter.Holder> {
 
         private int colorFor(@NonNull String rawLevel) {
             String value = rawLevel.toLowerCase(Locale.ROOT);
-            if (value.contains("error") || value.contains("crit")
-                    || value.contains("fatal") || value.contains("fail")) {
+            if (value.contains("error") || value.contains("crit") || value.contains("fatal")
+                    || value.contains("fail")) {
                 return colorError;
             }
             if (value.contains("warn")) {

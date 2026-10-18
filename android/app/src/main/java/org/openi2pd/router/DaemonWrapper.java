@@ -42,7 +42,6 @@ import android.util.Log;
  * against another component's monitor.</p>
  */
 public class DaemonWrapper {
-
     private static final String TAG = "open-i2pd";
     private static final String DATA_DIR_NAME = "open-i2pd";
     private static final int COPY_BUFFER_SIZE = 8192;
@@ -59,8 +58,8 @@ public class DaemonWrapper {
         void daemonStateUpdate(State oldValue, State newValue);
     }
 
-    private record StateChange(State oldState, State newState, List<StateUpdateListener> listeners) {
-    }
+    private record
+            StateChange(State oldState, State newState, List<StateUpdateListener> listeners) {}
 
     public enum State {
         uninitialized(R.string.uninitialized),
@@ -122,15 +121,17 @@ public class DaemonWrapper {
                 }
 
                 @Override
-                public void onCapabilitiesChanged(Network network, NetworkCapabilities capabilities) {
+                public void onCapabilitiesChanged(
+                        Network network, NetworkCapabilities capabilities) {
                     super.onCapabilitiesChanged(network, capabilities);
                     notifyNetworkState(capabilities != null
-                            && capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET));
+                            && capabilities.hasCapability(
+                                    NetworkCapabilities.NET_CAPABILITY_INTERNET));
                 }
             };
 
-    public DaemonWrapper(Context context, AssetManager assetManager,
-                         ConnectivityManager connectivityManager) {
+    public DaemonWrapper(
+            Context context, AssetManager assetManager, ConnectivityManager connectivityManager) {
         this(context, assetManager, connectivityManager, true);
     }
 
@@ -142,7 +143,7 @@ public class DaemonWrapper {
      *                  merely because the UI bound the service.
      */
     public DaemonWrapper(Context context, AssetManager assetManager,
-                         ConnectivityManager connectivityManager, boolean autoStart) {
+            ConnectivityManager connectivityManager, boolean autoStart) {
         Objects.requireNonNull(context, "context");
         Context appContext = context.getApplicationContext();
         if (appContext == null) {
@@ -385,8 +386,7 @@ public class DaemonWrapper {
             if (startThreadRunning) {
                 return;
             }
-            if (state != State.stopped && state != State.starting
-                    && state != State.startFailed) {
+            if (state != State.stopped && state != State.starting && state != State.startFailed) {
                 return;
             }
             startThreadRunning = true;
@@ -412,8 +412,7 @@ public class DaemonWrapper {
         } catch (Throwable tr) {
             lastThrowable = tr;
             synchronized (lock) {
-                change = setStateLocked(stopRequested.get()
-                        ? State.stopped : State.startFailed);
+                change = setStateLocked(stopRequested.get() ? State.stopped : State.startFailed);
                 startThreadRunning = false;
             }
             notifyListeners(change);
@@ -431,8 +430,9 @@ public class DaemonWrapper {
                     String result = I2PD_JNI.startDaemon();
                     daemonStartResult = result;
                     started = "ok".equals(result) && !stopRequested.get();
-                    change = setStateLocked(started ? State.startedOkay
-                            : stopRequested.get() ? State.stopped : State.startFailed);
+                    change = setStateLocked(started       ? State.startedOkay
+                                    : stopRequested.get() ? State.stopped
+                                                          : State.startFailed);
                     if (!started && "ok".equals(result)) {
                         try {
                             I2PD_JNI.stopDaemon();
@@ -447,8 +447,7 @@ public class DaemonWrapper {
         } catch (Throwable tr) {
             lastThrowable = tr;
             synchronized (lock) {
-                change = setStateLocked(stopRequested.get()
-                        ? State.stopped : State.startFailed);
+                change = setStateLocked(stopRequested.get() ? State.stopped : State.startFailed);
             }
         } finally {
             synchronized (lock) {
@@ -729,7 +728,7 @@ public class DaemonWrapper {
             return;
         }
         try (InputStream in = assetManager.open(path);
-             OutputStream out = new FileOutputStream(file)) {
+                OutputStream out = new FileOutputStream(file)) {
             byte[] buffer = new byte[COPY_BUFFER_SIZE];
             int read;
             while ((read = in.read(buffer)) != -1) {

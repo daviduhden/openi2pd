@@ -17,88 +17,88 @@
 
 namespace
 {
-	constexpr size_t CHUNK_SIZE = 4096;
+constexpr size_t CHUNK_SIZE = 4096;
 
-	int printHelp (const char * exe, int exitcode)
-	{
-		std::cout << "usage: " << exe << " [-d] [filename]" << std::endl;
-		return exitcode;
-	}
+int printHelp (const char * exe, int exitcode)
+{
+	std::cout << "usage: " << exe << " [-d] [filename]" << std::endl;
+	return exitcode;
+}
 
-	bool WriteAll (int fd, const uint8_t * data, size_t size)
+bool WriteAll (int fd, const uint8_t * data, size_t size)
+{
+	while (size)
 	{
-		while (size)
+		const auto written = ::write (fd, data, size);
+		if (written < 0)
 		{
-			const auto written = ::write (fd, data, size);
-			if (written < 0)
-			{
-				if (errno == EINTR) continue;
-				return false;
-			}
-			if (!written) return false;
-			data += written;
-			size -= static_cast<size_t> (written);
+			if (errno == EINTR) continue;
+			return false;
 		}
-		return true;
+		if (!written) return false;
+		data += written;
+		size -= static_cast<size_t> (written);
 	}
+	return true;
+}
 
-	int Decode (int infile, int outfile)
+int Decode (int infile, int outfile)
+{
+	std::array<char, CHUNK_SIZE> inbuf { };
+	std::array<uint8_t, CHUNK_SIZE> outbuf { };
+	std::string pending;
+	while (true)
 	{
-		std::array<char, CHUNK_SIZE> inbuf{};
-		std::array<uint8_t, CHUNK_SIZE> outbuf{};
-		std::string pending;
-		while (true)
+		const auto readSize = ::read (infile, inbuf.data (), inbuf.size ());
+		if (readSize < 0)
 		{
-			const auto readSize = ::read (infile, inbuf.data (), inbuf.size ());
-			if (readSize < 0)
-			{
-				if (errno == EINTR) continue;
-				return 1;
-			}
-			if (readSize == 0) break;
-			for (ssize_t i = 0; i < readSize; ++i)
-				if (inbuf[i] != '\n' && inbuf[i] != '\r' && inbuf[i] != ' ' && inbuf[i] != '\t')
-					pending.push_back (inbuf[i]);
-
-			const size_t complete = pending.size () - pending.size () % 4;
-			if (complete)
-			{
-				const auto decoded = i2p::data::Base64ToByteStream (
-					std::string_view (pending).substr (0, complete), outbuf);
-				if (!decoded || !WriteAll (outfile, outbuf.data (), decoded)) return 1;
-				pending.erase (0, complete);
-			}
-			if (pending.size () > 4)
-			{
-				std::cerr << "invalid base64 input" << std::endl;
-				return 1;
-			}
-		}
-		if (!pending.empty ())
-		{
-			std::cerr << "truncated base64 input" << std::endl;
+			if (errno == EINTR) continue;
 			return 1;
 		}
-		return 0;
-	}
+		if (readSize == 0) break;
+		for (ssize_t i = 0; i < readSize; ++i)
+			if (inbuf[i] != '\n' && inbuf[i] != '\r' && inbuf[i] != ' ' && inbuf[i] != '\t')
+				pending.push_back (inbuf[i]);
 
-	int Encode (int infile, int outfile)
-	{
-		std::array<uint8_t, CHUNK_SIZE * 3> inbuf{};
-		while (true)
+		const size_t complete = pending.size () - pending.size () % 4;
+		if (complete)
 		{
-			const auto readSize = ::read (infile, inbuf.data (), inbuf.size ());
-			if (readSize < 0)
-			{
-				if (errno == EINTR) continue;
-				return 1;
-			}
-			if (readSize == 0) break;
-			const auto encoded = i2p::data::ByteStreamToBase64 (inbuf.data (), static_cast<size_t> (readSize));
-			if (!WriteAll (outfile, reinterpret_cast<const uint8_t *> (encoded.data ()), encoded.size ())) return 1;
+			const auto decoded
+				= i2p::data::Base64ToByteStream (std::string_view (pending).substr (0, complete), outbuf);
+			if (!decoded || !WriteAll (outfile, outbuf.data (), decoded)) return 1;
+			pending.erase (0, complete);
 		}
-		return 0;
+		if (pending.size () > 4)
+		{
+			std::cerr << "invalid base64 input" << std::endl;
+			return 1;
+		}
 	}
+	if (!pending.empty ())
+	{
+		std::cerr << "truncated base64 input" << std::endl;
+		return 1;
+	}
+	return 0;
+}
+
+int Encode (int infile, int outfile)
+{
+	std::array<uint8_t, CHUNK_SIZE * 3> inbuf { };
+	while (true)
+	{
+		const auto readSize = ::read (infile, inbuf.data (), inbuf.size ());
+		if (readSize < 0)
+		{
+			if (errno == EINTR) continue;
+			return 1;
+		}
+		if (readSize == 0) break;
+		const auto encoded = i2p::data::ByteStreamToBase64 (inbuf.data (), static_cast<size_t> (readSize));
+		if (!WriteAll (outfile, reinterpret_cast<const uint8_t *> (encoded.data ()), encoded.size ())) return 1;
+	}
+	return 0;
+}
 }
 
 int main (int argc, char * argv[])
@@ -110,9 +110,9 @@ int main (int argc, char * argv[])
 	{
 		switch (opt)
 		{
-			case 'h': return printHelp (argv[0], 0);
-			case 'd': decode = true; break;
-			default: return printHelp (argv[0], 1);
+		case 'h': return printHelp (argv[0], 0);
+		case 'd': decode = true; break;
+		default: return printHelp (argv[0], 1);
 		}
 	}
 

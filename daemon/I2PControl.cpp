@@ -34,66 +34,66 @@ namespace i2p
 {
 namespace client
 {
-	I2PControlService::I2PControlService (const std::string& address, int port):
-		m_IsRunning (false),
-		m_SSLContext (boost::asio::ssl::context::sslv23),
-		m_ShutdownTimer (m_Service)
+	I2PControlService::I2PControlService (const std::string & address, int port)
+		: m_IsRunning (false)
+		, m_SSLContext (boost::asio::ssl::context::sslv23)
+		, m_ShutdownTimer (m_Service)
 	{
 		if (port)
-			m_Acceptor = std::make_unique<boost::asio::ip::tcp::acceptor>(m_Service,
-				boost::asio::ip::tcp::endpoint(boost::asio::ip::make_address(address), port));
+			m_Acceptor = std::make_unique<boost::asio::ip::tcp::acceptor> (
+				m_Service, boost::asio::ip::tcp::endpoint (boost::asio::ip::make_address (address), port));
 		else
 #if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
 		{
-			std::remove (address.c_str ());	// just in case
-			m_LocalAcceptor = std::make_unique<boost::asio::local::stream_protocol::acceptor>(m_Service,
-				boost::asio::local::stream_protocol::endpoint(address));
+			std::remove (address.c_str ()); // just in case
+			m_LocalAcceptor = std::make_unique<boost::asio::local::stream_protocol::acceptor> (
+				m_Service, boost::asio::local::stream_protocol::endpoint (address));
 		}
 #else
-			LogPrint(eLogError, "I2PControl: Local sockets are not supported");
+			LogPrint (eLogError, "I2PControl: Local sockets are not supported");
 #endif
 
-		i2p::config::GetOption("i2pcontrol.password", m_Password);
+		i2p::config::GetOption ("i2pcontrol.password", m_Password);
 
 		// certificate / keys
-		std::string i2pcp_crt; i2p::config::GetOption("i2pcontrol.cert", i2pcp_crt);
-		std::string i2pcp_key; i2p::config::GetOption("i2pcontrol.key",  i2pcp_key);
+		std::string i2pcp_crt;
+		i2p::config::GetOption ("i2pcontrol.cert", i2pcp_crt);
+		std::string i2pcp_key;
+		i2p::config::GetOption ("i2pcontrol.key", i2pcp_key);
 
-		if (!i2pcp_crt.empty () && i2pcp_crt[0] != '/')
-			i2pcp_crt = i2p::fs::DataDirPath(i2pcp_crt);
-		if (!i2pcp_key.empty () && i2pcp_key[0] != '/')
-			i2pcp_key = i2p::fs::DataDirPath(i2pcp_key);
+		if (!i2pcp_crt.empty () && i2pcp_crt[0] != '/') i2pcp_crt = i2p::fs::DataDirPath (i2pcp_crt);
+		if (!i2pcp_key.empty () && i2pcp_key[0] != '/') i2pcp_key = i2p::fs::DataDirPath (i2pcp_key);
 		if (!i2p::fs::Exists (i2pcp_crt) || !i2p::fs::Exists (i2pcp_key))
 		{
-			LogPrint (eLogInfo, "I2PControl: Creating new certificate for control connection ", i2pcp_crt, " key ", i2pcp_key);
-			CreateCertificate (i2pcp_crt.c_str(), i2pcp_key.c_str());
+			LogPrint (eLogInfo, "I2PControl: Creating new certificate for control connection ", i2pcp_crt, " key ",
+				i2pcp_key);
+			CreateCertificate (i2pcp_crt.c_str (), i2pcp_key.c_str ());
 		}
 		else
-			LogPrint(eLogDebug, "I2PControl: Using cert from ", i2pcp_crt, " key ", i2pcp_key);
-		m_SSLContext.set_options (boost::asio::ssl::context::default_workarounds | boost::asio::ssl::context::no_sslv2 | boost::asio::ssl::context::single_dh_use);
+			LogPrint (eLogDebug, "I2PControl: Using cert from ", i2pcp_crt, " key ", i2pcp_key);
+		m_SSLContext.set_options (boost::asio::ssl::context::default_workarounds | boost::asio::ssl::context::no_sslv2
+			| boost::asio::ssl::context::single_dh_use);
 		boost::system::error_code ec;
 		m_SSLContext.use_certificate_file (i2pcp_crt, boost::asio::ssl::context::pem, ec);
-		if (!ec)
-			m_SSLContext.use_private_key_file (i2pcp_key, boost::asio::ssl::context::pem, ec);
+		if (!ec) m_SSLContext.use_private_key_file (i2pcp_key, boost::asio::ssl::context::pem, ec);
 		if (ec)
 		{
 			LogPrint (eLogInfo, "I2PControl: Failed to load ceritifcate: ", ec.message (), ". Recreating");
-			CreateCertificate (i2pcp_crt.c_str(), i2pcp_key.c_str());
+			CreateCertificate (i2pcp_crt.c_str (), i2pcp_key.c_str ());
 			m_SSLContext.use_certificate_file (i2pcp_crt, boost::asio::ssl::context::pem, ec);
-			if (!ec)
-				m_SSLContext.use_private_key_file (i2pcp_key, boost::asio::ssl::context::pem, ec);
+			if (!ec) m_SSLContext.use_private_key_file (i2pcp_key, boost::asio::ssl::context::pem, ec);
 			if (ec)
 				// give up
 				LogPrint (eLogError, "I2PControl: Can't load certificates");
 		}
 
 		// handlers
-		m_MethodHandlers["Authenticate"]       = &I2PControlService::AuthenticateHandler;
-		m_MethodHandlers["Echo"]               = &I2PControlService::EchoHandler;
-		m_MethodHandlers["I2PControl"]         = &I2PControlService::I2PControlHandler;
-		m_MethodHandlers["RouterInfo"]         = &I2PControlHandlers::RouterInfoHandler;
-		m_MethodHandlers["RouterManager"]      = &I2PControlService::RouterManagerHandler;
-		m_MethodHandlers["NetworkSetting"]     = &I2PControlHandlers::NetworkSettingHandler;
+		m_MethodHandlers["Authenticate"] = &I2PControlService::AuthenticateHandler;
+		m_MethodHandlers["Echo"] = &I2PControlService::EchoHandler;
+		m_MethodHandlers["I2PControl"] = &I2PControlService::I2PControlHandler;
+		m_MethodHandlers["RouterInfo"] = &I2PControlHandlers::RouterInfoHandler;
+		m_MethodHandlers["RouterManager"] = &I2PControlService::RouterManagerHandler;
+		m_MethodHandlers["NetworkSetting"] = &I2PControlHandlers::NetworkSettingHandler;
 		m_MethodHandlers["ClientServicesInfo"] = &I2PControlHandlers::ClientServicesInfoHandler;
 		m_MethodHandlers["LocalDestinationInfo"] = &I2PControlHandlers::LocalDestinationInfoHandler;
 
@@ -101,8 +101,8 @@ namespace client
 		m_I2PControlHandlers["i2pcontrol.password"] = &I2PControlService::PasswordHandler;
 
 		// RouterManager
-		m_RouterManagerHandlers["Reseed"]           = &I2PControlService::ReseedHandler;
-		m_RouterManagerHandlers["Shutdown"]         = &I2PControlService::ShutdownHandler;
+		m_RouterManagerHandlers["Reseed"] = &I2PControlService::ReseedHandler;
+		m_RouterManagerHandlers["Shutdown"] = &I2PControlService::ShutdownHandler;
 		m_RouterManagerHandlers["ShutdownGraceful"] = &I2PControlService::ShutdownGracefulHandler;
 	}
 
@@ -117,7 +117,7 @@ namespace client
 		{
 			Accept ();
 			m_IsRunning = true;
-			m_Thread = std::make_unique<std::thread>(std::bind (&I2PControlService::Run, this));
+			m_Thread = std::make_unique<std::thread> (std::bind (&I2PControlService::Run, this));
 		}
 	}
 
@@ -130,7 +130,7 @@ namespace client
 #if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
 			if (m_LocalAcceptor)
 			{
-				auto path = m_LocalAcceptor->local_endpoint().path();
+				auto path = m_LocalAcceptor->local_endpoint ().path ();
 				m_LocalAcceptor->cancel ();
 				std::remove (path.c_str ());
 			}
@@ -146,13 +146,16 @@ namespace client
 
 	void I2PControlService::Run ()
 	{
-		i2p::util::SetThreadName("I2PC");
+		i2p::util::SetThreadName ("I2PC");
 
 		while (m_IsRunning)
 		{
-			try {
+			try
+			{
 				m_Service.run ();
-			} catch (std::exception& ex) {
+			}
+			catch (std::exception & ex)
+			{
 				LogPrint (eLogError, "I2PControl: Runtime exception: ", ex.what ());
 			}
 		}
@@ -162,32 +165,27 @@ namespace client
 	{
 		if (m_Acceptor)
 		{
-			auto newSocket = std::make_shared<boost::asio::ssl::stream<boost::asio::ip::tcp::socket> > (m_Service, m_SSLContext);
-			m_Acceptor->async_accept (newSocket->lowest_layer(),
-				[this, newSocket](const boost::system::error_code& ecode)
-				{
-					HandleAccepted (ecode, newSocket);
-				});
+			auto newSocket
+				= std::make_shared<boost::asio::ssl::stream<boost::asio::ip::tcp::socket>> (m_Service, m_SSLContext);
+			m_Acceptor->async_accept (newSocket->lowest_layer (),
+				[this, newSocket] (const boost::system::error_code & ecode) { HandleAccepted (ecode, newSocket); });
 		}
 #if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
 		else if (m_LocalAcceptor)
 		{
-			auto newSocket = std::make_shared<boost::asio::ssl::stream<boost::asio::local::stream_protocol::socket> > (m_Service, m_SSLContext);
-			m_LocalAcceptor->async_accept (newSocket->lowest_layer(),
-				[this, newSocket](const boost::system::error_code& ecode)
-				{
-					HandleAccepted (ecode, newSocket);
-				});
+			auto newSocket = std::make_shared<boost::asio::ssl::stream<boost::asio::local::stream_protocol::socket>> (
+				m_Service, m_SSLContext);
+			m_LocalAcceptor->async_accept (newSocket->lowest_layer (),
+				[this, newSocket] (const boost::system::error_code & ecode) { HandleAccepted (ecode, newSocket); });
 		}
 #endif
 	}
 
-	template<typename ssl_socket>
-	void I2PControlService::HandleAccepted (const boost::system::error_code& ecode,
-		std::shared_ptr<ssl_socket> newSocket)
+	template <typename ssl_socket>
+	void I2PControlService::HandleAccepted (
+		const boost::system::error_code & ecode, std::shared_ptr<ssl_socket> newSocket)
 	{
-		if (ecode != boost::asio::error::operation_aborted)
-			Accept ();
+		if (ecode != boost::asio::error::operation_aborted) Accept ();
 
 		if (ecode)
 		{
@@ -198,12 +196,11 @@ namespace client
 		Handshake (newSocket);
 	}
 
-	template<typename ssl_socket>
-	void I2PControlService::Handshake (std::shared_ptr<ssl_socket> socket)
+	template <typename ssl_socket> void I2PControlService::Handshake (std::shared_ptr<ssl_socket> socket)
 	{
-		socket->async_handshake(boost::asio::ssl::stream_base::server,
-			[this, socket](const boost::system::error_code& ecode)
-		    {
+		socket->async_handshake (boost::asio::ssl::stream_base::server,
+			[this, socket] (const boost::system::error_code & ecode)
+			{
 				if (ecode)
 				{
 					LogPrint (eLogError, "I2PControl: Handshake error: ", ecode.message ());
@@ -213,26 +210,22 @@ namespace client
 			});
 	}
 
-	template<typename ssl_socket>
-	void I2PControlService::ReadRequest (std::shared_ptr<ssl_socket> socket)
+	template <typename ssl_socket> void I2PControlService::ReadRequest (std::shared_ptr<ssl_socket> socket)
 	{
-		auto request = std::make_shared<I2PControlBuffer>();
+		auto request = std::make_shared<I2PControlBuffer> ();
 		socket->async_read_some (
 #if defined(BOOST_ASIO_HAS_STD_ARRAY)
 			boost::asio::buffer (*request),
 #else
 			boost::asio::buffer (request->data (), request->size ()),
 #endif
-		    [this, socket, request](const boost::system::error_code& ecode, size_t bytes_transferred)
-		    {
-				HandleRequestReceived (ecode, bytes_transferred, socket, request);
-			});
+			[this, socket, request] (const boost::system::error_code & ecode, size_t bytes_transferred)
+			{ HandleRequestReceived (ecode, bytes_transferred, socket, request); });
 	}
 
-	template<typename ssl_socket>
-	void I2PControlService::HandleRequestReceived (const boost::system::error_code& ecode,
-		size_t bytes_transferred, std::shared_ptr<ssl_socket> socket,
-		std::shared_ptr<I2PControlBuffer> buf)
+	template <typename ssl_socket>
+	void I2PControlService::HandleRequestReceived (const boost::system::error_code & ecode, size_t bytes_transferred,
+		std::shared_ptr<ssl_socket> socket, std::shared_ptr<I2PControlBuffer> buf)
 	{
 		if (ecode)
 		{
@@ -252,7 +245,7 @@ namespace client
 					size_t contentLength = 0;
 					while (!ss.eof () && header != "\r")
 					{
-						std::getline(ss, header);
+						std::getline (ss, header);
 						auto colon = header.find (':');
 						if (colon != std::string::npos && boost::iequals (header.substr (0, colon), "Content-Length"))
 							contentLength = std::stoi (header.substr (colon + 1));
@@ -264,7 +257,8 @@ namespace client
 					}
 					if (contentLength > I2P_CONTROL_MAX_CONTENT_LENGTH)
 					{
-						LogPrint (eLogError, "I2PControl: Content-Length ", contentLength, " exceeds maximum allowed size");
+						LogPrint (
+							eLogError, "I2PControl: Content-Length ", contentLength, " exceeds maximum allowed size");
 						return;
 					}
 					std::streamoff rem = contentLength + ss.tellg () - bytes_transferred; // more bytes to read
@@ -281,14 +275,13 @@ namespace client
 				boost::property_tree::ptree pt;
 				boost::property_tree::read_json (ss, pt);
 
-				std::string id     = pt.get<std::string>("id");
-				std::string method = pt.get<std::string>("method");
+				std::string id = pt.get<std::string> ("id");
+				std::string method = pt.get<std::string> ("method");
 				auto it = m_MethodHandlers.find (method);
 				if (it != m_MethodHandlers.end ())
 				{
 					auto params = pt.get_child ("params");
-					if (method != "Authenticate" &&
-						!IsValidToken (params.get<std::string> ("Token", "")))
+					if (method != "Authenticate" && !IsValidToken (params.get<std::string> ("Token", "")))
 					{
 						LogPrint (eLogWarning, "I2PControl: Invalid or missing token for method ", method);
 						response << "{\"id\":null,\"error\":";
@@ -298,7 +291,7 @@ namespace client
 					else
 					{
 						response << "{\"id\":" << id << ",\"result\":{";
-						(this->*(it->second))(params, response);
+						(this->*(it->second)) (params, response);
 						response << "},\"jsonrpc\":\"2.0\"}\n";
 					}
 				}
@@ -311,7 +304,7 @@ namespace client
 				}
 				SendResponse (socket, response, isHtml);
 			}
-			catch (std::exception& ex)
+			catch (std::exception & ex)
 			{
 				LogPrint (eLogError, "I2PControl: Exception when handle request: ", ex.what ());
 				std::ostringstream response;
@@ -327,9 +320,9 @@ namespace client
 		}
 	}
 
-	template<typename ssl_socket>
-	void I2PControlService::SendResponse (std::shared_ptr<ssl_socket> socket,
-		std::ostringstream& response, bool isHtml)
+	template <typename ssl_socket>
+	void I2PControlService::SendResponse (
+		std::shared_ptr<ssl_socket> socket, std::ostringstream & response, bool isHtml)
 	{
 		auto message = std::make_shared<std::string> ();
 		if (isHtml)
@@ -341,31 +334,31 @@ namespace client
 			header << "Content-Type: application/json\r\n";
 			header << "Date: ";
 			std::time_t t = std::time (nullptr);
-    		std::tm tm = *std::gmtime (&t);
-			header << std::put_time(&tm, "%a, %d %b %Y %T GMT") << "\r\n";
+			std::tm tm = *std::gmtime (&t);
+			header << std::put_time (&tm, "%a, %d %b %Y %T GMT") << "\r\n";
 			header << "\r\n";
 			*message = header.str ();
 		}
 		*message += response.str ();
-		boost::asio::async_write (*socket, boost::asio::buffer (*message),
-			boost::asio::transfer_all (),
-		    [socket, message](const boost::system::error_code& ecode, std::size_t bytes_transferred)
-		    {
-				if (ecode)
-					LogPrint (eLogError, "I2PControl: Write error: ", ecode.message ());
+		boost::asio::async_write (*socket, boost::asio::buffer (*message), boost::asio::transfer_all (),
+			[socket, message] (const boost::system::error_code & ecode, std::size_t bytes_transferred)
+			{
+				if (ecode) LogPrint (eLogError, "I2PControl: Write error: ", ecode.message ());
 			});
 	}
 
-// handlers
+	// handlers
 
-	void I2PControlService::AuthenticateHandler (const boost::property_tree::ptree& params, std::ostringstream& results)
+	void I2PControlService::AuthenticateHandler (
+		const boost::property_tree::ptree & params, std::ostringstream & results)
 	{
-		int api       = params.get<int> ("API");
+		int api = params.get<int> ("API");
 		auto password = params.get<std::string> ("Password");
 		LogPrint (eLogDebug, "I2PControl: Authenticate API=", api);
-		bool isValid = password.size () == m_Password.size () &&
-			CRYPTO_memcmp (password.data (), m_Password.data (), m_Password.size ()) == 0;
-		if (!isValid) {
+		bool isValid = password.size () == m_Password.size ()
+			&& CRYPTO_memcmp (password.data (), m_Password.data (), m_Password.size ()) == 0;
+		if (!isValid)
+		{
 			LogPrint (eLogError, "I2PControl: Authenticate - Invalid password");
 			return;
 		}
@@ -378,7 +371,7 @@ namespace client
 		InsertParam (results, "Token", token);
 	}
 
-	bool I2PControlService::IsValidToken (const std::string& token)
+	bool I2PControlService::IsValidToken (const std::string & token)
 	{
 		uint64_t ts = i2p::util::GetSecondsSinceEpoch ();
 		for (auto it = m_Tokens.begin (); it != m_Tokens.end ();)
@@ -389,34 +382,33 @@ namespace client
 				++it;
 		}
 		bool found = false;
-		for (const auto& it: m_Tokens)
+		for (const auto & it : m_Tokens)
 		{
-			if (it.first.size () == token.size () &&
-				CRYPTO_memcmp (it.first.data (), token.data (), token.size ()) == 0)
+			if (it.first.size () == token.size ()
+				&& CRYPTO_memcmp (it.first.data (), token.data (), token.size ()) == 0)
 				found = true; // don't short-circuit; keep timing independent of match position
 		}
 		return found;
 	}
 
-	void I2PControlService::EchoHandler (const boost::property_tree::ptree& params, std::ostringstream& results)
+	void I2PControlService::EchoHandler (const boost::property_tree::ptree & params, std::ostringstream & results)
 	{
 		auto echo = params.get<std::string> ("Echo");
 		LogPrint (eLogDebug, "I2PControl Echo Echo=", echo);
 		InsertParam (results, "Result", echo);
 	}
 
+	// I2PControl
 
-// I2PControl
-
-	void I2PControlService::I2PControlHandler (const boost::property_tree::ptree& params, std::ostringstream& results)
+	void I2PControlService::I2PControlHandler (const boost::property_tree::ptree & params, std::ostringstream & results)
 	{
-		for (auto& it: params)
+		for (auto & it : params)
 		{
 			LogPrint (eLogDebug, "I2PControl: I2PControl request: ", it.first);
 			auto it1 = m_I2PControlHandlers.find (it.first);
 			if (it1 != m_I2PControlHandlers.end ())
 			{
-				(this->*(it1->second))(it.second.data ());
+				(this->*(it1->second)) (it.second.data ());
 				InsertParam (results, it.first, "");
 			}
 			else
@@ -424,17 +416,18 @@ namespace client
 		}
 	}
 
-	void I2PControlService::PasswordHandler (const std::string& value)
+	void I2PControlService::PasswordHandler (const std::string & value)
 	{
-		LogPrint (eLogWarning, "I2PControl: New password=", value, ", to make it persistent you should update your config!");
+		LogPrint (
+			eLogWarning, "I2PControl: New password=", value, ", to make it persistent you should update your config!");
 		m_Password = value;
 		m_Tokens.clear ();
 	}
 
+	// RouterManager
 
-// RouterManager
-
-	void I2PControlService::RouterManagerHandler (const boost::property_tree::ptree& params, std::ostringstream& results)
+	void I2PControlService::RouterManagerHandler (
+		const boost::property_tree::ptree & params, std::ostringstream & results)
 	{
 		for (auto it = params.begin (); it != params.end (); it++)
 		{
@@ -443,40 +436,32 @@ namespace client
 			if (it1 != m_RouterManagerHandlers.end ())
 			{
 				if (it != params.begin ()) results << ",";
-				(this->*(it1->second))(results);
-			} else
+				(this->*(it1->second)) (results);
+			}
+			else
 				LogPrint (eLogError, "I2PControl: RouterManager unknown request: ", it->first);
 		}
 	}
 
-
-	void I2PControlService::ShutdownHandler (std::ostringstream& results)
+	void I2PControlService::ShutdownHandler (std::ostringstream & results)
 	{
 		LogPrint (eLogInfo, "I2PControl: Shutdown requested");
 		InsertParam (results, "Shutdown", "");
-		m_ShutdownTimer.expires_after (std::chrono::seconds(1)); // 1 second to make sure response has been sent
-		m_ShutdownTimer.async_wait (
-			[](const boost::system::error_code& ecode)
-			{
-				Daemon.running = 0;
-			});
+		m_ShutdownTimer.expires_after (std::chrono::seconds (1)); // 1 second to make sure response has been sent
+		m_ShutdownTimer.async_wait ([] (const boost::system::error_code & ecode) { Daemon.running = 0; });
 	}
 
-	void I2PControlService::ShutdownGracefulHandler (std::ostringstream& results)
+	void I2PControlService::ShutdownGracefulHandler (std::ostringstream & results)
 	{
 		i2p::context.SetAcceptsTunnels (false);
 		int timeout = i2p::tunnel::tunnels.GetTransitTunnelsExpirationTimeout ();
 		LogPrint (eLogInfo, "I2PControl: Graceful shutdown requested, ", timeout, " seconds remains");
 		InsertParam (results, "ShutdownGraceful", "");
-		m_ShutdownTimer.expires_after (std::chrono::seconds(timeout + 1)); // + 1 second
-		m_ShutdownTimer.async_wait (
-			[](const boost::system::error_code& ecode)
-			{
-				Daemon.running = 0;
-			});
+		m_ShutdownTimer.expires_after (std::chrono::seconds (timeout + 1)); // + 1 second
+		m_ShutdownTimer.async_wait ([] (const boost::system::error_code & ecode) { Daemon.running = 0; });
 	}
 
-	void I2PControlService::ReseedHandler (std::ostringstream& results)
+	void I2PControlService::ReseedHandler (std::ostringstream & results)
 	{
 		LogPrint (eLogInfo, "I2PControl: Reseed requested");
 		InsertParam (results, "Reseed", "");
@@ -484,18 +469,19 @@ namespace client
 	}
 
 	// certificate
-	void I2PControlService::CreateCertificate (const char *crt_path, const char *key_path)
+	void I2PControlService::CreateCertificate (const char * crt_path, const char * key_path)
 	{
-		FILE *f = NULL;
+		FILE * f = NULL;
 #if !defined(LIBRESSL_VERSION_NUMBER) && OPENSSL_VERSION_NUMBER >= 0x30000000L // since 3.0.0
-		EVP_PKEY *  pkey = EVP_RSA_gen(4096); // e = 65537
+		EVP_PKEY * pkey = EVP_RSA_gen (4096); // e = 65537
 #else
 		EVP_PKEY * pkey = EVP_PKEY_new ();
 		RSA * rsa = RSA_new ();
 		BIGNUM * e = BN_dup (i2p::crypto::GetRSAE ());
 		RSA_generate_key_ex (rsa, 4096, e, NULL);
 		BN_free (e);
-		if (rsa) EVP_PKEY_assign_RSA (pkey, rsa);
+		if (rsa)
+			EVP_PKEY_assign_RSA (pkey, rsa);
 		else
 		{
 			LogPrint (eLogError, "I2PControl: Can't create RSA key for certificate");
@@ -506,12 +492,15 @@ namespace client
 		X509 * x509 = X509_new ();
 		ASN1_INTEGER_set (X509_get_serialNumber (x509), 1);
 		X509_gmtime_adj (X509_getm_notBefore (x509), 0);
-		X509_gmtime_adj (X509_getm_notAfter (x509), I2P_CONTROL_CERTIFICATE_VALIDITY*24*60*60); // expiration
+		X509_gmtime_adj (X509_getm_notAfter (x509), I2P_CONTROL_CERTIFICATE_VALIDITY * 24 * 60 * 60); // expiration
 		X509_set_pubkey (x509, pkey); // public key
 		auto name = X509_NAME_dup (X509_get_subject_name (x509));
-		X509_NAME_add_entry_by_txt (name, "C",  MBSTRING_ASC, (unsigned char *)"A1", -1, -1, 0); // country (Anonymous proxy)
-		X509_NAME_add_entry_by_txt (name, "O",  MBSTRING_ASC, (unsigned char *)I2P_CONTROL_CERTIFICATE_ORGANIZATION, -1, -1, 0); // organization
-		X509_NAME_add_entry_by_txt (name, "CN", MBSTRING_ASC, (unsigned char *)I2P_CONTROL_CERTIFICATE_COMMON_NAME, -1, -1, 0); // common name
+		X509_NAME_add_entry_by_txt (
+			name, "C", MBSTRING_ASC, (unsigned char *)"A1", -1, -1, 0); // country (Anonymous proxy)
+		X509_NAME_add_entry_by_txt (
+			name, "O", MBSTRING_ASC, (unsigned char *)I2P_CONTROL_CERTIFICATE_ORGANIZATION, -1, -1, 0); // organization
+		X509_NAME_add_entry_by_txt (
+			name, "CN", MBSTRING_ASC, (unsigned char *)I2P_CONTROL_CERTIFICATE_COMMON_NAME, -1, -1, 0); // common name
 		X509_set_subject_name (x509, name);
 		X509_set_issuer_name (x509, name); // set issuer to ourselves
 		X509_sign (x509, pkey, EVP_sha1 ()); // sign, last param must be NULL for EdDSA
@@ -525,7 +514,7 @@ namespace client
 			fclose (f);
 		}
 		else
-			LogPrint (eLogError, "I2PControl: Can't write cert: ", strerror(errno));
+			LogPrint (eLogError, "I2PControl: Can't write cert: ", strerror (errno));
 		X509_free (x509);
 
 		// save key
@@ -537,7 +526,7 @@ namespace client
 			fclose (f);
 		}
 		else
-			LogPrint (eLogError, "I2PControl: Can't write key: ", strerror(errno));
+			LogPrint (eLogError, "I2PControl: Can't write key: ", strerror (errno));
 		EVP_PKEY_free (pkey);
 	}
 }

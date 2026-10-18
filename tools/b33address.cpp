@@ -10,17 +10,17 @@
 #include "LeaseSet.h"
 #include "common/key.hpp"
 
-int main(int argc, char * argv[])
+int main (int argc, char * argv[])
 {
 	// base64 input, b33 and store key output, 11->11 only
 	std::cout << "Waiting for base64 from stdin..." << std::endl;
 	std::string base64;
 	std::getline (std::cin, base64);
-	auto ident = std::make_shared<i2p::data::IdentityEx>();
+	auto ident = std::make_shared<i2p::data::IdentityEx> ();
 	if (ident->FromBase64 (base64))
 	{
-		if (ident->GetSigningKeyType () == i2p::data::SIGNING_KEY_TYPE_REDDSA_SHA512_ED25519 ||
-            ident->GetSigningKeyType () == i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519)
+		if (ident->GetSigningKeyType () == i2p::data::SIGNING_KEY_TYPE_REDDSA_SHA512_ED25519
+			|| ident->GetSigningKeyType () == i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519)
 		{
 			i2p::data::BlindedPublicKey blindedKey (ident);
 			std::cout << "b33 address: " << blindedKey.ToB33 () << ".b32.i2p" << std::endl;

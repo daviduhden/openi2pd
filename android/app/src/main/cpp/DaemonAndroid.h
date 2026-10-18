@@ -20,14 +20,13 @@ namespace android
 	class DaemonAndroidImpl
 	{
 	public:
-
 		DaemonAndroidImpl ();
 		~DaemonAndroidImpl ();
 
 		/**
 		 * @return success
 		 */
-		bool init (int argc, char* argv[]);
+		bool init (int argc, char * argv[]);
 		void start ();
 		void stop ();
 		void restart ();

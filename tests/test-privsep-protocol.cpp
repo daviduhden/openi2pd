@@ -16,30 +16,29 @@ using namespace i2p::privsep;
 
 namespace
 {
-	std::string Header (uint32_t magic, uint16_t version, uint16_t type,
-		uint32_t requestId, uint32_t length)
-	{
-		PayloadWriter writer;
-		writer.U32 (magic);
-		writer.U16 (version);
-		writer.U16 (type);
-		writer.U32 (requestId);
-		writer.U32 (length);
-		return writer.Data ();
-	}
+std::string Header (uint32_t magic, uint16_t version, uint16_t type, uint32_t requestId, uint32_t length)
+{
+	PayloadWriter writer;
+	writer.U32 (magic);
+	writer.U16 (version);
+	writer.U16 (type);
+	writer.U32 (requestId);
+	writer.U32 (length);
+	return writer.Data ();
+}
 
-	void ExpectDecodeError (const std::string& frame, ErrorCode expected)
-	{
-		auto decoded = Decode (frame);
-		assert (!decoded.has_value ());
-		assert (decoded.error ().code == expected);
-	}
+void ExpectDecodeError (const std::string & frame, ErrorCode expected)
+{
+	auto decoded = Decode (frame);
+	assert (!decoded.has_value ());
+	assert (decoded.error ().code == expected);
+}
 }
 
 int main ()
 {
 	// Round trip preserves type, request id and the bounded log fields.
-	Message message{MessageType::LogRecord, 42, EncodeLogRecord (4, 123456789, "hello\nworld")};
+	Message message { MessageType::LogRecord, 42, EncodeLogRecord (4, 123456789, "hello\nworld") };
 	auto frame = Encode (message);
 	assert (frame.has_value ());
 	assert (frame->size () <= MAX_MESSAGE_SIZE);
@@ -56,21 +55,16 @@ int main ()
 	// Header validation: magic, version, type and length are checked before
 	// the payload is dispatched.
 	ExpectDecodeError (Header (0, PROTOCOL_VERSION, 2, 0, 0), ErrorCode::Malformed);
-	ExpectDecodeError (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION + 1, 2, 0, 0),
-		ErrorCode::UnsupportedVersion);
-	ExpectDecodeError (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 0, 0, 0),
-		ErrorCode::UnknownType);
-	ExpectDecodeError (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 6, 0, 0),
-		ErrorCode::UnknownType);
-	ExpectDecodeError (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 0xffff, 0, 0),
-		ErrorCode::UnknownType);
+	ExpectDecodeError (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION + 1, 2, 0, 0), ErrorCode::UnsupportedVersion);
+	ExpectDecodeError (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 0, 0, 0), ErrorCode::UnknownType);
+	ExpectDecodeError (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 6, 0, 0), ErrorCode::UnknownType);
+	ExpectDecodeError (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 0xffff, 0, 0), ErrorCode::UnknownType);
 
 	// A declared payload above the frame limit is a size error; a mismatch
 	// between the declared and actual length is a framing error.
-	ExpectDecodeError (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 2, 0,
-		static_cast<uint32_t> (MAX_MESSAGE_SIZE)), ErrorCode::TooLarge);
-	ExpectDecodeError (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 2, 0, 1),
-		ErrorCode::Malformed);
+	ExpectDecodeError (
+		Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 2, 0, static_cast<uint32_t> (MAX_MESSAGE_SIZE)), ErrorCode::TooLarge);
+	ExpectDecodeError (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 2, 0, 1), ErrorCode::Malformed);
 	auto trailing = *frame;
 	trailing.push_back ('x');
 	ExpectDecodeError (trailing, ErrorCode::Malformed);
@@ -79,8 +73,7 @@ int main ()
 	assert (!Decode (std::string (MAX_MESSAGE_SIZE + HEADER_SIZE, 'x')).has_value ());
 
 	// A frame exactly at the documented limit is accepted.
-	Message maximum{MessageType::LogRecord, 7,
-		std::string (MAX_MESSAGE_SIZE - HEADER_SIZE, 'z')};
+	Message maximum { MessageType::LogRecord, 7, std::string (MAX_MESSAGE_SIZE - HEADER_SIZE, 'z') };
 	auto maximumFrame = Encode (maximum);
 	assert (maximumFrame.has_value ());
 	assert (maximumFrame->size () == MAX_MESSAGE_SIZE);
@@ -89,7 +82,7 @@ int main ()
 	assert (maximumDecoded->payload.size () == MAX_MESSAGE_SIZE - HEADER_SIZE);
 
 	// Encode refuses a payload that cannot fit the framed size.
-	Message tooLarge{MessageType::LogRecord, 0, std::string (MAX_MESSAGE_SIZE, 'x')};
+	Message tooLarge { MessageType::LogRecord, 0, std::string (MAX_MESSAGE_SIZE, 'x') };
 	auto tooLargeFrame = Encode (tooLarge);
 	assert (!tooLargeFrame.has_value ());
 	assert (tooLargeFrame.error ().code == ErrorCode::TooLarge);

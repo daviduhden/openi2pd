@@ -33,7 +33,7 @@ namespace crypto
 namespace data
 {
 	typedef Tag<32> IdentHash;
-	inline std::string GetIdentHashAbbreviation (const IdentHash& ident)
+	inline std::string GetIdentHashAbbreviation (const IdentHash & ident)
 	{
 		return ident.ToBase64 ().substr (0, 4);
 	}
@@ -59,15 +59,15 @@ namespace data
 	{
 		uint8_t publicKey[256];
 		uint8_t signingKey[128];
-		uint8_t certificate[3];	// byte 1 - type, bytes 2-3 - length
+		uint8_t certificate[3]; // byte 1 - type, bytes 2-3 - length
 
 		Identity () = default;
-		Identity (const Keys& keys) { *this = keys; };
-		Identity& operator=(const Keys& keys);
+		Identity (const Keys & keys) { *this = keys; };
+		Identity & operator= (const Keys & keys);
 		size_t FromBuffer (const uint8_t * buf, size_t len);
 		IdentHash Hash () const;
-		operator uint8_t * () { return reinterpret_cast<uint8_t *>(this); }
-		operator const uint8_t * () const { return reinterpret_cast<const uint8_t *>(this); }
+		operator uint8_t *() { return reinterpret_cast<uint8_t *> (this); }
+		operator const uint8_t *() const { return reinterpret_cast<const uint8_t *> (this); }
 	};
 
 	Keys CreateRandomKeys ();
@@ -100,59 +100,57 @@ namespace data
 	const size_t MAX_EXTENDED_BUFFER_SIZE = 8; // cryptoKeyType + signingKeyType + 4 extra bytes of P521
 	class IdentityEx
 	{
-		public:
+	public:
+		IdentityEx ();
+		IdentityEx (const uint8_t * publicKey, const uint8_t * signingKey,
+			SigningKeyType type = SIGNING_KEY_TYPE_DSA_SHA1, CryptoKeyType cryptoType = CRYPTO_KEY_TYPE_ELGAMAL);
+		IdentityEx (const uint8_t * buf, size_t len);
+		IdentityEx (const IdentityEx & other);
+		IdentityEx (const Identity & standard);
+		~IdentityEx ();
+		IdentityEx & operator= (const IdentityEx & other);
+		IdentityEx & operator= (const Identity & standard);
 
-			IdentityEx ();
-			IdentityEx (const uint8_t * publicKey, const uint8_t * signingKey,
-				SigningKeyType type = SIGNING_KEY_TYPE_DSA_SHA1, CryptoKeyType cryptoType = CRYPTO_KEY_TYPE_ELGAMAL);
-			IdentityEx (const uint8_t * buf, size_t len);
-			IdentityEx (const IdentityEx& other);
-			IdentityEx (const Identity& standard);
-			~IdentityEx ();
-			IdentityEx& operator=(const IdentityEx& other);
-			IdentityEx& operator=(const Identity& standard);
+		size_t FromBuffer (const uint8_t * buf, size_t len);
+		size_t ToBuffer (uint8_t * buf, size_t len) const;
+		size_t FromBase64 (std::string_view s);
+		std::string ToBase64 () const;
+		const Identity & GetStandardIdentity () const { return m_StandardIdentity; };
 
-			size_t FromBuffer (const uint8_t * buf, size_t len);
-			size_t ToBuffer (uint8_t * buf, size_t len) const;
-			size_t FromBase64(std::string_view s);
-			std::string ToBase64 () const;
-			const Identity& GetStandardIdentity () const { return m_StandardIdentity; };
+		const IdentHash & GetIdentHash () const { return m_IdentHash; };
+		const uint8_t * GetEncryptionPublicKey () const { return m_StandardIdentity.publicKey; };
+		uint8_t * GetEncryptionPublicKeyBuffer () { return m_StandardIdentity.publicKey; };
+		std::shared_ptr<i2p::crypto::CryptoKeyEncryptor> CreateEncryptor (const uint8_t * key) const;
+		size_t GetFullLen () const { return m_ExtendedLen + DEFAULT_IDENTITY_SIZE; };
+		size_t GetSigningPublicKeyLen () const;
+		const uint8_t * GetSigningPublicKeyBuffer () const; // returns NULL for P521
+		size_t GetSigningPrivateKeyLen () const;
+		size_t GetSignatureLen () const;
+		bool Verify (const uint8_t * buf, size_t len, const uint8_t * signature) const;
+		SigningKeyType GetSigningKeyType () const;
+		bool IsRSA () const; // signing key type
+		CryptoKeyType GetCryptoKeyType () const;
 
-			const IdentHash& GetIdentHash () const { return m_IdentHash; };
-			const uint8_t * GetEncryptionPublicKey () const { return m_StandardIdentity.publicKey; };
-			uint8_t * GetEncryptionPublicKeyBuffer () { return m_StandardIdentity.publicKey; };
-			std::shared_ptr<i2p::crypto::CryptoKeyEncryptor> CreateEncryptor (const uint8_t * key) const;
-			size_t GetFullLen () const { return m_ExtendedLen + DEFAULT_IDENTITY_SIZE; };
-			size_t GetSigningPublicKeyLen () const;
-			const uint8_t * GetSigningPublicKeyBuffer () const; // returns NULL for P521
-			size_t GetSigningPrivateKeyLen () const;
-			size_t GetSignatureLen () const;
-			bool Verify (const uint8_t * buf, size_t len, const uint8_t * signature) const;
-			SigningKeyType GetSigningKeyType () const;
-			bool IsRSA () const; // signing key type
-			CryptoKeyType GetCryptoKeyType () const;
+		bool operator== (const IdentityEx & other) const { return GetIdentHash () == other.GetIdentHash (); }
+		void RecalculateIdentHash (uint8_t * buff = nullptr);
 
-			bool operator == (const IdentityEx & other) const { return GetIdentHash() == other.GetIdentHash(); }
-			void RecalculateIdentHash(uint8_t * buff=nullptr);
+		static i2p::crypto::Verifier * CreateVerifier (SigningKeyType keyType);
+		static std::shared_ptr<i2p::crypto::CryptoKeyEncryptor> CreateEncryptor (
+			CryptoKeyType keyType, const uint8_t * key);
 
-			static i2p::crypto::Verifier * CreateVerifier (SigningKeyType keyType);
-			static std::shared_ptr<i2p::crypto::CryptoKeyEncryptor> CreateEncryptor (CryptoKeyType keyType, const uint8_t * key);
+	private:
+		void CreateVerifier ();
 
-		private:
-
-			void CreateVerifier ();
-
-		private:
-
-			Identity m_StandardIdentity;
-			IdentHash m_IdentHash;
-			std::unique_ptr<i2p::crypto::Verifier> m_Verifier;
-			size_t m_ExtendedLen;
-			union
-			{
-				uint8_t m_ExtendedBuffer[MAX_EXTENDED_BUFFER_SIZE];
-				uint8_t * m_ExtendedBufferPtr;
-			};
+	private:
+		Identity m_StandardIdentity;
+		IdentHash m_IdentHash;
+		std::unique_ptr<i2p::crypto::Verifier> m_Verifier;
+		size_t m_ExtendedLen;
+		union
+		{
+			uint8_t m_ExtendedBuffer[MAX_EXTENDED_BUFFER_SIZE];
+			uint8_t * m_ExtendedBufferPtr;
+		};
 	};
 
 	size_t GetIdentityBufferLen (const uint8_t * buf, size_t len); // return actual identity length in buffer
@@ -160,133 +158,144 @@ namespace data
 	const size_t OFFLINE_SIGNATURE_HEADER_LENGTH = 4 + 2; // expires, transient signature type
 	const uint8_t B33_OFFLINE_KEYS_VERSION = 1;
 	const size_t B33_OFFLINE_KEYS_HEADER_LENGTH = 1 + IdentHash::len + 2; // version, ident hash, number of keys
-	const uint64_t SECONDS_PER_DAY = 24*60*60;
+	const uint64_t SECONDS_PER_DAY = 24 * 60 * 60;
 
 	// version || ident hash || number of keys, then an offline signature per day. Appended to the keys
 	// file, where a router without b33 offline keys does not look for it
 	class B33OfflineKeys
 	{
-		public:
+	public:
+		size_t GetLen () const { return m_Buf.size (); };
+		const uint8_t * GetBuffer () const { return m_Buf.data (); };
+		bool operator== (const B33OfflineKeys & other) const { return m_Buf == other.m_Buf; };
+		size_t FromBuffer (const uint8_t * buf, size_t len, const IdentHash & ident);
+		size_t ToBuffer (uint8_t * buf, size_t len) const;
 
-			size_t GetLen () const { return m_Buf.size (); };
-			const uint8_t * GetBuffer () const { return m_Buf.data (); };
-			bool operator== (const B33OfflineKeys& other) const { return m_Buf == other.m_Buf; };
-			size_t FromBuffer (const uint8_t * buf, size_t len, const IdentHash& ident);
-			size_t ToBuffer (uint8_t * buf, size_t len) const;
-
-		private:
-
-			std::vector<uint8_t> m_Buf;
+	private:
+		std::vector<uint8_t> m_Buf;
 	};
 
 	class PrivateKeys // for eepsites
 	{
-		public:
+	public:
+		PrivateKeys () = default;
+		PrivateKeys (const PrivateKeys & other) { *this = other; };
+		PrivateKeys (const Keys & keys) { *this = keys; };
+		PrivateKeys & operator= (const Keys & keys);
+		PrivateKeys & operator= (const PrivateKeys & other);
+		~PrivateKeys () = default;
 
-			PrivateKeys () = default;
-			PrivateKeys (const PrivateKeys& other) { *this = other; };
-			PrivateKeys (const Keys& keys) { *this = keys; };
-			PrivateKeys& operator=(const Keys& keys);
-			PrivateKeys& operator=(const PrivateKeys& other);
-			~PrivateKeys () = default;
+		std::shared_ptr<const IdentityEx> GetPublic () const { return m_Public; };
+		const uint8_t * GetPrivateKey () const { return m_PrivateKey; };
+		const uint8_t * GetSigningPrivateKey () const { return m_SigningPrivateKey.data (); };
+		size_t GetSignatureLen () const; // might not match identity
+		bool IsOfflineSignature () const { return m_TransientSignatureLen > 0; };
+		uint8_t * GetPadding ();
+		void RecalculateIdentHash (uint8_t * buf = nullptr) { m_Public->RecalculateIdentHash (buf); }
+		void Sign (const uint8_t * buf, int len, uint8_t * signature) const;
 
-			std::shared_ptr<const IdentityEx> GetPublic () const { return m_Public; };
-			const uint8_t * GetPrivateKey () const { return m_PrivateKey; };
-			const uint8_t * GetSigningPrivateKey () const { return m_SigningPrivateKey.data (); };
-			size_t GetSignatureLen () const; // might not match identity
-			bool IsOfflineSignature () const { return m_TransientSignatureLen > 0; };
-			uint8_t * GetPadding();
-			void RecalculateIdentHash(uint8_t * buf=nullptr) { m_Public->RecalculateIdentHash(buf); }
-			void Sign (const uint8_t * buf, int len, uint8_t * signature) const;
+		size_t GetFullLen () const;
+		size_t FromBuffer (const uint8_t * buf, size_t len);
+		size_t ToBuffer (uint8_t * buf, size_t len) const;
 
-			size_t GetFullLen () const;
-			size_t FromBuffer (const uint8_t * buf, size_t len);
-			size_t ToBuffer (uint8_t * buf, size_t len) const;
+		size_t FromBase64 (std::string_view s);
+		std::string ToBase64 () const;
 
-			size_t FromBase64(std::string_view s);
-			std::string ToBase64 () const;
+		std::shared_ptr<i2p::crypto::CryptoKeyDecryptor> CreateDecryptor (const uint8_t * key) const;
 
-			std::shared_ptr<i2p::crypto::CryptoKeyDecryptor> CreateDecryptor (const uint8_t * key) const;
+		static std::shared_ptr<i2p::crypto::CryptoKeyDecryptor> CreateDecryptor (
+			CryptoKeyType cryptoType, const uint8_t * key);
+		static PrivateKeys CreateRandomKeys (SigningKeyType type = SIGNING_KEY_TYPE_DSA_SHA1,
+			CryptoKeyType cryptoType = CRYPTO_KEY_TYPE_ELGAMAL, bool isDestination = false);
+		static void GenerateSigningKeyPair (SigningKeyType type, uint8_t * priv, uint8_t * pub);
+		static void GenerateCryptoKeyPair (
+			CryptoKeyType type, uint8_t * priv, uint8_t * pub); // priv and pub are 256 bytes long
+		static i2p::crypto::Signer * CreateSigner (SigningKeyType keyType, const uint8_t * priv);
 
-			static std::shared_ptr<i2p::crypto::CryptoKeyDecryptor> CreateDecryptor (CryptoKeyType cryptoType, const uint8_t * key);
-			static PrivateKeys CreateRandomKeys (SigningKeyType type = SIGNING_KEY_TYPE_DSA_SHA1, CryptoKeyType cryptoType = CRYPTO_KEY_TYPE_ELGAMAL, bool isDestination = false);
-			static void GenerateSigningKeyPair (SigningKeyType type, uint8_t * priv, uint8_t * pub);
-			static void GenerateCryptoKeyPair (CryptoKeyType type, uint8_t * priv, uint8_t * pub); // priv and pub are 256 bytes long
-			static i2p::crypto::Signer * CreateSigner (SigningKeyType keyType, const uint8_t * priv);
+		// offline keys
+		PrivateKeys CreateOfflineKeys (SigningKeyType type, uint32_t expires) const;
+		const std::vector<uint8_t> & GetOfflineSignature () const { return m_OfflineSignature; };
+		const B33OfflineKeys & GetB33OfflineKeys () const { return m_B33OfflineKeys; };
+		void UpdateOfflineSignature (const PrivateKeys & other); // refresh transient material, keep identity
 
-			// offline keys
-			PrivateKeys CreateOfflineKeys (SigningKeyType type, uint32_t expires) const;
-			const std::vector<uint8_t>& GetOfflineSignature () const { return m_OfflineSignature; };
-			const B33OfflineKeys& GetB33OfflineKeys () const { return m_B33OfflineKeys; };
-			void UpdateOfflineSignature (const PrivateKeys& other); // refresh transient material, keep identity
+	private:
+		void CreateSigner () const;
+		void CreateSigner (SigningKeyType keyType) const;
+		size_t GetPrivateKeyLen () const;
 
-		private:
-
-			void CreateSigner () const;
-			void CreateSigner (SigningKeyType keyType) const;
-			size_t GetPrivateKeyLen () const;
-
-		private:
-
-			std::shared_ptr<IdentityEx> m_Public;
-			uint8_t m_PrivateKey[256];
-			std::vector<uint8_t> m_SigningPrivateKey;
-			mutable std::unique_ptr<i2p::crypto::Signer> m_Signer;
-			std::vector<uint8_t> m_OfflineSignature; // non zero length, if applicable
-			size_t m_TransientSignatureLen = 0;
-			size_t m_TransientSigningPrivateKeyLen = 0;
-			B33OfflineKeys m_B33OfflineKeys;
+	private:
+		std::shared_ptr<IdentityEx> m_Public;
+		uint8_t m_PrivateKey[256];
+		std::vector<uint8_t> m_SigningPrivateKey;
+		mutable std::unique_ptr<i2p::crypto::Signer> m_Signer;
+		std::vector<uint8_t> m_OfflineSignature; // non zero length, if applicable
+		size_t m_TransientSignatureLen = 0;
+		size_t m_TransientSigningPrivateKeyLen = 0;
+		B33OfflineKeys m_B33OfflineKeys;
 	};
 
 	// the destination's signing key is offline: a transient per day out of the b33 offline keys,
 	// each authorized by the blinded key of its own day
-	class OfflinePrivateKeys: public PrivateKeys
+	class OfflinePrivateKeys : public PrivateKeys
 	{
-		public:
+	public:
+		OfflinePrivateKeys (const PrivateKeys & keys, const char * date); // date is 8 chars "YYYYMMDD"
 
-			OfflinePrivateKeys (const PrivateKeys& keys, const char * date); // date is 8 chars "YYYYMMDD"
+		bool IsOfflineSignature () const
+		{
+			return !m_TransientPrivateKey.empty ();
+		}; // false if that day can't be signed
+		const uint8_t * GetSigningPrivateKey () const
+		{
+			return m_TransientPrivateKey.empty () ? PrivateKeys::GetSigningPrivateKey ()
+												  : m_TransientPrivateKey.data ();
+		};
+		void Sign (const uint8_t * buf, int len, uint8_t * signature) const { m_Signer->Sign (buf, len, signature); };
+		size_t GetSignatureLen () const { return m_SignatureLen; };
+		const std::vector<uint8_t> & GetOfflineSignature () const { return m_OfflineSignature; };
 
-			bool IsOfflineSignature () const { return !m_TransientPrivateKey.empty (); }; // false if that day can't be signed
-			const uint8_t * GetSigningPrivateKey () const { return m_TransientPrivateKey.empty () ? PrivateKeys::GetSigningPrivateKey () : m_TransientPrivateKey.data (); };
-			void Sign (const uint8_t * buf, int len, uint8_t * signature) const { m_Signer->Sign (buf, len, signature); };
-			size_t GetSignatureLen () const { return m_SignatureLen; };
-			const std::vector<uint8_t>& GetOfflineSignature () const { return m_OfflineSignature; };
-
-		private:
-
-			size_t m_SignatureLen = 0;
-			std::span<const uint8_t> m_TransientPrivateKey; // points into the b33 offline keys
-			std::vector<uint8_t> m_OfflineSignature;
-			std::unique_ptr<i2p::crypto::Signer> m_Signer;
+	private:
+		size_t m_SignatureLen = 0;
+		std::span<const uint8_t> m_TransientPrivateKey; // points into the b33 offline keys
+		std::vector<uint8_t> m_OfflineSignature;
+		std::unique_ptr<i2p::crypto::Signer> m_Signer;
 	};
 
 	// destination for delivery instructions
 	class RoutingDestination
 	{
-		public:
+	public:
+		RoutingDestination () { };
+		virtual ~RoutingDestination () { };
 
-			RoutingDestination () {};
-			virtual ~RoutingDestination () {};
+		virtual std::shared_ptr<const IdentityEx> GetIdentity () const = 0;
+		virtual void Encrypt (const uint8_t * data, uint8_t * encrypted) const = 0; // encrypt data for
+		virtual bool IsDestination () const = 0; // for garlic
 
-			virtual std::shared_ptr<const IdentityEx> GetIdentity () const = 0;
-			virtual void Encrypt (const uint8_t * data, uint8_t * encrypted) const = 0; // encrypt data for
-			virtual bool IsDestination () const = 0; // for garlic
-
-			const IdentHash& GetIdentHash () const { return GetIdentity ()->GetIdentHash (); };
-			virtual CryptoKeyType GetEncryptionType () const { return GetIdentity ()->GetCryptoKeyType (); }; // override in LeaseSet2
+		const IdentHash & GetIdentHash () const { return GetIdentity ()->GetIdentHash (); };
+		virtual CryptoKeyType GetEncryptionType () const
+		{
+			return GetIdentity ()->GetCryptoKeyType ();
+		}; // override in LeaseSet2
 	};
 
 	class LocalDestination
 	{
-		public:
+	public:
+		virtual ~LocalDestination () { };
+		virtual bool Decrypt (const uint8_t * encrypted, uint8_t * data,
+			CryptoKeyType preferredCrypto = CRYPTO_KEY_TYPE_ELGAMAL) const = 0;
+		virtual std::shared_ptr<const IdentityEx> GetIdentity () const = 0;
 
-			virtual ~LocalDestination() {};
-			virtual bool Decrypt (const uint8_t * encrypted, uint8_t * data, CryptoKeyType preferredCrypto = CRYPTO_KEY_TYPE_ELGAMAL) const = 0;
-			virtual std::shared_ptr<const IdentityEx> GetIdentity () const = 0;
-
-			const IdentHash& GetIdentHash () const { return GetIdentity ()->GetIdentHash (); };
-			virtual bool SupportsEncryptionType (CryptoKeyType keyType) const { return GetIdentity ()->GetCryptoKeyType () == keyType; }; // override for LeaseSet
-			virtual const uint8_t * GetEncryptionPublicKey (CryptoKeyType keyType) const { return GetIdentity ()->GetEncryptionPublicKey (); }; // override for LeaseSet
+		const IdentHash & GetIdentHash () const { return GetIdentity ()->GetIdentHash (); };
+		virtual bool SupportsEncryptionType (CryptoKeyType keyType) const
+		{
+			return GetIdentity ()->GetCryptoKeyType () == keyType;
+		}; // override for LeaseSet
+		virtual const uint8_t * GetEncryptionPublicKey (CryptoKeyType keyType) const
+		{
+			return GetIdentity ()->GetEncryptionPublicKey ();
+		}; // override for LeaseSet
 	};
 }
 }

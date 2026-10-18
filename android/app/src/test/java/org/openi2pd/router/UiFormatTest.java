@@ -19,36 +19,10 @@ import java.util.Collections;
  * Android resources, so no emulator or Robolectric is required.
  */
 public class UiFormatTest {
-
     private static RouterSnapshot snapshot(DaemonWrapper.State state, boolean online) {
-        return new RouterSnapshot(
-                state,
-                state != null && state.isStartedOkay(),
-                online,
-                "",
-                0,
-                "",
-                0L,
-                0,
-                0,
-                0,
-                0,
-                0,
-                false,
-                false,
-                false,
-                0L,
-                0L,
-                0L,
-                0L,
-                0L,
-                0L,
-                0L,
-                Collections.emptyList(),
-                ServiceStates.NONE,
-                0L,
-                "",
-                "");
+        return new RouterSnapshot(state, state != null && state.isStartedOkay(), online, "", 0, "",
+                0L, 0, 0, 0, 0, 0, false, false, false, 0L, 0L, 0L, 0L, 0L, 0L, 0L,
+                Collections.emptyList(), ServiceStates.NONE, 0L, "", "");
     }
 
     @Test
@@ -65,8 +39,7 @@ public class UiFormatTest {
         assertEquals(UiFormat.RouterState.DEGRADED,
                 UiFormat.stateOf(snapshot(DaemonWrapper.State.startedOkay, false)));
         assertEquals(UiFormat.RouterState.STOPPING,
-                UiFormat.stateOf(snapshot(
-                        DaemonWrapper.State.gracefulShutdownInProgress, true)));
+                UiFormat.stateOf(snapshot(DaemonWrapper.State.gracefulShutdownInProgress, true)));
     }
 
     @Test
@@ -101,30 +74,22 @@ public class UiFormatTest {
 
     @Test
     public void gracefulStopStateSurvivesAZeroRemainingValue() {
-        RouterSnapshot graceful = snapshot(
-                DaemonWrapper.State.gracefulShutdownInProgress, true);
+        RouterSnapshot graceful = snapshot(DaemonWrapper.State.gracefulShutdownInProgress, true);
         assertTrue(UiFormat.gracefulActive(graceful));
-        assertFalse(UiFormat.gracefulActive(
-                snapshot(DaemonWrapper.State.startedOkay, true)));
+        assertFalse(UiFormat.gracefulActive(snapshot(DaemonWrapper.State.startedOkay, true)));
         assertFalse(UiFormat.gracefulActive(null));
 
-        RouterSnapshot draining = new RouterSnapshot(
-                DaemonWrapper.State.startedOkay, true, true, "", 0, "",
-                0L, 0, 0, 0, 0, 0, false, false, false,
-                0L, 0L, 0L, 0L, 0L, 0L, 0L, Collections.emptyList(),
-                ServiceStates.NONE, 5_000L, "", "");
+        RouterSnapshot draining = new RouterSnapshot(DaemonWrapper.State.startedOkay, true, true,
+                "", 0, "", 0L, 0, 0, 0, 0, 0, false, false, false, 0L, 0L, 0L, 0L, 0L, 0L, 0L,
+                Collections.emptyList(), ServiceStates.NONE, 5_000L, "", "");
         assertTrue(UiFormat.gracefulActive(draining));
     }
 
     @Test
     public void nativeSnapshotFailureIsAnErrorNotADegradedRouter() {
-        RouterSnapshot failed = RouterStatusParser.parseStatus(
-                "status=Error\nstatusCode=-1\nerror=snapshot-failed",
-                DaemonWrapper.State.startedOkay,
-                ServiceStates.NONE,
-                0L,
-                "",
-                "ok");
+        RouterSnapshot failed =
+                RouterStatusParser.parseStatus("status=Error\nstatusCode=-1\nerror=snapshot-failed",
+                        DaemonWrapper.State.startedOkay, ServiceStates.NONE, 0L, "", "ok");
         assertEquals(UiFormat.RouterState.ERROR, UiFormat.stateOf(failed));
         assertFalse(UiFormat.isConnected(failed));
     }
@@ -141,11 +106,8 @@ public class UiFormatTest {
     @Test
     public void everyRouterStateHasADistinctLabel() {
         int connected = UiFormat.stateLabelRes(UiFormat.RouterState.CONNECTED);
-        assertNotEquals(connected,
-                UiFormat.stateLabelRes(UiFormat.RouterState.DEGRADED));
-        assertNotEquals(connected,
-                UiFormat.stateLabelRes(UiFormat.RouterState.STOPPED));
-        assertNotEquals(connected,
-                UiFormat.stateLabelRes(UiFormat.RouterState.ERROR));
+        assertNotEquals(connected, UiFormat.stateLabelRes(UiFormat.RouterState.DEGRADED));
+        assertNotEquals(connected, UiFormat.stateLabelRes(UiFormat.RouterState.STOPPED));
+        assertNotEquals(connected, UiFormat.stateLabelRes(UiFormat.RouterState.ERROR));
     }
 }

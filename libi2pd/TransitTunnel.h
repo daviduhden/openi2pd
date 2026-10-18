@@ -27,99 +27,85 @@ namespace i2p
 {
 namespace tunnel
 {
-	class TransitTunnel: public TunnelBase
+	class TransitTunnel : public TunnelBase
 	{
-		public:
+	public:
+		TransitTunnel (uint32_t receiveTunnelID, const i2p::data::IdentHash & nextIdent, uint32_t nextTunnelID,
+			const i2p::crypto::AESKey & layerKey, const i2p::crypto::AESKey & ivKey);
 
-			TransitTunnel (uint32_t receiveTunnelID,
-				const i2p::data::IdentHash& nextIdent, uint32_t nextTunnelID,
-				const i2p::crypto::AESKey& layerKey, const i2p::crypto::AESKey& ivKey);
+		virtual size_t GetNumTransmittedBytes () const { return 0; };
+		virtual std::string GetNextPeerName () const;
 
-			virtual size_t GetNumTransmittedBytes () const { return 0; };
-			virtual std::string GetNextPeerName () const;
+		// implements TunnelBase
+		void SendTunnelDataMsg (std::shared_ptr<i2p::I2NPMessage> msg) override;
+		void HandleTunnelDataMsg (std::shared_ptr<i2p::I2NPMessage> && tunnelMsg) override;
+		void EncryptTunnelMsg (std::shared_ptr<const I2NPMessage> in, std::shared_ptr<I2NPMessage> out) override;
 
-			// implements TunnelBase
-			void SendTunnelDataMsg (std::shared_ptr<i2p::I2NPMessage> msg) override;
-			void HandleTunnelDataMsg (std::shared_ptr<i2p::I2NPMessage>&& tunnelMsg) override;
-			void EncryptTunnelMsg (std::shared_ptr<const I2NPMessage> in, std::shared_ptr<I2NPMessage> out) override;
-
-		private:
-
-			i2p::crypto::AESKey m_LayerKey, m_IVKey;
-			std::unique_ptr<i2p::crypto::TunnelEncryption> m_Encryption;
+	private:
+		i2p::crypto::AESKey m_LayerKey, m_IVKey;
+		std::unique_ptr<i2p::crypto::TunnelEncryption> m_Encryption;
 	};
 
-	class TransitTunnelParticipant: public TransitTunnel
+	class TransitTunnelParticipant : public TransitTunnel
 	{
-		public:
+	public:
+		TransitTunnelParticipant (uint32_t receiveTunnelID, const i2p::data::IdentHash & nextIdent,
+			uint32_t nextTunnelID, const i2p::crypto::AESKey & layerKey, const i2p::crypto::AESKey & ivKey)
+			: TransitTunnel (receiveTunnelID, nextIdent, nextTunnelID, layerKey, ivKey)
+			, m_NumTransmittedBytes (0) { };
+		~TransitTunnelParticipant ();
 
-			TransitTunnelParticipant (uint32_t receiveTunnelID,
-				const i2p::data::IdentHash& nextIdent, uint32_t nextTunnelID,
-				const i2p::crypto::AESKey& layerKey, const i2p::crypto::AESKey& ivKey):
-				TransitTunnel (receiveTunnelID, nextIdent, nextTunnelID,
-				layerKey, ivKey), m_NumTransmittedBytes (0) {};
-			~TransitTunnelParticipant ();
+		size_t GetNumTransmittedBytes () const override { return m_NumTransmittedBytes; };
+		std::string GetNextPeerName () const override;
+		void HandleTunnelDataMsg (std::shared_ptr<i2p::I2NPMessage> && tunnelMsg) override;
+		void FlushTunnelDataMsgs () override;
 
-			size_t GetNumTransmittedBytes () const override { return m_NumTransmittedBytes; };
-			std::string GetNextPeerName () const override;
-			void HandleTunnelDataMsg (std::shared_ptr<i2p::I2NPMessage>&& tunnelMsg) override;
-			void FlushTunnelDataMsgs () override;
-
-		private:
-
-			size_t m_NumTransmittedBytes;
-			std::list<std::shared_ptr<i2p::I2NPMessage> > m_TunnelDataMsgs;
-			std::unique_ptr<TunnelTransportSender> m_Sender;
+	private:
+		size_t m_NumTransmittedBytes;
+		std::list<std::shared_ptr<i2p::I2NPMessage>> m_TunnelDataMsgs;
+		std::unique_ptr<TunnelTransportSender> m_Sender;
 	};
 
-	class TransitTunnelGateway: public TransitTunnel
+	class TransitTunnelGateway : public TransitTunnel
 	{
-		public:
+	public:
+		TransitTunnelGateway (uint32_t receiveTunnelID, const i2p::data::IdentHash & nextIdent, uint32_t nextTunnelID,
+			const i2p::crypto::AESKey & layerKey, const i2p::crypto::AESKey & ivKey)
+			: TransitTunnel (receiveTunnelID, nextIdent, nextTunnelID, layerKey, ivKey)
+			, m_Gateway (*this) { };
 
-			TransitTunnelGateway (uint32_t receiveTunnelID,
-				const i2p::data::IdentHash& nextIdent, uint32_t nextTunnelID,
-				const i2p::crypto::AESKey& layerKey, const i2p::crypto::AESKey& ivKey):
-				TransitTunnel (receiveTunnelID, nextIdent, nextTunnelID,
-				layerKey, ivKey), m_Gateway(*this) {};
+		void SendTunnelDataMsg (std::shared_ptr<i2p::I2NPMessage> msg) override;
+		void FlushTunnelDataMsgs () override;
+		size_t GetNumTransmittedBytes () const override { return m_Gateway.GetNumSentBytes (); };
+		std::string GetNextPeerName () const override;
 
-			void SendTunnelDataMsg (std::shared_ptr<i2p::I2NPMessage> msg) override;
-			void FlushTunnelDataMsgs () override;
-			size_t GetNumTransmittedBytes () const override { return m_Gateway.GetNumSentBytes (); };
-			std::string GetNextPeerName () const override;
-
-		private:
-
-			std::mutex m_SendMutex;
-			TunnelGateway m_Gateway;
+	private:
+		std::mutex m_SendMutex;
+		TunnelGateway m_Gateway;
 	};
 
-	class TransitTunnelEndpoint: public TransitTunnel
+	class TransitTunnelEndpoint : public TransitTunnel
 	{
-		public:
+	public:
+		TransitTunnelEndpoint (uint32_t receiveTunnelID, const i2p::data::IdentHash & nextIdent, uint32_t nextTunnelID,
+			const i2p::crypto::AESKey & layerKey, const i2p::crypto::AESKey & ivKey)
+			: TransitTunnel (receiveTunnelID, nextIdent, nextTunnelID, layerKey, ivKey) { };
 
-			TransitTunnelEndpoint (uint32_t receiveTunnelID,
-				const i2p::data::IdentHash& nextIdent, uint32_t nextTunnelID,
-				const i2p::crypto::AESKey& layerKey, const i2p::crypto::AESKey& ivKey):
-				TransitTunnel (receiveTunnelID, nextIdent, nextTunnelID, layerKey, ivKey) {};
+		void Cleanup () override;
 
-			void Cleanup () override;
+		void HandleTunnelDataMsg (std::shared_ptr<i2p::I2NPMessage> && tunnelMsg) override;
+		void FlushTunnelDataMsgs () override;
+		size_t GetNumTransmittedBytes () const override { return m_Endpoint ? m_Endpoint->GetNumReceivedBytes () : 0; }
+		std::string GetNextPeerName () const override;
 
-			void HandleTunnelDataMsg (std::shared_ptr<i2p::I2NPMessage>&& tunnelMsg) override;
-			void FlushTunnelDataMsgs () override;
-			size_t GetNumTransmittedBytes () const override { return m_Endpoint ? m_Endpoint->GetNumReceivedBytes () : 0; }
-			std::string GetNextPeerName () const override;
-
-		private:
-
-			std::mutex m_HandleMutex;
-			std::unique_ptr<TunnelEndpoint> m_Endpoint;
+	private:
+		std::mutex m_HandleMutex;
+		std::unique_ptr<TunnelEndpoint> m_Endpoint;
 	};
 
 	std::shared_ptr<TransitTunnel> CreateTransitTunnel (uint32_t receiveTunnelID,
-		const i2p::data::IdentHash& nextIdent, uint32_t nextTunnelID,
-		const i2p::crypto::AESKey& layerKey, const i2p::crypto::AESKey& ivKey,
-		bool isGateway, bool isEndpoint);
-
+		const i2p::data::IdentHash & nextIdent, uint32_t nextTunnelID, const i2p::crypto::AESKey & layerKey,
+		const i2p::crypto::AESKey & ivKey, bool isGateway, bool isEndpoint);
 
 	const int TRANSIT_TUNNELS_QUEUE_WAIT_INTERVAL = 10; // in seconds
 	const int TRANSIT_TUNNELS_BUILD_MSG_QUEUE_MAX_SIZE = 100;
@@ -131,47 +117,47 @@ namespace tunnel
 
 	class TransitTunnels
 	{
-		public:
+	public:
+		TransitTunnels ();
+		~TransitTunnels ();
 
-			TransitTunnels ();
-			~TransitTunnels ();
+		void Start ();
+		void Stop ();
+		void PostTransitTunnelBuildMsg (std::shared_ptr<I2NPMessage> && msg);
 
-			void Start ();
-			void Stop ();
-			void PostTransitTunnelBuildMsg  (std::shared_ptr<I2NPMessage>&& msg);
+		size_t GetNumTransitTunnels () const
+		{
+			std::lock_guard<std::mutex> l (m_TransitTunnelsMutex);
+			return m_TransitTunnels.size ();
+		}
+		int GetTransitTunnelsExpirationTimeout ();
 
-			size_t GetNumTransitTunnels () const { std::lock_guard<std::mutex> l(m_TransitTunnelsMutex); return m_TransitTunnels.size (); }
-			int GetTransitTunnelsExpirationTimeout ();
+	private:
+		bool AddTransitTunnel (std::shared_ptr<TransitTunnel> tunnel);
+		void ManageTransitTunnels (uint64_t ts);
 
-		private:
+		void HandleShortTransitTunnelBuildMsg (std::shared_ptr<I2NPMessage> && msg);
+		void HandleVariableTransitTunnelBuildMsg (std::shared_ptr<I2NPMessage> && msg);
+		bool HandleBuildRequestRecords (int num, uint8_t * records, uint8_t * clearText);
 
-			bool AddTransitTunnel (std::shared_ptr<TransitTunnel> tunnel);
-			void ManageTransitTunnels (uint64_t ts);
+		void Run ();
 
-			void HandleShortTransitTunnelBuildMsg (std::shared_ptr<I2NPMessage>&& msg);
-			void HandleVariableTransitTunnelBuildMsg (std::shared_ptr<I2NPMessage>&& msg);
-			bool HandleBuildRequestRecords (int num, uint8_t * records, uint8_t * clearText);
+	private:
+		volatile bool m_IsRunning;
+		std::unique_ptr<std::thread> m_Thread;
+		mutable std::mutex m_TransitTunnelsMutex;
+		std::list<std::shared_ptr<TransitTunnel>> m_TransitTunnels;
+		i2p::util::Queue<std::shared_ptr<I2NPMessage>> m_TunnelBuildMsgQueue;
+		std::mt19937 m_Rng;
 
-			void Run ();
-
-		private:
-
-			volatile bool m_IsRunning;
-			std::unique_ptr<std::thread> m_Thread;
-			mutable std::mutex m_TransitTunnelsMutex;
-			std::list<std::shared_ptr<TransitTunnel> > m_TransitTunnels;
-			i2p::util::Queue<std::shared_ptr<I2NPMessage> > m_TunnelBuildMsgQueue;
-			std::mt19937 m_Rng;
-
-		public:
-
-			// for administrative views and I2PControl; thread-safe snapshot, safe to iterate without holding any lock
-			std::vector<std::shared_ptr<TransitTunnel> > GetTransitTunnelsList () const
-			{
-				std::lock_guard<std::mutex> l(m_TransitTunnelsMutex);
-				return std::vector<std::shared_ptr<TransitTunnel> > (m_TransitTunnels.begin (), m_TransitTunnels.end ());
-			}
-			size_t GetTunnelBuildMsgQueueSize () const { return m_TunnelBuildMsgQueue.GetSize (); };
+	public:
+		// for administrative views and I2PControl; thread-safe snapshot, safe to iterate without holding any lock
+		std::vector<std::shared_ptr<TransitTunnel>> GetTransitTunnelsList () const
+		{
+			std::lock_guard<std::mutex> l (m_TransitTunnelsMutex);
+			return std::vector<std::shared_ptr<TransitTunnel>> (m_TransitTunnels.begin (), m_TransitTunnels.end ());
+		}
+		size_t GetTunnelBuildMsgQueueSize () const { return m_TunnelBuildMsgQueue.GetSize (); };
 	};
 }
 }

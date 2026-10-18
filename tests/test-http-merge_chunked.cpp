@@ -8,44 +8,43 @@
 
 using namespace i2p::http;
 
-int main() {
-  const char *buf =
-    "4\r\n"
-    "HTTP\r\n"
-    "A\r\n"
-    " response \r\n"
-    "E\r\n"
-    "with \r\n"
-    "chunks.\r\n"
-    "0\r\n"
-    "\r\n"
-    ;
-  std::stringstream in(buf);
-  std::stringstream out;
+int main ()
+{
+	const char * buf = "4\r\n"
+					   "HTTP\r\n"
+					   "A\r\n"
+					   " response \r\n"
+					   "E\r\n"
+					   "with \r\n"
+					   "chunks.\r\n"
+					   "0\r\n"
+					   "\r\n";
+	std::stringstream in (buf);
+	std::stringstream out;
 
-  assert(MergeChunkedResponse(in, out) == true);
-  assert(out.str() == "HTTP response with \r\nchunks.");
+	assert (MergeChunkedResponse (in, out) == true);
+	assert (out.str () == "HTTP response with \r\nchunks.");
 
-  /* a chunk that promises more bytes than the response carries */
-  std::stringstream truncated("20\r\nshort\r\n");
-  std::stringstream out2;
+	/* a chunk that promises more bytes than the response carries */
+	std::stringstream truncated ("20\r\nshort\r\n");
+	std::stringstream out2;
 
-  assert(MergeChunkedResponse(truncated, out2) == false);
+	assert (MergeChunkedResponse (truncated, out2) == false);
 
-  /* chunk extensions are legal and must be ignored */
-  std::stringstream extended("3;foo=bar\r\nabc\r\n0\r\n\r\n");
-  std::stringstream out3;
-  assert(MergeChunkedResponse(extended, out3) == true);
-  assert(out3.str() == "abc");
+	/* chunk extensions are legal and must be ignored */
+	std::stringstream extended ("3;foo=bar\r\nabc\r\n0\r\n\r\n");
+	std::stringstream out3;
+	assert (MergeChunkedResponse (extended, out3) == true);
+	assert (out3.str () == "abc");
 
-  /* non-hex and trailing garbage must be rejected, not partially parsed */
-  std::stringstream invalid("zz\r\nabc\r\n0\r\n\r\n");
-  std::stringstream out4;
-  assert(MergeChunkedResponse(invalid, out4) == false);
+	/* non-hex and trailing garbage must be rejected, not partially parsed */
+	std::stringstream invalid ("zz\r\nabc\r\n0\r\n\r\n");
+	std::stringstream out4;
+	assert (MergeChunkedResponse (invalid, out4) == false);
 
-  std::stringstream trailing("3x\r\nabc\r\n0\r\n\r\n");
-  std::stringstream out5;
-  assert(MergeChunkedResponse(trailing, out5) == false);
+	std::stringstream trailing ("3x\r\nabc\r\n0\r\n\r\n");
+	std::stringstream out5;
+	assert (MergeChunkedResponse (trailing, out5) == false);
 
-  return 0;
+	return 0;
 }

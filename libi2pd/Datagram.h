@@ -62,37 +62,43 @@ namespace datagram
 	class DatagramSession : public std::enable_shared_from_this<DatagramSession>
 	{
 
-		public:
+	public:
+		DatagramSession (
+			std::shared_ptr<i2p::client::ClientDestination> localDestination, const i2p::data::IdentHash & remoteIdent);
 
-			DatagramSession(std::shared_ptr<i2p::client::ClientDestination> localDestination, const i2p::data::IdentHash & remoteIdent);
+		void Start ();
+		void Stop ();
 
-			void Start ();
-			void Stop ();
+		/** @brief ack the garlic routing path */
+		void Ack ();
 
+		/** send an i2np message to remote endpoint for this session */
+		void SendMsg (std::shared_ptr<I2NPMessage> msg);
+		void FlushSendQueue (bool waitForLeaseSet = true);
+		/** get the last time in milliseconds for when we used this datagram session */
+		uint64_t LastActivity () const { return m_LastUse; }
 
-			/** @brief ack the garlic routing path */
-			void Ack();
+		bool IsRatchets () const { return m_RoutingSession && m_RoutingSession->IsRatchets (); }
+		void SetRemoteLeaseSet (std::shared_ptr<const i2p::data::LeaseSet> ls) { m_RemoteLeaseSet = ls; }
+		std::shared_ptr<const i2p::data::LeaseSet> GetRemoteLeaseSet () const { return m_RemoteLeaseSet; }
+		const i2p::data::IdentHash & GetRemoteIdent () const { return m_RemoteIdent; }
 
-			/** send an i2np message to remote endpoint for this session */
-			void SendMsg(std::shared_ptr<I2NPMessage> msg);
-			void FlushSendQueue(bool waitForLeaseSet = true);
-			/** get the last time in milliseconds for when we used this datagram session */
-			uint64_t LastActivity() const { return m_LastUse; }
+		DatagramVersion GetVersion () const { return m_Version; }
+		void SetVersion (DatagramVersion version) { m_Version = version; }
 
-			bool IsRatchets () const { return m_RoutingSession && m_RoutingSession->IsRatchets (); }
-			void SetRemoteLeaseSet (std::shared_ptr<const i2p::data::LeaseSet> ls) { m_RemoteLeaseSet = ls; }
-			std::shared_ptr<const i2p::data::LeaseSet> GetRemoteLeaseSet () const { return m_RemoteLeaseSet; }
-			const i2p::data::IdentHash& GetRemoteIdent () const { return m_RemoteIdent; }
+		void DropSharedRoutingPath ()
+		{
+			if (m_RoutingSession)
+			{
+				m_RoutingSession->SetSharedRoutingPath (nullptr);
+				m_NumPathDrops++;
+			}
+		}
+		// request LeaseSet update from floodfill in case our copy contains dead leases
+		void RequestUpdatedLeaseSet ();
 
-			DatagramVersion GetVersion () const { return m_Version; }
-			void SetVersion (DatagramVersion version) { m_Version = version; }
-
-			void DropSharedRoutingPath () { if (m_RoutingSession) { m_RoutingSession->SetSharedRoutingPath (nullptr); m_NumPathDrops++; } }
-			// request LeaseSet update from floodfill in case our copy contains dead leases
-			void RequestUpdatedLeaseSet ();
-
-			uint32_t GetNumPathDrops () const { return m_NumPathDrops; }
-			uint32_t GetNumDroppedNoPath () const { return m_NumDroppedNoPath; }
+		uint32_t GetNumPathDrops () const { return m_NumPathDrops; }
+		uint32_t GetNumDroppedNoPath () const { return m_NumDroppedNoPath; }
 
 		struct Info
 		{
@@ -100,36 +106,44 @@ namespace datagram
 			std::shared_ptr<const i2p::data::IdentHash> OBEP;
 			const uint64_t activity;
 
-				Info() : IBGW(nullptr), OBEP(nullptr), activity(0) {}
-				Info(const uint8_t * ibgw, const uint8_t * obep, const uint64_t a) :
-					activity(a) {
-					if(ibgw) IBGW = std::make_shared<i2p::data::IdentHash>(ibgw);
-					else IBGW = nullptr;
-					if(obep) OBEP = std::make_shared<i2p::data::IdentHash>(obep);
-					else OBEP = nullptr;
-				}
-			};
+			Info ()
+				: IBGW (nullptr)
+				, OBEP (nullptr)
+				, activity (0)
+			{
+			}
+			Info (const uint8_t * ibgw, const uint8_t * obep, const uint64_t a)
+				: activity (a)
+			{
+				if (ibgw)
+					IBGW = std::make_shared<i2p::data::IdentHash> (ibgw);
+				else
+					IBGW = nullptr;
+				if (obep)
+					OBEP = std::make_shared<i2p::data::IdentHash> (obep);
+				else
+					OBEP = nullptr;
+			}
+		};
 
-			Info GetSessionInfo() const;
+		Info GetSessionInfo () const;
 
-		private:
+	private:
+		std::shared_ptr<i2p::garlic::GarlicRoutingPath> GetSharedRoutingPath ();
 
-			std::shared_ptr<i2p::garlic::GarlicRoutingPath> GetSharedRoutingPath();
+		void HandleLeaseSetUpdated (std::shared_ptr<i2p::data::LeaseSet> ls);
 
-			void HandleLeaseSetUpdated(std::shared_ptr<i2p::data::LeaseSet> ls);
-
-		private:
-
-			std::shared_ptr<i2p::client::ClientDestination> m_LocalDestination;
-			i2p::data::IdentHash m_RemoteIdent;
-			std::shared_ptr<const i2p::data::LeaseSet> m_RemoteLeaseSet;
-			std::shared_ptr<i2p::garlic::GarlicRoutingSession> m_RoutingSession;
-			std::vector<std::weak_ptr<i2p::garlic::GarlicRoutingSession> > m_PendingRoutingSessions;
-			std::vector<std::shared_ptr<const I2NPMessage> > m_SendQueue;
-			uint64_t m_LastUse, m_LastFlush; // milliseconds
-			bool m_RequestingLS;
-			DatagramVersion m_Version;
-			uint32_t m_NumPathDrops = 0, m_NumDroppedNoPath = 0;
+	private:
+		std::shared_ptr<i2p::client::ClientDestination> m_LocalDestination;
+		i2p::data::IdentHash m_RemoteIdent;
+		std::shared_ptr<const i2p::data::LeaseSet> m_RemoteLeaseSet;
+		std::shared_ptr<i2p::garlic::GarlicRoutingSession> m_RoutingSession;
+		std::vector<std::weak_ptr<i2p::garlic::GarlicRoutingSession>> m_PendingRoutingSessions;
+		std::vector<std::shared_ptr<const I2NPMessage>> m_SendQueue;
+		uint64_t m_LastUse, m_LastFlush; // milliseconds
+		bool m_RequestingLS;
+		DatagramVersion m_Version;
+		uint32_t m_NumPathDrops = 0, m_NumDroppedNoPath = 0;
 	};
 
 	typedef std::shared_ptr<DatagramSession> DatagramSession_ptr;
@@ -137,81 +151,83 @@ namespace datagram
 	const size_t MAX_DATAGRAM_SIZE = 32768;
 	class DatagramDestination
 	{
-		typedef std::function<void (const i2p::data::IdentityEx& from, uint16_t fromPort, uint16_t toPort,
-			const uint8_t * buf, size_t len, const i2p::util::Mapping * options)> Receiver;
+		typedef std::function<void (const i2p::data::IdentityEx & from, uint16_t fromPort, uint16_t toPort,
+			const uint8_t * buf, size_t len, const i2p::util::Mapping * options)>
+			Receiver;
 		typedef std::function<void (uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len)> RawReceiver;
 
-		public:
+	public:
+		DatagramDestination (std::shared_ptr<i2p::client::ClientDestination> owner, bool gzip, DatagramVersion version);
+		~DatagramDestination ();
 
-			DatagramDestination (std::shared_ptr<i2p::client::ClientDestination> owner, bool gzip, DatagramVersion version);
-			~DatagramDestination ();
+		void SendDatagramTo (const uint8_t * payload, size_t len, const i2p::data::IdentHash & ident,
+			uint16_t fromPort = 0, uint16_t toPort = 0);
+		void SendRawDatagramTo (const uint8_t * payload, size_t len, const i2p::data::IdentHash & ident,
+			uint16_t fromPort = 0, uint16_t toPort = 0);
+		// TODO: implement calls from other thread from SAM
 
-			void SendDatagramTo (const uint8_t * payload, size_t len, const i2p::data::IdentHash& ident, uint16_t fromPort = 0, uint16_t toPort = 0);
-			void SendRawDatagramTo (const uint8_t * payload, size_t len, const i2p::data::IdentHash& ident, uint16_t fromPort = 0, uint16_t toPort = 0);
-			// TODO: implement calls from other thread from SAM
+		std::shared_ptr<DatagramSession> GetSession (const i2p::data::IdentHash & ident);
+		void SendDatagram (std::shared_ptr<DatagramSession> session, const uint8_t * payload, size_t len,
+			uint16_t fromPort, uint16_t toPort, const i2p::util::Mapping * options = nullptr);
+		void SendRawDatagram (std::shared_ptr<DatagramSession> session, const uint8_t * payload, size_t len,
+			uint16_t fromPort, uint16_t toPort);
+		void FlushSendQueue (std::shared_ptr<DatagramSession> session);
 
-			std::shared_ptr<DatagramSession> GetSession(const i2p::data::IdentHash & ident);
-			void SendDatagram (std::shared_ptr<DatagramSession> session, const uint8_t * payload, size_t len,
-				uint16_t fromPort, uint16_t toPort, const i2p::util::Mapping * options = nullptr);
-			void SendRawDatagram (std::shared_ptr<DatagramSession> session, const uint8_t * payload, size_t len, uint16_t fromPort, uint16_t toPort);
-			void FlushSendQueue (std::shared_ptr<DatagramSession> session);
+		void HandleDataMessagePayload (uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len,
+			uint8_t protocolType, i2p::garlic::ECIESX25519AEADRatchetSession * from);
 
-			void HandleDataMessagePayload (uint16_t fromPort, uint16_t toPort,
-			 	const uint8_t * buf, size_t len, uint8_t protocolType, i2p::garlic::ECIESX25519AEADRatchetSession * from);
+		void SetReceiver (const Receiver & receiver, uint16_t port = 0);
+		void ResetReceiver (uint16_t port = 0);
 
-			void SetReceiver (const Receiver& receiver, uint16_t port = 0);
-			void ResetReceiver (uint16_t port = 0);
+		void SetRawReceiver (const RawReceiver & receiver, uint16_t port = 0);
+		void ResetRawReceiver (uint16_t port = 0);
 
-			void SetRawReceiver (const RawReceiver& receiver, uint16_t port = 0);
-			void ResetRawReceiver (uint16_t port = 0);
+		std::shared_ptr<DatagramSession::Info> GetInfoForRemote (const i2p::data::IdentHash & remote);
 
-			std::shared_ptr<DatagramSession::Info> GetInfoForRemote(const i2p::data::IdentHash & remote);
+		// clean up stale sessions
+		void CleanUp ();
 
-			// clean up stale sessions
-			void CleanUp ();
+	private:
+		std::shared_ptr<DatagramSession> ObtainSession (const i2p::data::IdentHash & ident);
+		std::shared_ptr<DatagramSession> FindSession (const i2p::data::IdentHash & ident) const;
 
-		private:
+		std::shared_ptr<I2NPMessage> CreateDataMessage (
+			const std::vector<std::pair<const uint8_t *, size_t>> & payloads, uint16_t fromPort, uint16_t toPort,
+			uint8_t protocolType, bool checksum = true);
 
-			std::shared_ptr<DatagramSession> ObtainSession(const i2p::data::IdentHash & ident);
-			std::shared_ptr<DatagramSession> FindSession(const i2p::data::IdentHash& ident) const;
+		void HandleDatagram (uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len,
+			i2p::garlic::ECIESX25519AEADRatchetSession * from);
+		void HandleRawDatagram (uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len);
+		void HandleDatagram2 (uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len,
+			i2p::garlic::ECIESX25519AEADRatchetSession * from);
+		void HandleDatagram3 (uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len,
+			i2p::garlic::ECIESX25519AEADRatchetSession * from);
 
-			std::shared_ptr<I2NPMessage> CreateDataMessage (const std::vector<std::pair<const uint8_t *, size_t> >& payloads,
-				uint16_t fromPort, uint16_t toPort, uint8_t protocolType, bool checksum = true);
+		Receiver FindReceiver (uint16_t port);
+		RawReceiver FindRawReceiver (uint16_t port);
 
-			void HandleDatagram (uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len,
-				i2p::garlic::ECIESX25519AEADRatchetSession * from);
-			void HandleRawDatagram (uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len);
-			void HandleDatagram2 (uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len,
-				i2p::garlic::ECIESX25519AEADRatchetSession * from);
-			void HandleDatagram3 (uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len,
-				i2p::garlic::ECIESX25519AEADRatchetSession * from);
+	private:
+		std::shared_ptr<i2p::client::ClientDestination> m_Owner;
 
-			Receiver FindReceiver(uint16_t port);
-			RawReceiver FindRawReceiver(uint16_t port);
+		mutable std::mutex m_SessionsMutex;
+		std::unordered_map<i2p::data::IdentHash, DatagramSession_ptr> m_Sessions;
 
-		private:
+		Receiver m_DefaultReceiver;
+		RawReceiver m_DefaultRawReceiver;
+		uint16_t m_DefaultReceiverPort;
+		uint16_t m_DefaultRawReceiverPort;
+		std::mutex m_ReceiversMutex;
+		std::mutex m_RawReceiversMutex;
+		std::unordered_map<uint16_t, Receiver> m_ReceiversByPorts;
+		std::unordered_map<uint16_t, RawReceiver> m_RawReceiversByPorts;
 
-			std::shared_ptr<i2p::client::ClientDestination> m_Owner;
-
-			mutable std::mutex m_SessionsMutex;
-			std::unordered_map<i2p::data::IdentHash, DatagramSession_ptr > m_Sessions;
-
-			Receiver m_DefaultReceiver;
-			RawReceiver m_DefaultRawReceiver;
-			uint16_t m_DefaultReceiverPort;
-			uint16_t m_DefaultRawReceiverPort;
-			std::mutex m_ReceiversMutex;
-			std::mutex m_RawReceiversMutex;
-			std::unordered_map<uint16_t, Receiver> m_ReceiversByPorts;
-			std::unordered_map<uint16_t, RawReceiver> m_RawReceiversByPorts;
-
-			bool m_Gzip; // gzip compression of data messages
-			DatagramVersion m_Version; // default for destination
-			i2p::data::GzipInflator m_Inflator;
-			std::unique_ptr<i2p::data::GzipDeflator> m_Deflator;
-			i2p::util::Mapping m_Options;
-			std::vector<uint8_t> m_From, m_Signature;
-			i2p::util::MemoryPool<I2NPMessageBuffer<I2NP_MAX_MESSAGE_SIZE> > m_I2NPMsgsPool;
+		bool m_Gzip; // gzip compression of data messages
+		DatagramVersion m_Version; // default for destination
+		i2p::data::GzipInflator m_Inflator;
+		std::unique_ptr<i2p::data::GzipDeflator> m_Deflator;
+		i2p::util::Mapping m_Options;
+		std::vector<uint8_t> m_From, m_Signature;
+		i2p::util::MemoryPool<I2NPMessageBuffer<I2NP_MAX_MESSAGE_SIZE>> m_I2NPMsgsPool;
 	};
 }
 }

@@ -36,7 +36,7 @@ namespace client
 {
 	const size_t SAM_SOCKET_BUFFER_SIZE = 8192;
 	const size_t SAM_STREAM_BUFFER_SIZE = 16384;
-	const size_t SAM_STREAM_MAX_SEND_BUFFER_SIZE = 8*SAM_SOCKET_BUFFER_SIZE;
+	const size_t SAM_STREAM_MAX_SEND_BUFFER_SIZE = 8 * SAM_SOCKET_BUFFER_SIZE;
 	const int SAM_SOCKET_CONNECTION_MAX_IDLE = 3600; // in seconds
 	const int SAM_SESSION_READINESS_CHECK_INTERVAL = 3; // in seconds
 	const int SAM_SESSION_CLEANUP_CHECK_INTERVAL = 5; // in seconds
@@ -102,8 +102,12 @@ namespace client
 	constexpr std::string_view SAM_PING { "PING" };
 	const char SAM_PONG[] = "PONG %s\n";
 
-	constexpr int MAKE_SAM_VERSION_NUMBER (int major, int minor) { return major*10 + minor; }
-	constexpr int MAX_SAM_VERSION_VALUE = 99999; // stop parsing digits above that, any such version is out of range anyway
+	constexpr int MAKE_SAM_VERSION_NUMBER (int major, int minor)
+	{
+		return major * 10 + minor;
+	}
+	constexpr int MAX_SAM_VERSION_VALUE
+		= 99999; // stop parsing digits above that, any such version is out of range anyway
 	constexpr int MIN_SAM_VERSION = MAKE_SAM_VERSION_NUMBER (3, 0);
 	constexpr int MAX_SAM_VERSION = MAKE_SAM_VERSION_NUMBER (3, 3);
 	constexpr int SAM_VERSION_33 = MAKE_SAM_VERSION_NUMBER (3, 3); // SAM 3.3
@@ -120,91 +124,90 @@ namespace client
 
 	class SAMBridge;
 	struct SAMSession;
-	class SAMSocket: public std::enable_shared_from_this<SAMSocket>
+	class SAMSocket : public std::enable_shared_from_this<SAMSocket>
 	{
-		public:
+	public:
+		typedef boost::asio::ip::tcp::socket Socket_t;
+		SAMSocket (SAMBridge & owner);
+		~SAMSocket ();
 
-			typedef boost::asio::ip::tcp::socket Socket_t;
-			SAMSocket (SAMBridge& owner);
-			~SAMSocket ();
+		Socket_t & GetSocket () { return m_Socket; };
+		void ReceiveHandshake ();
+		void SetSocketType (SAMSocketType socketType) { m_SocketType = socketType; };
+		SAMSocketType GetSocketType () const { return m_SocketType; };
 
-			Socket_t& GetSocket () { return m_Socket; };
-			void ReceiveHandshake ();
-			void SetSocketType (SAMSocketType socketType) { m_SocketType = socketType; };
-			SAMSocketType GetSocketType () const { return m_SocketType; };
+		void Terminate (const char * reason);
 
-			void Terminate (const char* reason);
+		bool IsSession (std::string_view id) const;
 
-			bool IsSession(std::string_view id) const;
+		static i2p::util::Mapping ExtractParams (std::string_view buf);
 
-			static i2p::util::Mapping ExtractParams (std::string_view buf);
+	private:
+		void TerminateClose () { Terminate (nullptr); }
 
-		private:
+		void HandleHandshakeReceived (const boost::system::error_code & ecode, std::size_t bytes_transferred);
+		void HandleHandshakeReplySent (const boost::system::error_code & ecode, std::size_t bytes_transferred);
+		void HandleMessage (const boost::system::error_code & ecode, std::size_t bytes_transferred);
+		void SendMessageReply (std::string_view msg, bool close);
+		void HandleMessageReplySent (
+			const boost::system::error_code & ecode, std::size_t bytes_transferred, bool close);
+		void Receive ();
+		void HandleReceived (const boost::system::error_code & ecode, std::size_t bytes_transferred);
 
-			void TerminateClose() { Terminate(nullptr); }
+		void I2PReceive ();
+		void HandleI2PReceive (const boost::system::error_code & ecode, std::size_t bytes_transferred);
+		void HandleI2PAccept (std::shared_ptr<i2p::stream::Stream> stream);
+		void HandleI2PForward (std::shared_ptr<i2p::stream::Stream> stream, boost::asio::ip::tcp::endpoint ep);
+		void HandleWriteI2PData (const boost::system::error_code & ecode, size_t sz);
+		// sessionID is the session the datagram belongs to, a subsession has its own
+		void HandleI2PDatagramReceive (std::string sessionID, const i2p::data::IdentityEx & from, uint16_t fromPort,
+			uint16_t toPort, const uint8_t * buf, size_t len, const i2p::util::Mapping * options);
+		void HandleI2PRawDatagramReceive (
+			std::string sessionID, uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len);
 
-			void HandleHandshakeReceived (const boost::system::error_code& ecode, std::size_t bytes_transferred);
-			void HandleHandshakeReplySent (const boost::system::error_code& ecode, std::size_t bytes_transferred);
-			void HandleMessage (const boost::system::error_code& ecode, std::size_t bytes_transferred);
-			void SendMessageReply (std::string_view msg, bool close);
-			void HandleMessageReplySent (const boost::system::error_code& ecode, std::size_t bytes_transferred, bool close);
-			void Receive ();
-			void HandleReceived (const boost::system::error_code& ecode, std::size_t bytes_transferred);
+		void ProcessSessionCreate (std::string_view buf);
+		void ProcessStreamConnect (char * buf, size_t len, size_t rem);
+		void ProcessStreamAccept (std::string_view buf);
+		void ProcessStreamForward (std::string_view buf);
+		void ProcessDestGenerate (std::string_view buf);
+		void ProcessNamingLookup (std::string_view buf);
+		void ProcessSessionAdd (std::string_view buf);
+		void ProcessSessionRemove (std::string_view buf);
+		void ProcessPing (std::string_view text);
+		void SendReplyWithMessage (const char * reply, const std::string & msg, bool close);
+		void SendSessionI2PError (const std::string & msg);
+		void SendStreamI2PError (const std::string & msg);
+		void SendStreamCantReachPeer (const std::string & msg);
+		size_t ProcessDatagramSend (char * buf, size_t len, const char * data); // from SAM 1.0
 
-			void I2PReceive ();
-			void HandleI2PReceive (const boost::system::error_code& ecode, std::size_t bytes_transferred);
-			void HandleI2PAccept (std::shared_ptr<i2p::stream::Stream> stream);
-			void HandleI2PForward (std::shared_ptr<i2p::stream::Stream> stream, boost::asio::ip::tcp::endpoint ep);
-			void HandleWriteI2PData (const boost::system::error_code& ecode, size_t sz);
-			// sessionID is the session the datagram belongs to, a subsession has its own
-			void HandleI2PDatagramReceive (std::string sessionID, const i2p::data::IdentityEx& from,
-				uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len, const i2p::util::Mapping * options);
-			void HandleI2PRawDatagramReceive (std::string sessionID, uint16_t fromPort, uint16_t toPort,
-				const uint8_t * buf, size_t len);
+		void Connect (std::shared_ptr<const i2p::data::LeaseSet> remote, std::shared_ptr<SAMSession> session = nullptr);
+		void HandleConnectLeaseSetRequestComplete (std::shared_ptr<i2p::data::LeaseSet> leaseSet);
+		void SendNamingLookupReply (const std::string & name, std::shared_ptr<const i2p::data::IdentityEx> identity);
+		void HandleNamingLookupLeaseSetRequestComplete (
+			std::shared_ptr<i2p::data::LeaseSet> leaseSet, std::string name);
+		void HandleSessionReadinessCheckTimer (const boost::system::error_code & ecode);
+		void SendSessionCreateReplyOk ();
 
-			void ProcessSessionCreate (std::string_view buf);
-			void ProcessStreamConnect (char * buf, size_t len, size_t rem);
-			void ProcessStreamAccept (std::string_view buf);
-			void ProcessStreamForward (std::string_view buf);
-			void ProcessDestGenerate (std::string_view buf);
-			void ProcessNamingLookup (std::string_view buf);
-			void ProcessSessionAdd (std::string_view buf);
-			void ProcessSessionRemove (std::string_view buf);
-			void ProcessPing (std::string_view text);
-			void SendReplyWithMessage (const char * reply, const std::string & msg, bool close);
-			void SendSessionI2PError(const std::string & msg);
-			void SendStreamI2PError(const std::string & msg);
-			void SendStreamCantReachPeer(const std::string & msg);
-			size_t ProcessDatagramSend (char * buf, size_t len, const char * data); // from SAM 1.0
+		void WriteI2PData (size_t sz);
+		void WriteI2PDataImmediate (uint8_t * ptr, size_t sz);
 
-			void Connect (std::shared_ptr<const i2p::data::LeaseSet> remote, std::shared_ptr<SAMSession> session = nullptr);
-			void HandleConnectLeaseSetRequestComplete (std::shared_ptr<i2p::data::LeaseSet> leaseSet);
-			void SendNamingLookupReply (const std::string& name, std::shared_ptr<const i2p::data::IdentityEx> identity);
-			void HandleNamingLookupLeaseSetRequestComplete (std::shared_ptr<i2p::data::LeaseSet> leaseSet, std::string name);
-			void HandleSessionReadinessCheckTimer (const boost::system::error_code& ecode);
-			void SendSessionCreateReplyOk ();
+		void HandleWriteI2PDataImmediate (const boost::system::error_code & ec, uint8_t * buff);
+		void HandleStreamSend (const boost::system::error_code & ec);
 
-			void WriteI2PData(size_t sz);
-			void WriteI2PDataImmediate(uint8_t * ptr, size_t sz);
-
-			void HandleWriteI2PDataImmediate(const boost::system::error_code & ec, uint8_t * buff);
-			void HandleStreamSend(const boost::system::error_code & ec);
-
-		private:
-
-			SAMBridge& m_Owner;
-			Socket_t m_Socket;
-			boost::asio::steady_timer m_Timer;
-			char m_Buffer[SAM_SOCKET_BUFFER_SIZE + 1];
-			size_t m_BufferOffset; // for session only
-			uint8_t m_StreamBuffer[SAM_STREAM_BUFFER_SIZE];
-			SAMSocketType m_SocketType;
-			std::string m_ID; // nickname
-			bool m_IsSilent;
-			bool m_IsAccepting; // for eSAMSocketTypeAcceptor only
-			bool m_IsReceiving; // for eSAMSocketTypeStream only
-			std::shared_ptr<i2p::stream::Stream> m_Stream;
-			int m_Version;
+	private:
+		SAMBridge & m_Owner;
+		Socket_t m_Socket;
+		boost::asio::steady_timer m_Timer;
+		char m_Buffer[SAM_SOCKET_BUFFER_SIZE + 1];
+		size_t m_BufferOffset; // for session only
+		uint8_t m_StreamBuffer[SAM_STREAM_BUFFER_SIZE];
+		SAMSocketType m_SocketType;
+		std::string m_ID; // nickname
+		bool m_IsSilent;
+		bool m_IsAccepting; // for eSAMSocketTypeAcceptor only
+		bool m_IsReceiving; // for eSAMSocketTypeStream only
+		std::shared_ptr<i2p::stream::Stream> m_Stream;
+		int m_Version;
 	};
 
 	enum class SAMSessionType
@@ -224,10 +227,10 @@ namespace client
 		i2p::datagram::DatagramVersion DatagramVersion;
 
 		std::shared_ptr<boost::asio::ip::udp::endpoint> UDPEndpoint; // TODO: move
-		std::list<std::pair<std::shared_ptr<SAMSocket>, uint64_t> > acceptQueue; // socket, receive time in seconds
+		std::list<std::pair<std::shared_ptr<SAMSocket>, uint64_t>> acceptQueue; // socket, receive time in seconds
 
 		SAMSession (SAMBridge & parent, std::string_view name, SAMSessionType type);
-		virtual ~SAMSession () {};
+		virtual ~SAMSession () { };
 
 		virtual std::shared_ptr<ClientDestination> GetLocalDestination () = 0;
 		virtual void StopLocalDestination () = 0;
@@ -237,100 +240,100 @@ namespace client
 		// Resolves a datagram destination - a full base64 destination, a plain b32
 		// or a blinded b33 .i2p host - the same way a stream connect does, then
 		// sends the payload. A b33 lookup is async, so the payload is copied.
-		void SendDatagram (std::string_view destination, const uint8_t * payload, size_t len,
-			uint16_t fromPort, uint16_t toPort);
+		void SendDatagram (
+			std::string_view destination, const uint8_t * payload, size_t len, uint16_t fromPort, uint16_t toPort);
 	};
 
-	struct SAMSingleSession: public SAMSession
+	struct SAMSingleSession : public SAMSession
 	{
 		std::shared_ptr<ClientDestination> localDestination;
 
-		SAMSingleSession (SAMBridge & parent, std::string_view name, SAMSessionType type, std::shared_ptr<ClientDestination> dest);
+		SAMSingleSession (
+			SAMBridge & parent, std::string_view name, SAMSessionType type, std::shared_ptr<ClientDestination> dest);
 		~SAMSingleSession ();
 
 		std::shared_ptr<ClientDestination> GetLocalDestination () { return localDestination; };
 		void StopLocalDestination ();
 	};
 
-	struct SAMMasterSession: public SAMSingleSession
+	struct SAMMasterSession : public SAMSingleSession
 	{
-		std::set<std::string, std::less<> > subsessions;
-		SAMMasterSession (SAMBridge & parent, std::string_view name, std::shared_ptr<ClientDestination> dest):
-			SAMSingleSession (parent, name, SAMSessionType::eSAMSessionTypeMaster, dest) {};
+		std::set<std::string, std::less<>> subsessions;
+		SAMMasterSession (SAMBridge & parent, std::string_view name, std::shared_ptr<ClientDestination> dest)
+			: SAMSingleSession (parent, name, SAMSessionType::eSAMSessionTypeMaster, dest) { };
 		void Close ();
 	};
 
-	struct SAMSubSession: public SAMSession
+	struct SAMSubSession : public SAMSession
 	{
 		std::shared_ptr<SAMMasterSession> masterSession;
 		uint16_t inPort;
 
-		SAMSubSession (std::shared_ptr<SAMMasterSession> master, std::string_view name, SAMSessionType type, uint16_t port);
+		SAMSubSession (
+			std::shared_ptr<SAMMasterSession> master, std::string_view name, SAMSessionType type, uint16_t port);
 		// implements SAMSession
 		std::shared_ptr<ClientDestination> GetLocalDestination ();
 		void StopLocalDestination ();
 	};
 
-	class SAMBridge: private i2p::util::RunnableService
+	class SAMBridge : private i2p::util::RunnableService
 	{
-		public:
+	public:
+		SAMBridge (const std::string & address, uint16_t portTCP, uint16_t portUDP, bool singleThread);
+		~SAMBridge ();
 
-			SAMBridge (const std::string& address, uint16_t portTCP, uint16_t portUDP, bool singleThread);
-			~SAMBridge ();
+		void Start ();
+		void Stop ();
 
-			void Start ();
-			void Stop ();
+		auto & GetService () { return GetIOService (); };
+		std::shared_ptr<SAMSession> CreateSession (std::string_view id, SAMSessionType type,
+			std::string_view destination, // empty string means transient
+			const i2p::util::Mapping & params);
+		bool AddSession (std::shared_ptr<SAMSession> session);
+		void CloseSession (std::string_view id);
+		std::shared_ptr<SAMSession> FindSession (std::string_view id) const;
 
-			auto& GetService () { return GetIOService (); };
-			std::shared_ptr<SAMSession> CreateSession (std::string_view id, SAMSessionType type, std::string_view destination, // empty string means transient
-				const i2p::util::Mapping& params);
-			bool AddSession (std::shared_ptr<SAMSession> session);
-			void CloseSession (std::string_view id);
-			std::shared_ptr<SAMSession> FindSession (std::string_view id) const;
+		std::list<std::shared_ptr<SAMSocket>> ListSockets (std::string_view id) const;
 
-			std::list<std::shared_ptr<SAMSocket> > ListSockets(std::string_view id) const;
+		/** send raw data to remote endpoint from our UDP Socket */
+		void SendTo (const std::vector<boost::asio::const_buffer> & bufs, const boost::asio::ip::udp::endpoint & ep);
 
-			/** send raw data to remote endpoint from our UDP Socket */
-			void SendTo (const std::vector<boost::asio::const_buffer>& bufs, const boost::asio::ip::udp::endpoint& ep);
+		void AddSocket (std::shared_ptr<SAMSocket> socket);
+		void RemoveSocket (const std::shared_ptr<SAMSocket> & socket);
 
-			void AddSocket(std::shared_ptr<SAMSocket> socket);
-			void RemoveSocket(const std::shared_ptr<SAMSocket> & socket);
+		bool ResolveSignatureType (std::string_view name, i2p::data::SigningKeyType & type) const;
 
-			bool ResolveSignatureType (std::string_view name, i2p::data::SigningKeyType& type) const;
+	private:
+		void Accept ();
+		void HandleAccept (const boost::system::error_code & ecode, std::shared_ptr<SAMSocket> socket);
 
-		private:
+		void ReceiveDatagram ();
+		void HandleReceivedDatagram (const boost::system::error_code & ecode, std::size_t bytes_transferred);
 
-			void Accept ();
-			void HandleAccept(const boost::system::error_code& ecode, std::shared_ptr<SAMSocket> socket);
+		void ScheduleSessionCleanupTimer (std::shared_ptr<SAMSession> session);
+		void HandleSessionCleanupTimer (const boost::system::error_code & ecode, std::shared_ptr<SAMSession> session,
+			std::shared_ptr<boost::asio::steady_timer> timer);
 
-			void ReceiveDatagram ();
-			void HandleReceivedDatagram (const boost::system::error_code& ecode, std::size_t bytes_transferred);
+	private:
+		bool m_IsSingleThread;
+		boost::asio::ip::tcp::acceptor m_Acceptor;
+		boost::asio::ip::udp::endpoint m_DatagramEndpoint, m_SenderEndpoint;
+		boost::asio::ip::udp::socket m_DatagramSocket;
+		mutable std::mutex m_SessionsMutex;
+		std::map<std::string, std::shared_ptr<SAMSession>, std::less<>> m_Sessions;
+		mutable std::mutex m_OpenSocketsMutex;
+		std::list<std::shared_ptr<SAMSocket>> m_OpenSockets;
+		uint8_t m_DatagramReceiveBuffer[i2p::datagram::MAX_DATAGRAM_SIZE + 1];
+		const std::map<std::string_view, i2p::data::SigningKeyType> m_SignatureTypes;
 
-			void ScheduleSessionCleanupTimer (std::shared_ptr<SAMSession> session);
-			void HandleSessionCleanupTimer (const boost::system::error_code& ecode,
-				std::shared_ptr<SAMSession> session, std::shared_ptr<boost::asio::steady_timer> timer);
-
-		private:
-
-			bool m_IsSingleThread;
-			boost::asio::ip::tcp::acceptor m_Acceptor;
-			boost::asio::ip::udp::endpoint m_DatagramEndpoint, m_SenderEndpoint;
-			boost::asio::ip::udp::socket m_DatagramSocket;
-			mutable std::mutex m_SessionsMutex;
-			std::map<std::string, std::shared_ptr<SAMSession>, std::less<>> m_Sessions;
-			mutable std::mutex m_OpenSocketsMutex;
-			std::list<std::shared_ptr<SAMSocket> > m_OpenSockets;
-			uint8_t m_DatagramReceiveBuffer[i2p::datagram::MAX_DATAGRAM_SIZE+1];
-			const std::map<std::string_view, i2p::data::SigningKeyType> m_SignatureTypes;
-
-		public:
-
-			// for HTTP; thread-safe snapshot, safe to iterate without holding any lock
-			std::vector<std::pair<std::string, std::shared_ptr<SAMSession> > > GetSessionsList () const
-			{
-				std::unique_lock<std::mutex> l(m_SessionsMutex);
-				return std::vector<std::pair<std::string, std::shared_ptr<SAMSession> > > (m_Sessions.begin (), m_Sessions.end ());
-			}
+	public:
+		// for HTTP; thread-safe snapshot, safe to iterate without holding any lock
+		std::vector<std::pair<std::string, std::shared_ptr<SAMSession>>> GetSessionsList () const
+		{
+			std::unique_lock<std::mutex> l (m_SessionsMutex);
+			return std::vector<std::pair<std::string, std::shared_ptr<SAMSession>>> (
+				m_Sessions.begin (), m_Sessions.end ());
+		}
 	};
 }
 }

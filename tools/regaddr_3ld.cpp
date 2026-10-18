@@ -17,39 +17,39 @@
 
 namespace
 {
-	void Help ()
-	{
-		std::cout << "Usage:" << std::endl
-			<< "\tregaddr_3ld step1 privkey address" << std::endl
-			<< "\tregaddr_3ld step2 step1file oldprivkey oldaddress" << std::endl
-			<< "\tregaddr_3ld step3 step2file privkey" << std::endl;
-	}
+void Help ()
+{
+	std::cout << "Usage:" << std::endl
+			  << "\tregaddr_3ld step1 privkey address" << std::endl
+			  << "\tregaddr_3ld step2 step1file oldprivkey oldaddress" << std::endl
+			  << "\tregaddr_3ld step3 step2file privkey" << std::endl;
+}
 
-	bool LoadKeys (const char * path, i2p::data::PrivateKeys& keys)
-	{
-		auto input = i2p::tools::ReadFile (path);
-		if (!input) return false;
-		const bool ok = keys.FromBuffer (input->data (), input->size ());
-		i2p::tools::Wipe (*input);
-		return ok;
-	}
+bool LoadKeys (const char * path, i2p::data::PrivateKeys & keys)
+{
+	auto input = i2p::tools::ReadFile (path);
+	if (!input) return false;
+	const bool ok = keys.FromBuffer (input->data (), input->size ());
+	i2p::tools::Wipe (*input);
+	return ok;
+}
 
-	i2p::expected<std::string, std::string> ReadText (const char * path)
-	{
-		auto input = i2p::tools::ReadFile (path);
-		if (!input) return i2p::unexpected (input.error ());
-		return std::string (reinterpret_cast<const char *> (input->data ()), input->size ());
-	}
+i2p::expected<std::string, std::string> ReadText (const char * path)
+{
+	auto input = i2p::tools::ReadFile (path);
+	if (!input) return i2p::unexpected (input.error ());
+	return std::string (reinterpret_cast<const char *> (input->data ()), input->size ());
+}
 
-	bool AppendSignature (std::ostringstream& out, i2p::data::PrivateKeys& keys, const char * marker)
-	{
-		const std::string signedPart = out.str ();
-		std::vector<uint8_t> signature (keys.GetPublic ()->GetSignatureLen ());
-		keys.Sign (reinterpret_cast<const uint8_t *> (signedPart.data ()),
-			static_cast<int> (signedPart.size ()), signature.data ());
-		out << marker << i2p::data::ByteStreamToBase64 (signature.data (), signature.size ());
-		return true;
-	}
+bool AppendSignature (std::ostringstream & out, i2p::data::PrivateKeys & keys, const char * marker)
+{
+	const std::string signedPart = out.str ();
+	std::vector<uint8_t> signature (keys.GetPublic ()->GetSignatureLen ());
+	keys.Sign (reinterpret_cast<const uint8_t *> (signedPart.data ()), static_cast<int> (signedPart.size ()),
+		signature.data ());
+	out << marker << i2p::data::ByteStreamToBase64 (signature.data (), signature.size ());
+	return true;
+}
 }
 
 int main (int argc, char * argv[])
@@ -79,8 +79,7 @@ int main (int argc, char * argv[])
 		}
 		else
 		{
-			std::cout << argv[3] << "=" << keys.GetPublic ()->ToBase64 ()
-				<< "#!action=addsubdomain" << std::endl;
+			std::cout << argv[3] << "=" << keys.GetPublic ()->ToBase64 () << "#!action=addsubdomain" << std::endl;
 		}
 	}
 	else if (action == "step2")
@@ -101,8 +100,7 @@ int main (int argc, char * argv[])
 			else
 			{
 				std::ostringstream out;
-				out << *regtxt << "#date=" << std::time (nullptr)
-					<< "#olddest=" << keys.GetPublic ()->ToBase64 ()
+				out << *regtxt << "#date=" << std::time (nullptr) << "#olddest=" << keys.GetPublic ()->ToBase64 ()
 					<< "#oldname=" << argv[4];
 				AppendSignature (out, keys, "#oldsig=");
 				std::cout << out.str () << std::endl;

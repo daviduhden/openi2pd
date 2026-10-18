@@ -67,8 +67,7 @@ namespace crypto
 		for (int i = 0; i < 32; i++)
 		{
 			Bi256[i][0] = Bi256Carry; // first point
-			for (int j = 1; j < 128; j++)
-				Bi256[i][j] = Sum (Bi256[i][j-1], Bi256[i][0], ctx); // (256+j+1)^i*B
+			for (int j = 1; j < 128; j++) Bi256[i][j] = Sum (Bi256[i][j - 1], Bi256[i][0], ctx); // (256+j+1)^i*B
 			Bi256Carry = Bi256[i][127];
 			for (int j = 0; j < 128; j++) // add first point 128 more times
 				Bi256Carry = Sum (Bi256Carry, Bi256[i][0], ctx);
@@ -77,13 +76,16 @@ namespace crypto
 		BN_CTX_free (ctx);
 	}
 
-	Ed25519::Ed25519 (const Ed25519& other): q (BN_dup (other.q)), l (BN_dup (other.l)),
-		d (BN_dup (other.d)), I (BN_dup (other.I)), two_252_2 (BN_dup (other.two_252_2)),
-		Bi256Carry (other.Bi256Carry)
+	Ed25519::Ed25519 (const Ed25519 & other)
+		: q (BN_dup (other.q))
+		, l (BN_dup (other.l))
+		, d (BN_dup (other.d))
+		, I (BN_dup (other.I))
+		, two_252_2 (BN_dup (other.two_252_2))
+		, Bi256Carry (other.Bi256Carry)
 	{
 		for (int i = 0; i < 32; i++)
-			for (int j = 0; j < 128; j++)
-				Bi256[i][j] = other.Bi256[i][j];
+			for (int j = 0; j < 128; j++) Bi256[i][j] = other.Bi256[i][j];
 	}
 
 	Ed25519::~Ed25519 ()
@@ -95,7 +97,6 @@ namespace crypto
 		BN_free (two_252_2);
 	}
 
-
 	EDDSAPoint Ed25519::GeneratePublicKey (const uint8_t * expandedPrivateKey, BN_CTX * ctx) const
 	{
 		return MulB (expandedPrivateKey, ctx); // left half of expanded key, considered as Little Endian
@@ -106,19 +107,19 @@ namespace crypto
 		return DecodePoint (buf, ctx);
 	}
 
-	void Ed25519::EncodePublicKey (const EDDSAPoint& publicKey, uint8_t * buf, BN_CTX * ctx) const
+	void Ed25519::EncodePublicKey (const EDDSAPoint & publicKey, uint8_t * buf, BN_CTX * ctx) const
 	{
 		EncodePoint (Normalize (publicKey, ctx), buf);
 	}
 
-	bool Ed25519::Verify (const EDDSAPoint& publicKey, const uint8_t * digest, const uint8_t * signature) const
+	bool Ed25519::Verify (const EDDSAPoint & publicKey, const uint8_t * digest, const uint8_t * signature) const
 	{
 		BN_CTX * ctx = BN_CTX_new ();
 		BIGNUM * h = DecodeBN<64> (digest);
 		// signature 0..31 - R, 32..63 - S
 		// B*S = R + PK*h => R = B*S - PK*h
 		// we don't decode R, but encode (B*S - PK*h)
-		auto Bs = MulB (signature + EDDSA25519_SIGNATURE_LENGTH/2, ctx); // B*S;
+		auto Bs = MulB (signature + EDDSA25519_SIGNATURE_LENGTH / 2, ctx); // B*S;
 		BN_mod (h, h, l, ctx); // public key is multiple of B, but B%l = 0
 		auto PKh = Mul (publicKey, h, ctx); // PK*h
 		uint8_t diff[32];
@@ -126,19 +127,19 @@ namespace crypto
 		bool passed = !memcmp (signature, diff, 32); // R
 		BN_free (h);
 		BN_CTX_free (ctx);
-		if (!passed)
-			LogPrint (eLogError, "25519 signature verification failed");
+		if (!passed) LogPrint (eLogError, "25519 signature verification failed");
 		return passed;
 	}
 
-	void Ed25519::Sign (const uint8_t * expandedPrivateKey, const uint8_t * publicKeyEncoded,
-		const uint8_t * buf, size_t len, uint8_t * signature) const
+	void Ed25519::Sign (const uint8_t * expandedPrivateKey, const uint8_t * publicKeyEncoded, const uint8_t * buf,
+		size_t len, uint8_t * signature) const
 	{
 		BN_CTX * bnCtx = BN_CTX_new ();
 		// calculate r
 		EVP_MD_CTX * ctx = EVP_MD_CTX_create ();
-		EVP_DigestInit_ex (ctx, EVP_sha512(), NULL);
-		EVP_DigestUpdate (ctx, expandedPrivateKey + EDDSA25519_PRIVATE_KEY_LENGTH, EDDSA25519_PRIVATE_KEY_LENGTH); // right half of expanded key
+		EVP_DigestInit_ex (ctx, EVP_sha512 (), NULL);
+		EVP_DigestUpdate (ctx, expandedPrivateKey + EDDSA25519_PRIVATE_KEY_LENGTH,
+			EDDSA25519_PRIVATE_KEY_LENGTH); // right half of expanded key
 		EVP_DigestUpdate (ctx, buf, len); // data
 		uint8_t digest[64];
 		unsigned int dl = 64;
@@ -146,12 +147,13 @@ namespace crypto
 		EVP_MD_CTX_destroy (ctx);
 		BIGNUM * r = DecodeBN<32> (digest); // DecodeBN<64> (digest); // for test vectors
 		// calculate R
-		uint8_t R[EDDSA25519_SIGNATURE_LENGTH/2]; // we must use separate buffer because signature might be inside buf
-		EncodePoint (Normalize (MulB (digest, bnCtx), bnCtx), R); // EncodePoint (Mul (B, r, bnCtx), R); // for test vectors
+		uint8_t R[EDDSA25519_SIGNATURE_LENGTH / 2]; // we must use separate buffer because signature might be inside buf
+		EncodePoint (
+			Normalize (MulB (digest, bnCtx), bnCtx), R); // EncodePoint (Mul (B, r, bnCtx), R); // for test vectors
 		// calculate S
 		ctx = EVP_MD_CTX_create ();
-		EVP_DigestInit_ex (ctx, EVP_sha512(), NULL);
-		EVP_DigestUpdate (ctx, R, EDDSA25519_SIGNATURE_LENGTH/2); // R
+		EVP_DigestInit_ex (ctx, EVP_sha512 (), NULL);
+		EVP_DigestUpdate (ctx, R, EDDSA25519_SIGNATURE_LENGTH / 2); // R
 		EVP_DigestUpdate (ctx, publicKeyEncoded, EDDSA25519_PUBLIC_KEY_LENGTH); // public key
 		EVP_DigestUpdate (ctx, buf, len); // data
 		dl = 64;
@@ -162,14 +164,16 @@ namespace crypto
 		BIGNUM * a = DecodeBN<EDDSA25519_PRIVATE_KEY_LENGTH> (expandedPrivateKey); // left half of expanded key
 		BN_mod_mul (h, h, a, l, bnCtx); // %l
 		BN_mod_add (h, h, r, l, bnCtx); // %l
-		memcpy (signature, R, EDDSA25519_SIGNATURE_LENGTH/2);
-		EncodeBN (h, signature + EDDSA25519_SIGNATURE_LENGTH/2, EDDSA25519_SIGNATURE_LENGTH/2); // S
-		BN_free (r); BN_free (h); BN_free (a);
+		memcpy (signature, R, EDDSA25519_SIGNATURE_LENGTH / 2);
+		EncodeBN (h, signature + EDDSA25519_SIGNATURE_LENGTH / 2, EDDSA25519_SIGNATURE_LENGTH / 2); // S
+		BN_free (r);
+		BN_free (h);
+		BN_free (a);
 		BN_CTX_free (bnCtx);
 	}
 
-	void Ed25519::SignRedDSA (const uint8_t * privateKey, const uint8_t * publicKeyEncoded,
-		const uint8_t * buf, size_t len, uint8_t * signature) const
+	void Ed25519::SignRedDSA (const uint8_t * privateKey, const uint8_t * publicKeyEncoded, const uint8_t * buf,
+		size_t len, uint8_t * signature) const
 	{
 		BN_CTX * bnCtx = BN_CTX_new ();
 		// T = 80 random bytes
@@ -177,7 +181,7 @@ namespace crypto
 		RAND_bytes (T, 80);
 		// calculate r = H*(T || publickey || data)
 		EVP_MD_CTX * ctx = EVP_MD_CTX_create ();
-		EVP_DigestInit_ex (ctx, EVP_sha512(), NULL);
+		EVP_DigestInit_ex (ctx, EVP_sha512 (), NULL);
 		EVP_DigestUpdate (ctx, T, 80);
 		EVP_DigestUpdate (ctx, publicKeyEncoded, 32);
 		EVP_DigestUpdate (ctx, buf, len); // data
@@ -189,12 +193,12 @@ namespace crypto
 		BN_mod (r, r, l, bnCtx); // % l
 		EncodeBN (r, digest, 32);
 		// calculate R
-		uint8_t R[EDDSA25519_SIGNATURE_LENGTH/2]; // we must use separate buffer because signature might be inside buf
+		uint8_t R[EDDSA25519_SIGNATURE_LENGTH / 2]; // we must use separate buffer because signature might be inside buf
 		EncodePoint (Normalize (MulB (digest, bnCtx), bnCtx), R);
 		// calculate S
 		ctx = EVP_MD_CTX_create ();
-		EVP_DigestInit_ex (ctx, EVP_sha512(), NULL);
-		EVP_DigestUpdate (ctx, R, EDDSA25519_SIGNATURE_LENGTH/2); // R
+		EVP_DigestInit_ex (ctx, EVP_sha512 (), NULL);
+		EVP_DigestUpdate (ctx, R, EDDSA25519_SIGNATURE_LENGTH / 2); // R
 		EVP_DigestUpdate (ctx, publicKeyEncoded, EDDSA25519_PUBLIC_KEY_LENGTH); // public key
 		EVP_DigestUpdate (ctx, buf, len); // data
 		dl = 64;
@@ -205,27 +209,37 @@ namespace crypto
 		BIGNUM * a = DecodeBN<EDDSA25519_PRIVATE_KEY_LENGTH> (privateKey);
 		BN_mod_mul (h, h, a, l, bnCtx); // %l
 		BN_mod_add (h, h, r, l, bnCtx); // %l
-		memcpy (signature, R, EDDSA25519_SIGNATURE_LENGTH/2);
-		EncodeBN (h, signature + EDDSA25519_SIGNATURE_LENGTH/2, EDDSA25519_SIGNATURE_LENGTH/2); // S
-		BN_free (r); BN_free (h); BN_free (a);
+		memcpy (signature, R, EDDSA25519_SIGNATURE_LENGTH / 2);
+		EncodeBN (h, signature + EDDSA25519_SIGNATURE_LENGTH / 2, EDDSA25519_SIGNATURE_LENGTH / 2); // S
+		BN_free (r);
+		BN_free (h);
+		BN_free (a);
 		BN_CTX_free (bnCtx);
 	}
 
-	EDDSAPoint Ed25519::Sum (const EDDSAPoint& p1, const EDDSAPoint& p2, BN_CTX * ctx) const
+	EDDSAPoint Ed25519::Sum (const EDDSAPoint & p1, const EDDSAPoint & p2, BN_CTX * ctx) const
 	{
 		// x3 = (x1*y2+y1*x2)*(z1*z2-d*t1*t2)
 		// y3 = (y1*y2+x1*x2)*(z1*z2+d*t1*t2)
 		// z3 = (z1*z2-d*t1*t2)*(z1*z2+d*t1*t2)
 		// t3 = (y1*y2+x1*x2)*(x1*y2+y1*x2)
-		BIGNUM * x3 = BN_new (), * y3 = BN_new (), * z3 = BN_new (), * t3 = BN_new ();
+		BIGNUM *x3 = BN_new (), *y3 = BN_new (), *z3 = BN_new (), *t3 = BN_new ();
 
 		BN_mul (x3, p1.x, p2.x, ctx); // A = x1*x2
 		BN_mul (y3, p1.y, p2.y, ctx); // B = y1*y2
 
 		BN_CTX_start (ctx);
-		BIGNUM * t1 = p1.t, * t2 = p2.t;
-		if (!t1) { t1 = BN_CTX_get (ctx); BN_mul (t1, p1.x, p1.y, ctx); }
-		if (!t2) { t2 = BN_CTX_get (ctx); BN_mul (t2, p2.x, p2.y, ctx); }
+		BIGNUM *t1 = p1.t, *t2 = p2.t;
+		if (!t1)
+		{
+			t1 = BN_CTX_get (ctx);
+			BN_mul (t1, p1.x, p1.y, ctx);
+		}
+		if (!t2)
+		{
+			t2 = BN_CTX_get (ctx);
+			BN_mul (t2, p2.x, p2.y, ctx);
+		}
 		BN_mul (t3, t1, t2, ctx);
 		BN_mul (t3, t3, d, ctx); // C = d*t1*t2
 
@@ -244,7 +258,7 @@ namespace crypto
 				BN_one (z3); // D = 1
 		}
 
-		BIGNUM * E = BN_CTX_get (ctx), * F = BN_CTX_get (ctx), * G = BN_CTX_get (ctx), * H = BN_CTX_get (ctx);
+		BIGNUM *E = BN_CTX_get (ctx), *F = BN_CTX_get (ctx), *G = BN_CTX_get (ctx), *H = BN_CTX_get (ctx);
 		BN_add (E, p1.x, p1.y);
 		BN_add (F, p2.x, p2.y);
 		BN_mul (E, E, F, ctx); // (x1 + y1)*(x2 + y2)
@@ -261,13 +275,13 @@ namespace crypto
 
 		BN_CTX_end (ctx);
 
-		return EDDSAPoint {x3, y3, z3, t3};
+		return EDDSAPoint { x3, y3, z3, t3 };
 	}
 
-	void Ed25519::Double (EDDSAPoint& p, BN_CTX * ctx) const
+	void Ed25519::Double (EDDSAPoint & p, BN_CTX * ctx) const
 	{
 		BN_CTX_start (ctx);
-		BIGNUM * x2 = BN_CTX_get (ctx), * y2 = BN_CTX_get (ctx), * z2 = BN_CTX_get (ctx), * t2 = BN_CTX_get (ctx);
+		BIGNUM *x2 = BN_CTX_get (ctx), *y2 = BN_CTX_get (ctx), *z2 = BN_CTX_get (ctx), *t2 = BN_CTX_get (ctx);
 
 		BN_sqr (x2, p.x, ctx); // x2 = A = x^2
 		BN_sqr (y2, p.y, ctx); // y2 = B = y^2
@@ -284,10 +298,10 @@ namespace crypto
 		else
 			BN_one (z2); // z2 = 1
 
-		BIGNUM * E = BN_CTX_get (ctx), * F = BN_CTX_get (ctx), * G = BN_CTX_get (ctx), * H = BN_CTX_get (ctx);
+		BIGNUM *E = BN_CTX_get (ctx), *F = BN_CTX_get (ctx), *G = BN_CTX_get (ctx), *H = BN_CTX_get (ctx);
 		// E = (x+y)*(x+y)-A-B = x^2+y^2+2xy-A-B = 2xy
 		BN_mul (E, p.x, p.y, ctx);
-		BN_lshift1 (E, E);	// E =2*x*y
+		BN_lshift1 (E, E); // E =2*x*y
 		BN_sub (F, z2, t2); // F = D - C
 		BN_add (G, z2, t2); // G = D + C
 		BN_add (H, y2, x2); // H = B + A
@@ -302,11 +316,12 @@ namespace crypto
 		BN_CTX_end (ctx);
 	}
 
-	EDDSAPoint Ed25519::Mul (const EDDSAPoint& p, const BIGNUM * e, BN_CTX * ctx) const
+	EDDSAPoint Ed25519::Mul (const EDDSAPoint & p, const BIGNUM * e, BN_CTX * ctx) const
 	{
-		BIGNUM * zero = BN_new (), * one = BN_new ();
-		BN_zero (zero); BN_one (one);
-		EDDSAPoint res {zero, one};
+		BIGNUM *zero = BN_new (), *one = BN_new ();
+		BN_zero (zero);
+		BN_one (one);
+		EDDSAPoint res { zero, one };
 		if (!BN_is_zero (e))
 		{
 			int bitCount = BN_num_bits (e);
@@ -321,9 +336,10 @@ namespace crypto
 
 	EDDSAPoint Ed25519::MulB (const uint8_t * e, BN_CTX * ctx) const // B*e, e is 32 bytes Little Endian
 	{
-		BIGNUM * zero = BN_new (), * one = BN_new ();
-		BN_zero (zero); BN_one (one);
-		EDDSAPoint res {zero, one};
+		BIGNUM *zero = BN_new (), *one = BN_new ();
+		BN_zero (zero);
+		BN_one (one);
+		EDDSAPoint res { zero, one };
 		bool carry = false;
 		for (int i = 0; i < 32; i++)
 		{
@@ -341,10 +357,10 @@ namespace crypto
 			if (x > 0)
 			{
 				if (x <= 128)
-					res = Sum (res, Bi256[i][x-1], ctx);
+					res = Sum (res, Bi256[i][x - 1], ctx);
 				else
 				{
-					res = Sum (res, -Bi256[i][255-x], ctx); // -Bi[256-x]
+					res = Sum (res, -Bi256[i][255 - x], ctx); // -Bi[256-x]
 					carry = true;
 				}
 			}
@@ -353,24 +369,24 @@ namespace crypto
 		return res;
 	}
 
-	EDDSAPoint Ed25519::Normalize (const EDDSAPoint& p, BN_CTX * ctx) const
+	EDDSAPoint Ed25519::Normalize (const EDDSAPoint & p, BN_CTX * ctx) const
 	{
 		if (p.z)
 		{
-			BIGNUM * x = BN_new (), * y = BN_new ();
+			BIGNUM *x = BN_new (), *y = BN_new ();
 			BN_mod_inverse (y, p.z, q, ctx);
 			BN_mod_mul (x, p.x, y, q, ctx); // x = x/z
 			BN_mod_mul (y, p.y, y, q, ctx); // y = y/z
-			return EDDSAPoint{x, y};
+			return EDDSAPoint { x, y };
 		}
 		else
-			return EDDSAPoint{BN_dup (p.x), BN_dup (p.y)};
+			return EDDSAPoint { BN_dup (p.x), BN_dup (p.y) };
 	}
 
-	bool Ed25519::IsOnCurve (const EDDSAPoint& p, BN_CTX * ctx) const
+	bool Ed25519::IsOnCurve (const EDDSAPoint & p, BN_CTX * ctx) const
 	{
 		BN_CTX_start (ctx);
-		BIGNUM * x2 = BN_CTX_get (ctx), * y2 = BN_CTX_get (ctx), * tmp = BN_CTX_get (ctx);
+		BIGNUM *x2 = BN_CTX_get (ctx), *y2 = BN_CTX_get (ctx), *tmp = BN_CTX_get (ctx);
 		BN_sqr (x2, p.x, ctx); // x^2
 		BN_sqr (y2, p.y, ctx); // y^2
 		// y^2 - x^2 - 1 - d*x^2*y^2
@@ -388,7 +404,7 @@ namespace crypto
 	BIGNUM * Ed25519::RecoverX (const BIGNUM * y, BN_CTX * ctx) const
 	{
 		BN_CTX_start (ctx);
-		BIGNUM * y2 = BN_CTX_get (ctx), * xx = BN_CTX_get (ctx);
+		BIGNUM *y2 = BN_CTX_get (ctx), *xx = BN_CTX_get (ctx);
 		BN_sqr (y2, y, ctx); // y^2
 		// xx = (y^2 -1)*inv(d*y^2 +1)
 		BN_mul (xx, d, y2, ctx);
@@ -402,10 +418,8 @@ namespace crypto
 		// check (x^2 -xx) % q
 		BN_sqr (y2, x, ctx);
 		BN_mod_sub (y2, y2, xx, q, ctx);
-		if (!BN_is_zero (y2))
-			BN_mod_mul (x, x, I, q, ctx);
-		if (BN_is_odd (x))
-			BN_sub (x, q, x);
+		if (!BN_is_zero (y2)) BN_mod_mul (x, x, I, q, ctx);
+		if (BN_is_odd (x)) BN_sub (x, q, x);
 		BN_CTX_end (ctx);
 		return x;
 	}
@@ -414,43 +428,40 @@ namespace crypto
 	{
 		// buf is 32 bytes Little Endian, convert it to Big Endian
 		uint8_t buf1[EDDSA25519_PUBLIC_KEY_LENGTH];
-		for (size_t i = 0; i < EDDSA25519_PUBLIC_KEY_LENGTH/2; i++) // invert bytes
+		for (size_t i = 0; i < EDDSA25519_PUBLIC_KEY_LENGTH / 2; i++) // invert bytes
 		{
-			buf1[i] = buf[EDDSA25519_PUBLIC_KEY_LENGTH -1 - i];
-			buf1[EDDSA25519_PUBLIC_KEY_LENGTH -1 - i] = buf[i];
+			buf1[i] = buf[EDDSA25519_PUBLIC_KEY_LENGTH - 1 - i];
+			buf1[EDDSA25519_PUBLIC_KEY_LENGTH - 1 - i] = buf[i];
 		}
 		bool isHighestBitSet = buf1[0] & 0x80;
-		if (isHighestBitSet)
-			buf1[0] &= 0x7f; // clear highest bit
+		if (isHighestBitSet) buf1[0] &= 0x7f; // clear highest bit
 		BIGNUM * y = BN_new ();
 		BN_bin2bn (buf1, EDDSA25519_PUBLIC_KEY_LENGTH, y);
 		BIGNUM * x = RecoverX (y, ctx);
-		if ((bool)BN_is_bit_set (x, 0) != isHighestBitSet)
-			BN_sub (x, q, x); // x = q - x
-		BIGNUM * z = BN_new (), * t = BN_new ();
-		BN_one (z); BN_mod_mul (t, x, y, q, ctx); // pre-calculate t
-		EDDSAPoint p {x, y, z, t};
-		if (!IsOnCurve (p, ctx))
-			LogPrint (eLogError, "Decoded point is not on 25519");
+		if ((bool)BN_is_bit_set (x, 0) != isHighestBitSet) BN_sub (x, q, x); // x = q - x
+		BIGNUM *z = BN_new (), *t = BN_new ();
+		BN_one (z);
+		BN_mod_mul (t, x, y, q, ctx); // pre-calculate t
+		EDDSAPoint p { x, y, z, t };
+		if (!IsOnCurve (p, ctx)) LogPrint (eLogError, "Decoded point is not on 25519");
 		return p;
 	}
 
-	void Ed25519::EncodePoint (const EDDSAPoint& p, uint8_t * buf) const
+	void Ed25519::EncodePoint (const EDDSAPoint & p, uint8_t * buf) const
 	{
-		EncodeBN (p.y, buf,EDDSA25519_PUBLIC_KEY_LENGTH);
+		EncodeBN (p.y, buf, EDDSA25519_PUBLIC_KEY_LENGTH);
 		if (BN_is_bit_set (p.x, 0)) // highest bit
 			buf[EDDSA25519_PUBLIC_KEY_LENGTH - 1] |= 0x80; // set highest bit
 	}
 
-	template<int len>
-	BIGNUM * Ed25519::DecodeBN (const uint8_t * buf) const
+	template <int len> BIGNUM * Ed25519::DecodeBN (const uint8_t * buf) const
 	{
 		// buf is Little Endian convert it to Big Endian
 		uint8_t buf1[len];
-		for (size_t i = 0; i < len/2; i++) // invert bytes
+		for (size_t i = 0; i < len / 2; i++) // invert bytes
 		{
-			buf1[i] = buf[len -1 - i];
-			buf1[len -1 - i] = buf[i];
+			buf1[i] = buf[len - 1 - i];
+			buf1[len - 1 - i] = buf[i];
 		}
 		BIGNUM * res = BN_new ();
 		BN_bin2bn (buf1, len, res);
@@ -461,11 +472,11 @@ namespace crypto
 	{
 		bn2buf (bn, buf, len);
 		// To Little Endian
-		for (size_t i = 0; i < len/2; i++) // invert bytes
+		for (size_t i = 0; i < len / 2; i++) // invert bytes
 		{
 			uint8_t tmp = buf[i];
-			buf[i] = buf[len -1 - i];
-			buf[len -1 - i] = tmp;
+			buf[i] = buf[len - 1 - i];
+			buf[len - 1 - i] = tmp;
 		}
 	}
 
@@ -484,7 +495,8 @@ namespace crypto
 		BN_CTX_free (ctx);
 	}
 
-	void Ed25519::BlindPrivateKey (const uint8_t * priv, const uint8_t * seed, uint8_t * blindedPriv, uint8_t * blindedPub)
+	void Ed25519::BlindPrivateKey (
+		const uint8_t * priv, const uint8_t * seed, uint8_t * blindedPriv, uint8_t * blindedPub)
 	{
 		BN_CTX * ctx = BN_CTX_new ();
 		// calculate alpha = seed mod l
@@ -498,7 +510,8 @@ namespace crypto
 		// A' = DERIVE_PUBLIC(a')
 		auto A1 = MulB (blindedPriv, ctx);
 		EncodePublicKey (A1, blindedPub, ctx);
-		BN_free (alpha); BN_free (p);
+		BN_free (alpha);
+		BN_free (p);
 		BN_CTX_free (ctx);
 	}
 
@@ -523,11 +536,11 @@ namespace crypto
 	}
 
 	static std::unique_ptr<Ed25519> g_Ed25519;
-	std::unique_ptr<Ed25519>& GetEd25519 ()
+	std::unique_ptr<Ed25519> & GetEd25519 ()
 	{
 		if (!g_Ed25519)
 		{
-			auto c = new Ed25519();
+			auto c = new Ed25519 ();
 			if (!g_Ed25519) // make sure it was not created already
 				g_Ed25519.reset (c);
 			else

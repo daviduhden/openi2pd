@@ -25,25 +25,22 @@ namespace data
 	typedef int FamilyID;
 	class Families
 	{
-		public:
+	public:
+		Families ();
+		~Families ();
+		void LoadCertificates ();
+		bool VerifyFamily (const std::string & family, const IdentHash & ident, std::string_view signature,
+			const char * key = nullptr) const;
+		FamilyID GetFamilyID (const std::string & family) const;
 
-			Families ();
-			~Families ();
-			void LoadCertificates ();
-			bool VerifyFamily (const std::string& family, const IdentHash& ident,
-				std::string_view signature, const char * key = nullptr) const;
-			FamilyID GetFamilyID (const std::string& family) const;
+	private:
+		void LoadCertificate (const std::string & filename);
 
-		private:
-
-			void LoadCertificate (const std::string& filename);
-
-		private:
-
-			std::map<std::string, std::pair<EVP_PKEY *, FamilyID> > m_SigningKeys; // family -> (verification pkey, id)
+	private:
+		std::map<std::string, std::pair<EVP_PKEY *, FamilyID>> m_SigningKeys; // family -> (verification pkey, id)
 	};
 
-	std::string CreateFamilySignature (const std::string& family, const IdentHash& ident);
+	std::string CreateFamilySignature (const std::string & family, const IdentHash & ident);
 	// return base64 signature of empty string in case of failure
 }
 }

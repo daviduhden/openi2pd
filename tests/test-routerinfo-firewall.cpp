@@ -17,7 +17,7 @@ static Endpoint Make (const char * address, uint16_t port, Transport transport)
 	return *endpoint;
 }
 
-static void AssertSafeRule (const std::optional<std::string>& rule)
+static void AssertSafeRule (const std::optional<std::string> & rule)
 {
 	assert (rule.has_value ());
 	assert (!rule->empty ());
@@ -74,26 +74,18 @@ int main ()
 
 	// Historical -f output must stay byte-for-byte stable.
 	options.backend = Backend::IptablesLegacy;
-	assert (Render (ntcp4, options) ==
-		" -A OUTPUT -p tcp -d 192.0.2.10 --dport 12345 -j ACCEPT");
-	assert (Render (ssu6, options) ==
-		" -A OUTPUT -p udp -d 2001:db8::20 --dport 4567 -j ACCEPT");
+	assert (Render (ntcp4, options) == " -A OUTPUT -p tcp -d 192.0.2.10 --dport 12345 -j ACCEPT");
+	assert (Render (ssu6, options) == " -A OUTPUT -p udp -d 2001:db8::20 --dport 4567 -j ACCEPT");
 
 	options.backend = Backend::Iptables;
-	assert (Render (ntcp4, options) ==
-		"iptables -A OUTPUT -p tcp -d 192.0.2.10 --dport 12345 -j ACCEPT");
-	assert (Render (ntcp6, options) ==
-		"ip6tables -A OUTPUT -p tcp -d 2001:db8::10 --dport 12345 -j ACCEPT");
-	assert (Render (ssu4, options) ==
-		"iptables -A OUTPUT -p udp -d 198.51.100.20 --dport 4567 -j ACCEPT");
-	assert (Render (ssu6, options) ==
-		"ip6tables -A OUTPUT -p udp -d 2001:db8::20 --dport 4567 -j ACCEPT");
+	assert (Render (ntcp4, options) == "iptables -A OUTPUT -p tcp -d 192.0.2.10 --dport 12345 -j ACCEPT");
+	assert (Render (ntcp6, options) == "ip6tables -A OUTPUT -p tcp -d 2001:db8::10 --dport 12345 -j ACCEPT");
+	assert (Render (ssu4, options) == "iptables -A OUTPUT -p udp -d 198.51.100.20 --dport 4567 -j ACCEPT");
+	assert (Render (ssu6, options) == "ip6tables -A OUTPUT -p udp -d 2001:db8::20 --dport 4567 -j ACCEPT");
 
 	options.backend = Backend::Nftables;
-	assert (Render (ntcp4, options) ==
-		"nft add rule inet filter output ip daddr 192.0.2.10 tcp dport 12345 accept");
-	assert (Render (ssu6, options) ==
-		"nft add rule inet filter output ip6 daddr 2001:db8::20 udp dport 4567 accept");
+	assert (Render (ntcp4, options) == "nft add rule inet filter output ip daddr 192.0.2.10 tcp dport 12345 accept");
+	assert (Render (ssu6, options) == "nft add rule inet filter output ip6 daddr 2001:db8::20 udp dport 4567 accept");
 
 	// Family-specific nftables output never silently widens to the other family.
 	options.nftFamily = "ip";
@@ -167,10 +159,8 @@ int main ()
 	assert (EscapePowerShell ("a'b") == "a''b");
 
 	options.backend = Backend::Pf;
-	assert (Render (ntcp4, options) ==
-		"pass out quick inet proto tcp to 192.0.2.10 port 12345 keep state");
-	assert (Render (ssu6, options) ==
-		"pass out quick inet6 proto udp to 2001:db8::20 port 4567 keep state");
+	assert (Render (ntcp4, options) == "pass out quick inet proto tcp to 192.0.2.10 port 12345 keep state");
+	assert (Render (ssu6, options) == "pass out quick inet6 proto udp to 2001:db8::20 port 4567 keep state");
 
 	// Deduplication is independent of the rendering backend.
 	assert (EndpointKey (ntcp4) == EndpointKey (Make ("192.0.2.10", 12345, Transport::NTCP2)));

@@ -12,9 +12,7 @@ package org.openi2pd.router;
  * length. The Java-side limit is a second defence against a malformed or
  * hostile native/library response.</p>
  */
-public record LogEntry(long sequence, long timestampSeconds, String level,
-                       String message) {
-
+public record LogEntry(long sequence, long timestampSeconds, String level, String message) {
     /** Upper bound accepted from the native ring (native limit is 512). */
     private static final int MAX_MESSAGE_LENGTH = 16 * 1024;
 

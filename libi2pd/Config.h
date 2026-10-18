@@ -26,8 +26,10 @@
  *   GetOption()    -- may be called after Finalize()
  */
 
-namespace i2p {
-namespace config {
+namespace i2p
+{
+namespace config
+{
 	extern boost::program_options::variables_map m_Options;
 
 	/**
@@ -35,7 +37,7 @@ namespace config {
 	 *
 	 * Should be called before any Parse* functions.
 	 */
-	void Init();
+	void Init ();
 
 	/**
 	 * @brief Parse cmdline parameters, and show help if requested
@@ -51,7 +53,7 @@ namespace config {
 	 *
 	 * Other exceptions will be passed to higher level.
 	 */
-	void ParseCmdline(int argc, char* argv[], bool ignoreUnknown = false);
+	void ParseCmdline (int argc, char * argv[], bool ignoreUnknown = false);
 
 	/**
 	 * @brief Load and parse given config file
@@ -66,12 +68,12 @@ namespace config {
 	 *
 	 * Other exceptions will be passed to higher level.
 	 */
-	void ParseConfig(const std::string& path);
+	void ParseConfig (const std::string & path);
 
 	/**
 	 * @brief Used to combine options from cmdline, config and default values
 	 */
-	void Finalize();
+	void Finalize ();
 
 	/**
 	 * @brief Accessor to parameters by name
@@ -81,26 +83,24 @@ namespace config {
 	 *
 	 * Example: uint16_t port; GetOption("sam.port", port);
 	 */
-	template<typename T>
-	bool GetOption(const char *name, T& value)
+	template <typename T> bool GetOption (const char * name, T & value)
 	{
-		if (!m_Options.count(name))
+		if (!m_Options.count (name))
 		{
-			value = T();
+			value = T ();
 			return false;
 		}
-		value = m_Options[name].as<T>();
+		value = m_Options[name].as<T> ();
 		return true;
 	}
 
-	template<typename T>
-	bool GetOption(const std::string& name, T& value)
+	template <typename T> bool GetOption (const std::string & name, T & value)
 	{
 		return GetOption (name.c_str (), value);
 	}
 
-	bool GetOptionAsAny(const char *name, boost::any& value);
-	bool GetOptionAsAny(const std::string& name, boost::any& value);
+	bool GetOptionAsAny (const char * name, boost::any & value);
+	bool GetOptionAsAny (const std::string & name, boost::any & value);
 
 	/**
 	 * @brief Set value of given parameter
@@ -110,13 +110,11 @@ namespace config {
 	 *
 	 * Example: uint16_t port = 2827; SetOption("bob.port", port);
 	 */
-	template<typename T>
-	bool SetOption(const char *name, const T& value)
+	template <typename T> bool SetOption (const char * name, const T & value)
 	{
-		if (!m_Options.count(name))
-			return false;
-		m_Options.at(name).value() = value;
-		notify(m_Options);
+		if (!m_Options.count (name)) return false;
+		m_Options.at (name).value () = value;
+		notify (m_Options);
 		return true;
 	}
 
@@ -125,7 +123,7 @@ namespace config {
 	 * @param name Name of checked parameter
 	 * @return true if value set to default, false otherwise
 	 */
-	bool IsDefault(const char *name);
+	bool IsDefault (const char * name);
 }
 }
 

@@ -36,8 +36,9 @@ public class BootUpReceiver extends BroadcastReceiver {
             return;
         }
         if (!RouterService.requestStart(context)) {
-            Log.w(TAG, "unable to start router service after boot; "
-                    + "Android may require a user-initiated start");
+            Log.w(TAG,
+                    "unable to start router service after boot; "
+                            + "Android may require a user-initiated start");
         }
     }
 }

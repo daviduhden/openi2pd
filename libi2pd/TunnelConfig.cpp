@@ -38,7 +38,7 @@ namespace tunnel
 		prev = nullptr;
 	}
 
-	void TunnelHopConfig::SetNextIdent (const i2p::data::IdentHash& ident)
+	void TunnelHopConfig::SetNextIdent (const i2p::data::IdentHash & ident)
 	{
 		nextIdent = ident;
 		isEndpoint = false;
@@ -46,7 +46,7 @@ namespace tunnel
 		if (!nextTunnelID) nextTunnelID = 1; // tunnelID can't be zero
 	}
 
-	void TunnelHopConfig::SetReplyHop (uint32_t replyTunnelID, const i2p::data::IdentHash& replyIdent)
+	void TunnelHopConfig::SetReplyHop (uint32_t replyTunnelID, const i2p::data::IdentHash & replyIdent)
 	{
 		nextIdent = replyIdent;
 		nextTunnelID = replyTunnelID;
@@ -102,7 +102,7 @@ namespace tunnel
 		uint8_t flag = 0;
 		if (isGateway) flag |= TUNNEL_BUILD_RECORD_GATEWAY_FLAG;
 		if (isEndpoint) flag |= TUNNEL_BUILD_RECORD_ENDPOINT_FLAG;
-		uint8_t clearText[SHORT_REQUEST_RECORD_CLEAR_TEXT_SIZE ];
+		uint8_t clearText[SHORT_REQUEST_RECORD_CLEAR_TEXT_SIZE];
 		htobe32buf (clearText + SHORT_REQUEST_RECORD_RECEIVE_TUNNEL_OFFSET, tunnelID);
 		htobe32buf (clearText + SHORT_REQUEST_RECORD_NEXT_TUNNEL_OFFSET, nextTunnelID);
 		memcpy (clearText + SHORT_REQUEST_RECORD_NEXT_IDENT_OFFSET, nextIdent, 32);
@@ -110,7 +110,7 @@ namespace tunnel
 		memset (clearText + SHORT_REQUEST_RECORD_MORE_FLAGS_OFFSET, 0, 2);
 		clearText[SHORT_REQUEST_RECORD_LAYER_ENCRYPTION_TYPE] = 0; // AES
 		htobe32buf (clearText + SHORT_REQUEST_RECORD_REQUEST_TIME_OFFSET, i2p::util::GetMinutesSinceEpoch ());
-		htobe32buf (clearText + SHORT_REQUEST_RECORD_REQUEST_EXPIRATION_OFFSET , 600); // +10 minutes
+		htobe32buf (clearText + SHORT_REQUEST_RECORD_REQUEST_EXPIRATION_OFFSET, 600); // +10 minutes
 		htobe32buf (clearText + SHORT_REQUEST_RECORD_SEND_MSG_ID_OFFSET, replyMsgID);
 		i2p::util::Mapping options;
 		auto optionsSize = options.ToBuffer (clearText + SHORT_REQUEST_RECORD_TUNNEL_BUILD_OPTIONS_OFFSET,
@@ -119,7 +119,7 @@ namespace tunnel
 			memset (clearText + SHORT_REQUEST_RECORD_TUNNEL_BUILD_OPTIONS_OFFSET + optionsSize, 0,
 				SHORT_REQUEST_RECORD_CLEAR_TEXT_SIZE - SHORT_REQUEST_RECORD_TUNNEL_BUILD_OPTIONS_OFFSET - optionsSize);
 		// encrypt
-		uint8_t * record = records + recordIndex*SHORT_TUNNEL_BUILD_RECORD_SIZE;
+		uint8_t * record = records + recordIndex * SHORT_TUNNEL_BUILD_RECORD_SIZE;
 		EncryptECIES (clearText, record + SHORT_REQUEST_RECORD_ENCRYPTED_OFFSET);
 		// derive keys
 		i2p::crypto::HKDF (m_CK, nullptr, 0, "SMTunnelReplyKey", m_CK);
@@ -130,7 +130,8 @@ namespace tunnel
 		{
 			i2p::crypto::HKDF (m_CK, nullptr, 0, "TunnelLayerIVKey", m_CK);
 			memcpy (ivKey, m_CK + 32, 32);
-			i2p::crypto::HKDF (m_CK, nullptr, 0, "RGarlicKeyAndTag", m_CK); // OTBRM garlic key m_CK + 32, tag first 8 bytes of m_CK
+			i2p::crypto::HKDF (
+				m_CK, nullptr, 0, "RGarlicKeyAndTag", m_CK); // OTBRM garlic key m_CK + 32, tag first 8 bytes of m_CK
 		}
 		else
 			memcpy (ivKey, m_CK, 32); // last HKDF
@@ -139,12 +140,12 @@ namespace tunnel
 
 	bool ShortECIESTunnelHopConfig::DecryptBuildResponseRecord (uint8_t * records) const
 	{
-		uint8_t * record = records + recordIndex*SHORT_TUNNEL_BUILD_RECORD_SIZE;
+		uint8_t * record = records + recordIndex * SHORT_TUNNEL_BUILD_RECORD_SIZE;
 		uint8_t nonce[12];
 		memset (nonce, 0, 12);
 		nonce[4] = recordIndex; // nonce is record index
-		if (!i2p::crypto::AEADChaCha20Poly1305 (record, SHORT_TUNNEL_BUILD_RECORD_SIZE - 16,
-			m_H, 32, replyKey, nonce, record, SHORT_TUNNEL_BUILD_RECORD_SIZE - 16, false)) // decrypt
+		if (!i2p::crypto::AEADChaCha20Poly1305 (record, SHORT_TUNNEL_BUILD_RECORD_SIZE - 16, m_H, 32, replyKey, nonce,
+				record, SHORT_TUNNEL_BUILD_RECORD_SIZE - 16, false)) // decrypt
 		{
 			LogPrint (eLogWarning, "Tunnel: Response AEAD decryption failed");
 			return false;
@@ -154,7 +155,7 @@ namespace tunnel
 
 	void ShortECIESTunnelHopConfig::DecryptRecord (uint8_t * records, int index) const
 	{
-		uint8_t * record = records + index*SHORT_TUNNEL_BUILD_RECORD_SIZE;
+		uint8_t * record = records + index * SHORT_TUNNEL_BUILD_RECORD_SIZE;
 		uint8_t nonce[12];
 		memset (nonce, 0, 12);
 		nonce[4] = index; // nonce is index
@@ -168,15 +169,16 @@ namespace tunnel
 
 	void ShortPhonyTunnelHopConfig::CreateBuildRequestRecord (uint8_t * records, uint32_t replyMsgID)
 	{
-		uint8_t * record = records + recordIndex*SHORT_TUNNEL_BUILD_RECORD_SIZE;
+		uint8_t * record = records + recordIndex * SHORT_TUNNEL_BUILD_RECORD_SIZE;
 		memcpy (record + BUILD_REQUEST_RECORD_TO_PEER_OFFSET, (const uint8_t *)i2p::context.GetIdentHash (), 16);
-		memcpy (record + SHORT_REQUEST_RECORD_ENCRYPTED_OFFSET, i2p::transport::transports.GetNextX25519KeysPair ()->GetPublicKey (), 32);
+		memcpy (record + SHORT_REQUEST_RECORD_ENCRYPTED_OFFSET,
+			i2p::transport::transports.GetNextX25519KeysPair ()->GetPublicKey (), 32);
 		RAND_bytes (record + 48, SHORT_TUNNEL_BUILD_RECORD_SIZE - 48);
 	}
 
-	TunnelConfig::TunnelConfig (const std::vector<std::shared_ptr<const i2p::data::IdentityEx> >& peers,
-		i2p::data::RouterInfo::CompatibleTransports farEndTransports):
-		m_FarEndTransports (farEndTransports)
+	TunnelConfig::TunnelConfig (const std::vector<std::shared_ptr<const i2p::data::IdentityEx>> & peers,
+		i2p::data::RouterInfo::CompatibleTransports farEndTransports)
+		: m_FarEndTransports (farEndTransports)
 	{
 		// inbound
 		CreatePeers (peers);
@@ -186,10 +188,10 @@ namespace tunnel
 			LogPrint (eLogError, "Tunnel: Can't create inbound tunnel config with no peers");
 	}
 
-	TunnelConfig::TunnelConfig (const std::vector<std::shared_ptr<const i2p::data::IdentityEx> >& peers,
-		uint32_t replyTunnelID, const i2p::data::IdentHash& replyIdent,
-		i2p::data::RouterInfo::CompatibleTransports farEndTransports):
-		m_FarEndTransports (farEndTransports)
+	TunnelConfig::TunnelConfig (const std::vector<std::shared_ptr<const i2p::data::IdentityEx>> & peers,
+		uint32_t replyTunnelID, const i2p::data::IdentHash & replyIdent,
+		i2p::data::RouterInfo::CompatibleTransports farEndTransports)
+		: m_FarEndTransports (farEndTransports)
 	{
 		// outbound
 		CreatePeers (peers);
@@ -202,10 +204,10 @@ namespace tunnel
 			LogPrint (eLogError, "Tunnel: Can't create outbound tunnel config with no peers");
 	}
 
-	void TunnelConfig::CreatePeers (const std::vector<std::shared_ptr<const i2p::data::IdentityEx> >& peers)
+	void TunnelConfig::CreatePeers (const std::vector<std::shared_ptr<const i2p::data::IdentityEx>> & peers)
 	{
 		TunnelHopConfig * prev = nullptr;
-		for (const auto& it: peers)
+		for (const auto & it : peers)
 		{
 			TunnelHopConfig * hop = new ShortECIESTunnelHopConfig (it);
 			if (prev)
@@ -232,8 +234,10 @@ namespace tunnel
 	{
 		if (m_LastHop && !m_LastHop->ident)
 		{
-			if (m_LastHop->prev) m_LastHop->prev->next = nullptr;
-			else m_FirstHop = nullptr;
+			if (m_LastHop->prev)
+				m_LastHop->prev->next = nullptr;
+			else
+				m_FirstHop = nullptr;
 			auto tmp = m_LastHop;
 			m_LastHop = m_LastHop->prev;
 			delete tmp;

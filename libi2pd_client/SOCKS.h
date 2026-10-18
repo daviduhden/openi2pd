@@ -25,36 +25,36 @@ namespace i2p
 {
 namespace proxy
 {
-	class SOCKSServer: public i2p::client::TCPIPAcceptor
+	class SOCKSServer : public i2p::client::TCPIPAcceptor
 	{
-		public:
+	public:
+		SOCKSServer (const std::string & name, const std::string & address, uint16_t port, bool outEnable,
+			const std::string & outAddress, uint16_t outPort,
+			std::shared_ptr<i2p::client::ClientDestination> localDestination = nullptr);
+		~SOCKSServer () { };
 
-			SOCKSServer(const std::string& name, const std::string& address, uint16_t port, bool outEnable, const std::string& outAddress, uint16_t outPort,
-				std::shared_ptr<i2p::client::ClientDestination> localDestination = nullptr);
-			~SOCKSServer() {};
+		void SetUpstreamProxy (const std::string & addr, const uint16_t port);
+		boost::asio::ip::udp::endpoint GetNextLocalUDPEndpoint ();
+		void ReleaseLocalUDPPort (uint16_t port);
 
-			void SetUpstreamProxy(const std::string & addr, const uint16_t port);
-			boost::asio::ip::udp::endpoint GetNextLocalUDPEndpoint ();
-			void ReleaseLocalUDPPort (uint16_t port);
+		std::string_view GetResolvedAddress (const boost::asio::ip::address_v4 & addr) const;
+		const boost::asio::ip::address_v4 & ResolveAddress (std::string_view resolved);
+		bool HasResolvedAddresses () const { return !m_Resolved.empty (); }
 
-			std::string_view GetResolvedAddress (const boost::asio::ip::address_v4& addr) const;
-			const boost::asio::ip::address_v4& ResolveAddress (std::string_view resolved);
-			bool HasResolvedAddresses () const { return !m_Resolved.empty (); }
+	protected:
+		// Implements TCPIPAcceptor
+		std::shared_ptr<i2p::client::I2PServiceHandler> CreateHandler (
+			std::shared_ptr<boost::asio::ip::tcp::socket> socket) override;
+		const char * GetName () const override { return m_Name.c_str (); }
 
-		protected:
-
-			// Implements TCPIPAcceptor
-			std::shared_ptr<i2p::client::I2PServiceHandler> CreateHandler(std::shared_ptr<boost::asio::ip::tcp::socket> socket) override;
-			const char* GetName()const override { return m_Name.c_str (); }
-
-		private:
-
-			std::string m_Name;
-			std::string m_UpstreamProxyAddress;
-			uint16_t m_UpstreamProxyPort;
-			bool m_UseUpstreamProxy;
-			std::set<uint16_t> m_UDPPorts;
-			std::map<boost::asio::ip::address_v4, std::pair<std::string, uint64_t> > m_Resolved; // for torsocks, addr4->(i2p address, resolve time in milliseconds)
+	private:
+		std::string m_Name;
+		std::string m_UpstreamProxyAddress;
+		uint16_t m_UpstreamProxyPort;
+		bool m_UseUpstreamProxy;
+		std::set<uint16_t> m_UDPPorts;
+		std::map<boost::asio::ip::address_v4, std::pair<std::string, uint64_t>>
+			m_Resolved; // for torsocks, addr4->(i2p address, resolve time in milliseconds)
 	};
 
 	typedef SOCKSServer SOCKSProxy;

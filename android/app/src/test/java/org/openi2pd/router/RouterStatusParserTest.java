@@ -18,42 +18,20 @@ import java.util.List;
  * and do not require an emulator.
  */
 public class RouterStatusParserTest {
-
     private static RouterSnapshot parse(String text) {
-        return RouterStatusParser.parseStatus(text,
-                DaemonWrapper.State.startedOkay,
-                ServiceStates.NONE,
-                0L,
-                "",
-                "ok");
+        return RouterStatusParser.parseStatus(
+                text, DaemonWrapper.State.startedOkay, ServiceStates.NONE, 0L, "", "ok");
     }
 
     @Test
     public void parsesValidSnapshot() {
-        RouterSnapshot snapshot = parse(String.join("\n",
-                "status=OK",
-                "statusCode=0",
-                "error=none",
-                "uptime=3600",
-                "online=1",
-                "ntcp2=1",
-                "ssu2=0",
-                "peers=12",
-                "routers=250",
-                "inbound=1",
-                "outbound=2",
-                "transit=3",
-                "reseeding=0",
-                "inRate=1024",
-                "outRate=2048",
-                "inRate15=1000",
-                "outRate15=2000",
-                "totalIn=100000",
-                "totalOut=90000",
-                "totalTransit=5000",
-                "ipv4=NTCP2|192.0.2.1|1234|1;SSU2|192.0.2.1|1234|0",
-                "ipv6=NTCP2|[2001:db8::1]|1234|1",
-                "unknown=future"));
+        RouterSnapshot snapshot =
+                parse(String.join("\n", "status=OK", "statusCode=0", "error=none", "uptime=3600",
+                        "online=1", "ntcp2=1", "ssu2=0", "peers=12", "routers=250", "inbound=1",
+                        "outbound=2", "transit=3", "reseeding=0", "inRate=1024", "outRate=2048",
+                        "inRate15=1000", "outRate15=2000", "totalIn=100000", "totalOut=90000",
+                        "totalTransit=5000", "ipv4=NTCP2|192.0.2.1|1234|1;SSU2|192.0.2.1|1234|0",
+                        "ipv6=NTCP2|[2001:db8::1]|1234|1", "unknown=future"));
 
         assertEquals(DaemonWrapper.State.startedOkay, snapshot.state());
         assertEquals("OK", snapshot.routerStatus());
@@ -74,15 +52,9 @@ public class RouterStatusParserTest {
 
     @Test
     public void malformedSnapshotIsBoundedAndSafe() {
-        RouterSnapshot snapshot = parse(String.join("\n",
-                "status=Error",
-                "statusCode=-1",
-                "error=snapshot-failed",
-                "online=0",
-                "uptime=-5",
-                "peers=999999999999999999999",
-                "ipv4=broken",
-                "ipv6=SSU2|example.com|0|0"));
+        RouterSnapshot snapshot = parse(String.join("\n", "status=Error", "statusCode=-1",
+                "error=snapshot-failed", "online=0", "uptime=-5", "peers=999999999999999999999",
+                "ipv4=broken", "ipv6=SSU2|example.com|0|0"));
 
         assertEquals("Error", snapshot.routerStatus());
         assertEquals(0L, snapshot.uptimeSeconds());
@@ -93,8 +65,7 @@ public class RouterStatusParserTest {
 
     @Test
     public void parsesBoundedLogRecords() {
-        List<LogEntry> logs = RouterStatusParser.parseLogs(
-                "10|1700000000|2|error text|with pipe\n"
+        List<LogEntry> logs = RouterStatusParser.parseLogs("10|1700000000|2|error text|with pipe\n"
                         + "9|1699999999|4|older\n"
                         + "11|1700000001|5|debug\n"
                         + "broken\n"
@@ -111,7 +82,8 @@ public class RouterStatusParserTest {
 
     @Test
     public void rejectsOversizedRawInput() {
-        String huge = "status=" + "x".repeat(129 * 1024);
+        String huge = "status="
+                + "x".repeat(129 * 1024);
         RouterSnapshot snapshot = parse(huge);
         assertEquals("Unknown", snapshot.routerStatus());
         assertEquals(0, snapshot.peers());
@@ -120,14 +92,9 @@ public class RouterStatusParserTest {
 
     @Test
     public void duplicateKeysUseTheLastValueAndIgnoreMalformedLines() {
-        RouterSnapshot snapshot = parse(String.join("\n",
-                "peers=1",
-                "peers=7",
-                "  status = Firewalled  ",
-                "not a key value line",
-                "=orphan",
-                "routers=not-a-number",
-                "outbound=-4"));
+        RouterSnapshot snapshot =
+                parse(String.join("\n", "peers=1", "peers=7", "  status = Firewalled  ",
+                        "not a key value line", "=orphan", "routers=not-a-number", "outbound=-4"));
 
         assertEquals(7, snapshot.peers());
         assertEquals("Firewalled", snapshot.routerStatus());
@@ -137,8 +104,7 @@ public class RouterStatusParserTest {
 
     @Test
     public void numericLogLevelsMapToTheDocumentedNames() {
-        List<LogEntry> logs = RouterStatusParser.parseLogs(
-                "1|10|0|none\n"
+        List<LogEntry> logs = RouterStatusParser.parseLogs("1|10|0|none\n"
                         + "2|11|1|critical\n"
                         + "3|12|2|error\n"
                         + "4|13|3|warning\n"
@@ -164,8 +130,7 @@ public class RouterStatusParserTest {
             if (i > 0) {
                 ipv4.append(';');
             }
-            ipv4.append("NTCP2|192.0.2.").append(i % 250 + 1)
-                    .append("|1234|1");
+            ipv4.append("NTCP2|192.0.2.").append(i % 250 + 1).append("|1234|1");
         }
         RouterSnapshot snapshot = parse("ipv4=" + ipv4);
 

@@ -16,20 +16,21 @@
 //for std::transform
 #include <algorithm>
 
-namespace i2p {
-namespace log {
+namespace i2p
+{
+namespace log
+{
 	static Log logger;
 	/**
 	 * @brief Maps our loglevel to their symbolic name
 	 */
-	static const char *g_LogLevelStr[eNumLogLevels] =
-	{
-		"none",     // eLogNone
+	static const char * g_LogLevelStr[eNumLogLevels] = {
+		"none", // eLogNone
 		"critical", // eLogCritical
-		"error",    // eLogError
-		"warn",     // eLogWarning
-		"info",     // eLogInfo
-		"debug"     // eLogDebug
+		"error", // eLogError
+		"warn", // eLogWarning
+		"info", // eLogInfo
+		"debug" // eLogDebug
 	};
 
 	/**
@@ -37,16 +38,16 @@ namespace log {
 	 * @note Using ISO 6429 (ANSI) color sequences
 	 */
 #ifdef _WIN32
-	static const char *LogMsgColors[] = { "", "", "", "", "", "", "" };
+	static const char * LogMsgColors[] = { "", "", "", "", "", "", "" };
 #else /* UNIX */
-	static const char *LogMsgColors[] = {
+	static const char * LogMsgColors[] = {
 		"\033[1;32m", /* none:    green */
 		"\033[1;41m", /* critical: red background */
 		"\033[1;31m", /* error:   red */
 		"\033[1;33m", /* warning: yellow */
 		"\033[1;36m", /* info:    cyan */
 		"\033[1;34m", /* debug:   blue */
-		"\033[0m"     /* reset */
+		"\033[0m" /* reset */
 	};
 #endif
 
@@ -55,25 +56,33 @@ namespace log {
 	 * @brief Maps our log levels to syslog one
 	 * @return syslog priority LOG_*, as defined in syslog.h
 	 */
-	static inline int GetSyslogPrio (enum LogLevel l) {
+	static inline int GetSyslogPrio (enum LogLevel l)
+	{
 		int priority = LOG_DEBUG;
-		switch (l) {
-			case eLogNone    : priority = LOG_CRIT;    break;
-			case eLogCritical: priority = LOG_CRIT;    break;
-			case eLogError   : priority = LOG_ERR;     break;
-			case eLogWarning : priority = LOG_WARNING; break;
-			case eLogInfo    : priority = LOG_INFO;    break;
-			case eLogDebug   : priority = LOG_DEBUG;   break;
-			default          : priority = LOG_DEBUG;   break;
+		switch (l)
+		{
+		case eLogNone: priority = LOG_CRIT; break;
+		case eLogCritical: priority = LOG_CRIT; break;
+		case eLogError: priority = LOG_ERR; break;
+		case eLogWarning: priority = LOG_WARNING; break;
+		case eLogInfo: priority = LOG_INFO; break;
+		case eLogDebug: priority = LOG_DEBUG; break;
+		default: priority = LOG_DEBUG; break;
 		}
 		return priority;
 	}
 #endif
 
-	Log::Log():
-	m_Destination(eLogStdout), m_MinLevel(eLogInfo),
-	m_LogStream (nullptr), m_Logfile(""), m_HasColors(true), m_TimeFormat("%H:%M:%S"),
-	m_IsRunning (false), m_Thread (nullptr), m_RecentSequence (0)
+	Log::Log ()
+		: m_Destination (eLogStdout)
+		, m_MinLevel (eLogInfo)
+		, m_LogStream (nullptr)
+		, m_Logfile ("")
+		, m_HasColors (true)
+		, m_TimeFormat ("%H:%M:%S")
+		, m_IsRunning (false)
+		, m_Thread (nullptr)
+		, m_RecentSequence (0)
 	{
 	}
 
@@ -96,17 +105,15 @@ namespace log {
 		switch (m_Destination)
 		{
 #ifndef _WIN32
-			case eLogSyslog :
-				closelog();
-				break;
+		case eLogSyslog: closelog (); break;
 #endif
-			case eLogFile:
-			case eLogStream:
-					if (m_LogStream) m_LogStream->flush();
-				break;
-			default:
-				/* do nothing */
-				break;
+		case eLogFile:
+		case eLogStream:
+			if (m_LogStream) m_LogStream->flush ();
+			break;
+		default:
+			/* do nothing */
+			break;
 		}
 		m_IsRunning = false;
 		m_Queue.WakeUp ();
@@ -118,40 +125,63 @@ namespace log {
 		}
 	}
 
-	std::string str_tolower(std::string s) {
-		std::transform(s.begin(), s.end(), s.begin(),
+	std::string str_tolower (std::string s)
+	{
+		std::transform (s.begin (), s.end (), s.begin (),
 			// static_cast<int(*)(int)>(std::tolower)      // wrong
 			// [](int c){ return std::tolower(c); }        // wrong
 			// [](char c){ return std::tolower(c); }       // wrong
-			[](unsigned char c){ return std::tolower(c); } // correct
+			[] (unsigned char c) { return std::tolower (c); } // correct
 		);
 		return s;
 	}
 
-	void Log::SetLogLevel (const std::string& level_) {
-		std::string level=str_tolower(level_);
-		if      (level == "none")     { m_MinLevel = eLogNone; }
-		else if (level == "critical") { m_MinLevel = eLogCritical; }
-		else if (level == "error")    { m_MinLevel = eLogError; }
-		else if (level == "warn")     { m_MinLevel = eLogWarning; }
-		else if (level == "info")     { m_MinLevel = eLogInfo; }
-		else if (level == "debug")    { m_MinLevel = eLogDebug; }
-		else {
-			LogPrint(eLogCritical, "Log: Unknown loglevel: ", level);
+	void Log::SetLogLevel (const std::string & level_)
+	{
+		std::string level = str_tolower (level_);
+		if (level == "none")
+		{
+			m_MinLevel = eLogNone;
+		}
+		else if (level == "critical")
+		{
+			m_MinLevel = eLogCritical;
+		}
+		else if (level == "error")
+		{
+			m_MinLevel = eLogError;
+		}
+		else if (level == "warn")
+		{
+			m_MinLevel = eLogWarning;
+		}
+		else if (level == "info")
+		{
+			m_MinLevel = eLogInfo;
+		}
+		else if (level == "debug")
+		{
+			m_MinLevel = eLogDebug;
+		}
+		else
+		{
+			LogPrint (eLogCritical, "Log: Unknown loglevel: ", level);
 			return;
 		}
-		LogPrint(eLogInfo, "Log: Logging level set to ", level);
+		LogPrint (eLogInfo, "Log: Logging level set to ", level);
 	}
 
-	const char * Log::TimeAsString(std::time_t t) {
+	const char * Log::TimeAsString (std::time_t t)
+	{
 		struct tm caltime;
-		if (t != m_LastTimestamp) {
+		if (t != m_LastTimestamp)
+		{
 #ifdef _WIN32
-			localtime_s(&caltime, &t);
+			localtime_s (&caltime, &t);
 #else
-			localtime_r(&t, &caltime);
+			localtime_r (&t, &caltime);
 #endif
-			strftime(m_LastDateTime, sizeof(m_LastDateTime), m_TimeFormat.c_str(), &caltime);
+			strftime (m_LastDateTime, sizeof (m_LastDateTime), m_TimeFormat.c_str (), &caltime);
 			m_LastTimestamp = t;
 		}
 		return m_LastDateTime;
@@ -162,7 +192,7 @@ namespace log {
 	 * Unfortunately, with current startup process with late fork() this
 	 * will give us nothing but pain. Maybe later. See in NetDb as example.
 	 */
-	void Log::Process(std::shared_ptr<LogMsg> msg)
+	void Log::Process (std::shared_ptr<LogMsg> msg)
 	{
 		if (!msg) return;
 		if (m_Sink)
@@ -172,48 +202,41 @@ namespace log {
 		}
 		std::hash<std::thread::id> hasher;
 		unsigned short short_tid;
-		short_tid = (short) (hasher(msg->tid) % 1000);
-		switch (m_Destination) {
+		short_tid = (short)(hasher (msg->tid) % 1000);
+		switch (m_Destination)
+		{
 #ifndef _WIN32
-			case eLogSyslog:
-				syslog(GetSyslogPrio(msg->level), "[%03u] %s", short_tid, msg->text.c_str());
-				break;
+		case eLogSyslog: syslog (GetSyslogPrio (msg->level), "[%03u] %s", short_tid, msg->text.c_str ()); break;
 #endif
-			case eLogFile:
-			case eLogStream:
-				if (m_LogStream)
-					*m_LogStream << TimeAsString(msg->timestamp)
-						<< "@" << short_tid
-						<< "/" << g_LogLevelStr[msg->level]
-						<< " - " << msg->text << std::endl;
-				break;
-			case eLogStdout:
-			default:
-				std::cout << TimeAsString(msg->timestamp)
-					<< "@" << short_tid
-					<< "/" << LogMsgColors[msg->level] << g_LogLevelStr[msg->level] << LogMsgColors[eNumLogLevels]
-					<< " - " << msg->text << std::endl;
-				break;
+		case eLogFile:
+		case eLogStream:
+			if (m_LogStream)
+				*m_LogStream << TimeAsString (msg->timestamp) << "@" << short_tid << "/" << g_LogLevelStr[msg->level]
+							 << " - " << msg->text << std::endl;
+			break;
+		case eLogStdout:
+		default:
+			std::cout << TimeAsString (msg->timestamp) << "@" << short_tid << "/" << LogMsgColors[msg->level]
+					  << g_LogLevelStr[msg->level] << LogMsgColors[eNumLogLevels] << " - " << msg->text << std::endl;
+			break;
 		} // switch
 	}
 
 	void Log::Run ()
 	{
-		i2p::util::SetThreadName("Logging");
+		i2p::util::SetThreadName ("Logging");
 
 		Reopen ();
 		while (m_IsRunning)
 		{
 			std::shared_ptr<LogMsg> msg;
-			while ((msg = m_Queue.Get ()))
-				Process (msg);
-			if (m_LogStream) m_LogStream->flush();
-			if (m_IsRunning)
-				m_Queue.Wait ();
+			while ((msg = m_Queue.Get ())) Process (msg);
+			if (m_LogStream) m_LogStream->flush ();
+			if (m_IsRunning) m_Queue.Wait ();
 		}
 	}
 
-	void Log::Append(std::shared_ptr<i2p::log::LogMsg> & msg)
+	void Log::Append (std::shared_ptr<i2p::log::LogMsg> & msg)
 	{
 		if (msg)
 		{
@@ -221,17 +244,15 @@ namespace log {
 			// Control characters are flattened so a malformed log line cannot
 			// inject terminal escapes into an administrative client.
 			std::string text = msg->text.substr (0, LOG_RECENT_TEXT_LIMIT);
-			for (auto& ch : text)
-				if (static_cast<unsigned char> (ch) < 0x20 && ch != '\t')
-					ch = ' ';
+			for (auto & ch : text)
+				if (static_cast<unsigned char> (ch) < 0x20 && ch != '\t') ch = ' ';
 			{
 				std::lock_guard<std::mutex> l (m_RecentMutex);
-				m_Recent.push_back (LogRecord{++m_RecentSequence, msg->timestamp, msg->level, std::move (text)});
-				while (m_Recent.size () > LOG_RECENT_CAPACITY)
-					m_Recent.pop_front ();
+				m_Recent.push_back (LogRecord { ++m_RecentSequence, msg->timestamp, msg->level, std::move (text) });
+				while (m_Recent.size () > LOG_RECENT_CAPACITY) m_Recent.pop_front ();
 			}
 		}
-		m_Queue.Put(msg);
+		m_Queue.Put (msg);
 	}
 
 	std::vector<LogRecord> Log::GetRecent (uint64_t after, size_t max) const
@@ -239,7 +260,7 @@ namespace log {
 		std::vector<LogRecord> result;
 		std::lock_guard<std::mutex> l (m_RecentMutex);
 		result.reserve (std::min (max, m_Recent.size ()));
-		for (const auto& record : m_Recent)
+		for (const auto & record : m_Recent)
 		{
 			if (record.sequence <= after) continue;
 			result.push_back (record);
@@ -248,7 +269,7 @@ namespace log {
 		return result;
 	}
 
-	void Log::SendTo (const std::string& path)
+	void Log::SendTo (const std::string & path)
 	{
 		if (m_LogStream) m_LogStream = nullptr; // close previous
 		auto flags = std::ofstream::out | std::ofstream::app;
@@ -261,38 +282,46 @@ namespace log {
 			m_LogStream = os;
 			return;
 		}
-		LogPrint(eLogCritical, "Log: Can't open file ", path);
+		LogPrint (eLogCritical, "Log: Can't open file ", path);
 	}
 
-	void Log::SendTo (std::shared_ptr<std::ostream> os) {
+	void Log::SendTo (std::shared_ptr<std::ostream> os)
+	{
 		m_HasColors = false;
 		m_Destination = eLogStream;
 		m_LogStream = os;
 	}
 
 #ifndef _WIN32
-	void Log::SendTo(const char *name, int facility) {
+	void Log::SendTo (const char * name, int facility)
+	{
 		if (m_MinLevel == eLogNone) return;
 		m_HasColors = false;
 		m_Destination = eLogSyslog;
 		m_LogStream = nullptr;
-		openlog(name, LOG_CONS | LOG_PID, facility);
+		openlog (name, LOG_CONS | LOG_PID, facility);
 	}
 #endif
 
-	void Log::Reopen() {
-		if (m_Destination == eLogFile)
-			SendTo(m_Logfile);
+	void Log::Reopen ()
+	{
+		if (m_Destination == eLogFile) SendTo (m_Logfile);
 	}
 
-	Log & Logger() {
+	Log & Logger ()
+	{
 		return logger;
 	}
 
 	static ThrowFunction g_ThrowFunction;
-	ThrowFunction GetThrowFunction () { return g_ThrowFunction; }
-	void SetThrowFunction (ThrowFunction f) { g_ThrowFunction = f; }
+	ThrowFunction GetThrowFunction ()
+	{
+		return g_ThrowFunction;
+	}
+	void SetThrowFunction (ThrowFunction f)
+	{
+		g_ThrowFunction = f;
+	}
 
 } // log
 } // i2p
-

@@ -17,7 +17,10 @@ namespace i2p
 {
 namespace i18n
 {
-	namespace english { std::shared_ptr<const Locale> GetLocale (); }
+	namespace english
+	{
+		std::shared_ptr<const Locale> GetLocale ();
+	}
 
 } // i18n
 } // i2p

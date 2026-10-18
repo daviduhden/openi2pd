@@ -45,7 +45,8 @@ namespace crypto
 		BIGNUM * y = BN_bin2bn (pub + 32, 32, nullptr);
 		if (!EC_POINT_set_affine_coordinates (m_Curve, m_PublicKey, x, y, nullptr))
 			LogPrint (eLogError, "ECIES P256 invalid public key");
-		BN_free (x); BN_free (y);
+		BN_free (x);
+		BN_free (y);
 	}
 
 	ECIESP256Encryptor::~ECIESP256Encryptor ()
@@ -56,8 +57,7 @@ namespace crypto
 
 	void ECIESP256Encryptor::Encrypt (const uint8_t * data, uint8_t * encrypted)
 	{
-		if (m_Curve && m_PublicKey)
-			ECIESEncrypt (m_Curve, m_PublicKey, data, encrypted);
+		if (m_Curve && m_PublicKey) ECIESEncrypt (m_Curve, m_PublicKey, data, encrypted);
 	}
 
 	ECIESP256Decryptor::ECIESP256Decryptor (const uint8_t * priv)
@@ -74,8 +74,7 @@ namespace crypto
 
 	bool ECIESP256Decryptor::Decrypt (const uint8_t * encrypted, uint8_t * data)
 	{
-		if (m_Curve && m_PrivateKey)
-			return ECIESDecrypt (m_Curve, m_PrivateKey, encrypted, data);
+		if (m_Curve && m_PrivateKey) return ECIESDecrypt (m_Curve, m_PrivateKey, encrypted, data);
 		return false;
 	}
 
@@ -88,25 +87,27 @@ namespace crypto
 		bn2buf (key, priv, 32);
 		RAND_bytes (priv + 32, 224);
 		BN_free (key);
-		BIGNUM * x = BN_new (), * y = BN_new ();
+		BIGNUM *x = BN_new (), *y = BN_new ();
 		EC_POINT_get_affine_coordinates (curve, p, x, y, NULL);
 		bn2buf (x, pub, 32);
 		bn2buf (y, pub + 32, 32);
 		RAND_bytes (pub + 64, 192);
 		EC_POINT_free (p);
-		BN_free (x); BN_free (y);
+		BN_free (x);
+		BN_free (y);
 		EC_GROUP_free (curve);
 	}
 
 	ECIESGOSTR3410Encryptor::ECIESGOSTR3410Encryptor (const uint8_t * pub)
 	{
-		auto& curve = GetGOSTR3410Curve (eGOSTR3410CryptoProA);
+		auto & curve = GetGOSTR3410Curve (eGOSTR3410CryptoProA);
 		m_PublicKey = EC_POINT_new (curve->GetGroup ());
 		BIGNUM * x = BN_bin2bn (pub, 32, nullptr);
 		BIGNUM * y = BN_bin2bn (pub + 32, 32, nullptr);
 		if (!EC_POINT_set_affine_coordinates (curve->GetGroup (), m_PublicKey, x, y, nullptr))
 			LogPrint (eLogError, "ECIES GOST R 34.10 invalid public key");
-		BN_free (x); BN_free (y);
+		BN_free (x);
+		BN_free (y);
 	}
 
 	ECIESGOSTR3410Encryptor::~ECIESGOSTR3410Encryptor ()
@@ -137,23 +138,23 @@ namespace crypto
 		return false;
 	}
 
-
 	void CreateECIESGOSTR3410RandomKeys (uint8_t * priv, uint8_t * pub)
 	{
-		auto& curve = GetGOSTR3410Curve (eGOSTR3410CryptoProA);
+		auto & curve = GetGOSTR3410Curve (eGOSTR3410CryptoProA);
 		EC_POINT * p = nullptr;
 		BIGNUM * key = nullptr;
 		GenerateECIESKeyPair (curve->GetGroup (), key, p);
 		bn2buf (key, priv, 32);
 		RAND_bytes (priv + 32, 224);
 		BN_free (key);
-		BIGNUM * x = BN_new (), * y = BN_new ();
+		BIGNUM *x = BN_new (), *y = BN_new ();
 		EC_POINT_get_affine_coordinates (curve->GetGroup (), p, x, y, NULL);
 		bn2buf (x, pub, 32);
 		bn2buf (y, pub + 32, 32);
 		RAND_bytes (pub + 64, 192);
 		EC_POINT_free (p);
-		BN_free (x); BN_free (y);
+		BN_free (x);
+		BN_free (y);
 	}
 
 	ECIESX25519AEADRatchetEncryptor::ECIESX25519AEADRatchetEncryptor (const uint8_t * pub)
@@ -184,20 +185,21 @@ namespace crypto
 		memcpy (pub, k.GetPublicKey (), 32);
 	}
 
-	LocalEncryptionKey::LocalEncryptionKey (i2p::data::CryptoKeyType t): keyType(t) 
-	{ 
-		pub.resize (GetCryptoPublicKeyLen (keyType)); 
+	LocalEncryptionKey::LocalEncryptionKey (i2p::data::CryptoKeyType t)
+		: keyType (t)
+	{
+		pub.resize (GetCryptoPublicKeyLen (keyType));
 		priv.resize (GetCryptoPrivateKeyLen (keyType));
 	}
-	
-	void LocalEncryptionKey::GenerateKeys () 
-	{ 
-		i2p::data::PrivateKeys::GenerateCryptoKeyPair (keyType, priv.data (), pub.data ()); 
+
+	void LocalEncryptionKey::GenerateKeys ()
+	{
+		i2p::data::PrivateKeys::GenerateCryptoKeyPair (keyType, priv.data (), pub.data ());
 	}
-	
-	void LocalEncryptionKey::CreateDecryptor () 
-	{ 
-		decryptor = i2p::data::PrivateKeys::CreateDecryptor (keyType, priv.data ()); 
+
+	void LocalEncryptionKey::CreateDecryptor ()
+	{
+		decryptor = i2p::data::PrivateKeys::CreateDecryptor (keyType, priv.data ());
 	}
 }
 }

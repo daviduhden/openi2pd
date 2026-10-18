@@ -26,26 +26,30 @@ namespace i2p
 {
 namespace api
 {
-	void InitI2P (int argc, char* argv[], const char * appName)
+	void InitI2P (int argc, char * argv[], const char * appName)
 	{
 		i2p::config::Init ();
 		i2p::config::ParseCmdline (argc, argv, true); // ignore unknown options and help
 		i2p::config::Finalize ();
 
-		std::string datadir; i2p::config::GetOption("datadir", datadir);
+		std::string datadir;
+		i2p::config::GetOption ("datadir", datadir);
 
 		i2p::fs::SetAppName (appName);
-		i2p::fs::DetectDataDir(datadir, false);
-		i2p::fs::Init();
+		i2p::fs::DetectDataDir (datadir, false);
+		i2p::fs::Init ();
 
-		bool precomputation; i2p::config::GetOption("precomputation.elgamal", precomputation);
+		bool precomputation;
+		i2p::config::GetOption ("precomputation.elgamal", precomputation);
 		i2p::crypto::InitCrypto (precomputation);
 
-		int netID; i2p::config::GetOption("netid", netID);
+		int netID;
+		i2p::config::GetOption ("netid", netID);
 		i2p::context.SetNetID (netID);
 
-		bool checkReserved; i2p::config::GetOption("reservedrange", checkReserved);
-		i2p::transport::transports.SetCheckReserved(checkReserved);
+		bool checkReserved;
+		i2p::config::GetOption ("reservedrange", checkReserved);
+		i2p::transport::transports.SetCheckReserved (checkReserved);
 
 		i2p::context.Init ();
 	}
@@ -58,33 +62,33 @@ namespace api
 	void StartI2P (std::shared_ptr<std::ostream> logStream)
 	{
 		if (logStream)
-			i2p::log::Logger().SendTo (logStream);
+			i2p::log::Logger ().SendTo (logStream);
 		else
-			i2p::log::Logger().SendTo (i2p::fs::DataDirPath (i2p::fs::GetAppName () + ".log"));
-		i2p::log::Logger().Start ();
+			i2p::log::Logger ().SendTo (i2p::fs::DataDirPath (i2p::fs::GetAppName () + ".log"));
+		i2p::log::Logger ().Start ();
 		i2p::transport::InitTransports ();
-		LogPrint(eLogInfo, "API: Starting NetDB");
-		i2p::data::netdb.Start();
-		LogPrint(eLogInfo, "API: Starting Transports");
-		i2p::transport::transports.Start();
-		LogPrint(eLogInfo, "API: Starting Tunnels");
-		i2p::tunnel::tunnels.Start();
-		LogPrint(eLogInfo, "API: Starting Router context");
-		i2p::context.Start();
+		LogPrint (eLogInfo, "API: Starting NetDB");
+		i2p::data::netdb.Start ();
+		LogPrint (eLogInfo, "API: Starting Transports");
+		i2p::transport::transports.Start ();
+		LogPrint (eLogInfo, "API: Starting Tunnels");
+		i2p::tunnel::tunnels.Start ();
+		LogPrint (eLogInfo, "API: Starting Router context");
+		i2p::context.Start ();
 	}
 
 	void StopI2P ()
 	{
-		LogPrint(eLogInfo, "API: Shutting down");
-		LogPrint(eLogInfo, "API: Stopping Router context");
-		i2p::context.Stop();
-		LogPrint(eLogInfo, "API: Stopping Tunnels");
-		i2p::tunnel::tunnels.Stop();
-		LogPrint(eLogInfo, "API: Stopping Transports");
-		i2p::transport::transports.Stop();
-		LogPrint(eLogInfo, "API: Stopping NetDB");
-		i2p::data::netdb.Stop();
-		i2p::log::Logger().Stop ();
+		LogPrint (eLogInfo, "API: Shutting down");
+		LogPrint (eLogInfo, "API: Stopping Router context");
+		i2p::context.Stop ();
+		LogPrint (eLogInfo, "API: Stopping Tunnels");
+		i2p::tunnel::tunnels.Stop ();
+		LogPrint (eLogInfo, "API: Stopping Transports");
+		i2p::transport::transports.Stop ();
+		LogPrint (eLogInfo, "API: Stopping NetDB");
+		i2p::data::netdb.Stop ();
+		i2p::log::Logger ().Stop ();
 	}
 
 	void RunPeerTest ()
@@ -92,16 +96,16 @@ namespace api
 		i2p::transport::transports.PeerTest ();
 	}
 
-	std::shared_ptr<i2p::client::ClientDestination> CreateLocalDestination (const i2p::data::PrivateKeys& keys, bool isPublic,
-		const i2p::util::Mapping * params)
+	std::shared_ptr<i2p::client::ClientDestination> CreateLocalDestination (
+		const i2p::data::PrivateKeys & keys, bool isPublic, const i2p::util::Mapping * params)
 	{
 		auto localDestination = std::make_shared<i2p::client::RunnableClientDestination> (keys, isPublic, params);
 		localDestination->Start ();
 		return localDestination;
 	}
 
-	std::shared_ptr<i2p::client::ClientDestination> CreateLocalDestination (bool isPublic, i2p::data::SigningKeyType sigType,
-		const i2p::util::Mapping * params)
+	std::shared_ptr<i2p::client::ClientDestination> CreateLocalDestination (
+		bool isPublic, i2p::data::SigningKeyType sigType, const i2p::util::Mapping * params)
 	{
 		i2p::data::PrivateKeys keys = i2p::data::PrivateKeys::CreateRandomKeys (sigType);
 		auto localDestination = std::make_shared<i2p::client::RunnableClientDestination> (keys, isPublic, params);
@@ -111,17 +115,16 @@ namespace api
 
 	void DestroyLocalDestination (std::shared_ptr<i2p::client::ClientDestination> dest)
 	{
-		if (dest)
-			dest->Stop ();
+		if (dest) dest->Stop ();
 	}
 
-	void RequestLeaseSet (std::shared_ptr<i2p::client::ClientDestination> dest, const i2p::data::IdentHash& remote)
+	void RequestLeaseSet (std::shared_ptr<i2p::client::ClientDestination> dest, const i2p::data::IdentHash & remote)
 	{
-		if (dest)
-			dest->RequestDestination (remote);
+		if (dest) dest->RequestDestination (remote);
 	}
 
-	std::shared_ptr<i2p::stream::Stream> CreateStream (std::shared_ptr<i2p::client::ClientDestination> dest, const i2p::data::IdentHash& remote)
+	std::shared_ptr<i2p::stream::Stream> CreateStream (
+		std::shared_ptr<i2p::client::ClientDestination> dest, const i2p::data::IdentHash & remote)
 	{
 		if (!dest) return nullptr;
 		auto leaseSet = dest->FindLeaseSet (remote);
@@ -138,16 +141,15 @@ namespace api
 		}
 	}
 
-	void AcceptStream (std::shared_ptr<i2p::client::ClientDestination> dest, const i2p::stream::StreamingDestination::Acceptor& acceptor)
+	void AcceptStream (std::shared_ptr<i2p::client::ClientDestination> dest,
+		const i2p::stream::StreamingDestination::Acceptor & acceptor)
 	{
-		if (dest)
-			dest->AcceptStreams (acceptor);
+		if (dest) dest->AcceptStreams (acceptor);
 	}
 
 	void DestroyStream (std::shared_ptr<i2p::stream::Stream> stream)
 	{
-		if (stream)
-			stream->Close ();
+		if (stream) stream->Close ();
 	}
 }
 }

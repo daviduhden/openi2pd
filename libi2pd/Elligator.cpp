@@ -24,12 +24,20 @@ namespace crypto
 		// 2^255-19
 		BN_set_bit (p, 255); // 2^255
 		BN_sub_word (p, 19);
-		p38 = BN_dup (p); BN_add_word (p38, 3); BN_div_word (p38, 8); // (p+3)/8
-		p12 = BN_dup (p); BN_sub_word (p12, 1); BN_div_word (p12, 2); // (p-1)/2
-		p14 = BN_dup (p); BN_sub_word (p14, 1); BN_div_word (p14, 4); // (p-1)/4
+		p38 = BN_dup (p);
+		BN_add_word (p38, 3);
+		BN_div_word (p38, 8); // (p+3)/8
+		p12 = BN_dup (p);
+		BN_sub_word (p12, 1);
+		BN_div_word (p12, 2); // (p-1)/2
+		p14 = BN_dup (p);
+		BN_sub_word (p14, 1);
+		BN_div_word (p14, 4); // (p-1)/4
 
-		A = BN_new (); BN_set_word (A, 486662);
-		nA = BN_new (); BN_sub (nA, p, A);
+		A = BN_new ();
+		BN_set_word (A, 486662);
+		nA = BN_new ();
+		BN_sub (nA, p, A);
 
 		BN_CTX * ctx = BN_CTX_new ();
 		// calculate sqrt(-1)
@@ -37,17 +45,25 @@ namespace crypto
 		BN_set_word (sqrtn1, 2);
 		BN_mod_exp (sqrtn1, sqrtn1, p14, p, ctx); // 2^((p-1)/4
 
-		u = BN_new (); BN_set_word (u, 2);
-		iu = BN_new (); BN_mod_inverse (iu, u, p, ctx);
+		u = BN_new ();
+		BN_set_word (u, 2);
+		iu = BN_new ();
+		BN_mod_inverse (iu, u, p, ctx);
 
 		BN_CTX_free (ctx);
 	}
 
 	Elligator2::~Elligator2 ()
 	{
-		BN_free (p); BN_free (p38); BN_free (p12); BN_free (p14);
-		BN_free (sqrtn1); BN_free (A); BN_free (nA);
-		BN_free (u); BN_free (iu);
+		BN_free (p);
+		BN_free (p38);
+		BN_free (p12);
+		BN_free (p14);
+		BN_free (sqrtn1);
+		BN_free (A);
+		BN_free (nA);
+		BN_free (u);
+		BN_free (iu);
 	}
 
 	bool Elligator2::Encode (const uint8_t * key, uint8_t * encoded, bool highY, bool random) const
@@ -63,8 +79,10 @@ namespace crypto
 			key1[31 - i] = key[i];
 		}
 
-		BIGNUM * x = BN_CTX_get (ctx); BN_bin2bn (key1, 32, x);
-		BIGNUM * xA = BN_CTX_get (ctx); BN_add (xA, x, A); // x + A
+		BIGNUM * x = BN_CTX_get (ctx);
+		BN_bin2bn (key1, 32, x);
+		BIGNUM * xA = BN_CTX_get (ctx);
+		BN_add (xA, x, A); // x + A
 		BN_sub (xA, p, xA); // p - (x + A)
 
 		BIGNUM * uxxA = BN_CTX_get (ctx); // u*x*xA
@@ -96,8 +114,7 @@ namespace crypto
 			SquareRoot (r, r, ctx);
 			bn2buf (r, encoded, 32);
 
-			if (random)
-				encoded[0] |= (randByte & 0xC0); // copy two highest bits from randByte
+			if (random) encoded[0] |= (randByte & 0xC0); // copy two highest bits from randByte
 			for (size_t i = 0; i < 16; i++) // To Little Endian
 			{
 				uint8_t tmp = encoded[i];
@@ -127,12 +144,14 @@ namespace crypto
 		}
 		encoded1[0] &= 0x3F; // drop two highest bits
 
-		BIGNUM * r = BN_CTX_get (ctx); BN_bin2bn (encoded1, 32, r);
+		BIGNUM * r = BN_CTX_get (ctx);
+		BN_bin2bn (encoded1, 32, r);
 
 		if (BN_cmp (r, p12) <= 0) // r < (p-1)/2
 		{
 			// v = -A/(1+u*r^2)
-			BIGNUM * v = BN_CTX_get (ctx); BN_mod_sqr (v, r, p, ctx);
+			BIGNUM * v = BN_CTX_get (ctx);
+			BN_mod_sqr (v, r, p, ctx);
 			BN_mod_mul (v, v, u, p, ctx);
 			BN_add_word (v, 1);
 			BN_mod_inverse (v, v, p, ctx);
@@ -141,7 +160,8 @@ namespace crypto
 			BIGNUM * vpA = BN_CTX_get (ctx);
 			BN_add (vpA, v, A); // v + A
 			// t = v^3+A*v^2+v = v^2*(v+A)+v
-			BIGNUM * t = BN_CTX_get (ctx); BN_mod_sqr (t, v, p, ctx);
+			BIGNUM * t = BN_CTX_get (ctx);
+			BN_mod_sqr (t, v, p, ctx);
 			BN_mod_mul (t, t, vpA, p, ctx);
 			BN_mod_add (t, t, v, p, ctx);
 
@@ -179,8 +199,7 @@ namespace crypto
 		BN_mod_exp (r, x, p38, p, ctx); // r = x^((p+3)/8)
 		BN_add_word (t, 1);
 
-		if (!BN_cmp (t, p))
-			BN_mod_mul (r, r, sqrtn1, p, ctx);
+		if (!BN_cmp (t, p)) BN_mod_mul (r, r, sqrtn1, p, ctx);
 
 		if (BN_cmp (r, p12) > 0) // r > (p-1)/2
 			BN_sub (r, p, r);
@@ -189,22 +208,22 @@ namespace crypto
 	int Elligator2::Legendre (const BIGNUM * a, BN_CTX * ctx) const
 	{
 		// assume a < p, so don't check for a % p = 0, but a = 0 only
-		if (BN_is_zero(a)) return 0;
+		if (BN_is_zero (a)) return 0;
 		BIGNUM * r = BN_CTX_get (ctx);
 		BN_mod_exp (r, a, p12, p, ctx); // r = a^((p-1)/2) mod p
-		if (BN_is_word(r, 1))
+		if (BN_is_word (r, 1))
 			return 1;
-		else if (BN_is_zero(r))
+		else if (BN_is_zero (r))
 			return 0;
 		return -1;
 	}
 
 	static std::unique_ptr<Elligator2> g_Elligator;
-	std::unique_ptr<Elligator2>& GetElligator ()
+	std::unique_ptr<Elligator2> & GetElligator ()
 	{
 		if (!g_Elligator)
 		{
-			auto el = new Elligator2();
+			auto el = new Elligator2 ();
 			if (!g_Elligator) // make sure it was not created already
 				g_Elligator.reset (el);
 			else

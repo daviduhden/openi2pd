@@ -27,113 +27,108 @@ namespace android
 	std::string dataDir = "";
 	std::string language = "";
 
-	DaemonAndroidImpl::DaemonAndroidImpl ()
+	DaemonAndroidImpl::DaemonAndroidImpl () { }
+
+	DaemonAndroidImpl::~DaemonAndroidImpl () { }
+
+	bool DaemonAndroidImpl::init (int argc, char * argv[])
 	{
+		return Daemon.init (argc, argv);
 	}
 
-	DaemonAndroidImpl::~DaemonAndroidImpl ()
+	void DaemonAndroidImpl::start ()
 	{
+		Daemon.start ();
 	}
 
-	bool DaemonAndroidImpl::init(int argc, char* argv[])
+	void DaemonAndroidImpl::stop ()
 	{
-		return Daemon.init(argc, argv);
+		Daemon.stop ();
 	}
 
-	void DaemonAndroidImpl::start()
+	void DaemonAndroidImpl::restart ()
 	{
-		Daemon.start();
+		stop ();
+		start ();
 	}
 
-	void DaemonAndroidImpl::stop()
+	void DaemonAndroidImpl::setDataDir (std::string path)
 	{
-		Daemon.stop();
-	}
-
-	void DaemonAndroidImpl::restart()
-	{
-		stop();
-		start();
-	}
-
-	void DaemonAndroidImpl::setDataDir(std::string path)
-	{
-		Daemon.setDataDir(path);
+		Daemon.setDataDir (path);
 	}
 
 	static DaemonAndroidImpl daemon;
 	static char programName[] = "i2pd";
-	static char* argv[] = { programName, nullptr };
+	static char * argv[] = { programName, nullptr };
 	/**
 	 * returns error details if failed
 	 * returns "ok" if daemon initialized and started okay
 	 */
-	std::string start(/*int argc, char* argv[]*/)
+	std::string start (/*int argc, char* argv[]*/)
 	{
 		try
 		{
 			{
 				// make sure assets are ready before proceed
-				i2p::fs::DetectDataDir(dataDir, false);
+				i2p::fs::DetectDataDir (dataDir, false);
 				int numAttempts = 0;
 				do
 				{
-					if (i2p::fs::Exists (i2p::fs::DataDirPath("assets.ready"))) break; // assets ready
+					if (i2p::fs::Exists (i2p::fs::DataDirPath ("assets.ready"))) break; // assets ready
 					numAttempts++;
-					std::this_thread::sleep_for (std::chrono::seconds(1)); // otherwise wait for 1 more second
-				}
-				while (numAttempts <= 10); // 10 seconds max
+					std::this_thread::sleep_for (std::chrono::seconds (1)); // otherwise wait for 1 more second
+				} while (numAttempts <= 10); // 10 seconds max
 
 				// Set application directory
-				daemon.setDataDir(dataDir);
+				daemon.setDataDir (dataDir);
 
-				bool daemonInitSuccess = daemon.init(1, argv);
-				if(!daemonInitSuccess)
+				bool daemonInitSuccess = daemon.init (1, argv);
+				if (!daemonInitSuccess)
 				{
 					return "Daemon init failed";
 				}
 
 				// Apply the UI language from the application
-				i2p::i18n::SetLanguage(language);
+				i2p::i18n::SetLanguage (language);
 
-				daemon.start();
+				daemon.start ();
 			}
 		}
-		catch (boost::exception& ex)
+		catch (boost::exception & ex)
 		{
 			std::stringstream ss;
-			ss << boost::diagnostic_information(ex);
-			return ss.str();
+			ss << boost::diagnostic_information (ex);
+			return ss.str ();
 		}
-		catch (std::exception& ex)
+		catch (std::exception & ex)
 		{
 			std::stringstream ss;
-			ss << ex.what();
-			return ss.str();
+			ss << ex.what ();
+			return ss.str ();
 		}
-		catch(...)
+		catch (...)
 		{
 			return "unknown exception";
 		}
 		return "ok";
 	}
 
-	void stop()
+	void stop ()
 	{
-		daemon.stop();
+		daemon.stop ();
 	}
 
-	void SetDataDir(std::string jdataDir)
+	void SetDataDir (std::string jdataDir)
 	{
 		dataDir = jdataDir;
 	}
 
-	std::string GetDataDir(void)
+	std::string GetDataDir (void)
 	{
 		return dataDir;
 	}
 
-	void SetLanguage(std::string jlanguage)
+	void SetLanguage (std::string jlanguage)
 	{
 		language = jlanguage;
 	}

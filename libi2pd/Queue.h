@@ -22,122 +22,118 @@ namespace i2p
 {
 namespace util
 {
-	template<typename Element>
-	class Queue
+	template <typename Element> class Queue
 	{
-		public:
+	public:
+		void Put (Element e)
+		{
+			std::unique_lock<std::mutex> l (m_QueueMutex);
+			m_Queue.push_back (std::move (e));
+			m_NonEmpty.notify_one ();
+		}
 
-			void Put (Element e)
+		void Put (std::list<Element> & list)
+		{
+			if (!list.empty ())
 			{
-				std::unique_lock<std::mutex> l(m_QueueMutex);
-				m_Queue.push_back (std::move(e));
+				std::unique_lock<std::mutex> l (m_QueueMutex);
+				m_Queue.splice (m_Queue.end (), list);
 				m_NonEmpty.notify_one ();
 			}
+		}
 
-			void Put (std::list<Element>& list)
+		Element GetNext ()
+		{
+			std::unique_lock<std::mutex> l (m_QueueMutex);
+			auto el = GetNonThreadSafe ();
+			if (!el)
 			{
-				if (!list.empty ())
-				{
-					std::unique_lock<std::mutex> l(m_QueueMutex);
-					m_Queue.splice (m_Queue.end (), list);
-					m_NonEmpty.notify_one ();
-				}
-			}
-
-			Element GetNext ()
-			{
-				std::unique_lock<std::mutex> l(m_QueueMutex);
-				auto el = GetNonThreadSafe ();
-				if (!el)
-				{
-					m_NonEmpty.wait (l);
-					el = GetNonThreadSafe ();
-				}
-				return el;
-			}
-
-			Element GetNextWithTimeout (int usec)
-			{
-				std::unique_lock<std::mutex> l(m_QueueMutex);
-				auto el = GetNonThreadSafe ();
-				if (!el)
-				{
-					m_NonEmpty.wait_for (l, std::chrono::milliseconds (usec));
-					el = GetNonThreadSafe ();
-				}
-				return el;
-			}
-
-			void Wait ()
-			{
-				std::unique_lock<std::mutex> l(m_QueueMutex);
 				m_NonEmpty.wait (l);
+				el = GetNonThreadSafe ();
 			}
+			return el;
+		}
 
-			bool Wait (int sec, int usec)
+		Element GetNextWithTimeout (int usec)
+		{
+			std::unique_lock<std::mutex> l (m_QueueMutex);
+			auto el = GetNonThreadSafe ();
+			if (!el)
 			{
-				std::unique_lock<std::mutex> l(m_QueueMutex);
-				return m_NonEmpty.wait_for (l, std::chrono::seconds (sec) + std::chrono::milliseconds (usec)) != std::cv_status::timeout;
+				m_NonEmpty.wait_for (l, std::chrono::milliseconds (usec));
+				el = GetNonThreadSafe ();
 			}
+			return el;
+		}
 
-			bool IsEmpty ()
+		void Wait ()
+		{
+			std::unique_lock<std::mutex> l (m_QueueMutex);
+			m_NonEmpty.wait (l);
+		}
+
+		bool Wait (int sec, int usec)
+		{
+			std::unique_lock<std::mutex> l (m_QueueMutex);
+			return m_NonEmpty.wait_for (l, std::chrono::seconds (sec) + std::chrono::milliseconds (usec))
+				!= std::cv_status::timeout;
+		}
+
+		bool IsEmpty ()
+		{
+			std::unique_lock<std::mutex> l (m_QueueMutex);
+			return m_Queue.empty ();
+		}
+
+		size_t GetSize () const
+		{
+			std::unique_lock<std::mutex> l (m_QueueMutex);
+			return m_Queue.size ();
+		}
+
+		void WakeUp () { m_NonEmpty.notify_all (); };
+
+		Element Get ()
+		{
+			std::unique_lock<std::mutex> l (m_QueueMutex);
+			return GetNonThreadSafe ();
+		}
+
+		Element Peek ()
+		{
+			std::unique_lock<std::mutex> l (m_QueueMutex);
+			return GetNonThreadSafe (true);
+		}
+
+		void GetWholeQueue (std::list<Element> & queue)
+		{
+			if (!queue.empty ())
 			{
-				std::unique_lock<std::mutex> l(m_QueueMutex);
-				return m_Queue.empty ();
+				std::list<Element> newQueue;
+				queue.swap (newQueue);
 			}
-
-			size_t GetSize () const
 			{
-				std::unique_lock<std::mutex> l(m_QueueMutex);
-				return m_Queue.size ();
+				std::unique_lock<std::mutex> l (m_QueueMutex);
+				m_Queue.swap (queue);
 			}
+		}
 
-			void WakeUp () { m_NonEmpty.notify_all (); };
-
-			Element Get ()
+	private:
+		Element GetNonThreadSafe (bool peek = false)
+		{
+			if (!m_Queue.empty ())
 			{
-				std::unique_lock<std::mutex> l(m_QueueMutex);
-				return GetNonThreadSafe ();
+				auto el = m_Queue.front ();
+				if (!peek) m_Queue.pop_front ();
+				return el;
 			}
+			return nullptr;
+		}
 
-			Element Peek ()
-			{
-				std::unique_lock<std::mutex> l(m_QueueMutex);
-				return GetNonThreadSafe (true);
-			}
-
-			void GetWholeQueue (std::list<Element>& queue)
-			{
-				if (!queue.empty ())
-				{
-					std::list<Element> newQueue;
-					queue.swap (newQueue);
-				}
-				{
-					std::unique_lock<std::mutex> l(m_QueueMutex);
-					m_Queue.swap (queue);
-				}
-			}
-
-		private:
-
-			Element GetNonThreadSafe (bool peek = false)
-			{
-				if (!m_Queue.empty ())
-				{
-					auto el = m_Queue.front ();
-					if (!peek)
-						m_Queue.pop_front ();
-					return el;
-				}
-				return nullptr;
-			}
-
-		private:
-
-			std::list<Element> m_Queue;
-			mutable std::mutex m_QueueMutex;
-			std::condition_variable m_NonEmpty;
+	private:
+		std::list<Element> m_Queue;
+		mutable std::mutex m_QueueMutex;
+		std::condition_variable m_NonEmpty;
 	};
 }
 }

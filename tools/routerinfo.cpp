@@ -21,162 +21,164 @@
 
 namespace
 {
-	using i2p::tools::firewall::Backend;
-	using i2p::tools::firewall::Endpoint;
-	using i2p::tools::firewall::RenderOptions;
-	using i2p::tools::firewall::Transport;
+using i2p::tools::firewall::Backend;
+using i2p::tools::firewall::Endpoint;
+using i2p::tools::firewall::RenderOptions;
+using i2p::tools::firewall::Transport;
 
-	constexpr size_t MAX_ENDPOINTS = 4096;
+constexpr size_t MAX_ENDPOINTS = 4096;
 
-	struct Options
+struct Options
+{
+	bool ipv6 = false;
+	bool legacyFirewall = false;
+	bool printPort = false;
+	bool yggdrasil = false;
+	bool help = false;
+	std::optional<Backend> backend;
+	bool nftOptionsGiven = false;
+	RenderOptions render;
+};
+
+void Usage (const char * program)
+{
+	std::cout << "usage: " << program
+			  << " [-6] [-p] [-y] [--firewall=BACKEND] [NFT OPTIONS] routerinfo.dat...\n"
+				 "\n"
+				 "Print addresses from one or more RouterInfo files.\n"
+				 "\n"
+				 "  -6                     include IPv6 addresses\n"
+				 "  -p                     print ports in address listing\n"
+				 "  -y                     include Yggdrasil addresses\n"
+				 "  -f                     print legacy iptables OUTPUT fragments (default backend)\n"
+				 "  --firewall=iptables    print full iptables/ip6tables commands\n"
+				 "  --firewall=nftables    print nft(8) commands\n"
+				 "  --firewall=windows     print PowerShell New-NetFirewallRule commands\n"
+				 "  --firewall=pf          print OpenBSD pf.conf rules\n"
+				 "  --nft-family=FAMILY    nftables family: inet (default), ip or ip6\n"
+				 "  --nft-table=NAME       nftables table (default: filter)\n"
+				 "  --nft-chain=NAME       nftables output chain (default: output)\n"
+				 "  -h, --help             this help\n"
+				 "\n"
+				 "All backends can be generated on any platform. The tool only writes\n"
+				 "text and never executes or reloads a firewall.\n";
+}
+
+std::optional<Backend> ParseBackend (std::string_view name)
+{
+	if (name == "iptables") return Backend::Iptables;
+	if (name == "nftables") return Backend::Nftables;
+	if (name == "windows") return Backend::Windows;
+	if (name == "pf") return Backend::Pf;
+	return std::nullopt;
+}
+
+std::string_view AddressStyle (const i2p::data::RouterInfo::Address & address)
+{
+	switch (address.transportStyle)
 	{
-		bool ipv6 = false;
-		bool legacyFirewall = false;
-		bool printPort = false;
-		bool yggdrasil = false;
-		bool help = false;
-		std::optional<Backend> backend;
-		bool nftOptionsGiven = false;
-		RenderOptions render;
-	};
-
-	void Usage (const char * program)
-	{
-		std::cout <<
-			"usage: " << program << " [-6] [-p] [-y] [--firewall=BACKEND] [NFT OPTIONS] routerinfo.dat...\n"
-			"\n"
-			"Print addresses from one or more RouterInfo files.\n"
-			"\n"
-			"  -6                     include IPv6 addresses\n"
-			"  -p                     print ports in address listing\n"
-			"  -y                     include Yggdrasil addresses\n"
-			"  -f                     print legacy iptables OUTPUT fragments (default backend)\n"
-			"  --firewall=iptables    print full iptables/ip6tables commands\n"
-			"  --firewall=nftables    print nft(8) commands\n"
-			"  --firewall=windows     print PowerShell New-NetFirewallRule commands\n"
-			"  --firewall=pf          print OpenBSD pf.conf rules\n"
-			"  --nft-family=FAMILY    nftables family: inet (default), ip or ip6\n"
-			"  --nft-table=NAME       nftables table (default: filter)\n"
-			"  --nft-chain=NAME       nftables output chain (default: output)\n"
-			"  -h, --help             this help\n"
-			"\n"
-			"All backends can be generated on any platform. The tool only writes\n"
-			"text and never executes or reloads a firewall.\n";
+	case i2p::data::RouterInfo::eTransportNTCP2: return "NTCP2";
+	case i2p::data::RouterInfo::eTransportSSU2: return "SSU2";
+	default: return "???";
 	}
+}
 
-	std::optional<Backend> ParseBackend (std::string_view name)
+std::optional<Transport> TransportOf (const i2p::data::RouterInfo::Address & address)
+{
+	switch (address.transportStyle)
 	{
-		if (name == "iptables") return Backend::Iptables;
-		if (name == "nftables") return Backend::Nftables;
-		if (name == "windows") return Backend::Windows;
-		if (name == "pf") return Backend::Pf;
-		return std::nullopt;
+	case i2p::data::RouterInfo::eTransportNTCP2: return Transport::NTCP2;
+	case i2p::data::RouterInfo::eTransportSSU2: return Transport::SSU2;
+	default: return std::nullopt;
 	}
+}
 
-	std::string_view AddressStyle (const i2p::data::RouterInfo::Address& address)
+void AddAddress (std::vector<std::shared_ptr<const i2p::data::RouterInfo::Address>> & addresses,
+	const std::shared_ptr<const i2p::data::RouterInfo::Address> & address)
+{
+	if (address) addresses.push_back (address);
+}
+
+bool PrintRules (const std::string & hash,
+	const std::vector<std::shared_ptr<const i2p::data::RouterInfo::Address>> & addresses, const Options & options,
+	std::set<std::string> & seen, size_t & total)
+{
+	for (const auto & address : addresses)
 	{
-		switch (address.transportStyle)
+		auto transport = TransportOf (*address);
+		if (!transport) continue;
+
+		auto endpoint = i2p::tools::firewall::MakeEndpoint (address->host.to_string (), address->port, *transport);
+		if (!endpoint)
 		{
-			case i2p::data::RouterInfo::eTransportNTCP2: return "NTCP2";
-			case i2p::data::RouterInfo::eTransportSSU2: return "SSU2";
-			default: return "???";
+			std::cerr << "routerinfo: ignoring invalid endpoint for " << hash << std::endl;
+			continue;
 		}
-	}
-
-	std::optional<Transport> TransportOf (const i2p::data::RouterInfo::Address& address)
-	{
-		switch (address.transportStyle)
+		if (++total > MAX_ENDPOINTS)
 		{
-			case i2p::data::RouterInfo::eTransportNTCP2: return Transport::NTCP2;
-			case i2p::data::RouterInfo::eTransportSSU2: return Transport::SSU2;
-			default: return std::nullopt;
+			std::cerr << "routerinfo: too many endpoints" << std::endl;
+			return false;
 		}
+
+		const auto key = i2p::tools::firewall::EndpointKey (*endpoint);
+		if (!seen.insert (key).second) continue;
+
+		RenderOptions render = options.render;
+		render.ruleTag = hash.substr (0, 8);
+		auto rule = i2p::tools::firewall::Render (*endpoint, render);
+		if (rule) std::cout << *rule << std::endl;
 	}
-
-	void AddAddress (std::vector<std::shared_ptr<const i2p::data::RouterInfo::Address>>& addresses,
-		const std::shared_ptr<const i2p::data::RouterInfo::Address>& address)
-	{
-		if (address) addresses.push_back (address);
-	}
-
-	bool PrintRules (const std::string& hash,
-		const std::vector<std::shared_ptr<const i2p::data::RouterInfo::Address>>& addresses,
-		const Options& options, std::set<std::string>& seen, size_t& total)
-	{
-		for (const auto& address : addresses)
-		{
-			auto transport = TransportOf (*address);
-			if (!transport) continue;
-
-			auto endpoint = i2p::tools::firewall::MakeEndpoint (
-				address->host.to_string (), address->port, *transport);
-			if (!endpoint)
-			{
-				std::cerr << "routerinfo: ignoring invalid endpoint for " << hash << std::endl;
-				continue;
-			}
-			if (++total > MAX_ENDPOINTS)
-			{
-				std::cerr << "routerinfo: too many endpoints" << std::endl;
-				return false;
-			}
-
-			const auto key = i2p::tools::firewall::EndpointKey (*endpoint);
-			if (!seen.insert (key).second) continue;
-
-			RenderOptions render = options.render;
-			render.ruleTag = hash.substr (0, 8);
-			auto rule = i2p::tools::firewall::Render (*endpoint, render);
-			if (rule) std::cout << *rule << std::endl;
-		}
-		return true;
-	}
+	return true;
+}
 }
 
 int main (int argc, char * argv[])
 {
 	Options options;
-	static const option longOptions[] = {
-		{"help", no_argument, nullptr, 'h'},
-		{"firewall", required_argument, nullptr, 'F'},
-		{"nft-family", required_argument, nullptr, 'A'},
-		{"nft-table", required_argument, nullptr, 'B'},
-		{"nft-chain", required_argument, nullptr, 'C'},
-		{nullptr, 0, nullptr, 0}
-	};
+	static const option longOptions[]
+		= { { "help", no_argument, nullptr, 'h' }, { "firewall", required_argument, nullptr, 'F' },
+			  { "nft-family", required_argument, nullptr, 'A' }, { "nft-table", required_argument, nullptr, 'B' },
+			  { "nft-chain", required_argument, nullptr, 'C' }, { nullptr, 0, nullptr, 0 } };
 
 	int opt;
 	while ((opt = getopt_long (argc, argv, "6fpyh", longOptions, nullptr)) != -1)
 	{
 		switch (opt)
 		{
-			case '6': options.ipv6 = true; break;
-			case 'f': options.legacyFirewall = true; break;
-			case 'p': options.printPort = true; break;
-			case 'y': options.yggdrasil = true; break;
-			case 'h': options.help = true; break;
-			case 'F':
+		case '6': options.ipv6 = true; break;
+		case 'f': options.legacyFirewall = true; break;
+		case 'p': options.printPort = true; break;
+		case 'y': options.yggdrasil = true; break;
+		case 'h': options.help = true; break;
+		case 'F':
+		{
+			auto backend = ParseBackend (optarg);
+			if (!backend)
 			{
-				auto backend = ParseBackend (optarg);
-				if (!backend)
-				{
-					std::cerr << "routerinfo: unknown firewall backend: " << optarg << std::endl;
-					return 1;
-				}
-				if (options.backend && *options.backend != *backend)
-				{
-					std::cerr << "routerinfo: conflicting firewall backends" << std::endl;
-					return 1;
-				}
-				options.backend = *backend;
-				break;
-			}
-			case 'A': options.render.nftFamily = optarg; options.nftOptionsGiven = true; break;
-			case 'B': options.render.nftTable = optarg; options.nftOptionsGiven = true; break;
-			case 'C': options.render.nftChain = optarg; options.nftOptionsGiven = true; break;
-			default:
-				Usage (argv[0]);
+				std::cerr << "routerinfo: unknown firewall backend: " << optarg << std::endl;
 				return 1;
+			}
+			if (options.backend && *options.backend != *backend)
+			{
+				std::cerr << "routerinfo: conflicting firewall backends" << std::endl;
+				return 1;
+			}
+			options.backend = *backend;
+			break;
+		}
+		case 'A':
+			options.render.nftFamily = optarg;
+			options.nftOptionsGiven = true;
+			break;
+		case 'B':
+			options.render.nftTable = optarg;
+			options.nftOptionsGiven = true;
+			break;
+		case 'C':
+			options.render.nftChain = optarg;
+			options.nftOptionsGiven = true;
+			break;
+		default: Usage (argv[0]); return 1;
 		}
 	}
 
@@ -211,14 +213,14 @@ int main (int argc, char * argv[])
 		}
 		if (*options.backend == Backend::Nftables)
 		{
-			if (options.render.nftFamily != "inet" && options.render.nftFamily != "ip" &&
-				options.render.nftFamily != "ip6")
+			if (options.render.nftFamily != "inet" && options.render.nftFamily != "ip"
+				&& options.render.nftFamily != "ip6")
 			{
 				std::cerr << "routerinfo: nft family must be inet, ip or ip6" << std::endl;
 				return 1;
 			}
-			if (!i2p::tools::firewall::IsSafeIdentifier (options.render.nftTable) ||
-				!i2p::tools::firewall::IsSafeIdentifier (options.render.nftChain))
+			if (!i2p::tools::firewall::IsSafeIdentifier (options.render.nftTable)
+				|| !i2p::tools::firewall::IsSafeIdentifier (options.render.nftChain))
 			{
 				std::cerr << "routerinfo: invalid nft table or chain name" << std::endl;
 				return 1;
@@ -227,7 +229,10 @@ int main (int argc, char * argv[])
 	}
 
 	i2p::crypto::InitCrypto (false);
-	struct CryptoGuard { ~CryptoGuard () { i2p::crypto::TerminateCrypto (); } } cryptoGuard;
+	struct CryptoGuard
+	{
+		~CryptoGuard () { i2p::crypto::TerminateCrypto (); }
+	} cryptoGuard;
 
 	std::set<std::string> seen;
 	size_t total = 0;
@@ -235,7 +240,7 @@ int main (int argc, char * argv[])
 	{
 		const std::string filename (argv[index]);
 		i2p::data::RouterInfo router (filename);
-		const auto& hash = router.GetIdentHashBase64 ();
+		const auto & hash = router.GetIdentHashBase64 ();
 
 		std::vector<std::shared_ptr<const i2p::data::RouterInfo::Address>> addresses;
 		AddAddress (addresses, router.GetPublishedNTCP2V4Address ());
@@ -245,8 +250,7 @@ int main (int argc, char * argv[])
 			AddAddress (addresses, router.GetPublishedNTCP2V6Address ());
 			AddAddress (addresses, router.GetSSU2V6Address ());
 		}
-		if (options.yggdrasil)
-			AddAddress (addresses, router.GetYggdrasilAddress ());
+		if (options.yggdrasil) AddAddress (addresses, router.GetYggdrasilAddress ());
 
 		if (options.backend)
 		{
@@ -256,7 +260,7 @@ int main (int argc, char * argv[])
 		else
 		{
 			std::cout << "Router Hash: " << hash << std::endl;
-			for (const auto& address : addresses)
+			for (const auto & address : addresses)
 			{
 				std::cout << AddressStyle (*address) << ": " << address->host;
 				if (options.printPort) std::cout << ":" << address->port;

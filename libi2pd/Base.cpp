@@ -19,12 +19,39 @@ namespace i2p
 {
 namespace data
 {
-	static constexpr char T32[32] =
-	{
-		'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h',
-		'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p',
-		'q', 'r', 's', 't', 'u', 'v', 'w', 'x',
-		'y', 'z', '2', '3', '4', '5', '6', '7',
+	static constexpr char T32[32] = {
+		'a',
+		'b',
+		'c',
+		'd',
+		'e',
+		'f',
+		'g',
+		'h',
+		'i',
+		'j',
+		'k',
+		'l',
+		'm',
+		'n',
+		'o',
+		'p',
+		'q',
+		'r',
+		's',
+		't',
+		'u',
+		'v',
+		'w',
+		'x',
+		'y',
+		'z',
+		'2',
+		'3',
+		'4',
+		'5',
+		'6',
+		'7',
 	};
 
 	const char * GetBase32SubstitutionTable ()
@@ -40,17 +67,10 @@ namespace data
 	* Direct Substitution Table
 	*/
 
-	static constexpr char T64[64] =
-	{
-		'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H',
-		'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P',
-		'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X',
-		'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f',
-		'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n',
-		'o', 'p', 'q', 'r', 's', 't', 'u', 'v',
-		'w', 'x', 'y', 'z', '0', '1', '2', '3',
-		'4', '5', '6', '7', '8', '9', '-', '~'
-	};
+	static constexpr char T64[64] = { 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P',
+		'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l',
+		'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z', '0', '1', '2', '3', '4', '5', '6', '7',
+		'8', '9', '-', '~' };
 
 	const char * GetBase64SubstitutionTable ()
 	{
@@ -72,8 +92,7 @@ namespace data
 	{
 		std::array<int8_t, 256> table;
 		table.fill (-1);
-		for (size_t i = 0; i < sizeof (T64); ++i)
-			table[static_cast<uint8_t> (T64[i])] = static_cast<int8_t> (i);
+		for (size_t i = 0; i < sizeof (T64); ++i) table[static_cast<uint8_t> (T64[i])] = static_cast<int8_t> (i);
 		table[static_cast<uint8_t> (P64)] = 0;
 		return table;
 	}
@@ -87,13 +106,13 @@ namespace data
 	* Converts binary encoded data to BASE64 format.
 	*
 	*/
-	std::string ByteStreamToBase64 (// base64 encoded string
-		const uint8_t * InBuffer, 	// Input buffer, binary data
-	    size_t InCount 				// Number of bytes in the input buffer
+	std::string ByteStreamToBase64 ( // base64 encoded string
+		const uint8_t * InBuffer, // Input buffer, binary data
+		size_t InCount // Number of bytes in the input buffer
 	)
 	{
-		if (!InCount) return {};
-		if (!InBuffer) return {};
+		if (!InCount) return { };
+		if (!InBuffer) return { };
 
 		const size_t n = InCount / 3;
 		const size_t m = InCount % 3;
@@ -140,9 +159,9 @@ namespace data
 	* not properly padded, buffer of negative length is returned
 	*
 	*/
-	size_t Base64ToByteStream (		// Number of output bytes
-		std::string_view base64Str,	// BASE64 encoded string
-		std::span<uint8_t> outBuffer	// destination with explicit size
+	size_t Base64ToByteStream ( // Number of output bytes
+		std::string_view base64Str, // BASE64 encoded string
+		std::span<uint8_t> outBuffer // destination with explicit size
 	)
 	{
 		// Keep the I2P base64 framing: length must be a multiple of four,
@@ -154,8 +173,10 @@ namespace data
 		if (base64Str.front () == P64) return 0;
 
 		size_t padding = 0;
-		if (base64Str.ends_with ("==")) padding = 2;
-		else if (base64Str.back () == P64) padding = 1;
+		if (base64Str.ends_with ("=="))
+			padding = 2;
+		else if (base64Str.back () == P64)
+			padding = 1;
 
 		const size_t encodedChars = base64Str.size () - padding;
 		for (size_t i = 0; i < encodedChars; ++i)
@@ -169,11 +190,10 @@ namespace data
 		size_t written = 0;
 		for (size_t i = 0; i < base64Str.size (); i += 4)
 		{
-			const uint32_t v =
-				(static_cast<uint32_t> (IT64[static_cast<uint8_t> (base64Str[i])]) << 18) |
-				(static_cast<uint32_t> (IT64[static_cast<uint8_t> (base64Str[i + 1])]) << 12) |
-				(static_cast<uint32_t> (IT64[static_cast<uint8_t> (base64Str[i + 2])]) << 6) |
-				 static_cast<uint32_t> (IT64[static_cast<uint8_t> (base64Str[i + 3])]);
+			const uint32_t v = (static_cast<uint32_t> (IT64[static_cast<uint8_t> (base64Str[i])]) << 18)
+				| (static_cast<uint32_t> (IT64[static_cast<uint8_t> (base64Str[i + 1])]) << 12)
+				| (static_cast<uint32_t> (IT64[static_cast<uint8_t> (base64Str[i + 2])]) << 6)
+				| static_cast<uint32_t> (IT64[static_cast<uint8_t> (base64Str[i + 3])]);
 
 			if (written < outCount) outBuffer[written++] = static_cast<uint8_t> (v >> 16);
 			if (written < outCount) outBuffer[written++] = static_cast<uint8_t> (v >> 8);
@@ -182,12 +202,11 @@ namespace data
 		return written;
 	}
 
-
 	size_t Base32ToByteStream (std::string_view base32Str, uint8_t * outBuf, size_t outLen)
 	{
 		unsigned int tmp = 0, bits = 0;
 		size_t ret = 0;
-		for (auto ch: base32Str)
+		for (auto ch : base32Str)
 		{
 			if (ch >= '2' && ch <= '7') // digit
 				ch = (ch - '2') + 26; // 26 means a-z
@@ -212,8 +231,8 @@ namespace data
 
 	std::string ByteStreamToBase32 (const uint8_t * inBuf, size_t len)
 	{
-		if (!len) return {};
-		if (!inBuf) return {};
+		if (!len) return { };
+		if (!inBuf) return { };
 		std::string out;
 		out.reserve ((len * 8 + 4) / 5);
 		size_t pos = 1;

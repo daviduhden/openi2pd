@@ -42,7 +42,6 @@ import com.google.android.material.navigation.NavigationBarView;
  * actions.</p>
  */
 public class MainActivity extends AppCompatActivity {
-
     private static final String STATE_SELECTED_NAV = "selected_nav";
     private static final int REQUEST_POST_NOTIFICATIONS = 3;
 
@@ -171,15 +170,12 @@ public class MainActivity extends AppCompatActivity {
 
         FragmentManager fragments = getSupportFragmentManager();
         if (fragments.getBackStackEntryCount() > 0) {
-            fragments.popBackStackImmediate(null,
-                    FragmentManager.POP_BACK_STACK_INCLUSIVE);
+            fragments.popBackStackImmediate(null, FragmentManager.POP_BACK_STACK_INCLUSIVE);
         }
 
-        FragmentTransaction transaction = fragments.beginTransaction()
-                .setReorderingAllowed(true);
-        for (String existingTag : new String[]{
-                TAG_DASHBOARD, TAG_NETWORK, TAG_TUNNELS,
-                TAG_STATISTICS, TAG_SETTINGS, TAG_LOGS, TAG_ABOUT}) {
+        FragmentTransaction transaction = fragments.beginTransaction().setReorderingAllowed(true);
+        for (String existingTag : new String[] {TAG_DASHBOARD, TAG_NETWORK, TAG_TUNNELS,
+                     TAG_STATISTICS, TAG_SETTINGS, TAG_LOGS, TAG_ABOUT}) {
             Fragment existing = fragments.findFragmentByTag(existingTag);
             if (existing != null && !existingTag.equals(tag)) {
                 transaction.hide(existing);
@@ -249,9 +245,9 @@ public class MainActivity extends AppCompatActivity {
         return new DashboardFragment();
     }
 
-    private void openDetail(@NonNull Fragment fragment, @NonNull String tag,
-                            @StringRes int title) {
-        getSupportFragmentManager().beginTransaction()
+    private void openDetail(@NonNull Fragment fragment, @NonNull String tag, @StringRes int title) {
+        getSupportFragmentManager()
+                .beginTransaction()
                 .setReorderingAllowed(true)
                 .replace(R.id.fragment_container, fragment, tag)
                 .addToBackStack(tag)
@@ -273,8 +269,8 @@ public class MainActivity extends AppCompatActivity {
 
         boolean gracefulActive = UiFormat.gracefulActive(lastSnapshot);
         if (graceful != null) {
-            graceful.setTitle(gracefulActive
-                    ? R.string.action_cancel_graceful_stop : R.string.action_graceful_stop);
+            graceful.setTitle(gracefulActive ? R.string.action_cancel_graceful_stop
+                                             : R.string.action_graceful_stop);
             graceful.setEnabled(gracefulActive || UiFormat.isRunning(lastSnapshot));
         }
         if (reload != null) {
@@ -314,8 +310,7 @@ public class MainActivity extends AppCompatActivity {
             confirm(R.string.confirm_exit_title, R.string.confirm_exit_message,
                     R.string.action_exit, () -> {
                         viewModel.stopRouter();
-                        Toast.makeText(this, R.string.toast_stopping,
-                                Toast.LENGTH_SHORT).show();
+                        Toast.makeText(this, R.string.toast_stopping, Toast.LENGTH_SHORT).show();
                         finishAndRemoveTask();
                     });
             return true;
@@ -326,25 +321,24 @@ public class MainActivity extends AppCompatActivity {
     private void toggleGracefulStop() {
         if (UiFormat.gracefulActive(lastSnapshot)) {
             viewModel.cancelGracefulStop();
-            Toast.makeText(this, R.string.toast_graceful_cancelled,
-                    Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, R.string.toast_graceful_cancelled, Toast.LENGTH_SHORT).show();
             return;
         }
         confirm(R.string.confirm_graceful_title, R.string.confirm_graceful_message,
                 R.string.action_graceful_stop, () -> {
                     viewModel.beginGracefulStop();
-                    Toast.makeText(this, R.string.toast_graceful_started,
-                            Toast.LENGTH_SHORT).show();
+                    Toast.makeText(this, R.string.toast_graceful_started, Toast.LENGTH_SHORT)
+                            .show();
                 });
     }
 
     @SuppressLint("BatteryLife")
     private void showBatteryOptimizationOptions() {
         PowerManager powerManager = (PowerManager) getSystemService(POWER_SERVICE);
-        if (powerManager != null
-                && powerManager.isIgnoringBatteryOptimizations(getPackageName())) {
-            Toast.makeText(this, R.string.battery_optimizations_already_disabled,
-                    Toast.LENGTH_SHORT).show();
+        if (powerManager != null && powerManager.isIgnoringBatteryOptimizations(getPackageName())) {
+            Toast.makeText(
+                         this, R.string.battery_optimizations_already_disabled, Toast.LENGTH_SHORT)
+                    .show();
             return;
         }
 
@@ -352,16 +346,17 @@ public class MainActivity extends AppCompatActivity {
                 .setTitle(R.string.battery_optimizations_enabled)
                 .setMessage(R.string.battery_optimizations_enabled_dialog)
                 .setNegativeButton(R.string.action_cancel, null)
-                .setPositiveButton(R.string.action_continue, (dialog, which) -> {
-                    Intent request = new Intent(
-                            Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
-                            Uri.parse("package:" + getPackageName()));
-                    try {
-                        startActivity(request);
-                    } catch (RuntimeException exception) {
-                        openBatteryOptimizationSettings();
-                    }
-                })
+                .setPositiveButton(R.string.action_continue,
+                        (dialog, which) -> {
+                            Intent request =
+                                    new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                                            Uri.parse("package:" + getPackageName()));
+                            try {
+                                startActivity(request);
+                            } catch (RuntimeException exception) {
+                                openBatteryOptimizationSettings();
+                            }
+                        })
                 .show();
     }
 
@@ -370,13 +365,14 @@ public class MainActivity extends AppCompatActivity {
             startActivity(new Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS));
         } catch (RuntimeException exception) {
             Toast.makeText(this,
-                    R.string.os_version_does_not_support_battery_optimizations_show_os_dialog_api,
-                    Toast.LENGTH_SHORT).show();
+                         R.string.os_version_does_not_support_battery_optimizations_show_os_dialog_api,
+                         Toast.LENGTH_SHORT)
+                    .show();
         }
     }
 
-    private void confirm(@StringRes int title, @StringRes int message,
-                         @StringRes int positive, @NonNull Runnable action) {
+    private void confirm(@StringRes int title, @StringRes int message, @StringRes int positive,
+            @NonNull Runnable action) {
         new MaterialAlertDialogBuilder(this)
                 .setTitle(title)
                 .setMessage(message)
@@ -388,8 +384,8 @@ public class MainActivity extends AppCompatActivity {
     private void requestNotificationPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
                 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
-                != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},
+                        != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[] {Manifest.permission.POST_NOTIFICATIONS},
                     REQUEST_POST_NOTIFICATIONS);
         }
     }

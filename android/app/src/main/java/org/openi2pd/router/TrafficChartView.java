@@ -25,7 +25,6 @@ import androidx.core.content.ContextCompat;
  * over at most {@link #MAX_SAMPLES} points.</p>
  */
 public class TrafficChartView extends View {
-
     public static final int MAX_SAMPLES = 120;
 
     private final long[] downloadHistory = new long[MAX_SAMPLES];
@@ -174,10 +173,9 @@ public class TrafficChartView extends View {
             maximum = Math.max(maximum, uploadHistory[indexAt(i)]);
         }
 
-        buildPath(downloadPath, downloadFillPath, downloadHistory, maximum,
-                left, top, right, bottom);
-        buildPath(uploadPath, uploadFillPath, uploadHistory, maximum,
-                left, top, right, bottom);
+        buildPath(
+                downloadPath, downloadFillPath, downloadHistory, maximum, left, top, right, bottom);
+        buildPath(uploadPath, uploadFillPath, uploadHistory, maximum, left, top, right, bottom);
 
         canvas.drawPath(downloadFillPath, downloadFillPaint);
         canvas.drawPath(uploadFillPath, uploadFillPaint);
@@ -185,9 +183,8 @@ public class TrafficChartView extends View {
         canvas.drawPath(uploadPath, uploadPaint);
     }
 
-    private void buildPath(@NonNull Path line, @NonNull Path fill,
-                           @NonNull long[] values, long maximum,
-                           float left, float top, float right, float bottom) {
+    private void buildPath(@NonNull Path line, @NonNull Path fill, @NonNull long[] values,
+            long maximum, float left, float top, float right, float bottom) {
         line.reset();
         fill.reset();
 

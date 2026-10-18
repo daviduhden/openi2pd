@@ -15,7 +15,6 @@ import org.junit.Test;
  * constructed or called, so these run without an emulator.
  */
 public class RouterConfigStoreTest {
-
     @Test
     public void acceptsValuesTheDaemonCanParse() {
         assertTrue(RouterConfigStore.isSafeValue("true"));

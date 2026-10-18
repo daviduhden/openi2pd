@@ -25,7 +25,6 @@ import com.google.android.material.chip.Chip;
  * state.
  */
 public class NetworkFragment extends Fragment {
-
     private RouterViewModel viewModel;
 
     private TextView networkState;
@@ -43,9 +42,8 @@ public class NetworkFragment extends Fragment {
 
     @Nullable
     @Override
-    public View onCreateView(@NonNull LayoutInflater inflater,
-                             @Nullable ViewGroup container,
-                             @Nullable Bundle savedInstanceState) {
+    public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container,
+            @Nullable Bundle savedInstanceState) {
         return inflater.inflate(R.layout.fragment_network, container, false);
     }
 
@@ -76,8 +74,8 @@ public class NetworkFragment extends Fragment {
     private void render(@Nullable RouterSnapshot snapshot) {
         Context context = requireContext();
         boolean hasData = snapshot != null && UiFormat.isRunning(snapshot);
-        boolean hasAddresses = snapshot != null && snapshot.addresses() != null
-                && !snapshot.addresses().isEmpty();
+        boolean hasAddresses =
+                snapshot != null && snapshot.addresses() != null && !snapshot.addresses().isEmpty();
 
         networkState.setText(UiFormat.connectivity(context, snapshot));
 
@@ -87,10 +85,10 @@ public class NetworkFragment extends Fragment {
             chipIpv4.setText(R.string.value_unknown);
             chipIpv6.setText(R.string.value_unknown);
         } else {
-            chipIpv4.setText(ipv4
-                    ? R.string.network_ipv4_available : R.string.network_ipv4_unavailable);
-            chipIpv6.setText(ipv6
-                    ? R.string.network_ipv6_available : R.string.network_ipv6_unavailable);
+            chipIpv4.setText(
+                    ipv4 ? R.string.network_ipv4_available : R.string.network_ipv4_unavailable);
+            chipIpv6.setText(
+                    ipv6 ? R.string.network_ipv6_available : R.string.network_ipv6_unavailable);
         }
 
         if (snapshot == null) {
@@ -101,12 +99,12 @@ public class NetworkFragment extends Fragment {
         } else {
             textIpv4.setText(UiFormat.addressList(context, snapshot.addresses(), false));
             textIpv6.setText(UiFormat.addressList(context, snapshot.addresses(), true));
-            textNtcp2.setText(getString(R.string.network_transport_format,
-                    getString(R.string.network_ntcp2),
-                    UiFormat.enabledDisabled(context, snapshot.ntcp2())));
-            textSsu2.setText(getString(R.string.network_transport_format,
-                    getString(R.string.network_ssu2),
-                    UiFormat.enabledDisabled(context, snapshot.ssu2())));
+            textNtcp2.setText(
+                    getString(R.string.network_transport_format, getString(R.string.network_ntcp2),
+                            UiFormat.enabledDisabled(context, snapshot.ntcp2())));
+            textSsu2.setText(
+                    getString(R.string.network_transport_format, getString(R.string.network_ssu2),
+                            UiFormat.enabledDisabled(context, snapshot.ssu2())));
         }
 
         ServiceStates services = snapshot == null ? null : snapshot.services();
@@ -115,20 +113,16 @@ public class NetworkFragment extends Fragment {
                 serviceData ? services.httpProxy() : null, context);
         setService(statusSocks, R.string.services_socks_proxy,
                 serviceData ? services.socksProxy() : null, context);
-        setService(statusBob, R.string.services_bob,
-                serviceData ? services.bob() : null, context);
-        setService(statusSam, R.string.services_sam,
-                serviceData ? services.sam() : null, context);
-        setService(statusI2cp, R.string.services_i2cp,
-                serviceData ? services.i2cp() : null, context);
+        setService(statusBob, R.string.services_bob, serviceData ? services.bob() : null, context);
+        setService(statusSam, R.string.services_sam, serviceData ? services.sam() : null, context);
+        setService(
+                statusI2cp, R.string.services_i2cp, serviceData ? services.i2cp() : null, context);
     }
 
-    private void setService(@NonNull TextView view, int labelRes,
-                            @Nullable Boolean running, @NonNull Context context) {
-        view.setText(getString(R.string.network_service_format,
-                getString(labelRes),
-                running == null
-                        ? getString(R.string.value_unknown)
-                        : UiFormat.serviceState(context, running)));
+    private void setService(@NonNull TextView view, int labelRes, @Nullable Boolean running,
+            @NonNull Context context) {
+        view.setText(getString(R.string.network_service_format, getString(labelRes),
+                running == null ? getString(R.string.value_unknown)
+                                : UiFormat.serviceState(context, running)));
     }
 }

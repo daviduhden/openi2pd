@@ -37,7 +37,6 @@ import java.util.Locale;
  * is capped so a noisy native log stream cannot exhaust heap.
  */
 public class LogsFragment extends Fragment {
-
     private static final String STATE_QUERY = "log_query";
     private static final String STATE_FILTER = "log_filter";
     private static final int MAX_VISIBLE_LOGS = 1000;
@@ -58,9 +57,8 @@ public class LogsFragment extends Fragment {
 
     @Nullable
     @Override
-    public View onCreateView(@NonNull LayoutInflater inflater,
-                             @Nullable ViewGroup container,
-                             @Nullable Bundle savedInstanceState) {
+    public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container,
+            @Nullable Bundle savedInstanceState) {
         return inflater.inflate(R.layout.fragment_logs, container, false);
     }
 
@@ -123,16 +121,18 @@ public class LogsFragment extends Fragment {
             applyFilters(false);
         });
 
-        clearLogs.setOnClickListener(ignored ->
-                new MaterialAlertDialogBuilder(requireContext())
+        clearLogs.setOnClickListener(ignored
+                -> new MaterialAlertDialogBuilder(requireContext())
                         .setTitle(R.string.confirm_clear_logs_title)
                         .setMessage(R.string.confirm_clear_logs_message)
                         .setNegativeButton(R.string.action_cancel, null)
-                        .setPositiveButton(R.string.action_clear_logs, (dialog, which) -> {
-                            viewModel.clearLogs();
-                            Toast.makeText(requireContext(), R.string.logs_cleared,
-                                    Toast.LENGTH_SHORT).show();
-                        })
+                        .setPositiveButton(R.string.action_clear_logs,
+                                (dialog, which) -> {
+                                    viewModel.clearLogs();
+                                    Toast.makeText(requireContext(), R.string.logs_cleared,
+                                                 Toast.LENGTH_SHORT)
+                                            .show();
+                                })
                         .show());
 
         progress.setContentDescription(getString(R.string.logs_loading));
@@ -174,8 +174,8 @@ public class LogsFragment extends Fragment {
         }
 
         int start = Math.max(0, filtered.size() - MAX_VISIBLE_LOGS);
-        List<LogEntry> visible = start == 0
-                ? filtered : new ArrayList<>(filtered.subList(start, filtered.size()));
+        List<LogEntry> visible =
+                start == 0 ? filtered : new ArrayList<>(filtered.subList(start, filtered.size()));
 
         adapter.submitList(visible, () -> {
             if (!isAdded() || getView() == null) {
@@ -193,11 +193,10 @@ public class LogsFragment extends Fragment {
         if (filterId == R.id.filter_all) {
             return true;
         }
-        String level = entry.level() == null
-                ? "" : entry.level().toLowerCase(Locale.ROOT);
+        String level = entry.level() == null ? "" : entry.level().toLowerCase(Locale.ROOT);
         if (filterId == R.id.filter_error) {
-            return level.contains("error") || level.contains("fatal")
-                    || level.contains("crit") || level.contains("fail");
+            return level.contains("error") || level.contains("fatal") || level.contains("crit")
+                    || level.contains("fail");
         }
         if (filterId == R.id.filter_warn) {
             return level.contains("warn");
@@ -216,9 +215,13 @@ public class LogsFragment extends Fragment {
             return true;
         }
         return (entry.message() != null
-                && entry.message().toLowerCase(Locale.getDefault()).contains(normalizedQuery))
+                       && entry.message()
+                               .toLowerCase(Locale.getDefault())
+                               .contains(normalizedQuery))
                 || (entry.level() != null
-                && entry.level().toLowerCase(Locale.getDefault()).contains(normalizedQuery));
+                        && entry.level()
+                                .toLowerCase(Locale.getDefault())
+                                .contains(normalizedQuery));
     }
 
     private boolean isAtBottom() {
@@ -229,8 +232,7 @@ public class LogsFragment extends Fragment {
         if (!(manager instanceof LinearLayoutManager linearManager)) {
             return true;
         }
-        return linearManager.findLastVisibleItemPosition()
-                >= adapter.getItemCount() - 2;
+        return linearManager.findLastVisibleItemPosition() >= adapter.getItemCount() - 2;
     }
 
     private void updateEmptyState() {

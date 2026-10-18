@@ -22,27 +22,24 @@ namespace client
 	 */
 	class MatchedTunnelDestination : public RunnableClientDestination, public i2p::tunnel::ITunnelPeerSelector
 	{
-		public:
+	public:
+		MatchedTunnelDestination (const i2p::data::PrivateKeys & keys, const std::string & remoteName,
+			const i2p::util::Mapping * params = nullptr);
+		~MatchedTunnelDestination ();
+		void Start ();
+		void Stop ();
 
-			MatchedTunnelDestination(const i2p::data::PrivateKeys& keys, const std::string & remoteName,
-				const i2p::util::Mapping * params = nullptr);
-			~MatchedTunnelDestination();
-			void Start();
-			void Stop();
+		bool SelectPeers (i2p::tunnel::Path & peers, int hops, bool inbound);
 
-			bool SelectPeers(i2p::tunnel::Path & peers, int hops, bool inbound);
+	private:
+		void ResolveCurrentLeaseSet ();
+		void HandleFoundCurrentLeaseSet (std::shared_ptr<const i2p::data::LeaseSet> ls);
 
-		private:
-
-			void ResolveCurrentLeaseSet();
-			void HandleFoundCurrentLeaseSet(std::shared_ptr<const i2p::data::LeaseSet> ls);
-
-		private:
-
-			std::string m_RemoteName;
-			i2p::data::IdentHash m_RemoteIdent;
-			std::shared_ptr<const i2p::data::LeaseSet> m_RemoteLeaseSet;
-			std::shared_ptr<boost::asio::steady_timer> m_ResolveTimer;
+	private:
+		std::string m_RemoteName;
+		i2p::data::IdentHash m_RemoteIdent;
+		std::shared_ptr<const i2p::data::LeaseSet> m_RemoteLeaseSet;
+		std::shared_ptr<boost::asio::steady_timer> m_ResolveTimer;
 	};
 }
 }

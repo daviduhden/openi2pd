@@ -41,7 +41,7 @@ static void TestLeaseSetTruncatedBuffer ()
 
 static void TestLeaseSetShortBuffers ()
 {
-	std::array<uint8_t, 128> buffer{};
+	std::array<uint8_t, 128> buffer { };
 	for (size_t len = 0; len <= buffer.size (); ++len)
 	{
 		uint64_t expires = 0;
@@ -53,7 +53,7 @@ static void TestIdentityTruncation ()
 {
 	// IdentityEx::FromBuffer() must reject a certificate that claims more
 	// bytes than the supplied buffer.
-	std::array<uint8_t, i2p::data::DEFAULT_IDENTITY_SIZE> buffer{};
+	std::array<uint8_t, i2p::data::DEFAULT_IDENTITY_SIZE> buffer { };
 	htobe16buf (buffer.data () + 385, 64); // certificate length
 	i2p::data::IdentityEx identity;
 	assert (identity.FromBuffer (buffer.data (), buffer.size ()) == 0);
@@ -67,15 +67,14 @@ static void TestIdentityTruncation ()
 
 static void TestI2NPMessageLength ()
 {
-	std::array<uint8_t, 32> buffer{};
+	std::array<uint8_t, 32> buffer { };
 
 	// Anything shorter than the size field is returned unchanged.
 	for (size_t len = 0; len < i2p::I2NP_HEADER_SIZE_OFFSET + 2; ++len)
 		assert (i2p::GetI2NPMessageLength (buffer.data (), len) == len);
 
 	htobe16buf (buffer.data () + i2p::I2NP_HEADER_SIZE_OFFSET, 10);
-	assert (i2p::GetI2NPMessageLength (buffer.data (), buffer.size ()) ==
-		i2p::I2NP_HEADER_SIZE + 10);
+	assert (i2p::GetI2NPMessageLength (buffer.data (), buffer.size ()) == i2p::I2NP_HEADER_SIZE + 10);
 
 	// A declared size larger than the buffer is clamped to the buffer length.
 	htobe16buf (buffer.data () + i2p::I2NP_HEADER_SIZE_OFFSET, 1000);

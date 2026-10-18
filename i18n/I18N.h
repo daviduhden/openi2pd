@@ -24,65 +24,59 @@ namespace i18n
 	typedef std::map<std::string_view, std::string_view> LocaleStrings;
 	class Locale
 	{
-		public:
-			Locale (
-				const std::string& language,
-				const bool& rtl,
-				const LocaleStrings& strings,
-				const std::map<std::string, std::vector<std::string>>& plurals,
-				std::function<int(int)> formula
-			): m_Language (language), m_RTL (rtl), m_Strings (strings), m_Plurals (plurals), m_Formula (formula) { };
+	public:
+		Locale (const std::string & language, const bool & rtl, const LocaleStrings & strings,
+			const std::map<std::string, std::vector<std::string>> & plurals, std::function<int (int)> formula)
+			: m_Language (language)
+			, m_RTL (rtl)
+			, m_Strings (strings)
+			, m_Plurals (plurals)
+			, m_Formula (formula) { };
 
-			// Get activated language name for administrative views
-			std::string GetLanguage() const
+		// Get activated language name for administrative views
+		std::string GetLanguage () const { return m_Language; }
+
+		bool GetRTL () const { return m_RTL; }
+
+		std::string_view GetString (std::string_view arg) const
+		{
+			const auto it = m_Strings.find (arg);
+			if (it == m_Strings.end ())
 			{
-				return m_Language;
+				return arg;
 			}
-
-			bool GetRTL() const
+			else
 			{
-				return m_RTL;
+				return it->second;
 			}
+		}
 
-			std::string_view GetString (std::string_view arg) const
+		std::string GetPlural (const std::string & arg, const std::string & arg2, int n) const
+		{
+			const auto it = m_Plurals.find (arg2);
+			if (it == m_Plurals.end ()) // not found, fallback to english
 			{
-				const auto it = m_Strings.find(arg);
-				if (it == m_Strings.end())
-				{
-					return arg;
-				}
-				else
-				{
-					return it->second;
-				}
+				return n == 1 ? arg : arg2;
 			}
-
-			std::string GetPlural (const std::string& arg, const std::string& arg2, int n) const
+			else
 			{
-				const auto it = m_Plurals.find(arg2);
-				if (it == m_Plurals.end()) // not found, fallback to english
-				{
-					return n == 1 ? arg : arg2;
-				}
-				else
-				{
-					int form = m_Formula(n);
-					return it->second[form];
-				}
+				int form = m_Formula (n);
+				return it->second[form];
 			}
+		}
 
-		private:
-			const std::string m_Language;
-			const bool m_RTL;
-			const LocaleStrings m_Strings;
-			const std::map<std::string, std::vector<std::string>> m_Plurals;
-			std::function<int(int)> m_Formula;
+	private:
+		const std::string m_Language;
+		const bool m_RTL;
+		const LocaleStrings m_Strings;
+		const std::map<std::string, std::vector<std::string>> m_Plurals;
+		std::function<int (int)> m_Formula;
 	};
 
 	// Retained for native Android integration; the local TUI always uses English.
-	void SetLanguage(const std::string&);
+	void SetLanguage (const std::string &);
 	std::string_view translate (std::string_view arg);
-	std::string translate (const std::string& arg, const std::string& arg2, int n);
+	std::string translate (const std::string & arg, const std::string & arg2, int n);
 } // i18n
 } // i2p
 
@@ -90,10 +84,9 @@ namespace i18n
  * @brief Get translation of string
  * @param arg String with message
  */
-template<typename TValue>
-std::string_view tr (TValue&& arg)
+template <typename TValue> std::string_view tr (TValue && arg)
 {
-	return i2p::i18n::translate(std::forward<TValue>(arg));
+	return i2p::i18n::translate (std::forward<TValue> (arg));
 }
 
 /**
@@ -101,14 +94,13 @@ std::string_view tr (TValue&& arg)
  * @param arg String with message
  * @param args Array of arguments for string formatting
 */
-template<typename TValue, typename... TArgs>
-std::string tr (TValue&& arg, TArgs&&... args)
+template <typename TValue, typename... TArgs> std::string tr (TValue && arg, TArgs &&... args)
 {
-	std::string tr_str = std::string (i2p::i18n::translate(std::forward<TValue>(arg))); // TODO:
+	std::string tr_str = std::string (i2p::i18n::translate (std::forward<TValue> (arg))); // TODO:
 
-	size_t size = std::snprintf(NULL, 0, tr_str.c_str(), std::forward<TArgs>(args)...);
-	std::string str(size, 0);
-	std::snprintf(&str.front(), size + 1, tr_str.c_str(), std::forward<TArgs>(args)...);
+	size_t size = std::snprintf (NULL, 0, tr_str.c_str (), std::forward<TArgs> (args)...);
+	std::string str (size, 0);
+	std::snprintf (&str.front (), size + 1, tr_str.c_str (), std::forward<TArgs> (args)...);
 
 	return str;
 }
@@ -119,10 +111,9 @@ std::string tr (TValue&& arg, TArgs&&... args)
  * @param arg2 String with message in plural form
  * @param n Integer, used for selection of form
  */
-template<typename TValue, typename TValue2>
-std::string ntr (TValue&& arg, TValue2&& arg2, int n)
+template <typename TValue, typename TValue2> std::string ntr (TValue && arg, TValue2 && arg2, int n)
 {
-	return i2p::i18n::translate(std::forward<TValue>(arg), std::forward<TValue2>(arg2), std::forward<int>(n));
+	return i2p::i18n::translate (std::forward<TValue> (arg), std::forward<TValue2> (arg2), std::forward<int> (n));
 }
 
 /**
@@ -132,14 +123,15 @@ std::string ntr (TValue&& arg, TValue2&& arg2, int n)
  * @param n Integer, used for selection of form
  * @param args Array of arguments for string formatting
  */
-template<typename TValue, typename TValue2, typename... TArgs>
-std::string ntr (TValue&& arg, TValue2&& arg2, int n, TArgs&&... args)
+template <typename TValue, typename TValue2, typename... TArgs>
+std::string ntr (TValue && arg, TValue2 && arg2, int n, TArgs &&... args)
 {
-	std::string tr_str = i2p::i18n::translate(std::forward<TValue>(arg), std::forward<TValue2>(arg2), std::forward<int>(n));
+	std::string tr_str
+		= i2p::i18n::translate (std::forward<TValue> (arg), std::forward<TValue2> (arg2), std::forward<int> (n));
 
-	size_t size = std::snprintf(NULL, 0, tr_str.c_str(), std::forward<TArgs>(args)...);
-	std::string str(size, 0);
-	std::snprintf(&str.front(), size + 1, tr_str.c_str(), std::forward<TArgs>(args)...);
+	size_t size = std::snprintf (NULL, 0, tr_str.c_str (), std::forward<TArgs> (args)...);
+	std::string str (size, 0);
+	std::snprintf (&str.front (), size + 1, tr_str.c_str (), std::forward<TArgs> (args)...);
 
 	return str;
 }

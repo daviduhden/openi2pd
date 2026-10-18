@@ -31,35 +31,31 @@ namespace data
 	{
 		typedef Tag<512> PublicKey;
 
-		public:
+	public:
+		Reseeder ();
+		~Reseeder ();
+		void Bootstrap ();
+		int ReseedFromServers ();
+		int ProcessSU3File (const char * filename);
+		int ProcessZIPFile (const char * filename);
 
-			Reseeder();
-			~Reseeder();
-			void Bootstrap ();
-			int ReseedFromServers ();
-			int ProcessSU3File (const char * filename);
-			int ProcessZIPFile (const char * filename);
+		void LoadCertificates ();
 
-			void LoadCertificates ();
+	private:
+		int ReseedFromSU3Url (const std::string & url, bool isHttps = true);
+		void LoadCertificate (const std::string & filename);
 
-		private:
+		int ProcessSU3Stream (std::istream & s);
+		int ProcessZIPStream (std::istream & s, uint64_t contentLength);
 
-			int ReseedFromSU3Url (const std::string& url, bool isHttps = true);
-			void LoadCertificate (const std::string& filename);
+		bool FindZipDataDescriptor (std::istream & s);
 
-			int ProcessSU3Stream (std::istream& s);
-			int ProcessZIPStream (std::istream& s, uint64_t contentLength);
+		std::string HttpsRequest (const std::string & address);
+		std::string YggdrasilRequest (const std::string & address);
+		template <typename Stream> std::string ReseedRequest (Stream & s, const std::string & uri);
 
-			bool FindZipDataDescriptor (std::istream& s);
-
-			std::string HttpsRequest (const std::string& address);
-			std::string YggdrasilRequest (const std::string& address);
-			template<typename Stream>
-			std::string ReseedRequest (Stream& s, const std::string& uri);
-
-		private:
-
-			std::map<std::string, PublicKey> m_SigningKeys;
+	private:
+		std::map<std::string, PublicKey> m_SigningKeys;
 	};
 }
 }

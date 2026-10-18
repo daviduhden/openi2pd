@@ -412,3 +412,13 @@ then `TODO.md` and `ROADMAP.md`, then verify the code state.
 - No compiler, Android AAPT2/Lint/device, Windows resource, or visual/terminal
   test was executed; replacement assets remain uncommitted and HEAD is
   therefore not a releaseable branding state.
+
+### Formatting pass (uncommitted)
+
+- Added `.clang-format` with a C++ profile matching the existing tab/Allman/space
+  conventions and a separate 4-space Java profile.
+- Ran clang-format 23.1.3 over 245 C/C++/Java source files (generated JNI header
+  excluded). The pass is whitespace-only but very large; it was not followed by
+  a compiler, Gradle, CTest, or Lint run.
+- One space-before-tab diff-check artifact was normalized; `git diff --check`
+  is clean.

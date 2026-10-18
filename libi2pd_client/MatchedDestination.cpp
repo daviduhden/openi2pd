@@ -12,101 +12,103 @@
 #include "Log.h"
 #include "ClientContext.h"
 
-
 namespace i2p
 {
 namespace client
 {
-	MatchedTunnelDestination::MatchedTunnelDestination(const i2p::data::PrivateKeys & keys,
-		const std::string & remoteName, const i2p::util::Mapping * params)
-		: RunnableClientDestination(keys, false, params),
-			m_RemoteName(remoteName) {}
+	MatchedTunnelDestination::MatchedTunnelDestination (
+		const i2p::data::PrivateKeys & keys, const std::string & remoteName, const i2p::util::Mapping * params)
+		: RunnableClientDestination (keys, false, params)
+		, m_RemoteName (remoteName)
+	{
+	}
 
-	MatchedTunnelDestination::~MatchedTunnelDestination()
+	MatchedTunnelDestination::~MatchedTunnelDestination ()
 	{
 		if (m_ResolveTimer) m_ResolveTimer->cancel ();
 	}
 
-	void MatchedTunnelDestination::ResolveCurrentLeaseSet()
+	void MatchedTunnelDestination::ResolveCurrentLeaseSet ()
 	{
-		auto addr = i2p::client::context.GetAddressBook().GetAddress (m_RemoteName);
-		if(addr && addr->IsIdentHash ())
+		auto addr = i2p::client::context.GetAddressBook ().GetAddress (m_RemoteName);
+		if (addr && addr->IsIdentHash ())
 		{
 			m_RemoteIdent = addr->identHash;
-			auto ls = FindLeaseSet(m_RemoteIdent);
-			if(ls)
-				HandleFoundCurrentLeaseSet(ls);
+			auto ls = FindLeaseSet (m_RemoteIdent);
+			if (ls)
+				HandleFoundCurrentLeaseSet (ls);
 			else
-				RequestDestination(m_RemoteIdent, std::bind(&MatchedTunnelDestination::HandleFoundCurrentLeaseSet, this, std::placeholders::_1));
+				RequestDestination (m_RemoteIdent,
+					std::bind (&MatchedTunnelDestination::HandleFoundCurrentLeaseSet, this, std::placeholders::_1));
 		}
 		else
-			LogPrint(eLogWarning, "Destination: Failed to resolve ", m_RemoteName);
+			LogPrint (eLogWarning, "Destination: Failed to resolve ", m_RemoteName);
 	}
 
-	void MatchedTunnelDestination::HandleFoundCurrentLeaseSet(std::shared_ptr<const i2p::data::LeaseSet> ls)
+	void MatchedTunnelDestination::HandleFoundCurrentLeaseSet (std::shared_ptr<const i2p::data::LeaseSet> ls)
 	{
-		if(ls)
+		if (ls)
 		{
-			LogPrint(eLogDebug, "Destination: Resolved remote lease set for ", m_RemoteName);
+			LogPrint (eLogDebug, "Destination: Resolved remote lease set for ", m_RemoteName);
 			m_RemoteLeaseSet = ls;
 		}
 		else
 		{
-			m_ResolveTimer->expires_after(std::chrono::seconds(1));
-			m_ResolveTimer->async_wait([&](const boost::system::error_code & ec) {
-				if(!ec)	ResolveCurrentLeaseSet();
-			});
+			m_ResolveTimer->expires_after (std::chrono::seconds (1));
+			m_ResolveTimer->async_wait (
+				[&] (const boost::system::error_code & ec)
+				{
+					if (!ec) ResolveCurrentLeaseSet ();
+				});
 		}
 	}
 
-
-	void MatchedTunnelDestination::Start()
+	void MatchedTunnelDestination::Start ()
 	{
-		ClientDestination::Start();
-		m_ResolveTimer = std::make_shared<boost::asio::steady_timer>(GetService());
-		GetTunnelPool()->SetCustomPeerSelector(this);
-		ResolveCurrentLeaseSet();
+		ClientDestination::Start ();
+		m_ResolveTimer = std::make_shared<boost::asio::steady_timer> (GetService ());
+		GetTunnelPool ()->SetCustomPeerSelector (this);
+		ResolveCurrentLeaseSet ();
 	}
 
-	void MatchedTunnelDestination::Stop()
+	void MatchedTunnelDestination::Stop ()
 	{
-		ClientDestination::Stop();
-		if(m_ResolveTimer)
-			m_ResolveTimer->cancel();
+		ClientDestination::Stop ();
+		if (m_ResolveTimer) m_ResolveTimer->cancel ();
 	}
 
-
-	bool MatchedTunnelDestination::SelectPeers(i2p::tunnel::Path & path, int hops, bool inbound)
+	bool MatchedTunnelDestination::SelectPeers (i2p::tunnel::Path & path, int hops, bool inbound)
 	{
-		auto pool = GetTunnelPool();
-		if(!pool || !pool->StandardSelectPeers(path, hops, inbound,
-			std::bind(&i2p::tunnel::TunnelPool::SelectNextHop, pool, std::placeholders::_1, 
-				std::placeholders::_2, std::placeholders::_3)))
+		auto pool = GetTunnelPool ();
+		if (!pool
+			|| !pool->StandardSelectPeers (path, hops, inbound,
+				std::bind (&i2p::tunnel::TunnelPool::SelectNextHop, pool, std::placeholders::_1, std::placeholders::_2,
+					std::placeholders::_3)))
 			return false;
 		// more here for outbound tunnels
-		if(!inbound && m_RemoteLeaseSet)
+		if (!inbound && m_RemoteLeaseSet)
 		{
-			if(m_RemoteLeaseSet->IsExpired())
-				ResolveCurrentLeaseSet();
-			if(m_RemoteLeaseSet && !m_RemoteLeaseSet->IsExpired())
+			if (m_RemoteLeaseSet->IsExpired ()) ResolveCurrentLeaseSet ();
+			if (m_RemoteLeaseSet && !m_RemoteLeaseSet->IsExpired ())
 			{
 				// remote lease set is good
-				auto leases = m_RemoteLeaseSet->GetNonExpiredLeases();
+				auto leases = m_RemoteLeaseSet->GetNonExpiredLeases ();
 				// pick lease
 				std::shared_ptr<i2p::data::RouterInfo> obep;
-				while(!obep && leases.size() > 0)
+				while (!obep && leases.size () > 0)
 				{
-					auto idx = rand() % leases.size();
+					auto idx = rand () % leases.size ();
 					auto lease = leases[idx];
-					obep = i2p::data::netdb.FindRouter(lease->tunnelGateway);
-					leases.erase(leases.begin()+idx);
+					obep = i2p::data::netdb.FindRouter (lease->tunnelGateway);
+					leases.erase (leases.begin () + idx);
 				}
-				if(obep)
+				if (obep)
 				{
 					path.Add (obep);
-					LogPrint(eLogDebug, "Destination: Found OBEP matching IBGW");
-				} else
-					LogPrint(eLogWarning, "Destination: Could not find proper IBGW for matched outbound tunnel");
+					LogPrint (eLogDebug, "Destination: Found OBEP matching IBGW");
+				}
+				else
+					LogPrint (eLogWarning, "Destination: Could not find proper IBGW for matched outbound tunnel");
 			}
 		}
 		return true;

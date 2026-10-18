@@ -35,10 +35,10 @@ static std::string Int (int64_t value)
 	return "i" + std::to_string (value) + "e";
 }
 
-static std::string Dict (std::initializer_list<std::pair<std::string, std::string> > items)
+static std::string Dict (std::initializer_list<std::pair<std::string, std::string>> items)
 {
 	std::string result ("d");
-	for (const auto& [key, value]: items)
+	for (const auto & [key, value] : items)
 	{
 		result += Bytes (key);
 		result += value;
@@ -47,11 +47,10 @@ static std::string Dict (std::initializer_list<std::pair<std::string, std::strin
 	return result;
 }
 
-static std::string List (const std::vector<std::string>& items)
+static std::string List (const std::vector<std::string> & items)
 {
 	std::string result ("l");
-	for (const auto& item: items)
-		result += item;
+	for (const auto & item : items) result += item;
 	result += "e";
 	return result;
 }
@@ -68,48 +67,34 @@ static std::string DeepList (size_t depth)
 
 static std::string Pieces (size_t numPieces, char fill = 'A')
 {
-	return std::string (numPieces*SHA_DIGEST_LENGTH, fill);
+	return std::string (numPieces * SHA_DIGEST_LENGTH, fill);
 }
 
-static std::string SingleFileInfo (size_t length, size_t pieceLength, size_t numHashes,
-	const std::string& name = "file.bin")
+static std::string SingleFileInfo (
+	size_t length, size_t pieceLength, size_t numHashes, const std::string & name = "file.bin")
 {
-	return Dict ({
-		{ "length", Int ((int64_t)length) },
-		{ "name", Bytes (name) },
-		{ "piece length", Int ((int64_t)pieceLength) },
-		{ "pieces", Bytes (Pieces (numHashes)) }
-	});
+	return Dict ({ { "length", Int ((int64_t)length) }, { "name", Bytes (name) },
+		{ "piece length", Int ((int64_t)pieceLength) }, { "pieces", Bytes (Pieces (numHashes)) } });
 }
 
-static std::string MultiFileInfo (const std::vector<std::pair<size_t, std::vector<std::string> > >& files,
-	size_t pieceLength, size_t numHashes)
+static std::string MultiFileInfo (
+	const std::vector<std::pair<size_t, std::vector<std::string>>> & files, size_t pieceLength, size_t numHashes)
 {
 	std::vector<std::string> entries;
-	for (const auto& [length, components]: files)
+	for (const auto & [length, components] : files)
 	{
 		std::vector<std::string> path;
-		for (const auto& component: components)
-			path.push_back (Bytes (component));
-		entries.push_back (Dict ({
-			{ "length", Int ((int64_t)length) },
-			{ "path", List (path) }
-		}));
+		for (const auto & component : components) path.push_back (Bytes (component));
+		entries.push_back (Dict ({ { "length", Int ((int64_t)length) }, { "path", List (path) } }));
 	}
-	return Dict ({
-		{ "files", List (entries) },
-		{ "name", Bytes ("root") },
-		{ "piece length", Int ((int64_t)pieceLength) },
-		{ "pieces", Bytes (Pieces (numHashes)) }
-	});
+	return Dict ({ { "files", List (entries) }, { "name", Bytes ("root") },
+		{ "piece length", Int ((int64_t)pieceLength) }, { "pieces", Bytes (Pieces (numHashes)) } });
 }
 
-static std::string MakeTorrentFile (const std::string& info, const std::string& announce = "http://tracker.i2p/announce")
+static std::string MakeTorrentFile (
+	const std::string & info, const std::string & announce = "http://tracker.i2p/announce")
 {
-	return Dict ({
-		{ "announce", Bytes (announce) },
-		{ "info", info }
-	});
+	return Dict ({ { "announce", Bytes (announce) }, { "info", info } });
 }
 
 static void ExpectMalformed (std::string_view data)
@@ -135,10 +120,7 @@ static void TestValidSingleFile ()
 
 static void TestValidMultiFile ()
 {
-	auto data = MakeTorrentFile (MultiFileInfo ({
-		{ 100, { "dir", "a.txt" } },
-		{ 200, { "b.txt" } }
-	}, 16384, 1));
+	auto data = MakeTorrentFile (MultiFileInfo ({ { 100, { "dir", "a.txt" } }, { 200, { "b.txt" } } }, 16384, 1));
 	Torrent torrent (data);
 	assert (torrent.GetError () == eTorrentErrorNoError);
 	assert (!torrent.IsSingleFile ());
@@ -155,7 +137,7 @@ static void TestValidMultiFile ()
 
 static void TestTruncatedAndMalformed ()
 {
-	assert (Torrent (std::string_view {}).GetError () != eTorrentErrorNoError);
+	assert (Torrent (std::string_view { }).GetError () != eTorrentErrorNoError);
 	ExpectMalformed ("d");
 	ExpectMalformed ("d4:info");
 	ExpectMalformed ("d4:infod4:name3:abce"); // missing dictionary terminator
@@ -164,9 +146,12 @@ static void TestTruncatedAndMalformed ()
 	ExpectMalformed ("d4:infod4:name3:abc"); // truncated value
 	ExpectMalformed ("d4:infod4:name03:abce"); // leading zero in string length
 	ExpectMalformed ("d4:infod4:name3:abcee"); // trailing dictionary terminator mismatch
-	ExpectMalformed ("d4:infod4:lengthi01e4:name1:a4:piece lengthi16384e6:pieces20:AAAAAAAAAAAAAAAAAAAAee"); // leading zero in integer
-	ExpectMalformed ("d4:infod4:lengthi-1e4:name1:a4:piece lengthi16384e6:pieces20:AAAAAAAAAAAAAAAAAAAAee"); // negative length
-	ExpectMalformed ("d4:infod4:lengthi16384e4:name1:a4:piece lengthi1e6:pieces20:AAAAAAAAAAAAAAAAAAAAee"); // piece length too small
+	ExpectMalformed (
+		"d4:infod4:lengthi01e4:name1:a4:piece lengthi16384e6:pieces20:AAAAAAAAAAAAAAAAAAAAee"); // leading zero in integer
+	ExpectMalformed (
+		"d4:infod4:lengthi-1e4:name1:a4:piece lengthi16384e6:pieces20:AAAAAAAAAAAAAAAAAAAAee"); // negative length
+	ExpectMalformed (
+		"d4:infod4:lengthi16384e4:name1:a4:piece lengthi1e6:pieces20:AAAAAAAAAAAAAAAAAAAAee"); // piece length too small
 	ExpectMalformed ("d8:announce1:a8:announce1:be"); // duplicate dictionary key
 
 	auto valid = MakeTorrentFile (SingleFileInfo (16384, 16384, 1));
@@ -179,8 +164,7 @@ static void TestDepthAndBounds ()
 {
 	auto info = SingleFileInfo (16384, 16384, 1);
 	auto nested = MakeTorrentFile (Dict ({
-		{ "announce", Bytes ("http://tracker.i2p/announce") },
-		{ "info", info },
+		{ "announce", Bytes ("http://tracker.i2p/announce") }, { "info", info },
 		{ "x", DeepList (12) } // deeper than the parser's bound of 10
 	}));
 	ExpectMalformed (nested);
@@ -188,26 +172,20 @@ static void TestDepthAndBounds ()
 	// Piece hash count must match the length/piece-length pair exactly.
 	ExpectMalformed (MakeTorrentFile (SingleFileInfo (32768, 16384, 1)));
 	ExpectMalformed (MakeTorrentFile (SingleFileInfo (16384, 16384, 2)));
-	ExpectMalformed (MakeTorrentFile (Dict ({
-		{ "length", Int (16384) },
-		{ "name", Bytes ("file.bin") },
-		{ "piece length", Int (16384) },
-		{ "pieces", Bytes (std::string (SHA_DIGEST_LENGTH + 1, 'A')) }
-	})));
+	ExpectMalformed (MakeTorrentFile (Dict ({ { "length", Int (16384) }, { "name", Bytes ("file.bin") },
+		{ "piece length", Int (16384) }, { "pieces", Bytes (std::string (SHA_DIGEST_LENGTH + 1, 'A')) } })));
 
 	// A valid length that would require more than MAX_NUM_TORRENT_PIECES is rejected.
 	ExpectMalformed (MakeTorrentFile (SingleFileInfo (MAX_TORRENT_LENGTH, MIN_PIECE_LENGTH, 1)));
 
 	// Two individually valid file lengths must not overflow the total length bound.
-	ExpectMalformed (MakeTorrentFile (MultiFileInfo ({
-		{ MAX_TORRENT_LENGTH, { "a" } },
-		{ MAX_TORRENT_LENGTH, { "b" } }
-	}, MIN_PIECE_LENGTH, 1)));
+	ExpectMalformed (MakeTorrentFile (
+		MultiFileInfo ({ { MAX_TORRENT_LENGTH, { "a" } }, { MAX_TORRENT_LENGTH, { "b" } } }, MIN_PIECE_LENGTH, 1)));
 
 	// File count is bounded before unbounded metadata can create files.
-	std::vector<std::pair<size_t, std::vector<std::string> > > tooManyFiles;
+	std::vector<std::pair<size_t, std::vector<std::string>>> tooManyFiles;
 	for (size_t i = 0; i <= MAX_NUM_TORRENT_FILES; i++)
-		tooManyFiles.emplace_back (1, std::vector<std::string>{ "f" + std::to_string (i) });
+		tooManyFiles.emplace_back (1, std::vector<std::string> { "f" + std::to_string (i) });
 	ExpectMalformed (MakeTorrentFile (MultiFileInfo (tooManyFiles, MIN_PIECE_LENGTH, 1)));
 }
 
@@ -238,26 +216,14 @@ static void TestPathSanitisation ()
 static void TestCollidingPaths ()
 {
 	// Exact duplicate.
-	ExpectMalformed (MakeTorrentFile (MultiFileInfo ({
-		{ 1, { "a" } },
-		{ 1, { "a" } }
-	}, 16384, 1)));
+	ExpectMalformed (MakeTorrentFile (MultiFileInfo ({ { 1, { "a" } }, { 1, { "a" } } }, 16384, 1)));
 
 	// Two different encodings can sanitise to the same component.
-	ExpectMalformed (MakeTorrentFile (MultiFileInfo ({
-		{ 1, { "a/b" } },
-		{ 1, { "a_b" } }
-	}, 16384, 1)));
+	ExpectMalformed (MakeTorrentFile (MultiFileInfo ({ { 1, { "a/b" } }, { 1, { "a_b" } } }, 16384, 1)));
 
 	// A file cannot also be a directory used by another file.
-	ExpectMalformed (MakeTorrentFile (MultiFileInfo ({
-		{ 1, { "a" } },
-		{ 1, { "a", "b" } }
-	}, 16384, 1)));
-	ExpectMalformed (MakeTorrentFile (MultiFileInfo ({
-		{ 1, { "a", "b" } },
-		{ 1, { "a" } }
-	}, 16384, 1)));
+	ExpectMalformed (MakeTorrentFile (MultiFileInfo ({ { 1, { "a" } }, { 1, { "a", "b" } } }, 16384, 1)));
+	ExpectMalformed (MakeTorrentFile (MultiFileInfo ({ { 1, { "a", "b" } }, { 1, { "a" } } }, 16384, 1)));
 }
 
 static void TestRequiredName ()
@@ -265,19 +231,13 @@ static void TestRequiredName ()
 	// An empty or missing root name leaves no safe download path even though
 	// the other metadata fields can be individually valid.
 	ExpectMalformed (MakeTorrentFile (SingleFileInfo (16384, 16384, 1, "")));
-	ExpectMalformed (MakeTorrentFile (Dict ({
-		{ "length", Int (16384) },
-		{ "piece length", Int (16384) },
-		{ "pieces", Bytes (Pieces (1)) }
-	})));
-	ExpectMalformed (MakeTorrentFile (Dict ({
-		{ "files", List (std::vector<std::string> { Dict ({
-			{ "length", Int (1) },
-			{ "path", List (std::vector<std::string> { Bytes ("a") }) }
-		}) }) },
-		{ "piece length", Int (16384) },
-		{ "pieces", Bytes (Pieces (1)) }
-	})));
+	ExpectMalformed (MakeTorrentFile (
+		Dict ({ { "length", Int (16384) }, { "piece length", Int (16384) }, { "pieces", Bytes (Pieces (1)) } })));
+	ExpectMalformed (MakeTorrentFile (
+		Dict ({ { "files",
+					List (std::vector<std::string> { Dict (
+						{ { "length", Int (1) }, { "path", List (std::vector<std::string> { Bytes ("a") }) } }) }) },
+			{ "piece length", Int (16384) }, { "pieces", Bytes (Pieces (1)) } })));
 
 	Torrent emptyName (MakeTorrentFile (SingleFileInfo (16384, 16384, 1, "")));
 	assert (!emptyName.IsValid ());
@@ -290,15 +250,14 @@ static std::filesystem::path MakeTempDir ()
 	for (unsigned i = 0; i < 1000; i++)
 	{
 		auto candidate = base / ("i2pd-torrent-bounded-" + std::to_string (i));
-		if (std::filesystem::create_directory (candidate, ec))
-			return candidate;
+		if (std::filesystem::create_directory (candidate, ec)) return candidate;
 		ec.clear ();
 	}
 	assert (false);
-	return {};
+	return { };
 }
 
-static void WriteFile (const std::filesystem::path& path, std::string_view data)
+static void WriteFile (const std::filesystem::path & path, std::string_view data)
 {
 	std::ofstream file (path, std::ofstream::binary);
 	assert (file);
@@ -350,8 +309,7 @@ static void TestReadTorrentFileBounded ()
 	auto symlink = dir.path / "symlink.torrent";
 	std::error_code ec;
 	std::filesystem::create_symlink (valid, symlink, ec);
-	if (!ec)
-		assert (!ReadTorrentFileBounded (symlink, 1024, content, error));
+	if (!ec) assert (!ReadTorrentFileBounded (symlink, 1024, content, error));
 #endif
 }
 

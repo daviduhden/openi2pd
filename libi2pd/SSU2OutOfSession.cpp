@@ -16,10 +16,13 @@ namespace i2p
 {
 namespace transport
 {
-	SSU2PeerTestSession::SSU2PeerTestSession (SSU2Server& server, uint64_t sourceConnID, uint64_t destConnID):
-		SSU2Session (server),
-		m_MsgNumReceived (0), m_NumResends (0), m_IsConnectedRecently (false), m_IsStatusChanged (false),
-		m_PeerTestResendTimer (server.GetService ())
+	SSU2PeerTestSession::SSU2PeerTestSession (SSU2Server & server, uint64_t sourceConnID, uint64_t destConnID)
+		: SSU2Session (server)
+		, m_MsgNumReceived (0)
+		, m_NumResends (0)
+		, m_IsConnectedRecently (false)
+		, m_IsStatusChanged (false)
+		, m_PeerTestResendTimer (server.GetService ())
 	{
 		if (!sourceConnID) sourceConnID = ~destConnID;
 		if (!destConnID) destConnID = ~sourceConnID;
@@ -38,7 +41,8 @@ namespace transport
 		header.ll[1] ^= CreateHeaderMask (i2p::context.GetSSU2IntroKey (), buf + (len - 12));
 		if (header.h.type != eSSU2PeerTest)
 		{
-			LogPrint (eLogWarning, "SSU2: Unexpected message type ", (int)header.h.type, " instead ", (int)eSSU2PeerTest);
+			LogPrint (
+				eLogWarning, "SSU2: Unexpected message type ", (int)header.h.type, " instead ", (int)eSSU2PeerTest);
 			return false;
 		}
 		if (len < 48)
@@ -46,7 +50,7 @@ namespace transport
 			LogPrint (eLogWarning, "SSU2: PeerTest message too short ", len);
 			return false;
 		}
-		uint8_t nonce[12] = {0};
+		uint8_t nonce[12] = { 0 };
 		uint64_t headerX[2]; // sourceConnID, token
 		GetServer ().ChaCha20 (buf + 16, 16, i2p::context.GetSSU2IntroKey (), nonce, (uint8_t *)headerX);
 		SetDestConnID (headerX[0]);
@@ -56,8 +60,8 @@ namespace transport
 		uint8_t h[32];
 		memcpy (h, header.buf, 16);
 		memcpy (h + 16, &headerX, 16);
-		if (!i2p::crypto::AEADChaCha20Poly1305 (payload, len - 48, h, 32,
-			i2p::context.GetSSU2IntroKey (), nonce, payload, len - 48, false))
+		if (!i2p::crypto::AEADChaCha20Poly1305 (
+				payload, len - 48, h, 32, i2p::context.GetSSU2IntroKey (), nonce, payload, len - 48, false))
 		{
 			LogPrint (eLogWarning, "SSU2: PeerTest AEAD verification failed ");
 			return false;
@@ -87,72 +91,70 @@ namespace transport
 		uint32_t nonce = bufbe32toh (buf + offset + 1); // 1 - ver
 		switch (msg) // msg
 		{
-			case 5: // Alice from Charlie 1
+		case 5: // Alice from Charlie 1
+		{
+			if (htobe64 (((uint64_t)nonce << 32) | nonce) == GetSourceConnID ())
 			{
-				if (htobe64 (((uint64_t)nonce << 32) | nonce) == GetSourceConnID ())
-				{
-					m_PeerTestResendTimer.cancel (); // cancel delayed msg 6 if any
-					if (GetServer ().IsForcedFirewalled (GetRemoteEndpoint ().address().is_v4()))
-						// we assume that msg 5 was not received if forced firewalled
-						return;
-					m_IsConnectedRecently = GetServer ().IsConnectedRecently (GetRemoteEndpoint ());
-					if (GetAddress ())
-					{
-						if (!m_IsConnectedRecently)
-							SetRouterStatus (eRouterStatusOK);
-						else if (m_IsStatusChanged && GetRouterStatus () == eRouterStatusFirewalled)
-							SetRouterStatus (eRouterStatusUnknown);
-						SendPeerTest (6, buf + offset, len - offset);
-					}
-				}
-				else
-					LogPrint (eLogWarning, "SSU2: Peer test 5 nonce mismatch ", nonce, " connID=", GetSourceConnID ());
-				break;
-			}
-			case 6: // Charlie from Alice
-			{
-				m_PeerTestResendTimer.cancel (); // no more msg 5 resends
+				m_PeerTestResendTimer.cancel (); // cancel delayed msg 6 if any
+				if (GetServer ().IsForcedFirewalled (GetRemoteEndpoint ().address ().is_v4 ()))
+					// we assume that msg 5 was not received if forced firewalled
+					return;
+				m_IsConnectedRecently = GetServer ().IsConnectedRecently (GetRemoteEndpoint ());
 				if (GetAddress ())
-					SendPeerTest (7, buf + offset, len - offset);
-				else
-					LogPrint (eLogWarning, "SSU2: Unknown address for peer test 6");
-				GetServer ().AddConnectedRecently (GetRemoteEndpoint (), i2p::util::GetSecondsSinceEpoch ());
-				GetServer ().RequestRemoveSession (GetConnID ());
-				break;
-			}
-			case 7: // Alice from Charlie 2
-			{
-				m_PeerTestResendTimer.cancel (); // no more msg 6 resends
-				if (m_MsgNumReceived < 5 && m_OurEndpoint.port ()) // msg 5 was not received
 				{
-					if (m_OurEndpoint.address ().is_v4 ()) // ipv4
+					if (!m_IsConnectedRecently)
+						SetRouterStatus (eRouterStatusOK);
+					else if (m_IsStatusChanged && GetRouterStatus () == eRouterStatusFirewalled)
+						SetRouterStatus (eRouterStatusUnknown);
+					SendPeerTest (6, buf + offset, len - offset);
+				}
+			}
+			else
+				LogPrint (eLogWarning, "SSU2: Peer test 5 nonce mismatch ", nonce, " connID=", GetSourceConnID ());
+			break;
+		}
+		case 6: // Charlie from Alice
+		{
+			m_PeerTestResendTimer.cancel (); // no more msg 5 resends
+			if (GetAddress ())
+				SendPeerTest (7, buf + offset, len - offset);
+			else
+				LogPrint (eLogWarning, "SSU2: Unknown address for peer test 6");
+			GetServer ().AddConnectedRecently (GetRemoteEndpoint (), i2p::util::GetSecondsSinceEpoch ());
+			GetServer ().RequestRemoveSession (GetConnID ());
+			break;
+		}
+		case 7: // Alice from Charlie 2
+		{
+			m_PeerTestResendTimer.cancel (); // no more msg 6 resends
+			if (m_MsgNumReceived < 5 && m_OurEndpoint.port ()) // msg 5 was not received
+			{
+				if (m_OurEndpoint.address ().is_v4 ()) // ipv4
+				{
+					if (i2p::context.GetStatus () == eRouterStatusFirewalled)
 					{
-						if (i2p::context.GetStatus () == eRouterStatusFirewalled)
-						{
-						    if (m_OurEndpoint.port () != GetServer ().GetPort (true))
-								i2p::context.SetError (eRouterErrorSymmetricNAT);
-							else if (i2p::context.GetError () == eRouterErrorSymmetricNAT)
-								i2p::context.SetError (eRouterErrorNone);
-						}
-					}
-					else
-					{
-						if (i2p::context.GetStatusV6 () == eRouterStatusFirewalled)
-						{
-						    if (m_OurEndpoint.port () != GetServer ().GetPort (false))
-								i2p::context.SetErrorV6 (eRouterErrorSymmetricNAT);
-							else if (i2p::context.GetErrorV6 () == eRouterErrorSymmetricNAT)
-								i2p::context.SetErrorV6 (eRouterErrorNone);
-						}
+						if (m_OurEndpoint.port () != GetServer ().GetPort (true))
+							i2p::context.SetError (eRouterErrorSymmetricNAT);
+						else if (i2p::context.GetError () == eRouterErrorSymmetricNAT)
+							i2p::context.SetError (eRouterErrorNone);
 					}
 				}
-				GetServer ().AddConnectedRecently (GetRemoteEndpoint (), i2p::util::GetSecondsSinceEpoch ());
-				GetServer ().RequestRemoveSession (GetConnID ());
-				break;
+				else
+				{
+					if (i2p::context.GetStatusV6 () == eRouterStatusFirewalled)
+					{
+						if (m_OurEndpoint.port () != GetServer ().GetPort (false))
+							i2p::context.SetErrorV6 (eRouterErrorSymmetricNAT);
+						else if (i2p::context.GetErrorV6 () == eRouterErrorSymmetricNAT)
+							i2p::context.SetErrorV6 (eRouterErrorNone);
+					}
+				}
 			}
-			default:
-				LogPrint (eLogWarning, "SSU2: PeerTest unexpected msg num ", msg);
-				return;
+			GetServer ().AddConnectedRecently (GetRemoteEndpoint (), i2p::util::GetSecondsSinceEpoch ());
+			GetServer ().RequestRemoveSession (GetConnID ());
+			break;
+		}
+		default: LogPrint (eLogWarning, "SSU2: PeerTest unexpected msg num ", msg); return;
 		}
 		m_MsgNumReceived = msg;
 	}
@@ -176,12 +178,13 @@ namespace transport
 		// payload
 		payload[0] = eSSU2BlkDateTime;
 		htobe16buf (payload + 1, 4);
-		htobe32buf (payload + 3, (i2p::util::GetMillisecondsSinceEpoch () + 500)/1000);
+		htobe32buf (payload + 3, (i2p::util::GetMillisecondsSinceEpoch () + 500) / 1000);
 		size_t payloadSize = 7;
 		if (msg == 6 || msg == 7)
-			payloadSize += CreateAddressBlock (payload + payloadSize, GetMaxPayloadSize () - payloadSize, GetRemoteEndpoint ());
-		payloadSize += CreatePeerTestBlock (payload + payloadSize, GetMaxPayloadSize () - payloadSize,
-			msg, eSSU2PeerTestCodeAccept, nullptr, m_SignedData.data (), m_SignedData.size ());
+			payloadSize
+				+= CreateAddressBlock (payload + payloadSize, GetMaxPayloadSize () - payloadSize, GetRemoteEndpoint ());
+		payloadSize += CreatePeerTestBlock (payload + payloadSize, GetMaxPayloadSize () - payloadSize, msg,
+			eSSU2PeerTestCodeAccept, nullptr, m_SignedData.data (), m_SignedData.size ());
 		payloadSize += CreatePaddingBlock (payload + payloadSize, GetMaxPayloadSize () - payloadSize);
 		// encrypt
 		uint8_t n[12];
@@ -200,11 +203,9 @@ namespace transport
 	void SSU2PeerTestSession::SendPeerTest (uint8_t msg, const uint8_t * signedData, size_t signedDataLen, bool delayed)
 	{
 		m_SignedData.assign (signedData, signedData + signedDataLen);
-		if (!delayed)
-			SendPeerTest (msg);
+		if (!delayed) SendPeerTest (msg);
 		// schedule resend for msgs 5 or 6
-		if (msg == 5 || msg == 6)
-			ScheduleResend (msg);
+		if (msg == 5 || msg == 6) ScheduleResend (msg);
 	}
 
 	void SSU2PeerTestSession::SendPeerTest (uint8_t msg, const uint8_t * signedData, size_t signedDataLen,
@@ -230,10 +231,11 @@ namespace transport
 	{
 		if (m_NumResends < SSU2_PEER_TEST_MAX_NUM_RESENDS)
 		{
-			m_PeerTestResendTimer.expires_after (std::chrono::milliseconds(
-				SSU2_PEER_TEST_RESEND_INTERVAL + GetServer ().GetRng ()() % SSU2_PEER_TEST_RESEND_INTERVAL_VARIANCE));
-			std::weak_ptr<SSU2PeerTestSession> s(std::static_pointer_cast<SSU2PeerTestSession>(shared_from_this ()));
-			m_PeerTestResendTimer.async_wait ([s, msg](const boost::system::error_code& ecode)
+			m_PeerTestResendTimer.expires_after (std::chrono::milliseconds (
+				SSU2_PEER_TEST_RESEND_INTERVAL + GetServer ().GetRng () () % SSU2_PEER_TEST_RESEND_INTERVAL_VARIANCE));
+			std::weak_ptr<SSU2PeerTestSession> s (std::static_pointer_cast<SSU2PeerTestSession> (shared_from_this ()));
+			m_PeerTestResendTimer.async_wait (
+				[s, msg] (const boost::system::error_code & ecode)
 				{
 					if (ecode != boost::asio::error::operation_aborted)
 					{
@@ -252,11 +254,13 @@ namespace transport
 		}
 	}
 
-	SSU2HolePunchSession::SSU2HolePunchSession (SSU2Server& server, uint32_t nonce,
-		const boost::asio::ip::udp::endpoint& remoteEndpoint,
-		std::shared_ptr<const i2p::data::RouterInfo::Address> addr):
-		SSU2Session (server), // we create full incoming session
-		m_NumResends (0), m_HolePunchResendTimer (server.GetService ())
+	SSU2HolePunchSession::SSU2HolePunchSession (SSU2Server & server, uint32_t nonce,
+		const boost::asio::ip::udp::endpoint & remoteEndpoint,
+		std::shared_ptr<const i2p::data::RouterInfo::Address> addr)
+		: SSU2Session (server)
+		, // we create full incoming session
+		m_NumResends (0)
+		, m_HolePunchResendTimer (server.GetService ())
 	{
 		// we are Charlie
 		uint64_t destConnID = htobe64 (((uint64_t)nonce << 32) | nonce); // dest id
@@ -277,7 +281,7 @@ namespace transport
 	{
 		auto addr = GetAddress ();
 		if (!addr) return;
-		auto& ep = GetRemoteEndpoint ();
+		auto & ep = GetRemoteEndpoint ();
 		LogPrint (eLogDebug, "SSU2: Sending HolePunch to ", ep);
 		Header header;
 		uint8_t h[32], payload[SSU2_MAX_PACKET_SIZE];
@@ -294,7 +298,7 @@ namespace transport
 		// payload
 		payload[0] = eSSU2BlkDateTime;
 		htobe16buf (payload + 1, 4);
-		htobe32buf (payload + 3, (i2p::util::GetMillisecondsSinceEpoch () + 500)/1000);
+		htobe32buf (payload + 3, (i2p::util::GetMillisecondsSinceEpoch () + 500) / 1000);
 		size_t payloadSize = 7;
 		payloadSize += CreateAddressBlock (payload + payloadSize, GetMaxPayloadSize () - payloadSize, ep);
 		// relay response block
@@ -329,10 +333,12 @@ namespace transport
 	{
 		if (m_NumResends < SSU2_HOLE_PUNCH_MAX_NUM_RESENDS)
 		{
-			m_HolePunchResendTimer.expires_after (std::chrono::milliseconds(
-				SSU2_HOLE_PUNCH_RESEND_INTERVAL + GetServer ().GetRng ()() % SSU2_HOLE_PUNCH_RESEND_INTERVAL_VARIANCE));
-			std::weak_ptr<SSU2HolePunchSession> s(std::static_pointer_cast<SSU2HolePunchSession>(shared_from_this ()));
-			m_HolePunchResendTimer.async_wait ([s](const boost::system::error_code& ecode)
+			m_HolePunchResendTimer.expires_after (std::chrono::milliseconds (SSU2_HOLE_PUNCH_RESEND_INTERVAL
+				+ GetServer ().GetRng () () % SSU2_HOLE_PUNCH_RESEND_INTERVAL_VARIANCE));
+			std::weak_ptr<SSU2HolePunchSession> s (
+				std::static_pointer_cast<SSU2HolePunchSession> (shared_from_this ()));
+			m_HolePunchResendTimer.async_wait (
+				[s] (const boost::system::error_code & ecode)
 				{
 					if (ecode != boost::asio::error::operation_aborted)
 					{

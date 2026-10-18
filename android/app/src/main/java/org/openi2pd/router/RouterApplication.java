@@ -17,7 +17,6 @@ import android.app.Application;
  * service or an explicit user action asks for it.</p>
  */
 public final class RouterApplication extends Application {
-
     @Override
     public void onCreate() {
         super.onCreate();

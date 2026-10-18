@@ -21,32 +21,31 @@ inline std::string SigTypeToName (uint16_t keytype)
 {
 	switch (keytype)
 	{
-		case i2p::data::SIGNING_KEY_TYPE_DSA_SHA1: return "DSA-SHA1";
-		case i2p::data::SIGNING_KEY_TYPE_ECDSA_SHA256_P256: return "ECDSA-P256";
-		case i2p::data::SIGNING_KEY_TYPE_ECDSA_SHA384_P384: return "ECDSA-P384";
-		case i2p::data::SIGNING_KEY_TYPE_ECDSA_SHA512_P521: return "ECDSA-P521";
-		case i2p::data::SIGNING_KEY_TYPE_RSA_SHA256_2048: return "RSA-2048-SHA256";
-		case i2p::data::SIGNING_KEY_TYPE_RSA_SHA384_3072: return "RSA-3072-SHA384";
-		case i2p::data::SIGNING_KEY_TYPE_RSA_SHA512_4096: return "RSA-4096-SHA512";
-		case i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519: return "ED25519-SHA512";
-		case i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519ph: return "ED25519PH-SHA512";
-		case i2p::data::SIGNING_KEY_TYPE_GOSTR3410_CRYPTO_PRO_A_GOSTR3411_256: return "GOSTR3410-A-GOSTR3411-256";
-		case i2p::data::SIGNING_KEY_TYPE_GOSTR3410_TC26_A_512_GOSTR3411_512: return "GOSTR3410-TC26-A-GOSTR3411-512";
-		case i2p::data::SIGNING_KEY_TYPE_REDDSA_SHA512_ED25519: return "RED25519-SHA512";
-		default:
-		{
-			std::ostringstream ss;
-			ss << "unknown: " << keytype;
-			return ss.str ();
-		}
+	case i2p::data::SIGNING_KEY_TYPE_DSA_SHA1: return "DSA-SHA1";
+	case i2p::data::SIGNING_KEY_TYPE_ECDSA_SHA256_P256: return "ECDSA-P256";
+	case i2p::data::SIGNING_KEY_TYPE_ECDSA_SHA384_P384: return "ECDSA-P384";
+	case i2p::data::SIGNING_KEY_TYPE_ECDSA_SHA512_P521: return "ECDSA-P521";
+	case i2p::data::SIGNING_KEY_TYPE_RSA_SHA256_2048: return "RSA-2048-SHA256";
+	case i2p::data::SIGNING_KEY_TYPE_RSA_SHA384_3072: return "RSA-3072-SHA384";
+	case i2p::data::SIGNING_KEY_TYPE_RSA_SHA512_4096: return "RSA-4096-SHA512";
+	case i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519: return "ED25519-SHA512";
+	case i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519ph: return "ED25519PH-SHA512";
+	case i2p::data::SIGNING_KEY_TYPE_GOSTR3410_CRYPTO_PRO_A_GOSTR3411_256: return "GOSTR3410-A-GOSTR3411-256";
+	case i2p::data::SIGNING_KEY_TYPE_GOSTR3410_TC26_A_512_GOSTR3411_512: return "GOSTR3410-TC26-A-GOSTR3411-512";
+	case i2p::data::SIGNING_KEY_TYPE_REDDSA_SHA512_ED25519: return "RED25519-SHA512";
+	default:
+	{
+		std::ostringstream ss;
+		ss << "unknown: " << keytype;
+		return ss.str ();
+	}
 	}
 }
 
-inline void ToUpper (std::string& str)
+inline void ToUpper (std::string & str)
 {
-	std::transform (str.begin (), str.end (), str.begin (), [] (unsigned char ch) {
-		return static_cast<char> (std::toupper (ch));
-	});
+	std::transform (str.begin (), str.end (), str.begin (),
+		[] (unsigned char ch) { return static_cast<char> (std::toupper (ch)); });
 }
 
 /**

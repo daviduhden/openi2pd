@@ -57,8 +57,8 @@ public final class RouterRepository implements RouterService.Listener {
         public void onServiceConnected(ComponentName name, IBinder binder) {
             binding = false;
             bound = true;
-            RouterService connected = binder instanceof RouterService.LocalBinder local
-                    ? local.getService() : null;
+            RouterService connected =
+                    binder instanceof RouterService.LocalBinder local ? local.getService() : null;
             if (connected == null || closed) {
                 return;
             }
@@ -222,8 +222,7 @@ public final class RouterRepository implements RouterService.Listener {
         if (closed) {
             return;
         }
-        List<LogEntry> safe = value == null
-                ? Collections.emptyList() : value;
+        List<LogEntry> safe = value == null ? Collections.emptyList() : value;
         allLogs = safe;
         if (Looper.myLooper() == Looper.getMainLooper()) {
             logs.setValue(applyFilter(safe));
@@ -257,8 +256,7 @@ public final class RouterRepository implements RouterService.Listener {
         Intent intent = new Intent(appContext, RouterService.class).setAction(action);
         try {
             if (foreground) {
-                androidx.core.content.ContextCompat.startForegroundService(
-                        appContext, intent);
+                androidx.core.content.ContextCompat.startForegroundService(appContext, intent);
             } else {
                 appContext.startService(intent);
             }

@@ -32,7 +32,8 @@ namespace data
 	const char * GetBase64SubstitutionTable ();
 	constexpr bool IsBase64 (char ch)
 	{
-		return (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '-' || ch == '~';
+		return (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '-'
+			|| ch == '~';
 	}
 
 	size_t Base32ToByteStream (std::string_view base32Str, uint8_t * outBuf, size_t outLen);
@@ -45,13 +46,12 @@ namespace data
 	/**
 	 * Compute the size for a buffer to contain encoded base64 given that the size of the input is input_size bytes
 	 */
-	constexpr size_t Base64EncodingBufferSize(size_t input_size)
+	constexpr size_t Base64EncodingBufferSize (size_t input_size)
 	{
 		auto d = std::div (input_size, 3);
 		if (d.rem) d.quot++;
 		return 4 * d.quot;
 	}
-
 
 } // data
 } // i2p

@@ -70,8 +70,7 @@ public class RouterService extends Service {
     public static final String ACTION_GRACEFUL_STOP = "org.openi2pd.router.action.GRACEFUL_STOP";
     public static final String ACTION_CANCEL_GRACEFUL_STOP =
             "org.openi2pd.router.action.CANCEL_GRACEFUL_STOP";
-    public static final String ACTION_RELOAD_TUNNELS =
-            "org.openi2pd.router.action.RELOAD_TUNNELS";
+    public static final String ACTION_RELOAD_TUNNELS = "org.openi2pd.router.action.RELOAD_TUNNELS";
 
     private static final String CHANNEL_ID = "i2pd_service";
     private static final int NOTIFICATION_ID = 1;
@@ -133,9 +132,7 @@ public class RouterService extends Service {
                         result = pollBlocking();
                     } catch (Throwable tr) {
                         result = new PollResult(
-                                localSnapshotWithError(describe(tr)),
-                                lastLogs,
-                                false);
+                                localSnapshotWithError(describe(tr)), lastLogs, false);
                     }
                     final PollResult published = result;
                     mainHandler.post(() -> {
@@ -156,31 +153,29 @@ public class RouterService extends Service {
         }
     };
 
-    private final DaemonWrapper.StateUpdateListener daemonStateListener =
-            (oldState, newState) -> {
-                routerRunning = newState.isStartedOkay();
-                if (newState == DaemonWrapper.State.stopped && !destroyed
-                        && !restartInProgress.get()) {
-                    // Stop, graceful-stop expiration and a failed restart all
-                    // converge here. An explicit restart keeps the flag set
-                    // until the new start completes, so stopIfIdle() cannot
-                    // tear the service down between the stop and start
-                    // phases. During service destruction the flag is left
-                    // intact so START_STICKY can restore a router that the
-                    // system stopped for resource pressure.
-                    setShouldRun(false);
-                }
-                mainHandler.post(() -> {
-                    if (destroyed) {
-                        return;
-                    }
-                    updateNotification();
-                    if (!listeners.isEmpty()) {
-                        pollNow();
-                    }
-                    stopIfIdle();
-                });
-            };
+    private final DaemonWrapper.StateUpdateListener daemonStateListener = (oldState, newState) -> {
+        routerRunning = newState.isStartedOkay();
+        if (newState == DaemonWrapper.State.stopped && !destroyed && !restartInProgress.get()) {
+            // Stop, graceful-stop expiration and a failed restart all
+            // converge here. An explicit restart keeps the flag set
+            // until the new start completes, so stopIfIdle() cannot
+            // tear the service down between the stop and start
+            // phases. During service destruction the flag is left
+            // intact so START_STICKY can restore a router that the
+            // system stopped for resource pressure.
+            setShouldRun(false);
+        }
+        mainHandler.post(() -> {
+            if (destroyed) {
+                return;
+            }
+            updateNotification();
+            if (!listeners.isEmpty()) {
+                pollNow();
+            }
+            stopIfIdle();
+        });
+    };
 
     /**
      * In-process binder. Do not turn this into an exported interface: clients
@@ -209,8 +204,7 @@ public class RouterService extends Service {
 
         ConnectivityManager connectivityManager =
                 (ConnectivityManager) appContext.getSystemService(CONNECTIVITY_SERVICE);
-        daemon = new DaemonWrapper(appContext, appContext.getAssets(),
-                connectivityManager, false);
+        daemon = new DaemonWrapper(appContext, appContext.getAssets(), connectivityManager, false);
         daemon.addStateChangeListener(daemonStateListener);
         lastSnapshot = localSnapshot();
         routerRunning = false;
@@ -248,53 +242,50 @@ public class RouterService extends Service {
         }
 
         switch (action) {
-            case ACTION_START -> {
-                if (!ensureForeground()) {
-                    stopSelfResult(startId);
-                    return START_NOT_STICKY;
-                }
-                setShouldRun(true);
-                enqueueControl(daemon::startDaemon);
-            }
-            case ACTION_STOP -> {
-                setShouldRun(false);
-                // A startForegroundService() caller expects startForeground()
-                // or stopSelf() within five seconds. The control task below is
-                // allowed to take longer than that.
-                ensureForeground();
-                enqueueControl(daemon::stopDaemon);
-            }
-            case ACTION_RESTART -> {
-                if (!ensureForeground()) {
-                    stopSelfResult(startId);
-                    return START_NOT_STICKY;
-                }
-                enqueueControl(this::performRestart);
-            }
-            case ACTION_GRACEFUL_STOP -> {
-                if (!ensureForeground()) {
-                    stopSelfResult(startId);
-                    return START_NOT_STICKY;
-                }
-                setShouldRun(true);
-                enqueueControl(() -> daemon.beginGracefulShutdown(
-                        DaemonWrapper.GRACEFUL_STOP_DELAY_MILLIS));
-            }
-            case ACTION_CANCEL_GRACEFUL_STOP ->
-                    enqueueControl(daemon::cancelGracefulShutdown);
-            case ACTION_RELOAD_TUNNELS ->
-                    enqueueControl(daemon::reloadTunnelsConfigs);
-            default -> {
-                Log.w(TAG, "ignoring unknown service action");
-                if (!readShouldRun() && !daemon.isStartedOkay()) {
-                    stopSelfResult(startId);
-                }
+        case ACTION_START -> {
+            if (!ensureForeground()) {
+                stopSelfResult(startId);
                 return START_NOT_STICKY;
             }
+            setShouldRun(true);
+            enqueueControl(daemon::startDaemon);
+        }
+        case ACTION_STOP -> {
+            setShouldRun(false);
+            // A startForegroundService() caller expects startForeground()
+            // or stopSelf() within five seconds. The control task below is
+            // allowed to take longer than that.
+            ensureForeground();
+            enqueueControl(daemon::stopDaemon);
+        }
+        case ACTION_RESTART -> {
+            if (!ensureForeground()) {
+                stopSelfResult(startId);
+                return START_NOT_STICKY;
+            }
+            enqueueControl(this::performRestart);
+        }
+        case ACTION_GRACEFUL_STOP -> {
+            if (!ensureForeground()) {
+                stopSelfResult(startId);
+                return START_NOT_STICKY;
+            }
+            setShouldRun(true);
+            enqueueControl(
+                    () -> daemon.beginGracefulShutdown(DaemonWrapper.GRACEFUL_STOP_DELAY_MILLIS));
+        }
+        case ACTION_CANCEL_GRACEFUL_STOP -> enqueueControl(daemon::cancelGracefulShutdown);
+        case ACTION_RELOAD_TUNNELS -> enqueueControl(daemon::reloadTunnelsConfigs);
+        default -> {
+            Log.w(TAG, "ignoring unknown service action");
+            if (!readShouldRun() && !daemon.isStartedOkay()) {
+                stopSelfResult(startId);
+            }
+            return START_NOT_STICKY;
+        }
         }
 
-        return readShouldRun() || daemon.isStartedOkay()
-                ? START_STICKY : START_NOT_STICKY;
+        return readShouldRun() || daemon.isStartedOkay() ? START_STICKY : START_NOT_STICKY;
     }
 
     @Override
@@ -465,8 +456,8 @@ public class RouterService extends Service {
                 return;
             }
             setShouldRun(true);
-            enqueueControl(() -> daemon.beginGracefulShutdown(
-                    DaemonWrapper.GRACEFUL_STOP_DELAY_MILLIS));
+            enqueueControl(
+                    () -> daemon.beginGracefulShutdown(DaemonWrapper.GRACEFUL_STOP_DELAY_MILLIS));
         });
     }
 
@@ -518,8 +509,7 @@ public class RouterService extends Service {
         if (appContext == null) {
             appContext = context;
         }
-        return appContext.getSharedPreferences(PREFERENCES, MODE_PRIVATE)
-                .contains(PREF_SHOULD_RUN);
+        return appContext.getSharedPreferences(PREFERENCES, MODE_PRIVATE).contains(PREF_SHOULD_RUN);
     }
 
     private static boolean sendCommand(Context context, String action, boolean foreground) {
@@ -551,9 +541,7 @@ public class RouterService extends Service {
     // Polling and publication
     // ---------------------------------------------------------------------
 
-    private record PollResult(RouterSnapshot snapshot, List<LogEntry> logs,
-                              boolean logsChanged) {
-    }
+    private record PollResult(RouterSnapshot snapshot, List<LogEntry> logs, boolean logsChanged) {}
 
     private void pollNow() {
         if (destroyed || listeners.isEmpty()) {
@@ -567,9 +555,7 @@ public class RouterService extends Service {
         DaemonWrapper local = daemon;
         if (local == null) {
             return new PollResult(
-                    RouterSnapshot.empty(DaemonWrapper.State.uninitialized,
-                            "", "", 0L),
-                    lastLogs,
+                    RouterSnapshot.empty(DaemonWrapper.State.uninitialized, "", "", 0L), lastLogs,
                     false);
         }
 
@@ -587,12 +573,9 @@ public class RouterService extends Service {
 
         if (state.isStartedOkay()) {
             try {
-                services = new ServiceStates(
-                        I2PD_JNI.getHTTPProxyState(),
-                        I2PD_JNI.getSOCKSProxyState(),
-                        I2PD_JNI.getBOBState(),
-                        I2PD_JNI.getSAMState(),
-                        I2PD_JNI.getI2CPState());
+                services = new ServiceStates(I2PD_JNI.getHTTPProxyState(),
+                        I2PD_JNI.getSOCKSProxyState(), I2PD_JNI.getBOBState(),
+                        I2PD_JNI.getSAMState(), I2PD_JNI.getI2CPState());
             } catch (UnsatisfiedLinkError e) {
                 errorText = mergeError(errorText, e);
             } catch (RuntimeException e) {
@@ -616,11 +599,10 @@ public class RouterService extends Service {
         RouterSnapshot snapshot;
         long grace = local.getGracefulStopRemainingMillis();
         if (rawStatus == null || rawStatus.isEmpty()) {
-            snapshot = RouterSnapshot.empty(state, errorText,
-                    local.getDaemonStartResult(), grace);
+            snapshot = RouterSnapshot.empty(state, errorText, local.getDaemonStartResult(), grace);
         } else {
-            snapshot = RouterStatusParser.parseStatus(rawStatus, state, services,
-                    grace, errorText, local.getDaemonStartResult());
+            snapshot = RouterStatusParser.parseStatus(
+                    rawStatus, state, services, grace, errorText, local.getDaemonStartResult());
         }
 
         List<LogEntry> logs = lastLogs;
@@ -628,8 +610,7 @@ public class RouterService extends Service {
         if (state.isStartedOkay() && recentLogsSupported) {
             try {
                 String rawLogs = I2PD_JNI.getRecentLogs(lastLogSequence, LOG_FETCH_LIMIT);
-                List<LogEntry> parsed =
-                        RouterStatusParser.parseLogs(rawLogs, lastLogSequence);
+                List<LogEntry> parsed = RouterStatusParser.parseLogs(rawLogs, lastLogSequence);
                 if (!parsed.isEmpty()) {
                     logs = mergeLogs(parsed);
                     logsChanged = true;
@@ -647,8 +628,7 @@ public class RouterService extends Service {
 
     private List<LogEntry> mergeLogs(List<LogEntry> parsed) {
         List<LogEntry> current = new ArrayList<>(lastLogs);
-        long maximum = current.isEmpty()
-                ? 0L : current.get(current.size() - 1).sequence();
+        long maximum = current.isEmpty() ? 0L : current.get(current.size() - 1).sequence();
 
         if (!current.isEmpty() && parsed.get(0).sequence() < current.get(0).sequence()) {
             // The native ring restarted with lower sequence numbers. Drop the
@@ -665,8 +645,8 @@ public class RouterService extends Service {
         }
 
         if (current.size() > MAX_LOG_ENTRIES) {
-            current = new ArrayList<>(current.subList(
-                    current.size() - MAX_LOG_ENTRIES, current.size()));
+            current = new ArrayList<>(
+                    current.subList(current.size() - MAX_LOG_ENTRIES, current.size()));
         }
         lastLogSequence = maximum;
         return Collections.unmodifiableList(current);
@@ -705,23 +685,18 @@ public class RouterService extends Service {
     private RouterSnapshot localSnapshot() {
         DaemonWrapper local = daemon;
         if (local == null) {
-            return RouterSnapshot.empty(DaemonWrapper.State.uninitialized,
-                    "", "", 0L);
+            return RouterSnapshot.empty(DaemonWrapper.State.uninitialized, "", "", 0L);
         }
-        return RouterSnapshot.empty(local.getState(),
-                describe(local.getLastThrowable()),
-                local.getDaemonStartResult(),
-                local.getGracefulStopRemainingMillis());
+        return RouterSnapshot.empty(local.getState(), describe(local.getLastThrowable()),
+                local.getDaemonStartResult(), local.getGracefulStopRemainingMillis());
     }
 
     private RouterSnapshot localSnapshotWithError(String errorText) {
         DaemonWrapper local = daemon;
         if (local == null) {
-            return RouterSnapshot.empty(DaemonWrapper.State.uninitialized,
-                    errorText, "", 0L);
+            return RouterSnapshot.empty(DaemonWrapper.State.uninitialized, errorText, "", 0L);
         }
-        return RouterSnapshot.empty(local.getState(), errorText,
-                local.getDaemonStartResult(),
+        return RouterSnapshot.empty(local.getState(), errorText, local.getDaemonStartResult(),
                 local.getGracefulStopRemainingMillis());
     }
 
@@ -765,8 +740,8 @@ public class RouterService extends Service {
             return;
         }
         DaemonWrapper local = daemon;
-        DaemonWrapper.State state = local == null
-                ? DaemonWrapper.State.uninitialized : local.getState();
+        DaemonWrapper.State state =
+                local == null ? DaemonWrapper.State.uninitialized : local.getState();
         if (state == lastNotificationState) {
             return;
         }
@@ -780,8 +755,8 @@ public class RouterService extends Service {
 
     private Notification buildNotification() {
         DaemonWrapper local = daemon;
-        DaemonWrapper.State state = local == null
-                ? DaemonWrapper.State.uninitialized : local.getState();
+        DaemonWrapper.State state =
+                local == null ? DaemonWrapper.State.uninitialized : local.getState();
         CharSequence text = getText(state.getStatusStringResourceId());
 
         NotificationCompat.Builder builder =
@@ -798,8 +773,8 @@ public class RouterService extends Service {
         Intent launch = getPackageManager().getLaunchIntentForPackage(getPackageName());
         if (launch != null) {
             launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-            PendingIntent contentIntent = PendingIntent.getActivity(this, 0, launch,
-                    FLAG_IMMUTABLE | FLAG_UPDATE_CURRENT);
+            PendingIntent contentIntent = PendingIntent.getActivity(
+                    this, 0, launch, FLAG_IMMUTABLE | FLAG_UPDATE_CURRENT);
             builder.setContentIntent(contentIntent);
         }
         return builder.build();
@@ -811,8 +786,7 @@ public class RouterService extends Service {
         }
         try {
             NotificationChannel channel = new NotificationChannel(
-                    CHANNEL_ID, getText(R.string.app_name),
-                    NotificationManager.IMPORTANCE_LOW);
+                    CHANNEL_ID, getText(R.string.app_name), NotificationManager.IMPORTANCE_LOW);
             channel.setLockscreenVisibility(Notification.VISIBILITY_PRIVATE);
             channel.setShowBadge(false);
             notificationManager.createNotificationChannel(channel);
@@ -876,8 +850,7 @@ public class RouterService extends Service {
             return;
         }
         DaemonWrapper local = daemon;
-        boolean stopped = local != null
-                && local.getState() == DaemonWrapper.State.stopped;
+        boolean stopped = local != null && local.getState() == DaemonWrapper.State.stopped;
         if (!readShouldRun() && stopped) {
             stopForegroundCompat();
             stopSelf();
@@ -893,8 +866,7 @@ public class RouterService extends Service {
     }
 
     private boolean readShouldRun() {
-        return getSharedPreferences(PREFERENCES, MODE_PRIVATE)
-                .getBoolean(PREF_SHOULD_RUN, false);
+        return getSharedPreferences(PREFERENCES, MODE_PRIVATE).getBoolean(PREF_SHOULD_RUN, false);
     }
 
     private void setShouldRun(boolean shouldRun) {
@@ -916,8 +888,8 @@ public class RouterService extends Service {
             return existing;
         }
         String combined = existing + "\n" + description;
-        return combined.length() <= MAX_ERROR_TEXT
-                ? combined : combined.substring(0, MAX_ERROR_TEXT);
+        return combined.length() <= MAX_ERROR_TEXT ? combined
+                                                   : combined.substring(0, MAX_ERROR_TEXT);
     }
 
     private static String describe(Throwable tr) {

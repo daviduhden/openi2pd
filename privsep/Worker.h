@@ -16,33 +16,33 @@
 
 namespace i2p::privsep
 {
-	class ChildProcess
-	{
-		public:
-			ChildProcess () = default;
-			~ChildProcess ();
-			ChildProcess (ChildProcess&& other) noexcept;
-			ChildProcess& operator= (ChildProcess&& other) noexcept;
-			ChildProcess (const ChildProcess&) = delete;
-			ChildProcess& operator= (const ChildProcess&) = delete;
+class ChildProcess
+{
+public:
+	ChildProcess () = default;
+	~ChildProcess ();
+	ChildProcess (ChildProcess && other) noexcept;
+	ChildProcess & operator= (ChildProcess && other) noexcept;
+	ChildProcess (const ChildProcess &) = delete;
+	ChildProcess & operator= (const ChildProcess &) = delete;
 
-			bool IsRunning ();
-			void Stop (int timeoutMs = 2000);
-			pid_t Pid () const { return m_Pid; }
-			Channel& ChannelFd () { return m_Channel; }
+	bool IsRunning ();
+	void Stop (int timeoutMs = 2000);
+	pid_t Pid () const { return m_Pid; }
+	Channel & ChannelFd () { return m_Channel; }
 
-		private:
-			friend i2p::expected<ChildProcess, std::string> SpawnLogWorker ();
-			/** Reap without blocking. Returns true when the child no longer exists. */
-			bool ReapNoHang ();
-			void ClosePidFd ();
-			pid_t m_Pid = -1;
-			int m_PidFd = -1;
-			Channel m_Channel;
-	};
+private:
+	friend i2p::expected<ChildProcess, std::string> SpawnLogWorker ();
+	/** Reap without blocking. Returns true when the child no longer exists. */
+	bool ReapNoHang ();
+	void ClosePidFd ();
+	pid_t m_Pid = -1;
+	int m_PidFd = -1;
+	Channel m_Channel;
+};
 
-	i2p::expected<ChildProcess, std::string> SpawnLogWorker ();
-	std::string ExecutablePath ();
+i2p::expected<ChildProcess, std::string> SpawnLogWorker ();
+std::string ExecutablePath ();
 }
 
 #endif

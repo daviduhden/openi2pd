@@ -85,6 +85,10 @@ subsystem owner in the ownership table unless a task says otherwise. The
 - [ ] **[CPP-005]** Add `std::expected`/`optional` to recoverable configuration/filesystem APIs where safe.
   - Priority P2; Status Pending.
 - [ ] **[CPP-006]** Consider namespace/enum cleanup and strongly typed protocol constants without ABI breaks.
+- [ ] **[CPP-007]** Maintain the clang-format profile and format C/C++ sources consistently; verify build after the formatting pass.
+  - Priority P1; Status Implemented / static formatting; 245 C/C++ and Java files formatted; compile/CI validation pending.
+- [ ] **[ANDROID-015]** Format Android Java sources with the clang-format Java profile and re-run Java compile/Lint/unit tests.
+  - Priority P1; Status Implemented / static formatting; Java compile/Lint/tests pending.
   - Priority P3; Status Pending.
 
 ## C. Security and concurrency
