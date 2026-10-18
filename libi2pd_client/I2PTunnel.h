@@ -41,6 +41,7 @@ namespace client
 	constexpr std::string_view X_I2P_DEST_B64 { "X-I2P-DestB64" }; // full address in base64
 	constexpr std::string_view X_I2P_DEST_B32 { "X-I2P-DestB32" }; // .b32.i2p address
 	constexpr int I2P_TUNNEL_HTTP_MAX_HEADER_SIZE = 8192;
+	constexpr int I2P_TUNNEL_MAX_NUM_HTTP_HEADERS = 100;
 
 	class I2PTunnelConnection : public I2PServiceHandler, public std::enable_shared_from_this<I2PTunnelConnection>
 	{
@@ -95,7 +96,8 @@ namespace client
 			: I2PTunnelConnection (owner, socket, stream)
 			, m_HeaderSent (false)
 			, m_ConnectionSent (false)
-			, m_ProxyConnectionSent (false) { };
+			, m_ProxyConnectionSent (false)
+			, m_NumHeaders (0) { };
 
 	protected:
 		void Write (const uint8_t * buf, size_t len) override;
@@ -103,6 +105,7 @@ namespace client
 	private:
 		std::stringstream m_InHeader, m_OutHeader;
 		bool m_HeaderSent, m_ConnectionSent, m_ProxyConnectionSent;
+		int m_NumHeaders;
 	};
 
 	class I2PServerTunnelConnectionHTTP : public I2PTunnelConnection
@@ -120,6 +123,7 @@ namespace client
 		std::string m_Host, m_XI2P;
 		std::stringstream m_InHeader, m_OutHeader;
 		bool m_HeaderSent, m_ResponseHeaderSent;
+		int m_NumHeaders;
 	};
 
 	class I2PTunnelConnectionIRC : public I2PTunnelConnection
