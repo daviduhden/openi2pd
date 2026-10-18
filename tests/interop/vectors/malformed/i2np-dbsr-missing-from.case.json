@@ -1,0 +1,31 @@
+{
+   "expect" : {
+      "ok" : false
+   },
+   "expectation" : "reject",
+   "format" : "hex",
+   "id" : "i2np-dbsr-missing-from",
+   "input" : "i2np-dbsr-missing-from.hex",
+   "kind" : "i2np",
+   "license" : "BSD-3-Clause",
+   "provenance" : {
+      "java" : [
+         {
+            "contains" : "_from = Hash.create",
+            "line" : 85,
+            "path" : "router/java/src/net/i2p/data/i2np/DatabaseSearchReplyMessage.java"
+         },
+         {
+            "contains" : "buffer overrun",
+            "line" : 91,
+            "path" : "router/java/src/net/i2p/data/i2np/DatabaseSearchReplyMessage.java"
+         }
+      ],
+      "spec" : [
+         "i2np#database-lookup",
+         "i2np#database-search-reply",
+         "i2np#message-header"
+      ]
+   },
+   "sha256" : "baa527da30155788be25846b4eb4a5d941b360a5268b9f439264f29e0e302821"
+}

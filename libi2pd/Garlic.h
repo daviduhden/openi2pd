@@ -14,6 +14,7 @@
 #include <inttypes.h>
 #include <unordered_map>
 #include <list>
+#include <deque>
 #include <vector>
 #include <utility>
 #include <string>
@@ -283,6 +284,8 @@ namespace garlic
 		virtual void SubmitECIESx25519Key (const uint8_t * key, uint64_t tag); // from different thread
 		void DeliveryStatusSent (GarlicRoutingSessionPtr session, uint32_t msgID);
 		uint64_t AddECIESx25519SessionNextTag (ReceiveRatchetTagSetPtr tagset);
+		bool IsDuplicateNewSessionKey (const uint8_t * key) const;
+		void AddNewSessionKey (const uint8_t * key);
 		void AddECIESx25519Session (const uint8_t * staticKey, ECIESX25519AEADRatchetSessionPtr session);
 		void RemoveECIESx25519Session (const uint8_t * staticKey);
 		void HandleECIESx25519GarlicClove (const uint8_t * buf, size_t len, ECIESX25519AEADRatchetSession * from);
@@ -329,6 +332,8 @@ namespace garlic
 		std::unordered_map<i2p::data::IdentHash, ElGamalAESSessionPtr> m_Sessions;
 		std::unordered_map<i2p::data::Tag<32>, ECIESX25519AEADRatchetSessionPtr>
 			m_ECIESx25519Sessions; // static key -> session
+		mutable std::mutex m_NewSessionKeysMutex;
+		std::deque<i2p::data::Tag<32>> m_NewSessionKeys; // bounded replay cache for NS ephemeral keys
 		uint8_t * m_PayloadBuffer; // for ECIESX25519AEADRatchet
 		uint64_t m_LastIncomingSessionTimestamp; // in milliseconds
 		// incoming

@@ -16,6 +16,7 @@
 #include <vector>
 #include <list>
 #include <set>
+#include <map>
 #include <memory>
 #include "Identity.h"
 #include "Timestamp.h"
@@ -67,8 +68,15 @@ namespace data
 	const size_t MAX_LS_BUFFER_SIZE = 4096;
 	const size_t LEASE_SIZE = 44; // 32 + 4 + 8
 	const size_t LEASE2_SIZE = 40; // 32 + 4 + 4
+	const size_t META_LEASE_SIZE = 40; // hash (32) + flags (2) + type (1) + cost (1) + expires (4)
 	const uint8_t MAX_NUM_LEASES = 16;
+	const uint8_t MAX_NUM_ENCRYPTION_KEYS = 8; // LeaseSet2.MAX_KEYS
 	const uint64_t LEASESET_EXPIRATION_TIME_THRESHOLD = 12 * 60 * 1000; // in milliseconds
+	const uint64_t LEASESET2_CLOCK_FUDGE = 60 * 1000; // Router.CLOCK_FUDGE_FACTOR
+	// KademliaNetworkDatabaseFacade.MAX_META_LEASE_FUTURE. Standard LS2
+	// expiration is capped by the 16-bit expires field (65535 seconds).
+	const uint64_t LEASESET2_META_MAX_FUTURE = 65535 * 1000LL; // in milliseconds
+	const uint64_t LEASESET2_META_MAX_PUBLISHED_AGE = 10 * 60 * 1000; // Java earliest-lease bound
 
 	const uint8_t NETDB_STORE_TYPE_LEASESET = 1;
 	class LeaseSet : public RoutingDestination
@@ -104,6 +112,7 @@ namespace data
 		};
 		virtual uint8_t GetStoreType () const { return NETDB_STORE_TYPE_LEASESET; };
 		virtual uint32_t GetPublishedTimestamp () const { return 0; }; // should be set for LeaseSet2 only
+		virtual bool IsEncryptionKey (CryptoKeyType type, const uint8_t * key) const { return false; };
 		virtual std::shared_ptr<const i2p::crypto::Verifier> GetTransientVerifier () const { return nullptr; };
 		virtual bool IsPublishedEncrypted () const { return false; };
 
@@ -177,6 +186,8 @@ namespace data
 		uint32_t GetPublishedTimestamp () const override { return m_PublishedTimestamp; };
 		bool IsPublic () const { return m_IsPublic; };
 		bool IsPublishedEncrypted () const override { return m_IsPublishedEncrypted; };
+		bool IsEncryptionKey (CryptoKeyType type, const uint8_t * key) const override;
+		bool IsStoreKey (const IdentHash & key) const;
 		std::shared_ptr<const i2p::crypto::Verifier> GetTransientVerifier () const override
 		{
 			return m_TransientVerifier;
@@ -196,6 +207,7 @@ namespace data
 			std::shared_ptr<LocalDestination> dest, const uint8_t * secret);
 		size_t ReadStandardLS2TypeSpecificPart (
 			const uint8_t * buf, size_t len, std::shared_ptr<LocalDestination> dest);
+		size_t ReadMetaLS2TypeSpecificPart (const uint8_t * buf, size_t len);
 
 		template <typename Verifier>
 		bool VerifySignature (Verifier & verifier, const uint8_t * buf, size_t len, size_t signatureOffset);
@@ -214,6 +226,9 @@ namespace data
 		CryptoKeyType m_EncryptionType;
 		const CryptoKeyType m_PreferredEncryptionType;
 		std::shared_ptr<i2p::crypto::CryptoKeyEncryptor> m_Encryptor; // for standardLS2
+		std::map<CryptoKeyType, std::vector<uint8_t>> m_EncryptionKeys; // all advertised key sections
+		IdentHash m_StoreHash;
+		bool m_HasStoreHash = false;
 		i2p::util::Mapping m_Properties;
 	};
 

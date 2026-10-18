@@ -432,3 +432,51 @@ then `TODO.md` and `ROADMAP.md`, then verify the code state.
 - Validated with mandoc 1.14-style linting; temporary manpath cross-reference
   checks are recorded below. No Linux/OpenBSD installation or live command
   rendering was run.
+
+### Session 10 - deep Java 2.13.0 interoperability (static, in progress)
+
+- Verified the read-only Java baseline: tag `i2p-2.13.0`, commit
+  `9134f808337b401e8e53c73734c81fab04280c9d`, commit date 2026-07-20, release
+  2026-07-24. GitHub latest release remains 2.13.0.
+- Re-read the existing matrix, harness, checker and all modified files from the
+  previous static pass before changing anything.
+- Started five disjoint implementation workstreams and one test-harness
+  workstream: netDb/MetaLS/DatabaseLookup/DatabaseSearchReply/RouterInfo
+  freshness; SAM/I2CP/Streaming/Datagram; tunnel-build windows; SSU2 relay and
+  timeout alignment; incoming PQ type iteration; plus differential fixtures.
+- Previous static corrections remain in the working tree: SSU2 PQ lists/relay
+  version/fragments/ACK/netID, LeaseSet store-key/replay/lease validation,
+  ratchet NS freshness/PQ NSR/multi-key, Datagram2 minimum, SAM version and
+  connection wait, I2CP HostLookup, Streaming RESET, and Elligator boundary.
+- No compiler, CTest, sanitizer, fuzz, Gradle/Lint, OpenBSD or Java/C++ dynamic
+  test was run. No commit, tag, push or release was created.
+- `TODO.md`, `ROADMAP.md` and `PROGRESS.md` are synchronized with stable
+  I2P-001..I2P-013 IDs and explicit static/dynamic distinctions.
+
+### Session 10 results (static)
+
+- Pinned Java reference verified again: `i2p-2.13.0`, commit
+  `9134f808337b401e8e53c73734c81fab04280c9d`, read-only; no newer stable.
+- Static implementations integrated for I2P-001..I2P-012: Meta LS2,
+  DatabaseLookup `0x02/0x10/0x12`, DSRM sender binding, tunnel-build windows,
+  floodfill RouterInfo freshness, SAM 3.2/3.3 handling, I2CP BlindingInfo,
+  Datagram3 first contact, Datagram2 offline signatures, incoming PQ candidate
+  iteration, SSU2 relay validation and NTCP2/SSU2 timeout alignment.
+- I2P-013 GOST remains blocked: Java 2.13 reserves signature types 9/10 and
+  provides no usable peer verifier.
+- An independent security review produced static fixes for: Java OBGW
+  records with receive tunnel ID 0 (must be accepted), first SSU2 data packet
+  reordering, late SessionConfirmed fragment-count changes, dead HolePunch
+  DateTime skew validation, Meta LS2 published-time freshness, and SAM invalid
+  `SEND` desynchronization.
+- `tests/interop/` now has a static fixture validator and 24 passing static
+  cases plus one documented I2NP checksum gap; `check-vectors.pl` syntax and
+  reference verification pass. No differential binary was run.
+- `TODO.md`, `ROADMAP.md` and `PROGRESS.md` are synchronized. No build, CTest,
+  sanitizer, fuzz, Gradle/Lint, OpenBSD or Java/C++ dynamic test was executed;
+  no commit, tag, push or release was created.
+
+Static checks run: `git diff --check`, `perl -c tests/interop/check-vectors.pl`,
+`tests/interop/check-reference.sh`, and `check-vectors.pl` (24 static/vector
+pass, 1 known checksum gap). No compiler, CTest, sanitizer, fuzz, Gradle/Lint,
+OpenBSD or Java/C++ dynamic test was run.

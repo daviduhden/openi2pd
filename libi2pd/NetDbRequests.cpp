@@ -51,7 +51,11 @@ namespace data
 		else
 			msg = i2p::CreateRouterInfoDatabaseLookupMsg (
 				m_Destination, i2p::context.GetIdentHash (), 0, m_IsExploratory, &m_ExcludedPeers);
-		if (router) m_ExcludedPeers.insert (router->GetIdentHash ());
+		if (router)
+		{
+			m_ExcludedPeers.insert (router->GetIdentHash ());
+			m_RequestedPeers.insert (router->GetIdentHash ());
+		}
 		m_LastRequestTime = i2p::util::GetMillisecondsSinceEpoch ();
 		m_NumAttempts++;
 		m_IsSentDirectly = false;
@@ -63,6 +67,7 @@ namespace data
 		auto msg = i2p::CreateRouterInfoDatabaseLookupMsg (
 			m_Destination, i2p::context.GetRouterInfo ().GetIdentHash (), 0, false, &m_ExcludedPeers);
 		m_ExcludedPeers.insert (floodfill);
+		m_RequestedPeers.insert (floodfill);
 		m_NumAttempts++;
 		m_LastRequestTime = i2p::util::GetMillisecondsSinceEpoch ();
 		m_IsSentDirectly = true;
@@ -369,7 +374,10 @@ namespace data
 	{
 		const uint8_t * buf = msg->GetPayload ();
 		size_t payloadLen = msg->GetPayloadLength ();
-		if (payloadLen < 33)
+		// DatabaseSearchReplyMessage: key (32) + num (1) + num*32 peer hashes
+		// + from hash (32). The trailing sender hash is mandatory; never treat
+		// truncated bytes as peers or accept a reply without it.
+		if (payloadLen < 65)
 		{
 			LogPrint (eLogWarning, "NetDbReq: Database search reply is too short, ", payloadLen);
 			return;
@@ -379,11 +387,36 @@ namespace data
 		if (CheckLogLevel (eLogInfo)) key = i2p::data::ByteStreamToBase64 (buf, 32);
 		LogPrint (eLogDebug, "NetDbReq: DatabaseSearchReply for ", key, " num=", num);
 
+		// Validate the declared count against the complete body before using it.
+		size_t maxNum = (payloadLen - 33 - 32) / 32;
+		if (num > maxNum)
+		{
+			LogPrint (eLogWarning, "NetDbReq: Declared number of peer hashes ", num,
+				" does not fit in database search reply of ", payloadLen, " bytes");
+			return;
+		}
+		const IdentHash from (buf + 33 + num * 32);
+		if (from.IsZero ())
+		{
+			LogPrint (eLogWarning, "NetDbReq: Database search reply has zero sender hash");
+			return;
+		}
+
 		IdentHash ident (buf);
 		bool isExploratory = false;
 		auto dest = FindRequest (ident);
 		if (dest && dest->IsActive ())
 		{
+			// The sender hash is self-claimed, but when the request tracker
+			// still knows which floodfills were queried we can bind the reply
+			// to one of them. Legitimate late replies from earlier attempts
+			// remain accepted because all queried peers are retained.
+			if (dest->HasRequestedPeers () && !dest->IsRequestedPeer (from))
+			{
+				LogPrint (eLogWarning, "NetDbReq: Database search reply for ", key, " from unexpected sender ",
+					from.ToBase64 ());
+				return;
+			}
 			isExploratory = dest->IsExploratory ();
 			if (!isExploratory
 				&& (num > 0 || dest->GetNumAttempts () < 3)) // before 3-rd attempt might be just bad luck
@@ -407,13 +440,6 @@ namespace data
 			LogPrint (eLogWarning, "NetDbReq: Too many peer hashes ", num, " in database search reply, Reduced to ",
 				NETDB_MAX_NUM_SEARCH_REPLY_PEER_HASHES);
 			num = NETDB_MAX_NUM_SEARCH_REPLY_PEER_HASHES;
-		}
-		size_t maxNum = (payloadLen - 33) / 32;
-		if (num > maxNum)
-		{
-			LogPrint (eLogWarning, "NetDbReq: Declared number of peer hashes ", num,
-				" exceeds message size, reduced to ", maxNum);
-			num = maxNum;
 		}
 		if (isExploratory && !m_DiscoveredRouterHashes.empty ())
 		{

@@ -20,12 +20,47 @@
 #include "ECIESX25519AEADRatchetSession.h"
 #include "Tunnel.h"
 #include "Transports.h"
+#include "Timestamp.h"
 #include "TransitTunnel.h"
 
 namespace i2p
 {
 namespace tunnel
 {
+	namespace
+	{
+		// Java BuildHandler.java:101-104.
+		// ECIES long and short records carry a request time in minutes, rounded
+		// down. ElGamal long records use an hour timestamp and a 65 minute age,
+		// but that record format is not decrypted by this file.
+		constexpr int64_t BUILD_REQUEST_MAX_AGE_ECIES = 8; // minutes
+		constexpr int64_t BUILD_REQUEST_MAX_FUTURE = 5; // minutes
+
+		// Mirrors the request-time check in BuildHandler.handleReq(), lines
+		// 774-807. Java reads, but does not enforce, the separate request
+		// expiration field; it is intentionally ignored here so that future
+		// variable-duration tunnels and slow builds remain valid.
+		bool IsBuildRequestTimeValid (const uint8_t * clearText, size_t timeOffset, int recordIndex)
+		{
+			int64_t now = static_cast<int64_t> (i2p::util::GetSecondsSinceEpoch () / 60);
+			int64_t requestTime = static_cast<int64_t> (bufbe32toh (clearText + timeOffset));
+			int64_t timeDiff = now - requestTime;
+			if (timeDiff > BUILD_REQUEST_MAX_AGE_ECIES)
+			{
+				LogPrint (eLogWarning, "TransitTunnel: Build request record ", recordIndex,
+					" is too old (", timeDiff, " minutes), possible replay");
+				return false;
+			}
+			if (timeDiff < -BUILD_REQUEST_MAX_FUTURE)
+			{
+				LogPrint (eLogWarning, "TransitTunnel: Build request record ", recordIndex,
+					" is too far in the future (", -timeDiff, " minutes)");
+				return false;
+			}
+			return true;
+		}
+	}
+
 	TransitTunnel::TransitTunnel (uint32_t receiveTunnelID, const i2p::data::IdentHash & nextIdent,
 		uint32_t nextTunnelID, const i2p::crypto::AESKey & layerKey, const i2p::crypto::AESKey & ivKey)
 		: TunnelBase (receiveTunnelID, nextTunnelID, nextIdent)
@@ -286,6 +321,11 @@ namespace tunnel
 		if (!msg) return;
 		uint8_t * buf = msg->GetPayload ();
 		size_t len = msg->GetPayloadLength ();
+		if (!len)
+		{
+			LogPrint (eLogError, "TransitTunnel: Empty ShortTunnelBuild message");
+			return;
+		}
 		int num = buf[0];
 		LogPrint (eLogDebug, "TransitTunnel: ShortTunnelBuild ", num, " records");
 		if (num > i2p::tunnel::MAX_NUM_RECORDS)
@@ -311,12 +351,23 @@ namespace tunnel
 					LogPrint (eLogWarning, "TransitTunnel: Can't decrypt short request record ", i);
 					return;
 				}
-				if (clearText[SHORT_REQUEST_RECORD_LAYER_ENCRYPTION_TYPE]) // not AES
+				const uint8_t flags = clearText[SHORT_REQUEST_RECORD_FLAG_OFFSET];
+				const bool isEndpoint = flags & TUNNEL_BUILD_RECORD_ENDPOINT_FLAG;
+				const bool isGateway = flags & TUNNEL_BUILD_RECORD_GATEWAY_FLAG;
+				if (isEndpoint && isGateway)
 				{
-					LogPrint (eLogWarning, "TransitTunnel: Unknown layer encryption type ",
-						clearText[SHORT_REQUEST_RECORD_LAYER_ENCRYPTION_TYPE], " in short request record");
+					// BuildHandler.handleReq() drops IBGW+OBEP requests.
+					LogPrint (eLogWarning, "TransitTunnel: Short request record is both gateway and endpoint");
 					return;
 				}
+				// Java's OBGW record legitimately has receiveTunnelID = 0
+				// (BuildMessageGenerator.createUnencryptedRecord); do not reject it.
+				if (!IsBuildRequestTimeValid (clearText, SHORT_REQUEST_RECORD_REQUEST_TIME_OFFSET, i))
+					return;
+				bool unsupportedLayerEncryption = clearText[SHORT_REQUEST_RECORD_LAYER_ENCRYPTION_TYPE] != 0;
+				if (unsupportedLayerEncryption) // not AES
+					LogPrint (eLogWarning, "TransitTunnel: Unknown layer encryption type ",
+						clearText[SHORT_REQUEST_RECORD_LAYER_ENCRYPTION_TYPE], " in short request record");
 				auto & noiseState = i2p::context.GetCurrentNoiseState ();
 				uint8_t replyKey[32]; // AEAD/Chacha20/Poly1305
 				i2p::crypto::AESKey layerKey, ivKey; // AES
@@ -324,7 +375,6 @@ namespace tunnel
 				memcpy (replyKey, noiseState.m_CK + 32, 32);
 				i2p::crypto::HKDF (noiseState.m_CK, nullptr, 0, "SMTunnelLayerKey", noiseState.m_CK);
 				memcpy (layerKey, noiseState.m_CK + 32, 32);
-				bool isEndpoint = clearText[SHORT_REQUEST_RECORD_FLAG_OFFSET] & TUNNEL_BUILD_RECORD_ENDPOINT_FLAG;
 				if (isEndpoint)
 				{
 					i2p::crypto::HKDF (noiseState.m_CK, nullptr, 0, "TunnelLayerIVKey", noiseState.m_CK);
@@ -343,25 +393,28 @@ namespace tunnel
 
 				// check if we accept this tunnel
 				std::shared_ptr<i2p::tunnel::TransitTunnel> transitTunnel;
-				uint8_t retCode = 0;
-				if (i2p::context.AcceptsTunnels () && !i2p::context.IsLimitedConnectivity ())
+				uint8_t retCode = unsupportedLayerEncryption ? 30 : 0;
+				if (!retCode)
 				{
-					auto congestionLevel = i2p::context.GetCongestionLevel (false);
-					if (congestionLevel < CONGESTION_LEVEL_FULL)
+					if (i2p::context.AcceptsTunnels () && !i2p::context.IsLimitedConnectivity ())
 					{
-						if (congestionLevel >= CONGESTION_LEVEL_MEDIUM)
+						auto congestionLevel = i2p::context.GetCongestionLevel (false);
+						if (congestionLevel < CONGESTION_LEVEL_FULL)
 						{
-							// random reject depending on congestion level
-							int level = m_Rng () % (CONGESTION_LEVEL_FULL - CONGESTION_LEVEL_MEDIUM)
-								+ CONGESTION_LEVEL_MEDIUM;
-							if (congestionLevel > level) retCode = 30;
+							if (congestionLevel >= CONGESTION_LEVEL_MEDIUM)
+							{
+								// random reject depending on congestion level
+								int level = m_Rng () % (CONGESTION_LEVEL_FULL - CONGESTION_LEVEL_MEDIUM)
+									+ CONGESTION_LEVEL_MEDIUM;
+								if (congestionLevel > level) retCode = 30;
+							}
 						}
+						else
+							retCode = 30;
 					}
 					else
 						retCode = 30;
 				}
-				else
-					retCode = 30;
 
 				uint32_t availableBandwidth = 0;
 				if (!retCode)
@@ -398,14 +451,13 @@ namespace tunnel
 				if (!retCode)
 				{
 					i2p::data::IdentHash nextIdent (clearText + SHORT_REQUEST_RECORD_NEXT_IDENT_OFFSET);
-					bool isEndpoint = clearText[SHORT_REQUEST_RECORD_FLAG_OFFSET] & TUNNEL_BUILD_RECORD_ENDPOINT_FLAG;
 					if (isEndpoint || !i2p::data::IsRouterDuplicated (nextIdent))
 					{
 						// create new transit tunnel
 						transitTunnel = CreateTransitTunnel (
 							bufbe32toh (clearText + SHORT_REQUEST_RECORD_RECEIVE_TUNNEL_OFFSET), nextIdent,
 							bufbe32toh (clearText + SHORT_REQUEST_RECORD_NEXT_TUNNEL_OFFSET), layerKey, ivKey,
-							clearText[SHORT_REQUEST_RECORD_FLAG_OFFSET] & TUNNEL_BUILD_RECORD_GATEWAY_FLAG, isEndpoint);
+							isGateway, isEndpoint);
 						if (!AddTransitTunnel (transitTunnel)) retCode = 30;
 					}
 					else
@@ -516,11 +568,22 @@ namespace tunnel
 					LogPrint (eLogWarning, "TransitTunnel: Failed to decrypt tunnel build record");
 					return false;
 				}
-				if (!memcmp ((const uint8_t *)i2p::context.GetIdentHash (),
-						clearText + ECIES_BUILD_REQUEST_RECORD_NEXT_IDENT_OFFSET, 32)
-					&& // if next ident is now ours
-					!(clearText[ECIES_BUILD_REQUEST_RECORD_FLAG_OFFSET]
-						& TUNNEL_BUILD_RECORD_ENDPOINT_FLAG)) // and not endpoint
+				const uint8_t flags = clearText[ECIES_BUILD_REQUEST_RECORD_FLAG_OFFSET];
+				const bool isEndpoint = flags & TUNNEL_BUILD_RECORD_ENDPOINT_FLAG;
+				const bool isGateway = flags & TUNNEL_BUILD_RECORD_GATEWAY_FLAG;
+				if (isEndpoint && isGateway)
+				{
+					// BuildHandler.handleReq() drops IBGW+OBEP requests.
+					LogPrint (eLogWarning, "TransitTunnel: Tunnel build record is both gateway and endpoint");
+					return false;
+				}
+				// The OBGW's receive tunnel ID is zero in Java; the next tunnel ID
+				// is not a zero-validity test either.
+				if (!IsBuildRequestTimeValid (clearText, ECIES_BUILD_REQUEST_RECORD_REQUEST_TIME_OFFSET, i))
+					return false;
+				if (!isEndpoint && // if next ident is now ours
+					!memcmp ((const uint8_t *)i2p::context.GetIdentHash (),
+						clearText + ECIES_BUILD_REQUEST_RECORD_NEXT_IDENT_OFFSET, 32))
 				{
 					LogPrint (eLogWarning, "TransitTunnel: Next ident is ours in tunnel build record");
 					return false;
@@ -548,8 +611,6 @@ namespace tunnel
 				if (accept)
 				{
 					i2p::data::IdentHash nextIdent (clearText + ECIES_BUILD_REQUEST_RECORD_NEXT_IDENT_OFFSET);
-					bool isEndpoint
-						= clearText[ECIES_BUILD_REQUEST_RECORD_FLAG_OFFSET] & TUNNEL_BUILD_RECORD_ENDPOINT_FLAG;
 					if (isEndpoint || !i2p::data::IsRouterDuplicated (nextIdent))
 					{
 						auto transitTunnel = CreateTransitTunnel (
@@ -557,8 +618,7 @@ namespace tunnel
 							bufbe32toh (clearText + ECIES_BUILD_REQUEST_RECORD_NEXT_TUNNEL_OFFSET),
 							clearText + ECIES_BUILD_REQUEST_RECORD_LAYER_KEY_OFFSET,
 							clearText + ECIES_BUILD_REQUEST_RECORD_IV_KEY_OFFSET,
-							clearText[ECIES_BUILD_REQUEST_RECORD_FLAG_OFFSET] & TUNNEL_BUILD_RECORD_GATEWAY_FLAG,
-							isEndpoint);
+							isGateway, isEndpoint);
 						if (!AddTransitTunnel (transitTunnel)) retCode = 30;
 					}
 					else
@@ -606,6 +666,11 @@ namespace tunnel
 		if (!msg) return;
 		uint8_t * buf = msg->GetPayload ();
 		size_t len = msg->GetPayloadLength ();
+		if (!len)
+		{
+			LogPrint (eLogError, "TransitTunnel: Empty VariableTunnelBuild message");
+			return;
+		}
 		int num = buf[0];
 		LogPrint (eLogDebug, "TransitTunnel: VariableTunnelBuild ", num, " records");
 		if (num > i2p::tunnel::MAX_NUM_RECORDS)

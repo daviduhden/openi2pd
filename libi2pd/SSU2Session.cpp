@@ -187,6 +187,11 @@ namespace transport
 		// create nonce
 		uint32_t nonce;
 		RAND_bytes ((uint8_t *)&nonce, 4);
+		if (m_RelaySessions.size () >= SSU2_MAX_RELAY_SESSIONS)
+		{
+			LogPrint (eLogWarning, "SSU2: Too many pending relay introductions ", m_RelaySessions.size ());
+			return false;
+		}
 		auto ts = i2p::util::GetMillisecondsSinceEpoch ();
 		// payload
 		auto packet = m_Server.GetSentPacketsPool ().AcquireShared ();
@@ -196,7 +201,7 @@ namespace transport
 		htobe32buf (payload + 4, nonce);
 		htobe32buf (payload + 8, relayTag);
 		htobe32buf (payload + 12, ts / 1000);
-		payload[16] = m_Version; // ver
+		payload[16] = 2; // relay protocol version is fixed to 2
 		size_t asz = CreateEndpoint (payload + 18, m_MaxPayloadSize - 18,
 			boost::asio::ip::udp::endpoint (localAddress->host, localAddress->port));
 		if (!asz) return false;
@@ -213,7 +218,11 @@ namespace transport
 		packet->payloadSize
 			+= CreatePaddingBlock (payload + packet->payloadSize, m_MaxPayloadSize - packet->payloadSize);
 		// send
-		m_RelaySessions.emplace (nonce, std::make_pair (session, ts / 1000));
+		if (!m_RelaySessions.emplace (nonce, std::make_pair (session, ts / 1000)).second)
+		{
+			LogPrint (eLogWarning, "SSU2: Relay nonce ", nonce, " already exists");
+			return false;
+		}
 		session->m_SourceConnID = htobe64 (((uint64_t)nonce << 32) | nonce);
 		session->m_DestConnID = ~session->m_SourceConnID;
 		m_Server.AddSession (session);
@@ -320,6 +329,7 @@ namespace transport
 			m_SentPackets.clear ();
 			m_IncompleteMessages.clear ();
 			m_RelaySessions.clear ();
+			m_RecentRelayRequests.clear ();
 			m_ReceivedI2NPMsgIDs.clear ();
 			m_Server.RemoveSession (m_SourceConnID);
 			transports.PeerDisconnected (shared_from_this ());
@@ -350,6 +360,8 @@ namespace transport
 		m_EphemeralKeys = nullptr;
 		m_NoiseState.reset (nullptr);
 		m_SessionConfirmedFragment.reset (nullptr);
+		m_SessionConfirmedFragments.clear ();
+		m_SessionConfirmedNumFragments = 0;
 		m_SentHandshakePacket.reset (nullptr);
 #if OPENSSL_PQ
 		m_PQKeys.reset (nullptr);
@@ -530,17 +542,11 @@ namespace transport
 					}
 					else
 					{
-						// reduce ack block
-						if (len + 8 < m_MaxPayloadSize)
-						{
-							// keep Ack block and drop some ranges
-							ackBlockSent = true;
-							packet->payloadSize = m_MaxPayloadSize - len;
-							if (packet->payloadSize & 0x01) packet->payloadSize--; // make it even
-							htobe16buf (packet->payload + 1, packet->payloadSize - 3); // new block size
-						}
-						else // drop Ack block completely
-							packet->payloadSize = 0;
+						// Do not expand an ACK block without writing valid ranges: the
+						// old branch exposed uninitialized payload bytes as acknowledgements.
+						// The message is more important; drop the ACK and let a later packet
+						// carry it.
+						packet->payloadSize = 0;
 						// msg fits single packet
 						m_SendQueue.pop_front ();
 						packet->payloadSize += CreateI2NPBlock (packet->payload + packet->payloadSize,
@@ -640,13 +646,21 @@ namespace transport
 	{
 		if (ts + SSU2_RESEND_ATTEMPT_MIN_INTERVAL < m_LastResendAttemptTime) return 0;
 		m_LastResendAttemptTime = ts;
-		// resend handshake packet
-		if (m_SentHandshakePacket && ts >= m_SentHandshakePacket->sendTime + SSU2_HANDSHAKE_RESEND_INTERVAL)
+		// resend handshake packet. Java backs off 1.25, 2.5, 5, ... seconds
+		// (OutboundEstablishState.java:117,123) while the overall budget is
+		// MAX_OB_ESTABLISH_TIME (EstablishmentManager.java:153).
+		if (m_SentHandshakePacket)
 		{
-			LogPrint (eLogDebug, "SSU2: Resending ", (int)m_State);
-			ResendHandshakePacket ();
-			m_SentHandshakePacket->sendTime = ts;
-			return 0;
+			int shift = std::min (m_SentHandshakePacket->numResends, 3);
+			uint64_t interval = ((uint64_t)SSU2_HANDSHAKE_RESEND_INTERVAL) << shift;
+			if (ts >= m_SentHandshakePacket->sendTime + interval)
+			{
+				LogPrint (eLogDebug, "SSU2: Resending ", (int)m_State);
+				ResendHandshakePacket ();
+				m_SentHandshakePacket->sendTime = ts;
+				m_SentHandshakePacket->numResends++;
+				return 0;
+			}
 		}
 		// schedule resend local RouterInfo
 		if (m_NextRouterInfoResendTime && ts > m_NextRouterInfoResendTime)
@@ -749,8 +763,10 @@ namespace transport
 	{
 		// we are Alice
 #if OPENSSL_PQ
-		if (m_Server.GetVersion () > 2) // we support post quantum in config
+		if (m_Server.GetVersion () > 2 && !m_IsVersionFallback) // we support post quantum in config
 			SetVersion (m_Address->v);
+		else if (m_IsVersionFallback)
+			m_Version = 2;
 #endif
 		m_EphemeralKeys = i2p::transport::transports.GetNextX25519KeysPair ();
 		m_SentHandshakePacket.reset (new HandshakePacket);
@@ -870,6 +886,11 @@ namespace transport
 		if (len < 90)
 		{
 			LogPrint (eLogWarning, "SSU2: SessionRequest message too short ", len);
+			return false;
+		}
+		if (header.h.flags[1] && header.h.flags[1] != i2p::context.GetNetID ())
+		{
+			LogPrint (eLogWarning, "SSU2: SessionRequest has wrong network ID ", (int)header.h.flags[1]);
 			return false;
 		}
 #if OPENSSL_PQ
@@ -1279,71 +1300,70 @@ namespace transport
 			LogPrint (eLogError, "SSU2: Non zero packet number in SessionConfirmed");
 			return false;
 		}
-		// check if fragmented
+		// check if fragmented. The SSU2 count field permits up to 15 fragments;
+		// Java uses that range for SessionConfirmed with large RouterInfos.
+		std::vector<uint8_t> reconstructed;
 		uint8_t numFragments = header.h.flags[0] & 0x0F;
 		if (numFragments > 1)
 		{
-			// fragmented
-			if (numFragments > 2)
+			if (numFragments > 15 || len < 32)
 			{
-				LogPrint (eLogError, "SSU2: Too many fragments ", (int)numFragments, " in SessionConfirmed from ",
-					m_RemoteEndpoint);
+				LogPrint (eLogError, "SSU2: Invalid SessionConfirmed fragment count or length ",
+					(int)numFragments, " ", len);
+				m_SessionConfirmedFragments.clear ();
+				m_SessionConfirmedNumFragments = 0;
 				return false;
 			}
-			if (len < 32)
+			uint8_t index = header.h.flags[0] >> 4;
+			if (index >= numFragments)
 			{
-				LogPrint (eLogWarning, "SSU2: SessionConfirmed fragment too short ", len);
-				if (m_SessionConfirmedFragment) m_SessionConfirmedFragment.reset (nullptr);
+				LogPrint (eLogError, "SSU2: SessionConfirmed fragment index ", (int)index, " exceeds count");
+				m_SessionConfirmedFragments.clear ();
+				m_SessionConfirmedNumFragments = 0;
 				return false;
 			}
-			if (!(header.h.flags[0] & 0xF0))
+			// Java rejects a changed total even when fragment 0 arrives last.
+			if (m_SessionConfirmedNumFragments && m_SessionConfirmedNumFragments != numFragments)
 			{
-				// first fragment
-				if (!m_SessionConfirmedFragment)
-				{
-					m_SessionConfirmedFragment.reset (new HandshakePacket);
-					m_SessionConfirmedFragment->header = header;
-					memcpy (m_SessionConfirmedFragment->payload, buf + 16, len - 16);
-					m_SessionConfirmedFragment->payloadSize = len - 16;
-					return true; // wait for second fragment
-				}
-				else if (m_SessionConfirmedFragment->isSecondFragment)
-				{
-					// we have second fragment
-					m_SessionConfirmedFragment->header = header;
-					memmove (m_SessionConfirmedFragment->payload + (len - 16), m_SessionConfirmedFragment->payload,
-						m_SessionConfirmedFragment->payloadSize);
-					memcpy (m_SessionConfirmedFragment->payload, buf + 16, len - 16);
-					m_SessionConfirmedFragment->payloadSize += (len - 16);
-					m_SessionConfirmedFragment->isSecondFragment = false;
-					buf = m_SessionConfirmedFragment->payload - 16;
-					len = m_SessionConfirmedFragment->payloadSize + 16;
-				}
-				else
-					return true;
+				LogPrint (eLogError, "SSU2: SessionConfirmed fragment count changed");
+				m_SessionConfirmedFragments.clear ();
+				m_SessionConfirmedNumFragments = 0;
+				return false;
 			}
-			else
+			if (!m_SessionConfirmedNumFragments) m_SessionConfirmedNumFragments = numFragments;
+			if (index == 0) m_SessionConfirmedHeader = header;
+			m_SessionConfirmedFragments.emplace (
+				index, std::vector<uint8_t> (buf + 16, buf + len));
+			if (m_SessionConfirmedFragments.size () < m_SessionConfirmedNumFragments)
+				return true; // still waiting for fragments
+			if (m_SessionConfirmedHeader.h.type != eSSU2SessionConfirmed)
+				return true; // hold until the first fragment arrives
+			std::vector<uint8_t> assembled;
+			for (uint8_t i = 0; i < m_SessionConfirmedNumFragments; i++)
 			{
-				// second fragment
-				if (!m_SessionConfirmedFragment)
-				{
-					// out of sequence, save it
-					m_SessionConfirmedFragment.reset (new HandshakePacket);
-					memcpy (m_SessionConfirmedFragment->payload, buf + 16, len - 16);
-					m_SessionConfirmedFragment->payloadSize = len - 16;
-					m_SessionConfirmedFragment->isSecondFragment = true;
-					return true;
-				}
-				header = m_SessionConfirmedFragment->header;
-				if (m_SessionConfirmedFragment->payloadSize + (len - 16) <= SSU2_MAX_PACKET_SIZE * 2)
-				{
-					memcpy (m_SessionConfirmedFragment->payload + m_SessionConfirmedFragment->payloadSize, buf + 16,
-						len - 16);
-					m_SessionConfirmedFragment->payloadSize += (len - 16);
-				}
-				buf = m_SessionConfirmedFragment->payload - 16;
-				len = m_SessionConfirmedFragment->payloadSize + 16;
+				auto it = m_SessionConfirmedFragments.find (i);
+				if (it == m_SessionConfirmedFragments.end ()) return true;
+				assembled.insert (assembled.end (), it->second.begin (), it->second.end ());
 			}
+			if (assembled.size () > SSU2_MAX_PACKET_SIZE * 15)
+			{
+				LogPrint (eLogError, "SSU2: SessionConfirmed reassembly is too large ", assembled.size ());
+				m_SessionConfirmedFragments.clear ();
+				m_SessionConfirmedNumFragments = 0;
+				return false;
+			}
+			header = m_SessionConfirmedHeader;
+			reconstructed.assign (16 + assembled.size (), 0);
+			memcpy (reconstructed.data () + 16, assembled.data (), assembled.size ());
+			buf = reconstructed.data ();
+			len = reconstructed.size ();
+			m_SessionConfirmedFragments.clear ();
+			m_SessionConfirmedNumFragments = 0;
+		}
+		else
+		{
+			m_SessionConfirmedFragments.clear ();
+			m_SessionConfirmedNumFragments = 0;
 		}
 		if (len < 83) // 64 bytes header/part1 + 16 bytes MAC + at least 1 byte block type + 2 bytes block size
 		{
@@ -1528,8 +1548,10 @@ namespace transport
 	{
 		// we are Alice
 #if OPENSSL_PQ
-		if (m_Server.GetVersion () > 2) // we support post quantum in config
+		if (m_Server.GetVersion () > 2 && !m_IsVersionFallback) // we support post quantum in config
 			SetVersion (m_Address->v);
+		else if (m_IsVersionFallback)
+			m_Version = 2;
 #endif
 		Header header;
 		uint8_t h[32], payload[41];
@@ -1575,6 +1597,11 @@ namespace transport
 		if (len < 48)
 		{
 			LogPrint (eLogWarning, "SSU2: Incorrect TokenRequest len ", len);
+			return false;
+		}
+		if (header.h.flags[1] && header.h.flags[1] != i2p::context.GetNetID ())
+		{
+			LogPrint (eLogWarning, "SSU2: TokenRequest has wrong network ID ", (int)header.h.flags[1]);
 			return false;
 		}
 #if OPENSSL_PQ
@@ -1664,6 +1691,11 @@ namespace transport
 			LogPrint (eLogWarning, "SSU2: Unexpected message type ", (int)header.h.type, " instead ", (int)eSSU2Retry);
 			return false;
 		}
+		if (header.h.flags[1] && header.h.flags[1] != i2p::context.GetNetID ())
+		{
+			LogPrint (eLogWarning, "SSU2: Retry has wrong network ID ", (int)header.h.flags[1]);
+			return false;
+		}
 		if (len < 48)
 		{
 			LogPrint (eLogWarning, "SSU2: Retry message too short ", len);
@@ -1690,7 +1722,11 @@ namespace transport
 		}
 		m_State = eSSU2SessionStateTokenReceived;
 		HandlePayload (payload, len - 48);
-		if (m_TerminationReason == eSSU2TerminationReasonIncompatibleVersion) m_Version = 2; // fallback to non-PQ
+		if (m_TerminationReason == eSSU2TerminationReasonIncompatibleVersion)
+		{
+			m_Version = 2; // fallback to non-PQ
+			m_IsVersionFallback = true;
+		}
 		if (!token)
 		{
 			// we should handle payload even for zero token to handle Datetime block and adjust clock in case of clock skew
@@ -1710,6 +1746,28 @@ namespace transport
 		return SendSessionRequest (token);
 	}
 
+	static bool ValidateHolePunchDateTime (const uint8_t * buf, size_t len)
+	{
+		bool found = false;
+		size_t offset = 0;
+		while (offset + 3 <= len)
+		{
+			uint8_t type = buf[offset++];
+			size_t size = bufbe16toh (buf + offset);
+			offset += 2;
+			if (offset + size > len) return false;
+			if (type == eSSU2BlkDateTime)
+			{
+				if (found || size != 4) return false;
+				found = true;
+				int64_t skew = (int64_t)bufbe32toh (buf + offset) - (int64_t)i2p::util::GetSecondsSinceEpoch ();
+				if (skew > SSU2_RELAY_MAX_SKEW || skew < -SSU2_RELAY_MAX_SKEW) return false;
+			}
+			offset += size;
+		}
+		return true; // DateTime is optional for this out-of-session path
+	}
+
 	bool SSU2Session::ProcessHolePunch (uint8_t * buf, size_t len)
 	{
 		// we are Alice
@@ -1722,6 +1780,11 @@ namespace transport
 		{
 			LogPrint (
 				eLogWarning, "SSU2: Unexpected message type ", (int)header.h.type, " instead ", (int)eSSU2HolePunch);
+			return false;
+		}
+		if (header.h.flags[1] && header.h.flags[1] != i2p::context.GetNetID ())
+		{
+			LogPrint (eLogWarning, "SSU2: HolePunch has wrong network ID ", (int)header.h.flags[1]);
 			return false;
 		}
 		if (len < 48)
@@ -1745,11 +1808,22 @@ namespace transport
 			LogPrint (eLogWarning, "SSU2: HolePunch AEAD verification failed ");
 			return false;
 		}
+		// Validate DateTime before HandleRelayResponse() can call
+		// ConnectAfterIntroduction(); HandlePayload() would otherwise reset the
+		// skew flag before the caller can observe it.
+		if (!ValidateHolePunchDateTime (payload, len - 48))
+		{
+			LogPrint (eLogWarning, "SSU2: Invalid HolePunch DateTime/skew");
+			return false;
+		}
+		m_IsInvalidMessage = false;
 		HandlePayload (payload, len - 48);
 		m_IsDataReceived = false;
-		// connect to Charlie
-		ConnectAfterIntroduction ();
-
+		if (m_IsInvalidMessage)
+		{
+			LogPrint (eLogWarning, "SSU2: Invalid block in HolePunch");
+			return false;
+		}
 		return true;
 	}
 
@@ -1761,7 +1835,7 @@ namespace transport
 
 	uint32_t SSU2Session::SendData (const uint8_t * buf, size_t len, uint8_t flags)
 	{
-		if (len < 8 || len + 16 > SSU2_MAX_PACKET_SIZE)
+		if (len < 8 || len + 32 > SSU2_MAX_PACKET_SIZE)
 		{
 			LogPrint (eLogWarning, "SSU2: Data message payload length ", (int)len, " is out of range");
 			return 0;
@@ -1829,12 +1903,46 @@ namespace transport
 		}
 		UpdateNumReceivedBytes (len);
 		if (header.h.flags[0] & SSU2_FLAG_IMMEDIATE_ACK_REQUESTED) m_IsDataReceived = true;
-		if (!packetNum || UpdateReceivePacketNum (packetNum)) HandlePayload (payload, payloadSize);
+		bool acceptPacket = false;
+		if (packetNum == 0 && !m_ReceivedPacketZero)
+		{
+			// Packet 0 is the session's first data packet number. Accept it
+			// once even if it arrives after higher-numbered reordered packets.
+			m_ReceivedPacketZero = true;
+			m_IsFirstReceivePacket = false;
+			m_ReceivePacketNum = 0;
+			acceptPacket = true;
+		}
+		else if (m_IsFirstReceivePacket)
+		{
+			// Do not baseline the receiver on an out-of-order first packet.
+			m_IsFirstReceivePacket = false;
+			m_ReceivePacketNum = 0;
+			if (packetNum) m_OutOfSequencePackets.insert (packetNum);
+			acceptPacket = true;
+		}
+		else
+			acceptPacket = UpdateReceivePacketNum (packetNum);
+		if (acceptPacket)
+		{
+			// A decryptable data packet proves that Bob processed SessionConfirmed even
+			// if Java's single ACK0 was lost.
+			if (m_State == eSSU2SessionStateSessionConfirmedSent) Established ();
+			m_IsInvalidMessage = false;
+			HandlePayload (payload, payloadSize);
+			if (m_IsInvalidMessage)
+			{
+				LogPrint (eLogError, "SSU2: Invalid block in data phase, terminating");
+				RequestTermination (eSSU2TerminationReasonPayloadFormatError);
+			}
+		}
 	}
 
 	void SSU2Session::HandlePayload (const uint8_t * buf, size_t len)
 	{
+		m_IsInvalidMessage = false;
 		size_t offset = 0;
+		bool gotPadding = false, gotTermination = false;
 		// the block header is three bytes: without all of them the size field below
 		// would be read past the end of the payload
 		while (offset + 3 <= len)
@@ -1844,10 +1952,19 @@ namespace transport
 			auto size = bufbe16toh (buf + offset);
 			offset += 2;
 			LogPrint (eLogDebug, "SSU2: Block type ", (int)blk, " of size ", size);
+			// SSU2Payload.processPayload() rejects everything after padding,
+			// and everything except padding after a termination block.
+			if (gotPadding || (gotTermination && blk != eSSU2BlkPadding))
+			{
+				LogPrint (eLogWarning, "SSU2: Block type ", (int)blk, " after padding/termination");
+				m_IsInvalidMessage = true;
+				return;
+			}
 			if (offset + size > len)
 			{
 				LogPrint (eLogError, "SSU2: Unexpected block length ", size);
-				break;
+				m_IsInvalidMessage = true;
+				return;
 			}
 			switch (blk)
 			{
@@ -1898,6 +2015,7 @@ namespace transport
 			{
 				if (size >= 9)
 				{
+					gotTermination = true;
 					uint8_t rsn = buf[offset + 8]; // reason
 					LogPrint (eLogDebug, "SSU2: Termination reason=", (int)rsn);
 					if (IsEstablished () && rsn != eSSU2TerminationReasonTerminationReceived)
@@ -1912,7 +2030,10 @@ namespace transport
 						m_TerminationReason = (SSU2TerminationReason)rsn;
 				}
 				else
+				{
 					LogPrint (eLogWarning, "SSU2: Unexpected termination block size ", size);
+					m_IsInvalidMessage = true;
+				}
 				break;
 			}
 			case eSSU2BlkRelayRequest:
@@ -2001,10 +2122,15 @@ namespace transport
 				break;
 			}
 			case eSSU2BlkFirstPacketNumber: break;
-			case eSSU2BlkPadding: LogPrint (eLogDebug, "SSU2: Padding"); break;
+			case eSSU2BlkPadding: LogPrint (eLogDebug, "SSU2: Padding"); gotPadding = true; break;
 			default: LogPrint (eLogWarning, "SSU2: Unknown block type ", (int)blk);
 			}
 			offset += size;
+		}
+		if (offset < len)
+		{
+			LogPrint (eLogWarning, "SSU2: Truncated block header at ", offset, " of ", len);
+			m_IsInvalidMessage = true;
 		}
 	}
 
@@ -2040,6 +2166,11 @@ namespace transport
 					i2p::context.SetError (eRouterErrorClockSkew);
 				}
 			}
+			break;
+		case eSSU2SessionStateIntroduced:
+			// Java EstablishmentManager.receiveHolePunch() checks the DateTime
+			// block skew before accepting the RelayResponse.
+			if (std::abs (offset) > SSU2_RELAY_MAX_SKEW) m_IsInvalidMessage = true;
 			break;
 		default:;
 		};
@@ -2086,7 +2217,13 @@ namespace transport
 			return;
 		}
 		if (m_SentPackets.empty ()) return;
-		if (len < 5) return;
+		// Java SSU2Payload requires ACK length 5 + 2*n; an odd range byte is
+		// malformed, not a shorter ACK.
+		if (len < 5 || (len % 2) != 1)
+		{
+			LogPrint (eLogWarning, "SSU2: Bad ACK block length ", len);
+			return;
+		}
 		// acnt
 		uint32_t ackThrough = bufbe32toh (buf);
 		uint32_t firstPacketNum = ackThrough > buf[4] ? ackThrough - buf[4] : 0;
@@ -2217,7 +2354,7 @@ namespace transport
 
 	void SSU2Session::HandleFirstFragment (const uint8_t * buf, size_t len)
 	{
-		if (len < 9)
+		if (len <= 9) // Java SSU2Payload: len <= 9 is invalid for FIRSTFRAG
 		{
 			LogPrint (eLogWarning, "SSU2: First fragment size ", len, " is too short");
 			m_IsInvalidMessage = true;
@@ -2242,6 +2379,13 @@ namespace transport
 		{
 			found = true;
 			m = it->second;
+			if (m->msg)
+			{
+				// Java InboundMessageState.receiveFragment() ignores a repeated
+				// fragment 0 instead of resetting reassembly progress.
+				LogPrint (eLogDebug, "SSU2: Duplicate first fragment for message ", msgID);
+				return;
+			}
 		}
 		else
 		{
@@ -2268,7 +2412,7 @@ namespace transport
 
 	void SSU2Session::HandleFollowOnFragment (const uint8_t * buf, size_t len)
 	{
-		if (len < 5) return;
+		if (len <= 5) return; // Java SSU2Payload: len <= 5 is invalid for FOLLOWON
 		if (len - 5 > SSU2_MAX_PACKET_SIZE)
 		{
 			LogPrint (eLogWarning, "SSU2: Follow-on fragment size ", len, " exceeds max packet size");
@@ -2279,6 +2423,7 @@ namespace transport
 		if (!fragmentNum || fragmentNum >= SSU2_MAX_NUM_FRAGMENTS)
 		{
 			LogPrint (eLogWarning, "SSU2: Invalid follow-on fragment num ", fragmentNum);
+			m_IsInvalidMessage = true;
 			return;
 		}
 		bool isLast = buf[0] & 0x01;
@@ -2331,20 +2476,61 @@ namespace transport
 
 	void SSU2Session::HandleRelayRequest (const uint8_t * buf, size_t len)
 	{
-		// we are Bob
-		if (len < 9) return;
+		// we are Bob. Layout follows IntroductionManager.receiveRelayRequest():
+		// flag, nonce, relay tag, timestamp, ver, asz, Alice endpoint, signature.
+		// The block must carry at least the fixed fields and the flag.
+		if (!IsEstablished ())
+		{
+			LogPrint (eLogWarning, "SSU2: RelayRequest in non-established state ", (int)m_State);
+			return;
+		}
+		// flag(1) + nonce(4) + relay tag(4) + timestamp(4) + ver(1) + asz(1)
+		if (len < 15)
+		{
+			LogPrint (eLogWarning, "SSU2: RelayRequest too short ", len);
+			return;
+		}
 		auto mts = i2p::util::GetMillisecondsSinceEpoch ();
+		auto now = i2p::util::GetSecondsSinceEpoch ();
 		uint32_t nonce = bufbe32toh (buf + 1); // nonce
 		uint32_t relayTag = bufbe32toh (buf + 5); // relay tag
-		auto session = m_Server.FindRelaySession (relayTag);
-		if (!session)
+		uint32_t timestamp = bufbe32toh (buf + 9); // seconds
+		// Java rejects stale/future relay requests before doing any lookup.
+		int64_t skew = (int64_t)timestamp - (int64_t)now;
+		if (skew > SSU2_RELAY_MAX_SKEW || skew < -SSU2_RELAY_MAX_SKEW)
 		{
-			LogPrint (eLogWarning, "SSU2: RelayRequest session with relay tag ", relayTag, " not found");
-			// send relay response back to Alice
+			LogPrint (eLogWarning, "SSU2: RelayRequest timestamp skew ", skew, " seconds");
+			return;
+		}
+		if (buf[13] != 2) // ver, IntroductionManager.java:452-457
+		{
+			LogPrint (eLogWarning, "SSU2: RelayRequest version ", (int)buf[13], " is not 2");
+			return;
+		}
+		uint8_t asz = buf[14]; // 6 IPv4 or 18 IPv6
+		if ((asz != 6 && asz != 18) || len < 15 + (size_t)asz)
+		{
+			LogPrint (eLogWarning, "SSU2: RelayRequest invalid endpoint size ", (int)asz);
+			return;
+		}
+		auto alice = GetRemoteIdentity ();
+		if (!alice)
+		{
+			LogPrint (eLogWarning, "SSU2: RelayRequest without Alice identity");
+			return;
+		}
+		size_t sigLen = alice->GetSignatureLen ();
+		if (len != 15 + (size_t)asz + sigLen)
+		{
+			LogPrint (eLogWarning, "SSU2: RelayRequest length ", len, " does not match endpoint/signature");
+			return;
+		}
+		auto sendRelayResponse = [this, nonce, mts] (SSU2RelayResponseCode code)
+		{
 			auto packet = m_Server.GetSentPacketsPool ().AcquireShared ();
 			packet->payloadSize = CreateAckBlock (packet->payload, m_MaxPayloadSize);
 			packet->payloadSize += CreateRelayResponseBlock (packet->payload + packet->payloadSize,
-				m_MaxPayloadSize - packet->payloadSize, eSSU2RelayResponseCodeBobRelayTagNotFound, nonce, 0, false);
+				m_MaxPayloadSize - packet->payloadSize, code, nonce, 0, false);
 			packet->payloadSize
 				+= CreatePaddingBlock (packet->payload + packet->payloadSize, m_MaxPayloadSize - packet->payloadSize);
 			uint32_t packetNum = SendData (packet->payload, packet->payloadSize);
@@ -2354,12 +2540,59 @@ namespace transport
 				packet->sendTime = mts;
 				m_SentPackets.emplace (packetNum, packet);
 			}
+		};
+		auto session = m_Server.FindRelaySession (relayTag);
+		if (!session)
+		{
+			LogPrint (eLogWarning, "SSU2: RelayRequest session with relay tag ", relayTag, " not found");
+			sendRelayResponse (eSSU2RelayResponseCodeBobRelayTagNotFound);
+			return;
+		}
+		// Recent relay nonces are bounded and drop duplicates. Java uses an
+		// LHMCache(32) for this purpose (_recentRelaysAsBob).
+		if (m_RecentRelayRequests.find (nonce) != m_RecentRelayRequests.end ())
+		{
+			LogPrint (eLogInfo, "SSU2: Duplicate RelayRequest nonce ", nonce, " ignored");
+			return;
+		}
+		if (m_RecentRelayRequests.size () >= SSU2_MAX_RECENT_RELAY_REQUESTS)
+		{
+			auto oldest = m_RecentRelayRequests.begin ();
+			for (auto it = m_RecentRelayRequests.begin (); it != m_RecentRelayRequests.end (); ++it)
+				if (it->second < oldest->second) oldest = it;
+			m_RecentRelayRequests.erase (oldest);
+		}
+		auto charlie = session->GetRemoteIdentity ();
+		if (!charlie)
+		{
+			sendRelayResponse (eSSU2RelayResponseCodeBobUnspecified);
+			return;
+		}
+		// RelayRequestData || bhash || chash || nonce, tag, timestamp, ver,
+		// asz, Alice endpoint. Java validateSig(RELAY_REQUEST_PROLOGUE, ...).
+		SignedData<192> s;
+		s.Insert ((const uint8_t *)"RelayRequestData", 16); // prologue
+		s.Insert (i2p::context.GetIdentHash (), 32); // bhash
+		s.Insert (charlie->GetIdentHash (), 32); // chash
+		s.Insert (buf + 1, 14 + (size_t)asz); // nonce, tag, timestamp, ver, asz, endpoint
+		if (!s.Verify (alice, buf + 15 + asz))
+		{
+			LogPrint (eLogWarning, "SSU2: RelayRequest signature verification failed");
+			sendRelayResponse (eSSU2RelayResponseCodeBobSignatureFailure);
+			return;
+		}
+		// Record the nonce only after the signature and timestamp are valid.
+		m_RecentRelayRequests.emplace (nonce, (uint32_t)now);
+		if (session->m_RelaySessions.size () >= SSU2_MAX_RELAY_SESSIONS)
+		{
+			LogPrint (eLogWarning, "SSU2: Too many pending relay nonces for Charlie");
+			sendRelayResponse (eSSU2RelayResponseCodeBobLimit);
 			return;
 		}
 		if (session->m_RelaySessions.emplace (nonce, std::make_pair (shared_from_this (), mts / 1000)).second)
 		{
 			// send relay intro to Charlie
-			auto r = i2p::data::netdb.FindRouter (GetRemoteIdentity ()->GetIdentHash ()); // Alice's RI
+			auto r = i2p::data::netdb.FindRouter (alice->GetIdentHash ()); // Alice's RI
 			if (r && (r->IsUnreachable () || !i2p::data::netdb.PopulateRouterInfoBuffer (r))) r = nullptr;
 			if (!r) LogPrint (eLogWarning, "SSU2: RelayRequest Alice's router info not found");
 
@@ -2384,24 +2617,54 @@ namespace transport
 	void SSU2Session::HandleRelayIntro (const uint8_t * buf, size_t len, int attempts)
 	{
 		// we are Charlie
+		if (!IsEstablished ())
+		{
+			LogPrint (eLogWarning, "SSU2: RelayIntro in non-established state ", (int)m_State);
+			return;
+		}
+		// flag, Alice hash, nonce, tag, timestamp, ver, asz, endpoint, signature
 		if (len < 47) return;
+		uint32_t timestamp = bufbe32toh (buf + 41);
+		int64_t skew = (int64_t)timestamp - (int64_t)i2p::util::GetSecondsSinceEpoch ();
+		if (skew > SSU2_RELAY_MAX_SKEW || skew < -SSU2_RELAY_MAX_SKEW)
+		{
+			LogPrint (eLogWarning, "SSU2: RelayIntro timestamp skew ", skew, " seconds");
+			return;
+		}
+		if (buf[45] != 2) // IntroductionManager.java:773-783
+		{
+			LogPrint (eLogWarning, "SSU2: RelayIntro version ", (int)buf[45], " is not 2");
+			return;
+		}
+		uint8_t asz = buf[46]; // 6 IPv4 or 18 IPv6
+		if (asz != 6 && asz != 18)
+		{
+			LogPrint (eLogWarning, "SSU2: RelayIntro invalid endpoint size ", (int)asz);
+			return;
+		}
 		SSU2RelayResponseCode code = eSSU2RelayResponseCodeAccept;
 		boost::asio::ip::udp::endpoint ep;
 		std::shared_ptr<const i2p::data::RouterInfo::Address> addr;
 		auto r = i2p::data::netdb.FindRouter (buf + 1); // Alice
 		if (r)
 		{
-			SignedData<128> s;
-			s.Insert ((const uint8_t *)"RelayRequestData", 16); // prologue
-			s.Insert (GetRemoteIdentity ()->GetIdentHash (), 32); // bhash
-			s.Insert (i2p::context.GetIdentHash (), 32); // chash
-			s.Insert (buf + 33, 14); // nonce, relay tag, timestamp, ver, asz
-			uint8_t asz = buf[46];
-			if (asz + 47 + r->GetIdentity ()->GetSignatureLen () > len)
+			size_t sigLen = r->GetIdentity ()->GetSignatureLen ();
+			if (len != 47 + (size_t)asz + sigLen)
 			{
 				LogPrint (eLogWarning, "SSU2: Malformed RelayIntro len=", len);
 				return;
 			}
+			auto bob = GetRemoteIdentity ();
+			if (!bob)
+			{
+				LogPrint (eLogWarning, "SSU2: RelayIntro without Bob identity");
+				return;
+			}
+			SignedData<192> s;
+			s.Insert ((const uint8_t *)"RelayRequestData", 16); // prologue
+			s.Insert (bob->GetIdentHash (), 32); // bhash
+			s.Insert (i2p::context.GetIdentHash (), 32); // chash
+			s.Insert (buf + 33, 14); // nonce, relay tag, timestamp, ver, asz
 			s.Insert (buf + 47, asz); // Alice Port, Alice IP
 			if (s.Verify (r->GetIdentity (), buf + 47 + asz))
 			{
@@ -2492,23 +2755,105 @@ namespace transport
 
 	void SSU2Session::HandleRelayResponse (const uint8_t * buf, size_t len)
 	{
-		if (len < 6) return;
+		// flag, status, nonce, timestamp, ver, csz, endpoint, signature[, token].
+		// IntroductionManager.receiveRelayResponse() validates time/version for
+		// every path before it looks up the nonce.
+		if (!IsEstablished () && m_State != eSSU2SessionStateIntroduced)
+		{
+			LogPrint (eLogWarning, "SSU2: RelayResponse in invalid state ", (int)m_State);
+			return;
+		}
+		if (m_IsInvalidMessage)
+		{
+			LogPrint (eLogWarning, "SSU2: RelayResponse after invalid block");
+			return;
+		}
+		if (len < 12)
+		{
+			LogPrint (eLogWarning, "SSU2: RelayResponse too short ", len);
+			return;
+		}
 		uint32_t nonce = bufbe32toh (buf + 2);
+		uint32_t timestamp = bufbe32toh (buf + 6);
+		int64_t skew = (int64_t)timestamp - (int64_t)i2p::util::GetSecondsSinceEpoch ();
+		if (skew > SSU2_RELAY_MAX_SKEW || skew < -SSU2_RELAY_MAX_SKEW)
+		{
+			LogPrint (eLogWarning, "SSU2: RelayResponse timestamp skew ", skew, " seconds");
+			return;
+		}
+		if (buf[10] != 2) // ver, IntroductionManager.java:919-929
+		{
+			LogPrint (eLogWarning, "SSU2: RelayResponse version ", (int)buf[10], " is not 2");
+			return;
+		}
 		if (m_State == eSSU2SessionStateIntroduced)
 		{
-			// HolePunch from Charlie
-			// TODO: verify address and signature
-			// verify nonce
-			if (~htobe64 (((uint64_t)nonce << 32) | nonce) != m_DestConnID)
-				LogPrint (eLogWarning, "SSU2: Relay response nonce mismatch ", nonce, " connID=", m_DestConnID);
-			if (len >= 8)
+			// HolePunch from Charlie. The nonce must occupy both halves of the
+			// connection ID we used for the introduction.
+			if (htobe64 (((uint64_t)nonce << 32) | nonce) != m_SourceConnID)
 			{
-				// new token
-				uint64_t token;
-				memcpy (&token, buf + len - 8, 8);
-				m_Server.UpdateOutgoingToken (
-					m_RemoteEndpoint, token, i2p::util::GetSecondsSinceEpoch () + SSU2_TOKEN_EXPIRATION_TIMEOUT);
+				LogPrint (eLogWarning, "SSU2: Relay response nonce mismatch ", nonce, " connID=", m_SourceConnID);
+				return;
 			}
+			if (buf[1] != eSSU2RelayResponseCodeAccept)
+			{
+				LogPrint (eLogWarning, "SSU2: HolePunch response code ", (int)buf[1]);
+				return;
+			}
+			uint8_t csz = buf[11];
+			if (csz != 6 && csz != 18)
+			{
+				LogPrint (eLogWarning, "SSU2: HolePunch invalid endpoint size ", (int)csz);
+				return;
+			}
+			auto charlie = GetRemoteIdentity ();
+			if (!charlie)
+			{
+				LogPrint (eLogWarning, "SSU2: HolePunch without Charlie identity");
+				return;
+			}
+			size_t sigLen = charlie->GetSignatureLen ();
+			if (len < 2 + 10 + (size_t)csz + sigLen + 8)
+			{
+				LogPrint (eLogWarning, "SSU2: HolePunch too short for signature/token ", len);
+				return;
+			}
+			size_t signedLen = len - 2 - sigLen - 8; // token is not signed
+			if (signedLen < 10 + (size_t)csz)
+			{
+				LogPrint (eLogWarning, "SSU2: HolePunch signed data too short ", signedLen);
+				return;
+			}
+			// Charlie signs with the introducer's hash in the prologue. Try the
+			// introducers advertised in Charlie's RouterInfo, like Java does.
+			bool verified = false;
+			auto address = GetAddress ();
+			if (address && address->ssu)
+			{
+				for (const auto & introducer : address->ssu->introducers)
+				{
+					SignedData<192> s;
+					s.Insert ((const uint8_t *)"RelayAgreementOK", 16); // prologue
+					s.Insert (introducer.iH, 32); // bob hash
+					s.Insert (buf + 2, signedLen);
+					if (s.Verify (charlie, buf + 2 + signedLen))
+					{
+						verified = true;
+						break;
+					}
+				}
+			}
+			if (!verified)
+			{
+				LogPrint (eLogWarning, "SSU2: HolePunch signature verification failed");
+				return;
+			}
+			// new token follows the signature
+			uint64_t token;
+			memcpy (&token, buf + 2 + signedLen + sigLen, 8);
+			m_Server.UpdateOutgoingToken (
+				m_RemoteEndpoint, token, i2p::util::GetSecondsSinceEpoch () + SSU2_TOKEN_EXPIRATION_TIMEOUT);
+			ConnectAfterIntroduction ();
 			return;
 		}
 		auto it = m_RelaySessions.find (nonce);
@@ -2541,58 +2886,90 @@ namespace transport
 					relaySession->m_SentPackets.emplace (packetNum, packet);
 				}
 			}
-			else
+			else if (relaySession)
 			{
 				// we are Alice, message from Bob
-				if (!buf[1]) // status code accepted?
+				int code = buf[1];
+				auto bob = GetRemoteIdentity ();
+				auto charlie = relaySession->GetRemoteIdentity ();
+				// code 1..63 is signed by Bob, 0 and >=64 by Charlie.
+				auto signer = ((code > 0 && code < 64) ? bob : charlie);
+				if (!bob || !signer)
 				{
-					// verify signature
-					uint8_t csz = (len >= 12) ? buf[11] : 0;
-					if (csz + 12 + relaySession->GetRemoteIdentity ()->GetSignatureLen () > len)
+					LogPrint (eLogWarning, "SSU2: RelayResponse signer identity is unknown");
+					relaySession->Done ();
+					return;
+				}
+				size_t sigLen = signer->GetSignatureLen ();
+				size_t signedLen;
+				if (code == eSSU2RelayResponseCodeAccept)
+				{
+					uint8_t csz = buf[11];
+					if (csz != 6 && csz != 18)
+					{
+						LogPrint (eLogWarning, "SSU2: RelayResponse invalid endpoint size ", (int)csz);
+						relaySession->Done ();
+						return;
+					}
+					if (len != 2 + 10 + (size_t)csz + sigLen + 8)
 					{
 						LogPrint (eLogWarning, "SSU2: Malformed RelayResponse len=", len);
 						relaySession->Done ();
 						return;
 					}
-					SignedData<128> s;
-					s.Insert ((const uint8_t *)"RelayAgreementOK", 16); // prologue
-					s.Insert (GetRemoteIdentity ()->GetIdentHash (), 32); // bhash
-					s.Insert (buf + 2, 10 + csz); // nonce, timestamp, ver, csz and Charlie's endpoint
-					if (s.Verify (relaySession->GetRemoteIdentity (), buf + 12 + csz))
+					signedLen = 10 + (size_t)csz;
+				}
+				else
+				{
+					if (len < 2 + 10 + sigLen)
 					{
-						if (relaySession->m_State == eSSU2SessionStateIntroduced) // HolePunch not received yet
-						{
-							// update Charlie's endpoint
-							if (ExtractEndpoint (buf + 12, csz, relaySession->m_RemoteEndpoint))
-							{
-								// update token
-								uint64_t token;
-								memcpy (&token, buf + len - 8, 8);
-								m_Server.UpdateOutgoingToken (relaySession->m_RemoteEndpoint, token,
-									i2p::util::GetSecondsSinceEpoch () + SSU2_TOKEN_EXPIRATION_TIMEOUT);
-								// connect to Charlie, HolePunch will be ignored
-								relaySession->ConnectAfterIntroduction ();
-							}
-							else
-								LogPrint (eLogWarning, "SSU2: RelayResponse can't extract endpoint");
-						}
-					}
-					else
-					{
-						LogPrint (eLogWarning, "SSU2: RelayResponse signature verification failed");
+						LogPrint (eLogWarning, "SSU2: Malformed RelayResponse rejection len=", len);
 						relaySession->Done ();
+						return;
+					}
+					signedLen = len - 2 - sigLen;
+				}
+				SignedData<192> s;
+				s.Insert ((const uint8_t *)"RelayAgreementOK", 16); // prologue
+				s.Insert (bob->GetIdentHash (), 32); // bhash
+				s.Insert (buf + 2, signedLen); // nonce, timestamp, ver, csz and endpoint
+				if (!s.Verify (signer, buf + 2 + signedLen))
+				{
+					LogPrint (eLogWarning, "SSU2: RelayResponse signature verification failed");
+					relaySession->Done ();
+					return;
+				}
+				if (code == eSSU2RelayResponseCodeAccept)
+				{
+					uint8_t csz = buf[11];
+					if (relaySession->m_State == eSSU2SessionStateIntroduced) // HolePunch not received yet
+					{
+						// update Charlie's endpoint
+						if (ExtractEndpoint (buf + 12, csz, relaySession->m_RemoteEndpoint))
+						{
+							// update token, it follows the signature
+							uint64_t token;
+							memcpy (&token, buf + 2 + signedLen + sigLen, 8);
+							m_Server.UpdateOutgoingToken (relaySession->m_RemoteEndpoint, token,
+								i2p::util::GetSecondsSinceEpoch () + SSU2_TOKEN_EXPIRATION_TIMEOUT);
+							// connect to Charlie, HolePunch will be ignored
+							relaySession->ConnectAfterIntroduction ();
+						}
+						else
+							LogPrint (eLogWarning, "SSU2: RelayResponse can't extract endpoint");
 					}
 				}
 				else
 				{
-					LogPrint (
-						eLogInfo, "SSU2: RelayResponse status code=", (int)buf[1], " nonce=", bufbe32toh (buf + 2));
+					LogPrint (eLogInfo, "SSU2: RelayResponse status code=", code, " nonce=", nonce);
 					relaySession->Done ();
 				}
 			}
+			else
+				LogPrint (eLogDebug, "SSU2: RelayResponse unknown session for nonce ", nonce);
 		}
 		else
-			LogPrint (eLogDebug, "SSU2: RelayResponse unknown nonce ", bufbe32toh (buf + 2));
+			LogPrint (eLogDebug, "SSU2: RelayResponse unknown nonce ", nonce);
 	}
 
 	void SSU2Session::HandlePeerTest (const uint8_t * buf, size_t len)
@@ -3347,21 +3724,22 @@ namespace transport
 		}
 		// signed data
 		auto ts = i2p::util::GetSecondsSinceEpoch ();
-		uint8_t signedData[96];
+		auto signatureLen = i2p::context.GetIdentity ()->GetSignatureLen ();
+		std::vector<uint8_t> signedData (10 + 18 + signatureLen);
 		signedData[0] = 2; // ver
-		htobe32buf (signedData + 1, nonce);
-		htobe32buf (signedData + 5, ts);
+		htobe32buf (signedData.data () + 1, nonce);
+		htobe32buf (signedData.data () + 5, ts);
 		size_t asz = CreateEndpoint (
-			signedData + 10, 86, boost::asio::ip::udp::endpoint (localAddress->host, localAddress->port));
+			signedData.data () + 10, signedData.size () - 10, boost::asio::ip::udp::endpoint (localAddress->host, localAddress->port));
 		signedData[9] = asz;
 		// signature
 		SignedData<128> s;
 		s.Insert ((const uint8_t *)"PeerTestValidate", 16); // prologue
 		s.Insert (GetRemoteIdentity ()->GetIdentHash (), 32); // bhash
-		s.Insert (signedData, 10 + asz); // ver, nonce, ts, asz, Alice's endpoint
-		s.Sign (i2p::context.GetPrivateKeys (), signedData + 10 + asz);
-		return CreatePeerTestBlock (buf, len, 1, eSSU2PeerTestCodeAccept, nullptr, signedData,
-			10 + asz + i2p::context.GetIdentity ()->GetSignatureLen ());
+		s.Insert (signedData.data (), 10 + asz); // ver, nonce, ts, asz, Alice's endpoint
+		s.Sign (i2p::context.GetPrivateKeys (), signedData.data () + 10 + asz);
+		return CreatePeerTestBlock (buf, len, 1, eSSU2PeerTestCodeAccept, nullptr, signedData.data (),
+			10 + asz + signatureLen);
 	}
 
 	size_t SSU2Session::CreateTerminationBlock (uint8_t * buf, size_t len)

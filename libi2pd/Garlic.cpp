@@ -469,6 +469,10 @@ namespace garlic
 		}
 		m_ECIESx25519Sessions.clear ();
 		m_ECIESx25519Tags.clear ();
+		{
+			std::lock_guard<std::mutex> l (m_NewSessionKeysMutex);
+			m_NewSessionKeys.clear ();
+		}
 	}
 	void GarlicDestination::AddSessionKey (const uint8_t * key, const uint8_t * tag)
 	{
@@ -1114,6 +1118,23 @@ namespace garlic
 		}
 		default: LogPrint (eLogWarning, "Garlic: Unexpected delivery type ", (int)deliveryType);
 		}
+	}
+
+	bool GarlicDestination::IsDuplicateNewSessionKey (const uint8_t * key) const
+	{
+		if (!key) return true;
+		std::lock_guard<std::mutex> l (m_NewSessionKeysMutex);
+		for (const auto & it : m_NewSessionKeys)
+			if (!memcmp (it.data (), key, 32)) return true;
+		return false;
+	}
+
+	void GarlicDestination::AddNewSessionKey (const uint8_t * key)
+	{
+		if (!key) return;
+		std::lock_guard<std::mutex> l (m_NewSessionKeysMutex);
+		if (m_NewSessionKeys.size () >= 256) m_NewSessionKeys.pop_front ();
+		m_NewSessionKeys.emplace_back (key);
 	}
 
 	uint64_t GarlicDestination::AddECIESx25519SessionNextTag (ReceiveRatchetTagSetPtr tagset)

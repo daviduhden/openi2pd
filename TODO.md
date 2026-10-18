@@ -27,36 +27,68 @@ subsystem owner in the ownership table unless a task says otherwise. The
   - Acceptance: tag, commit, version, date recorded; no Java code added to fork.
   - Validation: compare tag against upstream release announcements.
 - [ ] **[NET-002]** Audit NTCP2 handshake, obfuscation, options, version negotiation and PQ variants against Java.
-  - Priority P0; Status Pending; Depends NET-001.
+  - Priority P0; Status Statically reviewed; transport fixes in NET-015/I2P-011/I2P-012; dynamic pending.
   - Files: `libi2pd/NTCP2.cpp`, `NTCP2.h`; Java `router/transport/ntcp2`.
   - Acceptance: matrix rows with class/function references and any fix.
   - Validation: differential/session tests pending.
 - [ ] **[NET-003]** Audit SSU2 handshake, tokens, relay, peer test, fragmentation, MTU and IPv6 against Java.
-  - Priority P0; Status Pending; Depends NET-001.
+  - Priority P0; Status Statically reviewed; transport fixes in NET-015/I2P-011/I2P-012; dynamic pending.
   - Files: `libi2pd/SSU2*.cpp`; Java `router/transport/ssu2`.
   - Acceptance: matrix rows and fixes; OpenBSD MTU path reviewed.
 - [ ] **[NET-004]** Audit I2NP message types, serialization, timestamps and malformed handling.
-  - Priority P1; Status Pending; Files `libi2pd/I2NPProtocol.*`.
+  - Priority P1; Status Statically reviewed; bounds fixes in NET-015/I2P-002; dynamic pending.
 - [ ] **[NET-005]** Audit RouterInfo/LeaseSet/LeaseSet2/EncryptedLeaseSet parsing and validation.
-  - Priority P1; Status Pending; Files `RouterInfo.cpp`, `LeaseSet.cpp`, `Identity.cpp`.
+  - Priority P1; Status Statically reviewed; fixes in NET-015/I2P-001/I2P-005; dynamic vectors pending.
 - [ ] **[NET-006]** Audit netDb/floodfill lookup, store, expiration and reseed behavior.
-  - Priority P1; Status Pending; Files `NetDb.*`, `Reseed.cpp`.
+  - Priority P1; Status Statically reviewed; fixes in NET-014/NET-015/I2P-001..005; dynamic lookup pending.
 - [ ] **[NET-007]** Audit tunnel build records, garlic routing and delivery semantics.
-  - Priority P1; Status Pending; Files `Tunnel*`, `Garlic.cpp`.
+  - Priority P1; Status Statically reviewed; tunnel time fix I2P-004; dynamic tunnel test pending.
 - [ ] **[NET-008]** Audit Streaming, Datagram2/3, SAM and I2CP wire behavior used by Java clients.
-  - Priority P1; Status Pending; Files `Streaming.*`, `Datagram.*`, `SAM.cpp`, `I2CP.cpp`.
+  - Priority P1; Status Statically reviewed; client fixes I2P-006..009; dynamic client matrix pending.
 - [ ] **[NET-009]** Audit ECIES-X25519-AEAD-Ratchet, signatures, key derivation and nonces.
-  - Priority P0; Status Pending; Files `ECIES*`, `Crypto*`, `Signature*`, `PostQuantum*`.
+  - Priority P0; Status Statically reviewed; ratchet fixes I2P-009/I2P-010 and NET-015; crypto vectors pending.
 - [x] **[NET-010]** Produce `docs/INTEROPERABILITY.md` with Java class/function references.
   - Priority P0; Status Implemented / dynamic validation pending; covers all major areas, not every sub-message.
 - [ ] **[NET-011]** Implement justified fixes for confirmed incompatibilities.
-  - Priority P0; Status Pending; Depends each finding.
+  - Priority P0; Status Implemented / static for I2P-001..012; I2P-013 remains blocked; all dynamic Java/C++ validation pending.
 - [x] **[NET-013]** Fix RouterInfo size cap to 4096 to match Java `MAX_UNCOMPRESSED_SIZE`.
   - Priority P0; Status Implemented / dynamic validation pending; `RouterInfo.h` comment references Java 2.13.0.
 - [ ] **[NET-012]** Prepare differential tests and controlled Java/C++ integration harness.
-  - Priority P1; Status Pending; Depends NET-002..009; must not touch public I2P network.
+  - Priority P1; Status Harness expanded / no dynamic test executed; `tests/interop/`; never touch public I2P network.
 - [ ] **[NET-014]** Fix `NetDb::SaveUpdated()` iterating `m_RouterInfos` without the mutex; design snapshot/object locking.
-  - Priority P0; Status Pending; `NetDb.cpp`; static finding from I2P audit.
+  - Priority P0; Status Implemented / static; snapshots `m_RouterInfos` under `m_RouterInfosMutex`; TSan/live persistence pending.
+- [ ] **[NET-015]** Apply Java 2.13.0 transport/ratchet/LeaseSet/netDb/client static-interoperability corrections.
+  - Priority P0/P1; Status Implemented / static; previous audit baseline; dynamic Java/C++ validation, ASan/TSan, fuzz and OpenBSD/LibreSSL builds pending.
+- [ ] **[I2P-001]** Implement MetaLeaseSet (DatabaseStore type 7) parsing, signature/identity/lease validation, storage, lookup and malformed-input handling.
+  - Priority P1; Status Implemented / static; Meta LS2 parsing, 40-byte entries, revocations length, signature/expiry validation, netDb store/serve; dynamic Java vector pending. `LeaseSet.*`, `NetDb.cpp`; Java reference validated; dynamic vectors pending.
+- [ ] **[I2P-002]** Implement DatabaseLookup reply-key flags `0x12` (ECIES ratchet public key without tag) with correct encrypted replies and no cleartext fallback.
+  - Priority P1; Status Implemented / static; 0x02/0x10/0x12 parsing and fail-closed encrypted replies; Java 2.13 has no sender for the proposal-154 public-key form, so dynamic test pending. `NetDb.cpp`, `I2NPProtocol.*`; malformed/truncated vector pending.
+- [ ] **[I2P-003]** Validate DatabaseSearchReply sender/from hash and pending-request association; reject truncated/fabricated replies.
+  - Priority P1; Status Implemented / static; complete trailing-from hash, count bounds and queried-sender association; malformed/negative tests pending. `NetDbRequests.*`; negative corpus pending.
+- [ ] **[I2P-004]** Add short/long tunnel-build request time windows, stale/future/replay handling and correct rejection codes.
+  - Priority P1; Status Implemented / static; `TransitTunnel.cpp`; 8-minute age/5-minute future drop semantics and code-30 layer-encryption rejection; duplicate-build Bloom filter and dynamic clock-skew tests pending.
+- [ ] **[I2P-005]** Apply Java one-hour RouterInfo freshness to floodfill lookups without affecting LeaseSet/local responses.
+  - Priority P1; Status Implemented / static; one-hour floodfill RouterInfo freshness plus clock fudge, only in the RouterInfo lookup branch; aged-RI test pending. `NetDb.cpp`; aged-RI/lookup test pending.
+- [ ] **[I2P-006]** Complete SAM 3.2 STREAM ACCEPT/RAW RECEIVED port/protocol fields, version gating, defaults, errors and close behavior.
+  - Priority P2; Status Implemented / static; SAM 3.2 port/protocol defaults, STREAM CONNECT/ACCEPT, DATAGRAM/RAW framing, version gating and connect wait; 3.0/3.1/3.2 matrix pending. `SAM.cpp/.h`; SAM 3.0/3.1/3.2 matrix pending.
+- [ ] **[I2P-007]** Implement I2CP BlindingInfo type 42 parsing/association and b33/encrypted destination resolution.
+  - Priority P1; Status Implemented / static; type-42 parser, bounded cache and derived-b33 association; secret-blinded and TYPE_KEY association limitations remain. `I2CP.cpp/.h`; Java client vectors pending.
+- [ ] **[I2P-008]** Handle Datagram3 first contact without cached LeaseSet using authenticated ratchet identity and bounded pending lookups.
+  - Priority P2; Status Implemented / static; bounded HashReceiver and session table, first-contact Datagram3 delivery; no-cache/concurrency tests pending. `Datagram.cpp/.h`; no-cache/latency tests pending.
+- [ ] **[I2P-009]** Implement Datagram2 offline signature emission/verification with delegation, expiry and malformed cases.
+  - Priority P2; Status Implemented / static; Datagram2 offline section sign/verify, expiry/delegation checks; Java offline-key vectors pending. `Datagram.cpp/.h`; offline-key vectors pending.
+- [ ] **[I2P-010]** Iterate all locally supported PQ encryption types for incoming Ratchet New Session messages with safe fallback.
+  - Priority P1; Status Implemented / static; bounded local PQ candidate iteration, per-candidate trial state, replay/DateTime preserved; PQ type matrix pending. `ECIESX25519AEADRatchetSession.*`; PQ type matrix pending.
+- [ ] **[I2P-011]** Validate SSU2 RelayRequest signature, timestamp, version, fields, state, replay and resource limits; align RelayResponse/HolePunch validation.
+  - Priority P0/P1; Status Implemented / static; RelayRequest/Response/Intro timestamp, version, length, signature, replay and resource checks; forged/replayed relay tests pending. `SSU2Session.cpp`; forged/replayed relay tests pending.
+- [ ] **[I2P-012]** Audit and align NTCP2/SSU2 protocol-significant timeouts, resends, idle/close and recovery without blindly copying Java constants.
+  - Priority P2; Status Implemented / static; SSU2 25 s establish with 1/2/4/8 s resend backoff, NTCP2 10 s establish and 120 s idle; lossy/latency tests pending. `NTCP2.*`, `SSU2*`; lossy/latency matrix pending.
+- [ ] **[I2P-013]** Investigate GOST signature types 9/10; implement only if a real, safe dependency exists; otherwise document the block and never advertise support.
+  - Priority P3; Status Blocked - dependency/protocol evidence; `Identity.h`, crypto backend; no implementation until provable.
+- [ ] **[TEST-017]** Execute the Java 2.13.0 differential matrix: serialization, malformed inputs, handshakes, netDb, tunnels, ratchet, Datagram and client protocols.
+  - Priority P0; Status Harness expanded; 24 static/vector cases pass, 1 documented checksum gap; no differential binary or dynamic test executed; public network forbidden.
+- [ ] **[TEST-018]** Add fuzz/regression cases for every new parser and time/expiry check (MetaLS, DLM 0x12, DSRM, tunnel time, relay, PQ iteration, offline D2).
+  - Priority P0; Status Pending; source/fixtures must be added with the corresponding fixes.
 - [ ] **[SEC-014]** Review malformed RouterInfo address/property parameter parsing and SSU2 address-family mismatch.
   - Priority P1; Status Pending; findings documented in `docs/INTEROPERABILITY.md`.
 - [ ] **[OPENBSD-SBX-1]** Fix OpenBSD reseed URL canonicalization in `Daemon.cpp`; `AbsolutePath()` currently prefixes non-absolute URLs.
@@ -527,6 +559,7 @@ when there is no older ID.
 - [ ] **[DEF-003]** Android Java source compiles with Java 25; APK/JNI/Lint/device tests are deferred to CI.
 - [ ] **[DEF-004]** `routerinfo` firewall backends not yet dynamically syntax-checked.
 - [ ] **[DEF-005]** Full Java I2P differential audit not yet performed.
+  - Status: static audit completed against 2.13.0 with I2P-001..I2P-012 implementations; no dynamic Java/C++ test or build executed.
 - [ ] **[DEF-006]** Android manifest still allows cleartext? Removed; verify merged manifest.
 - [ ] **[DEF-007]** `tools/vain` raw key-buffer arrays were replaced with zeroing RAII ownership, jthread joins and checked serialization/error paths.
   - Status Implemented / static only; ASan/TSan and one-character search pending.

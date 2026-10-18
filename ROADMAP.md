@@ -19,7 +19,8 @@ requirements and current code; `TODO.md` is the authoritative task list.
 - Torrent: web console removed; native C++ control + ncurses TUI + local IPC
   and Perl `i2pdctl` are implemented. Dynamic TUI/engine/RPC/TLS validation is
   deferred to CI.
-- Java I2P: reference work remains pending.
+- Java I2P: 2.13.0 reference is pinned (`9134f808337b401e8e53c73734c81fab04280c9d`); static audit and fixes are in progress, no dynamic interop run exists.
+- Java I2P remaining work is tracked as I2P-001..I2P-013 in `TODO.md`; timeouts/GOST are evidence-blocked where noted.
 - Static-review passes for Torrent/TUI, I2P, Perl, tools/firewall, IPC,
   OpenBSD and Android are integrated. No compiler, CTest, APK/Lint, sanitizer,
   fuzz, OpenBSD or device test was run in this environment.
@@ -41,17 +42,22 @@ memory-safety defect left unfixed.
 
 ### 2. I2P Java interoperability (independent after clone)
 
-1. Clone the latest stable Java tag (verify 2.13.0 or later) into a read-only
-   temporary directory.
-2. Build the `INTEROPERABILITY.md` matrix from Java classes/functions to C++
-   implementations.
-3. Fix only confirmed external-behavior differences; do not copy architecture.
-4. Prepare differential harnesses and malformed-input vectors.
-5. Re-run controlled integration tests.
+1. [done/static] Pin I2P Java 2.13.0 at commit
+   `9134f808337b401e8e53c73734c81fab04280c9d` in a read-only external tree.
+2. [in progress] Maintain the `INTEROPERABILITY.md` matrix with Java and C++
+   file/function references, differences, priorities and validation status.
+3. [static implementation complete] I2P-001..I2P-012 have static C++
+   implementations; I2P-013 is blocked on Java/dependency evidence. Do not copy
+   Java architecture or accidental behavior.
+4. [in progress] Expand `tests/interop/` with deterministic valid/malformed
+   vectors and controlled loopback procedures.
+5. [pending] Build, run controlled Java/C++ integration tests, sanitizers and
+   fuzzers on the user's environment; no local build or dynamic test is allowed
+   here.
 
 Exit criteria: every announced protocol row has a Java reference, a C++
-reference, a difference verdict and a validation status. No "compatible" claim
-without evidence.
+reference, a difference verdict and validation status; dynamic evidence is
+recorded separately from static review. No "compatible" claim without evidence.
 
 ### 3. Android/Java 25 (CI build and device validation pending)
 

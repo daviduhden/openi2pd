@@ -53,6 +53,7 @@ namespace client
 	const uint8_t I2CP_REQUEST_VARIABLE_LEASESET_MESSAGE = 37;
 	const uint8_t I2CP_CREATE_LEASESET_MESSAGE = 4;
 	const uint8_t I2CP_CREATE_LEASESET2_MESSAGE = 41;
+	const uint8_t I2CP_BLINDING_INFO_MESSAGE = 42;
 	const uint8_t I2CP_SEND_MESSAGE_MESSAGE = 5;
 	const uint8_t I2CP_SEND_MESSAGE_EXPIRES_MESSAGE = 36;
 	const uint8_t I2CP_MESSAGE_PAYLOAD_MESSAGE = 31;
@@ -190,6 +191,7 @@ namespace client
 		void SendMessageExpiresMessageHandler (const uint8_t * buf, size_t len);
 		void HostLookupMessageHandler (const uint8_t * buf, size_t len);
 		void DestLookupMessageHandler (const uint8_t * buf, size_t len);
+		void BlindingInfoMessageHandler (const uint8_t * buf, size_t len);
 		void GetBandwidthLimitsMessageHandler (const uint8_t * buf, size_t len);
 
 	private:

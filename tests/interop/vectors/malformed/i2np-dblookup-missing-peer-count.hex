@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: BSD-3-Clause
+# i2np-dblookup-missing-peer-count
+# Derived from the pinned I2P Java 2.13.0 source; see i2np-dblookup-missing-peer-count.case.json
+02112233440000018bcfe56800004158000102030405060708090a0b0c0d0e0f
+101112131415161718191a1b1c1d1e1f202122232425262728292a2b2c2d2e2f
+303132333435363738393a3b3c3d3e3f00

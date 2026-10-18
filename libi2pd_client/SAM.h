@@ -71,8 +71,13 @@ namespace client
 	const char SAM_DEST_REPLY_I2P_ERROR[] = "DEST REPLY RESULT=I2P_ERROR\n";
 	const char SAM_NAMING_LOOKUP[] = "NAMING LOOKUP";
 	const char SAM_NAMING_REPLY[] = "NAMING REPLY RESULT=OK NAME=%s VALUE=%s\n";
-	const char SAM_DATAGRAM_RECEIVED[] = "DATAGRAM RECEIVED DESTINATION=%s SIZE=%lu FROM_PORT=%u TO_PORT=%u\n";
+	// SAM 3.2 adds the port fields. Do not advertise them when the negotiated
+	// version is older (SAMv1Handler.receiveDatagramBytes/receiveRawBytes).
+	const char SAM_DATAGRAM_RECEIVED[] = "DATAGRAM RECEIVED DESTINATION=%s SIZE=%lu\n";
+	const char SAM_DATAGRAM_RECEIVED_PORTS[]
+		= "DATAGRAM RECEIVED DESTINATION=%s SIZE=%lu FROM_PORT=%u TO_PORT=%u\n";
 	const char SAM_RAW_RECEIVED[] = "RAW RECEIVED SIZE=%lu\n";
+	const char SAM_RAW_RECEIVED_PORTS[] = "RAW RECEIVED SIZE=%lu PROTOCOL=%u FROM_PORT=%u TO_PORT=%u\n";
 	const char SAM_NAMING_REPLY_INVALID_KEY[] = "NAMING REPLY RESULT=INVALID_KEY NAME=%s\n";
 	const char SAM_NAMING_REPLY_KEY_NOT_FOUND[] = "NAMING REPLY RESULT=KEY_NOT_FOUND NAME=%s\n";
 	const char SAM_PARAM_MIN[] = "MIN";
@@ -90,6 +95,7 @@ namespace client
 	const char SAM_PARAM_PORT[] = "PORT";
 	const char SAM_PARAM_FROM_PORT[] = "FROM_PORT";
 	const char SAM_PARAM_TO_PORT[] = "TO_PORT";
+	const char SAM_PARAM_PROTOCOL[] = "PROTOCOL";
 	const char SAM_VALUE_TRANSIENT[] = "TRANSIENT";
 	const char SAM_VALUE_TRUE[] = "true";
 	const char SAM_VALUE_FALSE[] = "false";
@@ -110,7 +116,10 @@ namespace client
 		= 99999; // stop parsing digits above that, any such version is out of range anyway
 	constexpr int MIN_SAM_VERSION = MAKE_SAM_VERSION_NUMBER (3, 0);
 	constexpr int MAX_SAM_VERSION = MAKE_SAM_VERSION_NUMBER (3, 3);
+	constexpr int SAM_VERSION_32 = MAKE_SAM_VERSION_NUMBER (3, 2); // SAM 3.2
 	constexpr int SAM_VERSION_33 = MAKE_SAM_VERSION_NUMBER (3, 3); // SAM 3.3
+	// SAMv3StreamSession.connect(): default I2PSocket connect timeout
+	constexpr int SAM_STREAM_CONNECT_TIMEOUT = 60 * 1000; // milliseconds
 
 	enum class SAMSocketType
 	{
@@ -162,8 +171,10 @@ namespace client
 		// sessionID is the session the datagram belongs to, a subsession has its own
 		void HandleI2PDatagramReceive (std::string sessionID, const i2p::data::IdentityEx & from, uint16_t fromPort,
 			uint16_t toPort, const uint8_t * buf, size_t len, const i2p::util::Mapping * options);
-		void HandleI2PRawDatagramReceive (
-			std::string sessionID, uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len);
+		void HandleI2PDatagram3Receive (std::string sessionID, const i2p::data::IdentHash & from, uint16_t fromPort,
+			uint16_t toPort, const uint8_t * buf, size_t len, const i2p::util::Mapping * options);
+		void HandleI2PRawDatagramReceive (std::string sessionID, uint8_t protocol, uint16_t fromPort, uint16_t toPort,
+			const uint8_t * buf, size_t len);
 
 		void ProcessSessionCreate (std::string_view buf);
 		void ProcessStreamConnect (char * buf, size_t len, size_t rem);
@@ -186,6 +197,7 @@ namespace client
 		void HandleNamingLookupLeaseSetRequestComplete (
 			std::shared_ptr<i2p::data::LeaseSet> leaseSet, std::string name);
 		void HandleSessionReadinessCheckTimer (const boost::system::error_code & ecode);
+		void HandleStreamConnectTimer (const boost::system::error_code & ecode);
 		void SendSessionCreateReplyOk ();
 
 		void WriteI2PData (size_t sz);
@@ -208,6 +220,8 @@ namespace client
 		bool m_IsReceiving; // for eSAMSocketTypeStream only
 		std::shared_ptr<i2p::stream::Stream> m_Stream;
 		int m_Version;
+		int m_ConnectAttempts;
+		uint16_t m_ConnectFromPort, m_ConnectToPort;
 	};
 
 	enum class SAMSessionType
@@ -228,6 +242,8 @@ namespace client
 
 		std::shared_ptr<boost::asio::ip::udp::endpoint> UDPEndpoint; // TODO: move
 		std::list<std::pair<std::shared_ptr<SAMSocket>, uint64_t>> acceptQueue; // socket, receive time in seconds
+		uint16_t FromPort = 0, ToPort = 0;
+		uint8_t Protocol = 0;
 
 		SAMSession (SAMBridge & parent, std::string_view name, SAMSessionType type);
 		virtual ~SAMSession () { };
@@ -240,8 +256,8 @@ namespace client
 		// Resolves a datagram destination - a full base64 destination, a plain b32
 		// or a blinded b33 .i2p host - the same way a stream connect does, then
 		// sends the payload. A b33 lookup is async, so the payload is copied.
-		void SendDatagram (
-			std::string_view destination, const uint8_t * payload, size_t len, uint16_t fromPort, uint16_t toPort);
+		void SendDatagram (std::string_view destination, const uint8_t * payload, size_t len, uint16_t fromPort,
+			uint16_t toPort, uint8_t protocol = 0);
 	};
 
 	struct SAMSingleSession : public SAMSession

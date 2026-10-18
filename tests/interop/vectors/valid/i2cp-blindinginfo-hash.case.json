@@ -1,0 +1,62 @@
+{
+   "expect" : {
+      "ok" : true,
+      "value" : {
+         "blinding_info" : {
+            "auth_type" : 0,
+            "blind_type" : 7,
+            "endpoint_type" : 0,
+            "expiration_seconds" : 0,
+            "hash" : "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+            "session_id" : 1
+         },
+         "length" : 42,
+         "type" : 42
+      }
+   },
+   "expectation" : "accept",
+   "format" : "hex",
+   "id" : "i2cp-blindinginfo-hash",
+   "input" : "i2cp-blindinginfo-hash.hex",
+   "kind" : "i2cp",
+   "license" : "BSD-3-Clause",
+   "provenance" : {
+      "java" : [
+         {
+            "contains" : "DataHelper.writeLong(out, 4, data.length)",
+            "line" : 107,
+            "path" : "core/java/src/net/i2p/data/i2cp/I2CPMessageImpl.java"
+         },
+         {
+            "contains" : "out.write((byte) getType())",
+            "line" : 108,
+            "path" : "core/java/src/net/i2p/data/i2cp/I2CPMessageImpl.java"
+         },
+         {
+            "contains" : "MESSAGE_TYPE = 42",
+            "line" : 31,
+            "path" : "core/java/src/net/i2p/data/i2cp/BlindingInfoMessage.java"
+         },
+         {
+            "contains" : "_sessionId.readBytes",
+            "line" : 277,
+            "path" : "core/java/src/net/i2p/data/i2cp/BlindingInfoMessage.java"
+         },
+         {
+            "contains" : "readLong(in, 2)",
+            "line" : 282,
+            "path" : "core/java/src/net/i2p/data/i2cp/BlindingInfoMessage.java"
+         },
+         {
+            "contains" : "FLAG_AUTH = 0x0f",
+            "line" : 46,
+            "path" : "core/java/src/net/i2p/data/i2cp/BlindingInfoMessage.java"
+         }
+      ],
+      "spec" : [
+         "i2cp#host-lookup",
+         "i2cp#blinding-info"
+      ]
+   },
+   "sha256" : "954b8b1723b1a2e437f996837b89045a6c5cc79e66c08d08274e1f84ea020661"
+}

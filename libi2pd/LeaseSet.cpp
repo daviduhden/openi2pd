@@ -64,7 +64,15 @@ namespace data
 
 	void LeaseSet::ReadFromBuffer (bool readIdentity, bool verifySignature)
 	{
+		// Reused objects must not keep a previous valid flag if this buffer is
+		// malformed; every successful path sets it again below.
+		m_IsValid = false;
 		if (readIdentity || !m_Identity) m_Identity = netdb.NewIdentity (m_Buffer, m_BufferLen);
+		if (!m_Identity)
+		{
+			LogPrint (eLogError, "LeaseSet: Can't read identity");
+			return;
+		}
 		size_t size = m_Identity->GetFullLen ();
 		if (size + 256 > m_BufferLen)
 		{
@@ -125,6 +133,7 @@ namespace data
 		}
 		m_ExpirationTime += LEASE_ENDDATE_THRESHOLD;
 		UpdateLeasesEnd ();
+		m_IsValid = true;
 
 		// verify
 		if (verifySignature)
@@ -253,7 +262,9 @@ namespace data
 
 	bool LeaseSet::IsExpired () const
 	{
-		if (m_StoreLeases && IsEmpty ()) return true;
+		// A Meta LS2 has no tunnel leases; its header expiration is
+		// authoritative (proposal 123). Do not treat it as an empty LS1.
+		if (m_StoreLeases && IsEmpty () && GetStoreType () != NETDB_STORE_TYPE_META_LEASESET2) return true;
 		auto ts = i2p::util::GetMillisecondsSinceEpoch ();
 		return ts > m_ExpirationTime;
 	}
@@ -333,6 +344,18 @@ namespace data
 	void LeaseSet2::ReadFromBuffer (const uint8_t * buf, size_t len, std::shared_ptr<LocalDestination> dest,
 		bool readIdentity, bool verifySignature)
 	{
+		// The same object is reused by Update(). Do not inherit validity,
+		// offline verifier, flags or encryption keys from the old buffer.
+		SetIsValid (false);
+		m_TransientVerifier = nullptr;
+		m_IsPublic = true;
+		m_IsPublishedEncrypted = false;
+		m_EncryptionType = 0;
+		m_Encryptor = nullptr;
+		SetIsIncompatibleCrypto (false);
+		m_EncryptionKeys.clear ();
+		m_Properties.CleanUp ();
+
 		// standard LS2 header
 		std::shared_ptr<const IdentityEx> identity;
 		if (readIdentity || !GetIdentity ())
@@ -368,13 +391,21 @@ namespace data
 			m_IsPublishedEncrypted = true;
 			m_IsPublic = true;
 		}
-		// type specific part
-		if (m_StoreType != NETDB_STORE_TYPE_STANDARD_LEASESET2)
+		// type specific part. Type 7 (Meta LS2) shares the standard LS2
+		// header but has MetaLease entries (proposal 123, MetaLeaseSet.java).
+		size_t s = 0;
+		switch (m_StoreType)
 		{
-			LogPrint (eLogWarning, "LeaseSet2: Store type ", (int)m_StoreType, " is not supported");
-			return;
+			case NETDB_STORE_TYPE_STANDARD_LEASESET2:
+				s = ReadStandardLS2TypeSpecificPart (buf + offset, len - offset, dest);
+				break;
+			case NETDB_STORE_TYPE_META_LEASESET2:
+				s = ReadMetaLS2TypeSpecificPart (buf + offset, len - offset);
+				break;
+			default:
+				LogPrint (eLogWarning, "LeaseSet2: Store type ", (int)m_StoreType, " is not supported");
+				return;
 		}
-		auto s = ReadStandardLS2TypeSpecificPart (buf + offset, len - offset, dest);
 		if (!s) return;
 		offset += s;
 		if (verifySignature || m_TransientVerifier)
@@ -415,17 +446,22 @@ namespace data
 		size_t offset = 0;
 		// properties
 		if (offset + 2 > len) return 0;
-		m_Properties.CleanUp ();
 		uint16_t propertiesLen = bufbe16toh (buf + offset);
+		if (propertiesLen > len - offset - 2) return 0;
 		if (propertiesLen) m_Properties.FromBuffer (buf + offset, len - offset);
 		offset += propertiesLen + 2;
-		// key sections
+		// key sections (LeaseSet2.java rejects 0 or more than MAX_KEYS)
 		CryptoKeyType newEncryptionType = 0;
 		std::shared_ptr<i2p::crypto::CryptoKeyEncryptor> newEncryptor;
 		bool preferredKeyFound = false;
 		if (offset + 1 > len) return 0;
 		int numKeySections = buf[offset];
 		offset++;
+		if (numKeySections <= 0 || numKeySections > MAX_NUM_ENCRYPTION_KEYS)
+		{
+			LogPrint (eLogWarning, "LeaseSet2: Bad key count ", numKeySections);
+			return 0;
+		}
 		for (int i = 0; i < numKeySections; i++)
 		{
 			if (offset + 4 > len) return 0;
@@ -434,6 +470,12 @@ namespace data
 			uint16_t encryptionKeyLen = bufbe16toh (buf + offset);
 			offset += 2;
 			if (offset + encryptionKeyLen > len) return 0;
+			auto expectedKeyLen = i2p::crypto::GetCryptoPublicKeyLen (keyType);
+			// Keep the explicit wire length. GetCryptoPublicKeyLen() uses 256
+			// for EC_P256 for legacy key-file compatibility, while LS2 carries
+			// the 64-byte wire key (EncType.EC_P256 in Java I2P).
+			if (expectedKeyLen && expectedKeyLen == encryptionKeyLen)
+				m_EncryptionKeys[keyType] = std::vector<uint8_t> (buf + offset, buf + offset + encryptionKeyLen);
 			if (IsStoreLeases () && !preferredKeyFound && // create encryptor with leases only
 				i2p::crypto::GetCryptoPublicKeyLen (keyType)
 					== encryptionKeyLen) // key length mismatch or unknown key type
@@ -477,10 +519,21 @@ namespace data
 		if (offset + 1 > len) return 0;
 		int numLeases = buf[offset];
 		offset++;
+		if (numLeases > MAX_NUM_LEASES)
+		{
+			LogPrint (eLogWarning, "LeaseSet2: Too many leases ", numLeases);
+			return 0;
+		}
 		auto ts = i2p::util::GetMillisecondsSinceEpoch ();
 		if (GetExpirationTime () > ts + LEASESET_EXPIRATION_TIME_THRESHOLD)
 		{
 			LogPrint (eLogWarning, "LeaseSet2: Expiration time is from future ", GetExpirationTime () / 1000LL);
+			return 0;
+		}
+		if (GetExpirationTime () + LEASESET2_CLOCK_FUDGE <= ts)
+		{
+			// LeaseSet expiration is authoritative (KademliaNetworkDatabaseFacade.validate)
+			LogPrint (eLogWarning, "LeaseSet2: Expiration time is in the past ", GetExpirationTime () / 1000LL);
 			return 0;
 		}
 		if (ts > m_PublishedTimestamp * 1000LL + LEASESET_EXPIRATION_TIME_THRESHOLD)
@@ -488,37 +541,99 @@ namespace data
 			LogPrint (eLogWarning, "LeaseSet2: Published time is too old ", m_PublishedTimestamp);
 			return 0;
 		}
-		if (IsStoreLeases ())
+		if (IsStoreLeases ()) UpdateLeasesBegin ();
+		bool hasCurrentLease = false;
+		for (int i = 0; i < numLeases; i++)
 		{
-			UpdateLeasesBegin ();
-			for (int i = 0; i < numLeases; i++)
+			if (offset + LEASE2_SIZE > len) return 0;
+			Lease lease;
+			lease.tunnelGateway = buf + offset;
+			offset += 32; // gateway
+			lease.tunnelID = bufbe32toh (buf + offset);
+			offset += 4; // tunnel ID
+			lease.endDate = bufbe32toh (buf + offset) * 1000LL;
+			offset += 4; // end date
+			if (lease.endDate > ts + LEASESET_EXPIRATION_TIME_THRESHOLD)
 			{
-				if (offset + LEASE2_SIZE > len) return 0;
-				Lease lease;
-				lease.tunnelGateway = buf + offset;
-				offset += 32; // gateway
-				lease.tunnelID = bufbe32toh (buf + offset);
-				offset += 4; // tunnel ID
-				lease.endDate = bufbe32toh (buf + offset) * 1000LL;
-				offset += 4; // end date
-				if (lease.endDate > ts + LEASESET_EXPIRATION_TIME_THRESHOLD)
-				{
-					LogPrint (eLogWarning, "LeaseSet2: Lease end date is from future ", lease.endDate);
-					return 0;
-				}
-				UpdateLease (lease, ts);
+				LogPrint (eLogWarning, "LeaseSet2: Lease end date is from future ", lease.endDate);
+				return 0;
 			}
-			UpdateLeasesEnd ();
+			if (lease.endDate > ts) hasCurrentLease = true;
+			if (IsStoreLeases ()) UpdateLease (lease, ts);
 		}
-		else
-			offset += numLeases * LEASE2_SIZE; // 40 bytes per lease
+		if (!hasCurrentLease)
+		{
+			LogPrint (eLogWarning, "LeaseSet2: All leases are expired");
+			return 0;
+		}
+		if (IsStoreLeases ()) UpdateLeasesEnd ();
 
 		return (offset > len ? 0 : offset);
+	}
+
+	size_t LeaseSet2::ReadMetaLS2TypeSpecificPart (const uint8_t * buf, size_t len)
+	{
+		// Proposal 123, Meta LS2. Same layout as MetaLeaseSet.java: properties,
+		// one byte entry count, MetaLease entries (40 bytes), one byte
+		// revocation count, 32-byte revocations, then the standard signature.
+		size_t offset = 0;
+		// properties
+		if (offset + 2 > len) return 0;
+		uint16_t propertiesLen = bufbe16toh (buf + offset);
+		if (propertiesLen > len - offset - 2) return 0;
+		if (propertiesLen) m_Properties.FromBuffer (buf + offset, len - offset);
+		offset += propertiesLen + 2;
+		// entries
+		if (offset + 1 > len) return 0;
+		uint8_t numEntries = buf[offset++];
+		auto ts = i2p::util::GetMillisecondsSinceEpoch ();
+		uint64_t expiration = GetExpirationTime ();
+		// Meta LS2 may live for hours (proposal 123: max 18.2 hours).
+		if (expiration <= ts - LEASESET2_CLOCK_FUDGE || expiration > ts + LEASESET2_META_MAX_FUTURE + LEASESET2_CLOCK_FUDGE)
+		{
+			LogPrint (eLogWarning, "LeaseSet2: Meta expiration time is invalid ", expiration / 1000LL);
+			return 0;
+		}
+		if (ts > m_PublishedTimestamp * 1000LL + LEASESET2_META_MAX_PUBLISHED_AGE)
+		{
+			LogPrint (eLogWarning, "LeaseSet2: Meta published time is too old ", m_PublishedTimestamp);
+			return 0;
+		}
+		bool hasCurrentEntry = false;
+		for (int i = 0; i < numEntries; i++)
+		{
+			if (offset + META_LEASE_SIZE > len) return 0;
+			const uint8_t * entry = buf + offset;
+			// flags at entry[32..33], type at entry[34], cost at entry[35],
+			// 4-byte expiration at entry[36..39].
+			uint64_t endDate = bufbe32toh (entry + 36) * 1000LL;
+			if (endDate > ts + LEASESET2_META_MAX_FUTURE + LEASESET2_CLOCK_FUDGE)
+			{
+				LogPrint (eLogWarning, "LeaseSet2: Meta lease end date is from future ", endDate);
+				return 0;
+			}
+			if (endDate > ts - LEASESET2_CLOCK_FUDGE) hasCurrentEntry = true;
+			offset += META_LEASE_SIZE;
+		}
+		if (!hasCurrentEntry)
+		{
+			LogPrint (eLogWarning, "LeaseSet2: All Meta leases are expired");
+			return 0;
+		}
+		// revocations (validated for length; revocation processing is not
+		// implemented, as in MetaLeaseSet.java where it is also a TODO)
+		if (offset + 1 > len) return 0;
+		uint8_t numRevocations = buf[offset++];
+		if ((size_t) numRevocations * 32 > len - offset) return 0;
+		offset += (size_t) numRevocations * 32;
+		return offset;
 	}
 
 	void LeaseSet2::ReadFromBufferEncrypted (const uint8_t * buf, size_t len,
 		std::shared_ptr<const BlindedPublicKey> key, std::shared_ptr<LocalDestination> dest, const uint8_t * secret)
 	{
+		SetIsValid (false);
+		m_HasStoreHash = false;
 		size_t offset = 0;
 		// blinded key
 		if (len < 2) return;
@@ -531,6 +646,16 @@ namespace data
 		if (offset + blindedKeyLen >= len) return;
 		const uint8_t * blindedPublicKey = buf + offset;
 		blindedVerifier->SetPublicKey (blindedPublicKey);
+		{
+			// Proposal 123: store key = SHA256(blinded sig type || blinded public key).
+			std::vector<uint8_t> hashInput (2 + blindedKeyLen);
+			memcpy (hashInput.data (), stA1, 2);
+			memcpy (hashInput.data () + 2, blindedPublicKey, blindedKeyLen);
+			uint8_t hash[32];
+			SHA256 (hashInput.data (), hashInput.size (), hash);
+			memcpy (m_StoreHash, hash, 32);
+			m_HasStoreHash = true;
+		}
 		offset += blindedKeyLen;
 		// expiration
 		if (offset + 8 >= len) return;
@@ -755,6 +880,23 @@ namespace data
 	{
 		auto encryptor = m_Encryptor; // TODO: atomic
 		if (encryptor) encryptor->Encrypt (data, encrypted);
+	}
+
+	bool LeaseSet2::IsEncryptionKey (CryptoKeyType type, const uint8_t * key) const
+	{
+		if (!key) return false;
+		auto it = m_EncryptionKeys.find (type);
+		if (it == m_EncryptionKeys.end ()) return false;
+		// Do not assume X25519: ML-KEM and future key types have other lengths.
+		auto keyLen = i2p::crypto::GetCryptoPublicKeyLen (type);
+		return keyLen && it->second.size () == keyLen && !memcmp (it->second.data (), key, keyLen);
+	}
+
+	bool LeaseSet2::IsStoreKey (const IdentHash & key) const
+	{
+		if (m_HasStoreHash) return m_StoreHash == key;
+		auto identity = GetIdentity ();
+		return identity && identity->GetIdentHash () == key;
 	}
 
 	uint64_t LeaseSet2::ExtractExpirationTimestamp (const uint8_t * buf, size_t len) const

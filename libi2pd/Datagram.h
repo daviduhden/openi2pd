@@ -47,6 +47,10 @@ namespace datagram
 	const size_t DATAGRAM_SEND_QUEUE_MAX_SIZE = 64;
 	const uint64_t DATAGRAM_MAX_FLUSH_INTERVAL = 5; // in milliseconds
 	const int DATAGRAM_SESSION_ACK_REQUEST_INTERVAL = 5500; // in milliseconds
+	// Datagram3 first contact can name an arbitrary sender hash, so the session map
+	// must not grow without bound. Java keeps these in the router's session table
+	// with a lifetime; this is the local equivalent.
+	const size_t DATAGRAM_SESSIONS_MAX_SIZE = 1024;
 
 	enum DatagramVersion
 	{
@@ -154,7 +158,15 @@ namespace datagram
 		typedef std::function<void (const i2p::data::IdentityEx & from, uint16_t fromPort, uint16_t toPort,
 			const uint8_t * buf, size_t len, const i2p::util::Mapping * options)>
 			Receiver;
-		typedef std::function<void (uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len)> RawReceiver;
+		// Datagram3 carries only the sender hash. A receiver that can accept that
+		// form must not force a full LeaseSet or identity lookup on first contact.
+		typedef std::function<void (const i2p::data::IdentHash & from, uint16_t fromPort, uint16_t toPort,
+			const uint8_t * buf, size_t len, const i2p::util::Mapping * options)>
+			HashReceiver;
+		// Includes the I2CP protocol number for SAM 3.2 RAW RECEIVED headers.
+		typedef std::function<void (uint8_t protocol, uint16_t fromPort, uint16_t toPort, const uint8_t * buf,
+			size_t len)>
+			RawReceiver;
 
 	public:
 		DatagramDestination (std::shared_ptr<i2p::client::ClientDestination> owner, bool gzip, DatagramVersion version);
@@ -163,14 +175,14 @@ namespace datagram
 		void SendDatagramTo (const uint8_t * payload, size_t len, const i2p::data::IdentHash & ident,
 			uint16_t fromPort = 0, uint16_t toPort = 0);
 		void SendRawDatagramTo (const uint8_t * payload, size_t len, const i2p::data::IdentHash & ident,
-			uint16_t fromPort = 0, uint16_t toPort = 0);
+			uint16_t fromPort = 0, uint16_t toPort = 0, uint8_t protocol = 0);
 		// TODO: implement calls from other thread from SAM
 
 		std::shared_ptr<DatagramSession> GetSession (const i2p::data::IdentHash & ident);
 		void SendDatagram (std::shared_ptr<DatagramSession> session, const uint8_t * payload, size_t len,
 			uint16_t fromPort, uint16_t toPort, const i2p::util::Mapping * options = nullptr);
 		void SendRawDatagram (std::shared_ptr<DatagramSession> session, const uint8_t * payload, size_t len,
-			uint16_t fromPort, uint16_t toPort);
+			uint16_t fromPort, uint16_t toPort, uint8_t protocol = 0);
 		void FlushSendQueue (std::shared_ptr<DatagramSession> session);
 
 		void HandleDataMessagePayload (uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len,
@@ -178,6 +190,9 @@ namespace datagram
 
 		void SetReceiver (const Receiver & receiver, uint16_t port = 0);
 		void ResetReceiver (uint16_t port = 0);
+
+		void SetHashReceiver (const HashReceiver & receiver, uint16_t port = 0);
+		void ResetHashReceiver (uint16_t port = 0);
 
 		void SetRawReceiver (const RawReceiver & receiver, uint16_t port = 0);
 		void ResetRawReceiver (uint16_t port = 0);
@@ -197,13 +212,14 @@ namespace datagram
 
 		void HandleDatagram (uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len,
 			i2p::garlic::ECIESX25519AEADRatchetSession * from);
-		void HandleRawDatagram (uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len);
+		void HandleRawDatagram (uint8_t protocol, uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len);
 		void HandleDatagram2 (uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len,
 			i2p::garlic::ECIESX25519AEADRatchetSession * from);
 		void HandleDatagram3 (uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len,
 			i2p::garlic::ECIESX25519AEADRatchetSession * from);
 
 		Receiver FindReceiver (uint16_t port);
+		HashReceiver FindHashReceiver (uint16_t port);
 		RawReceiver FindRawReceiver (uint16_t port);
 
 	private:
@@ -213,12 +229,16 @@ namespace datagram
 		std::unordered_map<i2p::data::IdentHash, DatagramSession_ptr> m_Sessions;
 
 		Receiver m_DefaultReceiver;
+		HashReceiver m_DefaultHashReceiver;
 		RawReceiver m_DefaultRawReceiver;
 		uint16_t m_DefaultReceiverPort;
+		uint16_t m_DefaultHashReceiverPort;
 		uint16_t m_DefaultRawReceiverPort;
 		std::mutex m_ReceiversMutex;
+		std::mutex m_HashReceiversMutex;
 		std::mutex m_RawReceiversMutex;
 		std::unordered_map<uint16_t, Receiver> m_ReceiversByPorts;
+		std::unordered_map<uint16_t, HashReceiver> m_HashReceiversByPorts;
 		std::unordered_map<uint16_t, RawReceiver> m_RawReceiversByPorts;
 
 		bool m_Gzip; // gzip compression of data messages
@@ -226,7 +246,7 @@ namespace datagram
 		i2p::data::GzipInflator m_Inflator;
 		std::unique_ptr<i2p::data::GzipDeflator> m_Deflator;
 		i2p::util::Mapping m_Options;
-		std::vector<uint8_t> m_From, m_Signature;
+		std::vector<uint8_t> m_From;
 		i2p::util::MemoryPool<I2NPMessageBuffer<I2NP_MAX_MESSAGE_SIZE>> m_I2NPMsgsPool;
 	};
 }

@@ -24,8 +24,10 @@ namespace datagram
 		std::shared_ptr<i2p::client::ClientDestination> owner, bool gzip, DatagramVersion version)
 		: m_Owner (owner)
 		, m_DefaultReceiver (nullptr)
+		, m_DefaultHashReceiver (nullptr)
 		, m_DefaultRawReceiver (nullptr)
 		, m_DefaultReceiverPort (0)
+		, m_DefaultHashReceiverPort (0)
 		, m_DefaultRawReceiverPort (0)
 		, m_Gzip (gzip)
 		, m_Version (version)
@@ -35,7 +37,6 @@ namespace datagram
 		auto identityLen = m_Owner->GetIdentity ()->GetFullLen ();
 		m_From.resize (identityLen);
 		m_Owner->GetIdentity ()->ToBuffer (m_From.data (), identityLen);
-		m_Signature.resize (m_Owner->GetIdentity ()->GetSignatureLen ());
 	}
 
 	DatagramDestination::~DatagramDestination ()
@@ -51,11 +52,11 @@ namespace datagram
 		FlushSendQueue (session);
 	}
 
-	void DatagramDestination::SendRawDatagramTo (
-		const uint8_t * payload, size_t len, const i2p::data::IdentHash & identity, uint16_t fromPort, uint16_t toPort)
+	void DatagramDestination::SendRawDatagramTo (const uint8_t * payload, size_t len, const i2p::data::IdentHash & identity,
+		uint16_t fromPort, uint16_t toPort, uint8_t protocol)
 	{
 		auto session = ObtainSession (identity);
-		SendRawDatagram (session, payload, len, fromPort, toPort);
+		SendRawDatagram (session, payload, len, fromPort, toPort, protocol);
 		FlushSendQueue (session);
 	}
 
@@ -92,33 +93,76 @@ namespace datagram
 			}
 			case eDatagramV1:
 			{
+				// Java I2PDatagramMaker rejects offline destinations: Datagram1 has no
+				// offline signature section (I2PDatagramMaker.java:49-52).
+				if (m_Owner->GetPrivateKeys ().IsOfflineSignature ())
+				{
+					LogPrint (eLogError, "Datagram: datagram1 doesn't support offline signature");
+					break;
+				}
+				std::vector<uint8_t> signature (m_Owner->GetPrivateKeys ().GetSignatureLen ());
 				if (m_Owner->GetIdentity ()->GetSigningKeyType () == i2p::data::SIGNING_KEY_TYPE_DSA_SHA1)
 				{
 					uint8_t hash[32];
 					SHA256 (payload, len, hash);
-					m_Owner->Sign (hash, 32, m_Signature.data ());
+					m_Owner->Sign (hash, 32, signature.data ());
 				}
 				else
-					m_Owner->Sign (payload, len, m_Signature.data ());
-				msg = CreateDataMessage ({ { m_From.data (), m_From.size () },
-											 { m_Signature.data (), m_Signature.size () }, { payload, len } },
+					m_Owner->Sign (payload, len, signature.data ());
+				msg = CreateDataMessage ({ { m_From.data (), m_From.size () }, { signature.data (), signature.size () },
+											 { payload, len } },
 					fromPort, toPort, i2p::client::PROTOCOL_TYPE_DATAGRAM, !session->IsRatchets ()); // datagram1
 				break;
 			}
 			case eDatagramV2:
 			{
-				constexpr uint8_t flags[] = { 0x00, 0x02 }; // datagram2, no options
-				// signature
-				std::vector<uint8_t> signedData (len + 32 + 2);
-				memcpy (signedData.data (), session->GetRemoteIdent (), 32);
-				memcpy (signedData.data () + 32, flags, 2);
-				memcpy (signedData.data () + 32 + 2, payload, len);
-				m_Owner->Sign (signedData.data (), signedData.size (), m_Signature.data ());
-				// TODO: offline signatures and options
-				msg = CreateDataMessage ({ { m_From.data (), m_From.size () }, { flags, 2 }, { payload, len },
-											 { m_Signature.data (), m_Signature.size () } },
-					fromPort, toPort, i2p::client::PROTOCOL_TYPE_DATAGRAM2, false); // datagram2
-
+				// Datagram2.java make(): Destination || flags || options || offline section ||
+				// payload || signature. The signature covers toHash || flags || options ||
+				// offline section || payload; the toHash is not transmitted.
+				const auto & keys = m_Owner->GetPrivateKeys ();
+				bool isOfflineSignature = keys.IsOfflineSignature ();
+				uint8_t flags[2] = { 0x00, (uint8_t)(0x02 | (isOfflineSignature ? DATAGRAM2_FLAG_OFFLINE_SIGNATURE : 0)) };
+				std::vector<uint8_t> optionsBuf;
+				if (options)
+				{
+					optionsBuf.resize (512);
+					auto optionsLen = options->ToBuffer (optionsBuf.data (), optionsBuf.size ());
+					if (optionsLen > 2)
+					{
+						optionsBuf.resize (optionsLen);
+						flags[1] |= DATAGRAM2_FLAG_OPTIONS;
+					}
+					else
+						optionsBuf.clear ();
+				}
+				std::vector<uint8_t> offlineSignature;
+				if (isOfflineSignature)
+				{
+					offlineSignature = keys.GetOfflineSignature ();
+					if (offlineSignature.size () < 6)
+					{
+						LogPrint (eLogError, "Datagram: malformed offline signature section");
+						break;
+					}
+				}
+				std::vector<uint8_t> signedData;
+				signedData.reserve (32 + 2 + optionsBuf.size () + offlineSignature.size () + len);
+				signedData.insert (signedData.end (), session->GetRemoteIdent ().data (),
+					session->GetRemoteIdent ().data () + 32);
+				signedData.insert (signedData.end (), flags, flags + 2);
+				signedData.insert (signedData.end (), optionsBuf.begin (), optionsBuf.end ());
+				signedData.insert (signedData.end (), offlineSignature.begin (), offlineSignature.end ());
+				signedData.insert (signedData.end (), payload, payload + len);
+				std::vector<uint8_t> signature (keys.GetSignatureLen ());
+				if (!signature.empty ())
+				{
+					m_Owner->Sign (signedData.data (), signedData.size (), signature.data ());
+					msg = CreateDataMessage ({ { m_From.data (), m_From.size () }, { flags, 2 },
+												 { optionsBuf.data (), optionsBuf.size () },
+												 { offlineSignature.data (), offlineSignature.size () }, { payload, len },
+												 { signature.data (), signature.size () } },
+						fromPort, toPort, i2p::client::PROTOCOL_TYPE_DATAGRAM2, false); // datagram2
+				}
 				break;
 			}
 			default: LogPrint (eLogError, "Datagram: datagram type ", (int)session->GetVersion (), " is not supported");
@@ -128,11 +172,11 @@ namespace datagram
 	}
 
 	void DatagramDestination::SendRawDatagram (std::shared_ptr<DatagramSession> session, const uint8_t * payload,
-		size_t len, uint16_t fromPort, uint16_t toPort)
+		size_t len, uint16_t fromPort, uint16_t toPort, uint8_t protocol)
 	{
 		if (session)
-			session->SendMsg (CreateDataMessage ({ { payload, len } }, fromPort, toPort, i2p::client::PROTOCOL_TYPE_RAW,
-				!session->IsRatchets ())); // raw
+			session->SendMsg (CreateDataMessage ({ { payload, len } }, fromPort, toPort,
+				!protocol ? i2p::client::PROTOCOL_TYPE_RAW : protocol, !session->IsRatchets ())); // raw
 	}
 
 	void DatagramDestination::FlushSendQueue (std::shared_ptr<DatagramSession> session)
@@ -157,9 +201,7 @@ namespace datagram
 			ls = m_Owner->FindLeaseSet (identity.GetIdentHash ());
 			if (ls)
 			{
-				uint8_t staticKey[32];
-				ls->Encrypt (nullptr, staticKey);
-				if (!memcmp (from->GetRemoteStaticKey (), staticKey, 32))
+				if (ls->IsEncryptionKey (from->GetRemoteStaticKeyType (), from->GetRemoteStaticKey ()))
 					verified = true;
 				else
 				{
@@ -196,12 +238,12 @@ namespace datagram
 			LogPrint (eLogWarning, "Datagram signature verification failed");
 	}
 
-	void DatagramDestination::HandleRawDatagram (uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len)
+	void DatagramDestination::HandleRawDatagram (
+		uint8_t protocol, uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len)
 	{
 		auto r = FindRawReceiver (toPort);
-
 		if (r)
-			r (fromPort, toPort, buf, len);
+			r (protocol, fromPort, toPort, buf, len);
 		else
 			LogPrint (eLogWarning, "DatagramDestination: no receiver for raw datagram");
 	}
@@ -209,37 +251,34 @@ namespace datagram
 	void DatagramDestination::HandleDatagram2 (uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len,
 		i2p::garlic::ECIESX25519AEADRatchetSession * from)
 	{
-		if (len < 433)
+		// Datagram2.java MIN_DGRAM_SIZE = 387 + 2 + 40
+		if (len < 429)
 		{
 			LogPrint (eLogWarning, "Datagram: datagram2 is too short ", len);
 			return;
 		}
 		i2p::data::IdentityEx identity;
 		size_t identityLen = identity.FromBuffer (buf, len);
-		if (!identityLen) return;
-		size_t signatureLen = identity.GetSignatureLen ();
-		if (signatureLen + identityLen > len) return;
+		if (!identityLen || identityLen + 2 > len) return;
+		const uint8_t * flags = buf + identityLen;
+		if ((flags[1] & 0x0f) != 0x02) // Datagram2.java VERSION_MASK/VERSION
+		{
+			LogPrint (eLogWarning, "Datagram: datagram2 bad version ", (int)(flags[1] & 0x0f));
+			return;
+		}
 
 		std::shared_ptr<i2p::data::LeaseSet> ls;
-		bool verified = false;
 		if (from)
 		{
 			ls = m_Owner->FindLeaseSet (identity.GetIdentHash ());
-			if (ls)
+			if (ls && !ls->IsEncryptionKey (from->GetRemoteStaticKeyType (), from->GetRemoteStaticKey ()))
 			{
-				uint8_t staticKey[32];
-				ls->Encrypt (nullptr, staticKey);
-				if (!memcmp (from->GetRemoteStaticKey (), staticKey, 32))
-					verified = true;
-				else
-				{
-					LogPrint (eLogError, "Datagram: Remote LeaseSet static key mismatch for datagram2 from ",
-						identity.GetIdentHash ().ToBase32 ());
-					return;
-				}
+				LogPrint (eLogError, "Datagram: Remote LeaseSet static key mismatch for datagram2 from ",
+					identity.GetIdentHash ().ToBase32 ());
+				return;
 			}
 		}
-		const uint8_t * flags = buf + identityLen;
+
 		size_t offset = identityLen + 2;
 		bool isOptions = false;
 		if (flags[1] & DATAGRAM2_FLAG_OPTIONS)
@@ -255,46 +294,55 @@ namespace datagram
 				return;
 			}
 		}
+		if (offset > len)
+		{
+			LogPrint (eLogWarning, "Datagram: datagram2 is too short ", len, " expected ", offset);
+			return;
+		}
+
+		// The offline section is part of the signed data and must be validated even
+		// when the ratchet session's static key already matched the sender's
+		// LeaseSet. Datagram2.java always verifies it and rejects expired delegations.
+		std::shared_ptr<i2p::crypto::Verifier> transientVerifier;
+		if (flags[1] & DATAGRAM2_FLAG_OFFLINE_SIGNATURE)
+		{
+			transientVerifier = i2p::data::ProcessOfflineSignature (&identity, buf, len, offset);
+			if (!transientVerifier)
+			{
+				LogPrint (eLogWarning, "Datagram: datagram2 offline signature failed");
+				return;
+			}
+		}
+		size_t signatureLen
+			= transientVerifier ? transientVerifier->GetSignatureLen () : identity.GetSignatureLen ();
 		if (offset > len || signatureLen > len - offset)
 		{
 			LogPrint (eLogWarning, "Datagram: datagram2 is too short ", len, " expected ", offset + signatureLen);
 			return;
 		}
+		// signed data = destination hash (not transmitted) || flags || options ||
+		// offline section || payload
+		if (len < identityLen + signatureLen) return;
+		std::vector<uint8_t> signedData (32 + len - identityLen - signatureLen);
+		memcpy (signedData.data (), m_Owner->GetIdentity ()->GetIdentHash (), 32);
+		memcpy (signedData.data () + 32, buf + identityLen, len - identityLen - signatureLen);
+		const uint8_t * signature = buf + len - signatureLen;
+		bool verified = transientVerifier
+			? transientVerifier->Verify (signedData.data (), signedData.size (), signature)
+			: identity.Verify (signedData.data (), signedData.size (), signature);
 		if (!verified)
 		{
-			std::shared_ptr<i2p::crypto::Verifier> transientVerifier;
-			if (flags[1] & DATAGRAM2_FLAG_OFFLINE_SIGNATURE)
-			{
-				transientVerifier = i2p::data::ProcessOfflineSignature (&identity, buf, len, offset);
-				if (!transientVerifier)
-				{
-					LogPrint (eLogWarning, "Datagram: datagram2 offline signature failed");
-					return;
-				}
-				signatureLen = transientVerifier->GetSignatureLen ();
-			}
-			if (offset > len || signatureLen > len - offset)
-			{
-				LogPrint (eLogWarning, "Datagram: datagram2 is too short ", len, " expected ", offset + signatureLen);
-				return;
-			}
-			std::vector<uint8_t> signedData (len + 32 - identityLen - signatureLen);
-			memcpy (signedData.data (), m_Owner->GetIdentity ()->GetIdentHash (), 32);
-			memcpy (signedData.data () + 32, buf + identityLen, signedData.size () - 32);
-			verified = transientVerifier
-				? transientVerifier->Verify (signedData.data (), signedData.size (), buf + len - signatureLen)
-				: identity.Verify (signedData.data (), signedData.size (), buf + len - signatureLen);
-			if (!verified)
-			{
-				LogPrint (eLogWarning, "Datagram: datagram2 signature verification failed");
-				return;
-			}
+			LogPrint (eLogWarning, "Datagram: datagram2 signature verification failed");
+			return;
 		}
 
 		auto session = ObtainSession (identity.GetIdentHash ());
-		session->SetVersion (eDatagramV2);
-		if (ls) session->SetRemoteLeaseSet (ls);
-		session->Ack ();
+		if (session)
+		{
+			session->SetVersion (eDatagramV2);
+			if (ls) session->SetRemoteLeaseSet (ls);
+			session->Ack ();
+		}
 		auto r = FindReceiver (toPort);
 		if (r)
 			r (identity, fromPort, toPort, buf + offset, len - offset - signatureLen, isOptions ? &m_Options : nullptr);
@@ -310,65 +358,89 @@ namespace datagram
 			LogPrint (eLogWarning, "Datagram: datagram3 is too short ", len);
 			return;
 		}
-		if (from)
+		if (!from)
 		{
-			std::shared_ptr<const i2p::data::LeaseSet> ls;
-			i2p::data::IdentHash ident (buf);
-			auto session = FindSession (ident);
-			if (session) ls = session->GetRemoteLeaseSet ();
-			if (!ls) ls = m_Owner->FindLeaseSet (ident);
-			if (ls)
-			{
-				uint8_t staticKey[32];
-				ls->Encrypt (nullptr, staticKey);
-				if (!memcmp (from->GetRemoteStaticKey (), staticKey, 32))
-				{
-					if (!session)
-					{
-						session = ObtainSession (ident);
-						session->SetVersion (eDatagramV3);
-					}
-					session->SetRemoteLeaseSet (ls);
-					auto r = FindReceiver (toPort);
-					if (r)
-					{
-						const uint8_t * flags = buf + 32;
-						size_t offset = 34;
-						bool isOptions = false;
-						if (flags[1] & DATAGRAM3_FLAG_OPTIONS)
-						{
-							isOptions = true;
-							m_Options.CleanUp ();
-							auto optionsLen = m_Options.FromBuffer (buf + offset, len - offset);
-							if (optionsLen)
-								offset += optionsLen;
-							else
-							{
-								LogPrint (eLogWarning, "Datagram: datagram3 can't read options");
-								return;
-							}
-						}
-						if (offset > len)
-						{
-							LogPrint (eLogWarning, "Datagram: datagram3 is too short ", len, " expected ", offset);
-							return;
-						}
-						r (*ls->GetIdentity (), fromPort, toPort, buf + offset, len - offset,
-							isOptions ? &m_Options : nullptr);
-					}
-					else
-						LogPrint (eLogWarning, "Datagram: no receiver for port ", toPort);
-					session->Ack ();
-				}
-				else
-					LogPrint (eLogError, "Datagram: Remote LeaseSet static key mismatch for datagram3 from ",
-						ident.ToBase32 ());
-			}
-			else
-				LogPrint (eLogError, "Datagram: No remote LeaseSet for ", ident.ToBase32 ());
-		}
-		else
+			// Datagram3 has no signature of its own; it is only meaningful inside an
+			// authenticated ratchet session (Datagram3.java, proposal 163).
 			LogPrint (eLogInfo, "Datagram: datagram3 received from non-ratchets session");
+			return;
+		}
+		const uint8_t * flags = buf + 32;
+		if ((flags[1] & 0x0f) != 0x03) // Datagram3.java VERSION_MASK/VERSION
+		{
+			LogPrint (eLogWarning, "Datagram: datagram3 bad version ", (int)(flags[1] & 0x0f));
+			return;
+		}
+		i2p::data::IdentHash ident (buf);
+		// If the ratchet session already established the peer destination, the
+		// unauthenticated sender hash must not contradict it.
+		if (from->GetDestinationPtr () && *from->GetDestinationPtr () != ident)
+		{
+			LogPrint (eLogError, "Datagram: datagram3 sender hash mismatch for ", ident.ToBase32 ());
+			return;
+		}
+		size_t offset = 34;
+		bool isOptions = false;
+		if (flags[1] & DATAGRAM3_FLAG_OPTIONS)
+		{
+			isOptions = true;
+			m_Options.CleanUp ();
+			auto optionsLen = m_Options.FromBuffer (buf + offset, len - offset);
+			if (optionsLen)
+				offset += optionsLen;
+			else
+			{
+				LogPrint (eLogWarning, "Datagram: datagram3 can't read options");
+				return;
+			}
+		}
+		if (offset > len)
+		{
+			LogPrint (eLogWarning, "Datagram: datagram3 is too short ", len, " expected ", offset);
+			return;
+		}
+
+		// First contact has no cached LeaseSet. The ratchet session already
+		// authenticates the sender, so deliver the hash immediately instead of
+		// dropping the datagram or issuing an unbounded lookup.
+		auto session = FindSession (ident);
+		std::shared_ptr<const i2p::data::LeaseSet> ls;
+		if (session) ls = session->GetRemoteLeaseSet ();
+		if (!ls) ls = m_Owner->FindLeaseSet (ident);
+		if (ls)
+		{
+			if (!ls->IsEncryptionKey (from->GetRemoteStaticKeyType (), from->GetRemoteStaticKey ()))
+			{
+				LogPrint (eLogError, "Datagram: Remote LeaseSet static key mismatch for datagram3 from ",
+					ident.ToBase32 ());
+				return;
+			}
+			if (!session)
+			{
+				session = ObtainSession (ident);
+				if (session) session->SetVersion (eDatagramV3);
+			}
+			if (session) session->SetRemoteLeaseSet (ls);
+			// The LeaseSet and the ratchet static key now agree; remember the
+			// association so later datagrams use the authenticated identity.
+			if (!from->GetDestinationPtr ()) from->SetDestination (ident);
+		}
+
+		auto r = FindHashReceiver (toPort);
+		if (r)
+			r (ident, fromPort, toPort, buf + offset, len - offset, isOptions ? &m_Options : nullptr);
+		else
+		{
+			auto receiver = FindReceiver (toPort);
+			if (receiver && ls)
+				receiver (*ls->GetIdentity (), fromPort, toPort, buf + offset, len - offset,
+					isOptions ? &m_Options : nullptr);
+			else if (receiver)
+				LogPrint (eLogWarning, "Datagram: datagram3 sender identity is not cached for ", ident.ToBase32 ());
+			else
+				LogPrint (eLogWarning, "DatagramDestination: no receiver for port ", toPort);
+		}
+		if (session) session->Ack ();
 	}
 
 	void DatagramDestination::SetReceiver (const Receiver & receiver, uint16_t port)
@@ -390,6 +462,28 @@ namespace datagram
 		{
 			m_DefaultReceiver = nullptr;
 			m_DefaultReceiverPort = 0;
+		}
+	}
+
+	void DatagramDestination::SetHashReceiver (const HashReceiver & receiver, uint16_t port)
+	{
+		std::lock_guard<std::mutex> lock (m_HashReceiversMutex);
+		if (port) m_HashReceiversByPorts[port] = receiver;
+		if (!m_DefaultHashReceiver)
+		{
+			m_DefaultHashReceiver = receiver;
+			m_DefaultHashReceiverPort = port;
+		}
+	}
+
+	void DatagramDestination::ResetHashReceiver (uint16_t port)
+	{
+		std::lock_guard<std::mutex> lock (m_HashReceiversMutex);
+		if (port) m_HashReceiversByPorts.erase (port);
+		if (!port || m_DefaultHashReceiverPort == port)
+		{
+			m_DefaultHashReceiver = nullptr;
+			m_DefaultHashReceiverPort = 0;
 		}
 	}
 
@@ -429,6 +523,18 @@ namespace datagram
 		return r;
 	}
 
+	DatagramDestination::HashReceiver DatagramDestination::FindHashReceiver (uint16_t port)
+	{
+		std::lock_guard<std::mutex> lock (m_HashReceiversMutex);
+		HashReceiver r = nullptr;
+		auto itr = m_HashReceiversByPorts.find (port);
+		if (itr != m_HashReceiversByPorts.end ())
+			r = itr->second;
+		else
+			r = m_DefaultHashReceiver;
+		return r;
+	}
+
 	DatagramDestination::RawReceiver DatagramDestination::FindRawReceiver (uint16_t port)
 	{
 		std::lock_guard<std::mutex> lock (m_RawReceiversMutex);
@@ -454,7 +560,7 @@ namespace datagram
 			switch (protocolType)
 			{
 			case i2p::client::PROTOCOL_TYPE_RAW:
-				HandleRawDatagram (fromPort, toPort, uncompressed, uncompressedLen);
+				HandleRawDatagram (protocolType, fromPort, toPort, uncompressed, uncompressedLen);
 				break;
 			case i2p::client::PROTOCOL_TYPE_DATAGRAM3:
 				HandleDatagram3 (fromPort, toPort, uncompressed, uncompressedLen, from);
@@ -465,7 +571,8 @@ namespace datagram
 			case i2p::client::PROTOCOL_TYPE_DATAGRAM2:
 				HandleDatagram2 (fromPort, toPort, uncompressed, uncompressedLen, from);
 				break;
-			default: LogPrint (eLogInfo, "Datagram: unknown protocol type ", protocolType);
+			default: // SAM RAW sessions can register arbitrary I2CP protocols
+				HandleRawDatagram (protocolType, fromPort, toPort, uncompressed, uncompressedLen);
 			};
 		}
 		else
@@ -528,6 +635,29 @@ namespace datagram
 		auto itr = m_Sessions.find (identity);
 		if (itr == m_Sessions.end ())
 		{
+			if (m_Sessions.size () >= DATAGRAM_SESSIONS_MAX_SIZE)
+			{
+				// Datagram3 first contact names an unauthenticated hash before any
+				// LeaseSet exists, so never let these create unbounded state. Reclaim
+				// idle entries if possible, otherwise refuse the new one.
+				auto now = i2p::util::GetMillisecondsSinceEpoch ();
+				for (auto it = m_Sessions.begin (); it != m_Sessions.end ();)
+				{
+					if (now - it->second->LastActivity () >= DATAGRAM_SESSION_MAX_IDLE)
+					{
+						it->second->Stop ();
+						it = m_Sessions.erase (it);
+					}
+					else
+						++it;
+				}
+				if (m_Sessions.size () >= DATAGRAM_SESSIONS_MAX_SIZE)
+				{
+					LogPrint (eLogWarning, "Datagram: session table is full (", m_Sessions.size (),
+						"), dropping new session for ", identity.ToBase32 ());
+					return nullptr;
+				}
+			}
 			// not found, create new session
 			session = std::make_shared<DatagramSession> (m_Owner, identity);
 			session->SetVersion (m_Version);

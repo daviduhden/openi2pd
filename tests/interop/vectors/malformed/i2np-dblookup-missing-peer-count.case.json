@@ -1,0 +1,31 @@
+{
+   "expect" : {
+      "ok" : false
+   },
+   "expectation" : "reject",
+   "format" : "hex",
+   "id" : "i2np-dblookup-missing-peer-count",
+   "input" : "i2np-dblookup-missing-peer-count.hex",
+   "kind" : "i2np",
+   "license" : "BSD-3-Clause",
+   "provenance" : {
+      "java" : [
+         {
+            "contains" : "int numPeers",
+            "line" : 385,
+            "path" : "router/java/src/net/i2p/data/i2np/DatabaseLookupMessage.java"
+         },
+         {
+            "contains" : "buffer overrun",
+            "line" : 425,
+            "path" : "router/java/src/net/i2p/data/i2np/DatabaseLookupMessage.java"
+         }
+      ],
+      "spec" : [
+         "i2np#database-lookup",
+         "i2np#database-search-reply",
+         "i2np#message-header"
+      ]
+   },
+   "sha256" : "22bb15a32a06582d4350efc0e6b884524320e310a925a53e984121e99be393de"
+}

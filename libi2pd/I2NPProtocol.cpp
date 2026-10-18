@@ -209,7 +209,8 @@ std::shared_ptr<I2NPMessage> CreateLeaseSetDatabaseLookupMsg (const i2p::data::I
 	buf += 32;
 	memcpy (buf, replyTunnel->GetNextIdentHash (), 32); // reply tunnel GW
 	buf += 32;
-	*buf = DATABASE_LOOKUP_DELIVERY_FLAG | DATABASE_LOOKUP_TYPE_LEASESET_LOOKUP | DATABASE_LOOKUP_ECIES_FLAG; // flags
+	// Ratchet-only reply: reply key followed by one 8-byte ECIES tag.
+	*buf = DATABASE_LOOKUP_DELIVERY_FLAG | DATABASE_LOOKUP_TYPE_LEASESET_LOOKUP | DATABASE_LOOKUP_RATCHET_FLAG; // flags
 	buf++;
 	htobe32buf (buf, replyTunnel->GetNextTunnelID ()); // reply tunnel ID
 	buf += 4;

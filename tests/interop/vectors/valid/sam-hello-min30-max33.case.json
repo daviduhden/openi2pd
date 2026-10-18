@@ -1,0 +1,42 @@
+{
+   "expect" : {
+      "ok" : true,
+      "value" : {
+         "sam_reply" : "HELLO REPLY RESULT=OK VERSION=3.3\n"
+      }
+   },
+   "expectation" : "accept",
+   "format" : "raw",
+   "id" : "sam-hello-min30-max33",
+   "input" : "sam-hello-min30-max33.txt",
+   "kind" : "sam",
+   "license" : "BSD-3-Clause",
+   "provenance" : {
+      "java" : [
+         {
+            "contains" : "VERSION = \"3.3\"",
+            "line" : 26,
+            "path" : "apps/sam/java/src/net/i2p/sam/SAMHandlerFactory.java"
+         },
+         {
+            "contains" : "chooseBestVersion",
+            "line" : 85,
+            "path" : "apps/sam/java/src/net/i2p/sam/SAMHandlerFactory.java"
+         },
+         {
+            "contains" : "HELLO REPLY RESULT=OK VERSION=",
+            "line" : 100,
+            "path" : "apps/sam/java/src/net/i2p/sam/SAMHandlerFactory.java"
+         },
+         {
+            "contains" : "HELLO REPLY RESULT=NOVERSION",
+            "line" : 88,
+            "path" : "apps/sam/java/src/net/i2p/sam/SAMHandlerFactory.java"
+         }
+      ],
+      "spec" : [
+         "samv3#hello"
+      ]
+   },
+   "sha256" : "cff52f643feeca3c3e4c0328a7788030698c86d1c5f84935fe1cfe7d1b72d454"
+}

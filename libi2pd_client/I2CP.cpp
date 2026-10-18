@@ -25,6 +25,92 @@ namespace i2p
 {
 namespace client
 {
+	namespace
+	{
+		// ClientMessageEventListener.handleBlindingInfo() keeps this in the
+		// router's netDb keyed by the unblinded SigningPublicKey. The local
+		// equivalent is bounded and only trusted for the duration announced by
+		// the client.
+		const size_t I2CP_MAX_BLINDING_INFOS = 64;
+
+		struct BlindingInfo
+		{
+			std::shared_ptr<const i2p::data::IdentityEx> identity; // TYPE_DEST only
+			i2p::data::SigningKeyType blindType = i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519;
+			uint8_t authType = 0;
+			std::vector<uint8_t> authPrivateKey;
+			std::string secret;
+			uint64_t expiration = 0; // milliseconds since epoch, 0 = forever
+			uint64_t updated = 0;
+		};
+
+		typedef std::pair<uint16_t, std::vector<uint8_t>> BlindingInfoKey;
+
+		std::mutex g_BlindingInfosMutex;
+		std::map<BlindingInfoKey, BlindingInfo> g_BlindingInfos;
+
+		BlindingInfoKey MakeBlindingInfoKey (
+			i2p::data::SigningKeyType keyType, const uint8_t * key, size_t keyLen)
+		{
+			return { (uint16_t)keyType, std::vector<uint8_t> (key, key + keyLen) };
+		}
+
+		void PruneBlindingInfos (uint64_t now)
+		{
+			for (auto it = g_BlindingInfos.begin (); it != g_BlindingInfos.end ();)
+			{
+				if (it->second.expiration && now > it->second.expiration)
+					it = g_BlindingInfos.erase (it);
+				else
+					++it;
+			}
+			while (g_BlindingInfos.size () >= I2CP_MAX_BLINDING_INFOS)
+			{
+				// bounded cache: drop the least recently updated non-expired entry
+				auto oldest = g_BlindingInfos.begin ();
+				for (auto it = g_BlindingInfos.begin (); it != g_BlindingInfos.end (); ++it)
+					if (it->second.updated < oldest->second.updated) oldest = it;
+				g_BlindingInfos.erase (oldest);
+			}
+		}
+
+		void StoreBlindingInfo (BlindingInfoKey key, BlindingInfo info)
+		{
+			std::lock_guard<std::mutex> l (g_BlindingInfosMutex);
+			info.updated = i2p::util::GetMillisecondsSinceEpoch ();
+			PruneBlindingInfos (info.updated);
+			g_BlindingInfos.insert_or_assign (std::move (key), std::move (info));
+		}
+
+		std::shared_ptr<const i2p::data::IdentityEx> FindBlindedDestination (
+			const i2p::data::BlindedPublicKey & blinded)
+		{
+			auto keyLen = blinded.GetPublicKeyLen ();
+			if (!keyLen) return nullptr;
+			std::lock_guard<std::mutex> l (g_BlindingInfosMutex);
+			auto now = i2p::util::GetMillisecondsSinceEpoch ();
+			char date[9];
+			i2p::util::GetCurrentDate (date);
+			for (const auto & it : g_BlindingInfos)
+			{
+				const auto & info = it.second;
+				if (info.expiration && now > info.expiration) continue;
+				if (!info.identity) continue;
+				if (info.identity->GetSigningKeyType () != blinded.GetSigType ()) continue;
+				if (info.blindType != blinded.GetBlindedSigType ()) continue;
+				// The b33 contains the blinded key, not the destination's signing key.
+				// Derive today's blinded key from the registered unblinded identity
+				// before associating the address.
+				i2p::data::BlindedPublicKey candidate (info.identity);
+				if (!candidate.IsValid () || candidate.GetBlindedSigType () != info.blindType) continue;
+				std::array<uint8_t, i2p::crypto::EDDSA25519_PUBLIC_KEY_LENGTH> derived;
+				auto derivedLen = candidate.GetBlindedKey (date, derived.data ());
+				if (derivedLen != keyLen || memcmp (derived.data (), blinded.GetPublicKey (), keyLen)) continue;
+				return info.identity;
+			}
+			return nullptr;
+		}
+	} // namespace
 
 	I2CPDestination::I2CPDestination (boost::asio::io_context & service, std::shared_ptr<I2CPSession> owner,
 		std::shared_ptr<const i2p::data::IdentityEx> identity, bool isPublic, bool isSameThread,
@@ -1030,34 +1116,89 @@ namespace client
 
 	void I2CPSession::HostLookupMessageHandler (const uint8_t * buf, size_t len)
 	{
+		if (len < 11)
+		{
+			LogPrint (eLogError, "I2CP: HostLookup message is too short ", len);
+			return;
+		}
 		uint16_t sessionID = bufbe16toh (buf);
 		if (sessionID == m_SessionID || sessionID == 0xFFFF) // -1 means without session
 		{
 			uint32_t requestID = bufbe32toh (buf + 2);
 			//uint32_t timeout = bufbe32toh (buf + 6);
 			i2p::data::IdentHash ident;
-			switch (buf[10])
+			std::shared_ptr<const i2p::data::BlindedPublicKey> blinded;
+			std::shared_ptr<const i2p::data::IdentityEx> associated;
+			uint8_t lookupType = buf[10];
+			switch (lookupType)
 			{
 			case 0: // hash
+			case 2: // hash + LS2 options
+				if (len < 43)
+				{
+					LogPrint (eLogError, "I2CP: HostLookup hash is truncated");
+					SendHostReplyMessage (requestID, sessionID, nullptr);
+					return;
+				}
 				ident = i2p::data::IdentHash (buf + 11);
 				break;
 			case 1: // address
+			case 3: // address + LS2 options
 			{
-				auto name = i2p::util::Mapping::ExtractString (buf + 11, len - 11);
-				auto addr = i2p::client::context.GetAddressBook ().GetAddress (name);
-				if (!addr || !addr->IsIdentHash ())
+				// DataHelper.readString() uses a 1-byte length; reject truncation
+				// instead of clamping like Mapping::ExtractString() does.
+				if (len < 13)
 				{
-					// TODO: handle blinded addresses
+					LogPrint (eLogError, "I2CP: Address lookup is truncated");
+					SendHostReplyMessage (requestID, sessionID, nullptr);
+					return;
+				}
+				uint8_t nameLen = buf[11];
+				if (!nameLen || 12 + (size_t)nameLen > len)
+				{
+					LogPrint (eLogError, "I2CP: Address lookup is malformed");
+					SendHostReplyMessage (requestID, sessionID, nullptr);
+					return;
+				}
+				std::string_view name ((const char *)buf + 12, nameLen);
+				auto addr = i2p::client::context.GetAddressBook ().GetAddress (name);
+				if (!addr)
+				{
 					LogPrint (eLogError, "I2CP: Address ", name, " not found");
 					SendHostReplyMessage (requestID, sessionID, nullptr);
 					return;
 				}
-				else
+				if (addr->IsIdentHash ())
 					ident = addr->identHash;
+				else if (addr->blindedPublicKey)
+				{
+					blinded = addr->blindedPublicKey;
+					// A matching BlindingInfo associates the b33 with its
+					// unblinded destination; use it to validate the reply.
+					associated = FindBlindedDestination (*blinded);
+				}
+				else
+				{
+					LogPrint (eLogError, "I2CP: Address ", name, " has no destination");
+					SendHostReplyMessage (requestID, sessionID, nullptr);
+					return;
+				}
+				break;
+			}
+			case 4: // Destination + LS2 options
+			{
+				i2p::data::IdentityEx identity;
+				if (!identity.FromBuffer (buf + 11, len - 11))
+				{
+					LogPrint (eLogError, "I2CP: HostLookup destination is malformed");
+					SendHostReplyMessage (requestID, sessionID, nullptr);
+					return;
+				}
+				ident = identity.GetIdentHash ();
 				break;
 			}
 			default:
-				LogPrint (eLogError, "I2CP: Request type ", (int)buf[10], " is not supported");
+				LogPrint (eLogError, "I2CP: Request type ", (int)lookupType, " is not supported");
 				SendHostReplyMessage (requestID, sessionID, nullptr);
 				return;
 			}
@@ -1066,18 +1207,28 @@ namespace client
 			if (!destination) destination = i2p::client::context.GetSharedLocalDestination ();
 			if (destination)
 			{
-				auto ls = destination->FindLeaseSet (ident);
+				std::shared_ptr<i2p::data::LeaseSet> ls;
+				if (!blinded) ls = destination->FindLeaseSet (ident);
 				if (ls)
 					SendHostReplyMessage (requestID, sessionID, ls->GetIdentity ());
 				else
 				{
 					auto s = shared_from_this ();
-					destination->RequestDestination (ident,
-						[s, requestID, sessionID] (std::shared_ptr<i2p::data::LeaseSet> leaseSet)
+					auto complete = [s, requestID, sessionID, associated] (std::shared_ptr<i2p::data::LeaseSet> leaseSet)
+					{
+						if (leaseSet && associated
+							&& leaseSet->GetIdentity ()->GetIdentHash () != associated->GetIdentHash ())
 						{
-							s->SendHostReplyMessage (
-								requestID, sessionID, leaseSet ? leaseSet->GetIdentity () : nullptr);
-						});
+							LogPrint (eLogError, "I2CP: Blinded LeaseSet identity does not match BlindingInfo for ",
+								associated->GetIdentHash ().ToBase32 ());
+							leaseSet = nullptr;
+						}
+						s->SendHostReplyMessage (requestID, sessionID, leaseSet ? leaseSet->GetIdentity () : nullptr);
+					};
+					if (blinded)
+						destination->RequestDestinationWithEncryptedLeaseSet (blinded, complete);
+					else
+						destination->RequestDestination (ident, complete);
 				}
 			}
 			else
@@ -1085,6 +1236,201 @@ namespace client
 		}
 		else
 			LogPrint (eLogError, "I2CP: Unexpected sessionID ", sessionID);
+	}
+
+	void I2CPSession::BlindingInfoMessageHandler (const uint8_t * buf, size_t len)
+	{
+		// BlindingInfoMessage.doReadMessage(): sessionId(2), flags(1),
+		// endpointType(1), blindType(2), expiration seconds(4), endpoint,
+		// optional 32-byte auth private key, optional 1-byte-length secret.
+		constexpr uint8_t FLAG_AUTH = 0x0f;
+		constexpr uint8_t FLAG_SECRET = 0x10;
+		constexpr uint8_t TYPE_HASH = 0;
+		constexpr uint8_t TYPE_HOST = 1;
+		constexpr uint8_t TYPE_DEST = 2;
+		constexpr uint8_t TYPE_KEY = 3;
+		if (len < 10)
+		{
+			LogPrint (eLogError, "I2CP: BlindingInfo message is too short ", len);
+			Terminate ();
+			return;
+		}
+		size_t offset = 0;
+		uint16_t sessionID = bufbe16toh (buf + offset);
+		offset += 2;
+		if (sessionID != m_SessionID && sessionID != 0xFFFF)
+		{
+			LogPrint (eLogWarning, "I2CP: BlindingInfo for unexpected session ", sessionID);
+			return;
+		}
+		uint8_t flags = buf[offset++];
+		uint8_t authType = flags & FLAG_AUTH;
+		if (authType != 0 && authType != 1 && authType != 3) // none, DH, PSK
+		{
+			LogPrint (eLogError, "I2CP: BlindingInfo bad auth type ", (int)authType);
+			Terminate ();
+			return;
+		}
+		uint8_t endpointType = buf[offset++];
+		uint16_t blindType = bufbe16toh (buf + offset);
+		offset += 2;
+		{
+			std::unique_ptr<i2p::crypto::Verifier> verifier (
+				i2p::data::IdentityEx::CreateVerifier ((i2p::data::SigningKeyType)blindType));
+			if (!verifier)
+			{
+				LogPrint (eLogError, "I2CP: BlindingInfo unsupported blind type ", blindType);
+				Terminate ();
+				return;
+			}
+		}
+		if (offset + 4 > len)
+		{
+			LogPrint (eLogError, "I2CP: BlindingInfo message is truncated");
+			Terminate ();
+			return;
+		}
+		uint64_t expiration = (uint64_t)bufbe32toh (buf + offset) * 1000; // milliseconds
+		offset += 4;
+
+		BlindingInfo info;
+		info.blindType = (i2p::data::SigningKeyType)blindType;
+		info.expiration = expiration;
+		BlindingInfoKey key;
+		std::string host;
+		switch (endpointType)
+		{
+		case TYPE_HASH:
+			if (offset + 32 > len)
+			{
+				LogPrint (eLogError, "I2CP: BlindingInfo hash is truncated");
+				Terminate ();
+				return;
+			}
+			offset += 32;
+			break;
+		case TYPE_HOST:
+		{
+			if (offset + 1 > len)
+			{
+				LogPrint (eLogError, "I2CP: BlindingInfo host is truncated");
+				Terminate ();
+				return;
+			}
+			uint8_t hostLen = buf[offset++];
+			if (!hostLen || offset + hostLen > len)
+			{
+				LogPrint (eLogError, "I2CP: BlindingInfo host is malformed");
+				Terminate ();
+				return;
+			}
+			host.assign ((const char *)buf + offset, hostLen);
+			offset += hostLen;
+			break;
+		}
+		case TYPE_DEST:
+		{
+			auto identity = std::make_shared<i2p::data::IdentityEx> ();
+			size_t identityLen = identity->FromBuffer (buf + offset, len - offset);
+			if (!identityLen || offset + identityLen > len)
+			{
+				LogPrint (eLogError, "I2CP: BlindingInfo destination is malformed");
+				Terminate ();
+				return;
+			}
+			auto identityKey = identity->GetSigningPublicKeyBuffer ();
+			auto identityKeyLen = identity->GetSigningPublicKeyLen ();
+			if (!identityKey || !identityKeyLen)
+			{
+				LogPrint (eLogError, "I2CP: BlindingInfo destination has no signing public key");
+				Terminate ();
+				return;
+			}
+			key = MakeBlindingInfoKey (identity->GetSigningKeyType (), identityKey, identityKeyLen);
+			info.identity = identity;
+			offset += identityLen;
+			break;
+		}
+		case TYPE_KEY:
+		{
+			if (offset + 2 > len)
+			{
+				LogPrint (eLogError, "I2CP: BlindingInfo key type is truncated");
+				Terminate ();
+				return;
+			}
+			uint16_t keyType = bufbe16toh (buf + offset);
+			offset += 2;
+			std::unique_ptr<i2p::crypto::Verifier> verifier (
+				i2p::data::IdentityEx::CreateVerifier ((i2p::data::SigningKeyType)keyType));
+			if (!verifier)
+			{
+				LogPrint (eLogError, "I2CP: BlindingInfo unsupported endpoint key type ", keyType);
+				Terminate ();
+				return;
+			}
+			auto keyLen = verifier->GetPublicKeyLen ();
+			if (!keyLen || offset + keyLen > len)
+			{
+				LogPrint (eLogError, "I2CP: BlindingInfo key is truncated");
+				Terminate ();
+				return;
+			}
+			key = MakeBlindingInfoKey ((i2p::data::SigningKeyType)keyType, buf + offset, keyLen);
+			offset += keyLen;
+			break;
+		}
+		default:
+			LogPrint (eLogError, "I2CP: BlindingInfo bad endpoint type ", (int)endpointType);
+			Terminate ();
+			return;
+		}
+		info.authType = authType;
+		if (authType != 0)
+		{
+			if (offset + 32 > len)
+			{
+				LogPrint (eLogError, "I2CP: BlindingInfo auth key is truncated");
+				Terminate ();
+				return;
+			}
+			info.authPrivateKey.assign (buf + offset, buf + offset + 32);
+			offset += 32;
+		}
+		if (flags & FLAG_SECRET)
+		{
+			if (offset + 1 > len)
+			{
+				LogPrint (eLogError, "I2CP: BlindingInfo secret is truncated");
+				Terminate ();
+				return;
+			}
+			uint8_t secretLen = buf[offset++];
+			if (offset + secretLen > len)
+			{
+				LogPrint (eLogError, "I2CP: BlindingInfo secret is malformed");
+				Terminate ();
+				return;
+			}
+			info.secret.assign ((const char *)buf + offset, secretLen);
+			offset += secretLen;
+		}
+		if (offset != len)
+		{
+			LogPrint (eLogError, "I2CP: BlindingInfo has ", len - offset, " trailing bytes");
+			Terminate ();
+			return;
+		}
+		if (endpointType == TYPE_HASH || endpointType == TYPE_HOST)
+		{
+			// Java's handleBlindingInfo() cannot use these either.
+			LogPrint (eLogWarning, "I2CP: BlindingInfo endpoint type ", (int)endpointType, " is not supported",
+				endpointType == TYPE_HOST ? (": " + host) : "");
+			return;
+		}
+		LogPrint (eLogDebug, "I2CP: BlindingInfo for ", info.identity ? info.identity->GetIdentHash ().ToBase32 () : "a signing key",
+			", auth type ", (int)authType, ", expires ", expiration);
+		StoreBlindingInfo (std::move (key), std::move (info));
 	}
 
 	void I2CPSession::SendHostReplyMessage (
@@ -1223,6 +1569,7 @@ namespace client
 		m_MessagesHandlers[I2CP_SEND_MESSAGE_EXPIRES_MESSAGE] = &I2CPSession::SendMessageExpiresMessageHandler;
 		m_MessagesHandlers[I2CP_HOST_LOOKUP_MESSAGE] = &I2CPSession::HostLookupMessageHandler;
 		m_MessagesHandlers[I2CP_DEST_LOOKUP_MESSAGE] = &I2CPSession::DestLookupMessageHandler;
+		m_MessagesHandlers[I2CP_BLINDING_INFO_MESSAGE] = &I2CPSession::BlindingInfoMessageHandler;
 		m_MessagesHandlers[I2CP_GET_BANDWIDTH_LIMITS_MESSAGE] = &I2CPSession::GetBandwidthLimitsMessageHandler;
 	}
 

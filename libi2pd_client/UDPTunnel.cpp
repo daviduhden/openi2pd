@@ -63,7 +63,8 @@ namespace client
 		}
 	}
 
-	void I2PUDPServerTunnel::HandleRecvFromI2PRaw (uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len)
+	void I2PUDPServerTunnel::HandleRecvFromI2PRaw (
+		uint8_t /*protocol*/, uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len)
 	{
 		if (m_LastSession && (fromPort != m_LastSession->RemotePort || toPort != m_LastSession->LocalPort))
 		{
@@ -507,7 +508,8 @@ namespace client
 				std::placeholders::_3, std::placeholders::_4, std::placeholders::_5, std::placeholders::_6),
 			m_inPort);
 		dgram->SetRawReceiver (std::bind (&I2PUDPServerTunnel::HandleRecvFromI2PRaw, this, std::placeholders::_1,
-								   std::placeholders::_2, std::placeholders::_3, std::placeholders::_4),
+								   std::placeholders::_2, std::placeholders::_3, std::placeholders::_4,
+								   std::placeholders::_5),
 			m_inPort);
 		m_StatsTimer.reset (new boost::asio::steady_timer (m_LocalDest->GetService ()));
 		ScheduleStatsTimer ();
@@ -655,7 +657,7 @@ namespace client
 				std::placeholders::_3, std::placeholders::_4, std::placeholders::_5, std::placeholders::_6));
 
 		dgram->SetRawReceiver (std::bind (&I2PUDPClientTunnel::HandleRecvFromI2PRaw, this, std::placeholders::_1,
-			std::placeholders::_2, std::placeholders::_3, std::placeholders::_4));
+			std::placeholders::_2, std::placeholders::_3, std::placeholders::_4, std::placeholders::_5));
 
 		m_LocalDest->Start ();
 		if (m_ResolveThread == nullptr)
@@ -896,13 +898,14 @@ namespace client
 				}
 				if (options->Get (UDP_SESSION_ACKED, seqn)) Acked (seqn);
 			}
-			if (len > 0) HandleRecvFromI2PRaw (fromPort, toPort, buf, len);
+			if (len > 0) HandleRecvFromI2PRaw (i2p::client::PROTOCOL_TYPE_RAW, fromPort, toPort, buf, len);
 		}
 		else
 			LogPrint (eLogWarning, "UDP Client: Unwarranted traffic from ", from.GetIdentHash ().ToBase32 ());
 	}
 
-	void I2PUDPClientTunnel::HandleRecvFromI2PRaw (uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len)
+	void I2PUDPClientTunnel::HandleRecvFromI2PRaw (
+		uint8_t /*protocol*/, uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len)
 	{
 		m_LastReceivedTime = i2p::util::GetMillisecondsSinceEpoch ();
 		std::shared_ptr<UDPConvo> convo;

@@ -1576,6 +1576,11 @@ namespace transport
 	void SSU2Server::SetVersion (int version)
 	{
 #if OPENSSL_PQ
+#ifdef LIBRESSL_VERSION_NUMBER
+		// ML-KEM-512 is not available in LibreSSL; do not advertise a
+		// version that a session cannot actually establish.
+		if (version == 3) version = 2;
+#endif
 		m_Version = version;
 #endif
 	}

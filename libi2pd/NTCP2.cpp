@@ -2014,7 +2014,7 @@ namespace transport
 				if (AddNTCP2Session (conn))
 				{
 					auto timer = std::make_shared<boost::asio::steady_timer> (GetService ());
-					auto timeout = NTCP2_CONNECT_TIMEOUT * 5;
+					auto timeout = NTCP2_CONNECT_TIMEOUT; // Java NTCPTransport.ESTABLISH_TIMEOUT
 					conn->SetTerminationTimeout (timeout * 2);
 					timer->expires_after (std::chrono::seconds (timeout));
 					timer->async_wait (
@@ -2243,7 +2243,7 @@ namespace transport
 				if (this->AddNTCP2Session (conn))
 				{
 					auto timer = std::make_shared<boost::asio::steady_timer> (GetService ());
-					auto timeout = NTCP2_CONNECT_TIMEOUT * 5;
+					auto timeout = NTCP2_CONNECT_TIMEOUT; // Java NTCPTransport.ESTABLISH_TIMEOUT
 					conn->SetTerminationTimeout (timeout * 2);
 					timer->expires_after (std::chrono::seconds (timeout));
 					timer->async_wait (

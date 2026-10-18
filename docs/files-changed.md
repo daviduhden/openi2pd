@@ -211,3 +211,23 @@ Project C/C++/Java, scripts, CMake/Make, Android resources/Gradle, desktop/servi
 - `.clang-format` — C++ and Java formatting profiles for the maintained source tree.
 
 - `man/i2pd.1`, `man/i2pd-tui.1`, `man/i2pdctl.1` — portable mdoc manual pages; CMake/Debian installation updated.
+
+- `tests/interop/README.md`, `tests/interop/check-reference.sh` — pinned Java reference and controlled differential-test harness.
+
+## Java 2.13.0 static-interop pass
+
+- `docs/INTEROPERABILITY.md` — second audit table, corrections and remaining gaps.
+- `tests/interop/README.md`, `tests/interop/check-reference.sh` — pinned reference and controlled harness.
+- `libi2pd/SSU2Session.cpp/.h`, `libi2pd/SSU2.cpp`, `libi2pd/RouterInfo.cpp` — SSU2 and RouterInfo transport corrections.
+- `libi2pd/LeaseSet.cpp/.h`, `libi2pd/NetDb.cpp` — LeaseSet store binding/validation and netDb replay/race fixes.
+- `libi2pd/ECIESX25519AEADRatchetSession.cpp`, `libi2pd/Garlic.cpp/.h`, `libi2pd/Elligator.cpp` — ratchet freshness, PQ NSR, replay cache and parser/boundary fixes.
+- `libi2pd/Datagram.cpp`, `libi2pd/Streaming.cpp/.h`, `libi2pd/Destination.cpp` — multi-key matching, RESET and Datagram2 minimum.
+- `libi2pd_client/SAM.cpp/.h`, `libi2pd_client/I2CP.cpp` — SAM version/connect/ports and I2CP HostLookup/b33 corrections.
+- `libi2pd/Transports.cpp`, `libi2pd/RouterContext.cpp` — LibreSSL PQ capability clamping.
+
+- `TODO.md`, `ROADMAP.md`, `PROGRESS.md` — synchronized with stable I2P-001..I2P-013 workstreams and static/dynamic validation distinctions.
+
+- `tests/interop/FIXTURES.md`, `tests/interop/check-vectors.pl`, `tests/interop/vectors/` — executable static fixture matrix and validator (24 static cases, 1 known checksum gap; no Java output captured).
+- `docs/INTEROPERABILITY.md` — I2P-001..I2P-013 evidence table with Java/C++ references and explicit static/dynamic status.
+
+- `libi2pd/TransitTunnel.cpp`, `libi2pd/SSU2Session.*`, `libi2pd/LeaseSet.cpp/.h`, `libi2pd_client/SAM.cpp` — security-review fixes for OBGW tunnel ID 0, SSU2 reorder/fragment counts, HolePunch DateTime, Meta LS freshness and invalid SAM SEND.

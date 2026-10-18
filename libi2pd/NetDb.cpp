@@ -431,6 +431,11 @@ namespace data
 			auto leaseSet = std::make_shared<LeaseSet> (buf, len, false); // we don't need leases in netdb
 			if (leaseSet->IsValid () && leaseSet->GetIdentity () && leaseSet->GetIdentity ()->GetIdentHash () == ident)
 			{
+				if (it != m_LeaseSets.end () && leaseSet->GetExpirationTime () <= it->second->GetExpirationTime ())
+				{
+					LogPrint (eLogDebug, "NetDb: LeaseSet is older than existing LS2: ", ident.ToBase32 ());
+					return false;
+				}
 				if (CheckLogLevel (eLogInfo)) LogPrint (eLogInfo, "NetDb: LeaseSet added: ", ident.ToBase32 ());
 				m_LeaseSets[ident] = leaseSet;
 				updated = true;
@@ -447,13 +452,12 @@ namespace data
 		auto leaseSet = std::make_shared<LeaseSet2> (storeType, buf, len, false); // we don't need leases in netdb
 		if (leaseSet->IsValid ())
 		{
-			// Standard LeaseSet2 entries are indexed by the destination hash
-			// embedded in the buffer. Encrypted LeaseSet2 uses the blinded store
-			// hash as key instead, so it cannot be compared to the identity.
-			if (storeType != NETDB_STORE_TYPE_ENCRYPTED_LEASESET2
-				&& (!leaseSet->GetIdentity () || leaseSet->GetIdentity ()->GetIdentHash () != ident))
+			// Standard LS2 is indexed by the destination hash; encrypted LS2 by
+			// SHA256(blinded sig type || blinded public key). Never accept a
+			// valid entry under the wrong store key.
+			if (!leaseSet->IsStoreKey (ident))
 			{
-				LogPrint (eLogError, "NetDb: LeaseSet2 identity does not match store key: ", ident.ToBase32 ());
+				LogPrint (eLogError, "NetDb: LeaseSet2 does not match store key: ", ident.ToBase32 ());
 				return false;
 			}
 			std::lock_guard<std::mutex> lock (m_LeaseSetsMutex);
@@ -470,9 +474,10 @@ namespace data
 				}
 				else
 				{
+					// Do not evict a currently valid entry because a replay or an
+					// expired replacement arrived.
 					LogPrint (
 						eLogWarning, "NetDb: Unpublished or expired or future LeaseSet2 received: ", ident.ToBase32 ());
-					m_LeaseSets.erase (ident);
 				}
 			}
 		}
@@ -717,8 +722,21 @@ namespace data
 		}
 
 		int updatedCount = 0, deletedCount = 0, deletedFloodfillsCount = 0;
-		auto total = m_RouterInfos.size ();
-		auto totalFloodfills = m_Floodfills.GetSize ();
+		// SaveUpdated runs outside the transport threads. Snapshot the map under
+		// the same mutex used by insert/erase so iteration cannot be invalidated.
+		std::vector<std::pair<IdentHash, std::shared_ptr<RouterInfo>>> routers;
+		{
+			std::lock_guard<std::mutex> l (m_RouterInfosMutex);
+			routers.reserve (m_RouterInfos.size ());
+			for (const auto & [ident, router] : m_RouterInfos)
+				routers.emplace_back (ident, router);
+		}
+		auto total = routers.size ();
+		size_t totalFloodfills = 0;
+		{
+			std::lock_guard<std::mutex> l (m_FloodfillsMutex);
+			totalFloodfills = m_Floodfills.GetSize ();
+		}
 		uint64_t expirationTimeout = NETDB_MAX_EXPIRATION_TIMEOUT * 1000LL;
 		uint64_t ts = i2p::util::GetMillisecondsSinceEpoch ();
 		auto uptime = i2p::context.GetUptime ();
@@ -740,7 +758,7 @@ namespace data
 		std::list<std::string> removeFromDisk;
 
 		auto own = i2p::context.GetSharedRouterInfo ();
-		for (auto [ident, r] : m_RouterInfos)
+		for (const auto & [ident, r] : routers)
 		{
 			if (!r || r == own) continue; // skip own
 			if (r->IsBufferScheduledToDelete ()) // from previous SaveUpdated, we assume m_PersistingRouters complete
@@ -998,14 +1016,16 @@ namespace data
 
 		if (replyToken && context.IsFloodfill () && updated)
 		{
-			// flood updated
-			auto floodMsg = NewI2NPShortMessage ();
+			// flood updated. Size the message for the actual entry: a valid
+			// Meta/LS2 may be close to MAX_LS_BUFFER_SIZE and not fit the
+			// fixed short-message buffer together with the DSM header.
+			size_t msgLen = len - payloadOffset;
+			auto floodMsg = NewI2NPMessage (DATABASE_STORE_HEADER_SIZE + msgLen);
 			uint8_t * payload = floodMsg->GetPayload ();
 			memcpy (payload, buf, 33); // key + type
 			htobe32buf (payload + DATABASE_STORE_REPLY_TOKEN_OFFSET, 0); // zero reply token
-			size_t msgLen = len - payloadOffset;
 			floodMsg->len += DATABASE_STORE_HEADER_SIZE + msgLen;
-			if (floodMsg->len < floodMsg->maxLen)
+			if (floodMsg->len <= floodMsg->maxLen)
 			{
 				memcpy (payload + DATABASE_STORE_HEADER_SIZE, buf + payloadOffset, msgLen);
 				floodMsg->FillI2NPMessageHeader (eI2NPDatabaseStore);
@@ -1090,8 +1110,20 @@ namespace data
 				auto router = FindRouter (ident);
 				if (router && !router->IsUnreachable ())
 				{
-					LogPrint (eLogDebug, "NetDb: Requested RouterInfo ", key, " found");
-					if (PopulateRouterInfoBuffer (router)) replyMsg = CreateDatabaseStoreMsg (router);
+					// HandleDatabaseLookupMessageJob.EXPIRE_DELAY: do not send
+					// RouterInfos older than one hour, except our own. Apply
+					// the rule only here, not to LeaseSet or Meta LS replies.
+					// Allow the two-minute rejection threshold for clock skew.
+					bool isSelf = ident == i2p::context.GetIdentHash ();
+					uint64_t maxAge = (uint64_t) NETDB_FLOODFILL_EXPIRATION_TIMEOUT * 1000LL
+						+ (uint64_t) NETDB_EXPIRATION_TIMEOUT_THRESHOLD * 1000LL;
+					if (isSelf || router->GetTimestamp () + maxAge >= i2p::util::GetMillisecondsSinceEpoch ())
+					{
+						LogPrint (eLogDebug, "NetDb: Requested RouterInfo ", key, " found");
+						if (PopulateRouterInfoBuffer (router)) replyMsg = CreateDatabaseStoreMsg (router);
+					}
+					else
+						LogPrint (eLogDebug, "NetDb: Requested RouterInfo ", key, " is too old, not sent");
 				}
 			}
 
@@ -1142,35 +1174,70 @@ namespace data
 		{
 			if (replyTunnelID)
 			{
-				// encryption might be used though tunnel only
-				if (flag & (DATABASE_LOOKUP_ENCRYPTION_FLAG | DATABASE_LOOKUP_ECIES_FLAG)) // encrypted reply requested
+				// encryption might be used though tunnel only. Reply key block:
+				//   0x02 only: 32-byte session key, count, count*32-byte tags (ElGamal/AES)
+				//   0x10 only: 32-byte session key, count, count*8-byte tags (ECIES)
+				//   0x12:      32-byte ratchet public key, no count and no tag
+				// DatabaseLookupMessage.readMessage, proposal 154.
+				bool encryptReply = flag & DATABASE_LOOKUP_ENCRYPTION_FLAG;
+				bool ratchetReply = flag & DATABASE_LOOKUP_RATCHET_FLAG;
+				if (encryptReply || ratchetReply)
 				{
-					// session key (32) + numTags (1), then the tag itself: 8 bytes for ECIES, 32 for ElGamal
-					size_t tagLen = (flag & DATABASE_LOOKUP_ECIES_FLAG) ? 8 : 32;
-					if ((size_t)(excluded - buf) + 33 + tagLen > msg->GetPayloadLength ())
-						LogPrint (eLogWarning, "NetDb: DatabaseLookup reply key block is truncated");
+					const uint8_t * replyKey = excluded;
+					size_t available = msg->GetPayloadLength () - (excluded - buf);
+					if (encryptReply && ratchetReply)
+					{
+						// ECIES to ECIES (proposal 154): the enclosed 32-byte
+						// ratchet public key is the one-time target, with no
+						// tag block. Proposal 154's derived-key Existing
+						// Session KDF is still marked TBD and Java 2.13 does
+						// not implement it, so use the standard ECIES New
+						// Session (Noise_N) wrapping to that key. Fail closed
+						// if it is truncated; never fall back to cleartext.
+						if (available < 32)
+						{
+							LogPrint (eLogWarning, "NetDb: DatabaseLookup ratchet public key is truncated");
+							return;
+						}
+						replyMsg = i2p::garlic::WrapECIESX25519MessageForRouter (replyMsg, replyKey);
+						if (!replyMsg)
+						{
+							LogPrint (eLogError, "NetDb: Failed to wrap ratchet reply");
+							return;
+						}
+					}
 					else
 					{
-						const uint8_t * sessionKey = excluded;
-						const uint8_t numTags = excluded[32];
-						if (numTags)
+						size_t tagLen = ratchetReply ? 8 : 32;
+						if (available < 33)
 						{
-							if (flag & DATABASE_LOOKUP_ECIES_FLAG)
-							{
-								uint64_t tag;
-								memcpy (&tag, excluded + 33, 8);
-								replyMsg = i2p::garlic::WrapECIESX25519Message (replyMsg, sessionKey, tag);
-							}
-							else
-							{
-								const i2p::garlic::SessionTag sessionTag (excluded + 33); // take first tag
-								i2p::garlic::ElGamalAESSession garlic (sessionKey, sessionTag);
-								replyMsg = garlic.WrapSingleMessage (replyMsg);
-							}
-							if (!replyMsg) LogPrint (eLogError, "NetDb: Failed to wrap message");
+							LogPrint (eLogWarning, "NetDb: DatabaseLookup reply key block is truncated");
+							return;
+						}
+						const uint8_t numTags = replyKey[32];
+						if (numTags < 1 || numTags > DATABASE_LOOKUP_MAX_NUM_TAGS
+							|| available < 33 + (size_t) numTags * tagLen)
+						{
+							LogPrint (eLogWarning, "NetDb: DatabaseLookup reply tags are invalid or truncated");
+							return;
+						}
+						if (ratchetReply)
+						{
+							uint64_t tag;
+							memcpy (&tag, replyKey + 33, 8); // take first tag
+							replyMsg = i2p::garlic::WrapECIESX25519Message (replyMsg, replyKey, tag);
 						}
 						else
-							LogPrint (eLogWarning, "NetDb: Encrypted reply requested but no tags provided");
+						{
+							const i2p::garlic::SessionTag sessionTag (replyKey + 33); // take first tag
+							i2p::garlic::ElGamalAESSession garlic (replyKey, sessionTag);
+							replyMsg = garlic.WrapSingleMessage (replyMsg);
+						}
+						if (!replyMsg)
+						{
+							LogPrint (eLogError, "NetDb: Failed to wrap message");
+							return;
+						}
 					}
 				}
 				bool direct = true;

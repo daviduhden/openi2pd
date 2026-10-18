@@ -12,6 +12,7 @@
 #include <string.h>
 #include "I2PEndian.h"
 #include <fstream>
+#include <algorithm>
 #include <limits>
 #include <memory>
 #include <charconv>
@@ -341,16 +342,20 @@ namespace data
 				}
 				else if (key == "pq")
 				{
-					if (address->transportStyle == eTransportNTCP2)
+					// Java publishes SSU2 as a comma-separated preference list, e.g.
+					// "4,3". Keep the strongest value we understand instead of
+					// silently downgrading to non-PQ.
+					int best = 0, maxVersion = 0;
+					if (address->transportStyle == eTransportNTCP2) maxVersion = 5;
+					else if (address->transportStyle == eTransportSSU2) maxVersion = 4;
+					if (maxVersion)
 					{
-						if (value.size () == 1 && value[0] >= '3' && value[0] <= '5') // only 3,4,5 allowed
-							address->v = value[0] - '0';
-					}
-					else if (address->transportStyle == eTransportSSU2)
-					{
-						if (value.size () == 1 && value[0] >= '3'
-							&& value[0] <= '4') // only 3,4 allowed, TODO: support multiple values
-							address->v = value[0] - '0';
+						for (char ch : value)
+						{
+							if (ch >= '3' && ch <= '0' + maxVersion)
+								best = std::max (best, ch - '0');
+						}
+						if (best) address->v = best;
 					}
 				}
 				else if (key[0] == 'i')

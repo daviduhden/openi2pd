@@ -1,0 +1,31 @@
+{
+   "expect" : {
+      "ok" : false
+   },
+   "expectation" : "reject",
+   "format" : "hex",
+   "id" : "i2np-dblookup-excluded-overrun",
+   "input" : "i2np-dblookup-excluded-overrun.hex",
+   "kind" : "i2np",
+   "license" : "BSD-3-Clause",
+   "provenance" : {
+      "java" : [
+         {
+            "contains" : "int numPeers",
+            "line" : 385,
+            "path" : "router/java/src/net/i2p/data/i2np/DatabaseLookupMessage.java"
+         },
+         {
+            "contains" : "buffer overrun",
+            "line" : 425,
+            "path" : "router/java/src/net/i2p/data/i2np/DatabaseLookupMessage.java"
+         }
+      ],
+      "spec" : [
+         "i2np#database-lookup",
+         "i2np#database-search-reply",
+         "i2np#message-header"
+      ]
+   },
+   "sha256" : "8a6beb6314c20ad8d17ab72be67d95db8d2d0af40bc4b849f12f2cf7c9b9328b"
+}

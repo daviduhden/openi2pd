@@ -1,0 +1,53 @@
+{
+   "expect" : {
+      "ok" : true,
+      "value" : {
+         "checksum_valid" : true,
+         "database_search_reply" : {
+            "from" : "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+            "key" : "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+            "peers" : []
+         },
+         "expiration" : 1700000000000,
+         "message_id" : 287454020,
+         "size" : 65,
+         "type" : 3
+      }
+   },
+   "expectation" : "accept",
+   "format" : "hex",
+   "id" : "i2np-dbsr-empty",
+   "input" : "i2np-dbsr-empty.hex",
+   "kind" : "i2np",
+   "license" : "BSD-3-Clause",
+   "provenance" : {
+      "java" : [
+         {
+            "contains" : "MESSAGE_TYPE = 3",
+            "line" : 26,
+            "path" : "router/java/src/net/i2p/data/i2np/DatabaseSearchReplyMessage.java"
+         },
+         {
+            "contains" : "_key = Hash.create",
+            "line" : 67,
+            "path" : "router/java/src/net/i2p/data/i2np/DatabaseSearchReplyMessage.java"
+         },
+         {
+            "contains" : "int num = data[curIndex]",
+            "line" : 71,
+            "path" : "router/java/src/net/i2p/data/i2np/DatabaseSearchReplyMessage.java"
+         },
+         {
+            "contains" : "_from = Hash.create",
+            "line" : 85,
+            "path" : "router/java/src/net/i2p/data/i2np/DatabaseSearchReplyMessage.java"
+         }
+      ],
+      "spec" : [
+         "i2np#database-lookup",
+         "i2np#database-search-reply",
+         "i2np#message-header"
+      ]
+   },
+   "sha256" : "4d22cc0398f485a57ea5637e9d50de8c6273314cba558040fee52c3e4784e8b7"
+}

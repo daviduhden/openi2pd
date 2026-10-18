@@ -1,0 +1,25 @@
+{
+   "expect" : {
+      "ok" : false
+   },
+   "expectation" : "reject",
+   "format" : "hex",
+   "id" : "i2cp-hostlookup-truncated",
+   "input" : "i2cp-hostlookup-truncated.hex",
+   "kind" : "i2cp",
+   "license" : "BSD-3-Clause",
+   "provenance" : {
+      "java" : [
+         {
+            "contains" : "Hash.create(in)",
+            "line" : 192,
+            "path" : "core/java/src/net/i2p/data/i2cp/HostLookupMessage.java"
+         }
+      ],
+      "spec" : [
+         "i2cp#host-lookup",
+         "i2cp#blinding-info"
+      ]
+   },
+   "sha256" : "843b72b1570c9985252abd417bbedbcb21b544955fe1c45095e92b529f6c68d7"
+}

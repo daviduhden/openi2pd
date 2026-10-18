@@ -214,6 +214,14 @@ namespace stream
 		bool IsEstablished () const { return m_SendStreamID; };
 		bool IsIncoming () const { return m_IsIncoming; };
 		StreamStatus GetStatus () const { return m_Status; };
+		// SAM 3.2 stream notifications: remote (peer) port and local port.
+		uint16_t GetRemotePort () const { return m_Port; };
+		uint16_t GetLocalPort () const { return m_LocalPort; };
+		void SetPorts (uint16_t remotePort, uint16_t localPort)
+		{
+			m_Port = remotePort;
+			m_LocalPort = localPort;
+		};
 		StreamingDestination & GetLocalDestination () { return m_LocalDestination; };
 		boost::asio::io_context & GetService () { return m_Service; };
 		void ResetRoutingPath ();
@@ -252,6 +260,7 @@ namespace stream
 		void SendBuffer ();
 		void SendQuickAck ();
 		void SendClose ();
+		void SendReset ();
 		bool SendPacket (Packet * packet);
 		void SendPackets (const std::list<Packet *> & packets);
 		void SendUpdatedLeaseSet ();
@@ -293,7 +302,7 @@ namespace stream
 		bool m_IsIncoming, m_IsAckSendScheduled, m_IsNAcked, m_IsFirstACK, m_IsResendNeeded, m_IsFirstRttSample,
 			m_IsSendTime, m_IsWinDropped, m_IsChoking2, m_IsChoking3, m_IsClientChoked, m_IsClientChoked2,
 			m_IsTimeOutResend, m_IsImmediateAckRequested, m_IsRemoteLeaseChangeInProgress, m_IsBufferEmpty,
-			m_IsJavaClient, m_DontSign;
+			m_IsJavaClient, m_DontSign, m_IsResetReceived = false;
 		StreamingDestination & m_LocalDestination;
 		// own reference to the pool: the destination can be gone by the time we are destroyed
 		std::shared_ptr<const i2p::data::IdentityEx> m_RemoteIdentity;
@@ -310,7 +319,7 @@ namespace stream
 		std::list<Packet *> m_NACKedPackets;
 		boost::asio::steady_timer m_ReceiveTimer, m_SendTimer, m_ResendTimer, m_AckSendTimer;
 		size_t m_NumSentBytes, m_NumReceivedBytes;
-		uint16_t m_Port;
+		uint16_t m_Port, m_LocalPort;
 
 		SendBufferQueue m_SendBuffer;
 		double m_RTT, m_MinRTT, m_SlowRTT, m_FastRTT;
@@ -361,6 +370,10 @@ namespace stream
 
 		void HandleDataMessagePayload (
 			const uint8_t * buf, size_t len, i2p::garlic::ECIESX25519AEADRatchetSession * from);
+		// SAM 3.2 incoming stream port reporting; fromPort is the peer source port,
+		// toPort is the destination port selected by the Data message.
+		void HandleDataMessagePayload (uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len,
+			i2p::garlic::ECIESX25519AEADRatchetSession * from);
 		std::shared_ptr<I2NPMessage> CreateDataMessage (
 			const uint8_t * payload, size_t len, uint16_t toPort, bool checksum = true, bool gzip = false);
 
@@ -386,6 +399,7 @@ namespace stream
 		std::unordered_map<uint32_t, std::shared_ptr<Stream>> m_Streams; // sendStreamID->stream
 		std::unordered_map<uint32_t, std::shared_ptr<Stream>> m_IncomingStreams; // receiveStreamID->stream
 		std::shared_ptr<Stream> m_LastStream;
+		uint16_t m_LastFromPort = 0, m_LastToPort = 0;
 		Acceptor m_Acceptor;
 		PongHandler m_PongHandler;
 		std::list<std::shared_ptr<Stream>> m_PendingIncomingStreams;

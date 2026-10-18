@@ -275,6 +275,42 @@ namespace garlic
 #endif
 	}
 
+	static bool ValidateNewSessionPayload (const uint8_t * buf, size_t len)
+	{
+		bool gotDateTime = false, gotPadding = false;
+		size_t offset = 0;
+		while (offset < len)
+		{
+			if (offset + 3 > len) return false;
+			uint8_t type = buf[offset++];
+			uint16_t size = bufbe16toh (buf + offset);
+			offset += 2;
+			if (gotPadding || offset + size > len) return false;
+			switch (type)
+			{
+				case eECIESx25519BlkDateTime:
+				{
+					if (size != 4 || gotDateTime) return false;
+					gotDateTime = true;
+					uint32_t timestamp = bufbe32toh (buf + offset);
+					auto now = i2p::util::GetSecondsSinceEpoch ();
+					if (timestamp + 300 < now || timestamp > now + 120) return false;
+					break;
+				}
+				case eECIESx25519BlkGalicClove:
+				case eECIESx25519BlkOptions:
+				case eECIESx25519BlkAck:
+				case eECIESx25519BlkAckRequest: break;
+				case eECIESx25519BlkPadding: gotPadding = true; break;
+				case eECIESx25519BlkTermination:
+				case eECIESx25519BlkSessionID:
+				default: return false; // illegal/unknown in a handshake
+			}
+			offset += size;
+		}
+		return gotDateTime;
+	}
+
 	bool ECIESX25519AEADRatchetSession::HandleNewIncomingSession (const uint8_t * buf, size_t len)
 	{
 		if (!GetOwner ()) return false;
@@ -286,80 +322,105 @@ namespace garlic
 			LogPrint (eLogError, "Garlic: Can't decode elligator");
 			return false;
 		}
+		if (GetOwner ()->IsDuplicateNewSessionKey (m_Aepk))
+		{
+			LogPrint (eLogWarning, "Garlic: Duplicate ECIES-X25519 new session ephemeral key");
+			return false;
+		}
 		buf += 32;
 		len -= 32;
 
-		uint8_t sharedSecret[32];
-		bool decrypted = false;
-		auto cryptoType = GetOwner ()->GetRatchetsHighestCryptoType ();
+		// The sender selects one key from our published LeaseSet and is not
+		// required to use the strongest one, so try every ratchet key type we
+		// advertise. The list is fixed and bounded; no attacker-supplied type
+		// is accepted.
+		static constexpr i2p::data::CryptoKeyType candidates[] = {
+			i2p::data::CRYPTO_KEY_TYPE_ECIES_MLKEM1024_X25519_AEAD,
+			i2p::data::CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD,
+			i2p::data::CRYPTO_KEY_TYPE_ECIES_MLKEM512_X25519_AEAD,
+			i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD };
+		bool hasCandidates = false;
+		for (auto cryptoType : candidates)
+		{
+			if (cryptoType > i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD)
+			{
 #if OPENSSL_PQ
-		if (cryptoType > i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD) // we support post quantum
-		{
-			i2p::crypto::InitNoiseIKStateMLKEM (
-				GetNoiseState (), cryptoType, GetOwner ()->GetEncryptionPublicKey (cryptoType)); // bpk
-			MixHash (m_Aepk, 32); // h = SHA256(h || aepk)
-
-			if (GetOwner ()->Decrypt (m_Aepk, sharedSecret, cryptoType)) // x25519(bsk, aepk)
-			{
-				MixKey (sharedSecret);
-
-				auto keyLen = i2p::crypto::GetMLKEMPublicKeyLen (cryptoType);
-				if (keyLen + 16 < len && keyLen)
-				{
-					std::vector<uint8_t> encapsKey (keyLen);
-					if (Decrypt (buf, encapsKey.data (), keyLen))
-					{
-						decrypted = true; // encaps section has right hash
-						MixHash (buf, keyLen + 16);
-						buf += keyLen + 16;
-						len -= keyLen + 16;
-
-						m_PQKeys = i2p::crypto::CreateMLKEMKeys (cryptoType);
-						if (!m_PQKeys || !m_PQKeys->SetPublicKey (encapsKey.data ())) return false;
-					}
-				}
-				// if PQ failed it's valid situation meaning regular ECIES_X25519(type 4)
-			}
-		}
+				// LibreSSL does not provide ML-KEM-512.
+				if (!i2p::crypto::IsMLKEMSupported (cryptoType)) continue;
+#else
+				continue;
 #endif
-		if (!decrypted)
-		{
-			if (cryptoType == i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD
-				|| GetOwner ()->SupportsEncryptionType (i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD))
-			{
-				cryptoType = i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD;
-				i2p::crypto::InitNoiseIKState (GetNoiseState (),
-					GetOwner ()->GetEncryptionPublicKey (i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD)); // bpk
-				MixHash (m_Aepk, 32); // h = SHA256(h || aepk)
+			}
+			if (!GetOwner ()->SupportsEncryptionType (cryptoType) || !GetOwner ()->GetEncryptionPublicKey (cryptoType))
+				continue;
+			hasCandidates = true;
+			if (HandleNewIncomingSessionCandidate (cryptoType, buf, len)) return true;
+		}
 
-				if (!GetOwner ()->Decrypt (
-						m_Aepk, sharedSecret, i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD)) // x25519(bsk, aepk)
-				{
-					LogPrint (eLogWarning, "Garlic: Incorrect Alice ephemeral key");
-					return false;
-				}
-				MixKey (sharedSecret);
-			}
-			else
-			{
-				LogPrint (eLogWarning, "Garlic: No supported encryption type");
+		if (hasCandidates)
+			LogPrint (eLogWarning, "Garlic: New session decryption failed for all supported encryption types");
+		else
+			LogPrint (eLogError, "Garlic: No supported encryption type");
+		return false;
+	}
+
+	bool ECIESX25519AEADRatchetSession::HandleNewIncomingSessionCandidate (
+		i2p::data::CryptoKeyType cryptoType, const uint8_t * buf, size_t len)
+	{
+		auto owner = GetOwner ();
+		if (!owner) return false;
+		const uint8_t * bpk = owner->GetEncryptionPublicKey (cryptoType);
+		if (!bpk) return false;
+		// flags/static section, payload MAC and a mandatory DateTime block
+		static constexpr size_t MIN_PAYLOAD_LEN = 7;
+		if (len < 48 + 16 + MIN_PAYLOAD_LEN) return false;
+
+		// Trial handshake state. The session's Noise state, static key and PQ
+		// key are committed only after every AEAD tag and the payload have
+		// been authenticated.
+		i2p::crypto::NoiseSymmetricState noiseState;
+		uint8_t sharedSecret[32];
+#if OPENSSL_PQ
+		std::unique_ptr<i2p::crypto::MLKEMKeys> pqKeys;
+		if (cryptoType > i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD)
+		{
+			if (!i2p::crypto::IsMLKEMSupported (cryptoType)) return false;
+			auto keyLen = i2p::crypto::GetMLKEMPublicKeyLen (cryptoType);
+			// encrypted ML-KEM public key + MAC before flags/static and payload
+			if (!keyLen || keyLen + 16 + 48 + 16 + MIN_PAYLOAD_LEN > len) return false;
+
+			i2p::crypto::InitNoiseIKStateMLKEM (noiseState, cryptoType, bpk); // bpk
+			noiseState.MixHash (m_Aepk, 32); // h = SHA256(h || aepk)
+			if (!owner->Decrypt (m_Aepk, sharedSecret, cryptoType)) // x25519(bsk, aepk)
 				return false;
-			}
+			noiseState.MixKey (sharedSecret);
+
+			std::vector<uint8_t> encapsKey (keyLen);
+			if (!noiseState.Decrypt (buf, encapsKey.data (), keyLen)) return false; // encaps section has right hash
+			noiseState.MixHash (buf, keyLen + 16);
+			buf += keyLen + 16;
+			len -= keyLen + 16;
+
+			pqKeys = i2p::crypto::CreateMLKEMKeys (cryptoType);
+			if (!pqKeys || !pqKeys->SetPublicKey (encapsKey.data ())) return false;
+		}
+		else
+#else
+		if (cryptoType != i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD) return false;
+#endif
+		{
+			i2p::crypto::InitNoiseIKState (noiseState, bpk); // bpk
+			noiseState.MixHash (m_Aepk, 32); // h = SHA256(h || aepk)
+			if (!owner->Decrypt (m_Aepk, sharedSecret, cryptoType)) // x25519(bsk, aepk)
+				return false;
+			noiseState.MixKey (sharedSecret);
 		}
 
 		// decrypt flags/static
-		if (len < 48)
-		{
-			LogPrint (eLogWarning, "Garlic: Static key section is too short ", len);
-			return false;
-		}
+		if (len < 48) return false;
 		uint8_t fs[32];
-		if (!Decrypt (buf, fs, 32))
-		{
-			LogPrint (eLogWarning, "Garlic: Flags/static section AEAD verification failed ");
-			return false;
-		}
-		MixHash (buf, 48); // h = SHA256(h || ciphertext)
+		if (!noiseState.Decrypt (buf, fs, 32)) return false;
+		noiseState.MixHash (buf, 48); // h = SHA256(h || ciphertext)
 		buf += 48;
 		len -= 48; // 32 data + 16 poly
 
@@ -368,34 +429,39 @@ namespace garlic
 		if (isStatic)
 		{
 			// static key, fs is apk
-			SetRemoteStaticKey (cryptoType, fs);
-			if (!GetOwner ()->Decrypt (fs, sharedSecret, m_RemoteStaticKeyType)) // x25519(bsk, apk)
-			{
-				LogPrint (eLogWarning, "Garlic: Incorrect Alice static key");
+			if (!owner->Decrypt (fs, sharedSecret, cryptoType)) // x25519(bsk, apk)
 				return false;
-			}
-			MixKey (sharedSecret);
+			noiseState.MixKey (sharedSecret);
 		}
 
 		// decrypt payload
-		if (len < 16)
-		{
-			LogPrint (eLogWarning, "Garlic: Payload section is too short ", len);
-			return false;
-		}
+		if (len < 16) return false;
 		std::vector<uint8_t> payload (len - 16); // we must save original ciphertext
-		if (!Decrypt (buf, payload.data (), len - 16))
+		if (!noiseState.Decrypt (buf, payload.data (), len - 16)) return false;
+
+		if (!ValidateNewSessionPayload (payload.data (), len - 16))
 		{
-			LogPrint (eLogWarning, "Garlic: Payload section AEAD verification failed");
+			LogPrint (eLogWarning, "Garlic: Invalid ECIES-X25519 new session payload");
 			return false;
 		}
 
+		// Authenticated: commit the handshake and session state.
+		SetNoiseState (noiseState);
 		m_State = eSessionStateNewSessionReceived;
+#if OPENSSL_PQ
+		m_PQKeys = std::move (pqKeys);
+#endif
 		if (isStatic)
 		{
+			SetRemoteStaticKey (cryptoType, fs);
 			MixHash (buf, len); // h = SHA256(h || ciphertext)
-			GetOwner ()->AddECIESx25519Session (m_RemoteStaticKey, shared_from_this ());
+			owner->AddECIESx25519Session (m_RemoteStaticKey, shared_from_this ());
 		}
+#if OPENSSL_PQ
+		else
+			m_PQKeys = nullptr; // anonymous NS has no reply, don't retain KEM key
+#endif
+		owner->AddNewSessionKey (m_Aepk);
 		HandlePayload (payload.data (), len - 16, nullptr, 0);
 
 		return true;
@@ -406,15 +472,31 @@ namespace garlic
 	{
 		if (len < 3) return;
 		size_t offset = 0;
+		bool gotDateTime = false, gotPadding = false, gotTermination = false;
 		// the block header is three bytes: without all of them the size field below
 		// would be read past the end of the payload
-		while (offset + 3 <= len)
+		while (offset < len)
 		{
+			if (offset + 3 > len)
+			{
+				LogPrint (eLogError, "Garlic: Truncated block header");
+				break;
+			}
 			uint8_t blk = buf[offset];
 			offset++;
 			auto size = bufbe16toh (buf + offset);
 			offset += 2;
 			LogPrint (eLogDebug, "Garlic: Block type ", (int)blk, " of size ", size);
+			if (gotPadding)
+			{
+				LogPrint (eLogError, "Garlic: Block after padding ", (int)blk);
+				break;
+			}
+			if (gotTermination && blk != eECIESx25519BlkPadding)
+			{
+				LogPrint (eLogError, "Garlic: Block after termination ", (int)blk);
+				break;
+			}
 			if (offset + size > len)
 			{
 				LogPrint (eLogError, "Garlic: Unexpected block length ", size);
@@ -427,6 +509,11 @@ namespace garlic
 				break;
 			case eECIESx25519BlkNextKey:
 				LogPrint (eLogDebug, "Garlic: Next key");
+				if (size != 3 && size != 35)
+				{
+					LogPrint (eLogError, "Garlic: Invalid next key block length ", size);
+					break;
+				}
 				if (receiveTagset)
 					HandleNextKey (buf + offset, size, receiveTagset);
 				else
@@ -435,6 +522,11 @@ namespace garlic
 			case eECIESx25519BlkAck:
 			{
 				LogPrint (eLogDebug, "Garlic: Ack");
+				if (size < 4 || (size & 3))
+				{
+					LogPrint (eLogError, "Garlic: Invalid ack block length ", size);
+					break;
+				}
 				int numAcks = size >> 2; // /4
 				auto offset1 = offset;
 				for (auto i = 0; i < numAcks; i++)
@@ -450,17 +542,36 @@ namespace garlic
 			case eECIESx25519BlkAckRequest:
 			{
 				LogPrint (eLogDebug, "Garlic: Ack request");
+				if (size < 1)
+				{
+					LogPrint (eLogError, "Garlic: Invalid ack request length ", size);
+					break;
+				}
 				if (receiveTagset) m_AckRequests.push_back ({ receiveTagset->GetTagSetID (), index });
 				break;
 			}
 			case eECIESx25519BlkTermination:
 				LogPrint (eLogDebug, "Garlic: Termination");
+				if (size < 1)
+				{
+					LogPrint (eLogError, "Garlic: Invalid termination length ", size);
+					break;
+				}
+				gotTermination = true;
 				if (GetOwner ()) GetOwner ()->RemoveECIESx25519Session (m_RemoteStaticKey);
 				if (receiveTagset) receiveTagset->Expire ();
 				break;
-			case eECIESx25519BlkDateTime: LogPrint (eLogDebug, "Garlic: Datetime"); break;
+			case eECIESx25519BlkDateTime:
+				if (size != 4 || gotDateTime)
+				{
+					LogPrint (eLogError, "Garlic: Invalid datetime block");
+					break;
+				}
+				gotDateTime = true;
+				LogPrint (eLogDebug, "Garlic: Datetime");
+				break;
 			case eECIESx25519BlkOptions: LogPrint (eLogDebug, "Garlic: Options"); break;
-			case eECIESx25519BlkPadding: LogPrint (eLogDebug, "Garlic: Padding"); break;
+			case eECIESx25519BlkPadding: LogPrint (eLogDebug, "Garlic: Padding"); gotPadding = true; break;
 			default: LogPrint (eLogWarning, "Garlic: Unknown block type ", (int)blk);
 			}
 			offset += size;
@@ -646,7 +757,11 @@ namespace garlic
 		// KDF2
 		if (isStatic)
 		{
-			GetOwner ()->Decrypt (m_RemoteStaticKey, sharedSecret, m_RemoteStaticKeyType); // x25519 (ask, bpk)
+			if (!GetOwner ()->Decrypt (m_RemoteStaticKey, sharedSecret, m_RemoteStaticKeyType)) // x25519 (ask, bpk)
+			{
+				LogPrint (eLogWarning, "Garlic: Incorrect local static key for encryption type ", m_RemoteStaticKeyType);
+				return false;
+			}
 			MixKey (sharedSecret);
 		}
 		// encrypt payload
@@ -777,6 +892,8 @@ namespace garlic
 		MixHash (m_EphemeralKeys->GetPublicKey (), 32); // h = SHA256(h || bepk)
 		m_N = 0;
 		size_t offset = 40;
+		uint8_t sharedSecret[32];
+		bool restoredCK = false;
 #if OPENSSL_PQ
 		if (m_PQKeys)
 		{
@@ -784,10 +901,10 @@ namespace garlic
 			{
 				size_t cipherTextLen = i2p::crypto::GetMLKEMCipherTextLen (m_RemoteStaticKeyType);
 				std::vector<uint8_t> kemCiphertext (cipherTextLen);
-				uint8_t sharedSecret[32];
 				if (!m_PQKeys || !m_PQKeys->Encaps (kemCiphertext.data (), sharedSecret)) return false;
 
 				memcpy (m_CK, m_NSRCK->data (), 64); // restore key
+				restoredCK = true;
 				if (!Encrypt (kemCiphertext.data (), out + offset, cipherTextLen))
 				{
 					LogPrint (eLogWarning, "Garlic: Next NSR ML-KEM ciphertext section AEAD encryption failed");
@@ -804,6 +921,18 @@ namespace garlic
 			}
 		}
 #endif
+		// The stored NSRCK is captured before the ML-KEM and static-DH mixes, so
+		// the static DH must be mixed again after the new ML-KEM ciphertext.
+		// Without ML-KEM the chain key already contains that mix.
+		if (restoredCK)
+		{
+			if (!m_EphemeralKeys || !m_EphemeralKeys->Agree (m_RemoteStaticKey, sharedSecret)) // sharedSecret = x25519(besk, apk)
+			{
+				LogPrint (eLogWarning, "Garlic: Incorrect Alice static key");
+				return false;
+			}
+			MixKey (sharedSecret);
+		}
 		if (!Encrypt (
 				m_NSRH /* can be anything */, out + offset, 0)) // encrypt, ciphertext = ENCRYPT(k, n, ZEROLEN, ad)
 		{
@@ -811,6 +940,26 @@ namespace garlic
 			return false;
 		}
 		MixHash (out + offset, 16); // h = SHA256(h || ciphertext)
+		if (restoredCK)
+		{
+			// A retransmitted PQ NSR carries a new ML-KEM encapsulation, so its
+			// split keys differ from the previous NSR. Recompute them, and keep
+			// the previous receive tags alive until they expire for in-flight
+			// messages sent before Alice saw this NSR.
+			uint8_t keydata[64];
+			i2p::crypto::HKDF (m_CK, nullptr, 0, "", keydata); // keydata = HKDF(chainKey, ZEROLEN, "", 64)
+			auto receiveTagset = std::make_shared<ReceiveRatchetTagSet> (shared_from_this ());
+			receiveTagset->DHInitialize (m_CK, keydata); // tagset_ab = DH_INITIALIZE(chainKey, k_ab)
+			receiveTagset->NextSessionTagRatchet ();
+			m_SendTagset = std::make_shared<RatchetTagSet> ();
+			m_SendTagset->DHInitialize (m_CK, keydata + 32); // tagset_ba = DH_INITIALIZE(chainKey, k_ba)
+			m_SendTagset->NextSessionTagRatchet ();
+			GenerateMoreReceiveTags (receiveTagset,
+				(GetOwner () && GetOwner ()->GetNumRatchetInboundTags () > 0) ? GetOwner ()->GetNumRatchetInboundTags ()
+																			  : ECIESX25519_MIN_NUM_GENERATED_TAGS);
+			i2p::crypto::HKDF (keydata + 32, nullptr, 0, "AttachPayloadKDF", m_NSRKey,
+				32); // k = HKDF(k_ba, ZEROLEN, "AttachPayloadKDF", 32)
+		}
 		// encrypt payload
 		uint8_t nonce[12];
 		memset (nonce, 0, 12);
@@ -880,7 +1029,11 @@ namespace garlic
 			MixKey (sharedSecret);
 		}
 #endif
-		GetOwner ()->Decrypt (bepk, sharedSecret, m_RemoteStaticKeyType); // x25519 (ask, bepk)
+		if (!GetOwner ()->Decrypt (bepk, sharedSecret, m_RemoteStaticKeyType)) // x25519 (ask, bepk)
+		{
+			LogPrint (eLogWarning, "Garlic: Incorrect local static key for reply type ", m_RemoteStaticKeyType);
+			return false;
+		}
 		MixKey (sharedSecret);
 
 		// calculate hash for zero length

@@ -243,7 +243,13 @@ namespace transport
 		int ntcp2version = 2, ssu2version = 2;
 #if OPENSSL_PQ
 		i2p::config::GetOption ("ntcp2.version", ntcp2version);
+#ifdef LIBRESSL_VERSION_NUMBER
+		if (ntcp2version == 3) ntcp2version = 2; // ML-KEM-512 is unavailable
+#endif
 		i2p::config::GetOption ("ssu2.version", ssu2version);
+#ifdef LIBRESSL_VERSION_NUMBER
+		if (ssu2version == 3) ssu2version = 2; // ML-KEM-512 is unavailable
+#endif
 #endif
 		i2p::http::URL proxyurl;
 		// create NTCP2. TODO: move to acceptor
@@ -1709,6 +1715,9 @@ namespace transport
 			int ntcp2version = 2;
 #if OPENSSL_PQ
 			i2p::config::GetOption ("ntcp2.version", ntcp2version);
+#ifdef LIBRESSL_VERSION_NUMBER
+			if (ntcp2version == 3) ntcp2version = 2; // ML-KEM-512 is unavailable
+#endif
 #endif
 			if (published)
 			{
@@ -1743,6 +1752,9 @@ namespace transport
 			int ssu2version = 2;
 #if OPENSSL_PQ
 			i2p::config::GetOption ("ssu2.version", ssu2version);
+#ifdef LIBRESSL_VERSION_NUMBER
+			if (ssu2version == 3) ssu2version = 2; // ML-KEM-512 is unavailable
+#endif
 #endif
 			uint16_t ssu2port;
 			i2p::config::GetOption ("ssu2.port", ssu2port);

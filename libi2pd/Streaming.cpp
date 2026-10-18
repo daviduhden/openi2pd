@@ -146,6 +146,7 @@ namespace stream
 		, m_NumSentBytes (0)
 		, m_NumReceivedBytes (0)
 		, m_Port (port)
+		, m_LocalPort (local.GetLocalPort ())
 		, m_RTT (INITIAL_RTT)
 		, m_MinRTT (INITIAL_RTT)
 		, m_SlowRTT (INITIAL_RTT)
@@ -226,6 +227,7 @@ namespace stream
 		, m_NumSentBytes (0)
 		, m_NumReceivedBytes (0)
 		, m_Port (0)
+		, m_LocalPort (0)
 		, m_RTT (INITIAL_RTT)
 		, m_MinRTT (INITIAL_RTT)
 		, m_SlowRTT (INITIAL_RTT)
@@ -540,6 +542,7 @@ namespace stream
 		{
 			LogPrint (eLogDebug, "Streaming: closing stream sSID=", m_SendStreamID, ", rSID=", m_RecvStreamID,
 				": reset flag received in packet #", receivedSeqn);
+			m_IsResetReceived = true;
 			m_Status = eStreamStatusReset;
 			Close ();
 		}
@@ -638,9 +641,8 @@ namespace stream
 			if (packet->from && m_RemoteLeaseSet)
 			{
 				// stream came from ratchets session and static key must match one from LeaseSet
-				uint8_t staticKey[32];
-				m_RemoteLeaseSet->Encrypt (nullptr, staticKey);
-				if (memcmp (packet->from->GetRemoteStaticKey (), staticKey, 32))
+				if (!m_RemoteLeaseSet->IsEncryptionKey (
+						packet->from->GetRemoteStaticKeyType (), packet->from->GetRemoteStaticKey ()))
 				{
 					LogPrint (eLogError, "Streaming: Remote LeaseSet static key mismatch for stream from ",
 						m_RemoteIdentity->GetIdentHash ().ToBase32 ());
@@ -668,9 +670,8 @@ namespace stream
 					m_RemoteLeaseSet = m_LocalDestination.GetOwner ()->FindLeaseSet (m_RemoteIdentity->GetIdentHash ());
 				if (m_RemoteLeaseSet)
 				{
-					uint8_t staticKey[32];
-					m_RemoteLeaseSet->Encrypt (nullptr, staticKey);
-					if (memcmp (packet->from->GetRemoteStaticKey (), staticKey, 32))
+					if (!m_RemoteLeaseSet->IsEncryptionKey (
+							packet->from->GetRemoteStaticKeyType (), packet->from->GetRemoteStaticKey ()))
 					{
 						LogPrint (eLogError, "Streaming: Remote LeaseSet static key mismatch for stream from ",
 							m_RemoteIdentity->GetIdentHash ().ToBase32 ());
@@ -1516,7 +1517,7 @@ namespace stream
 				LogPrint (eLogDebug, "Streaming: Trying to send stream data before closing, sSID=", m_SendStreamID);
 			break;
 		case eStreamStatusReset:
-			// TODO: send reset
+			if (!m_IsResetReceived && m_SendStreamID) SendReset ();
 			boost::asio::post (GetService (), std::bind (&Stream::Terminate, shared_from_this (), true));
 			break;
 		case eStreamStatusClosing:
@@ -1599,6 +1600,69 @@ namespace stream
 			m_RoutingSession->SetNumSentPackets (numSentPackets + 1);
 		}
 		LogPrint (eLogDebug, "Streaming: FIN sent, sSID=", m_SendStreamID);
+	}
+
+	void Stream::SendReset ()
+	{
+		Packet * p = m_LocalDestination.NewPacket ();
+		uint8_t * packet = p->GetBuffer ();
+		size_t size = 0;
+		htobe32buf (packet + size, m_SendStreamID);
+		size += 4; // sendStreamID
+		htobe32buf (packet + size, m_RecvStreamID);
+		size += 4; // receiveStreamID
+		htobe32buf (packet + size, m_SequenceNumber++);
+		size += 4; // sequenceNum
+		htobe32buf (packet + size, m_LastReceivedSequenceNumber >= 0 ? m_LastReceivedSequenceNumber : 0);
+		size += 4; // ack Through
+		packet[size] = 0;
+		size++; // NACK count
+		packet[size] = 0;
+		size++; // resend delay
+		bool isOfflineSignature = false;
+		uint16_t flags = PACKET_FLAG_RESET;
+		if (!m_DontSign)
+		{
+			flags |= PACKET_FLAG_SIGNATURE_INCLUDED;
+			isOfflineSignature = m_LocalDestination.GetOwner ()->GetPrivateKeys ().IsOfflineSignature ();
+			if (isOfflineSignature) flags |= PACKET_FLAG_OFFLINE_SIGNATURE | PACKET_FLAG_FROM_INCLUDED;
+		}
+		htobe16buf (packet + size, flags);
+		size += 2; // flags
+		if (m_DontSign)
+		{
+			memset (packet + size, 0, 2); // no options
+			size += 2; // options size
+		}
+		else
+		{
+			uint8_t * optionsSize = packet + size; // set options size later
+			size += 2; // options size
+			if (isOfflineSignature)
+			{
+				size_t identityLen = m_LocalDestination.GetOwner ()->GetIdentity ()->GetFullLen ();
+				m_LocalDestination.GetOwner ()->GetIdentity ()->ToBuffer (packet + size, identityLen);
+				size += identityLen; // from
+				const auto & offlineSignature
+					= m_LocalDestination.GetOwner ()->GetPrivateKeys ().GetOfflineSignature ();
+				memcpy (packet + size, offlineSignature.data (), offlineSignature.size ());
+				size += offlineSignature.size (); // offline signature
+			}
+			size_t signatureLen = m_LocalDestination.GetOwner ()->GetPrivateKeys ().GetSignatureLen ();
+			uint8_t * signature = packet + size;
+			memset (signature, 0, signatureLen);
+			size += signatureLen;
+			htobe16buf (optionsSize, packet + size - 2 - optionsSize);
+			m_LocalDestination.GetOwner ()->Sign (packet, size, signature);
+		}
+		p->len = size;
+		boost::asio::post (m_Service, std::bind (&Stream::SendPacket, shared_from_this (), p));
+		if (m_RoutingSession)
+		{
+			int numSentPackets = m_RoutingSession->NumSentPackets ();
+			m_RoutingSession->SetNumSentPackets (numSentPackets + 1);
+		}
+		LogPrint (eLogDebug, "Streaming: RST sent, sSID=", m_SendStreamID);
 	}
 
 	size_t Stream::ConcatenatePackets (uint8_t * buf, size_t len)
@@ -2520,6 +2584,9 @@ namespace stream
 	std::shared_ptr<Stream> StreamingDestination::CreateNewIncomingStream (uint32_t receiveStreamID)
 	{
 		auto s = std::make_shared<Stream> (m_Owner->GetService (), *this);
+		// An incoming stream replies to the peer's source port, and reports the
+		// destination port it arrived on (SAM 3.2 FROM_PORT/TO_PORT).
+		s->SetPorts (m_LastFromPort, m_LastToPort);
 		std::lock_guard<std::mutex> l (m_StreamsMutex);
 		m_Streams.emplace (s->GetRecvStreamID (), s);
 		m_IncomingStreams.emplace (receiveStreamID, s);
@@ -2663,6 +2730,16 @@ namespace stream
 			for (auto & it : m_PendingIncomingStreams) it->Close ();
 			m_PendingIncomingStreams.clear ();
 		}
+	}
+
+	void StreamingDestination::HandleDataMessagePayload (uint16_t fromPort, uint16_t toPort, const uint8_t * buf,
+		size_t len, i2p::garlic::ECIESX25519AEADRatchetSession * from)
+	{
+		// The port fields belong to the Data message and to the stream created from
+		// a SYN in this call. Everything here runs on the destination service thread.
+		m_LastFromPort = fromPort;
+		m_LastToPort = toPort;
+		HandleDataMessagePayload (buf, len, from);
 	}
 
 	void StreamingDestination::HandleDataMessagePayload (

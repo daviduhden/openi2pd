@@ -462,9 +462,7 @@ namespace client
 						from ? from->GetRemoteStaticKeyType () : GetPreferredCryptoType ()); // LeaseSet2
 					if (from)
 					{
-						uint8_t pub[32];
-						leaseSet->Encrypt (nullptr, pub);
-						if (!memcmp (from->GetRemoteStaticKey (), pub, 32))
+						if (leaseSet->IsEncryptionKey (from->GetRemoteStaticKeyType (), from->GetRemoteStaticKey ()))
 							from->SetDestination (leaseSet->GetIdentHash ());
 						else
 						{
@@ -1318,7 +1316,7 @@ namespace client
 				m_LastPort = toPort;
 			}
 			if (m_LastStreamingDestination)
-				m_LastStreamingDestination->HandleDataMessagePayload (buf, length, from);
+				m_LastStreamingDestination->HandleDataMessagePayload (fromPort, toPort, buf, length, from);
 			else
 				LogPrint (eLogError, "Destination: Missing streaming destination");
 		}
@@ -1327,13 +1325,15 @@ namespace client
 		case PROTOCOL_TYPE_RAW:
 		case PROTOCOL_TYPE_DATAGRAM2:
 		case PROTOCOL_TYPE_DATAGRAM3:
+		// A SAM RAW session may register any I2CP protocol number; unknown
+		// protocols are dispatched to its raw receiver instead of being dropped.
+		default:
 			// datagram protocol
 			if (m_DatagramDestination)
 				m_DatagramDestination->HandleDataMessagePayload (fromPort, toPort, buf, length, buf[9], from);
 			else
 				LogPrint (eLogError, "Destination: Missing datagram destination");
 			break;
-		default: LogPrint (eLogError, "Destination: Data: Unexpected protocol ", buf[9]);
 		}
 	}
 

@@ -14,6 +14,7 @@
 #include <memory>
 #include <functional>
 #include <atomic>
+#include <vector>
 #include <map>
 #include <set>
 #include <list>
@@ -29,14 +30,22 @@ namespace i2p
 {
 namespace transport
 {
-	const int SSU2_CONNECT_TIMEOUT = 5; // 5 seconds
-	const int SSU2_TERMINATION_TIMEOUT = 165; // in seconds
+	// Overall outbound establishment budget. Java uses MAX_OB_ESTABLISH_TIME
+	// (EstablishmentManager.java:153) and per-message OB_MESSAGE_TIMEOUT = 15 s.
+	const int SSU2_CONNECT_TIMEOUT = 25; // in seconds
+	const int SSU2_TERMINATION_TIMEOUT = 165; // in seconds, Java UDPTransport.MIN_EXPIRE_TIMEOUT
 	const int SSU2_CLOCK_SKEW = 60; // in seconds
 	const int SSU2_CLOCK_THRESHOLD = 15; // in seconds, if more we should adjust
 	const int SSU2_TOKEN_EXPIRATION_TIMEOUT = 9; // for Retry message, in seconds
 	const int SSU2_NEXT_TOKEN_EXPIRATION_TIMEOUT = 52 * 60; // for next token block, in seconds
 	const int SSU2_TOKEN_EXPIRATION_THRESHOLD = 2; // in seconds
 	const int SSU2_RELAY_NONCE_EXPIRATION_TIMEOUT = 10; // in seconds
+	// IntroductionManager.MAX_SKEW = 2*60*1000 in Java 2.13.0
+	const int SSU2_RELAY_MAX_SKEW = 120; // in seconds
+	// Bounds for relay state/replay caches. Java uses an LHMCache of 32
+	// recent relay nonces and keeps at most MAX_INBOUND introductions.
+	const size_t SSU2_MAX_RELAY_SESSIONS = 32;
+	const size_t SSU2_MAX_RECENT_RELAY_REQUESTS = 32;
 	const int SSU2_PEER_TEST_EXPIRATION_TIMEOUT = 60; // 60 seconds
 	const size_t SSU2_MAX_PACKET_SIZE = 1500;
 	const size_t SSU2_MIN_PACKET_SIZE = 1280;
@@ -147,7 +156,11 @@ namespace transport
 	enum SSU2RelayResponseCode
 	{
 		eSSU2RelayResponseCodeAccept = 0,
+		eSSU2RelayResponseCodeBobUnspecified = 1,
+		eSSU2RelayResponseCodeBobLimit = 3,
+		eSSU2RelayResponseCodeBobSignatureFailure = 4,
 		eSSU2RelayResponseCodeBobRelayTagNotFound = 5,
+		eSSU2RelayResponseCodeBobAliceIsUnknown = 6,
 		eSSU2RelayResponseCodeCharlieUnsupportedAddress = 65,
 		eSSU2RelayResponseCodeCharlieSignatureFailure = 67,
 		eSSU2RelayResponseCodeCharlieAliceIsUnknown = 70
@@ -247,6 +260,7 @@ namespace transport
 			uint8_t payload[SSU2_MAX_PACKET_SIZE * 2];
 			size_t payloadSize = 0;
 			uint64_t sendTime = 0; // in milliseconds
+			int numResends = 0; // handshake retransmissions, used for backoff
 			bool isSecondFragment = false; // for SessionConfirmed
 		};
 
@@ -389,6 +403,12 @@ namespace transport
 		std::unique_ptr<i2p::crypto::NoiseSymmetricState> m_NoiseState;
 		std::unique_ptr<HandshakePacket>
 			m_SessionConfirmedFragment; // for Bob if applicable or second fragment for Alice
+		std::map<uint8_t, std::vector<uint8_t>> m_SessionConfirmedFragments;
+		uint8_t m_SessionConfirmedNumFragments = 0;
+		Header m_SessionConfirmedHeader { };
+		bool m_IsVersionFallback = false;
+		bool m_IsFirstReceivePacket = true;
+		bool m_ReceivedPacketZero = false;
 		std::unique_ptr<HandshakePacket> m_SentHandshakePacket; // SessionRequest, SessionCreated or SessionConfirmed
 #if OPENSSL_PQ
 		std::unique_ptr<i2p::crypto::MLKEMKeys> m_PQKeys;
@@ -406,6 +426,8 @@ namespace transport
 		std::unordered_map<uint32_t, std::shared_ptr<SSU2IncompleteMessage>> m_IncompleteMessages; // msgID -> I2NP
 		std::unordered_map<uint32_t, std::pair<std::shared_ptr<SSU2Session>, uint64_t>>
 			m_RelaySessions; // nonce->(Alice, timestamp) for Bob or nonce->(Charlie, timestamp) for Alice
+		std::unordered_map<uint32_t, uint32_t>
+			m_RecentRelayRequests; // nonce->timestamp, Bob replay cache (bounded)
 		std::list<std::shared_ptr<I2NPMessage>> m_SendQueue;
 		i2p::I2NPMessagesHandler m_Handler;
 		std::list<std::shared_ptr<I2NPMessage>> m_IntermediateQueue; // from transports

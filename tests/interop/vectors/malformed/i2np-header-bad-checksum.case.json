@@ -1,0 +1,27 @@
+{
+   "expect" : {
+      "ok" : false
+   },
+   "expectation" : "reject",
+   "format" : "hex",
+   "id" : "i2np-header-bad-checksum",
+   "input" : "i2np-header-bad-checksum.hex",
+   "kind" : "i2np",
+   "known_gap" : "openi2pd does not verify the 1-byte I2NP checksum on receive; only length is checked.",
+   "license" : "BSD-3-Clause",
+   "provenance" : {
+      "java" : [
+         {
+            "contains" : "Bad checksum",
+            "line" : 156,
+            "path" : "router/java/src/net/i2p/data/i2np/I2NPMessageImpl.java"
+         }
+      ],
+      "spec" : [
+         "i2np#database-lookup",
+         "i2np#database-search-reply",
+         "i2np#message-header"
+      ]
+   },
+   "sha256" : "09ec819bf4105f9a8b40c63cf6a1bebacd0a11e67346e1b3bf240b63eb7eb68e"
+}

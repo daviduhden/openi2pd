@@ -851,6 +851,9 @@ void RouterContext::SetUnreachable (bool v4, bool v6)
 		int ntcp2version = 2;
 #if OPENSSL_PQ
 		i2p::config::GetOption ("ntcp2.version", ntcp2version);
+#ifdef LIBRESSL_VERSION_NUMBER
+		if (ntcp2version == 3) ntcp2version = 2; // ML-KEM-512 is unavailable
+#endif
 #endif
 		PublishNTCP2Address (port, false, v4, v6, false, ntcp2version);
 	}
@@ -901,6 +904,9 @@ void RouterContext::SetReachable (bool v4, bool v6)
 			int ntcp2version = 2;
 #if OPENSSL_PQ
 			i2p::config::GetOption ("ntcp2.version", ntcp2version);
+#ifdef LIBRESSL_VERSION_NUMBER
+			if (ntcp2version == 3) ntcp2version = 2; // ML-KEM-512 is unavailable
+#endif
 #endif
 			PublishNTCP2Address (ntcp2Port, true, v4, v6, false, ntcp2version);
 		}

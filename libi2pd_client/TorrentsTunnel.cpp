@@ -143,7 +143,7 @@ namespace torrents
 		if (dgramDest)
 			dgramDest->SetRawReceiver (std::bind (&TorrentsTunnel::HandleRecvFromI2PRaw,
 				std::static_pointer_cast<TorrentsTunnel> (shared_from_this ()), std::placeholders::_1,
-				std::placeholders::_2, std::placeholders::_3, std::placeholders::_4));
+				std::placeholders::_2, std::placeholders::_3, std::placeholders::_4, std::placeholders::_5));
 		if (m_DHT) m_DHT->Start ();
 
 		Accept ();
@@ -1546,7 +1546,8 @@ namespace torrents
 			});
 	}
 
-	void TorrentsTunnel::HandleRecvFromI2PRaw (uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len)
+	void TorrentsTunnel::HandleRecvFromI2PRaw (
+		uint8_t /*protocol*/, uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len)
 	{
 		if (m_DHT && toPort == m_DHT->GetRPort ())
 		{

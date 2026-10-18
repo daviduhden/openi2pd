@@ -1,0 +1,56 @@
+{
+   "expect" : {
+      "ok" : true,
+      "value" : {
+         "host_lookup" : {
+            "hash" : "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+            "lookup_type" : 0,
+            "request_id" : 2,
+            "session_id" : 1,
+            "timeout" : 10
+         },
+         "length" : 43,
+         "type" : 38
+      }
+   },
+   "expectation" : "accept",
+   "format" : "hex",
+   "id" : "i2cp-hostlookup-hash",
+   "input" : "i2cp-hostlookup-hash.hex",
+   "kind" : "i2cp",
+   "license" : "BSD-3-Clause",
+   "provenance" : {
+      "java" : [
+         {
+            "contains" : "DataHelper.writeLong(out, 4, data.length)",
+            "line" : 107,
+            "path" : "core/java/src/net/i2p/data/i2cp/I2CPMessageImpl.java"
+         },
+         {
+            "contains" : "out.write((byte) getType())",
+            "line" : 108,
+            "path" : "core/java/src/net/i2p/data/i2cp/I2CPMessageImpl.java"
+         },
+         {
+            "contains" : "MESSAGE_TYPE = 38",
+            "line" : 25,
+            "path" : "core/java/src/net/i2p/data/i2cp/HostLookupMessage.java"
+         },
+         {
+            "contains" : "doReadMessage",
+            "line" : 180,
+            "path" : "core/java/src/net/i2p/data/i2cp/HostLookupMessage.java"
+         },
+         {
+            "contains" : "_timeout",
+            "line" : 185,
+            "path" : "core/java/src/net/i2p/data/i2cp/HostLookupMessage.java"
+         }
+      ],
+      "spec" : [
+         "i2cp#host-lookup",
+         "i2cp#blinding-info"
+      ]
+   },
+   "sha256" : "705aeb55788a63098a207317b0071a498721b7013e018adeb72d1c0f538612d7"
+}

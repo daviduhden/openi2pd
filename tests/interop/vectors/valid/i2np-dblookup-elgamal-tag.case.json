@@ -1,0 +1,77 @@
+{
+   "expect" : {
+      "ok" : true,
+      "value" : {
+         "checksum_valid" : true,
+         "database_lookup" : {
+            "excluded_peers" : [],
+            "flags" : 2,
+            "from_hash" : "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+            "lookup_type" : "ANY",
+            "reply" : {
+               "key" : "808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f",
+               "kind" : "elgamal",
+               "num_tags" : 1,
+               "tag" : "a0a1a2a3a4a5a6a7a8a9aaabacadaeafb0b1b2b3b4b5b6b7b8b9babbbcbdbebf"
+            },
+            "reply_tunnel" : null,
+            "search_key" : "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+         },
+         "expiration" : 1700000000000,
+         "message_id" : 287454020,
+         "size" : 132,
+         "type" : 2
+      }
+   },
+   "expectation" : "accept",
+   "format" : "hex",
+   "id" : "i2np-dblookup-elgamal-tag",
+   "input" : "i2np-dblookup-elgamal-tag.hex",
+   "kind" : "i2np",
+   "license" : "BSD-3-Clause",
+   "provenance" : {
+      "java" : [
+         {
+            "contains" : "HEADER_LENGTH = 1",
+            "line" : 49,
+            "path" : "router/java/src/net/i2p/data/i2np/I2NPMessageImpl.java"
+         },
+         {
+            "contains" : "_context.sha().calculateHash",
+            "line" : 266,
+            "path" : "router/java/src/net/i2p/data/i2np/I2NPMessageImpl.java"
+         },
+         {
+            "contains" : "buffer[off] = h[0]",
+            "line" : 276,
+            "path" : "router/java/src/net/i2p/data/i2np/I2NPMessageImpl.java"
+         },
+         {
+            "contains" : "FLAG_ENCRYPT",
+            "line" : 361,
+            "path" : "router/java/src/net/i2p/data/i2np/DatabaseLookupMessage.java"
+         },
+         {
+            "contains" : "replyKeySpecified || ratchetSpecified",
+            "line" : 399,
+            "path" : "router/java/src/net/i2p/data/i2np/DatabaseLookupMessage.java"
+         },
+         {
+            "contains" : "SessionTag.BYTE_LENGTH",
+            "line" : 412,
+            "path" : "router/java/src/net/i2p/data/i2np/DatabaseLookupMessage.java"
+         },
+         {
+            "contains" : "out[curIndex++] = 1",
+            "line" : 510,
+            "path" : "router/java/src/net/i2p/data/i2np/DatabaseLookupMessage.java"
+         }
+      ],
+      "spec" : [
+         "i2np#database-lookup",
+         "i2np#database-search-reply",
+         "i2np#message-header"
+      ]
+   },
+   "sha256" : "205a217e99e8be0b83ed398c96641b070145e789f52659bfd2e6dac5ad11895c"
+}

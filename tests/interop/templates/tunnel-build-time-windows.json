@@ -1,0 +1,121 @@
+{
+   "cases" : [
+      {
+         "expected" : "accept",
+         "id" : "tunnel-time-ec-age-8m-accept",
+         "is_ecies" : true,
+         "time_diff_minutes" : 8
+      },
+      {
+         "expected" : "reject",
+         "id" : "tunnel-time-ec-age-9m-reject",
+         "is_ecies" : true,
+         "time_diff_minutes" : 9
+      },
+      {
+         "expected" : "accept",
+         "id" : "tunnel-time-ec-future-5m-accept",
+         "is_ecies" : true,
+         "time_diff_minutes" : -5
+      },
+      {
+         "expected" : "reject",
+         "id" : "tunnel-time-ec-future-6m-reject",
+         "is_ecies" : true,
+         "time_diff_minutes" : -6
+      },
+      {
+         "expected" : "accept",
+         "id" : "tunnel-time-elgamal-age-60m-accept",
+         "is_ecies" : false,
+         "time_diff_minutes" : 60
+      },
+      {
+         "expected" : "reject",
+         "id" : "tunnel-time-elgamal-age-120m-reject",
+         "is_ecies" : false,
+         "time_diff_minutes" : 120
+      },
+      {
+         "expected" : "accept",
+         "id" : "tunnel-time-elgamal-same-hour-accept",
+         "is_ecies" : false,
+         "time_diff_minutes" : 0
+      },
+      {
+         "expected" : "reject",
+         "id" : "tunnel-time-elgamal-future-hour-reject",
+         "is_ecies" : false,
+         "time_diff_minutes" : -60
+      }
+   ],
+   "id" : "tunnel-build-time-windows",
+   "kind" : "template",
+   "license" : "BSD-3-Clause",
+   "notes" : [
+      "Java compares the rounded difference, so wall-clock age can be up to one unit larger than the table value.",
+      "openi2pd does not currently enforce these windows (NET-114); the table defines the Java/spec expectation for a future test target.",
+      "ElGamal request times are whole hours, so the realizable differences are 0, 60, 120, ...; the 65-minute constant only decides whether the previous hour is still accepted."
+   ],
+   "provenance" : {
+      "java" : [
+         {
+            "contains" : "MAX_REQUEST_FUTURE = 5*60*1000",
+            "line" : 101,
+            "path" : "router/java/src/net/i2p/router/tunnel/pool/BuildHandler.java"
+         },
+         {
+            "contains" : "MAX_REQUEST_AGE = 65*60*1000",
+            "line" : 103,
+            "path" : "router/java/src/net/i2p/router/tunnel/pool/BuildHandler.java"
+         },
+         {
+            "contains" : "MAX_REQUEST_AGE_ECIES = 8*60*1000",
+            "line" : 104,
+            "path" : "router/java/src/net/i2p/router/tunnel/pool/BuildHandler.java"
+         },
+         {
+            "contains" : "timeDiff > maxAge",
+            "line" : 792,
+            "path" : "router/java/src/net/i2p/router/tunnel/pool/BuildHandler.java"
+         },
+         {
+            "contains" : "timeDiff < 0 - MAX_REQUEST_FUTURE",
+            "line" : 800,
+            "path" : "router/java/src/net/i2p/router/tunnel/pool/BuildHandler.java"
+         },
+         {
+            "contains" : "truncated to the nearest hour",
+            "line" : 312,
+            "path" : "router/java/src/net/i2p/data/i2np/BuildRequestRecord.java"
+         },
+         {
+            "contains" : "readRequestTime",
+            "line" : 316,
+            "path" : "router/java/src/net/i2p/data/i2np/BuildRequestRecord.java"
+         }
+      ],
+      "spec" : [
+         "tunnel-creation",
+         "tunnel-alt-creation"
+      ]
+   },
+   "purpose" : "Boundary table for Java 2.13.0 tunnel build request timestamps. The encrypted records themselves are not checked in because they contain ephemeral keys and signatures.",
+   "rules" : {
+      "ecies" : {
+         "max_age_minutes" : 8,
+         "max_future_minutes" : 5,
+         "reject_when" : "time_diff_minutes > 8 or time_diff_minutes < -5",
+         "request_time_unit" : "minutes",
+         "rounding" : "floor"
+      },
+      "elgamal" : {
+         "max_age_minutes" : 65,
+         "max_future_minutes" : 5,
+         "reject_when" : "time_diff_minutes > 65 or time_diff_minutes < -5",
+         "request_time_unit" : "hours",
+         "rounding" : "floor"
+      }
+   },
+   "time_diff_definition" : "time_diff_minutes = (rounded_now - request_time) in minutes, where rounded_now and request_time use the same unit (minute for ECIES, hour for ElGamal). A positive value is a request from the past."
+}

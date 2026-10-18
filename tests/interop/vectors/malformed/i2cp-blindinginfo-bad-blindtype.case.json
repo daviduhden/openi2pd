@@ -1,0 +1,25 @@
+{
+   "expect" : {
+      "ok" : false
+   },
+   "expectation" : "reject",
+   "format" : "hex",
+   "id" : "i2cp-blindinginfo-bad-blindtype",
+   "input" : "i2cp-blindinginfo-bad-blindtype.hex",
+   "kind" : "i2cp",
+   "license" : "BSD-3-Clause",
+   "provenance" : {
+      "java" : [
+         {
+            "contains" : "unsupported sig type",
+            "line" : 285,
+            "path" : "core/java/src/net/i2p/data/i2cp/BlindingInfoMessage.java"
+         }
+      ],
+      "spec" : [
+         "i2cp#host-lookup",
+         "i2cp#blinding-info"
+      ]
+   },
+   "sha256" : "48fa5609d3656e56bc365e3c9325aba965f432b5ee5ac83bbd58076f70625fdf"
+}

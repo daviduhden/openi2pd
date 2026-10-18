@@ -1,0 +1,26 @@
+{
+   "expect" : {
+      "ok" : false
+   },
+   "expectation" : "reject",
+   "format" : "hex",
+   "id" : "i2np-header-size-overrun",
+   "input" : "i2np-header-size-overrun.hex",
+   "kind" : "i2np",
+   "license" : "BSD-3-Clause",
+   "provenance" : {
+      "java" : [
+         {
+            "contains" : "cur + size > data.length",
+            "line" : 137,
+            "path" : "router/java/src/net/i2p/data/i2np/I2NPMessageImpl.java"
+         }
+      ],
+      "spec" : [
+         "i2np#database-lookup",
+         "i2np#database-search-reply",
+         "i2np#message-header"
+      ]
+   },
+   "sha256" : "d917adbcccb22d5856c7cd53a16b496f63e761438a721da4ffb08d6140001907"
+}

@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: BSD-3-Clause
+# i2cp-blindinginfo-bad-blindtype
+# Derived from the pinned I2P Java 2.13.0 source; see i2cp-blindinginfo-bad-blindtype.case.json
+0000002a2a00010000ffff00000000000102030405060708090a0b0c0d0e0f10
+1112131415161718191a1b1c1d1e1f

@@ -38,9 +38,11 @@ namespace transport
 	constexpr size_t NTCP2_SESSION_HANDSHAKE_LONG_MAX_SIZE = 944; // for non-PQ
 	const int NTCP2_MAX_PADDING_RATIO = 6; // in %
 
-	const int NTCP2_CONNECT_TIMEOUT = 5; // 5 seconds
+	const int NTCP2_CONNECT_TIMEOUT = 10; // in seconds, Java NTCPTransport.ESTABLISH_TIMEOUT
 	const int NTCP2_ESTABLISH_TIMEOUT = 10; // 10 seconds
-	const int NTCP2_TERMINATION_TIMEOUT = 115; // 2 minutes - 5 seconds
+	// Java EventPumper.MIN_EXPIRE_IDLE_TIME is 120 s; closing earlier can race
+	// the peer's keepalive/expiration decision.
+	const int NTCP2_TERMINATION_TIMEOUT = 120; // in seconds
 	const int NTCP2_TERMINATION_TIMEOUT_VARIANCE = 10; // 10 seconds
 	const int NTCP2_TERMINATION_CHECK_TIMEOUT = 28; // 28 seconds
 	const int NTCP2_TERMINATION_CHECK_TIMEOUT_VARIANCE = 5; // 5 seconds

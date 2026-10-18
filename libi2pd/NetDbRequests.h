@@ -57,6 +57,11 @@ namespace data
 		bool IsActive () const { return m_IsActive; };
 		bool IsSentDirectly () const { return m_IsSentDirectly; };
 		bool IsExcluded (const IdentHash & ident) const;
+		// Peers this destination's lookup was actually sent to. DatabaseSearchReply
+		// bodies carry a self-claimed sender hash; use this to reject spoofed
+		// replies when the request tracker still knows the queried sender.
+		bool IsRequestedPeer (const IdentHash & ident) const { return m_RequestedPeers.count (ident) > 0; };
+		bool HasRequestedPeers () const { return !m_RequestedPeers.empty (); };
 		uint64_t GetCreationTime () const { return m_CreationTime; };
 		uint64_t GetLastRequestTime () const { return m_LastRequestTime; };
 		std::shared_ptr<I2NPMessage> CreateRequestMessage (
@@ -77,7 +82,7 @@ namespace data
 	private:
 		IdentHash m_Destination;
 		bool m_IsExploratory, m_IsDirect, m_IsActive, m_IsSentDirectly;
-		std::unordered_set<IdentHash> m_ExcludedPeers;
+		std::unordered_set<IdentHash> m_ExcludedPeers, m_RequestedPeers;
 		uint64_t m_CreationTime, m_LastRequestTime; // in milliseconds
 		std::list<RequestComplete> m_RequestComplete;
 		int m_NumAttempts;

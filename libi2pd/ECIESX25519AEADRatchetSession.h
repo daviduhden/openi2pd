@@ -218,6 +218,9 @@ namespace garlic
 		void InitNewSessionTagset (std::shared_ptr<RatchetTagSet> tagsetNsr) const;
 
 		bool HandleNewIncomingSession (const uint8_t * buf, size_t len);
+		// Try one locally supported ratchet key type. A trial never touches the
+		// session state until every AEAD tag and the payload are authenticated.
+		bool HandleNewIncomingSessionCandidate (i2p::data::CryptoKeyType cryptoType, const uint8_t * buf, size_t len);
 		bool HandleNewOutgoingSessionReply (uint8_t * buf, size_t len);
 		bool HandleExistingSessionMessage (
 			uint8_t * buf, size_t len, std::shared_ptr<ReceiveRatchetTagSet> receiveTagset, int index);

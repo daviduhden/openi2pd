@@ -1,0 +1,70 @@
+{
+   "expect": {
+      "ok": true,
+      "value": {
+         "checksum_valid": true,
+         "database_lookup": {
+            "excluded_peers": [],
+            "flags": 18,
+            "from_hash": "202122232425262728292a2b2c2d2e2f303132333435363738393a3b3c3d3e3f",
+            "lookup_type": "ANY",
+            "reply": {
+               "key": "d0d1d2d3d4d5d6d7d8d9dadbdcdddedfe0e1e2e3e4e5e6e7e8e9eaebecedeeef",
+               "kind": "ratchet_pubkey"
+            },
+            "reply_tunnel": null,
+            "search_key": "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
+         },
+         "expiration": 1700000000000,
+         "message_id": 287454020,
+         "size": 99,
+         "type": 2
+      }
+   },
+   "expectation": "accept",
+   "format": "hex",
+   "id": "i2np-dblookup-ratchet-pubkey",
+   "input": "i2np-dblookup-ratchet-pubkey.hex",
+   "kind": "i2np",
+   "license": "BSD-3-Clause",
+   "provenance": {
+      "java": [
+         {
+            "contains": "HEADER_LENGTH = 1",
+            "line": 49,
+            "path": "router/java/src/net/i2p/data/i2np/I2NPMessageImpl.java"
+         },
+         {
+            "contains": "_context.sha().calculateHash",
+            "line": 266,
+            "path": "router/java/src/net/i2p/data/i2np/I2NPMessageImpl.java"
+         },
+         {
+            "contains": "buffer[off] = h[0]",
+            "line": 276,
+            "path": "router/java/src/net/i2p/data/i2np/I2NPMessageImpl.java"
+         },
+         {
+            "contains": "replyKeySpecified && ratchetSpecified",
+            "line": 403,
+            "path": "router/java/src/net/i2p/data/i2np/DatabaseLookupMessage.java"
+         },
+         {
+            "contains": "_ratchetPubKey",
+            "line": 404,
+            "path": "router/java/src/net/i2p/data/i2np/DatabaseLookupMessage.java"
+         },
+         {
+            "contains": "FLAG_RATCHET | FLAG_ENCRYPT",
+            "line": 466,
+            "path": "router/java/src/net/i2p/data/i2np/DatabaseLookupMessage.java"
+         }
+      ],
+      "spec": [
+         "i2np#database-lookup",
+         "i2np#database-search-reply",
+         "i2np#message-header"
+      ]
+   },
+   "sha256": "0bd777c065e810e9438e46d287d8081f098499b3b53e05a6d53ba528338dd6b4"
+}
