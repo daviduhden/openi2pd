@@ -30,8 +30,8 @@ int main( int argc, char* argv[] )
 int main( int argc, char* argv[] )
 {
 #ifndef _WIN32
-	if (argc == 3 && std::string_view (argv[1]) == "--privsep-worker")
-		return i2p::privsep::RunWorker (argv[2]);
+	if (argc == 4 && std::string_view (argv[1]) == "--privsep-worker")
+		return i2p::privsep::RunWorker (argv[2], argv[3]);
 #endif
 	if (Daemon.init(argc, argv))
 	{

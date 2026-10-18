@@ -191,6 +191,11 @@ int main (int argc, char * argv[])
 		return 1;
 	}
 	if (options.legacyFirewall) options.backend = Backend::IptablesLegacy;
+	if (!options.backend && options.nftOptionsGiven)
+	{
+		std::cerr << "routerinfo: nftables options require --firewall=nftables" << std::endl;
+		return 1;
+	}
 	if (options.backend)
 	{
 		options.render.backend = *options.backend;

@@ -16,8 +16,8 @@ provenance.
 | Upstream provenance | GitHub URLs, i2pd-docs/tools commit pins, upstream manual links | **Preserved** (traceability/sync) |
 | I2P protocol identifiers | `i2p`, NTCP2, SSU2, netDb, LeaseSet, router hashes, crypto type names | **Unchanged** (wire compatibility) |
 | C++/ABI identifiers | `libi2pd`, `libi2pdclient`, `i2p::...` namespaces, installed headers | **Retained** for ABI/source compatibility |
-| Executable | `i2pd` | **Retained temporarily**; rename requires a migration/alias plan (TODO REBRAND-001) |
-| Config/data paths | `i2pd.conf`, `~/.i2pd`, `/var/lib/i2pd`, `i2pd.log`, `i2pd-tui.sock` | **Retained temporarily**; migration plan required (TODO REBRAND-002) |
+| Executable | `i2pd` | **Retained temporarily**; rename requires a migration/alias plan (TODO REBRAND-005) |
+| Config/data paths | `i2pd.conf`, `~/.i2pd`, `/var/lib/i2pd`, `i2pd.log`, `i2pd-tui.sock` | **Retained temporarily**; migration plan required (TODO REBRAND-006) |
 | Android application identity | `org.purplei2p.i2pd`, PurpleI2P package/namespace | **Renamed** to `org.openi2pd.router` |
 | Android visible name | `i2pd` | **Renamed** to `Open I2Pd` |
 | Visual identity | i2pd/PurpleI2P app icon, docs logo, favicon, screenshots | **Replaced with neutral placeholder / removed** |
@@ -97,25 +97,26 @@ app-specific directory and copy it into the new one.
 ## 6. Pending tasks
 
 - [ ] Decide whether to rename the executable and add an `i2pd` compatibility
-  symlink/wrapper (TODO REBRAND-001).
+  symlink/wrapper (TODO REBRAND-005).
 - [ ] Add dual-read migration for `i2pd.conf` → `open-i2pd.conf` and
-  `~/.i2pd`/`/var/lib/i2pd` → new paths (TODO REBRAND-002).
+  `~/.i2pd`/`/var/lib/i2pd` → new paths (TODO REBRAND-006).
 - [ ] Rename Debian/RPM source/package names with `Provides/Replaces` and
-  changelog migration (TODO REBRAND-003).
+  changelog migration (TODO REBRAND-007).
 - [ ] Replace placeholder icon with a defined project identity when supplied
-  (TODO REBRAND-004).
+  (TODO REBRAND-008).
 - [ ] Scan compiled artifacts/APKs for residual brand strings when builds are
   available.
-- [ ] Android migration from old applicationId (TODO AND-013).
+- [ ] Android migration from old applicationId (TODO REBRAND-009).
 
 ## 7. Validation performed
 
 - Recursive text search for `PurpleI2P`, `i2pd`, `I2Pd`, `I2PD` across the tree.
   Remaining occurrences were classified; no global replacement was performed.
 - Confirmed no old Android package strings remain under `android/app/src/main`.
-- Android Gradle script parsed with Gradle 9.8.1/AGP 9.4.1 up to the expected
-  missing-SDK check.
-- CMake C++ build and 17/17 CTest passed after the source changes.
+- Android Java 25 source compiles with Gradle 9.8.1/AGP 9.4.1 and JDK 25;
+  APK/JNI/Lint/device validation is deferred to CI.
+- CMake C++ build and 20/20 CTest passed at the Session 7 checkpoint; local
+  builds are now frozen and delegated to CI.
 - Icon files regenerated and verified as valid PNG/ICO; Android vector XML
   replaced.
 - Dynamic Android/APK and Windows icon checks remain pending.

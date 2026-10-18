@@ -33,50 +33,61 @@ namespace torrents
 // BEncoded
 
 	constexpr size_t BENCODED_MAX_DEPTH = 10;
+	constexpr size_t BENCODED_MAX_DICTIONARY_KEYS = 4096;
+	constexpr size_t BENCODED_MAX_LIST_ITEMS = 1024*1024;
+	constexpr size_t MAX_TORRENT_PATH_COMPONENT_LENGTH = 255;
+	constexpr size_t MAX_TORRENT_PATH_COMPONENTS = 256;
 
 	std::pair<std::string_view, size_t> ExtractByteString (std::string_view buf)
 	{
-		auto pos = buf.find (':');
-		if (pos != std::string_view::npos)
-		{
-			size_t len = 0;
-			auto res = std::from_chars(buf.data(), buf.data() + pos, len);
-			if (res.ec == std::errc() && len <= std::numeric_limits<size_t>::max () - pos - 1)
-			{
-				size_t totalLength = len + pos + 1;
-				if (totalLength <= buf.length ())
-					return { buf.substr (pos + 1, len), totalLength };
-			}
-		}
-		return { std::string_view{}, 0 };
+		// A byte string starts with a decimal length without sign, leading zeroes
+		// or embedded whitespace, followed by ':' and exactly that many bytes.
+		size_t pos = 0;
+		while (pos < buf.size () && buf[pos] >= '0' && buf[pos] <= '9') pos++;
+		if (!pos || pos >= buf.size () || buf[pos] != ':') return { std::string_view{}, 0 };
+		if (buf[0] == '0' && pos != 1) return { std::string_view{}, 0 }; // no leading zeroes
+		size_t len = 0;
+		auto res = std::from_chars (buf.data (), buf.data () + pos, len);
+		if (res.ec != std::errc() || res.ptr != buf.data () + pos) return { std::string_view{}, 0 };
+		if (len > buf.size () - pos - 1) return { std::string_view{}, 0 };
+		return { buf.substr (pos + 1, len), pos + 1 + len };
 	}
 
 	std::pair<int64_t, size_t> ExtractInteger (std::string_view buf)
 	{
-		if (!buf.empty () && buf[0] == 'i')
+		if (buf.size () < 3 || buf[0] != 'i') return { 0, 0 };
+		size_t pos = 1;
+		bool negative = false;
+		if (buf[pos] == '-')
 		{
-			auto pos = buf.find ('e');
-			if (pos != std::string_view::npos)
-			{
-				int64_t value = 0;
-				auto res = std::from_chars(buf.data() + 1, buf.data() + pos, value);
-				if (res.ec == std::errc())
-					return  { value, pos + 1 };
-			}
+			negative = true;
+			pos++;
 		}
-		return { 0, 0 };
+		size_t digitsStart = pos;
+		while (pos < buf.size () && buf[pos] >= '0' && buf[pos] <= '9') pos++;
+		if (pos == digitsStart || pos >= buf.size () || buf[pos] != 'e') return { 0, 0 };
+		if (buf[digitsStart] == '0' && pos - digitsStart != 1) return { 0, 0 }; // no leading zeroes
+		if (negative && pos - digitsStart == 1 && buf[digitsStart] == '0') return { 0, 0 }; // no -0
+		int64_t value = 0;
+		auto res = std::from_chars (buf.data () + (negative ? digitsStart - 1 : digitsStart),
+			buf.data () + pos, value);
+		if (res.ec != std::errc() || res.ptr != buf.data () + pos) return { 0, 0 };
+		return { value, pos + 1 };
 	}
 
 	static size_t ParseBEncoded (std::string_view buf, size_t depth); // recursive
 	size_t ParseDictionary (std::string_view buf, std::function<size_t (std::string_view key, std::string_view buf)> handler, size_t depth)
 	{
-		if (buf.empty () || buf[0] != 'd') return 0;
+		if (depth > BENCODED_MAX_DEPTH || buf.empty () || buf[0] != 'd') return 0;
 		buf = buf.substr (1);
 		size_t len = 1;
+		std::set<std::string_view> keys;
 		while (!buf.empty () && buf[0] != 'e')
 		{
+			if (keys.size () >= BENCODED_MAX_DICTIONARY_KEYS) return 0;
 			auto [key, offset] = ExtractByteString (buf);
 			if (!offset) break;
+			if (!keys.insert (key).second) return 0; // duplicate dictionary key
 			len += offset;
 			buf = buf.substr (offset);
 			offset = 0;
@@ -84,7 +95,7 @@ namespace torrents
 				offset = handler (key, buf);
 			if (!offset)
 				offset = ParseBEncoded (buf, depth);
-			if (!offset) break;
+			if (!offset || offset > buf.size ()) break;
 			len += offset;
 			buf = buf.substr (offset);
 		}
@@ -100,17 +111,23 @@ namespace torrents
 		if (!buf.empty () && buf[0] == 'd')
 		{
 			len++; buf = buf.substr (1); // 'd'
+			bool tooManyKeys = false;
 			while (!buf.empty () && buf[0] != 'e')
 			{
+				if (ret.size () >= BENCODED_MAX_DICTIONARY_KEYS)
+				{
+					tooManyKeys = true;
+					break;
+				}
 				auto [key, offset] = ExtractByteString (buf);
 				if (!offset) break;
 				len += offset; buf = buf.substr (offset);
-				offset = ParseBEncoded (buf, 0);
-				if (!offset) break;
-				ret.emplace (key, buf.substr (0, offset));
+				offset = ParseBEncoded (buf, 1);
+				if (!offset || offset > buf.size ()) break;
+				if (!ret.emplace (key, buf.substr (0, offset)).second) break; // duplicate key
 				len += offset; buf = buf.substr (offset);
 			}
-			if (buf.empty () || buf[0] != 'e')
+			if (buf.empty () || buf[0] != 'e' || tooManyKeys)
 			{
 				ret.clear ();
 				len = 0;
@@ -123,17 +140,18 @@ namespace torrents
 
 	size_t ParseList (std::string_view buf, std::function<size_t (std::string_view buf)> handler, size_t depth)
 	{
-		if (buf.empty () || buf[0] != 'l') return 0;
+		if (depth > BENCODED_MAX_DEPTH || buf.empty () || buf[0] != 'l') return 0;
 		buf = buf.substr (1);
-		size_t len = 1;
+		size_t len = 1, numItems = 0;
 		while (!buf.empty () && buf[0] != 'e')
 		{
+			if (++numItems > BENCODED_MAX_LIST_ITEMS) return 0;
 			size_t l = 0;
 			if (handler)
 				l = handler (buf);
 			if (!l)
 				l = ParseBEncoded (buf, depth);
-			if (!l) break;
+			if (!l || l > buf.size ()) break;
 			len += l;
 			buf = buf.substr (l);
 		}
@@ -483,7 +501,7 @@ namespace torrents
 
 	Torrent::Torrent (std::string_view buf): Torrent ()
 	{
-		if (!ParseDictionary (buf, [this](std::string_view key, std::string_view buf)->size_t
+		auto len = ParseDictionary (buf, [this](std::string_view key, std::string_view buf)->size_t
 			{
 				if (key == "announce")
 				{
@@ -494,8 +512,11 @@ namespace torrents
 				else if (key == "info")
 					return ParseInfo (buf);
 				return 0;
-			}))
-		m_Error = eTorrentErrorMalformedMetaInfo;
+			});
+		// Reject trailing data after the top-level dictionary. Accepting it makes
+		// the parsed torrent and its info hash ambiguous to other implementations.
+		if (!len || len != buf.size ())
+			m_Error = eTorrentErrorMalformedMetaInfo;
 	}
 
 	Torrent::Torrent (const InfoHash& infoHash): Torrent ()
@@ -506,12 +527,36 @@ namespace torrents
 	size_t Torrent::ParsePieces (std::string_view buf)
 	{
 		auto [hashes, len] = ExtractByteString (buf);
+		if (!len)
+		{
+			m_Error = eTorrentErrorMalformedMetaInfo;
+			return 0;
+		}
+		m_Pieces.clear ();
+		if (!m_Length || m_PieceLength < MIN_PIECE_LENGTH || m_PieceLength > MAX_PIECE_LENGTH)
+		{
+			LogPrint (eLogError, "Torrents: Invalid length or piece length for pieces");
+			m_Error = eTorrentErrorMalformedMetaInfo;
+			return len;
+		}
+		// The number of hashes must exactly match the number of pieces implied by
+		// the total length and the piece length. Reject missing/extra hashes.
+		size_t numPieces = m_Length/m_PieceLength;
+		if (m_Length % m_PieceLength) numPieces++;
+		if (!numPieces || numPieces > MAX_NUM_TORRENT_PIECES ||
+			hashes.size () % SHA_DIGEST_LENGTH ||
+			hashes.size ()/SHA_DIGEST_LENGTH != numPieces)
+		{
+			LogPrint (eLogError, "Torrents: Inconsistent pieces length ", hashes.size (), " expected ", numPieces, " pieces");
+			m_Error = eTorrentErrorMalformedMetaInfo;
+			return len;
+		}
+		m_Pieces.reserve (numPieces);
 		size_t totalLen = 0;
-		while (hashes.length () >= SHA_DIGEST_LENGTH && totalLen < m_Length)
+		for (size_t i = 0; i < numPieces; i++)
 		{
 			auto l = (totalLen + m_PieceLength <= m_Length) ? m_PieceLength : m_Length - totalLen;
-			m_Pieces.emplace_back (l, (const uint8_t *)hashes.substr (0, SHA_DIGEST_LENGTH).data ());
-			hashes = hashes.substr (SHA_DIGEST_LENGTH);
+			m_Pieces.emplace_back (l, (const uint8_t *)hashes.substr (i*SHA_DIGEST_LENGTH, SHA_DIGEST_LENGTH).data ());
 			totalLen += l;
 		}
 		return len;
@@ -520,20 +565,23 @@ namespace torrents
 	size_t Torrent::ParseInfo (std::string_view buf)
 	{
 		int version = 0; // unknown
-		size_t len = ParseDictionary (buf, [this, &version](std::string_view key, std::string_view buf)->size_t
+		std::string_view piecesValue;
+		bool hasPieces = false, hasFiles = false, hasLength = false;
+		size_t len = ParseDictionary (buf, [this, &version, &piecesValue, &hasPieces, &hasFiles, &hasLength]
+			(std::string_view key, std::string_view buf)->size_t
 			{
 				if (key == "length")
 				{
 					auto [value, l] = ExtractInteger (buf);
-					if (l)
+					if (!l) return 0;
+					hasLength = true;
+					if (value < 0 || (uint64_t)value > MAX_TORRENT_LENGTH)
 					{
-						if (value < 0 || (size_t)value > MAX_TORRENT_LENGTH)
-						{
-							LogPrint (eLogError, "Torrents: Invalid length ", value);
-							value = 0;
-						}
-						m_Length = value;
+						LogPrint (eLogError, "Torrents: Invalid length ", value);
+						m_Error = eTorrentErrorMalformedMetaInfo;
 					}
+					else
+						m_Length = (size_t)value;
 					return l;
 				}
 				else if (key == "name")
@@ -545,7 +593,7 @@ namespace torrents
 						if (m_Name.empty () && !name.empty ())
 						{
 							LogPrint (eLogError, "Torrents: Unsafe name in torrent: ", name);
-							return 0;
+							m_Error = eTorrentErrorMalformedMetaInfo;
 						}
 					}
 					return l;
@@ -553,43 +601,30 @@ namespace torrents
 				else if (key == "piece length")
 				{
 					auto [value, l] = ExtractInteger (buf);
-					if (l)
+					if (!l) return 0;
+					if (value < 0 || (uint64_t)value < MIN_PIECE_LENGTH || (uint64_t)value > MAX_PIECE_LENGTH)
 					{
-						if ((size_t)value < MIN_PIECE_LENGTH || (size_t)value > MAX_PIECE_LENGTH)
-						{
-							LogPrint (eLogError, "Torrents: Invalid piece length ", value);
-							value = 0;
-						}
-						m_PieceLength = value;
+						LogPrint (eLogError, "Torrents: Invalid piece length ", value);
+						m_Error = eTorrentErrorMalformedMetaInfo;
 					}
+					else
+						m_PieceLength = (size_t)value;
 					return l;
 				}
 				else if (key == "pieces")
 				{
+					auto [hashes, l] = ExtractByteString (buf);
+					if (!l) return 0;
 					version = 1; // v1 or hybrid
-					{
-						std::vector<Piece> tmp;
-						m_Pieces.swap (tmp);
-					}
-					if (m_PieceLength > 0 && m_Length > 0)
-					{
-						auto d = lldiv (m_Length, m_PieceLength);
-						size_t numPieces = d.quot;
-						if (d.rem > 0) numPieces++;
-						if (numPieces <= MAX_NUM_TORRENT_PIECES)
-							m_Pieces.reserve (numPieces);
-						else
-						{
-							LogPrint (eLogError, "Torrents: Too many pieces ", numPieces);
-							m_Error = eTorrentErrorMalformedMetaInfo;
-						}
-					}
-					else
-						m_Error = eTorrentErrorMalformedMetaInfo;
-					return ParsePieces (buf);
+					piecesValue = buf;
+					hasPieces = true;
+					return l;
 				}
 				else if (key == "files")
+				{
+					hasFiles = true;
 					return ParseFiles (buf);
+				}
 				else if (key == "meta version")
 				{
 					auto [value, l] = ExtractInteger (buf);
@@ -604,12 +639,33 @@ namespace torrents
 			m_Error = eTorrentErrorMalformedMetaInfo;
 			return 0;
 		}
+		// "length" and "files" are mutually exclusive in v1 metadata.
+		if (hasFiles && hasLength)
+		{
+			LogPrint (eLogError, "Torrents: Both length and files are present");
+			m_Error = eTorrentErrorMalformedMetaInfo;
+		}
+		if (hasPieces)
+			ParsePieces (piecesValue);
+		else if (version == 1)
+		{
+			LogPrint (eLogError, "Torrents: v1 torrent without pieces");
+			m_Error = eTorrentErrorMalformedMetaInfo;
+		}
 		if (m_Error == eTorrentErrorNoError && version != 1)
 		{
-			LogPrint (eLogError, "Torrents: Torrent version ", version, " is not supprted");
+			LogPrint (eLogError, "Torrents: Torrent version ", version, " is not supported");
 			m_Error = eTorrentErrorNonSupportedVersion;
 		}
-		if (m_IsSingleFile && !m_Name.empty ()) // single file
+		// Every supported (v1/hybrid) metainfo requires a non-empty root name.
+		// Without it the download path would be the torrents directory itself
+		// and the torrent would have no usable file entry.
+		if (m_Error == eTorrentErrorNoError && m_Name.empty ())
+		{
+			LogPrint (eLogError, "Torrents: Missing or empty torrent name");
+			m_Error = eTorrentErrorMalformedMetaInfo;
+		}
+		if (m_Error == eTorrentErrorNoError && m_IsSingleFile && !m_Name.empty ()) // single file
 			m_Files.emplace_back (std::make_shared<TorrentFile> (m_Name, m_Length));
 		// save info
 		m_Info.resize (len);
@@ -630,13 +686,18 @@ namespace torrents
 	std::string Torrent::AdjustName (std::string_view name)
 	{
 		if (name.empty () || name == "." || name == "..") return "";
+		if (name.size () > MAX_TORRENT_PATH_COMPONENT_LENGTH) return "";
+		// Absolute paths and Windows drive/UNC prefixes must never be accepted as
+		// a component. Separators inside a component are replaced, not interpreted.
+		if (name.front () == '/' || name.front () == '\\') return "";
 #ifdef _WIN32
 		if (name.back () == '.' || name.back () == ' ') return ""; // Windows drops those
 #endif
 		std::string adjustedName;
 		for (char ch: name)
 		{
-			if ((unsigned char)ch < 0x20) return "";
+			auto c = (unsigned char)ch;
+			if (c < 0x20 || c == 0x7f) return ""; // NUL and control characters
 			if (ch == '/' || ch == '\\' || ch == ':' || ch == '<' || ch == '>' ||
 				ch == '"' || ch == '|' || ch == '?' || ch == '*')
 				adjustedName.push_back ('_');
@@ -663,59 +724,124 @@ namespace torrents
 		m_IsSingleFile = false;
 		m_Length = 0;
 		m_Files.clear ();
-		return ParseList (buf, [this](std::string_view file)->size_t
+		std::set<std::string> filePaths, directoryPaths;
+		size_t totalLength = 0;
+		auto len = ParseList (buf, [this, &filePaths, &directoryPaths, &totalLength](std::string_view file)->size_t
 			{
 				std::filesystem::path filePath; size_t fileLength = 0;
-				auto len = ParseDictionary (file, [&filePath, &fileLength](std::string_view key, std::string_view value)->size_t
+				bool hasPath = false, hasLength = false;
+				auto len = ParseDictionary (file, [this, &filePath, &fileLength, &hasPath, &hasLength]
+					(std::string_view key, std::string_view value)->size_t
 					{
 						if (key == "path")
 						{
+							hasPath = true;
 							auto [subdirs, l] = ParseStringList (value);
-							if (l)
-								for (const auto& it: subdirs)
+							if (!l) return 0;
+							if (subdirs.empty () || subdirs.size () > MAX_TORRENT_PATH_COMPONENTS)
+							{
+								LogPrint (eLogError, "Torrents: Invalid number of path components ", subdirs.size ());
+								m_Error = eTorrentErrorMalformedMetaInfo;
+								return l;
+							}
+							for (const auto& it: subdirs)
+							{
+								auto name = AdjustName (it);
+								if (name.empty ())
 								{
-									auto name = AdjustName (it);
-									if (name.empty ())
-									{
-										LogPrint (eLogError, "Torrents: Unsafe path component in torrent: ", it);
-										filePath.clear ();
-										return 0;
-									}
-									filePath /= name;
+									LogPrint (eLogError, "Torrents: Unsafe path component in torrent: ", it);
+									filePath.clear ();
+									m_Error = eTorrentErrorMalformedMetaInfo;
+									return l;
 								}
+								filePath /= name;
+							}
 							return l;
 						}
 						else if (key == "length")
 						{
+							hasLength = true;
 							auto [length, l] = ExtractInteger (value);
-							if (l)
+							if (!l) return 0;
+							if (length <= 0 || (uint64_t)length > MAX_TORRENT_LENGTH)
 							{
-								if (length < 0 || (size_t)length > MAX_TORRENT_LENGTH)
-								{
-									LogPrint (eLogError, "Torrents: Invalid file length ", length);
-									length = 0;
-								}
-								fileLength = length;
+								LogPrint (eLogError, "Torrents: Invalid file length ", length);
+								m_Error = eTorrentErrorMalformedMetaInfo;
 							}
+							else
+								fileLength = (size_t)length;
 							return l;
 						}
 						return 0;
 					});
-				if (len && fileLength && !filePath.empty ())
+				if (!len || !hasPath || !hasLength || fileLength == 0 || filePath.empty ())
 				{
-					if (m_Files.size () < MAX_NUM_TORRENT_FILES)
-						m_Files.emplace_back (std::make_shared<TorrentFile> (filePath, fileLength));
-					else
-						m_Error = eTorrentErrorMalformedMetaInfo;
-					if (m_Length + fileLength <= MAX_TORRENT_LENGTH)
-						m_Length += fileLength;
-					else
-						m_Error = eTorrentErrorMalformedMetaInfo;
-				}
-				else
 					m_Error = eTorrentErrorMalformedMetaInfo;
+					return len;
+				}
+				if (m_Error != eTorrentErrorNoError) return len;
+				if (fileLength > MAX_TORRENT_LENGTH - totalLength)
+				{
+					LogPrint (eLogError, "Torrents: Total torrent length exceeds limit");
+					m_Error = eTorrentErrorMalformedMetaInfo;
+					return len;
+				}
+				// Normalise components for collision checks. Windows paths are case
+				// insensitive, so fold them there as well.
+				std::vector<std::string> components;
+				for (const auto& part: filePath)
+				{
+					std::string component = part.string ();
+#ifdef _WIN32
+					boost::to_lower (component);
+#endif
+					components.push_back (std::move (component));
+				}
+				std::string normalized;
+				for (size_t i = 0; i < components.size (); i++)
+				{
+					if (i) normalized.push_back ('/');
+					normalized += components[i];
+				}
+				bool collision = normalized.empty () || filePaths.contains (normalized) || directoryPaths.contains (normalized);
+				std::string prefix;
+				for (size_t i = 0; !collision && i + 1 < components.size (); i++)
+				{
+					if (i) prefix.push_back ('/');
+					prefix += components[i];
+					if (filePaths.contains (prefix)) collision = true; // file used as a directory
+				}
+				if (collision)
+				{
+					LogPrint (eLogError, "Torrents: Duplicate or colliding torrent path ", normalized);
+					m_Error = eTorrentErrorMalformedMetaInfo;
+					return len;
+				}
+				if (m_Files.size () >= MAX_NUM_TORRENT_FILES)
+				{
+					LogPrint (eLogError, "Torrents: Too many files in torrent");
+					m_Error = eTorrentErrorMalformedMetaInfo;
+					return len;
+				}
+				filePaths.insert (normalized);
+				prefix.clear ();
+				for (size_t i = 0; i + 1 < components.size (); i++)
+				{
+					if (i) prefix.push_back ('/');
+					prefix += components[i];
+					directoryPaths.insert (prefix);
+				}
+				totalLength += fileLength;
+				m_Files.emplace_back (std::make_shared<TorrentFile> (filePath, fileLength));
 				return len;
 			});
+		if (!len)
+		{
+			m_Error = eTorrentErrorMalformedMetaInfo;
+			return 0;
+		}
+		m_Length = totalLength;
+		return len;
 	}
 
 	std::string Torrent::GetHexStringInfoHash () const

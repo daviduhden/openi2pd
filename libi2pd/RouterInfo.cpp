@@ -10,6 +10,7 @@
 #include <string.h>
 #include "I2PEndian.h"
 #include <fstream>
+#include <limits>
 #include <memory>
 #include <charconv>
 #include <boost/algorithm/string.hpp> // for boost::to_lower
@@ -431,6 +432,7 @@ namespace data
 		// read peers
 		if (offset + 1 > len) return false;
 		uint8_t numPeers = buf[offset]; offset++; // num peers
+		if (offset + (size_t)numPeers*32 > len) return false;
 		offset += numPeers*32; // TODO: read peers
 		// read properties
 		if (offset + 2 > len) return false;
@@ -461,8 +463,15 @@ namespace data
 				{
 					if (ch >= '0' && ch <= '9')
 					{
-						m_Version *= 10;
-						m_Version += (ch - '0');
+						int digit = ch - '0';
+						if (m_Version > (std::numeric_limits<int>::max () - digit)/10)
+						{
+							// Reject absurdly long numeric versions instead of
+							// overflowing a signed int on untrusted input.
+							m_Version = 0;
+							break;
+						}
+						m_Version = m_Version*10 + digit;
 					}
 				}
 				if (m_Version < NETDB_MIN_PEER_TEST_VERSION && (m_SupportedTransports & (eSSU2V4 | eSSU2V6)))
@@ -1226,7 +1235,7 @@ namespace data
 		s.write ((char *)ident, identLen);
 		WriteToStream (s);
 		size_t len = s.str ().size ();
-		if (len + signatureLen < MAX_RI_BUFFER_SIZE)
+		if (len + signatureLen <= MAX_RI_BUFFER_SIZE)
 		{
 			UpdateBuffer ((const uint8_t *)s.str ().c_str (), len);
 			// signature

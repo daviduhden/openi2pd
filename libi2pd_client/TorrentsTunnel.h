@@ -22,6 +22,9 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <mutex>
+#include <future>
+#include <chrono>
+#include <optional>
 #include <boost/asio.hpp>
 #include <boost/beast.hpp>
 #include "HTTP.h"
@@ -29,6 +32,7 @@
 #include "util.h"
 #include "BoostStream.h"
 #include "Torrents.h"
+#include "TorrentsControl.h"
 #include "TorrentsDHT.h"
 
 namespace i2p
@@ -91,12 +95,16 @@ namespace torrents
 		public:
 
 			TorrentsTunnel (std::string_view name, std::shared_ptr<i2p::client::ClientDestination> localDestination,
-				std::string_view torrentsDir, std::string_view trackers = "", bool dht = true, std::string_view dhtFileName = "",
-				bool web = true);
+				std::string_view torrentsDir, std::string_view trackers = "", bool dht = true, std::string_view dhtFileName = "");
 
 			void Start () override;
 			void Stop () override;
 			auto& GetDiskIOService () { return m_DiskIOService.GetService (); };
+
+			// Control snapshots and commands are executed on this tunnel's Asio
+			// service thread. Callers on other threads wait for at most timeout.
+			std::optional<TorrentsSnapshot> GetControlSnapshot (std::chrono::milliseconds timeout);
+			TorrentCommandResult ExecuteControlCommand (const TorrentCommand& command, std::chrono::milliseconds timeout);
 
 			const std::string& GetPeerID () const { return m_PeerID; }
 			const std::filesystem::path& GetTorrentsDir () const { return m_TorrentsDir; }
@@ -109,6 +117,10 @@ namespace torrents
 			std::list<std::shared_ptr<Torrent> > GetTorrents () const;
 			std::pair<std::shared_ptr<Torrent>, int> AddTorrent (std::string_view torrentFileContent); // retrun (torrent, id)
 			std::pair<std::shared_ptr<Torrent>, int> AddMagnet (std::string_view magnet); // return (torrent, id)
+			// RPC entry points marshal to the tunnel service thread; they never
+			// touch m_Torrents from an HTTP I/O thread. Return {nullptr, 0} on timeout.
+			std::pair<std::shared_ptr<Torrent>, int> AddTorrentFromRpc (std::string_view torrentFileContent);
+			std::pair<std::shared_ptr<Torrent>, int> AddMagnetFromRpc (std::string_view magnet);
 			void UpdateTorrentInfo (std::shared_ptr<Torrent> torrent, std::string_view info); // magnet
 			bool RemoveTorrent (int id, bool deleteFiles);
 			void RemoveAllTorrents (bool deleteFiles);
@@ -123,12 +135,21 @@ namespace torrents
 			std::pair<uint16_t, uint16_t> GetDHTPorts () const { return { m_DHT ? m_DHT->GetPort () : 0, m_DHT ? m_DHT->GetRPort () : 0 }; }
 			bool SupportsDHT () const { return (bool)m_DHT; }
 			const std::unique_ptr<TorrentsDHT>& GetDHT () const { return m_DHT; }
-			bool SupportsWeb () const { return m_Web; }
 
 			const char* GetName() const override { return m_Name.c_str (); }
 
 		private:
 
+			std::optional<TorrentsSnapshot> BuildControlSnapshot () const;
+			TorrentCommandResult ExecuteControlCommandOnService (const TorrentCommand& command);
+
+			// True when path is lexically inside m_TorrentsDir and neither the
+			// root nor any component in between is a symlink. Existing leaves
+			// must be regular files, or directories when allowDirectoryLeaf is
+			// set. Missing components are allowed for files that will be
+			// created, but are rechecked before use.
+			bool IsContainedPath (const std::filesystem::path& path, bool allowDirectoryLeaf) const;
+			std::string GetDisplayFilePath (const std::filesystem::path& path) const;
 
 			void Accept ();
 			void ReadTorrentFile (const std::filesystem::path& torrentFilePath);
@@ -186,7 +207,6 @@ namespace torrents
 			std::unordered_map<uint32_t, std::tuple<size_t, uint16_t, std::weak_ptr<Torrent>, uint64_t > > m_DatragramTrackerTransactions;
 			// transactionID->(trackerID, from_port, torrent, timestamp monotonic milliseconds)
 			std::unique_ptr<TorrentsDHT> m_DHT;
-			bool m_Web;
 	};
 
 }

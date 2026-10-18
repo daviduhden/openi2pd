@@ -1,0 +1,216 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <PreferenceCategory android:title="@string/pref_category_general">
+        <androidx.preference.SwitchPreferenceCompat
+            android:defaultValue="false"
+            android:key="autostartEnabled"
+            android:persistent="false"
+            android:summary="@string/pref_autostart_summary"
+            android:title="@string/autostart_enabled"
+            app:iconSpaceReserved="false" />
+    </PreferenceCategory>
+
+    <PreferenceCategory android:title="@string/pref_category_network">
+        <androidx.preference.SwitchPreferenceCompat
+            android:defaultValue="true"
+            android:key="ipv4EnablePreference"
+            android:persistent="false"
+            android:title="@string/pref_ipv4_title"
+            app:iconSpaceReserved="false" />
+
+        <androidx.preference.SwitchPreferenceCompat
+            android:defaultValue="false"
+            android:key="ipv6EnablePreference"
+            android:persistent="false"
+            android:title="@string/pref_ipv6_title"
+            app:iconSpaceReserved="false" />
+
+        <androidx.preference.SwitchPreferenceCompat
+            android:defaultValue="true"
+            android:key="ntcp2EnablePreference"
+            android:persistent="false"
+            android:title="@string/pref_ntcp2_title"
+            app:iconSpaceReserved="false" />
+
+        <androidx.preference.SwitchPreferenceCompat
+            android:defaultValue="true"
+            android:key="ntcp2PublishPreference"
+            android:persistent="false"
+            android:summary="@string/pref_ntcp2_publish_summary"
+            android:title="@string/pref_ntcp2_publish_title"
+            app:iconSpaceReserved="false" />
+
+        <androidx.preference.SwitchPreferenceCompat
+            android:defaultValue="true"
+            android:key="ssuEnablePreference"
+            android:persistent="false"
+            android:title="@string/pref_ssu_title"
+            app:iconSpaceReserved="false" />
+
+        <androidx.preference.EditTextPreference
+            android:defaultValue="auto"
+            android:dialogTitle="@string/pref_port_title"
+            android:enabled="false"
+            android:key="portPreference"
+            android:persistent="false"
+            android:singleLine="true"
+            android:summary="@string/pref_port_summary"
+            android:title="@string/pref_port_title"
+            app:iconSpaceReserved="false" />
+    </PreferenceCategory>
+
+    <PreferenceCategory android:title="@string/pref_category_tunnels">
+        <androidx.preference.SwitchPreferenceCompat
+            android:defaultValue="false"
+            android:key="noTransitPreference"
+            android:persistent="false"
+            android:summary="@string/pref_no_transit_summary"
+            android:title="@string/pref_no_transit_title"
+            app:iconSpaceReserved="false" />
+
+        <androidx.preference.SwitchPreferenceCompat
+            android:defaultValue="false"
+            android:key="floodfillPreference"
+            android:persistent="false"
+            android:summary="@string/pref_floodfill_summary"
+            android:title="@string/pref_floodfill_title"
+            app:iconSpaceReserved="false" />
+
+        <androidx.preference.EditTextPreference
+            android:defaultValue="3000"
+            android:dialogTitle="@string/pref_transit_limit_title"
+            android:inputType="number"
+            android:key="transitTunnelPreference"
+            android:persistent="false"
+            android:singleLine="true"
+            android:summary="@string/pref_transit_limit_summary"
+            android:title="@string/pref_transit_limit_title"
+            app:iconSpaceReserved="false" />
+    </PreferenceCategory>
+
+    <PreferenceCategory android:title="@string/pref_category_resources">
+        <androidx.preference.ListPreference
+            android:defaultValue="L"
+            android:entries="@array/pref_bandwidth_labels"
+            android:entryValues="@array/pref_bandwidth_values"
+            android:key="bandwidthPreference"
+            android:persistent="false"
+            android:summary="@string/pref_bandwidth_summary"
+            android:title="@string/pref_bandwidth_title"
+            app:iconSpaceReserved="false" />
+    </PreferenceCategory>
+
+    <PreferenceCategory android:title="@string/pref_category_logging">
+        <androidx.preference.ListPreference
+            android:defaultValue="info"
+            android:entries="@array/pref_loglevel_labels"
+            android:entryValues="@array/pref_loglevel_values"
+            android:key="logLevelPreference"
+            android:persistent="false"
+            android:summary="@string/pref_log_level_summary"
+            android:title="@string/pref_log_level_title"
+            app:iconSpaceReserved="false" />
+    </PreferenceCategory>
+
+    <PreferenceCategory android:title="@string/pref_category_clients">
+        <androidx.preference.SwitchPreferenceCompat
+            android:defaultValue="true"
+            android:key="httpProxyEnablePreference"
+            android:persistent="false"
+            android:title="@string/pref_http_enable_title"
+            app:iconSpaceReserved="false" />
+
+        <androidx.preference.EditTextPreference
+            android:defaultValue="127.0.0.1"
+            android:dialogTitle="@string/pref_http_address_title"
+            android:inputType="text"
+            android:key="httpProxyAddressPreference"
+            android:persistent="false"
+            android:singleLine="true"
+            android:title="@string/pref_http_address_title"
+            app:iconSpaceReserved="false" />
+
+        <androidx.preference.EditTextPreference
+            android:defaultValue="4444"
+            android:dialogTitle="@string/pref_http_port_title"
+            android:inputType="number"
+            android:key="httpProxyPortPreference"
+            android:persistent="false"
+            android:singleLine="true"
+            android:title="@string/pref_http_port_title"
+            app:iconSpaceReserved="false" />
+
+        <androidx.preference.SwitchPreferenceCompat
+            android:defaultValue="false"
+            android:key="socksProxyEnablePreference"
+            android:persistent="false"
+            android:title="@string/pref_socks_enable_title"
+            app:iconSpaceReserved="false" />
+
+        <androidx.preference.EditTextPreference
+            android:defaultValue="127.0.0.1"
+            android:dialogTitle="@string/pref_socks_address_title"
+            android:inputType="text"
+            android:key="socksProxyAddressPreference"
+            android:persistent="false"
+            android:singleLine="true"
+            android:title="@string/pref_socks_address_title"
+            app:iconSpaceReserved="false" />
+
+        <androidx.preference.EditTextPreference
+            android:defaultValue="4447"
+            android:dialogTitle="@string/pref_socks_port_title"
+            android:inputType="number"
+            android:key="socksProxyPortPreference"
+            android:persistent="false"
+            android:singleLine="true"
+            android:title="@string/pref_socks_port_title"
+            app:iconSpaceReserved="false" />
+
+        <androidx.preference.SwitchPreferenceCompat
+            android:defaultValue="false"
+            android:key="samEnablePreference"
+            android:persistent="false"
+            android:title="@string/pref_sam_enable_title"
+            app:iconSpaceReserved="false" />
+
+        <androidx.preference.EditTextPreference
+            android:defaultValue="127.0.0.1"
+            android:dialogTitle="@string/pref_sam_address_title"
+            android:inputType="text"
+            android:key="samAddressPreference"
+            android:persistent="false"
+            android:singleLine="true"
+            android:title="@string/pref_sam_address_title"
+            app:iconSpaceReserved="false" />
+
+        <androidx.preference.EditTextPreference
+            android:defaultValue="7656"
+            android:dialogTitle="@string/pref_sam_port_title"
+            android:inputType="number"
+            android:key="samPortPreference"
+            android:persistent="false"
+            android:singleLine="true"
+            android:title="@string/pref_sam_port_title"
+            app:iconSpaceReserved="false" />
+
+        <androidx.preference.SwitchPreferenceCompat
+            android:defaultValue="false"
+            android:key="upnpEnablePreference"
+            android:persistent="false"
+            android:title="@string/pref_upnp_enable_title"
+            app:iconSpaceReserved="false" />
+
+        <androidx.preference.EditTextPreference
+            android:defaultValue="I2Pd"
+            android:dialogTitle="@string/pref_upnp_name_title"
+            android:inputType="text"
+            android:key="upnpForwardNamePreference"
+            android:persistent="false"
+            android:singleLine="true"
+            android:title="@string/pref_upnp_name_title"
+            app:iconSpaceReserved="false" />
+    </PreferenceCategory>
+</PreferenceScreen>

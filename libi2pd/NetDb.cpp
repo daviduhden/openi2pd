@@ -237,6 +237,11 @@ namespace data
 
 	std::shared_ptr<const RouterInfo> NetDb::AddRouterInfo (const uint8_t * buf, int len, bool& updated)
 	{
+		if (!buf || len <= 0)
+		{
+			updated = false;
+			return nullptr;
+		}
 		IdentityEx identity;
 		if (identity.FromBuffer (buf, len))
 			return AddRouterInfo (identity.GetIdentHash (), buf, len, updated);
@@ -255,6 +260,20 @@ namespace data
 	std::shared_ptr<const RouterInfo> NetDb::AddRouterInfo (const IdentHash& ident, const uint8_t * buf, int len, bool& updated)
 	{
 		updated = true;
+		if (!buf || len <= 0)
+		{
+			updated = false;
+			return nullptr;
+		}
+		// The DatabaseStore key must be the hash of the RouterInfo identity.
+		// Verify the binding before accepting or updating a cached entry.
+		IdentityEx announcedIdentity;
+		if (!announcedIdentity.FromBuffer (buf, len) || announcedIdentity.GetIdentHash () != ident)
+		{
+			LogPrint (eLogWarning, "NetDb: RouterInfo identity does not match store key ", ident.ToBase64 ());
+			updated = false;
+			return nullptr;
+		}
 		auto r = FindRouter (ident);
 		if (r)
 		{
@@ -299,6 +318,8 @@ namespace data
 						else
 							r->ResetFloodfill ();
 					}
+					else
+						r->ResetFloodfill (); // declared floodfill but not eligible yet
 				}
 			}
 			else
@@ -362,6 +383,8 @@ namespace data
 
 	bool NetDb::AddLeaseSet (const IdentHash& ident, const uint8_t * buf, int len)
 	{
+		if (!buf || len <= 0)
+			return false;
 		std::lock_guard<std::mutex> lock(m_LeaseSetsMutex);
 		bool updated = false;
 		auto it = m_LeaseSets.find(ident);
@@ -369,7 +392,13 @@ namespace data
 		{
 			// we update only is existing LeaseSet is not LeaseSet2
 			uint64_t expires;
-			if(LeaseSetBufferValidate(buf, len, expires))
+			// LeaseSetBufferValidate() verifies the signature with the identity
+			// embedded in the buffer. Bind that identity to the store key first,
+			// otherwise a valid LeaseSet for another destination could overwrite
+			// this cache entry.
+			IdentityEx announcedIdentity;
+			if (announcedIdentity.FromBuffer (buf, len) && announcedIdentity.GetIdentHash () == ident &&
+				LeaseSetBufferValidate(buf, len, expires))
 			{
 				if(it->second->GetExpirationTime() < expires)
 				{
@@ -382,12 +411,13 @@ namespace data
 					LogPrint(eLogDebug, "NetDb: LeaseSet is older: ", ident.ToBase32());
 			}
 			else
-				LogPrint(eLogError, "NetDb: LeaseSet is invalid: ", ident.ToBase32());
+				LogPrint(eLogError, "NetDb: LeaseSet is invalid or does not match store key: ", ident.ToBase32());
 		}
 		else
 		{
 			auto leaseSet = std::make_shared<LeaseSet> (buf, len, false); // we don't need leases in netdb
-			if (leaseSet->IsValid ())
+			if (leaseSet->IsValid () && leaseSet->GetIdentity () &&
+				leaseSet->GetIdentity ()->GetIdentHash () == ident)
 			{
 				if (CheckLogLevel (eLogInfo))
 					LogPrint (eLogInfo, "NetDb: LeaseSet added: ", ident.ToBase32());
@@ -402,9 +432,20 @@ namespace data
 
 	bool NetDb::AddLeaseSet2 (const IdentHash& ident, const uint8_t * buf, int len, uint8_t storeType)
 	{
+		if (!buf || len <= 0)
+			return false;
 		auto leaseSet = std::make_shared<LeaseSet2> (storeType, buf, len, false); // we don't need leases in netdb
 		if (leaseSet->IsValid ())
 		{
+			// Standard LeaseSet2 entries are indexed by the destination hash
+			// embedded in the buffer. Encrypted LeaseSet2 uses the blinded store
+			// hash as key instead, so it cannot be compared to the identity.
+			if (storeType != NETDB_STORE_TYPE_ENCRYPTED_LEASESET2 &&
+			    (!leaseSet->GetIdentity () || leaseSet->GetIdentity ()->GetIdentHash () != ident))
+			{
+				LogPrint (eLogError, "NetDb: LeaseSet2 identity does not match store key: ", ident.ToBase32());
+				return false;
+			}
 			std::lock_guard<std::mutex> lock(m_LeaseSetsMutex);
 			auto it = m_LeaseSets.find(ident);
 			if (it == m_LeaseSets.end () || it->second->GetStoreType () != storeType ||
@@ -917,6 +958,11 @@ namespace data
 		{
 			if (CheckLogLevel (eLogDebug))
 				LogPrint (eLogDebug, "NetDb: Store request: RouterInfo ", ident.ToBase64());
+			if (offset + 2 > len)
+			{
+				LogPrint (eLogError, "NetDb: Database store msg is too short for RouterInfo size ", len);
+				return;
+			}
 			size_t size = bufbe16toh (buf + offset);
 			offset += 2;
 			if (size > MAX_RI_BUFFER_SIZE || size > len - offset)
@@ -926,7 +972,7 @@ namespace data
 			}
 			uint8_t uncompressed[MAX_RI_BUFFER_SIZE];
 			size_t uncompressedSize = m_Inflator.Inflate (buf + offset, size, uncompressed, MAX_RI_BUFFER_SIZE);
-			if (uncompressedSize && uncompressedSize < MAX_RI_BUFFER_SIZE)
+			if (uncompressedSize && uncompressedSize <= MAX_RI_BUFFER_SIZE)
 				updated = AddRouterInfo (ident, uncompressed, uncompressedSize);
 			else
 			{

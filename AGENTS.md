@@ -34,6 +34,9 @@ documentation.
 | OpenBSD | OpenBSD subagent | `daemon/UnixDaemon.cpp`, `SSU2.cpp` |
 | Linux/Windows IPC | Linux/Windows subagents | `privsep/**`, platform files |
 | TUI | TUI subagent | `tui/**`, `libi2pd/TuiProtocol.h` |
+| Torrent engine/API | Torrent subagent | `libi2pd_client/Torrents*` |
+| Torrent TUI/IPC | Torrent TUI/IPC subagents | `tui/**`, `daemon/TuiServer.*`, `libi2pd/TuiProtocol.h` |
+| Perl tooling | Perl subagent | `tools/scripts/**`, Perl tests/docs |
 | Tools | Tools subagent | `tools/**` |
 | Firewall | Firewall subagent | `tools/firewall.hpp`, `tools/routerinfo.cpp` |
 | Android | Android subagent | `android/**` |
@@ -62,8 +65,30 @@ integration.
    - dynamic validations required.
 7. Do not mark a task validated unless it was actually executed.
 
+## Persistent project constraints
+
+- Native code is C++23; CMake is primary and the root Makefile is a POSIX
+  front-end using Ninja. GNU make must not be reintroduced.
+- Android source/target is Java 25; a build JDK is not a runtime and no JDK may
+  be bundled in the APK. Material 3/Views/Java is preferred; no Kotlin/Compose
+  migration was requested.
+- The torrent console is native ncursesw + local IPC. No HTML/CSS/JS console,
+  Node/V8/QuickJS, browser bridge or cleartext torrent path.
+- Project-maintained Python is replaced by Perl; no CPAN/runtime downloads.
+- Every workflow is `workflow_dispatch`-only, actions are SHA-pinned and
+  checkout credentials are not persisted.
+- OpenBSD is first-class; do not weaken pledge/unveil or LibreSSL support.
+- Do not claim full privilege separation until network/storage workers,
+  supervisor and negative capability tests actually exist. The log worker is
+  only the first isolated component.
+- Preserve copyright, license, SPDX, NOTICE and upstream provenance.
+
 ## Current uncommitted work
 
-The working tree contains privilege-separated logging (`privsep/`), related
-daemon/config/log changes, security docs, and tool hardening. Agents must not
-revert or overwrite those changes.
+The working tree contains privilege-separated logging (`privsep/`), Android
+Java 25/UI refactoring, torrent control/TUI migration, Perl tooling, security
+docs and tool hardening. Agents must not revert or overwrite those changes.
+Torrent TUI control must use the bounded local IPC; it must not access engine
+internals, sockets, download files or JSON-RPC. Python is not an allowed
+runtime dependency for project-maintained scripts once the Perl replacement
+is installed.

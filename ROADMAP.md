@@ -5,17 +5,24 @@ requirements and current code; `TODO.md` is the authoritative task list.
 
 ## Current baseline (verified in this workspace)
 
-- Linux/GCC 16: main CMake configure and build passed before the most recent
-  Android/firewall edits.
-- CTest: 16/16 passed before the firewall test was added; `bmake` full build
-  passed earlier.
+- Linux/GCC 16: main CMake configure and build passed at the Session 7
+  checkpoint, before the local build freeze.
+- CTest: 20/20 passed at the Session 7 checkpoint before the user froze local
+  builds (includes torrent bencode and extended TUI protocol tests).
 - TUI: live UNIX-socket session on Linux passed (state, peers, tunnels, netDb,
   logs, malformed requests, quit, cleanup).
 - Tools: all 15 built; keygen/keyinfo/offlinekeys/i2pbase64/regaddr/verifyhost/
   x25519 smoke-tested.
-- Android: integrated; Gradle 9.8.1 + AGP 9.4.1 configuration reached the
-  missing-SDK check. No SDK/NDK, so no APK was built.
-- Java I2P: not yet cloned/audited in this session; reference work is pending.
+- Android: Java 25 source/target compiles with JDK 25/AGP 9.4.1; Material 3
+  UI/architecture source is present. APK/JNI/Lint/device tests are deferred to
+  CI by user instruction.
+- Torrent: web console removed; native C++ control + ncurses TUI + local IPC
+  and Perl `i2pdctl` are implemented. Dynamic TUI/engine/RPC/TLS validation is
+  deferred to CI.
+- Java I2P: reference work remains pending.
+- Static-review passes for Torrent/TUI, I2P, Perl, tools/firewall, IPC,
+  OpenBSD and Android are integrated. No compiler, CTest, APK/Lint, sanitizer,
+  fuzz, OpenBSD or device test was run in this environment.
 
 ## Workstreams
 
@@ -26,7 +33,8 @@ Order:
 1. Finish builds/tests after current edits (C++ CMake, tools, firewall test).
 2. Run sanitizers and fuzz targets; fix findings.
 3. Audit untrusted parsers (NTCP2/SSU2/I2NP/RouterInfo/LeaseSet/SU3).
-4. Resolve TUI status data races and any Android JNI lifetime issues.
+4. Resolve TUI status data races, torrent control snapshots and Android JNI
+   lifetime issues.
 
 Exit criteria: all prepared tests pass, sanitizer findings triaged, no known
 memory-safety defect left unfixed.
@@ -45,14 +53,14 @@ Exit criteria: every announced protocol row has a Java reference, a C++
 reference, a difference verdict and a validation status. No "compatible" claim
 without evidence.
 
-### 3. Android/OpenJDK 25 (blocked on SDK/NDK)
+### 3. Android/Java 25 (CI build and device validation pending)
 
-1. Install JDK 25, Android SDK 37, NDK r27+ and dependency prefixes.
-2. Validate Gradle 9.8.1/AGP 9.4.1 and toolchain 25.
-3. Build APK/DEX; run Android Lint and JNI tests.
-4. Continue Java refactor (records, sealed types, switch expressions, lifecycle
-   separation) within the Java 17 language level supported by the Android
-   pipeline.
+1. Use CI JDK 25, Android SDK 37 and NDK r27+ (local builds are frozen).
+2. Validate Gradle 9.8.1/AGP 9.4.1 and toolchain 25 in CI.
+3. Build APK/DEX; run Android Lint, unit tests and JNI/device tests.
+4. Continue Java 25 source refactor (records, sealed types, pattern matching,
+   switch expressions, lifecycle separation); D8/R8 class-version support and
+   ART API constraints are documented separately.
 5. Test rotation, background service, restart and permissions.
 
 Exit criteria: reproducible APK build with JDK 25 + documented toolchain; no
@@ -105,6 +113,40 @@ Exit criteria: the four invariants in the privilege-separation request hold for
 every supported platform, with evidence from OS-level capability tests. Until
 then the monolithic core remains a documented residual risk.
 
+### 9. Native BitTorrent console and TUI
+
+1. Inventory every JS/HTML/CSS/RPC torrent action and map it to the existing
+   C++ engine; do not rewrite working engine logic.
+2. Add typed C++23 snapshot/control interfaces; build snapshots on the engine
+   service thread with bounded waits.
+3. Extend the local TUI IPC with bounded torrent list/detail/action messages.
+4. Implement the ncursesw Torrents tab, details, search/sort, confirmations,
+   session/DHT stats and error states.
+5. Remove the web console only after parity is mapped; audit JSON-RPC as an
+   optional local-only compatibility surface.
+6. Harden parser, paths, symlinks, deletion, concurrency, anonymity and RPC
+   limits; add deterministic tests.
+7. Stage network/storage worker separation; until then the daemon remains
+   monolithic and this must be stated explicitly.
+8. Do not run local builds/tests in this environment; CI executes them.
+
+Exit criteria: no torrent HTML/JS/CSS; TUI can administer the engine through
+typed IPC; I2P-only operation; destructive actions confirmed; parser/path/RPC
+tests prepared; full worker separation validated before claiming it.
+
+### 10. Perl migration
+
+1. Inventory all maintained Python and consumers.
+2. Convert each script with core Perl modules; preserve CLI/output/exit codes.
+3. Provide a safe HTTPS path with no silent cleartext downgrade and no CPAN
+   runtime downloads.
+4. Add `perl -c`, Test::More and fake-server tests.
+5. Update CMake install, docs and packaging; remove Python only after migration.
+
+Exit criteria: no maintained Python script, all consumers migrated, Perl tests
+pass locally and on OpenBSD base Perl, and no Perl runtime dependency is added
+to the daemon.
+
 ### 8. OpenBSD and CI
 
 1. Validate CMake/Ninja, LibreSSL, pledge/unveil, MTU and custom datadir.
@@ -130,7 +172,7 @@ Exit criteria: OpenBSD build/runtime evidence and manual CI results recorded.
 | No Java router / Android SDK in this environment | Cannot validate interoperability or APK | Prepare harnesses and mark blocked |
 | Non-atomic status reads | Data race reports | Atomic/snapshot refactor with TSan |
 | JNI lifecycle/shutdown races | Crash on restart | RAII + lifecycle tests |
-| Java 25 vs ART API gap | APK incompatibility | Toolchain 25, language 17, document |
+| Java 25 language vs ART API gap | APK incompatibility | Java 25 source/target, D8/R8 probe, Android API constraints documented |
 | Firewall syntax differences | Broken rules | Native syntax checks, no execution |
 | Upstream docs drift | Stale instructions | Pinned commits + manual sync script |
 
@@ -139,7 +181,9 @@ Exit criteria: OpenBSD build/runtime evidence and manual CI results recorded.
 - **M1:** Current build/tests green after firewall/Android edits.
 - **M2:** Security sanitizer baseline clean or triaged.
 - **M3:** Java interoperability matrix complete with confirmed fixes.
-- **M4:** Android APK builds with JDK 25 and passes lint/JNI tests.
+- **M4:** Android APK builds with JDK 25, Java 25 source/target and passes lint/JNI tests.
+- **M7:** Torrent TUI parity and Perl migration complete without web/JS/Python;
+  CI validates the deferred builds/tests.
 - **M5:** OpenBSD and manual CI evidence recorded.
 - **M6:** Documentation and TODO set closed with no unclassified items.
 

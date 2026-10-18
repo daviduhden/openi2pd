@@ -1,17 +1,32 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
-    <string-array name="pref_bandwidth_limit_flags">
+<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
+    <string-array name="pref_bandwidth_labels">
+        <item>@string/pref_bandwidth_low</item>
+        <item>@string/pref_bandwidth_medium</item>
+        <item>@string/pref_bandwidth_high</item>
+        <item>@string/pref_bandwidth_unlimited</item>
+    </string-array>
+
+    <string-array name="pref_bandwidth_values">
         <item>L</item>
         <item>O</item>
         <item>P</item>
         <item>X</item>
     </string-array>
 
-    <string-array name="pref_loglevel">
+    <string-array name="pref_loglevel_values">
         <item>none</item>
         <item>error</item>
         <item>warn</item>
         <item>info</item>
         <item>debug</item>
+    </string-array>
+
+    <string-array name="pref_loglevel_labels">
+        <item>@string/pref_loglevel_none</item>
+        <item>@string/pref_loglevel_error</item>
+        <item>@string/pref_loglevel_warn</item>
+        <item>@string/pref_loglevel_info</item>
+        <item>@string/pref_loglevel_debug</item>
     </string-array>
 </resources>

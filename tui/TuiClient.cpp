@@ -259,9 +259,13 @@ namespace tui
 		return data;
 	}
 
-	std::expected<std::string, std::string> Client::Request (std::string_view command)
+	std::expected<std::string, RequestError> Client::Request (std::string_view command)
 	{
-		if (m_Fd < 0) return std::unexpected ("not connected");
+		if (m_Fd < 0)
+			return std::unexpected (RequestError{RequestErrorKind::NotConnected, "not connected"});
+		if (command.find ('\n') != std::string_view::npos || command.find ('\r') != std::string_view::npos)
+			return std::unexpected (RequestError{RequestErrorKind::Protocol, "command contains a line break"});
+
 		std::string request;
 		request.reserve (command.size () + 10);
 		request.append (PROTOCOL_NAME);
@@ -278,13 +282,16 @@ namespace tui
 			if (sent < 0)
 			{
 				if (errno == EINTR) continue;
+				int error = errno;
 				Disconnect ();
-				return std::unexpected (std::string ("send: ") + strerror (errno));
+				return std::unexpected (RequestError{RequestErrorKind::Transport,
+					std::string ("send: ") + strerror (error)});
 			}
 			if (!sent)
 			{
 				Disconnect ();
-				return std::unexpected ("connection closed during request");
+				return std::unexpected (RequestError{RequestErrorKind::Transport,
+					"connection closed during request"});
 			}
 			offset += static_cast<size_t> (sent);
 		}
@@ -293,23 +300,26 @@ namespace tui
 		if (!headerLine)
 		{
 			Disconnect ();
-			return std::unexpected (headerLine.error ());
+			auto kind = headerLine.error ().find ("too long") != std::string::npos ?
+				RequestErrorKind::Protocol : RequestErrorKind::Transport;
+			return std::unexpected (RequestError{kind, headerLine.error ()});
 		}
 		auto header = ParseResponseHeader (*headerLine);
 		if (!header)
 		{
 			Disconnect ();
-			return std::unexpected (std::string ("protocol error: ") + std::string (header.error ().message));
+			return std::unexpected (RequestError{RequestErrorKind::Protocol,
+				std::string ("protocol error: ") + std::string (header.error ().message)});
 		}
 		auto payload = ReadExact (header->payloadSize);
 		if (!payload)
 		{
 			Disconnect ();
-			return std::unexpected (payload.error ());
+			return std::unexpected (RequestError{RequestErrorKind::Transport, payload.error ()});
 		}
 		if (header->status == ResponseStatus::Error)
-			return std::unexpected (*payload);
-		return payload;
+			return std::unexpected (RequestError{RequestErrorKind::Remote, std::move (*payload)});
+		return std::move (*payload);
 	}
 }
 }

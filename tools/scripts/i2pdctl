@@ -1,223 +1,1080 @@
-#!/usr/bin/env python3
-import os
-import json
-import pprint
-import argparse
-import datetime
-import ssl
-import urllib.request
-import urllib.parse
-import urllib.error
+#!/usr/bin/env perl
+#
+# i2pdctl - command line client for the I2PControl JSON-RPC service.
+#
+# This is a Perl 5 rewrite of the former project-maintained Python script.  It
+# intentionally uses only modules shipped with Perl 5 (Getopt::Long, JSON::PP,
+# HTTP::Tiny, IPC::Open3) plus the system openssl binary for HTTPS when
+# IO::Socket::SSL is not available.  It never falls back to cleartext.
+#
+# Part of Open I2Pd; see the LICENSE file in the project root.
 
-INFO_METHODS = {
-    "RouterInfo": {
-        "i2p.router.uptime": "",
-        "i2p.router.net.status": "",
-        "i2p.router.netdb.knownpeers": "",
-        "i2p.router.netdb.activepeers": "",
-        "i2p.router.net.bw.inbound.1s": "",
-        "i2p.router.net.bw.outbound.1s": "",
-        "i2p.router.net.tunnels.participating": "",
-        "i2p.router.net.tunnels.successrate": "",
-        "i2p.router.net.total.received.bytes": "",
-        "i2p.router.net.total.sent.bytes": "",
+use strict;
+use warnings;
+
+use Getopt::Long qw(GetOptionsFromArray);
+use JSON::PP ();
+use HTTP::Tiny;
+use IPC::Open3 ();
+use IO::Select;
+use POSIX ();
+use Symbol qw(gensym);
+
+Getopt::Long::Configure(qw(no_auto_abbrev no_ignore_case permute));
+
+my $VERSION = '2.0';
+
+my $DEFAULT_URL      = 'https://127.0.0.1:7650/';
+my $DEFAULT_PASSWORD = 'itoopie';
+
+# Keep request/response bounds well below anything that could exhaust memory.
+my $MAX_REQUEST  = 1_048_576;    # bytes of JSON sent to I2PControl
+my $MAX_RESPONSE = 1_048_576;    # bytes of HTTP body accepted from I2PControl
+my $TIMEOUT      = 30;           # seconds for HTTP/TLS exchanges
+
+# HTTPS backend selection.  "auto" prefers IO::Socket::SSL (through HTTP::Tiny)
+# and falls back to the shell-free openssl s_client transport.  "openssl"
+# forces the fallback for diagnostics and tests.  There is deliberately no
+# value that permits cleartext.
+my $TLS_BACKEND = exists $ENV{I2PDCTL_TLS_BACKEND}
+    ? lc $ENV{I2PDCTL_TLS_BACKEND}
+    : 'auto';
+
+my @INFO_ORDER = qw(RouterInfo ClientServicesInfo);
+
+my %INFO_PARAMS = (
+    RouterInfo => {
+        'i2p.router.uptime'                         => '',
+        'i2p.router.net.status'                     => '',
+        'i2p.router.netdb.knownpeers'               => '',
+        'i2p.router.netdb.activepeers'              => '',
+        'i2p.router.net.bw.inbound.1s'              => '',
+        'i2p.router.net.bw.outbound.1s'             => '',
+        'i2p.router.net.tunnels.participating'      => '',
+        'i2p.router.net.tunnels.successrate'        => '',
+        'i2p.router.net.total.received.bytes'       => '',
+        'i2p.router.net.total.sent.bytes'           => '',
     },
-    "ClientServicesInfo": {
-        "I2PTunnel": "",
-        "SOCKS": "",
-        "HTTPProxy": "",
-        "SAM": "",
-        "BOB": "",
-        "I2CP": "",
-    }
+    ClientServicesInfo => {
+        'I2PTunnel'   => '',
+        'SOCKS'       => '',
+        'HTTPProxy'   => '',
+        'SAM'         => '',
+        'BOB'         => '',
+        'I2CP'        => '',
+    },
+);
+
+my @STATUS = (
+    'OK',
+    'TESTING',
+    'FIREWALLED',
+    'HIDDEN',
+    'WARN_FIREWALLED_AND_FAST',
+    'WARN_FIREWALLED_AND_FLOODFILL',
+    'WARN_FIREWALLED_WITH_INBOUND_TCP',
+    'WARN_FIREWALLED_WITH_UDP_DISABLED',
+    'ERROR_I2CP',
+    'ERROR_CLOCK_SKEW',
+    'ERROR_PRIVATE_TCP_ADDRESS',
+    'ERROR_SYMMETRIC_NAT',
+    'ERROR_UDP_PORT_IN_USE',
+    'ERROR_NO_ACTIVE_PEERS_CHECK_CONNECTION_AND_FIREWALL',
+    'ERROR_UDP_DISABLED_AND_TCP_UNSET',
+);
+
+my @SUFFIXES = qw(B KB MB GB TB);
+
+# ---------------------------------------------------------------------------
+# Help and diagnostics
+# ---------------------------------------------------------------------------
+
+sub _main_usage {
+    return "usage: i2pdctl [-h] {exec,raw_info,info} ...\n";
 }
 
-STATUS = [
-    "OK",
-    "TESTING",
-    "FIREWALLED",
-    "HIDDEN",
-    "WARN_FIREWALLED_AND_FAST",
-    "WARN_FIREWALLED_AND_FLOODFILL",
-    "WARN_FIREWALLED_WITH_INBOUND_TCP",
-    "WARN_FIREWALLED_WITH_UDP_DISABLED",
-    "ERROR_I2CP",
-    "ERROR_CLOCK_SKEW",
-    "ERROR_PRIVATE_TCP_ADDRESS",
-    "ERROR_SYMMETRIC_NAT",
-    "ERROR_UDP_PORT_IN_USE",
-    "ERROR_NO_ACTIVE_PEERS_CHECK_CONNECTION_AND_FIREWALL",
-    "ERROR_UDP_DISABLED_AND_TCP_UNSET",
-]
+sub _main_help {
+    return _main_usage() . <<'HELP';
 
-SUFFIXES = ['B','KB','MB','GB','TB']
+positional arguments:
+  {exec,raw_info,info}
+    exec                Execute RPC method with parameters, return results or raw JSON
+    raw_info            Retrieve JSON info from specified *Info methods
+    info                Print generic information about node in a human readable form
 
-def humanize_size(size, precision=2):
-    """Bytes to human readable size"""
-    suffixIndex = 0
-    while size > 1024:
-        suffixIndex += 1
-        size = size / 1024.0
-    return "{}{}".format(round(size ,precision), SUFFIXES[suffixIndex])
+options:
+  -h, --help            show this help message and exit
+HELP
+}
 
-def humanize_time(milliseconds):
-    """Seconds to human readable time"""
-    return str(datetime.timedelta(milliseconds=milliseconds))
+sub _cmd_usage {
+    my ($cmd) = @_;
+    return _main_usage() unless defined $cmd;
+    return "usage: i2pdctl exec [-h] [-j] method parameters\n" if $cmd eq 'exec';
+    return "usage: i2pdctl raw_info [-h] [method ...]\n" if $cmd eq 'raw_info';
+    return "usage: i2pdctl info [-h]\n" if $cmd eq 'info';
+    return _main_usage();
+}
 
-def do_post(url, data):
-    req = urllib.request.Request(url, data=data.encode())
-    with urllib.request.urlopen(req, context=ssl._create_unverified_context()) as f:
-        resp = f.read().decode('utf-8')
-    return json.loads(resp)
+sub _exec_help {
+    return _cmd_usage('exec') . <<'HELP';
 
-class I2PControl(object):
-    """Talk to I2PControl API"""
+Execute RPC method with parameters, return results or raw JSON
 
-    def __init__(self, url, password='itoopie'):
-        self.url = url
-        self.password = password
-        self._token = None
+positional arguments:
+  method                RPC method name
+  parameters            Parameters as raw JSON string
 
-    @property
-    def token(self):
-        """Cached authentication token"""
-        if not self._token:
-            self._token = do_post(self.url,
-                json.dumps({'id': 1, 'method': 'Authenticate', 
-                    'params': {'API': 1, 'Password': self.password}, 
-                    'jsonrpc': '2.0'}))["result"]["Token"]
-        return self._token
+options:
+  -h, --help            show this help message and exit
+  -j, --json-output     Output raw JSON reply
+HELP
+}
 
-    def request(self, method, params):
-        """Execute authenticated request"""
-        params['Token'] = self.token
-        return do_post(self.url, json.dumps(
-            {'id': 1, 'method': method, 'params': params, 'jsonrpc': '2.0'})) 
+sub _raw_info_help {
+    my $supported = join(', ', @INFO_ORDER);
+    return _cmd_usage('raw_info') . <<"HELP";
 
-class I2pdctl(object):
-    """i2pd control"""
+Retrieve JSON info from specified *Info methods
 
-    def __init__(self, ctl):
-        self.ctl = ctl
+positional arguments:
+  method                RPC method(s) to retrieve info. Supported methods: $supported
 
-    def execute(self, args):
-        """Execute raw method"""
-        try:
-            parameters =  json.loads(args.parameters)
-        except json.decoder.JSONDecodeError:
-            print("Error: parameters should be a valid JSON object")
-            return
+options:
+  -h, --help            show this help message and exit
+HELP
+}
 
-        resp = self.ctl.request(args.method, parameters)
+sub _info_help {
+    return _cmd_usage('info') . <<'HELP';
 
-        if args.json_output:
-            print(resp.text)
-        elif "result" in resp:
-            pprint.pprint(resp["result"])
-        else:
-            pprint.pprint(resp)
+Print generic information about node in a human readable form
 
-    def raw_info(self, args):
-        """Retrieve raw JSON reply from method(s)"""
-        res = {}
-        for m in args.method:
-            if m not in INFO_METHODS:
-                print("Invalid method {}. Supported methods are {}".format(m,
-                    ", ".join(INFO_METHODS.keys())))
-                return
-            else:
-                res[m] = self.ctl.request(m, INFO_METHODS[m])['result']
+options:
+  -h, --help            show this help message and exit
+HELP
+}
 
-        print(json.dumps(res))
+sub _usage_error {
+    my ($cmd, $message) = @_;
+    print STDERR _cmd_usage($cmd);
+    print STDERR "i2pdctl: error: $message\n";
+    return 2;
+}
 
+# ---------------------------------------------------------------------------
+# Small helpers
+# ---------------------------------------------------------------------------
 
-    def print_info(self, args):
-        """Print information about a node in a human readable form"""
-        def fancy_title(string):
-            print("\n### {}".format(string))
-            
-        ri_res  = self.ctl.request("RouterInfo", INFO_METHODS["RouterInfo"])['result']
-        try:
-            csi_res = self.ctl.request("ClientServicesInfo", INFO_METHODS["ClientServicesInfo"])['result']
-        except KeyError:
-            csi_res = False
+sub _humanize_size {
+    my ($size, $precision) = @_;
+    $precision = 2 unless defined $precision;
 
-        fancy_title("Router info")
-        print("Uptime: {}".format(
-            humanize_time(int(ri_res["i2p.router.uptime"]))))
-        print("Status: {}".format(STATUS[ri_res["i2p.router.net.status"]]))
-        if "i2p.router.net.tunnels.successrate" in ri_res:
-            print("Tunnel creation success rate: {}%".format(
-                ri_res["i2p.router.net.tunnels.successrate"]))
+    my $index = 0;
+    while ($size > 1024 && $index < $#SUFFIXES) {
+        $size = $size / 1024.0;
+        $index++;
+    }
 
-        if "i2p.router.net.total.received.bytes" in ri_res:
-            print("Received: {} ({} B/s)  /  Sent: {} ({} B/s)".format(
-                humanize_size(int(ri_res["i2p.router.net.total.received.bytes"])),
-                humanize_size(int(ri_res["i2p.router.net.bw.inbound.1s"])),
-                humanize_size(int(ri_res["i2p.router.net.total.sent.bytes"])),
-                humanize_size(int(ri_res["i2p.router.net.bw.outbound.1s"]))))
-        else:
-            print("Received: {} B/s  /  Sent: {} B/s".format(
-                humanize_size(int(ri_res["i2p.router.net.bw.inbound.1s"])),
-                humanize_size(int(ri_res["i2p.router.net.bw.outbound.1s"]))))
-        print("Known routers: {}  /  Active: {}".format(
-            ri_res["i2p.router.netdb.knownpeers"],
-            ri_res["i2p.router.netdb.activepeers"]))
+    # Python's round() keeps the integer type when no division happened, so
+    # bytes below the first threshold are printed without a decimal part.
+    return int($size) . $SUFFIXES[$index] if $index == 0;
 
-        if csi_res:
-            fancy_title("Interfaces")
-            for n in ["HTTPProxy", "SOCKS", "BOB", "SAM", "I2CP"]:
-                print("- {}:".format(n), "ON" if csi_res[n]["enabled"] == "true" else "OFF")
+    my $text = sprintf("%.${precision}f", $size);
+    # Match Python's str(round(value, precision)): keep one decimal place for
+    # integral values ("2.0"), but drop redundant trailing zeros ("1.5").
+    $text =~ s/0+\z//;
+    $text =~ s/\.\z/.0/;
 
-            if csi_res["I2PTunnel"]["client"]:
-                fancy_title("Client I2P Tunnels")
-                for tunnel in sorted(list(csi_res["I2PTunnel"]["client"].keys())):
-                    print("-", tunnel, csi_res["I2PTunnel"]["client"][tunnel])
+    return $text . $SUFFIXES[$index];
+}
 
-            if csi_res["I2PTunnel"]["server"]:
-                fancy_title("Server I2P Tunnels")
-                for tunnel in sorted(list(csi_res["I2PTunnel"]["server"].keys())):
-                    t = csi_res["I2PTunnel"]["server"][tunnel]
-                    if "port" in t:
-                        print("-", tunnel, "{}:{}".format(t["address"], t["port"]))
-                    else:
-                        print("-", tunnel, t["address"])
+sub _humanize_time {
+    my ($milliseconds) = @_;
+    my $microseconds = int($milliseconds) * 1000;
 
+    my $sign = $microseconds < 0 ? '-' : '';
+    $microseconds = abs($microseconds);
 
-def main():
-    URL = os.getenv("I2PCONTROL_URL", "https://127.0.0.1:7650/")
-    PASSWORD = os.getenv("I2PCONTROL_PASSWORD", "itoopie")
+    my $day_us    = 86_400_000_000;
+    my $hour_us   = 3_600_000_000;
+    my $minute_us = 60_000_000;
+    my $second_us = 1_000_000;
 
-    ctl = I2pdctl(I2PControl(URL, PASSWORD))
+    my $days    = int($microseconds / $day_us);
+    my $remain  = $microseconds % $day_us;
+    my $hours   = int($remain / $hour_us);
+    $remain     = $remain % $hour_us;
+    my $minutes = int($remain / $minute_us);
+    $remain     = $remain % $minute_us;
+    my $seconds = int($remain / $second_us);
+    my $usec    = $remain % $second_us;
 
-    parser = argparse.ArgumentParser()
+    my $fraction = $usec ? sprintf('.%06d', $usec) : '';
+    my $clock = sprintf('%d:%02d:%02d%s', $hours, $minutes, $seconds, $fraction);
 
-    subparsers = parser.add_subparsers(title="actions",help="Command to execute")
+    return $sign . $clock unless $days;
+    return sprintf('%s%d day%s, %s', $sign, $days, $days == 1 ? '' : 's', $clock);
+}
 
-    exec_parser = subparsers.add_parser("exec", description="Execute RPC method with parameters, return results or raw JSON")
-    exec_parser.add_argument('method', help="RPC method name")
-    exec_parser.add_argument('parameters', help="Parameters as raw JSON string")
-    exec_parser.add_argument('-j', '--json-output', action="store_true", help="Output raw JSON reply")
-    exec_parser.set_defaults(func=ctl.execute)
+sub _int_value {
+    my ($value) = @_;
+    return 0 unless defined $value && !ref $value;
+    return int($value) if $value =~ /\A[-+]?(?:\d+(?:\.\d*)?|\.\d+)\z/;
+    return 0;
+}
 
-    raw_info_parser = subparsers.add_parser("raw_info", description="Retrieve JSON info from specified *Info methods")
-    raw_info_parser.add_argument('method', nargs='*', 
-            help="RPC method(s) to retreive info. Supported methods: {}".format(", ".join(INFO_METHODS.keys())))
-    raw_info_parser.set_defaults(func=ctl.raw_info)
+sub _quote_string {
+    my ($text) = @_;
+    $text = '' unless defined $text;
+    $text =~ s/\\/\\\\/g;
+    $text =~ s/'/\\'/g;
+    $text =~ s/\n/\\n/g;
+    $text =~ s/\r/\\r/g;
+    $text =~ s/\t/\\t/g;
+    $text =~ s/([\x00-\x1f\x7f])/sprintf('\\x%02x', ord($1))/ge;
+    $text =~ s/([\x80-\x9f])/sprintf('\\x{%02x}', ord($1))/ge;
+    return "'" . $text . "'";
+}
 
-    print_info_parser = subparsers.add_parser("info", description="Print generic information about node in a human readable form")
-    print_info_parser.set_defaults(func=ctl.print_info)
+# Server-controlled values are written to the operator's terminal.  Escape
+# control characters (C0, DEL and the 8-bit C1 range, which includes CSI) so a
+# spoofed or compromised I2PControl endpoint cannot inject ANSI sequences or
+# forge extra output lines through MITM (TLS verification is intentionally
+# disabled for the self-signed certificate).
+sub _display {
+    my ($value) = @_;
+    return '' if !defined $value || ref $value;
+    my $text = "$value";
+    $text =~ s/([\x00-\x1f\x7f])/sprintf('\\x%02x', ord($1))/ge;
+    $text =~ s/([\x80-\x9f])/sprintf('\\x{%02x}', ord($1))/ge;
+    return $text;
+}
 
-    args = parser.parse_args()
+# A small, deterministic pretty printer close to Python's pprint for the flat
+# results produced by I2PControl.  Sorted keys make output stable across runs.
+sub _pretty {
+    my ($value) = @_;
 
-    if hasattr(args, "func"):
-        try:
-            args.func(args)
-        except urllib.error.URLError:
-            print("Error: I2PControl URL is unavailable. Check your i2pd settings and network connection.")
-            exit(1)
-    else:
-        parser.print_help()
+    return 'None' unless defined $value;
 
-if __name__ == "__main__":
-    main()
+    if (ref $value eq 'HASH') {
+        my @parts;
+        for my $key (sort keys %{$value}) {
+            push @parts, _quote_string($key) . ': ' . _pretty($value->{$key});
+        }
+        return '{' . join(', ', @parts) . '}';
+    }
+
+    if (ref $value eq 'ARRAY') {
+        return '[' . join(', ', map { _pretty($_) } @{$value}) . ']';
+    }
+
+    if (JSON::PP::is_bool($value)) {
+        return $value ? 'True' : 'False';
+    }
+
+    if (ref $value) {
+        return _quote_string("$value");
+    }
+
+    return $value if $value =~ /\A-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?\z/;
+    return _quote_string($value);
+}
+
+sub _json_encode {
+    my ($value) = @_;
+    return JSON::PP->new->ascii->canonical->max_depth(64)->encode($value);
+}
+
+sub _json_decode {
+    my ($text) = @_;
+    return JSON::PP->new->utf8->max_depth(128)->decode($text);
+}
+
+# ---------------------------------------------------------------------------
+# URL, HTTP and TLS transport
+# ---------------------------------------------------------------------------
+
+sub _parse_url {
+    my ($url) = @_;
+    return undef unless defined $url && length $url;
+    # I2PControl URLs are tiny; refuse pathological input before parsing.
+    return undef if length($url) > 4096;
+    return undef if $url =~ /[\x00-\x20\x7f]/;
+
+    my ($scheme, $rest) = $url =~ m{\A([A-Za-z][A-Za-z0-9+.-]*)://(.*)\z}s;
+    return undef unless defined $scheme;
+    $scheme = lc $scheme;
+    return undef unless $scheme eq 'http' || $scheme eq 'https';
+
+    # Reject credentials in the URL: they would end up in logs and are not
+    # used by I2PControl authentication.
+    return undef if $rest =~ /\@/;
+
+    my ($authority, $tail) = $rest =~ m{\A([^/?#]*)(.*)\z}s;
+    return undef unless defined $authority && length $authority;
+
+    my ($host, $port);
+    if ($authority =~ /\A\[([0-9A-Fa-f:.]+)\](?::([0-9]{1,5}))?\z/) {
+        ($host, $port) = ($1, $2);
+    }
+    elsif ($authority =~ /\A([A-Za-z0-9._-]+)(?::([0-9]{1,5}))?\z/) {
+        ($host, $port) = ($1, $2);
+    }
+    else {
+        return undef;
+    }
+
+    # Never accept a host that openssl could mistake for an option, and keep
+    # the authority unambiguous.  I2PControl is a local service, so refusing
+    # odd spellings is safer than guessing.
+    return undef if length($host) > 253;
+    return undef if $host =~ /\A[.-]/ || $host =~ /[.-]\z/;
+
+    $port = $scheme eq 'https' ? 443 : 80 unless defined $port;
+    return undef if $port < 1 || $port > 65535;
+
+    my $path = defined $tail && length $tail ? $tail : '/';
+    $path =~ s/#.*\z//s;
+    $path = '/' if $path eq '';
+    $path = '/' . $path if $path =~ /\A\?/;
+    return undef unless $path =~ m{\A/};
+    return undef if $path =~ /[\x00-\x20\x7f]/;
+
+    my $hostport = $host =~ /:/ ? "[$host]:$port" : "$host:$port";
+    return {
+        scheme => $scheme,
+        host   => $host,
+        port   => $port,
+        path   => $path,
+        url    => "$scheme://$hostport$path",
+    };
+}
+
+sub _which {
+    my ($name) = @_;
+    my $path = defined $ENV{PATH} ? $ENV{PATH} : '';
+    for my $directory (split /:/, $path) {
+        next unless length $directory;
+        my $candidate = "$directory/$name";
+        return $candidate if -f $candidate && -x _;
+    }
+    return undef;
+}
+
+sub _http_tiny_can_ssl {
+    my $can = eval { HTTP::Tiny->can_ssl() };
+    return $can ? 1 : 0;
+}
+
+sub _tls_backend {
+    return $TLS_BACKEND if $TLS_BACKEND eq 'auto' || $TLS_BACKEND eq 'openssl';
+    die "Error: invalid I2PDCTL_TLS_BACKEND (expected auto or openssl)\n";
+}
+
+sub _is_ip_literal {
+    my ($host) = @_;
+    return 1 if $host =~ /\A(?:\d{1,3}\.){3}\d{1,3}\z/;
+    return 1 if $host =~ /:/;
+    return 0;
+}
+
+sub _build_request {
+    my ($url, $body) = @_;
+    my $host = $url->{host};
+    my $hostport = $host =~ /:/ ? "[$host]:$url->{port}" : "$host:$url->{port}";
+    return "POST $url->{path} HTTP/1.1\r\n"
+        . "Host: $hostport\r\n"
+        . "Accept: application/json\r\n"
+        . "Content-Type: application/json\r\n"
+        . "Content-Length: " . length($body) . "\r\n"
+        . "Connection: close\r\n"
+        . "\r\n"
+        . $body;
+}
+
+sub _dechunk {
+    my ($body) = @_;
+    my $output = '';
+
+    while (1) {
+        my $index = index($body, "\r\n");
+        my $skip = 2;
+        if ($index < 0) {
+            $index = index($body, "\n");
+            $skip = 1;
+        }
+        die "Error: malformed chunked response from I2PControl\n" if $index < 0;
+
+        my $line = substr($body, 0, $index);
+        $body = substr($body, $index + $skip);
+        $line =~ s/;.*\z//;
+        die "Error: malformed chunked response from I2PControl\n"
+            unless $line =~ /\A[0-9A-Fa-f]+\z/;
+
+        my $size = hex($line);
+        last if $size == 0;
+        die "Error: response from I2PControl exceeds size limit\n"
+            if $size > $MAX_RESPONSE
+            || length($output) + $size > $MAX_RESPONSE;
+        die "Error: truncated response from I2PControl\n"
+            if length($body) < $size;
+
+        $output .= substr($body, 0, $size);
+        $body = substr($body, $size);
+        # RFC 7230 requires CRLF after every non-final chunk.  Accept a bare LF
+        # but reject anything else instead of resynchronising on garbage.
+        die "Error: malformed chunked response from I2PControl\n"
+            unless $body =~ s/\A\r?\n//;
+    }
+
+    return $output;
+}
+
+sub _parse_http_response {
+    my ($raw) = @_;
+
+    my $start = index($raw, 'HTTP/');
+    die "Error: invalid HTTP response from I2PControl\n" if $start < 0;
+    my $response = substr($raw, $start);
+
+    my $separator = index($response, "\r\n\r\n");
+    my $skip = 4;
+    if ($separator < 0) {
+        $separator = index($response, "\n\n");
+        $skip = 2;
+    }
+    die "Error: invalid HTTP response from I2PControl\n" if $separator < 0;
+
+    my $head = substr($response, 0, $separator);
+    my $body = substr($response, $separator + $skip);
+
+    my @lines = split /\r?\n/, $head;
+    my ($status) = $lines[0] =~ m{\AHTTP/\d\.\d\s+(\d{3})\b};
+    die "Error: invalid HTTP status from I2PControl\n" unless defined $status;
+
+    my %headers;
+    for my $line (@lines[1 .. $#lines]) {
+        next unless $line =~ /\A([^:]+):\s*(.*?)\s*\z/;
+        $headers{lc $1} = $2;
+    }
+
+    if (defined $headers{'transfer-encoding'}) {
+        die "Error: unsupported Transfer-Encoding from I2PControl\n"
+            unless $headers{'transfer-encoding'} =~ /\bchunked\b/i;
+        $body = _dechunk($body);
+    }
+    elsif (defined $headers{'content-length'}) {
+        my $length = $headers{'content-length'};
+        die "Error: invalid Content-Length from I2PControl\n"
+            unless $length =~ /\A\d+\z/;
+        die "Error: response from I2PControl exceeds size limit\n"
+            if $length > $MAX_RESPONSE;
+        die "Error: truncated response from I2PControl\n"
+            if length($body) < $length;
+        $body = substr($body, 0, $length);
+    }
+
+    return ($status, $body);
+}
+
+sub _reap_child {
+    my ($pid, $grace) = @_;
+    return unless $pid;
+
+    my $result = waitpid($pid, POSIX::WNOHANG());
+    return if $result == -1;
+
+    if ($result == 0 && $grace > 0) {
+        my $deadline = time + $grace;
+        while (time < $deadline) {
+            select(undef, undef, undef, 0.05);
+            $result = waitpid($pid, POSIX::WNOHANG());
+            return if $result == -1;
+            last if $result != 0;
+        }
+    }
+
+    return if $result != 0;
+
+    kill 'TERM', $pid;
+    for (1 .. 20) {
+        select(undef, undef, undef, 0.05);
+        $result = waitpid($pid, POSIX::WNOHANG());
+        return if $result == -1;
+        return if $result != 0;
+    }
+
+    kill 'KILL', $pid;
+    waitpid($pid, 0);
+    return;
+}
+
+sub _stderr_hint {
+    my ($stderr) = @_;
+    return undef unless defined $stderr && $stderr =~ /\S/;
+    my ($line) = grep { /\S/ } split /\r?\n/, $stderr;
+    return undef unless defined $line;
+    $line =~ s/[\x00-\x1f\x7f\x80-\x9f]+/ /g;
+    $line =~ s/\A\s+//;
+    $line =~ s/\s+\z//;
+    return length $line ? $line : undef;
+}
+
+sub _https_post {
+    my ($url, $body) = @_;
+
+    my $openssl = _which('openssl');
+    die "Error: HTTPS requires IO::Socket::SSL or the openssl command; "
+        . "refusing to use cleartext\n"
+        unless defined $openssl;
+
+    # OpenSSL expects bracketed IPv6 literals for -connect; the Host header is
+    # bracketed separately in _build_request.
+    my $authority = $url->{host} =~ /:/
+        ? "[$url->{host}]:$url->{port}"
+        : "$url->{host}:$url->{port}";
+    my @command = ($openssl, 's_client', '-quiet', '-ign_eof', '-connect', $authority);
+    push @command, ('-servername', $url->{host})
+        unless _is_ip_literal($url->{host});
+
+    my $request = _build_request($url, $body);
+
+    my ($writer, $reader, $error_handle);
+    $error_handle = gensym();
+    my ($pid, $raw, $stderr) = (undef, '', '');
+
+    my $ok = eval {
+        local $SIG{ALRM} = sub { die "Error: TLS request to I2PControl timed out\n" };
+        local $SIG{PIPE} = 'IGNORE';
+        alarm 35;
+
+        $pid = IPC::Open3::open3($writer, $reader, $error_handle, @command);
+
+        print {$writer} $request
+            or die "Error: failed to send request to openssl s_client\n";
+        # The request is buffered by PerlIO; close the pipe to flush it and
+        # signal EOF.  -ign_eof makes s_client keep reading the response
+        # instead of shutting the TLS connection down on stdin EOF.
+        close $writer
+            or die "Error: failed to send request to openssl s_client\n";
+        undef $writer;
+
+        my $reader_fd = fileno($reader);
+        my $selector = IO::Select->new($reader, $error_handle);
+        my $deadline = time + $TIMEOUT;
+
+        while ($selector->count) {
+            my @ready = $selector->can_read(1);
+            if (!@ready) {
+                die "Error: TLS request to I2PControl timed out\n"
+                    if time > $deadline;
+                next;
+            }
+
+            for my $handle (@ready) {
+                my $read = sysread($handle, my $chunk, 65_536);
+                if (!defined $read) {
+                    $selector->remove($handle);
+                    next;
+                }
+                if ($read == 0) {
+                    $selector->remove($handle);
+                    close $handle;
+                    next;
+                }
+
+                my $fd = fileno($handle);
+                if (defined $fd && defined $reader_fd && $fd == $reader_fd) {
+                    $raw .= $chunk;
+                    die "Error: response from I2PControl exceeds size limit\n"
+                        if length($raw) > $MAX_RESPONSE;
+                }
+                elsif (length($stderr) < 8192) {
+                    $stderr .= $chunk;
+                }
+            }
+        }
+
+        alarm 0;
+        1;
+    };
+
+    my $error = $@;
+    alarm 0;
+    eval { close $writer } if defined $writer;
+    _reap_child($pid, $ok ? 2 : 0);
+
+    if (!$ok) {
+        $error =~ s/\s+\z//;
+        $error = 'Error: TLS request to I2PControl failed' unless length $error;
+        my $hint = !length($raw) ? _stderr_hint($stderr) : undef;
+        if (defined $hint
+            && $error =~ /\AError: (?:TLS request to I2PControl failed|failed to send request to openssl s_client)\z/) {
+            $error .= ": $hint";
+        }
+        die "$error\n";
+    }
+
+    if (!length $raw) {
+        my $message = 'Error: TLS request to I2PControl failed';
+        my $hint = _stderr_hint($stderr);
+        $message .= ": $hint" if defined $hint;
+        die "$message\n";
+    }
+
+    return _parse_http_response($raw);
+}
+
+sub _post_raw {
+    my ($url_text, $body) = @_;
+
+    # Content-Length and the request bound are byte counts.  JSON::PP emits
+    # ASCII, but a caller-supplied string may still carry the UTF-8 flag.
+    if (utf8::is_utf8($body)) {
+        utf8::encode($body);
+    }
+    die "Error: request exceeds size limit\n" if length($body) > $MAX_REQUEST;
+
+    my $url = _parse_url($url_text);
+    die "Error: invalid I2PControl URL (expected http:// or https://)\n"
+        unless defined $url;
+
+    my ($status, $content);
+    my $tls_backend = _tls_backend();
+
+    if ($url->{scheme} eq 'https'
+        && ($tls_backend eq 'openssl' || !_http_tiny_can_ssl())) {
+        # Either IO::Socket::SSL/Net::SSLeay are absent or the operator forced
+        # the fallback.  Use openssl s_client with no verification: this
+        # matches the old Python script's ssl._create_unverified_context() for
+        # i2pd's self-signed certificate.  The fallback is shell-free
+        # (argument list, no interpolation) and never sends the request over a
+        # cleartext connection.
+        ($status, $content) = _https_post($url, $body);
+    }
+    else {
+        my $http = HTTP::Tiny->new(
+            verify_SSL => 0,
+            timeout    => $TIMEOUT,
+            max_size   => $MAX_RESPONSE,
+            agent      => "i2pdctl/$VERSION",
+            proxy      => undef,
+        );
+
+        # HTTP::Tiny's timeout is per socket operation.  A peer that trickles
+        # bytes can keep resetting it, so bound the whole exchange as well.
+        my $response;
+        my $posted = eval {
+            local $SIG{ALRM} = sub {
+                die "Error: request to I2PControl timed out\n";
+            };
+            local $SIG{PIPE} = 'IGNORE';
+            alarm($TIMEOUT + 5);
+            $response = $http->post(
+                $url->{url},
+                {
+                    headers => {
+                        'Accept'       => 'application/json',
+                        'Content-Type' => 'application/json',
+                    },
+                    content => $body,
+                },
+            );
+            alarm 0;
+            1;
+        };
+
+        my $error = $@;
+        alarm 0;
+        if (!$posted) {
+            $error =~ s/\s+\z//;
+            $error = 'Error: request to I2PControl failed' unless length $error;
+            die "$error\n";
+        }
+
+        die "__UNAVAILABLE__\n" unless $response->{success};
+        ($status, $content) = ($response->{status}, $response->{content});
+    }
+
+    die "__UNAVAILABLE__\n" if $status < 200 || $status >= 300;
+    return $content;
+}
+
+sub _post_json {
+    my ($url, $message) = @_;
+    my $body = ref $message ? _json_encode($message) : $message;
+    my $raw = _post_raw($url, $body);
+
+    my $decoded;
+    my $ok = eval {
+        $decoded = _json_decode($raw);
+        1;
+    };
+    die "Error: invalid JSON response from I2PControl\n"
+        unless $ok && ref $decoded eq 'HASH';
+
+    return wantarray ? ($decoded, $raw) : $decoded;
+}
+
+# ---------------------------------------------------------------------------
+# I2PControl session
+# ---------------------------------------------------------------------------
+
+sub _token {
+    my ($control) = @_;
+    return $control->{token}
+        if defined $control->{token} && length $control->{token};
+
+    my $response = _post_json(
+        $control->{url},
+        {
+            id      => 1,
+            method  => 'Authenticate',
+            params  => { API => 1, Password => $control->{password} },
+            jsonrpc => '2.0',
+        },
+    );
+
+    my $result = $response->{result};
+    my $token = ref $result eq 'HASH' ? $result->{Token} : undef;
+    die "Error: authentication failed (no token returned)\n"
+        unless defined $token && !ref $token && length $token;
+
+    $control->{token} = $token;
+    return $token;
+}
+
+sub _rpc {
+    my ($control, $method, $params) = @_;
+    my %parameters = %{ $params || {} };
+    $parameters{Token} = _token($control);
+
+    my $message = {
+        id      => 1,
+        method  => $method,
+        params  => \%parameters,
+        jsonrpc => '2.0',
+    };
+
+    return _post_json($control->{url}, $message);
+}
+
+# ---------------------------------------------------------------------------
+# Commands
+# ---------------------------------------------------------------------------
+
+sub _cmd_exec {
+    my ($control, $arguments) = @_;
+    my @remaining = @{$arguments};
+    my ($json_output, $help) = (0, 0);
+    my $option_error = '';
+
+    my $options_ok;
+    {
+        local $SIG{__WARN__} = sub { $option_error .= join('', @_) };
+        $options_ok = GetOptionsFromArray(
+            \@remaining,
+            'json-output|j' => \$json_output,
+            'help|h'        => \$help,
+        );
+    }
+
+    if (!$options_ok) {
+        $option_error =~ s/\s+\z//;
+        return _usage_error('exec', $option_error || 'invalid option');
+    }
+    if ($help) {
+        print _exec_help();
+        return 0;
+    }
+
+    if (@remaining < 2) {
+        my @missing;
+        push @missing, 'method' if @remaining < 1;
+        push @missing, 'parameters' if @remaining < 2;
+        return _usage_error(
+            'exec',
+            'the following arguments are required: ' . join(', ', @missing),
+        );
+    }
+    if (@remaining > 2) {
+        return _usage_error(
+            'exec',
+            'unrecognized arguments: ' . join(' ', @remaining[2 .. $#remaining]),
+        );
+    }
+
+    my ($method, $parameters_text) = @remaining;
+
+    my ($parameters, $decode_ok);
+    $decode_ok = eval {
+        $parameters = _json_decode($parameters_text);
+        1;
+    };
+    if (!$decode_ok || ref $parameters ne 'HASH') {
+        # Preserved message and exit status from the Python implementation.
+        print "Error: parameters should be a valid JSON object\n";
+        return 0;
+    }
+
+    my ($response, $raw) = _rpc($control, $method, $parameters);
+
+    if ($json_output) {
+        print $raw;
+        print "\n" unless $raw =~ /\n\z/;
+    }
+    elsif (exists $response->{result}) {
+        print _pretty($response->{result}), "\n";
+    }
+    else {
+        print _pretty($response), "\n";
+    }
+
+    return 0;
+}
+
+sub _cmd_raw_info {
+    my ($control, $arguments) = @_;
+    my @remaining = @{$arguments};
+    my $help = 0;
+    my $option_error = '';
+
+    my $options_ok;
+    {
+        local $SIG{__WARN__} = sub { $option_error .= join('', @_) };
+        $options_ok = GetOptionsFromArray(\@remaining, 'help|h' => \$help);
+    }
+
+    if (!$options_ok) {
+        $option_error =~ s/\s+\z//;
+        return _usage_error('raw_info', $option_error || 'invalid option');
+    }
+    if ($help) {
+        print _raw_info_help();
+        return 0;
+    }
+
+    my @methods = @remaining;
+    for my $method (@methods) {
+        if (!exists $INFO_PARAMS{$method}) {
+            print "Invalid method " . _display($method) . ". Supported methods are "
+                . join(', ', @INFO_ORDER) . "\n";
+            return 0;
+        }
+    }
+
+    my %results;
+    for my $method (@methods) {
+        my $response = _rpc($control, $method, $INFO_PARAMS{$method});
+        die "Error: $method response has no result\n"
+            unless exists $response->{result};
+        $results{$method} = $response->{result};
+    }
+
+    my @parts;
+    for my $method (@methods) {
+        push @parts, _json_encode($method) . ': ' . _json_encode($results{$method});
+    }
+    print '{' . join(', ', @parts) . "}\n";
+
+    return 0;
+}
+
+sub _print_info {
+    my ($router, $services) = @_;
+
+    print "\n### Router info\n";
+    print "Uptime: " . _humanize_time(
+        _int_value($router->{'i2p.router.uptime'})
+    ) . "\n";
+
+    my $status_number = _int_value($router->{'i2p.router.net.status'});
+    my $status = ($status_number >= 0 && $status_number < @STATUS)
+        ? $STATUS[$status_number]
+        : "UNKNOWN($status_number)";
+    print "Status: $status\n";
+
+    if (exists $router->{'i2p.router.net.tunnels.successrate'}) {
+        print "Tunnel creation success rate: "
+            . _display($router->{'i2p.router.net.tunnels.successrate'}) . "%\n";
+    }
+
+    if (exists $router->{'i2p.router.net.total.received.bytes'}) {
+        printf "Received: %s (%s B/s)  /  Sent: %s (%s B/s)\n",
+            _humanize_size(_int_value($router->{'i2p.router.net.total.received.bytes'})),
+            _humanize_size(_int_value($router->{'i2p.router.net.bw.inbound.1s'})),
+            _humanize_size(_int_value($router->{'i2p.router.net.total.sent.bytes'})),
+            _humanize_size(_int_value($router->{'i2p.router.net.bw.outbound.1s'}));
+    }
+    else {
+        printf "Received: %s B/s  /  Sent: %s B/s\n",
+            _humanize_size(_int_value($router->{'i2p.router.net.bw.inbound.1s'})),
+            _humanize_size(_int_value($router->{'i2p.router.net.bw.outbound.1s'}));
+    }
+
+    my $known  = _display($router->{'i2p.router.netdb.knownpeers'});
+    my $active = _display($router->{'i2p.router.netdb.activepeers'});
+    $known  = '0' unless length $known;
+    $active = '0' unless length $active;
+    printf "Known routers: %s  /  Active: %s\n", $known, $active;
+
+    return unless $services && ref $services eq 'HASH';
+
+    print "\n### Interfaces\n";
+    for my $name (qw(HTTPProxy SOCKS BOB SAM I2CP)) {
+        my $entry = $services->{$name};
+        my $enabled = ref $entry eq 'HASH' ? $entry->{enabled} : undef;
+        my $on = 0;
+        if (defined $enabled && !ref $enabled) {
+            $on = $enabled eq 'true' ? 1 : 0;
+        }
+        elsif (JSON::PP::is_bool($enabled)) {
+            $on = $enabled ? 1 : 0;
+        }
+        print "- $name: " . ($on ? 'ON' : 'OFF') . "\n";
+    }
+
+    my $tunnels = ref $services->{I2PTunnel} eq 'HASH'
+        ? $services->{I2PTunnel}
+        : {};
+
+    if (ref $tunnels->{client} eq 'HASH' && keys %{ $tunnels->{client} }) {
+        print "\n### Client I2P Tunnels\n";
+        for my $name (sort keys %{ $tunnels->{client} }) {
+            print "- " . _display($name) . ' '
+                . _pretty($tunnels->{client}{$name}) . "\n";
+        }
+    }
+
+    if (ref $tunnels->{server} eq 'HASH' && keys %{ $tunnels->{server} }) {
+        print "\n### Server I2P Tunnels\n";
+        for my $name (sort keys %{ $tunnels->{server} }) {
+            my $tunnel = $tunnels->{server}{$name};
+            if (ref $tunnel eq 'HASH' && exists $tunnel->{port}) {
+                print "- " . _display($name) . ' '
+                    . _display($tunnel->{address}) . ':'
+                    . _display($tunnel->{port}) . "\n";
+            }
+            elsif (ref $tunnel eq 'HASH') {
+                print "- " . _display($name) . ' '
+                    . _display($tunnel->{address}) . "\n";
+            }
+        }
+    }
+
+    return;
+}
+
+sub _cmd_info {
+    my ($control, $arguments) = @_;
+    my @remaining = @{$arguments};
+    my $help = 0;
+    my $option_error = '';
+
+    my $options_ok;
+    {
+        local $SIG{__WARN__} = sub { $option_error .= join('', @_) };
+        $options_ok = GetOptionsFromArray(\@remaining, 'help|h' => \$help);
+    }
+
+    if (!$options_ok) {
+        $option_error =~ s/\s+\z//;
+        return _usage_error('info', $option_error || 'invalid option');
+    }
+    if ($help) {
+        print _info_help();
+        return 0;
+    }
+    if (@remaining) {
+        return _usage_error(
+            'info',
+            'unrecognized arguments: ' . join(' ', @remaining),
+        );
+    }
+
+    my $router_response = _rpc($control, 'RouterInfo', $INFO_PARAMS{RouterInfo});
+    die "Error: RouterInfo response has no result\n"
+        unless ref $router_response->{result} eq 'HASH';
+
+    my $services_response = _rpc(
+        $control,
+        'ClientServicesInfo',
+        $INFO_PARAMS{ClientServicesInfo},
+    );
+    my $services = ref $services_response->{result} eq 'HASH'
+        ? $services_response->{result}
+        : undef;
+
+    _print_info($router_response->{result}, $services);
+    return 0;
+}
+
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
+sub main {
+    my @arguments = @_;
+    my $command = @arguments ? shift @arguments : undef;
+
+    if (!defined $command) {
+        print _main_help();
+        return 0;
+    }
+    if ($command eq '-h' || $command eq '--help') {
+        print _main_help();
+        return 0;
+    }
+
+    my $url = exists $ENV{I2PCONTROL_URL}
+        ? $ENV{I2PCONTROL_URL}
+        : $DEFAULT_URL;
+    my $password = exists $ENV{I2PCONTROL_PASSWORD}
+        ? $ENV{I2PCONTROL_PASSWORD}
+        : $DEFAULT_PASSWORD;
+
+    my $control = {
+        url      => $url,
+        password => $password,
+        token    => undef,
+    };
+
+    return _cmd_exec($control, \@arguments) if $command eq 'exec';
+    return _cmd_raw_info($control, \@arguments) if $command eq 'raw_info';
+    return _cmd_info($control, \@arguments) if $command eq 'info';
+
+    return _usage_error(
+        undef,
+        "argument action: invalid choice: '$command' "
+            . "(choose from 'exec', 'raw_info', 'info')",
+    );
+}
+
+sub _run_cli {
+    my $code;
+    my $ok = eval {
+        $code = main(@ARGV);
+        1;
+    };
+
+    if (!$ok) {
+        my $error = $@;
+        $error =~ s/\s+\z//;
+
+        if ($error eq '__UNAVAILABLE__') {
+            print "Error: I2PControl URL is unavailable. "
+                . "Check your i2pd settings and network connection.\n";
+            return 1;
+        }
+
+        $error = "Error: $error" unless $error =~ /\AError:/;
+        print STDERR "$error\n";
+        return 1;
+    }
+
+    return defined $code ? $code : 0;
+}
+
+exit _run_cli() unless caller;

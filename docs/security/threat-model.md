@@ -31,10 +31,10 @@ analysis; no OpenBSD/Windows/Android capability tests have been executed.
 | Storage worker compromised | Files under data dir, IPC to core | Can return malicious RouterInfo/LeaseSets/profiles; cannot open Internet if pledge enforced | Persisted keys if storage can read them | **Not implemented** | Arbitrary file read/write via current core |
 | Router core compromised via I2NP | Routing state, IPC clients | Request storage/network operations through typed APIs; cannot directly access both if policy enforced | Keys if held in core; tunnel/session material | **Not implemented** | Same process has all capabilities |
 | Admin IPC compromised | TUI socket (0600, same UID), read-only requests | Status/log reads; no write commands in v1 | Public status/log data only | Implemented read-only protocol, bounds/UID check | Logs/metadata disclosure to same UID |
-| Log worker compromised | Log file/syslog, IPC channel | Cannot reach network/keys under policy; can corrupt logs | Log contents only | Implemented separation | No restart/backoff yet |
+| Log worker compromised | Log file/syslog, IPC channel | Cannot reach network/keys under policy; can corrupt logs | Log contents only | Implemented separation | Bounded in-process restart monitor; same-UID worker remains trusted |
 | Malicious IPC messages | Frame injection on inherited channel | Type confusion, oversized allocation, command injection | Depends on worker | Bounded parser, exact lengths, type allowlist, peer UID | No fuzzing yet |
-| Queue saturation | Flood of log records/IPC | Memory/CPU pressure, dropped logs | None directly | Bounded frame/text, logger queue existing; no explicit per-worker quota yet | Pending quotas/backpressure |
-| Worker crash/restart | Kill worker or crash | Supervisor restart storms, missing service | Logs if log worker dies | Log worker failure drops logs, no core file fallback | No automatic restart/backoff yet |
+| Queue saturation | Flood of log records/IPC | Memory/CPU pressure, dropped logs | None directly | Bounded frame/text; 1 s sink send timeout closes the channel on backpressure | Logger queue is still the existing in-core queue; no per-worker or disk quota yet |
+| Worker crash/restart | Kill worker or crash | Supervisor restart storms, missing service | Logs if log worker dies | Log worker failure drops logs, no core file fallback | Bounded restart (500 ms..30 s, max 8 attempts) then logs are dropped; no separate supervisor process |
 
 ## Key-flow constraints
 
@@ -53,11 +53,12 @@ analysis; no OpenBSD/Windows/Android capability tests have been executed.
   logger queue but must not block packet processing. Current implementation
   uses the existing logging queue; a dedicated bounded channel queue is
   pending.
-- A worker that fails protocol validation exits; the core currently continues
-  without it for logging (logs dropped). Automatic restart and backoff are
-  pending.
-- No infinite restart loop is implemented because automatic restart is not
-  implemented yet.
+- A worker that fails protocol validation exits; the core keeps running and
+  drops log records until the bounded in-process monitor restarts the worker.
+- Restarts use 500 ms exponential backoff capped at 30 s, stop after eight
+  consecutive attempts, and reset after 60 s of stable operation. There is no
+  unbounded restart loop and no separate supervisor process; exhausting the
+  attempts leaves logging stopped with no file fallback in the core.
 
 ## Out of scope / limitations
 

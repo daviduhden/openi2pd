@@ -87,6 +87,16 @@ was created.
 | `tests/test-http-merge_chunked.cpp` | extension and malformed-size regressions |
 | `tests/test-http-url.cpp` | port validation regressions |
 
+## Modified — tools and firewall
+
+| File | Change |
+|---|---|
+| `tools/vain.cpp`, `tools/vanity.hpp` | RAII key buffers wiped on exit, `std::jthread` workers joined before writes, checked key layout/bounds/regex, base32 prefix validation, standard positional parsing |
+| `tools/firewall.hpp` | numeric-only address grammar, scope/bracket/IPv4-mapped/broadcast rejection, display-name tag validation |
+| `tools/routerinfo.cpp` | reject `--nft-*` options when `--firewall=nftables` is not selected |
+| `tests/test-routerinfo-firewall.cpp`, `tools/test-tools.cmake` | deterministic address, nftables, tag and CLI validation regressions |
+| `docs/tools/vain.md`, `docs/tools/routerinfo.md` | pattern/output naming, validation and key-buffer security notes |
+
 ## Modified — C++23 cleanup
 
 The following files lost unreachable C++20 fallback branches or stale Boost
@@ -113,17 +123,29 @@ version branches; comment-only changes are included:
 | `build/build_mingw.cmd` | CMake/Ninja, no `make`, no XP path |
 | `android/app/build.gradle` | Gradle 9.8.1/AGP 9.4.1, JDK 25 toolchain, CMake JNI, no hard-coded signing keys |
 | `android/.../DaemonWrapper.java` | app-specific storage, new package and data directory |
-| `android/.../I2PDActivity.java`, `MainPreferenceActivity.java` | removed web console and storage-permission gate |
-| `android/.../i2pd_android.cpp` | removed web-console URL; added status summary |
+| `android/.../MainActivity.java`, fragments, `RouterService`, `RouterRepository`, `RouterViewModel` | Material 3 UI and service/observable-state architecture |
+| `android/.../I2PDActivity.java`, `SettingsActivity.java`, `MainPreferenceActivity.java`, `ForegroundService.java` | removed/replaced by the native UI/service architecture |
+| `android/.../i2pd_android.cpp` | bounded status snapshot and recent-log JNI methods |
 | `build/win_installer.iss` | removed webconsole files |
 | `debian/rules`, `debian/control` | CMake/Ninja build, new deps, no patches |
 | `contrib/rpm/i2pd.spec`, `i2pd-git.spec` | `cmake --build`, no make/ninja invocation |
 | `contrib/i2pd.conf`, `contrib/openbsd/i2pd.conf` | `[http]` → `[tui]` |
 | `contrib/docker/Dockerfile`, `i2pd-docker.conf` | removed console port/config |
-| `contrib/openbsd/README.md` | TUI socket and sandbox notes |
+| `contrib/openbsd/README.md` | TUI socket, sandbox and rc.d notes |
+| `contrib/openbsd/i2pd.rc`, `i2pd.login` | OpenBSD rc.d service/login class from wip-openbsd-ports |
 | `README.md`, `docs/README.md` | C++23/CMake/TUI/manual-CI documentation |
-| `.github/workflows/build.yml`, `build-openbsd.yml`, `build-windows.yml` | manual-only triggers, Ninja, TUI test targets |
+| `.github/workflows/build.yml`, `build-openbsd.yml`, `build-windows.yml` | manual-only triggers, Ninja, TUI/Perl test targets, pinned actions, no credential persistence |
+| `.yamllint.yml` | workflow lint policy |
+| `docs/android-java25.md`, `docs/android-modernization.md` | Java 25, ART/D8/R8 and UI/architecture status |
+| `docs/ci.md` | workflow security/lint policy |
+| `docs/security/openbsd-validation.md` | OpenBSD sandbox/pidfile/signal validation checklist |
+| `privsep/*`, `daemon/Daemon.cpp`, `daemon/i2pd.cpp` | bounded log-worker supervision, channel/fork hardening and reattach |
+| `docs/torrent/*`, `docs/development/perl-migration.md` | native torrent, IPC, security, TUI, matrix and Perl migration docs |
+| `libi2pd_client/TorrentsControl.*`, `TorrentsTunnel.*`, `Torrents.cpp`, `TorrentsRPC.*`, `TuiProtocol.h`, `TuiServer.*`, `tui/*` | native torrent control, security hardening and TUI |
+| `tools/scripts/i2pdctl`, `tools/tests/i2pdctl.t` | Perl replacement and regression tests |
 | `tests/test-sam-version.sh` | POSIX loop instead of `seq` |
+| `libi2pd/LeaseSet.cpp`, `NetDb.cpp`, `RouterInfo.cpp`, `I2NPProtocol.cpp`, `NTCP2.cpp`, `SSU2Session.*` | protocol-bound, identity-binding, fragment and path-response hardening |
+| `tests/test-protocol-bounds.cpp`, `tests/fuzz/fuzz-protocol-bounds.cpp` | parser/identity/I2NP regression and fuzz sources |
 
 ## Removed
 
@@ -135,6 +157,8 @@ version branches; comment-only changes are included:
 | `debian/patches/` | Patches applied to the deleted GNU make build |
 | `contrib/debian/` | Packaging for EOL Ubuntu releases using the deleted build |
 | `[http]` options in configs and `Config.cpp` | Console no longer exists |
+| `contrib/torrents/web/` | Torrent browser console HTML/CSS/JS; native TUI replaces it |
+| `tools/scripts/i2pdctl` Python content | Replaced by Perl; path/name retained for the installed client |
 | Win32 `ID_CONSOLE` menu/handler | Console no longer exists |
 
 ## Preserved deliberately
@@ -143,6 +167,5 @@ version branches; comment-only changes are included:
 - Reseed code, HTTPS/SU3 handling and reseed options.
 - `daemon/I2PControl.*` and its certificate/token handling.
 - `libi2pd_wrapper/` and public library headers.
-- Torrents web assets under `contrib/torrents/` (client feature, not the
-  administrative console).
+- Torrent engine and I2P-only transport code under `libi2pd_client/`.
 - Historical `ChangeLog` references to the web console.

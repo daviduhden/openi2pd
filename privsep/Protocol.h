@@ -7,13 +7,16 @@
 #ifndef I2PD_PRIVSEP_PROTOCOL_H__
 #define I2PD_PRIVSEP_PROTOCOL_H__
 
+#include <algorithm>
 #include <charconv>
+#include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <limits>
 #include <span>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <vector>
 
 namespace i2p::privsep
@@ -76,6 +79,8 @@ namespace i2p::privsep
 				U32 (static_cast<uint32_t> (value >> 32));
 				U32 (static_cast<uint32_t> (value & 0xffffffff));
 			}
+			// Bounded by MAX_TEXT_SIZE. Log records therefore truncate rather
+			// than copy unbounded text supplied by a router thread.
 			void String (std::string_view value)
 			{
 				const auto size = std::min (value.size (), MAX_TEXT_SIZE);
@@ -169,8 +174,12 @@ namespace i2p::privsep
 		if (*type < static_cast<uint16_t> (MessageType::ConfigureLog) ||
 			*type > static_cast<uint16_t> (MessageType::Pong))
 			return std::unexpected (ProtocolError{ErrorCode::UnknownType, "unknown type"});
-		if (*length > MAX_MESSAGE_SIZE - HEADER_SIZE || *length != frame.size () - HEADER_SIZE)
-			return std::unexpected (ProtocolError{ErrorCode::TooLarge, "invalid length"});
+		if (*length > MAX_MESSAGE_SIZE - HEADER_SIZE)
+			return std::unexpected (ProtocolError{ErrorCode::TooLarge, "payload too large"});
+		// One SOCK_SEQPACKET record is one frame. A short/long frame is a
+		// framing error, not a size limit violation.
+		if (*length != frame.size () - HEADER_SIZE)
+			return std::unexpected (ProtocolError{ErrorCode::Malformed, "length mismatch"});
 		return Message{static_cast<MessageType> (*type), *request,
 			std::string (frame.substr (HEADER_SIZE, *length))};
 	}
@@ -213,6 +222,11 @@ namespace i2p::privsep
 		auto tag = reader.String (); if (!tag) return std::unexpected (tag.error ());
 		if (!reader.Done () || *syslog > 1)
 			return std::unexpected (ProtocolError{ErrorCode::BadField, "invalid log config"});
+		// These become null-terminated path/ident arguments. An embedded NUL
+		// would make the worker act on a different path than the parent meant.
+		if (path->find ('\0') != std::string_view::npos ||
+			tag->find ('\0') != std::string_view::npos)
+			return std::unexpected (ProtocolError{ErrorCode::BadField, "NUL in log config"});
 		return std::tuple{*syslog != 0, std::string (*path), std::string (*tag)};
 	}
 }

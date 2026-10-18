@@ -14,21 +14,27 @@ The binary and configuration options retain the `i2pd` name.
 - [C++23 migration](cpp23-migration.md)
 - [CMake and POSIX Make migration](build-system.md)
 - [TUI and IPC design](tui-ipc.md)
+- [Native torrent console](torrent/architecture.md)
+- [Torrent functionality matrix](torrent/console-matrix.md)
+- [Torrent security](torrent/security.md)
+- [Python-to-Perl migration](development/perl-migration.md)
 - [Security audit](security-audit.md)
+- [OpenBSD sandbox validation](security/openbsd-validation.md)
 - [Privilege separation](security/privilege-separation.md)
 - [Internal IPC protocol](security/ipc-protocol.md)
 - [Threat model](security/threat-model.md)
 - [Process capabilities](security/process-capabilities.md)
 - [Android modernization](android-modernization.md)
 - [Test and validation plan](testing.md)
+- [CI policy and workflow linting](ci.md)
 - [Files created, modified and removed](files-changed.md)
 - [Attribution and personal-reference audit](attribution-audit.md)
 - [Rebranding and inherited identity](REBRANDING.md)
 - [Upstream provenance and synchronization](upstream-sync.md)
 
 Use `i2pd --help` to list configuration options. The HTTP administrative
-console has been removed. Router status is available through the local,
-read-only `i2pd-tui` ncurses client; the I2P HTTP proxy on port 4444 is a
+console has been removed. Router status and authorized torrent administration are available through
+the local `i2pd-tui` ncurses client; the I2P HTTP proxy on port 4444 is a
 separate service and remains available.
 
 For a user process, data is stored in `~/.i2pd` on Linux and OpenBSD. With

@@ -126,6 +126,18 @@ public class DaemonWrapper {
 
     public DaemonWrapper(Context context, AssetManager assetManager,
                          ConnectivityManager connectivityManager) {
+        this(context, assetManager, connectivityManager, true);
+    }
+
+    /**
+     * @param autoStart when {@code false} the wrapper stays in
+     *                  {@link State#stopped} until the owner calls
+     *                  {@link #startDaemon()}. {@link RouterService} uses
+     *                  this so a stopped router does not spring back to life
+     *                  merely because the UI bound the service.
+     */
+    public DaemonWrapper(Context context, AssetManager assetManager,
+                         ConnectivityManager connectivityManager, boolean autoStart) {
         Objects.requireNonNull(context, "context");
         Context appContext = context.getApplicationContext();
         if (appContext == null) {
@@ -136,8 +148,7 @@ public class DaemonWrapper {
         this.connectivityManager = connectivityManager;
 
         File external = appContext.getExternalFilesDir(null);
-        File base = external != null ? external : appContext.getFilesDir();
-        this.dataDir = new File(base, DATA_DIR_NAME).getAbsoluteFile();
+        this.dataDir = defaultDataDir(appContext);
 
         List<File> roots = new ArrayList<>(2);
         File internalFiles = appContext.getFilesDir();
@@ -149,8 +160,27 @@ public class DaemonWrapper {
         }
         this.appStorageRoots = Collections.unmodifiableList(roots);
 
-        setState(State.starting);
-        startDaemonInternal();
+        if (autoStart) {
+            setState(State.starting);
+            startDaemonInternal();
+        } else {
+            setState(State.stopped);
+        }
+    }
+
+    /**
+     * Default app-private data directory. Shared with {@link RouterConfigStore}
+     * so configuration edits and the native router always agree on the path.
+     */
+    static File defaultDataDir(Context context) {
+        Objects.requireNonNull(context, "context");
+        Context appContext = context.getApplicationContext();
+        if (appContext == null) {
+            appContext = context;
+        }
+        File external = appContext.getExternalFilesDir(null);
+        File base = external != null ? external : appContext.getFilesDir();
+        return new File(base, DATA_DIR_NAME).getAbsoluteFile();
     }
 
     public void addStateChangeListener(StateUpdateListener listener) {
@@ -317,6 +347,33 @@ public class DaemonWrapper {
         startDaemonInternal();
     }
 
+    /**
+     * Stop and start the native router in order. Used by the service's restart
+     * command. The start thread is allowed to finish unwinding before a new
+     * start is requested so two native initialisations can never overlap.
+     *
+     * @return {@code false} if a previous start thread did not finish in time
+     */
+    public boolean restartDaemon() {
+        stopDaemon();
+        long deadline = System.currentTimeMillis() + 10_000L;
+        while (startThreadRunning && System.currentTimeMillis() < deadline) {
+            try {
+                Thread.sleep(25L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                Log.w(TAG, "interrupted while waiting for daemon start thread");
+                return false;
+            }
+        }
+        if (startThreadRunning) {
+            Log.e(TAG, "refusing restart while the previous start is still running");
+            return false;
+        }
+        startDaemon();
+        return true;
+    }
+
     private void startDaemonInternal() {
         StateChange change;
         synchronized (lock) {
@@ -329,6 +386,9 @@ public class DaemonWrapper {
             }
             startThreadRunning = true;
             stopRequested.set(false);
+            // Do not let a previous successful result mask a failure in this
+            // start attempt (for example an asset or library load error).
+            daemonStartResult = "N/A";
             change = setStateLocked(State.starting);
         }
         notifyListeners(change);
@@ -395,30 +455,6 @@ public class DaemonWrapper {
         if (started) {
             registerNetworkCallback();
         }
-    }
-
-    public void stopAcceptingTunnels() {
-        StateChange change;
-        synchronized (lock) {
-            if (!state.isStartedOkay()) {
-                return;
-            }
-            change = setStateLocked(State.gracefulShutdownInProgress);
-            I2PD_JNI.stopAcceptingTunnels();
-        }
-        notifyListeners(change);
-    }
-
-    public void startAcceptingTunnels() {
-        StateChange change;
-        synchronized (lock) {
-            if (state != State.gracefulShutdownInProgress) {
-                return;
-            }
-            change = setStateLocked(State.startedOkay);
-            I2PD_JNI.startAcceptingTunnels();
-        }
-        notifyListeners(change);
     }
 
     public void reloadTunnelsConfigs() {

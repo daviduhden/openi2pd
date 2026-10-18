@@ -91,4 +91,52 @@ if(conflicting EQUAL 0)
   message(FATAL_ERROR "routerinfo accepted conflicting firewall options")
 endif()
 
+execute_process(COMMAND "${TOOLS_DIR}/routerinfo${EXE}" "--nft-family=ip" keys.dat
+  RESULT_VARIABLE nft_without_backend)
+if(nft_without_backend EQUAL 0)
+  message(FATAL_ERROR "routerinfo accepted nftables options without --firewall=nftables")
+endif()
+
+execute_process(COMMAND "${TOOLS_DIR}/routerinfo${EXE}" --firewall=nftables --nft-family=inet6 keys.dat
+  RESULT_VARIABLE bad_family)
+if(bad_family EQUAL 0)
+  message(FATAL_ERROR "routerinfo accepted an invalid nftables family")
+endif()
+
+execute_process(COMMAND "${TOOLS_DIR}/routerinfo${EXE}" --firewall=pf "--nft-chain=output" keys.dat
+  RESULT_VARIABLE nft_chain_without_nft)
+if(nft_chain_without_nft EQUAL 0)
+  message(FATAL_ERROR "routerinfo accepted nftables options with a non-nft backend")
+endif()
+
+# vain: help and validation paths only; never start a search in the smoke test.
+run_tool(vain --help)
+if(NOT LAST_TOOL_OUTPUT MATCHES "--multiplymode" OR NOT LAST_TOOL_OUTPUT MATCHES "--threads")
+  message(FATAL_ERROR "vain help is incomplete")
+endif()
+
+execute_process(COMMAND "${TOOLS_DIR}/vain${EXE}" -t 0 example
+  RESULT_VARIABLE bad_threads)
+if(bad_threads EQUAL 0)
+  message(FATAL_ERROR "vain accepted a zero thread count")
+endif()
+
+execute_process(COMMAND "${TOOLS_DIR}/vain${EXE}" -r "("
+  RESULT_VARIABLE bad_regex)
+if(bad_regex EQUAL 0)
+  message(FATAL_ERROR "vain accepted an invalid regular expression")
+endif()
+
+execute_process(COMMAND "${TOOLS_DIR}/vain${EXE}" "NOT-BASE32"
+  RESULT_VARIABLE bad_prefix)
+if(bad_prefix EQUAL 0)
+  message(FATAL_ERROR "vain accepted a non-base32 prefix")
+endif()
+
+execute_process(COMMAND "${TOOLS_DIR}/vain${EXE}" -s ECDSA-P256 example
+  RESULT_VARIABLE bad_signature)
+if(bad_signature EQUAL 0)
+  message(FATAL_ERROR "vain accepted an unsupported signature type")
+endif()
+
 file(REMOVE_RECURSE "${WORK}")

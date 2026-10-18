@@ -23,7 +23,7 @@ namespace i2p
 namespace tui
 {
 	/**
-	 * Local, read-only administrative channel for i2pd-tui.
+	 * Local administrative channel for i2pd-tui.
 	 *
 	 * The router owns the listening socket and all snapshot collection. The
 	 * TUI is a separate process and can disappear, hang or misbehave without

@@ -4,21 +4,34 @@
 
 | Process | OpenBSD pledge/unveil | Linux | Windows |
 |---|---|---|---|
-| Router core | Existing broad policy (`stdio rpath wpath cpath fattr inet dns unix flock`, optional `mcast/unveil`) | No seccomp/Landlock; normal process | Normal process |
-| Log worker | `unveil(logfile, rwc)` then `pledge("stdio rpath wpath cpath fattr")`; syslog: `pledge("stdio unix")` | `PR_SET_NO_NEW_PRIVS`; no seccomp/Landlock yet | Not implemented |
-| Supervisor | Not separate | Not separate | Not separate |
+| Router core | Existing broad policy (`stdio rpath wpath cpath fattr inet dns unix flock`, optional `mcast`; `/dev/log` `w` when logging to syslog) | No seccomp/Landlock; normal process | Normal process |
+| Log worker | `unveil(logfile, rwc)` then `pledge("stdio rpath wpath cpath fattr")`; syslog: `pledge("stdio unix")`; stdout: `pledge("stdio")`. Requires the parent sandbox to be disabled because the spawn needs `proc`/`exec`; otherwise startup is refused | `PR_SET_NO_NEW_PRIVS`; same UID as core; parent death via channel EOF; no seccomp/Landlock yet | Not implemented |
+| Supervisor | In-process restart monitor thread (log worker only); not a separate process or a sandbox boundary | Same | Same |
 | Network worker | Not implemented | Not implemented | Not implemented |
 | Storage worker | Not implemented | Not implemented | Not implemented |
 | Crypto worker | Not implemented | Not implemented | Not implemented |
 | TUI | Separate client; local UNIX socket 0600 | Same | Not available |
 
+The OpenBSD runtime pledge is applied before the log worker is spawned. The
+worker therefore cannot be used while `openbsd.pledge_enabled` or
+`openbsd.unveil_enabled` is active: `fork`/`execv` need `proc`/`exec`, which the
+runtime policy deliberately omits. `i2pd` refuses to start for that
+combination rather than silently disabling either the worker or the sandbox.
+The syslog destination of the core unveils `/dev/log` with `w`; the `unix`
+promise alone does not cover the pathname lookup done by `connect(2)`.
+
 ## Target policies
 
 ### Log worker
 
-- File: `stdio rpath wpath cpath fattr`; `unveil` only the configured log path;
-  no `inet`, `dns`, `unix` (file case).
+- File: `stdio rpath wpath cpath fattr`; `unveil` the configured log path plus
+  read-only `/etc/localtime` for timestamp formatting; no `inet`, `dns`, `unix`
+  (file case).
 - Syslog: `stdio unix`; no filesystem write.
+- Foreground stdout: `stdio`; no filesystem access.
+- Configuration is accepted exactly once, before the restrictive policy is
+  applied. A worker that never receives configuration remains under the
+  inherited promises; it never opens a log path without configuration.
 - No config/keys/netDb paths.
 
 ### Storage worker (planned)
@@ -50,22 +63,33 @@
 - Operation-specific key handles, no generic "sign arbitrary bytes with any
   key" API without caller/operation authorization.
 
-### Supervisor (planned)
+### Supervisor
 
-- Startup: fork/exec, channel setup, privilege drop.
-- Runtime: `stdio unix` only; no router packet processing, no network, no
-  persistent writes.
-- Uses pidfd on Linux where available; waitpid on OpenBSD.
+- **Current:** a single in-process thread monitors and restarts only the log
+  worker. It is not a security boundary and does not satisfy the target
+  architecture.
+- **Planned:** separate process. Startup: fork/exec, channel setup, privilege
+  drop. Runtime: `stdio unix` only; no router packet processing, no network, no
+  persistent writes. Uses pidfd on Linux where available; waitpid on OpenBSD.
+  Bounded restart backoff and single-owner channel policy move with it.
 
 ## Linux mechanisms
 
 Currently: `SOCK_SEQPACKET`, `SO_PEERCRED`, `SOCK_CLOEXEC`,
-`PR_SET_NO_NEW_PRIVS`, optional pidfd supervision.
+`PR_SET_NO_NEW_PRIVS`, eager pidfd supervision where available (waitpid
+fallback), async-signal-safe post-fork setup, explicit reaping before a
+restart, and EOF-based parent-death detection.
 
 Pending: seccomp-BPF allowlists, Landlock path rules, user/mount/net
 namespaces where useful, reduced capabilities, cgroup v2 limits. Network and
 filesystem restrictions must be tested together; Landlock does not cover all
 socket operations.
+
+Descriptor hygiene is best-effort on old Linux kernels: `close_range(2)` is
+used when available; otherwise the child closes descriptors 4..1023. A router
+with `limits.openfiles` above 1024 could therefore leak higher descriptors into
+the same-UID worker. This does not cross a privilege boundary but is a residual
+for the "no unnecessary inherited descriptors" invariant.
 
 ## Windows mechanisms
 

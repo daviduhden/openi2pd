@@ -29,6 +29,10 @@ Multiple RouterInfo files may be given. Duplicate endpoints across files are
 emitted once. The tool never executes a firewall command and never modifies
 `/etc/pf.conf` or any other system firewall configuration.
 
+The `--nft-*` options are only valid together with
+`--firewall=nftables`; passing them with another backend (or with no backend)
+is an error rather than being silently ignored.
+
 ## Address listing
 
 ```sh
@@ -145,17 +149,25 @@ pfctl -nf candidate.conf
 
 ## Validation and safety
 
+- Addresses must be numeric literals. Before parsing, the text is restricted
+  to `0-9`, `a-f`, `A-F`, `:` and `.`; hostnames, brackets, whitespace, scope
+  identifiers (`fe80::1%eth0`), prefixes and injection attempts are rejected.
+  Addresses are re-serialized canonically before they reach rule text.
 - Numeric IP addresses are parsed with `boost::asio::ip::make_address`.
-  Hostnames, malformed strings, unspecified/loopback/multicast addresses and
-  injection attempts are rejected.
+  Unspecified, loopback, multicast, IPv4 broadcast (`255.255.255.255`) and
+  IPv4-mapped IPv6 addresses are rejected.
 - Ports must be `1..65535`; transport must be NTCP2 (TCP) or SSU2 (UDP).
 - Duplicate `(family, transport, address, port)` tuples are removed across all
   input files.
 - The total endpoint count is capped at 4096; invalid endpoints are skipped
   with a diagnostic.
-- nftables identifiers and PowerShell strings are escaped/validated. Router
-  hashes in names are public identifiers and contain only base64 characters.
-- Missing/invalid address or port never produces an `any` rule.
+- nftables identifiers and PowerShell strings are escaped/validated. The
+  Windows display-name tag is restricted to printable identifier characters
+  (letters, digits, `+ / = _ - ~ .`) so a tag cannot introduce a quote,
+  newline or control character. Router hashes in names are public identifiers
+  and contain only base64 characters.
+- Missing/invalid address or port never produces an `any` rule, and the
+  tool renders no hostnames or DNS-dependent matches.
 
 ## Compatibility
 
@@ -167,7 +179,11 @@ backend. RouterInfo key/address formats are unchanged.
 
 `tests/test-routerinfo-firewall.cpp` checks IPv4/IPv6 NTCP2/SSU2 rendering,
 legacy output stability, nft family filtering, identifier rejection,
-PowerShell escaping and PF syntax. `tools-smoke` checks CLI help, invalid
-backends, unsafe table names and conflicting options. Dynamic validation with
-`iptables-restore --test`, `nft -c`, `pfctl -nf` and a Windows host is pending;
-these tools are not executed during the static test run.
+PowerShell escaping, PF syntax, numeric-only address grammar, rejection of
+scoped/bracketed/IPv4-mapped/broadcast addresses, invalid nftables families and
+chains, and display-name tag validation. `tools-smoke` checks CLI help, invalid
+backends, unsafe table names, conflicting options, nftables options without a
+backend, an invalid nft family and nftables options with a non-nft backend.
+These are static/deterministic checks; see `testing.md`. Dynamic validation
+with `iptables-restore --test`, `nft -c`, `pfctl -nf` and a Windows host is
+pending; these tools are not executed during the static test run.

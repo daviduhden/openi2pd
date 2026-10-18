@@ -15,7 +15,9 @@
 #include <cerrno>
 #include <chrono>
 #include <cstring>
+#include <expected>
 #include <fcntl.h>
+#include <optional>
 #include <poll.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -31,6 +33,7 @@
 #include "RouterInfo.h"
 #include "Transports.h"
 #include "Tunnel.h"
+#include "TorrentsControl.h"
 #include "TuiProtocol.h"
 #include "version.h"
 
@@ -239,6 +242,194 @@ namespace tui
 			return payload;
 		}
 
+#ifndef NO_TORRENTS
+		using TorrentsTunnelPtr = std::shared_ptr<i2p::torrents::TorrentsTunnel>;
+
+		std::vector<TorrentsTunnelPtr> GetSortedTorrentsTunnels ()
+		{
+			return i2p::client::context.GetTorrentsTunnelsSnapshot ();
+		}
+
+		std::expected<i2p::torrents::TorrentsSnapshot, std::string> GetTunnelSnapshot (const TorrentsTunnelPtr& tunnel)
+		{
+			if (!tunnel) return std::unexpected ("torrent tunnel not found");
+			auto snapshot = tunnel->GetControlSnapshot (i2p::torrents::CONTROL_DEFAULT_TIMEOUT);
+			if (!snapshot) return std::unexpected ("torrent snapshot timed out");
+			return std::move (*snapshot);
+		}
+
+		void AppendTorrentSummary (std::string& payload, std::string_view prefix,
+			const i2p::torrents::TorrentInfo& torrent)
+		{
+			auto field = [prefix] (std::string_view suffix)
+			{
+				std::string name (prefix);
+				name.push_back ('.');
+				name.append (suffix);
+				return name;
+			};
+			AppendField (payload, field ("id"), torrent.id);
+			AppendField (payload, field ("name"), torrent.name);
+			AppendField (payload, field ("status"), torrent.status);
+			AppendField (payload, field ("error"), torrent.error);
+			AppendField (payload, field ("hash"), torrent.hash);
+			AppendField (payload, field ("magnet"), torrent.magnet);
+			AppendField (payload, field ("total"), torrent.totalSize);
+			AppendField (payload, field ("have"), torrent.have);
+			AppendField (payload, field ("downloaded"), torrent.downloaded);
+			AppendField (payload, field ("uploaded"), torrent.uploaded);
+			AppendField (payload, field ("downRate"), torrent.downRate);
+			AppendField (payload, field ("upRate"), torrent.upRate);
+			AppendField (payload, field ("peers"), torrent.peers);
+			AppendField (payload, field ("seeders"), torrent.seeders);
+			AppendField (payload, field ("leechers"), torrent.leechers);
+			AppendField (payload, field ("percent"), std::to_string (torrent.percent));
+			AppendField (payload, field ("eta"), torrent.etaSeconds ?
+				static_cast<int64_t> (*torrent.etaSeconds) : static_cast<int64_t> (-1));
+		}
+
+		void AppendTorrentDetail (std::string& payload, const i2p::torrents::TorrentInfo& torrent)
+		{
+			AppendTorrentSummary (payload, "detail", torrent);
+			size_t count = 0;
+			for (const auto& file : torrent.files)
+			{
+				if (count++ >= MAX_TORRENT_FILE_RECORDS_PER_REQUEST) break;
+				auto prefix = "file." + std::to_string (count - 1);
+				AppendField (payload, prefix + ".name", file.name);
+				AppendField (payload, prefix + ".length", file.length);
+				AppendField (payload, prefix + ".completed", file.completed);
+			}
+			count = 0;
+			for (const auto& peer : torrent.peerDetails)
+			{
+				if (count++ >= MAX_TORRENT_PEER_RECORDS_PER_REQUEST) break;
+				auto prefix = "peer." + std::to_string (count - 1);
+				AppendField (payload, prefix + ".ident", peer.ident);
+				AppendField (payload, prefix + ".client", peer.client);
+				AppendField (payload, prefix + ".flags", peer.flags);
+				AppendField (payload, prefix + ".progress", std::to_string (peer.progress));
+				AppendField (payload, prefix + ".downRate", peer.downRate);
+				AppendField (payload, prefix + ".upRate", peer.upRate);
+			}
+			count = 0;
+			for (const auto& tracker : torrent.trackers)
+			{
+				if (count++ >= MAX_TORRENT_TRACKER_RECORDS_PER_REQUEST) break;
+				auto prefix = "tracker." + std::to_string (count - 1);
+				AppendField (payload, prefix + ".announce", tracker.announce);
+				AppendField (payload, prefix + ".peers", tracker.peers);
+				AppendField (payload, prefix + ".seeders", tracker.seeders);
+				AppendField (payload, prefix + ".leechers", tracker.leechers);
+				AppendField (payload, prefix + ".lastResult", tracker.lastResult);
+				AppendField (payload, prefix + ".lastAnnounce", tracker.lastAnnounce);
+				AppendField (payload, prefix + ".nextAnnounce", tracker.nextAnnounce);
+			}
+		}
+
+		std::string BuildTorrentTunnelList ()
+		{
+			std::string payload;
+			auto tunnels = GetSortedTorrentsTunnels ();
+			size_t count = std::min<size_t> (tunnels.size (), MAX_TORRENT_RECORDS_PER_REQUEST);
+			AppendField (payload, "torrent.tunnels", count);
+			for (size_t i = 0; i < count; i++)
+			{
+				auto prefix = "torrent.tunnel." + std::to_string (i);
+				AppendField (payload, prefix + ".name", tunnels[i]->GetName ());
+				AppendField (payload, prefix + ".torrents", tunnels[i]->GetTorrentIDs ().size ());
+				AppendField (payload, prefix + ".index", i);
+			}
+			return payload;
+		}
+
+		std::expected<std::string, std::string> BuildTorrentList (uint32_t tunnelIndex, uint32_t limit)
+		{
+			auto tunnels = GetSortedTorrentsTunnels ();
+			if (tunnelIndex >= tunnels.size ())
+				return std::unexpected ("torrent tunnel not found");
+			auto snapshot = GetTunnelSnapshot (tunnels[tunnelIndex]);
+			if (!snapshot) return std::unexpected (snapshot.error ());
+
+			std::string payload;
+			AppendField (payload, "torrent.tunnel.index", tunnelIndex);
+			AppendField (payload, "torrent.tunnel.name", snapshot->tunnelName);
+			size_t count = std::min<size_t> (limit, snapshot->torrents.size ());
+			count = std::min<size_t> (count, MAX_TORRENT_RECORDS_PER_REQUEST);
+			for (size_t i = 0; i < count; i++)
+				AppendTorrentSummary (payload, "torrent." + std::to_string (i), snapshot->torrents[i]);
+			AppendField (payload, "torrent.count", count);
+			return payload;
+		}
+
+		std::expected<std::string, std::string> BuildTorrentDetail (uint32_t tunnelIndex, int torrentId)
+		{
+			auto tunnels = GetSortedTorrentsTunnels ();
+			if (tunnelIndex >= tunnels.size ())
+				return std::unexpected ("torrent tunnel not found");
+			auto snapshot = GetTunnelSnapshot (tunnels[tunnelIndex]);
+			if (!snapshot) return std::unexpected (snapshot.error ());
+
+			auto it = std::find_if (snapshot->torrents.begin (), snapshot->torrents.end (),
+				[torrentId] (const auto& torrent) { return torrent.id == torrentId; });
+			if (it == snapshot->torrents.end ())
+				return std::unexpected ("torrent not found");
+			std::string payload;
+			AppendTorrentDetail (payload, *it);
+			return payload;
+		}
+
+		std::expected<std::string, std::string> BuildTorrentSession (uint32_t tunnelIndex)
+		{
+			auto tunnels = GetSortedTorrentsTunnels ();
+			if (tunnelIndex >= tunnels.size ())
+				return std::unexpected ("torrent tunnel not found");
+			auto snapshot = GetTunnelSnapshot (tunnels[tunnelIndex]);
+			if (!snapshot) return std::unexpected (snapshot.error ());
+
+			std::string payload;
+			AppendField (payload, "session.downloaded", snapshot->session.downloaded);
+			AppendField (payload, "session.uploaded", snapshot->session.uploaded);
+			AppendField (payload, "session.active", snapshot->session.active);
+			AppendField (payload, "session.paused", snapshot->session.paused);
+			return payload;
+		}
+
+		std::expected<std::string, std::string> BuildTorrentDht (uint32_t tunnelIndex)
+		{
+			auto tunnels = GetSortedTorrentsTunnels ();
+			if (tunnelIndex >= tunnels.size ())
+				return std::unexpected ("torrent tunnel not found");
+			auto snapshot = GetTunnelSnapshot (tunnels[tunnelIndex]);
+			if (!snapshot) return std::unexpected (snapshot.error ());
+
+			std::string payload;
+			AppendField (payload, "dht.supported", snapshot->dht.supported);
+			AppendField (payload, "dht.numNodes", snapshot->dht.numNodes);
+			AppendField (payload, "dht.numBuckets", snapshot->dht.numBuckets);
+			AppendField (payload, "dht.numTorrents", snapshot->dht.numTorrents);
+			AppendField (payload, "dht.numHeardFrom", snapshot->dht.numHeardFrom);
+			AppendField (payload, "dht.numFailedPeers", snapshot->dht.numFailedPeers);
+			return payload;
+		}
+
+		std::string BuildTorrentCommandResult (uint32_t tunnelIndex,
+			const i2p::torrents::TorrentCommand& command)
+		{
+			i2p::torrents::TorrentCommandResult result{ false, "torrent tunnel not found", command.torrentId };
+			auto tunnels = GetSortedTorrentsTunnels ();
+			if (tunnelIndex < tunnels.size ())
+				result = tunnels[tunnelIndex]->ExecuteControlCommand (command, i2p::torrents::CONTROL_DEFAULT_TIMEOUT);
+
+			std::string payload;
+			AppendField (payload, "result", result.success ? "ok" : "error");
+			AppendField (payload, "message", result.message);
+			AppendField (payload, "id", result.id);
+			AppendField (payload, "tunnel", tunnelIndex);
+			return payload;
+		}
+#endif
+
 		struct DispatchResult
 		{
 			std::string response;
@@ -260,6 +451,16 @@ namespace tui
 				return {MakeResponse (ResponseStatus::Ok, payload), false};
 			};
 
+			auto makeQuery = [] (std::expected<std::string, std::string> result) -> DispatchResult
+			{
+				if (!result)
+					return {MakeErrorResponse (ErrorCode::Internal, result.error ()), false};
+				auto payload = std::move (*result);
+				if (payload.size () > MAX_RESPONSE_PAYLOAD)
+					return {MakeErrorResponse (ErrorCode::ResponseTooLarge, "snapshot too large"), false};
+				return {MakeResponse (ResponseStatus::Ok, payload), false};
+			};
+
 			switch (request->type)
 			{
 				case RequestType::State: return makeOk (BuildState ());
@@ -276,6 +477,45 @@ namespace tui
 				}
 				case RequestType::Quit:
 					return {MakeResponse (ResponseStatus::Ok, {}), true};
+#ifndef NO_TORRENTS
+				case RequestType::TorrentTunnels:
+					return makeOk (BuildTorrentTunnelList ());
+				case RequestType::Torrents:
+					return makeQuery (BuildTorrentList (request->tunnelIndex, request->limit));
+				case RequestType::TorrentDetail:
+					return makeQuery (BuildTorrentDetail (request->tunnelIndex, request->torrentId));
+				case RequestType::TorrentSession:
+					return makeQuery (BuildTorrentSession (request->tunnelIndex));
+				case RequestType::TorrentDht:
+					return makeQuery (BuildTorrentDht (request->tunnelIndex));
+				case RequestType::TorrentStart:
+					return makeOk (BuildTorrentCommandResult (request->tunnelIndex,
+						{ i2p::torrents::TorrentCommandKind::Start, request->torrentId, false, {} }));
+				case RequestType::TorrentStop:
+					return makeOk (BuildTorrentCommandResult (request->tunnelIndex,
+						{ i2p::torrents::TorrentCommandKind::Stop, request->torrentId, false, {} }));
+				case RequestType::TorrentReannounce:
+					return makeOk (BuildTorrentCommandResult (request->tunnelIndex,
+						{ i2p::torrents::TorrentCommandKind::Reannounce, request->torrentId, false, {} }));
+				case RequestType::TorrentRemove:
+					return makeOk (BuildTorrentCommandResult (request->tunnelIndex,
+						{ i2p::torrents::TorrentCommandKind::Remove, request->torrentId, request->deleteFiles, {} }));
+				case RequestType::TorrentStartAll:
+					return makeOk (BuildTorrentCommandResult (request->tunnelIndex,
+						{ i2p::torrents::TorrentCommandKind::StartAll, 0, false, {} }));
+				case RequestType::TorrentStopAll:
+					return makeOk (BuildTorrentCommandResult (request->tunnelIndex,
+						{ i2p::torrents::TorrentCommandKind::StopAll, 0, false, {} }));
+				case RequestType::TorrentReannounceAll:
+					return makeOk (BuildTorrentCommandResult (request->tunnelIndex,
+						{ i2p::torrents::TorrentCommandKind::ReannounceAll, 0, false, {} }));
+				case RequestType::TorrentAddMagnet:
+					return makeOk (BuildTorrentCommandResult (request->tunnelIndex,
+						{ i2p::torrents::TorrentCommandKind::AddMagnet, 0, false, request->argument }));
+				case RequestType::TorrentAddFile:
+					return makeOk (BuildTorrentCommandResult (request->tunnelIndex,
+						{ i2p::torrents::TorrentCommandKind::AddFile, 0, false, request->argument }));
+#endif
 				default:
 					return {MakeErrorResponse (ErrorCode::UnknownCommand, "unknown command"), false};
 			}

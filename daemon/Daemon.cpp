@@ -9,6 +9,15 @@
 #include <thread>
 #include <memory>
 #include <regex>
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <expected>
+#include <iostream>
+#include <signal.h>
+#ifndef _WIN32
+#include <pthread.h>
+#endif
 
 #ifdef __OpenBSD__
 #include <unistd.h>
@@ -26,6 +35,7 @@
 #include "FS.h"
 #include "CPU.h"
 #include "Base.h"
+#include "util.h"
 #include "version.h"
 #include "Transports.h"
 #include "RouterInfo.h"
@@ -57,7 +67,9 @@ namespace util
 	// not exist yet (log files, for example), so realpath() is unsuitable.
 	static std::string AbsolutePath (const std::string& path)
 	{
-		if (path.empty () || path.front () == '/') return path;
+		// reseed.file may be an HTTPS URL, not a filesystem path.
+		if (path.empty () || path.front () == '/' || path.find ("://") != std::string::npos)
+			return path;
 		char cwd[PATH_MAX];
 		if (!getcwd (cwd, sizeof (cwd)))
 			throw std::runtime_error ("Daemon: Can't resolve working directory");
@@ -69,12 +81,22 @@ namespace util
 	{
 	public:
 		Daemon_Singleton_Private() {};
-		~Daemon_Singleton_Private() {};
+		~Daemon_Singleton_Private()
+		{
+#ifndef _WIN32
+			// A joinable std::thread would terminate the process on destruction.
+			logSupervisorStop.store (true, std::memory_order_relaxed);
+			if (logSupervisor.joinable ()) logSupervisor.join ();
+#endif
+		};
 
 #ifndef _WIN32
 		std::unique_ptr<i2p::tui::Server> tuiServer;
 		std::unique_ptr<i2p::privsep::LogSink> logSink;
 		std::unique_ptr<i2p::privsep::ChildProcess> logWorker;
+		std::thread logSupervisor;
+		std::atomic<bool> logSupervisorStop{false};
+		std::chrono::steady_clock::time_point logWorkerStarted;
 		bool privsepLog = false;
 		bool privsepSyslog = false;
 		std::string privsepLogPath;
@@ -83,6 +105,150 @@ namespace util
 		std::unique_ptr<i2p::transport::UPnP> UPnP;
 		std::unique_ptr<i2p::util::NTPTimeSync> m_NTPSync;
 	};
+
+#ifndef _WIN32
+	namespace
+	{
+		// Bounded, in-process restart policy for the single log worker. This
+		// is not a separate supervisor process: network/storage separation is
+		// still unimplemented.
+		constexpr auto LOG_SUPERVISOR_TICK = std::chrono::milliseconds (1000);
+		constexpr auto LOG_RESTART_INITIAL_BACKOFF = std::chrono::milliseconds (500);
+		constexpr auto LOG_RESTART_MAX_BACKOFF = std::chrono::milliseconds (30000);
+		constexpr auto LOG_WORKER_STABLE_PERIOD = std::chrono::milliseconds (60000);
+		constexpr unsigned LOG_RESTART_MAX_ATTEMPTS = 8;
+
+		/** Sleep in bounded slices so shutdown never waits for a full backoff. */
+		bool SleepUnlessStopping (const std::atomic<bool>& stop,
+			std::chrono::milliseconds total)
+		{
+			const auto deadline = std::chrono::steady_clock::now () + total;
+			while (!stop.load (std::memory_order_relaxed))
+			{
+				const auto left = std::chrono::duration_cast<std::chrono::milliseconds> (
+					deadline - std::chrono::steady_clock::now ());
+				if (left <= std::chrono::milliseconds (0)) return true;
+				std::this_thread::sleep_for (std::min (left, std::chrono::milliseconds (100)));
+			}
+			return false;
+		}
+
+	}
+
+	/**
+	 * Spawn, configure and install one worker. Any previous worker is stopped
+	 * and reaped first, so at most one live child exists at any time even when
+	 * a caller skips the supervisor's reap step.
+	 */
+	bool Daemon_Singleton::StartPrivsepLogWorker ()
+	{
+		// Enforce single ownership even if a future caller forgets to reap
+		// the previous worker first.
+		if (d.logWorker) d.logWorker->Stop (500);
+		auto spawned = i2p::privsep::SpawnLogWorker ();
+		if (!spawned)
+		{
+			std::cerr << "Daemon: cannot spawn privilege-separated log worker: "
+				<< spawned.error () << std::endl;
+			return false;
+		}
+		auto worker = std::make_unique<i2p::privsep::ChildProcess> (std::move (*spawned));
+		auto channel = std::move (worker->ChannelFd ());
+		std::expected<void, std::string> configured;
+		if (!d.logSink)
+		{
+			d.logSink = std::make_unique<i2p::privsep::LogSink> (std::move (channel));
+			configured = d.logSink->Configure (d.privsepSyslog, d.privsepLogPath, "open-i2pd");
+			if (!configured)
+			{
+				std::cerr << "Daemon: cannot configure log worker: "
+					<< configured.error () << std::endl;
+				d.logSink.reset ();
+				worker->Stop (500);
+				return false;
+			}
+		}
+		else
+		{
+			configured = d.logSink->Reattach (std::move (channel));
+			if (!configured)
+			{
+				std::cerr << "Daemon: cannot reattach log worker: "
+					<< configured.error () << std::endl;
+				worker->Stop (500);
+				return false;
+			}
+		}
+		d.logWorker = std::move (worker);
+		d.logWorkerStarted = std::chrono::steady_clock::now ();
+		return true;
+	}
+
+	void Daemon_Singleton::StopPrivsepLogWorker ()
+	{
+		d.logSupervisorStop.store (true, std::memory_order_relaxed);
+		// Send the graceful shutdown before joining so the worker can flush
+		// its file. The stop flag prevents the monitor from treating this
+		// exit as a crash and spawning a replacement.
+		if (d.logSink) (void) d.logSink->Shutdown ();
+		if (d.logSupervisor.joinable ()) d.logSupervisor.join ();
+		if (d.logSink) d.logSink.reset ();
+		if (d.logWorker)
+		{
+			d.logWorker->Stop ();
+			d.logWorker.reset ();
+		}
+	}
+
+	void Daemon_Singleton::RunPrivsepLogSupervisor ()
+	{
+		i2p::util::SetThreadName ("privsep-mon");
+		// Never steal process-directed shutdown signals from the main thread.
+		// The worker child resets its mask after fork.
+		sigset_t allSignals;
+		sigfillset (&allSignals);
+		pthread_sigmask (SIG_BLOCK, &allSignals, nullptr);
+		unsigned attempts = 0;
+		auto backoff = LOG_RESTART_INITIAL_BACKOFF;
+		while (!d.logSupervisorStop.load (std::memory_order_relaxed))
+		{
+			if (!SleepUnlessStopping (d.logSupervisorStop, LOG_SUPERVISOR_TICK)) return;
+			if (!d.logSink || !d.logWorker) continue;
+
+			const bool running = d.logWorker->IsRunning ();
+			const bool open = d.logSink->IsOpen ();
+			if (running && open)
+			{
+				if (attempts != 0 &&
+					std::chrono::steady_clock::now () - d.logWorkerStarted >= LOG_WORKER_STABLE_PERIOD)
+				{
+					attempts = 0;
+					backoff = LOG_RESTART_INITIAL_BACKOFF;
+				}
+				continue;
+			}
+
+			std::cerr << "Daemon: log worker " << (running ? "channel closed" : "exited")
+				<< "; restarting" << std::endl;
+			d.logWorker->Stop (500); // reap and release the old channel
+			if (d.logSupervisorStop.load (std::memory_order_relaxed)) return;
+			if (attempts >= LOG_RESTART_MAX_ATTEMPTS)
+			{
+				std::cerr << "Daemon: log worker restart limit reached; "
+					"log records are dropped (no local fallback)" << std::endl;
+				return;
+			}
+			if (!SleepUnlessStopping (d.logSupervisorStop, backoff)) return;
+			++attempts;
+			backoff = std::min (backoff * 2, LOG_RESTART_MAX_BACKOFF);
+			if (!StartPrivsepLogWorker ())
+			{
+				std::cerr << "Daemon: log worker restart failed (attempt "
+					<< attempts << ")" << std::endl;
+			}
+		}
+	}
+#endif
 
 	Daemon_Singleton::Daemon_Singleton() : isDaemon(false), running(true), d(*new Daemon_Singleton_Private()) {}
 	Daemon_Singleton::~Daemon_Singleton() {
@@ -412,24 +578,9 @@ namespace util
 #ifndef _WIN32
 		if (d.privsepLog)
 		{
-			auto spawned = i2p::privsep::SpawnLogWorker ();
-			if (!spawned)
-			{
-				std::cerr << "Daemon: cannot spawn privilege-separated log worker: "
-					<< spawned.error () << std::endl;
-				return false;
-			}
-			d.logWorker = std::make_unique<i2p::privsep::ChildProcess> (std::move (*spawned));
-			d.logSink = std::make_unique<i2p::privsep::LogSink> (
-				std::move (d.logWorker->ChannelFd ()));
-			auto configured = d.logSink->Configure (d.privsepSyslog, d.privsepLogPath, "open-i2pd");
-			if (!configured)
-			{
-				std::cerr << "Daemon: cannot configure log worker: " << configured.error () << std::endl;
-				d.logSink.reset ();
-				d.logWorker.reset ();
-				return false;
-			}
+			if (!StartPrivsepLogWorker ()) return false;
+			// The sink object lives until the logger thread is stopped, so the
+			// callback below never observes a replaced or freed sink.
 			auto* sink = d.logSink.get ();
 			i2p::log::Logger ().SetSink ([sink] (LogLevel level, std::time_t timestamp,
 				std::string_view text) { sink->Write (static_cast<uint8_t> (level), timestamp, text); });
@@ -467,6 +618,16 @@ namespace util
 			/** shut down netdb right away */
 			i2p::transport::transports.Stop();
 			i2p::data::netdb.Stop();
+#ifndef _WIN32
+			if (d.privsepLog)
+			{
+				// start() is not followed by stop() on failure; tear the sink
+				// down here so the logger callback cannot dangle.
+				i2p::log::Logger().Stop();
+				i2p::log::Logger().SetSink (nullptr);
+				StopPrivsepLogWorker ();
+			}
+#endif
 			return false;
 		}
 
@@ -514,6 +675,15 @@ namespace util
 				ThrowFatal ("Unable to start I2PControl service at ", i2pcpAddr, ":", i2pcpPort, ": ", ex.what ());
 			}
 		}
+#ifndef _WIN32
+		if (d.privsepLog && d.logSink && d.logWorker && !d.logSupervisor.joinable ())
+		{
+			// The monitor starts last so every earlier failure path can tear
+			// down the worker without also having to stop a thread.
+			d.logSupervisorStop.store (false, std::memory_order_relaxed);
+			d.logSupervisor = std::thread ([this] { RunPrivsepLogSupervisor (); });
+		}
+#endif
 		return true;
 	}
 
@@ -559,18 +729,13 @@ namespace util
 		LogPrint(eLogInfo, "Daemon: Stopping NetDB");
 		i2p::data::netdb.Stop();
 		i2p::crypto::TerminateCrypto ();
+		// Keep the worker and its monitor alive while the logger drains the
+		// queue. StopPrivsepLogWorker then sends the graceful shutdown before
+		// joining the monitor.
 		i2p::log::Logger().Stop();
+		i2p::log::Logger().SetSink (nullptr);
 #ifndef _WIN32
-		if (d.logSink)
-		{
-			(void) d.logSink->Shutdown ();
-			d.logSink.reset ();
-		}
-		if (d.logWorker)
-		{
-			d.logWorker->Stop ();
-			d.logWorker.reset ();
-		}
+		if (d.privsepLog) StopPrivsepLogWorker ();
 #endif
 
 		return true;

@@ -1,60 +1,55 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
     android:installLocation="auto">
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <!--
+        The router is not a short-lived data transfer. Android 15 limits
+        dataSync foreground services to six hours per 24 hours and blocks them
+        from BOOT_COMPLETED, so the long-running router uses specialUse (with
+        dataSync retained for API 29..33, where specialUse does not exist).
+    -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
+        android:name=".RouterApplication"
         android:allowBackup="false"
         android:icon="@mipmap/logo"
         android:label="@string/app_name"
-        android:theme="@android:style/Theme.DeviceDefault">
+        android:theme="@style/Theme.OpenI2Pd">
 
+        <!--
+            Same-process, non-exported router owner. The foreground
+            notification and graceful-stop timer live here, not in an Activity.
+            A future isolated-process design would add a separate process plus
+            an AIDL interface; the local binder must not be exported.
+        -->
         <service
-            android:name=".I2PdQSTileService"
-            android:exported="true"
-            android:label="Open I2Pd"
-            android:icon="@drawable/ic_logo"
-            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
-            <intent-filter>
-                <action android:name="android.service.quicksettings.action.QS_TILE" />
-            </intent-filter>
+            android:name=".RouterService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="dataSync|specialUse"
+            android:stopWithTask="false">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="i2p_router" />
         </service>
 
-        <receiver
-            android:enabled="true"
-            android:name="org.openi2pd.router.receivers.BootUpReceiver"
-            android:exported="false"
-            android:permission="android.permission.RECEIVE_BOOT_COMPLETED">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-        </receiver>
+        <!--
+            The only exported components are the launcher Activity and the QS
+            tile. The tile is protected by the system BIND_QUICK_SETTINGS_TILE
+            permission; both launch no admin interface.
+        -->
         <activity
-            android:name=".SettingsActivity"
-            android:exported="false" />
-
-        <receiver
-            android:name=".NetworkStateChangeReceiver"
-            android:label="NetworkChangeReceiver"
-            android:exported="false" >
-            <intent-filter>
-                <action android:name="android.net.conn.CONNECTIVITY_CHANGE"
-                    tools:ignore="BatteryLife" />
-            </intent-filter>
-        </receiver>
-
-        <activity
-            android:name=".I2PDActivity"
-            android:exported="true">
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
@@ -62,18 +57,25 @@
         </activity>
 
         <service
-            android:name=".ForegroundService"
-            android:exported="false"
-            android:stopWithTask="false"
-            android:foregroundServiceType="dataSync"
-            android:enabled="true" />
+            android:name=".I2PdQSTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_logo"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
 
-        <activity
-            android:name=".MainPreferenceActivity"
+        <receiver
+            android:name="org.openi2pd.router.receivers.BootUpReceiver"
+            android:enabled="true"
             android:exported="false"
-            android:label="Settings"
-            >
-        </activity>
+            android:permission="android.permission.RECEIVE_BOOT_COMPLETED">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
 
     </application>
 </manifest>

@@ -18,9 +18,19 @@ nav:
       - C++23: cpp23-migration.md
       - Build system: build-system.md
       - TUI and IPC: tui-ipc.md
+      - Native torrent console:
+          - Architecture: torrent/architecture.md
+          - TUI: torrent/tui.md
+          - IPC: torrent/ipc.md
+          - Security: torrent/security.md
+          - Functionality matrix: torrent/console-matrix.md
+          - Testing: torrent/testing.md
+      - Perl migration: development/perl-migration.md
       - Android modernization: android-modernization.md
+      - Android Java 25: android-java25.md
       - Security audit: security-audit.md
       - Testing: testing.md
+      - CI policy: ci.md
       - Files changed: files-changed.md
       - Attribution audit: attribution-audit.md
       - Rebranding audit: REBRANDING.md

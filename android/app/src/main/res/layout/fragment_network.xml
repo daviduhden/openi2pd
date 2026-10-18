@@ -1,0 +1,223 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:clipToPadding="false"
+    android:fillViewport="true"
+    tools:context=".NetworkFragment">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingStart="@dimen/screen_padding"
+        android:paddingTop="@dimen/screen_padding"
+        android:paddingEnd="@dimen/screen_padding"
+        android:paddingBottom="@dimen/screen_padding_bottom">
+
+        <com.google.android.material.card.MaterialCardView
+            style="@style/Widget.OpenI2Pd.Card"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="@dimen/card_content_padding">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/network_connectivity"
+                    android:textAppearance="@style/TextAppearance.OpenI2Pd.SectionTitle" />
+
+                <TextView
+                    android:id="@+id/text_network_state"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/margin_tiny"
+                    android:text="@string/status_unknown"
+                    android:textAppearance="@style/TextAppearance.OpenI2Pd.MetricValue" />
+
+                <com.google.android.material.chip.ChipGroup
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/margin_small"
+                    app:chipSpacingHorizontal="@dimen/margin_small"
+                    app:singleLine="false">
+
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/chip_ipv4"
+                        style="@style/Widget.OpenI2Pd.StatusChip"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/network_ipv4" />
+
+                    <com.google.android.material.chip.Chip
+                        android:id="@+id/chip_ipv6"
+                        style="@style/Widget.OpenI2Pd.StatusChip"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/network_ipv6" />
+                </com.google.android.material.chip.ChipGroup>
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <com.google.android.material.card.MaterialCardView
+            style="@style/Widget.OpenI2Pd.Card"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="@dimen/card_content_padding">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/network_addresses_title"
+                    android:textAppearance="@style/TextAppearance.OpenI2Pd.SectionTitle" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/margin_small"
+                    android:text="@string/network_ipv4"
+                    android:textAppearance="@style/TextAppearance.OpenI2Pd.Label" />
+
+                <TextView
+                    android:id="@+id/text_ipv4"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/margin_tiny"
+                    android:text="@string/value_unknown"
+                    android:textAppearance="@style/TextAppearance.OpenI2Pd.Body"
+                    android:textIsSelectable="true" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/margin_small"
+                    android:text="@string/network_ipv6"
+                    android:textAppearance="@style/TextAppearance.OpenI2Pd.Label" />
+
+                <TextView
+                    android:id="@+id/text_ipv6"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/margin_tiny"
+                    android:text="@string/value_unknown"
+                    android:textAppearance="@style/TextAppearance.OpenI2Pd.Body"
+                    android:textIsSelectable="true" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <com.google.android.material.card.MaterialCardView
+            style="@style/Widget.OpenI2Pd.Card"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="@dimen/card_content_padding">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/network_transports_title"
+                    android:textAppearance="@style/TextAppearance.OpenI2Pd.SectionTitle" />
+
+                <TextView
+                    android:id="@+id/text_ntcp2"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/margin_small"
+                    android:text="@string/network_ntcp2"
+                    android:textAppearance="@style/TextAppearance.OpenI2Pd.Body" />
+
+                <TextView
+                    android:id="@+id/text_ssu2"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/margin_tiny"
+                    android:text="@string/network_ssu2"
+                    android:textAppearance="@style/TextAppearance.OpenI2Pd.Body" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <com.google.android.material.card.MaterialCardView
+            style="@style/Widget.OpenI2Pd.Card"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="@dimen/card_content_padding">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/network_services_title"
+                    android:textAppearance="@style/TextAppearance.OpenI2Pd.SectionTitle" />
+
+                <TextView
+                    android:id="@+id/status_http"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/margin_small"
+                    android:text="@string/services_http_proxy"
+                    android:textAppearance="@style/TextAppearance.OpenI2Pd.Body" />
+
+                <TextView
+                    android:id="@+id/status_socks"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/margin_tiny"
+                    android:text="@string/services_socks_proxy"
+                    android:textAppearance="@style/TextAppearance.OpenI2Pd.Body" />
+
+                <TextView
+                    android:id="@+id/status_bob"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/margin_tiny"
+                    android:text="@string/services_bob"
+                    android:textAppearance="@style/TextAppearance.OpenI2Pd.Body" />
+
+                <TextView
+                    android:id="@+id/status_sam"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/margin_tiny"
+                    android:text="@string/services_sam"
+                    android:textAppearance="@style/TextAppearance.OpenI2Pd.Body" />
+
+                <TextView
+                    android:id="@+id/status_i2cp"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/margin_tiny"
+                    android:text="@string/services_i2cp"
+                    android:textAppearance="@style/TextAppearance.OpenI2Pd.Body" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/button_refresh_network"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/margin_small"
+            android:minHeight="@dimen/touch_target"
+            android:text="@string/action_refresh" />
+    </LinearLayout>
+</androidx.core.widget.NestedScrollView>

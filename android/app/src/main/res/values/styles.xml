@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="TextAppearance.OpenI2Pd.SectionTitle" parent="TextAppearance.Material3.TitleMedium" />
+
+    <style name="TextAppearance.OpenI2Pd.Body" parent="TextAppearance.Material3.BodyMedium" />
+
+    <style name="TextAppearance.OpenI2Pd.Label" parent="TextAppearance.Material3.LabelMedium">
+        <item name="android:textColor">?attr/colorOnSurfaceVariant</item>
+    </style>
+
+    <style name="TextAppearance.OpenI2Pd.MetricLabel" parent="TextAppearance.Material3.LabelMedium">
+        <item name="android:textColor">?attr/colorOnSurfaceVariant</item>
+    </style>
+
+    <style name="TextAppearance.OpenI2Pd.MetricValue" parent="TextAppearance.Material3.HeadlineSmall" />
+
+    <style name="Widget.OpenI2Pd.Card" parent="Widget.Material3.CardView.Filled">
+        <item name="cardUseCompatPadding">true</item>
+    </style>
+
+    <style name="Widget.OpenI2Pd.MetricCard" parent="Widget.Material3.CardView.Filled">
+        <item name="cardUseCompatPadding">true</item>
+        <item name="android:minHeight">@dimen/metric_min_height</item>
+    </style>
+
+    <style name="Widget.OpenI2Pd.StatusChip" parent="Widget.Material3.Chip.Assist">
+        <item name="android:clickable">false</item>
+        <item name="android:focusable">false</item>
+        <item name="android:checkable">false</item>
+        <item name="chipIconVisible">false</item>
+        <item name="ensureMinTouchTargetSize">false</item>
+    </style>
+
+    <style name="Widget.OpenI2Pd.FilterChip" parent="Widget.Material3.Chip.Filter">
+        <item name="ensureMinTouchTargetSize">true</item>
+    </style>
+
+    <style name="TextAppearance.OpenI2Pd.LogLevel" parent="TextAppearance.Material3.LabelMedium">
+        <item name="android:textStyle">bold</item>
+        <item name="android:textAllCaps">true</item>
+    </style>
+</resources>

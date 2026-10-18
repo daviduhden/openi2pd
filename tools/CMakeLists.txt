@@ -34,7 +34,10 @@ foreach(tool IN LISTS I2PD_TOOLS)
   install(TARGETS ${tool} RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT Tools)
 endforeach()
 
-# i2pdctl is a Python client for the retained I2PControl service.
+# i2pdctl is a Perl client for the retained I2PControl service. It uses only
+# core Perl modules plus the system openssl binary for the self-signed HTTPS
+# fallback; it is not a dependency of the daemon. Runtime requirements are a
+# Perl 5 interpreter and either IO::Socket::SSL or the openssl command.
 install(PROGRAMS "${CMAKE_CURRENT_SOURCE_DIR}/scripts/i2pdctl"
   DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT Tools)
 

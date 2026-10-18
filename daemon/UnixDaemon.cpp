@@ -65,6 +65,20 @@ void handle_signal(int sig)
 	errno = savedErrno;
 }
 
+// Remove the PID file only if the path still names the inode we locked.
+// A stale path may have been replaced by a symlink or an unrelated file
+// while the daemon was starting or shutting down.
+static bool RemovePidFile (int fd, const std::string& path)
+{
+	if (fd < 0 || path.empty ()) return false;
+	struct stat opened {}, named {};
+	if (fstat (fd, &opened) != 0 || lstat (path.c_str (), &named) != 0) return false;
+	if (!S_ISREG (opened.st_mode) || !S_ISREG (named.st_mode) ||
+		opened.st_dev != named.st_dev || opened.st_ino != named.st_ino)
+		return false;
+	return unlink (path.c_str ()) == 0;
+}
+
 static void HandlePendingSignals()
 {
 	for (int sig = 1; sig < NSIG; sig++)
@@ -122,7 +136,11 @@ namespace i2p
 				pid_t pid;
 				pid = fork();
 				if (pid > 0) // parent
-					::exit (EXIT_SUCCESS);
+				{
+					// Do not run atexit handlers or flush duplicated buffers in
+					// the parent after fork; the child owns the service state.
+					_exit (EXIT_SUCCESS);
+				}
 
 				if (pid < 0) // error
 				{
@@ -201,13 +219,17 @@ namespace i2p
 
 			// Close and remove the PID file if startup fails after locking it.
 			auto abortStart = [this]() {
+				// If startup failed after Log::Start(), join the logger thread
+				// here. Log::~Log() deletes a joinable std::thread, which would
+				// call std::terminate() during exit.
+				i2p::log::Logger().Stop();
 				if (pidFH >= 0)
 				{
+					// Keep the descriptor open until the identity check is done.
+					RemovePidFile (pidFH, pidfile);
 					close(pidFH);
 					pidFH = -1;
 				}
-				if (!pidfile.empty())
-					i2p::fs::Remove(pidfile);
 				return false;
 			};
 
@@ -356,6 +378,20 @@ namespace i2p
 				syslog (LOG_DAEMON | LOG_ERR, "%s", message.c_str ());
 				return false;
 			};
+			// The log worker is created with fork()+execv() from
+			// Daemon_Singleton::start(), i.e. after this pledge is applied. The
+			// runtime policy deliberately omits "proc" and "exec", so spawning it
+			// would abort the process. Refuse instead of silently running without
+			// the requested isolation (or silently disabling the sandbox).
+			bool privsepEnabled = false, privsepLog = false;
+			i2p::config::GetOption ("privsep.enabled", privsepEnabled);
+			i2p::config::GetOption ("privsep.log", privsepLog);
+			if (privsepEnabled && privsepLog && (usePledge || useUnveil))
+			{
+				fail ("Daemon: privsep.log requires fork/exec after the OpenBSD sandbox is applied; "
+					"set privsep.log = false or disable openbsd.pledge_enabled/openbsd.unveil_enabled");
+				return abortStart ();
+			}
 			auto readPolicy = [&fail](const char * option, std::vector<std::string>& lines) {
 				std::string path; i2p::config::GetOption (option, path);
 				if (path.empty ()) return true;
@@ -417,13 +453,36 @@ namespace i2p
 				for (const char * option : {"conf", "tunconf", "tunnelsdir", "reseed.file", "reseed.zipfile"})
 				{
 					std::string path; i2p::config::GetOption (option, path);
+					// reseed.file accepts an HTTPS URL; a URL is not a path and
+					// must not abort startup by failing realpath().
+					if (path.find ("://") != std::string::npos) continue;
 					if (!allow (path, "r")) return abortStart();
 				}
-				for (const char * option : {"logfile", "addressbook.hostsfile", "tui.socket"})
+				// Mirror Daemon_Singleton::init(): a daemon with no explicit
+				// destination logs to a file, otherwise stdout stays stdout.
+				std::string logDestination; i2p::config::GetOption ("log", logDestination);
+				const bool logToFile = logDestination == "file" ||
+					(isDaemon && (logDestination.empty () || logDestination == "stdout"));
+				if (logToFile)
 				{
-					std::string path; i2p::config::GetOption (option, path);
+					std::string path; i2p::config::GetOption ("logfile", path);
 					if (!allow (path, "rwc")) return abortStart();
 				}
+				bool tuiEnabled = false; i2p::config::GetOption ("tui.enabled", tuiEnabled);
+				if (tuiEnabled)
+				{
+					std::string path; i2p::config::GetOption ("tui.socket", path);
+					if (!allow (path, "rwc")) return abortStart();
+				}
+				bool persistAddressbook = false; i2p::config::GetOption ("persist.addressbook", persistAddressbook);
+				if (persistAddressbook)
+				{
+					std::string path; i2p::config::GetOption ("addressbook.hostsfile", path);
+					if (!allow (path, "rwc")) return abortStart();
+				}
+				// unveil(2) gates connect(2) to AF_UNIX sockets by path; the
+				// "unix" pledge alone does not grant the filesystem lookup.
+				if (logDestination == "syslog" && !allow ("/dev/log", "w")) return abortStart();
 				bool control; i2p::config::GetOption ("i2pcontrol.enabled", control);
 				if (control)
 				{
@@ -482,7 +541,7 @@ namespace i2p
 #ifdef __OpenBSD__
 			// Keep the PID lock while router data is still being saved.
 			bool stopped = Daemon_Singleton::stop();
-			i2p::fs::Remove(pidfile);
+			RemovePidFile (pidFH, pidfile);
 			if (pidFH >= 0)
 			{
 				close (pidFH);

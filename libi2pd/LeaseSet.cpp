@@ -185,7 +185,7 @@ namespace data
 		if (size > len) return 0;
 		size += 256; // encryption key
 		size += m_Identity->GetSigningPublicKeyLen (); // unused signing key
-		if (size > len) return 0;
+		if (size >= len) return 0; // need at least the num leases byte
 		uint8_t num = buf[size];
 		size++; // num
 		if (size + num*LEASE_SIZE > len) return 0;

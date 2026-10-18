@@ -8,6 +8,7 @@
 
 #include <string.h>
 #include <atomic>
+#include <algorithm>
 #include "Base.h"
 #include "Log.h"
 #include "I2PEndian.h"
@@ -136,8 +137,13 @@ namespace i2p
 	std::shared_ptr<I2NPMessage> CreateRouterInfoDatabaseLookupMsg (const uint8_t * key, const uint8_t * from,
 		uint32_t replyTunnelID, bool exploratory, std::unordered_set<i2p::data::IdentHash> * excludedPeers)
 	{
-		int cnt = excludedPeers ? excludedPeers->size () : 0;
-		auto m = cnt > 7 ? NewI2NPMessage () : NewI2NPShortMessage ();
+		// The number of excluded peers is a 16-bit field and the message itself
+		// is bounded. Cap the set before sizing the buffer so a large exclusion
+		// set cannot make the serialized block overflow.
+		size_t headerLen = 32 + 32 + (replyTunnelID ? 5 : 1) + 2;
+		size_t maxPeers = (I2NP_MAX_MESSAGE_SIZE - 2 - I2NP_HEADER_SIZE - headerLen)/32;
+		size_t cnt = excludedPeers ? std::min<size_t> (excludedPeers->size (), maxPeers) : 0;
+		auto m = NewI2NPMessage (headerLen + cnt*32);
 		uint8_t * buf = m->GetPayload ();
 		memcpy (buf, key, 32); // key
 		buf += 32;
@@ -158,10 +164,12 @@ namespace i2p
 
 		if (excludedPeers)
 		{
-			htobe16buf (buf, cnt);
+			htobe16buf (buf, (uint16_t)cnt);
 			buf += 2;
+			size_t i = 0;
 			for (auto& it: *excludedPeers)
 			{
+				if (i++ >= cnt) break;
 				memcpy (buf, it, 32);
 				buf += 32;
 			}
@@ -183,8 +191,15 @@ namespace i2p
 		std::shared_ptr<const i2p::tunnel::InboundTunnel> replyTunnel, const uint8_t * replyKey,
 			uint64_t replyTag)
 	{
-		int cnt = excludedFloodfills.size ();
-		auto m = cnt > 7 ? NewI2NPMessage () : NewI2NPShortMessage ();
+		size_t cnt = excludedFloodfills.size ();
+		if (cnt > 512)
+		{
+			LogPrint (eLogWarning, "I2NP: Too many peers to exclude ", cnt, " for DatabaseLookup");
+			cnt = 0;
+		}
+		// Fixed part: key (32), reply gateway (32), flags (1), tunnel ID (4),
+		// excluded count (2), reply key (32) + tags (1 + 8).
+		auto m = NewI2NPMessage (112 + cnt*32);
 		uint8_t * buf = m->GetPayload ();
 		memcpy (buf, dest, 32); // key
 		buf += 32;
@@ -196,17 +211,14 @@ namespace i2p
 		buf += 4;
 
 		// excluded
-		if (cnt > 512)
-		{
-			LogPrint (eLogWarning, "I2NP: Too many peers to exclude ", cnt, " for DatabaseLookup");
-			cnt = 0;
-		}
-		htobe16buf (buf, cnt);
+		htobe16buf (buf, (uint16_t)cnt);
 		buf += 2;
 		if (cnt > 0)
 		{
+			size_t i = 0;
 			for (auto& it: excludedFloodfills)
 			{
+				if (i++ >= cnt) break;
 				memcpy (buf, it, 32);
 				buf += 32;
 			}
@@ -225,16 +237,19 @@ namespace i2p
 	std::shared_ptr<I2NPMessage> CreateDatabaseSearchReply (const i2p::data::IdentHash& ident,
 		std::vector<i2p::data::IdentHash> routers)
 	{
-		auto m = NewI2NPShortMessage ();
+		// "num" is one byte. Also keep the whole serialized message inside the
+		// selected I2NP buffer instead of truncating the count field.
+		size_t cnt = std::min<size_t> (routers.size (), 255);
+		auto m = NewI2NPMessage (32 + 1 + cnt*32 + 32);
 		uint8_t * buf = m->GetPayload ();
 		size_t len = 0;
 		memcpy (buf, ident, 32);
 		len += 32;
-		buf[len] = routers.size ();
+		buf[len] = (uint8_t)cnt;
 		len++;
-		for (const auto& it: routers)
+		for (size_t i = 0; i < cnt; i++)
 		{
-			memcpy (buf + len, it, 32);
+			memcpy (buf + len, routers[i], 32);
 			len += 32;
 		}
 		memcpy (buf + len, i2p::context.GetRouterInfo ().GetIdentHash (), 32);
@@ -256,7 +271,12 @@ namespace i2p
 			return nullptr;
 		}
 
-		auto m = NewI2NPShortMessage ();
+		// Select a buffer that can hold the uncompressed RouterInfo too. A
+		// RouterInfo may be up to MAX_RI_BUFFER_SIZE (4096) bytes; a fixed
+		// short-message buffer would otherwise reject valid large RouterInfos
+		// even if compression is not applied.
+		size_t required = DATABASE_STORE_HEADER_SIZE + (replyToken ? 36 : 0) + 2 + router->GetBufferLen ();
+		auto m = NewI2NPMessage (required);
 		uint8_t * payload = m->GetPayload ();
 
 		memcpy (payload + DATABASE_STORE_KEY_OFFSET, router->GetIdentHash (), 32);
@@ -307,7 +327,13 @@ namespace i2p
 	std::shared_ptr<I2NPMessage> CreateDatabaseStoreMsg (const i2p::data::IdentHash& storeHash, std::shared_ptr<const i2p::data::LeaseSet> leaseSet)
 	{
 		if (!leaseSet) return nullptr;
-		auto m = NewI2NPShortMessage ();
+		size_t required = DATABASE_STORE_HEADER_SIZE + leaseSet->GetBufferLen ();
+		auto m = NewI2NPMessage (required);
+		if (required > m->maxLen)
+		{
+			LogPrint (eLogError, "I2NP: LeaseSet is too long for DatabaseStore ", leaseSet->GetBufferLen ());
+			return nullptr;
+		}
 		uint8_t * payload = m->GetPayload ();
 		memcpy (payload + DATABASE_STORE_KEY_OFFSET, storeHash, 32);
 		payload[DATABASE_STORE_TYPE_OFFSET] = leaseSet->GetStoreType (); // 1 for LeaseSet
@@ -323,7 +349,13 @@ namespace i2p
 	std::shared_ptr<I2NPMessage> CreateDatabaseStoreMsg (std::shared_ptr<const i2p::data::LocalLeaseSet> leaseSet, uint32_t replyToken, std::shared_ptr<const i2p::tunnel::InboundTunnel> replyTunnel)
 	{
 		if (!leaseSet) return nullptr;
-		auto m = NewI2NPShortMessage ();
+		size_t required = DATABASE_STORE_HEADER_SIZE + ((replyToken && replyTunnel) ? 36 : 0) + leaseSet->GetBufferLen ();
+		auto m = NewI2NPMessage (required);
+		if (required > m->maxLen)
+		{
+			LogPrint (eLogError, "I2NP: LeaseSet is too long for DatabaseStore ", leaseSet->GetBufferLen ());
+			return nullptr;
+		}
 		uint8_t * payload = m->GetPayload ();
 		memcpy (payload + DATABASE_STORE_KEY_OFFSET, leaseSet->GetStoreHash (), 32);
 		payload[DATABASE_STORE_TYPE_OFFSET] = leaseSet->GetStoreType (); // LeaseSet or LeaseSet2
@@ -331,15 +363,10 @@ namespace i2p
 		size_t size = DATABASE_STORE_HEADER_SIZE;
 		if (replyToken && replyTunnel)
 		{
-			if (replyTunnel)
-			{
-				htobe32buf (payload + size, replyTunnel->GetNextTunnelID ());
-				size += 4; // reply tunnelID
-				memcpy (payload + size, replyTunnel->GetNextIdentHash (), 32);
-				size += 32; // reply tunnel gateway
-			}
-			else
-				htobe32buf (payload + DATABASE_STORE_REPLY_TOKEN_OFFSET, 0);
+			htobe32buf (payload + size, replyTunnel->GetNextTunnelID ());
+			size += 4; // reply tunnelID
+			memcpy (payload + size, replyTunnel->GetNextIdentHash (), 32);
+			size += 32; // reply tunnel gateway
 		}
 		memcpy (payload + size, leaseSet->GetBuffer (), leaseSet->GetBufferLen ());
 		size += leaseSet->GetBufferLen ();

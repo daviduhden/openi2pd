@@ -16,7 +16,6 @@
 #include <string>
 #include <string_view>
 #include <map>
-#include <optional>
 #include <boost/asio.hpp>
 #include <boost/beast.hpp>
 #include "util.h"
@@ -38,10 +37,8 @@ namespace torrents
 		private:
 
 			void HandleRequest (const boost::system::error_code& ecode, size_t bytes_transferred);
-			void SendResponse (boost::beast::http::status result, std::string_view data = "", bool isOptions = false);
+			void SendResponse (boost::beast::http::status result, std::string_view data = "");
 			void SendUnauthorizedResponse ();
-
-			void HandleWeb (const boost::beast::http::request<boost::beast::http::string_body>& req);
 
 		private:
 
@@ -50,7 +47,6 @@ namespace torrents
 			boost::beast::flat_buffer m_ReceiveBuffer;
 			boost::beast::http::request_parser<boost::beast::http::string_body> m_RequestParser;
 			boost::beast::http::response<boost::beast::http::string_body> m_Response;
-			std::optional<boost::beast::http::response<boost::beast::http::file_body> > m_WebResponse;
 	};
 
 	class TorrentsRPCServer final: private i2p::util::RunnableServiceWithWork
@@ -80,6 +76,7 @@ namespace torrents
 		private:
 
 			boost::asio::ip::tcp::acceptor m_Acceptor;
+			mutable std::mutex m_TunnelsMutex;
 			std::map<std::string, std::weak_ptr<TorrentsTunnel>, std::less<> > m_Tunnels; // path->tunnel
 			std::map<std::string, std::string, std::less<> > m_Auth; // path-> basic authorization string
 	};

@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <item
+        android:id="@+id/action_logs"
+        android:icon="@drawable/ic_logs"
+        android:title="@string/action_logs"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/action_about"
+        android:icon="@drawable/ic_info"
+        android:title="@string/action_about"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/action_battery_optimizations"
+        android:icon="@drawable/ic_battery"
+        android:title="@string/menu_item_battery_optimizations_str"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/action_reload_tunnels"
+        android:icon="@drawable/ic_reload"
+        android:title="@string/action_reload_tunnels_config"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/action_graceful_stop"
+        android:icon="@drawable/ic_graceful"
+        android:title="@string/action_graceful_stop"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/action_stop"
+        android:icon="@drawable/ic_stop"
+        android:title="@string/action_exit"
+        app:showAsAction="never" />
+</menu>

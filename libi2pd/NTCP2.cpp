@@ -1282,7 +1282,10 @@ namespace transport
 	void NTCP2Session::ProcessNextFrame (const uint8_t * frame, size_t len)
 	{
 		size_t offset = 0;
-		while (offset < len)
+		// A block header is 3 bytes (type + 16-bit size). Stop before reading a
+		// partial header from a truncated frame instead of consuming the MAC
+		// bytes that follow the plaintext.
+		while (offset + 3 <= len)
 		{
 			uint8_t blk = frame[offset];
 			offset++;

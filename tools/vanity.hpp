@@ -1,21 +1,12 @@
 #pragma once
-#include <iostream>
-#include <fstream>
-#include <stdlib.h>
-#include <openssl/rand.h>
-#include "Crypto.h"
-#include "Identity.h"
-#include "I2PEndian.h"
-#include "common/key.hpp"
-#include <thread>
-#include <atomic>
-#include <mutex>
-#include <unistd.h>
-#include <vector>
 
-#ifdef _WIN32
-#include <windows.h>
-#endif
+// SHA-256 primitives and constants used by the vanity generator. The nonce
+// search, the hashing steps and the persisted key format are unchanged from
+// the upstream tool; this header deliberately contains no mutable state.
+
+#include <array>
+#include <cstddef>
+#include <cstdint>
 
 // sha256
 #define Ch(x, y, z)		((x & (y ^ z)) ^ z)
@@ -40,54 +31,29 @@
 	S[(70 - i) % 8], S[(71 - i) % 8], \
 	W[i] + k)
 
+namespace i2p::tools::vanity
+{
+	/**
+	 * Size of the Ed25519 IdentityEx prefix hashed for the destination
+	 * address. The private-key file itself is larger; only this prefix is
+	 * searched.
+	 */
+	inline constexpr std::size_t IDENTITY_LEN = 391;
 
-//static i2p::data::SigningKeyType type;
-//static i2p::data::PrivateKeys keys;
+	/** Byte mutated by the search: the nonce is carried in the key buffer. */
+	inline constexpr std::size_t NONCE_OFFSET = 320;
 
+	/** A base32 destination hash is 52 characters; 53 bytes with the NUL. */
+	inline constexpr std::size_t ADDRESS_LEN = 52;
 
-// for  InitCrypto. TODO: to makefile/another place get the macro
-#ifndef PRECOMPUTATION_CRYPTO 
-#define PRECOMPUTATION_CRYPTO false
-#endif
-#ifndef AESNI_CRYPTO 
-#define AESNI_CRYPTO false
-#endif
-#ifndef AVX_CRYPTO 
-#define AVX_CRYPTO false
-#endif
-#ifndef FORCE_CRYPTO
-#define FORCE_CRYPTO false
-#endif
-// def out file name
-#define DEF_OUT_FILE "private"
-// Global vars
-static std::atomic<bool> found{false};
-static bool multipleSearchMode = false;
-//TODO: an another variable for file count and found keys as found keys by one runs
-static unsigned int foundKeys = 0;
-static size_t MutateByte;
-
-static std::atomic<uint32_t> FoundNonce{0};
-
-//static uint8_t ** KeyBufs;
-
-//static uint8_t * PaddingBuf;
-static std::atomic<unsigned long long> hashescounter{0};
-unsigned int count_cpu;
-
-const uint8_t lastBlock[64] =
-	{
-		0x05, 0x00, 0x04, 0x00, 0x07, 0x00, 0x00, 0x80, // 7 bytes EdDSA certificate 
+	inline constexpr std::array<uint8_t, 64> LAST_BLOCK = {
+		0x05, 0x00, 0x04, 0x00, 0x07, 0x00, 0x00, 0x80, // 7 bytes EdDSA certificate
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
 		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0C, 0x38  // 3128 bits (391 bytes)	
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0C, 0x38  // 3128 bits (391 bytes)
 	};
-
-#define DELKEYBUFS(S) {\
-for (unsigned i = S;i--;) \
- delete [] KeyBufs[i];\
-delete [] KeyBufs;}
+}

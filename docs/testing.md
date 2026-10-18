@@ -2,18 +2,20 @@
 
 Nothing in this file is claimed as executed unless it explicitly says so. The
 author of this refactoring did not run network tests, sanitizer runs, OpenBSD,
-Windows, Android or Java interoperability.
+Windows, Android or Java interoperability. Local builds/tests were frozen by
+user instruction after the Session 7 checkpoint; the commands below are for
+CI or a dedicated host.
 
 ## What was executed in this environment
 
 ### Baseline before modifications
 
 ```sh
-cmake -S build -B /tmp/opencode/i2pd-baseline -G Ninja \
+cmake -S build -B /tmp/openi2pd-test-baseline -G Ninja \
   -DCMAKE_C_COMPILER=gcc-16 -DCMAKE_CXX_COMPILER=g++-16 \
   -DCMAKE_PREFIX_PATH=/home/linuxbrew/.linuxbrew \
   -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON -DWITH_UPNP=OFF
-cmake --build /tmp/opencode/i2pd-baseline --parallel 8
+cmake --build /tmp/openi2pd-test-baseline --parallel 8
 ```
 
 Result: **pass** (101 build steps, including `i2pd` and the original 13 unit
@@ -24,11 +26,11 @@ tests). This establishes that the pre-change tree compiled in this container.
 Executed configuration:
 
 ```sh
-cmake -S build -B /tmp/opencode/i2pd-new -G Ninja \
+cmake -S build -B /tmp/openi2pd-test -G Ninja \
   -DCMAKE_C_COMPILER=gcc-16 -DCMAKE_CXX_COMPILER=g++-16 \
   -DCMAKE_PREFIX_PATH=/home/linuxbrew/.linuxbrew \
   -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON -DWITH_UPNP=OFF -DWITH_TUI=ON
-cmake --build /tmp/opencode/i2pd-new --parallel 8
+cmake --build /tmp/openi2pd-test --parallel 8
 ```
 
 Result: **pass** (93 build steps; `i2pd`, `i2pd-tui`, libraries and tests).
@@ -37,11 +39,11 @@ This is a Linux/GCC 16 build only. See the final result section below.
 ### Unit tests
 
 ```sh
-ctest --test-dir /tmp/opencode/i2pd-new --output-on-failure
+ctest --test-dir /tmp/openi2pd-test --output-on-failure
 ```
 
-Executed: **19/19 passed**, including `tools-smoke` (`ctest --test-dir
-/tmp/opencode/i2pd-new --output-on-failure`), including `test-tui-protocol`
+Executed at the checkpoint: **20/20 passed**, including `tools-smoke` (`ctest --test-dir
+/tmp/openi2pd-test --output-on-failure`), including `test-tui-protocol`
 and `i2pd-version`. The HTTP tests include new regressions for:
 
 - optional whitespace after `:`;
@@ -52,6 +54,10 @@ and `i2pd-version`. The HTTP tests include new regressions for:
 - strict base64 alphabet/padding and short `std::span` destinations.
 
 ### TUI protocol tests
+
+`tests/test-protocol-bounds.cpp` covers IdentityEx/LeaseSet truncation, the
+LeaseSet expiration off-by-one and I2NP length boundaries; `fuzz-protocol-bounds`
+is prepared for the optional libFuzzer target.
 
 `tests/test-tui-protocol.cpp` covers:
 
@@ -206,7 +212,7 @@ No Java router is available in this environment. The matrix in
 |---|---|
 | Baseline compile (before changes) | Passed |
 | Modified compile (Linux/GCC 16) | Passed |
-| Unit tests and `tools-smoke` | 19/19 passed (Linux/GCC 16) |
+| Unit tests and `tools-smoke` | 20/20 passed at Session 7 checkpoint (Linux/GCC 16) |
 | ASan/UBSan/TSan | Prepared, not run |
 | Fuzzers | Targets prepared, not run |
 | OpenBSD build/runtime | Not run |
@@ -218,14 +224,15 @@ No Java router is available in this environment. The matrix in
 ## Final result of this environment
 
 - **Linux/GCC 16 configure and build:** passed.
-- **CTest:** 19/19 passed, including the integrated tools smoke test and firewall backend test.
+- **CTest:** 20/20 passed at the Session 7 checkpoint, including torrent bencode/protocol tests, tools smoke and firewall backend test.
 - **CMake install:** passed into a temporary prefix (`i2pd`, `i2pd-tui`,
   libraries, headers, configs, certificates, man page).
 - **Privilege-separated logging:** live Linux run with `privsep.enabled=true`;
   the core process had no log-file descriptor and the worker had the only write
   descriptor. OpenBSD pledge/unveil was not dynamically tested.
-- **POSIX make front-end:** full `bmake` build and `bmake test` passed on
-  Linux/GCC 16 (17/17 tests, including tools and firewall).
+- **POSIX make front-end:** historical `bmake` build/test passed on Linux/GCC 16
+  (17/17 at that time); the later CMake checkpoint reached 20/20. Local builds
+  are now frozen and delegated to CI.
 - **TUI runtime:** a router was started with a temporary datadir; the socket
   appeared as `srw-------`; `STATE`, `NETDB`, `PEERS`, `TUNNELS`, `LOGS` and
   `PING` returned valid frames; invalid commands/limits returned error frames;

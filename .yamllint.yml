@@ -1,0 +1,7 @@
+extends: default
+rules:
+  document-start: enable
+  line-length:
+    max: 260
+  truthy:
+    allowed-values: ['true', 'false', 'on']

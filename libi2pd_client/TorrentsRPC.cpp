@@ -17,12 +17,12 @@
 #define JSON_SUPPORTED
 #endif
 #include <boost/algorithm/hex.hpp>
-#include <boost/algorithm/string.hpp>
 #include <vector>
 #include <array>
-#include <numeric>
 #include <functional>
 #include <filesystem>
+#include <limits>
+#include <stdexcept>
 #include "Base.h"
 #include "Log.h"
 #include "HTTP.h"
@@ -35,6 +35,45 @@ namespace i2p
 {
 namespace torrents
 {
+	namespace
+	{
+		// A maximum-size v1 metainfo is MAX_NUM_TORRENT_PIECES * SHA_DIGEST_LENGTH
+		// bytes of piece hashes plus a small amount of metadata, base64 encoded.
+		constexpr size_t MAX_RPC_BODY_SIZE = 32*1024*1024; // 32 MiB
+		constexpr size_t MAX_RPC_METADATA_SIZE = 24*1024*1024; // 24 MiB
+		constexpr size_t MAX_RPC_MAGNET_LENGTH = 2048;
+		constexpr size_t MAX_RPC_TRACKERS_PER_REQUEST = 32;
+		constexpr size_t MAX_RPC_TRACKER_LENGTH = 2048;
+		constexpr size_t MAX_RPC_FIELDS_PER_REQUEST = 64;
+		constexpr size_t MAX_RPC_CREDENTIAL_LENGTH = 256;
+
+		bool IsValidCredential (std::string_view credential)
+		{
+			return !credential.empty () && credential.size () <= MAX_RPC_CREDENTIAL_LENGTH &&
+				credential.find ('\0') == std::string_view::npos &&
+				credential.find ('\r') == std::string_view::npos &&
+				credential.find ('\n') == std::string_view::npos;
+		}
+
+		bool SecureEquals (std::string_view a, std::string_view b)
+		{
+			if (a.size () != b.size ()) return false;
+			unsigned char difference = 0;
+			for (size_t i = 0; i < a.size (); i++)
+				difference |= (unsigned char)a[i] ^ (unsigned char)b[i];
+			return difference == 0;
+		}
+
+		boost::asio::ip::tcp::endpoint MakeLoopbackEndpoint (std::string_view address, uint16_t port)
+		{
+			boost::system::error_code ec;
+			auto bindAddress = boost::asio::ip::make_address (std::string (address), ec);
+			if (ec || !bindAddress.is_loopback ())
+				throw std::invalid_argument ("Torrents RPC address must be a loopback address (127.0.0.1 or ::1)");
+			return { bindAddress, port };
+		}
+	}
+
 #ifdef JSON_SUPPORTED
 
 	class JSONRPCHandler
@@ -50,7 +89,7 @@ namespace torrents
 			std::string SuccessResponse (int64_t tag, boost::json::object&& arguments);
 			std::string ErrorResponse (int64_t tag, std::string_view message);
 			static int64_t GetTag (boost::json::object& jsonRequest);
-			static std::vector<int> GetTorrentIds (boost::json::object& arguments);
+			static bool GetTorrentIds (boost::json::object& arguments, std::vector<int>& torrentIds);
 			boost::json::value GetFieldValue (std::string_view field, std::shared_ptr<Torrent> torrent) const;
 			boost::json::object GetTorrentObject (std::shared_ptr<Torrent> torrent, int id, const boost::json::array& fields) const;
 			boost::json::array GetTorrentTableRow (std::shared_ptr<Torrent> torrent,int id, const boost::json::array& fields, boost::json::array& header) const;
@@ -98,23 +137,33 @@ namespace torrents
 	int64_t JSONRPCHandler::GetTag (boost::json::object& jsonRequest)
 	{
 		if (jsonRequest.contains ("tag"))
-			return jsonRequest.at ("tag").as_int64 ();
+		{
+			const auto& tag = jsonRequest.at ("tag");
+			if (tag.is_int64 ()) return tag.as_int64 ();
+		}
 		return 0;
 	}
 
-	std::vector<int> JSONRPCHandler::GetTorrentIds (boost::json::object& arguments)
+	bool JSONRPCHandler::GetTorrentIds (boost::json::object& arguments, std::vector<int>& torrentIds)
 	{
-		std::vector<int> torrentIds;
-		if (arguments.contains ("ids"))
+		if (!arguments.contains ("ids")) return true;
+		const auto& ids = arguments.at ("ids");
+		auto addId = [&torrentIds](const boost::json::value& value)->bool
 		{
-			auto ids = arguments.at ("ids");
-			if (ids.is_array ())
-				for (const auto& it: ids.as_array ())
-					torrentIds.push_back (it.as_int64 ());
-			else
-				torrentIds.push_back (ids.as_int64 ());
+			if (!value.is_int64 ()) return false;
+			auto id = value.as_int64 ();
+			if (id <= 0 || id > std::numeric_limits<int>::max ()) return false;
+			torrentIds.push_back ((int)id);
+			return true;
+		};
+		if (ids.is_array ())
+		{
+			for (const auto& it: ids.as_array ())
+				if (!addId (it)) return false;
 		}
-		return torrentIds;
+		else if (!addId (ids))
+			return false;
+		return true;
 	}
 
 	std::string JSONRPCHandler::HandleRequest (std::string_view request)
@@ -135,7 +184,17 @@ namespace torrents
 
 		try
 		{
-			auto jsonRequest = boost::json::parse (request).as_object ();
+			boost::json::parse_options options;
+			options.max_depth = 32;
+			auto parsed = boost::json::parse (request, {}, options);
+			if (!parsed.is_object ())
+				return ErrorResponse (0, "Invalid Request");
+			auto& jsonRequest = parsed.as_object ();
+			if (!jsonRequest.contains ("method") || !jsonRequest.at ("method").is_string ())
+			{
+				LogPrint (eLogInfo, "TorrentsRPC: Missing or invalid method");
+				return ErrorResponse (GetTag (jsonRequest), "Invalid Request");
+			}
 			auto method = jsonRequest.at ("method").as_string ();
 			auto it = methods.find (method);
 			if (it == methods.end ())
@@ -143,6 +202,8 @@ namespace torrents
 				LogPrint (eLogInfo, "TorrentsRPC: Method not found ", method);
 				return ErrorResponse (GetTag (jsonRequest), "Method not found");
 			}
+			if (jsonRequest.contains ("arguments") && !jsonRequest.at ("arguments").is_object ())
+				return ErrorResponse (GetTag (jsonRequest), "Invalid Request");
 			return (this->*(it->second))(std::move (jsonRequest));
 		}
 		catch (const std::exception& ex)
@@ -150,7 +211,6 @@ namespace torrents
 			LogPrint (eLogInfo, "TorrentsRPC: Failed to parse JSON: ", ex.what ());
 			return ErrorResponse (0, "Parse error");
 		}
-		return "";
 	}
 
 	std::string JSONRPCHandler::HandleSessionGet (boost::json::object&& jsonRequest)
@@ -229,19 +289,41 @@ namespace torrents
 	std::string JSONRPCHandler::HandleTorrentAdd (boost::json::object&& jsonRequest)
 	{
 		auto arguments = jsonRequest.at ("arguments").as_object ();
+		bool hasMetainfo = arguments.contains ("metainfo"), hasFilename = arguments.contains ("filename");
+		if (hasMetainfo == hasFilename) // exactly one source is required
+			return ErrorResponse (GetTag (jsonRequest), "Invalid Request");
 		std::shared_ptr<Torrent> torrent; int id = 0;
-		if (arguments.contains ("metainfo"))
+		if (hasMetainfo)
 		{
-			auto b64torrent = arguments.at ("metainfo").as_string ();
-			if (b64torrent.size () % 4) // base64 must be multiple of 4
+			const auto& metainfo = arguments.at ("metainfo");
+			if (!metainfo.is_string ())
 				return ErrorResponse (GetTag (jsonRequest), "invalid or corrupt torrent file");
-			std::string torrentFileContent;
-			torrentFileContent.resize (boost::beast::detail::base64::decoded_size (b64torrent.size ()));
-			boost::beast::detail::base64::decode (torrentFileContent.data (), b64torrent.data (), b64torrent.size ());
-			std::tie (torrent, id) = m_Tunnel->AddTorrent (torrentFileContent);
+			const auto& b64string = metainfo.as_string ();
+			std::string_view b64torrent (b64string.data (), b64string.size ());
+			if (b64torrent.empty () || b64torrent.size () % 4) // base64 must be non-empty and multiple of 4
+				return ErrorResponse (GetTag (jsonRequest), "invalid or corrupt torrent file");
+			auto decodedSize = boost::beast::detail::base64::decoded_size (b64torrent.size ());
+			if (!decodedSize || decodedSize > MAX_RPC_METADATA_SIZE)
+				return ErrorResponse (GetTag (jsonRequest), "invalid or corrupt torrent file");
+			std::string torrentFileContent (decodedSize, '\0');
+			auto [written, consumed] = boost::beast::detail::base64::decode (torrentFileContent.data (),
+				b64torrent.data (), b64torrent.size ());
+			if (!written || consumed != b64torrent.size ())
+				return ErrorResponse (GetTag (jsonRequest), "invalid or corrupt torrent file");
+			torrentFileContent.resize (written);
+			std::tie (torrent, id) = m_Tunnel->AddTorrentFromRpc (torrentFileContent);
 		}
-		else if (arguments.contains ("filename"))
-			std::tie (torrent, id) = m_Tunnel->AddMagnet (arguments.at ("filename").as_string ());
+		else
+		{
+			const auto& filename = arguments.at ("filename");
+			if (!filename.is_string ())
+				return ErrorResponse (GetTag (jsonRequest), "Invalid Request");
+			const auto& magnetString = filename.as_string ();
+			std::string_view magnet (magnetString.data (), magnetString.size ());
+			if (magnet.empty () || magnet.size () > MAX_RPC_MAGNET_LENGTH)
+				return ErrorResponse (GetTag (jsonRequest), "Invalid magnet link");
+			std::tie (torrent, id) = m_Tunnel->AddMagnetFromRpc (magnet);
+		}
 
 		if (torrent)
 		{
@@ -272,12 +354,21 @@ namespace torrents
 		auto arguments = jsonRequest.at ("arguments").as_object ();
 		bool deleteFiles = false;
 		if (arguments.contains ("delete-local-data"))
+		{
+			if (!arguments.at ("delete-local-data").is_bool ())
+				return ErrorResponse (GetTag (jsonRequest), "Invalid Request");
 			deleteFiles = arguments.at ("delete-local-data").as_bool ();
-		auto torrentIds = GetTorrentIds (arguments);
-		if (!torrentIds.empty ())
+		}
+		std::vector<int> torrentIds;
+		if (!GetTorrentIds (arguments, torrentIds))
+			return ErrorResponse (GetTag (jsonRequest), "Invalid torrent ids");
+		if (arguments.contains ("ids"))
+		{
+			// An explicit empty list is a no-op; only a missing ids member means all.
 			for (auto id: torrentIds)
 				m_Tunnel->RemoveTorrent (id, deleteFiles);
- 		else
+		}
+		else
 			m_Tunnel->RemoveAllTorrents (deleteFiles);
 		boost::json::object response; // always empty
 		return SuccessResponse (GetTag (jsonRequest), std::move (response));
@@ -286,10 +377,14 @@ namespace torrents
 	std::string JSONRPCHandler::HandleTorrentReannounce (boost::json::object&& jsonRequest)
 	{
 		auto arguments = jsonRequest.at ("arguments").as_object ();
-		auto torrentIds = GetTorrentIds (arguments);
-		if (!torrentIds.empty ())
+		std::vector<int> torrentIds;
+		if (!GetTorrentIds (arguments, torrentIds))
+			return ErrorResponse (GetTag (jsonRequest), "Invalid torrent ids");
+		if (arguments.contains ("ids"))
+		{
 			for (auto id: torrentIds)
 				m_Tunnel->ReannounceTorrent (id);
+		}
 		else
 			m_Tunnel->ReannounceAllTorrents ();
 		boost::json::object response; // always empty
@@ -300,24 +395,25 @@ namespace torrents
 	{
 		auto arguments = jsonRequest.at ("arguments").as_object ();
 		std::vector<int> torrentIds;
-		bool torrentsRequested = arguments.contains ("ids");
-		if (torrentsRequested)
-		{
-			auto ids = arguments.at ("ids");
-			if (ids.is_array ())
-				for (const auto& it: ids.as_array ())
-					torrentIds.push_back (it.as_int64 ());
-			else if (ids.is_int64 ())
-				torrentIds.push_back (ids.as_int64 ());
-			else
-				torrentIds = m_Tunnel->GetTorrentIDs ();
-		}
-		else
+		if (!GetTorrentIds (arguments, torrentIds))
+			return ErrorResponse (GetTag (jsonRequest), "Invalid torrent ids");
+		if (!arguments.contains ("ids"))
 			torrentIds = m_Tunnel->GetTorrentIDs ();
-		auto fields = arguments.at ("fields").as_array ();
+		if (!arguments.contains ("fields") || !arguments.at ("fields").is_array ())
+			return ErrorResponse (GetTag (jsonRequest), "Invalid Request");
+		const auto& fields = arguments.at ("fields").as_array ();
+		if (fields.size () > MAX_RPC_FIELDS_PER_REQUEST)
+			return ErrorResponse (GetTag (jsonRequest), "Too many fields");
+		for (const auto& field: fields)
+			if (!field.is_string ())
+				return ErrorResponse (GetTag (jsonRequest), "Invalid Request");
 		bool isTable = false;
 		if (arguments.contains ("format"))
+		{
+			if (!arguments.at ("format").is_string ())
+				return ErrorResponse (GetTag (jsonRequest), "Invalid Request");
 			isTable = arguments.at ("format").as_string () == "table";
+		}
 
 		boost::json::object response;
 		boost::json::array torrents, header;
@@ -727,11 +823,15 @@ namespace torrents
 	std::string JSONRPCHandler::HandleTorrentStop (boost::json::object&& jsonRequest)
 	{
 		auto arguments = jsonRequest.at ("arguments").as_object ();
-		auto torrentIds = GetTorrentIds (arguments);
-		if (!torrentIds.empty ())
+		std::vector<int> torrentIds;
+		if (!GetTorrentIds (arguments, torrentIds))
+			return ErrorResponse (GetTag (jsonRequest), "Invalid torrent ids");
+		if (arguments.contains ("ids"))
+		{
 			for (auto id: torrentIds)
 				m_Tunnel->StopTorrent (id);
- 		else
+		}
+		else
 			m_Tunnel->StopAllTorrents ();
 		boost::json::object response; // always empty
 		return SuccessResponse (GetTag (jsonRequest), std::move (response));
@@ -740,10 +840,14 @@ namespace torrents
 	std::string JSONRPCHandler::HandleTorrentStart (boost::json::object&& jsonRequest)
 	{
 		auto arguments = jsonRequest.at ("arguments").as_object ();
-		auto torrentIds = GetTorrentIds (arguments);
-		if (!torrentIds.empty ())
+		std::vector<int> torrentIds;
+		if (!GetTorrentIds (arguments, torrentIds))
+			return ErrorResponse (GetTag (jsonRequest), "Invalid torrent ids");
+		if (arguments.contains ("ids"))
+		{
 			for (auto id: torrentIds)
 				m_Tunnel->StartTorrent (id);
+		}
 		else
 			m_Tunnel->StartAllTorrents ();
 		boost::json::object response; // always empty
@@ -816,11 +920,21 @@ namespace torrents
 		auto arguments = jsonRequest.at ("arguments").as_object ();
 		if (arguments.contains ("trackerAdd"))
 		{
-			auto trackers = arguments.at ("trackerAdd").as_array ();
-			for (auto it: trackers)
+			if (!arguments.at ("trackerAdd").is_array ())
+				return ErrorResponse (GetTag (jsonRequest), "Invalid Request");
+			const auto& trackers = arguments.at ("trackerAdd").as_array ();
+			if (trackers.size () > MAX_RPC_TRACKERS_PER_REQUEST)
+				return ErrorResponse (GetTag (jsonRequest), "Too many trackers");
+			for (const auto& it: trackers)
 			{
+				if (!it.is_string ())
+					return ErrorResponse (GetTag (jsonRequest), "Invalid Request");
+				const auto& announceString = it.as_string ();
+				std::string_view announce (announceString.data (), announceString.size ());
+				if (announce.empty () || announce.size () > MAX_RPC_TRACKER_LENGTH || announce.find ('\n') != std::string_view::npos)
+					return ErrorResponse (GetTag (jsonRequest), "Invalid tracker");
 				boost::asio::post (m_Tunnel->GetService (),
-					boost::asio::use_future ([this, announce = it.as_string ()]()
+					boost::asio::use_future ([this, announce = std::string (announce)]()
 					{
 						m_Tunnel->AddTracker (announce, true);
 					})).wait ();
@@ -835,7 +949,7 @@ namespace torrents
 	TorrentsRPCSession::TorrentsRPCSession (TorrentsRPCServer& server, boost::asio::ip::tcp::socket&& s):
 		m_Server (server), m_Socket (std::move (s))
 	{
-		m_RequestParser.body_limit (i2p::data::Base64EncodingBufferSize (MAX_NUM_TORRENT_PIECES*SHA_DIGEST_LENGTH));
+		m_RequestParser.body_limit (MAX_RPC_BODY_SIZE);
 	}
 
 	void TorrentsRPCSession::ReceiveRequest ()
@@ -846,71 +960,89 @@ namespace torrents
 
 	void TorrentsRPCSession::HandleRequest (const boost::system::error_code& ecode, size_t bytes_transferred)
 	{
-		if (!ecode)
+		if (ecode)
 		{
-			const auto& request = m_RequestParser.get ();
-			switch (request.method())
-			{
-				case boost::beast::http::verb::post:
-				{
+			if (ecode == boost::beast::http::error::body_limit)
+				SendResponse (boost::beast::http::status::payload_too_large);
+			else if (ecode != boost::beast::http::error::end_of_stream &&
+				ecode != boost::asio::error::operation_aborted)
+				LogPrint (eLogDebug, "TorrentsRPC: Failed to read request: ", ecode.message ());
+			return;
+		}
+
+		const auto& request = m_RequestParser.get ();
+		if (request.method () != boost::beast::http::verb::post)
+		{
+			// GET, HEAD, OPTIONS and every other method are not resources here.
+			SendResponse (boost::beast::http::status::method_not_allowed);
+			return;
+		}
+
 #ifdef JSON_SUPPORTED
-					auto path = request.target ();
-					auto tunnel = m_Server.GetTunnel ( {path.data (), path.size ()}); // boost::beast::string_view to std::string_view
-					if (tunnel)
-					{
-						auto [authRequired, authString] = m_Server.GetAuth ({path.data (), path.size ()});
-						if (authRequired && request[boost::beast::http::field::authorization] != authString)
-						{
-							SendUnauthorizedResponse ();
-							return;
-						}
+		auto path = request.target ();
+		std::string_view pathView (path.data (), path.size ());
+		auto tunnel = m_Server.GetTunnel (pathView);
+		if (!tunnel)
+		{
+			LogPrint (eLogDebug, "TorrentRPC ", pathView, " not found");
+			SendResponse (boost::beast::http::status::not_found);
+			return;
+		}
 
-						static constexpr std::string_view appjson { "application/json" };
-						if (request[boost::beast::http::field::content_type].starts_with (appjson) || // starts with
-							request[boost::beast::http::field::content_type] == "application/x-www-form-urlencoded")
-						{
-
-							JSONRPCHandler jsonHandler (tunnel);
-							auto response = jsonHandler.HandleRequest (request.body ());
-							if (!response.empty ())
-								SendResponse (boost::beast::http::status::ok, response);
-						}
-						else
-							SendResponse (boost::beast::http::status::no_content);
-					}
-					else
-					{
-						LogPrint(eLogDebug, "TorrentRPC ", path, " not found ", tunnel);
-						SendResponse (boost::beast::http::status::not_found);
-					}
-#else
-					SendResponse (boost::beast::http::status::not_implemented, std::string ("Your boost version ") + BOOST_LIB_VERSION + " is too old");
-#endif
-					break;
-				}
-				case boost::beast::http::verb::options:
-					SendResponse (boost::beast::http::status::no_content, "", true);
-				break;
-				case boost::beast::http::verb::get:
-					HandleWeb (request);
-				break;
-				default:
-					SendResponse (boost::beast::http::status::method_not_allowed);
+		auto [authRequired, authString] = m_Server.GetAuth (pathView);
+		if (authRequired)
+		{
+			auto auth = request[boost::beast::http::field::authorization];
+			std::string_view authView (auth.data (), auth.size ());
+			if (authString.empty () || !SecureEquals (authView, authString))
+			{
+				SendUnauthorizedResponse ();
+				return;
 			}
 		}
+
+		auto contentTypeHeader = request[boost::beast::http::field::content_type];
+		std::string_view contentType (contentTypeHeader.data (), contentTypeHeader.size ());
+		static constexpr std::string_view appjson { "application/json" };
+		if (!contentType.starts_with (appjson))
+		{
+			SendResponse (boost::beast::http::status::unsupported_media_type);
+			return;
+		}
+		auto parameters = contentType.substr (appjson.size ());
+		size_t pos = 0;
+		while (pos < parameters.size () && (parameters[pos] == ' ' || parameters[pos] == '\t')) pos++;
+		if (pos < parameters.size () && parameters[pos] != ';')
+		{
+			SendResponse (boost::beast::http::status::unsupported_media_type);
+			return;
+		}
+		if (request.body ().empty ())
+		{
+			SendResponse (boost::beast::http::status::bad_request);
+			return;
+		}
+
+		JSONRPCHandler jsonHandler (tunnel);
+		auto response = jsonHandler.HandleRequest (request.body ());
+		if (!response.empty ())
+			SendResponse (boost::beast::http::status::ok, response);
+#else
+		SendResponse (boost::beast::http::status::not_implemented, std::string ("Your boost version ") + BOOST_LIB_VERSION + " is too old");
+#endif
 	}
 
-	void TorrentsRPCSession::SendResponse (boost::beast::http::status result, std::string_view data, bool isOptions)
+	void TorrentsRPCSession::SendResponse (boost::beast::http::status result, std::string_view data)
 	{
 		m_Response.version (11); // HTTP/1.1
 		m_Response.result (result);
+		m_Response.keep_alive (false);
 		m_Response.set (boost::beast::http::field::server, "i2pd torrents RPC");
-		m_Response.set (boost::beast::http::field::access_control_allow_origin, "*");
-		m_Response.set (boost::beast::http::field::access_control_allow_headers, "Content-Type, Authorization");
-		if (isOptions)
-			m_Response.set (boost::beast::http::field::access_control_allow_methods, "GET, POST, OPTIONS");
-		else
-			m_Response.set(boost::beast::http::field::content_type, (result == boost::beast::http::status::ok) ? "application/json; charset=UTF-8" : "text/plain");
+		m_Response.set (boost::beast::http::field::cache_control, "no-store");
+		if (result == boost::beast::http::status::method_not_allowed)
+			m_Response.set (boost::beast::http::field::allow, "POST");
+		m_Response.set (boost::beast::http::field::content_type,
+			(result == boost::beast::http::status::ok) ? "application/json; charset=UTF-8" : "text/plain; charset=UTF-8");
 		m_Response.body () = data;
 		m_Response.prepare_payload ();
 		boost::beast::http::async_write (m_Socket, m_Response,
@@ -925,8 +1057,12 @@ namespace torrents
 	{
 		m_Response.version (11); // HTTP/1.1
 		m_Response.result (boost::beast::http::status::unauthorized);
+		m_Response.keep_alive (false);
 		m_Response.set (boost::beast::http::field::server, "i2pd torrents RPC");
+		m_Response.set (boost::beast::http::field::cache_control, "no-store");
 		m_Response.set (boost::beast::http::field::www_authenticate, "Basic realm=\"i2pd torrents RPC\"");
+		m_Response.set (boost::beast::http::field::content_type, "text/plain; charset=UTF-8");
+		m_Response.body () = "Unauthorized";
 		m_Response.prepare_payload ();
 		boost::beast::http::async_write (m_Socket, m_Response,
 			[s = shared_from_this ()](const boost::system::error_code& ecode, size_t bytes_transferred)
@@ -936,133 +1072,8 @@ namespace torrents
 			});
 	}
 
-	void TorrentsRPCSession::HandleWeb (const boost::beast::http::request<boost::beast::http::string_body>& req)
-	{
-		static const std::map<std::string_view, std::pair<std::string_view, bool> > contentTypes =
-		{
-			{ ".html", { "text/html", true } },
-			{ ".htm", { "text/html", true } },
-			{ ".php", { "text/html", true } },
-			{ ".css", { "text/css", true } },
-			{ ".txt", { "text/plain", true } },
-			{ ".js", { "application/javascript", true } },
-			{ ".json", { "application/json", true } },
-			{ ".xml", { "application/xml", true } },
-			{ ".jpg", { "image/jpeg", false } },
-			{ ".jpe", { "image/jpeg", false } },
-			{ ".jpeg", { "image/jpeg", false } },
-			{ ".png", { "image/png", false } },
-			{ ".gif", { "image/gif", false } },
-			{ ".tif", { "image/tiff", false } },
-			{ ".tiff", { "image/tiff", false } },
-			{ ".bmp", { "image/bmp", false } },
-			{ ".ico", { "image/vnd.microsoft.icon", false } },
-			{ ".svg", { "image/svg+xml", false } },
-			{ ".svgz", { "image/svg+xml", false } },
-			{ ".flv",  { "video/x-flv", false } },
-			{ ".swf", { "application/x-shockwave-flash", false } }
-		};
-
-		std::string target {req.target ()};
-		std::filesystem::path urlPath (target), fileSubUrl;
-		bool isPathValid = false;
-		auto subUrlPath = urlPath.begin ();
-		if (subUrlPath != urlPath.end () && *subUrlPath == "/")
-		{
-			std::string tunnelPath ("/");
-			subUrlPath++;
-			if (subUrlPath != urlPath.end ())
-			{
-				if (*subUrlPath != "web")
-				{
-					tunnelPath += subUrlPath->string () + "/rpc";
-					subUrlPath++;
-					if (subUrlPath != urlPath.end ())
-						isPathValid = *subUrlPath == "web";
-				}
-				else
-				{
-					isPathValid = true;
-					tunnelPath += "rpc";
-				}
-			}
-			if (isPathValid)
-			{
-				auto tunnel = m_Server.GetTunnel (tunnelPath);
-				if (tunnel && tunnel->SupportsWeb ())
-				{
-					subUrlPath++;
-					fileSubUrl = std::accumulate (subUrlPath, urlPath.end (), std::filesystem::path{}, std::divides{});
-				}
-				else
-				{
-					LogPrint (eLogDebug, "TorrentsRPC: Tunnel not found or web is not supported ", tunnelPath);
-					isPathValid = false;
-				}
-			}
-		}
-		if (!isPathValid || fileSubUrl.string ().find ("..") != std::string::npos || fileSubUrl == ".")
-		{
-			SendResponse (boost::beast::http::status::forbidden);
-			return;
-		}
-
-		std::string contentType ("");
-		auto filePath = std::filesystem::path (i2p::fs::GetDataDir ()) / "torrents" / "web";
-		if (fileSubUrl.empty ())
-		{
-			filePath /= "index.html";
-			contentType = "text/html; charset=utf-8";
-		}
-		else
-		{
-			filePath /= fileSubUrl;
-			std::string ext = urlPath.extension ().string ();
-			boost::to_lower (ext);
-			auto it = contentTypes.find (ext);
-			if (it != contentTypes.end ())
-			{
-				bool isText;
-				std::tie (contentType, isText) = it->second;
-				if (isText)
-					contentType += "; charset=utf-8";
-			}
-		}
-
-		boost::beast::error_code ec;
-		boost::beast::http::file_body::value_type body;
-		body.open (filePath.string ().c_str (), boost::beast::file_mode::scan, ec); // we can't use filePath.c_str () on Windows
-		if (ec)
-		{
-			if (ec == boost::beast::errc::no_such_file_or_directory)
-			{
-				LogPrint (eLogDebug, "TorrentsRPC: Requested file not found ", filePath.string ());
-				SendResponse (boost::beast::http::status::not_found);
-			}
-			else
-				SendResponse (boost::beast::http::status::unknown, ec.message ());
-			return;
-		}
-
-		m_WebResponse = boost::beast::http::response<boost::beast::http::file_body>{};
-		m_WebResponse->result (boost::beast::http::status::ok);
-		m_WebResponse->version(11);
-		m_WebResponse->set (boost::beast::http::field::server, "i2pd torrents web");
-		if (!contentType.empty ())
-			m_WebResponse->set (boost::beast::http::field::content_type, contentType);
-		m_WebResponse->content_length (body.size());
-		m_WebResponse->body () = std::move (body);
-		boost::beast::http::async_write (m_Socket, *m_WebResponse,
-			[s = shared_from_this ()](const boost::system::error_code& ecode, size_t bytes_transferred)
-			{
-				if (ecode)
-					LogPrint (eLogWarning, "TorrentsRPC: Failed to send response: ", ecode.message ());
-			});
-	}
-
 	TorrentsRPCServer::TorrentsRPCServer (std::string_view address, uint16_t port):
-		RunnableServiceWithWork ("TRPC"),  m_Acceptor (GetService (),
-			boost::asio::ip::tcp::endpoint (boost::asio::ip::make_address (address), port))
+		RunnableServiceWithWork ("TRPC"),  m_Acceptor (GetService (), MakeLoopbackEndpoint (address, port))
 	{
 	}
 
@@ -1087,11 +1098,17 @@ namespace torrents
 	void TorrentsRPCServer::AddTunnel (std::string_view path, std::shared_ptr<TorrentsTunnel> tunnel,
 		bool auth, const std::string& user, const std::string& pass)
 	{
+		if (auth && (!IsValidCredential (user) || !IsValidCredential (pass)))
+		{
+			LogPrint (eLogError, "TorrentsRPC: RPC authentication requires non-empty, bounded rpcuser and rpcpass");
+			return;
+		}
 		std::string rpcPath ("/");
 		if (!path.empty ())
 			rpcPath += std::string (path) + "/";
 		// insert both pathes rpc and rpc/
 		rpcPath += "rpc";
+		std::lock_guard<std::mutex> lock (m_TunnelsMutex);
 		m_Tunnels.emplace (rpcPath, tunnel);
 		if (auth)
 			m_Auth.emplace (rpcPath, i2p::http::CreateBasicAuthorizationString (user, pass));
@@ -1104,6 +1121,7 @@ namespace torrents
 
 	std::pair<boost::asio::ip::tcp::endpoint, std::string> TorrentsRPCServer::GetTunnelEndpoint (std::shared_ptr<TorrentsTunnel> tunnel) const
 	{
+		std::lock_guard<std::mutex> lock (m_TunnelsMutex);
 		for (const auto& [path, weakTunnel] : m_Tunnels)
 		{
 			if (auto t = weakTunnel.lock(); t == tunnel)
@@ -1116,6 +1134,7 @@ namespace torrents
 
 	std::shared_ptr<TorrentsTunnel> TorrentsRPCServer::GetTunnel (std::string_view path) const
 	{
+		std::lock_guard<std::mutex> lock (m_TunnelsMutex);
 		auto it = m_Tunnels.find (path);
 		if (it != m_Tunnels.end ())
 			return it->second.lock ();
@@ -1124,6 +1143,7 @@ namespace torrents
 
 	std::pair<bool, std::string>  TorrentsRPCServer::GetAuth (std::string_view path) const
 	{
+		std::lock_guard<std::mutex> lock (m_TunnelsMutex);
 		auto it = m_Auth.find (path);
 		if (it == m_Auth.end ())
 			return { false, "" };

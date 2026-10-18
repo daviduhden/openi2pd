@@ -1,6 +1,9 @@
 # I2PD Built-in Torrent Client
 
-> **Requirements:** compiled in by default unless built with `NO_TORRENTS`. The JSON-RPC interface additionally requires Boost ≥ 1.81 and is not available on Android.
+> **Requirements:** compiled in by default unless built with `NO_TORRENTS`.
+> The optional Transmission-compatible JSON-RPC surface requires Boost ≥ 1.81
+> and is not available on Android. The native ncurses TUI has no browser,
+> HTML, CSS or JavaScript dependency.
 
 ## 1. Configuration
 
@@ -14,67 +17,72 @@ keys = torrents-keys.dat
 trackers = http://atia.i2p/announce,udp://opentracker.dg2.i2p:6969,udp://tracker.insulaocculta.i2p:6969,http://opentracker.skank.i2p/a
 dhtfile = torrents.dht
 signaturetype = 7
-rpcport = 7652
-rpcaddress = 127.0.0.1
 ```
+
+The web console is gone. Do not set `web`; that option and the bundled
+`torrents/web` assets are no longer part of the project.
 
 ### Parameters
 
-| Parameter         | Description 
-|-------------------|-----------------------
-| `torrentsdir`     | Directory for downloads. `.torrent` files placed here are loaded automatically at startup; downloads, `.part` and `.resume` files are written here. The directory must already exist.
-| `keys`            | Destination key file. `transient` by default — set a persistent filename so your peer identity survives restarts.
-| `trackers`        | Comma-separated I2P tracker announce URLs.
-| `dht`             | Enable the built-in DHT. Default `true`.
-| `dhtfile`         | File to persist DHT routing table. <base32>.dht for non-transient destinations
-| `web`             | Enable web interface on RPC port. Default `true`.
-| `rpcport`         | no Port for the Transmission-compatible JSON-RPC server.
-| `rpcaddress`      | Bind address for the RPC server (default `127.0.0.1`).
-| `rpcpath`         | URL path prefix for the RPC endpoint.
+| Parameter         | Description |
+|-------------------|-------------|
+| `torrentsdir`     | Directory for downloads. `.torrent` files placed here are loaded automatically at startup; downloads, `.part` and `.resume` files are written here. The directory must already exist. |
+| `keys`            | Destination key file. `transient` by default — set a persistent filename so your peer identity survives restarts. |
+| `trackers`        | Comma-separated I2P tracker announce URLs only. Clearnet trackers are not supported. |
+| `dht`             | Enable the built-in I2P DHT. Default `true`. |
+| `dhtfile`         | File used to persist the DHT routing table. |
+| `rpcport`         | Optional local Transmission-compatible JSON-RPC port. Disabled by default (`0`). |
+| `rpcaddress`      | Loopback bind address for the optional RPC server. Non-loopback addresses are refused. |
+| `rpcpath`         | URL path prefix for the optional RPC endpoint. |
+| `rpcauth`         | Enable Basic authentication for the optional RPC endpoint. Configure `rpcuser`/`rpcpass` and keep the listener loopback-only. |
 
+## 2. Managing torrents from the native TUI
 
+Use `i2pd-tui` and open the **Torrents** section. The TUI talks to the daemon
+over the local `I2PDTUI/1` UNIX socket; it does not use HTTP, JSON-RPC or a
+browser. It can list torrents, show details (files, peers, trackers, session
+and DHT state), add magnets or local `.torrent` files, start/pause, reannounce,
+and remove torrents. Removing local data requires an explicit confirmation.
 
-## 2. Adding torrents
+The TUI never opens peer connections or writes downloads itself; validated
+administrative operations are performed by the daemon. The torrent engine
+remains I2P-only: trackers, peers, metadata and DHT traffic must use I2P
+destinations/streams, with no clearnet fallback or DNS lookup.
 
-Three ways:
+You can also drop `.torrent` files into `torrentsdir`; they are picked up at
+startup. Only regular `.torrent` files at the top level are scanned.
 
-1. **Torrent web UI** — the built-in torrent client serves its own web interface from the Torrents RPC endpoint when `web = true` (see the parameters above and section 3). The former router administrative console, including its embedded torrent panel, no longer exists. 
-2. **Drop `.torrent` files into `torrentsdir`** — they are picked up automatically at startup. Only files with the `.torrent` extension in the top level of that directory are scanned.
-3. **Via RPC directly** — `torrent-add` with a base64-encoded `.torrent` in `metainfo`, or a magnet link in `filename` (e.g., via `transmission-remote 127.0.0.1:7652 -a "magnet:..."`).
+## 3. Optional Transmission-compatible RPC
 
-
-## 3. The RPC endpoint
-
-The RPC server exposes a Transmission-compatible JSON-RPC API. The endpoint URL is:
-
-```
-http://<rpcaddress>:<rpcport>/[<rpcpath>/]rpc
-```
-
-- Default (`rpcpath` unset): `http://127.0.0.1:7652/rpc`
-- With `rpcpath = torrents`: `http://127.0.0.1:7652/torrents/rpc`
-
-`rpcpath` exists so multiple `type = torrents` tunnels can share one RPC server, each mounted under its own path.
-
-Requests must be `POST` with `Content-Type: application/json` (or `application/x-www-form-urlencoded`). `OPTIONS` preflight is handled; CORS is open (`Access-Control-Allow-Origin: *`), and **there is no authentication** — do not bind `rpcaddress` to anything beyond localhost unless you understand the risk.
-
-### Supported RPC methods
-
-| Method            | Notes 
-|-------------------|-----------
-| `torrent-add`     | `metainfo` (base64 `.torrent`) or `filename` (magnet link). Returns `torrent-added` / `torrent-duplicate`.
-| `torrent-remove`  | Supports `delete-local-data` to also delete files.
-| `torrent-get`     | Supports `ids`, `fields`, and `format: "table"`.
-| `torrent-start` / `torrent-stop` | By `ids`.
-| `torrent-set`     | Adds trackers via `trackerAdd`.
-| `session-get`     | Reports `rpc-version` 17 for client compatibility.
-| `session-stats` |  Aggregate byte/rate counters and torrent counts.
-
-## 4. The web endpoint
-
-Copy content/torrents/web to datapath/torrents/web
-The endpoint URL is:
+The RPC endpoint is intended for compatibility with local Transmission clients,
+not as a web administration interface. It is disabled unless `rpcport` is set:
 
 ```
-http://<rpcaddress>:<rpcport>/[<rpcpath>/]web
+http://127.0.0.1:<rpcport>/[<rpcpath>/]rpc
 ```
+
+- The listener must use a loopback address; non-loopback bind requests are
+  rejected.
+- Do not expose the RPC port through a public interface or proxy.
+- Use `rpcauth` with a non-default password when the local environment is not
+  fully trusted. Credentials are not stored in the repository.
+- CORS is not a supported administration mechanism; browser cross-origin
+  access is not required and is not enabled by default.
+- Request bodies and responses are bounded. The same validated engine
+  operations are used as the TUI.
+
+Supported methods include `torrent-add` (`metainfo` or `filename`),
+`torrent-remove`, `torrent-get`, `torrent-start`, `torrent-stop`,
+`torrent-set`, `torrent-reannounce`, `session-get`, `session-stats` and
+`dht-stats`. See `docs/torrent/security.md` for the threat model and any
+compatibility limitations.
+
+## 4. Security notes
+
+- Torrent traffic must use I2P. There is no direct TCP/UDP, DNS or clearnet
+  tracker fallback.
+- `.torrent` paths are sanitized and constrained to `torrentsdir`; symlink and
+  path-traversal attacks are rejected.
+- The TUI socket is local, permission-restricted and peer-UID checked.
+- Do not expose the RPC port to an untrusted network. The web console assets
+  were removed intentionally.

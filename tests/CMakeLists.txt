@@ -37,6 +37,8 @@ set(I2PD_TESTS
   test-aes
   test-tui-protocol
   test-routerinfo-firewall
+  test-torrent-bencode
+  test-protocol-bounds
 )
 
 if(UNIX)
@@ -59,7 +61,7 @@ if(WITH_FUZZERS)
   if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     message(FATAL_ERROR "WITH_FUZZERS requires Clang")
   endif()
-  foreach(fuzzer fuzz-tui-protocol fuzz-http-parser)
+  foreach(fuzzer fuzz-tui-protocol fuzz-http-parser fuzz-protocol-bounds)
     add_executable(${fuzzer} "fuzz/${fuzzer}.cpp")
     target_compile_features(${fuzzer} PRIVATE cxx_std_23)
     target_link_libraries(${fuzzer} PRIVATE libi2pd libi2pdclient libi2pdlang i2pd_warnings)

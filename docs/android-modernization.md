@@ -1,130 +1,127 @@
-# Android modernization (OpenJDK 25)
+# Android modernization (Java 25 and Material 3)
 
 Source baseline: PurpleI2P/i2pd-android commit
 `f8633c6edc0246db310f98df3a178d19dff40810` (2.61.0), imported under
 `android/`. No Android code is fetched at build time and no submodule is used.
 
-## Toolchain matrix
+Status: **source-level implementation complete for the current scope; APK,
+Lint, device and full resource-link validation are deferred to CI/user
+environment.**
 
-| Component | Minimum / selected | Reason |
+## Toolchain
+
+| Component | Selected | Notes |
 |---|---|---|
-| JDK running Gradle and compiling Java | **OpenJDK 25** | Required by project policy; checked at Gradle evaluation and via Java toolchain 25 |
-| Gradle | 9.8.1 | Supports Java 25/27; checksum pinned in wrapper properties |
-| Android Gradle Plugin | 9.4.1 | Current stable; supports compileSdk 37 |
-| compileSdk / targetSdk | 37 | Stable API supported by AGP 9.4 |
-| minSdk | 24 | `getifaddrs` available; no broad-storage workaround needed |
-| NDK | r27+ (default 27.2.12479018, overridable) | C++23 and modern libc++ |
-| Native build | CMake (NDK toolchain) | GNU make/ndk-build removed |
-| Java language level | 17 | Highest level supported by the current D8/R8 Android pipeline; **not** a claim that ART runs Java 25 |
+| Gradle JVM / compiler | **OpenJDK 25** | Gradle JVM >=25; Java toolchain exact 25 |
+| Java source/target | **25 / 25** | class-file major 69; not a JDK in the APK |
+| Gradle | 9.8.1 | checksum pinned |
+| Android Gradle Plugin | 9.4.1 | compileSdk 37 |
+| compileSdk / targetSdk | 37 | |
+| minSdk | 24 | `getifaddrs` and existing support |
+| NDK | 27.2.12479018 (overridable) | C++23 JNI build |
+| Runtime | ART | executes DEX; no OpenJDK/V8 in APK |
 
-The Java language level is deliberately separate from the build JDK. OpenJDK
-25 compiles the sources; the APK targets Android's ART/D8 feature set. Java
-25-only APIs are not used on Android.
+See `docs/android-java25.md` for the `javac`/D8/R8 probe, class-file/DEX
+evidence, AGP/Kotlin target limitation and Java 25 APIs unavailable on Android.
 
-## Build configuration changes
-
-- `android/gradle/wrapper/gradle-wrapper.properties`: Gradle 9.8.1 and its
-  SHA-256 checksum.
-- `android/build.gradle`: AGP 9.4.1; rejects Gradle JVM < 25.
-- `android/app/build.gradle`: compileSdk/targetSdk 37, minSdk 24, Java
-  toolchain 25, source/target 17, CMake JNI, no hard-coded signing keys.
-- `android/gradle.properties`: disables JDK auto-download; no developer paths.
-- `android/app/src/main/cpp/CMakeLists.txt`: enables the main project's
-  `i2pd_jni` target and disables host-only components.
-- Main `build/CMakeLists.txt`: `I2PD_BUILD_JNI` builds `libi2pd.so` from the
-  in-tree libraries and JNI sources.
-
-## Application identity
-
-- Application ID / namespace: `org.openi2pd.router` (was
-  `org.purplei2p.i2pd`).
-- Visible name: `Open I2Pd`.
-- JNI symbols: `Java_org_openi2pd_router_I2PD_1JNI_*`.
-- App-specific data directory: `open-i2pd` (no broad storage permission).
-- Changing the application ID means an existing upstream app cannot be updated
-  in place; migration is tracked as TODO AND-013/REBRAND-009.
-- Icons are neutral placeholders from `contrib/artwork/open-i2pd-icon.svg`
-  until a final visual identity is supplied.
-
-## Architecture
+## Presentation architecture
 
 ```
-I2PDActivity / SettingsActivity
-        │
-        ├── DaemonWrapper ──> JNI ──> in-tree libi2pd/libi2pdclient
-        │        │
-        │        └── app-specific files dir (no broad storage permission)
-        │
-        └── ForegroundService (notification/state)
+MainActivity (AppCompatActivity)
+  ├── DashboardFragment
+  ├── NetworkFragment
+  ├── TunnelsFragment
+  ├── StatisticsFragment
+  ├── SettingsFragment (PreferenceFragmentCompat)
+  ├── LogsFragment (RecyclerView)
+  └── AboutFragment
+        │ observe LiveData only
+RouterViewModel / RouterRepository
+        │ application-context binding, no JNI
+RouterService (started + bound, non-exported, same process)
+        │ owns DaemonWrapper and foreground notification
+        ├── DaemonWrapper ──> I2PD_JNI ──> in-tree libi2pd
+        └── app-specific files directory
 ```
 
-- The router remains C++23; Java only controls lifecycle, UI and status.
-- `DaemonWrapper` owns the start/stop thread and state listeners.
-- `ForegroundService` is the long-running Android component.
-- `I2PD_JNI` exposes lifecycle, service state and a public status summary.
-- The former WebView console and `[http]` preferences are gone.
+- Activities/Fragments do not own the daemon, JNI or sockets. Configuration
+  and autostart-marker access is bounded and runs on the settings worker, not
+  the UI thread; only preference widgets are touched on the main thread.
+- `RouterService` polls the bounded JNI status/log snapshot on a single worker
+  executor and publishes immutable `RouterSnapshot`/`LogEntry` values on the
+  main thread.
+- `RouterRepository` exposes `LiveData`; `RouterViewModel` survives Activity
+  recreation without restarting the daemon.
+- Rotation/task recreation does not create a second daemon. The app auto-starts
+  only while the service has never persisted a run state; an explicit stop (in
+  the dashboard, the exit action or the Quick Settings tile) remains stopped
+  across task recreation and relaunch until the user starts it again.
+- The service uses an in-process `LocalBinder`. It is deliberately not
+  exported. A future isolated router process would require AIDL plus
+  Parcelable snapshots and a new security review; that is not claimed here.
+- The foreground service uses `specialUse` on API 34+ and `dataSync` only on
+  API 29..33. Android 15 caps `dataSync` at six hours per 24 hours and blocks
+  it from `BOOT_COMPLETED`; a continuous router must not use it. A timeout
+  callback still shuts the daemon down cleanly if a platform ever applies one.
+- The legacy manifest `CONNECTIVITY_CHANGE` receiver was removed. It was never
+  delivered on the API 24+ baseline; `DaemonWrapper` registers a
+  `registerDefaultNetworkCallback` only while the daemon is running.
 
-## Java modernization status
+## UI
 
-Applied:
-- Removed WebView console activity/layout/menu/preferences.
-- Removed storage-permission gate activities; app-specific external storage.
-- Removed hard-coded release keystore/password and cleartext WebView traffic.
-- Added native status summary (`getStatusSummary`).
-- Updated dependencies (`androidx.core` 1.19.1,
-  `commons-configuration2` 2.15.1).
-- Gradle/AGP/JDK toolchain modernization.
+- Material 3 DayNight theme, dynamic colors where available, light/dark
+  resources and adaptive `layout-sw600dp`/`layout-land` navigation.
+- Dashboard shows state, controls, uptime, connectivity, addresses, NTCP2/SSU2,
+  rates, peers, tunnels, reseeding and warnings.
+- Tunnels shows counts, configuration reload and graceful stop. The broken
+  session-only accept-transit switch was removed; transit is controlled by the
+  persisted `notransit` option in Settings.
+- Network, Tunnels, Statistics, Logs, About and grouped Settings are native
+  Views/XML; no Compose, Kotlin, WebView or browser assets.
+- Accessibility: content descriptions, 48dp touch targets, text scaling,
+  non-color-only state, confirmations for destructive actions and bounded
+  lists/charts.
+- Logs use the existing `Log::GetRecent` ring via JNI; no keys or private data.
 
-Prepared but not complete:
-- Records/sealed types/switch expressions in the remaining Java classes.
-- Lifecycle/state separation beyond the current `DaemonWrapper`.
-- Full JNI exception/local-reference audit and native shutdown/restart tests.
-- Android Lint/Error Prone execution.
+## Configuration and storage
 
-## JNI audit notes
+- `RouterConfigStore` centralizes bounded INI read/write, atomic replacement,
+  value validation and hot/restart classification. It caches the bounded file
+  text between edits.
+- Settings reads and writes that file on a single background executor and only
+  updates preferences on the main thread. The autostart marker is also written
+  off the main thread; only opening a vendor autostart Activity returns to the
+  main thread.
+- Existing `i2pd.conf` keys are preserved; no secrets are added to preferences.
+- Autostart uses an app-private marker with cache migration.
+- Application ID remains `org.openi2pd.router`; changing it remains
+  non-updatable from the upstream app (migration tracked as REBRAND-009).
 
-- `setDataDir`/`setLanguage` currently obtain UTF chars and release them; null
-  returns and pending exceptions need explicit handling.
-- `getStatusSummary` creates a local string reference; no global references are
-  retained.
-- The router is started/stopped from a Java worker thread; native start/stop
-  must remain serialized.
-- No native pointers are stored in Java objects.
-- Further RAII wrappers for `GetStringUTFChars` are planned (TODO SEC-010).
+## Validation performed
 
-## Security changes
+- An earlier revision of the Java sources compiled with
+  `:i2pd:compileDebugJavaWithJavac` using JDK 25, source/target 25,
+  compileSdk 37. That was a real Gradle/javac run, not a claim about resource
+  linking or APK packaging. The lifecycle/FGS/settings review edits made after
+  that run have only been inspected statically; they need a fresh compile in
+  CI.
+- The Java 25 probe passed javac/D8/R8 checks; see `docs/android-java25.md`.
+- All Android XML resources parse with `xmllint`/Python `ElementTree`.
+- Pure-JVM tests under `android/app/src/test/` cover the native parsers, state
+  mapping/control enablement, INI value validation and immutable snapshot/log
+  bounds. Running `:i2pd:testDebugUnitTest` reached resource linking but AAPT2
+  timed out in this container, so no test result is claimed. CI should run it.
+- `assembleDebug`, Android Lint, JNI/NDK link, emulator/device lifecycle,
+  notification/FGS behavior, rotation, TalkBack and visual comparison were
+  **not** run here. Do not mark them validated.
 
-- `MANAGE_EXTERNAL_STORAGE`, read/write external storage and the permission
-  gate activities removed.
-- Storage moved to `Context.getExternalFilesDir()`.
-- No release signing credentials in Gradle.
-- WebView/cleartext/admin console removed.
-- Manifest keeps only network, foreground service, boot and battery
-  optimization permissions.
-- Remaining audit: exported receivers, intent validation, notification
-  intents, JNI exception handling, native restart races.
+## Pending
 
-## Validation status
-
-| Check | Status |
-|---|---|
-| Gradle/AGP configuration evaluation | Reached the missing Android SDK check; build script parsed |
-| Gradle wrapper version | 9.8.1 executed successfully |
-| JDK 25 enforcement | Code present; tested with JDK 27 as runtime; toolchain 25 not installed |
-| APK/DEX build | **Not run** (no Android SDK/NDK) |
-| Android Lint | Not run |
-| JNI native build | Not run |
-| Emulator/device lifecycle | Not run |
-| JNI memory/sanitizer tests | Not run |
-
-Commands for the user:
-
-```sh
-export JAVA_HOME=/path/to/openjdk-25
-export ANDROID_HOME=/path/to/android-sdk
-export ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018
-cd android
-./gradlew :app:assembleDebug \
-  -Pi2pd.ndkVersion=27.2.12479018 \
-  -Pi2pd.cmakeArgs="-DCMAKE_PREFIX_PATH=/path/to/android/prefix"
-```
+- CI: `:i2pd:assembleDebug`, `:i2pd:testDebugUnitTest`, `:i2pd:lintDebug`.
+- Device: FGS start/stop/restart, the `specialUse` type on API 34+,
+  rotation, process death, notification permission, boot/autostart
+  restrictions, TalkBack and font scaling. A Play-distributed build needs the
+  Play Console `specialUse` declaration; F-Droid has no such declaration step.
+- Confirm Java 25/D8/R8 behavior for the final APK and any AGP/Kotlin toolchain
+  migration beyond AGP 10.
+- Decide isolated-process/AIDL migration after the native worker separation.

@@ -5,11 +5,20 @@ import android.content.Context;
 import android.content.Intent;
 import android.util.Log;
 
-import org.openi2pd.router.I2PDActivity;
-import org.openi2pd.router.SettingsActivity;
+import org.openi2pd.router.AutoStartController;
+import org.openi2pd.router.RouterService;
 
-import java.io.File;
-
+/**
+ * Boot autostart.
+ *
+ * <p>The receiver starts the foreground router service; it never launches an
+ * Activity from the background. On Android 10+ a background Activity start
+ * would be refused anyway, and Android 12+ restricts some background
+ * foreground-service starts. The router uses the {@code specialUse} service
+ * type, which is not one of the types Android 15 blocks from
+ * BOOT_COMPLETED; the attempt is still fail-closed: failure is logged and the
+ * user can start the router from the launcher.</p>
+ */
 public class BootUpReceiver extends BroadcastReceiver {
     private static final String TAG = "i2pdBoot";
 
@@ -18,20 +27,12 @@ public class BootUpReceiver extends BroadcastReceiver {
         if (intent == null || !Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction())) {
             return;
         }
-
-        File onBoot = SettingsActivity.getOnBootFile(context);
-        if (!onBoot.isFile()) {
+        if (context == null || !AutoStartController.isEnabled(context)) {
             return;
         }
-
-        Intent activity = new Intent(context, I2PDActivity.class);
-        activity.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        try {
-            context.startActivity(activity);
-        } catch (RuntimeException e) {
-            // Android 10+ may refuse background activity starts. Starting the
-            // daemon still requires a user-visible foreground service design.
-            Log.w(TAG, "unable to launch UI after boot", e);
+        if (!RouterService.requestStart(context)) {
+            Log.w(TAG, "unable to start router service after boot; "
+                    + "Android may require a user-initiated start");
         }
     }
 }

@@ -3,8 +3,27 @@ plugins {
 }
 
 dependencies {
+    // Stable AndroidX/Material releases used by the modernized UI. Versions
+    // are pinned so the build does not depend on dynamic version resolution.
     implementation 'androidx.core:core:1.19.1'
-    implementation 'org.apache.commons:commons-configuration2:2.15.1'
+    implementation 'androidx.appcompat:appcompat:1.8.0'
+    implementation 'androidx.activity:activity:1.13.0'
+    implementation 'androidx.fragment:fragment:1.9.1'
+    implementation 'androidx.lifecycle:lifecycle-viewmodel:2.11.0'
+    implementation 'androidx.lifecycle:lifecycle-livedata:2.11.0'
+    implementation 'androidx.preference:preference:1.2.1'
+    implementation 'androidx.recyclerview:recyclerview:1.4.0'
+    implementation 'com.google.android.material:material:1.14.0'
+
+    // Prepared tests. They are not wired into a build type and do not run
+    // automatically; run them explicitly with :app:testDebugUnitTest or
+    // :app:connectedDebugAndroidTest when an emulator/device is available.
+    testImplementation 'junit:junit:4.13.2'
+    androidTestImplementation 'androidx.test:core:1.7.0'
+    androidTestImplementation 'androidx.test:runner:1.7.0'
+    androidTestImplementation 'androidx.test:rules:1.7.0'
+    androidTestImplementation 'androidx.test.ext:junit:1.3.0'
+    androidTestImplementation 'androidx.test.espresso:espresso-core:3.7.0'
 }
 
 android {
@@ -20,6 +39,9 @@ android {
         minSdk 24
         versionCode 2610000
         versionName "2.61.0"
+
+        // Instrumentation tests are prepared but only run when invoked.
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
         // NDK r27+ provides C++23 and getifaddrs at this API level.
         ndkVersion project.findProperty("i2pd.ndkVersion") ?: "27.2.12479018"
@@ -65,24 +87,32 @@ android {
     }
 
     compileOptions {
-        // JDK 25 is the build/toolchain minimum. Java 17 is the highest
-        // language level supported by the current D8/R8 Android pipeline;
-        // Java 25-only APIs are not used at runtime.
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        // Java 25 is the real source and target language level, matching the
+        // project toolchain. These flags select javac language/class-file
+        // level 69; they do not put a JDK into the APK and do not change the
+        // ART/API level. Android-only APIs must still come from android.jar,
+        // so Java 25-only library APIs (see docs/android-java25.md) stay
+        // unavailable to app code.
+        sourceCompatibility = JavaVersion.VERSION_25
+        targetCompatibility = JavaVersion.VERSION_25
+    }
+
+    buildFeatures {
+        // DaemonWrapper uses BuildConfig.VERSION_NAME for the asset cache key.
+        buildConfig true
     }
 
     lint {
         abortOnError true
         checkReleaseBuilds true
-        disable 'DuplicatePlatformClasses'
     }
 }
 
 java {
     toolchain {
-        // OpenJDK 25+ is the build minimum. This is the JDK that compiles the
-        // Java sources, not the ART runtime level used by the APK.
+        // Compile with an exact JDK 25 toolchain. The Gradle JVM only has to
+        // be >= 25 (checked in android/build.gradle); the compiler is JDK 25.
+        // Neither JDK is packaged in the APK.
         languageVersion = JavaLanguageVersion.of(25)
     }
 }

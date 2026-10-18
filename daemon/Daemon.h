@@ -51,6 +51,14 @@ namespace util
 
 	private:
 
+#ifndef _WIN32
+		// Bounded in-process restart monitor for the isolated log worker.
+		// These are process-local helpers, not a separate supervisor process.
+		bool StartPrivsepLogWorker ();
+		void StopPrivsepLogWorker ();
+		void RunPrivsepLogSupervisor ();
+#endif
+
 		std::string DaemonDataDir;
 	};
 

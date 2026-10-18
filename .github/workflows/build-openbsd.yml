@@ -1,3 +1,4 @@
+---
 name: OpenBSD
 
 # Automatic runs are intentionally suspended during the refactoring. Only a
@@ -17,8 +18,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
-      - uses: vmactions/openbsd-vm@v1
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          persist-credentials: false
+      - uses: vmactions/openbsd-vm@5f7b2c933b8846a138361d6843c52af4bef5d945  # v1
         with:
           release: '7.9'
           arch: x86_64

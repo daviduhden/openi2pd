@@ -1,3 +1,4 @@
+---
 name: Windows
 
 # Automatic runs are intentionally suspended during the refactoring. Only a
@@ -20,8 +21,10 @@ jobs:
       run:
         shell: msys2 {0}
     steps:
-      - uses: actions/checkout@v4
-      - uses: msys2/setup-msys2@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          persist-credentials: false
+      - uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e  # v2
         with:
           msystem: CLANG64
           update: true

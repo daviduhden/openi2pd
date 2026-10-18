@@ -13,6 +13,7 @@
 #include <fcntl.h>
 #include <poll.h>
 #include <sys/socket.h>
+#include <sys/uio.h>
 #include <unistd.h>
 
 #ifdef __linux__
@@ -68,7 +69,14 @@ namespace i2p::privsep
 		for (int fd : fds)
 		{
 			int flags = fcntl (fd, F_GETFD);
-			if (flags >= 0) fcntl (fd, F_SETFD, flags | FD_CLOEXEC);
+			if (flags < 0 || fcntl (fd, F_SETFD, flags | FD_CLOEXEC) < 0)
+			{
+				// Never hand out a descriptor that might leak through exec.
+				const int error = errno;
+				::close (fds[0]);
+				::close (fds[1]);
+				return std::unexpected (std::string ("fcntl(FD_CLOEXEC): ") + strerror (error));
+			}
 		}
 		return std::pair<Channel, Channel> (Channel (fds[0]), Channel (fds[1]));
 	}
@@ -82,13 +90,26 @@ namespace i2p::privsep
 		pollfd pfd{m_Fd, POLLOUT, 0};
 		int result;
 		do result = ::poll (&pfd, 1, timeoutMs); while (result < 0 && errno == EINTR);
-		if (result <= 0) return std::unexpected (result == 0 ? "send timeout" : "poll failed");
+		if (result < 0)
+		{
+			const int error = errno;
+			return std::unexpected (std::string ("poll: ") + strerror (error));
+		}
+		if (result == 0) return std::unexpected ("send timeout");
+		if (pfd.revents & POLLNVAL) return std::unexpected ("poll: invalid descriptor");
 
 		ssize_t sent;
 		do sent = ::send (m_Fd, encoded->data (), encoded->size (), MSG_NOSIGNAL);
 		while (sent < 0 && errno == EINTR);
+		if (sent < 0)
+		{
+			const int error = errno;
+			return std::unexpected (std::string ("send: ") + strerror (error));
+		}
+		// SOCK_SEQPACKET is all-or-nothing. Treat anything else as an error
+		// rather than waiting for a continuation that cannot exist.
 		if (sent != static_cast<ssize_t> (encoded->size ()))
-			return std::unexpected (std::string ("send: ") + strerror (errno));
+			return std::unexpected ("send: short write");
 		return {};
 	}
 
@@ -99,14 +120,31 @@ namespace i2p::privsep
 		int result;
 		do result = ::poll (&pfd, 1, timeoutMs); while (result < 0 && errno == EINTR);
 		if (result == 0) return std::optional<Message>{};
-		if (result < 0) return std::unexpected (std::string ("poll: ") + strerror (errno));
+		if (result < 0)
+		{
+			const int error = errno;
+			return std::unexpected (std::string ("poll: ") + strerror (error));
+		}
+		if (pfd.revents & POLLNVAL) return std::unexpected ("poll: invalid descriptor");
 
+		// Deliberately one buffer slot larger than a maximum frame so a
+		// truncated SOCK_SEQPACKET record can never look like a valid frame.
 		std::string frame (HEADER_SIZE + MAX_MESSAGE_SIZE, '\0');
+		struct iovec iov{frame.data (), frame.size ()};
+		struct msghdr header{};
+		header.msg_iov = &iov;
+		header.msg_iovlen = 1;
 		ssize_t received;
-		do received = ::recv (m_Fd, frame.data (), frame.size (), 0);
+		do received = ::recvmsg (m_Fd, &header, 0);
 		while (received < 0 && errno == EINTR);
-		if (received == 0) return std::optional<Message>{};
-		if (received < 0) return std::unexpected (std::string ("recv: ") + strerror (errno));
+		if (received == 0) return std::unexpected ("peer closed the channel");
+		if (received < 0)
+		{
+			const int error = errno;
+			return std::unexpected (std::string ("recv: ") + strerror (error));
+		}
+		if (header.msg_flags & MSG_TRUNC)
+			return std::unexpected ("oversized frame");
 		frame.resize (static_cast<size_t> (received));
 		auto message = Decode (frame);
 		if (!message) return std::unexpected (std::string ("protocol: ") + std::string (message.error ().text));
@@ -115,6 +153,7 @@ namespace i2p::privsep
 
 	std::expected<uint32_t, std::string> Channel::PeerUid () const
 	{
+		if (!IsOpen ()) return std::unexpected ("channel is closed");
 #if defined(__linux__)
 		struct ucred cred{};
 		socklen_t length = sizeof (cred);

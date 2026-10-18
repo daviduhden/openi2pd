@@ -80,9 +80,61 @@ static void TestFields ()
 	assert (frame.substr (newline + 1) == payload);
 }
 
+
+static void TestTorrentRequests ()
+{
+	auto tunnels = ParseRequest ("I2PDTUI/1 TORRENT-TUNNELS");
+	assert (tunnels.has_value () && tunnels->type == RequestType::TorrentTunnels);
+
+	auto list = ParseRequest ("I2PDTUI/1 TORRENTS 0 200");
+	assert (list.has_value () && list->type == RequestType::Torrents);
+	assert (list->tunnelIndex == 0 && list->limit == 200);
+	assert (!ParseRequest ("I2PDTUI/1 TORRENTS").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 TORRENTS 0 0").has_value ());
+
+	auto detail = ParseRequest ("I2PDTUI/1 TORRENT-DETAIL 1 7");
+	assert (detail.has_value () && detail->type == RequestType::TorrentDetail);
+	assert (detail->tunnelIndex == 1 && detail->torrentId == 7);
+	assert (!ParseRequest ("I2PDTUI/1 TORRENT-DETAIL 1 0").has_value ());
+
+	auto remove = ParseRequest ("I2PDTUI/1 TORRENT-REMOVE 0 3 files");
+	assert (remove.has_value () && remove->type == RequestType::TorrentRemove);
+	assert (remove->deleteFiles);
+	assert (!ParseRequest ("I2PDTUI/1 TORRENT-REMOVE 0 3 all").has_value ());
+
+	auto add = ParseRequest ("I2PDTUI/1 TORRENT-ADD-MAGNET 0 magnet:?xt=urn:btih:abc");
+	assert (add.has_value () && add->type == RequestType::TorrentAddMagnet);
+	assert (add->argument == "magnet:?xt=urn:btih:abc");
+
+	auto file = ParseRequest ("I2PDTUI/1 TORRENT-ADD-FILE 0 /tmp/a.torrent");
+	assert (file.has_value () && file->type == RequestType::TorrentAddFile);
+	assert (file->argument == "/tmp/a.torrent");
+
+	auto tooLong = std::string ("I2PDTUI/1 TORRENT-ADD-MAGNET 0 ");
+	tooLong.append (MAX_TORRENT_ARGUMENT_LENGTH + 1, 'x');
+	assert (!ParseRequest (tooLong).has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 TORRENT-START 0").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 TORRENT-START 0 1 extra").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 TORRENT-ADD-FILE 0 bad\nvalue").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 TORRENT-ADD-FILE 0").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 TORRENT-REMOVE 0 1 files extra").has_value ());
+
+	auto session = ParseRequest ("I2PDTUI/1 TORRENT-SESSION 2");
+	assert (session.has_value () && session->type == RequestType::TorrentSession);
+	auto dht = ParseRequest ("I2PDTUI/1 TORRENT-DHT 2");
+	assert (dht.has_value () && dht->type == RequestType::TorrentDht);
+	assert (!ParseRequest ("I2PDTUI/1 TORRENT-SESSION").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 TORRENT-DHT 2 extra").has_value ());
+
+	auto startAll = ParseRequest ("I2PDTUI/1 TORRENT-START-ALL 3");
+	assert (startAll.has_value () && startAll->type == RequestType::TorrentStartAll);
+	assert (!ParseRequest ("I2PDTUI/1 TORRENT-STOP-ALL").has_value ());
+}
+
 int main ()
 {
 	TestRequests ();
+	TestTorrentRequests ();
 	TestResponseHeader ();
 	TestFields ();
 	return 0;

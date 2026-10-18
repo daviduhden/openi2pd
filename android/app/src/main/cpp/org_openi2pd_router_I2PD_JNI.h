@@ -67,6 +67,12 @@ JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_onNetworkStateChanged
 JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getStatusSummary
 	(JNIEnv *, jclass);
 
+JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getStatusSnapshot
+	(JNIEnv *, jclass);
+
+JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getRecentLogs
+	(JNIEnv *, jclass, jlong, jint);
+
 #ifdef __cplusplus
 }
 #endif

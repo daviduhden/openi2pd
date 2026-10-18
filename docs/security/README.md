@@ -8,8 +8,12 @@
 - [Threat model](../security/threat-model.md)
 - [TUI/IPC threat model](../tui-ipc.md)
 - [OpenBSD configuration and sandbox](../../contrib/openbsd/README.md)
+- [OpenBSD dynamic validation checklist](openbsd-validation.md)
 - [Testing plan](../testing.md), including sanitizer and fuzz commands.
 
 OpenBSD remains a first-class platform. `pledge`/`unveil` are not disabled by
-the TUI or log-worker integration; the socket/log paths are added to unveil
-with the minimum permissions required.
+the TUI integration, and the TUI/syslog paths are added to unveil with the
+minimum permissions required. The log worker currently cannot be spawned while
+the parent sandbox is active; that combination is rejected at startup instead
+of being silently weakened. See the validation checklist for what still has to
+be proven on a real host.

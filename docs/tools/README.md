@@ -53,7 +53,7 @@ format.
 | [vain](vain.md) | Vanity address generator |
 | [verifyhost](verifyhost.md) | Verify a host registration signature |
 | [x25519](x25519.md) | Generate an X25519 key pair for encrypted LeaseSets |
-| [i2pdctl](i2pdctl.md) | Python client for I2PControl |
+| [i2pdctl](i2pdctl.md) | Perl client for I2PControl |
 
 ## Tests
 

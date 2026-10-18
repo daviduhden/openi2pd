@@ -77,9 +77,15 @@ dependency on ncurses and never reads stdin.
 - **Local administration**: new `i2p::tui::Server` in `daemon/TuiServer.cpp`
   and `i2p::tui` protocol in `libi2pd/TuiProtocol.h`. The server is a separate
   thread with a bounded request accumulator, per-connection timeouts, peer UID
-  checks, 0600 socket permissions and no write operations.
+  checks, 0600 socket permissions, bounded read-only snapshots and explicitly
+  authorized torrent control operations.
 - **ncurses client**: `tui/main.cpp` and `tui/TuiClient.cpp`, target
-  `i2pd-tui`, optional at configure time.
+  `i2pd-tui`, optional at configure time; includes native torrent status,
+  details and administrative actions over the local IPC.
+- **Native torrent console**: the browser HTML/CSS/JS console was removed.
+  `TorrentsControl`/`TorrentsTunnel` publish bounded service-thread snapshots;
+  `TuiProtocol`/`TuiServer` expose list/detail/action messages; the optional
+  Transmission JSON-RPC listener is loopback-only. See `docs/torrent/`.
 - **Thread-safe snapshots**: `Log::GetRecent`, `NetDb` locked counters and
   reseed flag, `Transports::GetPeersSnapshot`, exposed through the IPC layer.
 - **Parser hardening**: strict base64 alphabet/padding, HTTP field-name
@@ -103,8 +109,9 @@ dependency on ncurses and never reads stdin.
 - `LogRecord` and `PeerSnapshot` are values. They never carry `RouterInfo`,
   session or key pointers out of the router.
 - No cryptographic material is serialized by the TUI protocol. `router.hash`
-  is the public identity hash; private keys, ratchet sessions and introducer
-  tags are not exposed.
+  is the public identity hash; private keys, ratchet sessions, torrent keys and
+  introducer tags are not exposed. Torrent file paths are reduced to display
+  names; administrative add-file paths are read only by the daemon.
 
 ## Residual architectural risks
 

@@ -34,6 +34,20 @@ namespace tui
 	/** Resolve the socket path from --socket, the config file, or the data dir. */
 	std::expected<ClientOptions, std::string> ResolveSocket (ClientOptions options);
 
+	enum class RequestErrorKind
+	{
+		NotConnected,
+		Transport,
+		Protocol,
+		Remote
+	};
+
+	struct RequestError
+	{
+		RequestErrorKind kind;
+		std::string message;
+	};
+
 	class Client
 	{
 		public:
@@ -49,11 +63,12 @@ namespace tui
 			void Disconnect ();
 
 			/**
-			 * Send one command and return its response payload. On protocol or
-			 * transport errors the connection is closed and an error is
-			 * returned; the caller may reconnect and retry.
+			 * Send one command and return its response payload. Transport and
+			 * protocol failures close the connection and report the matching
+			 * kind. A well-formed remote error response keeps the connection
+			 * usable and is reported as RequestErrorKind::Remote.
 			 */
-			std::expected<std::string, std::string> Request (std::string_view command);
+			std::expected<std::string, RequestError> Request (std::string_view command);
 
 		private:
 

@@ -15,6 +15,7 @@
 #include <utility>
 #include <mutex>
 #include <memory>
+#include <algorithm>
 #include <string_view>
 #include <boost/asio.hpp>
 #include <boost/property_tree/ptree_fwd.hpp>
@@ -86,7 +87,6 @@ namespace client
 	const char TORRENTS_TUNNEL_RPC_PASS[] = "rpcpass";
 	const char TORRENTS_TUNNEL_DHT[] = "dht";
 	const char TORRENTS_TUNNEL_DHT_FILE[] = "dhtfile";
-	const char TORRENTS_TUNNEL_WEB[] = "web";
 
 	constexpr int STOP_DESTINATIONS_TIMEOUT = 8; // in seconds
 
@@ -186,6 +186,7 @@ namespace client
 
 #ifndef NO_TORRENTS
 			std::unordered_map<i2p::data::IdentHash, std::shared_ptr<i2p::torrents::TorrentsTunnel> > m_TorrentsTunnels; // local destination -> torrents tunnel
+			mutable std::mutex m_TorrentsTunnelsMutex;
 			std::unordered_map<uint16_t, std::shared_ptr<i2p::torrents::TorrentsRPCServer> > m_TorrentsRPCServers;
 #endif
 
@@ -210,7 +211,26 @@ namespace client
 			const decltype(m_ClientForwards)& GetClientForwards () const { return m_ClientForwards; }
 			const decltype(m_ServerForwards)& GetServerForwards () const { return m_ServerForwards; }
 #ifndef NO_TORRENTS
-			const decltype(m_TorrentsTunnels)& GetTorrentsTunnels () const { return m_TorrentsTunnels; }
+			// Stable, sorted copy of the configured torrents tunnels. Callers
+			// iterate this without holding any ClientContext lock; the TUI
+			// tunnel index is an index into this vector.
+			std::vector<std::shared_ptr<i2p::torrents::TorrentsTunnel> > GetTorrentsTunnelsSnapshot () const
+			{
+				std::lock_guard<std::mutex> l (m_TorrentsTunnelsMutex);
+				std::vector<std::shared_ptr<i2p::torrents::TorrentsTunnel> > snapshot;
+				snapshot.reserve (m_TorrentsTunnels.size ());
+				for (const auto& it : m_TorrentsTunnels)
+					if (it.second) snapshot.push_back (it.second);
+				std::sort (snapshot.begin (), snapshot.end (),
+					[](const auto& first, const auto& second)
+					{
+						auto firstName = std::string_view (first->GetName ());
+						auto secondName = std::string_view (second->GetName ());
+						if (firstName != secondName) return firstName < secondName;
+						return first.get () < second.get ();
+					});
+				return snapshot;
+			}
 			const decltype(m_TorrentsRPCServers)& GetTorrentsRPCServers () const { return m_TorrentsRPCServers; }
 #endif
 			std::shared_ptr<const I2PService> GetHttpProxy () const

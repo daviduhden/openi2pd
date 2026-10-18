@@ -1,63 +1,64 @@
 package org.openi2pd.router;
 
-import android.app.PendingIntent;
-import android.content.Intent;
-import android.os.Build;
+import android.service.quicksettings.Tile;
 import android.service.quicksettings.TileService;
 import android.util.Log;
 
 /**
- * Quick Settings tile that opens the main UI. The tile intentionally does not
- * toggle the daemon directly: daemon start/stop needs the visible Activity for
- * notification and foreground-service state.
+ * Quick Settings tile.
+ *
+ * <p>The tile sends the same explicit start/stop commands as the UI. It never
+ * creates daemon state itself, never touches native code and does not need an
+ * Activity. A tile click is a user interaction, so starting a foreground
+ * service from it is permitted on modern Android.</p>
  */
 public class I2PdQSTileService extends TileService {
 
     private static final String TAG = "I2PdQSTileService";
 
     @Override
-    @SuppressWarnings("deprecation")
     public void onClick() {
         super.onClick();
-        Log.d(TAG, "tile clicked");
-
-        Intent intent = new Intent(this, I2PDActivity.class);
-        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                PendingIntent pendingIntent = PendingIntent.getActivity(
-                        this, 0, intent,
-                        PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
-                startActivityAndCollapse(pendingIntent);
-            } else {
-                startActivityAndCollapse(intent);
-            }
-        } catch (RuntimeException e) {
-            Log.e(TAG, "unable to open main activity", e);
+        boolean wasRunning = RouterService.isRouterRunning();
+        boolean delivered = wasRunning
+                ? RouterService.requestStop(this)
+                : RouterService.requestStart(this);
+        if (!delivered) {
+            // Do not show a state the service never accepted (Android 12+
+            // background-start restrictions and Android 15 BOOT_COMPLETED
+            // limits can reject the command).
+            Log.w(TAG, "unable to deliver router command from tile");
+            updateTile(wasRunning);
+            return;
         }
+        // Optimistic UI; onStartListening() refreshes from the real service
+        // state once the command has been applied.
+        updateTile(!wasRunning);
     }
 
     @Override
     public void onStartListening() {
         super.onStartListening();
-        Log.d(TAG, "tile started listening");
-    }
-
-    @Override
-    public void onStopListening() {
-        super.onStopListening();
-        Log.d(TAG, "tile stopped listening");
+        updateTile(RouterService.isRouterRunning());
     }
 
     @Override
     public void onTileAdded() {
         super.onTileAdded();
-        Log.d(TAG, "tile added");
+        updateTile(RouterService.isRouterRunning());
     }
 
-    @Override
-    public void onTileRemoved() {
-        super.onTileRemoved();
-        Log.d(TAG, "tile removed");
+    private void updateTile(boolean running) {
+        Tile tile = getQsTile();
+        if (tile == null) {
+            return;
+        }
+        tile.setState(running ? Tile.STATE_ACTIVE : Tile.STATE_INACTIVE);
+        tile.setLabel(getString(R.string.app_name));
+        try {
+            tile.updateTile();
+        } catch (RuntimeException e) {
+            Log.w(TAG, "unable to update tile", e);
+        }
     }
 }

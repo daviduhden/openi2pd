@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="brand_primary">#006A60</color>
+    <color name="brand_on_primary">#FFFFFF</color>
+    <color name="brand_primary_container">#74F8E5</color>
+    <color name="brand_on_primary_container">#00201C</color>
+    <color name="brand_secondary">#4A635F</color>
+    <color name="brand_on_secondary">#FFFFFF</color>
+    <color name="brand_secondary_container">#CCE8E3</color>
+    <color name="brand_on_secondary_container">#05201C</color>
+    <color name="brand_tertiary">#3E6374</color>
+    <color name="brand_on_tertiary">#FFFFFF</color>
+    <color name="brand_tertiary_container">#C1E8FC</color>
+    <color name="brand_on_tertiary_container">#001F2A</color>
+    <color name="brand_error">#BA1A1A</color>
+    <color name="brand_on_error">#FFFFFF</color>
+    <color name="brand_error_container">#FFDAD6</color>
+    <color name="brand_on_error_container">#410002</color>
+    <color name="brand_surface">#FAFDFB</color>
+    <color name="brand_on_surface">#191C1B</color>
+    <color name="brand_surface_variant">#DAE5E1</color>
+    <color name="brand_on_surface_variant">#3F4947</color>
+    <color name="brand_outline">#6F7977</color>
+    <color name="brand_outline_variant">#BEC9C6</color>
+    <color name="brand_surface_container_low">#F4F7F5</color>
+    <color name="brand_surface_container">#EEF1EF</color>
+    <color name="brand_surface_container_high">#E8EBE9</color>
+
+    <color name="chart_download">#006A60</color>
+    <color name="chart_upload">#3E6374</color>
+    <color name="chart_grid">#BEC9C6</color>
+</resources>

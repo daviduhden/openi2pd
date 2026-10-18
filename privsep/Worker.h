@@ -31,6 +31,9 @@ namespace i2p::privsep
 
 		private:
 			friend std::expected<ChildProcess, std::string> SpawnLogWorker ();
+			/** Reap without blocking. Returns true when the child no longer exists. */
+			bool ReapNoHang ();
+			void ClosePidFd ();
 			pid_t m_Pid = -1;
 			int m_PidFd = -1;
 			Channel m_Channel;

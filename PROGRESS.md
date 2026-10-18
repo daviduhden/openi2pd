@@ -68,7 +68,7 @@ then `TODO.md` and `ROADMAP.md`, then verify the code state.
 
 - Cloned I2P Java stable tag `i2p-2.13.0` (commit
   `9134f808337b401e8e53c73734c81fab04280c9d`, released 2026-07-24) to
-  `/tmp/opencode/i2p-java`; confirmed no newer GitHub stable release.
+  an external read-only clone; confirmed no newer GitHub stable release.
 - Created `docs/INTEROPERABILITY.md` with Java class/function references and
   status vocabulary.
 - Found and fixed RI-001: C++ RouterInfo cap 3072 → 4096 to match Java
@@ -152,3 +152,193 @@ then `TODO.md` and `ROADMAP.md`, then verify the code state.
   rlimit error handling, signal error handling, SSU2/Transport minor type fixes.
 - Coordinator fixed a follow-up `keyinfo` b33 header bounds check and rebuilt:
   CMake 149/149 targets and 19/19 CTest passed on Linux/GCC 16.
+
+## Session 7 — Android Java 25/UI, native torrent TUI, Perl migration
+
+- New mandatory objectives: Java 25 as the real source/target language (not
+  only the build JDK), full Material 3 GUI redesign, native C++23 torrent
+  administration in ncursesw, and replacement of project-maintained Python
+  scripts with portable Perl.
+- Android agents launched with disjoint ownership: Java 25/toolchain,
+  Material UI/UX, service/MVVM architecture, JNI status/logs. Coordinator
+  prepared OpenJDK 25, Android SDK 37, build-tools 36 and NDK 27.2 in `/tmp`
+  for static/Gradle validation; no APK/device test claimed.
+- Torrent inventory: existing C++ engine (`libi2pd_client/Torrents*`),
+  Transmission-compatible JSON-RPC, and a browser console under
+  `contrib/torrents/web/` (`index.html`, `main.js`, `rpc.js`). The JS behavior
+  covers listing, details, add file/magnet, start/stop/reannounce/delete,
+  session/DHT stats and formatting. It will be mapped to typed C++ snapshots
+  and the local TUI IPC, not reimplemented as a browser bridge.
+- Torrent agents launched: control/IPC model, ncurses TUI, security/web/RPC
+  removal, Perl migration, and build integration. No agent may commit.
+- Python inventory: only `tools/scripts/i2pdctl` was found as project-
+  maintained Python (no other `.py` or Python shebang). It is being converted
+  to Perl with `JSON::PP`, `Getopt::Long`, core utilities and a documented
+  TLS fallback; consumers/docs/install are being migrated.
+- Coordinator added TORRENT-*, TORRENT-TUI-*, TORRENT-IPC-*, TORRENT-SEC-*,
+  PERL-*, PERL-SEC-*, BUILD-011..013 and TEST-011..013 to `TODO.md`, updated
+  the roadmap and subagent ownership.
+- Current tree includes uncommitted Android and torrent/Perl work from
+  parallel agents. Nothing is marked validated until the coordinator reviews
+  the diffs, builds and runs the prepared tests. Full network/storage worker
+  separation for torrents remains unimplemented and is explicitly blocked.
+
+### Session 7 integration checkpoint
+
+- Android Java 25 source/target is configured and `:i2pd:compileDebugJavaWithJavac`
+  completed successfully with Temurin JDK 25 before the environment was frozen.
+  XHTML/XML resources parse; a JVM parser test was added. APK/native/Lint/device
+  validation was not completed and is deferred to CI.
+- Material 3 UI/architecture source is present: hosted fragments, adaptive
+  navigation, `RouterService`/`RouterRepository`/`RouterViewModel`, bounded
+  JNI snapshots and logs. No WebView/Kotlin/Compose.
+- Native torrent migration: web HTML/CSS/JS deleted; typed C++ control
+  snapshots/commands, local TUI IPC, ncurses Torrents/details views, parser
+  hardening, path containment and optional loopback-only RPC are implemented.
+  Bencode and TUI protocol tests passed (20/20 CTest before the freeze).
+- Perl migration: only `tools/scripts/i2pdctl` was in scope. It is now Perl 5;
+  `perl -c` and 54 Test::More tests passed on Linux. Docs/install/CMake updated.
+- CI: zizmor 1.31.1 reports no findings after pinning action SHAs and setting
+  `persist-credentials: false`; yamllint 1.38.0 is clean with `.yamllint.yml`.
+  Triggers remain `workflow_dispatch` only.
+- User instruction after this checkpoint: **do not compile/build/test in this
+  environment; leave all builds and dynamic tests to CI.** Generated build
+  directories/caches were removed. Remaining work is static review and CI
+  execution, not local validation.
+
+- OpenBSD packaging: copied the `wip-openbsd-ports` `i2pd.rc` and `i2pd.login`
+  into `contrib/openbsd/` and documented `rcctl` usage. No compile or service
+  run was performed in this environment.
+
+### Session 8 — resumed full-program coordination
+
+- Re-read the tracked state and real diffs; preserved all uncommitted work.
+- Local compilation/build/test remains frozen by user instruction. Only static
+  checks were performed: `git diff --check`, XML parsing, Markdown link check,
+  zizmor and yamllint.
+- CI hardened: actions SHA-pinned, checkout credentials disabled, workflow
+  document starts added, `.yamllint.yml` added; zizmor 1.31.1 reports no
+  findings and yamllint 1.38.0 is clean. Linux CI now checks the Perl client.
+- OpenBSD `wip-openbsd-ports` `i2pd.rc` and `i2pd.login` copied byte-for-byte
+  to `contrib/openbsd/`; `rcctl` instructions added.
+- Static-review subagents were launched with disjoint scopes: Android UI/Java,
+  Torrent/TUI, IPC/supervisor, I2P interoperability, Perl security, OpenBSD
+  service hardening, plus Tools/firewall. Torrent/TUI, I2P, Perl, Tools/firewall, IPC, OpenBSD and Android
+  completed static passes. All were instructed not to compile and not to
+  commit; no build or dynamic test was run.
+- Pending coordinator work: integrate their diffs, resolve any shared-interface
+  conflicts, update this TODO/roadmap, and hand the frozen build/test matrix to
+  CI.
+
+### Torrent/TUI static-review result
+
+- Rejected invalid metainfo before insertion; required a non-empty root name.
+- Startup `.torrent` loading now uses bounded `ReadTorrentFileBounded()`
+  (regular, non-symlink, <=32 MiB) and validates metadata.
+- TUI now resets session/DHT state on reconnect/tunnel change, keys tunnel
+  identity by index+name, and cancels pending removal if the tunnel/torrent
+  changed (critical for remove-with-files).
+- Tunnel list is capped; protocol docs match field names.
+- Added magnet hash validation for 40-char hex and 32-char base32, rejecting
+  partial hashes, and marshalled RPC metainfo/magnet additions onto the
+  torrents service thread with bounded waits.
+- Tests extended for bencode/name/path/bounded-file/TUI protocol cases.
+  No compile or execution was performed; residual TOCTOU, RPC `.wait()` paths
+  and live TUI/engine tests remain.
+
+### I2P protocol-bounds static-review result
+
+- Fixed LeaseSet expiration pre-scan off-by-one (exact-fit truncated buffer).
+- Bound RouterInfo peer lists and version parsing; accept exact 4096-byte RIs.
+- Bound I2NP DatabaseLookup/SearchReply/DatabaseStore serialization; reject
+  non-fitting LeaseSets; fix one-byte search-reply count.
+- Fixed NTCP2 truncated block-header read and SSU2 PathResponse/partial-message
+  bounds; added a 128-entry incomplete-message cap.
+- Added `test-protocol-bounds` and `fuzz-protocol-bounds`, registered in
+  `tests/CMakeLists.txt`. They were not built or executed.
+- Added residual tasks NET-014 (NetDb save iteration lock) and SEC-014
+  (malformed address/property parsing, SSU2 family mismatch). Java differential
+  validation remains unavailable in this environment.
+
+### Perl security static-review result
+
+- URL/host/port/path validation, 1 MiB request/response bounds and byte-length
+  calculation hardened.
+- Chunked framing now requires CRLF after each chunk, checks per-chunk and
+  cumulative size, and rejects unsupported transfer encodings.
+- TLS fallback is shell-free, uses `-ign_eof`, flushes stdin safely, brackets
+  IPv6, sanitizes stderr, and never downgrades to cleartext. Added
+  `I2PDCTL_TLS_BACKEND=auto|openssl` for diagnostics/tests.
+- Whole-exchange alarms, SIGPIPE handling and bounded child reaping added.
+- Terminal output escapes C0/DEL/C1 control characters.
+- Tests expanded with URL/transport/chunk/size/TLS-shim cases. Not executed.
+
+### Tools/firewall static-review result
+
+- `vain` rewritten to RAII key buffers with cleansing, `std::jthread` joins,
+  checked key layout/serialization, fixed option parsing, bounded prefixes,
+  signed-overflow/nonce sentinel/thread-count/regex/write failures, and safer
+  output collision checks.
+- Firewall endpoint validation now restricts numeric address grammar and
+  rejects scoped/bracketed/v4-mapped/broadcast forms; Windows rule tags are
+  strictly validated; nft options require the nft backend.
+- Extended `test-routerinfo-firewall` and `tools-smoke` negative checks.
+- Residual: final `vain` output open is not `O_NOFOLLOW`; no dynamic build,
+  sanitizer, key-generation or native firewall syntax test was run.
+
+### IPC/log-worker static-review result
+
+- Fixed EOF-as-timeout busy loop, CLOEXEC failure handling, short-send errors,
+  MSG_TRUNC detection, peer-close semantics and closed-channel UID checks.
+- Reworked post-fork worker setup to async-signal-safe operations; worker fd is
+  now an argv argument and must be an inherited `SOCK_SEQPACKET` socket.
+- Added configure-once enforcement, duplicate/NUL rejection, write/flush error
+  propagation, stdout-only pledge and localtime unveil for the OpenBSD worker.
+- Added an in-process bounded restart monitor for the log worker (backoff,
+  attempt cap, stable-period reset, shutdown-aware). A separate supervisor
+  process and network/storage separation remain unimplemented.
+- Prepared expanded privsep protocol/log tests, including sink reattach.
+- No compiler/CTest/sanitizer run; `PRIVSEP-005` and `DEF-010` remain partially
+  implemented.
+
+### OpenBSD service static-review result
+
+- PID-file cleanup now removes only the locked regular inode, including at
+  shutdown; parent after `fork()` uses `_exit`; startup rollback stops the
+  logger thread before exit.
+- Unveil paths narrowed to effective log/file/TUI/address-book destinations;
+  `/dev/log` is unveiled for syslog; URLs are skipped during path setup.
+- `privsep.log` is refused when OpenBSD pledge/unveil is active because the
+  worker is spawned after the sandbox and would need `proc`/`exec`.
+- Added `docs/security/openbsd-validation.md` and documented residual custom
+  pledge, readiness, SIGUSR1 and TUI-socket TOCTOU issues. The reseed URL and
+  OpenBSD TSTP option were fixed statically after the audit.
+- `AbsolutePath()` now preserves URL values, and `unix.handle_sigtstp` is
+  registered on OpenBSD; dynamic checks remain pending.
+- rc.d/login copies remain byte-identical to `wip-openbsd-ports`.
+
+### Android static-review result
+
+- Lifecycle/service: first-launch-only auto-start, explicit stop persistence,
+  restart guard, unconditional daemon shutdown on service destruction,
+  Android 15 `onTimeout` fail-closed path.
+- FGS: `specialUse` on API 34+ with `dataSync` only on API 29..33; manifest
+  permission/subtype property added. This needs device/Play Console validation.
+- Settings/config I/O moved to a single background executor; stale view
+  callbacks are generation-checked; autostart marker writes are off-main.
+- Removed the broken session-only transit switch, dead connectivity receiver,
+  unused dependencies/strings/resources and stale WebView ProGuard text.
+- Added pure-JVM tests for parser, state formatting, records and config values.
+- No compiler/Gradle/AAPT2/Lint/device test was run; the latest lifecycle,
+  settings, manifest and test edits postdate the earlier Java compile.
+
+### Session 8 static-review closure
+
+- All seven specialized static-review passes are integrated: Android,
+  Torrent/TUI, IPC/log worker, I2P, Perl, OpenBSD and tools/firewall.
+- Coordinator additionally fixed magnet hash validation, RPC service-thread
+  marshalling, RPC map locking, `vain` ENOENT output handling, OpenBSD reseed
+  URL handling and OpenBSD TSTP option registration.
+- Master tracking and docs are updated; no active subagent remains.
+- No compiler, CTest, Gradle/AAPT2, APK, Lint, sanitizer, fuzz, OpenBSD or
+  device test was run. CI/user must execute the prepared commands.

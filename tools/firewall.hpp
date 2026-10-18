@@ -61,15 +61,39 @@ namespace i2p::tools::firewall
 	 * only: RouterInfo files are untrusted, and a hostname would make the
 	 * generated rules depend on DNS.
 	 */
+	inline bool IsNumericAddressText (std::string_view text)
+	{
+		if (text.empty ()) return false;
+		return std::all_of (text.begin (), text.end (), [] (unsigned char ch) {
+			return (ch >= '0' && ch <= '9') ||
+				(ch >= 'a' && ch <= 'f') || (ch >= 'A' && ch <= 'F') ||
+				ch == ':' || ch == '.';
+		});
+	}
+
 	inline std::optional<Endpoint> MakeEndpoint (std::string_view addressText, int port,
 		Transport transport)
 	{
 		if (port < 1 || port > 65535) return std::nullopt;
 		if (addressText.empty () || addressText.size () > 64) return std::nullopt;
 
+		// Keep the grammar numeric. This also rejects IPv6 scope identifiers
+		// ("fe80::1%eth0"), bracketed literals and whitespace before the
+		// address parser can normalise them into rule text.
+		if (!IsNumericAddressText (addressText)) return std::nullopt;
+
 		boost::system::error_code ec;
 		auto address = boost::asio::ip::make_address (std::string (addressText), ec);
 		if (ec || address.is_unspecified () || address.is_multicast () || address.is_loopback ())
+			return std::nullopt;
+
+		// A v4-mapped v6 address would bypass the IPv4 checks above and is not
+		// a valid RouterInfo endpoint.
+		if (address.is_v6 () && address.to_v6 ().is_v4_mapped ()) return std::nullopt;
+
+		// The limited broadcast address is neither unicast nor useful as a
+		// destination; emitting it would create an over-broad rule.
+		if (address.is_v4 () && address.to_v4 () == boost::asio::ip::address_v4::broadcast ())
 			return std::nullopt;
 
 		return Endpoint{address.to_string (), static_cast<uint16_t> (port), transport,
@@ -83,6 +107,23 @@ namespace i2p::tools::firewall
 			return false;
 		return std::all_of (value.begin () + 1, value.end (), [] (unsigned char ch) {
 			return std::isalnum (ch) || ch == '_' || ch == '-' || ch == '.';
+		});
+	}
+
+	/**
+	 * Display-name tag for Windows rules (normally a router hash prefix).
+	 * Restricted to printable identifier characters so the generated
+	 * PowerShell line cannot acquire a newline, a control character or an
+	 * unbalanced quote. Empty is allowed; the address/port still identify the
+	 * rule.
+	 */
+	inline bool IsSafeRuleTag (std::string_view value)
+	{
+		if (value.size () > 64) return false;
+		return std::all_of (value.begin (), value.end (), [] (unsigned char ch) {
+			return (ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'z') ||
+				(ch >= 'A' && ch <= 'Z') || ch == '+' || ch == '/' || ch == '=' ||
+				ch == '_' || ch == '-' || ch == '~' || ch == '.';
 		});
 	}
 
@@ -136,7 +177,7 @@ namespace i2p::tools::firewall
 	inline std::optional<std::string> Windows (const Endpoint& endpoint,
 		const RenderOptions& options)
 	{
-		if (options.ruleTag.find ('\'') != std::string::npos) return std::nullopt;
+		if (!IsSafeRuleTag (options.ruleTag)) return std::nullopt;
 		const std::string name = "i2pd " + std::string (TransportName (endpoint.transport)) +
 			" " + options.ruleTag + " " + endpoint.address + ":" + std::to_string (endpoint.port);
 		return "New-NetFirewallRule -DisplayName '" + EscapePowerShell (name) +

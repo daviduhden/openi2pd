@@ -171,6 +171,7 @@ set(LIBI2PD_CLIENT_SOURCES
   "${LIBI2PD_CLIENT_DIR}/SAM.cpp"
   "${LIBI2PD_CLIENT_DIR}/SOCKS.cpp"
   "${LIBI2PD_CLIENT_DIR}/Torrents.cpp"
+  "${LIBI2PD_CLIENT_DIR}/TorrentsControl.cpp"
   "${LIBI2PD_CLIENT_DIR}/TorrentsDHT.cpp"
   "${LIBI2PD_CLIENT_DIR}/TorrentsRPC.cpp"
   "${LIBI2PD_CLIENT_DIR}/TorrentsTunnel.cpp"

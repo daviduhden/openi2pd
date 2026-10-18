@@ -2201,6 +2201,12 @@ namespace transport
 		}
 		else
 		{
+			if (m_IncompleteMessages.size () >= SSU2_MAX_NUM_INCOMPLETE_MESSAGES)
+			{
+				LogPrint (eLogWarning, "SSU2: Too many incomplete messages ", m_IncompleteMessages.size ());
+				m_IsInvalidMessage = true;
+				return;
+			}
 			m = m_Server.GetIncompleteMessagesPool ().AcquireShared ();
 			m_IncompleteMessages.emplace (msgID, m);
 		}
@@ -2264,6 +2270,12 @@ namespace transport
 		else
 		{
 			// follow-on fragment before first fragment
+			if (m_IncompleteMessages.size () >= SSU2_MAX_NUM_INCOMPLETE_MESSAGES)
+			{
+				LogPrint (eLogWarning, "SSU2: Too many incomplete messages ", m_IncompleteMessages.size ());
+				m_IsInvalidMessage = true;
+				return;
+			}
 			auto msg = m_Server.GetIncompleteMessagesPool ().AcquireShared ();
 			msg->nextFragmentNum = 0;
 			it = m_IncompleteMessages.emplace (msgID, msg).first;
@@ -3389,7 +3401,7 @@ namespace transport
 		// address block
 		payloadSize += CreateAddressBlock (payload + payloadSize, m_MaxPayloadSize  - payloadSize, m_RemoteEndpoint);
 		// path response
-		if (payloadSize + len > m_MaxPayloadSize)
+		if (payloadSize + len + 3 > m_MaxPayloadSize) // 3 bytes block header
 		{
 			LogPrint (eLogWarning, "SSU2: Incorrect data size for path response ", len);
 			return;

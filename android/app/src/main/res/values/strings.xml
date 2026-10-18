@@ -1,69 +1,261 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
     <string name="app_name" translatable="false">Open I2Pd</string>
-    <string name="app_description" translatable="false">Invisible Internet Protocol:</string>
-    <string name="app_description2">Network without borders</string>
 
     <string name="action_start">Start</string>
     <string name="action_stop">Stop</string>
     <string name="action_exit">Exit</string>
     <string name="action_graceful_stop">Graceful stop</string>
-    <string name="action_cancel_graceful_stop">Cancel Graceful stop</string>
+    <string name="action_cancel_graceful_stop">Cancel graceful stop</string>
     <string name="action_reload_tunnels_config">Reload tunnels</string>
-    <string name="action_settings">Settings</string>
 
-    <string name="graceful_stop_is_already_in_progress">Graceful stop is already in progress</string>
-    <string name="graceful_stop_is_in_progress">Graceful stop is in progress</string>
     <string name="gracefulShutdownInProgress">Graceful shutdown in progress</string>
 
-    <string name="already_stopped">Already stopped</string>
     <string name="uninitialized">Application initializing...</string>
     <string name="starting">Application starting...</string>
-    <string name="jniLibraryLoaded">Loaded JNI libraries</string>
     <string name="startedOkay">Application started</string>
     <string name="startFailed">Start failed</string>
     <string name="stopped">Application stopped</string>
-    <string name="stopping">Application stopping...</string>
-    <string name="remaining">remaining</string>
-    <string name="ok" translatable="false">OK</string>
 
-    <string name="services">Internal services</string>
     <string name="services_http_proxy">HTTP Proxy</string>
     <string name="services_socks_proxy">SOCKS5 Proxy</string>
     <string name="services_bob" translatable="false">BOB</string>
     <string name="services_sam" translatable="false">SAM</string>
     <string name="services_i2cp" translatable="false">I2CP</string>
-    <string name="permDenied">SD card write permission denied, you need to allow this to continue</string>
-    <string name="permRequired">SD card write access is required to write the keys and other files to the I2PD folder on SD card.</string>
-    <string name="retryPermRequest">Retry requesting the SD card write permissions</string>
 
     <string name="menu_item_battery_optimizations_str">Battery Optimizations</string>
     <string name="battery_optimizations_enabled">Battery optimizations enabled</string>
-    <string name="battery_optimizations_enabled_explained">Your Android is doing some heavy battery optimizations on I2PD that might lead to daemon closing with no other reason.\nIt is recommended to allow disabling those battery optimizations.</string>
     <string name="battery_optimizations_enabled_dialog">Your Android is doing some heavy battery optimizations on I2PD that might lead to daemon closing with no other reason.\n\nYou will now be asked to allow to disable those.</string>
-    <string name="continue_str">Continue</string>
-    <string name="device_does_not_support_disabling_battery_optimizations">Your Android version does not support opting out of battery optimizations</string>
     <string name="os_version_does_not_support_battery_optimizations_show_os_dialog_api">Your Android OS version does not support showing the dialog for battery optimizations for applications.</string>
-
-    <string name="shutdown_canceled">Planned shutdown canceled</string>
 
     <string name="tunnels_reloading">Reloading tunnels config...</string>
 
-    <string name="settings_section0">Common settings</string>
-    <string name="settings_section_tunnels">Tunnels</string>
-
-    <string name="for_security_reasons_changes_are_not_allowed">For security reasons, changes are not allowed. If you really want this, open the config.</string>
-    <string name="invalid_config_value">Invalid value; the change was not saved.</string>
-    <string name="config_read_failed">Could not read the configuration file. Changes are disabled.</string>
-    <string name="config_write_failed">Could not write the configuration file.</string>
-    <string name="config_path_invalid">Configuration path is not in app-specific storage. Aborting.</string>
-    <string name="autostart_marker_failed">Could not enable start at boot.</string>
-
     <string name="autostart_enabled">Start at boot</string>
-    <string name="add_tunnel_button">Add tunnel</string>
-    <string name="add_tunnel">Tunnels management</string>
 
-    <string name="del_tunnel_button">Delete tunnel</string>
-    <string name="OpenPreferences">Open i2pd settings</string>
+    <!-- Navigation and toolbar -->
+    <string name="nav_home">Dashboard</string>
+    <string name="nav_network">Network</string>
+    <string name="nav_tunnels">Tunnels</string>
+    <string name="nav_stats">Statistics</string>
+    <string name="nav_settings">Settings</string>
+    <string name="action_logs">Logs</string>
+    <string name="action_about">About</string>
+    <string name="action_restart">Restart</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_refresh">Refresh</string>
+    <string name="action_clear_logs">Clear logs</string>
+    <string name="action_open_repository">Open repository</string>
+    <string name="action_open_license">View license</string>
+    <string name="action_continue">Continue</string>
+
+    <!-- Router states and dashboard -->
+    <string name="state_connected">Connected</string>
+    <string name="state_degraded">Degraded</string>
+    <string name="state_starting">Starting</string>
+    <string name="state_stopping">Stopping</string>
+    <string name="state_stopped">Stopped</string>
+    <string name="state_error">Error</string>
+    <string name="state_unknown">Unknown</string>
+    <string name="status_online">Online</string>
+    <string name="status_offline">Offline</string>
+    <string name="status_unknown">Unknown</string>
+    <string name="status_service_connecting">Connecting to the router service…</string>
+    <string name="status_router_online">Connected to the I2P network</string>
+    <string name="status_router_degraded">Router is running but not yet connected</string>
+    <string name="status_router_reseeding">Reseeding; peer discovery is in progress</string>
+    <string name="status_router_starting">Starting the router…</string>
+    <string name="status_router_stopped">Router is not running</string>
+    <string name="status_router_graceful">Draining transit tunnels: %1$s remaining</string>
+    <string name="status_start_failed_format">Start failed: %1$s</string>
+    <string name="dashboard_transports_format">%1$s · %2$s</string>
+    <string name="metric_uptime">Uptime</string>
+    <string name="metric_peers">Peers</string>
+    <string name="metric_routers">Known routers</string>
+    <string name="metric_tunnels_label">Tunnels (in / out / transit)</string>
+    <string name="metric_tunnels_value">%1$d in / %2$d out / %3$d transit</string>
+    <string name="metric_reseed">Reseeding</string>
+    <string name="metric_download">Download</string>
+    <string name="metric_upload">Upload</string>
+    <string name="value_unknown" translatable="false">—</string>
+    <string name="value_unknown_long">Unknown</string>
+    <string name="value_yes">Yes</string>
+    <string name="value_no">No</string>
+    <string name="value_enabled">Enabled</string>
+    <string name="value_disabled">Disabled</string>
+    <string name="value_published">Published</string>
+    <string name="value_not_published">Not published</string>
+    <string name="value_running">Running</string>
+    <string name="value_stopped">Stopped</string>
+    <string name="warning_title">Attention</string>
+    <string name="warning_offline">The router is running, but no network connection is available. Check Wi-Fi or mobile data.</string>
+    <string name="warning_error_format">The router reported a problem: %1$s</string>
+    <string name="warning_start_failed_format">The router failed to start: %1$s</string>
+    <string name="warning_service_disconnected">The router service is not connected yet. If this persists, reopen the app.</string>
+
+    <!-- Confirmations and notices -->
+    <string name="confirm_stop_title">Stop the router?</string>
+    <string name="confirm_stop_message">Stopping the router disconnects all I2P services and tunnels. Continue?</string>
+    <string name="confirm_restart_title">Restart the router?</string>
+    <string name="confirm_restart_message">The router will stop and start again. Existing I2P connections will be interrupted.</string>
+    <string name="confirm_graceful_title">Begin graceful stop?</string>
+    <string name="confirm_graceful_message">Transit tunnels are given time to drain before the router stops. You can cancel the graceful stop while the countdown runs.</string>
+    <string name="confirm_exit_title">Stop the router and exit?</string>
+    <string name="confirm_exit_message">The router will stop and the app will close. I2P services and tunnels will be disconnected.</string>
+    <string name="confirm_clear_logs_title">Clear logs?</string>
+    <string name="confirm_clear_logs_message">This removes the log entries shown by the app. It does not change files on disk.</string>
+    <string name="toast_starting">Starting the router…</string>
+    <string name="toast_stopping">Stopping the router…</string>
+    <string name="toast_restarting">Restarting the router…</string>
+    <string name="toast_graceful_started">Graceful stop in progress.</string>
+    <string name="toast_graceful_cancelled">Graceful stop cancelled.</string>
+    <string name="battery_optimizations_already_disabled">Battery optimizations are already disabled for this app.</string>
+    <string name="no_browser_available">No browser is available to open this link.</string>
+
+    <!-- Network -->
+    <string name="network_connectivity">Connectivity</string>
+    <string name="network_addresses_title">Addresses</string>
+    <string name="network_no_addresses">No addresses reported</string>
+    <string name="network_transports_title">Transports</string>
+    <string name="network_services_title">Client services</string>
+    <string name="network_ipv4">IPv4</string>
+    <string name="network_ipv6">IPv6</string>
+    <string name="network_ipv4_available">IPv4 available</string>
+    <string name="network_ipv4_unavailable">IPv4 unavailable</string>
+    <string name="network_ipv6_available">IPv6 available</string>
+    <string name="network_ipv6_unavailable">IPv6 unavailable</string>
+    <string name="network_ntcp2">NTCP2</string>
+    <string name="network_ssu2">SSU2</string>
+    <string name="network_transport_format">%1$s: %2$s</string>
+    <string name="network_service_format">%1$s: %2$s</string>
+    <string name="address_format">%1$s %2$s:%3$d (%4$s)</string>
+
+    <!-- Tunnels -->
+    <string name="tunnels_inbound">Inbound tunnels</string>
+    <string name="tunnels_outbound">Outbound tunnels</string>
+    <string name="tunnels_transit">Transit tunnels</string>
+    <string name="tunnels_total">Total tunnels</string>
+    <string name="tunnels_grace_remaining">Graceful stop: %1$s remaining</string>
+    <string name="tunnels_grace_active">Graceful stop is in progress</string>
+
+    <!-- Statistics -->
+    <string name="statistics_chart_title">Traffic</string>
+    <string name="statistics_chart_description">Traffic chart. Download %1$s, upload %2$s.</string>
+    <string name="statistics_download_rate">Download rate</string>
+    <string name="statistics_upload_rate">Upload rate</string>
+    <string name="statistics_total_received">Total received</string>
+    <string name="statistics_total_sent">Total sent</string>
+    <string name="statistics_total_transit">Transit traffic</string>
+    <string name="statistics_uptime">Uptime</string>
+    <string name="statistics_peers">Peers</string>
+    <string name="statistics_routers">Known routers</string>
+    <string name="statistics_tunnels">Tunnels</string>
+    <string name="statistics_chart_download">Download</string>
+    <string name="statistics_chart_upload">Upload</string>
+
+    <!-- Logs -->
+    <string name="logs_title">Logs</string>
+    <string name="logs_search_hint">Search logs</string>
+    <string name="logs_filter_all">All</string>
+    <string name="logs_filter_error">Error</string>
+    <string name="logs_filter_warn">Warning</string>
+    <string name="logs_filter_info">Info</string>
+    <string name="logs_filter_debug">Debug</string>
+    <string name="logs_empty">No log entries yet</string>
+    <string name="logs_empty_filtered">No entries match the current filters</string>
+    <string name="logs_loading">Waiting for the router service…</string>
+    <string name="logs_note">Native i2pd logs appear here only when the core exposes them through the JNI log stream. If the list stays empty, native logging may be unavailable in this build.</string>
+    <string name="logs_cleared">Log entries cleared.</string>
+    <string name="log_entry_description">%1$s, %2$s: %3$s</string>
+
+    <!-- Units -->
+    <string name="rate_bps">%1$s B/s</string>
+    <string name="rate_kib_s">%1$s KiB/s</string>
+    <string name="rate_mib_s">%1$s MiB/s</string>
+    <string name="rate_gib_s">%1$s GiB/s</string>
+    <string name="size_b">%1$s B</string>
+    <string name="size_kib">%1$s KiB</string>
+    <string name="size_mib">%1$s MiB</string>
+    <string name="size_gib">%1$s GiB</string>
+    <string name="duration_days_hours">%1$dd %2$dh</string>
+    <string name="duration_hours_minutes">%1$dh %2$dm</string>
+    <string name="duration_minutes_seconds">%1$dm %2$ds</string>
+    <string name="duration_seconds">%1$ds</string>
+    <string name="duration_mm_ss">%1$02d:%2$02d</string>
+
+    <!-- About -->
+    <string name="about_title">About</string>
+    <string name="about_version_label">Version</string>
+    <string name="about_version_format">%1$s (build %2$d)</string>
+    <string name="about_abi_label">Native ABI</string>
+    <string name="about_build_label">Build type</string>
+    <string name="about_build_debug">Debug build</string>
+    <string name="about_build_release">Release build</string>
+    <string name="about_data_directory_label">Data directory</string>
+    <string name="about_license_label">License</string>
+    <string name="about_license_summary">Open I2Pd is distributed under the BSD 3-Clause license. Copyright and attribution notices from the upstream i2pd-android project are preserved in the source and license files.</string>
+    <string name="about_repository_label">Source repository</string>
+    <string name="about_data_unavailable">Not available</string>
+    <string name="repository_url" translatable="false">https://github.com/daviduhden/openi2pd</string>
+    <string name="license_url" translatable="false">https://github.com/daviduhden/openi2pd/blob/master/LICENSE</string>
+
+    <!-- Settings -->
+    <string name="pref_category_general">General</string>
+    <string name="pref_category_network">Network</string>
+    <string name="pref_category_tunnels">Tunnels and privacy</string>
+    <string name="pref_category_resources">Resources</string>
+    <string name="pref_category_logging">Logging</string>
+    <string name="pref_category_clients">Client services</string>
+    <string name="pref_autostart_summary">Start the router when the device boots. Some device vendors require an additional autostart permission.</string>
+    <string name="pref_autostart_failed">Could not change the start-at-boot setting.</string>
+    <string name="pref_ipv4_title">Enable IPv4</string>
+    <string name="pref_ipv6_title">Enable IPv6</string>
+    <string name="pref_ntcp2_title">Enable NTCP2</string>
+    <string name="pref_ntcp2_publish_title">Publish NTCP2 address</string>
+    <string name="pref_ntcp2_publish_summary">Disable to prevent routers from connecting to this device over NTCP2.</string>
+    <string name="pref_ssu_title">Enable SSU2</string>
+    <string name="pref_port_title">Listening port</string>
+    <string name="pref_port_summary">Port selection is automatic. Edit the configuration file to change it.</string>
+    <string name="pref_no_transit_title">Disable transit tunnels</string>
+    <string name="pref_no_transit_summary">Prevent other routers from routing traffic through this device.</string>
+    <string name="pref_floodfill_title">Run as floodfill</string>
+    <string name="pref_floodfill_summary">Uses more battery and bandwidth. Only enable if you can keep the router online.</string>
+    <string name="pref_transit_limit_title">Transit tunnel limit</string>
+    <string name="pref_transit_limit_summary">Maximum number of transit tunnels this router may build.</string>
+    <string name="pref_bandwidth_title">Bandwidth limit</string>
+    <string name="pref_bandwidth_summary">Limit for transit traffic. Higher limits use more battery and data.</string>
+    <string name="pref_log_level_title">Log level</string>
+    <string name="pref_log_level_summary">Native logging level. Logs are visible only when the core exposes them.</string>
+    <string name="pref_http_enable_title">Enable HTTP proxy</string>
+    <string name="pref_http_address_title">HTTP proxy address</string>
+    <string name="pref_http_port_title">HTTP proxy port</string>
+    <string name="pref_socks_enable_title">Enable SOCKS5 proxy</string>
+    <string name="pref_socks_address_title">SOCKS5 proxy address</string>
+    <string name="pref_socks_port_title">SOCKS5 proxy port</string>
+    <string name="pref_sam_enable_title">Enable SAM</string>
+    <string name="pref_sam_address_title">SAM address</string>
+    <string name="pref_sam_port_title">SAM port</string>
+    <string name="pref_upnp_enable_title">Enable UPnP</string>
+    <string name="pref_upnp_name_title">UPnP forwarding name</string>
+    <string name="pref_invalid_port">Enter a port from 0 to 65535.</string>
+    <string name="pref_invalid_address">Enter a valid address or host name.</string>
+    <string name="pref_invalid_positive">Enter a positive whole number.</string>
+    <string name="pref_invalid_value">Enter a value without line breaks or reserved characters.</string>
+    <string name="pref_save_failed">The value was not saved.</string>
+    <string name="pref_apply_hot">Applied without restarting the router.</string>
+    <string name="pref_apply_restart">Saved. Restart the router to apply.</string>
+    <string name="pref_apply_reload">Saved. Reload tunnels to apply.</string>
+    <string name="pref_restart_required_title">Restart required</string>
+    <string name="pref_restart_required_message">This change takes effect after the router restarts. Restart now?</string>
+    <string name="pref_restart_now">Restart now</string>
+    <string name="pref_later">Later</string>
+    <string name="pref_bandwidth_low">Low</string>
+    <string name="pref_bandwidth_medium">Medium</string>
+    <string name="pref_bandwidth_high">High</string>
+    <string name="pref_bandwidth_unlimited">Unlimited</string>
+    <string name="pref_loglevel_none">None</string>
+    <string name="pref_loglevel_error">Error</string>
+    <string name="pref_loglevel_warn">Warning</string>
+    <string name="pref_loglevel_info">Info</string>
+    <string name="pref_loglevel_debug">Debug</string>
 
 </resources>

@@ -394,7 +394,7 @@ namespace config {
 			("meshnets.yggaddress", value<std::string>()->default_value(""),         "Yggdrasil address to publish")
 		;
 
-#ifdef __linux__
+#if defined(__linux__) || defined(__OpenBSD__)
 		options_description unix_specific("UNIX-specific options");
 		unix_specific.add_options()
 			("unix.handle_sigtstp", bool_switch()->default_value(false),             "Handle SIGTSTP and SIGCONT signals (default: disabled)")
@@ -436,7 +436,7 @@ namespace config {
 			.add(persist)
 			.add(cpuext)
 			.add(meshnets)
-#ifdef __linux__
+#if defined(__linux__) || defined(__OpenBSD__)
 			.add(unix_specific)
 #endif
 #ifdef __OpenBSD__

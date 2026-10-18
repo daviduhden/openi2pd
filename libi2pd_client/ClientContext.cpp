@@ -210,18 +210,25 @@ namespace client
 		for (auto& it: m_TorrentsRPCServers)
 			it.second->Stop ();
 
-		for (auto& it: m_TorrentsTunnels)
+		std::vector<std::shared_ptr<i2p::torrents::TorrentsTunnel> > torrentsTunnelsToStop;
+		{
+			std::lock_guard<std::mutex> l(m_TorrentsTunnelsMutex);
+			torrentsTunnelsToStop.reserve (m_TorrentsTunnels.size ());
+			for (const auto& it: m_TorrentsTunnels)
+				if (it.second) torrentsTunnelsToStop.push_back (it.second);
+			m_TorrentsTunnels.clear ();
+		}
+		for (const auto& torrentsTunnel: torrentsTunnelsToStop)
 		{
 			LogPrint(eLogInfo, "Clients: Stopping torrents tunnel");
-			it.second->Stop ();
+			torrentsTunnel->Stop ();
 		}
-		if (!m_TorrentsTunnels.empty ())
+		if (!torrentsTunnelsToStop.empty ())
 		{
 			// let torrent tunnels finish
 			LogPrint(eLogInfo, "Clients: Waiting for ", STOP_DESTINATIONS_TIMEOUT, "seconds");
 			std::this_thread::sleep_for (std::chrono::seconds (STOP_DESTINATIONS_TIMEOUT));
 		}
-		m_TorrentsTunnels.clear ();
 #endif
 
 		{
@@ -1040,7 +1047,6 @@ namespace client
 					if (sigType > i2p::data::SIGNING_KEY_TYPE_REDDSA_SHA512_ED25519) sigType = i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519;
 					bool dht = section.second.get<bool> (TORRENTS_TUNNEL_DHT, true);
 					std::string dhtFileName = section.second.get<std::string> (TORRENTS_TUNNEL_DHT_FILE, "");
-					bool web = section.second.get<bool> (TORRENTS_TUNNEL_WEB, true);
 					if (dhtFileName.empty () && keys.starts_with ("transient"))
 					{
 						// finename with zero in first byte means non persistent
@@ -1077,28 +1083,47 @@ namespace client
 							localDestination->SetPublic (true);
 					}
 					auto torrentsTunnel = std::make_shared<i2p::torrents::TorrentsTunnel> (name,
-						localDestination, torrentsDir, trackers, dht, dhtFileName, web);
-					auto [iit, inserted] = m_TorrentsTunnels.emplace (localDestination->GetIdentHash (), torrentsTunnel);
+						localDestination, torrentsDir, trackers, dht, dhtFileName);
+					bool inserted = false;
+					{
+						std::lock_guard<std::mutex> l(m_TorrentsTunnelsMutex);
+						inserted = m_TorrentsTunnels.emplace (localDestination->GetIdentHash (), torrentsTunnel).second;
+					}
 					if (inserted)
 					{
 						torrentsTunnel->Start ();
-						// try to create optional RPC server
+						// try to create optional local-only RPC server
 						uint16_t port = section.second.get<uint16_t> (TORRENTS_TUNNEL_RPC_PORT, 0);
 						if (port)
 						{
 							auto address = section.second.get<std::string> (TORRENTS_TUNNEL_RPC_ADDRESS, "127.0.0.1");
-							auto server = CreateTorrentsRPCServer (address, port);
-							if (server)
+							auto path = section.second.get<std::string> (TORRENTS_TUNNEL_RPC_PATH, "");
+							auto auth = section.second.get<bool> (TORRENTS_TUNNEL_RPC_AUTH, false);
+							std::string user, pass;
+							if (auth)
 							{
-								auto path = section.second.get<std::string> (TORRENTS_TUNNEL_RPC_PATH, "");
-								auto auth = section.second.get<bool> (TORRENTS_TUNNEL_RPC_AUTH, false);
-								std::string user, pass;
-								if (auth)
-								{
-									user = section.second.get<std::string> (TORRENTS_TUNNEL_RPC_USER, "");
-									pass = section.second.get<std::string> (TORRENTS_TUNNEL_RPC_PASS, "");
-								}
-								server->AddTunnel (path, torrentsTunnel, auth, user, pass);
+								user = section.second.get<std::string> (TORRENTS_TUNNEL_RPC_USER, "");
+								pass = section.second.get<std::string> (TORRENTS_TUNNEL_RPC_PASS, "");
+							}
+							auto isValidCredential = [](const std::string& value)->bool
+							{
+								return !value.empty () && value.size () <= 256 &&
+									value.find ('\0') == std::string::npos &&
+									value.find ('\r') == std::string::npos &&
+									value.find ('\n') == std::string::npos;
+							};
+							boost::system::error_code addressError;
+							auto bindAddress = boost::asio::ip::make_address (address, addressError);
+							if (addressError || !bindAddress.is_loopback ())
+								LogPrint (eLogError, "Clients: Torrents RPC address ", address,
+									" is not a loopback address. Refusing to start the RPC server");
+							else if (auth && (!isValidCredential (user) || !isValidCredential (pass)))
+								LogPrint (eLogError, "Clients: Torrents RPC authentication requires non-empty, bounded rpcuser and rpcpass. Refusing to start the RPC server");
+							else
+							{
+								auto server = CreateTorrentsRPCServer (address, port);
+								if (server)
+									server->AddTunnel (path, torrentsTunnel, auth, user, pass);
 							}
 						}
 					}

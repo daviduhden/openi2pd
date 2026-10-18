@@ -35,14 +35,16 @@ instructions are in [build_mingw.cmd](build/build_mingw.cmd).
 
 Android app sources are integrated under [android](android/). The app builds
 the in-tree router through CMake/JNI; it no longer depends on a Git submodule or
-an external i2pd checkout. Development requires OpenJDK 25+, Gradle 9.8.1,
-AGP 9.4.1, SDK 37 and NDK r27+. See [android/README.md](android/README.md).
+an external i2pd checkout. Development requires OpenJDK 25+, Java 25 source/target, Gradle 9.8.1,
+AGP 9.4.1, SDK 37 and NDK r27+. See [android/README.md](android/README.md)
+and [docs/android-java25.md](docs/android-java25.md).
 
 ## Run
 
 Start `build-output/i2pd` for a headless router. If ncurses was found at
-configure time, `build-output/i2pd-tui` connects to the local read-only
-administrative socket (`tui.socket`, default `<datadir>/i2pd-tui.sock`). The
+configure time, `build-output/i2pd-tui` connects to the local
+bounded administrative socket (`tui.socket`, default `<datadir>/i2pd-tui.sock`);
+router status is read-only and torrent actions require explicit confirmation. The
 router runs without a terminal, stdin or the TUI. See the
 [configuration example](contrib/i2pd.conf) and
 [documentation](docs/README.md). OpenBSD configuration is in

@@ -12,6 +12,15 @@ static Endpoint Make (const char * address, uint16_t port, Transport transport)
 	return *endpoint;
 }
 
+static void AssertSafeRule (const std::optional<std::string>& rule)
+{
+	assert (rule.has_value ());
+	assert (!rule->empty ());
+	assert (rule->find ('\n') == std::string::npos);
+	assert (rule->find ('\r') == std::string::npos);
+	assert (rule->find ("any") == std::string::npos);
+}
+
 int main ()
 {
 	const auto ntcp4 = Make ("192.0.2.10", 12345, Transport::NTCP2);
@@ -22,14 +31,38 @@ int main ()
 	// Validation rejects values that would create unsafe or meaningless rules.
 	assert (!MakeEndpoint ("192.0.2.10", 0, Transport::NTCP2));
 	assert (!MakeEndpoint ("192.0.2.10", 65536, Transport::NTCP2));
+	assert (!MakeEndpoint ("192.0.2.10", -1, Transport::NTCP2));
 	assert (!MakeEndpoint ("not-an-ip", 1234, Transport::NTCP2));
 	assert (!MakeEndpoint ("1.2.3.4; reboot", 1234, Transport::NTCP2));
 	assert (!MakeEndpoint ("1.2.3.4\n-A INPUT -j ACCEPT", 1234, Transport::NTCP2));
 	assert (!MakeEndpoint ("0.0.0.0", 1234, Transport::NTCP2));
 	assert (!MakeEndpoint ("224.0.0.1", 1234, Transport::NTCP2));
 	assert (!MakeEndpoint ("127.0.0.1", 1234, Transport::NTCP2));
+	assert (!MakeEndpoint ("255.255.255.255", 1234, Transport::NTCP2));
 	assert (!MakeEndpoint ("::", 1234, Transport::NTCP2));
 	assert (!MakeEndpoint ("ff02::1", 1234, Transport::NTCP2));
+	// Scoped, bracketed, mapped and non-numeric literals never reach a rule.
+	assert (!MakeEndpoint ("fe80::1%eth0", 1234, Transport::NTCP2));
+	assert (!MakeEndpoint ("[2001:db8::10]", 1234, Transport::NTCP2));
+	assert (!MakeEndpoint ("2001:db8::10 ", 1234, Transport::NTCP2));
+	assert (!MakeEndpoint ("2001:db8::10/64", 1234, Transport::NTCP2));
+	assert (!MakeEndpoint ("::ffff:192.0.2.10", 1234, Transport::NTCP2));
+	assert (!MakeEndpoint ("::ffff:127.0.0.1", 1234, Transport::NTCP2));
+	assert (!MakeEndpoint ("", 1234, Transport::NTCP2));
+	assert (!MakeEndpoint (std::string (65, '1'), 1234, Transport::NTCP2));
+
+	assert (!IsNumericAddressText (""));
+	assert (!IsNumericAddressText ("host.example"));
+	assert (!IsNumericAddressText ("192.0.2.10 "));
+	assert (IsNumericAddressText ("192.0.2.10"));
+	assert (IsNumericAddressText ("2001:db8::10"));
+	assert (IsNumericAddressText ("2001:DB8::10"));
+
+	// Parser output is canonical and port bounds are inclusive.
+	const auto canonical = Make ("2001:0DB8:0000::0010", 65535, Transport::NTCP2);
+	assert (canonical.address == "2001:db8::10");
+	assert (canonical.ipv6);
+	assert (canonical.port == 65535);
 
 	RenderOptions options;
 	options.ruleTag = "abcdef12";
@@ -46,6 +79,8 @@ int main ()
 		"iptables -A OUTPUT -p tcp -d 192.0.2.10 --dport 12345 -j ACCEPT");
 	assert (Render (ntcp6, options) ==
 		"ip6tables -A OUTPUT -p tcp -d 2001:db8::10 --dport 12345 -j ACCEPT");
+	assert (Render (ssu4, options) ==
+		"iptables -A OUTPUT -p udp -d 198.51.100.20 --dport 4567 -j ACCEPT");
 	assert (Render (ssu6, options) ==
 		"ip6tables -A OUTPUT -p udp -d 2001:db8::20 --dport 4567 -j ACCEPT");
 
@@ -75,6 +110,20 @@ int main ()
 	assert (Render (ntcp4, options) == std::nullopt);
 	options.nftTable = "filter";
 
+	// Unknown families and unsafe chain names are rejected, not emitted.
+	options.nftFamily = "inet6";
+	assert (Render (ntcp4, options) == std::nullopt);
+	options.nftFamily = "inet";
+	options.nftChain = "out;flush ruleset";
+	assert (Render (ntcp4, options) == std::nullopt);
+	options.nftChain = "output";
+	options.nftTable = std::string (65, 'a');
+	assert (Render (ntcp4, options) == std::nullopt);
+	options.nftTable = "filter";
+
+	AssertSafeRule (Render (ntcp4, options));
+	AssertSafeRule (Render (ssu6, options));
+
 	options.backend = Backend::Windows;
 	auto windows = Render (ntcp4, options);
 	assert (windows.has_value ());
@@ -84,12 +133,31 @@ int main ()
 	assert (windows->find ("-RemoteAddress '192.0.2.10'") != std::string::npos);
 	assert (windows->find ("-RemotePort 12345") != std::string::npos);
 	assert (windows->find ("i2pd NTCP2 abcdef12") != std::string::npos);
+	AssertSafeRule (windows);
 
 	options.backend = Backend::Windows;
 	auto windows6 = Render (ssu6, options);
 	assert (windows6.has_value ());
 	assert (windows6->find ("-Protocol UDP") != std::string::npos);
 	assert (windows6->find ("-RemoteAddress '2001:db8::20'") != std::string::npos);
+	AssertSafeRule (windows6);
+
+	// Display-name tags accept base64/identifier characters and are rejected
+	// rather than emitted with quotes, newlines or control characters.
+	assert (IsSafeRuleTag (""));
+	assert (IsSafeRuleTag ("abcdef12"));
+	assert (IsSafeRuleTag ("abc+/=~-._"));
+	assert (!IsSafeRuleTag ("bad'tag"));
+	assert (!IsSafeRuleTag ("bad\ntag"));
+	assert (!IsSafeRuleTag ("bad tag"));
+	assert (!IsSafeRuleTag (std::string (65, 'a')));
+	options.ruleTag = "abc+/=~-._";
+	assert (Render (ntcp4, options).has_value ());
+	options.ruleTag = "bad\ntag";
+	assert (Render (ntcp4, options) == std::nullopt);
+	options.ruleTag = "bad'tag";
+	assert (Render (ntcp4, options) == std::nullopt);
+	options.ruleTag = "abcdef12";
 
 	assert (EscapePowerShell ("a'b") == "a''b");
 
@@ -101,7 +169,8 @@ int main ()
 
 	// Deduplication is independent of the rendering backend.
 	assert (EndpointKey (ntcp4) == EndpointKey (Make ("192.0.2.10", 12345, Transport::NTCP2)));
-	assert (EndpointKey (ntcp4) != EndpointKey (ssu4));
+	assert (EndpointKey (ntcp4) != EndpointKey (Make ("192.0.2.10", 12345, Transport::SSU2)));
+	assert (EndpointKey (ntcp4) != EndpointKey (Make ("192.0.2.10", 12346, Transport::NTCP2)));
 
 	return 0;
 }

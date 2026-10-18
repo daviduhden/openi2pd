@@ -43,6 +43,7 @@ namespace transport
 	const int SSU2_MAX_NUM_RESENDS = 5;
 	const int SSU2_RESEND_ATTEMPT_MIN_INTERVAL = 3; // in milliseconds
 	const int SSU2_INCOMPLETE_MESSAGES_CLEANUP_TIMEOUT = 30; // in seconds
+	const size_t SSU2_MAX_NUM_INCOMPLETE_MESSAGES = 128; // per session, bounds fragment reassembly memory
 	const int SSU2_MAX_NUM_RECEIVED_I2NP_MSGIDS = 5000; // how many msgID we store for duplicates check
 	const int SSU2_RECEIVED_I2NP_MSGIDS_CLEANUP_TIMEOUT = 10; // in seconds
 	const int SSU2_DECAY_INTERVAL = 20; // in seconds
