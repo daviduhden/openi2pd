@@ -105,9 +105,19 @@ needed or change deferred with rationale; **Removed** = attack surface deleted.
   non-owned/non-socket path, bounded request/response sizes, numeric bounds,
   per-connection timeouts, one sequential client, `MSG_NOSIGNAL`, read-only
   commands, no secret fields, no command execution.
+- **Windows transport (static):** `daemon/TuiServerWin32.cpp` uses a hashed
+  local named-pipe name, `FILE_FLAG_FIRST_PIPE_INSTANCE` against squatting, a
+  protected DACL limited to the daemon user/SYSTEM/Administrators, and
+  `PIPE_REJECT_REMOTE_CLIENTS`. `tui/TuiClientWin32.cpp` additionally checks
+  that the server image is `i2pd.exe` and that the server user is the client
+  user or `LocalSystem`, or that either token is a member of Administrators. `tests/test-tui-pipe-name.cpp`
+  covers the name derivation and `tests/test-tui-win32-pipe.cpp` covers the
+  pipe/DACL primitives.
 - **Residual:** A same-UID process is already inside the trust boundary (it can
   read `router.keys`), and systems without `SO_PEERCRED`/`getpeereid` fall back
-  to filesystem permissions. No live penetration test was performed.
+  to filesystem permissions. The Windows DACL, service-account behavior and
+  cross-user rejection have not been executed on a Windows host. No live
+  penetration test was performed.
 
 ### S-10 — Tunnel/router status reads are not all atomic (Low/Medium, Reviewed)
 

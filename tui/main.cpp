@@ -10,8 +10,6 @@
 
 #include "TuiClient.h"
 
-#ifndef _WIN32
-
 #include <algorithm>
 #include <array>
 #include <charconv>
@@ -24,6 +22,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
+#include <cwchar>
 #include <deque>
 #include <map>
 #include <optional>
@@ -32,11 +31,14 @@
 #include <string_view>
 #include <vector>
 
-#include <signal.h>
 #include <wchar.h>
-#include <ncurses.h>
+
+#ifndef _WIN32
+#include <signal.h>
+#endif
 
 #include "Log.h"
+#include "Terminal.h"
 #include "Theme.h"
 #include "TuiProtocol.h"
 #include "version.h"
@@ -46,10 +48,12 @@ namespace
 using namespace std::chrono_literals;
 using i2p::tui::Theme;
 using i2p::tui::ThemeRole;
+namespace terminal = i2p::tui::terminal;
 
 volatile std::sig_atomic_t g_Resize = 0;
 volatile std::sig_atomic_t g_Stop = 0;
 
+#ifndef _WIN32
 void HandleResize (int)
 {
 	g_Resize = 1;
@@ -58,6 +62,7 @@ void HandleStop (int)
 {
 	g_Stop = 1;
 }
+#endif
 
 enum class Tab
 {
@@ -291,10 +296,21 @@ int ToInt (std::string_view value, int fallback = 0)
 double ToDouble (std::string_view value, double fallback = 0.0)
 {
 	if (value.empty ()) return fallback;
+#ifdef _WIN32
+	// Some MSVC/MinGW standard libraries still lack floating-point
+	// from_chars.  The TUI runs with the C locale explicitly selected, so
+	// strtod has the same decimal-point behavior here.
+	std::string copy (value);
+	char * end = nullptr;
+	const double result = std::strtod (copy.c_str (), &end);
+	if (end != copy.c_str () + copy.size ()) return fallback;
+	return result;
+#else
 	double result = 0.0;
 	auto parsed = std::from_chars (value.data (), value.data () + value.size (), result);
 	if (parsed.ec != std::errc () || parsed.ptr != value.data () + value.size ()) return fallback;
 	return result;
+#endif
 }
 
 std::string ToLowerAscii (std::string_view value)
@@ -319,9 +335,61 @@ struct Utf8Character
 	int width = 1;
 };
 
+#ifdef _WIN32
+int CodePointWidth (std::uint32_t codePoint)
+{
+	// MSVC does not provide POSIX wcwidth().  Mirror the terminal backend's
+	// conservative Unicode width table instead of treating UTF-8 byte length
+	// as a terminal cell width.
+	if ((codePoint >= 0x0300 && codePoint <= 0x036F) || (codePoint >= 0x1AB0 && codePoint <= 0x1AFF)
+		|| (codePoint >= 0x1DC0 && codePoint <= 0x1DFF) || (codePoint >= 0x20D0 && codePoint <= 0x20FF)
+		|| (codePoint >= 0xFE00 && codePoint <= 0xFE0F) || (codePoint >= 0xFE20 && codePoint <= 0xFE2F))
+		return 0;
+	if ((codePoint >= 0x1100 && codePoint <= 0x115F) || codePoint == 0x2329 || codePoint == 0x232A
+		|| (codePoint >= 0x2E80 && codePoint <= 0xA4CF && codePoint != 0x303F)
+		|| (codePoint >= 0xAC00 && codePoint <= 0xD7A3) || (codePoint >= 0xF900 && codePoint <= 0xFAFF)
+		|| (codePoint >= 0xFE10 && codePoint <= 0xFE19) || (codePoint >= 0xFE30 && codePoint <= 0xFE6F)
+		|| (codePoint >= 0xFF00 && codePoint <= 0xFF60) || (codePoint >= 0xFFE0 && codePoint <= 0xFFE6)
+		|| (codePoint >= 0x1F300 && codePoint <= 0x1FAFF) || (codePoint >= 0x20000 && codePoint <= 0x3FFFD))
+		return 2;
+	return 1;
+}
+#endif
+
 Utf8Character NextCharacter (std::string_view text, size_t offset)
 {
 	if (offset >= text.size ()) return { 1, 0 };
+#ifdef _WIN32
+	const auto first = static_cast<unsigned char> (text[offset]);
+	if (first < 0x80) return { 1, CodePointWidth (first) };
+	size_t length = 0;
+	std::uint32_t codePoint = 0;
+	if ((first & 0xE0) == 0xC0)
+	{
+		length = 2;
+		codePoint = first & 0x1F;
+	}
+	else if ((first & 0xF0) == 0xE0)
+	{
+		length = 3;
+		codePoint = first & 0x0F;
+	}
+	else if ((first & 0xF8) == 0xF0)
+	{
+		length = 4;
+		codePoint = first & 0x07;
+	}
+	else
+		return { 1, 1 };
+	if (offset + length > text.size ()) return { 1, 1 };
+	for (size_t i = 1; i < length; ++i)
+	{
+		const auto next = static_cast<unsigned char> (text[offset + i]);
+		if ((next & 0xC0) != 0x80) return { 1, 1 };
+		codePoint = (codePoint << 6) | (next & 0x3F);
+	}
+	return { length, CodePointWidth (codePoint) };
+#else
 	wchar_t character = 0;
 	std::mbstate_t state { };
 	auto consumed = std::mbrtowc (&character, text.data () + offset, text.size () - offset, &state);
@@ -329,6 +397,7 @@ Utf8Character NextCharacter (std::string_view text, size_t offset)
 	int width = ::wcwidth (character);
 	if (width < 0) width = 1;
 	return { consumed, width };
+#endif
 }
 
 int DisplayWidth (std::string_view text)
@@ -542,7 +611,11 @@ std::string Timestamp (long epoch)
 {
 	std::time_t time = static_cast<std::time_t> (epoch);
 	std::tm tm { };
+#ifdef _WIN32
+	if (localtime_s (&tm, &time) != 0) return "--:--:--";
+#else
 	if (!localtime_r (&time, &tm)) return "--:--:--";
+#endif
 	char buffer[16];
 	if (!strftime (buffer, sizeof (buffer), "%H:%M:%S", &tm)) return "--:--:--";
 	return buffer;
@@ -576,7 +649,7 @@ int LevelAttribute (const Theme & theme, int level)
 	case eLogWarning: return theme.Attributes (ThemeRole::LogWarning);
 	case eLogDebug: return theme.Attributes (ThemeRole::LogDebug);
 	case eLogInfo: return theme.Attributes (ThemeRole::LogInfo);
-	default: return A_NORMAL;
+	default: return terminal::ATTR_NORMAL;
 	}
 }
 
@@ -1074,13 +1147,18 @@ int App::Run ()
 		if (m_Dirty) Draw ();
 		Refresh ();
 
-		int key = getch ();
-		if (key == KEY_RESIZE)
+		int key = terminal::ReadKey (200);
+		if (key == terminal::KEY_RESIZE)
 		{
 			m_Dirty = true;
 			continue;
 		}
-		if (key != ERR) HandleKey (key);
+		if (key == terminal::KEY_CTRL_C)
+		{
+			g_Stop = 1;
+			continue;
+		}
+		if (key != terminal::KEY_NONE) HandleKey (key);
 	}
 	return 0;
 }
@@ -1619,7 +1697,7 @@ int App::TorrentPageRows () const
 {
 	int height = 0;
 	int width = 0;
-	getmaxyx (stdscr, height, width);
+	terminal::Dimensions (height, width);
 	(void)width;
 	int content = std::max (0, height - 4);
 	return std::max (1, content - 1);
@@ -1667,18 +1745,18 @@ bool App::HandlePromptKey (int key)
 		CancelPrompt ();
 		return true;
 	}
-	if (key == '\n' || key == '\r' || key == KEY_ENTER)
+	if (key == '\n' || key == '\r' || key == terminal::KEY_ENTER)
 	{
 		CommitPrompt ();
 		return true;
 	}
-	if (key == KEY_BACKSPACE || key == 127 || key == 8)
+	if (key == terminal::KEY_BACKSPACE || key == 127 || key == 8)
 	{
 		RemoveLastUtf8 (m_InputBuffer);
 		m_Dirty = true;
 		return true;
 	}
-	if (key == KEY_DC)
+	if (key == terminal::KEY_DC)
 	{
 		m_InputBuffer.clear ();
 		m_Dirty = true;
@@ -1947,12 +2025,12 @@ void App::CycleTorrentTunnel (int delta)
 
 void App::PutLine (int row, const std::string & text, int width, int attributes)
 {
-	move (row, 0);
-	clrtoeol ();
-	if (attributes) attrset (attributes);
+	terminal::Move (row, 0);
+	terminal::ClearToEol ();
+	if (attributes) terminal::SetAttribute (attributes);
 	auto safe = TruncateUtf8 (SanitizeText (text), width, true);
-	if (!safe.empty ()) addnstr (safe.c_str (), static_cast<int> (safe.size ()));
-	if (attributes) attrset (A_NORMAL);
+	if (!safe.empty ()) terminal::Put (safe);
+	if (attributes) terminal::SetAttribute (terminal::ATTR_NORMAL);
 }
 
 void App::DrawHeader (int width)
@@ -1964,12 +2042,13 @@ void App::DrawHeader (int width)
 	{
 		if (column >= width) break;
 		std::string label = " " + std::to_string (i + 1) + ":" + std::string (TAB_NAMES[i]) + " ";
-		attrset (m_Theme.Attributes (static_cast<size_t> (m_Tab) == i ? ThemeRole::SelectedTab : ThemeRole::HeaderBar));
-		move (0, column);
-		addnstr (label.c_str (), width - column);
+		terminal::SetAttribute (
+			m_Theme.Attributes (static_cast<size_t> (m_Tab) == i ? ThemeRole::SelectedTab : ThemeRole::HeaderBar));
+		terminal::Move (0, column);
+		terminal::Put (label, width - column);
 		column += static_cast<int> (label.size ());
 	}
-	attrset (A_NORMAL);
+	terminal::SetAttribute (terminal::ATTR_NORMAL);
 }
 
 void App::DrawFooter (int height, int width)
@@ -2031,12 +2110,12 @@ void App::DrawStatus (int top, int height, int width)
 	auto show = [&] (std::string_view label, std::string_view value)
 	{
 		if (row >= top + height) return;
-		move (row, 1);
-		attrset (m_Theme.Attributes (ThemeRole::Primary));
-		addnstr (std::string (label).c_str (), 24);
-		attrset (A_NORMAL);
+		terminal::Move (row, 1);
+		terminal::SetAttribute (m_Theme.Attributes (ThemeRole::Primary));
+		terminal::Put (label, 24);
+		terminal::SetAttribute (terminal::ATTR_NORMAL);
 		auto text = TruncateUtf8 (SanitizeText (value), width > 26 ? width - 26 : 0);
-		if (!text.empty ()) addnstr (text.c_str (), static_cast<int> (text.size ()));
+		if (!text.empty ()) terminal::Put (text);
 		++row;
 	};
 
@@ -2156,17 +2235,17 @@ void App::DrawLogs (int top, int height, int width)
 	for (int i = start; i < static_cast<int> (visible.size ()) && row < top + height; ++i)
 	{
 		const auto & record = *visible[i];
-		move (row, 0);
-		clrtoeol ();
+		terminal::Move (row, 0);
+		terminal::ClearToEol ();
 		const int attributes = LevelAttribute (m_Theme, record.level);
-		if (attributes) attrset (attributes);
+		if (attributes) terminal::SetAttribute (attributes);
 		std::string prefix = "  " + Timestamp (record.timestamp) + " " + std::string (LevelName (record.level)) + "  ";
 		auto safePrefix = TruncateUtf8 (prefix, width, false);
-		addnstr (safePrefix.c_str (), static_cast<int> (safePrefix.size ()));
+		terminal::Put (safePrefix);
 		int remaining = width - DisplayWidth (safePrefix);
 		auto message = TruncateUtf8 (SanitizeText (record.text), std::max (0, remaining), true);
-		if (!message.empty ()) addnstr (message.c_str (), static_cast<int> (message.size ()));
-		attrset (A_NORMAL);
+		if (!message.empty ()) terminal::Put (message);
+		terminal::SetAttribute (terminal::ATTR_NORMAL);
 		++row;
 	}
 }
@@ -2308,9 +2387,10 @@ void App::DrawTorrents (int top, int height, int width)
 			{
 				if (at >= width || text.empty ()) return;
 				const int bytes = std::min (static_cast<int> (text.size ()), width - at);
-				attrset (m_Theme.Attributes (role));
-				mvaddnstr (row, at, text.c_str (), bytes);
-				attrset (A_NORMAL);
+				terminal::SetAttribute (m_Theme.Attributes (role));
+				terminal::Move (row, at);
+				terminal::Put (text, bytes);
+				terminal::SetAttribute (terminal::ATTR_NORMAL);
 			};
 
 			int columnOffset = 2 + layout.name + TORRENT_STATUS_COLS;
@@ -2533,16 +2613,16 @@ void App::DrawTorrentStatusLine (int height, int width)
 		int available = std::max (0, width - DisplayWidth (label) - 1);
 		auto input = TailUtf8 (m_InputBuffer, available);
 		std::string line = " " + label + input;
-		attrset (m_Theme.Attributes (ThemeRole::SelectedRow));
+		terminal::SetAttribute (m_Theme.Attributes (ThemeRole::SelectedRow));
 		PutLine (row, line, width);
-		attrset (A_NORMAL);
+		terminal::SetAttribute (terminal::ATTR_NORMAL);
 		int column = std::min (width - 1, DisplayWidth (line));
-		curs_set (1);
-		move (row, std::max (0, column));
+		terminal::ShowCursor (true);
+		terminal::Move (row, std::max (0, column));
 		return;
 	}
 
-	curs_set (0);
+	terminal::ShowCursor (false);
 	if (!m_StatusMessage.empty ())
 	{
 		if (std::chrono::steady_clock::now () >= m_StatusExpiry)
@@ -2559,20 +2639,21 @@ void App::DrawTorrentStatusLine (int height, int width)
 void App::Draw ()
 {
 	int height = 0, width = 0;
-	getmaxyx (stdscr, height, width);
+	terminal::Dimensions (height, width);
 	if (height < 6 || width < 40)
 	{
-		erase ();
-		curs_set (0);
-		attrset (m_Theme.Attributes (ThemeRole::Error));
-		mvaddnstr (0, 0, "Terminal too small", std::max (0, width));
-		attrset (A_NORMAL);
-		refresh ();
+		terminal::Clear ();
+		terminal::ShowCursor (false);
+		terminal::SetAttribute (m_Theme.Attributes (ThemeRole::Error));
+		terminal::Move (0, 0);
+		terminal::Put ("Terminal too small", std::max (0, width));
+		terminal::SetAttribute (terminal::ATTR_NORMAL);
+		terminal::Refresh ();
 		m_Dirty = false;
 		return;
 	}
 
-	erase ();
+	terminal::Clear ();
 	DrawHeader (width);
 	if (m_Tab == Tab::Torrents) DrawTorrentContext (width);
 	DrawFooter (height, width);
@@ -2594,7 +2675,7 @@ void App::Draw ()
 	case Tab::Help: DrawHelp (top, contentHeight, width); break;
 	}
 	DrawTorrentStatusLine (height, width);
-	refresh ();
+	terminal::Refresh ();
 	m_Dirty = false;
 }
 
@@ -2613,8 +2694,8 @@ void App::HandleKey (int key)
 			switch (key)
 			{
 			case 27: LeaveTorrentDetails (); return;
-			case KEY_LEFT:
-			case KEY_BTAB:
+			case terminal::KEY_LEFT:
+			case terminal::KEY_BTAB:
 			{
 				int tab = static_cast<int> (m_TorrentDetailTab);
 				m_TorrentDetailTab = static_cast<TorrentDetailTab> ((tab + 3) % 4);
@@ -2622,7 +2703,7 @@ void App::HandleKey (int key)
 				m_Dirty = true;
 				return;
 			}
-			case KEY_RIGHT:
+			case terminal::KEY_RIGHT:
 			case '\t':
 			{
 				int tab = static_cast<int> (m_TorrentDetailTab);
@@ -2631,27 +2712,27 @@ void App::HandleKey (int key)
 				m_Dirty = true;
 				return;
 			}
-			case KEY_UP:
+			case terminal::KEY_UP:
 				if (m_TorrentDetailScroll > 0) --m_TorrentDetailScroll;
 				m_Dirty = true;
 				return;
-			case KEY_DOWN:
+			case terminal::KEY_DOWN:
 				++m_TorrentDetailScroll;
 				m_Dirty = true;
 				return;
-			case KEY_PPAGE:
+			case terminal::KEY_PPAGE:
 				m_TorrentDetailScroll = std::max (0, m_TorrentDetailScroll - 10);
 				m_Dirty = true;
 				return;
-			case KEY_NPAGE:
+			case terminal::KEY_NPAGE:
 				m_TorrentDetailScroll += 10;
 				m_Dirty = true;
 				return;
-			case KEY_HOME:
+			case terminal::KEY_HOME:
 				m_TorrentDetailScroll = 0;
 				m_Dirty = true;
 				return;
-			case KEY_END:
+			case terminal::KEY_END:
 				m_TorrentDetailScroll = INT_MAX;
 				m_Dirty = true;
 				return;
@@ -2663,39 +2744,39 @@ void App::HandleKey (int key)
 			int page = TorrentPageRows ();
 			switch (key)
 			{
-			case KEY_UP:
+			case terminal::KEY_UP:
 				if (m_TorrentSelection > 0) --m_TorrentSelection;
 				EnsureTorrentSelectionVisible (page);
 				m_Dirty = true;
 				return;
-			case KEY_DOWN:
+			case terminal::KEY_DOWN:
 				if (m_TorrentSelection + 1 < static_cast<int> (m_TorrentView.size ())) ++m_TorrentSelection;
 				EnsureTorrentSelectionVisible (page);
 				m_Dirty = true;
 				return;
-			case KEY_PPAGE:
+			case terminal::KEY_PPAGE:
 				m_TorrentSelection = std::max (0, m_TorrentSelection - page);
 				EnsureTorrentSelectionVisible (page);
 				m_Dirty = true;
 				return;
-			case KEY_NPAGE:
+			case terminal::KEY_NPAGE:
 				m_TorrentSelection = std::min (static_cast<int> (m_TorrentView.size ()) - 1, m_TorrentSelection + page);
 				EnsureTorrentSelectionVisible (page);
 				m_Dirty = true;
 				return;
-			case KEY_HOME:
+			case terminal::KEY_HOME:
 				m_TorrentSelection = 0;
 				EnsureTorrentSelectionVisible (page);
 				m_Dirty = true;
 				return;
-			case KEY_END:
+			case terminal::KEY_END:
 				m_TorrentSelection = std::max (0, static_cast<int> (m_TorrentView.size ()) - 1);
 				EnsureTorrentSelectionVisible (page);
 				m_Dirty = true;
 				return;
 			case '\n':
 			case '\r':
-			case KEY_ENTER: EnterTorrentDetails (); return;
+			case terminal::KEY_ENTER: EnterTorrentDetails (); return;
 			case '/': BeginPrompt (PromptKind::Filter, "filter name/hash: ", m_TorrentFilter); return;
 			case 's': CycleTorrentSort (); return;
 			case 'S': ToggleTorrentSortDirection (); return;
@@ -2777,7 +2858,7 @@ void App::HandleKey (int key)
 		if (m_Tab == Tab::Torrents) ScheduleTorrentRefresh (true);
 		break;
 	}
-	case KEY_RIGHT:
+	case terminal::KEY_RIGHT:
 	{
 		auto next = (static_cast<int> (m_Tab) + 1) % static_cast<int> (TAB_NAMES.size ());
 		m_Tab = static_cast<Tab> (next);
@@ -2785,7 +2866,7 @@ void App::HandleKey (int key)
 		if (m_Tab == Tab::Torrents) ScheduleTorrentRefresh (true);
 		break;
 	}
-	case KEY_LEFT:
+	case terminal::KEY_LEFT:
 	{
 		auto previous = (static_cast<int> (m_Tab) + static_cast<int> (TAB_NAMES.size ()) - 1)
 			% static_cast<int> (TAB_NAMES.size ());
@@ -2806,7 +2887,7 @@ void App::HandleKey (int key)
 		else
 			m_LogLevel = eLogDebug;
 		break;
-	case KEY_UP:
+	case terminal::KEY_UP:
 		if (m_Tab == Tab::Help)
 		{
 			if (m_HelpScroll > 0) --m_HelpScroll;
@@ -2815,21 +2896,21 @@ void App::HandleKey (int key)
 			++m_Scroll;
 		m_Dirty = true;
 		return;
-	case KEY_DOWN:
+	case terminal::KEY_DOWN:
 		if (m_Tab == Tab::Help)
 			++m_HelpScroll;
 		else if (m_Scroll > 0)
 			--m_Scroll;
 		m_Dirty = true;
 		return;
-	case KEY_PPAGE:
+	case terminal::KEY_PPAGE:
 		if (m_Tab == Tab::Help)
 			m_HelpScroll = std::max (0, m_HelpScroll - 10);
 		else
 			m_Scroll += 10;
 		m_Dirty = true;
 		return;
-	case KEY_NPAGE:
+	case terminal::KEY_NPAGE:
 		if (m_Tab == Tab::Help)
 			m_HelpScroll += 10;
 		else if (m_Scroll > 10)
@@ -2838,7 +2919,7 @@ void App::HandleKey (int key)
 			m_Scroll = 0;
 		m_Dirty = true;
 		return;
-	case KEY_HOME:
+	case terminal::KEY_HOME:
 		if (m_Tab == Tab::Help)
 			m_HelpScroll = 0;
 		else
@@ -2865,8 +2946,8 @@ int main (int argc, char * argv[])
 					 "\n"
 					 "Usage: i2pd-tui [--socket PATH] [--datadir PATH] [--conf PATH] [--service]\n"
 					 "\n"
-					 "  --socket PATH   UNIX socket exposed by the daemon (tui.socket)\n"
-					 "  --datadir PATH  data directory (default: ~/.i2pd)\n"
+					 "  --socket ENDPOINT  local IPC endpoint (Unix socket; Windows pipe name)\n"
+					 "  --datadir PATH  data directory (default: user data directory)\n"
 					 "  --conf PATH     i2pd.conf used to read [tui] socket\n"
 					 "  --service       use the system service data directory\n"
 					 "  --help          show this help\n"
@@ -2886,6 +2967,12 @@ int main (int argc, char * argv[])
 		return EXIT_FAILURE;
 	}
 
+#ifdef _WIN32
+	// The shared text helpers decode payloads with mbrtowc()/wcwidth(), so
+	// the CRT must use UTF-8.  Fall back to the system locale if a very old
+	// CRT rejects the explicit name.
+	if (!setlocale (LC_ALL, ".UTF-8")) setlocale (LC_ALL, "");
+#else
 	setlocale (LC_ALL, "");
 	struct sigaction resizeAction { };
 	resizeAction.sa_handler = HandleResize;
@@ -2896,23 +2983,22 @@ int main (int argc, char * argv[])
 	sigemptyset (&stopAction.sa_mask);
 	sigaction (SIGINT, &stopAction, nullptr);
 	sigaction (SIGTERM, &stopAction, nullptr);
+#endif
 
-	initscr ();
-	cbreak ();
-	noecho ();
-	keypad (stdscr, TRUE);
-	curs_set (0);
-	timeout (200);
-	// The central theme owns start_color(), use_default_colors() and all
-	// colour-pair allocation.  It degrades to 16/8 colours or monochrome
-	// attributes when the terminal cannot provide the requested combination.
+	if (!i2p::tui::terminal::Init ())
+	{
+		const char * error = i2p::tui::terminal::LastError ();
+		std::fprintf (stderr, "i2pd-tui: %s\n", error ? error : "unable to initialize the terminal");
+		return EXIT_FAILURE;
+	}
+	// The central theme owns colour discovery and all colour-pair
+	// allocation.  It degrades to 16/8 colours or monochrome attributes
+	// when the terminal cannot provide the requested combination.
 	i2p::tui::Theme theme;
 	theme.Init ();
 
 	App app (*resolved, theme);
 	int result = app.Run ();
-	endwin ();
+	i2p::tui::terminal::Shutdown ();
 	return result;
 }
-
-#endif // _WIN32

@@ -49,8 +49,8 @@
 #include "Streaming.h"
 #include "Destination.h"
 #include "I2PControl.h"
-#ifndef _WIN32
 #include "TuiServer.h"
+#ifndef _WIN32
 #include "privsep/LogWorker.h"
 #include "privsep/Worker.h"
 #endif
@@ -90,8 +90,8 @@ namespace util
 #endif
 		};
 
-#ifndef _WIN32
 		std::unique_ptr<i2p::tui::Server> tuiServer;
+#ifndef _WIN32
 		std::unique_ptr<i2p::privsep::LogSink> logSink;
 		std::unique_ptr<i2p::privsep::ChildProcess> logWorker;
 		std::thread logSupervisor;
@@ -679,7 +679,6 @@ namespace util
 		LogPrint (eLogInfo, "Daemon: Starting Client");
 		i2p::client::context.Start ();
 
-#ifndef _WIN32
 		bool tuiEnabled;
 		i2p::config::GetOption ("tui.enabled", tuiEnabled);
 		if (tuiEnabled)
@@ -687,8 +686,8 @@ namespace util
 			std::string socketPath;
 			i2p::config::GetOption ("tui.socket", socketPath);
 			if (socketPath.empty ()) socketPath = i2p::fs::DataDirPath ("i2pd-tui.sock");
-			// The TUI is optional: a failure to create its local socket must
-			// never prevent the router from running headless.
+			// The TUI is optional: a failure to create its local IPC
+			// endpoint must never prevent the router from running headless.
 			d.tuiServer = std::make_unique<i2p::tui::Server> (socketPath);
 			if (!d.tuiServer->Start ())
 			{
@@ -696,7 +695,6 @@ namespace util
 				d.tuiServer.reset ();
 			}
 		}
-#endif
 
 		// I2P Control Protocol
 		bool i2pcontrol;
@@ -737,14 +735,12 @@ namespace util
 		LogPrint (eLogInfo, "Daemon: Shutting down");
 		// These two own threads and read router state, so they must stop
 		// before the subsystems they observe are torn down.
-#ifndef _WIN32
 		if (d.tuiServer)
 		{
 			LogPrint (eLogInfo, "Daemon: Stopping TUI IPC");
 			d.tuiServer->Stop ();
 			d.tuiServer = nullptr;
 		}
-#endif
 		if (d.m_I2PControlService)
 		{
 			LogPrint (eLogInfo, "Daemon: Stopping I2PControl");

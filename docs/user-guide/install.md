@@ -16,6 +16,11 @@ Use packages from your operating-system distribution, or build from source. Rele
 
 Build with the instructions in [Windows](../devs/building/windows.md), or use artifacts from the fork release page. Two architectures are supported: x86 (32-bit) and x86_64. The Windows XP build path was removed because the C++23 toolchain and current dependencies do not support it.
 
+The optional TUI is built as `i2pd-tui.exe` next to `i2pd.exe` and uses a local
+named pipe; it does not need ncurses or a network port. See
+[TUI on Windows](../TUI-WINDOWS.md) for terminal, service-account and DACL
+requirements. Runtime validation on Windows is pending.
+
 
 ## Android
 

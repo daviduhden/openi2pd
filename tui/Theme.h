@@ -11,31 +11,29 @@
 #ifndef OPENI2PD_TUI_THEME_H
 #define OPENI2PD_TUI_THEME_H
 
-#ifndef _WIN32
-
 #include <array>
 #include <cstddef>
 #include <cstdlib>
 
-#include <ncurses.h>
+#include "Terminal.h"
 
 /*
- * Central ncurses theme for i2pd-tui.
+ * Central terminal theme for i2pd-tui.
  *
  * The palette is derived from assets/branding/colors.md.  The terminal is
- * never sent raw ANSI escapes: every colour goes through ncurses pairs.  The
- * module degrades in this order:
+ * never sent raw ANSI escapes by the shared code: every colour goes through
+ * a terminal colour-pair attribute.  The module degrades in this order:
  *
- *   direct colour (ncurses RGB indices + init_extended_pair)
+ *   direct colour (terminal RGB indices + extended pairs)
  *   256-colour xterm cube
  *   16-colour ANSI
  *   8-colour ANSI
  *   monochrome attributes (reverse, bold, underline, dim)
  *
  * The brand colours are approximations on 8/16/256-colour terminals.  Plain
- * text stays on the terminal's default colours whenever use_default_colors()
- * succeeds.  If it does not, an explicit black/white background is chosen
- * from the detected terminal background so text never becomes invisible.
+ * text stays on the terminal's default colours whenever default colours are
+ * available and the background is known.  If it is not, an explicit
+ * black/white background is chosen so text never becomes invisible.
  */
 
 namespace i2p
@@ -182,21 +180,21 @@ namespace tui
 
 		inline AnsiSpec AnsiFor (ThemeRole role, bool light, bool bright)
 		{
-			const int black = COLOR_BLACK;
-			const int red = COLOR_RED;
-			const int green = COLOR_GREEN;
-			const int yellow = COLOR_YELLOW;
-			const int blue = COLOR_BLUE;
-			const int magenta = COLOR_MAGENTA;
-			const int cyan = COLOR_CYAN;
-			const int white = COLOR_WHITE;
-			const int gray = bright ? COLOR_BLACK + 8 : white;
-			const int brightRed = bright ? COLOR_RED + 8 : red;
-			const int brightGreen = bright ? COLOR_GREEN + 8 : green;
-			const int brightYellow = bright ? COLOR_YELLOW + 8 : yellow;
-			const int brightBlue = bright ? COLOR_BLUE + 8 : blue;
-			const int brightCyan = bright ? COLOR_CYAN + 8 : cyan;
-			const int brightWhite = bright ? COLOR_WHITE + 8 : white;
+			const int black = terminal::COLOR_BLACK;
+			const int red = terminal::COLOR_RED;
+			const int green = terminal::COLOR_GREEN;
+			const int yellow = terminal::COLOR_YELLOW;
+			const int blue = terminal::COLOR_BLUE;
+			const int magenta = terminal::COLOR_MAGENTA;
+			const int cyan = terminal::COLOR_CYAN;
+			const int white = terminal::COLOR_WHITE;
+			const int gray = bright ? terminal::COLOR_BLACK + 8 : white;
+			const int brightRed = bright ? terminal::COLOR_RED + 8 : red;
+			const int brightGreen = bright ? terminal::COLOR_GREEN + 8 : green;
+			const int brightYellow = bright ? terminal::COLOR_YELLOW + 8 : yellow;
+			const int brightBlue = bright ? terminal::COLOR_BLUE + 8 : blue;
+			const int brightCyan = bright ? terminal::COLOR_CYAN + 8 : cyan;
+			const int brightWhite = bright ? terminal::COLOR_WHITE + 8 : white;
 
 			switch (role)
 			{
@@ -234,29 +232,29 @@ namespace tui
 			switch (role)
 			{
 			case ThemeRole::HeaderBar:
-			case ThemeRole::StatusBar: return A_REVERSE;
+			case ThemeRole::StatusBar: return terminal::ATTR_REVERSE;
 			case ThemeRole::Title:
 			case ThemeRole::SelectedRow:
 			case ThemeRole::SelectedTab:
-			case ThemeRole::LogCritical: return A_REVERSE | A_BOLD;
+			case ThemeRole::LogCritical: return terminal::ATTR_REVERSE | terminal::ATTR_BOLD;
 			case ThemeRole::PanelBorder:
 			case ThemeRole::Disabled:
 			case ThemeRole::Muted:
-			case ThemeRole::LogDebug: return A_DIM;
+			case ThemeRole::LogDebug: return terminal::ATTR_DIM;
 			case ThemeRole::Primary:
 			case ThemeRole::Secondary:
 			case ThemeRole::Success:
 			case ThemeRole::Warning:
 			case ThemeRole::TorrentProgress:
 			case ThemeRole::TorrentDownload:
-			case ThemeRole::LogWarning: return A_BOLD;
+			case ThemeRole::LogWarning: return terminal::ATTR_BOLD;
 			case ThemeRole::Error:
-			case ThemeRole::LogError: return A_BOLD | A_UNDERLINE;
-			case ThemeRole::TorrentUpload: return A_BOLD | A_UNDERLINE;
+			case ThemeRole::LogError: return terminal::ATTR_BOLD | terminal::ATTR_UNDERLINE;
+			case ThemeRole::TorrentUpload: return terminal::ATTR_BOLD | terminal::ATTR_UNDERLINE;
 			case ThemeRole::LogInfo:
 			case ThemeRole::Count: break;
 			}
-			return A_NORMAL;
+			return terminal::ATTR_NORMAL;
 		}
 
 		inline int Emphasis (ThemeRole role)
@@ -275,10 +273,10 @@ namespace tui
 			case ThemeRole::TorrentDownload:
 			case ThemeRole::LogWarning:
 			case ThemeRole::LogError:
-			case ThemeRole::LogCritical: return A_BOLD;
+			case ThemeRole::LogCritical: return terminal::ATTR_BOLD;
 			case ThemeRole::Disabled:
 			case ThemeRole::Muted:
-			case ThemeRole::LogDebug: return A_DIM;
+			case ThemeRole::LogDebug: return terminal::ATTR_DIM;
 			case ThemeRole::HeaderBar:
 			case ThemeRole::StatusBar:
 			case ThemeRole::PanelBorder:
@@ -286,7 +284,7 @@ namespace tui
 			case ThemeRole::LogInfo:
 			case ThemeRole::Count: break;
 			}
-			return A_NORMAL;
+			return terminal::ATTR_NORMAL;
 		}
 
 		// Standard xterm values for the first 256 palette entries.
@@ -397,16 +395,16 @@ namespace tui
 			m_BackgroundKnown = colorfgbg != nullptr && *colorfgbg != '\0';
 			m_Mode = Mode::Monochrome;
 
-			if (!has_colors ()) return false;
-			if (start_color () == ERR) return false;
+			if (!terminal::HasColors ()) return false;
+			if (!terminal::StartColor ()) return false;
 
-			m_Colors = COLORS;
-			m_PairCount = COLOR_PAIRS;
+			m_Colors = terminal::ColorCount ();
+			m_PairCount = terminal::ColorPairCount ();
 			// Default colours are safe only when the terminal background is
 			// known. Otherwise use explicit pairs so dark text is never drawn
 			// on a light background (or vice versa).
-			m_DefaultColors = (use_default_colors () == OK) && m_BackgroundKnown;
-			if (COLORS < 8) return false;
+			m_DefaultColors = terminal::UseDefaultColors () && m_BackgroundKnown;
+			if (m_Colors < 8) return false;
 
 			m_Mode = SelectMode ();
 			for (;;)
@@ -416,7 +414,7 @@ namespace tui
 				switch (m_Mode)
 				{
 				case Mode::TrueColor: m_Mode = Mode::Ansi8; break;
-				case Mode::Palette256: m_Mode = COLORS >= 16 ? Mode::Ansi16 : Mode::Ansi8; break;
+				case Mode::Palette256: m_Mode = m_Colors >= 16 ? Mode::Ansi16 : Mode::Ansi8; break;
 				case Mode::Ansi16: m_Mode = Mode::Ansi8; break;
 				case Mode::Ansi8: m_Mode = Mode::Monochrome; break;
 				case Mode::Monochrome: break;
@@ -429,12 +427,12 @@ namespace tui
 		int Attributes (ThemeRole role) const
 		{
 			const std::size_t index = static_cast<std::size_t> (role);
-			if (index >= RoleCount) return A_NORMAL;
+			if (index >= RoleCount) return terminal::ATTR_NORMAL;
 			if (m_Mode == Mode::Monochrome || m_RolePair[index] == 0) return theme_detail::MonoAttributes (role);
-			return COLOR_PAIR (m_RolePair[index]) | theme_detail::Emphasis (role);
+			return terminal::ColorPair (m_RolePair[index]) | theme_detail::Emphasis (role);
 		}
 
-		void Apply (ThemeRole role) const { attrset (Attributes (role)); }
+		void Apply (ThemeRole role) const { terminal::SetAttribute (Attributes (role)); }
 
 		bool HasColors () const { return m_Mode != Mode::Monochrome; }
 		int Colors () const { return m_Colors; }
@@ -500,23 +498,16 @@ namespace tui
 
 		Mode SelectMode () const
 		{
-			if (COLORS >= 0x1000000)
+			if (m_Colors >= 0x1000000)
 			{
-#if defined(NCURSES_EXT_COLORS) && defined(NCURSES_EXT_FUNCS)
 				// xterm-direct style terminfo uses RGB-packed colour
 				// indices.  Direct colour is passed through
-				// init_extended_pair(); we do not call
-				// init_extended_color() because that would redefine
-				// slots in the user's terminal palette.
+				// InitExtendedPair(); we do not redefine palette slots in
+				// the user's terminal palette.
 				return Mode::TrueColor;
-#else
-				// The non-extended API cannot address RGB-packed
-				// indices.  Only the first eight ANSI colours are safe.
-				return Mode::Ansi8;
-#endif
 			}
-			if (COLORS >= 256) return Mode::Palette256;
-			if (COLORS >= 16) return Mode::Ansi16;
+			if (m_Colors >= 256) return Mode::Palette256;
+			if (m_Colors >= 16) return Mode::Ansi16;
 			return Mode::Ansi8;
 		}
 
@@ -543,8 +534,10 @@ namespace tui
 			const auto spec = theme_detail::AnsiFor (role, m_LightBackground, m_Mode == Mode::Ansi16);
 			foreground = (spec.defaultForeground && m_DefaultColors) ? -1 : spec.foreground;
 			background = (spec.defaultBackground && m_DefaultColors) ? -1 : spec.background;
-			if (spec.defaultForeground && !m_DefaultColors) foreground = m_LightBackground ? COLOR_BLACK : COLOR_WHITE;
-			if (spec.defaultBackground && !m_DefaultColors) background = m_LightBackground ? COLOR_WHITE : COLOR_BLACK;
+			if (spec.defaultForeground && !m_DefaultColors)
+				foreground = m_LightBackground ? terminal::COLOR_BLACK : terminal::COLOR_WHITE;
+			if (spec.defaultBackground && !m_DefaultColors)
+				background = m_LightBackground ? terminal::COLOR_WHITE : terminal::COLOR_BLACK;
 			return true;
 		}
 
@@ -559,7 +552,7 @@ namespace tui
 			{
 				const auto role = static_cast<ThemeRole> (index);
 				if (role == ThemeRole::LogInfo) continue;
-				if (pair >= COLOR_PAIRS || pair > 63) break;
+				if (pair >= m_PairCount || pair > 63) break;
 
 				int foreground = -1;
 				int background = -1;
@@ -567,17 +560,9 @@ namespace tui
 
 				bool ok = false;
 				if (m_Mode == Mode::TrueColor)
-				{
-#if defined(NCURSES_EXT_COLORS) && defined(NCURSES_EXT_FUNCS)
-					ok = (init_extended_pair (pair, foreground, background) == OK);
-#endif
-				}
+					ok = terminal::InitExtendedPair (pair, foreground, background);
 				else
-				{
-					ok = (init_pair (static_cast<short> (pair), static_cast<short> (foreground),
-							  static_cast<short> (background))
-						== OK);
-				}
+					ok = terminal::InitPair (pair, foreground, background);
 				if (!ok) continue;
 
 				m_RolePair[index] = static_cast<short> (pair);
@@ -597,7 +582,5 @@ namespace tui
 	};
 }
 }
-
-#endif // _WIN32
 
 #endif // OPENI2PD_TUI_THEME_H

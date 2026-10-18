@@ -15,7 +15,9 @@ openi2pd requires:
 Optional:
 
 * MiniUPnPc 2.1+ for UPnP (`WITH_UPNP=ON`, default ON).
-* ncursesw 6.0+ for `i2pd-tui` (`I2PD_BUILD_TUI=ON`, default ON when found).
+* ncursesw 6.0+ for `i2pd-tui` on Unix (`WITH_TUI=ON`, default ON). Windows
+  uses the Win32 console/VT backend and needs no Curses library; see
+  [TUI on Windows](../../TUI-WINDOWS.md).
 
 The POSIX make front-end uses Ninja because CMake's `Unix Makefiles` generator
 emits GNU make syntax. GNU make is not required or supported by the maintained

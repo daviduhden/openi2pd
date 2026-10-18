@@ -22,8 +22,11 @@ Targets:
 - `libi2pdclient` — client protocols, links `libi2pd`.
 - `libi2pdlang` — language data.
 - `i2pd` — router daemon.
-- `i2pd-tui` — optional ncurses client, does not link the router libraries.
-- test executables from `tests/CMakeLists.txt`, registered with CTest.
+- `i2pd-tui` — optional client; does not link the router libraries. Unix uses
+  ncursesw, Windows uses the Win32 console/VT backend and a local named pipe.
+  See [TUI on Windows](TUI-WINDOWS.md).
+- test executables from `tests/CMakeLists.txt`, registered with CTest
+  (including the WIN32-only `test-tui-win32-pipe` target).
 
 Options:
 
@@ -31,7 +34,7 @@ Options:
 |---|---|---|
 | `WITH_LIBRARY` | ON | Install libraries and headers |
 | `WITH_BINARY` | ON | Build the router |
-| `WITH_TUI` | ON | Build `i2pd-tui` if ncurses is found |
+| `WITH_TUI` | ON | Build `i2pd-tui` (ncursesw on Unix; Win32 backend on Windows) |
 | `WITH_UPNP` | ON | Require MiniUPnPc and define `USE_UPNP` |
 | `WITH_TORRENTS` | ON | Require Boost.JSON/URL; off on Android |
 | `WITH_STATIC` | OFF | Static link the router where supported |
@@ -85,7 +88,20 @@ cmake --install build-output --prefix /usr
 
 Installed files include `i2pd`, optional `i2pd-tui`, libraries/headers when
 `WITH_LIBRARY=ON`, configuration files under `SYSCONFDIR/i2pd`, certificates
-under `DATADIR/i2pd`, the man page and CMake package files.
+under `DATADIR/i2pd`, the man page and CMake package files. On Windows the
+runtime install places `i2pd.exe` and `i2pd-tui.exe` in `CMAKE_INSTALL_BINDIR`;
+DLLs are supplied by the selected toolchain/package manager.
+
+### Windows TUI source selection
+
+`WITH_TUI=ON` never requires Curses on Windows. The target uses
+`tui/main.cpp`, `tui/TuiClientWin32.cpp`, `tui/TerminalWin32.cpp` and
+`tui/TuiWin32Ipc.cpp`, and links only the Win32 libraries it uses. On Unix the
+same target uses `tui/TuiClient.cpp` and `tui/TerminalUnix.cpp` with ncursesw.
+The daemon always compiles `daemon/TuiServerCommon.cpp`; it adds
+`daemon/TuiServer.cpp` only on Unix and `daemon/TuiServerWin32.cpp` plus
+`tui/TuiWin32Ipc.cpp` only on Windows. See
+[TUI on Windows](TUI-WINDOWS.md).
 
 ## OpenBSD ports
 

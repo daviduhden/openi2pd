@@ -118,15 +118,15 @@ namespace config
 			"Enable the isolated log worker (default: false)") (
 			"privsep.log", value<bool> ()->default_value (true), "Isolate log writing in a worker process");
 
-		options_description tui ("Local TUI options (Unix only)");
+		options_description tui ("Local TUI options");
 #if defined(ANDROID)
 		const bool tuiDefault = false; // the Android app does not ship i2pd-tui
 #else
 		const bool tuiDefault = true;
 #endif
 		tui.add_options () ("tui.enabled", value<bool> ()->default_value (tuiDefault),
-			"Enable the local read-only TUI IPC socket") ("tui.socket", value<std::string> ()->default_value (""),
-			"Path to the TUI UNIX socket (default: datadir/i2pd-tui.sock)");
+			"Enable the local read-only TUI IPC channel") ("tui.socket", value<std::string> ()->default_value (""),
+			"Local TUI IPC endpoint (default: datadir/i2pd-tui.sock; a named pipe is derived from it on Windows)");
 
 		options_description httpproxy ("HTTP Proxy options");
 		httpproxy.add_options () ("httpproxy.enabled", value<bool> ()->default_value (true),

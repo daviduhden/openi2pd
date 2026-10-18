@@ -20,6 +20,52 @@ development location for the sake of convenience. Adjust paths
 accordingly if it is not the case. Note that msys uses unix-alike
 paths like /c/dev/ for C:\dev\.
 
+> **openi2pd note:** the maintained entry point is CMake (not the historical
+> GNU make commands below). The router requires C++23, CMake 3.22+ and
+> Boost/OpenSSL/zlib; MiniUPnPc is required while `WITH_UPNP=ON`. The manual
+> Windows workflow is `workflow_dispatch`-only and is not started by a push.
+> See [TUI on Windows](../../TUI-WINDOWS.md) for the TUI/IPC details.
+
+## Current CMake build
+
+MSYS2/Clang64 (the toolchain used by the manual workflow):
+
+```sh
+cmake -S build -B build-output -G Ninja \
+  -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
+  -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+cmake --build build-output --parallel --target i2pd i2pd-tui
+ctest --test-dir build-output --output-on-failure
+```
+
+Native MSVC 19.35+ with vcpkg-provided dependencies:
+
+```powershell
+cmake -S build -B build-msvc -G "Visual Studio 17 2022" -A x64 `
+  -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
+  -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+cmake --build build-msvc --config Release --parallel --target i2pd i2pd-tui
+ctest --test-dir build-msvc -C Release --output-on-failure
+```
+
+Install with `cmake --install build-msvc --config Release --prefix <dir>`;
+`i2pd.exe` and `i2pd-tui.exe` are placed in the runtime `bin` directory. No
+dependency is downloaded by the installed product.
+
+### TUI on Windows
+
+`WITH_TUI=ON` is the default. Windows does **not** use ncurses/PDCurses: the
+client uses the Win32 console/VT backend and a local named pipe to the router.
+Build `i2pd-tui` together with the router; it still does not link the router
+libraries. If the router runs as a service under another account, start
+`i2pd-tui.exe` from that account's desktop or adjust the service/DACL model
+deliberately. See [TUI on Windows](../../TUI-WINDOWS.md) for DACL,
+service-versus-interactive, terminal support and troubleshooting guidance.
+
+> Runtime validation of the Windows TUI, DACL and MSVC build is pending. The
+> text below is retained upstream build history and may reference obsolete
+> toolchains (VS2013, GNU make).
+
 msys2
 -----
 

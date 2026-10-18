@@ -1,5 +1,10 @@
 # TUI and IPC design
 
+The Unix implementation is described here. The Windows terminal, named-pipe
+transport and DACL policy are documented separately in
+[TUI on Windows](TUI-WINDOWS.md); the wire format, field set and limits are
+shared.
+
 ## Goals
 
 - The router is a headless daemon. It never needs a terminal, stdin or a
@@ -28,29 +33,45 @@
 Source files:
 
 - `libi2pd/TuiProtocol.h` — protocol constants, parser, framing, escaping.
-- `daemon/TuiServer.{h,cpp}` — UNIX socket, peer checks, snapshot collection.
-- `tui/TuiClient.{h,cpp}` — options, config lookup, socket client.
-- `tui/Theme.h` — semantic ncurses roles, capability detection, colour pairs.
-- `tui/main.cpp` — ncurses views, refresh loop, key handling.
+- `daemon/TuiServerCommon.{h,cpp}` — request dispatch and snapshot collection,
+  shared by both transports.
+- `daemon/TuiServer.{h,cpp}` — Unix `AF_UNIX` listener and peer checks.
+- `daemon/TuiServerWin32.cpp` — Windows named-pipe listener.
+- `tui/TuiClient.{h,cpp}` — Unix options, config lookup, socket client.
+- `tui/TuiClientWin32.cpp` — Windows options and named-pipe client.
+- `tui/TuiWin32Ipc.{h,cpp}` — Windows pipe naming and handle helpers; the
+  listener DACL is built in `daemon/TuiServerWin32.cpp`.
+- `tui/Terminal.h`, `tui/TerminalUnix.cpp` — shared terminal interface and
+  ncursesw backend.
+- `tui/TerminalWin32.cpp` — Win32 console/VT backend.
+- `tui/Theme.h` — semantic roles, capability detection, colour pairs.
+- `tui/main.cpp` — shared views, refresh loop and key handling.
 
 ## Configuration
 
 ```ini
 [tui]
-# Enable the local socket (default: true, Unix only)
+# Enable the local IPC channel (default: true; Android: false)
 enabled = true
-# Default: <datadir>/i2pd-tui.sock
+# Unix: socket path, default <datadir>/i2pd-tui.sock
+# Windows: logical endpoint; the named pipe name is derived from it
 socket = /var/i2pd/i2pd-tui.sock
 ```
 
-The daemon logs a warning and continues if the socket cannot be created. The
-TUI can also be pointed directly at a socket:
+The daemon logs a warning and continues if the endpoint cannot be created. The
+TUI can also be pointed directly at an endpoint:
 
 ```sh
 i2pd-tui --socket /run/i2pd/i2pd-tui.sock
 i2pd-tui --datadir /var/i2pd
 i2pd-tui --conf /etc/i2pd/i2pd.conf
 ```
+
+On Windows the daemon creates a local named pipe instead of a socket; there is
+no `tui.socket` filesystem path. The TUI derives the pipe name from the
+configured data directory, so start both processes with the same data
+directory/configuration. Pipe ACLs and service-account behavior are covered in
+[TUI on Windows](TUI-WINDOWS.md).
 
 ## Wire protocol, version 1
 
@@ -82,13 +103,21 @@ Limits:
 
 | Limit | Value |
 |---|---|
-| Request line | 512 bytes |
+| Request line | 4096 bytes |
+| Response header line | 128 bytes |
 | Response payload | 256 KiB |
+| Field name | 64 bytes |
 | Log records/request | 200 |
 | Peer records/request | 200 |
 | Tunnel records/request | 200 |
-| Socket permissions | 0600 |
+| Torrent records/request | 200 |
+| Torrent argument | 2048 bytes |
+| Socket permissions (Unix) | 0600 |
 | Receive/send timeout | 5 s |
+
+`tests/test-tui-protocol.cpp` checks the inclusive limit and rejects the first
+byte over it. The Windows transport applies the same limits; see
+[TUI on Windows](TUI-WINDOWS.md).
 
 The server accepts one client at a time (backlog 4). This is sufficient for a
 local console and avoids per-client threads. A client that stalls is closed by
@@ -130,6 +159,10 @@ need. `router.hash` is the public IdentHash.
 6. **No privilege inheritance assumption.** The TUI is not launched by the
    daemon. `pledge`/`unveil` restrictions of the parent are not used as a
    security boundary for the child; the socket itself is the boundary.
+
+The Windows transport replaces the socket/peer-credential layer with a local
+named pipe and an explicit DACL. It keeps the same bounded parser and snapshot
+code, but its ACLs and cross-user rejection are pending runtime validation.
 
 ## UI behavior
 
@@ -278,6 +311,8 @@ No live TUI session or visual comparison has been executed for this change.
 ## Validation
 
 `tests/test-tui-protocol.cpp` covers request/response parsing, version
-rejection, numeric bounds, field escaping and payload round-tripping. It is
-compiled and registered with CTest, but no live TUI session has been executed
-in this environment.
+rejection, numeric bounds, field escaping, framing, inclusive size limits and
+payload round-tripping. `tests/test-tui-win32-pipe.cpp` (Windows only) covers
+the named-pipe/DACL primitives, not console rendering. Both are registered with
+CTest; no live Windows TUI session or cross-user ACL test has been executed in
+this environment. See [TUI on Windows](TUI-WINDOWS.md#verification).

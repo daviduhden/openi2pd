@@ -12,7 +12,18 @@ was created.
 - `libi2pd/TuiProtocol.h` — versioned request/response parser and framing.
 - `tui/TuiClient.h`, `tui/TuiClient.cpp` — socket client and option/config
   resolution.
-- `tui/main.cpp` — ncurses views, refresh loop, key handling.
+- `tui/main.cpp` — shared views, refresh loop, key handling.
+- `tui/Terminal.h`, `tui/TerminalUnix.cpp`, `tui/TerminalWin32.cpp` — terminal
+  abstraction and platform backends.
+- `tui/TuiClientWin32.cpp`, `tui/TuiWin32Ipc.{h,cpp}` — Windows named-pipe
+  client and pipe-name/handle helpers. The listener DACL is built in
+  `daemon/TuiServerWin32.cpp`.
+- `daemon/TuiServerCommon.{h,cpp}`, `daemon/TuiServerWin32.cpp` — shared
+  snapshot/dispatch code and the Windows listener.
+- `tests/test-tui-terminal.cpp` — portable terminal key/attribute contract test.
+- `tests/test-tui-pipe-name.cpp` — portable product pipe-name derivation test.
+- `tests/test-tui-win32-pipe.cpp` — Windows pipe/DACL primitive test.
+- `docs/TUI-WINDOWS.md` — Windows TUI/IPC build, security and validation guide.
 
 ### Tests and fuzzing
 
@@ -96,6 +107,11 @@ was created.
 | `tests/test-http-req.cpp` | header OWS/token and Content-Length regressions |
 | `tests/test-http-merge_chunked.cpp` | extension and malformed-size regressions |
 | `tests/test-http-url.cpp` | port validation regressions |
+| `build/CMakeLists.txt` | split Unix/Windows TUI and TuiServer sources; Win32 TUI target and install wiring |
+| `tests/CMakeLists.txt`, `tests/test-tui-protocol.cpp` | Windows pipe test registration and exact framing/size limits |
+| `.github/workflows/build-windows.yml` | build `i2pd-tui` in MSYS2 and add a manual native MSVC/vcpkg job |
+| `.gitignore` | ignore local `audit/` notes |
+| `docs/TUI-WINDOWS.md`, `docs/tui-ipc.md`, `docs/build-system.md`, `docs/testing.md`, `docs/devs/building/windows.md`, `docs/user-guide/{install,run}.md`, `docs/architecture.md`, `docs/ci.md` | Windows TUI/IPC documentation and validation status |
 
 ## Modified — tools and firewall
 

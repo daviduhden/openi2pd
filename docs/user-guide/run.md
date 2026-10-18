@@ -38,6 +38,20 @@ Keys: `1`-`5` switch views, `Tab`/arrows navigate, `l` filters the log level,
 `r` refreshes and `q` quits. The socket is mode 0600. Use the normal signals or
 the service manager to reload or stop the router.
 
+On Windows run `i2pd-tui.exe` from an interactive terminal (Windows Terminal or
+a VT-enabled console) and pass the same data directory/configuration as the
+router:
+
+```powershell
+i2pd.exe --datadir C:\i2pd
+i2pd-tui.exe --datadir C:\i2pd
+```
+
+The two processes communicate over a local named pipe, not a TCP port. A
+service running as `LocalSystem` and a desktop TUI running as another user need
+an explicit service-account/DACL decision; the TUI is not a service. See
+[TUI on Windows](../TUI-WINDOWS.md).
+
 The former HTTP console at port 7070 no longer exists.
 
 

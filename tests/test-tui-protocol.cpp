@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 #include <cassert>
+#include <cstdint>
 #include <string>
 #include <string_view>
 
@@ -58,10 +59,75 @@ static void TestResponseHeader ()
 	assert (error->errorCode == ErrorCode::UnknownCommand);
 	assert (error->payloadSize == 7);
 
+	// Every declared error code is accepted; anything above Internal is not.
+	for (uint32_t code = 0; code <= static_cast<uint32_t> (ErrorCode::Internal); ++code)
+	{
+		auto header = ParseResponseHeader ("I2PDTUI/1 ERR " + std::to_string (code) + " 1");
+		assert (header.has_value ());
+		assert (header->errorCode == static_cast<ErrorCode> (code));
+	}
+	assert (!ParseResponseHeader ("I2PDTUI/1 ERR 7 1").has_value ());
+
 	assert (!ParseResponseHeader ("I2PDTUI/1 OK 999999999").has_value ());
 	assert (!ParseResponseHeader ("I2PDTUI/1 ERR 999 1").has_value ());
 	assert (!ParseResponseHeader ("I2PDTUI/1 OK -1").has_value ());
 	assert (!ParseResponseHeader ("I2PDTUI/1 OK 1 extra").has_value ());
+
+	// The payload limit is inclusive; one byte above it is rejected before
+	// any allocation takes place.
+	auto maximum = "I2PDTUI/1 OK " + std::to_string (MAX_RESPONSE_PAYLOAD);
+	auto maximumHeader = ParseResponseHeader (maximum);
+	assert (maximumHeader.has_value ());
+	assert (maximumHeader->payloadSize == MAX_RESPONSE_PAYLOAD);
+	auto tooLarge = "I2PDTUI/1 OK " + std::to_string (MAX_RESPONSE_PAYLOAD + 1);
+	assert (!ParseResponseHeader (tooLarge).has_value ());
+
+	assert (!ParseResponseHeader (std::string (129, 'A')).has_value ());
+}
+
+static void TestFraming ()
+{
+	std::string payload;
+	AppendField (payload, "count", 42);
+	AppendField (payload, "enabled", true);
+	AppendField (payload, "disabled", false);
+	assert (payload == "count=42\nenabled=1\ndisabled=0\n");
+
+	// Field names are silently ignored when empty or over the limit; a noisy
+	// snapshot producer must not be able to grow the frame through them.
+	std::string names;
+	std::string validName (MAX_FIELD_NAME, 'n');
+	AppendField (names, validName, "ok");
+	assert (!names.empty ());
+	names.clear ();
+	AppendField (names, "", "ignored");
+	AppendField (names, std::string (MAX_FIELD_NAME + 1, 'n'), "ignored");
+	assert (names.empty ());
+
+	auto frame = MakeErrorResponse (ErrorCode::ResponseTooLarge, "too big");
+	auto newline = frame.find ('\n');
+	assert (newline != std::string::npos);
+	auto header = ParseResponseHeader (std::string_view (frame).substr (0, newline));
+	assert (header.has_value ());
+	assert (header->status == ResponseStatus::Error);
+	assert (header->errorCode == ErrorCode::ResponseTooLarge);
+	assert (frame.substr (newline + 1) == "too big");
+
+	// Exactly the request-line limit is accepted; one byte more is not.
+	std::string atLimit = "I2PDTUI/1 PEERS";
+	atLimit.append (MAX_REQUEST_LINE - atLimit.size () - 1, ' ');
+	atLimit.push_back ('1');
+	assert (atLimit.size () == MAX_REQUEST_LINE);
+	assert (ParseRequest (atLimit).has_value ());
+	atLimit.push_back ('1');
+	assert (atLimit.size () == MAX_REQUEST_LINE + 1);
+	assert (!ParseRequest (atLimit).has_value ());
+
+	// Escaping is symmetric and preserves unknown/truncated escapes verbatim.
+	assert (EscapeValue ("a\\b\nc\rd") == "a\\\\b\\nc\\rd");
+	assert (UnescapeValue ("a\\\\b\\nc\\rd") == "a\\b\nc\rd");
+	assert (UnescapeValue ("tail\\") == "tail\\");
+	assert (UnescapeValue ("\\q") == "\\q");
 }
 
 static void TestFields ()
@@ -139,6 +205,7 @@ int main ()
 	TestRequests ();
 	TestTorrentRequests ();
 	TestResponseHeader ();
+	TestFraming ();
 	TestFields ();
 	return 0;
 }

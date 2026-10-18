@@ -249,6 +249,9 @@ docs/_build
 # Doxygen
 docs/generated
 
+# Local audit notes and evidence (never committed)
+/audit/
+
 # emacs files
 *~
 *\#*

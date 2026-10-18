@@ -35,6 +35,8 @@ Resources
 ---------
 
 * [Visual identity](branding/README.md)
+* [TUI and IPC](tui-ipc.md)
+* [TUI on Windows](TUI-WINDOWS.md)
 * [Source and issues](https://github.com/daviduhden/openi2pd)
 * [Upstream wiki](https://github.com/PurpleI2P/i2pd/wiki)
 * [I2P specifications](https://i2p.net/en/docs/specs/)

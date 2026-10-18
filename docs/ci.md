@@ -14,6 +14,15 @@ Workflows remain **manual-only** (`workflow_dispatch`); no `push`,
 - Linux CI runs `perl -c tools/scripts/i2pdctl` and
   `prove -v tools/tests/i2pdctl.t`.
 - No new action, package download or automatic trigger was introduced.
+- The Windows workflow has two manual jobs: MSYS2/Clang64 for the full
+  dependency set and a native MSVC job that uses the runner's vcpkg to obtain
+  build dependencies. The MSVC job builds `i2pd`, `i2pd-tui`,
+  `test-tui-protocol`, `test-tui-terminal`, `test-tui-pipe-name` and
+  `test-tui-win32-pipe`, runs those four tests and verifies that
+  `i2pd-tui.exe` installs. Dependencies are build-time only; the installed
+  product downloads nothing.
+- No workflow was triggered for the Windows TUI integration. Both jobs remain
+  `workflow_dispatch`-only.
 
 ## Validation commands
 

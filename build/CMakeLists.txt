@@ -45,7 +45,7 @@ if(DEFINED WITH_TUI)
 else()
   set(_i2pd_tui_default ON)
 endif()
-option(I2PD_BUILD_TUI       "Build the ncurses TUI when available"         ${_i2pd_tui_default})
+option(I2PD_BUILD_TUI       "Build the TUI (ncursesw on Unix, Win32 on Windows)" ${_i2pd_tui_default})
 option(I2PD_BUILD_TOOLS     "Build i2pd auxiliary tools"                   ON)
 option(I2PD_BUILD_JNI       "Build the Android JNI library"                  OFF)
 option(I2PD_BUILD_TESTS     "Build i2pd tests (alias of BUILD_TESTING)"    OFF)
@@ -192,6 +192,10 @@ set(DAEMON_SOURCES
   "${DAEMON_DIR}/I2PControlHandlers.cpp"
   "${DAEMON_DIR}/i2pd.cpp"
   "${DAEMON_DIR}/UPnP.cpp"
+  # Snapshot collection and request dispatch are shared by both local
+  # transports. Only the listener/peer-authorization layer is platform
+  # specific.
+  "${DAEMON_DIR}/TuiServerCommon.cpp"
 )
 
 if(UNIX)
@@ -207,6 +211,8 @@ endif()
 
 if(WIN32)
   list(APPEND DAEMON_SOURCES
+    "${DAEMON_DIR}/TuiServerWin32.cpp"
+    "${TUI_DIR}/TuiWin32Ipc.cpp"
     "${PROJECT_ROOT}/Win32/DaemonWin32.cpp"
     "${PROJECT_ROOT}/Win32/Win32App.cpp"
     "${PROJECT_ROOT}/Win32/Win32Service.cpp"
@@ -236,6 +242,15 @@ else()
 endif()
 
 function(i2pd_enable_sanitizers target)
+  # The options are documented as Unix/GCC/Clang only. MSVC/clang-cl and the
+  # MinGW runtimes use different sanitizer support; ignore the flags rather
+  # than emitting an invalid or unsupported command line.
+  if(WIN32)
+    if(WITH_ADDRSANITIZER OR WITH_THREADSANITIZER OR WITH_UNDEFSANITIZER)
+      message(WARNING "Sanitizer options are not supported on Windows; ignoring them")
+    endif()
+    return()
+  endif()
   if(WITH_ADDRSANITIZER)
     target_compile_options(${target} PRIVATE -fsanitize=address -fno-omit-frame-pointer)
     target_link_options(${target} PRIVATE -fsanitize=address)
@@ -345,7 +360,8 @@ elseif(WITH_BINARY)
     add_executable(i2pd ${DAEMON_SOURCES})
   endif()
   target_compile_features(i2pd PRIVATE cxx_std_23)
-  target_include_directories(i2pd PRIVATE ${PROJECT_ROOT} ${DAEMON_DIR} ${LANG_DIR})
+  target_include_directories(i2pd PRIVATE
+    ${PROJECT_ROOT} ${DAEMON_DIR} ${LANG_DIR} ${TUI_DIR})
   target_link_libraries(i2pd PRIVATE libi2pd libi2pdclient libi2pdlang i2pd_warnings)
   if(WITH_UPNP)
     target_compile_definitions(i2pd PRIVATE USE_UPNP)
@@ -356,7 +372,8 @@ elseif(WITH_BINARY)
     target_compile_definitions(i2pd PRIVATE
       WIN32_APP WIN32_LEAN_AND_MEAN NOMINMAX WINVER=0x0A00 _WIN32_WINNT=0x0A00
     )
-    target_link_libraries(i2pd PRIVATE wsock32 ws2_32 iphlpapi crypt32 gdi32 ole32 uuid)
+    target_link_libraries(i2pd PRIVATE
+      wsock32 ws2_32 iphlpapi crypt32 gdi32 ole32 uuid advapi32)
   endif()
   if(WITH_STATIC AND NOT MSVC)
     target_link_options(i2pd PRIVATE -static)
@@ -364,20 +381,47 @@ elseif(WITH_BINARY)
   i2pd_enable_sanitizers(i2pd)
 endif()
 
-if(WITH_TUI AND UNIX)
-  set(CURSES_NEED_WIDE TRUE)
-  find_package(Curses)
-  if(CURSES_FOUND)
+# The TUI is a separate process and never links the router libraries. Both
+# backends share main.cpp, Theme.h and TuiProtocol.h; only the terminal and
+# transport implementations differ.
+if(WITH_TUI)
+  if(UNIX)
+    set(CURSES_NEED_WIDE TRUE)
+    find_package(Curses)
+    if(CURSES_FOUND)
+      add_executable(i2pd-tui
+        "${TUI_DIR}/main.cpp"
+        "${TUI_DIR}/TuiClient.cpp"
+        "${TUI_DIR}/TerminalUnix.cpp"
+      )
+      target_compile_features(i2pd-tui PRIVATE cxx_std_23)
+      target_include_directories(i2pd-tui PRIVATE
+        "${LIBI2PD_DIR}" "${TUI_DIR}" ${CURSES_INCLUDE_DIRS})
+      target_link_libraries(i2pd-tui PRIVATE
+        ${CURSES_LIBRARIES} Threads::Threads i2pd_warnings)
+      i2pd_enable_sanitizers(i2pd-tui)
+    else()
+      message(WARNING "ncursesw not found: building without i2pd-tui")
+    endif()
+  elseif(WIN32)
+    # Win32 console/VT backend and named-pipe client. There is deliberately no
+    # Curses/PDCurses dependency on Windows.
     add_executable(i2pd-tui
       "${TUI_DIR}/main.cpp"
-      "${TUI_DIR}/TuiClient.cpp"
+      "${TUI_DIR}/TuiClientWin32.cpp"
+      "${TUI_DIR}/TerminalWin32.cpp"
+      "${TUI_DIR}/TuiWin32Ipc.cpp"
     )
     target_compile_features(i2pd-tui PRIVATE cxx_std_23)
-    target_include_directories(i2pd-tui PRIVATE "${LIBI2PD_DIR}" ${CURSES_INCLUDE_DIRS})
-    target_link_libraries(i2pd-tui PRIVATE ${CURSES_LIBRARIES} Threads::Threads i2pd_warnings)
-    i2pd_enable_sanitizers(i2pd-tui)
-  else()
-    message(WARNING "ncurses not found: building without i2pd-tui")
+    target_include_directories(i2pd-tui PRIVATE
+      "${LIBI2PD_DIR}" "${TUI_DIR}")
+    target_compile_definitions(i2pd-tui PRIVATE
+      WIN32_LEAN_AND_MEAN NOMINMAX WINVER=0x0A00 _WIN32_WINNT=0x0A00)
+    # advapi32: token/SID inspection used for the named-pipe authorization
+    # policy. The console backend uses kernel32 only; no Winsock, shell or
+    # Curses library is required.
+    target_link_libraries(i2pd-tui PRIVATE
+      advapi32 Threads::Threads i2pd_warnings)
   endif()
 endif()
 

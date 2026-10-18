@@ -25,6 +25,7 @@ the `i2pd` name for compatibility.
 - [C++23 migration](cpp23-migration.md)
 - [CMake and POSIX Make migration](build-system.md)
 - [TUI and IPC design](tui-ipc.md)
+- [TUI on Windows](TUI-WINDOWS.md)
 - [Native torrent console](torrent/architecture.md)
 - [Torrent functionality matrix](torrent/console-matrix.md)
 - [Torrent security](torrent/security.md)
@@ -44,9 +45,10 @@ the `i2pd` name for compatibility.
 - [Upstream provenance and synchronization](upstream-sync.md)
 
 Use `i2pd --help` to list configuration options. The HTTP administrative
-console has been removed. Router status and authorized torrent administration are available through
-the local `i2pd-tui` ncurses client; the I2P HTTP proxy on port 4444 is a
-separate service and remains available.
+console has been removed. Router status and authorized torrent administration
+are available through the local `i2pd-tui` client (ncursesw on Unix, Win32/VT
+on Windows); the I2P HTTP proxy on port 4444 is a separate service and remains
+available.
 
 For a user process, data is stored in `~/.i2pd` on Linux and OpenBSD. With
 `--service`, OpenBSD uses `/var/i2pd`, while Linux uses `/var/lib/i2pd`.

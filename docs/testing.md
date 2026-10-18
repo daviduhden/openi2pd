@@ -63,8 +63,27 @@ is prepared for the optional libFuzzer target.
 
 - all request kinds and exact argument counts;
 - unsupported version, unknown command, oversized line, zero/oversized limits;
-- response headers for OK and ERR, oversized payloads and trailing data;
-- field escaping/unescaping and daemon-to-client framing.
+- response headers for OK and ERR, all declared error codes, oversized payloads
+  and trailing data;
+- field escaping/unescaping, empty/oversized field names and daemon-to-client
+  framing;
+- exact request-line and payload limits accepted, one byte over rejected.
+
+`tests/test-tui-terminal.cpp` checks the shared `tui/Terminal.h` key values,
+attribute bits and colour-pair packing. It is header-only and does not
+initialise ncurses or a Win32 console.
+
+`tests/test-tui-pipe-name.cpp` is portable because `tui/TuiWin32Ipc.cpp` uses
+only the C++ standard library. It validates endpoint normalisation (trimming,
+separator folding/collapsing, ASCII case folding), stable FNV-1a hashing,
+bounded pipe names and hashing of a caller-supplied full pipe path instead of
+opening it verbatim.
+
+`tests/test-tui-win32-pipe.cpp` is compiled only on Windows. It validates the
+SDK named-pipe/DACL primitives, an explicit protected DACL and a local
+byte-mode round trip. It does **not** validate console rendering, service
+accounts or kernel ACL enforcement across users; those remain runtime checks
+on a Windows host.
 
 ### Static checks prepared
 
@@ -74,8 +93,10 @@ is prepared for the optional libFuzzer target.
 
 clang-tidy -p build-output \
   libi2pd/HTTP.cpp libi2pd/Base.cpp libi2pd/Reseed.cpp \
-  libi2pd/NetDb.cpp libi2pd/Transports.cpp daemon/TuiServer.cpp \
-  tui/main.cpp tui/TuiClient.cpp \
+  libi2pd/NetDb.cpp libi2pd/Transports.cpp \
+  daemon/TuiServerCommon.cpp daemon/TuiServer.cpp daemon/TuiServerWin32.cpp \
+  tui/main.cpp tui/TuiClient.cpp tui/TuiClientWin32.cpp \
+  tui/TerminalUnix.cpp tui/TerminalWin32.cpp tui/TuiWin32Ipc.cpp \
   --checks='-*,clang-analyzer-*,bugprone-*,cert-*'
 ```
 
@@ -172,7 +193,36 @@ Check:
 8. Send a malformed overlong request with `socat`; expect an error frame and
    connection close, not a router crash.
 
-## Build-system checks
+## Windows TUI checks (pending)
+
+Build with the manual `Windows` workflow or locally with MSVC/MSYS2, then:
+
+```powershell
+cmake -S build -B build-msvc -G "Visual Studio 17 2022" -A x64 `
+  -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
+  -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON `
+  -DWITH_UPNP=OFF -DWITH_TORRENTS=OFF
+cmake --build build-msvc --config Release `
+  --target i2pd i2pd-tui test-tui-protocol test-tui-terminal `
+    test-tui-pipe-name test-tui-win32-pipe
+ctest --test-dir build-msvc -C Release --output-on-failure `
+  -R '^(test-(tui-protocol|tui-terminal|tui-pipe-name|tui-win32-pipe))$'
+```
+
+Then, on a Windows host with a real console:
+
+1. Start the router with a temporary data directory and `tui.enabled = true`.
+2. Inspect the named-pipe DACL (for example with `AccessChk` or the relevant
+   PowerShell ACL API) and confirm only the intended account/group has access.
+3. Start `i2pd-tui.exe` in Windows Terminal and in conhost; check every view.
+4. Resize, cycle log levels, disconnect/reconnect and quit; the router must
+   remain running.
+5. Try a second user account and a remote client; both must be rejected.
+6. Send malformed/overlong requests and confirm an error frame and connection
+   close, not a router crash.
+
+No Windows console, DACL, service-account or cross-user test has been executed
+for this change.
 
 ```sh
 # POSIX make front-end (do not pass -j; use CMAKE_BUILD_PARALLEL_LEVEL)
@@ -219,7 +269,8 @@ No Java router is available in this environment. The matrix in
 | Windows build/runtime | Not run |
 | Android build | Not run |
 | Java interoperability | Not run |
-| TUI live session | Passed on Linux: socket 0600, STATE/PEERS/TUNNELS/NETDB/LOGS/PING, malformed requests, TUI connect/quit and socket cleanup |
+| TUI live session (Unix) | Passed on Linux: socket 0600, STATE/PEERS/TUNNELS/NETDB/LOGS/PING, malformed requests, TUI connect/quit and socket cleanup |
+| Windows TUI/pipe/DACL | Not run: compile, console, service-account and cross-user checks pending |
 
 ## Final result of this environment
 

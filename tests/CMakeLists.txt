@@ -12,6 +12,19 @@ function(i2pd_add_test name)
     target_sources(${name} PRIVATE
       "${PROJECT_ROOT}/privsep/Channel.cpp"
       "${PROJECT_ROOT}/privsep/LogWorker.cpp")
+  elseif(name STREQUAL "test-tui-terminal")
+    # Header-only shared key/attribute contract; no ncurses or console init.
+    target_include_directories(${name} PRIVATE "${PROJECT_ROOT}/tui")
+  elseif(name STREQUAL "test-tui-pipe-name")
+    # The pipe-name helper is portable; keep the test runnable on Unix as well
+    # as Windows.
+    target_sources(${name} PRIVATE "${PROJECT_ROOT}/tui/TuiWin32Ipc.cpp")
+    target_include_directories(${name} PRIVATE "${PROJECT_ROOT}/tui")
+  elseif(name STREQUAL "test-tui-win32-pipe")
+    # Exercises the Win32 named-pipe and DACL primitives used by the Windows
+    # TUI transport. It does not validate a running console or kernel ACLs
+    # across user accounts.
+    target_link_libraries(${name} PRIVATE advapi32)
   endif()
   target_include_directories(${name} PRIVATE "${PROJECT_ROOT}" "${PROJECT_ROOT}/tools")
   target_link_libraries(${name} PRIVATE libi2pd libi2pdclient libi2pdlang i2pd_warnings)
@@ -39,6 +52,8 @@ set(I2PD_TESTS
   test-eddsa
   test-aes
   test-tui-protocol
+  test-tui-terminal
+  test-tui-pipe-name
   test-routerinfo-firewall
   test-torrent-bencode
   test-protocol-bounds
@@ -46,6 +61,12 @@ set(I2PD_TESTS
 
 if(UNIX)
   list(APPEND I2PD_TESTS test-privsep-protocol test-privsep-log)
+endif()
+
+if(WIN32)
+  # Windows-only transport primitives. The test is compiled but no live
+  # console, service account or cross-user ACL check is performed.
+  list(APPEND I2PD_TESTS test-tui-win32-pipe)
 endif()
 
 foreach(test IN LISTS I2PD_TESTS)

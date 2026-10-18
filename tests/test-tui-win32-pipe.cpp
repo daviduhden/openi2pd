@@ -1,0 +1,113 @@
+/*
+ * Copyright (c) 2013-2026, The PurpleI2P Project
+ * Copyright (c) 2026, David Uhden Collado
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
+ * Windows named-pipe transport primitives used by the TUI.
+ *
+ * This is deliberately a primitive-level test: it proves that the Win32 SDK
+ * exposes the pipe/DACL APIs, that an explicit DACL can be attached and that a
+ * local byte-mode round trip works. It does not exercise the product helper,
+ * a running console, a service account, a second user token or kernel ACL
+ * enforcement across accounts. Those require a dedicated Windows host.
+ */
+
+#ifndef _WIN32
+#error "test-tui-win32-pipe is a Windows-only test"
+#endif
+
+#ifndef _WIN32_WINNT
+#define _WIN32_WINNT 0x0A00
+#endif
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#include <sddl.h>
+
+#include <cassert>
+#include <cstring>
+#include <string>
+#include <thread>
+
+namespace
+{
+std::wstring MakePipeName (const wchar_t * suffix)
+{
+	std::wstring name = L"\\\\.\\pipe\\openi2pd-tui-test-";
+	name += std::to_wstring (GetCurrentProcessId ());
+	name += L"-";
+	name += std::to_wstring (GetTickCount64 ());
+	name += L"-";
+	name += suffix;
+	return name;
+}
+
+void TestPipeNameShape ()
+{
+	const auto first = MakePipeName (L"a");
+	const auto second = MakePipeName (L"b");
+	assert (first.rfind (L"\\\\.\\pipe\\", 0) == 0);
+	assert (first.find (L"openi2pd-tui") != std::wstring::npos);
+	assert (first != second);
+}
+
+void TestDaclAndRoundTrip ()
+{
+	PSECURITY_DESCRIPTOR descriptor = nullptr;
+	// Mirrors the product policy: protected DACL, owner rights, SYSTEM and
+	// built-in Administrators only.
+	assert (ConvertStringSecurityDescriptorToSecurityDescriptorW (
+		L"D:P(A;;GA;;;OW)(A;;GA;;;SY)(A;;GA;;;BA)", SDDL_REVISION_1, &descriptor, nullptr));
+	assert (descriptor != nullptr);
+
+	BOOL daclPresent = FALSE;
+	BOOL daclDefaulted = FALSE;
+	PACL dacl = nullptr;
+	assert (GetSecurityDescriptorDacl (descriptor, &daclPresent, &dacl, &daclDefaulted));
+	assert (daclPresent == TRUE);
+	assert (dacl != nullptr);
+
+	SECURITY_ATTRIBUTES attributes { };
+	attributes.nLength = sizeof (attributes);
+	attributes.lpSecurityDescriptor = descriptor;
+	attributes.bInheritHandle = FALSE;
+
+	const auto name = MakePipeName (L"roundtrip");
+	HANDLE server = CreateNamedPipeW (name.c_str (), PIPE_ACCESS_DUPLEX | PIPE_REJECT_REMOTE_CLIENTS,
+		PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT, 1, 4096, 4096, 0, &attributes);
+	assert (server != INVALID_HANDLE_VALUE);
+
+	HANDLE client = INVALID_HANDLE_VALUE;
+	std::thread connector ([&name, &client]
+		{ client = CreateFileW (name.c_str (), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING, 0, nullptr); });
+	const BOOL connected = ConnectNamedPipe (server, nullptr);
+	if (!connected) assert (GetLastError () == ERROR_PIPE_CONNECTED);
+	connector.join ();
+	assert (client != INVALID_HANDLE_VALUE);
+
+	const char message[] = "openi2pd-tui-pipe";
+	constexpr DWORD messageSize = static_cast<DWORD> (sizeof (message));
+	DWORD written = 0;
+	assert (WriteFile (client, message, messageSize, &written, nullptr));
+	assert (written == messageSize);
+
+	char received[sizeof (message)] { };
+	DWORD receivedSize = 0;
+	assert (ReadFile (server, received, messageSize, &receivedSize, nullptr));
+	assert (receivedSize == written);
+	assert (std::memcmp (message, received, messageSize) == 0);
+
+	assert (FlushFileBuffers (server));
+	assert (DisconnectNamedPipe (server));
+	assert (CloseHandle (client));
+	assert (CloseHandle (server));
+	LocalFree (descriptor);
+}
+}
+
+int main ()
+{
+	TestPipeNameShape ();
+	TestDaclAndRoundTrip ();
+	return 0;
+}

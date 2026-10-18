@@ -47,13 +47,14 @@ and [docs/android-java25.md](docs/android-java25.md).
 
 ## Run
 
-Start `build-output/i2pd` for a headless router. If ncurses was found at
-configure time, `build-output/i2pd-tui` connects to the local
-bounded administrative socket (`tui.socket`, default `<datadir>/i2pd-tui.sock`);
-router status is read-only and torrent actions require explicit confirmation. The
-router runs without a terminal, stdin or the TUI. See the
-[configuration example](contrib/i2pd.conf) and
-[documentation](docs/README.md). OpenBSD configuration is in
+Start `build-output/i2pd` for a headless router. If built with `WITH_TUI`
+(the default), `i2pd-tui` connects to the local bounded administrative
+endpoint (an `AF_UNIX` socket on Unix, `<datadir>/i2pd-tui.sock` by default, or
+a local named pipe on Windows); router status is read-only and torrent actions
+require explicit confirmation. The router runs without a terminal, stdin or the
+TUI. See the [configuration example](contrib/i2pd.conf),
+[documentation](docs/README.md) and the
+[Windows TUI guide](docs/TUI-WINDOWS.md). OpenBSD configuration is in
 [contrib/openbsd](contrib/openbsd).
 
 The former HTTP administrative console has been removed. The I2P HTTP proxy,
@@ -70,8 +71,8 @@ Copyright and attribution for the original i2pd contributors are preserved.
 
 ## Continuous integration
 
-Three workflows cover Windows (Clang, UCRT and libc++), Linux and Android on
-Ubuntu, and OpenBSD (Clang and LibreSSL). Native builds run five basic HTTP,
+Three workflows cover Windows (MSYS2/Clang64 and native MSVC), Linux and
+Android on Ubuntu, and OpenBSD (Clang and LibreSSL). Native builds run five basic HTTP,
 encoding and encryption tests once. Android cross-compiles an arm64 binary
 with the NDK; no emulator is started. Android dependencies are cached and
 built in Release mode only. UPnP support uses the default enabled setting.

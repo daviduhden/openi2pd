@@ -17,9 +17,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # MSYS2/Clang64 validates the full dependency set and the Win32 TUI backend
+  # with the same toolchain used for the distribution helper.
   build:
     runs-on: windows-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     defaults:
       run:
         shell: msys2 {0}
@@ -44,5 +46,67 @@ jobs:
           cmake -S build -B build-output -G Ninja \
             -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
             -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
-          cmake --build build-output --parallel 2 --target i2pd keygen keyinfo i2pbase64 regaddr verifyhost offlinekeys x25519 test-tui-protocol test-http-url test-http-req test-base-64 test-aes test-aeadchacha20poly1305
-          ctest --test-dir build-output --output-on-failure --timeout 60 -R '^(test-(tui-protocol|http-url|http-req|base-64|aes|aeadchacha20poly1305)|tools-smoke)$'
+          cmake --build build-output --parallel 2 --target \
+            i2pd i2pd-tui keygen keyinfo i2pbase64 regaddr verifyhost \
+            offlinekeys x25519 test-tui-protocol test-tui-terminal \
+            test-tui-pipe-name test-tui-win32-pipe test-http-url \
+            test-http-req test-base-64 test-aes test-aeadchacha20poly1305
+          ctest --test-dir build-output --output-on-failure --timeout 60 -R '^(test-(tui-protocol|tui-terminal|tui-pipe-name|tui-win32-pipe|http-url|http-req|base-64|aes|aeadchacha20poly1305)|tools-smoke)$'
+
+  # Native MSVC uses the runner's vcpkg for third-party dependencies. This job
+  # is intentionally TUI/API-focused (`WITH_TORRENTS=OFF`, `WITH_UPNP=OFF`) to
+  # keep the manual validation bounded; the MSYS2 job covers the full feature
+  # set. No runtime download is part of the product build.
+  build-msvc:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          persist-credentials: false
+      - name: Locate vcpkg
+        run: |
+          $vcpkgRoot = $env:VCPKG_INSTALLATION_ROOT
+          if ([string]::IsNullOrWhiteSpace($vcpkgRoot)) {
+            $vcpkgRoot = 'C:\vcpkg'
+          }
+          if (-not (Test-Path (Join-Path $vcpkgRoot 'vcpkg.exe'))) {
+            throw "vcpkg not found under $vcpkgRoot"
+          }
+          "VCPKG_ROOT=$vcpkgRoot" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+      - name: Install build dependencies
+        run: |
+          & "$env:VCPKG_ROOT\vcpkg.exe" install `
+            boost-atomic:x64-windows `
+            boost-filesystem:x64-windows `
+            boost-program-options:x64-windows `
+            openssl:x64-windows `
+            zlib:x64-windows `
+            --clean-after-build
+      - name: Configure MSVC
+        run: |
+          cmake -S build -B build-msvc -G "Visual Studio 17 2022" -A x64 `
+            -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DBUILD_TESTING=ON `
+            -DWITH_UPNP=OFF `
+            -DWITH_TORRENTS=OFF
+      - name: Build MSVC TUI and tests
+        run: |
+          cmake --build build-msvc --config Release --parallel 2 `
+            --target i2pd i2pd-tui test-tui-protocol test-tui-terminal `
+              test-tui-pipe-name test-tui-win32-pipe
+      - name: Run TUI tests
+        run: |
+          ctest --test-dir build-msvc -C Release --output-on-failure --timeout 60 `
+            -R '^(test-(tui-protocol|tui-terminal|tui-pipe-name|tui-win32-pipe))$'
+      - name: Verify runtime install
+        run: |
+          $prefix = Join-Path $env:RUNNER_TEMP 'openi2pd-install'
+          cmake --install build-msvc --config Release --prefix $prefix
+          if (-not (Test-Path (Join-Path $prefix 'bin\i2pd-tui.exe'))) {
+            throw 'i2pd-tui.exe was not installed'
+          }

@@ -11,9 +11,8 @@
 #ifndef I2PD_TUI_CLIENT_H__
 #define I2PD_TUI_CLIENT_H__
 
-#ifndef _WIN32
-
 #include "Expected.h"
+#include <memory>
 #include <string>
 #include <string_view>
 
@@ -33,7 +32,7 @@ namespace tui
 	/** Parse command line options without depending on the router's config code. */
 	i2p::expected<ClientOptions, std::string> ParseOptions (int argc, char * argv[]);
 
-	/** Resolve the socket path from --socket, the config file, or the data dir. */
+	/** Resolve the local IPC endpoint from --socket, the config file, or the data dir. */
 	i2p::expected<ClientOptions, std::string> ResolveSocket (ClientOptions options);
 
 	enum class RequestErrorKind
@@ -59,7 +58,7 @@ namespace tui
 		Client (const Client &) = delete;
 		Client & operator= (const Client &) = delete;
 
-		bool IsConnected () const { return m_Fd >= 0; }
+		bool IsConnected () const;
 		i2p::expected<void, std::string> Connect ();
 		void Disconnect ();
 
@@ -72,15 +71,10 @@ namespace tui
 		i2p::expected<std::string, RequestError> Request (std::string_view command);
 
 	private:
-		i2p::expected<std::string, std::string> ReadLine (size_t limit);
-		i2p::expected<std::string, std::string> ReadExact (size_t size);
-
-		std::string m_Path;
-		int m_Fd { -1 };
+		class Impl;
+		std::unique_ptr<Impl> m_Impl;
 	};
 }
 }
-
-#endif // _WIN32
 
 #endif // I2PD_TUI_CLIENT_H__

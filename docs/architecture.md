@@ -12,21 +12,25 @@ every component has been validated dynamically.
 | Client library | `libi2pd_client/` | HTTP/SOCKS proxies, SAM, BOB, I2CP, client tunnels, torrents | `libi2pdclient.a`, installed headers |
 | Language data | `i18n/` | English strings and translation helper | `libi2pdlang.a` |
 | Daemon | `daemon/` | Lifecycle, configuration, signals, I2PControl, UPnP, local TUI IPC | `i2pd` executable |
-| Diagnostics UI | `tui/` | ncurses client, no router state ownership | `i2pd-tui` executable |
+| Diagnostics UI | `tui/` | ncursesw (Unix) or Win32/VT (Windows) client, no router state ownership | `i2pd-tui` executable |
 | Tests | `tests/` | Parsing, encoding and crypto vectors | CTest |
 | Build | `build/CMakeLists.txt`, `Makefile` | CMake build graph, POSIX make front-end | packagers |
 
 Dependency direction after the change:
 
 ```
-i2pd-tui ──(line protocol over AF_UNIX)──> i2pd (TuiServer)
+i2pd-tui ──(line protocol over AF_UNIX or a local named pipe)──> i2pd
 i2pd ──> libi2pdclient ──> libi2pd ──> libi2pdlang
 libi2pd ──> Boost, OpenSSL/LibreSSL, zlib, Threads
 ```
 
 `i2pd-tui` deliberately does **not** link `libi2pd`. It consumes a bounded
-protocol and can be built only when ncurses is available. The daemon has no
-dependency on ncurses and never reads stdin.
+protocol shared through `libi2pd/TuiProtocol.h`. Unix builds use ncursesw;
+Windows builds use the Win32 console/VT backend and no Curses library. The
+daemon has no dependency on a terminal and never reads stdin. The shared
+snapshot/dispatch code is `daemon/TuiServerCommon.cpp`; only the listener and
+peer policy differ per platform. See
+[TUI on Windows](TUI-WINDOWS.md).
 
 ## Findings from the initial audit
 

@@ -176,17 +176,34 @@ namespace tui
 		return options;
 	}
 
-	Client::Client (std::string socketPath)
-		: m_Path (std::move (socketPath))
+	class Client::Impl
 	{
-	}
+	public:
+		explicit Impl (std::string socketPath)
+			: m_Path (std::move (socketPath))
+		{
+		}
 
-	Client::~Client ()
-	{
-		Disconnect ();
-	}
+		~Impl () { Disconnect (); }
 
-	i2p::expected<void, std::string> Client::Connect ()
+		Impl (const Impl &) = delete;
+		Impl & operator= (const Impl &) = delete;
+
+		bool IsConnected () const { return m_Fd >= 0; }
+		i2p::expected<void, std::string> Connect ();
+		void Disconnect ();
+
+		i2p::expected<std::string, RequestError> Request (std::string_view command);
+
+	private:
+		i2p::expected<std::string, std::string> ReadLine (size_t limit);
+		i2p::expected<std::string, std::string> ReadExact (size_t size);
+
+		std::string m_Path;
+		int m_Fd { -1 };
+	};
+
+	i2p::expected<void, std::string> Client::Impl::Connect ()
 	{
 		Disconnect ();
 		if (m_Path.size () >= sizeof (sockaddr_un { }.sun_path)) return i2p::unexpected ("socket path is too long");
@@ -213,7 +230,7 @@ namespace tui
 		return { };
 	}
 
-	void Client::Disconnect ()
+	void Client::Impl::Disconnect ()
 	{
 		if (m_Fd >= 0)
 		{
@@ -222,7 +239,7 @@ namespace tui
 		}
 	}
 
-	i2p::expected<std::string, std::string> Client::ReadLine (size_t limit)
+	i2p::expected<std::string, std::string> Client::Impl::ReadLine (size_t limit)
 	{
 		std::string line;
 		line.reserve (std::min (limit, size_t (128)));
@@ -242,7 +259,7 @@ namespace tui
 		return i2p::unexpected ("response header too long");
 	}
 
-	i2p::expected<std::string, std::string> Client::ReadExact (size_t size)
+	i2p::expected<std::string, std::string> Client::Impl::ReadExact (size_t size)
 	{
 		std::string data (size, '\0');
 		size_t offset = 0;
@@ -260,7 +277,7 @@ namespace tui
 		return data;
 	}
 
-	i2p::expected<std::string, RequestError> Client::Request (std::string_view command)
+	i2p::expected<std::string, RequestError> Client::Impl::Request (std::string_view command)
 	{
 		if (m_Fd < 0) return i2p::unexpected (RequestError { RequestErrorKind::NotConnected, "not connected" });
 		if (command.find ('\n') != std::string_view::npos || command.find ('\r') != std::string_view::npos)
@@ -320,6 +337,34 @@ namespace tui
 		if (header->status == ResponseStatus::Error)
 			return i2p::unexpected (RequestError { RequestErrorKind::Remote, std::move (*payload) });
 		return std::move (*payload);
+	}
+
+	Client::Client (std::string socketPath)
+		: m_Impl (std::make_unique<Impl> (std::move (socketPath)))
+	{
+	}
+
+	Client::~Client () = default;
+
+	bool Client::IsConnected () const
+	{
+		return m_Impl && m_Impl->IsConnected ();
+	}
+
+	i2p::expected<void, std::string> Client::Connect ()
+	{
+		return m_Impl ? m_Impl->Connect () : i2p::unexpected ("client is not initialized");
+	}
+
+	void Client::Disconnect ()
+	{
+		if (m_Impl) m_Impl->Disconnect ();
+	}
+
+	i2p::expected<std::string, RequestError> Client::Request (std::string_view command)
+	{
+		if (!m_Impl) return i2p::unexpected (RequestError { RequestErrorKind::NotConnected, "not connected" });
+		return m_Impl->Request (command);
 	}
 }
 }

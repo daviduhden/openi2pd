@@ -11,13 +11,8 @@
 #ifndef TUI_SERVER_H__
 #define TUI_SERVER_H__
 
-#ifndef _WIN32
-
-#include <atomic>
 #include <memory>
 #include <string>
-#include <sys/types.h>
-#include <thread>
 
 namespace i2p
 {
@@ -26,16 +21,24 @@ namespace tui
 	/**
 	 * Local administrative channel for i2pd-tui.
 	 *
-	 * The router owns the listening socket and all snapshot collection. The
-	 * TUI is a separate process and can disappear, hang or misbehave without
-	 * affecting the daemon: every request is bounded, handled sequentially
-	 * and written with a send timeout. Only a peer with the daemon's effective
-	 * UID is accepted, on top of a 0600 socket in the data directory.
+	 * The router owns the listening endpoint and all snapshot collection.
+	 * The TUI is a separate process and can disappear, hang or misbehave
+	 * without affecting the daemon: every request is bounded, handled
+	 * sequentially and written with a send timeout.
+	 *
+	 * On UNIX the endpoint is a 0600 AF_UNIX socket and only a peer with the
+	 * daemon's effective UID is accepted. On Windows the endpoint is mapped
+	 * to a named pipe whose explicit DACL admits only the daemon user,
+	 * SYSTEM and Administrators; remote clients are rejected. In both cases
+	 * every request is validated by the shared TuiServerCommon dispatcher.
+	 *
+	 * The transport state is private to the platform implementation so this
+	 * header does not expose file descriptors or HANDLE values.
 	 */
 	class Server
 	{
 	public:
-		explicit Server (std::string socketPath);
+		explicit Server (std::string endpoint);
 		~Server ();
 
 		Server (const Server &) = delete;
@@ -45,21 +48,10 @@ namespace tui
 		void Stop ();
 
 	private:
-		void Run ();
-		void HandleClient (int clientFd);
-		bool IsTrustedPeer (int clientFd) const;
-
-		std::string m_Path;
-		int m_ListenFd { -1 };
-		dev_t m_Device { 0 };
-		ino_t m_Inode { 0 };
-		bool m_HasIdentity { false };
-		std::thread m_Thread;
-		std::atomic<bool> m_Stop { false };
+		class Impl;
+		std::unique_ptr<Impl> m_Impl;
 	};
 }
 }
-
-#endif // _WIN32
 
 #endif // TUI_SERVER_H__

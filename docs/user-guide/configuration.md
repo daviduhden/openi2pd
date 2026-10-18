@@ -109,21 +109,24 @@ ssu2.version                           | Protocol version. 2 - standard crypto, 
     
 All options below still possible in cmdline, but better write it in config file:
 
-### Local TUI (Unix)
+### Local TUI
 
 The HTTP administrative console has been removed. `i2pd-tui` is a separate
-ncurses client that connects to the router over a local UNIX socket. It is
-read-only and the router runs without it.
+client that connects to the router over a local IPC channel: a 0600 UNIX socket
+on Unix or a local named pipe on Windows. Status views are read-only; torrent
+actions are explicit and confirmed. The router runs without the TUI.
 
 Option                                 | Description
 -------------------------------------- | --------------------------------------
-tui.enabled                            | Enable the local TUI IPC socket (default: true on Unix, false on Android)
-tui.socket                             | Socket path (default: `<datadir>/i2pd-tui.sock`)
+tui.enabled                            | Enable the local TUI IPC channel (default: true; false on Android)
+tui.socket                             | Unix socket path or Windows logical endpoint (default: `<datadir>/i2pd-tui.sock`; the Windows pipe name is derived from it)
 
-The socket is created with mode 0600 and only accepts the daemon's effective
-UID. See [TUI and IPC](../tui-ipc.md). `i2pd-tui` provides status, peers,
-tunnels, netDb/local destinations, reseed state and live logs. It does not
-implement the removed web UI.
+On Unix the socket is created with mode 0600 and only accepts the daemon's
+effective UID. On Windows the pipe uses a protected DACL and rejects remote
+clients. See [TUI and IPC](../tui-ipc.md) and
+[TUI on Windows](../TUI-WINDOWS.md). `i2pd-tui` provides status, peers,
+tunnels, netDb/local destinations, reseed state, live logs and torrent
+administration. It does not implement the removed web UI.
 
 ### HTTP proxy
 
