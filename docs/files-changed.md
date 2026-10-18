@@ -209,3 +209,5 @@ version branches; comment-only changes are included:
 Project C/C++/Java, scripts, CMake/Make, Android resources/Gradle, desktop/service/Windows resources and workflow/config files now carry the two copyright lines from `LICENSE` and `SPDX-License-Identifier: BSD-3-Clause`. Existing third-party files retain their own notices: Apache-2.0 Gradle wrapper, BSL-1.0 CMake module, New-BSD CMake module, Windows SDK header, OpenBSD ports copies, and CC-BY-SA documentation.
 
 - `.clang-format` — C++ and Java formatting profiles for the maintained source tree.
+
+- `man/i2pd.1`, `man/i2pd-tui.1`, `man/i2pdctl.1` — portable mdoc manual pages; CMake/Debian installation updated.

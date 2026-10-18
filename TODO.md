@@ -416,6 +416,8 @@ when there is no older ID.
   - Priority P1; Status Pending.
 - [x] **[DOCS-009]** Validate all Markdown links/MkDocs navigation after torrent/Perl/Android docs.
   - Priority P1; Status Static link check passed; MkDocs rendering deferred to CI.
+- [ ] **[DOCS-010]** Maintain portable mdoc manual pages for `i2pd`, `i2pd-tui` and `i2pdctl`; validate with mandoc on Linux/OpenBSD.
+  - Priority P1; Status Implemented / mandoc-validated; packaging/install runtime checks pending.
 - [ ] **[BRAND-011]** Complete executable/package/data-path migration decisions without breaking technical compatibility.
   - Priority P1; Status Pending; see REBRAND-005..007.
 - [ ] **[LEGAL-001]** Audit new torrent/Perl/Android/CI files for required copyright, license and provenance notices.

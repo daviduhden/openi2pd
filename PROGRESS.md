@@ -422,3 +422,13 @@ then `TODO.md` and `ROADMAP.md`, then verify the code state.
   a compiler, Gradle, CTest, or Lint run.
 - One space-before-tab diff-check artifact was normalized; `git diff --check`
   is clean.
+
+### POSIX manual pages
+
+- Added mdoc pages under `man/` for `i2pd`, `i2pd-tui` and `i2pdctl`, covering
+  options, files, signals, security boundaries, examples and exit status.
+- CMake installs `man/*.1`; Debian packaging uses the canonical pages and keeps
+  `debian/i2pd.1` as a compatibility symlink.
+- Validated with mandoc 1.14-style linting; temporary manpath cross-reference
+  checks are recorded below. No Linux/OpenBSD installation or live command
+  rendering was run.

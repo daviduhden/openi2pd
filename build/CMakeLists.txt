@@ -454,9 +454,10 @@ if(WITH_BINARY)
     DESTINATION ${CMAKE_INSTALL_DOCDIR}/assets/branding
     COMPONENT Documentation)
   if(UNIX)
-    install(FILES "${PROJECT_ROOT}/debian/i2pd.1"
+    install(DIRECTORY "${PROJECT_ROOT}/man/"
       DESTINATION ${CMAKE_INSTALL_MANDIR}/man1
-      COMPONENT Documentation)
+      COMPONENT Documentation
+      FILES_MATCHING PATTERN "*.1")
   endif()
 endif()
 

@@ -1,1 +1,3 @@
-debian/i2pd.1
+man/i2pd.1
+man/i2pd-tui.1
+man/i2pdctl.1

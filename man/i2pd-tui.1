@@ -1,0 +1,104 @@
+.Dd October 18, 2026
+.Dt I2PD-TUI 1
+.Os openi2pd
+.Sh NAME
+.Nm i2pd-tui
+.Nd local ncursesw console for openi2pd
+.Sh SYNOPSIS
+.Nm
+.Op Fl -socket Ar path
+.Op Fl -datadir Ar directory
+.Op Fl -conf Ar file
+.Op Fl -service
+.Op Fl -help
+.Op Fl -version
+.Sh DESCRIPTION
+.Nm
+is a separate-process ncursesw client for a running
+.Xr i2pd 1
+router.
+It displays router status, peers, tunnels, network database, logs, and native
+BitTorrent state.
+It does not open router data files, network sockets, download files, or a
+JSON-RPC connection.
+.Pp
+The client communicates only over the local UNIX-domain socket published by
+the daemon using the bounded
+.Dv I2PDTUI/1
+protocol.
+The daemon accepts only a peer with its effective UID.
+Router views are read-only; torrent start, stop, reannounce, add, and remove
+operations require explicit confirmation where they change state.
+.Pp
+The console never requires a bitmap logo, external font, or truecolor
+terminal.
+It adapts to monochrome, 8-, 16-, and 256-color terminals.
+.Sh OPTIONS
+.Bl -tag -width Ds
+.It Fl -socket Ar path
+Connect to an explicit UNIX-domain socket.
+.It Fl -datadir Ar directory
+Resolve the default socket below
+.Ar directory .
+.It Fl -conf Ar file
+Read the
+.Ql [tui]
+socket setting from this
+.Xr i2pd 1
+configuration file.
+.It Fl -service
+Use the system service data directory.
+.It Fl h , Fl -help
+Print usage and exit.
+.It Fl -version
+Print the client version and exit.
+.El
+.Sh KEYS
+.Bl -tag -width Ds
+.It Ql q
+Quit.
+.It Ql Tab , Ql 1 Ns ... Ns Ql 7
+Switch views.
+.It Ql r
+Refresh the current view.
+.It Ql ?
+Show the help view.
+.It Ql /
+Filter the torrent list.
+.It Ql a , Ql A
+Add a magnet link or a local torrent file.
+.It Ql p
+Start or pause the selected torrent.
+.It Ql R
+Reannounce the selected torrent.
+.It Ql d , Ql D
+Remove the selected torrent, optionally with its local data.
+.It Ql x , Ql z
+Stop all torrents or remove all torrents with confirmation.
+.It Ql s
+Change torrent sorting.
+.It Ql [ , ]
+Switch the selected torrent service tunnel.
+.El
+.Sh FILES
+.Bl -tag -width Ds
+.It Pa i2pd-tui.sock
+Default daemon socket, relative to the data directory.
+.El
+.Sh EXIT STATUS
+.Ex -std
+.Sh SECURITY
+The client trusts the daemon only after the kernel reports the same effective
+UID for the socket peer.
+Do not make the socket directory world-writable or copy the socket path into an
+untrusted environment.
+.Pp
+Terminal output is escaped before display so untrusted peer, torrent, and log
+text cannot inject terminal control sequences.
+Torrent operations remain inside I2P; the console has no clearnet path.
+.Sh SEE ALSO
+.Xr i2pd 1 ,
+.Xr i2pdctl 1
+.Sh AUTHORS
+.An -nosplit
+.An openi2pd

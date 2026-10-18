@@ -1,0 +1,93 @@
+.Dd October 18, 2026
+.Dt I2PDCTL 1
+.Os openi2pd
+.Sh NAME
+.Nm i2pdctl
+.Nd command-line client for the I2PControl service
+.Sh SYNOPSIS
+.Nm
+.Op Fl h
+.Ar command
+.Op Ar arguments ...
+.Sh DESCRIPTION
+.Nm
+is a Perl 5 client for the local I2PControl JSON-RPC service.
+It preserves the former project Python client's command names and output
+semantics while using only core Perl modules and the system
+.Xr openssl 1
+binary for the self-signed HTTPS fallback.
+The client never silently downgrades an HTTPS request to cleartext.
+.Pp
+The service is disabled by default and must be enabled in
+.Pa i2pd.conf
+before use.
+.Sh COMMANDS
+.Bl -tag -width Ds
+.It Cm exec Op Fl j Ar method Ar parameters
+Execute an I2PControl method with a JSON parameter object.
+.Fl j
+prints the raw JSON reply.
+.It Cm raw_info Op Ar method ...
+Retrieve raw JSON from
+.Cm RouterInfo
+or
+.Cm ClientServicesInfo .
+.It Cm info
+Print a stable human-readable router, interface, and client-tunnel summary.
+.El
+.Sh OPTIONS
+.Bl -tag -width Ds
+.It Fl h , Fl -help
+Print command help and exit.
+.It Fl j , Fl -json-output
+With
+.Cm exec ,
+emit the raw JSON response.
+.El
+.Sh ENVIRONMENT
+.Bl -tag -width Ds
+.It Ev I2PCONTROL_URL
+I2PControl URL, default
+.Pa https://127.0.0.1:7650/ .
+.It Ev I2PCONTROL_PASSWORD
+I2PControl password, default
+.Ql itoopie .
+Change the router password before enabling the service.
+.It Ev I2PDCTL_TLS_BACKEND
+Set to
+.Ql auto
+or
+.Ql openssl .
+The latter forces the shell-free
+.Xr openssl 1
+s_client fallback for diagnostics and tests and still never uses cleartext.
+.El
+.Sh EXIT STATUS
+.Ex -std
+.Sh EXAMPLES
+Print a router summary:
+.Bd -literal -offset indent
+i2pdctl info
+.Ed
+.Pp
+Execute a method and print raw JSON:
+.Bd -literal -offset indent
+i2pdctl exec -j RouterInfo '{}'
+.Ed
+.Sh SECURITY
+The default self-signed certificate is accepted by the compatibility client;
+this is deliberate behavior for the local I2PControl endpoint.
+Plain
+.Li http://
+URLs are accepted only when explicitly configured and send credentials in
+cleartext; use the default HTTPS endpoint.
+.Pp
+The client bounds request and response bodies, validates the URL, ignores
+SIGPIPE, and sanitizes server text before printing it to a terminal.
+.Sh SEE ALSO
+.Xr i2pd 1 ,
+.Xr i2pd-tui 1 ,
+.Xr openssl 1
+.Sh AUTHORS
+.An -nosplit
+.An openi2pd

@@ -1,0 +1,225 @@
+.Dd October 18, 2026
+.Dt I2PD 1
+.Os openi2pd
+.Sh NAME
+.Nm i2pd
+.Nd openi2pd I2P router daemon
+.Sh SYNOPSIS
+.Nm
+.Op Fl -conf Ar file
+.Op Fl -datadir Ar directory
+.Op Fl -daemon
+.Op Fl -service
+.Op Fl -log Ar destination
+.Op Fl -loglevel Ar level
+.Op Ar options ...
+.Sh DESCRIPTION
+.Nm
+is the openi2pd router for the I2P anonymous network.
+It builds encrypted tunnels, maintains the network database, and provides
+local HTTP and SOCKS proxies plus optional client services.
+The router is a long-running daemon and does not require a terminal.
+.Pp
+The administrative web console has been removed.
+Use
+.Xr i2pd-tui 1
+for local, authenticated administration over a UNIX-domain socket.
+.Pp
+Except for
+.Fl -help
+and
+.Fl -version ,
+long command-line options use the same names as configuration keys without
+the leading
+.Ql -- .
+Command-line values take precedence over
+.Pa i2pd.conf .
+The
+.Fl --help
+output is the authoritative list for the installed build.
+.Sh OPTIONS
+.Bl -tag -width Ds
+.It Fl h , Fl -help
+Print the option summary and exit.
+.It Fl -version
+Print router, Boost and TLS library versions and exit.
+.It Fl -conf Ar file
+Read the main configuration from
+.Ar file .
+.It Fl -tunconf Ar file
+Read client and server tunnel definitions from
+.Ar file .
+.It Fl -tunnelsdir Ar directory
+Read additional tunnel definitions from
+.Ar directory .
+.It Fl -certsdir Ar directory
+Read certificates used for SU3 and family verification from
+.Ar directory .
+.It Fl -datadir Ar directory
+Store router keys, profiles, the network database and local state in
+.Ar directory .
+.It Fl -pidfile Ar file
+Write the daemon process ID to
+.Ar file .
+.It Fl -log Ar destination
+Select
+.Ar stdout ,
+.Ar file ,
+or
+.Ar syslog .
+.It Fl -logfile Ar file
+Write file logs to
+.Ar file .
+.It Fl -loglevel Ar level
+Set the minimum level to
+.Ar debug ,
+.Ar info ,
+.Ar warn ,
+.Ar error ,
+or
+.Ar none .
+.It Fl -logclftime
+Use full CLF-formatted timestamps in file logs.
+.It Fl -daemon
+Detach and run in the background.
+.It Fl -service
+Use system service directories and defaults.
+.It Fl -ipv4 , Fl -ipv6
+Enable or disable the corresponding address family.
+.It Fl -host Ar address
+Publish an external address.
+.It Fl -port Ar port
+Use a fixed incoming transport port.
+.It Fl -ifname Ar name , Fl -ifname4 Ar name , Fl -ifname6 Ar name
+Bind transport sockets to a named interface.
+.It Fl -nat
+Assume that the router is behind NAT.
+.It Fl -bandwidth Ar class
+Select a bandwidth class such as
+.Ar L ,
+.Ar O ,
+.Ar P ,
+or
+.Ar X .
+.It Fl -floodfill
+Participate in the network database as a floodfill router.
+.It Fl -notransit
+Do not accept transit tunnels at startup.
+.It Fl -ntcp2.enabled Ar bool
+Enable or disable the NTCP2 transport.
+.It Fl -ssu2.enabled Ar bool
+Enable or disable the SSU2 transport.
+.It Fl -ntcp2.port Ar port , Fl -ssu2.port Ar port
+Set transport-specific listening ports.
+.It Fl -httpproxy.enabled Ar bool
+Enable or disable the local HTTP proxy.
+.It Fl -httpproxy.address Ar address
+Bind the HTTP proxy to a local address.
+.It Fl -httpproxy.port Ar port
+Bind the HTTP proxy to a local port.
+.It Fl -socksproxy.enabled Ar bool
+Enable or disable the local SOCKS proxy.
+.It Fl -socksproxy.address Ar address
+Bind the SOCKS proxy to a local address.
+.It Fl -socksproxy.port Ar port
+Bind the SOCKS proxy to a local port.
+.It Fl -i2pcontrol.enabled Ar bool
+Enable or disable the local I2PControl service.
+.It Fl -i2pcontrol.address Ar address
+Bind I2PControl to a local address.
+.It Fl -i2pcontrol.port Ar port
+Bind I2PControl to a local port.
+.It Fl -i2pcontrol.password Ar password
+Set the I2PControl password.
+Prefer the configuration file and restrictive permissions over a command line
+that may be visible in the process list.
+.It Fl -tui.enabled Ar bool
+Enable or disable the local TUI socket.
+.It Fl -tui.socket Ar path
+Set the UNIX-domain socket used by
+.Xr i2pd-tui 1 .
+.It Fl -privsep.enabled Ar bool
+Enable supported privilege-separation workers.
+The log worker is currently the only isolated worker.
+.It Fl -privsep.log Ar bool
+Route file logging through the isolated log worker.
+This combination is refused when the .Ox pledge/unveil sandbox is active.
+.It Fl -reseed.file Ar path-or-url
+Reseed from a local SU3 file or an HTTPS URL.
+.It Fl -reseed.urls Ar urls
+Use the comma-separated reseed service URLs.
+.It Fl -upnp.enabled Ar bool
+Enable or disable UPnP port mapping.
+.El
+.Sh FILES
+.Bl -tag -width Ds
+.It Pa ~/.i2pd/i2pd.conf
+Per-user configuration on Linux and other non-service installations.
+.It Pa /etc/i2pd/i2pd.conf
+System configuration on .Ox and packaged Linux installations.
+.It Pa /var/lib/i2pd
+Default Linux service data directory.
+.It Pa /var/i2pd
+Default .Ox service data directory.
+.It Pa i2pd.pid
+Process ID file, relative to the data directory unless configured otherwise.
+.It Pa i2pd-tui.sock
+Default local TUI socket, relative to the data directory.
+.El
+.Sh SIGNALS
+.Bl -tag -width Ds
+.It Dv SIGHUP
+Reload tunnel configuration.
+.It Dv SIGUSR1
+Reopen log files for rotation.
+.It Dv SIGINT , Dv SIGTERM , Dv SIGABRT
+Perform an orderly shutdown.
+.It Dv SIGTSTP
+Disconnect from the network when
+.Va unix.handle_sigtstp
+is enabled.
+.It Dv SIGCONT
+Restore network operation after
+.Dv SIGTSTP .
+.El
+.Sh SECURITY
+The daemon must run as an unprivileged user.
+The local TUI socket is created with mode 0600 and accepts only peers with the
+daemon's effective UID.
+The router exposes no administrative HTTP interface.
+.Pp
+On .Ox the daemon uses
+.Xr pledge 2
+and
+.Xr unveil 2
+where configured.
+Do not disable or broaden the sandbox to work around a path or service
+configuration error.
+The optional JSON-RPC torrent listener is loopback-only and disabled by
+default; it is not a web console.
+.Sh EXIT STATUS
+.Ex -std
+.Sh EXAMPLES
+Run a foreground router with a private data directory:
+.Bd -literal -offset indent
+i2pd --datadir "$HOME/.i2pd" --log stdout
+.Ed
+.Pp
+Start the .Ox service:
+.Bd -literal -offset indent
+rcctl enable i2pd
+rcctl start i2pd
+.Ed
+.Sh SEE ALSO
+.Xr i2pd-tui 1 ,
+.Xr i2pdctl 1 ,
+.Xr pledge 2 ,
+.Xr unveil 2 ,
+.Xr rcctl 8
+.Sh HISTORY
+.Nm
+is derived from the PurpleI2P i2pd router and is maintained by the openi2pd
+project.
+.Sh AUTHORS
+.An -nosplit
+.An openi2pd
