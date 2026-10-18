@@ -30,7 +30,7 @@ namespace i2p::privsep
 			Channel& ChannelFd () { return m_Channel; }
 
 		private:
-			friend std::expected<ChildProcess, std::string> SpawnLogWorker ();
+			friend i2p::expected<ChildProcess, std::string> SpawnLogWorker ();
 			/** Reap without blocking. Returns true when the child no longer exists. */
 			bool ReapNoHang ();
 			void ClosePidFd ();
@@ -39,7 +39,7 @@ namespace i2p::privsep
 			Channel m_Channel;
 	};
 
-	std::expected<ChildProcess, std::string> SpawnLogWorker ();
+	i2p::expected<ChildProcess, std::string> SpawnLogWorker ();
 	std::string ExecutablePath ();
 }
 

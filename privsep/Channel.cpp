@@ -47,7 +47,7 @@ namespace i2p::privsep
 		}
 	}
 
-	std::expected<std::pair<Channel, Channel>, std::string> Channel::CreatePair ()
+	i2p::expected<std::pair<Channel, Channel>, std::string> Channel::CreatePair ()
 	{
 		int fds[2] = {-1, -1};
 		int type = SOCK_SEQPACKET;
@@ -60,11 +60,11 @@ namespace i2p::privsep
 			if (errno == EINVAL)
 			{
 				if (::socketpair (AF_UNIX, SOCK_SEQPACKET, 0, fds) != 0)
-					return std::unexpected (std::string ("socketpair(SOCK_SEQPACKET): ") + strerror (errno));
+					return i2p::unexpected (std::string ("socketpair(SOCK_SEQPACKET): ") + strerror (errno));
 			}
 			else
 #endif
-				return std::unexpected (std::string ("socketpair(SOCK_SEQPACKET): ") + strerror (errno));
+				return i2p::unexpected (std::string ("socketpair(SOCK_SEQPACKET): ") + strerror (errno));
 		}
 		for (int fd : fds)
 		{
@@ -75,17 +75,17 @@ namespace i2p::privsep
 				const int error = errno;
 				::close (fds[0]);
 				::close (fds[1]);
-				return std::unexpected (std::string ("fcntl(FD_CLOEXEC): ") + strerror (error));
+				return i2p::unexpected (std::string ("fcntl(FD_CLOEXEC): ") + strerror (error));
 			}
 		}
 		return std::pair<Channel, Channel> (Channel (fds[0]), Channel (fds[1]));
 	}
 
-	std::expected<void, std::string> Channel::Send (const Message& message, int timeoutMs)
+	i2p::expected<void, std::string> Channel::Send (const Message& message, int timeoutMs)
 	{
-		if (!IsOpen ()) return std::unexpected ("channel is closed");
+		if (!IsOpen ()) return i2p::unexpected ("channel is closed");
 		auto encoded = Encode (message);
-		if (!encoded) return std::unexpected (std::string (encoded.error ().text));
+		if (!encoded) return i2p::unexpected (std::string (encoded.error ().text));
 
 		pollfd pfd{m_Fd, POLLOUT, 0};
 		int result;
@@ -93,10 +93,10 @@ namespace i2p::privsep
 		if (result < 0)
 		{
 			const int error = errno;
-			return std::unexpected (std::string ("poll: ") + strerror (error));
+			return i2p::unexpected (std::string ("poll: ") + strerror (error));
 		}
-		if (result == 0) return std::unexpected ("send timeout");
-		if (pfd.revents & POLLNVAL) return std::unexpected ("poll: invalid descriptor");
+		if (result == 0) return i2p::unexpected ("send timeout");
+		if (pfd.revents & POLLNVAL) return i2p::unexpected ("poll: invalid descriptor");
 
 		ssize_t sent;
 		do sent = ::send (m_Fd, encoded->data (), encoded->size (), MSG_NOSIGNAL);
@@ -104,18 +104,18 @@ namespace i2p::privsep
 		if (sent < 0)
 		{
 			const int error = errno;
-			return std::unexpected (std::string ("send: ") + strerror (error));
+			return i2p::unexpected (std::string ("send: ") + strerror (error));
 		}
 		// SOCK_SEQPACKET is all-or-nothing. Treat anything else as an error
 		// rather than waiting for a continuation that cannot exist.
 		if (sent != static_cast<ssize_t> (encoded->size ()))
-			return std::unexpected ("send: short write");
+			return i2p::unexpected ("send: short write");
 		return {};
 	}
 
-	std::expected<std::optional<Message>, std::string> Channel::Receive (int timeoutMs)
+	i2p::expected<std::optional<Message>, std::string> Channel::Receive (int timeoutMs)
 	{
-		if (!IsOpen ()) return std::unexpected ("channel is closed");
+		if (!IsOpen ()) return i2p::unexpected ("channel is closed");
 		pollfd pfd{m_Fd, POLLIN, 0};
 		int result;
 		do result = ::poll (&pfd, 1, timeoutMs); while (result < 0 && errno == EINTR);
@@ -123,9 +123,9 @@ namespace i2p::privsep
 		if (result < 0)
 		{
 			const int error = errno;
-			return std::unexpected (std::string ("poll: ") + strerror (error));
+			return i2p::unexpected (std::string ("poll: ") + strerror (error));
 		}
-		if (pfd.revents & POLLNVAL) return std::unexpected ("poll: invalid descriptor");
+		if (pfd.revents & POLLNVAL) return i2p::unexpected ("poll: invalid descriptor");
 
 		// Deliberately one buffer slot larger than a maximum frame so a
 		// truncated SOCK_SEQPACKET record can never look like a valid frame.
@@ -137,37 +137,37 @@ namespace i2p::privsep
 		ssize_t received;
 		do received = ::recvmsg (m_Fd, &header, 0);
 		while (received < 0 && errno == EINTR);
-		if (received == 0) return std::unexpected ("peer closed the channel");
+		if (received == 0) return i2p::unexpected ("peer closed the channel");
 		if (received < 0)
 		{
 			const int error = errno;
-			return std::unexpected (std::string ("recv: ") + strerror (error));
+			return i2p::unexpected (std::string ("recv: ") + strerror (error));
 		}
 		if (header.msg_flags & MSG_TRUNC)
-			return std::unexpected ("oversized frame");
+			return i2p::unexpected ("oversized frame");
 		frame.resize (static_cast<size_t> (received));
 		auto message = Decode (frame);
-		if (!message) return std::unexpected (std::string ("protocol: ") + std::string (message.error ().text));
+		if (!message) return i2p::unexpected (std::string ("protocol: ") + std::string (message.error ().text));
 		return std::optional<Message> (std::move (*message));
 	}
 
-	std::expected<uint32_t, std::string> Channel::PeerUid () const
+	i2p::expected<uint32_t, std::string> Channel::PeerUid () const
 	{
-		if (!IsOpen ()) return std::unexpected ("channel is closed");
+		if (!IsOpen ()) return i2p::unexpected ("channel is closed");
 #if defined(__linux__)
 		struct ucred cred{};
 		socklen_t length = sizeof (cred);
 		if (getsockopt (m_Fd, SOL_SOCKET, SO_PEERCRED, &cred, &length) != 0)
-			return std::unexpected (std::string ("SO_PEERCRED: ") + strerror (errno));
+			return i2p::unexpected (std::string ("SO_PEERCRED: ") + strerror (errno));
 		return cred.uid;
 #elif defined(__OpenBSD__) || defined(__FreeBSD__) || defined(__NetBSD__) || defined(__APPLE__)
 		uid_t uid = 0;
 		gid_t gid = 0;
 		if (getpeereid (m_Fd, &uid, &gid) != 0)
-			return std::unexpected (std::string ("getpeereid: ") + strerror (errno));
+			return i2p::unexpected (std::string ("getpeereid: ") + strerror (errno));
 		return uid;
 #else
-		return std::unexpected ("peer credentials are not available on this platform");
+		return i2p::unexpected ("peer credentials are not available on this platform");
 #endif
 	}
 }

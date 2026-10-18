@@ -356,22 +356,33 @@ namespace
 
 		std::cout << "Start vanity generator in " << options.threads << " threads" << std::endl;
 
-		// jthread joins on destruction, so an exception during thread startup
-		// cannot leave joinable threads behind.
-		std::vector<std::jthread> workers;
+		// Keep joins explicit for libc++ implementations that lack std::jthread.
+		// If a thread cannot be created, join the workers that did start before
+		// returning so no joinable std::thread is destroyed.
+		std::vector<std::thread> workers;
 		workers.reserve (static_cast<size_t> (options.threads));
-		uint64_t throughput = THROUGHPUT_PER_THREAD;
-		for (size_t i = 0; i < keyBuffers.size (); ++i)
+		try
 		{
-			std::cout << "Use " << i << " key" << std::endl;
-			workers.emplace_back (ThreadFind,
-				std::span<const uint8_t, IDENTITY_LEN> (keyBuffers[i].data (), IDENTITY_LEN),
-				prefix, pattern, i, throughput, std::ref (state));
-			throughput += 1000;
+			uint64_t throughput = THROUGHPUT_PER_THREAD;
+			for (size_t i = 0; i < keyBuffers.size (); ++i)
+			{
+				std::cout << "Use " << i << " key" << std::endl;
+				workers.emplace_back (ThreadFind,
+					std::span<const uint8_t, IDENTITY_LEN> (keyBuffers[i].data (), IDENTITY_LEN),
+					prefix, pattern, i, throughput, std::ref (state));
+				throughput += 1000;
+			}
+		}
+		catch (const std::exception& ex)
+		{
+			for (auto& worker : workers)
+				if (worker.joinable ()) worker.join ();
+			std::cerr << "vain: cannot start worker threads: " << ex.what () << std::endl;
+			return Outcome::Failed;
 		}
 
 		for (auto& worker : workers)
-			worker.join ();
+			if (worker.joinable ()) worker.join ();
 
 		if (state.failed.load ())
 			return Outcome::Failed;

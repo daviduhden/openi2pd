@@ -31,12 +31,12 @@ namespace i2p::privsep
 			explicit LogSink (Channel channel): m_Channel (std::move (channel)) {}
 
 			/** Send the one-time configuration and remember it for restarts. */
-			std::expected<void, std::string> Configure (bool useSyslog, std::string_view path,
+			i2p::expected<void, std::string> Configure (bool useSyslog, std::string_view path,
 				std::string_view tag);
 			/** Attach a freshly spawned worker after re-sending the configuration. */
-			std::expected<void, std::string> Reattach (Channel channel);
+			i2p::expected<void, std::string> Reattach (Channel channel);
 			void Write (uint8_t level, std::time_t timestamp, std::string_view text);
-			std::expected<void, std::string> Shutdown ();
+			i2p::expected<void, std::string> Shutdown ();
 			bool IsOpen () const;
 			bool IsShutdown () const;
 

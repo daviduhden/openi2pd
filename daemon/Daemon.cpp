@@ -12,7 +12,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
-#include <expected>
+#include "Expected.h"
 #include <iostream>
 #include <signal.h>
 #ifndef _WIN32
@@ -154,7 +154,7 @@ namespace util
 		}
 		auto worker = std::make_unique<i2p::privsep::ChildProcess> (std::move (*spawned));
 		auto channel = std::move (worker->ChannelFd ());
-		std::expected<void, std::string> configured;
+		i2p::expected<void, std::string> configured;
 		if (!d.logSink)
 		{
 			d.logSink = std::make_unique<i2p::privsep::LogSink> (std::move (channel));

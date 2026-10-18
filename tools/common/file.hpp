@@ -2,7 +2,7 @@
 #define I2PD_TOOLS_COMMON_FILE_HPP
 
 #include <cstdint>
-#include <expected>
+#include "Expected.h"
 #include <fstream>
 #include <limits>
 #include <string>
@@ -19,16 +19,16 @@ namespace i2p::tools
 	 * Read a complete file with an explicit size cap. Returns a value instead
 	 * of throwing or leaving a partially initialized buffer on short reads.
 	 */
-	inline std::expected<std::vector<uint8_t>, std::string> ReadFile (
+	inline i2p::expected<std::vector<uint8_t>, std::string> ReadFile (
 		const std::string& path, size_t maxSize = MAX_TOOL_FILE_SIZE)
 	{
 		std::ifstream in (path, std::ios::binary | std::ios::ate);
-		if (!in) return std::unexpected ("cannot open " + path);
+		if (!in) return i2p::unexpected ("cannot open " + path);
 
 		const auto end = in.tellg ();
-		if (end < 0) return std::unexpected ("cannot determine size of " + path);
+		if (end < 0) return i2p::unexpected ("cannot determine size of " + path);
 		const auto size = static_cast<uint64_t> (end);
-		if (size > maxSize) return std::unexpected ("file is too large: " + path);
+		if (size > maxSize) return i2p::unexpected ("file is too large: " + path);
 
 		std::vector<uint8_t> data (static_cast<size_t> (size));
 		in.seekg (0, std::ios::beg);
@@ -36,7 +36,7 @@ namespace i2p::tools
 		{
 			in.read (reinterpret_cast<char *> (data.data ()), static_cast<std::streamsize> (data.size ()));
 			if (!in || static_cast<size_t> (in.gcount ()) != data.size ())
-				return std::unexpected ("short read from " + path);
+				return i2p::unexpected ("short read from " + path);
 		}
 		return data;
 	}

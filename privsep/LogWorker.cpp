@@ -122,14 +122,14 @@ namespace i2p::privsep
 		}
 	}
 
-	std::expected<void, std::string> LogSink::Configure (bool useSyslog, std::string_view path,
+	i2p::expected<void, std::string> LogSink::Configure (bool useSyslog, std::string_view path,
 		std::string_view tag)
 	{
 		std::lock_guard<std::mutex> lock (m_Mutex);
-		if (m_Configured) return std::unexpected ("log sink already configured");
+		if (m_Configured) return i2p::unexpected ("log sink already configured");
 		if (path.find ('\0') != std::string_view::npos ||
 			tag.find ('\0') != std::string_view::npos)
-			return std::unexpected ("NUL in log configuration");
+			return i2p::unexpected ("NUL in log configuration");
 		Message message{MessageType::ConfigureLog, 0, EncodeLogConfig (useSyslog, path, tag)};
 		auto sent = m_Channel.Send (message);
 		if (!sent)
@@ -144,13 +144,13 @@ namespace i2p::privsep
 		return {};
 	}
 
-	std::expected<void, std::string> LogSink::Reattach (Channel channel)
+	i2p::expected<void, std::string> LogSink::Reattach (Channel channel)
 	{
 		std::lock_guard<std::mutex> lock (m_Mutex);
-		if (!m_Configured) return std::unexpected ("log sink is not configured");
-		if (m_Shutdown) return std::unexpected ("log sink is shut down");
+		if (!m_Configured) return i2p::unexpected ("log sink is not configured");
+		if (m_Shutdown) return i2p::unexpected ("log sink is shut down");
 		m_Channel.Close ();
-		if (!channel.IsOpen ()) return std::unexpected ("invalid replacement channel");
+		if (!channel.IsOpen ()) return i2p::unexpected ("invalid replacement channel");
 		Message message{MessageType::ConfigureLog, 0,
 			EncodeLogConfig (m_Syslog, m_Path, m_Tag)};
 		auto sent = channel.Send (message);
@@ -175,7 +175,7 @@ namespace i2p::privsep
 		if (!result) m_Channel.Close (); // drop logs; never fall back to a local file
 	}
 
-	std::expected<void, std::string> LogSink::Shutdown ()
+	i2p::expected<void, std::string> LogSink::Shutdown ()
 	{
 		std::lock_guard<std::mutex> lock (m_Mutex);
 		m_Shutdown = true;

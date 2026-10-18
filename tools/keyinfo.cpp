@@ -112,7 +112,11 @@ static int printHelp(const char * exe, int exitcode)
 std::string ConvertTime (time_t t)
 {
 	struct tm tm{};
+#ifdef _WIN32
+	if (localtime_s (&tm, &t) != 0) return "unknown";
+#else
 	if (!localtime_r (&t, &tm)) return "unknown";
+#endif
 	char date[128];
 	snprintf(date, sizeof(date), "%02d/%02d/%d %02d:%02d:%02d", tm.tm_mday, tm.tm_mon + 1, tm.tm_year + 1900, tm.tm_hour, tm.tm_min, tm.tm_sec);
 	return date;

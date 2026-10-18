@@ -13,7 +13,7 @@
 #include <concepts>
 #include <cstdint>
 #include <algorithm>
-#include <expected>
+#include "Expected.h"
 #include <limits>
 #include <optional>
 #include <string>
@@ -125,27 +125,27 @@ namespace tui
 
 	namespace detail
 	{
-		inline std::expected<uint64_t, ProtocolError> ParseUnsigned (std::string_view text)
+		inline i2p::expected<uint64_t, ProtocolError> ParseUnsigned (std::string_view text)
 		{
-			if (text.empty ()) return std::unexpected (ProtocolError{ErrorCode::BadArgument, "empty numeric argument"});
+			if (text.empty ()) return i2p::unexpected (ProtocolError{ErrorCode::BadArgument, "empty numeric argument"});
 			uint64_t value = 0;
 			auto result = std::from_chars (text.data (), text.data () + text.size (), value);
 			if (result.ec != std::errc () || result.ptr != text.data () + text.size ())
-				return std::unexpected (ProtocolError{ErrorCode::BadArgument, "invalid numeric argument"});
+				return i2p::unexpected (ProtocolError{ErrorCode::BadArgument, "invalid numeric argument"});
 			return value;
 		}
 
-		inline std::expected<uint32_t, ProtocolError> ParseVersion (std::string_view& rest)
+		inline i2p::expected<uint32_t, ProtocolError> ParseVersion (std::string_view& rest)
 		{
 			const auto space = rest.find (' ');
 			if (space == std::string_view::npos)
-				return std::unexpected (ProtocolError{ErrorCode::MalformedRequest, "missing command"});
+				return i2p::unexpected (ProtocolError{ErrorCode::MalformedRequest, "missing command"});
 			auto version = ParseUnsigned (rest.substr (0, space));
 			if (!version)
-				return std::unexpected (ProtocolError{ErrorCode::MalformedRequest, "invalid protocol version"});
+				return i2p::unexpected (ProtocolError{ErrorCode::MalformedRequest, "invalid protocol version"});
 			rest.remove_prefix (space + 1);
 			if (*version != PROTOCOL_VERSION)
-				return std::unexpected (ProtocolError{ErrorCode::UnsupportedVersion, "unsupported protocol version"});
+				return i2p::unexpected (ProtocolError{ErrorCode::UnsupportedVersion, "unsupported protocol version"});
 			return static_cast<uint32_t> (*version);
 		}
 
@@ -164,45 +164,45 @@ namespace tui
 			return token;
 		}
 
-		inline std::expected<uint32_t, ProtocolError> ParseIndex (std::string_view text)
+		inline i2p::expected<uint32_t, ProtocolError> ParseIndex (std::string_view text)
 		{
 			auto value = ParseUnsigned (text);
-			if (!value) return std::unexpected (value.error ());
+			if (!value) return i2p::unexpected (value.error ());
 			if (*value > std::numeric_limits<uint32_t>::max ())
-				return std::unexpected (ProtocolError{ErrorCode::BadArgument, "index out of range"});
+				return i2p::unexpected (ProtocolError{ErrorCode::BadArgument, "index out of range"});
 			return static_cast<uint32_t> (*value);
 		}
 
-		inline std::expected<int, ProtocolError> ParseTorrentId (std::string_view text)
+		inline i2p::expected<int, ProtocolError> ParseTorrentId (std::string_view text)
 		{
 			auto value = ParseUnsigned (text);
-			if (!value) return std::unexpected (value.error ());
+			if (!value) return i2p::unexpected (value.error ());
 			if (!*value || *value > static_cast<uint64_t> (std::numeric_limits<int>::max ()))
-				return std::unexpected (ProtocolError{ErrorCode::BadArgument, "torrent id out of range"});
+				return i2p::unexpected (ProtocolError{ErrorCode::BadArgument, "torrent id out of range"});
 			return static_cast<int> (*value);
 		}
 
-		inline std::expected<uint32_t, ProtocolError> ParseLimit (std::string_view text, uint32_t maximum)
+		inline i2p::expected<uint32_t, ProtocolError> ParseLimit (std::string_view text, uint32_t maximum)
 		{
 			auto value = ParseUnsigned (text);
-			if (!value) return std::unexpected (value.error ());
-			if (!*value) return std::unexpected (ProtocolError{ErrorCode::BadArgument, "limit must be positive"});
+			if (!value) return i2p::unexpected (value.error ());
+			if (!*value) return i2p::unexpected (ProtocolError{ErrorCode::BadArgument, "limit must be positive"});
 			return static_cast<uint32_t> (std::min<uint64_t> (*value, maximum));
 		}
 
 		// Consumes the rest of the request as one bounded argument. This is
 		// used for magnets and paths, where spaces are part of the value.
-		inline std::expected<std::string, ProtocolError> ParseRestOfLine (std::string_view rest)
+		inline i2p::expected<std::string, ProtocolError> ParseRestOfLine (std::string_view rest)
 		{
 			while (!rest.empty () && rest.front () == ' ') rest.remove_prefix (1);
 			if (rest.empty ())
-				return std::unexpected (ProtocolError{ErrorCode::BadArgument, "missing argument"});
+				return i2p::unexpected (ProtocolError{ErrorCode::BadArgument, "missing argument"});
 			if (rest.size () > MAX_TORRENT_ARGUMENT_LENGTH)
-				return std::unexpected (ProtocolError{ErrorCode::BadArgument, "argument too long"});
+				return i2p::unexpected (ProtocolError{ErrorCode::BadArgument, "argument too long"});
 			if (rest.find ('\0') != std::string_view::npos ||
 				rest.find ('\r') != std::string_view::npos ||
 				rest.find ('\n') != std::string_view::npos)
-				return std::unexpected (ProtocolError{ErrorCode::BadArgument, "invalid argument character"});
+				return i2p::unexpected (ProtocolError{ErrorCode::BadArgument, "invalid argument character"});
 			return std::string (rest);
 		}
 
@@ -218,24 +218,24 @@ namespace tui
 	/**
 	 * Parse one request line (without the trailing newline).
 	 */
-	inline std::expected<Request, ProtocolError> ParseRequest (std::string_view line)
+	inline i2p::expected<Request, ProtocolError> ParseRequest (std::string_view line)
 	{
-		if (line.empty ()) return std::unexpected (ProtocolError{ErrorCode::MalformedRequest, "empty request"});
+		if (line.empty ()) return i2p::unexpected (ProtocolError{ErrorCode::MalformedRequest, "empty request"});
 		if (line.size () > MAX_REQUEST_LINE)
-			return std::unexpected (ProtocolError{ErrorCode::MalformedRequest, "request line too long"});
+			return i2p::unexpected (ProtocolError{ErrorCode::MalformedRequest, "request line too long"});
 		if (line.front () == ' ' || line.back () == ' ')
-			return std::unexpected (ProtocolError{ErrorCode::MalformedRequest, "surrounding whitespace"});
+			return i2p::unexpected (ProtocolError{ErrorCode::MalformedRequest, "surrounding whitespace"});
 
 		const auto separator = line.find ('/');
 		if (separator == std::string_view::npos || line.substr (0, separator) != PROTOCOL_NAME)
-			return std::unexpected (ProtocolError{ErrorCode::MalformedRequest, "bad protocol name"});
+			return i2p::unexpected (ProtocolError{ErrorCode::MalformedRequest, "bad protocol name"});
 
 		std::string_view rest = line.substr (separator + 1);
 		auto version = detail::ParseVersion (rest);
-		if (!version) return std::unexpected (version.error ());
+		if (!version) return i2p::unexpected (version.error ());
 
 		const auto command = detail::NextToken (rest);
-		if (command.empty ()) return std::unexpected (ProtocolError{ErrorCode::MalformedRequest, "missing command"});
+		if (command.empty ()) return i2p::unexpected (ProtocolError{ErrorCode::MalformedRequest, "missing command"});
 
 		Request request{};
 		if (command == "STATE")
@@ -250,7 +250,7 @@ namespace tui
 			{
 				auto limit = detail::ParseUnsigned (detail::NextToken (rest));
 				if (!limit || *limit == 0 || *limit > MAX_PEER_RECORDS_PER_REQUEST)
-					return std::unexpected (ProtocolError{ErrorCode::BadArgument, "peer limit out of range"});
+					return i2p::unexpected (ProtocolError{ErrorCode::BadArgument, "peer limit out of range"});
 				request.limit = static_cast<uint32_t> (*limit);
 			}
 		}
@@ -270,16 +270,16 @@ namespace tui
 		{
 			request.type = RequestType::Logs;
 			if (rest.empty ())
-				return std::unexpected (ProtocolError{ErrorCode::BadArgument, "missing log sequence"});
+				return i2p::unexpected (ProtocolError{ErrorCode::BadArgument, "missing log sequence"});
 			auto after = detail::ParseUnsigned (detail::NextToken (rest));
-			if (!after) return std::unexpected (after.error ());
+			if (!after) return i2p::unexpected (after.error ());
 			request.after = *after;
 			request.limit = MAX_LOG_RECORDS_PER_REQUEST;
 			if (!rest.empty ())
 			{
 				auto limit = detail::ParseUnsigned (detail::NextToken (rest));
 				if (!limit || *limit == 0 || *limit > MAX_LOG_RECORDS_PER_REQUEST)
-					return std::unexpected (ProtocolError{ErrorCode::BadArgument, "log limit out of range"});
+					return i2p::unexpected (ProtocolError{ErrorCode::BadArgument, "log limit out of range"});
 				request.limit = static_cast<uint32_t> (*limit);
 			}
 		}
@@ -299,15 +299,15 @@ namespace tui
 		{
 			request.type = RequestType::Torrents;
 			if (rest.empty ())
-				return std::unexpected (ProtocolError{ErrorCode::BadArgument, "missing tunnel index"});
+				return i2p::unexpected (ProtocolError{ErrorCode::BadArgument, "missing tunnel index"});
 			auto index = detail::ParseIndex (detail::NextToken (rest));
-			if (!index) return std::unexpected (index.error ());
+			if (!index) return i2p::unexpected (index.error ());
 			request.tunnelIndex = *index;
 			request.limit = MAX_TORRENT_RECORDS_PER_REQUEST;
 			if (!rest.empty ())
 			{
 				auto limit = detail::ParseLimit (detail::NextToken (rest), MAX_TORRENT_RECORDS_PER_REQUEST);
-				if (!limit) return std::unexpected (limit.error ());
+				if (!limit) return i2p::unexpected (limit.error ());
 				request.limit = *limit;
 			}
 		}
@@ -319,9 +319,9 @@ namespace tui
 			command == "TORRENT-SESSION" || command == "TORRENT-DHT")
 		{
 			if (rest.empty ())
-				return std::unexpected (ProtocolError{ErrorCode::BadArgument, "missing tunnel index"});
+				return i2p::unexpected (ProtocolError{ErrorCode::BadArgument, "missing tunnel index"});
 			auto index = detail::ParseIndex (detail::NextToken (rest));
-			if (!index) return std::unexpected (index.error ());
+			if (!index) return i2p::unexpected (index.error ());
 			request.tunnelIndex = *index;
 
 			if (command == "TORRENT-DETAIL")
@@ -352,7 +352,7 @@ namespace tui
 			if (request.type == RequestType::TorrentAddMagnet || request.type == RequestType::TorrentAddFile)
 			{
 				auto argument = detail::ParseRestOfLine (rest);
-				if (!argument) return std::unexpected (argument.error ());
+				if (!argument) return i2p::unexpected (argument.error ());
 				request.argument = std::move (*argument);
 				rest = {};
 			}
@@ -361,41 +361,41 @@ namespace tui
 				request.type == RequestType::TorrentRemove)
 			{
 				if (rest.empty ())
-					return std::unexpected (ProtocolError{ErrorCode::BadArgument, "missing torrent id"});
+					return i2p::unexpected (ProtocolError{ErrorCode::BadArgument, "missing torrent id"});
 				auto id = detail::ParseTorrentId (detail::NextToken (rest));
-				if (!id) return std::unexpected (id.error ());
+				if (!id) return i2p::unexpected (id.error ());
 				request.torrentId = *id;
 
 				if (request.type == RequestType::TorrentRemove && !rest.empty ())
 				{
 					auto option = detail::NextToken (rest);
 					if (option != "files")
-						return std::unexpected (ProtocolError{ErrorCode::BadArgument, "unknown remove option"});
+						return i2p::unexpected (ProtocolError{ErrorCode::BadArgument, "unknown remove option"});
 					request.deleteFiles = true;
 				}
 			}
 		}
 		else
 		{
-			return std::unexpected (ProtocolError{ErrorCode::UnknownCommand, "unknown command"});
+			return i2p::unexpected (ProtocolError{ErrorCode::UnknownCommand, "unknown command"});
 		}
 
 		if (auto trailing = detail::RejectTrailing (rest))
-			return std::unexpected (*trailing);
+			return i2p::unexpected (*trailing);
 		return request;
 	}
 
-	inline std::expected<ResponseHeader, ProtocolError> ParseResponseHeader (std::string_view line)
+	inline i2p::expected<ResponseHeader, ProtocolError> ParseResponseHeader (std::string_view line)
 	{
 		if (line.size () > 128)
-			return std::unexpected (ProtocolError{ErrorCode::MalformedRequest, "response header too long"});
+			return i2p::unexpected (ProtocolError{ErrorCode::MalformedRequest, "response header too long"});
 		const auto separator = line.find ('/');
 		if (separator == std::string_view::npos || line.substr (0, separator) != PROTOCOL_NAME)
-			return std::unexpected (ProtocolError{ErrorCode::MalformedRequest, "bad response protocol"});
+			return i2p::unexpected (ProtocolError{ErrorCode::MalformedRequest, "bad response protocol"});
 
 		std::string_view rest = line.substr (separator + 1);
 		auto version = detail::ParseVersion (rest);
-		if (!version) return std::unexpected (version.error ());
+		if (!version) return i2p::unexpected (version.error ());
 
 		const auto status = detail::NextToken (rest);
 		ResponseHeader header{};
@@ -403,7 +403,7 @@ namespace tui
 		{
 			auto length = detail::ParseUnsigned (detail::NextToken (rest));
 			if (!length || *length > MAX_RESPONSE_PAYLOAD)
-				return std::unexpected (ProtocolError{ErrorCode::ResponseTooLarge, "invalid payload length"});
+				return i2p::unexpected (ProtocolError{ErrorCode::ResponseTooLarge, "invalid payload length"});
 			header.status = ResponseStatus::Ok;
 			header.payloadSize = static_cast<uint32_t> (*length);
 			header.errorCode = ErrorCode::None;
@@ -413,19 +413,19 @@ namespace tui
 			auto code = detail::ParseUnsigned (detail::NextToken (rest));
 			auto length = detail::ParseUnsigned (detail::NextToken (rest));
 			if (!code || *code > static_cast<uint64_t> (ErrorCode::Internal) || !length || *length > MAX_RESPONSE_PAYLOAD)
-				return std::unexpected (ProtocolError{ErrorCode::MalformedRequest, "invalid error response"});
+				return i2p::unexpected (ProtocolError{ErrorCode::MalformedRequest, "invalid error response"});
 			header.status = ResponseStatus::Error;
 			header.errorCode = static_cast<ErrorCode> (*code);
 			header.payloadSize = static_cast<uint32_t> (*length);
 		}
 		else
 		{
-			return std::unexpected (ProtocolError{ErrorCode::MalformedRequest, "unknown response status"});
+			return i2p::unexpected (ProtocolError{ErrorCode::MalformedRequest, "unknown response status"});
 		}
 
 		while (!rest.empty () && rest.front () == ' ') rest.remove_prefix (1);
 		if (!rest.empty ())
-			return std::unexpected (ProtocolError{ErrorCode::MalformedRequest, "trailing response data"});
+			return i2p::unexpected (ProtocolError{ErrorCode::MalformedRequest, "trailing response data"});
 		return header;
 	}
 

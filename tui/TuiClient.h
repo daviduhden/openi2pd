@@ -11,7 +11,7 @@
 
 #ifndef _WIN32
 
-#include <expected>
+#include "Expected.h"
 #include <string>
 #include <string_view>
 
@@ -29,10 +29,10 @@ namespace tui
 	};
 
 	/** Parse command line options without depending on the router's config code. */
-	std::expected<ClientOptions, std::string> ParseOptions (int argc, char* argv[]);
+	i2p::expected<ClientOptions, std::string> ParseOptions (int argc, char* argv[]);
 
 	/** Resolve the socket path from --socket, the config file, or the data dir. */
-	std::expected<ClientOptions, std::string> ResolveSocket (ClientOptions options);
+	i2p::expected<ClientOptions, std::string> ResolveSocket (ClientOptions options);
 
 	enum class RequestErrorKind
 	{
@@ -59,7 +59,7 @@ namespace tui
 			Client& operator= (const Client&) = delete;
 
 			bool IsConnected () const { return m_Fd >= 0; }
-			std::expected<void, std::string> Connect ();
+			i2p::expected<void, std::string> Connect ();
 			void Disconnect ();
 
 			/**
@@ -68,12 +68,12 @@ namespace tui
 			 * kind. A well-formed remote error response keeps the connection
 			 * usable and is reported as RequestErrorKind::Remote.
 			 */
-			std::expected<std::string, RequestError> Request (std::string_view command);
+			i2p::expected<std::string, RequestError> Request (std::string_view command);
 
 		private:
 
-			std::expected<std::string, std::string> ReadLine (size_t limit);
-			std::expected<std::string, std::string> ReadExact (size_t size);
+			i2p::expected<std::string, std::string> ReadLine (size_t limit);
+			i2p::expected<std::string, std::string> ReadExact (size_t size);
 
 			std::string m_Path;
 			int m_Fd{-1};

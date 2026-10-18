@@ -194,15 +194,15 @@ namespace i2p::privsep
 		ClosePidFd ();
 	}
 
-	std::expected<ChildProcess, std::string> SpawnLogWorker ()
+	i2p::expected<ChildProcess, std::string> SpawnLogWorker ()
 	{
 		const std::string executable = ExecutablePath ();
 		auto pair = Channel::CreatePair ();
-		if (!pair) return std::unexpected (pair.error ());
+		if (!pair) return i2p::unexpected (pair.error ());
 		auto& parent = pair->first;
 		auto& child = pair->second;
 		pid_t pid = fork ();
-		if (pid < 0) return std::unexpected (std::string ("fork: ") + strerror (errno));
+		if (pid < 0) return i2p::unexpected (std::string ("fork: ") + strerror (errno));
 		if (pid == 0)
 		{
 			// Restarts fork from the multi-threaded router. The child may only

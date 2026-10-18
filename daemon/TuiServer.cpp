@@ -15,7 +15,7 @@
 #include <cerrno>
 #include <chrono>
 #include <cstring>
-#include <expected>
+#include "Expected.h"
 #include <fcntl.h>
 #include <optional>
 #include <poll.h>
@@ -250,11 +250,11 @@ namespace tui
 			return i2p::client::context.GetTorrentsTunnelsSnapshot ();
 		}
 
-		std::expected<i2p::torrents::TorrentsSnapshot, std::string> GetTunnelSnapshot (const TorrentsTunnelPtr& tunnel)
+		i2p::expected<i2p::torrents::TorrentsSnapshot, std::string> GetTunnelSnapshot (const TorrentsTunnelPtr& tunnel)
 		{
-			if (!tunnel) return std::unexpected ("torrent tunnel not found");
+			if (!tunnel) return i2p::unexpected ("torrent tunnel not found");
 			auto snapshot = tunnel->GetControlSnapshot (i2p::torrents::CONTROL_DEFAULT_TIMEOUT);
-			if (!snapshot) return std::unexpected ("torrent snapshot timed out");
+			if (!snapshot) return i2p::unexpected ("torrent snapshot timed out");
 			return std::move (*snapshot);
 		}
 
@@ -343,13 +343,13 @@ namespace tui
 			return payload;
 		}
 
-		std::expected<std::string, std::string> BuildTorrentList (uint32_t tunnelIndex, uint32_t limit)
+		i2p::expected<std::string, std::string> BuildTorrentList (uint32_t tunnelIndex, uint32_t limit)
 		{
 			auto tunnels = GetSortedTorrentsTunnels ();
 			if (tunnelIndex >= tunnels.size ())
-				return std::unexpected ("torrent tunnel not found");
+				return i2p::unexpected ("torrent tunnel not found");
 			auto snapshot = GetTunnelSnapshot (tunnels[tunnelIndex]);
-			if (!snapshot) return std::unexpected (snapshot.error ());
+			if (!snapshot) return i2p::unexpected (snapshot.error ());
 
 			std::string payload;
 			AppendField (payload, "torrent.tunnel.index", tunnelIndex);
@@ -362,30 +362,30 @@ namespace tui
 			return payload;
 		}
 
-		std::expected<std::string, std::string> BuildTorrentDetail (uint32_t tunnelIndex, int torrentId)
+		i2p::expected<std::string, std::string> BuildTorrentDetail (uint32_t tunnelIndex, int torrentId)
 		{
 			auto tunnels = GetSortedTorrentsTunnels ();
 			if (tunnelIndex >= tunnels.size ())
-				return std::unexpected ("torrent tunnel not found");
+				return i2p::unexpected ("torrent tunnel not found");
 			auto snapshot = GetTunnelSnapshot (tunnels[tunnelIndex]);
-			if (!snapshot) return std::unexpected (snapshot.error ());
+			if (!snapshot) return i2p::unexpected (snapshot.error ());
 
 			auto it = std::find_if (snapshot->torrents.begin (), snapshot->torrents.end (),
 				[torrentId] (const auto& torrent) { return torrent.id == torrentId; });
 			if (it == snapshot->torrents.end ())
-				return std::unexpected ("torrent not found");
+				return i2p::unexpected ("torrent not found");
 			std::string payload;
 			AppendTorrentDetail (payload, *it);
 			return payload;
 		}
 
-		std::expected<std::string, std::string> BuildTorrentSession (uint32_t tunnelIndex)
+		i2p::expected<std::string, std::string> BuildTorrentSession (uint32_t tunnelIndex)
 		{
 			auto tunnels = GetSortedTorrentsTunnels ();
 			if (tunnelIndex >= tunnels.size ())
-				return std::unexpected ("torrent tunnel not found");
+				return i2p::unexpected ("torrent tunnel not found");
 			auto snapshot = GetTunnelSnapshot (tunnels[tunnelIndex]);
-			if (!snapshot) return std::unexpected (snapshot.error ());
+			if (!snapshot) return i2p::unexpected (snapshot.error ());
 
 			std::string payload;
 			AppendField (payload, "session.downloaded", snapshot->session.downloaded);
@@ -395,13 +395,13 @@ namespace tui
 			return payload;
 		}
 
-		std::expected<std::string, std::string> BuildTorrentDht (uint32_t tunnelIndex)
+		i2p::expected<std::string, std::string> BuildTorrentDht (uint32_t tunnelIndex)
 		{
 			auto tunnels = GetSortedTorrentsTunnels ();
 			if (tunnelIndex >= tunnels.size ())
-				return std::unexpected ("torrent tunnel not found");
+				return i2p::unexpected ("torrent tunnel not found");
 			auto snapshot = GetTunnelSnapshot (tunnels[tunnelIndex]);
-			if (!snapshot) return std::unexpected (snapshot.error ());
+			if (!snapshot) return i2p::unexpected (snapshot.error ());
 
 			std::string payload;
 			AppendField (payload, "dht.supported", snapshot->dht.supported);
@@ -451,7 +451,7 @@ namespace tui
 				return {MakeResponse (ResponseStatus::Ok, payload), false};
 			};
 
-			auto makeQuery = [] (std::expected<std::string, std::string> result) -> DispatchResult
+			auto makeQuery = [] (i2p::expected<std::string, std::string> result) -> DispatchResult
 			{
 				if (!result)
 					return {MakeErrorResponse (ErrorCode::Internal, result.error ()), false};
@@ -628,18 +628,17 @@ namespace tui
 		}
 
 		m_ListenFd = fd;
-		m_Thread = std::jthread ([this] (std::stop_token stopToken) { Run (stopToken); });
+		m_Stop.store (false, std::memory_order_relaxed);
+		m_Thread = std::thread ([this] { Run (); });
 		LogPrint (eLogInfo, "TUI: Listening on ", m_Path);
 		return true;
 	}
 
 	void Server::Stop ()
 	{
+		m_Stop.store (true, std::memory_order_relaxed);
 		if (m_Thread.joinable ())
-		{
-			m_Thread.request_stop ();
 			m_Thread.join ();
-		}
 		if (m_ListenFd >= 0)
 		{
 			close (m_ListenFd);
@@ -656,10 +655,10 @@ namespace tui
 		}
 	}
 
-	void Server::Run (std::stop_token stopToken)
+	void Server::Run ()
 	{
 		i2p::util::SetThreadName ("i2pd-tui-ipc");
-		while (!stopToken.stop_requested ())
+		while (!m_Stop.load (std::memory_order_relaxed))
 		{
 			pollfd pfd{m_ListenFd, POLLIN, 0};
 			int result = poll (&pfd, 1, 200);
@@ -680,7 +679,7 @@ namespace tui
 			}
 			int clientFlags = fcntl (client, F_GETFD);
 			if (clientFlags >= 0) fcntl (client, F_SETFD, clientFlags | FD_CLOEXEC);
-			HandleClient (client, stopToken);
+			HandleClient (client);
 			close (client);
 		}
 	}
@@ -706,7 +705,7 @@ namespace tui
 #endif
 	}
 
-	void Server::HandleClient (int clientFd, std::stop_token stopToken)
+	void Server::HandleClient (int clientFd)
 	{
 		if (!IsTrustedPeer (clientFd))
 		{
@@ -722,7 +721,7 @@ namespace tui
 		std::string pending;
 		pending.reserve (MAX_REQUEST_LINE);
 		std::array<char, 1024> buffer{};
-		while (!stopToken.stop_requested ())
+		while (!m_Stop.load (std::memory_order_relaxed))
 		{
 			auto received = ::recv (clientFd, buffer.data (), buffer.size (), 0);
 			if (received < 0)

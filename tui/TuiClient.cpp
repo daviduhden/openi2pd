@@ -43,10 +43,10 @@ namespace tui
 			return std::string (value);
 		}
 
-		std::expected<std::pair<std::string, std::string>, std::string> ReadConfigValues (const std::string& path)
+		i2p::expected<std::pair<std::string, std::string>, std::string> ReadConfigValues (const std::string& path)
 		{
 			std::ifstream config (path);
-			if (!config) return std::unexpected ("can't open " + path);
+			if (!config) return i2p::unexpected ("can't open " + path);
 
 			std::string datadir;
 			std::string socket;
@@ -70,7 +70,7 @@ namespace tui
 				if (key == "datadir" && datadir.empty ()) datadir = value;
 				else if (inTui && key == "socket") socket = value;
 			}
-			if (config.bad ()) return std::unexpected ("can't read " + path);
+			if (config.bad ()) return i2p::unexpected ("can't read " + path);
 			return std::pair{datadir, socket};
 		}
 
@@ -98,7 +98,7 @@ namespace tui
 		}
 	}
 
-	std::expected<ClientOptions, std::string> ParseOptions (int argc, char* argv[])
+	i2p::expected<ClientOptions, std::string> ParseOptions (int argc, char* argv[])
 	{
 		ClientOptions options;
 		bool service = false;
@@ -119,31 +119,31 @@ namespace tui
 				service = true;
 			else if (arg == "--socket")
 			{
-				if (!takeValue (options.socketPath)) return std::unexpected ("--socket requires a path");
+				if (!takeValue (options.socketPath)) return i2p::unexpected ("--socket requires a path");
 			}
 			else if (arg.starts_with ("--socket="))
 				options.socketPath = std::string (arg.substr (9));
 			else if (arg == "--datadir")
 			{
-				if (!takeValue (options.dataDir)) return std::unexpected ("--datadir requires a path");
+				if (!takeValue (options.dataDir)) return i2p::unexpected ("--datadir requires a path");
 			}
 			else if (arg.starts_with ("--datadir="))
 				options.dataDir = std::string (arg.substr (10));
 			else if (arg == "--conf" || arg == "--config")
 			{
-				if (!takeValue (options.configPath)) return std::unexpected ("--conf requires a path");
+				if (!takeValue (options.configPath)) return i2p::unexpected ("--conf requires a path");
 			}
 			else if (arg.starts_with ("--conf="))
 				options.configPath = std::string (arg.substr (7));
 			else
-				return std::unexpected ("unknown option: " + std::string (arg));
+				return i2p::unexpected ("unknown option: " + std::string (arg));
 		}
 		if (options.dataDir.empty ()) options.dataDir = DefaultDataDir (service);
 		options.dataDir = AbsolutePath (options.dataDir);
 		return options;
 	}
 
-	std::expected<ClientOptions, std::string> ResolveSocket (ClientOptions options)
+	i2p::expected<ClientOptions, std::string> ResolveSocket (ClientOptions options)
 	{
 		if (!options.socketPath.empty ())
 		{
@@ -161,7 +161,7 @@ namespace tui
 		if (stat (options.configPath.c_str (), &st) == 0)
 		{
 			auto values = ReadConfigValues (options.configPath);
-			if (!values) return std::unexpected (values.error ());
+			if (!values) return i2p::unexpected (values.error ());
 			if (!values->first.empty ())
 				options.dataDir = AbsolutePath (values->first);
 			configSocket = values->second;
@@ -184,14 +184,14 @@ namespace tui
 		Disconnect ();
 	}
 
-	std::expected<void, std::string> Client::Connect ()
+	i2p::expected<void, std::string> Client::Connect ()
 	{
 		Disconnect ();
 		if (m_Path.size () >= sizeof (sockaddr_un{}.sun_path))
-			return std::unexpected ("socket path is too long");
+			return i2p::unexpected ("socket path is too long");
 
 		int fd = ::socket (AF_UNIX, SOCK_STREAM, 0);
-		if (fd < 0) return std::unexpected (std::string ("socket: ") + strerror (errno));
+		if (fd < 0) return i2p::unexpected (std::string ("socket: ") + strerror (errno));
 		int flags = fcntl (fd, F_GETFD);
 		if (flags >= 0) fcntl (fd, F_SETFD, flags | FD_CLOEXEC);
 
@@ -202,7 +202,7 @@ namespace tui
 		{
 			int error = errno;
 			close (fd);
-			return std::unexpected (std::string ("connect: ") + strerror (error));
+			return i2p::unexpected (std::string ("connect: ") + strerror (error));
 		}
 
 		timeval timeout{3, 0};
@@ -221,7 +221,7 @@ namespace tui
 		}
 	}
 
-	std::expected<std::string, std::string> Client::ReadLine (size_t limit)
+	i2p::expected<std::string, std::string> Client::ReadLine (size_t limit)
 	{
 		std::string line;
 		line.reserve (std::min (limit, size_t (128)));
@@ -232,16 +232,16 @@ namespace tui
 			if (received < 0)
 			{
 				if (errno == EINTR) continue;
-				return std::unexpected (std::string ("recv: ") + strerror (errno));
+				return i2p::unexpected (std::string ("recv: ") + strerror (errno));
 			}
-			if (received == 0) return std::unexpected ("connection closed");
+			if (received == 0) return i2p::unexpected ("connection closed");
 			if (ch == '\n') return line;
 			line.push_back (ch);
 		}
-		return std::unexpected ("response header too long");
+		return i2p::unexpected ("response header too long");
 	}
 
-	std::expected<std::string, std::string> Client::ReadExact (size_t size)
+	i2p::expected<std::string, std::string> Client::ReadExact (size_t size)
 	{
 		std::string data (size, '\0');
 		size_t offset = 0;
@@ -251,20 +251,20 @@ namespace tui
 			if (received < 0)
 			{
 				if (errno == EINTR) continue;
-				return std::unexpected (std::string ("recv: ") + strerror (errno));
+				return i2p::unexpected (std::string ("recv: ") + strerror (errno));
 			}
-			if (received == 0) return std::unexpected ("connection closed during response");
+			if (received == 0) return i2p::unexpected ("connection closed during response");
 			offset += static_cast<size_t> (received);
 		}
 		return data;
 	}
 
-	std::expected<std::string, RequestError> Client::Request (std::string_view command)
+	i2p::expected<std::string, RequestError> Client::Request (std::string_view command)
 	{
 		if (m_Fd < 0)
-			return std::unexpected (RequestError{RequestErrorKind::NotConnected, "not connected"});
+			return i2p::unexpected (RequestError{RequestErrorKind::NotConnected, "not connected"});
 		if (command.find ('\n') != std::string_view::npos || command.find ('\r') != std::string_view::npos)
-			return std::unexpected (RequestError{RequestErrorKind::Protocol, "command contains a line break"});
+			return i2p::unexpected (RequestError{RequestErrorKind::Protocol, "command contains a line break"});
 
 		std::string request;
 		request.reserve (command.size () + 10);
@@ -284,13 +284,13 @@ namespace tui
 				if (errno == EINTR) continue;
 				int error = errno;
 				Disconnect ();
-				return std::unexpected (RequestError{RequestErrorKind::Transport,
+				return i2p::unexpected (RequestError{RequestErrorKind::Transport,
 					std::string ("send: ") + strerror (error)});
 			}
 			if (!sent)
 			{
 				Disconnect ();
-				return std::unexpected (RequestError{RequestErrorKind::Transport,
+				return i2p::unexpected (RequestError{RequestErrorKind::Transport,
 					"connection closed during request"});
 			}
 			offset += static_cast<size_t> (sent);
@@ -302,23 +302,23 @@ namespace tui
 			Disconnect ();
 			auto kind = headerLine.error ().find ("too long") != std::string::npos ?
 				RequestErrorKind::Protocol : RequestErrorKind::Transport;
-			return std::unexpected (RequestError{kind, headerLine.error ()});
+			return i2p::unexpected (RequestError{kind, headerLine.error ()});
 		}
 		auto header = ParseResponseHeader (*headerLine);
 		if (!header)
 		{
 			Disconnect ();
-			return std::unexpected (RequestError{RequestErrorKind::Protocol,
+			return i2p::unexpected (RequestError{RequestErrorKind::Protocol,
 				std::string ("protocol error: ") + std::string (header.error ().message)});
 		}
 		auto payload = ReadExact (header->payloadSize);
 		if (!payload)
 		{
 			Disconnect ();
-			return std::unexpected (RequestError{RequestErrorKind::Transport, payload.error ()});
+			return i2p::unexpected (RequestError{RequestErrorKind::Transport, payload.error ()});
 		}
 		if (header->status == ResponseStatus::Error)
-			return std::unexpected (RequestError{RequestErrorKind::Remote, std::move (*payload)});
+			return i2p::unexpected (RequestError{RequestErrorKind::Remote, std::move (*payload)});
 		return std::move (*payload);
 	}
 }

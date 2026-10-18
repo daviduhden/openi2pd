@@ -19,9 +19,9 @@ if(NOT CMAKE_SYSTEM_NAME MATCHES "^(Windows|Linux|OpenBSD|Android)$")
   message(FATAL_ERROR "Open I2Pd supports Windows, Linux, OpenBSD and Android")
 endif()
 
-# C++23 is a hard requirement. There is no fallback: accepting an older
-# standard would silently disable std::expected and other guarantees used by
-# the administrative IPC code.
+# C++23 is a hard requirement. The portable Expected shim provides the
+# value-or-error API on supported libc++/libstdc++ versions that lack
+# <expected>; this does not lower the language standard.
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)

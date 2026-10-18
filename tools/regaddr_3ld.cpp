@@ -29,10 +29,10 @@ namespace
 		return ok;
 	}
 
-	std::expected<std::string, std::string> ReadText (const char * path)
+	i2p::expected<std::string, std::string> ReadText (const char * path)
 	{
 		auto input = i2p::tools::ReadFile (path);
-		if (!input) return std::unexpected (input.error ());
+		if (!input) return i2p::unexpected (input.error ());
 		return std::string (reinterpret_cast<const char *> (input->data ()), input->size ());
 	}
 

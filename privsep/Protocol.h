@@ -11,7 +11,7 @@
 #include <charconv>
 #include <cstddef>
 #include <cstdint>
-#include <expected>
+#include "Expected.h"
 #include <limits>
 #include <span>
 #include <string>
@@ -98,32 +98,32 @@ namespace i2p::privsep
 		public:
 			explicit PayloadReader (std::string_view data): m_Data (data) {}
 
-			std::expected<uint8_t, ProtocolError> U8 ()
+			i2p::expected<uint8_t, ProtocolError> U8 ()
 			{
 				if (m_Pos >= m_Data.size ()) return Bad ("truncated u8");
 				return static_cast<uint8_t> (m_Data[m_Pos++]);
 			}
-			std::expected<uint16_t, ProtocolError> U16 ()
+			i2p::expected<uint16_t, ProtocolError> U16 ()
 			{
-				auto hi = U8 (); if (!hi) return std::unexpected (hi.error ());
-				auto lo = U8 (); if (!lo) return std::unexpected (lo.error ());
+				auto hi = U8 (); if (!hi) return i2p::unexpected (hi.error ());
+				auto lo = U8 (); if (!lo) return i2p::unexpected (lo.error ());
 				return static_cast<uint16_t> ((*hi << 8) | *lo);
 			}
-			std::expected<uint32_t, ProtocolError> U32 ()
+			i2p::expected<uint32_t, ProtocolError> U32 ()
 			{
-				auto hi = U16 (); if (!hi) return std::unexpected (hi.error ());
-				auto lo = U16 (); if (!lo) return std::unexpected (lo.error ());
+				auto hi = U16 (); if (!hi) return i2p::unexpected (hi.error ());
+				auto lo = U16 (); if (!lo) return i2p::unexpected (lo.error ());
 				return (static_cast<uint32_t> (*hi) << 16) | *lo;
 			}
-			std::expected<uint64_t, ProtocolError> U64 ()
+			i2p::expected<uint64_t, ProtocolError> U64 ()
 			{
-				auto hi = U32 (); if (!hi) return std::unexpected (hi.error ());
-				auto lo = U32 (); if (!lo) return std::unexpected (lo.error ());
+				auto hi = U32 (); if (!hi) return i2p::unexpected (hi.error ());
+				auto lo = U32 (); if (!lo) return i2p::unexpected (lo.error ());
 				return (static_cast<uint64_t> (*hi) << 32) | *lo;
 			}
-			std::expected<std::string_view, ProtocolError> String ()
+			i2p::expected<std::string_view, ProtocolError> String ()
 			{
-				auto size = U32 (); if (!size) return std::unexpected (size.error ());
+				auto size = U32 (); if (!size) return i2p::unexpected (size.error ());
 				if (*size > MAX_TEXT_SIZE || *size > m_Data.size () - m_Pos)
 					return Bad ("invalid string length");
 				auto value = m_Data.substr (m_Pos, *size);
@@ -133,18 +133,18 @@ namespace i2p::privsep
 			bool Done () const { return m_Pos == m_Data.size (); }
 
 		private:
-			static std::unexpected<ProtocolError> Bad (std::string_view text)
+			static i2p::unexpected<ProtocolError> Bad (std::string_view text)
 			{
-				return std::unexpected (ProtocolError{ErrorCode::BadField, text});
+				return i2p::unexpected (ProtocolError{ErrorCode::BadField, text});
 			}
 			std::string_view m_Data;
 			size_t m_Pos = 0;
 	};
 
-	inline std::expected<std::string, ProtocolError> Encode (const Message& message)
+	inline i2p::expected<std::string, ProtocolError> Encode (const Message& message)
 	{
 		if (message.payload.size () > MAX_MESSAGE_SIZE - HEADER_SIZE)
-			return std::unexpected (ProtocolError{ErrorCode::TooLarge, "message too large"});
+			return i2p::unexpected (ProtocolError{ErrorCode::TooLarge, "message too large"});
 
 		PayloadWriter header;
 		header.U32 (PROTOCOL_MAGIC);
@@ -157,29 +157,29 @@ namespace i2p::privsep
 		return out;
 	}
 
-	inline std::expected<Message, ProtocolError> Decode (std::string_view frame)
+	inline i2p::expected<Message, ProtocolError> Decode (std::string_view frame)
 	{
 		if (frame.size () < HEADER_SIZE)
-			return std::unexpected (ProtocolError{ErrorCode::Malformed, "short frame"});
+			return i2p::unexpected (ProtocolError{ErrorCode::Malformed, "short frame"});
 		PayloadReader reader (frame.substr (0, HEADER_SIZE));
-		auto magic = reader.U32 (); if (!magic) return std::unexpected (magic.error ());
-		auto version = reader.U16 (); if (!version) return std::unexpected (version.error ());
-		auto type = reader.U16 (); if (!type) return std::unexpected (type.error ());
-		auto request = reader.U32 (); if (!request) return std::unexpected (request.error ());
-		auto length = reader.U32 (); if (!length) return std::unexpected (length.error ());
+		auto magic = reader.U32 (); if (!magic) return i2p::unexpected (magic.error ());
+		auto version = reader.U16 (); if (!version) return i2p::unexpected (version.error ());
+		auto type = reader.U16 (); if (!type) return i2p::unexpected (type.error ());
+		auto request = reader.U32 (); if (!request) return i2p::unexpected (request.error ());
+		auto length = reader.U32 (); if (!length) return i2p::unexpected (length.error ());
 		if (*magic != PROTOCOL_MAGIC)
-			return std::unexpected (ProtocolError{ErrorCode::Malformed, "bad magic"});
+			return i2p::unexpected (ProtocolError{ErrorCode::Malformed, "bad magic"});
 		if (*version != PROTOCOL_VERSION)
-			return std::unexpected (ProtocolError{ErrorCode::UnsupportedVersion, "bad version"});
+			return i2p::unexpected (ProtocolError{ErrorCode::UnsupportedVersion, "bad version"});
 		if (*type < static_cast<uint16_t> (MessageType::ConfigureLog) ||
 			*type > static_cast<uint16_t> (MessageType::Pong))
-			return std::unexpected (ProtocolError{ErrorCode::UnknownType, "unknown type"});
+			return i2p::unexpected (ProtocolError{ErrorCode::UnknownType, "unknown type"});
 		if (*length > MAX_MESSAGE_SIZE - HEADER_SIZE)
-			return std::unexpected (ProtocolError{ErrorCode::TooLarge, "payload too large"});
+			return i2p::unexpected (ProtocolError{ErrorCode::TooLarge, "payload too large"});
 		// One SOCK_SEQPACKET record is one frame. A short/long frame is a
 		// framing error, not a size limit violation.
 		if (*length != frame.size () - HEADER_SIZE)
-			return std::unexpected (ProtocolError{ErrorCode::Malformed, "length mismatch"});
+			return i2p::unexpected (ProtocolError{ErrorCode::Malformed, "length mismatch"});
 		return Message{static_cast<MessageType> (*type), *request,
 			std::string (frame.substr (HEADER_SIZE, *length))};
 	}
@@ -193,14 +193,14 @@ namespace i2p::privsep
 		return writer.Data ();
 	}
 
-	inline std::expected<std::tuple<uint8_t, int64_t, std::string>, ProtocolError>
+	inline i2p::expected<std::tuple<uint8_t, int64_t, std::string>, ProtocolError>
 	DecodeLogRecord (std::string_view payload)
 	{
 		PayloadReader reader (payload);
-		auto level = reader.U8 (); if (!level) return std::unexpected (level.error ());
-		auto timestamp = reader.U64 (); if (!timestamp) return std::unexpected (timestamp.error ());
-		auto text = reader.String (); if (!text) return std::unexpected (text.error ());
-		if (!reader.Done ()) return std::unexpected (ProtocolError{ErrorCode::BadField, "trailing log data"});
+		auto level = reader.U8 (); if (!level) return i2p::unexpected (level.error ());
+		auto timestamp = reader.U64 (); if (!timestamp) return i2p::unexpected (timestamp.error ());
+		auto text = reader.String (); if (!text) return i2p::unexpected (text.error ());
+		if (!reader.Done ()) return i2p::unexpected (ProtocolError{ErrorCode::BadField, "trailing log data"});
 		return std::tuple{*level, static_cast<int64_t> (*timestamp), std::string (*text)};
 	}
 
@@ -213,20 +213,20 @@ namespace i2p::privsep
 		return writer.Data ();
 	}
 
-	inline std::expected<std::tuple<bool, std::string, std::string>, ProtocolError>
+	inline i2p::expected<std::tuple<bool, std::string, std::string>, ProtocolError>
 	DecodeLogConfig (std::string_view payload)
 	{
 		PayloadReader reader (payload);
-		auto syslog = reader.U8 (); if (!syslog) return std::unexpected (syslog.error ());
-		auto path = reader.String (); if (!path) return std::unexpected (path.error ());
-		auto tag = reader.String (); if (!tag) return std::unexpected (tag.error ());
+		auto syslog = reader.U8 (); if (!syslog) return i2p::unexpected (syslog.error ());
+		auto path = reader.String (); if (!path) return i2p::unexpected (path.error ());
+		auto tag = reader.String (); if (!tag) return i2p::unexpected (tag.error ());
 		if (!reader.Done () || *syslog > 1)
-			return std::unexpected (ProtocolError{ErrorCode::BadField, "invalid log config"});
+			return i2p::unexpected (ProtocolError{ErrorCode::BadField, "invalid log config"});
 		// These become null-terminated path/ident arguments. An embedded NUL
 		// would make the worker act on a different path than the parent meant.
 		if (path->find ('\0') != std::string_view::npos ||
 			tag->find ('\0') != std::string_view::npos)
-			return std::unexpected (ProtocolError{ErrorCode::BadField, "NUL in log config"});
+			return i2p::unexpected (ProtocolError{ErrorCode::BadField, "NUL in log config"});
 		return std::tuple{*syslog != 0, std::string (*path), std::string (*tag)};
 	}
 }

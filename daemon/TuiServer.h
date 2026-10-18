@@ -13,7 +13,6 @@
 
 #include <atomic>
 #include <memory>
-#include <stop_token>
 #include <string>
 #include <sys/types.h>
 #include <thread>
@@ -46,8 +45,8 @@ namespace tui
 
 		private:
 
-			void Run (std::stop_token stopToken);
-			void HandleClient (int clientFd, std::stop_token stopToken);
+			void Run ();
+			void HandleClient (int clientFd);
 			bool IsTrustedPeer (int clientFd) const;
 
 			std::string m_Path;
@@ -55,7 +54,8 @@ namespace tui
 			dev_t m_Device{0};
 			ino_t m_Inode{0};
 			bool m_HasIdentity{false};
-			std::jthread m_Thread;
+			std::thread m_Thread;
+			std::atomic<bool> m_Stop{false};
 	};
 }
 }
