@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: verifyhost.
+
+Documents project documentation.
+
+-->
+
 # verifyhost
 
 Verify a signed I2P host registration record.

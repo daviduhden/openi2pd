@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: attribution audit.
+
+Documents project documentation.
+
+-->
+
 # Attribution and personal-reference audit
 
 Scope: all 399 tracked files in the working tree (198 C/C++ source and header

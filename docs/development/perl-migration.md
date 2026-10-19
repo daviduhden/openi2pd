@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: perl migration.
+
+Documents project documentation.
+
+-->
+
 # Python-to-Perl migration
 
 Status: **source migration complete for the currently inventoried script;
@@ -126,4 +136,3 @@ private prefix and verifies the executable mode, portable shebang and
 `-DI2PD_PERL_CRITIC=ON` to register the opt-in `perl-critic` CTest target when
 `perlcritic` is installed; it is not a required dependency and no CPAN module
 is required by the build or runtime.
-

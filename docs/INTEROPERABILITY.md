@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: INTEROPERABILITY.
+
+Documents project documentation.
+
+-->
+
 # I2P Java interoperability audit
 
 Reference implementation audited statically in this session:

@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: haikuos.
+
+Documents project documentation.
+
+-->
+
 > **Platform note:** this page is retained from upstream i2pd documentation for reference. openi2pd does not build or test this platform; use upstream i2pd for support.
 
 Building on HaikuOS system

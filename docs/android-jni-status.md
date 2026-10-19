@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: android jni status.
+
+Documents project documentation.
+
+-->
+
 # Android JNI status and log snapshots
 
 This document describes the read-only JNI entry points used by the Android

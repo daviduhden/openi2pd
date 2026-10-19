@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: FIXTURES.
+
+Documents regression and interoperability checks.
+
+-->
+
 # Interoperability fixture matrix
 
 Pinned reference: I2P Java `i2p-2.13.0`, commit

@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: FAQ.
+
+Documents project documentation.
+
+-->
+
 ## What is I2P?
 
 I2P (Invisible Internet Protocol) is a universal anonymous network layer. 

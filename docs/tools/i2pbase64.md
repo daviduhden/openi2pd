@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: i2pbase64.
+
+Documents project documentation.
+
+-->
+
 # i2pbase64
 
 Encode or decode I2P base64 from files or stdin.

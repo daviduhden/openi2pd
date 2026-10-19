@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: autoconf i2pd.
+
+Documents project documentation.
+
+-->
+
 # autoconf_i2pd
 
 Interactive generator for an `i2pd.conf` configuration file.

@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: index.
+
+Documents project documentation.
+
+-->
+
 # openi2pd
 
 ![openi2pd logo](img/logo.png)
@@ -60,5 +70,3 @@ Resources
 * [I2P specifications](https://i2p.net/en/docs/specs/)
 * [Upstream i2pd source (provenance)](https://github.com/PurpleI2P/i2pd)
 * [Upstream documentation sync](upstream-sync.md)
-
-

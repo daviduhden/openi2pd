@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: b33offlinekeys.
+
+Documents project documentation.
+
+-->
+
 # b33offlinekeys
 
 Create per-day offline keys that let a router publish an encrypted (b33)

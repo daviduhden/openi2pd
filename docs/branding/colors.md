@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: colors.
+
+Documents project documentation.
+
+-->
+
 # Colors
 
 The canonical numeric palette and all semantic light/dark roles live in

@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: android.
+
+Documents project documentation.
+
+-->
+
 # Building the Android app
 
 The Android app is part of this repository under `../../android/`. It does not

@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: architecture.
+
+Documents project documentation.
+
+-->
+
 # Architecture and refactoring report
 
 This document records the state found during the audit and the architectural

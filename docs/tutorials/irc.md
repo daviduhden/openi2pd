@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: irc.
+
+Documents project documentation.
+
+-->
+
 Anonymous chat servers
 ======================
 
@@ -131,4 +141,3 @@ webirc {
    Use `keyinfo -d anon-chatserver.dat` or the `i2pd-tui` NetDb view to get the address. It looks like \<long random string\>.b32.i2p.
 
    Clients will use this address to connect to your server anonymously.
-   

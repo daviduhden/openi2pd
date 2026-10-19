@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: security.
+
+Documents project documentation.
+
+-->
+
 # Torrent security review
 
 Status: **static review and hardening implemented; dynamic/fuzz/device tests

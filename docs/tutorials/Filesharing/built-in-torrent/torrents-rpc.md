@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: torrents rpc.
+
+Documents project documentation.
+
+-->
+
 # Torrents JSON-RPC API (openi2pd)
 
 > **openi2pd fork:** the former browser console and its static assets were

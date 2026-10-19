@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: openbsd validation.
+
+Documents project documentation.
+
+-->
+
 # OpenBSD dynamic validation checklist
 
 **Status: static review only.** None of the commands below were executed while

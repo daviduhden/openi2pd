@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: testing.
+
+Documents project documentation.
+
+-->
+
 # Test and validation plan
 
 Permanent policy: agents do not configure, build or execute tests locally.

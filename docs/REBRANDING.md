@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: REBRANDING.
+
+Documents project documentation.
+
+-->
+
 # openi2pd identity and inherited-brand audit
 
 Project identity used for this fork: **openi2pd**. The official geometric

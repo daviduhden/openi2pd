@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: routerinfo.
+
+Documents project documentation.
+
+-->
+
 # routerinfo
 
 Print addresses from one or more RouterInfo files and, optionally, generate

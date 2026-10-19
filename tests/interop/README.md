@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: README.
+
+Documents regression and interoperability checks.
+
+-->
+
 # Java interoperability test harness
 
 This directory is a reproducible, **static-first** differential test harness for

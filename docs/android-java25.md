@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: android java25.
+
+Documents project documentation.
+
+-->
+
 # Java 25 on Android (openi2pd)
 
 Status: toolchain verification, 2026-10-19. This document covers the Android

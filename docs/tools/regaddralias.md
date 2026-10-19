@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: regaddralias.
+
+Documents project documentation.
+
+-->
+
 # regaddralias
 
 Create a signed alias record linking an old destination to a new destination.

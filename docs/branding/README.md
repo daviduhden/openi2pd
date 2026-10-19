@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: README.
+
+Documents project documentation.
+
+-->
+
 # openi2pd visual identity
 
 openi2pd uses a geometric node/tunnel emblem and a lowercase wordmark. The

@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: README.
+
+Documents regression and interoperability checks.
+
+-->
+
 # Checked-in deterministic vectors
 
 Every `*.case.json` describes one input and the normalized parse that a C++

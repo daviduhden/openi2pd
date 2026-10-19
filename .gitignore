@@ -1,3 +1,11 @@
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: .gitignore.
+#
+# Configures project configuration and integration.
+#
+
 # i2pd
 *.o
 router.info
@@ -266,7 +274,7 @@ build/Makefile
 debian/i2pd.1.gz
 .pc/
 
-# qt 
+# qt
 
 qt/i2pd_qt/*.autosave
 qt/i2pd_qt/*.ui.bk*

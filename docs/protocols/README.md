@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: README.
+
+Documents project documentation.
+
+-->
+
 # Protocol documentation
 
 The wire specifications are maintained by the I2P project:

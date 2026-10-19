@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: README.
+
+Documents project documentation.
+
+-->
+
 # OpenBSD configuration
 
 Use `i2pd.conf` as the packaged configuration in `/etc/i2pd`, with

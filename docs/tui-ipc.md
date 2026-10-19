@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: tui ipc.
+
+Documents project documentation.
+
+-->
+
 # TUI and IPC design
 
 The Unix implementation is described here. The Windows terminal, named-pipe

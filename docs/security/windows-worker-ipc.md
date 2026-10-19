@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: windows worker ipc.
+
+Documents project documentation.
+
+-->
+
 # Windows worker IPC and process policy
 
 **Status: static implementation only.** The primitives and tests in this tree

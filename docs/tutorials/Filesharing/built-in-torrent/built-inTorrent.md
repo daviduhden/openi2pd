@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: built inTorrent.
+
+Documents project documentation.
+
+-->
+
 # openi2pd Built-in Torrent Client
 
 > **Requirements:** compiled in by default unless built with `NO_TORRENTS`.

@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: ci.
+
+Documents project documentation.
+
+-->
+
 # CI policy and workflow linting
 
 Workflows remain **manual-only** (`workflow_dispatch`); no `push`,

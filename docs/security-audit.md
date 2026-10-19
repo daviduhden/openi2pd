@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: security audit.
+
+Documents project documentation.
+
+-->
+
 # Security audit
 
 Scope: all C++ in `libi2pd`, `libi2pd_client`, `daemon`, `i18n`, `tui` and the

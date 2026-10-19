@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: yggdrasil only mode.
+
+Documents project documentation.
+
+-->
+
 # Yggdrasil only router configuration
 
 For a router talking to other routers and reseed servers through Yggdrasil only.  
@@ -17,4 +27,4 @@ If you use Yggdrasil subnet and want to bind your router to a particular address
 `meshnets.yggaddress=` your local yggdrasil address
 
 Start i2pd, it will also reseed from an yggdrasil reseed server. No clearnet communication is involved.   
-Important: Make sure that the system clock is syncronized.  
+Important: Make sure that the system clock is syncronized.

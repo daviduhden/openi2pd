@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: memory safety 2026.
+
+Documents project documentation.
+
+-->
+
 # Memory-safety and concurrency audit — 2026-10-18
 
 Status: **static corrections prepared, dynamic validation pending**. No

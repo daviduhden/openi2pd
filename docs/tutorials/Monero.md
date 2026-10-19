@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: Monero.
+
+Documents project documentation.
+
+-->
+
 Connect a Monero wallet to a remote Monero node over I2P
 ========================================================
 

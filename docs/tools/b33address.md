@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: b33address.
+
+Documents project documentation.
+
+-->
+
 # b33address
 
 Derive a b33 (blinded) address from a destination.

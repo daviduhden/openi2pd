@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: regaddr 3ld.
+
+Documents project documentation.
+
+-->
+
 # regaddr_3ld
 
 Create a signed three-level subdomain registration record.

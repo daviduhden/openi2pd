@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: threat model.
+
+Documents project documentation.
+
+-->
+
 # Privilege-separation threat model
 
 Scope: current tree and target multiprocess architecture. This is a static

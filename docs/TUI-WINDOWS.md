@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: TUI WINDOWS.
+
+Documents project documentation.
+
+-->
+
 # TUI on Windows
 
 Status: **static integration only**. The Windows terminal backend, named-pipe

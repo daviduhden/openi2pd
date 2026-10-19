@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: requirements.
+
+Documents project documentation.
+
+-->
+
 # Build requirements
 
 openi2pd supports Linux, OpenBSD, Windows and Android. macOS, FreeBSD and

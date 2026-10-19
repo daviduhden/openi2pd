@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: libi2pd.
+
+Documents project documentation.
+
+-->
+
 libi2pd
 =======
 

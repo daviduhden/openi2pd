@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: keygen.
+
+Documents project documentation.
+
+-->
+
 # keygen
 
 Generate an I2P destination private key file.

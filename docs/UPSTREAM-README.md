@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: UPSTREAM README.
+
+Documents project documentation.
+
+-->
+
 i2pd docs
 =========
 

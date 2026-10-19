@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: android modernization.
+
+Documents project documentation.
+
+-->
+
 # Android modernization (Java 25 and Material 3)
 
 Source baseline: PurpleI2P/i2pd-android commit

@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: famtool.
+
+Documents project documentation.
+
+-->
+
 # famtool
 
 Create a router family certificate, sign a RouterInfo, or verify a signed

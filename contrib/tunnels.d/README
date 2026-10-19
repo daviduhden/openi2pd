@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: README.
+
+Documents project configuration and integration.
+
+-->
+
 # In that directory you can store separated config files for every tunnel.
 # Please read documentation for more info.
 #

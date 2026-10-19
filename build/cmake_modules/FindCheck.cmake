@@ -1,3 +1,11 @@
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: FindCheck.
+#
+# Configures build and manual CI integration.
+#
+
 # SPDX-License-Identifier: BSD-3-Clause
 # - Try to find the CHECK libraries
 #  Once done this will define
@@ -53,4 +61,3 @@ ENDIF( NOT CHECK_FOUND AND NOT PKG_CONFIG_FOUND )
 
 # Hide advanced variables from CMake GUIs
 MARK_AS_ADVANCED( CHECK_INCLUDE_DIRS CHECK_LIBRARIES )
-

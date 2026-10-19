@@ -1,6 +1,12 @@
-# Copyright (c) 2013-2026, The PurpleI2P Project
-# Copyright (c) 2026, David Uhden Collado
-# SPDX-License-Identifier: BSD-3-Clause
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: i2pd.spec.
+#
+# RPM spec for the prebuilt static musl i2pd binary, packaging certificates,
+# configuration, systemd unit and service scriptlets.
+#
+
 %global debug_package %{nil}
 %global __os_install_post %{nil}
 %global _build_id_links none
@@ -84,4 +90,3 @@ fi
 %dir %attr(0700,i2pd,i2pd) /var/lib/i2pd
 /var/lib/i2pd/certificates
 %dir %attr(0700,i2pd,i2pd) /var/log/i2pd
-

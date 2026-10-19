@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: dependencies.
+
+Documents project documentation.
+
+-->
+
 # Dependency and minimum-version inventory
 
 The versions below are the supported minimums for the refactored tree. They

@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: console matrix.
+
+Documents project documentation.
+
+-->
+
 # Torrent console functionality matrix
 
 Original console: `contrib/torrents/web/` (browser HTML/CSS/JS, removed in the

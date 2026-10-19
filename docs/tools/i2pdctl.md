@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: i2pdctl.
+
+Documents project documentation.
+
+-->
+
 # i2pdctl
 
 Perl 5 client for the retained I2PControl HTTPS service. It preserves the CLI

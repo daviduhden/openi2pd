@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: colors.
+
+Documents project documentation.
+
+-->
+
 # openi2pd color tokens
 
 This file is the canonical color source for openi2pd. Platform files must

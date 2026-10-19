@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: README.
+
+Documents project documentation.
+
+-->
+
 # Security documentation
 
 - [Full security audit](../security-audit.md): memory safety, concurrency,
