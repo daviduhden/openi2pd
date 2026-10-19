@@ -54,7 +54,7 @@
    "license" : "BSD-3-Clause",
    "notes" : [
       "Java compares the rounded difference, so wall-clock age can be up to one unit larger than the table value.",
-      "openi2pd does not currently enforce these windows (NET-114); the table defines the Java/spec expectation for a future test target.",
+      "openi2pd now validates these windows statically (NET-114); this table defines the Java/spec expectation for the pending differential test target.",
       "ElGamal request times are whole hours, so the realizable differences are 0, 60, 120, ...; the 65-minute constant only decides whether the previous hour is still accepted."
    ],
    "provenance" : {

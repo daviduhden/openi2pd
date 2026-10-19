@@ -7,8 +7,10 @@ specification and the pinned source, and defines how a C++ harness is compared
 against them.
 
 Java is **not** a build or runtime dependency of openi2pd. Nothing here is
-compiled into the router, downloaded at runtime, or registered with CTest by
-default. No dynamic test has been executed.
+compiled into the router or downloaded at runtime. The checked-in fixture
+validator is registered as the static CTest test `interop-static`; the pinned
+Java checkout and the differential runner remain opt-in because they require
+an external, read-only reference tree. No differential test has been executed.
 
 ## Pinned reference
 
@@ -18,7 +20,7 @@ default. No dynamic test has been executed.
 | Stable tag | `i2p-2.13.0` |
 | Commit | `9134f808337b401e8e53c73734c81fab04280c9d` |
 | Release date | 2026-07-24 |
-| Latest stable checked | 2026-10-18; no newer stable tag/release found |
+| Latest stable checked | 2026-10-19; GitHub latest release and tags still resolve to `i2p-2.13.0` |
 
 Keep the clone outside this repository and make it read-only:
 
@@ -52,10 +54,15 @@ It never modifies the reference tree.
 I2P_JAVA_REFERENCE=/var/tmp/i2p-java-2.13.0 \
   tests/interop/check-reference.sh
 
-# Validate every checked-in fixture: SHA-256, I2NP size/checksum, I2CP
-# length framing, and the cited Java file/line/substring.
+# Validate every checked-in fixture: SHA-256, I2NP size/checksum and I2CP
+# length framing. Java provenance citations are skipped when the reference is
+# not supplied.
+perl tests/interop/check-vectors.pl
+
+# With the pinned reference, also check tag/commit/cleanliness and Java
+# file/line/substring provenance.
 I2P_JAVA_REFERENCE=/var/tmp/i2p-java-2.13.0 \
-  tests/interop/check-vectors.pl
+  perl tests/interop/check-vectors.pl --require-reference
 
 # List cases without reading inputs.
 tests/interop/check-vectors.pl --list
@@ -93,12 +100,18 @@ It must exit 0 and print one JSON object to stdout. It must not touch the
 network, the system clock, or the Java tree. The runner compares JSON
 semantically and reports `PASS`, `FAIL`, `KNOWN-GAP` or `UNEXPECTED-PASS`.
 
-No such binary is registered in `tests/CMakeLists.txt`. The intended future
-target is `test-interop-vectors` from `tests/test-interop-vectors.cpp`. It is
-left unregistered because I2CP/SAM parsing is currently embedded in client
-classes and needs a small pure-parser adapter before a self-contained test can
-be added safely. I2NP-only cases can already be implemented with
+No differential binary is registered in `tests/CMakeLists.txt`. The intended
+future target is `test-interop-vectors` from `tests/test-interop-vectors.cpp`.
+It is left unregistered because I2CP/SAM parsing is currently embedded in
+client classes and needs a small pure-parser adapter before a self-contained
+test can be added safely. I2NP-only cases can already be implemented with
 `i2p::GetI2NPMessageLength()` and the `I2NPMessage` accessors.
+
+The static fixtures run in CTest as `interop-static` and in the manual Linux
+CI job. The `interop` CI job clones the pinned Java tag into a temporary
+read-only directory and runs `check-reference.sh` plus the provenance checks.
+Neither path publishes, downloads into the repository, or contacts a live I2P
+peer.
 
 ## Fixture policy
 

@@ -34,9 +34,9 @@ fixture-integrity checks described in `README.md`.
 | LeaseSet (type 1) | `ls1-ed25519-valid`, `ls1-expired`, `ls1-truncated-771` | Capture / partly checked in | `core/java/src/net/i2p/data/LeaseSet.java`; `spec/common-structures` | The 771-byte truncation is already covered by `tests/test-protocol-bounds.cpp`; valid LS1 is still to be captured. |
 | LeaseSet2 (type 3) | `ls2-standard-ed25519`, `ls2-offline-signature`, `ls2-multi-key-7-4`, `ls2-expired-lease`, `ls2-all-expired` | Capture | `core/java/src/net/i2p/data/LeaseSet2.java`; `EncType.java`; `spec/common-structures` | `ls2-multi-key-7-4` is the RT-103 matrix (advertise both 7/4 and 6/4, use each in turn). |
 | EncryptedLeaseSet (type 5) | `enc-ls2-blinded-store-hash`, `enc-ls2-wrong-store-key`, `enc-ls2-auth-dh`, `enc-ls2-auth-psk` | Capture | `EncryptedLeaseSet.java`; `BlindData.java`; proposal 123 | Store hash is `SHA256(blinded sig type || blinded key)` (LS-101). Wrong-key case must be dropped. |
-| MetaLeaseSet (type 7) | `meta-ls2-valid`, `meta-ls2-malformed-entry` | Capture | `core/java/src/net/i2p/data/MetaLeaseSet.java` | MetaLS publication/serving is still missing in C++ (NET-111). Fixture must show Java accepts it. |
+| MetaLeaseSet (type 7) | `meta-ls2-valid`, `meta-ls2-malformed-entry` | Capture | `core/java/src/net/i2p/data/MetaLeaseSet.java` | C++ now parses/stores/serves MetaLS; the Java-generated fixture is still required to validate the cross-type earliest-date rule. |
 | DatabaseStore | `dbstore-ri-key-match`, `dbstore-ri-key-mismatch`, `dbstore-ls-key-mismatch` | Capture | `DatabaseStoreMessage.java`; `NetDb.cpp::AddRouterInfo/AddLeaseSet2` | Mismatched key/identity must be dropped (LS-002/NETDB-001). |
-| DatabaseLookup | reply-key flags `0x00` (none), `0x02` (ElGamal session key + 32-byte tag), `0x04` (LS), `0x10` (ratchet key + 8-byte tag), `0x12` (ratchet public key, no tag) | Checked in | `router/java/src/net/i2p/data/i2np/DatabaseLookupMessage.java:56-65,360-420,457-520` | `0x12` is NET-112 and is marked `known_gap`; `0x02` is in `i2np-dblookup-tunnel-elgamal`. |
+| DatabaseLookup | reply-key modes `0x00` (none), `0x02` (ElGamal session key + 32-byte tag), `0x10` (ratchet key + 8-byte tag), `0x12` (ratchet public key, no tag) | Checked in | `router/java/src/net/i2p/data/i2np/DatabaseLookupMessage.java:56-65,360-420,457-520` | `0x12` is checked in as a `known_gap`: Java accepts the form, openi2pd rejects it fail-closed because the proposal-154 derived KDF is not implemented. `0x04` is a lookup-type LS bit, not a reply-key mode. |
 | DatabaseSearchReply | `dbsr-empty`, `dbsr-two`, `dbsr-missing-from` | Checked in | `DatabaseSearchReplyMessage.java:26-91` | Layout: key(32) + count(1) + hashes + from(32). |
 | DSRM sender binding | `dsrm-unqueried-sender` | Capture | `IterativeLookupJob.java:38-45`; `SearchMessageSelector.java:79-86` | NET-113; must be rejected or ignored. |
 | Floodfill freshness | `ri-aged-2h` | Capture | `HandleDatabaseLookupMessageJob.java:57,130-140` | NET-115; 1-hour freshness before replying. |
@@ -111,30 +111,50 @@ router keys.
 | Fixture | Status | Derivation |
 |---|---|---|
 | `ns-min-103` — no-PQ New Session, minimum size `96 + 7` | Capture | `ECIESAEADEngine.java:73-85,510-650` |
-| `ns-datetime-*` — DateTime block (type 0, length 4, big-endian seconds), age -5 min/+2 min | Capture + Template | `RatchetPayload.java:34-45`; `ECIESAEADEngine.java:1465-1475`; RT-101 |
-| `ns-replay-same-ephemeral` — duplicate Elligator key | Capture | `ECIESAEADEngine.java:591-625`; RT-101 |
-| `nsr-valid`, `nsr-retransmit`, `nsr-pq-*` | Capture | `ECIESAEADEngine.java:784-841,1257-1319`; RT-102 |
-| `payload-block-order` — blocks after padding/termination, bad DATETIME/NEXTKEY/ACK lengths | Capture | `RatchetPayload.java:105-205`; RT-104 |
-| Multi-key LeaseSet selection (7/4 vs 6/4) | Capture | `LeaseSet2.java:186-205`; `ECIESAEADEngine.java:1133-1148`; RT-103 |
+| `ns-datetime-*` — DateTime block (type 0, length 4, big-endian seconds), age -5 min/+2 min | Static validator + Capture | `RatchetPayload.java:34-45`; `ECIESAEADEngine.java:1465-1475`; RT-101; `test-eciesx25519-ratchet-session` |
+| `ns-replay-same-ephemeral` — duplicate Elligator key, including cache expiry/capacity | Static test + Capture | `ECIESAEADEngine.java:591-625`; `RatchetSKM.java:118,213`; RT-101 |
+| `nsr-valid`, `nsr-retransmit`, `nsr-pq-*` | Static test + Capture (type 6 only; type 5/7 still missing) | `ECIESAEADEngine.java:784-841,1257-1319`; RT-102 |
+| `payload-block-order` — blocks after padding/termination, bad DATETIME/NEXTKEY/ACK lengths, transactional replay/ES | Static validator + Capture | `RatchetPayload.java:105-205`; `test-eciesx25519-ratchet-session`; RT-104 |
+| Multi-key LeaseSet selection (7/4 vs 6/4) | Static test for 6/4 + Capture; 7/4 session matrix missing | `LeaseSet2.java:186-205`; `ECIESAEADEngine.java:1133-1148`; RT-103 |
 
 ## 6. Datagram2 / Datagram3
 
 | Fixture | Status | Derivation |
 |---|---|---|
-| `d2-min-429` — minimum repliable Datagram2 with DSA identity | Capture | `Datagram2.java:68,117-129`; `Datagram.cpp:207-210`; DG-101 |
+| `d2-min-429` — minimum repliable Datagram2 with DSA identity | Capture | `Datagram2.java:68,117-129`; `Datagram.cpp:131-180,299-346`; DG-101 |
 | `d2-428` — one byte below minimum, must reject | Capture | same |
-| `d2-offline` — offline signature block (flag `0x20`) | Capture | `Datagram2.java:105-129`; DG-103 |
+| `d2-offline` — offline signature block (flag `0x20`) | Capture (C++ implementation static) | `Datagram2.java:105-129`; C++ `Datagram.cpp:131-180,299-346`; DG-103 |
 | `d2-options` — options flag `0x10` and length | Capture | `Datagram2.java:99-104` |
 | `d2-bad-version`, `d2-truncated-signature` | Capture | `Datagram2.java:150-205` |
 | `d3-min-34` — fromHash(32) + flags(2) + empty payload | Capture | `Datagram3.java:55,99-120` |
 | `d3-first-contact` — no cached LeaseSet | Capture + Dynamic | `Datagram.cpp:301-340`; DG-102 |
 | `d3-options` | Capture | `Datagram3.java:99-110` |
 
+## 6b. Third-pass differential cases (2026-10-19)
+
+These cases capture the differences found in the latest Java 2.13.0 static
+pass. Signature/AEAD cases require a Java-generated vector or a controlled
+loopback capture; none has been executed.
+
+| Fixture | Status | Derivation |
+|---|---|---|
+| `ssu2-rx-sequential-600` — C++ Bob receives 600 sequential data packets | Dynamic | SSU2 Packet Numbering; `PeerState2.receivePacket`; NET-155 |
+| `ssu2-cleanup-gap-no-ack` — reordered `{1,70..130}` must not ACK `2..69` | Dynamic | `SSU2Bitfield.fromACKBlock`; NET-156 |
+| `ssu2-address-block-no-publish` — established peer sends a different Address block | Dynamic | `PeerState2.gotAddress`; NET-157 |
+| `ssu2-path-challenge-loss` — drop first challenge/response | Dynamic | `PeerState2.MAX_PATH_CHALLENGE_*`; NET-158 residual |
+| `ssu2-peertest-mtu-1280` — PeerTest/HolePunch on an MTU-1280 path | Capture + Dynamic | `PacketBuilder2.encryptPeerTest/buildPing`; NET-159 residual |
+| `enc-ls2-inner-published-encrypted` — decrypted inner retains `0x04` | Capture | `EncryptedLeaseSet.setBlindedWhenPublished`; LS-119 |
+| `meta-ls2-earliest-cross-type` — LS1/Meta replacement uses Meta earliest entry | Capture | `MetaLeaseSet.addLease`; LS-120 |
+| `su3-bad-file-version`, `su3-trailing-signature` | Checked in / unit | `SU3File.verifyHeader/verifyAndMigrate`; RS-101 |
+| `sam-33-add-remove` — `OK ID="sub"` and error transcripts, socket stays open | Dynamic | `SAMv3Handler.java:551-566`; SAM-110 |
+| `d2-empty-payload`, `d3-empty-payload` — valid gzip with zero output | Capture | `Datagram2/3.load`; DG-105 |
+| `stream-mtu-620`, `stream-pong-100` — peer MTU and pong cap | Dynamic | `ConnectionPacketHandler`; `ConnectionManager`; STR-104 |
+
 ## 7. SAM 3.0 / 3.1 / 3.2 / 3.3
 
 | Fixture | Status | Derivation |
 |---|---|---|
-| `sam-hello-*` — MIN/MAX negotiation for 3.0, 3.1, 3.2, 3.3, max-only, min-only, NOVERSION, single-digit `31`, garbage | Checked in | `SAMHandlerFactory.java:26,64-100,133-155`; C++ `SAM.cpp::ReceiveHandshake` |
+| `sam-hello-*` — MIN/MAX negotiation for 3.0, 3.1, 3.2, 3.3-only (new), max-only, min-only, NOVERSION, single-digit `31`; garbage remains a known parser divergence | Checked in / one known gap | `SAMHandlerFactory.java:26,64-100,133-155`; C++ `SAM.cpp::ReceiveHandshake` |
 | `sam-naming-key-not-found`, `sam-naming-ok`, `sam-naming-b33` | Capture | `SAMv1Handler.java:377-427`; SAM-101 |
 | `sam-session-create-3.0/3.1/3.2/3.3`, `sam-session-status` | Dynamic | `SAMv3Handler.java`; SAM-102 |
 | `sam-stream-connect-ok`, `sam-stream-connect-unreachable`, `sam-stream-reset` | Dynamic | `SAMv3StreamSession.java:163-201`; `ConnectionPacketHandler.java:537-629`; SAM-103/104 |
@@ -178,3 +198,23 @@ router keys.
    maximum before parsing.
 6. A capture is evidence, not a specification. If Java and the specification
    disagree, record both and do not silently accept the Java behavior.
+
+## 9. Client-protocol static regressions (2026-10-19)
+
+These are in-process/static cases; none has been executed against Java.
+
+| Fixture | Status | Derivation |
+|---|---|---|
+| `sam-large-send` — RAW/DATAGRAM SEND 8191/8192/8193/20000/31744/32768 bytes | Static buffer assertion + loopback pending | SAM v3 SEND limits; `SAMv1Handler.java:538,826-828`; SAM-112 |
+| `sam-silent-connect` — `SILENT=true`, bidirectional echo | Loopback pending | `SAMv3StreamSession.java:163-232`; SAM-113 |
+| `sam-stream-subession-accept` — distinct FROM_PORT/LISTEN_PORT, two acceptors | Loopback pending | `PrimarySession.java:96-109,390-425`; SAM-114 |
+| `sam-accept-no-expiry` — queued acceptor survives simulated 10 minutes | Static test updated | `SAMv3StreamSession.java:108-137`; SAM-115 |
+| `sam-repeated-signature-type` — numeric 255 rejected, type 8/case-insensitive accepted | Static pending | `SigType.java:288-325`; SAM-116 |
+| `i2cp-b33-blindinginfo` — TYPE_DEST then TYPE_KEY, then HostLookup b33 | Static pending | `BlindData.java:224-227`; `LookupDestJob.java:105-107`; I2CP-106 |
+| `i2cp-hostreply-ls2-options` — type 2/4 with non-empty LS2 properties | Static/Java capture pending | `LookupDestJob.java:254-284`; I2CP-107 |
+| `dg1-full-session-table` — valid Datagram1 for a new identity at the cap | Unit seam pending | DG-106 |
+| `dg-version-matrix` — V1/V2/V3 sessions sharing one destination | Unit pending | DG-107 |
+| `dg3-first-contact` — no LS, stale LS, fresh LS, forged hash | Unit/loopback pending | DG-102/107 |
+| `streaming-incoming-no-ls` — signed SYN with an empty LS cache | Loopback pending | STR-105 |
+| `streaming-incoming-mtu` — SYN advertises 512 and carries data | Loopback pending | STR-106 |
+| `streaming-offline-expiry` / unsigned CLOSE | Unit pending | STR-107 |

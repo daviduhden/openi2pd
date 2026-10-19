@@ -26,6 +26,7 @@
    "id": "i2np-dblookup-ratchet-pubkey",
    "input": "i2np-dblookup-ratchet-pubkey.hex",
    "kind": "i2np",
+   "known_gap": "openi2pd rejects the proposal-154 0x12 derived reply key fail-closed; the derived KDF is not implemented",
    "license": "BSD-3-Clause",
    "provenance": {
       "java": [
