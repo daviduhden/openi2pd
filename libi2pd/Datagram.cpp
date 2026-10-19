@@ -20,6 +20,20 @@ namespace i2p
 {
 namespace datagram
 {
+	// Datagram2/3 options are a Mapping prefixed by its 16-bit length.
+	// A zero-length Mapping is valid (Java reads the length, then only parses
+	// properties when it is non-zero); Mapping::FromBuffer alone cannot
+	// distinguish that from a parse failure.
+	bool ParseDatagramOptions (i2p::util::Mapping & options, const uint8_t * buf, size_t len, size_t & offset)
+	{
+		if (offset > len || len - offset < 2) return false;
+		size_t optionsLen = bufbe16toh (buf + offset);
+		if (optionsLen > len - offset - 2) return false;
+		if (optionsLen && !options.FromBuffer (optionsLen, buf + offset + 2, optionsLen)) return false;
+		offset += 2 + optionsLen;
+		return true;
+	}
+
 	DatagramDestination::DatagramDestination (
 		std::shared_ptr<i2p::client::ClientDestination> owner, bool gzip, DatagramVersion version)
 		: m_Owner (owner)
@@ -175,8 +189,11 @@ namespace datagram
 		size_t len, uint16_t fromPort, uint16_t toPort, uint8_t protocol)
 	{
 		if (session)
-			session->SendMsg (CreateDataMessage ({ { payload, len } }, fromPort, toPort,
-				!protocol ? i2p::client::PROTOCOL_TYPE_RAW : protocol, !session->IsRatchets ())); // raw
+			// Protocol 0 (I2CP "any") is a valid per-message value and must not be
+			// rewritten to 18; callers that want the default pass
+			// DATAGRAM_RAW_PROTOCOL explicitly.
+			session->SendMsg (CreateDataMessage ({ { payload, len } }, fromPort, toPort, protocol,
+				!session->IsRatchets ())); // raw
 	}
 
 	void DatagramDestination::FlushSendQueue (std::shared_ptr<DatagramSession> session)
@@ -225,7 +242,14 @@ namespace datagram
 
 		if (verified)
 		{
+			const bool hadSession = FindSession (identity.GetIdentHash ()) != nullptr;
 			auto session = ObtainSession (identity.GetIdentHash ());
+			if (!session)
+			{
+				LogPrint (eLogWarning, "DatagramDestination: session table is full, dropping Datagram1");
+				return;
+			}
+			if (!hadSession) session->SetVersion (eDatagramV1);
 			if (ls) session->SetRemoteLeaseSet (ls);
 			session->Ack ();
 			auto r = FindReceiver (toPort);
@@ -285,10 +309,7 @@ namespace datagram
 		{
 			isOptions = true;
 			m_Options.CleanUp ();
-			auto optionsLen = m_Options.FromBuffer (buf + offset, len - offset);
-			if (optionsLen)
-				offset += optionsLen;
-			else
+			if (!ParseDatagramOptions (m_Options, buf, len, offset))
 			{
 				LogPrint (eLogWarning, "Datagram: datagram2 can't read options");
 				return;
@@ -336,10 +357,14 @@ namespace datagram
 			return;
 		}
 
+		const bool hadSession = FindSession (identity.GetIdentHash ()) != nullptr;
 		auto session = ObtainSession (identity.GetIdentHash ());
 		if (session)
 		{
-			session->SetVersion (eDatagramV2);
+			// Do not mutate an existing session's outgoing version based on
+			// the received datagram. Only a newly observed peer inherits the
+			// protocol version that created it.
+			if (!hadSession) session->SetVersion (eDatagramV2);
 			if (ls) session->SetRemoteLeaseSet (ls);
 			session->Ack ();
 		}
@@ -358,13 +383,11 @@ namespace datagram
 			LogPrint (eLogWarning, "Datagram: datagram3 is too short ", len);
 			return;
 		}
-		if (!from)
-		{
-			// Datagram3 has no signature of its own; it is only meaningful inside an
-			// authenticated ratchet session (Datagram3.java, proposal 163).
-			LogPrint (eLogInfo, "Datagram: datagram3 received from non-ratchets session");
-			return;
-		}
+		// Datagram3 is explicitly unauthenticated (proposal 163 / datagrams
+		// spec). When it arrives through a ratchet session the router can
+		// additionally validate the sender, but legacy/raw delivery must still
+		// hand the hash to a HashReceiver. Datagram3.java load() itself does not
+		// require a session or a cached LeaseSet.
 		const uint8_t * flags = buf + 32;
 		if ((flags[1] & 0x0f) != 0x03) // Datagram3.java VERSION_MASK/VERSION
 		{
@@ -374,7 +397,7 @@ namespace datagram
 		i2p::data::IdentHash ident (buf);
 		// If the ratchet session already established the peer destination, the
 		// unauthenticated sender hash must not contradict it.
-		if (from->GetDestinationPtr () && *from->GetDestinationPtr () != ident)
+		if (from && from->GetDestinationPtr () && *from->GetDestinationPtr () != ident)
 		{
 			LogPrint (eLogError, "Datagram: datagram3 sender hash mismatch for ", ident.ToBase32 ());
 			return;
@@ -385,10 +408,7 @@ namespace datagram
 		{
 			isOptions = true;
 			m_Options.CleanUp ();
-			auto optionsLen = m_Options.FromBuffer (buf + offset, len - offset);
-			if (optionsLen)
-				offset += optionsLen;
-			else
+			if (!ParseDatagramOptions (m_Options, buf, len, offset))
 			{
 				LogPrint (eLogWarning, "Datagram: datagram3 can't read options");
 				return;
@@ -400,16 +420,18 @@ namespace datagram
 			return;
 		}
 
-		// First contact has no cached LeaseSet. The ratchet session already
-		// authenticates the sender, so deliver the hash immediately instead of
-		// dropping the datagram or issuing an unbounded lookup.
+		// First contact has no cached LeaseSet. Datagram3 deliberately carries
+		// only an unauthenticated sender hash, so deliver it to the HashReceiver
+		// without forcing a lookup; a cached LeaseSet (or a ratchet session)
+		// can still be used for the optional extra checks above.
 		auto session = FindSession (ident);
 		std::shared_ptr<const i2p::data::LeaseSet> ls;
 		if (session) ls = session->GetRemoteLeaseSet ();
+		if (ls && ls->IsExpired ()) ls = nullptr;
 		if (!ls) ls = m_Owner->FindLeaseSet (ident);
 		if (ls)
 		{
-			if (!ls->IsEncryptionKey (from->GetRemoteStaticKeyType (), from->GetRemoteStaticKey ()))
+			if (from && !ls->IsEncryptionKey (from->GetRemoteStaticKeyType (), from->GetRemoteStaticKey ()))
 			{
 				LogPrint (eLogError, "Datagram: Remote LeaseSet static key mismatch for datagram3 from ",
 					ident.ToBase32 ());
@@ -421,9 +443,9 @@ namespace datagram
 				if (session) session->SetVersion (eDatagramV3);
 			}
 			if (session) session->SetRemoteLeaseSet (ls);
-			// The LeaseSet and the ratchet static key now agree; remember the
+			// When the LeaseSet and the ratchet static key agree, remember the
 			// association so later datagrams use the authenticated identity.
-			if (!from->GetDestinationPtr ()) from->SetDestination (ident);
+			if (from && !from->GetDestinationPtr ()) from->SetDestination (ident);
 		}
 
 		auto r = FindHashReceiver (toPort);
@@ -431,14 +453,15 @@ namespace datagram
 			r (ident, fromPort, toPort, buf + offset, len - offset, isOptions ? &m_Options : nullptr);
 		else
 		{
+			// Internal consumers such as the torrent tracker still use the
+			// full-identity callback. Only promote when a verified cached
+			// LeaseSet is available; a Datagram3 hash alone is never trusted.
 			auto receiver = FindReceiver (toPort);
 			if (receiver && ls)
 				receiver (*ls->GetIdentity (), fromPort, toPort, buf + offset, len - offset,
 					isOptions ? &m_Options : nullptr);
-			else if (receiver)
-				LogPrint (eLogWarning, "Datagram: datagram3 sender identity is not cached for ", ident.ToBase32 ());
 			else
-				LogPrint (eLogWarning, "DatagramDestination: no receiver for port ", toPort);
+				LogPrint (eLogWarning, "DatagramDestination: no hash receiver or cached identity for port ", toPort);
 		}
 		if (session) session->Ack ();
 	}
@@ -552,10 +575,11 @@ namespace datagram
 	void DatagramDestination::HandleDataMessagePayload (uint16_t fromPort, uint16_t toPort, const uint8_t * buf,
 		size_t len, uint8_t protocolType, i2p::garlic::ECIESX25519AEADRatchetSession * from)
 	{
-		// unzip it
+		// unzip it. A valid gzip stream may produce zero bytes; only a
+		// decompression failure is dropped.
 		uint8_t uncompressed[MAX_DATAGRAM_SIZE];
-		size_t uncompressedLen = m_Inflator.Inflate (buf, len, uncompressed, MAX_DATAGRAM_SIZE);
-		if (uncompressedLen)
+		size_t uncompressedLen = 0;
+		if (m_Inflator.InflateChecked (buf, len, uncompressed, MAX_DATAGRAM_SIZE, uncompressedLen))
 		{
 			switch (protocolType)
 			{
@@ -587,6 +611,7 @@ namespace datagram
 		auto msg = m_I2NPMsgsPool.AcquireShared ();
 		uint8_t * buf = msg->GetPayload ();
 		buf += 4; // reserve for length
+		msg->len += 4; // account for the reserved length before deflating
 
 		if (m_Gzip && m_Deflator)
 			size = m_Deflator->Deflate (payloads, buf, msg->maxLen - msg->len);
@@ -599,7 +624,7 @@ namespace datagram
 			htobe16buf (buf + 4, fromPort); // source port
 			htobe16buf (buf + 6, toPort); // destination port
 			buf[9] = protocolType; // raw or datagram protocol
-			msg->len += size + 4;
+			msg->len += size;
 			msg->FillI2NPMessageHeader (eI2NPData, m_Owner->GetRng () (), checksum);
 		}
 		else
@@ -759,10 +784,34 @@ namespace datagram
 				{
 					m_RequestingLS = true;
 					m_LocalDestination->RequestDestination (m_RemoteIdent,
-						std::bind (&DatagramSession::HandleLeaseSetUpdated, this, std::placeholders::_1));
+						std::bind (&DatagramSession::HandleLeaseSetUpdated, shared_from_this (),
+							std::placeholders::_1));
 				}
 				return nullptr;
 			}
+		}
+
+		if (m_RemoteLeaseSet)
+		{
+			// A standard LS2 that advertises no key type this destination can
+			// use has no encryptor (LeaseSet2::IsIncompatibleCrypto). The
+			// ElGamal/AES fallback in GetRoutingSession would then encrypt
+			// with a null encryptor and send an uninitialised block. LS1 is
+			// excluded because its incompatibility flag describes inbound
+			// ElGamal support, while outbound encryption still uses the
+			// advertised LS1 key.
+			if (m_RemoteLeaseSet->GetStoreType () != i2p::data::NETDB_STORE_TYPE_LEASESET
+				&& m_RemoteLeaseSet->IsIncompatibleCrypto ())
+			{
+				if (!m_LoggedIncompatibleLeaseSet)
+				{
+					LogPrint (eLogError, "Datagram: Remote LeaseSet has no usable encryption key for ",
+						m_RemoteIdent.ToBase32 ());
+					m_LoggedIncompatibleLeaseSet = true;
+				}
+				return nullptr;
+			}
+			m_LoggedIncompatibleLeaseSet = false;
 		}
 
 		if (!m_RoutingSession || m_RoutingSession->IsTerminated () || !m_RoutingSession->IsReadyToSend ()
@@ -895,7 +944,11 @@ namespace datagram
 			// only update lease set if found and newer than previous lease set
 			uint64_t oldExpire = 0;
 			if (m_RemoteLeaseSet) oldExpire = m_RemoteLeaseSet->GetExpirationTime ();
-			if (ls && ls->GetExpirationTime () > oldExpire) m_RemoteLeaseSet = ls;
+			if (ls && ls->GetExpirationTime () > oldExpire)
+			{
+				m_RemoteLeaseSet = ls;
+				m_LoggedIncompatibleLeaseSet = false;
+			}
 		}
 		FlushSendQueue (false); // process deferred flush
 	}
@@ -905,8 +958,8 @@ namespace datagram
 		if (!m_RequestingLS)
 		{
 			m_RequestingLS = true;
-			m_LocalDestination->RequestDestination (
-				m_RemoteIdent, std::bind (&DatagramSession::HandleLeaseSetUpdated, this, std::placeholders::_1));
+			m_LocalDestination->RequestDestination (m_RemoteIdent,
+				std::bind (&DatagramSession::HandleLeaseSetUpdated, shared_from_this (), std::placeholders::_1));
 		}
 	}
 

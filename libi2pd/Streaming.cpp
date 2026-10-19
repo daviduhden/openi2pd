@@ -21,26 +21,38 @@ namespace i2p
 {
 namespace stream
 {
+	namespace
+	{
+		// Validate the fixed part of a packet before any option accessor is
+		// used. Packet buffers are fixed-size, but a short/malformed packet must
+		// not make GetFlags()/GetOptionSize() read stale pool memory.
+		bool ValidatePacket (const Packet * packet)
+		{
+			if (!packet || packet->len < 22) return false;
+			size_t numNacks = packet->buf[16];
+			if (packet->len < 22 + numNacks * 4) return false;
+			size_t optionsOffset = 17 + numNacks * 4 + 3; // option size field
+			if (packet->len < optionsOffset + 2) return false;
+			size_t optionsSize = bufbe16toh (packet->buf + optionsOffset);
+			return optionsSize <= packet->len - optionsOffset - 2;
+		}
+	} // namespace
+
 	SendBuffer::SendBuffer (
 		const std::vector<std::pair<const uint8_t *, size_t>> & bufs, size_t totalLen, SendHandler && h)
-		: len (totalLen)
+		: m_Buffer (std::make_unique_for_overwrite<uint8_t[]> (totalLen))
+		, buf (m_Buffer.get ())
+		, len (totalLen)
 		, offset (0)
 		, handler (std::move (h))
 	{
-		buf = new uint8_t[len];
 		size_t offset1 = 0;
 		for (const auto & [b, l] : bufs)
 		{
-			if (offset1 + l <= totalLen)
-			{
-				memcpy (buf + offset1, b, l);
-				offset1 += l;
-			}
-			else
-			{
-				memcpy (buf + offset1, b, totalLen - offset1);
-				break;
-			}
+			if (offset1 >= totalLen) break;
+			auto copyLen = std::min (l, totalLen - offset1);
+			if (copyLen) memcpy (buf + offset1, b, copyLen);
+			offset1 += copyLen;
 		}
 	}
 
@@ -319,6 +331,12 @@ namespace stream
 			m_LocalDestination.DeletePacket (packet);
 			return;
 		}
+		if (!ValidatePacket (packet))
+		{
+			LogPrint (eLogWarning, "Streaming: Malformed packet of ", packet ? packet->len : 0, " bytes, dropped");
+			m_LocalDestination.DeletePacket (packet);
+			return;
+		}
 		m_NumReceivedBytes += packet->GetLength ();
 		if (!m_SendStreamID)
 		{
@@ -333,7 +351,10 @@ namespace stream
 			}
 		}
 
-		if (!packet->IsNoAck ()) // ack received
+		// The ackThrough field is ignored on the initial connection packet
+		// (sendStreamId still 0), whether or not the sender set NO_ACK. Older
+		// clients do not set it.
+		if (!packet->IsNoAck () && !(packet->IsSYN () && !packet->GetSendStreamID ())) // ack received
 			ProcessAck (packet);
 
 		int32_t receivedSeqn = packet->GetSeqn ();
@@ -565,9 +586,16 @@ namespace stream
 			return false;
 		}
 		if (!flags) return true;
+		const uint8_t * optionEnd = optionData + optionSize;
+		auto hasOption = [&] (size_t n) { return (size_t)(optionEnd - optionData) >= n; };
 		bool immediateAckRequested = false;
 		if (flags & PACKET_FLAG_DELAY_REQUESTED)
 		{
+			if (!hasOption (2))
+			{
+				LogPrint (eLogInfo, "Streaming: Truncated delay option, dropped");
+				return false;
+			}
 			uint16_t delayRequested = bufbe16toh (optionData);
 			if (!delayRequested) // 0 requests an immediate ack
 				immediateAckRequested = true;
@@ -622,15 +650,30 @@ namespace stream
 		if (flags & PACKET_FLAG_FROM_INCLUDED)
 		{
 			verified = false;
+			// Parse the identity that is actually in this option block instead
+			// of assuming the length of a previously learned identity.
+			i2p::data::IdentityEx optionIdentity;
+			size_t identityLen = optionIdentity.FromBuffer (optionData, optionEnd - optionData);
+			if (!identityLen)
+			{
+				LogPrint (eLogInfo, "Streaming: Truncated FROM option, dropped");
+				return false;
+			}
 			if (m_RemoteLeaseSet) m_RemoteIdentity = m_RemoteLeaseSet->GetIdentity ();
-			if (!m_RemoteIdentity) m_RemoteIdentity = std::make_shared<i2p::data::IdentityEx> (optionData, optionSize);
+			if (!m_RemoteIdentity)
+				m_RemoteIdentity = std::make_shared<i2p::data::IdentityEx> (optionIdentity);
+			else if (m_RemoteIdentity->GetIdentHash () != optionIdentity.GetIdentHash ())
+			{
+				LogPrint (eLogError, "Streaming: FROM identity changed for sSID=", m_SendStreamID);
+				return false;
+			}
 			if (m_RemoteIdentity->IsRSA ())
 			{
 				LogPrint (eLogInfo, "Streaming: Incoming stream from RSA destination ",
 					m_RemoteIdentity->GetIdentHash ().ToBase64 (), " Discarded");
 				return false;
 			}
-			optionData += m_RemoteIdentity->GetFullLen ();
+			optionData += identityLen;
 			if (!m_RemoteLeaseSet)
 			{
 				LogPrint (eLogDebug, "Streaming: Incoming stream from ", m_RemoteIdentity->GetIdentHash ().ToBase32 (),
@@ -656,9 +699,20 @@ namespace stream
 
 		if (flags & PACKET_FLAG_MAX_PACKET_SIZE_INCLUDED)
 		{
-			uint16_t maxPacketSize = bufbe16toh (optionData);
-			LogPrint (eLogDebug, "Streaming: Max packet size ", maxPacketSize);
+			if (!hasOption (2))
+			{
+				LogPrint (eLogInfo, "Streaming: Truncated max packet size option, dropped");
+				return false;
+			}
+			const uint16_t maxPacketSize = bufbe16toh (optionData);
 			optionData += 2;
+			// Java clamps the peer's advertised MTU to MIN_MESSAGE_SIZE and
+			// never raises it above the local/ratchet value. Apply it to the
+			// incoming initial SYN too: the SYNACK and any initial payload must
+			// respect the peer's advertised receive size.
+			const size_t peerMtu = std::max<size_t> (maxPacketSize, STREAMING_MIN_MTU);
+			if (peerMtu < m_MTU) m_MTU = peerMtu;
+			LogPrint (eLogDebug, "Streaming: Max packet size ", maxPacketSize, ", MTU ", m_MTU);
 		}
 
 		if (flags & (PACKET_FLAG_CLOSE | PACKET_FLAG_RESET))
@@ -679,8 +733,19 @@ namespace stream
 					}
 					verified = true;
 				}
-				else // invalid stream, safe to close
-					verified = true;
+				else
+				{
+					// No cached LeaseSet does not make an unsigned CLOSE/RESET
+					// authentic. Require a real packet signature below; the
+					// signature path verifies it against the destination
+					// identity/transient key.
+					if (!(flags & PACKET_FLAG_SIGNATURE_INCLUDED) || !m_RemoteIdentity)
+					{
+						LogPrint (eLogWarning, "Streaming: Unsigned CLOSE/RESET without LeaseSet, dropped");
+						return false;
+					}
+					verified = false;
+				}
 			}
 		}
 
@@ -691,46 +756,27 @@ namespace stream
 				LogPrint (eLogInfo, "Streaming: offline signature without identity");
 				return false;
 			}
-			if (verified)
+			// Always authenticate the offline section when the flag is present.
+			// A cached LeaseSet delegation must not let an expired or
+			// differently-signed section bypass the expiry/delegation checks.
+			if (!hasOption (6))
 			{
-				// skip offline signature
-				optionData += 4; // timestamp
-				uint16_t keyType = bufbe16toh (optionData);
-				optionData += 2; // key type
-				std::unique_ptr<i2p::crypto::Verifier> transientVerifier (
-					i2p::data::IdentityEx::CreateVerifier (keyType));
-				if (!transientVerifier)
-				{
-					LogPrint (eLogInfo, "Streaming: Unknown offline signature key type ", (int)keyType);
-					return false;
-				}
-				optionData += transientVerifier->GetPublicKeyLen (); // public key
-				optionData += m_RemoteIdentity->GetSignatureLen (); // signature
+				LogPrint (eLogInfo, "Streaming: Truncated offline signature option, dropped");
+				return false;
 			}
-			else
+			size_t offset = 0;
+			m_TransientVerifier = i2p::data::ProcessOfflineSignature (
+				m_RemoteIdentity, optionData, optionSize - (optionData - packet->GetOptionData ()), offset);
+			optionData += offset;
+			if (!m_TransientVerifier)
 			{
-				// if we have it in LeaseSet already we don't need to parse it again
-				if (m_RemoteLeaseSet) m_TransientVerifier = m_RemoteLeaseSet->GetTransientVerifier ();
-				if (m_TransientVerifier)
-				{
-					// skip option data
-					optionData += 6; // timestamp and key type
-					optionData += m_TransientVerifier->GetPublicKeyLen (); // public key
-					optionData += m_RemoteIdentity->GetSignatureLen (); // signature
-				}
-				else
-				{
-					// transient key
-					size_t offset = 0;
-					m_TransientVerifier = i2p::data::ProcessOfflineSignature (
-						m_RemoteIdentity, optionData, optionSize - (optionData - packet->GetOptionData ()), offset);
-					optionData += offset;
-					if (!m_TransientVerifier)
-					{
-						LogPrint (eLogError, "Streaming: offline signature failed");
-						return false;
-					}
-				}
+				LogPrint (eLogError, "Streaming: offline signature failed");
+				return false;
+			}
+			if (optionData > optionEnd)
+			{
+				LogPrint (eLogInfo, "Streaming: Offline signature exceeds options, dropped");
+				return false;
 			}
 		}
 
@@ -743,14 +789,19 @@ namespace stream
 			}
 			auto signatureLen
 				= m_TransientVerifier ? m_TransientVerifier->GetSignatureLen () : m_RemoteIdentity->GetSignatureLen ();
-			size_t optionOffset2 = optionData - packet->buf;
-			if (optionOffset2 > packet->len || signatureLen > packet->len - optionOffset2)
+			// SIGNATURE_INCLUDED is the last option (streaming spec, option 5).
+			if (!hasOption (signatureLen))
 			{
 				LogPrint (eLogError, "Streaming: Signature too big, ", signatureLen, " bytes");
 				return false;
 			}
 			if (!verified) // packet was not verified through session
 			{
+				if (!m_TransientVerifier && !m_RemoteIdentity)
+				{
+					LogPrint (eLogWarning, "Streaming: No verifier or remote identity for signature");
+					return false;
+				}
 				// verify actual signature
 				if (signatureLen <= 256)
 				{
@@ -821,8 +872,10 @@ namespace stream
 			Packet p;
 			memset (p.buf, 0, 22); // minimal header all zeroes
 			memcpy (p.buf + 4, packet->buf, 4); // but receiveStreamID is the sendStreamID from the ping
-			htobe16buf (p.buf + 18, PACKET_FLAG_ECHO); // and echo flag
+			htobe16buf (p.buf + 18, PACKET_FLAG_ECHO | PACKET_FLAG_NO_ACK); // echo and no-ack flags
 			auto payloadLen = int (packet->len) - (packet->GetPayload () - packet->buf);
+			constexpr int MAX_PONG_PAYLOAD = 32; // Java ConnectionManager
+			if (payloadLen > MAX_PONG_PAYLOAD) payloadLen = MAX_PONG_PAYLOAD;
 			if (payloadLen > 0)
 				memcpy (p.buf + 22, packet->GetPayload (), payloadLen);
 			else
@@ -1080,6 +1133,11 @@ namespace stream
 		return len;
 	}
 
+	size_t Stream::Send (std::span<const uint8_t> buf)
+	{
+		return Send (buf.data (), buf.size ());
+	}
+
 	void Stream::AsyncSend (const uint8_t * buf, size_t len, SendHandler && handler)
 	{
 		std::shared_ptr<i2p::stream::SendBuffer> buffer;
@@ -1091,6 +1149,11 @@ namespace stream
 				[handler = std::move (handler)] () mutable { handler (boost::system::error_code (), 0); });
 		}
 		Send (std::move (buffer));
+	}
+
+	void Stream::AsyncSend (std::span<const uint8_t> buf, SendHandler && handler)
+	{
+		AsyncSend (buf.data (), buf.size (), std::move (handler));
 	}
 
 	void Stream::Send (std::shared_ptr<i2p::stream::SendBuffer> && buf)
@@ -1470,7 +1533,7 @@ namespace stream
 		size += 4; // sendStreamID
 		memset (packet + size, 0, 14);
 		size += 14; // all zeroes
-		uint16_t flags = PACKET_FLAG_ECHO | PACKET_FLAG_FROM_INCLUDED;
+		uint16_t flags = PACKET_FLAG_ECHO | PACKET_FLAG_NO_ACK | PACKET_FLAG_FROM_INCLUDED;
 		if (!m_DontSign) flags |= PACKET_FLAG_SIGNATURE_INCLUDED;
 		bool isOfflineSignature = m_LocalDestination.GetOwner ()->GetPrivateKeys ().IsOfflineSignature ();
 		if (isOfflineSignature) flags |= PACKET_FLAG_OFFLINE_SIGNATURE;
@@ -2225,9 +2288,41 @@ namespace stream
 				}
 				else // incoming
 				{
-					// just close the socket without sending FIN or RST
-					m_Status = eStreamStatusClosed;
-					AsyncClose ();
+					// Java can accept an inbound SYN without a locally cached
+					// LeaseSet; the router resolves the destination for the
+					// SYNACK. Request it asynchronously and keep the stream
+					// pending instead of terminating a valid first contact.
+					if (!m_IsRequestingLeaseSet)
+					{
+						m_IsRequestingLeaseSet = true;
+						auto callback = [s = shared_from_this ()] (std::shared_ptr<i2p::data::LeaseSet> ls)
+						{
+							s->m_IsRequestingLeaseSet = false;
+							if (!ls)
+							{
+								if (s->m_Status != eStreamStatusClosed)
+								{
+									s->m_Status = eStreamStatusClosed;
+									s->AsyncClose ();
+								}
+								return;
+							}
+							s->m_RemoteLeaseSet = ls;
+							s->m_RemoteIdentity = ls->GetIdentity ();
+							s->m_TransientVerifier = ls->GetTransientVerifier ();
+							if (s->m_Status != eStreamStatusClosed && s->m_Status != eStreamStatusReset
+								&& s->m_Status != eStreamStatusTerminated)
+								s->ResumeSend ();
+						};
+						if (!m_LocalDestination.GetOwner ()->RequestDestination (
+								m_RemoteIdentity->GetIdentHash (), callback))
+						{
+							m_IsRequestingLeaseSet = false;
+							m_Status = eStreamStatusClosed;
+							AsyncClose ();
+						}
+					}
+					return;
 				}
 			}
 			else
@@ -2410,6 +2505,12 @@ namespace stream
 
 	void StreamingDestination::HandleNextPacket (Packet * packet)
 	{
+		if (!ValidatePacket (packet))
+		{
+			LogPrint (eLogWarning, "Streaming: Malformed packet of ", packet ? packet->len : 0, " bytes, dropped");
+			DeletePacket (packet);
+			return;
+		}
 		uint32_t sendStreamID = packet->GetSendStreamID ();
 		if (sendStreamID)
 		{
@@ -2487,9 +2588,11 @@ namespace stream
 				incomingStream->HandleNextPacket (packet); // SYN
 				if (!incomingStream->GetRemoteLeaseSet ())
 				{
-					LogPrint (eLogWarning, "Streaming: No remote LeaseSet for incoming stream. Terminated");
-					incomingStream->Terminate (); // can't send FIN anyway
-					return;
+					// The stream will request the peer LeaseSet asynchronously
+					// and send its SYNACK when it arrives. Do not reject a valid
+					// first contact merely because this router has not cached it.
+					LogPrint (eLogDebug, "Streaming: Incoming stream has no cached LeaseSet yet, rSID=",
+						receiveStreamID);
 				}
 
 				// handle saved packets if any

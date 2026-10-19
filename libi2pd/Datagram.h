@@ -62,6 +62,9 @@ namespace datagram
 	constexpr uint8_t DATAGRAM2_FLAG_OPTIONS = 0x10;
 	constexpr uint8_t DATAGRAM2_FLAG_OFFLINE_SIGNATURE = 0x20;
 	constexpr uint8_t DATAGRAM3_FLAG_OPTIONS = 0x10;
+	// I2CP PROTOCOL_TYPE_RAW. Datagram.h is included by Destination.h, so the
+	// constant is duplicated here instead of creating an include cycle.
+	constexpr uint8_t DATAGRAM_RAW_PROTOCOL = 18;
 
 	class DatagramSession : public std::enable_shared_from_this<DatagramSession>
 	{
@@ -83,7 +86,11 @@ namespace datagram
 		uint64_t LastActivity () const { return m_LastUse; }
 
 		bool IsRatchets () const { return m_RoutingSession && m_RoutingSession->IsRatchets (); }
-		void SetRemoteLeaseSet (std::shared_ptr<const i2p::data::LeaseSet> ls) { m_RemoteLeaseSet = ls; }
+		void SetRemoteLeaseSet (std::shared_ptr<const i2p::data::LeaseSet> ls)
+		{
+			m_RemoteLeaseSet = ls;
+			m_LoggedIncompatibleLeaseSet = false;
+		}
 		std::shared_ptr<const i2p::data::LeaseSet> GetRemoteLeaseSet () const { return m_RemoteLeaseSet; }
 		const i2p::data::IdentHash & GetRemoteIdent () const { return m_RemoteIdent; }
 
@@ -146,6 +153,7 @@ namespace datagram
 		std::vector<std::shared_ptr<const I2NPMessage>> m_SendQueue;
 		uint64_t m_LastUse, m_LastFlush; // milliseconds
 		bool m_RequestingLS;
+		bool m_LoggedIncompatibleLeaseSet = false;
 		DatagramVersion m_Version;
 		uint32_t m_NumPathDrops = 0, m_NumDroppedNoPath = 0;
 	};
@@ -153,6 +161,11 @@ namespace datagram
 	typedef std::shared_ptr<DatagramSession> DatagramSession_ptr;
 
 	const size_t MAX_DATAGRAM_SIZE = 32768;
+
+	// Parse the optional Datagram2/3 options block (16-bit length followed by a
+	// Mapping). A zero-length Mapping is valid. Exposed for regression tests.
+	bool ParseDatagramOptions (i2p::util::Mapping & options, const uint8_t * buf, size_t len, size_t & offset);
+
 	class DatagramDestination
 	{
 		typedef std::function<void (const i2p::data::IdentityEx & from, uint16_t fromPort, uint16_t toPort,
@@ -175,14 +188,14 @@ namespace datagram
 		void SendDatagramTo (const uint8_t * payload, size_t len, const i2p::data::IdentHash & ident,
 			uint16_t fromPort = 0, uint16_t toPort = 0);
 		void SendRawDatagramTo (const uint8_t * payload, size_t len, const i2p::data::IdentHash & ident,
-			uint16_t fromPort = 0, uint16_t toPort = 0, uint8_t protocol = 0);
+			uint16_t fromPort = 0, uint16_t toPort = 0, uint8_t protocol = DATAGRAM_RAW_PROTOCOL);
 		// TODO: implement calls from other thread from SAM
 
 		std::shared_ptr<DatagramSession> GetSession (const i2p::data::IdentHash & ident);
 		void SendDatagram (std::shared_ptr<DatagramSession> session, const uint8_t * payload, size_t len,
 			uint16_t fromPort, uint16_t toPort, const i2p::util::Mapping * options = nullptr);
 		void SendRawDatagram (std::shared_ptr<DatagramSession> session, const uint8_t * payload, size_t len,
-			uint16_t fromPort, uint16_t toPort, uint8_t protocol = 0);
+			uint16_t fromPort, uint16_t toPort, uint8_t protocol = DATAGRAM_RAW_PROTOCOL);
 		void FlushSendQueue (std::shared_ptr<DatagramSession> session);
 
 		void HandleDataMessagePayload (uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len,

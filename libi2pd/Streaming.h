@@ -19,6 +19,7 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <span>
 #include <boost/asio.hpp>
 #include "Base.h"
 #include "Gzip.h"
@@ -54,6 +55,7 @@ namespace stream
 
 	const size_t STREAMING_MTU = 1730;
 	const size_t STREAMING_MTU_RATCHETS = 1812;
+	const size_t STREAMING_MIN_MTU = 512; // Java ConnectionOptions.MIN_MESSAGE_SIZE
 	const size_t MAX_PACKET_SIZE = 3072;
 
 	const size_t COMPRESSION_THRESHOLD_SIZE = 66;
@@ -135,29 +137,42 @@ namespace stream
 
 	struct SendBuffer
 	{
+		// Owns the payload for the whole asynchronous write. `buf` is a
+		// non-owning view into m_Buffer kept for callers that fill the buffer
+		// before queueing it (I2CP).
+		std::unique_ptr<uint8_t[]> m_Buffer;
 		uint8_t * buf;
 		size_t len, offset;
 		SendHandler handler;
 
 		SendBuffer (const uint8_t * b, size_t l, SendHandler && h)
-			: len (l)
+			: m_Buffer (std::make_unique_for_overwrite<uint8_t[]> (l))
+			, buf (m_Buffer.get ())
+			, len (l)
 			, offset (0)
 			, handler (std::move (h))
 		{
-			buf = new uint8_t[len];
-			memcpy (buf, b, len);
+			if (len) memcpy (buf, b, len);
 		}
 		SendBuffer (size_t l)
 			: // create empty buffer
-			len (l)
+			m_Buffer (std::make_unique_for_overwrite<uint8_t[]> (l))
+			, buf (m_Buffer.get ())
+			, len (l)
 			, offset (0)
 		{
-			buf = new uint8_t[len];
 		}
 		SendBuffer (const std::vector<std::pair<const uint8_t *, size_t>> & bufs, size_t totalLen, SendHandler && h);
+		SendBuffer (std::span<const uint8_t> b, SendHandler && h)
+			: SendBuffer (b.data (), b.size (), std::move (h))
+		{
+		}
+		SendBuffer (const SendBuffer &) = delete;
+		SendBuffer & operator= (const SendBuffer &) = delete;
+		SendBuffer (SendBuffer &&) = delete;
+		SendBuffer & operator= (SendBuffer &&) = delete;
 		~SendBuffer ()
 		{
-			delete[] buf;
 			if (handler) handler (boost::system::error_code (), len);
 		}
 		size_t GetRemainingSize () const { return len - offset; };
@@ -229,9 +244,13 @@ namespace stream
 		void HandleNextPacket (Packet * packet);
 		void HandlePing (Packet * packet);
 		size_t Send (const uint8_t * buf, size_t len);
+		size_t Send (std::span<const uint8_t> buf);
 		void AsyncSend (const uint8_t * buf, size_t len, SendHandler && handler);
+		void AsyncSend (std::span<const uint8_t> buf, SendHandler && handler);
 		void Send (std::shared_ptr<i2p::stream::SendBuffer> && buf);
 		void SendPing ();
+		// Resume a send after an asynchronous LeaseSet lookup completed.
+		void ResumeSend () { SendBuffer (); }
 
 		template <typename Buffer, typename ReceiveHandler>
 		void AsyncReceive (const Buffer & buffer, ReceiveHandler && handler, int timeout = 0, size_t minSize = 0);
@@ -302,7 +321,7 @@ namespace stream
 		bool m_IsIncoming, m_IsAckSendScheduled, m_IsNAcked, m_IsFirstACK, m_IsResendNeeded, m_IsFirstRttSample,
 			m_IsSendTime, m_IsWinDropped, m_IsChoking2, m_IsChoking3, m_IsClientChoked, m_IsClientChoked2,
 			m_IsTimeOutResend, m_IsImmediateAckRequested, m_IsRemoteLeaseChangeInProgress, m_IsBufferEmpty,
-			m_IsJavaClient, m_DontSign, m_IsResetReceived = false;
+			m_IsJavaClient, m_DontSign, m_IsResetReceived = false, m_IsRequestingLeaseSet = false;
 		StreamingDestination & m_LocalDestination;
 		// own reference to the pool: the destination can be gone by the time we are destroyed
 		std::shared_ptr<const i2p::data::IdentityEx> m_RemoteIdentity;

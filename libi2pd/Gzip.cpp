@@ -9,6 +9,7 @@
 */
 
 #include <string.h> /* memset */
+#include <array>
 #include "Log.h"
 #include "I2PEndian.h"
 #include "Gzip.h"
@@ -46,32 +47,61 @@ namespace data
 			memcpy (out, in + 15, len);
 			return len;
 		}
-		else
+		if (m_IsDirty) inflateReset (&m_Inflator);
+		m_IsDirty = true;
+		m_Inflator.next_in = const_cast<uint8_t *> (in);
+		m_Inflator.avail_in = inLen;
+		m_Inflator.next_out = out;
+		m_Inflator.avail_out = outLen;
+		int err = inflate (&m_Inflator, Z_NO_FLUSH);
+		if (err == Z_STREAM_END) return outLen - m_Inflator.avail_out;
+		if (err) LogPrint (eLogError, "Gzip: Inflate error ", err);
+		return 0;
+	}
+
+	bool GzipInflator::InflateChecked (
+		const uint8_t * in, size_t inLen, uint8_t * out, size_t outLen, size_t & resultLen)
+	{
+		resultLen = 0;
+		if (!in || !out || inLen < 20) return false; // min 20 compressed, 23 uncompressed
+		if (in[10] == 0x01) // non compressed
 		{
-			if (m_IsDirty) inflateReset (&m_Inflator);
-			m_IsDirty = true;
-			m_Inflator.next_in = const_cast<uint8_t *> (in);
-			m_Inflator.avail_in = inLen;
-			m_Inflator.next_out = out;
-			m_Inflator.avail_out = outLen;
-			int err;
-			if ((err = inflate (&m_Inflator, Z_NO_FLUSH)) == Z_STREAM_END) return outLen - m_Inflator.avail_out;
-			// else
-			if (err) LogPrint (eLogError, "Gzip: Inflate error ", err);
-			return 0;
+			size_t len = bufle16toh (in + 11);
+			if (len + 23 > inLen || len > outLen)
+			{
+				LogPrint (eLogError, "Gzip: Incorrect length");
+				return false;
+			}
+			if (len) memcpy (out, in + 15, len);
+			resultLen = len;
+			return true;
 		}
+		if (m_IsDirty) inflateReset (&m_Inflator);
+		m_IsDirty = true;
+		m_Inflator.next_in = const_cast<uint8_t *> (in);
+		m_Inflator.avail_in = inLen;
+		m_Inflator.next_out = out;
+		m_Inflator.avail_out = outLen;
+		int err = inflate (&m_Inflator, Z_NO_FLUSH);
+		if (err == Z_STREAM_END)
+		{
+			resultLen = outLen - m_Inflator.avail_out;
+			return true;
+		}
+		if (err) LogPrint (eLogError, "Gzip: Inflate error ", err);
+		return false;
 	}
 
 	void GzipInflator::Inflate (const uint8_t * in, size_t inLen, std::ostream & os)
 	{
 		m_IsDirty = true;
-		uint8_t * out = new uint8_t[GZIP_CHUNK_SIZE];
+		std::array<uint8_t, GZIP_CHUNK_SIZE> out;
 		m_Inflator.next_in = const_cast<uint8_t *> (in);
 		m_Inflator.avail_in = inLen;
 		int ret;
 		do
 		{
-			m_Inflator.next_out = out;
+			m_Inflator.next_out = out.data ();
 			m_Inflator.avail_out = GZIP_CHUNK_SIZE;
 			ret = inflate (&m_Inflator, Z_NO_FLUSH);
 			if (ret < 0)
@@ -80,20 +110,18 @@ namespace data
 				os.setstate (std::ios_base::failbit);
 				break;
 			}
-			os.write ((char *)out, GZIP_CHUNK_SIZE - m_Inflator.avail_out);
+			os.write ((char *)out.data (), GZIP_CHUNK_SIZE - m_Inflator.avail_out);
 		} while (!m_Inflator.avail_out); // more data to read
-		delete[] out;
 	}
 
 	void GzipInflator::Inflate (std::istream & in, std::ostream & out)
 	{
-		uint8_t * buf = new uint8_t[GZIP_CHUNK_SIZE];
+		std::array<uint8_t, GZIP_CHUNK_SIZE> buf;
 		while (!in.eof ())
 		{
-			in.read ((char *)buf, GZIP_CHUNK_SIZE);
-			Inflate (buf, in.gcount (), out);
+			in.read ((char *)buf.data (), GZIP_CHUNK_SIZE);
+			Inflate (buf.data (), in.gcount (), out);
 		}
-		delete[] buf;
 	}
 
 	GzipDeflator::GzipDeflator ()

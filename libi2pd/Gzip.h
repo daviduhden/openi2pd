@@ -27,6 +27,9 @@ namespace data
 		~GzipInflator ();
 
 		size_t Inflate (const uint8_t * in, size_t inLen, uint8_t * out, size_t outLen);
+		// Unlike Inflate(), this distinguishes a valid empty stream from a
+		// malformed one and reports the exact uncompressed length.
+		bool InflateChecked (const uint8_t * in, size_t inLen, uint8_t * out, size_t outLen, size_t & resultLen);
 		/** @note @a os failbit will be set in case of error */
 		void Inflate (const uint8_t * in, size_t inLen, std::ostream & os);
 		void Inflate (std::istream & in, std::ostream & out);
