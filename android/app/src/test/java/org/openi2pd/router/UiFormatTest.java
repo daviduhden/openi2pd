@@ -48,10 +48,15 @@ public class UiFormatTest {
                 UiFormat.stateOf(snapshot(DaemonWrapper.State.starting, false)));
         assertEquals(UiFormat.RouterState.ERROR,
                 UiFormat.stateOf(snapshot(DaemonWrapper.State.startFailed, false)));
-        assertEquals(UiFormat.RouterState.CONNECTED,
-                UiFormat.stateOf(snapshot(DaemonWrapper.State.startedOkay, true)));
+        // Online alone is not enough: CONNECTED requires a parsed native
+        // status. An online daemon whose status bridge has not answered yet
+        // remains DEGRADED rather than showing zero-initialised metrics.
         assertEquals(UiFormat.RouterState.DEGRADED,
-                UiFormat.stateOf(snapshot(DaemonWrapper.State.startedOkay, false)));
+                UiFormat.stateOf(snapshot(DaemonWrapper.State.startedOkay, true)));
+        assertEquals(UiFormat.RouterState.CONNECTED,
+                UiFormat.stateOf(snapshotWithStatus(DaemonWrapper.State.startedOkay, true, 0, "OK", "")));
+        assertEquals(UiFormat.RouterState.DEGRADED,
+                UiFormat.stateOf(snapshotWithStatus(DaemonWrapper.State.startedOkay, false, 0, "OK", "")));
         assertEquals(UiFormat.RouterState.STOPPING,
                 UiFormat.stateOf(snapshot(DaemonWrapper.State.gracefulShutdownInProgress, true)));
         assertEquals(UiFormat.RouterState.STOPPING,
