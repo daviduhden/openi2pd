@@ -16,7 +16,8 @@ override_dh_auto_configure:
 		-DCMAKE_BUILD_TYPE=RelWithDebInfo \
 		-DCMAKE_INSTALL_PREFIX=/usr \
 		-DWITH_LIBRARY=OFF \
-		-DWITH_TUI=ON \
+		-I2PD_BUILD_TUI=ON \
+		-I2PD_BUILD_TOOLS=ON \
 		-DBUILD_TESTING=OFF
 
 override_dh_auto_build:

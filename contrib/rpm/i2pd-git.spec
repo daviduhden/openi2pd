@@ -25,6 +25,7 @@ BuildRequires: boost-devel
 BuildRequires: openssl-devel
 BuildRequires: miniupnpc-devel
 BuildRequires: systemd-units
+BuildRequires: ncurses-devel
 
 %if 0%{?fedora} == 41
 BuildRequires: openssl-devel-engine
@@ -32,6 +33,7 @@ BuildRequires: openssl-devel-engine
 
 Requires:      logrotate
 Requires:      systemd
+Requires:      perl
 Requires(pre): %{_sbindir}/useradd %{_sbindir}/groupadd
 
 
@@ -49,6 +51,8 @@ cd build
   -DWITH_LIBRARY=OFF \
   -DWITH_UPNP=ON \
   -DWITH_HARDENING=ON \
+  -DI2PD_BUILD_TUI=ON \
+  -DI2PD_BUILD_TOOLS=ON \
 %if 0%{?fedora} > 29
   -DBUILD_SHARED_LIBS:BOOL=OFF \
   .
@@ -92,6 +96,23 @@ pushd build
 
 chrpath -d i2pd
 %{__install} -D -m 755 i2pd %{buildroot}%{_bindir}/i2pd
+%{__install} -D -m 755 i2pd-tui %{buildroot}%{_bindir}/i2pd-tui
+%{__install} -D -m 755 tools/autoconf_i2pd %{buildroot}%{_bindir}/autoconf_i2pd
+%{__install} -D -m 755 tools/b33address %{buildroot}%{_bindir}/b33address
+%{__install} -D -m 755 tools/b33offlinekeys %{buildroot}%{_bindir}/b33offlinekeys
+%{__install} -D -m 755 tools/famtool %{buildroot}%{_bindir}/famtool
+%{__install} -D -m 755 tools/i2pbase64 %{buildroot}%{_bindir}/i2pbase64
+%{__install} -D -m 755 tools/keygen %{buildroot}%{_bindir}/keygen
+%{__install} -D -m 755 tools/keyinfo %{buildroot}%{_bindir}/keyinfo
+%{__install} -D -m 755 tools/offlinekeys %{buildroot}%{_bindir}/offlinekeys
+%{__install} -D -m 755 tools/regaddr %{buildroot}%{_bindir}/regaddr
+%{__install} -D -m 755 tools/regaddr_3ld %{buildroot}%{_bindir}/regaddr_3ld
+%{__install} -D -m 755 tools/regaddralias %{buildroot}%{_bindir}/regaddralias
+%{__install} -D -m 755 tools/routerinfo %{buildroot}%{_bindir}/routerinfo
+%{__install} -D -m 755 tools/vain %{buildroot}%{_bindir}/vain
+%{__install} -D -m 755 tools/verifyhost %{buildroot}%{_bindir}/verifyhost
+%{__install} -D -m 755 tools/x25519 %{buildroot}%{_bindir}/x25519
+%{__install} -D -m 755 %{_builddir}/openi2pd-main/tools/scripts/i2pdctl %{buildroot}%{_bindir}/i2pdctl
 %{__install} -d -m 755 %{buildroot}%{_datadir}/i2pd
 %{__install} -d -m 700 %{buildroot}%{_sharedstatedir}/i2pd
 %{__install} -d -m 700 %{buildroot}%{_localstatedir}/log/i2pd
@@ -101,6 +122,8 @@ chrpath -d i2pd
 %{__install} -D -m 644 %{_builddir}/openi2pd-main/contrib/i2pd.logrotate %{buildroot}%{_sysconfdir}/logrotate.d/i2pd
 %{__install} -D -m 644 %{_builddir}/openi2pd-main/contrib/i2pd.service %{buildroot}%{_unitdir}/i2pd.service
 %{__install} -D -m 644 %{_builddir}/openi2pd-main/debian/i2pd.1 %{buildroot}%{_mandir}/man1/i2pd.1
+%{__install} -D -m 644 %{_builddir}/openi2pd-main/man/i2pd-tui.1 %{buildroot}%{_mandir}/man1/i2pd-tui.1
+%{__install} -D -m 644 %{_builddir}/openi2pd-main/man/i2pdctl.1 %{buildroot}%{_mandir}/man1/i2pdctl.1
 %{__cp} -r %{_builddir}/openi2pd-main/contrib/certificates/ %{buildroot}%{_datadir}/i2pd/certificates
 %{__cp} -r %{_builddir}/openi2pd-main/contrib/tunnels.d/ %{buildroot}%{_sysconfdir}/i2pd/tunnels.conf.d
 ln -s %{_datadir}/%{name}/certificates %{buildroot}%{_sharedstatedir}/i2pd/certificates
@@ -126,8 +149,25 @@ getent passwd i2pd >/dev/null || \
 
 
 %files
-%doc LICENSE README.md contrib/i2pd.conf contrib/subscriptions.txt contrib/tunnels.conf contrib/tunnels.d
 %{_bindir}/i2pd
+%{_bindir}/i2pd-tui
+%{_bindir}/i2pdctl
+%{_bindir}/autoconf_i2pd
+%{_bindir}/b33address
+%{_bindir}/b33offlinekeys
+%{_bindir}/famtool
+%{_bindir}/i2pbase64
+%{_bindir}/keygen
+%{_bindir}/keyinfo
+%{_bindir}/offlinekeys
+%{_bindir}/regaddr
+%{_bindir}/regaddr_3ld
+%{_bindir}/regaddralias
+%{_bindir}/routerinfo
+%{_bindir}/vain
+%{_bindir}/verifyhost
+%{_bindir}/x25519
+%doc LICENSE README.md tools/LICENSE tools/README.md contrib/i2pd.conf contrib/subscriptions.txt contrib/tunnels.conf contrib/tunnels.d
 %config(noreplace) %{_sysconfdir}/i2pd/*.conf
 %config(noreplace) %{_sysconfdir}/i2pd/tunnels.conf.d/*.conf
 %config %{_sysconfdir}/i2pd/subscriptions.txt
@@ -135,6 +175,8 @@ getent passwd i2pd >/dev/null || \
 %{_sysconfdir}/logrotate.d/i2pd
 %{_unitdir}/i2pd.service
 %{_mandir}/man1/i2pd.1*
+%{_mandir}/man1/i2pd-tui.1*
+%{_mandir}/man1/i2pdctl.1*
 %dir %attr(0700,i2pd,i2pd) %{_sharedstatedir}/i2pd
 %dir %attr(0700,i2pd,i2pd) %{_localstatedir}/log/i2pd
 %{_datadir}/i2pd/certificates
