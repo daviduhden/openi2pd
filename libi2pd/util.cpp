@@ -58,54 +58,9 @@ typedef struct tagTHREADNAME_INFO
 #define MALLOC(x) HeapAlloc (GetProcessHeap (), 0, (x))
 #define FREE(x) HeapFree (GetProcessHeap (), 0, (x))
 
-// inet_pton and inet_ntop have been in Windows since Vista, but XP doesn't have these functions!
-// This function was written by Petar Korponai?. See http://stackoverflow.com/questions/15660203/inet-pton-identifier-not-found
-int inet_pton_xp (int af, const char * src, void * dst)
-{
-	struct sockaddr_storage ss;
-	int size = sizeof (ss);
-	char src_copy[INET6_ADDRSTRLEN + 1];
-
-	ZeroMemory (&ss, sizeof (ss));
-	strncpy (src_copy, src, INET6_ADDRSTRLEN + 1);
-	src_copy[INET6_ADDRSTRLEN] = 0;
-
-	if (WSAStringToAddress (src_copy, af, NULL, (struct sockaddr *)&ss, &size) == 0)
-	{
-		switch (af)
-		{
-		case AF_INET: *(struct in_addr *)dst = ((struct sockaddr_in *)&ss)->sin_addr; return 1;
-		case AF_INET6: *(struct in6_addr *)dst = ((struct sockaddr_in6 *)&ss)->sin6_addr; return 1;
-		}
-	}
-	return 0;
-}
-
-const char * inet_ntop_xp (int af, const void * src, char * dst, socklen_t size)
-{
-	struct sockaddr_storage ss;
-	unsigned long s = size;
-
-	ZeroMemory (&ss, sizeof (ss));
-	ss.ss_family = af;
-
-	switch (af)
-	{
-	case AF_INET: ((struct sockaddr_in *)&ss)->sin_addr = *(struct in_addr *)src; break;
-	case AF_INET6: ((struct sockaddr_in6 *)&ss)->sin6_addr = *(struct in6_addr *)src; break;
-	default: return NULL;
-	}
-	/* cannot directly use &size because of strict aliasing rules */
-	return (WSAAddressToString ((struct sockaddr *)&ss, sizeof (ss), NULL, dst, &s) == 0) ? dst : NULL;
-}
-
 #else /* !_WIN32 => UNIX */
 #include <sys/types.h>
-#if defined(ANDROID) && (!defined(__ANDROID_API__) || __ANDROID_API__ < 24)
-#include "ifaddrs.h"
-#else
 #include <ifaddrs.h>
-#endif
 #endif
 
 #define address_pair_v4(a, b)                                                                                          \
@@ -126,24 +81,33 @@ namespace util
 
 	void RunnableService::StartIOService ()
 	{
-		if (!m_IsRunning)
+		std::lock_guard<std::mutex> l (m_LifecycleMutex);
+		if (m_IsRunning.load (std::memory_order_relaxed) || m_Thread) return;
+		// StopIOService() leaves the io_context in the stopped state. Restart
+		// it before running a new start/stop cycle.
+		m_Service.restart ();
+		m_IsRunning.store (true, std::memory_order_relaxed);
+		try
 		{
-			m_IsRunning = true;
-			m_Thread.reset (new std::thread (std::bind (&RunnableService::Run, this)));
+			m_Thread = std::make_unique<std::thread> (std::bind (&RunnableService::Run, this));
+		}
+		catch (...)
+		{
+			m_IsRunning.store (false, std::memory_order_relaxed);
+			throw;
 		}
 	}
 
 	void RunnableService::StopIOService (bool stopService)
 	{
-		if (m_IsRunning)
+		std::lock_guard<std::mutex> l (m_LifecycleMutex);
+		if (!m_IsRunning.load (std::memory_order_relaxed) && !m_Thread) return;
+		m_IsRunning.store (false, std::memory_order_relaxed);
+		if (stopService) m_Service.stop ();
+		if (m_Thread)
 		{
-			m_IsRunning = false;
-			if (stopService) m_Service.stop ();
-			if (m_Thread)
-			{
-				m_Thread->join ();
-				m_Thread = nullptr;
-			}
+			if (m_Thread->joinable ()) m_Thread->join ();
+			m_Thread.reset ();
 		}
 	}
 
@@ -151,7 +115,7 @@ namespace util
 	{
 		SetThreadName (m_Name.c_str ());
 
-		while (m_IsRunning)
+		while (m_IsRunning.load (std::memory_order_relaxed))
 		{
 			try
 			{
@@ -358,10 +322,6 @@ namespace util
 #ifdef _WIN32
 		int GetMTUWindowsIpv4 (sockaddr_in inputAddress, int fallback)
 		{
-			typedef const char * (*IPN) (int af, const void * src, char * dst, socklen_t size);
-			IPN inetntop = (IPN)(void *)GetProcAddress (GetModuleHandle ("ws2_32.dll"), "InetNtop");
-			if (!inetntop) inetntop = inet_ntop_xp; // use own implementation if not found
-
 			ULONG outBufLen = 0;
 			PIP_ADAPTER_ADDRESSES pAddresses = nullptr;
 			PIP_ADAPTER_ADDRESSES pCurrAddresses = nullptr;
@@ -397,8 +357,8 @@ namespace util
 					if (localInterfaceAddress->sin_addr.S_un.S_addr == inputAddress.sin_addr.S_un.S_addr)
 					{
 						char addr[INET_ADDRSTRLEN];
-						inetntop (
-							AF_INET, &(((struct sockaddr_in *)localInterfaceAddress)->sin_addr), addr, INET_ADDRSTRLEN);
+						InetNtopA (AF_INET, &(((struct sockaddr_in *)localInterfaceAddress)->sin_addr), addr,
+							INET_ADDRSTRLEN);
 
 						auto result = pCurrAddresses->Mtu;
 						FREE (pAddresses);
@@ -418,10 +378,6 @@ namespace util
 
 		int GetMTUWindowsIpv6 (sockaddr_in6 inputAddress, int fallback)
 		{
-			typedef const char * (*IPN) (int af, const void * src, char * dst, socklen_t size);
-			IPN inetntop = (IPN)(void *)GetProcAddress (GetModuleHandle ("ws2_32.dll"), "InetNtop");
-			if (!inetntop) inetntop = inet_ntop_xp; // use own implementation if not found
-
 			ULONG outBufLen = 0;
 			PIP_ADAPTER_ADDRESSES pAddresses = nullptr;
 			PIP_ADAPTER_ADDRESSES pCurrAddresses = nullptr;
@@ -467,7 +423,7 @@ namespace util
 					if (found_address)
 					{
 						char addr[INET6_ADDRSTRLEN];
-						inetntop (AF_INET6, &(((struct sockaddr_in6 *)localInterfaceAddress)->sin6_addr), addr,
+						InetNtopA (AF_INET6, &(((struct sockaddr_in6 *)localInterfaceAddress)->sin6_addr), addr,
 							INET6_ADDRSTRLEN);
 
 						auto result = pCurrAddresses->Mtu;
@@ -489,39 +445,34 @@ namespace util
 
 		int GetMTUWindows (const boost::asio::ip::address & localAddress, int fallback)
 		{
-#ifdef UNICODE
-			string localAddress_temporary = localAddress.to_string ();
-			wstring localAddressUniversal (localAddress_temporary.begin (), localAddress_temporary.end ());
-#else
-			std::string localAddressUniversal = localAddress.to_string ();
-#endif
-
-			typedef int (*IPN) (int af, const char * src, void * dst);
-			IPN inetpton = (IPN)(void *)GetProcAddress (GetModuleHandle ("ws2_32.dll"), "InetPton");
-			if (!inetpton) inetpton = inet_pton_xp; // use own implementation if not found
-
+			const std::string localAddressUniversal = localAddress.to_string ();
 			if (localAddress.is_v4 ())
 			{
-				sockaddr_in inputAddress;
-				inetpton (AF_INET, localAddressUniversal.c_str (), &(inputAddress.sin_addr));
+				sockaddr_in inputAddress { };
+				if (InetPtonA (AF_INET, localAddressUniversal.c_str (), &inputAddress.sin_addr) != 1)
+				{
+					LogPrint (eLogError, "NetIface: GetMTU: Can't parse IPv4 address ", localAddressUniversal);
+					return fallback;
+				}
 				return GetMTUWindowsIpv4 (inputAddress, fallback);
 			}
-			else if (localAddress.is_v6 ())
+			if (localAddress.is_v6 ())
 			{
-				sockaddr_in6 inputAddress;
-				inetpton (AF_INET6, localAddressUniversal.c_str (), &(inputAddress.sin6_addr));
+				sockaddr_in6 inputAddress { };
+				if (InetPtonA (AF_INET6, localAddressUniversal.c_str (), &inputAddress.sin6_addr) != 1)
+				{
+					LogPrint (eLogError, "NetIface: GetMTU: Can't parse IPv6 address ", localAddressUniversal);
+					return fallback;
+				}
 				return GetMTUWindowsIpv6 (inputAddress, fallback);
 			}
-			else
-			{
-				LogPrint (eLogError, "NetIface: GetMTU: Address family is not supported");
-				return fallback;
-			}
+			LogPrint (eLogError, "NetIface: GetMTU: Address family is not supported");
+			return fallback;
 		}
 #else // assume unix
 		int GetMTUUnix (const boost::asio::ip::address & localAddress, int fallback)
 		{
-			ifaddrs *ifaddr, *ifa = nullptr;
+			ifaddrs *ifaddr = nullptr, *ifa = nullptr;
 			if (getifaddrs (&ifaddr) == -1)
 			{
 				LogPrint (eLogError, "NetIface: Can't call getifaddrs(): ", strerror (errno));
@@ -607,7 +558,7 @@ namespace util
 				return boost::asio::ip::make_address ("127.0.0.1");
 #else
 			int af = (ipv6 ? AF_INET6 : AF_INET);
-			ifaddrs * addrs;
+			ifaddrs * addrs = nullptr;
 			try
 			{
 				if (!getifaddrs (&addrs))
@@ -630,6 +581,8 @@ namespace util
 						}
 					}
 				}
+				else
+					LogPrint (eLogError, "NetIface: Can't call getifaddrs(): ", strerror (errno));
 			}
 			catch (std::exception & ex)
 			{
@@ -740,7 +693,7 @@ namespace util
 			FREE (pAddresses);
 			return boost::asio::ip::address_v6 ();
 #else
-			ifaddrs * addrs;
+			ifaddrs * addrs = nullptr;
 			try
 			{
 				if (!getifaddrs (&addrs))
@@ -760,6 +713,8 @@ namespace util
 						}
 					}
 				}
+				else
+					LogPrint (eLogError, "NetIface: Can't call getifaddrs(): ", strerror (errno));
 			}
 			catch (std::exception & ex)
 			{

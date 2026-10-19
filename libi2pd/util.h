@@ -12,6 +12,7 @@
 #define UTIL_H
 
 #include <inttypes.h>
+#include <atomic>
 #include <string>
 #include <map>
 #include <functional>
@@ -22,24 +23,6 @@
 #include <charconv>
 #include <cstdint>
 #include <boost/asio.hpp>
-
-#ifdef ANDROID
-#ifndef __clang__
-#include <boost/lexical_cast.hpp>
-namespace std
-{
-template <typename T> std::string to_string (T value)
-{
-	return boost::lexical_cast<std::string> (value);
-}
-
-inline int stoi (const std::string & str)
-{
-	return boost::lexical_cast<int> (str);
-}
-}
-#endif
-#endif
 
 namespace i2p
 {
@@ -208,10 +191,13 @@ namespace util
 			, m_IsRunning (false)
 		{
 		}
-		virtual ~RunnableService () { }
+		// The base destructor stops and joins the worker. Derived services
+		// must not leave a joinable thread behind; this is the explicit safe
+		// contract for objects whose Stop() was never called.
+		virtual ~RunnableService () { StopIOService (); }
 
 		auto & GetIOService () { return m_Service; }
-		bool IsRunning () const { return m_IsRunning; }
+		bool IsRunning () const { return m_IsRunning.load (std::memory_order_relaxed); }
 
 		void StartIOService ();
 		void StopIOService (bool stopService = true);
@@ -223,7 +209,8 @@ namespace util
 
 	private:
 		std::string m_Name;
-		volatile bool m_IsRunning;
+		std::atomic<bool> m_IsRunning;
+		std::mutex m_LifecycleMutex;
 		std::unique_ptr<std::thread> m_Thread;
 		boost::asio::io_context m_Service;
 	};

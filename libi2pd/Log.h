@@ -12,6 +12,8 @@
 #define LOG_H__
 
 #include <array>
+#include <atomic>
+#include <condition_variable>
 #include <cstdint>
 #include <ctime>
 #include <deque>
@@ -25,6 +27,7 @@
 #include <mutex>
 #include <thread>
 #include <functional>
+#include <utility>
 #include <vector>
 #include "Queue.h"
 
@@ -82,7 +85,7 @@ namespace log
 	{
 	private:
 		enum LogType m_Destination;
-		enum LogLevel m_MinLevel;
+		std::atomic<LogLevel> m_MinLevel;
 		std::shared_ptr<std::ostream> m_LogStream;
 		std::string m_Logfile;
 		std::time_t m_LastTimestamp;
@@ -90,8 +93,13 @@ namespace log
 		i2p::util::Queue<std::shared_ptr<LogMsg>> m_Queue;
 		bool m_HasColors;
 		std::string m_TimeFormat;
-		volatile bool m_IsRunning;
-		std::thread * m_Thread;
+		std::atomic<bool> m_IsRunning;
+		std::unique_ptr<std::thread> m_Thread;
+		// Serializes Start()/Stop() and lets Run() wait for Start() to publish
+		// m_IsRunning only after the thread object exists.
+		std::mutex m_LifecycleMutex;
+		std::mutex m_StartMutex;
+		std::condition_variable m_StartCondition;
 
 		// Administrative snapshot ring. Append() is called from arbitrary
 		// router threads, so it is protected by its own mutex and does not
@@ -99,6 +107,12 @@ namespace log
 		mutable std::mutex m_RecentMutex;
 		std::deque<LogRecord> m_Recent;
 		uint64_t m_RecentSequence;
+
+		// Guards destination, stream, path, color and sink replacement.
+		// Formatting and flushing copy the stream under the lock and perform
+		// the blocking I/O after unlocking, so Reopen() on the signal thread
+		// never waits for a slow disk write.
+		mutable std::mutex m_LogMutex;
 		SinkFunction m_Sink;
 
 	private:
@@ -108,6 +122,9 @@ namespace log
 
 		void Run ();
 		void Process (std::shared_ptr<LogMsg> msg);
+		void FlushStream ();
+		void InstallFileStream (
+			const std::string & path, std::shared_ptr<std::ostream> stream, bool onlyIfFileDestination);
 
 		/**
 			 * @brief Makes formatted string from unix timestamp
@@ -121,8 +138,12 @@ namespace log
 		Log ();
 		~Log ();
 
-		LogType GetLogType () const { return m_Destination; };
-		LogLevel GetLogLevel () const { return m_MinLevel; };
+		LogType GetLogType () const
+		{
+			std::lock_guard<std::mutex> l (m_LogMutex);
+			return m_Destination;
+		};
+		LogLevel GetLogLevel () const { return m_MinLevel.load (std::memory_order_relaxed); };
 
 		void Start ();
 		void Stop ();
@@ -149,7 +170,11 @@ namespace log
 			 * @brief Sets format for timestamps in log
 			 * @param format String with timestamp format
 			 */
-		void SetTimeFormat (std::string format) { m_TimeFormat = format; };
+		void SetTimeFormat (std::string format)
+		{
+			std::lock_guard<std::mutex> l (m_LogMutex);
+			m_TimeFormat = std::move (format);
+		};
 
 #ifndef _WIN32
 		/**
@@ -174,7 +199,11 @@ namespace log
 			 * log worker). When set, the process never opens or writes a log
 			 * file itself. Must be configured before Start().
 			 */
-		void SetSink (SinkFunction sink) { m_Sink = std::move (sink); }
+		void SetSink (SinkFunction sink)
+		{
+			std::lock_guard<std::mutex> l (m_LogMutex);
+			m_Sink = std::move (sink);
+		}
 
 		/**
 			 * @brief Copy up to @a max records with sequence greater than @a after

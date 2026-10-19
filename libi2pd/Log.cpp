@@ -20,7 +20,6 @@ namespace i2p
 {
 namespace log
 {
-	static Log logger;
 	/**
 	 * @brief Maps our loglevel to their symbolic name
 	 */
@@ -78,6 +77,8 @@ namespace log
 		, m_MinLevel (eLogInfo)
 		, m_LogStream (nullptr)
 		, m_Logfile ("")
+		, m_LastTimestamp (static_cast<std::time_t> (-1))
+		, m_LastDateTime { }
 		, m_HasColors (true)
 		, m_TimeFormat ("%H:%M:%S")
 		, m_IsRunning (false)
@@ -88,40 +89,55 @@ namespace log
 
 	Log::~Log ()
 	{
-		delete m_Thread;
+		// A logger that was never explicitly stopped must not leave a
+		// joinable thread behind or lose its final buffered records.
+		Stop ();
 	}
 
 	void Log::Start ()
 	{
-		if (!m_IsRunning)
+		std::lock_guard<std::mutex> l (m_LifecycleMutex);
+		if (m_Thread || m_IsRunning.load (std::memory_order_relaxed)) return;
+		// Create the thread first, then publish the running flag. Run() waits
+		// on m_StartCondition so it cannot observe a false flag and exit early.
+		m_Thread = std::make_unique<std::thread> (std::bind (&Log::Run, this));
 		{
-			m_IsRunning = true;
-			m_Thread = new std::thread (std::bind (&Log::Run, this));
+			std::lock_guard<std::mutex> start (m_StartMutex);
+			m_IsRunning.store (true, std::memory_order_release);
 		}
+		m_StartCondition.notify_all ();
 	}
 
 	void Log::Stop ()
 	{
-		switch (m_Destination)
+		std::lock_guard<std::mutex> lifecycle (m_LifecycleMutex);
+		{
+			std::lock_guard<std::mutex> start (m_StartMutex);
+			m_IsRunning.store (false, std::memory_order_relaxed);
+		}
+		m_StartCondition.notify_all ();
+		m_Queue.WakeUp ();
+		if (m_Thread)
+		{
+			if (m_Thread->joinable ()) m_Thread->join ();
+			m_Thread.reset ();
+		}
+
+		LogType destination;
+		{
+			std::lock_guard<std::mutex> l (m_LogMutex);
+			destination = m_Destination;
+		}
+		switch (destination)
 		{
 #ifndef _WIN32
 		case eLogSyslog: closelog (); break;
 #endif
 		case eLogFile:
-		case eLogStream:
-			if (m_LogStream) m_LogStream->flush ();
-			break;
+		case eLogStream: FlushStream (); break;
 		default:
 			/* do nothing */
 			break;
-		}
-		m_IsRunning = false;
-		m_Queue.WakeUp ();
-		if (m_Thread)
-		{
-			m_Thread->join ();
-			delete m_Thread;
-			m_Thread = nullptr;
 		}
 	}
 
@@ -141,27 +157,27 @@ namespace log
 		std::string level = str_tolower (level_);
 		if (level == "none")
 		{
-			m_MinLevel = eLogNone;
+			m_MinLevel.store (eLogNone, std::memory_order_relaxed);
 		}
 		else if (level == "critical")
 		{
-			m_MinLevel = eLogCritical;
+			m_MinLevel.store (eLogCritical, std::memory_order_relaxed);
 		}
 		else if (level == "error")
 		{
-			m_MinLevel = eLogError;
+			m_MinLevel.store (eLogError, std::memory_order_relaxed);
 		}
 		else if (level == "warn")
 		{
-			m_MinLevel = eLogWarning;
+			m_MinLevel.store (eLogWarning, std::memory_order_relaxed);
 		}
 		else if (level == "info")
 		{
-			m_MinLevel = eLogInfo;
+			m_MinLevel.store (eLogInfo, std::memory_order_relaxed);
 		}
 		else if (level == "debug")
 		{
-			m_MinLevel = eLogDebug;
+			m_MinLevel.store (eLogDebug, std::memory_order_relaxed);
 		}
 		else
 		{
@@ -173,17 +189,19 @@ namespace log
 
 	const char * Log::TimeAsString (std::time_t t)
 	{
-		struct tm caltime;
-		if (t != m_LastTimestamp)
+		std::string format;
 		{
-#ifdef _WIN32
-			localtime_s (&caltime, &t);
-#else
-			localtime_r (&t, &caltime);
-#endif
-			strftime (m_LastDateTime, sizeof (m_LastDateTime), m_TimeFormat.c_str (), &caltime);
-			m_LastTimestamp = t;
+			std::lock_guard<std::mutex> l (m_LogMutex);
+			format = m_TimeFormat;
 		}
+		struct tm caltime;
+#ifdef _WIN32
+		localtime_s (&caltime, &t);
+#else
+		localtime_r (&t, &caltime);
+#endif
+		strftime (m_LastDateTime, sizeof (m_LastDateTime), format.c_str (), &caltime);
+		m_LastTimestamp = t;
 		return m_LastDateTime;
 	}
 
@@ -195,24 +213,37 @@ namespace log
 	void Log::Process (std::shared_ptr<LogMsg> msg)
 	{
 		if (!msg) return;
-		if (m_Sink)
+
+		// Snapshot the destination under the lock, then release it before any
+		// formatting or I/O. Reopen() can swap the stream concurrently without
+		// waiting on the sink or a slow log device.
+		SinkFunction sink;
+		LogType destination;
+		std::shared_ptr<std::ostream> stream;
 		{
-			m_Sink (msg->level, msg->timestamp, msg->text);
+			std::lock_guard<std::mutex> l (m_LogMutex);
+			sink = m_Sink;
+			destination = m_Destination;
+			stream = m_LogStream;
+		}
+		if (sink)
+		{
+			sink (msg->level, msg->timestamp, msg->text);
 			return;
 		}
 		std::hash<std::thread::id> hasher;
 		unsigned short short_tid;
 		short_tid = (short)(hasher (msg->tid) % 1000);
-		switch (m_Destination)
+		switch (destination)
 		{
 #ifndef _WIN32
 		case eLogSyslog: syslog (GetSyslogPrio (msg->level), "[%03u] %s", short_tid, msg->text.c_str ()); break;
 #endif
 		case eLogFile:
 		case eLogStream:
-			if (m_LogStream)
-				*m_LogStream << TimeAsString (msg->timestamp) << "@" << short_tid << "/" << g_LogLevelStr[msg->level]
-							 << " - " << msg->text << std::endl;
+			if (stream)
+				*stream << TimeAsString (msg->timestamp) << "@" << short_tid << "/" << g_LogLevelStr[msg->level]
+						<< " - " << msg->text << std::endl;
 			break;
 		case eLogStdout:
 		default:
@@ -222,18 +253,42 @@ namespace log
 		} // switch
 	}
 
+	void Log::FlushStream ()
+	{
+		std::shared_ptr<std::ostream> stream;
+		{
+			std::lock_guard<std::mutex> l (m_LogMutex);
+			stream = m_LogStream;
+		}
+		if (stream) stream->flush ();
+	}
+
 	void Log::Run ()
 	{
 		i2p::util::SetThreadName ("Logging");
 
+		{
+			std::unique_lock<std::mutex> l (m_StartMutex);
+			m_StartCondition.wait (l, [this] () { return m_IsRunning.load (std::memory_order_acquire); });
+		}
+
 		Reopen ();
-		while (m_IsRunning)
+		while (m_IsRunning.load (std::memory_order_relaxed))
 		{
 			std::shared_ptr<LogMsg> msg;
 			while ((msg = m_Queue.Get ())) Process (msg);
-			if (m_LogStream) m_LogStream->flush ();
-			if (m_IsRunning) m_Queue.Wait ();
+			FlushStream ();
+			// Bounded wait: Stop() may clear m_IsRunning and signal between
+			// the check above and Wait(), and a missed wakeup must not hang
+			// the join.
+			if (m_IsRunning.load (std::memory_order_relaxed)) m_Queue.Wait (1, 0);
 		}
+
+		// Stop() wakes the thread after clearing m_IsRunning. Drain and flush
+		// messages queued during shutdown before the logger is joined.
+		std::shared_ptr<LogMsg> msg;
+		while ((msg = m_Queue.Get ())) Process (msg);
+		FlushStream ();
 	}
 
 	void Log::Append (std::shared_ptr<i2p::log::LogMsg> & msg)
@@ -271,46 +326,94 @@ namespace log
 
 	void Log::SendTo (const std::string & path)
 	{
-		if (m_LogStream) m_LogStream = nullptr; // close previous
+		// Open outside the lock: a slow or blocking open must not stall the
+		// signal thread while it is reopening the log.
 		auto flags = std::ofstream::out | std::ofstream::app;
 		auto os = std::make_shared<std::ofstream> (path, flags);
-		if (os->is_open ())
+		if (!os->is_open ())
 		{
+			LogPrint (eLogCritical, "Log: Can't open file ", path);
+			return;
+		}
+		InstallFileStream (path, std::move (os), false);
+	}
+
+	void Log::InstallFileStream (
+		const std::string & path, std::shared_ptr<std::ostream> stream, bool onlyIfFileDestination)
+	{
+		std::shared_ptr<std::ostream> previous;
+		{
+			std::lock_guard<std::mutex> l (m_LogMutex);
+			// Reopen() must not override a destination that another thread
+			// installed while the replacement file was being opened.
+			if (onlyIfFileDestination && (m_Destination != eLogFile || m_Logfile != path)) return;
+			previous = std::move (m_LogStream);
 			m_HasColors = false;
 			m_Logfile = path;
 			m_Destination = eLogFile;
-			m_LogStream = os;
-			return;
+			m_LogStream = std::move (stream);
 		}
-		LogPrint (eLogCritical, "Log: Can't open file ", path);
+		// previous is destroyed outside the lock so closing a slow log device
+		// cannot stall a concurrent Reopen().
 	}
 
 	void Log::SendTo (std::shared_ptr<std::ostream> os)
 	{
-		m_HasColors = false;
-		m_Destination = eLogStream;
-		m_LogStream = os;
+		std::shared_ptr<std::ostream> previous;
+		{
+			std::lock_guard<std::mutex> l (m_LogMutex);
+			previous = std::move (m_LogStream);
+			m_HasColors = false;
+			m_Destination = eLogStream;
+			m_LogStream = std::move (os);
+		}
 	}
 
 #ifndef _WIN32
 	void Log::SendTo (const char * name, int facility)
 	{
-		if (m_MinLevel == eLogNone) return;
-		m_HasColors = false;
-		m_Destination = eLogSyslog;
-		m_LogStream = nullptr;
+		if (m_MinLevel.load (std::memory_order_relaxed) == eLogNone) return;
 		openlog (name, LOG_CONS | LOG_PID, facility);
+		std::shared_ptr<std::ostream> previous;
+		{
+			std::lock_guard<std::mutex> l (m_LogMutex);
+			previous = std::move (m_LogStream);
+			m_HasColors = false;
+			m_Destination = eLogSyslog;
+			m_LogStream = nullptr;
+		}
 	}
 #endif
 
 	void Log::Reopen ()
 	{
-		if (m_Destination == eLogFile) SendTo (m_Logfile);
+		std::string logfile;
+		{
+			std::lock_guard<std::mutex> l (m_LogMutex);
+			if (m_Destination != eLogFile) return;
+			logfile = m_Logfile;
+		}
+		if (logfile.empty ()) return;
+		// Open before taking the lock, then re-check the destination so a
+		// concurrent SendTo() is never overwritten by this signal-thread path.
+		auto flags = std::ofstream::out | std::ofstream::app;
+		auto os = std::make_shared<std::ofstream> (logfile, flags);
+		if (!os->is_open ())
+		{
+			LogPrint (eLogCritical, "Log: Can't reopen file ", logfile);
+			return;
+		}
+		InstallFileStream (logfile, std::move (os), true);
 	}
 
 	Log & Logger ()
 	{
-		return logger;
+		// Intentionally leaked function-local singleton. Log records can be
+		// emitted from destructors of other translation units whose order
+		// relative to a static Log is unspecified. Keeping the object alive
+		// guarantees Logger() remains usable during static destruction.
+		static Log * logger = new Log ();
+		return *logger;
 	}
 
 	static ThrowFunction g_ThrowFunction;

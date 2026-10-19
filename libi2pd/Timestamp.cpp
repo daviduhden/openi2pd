@@ -9,7 +9,7 @@
 */
 
 #include <time.h>
-#include <stdio.h>
+#include <cstdio>
 #include <inttypes.h>
 #include <string.h>
 #include <chrono>
@@ -23,12 +23,6 @@
 #include "I2PEndian.h"
 #include "Timestamp.h"
 #include "util.h"
-
-#ifdef _WIN32
-#ifndef _WIN64
-#define _USE_32BIT_TIME_T
-#endif
-#endif
 
 namespace i2p
 {
@@ -59,9 +53,9 @@ namespace util
 			.count ();
 	}
 
-	static int64_t g_TimeOffset = 0; // in seconds
+	static std::atomic<int64_t> g_TimeOffset { 0 }; // in seconds
 
-	static void SyncTimeWithNTP (const std::string & address)
+	static void SyncTimeWithNTP (const std::string & address, const std::atomic<bool> & isRunning)
 	{
 		LogPrint (eLogInfo, "Timestamp: NTP request to ", address);
 		boost::asio::io_context service;
@@ -109,13 +103,16 @@ namespace util
 				try
 				{
 					socket.send_to (boost::asio::buffer (buf, 48), ep);
+					// Poll in short slices so Stop() is not delayed by the full
+					// ten-second NTP timeout. 100 * 100 ms == 10 s.
 					int i = 0;
-					while (!socket.available () && i < 10) // 10 seconds max
+					while (!socket.available () && i < 100 && isRunning.load (std::memory_order_relaxed))
 					{
-						std::this_thread::sleep_for (std::chrono::seconds (1));
+						std::this_thread::sleep_for (std::chrono::milliseconds (100));
 						i++;
 					}
-					if (socket.available ()) len = socket.receive_from (boost::asio::buffer (buf, 48), ep);
+					if (isRunning.load (std::memory_order_relaxed) && socket.available ())
+						len = socket.receive_from (boost::asio::buffer (buf, 48), ep);
 				}
 				catch (std::exception & e)
 				{
@@ -126,9 +123,10 @@ namespace util
 					auto ourTs = GetLocalSecondsSinceEpoch ();
 					uint32_t ts = bufbe32toh (buf + 32);
 					if (ts > 2208988800U) ts -= 2208988800U; // 1/1/1970 from 1/1/1900
-					g_TimeOffset = ts - ourTs;
-					LogPrint (eLogInfo, "Timestamp: ", address, " time offset from system time is ", g_TimeOffset,
-						" seconds");
+					g_TimeOffset.store (static_cast<int64_t> (ts) - static_cast<int64_t> (ourTs),
+						std::memory_order_relaxed);
+					LogPrint (eLogInfo, "Timestamp: ", address, " time offset from system time is ",
+						g_TimeOffset.load (std::memory_order_relaxed), " seconds");
 				}
 			}
 			else
@@ -155,38 +153,63 @@ namespace util
 
 	void NTPTimeSync::Start ()
 	{
-		if (m_NTPServersList.size () > 0)
+		std::lock_guard<std::mutex> l (m_LifecycleMutex);
+		bool expected = false;
+		if (!m_IsRunning.compare_exchange_strong (expected, true))
 		{
-			m_IsRunning = true;
-			LogPrint (eLogInfo, "Timestamp: NTP time sync starting");
-			boost::asio::post (m_Service, std::bind (&NTPTimeSync::Sync, this));
-			m_Thread.reset (new std::thread (std::bind (&NTPTimeSync::Run, this)));
+			LogPrint (eLogDebug, "Timestamp: NTP time sync already running");
+			return; // no-op if already running
 		}
-		else
+		if (m_NTPServersList.empty ())
+		{
+			m_IsRunning.store (false, std::memory_order_relaxed);
 			LogPrint (eLogWarning, "Timestamp: No NTP server found");
+			return;
+		}
+		// A previous Stop() left the io_context stopped. Restart it before
+		// posting work or starting a new thread.
+		m_Service.restart ();
+		try
+		{
+			m_Thread = std::make_unique<std::thread> (std::bind (&NTPTimeSync::Run, this));
+		}
+		catch (...)
+		{
+			m_IsRunning.store (false, std::memory_order_relaxed);
+			throw;
+		}
+		LogPrint (eLogInfo, "Timestamp: NTP time sync starting");
+		boost::asio::post (m_Service, std::bind (&NTPTimeSync::Sync, this));
 	}
 
 	void NTPTimeSync::Stop ()
 	{
-		if (m_IsRunning)
+		std::lock_guard<std::mutex> l (m_LifecycleMutex);
+		const bool wasRunning = m_IsRunning.exchange (false, std::memory_order_relaxed);
+		if (!wasRunning && !m_Thread) return;
+		LogPrint (eLogInfo, "Timestamp: NTP time sync stopping");
+		// Cancel the timer on its own io_context. Cross-thread cancel() is
+		// not used: the handler and the timer belong to that executor.
+		boost::asio::post (m_Service, [this] () { m_Timer.cancel (); });
+		// Also stop the service so Run() returns even if the cancellation
+		// handler cannot be dispatched first.
+		m_Service.stop ();
+		if (m_Thread)
 		{
-			LogPrint (eLogInfo, "Timestamp: NTP time sync stopping");
-			m_IsRunning = false;
-			m_Timer.cancel ();
-			m_Service.stop ();
-			if (m_Thread)
-			{
-				m_Thread->join ();
-				m_Thread.reset (nullptr);
-			}
+			if (m_Thread->joinable ()) m_Thread->join ();
+			m_Thread.reset ();
 		}
+		// Fallback: no handler can run now, so cancelling the pending wait
+		// here cannot race. This prevents a stale one-hour wait from firing
+		// after a later Start().
+		m_Timer.cancel ();
 	}
 
 	void NTPTimeSync::Run ()
 	{
 		i2p::util::SetThreadName ("Timesync");
 
-		while (m_IsRunning)
+		while (m_IsRunning.load (std::memory_order_relaxed))
 		{
 			try
 			{
@@ -201,12 +224,13 @@ namespace util
 
 	void NTPTimeSync::Sync ()
 	{
+		if (!m_IsRunning.load (std::memory_order_relaxed)) return;
 		if (m_NTPServersList.size () > 0)
-			SyncTimeWithNTP (m_NTPServersList[rand () % m_NTPServersList.size ()]);
+			SyncTimeWithNTP (m_NTPServersList[rand () % m_NTPServersList.size ()], m_IsRunning);
 		else
-			m_IsRunning = false;
+			m_IsRunning.store (false, std::memory_order_relaxed);
 
-		if (m_IsRunning)
+		if (m_IsRunning.load (std::memory_order_relaxed))
 		{
 			m_Timer.expires_after (std::chrono::hours (m_SyncInterval));
 			m_Timer.async_wait (
@@ -219,22 +243,22 @@ namespace util
 
 	uint64_t GetMillisecondsSinceEpoch ()
 	{
-		return GetLocalMillisecondsSinceEpoch () + g_TimeOffset * 1000;
+		return GetLocalMillisecondsSinceEpoch () + g_TimeOffset.load (std::memory_order_relaxed) * 1000;
 	}
 
 	uint64_t GetSecondsSinceEpoch ()
 	{
-		return GetLocalSecondsSinceEpoch () + g_TimeOffset;
+		return GetLocalSecondsSinceEpoch () + g_TimeOffset.load (std::memory_order_relaxed);
 	}
 
 	uint32_t GetMinutesSinceEpoch ()
 	{
-		return GetLocalMinutesSinceEpoch () + g_TimeOffset / 60;
+		return GetLocalMinutesSinceEpoch () + g_TimeOffset.load (std::memory_order_relaxed) / 60;
 	}
 
 	uint32_t GetHoursSinceEpoch ()
 	{
-		return GetLocalHoursSinceEpoch () + g_TimeOffset / 3600;
+		return GetLocalHoursSinceEpoch () + g_TimeOffset.load (std::memory_order_relaxed) / 3600;
 	}
 
 	uint64_t GetMonotonicMicroseconds ()
@@ -273,17 +297,24 @@ namespace util
 		auto t = clock::to_time_t (clock::time_point (std::chrono::seconds (timestamp)));
 		struct tm tm;
 #ifdef _WIN32
-		gmtime_s (&tm, &t);
-		sprintf_s (date, 9, "%04i%02i%02i", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
+		if (gmtime_s (&tm, &t) != 0)
+		{
+			date[0] = 0;
+			return;
+		}
 #else
-		gmtime_r (&t, &tm);
-		sprintf (date, "%04i%02i%02i", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
+		if (!gmtime_r (&t, &tm))
+		{
+			date[0] = 0;
+			return;
+		}
 #endif
+		std::snprintf (date, 9, "%04i%02i%02i", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
 	}
 
 	void AdjustTimeOffset (int64_t offset)
 	{
-		g_TimeOffset += offset;
+		g_TimeOffset.fetch_add (offset, std::memory_order_relaxed);
 	}
 }
 }

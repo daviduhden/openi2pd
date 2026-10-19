@@ -11,6 +11,9 @@
 #ifndef TIMESTAMP_H__
 #define TIMESTAMP_H__
 
+#include <memory>
+#include <atomic>
+#include <mutex>
 #include <inttypes.h>
 #include <thread>
 #include <vector>
@@ -48,15 +51,18 @@ namespace util
 		void Stop ();
 
 	private:
+		friend struct NTPTimeSyncTestAccess;
+
 		void Run ();
 		void Sync ();
 
 	private:
-		bool m_IsRunning;
+		std::atomic<bool> m_IsRunning;
+		std::mutex m_LifecycleMutex;
 		std::unique_ptr<std::thread> m_Thread;
 		boost::asio::io_context m_Service;
 		boost::asio::steady_timer m_Timer;
-		int m_SyncInterval;
+		int m_SyncInterval = 1;
 		std::vector<std::string> m_NTPServersList;
 	};
 }
