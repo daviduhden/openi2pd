@@ -216,6 +216,14 @@ add_test(NAME build-system-static
     -P "${CMAKE_CURRENT_SOURCE_DIR}/check-build-system.cmake")
 set_tests_properties(build-system-static PROPERTIES LABELS "ci;static")
 
+# Static init-system service contract check. It reads the canonical service
+# sources and never invokes a shell, service manager or compiler.
+add_test(NAME services-static
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPROJECT_ROOT=${PROJECT_ROOT}"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/check-services.cmake")
+set_tests_properties(services-static PROPERTIES LABELS "services;static")
+
 # Shell-level checks that only need the built router binary.
 if(TARGET i2pd)
   add_test(NAME i2pd-version COMMAND i2pd --version)

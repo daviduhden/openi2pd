@@ -1,6 +1,14 @@
-# Copyright (c) 2013-2026, The PurpleI2P Project
-# Copyright (c) 2026, David Uhden Collado
-# SPDX-License-Identifier: BSD-3-Clause
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: CMakeLists.txt.
+#
+# Top-level CMake entry point: it enforces C++23 and the supported platforms,
+# builds libi2pd/libi2pdclient/libi2pdlang, the router, TUI, optional Android
+# JNI and tools, and installs runtime, config and headers. Dependency floors
+# cover Boost, OpenSSL/LibreSSL, zlib and optional MiniUPnPc.
+#
+
 cmake_minimum_required(VERSION 3.22)
 
 # The project deliberately keeps its CMake entry point in build/ for
@@ -57,8 +65,62 @@ include(GNUInstallDirs)
 
 include(CTest)
 
+# Service-manager selection. Distributions install exactly one init system;
+# the default installs none so the historical build/install graph is unchanged.
+# Native platform service integration is meaningless on Windows and Android,
+# where the daemon is started by the OS service manager or the JNI host.
+set(I2PD_SERVICE_MANAGER "none" CACHE STRING
+  "Init-system service files to install (none, systemd, openrc, runit, s6, s6-rc, shepherd, sysvinit)")
+set_property(CACHE I2PD_SERVICE_MANAGER PROPERTY STRINGS
+  none systemd openrc runit s6 s6-rc shepherd sysvinit)
+
+set(I2PD_SERVICE_DIR "" CACHE PATH
+  "Override the selected service-manager installation directory (empty uses the manager default)")
+set(I2PD_SERVICE_CONFDIR "${CMAKE_INSTALL_SYSCONFDIR}/conf.d" CACHE PATH
+  "OpenRC conf.d installation directory")
+
+set(_i2pd_service_managers
+  none systemd openrc runit s6 s6-rc shepherd sysvinit)
+if(NOT I2PD_SERVICE_MANAGER IN_LIST _i2pd_service_managers)
+  message(FATAL_ERROR
+    "Invalid I2PD_SERVICE_MANAGER='${I2PD_SERVICE_MANAGER}'. "
+    "Expected one of: ${_i2pd_service_managers}")
+endif()
+if(NOT I2PD_SERVICE_MANAGER STREQUAL "none"
+    AND (ANDROID OR WIN32 OR NOT UNIX))
+  message(FATAL_ERROR
+    "I2PD_SERVICE_MANAGER=${I2PD_SERVICE_MANAGER} is only supported on "
+    "Unix-like systems; Windows and Android are managed by their native "
+    "service facilities. Use -DI2PD_SERVICE_MANAGER=none.")
+endif()
+
+# The destination is relative by default, so DESTINATION is interpreted
+# against CMAKE_INSTALL_PREFIX. An absolute user override is passed through.
+if(I2PD_SERVICE_DIR)
+  set(_i2pd_service_dir "${I2PD_SERVICE_DIR}")
+elseif(I2PD_SERVICE_MANAGER STREQUAL "systemd")
+  set(_i2pd_service_dir "${CMAKE_INSTALL_LIBDIR}/systemd/system")
+elseif(I2PD_SERVICE_MANAGER STREQUAL "openrc"
+    OR I2PD_SERVICE_MANAGER STREQUAL "sysvinit")
+  set(_i2pd_service_dir "${CMAKE_INSTALL_SYSCONFDIR}/init.d")
+elseif(I2PD_SERVICE_MANAGER STREQUAL "runit")
+  set(_i2pd_service_dir "${CMAKE_INSTALL_SYSCONFDIR}/sv")
+elseif(I2PD_SERVICE_MANAGER STREQUAL "s6")
+  set(_i2pd_service_dir "${CMAKE_INSTALL_SYSCONFDIR}/s6/service")
+elseif(I2PD_SERVICE_MANAGER STREQUAL "s6-rc")
+  set(_i2pd_service_dir "${CMAKE_INSTALL_SYSCONFDIR}/s6-rc/source")
+elseif(I2PD_SERVICE_MANAGER STREQUAL "shepherd")
+  set(_i2pd_service_dir "${CMAKE_INSTALL_SYSCONFDIR}/shepherd")
+else()
+  set(_i2pd_service_dir "")
+endif()
+if(I2PD_SERVICE_CONFDIR)
+  set(_i2pd_service_confdir "${I2PD_SERVICE_CONFDIR}")
+else()
+  set(_i2pd_service_confdir "${CMAKE_INSTALL_SYSCONFDIR}/conf.d")
+endif()
+
 if(ANDROID)
-  set(WITH_TORRENTS OFF)
   set(I2PD_BUILD_TUI OFF)
   # Android uses the JNI shared library; there is no supported standalone
   # Android daemon executable. The app wrapper already forces this off, and
@@ -563,6 +625,50 @@ if(WITH_BINARY)
   endif()
 endif()
 
+# Exactly one service manager is installed. The executable/config/doc/man and
+# TUI install rules above are independent of this selection.
+if(I2PD_SERVICE_MANAGER STREQUAL "systemd")
+  install(FILES "${PROJECT_ROOT}/contrib/i2pd.service"
+    DESTINATION "${_i2pd_service_dir}"
+    RENAME i2pd.service
+    COMPONENT Service)
+elseif(I2PD_SERVICE_MANAGER STREQUAL "sysvinit")
+  install(PROGRAMS "${PROJECT_ROOT}/contrib/sysvinit/i2pd"
+    DESTINATION "${_i2pd_service_dir}"
+    RENAME i2pd
+    COMPONENT Service)
+elseif(I2PD_SERVICE_MANAGER STREQUAL "openrc")
+  install(PROGRAMS "${PROJECT_ROOT}/contrib/openrc/i2pd.openrc"
+    DESTINATION "${_i2pd_service_dir}"
+    RENAME i2pd
+    COMPONENT Service)
+  install(FILES "${PROJECT_ROOT}/contrib/openrc/conf.d/i2pd"
+    DESTINATION "${_i2pd_service_confdir}"
+    COMPONENT Service)
+elseif(I2PD_SERVICE_MANAGER STREQUAL "runit")
+  # The supervised service tree keeps the executable bits of run and log/run.
+  install(DIRECTORY "${PROJECT_ROOT}/contrib/runit/i2pd/"
+    DESTINATION "${_i2pd_service_dir}/i2pd"
+    COMPONENT Service
+    USE_SOURCE_PERMISSIONS)
+elseif(I2PD_SERVICE_MANAGER STREQUAL "s6")
+  install(DIRECTORY "${PROJECT_ROOT}/contrib/s6/i2pd/"
+    DESTINATION "${_i2pd_service_dir}/i2pd"
+    COMPONENT Service
+    USE_SOURCE_PERMISSIONS)
+elseif(I2PD_SERVICE_MANAGER STREQUAL "s6-rc")
+  # s6-rc-compile consumes the source tree directly; keep its longrun
+  # directories and dependency declarations intact.
+  install(DIRECTORY "${PROJECT_ROOT}/contrib/s6-rc/source/"
+    DESTINATION "${_i2pd_service_dir}"
+    COMPONENT Service
+    USE_SOURCE_PERMISSIONS)
+elseif(I2PD_SERVICE_MANAGER STREQUAL "shepherd")
+  install(FILES "${PROJECT_ROOT}/contrib/shepherd/i2pd.scm"
+    DESTINATION "${_i2pd_service_dir}"
+    COMPONENT Service)
+endif()
+
 if(TARGET i2pd-tui)
   install(TARGETS i2pd-tui RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT Runtime)
 endif()
@@ -588,6 +694,13 @@ message(STATUS "Tools              : ${I2PD_BUILD_TOOLS}")
 message(STATUS "Perl::Critic       : ${I2PD_PERL_CRITIC}")
 message(STATUS "Documentation      : ${I2PD_INSTALL_DOCS}")
 message(STATUS "Android JNI        : ${I2PD_BUILD_JNI}")
+message(STATUS "Service manager    : ${I2PD_SERVICE_MANAGER}")
+if(NOT I2PD_SERVICE_MANAGER STREQUAL "none")
+  message(STATUS "Service directory  : ${_i2pd_service_dir}")
+  if(I2PD_SERVICE_MANAGER STREQUAL "openrc")
+    message(STATUS "Service conf.d     : ${_i2pd_service_confdir}")
+  endif()
+endif()
 if(TARGET i2pd_privsep)
   message(STATUS "Workers IPC        : i2pd_privsep")
 endif()

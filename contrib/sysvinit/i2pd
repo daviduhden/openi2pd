@@ -1,0 +1,412 @@
+#!/bin/sh
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: i2pd.
+#
+# LSB SysV init script that runs the foreground i2pd daemon in the background
+# with packaged configuration, a private runtime/data directory and optional
+# file, syslog or stdout logging. Settings are overridden in /etc/default/i2pd.
+#
+
+### BEGIN INIT INFO
+# Provides:          i2pd
+# Required-Start:    $local_fs $remote_fs $network
+# Required-Stop:     $local_fs $remote_fs $network
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: openi2pd I2P router
+# Description:       Start the openi2pd I2P router as the i2pd user. The
+#                    router keeps its state in /var/lib/i2pd and its pidfile
+#                    in /run/i2pd. SIGINT stops it gracefully, SIGHUP reloads
+#                    tunnels and SIGUSR1 reopens log files.
+### END INIT INFO
+
+PATH=/sbin:/usr/sbin:/bin:/usr/bin
+DAEMON=/usr/bin/i2pd
+NAME=i2pd
+DESC="openi2pd I2P router"
+DEFAULT_FILE=/etc/default/i2pd
+
+# Safe packaged defaults; /etc/default/i2pd may override any of them.
+I2PD_ENABLED=yes
+DAEMON_OPTS=
+I2PD_USER=i2pd
+I2PD_GROUP=i2pd
+I2PD_CONF=/etc/i2pd/i2pd.conf
+I2PD_TUNCONF=/etc/i2pd/tunnels.conf
+I2PD_TUNNELSDIR=/etc/i2pd/tunnels.conf.d
+I2PD_CERTSDIR=/usr/share/i2pd/certificates
+I2PD_DATADIR=/var/lib/i2pd
+I2PD_PIDFILE=/run/i2pd/i2pd.pid
+I2PD_LOGFILE=/var/log/i2pd/i2pd.log
+I2PD_LOG="file"
+I2PD_NOFILE=8192
+
+if [ -r "$DEFAULT_FILE" ]; then
+	# shellcheck disable=SC1090
+	. "$DEFAULT_FILE"
+fi
+
+# Never let an empty override remove a required path.
+[ -n "$I2PD_USER" ] || I2PD_USER=i2pd
+[ -n "$I2PD_GROUP" ] || I2PD_GROUP=i2pd
+[ -n "$I2PD_CONF" ] || I2PD_CONF=/etc/i2pd/i2pd.conf
+[ -n "$I2PD_TUNCONF" ] || I2PD_TUNCONF=/etc/i2pd/tunnels.conf
+[ -n "$I2PD_TUNNELSDIR" ] || I2PD_TUNNELSDIR=/etc/i2pd/tunnels.conf.d
+[ -n "$I2PD_CERTSDIR" ] || I2PD_CERTSDIR=/usr/share/i2pd/certificates
+[ -n "$I2PD_DATADIR" ] || I2PD_DATADIR=/var/lib/i2pd
+[ -n "$I2PD_PIDFILE" ] || I2PD_PIDFILE=/run/i2pd/i2pd.pid
+[ -n "$I2PD_LOGFILE" ] || I2PD_LOGFILE=/var/log/i2pd/i2pd.log
+[ -n "$I2PD_LOG" ] || I2PD_LOG="file"
+
+# shellcheck source=/dev/null
+. /lib/lsb/init-functions
+
+case "$I2PD_LOG" in
+	file|stdout|syslog) ;;
+	*)
+		log_warning_msg "Unknown I2PD_LOG '$I2PD_LOG'; using file logging"
+		I2PD_LOG="file"
+		;;
+esac
+
+# The daemon creates its own files 0600; keep directories created here private.
+umask 0077
+
+HAVE_START_STOP_DAEMON=0
+if command -v start-stop-daemon >/dev/null 2>&1; then
+	HAVE_START_STOP_DAEMON=1
+fi
+
+is_root()
+{
+	[ "$(id -u)" -eq 0 ]
+}
+
+read_pid()
+{
+	[ -r "$I2PD_PIDFILE" ] || return 1
+	_pid=$(sed -n '1p' "$I2PD_PIDFILE" 2>/dev/null)
+	case "$_pid" in
+		''|*[!0-9]*) return 1 ;;
+	esac
+	printf '%s\n' "$_pid"
+}
+
+is_running()
+{
+	if [ "$HAVE_START_STOP_DAEMON" -eq 1 ]; then
+		# --test succeeds when a start would be attempted, so the inverse
+		# means that this pidfile/executable pair is already running.
+		if start-stop-daemon --start --quiet \
+			--pidfile "$I2PD_PIDFILE" --exec "$DAEMON" --test \
+			>/dev/null 2>&1; then
+			return 1
+		fi
+		return 0
+	fi
+	_pid=$(read_pid) || return 1
+	kill -0 "$_pid" 2>/dev/null
+}
+
+install_owned_dir()
+{
+	if is_root; then
+		install -d -m 0700 -o "$I2PD_USER" -g "$I2PD_GROUP" "$1"
+	else
+		install -d -m 0700 "$1"
+	fi
+}
+
+install_owned_file()
+{
+	if is_root; then
+		install -m 0600 -o "$I2PD_USER" -g "$I2PD_GROUP" /dev/null "$1"
+	else
+		install -m 0600 /dev/null "$1"
+	fi
+}
+
+prepare_dirs()
+{
+	[ -d "$I2PD_DATADIR" ] || install_owned_dir "$I2PD_DATADIR" || return 1
+	_run_dir=$(dirname "$I2PD_PIDFILE")
+	[ -d "$_run_dir" ] || install_owned_dir "$_run_dir" || return 1
+	if [ "$I2PD_LOG" = "file" ]; then
+		_log_dir=$(dirname "$I2PD_LOGFILE")
+		[ -d "$_log_dir" ] || install_owned_dir "$_log_dir" || return 1
+		[ -e "$I2PD_LOGFILE" ] || install_owned_file "$I2PD_LOGFILE" || return 1
+	fi
+	return 0
+}
+
+quote_arg()
+{
+	_quoted=$(printf '%s' "$1" | sed "s/'/'\\\\''/g")
+	printf "'%s'" "$_quoted"
+}
+
+launch_fallback()
+{
+	_cmd=$(quote_arg "$DAEMON")
+	for _arg in "$@"; do
+		_cmd="$_cmd $(quote_arg "$_arg")"
+	done
+	if ! command -v su >/dev/null 2>&1; then
+		log_failure_msg "su is required to drop privileges without start-stop-daemon"
+		return 1
+	fi
+	# su applies the configured user's primary group; start-stop-daemon is
+	# preferred because it can honour I2PD_GROUP explicitly.
+	su -s /bin/sh -c "cd $(quote_arg "$I2PD_DATADIR") && exec $_cmd" \
+		"$I2PD_USER" >/dev/null 2>&1 &
+	return 0
+}
+
+wait_for_start()
+{
+	_count=0
+	while [ "$_count" -lt 10 ]; do
+		_pid=$(read_pid) || _pid=
+		if [ -n "$_pid" ] && kill -0 "$_pid" 2>/dev/null; then
+			return 0
+		fi
+		sleep 1
+		_count=$((_count + 1))
+	done
+	return 1
+}
+
+wait_for_stop()
+{
+	_pid=$1
+	_limit=$2
+	_count=0
+	while [ "$_count" -lt "$_limit" ]; do
+		kill -0 "$_pid" 2>/dev/null || return 0
+		sleep 1
+		_count=$((_count + 1))
+	done
+	return 1
+}
+
+do_start()
+{
+	# Return 0 when started or already running, 1 on failure and 4 when the
+	# caller lacks the privilege to switch to the configured service user.
+	if [ "$I2PD_ENABLED" != "yes" ]; then
+		log_warning_msg "$NAME is disabled in $DEFAULT_FILE"
+		return 0
+	fi
+
+	if [ ! -x "$DAEMON" ]; then
+		log_failure_msg "$DAEMON is not installed or not executable"
+		return 1
+	fi
+
+	if ! id "$I2PD_USER" >/dev/null 2>&1; then
+		log_failure_msg "Service user '$I2PD_USER' does not exist"
+		return 1
+	fi
+
+	if is_running; then
+		log_warning_msg "$NAME is already running"
+		return 0
+	fi
+
+	if ! is_root && [ "$(id -un)" != "$I2PD_USER" ]; then
+		log_failure_msg "Only root or $I2PD_USER can start $NAME"
+		return 4
+	fi
+
+	if ! prepare_dirs; then
+		log_failure_msg "Could not create $I2PD_DATADIR or $I2PD_PIDFILE directory"
+		return 1
+	fi
+
+	case "$I2PD_NOFILE" in
+		''|*[!0-9]*)
+			log_warning_msg "Ignoring invalid I2PD_NOFILE '$I2PD_NOFILE'"
+			;;
+		*)
+			# ulimit -n is the portable-enough XSI form used by LSB init
+			# scripts; dash, ksh and bash all provide it.
+			# shellcheck disable=SC3045
+			if ! ulimit -n "$I2PD_NOFILE" 2>/dev/null; then
+				log_warning_msg "Could not raise the open-file limit to $I2PD_NOFILE"
+			fi
+			;;
+	esac
+
+	# The daemon stays in the foreground; --background is a process-supervisor
+	# option, never an i2pd option. The self-daemonizing mode is not used.
+	set -- \
+		--conf="$I2PD_CONF" \
+		--tunconf="$I2PD_TUNCONF" \
+		--tunnelsdir="$I2PD_TUNNELSDIR" \
+		--certsdir="$I2PD_CERTSDIR" \
+		--datadir="$I2PD_DATADIR" \
+		--pidfile="$I2PD_PIDFILE" \
+		--service --foreground
+	case "$I2PD_LOG" in
+		file)
+			set -- "$@" --log=file --logfile="$I2PD_LOGFILE"
+			;;
+		stdout)
+			set -- "$@" --log=stdout
+			;;
+		syslog)
+			set -- "$@" --log=syslog
+			;;
+	esac
+	# DAEMON_OPTS is intentionally split into words as an administrator might
+	# supply several separate options.
+	# shellcheck disable=SC2086
+	[ -z "$DAEMON_OPTS" ] || set -- "$@" $DAEMON_OPTS
+
+	if [ "$HAVE_START_STOP_DAEMON" -eq 1 ]; then
+		start-stop-daemon --start --quiet --background \
+			--chuid "$I2PD_USER:$I2PD_GROUP" \
+			--chdir "$I2PD_DATADIR" \
+			--exec "$DAEMON" -- "$@" || return 1
+	else
+		if is_root; then
+			launch_fallback "$@" || return 1
+		else
+			( cd "$I2PD_DATADIR" && exec "$DAEMON" "$@" ) >/dev/null 2>&1 &
+		fi
+	fi
+
+	if ! wait_for_start; then
+		log_failure_msg "$NAME did not create $I2PD_PIDFILE"
+		return 1
+	fi
+	return 0
+}
+
+do_stop()
+{
+	# Return 0 when stopped or already stopped, 1 on failure.
+	if [ "$HAVE_START_STOP_DAEMON" -eq 1 ]; then
+		start-stop-daemon --stop --quiet --oknodo \
+			--retry=INT/620/KILL/5 \
+			--pidfile "$I2PD_PIDFILE" \
+			--exec "$DAEMON"
+		_rc=$?
+		if [ "$_rc" -eq 2 ]; then
+			return 1
+		fi
+		rm -f "$I2PD_PIDFILE"
+		return 0
+	fi
+
+	_pid=$(read_pid) || _pid=
+	if [ -z "$_pid" ] || ! kill -0 "$_pid" 2>/dev/null; then
+		rm -f "$I2PD_PIDFILE"
+		return 0
+	fi
+
+	# SIGINT gives the router the same ten-minute tunnel grace period as the
+	# systemd unit; SIGKILL follows only if it does not exit.
+	kill -INT "$_pid" 2>/dev/null
+	if ! wait_for_stop "$_pid" 620; then
+		kill -KILL "$_pid" 2>/dev/null
+		if ! wait_for_stop "$_pid" 5; then
+			log_failure_msg "$NAME did not stop"
+			return 1
+		fi
+	fi
+	rm -f "$I2PD_PIDFILE"
+	return 0
+}
+
+do_reload()
+{
+	_pid=$(read_pid) || _pid=
+	if [ -z "$_pid" ] || ! kill -0 "$_pid" 2>/dev/null; then
+		log_failure_msg "$NAME is not running"
+		return 1
+	fi
+	kill -HUP "$_pid" || return 1
+	return 0
+}
+
+do_status()
+{
+	# 0 running, 1 pidfile present but process dead, 3 not running.
+	if is_running; then
+		return 0
+	fi
+	if [ -e "$I2PD_PIDFILE" ]; then
+		return 1
+	fi
+	return 3
+}
+
+case "$1" in
+	start)
+		log_daemon_msg "Starting $DESC" "$NAME"
+		do_start
+		_rc=$?
+		if [ "$_rc" -eq 0 ]; then
+			log_end_msg 0
+		else
+			log_end_msg 1
+		fi
+		exit "$_rc"
+		;;
+	stop)
+		log_daemon_msg "Stopping $DESC" "$NAME"
+		do_stop
+		_rc=$?
+		if [ "$_rc" -eq 0 ]; then
+			log_end_msg 0
+		else
+			log_end_msg 1
+		fi
+		exit "$_rc"
+		;;
+	restart)
+		log_daemon_msg "Restarting $DESC" "$NAME"
+		do_stop
+		_rc=$?
+		if [ "$_rc" -ne 0 ]; then
+			log_end_msg 1
+			exit "$_rc"
+		fi
+		do_start
+		_rc=$?
+		if [ "$_rc" -eq 0 ]; then
+			log_end_msg 0
+		else
+			log_end_msg 1
+		fi
+		exit "$_rc"
+		;;
+	reload|force-reload)
+		log_daemon_msg "Reloading $DESC" "$NAME"
+		do_reload
+		_rc=$?
+		if [ "$_rc" -eq 0 ]; then
+			log_end_msg 0
+		else
+			log_end_msg 1
+		fi
+		exit "$_rc"
+		;;
+	status)
+		do_status
+		_rc=$?
+		case "$_rc" in
+			0) log_action_msg "$DESC is running" ;;
+			1) log_failure_msg "$DESC is dead but $I2PD_PIDFILE exists" ;;
+			3) log_action_msg "$DESC is not running" ;;
+		esac
+		exit "$_rc"
+		;;
+	*)
+		echo "Usage: $0 {start|stop|restart|force-reload|reload|status}" >&2
+		exit 2
+		;;
+esac

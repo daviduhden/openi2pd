@@ -1,8 +1,41 @@
-type = bgprocess
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: i2pd.
+#
+# Sample dinit service description that supervises i2pd as a native foreground
+# process. i2pd logs to stdout; dinit appends that output to the configured log
+# file. Create /var/log/i2pd (0700, i2pd:i2pd) and /var/lib/i2pd before use.
+#
+
+type = process
 run-as = i2pd
-command = /usr/bin/i2pd --conf=/var/lib/i2pd/i2pd.conf --pidfile=/var/lib/i2pd/i2pd.pid --daemon --service
+working-dir = /var/lib/i2pd
+command = /usr/bin/i2pd --conf=/etc/i2pd/i2pd.conf --tunconf=/etc/i2pd/tunnels.conf --tunnelsdir=/etc/i2pd/tunnels.conf.d --certsdir=/usr/share/i2pd/certificates --datadir=/var/lib/i2pd --service --foreground --log=stdout
+
+# dinit captures the daemon's stdout/stderr; the service passes --foreground,
+# not the self-daemonizing mode. No pidfile is used for supervision and no
+# sd_notify readiness protocol is involved. The router still writes its default
+# pidfile inside the data directory for administrative tools.
+log-type = file
+logfile = /var/log/i2pd/i2pd.log
+logfile-uid = i2pd
+logfile-gid = i2pd
+logfile-permissions = 0600
+
+restart = on-failure
 smooth-recovery = true
-depends-on = ntpd
-# uncomment if you want to use i2pd with yggdrasil
-# depends-on = yggdrasil
-pid-file = /var/lib/i2pd/i2pd.pid
+restart-delay = 5
+restart-limit-count = 5
+restart-limit-interval = 300
+
+# SIGINT is the graceful shutdown signal; allow the same ten-minute tunnel
+# expiry period as the systemd unit before dinit escalates to SIGKILL.
+term-signal = INT
+stop-timeout = 620
+
+rlimit-nofile = 8192
+
+# Optional ordering only; dinit does not require ntpd to be installed.
+after = ntpd
+# after = yggdrasil

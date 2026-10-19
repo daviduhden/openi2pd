@@ -1,0 +1,28 @@
+#!/bin/sh
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: run.
+#
+# runit run script. Prepare the private runtime and data directories as root,
+# then replace the shell with the router running as i2pd. The router stays in
+# the foreground and writes its log to stdout for the companion svlogd
+# service; runsv owns restart and stop handling.
+#
+
+set -eu
+
+install -d -m 0700 -o i2pd -g i2pd /run/i2pd
+install -d -m 0700 -o i2pd -g i2pd /var/lib/i2pd
+
+exec 2>&1
+exec chpst -u i2pd:i2pd /usr/bin/i2pd \
+	--service \
+	--foreground \
+	--conf=/etc/i2pd/i2pd.conf \
+	--tunconf=/etc/i2pd/tunnels.conf \
+	--tunnelsdir=/etc/i2pd/tunnels.conf.d \
+	--certsdir=/usr/share/i2pd/certificates \
+	--datadir=/var/lib/i2pd \
+	--pidfile=/run/i2pd/i2pd.pid \
+	--log=stdout

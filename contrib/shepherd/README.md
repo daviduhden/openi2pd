@@ -1,0 +1,117 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: README.
+
+Documents the native GNU Shepherd service definition for the openi2pd router.
+-->
+
+# openi2pd under GNU Shepherd
+
+`i2pd.scm` defines one native Shepherd service with the `service` constructor,
+registers it with `register-services`, and lets Shepherd start it as the
+`i2pd` account in the foreground. It uses no shell, no `--daemon`, no custom
+PID supervision and no readiness protocol.
+
+## Requirements
+
+- GNU Shepherd 0.10.5 or newer with the `(shepherd service)` module.
+- Shepherd running as root, so `#:user` and `#:group` can drop privileges.
+  Shepherd refuses the change if it is unprivileged.
+- An `i2pd` user and group.
+- `/usr/bin/i2pd`, `/etc/i2pd/i2pd.conf`, `/etc/i2pd/tunnels.conf` and the
+  `/etc/i2pd/tunnels.conf.d` directory. A missing main configuration file is a
+  fatal startup error. Do not set `daemon = true` in the configuration:
+  Shepherd needs the router to remain in the foreground, and the packaged file
+  leaves that option disabled.
+- `/var/lib/i2pd` and `/run/i2pd`. The data directory can be created by the
+  package; the runtime directory is on a tmpfs and must be recreated at boot,
+  for example with a tmpfiles rule:
+
+  ```text
+  d /run/i2pd 0700 i2pd i2pd -
+  ```
+
+  Or create both before starting the service:
+
+  ```sh
+  install -d -m 0700 -o i2pd -g i2pd /run/i2pd /var/lib/i2pd
+  ```
+
+- A syslog daemon reachable through `/dev/log`.
+
+## Install and load
+
+Install the file outside the Shepherd configuration itself:
+
+```sh
+install -d -m 0755 /etc/shepherd
+install -m 0644 contrib/shepherd/i2pd.scm /etc/shepherd/i2pd.scm
+```
+
+Then load it from the configuration that the running Shepherd instance reads.
+For a site whose configuration is `/etc/shepherd/init.scm`:
+
+```scheme
+;; /etc/shepherd/init.scm
+(load "/etc/shepherd/i2pd.scm")
+(start-in-the-background '(i2pd))
+```
+
+Native Shepherd reads `/etc/shepherd.scm` when started as root, so a system
+that has not been configured to use `/etc/shepherd/init.scm` should put the
+same two forms there instead, or start Shepherd with
+`--config=/etc/shepherd/init.scm`.
+
+Loading the file alone only defines and registers the service; it does not
+start it. The `start-in-the-background` call is required for boot autostart.
+
+`herd enable` does not provide boot autostart. It re-enables a service that
+Shepherd disabled after too many rapid respawns; the `start-in-the-background`
+call above is what starts the router when Shepherd starts.
+
+## Control
+
+```sh
+herd start i2pd
+herd stop i2pd
+herd restart i2pd
+herd status i2pd
+herd enable i2pd
+herd disable i2pd
+```
+
+`herd stop` sends `SIGINT`, the router's graceful shutdown, and Shepherd waits
+up to the configured 660-second grace period before escalating to `SIGKILL`.
+`herd restart` performs a full stop and start.
+
+Shepherd has no built-in reload action for this service. To reload tunnel
+configuration without a restart, send `SIGHUP` to the main PID shown by
+`herd status i2pd`, or use the daemon's PID file:
+
+```sh
+kill -HUP "$(cat /run/i2pd/i2pd.pid)"
+```
+
+## Service behavior and scope
+
+The start constructor passes `--service`, explicit configuration, tunnel,
+data, certificate and PID paths, and `--log=syslog`. Logging through syslog
+avoids `#:log-file`: Shepherd opens that file as root before `#:user` takes
+effect, which can leave a root-owned file that the router cannot rotate or
+reopen. The PID file is written for administrative tools; Shepherd supervises
+the foreground child directly and does not use the PID file for readiness.
+
+No `#:requirement` is declared. (The dependency keyword in this Shepherd
+generation is `#:requirement`; older descriptions sometimes call it
+`#:requires`, which current Shepherd does not accept.) Native Shepherd has no
+standard service named `networking`, so requiring one by name would prevent
+startup on systems that do not define it. If the local configuration does
+provide a real prerequisite, add its actual provision name, for example
+`#:requirement '(network)`, after verifying it is registered.
+
+The TUI is not a service. `i2pd-tui` is an optional client over the local
+socket; the router does not depend on it. Only the isolated log worker exists
+behind `[privsep]`, and this definition makes no claim of full privilege
+separation.

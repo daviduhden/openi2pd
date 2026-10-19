@@ -1,0 +1,31 @@
+#!/bin/execlineb -P
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: run.
+#
+# s6 run script that prepares the runtime and data directories, drops to the
+# i2pd account and executes the router in the foreground. Supervision and
+# restart policy belong to s6-supervise, not to this script.
+#
+
+# The system supervision tree normally runs as root. install creates the
+# runtime directory on tmpfs and the data directory with a private mode before
+# privileges are dropped. Both commands run in the foreground so execline
+# continues with the next instruction after they finish.
+foreground { /usr/bin/install -d -m 0700 -o i2pd -g i2pd /run/i2pd }
+foreground { /usr/bin/install -d -m 0700 -o i2pd -g i2pd /var/lib/i2pd }
+
+# setgid and setuid are performed before exec. i2pd must stay in the
+# foreground; --service selects the system paths and implies no daemonization.
+s6-setuidgid i2pd
+/usr/bin/i2pd \
+  --service \
+  --foreground \
+  --conf=/etc/i2pd/i2pd.conf \
+  --tunconf=/etc/i2pd/tunnels.conf \
+  --tunnelsdir=/etc/i2pd/tunnels.conf.d \
+  --datadir=/var/lib/i2pd \
+  --certsdir=/usr/share/i2pd/certificates \
+  --pidfile=/run/i2pd/i2pd.pid \
+  --log=syslog

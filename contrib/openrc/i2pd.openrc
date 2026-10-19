@@ -1,45 +1,107 @@
 #!/sbin/openrc-run
-# Copyright (c) 2013-2026, The PurpleI2P Project
-# Copyright (c) 2026, David Uhden Collado
-# SPDX-License-Identifier: BSD-3-Clause
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: i2pd.openrc.
+#
+# OpenRC runscript that keeps i2pd in the foreground under supervise-daemon.
+# The service uses the packaged configuration, a private data directory and a
+# private runtime directory. The daemon creates, locks and removes its own
+# pidfile; OpenRC keeps its supervisor state separately.
+#
 
-
-pidfile="/run/i2pd/i2pd.pid"
-logfile="/var/log/i2pd/i2pd.log"
-mainconf="/etc/i2pd/i2pd.conf"
-tunconf="/etc/i2pd/tunnels.conf"
-tundir="/etc/i2pd/tunnels.conf.d"
+: "${I2PD_USER:=i2pd}"
+: "${I2PD_GROUP:=i2pd}"
+: "${I2PD_CONF:=/etc/i2pd/i2pd.conf}"
+: "${I2PD_TUNCONF:=/etc/i2pd/tunnels.conf}"
+: "${I2PD_TUNNELSDIR:=/etc/i2pd/tunnels.conf.d}"
+: "${I2PD_CERTSDIR:=/usr/share/i2pd/certificates}"
+: "${I2PD_DATADIR:=/var/lib/i2pd}"
+: "${I2PD_RUNDIR:=/run/i2pd}"
+: "${I2PD_PIDFILE:=${I2PD_RUNDIR}/i2pd.pid}"
+: "${I2PD_LOG:=file}"
+: "${I2PD_LOGDIR:=/var/log/i2pd}"
+: "${I2PD_LOGFILE:=/var/log/i2pd/i2pd.log}"
+: "${I2PD_OPTS:=}"
 
 name="i2pd"
-command="/usr/bin/i2pd"
-command_args="--service --daemon --log=file --logfile=$logfile --conf=$mainconf --tunconf=$tunconf --tunnelsdir=$tundir --pidfile=$pidfile"
 description="openi2pd router"
-required_dirs="/var/lib/i2pd"
-required_files="$mainconf"
-start_stop_daemon_args="--chuid i2pd"
+command="/usr/bin/i2pd"
+command_user="${I2PD_USER}:${I2PD_GROUP}"
+directory="${I2PD_DATADIR}"
+supervisor="supervise-daemon"
+respawn_delay=5
+respawn_max=5
+respawn_period=60
+# Allow an ordered SIGTERM shutdown to save router state before escalation.
+: "${retry:=SIGTERM/30}"
+required_files="${I2PD_CONF}"
+
+command_args="--service --foreground --conf=${I2PD_CONF} --tunconf=${I2PD_TUNCONF} --tunnelsdir=${I2PD_TUNNELSDIR} --certsdir=${I2PD_CERTSDIR} --datadir=${I2PD_DATADIR} --pidfile=${I2PD_PIDFILE} --log=${I2PD_LOG}"
+case "${I2PD_LOG}" in
+	file)
+		command_args="${command_args} --logfile=${I2PD_LOGFILE}"
+		;;
+	syslog)
+		;;
+	stdout)
+		# Let supervise-daemon capture stdout so output is not discarded when
+		# OpenRC is not attached to a tty.
+		output_log="${I2PD_LOGFILE}"
+		error_log="${I2PD_LOGFILE}"
+		;;
+esac
+
+if [ -n "${I2PD_OPTS}" ]; then
+	command_args="${command_args} ${I2PD_OPTS}"
+fi
 
 depend() {
-  need mountall
-  use net
-  after bootmisc
+	need localmount
+	use net
+	use logger
+	after bootmisc
 }
 
 start_pre() {
-  if [ -r /etc/default/i2pd ]; then
-    . /etc/default/i2pd
-  fi
+	case "${I2PD_LOG}" in
+		file|syslog|stdout)
+			;;
+		*)
+			eerror "I2PD_LOG must be 'file', 'syslog' or 'stdout'"
+			return 1
+			;;
+	esac
 
-  if [ "x$I2PD_ENABLED" != "xyes" ]; then
-    ewarn "i2pd disabled in /etc/default/i2pd"
-    exit 1
-  fi
+	checkpath -d -m 0700 -o "${I2PD_USER}:${I2PD_GROUP}" "${I2PD_RUNDIR}"
+	checkpath -d -m 0700 -o "${I2PD_USER}:${I2PD_GROUP}" "${I2PD_DATADIR}"
 
-  checkpath -d -m 0755 -o i2pd:adm /var/log/i2pd
-  checkpath -d -m 0755 -o i2pd:adm /run/i2pd
-  checkpath -f -o i2pd:adm $logfile
-  checkpath -f -o i2pd:adm $pidfile
+	case "${I2PD_LOG}" in
+		file)
+			checkpath -d -m 0750 -o "${I2PD_USER}:${I2PD_GROUP}" "${I2PD_LOGDIR}"
+			checkpath -f -m 0640 -o "${I2PD_USER}:${I2PD_GROUP}" "${I2PD_LOGFILE}"
+			;;
+		syslog)
+			;;
+		*)
+			checkpath -d -m 0750 -o "${I2PD_USER}:${I2PD_GROUP}" "${I2PD_LOGDIR}"
+			checkpath -f -m 0600 -o "${I2PD_USER}:${I2PD_GROUP}" "${I2PD_LOGFILE}"
+			;;
+	esac
+}
 
-  if [ -n "$DAEMON_OPTS" ]; then
-    command_args="$command_args $DAEMON_OPTS"
-  fi
+extra_commands="${extra_commands} reload reopenlogs"
+description_reload="Reload tunnel configuration (SIGHUP)"
+description_reopenlogs="Reopen log files (SIGUSR1)"
+
+reload() {
+	ebegin "Reloading ${name}"
+	supervise-daemon "${RC_SVCNAME}" --signal HUP
+	eend $?
+}
+
+reopenlogs() {
+	ebegin "Reopening ${name} logs"
+	supervise-daemon "${RC_SVCNAME}" --signal USR1
+	eend $?
 }

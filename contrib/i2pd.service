@@ -1,51 +1,82 @@
-# Copyright (c) 2013-2026, The PurpleI2P Project
-# Copyright (c) 2026, David Uhden Collado
-# SPDX-License-Identifier: BSD-3-Clause
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: i2pd.service.
+#
+# Native systemd unit that runs i2pd in the foreground as the i2pd user with
+# packaged configuration, tunnel directory and runtime/data paths. Logging goes
+# to the journal; the daemon never forks and no readiness protocol is used.
+#
+
 [Unit]
 Description=openi2pd router
 Documentation=man:i2pd(1) https://github.com/daviduhden/openi2pd
-Wants=network.target
-After=network.target network-online.target
+Wants=network-online.target
+After=network-online.target
+# A crashing router is retried, but not in an unbounded loop.
+StartLimitIntervalSec=300
+StartLimitBurst=5
 
 [Service]
+Type=exec
 User=i2pd
 Group=i2pd
+# The daemon keeps its router keys and netDb in StateDirectory and its pidfile
+# and local IPC endpoint under RuntimeDirectory.
+StateDirectory=i2pd
+StateDirectoryMode=0700
 RuntimeDirectory=i2pd
 RuntimeDirectoryMode=0700
-LogsDirectory=i2pd
-LogsDirectoryMode=0700
-Type=forking
-ExecStart=/usr/bin/i2pd --conf=/etc/i2pd/i2pd.conf --tunconf=/etc/i2pd/tunnels.conf --tunnelsdir=/etc/i2pd/tunnels.conf.d --pidfile=/run/i2pd/i2pd.pid --logfile=/var/log/i2pd/i2pd.log --daemon --service
-ExecReload=/bin/sh -c "kill -HUP $MAINPID"
-PIDFile=/run/i2pd/i2pd.pid
-### Uncomment, if auto restart needed
-#Restart=on-failure
+UMask=0077
+WorkingDirectory=/var/lib/i2pd
 
-# Use SIGTERM to stop i2pd immediately.
-# Some cleanup processes can delay stopping, so we set 30 seconds timeout and then SIGKILL i2pd.
-KillSignal=SIGTERM
-TimeoutStopSec=30s
+ExecStart=/usr/bin/i2pd --conf=/etc/i2pd/i2pd.conf --tunconf=/etc/i2pd/tunnels.conf --tunnelsdir=/etc/i2pd/tunnels.conf.d --certsdir=/usr/share/i2pd/certificates --datadir=/var/lib/i2pd --pidfile=/run/i2pd/i2pd.pid --service --foreground --log=stdout
+# SIGHUP reloads tunnel configuration without restarting the router.
+ExecReload=/bin/kill -HUP $MAINPID
+
+# SIGINT performs an orderly shutdown: the router stops accepting new tunnels
+# and gives existing tunnels up to ten minutes to expire. SIGKILL is only a
+# last resort after that grace period.
+KillSignal=SIGINT
+KillMode=mixed
+TimeoutStopSec=600
 SendSIGKILL=yes
-
-# If you have the patience waiting 10 min on restarting/stopping it, uncomment this.
-# i2pd stops accepting new tunnels and waits ~10 min while old ones do not die.
-#KillSignal=SIGINT
-#TimeoutStopSec=10m
-
-# If you have problems with hanging i2pd, you can try increase this
+Restart=on-failure
+RestartSec=5s
 LimitNOFILE=8192
-# To enable write of coredump uncomment this
-#LimitCORE=infinity
-#hardening
-ProtectControlGroups=true
-ProtectKernelModules=true
-ProtectKernelTunables=true
-NoNewPrivileges=true
-RestrictNamespaces=true
-ProtectSystem=full
-ReadWritePaths=-/var/lib/i2pd
-ReadWritePaths=-/run/i2pd
-ReadWritePaths=-/etc/i2pd
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=openi2pd
+
+# Hardening. The local TUI/torrent IPC socket lives in the data directory and
+# must remain usable, so no PrivateNetwork and no filesystem filtering of
+# AF_UNIX are applied. No RestrictAddressFamilies rule is used either: the
+# router needs AF_INET and AF_INET6 and interface discovery uses netlink.
+NoNewPrivileges=yes
+ProtectSystem=strict
+# Add any overridden datadir, pidfile directory or TUI socket directory here;
+# the packaged values below are the only writable paths. Keep the TUI socket
+# outside /tmp: PrivateTmp makes that directory namespace-private.
+ReadWritePaths=/var/lib/i2pd /run/i2pd
+ProtectHome=yes
+PrivateTmp=yes
+ProtectControlGroups=yes
+ProtectKernelModules=yes
+ProtectKernelTunables=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+# The router runs unprivileged and needs no capabilities. Binding a privileged
+# port requires an explicit override: add CAP_NET_BIND_SERVICE to both
+# CapabilityBoundingSet and AmbientCapabilities.
+CapabilityBoundingSet=
+# Do not add a SystemCallFilter without a tested allow-list for OpenSSL,
+# networking and the IPC worker; a partial filter would break the router.
 
 [Install]
 WantedBy=multi-user.target

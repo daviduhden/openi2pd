@@ -1,10 +1,12 @@
-# Copyright (c) 2026, David Uhden Collado
-# SPDX-License-Identifier: BSD-3-Clause
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
 #
-# Static build-system policy check. It never configures or compiles the
-# project and is safe to run as a normal CTest test.
+# openi2pd: check build system.
 #
-# Required input: -DPROJECT_ROOT=<repository root>
+# Static CMake check of the build-system contract: POSIX make syntax, Ninja
+# defaults, dependency floors and the absence of hidden downloads, globs,
+# hardcoded prefixes and removed compatibility branches.
+#
 
 if(NOT PROJECT_ROOT)
   message(FATAL_ERROR "PROJECT_ROOT is required")
@@ -185,10 +187,44 @@ foreach(required IN ITEMS
     "BUILD_TESTING"
     "i2pd_privsep"
     "WITH_BINARY"
-    "WITH_LIBRARY")
+    "WITH_LIBRARY"
+    "I2PD_SERVICE_MANAGER"
+    "I2PD_SERVICE_DIR"
+    "I2PD_SERVICE_CONFDIR")
   string(FIND "${top_cmake_text}" "${required}" position)
   if(position EQUAL -1)
     message(FATAL_ERROR "CMake is missing required component marker '${required}'")
+  endif()
+endforeach()
+
+# Service-manager installation is opt-in and exclusive. Each canonical source
+# must occur exactly once in the top-level install graph, so a second
+# unconditional install cannot silently ship every init system.
+string(FIND "${top_cmake_text}" "set(I2PD_SERVICE_MANAGER \"none\" CACHE STRING" service_default)
+if(service_default EQUAL -1)
+  message(FATAL_ERROR "I2PD_SERVICE_MANAGER must default to none")
+endif()
+foreach(manager IN ITEMS none systemd openrc runit s6 s6-rc shepherd sysvinit)
+  string(FIND "${top_cmake_text}" "\"${manager}\"" manager_position)
+  if(manager_position EQUAL -1)
+    message(FATAL_ERROR "I2PD_SERVICE_MANAGER is missing supported value '${manager}'")
+  endif()
+endforeach()
+foreach(service_source IN ITEMS
+    "contrib/i2pd.service"
+    "contrib/sysvinit/i2pd"
+    "contrib/openrc/i2pd.openrc"
+    "contrib/openrc/conf.d/i2pd"
+    "contrib/runit/i2pd"
+    "contrib/s6/i2pd"
+    "contrib/s6-rc/source"
+    "contrib/shepherd/i2pd.scm")
+  string(REGEX MATCHALL "${service_source}" service_matches "${top_cmake_text}")
+  list(LENGTH service_matches service_match_count)
+  if(NOT service_match_count EQUAL 1)
+    message(FATAL_ERROR
+      "CMake must install ${service_source} from exactly one service-manager "
+      "branch (found ${service_match_count} references)")
   endif()
 endforeach()
 
