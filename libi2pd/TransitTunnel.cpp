@@ -47,8 +47,8 @@ namespace tunnel
 			int64_t timeDiff = now - requestTime;
 			if (timeDiff > BUILD_REQUEST_MAX_AGE_ECIES)
 			{
-				LogPrint (eLogWarning, "TransitTunnel: Build request record ", recordIndex,
-					" is too old (", timeDiff, " minutes), possible replay");
+				LogPrint (eLogWarning, "TransitTunnel: Build request record ", recordIndex, " is too old (", timeDiff,
+					" minutes), possible replay");
 				return false;
 			}
 			if (timeDiff < -BUILD_REQUEST_MAX_FUTURE)
@@ -104,7 +104,7 @@ namespace tunnel
 		m_NumTransmittedBytes += tunnelMsg->GetLength ();
 		htobe32buf (tunnelMsg->GetPayload (), GetNextTunnelID ());
 		// update header, expiration and size remain the same
-		tunnelMsg->SetMsgID (i2p::tunnel::tunnels.GetRng () ()); // assign new msgID
+		tunnelMsg->SetMsgID (i2p::tunnel::tunnels.GetRng ()); // assign new msgID
 		tunnelMsg->UpdateChks (); // new checksum TODO: remove later
 		m_TunnelDataMsgs.push_back (tunnelMsg);
 	}
@@ -244,21 +244,38 @@ namespace tunnel
 
 	void TransitTunnels::Start ()
 	{
-		m_IsRunning = true;
-		m_Thread.reset (new std::thread (std::bind (&TransitTunnels::Run, this)));
+		bool expected = false;
+		if (!m_IsRunning.compare_exchange_strong (expected, true)) return;
+		if (m_Thread)
+		{
+			m_IsRunning.store (false, std::memory_order_relaxed);
+			return;
+		}
+		try
+		{
+			m_Thread = std::make_unique<std::thread> (std::bind (&TransitTunnels::Run, this));
+		}
+		catch (...)
+		{
+			m_IsRunning.store (false, std::memory_order_relaxed);
+			throw;
+		}
 	}
 
 	void TransitTunnels::Stop ()
 	{
-		m_IsRunning = false;
+		m_IsRunning.store (false, std::memory_order_relaxed);
 		m_TunnelBuildMsgQueue.WakeUp ();
 		if (m_Thread)
 		{
-			m_Thread->join ();
-			m_Thread = nullptr;
+			if (m_Thread->joinable ()) m_Thread->join ();
+			m_Thread.reset ();
 		}
 		std::lock_guard<std::mutex> l (m_TransitTunnelsMutex);
 		m_TransitTunnels.clear ();
+		// Any queued build messages belong to the stopped instance.
+		std::list<std::shared_ptr<I2NPMessage>> stale;
+		m_TunnelBuildMsgQueue.GetWholeQueue (stale);
 	}
 
 	void TransitTunnels::Run ()
@@ -266,7 +283,7 @@ namespace tunnel
 		i2p::util::SetThreadName ("TBM");
 		uint64_t lastTs = 0;
 		std::list<std::shared_ptr<I2NPMessage>> msgs;
-		while (m_IsRunning)
+		while (m_IsRunning.load (std::memory_order_relaxed))
 		{
 			try
 			{
@@ -285,10 +302,10 @@ namespace tunnel
 						case eI2NPVariableTunnelBuild: HandleVariableTransitTunnelBuildMsg (std::move (msg)); break;
 						default: LogPrint (eLogWarning, "TransitTunnel: Unexpected message type ", (int)typeID);
 						}
-						if (!m_IsRunning) break;
+						if (!m_IsRunning.load (std::memory_order_relaxed)) break;
 					}
 				}
-				if (m_IsRunning)
+				if (m_IsRunning.load (std::memory_order_relaxed))
 				{
 					uint64_t ts = i2p::util::GetSecondsSinceEpoch ();
 					if (ts >= lastTs + TUNNEL_MANAGE_INTERVAL || ts + TUNNEL_MANAGE_INTERVAL < lastTs)
@@ -307,7 +324,7 @@ namespace tunnel
 
 	void TransitTunnels::PostTransitTunnelBuildMsg (std::shared_ptr<I2NPMessage> && msg)
 	{
-		if (msg)
+		if (msg && m_IsRunning.load (std::memory_order_relaxed))
 		{
 			if (m_TunnelBuildMsgQueue.GetSize () < TRANSIT_TUNNELS_BUILD_MSG_QUEUE_MAX_SIZE)
 				m_TunnelBuildMsgQueue.Put (msg);
@@ -362,8 +379,7 @@ namespace tunnel
 				}
 				// Java's OBGW record legitimately has receiveTunnelID = 0
 				// (BuildMessageGenerator.createUnencryptedRecord); do not reject it.
-				if (!IsBuildRequestTimeValid (clearText, SHORT_REQUEST_RECORD_REQUEST_TIME_OFFSET, i))
-					return;
+				if (!IsBuildRequestTimeValid (clearText, SHORT_REQUEST_RECORD_REQUEST_TIME_OFFSET, i)) return;
 				bool unsupportedLayerEncryption = clearText[SHORT_REQUEST_RECORD_LAYER_ENCRYPTION_TYPE] != 0;
 				if (unsupportedLayerEncryption) // not AES
 					LogPrint (eLogWarning, "TransitTunnel: Unknown layer encryption type ",
@@ -454,10 +470,10 @@ namespace tunnel
 					if (isEndpoint || !i2p::data::IsRouterDuplicated (nextIdent))
 					{
 						// create new transit tunnel
-						transitTunnel = CreateTransitTunnel (
-							bufbe32toh (clearText + SHORT_REQUEST_RECORD_RECEIVE_TUNNEL_OFFSET), nextIdent,
-							bufbe32toh (clearText + SHORT_REQUEST_RECORD_NEXT_TUNNEL_OFFSET), layerKey, ivKey,
-							isGateway, isEndpoint);
+						transitTunnel
+							= CreateTransitTunnel (bufbe32toh (clearText + SHORT_REQUEST_RECORD_RECEIVE_TUNNEL_OFFSET),
+								nextIdent, bufbe32toh (clearText + SHORT_REQUEST_RECORD_NEXT_TUNNEL_OFFSET), layerKey,
+								ivKey, isGateway, isEndpoint);
 						if (!AddTransitTunnel (transitTunnel)) retCode = 30;
 					}
 					else
@@ -617,8 +633,7 @@ namespace tunnel
 							bufbe32toh (clearText + ECIES_BUILD_REQUEST_RECORD_RECEIVE_TUNNEL_OFFSET), nextIdent,
 							bufbe32toh (clearText + ECIES_BUILD_REQUEST_RECORD_NEXT_TUNNEL_OFFSET),
 							clearText + ECIES_BUILD_REQUEST_RECORD_LAYER_KEY_OFFSET,
-							clearText + ECIES_BUILD_REQUEST_RECORD_IV_KEY_OFFSET,
-							isGateway, isEndpoint);
+							clearText + ECIES_BUILD_REQUEST_RECORD_IV_KEY_OFFSET, isGateway, isEndpoint);
 						if (!AddTransitTunnel (transitTunnel)) retCode = 30;
 					}
 					else
@@ -704,16 +719,18 @@ namespace tunnel
 
 	bool TransitTunnels::AddTransitTunnel (std::shared_ptr<TransitTunnel> tunnel)
 	{
-		if (tunnels.AddTunnel (tunnel))
-		{
-			std::lock_guard<std::mutex> l (m_TransitTunnelsMutex);
-			m_TransitTunnels.push_back (tunnel);
-		}
-		else
+		if (!tunnel) return false;
+		if (!m_IsRunning.load (std::memory_order_relaxed)) return false;
+		// Keep the transit-list -> global-tunnel lock order used by
+		// ManageTransitTunnels()/Stop(). Taking the global tunnel map first and
+		// the transit list second would deadlock against the cleanup path.
+		std::lock_guard<std::mutex> l (m_TransitTunnelsMutex);
+		if (!tunnels.AddTunnel (tunnel))
 		{
 			LogPrint (eLogError, "TransitTunnel: Tunnel with id ", tunnel->GetTunnelID (), " already exists");
 			return false;
 		}
+		m_TransitTunnels.push_back (tunnel);
 		return true;
 	}
 

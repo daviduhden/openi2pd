@@ -12,6 +12,7 @@
 #define TUNNEL_POOL__
 
 #include <inttypes.h>
+#include <atomic>
 #include <set>
 #include <vector>
 #include <utility>
@@ -70,11 +71,8 @@ namespace tunnel
 			int inboundVariance, int outboundVariance, bool isHighBandwidth);
 		~TunnelPool ();
 
-		std::shared_ptr<i2p::garlic::GarlicDestination> GetLocalDestination () const { return m_LocalDestination; };
-		void SetLocalDestination (std::shared_ptr<i2p::garlic::GarlicDestination> destination)
-		{
-			m_LocalDestination = destination;
-		};
+		std::shared_ptr<i2p::garlic::GarlicDestination> GetLocalDestination () const;
+		void SetLocalDestination (std::shared_ptr<i2p::garlic::GarlicDestination> destination);
 		void SetExplicitPeers (std::vector<i2p::data::IdentHash> explicitPeers);
 		void SetTrustedRouters (std::vector<i2p::data::IdentHash> routers);
 		void SetInboundPeerOrderingKey (const uint8_t * key);
@@ -100,14 +98,14 @@ namespace tunnel
 		bool ProcessTunnelTest (uint32_t msgID, uint64_t timestamp);
 
 		bool IsExploratory () const;
-		bool IsActive () const { return m_IsActive; };
-		void SetActive (bool isActive) { m_IsActive = isActive; };
+		bool IsActive () const { return m_IsActive.load (std::memory_order_relaxed); };
+		void SetActive (bool isActive) { m_IsActive.store (isActive, std::memory_order_relaxed); };
 		void DetachTunnels ();
 
-		int GetNumInboundTunnels () const { return m_NumInboundTunnels; };
-		int GetNumOutboundTunnels () const { return m_NumOutboundTunnels; };
-		int GetNumInboundHops () const { return m_NumInboundHops; };
-		int GetNumOutboundHops () const { return m_NumOutboundHops; };
+		int GetNumInboundTunnels () const { return m_NumInboundTunnels.load (std::memory_order_relaxed); };
+		int GetNumOutboundTunnels () const { return m_NumOutboundTunnels.load (std::memory_order_relaxed); };
+		int GetNumInboundHops () const { return m_NumInboundHops.load (std::memory_order_relaxed); };
+		int GetNumOutboundHops () const { return m_NumOutboundHops.load (std::memory_order_relaxed); };
 
 		/** i2cp reconfigure */
 		bool Reconfigure (int inboundHops, int outboundHops, int inboundQuant, int outboundQuant);
@@ -119,12 +117,16 @@ namespace tunnel
 		/** @brief make this tunnel pool yield tunnels that fit latency range [min, max] */
 		void RequireLatency (int min, int max)
 		{
-			m_MinLatency = min;
-			m_MaxLatency = max;
+			m_MinLatency.store (min, std::memory_order_relaxed);
+			m_MaxLatency.store (max, std::memory_order_relaxed);
 		}
 
 		/** @brief return true if this tunnel pool has a latency requirement */
-		bool HasLatencyRequirement () const { return m_MinLatency > 0 && m_MaxLatency > 0; }
+		bool HasLatencyRequirement () const
+		{
+			return m_MinLatency.load (std::memory_order_relaxed) > 0
+				&& m_MaxLatency.load (std::memory_order_relaxed) > 0;
+		}
 
 		/** @brief get the lowest latency tunnel in this tunnel pool regardless of latency requirements */
 		std::shared_ptr<InboundTunnel> GetLowestLatencyInboundTunnel (
@@ -151,9 +153,16 @@ namespace tunnel
 		std::shared_ptr<const i2p::data::RouterInfo> SelectTrustedRouter (bool inbound) const;
 
 	private:
+		// Test-only accessor; production code must use the public API.
+		friend struct TunnelPoolTestAccess;
+
+	private:
 		std::shared_ptr<i2p::garlic::GarlicDestination> m_LocalDestination;
-		int m_NumInboundHops, m_NumOutboundHops, m_NumInboundTunnels, m_NumOutboundTunnels, m_InboundVariance,
-			m_OutboundVariance;
+		mutable std::mutex m_LocalDestinationMutex;
+		// Reconfigure() can run from an I2CP thread while the tunnel thread
+		// reads the pool shape, so the numeric configuration is atomic too.
+		std::atomic<int> m_NumInboundHops, m_NumOutboundHops, m_NumInboundTunnels, m_NumOutboundTunnels,
+			m_InboundVariance, m_OutboundVariance;
 		std::vector<i2p::data::IdentHash> m_ExplicitPeers, m_TrustedRouters;
 		mutable std::mutex m_InboundTunnelsMutex;
 		std::set<std::shared_ptr<InboundTunnel>, TunnelCreationTimeCmp> m_InboundTunnels; // recent tunnel appears first
@@ -161,15 +170,20 @@ namespace tunnel
 		std::set<std::shared_ptr<OutboundTunnel>, TunnelCreationTimeCmp> m_OutboundTunnels;
 		mutable std::mutex m_TestsMutex;
 		std::map<uint32_t, std::pair<std::shared_ptr<OutboundTunnel>, std::shared_ptr<InboundTunnel>>> m_Tests;
-		bool m_IsActive, m_IsHighBandwidth;
+		std::atomic<bool> m_IsActive;
+		bool m_IsHighBandwidth;
 		uint64_t m_NextManageTime; // in seconds
 		std::mutex m_CustomPeerSelectorMutex;
 		ITunnelPeerSelector * m_CustomPeerSelector;
+		mutable std::mutex m_RngMutex;
 		std::mt19937 m_Rng; // for tunnel selection
 		i2p::data::PeerOrdering m_InboundPeerOrdering, m_OutboundPeerOrdering;
 
-		int m_MinLatency = 0; // if > 0 this tunnel pool will try building tunnels with minimum latency by ms
-		int m_MaxLatency = 0; // if > 0 this tunnel pool will try building tunnels with maximum latency by ms
+		std::atomic<int> m_MinLatency { 0 }; // if > 0 this tunnel pool will try building tunnels with minimum latency by ms
+		std::atomic<int> m_MaxLatency { 0 }; // if > 0 this tunnel pool will try building tunnels with maximum latency by ms
+
+	private:
+		uint32_t NextRng ();
 
 	public:
 		bool HasOutboundTunnels () const

@@ -12,6 +12,7 @@
 #define TUNNEL_H__
 
 #include <inttypes.h>
+#include <atomic>
 #include <map>
 #include <unordered_map>
 #include <list>
@@ -96,14 +97,20 @@ namespace tunnel
 		void SetState (TunnelState state);
 		bool IsEstablished () const;
 		bool IsFailed () const { return m_State == eTunnelStateFailed; };
-		bool IsRecreated () const { return m_IsRecreated; };
-		void SetRecreated (bool recreated) { m_IsRecreated = recreated; };
+		bool IsRecreated () const { return m_IsRecreated.load (std::memory_order_relaxed); };
+		void SetRecreated (bool recreated)
+		{
+			m_IsRecreated.store (recreated, std::memory_order_relaxed);
+		};
 		int GetNumHops () const { return m_Hops.size (); };
 		virtual bool IsInbound () const = 0;
 		virtual bool Recreate () = 0;
 
-		std::shared_ptr<TunnelPool> GetTunnelPool () const { return m_Pool; };
-		void SetTunnelPool (std::shared_ptr<TunnelPool> pool) { m_Pool = pool; };
+		std::shared_ptr<TunnelPool> GetTunnelPool () const { return m_Pool.load (std::memory_order_acquire); };
+		void SetTunnelPool (std::shared_ptr<TunnelPool> pool)
+		{
+			m_Pool.store (std::move (pool), std::memory_order_release);
+		};
 
 		bool HandleTunnelBuildResponse (uint8_t * msg, size_t len);
 
@@ -112,13 +119,25 @@ namespace tunnel
 		void EncryptTunnelMsg (std::shared_ptr<const I2NPMessage> in, std::shared_ptr<I2NPMessage> out) override;
 
 		/** @brief add latency sample */
-		void AddLatencySample (const int us) { m_Latency = LatencyIsKnown () ? (m_Latency + us) >> 1 : us; }
+		void AddLatencySample (const int us)
+		{
+			// Read-modify-write from several transport / tunnel threads. A
+			// compare-exchange loop keeps the moving average consistent without
+			// introducing a tunnel-wide mutex on the data path.
+			int old = m_Latency.load (std::memory_order_relaxed);
+			for (;;)
+			{
+				int updated = old != UNKNOWN_LATENCY ? (old + us) >> 1 : us;
+				if (m_Latency.compare_exchange_weak (old, updated, std::memory_order_relaxed))
+					break;
+			}
+		}
 		/** @brief get this tunnel's estimated latency */
-		int GetMeanLatency () const { return (m_Latency + 500) / 1000; }
+		int GetMeanLatency () const { return (m_Latency.load (std::memory_order_relaxed) + 500) / 1000; }
 		/** @brief return true if this tunnel's latency fits in range [lowerbound, upperbound] */
 		bool LatencyFitsRange (int lowerbound, int upperbound) const;
 
-		bool LatencyIsKnown () const { return m_Latency != UNKNOWN_LATENCY; }
+		bool LatencyIsKnown () const { return m_Latency.load (std::memory_order_relaxed) != UNKNOWN_LATENCY; }
 		bool IsSlow () const;
 
 		/** visit all hops we currently store */
@@ -127,11 +146,11 @@ namespace tunnel
 	private:
 		std::shared_ptr<TunnelConfig> m_Config;
 		std::vector<TunnelHop> m_Hops;
-		std::shared_ptr<TunnelPool> m_Pool; // pool, tunnel belongs to, or null
+		std::atomic<std::shared_ptr<TunnelPool>> m_Pool; // pool, tunnel belongs to, or null
 		std::atomic<TunnelState> m_State;
 		i2p::data::RouterInfo::CompatibleTransports m_FarEndTransports;
-		bool m_IsRecreated; // if tunnel is replaced by new, or new tunnel requested to replace
-		int m_Latency; // in microseconds
+		std::atomic<bool> m_IsRecreated; // if tunnel is replaced by new, or new tunnel requested to replace
+		std::atomic<int> m_Latency; // in microseconds
 	};
 
 	class OutboundTunnel : public Tunnel
@@ -217,6 +236,10 @@ namespace tunnel
 	public:
 		Tunnels ();
 		~Tunnels ();
+		// Stop() tears down the worker, the transit worker and all runtime
+		// tunnel maps. Start()/Stop() cycles are supported for an orderly
+		// restart with no in-flight traffic; wire messages queued for the old
+		// instance are dropped and must be retransmitted by peers.
 		void Start ();
 		void Stop ();
 
@@ -224,7 +247,7 @@ namespace tunnel
 		std::shared_ptr<OutboundTunnel> GetPendingOutboundTunnel (uint32_t replyMsgID);
 		std::shared_ptr<InboundTunnel> GetNextInboundTunnel ();
 		std::shared_ptr<OutboundTunnel> GetNextOutboundTunnel ();
-		std::shared_ptr<TunnelPool> GetExploratoryPool () const { return m_ExploratoryPool; };
+		std::shared_ptr<TunnelPool> GetExploratoryPool () const { return m_ExploratoryPool.load (); };
 		std::shared_ptr<TunnelBase> GetTunnel (uint32_t tunnelID);
 		bool AddTunnel (std::shared_ptr<TunnelBase> tunnel);
 		void RemoveTunnel (uint32_t tunnelID);
@@ -247,14 +270,21 @@ namespace tunnel
 		std::shared_ptr<I2NPMessage> NewI2NPTunnelMessage (bool endpoint);
 
 		void SetMaxNumTransitTunnels (uint32_t maxNumTransitTunnels);
-		uint32_t GetMaxNumTransitTunnels () const { return m_MaxNumTransitTunnels; };
+		uint32_t GetMaxNumTransitTunnels () const
+		{
+			return m_MaxNumTransitTunnels.load (std::memory_order_relaxed);
+		};
 		int GetCongestionLevel () const
 		{
-			return m_MaxNumTransitTunnels
-				? CONGESTION_LEVEL_FULL * m_TransitTunnels.GetNumTransitTunnels () / m_MaxNumTransitTunnels
+			auto maxNumTransitTunnels = m_MaxNumTransitTunnels.load (std::memory_order_relaxed);
+			return maxNumTransitTunnels
+				? CONGESTION_LEVEL_FULL * m_TransitTunnels.GetNumTransitTunnels () / maxNumTransitTunnels
 				: CONGESTION_LEVEL_FULL;
 		}
-		std::mt19937 & GetRng () { return m_Rng; }
+		/** Returns one value from the shared tunnel RNG. */
+		uint32_t GetRng ();
+		/** Returns a copy of the shared RNG for algorithms such as std::shuffle. */
+		std::mt19937 GetRngSnapshot () const;
 
 	private:
 		template <class TTunnel>
@@ -288,40 +318,54 @@ namespace tunnel
 		void SuccesiveTunnelCreation ()
 		{
 			// total TCSR
-			m_TotalNumSuccesiveTunnelCreations++;
-			// A modified version of the EWMA algorithm, where alpha is increased at the beginning to accelerate similarity
-			double alpha = TCSR_SMOOTHING_CONSTANT + (1 - TCSR_SMOOTHING_CONSTANT) / ++m_TunnelCreationAttemptsNum;
-			m_TunnelCreationSuccessRate = alpha * 1 + (1 - alpha) * m_TunnelCreationSuccessRate;
+			m_TotalNumSuccesiveTunnelCreations.fetch_add (1, std::memory_order_relaxed);
+			UpdateTunnelCreationSuccessRate (1.0);
 		}
 		void FailedTunnelCreation ()
 		{
-			m_TotalNumFailedTunnelCreations++;
-
-			double alpha = TCSR_SMOOTHING_CONSTANT + (1 - TCSR_SMOOTHING_CONSTANT) / ++m_TunnelCreationAttemptsNum;
-			m_TunnelCreationSuccessRate = alpha * 0 + (1 - alpha) * m_TunnelCreationSuccessRate;
+			m_TotalNumFailedTunnelCreations.fetch_add (1, std::memory_order_relaxed);
+			UpdateTunnelCreationSuccessRate (0.0);
+		}
+		void UpdateTunnelCreationSuccessRate (double sample)
+		{
+			// A modified version of the EWMA algorithm, where alpha is increased
+			// at the beginning to accelerate similarity. The success-rate sample
+			// is updated with a CAS loop because build replies and expirations
+			// arrive from different threads.
+			double alpha = TCSR_SMOOTHING_CONSTANT
+				+ (1 - TCSR_SMOOTHING_CONSTANT) / ++m_TunnelCreationAttemptsNum;
+			double old = m_TunnelCreationSuccessRate.load (std::memory_order_relaxed);
+			for (;;)
+			{
+				double updated = alpha * sample + (1 - alpha) * old;
+				if (m_TunnelCreationSuccessRate.compare_exchange_weak (old, updated, std::memory_order_relaxed))
+					break;
+			}
 		}
 
 	private:
-		bool m_IsRunning;
-		std::thread * m_Thread;
+		std::atomic<bool> m_IsRunning;
+		std::unique_ptr<std::thread> m_Thread;
 		i2p::util::MemoryPoolMt<I2NPMessageBuffer<I2NP_TUNNEL_ENPOINT_MESSAGE_SIZE>>
 			m_I2NPTunnelEndpointMessagesMemoryPool;
 		i2p::util::MemoryPoolMt<I2NPMessageBuffer<I2NP_TUNNEL_MESSAGE_SIZE>> m_I2NPTunnelMessagesMemoryPool;
 		std::map<uint32_t, std::shared_ptr<InboundTunnel>> m_PendingInboundTunnels; // by replyMsgID
 		std::map<uint32_t, std::shared_ptr<OutboundTunnel>> m_PendingOutboundTunnels; // by replyMsgID
+		mutable std::mutex m_PendingTunnelsMutex;
 		std::list<std::shared_ptr<InboundTunnel>> m_InboundTunnels;
 		std::list<std::shared_ptr<OutboundTunnel>> m_OutboundTunnels;
 		mutable std::mutex m_TunnelsMutex;
 		std::unordered_map<uint32_t, std::shared_ptr<TunnelBase>> m_Tunnels; // tunnelID->tunnel known by this id
 		mutable std::mutex m_PoolsMutex;
 		std::list<std::shared_ptr<TunnelPool>> m_Pools;
-		std::shared_ptr<TunnelPool> m_ExploratoryPool;
+		std::atomic<std::shared_ptr<TunnelPool>> m_ExploratoryPool;
 		i2p::util::Queue<std::shared_ptr<I2NPMessage>> m_Queue;
-		uint32_t m_MaxNumTransitTunnels;
+		std::atomic<uint32_t> m_MaxNumTransitTunnels;
 		// count of tunnels for total TCSR algorithm
-		int m_TotalNumSuccesiveTunnelCreations, m_TotalNumFailedTunnelCreations;
-		double m_TunnelCreationSuccessRate;
-		int m_TunnelCreationAttemptsNum;
+		std::atomic<int> m_TotalNumSuccesiveTunnelCreations, m_TotalNumFailedTunnelCreations;
+		std::atomic<double> m_TunnelCreationSuccessRate;
+		std::atomic<int> m_TunnelCreationAttemptsNum;
+		mutable std::mutex m_RngMutex;
 		std::mt19937 m_Rng;
 		TransitTunnels m_TransitTunnels;
 
@@ -347,13 +391,17 @@ namespace tunnel
 		size_t GetTBMQueueSize () const { return m_TransitTunnels.GetTunnelBuildMsgQueueSize (); };
 		int GetTunnelCreationSuccessRate () const
 		{
-			return std::round (m_TunnelCreationSuccessRate * 100);
+			return std::round (m_TunnelCreationSuccessRate.load (std::memory_order_relaxed) * 100);
 		} // in percents
-		double GetPreciseTunnelCreationSuccessRate () const { return m_TunnelCreationSuccessRate * 100; } // in percents
+		double GetPreciseTunnelCreationSuccessRate () const
+		{
+			return m_TunnelCreationSuccessRate.load (std::memory_order_relaxed) * 100;
+		} // in percents
 		int GetTotalTunnelCreationSuccessRate () const // in percents
 		{
-			int totalNum = m_TotalNumSuccesiveTunnelCreations + m_TotalNumFailedTunnelCreations;
-			return totalNum ? m_TotalNumSuccesiveTunnelCreations * 100 / totalNum : 0;
+			int totalNum = m_TotalNumSuccesiveTunnelCreations.load (std::memory_order_relaxed)
+				+ m_TotalNumFailedTunnelCreations.load (std::memory_order_relaxed);
+			return totalNum ? m_TotalNumSuccesiveTunnelCreations.load (std::memory_order_relaxed) * 100 / totalNum : 0;
 		}
 	};
 

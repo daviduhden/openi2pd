@@ -12,6 +12,7 @@
 #define TRANSIT_TUNNEL_H__
 
 #include <inttypes.h>
+#include <atomic>
 #include <list>
 #include <vector>
 #include <mutex>
@@ -121,6 +122,9 @@ namespace tunnel
 		TransitTunnels ();
 		~TransitTunnels ();
 
+		// Stop() clears the transit tunnel list and joins the worker. A later
+		// Start() is supported for an orderly restart; build requests queued
+		// for the old instance are discarded.
 		void Start ();
 		void Stop ();
 		void PostTransitTunnelBuildMsg (std::shared_ptr<I2NPMessage> && msg);
@@ -143,7 +147,7 @@ namespace tunnel
 		void Run ();
 
 	private:
-		volatile bool m_IsRunning;
+		std::atomic<bool> m_IsRunning;
 		std::unique_ptr<std::thread> m_Thread;
 		mutable std::mutex m_TransitTunnelsMutex;
 		std::list<std::shared_ptr<TransitTunnel>> m_TransitTunnels;

@@ -12,6 +12,7 @@
 #define TUNNEL_BASE_H__
 
 #include <inttypes.h>
+#include <atomic>
 #include <memory>
 #include <future>
 #include <list>
@@ -65,13 +66,13 @@ namespace tunnel
 		const i2p::data::IdentHash & GetNextIdentHash () const { return m_NextIdent; };
 		virtual uint32_t GetTunnelID () const { return m_TunnelID; }; // as known at our side
 
-		uint32_t GetCreationTime () const { return m_CreationTime; };
-		void SetCreationTime (uint32_t t) { m_CreationTime = t; };
+		uint32_t GetCreationTime () const { return m_CreationTime.load (std::memory_order_relaxed); };
+		void SetCreationTime (uint32_t t) { m_CreationTime.store (t, std::memory_order_relaxed); };
 
 	private:
 		uint32_t m_TunnelID, m_NextTunnelID;
 		i2p::data::IdentHash m_NextIdent;
-		uint32_t m_CreationTime; // seconds since epoch
+		std::atomic<uint32_t> m_CreationTime; // seconds since epoch, read by TUI/IPC
 	};
 
 	struct TunnelCreationTimeCmp

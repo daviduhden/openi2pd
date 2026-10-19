@@ -34,7 +34,6 @@ namespace tunnel
 	Tunnel::Tunnel (std::shared_ptr<TunnelConfig> config)
 		: TunnelBase (config->GetTunnelID (), config->GetNextTunnelID (), config->GetNextIdentHash ())
 		, m_Config (config)
-		, m_Pool (nullptr)
 		, m_State (eTunnelStatePending)
 		, m_FarEndTransports (i2p::data::RouterInfo::eAllTransports)
 		, m_IsRecreated (false)
@@ -60,7 +59,8 @@ namespace tunnel
 		// shuffle records
 		std::vector<int> recordIndicies;
 		for (int i = 0; i < numRecords; i++) recordIndicies.push_back (i);
-		std::shuffle (recordIndicies.begin (), recordIndicies.end (), tunnels.GetRng ());
+		auto rng = tunnels.GetRngSnapshot ();
+		std::shuffle (recordIndicies.begin (), recordIndicies.end (), rng);
 		// create real records
 		uint8_t * records = msg->GetPayload () + 1;
 		TunnelHopConfig * hop = m_Config->GetFirstHop ();
@@ -127,8 +127,10 @@ namespace tunnel
 			{
 				// add garlic key/tag for reply
 				auto [key, tag] = m_Config->GetLastHop ()->GetGarlicKey ();
-				if (m_Pool && m_Pool->GetLocalDestination ())
-					m_Pool->GetLocalDestination ()->SubmitECIESx25519Key (key, tag);
+				auto pool = GetTunnelPool ();
+				auto destination = pool ? pool->GetLocalDestination () : nullptr;
+				if (destination)
+					destination->SubmitECIESx25519Key (key, tag);
 				else
 					i2p::context.SubmitECIESx25519Key (key, tag);
 			}
@@ -138,6 +140,11 @@ namespace tunnel
 
 	bool Tunnel::HandleTunnelBuildResponse (uint8_t * msg, size_t len)
 	{
+		if (!msg || !len)
+		{
+			LogPrint (eLogError, "Tunnel: Empty TunnelBuildResponse");
+			return false;
+		}
 		int num = msg[0];
 		LogPrint (eLogDebug, "Tunnel: TunnelBuildResponse ", num, " records.");
 		if (num > MAX_NUM_RECORDS)
@@ -269,7 +276,8 @@ namespace tunnel
 	bool Tunnel::IsSlow () const
 	{
 		return LatencyIsKnown ()
-			&& m_Latency > HIGH_LATENCY_PER_HOP * GetNumHops () + i2p::transport::transports.GetLocalDelay () * 1000;
+			&& m_Latency.load (std::memory_order_relaxed)
+				> HIGH_LATENCY_PER_HOP * GetNumHops () + i2p::transport::transports.GetLocalDelay () * 1000;
 	}
 
 	void Tunnel::VisitTunnelHops (TunnelHopVisitor v)
@@ -455,7 +463,24 @@ namespace tunnel
 
 	Tunnels::~Tunnels ()
 	{
-		DeleteTunnelPool (m_ExploratoryPool);
+		// The Run() thread reads the tunnel pools, so it must be stopped
+		// before the exploratory pool is detached.
+		Stop ();
+		auto exploratoryPool = GetExploratoryPool ();
+		m_ExploratoryPool.store (std::shared_ptr<TunnelPool> {});
+		DeleteTunnelPool (exploratoryPool);
+	}
+
+	uint32_t Tunnels::GetRng ()
+	{
+		std::lock_guard<std::mutex> l (m_RngMutex);
+		return m_Rng ();
+	}
+
+	std::mt19937 Tunnels::GetRngSnapshot () const
+	{
+		std::lock_guard<std::mutex> l (m_RngMutex);
+		return m_Rng;
 	}
 
 	std::shared_ptr<TunnelBase> Tunnels::GetTunnel (uint32_t tunnelID)
@@ -481,11 +506,13 @@ namespace tunnel
 
 	std::shared_ptr<InboundTunnel> Tunnels::GetPendingInboundTunnel (uint32_t replyMsgID)
 	{
+		std::lock_guard<std::mutex> l (m_PendingTunnelsMutex);
 		return GetPendingTunnel (replyMsgID, m_PendingInboundTunnels);
 	}
 
 	std::shared_ptr<OutboundTunnel> Tunnels::GetPendingOutboundTunnel (uint32_t replyMsgID)
 	{
+		std::lock_guard<std::mutex> l (m_PendingTunnelsMutex);
 		return GetPendingTunnel (replyMsgID, m_PendingOutboundTunnels);
 	}
 
@@ -506,7 +533,7 @@ namespace tunnel
 	std::shared_ptr<TTunnel> Tunnels::GetRandomTunnel (const std::list<std::shared_ptr<TTunnel>> & tunnels)
 	{
 		if (tunnels.empty ()) return nullptr;
-		auto ind = m_Rng () % tunnels.size ();
+		auto ind = GetRng () % tunnels.size ();
 		auto it = tunnels.begin ();
 		std::advance (it, ind);
 		auto it1 = it;
@@ -531,11 +558,13 @@ namespace tunnel
 
 	std::shared_ptr<InboundTunnel> Tunnels::GetNextInboundTunnel ()
 	{
+		std::lock_guard<std::mutex> l (m_TunnelsMutex);
 		return GetRandomTunnel (m_InboundTunnels);
 	}
 
 	std::shared_ptr<OutboundTunnel> Tunnels::GetNextOutboundTunnel ()
 	{
+		std::lock_guard<std::mutex> l (m_TunnelsMutex);
 		return GetRandomTunnel (m_OutboundTunnels);
 	}
 
@@ -572,21 +601,69 @@ namespace tunnel
 
 	void Tunnels::Start ()
 	{
-		m_IsRunning = true;
-		m_Thread = new std::thread (std::bind (&Tunnels::Run, this));
-		m_TransitTunnels.Start ();
+		// Replacing a joinable thread would call std::terminate, so a second
+		// Start() without an intervening Stop() is a no-op. Keep the flag in
+		// the running state only after the workers exist.
+		bool expected = false;
+		if (!m_IsRunning.compare_exchange_strong (expected, true)) return;
+		if (m_Thread)
+		{
+			m_IsRunning.store (false, std::memory_order_relaxed);
+			return;
+		}
+		try
+		{
+			m_TransitTunnels.Start ();
+			m_Thread = std::make_unique<std::thread> (std::bind (&Tunnels::Run, this));
+		}
+		catch (...)
+		{
+			m_TransitTunnels.Stop ();
+			m_IsRunning.store (false, std::memory_order_relaxed);
+			throw;
+		}
 	}
 
 	void Tunnels::Stop ()
 	{
+		// Stop the transit worker first: it is the only producer that can add
+		// transit tunnels to m_Tunnels from its own thread.
 		m_TransitTunnels.Stop ();
-		m_IsRunning = false;
+		m_IsRunning.store (false, std::memory_order_relaxed);
 		m_Queue.WakeUp ();
 		if (m_Thread)
 		{
-			m_Thread->join ();
-			delete m_Thread;
-			m_Thread = 0;
+			if (m_Thread->joinable ()) m_Thread->join ();
+			m_Thread.reset ();
+		}
+
+		// The exploratory pool is created lazily by the tunnel worker. Remove
+		// it as part of Stop() so a later Start() builds a fresh pool and an
+		// administrative reader cannot observe a stopped worker's pool.
+		auto exploratoryPool = m_ExploratoryPool.exchange (std::shared_ptr<TunnelPool> {});
+		if (exploratoryPool) DeleteTunnelPool (exploratoryPool);
+
+		// Drop every runtime reference so a later Start() cannot observe ids
+		// from the previous instance. Pools keep their configuration and will
+		// rebuild their tunnels once the worker runs again.
+		std::vector<std::shared_ptr<TunnelPool>> pools;
+		{
+			std::lock_guard<std::mutex> l (m_PoolsMutex);
+			pools.assign (m_Pools.begin (), m_Pools.end ());
+		}
+		for (auto & pool : pools)
+			if (pool) pool->DetachTunnels ();
+
+		{
+			std::lock_guard<std::mutex> l (m_TunnelsMutex);
+			m_InboundTunnels.clear ();
+			m_OutboundTunnels.clear ();
+			m_Tunnels.clear ();
+		}
+		{
+			std::lock_guard<std::mutex> l (m_PendingTunnelsMutex);
+			m_PendingInboundTunnels.clear ();
+			m_PendingOutboundTunnels.clear ();
 		}
 	}
 
@@ -597,7 +674,7 @@ namespace tunnel
 
 		uint64_t lastTs = 0, lastPoolsTs = 0, lastMemoryPoolTs = 0;
 		std::list<std::shared_ptr<I2NPMessage>> msgs;
-		while (m_IsRunning)
+		while (m_IsRunning.load (std::memory_order_relaxed))
 		{
 			try
 			{
@@ -620,6 +697,12 @@ namespace tunnel
 						case eI2NPTunnelData:
 						case eI2NPTunnelGateway:
 						{
+							if (msg->GetPayloadLength () < 4)
+							{
+								LogPrint (
+									eLogError, "Tunnel: Truncated tunnel message, length ", msg->GetPayloadLength ());
+								break;
+							}
 							tunnelID = bufbe32toh (msg->GetPayload ());
 							if (tunnelID == prevTunnelID)
 								tunnel = prevTunnel;
@@ -702,6 +785,11 @@ namespace tunnel
 		if (!tunnel)
 		{
 			LogPrint (eLogError, "Tunnel: Missing tunnel for gateway");
+			return;
+		}
+		if (msg->GetPayloadLength () < TUNNEL_GATEWAY_HEADER_SIZE)
+		{
+			LogPrint (eLogError, "Tunnel: Truncated gateway header, length ", msg->GetPayloadLength ());
 			return;
 		}
 		const uint8_t * payload = msg->GetPayload ();
@@ -801,14 +889,15 @@ namespace tunnel
 		// rec-create in random order
 		if (!tunnelsToRecreate.empty ())
 		{
-			if (tunnelsToRecreate.size () > 1)
-				std::shuffle (tunnelsToRecreate.begin (), tunnelsToRecreate.end (), m_Rng);
+			auto rng = GetRngSnapshot ();
+			if (tunnelsToRecreate.size () > 1) std::shuffle (tunnelsToRecreate.begin (), tunnelsToRecreate.end (), rng);
 			for (auto & it : tunnelsToRecreate) it->Recreate ();
 		}
 	}
 
 	void Tunnels::ManagePendingTunnels (uint64_t ts)
 	{
+		std::lock_guard<std::mutex> l (m_PendingTunnelsMutex);
 		ManagePendingTunnels (m_PendingInboundTunnels, ts);
 		ManagePendingTunnels (m_PendingOutboundTunnels, ts);
 	}
@@ -870,20 +959,21 @@ namespace tunnel
 	void Tunnels::ManageOutboundTunnels (uint64_t ts, std::vector<std::shared_ptr<Tunnel>> & toRecreate)
 	{
 		size_t numEstablishedOutboundTunnels = 0;
-		for (auto it = m_OutboundTunnels.begin (); it != m_OutboundTunnels.end ();)
+		std::vector<std::shared_ptr<OutboundTunnel>> snapshot;
 		{
-			auto tunnel = *it;
+			std::lock_guard<std::mutex> l (m_TunnelsMutex);
+			snapshot.assign (m_OutboundTunnels.begin (), m_OutboundTunnels.end ());
+		}
+		std::vector<std::shared_ptr<OutboundTunnel>> expired;
+		for (const auto & tunnel : snapshot)
+		{
 			if (tunnel->IsFailed () || ts > tunnel->GetCreationTime () + TUNNEL_EXPIRATION_TIMEOUT
 				|| ts + TUNNEL_EXPIRATION_TIMEOUT < tunnel->GetCreationTime ())
 			{
 				LogPrint (eLogDebug, "Tunnel: Tunnel with id ", tunnel->GetTunnelID (), " expired or failed");
 				auto pool = tunnel->GetTunnelPool ();
 				if (pool) pool->TunnelExpired (tunnel);
-				// we don't have outbound tunnels in m_Tunnels
-				{
-					std::lock_guard<std::mutex> l (m_TunnelsMutex);
-					it = m_OutboundTunnels.erase (it);
-				}
+				expired.push_back (tunnel);
 			}
 			else
 			{
@@ -900,8 +990,12 @@ namespace tunnel
 						tunnel->SetState (eTunnelStateExpiring);
 					numEstablishedOutboundTunnels++;
 				}
-				++it;
 			}
+		}
+		if (!expired.empty ())
+		{
+			std::lock_guard<std::mutex> l (m_TunnelsMutex);
+			for (const auto & tunnel : expired) m_OutboundTunnels.remove (tunnel);
 		}
 
 		if (numEstablishedOutboundTunnels < 3)
@@ -925,9 +1019,14 @@ namespace tunnel
 	void Tunnels::ManageInboundTunnels (uint64_t ts, std::vector<std::shared_ptr<Tunnel>> & toRecreate)
 	{
 		size_t numEstablishedInboundTunnels = 0;
-		for (auto it = m_InboundTunnels.begin (); it != m_InboundTunnels.end ();)
+		std::vector<std::shared_ptr<InboundTunnel>> snapshot;
 		{
-			auto tunnel = *it;
+			std::lock_guard<std::mutex> l (m_TunnelsMutex);
+			snapshot.assign (m_InboundTunnels.begin (), m_InboundTunnels.end ());
+		}
+		std::vector<std::shared_ptr<InboundTunnel>> expired;
+		for (const auto & tunnel : snapshot)
+		{
 			if (tunnel->IsFailed () || ts > tunnel->GetCreationTime () + TUNNEL_EXPIRATION_TIMEOUT
 				|| ts + TUNNEL_EXPIRATION_TIMEOUT < tunnel->GetCreationTime ())
 			{
@@ -935,10 +1034,7 @@ namespace tunnel
 				auto pool = tunnel->GetTunnelPool ();
 				if (pool) pool->TunnelExpired (tunnel);
 				RemoveTunnel (tunnel->GetTunnelID ());
-				{
-					std::lock_guard<std::mutex> l (m_TunnelsMutex);
-					it = m_InboundTunnels.erase (it);
-				}
+				expired.push_back (tunnel);
 			}
 			else
 			{
@@ -958,8 +1054,12 @@ namespace tunnel
 						tunnel->Cleanup ();
 					numEstablishedInboundTunnels++;
 				}
-				it++;
 			}
+		}
+		if (!expired.empty ())
+		{
+			std::lock_guard<std::mutex> l (m_TunnelsMutex);
+			for (const auto & tunnel : expired) m_InboundTunnels.remove (tunnel);
 		}
 
 		if (!numEstablishedInboundTunnels)
@@ -967,7 +1067,7 @@ namespace tunnel
 			LogPrint (eLogDebug, "Tunnel: Creating zero hops inbound tunnel");
 			CreateZeroHopsInboundTunnel (nullptr);
 			CreateZeroHopsOutboundTunnel (nullptr);
-			if (!m_ExploratoryPool)
+			if (!GetExploratoryPool ())
 			{
 				int ibLen;
 				i2p::config::GetOption ("exploratory.inbound.length", ibLen);
@@ -977,13 +1077,19 @@ namespace tunnel
 				i2p::config::GetOption ("exploratory.inbound.quantity", ibNum);
 				int obNum;
 				i2p::config::GetOption ("exploratory.outbound.quantity", obNum);
-				m_ExploratoryPool = CreateTunnelPool (ibLen, obLen, ibNum, obNum, 0, 0, false);
-				m_ExploratoryPool->SetLocalDestination (i2p::context.GetSharedDestination ());
+				auto exploratoryPool = CreateTunnelPool (ibLen, obLen, ibNum, obNum, 0, 0, false);
+				exploratoryPool->SetLocalDestination (i2p::context.GetSharedDestination ());
+				m_ExploratoryPool.store (exploratoryPool);
 			}
 			return;
 		}
 
-		if (m_OutboundTunnels.empty () || numEstablishedInboundTunnels < 3)
+		bool hasOutboundTunnels = false;
+		{
+			std::lock_guard<std::mutex> l (m_TunnelsMutex);
+			hasOutboundTunnels = !m_OutboundTunnels.empty ();
+		}
+		if (!hasOutboundTunnels || numEstablishedInboundTunnels < 3)
 		{
 			// trying to create one more inbound tunnel
 			auto router = i2p::transport::transports.RoutesRestricted ()
@@ -1006,8 +1112,14 @@ namespace tunnel
 
 	void Tunnels::ManageTunnelPools (uint64_t ts)
 	{
-		std::unique_lock<std::mutex> l (m_PoolsMutex);
-		for (auto & pool : m_Pools)
+		// Snapshot the pool list so a slow pool cannot block CreateTunnelPool()
+		// or DeleteTunnelPool() from a destination thread.
+		std::vector<std::shared_ptr<TunnelPool>> pools;
+		{
+			std::lock_guard<std::mutex> l (m_PoolsMutex);
+			pools.assign (m_Pools.begin (), m_Pools.end ());
+		}
+		for (auto & pool : pools)
 		{
 			if (pool && pool->IsActive ()) pool->ManageTunnels (ts);
 		}
@@ -1056,11 +1168,13 @@ namespace tunnel
 
 	void Tunnels::AddPendingTunnel (uint32_t replyMsgID, std::shared_ptr<InboundTunnel> tunnel)
 	{
+		std::lock_guard<std::mutex> l (m_PendingTunnelsMutex);
 		m_PendingInboundTunnels[replyMsgID] = tunnel;
 	}
 
 	void Tunnels::AddPendingTunnel (uint32_t replyMsgID, std::shared_ptr<OutboundTunnel> tunnel)
 	{
+		std::lock_guard<std::mutex> l (m_PendingTunnelsMutex);
 		m_PendingOutboundTunnels[replyMsgID] = tunnel;
 	}
 
@@ -1162,22 +1276,23 @@ namespace tunnel
 
 	size_t Tunnels::CountInboundTunnels () const
 	{
-		// TODO: locking
+		std::lock_guard<std::mutex> l (m_TunnelsMutex);
 		return m_InboundTunnels.size ();
 	}
 
 	size_t Tunnels::CountOutboundTunnels () const
 	{
-		// TODO: locking
+		std::lock_guard<std::mutex> l (m_TunnelsMutex);
 		return m_OutboundTunnels.size ();
 	}
 
 	void Tunnels::SetMaxNumTransitTunnels (uint32_t maxNumTransitTunnels)
 	{
-		if (maxNumTransitTunnels > 0 && m_MaxNumTransitTunnels != maxNumTransitTunnels)
+		if (maxNumTransitTunnels > 0
+			&& m_MaxNumTransitTunnels.load (std::memory_order_relaxed) != maxNumTransitTunnels)
 		{
 			LogPrint (eLogDebug, "Tunnel: Max number of transit tunnels set to ", maxNumTransitTunnels);
-			m_MaxNumTransitTunnels = maxNumTransitTunnels;
+			m_MaxNumTransitTunnels.store (maxNumTransitTunnels, std::memory_order_relaxed);
 		}
 	}
 }
