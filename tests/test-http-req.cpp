@@ -4,6 +4,9 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 #include <cassert>
+#include <cstddef>
+#include <cstring>
+#include <string>
 #include "HTTP.h"
 
 using namespace i2p::http;
@@ -172,6 +175,49 @@ int main ()
 	req->UpdateHeader ("CONTENT-TYPE", "text/html");
 	assert (req->GetHeader ("content-type") == "text/html");
 	delete req;
+
+	/* test: incremental delivery reports "incomplete" until the final chunk */
+	{
+		static constexpr const char * parts[] = {
+			"GET /incremental HTTP/1.1\r\n", "Host: example.i2p\r\n", "Accept: */*\r\n", "\r\n"
+		};
+		constexpr size_t numParts = sizeof (parts) / sizeof (parts[0]);
+
+		HTTPReq incremental;
+		std::string accumulated;
+		for (size_t i = 0; i < numParts; ++i)
+		{
+			accumulated.append (parts[i]);
+			const int result = incremental.parse (accumulated);
+			if (i + 1 < numParts)
+				assert (result == 0);
+			else
+			{
+				assert (result == static_cast<int> (accumulated.size ()));
+				assert (incremental.method == "GET");
+				assert (incremental.uri == "/incremental");
+				assert (incremental.GetHeader ("Host") == "example.i2p");
+			}
+		}
+	}
+
+	/* test: byte-at-a-time delivery still completes exactly once */
+	{
+		const std::string request = "GET /bytewise HTTP/1.1\r\n"
+									"Host: example.i2p\r\n"
+									"\r\n";
+		HTTPReq incremental;
+		std::string accumulated;
+		for (size_t i = 0; i < request.size (); ++i)
+		{
+			accumulated.push_back (request[i]);
+			const int result = incremental.parse (accumulated);
+			if (i + 1 < request.size ())
+				assert (result == 0);
+			else
+				assert (result == static_cast<int> (request.size ()));
+		}
+	}
 
 	/* test: RemoveHeader case-insensitivity */
 	req = new HTTPReq;

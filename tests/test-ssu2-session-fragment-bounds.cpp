@@ -1,0 +1,91 @@
+/*
+ * Copyright (c) 2026, David Uhden Collado
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
+ * This file is part of openi2pd and licensed under BSD-3-Clause
+ *
+ * See full license text in LICENSE file at top of project tree
+ *
+ * Regression checks for SSU2 fragment reassembly bounds and the constants
+ * that guard SessionConfirmed fragmentation and data-phase retransmission.
+ *
+ * Register as a CTest target (tests/CMakeLists.txt is owned elsewhere):
+ *   test-ssu2-session-fragment-bounds
+ */
+
+#include <cassert>
+#include <cstdint>
+#include <memory>
+
+#include "I2NPProtocol.h"
+#include "SSU2Session.h"
+
+namespace
+{
+std::shared_ptr<i2p::transport::SSU2IncompleteMessage::Fragment> MakeFragment (int number, bool isLast, uint8_t value)
+{
+	return std::make_shared<i2p::transport::SSU2IncompleteMessage::Fragment> (&value, sizeof (value), number, isLast);
+}
+}
+
+int main ()
+{
+	// SessionConfirmed uses a 4-bit fragment count; FIRST/FOLLOW-ON fragments
+	// use the wider 7-bit field. Do not share these limits.
+	static_assert (i2p::transport::SSU2_MAX_SESSION_CONFIRMED_FRAGMENTS == 15);
+	static_assert (i2p::transport::SSU2_MAX_SESSION_CONFIRMED_FRAGMENTS < i2p::transport::SSU2_MAX_NUM_FRAGMENTS,
+		"SessionConfirmed is the smaller 4-bit fragment space");
+	static_assert (i2p::transport::SSU2_INITIAL_RTO >= i2p::transport::SSU2_MIN_RTO);
+	static_assert (i2p::transport::SSU2_MAX_RTO >= i2p::transport::SSU2_INITIAL_RTO);
+	static_assert (i2p::transport::SSU2_HANDSHAKE_RESEND_INTERVAL == 1250);
+
+	auto incomplete = std::make_shared<i2p::transport::SSU2IncompleteMessage> ();
+	incomplete->msg = i2p::NewI2NPShortMessage ();
+	incomplete->msg->len = incomplete->msg->offset;
+	incomplete->nextFragmentNum = 1; // fragment 0 (FIRSTFRAG) was already consumed
+
+	// Receive the last fragment first, then the two missing ones. The
+	// reassembled message must be released only when the last marker is
+	// actually reached, in fragment-number order.
+	incomplete->AddOutOfSequenceFragment (MakeFragment (3, true, 0xA3));
+	incomplete->AddOutOfSequenceFragment (MakeFragment (2, false, 0xA2));
+	assert (!incomplete->ConcatOutOfSequenceFragments ());
+	incomplete->AddOutOfSequenceFragment (MakeFragment (1, false, 0xA1));
+	assert (incomplete->ConcatOutOfSequenceFragments ());
+	assert (!incomplete->outOfSequenceFragments);
+
+	const auto * data = incomplete->msg->buf + incomplete->msg->offset;
+	assert (incomplete->msg->len == incomplete->msg->offset + 3);
+	assert (data[0] == 0xA1);
+	assert (data[1] == 0xA2);
+	assert (data[2] == 0xA3);
+
+	// A fragment above the known last marker, and a second last marker, are
+	// rejected rather than truncating or extending the message.
+	auto second = std::make_shared<i2p::transport::SSU2IncompleteMessage> ();
+	second->msg = i2p::NewI2NPShortMessage ();
+	second->msg->len = second->msg->offset;
+	second->nextFragmentNum = 0;
+	auto last = MakeFragment (5, true, 0x55);
+	second->AddOutOfSequenceFragment (last);
+	assert (second->lastFragmentNum == 5);
+	second->AddOutOfSequenceFragment (MakeFragment (6, false, 0x66));
+	second->AddOutOfSequenceFragment (MakeFragment (4, true, 0x44));
+	assert (second->lastFragmentNum == 5);
+	assert (second->outOfSequenceFragments == last);
+	assert (!last->next);
+
+	// An in-sequence follow-on fragment that would push the reassembled I2NP
+	// message past its absolute limit is rejected without appending or
+	// advancing the fragment number.
+	auto overflow = std::make_shared<i2p::transport::SSU2IncompleteMessage> ();
+	overflow->msg = i2p::NewI2NPShortMessage ();
+	overflow->msg->len = i2p::I2NP_MAX_MESSAGE_SIZE;
+	overflow->nextFragmentNum = 1;
+	const uint8_t one = 0x01;
+	assert (!overflow->AttachNextFragment (&one, sizeof (one)));
+	assert (overflow->nextFragmentNum == 1);
+	assert (overflow->msg->len == i2p::I2NP_MAX_MESSAGE_SIZE);
+
+	return 0;
+}

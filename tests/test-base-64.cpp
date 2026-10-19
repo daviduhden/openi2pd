@@ -3,7 +3,10 @@
  * Copyright (c) 2026, David Uhden Collado
  * SPDX-License-Identifier: BSD-3-Clause
  */
+#include <array>
 #include <cassert>
+#include <cstdint>
+#include <span>
 #include <string.h>
 
 #include "Base.h"
@@ -31,6 +34,16 @@ int main ()
 	const std::string out_str (ByteStreamToBase64 ((uint8_t *)in, in_len));
 	assert (out_str.size () == 8);
 	assert (out_str == "dGVzdA==");
+
+	/* span overload: same result as pointer+length, empty and null-backed
+	   spans must encode to an empty string without dereferencing anything */
+	const std::array<uint8_t, 4> span_in { 't', 'e', 's', 't' };
+	assert (ByteStreamToBase64 (std::span<const uint8_t> (span_in)) == "dGVzdA==");
+	assert (ByteStreamToBase64 (std::span<const uint8_t> (span_in).first (3)) == "dGVz");
+	assert (ByteStreamToBase64 (std::span<const uint8_t> (span_in).first (1)) == "dA==");
+	assert (ByteStreamToBase64 (std::span<const uint8_t> { }) == "");
+	assert (ByteStreamToBase64 (std::span<const uint8_t> (static_cast<const uint8_t *> (nullptr), 0)) == "");
+	assert (ByteStreamToBase64 (std::span<const uint8_t> (span_in.data (), 0)) == "");
 
 	/* b64 -> bytes */
 	assert (Base64ToByteStream ("", NULL, 0) == 0);
