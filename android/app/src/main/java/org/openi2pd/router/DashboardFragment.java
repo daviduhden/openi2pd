@@ -15,6 +15,7 @@ import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.StringRes;
+import androidx.core.content.ContextCompat;
 import androidx.fragment.app.Fragment;
 import androidx.lifecycle.ViewModelProvider;
 
@@ -40,6 +41,8 @@ public class DashboardFragment extends Fragment {
     private MaterialButton buttonStop;
     private MaterialButton buttonRestart;
     private MaterialButton buttonGraceful;
+    private MaterialButton buttonLogs;
+    private MaterialButton buttonSettings;
     private MaterialCardView warningCard;
     private TextView textWarning;
     private TextView metricUptime;
@@ -71,6 +74,8 @@ public class DashboardFragment extends Fragment {
         buttonStop = view.findViewById(R.id.button_stop);
         buttonRestart = view.findViewById(R.id.button_restart);
         buttonGraceful = view.findViewById(R.id.button_graceful);
+        buttonLogs = view.findViewById(R.id.button_dashboard_logs);
+        buttonSettings = view.findViewById(R.id.button_dashboard_settings);
         warningCard = view.findViewById(R.id.warning_card);
         textWarning = view.findViewById(R.id.text_warning);
         metricUptime = view.findViewById(R.id.metric_uptime);
@@ -101,6 +106,16 @@ public class DashboardFragment extends Fragment {
                                          Toast.LENGTH_SHORT)
                                     .show();
                         }));
+        buttonLogs.setOnClickListener(ignored -> {
+            if (requireActivity() instanceof MainActivity main) {
+                main.openLogs();
+            }
+        });
+        buttonSettings.setOnClickListener(ignored -> {
+            if (requireActivity() instanceof MainActivity main) {
+                main.openSettings();
+            }
+        });
         buttonGraceful.setOnClickListener(ignored -> {
             if (UiFormat.gracefulActive(lastSnapshot)) {
                 viewModel.cancelGracefulStop();
@@ -118,6 +133,7 @@ public class DashboardFragment extends Fragment {
             }
         });
 
+        render(null);
         viewModel.getSnapshot().observe(getViewLifecycleOwner(), this::render);
     }
 
@@ -130,12 +146,13 @@ public class DashboardFragment extends Fragment {
         }
         android.content.Context context = requireContext();
         UiFormat.RouterState state = UiFormat.stateOf(snapshot);
-        boolean hasData = UiFormat.isRunning(snapshot);
+        boolean hasData = UiFormat.hasLiveMetrics(snapshot);
 
-        statusTitle.setText(UiFormat.stateLabelRes(state));
-        statusSubtitle.setText(UiFormat.statusSubtitle(context, snapshot));
-        chipConnectivity.setText(UiFormat.connectivity(context, snapshot));
-        chipTransports.setText(UiFormat.transports(context, snapshot));
+        UiFormat.setTextIfChanged(statusTitle, getString(UiFormat.stateLabelRes(state)));
+        statusTitle.setTextColor(ContextCompat.getColor(context, UiFormat.stateColorRes(state)));
+        UiFormat.setTextIfChanged(statusSubtitle, UiFormat.statusSubtitle(context, snapshot));
+        UiFormat.setTextIfChanged(chipConnectivity, UiFormat.connectivity(context, snapshot));
+        UiFormat.setTextIfChanged(chipTransports, UiFormat.transports(context, snapshot));
 
         boolean busy = snapshot == null || state == UiFormat.RouterState.STARTING
                 || state == UiFormat.RouterState.STOPPING;
@@ -149,27 +166,28 @@ public class DashboardFragment extends Fragment {
             warningCard.setVisibility(View.GONE);
         } else {
             warningCard.setVisibility(View.VISIBLE);
-            textWarning.setText(warning);
+            UiFormat.setTextIfChanged(textWarning, warning);
         }
 
         if (hasData) {
-            metricUptime.setText(UiFormat.duration(context, snapshot.uptimeSeconds()));
-            metricPeers.setText(UiFormat.count(context, snapshot.peers()));
-            metricRouters.setText(UiFormat.count(context, snapshot.routers()));
-            metricTunnels.setText(
+            UiFormat.setTextIfChanged(
+                    metricUptime, UiFormat.duration(context, snapshot.uptimeSeconds()));
+            UiFormat.setTextIfChanged(metricPeers, UiFormat.count(context, snapshot.peers()));
+            UiFormat.setTextIfChanged(metricRouters, UiFormat.count(context, snapshot.routers()));
+            UiFormat.setTextIfChanged(metricTunnels,
                     getString(R.string.metric_tunnels_value, snapshot.inboundTunnels(),
                             snapshot.outboundTunnels(), snapshot.transitTunnels()));
-            metricReseed.setText(UiFormat.yesNo(context, snapshot.reseeding()));
-            metricDownload.setText(UiFormat.rate(context, snapshot.inRate()));
-            metricUpload.setText(UiFormat.rate(context, snapshot.outRate()));
+            UiFormat.setTextIfChanged(metricReseed, UiFormat.yesNo(context, snapshot.reseeding()));
+            UiFormat.setTextIfChanged(metricDownload, UiFormat.rate(context, snapshot.inRate15()));
+            UiFormat.setTextIfChanged(metricUpload, UiFormat.rate(context, snapshot.outRate15()));
         } else {
-            metricUptime.setText(R.string.value_unknown);
-            metricPeers.setText(R.string.value_unknown);
-            metricRouters.setText(R.string.value_unknown);
-            metricTunnels.setText(R.string.value_unknown);
-            metricReseed.setText(R.string.value_unknown);
-            metricDownload.setText(R.string.value_unknown);
-            metricUpload.setText(R.string.value_unknown);
+            UiFormat.setTextIfChanged(metricUptime, getString(R.string.value_unknown));
+            UiFormat.setTextIfChanged(metricPeers, getString(R.string.value_unknown));
+            UiFormat.setTextIfChanged(metricRouters, getString(R.string.value_unknown));
+            UiFormat.setTextIfChanged(metricTunnels, getString(R.string.value_unknown));
+            UiFormat.setTextIfChanged(metricReseed, getString(R.string.value_unknown));
+            UiFormat.setTextIfChanged(metricDownload, getString(R.string.value_unknown));
+            UiFormat.setTextIfChanged(metricUpload, getString(R.string.value_unknown));
         }
 
         buttonStart.setEnabled(UiFormat.canStart(snapshot));
@@ -179,7 +197,7 @@ public class DashboardFragment extends Fragment {
         boolean gracefulActive = UiFormat.gracefulActive(snapshot);
         buttonGraceful.setText(gracefulActive ? R.string.action_cancel_graceful_stop
                                               : R.string.action_graceful_stop);
-        buttonGraceful.setEnabled(gracefulActive || UiFormat.canRestart(snapshot));
+        buttonGraceful.setEnabled(gracefulActive || UiFormat.canGraceful(snapshot));
     }
 
     private void confirm(@StringRes int title, @StringRes int message, @StringRes int positive,

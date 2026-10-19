@@ -9,13 +9,17 @@ import android.Manifest;
 import android.annotation.SuppressLint;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.drawable.Drawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.PowerManager;
 import android.provider.Settings;
+import android.text.TextUtils;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.view.View;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.activity.OnBackPressedCallback;
@@ -23,15 +27,21 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.StringRes;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.content.res.AppCompatResources;
+import androidx.core.graphics.drawable.DrawableCompat;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentManager;
 import androidx.fragment.app.FragmentTransaction;
+import androidx.lifecycle.Lifecycle;
 import androidx.lifecycle.ViewModelProvider;
 
 import com.google.android.material.appbar.MaterialToolbar;
-import com.google.android.material.color.DynamicColors;
+import com.google.android.material.color.MaterialColors;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.navigation.NavigationBarView;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * Single-activity host for the router screens.
@@ -43,7 +53,10 @@ import com.google.android.material.navigation.NavigationBarView;
  */
 public class MainActivity extends AppCompatActivity {
     private static final String STATE_SELECTED_NAV = "selected_nav";
-    private static final int REQUEST_POST_NOTIFICATIONS = 3;
+    private static final String STATE_START_AFTER_PERMISSION = "start_after_permission";
+    private static final int REQUEST_STARTUP_PERMISSIONS = 3;
+    private static final String PERMISSION_ACCESS_LOCAL_NETWORK =
+            "android.permission.ACCESS_LOCAL_NETWORK";
 
     private static final String TAG_DASHBOARD = "dashboard";
     private static final String TAG_NETWORK = "network";
@@ -56,21 +69,43 @@ public class MainActivity extends AppCompatActivity {
     private RouterViewModel viewModel;
     private MaterialToolbar toolbar;
     private NavigationBarView navigationView;
+    private View serviceBanner;
+    private TextView serviceBannerText;
 
     private int selectedItemId = R.id.nav_home;
     private boolean suppressNavigation;
     private RouterSnapshot lastSnapshot;
     private int lastActionMask = -1;
+    private boolean everServiceConnected;
+    private boolean serviceBannerTimedOut;
+    /** Defer the very first auto-start until the permission dialog resolves. */
+    private boolean startAfterPermissionResult;
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
-        DynamicColors.applyToActivityIfAvailable(this);
         super.onCreate(savedInstanceState);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            setRecentsScreenshotEnabled(false);
+        }
         setContentView(R.layout.activity_main);
 
         toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
         toolbar.setTitle(R.string.app_name);
+        toolbar.setNavigationOnClickListener(ignored
+                -> getOnBackPressedDispatcher().onBackPressed());
+        applyToolbarLogo();
+
+        serviceBanner = findViewById(R.id.service_banner);
+        serviceBannerText = findViewById(R.id.service_banner_text);
+        View retry = findViewById(R.id.service_banner_retry);
+        if (retry != null) {
+            retry.setOnClickListener(ignored -> {
+                if (viewModel != null) {
+                    viewModel.refresh();
+                }
+            });
+        }
 
         navigationView = findViewById(R.id.nav_bottom);
         if (navigationView == null) {
@@ -81,32 +116,38 @@ public class MainActivity extends AppCompatActivity {
         }
 
         viewModel = new ViewModelProvider(this).get(RouterViewModel.class);
+        if (savedInstanceState != null) {
+            startAfterPermissionResult =
+                    savedInstanceState.getBoolean(STATE_START_AFTER_PERMISSION, false);
+        }
 
         FragmentManager fragments = getSupportFragmentManager();
         if (savedInstanceState == null) {
-            viewModel.startOnFirstLaunchIfNeeded();
             showDestination(R.id.nav_home);
-            requestNotificationPermission();
+            // Do not start the router until the permission result is known:
+            // Android 17 would otherwise reject SSDP before the user grants
+            // local-network access, leaving UPnP disabled for the session.
+            startAfterPermissionResult = requestStartupPermissions();
+            if (!startAfterPermissionResult) {
+                viewModel.startOnFirstLaunchIfNeeded();
+            }
         } else {
             selectedItemId = savedInstanceState.getInt(STATE_SELECTED_NAV, R.id.nav_home);
             if (fragments.findFragmentById(R.id.fragment_container) == null) {
                 showDestination(selectedItemId);
             } else {
                 syncNavigationSelection(selectedItemId);
-                restoreToolbarTitle(fragments);
+                updateNavigationState();
             }
         }
 
-        fragments.addOnBackStackChangedListener(() -> {
-            if (fragments.getBackStackEntryCount() == 0) {
-                toolbar.setTitle(R.string.app_name);
-            }
-        });
+        fragments.addOnBackStackChangedListener(this::updateNavigationState);
 
         viewModel.getSnapshot().observe(this, snapshot -> {
             lastSnapshot = snapshot;
+            updateToolbarSubtitle();
             int mask = (UiFormat.gracefulActive(snapshot) ? 1 : 0)
-                    | (UiFormat.isRunning(snapshot) ? 2 : 0)
+                    | (UiFormat.canGraceful(snapshot) ? 2 : 0)
                     | (UiFormat.isConnected(snapshot) ? 4 : 0)
                     | (UiFormat.canStop(snapshot) ? 8 : 0);
             if (mask != lastActionMask) {
@@ -114,6 +155,27 @@ public class MainActivity extends AppCompatActivity {
                 invalidateOptionsMenu();
             }
         });
+
+        viewModel.getServiceConnected().observe(this, connected -> {
+            boolean isConnected = Boolean.TRUE.equals(connected);
+            if (isConnected) {
+                everServiceConnected = true;
+                serviceBannerTimedOut = false;
+            }
+            updateServiceBanner(isConnected);
+        });
+        // A failed bind does not publish a transition, so surface the stale
+        // state once without waiting forever. A later successful bind hides it.
+        if (toolbar != null) {
+            toolbar.postDelayed(() -> {
+                if (isFinishing() || isDestroyed()) {
+                    return;
+                }
+                serviceBannerTimedOut = true;
+                updateServiceBanner(Boolean.TRUE.equals(
+                        viewModel.getServiceConnected().getValue()));
+            }, 3000L);
+        }
 
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
@@ -134,24 +196,83 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * After a configuration change the FragmentManager restores the detail
-     * fragment and its back stack entry, but the toolbar title is not part of
-     * Fragment state. Derive it from the top back-stack entry.
+     * Keep the toolbar title and Up affordance in sync with the top of the
+     * back stack. The title is not part of Fragment state, so it must be
+     * derived after rotation and after every detail push/pop.
      */
-    private void restoreToolbarTitle(@NonNull FragmentManager fragments) {
+    private void updateNavigationState() {
+        FragmentManager fragments = getSupportFragmentManager();
         int count = fragments.getBackStackEntryCount();
-        if (count == 0) {
-            toolbar.setTitle(R.string.app_name);
+        boolean detail = count > 0;
+        toolbar.setDisplayHomeAsUpEnabled(detail);
+        if (detail) {
+            String name = fragments.getBackStackEntryAt(count - 1).getName();
+            if (TAG_LOGS.equals(name)) {
+                toolbar.setTitle(R.string.logs_title);
+            } else if (TAG_ABOUT.equals(name)) {
+                toolbar.setTitle(R.string.about_title);
+            } else {
+                toolbar.setTitle(R.string.app_name);
+            }
+        } else {
+            toolbar.setTitle(titleFor(selectedItemId));
+        }
+        updateToolbarSubtitle();
+        invalidateOptionsMenu();
+    }
+
+    private void applyToolbarLogo() {
+        Drawable logo = AppCompatResources.getDrawable(this, R.drawable.ic_logo_monochrome);
+        if (logo == null) {
             return;
         }
-        String name = fragments.getBackStackEntryAt(count - 1).getName();
-        if (TAG_LOGS.equals(name)) {
-            toolbar.setTitle(R.string.logs_title);
-        } else if (TAG_ABOUT.equals(name)) {
-            toolbar.setTitle(R.string.about_title);
-        } else {
-            toolbar.setTitle(R.string.app_name);
+        Drawable tinted = logo.mutate();
+        int tint = MaterialColors.getColor(
+                toolbar, com.google.android.material.R.attr.colorOnSurface);
+        DrawableCompat.setTint(tinted, tint);
+        toolbar.setLogo(tinted);
+        toolbar.setLogoDescription(R.string.app_name);
+    }
+
+    private void updateToolbarSubtitle() {
+        if (toolbar == null) {
+            return;
         }
+        CharSequence subtitle = lastSnapshot == null
+                ? getString(R.string.status_service_connecting)
+                : getString(UiFormat.stateLabelRes(UiFormat.stateOf(lastSnapshot)));
+        if (!TextUtils.equals(toolbar.getSubtitle(), subtitle)) {
+            toolbar.setSubtitle(subtitle);
+        }
+    }
+
+    private void updateServiceBanner(boolean connected) {
+        if (serviceBanner == null) {
+            return;
+        }
+        boolean show = !connected && (everServiceConnected || serviceBannerTimedOut);
+        serviceBanner.setVisibility(show ? View.VISIBLE : View.GONE);
+        if (show && serviceBannerText != null) {
+            UiFormat.setTextIfChanged(
+                    serviceBannerText, getString(R.string.service_disconnected_banner));
+        }
+    }
+
+    @StringRes
+    private static int titleFor(int itemId) {
+        if (itemId == R.id.nav_network) {
+            return R.string.nav_network;
+        }
+        if (itemId == R.id.nav_tunnels) {
+            return R.string.nav_tunnels;
+        }
+        if (itemId == R.id.nav_stats) {
+            return R.string.nav_stats;
+        }
+        if (itemId == R.id.nav_settings) {
+            return R.string.nav_settings;
+        }
+        return R.string.nav_home;
     }
 
     private boolean onNavigationSelected(@NonNull MenuItem item) {
@@ -179,6 +300,7 @@ public class MainActivity extends AppCompatActivity {
             Fragment existing = fragments.findFragmentByTag(existingTag);
             if (existing != null && !existingTag.equals(tag)) {
                 transaction.hide(existing);
+                transaction.setMaxLifecycle(existing, Lifecycle.State.CREATED);
             }
         }
 
@@ -188,12 +310,13 @@ public class MainActivity extends AppCompatActivity {
             transaction.add(R.id.fragment_container, target, tag);
         } else {
             transaction.show(target);
+            transaction.setMaxLifecycle(target, Lifecycle.State.RESUMED);
         }
         transaction.commitNow();
 
         selectedItemId = itemId;
-        toolbar.setTitle(R.string.app_name);
         syncNavigationSelection(itemId);
+        updateNavigationState();
     }
 
     private void syncNavigationSelection(int itemId) {
@@ -245,20 +368,38 @@ public class MainActivity extends AppCompatActivity {
         return new DashboardFragment();
     }
 
+    /** Open the log detail from a dashboard quick action. */
+    public void openLogs() {
+        openDetail(new LogsFragment(), TAG_LOGS, R.string.logs_title);
+    }
+
+    /** Switch to the settings destination from a dashboard quick action. */
+    public void openSettings() {
+        showDestination(R.id.nav_settings);
+    }
+
     private void openDetail(@NonNull Fragment fragment, @NonNull String tag, @StringRes int title) {
-        getSupportFragmentManager()
-                .beginTransaction()
+        FragmentManager fragments = getSupportFragmentManager();
+        int count = fragments.getBackStackEntryCount();
+        if (count > 0 && tag.equals(fragments.getBackStackEntryAt(count - 1).getName())) {
+            return;
+        }
+        fragments.beginTransaction()
                 .setReorderingAllowed(true)
                 .replace(R.id.fragment_container, fragment, tag)
                 .addToBackStack(tag)
                 .commit();
+        // The back-stack listener updates the title; setting it here avoids a
+        // visible stale title until the asynchronous commit completes.
         toolbar.setTitle(title);
+        toolbar.setDisplayHomeAsUpEnabled(true);
+        invalidateOptionsMenu();
     }
 
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
         getMenuInflater().inflate(R.menu.main_actions, menu);
-        return true;
+        return super.onCreateOptionsMenu(menu);
     }
 
     @Override
@@ -267,11 +408,21 @@ public class MainActivity extends AppCompatActivity {
         MenuItem reload = menu.findItem(R.id.action_reload_tunnels);
         MenuItem stop = menu.findItem(R.id.action_stop);
 
+        boolean detail = getSupportFragmentManager().getBackStackEntryCount() > 0;
+        MenuItem logs = menu.findItem(R.id.action_logs);
+        MenuItem about = menu.findItem(R.id.action_about);
+        if (logs != null) {
+            logs.setVisible(!detail);
+        }
+        if (about != null) {
+            about.setVisible(!detail);
+        }
+
         boolean gracefulActive = UiFormat.gracefulActive(lastSnapshot);
         if (graceful != null) {
             graceful.setTitle(gracefulActive ? R.string.action_cancel_graceful_stop
                                              : R.string.action_graceful_stop);
-            graceful.setEnabled(gracefulActive || UiFormat.isRunning(lastSnapshot));
+            graceful.setEnabled(gracefulActive || UiFormat.canGraceful(lastSnapshot));
         }
         if (reload != null) {
             reload.setEnabled(UiFormat.isConnected(lastSnapshot));
@@ -285,6 +436,10 @@ public class MainActivity extends AppCompatActivity {
     @Override
     public boolean onOptionsItemSelected(@NonNull MenuItem item) {
         int id = item.getItemId();
+        if (id == android.R.id.home) {
+            getOnBackPressedDispatcher().onBackPressed();
+            return true;
+        }
         if (id == R.id.action_logs) {
             openDetail(new LogsFragment(), TAG_LOGS, R.string.logs_title);
             return true;
@@ -381,18 +536,75 @@ public class MainActivity extends AppCompatActivity {
                 .show();
     }
 
-    private void requestNotificationPermission() {
+    /**
+     * Ask once for the runtime permissions that affect a running router.
+     * Notifications are separate from routing; local-network access is
+     * required by Android 17 before UPnP/SSDP may reach the gateway.
+     */
+    private boolean requestStartupPermissions() {
+        List<String> missing = new ArrayList<>(2);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
                 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)
                         != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[] {Manifest.permission.POST_NOTIFICATIONS},
-                    REQUEST_POST_NOTIFICATIONS);
+            missing.add(Manifest.permission.POST_NOTIFICATIONS);
         }
+        if (Build.VERSION.SDK_INT >= 37
+                && checkSelfPermission(PERMISSION_ACCESS_LOCAL_NETWORK)
+                        != PackageManager.PERMISSION_GRANTED) {
+            missing.add(PERMISSION_ACCESS_LOCAL_NETWORK);
+        }
+        if (missing.isEmpty()) {
+            return false;
+        }
+        requestPermissions(missing.toArray(new String[0]), REQUEST_STARTUP_PERMISSIONS);
+        return true;
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
+            @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode != REQUEST_STARTUP_PERMISSIONS) {
+            return;
+        }
+        for (int i = 0; i < permissions.length && i < grantResults.length; i++) {
+            if (grantResults[i] == PackageManager.PERMISSION_GRANTED) {
+                continue;
+            }
+            if (Manifest.permission.POST_NOTIFICATIONS.equals(permissions[i])) {
+                Toast.makeText(this, R.string.notification_permission_denied,
+                        Toast.LENGTH_LONG).show();
+            } else if (PERMISSION_ACCESS_LOCAL_NETWORK.equals(permissions[i])) {
+                Toast.makeText(this, R.string.local_network_permission_denied,
+                        Toast.LENGTH_LONG).show();
+            }
+        }
+        if (startAfterPermissionResult) {
+            startAfterPermissionResult = false;
+            viewModel.startOnFirstLaunchIfNeeded();
+        }
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        if (viewModel != null) {
+            viewModel.setUiVisible(true);
+        }
+    }
+
+    @Override
+    protected void onStop() {
+        if (viewModel != null) {
+            viewModel.setUiVisible(false);
+        }
+        super.onStop();
     }
 
     @Override
     protected void onSaveInstanceState(@NonNull Bundle outState) {
         outState.putInt(STATE_SELECTED_NAV, selectedItemId);
+        outState.putBoolean(STATE_START_AFTER_PERMISSION, startAfterPermissionResult);
         super.onSaveInstanceState(outState);
     }
 }

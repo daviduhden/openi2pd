@@ -13,9 +13,10 @@
     android:fillViewport="true"
     tools:context=".StatisticsFragment">
 
-    <LinearLayout
+    <org.openi2pd.router.MaxWidthLinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_gravity="center_horizontal"
         android:orientation="vertical"
         android:paddingStart="@dimen/screen_padding"
         android:paddingTop="@dimen/screen_padding"
@@ -34,6 +35,7 @@
                 android:padding="@dimen/card_content_padding">
 
                 <TextView
+                    android:accessibilityHeading="true"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="@string/statistics_chart_title"
@@ -67,12 +69,20 @@
                         android:textAppearance="@style/TextAppearance.OpenI2Pd.Label"
                         android:textColor="@color/chart_upload" />
                 </LinearLayout>
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/margin_tiny"
+                    android:text="@string/statistics_chart_window"
+                    android:textAppearance="@style/TextAppearance.OpenI2Pd.Label" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/margin_small"
             android:orientation="horizontal">
 
             <com.google.android.material.card.MaterialCardView
@@ -136,6 +146,7 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/margin_small"
             android:orientation="horizontal">
 
             <com.google.android.material.card.MaterialCardView
@@ -199,6 +210,7 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/margin_small"
             android:orientation="horizontal">
 
             <com.google.android.material.card.MaterialCardView
@@ -262,6 +274,7 @@
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/margin_small"
             android:orientation="horizontal">
 
             <com.google.android.material.card.MaterialCardView
@@ -348,5 +361,5 @@
                     android:textAppearance="@style/TextAppearance.OpenI2Pd.MetricValue" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
-    </LinearLayout>
+    </org.openi2pd.router.MaxWidthLinearLayout>
 </androidx.core.widget.NestedScrollView>

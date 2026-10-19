@@ -6,6 +6,7 @@
 package org.openi2pd.router;
 
 import android.os.Bundle;
+import android.text.TextUtils;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
@@ -23,6 +24,7 @@ import androidx.lifecycle.ViewModelProvider;
 public class StatisticsFragment extends Fragment {
     private static final String STATE_CHART_DOWNLOAD = "chart_download";
     private static final String STATE_CHART_UPLOAD = "chart_upload";
+    private static final String STATE_LAST_SAMPLE_UPTIME = "chart_last_uptime";
 
     private RouterViewModel viewModel;
     private TrafficChartView trafficChart;
@@ -35,6 +37,7 @@ public class StatisticsFragment extends Fragment {
     private TextView peers;
     private TextView routers;
     private TextView tunnels;
+    private long lastSampleUptime = -1L;
 
     @Nullable
     @Override
@@ -62,45 +65,65 @@ public class StatisticsFragment extends Fragment {
         if (savedInstanceState != null) {
             trafficChart.restoreHistory(savedInstanceState.getLongArray(STATE_CHART_DOWNLOAD),
                     savedInstanceState.getLongArray(STATE_CHART_UPLOAD));
+            lastSampleUptime = savedInstanceState.getLong(STATE_LAST_SAMPLE_UPTIME, -1L);
         }
 
+        render(null);
         viewModel.getSnapshot().observe(getViewLifecycleOwner(), this::render);
     }
 
     private void render(@Nullable RouterSnapshot snapshot) {
-        boolean hasData = snapshot != null && UiFormat.isRunning(snapshot);
-        String download = hasData ? UiFormat.rate(requireContext(), snapshot.inRate())
+        boolean hasData = UiFormat.hasLiveMetrics(snapshot);
+        String download = hasData ? UiFormat.rate(requireContext(), snapshot.inRate15())
                                   : getString(R.string.value_unknown);
-        String upload = hasData ? UiFormat.rate(requireContext(), snapshot.outRate())
+        String upload = hasData ? UiFormat.rate(requireContext(), snapshot.outRate15())
                                 : getString(R.string.value_unknown);
 
-        downloadRate.setText(download);
-        uploadRate.setText(upload);
-        trafficChart.setContentDescription(
-                getString(R.string.statistics_chart_description, download, upload));
-
-        if (snapshot != null) {
-            trafficChart.addSample(snapshot.inRate(), snapshot.outRate());
+        UiFormat.setTextIfChanged(downloadRate, download);
+        UiFormat.setTextIfChanged(uploadRate, upload);
+        CharSequence chartDescription =
+                getString(R.string.statistics_chart_description, download, upload);
+        if (!TextUtils.equals(trafficChart.getContentDescription(), chartDescription)) {
+            trafficChart.setContentDescription(chartDescription);
         }
 
         if (hasData) {
-            totalReceived.setText(UiFormat.bytes(requireContext(), snapshot.totalReceived()));
-            totalSent.setText(UiFormat.bytes(requireContext(), snapshot.totalSent()));
-            totalTransit.setText(UiFormat.bytes(requireContext(), snapshot.totalTransit()));
-            uptime.setText(UiFormat.duration(requireContext(), snapshot.uptimeSeconds()));
-            peers.setText(UiFormat.count(requireContext(), snapshot.peers()));
-            routers.setText(UiFormat.count(requireContext(), snapshot.routers()));
+            if (snapshot.uptimeSeconds() < lastSampleUptime) {
+                // The daemon restarted or the counter wrapped; do not append a
+                // stale-history sample to the new run.
+                trafficChart.clear();
+                lastSampleUptime = -1L;
+            }
+            if (snapshot.uptimeSeconds() != lastSampleUptime) {
+                trafficChart.addSample(snapshot.inRate15(), snapshot.outRate15());
+                lastSampleUptime = snapshot.uptimeSeconds();
+            }
+        }
+
+        if (hasData) {
+            UiFormat.setTextIfChanged(
+                    totalReceived, UiFormat.bytes(requireContext(), snapshot.totalReceived()));
+            UiFormat.setTextIfChanged(
+                    totalSent, UiFormat.bytes(requireContext(), snapshot.totalSent()));
+            UiFormat.setTextIfChanged(
+                    totalTransit, UiFormat.bytes(requireContext(), snapshot.totalTransit()));
+            UiFormat.setTextIfChanged(
+                    uptime, UiFormat.duration(requireContext(), snapshot.uptimeSeconds()));
+            UiFormat.setTextIfChanged(peers, UiFormat.count(requireContext(), snapshot.peers()));
+            UiFormat.setTextIfChanged(
+                    routers, UiFormat.count(requireContext(), snapshot.routers()));
             long totalTunnels = (long) snapshot.inboundTunnels() + snapshot.outboundTunnels()
                     + snapshot.transitTunnels();
-            tunnels.setText(UiFormat.count(requireContext(), totalTunnels));
+            UiFormat.setTextIfChanged(
+                    tunnels, UiFormat.count(requireContext(), totalTunnels));
         } else {
-            totalReceived.setText(R.string.value_unknown);
-            totalSent.setText(R.string.value_unknown);
-            totalTransit.setText(R.string.value_unknown);
-            uptime.setText(R.string.value_unknown);
-            peers.setText(R.string.value_unknown);
-            routers.setText(R.string.value_unknown);
-            tunnels.setText(R.string.value_unknown);
+            UiFormat.setTextIfChanged(totalReceived, getString(R.string.value_unknown));
+            UiFormat.setTextIfChanged(totalSent, getString(R.string.value_unknown));
+            UiFormat.setTextIfChanged(totalTransit, getString(R.string.value_unknown));
+            UiFormat.setTextIfChanged(uptime, getString(R.string.value_unknown));
+            UiFormat.setTextIfChanged(peers, getString(R.string.value_unknown));
+            UiFormat.setTextIfChanged(routers, getString(R.string.value_unknown));
+            UiFormat.setTextIfChanged(tunnels, getString(R.string.value_unknown));
         }
     }
 
@@ -110,6 +133,7 @@ public class StatisticsFragment extends Fragment {
             outState.putLongArray(STATE_CHART_DOWNLOAD, trafficChart.copyDownloadHistory());
             outState.putLongArray(STATE_CHART_UPLOAD, trafficChart.copyUploadHistory());
         }
+        outState.putLong(STATE_LAST_SAMPLE_UPTIME, lastSampleUptime);
         super.onSaveInstanceState(outState);
     }
 }

@@ -4,7 +4,7 @@
   Copyright (c) 2026, David Uhden Collado
   SPDX-License-Identifier: BSD-3-Clause
 -->
-<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
+<resources>
     <string-array name="pref_bandwidth_labels">
         <item>@string/pref_bandwidth_low</item>
         <item>@string/pref_bandwidth_medium</item>

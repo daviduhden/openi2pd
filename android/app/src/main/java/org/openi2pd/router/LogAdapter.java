@@ -99,7 +99,7 @@ public class LogAdapter extends ListAdapter<LogEntry, LogAdapter.Holder> {
                     : context.getString(R.string.value_unknown);
             String rawLevel = entry.level() == null ? "" : entry.level().trim();
             String levelText = rawLevel.isEmpty() ? context.getString(R.string.value_unknown)
-                                                  : rawLevel.toUpperCase(Locale.getDefault());
+                                                  : rawLevel.toUpperCase(Locale.ROOT);
             if (levelText.length() > MAX_LEVEL_LENGTH) {
                 levelText = levelText.substring(0, MAX_LEVEL_LENGTH);
             }
@@ -111,8 +111,9 @@ public class LogAdapter extends ListAdapter<LogEntry, LogAdapter.Holder> {
             level.setText(levelText);
             message.setText(messageText);
             level.setTextColor(colorFor(rawLevel));
-            itemView.setContentDescription(context.getString(
-                    R.string.log_entry_description, timeText, levelText, messageText));
+            // Keep the individual TextViews accessible. A row-level
+            // contentDescription duplicates the same text in TalkBack and can
+            // also make a multi-kilobyte log message a single enormous label.
         }
 
         private int colorFor(@NonNull String rawLevel) {

@@ -68,43 +68,47 @@ public class NetworkFragment extends Fragment {
         view.findViewById(R.id.button_refresh_network)
                 .setOnClickListener(ignored -> viewModel.refresh());
 
+        render(null);
         viewModel.getSnapshot().observe(getViewLifecycleOwner(), this::render);
     }
 
     private void render(@Nullable RouterSnapshot snapshot) {
         Context context = requireContext();
-        boolean hasData = snapshot != null && UiFormat.isRunning(snapshot);
+        boolean hasData = UiFormat.hasLiveMetrics(snapshot);
         boolean hasAddresses =
-                snapshot != null && snapshot.addresses() != null && !snapshot.addresses().isEmpty();
+                hasData && snapshot.addresses() != null && !snapshot.addresses().isEmpty();
 
-        networkState.setText(UiFormat.connectivity(context, snapshot));
+        if (hasData) {
+            UiFormat.setTextIfChanged(networkState, UiFormat.connectivity(context, snapshot));
+        } else {
+            UiFormat.setTextIfChanged(networkState,
+                    snapshot == null ? getString(R.string.value_unknown)
+                                     : getString(UiFormat.stateLabelRes(UiFormat.stateOf(snapshot))));
+        }
 
         boolean ipv4 = hasAddresses && UiFormat.hasAddress(snapshot.addresses(), false);
         boolean ipv6 = hasAddresses && UiFormat.hasAddress(snapshot.addresses(), true);
-        if (snapshot == null) {
-            chipIpv4.setText(R.string.value_unknown);
-            chipIpv6.setText(R.string.value_unknown);
-        } else {
-            chipIpv4.setText(
-                    ipv4 ? R.string.network_ipv4_available : R.string.network_ipv4_unavailable);
-            chipIpv6.setText(
-                    ipv6 ? R.string.network_ipv6_available : R.string.network_ipv6_unavailable);
-        }
+        UiFormat.setTextIfChanged(chipIpv4,
+                hasData ? getString(ipv4 ? R.string.network_ipv4_available
+                                         : R.string.network_ipv4_unavailable)
+                        : getString(R.string.value_unknown));
+        UiFormat.setTextIfChanged(chipIpv6,
+                hasData ? getString(ipv6 ? R.string.network_ipv6_available
+                                         : R.string.network_ipv6_unavailable)
+                        : getString(R.string.value_unknown));
 
-        if (snapshot == null) {
-            textIpv4.setText(R.string.value_unknown);
-            textIpv6.setText(R.string.value_unknown);
-            textNtcp2.setText(R.string.value_unknown);
-            textSsu2.setText(R.string.value_unknown);
+        if (hasData) {
+            UiFormat.setTextIfChanged(
+                    textIpv4, UiFormat.addressList(context, snapshot.addresses(), false));
+            UiFormat.setTextIfChanged(
+                    textIpv6, UiFormat.addressList(context, snapshot.addresses(), true));
+            UiFormat.setTextIfChanged(textNtcp2, UiFormat.transport(context, snapshot, true));
+            UiFormat.setTextIfChanged(textSsu2, UiFormat.transport(context, snapshot, false));
         } else {
-            textIpv4.setText(UiFormat.addressList(context, snapshot.addresses(), false));
-            textIpv6.setText(UiFormat.addressList(context, snapshot.addresses(), true));
-            textNtcp2.setText(
-                    getString(R.string.network_transport_format, getString(R.string.network_ntcp2),
-                            UiFormat.enabledDisabled(context, snapshot.ntcp2())));
-            textSsu2.setText(
-                    getString(R.string.network_transport_format, getString(R.string.network_ssu2),
-                            UiFormat.enabledDisabled(context, snapshot.ssu2())));
+            UiFormat.setTextIfChanged(textIpv4, getString(R.string.value_unknown));
+            UiFormat.setTextIfChanged(textIpv6, getString(R.string.value_unknown));
+            UiFormat.setTextIfChanged(textNtcp2, getString(R.string.value_unknown));
+            UiFormat.setTextIfChanged(textSsu2, getString(R.string.value_unknown));
         }
 
         ServiceStates services = snapshot == null ? null : snapshot.services();
@@ -121,8 +125,9 @@ public class NetworkFragment extends Fragment {
 
     private void setService(@NonNull TextView view, int labelRes, @Nullable Boolean running,
             @NonNull Context context) {
-        view.setText(getString(R.string.network_service_format, getString(labelRes),
-                running == null ? getString(R.string.value_unknown)
-                                : UiFormat.serviceState(context, running)));
+        UiFormat.setTextIfChanged(view,
+                getString(R.string.network_service_format, getString(labelRes),
+                        running == null ? getString(R.string.value_unknown)
+                                        : UiFormat.serviceState(context, running)));
     }
 }

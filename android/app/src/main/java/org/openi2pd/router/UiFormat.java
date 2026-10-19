@@ -7,7 +7,9 @@ package org.openi2pd.router;
 
 import android.content.Context;
 import android.text.TextUtils;
+import android.widget.TextView;
 
+import androidx.annotation.ColorRes;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
@@ -38,14 +40,39 @@ public final class UiFormat {
         }
         return switch (snapshot.state()) {
             case uninitialized, starting -> RouterState.STARTING;
-            case startedOkay ->
-                snapshot.online() ? RouterState.CONNECTED
-                                  : (snapshot.routerStatusCode() < 0 ? RouterState.ERROR
-                                                                     : RouterState.DEGRADED);
+            case startedOkay -> snapshot.routerStatusCode() < 0
+                    ? RouterState.ERROR
+                    : (snapshot.hasStatus() && snapshot.online() ? RouterState.CONNECTED
+                                                                 : RouterState.DEGRADED);
             case startFailed -> RouterState.ERROR;
-            case gracefulShutdownInProgress -> RouterState.STOPPING;
+            case gracefulShutdownInProgress, stopping -> RouterState.STOPPING;
             case stopped -> RouterState.STOPPED;
         };
+    }
+
+    /**
+     * Colour role for the router state. The status title is the primary state
+     * cue, so it must not rely on text alone.
+     */
+    @ColorRes
+    public static int stateColorRes(@NonNull RouterState state) {
+        return switch (state) {
+            case CONNECTED -> R.color.brand_success;
+            case DEGRADED -> R.color.brand_warning;
+            case STARTING, STOPPING -> R.color.brand_primary;
+            case ERROR -> R.color.brand_error;
+            case STOPPED, UNKNOWN -> R.color.brand_on_surface_variant;
+        };
+    }
+
+    /** True only when live counters from a parsed native status are available. */
+    public static boolean hasLiveMetrics(@Nullable RouterSnapshot snapshot) {
+        return snapshot != null && snapshot.hasLiveMetrics();
+    }
+
+    /** True when the daemon itself has completed its native start. */
+    public static boolean isStarted(@Nullable RouterSnapshot snapshot) {
+        return snapshot != null && snapshot.state() != null && snapshot.state().isStartedOkay();
     }
 
     public static int stateLabelRes(@NonNull RouterState state) {
@@ -72,19 +99,34 @@ public final class UiFormat {
     }
 
     public static boolean canStart(@Nullable RouterSnapshot snapshot) {
-        RouterState state = stateOf(snapshot);
-        return state == RouterState.STOPPED || state == RouterState.ERROR;
+        if (snapshot == null || snapshot.state() == null) {
+            return false;
+        }
+        return snapshot.state() == DaemonWrapper.State.stopped
+                || snapshot.state() == DaemonWrapper.State.startFailed;
     }
 
+    /**
+     * Stop is based on the real daemon lifecycle, not on presentation text. A
+     * started router whose status snapshot failed must still be stoppable.
+     */
     public static boolean canStop(@Nullable RouterSnapshot snapshot) {
-        RouterState state = stateOf(snapshot);
-        return state == RouterState.CONNECTED || state == RouterState.DEGRADED
-                || state == RouterState.STARTING || state == RouterState.STOPPING;
+        if (snapshot == null || snapshot.state() == null) {
+            return false;
+        }
+        DaemonWrapper.State state = snapshot.state();
+        return state.isStartedOkay() || state == DaemonWrapper.State.starting
+                || state == DaemonWrapper.State.stopping
+                || state == DaemonWrapper.State.startFailed;
     }
 
     public static boolean canRestart(@Nullable RouterSnapshot snapshot) {
-        RouterState state = stateOf(snapshot);
-        return state == RouterState.CONNECTED || state == RouterState.DEGRADED;
+        return snapshot != null && snapshot.state() == DaemonWrapper.State.startedOkay;
+    }
+
+    /** Begin (or cancel) a graceful stop only for a normally started router. */
+    public static boolean canGraceful(@Nullable RouterSnapshot snapshot) {
+        return canRestart(snapshot);
     }
 
     public static boolean gracefulActive(@Nullable RouterSnapshot snapshot) {
@@ -103,19 +145,28 @@ public final class UiFormat {
         return switch (state) {
             case STARTING -> context.getString(R.string.status_router_starting);
             case STOPPED -> context.getString(R.string.status_router_stopped);
-            case STOPPING ->
-                context.getString(R.string.status_router_graceful,
-                        grace(context, snapshot.graceRemainingMillis()));
+            case STOPPING -> snapshot.state() == DaemonWrapper.State.stopping
+                    ? context.getString(R.string.state_stopping)
+                    : context.getString(R.string.status_router_graceful,
+                            grace(context, snapshot.graceRemainingMillis()));
             case CONNECTED ->
                 snapshot.reseeding() ? context.getString(R.string.status_router_reseeding)
                                      : context.getString(R.string.status_router_online);
-            case DEGRADED -> context.getString(R.string.status_router_degraded);
+            case DEGRADED -> snapshot.nativeStarted() && !snapshot.hasStatus()
+                    ? context.getString(R.string.status_status_unavailable)
+                    : context.getString(R.string.status_router_degraded);
             case ERROR -> {
-                String detail = firstNonEmpty(
-                        snapshot.routerError(), snapshot.errorText(), snapshot.startResult());
+                String detail = errorDetail(snapshot);
+                if (snapshot.state() == DaemonWrapper.State.startFailed) {
+                    yield detail.isEmpty()
+                            ? context.getString(R.string.state_error)
+                            : context.getString(
+                                    R.string.status_start_failed_format, summarize(detail));
+                }
                 yield detail.isEmpty()
-                        ? context.getString(R.string.state_error)
-                        : context.getString(R.string.status_start_failed_format, summarize(detail));
+                        ? context.getString(R.string.status_status_unavailable)
+                        : context.getString(
+                                R.string.status_status_unavailable_format, summarize(detail));
             }
             case UNKNOWN -> context.getString(R.string.status_service_connecting);
         };
@@ -128,12 +179,19 @@ public final class UiFormat {
         }
         RouterState state = stateOf(snapshot);
         if (state == RouterState.ERROR) {
-            String detail = firstNonEmpty(
-                    snapshot.routerError(), snapshot.errorText(), snapshot.startResult());
-            if (!detail.isEmpty()) {
-                return context.getString(R.string.warning_start_failed_format, summarize(detail));
+            String detail = errorDetail(snapshot);
+            if (snapshot.state() == DaemonWrapper.State.startFailed) {
+                return detail.isEmpty()
+                        ? context.getString(R.string.warning_router_error)
+                        : context.getString(R.string.warning_start_failed_format, summarize(detail));
             }
-            return context.getString(R.string.warning_service_disconnected);
+            return detail.isEmpty()
+                    ? context.getString(R.string.warning_status_unavailable)
+                    : context.getString(
+                            R.string.warning_status_unavailable_format, summarize(detail));
+        }
+        if (state == RouterState.DEGRADED && snapshot.nativeStarted() && !snapshot.hasStatus()) {
+            return context.getString(R.string.warning_status_unavailable);
         }
         if (state == RouterState.CONNECTED || state == RouterState.DEGRADED) {
             String error = snapshot.errorText();
@@ -149,10 +207,8 @@ public final class UiFormat {
 
     @NonNull
     public static String connectivity(@NonNull Context context, @Nullable RouterSnapshot snapshot) {
-        if (snapshot == null || stateOf(snapshot) == RouterState.UNKNOWN) {
-            return context.getString(R.string.value_unknown);
-        }
-        if (stateOf(snapshot) == RouterState.STARTING) {
+        if (!hasLiveMetrics(snapshot) || stateOf(snapshot) == RouterState.UNKNOWN
+                || stateOf(snapshot) == RouterState.STARTING) {
             return context.getString(R.string.value_unknown);
         }
         return context.getString(
@@ -160,17 +216,19 @@ public final class UiFormat {
     }
 
     @NonNull
+    public static String transport(
+            @NonNull Context context, @Nullable RouterSnapshot snapshot, boolean ntcp2) {
+        String value = hasLiveMetrics(snapshot)
+                ? enabledDisabled(context, ntcp2 ? snapshot.ntcp2() : snapshot.ssu2())
+                : context.getString(R.string.value_unknown);
+        return context.getString(R.string.network_transport_format,
+                context.getString(ntcp2 ? R.string.network_ntcp2 : R.string.network_ssu2), value);
+    }
+
+    @NonNull
     public static String transports(@NonNull Context context, @Nullable RouterSnapshot snapshot) {
-        if (snapshot == null) {
-            return context.getString(R.string.value_unknown);
-        }
-        String ntcp2 = context.getString(R.string.network_transport_format,
-                context.getString(R.string.network_ntcp2),
-                enabledDisabled(context, snapshot.ntcp2()));
-        String ssu2 = context.getString(R.string.network_transport_format,
-                context.getString(R.string.network_ssu2),
-                enabledDisabled(context, snapshot.ssu2()));
-        return context.getString(R.string.dashboard_transports_format, ntcp2, ssu2);
+        return context.getString(R.string.dashboard_transports_format,
+                transport(context, snapshot, true), transport(context, snapshot, false));
     }
 
     @NonNull
@@ -318,6 +376,22 @@ public final class UiFormat {
         return TextUtils.isEmpty(value) ? context.getString(R.string.value_unknown) : value;
     }
 
+    /**
+     * Avoids re-layout when a one-second snapshot carries an unchanged field.
+     * All text still comes from the immutable snapshot; this only skips the
+     * redundant {@link TextView#setText(CharSequence)} call.
+     */
+    public static void setTextIfChanged(@NonNull TextView view, @NonNull CharSequence text) {
+        if (!TextUtils.equals(view.getText(), text)) {
+            view.setText(text);
+        }
+    }
+
+    @NonNull
+    private static String errorDetail(@NonNull RouterSnapshot snapshot) {
+        return firstNonEmpty(snapshot.routerError(), snapshot.errorText(), snapshot.startResult());
+    }
+
     @NonNull
     private static String firstNonEmpty(@Nullable String... values) {
         if (values == null) {
@@ -351,7 +425,10 @@ public final class UiFormat {
 
     @NonNull
     private static Locale locale(@NonNull Context context) {
-        return context.getResources().getConfiguration().getLocales().get(0);
+        // The interface is English-only. Keep formatting deterministic and
+        // independent of the device locale; this is not a Locale.setDefault()
+        // change and does not affect Unicode input or data.
+        return Locale.ENGLISH;
     }
 
     @NonNull

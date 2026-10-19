@@ -118,8 +118,8 @@ public class SettingsFragment extends PreferenceFragmentCompat {
             values.put("sam.enabled", localStore.getString("sam.enabled", "false"));
             values.put("sam.address", localStore.getString("sam.address", "127.0.0.1"));
             values.put("sam.port", localStore.getString("sam.port", "7656"));
-            values.put("upnp.enabled", localStore.getString("upnp.enabled", "false"));
-            values.put("upnp.name", localStore.getString("upnp.name", "I2Pd"));
+            values.put("upnp.enabled", localStore.getString("upnp.enabled", "true"));
+            values.put("upnp.name", localStore.getString("upnp.name", "openi2pd"));
             values.put("port", localStore.getString("port", "auto"));
             boolean autostart = AutoStartController.isEnabled(context);
 
@@ -163,8 +163,8 @@ public class SettingsFragment extends PreferenceFragmentCompat {
         bindText("samAddressPreference", "sam.address", "127.0.0.1", Kind.ADDRESS);
         bindText("samPortPreference", "sam.port", "7656", Kind.PORT);
 
-        bindSwitch("upnpEnablePreference", "upnp.enabled", false);
-        bindText("upnpForwardNamePreference", "upnp.name", "I2Pd", Kind.TEXT);
+        bindSwitch("upnpEnablePreference", "upnp.enabled", true);
+        bindText("upnpForwardNamePreference", "upnp.name", "openi2pd", Kind.TEXT);
     }
 
     private void bindAutostart(boolean enabled) {

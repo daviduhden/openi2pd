@@ -20,6 +20,7 @@ import androidx.lifecycle.ViewModelProvider;
 
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import com.google.android.material.progressindicator.LinearProgressIndicator;
 
 /**
  * Tunnel counts, configuration reload and graceful stop.
@@ -39,6 +40,7 @@ public class TunnelsFragment extends Fragment {
     private MaterialButton reloadTunnels;
     private MaterialButton gracefulStop;
     private TextView graceRemaining;
+    private LinearProgressIndicator graceProgress;
 
     private RouterSnapshot lastSnapshot;
 
@@ -61,6 +63,7 @@ public class TunnelsFragment extends Fragment {
         reloadTunnels = view.findViewById(R.id.button_reload_tunnels);
         gracefulStop = view.findViewById(R.id.button_graceful_stop);
         graceRemaining = view.findViewById(R.id.text_grace_remaining);
+        graceProgress = view.findViewById(R.id.grace_progress);
 
         reloadTunnels.setOnClickListener(ignored -> {
             viewModel.reloadTunnels();
@@ -84,38 +87,54 @@ public class TunnelsFragment extends Fragment {
             }
         });
 
+        render(null);
         viewModel.getSnapshot().observe(getViewLifecycleOwner(), this::render);
     }
 
     private void render(@Nullable RouterSnapshot snapshot) {
         lastSnapshot = snapshot;
-        boolean hasData = snapshot != null && UiFormat.isRunning(snapshot);
+        boolean hasData = UiFormat.hasLiveMetrics(snapshot);
         if (hasData) {
-            tunnelsIn.setText(UiFormat.count(requireContext(), snapshot.inboundTunnels()));
-            tunnelsOut.setText(UiFormat.count(requireContext(), snapshot.outboundTunnels()));
-            tunnelsTransit.setText(UiFormat.count(requireContext(), snapshot.transitTunnels()));
+            UiFormat.setTextIfChanged(
+                    tunnelsIn, UiFormat.count(requireContext(), snapshot.inboundTunnels()));
+            UiFormat.setTextIfChanged(
+                    tunnelsOut, UiFormat.count(requireContext(), snapshot.outboundTunnels()));
+            UiFormat.setTextIfChanged(
+                    tunnelsTransit, UiFormat.count(requireContext(), snapshot.transitTunnels()));
             long total = (long) snapshot.inboundTunnels() + snapshot.outboundTunnels()
                     + snapshot.transitTunnels();
-            tunnelsTotal.setText(UiFormat.count(requireContext(), total));
+            UiFormat.setTextIfChanged(tunnelsTotal, UiFormat.count(requireContext(), total));
         } else {
-            tunnelsIn.setText(R.string.value_unknown);
-            tunnelsOut.setText(R.string.value_unknown);
-            tunnelsTransit.setText(R.string.value_unknown);
-            tunnelsTotal.setText(R.string.value_unknown);
+            UiFormat.setTextIfChanged(tunnelsIn, getString(R.string.value_unknown));
+            UiFormat.setTextIfChanged(tunnelsOut, getString(R.string.value_unknown));
+            UiFormat.setTextIfChanged(tunnelsTransit, getString(R.string.value_unknown));
+            UiFormat.setTextIfChanged(tunnelsTotal, getString(R.string.value_unknown));
         }
 
         boolean gracefulActive = UiFormat.gracefulActive(snapshot);
         gracefulStop.setText(gracefulActive ? R.string.action_cancel_graceful_stop
                                             : R.string.action_graceful_stop);
-        gracefulStop.setEnabled(gracefulActive || UiFormat.canRestart(snapshot));
+        gracefulStop.setEnabled(gracefulActive || UiFormat.canGraceful(snapshot));
         reloadTunnels.setEnabled(UiFormat.isConnected(snapshot));
 
         if (gracefulActive && snapshot != null) {
             graceRemaining.setVisibility(View.VISIBLE);
-            graceRemaining.setText(getString(R.string.tunnels_grace_remaining,
-                    UiFormat.grace(requireContext(), snapshot.graceRemainingMillis())));
+            UiFormat.setTextIfChanged(graceRemaining,
+                    getString(R.string.tunnels_grace_remaining,
+                            UiFormat.grace(requireContext(), snapshot.graceRemainingMillis())));
+            if (graceProgress != null) {
+                long total = Math.max(1L, DaemonWrapper.GRACEFUL_STOP_DELAY_MILLIS);
+                long remaining = Math.min(total, snapshot.graceRemainingMillis());
+                graceProgress.setMax(1000);
+                graceProgress.setProgressCompat(
+                        (int) Math.round(remaining * 1000.0d / total), true);
+                graceProgress.setVisibility(View.VISIBLE);
+            }
         } else {
             graceRemaining.setVisibility(View.GONE);
+            if (graceProgress != null) {
+                graceProgress.setVisibility(View.GONE);
+            }
         }
     }
 

@@ -4,22 +4,24 @@
   Copyright (c) 2026, David Uhden Collado
   SPDX-License-Identifier: BSD-3-Clause
 -->
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<org.openi2pd.router.MaxWidthLinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:layout_gravity="center_horizontal"
     android:orientation="vertical"
     android:paddingStart="@dimen/screen_padding"
     android:paddingTop="@dimen/screen_padding"
     android:paddingEnd="@dimen/screen_padding"
+    android:paddingBottom="@dimen/screen_padding_bottom"
     tools:context=".LogsFragment">
 
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="@string/logs_title"
-        android:textAppearance="?attr/textAppearanceHeadlineSmall" />
+        android:text="@string/logs_intro"
+        android:textAppearance="@style/TextAppearance.OpenI2Pd.Label" />
 
     <com.google.android.material.textfield.TextInputLayout
         style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
@@ -94,11 +96,14 @@
     </HorizontalScrollView>
 
     <TextView
+        android:id="@+id/logs_summary"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="@dimen/margin_small"
-        android:text="@string/logs_note"
-        android:textAppearance="@style/TextAppearance.OpenI2Pd.Label" />
+        android:textAppearance="@style/TextAppearance.OpenI2Pd.Label"
+        android:visibility="gone"
+        tools:text="42 shown of 120 retained"
+        tools:visibility="visible" />
 
     <com.google.android.material.progressindicator.LinearProgressIndicator
         android:id="@+id/logs_progress"
@@ -142,9 +147,11 @@
                 app:tint="?attr/colorOnSurfaceVariant" />
 
             <TextView
+                android:id="@+id/logs_empty_text"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="@dimen/margin_small"
+                android:accessibilityLiveRegion="polite"
                 android:gravity="center"
                 android:text="@string/logs_empty"
                 android:textAppearance="@style/TextAppearance.OpenI2Pd.Body"
@@ -160,4 +167,4 @@
         android:layout_marginTop="@dimen/margin_small"
         android:minHeight="@dimen/touch_target"
         android:text="@string/action_clear_logs" />
-</LinearLayout>
+</org.openi2pd.router.MaxWidthLinearLayout>

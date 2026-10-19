@@ -7,6 +7,7 @@ package org.openi2pd.router;
 
 import android.content.Context;
 import android.graphics.Canvas;
+import android.graphics.DashPathEffect;
 import android.graphics.Paint;
 import android.graphics.Path;
 import android.util.AttributeSet;
@@ -78,6 +79,9 @@ public class TrafficChartView extends View {
         uploadPaint.setStrokeWidth(dp(2f));
         uploadPaint.setStrokeCap(Paint.Cap.ROUND);
         uploadPaint.setStrokeJoin(Paint.Join.ROUND);
+        // A dashed upload line keeps the two series distinguishable without
+        // relying on colour alone (grayscale, colour-vision deficiency).
+        uploadPaint.setPathEffect(new DashPathEffect(new float[] {dp(6f), dp(4f)}, 0f));
 
         downloadFillPaint.setColor(downloadColor);
         downloadFillPaint.setStyle(Paint.Style.FILL);

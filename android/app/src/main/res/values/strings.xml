@@ -4,7 +4,7 @@
   Copyright (c) 2026, David Uhden Collado
   SPDX-License-Identifier: BSD-3-Clause
 -->
-<resources xmlns:tools="http://schemas.android.com/tools" tools:ignore="MissingTranslation">
+<resources>
     <string name="app_name" translatable="false">openi2pd</string>
 
     <string name="action_start">Start</string>
@@ -30,7 +30,7 @@
 
     <string name="menu_item_battery_optimizations_str">Battery Optimizations</string>
     <string name="battery_optimizations_enabled">Battery optimizations enabled</string>
-    <string name="battery_optimizations_enabled_dialog">Your Android is doing some heavy battery optimizations on I2PD that might lead to daemon closing with no other reason.\n\nYou will now be asked to allow to disable those.</string>
+    <string name="battery_optimizations_enabled_dialog">Your Android is doing some heavy battery optimizations on openi2pd that might lead to the daemon closing with no other reason.\n\nYou will now be asked to allow those to be disabled.</string>
     <string name="os_version_does_not_support_battery_optimizations_show_os_dialog_api">Your Android OS version does not support showing the dialog for battery optimizations for applications.</string>
 
     <string name="tunnels_reloading">Reloading tunnels config...</string>
@@ -39,7 +39,7 @@
 
     <!-- Navigation and toolbar -->
     <string name="nav_home">Dashboard</string>
-    <string name="nav_network">Network</string>
+    <string name="nav_network">Connections</string>
     <string name="nav_tunnels">Tunnels</string>
     <string name="nav_stats">Statistics</string>
     <string name="nav_settings">Settings</string>
@@ -72,7 +72,11 @@
     <string name="status_router_stopped">Router is not running</string>
     <string name="status_router_graceful">Draining transit tunnels: %1$s remaining</string>
     <string name="status_start_failed_format">Start failed: %1$s</string>
+    <string name="status_status_unavailable">Router is running, but its status is unavailable</string>
+    <string name="status_status_unavailable_format">Router is running, but its status is unavailable: %1$s</string>
     <string name="dashboard_transports_format">%1$s · %2$s</string>
+    <string name="dashboard_quick_actions">Quick actions</string>
+    <string name="dashboard_live_metrics">Live metrics</string>
     <string name="metric_uptime">Uptime</string>
     <string name="metric_peers">Peers</string>
     <string name="metric_routers">Known routers</string>
@@ -95,7 +99,11 @@
     <string name="warning_offline">The router is running, but no network connection is available. Check Wi-Fi or mobile data.</string>
     <string name="warning_error_format">The router reported a problem: %1$s</string>
     <string name="warning_start_failed_format">The router failed to start: %1$s</string>
-    <string name="warning_service_disconnected">The router service is not connected yet. If this persists, reopen the app.</string>
+    <string name="warning_router_error">The router reported an error.</string>
+    <string name="warning_status_unavailable">The router is running, but its status snapshot is unavailable. Counters are hidden until a fresh snapshot arrives.</string>
+    <string name="warning_status_unavailable_format">The router status snapshot is unavailable: %1$s</string>
+    <string name="service_disconnected_banner">The router service is disconnected. Status may be out of date.</string>
+    <string name="action_retry">Retry</string>
 
     <!-- Confirmations and notices -->
     <string name="confirm_stop_title">Stop the router?</string>
@@ -156,9 +164,11 @@
     <string name="statistics_tunnels">Tunnels</string>
     <string name="statistics_chart_download">Download</string>
     <string name="statistics_chart_upload">Upload</string>
+    <string name="statistics_chart_window">Last 2 minutes · 1 s samples</string>
 
     <!-- Logs -->
     <string name="logs_title">Logs</string>
+    <string name="logs_intro">Search and filter the bounded native log stream.</string>
     <string name="logs_search_hint">Search logs</string>
     <string name="logs_filter_all">All</string>
     <string name="logs_filter_error">Error</string>
@@ -168,9 +178,11 @@
     <string name="logs_empty">No log entries yet</string>
     <string name="logs_empty_filtered">No entries match the current filters</string>
     <string name="logs_loading">Waiting for the router service…</string>
-    <string name="logs_note">Native i2pd logs appear here only when the core exposes them through the JNI log stream. If the list stays empty, native logging may be unavailable in this build.</string>
+    <string name="logs_summary_format">%1$d shown of %2$d retained</string>
     <string name="logs_cleared">Log entries cleared.</string>
-    <string name="log_entry_description">%1$s, %2$s: %3$s</string>
+    <string name="tile_state_format">%1$s: %2$s</string>
+    <string name="notification_permission_denied">Notifications are disabled. The router can run, but its foreground status will not be visible.</string>
+    <string name="local_network_permission_denied">Local network access is denied. UPnP port mapping is unavailable; I2P connectivity can still work.</string>
 
     <!-- Units -->
     <string name="rate_bps">%1$s B/s</string>
@@ -189,9 +201,10 @@
 
     <!-- About -->
     <string name="about_title">About</string>
+    <string name="about_intro">A native I2P router for Android, built with the openi2pd visual identity.</string>
     <string name="about_version_label">Version</string>
     <string name="about_version_format">%1$s (build %2$d)</string>
-    <string name="about_abi_label">Native ABI</string>
+    <string name="about_abi_label">Device ABI</string>
     <string name="about_build_label">Build type</string>
     <string name="about_build_debug">Debug build</string>
     <string name="about_build_release">Release build</string>
@@ -201,7 +214,7 @@
     <string name="about_repository_label">Source repository</string>
     <string name="about_data_unavailable">Not available</string>
     <string name="repository_url" translatable="false">https://github.com/daviduhden/openi2pd</string>
-    <string name="license_url" translatable="false">https://github.com/daviduhden/openi2pd/blob/master/LICENSE</string>
+    <string name="license_url" translatable="false">https://github.com/daviduhden/openi2pd/blob/main/LICENSE</string>
 
     <!-- Settings -->
     <string name="pref_category_general">General</string>
@@ -220,6 +233,10 @@
     <string name="pref_ssu_title">Enable SSU2</string>
     <string name="pref_port_title">Listening port</string>
     <string name="pref_port_summary">Port selection is automatic. Edit the configuration file to change it.</string>
+    <string name="pref_upnp_enable_title">Enable UPnP</string>
+    <string name="pref_upnp_enable_summary">Ask the local gateway to forward NTCP2 and SSU2 ports automatically.</string>
+    <string name="pref_upnp_name_title">UPnP forwarding name</string>
+    <string name="pref_upnp_name_summary">Name shown for this router in the gateway forwarding list.</string>
     <string name="pref_no_transit_title">Disable transit tunnels</string>
     <string name="pref_no_transit_summary">Prevent other routers from routing traffic through this device.</string>
     <string name="pref_floodfill_title">Run as floodfill</string>
@@ -239,8 +256,6 @@
     <string name="pref_sam_enable_title">Enable SAM</string>
     <string name="pref_sam_address_title">SAM address</string>
     <string name="pref_sam_port_title">SAM port</string>
-    <string name="pref_upnp_enable_title">Enable UPnP</string>
-    <string name="pref_upnp_name_title">UPnP forwarding name</string>
     <string name="pref_invalid_port">Enter a port from 0 to 65535.</string>
     <string name="pref_invalid_address">Enter a valid address or host name.</string>
     <string name="pref_invalid_positive">Enter a positive whole number.</string>

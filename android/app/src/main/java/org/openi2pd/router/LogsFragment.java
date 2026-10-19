@@ -6,6 +6,8 @@
 package org.openi2pd.router;
 
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.text.Editable;
 import android.text.TextWatcher;
 import android.view.LayoutInflater;
@@ -40,17 +42,22 @@ public class LogsFragment extends Fragment {
     private static final String STATE_QUERY = "log_query";
     private static final String STATE_FILTER = "log_filter";
     private static final int MAX_VISIBLE_LOGS = 1000;
+    private static final long SEARCH_DEBOUNCE_MS = 250L;
 
     private RouterViewModel viewModel;
     private LogAdapter adapter;
     private RecyclerView logsList;
     private TextInputEditText search;
     private ChipGroup filterGroup;
-    private TextView emptyState;
+    private View emptyState;
+    private TextView emptyText;
+    private TextView summary;
     private LinearProgressIndicator progress;
     private MaterialButton clearLogs;
+    private Handler searchHandler;
 
     private final List<LogEntry> allLogs = new ArrayList<>();
+    private final Runnable applySearchFilter = () -> applyFilters(false);
     private String query = "";
     private int filterId = R.id.filter_all;
     private boolean serviceConnected;
@@ -71,8 +78,11 @@ public class LogsFragment extends Fragment {
         search = view.findViewById(R.id.logs_search);
         filterGroup = view.findViewById(R.id.logs_filter_group);
         emptyState = view.findViewById(R.id.logs_empty);
+        emptyText = view.findViewById(R.id.logs_empty_text);
+        summary = view.findViewById(R.id.logs_summary);
         progress = view.findViewById(R.id.logs_progress);
         clearLogs = view.findViewById(R.id.button_clear_logs);
+        searchHandler = new Handler(Looper.getMainLooper());
 
         if (savedInstanceState != null) {
             query = savedInstanceState.getString(STATE_QUERY, "");
@@ -104,7 +114,10 @@ public class LogsFragment extends Fragment {
             @Override
             public void afterTextChanged(Editable editable) {
                 query = editable == null ? "" : editable.toString().trim();
-                applyFilters(false);
+                if (searchHandler != null) {
+                    searchHandler.removeCallbacks(applySearchFilter);
+                    searchHandler.postDelayed(applySearchFilter, SEARCH_DEBOUNCE_MS);
+                }
             }
         });
 
@@ -117,6 +130,9 @@ public class LogsFragment extends Fragment {
                 filterId = R.id.filter_all;
             } else {
                 filterId = checkedIds.get(0);
+            }
+            if (searchHandler != null) {
+                searchHandler.removeCallbacks(applySearchFilter);
             }
             applyFilters(false);
         });
@@ -166,7 +182,7 @@ public class LogsFragment extends Fragment {
         }
         boolean wasAtBottom = isAtBottom();
         List<LogEntry> filtered = new ArrayList<>();
-        String normalizedQuery = query.toLowerCase(Locale.getDefault());
+        String normalizedQuery = query.toLowerCase(Locale.ROOT);
         for (LogEntry entry : allLogs) {
             if (matchesLevel(entry) && matchesQuery(entry, normalizedQuery)) {
                 filtered.add(entry);
@@ -185,6 +201,7 @@ public class LogsFragment extends Fragment {
                 logsList.scrollToPosition(visible.size() - 1);
             }
             updateEmptyState();
+            updateSummary();
             updateClearButton();
         });
     }
@@ -216,11 +233,11 @@ public class LogsFragment extends Fragment {
         }
         return (entry.message() != null
                        && entry.message()
-                               .toLowerCase(Locale.getDefault())
+                               .toLowerCase(Locale.ROOT)
                                .contains(normalizedQuery))
                 || (entry.level() != null
                         && entry.level()
-                                .toLowerCase(Locale.getDefault())
+                                .toLowerCase(Locale.ROOT)
                                 .contains(normalizedQuery));
     }
 
@@ -241,16 +258,38 @@ public class LogsFragment extends Fragment {
         }
         boolean empty = adapter == null || adapter.getItemCount() == 0;
         emptyState.setVisibility(empty ? View.VISIBLE : View.GONE);
-        if (empty) {
+        if (empty && emptyText != null) {
             if (allLogs.isEmpty() && !serviceConnected) {
-                emptyState.setText(R.string.logs_loading);
+                emptyText.setText(R.string.logs_loading);
             } else if (allLogs.isEmpty()) {
-                emptyState.setText(R.string.logs_empty);
+                emptyText.setText(R.string.logs_empty);
             } else {
-                emptyState.setText(R.string.logs_empty_filtered);
+                emptyText.setText(R.string.logs_empty_filtered);
             }
         }
-        progress.setVisibility(empty && !serviceConnected ? View.VISIBLE : View.GONE);
+        if (logsList != null) {
+            logsList.setImportantForAccessibility(empty
+                            ? View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS
+                            : View.IMPORTANT_FOR_ACCESSIBILITY_AUTO);
+        }
+        if (progress != null) {
+            progress.setVisibility(empty && !serviceConnected ? View.VISIBLE : View.GONE);
+        }
+    }
+
+    private void updateSummary() {
+        if (!isAdded() || summary == null) {
+            return;
+        }
+        int shown = adapter == null ? 0 : adapter.getItemCount();
+        int retained = allLogs.size();
+        if (retained == 0) {
+            summary.setVisibility(View.GONE);
+            return;
+        }
+        summary.setVisibility(View.VISIBLE);
+        UiFormat.setTextIfChanged(
+                summary, getString(R.string.logs_summary_format, shown, retained));
     }
 
     private void updateClearButton() {
@@ -258,6 +297,15 @@ public class LogsFragment extends Fragment {
             // Without a bound service there is no retained list to clear.
             clearLogs.setEnabled(serviceConnected && !allLogs.isEmpty());
         }
+    }
+
+    @Override
+    public void onDestroyView() {
+        if (searchHandler != null) {
+            searchHandler.removeCallbacksAndMessages(null);
+            searchHandler = null;
+        }
+        super.onDestroyView();
     }
 
     @Override
