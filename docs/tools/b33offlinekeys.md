@@ -29,8 +29,10 @@ i2cp.leaseSetType = 5
 
 ## Security
 
-Reads the destination private key and writes a new private key batch. Keep both
-offline. The batch expires; publication stops when the days run out.
+Reads the destination private key and writes a new private key batch. The
+output is created with owner-only permissions on POSIX (best-effort owner
+read/write on Windows). Keep both offline. The batch expires; publication
+stops when the days run out.
 
 ## Compatibility
 

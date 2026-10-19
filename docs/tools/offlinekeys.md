@@ -22,9 +22,11 @@ expiry.
 
 ## Security
 
-The input and output files both contain private material. The tool wipes
-temporary buffers; protect the files themselves. An offline batch stops being
-valid after the expiry date; the router then cannot publish that destination
+The input and output files both contain private material. Native output is
+created with owner-only permissions on POSIX and best-effort owner read/write
+on Windows; the tool also wipes temporary buffers. Protect the files
+themselves. An offline batch stops being valid after the expiry date; the
+router then cannot publish that destination
 until a new batch is supplied.
 
 ## Compatibility

@@ -18,7 +18,6 @@ keygen <output-file> [<signature-type>]
 ## Example
 
 ```sh
-umask 077
 keygen service.keys ED25519-SHA512
 keyinfo -v service.keys
 ```
@@ -30,12 +29,13 @@ The output file is the binary `PrivateKeys` serialization used by i2pd
 
 ## Security
 
-The file is written with the process umask. Set `umask 077`. Never share or
-commit it. The tool wipes its temporary buffer after writing, but the file
-itself remains until deleted.
+On POSIX the key file is created with owner-only permissions (`0600`) and an
+existing regular file is tightened; Windows applies a best-effort owner
+read/write mode. The tool wipes its temporary buffer after writing, but the
+file itself remains until deleted.
 
 ## Compatibility
 
 Signature and crypto types are the I2P protocol constants from
-`libi2pd/Identity.h`. Ed25519ph and other OpenSSL-dependent types require a
+`libi2pd/Identity.h`. Ed25519ph/type 8 uses plain Ed25519; other OpenSSL-dependent types require a
 library that supports them.

@@ -2,9 +2,9 @@
 
 Perl 5 client for the retained I2PControl HTTPS service. It preserves the CLI
 of the former project-maintained Python script and uses only Perl core modules
-(`Getopt::Long`, `JSON::PP`, `HTTP::Tiny`, `IPC::Open3`, `IO::Select`,
-`POSIX`, `Symbol`) plus the system `openssl` binary for the self-signed HTTPS
-fallback when `IO::Socket::SSL` is unavailable.
+(`Config`, `File::Spec`, `Getopt::Long`, `JSON::PP`, `HTTP::Tiny`, `IPC::Open3`,
+`IO::Select`, `POSIX`, `Symbol`) plus the system `openssl` binary for the
+self-signed HTTPS fallback when `IO::Socket::SSL` is unavailable.
 
 ## Syntax
 
@@ -62,9 +62,12 @@ inject ANSI escapes or forge output lines.
 External commands use an argument list (`IPC::Open3`), never a shell; the
 validated host, port and path are passed as separate arguments, and no
 `eval STRING` is applied to network data. Proxy environment variables are
-ignored, so the password and token are not forwarded to an unintended proxy.
-The self-signed TLS exception is documented as a compatibility choice, not a
-general recommendation.
+removed from a localized environment before `HTTP::Tiny` is created, and the
+explicit proxy options are disabled, so the password and token are not
+forwarded to an unintended proxy. The `openssl` fallback is found only through
+absolute `PATH` entries; relative entries are ignored. The self-signed TLS
+exception is documented as a compatibility choice, not a general
+recommendation.
 
 ## Compatibility
 
@@ -78,9 +81,20 @@ inventory and validation commands.
 
 ```sh
 perl -c tools/scripts/i2pdctl
+perl -c tools/scripts/validate-branding.pl
 prove -v tools/tests/i2pdctl.t
+prove -v tools/tests/validate-branding.t
+perlcritic --profile .perlcriticrc tools/scripts/i2pdctl   # optional
 git diff --check
 ```
+
+CMake registers `perl-i2pdctl-syntax`, `perl-i2pdctl`, `perl-portability`,
+`perl-validate-branding` and `perl-install-layout` when Perl is available.
+`perl-install-layout` installs only the `Tools` component into a private
+prefix and checks the installed file mode, shebang and `perl -c` syntax.
+Test::More is used by the client and branding tests; Perl::Critic remains an
+optional static style check (`-DI2PD_PERL_CRITIC=ON`) and is not a build or
+runtime dependency.
 
 The regression test runs a local fake JSON-RPC server for the plain HTTP path
 and a temporary `openssl` shim with `I2PDCTL_TLS_BACKEND=openssl` for the

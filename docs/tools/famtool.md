@@ -14,7 +14,6 @@ famtool [-v] -V -c family.crt -f router.info
 ## Examples
 
 ```sh
-umask 077
 famtool -g -n i2pfam -c myfam.crt -k myfam.pem
 famtool -s -n i2pfam -k myfam.pem -i router.keys -f router.info
 famtool -V -c myfam.crt -f router.info
@@ -22,8 +21,9 @@ famtool -V -c myfam.crt -f router.info
 
 ## Security
 
-- `-g` writes an **unencrypted** EC private key PEM. Keep it offline and never
-  publish `myfam.pem`.
+- `-g` writes an **unencrypted** EC private key PEM. On POSIX the file is
+  explicitly restricted to owner read/write; keep it offline and never publish
+  `myfam.pem`. Windows uses the process ACL and should be checked manually.
 - The family name is limited so it fits the 50-byte signed family blob.
 - Certificate parsing uses OpenSSL; the tool now uses `TLS_method()` and checks
   allocations instead of the removed `TLSv1_method()`.

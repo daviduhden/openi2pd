@@ -9,7 +9,9 @@ i2pbase64 [-d] [filename]
 ```
 
 Without `-d`, reads binary and writes base64. With `-d`, reads base64
-(ignoring ASCII whitespace) and writes binary. If no filename is given, stdin is
+(ignoring ASCII whitespace) and writes binary. The Windows build switches
+stdin/stdout to binary mode so CRLF translation cannot corrupt decoded data.
+If no filename is given, stdin is
 used; output is always stdout.
 
 ## Example
