@@ -8,7 +8,6 @@
 * See full license text in LICENSE file at top of project tree
 */
 
-#if WINVER != 0x0501 // supported since Vista
 #include "Win32NetState.h"
 #include <windows.h>
 #include "Log.h"
@@ -108,5 +107,3 @@ void UnSubscribeFromEvents ()
 		LogPrint (eLogError, "NetState: Received exception: ", ex.what ());
 	}
 }
-
-#endif // WINVER

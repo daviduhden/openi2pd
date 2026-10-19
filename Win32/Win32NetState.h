@@ -11,7 +11,6 @@
 #ifndef WIN_32_NETSTATE_H__
 #define WIN_32_NETSTATE_H__
 
-#if WINVER != 0x0501 // supported since Vista
 #include <netlistmgr.h>
 #include <ocidl.h>
 #include "Log.h"
@@ -90,10 +89,4 @@ private:
 void SubscribeToEvents ();
 void UnSubscribeFromEvents ();
 
-#else // WINVER == 0x0501
-
-void SubscribeToEvents () { }
-void UnSubscribeFromEvents () { }
-
-#endif // WINVER
 #endif
