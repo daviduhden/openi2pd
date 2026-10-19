@@ -190,7 +190,7 @@ namespace
 		return result;
 	}
 
-	std::expected<void, std::string> SetPipeMessageMode (HANDLE pipe)
+	i2p::expected<void, std::string> SetPipeMessageMode (HANDLE pipe)
 	{
 		DWORD mode = PIPE_READMODE_MESSAGE;
 		if (!SetNamedPipeHandleState (pipe, &mode, nullptr, nullptr))
@@ -450,7 +450,7 @@ i2p::expected<std::optional<Message>, std::string> WindowsChannel::Receive (DWOR
 	}
 	if (read == 0) return i2p::unexpected ("worker pipe closed");
 	auto decoded = Decode (std::string_view (buffer.data (), read));
-	if (!decoded) return i2p::unexpected ("protocol: " + decoded.error ().text);
+	if (!decoded) return i2p::unexpected ("protocol: " + std::string (decoded.error ().text));
 	return std::optional<Message> (std::move (*decoded));
 }
 
@@ -637,8 +637,19 @@ i2p::expected<WindowsWorkerProcess, std::string> SpawnWindowsWorker (const std::
 		if (!attributeSize || !InitializeProcThreadAttributeList (startup.lpAttributeList, 1, 0, &attributeSize))
 			return i2p::unexpected ("InitializeProcThreadAttributeList: " + Win32ErrorText (GetLastError ()));
 		attributesInitialized = true;
+		// Keep DEP, SEHOP and mandatory ASLR enabled for the child. The
+		// DEP-ATL compatibility emulation bit is deliberately not set; it
+		// would weaken DEP and is not defined by the MinGW headers.
+#ifndef PROCESS_CREATION_MITIGATION_POLICY_DEP_ENABLE
+#define PROCESS_CREATION_MITIGATION_POLICY_DEP_ENABLE 0x00000001ULL
+#endif
+#ifndef PROCESS_CREATION_MITIGATION_POLICY_SEHOP_ENABLE
+#define PROCESS_CREATION_MITIGATION_POLICY_SEHOP_ENABLE 0x00000004ULL
+#endif
+#ifndef PROCESS_CREATION_MITIGATION_POLICY_FORCE_RELOCATE_IMAGES_ALWAYS_ON
+#define PROCESS_CREATION_MITIGATION_POLICY_FORCE_RELOCATE_IMAGES_ALWAYS_ON (0x00000001ULL << 8)
+#endif
 		DWORD64 mitigation = PROCESS_CREATION_MITIGATION_POLICY_DEP_ENABLE
-			| PROCESS_CREATION_MITIGATION_POLICY_DEP_ATL_THUNK_DISABLE_ALWAYS_ON
 			| PROCESS_CREATION_MITIGATION_POLICY_SEHOP_ENABLE
 			| PROCESS_CREATION_MITIGATION_POLICY_FORCE_RELOCATE_IMAGES_ALWAYS_ON;
 		if (!UpdateProcThreadAttribute (startup.lpAttributeList, 0, PROC_THREAD_ATTRIBUTE_MITIGATION_POLICY,

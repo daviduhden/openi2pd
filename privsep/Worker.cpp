@@ -94,8 +94,8 @@ std::string ExecutablePath ()
 		while (start <= searchPath.size ())
 		{
 			const size_t end = searchPath.find (':', start);
-			const std::string directory = searchPath.substr (
-				start, end == std::string::npos ? std::string::npos : end - start);
+			const std::string directory
+				= searchPath.substr (start, end == std::string::npos ? std::string::npos : end - start);
 			const std::string candidate = (directory.empty () ? std::string (".") : directory) + "/" + name;
 			if (access (candidate.c_str (), X_OK) == 0)
 				return realpath (candidate.c_str (), resolved) ? resolved : candidate;

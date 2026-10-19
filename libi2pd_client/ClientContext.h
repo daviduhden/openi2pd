@@ -194,7 +194,7 @@ namespace client
 		std::map<std::pair<i2p::data::IdentHash, int>, std::shared_ptr<I2PServerTunnel>>
 			m_ServerTunnels; // <destination,port> -> tunnel
 
-		std::mutex m_ForwardsMutex;
+		mutable std::mutex m_ForwardsMutex;
 		std::map<boost::asio::ip::udp::endpoint, std::shared_ptr<I2PUDPClientTunnel>>
 			m_ClientForwards; // local endpoint -> udp tunnel
 		std::map<std::pair<i2p::data::IdentHash, int>, std::shared_ptr<I2PUDPServerTunnel>>
