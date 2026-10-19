@@ -22,6 +22,7 @@ client        | Client tunnel to remote I2P destination (TCP)
 socks         | Custom Socks proxy service to use I2P with
 httpproxy     | Custom HTTP proxy service to use I2P with
 udpclient     | Forwards local UDP endpoint to remote I2P destination
+torrents      | BitTorrent over I2P tunnel with optional loopback JSON-RPC
 
 **Server Tunnels**
 
@@ -31,6 +32,7 @@ server        | Generic server tunnel to setup any TCP service in I2P network
 http          | HTTP server tunnel to setup a website in I2P
 irc           | IRC server tunnel to setup IRC server in I2P
 udpserver     | Forwards traffic from N I2P destinations to local UDP endpoint
+torrents      | BitTorrent over I2P tunnel with optional loopback JSON-RPC
 
 
 Signature types
@@ -287,6 +289,48 @@ address             | Local address Socks proxy binds to (default: `127.0.0.1`)
 port                | TCP port Socks proxy binds to
 outproxy            | It will be used when requesting addresses outside the I2P network. e.g, outproxy = PROXY_ADDRESS
 destinationport     | It set the upstream proxy port  (default: 0, used when `outproxy` is set). e.g, destinationport = PROXY_PORT
+
+Torrents tunnels
+----------------
+
+A `torrents` tunnel is a dedicated I2P tunnel for the built-in BitTorrent
+engine. It carries the common tunnel settings (keys, signature type, I2CP
+parameters) and a bounded torrents directory, tracker list, optional I2P DHT
+and optional loopback-only JSON-RPC endpoint. The browser console has been
+removed; use the native `i2pd-tui` Torrents view. See
+[openi2pd Built-in Torrent Client](../tutorials/Filesharing/built-in-torrent/built-inTorrent.md)
+and the optional [Torrents JSON-RPC API](../tutorials/Filesharing/built-in-torrent/torrents-rpc.md).
+
+```ini
+[torrents]
+type = torrents
+torrentsdir = /path/to/torrents
+keys = torrents.dat
+trackers = http://tracker.example.i2p/announce
+signaturetype = 7
+dht = true
+dhtfile = dht.dat
+```
+
+Parameter           | Description
+--------------------|--------------------
+torrentsdir         | Directory where `.torrent`, `.part`, `.resume` and downloaded files are stored. **Mandatory**; the directory must already exist and is containment-checked.
+keys                | Destination key file. Same file in several tunnels shares the same local destination; empty/`transient` creates transient keys. (default: `transient`)
+trackers            | Comma-separated I2P tracker announce URLs shared by all torrents in this tunnel. Clearnet trackers are rejected. (default: empty)
+signaturetype       | Signature type for new keys. (default: 7)
+dht                 | Enable the I2P-only DHT for peer discovery. (default: true)
+dhtfile             | DHT routing-table file. If empty and the keys are transient, the DHT is non-persistent. (default: empty)
+rpcport             | Optional Transmission-compatible JSON-RPC port. `0` disables the server. (default: 0)
+rpcpath             | URL path prefix for the RPC endpoint (`/<rpcpath>/rpc`; `/rpc` when empty). (default: empty)
+rpcaddress          | Loopback bind address for the RPC server. Non-loopback addresses are refused. (default: `127.0.0.1`)
+rpcauth             | Enable HTTP Basic Authentication for the RPC. `rpcuser`/`rpcpass` must be non-empty and bounded; the listener remains loopback-only. (default: false)
+rpcuser             | RPC Basic Auth username. (default: empty)
+rpcpass             | RPC Basic Auth password. (default: empty)
+
+The former `web` tunnel option and `contrib/torrents/web` assets are not read
+or shipped. The RPC is not a browser console: only POST + `application/json`
+is accepted, CORS/preflight and static web paths are absent, and non-loopback
+binding is refused.
 
 I2CP parameters
 ---------------

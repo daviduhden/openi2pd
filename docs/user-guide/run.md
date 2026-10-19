@@ -4,9 +4,9 @@ Running openi2pd
 Starting, stopping and reloading configuration
 ----------------------------------------------
 
-This chapter explains how to start and manage the i2pd daemon under Unix-like operation systems.
+This chapter explains how to start and manage the openi2pd router under Unix-like operating systems.
 
-After you have built i2pd from source, just run the binary:
+After you have built openi2pd from source, run the binary:
 
     ./i2pd
 
@@ -21,7 +21,7 @@ openi2pd can be controlled with signals. The process ID by is written to the fil
 
 openi2pd supports the following signals:
 
-* INT - Graceful shutdown. i2pd will wait for up to 10 minutes and stop. Send a second INT signal to shutdown i2pd immediately.
+* INT - Graceful shutdown. The router waits for up to 10 minutes and then stops. Send a second INT signal to shut it down immediately.
 * HUP - Reload tunnels configuration files.
 * USR1 - Reopen the log file.
 * TSTP/CONT - Disconnect from/restore the network when `unix.handle_sigtstp` is enabled.
@@ -34,9 +34,13 @@ the daemon does not depend on a terminal:
     i2pd-tui --datadir ~/.i2pd
     i2pd-tui --socket /var/i2pd/i2pd-tui.sock
 
-Keys: `1`-`5` switch views, `Tab`/arrows navigate, `l` filters the log level,
-`r` refreshes and `q` quits. The socket is mode 0600. Use the normal signals or
-the service manager to reload or stop the router.
+Keys: `1`-`9` and `0` switch views (Status, Peers, Tunnels, Torrents, NetDb,
+Logs, Help, Destinations, Config, Connections), `Tab`/arrows navigate, `t`
+toggles transit acceptance after confirmation, `l` cycles the local log
+threshold, `L` cycles the daemon log level, `n` switches the NetDb directory
+and `/` filters logs or torrents. `r` refreshes and `q` quits. The socket is
+mode 0600. Use the normal signals or the service manager to reload or stop the
+router.
 
 On Windows run `i2pd-tui.exe` from an interactive terminal (Windows Terminal or
 a VT-enabled console) and pass the same data directory/configuration as the
@@ -57,14 +61,14 @@ The former HTTP console at port 7070 no longer exists.
 
 ### systemd unit
 
-Some i2pd packages come with a systemd control unit, and for those that use systemd, it is possible to manage i2pd with it.
+Some distribution packages include a systemd control unit. Where systemd is used, the service can be managed with it.
 
-To start/stop i2pd:
+To start or stop the service:
 
     sudo systemctl start i2pd.service
     sudo systemctl stop i2pd.service --no-block
 
-The stop command initiates a graceful shutdown process, i2pd stops after finishing to route transit tunnels (maximum 10 minutes).
+The stop command initiates a graceful shutdown; the router stops after draining transit tunnels (maximum 10 minutes).
 
 To enable/disable autostart of i2pd upon bootup:
 
@@ -72,11 +76,11 @@ To enable/disable autostart of i2pd upon bootup:
     sudo systemctl disable i2pd.service
 
 
-Recommended way to run i2pd built from source
----------------------------------------------
+Recommended way to run openi2pd built from source
+--------------------------------------------------
 
-The following commands display the recommended way to run i2pd built from source, without a package manager. Installing i2pd this
-way will ensure all i2pd-related files are stored at `$HOME/dist`.
+The following commands show the recommended way to run openi2pd built from source, without a package manager. This keeps all
+openi2pd-related files under `$HOME/dist`. The executable and configuration names remain `i2pd` for compatibility.
 
     mkdir $HOME/dist
     cp i2pd $HOME/dist
@@ -85,7 +89,7 @@ way will ensure all i2pd-related files are stored at `$HOME/dist`.
     cd $HOME/dist
     ulimit -n 4096  # only on Linux, increasing open file limit
 
-Then, to run i2pd, simply travel to the installation directory and type:
+Then, to run openi2pd, change to the installation directory and run:
 
     ./i2pd --datadir .
 

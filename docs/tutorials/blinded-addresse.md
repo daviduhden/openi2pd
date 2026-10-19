@@ -10,7 +10,7 @@ Encrypted LeaseSets are supported only for server tunnels (types: `server`, `htt
 - Signature type must be Red25519 (`signatureType=11`)
 - Set the I2CP parameter `i2cp.leaseSetType=5` in the tunnel section.
 
-Once the tunnel starts, i2pd automatically generates blinded keys, encrypts the LeaseSet, and publishes it as an Encrypted LeaseSet2.
+Once the tunnel starts, openi2pd automatically generates blinded keys, encrypts the LeaseSet, and publishes it as an Encrypted LeaseSet2.
 
 ### Example (No Authentication)
 
@@ -26,7 +26,7 @@ signatureType = 11
 i2cp.leaseSetType = 5
 ```
 
-Save the file and reload the tunnel configuration (`kill -HUP $(cat ~/.i2pd/i2pd.pid)` or `systemctl reload i2pd`) or restart i2pd.
+Save the file and reload the tunnel configuration (`kill -HUP $(cat ~/.i2pd/i2pd.pid)` or `systemctl reload i2pd`) or restart openi2pd.
 
 Note: To access it, you need the b33 address.
 Run `keyinfo -b encrypted.dat` to print the blinded b33 address, or inspect the local destinations in the `i2pd-tui` NetDb view.
@@ -42,7 +42,8 @@ i2cp.leaseSetPrivKey = ...    # (client side only) your private key/base64 PSK
 
 Option 1: DH Authentication
 
-1. Generate [X25519](https://github.com/PurpleI2P/i2pd-tools/blob/master/x25519.cpp) keypair for each client (use `x25519` tool from [i2pd-tools](https://github.com/PurpleI2P/i2pd-tools/)):
+1. Generate an [X25519](../tools/x25519.md) keypair for each client with the
+   bundled `x25519` tool:
 
 ```bash
 x25519

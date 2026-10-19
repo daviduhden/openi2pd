@@ -73,7 +73,7 @@ webirc {
 
 3) Securing UnrealIRCd
 
-   By default if you run an I2Pd service, I2P will connect to the IRCd at localhost using IP 127.0.0.1
+   By default if you run an openi2pd service, I2P will connect to the IRCd at localhost using IP 127.0.0.1
    
    This is bad for two reasons:
    

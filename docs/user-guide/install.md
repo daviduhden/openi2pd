@@ -1,120 +1,112 @@
 Installing openi2pd
-==========
+===================
+
+openi2pd is built and packaged from this repository. The router executable,
+configuration file and data paths retain the `i2pd` name for compatibility;
+distribution packages named `i2pd` may still point at the upstream PurpleI2P
+project and are not automatically an update path for this fork.
+
+## Supported platforms
+
+| Platform | Supported installation path |
+|---|---|
+| Linux | Build from source; use the maintained `debian/` or `contrib/rpm/` recipes |
+| OpenBSD | Build from source or use the local `contrib/openbsd/` service recipe |
+| Windows | Build with CMake/MSVC or MSYS2/Clang64, or use a fork release artifact |
+| Android | Build the integrated app under `android/` with OpenJDK 25 |
+| Docker | Build the local image from `contrib/docker/Dockerfile` |
+
+macOS, FreeBSD and Solaris are **not supported** by the CMake entry point,
+which rejects them before configuring targets. Use upstream i2pd for those
+platforms; do not treat upstream packages as openi2pd binaries.
 
 ## Building from source
 
-See [developer section documentation](../devs/building/requirements.md) for how to build i2pd from source on your OS.
+Read [build requirements](../devs/building/requirements.md) and then use the
+guide for the target:
 
+- [Linux and OpenBSD](../devs/building/unix.md)
+- [Windows](../devs/building/windows.md)
+- [Android](../devs/building/android.md)
+- [Cross compilation](../devs/building/cross.md) (experimental, not a validated
+  platform)
 
-## Installation from prebuilt packages
+The build is CMake/Ninja and requires C++23. The POSIX make front-end delegates
+to CMake and does not require GNU make. The daemon, TUI, tools and documentation
+installation component are selected independently; see
+[CMake and POSIX Make](../build-system.md).
 
-The easiest way to install openi2pd is by using precompiled packages and binaries.
-Use packages from your operating-system distribution, or build from source. Release artifacts, when published, are on the [openi2pd releases page](https://github.com/daviduhden/openi2pd/releases).
+```sh
+cmake -S build -B build-output -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build-output --parallel
+sudo cmake --install build-output --prefix /usr
+```
 
+Release artifacts, when published, are on the
+[openi2pd releases page](https://github.com/daviduhden/openi2pd/releases).
 
 ## Windows
 
-Build with the instructions in [Windows](../devs/building/windows.md), or use artifacts from the fork release page. Two architectures are supported: x86 (32-bit) and x86_64. The Windows XP build path was removed because the C++23 toolchain and current dependencies do not support it.
+Build with the [Windows guide](../devs/building/windows.md), or use a fork
+release artifact. Two architectures are supported: x86 (32-bit) and x86_64.
+The Windows XP build path was removed because the C++23 toolchain and current
+dependencies do not support it.
 
 The optional TUI is built as `i2pd-tui.exe` next to `i2pd.exe` and uses a local
 named pipe; it does not need ncurses or a network port. See
 [TUI on Windows](../TUI-WINDOWS.md) for terminal, service-account and DACL
 requirements. Runtime validation on Windows is pending.
 
-
 ## Android
 
-Build the integrated Android app from `android/` with OpenJDK 25, the Android
-SDK and NDK r27+. See [Android app](../devs/building/android.md). The upstream
-F-Droid package has a different application ID and is not an update path for
-this fork.
-
-## Docker images
-
-Build a local image from `contrib/docker/Dockerfile`; no prebuilt upstream image
-is required. The container configuration disables the TUI socket because there
-is no terminal, and the web console has been removed.
+Build the integrated Android app from `android/` with OpenJDK 25, Android SDK
+platform 37, Build Tools 36.0.0 and NDK r30 LTS+. See
+[Android app](../devs/building/android.md) and
+[Android modernization](../android-modernization.md). The upstream F-Droid
+package has a different application ID and is not an update path for this fork.
 
 ## Linux
 
-### Distro-agnostic GUI
+Build from source using the [Unix guide](../devs/building/unix.md), or use the
+maintained Debian/RPM packaging recipes. The maintained package metadata installs
+the router, TUI and native tools; inspect the recipe before building a
+distribution package.
 
-You can install i2pd GUI from Flathub using `flatpak`:
-
-    sudo apt install flatpak
-    flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-    flatpak install flathub website.i2pd.i2pd
-
-### Arch
-
-i2pd packages are available at Arch's [extra repository](https://archlinux.org/packages/extra/x86_64/i2pd/) for release version, and [AUR](https://aur.archlinux.org/packages/i2pd-git/) for nightly builds.
-
-You can download them by running 
-
-     pacman -S i2pd --noconfirm
-
-### Gentoo
-
-i2pd [has a working ebuild in the main gentoo repository](https://packages.gentoo.org/packages/net-vpn/i2pd). As of May 2018, the ebuild 
-is still listed as "unstable", and thus will request an exception in your package.keywords if you are using gentoo under the "stable" branch.
-To install i2pd, enter the command:
-    
-    emerge --ask net-vpn/i2pd
-
-If you use `gcc` to compile packages and would like to enable cmake's hardening features, use the `i2p-hardening` flag (recommended).
-
-### Debian
-
-Use the `i2pd` package from your Debian/Ubuntu distribution, or build the fork with the maintained `debian/rules` under `debian/`.
-
-Install apt-transport-https package
-
-    sudo apt-get install apt-transport-https
-
-Automatically add repository
-
-    wget -q -O - https://repo.i2pd.xyz/.help/add_repo | sudo bash -s -
-
-After that you can install i2pd as any other software package:
-
-    sudo apt-get update
-    sudo apt-get install i2pd
-
-Look for more information about Debian repository [here](https://repo.i2pd.xyz/.help/readme.html).
-
-### Fedora/CentOS
-
-Use the `i2pd` package from your distribution if available, or build from
-source with CMake/Ninja. The old third-party COPR repository installed
-upstream i2pd, not this fork, and is intentionally not referenced.
-
-### Ubuntu
-
-Use the distribution package or build from source. The old PPA installed
-upstream i2pd, not this fork, and is intentionally not referenced.
-
-### Void
-
-You can install i2pd from the /current [xpbs repository](https://github.com/void-linux/void-packages/tree/master/srcpkgs/i2pd)
-
-To install and set the daemon up, run this
-
-    sudo xbps-install -Sy i2pd
-    sudo ln -s /etc/sv/i2pd /var/service/
-
-## FreeBSD
-
-You can install i2pd from [ports](https://www.freshports.org/security/i2pd/).
+Distribution packages named `i2pd` (Arch, Gentoo, Debian/Ubuntu, Void and
+others) generally track the upstream PurpleI2P source, not this fork. They may
+lack the C++23 changes, local TUI, native torrent console and fork-specific
+security work. Use them only if you intentionally want upstream i2pd. The old
+third-party Debian repository, Ubuntu PPA, Fedora COPR and Flathub application
+are likewise not maintained as openi2pd release channels.
 
 ## OpenBSD
 
-You can install i2pd from [ports](https://openports.pl/path/net/i2pd).
+Build from source with the [Unix guide](../devs/building/unix.md), or use the
+local service files and sandbox notes in `contrib/openbsd/`. The upstream
+`net/i2pd` port is separate from this fork. See the
+[OpenBSD validation checklist](../security/openbsd-validation.md) for the
+pledge/unveil, TUI socket, pidfile and SIGHUP/SIGUSR1 evidence that must be
+collected on a real OpenBSD host.
 
-## MacOS X
+## Docker
 
-You can install i2pd from [brew](https://brew.sh/) package manager:
+Build a local image from `contrib/docker/Dockerfile`; no prebuilt upstream image
+is required. The container configuration disables the TUI socket because there
+is no terminal. The HTTP administrative console has been removed; use the
+native `i2pd-tui` client over its local IPC channel for status and administration.
 
-    brew install i2pd
+## Verifying an installation
 
-or use a static artifact from the fork release page when one is published.
+The binary is still named `i2pd`:
 
+```sh
+i2pd --version
+i2pd --help
+```
+
+For a user process, data is stored in `~/.i2pd` on Linux and OpenBSD. With
+`--service`, OpenBSD uses `/var/i2pd`, while Linux uses `/var/lib/i2pd`.
+`--datadir` overrides these defaults. Windows uses the application data folder;
+the Android app uses an app-specific `open-i2pd` directory. The local TUI is
+optional and connects to the router over a mode-0600 local socket; it is not a
+daemon dependency.

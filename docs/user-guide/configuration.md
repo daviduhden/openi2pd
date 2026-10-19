@@ -10,7 +10,7 @@ There are two separate config files: `i2pd.conf` and `tunnels.conf`. `i2pd.conf`
 you configure all options. `tunnels.conf` is the tunnel configuration file, where you configure I2P hidden services
 and client tunnels. The `tunnels.conf` options are documented [here](tunnels.md).
 
-This documentation describes the openi2pd fork: C++23, CMake/ Ninja (with a
+This documentation describes the openi2pd fork: C++23, CMake/Ninja (with a
 POSIX make front-end), no HTTP administrative console, and the local
 `i2pd-tui` client.
 
@@ -36,7 +36,6 @@ i2pd.conf:
 You are also encouraged to see the commented config with examples of all options in ``contrib/i2pd.conf``.
 
 Options specified on the command line take precedence over those in the config file.
-If you are upgrading your very old router (< 2.3.0) see also [upstream options](https://i2pd.readthedocs.io/en/latest/user-guide/configuration/) page.
 
 Available options
 -----------------
@@ -60,7 +59,7 @@ datadir                                | Path to storage of i2pd data (configs, 
 host                                   | Router external IP for incoming connections (default: auto if SSU2 is enabled)
 port                                   | Port to listen for incoming connections (default: auto (random))
 daemon                                 | Router will go to background after start (default: true)
-service                                | Router will use system folders like '/var/lib/i2pd' (on unix) or 'C:\ProgramData\i2pd' (on Windows). Ignored on MacOS and Android (default: false)
+service                                | Router will use system folders like '/var/lib/i2pd' (on Unix) or 'C:\ProgramData\i2pd' (on Windows). Ignored on Android; macOS is not a supported platform (default: false)
 ifname                                 | Network interface to bind to
 ifname4                                | Network interface to bind to for IPv4
 ifname6                                | Network interface to bind to for IPv6
@@ -113,8 +112,10 @@ All options below still possible in cmdline, but better write it in config file:
 
 The HTTP administrative console has been removed. `i2pd-tui` is a separate
 client that connects to the router over a local IPC channel: a 0600 UNIX socket
-on Unix or a local named pipe on Windows. Status views are read-only; torrent
-actions are explicit and confirmed. The router runs without the TUI.
+on Unix or a local named pipe on Windows. Snapshots are read-only. Torrent
+actions are explicit and confirmed; `t` toggles transit acceptance and `L`
+cycles the daemon log level over the same authenticated local channel. There is
+no generic configuration writer. The router runs without the TUI.
 
 Option                                 | Description
 -------------------------------------- | --------------------------------------
@@ -143,7 +144,7 @@ httpproxy.inbound.lengthVariance       | Inbound tunnels length variance if keys
 httpproxy.outbound.length              | Outbound tunnels length if keys is set. (default: 3)
 httpproxy.outbound.quantity            | Outbound tunnels quantity if keys is set. (default: 5)
 httpproxy.outbound.lengthVariance      | Outbound tunnels length variance if keys is set. (default: 0)
-httpproxy.outproxy                     | HTTP proxy upstream out proxy url (like http://exit.stormycloud.i2p)
+httpproxy.outproxy                     | HTTP proxy upstream outproxy URL (for example http://outproxy.example.i2p)
 httpproxy.addresshelper                | Enable or disable addresshelper. (default: true)
 httpproxy.senduseragent                | Pass through user's User-Agent if enabled. (default: false)
 httpproxy.i2cp.leaseSetType            | Type of LeaseSet to be sent. 1, 3 or 5. (default: 3)
@@ -228,8 +229,8 @@ i2pcontrol.key                         | I2P control HTTPS certificate key file 
 
 Option                                 | Description
 -------------------------------------- | --------------------------------------
-upnp.enabled                           | Enable or disable UPnP, false by default for CLI and true for GUI (Windows, Android)
-upnp.name                              | Name i2pd appears in UPnP forwardings list. (default: I2Pd)
+upnp.enabled                           | Enable or disable UPnP. Default false for the CLI and true for the Windows GUI and Android app when UPnP is compiled. Android links MiniUPnPc in the JNI target and ships `upnp.enabled = true`; Android 17+ also requires the local-network runtime permission.
+upnp.name                              | Name openi2pd appears in UPnP forwardings list. (default: openi2pd)
 
 ### Cryptography
 
@@ -264,7 +265,7 @@ addressbook.hostsfile                  | File to dump AddressesBook in hosts.txt
 
 Option                                 | Description
 -------------------------------------- | --------------------------------------
-limits.transittunnels                  | Override maximum number of transit tunnels. (default: 10000)
+limits.transittunnels                  | Override maximum number of transit tunnels. (default: 25000)
 limits.openfiles                       | Limit number of open file descriptors (default: 0 - use system limit)
 limits.coresize                        | Maximum size of corefile in Kb (default: 0 - use system limit)
 limits.zombies                         | Minimum percentage of successfully created tunnels under which tunnel cleanup is paused (default [%]: 0.00)

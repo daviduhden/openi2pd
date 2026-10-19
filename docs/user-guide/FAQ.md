@@ -14,15 +14,15 @@ without restrictions.
 
 A deeper technical introduction of I2P can be found [here](https://geti2p.net/en/docs/how/tech-intro).
 
-## How i2pd differs from original I2P implementation?
+## How openi2pd differs from the original I2P implementation?
 
-While [Java I2P](https://geti2p.net) and i2pd are both clients for the I2P network, i2pd has some big differences and advantages:
+While [Java I2P](https://geti2p.net) and openi2pd are both clients for the I2P network, openi2pd has some major differences and advantages:
 
-* Java I2P has built-in applications for torrents, e-mail and so on. openi2pd is just a router which you can use with other software through I2CP interface.
-* i2pd does not require Java. It's written in C++.
-* i2pd consumes less memory and CPU.
-* openi2pd can be compiled everywhere gcc or clang presented (including Raspberry and routers).
-* i2pd has some major optimizations for faster cryptography which leads to less consumption of processor time and energy.
+* Java I2P has built-in applications for torrents, e-mail and so on. openi2pd is a router which you can use with other software through the I2CP interface.
+* openi2pd does not require Java. It is written in C++.
+* openi2pd consumes less memory and CPU.
+* openi2pd can be compiled wherever GCC or Clang is available (including Raspberry Pi and routers).
+* openi2pd has optimizations for faster cryptography, reducing processor time and energy use.
 
 ## Why is the I2P network so slow and unstable sometimes?
 
@@ -40,13 +40,13 @@ allowed to a process. In a terminal, run:
 
     ulimit -n
 
-Correct value for regular i2pd node is 4096, for a floodfill it is 8192. 
-Set it before you run i2pd like so:
+A regular router usually needs 4096; a floodfill usually needs 8192.
+Set it before starting the router:
 
     ulimit -n 4096 && ./i2pd
 
-If that doesn't help, then you may have found a bug.
-Contact developers with IRC or create an issue on GitHub.
+If that does not help, you may have found a bug. Report it through the
+[openi2pd issue tracker](https://github.com/daviduhden/openi2pd/issues).
 
 ## What is good tunnel creation success rate value?
 
@@ -60,7 +60,7 @@ Sure, there is a list [here](http://identiguy.i2p.xyz/)
 
 Edit your settings: set correct bandwidth and share rate. 
 
-Run i2pd for a long time, download and seed some popular torrents.
+Run openi2pd for a long time, download and seed some popular torrents.
 
 ## What browser should I use to browse I2P websites?
 
@@ -69,7 +69,7 @@ and try not to mix clearnet browsing with I2P. Learn how to configure your brows
 
 Configuring [privoxy](https://wiki.archlinux.org/index.php/Privoxy) for I2P/onion/clearnet browsing at the same time is a good idea.
 
-i2pd's socks proxy has an option to pass all non-I2P traffic to the Tor socks proxy. Make sure you know what are you doing when using this!
+The openi2pd SOCKS proxy can pass non-I2P traffic to a Tor SOCKS proxy. Make sure you understand the privacy implications before enabling this.
 
 ## What is a floodfill mode?
 
@@ -89,7 +89,7 @@ from the government, while I2P was started by a community of independent civilia
 
 Tor is highly centralized by design, while I2P is designed to be decentralized and distributed.
 
-## Can use i2pd as a proxy for regular Internet?
+## Can I use openi2pd as a proxy for the regular Internet?
 
 Yes, but better use [Tor](https://www.torproject.org/) for that.
 

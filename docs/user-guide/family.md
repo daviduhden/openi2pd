@@ -81,7 +81,9 @@ Edit `your-family-name.key` in a text editor to remove the certificate part so i
     
 Edit `your-family-name.crt` in a text editor to remove the private key part so it contains only the certificate part.
 
-Move the `your-family-name.key` and `your-family-name.crt` files to the i2pd /certificates/family/ folder, as instructed [here](https://i2pd.readthedocs.io/en/latest/user-guide/family/).
+Move the `your-family-name.key` and `your-family-name.crt` files to the router's
+`certificates/family/` directory. The router service account must be able to
+read both files.
     
 This assumes that i2pd/openssl can handle the PKCS#8 format for the private key. 
 
