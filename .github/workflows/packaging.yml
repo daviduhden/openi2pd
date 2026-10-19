@@ -1,0 +1,94 @@
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: packaging.
+#
+# Manual validation of native init-system definitions and the Debian binary
+# packages. Static contract checks run without compiling; the Debian job builds
+# and tests packages in a disposable Ubuntu runner.
+#
+
+---
+name: Packaging and service validation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  service-contracts:
+    name: Service contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          persist-credentials: false
+      - name: Install static validators
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            cmake shellcheck systemd
+      - name: Validate service contracts and shell syntax
+        run: |
+          cmake -DPROJECT_ROOT="$PWD" -P tests/check-services.cmake
+          cmake -DPROJECT_ROOT="$PWD" -P tests/check-build-system.cmake
+          # The unit is static, but systemd-analyze verifies that ExecStart
+          # exists. Provide a disposable executable for this source-only job;
+          # the Debian job verifies the real installed binary.
+          sudo install -m 0755 /bin/true /usr/bin/i2pd
+          trap 'sudo rm -f /usr/bin/i2pd' EXIT
+          verify_status=0
+          verify_output=$(systemd-analyze verify contrib/i2pd.service 2>&1) || verify_status=$?
+          if [ "$verify_status" -ne 0 ]; then
+            printf '%s\n' "$verify_output" >&2
+            if printf '%s\n' "$verify_output" | grep -q '^i2pd\.service:'; then
+              exit "$verify_status"
+            fi
+          fi
+          sh -n contrib/sysvinit/i2pd
+          sh -n contrib/runit/i2pd/run
+          sh -n contrib/runit/i2pd/log/run
+          shellcheck -s sh \
+            contrib/sysvinit/i2pd \
+            contrib/runit/i2pd/run \
+            contrib/runit/i2pd/log/run \
+            debian/postinst debian/postrm debian/tests/smoke
+      - name: Validate DEP-8 control metadata
+        run: |
+          sudo apt-get install -y --no-install-recommends autopkgtest
+          autopkgtest -V
+
+  debian:
+    name: Debian packages
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          persist-credentials: false
+      - name: Install Debian build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            build-essential debhelper cmake ninja-build fakeroot lintian \
+            autopkgtest systemd shellcheck \
+            libboost-program-options-dev libboost-json-dev libboost-url-dev \
+            libssl-dev zlib1g-dev libminiupnpc-dev libncurses-dev \
+            perl openssl
+      - name: Build binary packages
+        run: |
+          dpkg-buildpackage -us -uc -b
+      - name: Lintian
+        run: |
+          lintian --fail-on error ../i2pd_*.changes
+      - name: Validate and run DEP-8 smoke test
+        run: |
+          sudo autopkgtest --no-built-binaries --test-name=smoke \
+            ../i2pd_*.changes -- unshare
