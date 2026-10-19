@@ -1,0 +1,10 @@
+# Copyright (c) 2026, David Uhden Collado
+# SPDX-License-Identifier: BSD-3-Clause
+#
+# Optional static style profile for the project-maintained Perl scripts.
+# Perl::Critic is not a runtime or base-OpenBSD dependency; CI may run:
+#   perlcritic --profile .perlcriticrc tools/scripts/i2pdctl
+#   perlcritic --profile .perlcriticrc tools/scripts/validate-branding.pl
+severity = 3
+theme = core
+verbose = 8

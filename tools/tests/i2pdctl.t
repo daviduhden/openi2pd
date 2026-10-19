@@ -1,5 +1,4 @@
 #!/usr/bin/env perl
-# Copyright (c) 2013-2026, The PurpleI2P Project
 # Copyright (c) 2026, David Uhden Collado
 # SPDX-License-Identifier: BSD-3-Clause
 # Part of openi2pd; see the LICENSE file in the project root.
@@ -528,7 +527,7 @@ ok($server_port > 0, 'fake I2PControl server is listening');
         $^X, $script, 'info',
     );
     is($code, 1, 'unavailable URL exits 1');
-    like($out, qr/I2PControl URL is unavailable\. Check your i2pd settings and network connection\./,
+    like($out, qr/I2PControl URL is unavailable\. Check your openi2pd settings and network connection\./,
         'unavailable URL message is preserved');
 }
 
@@ -539,6 +538,38 @@ ok($server_port > 0, 'fake I2PControl server is listening');
     );
     is($code, 1, 'unsupported URL scheme exits 1');
     like($err, qr/invalid I2PControl URL/, 'unsupported URL scheme is rejected');
+}
+
+{
+    # A hostile environment must not redirect the management password/token
+    # through an HTTP proxy.  The local fake server is reachable directly.
+    my ($out, $err, $code) = _run_command(
+        {
+            I2PCONTROL_URL      => "http://127.0.0.1:$server_port/",
+            I2PCONTROL_PASSWORD => 'itoopie',
+            I2PDCTL_TLS_BACKEND => 'auto',
+            http_proxy          => 'http://127.0.0.1:1/',
+            HTTP_PROXY          => 'http://127.0.0.1:1/',
+            https_proxy         => 'http://127.0.0.1:1/',
+            HTTPS_PROXY         => 'http://127.0.0.1:1/',
+            all_proxy           => 'http://127.0.0.1:1/',
+            ALL_PROXY           => 'http://127.0.0.1:1/',
+        },
+        $^X, $script, 'exec', 'Echo', '{"Echo":"direct"}',
+    );
+    is($code, 0, 'proxy environment variables are ignored');
+    like($out, qr/'Result': 'direct'/,
+        'the direct loopback request is not sent through a proxy');
+}
+
+{
+    my ($first_out, $first_err, $first_code) =
+        run_i2pdctl('exec', 'Echo', '{"Echo":"stable"}');
+    my ($second_out, $second_err, $second_code) =
+        run_i2pdctl('exec', 'Echo', '{"Echo":"stable"}');
+    is($first_code, 0, 'first repeated request exits 0');
+    is($second_code, 0, 'second repeated request exits 0');
+    is($second_out, $first_out, 'repeated requests are idempotent');
 }
 
 # ---------------------------------------------------------------------------

@@ -72,8 +72,12 @@ if(NOT LAST_TOOL_OUTPUT MATCHES "PublicKey:" OR NOT LAST_TOOL_OUTPUT MATCHES "Pr
 endif()
 
 run_tool(routerinfo --help)
-if(NOT LAST_TOOL_OUTPUT MATCHES "--firewall=nftables" OR NOT LAST_TOOL_OUTPUT MATCHES "--firewall=windows" OR NOT LAST_TOOL_OUTPUT MATCHES "--firewall=pf")
-  message(FATAL_ERROR "routerinfo help does not document all backends")
+if(NOT LAST_TOOL_OUTPUT MATCHES "--firewall=iptables"
+   OR NOT LAST_TOOL_OUTPUT MATCHES "--firewall=nftables"
+   OR NOT LAST_TOOL_OUTPUT MATCHES "--firewall=windows"
+   OR NOT LAST_TOOL_OUTPUT MATCHES "--firewall=pf"
+   OR NOT LAST_TOOL_OUTPUT MATCHES "-f")
+  message(FATAL_ERROR "routerinfo help does not document all backends and legacy -f")
 endif()
 
 execute_process(COMMAND "${TOOLS_DIR}/routerinfo${EXE}" --firewall=bogus
@@ -106,10 +110,34 @@ if(bad_family EQUAL 0)
   message(FATAL_ERROR "routerinfo accepted an invalid nftables family")
 endif()
 
+execute_process(COMMAND "${TOOLS_DIR}/routerinfo${EXE}" --firewall=nftables --nft-chain=input keys.dat
+  RESULT_VARIABLE inbound_chain)
+if(inbound_chain EQUAL 0)
+  message(FATAL_ERROR "routerinfo accepted an inbound nftables chain")
+endif()
+
 execute_process(COMMAND "${TOOLS_DIR}/routerinfo${EXE}" --firewall=pf "--nft-chain=output" keys.dat
   RESULT_VARIABLE nft_chain_without_nft)
 if(nft_chain_without_nft EQUAL 0)
   message(FATAL_ERROR "routerinfo accepted nftables options with a non-nft backend")
+endif()
+
+# A malformed RouterInfo must be rejected before hash/address access in every
+# backend, including the legacy -f path.
+file(WRITE "${WORK}/malformed-routerinfo.dat" "not a RouterInfo\n")
+foreach(firewall_mode iptables nftables windows pf)
+  execute_process(COMMAND "${TOOLS_DIR}/routerinfo${EXE}"
+    "--firewall=${firewall_mode}" "${WORK}/malformed-routerinfo.dat"
+    RESULT_VARIABLE malformed_routerinfo)
+  if(malformed_routerinfo EQUAL 0)
+    message(FATAL_ERROR "routerinfo accepted a malformed RouterInfo with ${firewall_mode}")
+  endif()
+endforeach()
+execute_process(COMMAND "${TOOLS_DIR}/routerinfo${EXE}" -f
+  "${WORK}/malformed-routerinfo.dat"
+  RESULT_VARIABLE malformed_legacy)
+if(malformed_legacy EQUAL 0)
+  message(FATAL_ERROR "routerinfo accepted a malformed RouterInfo with legacy -f")
 endif()
 
 # vain: help and validation paths only; never start a search in the smoke test.

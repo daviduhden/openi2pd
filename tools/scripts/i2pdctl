@@ -1,5 +1,4 @@
 #!/usr/bin/env perl
-# Copyright (c) 2013-2026, The PurpleI2P Project
 # Copyright (c) 2026, David Uhden Collado
 # SPDX-License-Identifier: BSD-3-Clause
 #
@@ -7,15 +6,18 @@
 # i2pdctl - command line client for the I2PControl JSON-RPC service.
 #
 # This is a Perl 5 rewrite of the former project-maintained Python script.  It
-# intentionally uses only modules shipped with Perl 5 (Getopt::Long, JSON::PP,
-# HTTP::Tiny, IPC::Open3) plus the system openssl binary for HTTPS when
-# IO::Socket::SSL is not available.  It never falls back to cleartext.
+# intentionally uses only modules shipped with Perl 5 (Config, File::Spec,
+# Getopt::Long, JSON::PP, HTTP::Tiny, IPC::Open3) plus the system openssl binary
+# for HTTPS when IO::Socket::SSL is not available.  It never falls back to
+# cleartext.
 #
 # Part of openi2pd; see the LICENSE file in the project root.
 
 use strict;
 use warnings;
 
+use Config;
+use File::Spec;
 use Getopt::Long qw(GetOptionsFromArray);
 use JSON::PP ();
 use HTTP::Tiny;
@@ -704,6 +706,9 @@ sub _post_raw {
         }
 
         die "__UNAVAILABLE__\n" unless $response->{success};
+        die "Error: response from I2PControl exceeds size limit\n"
+            if defined $response->{content}
+                && length($response->{content}) > $MAX_RESPONSE;
         ($status, $content) = ($response->{status}, $response->{content});
     }
 
@@ -1074,7 +1079,7 @@ sub _run_cli {
 
         if ($error eq '__UNAVAILABLE__') {
             print "Error: I2PControl URL is unavailable. "
-                . "Check your i2pd settings and network connection.\n";
+                . "Check your openi2pd settings and network connection.\n";
             return 1;
         }
 

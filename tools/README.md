@@ -1,13 +1,15 @@
-# i2pd-tools
+# openi2pd tools
 
 Auxiliary tools imported from
 [PurpleI2P/i2pd-tools](https://github.com/PurpleI2P/i2pd-tools) at commit
 `ca7ece8da86aa80b58fce6fa64375bfd75cbf843` and integrated into the main
-Open I2Pd tree.
+openi2pd tree.
 
 There is no Git submodule and no external i2pd checkout. The tools link the
 in-tree `libi2pd`/`libi2pdclient` and are built by the main CMake project.
-See [docs/tools](../docs/tools/README.md) for the maintained documentation.
+See [docs/tools](../docs/tools/README.md) for the maintained documentation
+and [provenance](../docs/tools/provenance.md) for the pinned upstream files,
+licence notices and per-executable test coverage.
 
 ## Building
 
@@ -47,10 +49,10 @@ Invalid destination signature
 encode/decode b64 string
 example usage:
 ```
-user@computer:~/i2pd-tools$ ./i2pbase64 
+user@computer:~/openi2pd/tools$ ./i2pbase64
 encode
 ZW5jb2RlCg==^C
-user@computer:~/i2pd-tools$ ./i2pbase64 -d
+user@computer:~/openi2pd/tools$ ./i2pbase64 -d
 ZW5jb2RlCg==
 encode
 ```
@@ -58,18 +60,35 @@ U also can use file
 
 ### routerinfo
 
-print information about a router info file
+Print addresses and derive **outbound-only** firewall rules from one or more
+RouterInfo files. The tool never executes a firewall command or edits a system
+firewall configuration.
 
-#### usage
+```sh
+# Address listing (IPv4 only unless -6 is given)
+./routerinfo -p ~/.i2pd/netDb/r6/routerInfo-blah.dat
 
+# Legacy -f fragments (kept for compatibility)
+./routerinfo -6 -f ~/.i2pd/netDb/r6/routerInfo-blah.dat
 
-print ip and port for router info excluding ipv6
+# Explicit backend: iptables/ip6tables commands
+./routerinfo -6 --firewall=iptables ~/.i2pd/netDb/r6/routerInfo-blah.dat
 
-    ./routerinfo -p ~/.i2pd/netDb/r6/routerInfo-blah.dat
+# nftables; the family, table and chain are explicit
+./routerinfo -6 --firewall=nftables --nft-family=inet \
+  --nft-table=filter --nft-chain=output ~/.i2pd/netDb/r6/routerInfo-blah.dat
 
-print iptables firewall rules to allow 1 nodes in netdb through firewall including ipv6 addresses
+# Windows Defender Firewall commands for an elevated PowerShell session
+./routerinfo -6 --firewall=windows ~/.i2pd/netDb/r6/routerInfo-blah.dat
 
-    ./routerinfo -6 -f ~/.i2pd/netDb/r6/routerInfo-blah.dat
+# OpenBSD pf.conf rules (review and validate before loading)
+./routerinfo -6 --firewall=pf ~/.i2pd/netDb/r6/routerInfo-blah.dat
+```
+
+`-6` controls IPv6 selection in all modes. Rules cover NTCP2/TCP and SSU2/UDP;
+private, CGNAT, loopback, link-local, multicast and reserved addresses are
+rejected. See [the complete reference](../docs/tools/routerinfo.md) for
+validation, backend-specific syntax checks and the no-apply policy.
 
 ### keygen
 
@@ -104,7 +123,8 @@ or
 | GOSTR3410_TC26_A_512-GOSTR3411-512   | 10     |
 | RED25519-SHA512                      | 11     |
 
-For more information on the types of signatures, see the [documentation](https://i2pd.readthedocs.io/en/latest/user-guide/tunnels/#signature-types).
+For more information on the types of signatures, see the
+[local tunnel documentation](../docs/user-guide/tunnels.md#signature-types).
 ### vain
 
 Vanity generation address.
@@ -175,19 +195,22 @@ Send output of auth_string to http://reg.i2p/add and http://stats.i2p/i2p/addkey
 
 ### x25519
 
-Generate key pair with output in base64 encoding. Now the x25519 keys are used for authentication with an encrypted LeaseSet.
+Generate a key pair with output in base64 encoding. The x25519 keys are used
+for authentication with an encrypted LeaseSet; see the
+[local encrypted LeaseSet guide](../docs/tutorials/blinded-addresse.md).
 
 ### famtool
-[this is program for works with family of routers in i2p-network. ](https://i2pd.readthedocs.io/en/latest/user-guide/family/)
-    
+Program for working with a family of routers in the I2P network. See the
+[local family documentation](../docs/user-guide/family.md).
+
 usage: ```./famtool [-h] [-v] [-g -n family -c family.crt -k family.pem] [-s -n family -k family.pem -i router.keys -f router.info] [-V -c family.crt -f router.info]```
-    
+
 generate a new family signing key for family called ``i2pfam''
 ```./famtool -g -n i2pfam -c myfam.crt -k myfam.pem```
-    
+
 sign a router info with family signing key
 ```./famtool -s -n i2pfam -k myfam.pem -i router.keys -f router.info```
-    
+
 verify signed router.info
 ```./famtool -V -n i2pfam -c myfam.pem -f router.info```
 #### Example of usage
@@ -235,13 +258,8 @@ Then, in `tunnels.conf`:
 
 ### AutoConf
 
-A program for help create the config file for i2pd
+A program to help create the openi2pd configuration file
 
 For a now a better way to manual write the config file
 
 For usage just run ./AutoConf or AutoConf.exe
-
-
-## Related Projects
-
-[i2pbox](https://github.com/iasds/i2pbox) — all i2pd-tools merged into a single binary with subcommands.
