@@ -1,6 +1,6 @@
 # Java 25 on Android (openi2pd)
 
-Status: toolchain verification, 2026-10-18. This document covers the Android
+Status: toolchain verification, 2026-10-19. This document covers the Android
 build toolchain and Java 25 language/class-file compatibility only. It does
 **not** claim that the application APK builds, that Lint passes, or that any
 device/emulator test ran.
@@ -22,8 +22,9 @@ packaged in the APK and Android does not execute OpenJDK bytecode.
 | D8/R8 (verification) | **9.4.28** | `R8 9.4.28` from the supplied `r8.jar` |
 | Kotlin | **disabled** (AGP bundles Kotlin 2.4.10) | `android.builtInKotlin=false`; see the AGP investigation below |
 | compileSdk / targetSdk | **37** | unchanged in `android/app/build.gradle` |
+| SDK Build Tools | **36.0.0** | AGP 9.4 default; CI installs it explicitly |
 | minSdk | **24** | unchanged |
-| NDK | **27.2.12479018** (overridable) | unchanged |
+| NDK | **30.0.16248370** (overridable) | r30 LTS; C++23 JNI build |
 | Device runtime | ART, API 24+ | no JVM/JDK in the APK |
 | Core library desugaring | not enabled | not needed for the language features used |
 
@@ -31,6 +32,18 @@ The root build script (`android/build.gradle`) still rejects a Gradle JVM below
 25. The Java toolchain is exact 25; the Gradle JVM only has to be 25 or newer.
 JDK auto-download remains disabled in `android/gradle.properties`, so JDK 25
 must be installed locally.
+
+AGP 9.4 is the current stable line and supports at most API level 37; it
+requires Gradle 9.6.0 or newer and defaults to SDK Build Tools 36.0.0. This
+tree pins Gradle 9.8.1 and uses the SDK 37 platform, so the supported
+combination is explicit. AGP's default NDK is 28.2.13676358, but this project
+uses the current r30 LTS (`30.0.16248370`) for its C++23 toolchain; that is a
+deliberate override, not an AGP default. AGP 9.5 is a preview and is not used.
+
+The versions in this document are pin-level statements, not evidence that the
+current APK was built. The last observed `compileDebugJavaWithJavac` success
+and the synthetic D8/R8 probe predate the latest lifecycle edits. CI must
+re-run the actual app compile, resource link, D8/R8, Lint and device tests.
 
 ## Source level, target level and ART
 
@@ -49,6 +62,17 @@ must be installed locally.
 - Library APIs are a separate property. D8/R8 does not add `java.*`
   implementations. Those come from Android's API 37 bootclasspath, and
   missing JDK APIs remain missing at runtime.
+
+### Explicit layer limitations
+
+| Layer | Checked fact | Not claimed |
+|---|---|---|
+| `javac` | The standalone Java 25 probe builds with `--release 25` and reports class-file major 69. AGP is configured for source/target 25 with an exact JDK 25 toolchain. | The current app source has not been recompiled after the latest lifecycle edits in this environment. |
+| D8/R8 | The probe's class-file 69 output was accepted by D8/R8 9.4.28 at `--min-api 24`, producing DEX 037. | The real app's debug/release DEX, R8 shrinking, resource linking and APK packaging are not validated. |
+| ART | ART executes DEX; records/pattern switches are desugared for API 24. Java 25-only library APIs are absent from API 37 `android.jar`. | No emulator/device run proves every Java 25 construct or API on API 24 or current Android. |
+
+These are separate claims. A successful `javac` or synthetic D8/R8 probe does
+not imply that the openi2pd APK, minified release or ART runtime is validated.
 
 ## Build configuration changes
 
@@ -80,9 +104,11 @@ must be installed locally.
   parsers, state/control presentation, INI value validation and immutable
   model bounds live under `android/app/src/test/`; they are not run
   automatically and their execution is deferred to CI.
-- `compileSdk`, `targetSdk`, `minSdk`, NDK/CMake configuration, ABI splits,
-  signing policy, release minification and Lint settings were not changed.
-  No JDK is bundled and core library desugaring is not enabled.
+- `compileSdk`/`targetSdk` remain 37 and `minSdk` remains 24. The NDK pin is
+  updated to r30 LTS (`30.0.16248370`) for the current C++23 Clang toolchain;
+  the CMake graph remains the same. ABI splits, signing policy, release
+  minification and Lint settings were not changed. No JDK is bundled and core
+  library desugaring is not enabled.
 
 `android/gradle.properties`:
 
@@ -118,6 +144,16 @@ packaging, Lint, PNG crunching and device rendering were not run here; see the
 pending list below.
 
 ## Java 25 probe and verifier
+
+`android/tools/java25-probe/check-config.sh` is a compile-free guard for CI. It
+verifies Java 25 source/target and toolchain pins, compile/target SDK 37,
+minSdk 24, NDK/AGP/Gradle pins, disabled JDK auto-download, the AGP
+bundled-Kotlin workaround and the certificates asset target. It also rejects
+known JDK-only APIs (`java.lang.foreign`, `java.lang.invoke`,
+`java.lang.classfile`, `ScopedValue`, `StableValue`, `java.util.Sequenced`,
+`javax.crypto.KDF`, PEM encoder/decoder, virtual-thread/structured-concurrency
+APIs and `jdk.incubator.vector`) in app source. It is not a substitute for
+javac, D8/R8, Lint or device testing.
 
 The probe is in `android/tools/java25-probe/`. It is not part of the app and is
 not added to the APK. It exercises:
@@ -279,12 +315,16 @@ Android Lint alone is not a complete check for JDK-only APIs.
 - Lint: icon location/adaptive-icon/splash/NewApi checks and unused-resource
   warnings for the semantic tokens that views do not consume yet.
 - Device: launcher mask/crop, Android 12+ splash in light/dark, themed icon,
-  dynamic-colour fallback, notification small icon, Quick Settings tint and the
+  notification small icon, Quick Settings tint and the
   About mark on API 24 and current API levels.
 - Exercise AGP's own D8/R8 on the real app (debug and minified release) and
   verify the resulting DEX at `minSdk 24`.
-- Run the prepared pure-JVM tests and future instrumentation tests in CI.
+- Run the prepared pure-JVM tests and the added
+  `RouterServiceLifecycleTest` instrumentation smoke test in CI.
 - Build the native JNI library (NDK/CMake dependency set not exercised here).
+- Test the JNI UTF-8-to-UTF-16 conversion with embedded NUL, supplementary
+  characters, malformed sequences and a bounded large log snapshot. The
+  conversion is implemented statically; no on-device test has run.
 - Verify runtime behavior on API 24 and a current API level, including records
   and pattern switches.
 - Re-check AGP 10, where `android.builtInKotlin=false` is scheduled for
