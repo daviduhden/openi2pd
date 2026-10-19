@@ -653,26 +653,18 @@ public class DaemonWrapper {
                     + "[AndroidTorrents]\ntype = torrents\nkeys = android-torrents.dat\n"
                     + "torrentsdir = " + downloads.getAbsolutePath() + "\ndht = true\n";
             try {
-                java.io.FileDescriptor descriptor = android.system.Os.open(config.getAbsolutePath(),
-                        android.system.OsConstants.O_CREAT | android.system.OsConstants.O_EXCL
-                                | android.system.OsConstants.O_WRONLY
-                                | android.system.OsConstants.O_NOFOLLOW,
-                        0600);
-                try {
-                    // O_CLOEXEC itself is API 27; FD_CLOEXEC and F_SETFD are
-                    // available at the API 24 floor and provide the same
-                    // close-on-exec guarantee after opening the descriptor.
-                    android.system.Os.fcntlInt(descriptor,
-                            android.system.OsConstants.F_SETFD,
-                            android.system.OsConstants.FD_CLOEXEC);
-                } catch (android.system.ErrnoException error) {
-                    try {
-                        android.system.Os.close(descriptor);
-                    } catch (android.system.ErrnoException ignored) {
-                        // Best effort after the fcntl failure.
-                    }
-                    throw new IOException("Unable to secure torrent configuration descriptor", error);
+                int openFlags = android.system.OsConstants.O_CREAT
+                        | android.system.OsConstants.O_EXCL
+                        | android.system.OsConstants.O_WRONLY
+                        | android.system.OsConstants.O_NOFOLLOW;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                    // O_CLOEXEC is not part of the public API 24-26 surface.
+                    // The descriptor is written and closed synchronously, and
+                    // this process does not exec while it is open.
+                    openFlags |= android.system.OsConstants.O_CLOEXEC;
                 }
+                java.io.FileDescriptor descriptor = android.system.Os.open(
+                        config.getAbsolutePath(), openFlags, 0600);
                 try (FileOutputStream output = new FileOutputStream(descriptor)) {
                     output.write(content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
                     output.getFD().sync();

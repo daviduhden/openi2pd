@@ -17,6 +17,8 @@ Defines native Android application resources.
         branded background, then the activity theme continues unchanged.
     -->
     <style name="Theme.OpenI2Pd" parent="Theme.OpenI2Pd.Base">
+        <item name="android:windowLightNavigationBar">@bool/window_light_navigation_bar</item>
+        <item name="android:forceDarkAllowed">false</item>
         <item name="android:windowSplashScreenBackground">@color/brand_background</item>
         <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
         <item name="android:windowSplashScreenIconBackgroundColor">@color/ic_launcher_background</item>

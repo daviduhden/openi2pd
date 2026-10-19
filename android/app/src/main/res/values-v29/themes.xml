@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: themes.
+
+Defines native Android application resources.
+
+-->
+
+<resources>
+    <!-- API 29 adds forceDarkAllowed; retain the API 27 navigation flag. -->
+    <style name="Theme.OpenI2Pd" parent="Theme.OpenI2Pd.Base">
+        <item name="android:windowLightNavigationBar">@bool/window_light_navigation_bar</item>
+        <item name="android:forceDarkAllowed">false</item>
+    </style>
+</resources>

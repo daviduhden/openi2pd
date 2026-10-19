@@ -52,14 +52,12 @@ Defines native Android application resources.
         <item name="android:statusBarColor">@color/brand_background</item>
         <item name="android:navigationBarColor">@color/brand_background</item>
         <item name="android:windowLightStatusBar">@bool/window_light_status_bar</item>
-        <item name="android:windowLightNavigationBar">@bool/window_light_navigation_bar</item>
         <item name="android:windowBackground">@color/brand_background</item>
         <item name="android:windowActionModeOverlay">true</item>
         <item name="android:windowNoTitle">true</item>
         <item name="android:windowDisablePreview">false</item>
         <item name="android:colorEdgeEffect">@color/brand_primary</item>
         <item name="android:windowContentTransitions">true</item>
-        <item name="android:forceDarkAllowed">false</item>
     </style>
 
     <style name="Theme.OpenI2Pd" parent="Theme.OpenI2Pd.Base" />
