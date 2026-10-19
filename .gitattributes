@@ -7,3 +7,5 @@
 #
 
 /build/build_mingw.cmd eol=crlf
+# Interop fixtures are byte-exact; Git must not apply CRLF conversion.
+/tests/interop/vectors/** -text

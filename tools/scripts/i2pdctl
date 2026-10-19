@@ -666,8 +666,10 @@ sub _post_raw {
             verify_SSL => 0,
             timeout    => $TIMEOUT,
             max_size   => $MAX_RESPONSE,
-            agent      => "i2pdctl/$VERSION",
-            proxy      => undef,
+            agent       => "i2pdctl/$VERSION",
+            proxy       => undef,
+            http_proxy  => undef,
+            https_proxy => undef,
         );
 
         # HTTP::Tiny's timeout is per socket operation.  A peer that trickles

@@ -86,6 +86,9 @@ int main ()
 	assert (first == sockets[0]);
 	assert (dropped.empty ());
 	assert (session.GetAcceptQueueSize () == 1);
+	assert (session.TakeNextAccept (now + 1, dropped) == sockets[1]);
+	assert (dropped.empty ());
+	assert (session.GetAcceptQueueSize () == 0);
 
 	// Concurrent producers and one consumer. Capacity is above the total
 	// number of entries, so every enqueue must succeed.

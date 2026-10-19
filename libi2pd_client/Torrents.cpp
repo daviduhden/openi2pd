@@ -1777,7 +1777,7 @@ namespace torrents
 							hasLength = true;
 							auto [length, l] = ExtractInteger (value);
 							if (!l) return 0;
-							if (length <= 0 || (uint64_t)length > MAX_TORRENT_LENGTH
+							if (length < 0 || (uint64_t)length > MAX_TORRENT_LENGTH
 								|| (uint64_t)length > (uint64_t)std::numeric_limits<size_t>::max ())
 							{
 								LogPrint (eLogError, "Torrents: Invalid file length ", length);
@@ -1789,7 +1789,7 @@ namespace torrents
 						}
 						return 0;
 					});
-				if (!len || !hasPath || !hasLength || fileLength == 0 || filePath.empty ())
+				if (!len || !hasPath || !hasLength || filePath.empty ())
 				{
 					m_Error = eTorrentErrorMalformedMetaInfo;
 					return len;
