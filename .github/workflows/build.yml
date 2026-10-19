@@ -150,7 +150,7 @@ jobs:
           ./gradlew :i2pd:testDebugUnitTest :i2pd:lintDebug --no-daemon \
             -Pi2pd.ndkVersion="$NDK_VERSION" \
             -Pandroid.injected.build.abi=arm64-v8a \
-            -Pi2pd.cmakeArgs="-DCMAKE_PREFIX_PATH=$GITHUB_WORKSPACE/build-android/vcpkg_installed/arm64-android"
+            -Pi2pd.cmakeArgs="-DCMAKE_PREFIX_PATH=$GITHUB_WORKSPACE/build-android/vcpkg_installed/arm64-android -DBoost_DIR=$GITHUB_WORKSPACE/build-android/vcpkg_installed/arm64-android/share/boost"
       - name: Show Android lint report on failure
         if: failure()
         run: |
@@ -162,7 +162,7 @@ jobs:
           ./gradlew :i2pd:assembleDebug --no-daemon \
             -Pi2pd.ndkVersion="$NDK_VERSION" \
             -Pandroid.injected.build.abi=arm64-v8a \
-            -Pi2pd.cmakeArgs="-DCMAKE_PREFIX_PATH=$GITHUB_WORKSPACE/build-android/vcpkg_installed/arm64-android"
+            -Pi2pd.cmakeArgs="-DCMAKE_PREFIX_PATH=$GITHUB_WORKSPACE/build-android/vcpkg_installed/arm64-android -DBoost_DIR=$GITHUB_WORKSPACE/build-android/vcpkg_installed/arm64-android/share/boost"
 
   interop:
     runs-on: ubuntu-24.04
