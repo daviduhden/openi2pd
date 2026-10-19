@@ -7,7 +7,8 @@ plugins {
 
 dependencies {
     // Stable AndroidX/Material releases used by the modernized UI. Versions
-    // are pinned so the build does not depend on dynamic version resolution.
+    // were checked against Google Maven on 2026-10-19 and are pinned so the
+    // build does not depend on dynamic version resolution.
     implementation 'androidx.core:core:1.19.1'
     implementation 'androidx.appcompat:appcompat:1.8.0'
     implementation 'androidx.activity:activity:1.13.0'
@@ -19,8 +20,8 @@ dependencies {
     implementation 'com.google.android.material:material:1.14.0'
 
     // Prepared tests. They are not wired into a build type and do not run
-    // automatically; run them explicitly with :app:testDebugUnitTest or
-    // :app:connectedDebugAndroidTest when an emulator/device is available.
+    // automatically; run them explicitly with :i2pd:testDebugUnitTest or
+    // :i2pd:connectedDebugAndroidTest when an emulator/device is available.
     testImplementation 'junit:junit:4.13.2'
     androidTestImplementation 'androidx.test:core:1.7.0'
     androidTestImplementation 'androidx.test:runner:1.7.0'
@@ -32,6 +33,16 @@ dependencies {
 android {
     namespace 'org.openi2pd.router'
     compileSdk 37
+    // AGP 9.4's supported default; CI installs this exact package rather than
+    // relying on an SDK-manager side effect.
+    buildToolsVersion '36.0.0'
+
+    // The product has one interface language. Keep packaging and Android's
+    // per-app locale metadata limited to English; non-language qualifiers
+    // such as values-night, values-sw600dp and values-v31 remain in use.
+    androidResources {
+        localeFilters += ["en"]
+    }
 
     defaultConfig {
         applicationId "org.openi2pd.router"
@@ -46,8 +57,10 @@ android {
         // Instrumentation tests are prepared but only run when invoked.
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
-        // NDK r27+ provides C++23 and getifaddrs at this API level.
-        ndkVersion project.findProperty("i2pd.ndkVersion") ?: "27.2.12479018"
+        // NDK r30 LTS provides the current Clang/C++23 toolchain and
+        // getifaddrs at the API 24 baseline. The property keeps the CI pin
+        // explicit without hard-coding a runner installation path.
+        ndkVersion project.findProperty("i2pd.ndkVersion") ?: "30.0.16248370"
 
         ndk {
             abiFilters "arm64-v8a", "armeabi-v7a", "x86_64", "x86"

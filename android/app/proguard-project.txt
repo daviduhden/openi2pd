@@ -1,4 +1,4 @@
-# Open I2Pd release rules.
+# openi2pd release rules.
 #
 # Release builds currently set minifyEnabled false (see app/build.gradle), so
 # these rules are documentation for the distribution process rather than a

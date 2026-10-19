@@ -1,6 +1,6 @@
-# Open I2Pd Android app
+# openi2pd Android app
 
-Android front end for the Open I2Pd router. It is built from this repository;
+Android front end for the openi2pd router. It is built from this repository;
 there is no Git submodule and no external i2pd checkout.
 
 The native router is compiled by the main CMake project through
@@ -13,20 +13,33 @@ state and local control actions natively.
 
 - OpenJDK 25 (build/runtime for Gradle; Android still runs ART)
 - Gradle 9.8.1 and AGP 9.4.1 (wrapper pinned)
-- Android SDK: build-tools, platform 37, CMake, NDK r27 or newer
+- Android SDK: platform 37, Build Tools 36.0.0, CMake, NDK r30 LTS
+  (`30.0.16248370`) or newer
 - NDK path in `ANDROID_NDK_HOME` or `local.properties`
-- Boost, OpenSSL/LibreSSL and zlib for the Android ABI, discoverable by CMake
-  (for example through a vcpkg installation). No dependency is downloaded by
-  the project build itself.
+- Boost, OpenSSL/LibreSSL, zlib and MiniUPnPc 2.2.6+ for the Android ABI,
+  discoverable by CMake (for example through a vcpkg installation). No
+  dependency is downloaded by the project build itself. MiniUPnPc backs the
+  default-on UPnP client; Android 17+ also asks for local-network access and
+  the service holds a Wi-Fi multicast lock for SSDP.
 
 ## Build
+
+Before invoking Gradle, CI and contributors can run the compile-free toolchain
+guard:
+
+```sh
+sh android/tools/java25-probe/check-config.sh
+```
+
+It rejects an accidental Java 17 downgrade, unpinned Gradle/AGP/NDK settings
+and JDK-only APIs that are unavailable on ART.
 
 ```sh
 export JAVA_HOME=/path/to/openjdk-25
 export ANDROID_HOME=/path/to/android-sdk
-export ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018
+export ANDROID_NDK_HOME=$ANDROID_HOME/ndk/30.0.16248370
 ./gradlew assembleDebug \
-  -Pi2pd.ndkVersion=27.2.12479018 \
+  -Pi2pd.ndkVersion=30.0.16248370 \
   -Pi2pd.cmakeArgs="-DCMAKE_PREFIX_PATH=/path/to/android/dependencies"
 ```
 
@@ -45,6 +58,33 @@ The router library is built with C++23 and the in-tree sources. The Android
 manifest requests only network, foreground-service, boot and battery
 optimization permissions; storage is app-specific and needs no broad external
 storage permission.
+
+## Interface language
+
+The Android application is English-only. `res/values/strings.xml` is the
+single UI catalog, `res/xml/locales_config.xml` declares only `en`, and the
+Gradle `androidResources.localeFilters` packaging filter keeps non-English
+resource splits out of the APK. Non-language qualifiers such as
+`values-night`, `values-sw600dp` and `values-v31` remain in use. User data
+(torrent and file names, destinations, logs and other Unicode input) is
+unaffected.
+
+The compile-free check `perl android/tools/check-english-only.pl` fails if a
+language-qualified resource directory, non-English locale configuration,
+localized Fastlane listing or runtime locale override reappears. The manual
+Android CI job runs it before Gradle.
+
+## Tests
+
+```sh
+./gradlew :i2pd:testDebugUnitTest
+./gradlew :i2pd:lintDebug
+./gradlew :i2pd:connectedDebugAndroidTest   # requires an emulator/device
+```
+
+`RouterServiceLifecycleTest` binds and unbinds the non-exported service without
+starting the native daemon. The tests are prepared but have not been run in
+this environment; CI/device execution is required.
 
 ## Identity migration
 
