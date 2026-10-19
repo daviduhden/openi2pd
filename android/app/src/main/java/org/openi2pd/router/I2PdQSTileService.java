@@ -5,6 +5,7 @@
  */
 package org.openi2pd.router;
 
+import android.os.Build;
 import android.service.quicksettings.Tile;
 import android.service.quicksettings.TileService;
 import android.util.Log;
@@ -23,6 +24,15 @@ public class I2PdQSTileService extends TileService {
     @Override
     public void onClick() {
         super.onClick();
+        if (isLocked()) {
+            // Do not expose router start/stop controls on the lock screen.
+            unlockAndRun(this::toggleRouter);
+            return;
+        }
+        toggleRouter();
+    }
+
+    private void toggleRouter() {
         boolean wasRunning = RouterService.isRouterRunning();
         boolean delivered =
                 wasRunning ? RouterService.requestStop(this) : RouterService.requestStart(this);
@@ -58,6 +68,11 @@ public class I2PdQSTileService extends TileService {
         }
         tile.setState(running ? Tile.STATE_ACTIVE : Tile.STATE_INACTIVE);
         tile.setLabel(getString(R.string.app_name));
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            tile.setContentDescription(getString(R.string.tile_state_format,
+                    getString(R.string.app_name),
+                    getString(running ? R.string.value_running : R.string.value_stopped)));
+        }
         try {
             tile.updateTile();
         } catch (RuntimeException e) {

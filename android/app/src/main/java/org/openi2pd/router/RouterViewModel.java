@@ -40,6 +40,11 @@ public class RouterViewModel extends AndroidViewModel {
         return repository.getServiceConnected();
     }
 
+    /** Pause/resume service observation when the activity leaves the foreground. */
+    public void setUiVisible(boolean visible) {
+        repository.setUiVisible(visible);
+    }
+
     public void refresh() {
         repository.refresh();
     }

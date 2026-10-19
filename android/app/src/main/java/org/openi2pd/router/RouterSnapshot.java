@@ -52,6 +52,22 @@ public record RouterSnapshot(DaemonWrapper.State state, boolean nativeStarted, b
     }
 
     /**
+     * True when the native status snapshot has actually been parsed. The
+     * daemon can be started while the status bridge is still unavailable (for
+     * example on an older native build or immediately after start); callers
+     * must not present the zero-initialised counters as observed metrics.
+     */
+    public boolean hasStatus() {
+        return nativeStarted && routerStatusCode >= 0 && !routerStatus.isEmpty()
+                && !"Unknown".equalsIgnoreCase(routerStatus);
+    }
+
+    /** True when this snapshot contains live, observed router metrics. */
+    public boolean hasLiveMetrics() {
+        return hasStatus();
+    }
+
+    /**
      * Snapshot without native counters. Safe to build on the main thread: it
      * only reads already-cached Java state from {@link DaemonWrapper}.
      */

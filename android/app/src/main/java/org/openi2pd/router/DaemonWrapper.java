@@ -17,11 +17,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
-import java.util.Timer;
-import java.util.TimerTask;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -51,9 +48,6 @@ public class DaemonWrapper {
      */
     public static final long GRACEFUL_STOP_DELAY_MILLIS = 10L * 60L * 1000L;
 
-    private static final String appLocale =
-            Locale.getDefault().getDisplayLanguage(Locale.ENGLISH).toLowerCase(Locale.ROOT);
-
     public interface StateUpdateListener {
         void daemonStateUpdate(State oldValue, State newValue);
     }
@@ -67,6 +61,7 @@ public class DaemonWrapper {
         startedOkay(R.string.startedOkay),
         startFailed(R.string.startFailed),
         gracefulShutdownInProgress(R.string.gracefulShutdownInProgress),
+        stopping(R.string.state_stopping),
         stopped(R.string.stopped);
 
         private final int statusStringResourceId;
@@ -100,7 +95,6 @@ public class DaemonWrapper {
     private volatile State state = State.uninitialized;
     private volatile Throwable lastThrowable;
     private volatile String daemonStartResult = "N/A";
-    private volatile Timer gracefulStopTimer;
     private volatile boolean startThreadRunning;
     private volatile boolean networkCallbackRegistered;
 
@@ -327,14 +321,17 @@ public class DaemonWrapper {
     public synchronized void stopDaemon() {
         stopRequested.set(true);
         final boolean callNative;
-        StateChange change = null;
+        StateChange beginChange = null;
+        StateChange finishChange = null;
         synchronized (lock) {
             cancelGracefulStopLocked();
             callNative = state.isStartedOkay();
-            if (!callNative) {
-                change = setStateLocked(State.stopped);
-            }
+            beginChange = setStateLocked(callNative ? State.stopping : State.stopped);
         }
+        // Publish Stopping before entering native teardown. A status poll
+        // that cannot take the native-call lock can then say that the router
+        // is going away instead of reading a stale Running state.
+        notifyListeners(beginChange);
         if (callNative) {
             try {
                 I2PD_JNI.stopDaemon();
@@ -342,11 +339,11 @@ public class DaemonWrapper {
                 Log.e(TAG, "native stop failed", tr);
             }
             synchronized (lock) {
-                change = setStateLocked(State.stopped);
+                finishChange = setStateLocked(State.stopped);
             }
         }
         unregisterNetworkCallback();
-        notifyListeners(change);
+        notifyListeners(finishChange);
     }
 
     public void startDaemon() {
@@ -424,8 +421,6 @@ public class DaemonWrapper {
             synchronized (lock) {
                 if (!stopRequested.get()) {
                     I2PD_JNI.setDataDir(dataDir.getAbsolutePath());
-                    Log.i(TAG, "setting language to " + appLocale);
-                    I2PD_JNI.setLanguage(appLocale);
 
                     String result = I2PD_JNI.startDaemon();
                     daemonStartResult = result;
@@ -473,42 +468,35 @@ public class DaemonWrapper {
 
     /**
      * Start a graceful shutdown: stop accepting transit tunnels and give the
-     * remaining ones time to drain before stopping the daemon. The timer is
-     * owned by this process-wide object, never by an Activity.
+     * remaining ones time to drain. Scheduling belongs to RouterService so the
+     * eventual native stop is enqueued on its worker; this wrapper owns only
+     * the state and the deadline.
+     *
+     * @return the delay that the caller must schedule, or {@code 0} when the
+     *         stop was already performed immediately
      */
-    public void beginGracefulShutdown(long delayMillis) {
+    public long beginGracefulShutdown(long delayMillis) {
         StateChange change = null;
-        boolean stopImmediately;
+        boolean stopImmediately = false;
+        long scheduledDelay = 0L;
         synchronized (lock) {
             if (!state.isStartedOkay()) {
                 stopImmediately = true;
-            } else if (gracefulStopTimer != null) {
-                return;
             } else {
+                long deadline = gracefulStopDeadlineMillis.get();
+                if (deadline != 0L) {
+                    return Math.max(0L, deadline - System.currentTimeMillis());
+                }
+
                 change = setStateLocked(State.gracefulShutdownInProgress);
                 I2PD_JNI.stopAcceptingTunnels();
 
                 long delay = Math.max(0L, delayMillis);
-                long deadline = System.currentTimeMillis() + delay;
-                gracefulStopDeadlineMillis.set(deadline);
-
-                stopImmediately = getTransitTunnelsCount() <= 0;
-                if (!stopImmediately) {
-                    final long scheduledDeadline = deadline;
-                    final Timer timer = new Timer("i2pdGracefulStop", true);
-                    gracefulStopTimer = timer;
-                    timer.schedule(new TimerTask() {
-                        @Override
-                        public void run() {
-                            synchronized (lock) {
-                                if (gracefulStopTimer != timer
-                                        || gracefulStopDeadlineMillis.get() != scheduledDeadline) {
-                                    return;
-                                }
-                            }
-                            stopDaemon();
-                        }
-                    }, delay);
+                if (delay == 0L || getTransitTunnelsCount() <= 0) {
+                    stopImmediately = true;
+                } else {
+                    gracefulStopDeadlineMillis.set(System.currentTimeMillis() + delay);
+                    scheduledDelay = delay;
                 }
             }
         }
@@ -516,6 +504,7 @@ public class DaemonWrapper {
         if (stopImmediately) {
             stopDaemon();
         }
+        return scheduledDelay;
     }
 
     public void cancelGracefulShutdown() {
@@ -531,7 +520,7 @@ public class DaemonWrapper {
     }
 
     public boolean isGracefulShutdownScheduled() {
-        return gracefulStopTimer != null;
+        return gracefulStopDeadlineMillis.get() > 0L;
     }
 
     public long getGracefulStopRemainingMillis() {
@@ -543,12 +532,7 @@ public class DaemonWrapper {
     }
 
     private void cancelGracefulStopLocked() {
-        Timer timer = gracefulStopTimer;
-        gracefulStopTimer = null;
         gracefulStopDeadlineMillis.set(0L);
-        if (timer != null) {
-            timer.cancel();
-        }
     }
 
     private StateChange setState(State newState) {

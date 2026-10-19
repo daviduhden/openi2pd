@@ -1,4 +1,6 @@
-# In that directory you can store separated config files for every tunnel.
-# Please read documentation for more info.
+# In this directory you can store separate configuration files for every
+# tunnel. See the openi2pd tunnel guide:
+# https://github.com/daviduhden/openi2pd/blob/main/docs/user-guide/tunnels.md
 #
-# You can find examples in /usr/share/doc/i2pd/tunnels.d directory
+# The bundled IRC examples are commented out. Review every destination and
+# local port before enabling a tunnel.

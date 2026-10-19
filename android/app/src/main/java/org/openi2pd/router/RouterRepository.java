@@ -9,6 +9,7 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
+import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
 import android.util.Log;
@@ -40,6 +41,7 @@ public final class RouterRepository implements RouterService.Listener {
     private static final String TAG = "RouterRepository";
 
     private final Context appContext;
+    private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final MutableLiveData<RouterSnapshot> snapshot = new MutableLiveData<>();
     private final MutableLiveData<List<LogEntry>> logs =
             new MutableLiveData<>(Collections.emptyList());
@@ -51,6 +53,10 @@ public final class RouterRepository implements RouterService.Listener {
     private boolean binding;
     private boolean bound;
     private boolean closed;
+    /** UI visibility gates the service listener so polling stops in background. */
+    private boolean uiVisible;
+    private boolean listening;
+    private RouterSnapshot lastSnapshot;
 
     private final ServiceConnection connection = new ServiceConnection() {
         @Override
@@ -60,17 +66,33 @@ public final class RouterRepository implements RouterService.Listener {
             RouterService connected =
                     binder instanceof RouterService.LocalBinder local ? local.getService() : null;
             if (connected == null || closed) {
+                if (closed) {
+                    // close() may have run before this callback was delivered.
+                    // Drop the callback's binding instead of retaining a
+                    // service connection no owner will release.
+                    try {
+                        appContext.unbindService(connection);
+                    } catch (RuntimeException e) {
+                        Log.i(TAG, "service already unbound");
+                    }
+                    bound = false;
+                    service = null;
+                }
                 return;
             }
             service = connected;
             serviceConnected.setValue(true);
-            connected.registerListener(RouterRepository.this);
+            if (uiVisible) {
+                connected.registerListener(RouterRepository.this);
+                listening = true;
+            }
         }
 
         @Override
         public void onServiceDisconnected(ComponentName name) {
             binding = false;
             bound = false;
+            listening = false;
             service = null;
             serviceConnected.setValue(false);
         }
@@ -96,6 +118,31 @@ public final class RouterRepository implements RouterService.Listener {
 
     public LiveData<Boolean> getServiceConnected() {
         return serviceConnected;
+    }
+
+    /**
+     * Start or stop observation of the bound service. Keeping the binding while
+     * the UI is not visible lets commands still use the binder, but stops the
+     * service's JNI polling and the fragment render pipeline in background.
+     */
+    public void setUiVisible(boolean visible) {
+        runOnMain(() -> {
+            if (closed || uiVisible == visible) {
+                return;
+            }
+            uiVisible = visible;
+            RouterService local = service;
+            if (local == null) {
+                return;
+            }
+            if (visible && !listening) {
+                local.registerListener(this);
+                listening = true;
+            } else if (!visible && listening) {
+                local.unregisterListener(this);
+                listening = false;
+            }
+        });
     }
 
     public void refresh() {
@@ -185,9 +232,10 @@ public final class RouterRepository implements RouterService.Listener {
             closed = true;
             RouterService local = service;
             service = null;
-            if (local != null) {
+            if (listening && local != null) {
                 local.unregisterListener(this);
             }
+            listening = false;
             if (bound || binding) {
                 try {
                     appContext.unbindService(connection);
@@ -207,9 +255,10 @@ public final class RouterRepository implements RouterService.Listener {
 
     @Override
     public void onRouterSnapshot(RouterSnapshot value) {
-        if (closed) {
+        if (closed || value == null || value.equals(lastSnapshot)) {
             return;
         }
+        lastSnapshot = value;
         if (Looper.myLooper() == Looper.getMainLooper()) {
             snapshot.setValue(value);
         } else {
@@ -312,11 +361,11 @@ public final class RouterRepository implements RouterService.Listener {
         };
     }
 
-    private static void runOnMain(Runnable action) {
+    private void runOnMain(Runnable action) {
         if (Looper.myLooper() == Looper.getMainLooper()) {
             action.run();
         } else {
-            new android.os.Handler(Looper.getMainLooper()).post(action);
+            mainHandler.post(action);
         }
     }
 }

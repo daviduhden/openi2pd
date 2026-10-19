@@ -17,8 +17,10 @@ import android.util.Log;
  *
  * <p>Library loading is deliberately fail-closed and repeatable: a failed
  * load is remembered and reported as a link error instead of leaving a
- * partially initialised process. Loading and every start/stop call are
- * serialised by the service's worker thread.</p>
+ * partially initialised process. Start/stop calls are serialised by the
+ * native-call guard; RouterService posts control/status work to its worker,
+ * while DaemonWrapper uses a dedicated start thread for asset copying and
+ * native initialisation.</p>
  */
 public final class I2PD_JNI {
     private static final String TAG = "I2PD_JNI";
@@ -104,7 +106,6 @@ public final class I2PD_JNI {
     public static native void reloadTunnelsConfigs();
 
     public static native void setDataDir(String jdataDir);
-    public static native void setLanguage(String jlanguage);
 
     public static native int getTransitTunnelsCount();
     public static native String getDataDir();

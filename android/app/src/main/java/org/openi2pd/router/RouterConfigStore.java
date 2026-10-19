@@ -109,20 +109,11 @@ public final class RouterConfigStore {
         if (value == null) {
             return def;
         }
-        switch (value.trim().toLowerCase(Locale.ROOT)) {
-        case "1":
-        case "true":
-        case "yes":
-        case "on":
-            return true;
-        case "0":
-        case "false":
-        case "no":
-        case "off":
-            return false;
-        default:
-            return def;
-        }
+        return switch (value.trim().toLowerCase(Locale.ROOT)) {
+            case "1", "true", "yes", "on" -> true;
+            case "0", "false", "no", "off" -> false;
+            default -> def;
+        };
     }
 
     /**

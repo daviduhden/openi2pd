@@ -17,6 +17,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
 import android.net.ConnectivityManager;
+import android.net.wifi.WifiManager;
 import android.os.Binder;
 import android.os.Build;
 import android.os.Handler;
@@ -42,15 +43,18 @@ import java.util.concurrent.atomic.AtomicBoolean;
  * Started and bound router service.
  *
  * <p>This class is the single owner of {@link DaemonWrapper}. It keeps the
- * foreground notification, the graceful-stop timer and all native calls. The
- * UI only binds with the application context through {@link RouterRepository};
- * it never sees {@code DaemonWrapper} or {@link I2PD_JNI}.</p>
+ * foreground notification, the service-owned graceful-stop deadline and the
+ * native control boundary. Start runs on the wrapper's dedicated start thread;
+ * stop/status commands are posted to the service worker. The UI only binds
+ * with the application context through {@link RouterRepository}; it never
+ * sees {@code DaemonWrapper} or {@link I2PD_JNI}.</p>
  *
  * <p>Status and log snapshots are produced on one background executor by
  * polling {@code I2PD_JNI.getStatusSnapshot()} and
  * {@code I2PD_JNI.getRecentLogs(after, 200)}. Polling stops when the last
  * listener unregisters, while the daemon and notification keep running until
- * an explicit stop (or until the graceful-stop timer fires).</p>
+ * an explicit stop (or until the scheduled graceful-stop deadline enqueues
+ * the native stop on the worker).</p>
  *
  * <p><b>Process model:</b> the service is intentionally same-process and not
  * exported. {@link LocalBinder} is therefore an in-process Binder, not AIDL.
@@ -105,6 +109,12 @@ public class RouterService extends Service {
     private ExecutorService worker;
     private DaemonWrapper daemon;
     private NotificationManager notificationManager;
+    /**
+     * Android filters Wi-Fi multicast unless a MulticastLock is held. UPnP
+     * SSDP discovery needs it while the router is running; the lock is
+     * reference-counted explicitly and released on every terminal state.
+     */
+    private WifiManager.MulticastLock multicastLock;
 
     private volatile boolean destroyed;
     private volatile boolean foregroundShown;
@@ -153,8 +163,34 @@ public class RouterService extends Service {
         }
     };
 
+    /**
+     * The graceful-stop deadline is scheduled on the service main handler and
+     * only enqueues the native stop on the single-thread worker. This replaces
+     * the legacy timer thread and keeps every JNI-visible transition on the
+     * service command path.
+     */
+    private final Runnable gracefulStopExpired = () -> {
+        if (destroyed) {
+            return;
+        }
+        enqueueControl(() -> {
+            DaemonWrapper local = daemon;
+            if (local != null && local.isGracefulShutdownScheduled()) {
+                local.stopDaemon();
+            }
+        });
+    };
+
     private final DaemonWrapper.StateUpdateListener daemonStateListener = (oldState, newState) -> {
         routerRunning = newState.isStartedOkay();
+        if (newState == DaemonWrapper.State.stopped) {
+            mainHandler.removeCallbacks(gracefulStopExpired);
+            if (!restartInProgress.get()) {
+                releaseMulticastLock();
+            }
+        } else if (newState == DaemonWrapper.State.startFailed) {
+            releaseMulticastLock();
+        }
         if (newState == DaemonWrapper.State.stopped && !destroyed && !restartInProgress.get()) {
             // Stop, graceful-stop expiration and a failed restart all
             // converge here. An explicit restart keeps the flag set
@@ -214,7 +250,7 @@ public class RouterService extends Service {
             // the process is in a state where a foreground service may not be
             // started, leave the flag set: the next visible launch will retry.
             if (ensureForeground()) {
-                enqueueControl(daemon::startDaemon);
+                enqueueControl(this::startDaemonWithMulticast);
             } else {
                 Log.w(TAG, "foreground notification unavailable during restore");
                 stopSelf();
@@ -237,7 +273,7 @@ public class RouterService extends Service {
                 stopSelfResult(startId);
                 return START_NOT_STICKY;
             }
-            enqueueControl(daemon::startDaemon);
+            enqueueControl(this::startDaemonWithMulticast);
             return START_STICKY;
         }
 
@@ -248,21 +284,35 @@ public class RouterService extends Service {
                 return START_NOT_STICKY;
             }
             setShouldRun(true);
-            enqueueControl(daemon::startDaemon);
+            enqueueControl(this::startDaemonWithMulticast);
         }
         case ACTION_STOP -> {
             setShouldRun(false);
+            mainHandler.removeCallbacks(gracefulStopExpired);
             // A startForegroundService() caller expects startForeground()
-            // or stopSelf() within five seconds. The control task below is
-            // allowed to take longer than that.
-            ensureForeground();
+            // or stopSelf() within five seconds. If the notification cannot
+            // be installed, fail the command instead of leaving the service
+            // in an invalid started state.
+            if (!ensureForeground()) {
+                stopSelfResult(startId);
+                return START_NOT_STICKY;
+            }
             enqueueControl(daemon::stopDaemon);
+            // An explicit stop is never sticky. If the process dies before the
+            // queued native shutdown completes, let the next user action
+            // start a clean service rather than resurrecting a stopping one.
+            return START_NOT_STICKY;
         }
         case ACTION_RESTART -> {
             if (!ensureForeground()) {
                 stopSelfResult(startId);
                 return START_NOT_STICKY;
             }
+            // Persist intent before the worker starts the two-phase restart,
+            // so a process death cannot leave a non-sticky half-restarted
+            // service behind.
+            setShouldRun(true);
+            mainHandler.removeCallbacks(gracefulStopExpired);
             enqueueControl(this::performRestart);
         }
         case ACTION_GRACEFUL_STOP -> {
@@ -271,10 +321,12 @@ public class RouterService extends Service {
                 return START_NOT_STICKY;
             }
             setShouldRun(true);
-            enqueueControl(
-                    () -> daemon.beginGracefulShutdown(DaemonWrapper.GRACEFUL_STOP_DELAY_MILLIS));
+            beginGracefulStopCommand();
         }
-        case ACTION_CANCEL_GRACEFUL_STOP -> enqueueControl(daemon::cancelGracefulShutdown);
+        case ACTION_CANCEL_GRACEFUL_STOP -> {
+            mainHandler.removeCallbacks(gracefulStopExpired);
+            enqueueControl(daemon::cancelGracefulShutdown);
+        }
         case ACTION_RELOAD_TUNNELS -> enqueueControl(daemon::reloadTunnelsConfigs);
         default -> {
             Log.w(TAG, "ignoring unknown service action");
@@ -327,6 +379,7 @@ public class RouterService extends Service {
         if (executor != null) {
             executor.shutdown();
         }
+        releaseMulticastLock();
         stopForegroundCompat();
         super.onDestroy();
     }
@@ -341,7 +394,11 @@ public class RouterService extends Service {
     public void onTimeout(int startId, int fgsType) {
         Log.w(TAG, "foreground service timeout for type " + fgsType);
         setShouldRun(false);
+        mainHandler.removeCallbacks(gracefulStopExpired);
         enqueueControl(daemon::stopDaemon);
+        // The platform requires a timed-out dataSync service to stop itself.
+        // onDestroy repeats the native stop request, which is idempotent.
+        stopSelf(startId);
     }
 
     // ---------------------------------------------------------------------
@@ -401,13 +458,14 @@ public class RouterService extends Service {
                 return;
             }
             setShouldRun(true);
-            enqueueControl(daemon::startDaemon);
+            enqueueControl(this::startDaemonWithMulticast);
         });
     }
 
     public void stopRouter() {
         runOnMain(() -> {
             setShouldRun(false);
+            mainHandler.removeCallbacks(gracefulStopExpired);
             enqueueControl(daemon::stopDaemon);
         });
     }
@@ -418,6 +476,8 @@ public class RouterService extends Service {
                 Log.w(TAG, "unable to start foreground notification");
                 return;
             }
+            setShouldRun(true);
+            mainHandler.removeCallbacks(gracefulStopExpired);
             enqueueControl(this::performRestart);
         });
     }
@@ -430,6 +490,8 @@ public class RouterService extends Service {
      */
     private void performRestart() {
         restartInProgress.set(true);
+        acquireMulticastLock();
+        mainHandler.removeCallbacks(gracefulStopExpired);
         setShouldRun(true);
         boolean restarted = false;
         try {
@@ -438,6 +500,9 @@ public class RouterService extends Service {
             Log.e(TAG, "unable to restart the router", e);
         } finally {
             restartInProgress.set(false);
+            if (!restarted && daemon.getState() == DaemonWrapper.State.stopped) {
+                releaseMulticastLock();
+            }
         }
         if (!restarted) {
             if (daemon.getState() == DaemonWrapper.State.stopped) {
@@ -456,13 +521,35 @@ public class RouterService extends Service {
                 return;
             }
             setShouldRun(true);
-            enqueueControl(
-                    () -> daemon.beginGracefulShutdown(DaemonWrapper.GRACEFUL_STOP_DELAY_MILLIS));
+            beginGracefulStopCommand();
+        });
+    }
+
+    /**
+     * Stop accepting transit tunnels and schedule the service-owned deadline.
+     * Must be called on the main thread; the native call itself runs on the
+     * service worker.
+     */
+    private void beginGracefulStopCommand() {
+        mainHandler.removeCallbacks(gracefulStopExpired);
+        enqueueControl(() -> {
+            long delay = daemon.beginGracefulShutdown(
+                    DaemonWrapper.GRACEFUL_STOP_DELAY_MILLIS);
+            if (delay > 0L) {
+                mainHandler.postDelayed(gracefulStopExpired, delay);
+            } else if (daemon.isGracefulShutdownScheduled()) {
+                // The previous deadline expired while this command was being
+                // queued; do not lose the terminal stop.
+                enqueueControl(daemon::stopDaemon);
+            }
         });
     }
 
     public void cancelGracefulStop() {
-        runOnMain(() -> enqueueControl(daemon::cancelGracefulShutdown));
+        runOnMain(() -> {
+            mainHandler.removeCallbacks(gracefulStopExpired);
+            enqueueControl(daemon::cancelGracefulShutdown);
+        });
     }
 
     public void reloadTunnels() {
@@ -832,6 +919,64 @@ public class RouterService extends Service {
             });
         } catch (RejectedExecutionException e) {
             Log.w(TAG, "router command rejected after shutdown", e);
+        }
+    }
+
+    /** Start the router on the worker with the SSDP multicast lock held. */
+    private void startDaemonWithMulticast() {
+        DaemonWrapper local = daemon;
+        if (local == null) {
+            return;
+        }
+        acquireMulticastLock();
+        try {
+            local.startDaemon();
+        } catch (RuntimeException e) {
+            releaseMulticastLock();
+            throw e;
+        }
+    }
+
+    private synchronized void acquireMulticastLock() {
+        if (destroyed || multicastLock != null) {
+            return;
+        }
+        boolean upnpEnabled = true;
+        try {
+            upnpEnabled = RouterConfigStore.get(getApplicationContext())
+                    .getBoolean("upnp.enabled", true);
+        } catch (RuntimeException e) {
+            Log.w(TAG, "unable to read the UPnP setting; using the default", e);
+        }
+        if (!upnpEnabled) {
+            return;
+        }
+        WifiManager wifiManager =
+                (WifiManager) getApplicationContext().getSystemService(WIFI_SERVICE);
+        if (wifiManager == null) {
+            return;
+        }
+        WifiManager.MulticastLock lock =
+                wifiManager.createMulticastLock("openi2pd-upnp");
+        lock.setReferenceCounted(false);
+        try {
+            lock.acquire();
+            multicastLock = lock;
+        } catch (RuntimeException e) {
+            Log.w(TAG, "unable to acquire the SSDP multicast lock", e);
+        }
+    }
+
+    private synchronized void releaseMulticastLock() {
+        WifiManager.MulticastLock lock = multicastLock;
+        multicastLock = null;
+        if (lock == null || !lock.isHeld()) {
+            return;
+        }
+        try {
+            lock.release();
+        } catch (RuntimeException e) {
+            Log.w(TAG, "unable to release the SSDP multicast lock", e);
         }
     }
 

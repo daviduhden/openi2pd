@@ -186,31 +186,14 @@ final class RouterStatusParser {
      */
     private static String normalizeLevel(String raw) {
         String level = raw == null ? "" : raw.trim().toLowerCase(Locale.ROOT);
-        switch (level) {
-        case "0":
-        case "none":
-            return "none";
-        case "1":
-        case "2":
-        case "critical":
-        case "err":
-        case "error":
-            return "error";
-        case "3":
-        case "warning":
-        case "warn":
-            return "warn";
-        case "4":
-        case "information":
-        case "info":
-            return "info";
-        case "5":
-        case "debug":
-        case "trace":
-            return "debug";
-        default:
-            return level.isEmpty() ? "info" : level;
-        }
+        return switch (level) {
+            case "0", "none" -> "none";
+            case "1", "2", "critical", "err", "error" -> "error";
+            case "3", "warning", "warn" -> "warn";
+            case "4", "information", "info" -> "info";
+            case "5", "debug", "trace" -> "debug";
+            default -> level.isEmpty() ? "info" : level;
+        };
     }
 
     private static int intValue(String value, int fallback, boolean allowNegative) {
@@ -239,19 +222,10 @@ final class RouterStatusParser {
         if (value == null) {
             return fallback;
         }
-        switch (value.trim().toLowerCase(Locale.ROOT)) {
-        case "1":
-        case "true":
-        case "yes":
-        case "on":
-            return true;
-        case "0":
-        case "false":
-        case "no":
-        case "off":
-            return false;
-        default:
-            return fallback;
-        }
+        return switch (value.trim().toLowerCase(Locale.ROOT)) {
+            case "1", "true", "yes", "on" -> true;
+            case "0", "false", "no", "off" -> false;
+            default -> fallback;
+        };
     }
 }
