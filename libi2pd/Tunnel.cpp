@@ -469,7 +469,7 @@ namespace tunnel
 		// before the exploratory pool is detached.
 		Stop ();
 		auto exploratoryPool = GetExploratoryPool ();
-		m_ExploratoryPool.store (std::shared_ptr<TunnelPool> { });
+		std::atomic_store (&m_ExploratoryPool, std::shared_ptr<TunnelPool> { });
 		DeleteTunnelPool (exploratoryPool);
 	}
 
@@ -642,7 +642,7 @@ namespace tunnel
 		// The exploratory pool is created lazily by the tunnel worker. Remove
 		// it as part of Stop() so a later Start() builds a fresh pool and an
 		// administrative reader cannot observe a stopped worker's pool.
-		auto exploratoryPool = m_ExploratoryPool.exchange (std::shared_ptr<TunnelPool> { });
+		auto exploratoryPool = std::atomic_exchange (&m_ExploratoryPool, std::shared_ptr<TunnelPool> { });
 		if (exploratoryPool) DeleteTunnelPool (exploratoryPool);
 
 		// Drop every runtime reference so a later Start() cannot observe ids
@@ -1081,7 +1081,7 @@ namespace tunnel
 				i2p::config::GetOption ("exploratory.outbound.quantity", obNum);
 				auto exploratoryPool = CreateTunnelPool (ibLen, obLen, ibNum, obNum, 0, 0, false);
 				exploratoryPool->SetLocalDestination (i2p::context.GetSharedDestination ());
-				m_ExploratoryPool.store (exploratoryPool);
+				std::atomic_store (&m_ExploratoryPool, exploratoryPool);
 			}
 			return;
 		}

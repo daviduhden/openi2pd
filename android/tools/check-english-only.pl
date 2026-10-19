@@ -100,7 +100,9 @@ find({
         return unless /\.(?:java|xml)$/;
         open(my $fh, '<', $_) or return;
         while (my $text = <$fh>) {
-            while ($text =~ /R\.string\.([A-Za-z0-9_]+)/g) {
+            # android.R.string.* belongs to the framework and does not need a
+            # local catalog entry; only unqualified app references are checked.
+            while ($text =~ /(?<!android\.)R\.string\.([A-Za-z0-9_]+)/g) {
                 push @errors, "missing string resource R.string.$1 in $_\n" unless $defined{$1};
             }
             while ($text =~ /\@string\/([A-Za-z0-9_]+)/g) {

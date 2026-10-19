@@ -346,7 +346,9 @@ namespace garlic
 		// capacity large enough for the authenticated new-session rate.
 		static constexpr uint64_t NEW_SESSION_KEY_CACHE_AGE = 5 * 60; // seconds
 		static constexpr size_t NEW_SESSION_KEY_CACHE_SIZE = 4096;
-		std::deque<std::pair<i2p::data::Tag<32>, uint64_t>> m_NewSessionKeys; // key, timestamp
+		// The duplicate check prunes expired entries, so this cache is
+		// mutable even though the query itself is logically const.
+		mutable std::deque<std::pair<i2p::data::Tag<32>, uint64_t>> m_NewSessionKeys; // key, timestamp
 		std::unique_ptr<uint8_t[]> m_PayloadBuffer; // for ECIESX25519AEADRatchet
 		uint64_t m_LastIncomingSessionTimestamp; // in milliseconds
 		// incoming

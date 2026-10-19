@@ -153,7 +153,26 @@ if(WITH_TORRENTS)
   find_package(Boost 1.81 REQUIRED COMPONENTS json url)
 endif()
 find_package(OpenSSL REQUIRED)
-if(OPENSSL_VERSION MATCHES "^LibreSSL ([0-9]+\\.[0-9]+)")
+# LibreSSL deliberately keeps OPENSSL_VERSION_NUMBER frozen at 0x20000000
+# for source compatibility, so CMake's FindOpenSSL reports 2.0.0 even for a
+# current LibreSSL. Read the project-specific version text from the selected
+# headers instead of treating that compatibility value as the library version.
+set(I2PD_LIBRESSL_VERSION "")
+if(OPENSSL_INCLUDE_DIR AND EXISTS "${OPENSSL_INCLUDE_DIR}/openssl/opensslv.h")
+  file(STRINGS "${OPENSSL_INCLUDE_DIR}/openssl/opensslv.h" _i2pd_libressl_version_line
+    REGEX "^#[\t ]*define[\t ]+LIBRESSL_VERSION_TEXT[\t ]+\"LibreSSL ([0-9]+\\.[0-9]+)\"")
+  if(_i2pd_libressl_version_line)
+    string(REGEX REPLACE
+      "^.*LIBRESSL_VERSION_TEXT[\t ]+\"LibreSSL ([0-9]+\\.[0-9]+)\".*$"
+      "\\1" I2PD_LIBRESSL_VERSION "${_i2pd_libressl_version_line}")
+  endif()
+  unset(_i2pd_libressl_version_line)
+endif()
+if(I2PD_LIBRESSL_VERSION)
+  if(I2PD_LIBRESSL_VERSION VERSION_LESS 4.0)
+    message(FATAL_ERROR "LibreSSL 4.0 or newer is required (found LibreSSL ${I2PD_LIBRESSL_VERSION})")
+  endif()
+elseif(OPENSSL_VERSION MATCHES "^LibreSSL ([0-9]+\\.[0-9]+)")
   if(CMAKE_MATCH_1 VERSION_LESS 4.0)
     message(FATAL_ERROR "LibreSSL 4.0 or newer is required (found ${OPENSSL_VERSION})")
   endif()

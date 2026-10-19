@@ -41,11 +41,12 @@ jobs:
           cmake -DPROJECT_ROOT="$PWD" -P tests/check-build-system.cmake
           # The unit is static, but systemd-analyze verifies that ExecStart
           # exists. Provide a disposable executable for this source-only job;
-          # the Debian job verifies the real installed binary.
+          # the Debian job verifies the real installed binary and man page.
           sudo install -m 0755 /bin/true /usr/bin/i2pd
           trap 'sudo rm -f /usr/bin/i2pd' EXIT
           verify_status=0
-          verify_output=$(systemd-analyze verify contrib/i2pd.service 2>&1) || verify_status=$?
+          verify_output=$(systemd-analyze verify --man=no \
+            contrib/i2pd.service 2>&1) || verify_status=$?
           if [ "$verify_status" -ne 0 ]; then
             printf '%s\n' "$verify_output" >&2
             if printf '%s\n' "$verify_output" | grep -q '^i2pd\.service:'; then

@@ -990,7 +990,7 @@ namespace data
 		m_ReachableTransports.store (reachableTransports);
 		m_PublishedTransports.store (publishedTransports);
 		m_Version.store (version);
-		m_Addresses.store (addresses);
+		std::atomic_store (&m_Addresses, std::move (addresses));
 		m_IsFloodfill.store ((caps & eFloodfill) != 0);
 		m_IsUnreachable.store (false);
 		ClearProperties ();
@@ -1499,7 +1499,7 @@ namespace data
 
 	RouterInfo::AddressesPtr RouterInfo::GetAddresses () const
 	{
-		return m_Addresses.load ();
+		return std::atomic_load (&m_Addresses);
 	}
 
 	template <typename Filter> std::shared_ptr<const RouterInfo::Address> RouterInfo::GetAddress (Filter filter) const
@@ -1541,13 +1541,13 @@ namespace data
 
 	std::shared_ptr<RouterProfile> RouterInfo::GetProfile () const
 	{
-		auto profile = m_Profile.load ();
+		auto profile = std::atomic_load (&m_Profile);
 		if (!profile)
 		{
 			profile = GetRouterProfile (GetIdentHash ());
 			// A concurrent caller may have installed one first; either object is
 			// equivalent and the last store is harmless.
-			m_Profile.store (profile);
+			std::atomic_store (&m_Profile, profile);
 		}
 		return profile;
 	}

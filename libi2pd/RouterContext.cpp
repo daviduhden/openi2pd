@@ -90,14 +90,14 @@ void RouterContext::Init ()
 void RouterContext::Start ()
 {
 	std::lock_guard<std::mutex> lifecycle (m_ServiceLifecycleMutex);
-	if (m_Service.load ()) return;
+	if (std::atomic_load (&m_Service)) return;
 	auto service = std::make_shared<RouterService> ();
 	m_PublishTimer.reset (new boost::asio::steady_timer (service->GetService ()));
 	m_CongestionUpdateTimer.reset (new boost::asio::steady_timer (service->GetService ()));
 	m_CleanupTimer.reset (new boost::asio::steady_timer (service->GetService ()));
 	// Publish the service before scheduling so timer handlers that run once
 	// the worker starts observe a consistent object.
-	m_Service.store (service);
+	std::atomic_store (&m_Service, service);
 	ScheduleInitialPublish ();
 	ScheduleCongestionUpdate ();
 	ScheduleCleanupTimer ();
@@ -107,7 +107,7 @@ void RouterContext::Start ()
 void RouterContext::Stop ()
 {
 	std::lock_guard<std::mutex> lifecycle (m_ServiceLifecycleMutex);
-	auto service = m_Service.exchange (std::shared_ptr<RouterService> { });
+	auto service = std::atomic_exchange (&m_Service, std::shared_ptr<RouterService> { });
 	if (!service)
 	{
 		// A partially initialised context may still own timers.
@@ -1588,7 +1588,7 @@ bool RouterContext::HandleCloveI2NPMessage (I2NPMessageType typeID, const uint8_
 
 void RouterContext::ProcessGarlicMessage (std::shared_ptr<I2NPMessage> msg)
 {
-	auto service = m_Service.load (std::memory_order_acquire);
+	auto service = std::atomic_load_explicit (&m_Service, std::memory_order_acquire);
 	if (service)
 		boost::asio::post (service->GetService (), std::bind (&RouterContext::PostGarlicMessage, this, msg));
 	else
@@ -1618,7 +1618,7 @@ void RouterContext::PostGarlicMessage (std::shared_ptr<I2NPMessage> msg)
 
 void RouterContext::ProcessDeliveryStatusMessage (std::shared_ptr<I2NPMessage> msg)
 {
-	auto service = m_Service.load (std::memory_order_acquire);
+	auto service = std::atomic_load_explicit (&m_Service, std::memory_order_acquire);
 	if (service)
 		boost::asio::post (service->GetService (), std::bind (&RouterContext::PostDeliveryStatusMessage, this, msg));
 	else
@@ -1640,7 +1640,7 @@ void RouterContext::PostDeliveryStatusMessage (std::shared_ptr<I2NPMessage> msg)
 
 void RouterContext::SubmitECIESx25519Key (const uint8_t * key, uint64_t tag)
 {
-	auto service = m_Service.load (std::memory_order_acquire);
+	auto service = std::atomic_load_explicit (&m_Service, std::memory_order_acquire);
 	if (service)
 	{
 		struct
@@ -1812,7 +1812,7 @@ uint64_t RouterContext::Publish ()
 			i2p::data::GetIdentHashAbbreviation (floodfill->GetIdentHash ()), ". reply token=", replyToken);
 		auto onDrop = [this] ()
 		{
-			auto service = m_Service.load (std::memory_order_acquire);
+			auto service = std::atomic_load_explicit (&m_Service, std::memory_order_acquire);
 			if (service)
 				boost::asio::post (
 					service->GetService (), [this] () { HandlePublishResendTimer (boost::system::error_code ()); });
