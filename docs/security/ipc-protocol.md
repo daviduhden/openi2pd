@@ -7,11 +7,14 @@
   code retries without it and sets `FD_CLOEXEC` explicitly. A failure to set
   `FD_CLOEXEC` is fatal rather than leaking a descriptor across `exec`.
 - No TCP, no globally named UNIX socket for internal worker IPC.
-- The worker receives the channel descriptor as `--privsep-worker log <fd>`,
-  not through an environment variable. It verifies that the descriptor is an
-  inherited `SOCK_SEQPACKET` socket (`fstat`/`S_ISSOCK` and `SO_TYPE`) and
-  rejects invalid descriptors, so a manual invocation cannot downgrade the
-  transport to a stream or a regular file.
+- The core starts a supervisor process (`--privsep-worker supervisor <fd>`),
+  which owns the log worker and forwards log records. The log worker itself is
+  still started as `--privsep-worker log <fd>`.
+- Each process receives its channel descriptor as an argument, not through an
+  environment variable. It verifies that the descriptor is an inherited
+  `SOCK_SEQPACKET` socket (`fstat`/`S_ISSOCK` and `SO_TYPE`) and rejects invalid
+  descriptors, so a manual invocation cannot downgrade the transport to a
+  stream or a regular file.
 - Peer identity is checked with `SO_PEERCRED` (Linux) or `getpeereid`
   (OpenBSD/BSD). The worker rejects a peer whose UID is not its effective UID.
   The parent does not need a separate check because it created the socketpair
@@ -51,10 +54,19 @@ Limits:
 
 | Type | Direction | Payload |
 |---|---|---|
-| `ConfigureLog` | parent → log worker | `u8 syslog`, `u32 path-len + path`, `u32 tag-len + tag` |
-| `LogRecord` | parent → log worker | `u8 level`, `u64 timestamp`, `u32 text-len + text` |
+| `ConfigureLog` | core → supervisor → log worker | path mode: `u8 syslog`, `u32 path-len + path`, `u32 tag-len + tag` |
+| `ConfigureLogFd` | direct test/legacy path only | same payload, plus exactly one `SCM_RIGHTS` file descriptor for a file sink |
+| `LogRecord` | core → supervisor → log worker | `u8 level`, `u64 timestamp`, `u32 text-len + text` |
 | `Shutdown` | parent → worker | empty |
 | `Ping` / `Pong` | either | empty; request-id echoed |
+
+The production supervisor path forwards `ConfigureLog`; the **log worker**
+owns the file capability and opens the configured path with
+`O_CLOEXEC|O_NOFOLLOW` and `0600`. The supervisor never opens the log file, so
+it has neither network nor persistent-write capability. `ConfigureLogFd`
+remains for direct/legacy tests: the sender pre-opens the file, transfers one
+descriptor with `SCM_RIGHTS`, and retains no copy. The supervisor rejects an
+unexpected descriptor.
 
 A log worker rejects `LogRecord` before `ConfigureLog`, rejects unknown types,
 rejects malformed/oversized fields and exits on protocol error. `Ping` and
@@ -63,8 +75,11 @@ a freshly spawned worker. `ConfigureLog` is accepted exactly once; a duplicate
 is a fatal protocol error. `path` and `tag` containing an embedded NUL are
 rejected so the worker cannot open a different path than the parent encoded.
 
-The protocol is currently used only for logging. There is no network or storage
-worker protocol, and no generic file-write or descriptor-passing operation.
+The production protocol is currently used only for logging. There is no
+network or storage worker protocol and no generic file-write API;
+`ConfigureLogFd` is the sole descriptor-passing operation. The OpenBSD
+`OpenBSDSandbox` role policies and `OpenBSDImsg` adapter are preparation for
+those backends, not a claim that they are already migrated.
 
 ## Authorization
 
@@ -73,8 +88,10 @@ worker protocol, and no generic file-write or descriptor-passing operation.
   single configured log file.
 - The storage worker protocol is not implemented yet; no generic
   `write_file(path,data)` API is exposed.
-- Descriptor passing (`SCM_RIGHTS`) is not implemented for the log channel.
-  If added, it must be operation-specific and rights-minimized.
+- Descriptor passing is limited to the `ConfigureLogFd` operation, where
+  exactly one `SCM_RIGHTS` descriptor is accepted. There is no generic
+  descriptor-passing API; any future operation must be operation-specific and
+  rights-minimized.
 
 ## Failure behavior
 
@@ -84,15 +101,13 @@ worker protocol, and no generic file-write or descriptor-passing operation.
 - The router drops log records if the worker channel closes; it never falls
   back to opening the log file in the core process.
 - Worker protocol violation exits the worker with failure.
-- A single in-process monitor restarts a dead log worker with bounded
-  exponential backoff (500 ms, doubling to 30 s; at most eight consecutive
-  attempts; reset after 60 s of stable operation). The previous child is reaped
-  before the replacement is spawned, so there is at most one configured worker.
-  The monitor is shutdown-aware and runs as one joined thread, not an unbounded
-  thread pool.
-- When the attempt limit is reached, the worker stays stopped and log records
-  are dropped. This is a restart foundation, not a separate supervisor process;
-  network and storage separation remain unimplemented.
+- The supervisor process restarts a dead log worker. The core has a bounded
+  monitor/backoff for replacing a dead supervisor; the supervisor itself owns
+  the log child. The previous child is reaped before a replacement is spawned,
+  so there is at most one configured log worker per supervisor.
+- When the core's supervisor restart limit is reached, logging stays stopped
+  and records are dropped. Network and storage separation remain
+  unimplemented and are not claimed.
 - Liveness detection is exit- and channel-based. A worker that is alive but
   wedged (for example blocked in a filesystem write) is not killed or restarted;
   the sink send timeout bounds the logger stall and then the channel is closed.
@@ -105,19 +120,32 @@ worker protocol, and no generic file-write or descriptor-passing operation.
 downgrade or "best effort" mode. Future changes must either bump the version or
 add a new message type with explicit negotiation.
 
+## OpenBSD native adapter
+
+`privsep/OpenBSDImsg.{h,cpp}` wraps the OpenBSD `imsg`/`imsgbuf` API
+(`libutil`) and carries the same versioned frame as a payload. It enables
+`imsgbuf_allow_fdpass` for exactly one `SCM_RIGHTS` descriptor, applies
+bounded poll deadlines and validates peer identity with `getpeereid(2)`.
+`MAX_IMSGSIZE` is 16 KiB on OpenBSD; the adapter rejects larger frames, while
+the existing 8 KiB log-text bound fits with room to spare. The adapter is
+exercised by `test-privsep-openbsd-imsg` in the manual OpenBSD job. The production supervisor/log path continues to use the portable
+`SOCK_SEQPACKET` channel so Linux and OpenBSD share the same framing while
+the remaining backends are migrated; the adapter is not a weaker fallback.
+
 ## Platform mechanism comparison
 
 | Requirement | OpenBSD | Linux | Windows |
 |---|---|---|---|
-| Local transport | UNIX `SOCK_SEQPACKET` (implemented) | UNIX `SOCK_SEQPACKET` (implemented) | Microsoft RPC `ncalrpc` or Named Pipes (planned) |
-| Peer identity | `getpeereid(3)` (implemented) | `SO_PEERCRED` (implemented) | RPC auth / client PID + impersonation (planned) |
-| Message boundaries | `SOCK_SEQPACKET` | `SOCK_SEQPACKET` | `PIPE_TYPE_MESSAGE`/RPC (planned) |
-| Descriptor transfer | `SCM_RIGHTS`, only for authorized ops (not used yet) | `SCM_RIGHTS` (not used yet) | `DuplicateHandle`, rights-limited (planned) |
-| Process supervision | `waitpid`, signals; in-process log restart monitor (implemented) | eager `pidfd` preferred, `waitpid` fallback (implemented); in-process monitor | Job Objects + process handles (planned) |
-| OS capability policy | `unveil` + `pledge` per worker (log implemented) | seccomp/Landlock/namespaces/caps (pending) | Restricted token/AppContainer/LPAC/ACL (planned) |
+| Local transport | UNIX `SOCK_SEQPACKET` (implemented); native `imsg` adapter prepared/tested in CI | UNIX `SOCK_SEQPACKET` (implemented) | Local message-mode Named Pipe (`PIPE_TYPE_MESSAGE`, `PIPE_REJECT_REMOTE_CLIENTS`) implemented as primitives; worker integration pending |
+| Peer identity | `getpeereid(3)` (implemented) | `SO_PEERCRED` (implemented) | Client PID/session + token user SID via `GetNamedPipeClient*` (implemented); no impersonation |
+| Message boundaries | `SOCK_SEQPACKET`; imsg adapter preserves versioned frame | `SOCK_SEQPACKET` | One message-mode pipe message per versioned frame |
+| Descriptor transfer | `SCM_RIGHTS` for `ConfigureLogFd`; pre-opened storage roots validated | `SCM_RIGHTS` for `ConfigureLogFd` only | No inheritance/`DuplicateHandle`; worker reconnects by local pipe name |
+| Process supervision | `waitpid`, signals; separate supervisor process for log worker (implemented) | eager `pidfd` preferred, `waitpid` fallback; separate supervisor process (implemented) | Restricted token + Job Object + mitigation attributes implemented as primitives; supervisor integration pending |
+| OS capability policy | `unveil` + `pledge` per role in `OpenBSDSandbox` (log/supervisor implemented; storage/network/crypto/admin backends pending) | `LinuxSandbox`: seccomp socket filters, Landlock write paths, capability drop, optional net namespace and cgroup v2 limits (log/supervisor applied; storage/network backends pending) | Restricted token/Job Object profiles; AppContainer/LPAC probed and fail-closed; full storage/network enforcement pending |
 | Backpressure | Bounded send timeout (1 s); close and drop on failure; no file fallback | Same | Overlapped I/O/COP pending |
 | Fallback to insecure IPC | None; failure is fatal | None; failure is fatal | None; failure is fatal |
 
 The public Windows APIs are preferred over undocumented ALPC. No worker IPC
-uses TCP. The current implementation deliberately fails if `SOCK_SEQPACKET` is
-unavailable instead of silently switching to a weaker channel.
+uses TCP. The UNIX implementation deliberately fails if `SOCK_SEQPACKET` is
+unavailable instead of silently switching to a weaker channel; Windows uses a
+local message-mode Named Pipe with an explicit DACL.

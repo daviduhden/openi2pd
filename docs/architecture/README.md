@@ -2,7 +2,7 @@
 
 This directory records cross-component decisions for the openi2pd fork.
 
-## ADR-001 — Monolithic runtime with an isolated logging worker (interim)
+## ADR-001 — Supervised logging worker; monolithic core remains interim
 
 - **Status:** Accepted as an intermediate step; full multiprocess split is
   deferred by project instruction.
@@ -12,10 +12,11 @@ This directory records cross-component decisions for the openi2pd fork.
   inconsistent tunnel state.
 - **Decision:** Keep the router runtime monolithic for now, but extract the
   logging writer into an exec'ed worker over a versioned
-  `AF_UNIX/SOCK_SEQPACKET` channel. The core never opens the configured log
-  file when `privsep.enabled=true`.
-- **Consequences:** Real reduction of one capability (log file write) from the
-  core, plus reusable IPC/worker infrastructure. The core still combines
+  `AF_UNIX/SOCK_SEQPACKET` channel. A separate supervisor process owns the
+  logging worker and forwards structured records; the core never opens the
+  configured log file and never owns the logging child.
+- **Consequences:** Real reduction of the log-file capability from the core and
+  a separate supervisor boundary for the logger. The core still combines
   network, persistence and long-term keys; this is a documented risk.
 - **Follow-up:** `PRIVSEP-005..014` in `TODO.md`.
 
@@ -27,8 +28,9 @@ This directory records cross-component decisions for the openi2pd fork.
   layouts. `SOCK_SEQPACKET` preserves message boundaries. Peer UID is checked
   with `SO_PEERCRED`/`getpeereid`; channel fds are `CLOEXEC`; worker processes
   are exec'ed and close inherited descriptors.
-- **Limits:** 64 KiB frame, 8 KiB text, poll timeouts. No generic filesystem
-  operations and no descriptor passing yet.
+- **Limits:** 64 KiB frame, 8 KiB text, poll timeouts. Descriptor passing is
+  limited to the legacy/test `ConfigureLogFd` operation; there is no generic
+  filesystem or arbitrary-descriptor API.
 - **Consequences:** The protocol can be reused for future workers; each new
   worker needs its own operation allowlist and OS policy.
 
@@ -38,7 +40,10 @@ This directory records cross-component decisions for the openi2pd fork.
 - **Decision:** Application ID/namespace `org.openi2pd.router`, UI name
   `openi2pd`, app-specific storage, no WebView console, no broad storage
   permission. Build with OpenJDK 25, Gradle 9.8.1, AGP 9.4.1, compile/target
-  SDK 37, minSdk 24, Java source level 17 (D8/R8 limit), NDK r27+.
+  SDK 37, minSdk 24, Java source/target 25 (class-file major 69, D8/R8
+  converted to DEX), NDK r30 LTS+. Java 25 is intentional and is not lowered to 17;
+  see `docs/android-java25.md` for the D8/R8/ART evidence and the AGP 9.4.1
+  bundled-Kotlin target workaround.
 - **Consequences:** Existing upstream app cannot update in place; migration is
   documented in `docs/REBRANDING.md` and `TODO.md`.
 
@@ -78,7 +83,8 @@ This directory records cross-component decisions for the openi2pd fork.
                  │ no inet/dns (OpenBSD pledge) │
                  └──────────────────────────────┘
 
-  i2pd-tui ── local 0600 UNIX socket ──> TUI server thread (read-only)
+  i2pd-tui ── local 0600 UNIX socket ──> TUI server thread
+              bounded snapshots + typed transit/log-level writes
 ```
 
 Target process topology and capability matrices are in

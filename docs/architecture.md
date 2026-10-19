@@ -81,8 +81,10 @@ peer policy differ per platform. See
 - **Local administration**: new `i2p::tui::Server` in `daemon/TuiServer.cpp`
   and `i2p::tui` protocol in `libi2pd/TuiProtocol.h`. The server is a separate
   thread with a bounded request accumulator, per-connection timeouts, peer UID
-  checks, 0600 socket permissions, bounded read-only snapshots and explicitly
-  authorized torrent control operations.
+  checks, 0600 socket permissions, bounded read-only snapshots, explicitly
+  authorized torrent control operations and two operation-specific router
+  writes (transit acceptance and daemon log level). There is still no generic
+  configuration writer or command queue.
 - **ncurses client**: `tui/main.cpp` and `tui/TuiClient.cpp`, target
   `i2pd-tui`, optional at configure time; includes native torrent status,
   details and administrative actions over the local IPC.

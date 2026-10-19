@@ -43,12 +43,19 @@ fstat -p "$(cat /var/i2pd/i2pd.pid)"
 tail -n 50 /var/log/daemon
 ```
 
-- `rcctl start` reports success when the self-daemonizing parent exits; it
-  does **not** prove the child finished initialization. Repeat
-  `rcctl check i2pd` after one second and verify the pidfile and TUI socket.
+- `rcctl start` waits for the self-daemonizing parent, which waits (bounded
+  to 60 s) for the child to report readiness through a close-on-exec pipe.
+  Success therefore means the pidfile was locked, pledge/unveil were applied,
+  the logger started and `Daemon_Singleton::start()` returned true. Confirm
+  the pidfile and TUI socket are present immediately after `rcctl check i2pd`.
+- If the child fails or times out, `rcctl start` must return a nonzero status
+  and the parent must print the readiness error. A timed-out child is killed
+  with `SIGKILL`; confirm no stray `i2pd` process remains. Do not rely on the
+  old assumption that the parent exits before initialization completes.
 - The process state from `ps -o state` must include `p` (pledged) and `U`
-  (unveil locked); the `pledge` column must list the runtime promises and must
-  not contain `proc` or `exec` in the default policy.
+  (unveil locked); the `pledge` column must list the runtime promises. It must
+  never contain `exec`; `proc` may appear only when `privsep.log` needs bounded
+  supervisor reaping/signalling.
 - `fstat -p` should show the pidfile descriptor, the TUI listening socket, and
   a `/dev/log` descriptor when `log = syslog` (or otherwise confirm delivery in
   `/var/log/daemon`).
@@ -83,7 +90,8 @@ stat -f '%Sp %Su %Sg %z %N' /var/i2pd/i2pd.pid
   confirm the process exits with `EXIT_FAILURE`, removes the pidfile and does
   not crash during static destruction. The rollback path now joins the logger
   thread before exit; verify that `Log::~Log()` no longer sees a joinable
-  thread in this case.
+  thread in this case. Run this once in foreground mode and once with
+  `--daemon`: the waiting parent must exit nonzero and no child may remain.
 - While the daemon is stopping, replace the pidfile path with an unrelated
   regular file; the daemon must not unlink that replacement.
 - Confirm the PID lock is still held during data persistence (`stop` keeps it
@@ -118,9 +126,28 @@ Run each case from a fresh configuration copy and record `lastcomm` flags
   socket (port 0); a SOCKS outproxy with no port (UNIX socket) must connect.
 - UPnP enabled must not produce a pledge violation (`mcast`);
   `/var/run/minissdpd.sock` must be the only extra socket path used.
-- `openbsd.unveil_file` with one extra absolute path; `openbsd.pledge_file`
-  with the same promises as the default. Confirm the documented behaviour
-  that a custom pledge file skips the fixed startup pledge.
+- `openbsd.unveil_file` with one extra absolute path.
+- `openbsd.pledge_file` is additive, not an override. Each line is tokenized
+  on spaces/tabs/CR, `#` starts a comment, duplicate tokens are ignored and
+  unknown tokens abort startup. The runtime policy always contains the fixed
+  baseline `stdio rpath wpath cpath fattr inet dns unix flock`, plus `mcast`
+  when `upnp.enabled` is true and `proc` when `privsep.log` is active;
+  accepted custom tokens are appended in file order. An empty custom file therefore keeps the baseline unchanged. The
+  runtime parser rejects `proc` and `exec`; adding them to the core would
+  restore process-creation capability after worker preparation. Adding `error`
+  remains an explicit enforcement change and should be reviewed.
+  - Positive case: a custom file containing only `stdio` must start, and
+    `ps -o pledge -p "$(cat /var/i2pd/i2pd.pid)"` must still show the whole
+    baseline (and `mcast` with UPnP enabled).
+  - Negative case: a custom file containing `stdio;` or `procc` must fail
+    startup with `Unknown pledge promise` in syslog (daemon stderr is
+    `/dev/null`), remove the pidfile and exit nonzero. Repeating the same token
+    on several lines must not duplicate it in the `pledge` column. A runtime
+    file adding `proc` or `exec` must fail with the explicit refusal.
+- The separate startup-phase pledge in `Daemon.cpp` is also additive: it
+  always includes `proc`, `unveil` when enabled, and the filesystem/network
+  baseline, then appends custom tokens. A custom file therefore cannot remove
+  startup-only promises either.
 
 ## 5. TUI and log worker
 
@@ -128,14 +155,24 @@ Run each case from a fresh configuration copy and record `lastcomm` flags
   rejected by the peer-UID check even if the directory allows connect.
 - `i2pd-tui` can read status over the socket; it cannot send administrative
   or write requests.
-- With `privsep.enabled = true` and `privsep.log = true` while
-  `openbsd.pledge_enabled` or `openbsd.unveil_enabled` is true, startup must
-  fail with the explicit refusal, leave no pidfile, and must not start a log
-  worker. This is a required negative test.
-- With both sandbox switches explicitly disabled, the log worker must start,
-  own the log file descriptor instead of the router, survive router log
-  traffic and restart after a forced worker kill according to the monitor
-  policy. Do not run this case with the sandbox enabled.
+- With `privsep.enabled = true`, `privsep.log = true` and the OpenBSD sandbox
+  enabled, startup must now succeed if the service runs as `_i2pd`. The
+  supervisor/log pair is spawned before the runtime pledge; verify both worker
+  processes have their own pledge state, the core has no `exec`, and `proc` is
+  present only for supervisor reaping/signalling.
+- Run `test-privsep-openbsd-policy` and `test-privsep-openbsd-imsg` from
+  CTest. The policy test forks children and requires a pledge violation when
+  the storage policy attempts an AF_INET socket and when the network policy
+  attempts to create a persistent file. The imsg test checks a versioned frame,
+  rejected unknown type, `getpeereid` UID and one `SCM_RIGHTS` descriptor.
+- Start `i2pd` as root with `privsep.enabled = true`: the worker entrypoint must
+  refuse to run with euid 0 and startup must fail. The packaged service must be
+  run as `_i2pd`; do not add a root fallback.
+- The log worker must own the log file descriptor instead of the router, survive
+  router log traffic and restart after a forced log-worker kill according to
+  the supervisor policy. If the supervisor itself is killed, the core must not
+  attempt a fork under the runtime sandbox; logging stops without local
+  fallback. Verify that no log file is recreated by the core.
 
 ## 6. Signals and shutdown ordering
 
@@ -147,9 +184,12 @@ kill -TERM "$(cat /var/i2pd/i2pd.pid)"   # ordered immediate shutdown
 ```
 
 - `SIGUSR1` with a file log must reopen the configured path (rotation test).
-  Static review notes that `Log::Reopen()` replaces the stream without
-  synchronizing with the logger thread; run rotation under log load and record
-  any race or lost message for the logging-core owner.
+  `Log` now snapshots the destination and stream under a mutex, opens the
+  replacement outside the lock and swaps it in a short critical section.
+  A failed open leaves the previous stream active instead of dropping log
+  output. Run the rotation stress procedure below under log load; an in-flight
+  record may land in the old file, but no line may be truncated or interleaved
+  and the logger must keep writing afterwards.
 - `SIGHUP` must not deadlock or race destination threads; the PID must not
   change.
 - `SIGINT` must stop accepting transit tunnels; with no transit tunnels the
@@ -165,6 +205,33 @@ kill -TERM "$(cat /var/i2pd/i2pd.pid)"   # ordered immediate shutdown
 - `unix.handle_sigtstp` is now registered on OpenBSD and the daemon installs
   TSTP/CONT in its blocked-signal set; verify the main sigwait loop reconnects
   and restores transports on a real host.
+
+### Log rotation stress test
+
+Use `log = file` with `loglevel = debug` and keep normal router traffic (or
+repeated TUI status queries) running during the test.
+
+```sh
+pid=$(cat /var/i2pd/i2pd.pid)
+log=/var/i2pd/i2pd.log
+for i in $(seq 1 200); do
+	kill -USR1 "$pid"
+	sleep 0.01
+done
+for i in $(seq 1 20); do
+	mv "$log" "$log.$i"
+	kill -USR1 "$pid"
+	sleep 0.05
+done
+```
+
+- The process must stay alive, `ps -o state,pledge` must not show `P`/`U`, and
+  every recreated log must receive new lines after its `SIGUSR1`.
+- With the default time format, every line must match
+  `^[0-9]{2}:[0-9]{2}:[0-9]{2}@[0-9]{3}/(none|critical|error|warn|info|debug) - `.
+  Check all rotated and current files; empty or partial records are failures.
+- Repeat a few `SIGUSR1` signals during shutdown (after `SIGTERM` while the
+  logger is draining) and confirm there is no deadlock or crash.
 
 ## 7. SSU2, MTU and transports
 
@@ -193,11 +260,32 @@ kill -TERM "$(cat /var/i2pd/i2pd.pid)"   # ordered immediate shutdown
   `unveil` calls with `kdump`); note that the daemon forks.
 - Every negative test with its expected and actual result.
 
-## 9. Not covered by this checklist
+## 9. Build/CI status and known portability correction
 
-- Storage, network and crypto workers do not exist; the router remains a
-  monolithic process.
-- The log worker cannot run while the parent sandbox is enabled.
+The published `main@800c8627` OpenBSD workflow was re-run as run
+`39160543186`; it stopped in `privsep/Worker.cpp` because `getexecname()` was
+not declared through `<cstdlib>`. The working tree adds the OpenBSD
+`<stdlib.h>` declaration and renames the private payload codec methods to
+`WriteU8`/`WriteU16`/`WriteU32`/`WriteU64BE`/`WriteString` and `ReadU8`/... to
+avoid OpenBSD/LibreSSL macro/type collisions; the wire format is unchanged.
+The manual OpenBSD workflow builds the complete target graph and runs the full
+CTest suite. No OpenBSD compile or runtime result is claimed for the
+uncommitted corrections.
+
+The current tree adds `privsep/OpenBSDSandbox.{h,cpp}`,
+`privsep/OpenBSDImsg.{h,cpp}`, `tests/test-privsep-openbsd-policy.cpp` and
+`tests/test-privsep-openbsd-imsg.cpp`. The imsg test links `libutil` on
+OpenBSD. These files have not been compiled locally; the manual OpenBSD job is
+the required first dynamic check. If the 7.9 libutil ABI differs from the
+adapter assumptions, correct it from the CI error rather than weakening the
+version/type checks.
+
+## 10. Not covered by this checklist
+
+- Storage, network and crypto worker backends do not exist; the router remains
+  a monolithic process. Their OpenBSD policy profiles are prepared only.
+- The log worker can run while the parent sandbox is enabled, but the core
+  cannot replace a dead supervisor under the runtime policy.
 - Pledge completeness for long-running workloads (reseeding, many peers,
   tunnel churn) still needs soak testing.
 - No comparison against OpenBSD-current kernel changes is implied; rerun on

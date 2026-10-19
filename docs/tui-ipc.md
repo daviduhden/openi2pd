@@ -11,7 +11,10 @@ shared.
   graphical session.
 - `i2pd-tui` is a separate process and links neither `libi2pd` nor
   `libi2pdclient`.
-- The channel is local, versioned, bounded and read-only.
+- The channel is local, versioned and bounded. Router state snapshots are
+  read-only. Administrative writes are limited to explicit, allowlisted
+  transit and daemon-log-level operations; torrent actions are explicit,
+  allowlisted commands.
 - A broken or malicious TUI cannot crash, block indefinitely or exhaust the
   router.
 
@@ -22,7 +25,8 @@ shared.
 │  i2pd-tui   │ ────────────────> │ i2p::tui::Server thread  │
 │ ncurses UI  │ <──────────────── │ snapshots + recent logs  │
 └─────────────┘   framed text     └────────────┬─────────────┘
-                                               │ read-only accessors
+                                               │ bounded accessors
+                                               │ + allowlisted actions
                                      ┌─────────▼──────────┐
                                      │ router subsystem    │
                                      │ context/transports/ │
@@ -75,15 +79,21 @@ directory/configuration. Pipe ACLs and service-account behavior are covered in
 
 ## Wire protocol, version 1
 
-One request per line, ASCII, maximum 512 bytes:
+One request per line, ASCII, maximum 4096 bytes:
 
 ```
 I2PDTUI/1 STATE
 I2PDTUI/1 PEERS [limit]
+I2PDTUI/1 CONNECTIONS [limit]
 I2PDTUI/1 TUNNELS
 I2PDTUI/1 NETDB
+I2PDTUI/1 NETDB-ROUTERS [limit]
+I2PDTUI/1 NETDB-LEASESETS [limit]
 I2PDTUI/1 DESTINATIONS
+I2PDTUI/1 CONFIG
 I2PDTUI/1 LOGS <after-sequence> [limit]
+I2PDTUI/1 ADMIN TRANSIT ON|OFF
+I2PDTUI/1 ADMIN LOGLEVEL none|critical|error|warn|info|debug
 I2PDTUI/1 PING
 I2PDTUI/1 QUIT
 ```
@@ -109,9 +119,14 @@ Limits:
 | Field name | 64 bytes |
 | Log records/request | 200 |
 | Peer records/request | 200 |
+| Connection records/request | 200 |
+| netDb directory records/request | 200 |
 | Tunnel records/request | 200 |
+| Administrative argument | 16 bytes |
 | Torrent records/request | 200 |
 | Torrent argument | 2048 bytes |
+| Configuration records/request | 128 |
+| Configuration value | 512 bytes |
 | Socket permissions (Unix) | 0600 |
 | Receive/send timeout | 5 s |
 
@@ -119,20 +134,106 @@ Limits:
 byte over it. The Windows transport applies the same limits; see
 [TUI on Windows](TUI-WINDOWS.md).
 
+### Configuration snapshot (`CONFIG`)
+
+`CONFIG` takes no arguments and returns the effective startup configuration for
+a fixed, compiled-in allowlist. Every record is typed:
+
+```
+I2PDTUI/1 OK 123
+config.schema=1
+config.readonly=1
+config.option.0.name=bandwidth
+config.option.0.type=string
+config.option.0.value=L
+config.option.1.name=share
+config.option.1.type=int
+config.option.1.value=100
+...
+config.count=30
+```
+
+The snapshot is served from the in-memory, finalized option map; handling the
+request never opens or writes a configuration file. `config.schema` versions
+the payload layout (currently `1`), `config.count` is the number of options
+actually emitted, and each `config.option.N` has a `name`, a `type` (`bool`,
+`int`, `uint16`, `uint32` or `string`) and a `value`.
+Booleans use `1`/`0`. The allowlist covers router identity/network settings,
+NTCP2/SSU2, UPnP, NTP, reseed verification, persistence and the TUI switch. It
+deliberately excludes private keys, passwords, credentials, certificate or key
+files, arbitrary filesystem paths, URLs, proxy endpoints and any generic
+`GetOption(name)` lookup.
+
+String values are bounded to 512 bytes and control characters are replaced by
+spaces before the normal field escaping. At most 128 options are returned; a
+response is still subject to the 256 KiB payload limit. Unknown fields must be
+ignored, so later schemas can add fields without a new protocol version.
+
+Any argument after `CONFIG` is rejected with error code 4 (`BadArgument`).
+`CONFIG` is read-only in version 1. There is no `CONFIG-SET` command: it is
+rejected as an unknown command (error code 3), exactly like any other
+unrecognised command. A safe writer requires validating a named allowlisted
+option and applying it on the daemon main-loop command queue, outside the IPC
+thread; that queue does not exist yet. Until it does, configuration changes are
+made in the daemon configuration and require a restart.
+
 The server accepts one client at a time (backlog 4). This is sufficient for a
 local console and avoids per-client threads. A client that stalls is closed by
 the socket timeout.
+
+### Connections and netDb directories
+
+`CONNECTIONS [limit]` returns only peers with at least one established
+transport session. Each `connection` record has the same bounded fields as
+`PEERS`: base64 router hash, session count, attempt count, transport bitmask,
+high-bandwidth flag and active transport names. `connections.count` reports
+the number returned. The snapshot is taken under the transport peer mutex and
+contains no session objects.
+
+`NETDB-ROUTERS [limit]` returns up to 200 bounded router records:
+base64 hash, version, caps, floodfill flag, v4/v6 reachability, timestamp and
+reachable flag. `NETDB-LEASESETS [limit]` returns the hash, store type,
+expiration, earliest lease date, validity and expiry flags. Both use bounded
+container snapshots and never expose private keys, addresses or raw records.
+
+### Administrative operations
+
+Version 1 exposes exactly two router-wide writes:
+
+```
+I2PDTUI/1 ADMIN TRANSIT ON
+I2PDTUI/1 ADMIN TRANSIT OFF
+I2PDTUI/1 ADMIN LOGLEVEL info
+```
+
+`ADMIN TRANSIT` updates the atomic `RouterContext` acceptance flag only. It
+does not create, tear down or modify existing tunnels. `ADMIN LOGLEVEL` updates
+the logger's atomic minimum level; valid values are `none`, `critical`,
+`error`, `warn`, `info` and `debug`. Both commands return a typed payload with
+`admin`, `result`, `message` and the resulting value. Neither command writes the
+configuration file: the change lasts for the current router process and is
+reported by the next `STATE` snapshot.
+
+Every other administrative action remains unavailable in version 1. In
+particular there is no configuration, reload, reseed, shutdown, arbitrary file
+or shell operation. Arguments are validated before dispatch and trailing
+tokens are rejected.
 
 ## Data exposed
 
 - Public router identity hash, version, caps, net ID, uptime, floodfill flag.
 - IPv4/IPv6 status, testing/error flags, NTCP2/SSU2 bind state.
 - Bandwidth and total transferred bytes.
-- Peer count and a bounded peer snapshot (hash, sessions, attempts, active
-  transport bitmask, high bandwidth).
+- Peer count, connected-peer count and a bounded peer snapshot (hash,
+  sessions, attempts, active transport names, high bandwidth).
+- A bounded connected-peer snapshot for the Connections view.
 - Tunnel IDs, direction, state, hop count and creation time (bounded).
-- netDb router/floodfill/LeaseSet counts, reseed activity and local destination b32 addresses.
-- Recent log records with sequence, timestamp, level and sanitized text.
+- netDb router/floodfill/LeaseSet counts, reseed activity, bounded router and
+  LeaseSet directories, and a separate local-destination (b32) snapshot.
+- A typed, allowlisted configuration snapshot (`CONFIG`) with router,
+  transport, service and persistence switches. No secrets or paths.
+- Recent log records with sequence, timestamp, level and sanitized text, plus
+  the current daemon log threshold.
 
 Not exposed: private keys, NTCP2/SSU2 static keys, ratchet session state,
 introducer tags, destination private keys, or any data that the TUI does not
@@ -150,9 +251,17 @@ need. `router.hash` is the public IdentHash.
 3. **Bounded parsing.** Header length, payload length, request length and
    numeric arguments are validated before allocation or dispatch. Response
    sizes above the limit produce an error rather than a truncated snapshot.
-4. **No command execution.** Version 1 is deliberately read-only. A future
-   administrative command must be mediated by the daemon main loop, not run on
-   the IPC thread; no such command is implemented.
+4. **Bounded administrative operations.** Router snapshots are read-only,
+   including the `CONFIG` allowlist, which contains no keys, credentials,
+   paths, URLs or generic option access. Torrent operations (start, stop,
+   reannounce, remove, add) are explicit, allowlisted protocol commands; they
+   are mediated by the torrents tunnel's service thread and never execute
+   shell commands or expose arbitrary file paths. The only router-wide writes
+   in version 1 are `ADMIN TRANSIT` (an atomic acceptance flag) and
+   `ADMIN LOGLEVEL` (an atomic logger level). Neither performs filesystem
+   access, network I/O, arbitrary configuration writes or unbounded work on
+   the IPC thread. Any future command must remain operation-specific and
+   validate its complete input.
 5. **Terminal safety.** Log control characters are flattened in the log ring;
    the protocol also escapes newlines/backslashes. The TUI prints with
    `addnstr`, never as a format string.
@@ -166,11 +275,31 @@ code, but its ACLs and cross-user rejection are pending runtime validation.
 
 ## UI behavior
 
-- Views: Status, Peers, Tunnels, NetDb, Logs, Help.
-- Keys: `1`-`5`, `Tab`, arrows, `?`, `r`, `l` (log level), `q`.
-- Refresh: state every 2 s; active peer/tunnel view every 2 s; logs every 1 s
-  while visible. `getch` uses a 200 ms timeout, so the UI never blocks on the
-  socket or terminal.
+- Views: Status, Peers, Tunnels, Torrents, NetDb, Logs, Help, Destinations,
+  Config, Connections; `0` selects Connections and `1`-`9` keep the original
+  order.
+- Keys: `1`-`9`, `0` (Connections), `Tab`, arrows, `?`, `r`, `q`. The original
+  `1`-`9` mappings are unchanged; Connections is `0`. All ten views are
+  reachable by cycling with `Tab` or the arrow keys. Narrow terminals show the
+  active view in the header instead of truncated tab labels.
+- Status: `t` opens a typed confirmation and toggles transit acceptance. The
+  view includes a 60-sample bandwidth history, transport state, 1/15-second
+  rates, tunnel queues, creation success and netDb counters.
+- Connections: bounded table of established transport sessions, sorted by
+  session count; `t` also toggles transit acceptance.
+- NetDb: `n` switches between the bounded router and LeaseSet directories;
+  Up/Down/PgUp/PgDn/Home/End scroll the selected directory.
+- Logs: `/` filters records by text, `c` clears the filter, `l` cycles the
+  local display threshold and `L` cycles the daemon log level over secure IPC.
+- Refresh: state every 2 s; active peer/connection/tunnel/netDb/destination/
+  config view every 2 s; netDb directories every 5 s; logs every 1 s while
+  visible. `getch` uses a 200 ms timeout, so the UI never blocks on the socket
+  or terminal.
+- Destinations is a dedicated bounded view of the local client b32 addresses;
+  it does not share the NetDb panel.
+- Config is a read-only table of the allowlisted snapshot, with the option
+  name, declared type and value. Up/Down and PgUp/PgDn scroll it. There is no
+  edit key in version 1.
 - Connection failure is shown in the footer; reconnect is retried every 2 s.
 - `SIGWINCH` sets a flag and redraws; `SIGINT`/`SIGTERM` exit cleanly. The
   router is not signalled when the TUI exits.
@@ -302,8 +431,15 @@ No live TUI session or visual comparison has been executed for this change.
 
 - Tunnel/router status fields are read through existing accessors that are not
   all atomic. TSan validation is pending; see `security-audit.md`.
-- Version 1 has no administrative writes (reload, reseed, shutdown). This is
-  intentional until a main-loop command queue exists.
+- Version 1 has only the two atomic administrative writes described above.
+  Reload, reseed, shutdown, floodfill changes and generic configuration writes
+  remain intentionally unavailable until a main-loop command queue exists.
+  Toggling transit does not modify existing tunnels.
+- `CONFIG` is a read-only snapshot. Editing is pending: it needs (a) a named
+  allowlist with per-option type/range validation, (b) a daemon main-loop
+  command queue so `SetOption()`/subsystem updates never run on the IPC
+  thread, and (c) an explicit policy for which settings take effect without a
+  restart. `CONFIG-SET` is intentionally not accepted before those exist.
 - No authentication beyond same-UID filesystem access. A same-UID process can
   already read the router's private keys, so a stronger local secret would not
   add a meaningful boundary.
@@ -311,8 +447,14 @@ No live TUI session or visual comparison has been executed for this change.
 ## Validation
 
 `tests/test-tui-protocol.cpp` covers request/response parsing, version
-rejection, numeric bounds, field escaping, framing, inclusive size limits and
-payload round-tripping. `tests/test-tui-win32-pipe.cpp` (Windows only) covers
+rejection, numeric bounds, field escaping, framing, inclusive size limits,
+payload round-tripping, the `CONFIG` request/allowlist bounds, the
+`CONNECTIONS`/`NETDB-*` limits and strict `ADMIN TRANSIT`/`ADMIN LOGLEVEL`
+validation. It also checks that `CONFIG-SET` remains an unknown command and
+that the largest `config.option.N` field name fits the wire field-name limit.
+`tests/test-tui-ipc-regression.cpp` dispatches the bounded directory views and
+an atomic daemon log-level update over the real local socket.
+`tests/test-tui-win32-pipe.cpp` (Windows only) covers
 the named-pipe/DACL primitives, not console rendering. Both are registered with
 CTest; no live Windows TUI session or cross-user ACL test has been executed in
 this environment. See [TUI on Windows](TUI-WINDOWS.md#verification).

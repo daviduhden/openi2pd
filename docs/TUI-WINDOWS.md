@@ -18,8 +18,8 @@ depends on a console. Both backends speak the same bounded protocol:
 │ shared views/keys    │ ───────────────────> │ request validation       │
 │ platform terminal    │ <─────────────────── │ snapshots / log ring     │
 └──────────────────────┘   framed text        └────────────┬─────────────┘
-                                                           │ read-only
-                                                           │ accessors
+                                                           │ bounded reads
+                                                           │ + typed atomics
                                                  ┌─────────▼──────────┐
                                                  │ router subsystems  │
                                                  └────────────────────┘
@@ -165,10 +165,15 @@ One request per line, ASCII:
 ```
 I2PDTUI/1 STATE
 I2PDTUI/1 PEERS [limit]
+I2PDTUI/1 CONNECTIONS [limit]
 I2PDTUI/1 TUNNELS
 I2PDTUI/1 NETDB
+I2PDTUI/1 NETDB-ROUTERS [limit]
+I2PDTUI/1 NETDB-LEASESETS [limit]
 I2PDTUI/1 DESTINATIONS
 I2PDTUI/1 LOGS <after-sequence> [limit]
+I2PDTUI/1 ADMIN TRANSIT ON|OFF
+I2PDTUI/1 ADMIN LOGLEVEL none|critical|error|warn|info|debug
 I2PDTUI/1 TORRENT-TUNNELS
 I2PDTUI/1 TORRENTS <tunnel-index> [limit]
 I2PDTUI/1 TORRENT-* ...
@@ -188,14 +193,19 @@ I2PDTUI/1 ERR <error-code> <message-length>\n<message>
 | Request line | 4096 bytes |
 | Response payload | 256 KiB |
 | Field name | 64 bytes |
-| Peer/tunnel/log/torrent records per request | 200 |
+| Peer/connection/netDb/tunnel/log/torrent records per request | 200 |
 | Torrent file records per request | 1000 |
 | Torrent argument | 2048 bytes |
+| Administrative argument | 16 bytes |
 | Response header line | 128 bytes |
 
-Status views are read-only. Torrent actions are explicit protocol commands,
+Router snapshots are read-only. Torrent actions are explicit protocol commands,
 are confirmed in the TUI and are mediated by the daemon's torrent service
-thread; the IPC/listener thread does not mutate engine state directly.
+thread. `ADMIN TRANSIT` and `ADMIN LOGLEVEL` are the only router-wide writes in
+version 1; they update atomic router/logger state, are not persisted to the
+configuration file, and never execute a command, open a file or perform network
+I/O on the IPC thread. The Windows named-pipe DACL remains the authorization
+boundary for these operations.
 
 ## Build and install
 
@@ -204,12 +214,12 @@ thread; the IPC/listener thread does not mutate engine state directly.
 ```sh
 cmake -S build -B build-output -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
-  -DWITH_TUI=ON
+  -DI2PD_BUILD_TUI=ON
 cmake --build build-output --parallel --target i2pd i2pd-tui
 sudo cmake --install build-output --prefix /usr
 ```
 
-`WITH_TUI=ON` is the default. If ncursesw is not found, CMake emits a warning
+`I2PD_BUILD_TUI=ON` is the default. If ncursesw is not found, CMake emits a warning
 and builds without `i2pd-tui`; the router itself is unaffected.
 
 ### Windows with MSYS2 / Clang64
@@ -334,9 +344,11 @@ Runtime checks still required on a Windows host:
 3. Confirm the named pipe exists and its DACL grants only the intended
    account/group (`AccessChk` or `Get-Acl` on the pipe, where available).
 4. Start `i2pd-tui.exe --datadir <dir>` in Windows Terminal and in conhost;
-   check Status, Peers, Tunnels, NetDb, Logs and Torrent views.
-5. Resize the console, cycle log levels, disconnect/reconnect and quit with
-   `q`; confirm the router remains running.
+   check Status, Peers, Connections, Tunnels, NetDb directories, Destinations,
+   Logs, Config and Torrent views.
+5. Resize the console, use `n` in NetDb, `/` and `L` in Logs, confirm the
+   transit toggle with `t`, disconnect/reconnect and quit with `q`; confirm the
+   router remains running.
 6. Attempt a connection from a second user account and from a remote machine;
    expect rejection.
 7. Send malformed and overlong requests; expect an error frame and a closed

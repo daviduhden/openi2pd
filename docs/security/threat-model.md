@@ -30,11 +30,11 @@ analysis; no OpenBSD/Windows/Android capability tests have been executed.
 | Network worker compromised by packet | Network sockets, parser memory, IPC to core | Can send malicious normalized events to core; cannot write files if target policy enforced | Session keys in worker if not moved; no long-term keys if crypto split | **Not implemented** | Core and network are same process today; full impact |
 | Storage worker compromised | Files under data dir, IPC to core | Can return malicious RouterInfo/LeaseSets/profiles; cannot open Internet if pledge enforced | Persisted keys if storage can read them | **Not implemented** | Arbitrary file read/write via current core |
 | Router core compromised via I2NP | Routing state, IPC clients | Request storage/network operations through typed APIs; cannot directly access both if policy enforced | Keys if held in core; tunnel/session material | **Not implemented** | Same process has all capabilities |
-| Admin IPC compromised | TUI socket (0600, same UID), read-only requests | Status/log reads; no write commands in v1 | Public status/log data only | Implemented read-only protocol, bounds/UID check | Logs/metadata disclosure to same UID |
-| Log worker compromised | Log file/syslog, IPC channel | Cannot reach network/keys under policy; can corrupt logs | Log contents only | Implemented separation | Bounded in-process restart monitor; same-UID worker remains trusted |
-| Malicious IPC messages | Frame injection on inherited channel | Type confusion, oversized allocation, command injection | Depends on worker | Bounded parser, exact lengths, type allowlist, peer UID | No fuzzing yet |
+| Admin IPC compromised | TUI socket (0600, same UID), bounded requests | Status/log/directory reads; toggle transit acceptance; change daemon log level | Public status/log data, operational metadata | Bounded protocol, UID/pipe DACL check, only two atomic administrative writes; no generic config/file/command operation | Logs/metadata disclosure and operational changes by same UID |
+| Supervisor compromised | Worker lifecycle/control channel; no log file handle | Can stop/restart log worker; cannot open network or persistent files | Log metadata/records in transit | Implemented process separation; OpenBSD policy has no network/path access; LinuxSandbox applies caps/Landlock/AF_INET deny | Same-UID supervisor; fork/exec retained for log restarts |
+| Malicious IPC messages | Frame injection on inherited channel | Type confusion, oversized allocation, command injection | Depends on worker | Bounded parser, exact lengths, type allowlist, peer UID; OpenBSD imsg adapter preserves the same frame checks | No fuzzing yet |
 | Queue saturation | Flood of log records/IPC | Memory/CPU pressure, dropped logs | None directly | Bounded frame/text; 1 s sink send timeout closes the channel on backpressure | Logger queue is still the existing in-core queue; no per-worker or disk quota yet |
-| Worker crash/restart | Kill worker or crash | Supervisor restart storms, missing service | Logs if log worker dies | Log worker failure drops logs, no core file fallback | Bounded restart (500 ms..30 s, max 8 attempts) then logs are dropped; no separate supervisor process |
+| Worker crash/restart | Kill worker or supervisor | Supervisor restart storms, missing service | Logs if log worker dies | Supervisor owns/restarts log worker; without the sandbox the core can replace a dead supervisor; under the OpenBSD runtime policy it cannot exec a replacement supervisor | Bounded restarts, no core compromise protection; other workers not supervised |
 
 ## Key-flow constraints
 
@@ -49,16 +49,17 @@ analysis; no OpenBSD/Windows/Android capability tests have been executed.
 ## Failure and denial of service
 
 - IPC frames are capped at 64 KiB and text at 8 KiB.
-- Logging is asynchronous in the core; a blocked log worker can consume the
-  logger queue but must not block packet processing. Current implementation
-  uses the existing logging queue; a dedicated bounded channel queue is
+- Logging is asynchronous in the core; records pass through the supervisor to
+  the log worker. A blocked worker can consume the logger queue but must not
+  block packet processing. The dedicated bounded per-worker queue is still
   pending.
-- A worker that fails protocol validation exits; the core keeps running and
-  drops log records until the bounded in-process monitor restarts the worker.
-- Restarts use 500 ms exponential backoff capped at 30 s, stop after eight
-  consecutive attempts, and reset after 60 s of stable operation. There is no
-  unbounded restart loop and no separate supervisor process; exhausting the
-  attempts leaves logging stopped with no file fallback in the core.
+- A worker that fails protocol validation exits; the supervisor restarts the
+  log worker. When the OpenBSD runtime sandbox is active, the core has no
+  `exec` capability and does not replace a dead supervisor; it retains `proc` only for bounded reaping/signalling.
+- Restarts use bounded backoff. The separate supervisor owns the log worker;
+  outside the OpenBSD runtime sandbox the core can replace a dead supervisor.
+  Exhausting the attempts leaves logging stopped with no file fallback.
+  Network, storage and crypto workers are not supervised yet.
 
 ## Out of scope / limitations
 

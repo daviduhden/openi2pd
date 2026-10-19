@@ -104,7 +104,9 @@ needed or change deferred with rationale; **Removed** = attack surface deleted.
 - **Controls:** 0600 socket, same-UID peer credentials, refusal to unlink a
   non-owned/non-socket path, bounded request/response sizes, numeric bounds,
   per-connection timeouts, one sequential client, `MSG_NOSIGNAL`, read-only
-  commands, no secret fields, no command execution.
+  snapshots, two atomic administrative writes (`ADMIN TRANSIT`,
+  `ADMIN LOGLEVEL`), no secret fields, no command execution and no generic
+  configuration writer.
 - **Windows transport (static):** `daemon/TuiServerWin32.cpp` uses a hashed
   local named-pipe name, `FILE_FLAG_FIRST_PIPE_INSTANCE` against squatting, a
   protected DACL limited to the daemon user/SYSTEM/Administrators, and
@@ -177,8 +179,11 @@ needed or change deferred with rationale; **Removed** = attack surface deleted.
 
 ## Not audited dynamically
 
-- ASan/UBSan/TSan runs.
-- Fuzzing of NTCP2/SSU2/I2NP/RouterInfo/LeaseSet/SU3/TUI inputs.
+- ASan/UBSan/TSan runs. The manual CI sanitizer matrix is prepared but has not
+  executed the current tree.
+- Fuzzing of NTCP2/SSU2/I2NP/RouterInfo/LeaseSet/SU3/TUI inputs. Seven
+  libFuzzer targets and a manual smoke workflow are prepared; no fuzz run is
+  claimed for the current tree.
 - Live Java interoperability.
 - OpenBSD pledge/unveil under a non-default user and datadir.
 - Windows build and runtime.
@@ -221,3 +226,18 @@ See `testing.md` for exact commands and the honest status of each check.
 - **Fix:** `ScopedUtfChars` releases on all paths; null/exception paths return
   without using the pointer. Further JNI lifecycle/restart testing remains
   pending.
+
+## 2026-10-18 memory-safety pass
+
+A focused SSU2/NTCP2, Ratchet/Garlic, LeaseSet/netDb, asynchronous client,
+BitTorrent, filesystem, TUI and IPC/JNI review produced confirmed corrections
+in [`docs/security/memory-safety-2026.md`](security/memory-safety-2026.md).
+The changes are implemented by static analysis only; sanitizer, fuzz, live
+peer, OpenBSD, Windows and Android execution remain pending manual CI. The
+report explicitly lists residual races in SSU2 session ownership, the remaining
+live `RouterContext::GetRouterInfo()` readers and Asio timer/socket ownership,
+I2CP/SAM output sequencing, BitTorrent piece ownership and Windows filesystem
+TOCTOU rather than claiming a clean dynamic result. The TUI configuration
+snapshot surface is read-only and allowlisted; the only writes are the typed,
+atomic transit and daemon-log-level operations. No key, credential, arbitrary
+path or URL is exposed.
