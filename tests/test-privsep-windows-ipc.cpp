@@ -1,10 +1,11 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * Windows worker IPC and policy tests. They compile/run only in the manual
- * Windows CI job; no cross-user, service-account, AppContainer/LPAC or
- * kernel-enforcement claim is made by this source alone.
+ * openi2pd: test privsep windows ipc.
+ *
+ * Windows-only checks for worker pipe policy, private pipe-name derivation, restricted DACLs, versioned frame round trips and recovery after closing a connection.
+ *
  */
 
 #ifndef _WIN32
@@ -133,10 +134,12 @@ void TestRoundTripAndPeer ()
 	CheckRestrictedDacl (server->Native ());
 
 	std::unique_ptr<WindowsChannel> client;
-	std::thread connector ([&name, &client] {
-		auto connected = WindowsChannel::Connect (name, 5000);
-		if (connected) client = std::make_unique<WindowsChannel> (std::move (*connected));
-	});
+	std::thread connector (
+		[&name, &client]
+		{
+			auto connected = WindowsChannel::Connect (name, 5000);
+			if (connected) client = std::make_unique<WindowsChannel> (std::move (*connected));
+		});
 	auto accepted = server->Accept (5000);
 	connector.join ();
 	assert (accepted.has_value ());
@@ -171,10 +174,12 @@ void TestRecoveryAfterClose ()
 	auto server = WindowsServer::Create (name);
 	assert (server.has_value ());
 	std::unique_ptr<WindowsChannel> client;
-	std::thread connector ([&name, &client] {
-		auto connected = WindowsChannel::Connect (name, 5000);
-		if (connected) client = std::make_unique<WindowsChannel> (std::move (*connected));
-	});
+	std::thread connector (
+		[&name, &client]
+		{
+			auto connected = WindowsChannel::Connect (name, 5000);
+			if (connected) client = std::make_unique<WindowsChannel> (std::move (*connected));
+		});
 	auto accepted = server->Accept (5000);
 	connector.join ();
 	assert (accepted.has_value ());

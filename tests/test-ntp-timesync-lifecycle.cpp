@@ -1,14 +1,13 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * Lifecycle regression for NTPTimeSync.
+ * openi2pd: test ntp timesync lifecycle.
  *
- * Start() must be idempotent and must restart() an io_context previously
- * stopped by Stop(). Stop() must cancel its timer on the owning executor and
- * must not wait for the old ten-second NTP polling timeout. A loopback server
- * address is used so the test needs no network.
+ * Checks NTPTimeSync start/stop restartability with no configured servers, repeated cycles and destruction while the worker runs, without contacting a time server.
+ *
  */
+
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
@@ -62,8 +61,8 @@ int main ()
 		const auto elapsed = std::chrono::steady_clock::now () - started;
 		if (elapsed > std::chrono::seconds (5))
 		{
-			std::cerr << "NTPTimeSync::Stop() blocked for " << std::chrono::duration_cast<std::chrono::seconds> (elapsed).count ()
-					  << " seconds" << std::endl;
+			std::cerr << "NTPTimeSync::Stop() blocked for "
+					  << std::chrono::duration_cast<std::chrono::seconds> (elapsed).count () << " seconds" << std::endl;
 			return 1;
 		}
 	}

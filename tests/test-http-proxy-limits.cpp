@@ -1,13 +1,11 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * Host-only regressions for the HTTP proxy receive-header ceiling and for
- * handler accounting when I2PService::CreateStream() completes with a null
- * stream. No listener, socket or I2P peer is created: the parser test feeds a
- * byte string directly and the accounting test uses a destination-invalid
- * name, for which the address book returns no Address and CreateStream()
- * invokes its callback synchronously with nullptr.
+ * openi2pd: test http proxy limits.
+ *
+ * Exercises the HTTP proxy receive-header ceiling at and above its boundary and handler accounting when CreateStream() completes with a null stream, using no listener or peer.
+ *
  */
 
 #include <algorithm>
@@ -24,8 +22,8 @@
 
 namespace
 {
-using i2p::proxy::HTTPProxyHeaderLimitExceeded;
 using i2p::proxy::HTTP_PROXY_MAX_HEADER_SIZE;
+using i2p::proxy::HTTPProxyHeaderLimitExceeded;
 
 /** Build a syntactically valid request whose header is exactly `total` bytes. */
 std::string MakeRequestWithHeaderSize (std::size_t total)
@@ -138,8 +136,7 @@ public:
 		auto owner = GetOwner ();
 		if (!owner) return;
 
-		owner->CreateStream (
-			[self = shared_from_this ()] (std::shared_ptr<i2p::stream::Stream> stream)
+		owner->CreateStream ([self = shared_from_this ()] (std::shared_ptr<i2p::stream::Stream> stream)
 			{ self->HandleStreamComplete (stream); },
 			// Not .i2p, not .b32.i2p and not base64: AddressBook::GetAddress()
 			// returns nullptr without starting a lookup.

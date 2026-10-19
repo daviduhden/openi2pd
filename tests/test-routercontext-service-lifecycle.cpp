@@ -1,14 +1,13 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * RouterContext service lifecycle regression.
+ * openi2pd: test routercontext service lifecycle.
  *
- * Start()/Stop() are serialized and m_Service is an atomic shared_ptr, so a
- * cross-thread post either observes a live service or a null service; it can
- * never dereference a unique_ptr that Stop() just reset. The test overlaps
- * SubmitECIESx25519Key() with repeated start/stop cycles.
+ * Overlaps SubmitECIESx25519Key() and uptime reads with repeated idempotent Start()/Stop() cycles, requiring posts to observe a live or null service and never a reset pointer.
+ *
  */
+
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -47,7 +46,7 @@ int main ()
 			while (!stop.load (std::memory_order_relaxed))
 			{
 				router.SubmitECIESx25519Key (key, tag++);
-				(void) router.GetUptime ();
+				(void)router.GetUptime ();
 				std::this_thread::yield ();
 			}
 		});

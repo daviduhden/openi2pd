@@ -1,10 +1,11 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * Linux effective-capability checks for the worker sandbox. The test forks a
- * throw-away child for every profile; it must not restrict the test runner or
- * the rest of CI. It is compiled and executed only by manual CI.
+ * openi2pd: test privsep linux sandbox.
+ *
+ * Runs forked children under the Linux worker profiles to verify Landlock/capability separation: storage cannot use the network, network cannot write persistent files, and log/supervisor policies stay minimal.
+ *
  */
 
 #include <cassert>
@@ -106,8 +107,7 @@ int ExpectNoEffectiveCapabilities ()
 	struct __user_cap_header_struct header { _LINUX_CAPABILITY_VERSION_3, 0 };
 	struct __user_cap_data_struct data[2] { };
 	if (syscall (SYS_capget, &header, data) != 0) return 2;
-	if (data[0].effective != 0 || data[0].permitted != 0 || data[1].effective != 0 || data[1].permitted != 0)
-		return 3;
+	if (data[0].effective != 0 || data[0].permitted != 0 || data[1].effective != 0 || data[1].permitted != 0) return 3;
 	return 0;
 }
 
@@ -162,7 +162,7 @@ void RequireExitZero (ChildResult result, const char * name)
 	if (WIFEXITED (result.status) && WEXITSTATUS (result.status) == 77) return; // unsupported kernel
 	assert (WIFEXITED (result.status));
 	assert (WEXITSTATUS (result.status) == 0);
-	(void) name;
+	(void)name;
 }
 }
 
@@ -228,8 +228,7 @@ int main ()
 
 	LinuxSandboxProfile supervisorProfile = supervisor;
 	supervisorProfile.requireLandlock = false;
-	RequireExitZero (
-		RunChild (supervisorProfile, &ExpectSupervisorAllowsUnixSocketpair), "supervisor socketpair");
+	RequireExitZero (RunChild (supervisorProfile, &ExpectSupervisorAllowsUnixSocketpair), "supervisor socketpair");
 
 	// A writable directory is allowed for storage; write into it in a child.
 	LinuxSandboxProfile storageWrite = storage;

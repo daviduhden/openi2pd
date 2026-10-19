@@ -1,18 +1,11 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * This file is part of openi2pd and licensed under BSD-3-Clause
+ * openi2pd: test eciesx25519 ratchet tagsets.
  *
- * See full license text in LICENSE file at top of project tree
+ * Validates ratchet tag-set KDFs against independent HMAC vectors and checks tag indices, 16-bit tagset IDs, symmetric-key gaps and fail-closed exhaustion of the Java-compatible tag space.
  *
- * Self-contained regression checks for the ECIES-X25519-AEAD-Ratchet tag set
- * KDFs (spec 1f/1g, Java 2.13.0 RatchetTagSet). The expected values are
- * computed with an independent RFC 5869 implementation built directly on
- * OpenSSL HMAC, not with i2pd's HKDF.
- *
- * Register as a CTest target (tests/CMakeLists.txt is owned elsewhere):
- *   test-eciesx25519-ratchet-tagsets
  */
 
 #include <array>
@@ -34,7 +27,7 @@ using Bytes32 = std::array<uint8_t, 32>;
 
 std::array<uint8_t, 32> HmacSha256 (const uint8_t * key, size_t keyLen, const uint8_t * data, size_t len)
 {
-	std::array<uint8_t, 32> out {};
+	std::array<uint8_t, 32> out { };
 	unsigned int outLen = out.size ();
 	assert (HMAC (EVP_sha256 (), key, static_cast<int> (keyLen), data, len, out.data (), &outLen));
 	assert (outLen == out.size ());
@@ -64,17 +57,17 @@ std::vector<uint8_t> RefHKDF (
 
 Bytes32 Fill (uint8_t seed)
 {
-	Bytes32 out {};
+	Bytes32 out { };
 	for (size_t i = 0; i < out.size (); i++) out[i] = static_cast<uint8_t> (seed + 17 * i);
 	return out;
 }
 
 struct ReferenceTagSet
 {
-	Bytes32 nextRootKey {};
-	Bytes32 sessionTagCK {};
-	Bytes32 sessionTagConstant {};
-	Bytes32 symmKeyCK {};
+	Bytes32 nextRootKey { };
+	Bytes32 sessionTagCK { };
+	Bytes32 sessionTagConstant { };
+	Bytes32 symmKeyCK { };
 
 	explicit ReferenceTagSet (const Bytes32 & rootKey, const Bytes32 & k)
 	{
@@ -90,8 +83,8 @@ struct ReferenceTagSet
 
 	uint64_t NextTag ()
 	{
-		const auto data = RefHKDF (sessionTagCK.data (), sessionTagConstant.data (),
-			sessionTagConstant.size (), "SessionTagKeyGen", 64);
+		const auto data = RefHKDF (
+			sessionTagCK.data (), sessionTagConstant.data (), sessionTagConstant.size (), "SessionTagKeyGen", 64);
 		std::memcpy (sessionTagCK.data (), data.data (), 32);
 		uint64_t tag = 0;
 		std::memcpy (&tag, data.data () + 32, sizeof (tag));
@@ -102,7 +95,7 @@ struct ReferenceTagSet
 	{
 		const auto data = RefHKDF (symmKeyCK.data (), nullptr, 0, "SymmetricRatchet", 64);
 		std::memcpy (symmKeyCK.data (), data.data (), 32);
-		Bytes32 key {};
+		Bytes32 key { };
 		std::memcpy (key.data (), data.data () + 32, key.size ());
 		return key;
 	}
@@ -149,10 +142,10 @@ int main ()
 	// Symmetric key ratchet: in-order, gap, and a late older key served from
 	// the intermediate cache. Expected values come from the independent KDF.
 	ReferenceTagSet referenceKeys (rootKey, tagsetKey);
-	std::array<Bytes32, 4> expectedKeys {};
+	std::array<Bytes32, 4> expectedKeys { };
 	for (auto & key : expectedKeys) key = referenceKeys.NextKey ();
 
-	uint8_t actual[32] = {};
+	uint8_t actual[32] = { };
 	assert (tagset.GetSymmKey (0, actual));
 	assert (!std::memcmp (actual, expectedKeys[0].data (), 32));
 
@@ -182,7 +175,7 @@ int main ()
 		assert (fresh.GetNextIndex () == 0);
 		assert (fresh.GetNextSessionTag (hkdf) == freshReference.NextTag ());
 		const Bytes32 expected0 = freshReference.NextKey ();
-		uint8_t got[32] = {};
+		uint8_t got[32] = { };
 		assert (fresh.GetSymmKey (0, got));
 		assert (!std::memcmp (got, expected0.data (), 32));
 	}

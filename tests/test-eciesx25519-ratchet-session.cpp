@@ -1,25 +1,11 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * This file is part of openi2pd and licensed under BSD-3-Clause
+ * openi2pd: test eciesx25519 ratchet session.
  *
- * See full license text in LICENSE file at top of project tree
+ * Runs the ECIES-X25519-AEAD-Ratchet New Session/New Session Reply handshake between in-process destinations, validating payload block ordering, replay handling, retransmission and established-session traffic.
  *
- * Self-contained ECIES-X25519-AEAD-Ratchet New Session / New Session Reply
- * regression checks. Two destinations and two sessions run the handshake
- * in-process; no sockets, router context, tunnels or external peers.
- *
- * Covered:
- *  - New Session wire layout and garlic clove delivery (AEAD only and ML-KEM)
- *  - tampered New Session payload/MAC rejection and duplicate ephemeral keys
- *  - New Session Reply retransmission: new tag and fresh ephemeral key, and
- *    the ES chain continuing after the latest reply (including a lost reply)
- *  - anonymous (zero static key) New Session: clove delivered, no session
- *  - handshake payload validation (DateTime, unknown/termination/padding rules)
- *
- * Register as a CTest target (tests/CMakeLists.txt is owned elsewhere):
- *   test-eciesx25519-ratchet-session
  */
 
 #include <algorithm>
@@ -59,7 +45,7 @@ public:
 		: m_Type (type)
 	{
 		m_Keys.GenerateKeys ();
-		uint8_t signingKey[32] = {};
+		uint8_t signingKey[32] = { };
 		for (size_t i = 0; i < sizeof (signingKey); i++) signingKey[i] = static_cast<uint8_t> (0x40 + i);
 		m_Identity = std::make_shared<IdentityEx> (
 			m_Keys.GetPublicKey (), signingKey, i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, type);
@@ -88,10 +74,9 @@ public:
 	std::shared_ptr<i2p::tunnel::TunnelPool> GetTunnelPool () const override { return nullptr; }
 
 protected:
-	void HandleI2NPMessage (const uint8_t *, size_t) override {}
+	void HandleI2NPMessage (const uint8_t *, size_t) override { }
 
-	bool HandleCloveI2NPMessage (
-		i2p::I2NPMessageType typeID, const uint8_t * payload, size_t len, uint32_t msgID,
+	bool HandleCloveI2NPMessage (i2p::I2NPMessageType typeID, const uint8_t * payload, size_t len, uint32_t msgID,
 		ECIESX25519AEADRatchetSession * /*from*/) override
 	{
 		m_Received.push_back ({ typeID, msgID, std::vector<uint8_t> (payload, payload + len) });
@@ -125,7 +110,7 @@ public:
 
 private:
 	std::shared_ptr<const IdentityEx> m_Identity;
-	uint8_t m_PublicKey[32] = {};
+	uint8_t m_PublicKey[32] = { };
 	CryptoKeyType m_Type;
 };
 
@@ -176,13 +161,15 @@ void CheckHandshakePayloadValidation ()
 	const uint64_t now = i2p::util::GetSecondsSinceEpoch ();
 	std::vector<uint8_t> payload;
 
-	auto append = [&payload] (uint8_t type, const std::vector<uint8_t> & data) {
+	auto append = [&payload] (uint8_t type, const std::vector<uint8_t> & data)
+	{
 		payload.push_back (type);
 		payload.push_back (static_cast<uint8_t> (data.size () >> 8));
 		payload.push_back (static_cast<uint8_t> (data.size ()));
 		payload.insert (payload.end (), data.begin (), data.end ());
 	};
-	auto dateTime = [now] () {
+	auto dateTime = [now] ()
+	{
 		const uint32_t ts = static_cast<uint32_t> (now);
 		return std::vector<uint8_t> { static_cast<uint8_t> (ts >> 24), static_cast<uint8_t> (ts >> 16),
 			static_cast<uint8_t> (ts >> 8), static_cast<uint8_t> (ts) };
@@ -233,7 +220,7 @@ void CheckHandshakePayloadValidation ()
 
 	payload.clear ();
 	append (i2p::garlic::eECIESx25519BlkDateTime, dateTime ());
-	append (i2p::garlic::eECIESx25519BlkGalicClove, {});
+	append (i2p::garlic::eECIESx25519BlkGalicClove, { });
 	assert (!i2p::garlic::ValidateNewSessionPayload (payload.data (), payload.size ()));
 
 	payload.clear ();
@@ -268,8 +255,8 @@ void CheckHandshakePayloadValidation ()
 	{
 		const uint32_t stale = static_cast<uint32_t> (now - 5 * 60 - 1);
 		append (i2p::garlic::eECIESx25519BlkDateTime,
-			{ static_cast<uint8_t> (stale >> 24), static_cast<uint8_t> (stale >> 16),
-				static_cast<uint8_t> (stale >> 8), static_cast<uint8_t> (stale) });
+			{ static_cast<uint8_t> (stale >> 24), static_cast<uint8_t> (stale >> 16), static_cast<uint8_t> (stale >> 8),
+				static_cast<uint8_t> (stale) });
 	}
 	append (i2p::garlic::eECIESx25519BlkGalicClove, { 0, 20, 0, 0, 0, 1, 0, 0, 0, 0 });
 	assert (!i2p::garlic::ValidateRatchetPayload (payload.data (), payload.size ()));

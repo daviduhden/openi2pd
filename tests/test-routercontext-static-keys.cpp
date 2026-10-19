@@ -1,18 +1,13 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * RouterContext static key initialisation regression.
+ * openi2pd: test routercontext static keys.
  *
- * NTCP2/SSU2 static keys used to be created lazily with an unsynchronised
- * check-then-reset, so two transport threads could destroy a key object that
- * another thread was using. Get*StaticKeys() now uses std::call_once plus an
- * idempotent New*Keys() guarded by m_StaticKeysMutex. All threads must observe
- * the same key object and the same public key bytes.
+ * Spawns 16 threads racing NTCP2/SSU2 static-key access, requiring call-once initialization to yield one key object with stable public bytes and no regeneration on later reads. Uses a temporary HOME.
  *
- * The test uses a temporary HOME so key files do not land in the repository
- * or the real router data directory.
  */
+
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -33,8 +28,8 @@
 int main ()
 {
 #ifndef _WIN32
-	const auto home = std::filesystem::temp_directory_path ()
-		/ ("openi2pd-routercontext-keys-" + std::to_string (::getpid ()));
+	const auto home
+		= std::filesystem::temp_directory_path () / ("openi2pd-routercontext-keys-" + std::to_string (::getpid ()));
 	std::filesystem::create_directories (home);
 	setenv ("HOME", home.c_str (), 1);
 	i2p::fs::DetectDataDir (home.string (), false);
@@ -54,8 +49,7 @@ int main ()
 		threads.emplace_back (
 			[&, i] ()
 			{
-				while (!start.load (std::memory_order_acquire))
-					std::this_thread::yield ();
+				while (!start.load (std::memory_order_acquire)) std::this_thread::yield ();
 				ntcp2[i] = &router.GetNTCP2StaticKeys ();
 				ssu2[i] = &router.GetSSU2StaticKeys ();
 			});

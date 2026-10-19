@@ -1,14 +1,13 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * Stress test for TunnelPool::DetachTunnels() racing readers.
+ * openi2pd: test tunnelpool detach race.
  *
- * Every administrative getter now returns a snapshot, so iteration must
- * never observe a concurrently cleared std::set. Run under TSan for the
- * race detector; the plain build only checks that no iterator is
- * invalidated and that the final state is empty.
+ * Stress test overlapping DetachTunnels() with administrative getters, requiring snapshot iteration to avoid invalidated sets and all tunnels to be released; intended for TSan.
+ *
  */
+
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -47,8 +46,7 @@ int main ()
 		readers.emplace_back (
 			[&] ()
 			{
-				while (!start.load (std::memory_order_acquire))
-					std::this_thread::yield ();
+				while (!start.load (std::memory_order_acquire)) std::this_thread::yield ();
 				while (!stop.load (std::memory_order_relaxed))
 				{
 					auto inbound = pool->GetInboundTunnelsList ();
@@ -57,12 +55,12 @@ int main ()
 						if (!tunnel) failed.store (true, std::memory_order_relaxed);
 					for (const auto & tunnel : outbound)
 						if (!tunnel) failed.store (true, std::memory_order_relaxed);
-					(void) pool->HasInboundTunnels ();
-					(void) pool->HasOutboundTunnels ();
-					(void) pool->GetNextInboundTunnel ();
-					(void) pool->GetNextOutboundTunnel ();
-					(void) pool->GetLowestLatencyInboundTunnel ();
-					(void) pool->GetLowestLatencyOutboundTunnel ();
+					(void)pool->HasInboundTunnels ();
+					(void)pool->HasOutboundTunnels ();
+					(void)pool->GetNextInboundTunnel ();
+					(void)pool->GetNextOutboundTunnel ();
+					(void)pool->GetLowestLatencyInboundTunnel ();
+					(void)pool->GetLowestLatencyOutboundTunnel ();
 				}
 			});
 	}
@@ -70,8 +68,7 @@ int main ()
 	std::thread writer (
 		[&] ()
 		{
-			while (!start.load (std::memory_order_acquire))
-				std::this_thread::yield ();
+			while (!start.load (std::memory_order_acquire)) std::this_thread::yield ();
 			for (int i = 0; i < 500; i++)
 			{
 				AddZeroHopTunnels (pool);

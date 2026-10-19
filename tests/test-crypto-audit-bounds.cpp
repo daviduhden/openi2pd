@@ -1,10 +1,11 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * Regression checks for the crypto, Base32/Base64 and malformed-key bounds
- * fixed during the security audit. These are pure in-process checks; no
- * network, key files or router state are required.
+ * openi2pd: test crypto audit bounds.
+ *
+ * Regression checks the audited bounds of bignum-to-buffer conversion, Base32/Base64 decoding, X25519 and ElGamal key validation, AEAD lengths and AES output sizing, all in-process.
+ *
  */
 
 #include <array>
@@ -163,8 +164,7 @@ void TestAESRejectsInvalidLengths ()
 	// An unrepresentable length must be rejected before any output wipe and
 	// before it is converted to an EVP int.
 	std::memset (out, 0xA5, sizeof (out));
-	assert (!encryption.EncryptChecked (in,
-		static_cast<size_t> (std::numeric_limits<int>::max ()) + 1, iv, out));
+	assert (!encryption.EncryptChecked (in, static_cast<size_t> (std::numeric_limits<int>::max ()) + 1, iv, out));
 	for (auto byte : out) assert (byte == 0xA5);
 
 	std::memset (out, 0, sizeof (out));

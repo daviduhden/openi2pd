@@ -1,10 +1,11 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * Regression checks for the Datagram2/3 options block. Java's Datagram2.load
- * and Datagram3.load accept an OPTIONS flag with a zero-length mapping; the
- * C++ parser must not confuse that with a malformed/truncated block.
+ * openi2pd: test datagram options.
+ *
+ * Checks Datagram2/3 options parsing, including a zero-length mapping, bounded length prefixes, trailing application data and empty gzip output, matching Java's permissive but bounded load path.
+ *
  */
 
 #include <cassert>
@@ -66,8 +67,8 @@ int main ()
 	// failure.
 	// Minimal empty gzip member: header, one final empty DEFLATE block and
 	// the CRC/ISIZE trailer.
-	const uint8_t gzip[] = { 0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0x03,
-		0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+	const uint8_t gzip[] = { 0x1f, 0x8b, 0x08, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xff, 0x03, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00 };
 	i2p::data::GzipInflator inflator;
 	uint8_t uncompressed[1] = { 0xaa };
 	size_t uncompressedLen = 123;

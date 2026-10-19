@@ -1,16 +1,11 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * Self-contained valid/malformed checks for the audited primitives:
- *   - X25519 key lifecycle, low-order/zero shared secrets and high-bit peers.
- *   - Noise/HKDF/MixKey/MixHash/ChaCha20-Poly1305 output handling.
- *   - Elligator2 canonical representatives, high bits, r = (p-1)/2 and x = 0.
- *   - ML-KEM type mapping, hybrid protocol names, sizes and round trips.
- *   - CryptoKey lengths and ECIES P256/X25519 wrappers.
+ * openi2pd: test crypto x25519 noise elligator mlkem audit.
  *
- * This test does not talk to a peer and does not establish Java/OpenSSL
- * interoperability; it only pins the locally observable contract.
+ * Covers X25519 low-order peers, HKDF/Noise MixKey/MixHash and AEAD nonce behavior, Elligator2 canonical decoding, and ML-KEM/hybrid type mapping, sizes and round trips.
+ *
  */
 
 #include <algorithm>
@@ -61,8 +56,8 @@ void Sha256 (const uint8_t * a, size_t aLen, const uint8_t * b, size_t bLen, uin
 // RFC 5869 with SHA-256, matching net.i2p.crypto.HKDF and
 // SymmetricState.hkdf(). An empty IKM mirrors Java's ZEROLEN expand-only
 // path: PRK = HMAC(salt, empty).
-void RefHKDF (const uint8_t * salt, const uint8_t * ikm, size_t ikmLen, std::string_view info, uint8_t * out,
-	size_t outLen)
+void RefHKDF (
+	const uint8_t * salt, const uint8_t * ikm, size_t ikmLen, std::string_view info, uint8_t * out, size_t outLen)
 {
 	uint8_t prk[32];
 	unsigned int prkLen = 0;
@@ -151,32 +146,26 @@ void TestElligator ()
 	using i2p::crypto::Elligator2;
 	Elligator2 el;
 
-	const uint8_t key[32] = { 0x33, 0x95, 0x19, 0x64, 0x00, 0x3c, 0x94, 0x08, 0x78, 0x06, 0x3c, 0xcf, 0xd0, 0x34,
-		0x8a, 0xf4, 0x21, 0x50, 0xca, 0x16, 0xd2, 0x64, 0x6f, 0x2c, 0x58, 0x56, 0xe8, 0x33, 0x83, 0x77, 0xd8,
-		0x80 };
-	const uint8_t encodedLowY[32] = { 0x28, 0x20, 0xb6, 0xb2, 0x41, 0xe0, 0xf6, 0x8a, 0x6c, 0x4a, 0x7f, 0xee,
-		0x3d, 0x97, 0x82, 0x28, 0xef, 0x3a, 0xe4, 0x55, 0x33, 0xcd, 0x41, 0x0a, 0xa9, 0x1a, 0x41, 0x53, 0x31,
-		0xd8, 0x61, 0x2d };
-	const uint8_t encodedHighY[32] = { 0x3c, 0xfb, 0x87, 0xc4, 0x6c, 0x0b, 0x45, 0x75, 0xca, 0x81, 0x75, 0xe0,
-		0xed, 0x1c, 0x0a, 0xe9, 0xda, 0xe7, 0x9d, 0xb7, 0x8d, 0xf8, 0x69, 0x97, 0xc4, 0x84, 0x7b, 0x9f, 0x20,
-		0xb2, 0x77, 0x18 };
+	const uint8_t key[32] = { 0x33, 0x95, 0x19, 0x64, 0x00, 0x3c, 0x94, 0x08, 0x78, 0x06, 0x3c, 0xcf, 0xd0, 0x34, 0x8a,
+		0xf4, 0x21, 0x50, 0xca, 0x16, 0xd2, 0x64, 0x6f, 0x2c, 0x58, 0x56, 0xe8, 0x33, 0x83, 0x77, 0xd8, 0x80 };
+	const uint8_t encodedLowY[32]
+		= { 0x28, 0x20, 0xb6, 0xb2, 0x41, 0xe0, 0xf6, 0x8a, 0x6c, 0x4a, 0x7f, 0xee, 0x3d, 0x97, 0x82, 0x28, 0xef, 0x3a,
+			  0xe4, 0x55, 0x33, 0xcd, 0x41, 0x0a, 0xa9, 0x1a, 0x41, 0x53, 0x31, 0xd8, 0x61, 0x2d };
+	const uint8_t encodedHighY[32]
+		= { 0x3c, 0xfb, 0x87, 0xc4, 0x6c, 0x0b, 0x45, 0x75, 0xca, 0x81, 0x75, 0xe0, 0xed, 0x1c, 0x0a, 0xe9, 0xda, 0xe7,
+			  0x9d, 0xb7, 0x8d, 0xf8, 0x69, 0x97, 0xc4, 0x84, 0x7b, 0x9f, 0x20, 0xb2, 0x77, 0x18 };
 
-	const uint8_t encoded1[32] = { 0xe7, 0x35, 0x07, 0xd3, 0x8b, 0xae, 0x63, 0x99, 0x2b, 0x3f, 0x57, 0xaa,
-		0xc4, 0x8c, 0x0a, 0xbc, 0x14, 0x50, 0x95, 0x89, 0x28, 0x84, 0x57, 0x99, 0x5a, 0x2b, 0x4c, 0xa3, 0x49,
-		0x0a, 0xa2, 0x07 };
-	const uint8_t key1[32] = { 0x1e, 0x8a, 0xff, 0xfe, 0xd6, 0xbf, 0x53, 0xfe, 0x27, 0x1a, 0xd5, 0x72, 0x47,
-		0x32, 0x62, 0xde, 0xd8, 0xfa, 0xec, 0x68, 0xe5, 0xe6, 0x7e, 0xf4, 0x5e, 0xbb, 0x82, 0xee, 0xba, 0x52,
-		0x60, 0x4f };
-	const uint8_t encoded2[32] = { 0x95, 0xa1, 0x60, 0x19, 0x04, 0x1d, 0xbe, 0xfe, 0xd9, 0x83, 0x20, 0x48,
-		0xed, 0xe1, 0x19, 0x28, 0xd9, 0x03, 0x65, 0xf2, 0x4a, 0x38, 0xaa, 0x7a, 0xef, 0x1b, 0x97, 0xe2, 0x39,
-		0x54, 0x10, 0x1b };
-	const uint8_t key2[32] = { 0x79, 0x4f, 0x05, 0xba, 0x3e, 0x3a, 0x72, 0x95, 0x80, 0x22, 0x46, 0x8c, 0x88,
-		0x98, 0x1e, 0x0b, 0xe5, 0x78, 0x2b, 0xe1, 0xe1, 0x14, 0x5c, 0xe2, 0xc3, 0xc6, 0xfd, 0xe1, 0x6d, 0xed,
-		0x53, 0x63 };
+	const uint8_t encoded1[32] = { 0xe7, 0x35, 0x07, 0xd3, 0x8b, 0xae, 0x63, 0x99, 0x2b, 0x3f, 0x57, 0xaa, 0xc4, 0x8c,
+		0x0a, 0xbc, 0x14, 0x50, 0x95, 0x89, 0x28, 0x84, 0x57, 0x99, 0x5a, 0x2b, 0x4c, 0xa3, 0x49, 0x0a, 0xa2, 0x07 };
+	const uint8_t key1[32] = { 0x1e, 0x8a, 0xff, 0xfe, 0xd6, 0xbf, 0x53, 0xfe, 0x27, 0x1a, 0xd5, 0x72, 0x47, 0x32, 0x62,
+		0xde, 0xd8, 0xfa, 0xec, 0x68, 0xe5, 0xe6, 0x7e, 0xf4, 0x5e, 0xbb, 0x82, 0xee, 0xba, 0x52, 0x60, 0x4f };
+	const uint8_t encoded2[32] = { 0x95, 0xa1, 0x60, 0x19, 0x04, 0x1d, 0xbe, 0xfe, 0xd9, 0x83, 0x20, 0x48, 0xed, 0xe1,
+		0x19, 0x28, 0xd9, 0x03, 0x65, 0xf2, 0x4a, 0x38, 0xaa, 0x7a, 0xef, 0x1b, 0x97, 0xe2, 0x39, 0x54, 0x10, 0x1b };
+	const uint8_t key2[32] = { 0x79, 0x4f, 0x05, 0xba, 0x3e, 0x3a, 0x72, 0x95, 0x80, 0x22, 0x46, 0x8c, 0x88, 0x98, 0x1e,
+		0x0b, 0xe5, 0x78, 0x2b, 0xe1, 0xe1, 0x14, 0x5c, 0xe2, 0xc3, 0xc6, 0xfd, 0xe1, 0x6d, 0xed, 0x53, 0x63 };
 	// Little endian r = (p - 1) / 2 = 2^254 - 10. Java rejects r >= (p-1)/2.
-	const uint8_t boundary[32] = { 0xf6, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-		0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
-		0xff, 0xff, 0x3f };
+	const uint8_t boundary[32] = { 0xf6, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff,
+		0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x3f };
 
 	uint8_t buf[32];
 	assert (el.Encode (key, buf, false, false));
@@ -260,7 +249,8 @@ void TestHKDFAndNoise ()
 	uint8_t pub[32];
 	for (size_t i = 0; i < 32; ++i) pub[i] = (uint8_t)(i * 3 + 1);
 
-	auto CheckInit = [&] (const char * name, i2p::crypto::NoiseSymmetricState & state) {
+	auto CheckInit = [&] (const char * name, i2p::crypto::NoiseSymmetricState & state)
+	{
 		uint8_t ck[32] = { };
 		memcpy (ck, name, strlen (name) <= 32 ? strlen (name) : 0);
 		uint8_t hh[32], h[32];
@@ -275,7 +265,8 @@ void TestHKDFAndNoise ()
 	i2p::crypto::InitNoiseNState (nState, pub);
 	CheckInit ("Noise_N_25519_ChaChaPoly_SHA256", nState);
 
-	auto CheckLongInit = [&] (const char * name, i2p::crypto::NoiseSymmetricState & state) {
+	auto CheckLongInit = [&] (const char * name, i2p::crypto::NoiseSymmetricState & state)
+	{
 		const size_t nameLen = strlen (name);
 		assert (nameLen > 32);
 		uint8_t nameHash[32], hh[32], h[32];
@@ -362,24 +353,24 @@ void TestAEADAndChaCha20 ()
 	uint8_t msg[32], encrypted[48], decrypted[32];
 	for (size_t i = 0; i < sizeof (msg); ++i) msg[i] = (uint8_t)(0xC0 + i);
 
-	assert (i2p::crypto::AEADChaCha20Poly1305 (msg, sizeof (msg), nullptr, 0, key, nonce, encrypted,
-		sizeof (encrypted), true));
-	assert (i2p::crypto::AEADChaCha20Poly1305 (encrypted, sizeof (msg), nullptr, 0, key, nonce, decrypted,
-		sizeof (decrypted), false));
+	assert (i2p::crypto::AEADChaCha20Poly1305 (
+		msg, sizeof (msg), nullptr, 0, key, nonce, encrypted, sizeof (encrypted), true));
+	assert (i2p::crypto::AEADChaCha20Poly1305 (
+		encrypted, sizeof (msg), nullptr, 0, key, nonce, decrypted, sizeof (decrypted), false));
 	assert (memcmp (decrypted, msg, sizeof (msg)) == 0);
 
 	uint8_t tampered[48];
 	memcpy (tampered, encrypted, sizeof (tampered));
 	tampered[0] ^= 0x80;
 	memset (decrypted, 0xA5, sizeof (decrypted));
-	assert (!i2p::crypto::AEADChaCha20Poly1305 (tampered, sizeof (msg), nullptr, 0, key, nonce, decrypted,
-		sizeof (decrypted), false));
+	assert (!i2p::crypto::AEADChaCha20Poly1305 (
+		tampered, sizeof (msg), nullptr, 0, key, nonce, decrypted, sizeof (decrypted), false));
 	assert (IsAllZero (decrypted, sizeof (decrypted)));
 
 	// Length narrowing is rejected before any EVP call. The output length is
 	// large enough that only the INT_MAX check can reject it.
-	assert (!i2p::crypto::AEADChaCha20Poly1305 (msg, (size_t)INT_MAX + 1, nullptr, 0, key, nonce, encrypted,
-		(size_t)INT_MAX + 17, true));
+	assert (!i2p::crypto::AEADChaCha20Poly1305 (
+		msg, (size_t)INT_MAX + 1, nullptr, 0, key, nonce, encrypted, (size_t)INT_MAX + 17, true));
 
 	// In-place ChaCha20 is a stream XOR: applying it twice restores the input.
 	uint8_t buffer[16], original[16];
@@ -403,8 +394,8 @@ void TestCryptoKeyLengthsAndECIES ()
 	assert (GetCryptoPublicKeyLen (CRYPTO_KEY_TYPE_ECIES_P256_SHA256_AES256CBC) == 256);
 	assert (GetCryptoPrivateKeyLen (CRYPTO_KEY_TYPE_ECIES_X25519_AEAD) == 32);
 	assert (GetCryptoPublicKeyLen (CRYPTO_KEY_TYPE_ECIES_X25519_AEAD) == 32);
-	for (auto type : { CRYPTO_KEY_TYPE_ECIES_MLKEM512_X25519_AEAD,
-			 CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD, CRYPTO_KEY_TYPE_ECIES_MLKEM1024_X25519_AEAD })
+	for (auto type : { CRYPTO_KEY_TYPE_ECIES_MLKEM512_X25519_AEAD, CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD,
+			 CRYPTO_KEY_TYPE_ECIES_MLKEM1024_X25519_AEAD })
 	{
 		assert (GetCryptoPrivateKeyLen (type) == 32);
 		assert (GetCryptoPublicKeyLen (type) == 32);
@@ -520,12 +511,9 @@ void TestMLKEM ()
 	assert (IsMLKEMSupported (CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD));
 	assert (IsMLKEMSupported (CRYPTO_KEY_TYPE_ECIES_MLKEM1024_X25519_AEAD));
 
-	CheckMLKEMInit (CRYPTO_KEY_TYPE_ECIES_MLKEM512_X25519_AEAD,
-		"Noise_IKhfselg2_25519+MLKEM512_ChaChaPoly_SHA256");
-	CheckMLKEMInit (CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD,
-		"Noise_IKhfselg2_25519+MLKEM768_ChaChaPoly_SHA256");
-	CheckMLKEMInit (CRYPTO_KEY_TYPE_ECIES_MLKEM1024_X25519_AEAD,
-		"Noise_IKhfselg2_25519+MLKEM1024_ChaChaPoly_SHA256");
+	CheckMLKEMInit (CRYPTO_KEY_TYPE_ECIES_MLKEM512_X25519_AEAD, "Noise_IKhfselg2_25519+MLKEM512_ChaChaPoly_SHA256");
+	CheckMLKEMInit (CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD, "Noise_IKhfselg2_25519+MLKEM768_ChaChaPoly_SHA256");
+	CheckMLKEMInit (CRYPTO_KEY_TYPE_ECIES_MLKEM1024_X25519_AEAD, "Noise_IKhfselg2_25519+MLKEM1024_ChaChaPoly_SHA256");
 
 	// XK uses a different protocol name for each type.
 	{
@@ -569,8 +557,8 @@ void TestMLKEM ()
 		assert (memcmp (supported.m_H, h, 32) == 0);
 	}
 
-	for (auto type : { CRYPTO_KEY_TYPE_ECIES_MLKEM512_X25519_AEAD,
-			 CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD, CRYPTO_KEY_TYPE_ECIES_MLKEM1024_X25519_AEAD })
+	for (auto type : { CRYPTO_KEY_TYPE_ECIES_MLKEM512_X25519_AEAD, CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD,
+			 CRYPTO_KEY_TYPE_ECIES_MLKEM1024_X25519_AEAD })
 	{
 		if (!IsMLKEMSupported (type)) continue;
 		auto keys = CreateMLKEMKeys (type);

@@ -1,14 +1,13 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * Concurrency regression for the global NTP time offset.
+ * openi2pd: test timestamp offset.
  *
- * AdjustTimeOffset() and every epoch getter may be called from different
- * threads. The test balances positive and negative adjustments, so the final
- * offset must return to its starting value. Run under TSan to validate the
- * absence of the former plain int64_t data race.
+ * Concurrent readers and writers of the global NTP time offset must not race; balanced AdjustTimeOffset calls must cancel and epoch getters must remain valid and monotonic. Intended for TSan.
+ *
  */
+
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -37,8 +36,7 @@ int main ()
 		threads.emplace_back (
 			[&] ()
 			{
-				while (!start.load (std::memory_order_acquire))
-					std::this_thread::yield ();
+				while (!start.load (std::memory_order_acquire)) std::this_thread::yield ();
 				for (int i = 0; i < ITERATIONS; i++)
 				{
 					AdjustTimeOffset (1);
@@ -63,8 +61,7 @@ int main ()
 		return 2;
 	}
 
-	const int64_t drift = static_cast<int64_t> (GetSecondsSinceEpoch ())
-		- static_cast<int64_t> (before);
+	const int64_t drift = static_cast<int64_t> (GetSecondsSinceEpoch ()) - static_cast<int64_t> (before);
 	// The balanced adjustments must cancel. Allow a small clock jump while
 	// the test runs, but not a leaked accumulation of ITERATIONS increments.
 	if (drift < -5 || drift > 5)

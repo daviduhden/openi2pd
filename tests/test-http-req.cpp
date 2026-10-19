@@ -1,8 +1,13 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: test http req.
+ *
+ * Parses HTTP requests with and without bodies, checking method/URI/version extraction, case-insensitive headers, incomplete input and malformed Content-Length handling.
+ *
  */
+
 #include <cassert>
 #include <cstddef>
 #include <cstring>
@@ -178,9 +183,8 @@ int main ()
 
 	/* test: incremental delivery reports "incomplete" until the final chunk */
 	{
-		static constexpr const char * parts[] = {
-			"GET /incremental HTTP/1.1\r\n", "Host: example.i2p\r\n", "Accept: */*\r\n", "\r\n"
-		};
+		static constexpr const char * parts[]
+			= { "GET /incremental HTTP/1.1\r\n", "Host: example.i2p\r\n", "Accept: */*\r\n", "\r\n" };
 		constexpr size_t numParts = sizeof (parts) / sizeof (parts[0]);
 
 		HTTPReq incremental;

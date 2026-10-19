@@ -1,14 +1,13 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * Decoder-level framing and field-bound checks. Channel-level malformed
- * records, ancillary data, descriptor ownership and queue pressure live in
- * test-privsep-linux-ipc (Linux) and test-privsep-log. Decoder overflows are
- * also exercised by the CI-only fuzz-privsep-protocol target; TSan/ASan runs
- * are CI-only and are not part of local static review.
+ * openi2pd: test privsep protocol.
+ *
+ * Checks privilege-separation framing and field bounds: magic/version/type/length validation, exact maximum sizes, log-record string limits and SOCK_SEQPACKET channel behavior with peer credentials.
+ *
  */
+
 #include <cassert>
 #include <cstdint>
 #include <limits>
@@ -70,8 +69,8 @@ int main ()
 	// ConfigureLogFd is the last valid type; an empty payload is legal for
 	// control messages, so the boundary is accepted before dispatch.
 	{
-		auto fdConfig = Encode (
-			Message { MessageType::ConfigureLogFd, 8, EncodeLogConfig (false, "/tmp/router.log", "test") });
+		auto fdConfig
+			= Encode (Message { MessageType::ConfigureLogFd, 8, EncodeLogConfig (false, "/tmp/router.log", "test") });
 		assert (fdConfig.has_value ());
 		auto decodedConfig = Decode (*fdConfig);
 		assert (decodedConfig.has_value ());
@@ -100,15 +99,15 @@ int main ()
 	// Off-by-one on the documented limit: the largest legal declared length
 	// is MAX_MESSAGE_SIZE - HEADER_SIZE; one more byte is rejected as a size
 	// error even though the frame is short.
-	ExpectDecodeError (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 2, 0,
-							   static_cast<uint32_t> (MAX_MESSAGE_SIZE - HEADER_SIZE + 1)),
+	ExpectDecodeError (
+		Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 2, 0, static_cast<uint32_t> (MAX_MESSAGE_SIZE - HEADER_SIZE + 1)),
 		ErrorCode::TooLarge);
-	ExpectDecodeError (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 2, 0, std::numeric_limits<uint32_t>::max ()),
-		ErrorCode::TooLarge);
+	ExpectDecodeError (
+		Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 2, 0, std::numeric_limits<uint32_t>::max ()), ErrorCode::TooLarge);
 	// A header-only record that declares the maximum payload is a framing
 	// error, not a size error: the length is legal but absent.
-	ExpectDecodeError (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 2, 0,
-							   static_cast<uint32_t> (MAX_MESSAGE_SIZE - HEADER_SIZE)),
+	ExpectDecodeError (
+		Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 2, 0, static_cast<uint32_t> (MAX_MESSAGE_SIZE - HEADER_SIZE)),
 		ErrorCode::Malformed);
 	ExpectDecodeError (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 2, 0, 1), ErrorCode::Malformed);
 	{

@@ -1,11 +1,11 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * Deterministic regressions for SAM session state:
- *   - the accept queue transfer API is synchronized and bounded;
- *   - consecutive datagram sends are queued with one in-flight write and
- *     buffers owned by the completion handler (loopback UDP only).
+ * openi2pd: test sam stream lifecycle.
+ *
+ * Exercises SAM session state: bounded synchronized accept-queue transfer, FIFO and concurrent producers and, over loopback UDP only, serialized datagram sends with handler-owned buffers.
+ *
  */
 
 #include <atomic>
@@ -67,8 +67,7 @@ int main ()
 	for (size_t i = 0; i < 60; i++) sockets.emplace_back (std::make_shared<SAMSocket> (bridge));
 
 	const uint64_t now = i2p::util::GetSecondsSinceEpoch ();
-	for (size_t i = 0; i < SAM_SESSION_MAX_ACCEPT_QUEUE_SIZE; i++)
-		assert (session.EnqueueAccept (sockets[i], now));
+	for (size_t i = 0; i < SAM_SESSION_MAX_ACCEPT_QUEUE_SIZE; i++) assert (session.EnqueueAccept (sockets[i], now));
 	assert (!session.EnqueueAccept (sockets[SAM_SESSION_MAX_ACCEPT_QUEUE_SIZE], now));
 	assert (session.GetAcceptQueueSize () == SAM_SESSION_MAX_ACCEPT_QUEUE_SIZE);
 
@@ -99,15 +98,16 @@ int main ()
 				[t, &session, &sockets, &start] ()
 				{
 					while (!start.load ()) std::this_thread::yield ();
-					for (size_t i = 0; i < 10; i++)
-						assert (session.EnqueueAccept (sockets[10 + t * 10 + i], now));
+					for (size_t i = 0; i < 10; i++) assert (session.EnqueueAccept (sockets[10 + t * 10 + i], now));
 				});
 		start.store (true);
 		while (consumed.load () < 40)
 		{
 			auto socket = session.TakeNextAccept (now + 1, dropped);
-			if (socket) consumed.fetch_add (1);
-			else std::this_thread::yield ();
+			if (socket)
+				consumed.fetch_add (1);
+			else
+				std::this_thread::yield ();
 		}
 		for (auto & producer : producers) producer.join ();
 		assert (session.GetAcceptQueueSize () == 0);
@@ -126,7 +126,8 @@ int main ()
 		receiver.async_receive (boost::asio::buffer (buffer),
 			[received, buffer = std::move (buffer)] (const boost::system::error_code & ec, std::size_t len) mutable
 			{
-				if (ec) received->set_value ({});
+				if (ec)
+					received->set_value ({ });
 				else
 				{
 					buffer.resize (len);
@@ -138,8 +139,7 @@ int main ()
 			std::string firstPart = "SAM-";
 			std::string secondPart = "DATAGRAM";
 			bridge.SendTo (
-				{ { firstPart.data (), firstPart.size () }, { secondPart.data (), secondPart.size () } },
-				endpoint);
+				{ { firstPart.data (), firstPart.size () }, { secondPart.data (), secondPart.size () } }, endpoint);
 		}
 
 		assert (future.wait_for (std::chrono::seconds (2)) == std::future_status::ready);
@@ -157,8 +157,10 @@ int main ()
 				{
 					assert (!ec);
 					assert (len > 0);
-					if (remaining.fetch_sub (1) == 1) second->set_value ();
-					else receiveNext ();
+					if (remaining.fetch_sub (1) == 1)
+						second->set_value ();
+					else
+						receiveNext ();
 				});
 		};
 		receiveNext ();

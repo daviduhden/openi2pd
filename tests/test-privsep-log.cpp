@@ -1,22 +1,13 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * Exercises the log worker through the real SOCK_SEQPACKET channel and real
- * fork, without network access and without root.
+ * openi2pd: test privsep log.
  *
- * Coverage limits:
- *  - The worker is a fork of the test process, so the peer always has the
- *    same uid/gid. Rejecting a different uid/gid (and a forged
- *    SCM_CREDENTIALS) needs root or a second account; those paths are not
- *    simulated and the positive uid check is not weakened.
- *  - Concurrent Write/Reattach/Shutdown and descriptor ownership under races
- *    need TSan; decoder/formatting memory errors need ASan/UBSan. Both are CI
- *    sanitizer lanes, not local static review.
- *  - Descriptor leaks are checked with /proc/self/fd where available; the
- *    worker's own descriptor table is not observable after it exits.
+ * Exercises the isolated log worker: bounded text sanitization, descriptor-based configuration with exactly one regular file, malformed records, level bounds and bounded child shutdown.
+ *
  */
+
 #include <cassert>
 #include <cerrno>
 #include <chrono>
@@ -275,8 +266,7 @@ int main ()
 				// ownership away from the parent.
 				assert (fcntl (fd, F_GETFD) >= 0);
 				close (fd);
-				assert (channel
-						.Send (Message { MessageType::LogRecord, 2, EncodeLogRecord (4, 1, "preopened record") })
+				assert (channel.Send (Message { MessageType::LogRecord, 2, EncodeLogRecord (4, 1, "preopened record") })
 						.has_value ());
 				assert (channel.Send (Message { MessageType::Shutdown, 3, { } }).has_value ());
 			},
@@ -349,8 +339,7 @@ int main ()
 		RunScenario (
 			[&path] (Channel & channel)
 			{
-				assert (channel
-						.Send (Message { MessageType::ConfigureLogFd, 1, EncodeLogConfig (false, path, "test") })
+				assert (channel.Send (Message { MessageType::ConfigureLogFd, 1, EncodeLogConfig (false, path, "test") })
 						.has_value ());
 			},
 			1);
@@ -399,8 +388,7 @@ int main ()
 				const int fd = open ("/dev/null", O_RDWR | O_CLOEXEC);
 				assert (fd >= 0);
 				assert (channel
-						.SendWithFd (
-							Message { MessageType::ConfigureLogFd, 1, EncodeLogConfig (true, "", "test") }, fd)
+						.SendWithFd (Message { MessageType::ConfigureLogFd, 1, EncodeLogConfig (true, "", "test") }, fd)
 						.has_value ());
 				close (fd);
 			},
@@ -438,8 +426,7 @@ int main ()
 				const int fd = open ("/dev/null", O_RDONLY | O_CLOEXEC);
 				assert (fd >= 0);
 				assert (channel
-						.SendWithFd (
-							Message { MessageType::LogRecord, 2, EncodeLogRecord (4, 1, "fd on record") }, fd)
+						.SendWithFd (Message { MessageType::LogRecord, 2, EncodeLogRecord (4, 1, "fd on record") }, fd)
 						.has_value ());
 				close (fd);
 			},
@@ -553,8 +540,7 @@ int main ()
 			LogSink sink (std::move (first->first));
 			assert (sink.Configure (false, path, "test").has_value ());
 #ifdef __linux__
-			if (descriptorsBeforeConfigure >= 0)
-				assert (CountOpenFds () == descriptorsBeforeConfigure);
+			if (descriptorsBeforeConfigure >= 0) assert (CountOpenFds () == descriptorsBeforeConfigure);
 #endif
 			assert (!sink.Configure (false, path, "test").has_value ()); // once
 			sink.Write (4, 1, "first worker");

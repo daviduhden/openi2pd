@@ -1,29 +1,11 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * This file is part of openi2pd and licensed under BSD-3-Clause
+ * openi2pd: test ssu2 control plane.
  *
- * See full license text in LICENSE file at top of project tree
+ * Checks SSU2 control-plane rules: per-family address splitting, Java-compatible pq publication and MTU downgrade, peer-test reachability, hole-punch version and state-specific block whitelists.
  *
- * Regression checks for the SSU2/transport control plane:
- *  - a non-published SSU2 address that declares both "4" and "6" caps is
- *    split into independent v4/v6 objects, so reachability, introducers, MTU
- *    and PQ version cannot leak across families,
- *  - "pq" is published as the Java-compatible preference list ("4,3") and is
- *    downgraded to "3" when the per-family MTU cannot carry ML-KEM-768,
- *  - "B" (peer testing) is still published on non-published SSU2 addresses,
- *  - an address with published=true but no host/port and no introducers is not
- *    reported as reachable,
- *  - out-of-session Peer Test sources are restricted to plausible SSU2
- *    endpoints (non-privileged, non-reserved, not banned),
- *  - the HolePunch wire version is fixed to 2,
- *  - every handshake message has a state-specific block whitelist, and
- *    data-phase handlers require an established session with a peer identity.
- *
- * No network or filesystem setup is needed. Register as a CTest target
- * (tests/CMakeLists.txt is owned elsewhere):
- *   test-ssu2-control-plane
  */
 
 #include <cassert>
@@ -270,8 +252,7 @@ void TestStatePayloadBlockMatrix ()
 		}
 	};
 
-	expectOnly (eSSU2SessionStateTokenRequestReceived,
-		{ eSSU2BlkDateTime, eSSU2BlkPadding, eSSU2BlkTermination });
+	expectOnly (eSSU2SessionStateTokenRequestReceived, { eSSU2BlkDateTime, eSSU2BlkPadding, eSSU2BlkTermination });
 	expectOnly (eSSU2SessionStateSessionRequestReceived,
 		{ eSSU2BlkDateTime, eSSU2BlkPadding, eSSU2BlkRelayTagRequest, eSSU2BlkTermination });
 	expectOnly (eSSU2SessionStateSessionCreatedReceived,
@@ -289,10 +270,10 @@ void TestStatePayloadBlockMatrix ()
 	// HandleAddress.
 	assert (IsSSU2EstablishedPayloadContext (eSSU2SessionStateEstablished, true));
 	assert (!IsSSU2EstablishedPayloadContext (eSSU2SessionStateEstablished, false));
-	for (auto state : { eSSU2SessionStateUnknown, eSSU2SessionStateTokenRequestReceived,
-			 eSSU2SessionStateSessionRequestReceived, eSSU2SessionStateSessionCreatedSent,
-			 eSSU2SessionStateSessionCreatedReceived, eSSU2SessionStateTokenReceived,
-			 eSSU2SessionStateSessionConfirmedSent, eSSU2SessionStateIntroduced })
+	for (auto state :
+		{ eSSU2SessionStateUnknown, eSSU2SessionStateTokenRequestReceived, eSSU2SessionStateSessionRequestReceived,
+			eSSU2SessionStateSessionCreatedSent, eSSU2SessionStateSessionCreatedReceived,
+			eSSU2SessionStateTokenReceived, eSSU2SessionStateSessionConfirmedSent, eSSU2SessionStateIntroduced })
 		assert (!IsSSU2EstablishedPayloadContext (state, true));
 
 	assert (IsSSU2AddressBlockContextAllowed (eSSU2SessionStateEstablished, true));
@@ -323,14 +304,12 @@ void TestPayloadBlockValidator ()
 	assert (!ValidateSSU2PayloadBlocks (eSSU2SessionStateTokenRequestReceived, address, sizeof (address)));
 	assert (!ValidateSSU2PayloadBlocks (eSSU2SessionStateTokenRequestReceived, i2np, sizeof (i2np)));
 
-	assert (ValidateSSU2PayloadBlocks (
-		eSSU2SessionStateSessionRequestReceived, relayTagRequest, sizeof (relayTagRequest)));
-	assert (ValidateSSU2PayloadBlocks (
-		eSSU2SessionStateSessionRequestReceived, termination, sizeof (termination)));
+	assert (
+		ValidateSSU2PayloadBlocks (eSSU2SessionStateSessionRequestReceived, relayTagRequest, sizeof (relayTagRequest)));
+	assert (ValidateSSU2PayloadBlocks (eSSU2SessionStateSessionRequestReceived, termination, sizeof (termination)));
 	assert (!ValidateSSU2PayloadBlocks (eSSU2SessionStateSessionRequestReceived, i2np, sizeof (i2np)));
 
-	assert (ValidateSSU2PayloadBlocks (
-		eSSU2SessionStateSessionCreatedReceived, address, sizeof (address)));
+	assert (ValidateSSU2PayloadBlocks (eSSU2SessionStateSessionCreatedReceived, address, sizeof (address)));
 	assert (ValidateSSU2PayloadBlocks (eSSU2SessionStateSessionCreatedReceived, newToken, sizeof (newToken)));
 	assert (!ValidateSSU2PayloadBlocks (eSSU2SessionStateSessionCreatedReceived, i2np, sizeof (i2np)));
 	assert (!ValidateSSU2PayloadBlocks (eSSU2SessionStateSessionCreatedReceived, termination, sizeof (termination)));
@@ -346,8 +325,7 @@ void TestPayloadBlockValidator ()
 	// Truncated framing, content after padding and non-4-byte DateTime.
 	const uint8_t truncated[] = { eSSU2BlkPadding, 0 };
 	assert (!ValidateSSU2PayloadBlocks (eSSU2SessionStateTokenRequestReceived, truncated, sizeof (truncated)));
-	assert (!ValidateSSU2PayloadBlocks (
-		eSSU2SessionStateTokenRequestReceived, nullptr, sizeof (dateTime)));
+	assert (!ValidateSSU2PayloadBlocks (eSSU2SessionStateTokenRequestReceived, nullptr, sizeof (dateTime)));
 	const uint8_t badDateTime[] = { eSSU2BlkDateTime, 0, 3, 0, 0, 0 };
 	assert (!ValidateSSU2PayloadBlocks (eSSU2SessionStateTokenRequestReceived, badDateTime, sizeof (badDateTime)));
 	const uint8_t afterPadding[] = { eSSU2BlkPadding, 0, 0, eSSU2BlkPadding, 0, 0 };
@@ -375,8 +353,8 @@ void TestPeerTestEndpointValidation ()
 		endpoint (boost::asio::ip::make_address ("8.8.8.8"), 9150))); // Tor browser
 	assert (!i2p::transport::IsValidPeerTestEndpoint (
 		endpoint (boost::asio::ip::make_address ("8.8.8.8"), 7655))); // standard I2P port
-	assert (!i2p::transport::IsValidPeerTestEndpoint (
-		endpoint (boost::asio::ip::make_address ("8.8.8.8"), 9001))); // Tor
+	assert (
+		!i2p::transport::IsValidPeerTestEndpoint (endpoint (boost::asio::ip::make_address ("8.8.8.8"), 9001))); // Tor
 
 	// Unspecified, loopback, RFC1918 and documentation ranges.
 	assert (!i2p::transport::IsValidPeerTestEndpoint (endpoint ()));

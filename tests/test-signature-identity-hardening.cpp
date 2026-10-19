@@ -1,20 +1,11 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * Identity/key-certificate and signature-length checks that do not need a
- * network peer:
- *   - a failed IdentityEx parse must not look like a valid 387-byte DSA
- *     identity (LeaseSetBufferValidate used the constructor result only
- *     through GetFullLen());
- *   - P-521 identities with extra certificate data must read the excess
- *     signing key from the owned extended buffer;
- *   - key certificates must contain the signing key bytes their type
- *     announces (and no excess data for ElGamal);
- *   - RSA wire lengths are known even though this build has no RSA verifier,
- *     and the key generator must not silently create EdDSA keys for RSA;
- *   - the provider-backed Ed25519 signer falls back to the compatibility
- *     signer for a mismatched public key and produces the same signature.
+ * openi2pd: test signature identity hardening.
+ *
+ * Checks identity and signature encodings: P-521 certificate sizes and DER bounds, Ed25519 excess-data rejection, malformed identities, RSA wire lengths and private-key round trips, all by in-process verification.
+ *
  */
 
 #include <array>
@@ -29,9 +20,9 @@
 
 namespace
 {
-const uint8_t TEST_MESSAGE[37] = { 0x49, 0x32, 0x50, 0x20, 0x69, 0x64, 0x65, 0x6e, 0x74, 0x69, 0x74, 0x79,
-	0x20, 0x68, 0x61, 0x72, 0x64, 0x65, 0x6e, 0x69, 0x6e, 0x67, 0x20, 0x76, 0x65, 0x63, 0x74, 0x6f, 0x72,
-	0x20, 0x62, 0x79, 0x74, 0x65, 0x73, 0x21, 0x21 };
+const uint8_t TEST_MESSAGE[37] = { 0x49, 0x32, 0x50, 0x20, 0x69, 0x64, 0x65, 0x6e, 0x74, 0x69, 0x74, 0x79, 0x20, 0x68,
+	0x61, 0x72, 0x64, 0x65, 0x6e, 0x69, 0x6e, 0x67, 0x20, 0x76, 0x65, 0x63, 0x74, 0x6f, 0x72, 0x20, 0x62, 0x79, 0x74,
+	0x65, 0x73, 0x21, 0x21 };
 
 void PutCertificate (uint8_t * buf, uint8_t type, uint16_t payloadLen)
 {

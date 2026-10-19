@@ -1,10 +1,11 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * Regression checks for the reseed ZIP reader. The local-file-header sizes are
- * fully attacker controlled, so oversized and truncated entries must be
- * rejected before allocating buffers or reading past the stream.
+ * openi2pd: test reseed zip bounds.
+ *
+ * Checks the reseed ZIP reader's local-header and descriptor bounds, deflate/CRC handling and rejection of oversized, truncated or inconsistent entries before AddRouterInfo.
+ *
  */
 
 #include <cassert>
@@ -124,8 +125,8 @@ int main ()
 	{
 		const std::vector<uint8_t> payload (32, 'A');
 		const auto deflated = RawDeflateStored (payload);
-		auto bytes = LocalFileHeader (static_cast<uint32_t> (deflated.size ()),
-			static_cast<uint32_t> (payload.size ()), 0, 8 /* deflate */, 0, 0 /* wrong CRC */);
+		auto bytes = LocalFileHeader (static_cast<uint32_t> (deflated.size ()), static_cast<uint32_t> (payload.size ()),
+			0, 8 /* deflate */, 0, 0 /* wrong CRC */);
 		bytes.insert (bytes.end (), deflated.begin (), deflated.end ());
 		cases.push_back (WriteCase (directory, "deflated-bad-crc.zip", bytes));
 	}
@@ -136,8 +137,8 @@ int main ()
 		const std::vector<uint8_t> payload (32, 'A');
 		auto deflated = RawDeflateStored (payload);
 		deflated.resize (deflated.size () - 8); // cut into the stored block
-		auto bytes = LocalFileHeader (static_cast<uint32_t> (deflated.size ()),
-			static_cast<uint32_t> (payload.size ()), 0, 8 /* deflate */);
+		auto bytes = LocalFileHeader (
+			static_cast<uint32_t> (deflated.size ()), static_cast<uint32_t> (payload.size ()), 0, 8 /* deflate */);
 		bytes.insert (bytes.end (), deflated.begin (), deflated.end ());
 		cases.push_back (WriteCase (directory, "deflated-truncated.zip", bytes));
 	}

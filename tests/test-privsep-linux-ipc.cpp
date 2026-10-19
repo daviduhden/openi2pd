@@ -1,23 +1,11 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * Linux IPC checks for the private worker channel. These are compiled and
- * executed only by CI; this source is intentionally not run locally.
+ * openi2pd: test privsep linux ipc.
  *
- * The cases below deliberately exercise the transport at the raw socket
- * level (sendmsg/recvmsg) so that malformed frames, ancillary data and queue
- * saturation do not depend on the production encoder accepting the input.
+ * Linux IPC checks for the private worker channel: SO_PEERCRED, mandatory SCM_CREDENTIALS, single-descriptor SCM_RIGHTS transfer, CLOEXEC and recovery after rejected frames.
  *
- * Coverage limits that still need a different environment:
- *  - A peer with a different uid/gid cannot be created unprivileged. Forging
- *    SCM_CREDENTIALS with another uid needs CAP_SETUID/CAP_SETGID (or
- *    CAP_SYS_ADMIN); a genuinely cross-uid peer needs root or a second
- *    account. Here only same-uid credentials and the missing-credentials
- *    path are checked, and the uid/gid equality check is never weakened.
- *  - Concurrency (LogSink::Write racing Reattach/Shutdown) and descriptor
- *    ownership under races need TSan; decoder memory errors and undefined
- *    behaviour need ASan/UBSan. Those sanitizer lanes are CI-only.
  */
 
 #include <cassert>
@@ -190,9 +178,7 @@ void TestDescriptorTransfer ()
 
 	const int before = CountOpenFds ();
 	const int fd = OpenDescriptor ("/dev/null", O_RDONLY);
-	assert (pair->first
-				.SendWithFd (Message { MessageType::Ping, 11, { } }, fd)
-				.has_value ());
+	assert (pair->first.SendWithFd (Message { MessageType::Ping, 11, { } }, fd).has_value ());
 	// SCM_RIGHTS duplicates the sender's descriptor; sending does not
 	// transfer ownership of the local copy.
 	assert (fcntl (fd, F_GETFD) >= 0);
@@ -217,9 +203,7 @@ void TestDescriptorTransfer ()
 	// A descriptor is never silently consumed by the plain Receive API.
 	const int beforePlain = CountOpenFds ();
 	const int secondFd = OpenDescriptor ("/dev/null", O_RDONLY);
-	assert (pair->first
-				.SendWithFd (Message { MessageType::Ping, 12, { } }, secondFd)
-				.has_value ());
+	assert (pair->first.SendWithFd (Message { MessageType::Ping, 12, { } }, secondFd).has_value ());
 	close (secondFd);
 	auto rejected = pair->second.Receive (1000);
 	assert (!rejected.has_value ());
@@ -238,8 +222,7 @@ void TestMultipleDescriptorRejection ()
 
 	// The public API authorises at most one descriptor per operation. A peer
 	// that smuggles two must have both duplicates closed by the receiver.
-	int descriptors[2] = { OpenDescriptor ("/dev/null", O_RDONLY),
-						   OpenDescriptor ("/dev/null", O_RDONLY) };
+	int descriptors[2] = { OpenDescriptor ("/dev/null", O_RDONLY), OpenDescriptor ("/dev/null", O_RDONLY) };
 	auto frame = Encode (Message { MessageType::Ping, 21, { } });
 	assert (frame.has_value ());
 
@@ -376,8 +359,8 @@ void TestMalformedFrames ()
 	// An exact maximum frame still fits the receive buffer, and the next
 	// frame is read cleanly (no off-by-one in the headroom).
 	{
-		auto maximum = Encode (Message { MessageType::LogRecord, 7,
-										std::string (MAX_MESSAGE_SIZE - HEADER_SIZE, 'm') });
+		auto maximum
+			= Encode (Message { MessageType::LogRecord, 7, std::string (MAX_MESSAGE_SIZE - HEADER_SIZE, 'm') });
 		assert (maximum.has_value ());
 		assert (maximum->size () == MAX_MESSAGE_SIZE);
 		assert (SendRaw (sender.Fd (), *maximum));
@@ -400,8 +383,7 @@ void TestSendValidation ()
 
 	// A payload above the frame limit is rejected before any record is
 	// queued; the next send must not inherit a partial header.
-	auto tooLarge =
-		pair->first.Send (Message { MessageType::LogRecord, 31, std::string (MAX_MESSAGE_SIZE, 'x') });
+	auto tooLarge = pair->first.Send (Message { MessageType::LogRecord, 31, std::string (MAX_MESSAGE_SIZE, 'x') });
 	assert (!tooLarge.has_value ());
 	assert (tooLarge.error ().find ("too large") != std::string::npos);
 	ExpectReusable (pair->first, pair->second, 32);

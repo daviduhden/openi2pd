@@ -1,18 +1,13 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * Regression for the TunnelPool::TestTunnels() auto-deadlock.
+ * openi2pd: test tunnelpool zero hop.
  *
- * A failed last zero-hop tunnel makes TestTunnels() create a replacement.
- * Zero-hop creation publishes synchronously through TunnelCreated(), which
- * takes the inbound/outbound container mutex. If TestTunnels() still holds
- * that mutex, the pool deadlocks. The test injects a failed test entry and
- * runs TestTunnels() under a watchdog.
+ * Injects failed zero-hop test tunnels and runs TestTunnels(), requiring synchronous replacement publication without self-deadlock and non-empty inbound/outbound pools.
  *
- * Run this test under TSan as well; the watchdog only detects the
- * deterministic self-deadlock, not a data race.
  */
+
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -33,8 +28,8 @@ namespace tunnel
 {
 	struct TunnelPoolTestAccess
 	{
-		static void AddFailedTest (TunnelPool & pool, std::shared_ptr<OutboundTunnel> outbound,
-			std::shared_ptr<InboundTunnel> inbound)
+		static void AddFailedTest (
+			TunnelPool & pool, std::shared_ptr<OutboundTunnel> outbound, std::shared_ptr<InboundTunnel> inbound)
 		{
 			outbound->SetState (eTunnelStateTestFailed);
 			inbound->SetState (eTunnelStateTestFailed);
@@ -92,8 +87,7 @@ int main ()
 
 	worker.join ();
 
-	if (TunnelPoolTestAccess::InboundSize (*pool) == 0
-		|| TunnelPoolTestAccess::OutboundSize (*pool) == 0)
+	if (TunnelPoolTestAccess::InboundSize (*pool) == 0 || TunnelPoolTestAccess::OutboundSize (*pool) == 0)
 	{
 		std::cerr << "zero-hop replacement tunnels were not published" << std::endl;
 		return 1;

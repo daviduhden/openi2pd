@@ -1,14 +1,11 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * Windows named-pipe transport primitives used by the TUI.
+ * openi2pd: test tui win32 pipe.
  *
- * This is deliberately a primitive-level test: it proves that the Win32 SDK
- * exposes the pipe/DACL APIs, that an explicit DACL can be attached and that a
- * local byte-mode round trip works. It does not exercise the product helper,
- * a running console, a service account, a second user token or kernel ACL
- * enforcement across accounts. Those require a dedicated Windows host.
+ * Windows-only primitive check that the SDK exposes named-pipe and DACL APIs, a protected DACL can be attached and a local byte-mode round trip succeeds; cross-account enforcement is not covered.
+ *
  */
 
 #ifndef _WIN32
@@ -80,8 +77,8 @@ void TestDaclAndRoundTrip ()
 	const std::wstring userSid = CurrentUserSidString ();
 	assert (!userSid.empty ());
 	const std::wstring sddl = L"D:P(A;;GA;;;" + userSid + L")(A;;GA;;;SY)(A;;GA;;;BA)";
-	assert (ConvertStringSecurityDescriptorToSecurityDescriptorW (
-		sddl.c_str (), SDDL_REVISION_1, &descriptor, nullptr));
+	assert (
+		ConvertStringSecurityDescriptorToSecurityDescriptorW (sddl.c_str (), SDDL_REVISION_1, &descriptor, nullptr));
 	assert (descriptor != nullptr);
 
 	BOOL daclPresent = FALSE;

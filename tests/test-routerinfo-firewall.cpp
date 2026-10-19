@@ -1,7 +1,13 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: test routerinfo firewall.
+ *
+ * Validates firewall-rule endpoint parsing and rendering across iptables, nftables, pf and Windows backends, requiring outbound-only rules, canonical numeric addresses and rejection of private, reserved, scoped or injected values.
+ *
  */
+
 #include <cassert>
 #include <string>
 
@@ -26,10 +32,8 @@ static void AssertSafeRule (const std::optional<std::string> & rule)
 	// Every generated rule must be outbound, never an INPUT/inbound rule.
 	assert (rule->find ("INPUT") == std::string::npos);
 	assert (rule->find ("pass in") == std::string::npos);
-	assert (rule->find ("OUTPUT") != std::string::npos
-		|| rule->find ("output") != std::string::npos
-		|| rule->find ("Outbound") != std::string::npos
-		|| rule->find ("pass out") != std::string::npos);
+	assert (rule->find ("OUTPUT") != std::string::npos || rule->find ("output") != std::string::npos
+		|| rule->find ("Outbound") != std::string::npos || rule->find ("pass out") != std::string::npos);
 }
 
 int main ()

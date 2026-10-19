@@ -1,14 +1,11 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * OpenBSD native policy and negative-capability tests. They are compiled and
- * executed only by the manual OpenBSD CI job; no result is claimed locally.
+ * openi2pd: test privsep openbsd policy.
  *
- * The negative cases run in a forked child. An OpenBSD pledge violation
- * terminates the child (typically with SIGABRT), which is the expected outcome
- * and proves that the promise was actually enforced rather than merely
- * documented in a policy string.
+ * OpenBSD policy and negative-capability checks: per-role pledge/unveil separation, preopened descriptor validation, and forked children proving storage cannot use the network and network cannot write files.
+ *
  */
 
 #include <cassert>
@@ -45,8 +42,7 @@ OpenBSDPolicyConfig BaseConfig ()
 	return config;
 }
 
-template <typename Action>
-void ExpectPledgeViolation (OpenBSDWorkerRole role, Action action)
+template <typename Action> void ExpectPledgeViolation (OpenBSDWorkerRole role, Action action)
 {
 	const pid_t pid = fork ();
 	assert (pid >= 0);
@@ -142,22 +138,26 @@ void TestPreopenedDescriptorValidation ()
 
 void TestStorageCannotUseExternalNetwork ()
 {
-	ExpectPledgeViolation (OpenBSDWorkerRole::Storage, [] {
-		const int fd = socket (AF_INET, SOCK_STREAM, 0);
-		if (fd >= 0) close (fd);
-	});
+	ExpectPledgeViolation (OpenBSDWorkerRole::Storage,
+		[]
+		{
+			const int fd = socket (AF_INET, SOCK_STREAM, 0);
+			if (fd >= 0) close (fd);
+		});
 }
 
 void TestNetworkCannotWritePersistentFile ()
 {
-	ExpectPledgeViolation (OpenBSDWorkerRole::Network, [] {
-		const int fd = open ("/tmp/openi2pd-privsep-network-write", O_WRONLY | O_CREAT | O_TRUNC, 0600);
-		if (fd >= 0)
+	ExpectPledgeViolation (OpenBSDWorkerRole::Network,
+		[]
 		{
-			close (fd);
-			unlink ("/tmp/openi2pd-privsep-network-write");
-		}
-	});
+			const int fd = open ("/tmp/openi2pd-privsep-network-write", O_WRONLY | O_CREAT | O_TRUNC, 0600);
+			if (fd >= 0)
+			{
+				close (fd);
+				unlink ("/tmp/openi2pd-privsep-network-write");
+			}
+		});
 }
 }
 

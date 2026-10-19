@@ -1,20 +1,11 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * This file is part of openi2pd and licensed under BSD-3-Clause
+ * openi2pd: test ssu2 preauth.
  *
- * See full license text in LICENSE file at top of project tree
+ * Enforces SSU2 pre-authentication boundaries: handshake states accept only whitelisted blocks, PeerTest/I2NP/Address handlers require an established session with a remote identity, and data-phase blocks are rejected before authentication.
  *
- * Pre-authentication regressions for SSU2:
- *  - the message-type block whitelist must hold for every block value,
- *  - PeerTest (msgs 1-4), I2NP and Address handlers must not accept work in a
- *    session that is not established or that has no remote identity,
- *  - the pure payload validator must reject data-phase blocks in every
- *    handshake context and never require a socket or a live router.
- *
- * Register as a CTest target (tests/CMakeLists.txt is owned elsewhere):
- *   test-ssu2-preauth
  */
 
 #include <cassert>
@@ -61,16 +52,14 @@ std::vector<uint8_t> Concat (std::initializer_list<std::vector<uint8_t>> parts)
 
 void TestStateBlockMatrix ()
 {
-	ExpectWhitelist (eSSU2SessionStateTokenRequestReceived,
-		{ eSSU2BlkDateTime, eSSU2BlkPadding, eSSU2BlkTermination });
+	ExpectWhitelist (eSSU2SessionStateTokenRequestReceived, { eSSU2BlkDateTime, eSSU2BlkPadding, eSSU2BlkTermination });
 	ExpectWhitelist (eSSU2SessionStateSessionRequestReceived,
 		{ eSSU2BlkDateTime, eSSU2BlkPadding, eSSU2BlkRelayTagRequest, eSSU2BlkTermination });
 	ExpectWhitelist (eSSU2SessionStateSessionCreatedReceived,
 		{ eSSU2BlkDateTime, eSSU2BlkAddress, eSSU2BlkNewToken, eSSU2BlkRelayTag, eSSU2BlkPadding });
-	ExpectWhitelist (eSSU2SessionStateTokenReceived,
-		{ eSSU2BlkDateTime, eSSU2BlkAddress, eSSU2BlkPadding, eSSU2BlkTermination });
-	ExpectWhitelist (eSSU2SessionStateSessionCreatedSent,
-		{ eSSU2BlkRouterInfo, eSSU2BlkOptions, eSSU2BlkPadding });
+	ExpectWhitelist (
+		eSSU2SessionStateTokenReceived, { eSSU2BlkDateTime, eSSU2BlkAddress, eSSU2BlkPadding, eSSU2BlkTermination });
+	ExpectWhitelist (eSSU2SessionStateSessionCreatedSent, { eSSU2BlkRouterInfo, eSSU2BlkOptions, eSSU2BlkPadding });
 
 	// Established data phase keeps the complete block set.
 	for (int block = 0; block < 256; block++)
@@ -83,12 +72,11 @@ void TestPreAuthHandlerGuards ()
 	// data phase and only with a known peer identity.
 	assert (IsSSU2EstablishedPayloadContext (eSSU2SessionStateEstablished, true));
 	assert (!IsSSU2EstablishedPayloadContext (eSSU2SessionStateEstablished, false));
-	for (auto state : { eSSU2SessionStateUnknown, eSSU2SessionStateTokenReceived,
-			 eSSU2SessionStateSessionRequestSent, eSSU2SessionStateSessionRequestReceived,
-			 eSSU2SessionStateSessionCreatedSent, eSSU2SessionStateSessionCreatedReceived,
-			 eSSU2SessionStateSessionConfirmedSent, eSSU2SessionStateIntroduced,
-			 eSSU2SessionStateHolePunch, eSSU2SessionStatePeerTest,
-			 eSSU2SessionStateTokenRequestReceived })
+	for (auto state :
+		{ eSSU2SessionStateUnknown, eSSU2SessionStateTokenReceived, eSSU2SessionStateSessionRequestSent,
+			eSSU2SessionStateSessionRequestReceived, eSSU2SessionStateSessionCreatedSent,
+			eSSU2SessionStateSessionCreatedReceived, eSSU2SessionStateSessionConfirmedSent, eSSU2SessionStateIntroduced,
+			eSSU2SessionStateHolePunch, eSSU2SessionStatePeerTest, eSSU2SessionStateTokenRequestReceived })
 	{
 		assert (!IsSSU2EstablishedPayloadContext (state, true));
 		assert (!IsSSU2EstablishedPayloadContext (state, false));
@@ -102,11 +90,10 @@ void TestPreAuthHandlerGuards ()
 	assert (!IsSSU2AddressBlockContextAllowed (eSSU2SessionStateEstablished, false));
 	assert (!IsSSU2AddressBlockContextAllowed (eSSU2SessionStateSessionCreatedReceived, false));
 	assert (!IsSSU2AddressBlockContextAllowed (eSSU2SessionStateTokenReceived, false));
-	for (auto state : { eSSU2SessionStateUnknown, eSSU2SessionStateSessionRequestSent,
-			 eSSU2SessionStateSessionRequestReceived, eSSU2SessionStateSessionCreatedSent,
-			 eSSU2SessionStateSessionConfirmedSent, eSSU2SessionStateIntroduced,
-			 eSSU2SessionStateHolePunch, eSSU2SessionStatePeerTest,
-			 eSSU2SessionStateTokenRequestReceived })
+	for (auto state :
+		{ eSSU2SessionStateUnknown, eSSU2SessionStateSessionRequestSent, eSSU2SessionStateSessionRequestReceived,
+			eSSU2SessionStateSessionCreatedSent, eSSU2SessionStateSessionConfirmedSent, eSSU2SessionStateIntroduced,
+			eSSU2SessionStateHolePunch, eSSU2SessionStatePeerTest, eSSU2SessionStateTokenRequestReceived })
 		assert (!IsSSU2AddressBlockContextAllowed (state, true));
 }
 
@@ -126,58 +113,55 @@ void TestPayloadValidatorRejectsPreAuthInjection ()
 	const auto termination = MakeBlock (eSSU2BlkTermination, 9);
 
 	const auto tokenRequest = Concat ({ dateTime, padding });
-	assert (ValidateSSU2PayloadBlocks (eSSU2SessionStateTokenRequestReceived,
-		tokenRequest.data (), tokenRequest.size ()));
+	assert (
+		ValidateSSU2PayloadBlocks (eSSU2SessionStateTokenRequestReceived, tokenRequest.data (), tokenRequest.size ()));
 	for (const auto * forbidden : { &address, &i2np, &firstFragment, &routerInfo })
-		assert (!ValidateSSU2PayloadBlocks (eSSU2SessionStateTokenRequestReceived,
-			forbidden->data (), forbidden->size ()));
+		assert (
+			!ValidateSSU2PayloadBlocks (eSSU2SessionStateTokenRequestReceived, forbidden->data (), forbidden->size ()));
 
 	const auto sessionRequest = Concat ({ dateTime, relayTagRequest, padding });
-	assert (ValidateSSU2PayloadBlocks (eSSU2SessionStateSessionRequestReceived,
-		sessionRequest.data (), sessionRequest.size ()));
+	assert (ValidateSSU2PayloadBlocks (
+		eSSU2SessionStateSessionRequestReceived, sessionRequest.data (), sessionRequest.size ()));
 	for (const auto * forbidden : { &address, &i2np, &firstFragment, &newToken })
-		assert (!ValidateSSU2PayloadBlocks (eSSU2SessionStateSessionRequestReceived,
-			forbidden->data (), forbidden->size ()));
+		assert (!ValidateSSU2PayloadBlocks (
+			eSSU2SessionStateSessionRequestReceived, forbidden->data (), forbidden->size ()));
 
 	const auto sessionCreated = Concat ({ dateTime, address, newToken, relayTag, padding });
-	assert (ValidateSSU2PayloadBlocks (eSSU2SessionStateSessionCreatedReceived,
-		sessionCreated.data (), sessionCreated.size ()));
+	assert (ValidateSSU2PayloadBlocks (
+		eSSU2SessionStateSessionCreatedReceived, sessionCreated.data (), sessionCreated.size ()));
 	for (const auto * forbidden : { &i2np, &firstFragment, &followOn, &termination })
-		assert (!ValidateSSU2PayloadBlocks (eSSU2SessionStateSessionCreatedReceived,
-			forbidden->data (), forbidden->size ()));
+		assert (!ValidateSSU2PayloadBlocks (
+			eSSU2SessionStateSessionCreatedReceived, forbidden->data (), forbidden->size ()));
 
 	const auto retry = Concat ({ dateTime, address, padding });
 	assert (ValidateSSU2PayloadBlocks (eSSU2SessionStateTokenReceived, retry.data (), retry.size ()));
 	for (const auto * forbidden : { &i2np, &relayTagRequest, &newToken })
-		assert (!ValidateSSU2PayloadBlocks (eSSU2SessionStateTokenReceived,
-			forbidden->data (), forbidden->size ()));
+		assert (!ValidateSSU2PayloadBlocks (eSSU2SessionStateTokenReceived, forbidden->data (), forbidden->size ()));
 
 	const auto sessionConfirmed = Concat ({ routerInfo, options, padding });
-	assert (ValidateSSU2PayloadBlocks (eSSU2SessionStateSessionCreatedSent,
-		sessionConfirmed.data (), sessionConfirmed.size ()));
+	assert (ValidateSSU2PayloadBlocks (
+		eSSU2SessionStateSessionCreatedSent, sessionConfirmed.data (), sessionConfirmed.size ()));
 	for (const auto * forbidden : { &i2np, &firstFragment, &followOn, &address })
-		assert (!ValidateSSU2PayloadBlocks (eSSU2SessionStateSessionCreatedSent,
-			forbidden->data (), forbidden->size ()));
+		assert (
+			!ValidateSSU2PayloadBlocks (eSSU2SessionStateSessionCreatedSent, forbidden->data (), forbidden->size ()));
 
 	// In the data phase the same blocks are accepted.
 	const auto dataPhase = Concat ({ dateTime, i2np, firstFragment, followOn, padding });
-	assert (ValidateSSU2PayloadBlocks (eSSU2SessionStateEstablished,
-		dataPhase.data (), dataPhase.size ()));
+	assert (ValidateSSU2PayloadBlocks (eSSU2SessionStateEstablished, dataPhase.data (), dataPhase.size ()));
 
 	// Framing and ordering rules are independent of the state whitelist.
 	const std::vector<uint8_t> truncated { eSSU2BlkPadding, 0 };
-	assert (!ValidateSSU2PayloadBlocks (eSSU2SessionStateTokenRequestReceived,
-		truncated.data (), truncated.size ()));
+	assert (!ValidateSSU2PayloadBlocks (eSSU2SessionStateTokenRequestReceived, truncated.data (), truncated.size ()));
 	assert (!ValidateSSU2PayloadBlocks (eSSU2SessionStateTokenRequestReceived, nullptr, 1));
 	const auto afterPadding = Concat ({ padding, padding });
-	assert (!ValidateSSU2PayloadBlocks (eSSU2SessionStateTokenRequestReceived,
-		afterPadding.data (), afterPadding.size ()));
+	assert (
+		!ValidateSSU2PayloadBlocks (eSSU2SessionStateTokenRequestReceived, afterPadding.data (), afterPadding.size ()));
 	const auto afterTermination = Concat ({ termination, dateTime });
-	assert (!ValidateSSU2PayloadBlocks (eSSU2SessionStateTokenRequestReceived,
-		afterTermination.data (), afterTermination.size ()));
+	assert (!ValidateSSU2PayloadBlocks (
+		eSSU2SessionStateTokenRequestReceived, afterTermination.data (), afterTermination.size ()));
 	const auto paddingAfterTermination = Concat ({ termination, padding });
-	assert (ValidateSSU2PayloadBlocks (eSSU2SessionStateTokenRequestReceived,
-		paddingAfterTermination.data (), paddingAfterTermination.size ()));
+	assert (ValidateSSU2PayloadBlocks (
+		eSSU2SessionStateTokenRequestReceived, paddingAfterTermination.data (), paddingAfterTermination.size ()));
 }
 } // namespace
 

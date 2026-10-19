@@ -1,11 +1,12 @@
 /*
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: test netdb store lookup hardening.
+ *
+ * Checks netDb store replacement: future or badly signed RouterInfos and stale lease-sets must not erase valid entries, and floodfill membership must follow eligibility.
+ *
+ */
 
 #include <array>
 #include <cassert>
@@ -327,8 +328,7 @@ void TestLeaseSetCrossTypeFreshness ()
 
 	// Java isNewer() uses the earliest lease date for an LS1<->LS2 transition.
 	auto ls2Newer = BuildLeaseSet2 (keys, nowSec - 60, nowSec + 6 * 60);
-	assert (db.AddLeaseSet2 (ident, ls2Newer.data () + 1, ls2Newer.size () - 1,
-		NETDB_STORE_TYPE_STANDARD_LEASESET2));
+	assert (db.AddLeaseSet2 (ident, ls2Newer.data () + 1, ls2Newer.size () - 1, NETDB_STORE_TYPE_STANDARD_LEASESET2));
 	auto storedLs2 = db.FindLeaseSet (ident);
 	assert (storedLs2 && storedLs2 != storedLs1);
 	assert (storedLs2->GetStoreType () == NETDB_STORE_TYPE_STANDARD_LEASESET2);
@@ -342,8 +342,7 @@ void TestLeaseSetCrossTypeFreshness ()
 
 	// An older LS2 must not evict the newer LS1.
 	auto ls2Older = BuildLeaseSet2 (keys, nowSec - 60, nowSec + 4 * 60);
-	assert (!db.AddLeaseSet2 (ident, ls2Older.data () + 1, ls2Older.size () - 1,
-		NETDB_STORE_TYPE_STANDARD_LEASESET2));
+	assert (!db.AddLeaseSet2 (ident, ls2Older.data () + 1, ls2Older.size () - 1, NETDB_STORE_TYPE_STANDARD_LEASESET2));
 	assert (db.FindLeaseSet (ident) == storedLs1Again);
 }
 
