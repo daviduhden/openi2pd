@@ -20,11 +20,15 @@ development location for the sake of convenience. Adjust paths
 accordingly if it is not the case. Note that msys uses unix-alike
 paths like /c/dev/ for C:\dev\.
 
-> **openi2pd note:** the maintained entry point is CMake (not the historical
-> GNU make commands below). The router requires C++23, CMake 3.22+ and
-> Boost/OpenSSL/zlib; MiniUPnPc is required while `WITH_UPNP=ON`. The manual
-> Windows workflow is `workflow_dispatch`-only and is not started by a push.
-> See [TUI on Windows](../../TUI-WINDOWS.md) for the TUI/IPC details.
+> **openi2pd note:** the maintained entry point is CMake; there are no GNU
+> make build commands in the supported Windows procedure. Windows 10 or newer
+> is required (`WINVER=0x0A00`). The router requires C++23, CMake 3.22+,
+> Boost 1.74 (1.81 for torrent JSON/URL), OpenSSL 3.0.2+
+> (or LibreSSL 4.0+) and zlib 1.2.11+; MiniUPnPc 2.2.6/API 17 is required
+> while `WITH_UPNP=ON` (API 18 is used when available). The manual Windows
+> workflow is `workflow_dispatch`-only
+> and is not started by a push. See [TUI on Windows](../../TUI-WINDOWS.md) for
+> the TUI/IPC details.
 
 ## Current CMake build
 
@@ -34,7 +38,7 @@ MSYS2/Clang64 (the toolchain used by the manual workflow):
 cmake -S build -B build-output -G Ninja \
   -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
   -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
-cmake --build build-output --parallel --target i2pd i2pd-tui
+cmake --build build-output --parallel --target all
 ctest --test-dir build-output --output-on-failure
 ```
 
@@ -44,17 +48,20 @@ Native MSVC 19.35+ with vcpkg-provided dependencies:
 cmake -S build -B build-msvc -G "Visual Studio 17 2022" -A x64 `
   -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
   -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
-cmake --build build-msvc --config Release --parallel --target i2pd i2pd-tui
+cmake --build build-msvc --config Release --parallel --target all
 ctest --test-dir build-msvc -C Release --output-on-failure
 ```
 
 Install with `cmake --install build-msvc --config Release --prefix <dir>`;
-`i2pd.exe` and `i2pd-tui.exe` are placed in the runtime `bin` directory. No
-dependency is downloaded by the installed product.
+`i2pd.exe`, `i2pd-tui.exe`, the native tools and `i2pdctl` are placed in the
+runtime `bin` directory when `I2PD_BUILD_TOOLS=ON`. The legacy
+`build/build_mingw.cmd` packaging path builds all targets and includes the TUI
+and tool executables in its ZIP/installer. No dependency is downloaded by the
+installed product.
 
 ### TUI on Windows
 
-`WITH_TUI=ON` is the default. Windows does **not** use ncurses/PDCurses: the
+`I2PD_BUILD_TUI=ON` is the default. Windows does **not** use ncurses/PDCurses: the
 client uses the Win32 console/VT backend and a local named pipe to the router.
 Build `i2pd-tui` together with the router; it still does not link the router
 libraries. If the router runs as a service under another account, start
@@ -63,61 +70,16 @@ deliberately. See [TUI on Windows](../../TUI-WINDOWS.md) for DACL,
 service-versus-interactive, terminal support and troubleshooting guidance.
 
 > Runtime validation of the Windows TUI, DACL and MSVC build is pending. The
-> text below is retained upstream build history and may reference obsolete
-> toolchains (VS2013, GNU make).
+> obsolete upstream MSYS2/GNU-make build instructions were removed from this
+> maintained guide; use the CMake commands above.
 
-msys2
------
+### Historical upstream notes
 
-Get install file `msys2-$ARCH-*.exe` from `https://msys2.github.io`
-
-Where $ARCH is `i686` or `x86_64` (matching your system).
-
-- Open MSYS2 Shell (from Start menu).
-- Install all prerequisites and download i2pd source:
-
-        export ARCH='i686'     # or 'x86_64'
-        export MINGW='mingw32' # or 'mingw64'
-        pacman -S mingw-w64-$ARCH-boost mingw-w64-$ARCH-openssl mingw-w64-$ARCH-gcc git make
-        mkdir -p /c/dev/i2pd
-        cd /c/dev/i2pd
-        git clone https://github.com/PurpleI2P/i2pd.git
-        cd i2pd
-        # we need compiler on PATH which is usually heavily cluttered on Windows
-        export PATH=/$MINGW/bin:/usr/bin
-        make
-
-### Caveats
-
-It is important to restrict PATH as described above.
-If you have Strawberry Perl and/or Mercurial installed,
-it will pick up gcc & openssl from the wrong places.
-
-If you do use precompiled headers to speed up compilation (recommended),
-things can go wrong if compiler options have changed for whatever reason.
-Just delete `stdafx.h.gch` found in your build folder, note the file extension.
-
-If you are an Arch Linux user, refrain from updating system with `pacman -Syu`.
-Always update runtime separately as described on the home page,
-otherwise you might end up with DLLs incompatibility problems.
-
-### AES-NI
-
-If your processor has [AES instruction set](https://en.wikipedia.org/wiki/AES_instruction_set),
-use `make USE_AESNI=1` instead just `make`. No check is done however, it will compile,
-but it might crash with `Illegal instruction` if this feature is not supported by your processor.
-
-You should be able to run ./i2pd . If you need to start from the new shell,
-consider starting *MinGW-w64 Win32 Shell* instead of *MSYS2 Shell*
-as it adds `/minw32/bin` to the PATH.
-
-### UPnP
-
-You can install it through the MSYS2 and build with `USE_UPNP` key.
-
-	export ARCH='i686' # or 'x86_64'
-	pacman -S mingw-w64-$ARCH-miniupnpc
-	make USE_UPNP=yes
+Older upstream instructions used MSYS2 `make`, `USE_AESNI` and `USE_UPNP`
+switches. The maintained tree has no such build switches: use CMake options
+(`WITH_UPNP`, `WITH_HARDENING`, `CMAKE_BUILD_TYPE`) and Ninja. The MSYS2 and
+Inno Setup helper discovers installations through `MSYS2_ROOT`, `ISCC` or
+`PATH` and does not download or pull the worktree.
 
 Using Visual Studio
 -------------------
@@ -133,91 +95,51 @@ This part assumes that you know how to use and integrate vcpkg into Visual Studi
 Read [this](https://learn.microsoft.com/en-us/vcpkg/) if you are unsure.
 Navigate to the vcpkg directory, and run(change x64-windows to x86-windows for a 32bit build):
 
-    .\vcpkg install boost:x64-windows miniupnpc:x64-windows openssl:x64-windows
+    .\vcpkg install boost-program-options:x64-windows boost-json:x64-windows boost-url:x64-windows openssl:x64-windows zlib:x64-windows miniupnpc:x64-windows
 
 You may now skip directly to the [build process](#creating-visual-studio-project).
 
 ### Without vcpkg
 
-Requirements for building:
+Provide the same current dependencies through a local prefix and pass it as
+`-DCMAKE_PREFIX_PATH=<prefix>`:
 
-* [CMake](https://cmake.org/) (tested with 3.1.3)
-* [Visual Studio Community Edition](https://www.visualstudio.com/en-us/products/visual-studio-community-vs.aspx) (tested with VS2013 Update 4)
-* [Boost](http://www.boost.org/) (tested with 1.59)
-* Optionally [MiniUPnP](http://miniupnp.free.fr) (tested with 1.9), we need only few client headers
-* OpenSSL (tested with 3.0.0), if building from sources (recommended), you'll need as well
-	* [Netwide assembler](http://www.nasm.us/)
-	* Strawberry Perl or ActiveState Perl, do NOT try msys2 perl, it won't work
+* CMake 3.22 or newer.
+* Visual Studio 2022 17.5 (MSVC 19.35) or newer with the C++23 toolset.
+* Boost 1.74+ with `program_options`; Boost 1.81+ with `json` and `url` when
+  torrents are enabled.
+* OpenSSL 3.0.2+ (or LibreSSL 4.0+), zlib 1.2.11+.
+* MiniUPnPc 2.2.6+ (API 17) while `WITH_UPNP=ON`; API 18 is preferred when
+  available.
 
-### Building Boost
+The project does not bundle, download or build these libraries. Build them with
+their maintained upstream procedures for the selected Windows toolchain, or
+use vcpkg/MSYS2.
 
-Open a Command Prompt (there is no need to start Visual Studio command
-prompt to build Boost) and run the following:
+The maintained Windows build helper is `build_mingw.cmd`; CI workflows are
+manual-only.
 
-	cd C:\dev\boost
-	bootstrap
-	b2 toolset=msvc-12.0 --build-type=complete --with-filesystem --with-program_options --with-date_time
-
-If you are on 64-bit Windows and you want to build 64-bit version as well
-
-	b2 toolset=msvc-12.0 --build-type=complete --stagedir=stage64 address-model=64 --with-filesystem --with-program_options --with-date_time
-
-After Boost is compiled, set the environment variable `BOOST_ROOT` to
-the directory Boost was unpacked to, e.g., C:\dev\boost.
-
-If you are planning on building only particular variant, e.g. Debug only and static linking,
-and/or you are out of space/time, you might consider `--build-type=minimal`.
-The maintained Windows build helper is `build_mingw.cmd`; CI workflows are manual-only.
-
-### Building OpenSSL
-
-Download OpenSSL, e.g. with git
-
-	git clone https://github.com/openssl/openssl.git
-	cd openssl
-	git checkout openssl-3.0.0
-
-Now open Visual Studio command prompt and change directory to that with OpenSSL
-
-	set "PATH=%PATH%;C:\Program Files (x86)\nasm"
-	perl Configure VC-WIN32 --prefix=c:\OpenSSL-Win32
-	ms\do_nasm
-	nmake -f ms\ntdll.mak
-	nmake -f ms\ntdll.mak install
-
-You should have it installed into C:\OpenSSL-Win32 by now.
-
-Note that you might consider providing `-DOPENSSL_ROOT_DIR` to CMake and/or
-create a symlink (with mklink /J) to C:\OpenSSL if you plan on maintain
-multiple versions, e.g. 64 bit and/or static/shared.
-See `C:\Program Files (x86)\CMake\share\cmake-3.3\Modules\FindOpenSSL.cmake` for details.
-
-### Get miniupnpc
-
-If you are behind a UPnP enabled router and don't feel like manually configuring port forwarding,
-you should consider using [MiniUPnP](http://miniupnp.free.fr) client.
-I2pd can be built capable of using miniupnpc shared library (DLL) to open up necessary port.
-You'd want to have include headers around to build i2pd with support for this.
-Unpack client source code to subdir, e.g. `C:\dev\miniupnpc`.
-You may want to remove version number from folder name included in downloaded archive.
- 
 ### Creating Visual Studio project
 
-Start CMake GUI, navigate to i2pd directory, choose building directory,  e.g. ./out, and configure options.
+Start CMake GUI, select `build` as the source directory and a separate output
+directory, then configure the desired options.
 
-Alternatively, if you feel adventurous, try that from the command line
+From the command line:
 
-	mkdir i2pd\out
-	cd i2pd\out
-	cmake ..\build -G "Visual Studio 12 2013" -DWITH_UPNP=ON -DWITH_PCH=ON -DCMAKE_INSTALL_PREFIX:PATH=C:\dev\Debug_Win32_stage
+```powershell
+cmake -S build -B build-msvc -G "Visual Studio 17 2022" -A x64 `
+  -DCMAKE_PREFIX_PATH=<dependency-prefix> `
+  -DWITH_UPNP=ON
+```
 
-If necessary files are not found `WITH_UPNP` will stay off.
-vcpkg users may refer to [this](https://learn.microsoft.com/en-us/vcpkg/users/buildsystems/cmake-integration) for CMake flags.
+MiniUPnPc is required when `WITH_UPNP=ON`; configure fails rather than silently
+disabling UPnP if the minimum API is unavailable.
 
 ### Building i2pd
 
-You can open generated solution/project with Visual Studio and build from there,
-alternatively you can use `cmake --build . --config Release --target install` or
-[MSBuild tool](https://msdn.microsoft.com/en-us/library/dd293626.aspx)
+Open the generated solution in Visual Studio, or build from the command line:
 
-	msbuild i2pd.sln /p:Configuration=Release
+```powershell
+cmake --build build-msvc --config Release --parallel
+ctest --test-dir build-msvc -C Release --output-on-failure
+```

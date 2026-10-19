@@ -2,7 +2,9 @@
 
 See the [documentation home](index.md) for supported platforms and build instructions.
 `openi2pd` is the product identity; the binary and configuration options retain
-the `i2pd` name for compatibility.
+the `i2pd` name for compatibility. Supported platforms are Linux, OpenBSD,
+Windows and Android; macOS, FreeBSD and Solaris are outside the CMake support
+matrix.
 
 ## Brand
 
@@ -20,29 +22,38 @@ the `i2pd` name for compatibility.
 - [OpenBSD service configuration](../contrib/openbsd)
 - [Architecture and refactoring report](architecture.md)
 - [Architecture decisions (ADR)](architecture/README.md)
-- [I2P Java interoperability matrix](INTEROPERABILITY.md)
+- [I2P Java interoperability audit](INTEROPERABILITY.md)
 - [Dependency and minimum-version inventory](dependencies.md)
 - [C++23 migration](cpp23-migration.md)
+- [Build requirements](devs/building/requirements.md)
 - [CMake and POSIX Make migration](build-system.md)
+- [Multiprocess IPC and privilege separation](security/privilege-separation.md)
+- [Internal IPC protocol](security/ipc-protocol.md)
 - [TUI and IPC design](tui-ipc.md)
 - [TUI on Windows](TUI-WINDOWS.md)
 - [Native torrent console](torrent/architecture.md)
 - [Torrent functionality matrix](torrent/console-matrix.md)
+- [Built-in torrent client](tutorials/Filesharing/built-in-torrent/built-inTorrent.md)
+- [Optional torrent JSON-RPC](tutorials/Filesharing/built-in-torrent/torrents-rpc.md)
 - [Torrent security](torrent/security.md)
 - [Python-to-Perl migration](development/perl-migration.md)
 - [Security audit](security-audit.md)
 - [OpenBSD sandbox validation](security/openbsd-validation.md)
-- [Privilege separation](security/privilege-separation.md)
-- [Internal IPC protocol](security/ipc-protocol.md)
 - [Threat model](security/threat-model.md)
 - [Process capabilities](security/process-capabilities.md)
 - [Android modernization](android-modernization.md)
+- [Android Java 25](android-java25.md)
+- [Android JNI status](android-jni-status.md)
 - [Test and validation plan](testing.md)
 - [CI policy and workflow linting](ci.md)
 - [Files created, modified and removed](files-changed.md)
 - [Attribution and personal-reference audit](attribution-audit.md)
 - [Rebranding and inherited identity](REBRANDING.md)
 - [Upstream provenance and synchronization](upstream-sync.md)
+
+MkDocs (`docs/mkdocs.yml`) is an optional static-publication tool. The
+documentation is plain Markdown and is readable without MkDocs; MkDocs is not a
+daemon, build or runtime dependency.
 
 Use `i2pd --help` to list configuration options. The HTTP administrative
 console has been removed. Router status and authorized torrent administration
@@ -53,9 +64,9 @@ available.
 For a user process, data is stored in `~/.i2pd` on Linux and OpenBSD. With
 `--service`, OpenBSD uses `/var/i2pd`, while Linux uses `/var/lib/i2pd`.
 `--datadir` overrides these defaults. Windows uses the application data folder;
-The Android app uses an app-specific `open-i2pd` directory.
+the Android app uses an app-specific `open-i2pd` directory.
 
-Automatic CI is suspended during the refactoring; see the README. The
-[upstream English manual](https://i2pd.readthedocs.io/en/latest/) covers shared
-I2P protocols and configuration. Platform and language support in this fork
-follows this repository's README.
+CI is manual-only while the fork refactoring is validated; see the repository
+README and [CI policy](ci.md). Platform and language support follows the
+repository README. Shared I2P protocol specifications are linked from the
+[documentation home](index.md).

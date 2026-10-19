@@ -17,7 +17,8 @@ The wire specifications are maintained by the I2P project:
 - [SU3](https://i2p.net/en/docs/specs/su3/)
 
 The fork-specific comparison with I2P Java, including known gaps and pending
-live tests, is in the [interoperability matrix](../interop-matrix.md).
+live tests, is in the [I2P Java interoperability audit](../INTEROPERABILITY.md).
+The earlier high-level `interop-matrix.md` was a duplicate and was removed.
 
 Protocol formats were not changed during the refactoring. The local TUI
 protocol is an administrative channel, not an I2P wire protocol; see

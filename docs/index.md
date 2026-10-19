@@ -1,6 +1,6 @@
 # openi2pd
 
-<img src="img/logo.png" alt="openi2pd logo" width="360">
+![openi2pd logo](img/logo.png)
 
 openi2pd is an independent fork of the i2pd C++ router implementation.
 
@@ -30,16 +30,35 @@ Features
 * Small footprint, simple dependencies, fast performance
 * Rich set of APIs for developers of secure applications
 
+Platforms
+---------
+
+Linux, OpenBSD, Windows and Android are supported. macOS, FreeBSD and Solaris
+are outside the CMake support matrix; use upstream i2pd there. The router
+binary is still named `i2pd` for compatibility.
+
+Fork guides
+-----------
+
+* [Install openi2pd](user-guide/install.md) and [run it](user-guide/run.md)
+* [Configuration](user-guide/configuration.md) and [I2P tunnels](user-guide/tunnels.md)
+* [C++23 migration](cpp23-migration.md)
+* [CMake and POSIX Make](build-system.md)
+* [Multiprocess IPC and privilege separation](security/privilege-separation.md)
+* [TUI and IPC](tui-ipc.md) and [TUI on Windows](TUI-WINDOWS.md)
+* [Native BitTorrent console](torrent/architecture.md)
+* [Android modernization](android-modernization.md) and [Java 25](android-java25.md)
+* [Perl migration](development/perl-migration.md)
+* [OpenBSD validation](security/openbsd-validation.md)
 
 Resources
 ---------
 
 * [Visual identity](branding/README.md)
-* [TUI and IPC](tui-ipc.md)
-* [TUI on Windows](TUI-WINDOWS.md)
+* [Developer guide](developer-guide/README.md)
 * [Source and issues](https://github.com/daviduhden/openi2pd)
-* [Upstream wiki](https://github.com/PurpleI2P/i2pd/wiki)
 * [I2P specifications](https://i2p.net/en/docs/specs/)
-* [Upstream i2pd](https://github.com/PurpleI2P/i2pd)
+* [Upstream i2pd source (provenance)](https://github.com/PurpleI2P/i2pd)
+* [Upstream documentation sync](upstream-sync.md)
 
 

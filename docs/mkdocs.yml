@@ -1,6 +1,8 @@
-# Copyright (c) 2013-2026, The PurpleI2P Project
 # Copyright (c) 2026, David Uhden Collado
 # SPDX-License-Identifier: BSD-3-Clause
+# Optional static-publication configuration. The daemon, CMake build, TUI and
+# tests do not invoke MkDocs or require it at runtime.
+---
 site_name: openi2pd documentation
 site_description: Documentation for the openi2pd router, libraries, TUI and tools
 site_author: openi2pd contributors
@@ -24,7 +26,6 @@ nav:
       - Architecture: architecture.md
       - Architecture decisions: architecture/README.md
       - Interoperability: INTEROPERABILITY.md
-      - Legacy interoperability notes: interop-matrix.md
       - Dependencies: dependencies.md
       - C++23: cpp23-migration.md
       - Build system: build-system.md
@@ -62,7 +63,9 @@ nav:
       - XMPP: tutorials/xmpp.md
       - Monero over I2P: tutorials/Monero.md
       - Filesharing:
-          - Built-in torrent client: tutorials/Filesharing/built-inTorrent.md
+          - Built-in torrent client:
+              - Guide: tutorials/Filesharing/built-in-torrent/built-inTorrent.md
+              - JSON-RPC API: tutorials/Filesharing/built-in-torrent/torrents-rpc.md
           - Software: tutorials/Filesharing/Software.md
           - qBittorrent: tutorials/Filesharing/qBittorrent.md
       - RetroShare: tutorials/retroshare.md
@@ -71,6 +74,7 @@ nav:
       - Glossary: tutorials/glossary.md
   - Tools:
       - Overview: tools/README.md
+      - Provenance and inventory: tools/provenance.md
       - autoconf_i2pd: tools/autoconf_i2pd.md
       - b33address: tools/b33address.md
       - b33offlinekeys: tools/b33offlinekeys.md
@@ -111,7 +115,9 @@ nav:
       - Privilege separation: security/privilege-separation.md
       - IPC protocol: security/ipc-protocol.md
       - Process capabilities: security/process-capabilities.md
+      - Windows worker IPC: security/windows-worker-ipc.md
       - Threat model: security/threat-model.md
+      - Memory safety and concurrency: security/memory-safety-2026.md
   - About:
       - Community: about/community.md
       - History: about/history.md
@@ -128,3 +134,4 @@ theme:
 markdown_extensions:
   - toc:
       permalink: true
+  - attr_list
