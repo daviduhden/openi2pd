@@ -1,5 +1,4 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
  * Copyright (c) 2026, David Uhden Collado
  * SPDX-License-Identifier: BSD-3-Clause
  */
@@ -24,6 +23,13 @@ static void AssertSafeRule (const std::optional<std::string> & rule)
 	assert (rule->find ('\n') == std::string::npos);
 	assert (rule->find ('\r') == std::string::npos);
 	assert (rule->find ("any") == std::string::npos);
+	// Every generated rule must be outbound, never an INPUT/inbound rule.
+	assert (rule->find ("INPUT") == std::string::npos);
+	assert (rule->find ("pass in") == std::string::npos);
+	assert (rule->find ("OUTPUT") != std::string::npos
+		|| rule->find ("output") != std::string::npos
+		|| rule->find ("Outbound") != std::string::npos
+		|| rule->find ("pass out") != std::string::npos);
 }
 
 int main ()
@@ -46,13 +52,26 @@ int main ()
 	assert (!MakeEndpoint ("255.255.255.255", 1234, Transport::NTCP2));
 	assert (!MakeEndpoint ("::", 1234, Transport::NTCP2));
 	assert (!MakeEndpoint ("ff02::1", 1234, Transport::NTCP2));
-	// Scoped, bracketed, mapped and non-numeric literals never reach a rule.
+	// Scoped, bracketed, mapped/compatible and non-numeric literals never
+	// reach a rule. Link-local addresses are not usable I2P endpoints.
 	assert (!MakeEndpoint ("fe80::1%eth0", 1234, Transport::NTCP2));
 	assert (!MakeEndpoint ("[2001:db8::10]", 1234, Transport::NTCP2));
 	assert (!MakeEndpoint ("2001:db8::10 ", 1234, Transport::NTCP2));
 	assert (!MakeEndpoint ("2001:db8::10/64", 1234, Transport::NTCP2));
 	assert (!MakeEndpoint ("::ffff:192.0.2.10", 1234, Transport::NTCP2));
 	assert (!MakeEndpoint ("::ffff:127.0.0.1", 1234, Transport::NTCP2));
+	assert (!MakeEndpoint ("::192.0.2.10", 1234, Transport::NTCP2));
+	assert (!MakeEndpoint ("fe80::1", 1234, Transport::NTCP2));
+	assert (!MakeEndpoint ("febf::1", 1234, Transport::NTCP2));
+	assert (!MakeEndpoint ("fc00::1", 1234, Transport::NTCP2));
+	assert (!MakeEndpoint ("fec0::1", 1234, Transport::NTCP2));
+	assert (!MakeEndpoint ("169.254.1.2", 1234, Transport::NTCP2));
+	assert (!MakeEndpoint ("10.0.0.1", 1234, Transport::NTCP2));
+	assert (!MakeEndpoint ("172.16.0.1", 1234, Transport::NTCP2));
+	assert (!MakeEndpoint ("192.168.1.1", 1234, Transport::NTCP2));
+	assert (!MakeEndpoint ("100.64.0.1", 1234, Transport::NTCP2));
+	assert (!MakeEndpoint ("0.1.2.3", 1234, Transport::NTCP2));
+	assert (!MakeEndpoint ("240.0.0.1", 1234, Transport::NTCP2));
 	assert (!MakeEndpoint ("", 1234, Transport::NTCP2));
 	assert (!MakeEndpoint (std::string (65, '1'), 1234, Transport::NTCP2));
 
@@ -68,20 +87,37 @@ int main ()
 	assert (canonical.address == "2001:db8::10");
 	assert (canonical.ipv6);
 	assert (canonical.port == 65535);
+	assert (Make ("192.0.2.10", 1, Transport::SSU2).port == 1);
+	assert (!MakeEndpoint ("192.0.2.10", 1234, static_cast<Transport> (99)));
 
 	RenderOptions options;
 	options.ruleTag = "abcdef12";
+
+	// The public aggregate must not bypass validation at the render boundary.
+	assert (!IsValidEndpoint ((Endpoint { "192.0.2.10", 0, Transport::NTCP2, false })));
+	assert (!IsValidEndpoint ((Endpoint { "192.0.2.10", 1234, static_cast<Transport> (99), false })));
+	assert (!IsValidEndpoint ((Endpoint { "192.0.2.10", 1234, Transport::NTCP2, true })));
+	assert (!IsValidEndpoint ((Endpoint { "2001:0DB8::10", 1234, Transport::NTCP2, true })));
+	assert (IsValidEndpoint (ntcp4));
+	{
+		Endpoint invalid { "not-an-ip", 1234, Transport::NTCP2, false };
+		assert (Render (invalid, options) == std::nullopt);
+		Endpoint wrongFamily { "192.0.2.10", 1234, Transport::NTCP2, true };
+		assert (Render (wrongFamily, options) == std::nullopt);
+	}
 
 	// Historical -f output must stay byte-for-byte stable.
 	options.backend = Backend::IptablesLegacy;
 	assert (Render (ntcp4, options) == " -A OUTPUT -p tcp -d 192.0.2.10 --dport 12345 -j ACCEPT");
 	assert (Render (ssu6, options) == " -A OUTPUT -p udp -d 2001:db8::20 --dport 4567 -j ACCEPT");
+	AssertSafeRule (Render (ntcp4, options));
 
 	options.backend = Backend::Iptables;
 	assert (Render (ntcp4, options) == "iptables -A OUTPUT -p tcp -d 192.0.2.10 --dport 12345 -j ACCEPT");
 	assert (Render (ntcp6, options) == "ip6tables -A OUTPUT -p tcp -d 2001:db8::10 --dport 12345 -j ACCEPT");
 	assert (Render (ssu4, options) == "iptables -A OUTPUT -p udp -d 198.51.100.20 --dport 4567 -j ACCEPT");
 	assert (Render (ssu6, options) == "ip6tables -A OUTPUT -p udp -d 2001:db8::20 --dport 4567 -j ACCEPT");
+	AssertSafeRule (Render (ssu4, options));
 
 	options.backend = Backend::Nftables;
 	assert (Render (ntcp4, options) == "nft add rule inet filter output ip daddr 192.0.2.10 tcp dport 12345 accept");
@@ -102,6 +138,12 @@ int main ()
 	assert (!IsSafeIdentifier ("out;flush ruleset"));
 	assert (!IsSafeIdentifier ("out put"));
 	assert (IsSafeIdentifier ("i2pd_out-1.2"));
+	assert (IsSafeOutputChain ("output"));
+	assert (IsSafeOutputChain ("i2pd_out-1.2"));
+	assert (!IsSafeOutputChain ("input"));
+	assert (!IsSafeOutputChain ("forward"));
+	assert (!IsSafeOutputChain ("INPUT"));
+	assert (!IsSafeOutputChain ("out;flush ruleset"));
 
 	options.nftTable = "bad;name";
 	assert (Render (ntcp4, options) == std::nullopt);
@@ -112,6 +154,8 @@ int main ()
 	assert (Render (ntcp4, options) == std::nullopt);
 	options.nftFamily = "inet";
 	options.nftChain = "out;flush ruleset";
+	assert (Render (ntcp4, options) == std::nullopt);
+	options.nftChain = "input";
 	assert (Render (ntcp4, options) == std::nullopt);
 	options.nftChain = "output";
 	options.nftTable = std::string (65, 'a');
@@ -129,7 +173,7 @@ int main ()
 	assert (windows->find ("-Protocol TCP") != std::string::npos);
 	assert (windows->find ("-RemoteAddress '192.0.2.10'") != std::string::npos);
 	assert (windows->find ("-RemotePort 12345") != std::string::npos);
-	assert (windows->find ("i2pd NTCP2 abcdef12") != std::string::npos);
+	assert (windows->find ("openi2pd NTCP2 abcdef12") != std::string::npos);
 	AssertSafeRule (windows);
 
 	options.backend = Backend::Windows;
@@ -161,6 +205,7 @@ int main ()
 	options.backend = Backend::Pf;
 	assert (Render (ntcp4, options) == "pass out quick inet proto tcp to 192.0.2.10 port 12345 keep state");
 	assert (Render (ssu6, options) == "pass out quick inet6 proto udp to 2001:db8::20 port 4567 keep state");
+	AssertSafeRule (Render (ntcp4, options));
 
 	// Deduplication is independent of the rendering backend.
 	assert (EndpointKey (ntcp4) == EndpointKey (Make ("192.0.2.10", 12345, Transport::NTCP2)));
