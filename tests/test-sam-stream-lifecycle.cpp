@@ -13,6 +13,7 @@
 #include <chrono>
 #include <functional>
 #include <future>
+#include <iostream>
 #include <memory>
 #include <string>
 #include <thread>
@@ -147,7 +148,11 @@ int main ()
 
 		assert (future.wait_for (std::chrono::seconds (2)) == std::future_status::ready);
 		auto payload = future.get ();
-		assert (std::string (payload.begin (), payload.end ()) == "SAM-DATAGRAM");
+		const std::string receivedText (payload.begin (), payload.end ());
+		if (receivedText != "SAM-DATAGRAM")
+			std::cerr << "unexpected SAM datagram payload size=" << receivedText.size () << " [" << receivedText << "]"
+					  << std::endl;
+		assert (receivedText == "SAM-DATAGRAM");
 
 		// Several sends in a row must be serialized and all reach the peer.
 		std::atomic<int> remaining { 8 };

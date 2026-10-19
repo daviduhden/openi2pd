@@ -85,6 +85,7 @@ namespace log
 		, m_HasColors (true)
 		, m_TimeFormat ("%H:%M:%S")
 		, m_IsRunning (false)
+		, m_StartRequested (false)
 		, m_Thread (nullptr)
 		, m_RecentSequence (0)
 	{
@@ -106,6 +107,7 @@ namespace log
 		m_Thread = std::make_unique<std::thread> (std::bind (&Log::Run, this));
 		{
 			std::lock_guard<std::mutex> start (m_StartMutex);
+			m_StartRequested = true;
 			m_IsRunning.store (true, std::memory_order_release);
 		}
 		m_StartCondition.notify_all ();
@@ -272,7 +274,11 @@ namespace log
 
 		{
 			std::unique_lock<std::mutex> l (m_StartMutex);
-			m_StartCondition.wait (l, [this] () { return m_IsRunning.load (std::memory_order_acquire); });
+			// A Stop() racing with thread creation must not leave Run() waiting
+			// forever for a running flag that was already cleared. The request
+			// bit is sticky; the loop below observes the cleared running flag
+			// and exits after draining.
+			m_StartCondition.wait (l, [this] () { return m_StartRequested; });
 		}
 
 		Reopen ();

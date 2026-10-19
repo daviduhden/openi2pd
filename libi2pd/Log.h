@@ -102,6 +102,7 @@ namespace log
 		// m_IsRunning only after the thread object exists.
 		std::mutex m_LifecycleMutex;
 		std::mutex m_StartMutex;
+		bool m_StartRequested;
 		std::condition_variable m_StartCondition;
 
 		// Administrative snapshot ring. Append() is called from arbitrary
