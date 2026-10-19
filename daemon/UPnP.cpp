@@ -37,17 +37,20 @@ namespace transport
 
 	void UPnP::Stop ()
 	{
-		if (m_IsRunning)
+		if (m_IsRunning.exchange (false, std::memory_order_relaxed))
 		{
 			LogPrint (eLogInfo, "UPnP: Stopping");
-			m_IsRunning = false;
-			m_Timer.cancel ();
+			// io_context::stop() is safe to call while Run() is executing.
 			m_Service.stop ();
 			if (m_Thread)
 			{
-				m_Thread->join ();
+				if (m_Thread->joinable ()) m_Thread->join ();
 				m_Thread.reset (nullptr);
 			}
+			// The service thread is gone now, so touching the timer is safe.
+			// cancel() only retires a pending wait; the aborted handler is
+			// discarded on the next restart.
+			m_Timer.cancel ();
 			CloseMapping ();
 			Close ();
 		}
@@ -55,11 +58,14 @@ namespace transport
 
 	void UPnP::Start ()
 	{
-		m_IsRunning = true;
+		if (m_IsRunning.exchange (true, std::memory_order_relaxed)) return;
 		LogPrint (eLogInfo, "UPnP: Starting");
+		// Stop() leaves the io_context stopped; restart it so a second
+		// Start() actually runs discovery again.
+		m_Service.restart ();
 		boost::asio::post (m_Service, std::bind (&UPnP::Discover, this));
 		std::unique_lock<std::mutex> l (m_StartedMutex);
-		m_Thread.reset (new std::thread (std::bind (&UPnP::Run, this)));
+		m_Thread = std::make_unique<std::thread> (std::bind (&UPnP::Run, this));
 		m_Started.wait_for (l, std::chrono::seconds (5)); // 5 seconds maximum
 	}
 
@@ -72,7 +78,7 @@ namespace transport
 	{
 		i2p::util::SetThreadName ("UPnP");
 
-		while (m_IsRunning)
+		while (m_IsRunning.load (std::memory_order_relaxed))
 		{
 			try
 			{
@@ -90,31 +96,15 @@ namespace transport
 
 	void UPnP::Discover ()
 	{
-		bool isError;
-		int err;
-
-#if ((MINIUPNPC_API_VERSION >= 8) || defined(UPNPDISCOVER_SUCCESS))
-		err = UPNPDISCOVER_SUCCESS;
-
-#if (MINIUPNPC_API_VERSION >= 14)
+		int err = UPNPDISCOVER_SUCCESS;
 		m_Devlist = upnpDiscover (UPNP_RESPONSE_TIMEOUT, NULL, NULL, 0, 0, 2, &err);
-#else
-		m_Devlist = upnpDiscover (UPNP_RESPONSE_TIMEOUT, NULL, NULL, 0, 0, &err);
-#endif
-
-		isError = err != UPNPDISCOVER_SUCCESS;
-#else // MINIUPNPC_API_VERSION >= 8
-		err = 0;
-		m_Devlist = upnpDiscover (UPNP_RESPONSE_TIMEOUT, NULL, NULL, 0);
-		isError = m_Devlist == NULL;
-#endif // MINIUPNPC_API_VERSION >= 8
 		{
 			// notify starting thread
 			std::unique_lock<std::mutex> l (m_StartedMutex);
 			m_Started.notify_all ();
 		}
 
-		if (isError)
+		if (err != UPNPDISCOVER_SUCCESS)
 		{
 			LogPrint (eLogError, "UPnP: Unable to discover Internet Gateway Devices: error ", err);
 			return;
@@ -136,15 +126,12 @@ namespace transport
 				LogPrint (eLogError, "UPnP: Unable to get external address: error ", err);
 				return;
 			}
-			else
 #endif
+			LogPrint (eLogError, "UPnP: Found Internet Gateway Device ", m_upnpUrls.controlURL);
+			if (!m_externalIPAddress[0])
 			{
-				LogPrint (eLogError, "UPnP: Found Internet Gateway Device ", m_upnpUrls.controlURL);
-				if (!m_externalIPAddress[0])
-				{
-					LogPrint (eLogError, "UPnP: Found Internet Gateway Device doesn't know our external address");
-					return;
-				}
+				LogPrint (eLogError, "UPnP: Found Internet Gateway Device doesn't know our external address");
+				return;
 			}
 		}
 		else
@@ -162,24 +149,19 @@ namespace transport
 
 	int UPnP::CheckMapping (const char * port, const char * type)
 	{
-		int err = UPNPCOMMAND_SUCCESS;
-
-#if (MINIUPNPC_API_VERSION >= 10)
-		err = UPNP_GetSpecificPortMappingEntry (
+		int err = UPNP_GetSpecificPortMappingEntry (
 			m_upnpUrls.controlURL, m_upnpData.first.servicetype, port, type, NULL, NULL, NULL, NULL, NULL, NULL);
-#elif ((MINIUPNPC_API_VERSION >= 8) || defined(UPNPDISCOVER_SUCCESS))
-		err = UPNP_GetSpecificPortMappingEntry (
-			m_upnpUrls.controlURL, m_upnpData.first.servicetype, port, type, NULL, NULL, NULL, NULL, NULL);
-#else
-		err = UPNP_GetSpecificPortMappingEntry (
-			m_upnpUrls.controlURL, m_upnpData.first.servicetype, port, type, NULL, NULL);
-#endif
 		return err;
 	}
 
 	void UPnP::PortMapping ()
 	{
-		auto a = context.GetRouterInfo ().GetAddresses ();
+		// UPnP runs on its own timer thread. Do not iterate the live local
+		// RouterInfo while transport/address updates can replace its Address
+		// vectors; use the immutable signed-buffer snapshot instead.
+		auto snapshot = context.GetRouterInfoSnapshot ();
+		if (!snapshot) return;
+		auto a = snapshot->GetAddresses ();
 		if (!a) return;
 		for (const auto & address : *a)
 		{
@@ -206,13 +188,8 @@ namespace transport
 		{
 			LogPrint (eLogDebug, "UPnP: Port ", strPort, " is possibly not forwarded: return code ", err);
 
-#if ((MINIUPNPC_API_VERSION >= 8) || defined(UPNPDISCOVER_SUCCESS))
 			err = UPNP_AddPortMapping (m_upnpUrls.controlURL, m_upnpData.first.servicetype, strPort.c_str (),
 				strPort.c_str (), m_NetworkAddr, strDesc.c_str (), strType.c_str (), NULL, NULL);
-#else
-			err = UPNP_AddPortMapping (m_upnpUrls.controlURL, m_upnpData.first.servicetype, strPort.c_str (),
-				strPort.c_str (), m_NetworkAddr, strDesc.c_str (), strType.c_str (), NULL);
-#endif
 			if (err != UPNPCOMMAND_SUCCESS)
 			{
 				LogPrint (
@@ -236,7 +213,9 @@ namespace transport
 
 	void UPnP::CloseMapping ()
 	{
-		auto a = context.GetRouterInfo ().GetAddresses ();
+		auto snapshot = context.GetRouterInfoSnapshot ();
+		if (!snapshot) return;
+		auto a = snapshot->GetAddresses ();
 		if (!a) return;
 		for (const auto & address : *a)
 		{

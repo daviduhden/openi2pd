@@ -8,16 +8,16 @@
 * See full license text in LICENSE file at top of project tree
 */
 
-#include <stdio.h>
+#include <cstdio>
+#include <memory>
 #include <sstream>
 #include <iomanip>
 #include <openssl/x509.h>
 #include <openssl/pem.h>
 #include <openssl/rand.h>
 #include <openssl/crypto.h>
+#include <openssl/err.h>
 
-// Use global placeholders from boost introduced when local_time.hpp is loaded
-#define BOOST_BIND_GLOBAL_PLACEHOLDERS
 #include <boost/property_tree/json_parser.hpp>
 #include <boost/algorithm/string.hpp>
 
@@ -29,6 +29,30 @@
 #include "Tunnel.h"
 #include "Daemon.h"
 #include "I2PControl.h"
+
+namespace
+{
+	struct FileCloser
+	{
+		void operator() (FILE * file) const
+		{
+			if (file) std::fclose (file);
+		}
+	};
+	using FilePtr = std::unique_ptr<FILE, FileCloser>;
+
+	// Return the first queued OpenSSL error and drain the queue, so a later
+	// unrelated failure is not reported with a stale reason.
+	std::string GetOpenSSLError ()
+	{
+		unsigned long error = ERR_get_error ();
+		if (!error) return "unknown error";
+		char buffer[256];
+		ERR_error_string_n (error, buffer, sizeof (buffer));
+		while (ERR_get_error () != 0) { }
+		return buffer;
+	}
+}
 
 namespace i2p
 {
@@ -213,12 +237,7 @@ namespace client
 	template <typename ssl_socket> void I2PControlService::ReadRequest (std::shared_ptr<ssl_socket> socket)
 	{
 		auto request = std::make_shared<I2PControlBuffer> ();
-		socket->async_read_some (
-#if defined(BOOST_ASIO_HAS_STD_ARRAY)
-			boost::asio::buffer (*request),
-#else
-			boost::asio::buffer (request->data (), request->size ()),
-#endif
+		socket->async_read_some (boost::asio::buffer (*request),
 			[this, socket, request] (const boost::system::error_code & ecode, size_t bytes_transferred)
 			{ HandleRequestReceived (ecode, bytes_transferred, socket, request); });
 	}
@@ -471,63 +490,111 @@ namespace client
 	// certificate
 	void I2PControlService::CreateCertificate (const char * crt_path, const char * key_path)
 	{
-		FILE * f = NULL;
-#if !defined(LIBRESSL_VERSION_NUMBER) && OPENSSL_VERSION_NUMBER >= 0x30000000L // since 3.0.0
-		EVP_PKEY * pkey = EVP_RSA_gen (4096); // e = 65537
-#else
-		EVP_PKEY * pkey = EVP_PKEY_new ();
-		RSA * rsa = RSA_new ();
-		BIGNUM * e = BN_dup (i2p::crypto::GetRSAE ());
-		RSA_generate_key_ex (rsa, 4096, e, NULL);
-		BN_free (e);
-		if (rsa)
-			EVP_PKEY_assign_RSA (pkey, rsa);
-		else
+		std::unique_ptr<EVP_PKEY, decltype (&EVP_PKEY_free)> pkey (nullptr, EVP_PKEY_free);
+#ifndef LIBRESSL_VERSION_NUMBER // OpenSSL 3.0.2 is the minimum
+		pkey.reset (EVP_RSA_gen (4096)); // e = 65537
+		if (!pkey)
 		{
-			LogPrint (eLogError, "I2PControl: Can't create RSA key for certificate");
-			EVP_PKEY_free (pkey);
+			LogPrint (eLogError, "I2PControl: Can't create RSA key for certificate: ", GetOpenSSLError ());
 			return;
 		}
-#endif
-		X509 * x509 = X509_new ();
-		ASN1_INTEGER_set (X509_get_serialNumber (x509), 1);
-		X509_gmtime_adj (X509_getm_notBefore (x509), 0);
-		X509_gmtime_adj (X509_getm_notAfter (x509), I2P_CONTROL_CERTIFICATE_VALIDITY * 24 * 60 * 60); // expiration
-		X509_set_pubkey (x509, pkey); // public key
-		auto name = X509_NAME_dup (X509_get_subject_name (x509));
-		X509_NAME_add_entry_by_txt (
-			name, "C", MBSTRING_ASC, (unsigned char *)"A1", -1, -1, 0); // country (Anonymous proxy)
-		X509_NAME_add_entry_by_txt (
-			name, "O", MBSTRING_ASC, (unsigned char *)I2P_CONTROL_CERTIFICATE_ORGANIZATION, -1, -1, 0); // organization
-		X509_NAME_add_entry_by_txt (
-			name, "CN", MBSTRING_ASC, (unsigned char *)I2P_CONTROL_CERTIFICATE_COMMON_NAME, -1, -1, 0); // common name
-		X509_set_subject_name (x509, name);
-		X509_set_issuer_name (x509, name); // set issuer to ourselves
-		X509_sign (x509, pkey, EVP_sha1 ()); // sign, last param must be NULL for EdDSA
-		X509_NAME_free (name);
-
-		// save cert
-		if ((f = fopen (crt_path, "wb")) != NULL)
+#else
+		pkey.reset (EVP_PKEY_new ());
+		std::unique_ptr<RSA, decltype (&RSA_free)> rsa (RSA_new (), RSA_free);
+		std::unique_ptr<BIGNUM, decltype (&BN_free)> e (BN_dup (i2p::crypto::GetRSAE ()), BN_free);
+		if (!pkey || !rsa || !e || RSA_generate_key_ex (rsa.get (), 4096, e.get (), nullptr) != 1)
 		{
-			LogPrint (eLogInfo, "I2PControl: Saving new cert to ", crt_path);
-			PEM_write_X509 (f, x509);
-			fclose (f);
+			LogPrint (eLogError, "I2PControl: Can't create RSA key for certificate: ", GetOpenSSLError ());
+			return;
 		}
-		else
-			LogPrint (eLogError, "I2PControl: Can't write cert: ", strerror (errno));
-		X509_free (x509);
+		if (EVP_PKEY_assign_RSA (pkey.get (), rsa.get ()) != 1)
+		{
+			LogPrint (eLogError, "I2PControl: Can't assign RSA key for certificate: ", GetOpenSSLError ());
+			return;
+		}
+		rsa.release (); // pkey owns the RSA key now
+#endif
+
+		// The certificate is released after it has been written and before the
+		// private key is saved, matching the previous explicit free order.
+		{
+			std::unique_ptr<X509, decltype (&X509_free)> x509 (X509_new (), X509_free);
+			if (!x509)
+			{
+				LogPrint (eLogError, "I2PControl: Can't create certificate: ", GetOpenSSLError ());
+				return;
+			}
+			if (ASN1_INTEGER_set (X509_get_serialNumber (x509.get ()), 1) != 1
+				|| !X509_gmtime_adj (X509_getm_notBefore (x509.get ()), 0)
+				|| !X509_gmtime_adj (X509_getm_notAfter (x509.get ()),
+					I2P_CONTROL_CERTIFICATE_VALIDITY * 24 * 60 * 60) // expiration
+				|| X509_set_pubkey (x509.get (), pkey.get ()) != 1) // public key
+			{
+				LogPrint (eLogError, "I2PControl: Can't initialize certificate: ", GetOpenSSLError ());
+				return;
+			}
+
+			// The subject is a private copy; it is released right after signing.
+			{
+				std::unique_ptr<X509_NAME, decltype (&X509_NAME_free)> name (
+					X509_NAME_dup (X509_get_subject_name (x509.get ())), X509_NAME_free);
+				if (!name)
+				{
+					LogPrint (eLogError, "I2PControl: Can't duplicate certificate subject: ", GetOpenSSLError ());
+					return;
+				}
+				if (X509_NAME_add_entry_by_txt (name.get (), "C", MBSTRING_ASC, (unsigned char *)"A1", -1, -1, 0)
+						!= 1 // country (Anonymous proxy)
+					|| X509_NAME_add_entry_by_txt (name.get (), "O", MBSTRING_ASC,
+						   (unsigned char *)I2P_CONTROL_CERTIFICATE_ORGANIZATION, -1, -1, 0)
+						!= 1 // organization
+					|| X509_NAME_add_entry_by_txt (name.get (), "CN", MBSTRING_ASC,
+						   (unsigned char *)I2P_CONTROL_CERTIFICATE_COMMON_NAME, -1, -1, 0)
+						!= 1) // common name
+				{
+					LogPrint (eLogError, "I2PControl: Can't set certificate subject: ", GetOpenSSLError ());
+					return;
+				}
+				if (X509_set_subject_name (x509.get (), name.get ()) != 1
+					|| X509_set_issuer_name (x509.get (), name.get ()) != 1) // set issuer to ourselves
+				{
+					LogPrint (eLogError, "I2PControl: Can't set certificate names: ", GetOpenSSLError ());
+					return;
+				}
+				if (X509_sign (x509.get (), pkey.get (), EVP_sha1 ()) == 0) // last param must be NULL for EdDSA
+				{
+					LogPrint (eLogError, "I2PControl: Can't sign certificate: ", GetOpenSSLError ());
+					return;
+				}
+			}
+
+			// save cert
+			FilePtr f (fopen (crt_path, "wb"));
+			if (f)
+			{
+				LogPrint (eLogInfo, "I2PControl: Saving new cert to ", crt_path);
+				if (PEM_write_X509 (f.get (), x509.get ()) != 1)
+					LogPrint (eLogError, "I2PControl: Can't write cert: ", GetOpenSSLError ());
+				else if (std::fclose (f.release ()) != 0)
+					LogPrint (eLogError, "I2PControl: Can't close cert: ", strerror (errno));
+			}
+			else
+				LogPrint (eLogError, "I2PControl: Can't write cert: ", strerror (errno));
+		}
 
 		// save key
 		i2p::fs::CreatePrivateFile (key_path);
-		if ((f = fopen (key_path, "wb")) != NULL)
+		FilePtr f (fopen (key_path, "wb"));
+		if (f)
 		{
 			LogPrint (eLogInfo, "I2PControl: saving cert key to ", key_path);
-			PEM_write_PrivateKey (f, pkey, NULL, NULL, 0, NULL, NULL);
-			fclose (f);
+			if (PEM_write_PrivateKey (f.get (), pkey.get (), NULL, NULL, 0, NULL, NULL) != 1)
+				LogPrint (eLogError, "I2PControl: Can't write key: ", GetOpenSSLError ());
+			else if (std::fclose (f.release ()) != 0)
+				LogPrint (eLogError, "I2PControl: Can't close key: ", strerror (errno));
 		}
 		else
 			LogPrint (eLogError, "I2PControl: Can't write key: ", strerror (errno));
-		EVP_PKEY_free (pkey);
 	}
 }
 }

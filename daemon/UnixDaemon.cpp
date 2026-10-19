@@ -16,8 +16,11 @@
 #include <signal.h>
 #include <stdlib.h>
 #include <thread>
+#include <chrono>
+#include <utility>
 #include <unistd.h>
 #include <fcntl.h>
+#include <poll.h>
 #include <sys/stat.h>
 #include <sys/resource.h>
 
@@ -42,6 +45,53 @@
 #include "Transports.h"
 #include "util.h"
 
+namespace
+{
+	// Owns a short-lived file descriptor for the daemon startup paths. It is
+	// local to this translation unit: the daemon only needs deterministic
+	// close-on-return, not a general-purpose global descriptor type.
+	class UniqueFd
+	{
+	public:
+		UniqueFd () = default;
+		explicit UniqueFd (int fd)
+			: m_Fd (fd)
+		{
+		}
+		~UniqueFd () { Reset (); }
+
+		UniqueFd (const UniqueFd &) = delete;
+		UniqueFd & operator= (const UniqueFd &) = delete;
+
+		UniqueFd (UniqueFd && other) noexcept
+			: m_Fd (other.Release ())
+		{
+		}
+		UniqueFd & operator= (UniqueFd && other) noexcept
+		{
+			if (this != &other) Reset (other.Release ());
+			return *this;
+		}
+
+		int Get () const { return m_Fd; }
+		bool IsValid () const { return m_Fd >= 0; }
+		int Release ()
+		{
+			int fd = m_Fd;
+			m_Fd = -1;
+			return fd;
+		}
+		void Reset (int fd = -1)
+		{
+			if (m_Fd >= 0) close (m_Fd);
+			m_Fd = fd;
+		}
+
+	private:
+		int m_Fd = -1;
+	};
+}
+
 #ifdef __OpenBSD__
 // Blocked before service threads are created; consumed only by run().
 static sigset_t daemonSignals;
@@ -51,6 +101,42 @@ static bool SignalError (const char * operation, int error)
 	std::cerr << "Daemon: " << operation << ": " << strerror (error) << std::endl;
 	syslog (LOG_DAEMON | LOG_ERR, "Daemon: %s: %s", operation, strerror (error));
 	return false;
+}
+
+// The runtime sandbox is fixed and additive. A custom openbsd.pledge_file may
+// request more, but it can never remove a promise the daemon needs to run and
+// shut down safely. Keep this list in sync with the code paths below.
+static const char * g_RequiredPledgePromises[] = {
+	"stdio", // queue, sockets, signals and already-open descriptors
+	"rpath", // read router data, certificates and configuration
+	"wpath", // write router data and logs
+	"cpath", // create and remove files, sockets and the pidfile
+	"fattr", // chmod/chflags when saving keys and restricting files
+	"inet", // NTCP2/SSU2, HTTP proxies and reseed
+	"dns", // resolver support
+	"unix", // local IPC and /dev/log
+	"flock" // pidfile lockf(3)
+};
+
+// Current pledge(2) promise names. Unknown tokens are rejected instead of
+// being passed to pledge(), so a typo or malformed file fails closed.
+static const char * g_KnownPledgePromises[]
+	= { "audio", "bpf", "chown", "cpath", "disklabel", "dns", "dpath", "drm", "error", "exec", "fattr", "flock",
+		  "getpw", "id", "inet", "mcast", "pf", "proc", "prot_exec", "ps", "recvfd", "route", "rpath", "sendfd",
+		  "settime", "stdio", "tape", "tty", "unix", "unveil", "video", "vminfo", "vmm", "wpath", "wroute" };
+
+static bool IsKnownPledgePromise (const std::string & promise)
+{
+	for (const char * known : g_KnownPledgePromises)
+		if (promise == known) return true;
+	return false;
+}
+
+static void AddPledgePromise (std::vector<std::string> & promises, const std::string & promise)
+{
+	for (const auto & existing : promises)
+		if (existing == promise) return;
+	promises.push_back (promise);
 }
 #endif
 
@@ -123,6 +209,97 @@ static void HandlePendingSignals ()
 	}
 }
 
+// The self-daemonizing parent waits for a single status byte from the child.
+// The child only reports success after the pidfile lock, sandbox setup, logger
+// startup and Daemon_Singleton::start() have all completed. The first NetDb
+// start can synchronously reseed, so the timeout must cover a slow network
+// download rather than killing a healthy but still-starting router.
+static constexpr int DAEMON_READY_TIMEOUT_MS = 5 * 60 * 1000;
+
+enum class DaemonReadyStatus
+{
+	Ready,
+	Failed,
+	TimedOut
+};
+
+static DaemonReadyStatus WaitForDaemonReady (int fd)
+{
+	const auto deadline = std::chrono::steady_clock::now () + std::chrono::milliseconds (DAEMON_READY_TIMEOUT_MS);
+	for (;;)
+	{
+		auto remaining
+			= std::chrono::duration_cast<std::chrono::milliseconds> (deadline - std::chrono::steady_clock::now ())
+				  .count ();
+		if (remaining <= 0)
+		{
+			std::cerr << "i2pd: daemon startup timed out" << std::endl;
+			return DaemonReadyStatus::TimedOut;
+		}
+		struct pollfd pfd { };
+		pfd.fd = fd;
+		pfd.events = POLLIN;
+		int result = poll (&pfd, 1, static_cast<int> (remaining));
+		if (result == 0)
+		{
+			std::cerr << "i2pd: daemon startup timed out" << std::endl;
+			return DaemonReadyStatus::TimedOut;
+		}
+		if (result < 0)
+		{
+			if (errno == EINTR) continue;
+			std::cerr << "i2pd: daemon readiness wait: " << strerror (errno) << std::endl;
+			return DaemonReadyStatus::Failed;
+		}
+
+		char status = 0;
+		ssize_t n;
+		do n = read (fd, &status, 1);
+		while (n < 0 && errno == EINTR);
+		if (n == 1)
+		{
+			if (status == '1') return DaemonReadyStatus::Ready;
+			std::cerr << "i2pd: daemon failed to start; see syslog for details" << std::endl;
+			return DaemonReadyStatus::Failed;
+		}
+		if (n < 0)
+			std::cerr << "i2pd: daemon readiness read: " << strerror (errno) << std::endl;
+		else
+			std::cerr << "i2pd: daemon exited before reporting readiness" << std::endl;
+		return DaemonReadyStatus::Failed;
+	}
+}
+
+// Writes a failure status unless the child reaches the successful ready point.
+// This makes every early return in start() propagate to the waiting parent.
+// The notifier owns the write end, so closing it is not duplicated elsewhere.
+class DaemonReadyNotifier
+{
+public:
+	explicit DaemonReadyNotifier (UniqueFd fd)
+		: m_Fd (std::move (fd))
+	{
+	}
+	~DaemonReadyNotifier () { Notify ('0'); }
+
+	DaemonReadyNotifier (const DaemonReadyNotifier &) = delete;
+	DaemonReadyNotifier & operator= (const DaemonReadyNotifier &) = delete;
+
+	void Ready () { Notify ('1'); }
+
+private:
+	void Notify (char status)
+	{
+		if (!m_Fd.IsValid ()) return;
+		ssize_t written;
+		do written = write (m_Fd.Get (), &status, 1);
+		while (written < 0 && errno == EINTR);
+		m_Fd.Reset ();
+	}
+
+	UniqueFd m_Fd;
+};
+
 namespace i2p
 {
 namespace util
@@ -130,24 +307,67 @@ namespace util
 	bool DaemonUnix::start ()
 	{
 		pidFH = -1; // no PID lock yet
+		UniqueFd readyFd;
 		if (isDaemon)
 		{
-			pid_t pid;
-			pid = fork ();
+			int readyPipe[2];
+			if (pipe (readyPipe) != 0)
+			{
+				LogPrint (eLogError, "Daemon: Could not create readiness pipe: ", strerror (errno));
+				std::cerr << "i2pd: Could not create readiness pipe: " << strerror (errno) << std::endl;
+				return false;
+			}
+			UniqueFd readEnd (readyPipe[0]);
+			UniqueFd writeEnd (readyPipe[1]);
+			for (int fd : readyPipe)
+			{
+				if (fcntl (fd, F_SETFD, FD_CLOEXEC) != -1) continue;
+				LogPrint (eLogError, "Daemon: Could not set close-on-exec on readiness pipe: ", strerror (errno));
+				std::cerr << "i2pd: Could not set close-on-exec on readiness pipe: " << strerror (errno) << std::endl;
+				return false;
+			}
+
+			pid_t pid = fork ();
 			if (pid > 0) // parent
 			{
+				// The child owns the write end; close ours before waiting so
+				// the read reports EOF if the child exits without reporting.
+				writeEnd.Reset ();
+				DaemonReadyStatus status = WaitForDaemonReady (readEnd.Get ());
+				readEnd.Reset ();
+				if (status == DaemonReadyStatus::TimedOut)
+				{
+					// Startup can block before the daemon installs its signal
+					// handling. SIGKILL guarantees a timed-out child cannot
+					// keep running after the parent reported failure.
+					kill (pid, SIGKILL);
+				}
 				// Do not run atexit handlers or flush duplicated buffers in
 				// the parent after fork; the child owns the service state.
-				_exit (EXIT_SUCCESS);
+				_exit (status == DaemonReadyStatus::Ready ? EXIT_SUCCESS : EXIT_FAILURE);
 			}
 
 			if (pid < 0) // error
 			{
-				LogPrint (eLogError, "Daemon: Could not fork: ", strerror (errno));
-				std::cerr << "i2pd: Could not fork: " << strerror (errno) << std::endl;
+				int error = errno;
+				readEnd.Reset ();
+				writeEnd.Reset ();
+				LogPrint (eLogError, "Daemon: Could not fork: ", strerror (error));
+				std::cerr << "i2pd: Could not fork: " << strerror (error) << std::endl;
 				return false;
 			}
 
+			readEnd.Reset ();
+			readyFd = std::move (writeEnd);
+		}
+		// A daemon child only reports success after Daemon_Singleton::start().
+		// The notifier is created before the remaining daemonization steps, so
+		// a setsid(), chdir() or freopen() failure also reaches the waiting
+		// parent instead of leaving it to time out.
+		DaemonReadyNotifier ready (std::move (readyFd));
+
+		if (isDaemon)
+		{
 			// child
 			umask (S_IWGRP | S_IRWXO); // 0027
 			int sid = setsid ();
@@ -229,21 +449,26 @@ namespace util
 		}
 
 		// Pidfile
-		// this code is c-styled and a bit ugly, but we need fd for locking pidfile
+		// The descriptor must stay open for the lifetime of the daemon because
+		// lockf(3)/fcntl(2) ownership is tied to the open file description.
+
+		// Until startup succeeds the pidfile descriptor is owned by this guard;
+		// every early return closes it without duplicating close() calls.
+		UniqueFd pidFile;
 
 		// Close and remove the PID file if startup fails after locking it.
-		auto abortStart = [this] ()
+		auto abortStart = [this, &pidFile] ()
 		{
 			// If startup failed after Log::Start(), join the logger thread
 			// here. Log::~Log() deletes a joinable std::thread, which would
 			// call std::terminate() during exit.
 			i2p::log::Logger ().Stop ();
-			if (pidFH >= 0)
+			StopPrivsepWorkers ();
+			if (pidFile.IsValid ())
 			{
 				// Keep the descriptor open until the identity check is done.
-				RemovePidFile (pidFH, pidfile);
-				close (pidFH);
-				pidFH = -1;
+				RemovePidFile (pidFile.Get (), pidfile);
+				pidFile.Reset ();
 			}
 			return false;
 		};
@@ -260,8 +485,8 @@ namespace util
 			// Do not follow a symlink planted in a writable directory.
 			flags |= O_NOFOLLOW;
 #endif
-			pidFH = open (pidfile.c_str (), flags, 0600);
-			if (pidFH < 0)
+			pidFile.Reset (open (pidfile.c_str (), flags, 0600));
+			if (!pidFile.IsValid ())
 			{
 				LogPrint (eLogError, "Daemon: Could not create pid file ", pidfile, ": ", strerror (errno));
 				std::cerr << "i2pd: Could not create pid file " << pidfile << ": " << strerror (errno) << std::endl;
@@ -271,27 +496,23 @@ namespace util
 			// An existing file might not have been created by us and might
 			// have wider permissions; only a regular file is acceptable.
 			struct stat pidStat;
-			if (fstat (pidFH, &pidStat) != 0 || !S_ISREG (pidStat.st_mode))
+			if (fstat (pidFile.Get (), &pidStat) != 0 || !S_ISREG (pidStat.st_mode))
 			{
 				LogPrint (eLogError, "Daemon: Pid file ", pidfile, " is not a regular file");
 				std::cerr << "i2pd: Pid file " << pidfile << " is not a regular file" << std::endl;
-				close (pidFH);
-				pidFH = -1;
 				return false;
 			}
-			if (fchmod (pidFH, 0600) != 0)
+			if (fchmod (pidFile.Get (), 0600) != 0)
 			{
 				LogPrint (
 					eLogError, "Daemon: Can't restrict permissions of pid file ", pidfile, ": ", strerror (errno));
 				std::cerr << "i2pd: Can't restrict permissions of pid file " << pidfile << ": " << strerror (errno)
 						  << std::endl;
-				close (pidFH);
-				pidFH = -1;
 				return false;
 			}
 
 #ifndef ANDROID
-			if (lockf (pidFH, F_TLOCK, 0) != 0)
+			if (lockf (pidFile.Get (), F_TLOCK, 0) != 0)
 #else
 			struct flock fl;
 			fl.l_len = 0;
@@ -299,20 +520,18 @@ namespace util
 			fl.l_whence = SEEK_SET;
 			fl.l_start = 0;
 
-			if (fcntl (pidFH, F_SETLK, &fl) != 0)
+			if (fcntl (pidFile.Get (), F_SETLK, &fl) != 0)
 #endif
 			{
 				LogPrint (eLogError, "Daemon: Could not lock pid file ", pidfile, ": ", strerror (errno));
 				std::cerr << "i2pd: Could not lock pid file " << pidfile << ": " << strerror (errno) << std::endl;
 				// Another instance owns the file, so do not unlink it.
-				close (pidFH);
-				pidFH = -1;
 				return false;
 			}
 
 			char pid[16];
 			int pidLen = snprintf (pid, sizeof (pid), "%d\n", getpid ());
-			if (pidLen <= 0 || pidLen >= (int)sizeof (pid) || ftruncate (pidFH, 0) != 0)
+			if (pidLen <= 0 || pidLen >= (int)sizeof (pid) || ftruncate (pidFile.Get (), 0) != 0)
 			{
 				LogPrint (eLogCritical, "Daemon: Could not write pidfile ", pidfile, ": ", strerror (errno));
 				std::cerr << "i2pd: Could not write pidfile " << pidfile << ": " << strerror (errno) << std::endl;
@@ -321,7 +540,7 @@ namespace util
 			size_t written = 0;
 			while (written < (size_t)pidLen)
 			{
-				ssize_t n = pwrite (pidFH, pid + written, pidLen - written, written);
+				ssize_t n = pwrite (pidFile.Get (), pid + written, pidLen - written, written);
 				if (n < 0 && errno == EINTR) continue;
 				if (n <= 0) break;
 				written += n;
@@ -389,15 +608,31 @@ namespace util
 #endif
 
 #ifdef __OpenBSD__
+		// Spawn supervisor/log workers while the startup pledge still carries
+		// proc/exec. Pledge and unveil are cleared by execve; every worker
+		// installs its own policy after exec instead of inheriting this one.
+		if (!PreparePrivsepWorkers ()) return abortStart ();
 		// Resolve/read sandbox policy before the first unveil hides it.
 		bool useUnveil, usePledge;
 		i2p::config::GetOption ("openbsd.unveil_enabled", useUnveil);
 		i2p::config::GetOption ("openbsd.pledge_enabled", usePledge);
+		bool privsepEnabled = false, privsepLog = false;
+		i2p::config::GetOption ("privsep.enabled", privsepEnabled);
+		i2p::config::GetOption ("privsep.log", privsepLog);
 		// CreatePrivateFile() uses chmod when saving router and destination keys.
-		std::string promises = "stdio rpath wpath cpath fattr inet dns unix flock";
+		// The required promises are always present; a custom file may only add
+		// to this set (see openbsd.pledge_file handling below).
+		std::vector<std::string> promises;
+		for (const char * promise : g_RequiredPledgePromises) promises.emplace_back (promise);
+		if (privsepEnabled && privsepLog)
+			// The core monitor still uses waitpid()/kill() to reap and, when
+			// necessary, stop the supervisor. proc does not permit exec, so the
+			// core cannot create a replacement worker after this point. The
+			// supervisor remains the process-creation boundary.
+			promises.emplace_back ("proc");
 		bool upnp;
 		i2p::config::GetOption ("upnp.enabled", upnp);
-		if (upnp) promises += " mcast";
+		if (upnp) promises.emplace_back ("mcast");
 		std::vector<std::string> extraPaths;
 		auto fail = [] (const std::string & message)
 		{
@@ -406,20 +641,9 @@ namespace util
 			syslog (LOG_DAEMON | LOG_ERR, "%s", message.c_str ());
 			return false;
 		};
-		// The log worker is created with fork()+execv() from
-		// Daemon_Singleton::start(), i.e. after this pledge is applied. The
-		// runtime policy deliberately omits "proc" and "exec", so spawning it
-		// would abort the process. Refuse instead of silently running without
-		// the requested isolation (or silently disabling the sandbox).
-		bool privsepEnabled = false, privsepLog = false;
-		i2p::config::GetOption ("privsep.enabled", privsepEnabled);
-		i2p::config::GetOption ("privsep.log", privsepLog);
-		if (privsepEnabled && privsepLog && (usePledge || useUnveil))
-		{
-			fail ("Daemon: privsep.log requires fork/exec after the OpenBSD sandbox is applied; "
-				  "set privsep.log = false or disable openbsd.pledge_enabled/openbsd.unveil_enabled");
-			return abortStart ();
-		}
+		// The supervisor/log-worker pair has already been spawned above. The
+		// runtime policy has no exec; proc is retained only for supervisor
+		// reaping/signalling while the log worker is enabled.
 		auto readPolicy = [&fail] (const char * option, std::vector<std::string> & lines)
 		{
 			std::string path;
@@ -447,8 +671,37 @@ namespace util
 			{
 				std::vector<std::string> lines;
 				if (!readPolicy ("openbsd.pledge_file", lines)) return abortStart ();
-				promises.clear ();
-				for (const auto & line : lines) promises += line + " ";
+				// Parse whitespace-separated tokens and treat '#' as a comment.
+				// Duplicates are ignored, unknown names are rejected, and the
+				// fixed required set above stays in place.
+				for (const auto & line : lines)
+				{
+					size_t pos = 0;
+					while (pos < line.size ())
+					{
+						size_t start = line.find_first_not_of (" \t\r", pos);
+						if (start == std::string::npos || line[start] == '#') break;
+						size_t end = line.find_first_of (" \t\r#", start);
+						std::string token
+							= line.substr (start, end == std::string::npos ? std::string::npos : end - start);
+						if (!IsKnownPledgePromise (token))
+						{
+							fail ("Daemon: Unknown pledge promise \"" + token + "\" in openbsd.pledge_file");
+							return abortStart ();
+						}
+						if (token == "proc" || token == "exec")
+						{
+							// Workers are spawned before this runtime policy. The
+							// core must not regain process-creation capability
+							// through an additive policy file.
+							fail ("Daemon: runtime openbsd.pledge_file may not add proc or exec");
+							return abortStart ();
+						}
+						AddPledgePromise (promises, token);
+						if (end == std::string::npos || line[end] == '#') break;
+						pos = end;
+					}
+				}
 			}
 		}
 		if (useUnveil && !readPolicy ("openbsd.unveil_file", extraPaths)) return abortStart ();
@@ -498,7 +751,11 @@ namespace util
 			i2p::config::GetOption ("log", logDestination);
 			const bool logToFile
 				= logDestination == "file" || (isDaemon && (logDestination.empty () || logDestination == "stdout"));
-			if (logToFile)
+			// When the log worker owns the sink, the core must not retain a
+			// write rule for the log file (or /dev/log). The supervisor path
+			// is configured before this runtime sandbox is installed.
+			const bool privsepOwnsLog = privsepEnabled && privsepLog;
+			if (logToFile && !privsepOwnsLog)
 			{
 				std::string path;
 				i2p::config::GetOption ("logfile", path);
@@ -522,7 +779,7 @@ namespace util
 			}
 			// unveil(2) gates connect(2) to AF_UNIX sockets by path; the
 			// "unix" pledge alone does not grant the filesystem lookup.
-			if (logDestination == "syslog" && !allow ("/dev/log", "w")) return abortStart ();
+			if (logDestination == "syslog" && !privsepOwnsLog && !allow ("/dev/log", "w")) return abortStart ();
 			bool control;
 			i2p::config::GetOption ("i2pcontrol.enabled", control);
 			if (control)
@@ -571,7 +828,13 @@ namespace util
 		}
 		// fork/setsid/setrlimit and PID locking are complete; no proc,
 		// id, chown, descriptor passing or error promise is needed.
-		if (usePledge && pledge (promises.c_str (), nullptr) == -1)
+		std::string pledgePromises;
+		for (const auto & promise : promises)
+		{
+			if (!pledgePromises.empty ()) pledgePromises += ' ';
+			pledgePromises += promise;
+		}
+		if (usePledge && pledge (pledgePromises.c_str (), nullptr) == -1)
 		{
 			fail (std::string ("Daemon: pledge: ") + strerror (errno));
 			return abortStart ();
@@ -579,13 +842,18 @@ namespace util
 #endif
 
 		if (!Daemon_Singleton::start ()) return abortStart ();
+		// Startup completed: the long-lived PID lock moves to the member that
+		// stop() uses. Before this point the local guard owns the descriptor.
+		pidFH = pidFile.Release ();
+		ready.Ready ();
 		return true;
 	}
 
 	bool DaemonUnix::stop ()
 	{
-#ifdef __OpenBSD__
-		// Keep the PID lock while router data is still being saved.
+		// Keep the PID lock while router data is still being saved. The
+		// identity check also prevents removing an unrelated file that
+		// replaced the pidfile path during the daemon's lifetime.
 		bool stopped = Daemon_Singleton::stop ();
 		RemovePidFile (pidFH, pidfile);
 		if (pidFH >= 0)
@@ -594,10 +862,6 @@ namespace util
 			pidFH = -1;
 		}
 		return stopped;
-#else
-		i2p::fs::Remove (pidfile);
-		return Daemon_Singleton::stop ();
-#endif
 	}
 
 	void DaemonUnix::run ()

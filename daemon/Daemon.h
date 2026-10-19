@@ -44,14 +44,23 @@ namespace util
 
 		bool IsService () const;
 
+		/**
+		 * Spawn privilege-separated workers before the parent runtime sandbox
+		 * is installed. On OpenBSD fork/exec must happen while the startup
+		 * pledge still contains proc/exec; the runtime policy then drops both.
+		 */
+		bool PreparePrivsepWorkers ();
+		/** Stop prepared workers during a startup rollback. */
+		void StopPrivsepWorkers ();
+
 		// d-pointer for the optional IPC service and UPnP/NTP helpers
 		class Daemon_Singleton_Private;
-		Daemon_Singleton_Private & d;
+		std::unique_ptr<Daemon_Singleton_Private> d;
 
 	private:
-#ifndef _WIN32
-		// Bounded in-process restart monitor for the isolated log worker.
-		// These are process-local helpers, not a separate supervisor process.
+#if !defined(_WIN32) && !defined(I2PD_NO_PRIVSEP)
+		// Start the separate supervisor that owns the log worker, and replace
+		// it with bounded backoff if the supervisor process dies.
 		bool StartPrivsepLogWorker ();
 		void StopPrivsepLogWorker ();
 		void RunPrivsepLogSupervisor ();
@@ -132,10 +141,10 @@ namespace util
 
 	private:
 		std::string pidfile;
-		int pidFH;
+		int pidFH = -1;
 
 	public:
-		int gracefulShutdownInterval; // in seconds
+		int gracefulShutdownInterval = 0; // in seconds
 	};
 #define Daemon i2p::util::DaemonUnix::Instance ()
 

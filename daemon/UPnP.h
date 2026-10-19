@@ -12,6 +12,7 @@
 #define __UPNP_H__
 
 #ifdef USE_UPNP
+#include <atomic>
 #include <string>
 #include <thread>
 #include <condition_variable>
@@ -62,7 +63,7 @@ namespace transport
 		std::string GetProto (std::shared_ptr<i2p::data::RouterInfo::Address> address);
 
 	private:
-		bool m_IsRunning;
+		std::atomic<bool> m_IsRunning;
 		std::unique_ptr<std::thread> m_Thread;
 		std::condition_variable m_Started;
 		std::mutex m_StartedMutex;

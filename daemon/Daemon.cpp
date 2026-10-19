@@ -28,6 +28,8 @@
 #include <cerrno>
 #include <cstring>
 #include <cstdlib>
+#include <fstream>
+#include <sstream>
 #endif
 
 #include "Daemon.h"
@@ -50,7 +52,7 @@
 #include "Destination.h"
 #include "I2PControl.h"
 #include "TuiServer.h"
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(I2PD_NO_PRIVSEP)
 #include "privsep/LogWorker.h"
 #include "privsep/Worker.h"
 #endif
@@ -83,7 +85,7 @@ namespace util
 		Daemon_Singleton_Private () { };
 		~Daemon_Singleton_Private ()
 		{
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(I2PD_NO_PRIVSEP)
 			// A joinable std::thread would terminate the process on destruction.
 			logSupervisorStop.store (true, std::memory_order_relaxed);
 			if (logSupervisor.joinable ()) logSupervisor.join ();
@@ -91,7 +93,7 @@ namespace util
 		};
 
 		std::unique_ptr<i2p::tui::Server> tuiServer;
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(I2PD_NO_PRIVSEP)
 		std::unique_ptr<i2p::privsep::LogSink> logSink;
 		std::unique_ptr<i2p::privsep::ChildProcess> logWorker;
 		std::thread logSupervisor;
@@ -99,6 +101,7 @@ namespace util
 		std::chrono::steady_clock::time_point logWorkerStarted;
 		bool privsepLog = false;
 		bool privsepSyslog = false;
+		bool privsepCanRestart = true;
 		std::string privsepLogPath;
 #endif
 		std::unique_ptr<i2p::client::I2PControlService> m_I2PControlService;
@@ -106,12 +109,12 @@ namespace util
 		std::unique_ptr<i2p::util::NTPTimeSync> m_NTPSync;
 	};
 
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(I2PD_NO_PRIVSEP)
 	namespace
 	{
-		// Bounded, in-process restart policy for the single log worker. This
-		// is not a separate supervisor process: network/storage separation is
-		// still unimplemented.
+		// Bounded policy for replacing a dead supervisor process. The
+		// supervisor owns the log worker and its restart loop; network and
+		// storage workers are still unimplemented.
 		constexpr auto LOG_SUPERVISOR_TICK = std::chrono::milliseconds (1000);
 		constexpr auto LOG_RESTART_INITIAL_BACKOFF = std::chrono::milliseconds (500);
 		constexpr auto LOG_RESTART_MAX_BACKOFF = std::chrono::milliseconds (30000);
@@ -133,66 +136,93 @@ namespace util
 		}
 
 	}
+#endif
 
 	/**
 	 * Spawn, configure and install one worker. Any previous worker is stopped
 	 * and reaped first, so at most one live child exists at any time even when
 	 * a caller skips the supervisor's reap step.
 	 */
+	bool Daemon_Singleton::PreparePrivsepWorkers ()
+	{
+#if defined(I2PD_NO_PRIVSEP)
+		return true;
+#elif !defined(_WIN32)
+		if (!d->privsepLog || d->logWorker) return true;
+		return StartPrivsepLogWorker ();
+#else
+		return true;
+#endif
+	}
+
+	void Daemon_Singleton::StopPrivsepWorkers ()
+	{
+#if !defined(_WIN32) && !defined(I2PD_NO_PRIVSEP)
+		if (d->privsepLog) StopPrivsepLogWorker ();
+#endif
+	}
+
+#if !defined(_WIN32) && !defined(I2PD_NO_PRIVSEP)
 	bool Daemon_Singleton::StartPrivsepLogWorker ()
 	{
 		// Enforce single ownership even if a future caller forgets to reap
 		// the previous worker first.
-		if (d.logWorker) d.logWorker->Stop (500);
-		auto spawned = i2p::privsep::SpawnLogWorker ();
+		if (d->logWorker) d->logWorker->Stop (500);
+		auto spawned = i2p::privsep::SpawnSupervisor ();
 		if (!spawned)
 		{
-			std::cerr << "Daemon: cannot spawn privilege-separated log worker: " << spawned.error () << std::endl;
+			std::cerr << "Daemon: cannot spawn privilege-separated supervisor: " << spawned.error () << std::endl;
 			return false;
 		}
 		auto worker = std::make_unique<i2p::privsep::ChildProcess> (std::move (*spawned));
 		auto channel = std::move (worker->ChannelFd ());
 		i2p::expected<void, std::string> configured;
-		if (!d.logSink)
+		if (!d->logSink)
 		{
-			d.logSink = std::make_unique<i2p::privsep::LogSink> (std::move (channel));
-			configured = d.logSink->Configure (d.privsepSyslog, d.privsepLogPath, "open-i2pd");
+			d->logSink = std::make_unique<i2p::privsep::LogSink> (std::move (channel));
+			configured = d->logSink->ConfigureProxy (d->privsepSyslog, d->privsepLogPath, "open-i2pd");
 			if (!configured)
 			{
-				std::cerr << "Daemon: cannot configure log worker: " << configured.error () << std::endl;
-				d.logSink.reset ();
+				std::cerr << "Daemon: cannot configure supervisor: " << configured.error () << std::endl;
+				d->logSink.reset ();
 				worker->Stop (500);
 				return false;
 			}
 		}
 		else
 		{
-			configured = d.logSink->Reattach (std::move (channel));
+			configured = d->logSink->ReattachProxy (std::move (channel));
 			if (!configured)
 			{
-				std::cerr << "Daemon: cannot reattach log worker: " << configured.error () << std::endl;
+				std::cerr << "Daemon: cannot reattach supervisor: " << configured.error () << std::endl;
 				worker->Stop (500);
 				return false;
 			}
 		}
-		d.logWorker = std::move (worker);
-		d.logWorkerStarted = std::chrono::steady_clock::now ();
+		d->logWorker = std::move (worker);
+		d->logWorkerStarted = std::chrono::steady_clock::now ();
 		return true;
 	}
 
 	void Daemon_Singleton::StopPrivsepLogWorker ()
 	{
-		d.logSupervisorStop.store (true, std::memory_order_relaxed);
-		// Send the graceful shutdown before joining so the worker can flush
-		// its file. The stop flag prevents the monitor from treating this
-		// exit as a crash and spawning a replacement.
-		if (d.logSink) (void)d.logSink->Shutdown ();
-		if (d.logSupervisor.joinable ()) d.logSupervisor.join ();
-		if (d.logSink) d.logSink.reset ();
-		if (d.logWorker)
+		d->logSupervisorStop.store (true, std::memory_order_relaxed);
+		// Join the monitor before touching the sink or worker: it may be in
+		// StartPrivsepLogWorker() and about to replace d->logWorker. The stop
+		// flag makes it return at the next bounded sleep. The worker itself
+		// keeps running, so the graceful shutdown below can still flush.
+		if (d->logSupervisor.joinable ()) d->logSupervisor.join ();
+		// Central safety net: no path may destroy the sink while the logger
+		// still holds a callback that captures its address. Normal stop and
+		// start-failure paths already clear it; clearing here also covers an
+		// early destructor or a future caller.
+		i2p::log::Logger ().SetSink (nullptr);
+		if (d->logSink) (void)d->logSink->Shutdown ();
+		if (d->logSink) d->logSink.reset ();
+		if (d->logWorker)
 		{
-			d.logWorker->Stop ();
-			d.logWorker.reset ();
+			d->logWorker->Stop ();
+			d->logWorker.reset ();
 		}
 	}
 
@@ -206,16 +236,17 @@ namespace util
 		pthread_sigmask (SIG_BLOCK, &allSignals, nullptr);
 		unsigned attempts = 0;
 		auto backoff = LOG_RESTART_INITIAL_BACKOFF;
-		while (!d.logSupervisorStop.load (std::memory_order_relaxed))
+		while (!d->logSupervisorStop.load (std::memory_order_relaxed))
 		{
-			if (!SleepUnlessStopping (d.logSupervisorStop, LOG_SUPERVISOR_TICK)) return;
-			if (!d.logSink || !d.logWorker) continue;
+			if (!SleepUnlessStopping (d->logSupervisorStop, LOG_SUPERVISOR_TICK)) return;
+			if (!d->logSink || !d->logWorker) continue;
 
-			const bool running = d.logWorker->IsRunning ();
-			const bool open = d.logSink->IsOpen ();
+			const bool running = d->logWorker->IsRunning ();
+			const bool open = d->logSink->IsOpen ();
 			if (running && open)
 			{
-				if (attempts != 0 && std::chrono::steady_clock::now () - d.logWorkerStarted >= LOG_WORKER_STABLE_PERIOD)
+				if (attempts != 0
+					&& std::chrono::steady_clock::now () - d->logWorkerStarted >= LOG_WORKER_STABLE_PERIOD)
 				{
 					attempts = 0;
 					backoff = LOG_RESTART_INITIAL_BACKOFF;
@@ -223,23 +254,31 @@ namespace util
 				continue;
 			}
 
-			std::cerr << "Daemon: log worker " << (running ? "channel closed" : "exited") << "; restarting"
+			d->logWorker->Stop (500); // reap and release the old channel
+			if (d->logSupervisorStop.load (std::memory_order_relaxed)) return;
+			if (!d->privsepCanRestart)
+			{
+				// The OpenBSD runtime policy has proc only for reaping/signalling;
+				// it has no exec. A dead supervisor cannot be replaced without
+				// widening the core's capability set.
+				std::cerr << "Daemon: supervisor exited; core has no exec capability to replace it" << std::endl;
+				return;
+			}
+			std::cerr << "Daemon: supervisor " << (running ? "channel closed" : "exited") << "; restarting"
 					  << std::endl;
-			d.logWorker->Stop (500); // reap and release the old channel
-			if (d.logSupervisorStop.load (std::memory_order_relaxed)) return;
 			if (attempts >= LOG_RESTART_MAX_ATTEMPTS)
 			{
-				std::cerr << "Daemon: log worker restart limit reached; "
+				std::cerr << "Daemon: supervisor restart limit reached; "
 							 "log records are dropped (no local fallback)"
 						  << std::endl;
 				return;
 			}
-			if (!SleepUnlessStopping (d.logSupervisorStop, backoff)) return;
+			if (!SleepUnlessStopping (d->logSupervisorStop, backoff)) return;
 			++attempts;
 			backoff = std::min (backoff * 2, LOG_RESTART_MAX_BACKOFF);
 			if (!StartPrivsepLogWorker ())
 			{
-				std::cerr << "Daemon: log worker restart failed (attempt " << attempts << ")" << std::endl;
+				std::cerr << "Daemon: supervisor restart failed (attempt " << attempts << ")" << std::endl;
 			}
 		}
 	}
@@ -248,12 +287,22 @@ namespace util
 	Daemon_Singleton::Daemon_Singleton ()
 		: isDaemon (false)
 		, running (true)
-		, d (*new Daemon_Singleton_Private ())
+		, d (std::make_unique<Daemon_Singleton_Private> ())
 	{
 	}
 	Daemon_Singleton::~Daemon_Singleton ()
 	{
-		delete &d;
+#if !defined(_WIN32) && !defined(I2PD_NO_PRIVSEP)
+		if (d && d->logSink)
+		{
+			// Normal shutdown calls stop(), but an early exit or a failed
+			// start must not leave the logger thread invoking a sink whose
+			// owner is about to be destroyed with this object.
+			i2p::log::Logger ().Stop ();
+			i2p::log::Logger ().SetSink (nullptr);
+			StopPrivsepLogWorker ();
+		}
+#endif
 	}
 
 	bool Daemon_Singleton::IsService () const
@@ -358,11 +407,20 @@ namespace util
 		if (isDaemon && (logs == "" || logs == "stdout")) logs = "file";
 #endif
 
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(I2PD_NO_PRIVSEP)
 		bool privsepEnabled = false, privsepLogEnabled = false;
 		i2p::config::GetOption ("privsep.enabled", privsepEnabled);
 		i2p::config::GetOption ("privsep.log", privsepLogEnabled);
-		d.privsepLog = privsepEnabled && privsepLogEnabled && !logstream;
+		d->privsepLog = privsepEnabled && privsepLogEnabled && !logstream;
+#ifdef __OpenBSD__
+		// The runtime policy drops proc/exec. The supervisor itself owns
+		// bounded log-worker replacement; the core must not attempt to fork a
+		// replacement supervisor after that policy is installed.
+		bool openbsdPledge = false, openbsdUnveil = false;
+		i2p::config::GetOption ("openbsd.pledge_enabled", openbsdPledge);
+		i2p::config::GetOption ("openbsd.unveil_enabled", openbsdUnveil);
+		d->privsepCanRestart = !(openbsdPledge || openbsdUnveil);
+#endif
 #endif
 
 		i2p::log::Logger ().SetLogLevel (loglevel);
@@ -378,21 +436,27 @@ namespace util
 			i2p::config::SetOption ("logfile", logfile);
 #endif
 			LogPrint (eLogInfo, "Log: Sending messages to ", logfile);
-#ifndef _WIN32
-			if (d.privsepLog)
-				d.privsepLogPath = logfile;
+#if !defined(_WIN32) && !defined(I2PD_NO_PRIVSEP)
+			if (d->privsepLog)
+				d->privsepLogPath = logfile;
 			else
 #endif
 				i2p::log::Logger ().SendTo (logfile);
-#ifndef _WIN32
+#if !defined(_WIN32) && !defined(I2PD_NO_PRIVSEP)
 		}
 		else if (logs == "syslog")
 		{
 			LogPrint (eLogInfo, "Log: Sending messages to syslog");
-			if (d.privsepLog)
-				d.privsepSyslog = true;
+			if (d->privsepLog)
+				d->privsepSyslog = true;
 			else
 				i2p::log::Logger ().SendTo ("open-i2pd", LOG_DAEMON);
+#elif !defined(_WIN32)
+		}
+		else if (logs == "syslog")
+		{
+			LogPrint (eLogInfo, "Log: Sending messages to syslog");
+			i2p::log::Logger ().SendTo ("open-i2pd", LOG_DAEMON);
 #endif
 		}
 		else
@@ -411,22 +475,55 @@ namespace util
 		i2p::config::GetOption ("ssu", ssu);
 		if (!ssu && i2p::config::IsDefault ("precomputation.elgamal"))
 			precomputation = false; // we don't elgamal table if no ssu, unless it's specified explicitly
-#ifdef __OpenBSD__
+#if defined(__OpenBSD__) && !defined(I2PD_NO_PRIVSEP)
 		// Keep startup-only promises until fork/setsid/setrlimit and unveil.
-		// Explicit pledge policies retain their existing override semantics.
+		// A custom policy is additive at this phase too: it may request more
+		// promises, but it can never remove proc/unveil or the fixed baseline
+		// needed before the runtime sandbox is installed.
 		bool usePledge;
 		i2p::config::GetOption ("openbsd.pledge_enabled", usePledge);
 		std::string policy;
 		i2p::config::GetOption ("openbsd.pledge_file", policy);
-		if (usePledge && policy.empty ())
+		if (usePledge)
 		{
 			std::string promises = "stdio rpath wpath cpath fattr inet dns unix flock proc";
+			// The supervisor/log-worker pair is spawned before the runtime
+			// sandbox. Keep exec only for that startup window; the runtime
+			// policy in UnixDaemon::start() deliberately omits proc and exec.
+			if (privsepEnabled && privsepLogEnabled) promises += " exec";
 			bool useUnveil;
 			i2p::config::GetOption ("openbsd.unveil_enabled", useUnveil);
 			if (useUnveil) promises += " unveil";
 			bool upnp;
 			i2p::config::GetOption ("upnp.enabled", upnp);
 			if (upnp) promises += " mcast";
+			if (!policy.empty ())
+			{
+				std::ifstream file (policy);
+				if (!file)
+				{
+					std::cerr << "Daemon: can't open openbsd.pledge_file: " << policy << std::endl;
+					std::exit (EXIT_FAILURE);
+				}
+				std::string line;
+				while (std::getline (file, line))
+				{
+					auto comment = line.find ('#');
+					if (comment != std::string::npos) line.resize (comment);
+					std::istringstream tokens (line);
+					std::string token;
+					while (tokens >> token)
+					{
+						promises.push_back (' ');
+						promises += token;
+					}
+				}
+				if (file.bad ())
+				{
+					std::cerr << "Daemon: can't read openbsd.pledge_file: " << policy << std::endl;
+					std::exit (EXIT_FAILURE);
+				}
+			}
 			if (pledge (promises.c_str (), nullptr) == -1)
 			{
 				std::cerr << "Daemon: startup pledge: " << strerror (errno) << std::endl;
@@ -609,13 +706,17 @@ namespace util
 
 	bool Daemon_Singleton::start ()
 	{
-#ifndef _WIN32
-		if (d.privsepLog)
+#if !defined(_WIN32) && !defined(I2PD_NO_PRIVSEP)
+		if (d->privsepLog)
 		{
-			if (!StartPrivsepLogWorker ()) return false;
+			// The supervisor is normally prepared before the OpenBSD runtime
+			// sandbox is installed. Keep the lazy path for non-OpenBSD builds
+			// and for callers that did not use PreparePrivsepWorkers().
+			if (!d->logWorker && !StartPrivsepLogWorker ()) return false;
+			if (!d->logSink) return false;
 			// The sink object lives until the logger thread is stopped, so the
 			// callback below never observes a replaced or freed sink.
-			auto * sink = d.logSink.get ();
+			auto * sink = d->logSink.get ();
 			i2p::log::Logger ().SetSink ([sink] (LogLevel level, std::time_t timestamp, std::string_view text)
 				{ sink->Write (static_cast<uint8_t> (level), timestamp, text); });
 		}
@@ -628,16 +729,16 @@ namespace util
 		i2p::config::GetOption ("upnp.enabled", upnp);
 		if (upnp)
 		{
-			d.UPnP = std::unique_ptr<i2p::transport::UPnP> (new i2p::transport::UPnP);
-			d.UPnP->Start ();
+			d->UPnP = std::make_unique<i2p::transport::UPnP> ();
+			d->UPnP->Start ();
 		}
 
 		bool nettime;
 		i2p::config::GetOption ("nettime.enabled", nettime);
 		if (nettime)
 		{
-			d.m_NTPSync = std::unique_ptr<i2p::util::NTPTimeSync> (new i2p::util::NTPTimeSync);
-			d.m_NTPSync->Start ();
+			d->m_NTPSync = std::make_unique<i2p::util::NTPTimeSync> ();
+			d->m_NTPSync->Start ();
 		}
 
 		bool ntcp2;
@@ -654,11 +755,23 @@ namespace util
 		else
 		{
 			LogPrint (eLogCritical, "Daemon: Failed to start Transports");
+			// UPnP and NTP own threads too. start() is not followed by stop()
+			// on failure, so tear them down here before their observers.
+			if (d->UPnP)
+			{
+				d->UPnP->Stop ();
+				d->UPnP = nullptr;
+			}
+			if (d->m_NTPSync)
+			{
+				d->m_NTPSync->Stop ();
+				d->m_NTPSync = nullptr;
+			}
 			/** shut down netdb right away */
 			i2p::transport::transports.Stop ();
 			i2p::data::netdb.Stop ();
-#ifndef _WIN32
-			if (d.privsepLog)
+#if !defined(_WIN32) && !defined(I2PD_NO_PRIVSEP)
+			if (d->privsepLog)
 			{
 				// start() is not followed by stop() on failure; tear the sink
 				// down here so the logger callback cannot dangle.
@@ -688,11 +801,11 @@ namespace util
 			if (socketPath.empty ()) socketPath = i2p::fs::DataDirPath ("i2pd-tui.sock");
 			// The TUI is optional: a failure to create its local IPC
 			// endpoint must never prevent the router from running headless.
-			d.tuiServer = std::make_unique<i2p::tui::Server> (socketPath);
-			if (!d.tuiServer->Start ())
+			d->tuiServer = std::make_unique<i2p::tui::Server> (socketPath);
+			if (!d->tuiServer->Start ())
 			{
 				LogPrint (eLogWarning, "Daemon: TUI IPC disabled, router continues without it");
-				d.tuiServer.reset ();
+				d->tuiServer.reset ();
 			}
 		}
 
@@ -708,9 +821,8 @@ namespace util
 			LogPrint (eLogInfo, "Daemon: Starting I2PControl at ", i2pcpAddr, ":", i2pcpPort);
 			try
 			{
-				d.m_I2PControlService = std::unique_ptr<i2p::client::I2PControlService> (
-					new i2p::client::I2PControlService (i2pcpAddr, i2pcpPort));
-				d.m_I2PControlService->Start ();
+				d->m_I2PControlService = std::make_unique<i2p::client::I2PControlService> (i2pcpAddr, i2pcpPort);
+				d->m_I2PControlService->Start ();
 			}
 			catch (std::exception & ex)
 			{
@@ -718,13 +830,13 @@ namespace util
 				ThrowFatal ("Unable to start I2PControl service at ", i2pcpAddr, ":", i2pcpPort, ": ", ex.what ());
 			}
 		}
-#ifndef _WIN32
-		if (d.privsepLog && d.logSink && d.logWorker && !d.logSupervisor.joinable ())
+#if !defined(_WIN32) && !defined(I2PD_NO_PRIVSEP)
+		if (d->privsepLog && d->logSink && d->logWorker && !d->logSupervisor.joinable ())
 		{
 			// The monitor starts last so every earlier failure path can tear
 			// down the worker without also having to stop a thread.
-			d.logSupervisorStop.store (false, std::memory_order_relaxed);
-			d.logSupervisor = std::thread ([this] { RunPrivsepLogSupervisor (); });
+			d->logSupervisorStop.store (false, std::memory_order_relaxed);
+			d->logSupervisor = std::thread ([this] { RunPrivsepLogSupervisor (); });
 		}
 #endif
 		return true;
@@ -735,18 +847,33 @@ namespace util
 		LogPrint (eLogInfo, "Daemon: Shutting down");
 		// These two own threads and read router state, so they must stop
 		// before the subsystems they observe are torn down.
-		if (d.tuiServer)
+		if (d->tuiServer)
 		{
 			LogPrint (eLogInfo, "Daemon: Stopping TUI IPC");
-			d.tuiServer->Stop ();
-			d.tuiServer = nullptr;
+			d->tuiServer->Stop ();
+			d->tuiServer = nullptr;
 		}
-		if (d.m_I2PControlService)
+		if (d->m_I2PControlService)
 		{
 			LogPrint (eLogInfo, "Daemon: Stopping I2PControl");
-			d.m_I2PControlService->Stop ();
-			d.m_I2PControlService = nullptr;
+			d->m_I2PControlService->Stop ();
+			d->m_I2PControlService = nullptr;
 		}
+
+		// UPnP and NTP read router state from their own threads, so stop them
+		// before the router context and its io_service are torn down.
+		if (d->UPnP)
+		{
+			d->UPnP->Stop ();
+			d->UPnP = nullptr;
+		}
+
+		if (d->m_NTPSync)
+		{
+			d->m_NTPSync->Stop ();
+			d->m_NTPSync = nullptr;
+		}
+
 		LogPrint (eLogInfo, "Daemon: Stopping Client");
 		i2p::client::context.Stop ();
 		LogPrint (eLogInfo, "Daemon: Stopping Router context");
@@ -754,30 +881,18 @@ namespace util
 		LogPrint (eLogInfo, "Daemon: Stopping Tunnels");
 		i2p::tunnel::tunnels.Stop ();
 
-		if (d.UPnP)
-		{
-			d.UPnP->Stop ();
-			d.UPnP = nullptr;
-		}
-
-		if (d.m_NTPSync)
-		{
-			d.m_NTPSync->Stop ();
-			d.m_NTPSync = nullptr;
-		}
-
 		LogPrint (eLogInfo, "Daemon: Stopping Transports");
 		i2p::transport::transports.Stop ();
 		LogPrint (eLogInfo, "Daemon: Stopping NetDB");
 		i2p::data::netdb.Stop ();
 		i2p::crypto::TerminateCrypto ();
 		// Keep the worker and its monitor alive while the logger drains the
-		// queue. StopPrivsepLogWorker then sends the graceful shutdown before
-		// joining the monitor.
+		// queue. StopPrivsepLogWorker then joins the monitor before sending
+		// the graceful shutdown to the worker.
 		i2p::log::Logger ().Stop ();
 		i2p::log::Logger ().SetSink (nullptr);
-#ifndef _WIN32
-		if (d.privsepLog) StopPrivsepLogWorker ();
+#if !defined(_WIN32) && !defined(I2PD_NO_PRIVSEP)
+		if (d->privsepLog) StopPrivsepLogWorker ();
 #endif
 
 		return true;
@@ -860,7 +975,7 @@ namespace util
 				s, i2p::context.GetStatusV6 (), i2p::context.GetTestingV6 (), i2p::context.GetErrorV6 ());
 		}
 		s << "; ";
-		s << "Caps: " << i2p::context.GetRouterInfo ().GetProperty ("caps") << "; ";
+		s << "Caps: " << i2p::context.GetRouterInfoProperty ("caps") << "; ";
 		s << "Success Rate: " << i2p::tunnel::tunnels.GetTunnelCreationSuccessRate () << "%\n";
 		s << "Uptime: ";
 		ShowUptime (s, i2p::context.GetUptime ());
