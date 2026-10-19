@@ -34,6 +34,7 @@ import androidx.activity.OnBackPressedCallback;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.StringRes;
+import androidx.appcompat.app.ActionBar;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.content.res.AppCompatResources;
 import androidx.core.graphics.drawable.DrawableCompat;
@@ -213,7 +214,10 @@ public class MainActivity extends AppCompatActivity {
         FragmentManager fragments = getSupportFragmentManager();
         int count = fragments.getBackStackEntryCount();
         boolean detail = count > 0;
-        toolbar.setDisplayHomeAsUpEnabled(detail);
+        ActionBar actionBar = getSupportActionBar();
+        if (actionBar != null) {
+            actionBar.setDisplayHomeAsUpEnabled(detail);
+        }
         if (detail) {
             String name = fragments.getBackStackEntryAt(count - 1).getName();
             if (TAG_LOGS.equals(name)) {
@@ -403,7 +407,10 @@ public class MainActivity extends AppCompatActivity {
         // The back-stack listener updates the title; setting it here avoids a
         // visible stale title until the asynchronous commit completes.
         toolbar.setTitle(title);
-        toolbar.setDisplayHomeAsUpEnabled(true);
+        ActionBar actionBar = getSupportActionBar();
+        if (actionBar != null) {
+            actionBar.setDisplayHomeAsUpEnabled(true);
+        }
         invalidateOptionsMenu();
     }
 

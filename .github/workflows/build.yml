@@ -43,13 +43,6 @@ jobs:
           persist-credentials: false
       - name: Install latest build tools from Homebrew
         uses: ./.github/actions/brew-toolchain
-      - name: Install distribution libraries
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends \
-            libncurses-dev \
-            libboost-dev libboost-program-options-dev libboost-json-dev \
-            libboost-url-dev libssl-dev zlib1g-dev libminiupnpc-dev
       - name: Build and run all CTest targets
         run: |
           cmake -S build -B build-output -G Ninja \
@@ -209,10 +202,6 @@ jobs:
           persist-credentials: false
       - name: Install latest build tools from Homebrew
         uses: ./.github/actions/brew-toolchain
-      - name: Install distribution libraries
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends libboost-dev libboost-program-options-dev libboost-json-dev libboost-url-dev libssl-dev zlib1g-dev libminiupnpc-dev libncurses-dev
       - name: Build and run sanitizer CTest matrix
         env:
           ASAN_OPTIONS: ${{ matrix.asan_options }}

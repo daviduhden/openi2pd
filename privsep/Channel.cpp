@@ -290,8 +290,8 @@ i2p::expected<std::optional<ReceivedMessage>, std::string> Channel::ReceiveWithF
 	// truncated or duplicated descriptor set is a protocol violation; close
 	// every descriptor the kernel delivered so it cannot leak.
 	int receivedFd = -1;
-	bool receivedCredentials = false;
 #if defined(__linux__)
+	bool receivedCredentials = false;
 	struct ucred messageCredentials { };
 #endif
 	bool ancillaryError = false;

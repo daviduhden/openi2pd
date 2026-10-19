@@ -31,10 +31,6 @@ jobs:
           persist-credentials: false
       - name: Install latest build tools from Homebrew
         uses: ./.github/actions/brew-toolchain
-      - name: Install distribution libraries
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends libboost-dev libboost-program-options-dev libboost-json-dev libboost-url-dev libssl-dev zlib1g-dev
       - name: Build libFuzzer targets
         run: |
           cmake -S build -B build-fuzz -G Ninja \

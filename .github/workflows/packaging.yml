@@ -34,6 +34,7 @@ jobs:
         uses: ./.github/actions/brew-toolchain
         with:
           compilers: 'false'
+          libraries: 'false'
       - name: Install static validators
         run: |
           sudo apt-get update -qq
@@ -68,7 +69,8 @@ jobs:
       - name: Validate DEP-8 control metadata
         run: |
           sudo apt-get install -y --no-install-recommends autopkgtest
-          autopkgtest --version
+          autopkgtest --help >/dev/null
+          dpkg-query -W -f='autopkgtest ${Version}\n' autopkgtest
 
   debian:
     name: Debian packages

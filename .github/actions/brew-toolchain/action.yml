@@ -3,17 +3,20 @@
 #
 # openi2pd: latest Homebrew toolchain.
 #
-# Installs the newest GCC, LLVM, CMake and Ninja available from Homebrew on
-# Linux and exposes stable command names through a per-run toolchain bin.
-# Project libraries remain the distribution packages so the tests exercise
-# the same ABI as normal Linux builds.
+# Installs the newest GCC, LLVM, CMake, Ninja, Boost, OpenSSL, zlib,
+# MiniUPnPc and ncurses available from Homebrew on Linux. Stable command names
+# and CMake/runtime hints are exposed through a per-run file.
 #
 ---
 name: Latest Homebrew toolchain
-description: Install latest GCC, LLVM, CMake and Ninja from Homebrew on Linux.
+description: Install latest GCC, LLVM, CMake, Ninja, Boost, OpenSSL and dependencies.
 inputs:
   compilers:
     description: Install and expose GCC and LLVM as well as CMake/Ninja.
+    required: false
+    default: 'true'
+  libraries:
+    description: Install Boost, OpenSSL, zlib, MiniUPnPc and ncurses.
     required: false
     default: 'true'
 runs:
@@ -23,6 +26,7 @@ runs:
       shell: bash
       env:
         INSTALL_COMPILERS: ${{ inputs.compilers }}
+        INSTALL_LIBRARIES: ${{ inputs.libraries }}
       run: |
         set -euo pipefail
         if [ ! -x /home/linuxbrew/.linuxbrew/bin/brew ]; then
@@ -32,10 +36,14 @@ runs:
         eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
         export HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_CLEANUP=1
         brew update
-        packages='cmake ninja'
+        packages='cmake ninja pkgconf'
         if [ "$INSTALL_COMPILERS" = 'true' ]; then
           packages="$packages gcc llvm"
         fi
+        if [ "$INSTALL_LIBRARIES" = 'true' ]; then
+          packages="$packages boost openssl@4 miniupnpc ncurses zlib"
+        fi
+
         # Install first, then upgrade so a formula preinstalled in the runner
         # image is replaced with the current Homebrew bottle. Query each
         # formula explicitly: an unconditional upgrade exits non-zero when a
@@ -52,10 +60,15 @@ runs:
         mkdir -p "$toolchain_bin"
         ln -sfn "${prefix}/bin/cmake" "${toolchain_bin}/cmake"
         ln -sfn "${prefix}/bin/ninja" "${toolchain_bin}/ninja"
+        if [ -x "${prefix}/bin/pkg-config" ]; then
+          ln -sfn "${prefix}/bin/pkg-config" "${toolchain_bin}/pkg-config"
+        fi
 
+        ld_path="${LD_LIBRARY_PATH:-}"
         if [ "$INSTALL_COMPILERS" = 'true' ]; then
           gcc_prefix="$(brew --prefix gcc)"
           llvm_prefix="$(brew --prefix llvm)"
+          binutils_prefix="$(brew --prefix binutils)"
           gcc_version="$(brew list --versions gcc | awk '{print $2}' | cut -d. -f1)"
           if [ -z "$gcc_version" ]; then
             echo 'Unable to determine the installed GCC major version' >&2
@@ -65,9 +78,45 @@ runs:
           ln -sfn "${gcc_prefix}/bin/g++-${gcc_version}" "${toolchain_bin}/g++"
           ln -sfn "${llvm_prefix}/bin/clang" "${toolchain_bin}/clang"
           ln -sfn "${llvm_prefix}/bin/clang++" "${toolchain_bin}/clang++"
+          # GCC 16 emits newer assembler directives than the Ubuntu binutils;
+          # keep the matching Homebrew binutils first on PATH.
+          for tool in as ld ar ranlib nm objcopy strip; do
+            if [ -x "${binutils_prefix}/bin/${tool}" ]; then
+              ln -sfn "${binutils_prefix}/bin/${tool}" "${toolchain_bin}/${tool}"
+            fi
+          done
+          ld_path="${gcc_prefix}/lib64:${gcc_prefix}/lib:${llvm_prefix}/lib:${ld_path}"
+        fi
+        if [ "$INSTALL_LIBRARIES" = 'true' ]; then
+          boost_prefix="$(brew --prefix boost)"
+          openssl_prefix="$(brew --prefix openssl@4)"
+          miniupnpc_prefix="$(brew --prefix miniupnpc)"
+          ncurses_prefix="$(brew --prefix ncurses)"
+          zlib_prefix="$(brew --prefix zlib)"
           {
-            echo "LD_LIBRARY_PATH=${gcc_prefix}/lib64:${gcc_prefix}/lib:${llvm_prefix}/lib:${LD_LIBRARY_PATH:-}"
+            echo "BOOST_ROOT=${boost_prefix}"
+            echo "OPENSSL_ROOT_DIR=${openssl_prefix}"
+            echo "ZLIB_ROOT=${zlib_prefix}"
+            echo "CMAKE_PREFIX_PATH=${boost_prefix}:${openssl_prefix}:${miniupnpc_prefix}:${ncurses_prefix}:${zlib_prefix}:${CMAKE_PREFIX_PATH:-}"
+            echo "CMAKE_INCLUDE_PATH=${ncurses_prefix}/include:${CMAKE_INCLUDE_PATH:-}"
+            echo "CMAKE_LIBRARY_PATH=${ncurses_prefix}/lib:${CMAKE_LIBRARY_PATH:-}"
+            echo "PKG_CONFIG_PATH=${boost_prefix}/lib/pkgconfig:${openssl_prefix}/lib/pkgconfig:${miniupnpc_prefix}/lib/pkgconfig:${ncurses_prefix}/lib/pkgconfig:${zlib_prefix}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
           } >> "$GITHUB_ENV"
+          ld_path="${zlib_prefix}/lib:${miniupnpc_prefix}/lib:${ncurses_prefix}/lib:${openssl_prefix}/lib:${boost_prefix}/lib:${prefix}/lib:${ld_path}"
         fi
 
+        if [ -n "$ld_path" ]; then
+          echo "LD_LIBRARY_PATH=${ld_path}" >> "$GITHUB_ENV"
+        fi
         echo "${toolchain_bin}" >> "$GITHUB_PATH"
+        export PATH="${toolchain_bin}:${PATH}"
+
+        cmake --version | head -1
+        ninja --version
+        if [ "$INSTALL_COMPILERS" = 'true' ]; then
+          gcc --version | head -1
+          clang --version | head -1
+        fi
+        for package in $packages; do
+          brew list --versions "$package"
+        done
