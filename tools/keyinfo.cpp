@@ -12,7 +12,7 @@
 #include <string>
 #include <vector>
 #include <memory>
-#include <unistd.h>
+#include "common/getopt.h"
 #include <stdio.h>
 #include <time.h>
 #include "common/file.hpp"

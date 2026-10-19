@@ -11,7 +11,7 @@
 #include <exception>
 #include <filesystem>
 #include <functional>
-#include <getopt.h>
+#include "common/getopt.h"
 #include <iostream>
 #include <mutex>
 #include <regex>

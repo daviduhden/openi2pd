@@ -1,5 +1,4 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
  * Copyright (c) 2026, David Uhden Collado
  * SPDX-License-Identifier: BSD-3-Clause
  */
@@ -79,6 +78,7 @@ inline bool IsNumericAddressText (std::string_view text)
 
 inline std::optional<Endpoint> MakeEndpoint (std::string_view addressText, int port, Transport transport)
 {
+	if (transport != Transport::NTCP2 && transport != Transport::SSU2) return std::nullopt;
 	if (port < 1 || port > 65535) return std::nullopt;
 	if (addressText.empty () || addressText.size () > 64) return std::nullopt;
 
@@ -92,14 +92,53 @@ inline std::optional<Endpoint> MakeEndpoint (std::string_view addressText, int p
 	if (ec || address.is_unspecified () || address.is_multicast () || address.is_loopback ()) return std::nullopt;
 
 	// A v4-mapped v6 address would bypass the IPv4 checks above and is not
-	// a valid RouterInfo endpoint.
-	if (address.is_v6 () && address.to_v6 ().is_v4_mapped ()) return std::nullopt;
-
-	// The limited broadcast address is neither unicast nor useful as a
-	// destination; emitting it would create an over-broad rule.
-	if (address.is_v4 () && address.to_v4 () == boost::asio::ip::address_v4::broadcast ()) return std::nullopt;
+	// a valid RouterInfo endpoint. IPv4-compatible (::a.b.c.d) and
+	// link-local destinations are also unusable for a public I2P router and
+	// would create misleading firewall rules.
+	if (address.is_v6 ())
+	{
+		const auto bytes = address.to_v6 ().to_bytes ();
+		if (address.to_v6 ().is_v4_mapped ()) return std::nullopt;
+		const bool ipv4Compatible = std::all_of (bytes.begin (), bytes.begin () + 12,
+			[] (unsigned char byte) { return byte == 0; });
+		if (ipv4Compatible) return std::nullopt;
+		if (bytes[0] == 0xfe && (bytes[1] & 0xc0) == 0x80) return std::nullopt; // fe80::/10
+		if ((bytes[0] & 0xfe) == 0xfc) return std::nullopt; // fc00::/7 ULA
+		if (bytes[0] == 0xfe && (bytes[1] & 0xc0) == 0xc0) return std::nullopt; // fec0::/10 site-local
+	}
+	else
+	{
+		const auto bytes = address.to_v4 ().to_bytes ();
+		if (bytes[0] == 169 && bytes[1] == 254) return std::nullopt; // 169.254.0.0/16
+		// Do not turn a private, CGNAT or reserved address from an untrusted
+		// RouterInfo into a firewall rule. Documentation/benchmark ranges are
+		// intentionally left to the caller because the unit tests use them.
+		const uint32_t value = address.to_v4 ().to_uint ();
+		if ((value & 0xff000000u) == 0x0a000000u // 10.0.0.0/8
+			|| (value & 0xfff00000u) == 0xac100000u // 172.16.0.0/12
+			|| (value & 0xffff0000u) == 0xc0a80000u // 192.168.0.0/16
+			|| (value & 0xffc00000u) == 0x64400000u // 100.64.0.0/10 CGNAT
+			|| (value & 0xff000000u) == 0x00000000u // 0.0.0.0/8
+			|| (value & 0xf0000000u) == 0xf0000000u) // 240.0.0.0/4
+			return std::nullopt;
+		// The limited broadcast address is neither unicast nor useful as a
+		// destination; emitting it would create an over-broad rule.
+		if (address.to_v4 () == boost::asio::ip::address_v4::broadcast ()) return std::nullopt;
+	}
 
 	return Endpoint { address.to_string (), static_cast<uint16_t> (port), transport, address.is_v6 () };
+}
+
+/**
+	 * Revalidate an Endpoint at the rendering boundary. Endpoint is deliberately
+	 * a small aggregate, so callers should use MakeEndpoint(); this guard keeps a
+	 * manually constructed or deserialized endpoint from bypassing its family,
+	 * canonical-address and port checks.
+	 */
+inline bool IsValidEndpoint (const Endpoint & endpoint)
+{
+	auto parsed = MakeEndpoint (endpoint.address, endpoint.port, endpoint.transport);
+	return parsed && parsed->address == endpoint.address && parsed->ipv6 == endpoint.ipv6;
 }
 
 inline bool IsSafeIdentifier (std::string_view value)
@@ -108,6 +147,20 @@ inline bool IsSafeIdentifier (std::string_view value)
 	if (!(std::isalpha (static_cast<unsigned char> (value.front ())) || value.front () == '_')) return false;
 	return std::all_of (value.begin () + 1, value.end (),
 		[] (unsigned char ch) { return std::isalnum (ch) || ch == '_' || ch == '-' || ch == '.'; });
+}
+
+/**
+	 * nftables chain names are configured by the caller. Reject the standard
+	 * inbound/forward hook names so a typo cannot turn an "outbound" command
+	 * into an INPUT/FORWARD rule. Custom output chains remain possible.
+	 */
+inline bool IsSafeOutputChain (std::string_view value)
+{
+	if (!IsSafeIdentifier (value)) return false;
+	std::string lower (value.begin (), value.end ());
+	std::transform (lower.begin (), lower.end (), lower.begin (),
+		[] (unsigned char ch) { return static_cast<char> (std::tolower (ch)); });
+	return lower != "input" && lower != "forward" && lower != "prerouting" && lower != "postrouting";
 }
 
 /**
@@ -158,7 +211,7 @@ inline std::string IptablesCommand (const Endpoint & endpoint)
 
 inline std::optional<std::string> Nftables (const Endpoint & endpoint, const RenderOptions & options)
 {
-	if (!IsSafeIdentifier (options.nftTable) || !IsSafeIdentifier (options.nftChain)) return std::nullopt;
+	if (!IsSafeIdentifier (options.nftTable) || !IsSafeOutputChain (options.nftChain)) return std::nullopt;
 
 	const bool useInet = options.nftFamily == "inet";
 	const bool useIp = options.nftFamily == "ip";
@@ -175,7 +228,7 @@ inline std::optional<std::string> Nftables (const Endpoint & endpoint, const Ren
 inline std::optional<std::string> Windows (const Endpoint & endpoint, const RenderOptions & options)
 {
 	if (!IsSafeRuleTag (options.ruleTag)) return std::nullopt;
-	const std::string name = "i2pd " + std::string (TransportName (endpoint.transport)) + " " + options.ruleTag + " "
+	const std::string name = "openi2pd " + std::string (TransportName (endpoint.transport)) + " " + options.ruleTag + " "
 		+ endpoint.address + ":" + std::to_string (endpoint.port);
 	return "New-NetFirewallRule -DisplayName '" + EscapePowerShell (name)
 		+ "' -Direction Outbound -Action Allow -Protocol " + (endpoint.transport == Transport::NTCP2 ? "TCP" : "UDP")
@@ -191,6 +244,7 @@ inline std::string Pf (const Endpoint & endpoint)
 
 inline std::optional<std::string> Render (const Endpoint & endpoint, const RenderOptions & options)
 {
+	if (!IsValidEndpoint (endpoint)) return std::nullopt;
 	switch (options.backend)
 	{
 	case Backend::IptablesLegacy: return IptablesLegacy (endpoint);

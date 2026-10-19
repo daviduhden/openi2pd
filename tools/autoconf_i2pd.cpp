@@ -5,6 +5,7 @@
  */
 #ifndef AUTOCONFC
 #define AUTOCONFC
+#include <array>
 #include <iostream>
 #include <sstream>
 #include <map>
@@ -195,8 +196,8 @@ bool IsOnlyYggdrasil (const std::string & lang) noexcept
 
 int main (void)
 {
-	std::cout << "https://i2pd.readthedocs.io/en/latest/user-guide/configuration/\r\nhttps://github.com/PurpleI2P/i2pd/"
-				 "blob/openssl/contrib/i2pd.conf\r\n";
+	std::cout << "https://github.com/daviduhden/openi2pd/blob/main/docs/user-guide/configuration.md\r\n"
+				 "https://github.com/daviduhden/openi2pd/blob/main/contrib/i2pd.conf\r\n";
 	std::ostringstream conf;
 	auto lang = AutoConf::GetLanguage ();
 	auto isOnlyYgg = AutoConf::IsOnlyYggdrasil (lang);
@@ -299,14 +300,18 @@ int main (void)
 	std::cout << conf.str () << std::endl;
 	//TODO: To Constexpr
 	std::cout << "Save File: (\"i2pd_.conf\"):";
-	std::string outFileName;
+	std::array<char, AutoConf::MAX_INPUT_LENGTH + 2> nameBuffer { };
 	std::cin.clear ();
-	if (!std::getline (std::cin, outFileName)) outFileName.clear ();
-	if (outFileName.size () > AutoConf::MAX_INPUT_LENGTH)
+	std::cin.getline (nameBuffer.data (), nameBuffer.size ());
+	if (std::cin.fail () && !std::cin.eof ())
 	{
 		std::cerr << "file name too long" << std::endl;
 		return 1;
 	}
+	const auto count = static_cast<size_t> (std::cin.gcount ());
+	std::string outFileName (nameBuffer.data (), count);
+	while (!outFileName.empty () && (outFileName.back () == '\n' || outFileName.back () == '\r'))
+		outFileName.pop_back ();
 	//TODO: to constxpr
 	if (outFileName.length () == 0) outFileName = "i2pd_.conf";
 	std::ofstream confFile (outFileName, std::ios::binary | std::ios::trunc);

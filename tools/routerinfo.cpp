@@ -5,14 +5,13 @@
  */
 #include <cstdint>
 #include <cstring>
-#include <getopt.h>
+#include "common/getopt.h"
 #include <iostream>
 #include <memory>
 #include <optional>
 #include <set>
 #include <string>
 #include <string_view>
-#include <unistd.h>
 #include <vector>
 
 #include "Crypto.h"
@@ -103,15 +102,22 @@ bool PrintRules (const std::string & hash,
 	const std::vector<std::shared_ptr<const i2p::data::RouterInfo::Address>> & addresses, const Options & options,
 	std::set<std::string> & seen, size_t & total)
 {
+	bool valid = true;
 	for (const auto & address : addresses)
 	{
 		auto transport = TransportOf (*address);
 		if (!transport) continue;
+		// SSU2 addresses may be introducer-only: the serialized RouterInfo has
+		// neither a host nor a direct port for them. They are valid RouterInfo
+		// data but cannot produce a direct outbound rule, so skip them instead of
+		// treating the whole file as malformed.
+		if (address->host.is_unspecified () || address->port <= 0) continue;
 
 		auto endpoint = i2p::tools::firewall::MakeEndpoint (address->host.to_string (), address->port, *transport);
 		if (!endpoint)
 		{
-			std::cerr << "routerinfo: ignoring invalid endpoint for " << hash << std::endl;
+			std::cerr << "routerinfo: invalid endpoint for " << hash << std::endl;
+			valid = false;
 			continue;
 		}
 		if (++total > MAX_ENDPOINTS)
@@ -128,7 +134,7 @@ bool PrintRules (const std::string & hash,
 		auto rule = i2p::tools::firewall::Render (*endpoint, render);
 		if (rule) std::cout << *rule << std::endl;
 	}
-	return true;
+	return valid;
 }
 }
 
@@ -220,7 +226,7 @@ int main (int argc, char * argv[])
 				return 1;
 			}
 			if (!i2p::tools::firewall::IsSafeIdentifier (options.render.nftTable)
-				|| !i2p::tools::firewall::IsSafeIdentifier (options.render.nftChain))
+				|| !i2p::tools::firewall::IsSafeOutputChain (options.render.nftChain))
 			{
 				std::cerr << "routerinfo: invalid nft table or chain name" << std::endl;
 				return 1;
@@ -236,38 +242,62 @@ int main (int argc, char * argv[])
 
 	std::set<std::string> seen;
 	size_t total = 0;
+	bool inputError = false;
 	for (int index = optind; index < argc; ++index)
 	{
 		const std::string filename (argv[index]);
-		i2p::data::RouterInfo router (filename);
-		const auto & hash = router.GetIdentHashBase64 ();
-
-		std::vector<std::shared_ptr<const i2p::data::RouterInfo::Address>> addresses;
-		AddAddress (addresses, router.GetPublishedNTCP2V4Address ());
-		AddAddress (addresses, router.GetSSU2V4Address ());
-		if (options.ipv6)
+		try
 		{
-			AddAddress (addresses, router.GetPublishedNTCP2V6Address ());
-			AddAddress (addresses, router.GetSSU2V6Address ());
-		}
-		if (options.yggdrasil) AddAddress (addresses, router.GetYggdrasilAddress ());
-
-		if (options.backend)
-		{
-			std::cout << "# " << hash << std::endl;
-			if (!PrintRules (hash, addresses, options, seen, total)) return 1;
-		}
-		else
-		{
-			std::cout << "Router Hash: " << hash << std::endl;
-			for (const auto & address : addresses)
+			i2p::data::RouterInfo router (filename);
+			if (router.IsUnreachable () || !router.GetRouterIdentity ())
 			{
-				std::cout << AddressStyle (*address) << ": " << address->host;
-				if (options.printPort) std::cout << ":" << address->port;
-				std::cout << std::endl;
+				std::cerr << "routerinfo: malformed or invalid RouterInfo: " << filename << std::endl;
+				inputError = true;
+				continue;
 			}
+			const auto hash = router.GetIdentHashBase64 ();
+
+			std::vector<std::shared_ptr<const i2p::data::RouterInfo::Address>> addresses;
+			AddAddress (addresses, router.GetPublishedNTCP2V4Address ());
+			AddAddress (addresses, router.GetSSU2V4Address ());
+			if (options.ipv6)
+			{
+				AddAddress (addresses, router.GetPublishedNTCP2V6Address ());
+				AddAddress (addresses, router.GetSSU2V6Address ());
+			}
+			if (options.yggdrasil) AddAddress (addresses, router.GetYggdrasilAddress ());
+
+			if (options.backend)
+			{
+				std::cout << "# " << hash << std::endl;
+				if (!PrintRules (hash, addresses, options, seen, total))
+				{
+					inputError = true;
+					continue;
+				}
+			}
+			else
+			{
+				std::cout << "Router Hash: " << hash << std::endl;
+				for (const auto & address : addresses)
+				{
+					std::cout << AddressStyle (*address) << ": " << address->host;
+					if (options.printPort) std::cout << ":" << address->port;
+					std::cout << std::endl;
+				}
+			}
+		}
+		catch (const std::exception & ex)
+		{
+			std::cerr << "routerinfo: cannot read " << filename << ": " << ex.what () << std::endl;
+			inputError = true;
+		}
+		catch (...)
+		{
+			std::cerr << "routerinfo: cannot read " << filename << std::endl;
+			inputError = true;
 		}
 	}
 
-	return 0;
+	return inputError ? 1 : 0;
 }

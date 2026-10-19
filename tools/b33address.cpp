@@ -3,8 +3,10 @@
  * Copyright (c) 2026, David Uhden Collado
  * SPDX-License-Identifier: BSD-3-Clause
  */
+#include <array>
 #include <iostream>
 #include <string>
+#include <string_view>
 #include <memory>
 #include "Identity.h"
 #include "LeaseSet.h"
@@ -12,10 +14,27 @@
 
 int main (int argc, char * argv[])
 {
-	// base64 input, b33 and store key output, 11->11 only
+	(void)argc;
+	(void)argv;
+	// base64 input, b33 and store key output, 11->11 only. Bound the line
+	// before allocation: a terminal or pipe must not be able to make this
+	// diagnostic tool buffer arbitrary input.
+	constexpr size_t MAX_BASE64_INPUT = 4096;
 	std::cout << "Waiting for base64 from stdin..." << std::endl;
-	std::string base64;
-	std::getline (std::cin, base64);
+	std::array<char, MAX_BASE64_INPUT + 2> input { };
+	std::cin.getline (input.data (), input.size ());
+	if (std::cin.fail () && !std::cin.eof ())
+	{
+		std::cout << "Invalid base64 address (input too long)" << std::endl;
+		return 0;
+	}
+	std::string_view base64 (input.data ());
+	while (!base64.empty () && (base64.back () == '\r' || base64.back () == '\n')) base64.remove_suffix (1);
+	if (base64.empty () || base64.size () > MAX_BASE64_INPUT)
+	{
+		std::cout << "Invalid base64 address" << std::endl;
+		return 0;
+	}
 	auto ident = std::make_shared<i2p::data::IdentityEx> ();
 	if (ident->FromBase64 (base64))
 	{

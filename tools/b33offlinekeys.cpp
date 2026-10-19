@@ -4,13 +4,14 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 #include <iostream>
-#include <fstream>
 #include <stdlib.h>
 #include <inttypes.h>
 #include <charconv>
 #include <vector>
 #include <string.h>
 #include <memory>
+#include <array>
+#include <openssl/crypto.h>
 #include "Blinding.h"
 #include "I2PEndian.h"
 #include "Crypto.h"
@@ -21,12 +22,26 @@
 
 const int kMaxDays = 0xFFFF; // the number of keys in the batch is two bytes
 
+namespace
+{
+struct WipeGuard
+{
+	uint8_t * data;
+	size_t size;
+	~WipeGuard ()
+	{
+		if (data && size) OPENSSL_cleanse (data, size);
+	}
+};
+}
+
 static std::vector<uint8_t> createB33OfflineKeys (
 	const i2p::data::PrivateKeys & keys, i2p::data::SigningKeyType transientSigType, int days)
 {
 	std::vector<uint8_t> buf;
 	if (days < 1 || days > kMaxDays) return buf;
 	auto identity = keys.GetPublic ();
+	if (!identity) return buf;
 	i2p::data::BlindedPublicKey blindedKey (identity);
 	if (!blindedKey.IsValid ()) return buf;
 	std::unique_ptr<i2p::crypto::Verifier> transientVerifier (i2p::data::IdentityEx::CreateVerifier (transientSigType));
@@ -56,37 +71,25 @@ static std::vector<uint8_t> createB33OfflineKeys (
 		htobe32buf (signedData, midnight + (i + 1) * i2p::data::SECONDS_PER_DAY); // expires at the end of that day
 		htobe16buf (signedData + 4, transientSigType);
 		uint8_t blindedPriv[32], blindedPub[32];
+		WipeGuard blindedPrivateGuard { blindedPriv, sizeof (blindedPriv) };
 		if (!blindedKey.BlindPrivateKey (keys.GetSigningPrivateKey (), date, blindedPriv, blindedPub))
 		{
-			buf.clear ();
+			i2p::tools::Wipe (buf);
 			return buf;
 		}
 		std::unique_ptr<i2p::crypto::Signer> blindedSigner (
 			i2p::data::PrivateKeys::CreateSigner (blindedKey.GetBlindedSigType (), blindedPriv));
 		if (!blindedSigner)
 		{
-			buf.clear ();
+			i2p::tools::Wipe (buf);
 			return buf;
 		}
 		i2p::data::PrivateKeys::GenerateSigningKeyPair (transientSigType,
 			signedData + signedDataLen + blindedSignatureLen, signedData + i2p::data::OFFLINE_SIGNATURE_HEADER_LENGTH);
 		blindedSigner->Sign (signedData, signedDataLen, signedData + signedDataLen);
-		memset (blindedPriv, 0, sizeof (blindedPriv)); // it would give the destination's key away
 		offset += keyLen;
 	}
 	return buf;
-}
-
-static bool writeFile (const char * name, const void * data, std::size_t size)
-{
-	std::ofstream f (name, std::ofstream::binary | std::ofstream::out);
-	f.write ((const char *)data, size);
-	if (!f)
-	{
-		std::cout << "Can't write " << name << std::endl;
-		return false;
-	}
-	return true;
 }
 
 int main (int argc, char * argv[])
@@ -151,6 +154,7 @@ int main (int argc, char * argv[])
 	if (b33Keys.empty ())
 	{
 		std::cout << "Can't create b33 offline keys" << std::endl;
+		i2p::crypto::TerminateCrypto ();
 		return 7;
 	}
 	// the transient of the inner LeaseSet lasts exactly as long as the batch
@@ -161,19 +165,29 @@ int main (int argc, char * argv[])
 	size_t l = onlineKeys.ToBuffer (out.data (), out.size ());
 	if (!l)
 	{
+		i2p::tools::Wipe (out);
+		i2p::tools::Wipe (b33Keys);
 		std::cout << "Can't serialize online keys" << std::endl;
+		i2p::crypto::TerminateCrypto ();
 		return 8;
 	}
 	memcpy (out.data () + l, b33Keys.data (), b33Keys.size ());
 	out.resize (l + b33Keys.size ());
-	if (writeFile (argv[1], out.data (), out.size ()))
+	const bool written = i2p::tools::WriteFile (argv[1], out.data (), out.size ());
+	i2p::tools::Wipe (out);
+	i2p::tools::Wipe (b33Keys);
+	if (!written)
 	{
-		i2p::data::BlindedPublicKey blindedKey (keys.GetPublic ());
-		std::cout << "Address " << blindedKey.ToB33 () << ".b32.i2p, " << days << " days" << std::endl
-				  << "Give the router this file and keep the destination keys offline:" << std::endl
-				  << "  keys = " << argv[1] << std::endl
-				  << "  i2cp.leaseSetType = 5" << std::endl;
+		std::cout << "Can't create file " << argv[1] << std::endl;
+		i2p::crypto::TerminateCrypto ();
+		return 9;
 	}
+
+	i2p::data::BlindedPublicKey blindedKey (keys.GetPublic ());
+	std::cout << "Address " << blindedKey.ToB33 () << ".b32.i2p, " << days << " days" << std::endl
+			  << "Give the router this file and keep the destination keys offline:" << std::endl
+			  << "  keys = " << argv[1] << std::endl
+			  << "  i2cp.leaseSetType = 5" << std::endl;
 
 	i2p::crypto::TerminateCrypto ();
 

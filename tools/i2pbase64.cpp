@@ -5,15 +5,21 @@
  */
 #include <algorithm>
 #include <array>
-#include <cerrno>
-#include <cstring>
-#include <fcntl.h>
+#include <cstdint>
+#include <cstdio>
+#include <fstream>
 #include <iostream>
+#include <span>
 #include <string>
 #include <string_view>
-#include <unistd.h>
 
+#include "common/getopt.h"
 #include "Base.h"
+
+#ifdef _WIN32
+#include <fcntl.h>
+#include <io.h>
+#endif
 
 namespace
 {
@@ -25,52 +31,68 @@ int printHelp (const char * exe, int exitcode)
 	return exitcode;
 }
 
-bool WriteAll (int fd, const uint8_t * data, size_t size)
+void SetBinaryStdio ()
 {
-	while (size)
-	{
-		const auto written = ::write (fd, data, size);
-		if (written < 0)
-		{
-			if (errno == EINTR) continue;
-			return false;
-		}
-		if (!written) return false;
-		data += written;
-		size -= static_cast<size_t> (written);
-	}
-	return true;
+#ifdef _WIN32
+	_setmode (_fileno (stdin), _O_BINARY);
+	_setmode (_fileno (stdout), _O_BINARY);
+#endif
 }
 
-int Decode (int infile, int outfile)
+bool WriteAll (std::ostream & output, std::span<const uint8_t> data)
+{
+	if (data.empty ()) return true;
+	output.write (reinterpret_cast<const char *> (data.data ()), static_cast<std::streamsize> (data.size ()));
+	return static_cast<bool> (output);
+}
+
+bool WriteAll (std::ostream & output, std::string_view data)
+{
+	if (data.empty ()) return true;
+	output.write (data.data (), static_cast<std::streamsize> (data.size ()));
+	return static_cast<bool> (output);
+}
+
+int Decode (std::istream & input, std::ostream & output)
 {
 	std::array<char, CHUNK_SIZE> inbuf { };
 	std::array<uint8_t, CHUNK_SIZE> outbuf { };
 	std::string pending;
 	while (true)
 	{
-		const auto readSize = ::read (infile, inbuf.data (), inbuf.size ());
-		if (readSize < 0)
+		input.read (inbuf.data (), static_cast<std::streamsize> (inbuf.size ()));
+		const auto readSize = input.gcount ();
+		if (readSize > 0)
 		{
-			if (errno == EINTR) continue;
+			for (std::streamsize i = 0; i < readSize; ++i)
+				if (inbuf[static_cast<size_t> (i)] != '\n' && inbuf[static_cast<size_t> (i)] != '\r'
+					&& inbuf[static_cast<size_t> (i)] != ' ' && inbuf[static_cast<size_t> (i)] != '\t')
+					pending.push_back (inbuf[static_cast<size_t> (i)]);
+
+			const size_t complete = pending.size () - pending.size () % 4;
+			if (complete)
+			{
+				const auto decoded
+					= i2p::data::Base64ToByteStream (std::string_view (pending).substr (0, complete), outbuf);
+				if (!decoded || !WriteAll (output, std::span<const uint8_t> (outbuf).first (decoded)))
+					return 1;
+				pending.erase (0, complete);
+			}
+			if (pending.size () > 4)
+			{
+				std::cerr << "invalid base64 input" << std::endl;
+				return 1;
+			}
+		}
+		if (input.bad ())
+		{
+			std::cerr << "read error" << std::endl;
 			return 1;
 		}
-		if (readSize == 0) break;
-		for (ssize_t i = 0; i < readSize; ++i)
-			if (inbuf[i] != '\n' && inbuf[i] != '\r' && inbuf[i] != ' ' && inbuf[i] != '\t')
-				pending.push_back (inbuf[i]);
-
-		const size_t complete = pending.size () - pending.size () % 4;
-		if (complete)
+		if (input.eof ()) break;
+		if (!input)
 		{
-			const auto decoded
-				= i2p::data::Base64ToByteStream (std::string_view (pending).substr (0, complete), outbuf);
-			if (!decoded || !WriteAll (outfile, outbuf.data (), decoded)) return 1;
-			pending.erase (0, complete);
-		}
-		if (pending.size () > 4)
-		{
-			std::cerr << "invalid base64 input" << std::endl;
+			std::cerr << "read error" << std::endl;
 			return 1;
 		}
 	}
@@ -82,20 +104,31 @@ int Decode (int infile, int outfile)
 	return 0;
 }
 
-int Encode (int infile, int outfile)
+int Encode (std::istream & input, std::ostream & output)
 {
 	std::array<uint8_t, CHUNK_SIZE * 3> inbuf { };
 	while (true)
 	{
-		const auto readSize = ::read (infile, inbuf.data (), inbuf.size ());
-		if (readSize < 0)
+		input.read (reinterpret_cast<char *> (inbuf.data ()), static_cast<std::streamsize> (inbuf.size ()));
+		const auto readSize = input.gcount ();
+		if (readSize > 0)
 		{
-			if (errno == EINTR) continue;
+			const std::span<const uint8_t> chunk
+				= std::span<const uint8_t> (inbuf).first (static_cast<size_t> (readSize));
+			const auto encoded = i2p::data::ByteStreamToBase64 (chunk);
+			if (!WriteAll (output, std::string_view (encoded))) return 1;
+		}
+		if (input.bad ())
+		{
+			std::cerr << "read error" << std::endl;
 			return 1;
 		}
-		if (readSize == 0) break;
-		const auto encoded = i2p::data::ByteStreamToBase64 (inbuf.data (), static_cast<size_t> (readSize));
-		if (!WriteAll (outfile, reinterpret_cast<const uint8_t *> (encoded.data ()), encoded.size ())) return 1;
+		if (input.eof ()) break;
+		if (!input)
+		{
+			std::cerr << "read error" << std::endl;
+			return 1;
+		}
 	}
 	return 0;
 }
@@ -103,9 +136,9 @@ int Encode (int infile, int outfile)
 
 int main (int argc, char * argv[])
 {
+	SetBinaryStdio ();
 	int opt;
 	bool decode = false;
-	int infile = STDIN_FILENO;
 	while ((opt = getopt (argc, argv, "dh")) != -1)
 	{
 		switch (opt)
@@ -117,17 +150,18 @@ int main (int argc, char * argv[])
 	}
 
 	if (argc - optind > 1) return printHelp (argv[0], 1);
+	std::ifstream file;
+	std::istream * input = &std::cin;
 	if (optind < argc)
 	{
-		infile = ::open (argv[optind], O_RDONLY);
-		if (infile == -1)
+		file.open (argv[optind], std::ios::binary);
+		if (!file)
 		{
 			std::perror (argv[optind]);
 			return 1;
 		}
+		input = &file;
 	}
 
-	const int result = decode ? Decode (infile, STDOUT_FILENO) : Encode (infile, STDOUT_FILENO);
-	if (infile != STDIN_FILENO) ::close (infile);
-	return result;
+	return decode ? Decode (*input, std::cout) : Encode (*input, std::cout);
 }

@@ -13,7 +13,7 @@
 #include <memory>
 #include <string>
 #include <vector>
-#include <unistd.h>
+#include "common/getopt.h"
 #include "Crypto.h"
 #include "RouterInfo.h"
 #include "Base.h"
@@ -25,6 +25,9 @@
 #include <openssl/ecdsa.h>
 #include <openssl/ssl.h>
 #include <openssl/sha.h>
+#ifndef _WIN32
+#include <sys/stat.h>
+#endif
 
 using namespace i2p::crypto;
 using namespace i2p::data;
@@ -364,6 +367,12 @@ int main (int argc, char * argv[])
 			std::fprintf (stderr, "cannot open %s: %s\n", privkey.c_str (), std::strerror (errno));
 			return 1;
 		}
+
+#ifndef _WIN32
+		// The private key is unencrypted by design; do not inherit a
+		// world-readable umask for it.
+		(void)::fchmod (::fileno (privf.get ()), S_IRUSR | S_IWUSR);
+#endif
 
 		FilePtr certf (std::fopen (certfile.c_str (), "w"));
 		if (!certf)
