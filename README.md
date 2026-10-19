@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: README.
+
+Documents project documentation.
+
+-->
+
 # openi2pd
 
 ![openi2pd logo](assets/branding/logo-horizontal.svg)

@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: symbol.
+
+Defines visual identity assets resources.
+
+-->
+
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-labelledby="title"><title id="title">openi2pd logo</title>
 <metadata>
 Copyright (c) 2026, David Uhden Collado
