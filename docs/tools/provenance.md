@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: provenance.
+
+Documents project documentation.
+
+-->
+
 # Tool provenance and inventory
 
 The native utilities in `tools/` are adapted from
@@ -15,15 +25,14 @@ the working tree.
 
 ## Licence and notices
 
-- Upstream tool sources retain their `The PurpleI2P Project` copyright headers
-  and `SPDX-License-Identifier: BSD-3-Clause` notices.
-- Fork modifications add `Copyright (c) 2026, David Uhden Collado` while
-  preserving the upstream notice.
-- [`tools/LICENSE`](../../tools/LICENSE) is the upstream BSD-3-Clause text.
-  Its copyright-holder field was empty upstream and is intentionally preserved
-  rather than filled with an invented name.
-- New compatibility, validation, test and CMake files written for openi2pd
-  carry only the fork copyright and `SPDX-License-Identifier: BSD-3-Clause`.
+- Upstream tool provenance is recorded in [`tools/LICENSE`](../../tools/LICENSE),
+  the import manifest and repository history. Project-standard source headers
+  point to the repository `LICENSE` instead of duplicating copyright/SPDX
+  boilerplate.
+- Third-party files that carry their own license terms or attribution
+  requirements retain those notices.
+- New compatibility, validation, test and CMake files use the same short
+  `LICENSE` reference and a file-specific description.
 - The installed tools do not bundle third-party fonts, browser assets or
   downloaded binaries.
 
