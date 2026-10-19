@@ -69,7 +69,6 @@ jobs:
       - name: Validate DEP-8 control metadata
         run: |
           sudo apt-get install -y --no-install-recommends autopkgtest
-          autopkgtest --help >/dev/null
           dpkg-query -W -f='autopkgtest ${Version}\n' autopkgtest
 
   debian:

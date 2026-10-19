@@ -32,7 +32,7 @@
 #include <unistd.h>
 
 #if defined(__OpenBSD__)
-// getexecname(3) is a global stdlib.h interface on OpenBSD; <cstdlib> does
+// getprogname(3) is a global stdlib.h interface on OpenBSD; <cstdlib> does
 // not necessarily expose it to the global namespace.
 #include <stdlib.h>
 #endif
@@ -81,12 +81,27 @@ std::string ExecutablePath ()
 		return path;
 	}
 #elif defined(__OpenBSD__)
-	const char * path = getexecname ();
-	if (path && *path)
+	// OpenBSD 7.9 has getprogname(3) but not getexecpath(3). Resolve the
+	// program name through PATH while the startup pledge still permits it.
+	const char * name = getprogname ();
+	if (name && *name)
 	{
 		char resolved[4096];
-		if (realpath (path, resolved)) return resolved;
-		return path;
+		if (strchr (name, '/')) return realpath (name, resolved) ? resolved : name;
+		const char * pathEnv = getenv ("PATH");
+		const std::string searchPath = pathEnv && *pathEnv ? pathEnv : "/usr/local/bin:/usr/bin:/bin";
+		size_t start = 0;
+		while (start <= searchPath.size ())
+		{
+			const size_t end = searchPath.find (':', start);
+			const std::string directory = searchPath.substr (
+				start, end == std::string::npos ? std::string::npos : end - start);
+			const std::string candidate = (directory.empty () ? std::string (".") : directory) + "/" + name;
+			if (access (candidate.c_str (), X_OK) == 0)
+				return realpath (candidate.c_str (), resolved) ? resolved : candidate;
+			if (end == std::string::npos) break;
+			start = end + 1;
+		}
 	}
 #elif defined(__APPLE__)
 	// Not a supported platform for this fork.
@@ -304,7 +319,7 @@ i2p::expected<ChildProcess, std::string> SpawnLogWorker (std::string_view execut
 
 i2p::expected<ChildProcess, std::string> SpawnSupervisor ()
 {
-	return SpawnWorker ("supervisor");
+	return SpawnWorker ("supervisor", { });
 }
 
 }
