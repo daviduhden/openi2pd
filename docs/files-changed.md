@@ -1,3 +1,14 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: files changed.
+
+Records the file-level changes, documentation updates and static validation
+status for the current repository increment.
+
+-->
+
 # Files created, modified and removed
 
 This list covers the refactoring described in the other documents. No commit
@@ -283,7 +294,7 @@ version branches; comment-only changes are included:
 
 ## License header pass
 
-Upstream-derived files retain the two copyright lines from `LICENSE` and `SPDX-License-Identifier: BSD-3-Clause`. New files written for openi2pd that were not copied from an i2pd repository carry only `Copyright (c) 2026, David Uhden Collado` and the SPDX identifier; this includes the new TUI/IPC, test, Android probe, branding and tooling files. Existing third-party files retain their own notices: Apache-2.0 Gradle wrapper, BSL-1.0 CMake module, New-BSD CMake module, Windows SDK header, OpenBSD ports copies, and CC-BY-SA documentation.
+The current header policy uses a short `See the LICENSE file at the top of the project tree...` reference plus a file-specific description in first-party source, configuration and script files. Duplicated project copyright/SPDX blocks were removed from those files. The legal terms remain in `LICENSE`; existing third-party notices remain in place, including the Apache-2.0 Gradle wrapper, BSL-1.0 and New-BSD CMake modules, Windows SDK header, OpenBSD ports copies, fixtures and CC-BY-SA documentation.
 
 - `.clang-format` — C++ and Java formatting profiles for the maintained source tree.
 
@@ -869,3 +880,26 @@ validation was performed.
 | `tests/check-build-system.cmake` | Added compile-free inventory assertions for every checked-in `test-*.cpp` and `tests/fuzz/*.cpp` source. |
 | `.github/workflows/build.yml` | Kept the workflow `workflow_dispatch`-only; added the per-label CTest inventory step and retained Linux GCC/Clang, Android, interop and ASan+UBSan/TSan jobs. |
 | `docs/testing.md`, `docs/ci.md`, `TODO.md`, `PROGRESS.md` | Recorded the platform-specific registration, labels, optional fuzz CTest entries, the published-run limitations and the manual dispatch/audit state. |
+
+## Native init services and Debian packaging (2026-10-19)
+
+| Path | Change |
+|---|---|
+| `contrib/i2pd.service`, `libi2pd/Config.cpp`, `daemon/Daemon.cpp` | Native foreground systemd unit with `i2pd` account, State/RuntimeDirectory, journald, SIGINT stop, bounded restart and IPC-compatible hardening; explicit `--foreground` overrides a local `daemon=true`. |
+| `contrib/sysvinit/i2pd`, `debian/i2pd.init` | LSB SysV fallback using `start-stop-daemon --background`, secure dirs, HUP/INT/USR1 handling and full status/reload actions. |
+| `contrib/openrc/i2pd.openrc`, `contrib/openrc/conf.d/i2pd` | OpenRC `supervise-daemon` runscript and `/etc/conf.d` defaults. |
+| `contrib/runit/i2pd/`, `contrib/s6/i2pd/`, `contrib/s6-rc/source/i2pd/` | Native foreground run scripts, separate runit logger, s6-rc longrun and dependency marker. |
+| `contrib/shepherd/i2pd.scm` | Native GNU Shepherd service with foreground start, `i2pd` account, syslog and SIGINT grace. |
+| `contrib/dinit/i2pd` | Foreground dinit sample with file logging and bounded restart. |
+| `build/CMakeLists.txt` | Added mutually exclusive `I2PD_SERVICE_MANAGER`/`I2PD_SERVICE_DIR`/`I2PD_SERVICE_CONFDIR` install selection and `Service` component. |
+| `tests/check-services.cmake`, `tests/check-build-system.cmake`, `tests/CMakeLists.txt` | Static service-contract checks and install-graph assertions; `services-static` test. |
+| `debian/control`, `debian/rules`, `debian/*.install`, `debian/*.manpages`, `debian/*.links`, `debian/*.default`, `debian/*.tmpfiles`, `debian/postinst`, `debian/postrm`, `debian/changelog`, `debian/NEWS`, `debian/copyright` | Debhelper 13 packaging, `i2pd`/`i2pd-tui` split, conffiles, service/tmpfiles integration, autopkgtest smoke test and packaging metadata. |
+| `.github/workflows/packaging.yml` | Manual service-contract, lintian and Debian autopkgtest workflow. |
+| `docs/service-management.md`, `docs/user-guide/run.md`, `docs/user-guide/install.md`, `docs/build-system.md`, `docs/devs/building/unix.md`, `docs/README.md`, `docs/mkdocs.yml`, `docs/security/privilege-separation.md` | Documented native manager operation, Debian packages, CMake `Service` selection, hardening, logs and pending runtime validation. |
+| `TODO.md`, `ROADMAP.md`, `PROGRESS.md`, `AGENTS.md` | Recorded SERVICE/DEB work, static-only status and pending CI/package/service validation. |
+
+All entries above are implemented by static analysis only. No build, configure,
+package build, lintian, autopkgtest, service start/stop, daemon lifecycle or
+systemd/OpenRC/runit/s6/Shepherd/SysV execution was performed locally. Manual
+CI and disposable-host validation remain required before claiming runtime
+service, package or privilege-separation validation.

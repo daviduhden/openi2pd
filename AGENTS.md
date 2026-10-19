@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: AGENTS.
+
+Documents project documentation.
+
+-->
+
 # Subagent operating instructions
 
 This file is for agents working in this repository. It is not user-facing
@@ -170,14 +180,15 @@ integration.
 
 ## Licensing
 
-- Upstream-derived project code/config files retain the two `LICENSE` copyright
-  lines and `SPDX-License-Identifier: BSD-3-Clause`. New files written for
-  openi2pd that were not copied from an i2pd repository carry only
-  `Copyright (c) 2026, David Uhden Collado` and the SPDX identifier.
+- First-party source, configuration and script headers use the short
+  `See the LICENSE file at the top of the project tree...` reference. Do not
+  reintroduce duplicated project copyright/SPDX boilerplate; the legal terms
+  live in `LICENSE` and provenance remains in repository history.
 - Documentation remains CC-BY-SA-4.0 as declared in its license file.
-  Third-party files retain their own SPDX/license notices; do not relicense
-  Apache-2.0, BSL-1.0, Windows SDK, OpenBSD ports or imported components.
-- Preserve `LICENSE`, `NOTICE`-equivalent attribution, copyright and SPDX text.
+  Third-party files retain their own notices; do not relicense Apache-2.0,
+  BSL-1.0, Windows SDK, OpenBSD ports or imported components.
+- Preserve `LICENSE`, `NOTICE`-equivalent attribution, third-party license
+  text and upstream provenance.
 
 ## Persistent project constraints
 
@@ -195,7 +206,8 @@ integration.
 - Do not claim full privilege separation until network/storage workers,
   supervisor and negative capability tests actually exist. The log worker is
   only the first isolated component.
-- Preserve copyright, license, SPDX, NOTICE and upstream provenance.
+- Preserve copyright, license, NOTICE, third-party attribution and upstream
+  provenance; do not reintroduce duplicated project SPDX boilerplate.
 
 ## Current uncommitted work
 
@@ -207,15 +219,39 @@ BitTorrent, IPC/privsep/JNI and daemon lifecycle), dependency-floor cleanup,
 the five-subsystem Java 2.13.0 static-interoperability pass, and the
 LeaseSet/RouterInfo/netDb Java 2.13.0 pass, static-only crypto/client/IPC
 work, the RouterContext/torrent-containment/read-only TUI-config pass with
-per-tool and IPC regressions, and the C++23 ownership/RAII continuation
+per-tool and IPC regressions, the C++23 ownership/RAII continuation
 (Kademlia/Garlic/Reseed, daemon descriptors/OpenSSL, client owners, span tools
-and signature scopes). Historical local Linux/GCC 16 builds and CTest
-runs predate the current static-only policy and do not validate the present
-uncommitted tree.
-Current changes are pending manual CI compilation and tests; no Java peer, live
-floodfill, sanitizer, fuzzer, Windows, Android or OpenBSD dynamic run exists.
-Agents must not revert or overwrite those changes.
+and signature scopes), and the native init-service/Debian packaging
+modernization (systemd, GNU Shepherd, OpenRC, runit, s6/s6-rc, SysVinit,
+CMake `Service` selection and Debian `i2pd`/`i2pd-tui`). Historical local
+Linux/GCC 16 builds and CTest runs predate the current static-only policy and
+do not validate the present uncommitted tree.
+Current changes are pending manual CI compilation and tests; no service
+manager, Debian package, lintian, autopkgtest, init-script or daemon lifecycle
+run exists. No Java peer, live floodfill, sanitizer, fuzzer, Windows, Android
+or OpenBSD dynamic run exists. Agents must not revert or overwrite those
+changes.
 Torrent TUI control must use the bounded local IPC; it must not access engine
 internals, sockets, download files or JSON-RPC. Python is not an allowed
 runtime dependency for project-maintained scripts once the Perl replacement
 is installed.
+
+## I2PSnark continuation ownership/state (2026-10-19)
+
+The actual checkout HEAD at this increment was `c8f2eba1`, initially clean.
+The older baseline description above is historical. Current torrent/native
+Android changes are implemented by static analysis only, pending CI compilation
+and pending CI tests. Task inventory: SNARK-001..SNARK-008 in TODO; functional
+and protocol matrices: `docs/torrent/snark-compatibility.md`.
+
+Do not advertise the unintegrated `ut_comment` codec/store as peer support.
+`CreateV1` accepts ordered lengths and precomputed piece hashes; disk creation
+and hashing are separate pending work. Explicit tracker lists suppress common
+fallback and must preserve that property on reload. Tracker edits require
+paused, fully metadated torrents. Global tracker quota reclamation and BEP 12
+failover remain pending. Native Android JNI controls do not establish OS
+network/storage isolation; SAF and advanced GUI operations remain pending.
+Do not copy GPL Snark implementation into BSD sources; review per-file notices.
+The reference excerpts outside the repository are not a complete verified
+clone. No current changes are dynamically validated; keep all regression tasks
+open until their corresponding manual CI passes.

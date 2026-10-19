@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: ROADMAP.
+
+Documents project documentation.
+
+-->
+
 # Roadmap
 
 This roadmap coordinates parallel workstreams. It is subordinate to the
@@ -284,6 +294,21 @@ No commits, tags or pushes are created by this work. Automatic CI stays
 disabled. Any change to protocol or persisted formats requires a specification
 reference and a regression test before it is considered complete.
 
+## Native service and Debian packaging modernization (static, 2026-10-19)
+
+Status: implemented by static analysis; pending manual CI compilation, package
+build and service validation. Native definitions cover systemd, GNU Shepherd,
+OpenRC, runit, s6/s6-rc and SysVinit, with exactly one manager selectable at
+CMake install time. Debian packages split the router/tools (`i2pd`) from the
+interactive ncurses client (`i2pd-tui`), use debhelper-managed systemd/SysV/
+tmpfiles integration and provide DEP-8 smoke tests.
+
+Exit criteria: manual CI builds both binary packages, `lintian` and
+autopkgtest pass, `systemd-analyze verify` accepts the unit, each manager's
+start/stop/restart/status/reload and signal behavior is checked on a disposable
+host, and no TUI service or duplicate router instance is created. Until then,
+do not claim runtime service, privilege-separation or package validation.
+
 ## Memory-safety corrections (static, 2026-10-18)
 
 Status: **implemented by static analysis, pending compilation and dynamic
@@ -318,3 +343,28 @@ BitTorrent multi-thread piece handoff (mutexed but not single-owner),
 `RunnableService` self-join and timer ownership, Streaming raw packet
 containers, Windows pre-open filesystem TOCTOU, hard links and rename races.
 These are not claimed fixed.
+
+## Native I2PSnark parity increment (2026-10-19)
+
+Status: implemented by static analysis for the scoped primitives and native
+controls; pending CI compilation; pending CI tests. See SNARK-001..SNARK-008 in
+`TODO.md` and the functional/protocol matrices in
+`docs/torrent/snark-compatibility.md`.
+
+Delivered source changes cover bounded multi-tracker magnets, preserved BEP 12
+metadata and v1 construction from ordered files/precomputed hashes, paused
+tracker administration over TUI IPC, private-swarm discovery guards, opaque
+I2P DHT tokens/cryptographic transactions and stricter PEX/DHT messages. The
+independent comments codec/store is opt-in locally and remains unadvertised.
+Android now includes the native engine and a Material torrent panel through
+the service/JNI boundary, with app-private storage.
+
+Next unlocked work: storage-domain enumeration/hashing and complete create
+commands; precise BEP 12 failover and tracker registry reclamation; DHT routing,
+seed filtering and abuse budgets; negotiated comment exchange/persistence and
+native controls; file priorities and bandwidth controls; Android SAF and
+advanced operations. Research v2/hybrid support against exact specifications
+and compatible peers before enabling it. Implement OS workers and negative
+capability tests before claiming network/storage separation. All dynamic
+verification remains exclusively in manually dispatched CI; no current result
+validates this local increment.

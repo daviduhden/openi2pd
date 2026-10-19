@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: TODO.
+
+Documents project documentation.
+
+-->
+
 # Master TODO
 
 Persistent task inventory for the openi2pd fork. IDs are stable. A checked
@@ -551,8 +561,8 @@ when there is no older ID.
   - Priority P1; Status Pending; see REBRAND-005..007.
 - [ ] **[LEGAL-001]** Audit new torrent/Perl/Android/CI files for required copyright, license and provenance notices.
   - Priority P0; Status In progress; preserve BSD-3-Clause and upstream notices.
-- [x] **[LEGAL-002]** Add the LICENSE copyright lines and `SPDX-License-Identifier: BSD-3-Clause` to project source/config files; retain third-party and CC-BY-SA notices.
-  - Priority P0; Status Implemented / static; code/config headers added; third-party exceptions documented; no compiler/license-scanner run.
+- [x] **[LEGAL-002]** Use short `See the LICENSE...` reference headers in first-party source/config/script files; remove duplicated project copyright/SPDX boilerplate while retaining third-party and CC-BY-SA notices.
+  - Priority P0; Status Implemented / static; project headers normalized; legal/license texts, generated files, fixtures and third-party notices retained; no compiler/license-scanner run.
 - [ ] **[CI-001]** Keep workflows `workflow_dispatch`-only, actions SHA-pinned, checkout credentials disabled and workflow lint clean.
   - Priority P0; Status Implemented; zizmor/yamllint clean; re-run after workflow edits.
 
@@ -787,3 +797,56 @@ residual risks.
   - Priority P1; Status Implemented / static; `Timestamp.*`, `util.*`, `RouterContext.*`, `NetDb.*`, `Log.*`; lifecycle regressions prepared; CI pending.
 - [ ] **[MEM-032]** Bound IPC sends/TUI clients and child reaping with absolute deadlines.
   - Priority P1; Status Implemented / static; `privsep/Channel.cpp`, `privsep/Worker.*`, `daemon/TuiServer*`; Linux IPC/child tests pending.
+
+## I2PSnark native parity continuation (2026-10-19)
+
+Reference and exhaustive area inventory: `docs/torrent/snark-compatibility.md`.
+These tasks supplement, and do not close, TORRENT/PRIVSEP/ANDROID/MEM tasks above.
+All current changes are local: **pending CI compilation; pending CI tests**.
+
+- [ ] **[SNARK-001]** Magnet and v1 metadata parity.
+  - Priority P0; Status implemented by static analysis; pending CI compilation; pending CI tests.
+  - Bounded hex/base32/percent-decoded btih, contradictory-topic rejection, multiple I2P tracker hints; BEP 12 tier roundtrip and pure ordered-file/piece-hash v1 constructor. Private metadata suppresses DHT/PEX and closes pre-metadata connections; late discovery callbacks are guarded.
+  - Files: `Torrents*`, `tests/test-torrents-magnet.cpp`, `tests/test-torrents-engine-interop.cpp`.
+  - Still pending: storage-domain directory enumeration/streamed hashing and complete create operation via IPC/TUI/Android. v2-only unsupported; hybrid v1 projection is not BEP 52 validation.
+- [ ] **[SNARK-002]** I2P tracker administration and exact endpoint membership.
+  - Priority P0; Status implemented by static analysis; pending CI compilation; pending CI tests.
+  - Paused-torrent add/remove through typed local IPC and TUI t/T; validates I2P HTTP/UDP URLs, preserves infohash, captures immutable metainfo for storage. Explicit empty list persists and suppresses common-tracker fallback. Private swarms never use unrelated common trackers.
+  - Still pending: BEP 12 failover/shuffling, reclaim unused global tracker slots, persistence failure acknowledgements/crash atomicity and Android tracker editing. Edit churn safely reaches the bounded registry quota until restart.
+- [ ] **[SNARK-003]** I2P DHT and PEX interoperability/security.
+  - Priority P0; Status implemented by static analysis for opaque tokens, transaction/NID binding, packet/port validation, private/stopped guards and complete PEX/DHT extension dictionaries; pending CI compilation; pending CI tests.
+  - Prepared `test-torrents-dht-interop`; existing parser fuzzer extended. Remaining: Java live trackerless exchange, zero-length foreign tokens, seed/noseed semantics, XOR routing parity, per-origin abuse budgets, raw sender metadata and response-size reconciliation.
+- [ ] **[SNARK-004]** Comments/ratings interoperable opt-in subsystem.
+  - Priority P1; Status implemented by static analysis for independent `ut_comment` codec and disabled-by-default bounded local store; pending CI compilation; pending CI tests.
+  - UTF-8/UTF-16 field bounds, age timestamps, ratings, deduplication and local hiding; regression and fuzz entry prepared. Remaining: negotiated peer exchange, rate budgets, per-torrent persistence, admin IPC, native TUI/Android controls and differential Java fixtures. No comments capability is advertised yet; labels are unauthenticated pseudonyms.
+- [ ] **[SNARK-005]** Autonomous native Android torrent client.
+  - Priority P0; Status implemented by static analysis for enabled native engine, private-storage session bootstrap, bounded service/JNI administration and Material Views torrent panel; pending CI compilation; pending CI tests.
+  - Panel supports magnets, sharing, list/progress, pause/resume/remove, files/peers/trackers details and DHT. Prepared Java protocol regressions; Android vcpkg includes Boost JSON/URL.
+  - Remaining: SAF broker and torrent import, creation, selection/priorities, tracker edits, comments, external-router mode, notifications/device battery/service lifecycle validation; first config write crash recovery.
+- [ ] **[SNARK-006]** Enforce torrent operating-system capability separation.
+  - Priority P0; Status pending. Same-process service/disk threads and JNI are not OS privilege separation. Network, session, storage and verification workers, supervisor, typed descriptor/capability IPC and negative tests are still required on Linux/OpenBSD/Windows/Android. No claim of satisfying the no-network-plus-persistent-write invariant.
+- [ ] **[SNARK-007]** Native parity CI and reference provenance.
+  - Priority P0; Status implemented by static analysis for test/CMake/manual-workflow registration, functional/protocol matrices and per-file license review notes; pending CI compilation; pending CI tests.
+  - Four new CTest targets: magnet, engine-interop, dht-interop, comments; existing TUI protocol regression expanded and torrent fuzzer extended. Java live/differential, sanitizer/fuzzer, OpenBSD/LibreSSL, Windows and Android device validation remain pending.
+  - No local build/configure/compiler/test/Gradle/binary execution; no commit/push. Earlier CI results apply only to their recorded revisions.
+- [ ] **[SNARK-008]** Complete remaining functional inventory.
+  - Priority P1; Status pending. File selection/priorities and piece-boundary scheduling, per-session/per-torrent bandwidth/connection limits, durable pause/queue state and crash recovery, full error/retry parity, advanced TUI/Android settings, creation and comments must remain open until implemented and validated.
+
+## Native init services and Debian packaging (2026-10-19)
+
+Status: implemented by static analysis; pending manual CI service/package
+validation. These tasks do not claim a successful build, service start or
+package install.
+
+- [ ] **[SERVICE-001]** Provide a native systemd unit with foreground `Type=exec`, restricted user, journald logging, native state/runtime directories, bounded restart and IPC-compatible hardening.
+  - Priority P0; Status implemented / static; `contrib/i2pd.service`; explicit `--foreground` overrides a local `daemon=true`, no `Type=notify`, no self-daemonizing mode. `systemd-analyze`, start/stop/status/reload and sandbox/IPC checks pending CI.
+- [ ] **[SERVICE-002]** Provide native GNU Shepherd, OpenRC, runit, s6/s6-rc and SysVinit definitions with foreground supervision and secure paths.
+  - Priority P0; Status implemented / static; `contrib/shepherd`, `contrib/openrc`, `contrib/runit`, `contrib/s6`, `contrib/s6-rc`, `contrib/sysvinit`; only the log worker is isolated. Manager start/stop/failure/signal tests pending CI.
+- [ ] **[SERVICE-003]** Select exactly one init system at CMake install time and install no competing service definitions by default.
+  - Priority P1; Status implemented / static; `I2PD_SERVICE_MANAGER`, `I2PD_SERVICE_DIR`, `I2PD_SERVICE_CONFDIR`, `Service` component; `tests/check-build-system.cmake`, `tests/check-services.cmake`; configure/install matrix pending CI.
+- [ ] **[DEB-001]** Modernize Debian packaging for C++23, debhelper 13, native systemd/SysV/tmpfiles, split `i2pd`/`i2pd-tui`, DEP-5 metadata and autopkgtest.
+  - Priority P0; Status implemented / static; `debian/`; build, `dh_missing`, lintian, autopkgtest, install/upgrade/remove/purge and systemd/SysV coexistence pending CI.
+- [ ] **[SERVICE-004]** Add manual CI validation for service contracts and Debian packages.
+  - Priority P0; Status implemented / static; `.github/workflows/packaging.yml` is `workflow_dispatch`-only, actions are pinned and checkout credentials are not persisted; dispatch and failure triage pending.
+- [ ] **[SERVICE-005]** Document enabling, stopping, restarting, status, logging, hardening and Debian package behavior for every supported manager.
+  - Priority P1; Status implemented / static; `docs/service-management.md`, `docs/user-guide/run.md`, `docs/user-guide/install.md`, `docs/build-system.md`, `docs/devs/building/unix.md`; rendered documentation and link checks pending CI.

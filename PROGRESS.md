@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: PROGRESS.
+
+Documents project documentation.
+
+-->
+
 # Progress log
 
 Chronological, append-only record. New sessions should read this file first,
@@ -1501,3 +1511,75 @@ OpenBSD or Java/C++ dynamic test was run.
   **actionlint**, **yamllint** and **zizmor** pass. No local compiler, CTest,
   sanitizer, fuzzer, Gradle/Android or platform run was performed; no commit
   or push.
+
+## 2026-10-19 — native I2PSnark parity increment (static-only)
+
+- Initial `git status`/diff were clean at actual HEAD `c8f2eba1`; the historical
+  baseline described earlier in AGENTS is not the current checkout HEAD.
+- Split engine, DHT/PEX, comments, Android, TUI and static review work between
+  specialized subagent assignments; coordinator integrated control/CMake/CI
+  and documentation. No overlapping file edits were authorized.
+- The complete verified Java clone was absent. Inspected explicit read-only
+  source excerpts at pinned stable commit `9134f808337b401e8e53c73734c81fab04280c9d`;
+  remote annotated tag was peeled and checked. Master at inspection was
+  `8416c8771d9c62c24ac753706cd1746ad24d7ff3`, 197 commits ahead; selected DHT,
+  metadata and v2-related deltas reviewed, not an exhaustive post-tag audit.
+- Added multi-tracker/strict magnet parsing, BEP 12 preservation, independent
+  v1 metadata builder, paused tracker add/remove IPC/TUI controls and immutable
+  metadata snapshots for queued writes. Explicit tracker lists override common
+  tracker fallback. Grouping persists; full tier failover remains pending.
+- DHT now keeps opaque bounded foreign tokens, uses CSPRNG transactions/tokens,
+  validates reply identity binding before consuming requests, and rejects
+  malformed packets/ports. PEX/DHT extension parsing requires full dictionaries.
+  Private metadata closes pre-metadata peers and suppresses later DHT/PEX;
+  late tracker results recheck current authorized membership.
+- Added independent bounded ut_comment codec/store (disabled by default,
+  unadvertised). No GPL Java implementation copied; file-specific public-domain
+  notices and the directory GPLv2 reference are recorded in the matrix.
+- Enabled native torrents in Android/CMake and Android dependency manifests;
+  added service/JNI bounded controls and Material list/magnet/share/details/
+  pause/resume/remove/DHT panel. Uses private storage, not SAF. This is still
+  same-process networking/storage; OS capability separation is not complete.
+- Prepared four new CTest targets, TUI/Android protocol regressions and expanded
+  parser fuzz input coverage; registered sources and an explicit manual CI
+  compatibility step. No workflow triggers changed.
+- Static checks only: `git diff --check`, source/interface review, JSON/XML
+  parsing. No compiler/build/configure/CTest/Gradle/test binary, sanitizer,
+  fuzzer or live peer/device execution. No commits or pushes.
+- Status: implemented by static analysis for the scoped changes; pending CI
+  compilation; pending CI tests. Creation from disk, advanced file selection,
+  limits, comment exchange/UI, SAF, true worker separation and all other open
+  modernization obligations remain open under SNARK-001..SNARK-008.
+
+## 2026-10-19 — native init services and Debian packaging (static-only)
+
+- Reconnaissance subagents audited the existing `contrib/` service samples,
+  `debian/` packaging, CMake install graph, daemon lifecycle/signals and
+  privilege-separation boundaries. The daemon already defaults to foreground;
+  systemd readiness and full worker separation are not implemented.
+- Replaced the forking systemd unit with a native `Type=exec` service using the
+  `i2pd` account, State/RuntimeDirectory, journald, bounded restart, SIGINT
+  graceful stop and IPC-compatible hardening. Added the `--foreground`
+  override and pass it from every native definition so a local
+  `daemon=true` cannot detach a supervised process. Added native GNU Shepherd,
+  OpenRC, runit (with a separate `svlogd` service), s6/s6-rc and LSB SysVinit
+  definitions. Existing dinit was modernized to foreground supervision; the
+  OpenBSD rc.d path remains a documented self-backgrounding legacy exception.
+- Added `I2PD_SERVICE_MANAGER`, `I2PD_SERVICE_DIR`, `I2PD_SERVICE_CONFDIR` and
+  the `Service` CMake component. Exactly one manager is installed; `none` is
+  the default. `tests/check-services.cmake` validates the static service
+  contract and is registered as `services-static`.
+- Modernized Debian packaging for debhelper 13: corrected the CMake TUI option,
+  installed into `debian/tmp`, split `i2pd` and `i2pd-tui`, added explicit
+  install/docs/manpage manifests, debhelper systemd/SysV/tmpfiles integration,
+  a real tmpfiles file, autopkgtest smoke checks, DEP-5 metadata and NEWS.
+- Added a manual `Packaging and service validation` workflow. It runs the
+  service contracts and shell syntax checks, builds both Debian packages,
+  runs lintian and executes the DEP-8 smoke test in an unshare testbed.
+- Static checks only: `cmake -P tests/check-services.cmake`,
+  `cmake -P tests/check-build-system.cmake`, `sh -n`, shellcheck,
+  `systemd-analyze verify` (host-only; `/usr/bin/i2pd` absent), Perl syntax and
+  `git diff --check`. `systemd-analyze` and all service/package lifecycle
+  checks remain pending CI. No build, configure, package build, lintian,
+  autopkgtest, service start or daemon execution was performed locally. No
+  commit or push.
