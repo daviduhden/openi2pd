@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 include(CMakeFindDependencyMacro)
 find_dependency(Threads)
-find_dependency(Boost 1.74 COMPONENTS atomic filesystem program_options)
+find_dependency(Boost 1.74 COMPONENTS program_options)
 if("@WITH_TORRENTS@" STREQUAL "ON")
   find_dependency(Boost 1.81 COMPONENTS json url)
 endif()

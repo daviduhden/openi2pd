@@ -3,13 +3,8 @@
   "dependencies": [
     "boost-algorithm",
     "boost-asio",
-    "boost-atomic",
     "boost-beast",
     "boost-dynamic-bitset",
-    "boost-filesystem",
-    "boost-url",
-    "boost-json",
-    "boost-lexical-cast",
     "boost-logic",
     "boost-program-options",
     "boost-property-tree",

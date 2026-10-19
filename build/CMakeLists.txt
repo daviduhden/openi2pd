@@ -19,7 +19,7 @@ project(
 )
 
 if(NOT CMAKE_SYSTEM_NAME MATCHES "^(Windows|Linux|OpenBSD|Android)$")
-  message(FATAL_ERROR "Open I2Pd supports Windows, Linux, OpenBSD and Android")
+  message(FATAL_ERROR "openi2pd supports Windows, Linux, OpenBSD and Android")
 endif()
 
 # C++23 is a hard requirement. The portable Expected shim provides the
@@ -40,19 +40,14 @@ endif()
 option(WITH_HARDENING       "Use hardening compiler flags"                 OFF)
 option(WITH_LIBRARY         "Install libraries and headers"                ON)
 option(WITH_BINARY          "Build the router executable"                  ON)
-if(DEFINED WITH_TUI)
-  set(_i2pd_tui_default "${WITH_TUI}")
-else()
-  set(_i2pd_tui_default ON)
-endif()
-option(I2PD_BUILD_TUI       "Build the TUI (ncursesw on Unix, Win32 on Windows)" ${_i2pd_tui_default})
+option(I2PD_BUILD_TUI       "Build the TUI (ncursesw on Unix, Win32 on Windows)" ON)
 option(I2PD_BUILD_TOOLS     "Build i2pd auxiliary tools"                   ON)
+option(I2PD_INSTALL_DOCS   "Install documentation and branding assets"    ON)
+option(I2PD_PERL_CRITIC    "Run optional Perl::Critic checks in CTest"    OFF)
 option(I2PD_BUILD_JNI       "Build the Android JNI library"                  OFF)
-option(I2PD_BUILD_TESTS     "Build i2pd tests (alias of BUILD_TESTING)"    OFF)
 option(WITH_STATIC          "Link the router executable statically"        OFF)
 option(WITH_UPNP            "Include support for the UPnP client"          ON)
 option(WITH_TORRENTS        "Include the BitTorrent client"                ON)
-option(WITH_GIT_VERSION     "Use git commit info as version"               OFF)
 option(WITH_ADDRSANITIZER   "Build with AddressSanitizer (Unix)"           OFF)
 option(WITH_THREADSANITIZER "Build with ThreadSanitizer (Unix)"            OFF)
 option(WITH_UNDEFSANITIZER  "Build with UndefinedBehaviorSanitizer (Unix)" OFF)
@@ -60,17 +55,19 @@ option(BUILD_TESTING        "Build unit and protocol tests"                OFF)
 
 include(GNUInstallDirs)
 
-# Keep the historical option names working while exposing the canonical
-# I2PD_BUILD_* names requested by the integrated tree.
-if(I2PD_BUILD_TESTS)
-  set(BUILD_TESTING ON CACHE BOOL "Build unit and protocol tests" FORCE)
-endif()
-set(WITH_TUI "${I2PD_BUILD_TUI}")
 include(CTest)
 
 if(ANDROID)
   set(WITH_TORRENTS OFF)
-  set(WITH_TUI OFF)
+  set(I2PD_BUILD_TUI OFF)
+  # Android uses the JNI shared library; there is no supported standalone
+  # Android daemon executable. The app wrapper already forces this off, and
+  # the manual native CI build must use the same graph.
+  set(WITH_BINARY OFF CACHE BOOL "Build the router executable" FORCE)
+endif()
+
+if(I2PD_BUILD_JNI AND NOT ANDROID)
+  message(FATAL_ERROR "I2PD_BUILD_JNI is only supported when targeting Android")
 endif()
 
 if(WITH_STATIC)
@@ -81,7 +78,6 @@ if(WITH_STATIC)
   set(Boost_USE_STATIC_LIBS ON)
   set(OPENSSL_USE_STATIC_LIBS ON)
   set(ZLIB_USE_STATIC_LIBS ON)
-  set(MINIUPNPC_USE_STATIC_LIBS ON)
   set(BUILD_SHARED_LIBS OFF)
 endif()
 
@@ -90,18 +86,30 @@ set(I2PD_EXTRA_LIBS ${CMAKE_REQUIRED_LIBRARIES})
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 
-find_package(Boost 1.74 REQUIRED COMPONENTS atomic filesystem program_options)
+find_package(Boost 1.74 REQUIRED COMPONENTS program_options)
 if(WITH_TORRENTS AND NOT ANDROID)
   find_package(Boost 1.81 REQUIRED COMPONENTS json url)
 endif()
 find_package(OpenSSL REQUIRED)
-find_package(ZLIB REQUIRED)
+if(OPENSSL_VERSION MATCHES "^LibreSSL ([0-9]+\\.[0-9]+)")
+  if(CMAKE_MATCH_1 VERSION_LESS 4.0)
+    message(FATAL_ERROR "LibreSSL 4.0 or newer is required (found ${OPENSSL_VERSION})")
+  endif()
+elseif(OPENSSL_VERSION MATCHES "^OpenSSL ([0-9]+\\.[0-9]+\\.[0-9]+)")
+  if(CMAKE_MATCH_1 VERSION_LESS 3.0.2)
+    message(FATAL_ERROR "OpenSSL 3.0.2 or newer is required (found ${OPENSSL_VERSION})")
+  endif()
+elseif(OPENSSL_VERSION MATCHES "^([0-9]+\\.[0-9]+\\.[0-9]+)")
+  if(CMAKE_MATCH_1 VERSION_LESS 3.0.2)
+    message(FATAL_ERROR "OpenSSL 3.0.2 or newer is required (found ${OPENSSL_VERSION})")
+  endif()
+else()
+  message(FATAL_ERROR "Unable to determine OpenSSL/LibreSSL version from '${OPENSSL_VERSION}'")
+endif()
+find_package(ZLIB 1.2.11 REQUIRED)
 
 if(WITH_UPNP)
-  find_package(MiniUPnPc)
-  if(NOT MINIUPNPC_FOUND)
-    message(FATAL_ERROR "MiniUPnPc was requested but its headers/library were not found")
-  endif()
+  find_package(MiniUPnPc 2.2.6 REQUIRED)
 endif()
 
 set(LIBI2PD_DIR "${PROJECT_ROOT}/libi2pd")
@@ -131,7 +139,6 @@ set(LIBI2PD_SOURCES
   "${LIBI2PD_DIR}/Gzip.cpp"
   "${LIBI2PD_DIR}/HTTP.cpp"
   "${LIBI2PD_DIR}/I2NPProtocol.cpp"
-  "${LIBI2PD_DIR}/I2PEndian.cpp"
   "${LIBI2PD_DIR}/Identity.cpp"
   "${LIBI2PD_DIR}/IdentMetrics.cpp"
   "${LIBI2PD_DIR}/KadDHT.cpp"
@@ -197,14 +204,21 @@ set(DAEMON_SOURCES
   # specific.
   "${DAEMON_DIR}/TuiServerCommon.cpp"
 )
+set(PRIVSEP_SOURCES)
 
 if(UNIX)
   list(APPEND DAEMON_SOURCES
     "${DAEMON_DIR}/TuiServer.cpp"
     "${DAEMON_DIR}/UnixDaemon.cpp"
+  )
+  list(APPEND PRIVSEP_SOURCES
     "${PROJECT_ROOT}/privsep/Channel.cpp"
+    "${PROJECT_ROOT}/privsep/LinuxSandbox.cpp"
+    "${PROJECT_ROOT}/privsep/OpenBSDImsg.cpp"
+    "${PROJECT_ROOT}/privsep/OpenBSDSandbox.cpp"
     "${PROJECT_ROOT}/privsep/LogWorker.cpp"
     "${PROJECT_ROOT}/privsep/RunWorker.cpp"
+    "${PROJECT_ROOT}/privsep/Supervisor.cpp"
     "${PROJECT_ROOT}/privsep/Worker.cpp"
   )
 endif()
@@ -217,6 +231,9 @@ if(WIN32)
     "${PROJECT_ROOT}/Win32/Win32App.cpp"
     "${PROJECT_ROOT}/Win32/Win32Service.cpp"
     "${PROJECT_ROOT}/Win32/Win32NetState.cpp"
+  )
+  list(APPEND PRIVSEP_SOURCES
+    "${PROJECT_ROOT}/privsep/WindowsIpc.cpp"
   )
   list(APPEND DAEMON_SOURCES "${PROJECT_ROOT}/Win32/Resource.rc")
   set_source_files_properties("${PROJECT_ROOT}/Win32/Resource.rc" PROPERTIES
@@ -268,6 +285,31 @@ function(i2pd_enable_sanitizers target)
   endif()
 endfunction()
 
+if(PRIVSEP_SOURCES AND NOT ANDROID)
+  # Keep the native IPC/supervisor code out of the core library and daemon
+  # source list. This gives the component one explicit ownership boundary and
+  # lets tests or a future supervisor link it independently.
+  add_library(i2pd_privsep STATIC ${PRIVSEP_SOURCES})
+  set_target_properties(i2pd_privsep PROPERTIES PREFIX "" POSITION_INDEPENDENT_CODE ON)
+  target_compile_features(i2pd_privsep PRIVATE cxx_std_23)
+  target_include_directories(i2pd_privsep PRIVATE
+    "${PROJECT_ROOT}"
+    "${DAEMON_DIR}"
+    "${LANG_DIR}"
+  )
+  target_link_libraries(i2pd_privsep PRIVATE Threads::Threads i2pd_warnings)
+  if(CMAKE_SYSTEM_NAME STREQUAL "OpenBSD")
+    # OpenBSD imsg lives in libutil.
+    target_link_libraries(i2pd_privsep PUBLIC util)
+  elseif(WIN32)
+    # CreateRestrictedToken/CreateProcessAsUser and pipe security APIs.
+    target_compile_definitions(i2pd_privsep PRIVATE
+      WIN32_LEAN_AND_MEAN NOMINMAX WINVER=0x0A00 _WIN32_WINNT=0x0A00)
+    target_link_libraries(i2pd_privsep PUBLIC advapi32)
+  endif()
+  i2pd_enable_sanitizers(i2pd_privsep)
+endif()
+
 add_library(libi2pd STATIC ${LIBI2PD_SOURCES})
 set_target_properties(libi2pd PROPERTIES PREFIX "" POSITION_INDEPENDENT_CODE ON)
 target_include_directories(libi2pd
@@ -281,8 +323,7 @@ target_compile_features(libi2pd PUBLIC cxx_std_23)
 target_link_libraries(libi2pd
   PUBLIC
     OpenSSL::SSL OpenSSL::Crypto ZLIB::ZLIB
-    Boost::atomic Boost::filesystem Boost::program_options
-    Threads::Threads ${I2PD_EXTRA_LIBS}
+    Boost::program_options Threads::Threads ${I2PD_EXTRA_LIBS}
 )
 if(WIN32)
   # Transports uses AcceptEx/GetAcceptExSockaddrs; static consumers (tools)
@@ -294,11 +335,9 @@ i2pd_enable_sanitizers(libi2pd)
 if(WITH_UPNP)
   target_compile_definitions(libi2pd PRIVATE USE_UPNP)
 endif()
-if(OPENSSL_VERSION MATCHES "^[0-9]+\\.[0-9]+" AND OPENSSL_VERSION VERSION_GREATER_EQUAL 3.0.0)
-  target_compile_definitions(libi2pd PRIVATE OPENSSL_SUPPRESS_DEPRECATED)
-endif()
 if(WIN32)
-  target_compile_definitions(libi2pd PRIVATE WIN32_APP WIN32_LEAN_AND_MEAN NOMINMAX)
+  target_compile_definitions(libi2pd PRIVATE
+    WIN32_APP WIN32_LEAN_AND_MEAN NOMINMAX WINVER=0x0A00 _WIN32_WINNT=0x0A00)
   target_link_libraries(libi2pd PUBLIC ws2_32 iphlpapi)
 endif()
 if(ANDROID)
@@ -341,15 +380,30 @@ i2pd_enable_sanitizers(libi2pdlang)
 target_link_libraries(libi2pdclient PUBLIC libi2pdlang)
 
 if(I2PD_BUILD_JNI AND ANDROID)
+  # The JNI library owns the in-process daemon. Daemon.cpp is the common
+  # daemon lifecycle implementation used by DaemonAndroid; UPnP.cpp and the
+  # local TUI/I2PControl services are linked here as well. Android deliberately
+  # does not use the privilege-separated log supervisor, so I2PD_NO_PRIVSEP
+  # removes that POSIX-only path while leaving the rest of the daemon intact.
   add_library(i2pd_jni SHARED
     "${PROJECT_ROOT}/android/app/src/main/cpp/DaemonAndroid.cpp"
     "${PROJECT_ROOT}/android/app/src/main/cpp/i2pd_android.cpp"
+    "${DAEMON_DIR}/Daemon.cpp"
+    "${DAEMON_DIR}/I2PControl.cpp"
+    "${DAEMON_DIR}/I2PControlHandlers.cpp"
+    "${DAEMON_DIR}/UPnP.cpp"
+    "${DAEMON_DIR}/TuiServerCommon.cpp"
+    "${DAEMON_DIR}/TuiServer.cpp"
   )
   set_target_properties(i2pd_jni PROPERTIES OUTPUT_NAME i2pd PREFIX "lib")
   target_compile_features(i2pd_jni PRIVATE cxx_std_23)
   target_include_directories(i2pd_jni PRIVATE
-    "${PROJECT_ROOT}/android/app/src/main/cpp" ${DAEMON_DIR} ${LANG_DIR})
-  target_compile_definitions(i2pd_jni PRIVATE ANDROID)
+    "${PROJECT_ROOT}/android/app/src/main/cpp" ${DAEMON_DIR} ${LANG_DIR} ${TUI_DIR})
+  target_compile_definitions(i2pd_jni PRIVATE ANDROID I2PD_NO_PRIVSEP)
+  if(WITH_UPNP)
+    target_compile_definitions(i2pd_jni PRIVATE USE_UPNP)
+    target_link_libraries(i2pd_jni PRIVATE MiniUPnPc::MiniUPnPc)
+  endif()
   target_link_libraries(i2pd_jni PRIVATE libi2pd libi2pdclient libi2pdlang log)
   i2pd_enable_sanitizers(i2pd_jni)
   install(TARGETS i2pd_jni LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT Runtime)
@@ -363,17 +417,19 @@ elseif(WITH_BINARY)
   target_include_directories(i2pd PRIVATE
     ${PROJECT_ROOT} ${DAEMON_DIR} ${LANG_DIR} ${TUI_DIR})
   target_link_libraries(i2pd PRIVATE libi2pd libi2pdclient libi2pdlang i2pd_warnings)
+  if(TARGET i2pd_privsep)
+    target_link_libraries(i2pd PRIVATE i2pd_privsep)
+  endif()
   if(WITH_UPNP)
     target_compile_definitions(i2pd PRIVATE USE_UPNP)
-    target_link_libraries(i2pd PRIVATE ${MINIUPNPC_LIBRARY})
-    target_include_directories(i2pd PRIVATE ${MINIUPNPC_INCLUDE_DIR})
+    target_link_libraries(i2pd PRIVATE MiniUPnPc::MiniUPnPc)
   endif()
   if(WIN32)
     target_compile_definitions(i2pd PRIVATE
       WIN32_APP WIN32_LEAN_AND_MEAN NOMINMAX WINVER=0x0A00 _WIN32_WINNT=0x0A00
     )
     target_link_libraries(i2pd PRIVATE
-      wsock32 ws2_32 iphlpapi crypt32 gdi32 ole32 uuid advapi32)
+      wsock32 ws2_32 mswsock iphlpapi crypt32 gdi32 ole32 uuid advapi32)
   endif()
   if(WITH_STATIC AND NOT MSVC)
     target_link_options(i2pd PRIVATE -static)
@@ -384,7 +440,7 @@ endif()
 # The TUI is a separate process and never links the router libraries. Both
 # backends share main.cpp, Theme.h and TuiProtocol.h; only the terminal and
 # transport implementations differ.
-if(WITH_TUI)
+if(I2PD_BUILD_TUI)
   if(UNIX)
     set(CURSES_NEED_WIDE TRUE)
     find_package(Curses)
@@ -484,24 +540,26 @@ if(WITH_BINARY)
       RENAME openi2pd.png
       COMPONENT Runtime)
   endif()
-  install(FILES
-    "${PROJECT_ROOT}/ChangeLog" "${PROJECT_ROOT}/LICENSE" "${PROJECT_ROOT}/README.md"
-    "${PROJECT_ROOT}/TODO.md" "${PROJECT_ROOT}/ROADMAP.md" "${PROJECT_ROOT}/PROGRESS.md"
-    DESTINATION ${CMAKE_INSTALL_DOCDIR}
-    COMPONENT Documentation)
-  install(DIRECTORY "${PROJECT_ROOT}/docs/"
-    DESTINATION ${CMAKE_INSTALL_DOCDIR}/docs
-    COMPONENT Documentation
-    FILES_MATCHING PATTERN "*.md" PATTERN "*.png" PATTERN "*.ico" PATTERN "*.css" PATTERN "*.svg"
-    PATTERN "Doxyfile" EXCLUDE)
-  install(DIRECTORY "${PROJECT_ROOT}/assets/branding/"
-    DESTINATION ${CMAKE_INSTALL_DOCDIR}/assets/branding
-    COMPONENT Documentation)
-  if(UNIX)
-    install(DIRECTORY "${PROJECT_ROOT}/man/"
-      DESTINATION ${CMAKE_INSTALL_MANDIR}/man1
+  if(I2PD_INSTALL_DOCS)
+    install(FILES
+      "${PROJECT_ROOT}/ChangeLog" "${PROJECT_ROOT}/LICENSE" "${PROJECT_ROOT}/README.md"
+      "${PROJECT_ROOT}/TODO.md" "${PROJECT_ROOT}/ROADMAP.md" "${PROJECT_ROOT}/PROGRESS.md"
+      DESTINATION ${CMAKE_INSTALL_DOCDIR}
+      COMPONENT Documentation)
+    install(DIRECTORY "${PROJECT_ROOT}/docs/"
+      DESTINATION ${CMAKE_INSTALL_DOCDIR}/docs
       COMPONENT Documentation
-      FILES_MATCHING PATTERN "*.1")
+      FILES_MATCHING PATTERN "*.md" PATTERN "*.png" PATTERN "*.ico" PATTERN "*.css" PATTERN "*.svg"
+      PATTERN "Doxyfile" EXCLUDE)
+    install(DIRECTORY "${PROJECT_ROOT}/assets/branding/"
+      DESTINATION ${CMAKE_INSTALL_DOCDIR}/assets/branding
+      COMPONENT Documentation)
+    if(UNIX)
+      install(DIRECTORY "${PROJECT_ROOT}/man/"
+        DESTINATION ${CMAKE_INSTALL_MANDIR}/man1
+        COMPONENT Documentation
+        FILES_MATCHING PATTERN "*.1")
+    endif()
   endif()
 endif()
 
@@ -527,7 +585,12 @@ message(STATUS "Build libraries    : ${WITH_LIBRARY}")
 message(STATUS "UPnP               : ${WITH_UPNP}")
 message(STATUS "Torrents           : ${WITH_TORRENTS}")
 message(STATUS "Tools              : ${I2PD_BUILD_TOOLS}")
+message(STATUS "Perl::Critic       : ${I2PD_PERL_CRITIC}")
+message(STATUS "Documentation      : ${I2PD_INSTALL_DOCS}")
 message(STATUS "Android JNI        : ${I2PD_BUILD_JNI}")
+if(TARGET i2pd_privsep)
+  message(STATUS "Workers IPC        : i2pd_privsep")
+endif()
 if(TARGET i2pd-tui)
   message(STATUS "TUI                : ON (i2pd-tui)")
 else()

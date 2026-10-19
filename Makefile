@@ -3,9 +3,9 @@
 # SPDX-License-Identifier: BSD-3-Clause
 # Portable POSIX make front-end for the CMake build.
 #
-# This file intentionally uses only POSIX make syntax: no wildcard(), shell(),
-# patsubst(), ifeq or other GNU extensions. It is usable with BSD make on
-# OpenBSD. CMake is the source of build rules.
+# This file intentionally uses only POSIX make syntax: no GNU make functions,
+# pattern substitutions, conditionals or other extensions. It is usable with
+# BSD make on OpenBSD. CMake is the source of build rules.
 #
 # The default generator is Ninja because CMake's "Unix Makefiles" generator
 # emits GNU make syntax. Ninja is therefore required by this convenience
@@ -19,33 +19,42 @@
 #
 # Parallelism is controlled with CMAKE_BUILD_PARALLEL_LEVEL, not make -j.
 
-BUILD_DIR ?= build-output
-CMAKE ?= cmake
-CMAKE_GENERATOR ?= Ninja
-CMAKE_FLAGS ?=
+BUILD_DIR = build-output
+CMAKE = cmake
+CMAKE_GENERATOR = Ninja
+CMAKE_FLAGS =
 
-all:
-	${CMAKE} -S build -B ${BUILD_DIR} -G ${CMAKE_GENERATOR} ${CMAKE_FLAGS}
-	${CMAKE} --build ${BUILD_DIR}
+configure:
+	"${CMAKE}" -S build -B "${BUILD_DIR}" -G "${CMAKE_GENERATOR}" ${CMAKE_FLAGS}
 
-router:
-	${CMAKE} -S build -B ${BUILD_DIR} -G ${CMAKE_GENERATOR} ${CMAKE_FLAGS}
-	${CMAKE} --build ${BUILD_DIR} --target i2pd
+build: configure
+	"${CMAKE}" --build "${BUILD_DIR}"
+
+all: build
+
+router: configure
+	"${CMAKE}" --build "${BUILD_DIR}" --target i2pd
 
 tui:
-	${CMAKE} -S build -B ${BUILD_DIR} -G ${CMAKE_GENERATOR} -DWITH_TUI=ON ${CMAKE_FLAGS}
-	${CMAKE} --build ${BUILD_DIR} --target i2pd-tui
+	"${CMAKE}" -S build -B "${BUILD_DIR}" -G "${CMAKE_GENERATOR}" -DI2PD_BUILD_TUI=ON ${CMAKE_FLAGS}
+	"${CMAKE}" --build "${BUILD_DIR}" --target i2pd-tui
+
+tools:
+	"${CMAKE}" -S build -B "${BUILD_DIR}" -G "${CMAKE_GENERATOR}" -DI2PD_BUILD_TOOLS=ON ${CMAKE_FLAGS}
+	"${CMAKE}" --build "${BUILD_DIR}"
 
 test:
-	${CMAKE} -S build -B ${BUILD_DIR} -G ${CMAKE_GENERATOR} -DBUILD_TESTING=ON ${CMAKE_FLAGS}
-	${CMAKE} --build ${BUILD_DIR}
-	ctest --test-dir ${BUILD_DIR} --output-on-failure
+	"${CMAKE}" -S build -B "${BUILD_DIR}" -G "${CMAKE_GENERATOR}" -DBUILD_TESTING=ON ${CMAKE_FLAGS}
+	"${CMAKE}" --build "${BUILD_DIR}"
+	ctest --test-dir "${BUILD_DIR}" --output-on-failure
 
-install:
-	${CMAKE} --install ${BUILD_DIR}
+check: test
+
+install: configure
+	"${CMAKE}" --install "${BUILD_DIR}"
 
 clean:
-	${CMAKE} -E remove_directory ${BUILD_DIR}
+	"${CMAKE}" -E remove_directory "${BUILD_DIR}"
 
 dist:
 	git archive --format=tar.gz -9 --prefix=openi2pd/ HEAD -o openi2pd.tar.gz
