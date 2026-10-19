@@ -1,5 +1,14 @@
-// Copyright (c) 2013-2026, The PurpleI2P Project
-// Copyright (c) 2026, David Uhden Collado
-// SPDX-License-Identifier: BSD-3-Clause
+/*
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: settings.
+ *
+ * Includes the single :app module and renames its Gradle project to i2pd, so
+ * task paths and the APK name match the daemon binary without changing the
+ * application ID.
+ *
+ */
+
 include ':app'
 project(":app").name = "i2pd"

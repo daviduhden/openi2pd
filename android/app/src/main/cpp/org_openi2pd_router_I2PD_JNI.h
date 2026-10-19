@@ -1,4 +1,14 @@
 /*
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: org openi2pd router I2PD JNI.
+ *
+ * Declares native Android application interfaces.
+ *
+ */
+
+/*
 * Copyright (c) 2013-2022, The PurpleI2P Project
 * Copyright (c) 2026, David Uhden Collado
 * SPDX-License-Identifier: BSD-3-Clause
@@ -15,63 +25,50 @@
 #ifndef _Included_org_openi2pd_router_I2PD_JNI
 #define _Included_org_openi2pd_router_I2PD_JNI
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
-JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getABICompiledWith
-	(JNIEnv *, jclass);
+	JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getABICompiledWith (JNIEnv *, jclass);
 
-JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_startDaemon
-	(JNIEnv *, jclass);
+	JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_startDaemon (JNIEnv *, jclass);
 
-JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_stopDaemon
-	(JNIEnv *, jclass);
+	JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_stopDaemon (JNIEnv *, jclass);
 
-JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_startAcceptingTunnels
-	(JNIEnv *, jclass);
+	JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_startAcceptingTunnels (JNIEnv *, jclass);
 
-JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_stopAcceptingTunnels
-	(JNIEnv *, jclass);
+	JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_stopAcceptingTunnels (JNIEnv *, jclass);
 
-JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_reloadTunnelsConfigs
-	(JNIEnv *, jclass);
+	JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_reloadTunnelsConfigs (JNIEnv *, jclass);
 
-JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_setDataDir
-	(JNIEnv *env, jclass clazz, jstring jdataDir);
+	JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_setDataDir (JNIEnv * env, jclass clazz, jstring jdataDir);
 
+	JNIEXPORT jint JNICALL Java_org_openi2pd_router_I2PD_1JNI_getTransitTunnelsCount (JNIEnv *, jclass);
 
-JNIEXPORT jint JNICALL Java_org_openi2pd_router_I2PD_1JNI_getTransitTunnelsCount
-	(JNIEnv *, jclass);
+	JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getDataDir (JNIEnv *, jclass);
 
-JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getDataDir
-	(JNIEnv *, jclass);
+	JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_getHTTPProxyState (JNIEnv *, jclass);
 
-JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_getHTTPProxyState
-	(JNIEnv *, jclass);
+	JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_getSOCKSProxyState (JNIEnv *, jclass);
 
-JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_getSOCKSProxyState
-	(JNIEnv *, jclass);
+	JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_getBOBState (JNIEnv *, jclass);
 
-JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_getBOBState
-	(JNIEnv *, jclass);
+	JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_getSAMState (JNIEnv *, jclass);
 
-JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_getSAMState
-	(JNIEnv *, jclass) ;
+	JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_getI2CPState (JNIEnv *, jclass);
 
-JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_getI2CPState
-	(JNIEnv *, jclass);
+	JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_onNetworkStateChanged (
+		JNIEnv * env, jclass clazz, jboolean isConnected);
 
-JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_onNetworkStateChanged
-	(JNIEnv * env, jclass clazz, jboolean isConnected);
+	JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getStatusSummary (JNIEnv *, jclass);
 
-JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getStatusSummary
-	(JNIEnv *, jclass);
+	JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getStatusSnapshot (JNIEnv *, jclass);
 
-JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getStatusSnapshot
-	(JNIEnv *, jclass);
+	JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getRecentLogs (JNIEnv *, jclass, jlong, jint);
 
-JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getRecentLogs
-	(JNIEnv *, jclass, jlong, jint);
+	JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_torrentCommand (JNIEnv *, jclass, jbyteArray);
+
+	JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_importTorrent (JNIEnv *, jclass, jint, jbyteArray);
 
 #ifdef __cplusplus
 }

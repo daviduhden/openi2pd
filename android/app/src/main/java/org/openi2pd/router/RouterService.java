@@ -1,8 +1,17 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: RouterService.
+ *
+ * Started and bound foreground service that is the sole owner of
+ * {@link DaemonWrapper} and the native control boundary. It serialises
+ * stop/reload work on a worker executor, polls bounded status and log
+ * snapshots on a background thread, holds the Wi-Fi multicast lock for SSDP
+ * and schedules the graceful-stop deadline on the main handler.
+ *
  */
+
 package org.openi2pd.router;
 
 import static android.app.PendingIntent.FLAG_IMMUTABLE;
@@ -103,6 +112,8 @@ public class RouterService extends Service {
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private final CopyOnWriteArrayList<Listener> listeners = new CopyOnWriteArrayList<>();
     private final AtomicBoolean pollInFlight = new AtomicBoolean(false);
+    private final AtomicBoolean torrentInFlight = new AtomicBoolean(false);
+    private volatile Runnable cancelTorrentImport;
     private final AtomicBoolean restartInProgress = new AtomicBoolean(false);
     private final IBinder binder = new LocalBinder();
 
@@ -357,6 +368,9 @@ public class RouterService extends Service {
     @Override
     public void onDestroy() {
         destroyed = true;
+        Runnable cancelImport = cancelTorrentImport;
+        if (cancelImport != null)
+            cancelImport.run();
         routerRunning = false;
         mainHandler.removeCallbacksAndMessages(null);
         if (daemon != null) {
@@ -533,8 +547,7 @@ public class RouterService extends Service {
     private void beginGracefulStopCommand() {
         mainHandler.removeCallbacks(gracefulStopExpired);
         enqueueControl(() -> {
-            long delay = daemon.beginGracefulShutdown(
-                    DaemonWrapper.GRACEFUL_STOP_DELAY_MILLIS);
+            long delay = daemon.beginGracefulShutdown(DaemonWrapper.GRACEFUL_STOP_DELAY_MILLIS);
             if (delay > 0L) {
                 mainHandler.postDelayed(gracefulStopExpired, delay);
             } else if (daemon.isGracefulShutdownScheduled()) {
@@ -902,6 +915,127 @@ public class RouterService extends Service {
     // Lifecycle helpers
     // ---------------------------------------------------------------------
 
+    /** One outstanding torrent operation bounds both the queue and JNI work. */
+    public void torrentCommand(String request, java.util.function.Consumer<String> callback) {
+        if (request == null || request.length() > 4096
+                || !torrentInFlight.compareAndSet(false, true)) {
+            mainHandler.post(() -> callback.accept("I2PDTUI/1 ERR 4 12\ncontrol busy"));
+            return;
+        }
+        ExecutorService executor = worker;
+        try {
+            if (executor == null)
+                throw new RejectedExecutionException();
+            executor.execute(() -> {
+                String response;
+                try {
+                    response = I2PD_JNI.torrentCommand(
+                            request.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                } catch (LinkageError | RuntimeException error) {
+                    response = "I2PDTUI/1 ERR 6 14\ncontrol failed";
+                } finally {
+                    torrentInFlight.set(false);
+                }
+                String result = response;
+                mainHandler.post(() -> callback.accept(result));
+            });
+        } catch (RejectedExecutionException error) {
+            torrentInFlight.set(false);
+            mainHandler.post(() -> callback.accept("I2PDTUI/1 ERR 6 14\nrouter stopped"));
+        }
+    }
+
+    /** Reads only a user-granted content URI; JNI receives bytes, never its path. */
+    public void importTorrent(
+            int tunnel, android.net.Uri document, java.util.function.Consumer<String> callback) {
+        if (destroyed || tunnel < 0 || document == null || !"content".equals(document.getScheme())
+                || !torrentInFlight.compareAndSet(false, true)) {
+            mainHandler.post(() -> callback.accept("I2PDTUI/1 ERR 4 15\ninvalid request"));
+            return;
+        }
+        var cancellation = new android.os.CancellationSignal();
+        var descriptor = new java.util.concurrent.atomic
+                                 .AtomicReference<android.content.res.AssetFileDescriptor>();
+        Runnable cancel = () -> {
+            cancellation.cancel();
+            android.content.res.AssetFileDescriptor opened = descriptor.getAndSet(null);
+            if (opened != null) {
+                try {
+                    opened.close();
+                } catch (java.io.IOException ignored) {
+                }
+            }
+        };
+        cancelTorrentImport = cancel;
+        mainHandler.postDelayed(cancel, 20_000L);
+        ExecutorService executor = worker;
+        try {
+            if (executor == null)
+                throw new RejectedExecutionException();
+            executor.execute(() -> {
+                String response;
+                boolean releaseGrant = false;
+                try {
+                    if (destroyed)
+                        throw new java.io.IOException("Service stopped");
+                    android.content.ContentResolver resolver = getContentResolver();
+                    boolean alreadyGranted = false;
+                    for (android.content.UriPermission permission :
+                            resolver.getPersistedUriPermissions()) {
+                        if (document.equals(permission.getUri()) && permission.isReadPermission()) {
+                            alreadyGranted = true;
+                            break;
+                        }
+                    }
+                    if (!alreadyGranted) {
+                        resolver.takePersistableUriPermission(
+                                document, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                        releaseGrant = true;
+                    }
+                    try (android.content.res.AssetFileDescriptor opened =
+                                    resolver.openAssetFileDescriptor(document, "r", cancellation)) {
+                        if (opened == null)
+                            throw new java.io.IOException("Document unavailable");
+                        descriptor.set(opened);
+                        cancellation.throwIfCanceled();
+                        if (opened.getLength() > TorrentControl.MAX_IMPORT_BYTES) {
+                            throw new java.io.IOException("Torrent too large");
+                        }
+                        byte[] metadata;
+                        try (java.io.InputStream input = opened.createInputStream()) {
+                            metadata = TorrentDocumentReader.read(input);
+                        }
+                        cancellation.throwIfCanceled();
+                        response = I2PD_JNI.importTorrent(tunnel, metadata);
+                    }
+                } catch (java.io.IOException | RuntimeException | LinkageError error) {
+                    // Provider exception text may contain document names and
+                    // credentials; do not log or propagate it to peers/UI.
+                    response = "I2PDTUI/1 ERR 4 13\nimport failed";
+                } finally {
+                    descriptor.set(null);
+                    mainHandler.removeCallbacks(cancel);
+                    cancelTorrentImport = null;
+                    if (releaseGrant) {
+                        try {
+                            getContentResolver().releasePersistableUriPermission(
+                                    document, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                        } catch (RuntimeException ignored) {
+                        }
+                    }
+                    torrentInFlight.set(false);
+                }
+                String result = response;
+                mainHandler.post(() -> callback.accept(result));
+            });
+        } catch (RejectedExecutionException error) {
+            mainHandler.removeCallbacks(cancel);
+            cancelTorrentImport = null;
+            torrentInFlight.set(false);
+            mainHandler.post(() -> callback.accept("I2PDTUI/1 ERR 6 14\nrouter stopped"));
+        }
+    }
+
     private void enqueueControl(Runnable command) {
         ExecutorService executor = worker;
         if (executor == null) {
@@ -943,8 +1077,8 @@ public class RouterService extends Service {
         }
         boolean upnpEnabled = true;
         try {
-            upnpEnabled = RouterConfigStore.get(getApplicationContext())
-                    .getBoolean("upnp.enabled", true);
+            upnpEnabled =
+                    RouterConfigStore.get(getApplicationContext()).getBoolean("upnp.enabled", true);
         } catch (RuntimeException e) {
             Log.w(TAG, "unable to read the UPnP setting; using the default", e);
         }
@@ -956,8 +1090,7 @@ public class RouterService extends Service {
         if (wifiManager == null) {
             return;
         }
-        WifiManager.MulticastLock lock =
-                wifiManager.createMulticastLock("openi2pd-upnp");
+        WifiManager.MulticastLock lock = wifiManager.createMulticastLock("openi2pd-upnp");
         lock.setReferenceCounted(false);
         try {
             lock.acquire();

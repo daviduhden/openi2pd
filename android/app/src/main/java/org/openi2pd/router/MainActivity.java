@@ -1,8 +1,16 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: MainActivity.
+ *
+ * Single-activity host for the router screens. Screens, back-stack titles and
+ * the service banner follow {@link RouterViewModel} state, so rotation or a
+ * theme change never restarts the daemon; the first auto-start waits for the
+ * notification and Android 17 local-network permission result.
+ *
  */
+
 package org.openi2pd.router;
 
 import android.Manifest;
@@ -65,6 +73,7 @@ public class MainActivity extends AppCompatActivity {
     private static final String TAG_SETTINGS = "settings";
     private static final String TAG_LOGS = "logs";
     private static final String TAG_ABOUT = "about";
+    private static final String TAG_TORRENTS = "torrents";
 
     private RouterViewModel viewModel;
     private MaterialToolbar toolbar;
@@ -92,8 +101,8 @@ public class MainActivity extends AppCompatActivity {
         toolbar = findViewById(R.id.toolbar);
         setSupportActionBar(toolbar);
         toolbar.setTitle(R.string.app_name);
-        toolbar.setNavigationOnClickListener(ignored
-                -> getOnBackPressedDispatcher().onBackPressed());
+        toolbar.setNavigationOnClickListener(
+                ignored -> getOnBackPressedDispatcher().onBackPressed());
         applyToolbarLogo();
 
         serviceBanner = findViewById(R.id.service_banner);
@@ -172,8 +181,8 @@ public class MainActivity extends AppCompatActivity {
                     return;
                 }
                 serviceBannerTimedOut = true;
-                updateServiceBanner(Boolean.TRUE.equals(
-                        viewModel.getServiceConnected().getValue()));
+                updateServiceBanner(
+                        Boolean.TRUE.equals(viewModel.getServiceConnected().getValue()));
             }, 3000L);
         }
 
@@ -211,6 +220,8 @@ public class MainActivity extends AppCompatActivity {
                 toolbar.setTitle(R.string.logs_title);
             } else if (TAG_ABOUT.equals(name)) {
                 toolbar.setTitle(R.string.about_title);
+            } else if (TAG_TORRENTS.equals(name)) {
+                toolbar.setTitle(R.string.torrent_title);
             } else {
                 toolbar.setTitle(R.string.app_name);
             }
@@ -227,8 +238,8 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
         Drawable tinted = logo.mutate();
-        int tint = MaterialColors.getColor(
-                toolbar, com.google.android.material.R.attr.colorOnSurface);
+        int tint =
+                MaterialColors.getColor(toolbar, com.google.android.material.R.attr.colorOnSurface);
         DrawableCompat.setTint(tinted, tint);
         toolbar.setLogo(tinted);
         toolbar.setLogoDescription(R.string.app_name);
@@ -296,7 +307,7 @@ public class MainActivity extends AppCompatActivity {
 
         FragmentTransaction transaction = fragments.beginTransaction().setReorderingAllowed(true);
         for (String existingTag : new String[] {TAG_DASHBOARD, TAG_NETWORK, TAG_TUNNELS,
-                     TAG_STATISTICS, TAG_SETTINGS, TAG_LOGS, TAG_ABOUT}) {
+                     TAG_STATISTICS, TAG_SETTINGS, TAG_LOGS, TAG_ABOUT, TAG_TORRENTS}) {
             Fragment existing = fragments.findFragmentByTag(existingTag);
             if (existing != null && !existingTag.equals(tag)) {
                 transaction.hide(existing);
@@ -448,6 +459,10 @@ public class MainActivity extends AppCompatActivity {
             openDetail(new AboutFragment(), TAG_ABOUT, R.string.about_title);
             return true;
         }
+        if (id == R.id.action_torrents) {
+            openDetail(new TorrentsFragment(), TAG_TORRENTS, R.string.torrent_title);
+            return true;
+        }
         if (id == R.id.action_battery_optimizations) {
             showBatteryOptimizationOptions();
             return true;
@@ -561,8 +576,8 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
-    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions,
-            @NonNull int[] grantResults) {
+    public void onRequestPermissionsResult(
+            int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode != REQUEST_STARTUP_PERMISSIONS) {
             return;
@@ -572,11 +587,11 @@ public class MainActivity extends AppCompatActivity {
                 continue;
             }
             if (Manifest.permission.POST_NOTIFICATIONS.equals(permissions[i])) {
-                Toast.makeText(this, R.string.notification_permission_denied,
-                        Toast.LENGTH_LONG).show();
+                Toast.makeText(this, R.string.notification_permission_denied, Toast.LENGTH_LONG)
+                        .show();
             } else if (PERMISSION_ACCESS_LOCAL_NETWORK.equals(permissions[i])) {
-                Toast.makeText(this, R.string.local_network_permission_denied,
-                        Toast.LENGTH_LONG).show();
+                Toast.makeText(this, R.string.local_network_permission_denied, Toast.LENGTH_LONG)
+                        .show();
             }
         }
         if (startAfterPermissionResult) {

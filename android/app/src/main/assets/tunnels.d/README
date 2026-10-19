@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: README.
+
+Documents native Android application.
+
+-->
+
 # In this directory you can store separate configuration files for every
 # tunnel. See the openi2pd tunnel guide:
 # https://github.com/daviduhden/openi2pd/blob/main/docs/user-guide/tunnels.md

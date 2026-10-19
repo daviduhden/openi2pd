@@ -1,8 +1,17 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: RouterRepository.
+ *
+ * Main-thread bridge between {@link RouterViewModel} and {@link RouterService}:
+ * it binds with the application context, exposes immutable LiveData snapshots
+ * and logs, and forwards commands as explicit service intents rather than
+ * direct native calls. Listener registration follows UI visibility so polling
+ * stops in the background, and closing the repository releases the binding.
+ *
  */
+
 package org.openi2pd.router;
 
 import android.content.ComponentName;
@@ -152,6 +161,25 @@ public final class RouterRepository implements RouterService.Listener {
         } else {
             bind();
         }
+    }
+
+    public void torrentCommand(String request, java.util.function.Consumer<String> callback) {
+        RouterService local = service;
+        if (closed || local == null) {
+            mainHandler.post(() -> callback.accept("I2PDTUI/1 ERR 6 14\nrouter stopped"));
+            return;
+        }
+        local.torrentCommand(request, callback);
+    }
+
+    public void importTorrent(
+            int tunnel, android.net.Uri document, java.util.function.Consumer<String> callback) {
+        RouterService local = service;
+        if (closed || local == null) {
+            mainHandler.post(() -> callback.accept("I2PDTUI/1 ERR 6 14\nrouter stopped"));
+            return;
+        }
+        local.importTorrent(tunnel, document, callback);
     }
 
     /**

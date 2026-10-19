@@ -1,6 +1,12 @@
-# Copyright (c) 2013-2026, The PurpleI2P Project
-# Copyright (c) 2026, David Uhden Collado
-# SPDX-License-Identifier: BSD-3-Clause
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: CMakeLists.txt.
+#
+# Android CMake wrapper that enables the in-process JNI build with Torrents and
+# UPnP while disabling host binaries, libraries, tools, TUI and tests.
+#
+
 # Android app entry point. The router itself is built by the main CMake graph;
 # this wrapper only enables the JNI target and disables host-only components.
 cmake_minimum_required(VERSION 3.22)
@@ -14,7 +20,7 @@ set(WITH_BINARY OFF CACHE BOOL "" FORCE)
 set(WITH_LIBRARY OFF CACHE BOOL "" FORCE)
 set(I2PD_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
 set(I2PD_BUILD_TUI OFF CACHE BOOL "" FORCE)
-set(WITH_TORRENTS OFF CACHE BOOL "" FORCE)
+set(WITH_TORRENTS ON CACHE BOOL "" FORCE)
 # UPnP is part of the Android product: it is enabled by default in the
 # bundled configuration and backed by MiniUPnPc from the Android vcpkg
 # manifest. Keep the daemon/UPnP.cpp and daemon/Daemon.cpp sources in the JNI

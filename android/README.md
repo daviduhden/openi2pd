@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: README.
+
+Documents native Android application.
+
+-->
+
 # openi2pd Android app
 
 Android front end for the openi2pd router. It is built from this repository;
@@ -106,3 +116,55 @@ migration from the old app-specific directory is not implemented yet.
 BSD-3-Clause, see `../LICENSE`. Copyright and attribution notices from the
 upstream i2pd-android project are preserved in the source headers and license
 files.
+
+### Native torrent administration
+
+The **Torrents** toolbar menu uses the embedded C++23 engine through the same
+bounded torrent control dispatcher as the desktop TUI. Calls pass through the
+service worker and native lifecycle guard. There is one outstanding operation
+per service; closing or rotating the screen does not stop downloads. The UI
+supports session selection, magnets, list/progress, pause/resume, keeping files
+when removing a torrent, magnet sharing, detail/peer/tracker snapshots, tracker
+add/remove/edit and DHT status. Tracker changes require paused torrents with
+complete metadata. Refresh is explicit; no background UI polling is added.
+Per-torrent actions include file selection/priorities (skip, normal, high) and
+comments/ratings with explicit enable/disable, an optional empty-by-default
+pseudonym, rating-only or text submissions, and local hiding. The interface
+explains that pseudonyms are unverified and publication reaches I2P peers;
+private-torrent restrictions remain enforced by the native engine. Comment
+commands cross JNI as bounded standard UTF-8 bytes, preserving supplementary
+characters without JNI modified-UTF-8 corruption. Local persistence errors are
+shown in the comments screen.
+**Create torrent** accepts an existing immediate file or folder name within
+the session's app-private torrent storage. Hashing runs through the native
+storage job; **Creation status** reports its pending/completed result. It does
+not select external SAF directories or pass arbitrary filesystem paths.
+
+**Import torrent file** uses Android's Storage Access Framework document picker.
+Only a granted `content:` document is accepted; provider names and paths never
+reach native code. The service worker reads at most 8 MiB, handles unknown or
+incorrect provider sizes, closes descriptors, releases newly retained grants
+and requests cancellation after 20 seconds or service destruction. The JNI
+byte-array bridge checks the limit again and invokes the shared embedded import
+dispatcher under the native lifecycle guard. A provider that ignores platform
+cancellation can still delay its Binder call; device tests must cover that case.
+
+On startup a new `tunnels.d/AndroidTorrents.conf` is installed once, without
+replacing an existing file. Its torrent data directory is internal app-private
+`files/torrents`; no RPC listener is configured. Existing configurations using a
+custom `tunnelsdir` must define their torrent session there. The router service
+owns session lifetime independently of the Activity.
+
+This is an embedded administration boundary, **not OS process isolation**.
+Network/storage workers and a piece-storage SAF broker supporting creation from
+external SAF trees remain pending. SAF metadata import does not
+grant the engine access to document-tree paths. The bridge rejects filesystem
+import commands rather than accepting arbitrary Android paths. External router
+mode is also pending. Java 25 is a build target;
+no separate JVM, Termux or browser is required on the device.
+
+`TorrentControlTest` and `TorrentDocumentReaderTest` prepare framing, UTF-8
+length, duplicate-key, magnet/tracker injection and bounded binary/provider
+read regressions for manual Android CI. JNI linking, Gradle unit
+and instrumentation tests, ART execution, SAF and device lifecycle validation
+have not been run locally.

@@ -1,8 +1,17 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: DaemonWrapper.
+ *
+ * Process-wide owner of the native daemon: asset extraction into app-specific
+ * storage, start on a dedicated thread, stop, restart, tunnel reload, the
+ * graceful-shutdown deadline and connectivity callbacks forwarded to JNI.
+ * State transitions are lock-guarded and listeners are invoked after the
+ * monitor is released, so no Activity or Service reference is retained.
+ *
  */
+
 package org.openi2pd.router;
 
 import java.io.BufferedReader;
@@ -86,6 +95,7 @@ public class DaemonWrapper {
     private final AssetManager assetManager;
     private final ConnectivityManager connectivityManager;
     private final List<File> appStorageRoots;
+    private final File torrentStorage;
     private final Set<StateUpdateListener> stateUpdateListeners = new LinkedHashSet<>();
     private final Object assetsLock = new Object();
     private final AtomicBoolean stopRequested = new AtomicBoolean(false);
@@ -152,6 +162,8 @@ public class DaemonWrapper {
 
         List<File> roots = new ArrayList<>(2);
         File internalFiles = appContext.getFilesDir();
+        this.torrentStorage =
+                new File(Objects.requireNonNull(internalFiles, "internal files"), "torrents");
         if (internalFiles != null) {
             roots.add(internalFiles);
         }
@@ -405,6 +417,7 @@ public class DaemonWrapper {
         StateChange change = null;
         try {
             processAssets();
+            prepareTorrentSession();
             I2PD_JNI.loadLibraries();
         } catch (Throwable tr) {
             lastThrowable = tr;
@@ -612,6 +625,67 @@ public class DaemonWrapper {
             manager.unregisterNetworkCallback(networkCallback);
         } catch (RuntimeException e) {
             Log.w(TAG, "unable to unregister network callback", e);
+        }
+    }
+
+    /** Install a native session once, without enabling JSON-RPC or a web listener. */
+    private void prepareTorrentSession() throws IOException {
+        synchronized (assetsLock) {
+            File directory = new File(dataDir, "tunnels.d");
+            if (!directory.exists() && !directory.mkdirs()) {
+                throw new IOException("Unable to create tunnel configuration directory");
+            }
+            if (isSymbolicLink(directory) || !isInsideDataDir(directory)) {
+                throw new IOException("Unsafe torrent configuration directory");
+            }
+            // Piece storage stays app-private. SAF export/import requires a
+            // separate bounded storage broker and is not emulated with paths.
+            File downloads = torrentStorage;
+            if (!downloads.exists() && !downloads.mkdirs()) {
+                throw new IOException("Unable to create torrent storage directory");
+            }
+            if (isSymbolicLink(downloads)) {
+                throw new IOException("Unsafe torrent storage directory");
+            }
+            File config = new File(directory, "AndroidTorrents.conf");
+            String content = "# Copyright (c) 2026, David Uhden Collado\n"
+                    + "# SPDX-License-Identifier: BSD-3-Clause\n"
+                    + "[AndroidTorrents]\ntype = torrents\nkeys = android-torrents.dat\n"
+                    + "torrentsdir = " + downloads.getAbsolutePath() + "\ndht = true\n";
+            try {
+                java.io.FileDescriptor descriptor = android.system.Os.open(config.getAbsolutePath(),
+                        android.system.OsConstants.O_CREAT | android.system.OsConstants.O_EXCL
+                                | android.system.OsConstants.O_WRONLY
+                                | android.system.OsConstants.O_NOFOLLOW
+                                | android.system.OsConstants.O_CLOEXEC,
+                        0600);
+                try (FileOutputStream output = new FileOutputStream(descriptor)) {
+                    output.write(content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                    output.getFD().sync();
+                }
+            } catch (android.system.ErrnoException existing) {
+                if (existing.errno != android.system.OsConstants.EEXIST) {
+                    throw new IOException("Unable to install torrent configuration", existing);
+                }
+                // Preserve user changes, including a deliberately disabled session.
+                try {
+                    if (!android.system.OsConstants.S_ISREG(
+                                android.system.Os.lstat(config.getAbsolutePath()).st_mode)) {
+                        throw new IOException("Unsafe torrent configuration file", existing);
+                    }
+                } catch (android.system.ErrnoException error) {
+                    throw new IOException("Unable to inspect torrent configuration", error);
+                }
+            }
+        }
+    }
+
+    private static boolean isSymbolicLink(File file) throws IOException {
+        try {
+            return android.system.OsConstants.S_ISLNK(
+                    android.system.Os.lstat(file.getAbsolutePath()).st_mode);
+        } catch (android.system.ErrnoException error) {
+            throw new IOException("Unable to inspect torrent directory", error);
         }
     }
 

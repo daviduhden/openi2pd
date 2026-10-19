@@ -1,8 +1,13 @@
 <!--
-  Copyright (c) 2013-2026, The PurpleI2P Project
-  Copyright (c) 2026, David Uhden Collado
-  SPDX-License-Identifier: BSD-3-Clause
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: ic network.
+
+Defines native Android application resources.
+
 -->
+
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"

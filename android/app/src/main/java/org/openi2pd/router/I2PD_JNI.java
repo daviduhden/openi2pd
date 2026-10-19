@@ -1,8 +1,17 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: I2PD JNI.
+ *
+ * Non-instantiable declaration of the native methods loaded from
+ * {@code libi2pd.so}, with a repeatable fail-closed loader that caches load
+ * errors. Only {@link RouterService} calls these control and status entry
+ * points; UI code must go through {@link RouterRepository} and
+ * {@link RouterViewModel} so JNI never runs on the main thread.
+ *
  */
+
 package org.openi2pd.router;
 
 import android.util.Log;
@@ -133,4 +142,10 @@ public final class I2PD_JNI {
      *                      range must not allocate unbounded memory
      */
     public static native String getRecentLogs(long afterSequence, int limit);
+
+    /** Torrent-only bounded control protocol; called exclusively by RouterService. */
+    static native String torrentCommand(byte[] utf8Request);
+
+    /** Raw bounded torrent metadata from a user-selected SAF document. */
+    static native String importTorrent(int tunnel, byte[] metadata);
 }

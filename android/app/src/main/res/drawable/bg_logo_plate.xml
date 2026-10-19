@@ -1,9 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Copyright (c) 2013-2026, The PurpleI2P Project
-  Copyright (c) 2026, David Uhden Collado
-  SPDX-License-Identifier: BSD-3-Clause
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: bg logo plate.
+
+Defines native Android application resources.
+
 -->
+
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
     <solid android:color="@color/ic_launcher_background" />

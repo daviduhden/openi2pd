@@ -1,9 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Copyright (c) 2013-2026, The PurpleI2P Project
-  Copyright (c) 2026, David Uhden Collado
-  SPDX-License-Identifier: BSD-3-Clause
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: strings.
+
+Defines native Android application resources.
+
 -->
+
 <resources>
     <string name="app_name" translatable="false">openi2pd</string>
 
@@ -278,4 +283,58 @@
     <string name="pref_loglevel_info">Info</string>
     <string name="pref_loglevel_debug">Debug</string>
 
+    <string name="torrent_title">Torrents</string>
+    <string name="torrent_priorities">Files and priorities</string>
+    <string name="torrent_priority_skip">Skip</string>
+    <string name="torrent_priority_normal">Normal</string>
+    <string name="torrent_priority_high">High</string>
+    <string name="torrent_comments">Comments and ratings</string>
+    <string name="torrent_comments_privacy">Comments use unverified pseudonyms and are exchanged with I2P peers when enabled. Leave the optional pseudonym blank to avoid sharing a name. Do not include personal information.</string>
+    <string name="torrent_comments_summary">Comments: %1$s · Average: %2$s/5 · Ratings: %3$s</string>
+    <string name="torrent_comments_enable">Enable comments and ratings</string>
+    <string name="torrent_comments_disable">Disable comments and ratings</string>
+    <string name="torrent_comment_add">Add comment or rating</string>
+    <string name="torrent_comment_owner">Pseudonym (optional, unverified)</string>
+    <string name="torrent_comment_text">Comment (optional with a rating)</string>
+    <string name="torrent_comment_no_rating">No rating</string>
+    <string name="torrent_comment_rating">Choose rating</string>
+    <string name="torrent_comment_publish">Publish to I2P peers</string>
+    <string name="torrent_comment_anonymous">Anonymous pseudonym</string>
+    <string name="torrent_comment_hide">Hide locally</string>
+    <string name="torrent_comment_hide_confirm">Hide this comment locally? Other peers may retain their own copies.</string>
+    <string name="torrent_create">Create torrent</string>
+    <string name="torrent_create_source">Existing file or folder name</string>
+    <string name="torrent_create_help">Use an immediate file or folder in this session’s app-private torrent storage. Selecting external folders is not available yet. Refresh creation status after hashing finishes.</string>
+    <string name="torrent_creation_status">Creation status</string>
+    <string name="torrent_creation_pending">Hashing content…</string>
+    <string name="torrent_creation_finished">No creation job is running.</string>
+    <string name="torrent_import">Import torrent file</string>
+    <string name="torrent_importing">Importing torrent metadata…</string>
+    <string name="torrent_import_failed">Could not import this torrent. Choose a readable torrent document of at most 8 MiB, check the router is running, then retry.</string>
+    <string name="torrent_busy">A torrent operation is already in progress. Please retry.</string>
+    <string name="torrent_tracker_add">Add tracker</string>
+    <string name="torrent_tracker_edit">Edit tracker</string>
+    <string name="torrent_tracker_remove">Remove tracker</string>
+    <string name="torrent_tracker_hint">http://tracker.example.i2p/announce</string>
+    <string name="torrent_tracker_paused">Pause the torrent and wait for complete metadata before changing trackers.</string>
+    <string name="torrent_files">Files</string>
+    <string name="torrent_peers">Peers</string>
+    <string name="torrent_trackers">Trackers</string>
+    <string name="torrent_transfer_summary">Completed: %1$s / %2$s B\nDownload: %3$s B/s · Upload: %4$s B/s</string>
+    <string name="torrent_dht_summary">Nodes: %1$s\nBuckets: %2$s\nTorrents: %3$s\nFailed peers: %4$s</string>
+    <string name="torrent_refresh">Refresh torrents</string>
+    <string name="torrent_add_magnet">Add magnet</string>
+    <string name="torrent_magnet_hint">magnet:?xt=urn:btih:…</string>
+    <string name="torrent_dht">DHT status</string>
+    <string name="torrent_loading">Loading…</string>
+    <string name="torrent_error">Torrent operation failed: %1$s</string>
+    <string name="torrent_no_session">No torrent session configured. Add a torrents section to tunnels.conf, then restart the router.</string>
+    <string name="torrent_session">Choose torrent session</string>
+    <string name="torrent_count">Torrents: %1$d</string>
+    <string name="torrent_details">Torrent details</string>
+    <string name="torrent_pause">Pause</string>
+    <string name="torrent_resume">Resume</string>
+    <string name="torrent_share">Share magnet link</string>
+    <string name="torrent_remove">Remove torrent</string>
+    <string name="torrent_remove_confirm">Remove this torrent from the session? Downloaded files will be kept.</string>
 </resources>

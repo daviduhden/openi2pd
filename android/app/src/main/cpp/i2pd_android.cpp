@@ -1,12 +1,16 @@
 /*
-* Copyright (c) 2013-2022, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: i2pd android.
+ *
+ * JNI entry points for daemon control, bounded status and log snapshots,
+ * transport and client-service probes, and the byte-array torrent commands.
+ * UTF-8 is converted to UTF-16 explicitly instead of using NewStringUTF,
+ * pending JNI exceptions are cleared and turned into fallbacks, and every
+ * returned string is bounded.
+ *
+ */
 
 #include <jni.h>
 #include <cstddef>
@@ -27,6 +31,8 @@
 #include "Tunnel.h"
 #include "NetDb.hpp"
 #include "Log.h"
+#include "TuiProtocol.h"
+#include "TuiServerCommon.h"
 
 namespace
 {
@@ -119,11 +125,8 @@ inline jstring NewStringChecked (JNIEnv * env, std::string_view value) noexcept
 					}
 					codePoint = (codePoint << 6) | (next & 0x3F);
 				}
-				if (!valid
-					|| (length == 2 && codePoint < 0x80)
-					|| (length == 3 && codePoint < 0x800)
-					|| (length == 4 && codePoint < 0x10000)
-					|| codePoint > 0x10FFFF
+				if (!valid || (length == 2 && codePoint < 0x80) || (length == 3 && codePoint < 0x800)
+					|| (length == 4 && codePoint < 0x10000) || codePoint > 0x10FFFF
 					|| (codePoint >= 0xD800 && codePoint <= 0xDFFF))
 				{
 					codePoint = 0xFFFD;
@@ -142,10 +145,8 @@ inline jstring NewStringChecked (JNIEnv * env, std::string_view value) noexcept
 			i += length;
 		}
 
-		if (utf16.size () > static_cast<size_t> (std::numeric_limits<jsize>::max ()))
-			return nullptr;
-		jstring result = env->NewString (utf16.empty () ? nullptr : utf16.data (),
-			static_cast<jsize> (utf16.size ()));
+		if (utf16.size () > static_cast<size_t> (std::numeric_limits<jsize>::max ())) return nullptr;
+		jstring result = env->NewString (utf16.empty () ? nullptr : utf16.data (), static_cast<jsize> (utf16.size ()));
 		if (!result && env->ExceptionCheck ()) env->ExceptionClear ();
 		return result;
 	}
@@ -602,8 +603,7 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getDataDir (JNIEnv 
 
 JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_stopDaemon (JNIEnv * env, jclass clazz)
 {
-	JniVoidCall (
-		env,
+	JniVoidCall (env,
 		[] ()
 		{
 			// The guard serialises this against start/status. Java is expected
@@ -617,8 +617,7 @@ JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_stopDaemon (JNIEnv * e
 
 JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_stopAcceptingTunnels (JNIEnv * env, jclass clazz)
 {
-	JniVoidCall (
-		env,
+	JniVoidCall (env,
 		[] ()
 		{
 			i2p::android::NativeCallGuard call;
@@ -629,8 +628,7 @@ JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_stopAcceptingTunnels (
 
 JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_startAcceptingTunnels (JNIEnv * env, jclass clazz)
 {
-	JniVoidCall (
-		env,
+	JniVoidCall (env,
 		[] ()
 		{
 			i2p::android::NativeCallGuard call;
@@ -641,8 +639,7 @@ JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_startAcceptingTunnels 
 
 JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_reloadTunnelsConfigs (JNIEnv * env, jclass clazz)
 {
-	JniVoidCall (
-		env,
+	JniVoidCall (env,
 		[] ()
 		{
 			i2p::android::NativeCallGuard call;
@@ -654,8 +651,7 @@ JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_reloadTunnelsConfigs (
 JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_onNetworkStateChanged (
 	JNIEnv * env, jclass clazz, jboolean isConnected)
 {
-	JniVoidCall (
-		env,
+	JniVoidCall (env,
 		[isConnected] ()
 		{
 			// Java invokes this from the ConnectivityManager callback, not
@@ -670,8 +666,7 @@ JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_onNetworkStateChanged 
 
 JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_setDataDir (JNIEnv * env, jclass clazz, jstring jdataDir)
 {
-	JniVoidCall (
-		env,
+	JniVoidCall (env,
 		[&] ()
 		{
 			// State-only update (see getDataDir). It must not wait behind a
@@ -698,7 +693,6 @@ JNIEXPORT jint JNICALL Java_org_openi2pd_router_I2PD_1JNI_getTransitTunnelsCount
 		},
 		0);
 }
-
 
 JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getStatusSummary (JNIEnv * env, jclass clazz)
 {
@@ -731,8 +725,7 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getStatusSummary (J
 				<< " | Peers: " << i2p::transport::transports.GetNumPeers ()
 				<< " | Routers: " << i2p::data::netdb.GetNumRouters ()
 				<< " | Tunnels in/out/transit: " << i2p::tunnel::tunnels.CountInboundTunnels () << "/"
-				<< i2p::tunnel::tunnels.CountOutboundTunnels () << "/"
-				<< i2p::tunnel::tunnels.CountTransitTunnels ()
+				<< i2p::tunnel::tunnels.CountOutboundTunnels () << "/" << i2p::tunnel::tunnels.CountTransitTunnels ()
 				<< " | Reseeding: " << (i2p::data::netdb.IsReseeding () ? "yes" : "no");
 			return NewStringChecked (env, out.str ());
 		},
@@ -780,6 +773,74 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getRecentLogs (
 			return NewStringChecked (env, BuildRecentLogs (after, maxRecords));
 		},
 		"");
+}
+
+JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_torrentCommand (JNIEnv * env, jclass, jbyteArray request)
+{
+	return JniStringCall (
+		env,
+		[&] () -> jstring
+		{
+			if (!request || env->GetArrayLength (request) > i2p::tui::MAX_REQUEST_LINE)
+				return NewStringChecked (env, "I2PDTUI/1 ERR 4 15\ninvalid request");
+			// Standard UTF-8, rather than JNI modified UTF-8, preserves comment
+			// supplementary characters and rejects embedded NUL at the parser.
+			const auto length = env->GetArrayLength (request);
+			std::string line (static_cast<size_t> (length), '\0');
+			env->GetByteArrayRegion (request, 0, length, reinterpret_cast<jbyte *> (line.data ()));
+			if (env->ExceptionCheck ()) return nullptr;
+			auto parsed = i2p::tui::ParseRequest (line);
+			// This embedded bridge deliberately excludes filesystem import and all
+			// router-wide administration. SAF import needs its own storage broker.
+			if (!parsed) return NewStringChecked (env, "I2PDTUI/1 ERR 4 15\ninvalid request");
+			switch (parsed->type)
+			{
+			case i2p::tui::RequestType::Torrents:
+			case i2p::tui::RequestType::TorrentTunnels:
+			case i2p::tui::RequestType::TorrentDetail:
+			case i2p::tui::RequestType::TorrentDht:
+			case i2p::tui::RequestType::TorrentSession:
+			case i2p::tui::RequestType::TorrentPause:
+			case i2p::tui::RequestType::TorrentResume:
+			case i2p::tui::RequestType::TorrentRemove:
+			case i2p::tui::RequestType::TorrentAddMagnet:
+			case i2p::tui::RequestType::TorrentAddTracker:
+			case i2p::tui::RequestType::TorrentRemoveTracker:
+			case i2p::tui::RequestType::TorrentCreate:
+			case i2p::tui::RequestType::TorrentCommentsEnable:
+			case i2p::tui::RequestType::TorrentCommentAdd:
+			case i2p::tui::RequestType::TorrentCommentHide:
+			case i2p::tui::RequestType::TorrentFilePriority: break;
+			default: return NewStringChecked (env, "I2PDTUI/1 ERR 4 15\ninvalid request");
+			}
+			i2p::android::NativeCallGuard call;
+			if (!call.IsRunning ()) return NewStringChecked (env, "I2PDTUI/1 ERR 6 14\nrouter stopped");
+			return NewStringChecked (env, i2p::tui::Dispatch (line).response);
+		},
+		"I2PDTUI/1 ERR 6 14\ncontrol failed");
+}
+
+JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_importTorrent (
+	JNIEnv * env, jclass, jint tunnelIndex, jbyteArray metadata)
+{
+	return JniStringCall (
+		env,
+		[&] () -> jstring
+		{
+			constexpr jsize MAX_IMPORT_BYTES = 8 * 1024 * 1024;
+			if (tunnelIndex < 0 || !metadata) return NewStringChecked (env, "I2PDTUI/1 ERR 4 15\ninvalid request");
+			const auto size = env->GetArrayLength (metadata);
+			if (size <= 0 || size > MAX_IMPORT_BYTES)
+				return NewStringChecked (env, "I2PDTUI/1 ERR 4 15\ninvalid request");
+			std::vector<uint8_t> content (static_cast<size_t> (size));
+			env->GetByteArrayRegion (metadata, 0, size, reinterpret_cast<jbyte *> (content.data ()));
+			if (env->ExceptionCheck ()) return nullptr;
+			i2p::android::NativeCallGuard call;
+			if (!call.IsRunning ()) return NewStringChecked (env, "I2PDTUI/1 ERR 6 14\nrouter stopped");
+			return NewStringChecked (
+				env, i2p::tui::ImportTorrent (static_cast<uint32_t> (tunnelIndex), content).response);
+		},
+		"I2PDTUI/1 ERR 6 14\ncontrol failed");
 }
 
 JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_getHTTPProxyState (JNIEnv * env, jclass clazz)
