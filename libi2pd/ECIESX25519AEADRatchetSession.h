@@ -17,8 +17,11 @@
 #include <memory>
 #include <vector>
 #include <array>
+#include <deque>
 #include <list>
+#include <mutex>
 #include <unordered_map>
+#include <utility>
 #include "Identity.h"
 #include "Crypto.h"
 #include "PostQuantum.h"
@@ -44,6 +47,14 @@ namespace garlic
 	const int ECIESX25519_MIN_NUM_GENERATED_TAGS = 24;
 	const int ECIESX25519_MAX_NUM_GENERATED_TAGS = 800;
 	const int ECIESX25519_NSR_NUM_GENERATED_TAGS = 12;
+	// Java 2.13.0 ECIESAEADEngine.MAX_NS_AGE / MAX_NS_FUTURE
+	const uint64_t ECIESX25519_DATETIME_MAX_AGE = 5 * 60; // seconds
+	const uint64_t ECIESX25519_DATETIME_MAX_FUTURE = 2 * 60; // seconds
+	// Java 2.13.0 RatchetSKM.OutboundSession.MAX_SEND_ACKS
+	const int ECIESX25519_MAX_ACKS_PER_MESSAGE = 16;
+	// Upper bound for ACK requests queued on one session. Java drains at most
+	// MAX_SEND_ACKS per message, so the queue is bounded in practice too.
+	const size_t ECIESX25519_MAX_PENDING_ACKS = 128;
 
 	const size_t ECIESX25519_OPTIMAL_PAYLOAD_SIZE = 1912; // 1912 = 1956 /* to fit 2 tunnel messages */
 	// - 16 /* I2NP header */ - 16 /* poly hash */ - 8 /* tag */ - 4 /* garlic length */
@@ -59,13 +70,20 @@ namespace garlic
 		uint64_t GetNextSessionTag (i2p::crypto::HKDFContext & hkdfCtx);
 		const uint8_t * GetNextRootKey () const { return m_NextRootKey; };
 		int GetNextIndex () const { return m_NextIndex; };
-		void GetSymmKey (int index, uint8_t * key);
+		bool GetSymmKey (int index, uint8_t * key);
 		void DeleteSymmKey (int index);
 
 		int GetTagSetID () const { return m_TagSetID; };
 		void SetTagSetID (int tagsetID) { m_TagSetID = tagsetID; };
 
-		uint32_t GetMsgID () const { return (m_TagSetID << 16) + m_NextIndex; }; // (tagsetid << 16) + N
+		uint32_t GetMsgID () const
+		{
+			// ACKs carry a 16-bit tagset ID and a 16-bit message number. Do not
+			// shift a signed/out-of-range value (UB) or invent an ID that the
+			// peer can never acknowledge.
+			if (m_TagSetID < 0 || m_TagSetID > 0xFFFF || m_NextIndex < 0 || m_NextIndex > 0xFFFF) return 0;
+			return (static_cast<uint32_t> (m_TagSetID) << 16) | static_cast<uint32_t> (m_NextIndex);
+		}; // (tagsetid << 16) + N
 
 	private:
 		i2p::data::Tag<64> m_SessionTagKeyData;
@@ -136,6 +154,16 @@ namespace garlic
 	const uint8_t ECIESX25519_NEXT_KEY_REVERSE_KEY_FLAG = 0x02;
 	const uint8_t ECIESX25519_NEXT_KEY_REQUEST_REVERSE_KEY_FLAG = 0x04;
 
+	// Validates an established/NSR payload before any side effects are applied:
+	// exact block framing, DateTime uniqueness/skew, NEXT_KEY/ACK/ACKREQUEST
+	// lengths, and Padding/Termination ordering.
+	bool ValidateRatchetPayload (const uint8_t * buf, size_t len);
+	// Validates the payload of a New Session (NS/N): exactly one DateTime block
+	// inside the Java 2.13.0 window, at least one Garlic clove, no
+	// Termination/SessionID/unknown blocks and nothing after Padding.
+	// Exposed for the self-contained regression tests.
+	bool ValidateNewSessionPayload (const uint8_t * buf, size_t len);
+
 	class ECIESX25519AEADRatchetSession : public GarlicRoutingSession,
 										  private i2p::crypto::NoiseSymmetricState,
 										  public std::enable_shared_from_this<ECIESX25519AEADRatchetSession>
@@ -154,7 +182,10 @@ namespace garlic
 		{
 			int keyID = 0;
 			std::shared_ptr<i2p::crypto::X25519Keys> key;
-			uint8_t remote[32]; // last remote public key
+			uint8_t remote[32] = { }; // last remote public key
+			int remoteKeyID = -1; // key ID that remote belongs to
+			bool remoteKeyPresent = false;
+			bool lastHadKey = false; // shape of the last received NEXT_KEY
 			bool newKey = true;
 			int GetReceiveTagSetID () const { return newKey ? (2 * keyID + 1) : 2 * keyID; }
 		};
@@ -216,6 +247,7 @@ namespace garlic
 	private:
 		bool GenerateEphemeralKeysAndEncode (uint8_t * buf); // buf is 32 bytes
 		void InitNewSessionTagset (std::shared_ptr<RatchetTagSet> tagsetNsr) const;
+		void RestoreNewSessionState ();
 
 		bool HandleNewIncomingSession (const uint8_t * buf, size_t len);
 		// Try one locally supported ratchet key type. A trial never touches the
@@ -231,6 +263,7 @@ namespace garlic
 			const uint8_t * payload, size_t len, uint8_t * out, size_t outLen, bool isStatic = true);
 		bool NewSessionReplyMessage (const uint8_t * payload, size_t len, uint8_t * out, size_t outLen);
 		bool NextNewSessionReplyMessage (const uint8_t * payload, size_t len, uint8_t * out, size_t outLen);
+		bool CreateNewSessionReplyMessage (const uint8_t * payload, size_t len, uint8_t * out, size_t outLen);
 		bool NewExistingSessionMessage (const uint8_t * payload, size_t len, uint8_t * out, size_t outLen);
 
 		size_t CreatePayload (std::shared_ptr<const I2NPMessage> msg, bool first, uint8_t * payload);
@@ -248,13 +281,14 @@ namespace garlic
 
 	private:
 		i2p::data::CryptoKeyType m_RemoteStaticKeyType;
-		uint8_t m_RemoteStaticKey[32];
-		uint8_t m_Aepk[32]; // Alice's ephemeral keys, for incoming only
-		uint8_t m_NSREncodedKey[32], m_NSRH[32], m_NSRKey[32]; // new session reply, for incoming only
+		uint8_t m_RemoteStaticKey[32] = { }; // zero while an anonymous New Session is processed
+		uint8_t m_Aepk[32] = { }; // Alice's ephemeral keys, for incoming only
+		uint8_t m_NSRH[32] = { }; // hash at the end of the New Session
+		uint8_t m_NSRPostNSCK[32] = { }; // chain key at the end of the New Session
+		bool m_NSRStateReady = false; // New Session state captured, NSR possible
 		std::shared_ptr<i2p::crypto::X25519Keys> m_EphemeralKeys;
 #if OPENSSL_PQ
 		std::unique_ptr<i2p::crypto::MLKEMKeys> m_PQKeys;
-		std::unique_ptr<std::array<uint8_t, 64>> m_NSRCK; // before cipher text encryption
 #endif
 		SessionState m_State = eSessionStateNew;
 		uint64_t m_SessionCreatedTimestamp = 0, m_LastActivityTimestamp = 0, // incoming (in seconds)
@@ -289,6 +323,11 @@ namespace garlic
 
 	private:
 		i2p::crypto::NoiseSymmetricState m_CurrentNoiseState;
+		// Java ECIESAEADEngine.decryptNewSession_N checks keyManager.isDuplicate(pk)
+		// and drops a replayed router N message. Keep a bounded, time-limited
+		// cache; only authenticated and structurally valid N messages enter it.
+		mutable std::mutex m_EphemeralReplayMutex;
+		std::deque<std::pair<std::array<uint8_t, 32>, uint64_t>> m_EphemeralReplay;
 	};
 
 	std::shared_ptr<I2NPMessage> WrapECIESX25519Message (

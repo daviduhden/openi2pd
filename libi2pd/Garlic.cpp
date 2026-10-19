@@ -10,8 +10,11 @@
 
 #include <inttypes.h>
 #include "I2PEndian.h"
+#include <algorithm>
+#include <limits>
 #include <map>
 #include <string>
+#include <openssl/crypto.h>
 #include "Crypto.h"
 #include "RouterContext.h"
 #include "I2NPProtocol.h"
@@ -28,6 +31,15 @@ namespace i2p
 {
 namespace garlic
 {
+	// Java's ElGamalAESEngine.MAX_TAGS_RECEIVED and the ElGamal/AES
+	// specification allow at most 200 tags in one AES block. A larger count
+	// must be rejected before the receiver grows its tag table.
+	constexpr uint16_t MAX_ELGAMAL_AES_TAGS = 200;
+	// Per-destination bounds. A peer can otherwise add up to 200 ElGamal tags
+	// per block (retained for 960 s) or 800 ECIES tags per NEXT_KEY block.
+	constexpr size_t MAX_INCOMING_ELGAMAL_TAGS = 4096;
+	constexpr size_t MAX_INCOMING_ECIES_TAGS = 8192;
+
 	GarlicRoutingSession::GarlicRoutingSession (GarlicDestination * owner, bool attachLeaseSet)
 		: m_Owner (owner)
 		, m_LeaseSetUpdateStatus (attachLeaseSet ? eLeaseSetUpdated : eLeaseSetDoNotSend)
@@ -51,7 +63,8 @@ namespace garlic
 	{
 		if (!m_SharedRoutingPath) return nullptr;
 		uint32_t ts = i2p::util::GetSecondsSinceEpoch ();
-		if (!m_SharedRoutingPath->outboundTunnel->IsEstablished ()
+		if (!m_SharedRoutingPath->outboundTunnel || !m_SharedRoutingPath->remoteLease
+			|| !m_SharedRoutingPath->outboundTunnel->IsEstablished ()
 			|| ts * 1000LL > m_SharedRoutingPath->remoteLease->endDate
 			|| ts > m_SharedRoutingPath->updateTime + ROUTING_PATH_EXPIRATION_TIMEOUT)
 			m_SharedRoutingPath = nullptr;
@@ -95,10 +108,17 @@ namespace garlic
 		{
 			//encrypt
 			uint8_t key[32], tag[32];
-			RAND_bytes (key, 32); // random session key
-			RAND_bytes (tag, 32); // random session tag
+			if (RAND_bytes (key, sizeof (key)) != 1 || RAND_bytes (tag, sizeof (tag)) != 1)
+			{
+				OPENSSL_cleanse (key, sizeof (key));
+				OPENSSL_cleanse (tag, sizeof (tag));
+				LogPrint (eLogError, "Garlic: Can't generate DeliveryStatus session key");
+				return nullptr;
+			}
 			GetOwner ()->SubmitSessionKey (key, tag);
 			ElGamalAESSession garlic (key, tag);
+			OPENSSL_cleanse (key, sizeof (key));
+			OPENSSL_cleanse (tag, sizeof (tag));
 			msg = garlic.WrapSingleMessage (msg);
 		}
 		return msg;
@@ -116,17 +136,29 @@ namespace garlic
 		std::shared_ptr<const i2p::data::RoutingDestination> destination, int numTags, bool attachLeaseSet)
 		: GarlicRoutingSession (owner, attachLeaseSet)
 		, m_Destination (destination)
-		, m_NumTags (numTags)
+		, m_NumTags (std::clamp (numTags, 0, (int)MAX_ELGAMAL_AES_TAGS))
 	{
 		// create new session tags and session key
-		RAND_bytes (m_SessionKey, 32);
+		if (RAND_bytes (m_SessionKey, 32) == 1)
+			m_SessionKeyValid = true;
+		else
+		{
+			OPENSSL_cleanse (m_SessionKey, sizeof (m_SessionKey));
+			LogPrint (eLogError, "Garlic: Can't generate ElGamal/AES session key");
+		}
 		m_Encryption.SetKey (m_SessionKey);
 	}
 
 	ElGamalAESSession::ElGamalAESSession (const uint8_t * sessionKey, const SessionTag & sessionTag)
 		: m_NumTags (1)
 	{
-		memcpy (m_SessionKey, sessionKey, 32);
+		if (sessionKey)
+		{
+			memcpy (m_SessionKey, sessionKey, 32);
+			m_SessionKeyValid = true;
+		}
+		else
+			OPENSSL_cleanse (m_SessionKey, sizeof (m_SessionKey));
 		m_Encryption.SetKey (m_SessionKey);
 		m_SessionTags.push_back (sessionTag);
 		m_SessionTags.back ().creationTime = i2p::util::GetSecondsSinceEpoch ();
@@ -134,8 +166,30 @@ namespace garlic
 
 	std::shared_ptr<I2NPMessage> ElGamalAESSession::WrapSingleMessage (std::shared_ptr<const I2NPMessage> msg)
 	{
+		if (!m_SessionKeyValid)
+		{
+			LogPrint (eLogError, "Garlic: ElGamal/AES session key is not available");
+			return nullptr;
+		}
 		auto m = NewI2NPMessage ();
 		m->Align (12); // in order to get buf aligned to 16 (12 + 4)
+		const size_t baseLen = m->len;
+		const size_t capacity = baseLen <= m->maxLen ? m->maxLen - baseLen : 0;
+		// Worst case envelope: length, ElGamal block, freshly generated tags,
+		// AES block header, garlic payload and padding. Refuse oversized input
+		// before consuming a tag or mutating session state.
+		size_t worstTags = 0;
+		if (m_NumTags > 0)
+		{
+			if (static_cast<size_t> (m_NumTags) > (std::numeric_limits<size_t>::max () - 636) / 32) return nullptr;
+			worstTags = static_cast<size_t> (m_NumTags) * 32;
+		}
+		const size_t worstOverhead = 636 + worstTags;
+		if (msg && (capacity < worstOverhead || msg->GetLength () > capacity - worstOverhead))
+		{
+			LogPrint (eLogWarning, "Garlic: message of ", msg->GetLength (), " bytes is too large to wrap");
+			return nullptr;
+		}
 		size_t len = 0;
 		uint8_t * buf = m->GetPayload () + 4; // 4 bytes for length
 
@@ -167,10 +221,23 @@ namespace garlic
 				LogPrint (eLogError, "Garlic: Can't use ElGamal for unknown destination");
 				return nullptr;
 			}
-			// create ElGamal block
+			if (capacity < 4 + 514)
+			{
+				LogPrint (eLogError, "Garlic: No room for ElGamal block");
+				return nullptr;
+			}
+			// create ElGamal block. The padding is ignored by the receiver but
+			// is part of the encrypted plaintext, so it must not carry
+			// uninitialised stack contents.
 			ElGamalBlock elGamal;
 			memcpy (elGamal.sessionKey, m_SessionKey, 32);
-			RAND_bytes (elGamal.preIV, 32); // Pre-IV
+			if (RAND_bytes (elGamal.preIV, 32) != 1) // Pre-IV
+			{
+				OPENSSL_cleanse (&elGamal, sizeof (elGamal));
+				LogPrint (eLogError, "Garlic: Can't generate ElGamal pre-IV");
+				return nullptr;
+			}
+			memset (elGamal.padding, 0, sizeof (elGamal.padding));
 			uint8_t iv[32]; // IV is first 16 bytes
 			SHA256 (elGamal.preIV, 32, iv);
 			m_Destination->Encrypt ((uint8_t *)&elGamal, buf);
@@ -180,6 +247,11 @@ namespace garlic
 		}
 		else // existing session
 		{
+			if (capacity < 4 + 32)
+			{
+				LogPrint (eLogError, "Garlic: No room for session tag");
+				return nullptr;
+			}
 			// session tag
 			memcpy (buf, tag, 32);
 			uint8_t iv[32]; // IV is first 16 bytes
@@ -189,50 +261,106 @@ namespace garlic
 			len += 32;
 		}
 		// AES block
-		len += CreateAESBlock (buf, msg);
+		if (len > capacity - 4)
+		{
+			LogPrint (eLogError, "Garlic: No room for AES block");
+			return nullptr;
+		}
+		const size_t blockSize = CreateAESBlock (buf, capacity - 4 - len, msg);
+		if (!blockSize)
+		{
+			LogPrint (eLogError, "Garlic: Can't create AES block");
+			return nullptr;
+		}
+		len += blockSize;
 		htobe32buf (m->GetPayload (), len);
-		m->len += len + 4;
+		m->len = baseLen + 4 + len;
 		m->FillI2NPMessageHeader (eI2NPGarlic);
 		return m;
 	}
 
-	size_t ElGamalAESSession::CreateAESBlock (uint8_t * buf, std::shared_ptr<const I2NPMessage> msg)
+	size_t ElGamalAESSession::CreateAESBlock (uint8_t * buf, size_t capacity, std::shared_ptr<const I2NPMessage> msg)
 	{
 		size_t blockSize = 0;
-		bool createNewTags = GetOwner () && m_NumTags && ((int)m_SessionTags.size () <= m_NumTags * 2 / 3);
-		UnconfirmedTags * newTags = createNewTags ? GenerateSessionTags () : nullptr;
-		htobuf16 (buf, newTags ? htobe16 (newTags->numTags) : 0); // tag count
+		bool createNewTags
+			= GetOwner () && m_NumTags && (m_SessionTags.size () <= static_cast<size_t> (m_NumTags) * 2 / 3);
+		const size_t headerSize = 2 + 4 + 32 + 1; // tag count, payload size, hash, flag
+		size_t tagsSize = 0;
+		if (createNewTags)
+		{
+			if (static_cast<size_t> (m_NumTags) > (std::numeric_limits<size_t>::max () - headerSize) / 32) return 0;
+			tagsSize = static_cast<size_t> (m_NumTags) * 32;
+		}
+		// Keep room for the worst-case PKCS#7-style block padding below.
+		constexpr size_t maxPadding = 15;
+		if (capacity < headerSize + tagsSize + maxPadding) return 0;
+		std::unique_ptr<UnconfirmedTags> newTags = createNewTags ? GenerateSessionTags () : nullptr;
+		htobuf16 (buf, newTags ? htobe16 (static_cast<uint16_t> (newTags->sessionTags.size ())) : 0); // tag count
 		blockSize += 2;
 		if (newTags) // session tags recreated
 		{
-			for (int i = 0; i < newTags->numTags; i++)
+			for (const auto & tag : newTags->sessionTags)
 			{
-				memcpy (buf + blockSize, newTags->sessionTags[i], 32); // tags
+				memcpy (buf + blockSize, tag.data (), 32); // tags
 				blockSize += 32;
 			}
 		}
-		uint32_t * payloadSize = (uint32_t *)(buf + blockSize);
+		uint8_t * payloadSize = buf + blockSize; // avoid unaligned uint32_t access
 		blockSize += 4;
 		uint8_t * payloadHash = buf + blockSize;
 		blockSize += 32;
 		buf[blockSize] = 0; // flag
 		blockSize++;
-		size_t len = CreateGarlicPayload (buf + blockSize, msg, newTags);
+		// Ownership of newTags moves into CreateGarlicPayload: it either stores
+		// the tags together with the DeliveryStatus message that confirms them
+		// or releases them on failure.
+		size_t len = CreateGarlicPayload (
+			buf + blockSize, capacity - blockSize - maxPadding, msg, std::move (newTags));
+		if (!len) return 0;
 		htobe32buf (payloadSize, len);
 		SHA256 (buf + blockSize, len, payloadHash);
 		blockSize += len;
-		size_t rem = blockSize % 16;
-		if (rem) blockSize += (16 - rem); //padding
-		m_Encryption.Encrypt (buf, blockSize, m_IV, buf);
+		const size_t rem = blockSize % 16;
+		if (rem)
+		{
+			const size_t padding = 16 - rem;
+			// The receiver ignores this padding, but it must not expose stale
+			// heap contents. Java AESEngine.getPadding() uses the CSPRNG.
+			if (RAND_bytes (buf + blockSize, static_cast<int> (padding)) != 1)
+			{
+				LogPrint (eLogError, "Garlic: Can't generate AES block padding");
+				return 0;
+			}
+			blockSize += padding;
+		}
+		if (!m_Encryption.EncryptChecked (buf, blockSize, m_IV, buf))
+		{
+			LogPrint (eLogError, "Garlic: Can't encrypt the AES block");
+			return 0;
+		}
 		return blockSize;
 	}
 
 	size_t ElGamalAESSession::CreateGarlicPayload (
-		uint8_t * payload, std::shared_ptr<const I2NPMessage> msg, UnconfirmedTags * newTags)
+		uint8_t * payload, size_t capacity, std::shared_ptr<const I2NPMessage> msg,
+		std::unique_ptr<UnconfirmedTags> newTags)
 	{
+		const bool isDestination = m_Destination ? m_Destination->IsDestination () : false;
+		const size_t mainCloveSize = msg ? 1 + (isDestination ? 32 : 0) + msg->GetLength () + 4 + 8 + 3 : 0;
+		const size_t reserved = 1 + mainCloveSize + 15; // clove count, message clove, trailer
+		if (capacity < reserved)
+		{
+			LogPrint (eLogWarning, "Garlic: payload does not fit into the message");
+			return 0; // newTags released by the unique_ptr
+		}
+		size_t optionalCapacity = capacity - reserved;
 		uint64_t ts = i2p::util::GetMillisecondsSinceEpoch ();
 		uint32_t msgID;
-		RAND_bytes ((uint8_t *)&msgID, 4);
+		if (RAND_bytes ((uint8_t *)&msgID, sizeof (msgID)) != 1)
+		{
+			LogPrint (eLogError, "Garlic: Can't generate garlic message ID");
+			return 0;
+		}
 		size_t size = 0;
 		uint8_t * numCloves = payload + size;
 		*numCloves = 0;
@@ -252,17 +380,16 @@ namespace garlic
 			if (newTags || GetLeaseSetUpdateStatus () == eLeaseSetUpdated) // new tags created or leaseset updated
 			{
 				// clove is DeliveryStatus
-				auto cloveSize = CreateDeliveryStatusClove (payload + size, msgID);
+				auto cloveSize = CreateDeliveryStatusClove (payload + size, optionalCapacity, msgID);
 				if (cloveSize > 0) // successive?
 				{
 					size += cloveSize;
+					optionalCapacity -= cloveSize;
 					(*numCloves)++;
 					if (newTags) // new tags created
 					{
 						newTags->msgID = msgID;
-						m_UnconfirmedTagsMsgs.insert (
-							std::make_pair (msgID, std::unique_ptr<UnconfirmedTags> (newTags)));
-						newTags = nullptr; // got acquired
+						m_UnconfirmedTagsMsgs.emplace (msgID, std::move (newTags));
 					}
 					GetOwner ()->DeliveryStatusSent (shared_from_this (), msgID);
 				}
@@ -272,21 +399,39 @@ namespace garlic
 			// attach LeaseSet
 			if (GetLeaseSetUpdateStatus () == eLeaseSetUpdated)
 			{
-				if (GetLeaseSetUpdateMsgID ())
-					GetOwner ()->RemoveDeliveryStatusSession (GetLeaseSetUpdateMsgID ()); // remove previous
-				SetLeaseSetUpdateStatus (eLeaseSetSubmitted);
-				SetLeaseSetUpdateMsgID (msgID);
-				SetLeaseSetSubmissionTime (ts);
-				// clove if our leaseSet must be attached
-				auto leaseSet = CreateDatabaseStoreMsg (GetOwner ()->GetLeaseSet ());
-				size += CreateGarlicClove (payload + size, leaseSet, false);
-				(*numCloves)++;
+				auto leaseSet = GetOwner ()->GetLeaseSet ();
+				auto leaseSetMsg = leaseSet ? CreateDatabaseStoreMsg (leaseSet) : nullptr;
+				auto cloveSize
+					= leaseSetMsg ? CreateGarlicClove (payload + size, optionalCapacity, leaseSetMsg, false) : 0;
+				if (cloveSize > 0)
+				{
+					if (GetLeaseSetUpdateMsgID ())
+						GetOwner ()->RemoveDeliveryStatusSession (GetLeaseSetUpdateMsgID ()); // remove previous
+					SetLeaseSetUpdateStatus (eLeaseSetSubmitted);
+					SetLeaseSetUpdateMsgID (msgID);
+					SetLeaseSetSubmissionTime (ts);
+					size += cloveSize;
+					optionalCapacity -= cloveSize;
+					(*numCloves)++;
+				}
+				else
+					LogPrint (eLogWarning, "Garlic: LeaseSet clove was not created");
 			}
 		}
 		if (msg) // clove message itself if presented
 		{
-			size += CreateGarlicClove (payload + size, msg, m_Destination ? m_Destination->IsDestination () : false);
-			(*numCloves)++;
+			// reserved space guarantees this succeeds
+			auto cloveSize = CreateGarlicClove (payload + size, capacity - size, msg, isDestination);
+			if (cloveSize > 0)
+			{
+				size += cloveSize;
+				(*numCloves)++;
+			}
+			else
+			{
+				LogPrint (eLogError, "Garlic: Message clove was not created");
+				return 0;
+			}
 		}
 		memset (payload + size, 0, 3); // certificate of message
 		size += 3;
@@ -295,13 +440,17 @@ namespace garlic
 		htobe64buf (payload + size, ts + 8000); // Expiration of message, 8 sec
 		size += 8;
 
-		if (newTags) delete newTags; // not acquired, delete
+		// newTags was either moved into m_UnconfirmedTagsMsgs above or is
+		// released here when no DeliveryStatus clove could be attached.
 		return size;
 	}
 
 	size_t ElGamalAESSession::CreateGarlicClove (
-		uint8_t * buf, std::shared_ptr<const I2NPMessage> msg, bool isDestination)
+		uint8_t * buf, size_t capacity, std::shared_ptr<const I2NPMessage> msg, bool isDestination)
 	{
+		if (!msg) return 0;
+		const size_t needed = 1 + (isDestination ? 32 : 0) + msg->GetLength () + 4 + 8 + 3;
+		if (capacity < needed) return 0;
 		uint64_t ts = i2p::util::GetMillisecondsSinceEpoch () + 8000; // 8 sec
 		size_t size = 0;
 		if (isDestination)
@@ -320,7 +469,11 @@ namespace garlic
 		memcpy (buf + size, msg->GetBuffer (), msg->GetLength ());
 		size += msg->GetLength ();
 		uint32_t cloveID;
-		RAND_bytes ((uint8_t *)&cloveID, 4);
+		if (RAND_bytes ((uint8_t *)&cloveID, sizeof (cloveID)) != 1)
+		{
+			LogPrint (eLogError, "Garlic: Can't generate clove ID");
+			return 0;
+		}
 		htobe32buf (buf + size, cloveID); // CloveID
 		size += 4;
 		htobe64buf (buf + size, ts); // Expiration of clove
@@ -330,14 +483,25 @@ namespace garlic
 		return size;
 	}
 
-	size_t ElGamalAESSession::CreateDeliveryStatusClove (uint8_t * buf, uint32_t msgID)
+	size_t ElGamalAESSession::CreateDeliveryStatusClove (uint8_t * buf, size_t capacity, uint32_t msgID)
 	{
 		size_t size = 0;
 		if (GetOwner ())
 		{
-			auto inboundTunnel = GetOwner ()->GetTunnelPool ()->GetNextInboundTunnel ();
+			auto pool = GetOwner ()->GetTunnelPool ();
+			auto inboundTunnel = pool ? pool->GetNextInboundTunnel () : nullptr;
 			if (inboundTunnel)
 			{
+				// The encrypted DeliveryStatus (one fixed-size tag set) plus
+				// the tunnel/clove headers is far below this bound. Check it
+				// before creating the key so a failed attempt does not leave
+				// an unused tag behind.
+				if (capacity < 512) return 0;
+				// create msg first so the exact capacity check happens before writing
+				auto msg = CreateEncryptedDeliveryStatusMsg (msgID);
+				if (!msg) return 0;
+				const size_t needed = 1 + 32 + 4 + msg->GetLength () + 4 + 8 + 3;
+				if (capacity < needed) return 0;
 				buf[size] = eGarlicDeliveryTypeTunnel << 5; // delivery instructions flag tunnel
 				size++;
 				// hash and tunnelID sequence is reversed for Garlic
@@ -345,17 +509,16 @@ namespace garlic
 				size += 32;
 				htobe32buf (buf + size, inboundTunnel->GetNextTunnelID ()); // tunnelID
 				size += 4;
-				// create msg
-				auto msg = CreateEncryptedDeliveryStatusMsg (msgID);
-				if (msg)
-				{
-					memcpy (buf + size, msg->GetBuffer (), msg->GetLength ());
-					size += msg->GetLength ();
-				}
+				memcpy (buf + size, msg->GetBuffer (), msg->GetLength ());
+				size += msg->GetLength ();
 				// fill clove
 				uint64_t ts = i2p::util::GetMillisecondsSinceEpoch () + 8000; // 8 sec
 				uint32_t cloveID;
-				RAND_bytes ((uint8_t *)&cloveID, 4);
+				if (RAND_bytes ((uint8_t *)&cloveID, sizeof (cloveID)) != 1)
+				{
+					LogPrint (eLogError, "Garlic: Can't generate DeliveryStatus clove ID");
+					return 0;
+				}
 				htobe32buf (buf + size, cloveID); // CloveID
 				size += 4;
 				htobe64buf (buf + size, ts); // Expiration of clove
@@ -372,14 +535,20 @@ namespace garlic
 		return size;
 	}
 
-	ElGamalAESSession::UnconfirmedTags * ElGamalAESSession::GenerateSessionTags ()
+	std::unique_ptr<ElGamalAESSession::UnconfirmedTags> ElGamalAESSession::GenerateSessionTags ()
 	{
-		auto tags = new UnconfirmedTags (m_NumTags);
+		auto tags = std::make_unique<UnconfirmedTags> (m_NumTags);
 		tags->tagsCreationTime = i2p::util::GetSecondsSinceEpoch ();
-		for (int i = 0; i < m_NumTags; i++)
+		for (auto & tag : tags->sessionTags)
 		{
-			RAND_bytes (tags->sessionTags[i], 32);
-			tags->sessionTags[i].creationTime = tags->tagsCreationTime;
+			if (!tag.Randomize ())
+			{
+				// Never announce a partially random or zero tag set.
+				for (auto & failed : tags->sessionTags) failed.Fill (0);
+				LogPrint (eLogError, "Garlic: Can't generate ElGamal/AES session tags");
+				return nullptr;
+			}
+			tag.creationTime = tags->tagsCreationTime;
 		}
 		return tags;
 	}
@@ -400,7 +569,7 @@ namespace garlic
 			auto & tags = it->second;
 			if (ts < tags->tagsCreationTime + OUTGOING_TAGS_EXPIRATION_TIMEOUT)
 			{
-				for (int i = 0; i < tags->numTags; i++) m_SessionTags.push_back (tags->sessionTags[i]);
+				for (const auto & tag : tags->sessionTags) m_SessionTags.push_back (tag);
 			}
 			m_UnconfirmedTagsMsgs.erase (it);
 		}
@@ -445,30 +614,32 @@ namespace garlic
 		, m_IsIdling (false)
 		, m_NumTags (32)
 		, // 32 tags by default
-		m_PayloadBuffer (nullptr)
-		, m_LastIncomingSessionTimestamp (0)
+		m_LastIncomingSessionTimestamp (0)
 		, m_NumRatchetInboundTags (0) // 0 means standard
 	{
 	}
 
-	GarlicDestination::~GarlicDestination ()
-	{
-		if (m_PayloadBuffer) delete[] m_PayloadBuffer;
-	}
+	GarlicDestination::~GarlicDestination () = default;
 
 	void GarlicDestination::CleanUp ()
 	{
 		for (auto it : m_Sessions) it.second->SetOwner (nullptr);
 		m_Sessions.clear ();
 		m_DeliveryStatusSessions.clear ();
-		m_Tags.clear ();
-		for (auto it : m_ECIESx25519Sessions)
 		{
-			it.second->Terminate ();
-			it.second->SetOwner (nullptr);
+			std::lock_guard<std::mutex> l (m_TagsMutex);
+			m_Tags.clear ();
+			m_ECIESx25519Tags.clear ();
 		}
-		m_ECIESx25519Sessions.clear ();
-		m_ECIESx25519Tags.clear ();
+		{
+			std::unique_lock<std::mutex> l (m_SessionsMutex);
+			for (auto it : m_ECIESx25519Sessions)
+			{
+				it.second->Terminate ();
+				it.second->SetOwner (nullptr);
+			}
+			m_ECIESx25519Sessions.clear ();
+		}
 		{
 			std::lock_guard<std::mutex> l (m_NewSessionKeysMutex);
 			m_NewSessionKeys.clear ();
@@ -476,16 +647,20 @@ namespace garlic
 	}
 	void GarlicDestination::AddSessionKey (const uint8_t * key, const uint8_t * tag)
 	{
-		if (key)
+		if (key && tag)
 		{
 			uint32_t ts = i2p::util::GetSecondsSinceEpoch ();
-			m_Tags[SessionTag (tag, ts)] = std::make_shared<AESDecryption> (key);
+			auto decryption = std::make_shared<AESDecryption> (key);
+			std::lock_guard<std::mutex> l (m_TagsMutex);
+			m_Tags[SessionTag (tag, ts)] = std::move (decryption);
 		}
 	}
 
 	void GarlicDestination::AddECIESx25519Key (const uint8_t * key, uint64_t tag)
 	{
+		if (!key) return;
 		auto tagset = std::make_shared<SymmetricKeyTagSet> (this, key);
+		std::lock_guard<std::mutex> l (m_TagsMutex);
 		m_ECIESx25519Tags.emplace (tag, ECIESX25519AEADRatchetIndexTagset { 0, tagset });
 	}
 
@@ -502,12 +677,23 @@ namespace garlic
 
 	void GarlicDestination::HandleGarlicMessage (std::shared_ptr<I2NPMessage> msg)
 	{
-		uint8_t * buf = msg->GetPayload ();
-		uint32_t length = bufbe32toh (buf);
-		if (length > msg->GetLength ())
+		if (!msg || msg->GetLength () < I2NP_HEADER_SIZE + 4)
 		{
-			LogPrint (
-				eLogWarning, "Garlic: Message length ", length, " exceeds I2NP message length ", msg->GetLength ());
+			LogPrint (eLogWarning, "Garlic: Message is too short for a length prefix");
+			return;
+		}
+		uint8_t * buf = msg->GetPayload ();
+		const size_t payloadLength = msg->GetLength () - I2NP_HEADER_SIZE;
+		uint32_t length = bufbe32toh (buf);
+		if (length > payloadLength - 4)
+		{
+			LogPrint (eLogWarning, "Garlic: Message length ", length, " exceeds payload length ", payloadLength - 4);
+			return;
+		}
+		if (length < 8)
+		{
+			// every supported encryption envelope is longer than the tag
+			LogPrint (eLogWarning, "Garlic: Message length ", length, " is too short");
 			return;
 		}
 		auto mod = length & 0x0f; // %16
@@ -517,23 +703,27 @@ namespace garlic
 		bool found = HandleECIESx25519TagMessage (buf, length);
 		if (!found)
 		{
-			auto it = !mod ? m_Tags.find (SessionTag (buf)) : m_Tags.end (); // AES block is multiple of 16
-			// AES tag might be used even if encryption type is not ElGamal/AES
-			if (it != m_Tags.end ()) // try AES tag
+			// AES block is a multiple of 16 and starts with a 32-byte tag.
+			std::shared_ptr<AESDecryption> decryption;
+			if (!mod && length >= 32)
 			{
-				// tag found. Use AES
-				auto decryption = it->second;
-				m_Tags.erase (it); // tag might be used only once
-				if (length >= 32)
+				std::lock_guard<std::mutex> l (m_TagsMutex);
+				auto it = m_Tags.find (SessionTag (buf));
+				if (it != m_Tags.end ())
 				{
-					uint8_t iv[32]; // IV is first 16 bytes
-					SHA256 (buf, 32, iv);
-					decryption->Decrypt (buf + 32, length - 32, iv, buf + 32);
-					HandleAESBlock (buf + 32, length - 32, decryption, msg->from);
-					found = true;
+					// tag found. Use AES; a tag is consumed by exactly one
+					// message even if decryption or the payload later fails.
+					decryption = it->second;
+					m_Tags.erase (it);
 				}
-				else
-					LogPrint (eLogWarning, "Garlic: Message length ", length, " is less than 32 bytes");
+			}
+			if (decryption)
+			{
+				uint8_t iv[32]; // IV is first 16 bytes
+				SHA256 (buf, 32, iv);
+				decryption->Decrypt (buf + 32, length - 32, iv, buf + 32);
+				HandleAESBlock (buf + 32, length - 32, decryption, msg->from);
+				found = true;
 			}
 			if (!found) // assume new session
 			{
@@ -572,17 +762,25 @@ namespace garlic
 
 	bool GarlicDestination::HandleECIESx25519TagMessage (uint8_t * buf, size_t len)
 	{
+		if (!buf || len < 8) return false;
 		uint64_t tag;
 		memcpy (&tag, buf, 8);
-		auto it = m_ECIESx25519Tags.find (tag);
-		if (it != m_ECIESx25519Tags.end ())
+		ReceiveRatchetTagSetPtr tagset;
+		int index = 0;
 		{
-			if (!it->second.tagset || !it->second.tagset->HandleNextMessage (buf, len, it->second.index))
-				LogPrint (eLogError, "Garlic: Can't handle ECIES-X25519-AEAD-Ratchet message");
+			std::lock_guard<std::mutex> l (m_TagsMutex);
+			auto it = m_ECIESx25519Tags.find (tag);
+			if (it == m_ECIESx25519Tags.end ()) return false;
+			// The callback can insert more tags into the same unordered_map
+			// (GenerateMoreReceiveTags / NEXT_KEY). Erase before invoking it so
+			// a rehash cannot invalidate this iterator or erase the wrong tag.
+			tagset = it->second.tagset;
+			index = it->second.index;
 			m_ECIESx25519Tags.erase (it);
-			return true;
 		}
-		return false;
+		if (!tagset || !tagset->HandleNextMessage (buf, len, index))
+			LogPrint (eLogError, "Garlic: Can't handle ECIES-X25519-AEAD-Ratchet message");
+		return true;
 	}
 
 	void GarlicDestination::HandleAESBlock (uint8_t * buf, size_t len, std::shared_ptr<AESDecryption> decryption,
@@ -596,15 +794,23 @@ namespace garlic
 		uint16_t tagCount = bufbe16toh (buf);
 		buf += 2;
 		len -= 2;
+		if (tagCount > MAX_ELGAMAL_AES_TAGS)
+		{
+			LogPrint (eLogError, "Garlic: Tag count ", tagCount, " exceeds the maximum ",
+				(int)MAX_ELGAMAL_AES_TAGS);
+			return;
+		}
+		const uint8_t * tagsStart = buf;
+		uint32_t tagsCreationTime = 0;
 		if (tagCount > 0)
 		{
-			if (tagCount * 32 > len)
+			const size_t tagBytes = static_cast<size_t> (tagCount) * 32;
+			if (tagBytes > len)
 			{
 				LogPrint (eLogError, "Garlic: Tag count ", tagCount, " exceeds length ", len);
 				return;
 			}
-			uint32_t ts = i2p::util::GetSecondsSinceEpoch ();
-			for (int i = 0; i < tagCount; i++) m_Tags[SessionTag (buf + i * 32, ts)] = decryption;
+			tagsCreationTime = i2p::util::GetSecondsSinceEpoch ();
 		}
 		buf += tagCount * 32;
 		len -= tagCount * 32;
@@ -619,13 +825,15 @@ namespace garlic
 		uint8_t * payloadHash = buf;
 		buf += 32;
 		len -= 32; // payload hash.
-		if (*buf) // session key?
+		const uint8_t * newSessionKey = nullptr;
+		if (*buf == 0x01) // rekey flag; any other value means no session key
 		{
 			if (len < 33) // 32 (new session key) + 1 (flag)
 			{
 				LogPrint (eLogError, "Garlic: AES block is too short for session key, length ", len);
 				return;
 			}
+			newSessionKey = buf + 1;
 			buf += 32;
 			len -= 32; // new session key
 		}
@@ -645,6 +853,23 @@ namespace garlic
 			LogPrint (eLogError, "Garlic: Wrong payload hash");
 			return;
 		}
+		// Only install the announced session tags once the payload hash has
+		// been verified. Previously unauthenticated tags were inserted before
+		// the check and could be used to grow m_Tags with forged entries.
+		// A rekey flag associates the new tags with the announced session key,
+		// exactly as Java's tagsReceived(foundKey, tags) does.
+		std::shared_ptr<AESDecryption> tagDecryption = decryption;
+		if (newSessionKey) tagDecryption = std::make_shared<AESDecryption> (newSessionKey);
+		{
+			std::lock_guard<std::mutex> l (m_TagsMutex);
+			if (m_Tags.size () + tagCount > MAX_INCOMING_ELGAMAL_TAGS)
+			{
+				LogPrint (eLogError, "Garlic: Incoming ElGamal/AES tag budget exceeded");
+				return;
+			}
+			for (int i = 0; i < tagCount; i++)
+				m_Tags[SessionTag (tagsStart + i * 32, tagsCreationTime)] = tagDecryption;
+		}
 		HandleGarlicPayload (buf, payloadSize, from);
 	}
 
@@ -662,6 +887,11 @@ namespace garlic
 		len--;
 		for (int i = 0; i < numCloves; i++)
 		{
+			if (len < 1) // no flag byte left for the announced clove
+			{
+				LogPrint (eLogError, "Garlic: Payload ended before clove ", i);
+				break;
+			}
 			const uint8_t * buf1 = buf;
 			// delivery instructions
 			uint8_t flag = buf[0];
@@ -671,6 +901,11 @@ namespace garlic
 				// TODO: implement
 				LogPrint (eLogWarning, "Garlic: Clove encrypted");
 				buf += 32;
+				if (static_cast<size_t> (buf - buf1) > len)
+				{
+					LogPrint (eLogError, "Garlic: Encrypted clove is too short");
+					break;
+				}
 			}
 			ptrdiff_t offset = buf - buf1;
 			GarlicDeliveryType deliveryType = (GarlicDeliveryType)((flag >> 5) & 0x03);
@@ -792,15 +1027,18 @@ namespace garlic
 				ECIESX25519AEADRatchetSessionPtr session;
 				uint8_t staticKey[32];
 				destination->Encrypt (nullptr, staticKey); // we are supposed to get static key
-				auto it = m_ECIESx25519Sessions.find (staticKey);
-				if (it != m_ECIESx25519Sessions.end ())
 				{
-					session = it->second;
-					if (session->IsInactive (i2p::util::GetSecondsSinceEpoch ()))
+					std::unique_lock<std::mutex> l (m_SessionsMutex);
+					auto it = m_ECIESx25519Sessions.find (staticKey);
+					if (it != m_ECIESx25519Sessions.end ())
 					{
-						LogPrint (eLogDebug, "Garlic: Session restarted");
-						requestNewIfNotFound = true; // it's not a new session
-						session = nullptr;
+						session = it->second;
+						if (session->IsInactive (i2p::util::GetSecondsSinceEpoch ()))
+						{
+							LogPrint (eLogDebug, "Garlic: Session restarted");
+							requestNewIfNotFound = true; // it's not a new session
+							session = nullptr;
+						}
 					}
 				}
 				if (!session && requestNewIfNotFound)
@@ -840,15 +1078,18 @@ namespace garlic
 		// incoming
 		uint32_t ts = i2p::util::GetSecondsSinceEpoch ();
 		int numExpiredTags = 0;
-		for (auto it = m_Tags.begin (); it != m_Tags.end ();)
 		{
-			if (ts > it->first.creationTime + INCOMING_TAGS_EXPIRATION_TIMEOUT)
+			std::lock_guard<std::mutex> l (m_TagsMutex);
+			for (auto it = m_Tags.begin (); it != m_Tags.end ();)
 			{
-				numExpiredTags++;
-				it = m_Tags.erase (it);
+				if (ts > it->first.creationTime + INCOMING_TAGS_EXPIRATION_TIMEOUT)
+				{
+					numExpiredTags++;
+					it = m_Tags.erase (it);
+				}
+				else
+					++it;
 			}
-			else
-				++it;
 		}
 		if (numExpiredTags > 0)
 			LogPrint (eLogDebug, "Garlic: ", numExpiredTags, " tags expired for ", GetIdentHash ().ToBase64 ());
@@ -880,36 +1121,43 @@ namespace garlic
 					++it;
 			}
 		}
-		// ECIESx25519
-		for (auto it = m_ECIESx25519Sessions.begin (); it != m_ECIESx25519Sessions.end ();)
+		// ECIESx25519 sessions
 		{
-			if (it->second->CheckExpired (ts))
+			std::unique_lock<std::mutex> l (m_SessionsMutex);
+			for (auto it = m_ECIESx25519Sessions.begin (); it != m_ECIESx25519Sessions.end ();)
 			{
-				it->second->Terminate ();
-				it = m_ECIESx25519Sessions.erase (it);
+				if (it->second->CheckExpired (ts))
+				{
+					it->second->Terminate ();
+					it = m_ECIESx25519Sessions.erase (it);
+				}
+				else
+					++it;
 			}
-			else
-				++it;
 		}
 
 		numExpiredTags = 0;
-		for (auto it = m_ECIESx25519Tags.begin (); it != m_ECIESx25519Tags.end ();)
 		{
-			if (it->second.tagset->IsExpired (ts) || it->second.tagset->IsIndexExpired (it->second.index))
+			std::lock_guard<std::mutex> l (m_TagsMutex);
+			for (auto it = m_ECIESx25519Tags.begin (); it != m_ECIESx25519Tags.end ();)
 			{
-				it->second.tagset->DeleteSymmKey (it->second.index);
-				it = m_ECIESx25519Tags.erase (it);
-				numExpiredTags++;
-			}
-			else
-			{
-				if (it->second.tagset->IsSessionTerminated ())
+				if (!it->second.tagset || it->second.tagset->IsExpired (ts)
+					|| it->second.tagset->IsIndexExpired (it->second.index))
 				{
+					if (it->second.tagset) it->second.tagset->DeleteSymmKey (it->second.index);
 					it = m_ECIESx25519Tags.erase (it);
 					numExpiredTags++;
 				}
 				else
-					++it;
+				{
+					if (it->second.tagset->IsSessionTerminated ())
+					{
+						it = m_ECIESx25519Tags.erase (it);
+						numExpiredTags++;
+					}
+					else
+						++it;
+				}
 			}
 		}
 		if (numExpiredTags > 0)
@@ -954,7 +1202,10 @@ namespace garlic
 			std::unique_lock<std::mutex> l (m_SessionsMutex);
 			for (auto & it : m_Sessions) it.second->SetLeaseSetUpdated ();
 		}
-		for (auto & it : m_ECIESx25519Sessions) it.second->SetLeaseSetUpdated ();
+		{
+			std::unique_lock<std::mutex> l (m_SessionsMutex);
+			for (auto & it : m_ECIESx25519Sessions) it.second->SetLeaseSetUpdated ();
+		}
 	}
 
 	void GarlicDestination::ProcessGarlicMessage (std::shared_ptr<I2NPMessage> msg)
@@ -964,12 +1215,18 @@ namespace garlic
 
 	void GarlicDestination::ProcessDeliveryStatusMessage (std::shared_ptr<I2NPMessage> msg)
 	{
+		if (!msg || msg->GetLength () < I2NP_HEADER_SIZE + DELIVERY_STATUS_MSGID_OFFSET + 4)
+		{
+			LogPrint (eLogWarning, "Garlic: DeliveryStatus message is too short");
+			return;
+		}
 		uint32_t msgID = bufbe32toh (msg->GetPayload () + DELIVERY_STATUS_MSGID_OFFSET);
 		HandleDeliveryStatusMessage (msgID);
 	}
 
 	void GarlicDestination::SaveTags ()
 	{
+		std::lock_guard<std::mutex> l (m_TagsMutex);
 		if (m_Tags.empty ()) return;
 		std::string ident = GetIdentHash ().ToBase32 ();
 		std::string path = i2p::fs::DataDirPath ("tags", (ident + ".tags"));
@@ -1001,20 +1258,22 @@ namespace garlic
 			{
 				std::map<i2p::crypto::AESKey, std::shared_ptr<AESDecryption>> keys;
 				// 4 bytes timestamp, 32 bytes tag, 32 bytes key
-				while (!f.eof ())
+				while (f)
 				{
-					uint32_t t;
-					uint8_t tag[32], key[32];
-					f.read ((char *)&t, 4);
-					if (f.eof ()) break;
+					uint32_t t = 0;
+					uint8_t tag[32] = { }, key[32] = { };
+					if (!f.read ((char *)&t, 4)) break;
 					if (ts < t + INCOMING_TAGS_EXPIRATION_TIMEOUT)
 					{
-						f.read ((char *)tag, 32);
-						f.read ((char *)key, 32);
+						// a short read must not leave tag/key partially
+						// initialised and then install a tag from it
+						if (!f.read ((char *)tag, 32) || !f.read ((char *)key, 32)) break;
 					}
 					else
+					{
 						f.seekg (64, std::ios::cur); // skip
-					if (f.eof ()) break;
+						if (!f) break;
+					}
 
 					std::shared_ptr<AESDecryption> decryption;
 					auto it = keys.find (key);
@@ -1022,9 +1281,15 @@ namespace garlic
 						decryption = it->second;
 					else
 						decryption = std::make_shared<AESDecryption> (key);
-					m_Tags.insert (std::make_pair (SessionTag (tag, ts), decryption));
+					{
+						std::lock_guard<std::mutex> l (m_TagsMutex);
+						m_Tags.insert (std::make_pair (SessionTag (tag, ts), decryption));
+					}
 				}
-				if (!m_Tags.empty ()) LogPrint (eLogInfo, "Garlic: ", m_Tags.size (), " tags loaded for ", ident);
+				{
+					std::lock_guard<std::mutex> l (m_TagsMutex);
+					if (!m_Tags.empty ()) LogPrint (eLogInfo, "Garlic: ", m_Tags.size (), " tags loaded for ", ident);
+				}
 			}
 		}
 		i2p::fs::Remove (path);
@@ -1123,31 +1388,50 @@ namespace garlic
 	bool GarlicDestination::IsDuplicateNewSessionKey (const uint8_t * key) const
 	{
 		if (!key) return true;
+		const uint64_t now = i2p::util::GetSecondsSinceEpoch ();
 		std::lock_guard<std::mutex> l (m_NewSessionKeysMutex);
+		while (!m_NewSessionKeys.empty () && now > m_NewSessionKeys.front ().second + NEW_SESSION_KEY_CACHE_AGE)
+			m_NewSessionKeys.pop_front ();
 		for (const auto & it : m_NewSessionKeys)
-			if (!memcmp (it.data (), key, 32)) return true;
+			if (!memcmp (it.first.data (), key, 32)) return true;
 		return false;
 	}
 
 	void GarlicDestination::AddNewSessionKey (const uint8_t * key)
 	{
 		if (!key) return;
+		const uint64_t now = i2p::util::GetSecondsSinceEpoch ();
 		std::lock_guard<std::mutex> l (m_NewSessionKeysMutex);
-		if (m_NewSessionKeys.size () >= 256) m_NewSessionKeys.pop_front ();
-		m_NewSessionKeys.emplace_back (key);
+		while (!m_NewSessionKeys.empty () && now > m_NewSessionKeys.front ().second + NEW_SESSION_KEY_CACHE_AGE)
+			m_NewSessionKeys.pop_front ();
+		if (m_NewSessionKeys.size () >= NEW_SESSION_KEY_CACHE_SIZE) m_NewSessionKeys.pop_front ();
+		m_NewSessionKeys.emplace_back (i2p::data::Tag<32> (key), now);
 	}
 
 	uint64_t GarlicDestination::AddECIESx25519SessionNextTag (ReceiveRatchetTagSetPtr tagset)
 	{
+		if (!tagset) return 0;
+		// Reserve the budget before advancing the tag chain. If the map is
+		// full, leaving the index unchanged lets a later cleanup generate the
+		// same tag instead of permanently skipping it.
+		std::lock_guard<std::mutex> l (m_TagsMutex);
+		if (m_ECIESx25519Tags.size () >= MAX_INCOMING_ECIES_TAGS)
+		{
+			LogPrint (eLogWarning, "Garlic: Incoming ECIES tag budget exceeded");
+			return 0;
+		}
 		auto index = tagset->GetNextIndex ();
 		uint64_t tag = tagset->GetNextSessionTag (m_HKDFContext);
-		if (tag) m_ECIESx25519Tags.emplace (tag, ECIESX25519AEADRatchetIndexTagset { index, tagset });
+		if (!tag) return 0;
+		m_ECIESx25519Tags.emplace (tag, ECIESX25519AEADRatchetIndexTagset { index, tagset });
 		return tag;
 	}
 
 	void GarlicDestination::AddECIESx25519Session (const uint8_t * staticKey, ECIESX25519AEADRatchetSessionPtr session)
 	{
+		if (!staticKey || !session) return;
 		i2p::data::Tag<32> staticKeyTag (staticKey);
+		std::unique_lock<std::mutex> l (m_SessionsMutex);
 		auto it = m_ECIESx25519Sessions.find (staticKeyTag);
 		if (it != m_ECIESx25519Sessions.end ())
 		{
@@ -1168,7 +1452,9 @@ namespace garlic
 
 	void GarlicDestination::RemoveECIESx25519Session (const uint8_t * staticKey)
 	{
-		auto it = m_ECIESx25519Sessions.find (staticKey);
+		if (!staticKey) return;
+		std::unique_lock<std::mutex> l (m_SessionsMutex);
+		auto it = m_ECIESx25519Sessions.find (i2p::data::Tag<32> (staticKey));
 		if (it != m_ECIESx25519Sessions.end ())
 		{
 			it->second->Terminate ();
@@ -1178,8 +1464,8 @@ namespace garlic
 
 	uint8_t * GarlicDestination::GetPayloadBuffer ()
 	{
-		if (!m_PayloadBuffer) m_PayloadBuffer = new uint8_t[I2NP_MAX_MESSAGE_SIZE];
-		return m_PayloadBuffer;
+		if (!m_PayloadBuffer) m_PayloadBuffer = std::make_unique<uint8_t[]> (I2NP_MAX_MESSAGE_SIZE);
+		return m_PayloadBuffer.get ();
 	}
 
 	bool GarlicDestination::AEADChaCha20Poly1305Encrypt (const uint8_t * msg, size_t msgLen, const uint8_t * ad,

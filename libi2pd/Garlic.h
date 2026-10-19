@@ -13,6 +13,7 @@
 
 #include <inttypes.h>
 #include <unordered_map>
+#include <map>
 #include <list>
 #include <deque>
 #include <vector>
@@ -72,7 +73,7 @@ namespace garlic
 		SessionTag (SessionTag &&) = default;
 		SessionTag & operator= (SessionTag &&) = default;
 #endif
-		uint32_t creationTime; // seconds since epoch
+		uint32_t creationTime = 0; // seconds since epoch
 	};
 
 	// AESDecryption is associated with session tags and store key
@@ -166,16 +167,16 @@ namespace garlic
 		std::shared_ptr<I2NPMessage> CreateEncryptedDeliveryStatusMsg (uint32_t msgID);
 
 	private:
-		GarlicDestination * m_Owner;
+		GarlicDestination * m_Owner = nullptr;
 
-		LeaseSetUpdateStatus m_LeaseSetUpdateStatus;
-		uint32_t m_LeaseSetUpdateMsgID;
-		uint64_t m_LeaseSetSubmissionTime; // in milliseconds
+		LeaseSetUpdateStatus m_LeaseSetUpdateStatus = eLeaseSetDoNotSend;
+		uint32_t m_LeaseSetUpdateMsgID = 0;
+		uint64_t m_LeaseSetSubmissionTime = 0; // in milliseconds
 
 		std::shared_ptr<GarlicRoutingPath> m_SharedRoutingPath;
-		bool m_IsWithJava; // based on choked value from streaming
-		int m_NumSentPackets; // for limit number of sent messages in streaming
-		uint64_t m_LastSendTime; // for limit OB speed in streaming
+		bool m_IsWithJava = false; // based on choked value from streaming
+		int m_NumSentPackets = 0; // for limit number of sent messages in streaming
+		uint64_t m_LastSendTime = 0; // for limit OB speed in streaming
 
 	public:
 		// for administrative views
@@ -188,16 +189,17 @@ namespace garlic
 	{
 		struct UnconfirmedTags
 		{
-			UnconfirmedTags (int n)
-				: numTags (n)
-				, tagsCreationTime (0)
-			{
-				sessionTags = new SessionTag[numTags];
-			};
-			~UnconfirmedTags () { delete[] sessionTags; };
-			uint32_t msgID;
-			int numTags;
-			SessionTag * sessionTags;
+			// The tags are held by value so the message that announces them can
+			// be abandoned at any point without a manual delete[] path. The
+			// count is implicit in the vector size and never changes after
+			// construction. SessionTag keeps defaulted copy operations on all
+			// platforms, which is all std::vector requires here; its optional
+			// move operations remain Windows-guarded in SessionTag itself.
+			explicit UnconfirmedTags (int n)
+				: sessionTags (static_cast<size_t> (n))
+				, tagsCreationTime (0) {};
+			uint32_t msgID = 0;
+			std::vector<SessionTag> sessionTags;
 			uint32_t tagsCreationTime;
 		};
 
@@ -214,19 +216,22 @@ namespace garlic
 		bool CleanupUnconfirmedTags (); // returns true if something has been deleted
 
 	private:
-		size_t CreateAESBlock (uint8_t * buf, std::shared_ptr<const I2NPMessage> msg);
+		size_t CreateAESBlock (uint8_t * buf, size_t capacity, std::shared_ptr<const I2NPMessage> msg);
 		size_t CreateGarlicPayload (
-			uint8_t * payload, std::shared_ptr<const I2NPMessage> msg, UnconfirmedTags * newTags);
-		size_t CreateGarlicClove (uint8_t * buf, std::shared_ptr<const I2NPMessage> msg, bool isDestination);
-		size_t CreateDeliveryStatusClove (uint8_t * buf, uint32_t msgID);
+			uint8_t * payload, size_t capacity, std::shared_ptr<const I2NPMessage> msg,
+			std::unique_ptr<UnconfirmedTags> newTags);
+		size_t CreateGarlicClove (
+			uint8_t * buf, size_t capacity, std::shared_ptr<const I2NPMessage> msg, bool isDestination);
+		size_t CreateDeliveryStatusClove (uint8_t * buf, size_t capacity, uint32_t msgID);
 
 		void TagsConfirmed (uint32_t msgID);
-		UnconfirmedTags * GenerateSessionTags ();
+		std::unique_ptr<UnconfirmedTags> GenerateSessionTags ();
 
 	private:
 		std::shared_ptr<const i2p::data::RoutingDestination> m_Destination;
 
 		i2p::crypto::AESKey m_SessionKey;
+		bool m_SessionKeyValid = false;
 		std::list<SessionTag> m_SessionTags;
 		int m_NumTags;
 		std::map<uint32_t, std::unique_ptr<UnconfirmedTags>> m_UnconfirmedTagsMsgs; // msgID->tags
@@ -333,11 +338,21 @@ namespace garlic
 		std::unordered_map<i2p::data::Tag<32>, ECIESX25519AEADRatchetSessionPtr>
 			m_ECIESx25519Sessions; // static key -> session
 		mutable std::mutex m_NewSessionKeysMutex;
-		std::deque<i2p::data::Tag<32>> m_NewSessionKeys; // bounded replay cache for NS ephemeral keys
-		uint8_t * m_PayloadBuffer; // for ECIESX25519AEADRatchet
+		// Java RatchetSKM uses a DecayingHashSet keyed by the New Session
+		// ephemeral key. Keep the same five-minute validity window, with a
+		// capacity large enough for the authenticated new-session rate.
+		static constexpr uint64_t NEW_SESSION_KEY_CACHE_AGE = 5 * 60; // seconds
+		static constexpr size_t NEW_SESSION_KEY_CACHE_SIZE = 4096;
+		std::deque<std::pair<i2p::data::Tag<32>, uint64_t>> m_NewSessionKeys; // key, timestamp
+		std::unique_ptr<uint8_t[]> m_PayloadBuffer; // for ECIESX25519AEADRatchet
 		uint64_t m_LastIncomingSessionTimestamp; // in milliseconds
 		// incoming
 		int m_NumRatchetInboundTags;
+		// Incoming tag maps are mutated by key submission (router/client
+		// threads), payload decoding, cleanup and administrative readers.
+		// Never invoke a tagset callback while holding this mutex: the
+		// callback can generate more tags and re-enter the map.
+		mutable std::mutex m_TagsMutex;
 		std::unordered_map<SessionTag, std::shared_ptr<AESDecryption>, std::hash<i2p::data::Tag<32>>> m_Tags;
 		std::unordered_map<uint64_t, ECIESX25519AEADRatchetIndexTagset> m_ECIESx25519Tags; // session tag -> session
 		// DeliveryStatus
@@ -350,8 +365,16 @@ namespace garlic
 
 	public:
 		// for administrative views
-		size_t GetNumIncomingTags () const { return m_Tags.size (); }
-		size_t GetNumIncomingECIESx25519Tags () const { return m_ECIESx25519Tags.size (); }
+		size_t GetNumIncomingTags () const
+		{
+			std::lock_guard<std::mutex> l (m_TagsMutex);
+			return m_Tags.size ();
+		}
+		size_t GetNumIncomingECIESx25519Tags () const
+		{
+			std::lock_guard<std::mutex> l (m_TagsMutex);
+			return m_ECIESx25519Tags.size ();
+		}
 		// thread-safe snapshots, safe to iterate without holding any lock
 		std::vector<std::pair<i2p::data::IdentHash, ElGamalAESSessionPtr>> GetSessionsList () const
 		{
@@ -363,6 +386,7 @@ namespace garlic
 	protected:
 		std::vector<ECIESX25519AEADRatchetSessionPtr> GetECIESx25519SessionsListSync () const
 		{
+			std::unique_lock<std::mutex> l (m_SessionsMutex);
 			std::vector<ECIESX25519AEADRatchetSessionPtr> sessions;
 			sessions.reserve (m_ECIESx25519Sessions.size ());
 			for (const auto & it : m_ECIESx25519Sessions) sessions.push_back (it.second);
