@@ -1,3 +1,12 @@
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: i2pd.logrotate.
+#
+# logrotate policy for the daemon log directory: daily copy-truncate rotation,
+# five compressed generations and tolerance for logs that have not been created.
+#
+
 "/var/log/i2pd/*.log" {
     copytruncate
     daily

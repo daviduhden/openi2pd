@@ -1,7 +1,16 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: MaxWidthLinearLayout.
+ *
+ * LinearLayout that caps the width MeasureSpec at
+ * {@code content_max_width} on tablets and unfolded devices while leaving
+ * phones at their natural width. It only rewrites the width spec and delegates
+ * measurement to {@link LinearLayout}.
+ *
  */
+
 package org.openi2pd.router;
 
 import android.content.Context;

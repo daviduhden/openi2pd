@@ -1,3 +1,12 @@
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: Doxyfile.
+#
+# Doxygen configuration for the C++ API with recursive scanning, HTML output
+# under docs/generated and LaTeX output disabled.
+#
+
 # Doxyfile 1.8.8
 
 # This file describes the settings to be used by the documentation system

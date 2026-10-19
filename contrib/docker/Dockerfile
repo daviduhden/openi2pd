@@ -1,6 +1,12 @@
-# Copyright (c) 2013-2026, The PurpleI2P Project
-# Copyright (c) 2026, David Uhden Collado
-# SPDX-License-Identifier: BSD-3-Clause
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: Dockerfile.
+#
+# Multi-stage Alpine image that builds i2pd from source and runs it as the
+# unprivileged i2pd user with the Docker-specific configuration and entrypoint.
+#
+
 FROM alpine:latest AS builder
 RUN apk add --no-cache build-base cmake ninja boost-dev openssl-dev zlib-dev miniupnpc-dev
 WORKDIR /src

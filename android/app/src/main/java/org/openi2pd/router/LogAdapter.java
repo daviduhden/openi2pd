@@ -1,8 +1,17 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: LogAdapter.
+ *
+ * RecyclerView adapter for log rows with sequence-based diffing, local time
+ * formatting and severity colouring derived from the level text. It is
+ * read-only: message text is already sanitised and bounded by {@link LogEntry}
+ * and the native ring, and row-level content descriptions are avoided to keep
+ * TalkBack output usable.
+ *
  */
+
 package org.openi2pd.router;
 
 import android.content.Context;

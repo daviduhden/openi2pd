@@ -1,8 +1,16 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: BootUpReceiver.
+ *
+ * BOOT_COMPLETED receiver that starts the foreground router service only when
+ * the autostart marker exists, using the same start command the UI handles. It
+ * never launches an Activity and treats a refused background start as a
+ * logged, user-recoverable failure.
+ *
  */
+
 package org.openi2pd.router.receivers;
 
 import android.content.BroadcastReceiver;

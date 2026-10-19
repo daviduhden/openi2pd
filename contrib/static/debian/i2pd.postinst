@@ -1,4 +1,14 @@
 #!/bin/sh
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: i2pd.postinst.
+#
+# Debian post-install script that creates the i2pd system user and private
+# data/log directories, then registers the init script when present. It does
+# not restart the service under systemd.
+#
+
 set -e
 
 LOGFILE='/var/log/i2pd/i2pd.log'

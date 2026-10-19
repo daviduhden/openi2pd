@@ -1,8 +1,17 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: RouterSnapshot.
+ *
+ * Immutable record of everything the UI may display: daemon state, parsed
+ * status, counters, addresses, client-service flags and error text. The
+ * compact constructor clamps counters and copies the address list, while
+ * {@link #hasStatus()} lets screens distinguish observed metrics from
+ * zero-initialised defaults.
+ *
  */
+
 package org.openi2pd.router;
 
 import java.util.ArrayList;

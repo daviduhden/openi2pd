@@ -1,3 +1,12 @@
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: watch.
+#
+# Debian uscan configuration watching GitHub release tags for openi2pd
+# tarballs.
+#
+
 version=4
 opts="filenamemangle=s%(?:.*?)?v?(\d[\d.]*)\.tar\.gz%i2pd-$1.tar.gz%" \
    https://github.com/daviduhden/openi2pd/tags \

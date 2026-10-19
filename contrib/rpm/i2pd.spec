@@ -1,6 +1,13 @@
-# Copyright (c) 2013-2026, The PurpleI2P Project
-# Copyright (c) 2026, David Uhden Collado
-# SPDX-License-Identifier: BSD-3-Clause
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: i2pd.spec.
+#
+# RPM spec for Fedora and compatible distributions that builds i2pd with
+# CMake/Ninja including the TUI and tools, then packages the daemon, utilities,
+# configuration, systemd unit and certificates.
+#
+
 Name:          i2pd
 Version:       2.61.0
 Release:       2%{?dist}

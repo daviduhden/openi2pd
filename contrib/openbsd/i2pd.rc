@@ -1,4 +1,13 @@
 #!/bin/ksh
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: i2pd.
+#
+# OpenBSD rc.d script that runs i2pd as the _i2pd user with packaged config,
+# tunnel and certificate paths. It delegates start/stop/status to
+# /etc/rc.d/rc.subr.
+#
 
 daemon="${TRUEPREFIX}/bin/i2pd --daemon"
 daemon_user="_i2pd"

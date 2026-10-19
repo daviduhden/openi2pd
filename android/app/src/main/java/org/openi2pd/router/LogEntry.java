@@ -1,8 +1,16 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: LogEntry.
+ *
+ * Immutable presentation record for one router log line, clamping negative
+ * counters and truncating over-long messages. Those bounds are a second line
+ * of defence behind the native ring, which already sanitises control
+ * characters and caps message length.
+ *
  */
+
 package org.openi2pd.router;
 
 /**

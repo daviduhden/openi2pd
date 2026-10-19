@@ -1,3 +1,11 @@
+@REM See the LICENSE file at the top of the project tree for copyright
+@REM and license details.
+@REM
+@REM openi2pd: gradlew.bat.
+@REM
+@REM Windows batch launcher for the Gradle wrapper used by the Android build.
+@REM
+
 @rem
 @rem Copyright 2015 the original author or authors.
 @rem

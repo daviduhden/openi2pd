@@ -1,8 +1,15 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: ServiceStates.
+ *
+ * Immutable flags for the optional HTTP proxy, SOCKS, BOB, SAM and I2CP
+ * services, with {@link #NONE} used before the daemon starts and on error. It
+ * deliberately carries no sockets, keys or file paths.
+ *
  */
+
 package org.openi2pd.router;
 
 /**

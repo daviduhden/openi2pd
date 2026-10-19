@@ -1,8 +1,16 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: TrafficChartView.
+ *
+ * Custom view with a fixed 120-sample ring buffer for download and upload
+ * rates. It draws the grid plus a solid download and dashed upload series with
+ * theme colours, so the two remain distinguishable without relying on hue, and
+ * never calls native code or performs I/O.
+ *
  */
+
 package org.openi2pd.router;
 
 import android.content.Context;

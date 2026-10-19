@@ -1,8 +1,16 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: RouterStatusParser.
+ *
+ * Parsers for the native status snapshot and log stream; both inputs are
+ * treated as untrusted even though they come from the in-process library.
+ * Fields are length-limited, numeric values range-checked and addresses capped
+ * at 32 entries, so malformed input degrades to defaults instead of throwing.
+ *
  */
+
 package org.openi2pd.router;
 
 import java.util.ArrayList;

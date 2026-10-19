@@ -1,6 +1,12 @@
-# Copyright (c) 2013-2026, The PurpleI2P Project
-# Copyright (c) 2026, David Uhden Collado
-# SPDX-License-Identifier: BSD-3-Clause
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: i2pd git.spec.
+#
+# RPM spec for a rolling i2pd-git snapshot built from the main branch and
+# versioned by the current Git hash.
+#
+
 %define git_hash %(git rev-parse HEAD | cut -c -7)
 
 Name:          i2pd-git

@@ -1,7 +1,15 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: RouterConfigStoreTest.
+ *
+ * Pure-JVM tests for the static INI key and value validation used by the
+ * settings editor, covering accepted daemon spellings and rejected injection or
+ * boundary values. The Android Context is never constructed or called.
+ *
  */
+
 package org.openi2pd.router;
 
 import static org.junit.Assert.assertFalse;

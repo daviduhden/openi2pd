@@ -1,4 +1,14 @@
 #!/bin/sh
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: i2pd.postrm.
+#
+# Debian post-remove script that, on purge, removes the init registration and
+# the i2pd configuration, data, log and run directories. DEBHELPER
+# placeholders are preserved for generated maintainer scripts.
+#
+
 set -e
 
 if [ "$1" = "purge" ]; then

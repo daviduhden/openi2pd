@@ -1,8 +1,16 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: RouterConfigStore.
+ *
+ * Singleton accessor for the app-private {@code i2pd.conf} with size-bounded
+ * reads and atomic write + fsync + rename updates. The editor is line based so
+ * comments and unknown options survive, and keys or values that name secrets
+ * or could inject a section or option are rejected.
+ *
  */
+
 package org.openi2pd.router;
 
 import android.content.Context;

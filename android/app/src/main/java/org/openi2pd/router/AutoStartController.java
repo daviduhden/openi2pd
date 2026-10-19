@@ -1,8 +1,17 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: AutoStartController.
+ *
+ * Stores the boot-autostart preference as the existence of an empty,
+ * fsynced marker in {@code filesDir}, migrating a legacy {@code cacheDir}
+ * marker once. Enabling optionally opens a known manufacturer autostart screen
+ * on the main thread; the class never starts the router itself and tolerates
+ * missing vendor activities or refused background activity starts.
+ *
  */
+
 package org.openi2pd.router;
 
 import android.content.ActivityNotFoundException;

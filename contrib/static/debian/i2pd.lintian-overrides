@@ -1,2 +1,11 @@
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: i2pd.lintian overrides.
+#
+# Lintian overrides accepting the intentionally embedded libraries and static
+# binary of the standalone package.
+#
+
 i2pd: embedded-library
 i2pd: statically-linked-binary

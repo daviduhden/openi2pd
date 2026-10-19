@@ -1,7 +1,14 @@
 #!/bin/sh
-# Copyright (c) 2013-2026, The PurpleI2P Project
-# Copyright (c) 2026, David Uhden Collado
-# SPDX-License-Identifier: BSD-3-Clause
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: entrypoint.
+#
+# Container entrypoint that links the mounted certificate directory into the
+# data directory, forwards extra arguments to i2pd and execs the router.
+# --help runs the router's own help without starting it.
+#
+
 COMMAND=/usr/local/bin/i2pd
 # To make ports exposeable
 # Note: $DATA_DIR is defined in /etc/profile

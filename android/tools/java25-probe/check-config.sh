@@ -1,10 +1,13 @@
 #!/bin/sh
-# Copyright (c) 2026, David Uhden Collado
-# SPDX-License-Identifier: BSD-3-Clause
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
 #
-# Static guard for the Android Java 25 toolchain. It does not run Gradle,
-# javac, D8/R8 or an emulator; it only rejects accidental downgrades of the
-# source/target level or toolchain pins.
+# openi2pd: check config.
+#
+# Also asserts that the certificates asset, the bundled-Kotlin workaround and
+# the RouterService-owned graceful-stop path are present, and fails on any
+# app-source reference to a JDK-only API that ART does not provide.
+#
 
 set -eu
 

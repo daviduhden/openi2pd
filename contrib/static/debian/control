@@ -1,3 +1,12 @@
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: control.
+#
+# Debian control metadata for the architecture-specific static i2pd package
+# built with musl and bundled OpenSSL, Boost, zlib and miniupnpc.
+#
+
 Source: i2pd
 Section: net
 Priority: optional

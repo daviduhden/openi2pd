@@ -1,7 +1,15 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: RouterStatusParserTest.
+ *
+ * Pure-JVM tests for the native snapshot and log parsers: valid fields, missing
+ * keys, malformed numbers, address caps and log framing. No JNI call or
+ * emulator is required.
+ *
  */
+
 package org.openi2pd.router;
 
 import static org.junit.Assert.assertEquals;

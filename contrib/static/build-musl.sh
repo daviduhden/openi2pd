@@ -1,7 +1,14 @@
 #!/bin/sh
-# Copyright (c) 2013-2026, The PurpleI2P Project
-# Copyright (c) 2026, David Uhden Collado
-# SPDX-License-Identifier: BSD-3-Clause
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: build musl.
+#
+# Builds a fully static i2pd binary inside Alpine using packaged OpenSSL,
+# Boost, zlib and MiniUPnPc and the main CMake graph. It installs the build
+# dependencies with apk, builds only the i2pd target and strips the result.
+#
+
 # Fully static openi2pd build, run from the source tree inside Alpine.
 # No source code is downloaded: OpenSSL, Boost, zlib and MiniUPnPc come from
 # Alpine packages, and the project is built by the main CMake graph.

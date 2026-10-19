@@ -1,9 +1,14 @@
 #!/usr/bin/env perl
-# Copyright (c) 2026, David Uhden Collado
-# SPDX-License-Identifier: BSD-3-Clause
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
 #
-# Compile-free Android English-only policy check. It intentionally does not
-# invoke Gradle, AAPT2, a compiler or a device.
+# openi2pd: check english only.
+#
+# Compile-free policy check that scans res/, the manifest, app/build.gradle,
+# Fastlane metadata and executable source for language overrides, then verifies
+# every R.string and @string reference resolves in the English catalog.
+# Documentation comments are ignored by the source scan.
+#
 
 use strict;
 use warnings;

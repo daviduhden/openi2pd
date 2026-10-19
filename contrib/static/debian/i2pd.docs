@@ -1,2 +1,11 @@
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: i2pd.docs.
+#
+# Debian documentation manifest installing the README and ChangeLog for the
+# static package.
+#
+
 src/README.md
 src/ChangeLog

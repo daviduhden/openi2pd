@@ -1,3 +1,12 @@
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: proguard project.txt.
+#
+# Release ProGuard/R8 keep rules retaining the native JNI entry points;
+# shrinking is currently disabled in app/build.gradle.
+#
+
 # openi2pd release rules.
 #
 # Release builds currently set minifyEnabled false (see app/build.gradle), so

@@ -1,3 +1,12 @@
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: i2pd.links.
+#
+# Debian package symlinks exposing the installed configuration and certificates
+# under /var/lib/i2pd.
+#
+
 etc/i2pd/i2pd.conf var/lib/i2pd/i2pd.conf
 etc/i2pd/tunnels.conf var/lib/i2pd/tunnels.conf
 etc/i2pd/tunnels.conf.d var/lib/i2pd/tunnels.d

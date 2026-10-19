@@ -1,7 +1,15 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: PresentationModelTest.
+ *
+ * Pure-JVM tests for the immutable presentation records and their defensive
+ * bounds: null normalisation, port clamping and message truncation. No Android
+ * Context, JNI call or emulator is involved.
+ *
  */
+
 package org.openi2pd.router;
 
 import static org.junit.Assert.assertEquals;

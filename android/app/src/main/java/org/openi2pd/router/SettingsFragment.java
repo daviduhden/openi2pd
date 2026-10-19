@@ -1,8 +1,17 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: SettingsFragment.
+ *
+ * {@link PreferenceFragmentCompat} over a validated subset of {@code i2pd.conf};
+ * keys naming key material or passwords are deliberately absent. File reads
+ * and writes run on a single daemon background executor with results applied
+ * back on the main thread, and each change reports whether it is hot, needs a
+ * restart or needs a tunnel reload.
+ *
  */
+
 package org.openi2pd.router;
 
 import android.content.Context;

@@ -1,8 +1,16 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: TunnelsFragment.
+ *
+ * Shows inbound, outbound and transit tunnel counts from the snapshot plus
+ * configuration reload and the graceful-stop countdown. Reload and graceful
+ * stop are enabled only from live state, and the accept-transit flag is not
+ * exposed because the snapshot does not report it.
+ *
  */
+
 package org.openi2pd.router;
 
 import android.os.Bundle;

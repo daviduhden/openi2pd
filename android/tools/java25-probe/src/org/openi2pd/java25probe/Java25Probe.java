@@ -1,19 +1,18 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * Compile-time probe for the Java 25 language features used by the Android
- * sources. It deliberately uses no Java 25-only library API and no preview
- * features: everything below is final in Java 25.
+ * openi2pd: Java25Probe.
  *
- * Features exercised:
- *   - records
- *   - sealed interfaces with an exhaustive pattern switch
- *   - record deconstruction patterns
- *   - guarded pattern switch labels (`when`)
- *   - unnamed patterns (`_`)  [JEP 456]
- *   - flexible constructor bodies with statements before super(...) [JEP 513]
+ * Standalone compile-time probe for the Java 25 language features used by the
+ * application: records, sealed interfaces with exhaustive pattern switches,
+ * record deconstruction, guarded {@code when} labels, unnamed patterns and
+ * flexible constructor bodies with statements before {@code super(...)}. It
+ * deliberately avoids preview features and Java 25-only library APIs so the
+ * class can also be dexed at the app's minimum API level.
+ *
  */
+
 package org.openi2pd.java25probe;
 
 import java.util.List;

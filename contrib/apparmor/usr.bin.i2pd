@@ -1,3 +1,13 @@
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: usr.bin.i2pd.
+#
+# AppArmor profile for the packaged i2pd daemon. It permits the configuration,
+# data, log, pid and runtime paths used by the service while keeping the rest of
+# the filesystem under the distribution profile policy.
+#
+
 # Basic profile for i2pd
 # Should work without modifications with Ubuntu/Debian packages
 #

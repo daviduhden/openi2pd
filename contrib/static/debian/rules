@@ -1,4 +1,13 @@
 #!/usr/bin/make -f
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: rules.
+#
+# Debian packaging rules for the prebuilt static i2pd binary; installation is
+# performed directly and compilation, tests and stripping are skipped.
+#
+
 include /usr/share/dpkg/architecture.mk
 
 PKG := debian/i2pd

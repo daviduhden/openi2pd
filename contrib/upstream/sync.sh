@@ -1,15 +1,15 @@
 #!/bin/sh
-# Copyright (c) 2026, David Uhden Collado
-# SPDX-License-Identifier: BSD-3-Clause
-# Manual upstream comparison helper. It never modifies tracked files.
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
 #
-# Usage: contrib/upstream/sync.sh [--docs] [--tools] [--all]
+# openi2pd: sync.
 #
-# The script clones the pinned upstream commits into a temporary directory,
-# checks that every upstream documentation file is represented in the local
-# inventory, prints unified diffs for every imported file, and exits non-zero
-# when upstream contains an unclassified file or an HTML page that still needs
-# manual conversion. Review and merge changes by hand; do not copy blindly.
+# Manual upstream comparison helper: it shallow-clones pinned i2pd_docs_en and
+# i2pd-tools commits into a temporary directory and prints diffs against local
+# files. It verifies documentation inventory coverage, never writes tracked
+# files, and exits non-zero on unclassified or HTML upstream pages.
+#
+
 set -eu
 
 DOCS_REPO=https://github.com/PurpleI2P/i2pd_docs_en

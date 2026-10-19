@@ -1,4 +1,11 @@
 #!/bin/sh
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: gradlew.
+#
+# POSIX launcher for the Gradle wrapper distribution used by the Android build.
+#
 
 #
 # Copyright © 2015 the original authors.

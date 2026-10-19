@@ -1,7 +1,16 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: MainActivityNavigationTest.
+ *
+ * Espresso smoke test that pins the persisted run flag to false, launches
+ * {@link MainActivity}, opens the log screen from the dashboard and verifies
+ * that Back returns home. The empty-state assertion guards a former
+ * View/TextView cast crash; no native daemon is started.
+ *
  */
+
 package org.openi2pd.router;
 
 import static androidx.test.espresso.Espresso.onView;

@@ -1,18 +1,13 @@
 #!/bin/sh
-# Copyright (c) 2026, David Uhden Collado
-# SPDX-License-Identifier: BSD-3-Clause
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
 #
-# Compile the Java 25 language probe and, when R8_JAR and ANDROID_JAR are set,
-# run D8 and R8 against it with --min-api 24. Everything happens in a temporary
-# directory; nothing is downloaded and nothing is written into the repository.
+# openi2pd: verify java25.
 #
-# Usage:
-#   ./verify-java25.sh
-#   R8_JAR=/path/to/r8.jar ANDROID_JAR=/path/to/android.jar \
-#       ./verify-java25.sh
+# Runs the compiled probe on the build JDK and, when both R8_JAR and
+# ANDROID_JAR are set, dexes the classes with D8 and R8 at --min-api 24 and
+# prints the DEX magic; supplying only one of the two jars is an error.
 #
-# JAVA_HOME/javac must be JDK 25 or newer (JDK 27 is fine; --release 25 pins
-# the output to class-file version 69). D8/R8 need a JDK to run as well.
 
 set -eu
 

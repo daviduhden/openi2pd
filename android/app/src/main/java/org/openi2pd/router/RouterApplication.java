@@ -1,8 +1,16 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: RouterApplication.
+ *
+ * Inert {@link Application} subclass: it owns no daemon, native library load,
+ * service binding or Activity listener. Keeping process startup free of side
+ * effects means a broadcast-woken process cannot touch native code before
+ * {@link RouterService} or an explicit user action asks for it.
+ *
  */
+
 package org.openi2pd.router;
 
 import android.app.Application;

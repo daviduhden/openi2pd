@@ -1,6 +1,17 @@
-// Copyright (c) 2013-2026, The PurpleI2P Project
-// Copyright (c) 2026, David Uhden Collado
-// SPDX-License-Identifier: BSD-3-Clause
+/*
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: build.
+ *
+ * Configures the single application module: Java 25 source and target with an
+ * exact JDK 25 toolchain, compileSdk/targetSdk 37 at minSdk 24, pinned
+ * AndroidX/Material versions, per-ABI version codes and the in-tree CMake JNI
+ * build. Release builds are unminified and contain no signing material; unit
+ * and instrumentation tests are prepared but run only when invoked.
+ *
+ */
+
 plugins {
     id 'com.android.application'
 }

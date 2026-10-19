@@ -1,7 +1,14 @@
 #!/bin/sh
-# Copyright (c) 2013-2026, The PurpleI2P Project
-# Copyright (c) 2026, David Uhden Collado
-# SPDX-License-Identifier: BSD-3-Clause
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: package.
+#
+# Packages prebuilt static per-architecture i2pd binaries into Debian or RPM
+# packages inside a matching container. Usage is `package.sh deb|rpm BIN OUT`,
+# with VERSION, RPM_VERSION and RPM_RELEASE supplied through the environment.
+#
+
 # Packages the static binaries present in BIN/i2pd-static-<arch>/i2pd, run inside debian (deb) or rocky/fedora (rpm)
 # usage: package.sh deb|rpm BIN OUT, with VERSION (deb), RPM_VERSION and RPM_RELEASE in the environment
 set -e

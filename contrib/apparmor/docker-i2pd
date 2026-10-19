@@ -1,3 +1,13 @@
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: docker i2pd.
+#
+# AppArmor profile for running the router in the openi2pd container. It permits
+# the container entrypoint, certificates and runtime paths under an explicitly
+# attach-disconnected profile.
+#
+
 # _________________________________________
 # /  Copy this file to the right location   \
 # | then load with:                         |

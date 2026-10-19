@@ -1,8 +1,16 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: AddressInfo.
+ *
+ * Immutable presentation record for one published or observed transport
+ * address, with the bracket notation of the native wire format already
+ * stripped. The compact constructor null-normalises the text fields and clamps
+ * the port to 0..65535 so native input cannot produce an out-of-range value.
+ *
  */
+
 package org.openi2pd.router;
 
 /**

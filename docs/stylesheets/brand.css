@@ -1,7 +1,14 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: brand.css.
+ *
+ * Read the Docs/MkDocs theme overrides defining the openi2pd light and dark
+ * palette and component styles from assets/branding/colors.md.
+ *
  */
+
 /*
  * openi2pd documentation palette for the Read the Docs MkDocs theme.
  * Numeric values mirror assets/branding/colors.md; that file is canonical.
