@@ -1,5 +1,4 @@
 /*
-* Copyright (c) 2026, The PurpleI2P Project
 * Copyright (c) 2026, David Uhden Collado
 * SPDX-License-Identifier: BSD-3-Clause
 *
@@ -12,16 +11,25 @@
 #ifndef _WIN32
 
 #include <cerrno>
+#include <algorithm>
 #include <chrono>
 #include <cstdlib>
 #include <cstring>
 #include <fcntl.h>
+#include <limits>
 #include <poll.h>
 #include <signal.h>
 #include <cstdio>
+#include <sys/resource.h>
 #include <sys/wait.h>
 #include <thread>
 #include <unistd.h>
+
+#if defined(__OpenBSD__)
+// getexecname(3) is a global stdlib.h interface on OpenBSD; <cstdlib> does
+// not necessarily expose it to the global namespace.
+#include <stdlib.h>
+#endif
 
 #if defined(__linux__)
 #include <sys/syscall.h>
@@ -44,8 +52,14 @@ namespace
 #endif
 		if (lowfd < 0) lowfd = 0;
 		// Callers pass a floor above the preserved worker descriptor, so
-		// no descriptor is special-cased here.
-		for (int fd = lowfd; fd < 1024; ++fd) close (fd);
+		// no descriptor is special-cased here. Older Linux kernels lack
+		// close_range and a router with a raised limits.openfiles can hold
+		// descriptors above 1023; use the actual soft limit so they cannot
+		// leak into the exec'ed worker.
+		rlim_t ceiling = 1024;
+		struct rlimit limit { };
+		if (getrlimit (RLIMIT_NOFILE, &limit) == 0 && limit.rlim_cur != RLIM_INFINITY) ceiling = limit.rlim_cur;
+		for (rlim_t fd = static_cast<rlim_t> (lowfd); fd < ceiling; ++fd) close (static_cast<int> (fd));
 #endif
 	}
 }
@@ -113,6 +127,32 @@ void ChildProcess::ClosePidFd ()
 	}
 }
 
+ChildProcess ChildProcess::Adopt (pid_t pid, Channel channel)
+{
+	ChildProcess process;
+	process.m_Pid = pid;
+	process.m_Channel = std::move (channel);
+#if defined(__linux__) && defined(SYS_pidfd_open)
+	// Open eagerly so a later restart decision can never be confused by PID
+	// reuse after the child has exited.
+	if (pid > 0)
+	{
+		auto pidFd = syscall (SYS_pidfd_open, pid, 0);
+		if (pidFd >= 0) process.m_PidFd = static_cast<int> (pidFd);
+	}
+#endif
+	return process;
+}
+
+bool ChildProcess::WaitForExit (int timeoutMs)
+{
+	// WaitForChildExitBounded() reaps the child. ReapNoHang() then observes
+	// ECHILD, clears m_Pid and closes the pidfd without a second blocking wait.
+	if (!WaitForChildExitBounded (m_Pid, m_PidFd, timeoutMs)) return false;
+	if (m_Pid > 0) ReapNoHang ();
+	return true;
+}
+
 bool ChildProcess::ReapNoHang ()
 {
 	if (m_Pid <= 0) return true;
@@ -122,8 +162,9 @@ bool ChildProcess::ReapNoHang ()
 	while (result < 0 && errno == EINTR);
 	if (result == m_Pid || (result < 0 && errno == ECHILD))
 	{
-		// Exactly one path reaps the child; a second waitpid can therefore
-		// never observe a recycled PID.
+		// All reap paths are sequential and non-blocking: either this call
+		// or WaitForChildExitBounded() consumed the status. A second waitpid
+		// therefore observes ECHILD and can never see a recycled PID.
 		m_Pid = -1;
 		ClosePidFd ();
 		return true;
@@ -165,39 +206,49 @@ void ChildProcess::Stop (int timeoutMs)
 	}
 	if (m_Pid > 0)
 	{
-		auto waitFor = [this] (int ms)
-		{
-			const auto deadline = std::chrono::steady_clock::now () + std::chrono::milliseconds (ms);
-			while (true)
-			{
-				if (ReapNoHang ()) return true;
-				if (std::chrono::steady_clock::now () >= deadline) return false;
-				std::this_thread::sleep_for (std::chrono::milliseconds (20));
-			}
+		// Prefer pidfd_send_signal so a retained PID number cannot race with
+		// recycle; fall back to kill() when the kernel or descriptor cannot
+		// provide it (the unreaped child still holds the PID).
+		auto signalChild = [this] (int signal) {
+#if defined(__linux__) && defined(SYS_pidfd_send_signal)
+			if (m_PidFd >= 0
+				&& syscall (SYS_pidfd_send_signal, m_PidFd, signal, nullptr, 0) == 0)
+				return;
+#endif
+			kill (m_Pid, signal);
 		};
-		if (!waitFor (timeoutMs > 0 ? timeoutMs : 2000))
+		const int gracefulMs = timeoutMs > 0 ? timeoutMs : 2000;
+		if (!WaitForExit (gracefulMs))
 		{
-			kill (m_Pid, SIGTERM);
-			if (!waitFor (500))
+			signalChild (SIGTERM);
+			if (!WaitForExit (500))
 			{
-				// SIGKILL cannot be ignored; a blocking wait here is the
-				// only way to guarantee the PID is not reused while we
-				// still hold it.
-				kill (m_Pid, SIGKILL);
-				int status = 0;
-				pid_t result;
-				do result = waitpid (m_Pid, &status, 0);
-				while (result < 0 && errno == EINTR);
-				if (result == m_Pid || (result < 0 && errno == ECHILD)) m_Pid = -1;
+				signalChild (SIGKILL);
+				// SIGKILL is asynchronous and cannot interrupt an
+				// uninterruptible (D state) task. Bound the reap instead of
+				// calling waitpid(..., 0): a wedged storage/NFS task must
+				// never block the daemon's shutdown path forever. If the
+				// child is still not reaped, keep m_Pid/m_PidFd so a later
+				// Stop()/IsRunning() can retry; the zombie holds the PID, so
+				// the retained number cannot be recycled in the meantime.
+				const int reapMs = std::clamp (timeoutMs > 0 ? timeoutMs : 500, 100, 1000);
+				if (!WaitForExit (reapMs))
+				{
+					// Do not close the pidfd: it is the only race-free way to
+					// learn about a later exit. The process entry remains
+					// until the next retry or router exit.
+					return;
+				}
 			}
 		}
 	}
 	ClosePidFd ();
 }
 
-i2p::expected<ChildProcess, std::string> SpawnLogWorker ()
+i2p::expected<ChildProcess, std::string> SpawnWorker (const char * role, std::string_view executableOverride)
 {
-	const std::string executable = ExecutablePath ();
+	if (!role || !*role) return i2p::unexpected ("missing worker role");
+	const std::string executable = executableOverride.empty () ? ExecutablePath () : std::string (executableOverride);
 	auto pair = Channel::CreatePair ();
 	if (!pair) return i2p::unexpected (pair.error ());
 	auto & parent = pair->first;
@@ -213,6 +264,12 @@ i2p::expected<ChildProcess, std::string> SpawnLogWorker ()
 		sigemptyset (&empty);
 		sigprocmask (SIG_SETMASK, &empty, nullptr);
 		int fd = child.Fd ();
+		// The socketpair may have been allocated below descriptor 3 if the
+		// caller inherited closed standard descriptors. Close the parent
+		// endpoint explicitly: CloseFrom(4) would not reach it, and dup2 to
+		// descriptor 3 only closes it when it happens to be descriptor 3.
+		const int parentFd = parent.Fd ();
+		if (parentFd >= 0 && parentFd != fd) close (parentFd);
 		if (fd != 3)
 		{
 			if (dup2 (fd, 3) < 0) _exit (127);
@@ -226,23 +283,25 @@ i2p::expected<ChildProcess, std::string> SpawnLogWorker ()
 		// kill a restarted worker when that thread is joined.
 		char fdText[] = "3";
 		char * const argv[] = { const_cast<char *> ("i2pd"), const_cast<char *> ("--privsep-worker"),
-			const_cast<char *> ("log"), fdText, nullptr };
+			const_cast<char *> (role), fdText, nullptr };
 		execv (executable.c_str (), argv);
 		_exit (127);
 	}
 	// Parent
 	child.Close ();
-	ChildProcess process;
-	process.m_Pid = pid;
-	process.m_Channel = std::move (parent);
-#if defined(__linux__) && defined(SYS_pidfd_open)
-	// Open eagerly so a restart decision can never be confused by PID
-	// reuse after the child has exited.
-	auto pidFd = syscall (SYS_pidfd_open, pid, 0);
-	if (pidFd >= 0) process.m_PidFd = static_cast<int> (pidFd);
-#endif
-	return process;
+	return ChildProcess::Adopt (pid, std::move (parent));
 }
+
+i2p::expected<ChildProcess, std::string> SpawnLogWorker (std::string_view executable)
+{
+	return SpawnWorker ("log", executable);
+}
+
+i2p::expected<ChildProcess, std::string> SpawnSupervisor ()
+{
+	return SpawnWorker ("supervisor");
+}
+
 }
 
 #endif

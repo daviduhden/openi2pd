@@ -1,5 +1,4 @@
 /*
-* Copyright (c) 2026, The PurpleI2P Project
 * Copyright (c) 2026, David Uhden Collado
 * SPDX-License-Identifier: BSD-3-Clause
 *
@@ -8,6 +7,7 @@
 
 #include "RunWorker.h"
 #include "LogWorker.h"
+#include "Supervisor.h"
 
 #ifndef _WIN32
 
@@ -50,7 +50,16 @@ int RunWorker (std::string_view role, std::string_view fdArgument)
 		std::fprintf (stderr, "privsep worker: channel fd is not a SOCK_SEQPACKET socket\n");
 		return 1;
 	}
+	if (geteuid () == 0)
+	{
+		// Worker policies assume an already unprivileged service identity. A
+		// root-owned worker would turn every sandbox bypass into a full
+		// privilege compromise; refuse instead of silently running as root.
+		std::fprintf (stderr, "privsep worker: refusing to run with euid 0\n");
+		return 1;
+	}
 	if (role == "log") return RunLogWorker (fd);
+	if (role == "supervisor") return RunSupervisor (fd);
 	std::fprintf (stderr, "privsep worker: unknown role\n");
 	return 1;
 }

@@ -1,5 +1,4 @@
 /*
-* Copyright (c) 2026, The PurpleI2P Project
 * Copyright (c) 2026, David Uhden Collado
 * SPDX-License-Identifier: BSD-3-Clause
 *
@@ -35,7 +34,13 @@ enum class MessageType : uint16_t
 	LogRecord = 2,
 	Shutdown = 3,
 	Ping = 4,
-	Pong = 5
+	Pong = 5,
+	/**
+	 * Same payload as ConfigureLog, but a file sink MUST be accompanied by
+	 * exactly one SCM_RIGHTS descriptor for an already-open log file. This
+	 * lets the worker drop wpath/cpath and retain only stdio/rpath.
+	 */
+	ConfigureLogFd = 6
 };
 
 struct Message
@@ -65,28 +70,28 @@ struct ProtocolError
 class PayloadWriter
 {
 public:
-	void U8 (uint8_t value) { m_Data.push_back (static_cast<char> (value)); }
-	void U16 (uint16_t value)
+	void WriteU8 (uint8_t value) { m_Data.push_back (static_cast<char> (value)); }
+	void WriteU16 (uint16_t value)
 	{
-		U8 (value >> 8);
-		U8 (value & 0xff);
+		WriteU8 (value >> 8);
+		WriteU8 (value & 0xff);
 	}
-	void U32 (uint32_t value)
+	void WriteU32 (uint32_t value)
 	{
-		U16 (static_cast<uint16_t> (value >> 16));
-		U16 (static_cast<uint16_t> (value & 0xffff));
+		WriteU16 (static_cast<uint16_t> (value >> 16));
+		WriteU16 (static_cast<uint16_t> (value & 0xffff));
 	}
-	void U64BE (uint64_t value)
+	void WriteU64BE (uint64_t value)
 	{
-		U32 (static_cast<uint32_t> (value >> 32));
-		U32 (static_cast<uint32_t> (value & 0xffffffff));
+		WriteU32 (static_cast<uint32_t> (value >> 32));
+		WriteU32 (static_cast<uint32_t> (value & 0xffffffff));
 	}
 	// Bounded by MAX_TEXT_SIZE. Log records therefore truncate rather
 	// than copy unbounded text supplied by a router thread.
-	void String (std::string_view value)
+	void WriteString (std::string_view value)
 	{
 		const auto size = std::min (value.size (), MAX_TEXT_SIZE);
-		U32 (static_cast<uint32_t> (size));
+		WriteU32 (static_cast<uint32_t> (size));
 		m_Data.append (value.substr (0, size));
 	}
 	const std::string & Data () const { return m_Data; }
@@ -103,38 +108,38 @@ public:
 	{
 	}
 
-	i2p::expected<uint8_t, ProtocolError> U8 ()
+	i2p::expected<uint8_t, ProtocolError> ReadU8 ()
 	{
 		if (m_Pos >= m_Data.size ()) return Bad ("truncated u8");
 		return static_cast<uint8_t> (m_Data[m_Pos++]);
 	}
-	i2p::expected<uint16_t, ProtocolError> U16 ()
+	i2p::expected<uint16_t, ProtocolError> ReadU16 ()
 	{
-		auto hi = U8 ();
+		auto hi = ReadU8 ();
 		if (!hi) return i2p::unexpected (hi.error ());
-		auto lo = U8 ();
+		auto lo = ReadU8 ();
 		if (!lo) return i2p::unexpected (lo.error ());
 		return static_cast<uint16_t> ((*hi << 8) | *lo);
 	}
-	i2p::expected<uint32_t, ProtocolError> U32 ()
+	i2p::expected<uint32_t, ProtocolError> ReadU32 ()
 	{
-		auto hi = U16 ();
+		auto hi = ReadU16 ();
 		if (!hi) return i2p::unexpected (hi.error ());
-		auto lo = U16 ();
+		auto lo = ReadU16 ();
 		if (!lo) return i2p::unexpected (lo.error ());
 		return (static_cast<uint32_t> (*hi) << 16) | *lo;
 	}
-	i2p::expected<uint64_t, ProtocolError> U64BE ()
+	i2p::expected<uint64_t, ProtocolError> ReadU64BE ()
 	{
-		auto hi = U32 ();
+		auto hi = ReadU32 ();
 		if (!hi) return i2p::unexpected (hi.error ());
-		auto lo = U32 ();
+		auto lo = ReadU32 ();
 		if (!lo) return i2p::unexpected (lo.error ());
 		return (static_cast<uint64_t> (*hi) << 32) | *lo;
 	}
-	i2p::expected<std::string_view, ProtocolError> String ()
+	i2p::expected<std::string_view, ProtocolError> ReadString ()
 	{
-		auto size = U32 ();
+		auto size = ReadU32 ();
 		if (!size) return i2p::unexpected (size.error ());
 		if (*size > MAX_TEXT_SIZE || *size > m_Data.size () - m_Pos) return Bad ("invalid string length");
 		auto value = m_Data.substr (m_Pos, *size);
@@ -158,11 +163,11 @@ inline i2p::expected<std::string, ProtocolError> Encode (const Message & message
 		return i2p::unexpected (ProtocolError { ErrorCode::TooLarge, "message too large" });
 
 	PayloadWriter header;
-	header.U32 (PROTOCOL_MAGIC);
-	header.U16 (PROTOCOL_VERSION);
-	header.U16 (static_cast<uint16_t> (message.type));
-	header.U32 (message.requestId);
-	header.U32 (static_cast<uint32_t> (message.payload.size ()));
+	header.WriteU32 (PROTOCOL_MAGIC);
+	header.WriteU16 (PROTOCOL_VERSION);
+	header.WriteU16 (static_cast<uint16_t> (message.type));
+	header.WriteU32 (message.requestId);
+	header.WriteU32 (static_cast<uint32_t> (message.payload.size ()));
 	std::string out = header.Data ();
 	out.append (message.payload);
 	return out;
@@ -172,20 +177,21 @@ inline i2p::expected<Message, ProtocolError> Decode (std::string_view frame)
 {
 	if (frame.size () < HEADER_SIZE) return i2p::unexpected (ProtocolError { ErrorCode::Malformed, "short frame" });
 	PayloadReader reader (frame.substr (0, HEADER_SIZE));
-	auto magic = reader.U32 ();
+	auto magic = reader.ReadU32 ();
 	if (!magic) return i2p::unexpected (magic.error ());
-	auto version = reader.U16 ();
+	auto version = reader.ReadU16 ();
 	if (!version) return i2p::unexpected (version.error ());
-	auto type = reader.U16 ();
+	auto type = reader.ReadU16 ();
 	if (!type) return i2p::unexpected (type.error ());
-	auto request = reader.U32 ();
+	auto request = reader.ReadU32 ();
 	if (!request) return i2p::unexpected (request.error ());
-	auto length = reader.U32 ();
+	auto length = reader.ReadU32 ();
 	if (!length) return i2p::unexpected (length.error ());
 	if (*magic != PROTOCOL_MAGIC) return i2p::unexpected (ProtocolError { ErrorCode::Malformed, "bad magic" });
 	if (*version != PROTOCOL_VERSION)
 		return i2p::unexpected (ProtocolError { ErrorCode::UnsupportedVersion, "bad version" });
-	if (*type < static_cast<uint16_t> (MessageType::ConfigureLog) || *type > static_cast<uint16_t> (MessageType::Pong))
+	if (*type < static_cast<uint16_t> (MessageType::ConfigureLog)
+		|| *type > static_cast<uint16_t> (MessageType::ConfigureLogFd))
 		return i2p::unexpected (ProtocolError { ErrorCode::UnknownType, "unknown type" });
 	if (*length > MAX_MESSAGE_SIZE - HEADER_SIZE)
 		return i2p::unexpected (ProtocolError { ErrorCode::TooLarge, "payload too large" });
@@ -199,9 +205,9 @@ inline i2p::expected<Message, ProtocolError> Decode (std::string_view frame)
 inline std::string EncodeLogRecord (uint8_t level, int64_t timestamp, std::string_view text)
 {
 	PayloadWriter writer;
-	writer.U8 (level);
-	writer.U64BE (static_cast<uint64_t> (timestamp));
-	writer.String (text);
+	writer.WriteU8 (level);
+	writer.WriteU64BE (static_cast<uint64_t> (timestamp));
+	writer.WriteString (text);
 	return writer.Data ();
 }
 
@@ -209,11 +215,11 @@ inline i2p::expected<std::tuple<uint8_t, int64_t, std::string>, ProtocolError> D
 	std::string_view payload)
 {
 	PayloadReader reader (payload);
-	auto level = reader.U8 ();
+	auto level = reader.ReadU8 ();
 	if (!level) return i2p::unexpected (level.error ());
-	auto timestamp = reader.U64BE ();
+	auto timestamp = reader.ReadU64BE ();
 	if (!timestamp) return i2p::unexpected (timestamp.error ());
-	auto text = reader.String ();
+	auto text = reader.ReadString ();
 	if (!text) return i2p::unexpected (text.error ());
 	if (!reader.Done ()) return i2p::unexpected (ProtocolError { ErrorCode::BadField, "trailing log data" });
 	return std::tuple { *level, static_cast<int64_t> (*timestamp), std::string (*text) };
@@ -222,9 +228,9 @@ inline i2p::expected<std::tuple<uint8_t, int64_t, std::string>, ProtocolError> D
 inline std::string EncodeLogConfig (bool useSyslog, std::string_view path, std::string_view tag)
 {
 	PayloadWriter writer;
-	writer.U8 (useSyslog ? 1 : 0);
-	writer.String (path);
-	writer.String (tag);
+	writer.WriteU8 (useSyslog ? 1 : 0);
+	writer.WriteString (path);
+	writer.WriteString (tag);
 	return writer.Data ();
 }
 
@@ -232,11 +238,11 @@ inline i2p::expected<std::tuple<bool, std::string, std::string>, ProtocolError> 
 	std::string_view payload)
 {
 	PayloadReader reader (payload);
-	auto syslog = reader.U8 ();
+	auto syslog = reader.ReadU8 ();
 	if (!syslog) return i2p::unexpected (syslog.error ());
-	auto path = reader.String ();
+	auto path = reader.ReadString ();
 	if (!path) return i2p::unexpected (path.error ());
-	auto tag = reader.String ();
+	auto tag = reader.ReadString ();
 	if (!tag) return i2p::unexpected (tag.error ());
 	if (!reader.Done () || *syslog > 1)
 		return i2p::unexpected (ProtocolError { ErrorCode::BadField, "invalid log config" });

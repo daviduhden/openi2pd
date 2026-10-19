@@ -1,0 +1,71 @@
+/*
+ * Copyright (c) 2026, David Uhden Collado
+ * SPDX-License-Identifier: BSD-3-Clause
+ *
+ * This file is part of openi2pd and licensed under BSD-3-Clause
+ */
+
+#ifndef I2PD_PRIVSEP_OPENBSD_IMSG_H__
+#define I2PD_PRIVSEP_OPENBSD_IMSG_H__
+
+#include <cstdint>
+#include <optional>
+#include <string>
+
+#include "Channel.h"
+
+#if defined(__OpenBSD__)
+#include <imsg.h>
+#endif
+
+namespace i2p::privsep
+{
+/**
+ * OpenBSD imsg adapter for the versioned worker frame.
+ *
+ * The frame remains encoded by Protocol.h and is carried as the imsg payload.
+ * This preserves the protocol version, request-id, type allowlist and size
+ * checks while using the native OpenBSD imsg implementation for message
+ * boundaries and SCM_RIGHTS (imsgbuf_allow_fdpass).
+ *
+ * This adapter is intentionally separate from the portable Channel: the
+ * supervisor/log-worker path still uses the versioned SOCK_SEQPACKET channel
+ * until every OpenBSD backend is migrated. It is exercised by the manual
+ * OpenBSD CI job.
+ */
+class ImsgChannel
+{
+public:
+	ImsgChannel () = default;
+	~ImsgChannel ();
+	ImsgChannel (ImsgChannel && other) noexcept;
+	ImsgChannel & operator= (ImsgChannel && other) noexcept;
+	ImsgChannel (const ImsgChannel &) = delete;
+	ImsgChannel & operator= (const ImsgChannel &) = delete;
+
+	static i2p::expected<ImsgChannel, std::string> Adopt (int fd);
+
+	bool IsOpen () const { return m_Fd >= 0; }
+	int Fd () const { return m_Fd; }
+	void Close ();
+
+	/**
+	 * Send one encoded frame. When @a fd is non-negative it is passed with
+	 * exactly one SCM_RIGHTS descriptor and ownership is transferred to the
+	 * imsg layer after a successful compose (matching imsg_compose(3)).
+	 */
+	i2p::expected<void, std::string> Send (const Message & message, int fd = -1, int timeoutMs = 5000);
+	i2p::expected<std::optional<ReceivedMessage>, std::string> Receive (int timeoutMs = 1000);
+
+	i2p::expected<PeerCredentials, std::string> Credentials () const;
+	i2p::expected<uint32_t, std::string> PeerUid () const;
+
+private:
+	int m_Fd = -1;
+#ifdef __OpenBSD__
+	struct imsgbuf * m_Buffer = nullptr;
+#endif
+};
+}
+
+#endif

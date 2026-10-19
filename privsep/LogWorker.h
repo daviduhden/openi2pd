@@ -1,5 +1,4 @@
 /*
-* Copyright (c) 2026, The PurpleI2P Project
 * Copyright (c) 2026, David Uhden Collado
 * SPDX-License-Identifier: BSD-3-Clause
 *
@@ -37,8 +36,16 @@ public:
 
 	/** Send the one-time configuration and remember it for restarts. */
 	i2p::expected<void, std::string> Configure (bool useSyslog, std::string_view path, std::string_view tag);
+	/**
+	 * Configure the next process without opening the path locally. Used by
+	 * the supervisor when the log worker itself owns the filesystem
+	 * capability; the supervisor never opens the log file.
+	 */
+	i2p::expected<void, std::string> ConfigureProxy (bool useSyslog, std::string_view path, std::string_view tag);
 	/** Attach a freshly spawned worker after re-sending the configuration. */
 	i2p::expected<void, std::string> Reattach (Channel channel);
+	/** Reattach a proxy-owned worker without opening the log file locally. */
+	i2p::expected<void, std::string> ReattachProxy (Channel channel);
 	void Write (uint8_t level, std::time_t timestamp, std::string_view text);
 	i2p::expected<void, std::string> Shutdown ();
 	bool IsOpen () const;
@@ -56,6 +63,13 @@ private:
 
 /** Entry point for the isolated log worker process. */
 int RunLogWorker (int fd);
+
+/**
+ * Flatten control characters and bound one log text fragment. The file sink
+ * and the syslog sink both use this so a peer cannot inject extra physical
+ * log lines through '\n', '\r', ESC or other C0/DEL bytes.
+ */
+std::string SanitizeLogText (std::string_view text);
 }
 
 #endif
