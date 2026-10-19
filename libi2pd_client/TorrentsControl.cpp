@@ -1,5 +1,4 @@
 /*
-* Copyright (c) 2026, The PurpleI2P Project
 * Copyright (c) 2026, David Uhden Collado
 * SPDX-License-Identifier: BSD-3-Clause
 *
@@ -46,6 +45,27 @@ namespace torrents
 			}
 			return encoded;
 		}
+	}
+
+	bool IsI2PTrackerHost (std::string_view host)
+	{
+		static constexpr std::string_view suffix { ".i2p" };
+		if (host.size () <= suffix.size ()) return false;
+		if (host.find ("..") != std::string_view::npos) return false;
+		for (char ch : host)
+		{
+			const auto byte = static_cast<unsigned char> (ch);
+			if (byte <= 0x20 || byte >= 0x7F || ch == '/' || ch == '\\' || ch == '@' || ch == ':' || ch == '?'
+				|| ch == '#')
+				return false;
+		}
+		for (size_t i = 0; i < suffix.size (); ++i)
+		{
+			char actual = host[host.size () - suffix.size () + i];
+			if (actual >= 'A' && actual <= 'Z') actual = static_cast<char> (actual - 'A' + 'a');
+			if (actual != suffix[i]) return false;
+		}
+		return true;
 	}
 
 	std::string ToHexString (std::span<const uint8_t> data)

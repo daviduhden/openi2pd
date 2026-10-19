@@ -22,6 +22,7 @@
 #include <memory>
 #include <vector>
 #include <array>
+#include <atomic>
 #include <list>
 #include <string>
 #include <string_view>
@@ -30,6 +31,7 @@
 #include <optional>
 #include <filesystem>
 #include <fstream>
+#include <mutex>
 #include "util.h"
 #include "Streaming.h"
 #include "I2PService.h"
@@ -67,8 +69,20 @@ namespace torrents
 	constexpr size_t MIN_PIECE_LENGTH = 16 * 1024; // 16K
 	constexpr size_t MAX_PIECE_LENGTH = 256 * 1024 * 1024; // 256M
 	constexpr size_t MAX_NUM_TORRENT_PIECES = 1024 * 1024; // 1M
-	constexpr size_t MAX_TORRENT_LENGTH = MAX_PIECE_LENGTH * MAX_NUM_TORRENT_PIECES; // 256T
+	// Bound the eager per-piece std::vector<BlockStatus> allocation. This is
+	// independent of the nominal piece count: 1M pieces of 256 MiB would
+	// otherwise request ~64 GiB of status arrays before any data arrives.
+	constexpr size_t MAX_TORRENT_BLOCKS = 4 * 1024 * 1024;
+	// Keep the arithmetic in 64 bits. On ILP32 the product below is 2^48 and
+	// previously wrapped to zero because both operands are size_t.
+	constexpr uint64_t MAX_TORRENT_LENGTH
+		= static_cast<uint64_t> (MAX_PIECE_LENGTH) * static_cast<uint64_t> (MAX_NUM_TORRENT_PIECES); // 256T
+	static_assert (MAX_TORRENT_LENGTH == (uint64_t { 256 } << 40), "MAX_TORRENT_LENGTH must stay at 256 TiB");
+	static_assert (MAX_TORRENT_LENGTH > 0, "MAX_TORRENT_LENGTH must not overflow");
+	static_assert (sizeof (MAX_TORRENT_LENGTH) == sizeof (uint64_t), "limit must be a 64-bit constant");
 	constexpr size_t MAX_NUM_TORRENT_FILES = 10000;
+	constexpr size_t MAX_NUM_TRACKERS = 512;
+	constexpr size_t MAX_TRACKER_ANNOUNCE_LENGTH = 2048;
 	constexpr uint16_t TORRENT_PORT = 6881; //  not used by required by protocol
 	constexpr int MIN_TRACKER_REQUESTS_INTERVAL = 15 * 1000; // in milliseconds
 	constexpr int MAX_TRACKER_REQUESTS_INTERVAL = 24 * 3600 * 1000; // in milliseconds
@@ -77,6 +91,13 @@ namespace torrents
 	constexpr int DHT_TORRENT_INITIAL_UPDATE_INTERVAL = 100; // in seconds
 	constexpr int DHT_TORRENT_INITIAL_UPDATE_INTERVAL_VARIANCE = 40; // in seconds
 	constexpr size_t PEER_CONNECTION_RECEIVE_BUFFER_SIZE = 65535;
+	// A peer-wire message is prefixed by a 4-byte big-endian length. The whole
+	// frame (prefix included) must fit in the receive buffer, otherwise a
+	// message of exactly 65535 bytes would set m_NextMsgLength to 65539 and
+	// leave the connection permanently unable to make progress.
+	constexpr size_t MAX_PEER_MSG_LEN = PEER_CONNECTION_RECEIVE_BUFFER_SIZE - 4;
+	static_assert (MAX_PEER_MSG_LEN + 4 == PEER_CONNECTION_RECEIVE_BUFFER_SIZE, "peer frame must fit the buffer");
+	constexpr bool IsPeerMessageLengthAllowed (uint64_t msgLen) { return msgLen <= MAX_PEER_MSG_LEN; }
 	constexpr int PEER_CONNECTION_MAX_IDLE = 3600; // in seconds
 	constexpr int PEER_KEEP_ALIVE_TIMEOUT = 120; // in seconds
 	constexpr int PEER_KEEP_SEND_INTERVAL = 95; // in seconds
@@ -131,6 +152,58 @@ namespace torrents
 		eMessageTypeExtended = 20
 	};
 
+	// Path helpers shared by the torrent metadata parser, the download session
+	// and the tests. They are purely lexical unless stated otherwise.
+	//
+	// IsSafeRelativePath accepts only a non-empty relative path whose
+	// components are neither "." nor ".." and which has no root name or root
+	// directory. A caller must still anchor the result at a trusted root.
+	bool IsSafeRelativePath (const std::filesystem::path & path);
+
+	// Purely lexical containment check for callers on the network/control
+	// thread. It performs no filesystem access (no symlink or existence
+	// checks); the storage service must still call IsPathWithinRoot and the
+	// no-follow helpers before opening, creating, renaming or deleting.
+	bool IsPathLexicallyWithinRoot (const std::filesystem::path & root, const std::filesystem::path & target);
+
+	// True when target is lexically inside root and no existing component
+	// (including root itself) is a symlink/reparse point. Missing trailing
+	// components are accepted so files can be created, but the caller must
+	// recheck before use (and the safe file helpers below do not follow
+	// symlinks at the leaf or below root).
+	bool IsPathWithinRoot (const std::filesystem::path & root, const std::filesystem::path & target,
+		bool allowDirectoryLeaf);
+
+	// Bounded file helpers. Reads stop at maxBytes instead of trusting an
+	// on-disk size, reject symlink leaves/reparse points and non-regular files
+	// (FIFOs and devices cannot stall the disk service), and report truncated
+	// files as failure. Writes replace/create only a non-symlink, regular leaf. On
+	// Windows the reparse point check is performed before the CRT open
+	// (residual TOCTOU); POSIX uses O_NOFOLLOW on every component below the
+	// trusted root, so no such window exists there. Hard links are not
+	// distinguishable portably; the torrent root must already be trusted and
+	// not writable by other users.
+	bool ReadFileBoundedNoFollow (const std::filesystem::path & path, size_t maxBytes,
+		std::vector<uint8_t> & content, std::string & error);
+	bool WriteFileNoFollow (const std::filesystem::path & path, const void * data, size_t len);
+	// Creates path exclusively (O_EXCL) and reserves exactly `size` bytes.
+	bool CreateFileWithSizeNoFollow (const std::filesystem::path & path, size_t size);
+	// Anchored variants: `relativePath` is traversed from `root` one component
+	// at a time with O_NOFOLLOW, so an intermediate symlink cannot redirect
+	// the operation.
+	bool ReadFileBoundedNoFollow (const std::filesystem::path & root, const std::filesystem::path & relativePath,
+		size_t maxBytes, std::vector<uint8_t> & content, std::string & error);
+	bool WriteFileNoFollow (
+		const std::filesystem::path & root, const std::filesystem::path & relativePath, const void * data, size_t len);
+	bool CreateFileWithSizeNoFollow (
+		const std::filesystem::path & root, const std::filesystem::path & relativePath, size_t size);
+	// Creates the missing directories of `relativeDirectory` below `root`
+	// without traversing symlinks. The root itself is created when missing but
+	// must not be a symlink. `relativeDirectory` must be a safe relative path
+	// (or empty).
+	bool CreateDirectoriesWithinRootNoFollow (
+		const std::filesystem::path & root, const std::filesystem::path & relativeDirectory);
+
 	class TorrentFile
 	{
 	public:
@@ -138,28 +211,37 @@ namespace torrents
 			: m_FullFilePath (fullFilePath)
 			, m_FileLength (fileLength)
 			, m_IsPart (true)
-			, m_LastAccessTime (0)
-			, m_LastFlushTime (0) { };
+			, m_File (-1)
+			, m_LastAccessTime (0) { };
+		~TorrentFile () { Close (); }
+		TorrentFile (const TorrentFile &) = delete;
+		TorrentFile & operator= (const TorrentFile &) = delete;
 
 		bool Save (size_t offset, const uint8_t * buf, size_t len);
 		bool Load (size_t offset, uint8_t * buf, size_t len);
 		void Complete ();
-		void Open ();
+		void Open (bool create = false);
 		void Close ();
 
 		const std::filesystem::path & GetFullFilePath () const { return m_FullFilePath; }
 		void SetFullPath (const std::filesystem::path & p) { m_FullFilePath = p; }
+		// Trusted anchor used to open every component below it with
+		// O_NOFOLLOW. Must contain m_FullFilePath.
+		void SetRootDir (const std::filesystem::path & root) { m_RootDir = root; }
 		size_t GetFileLength () const { return m_FileLength; }
 		uint64_t GetLastAccessTime () const { return m_LastAccessTime; }
 		void SetIsPart (bool isPart) { m_IsPart = isPart; }
-		void UpdateFullPath (const std::filesystem::path & rootDir);
+		// Returns false and clears the path when it is not a safe relative
+		// path; callers must not use the file afterwards.
+		bool UpdateFullPath (const std::filesystem::path & rootDir);
 
 	private:
 		std::filesystem::path m_FullFilePath;
+		std::filesystem::path m_RootDir;
 		size_t m_FileLength;
 		bool m_IsPart;
-		std::fstream m_File;
-		uint64_t m_LastAccessTime, m_LastFlushTime; // monotonic seconds
+		int m_File;
+		uint64_t m_LastAccessTime; // monotonic seconds
 	};
 
 	struct PieceFileFragment // fragment to save to/load from file
@@ -191,46 +273,67 @@ namespace torrents
 
 	public:
 		Piece (size_t size, const uint8_t * hash);
-		Piece (Piece &&) = default;
+		// A per-piece mutex makes the object non-copyable. The vector of
+		// pieces only needs the explicit move constructor; it is reserved up
+		// front and never rearranged concurrently.
+		Piece (Piece && other) noexcept;
+		Piece (const Piece &) = delete;
+		Piece & operator= (const Piece &) = delete;
+		Piece & operator= (Piece &&) = delete;
 		~Piece ();
 
-		bool IsComplete () const { return !m_Blocks; }
-		void Complete ()
-		{
-			m_Blocks = nullptr;
-			m_IsRequested = false;
-		}
-		bool VerifyHash () const;
+		// All mutable state below is guarded by m_Mutex. That includes the
+		// data buffer, the block map and the sending/loading flags, because
+		// the service thread and the disk I/O thread both touch a piece.
+		bool IsComplete () const;
+		void Complete ();
+		bool VerifyHash (); // marks the piece verified when the digest matches
+		bool IsVerified () const;
 		void SetIsSending (bool isSending);
-		uint64_t GetLastActivityTimestamp () const { return m_LastActivityTimestamp; }
-		bool IsRequested () const { return m_IsRequested; }
-		size_t GetNumPeers () const { return m_NumPeers; }
-		void SetNumPeers (size_t numPeers) { m_NumPeers = numPeers; }
+		void SetIsLoading (bool loading);
+		bool IsSending () const;
+		bool IsLoading () const;
+		uint64_t GetLastActivityTimestamp () const;
+		bool IsRequested () const;
+		size_t GetNumPeers () const;
+		void SetNumPeers (size_t numPeers);
 
 		void BlockReceived (const uint8_t * block, size_t len, size_t offset);
 		void Dump (PieceFileFragment && fragment);
 		bool Load (PieceFileFragment && fragment);
-		const uint8_t * GetData () const { return m_Data; }
+		bool HasData () const;
+		// Copies a validated block under the piece lock. The caller never
+		// retains a pointer into a buffer that another thread can free.
+		bool CopyBlock (size_t offset, size_t len, std::vector<uint8_t> & out) const;
 		size_t GetSize () const { return m_Size; }
 		bool HasBlock (size_t offset) const;
 		std::pair<size_t, size_t>
 		GetNextBlockToRequest (); // return (offset, len) of next buffer, len = 0 if no next buffer
 		void ClearAllRequests ();
-		void InvalidateAllBlocks ();
+		// Rebuilds the block map as Missing, drops the data buffer and clears
+		// the verified flag, so a complete-but-corrupt piece becomes
+		// downloadable again.
+		void MarkCorrupt ();
+		void InvalidateAllBlocks () { MarkCorrupt (); }
+		// Drops the data buffer while preserving the complete/verified state.
+		// Used to evict idle pieces without forgetting that they are complete.
+		void ReleaseData ();
 		void Reset ();
 
 	private:
-		bool IsAvailable (int block) const;
+		bool IsAvailableLocked (int block) const;
 		size_t GetNumBlocks (size_t len) const;
-		void NewDataBuffer ();
-		void DeleteDataBuffer ();
-		void UpdateDataBuffer (uint8_t * newData);
+		void NewDataBufferLocked ();
+		void DeleteDataBufferLocked ();
+		void MarkCorruptLocked ();
+		void ReleaseDataLocked ();
 
 	private:
+		mutable std::mutex m_Mutex;
 		size_t m_Size;
 		uint8_t *m_Data, m_Hash[SHA_DIGEST_LENGTH];
 		std::unique_ptr<std::vector<BlockStatus>> m_Blocks;
-		bool m_IsSending, m_IsRequested;
+		bool m_IsSending, m_IsLoading, m_IsRequested, m_IsVerified;
 		uint64_t m_LastActivityTimestamp; // monotonic seconds
 		size_t m_NumPeers; // where this piece is available
 	};
@@ -276,7 +379,7 @@ namespace torrents
 		void HandleDatagramTrackerResponse (size_t trackerID, uint32_t interval, const uint8_t * hashes,
 			size_t hashesLen, int numSeeders, int numLeechers);
 
-		bool IsComplete () const { return m_IsComplete; }
+		bool IsComplete () const { return m_IsComplete.load (std::memory_order_acquire); }
 		void SetComplete ();
 		bool IsStopped () const { return m_IsStopped; }
 		void SetStopped (bool stopped) { m_IsStopped = stopped; }
@@ -306,12 +409,17 @@ namespace torrents
 														: MIN_TRACKER_REQUESTS_INTERVAL;
 		}
 		void SetInterval (size_t trackerID, int interval);
-		const std::vector<uint8_t> GetInfo () const { return m_Info; }
+		const std::vector<uint8_t> & GetInfo () const { return m_Info; }
 		const InfoHash & GetInfoHash () const { return m_InfoHash; }
 		size_t GetLeft () const;
 		std::string GetHexStringInfoHash () const; // in url format
 		size_t GetNumPieces () const { return m_Pieces.size (); }
 		Piece & GetPiece (int index) { return m_Pieces[index]; }
+		// True only when every piece is complete and its SHA-1 has actually
+		// been checked against the metainfo. A resume bitfield alone does not
+		// satisfy this, so .part files are not promoted to final names until
+		// the local data has been verified.
+		bool AreAllPiecesVerified () const;
 		std::pair<std::vector<uint8_t>, boost::logic::tribool>
 		CreateBitfield () const; // (bitfield, true - all false - none)
 		bool ApplyBitfield (const std::vector<uint8_t> & bitfield); // return true if complete
@@ -395,7 +503,8 @@ namespace torrents
 		std::vector<TrackerStats> m_TrackerStats;
 		std::unordered_map<i2p::data::IdentHash, std::weak_ptr<PeerConnection>>
 			m_Connections; // remote ident hash -> connection
-		bool m_IsComplete, m_IsStopped, m_IsSingleFile;
+		std::atomic<bool> m_IsComplete;
+		bool m_IsStopped, m_IsSingleFile;
 		std::list<std::shared_ptr<TorrentFile>> m_Files;
 		size_t m_Uploaded, m_Downloaded;
 		uint64_t m_NextUpdateStatusTime, m_NextReconnectTime, m_NextDHTUpdateTime,

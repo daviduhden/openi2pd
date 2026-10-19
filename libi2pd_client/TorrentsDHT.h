@@ -58,6 +58,17 @@ namespace torrents
 	constexpr int DHT_MAX_NUM_GET_PEERS_ATTEMPTS = 22;
 	constexpr int DHT_MAX_NUM_FIND_NODE_ATTEMPTS = 8;
 	constexpr int DHT_MAX_NUM_CLOSEST_NODES_TO_ANNOUNCE = 4;
+	// Bounds for state created by untrusted DHT datagrams. They keep a flood of
+	// announces, get_peers queries or find_node responses from growing the maps
+	// without limit between expiration sweeps.
+	constexpr size_t MAX_DHT_TORRENTS = 2048;
+	constexpr size_t MAX_DHT_PEERS_PER_TORRENT = 128;
+	constexpr size_t MAX_DHT_INCOMING_TOKENS = 4096;
+	constexpr size_t MAX_DHT_HEARD_FROM = 8192;
+	constexpr size_t MAX_DHT_FAILED_PEERS = 2048;
+	constexpr size_t MAX_DHT_QUERIES = 2048;
+	constexpr size_t MAX_DHT_REQUEST_NODES = 256;
+	constexpr size_t MAX_DHT_REQUEST_TOKENS = 8;
 
 	using Distance = Torrent::InfoHash;
 	struct NodeID : public Torrent::InfoHash
@@ -109,7 +120,7 @@ namespace torrents
 	constexpr size_t MAX_BUCKET_CAPACITY = 8;
 	struct Bucket
 	{
-		Bucket * next;
+		std::unique_ptr<Bucket> next; // owned successor in the bucket chain
 		std::map<NodeID, std::shared_ptr<Node>> nodes;
 		NodeID start;
 		uint64_t lastUpdateTime; // monotonic seconds
@@ -143,17 +154,17 @@ namespace torrents
 		size_t GetNumBuckets () const;
 		size_t GetNumNodes () const;
 		std::list<std::shared_ptr<Node>> GetNodes ();
-		Bucket * FindBucket (const Torrent::InfoHash & id) const;
+		Bucket * FindBucket (const Torrent::InfoHash & id) const; // non-owning; valid until the chain is mutated
 
 		std::shared_ptr<Node> AddNode (std::shared_ptr<Node> node);
 		void RemoveNode (const NodeID & id);
 		std::list<std::pair<NodeID, Bucket *>> GetExploratoryTargets (
-			std::mt19937 & rng, uint64_t ts); // (target, node to send find_node to)
+			std::mt19937 & rng, uint64_t ts); // (target, non-owning node to send find_node to)
 		size_t DeleteExpiredNodes (uint64_t ts);
 		std::list<std::shared_ptr<Node>> GetNodesToPing (uint64_t ts);
 
 	private:
-		Bucket * m_Buckets;
+		std::unique_ptr<Bucket> m_Buckets; // owns the first bucket and, transitively, the chain
 		NodeID m_OurNode;
 	};
 

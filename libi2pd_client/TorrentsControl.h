@@ -1,5 +1,4 @@
 /*
-* Copyright (c) 2026, The PurpleI2P Project
 * Copyright (c) 2026, David Uhden Collado
 * SPDX-License-Identifier: BSD-3-Clause
 *
@@ -42,6 +41,8 @@ namespace torrents
 	{
 		Start,
 		Stop,
+		Pause,
+		Resume,
 		Reannounce,
 		Remove,
 		RemoveAll,
@@ -144,6 +145,13 @@ namespace torrents
 		std::string message;
 		int id;
 	};
+
+	// True only for a well-formed I2P host name ending in ".i2p". The check
+	// is case-insensitive and rejects empty labels, whitespace, path
+	// separators, credentials, ports and trailing dots. It is deliberately
+	// lexical: callers must still resolve the host through the I2P
+	// AddressBook before opening a stream.
+	bool IsI2PTrackerHost (std::string_view host);
 
 	// Lower-case hexadecimal representation, using exactly two characters per
 	// input byte. Used for torrent hashes and display magnets.

@@ -26,6 +26,7 @@
 #include <mutex>
 #include <future>
 #include <chrono>
+#include <atomic>
 #include <optional>
 #include <boost/asio.hpp>
 #include <boost/beast.hpp>
@@ -55,6 +56,11 @@ namespace torrents
 	constexpr int TORRENTS_STATUS_UPDATE_INTERVAL_VARIANCE = 7; // in seconds
 	constexpr int TORRENTS_STATUS_UPDATE_CHECK_INTERVAL = 8; // in seconds
 	constexpr int TRACKER_MAX_NUM_WANT = 25;
+	// Upper bound for marshalling the shutdown sequence to the tunnel service
+	// thread. A timed-out teardown is left on the service thread and logged;
+	// the object is kept alive by the posted closure, so it is never destroyed
+	// while that closure is pending.
+	constexpr std::chrono::milliseconds TORRENTS_STOP_TIMEOUT { 5000 };
 
 	enum DatagramTrackerAction
 	{
@@ -97,8 +103,13 @@ namespace torrents
 		TorrentsTunnel (std::string_view name, std::shared_ptr<i2p::client::ClientDestination> localDestination,
 			std::string_view torrentsDir, std::string_view trackers = "", bool dht = true,
 			std::string_view dhtFileName = "");
+		~TorrentsTunnel () override;
 
 		void Start () override;
+		// Marshals the service-thread teardown with a bounded wait. When it
+		// times out the posted closure owns a reference and completes the
+		// teardown on the service thread; Stop() never mutates DHT, timers,
+		// accepted streams or torrent state from the caller's thread.
 		void Stop () override;
 		auto & GetDiskIOService () { return m_DiskIOService.GetService (); };
 
@@ -148,6 +159,7 @@ namespace torrents
 		const char * GetName () const override { return m_Name.c_str (); }
 
 	private:
+		void StopOnService ();
 		std::optional<TorrentsSnapshot> BuildControlSnapshot () const;
 		TorrentCommandResult ExecuteControlCommandOnService (const TorrentCommand & command);
 
@@ -157,10 +169,19 @@ namespace torrents
 		// set. Missing components are allowed for files that will be
 		// created, but are rechecked before use.
 		bool IsContainedPath (const std::filesystem::path & path, bool allowDirectoryLeaf) const;
+		// Set the download root from the torrent's sanitized name only after
+		// proving that it remains under m_TorrentsDir. This rejects a
+		// malicious/legacy name before it can enter the session map.
+		bool SetTorrentPathWithinRoot (const std::shared_ptr<Torrent> & torrent) const;
 		std::string GetDisplayFilePath (const std::filesystem::path & path) const;
 
 		void Accept ();
-		void ReadTorrentFile (const std::filesystem::path & torrentFilePath);
+		// Enumerate and read the configured torrent directory on the storage
+		// service. Parsing/insertion is posted back to the network service;
+		// the network thread never walks the directory or opens a file.
+		void LoadInitialTorrents ();
+		bool ReadTorrentFileForControl (
+			const std::filesystem::path & path, std::vector<uint8_t> & content, std::string & error);
 		void SaveTorrentFile (std::shared_ptr<Torrent> torrent);
 		void InitTorrentFiles (std::shared_ptr<Torrent> torrent);
 		std::pair<int, bool> InsertTorrent (
@@ -217,6 +238,7 @@ namespace torrents
 			m_DatragramTrackerTransactions;
 		// transactionID->(trackerID, from_port, torrent, timestamp monotonic milliseconds)
 		std::unique_ptr<TorrentsDHT> m_DHT;
+		std::atomic<bool> m_Stopping { false };
 	};
 
 }

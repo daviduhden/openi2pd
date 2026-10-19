@@ -18,6 +18,7 @@
 #include <cstring>
 #include <exception>
 #include <limits>
+#include <system_error>
 #include <boost/algorithm/string.hpp>
 #include <boost/algorithm/hex.hpp>
 #include <boost/asio.hpp>
@@ -89,6 +90,11 @@ namespace torrents
 		{
 			return static_cast<int> (std::min (value, static_cast<size_t> (std::numeric_limits<int>::max ())));
 		}
+
+		bool IsI2PTrackerURL (const i2p::http::URL & url)
+		{
+			return IsI2PTrackerHost (url.host) && url.user.empty () && url.pass.empty () && !url.ipv6;
+		}
 	}
 
 	TorrentsTunnel::TorrentsTunnel (std::string_view name,
@@ -114,7 +120,18 @@ namespace torrents
 			std::unordered_map<i2p::data::IdentHash, i2p::http::URL> hosts;
 			for (const auto & it : trackersList)
 			{
+				if (hosts.size () >= MAX_NUM_TRACKERS)
+				{
+					LogPrint (eLogWarning, "TorrentsTunnel: Ignoring trackers above the limit ", MAX_NUM_TRACKERS);
+					break;
+				}
+				if (it.size () > MAX_TRACKER_ANNOUNCE_LENGTH) continue;
 				i2p::http::URL url (it);
+				if (!IsI2PTrackerURL (url))
+				{
+					LogPrint (eLogInfo, "TorrentsTunnel: Rejecting non-I2P tracker host ", url.host);
+					continue;
+				}
 				auto address = i2p::client::context.GetAddressBook ().GetAddress (url.host);
 				if (address && address->IsIdentHash ())
 				{
@@ -134,12 +151,29 @@ namespace torrents
 				dhtFileName);
 	}
 
+	TorrentsTunnel::~TorrentsTunnel ()
+	{
+		// Normally Stop() has already run on the service thread. The destructor
+		// cannot call shared_from_this() to marshal another teardown, but it
+		// must still join the disk worker: a joinable std::thread would
+		// otherwise call std::terminate. Everything else is owned by the
+		// service object and is released by the base destructor.
+		if (!m_Stopping.load (std::memory_order_acquire))
+		{
+			LogPrint (eLogWarning, "TorrentsTunnel: destroyed without a completed Stop(); joining disk I/O only");
+			m_DiskIOService.Stop ();
+		}
+	}
+
 	void TorrentsTunnel::Start ()
 	{
+		m_Stopping.store (false, std::memory_order_release);
 		i2p::client::I2PService::Start ();
 		m_DiskIOService.Start ();
+		auto localDestination = GetLocalDestination ();
+		if (!localDestination) return;
 		auto dgramDest
-			= GetLocalDestination ()->CreateDatagramDestination (true, i2p::datagram::eDatagramV1); // V1 for DHT
+			= localDestination->CreateDatagramDestination (true, i2p::datagram::eDatagramV1); // V1 for DHT
 		if (dgramDest)
 			dgramDest->SetRawReceiver (std::bind (&TorrentsTunnel::HandleRecvFromI2PRaw,
 				std::static_pointer_cast<TorrentsTunnel> (shared_from_this ()), std::placeholders::_1,
@@ -147,14 +181,7 @@ namespace torrents
 		if (m_DHT) m_DHT->Start ();
 
 		Accept ();
-
-		if (!m_TorrentsDir.empty () && std::filesystem::exists (m_TorrentsDir)
-			&& std::filesystem::is_directory (m_TorrentsDir))
-		{
-			for (const auto & it : std::filesystem::directory_iterator (m_TorrentsDir))
-				if (std::filesystem::is_regular_file (it.status ()) && it.path ().extension () == ".torrent")
-					ReadTorrentFile (it.path ());
-		}
+		LoadInitialTorrents ();
 
 		ScheduleTrackerRequestsCheck ();
 		ScheduleReconnectCheck ();
@@ -164,6 +191,76 @@ namespace torrents
 
 	void TorrentsTunnel::Stop ()
 	{
+		if (m_Stopping.load (std::memory_order_acquire)) return;
+		auto localDestination = GetLocalDestination ();
+		if (!localDestination)
+		{
+			// No service is available to marshal to; the timers belong to the
+			// (already released) destination, so only the owned worker and
+			// handlers can be torn down.
+			m_Stopping.store (true, std::memory_order_release);
+			m_DiskIOService.Stop ();
+			i2p::client::I2PService::ClearHandlers ();
+			i2p::client::I2PService::Stop ();
+			return;
+		}
+
+		auto service = localDestination->GetService ();
+		if (service.get_executor ().running_in_this_thread ())
+		{
+			StopOnService ();
+			return;
+		}
+
+		std::shared_ptr<TorrentsTunnel> self;
+		try
+		{
+			self = std::static_pointer_cast<TorrentsTunnel> (shared_from_this ());
+		}
+		catch (const std::exception &)
+		{
+			// Without an owner there is no way to keep the object alive while
+			// the service thread runs the closure. Do not mutate DHT, timers
+			// or torrent state from the caller; the destructor still joins the
+			// owned disk worker and the base destructor clears handlers.
+			LogPrint (eLogWarning, "TorrentsTunnel: Stop() without a shared owner; cannot marshal teardown");
+			return;
+		}
+
+		auto promise = std::make_shared<std::promise<void>> ();
+		auto future = promise->get_future ();
+		try
+		{
+			boost::asio::post (service,
+				[self, promise] ()
+				{
+					self->StopOnService ();
+					try
+					{
+						promise->set_value ();
+					}
+					catch (const std::exception &)
+					{
+					}
+				});
+		}
+		catch (const std::exception &)
+		{
+			// The service rejected the task (already destroyed or stopping).
+			// Do not fall back to mutating service state from this thread.
+			LogPrint (eLogWarning, "TorrentsTunnel: Couldn't queue teardown; leaving it to the service owner");
+			return;
+		}
+
+		if (future.wait_for (TORRENTS_STOP_TIMEOUT) != std::future_status::ready)
+			LogPrint (eLogWarning, "TorrentsTunnel: Teardown is still queued on the service thread after ",
+				TORRENTS_STOP_TIMEOUT.count (), " ms");
+	}
+
+	void TorrentsTunnel::StopOnService ()
+	{
+		bool expected = false;
+		if (!m_Stopping.compare_exchange_strong (expected, true, std::memory_order_acq_rel)) return;
 		if (m_DHT) m_DHT->Stop ();
 		auto localDestination = GetLocalDestination ();
 		if (localDestination)
@@ -176,101 +273,200 @@ namespace torrents
 		m_KeepAliveCheckTimer.cancel ();
 		m_ReconnectCheckTimer.cancel ();
 		m_TorrentsStatusUpdateTimer.cancel ();
-		for (auto it : m_Torrents) StopTorrent (it.second);
-		m_Torrents.clear ();
+		for (auto it : GetTorrents ()) StopTorrent (it);
+		{
+			std::lock_guard<std::mutex> l (m_TorrentsMutex);
+			m_Torrents.clear ();
+			m_TorrentsByID.clear ();
+		}
 		m_DiskIOService.Stop ();
 		i2p::client::I2PService::ClearHandlers (); // close connections
 		i2p::client::I2PService::Stop ();
 	}
 
-	void TorrentsTunnel::ReadTorrentFile (const std::filesystem::path & torrentFilePath)
+	void TorrentsTunnel::LoadInitialTorrents ()
 	{
-		std::vector<uint8_t> content;
-		std::string error;
-		if (!ReadTorrentFileBounded (torrentFilePath, MAX_CONTROL_FILE_BYTES, content, error))
+		std::shared_ptr<TorrentsTunnel> self;
+		try
 		{
-			LogPrint (eLogError, "TorrentsTunnel: Can't read ", torrentFilePath, ": ", error);
+			self = std::static_pointer_cast<TorrentsTunnel> (shared_from_this ());
+		}
+		catch (const std::exception &)
+		{
+			LogPrint (eLogWarning, "TorrentsTunnel: Can't load torrents without a shared owner");
 			return;
 		}
-		auto torrent = std::make_shared<Torrent> (
-			std::string_view (reinterpret_cast<const char *> (content.data ()), content.size ()));
-		if (!torrent->IsValid () || torrent->GetError () != eTorrentErrorNoError)
+
+		try
 		{
-			LogPrint (eLogError, "TorrentsTunnel: Invalid torrent file ", torrentFilePath, ". Skipped");
-			return;
+			boost::asio::post (GetDiskIOService (),
+				[self] ()
+				{
+					// This callback is the storage execution domain. It may
+					// inspect and read the configured directory, but it never
+					// parses into the live session or opens a network stream.
+					try
+					{
+					std::vector<std::vector<uint8_t>> loaded;
+					std::error_code ec;
+					if (!self->m_TorrentsDir.empty () && std::filesystem::is_directory (self->m_TorrentsDir, ec))
+					{
+						std::filesystem::directory_iterator it (self->m_TorrentsDir, ec);
+						std::filesystem::directory_iterator end;
+						if (ec)
+							LogPrint (eLogError, "TorrentsTunnel: Can't enumerate torrents directory ", self->m_TorrentsDir,
+								" : ", ec.message ());
+						while (!ec && it != end)
+						{
+							auto path = it->path ();
+							std::error_code statusError;
+							auto status = it->symlink_status (statusError);
+							// Inspect entries without following them. A symlinked
+							// .torrent is never loaded from outside the root.
+							if (!statusError && !std::filesystem::is_symlink (status)
+								&& std::filesystem::is_regular_file (status) && path.extension () == ".torrent"
+								&& self->IsContainedPath (path, false))
+							{
+								auto relative = path.lexically_relative (self->m_TorrentsDir);
+								std::vector<uint8_t> content;
+								std::string error;
+								if (!relative.empty () && IsSafeRelativePath (relative)
+									&& ReadFileBoundedNoFollow (self->m_TorrentsDir, relative, MAX_CONTROL_FILE_BYTES,
+										content, error))
+									loaded.push_back (std::move (content));
+								else
+									LogPrint (eLogError, "TorrentsTunnel: Can't read ", path, ": ",
+										error.empty () ? "unsafe torrent file path" : error);
+							}
+							it.increment (ec);
+						}
+						if (ec)
+							LogPrint (eLogError, "TorrentsTunnel: Error while enumerating torrents directory ",
+								self->m_TorrentsDir, " : ", ec.message ());
+					}
+					else if (ec && ec != std::errc::no_such_file_or_directory)
+						LogPrint (eLogError, "TorrentsTunnel: Can't inspect torrents directory ", self->m_TorrentsDir,
+							" : ", ec.message ());
+
+					if (self->m_Stopping.load (std::memory_order_acquire)) return;
+					// Hand only bounded byte buffers to the network/control
+					// service. Insertion and tracker scheduling stay there.
+					boost::asio::post (self->GetService (),
+						[self, loaded = std::move (loaded)] () mutable
+						{
+							if (self->m_Stopping.load (std::memory_order_acquire)) return;
+							try
+							{
+								for (const auto & content : loaded)
+									(void)self->AddTorrent (
+										std::string_view (reinterpret_cast<const char *> (content.data ()), content.size ()));
+							}
+							catch (const std::exception & ex)
+							{
+								LogPrint (eLogError, "TorrentsTunnel: Can't insert initial torrent: ", ex.what ());
+							}
+						});
+					}
+					catch (const std::exception & ex)
+					{
+						LogPrint (eLogError, "TorrentsTunnel: Initial torrent scan failed: ", ex.what ());
+					}
+				});
 		}
-		torrent->SetFullPath (m_TorrentsDir / std::filesystem::path (torrent->GetName ()));
-		InsertTorrent (torrent);
-		InitTorrentFiles (torrent);
+		catch (const std::exception & ex)
+		{
+			LogPrint (eLogError, "TorrentsTunnel: Can't queue initial torrent scan: ", ex.what ());
+		}
+	}
+
+	bool TorrentsTunnel::ReadTorrentFileForControl (
+		const std::filesystem::path & path, std::vector<uint8_t> & content, std::string & error)
+	{
+		// A control command runs on the network service thread. File
+		// enumeration, size checks and the actual read belong to the disk
+		// service; the network thread only waits for the bounded result.
+		struct Result
+		{
+			bool ok = false;
+			std::vector<uint8_t> content;
+			std::string error;
+		};
+		auto result = std::make_shared<Result> ();
+		auto promise = std::make_shared<std::promise<void>> ();
+		auto future = promise->get_future ();
+		try
+		{
+			boost::asio::post (GetDiskIOService (),
+				[path, result, promise] ()
+				{
+					try
+					{
+						if (path.extension () != ".torrent")
+							result->error = "not a .torrent file";
+						else
+						{
+							// The control command names an arbitrary user path. Its
+							// parent directory may legitimately be a symlink, so
+							// resolve the parent but never the leaf: the final
+							// component is still opened with O_NOFOLLOW.
+							std::error_code ec;
+							auto resolved = path;
+							auto parent = std::filesystem::weakly_canonical (path.parent_path (), ec);
+							if (!ec && !parent.empty ()) resolved = parent / path.filename ();
+							result->ok = ReadFileBoundedNoFollow (
+								resolved, MAX_CONTROL_FILE_BYTES, result->content, result->error);
+						}
+					}
+					catch (const std::exception & ex)
+					{
+						result->ok = false;
+						result->content.clear ();
+						result->error = std::string ("can't read torrent file: ") + ex.what ();
+					}
+					promise->set_value ();
+				});
+		}
+		catch (const std::exception &)
+		{
+			error = "can't queue torrent file read";
+			return false;
+		}
+		if (future.wait_for (CONTROL_DEFAULT_TIMEOUT) != std::future_status::ready)
+		{
+			error = "torrent file read timed out";
+			return false;
+		}
+		content = std::move (result->content);
+		error = std::move (result->error);
+		return result->ok;
 	}
 
 	bool TorrentsTunnel::IsContainedPath (const std::filesystem::path & path, bool allowDirectoryLeaf) const
 	{
-		if (path.empty () || m_TorrentsDir.empty ()) return false;
+		return IsPathWithinRoot (m_TorrentsDir, path, allowDirectoryLeaf);
+	}
 
-		std::error_code ec;
-		auto root = std::filesystem::absolute (m_TorrentsDir, ec).lexically_normal ();
-		if (ec || root.empty ()) return false;
-		auto target = std::filesystem::absolute (path, ec).lexically_normal ();
-		if (ec || target.empty ()) return false;
-
-		auto rootStatus = std::filesystem::symlink_status (root, ec);
-		if (ec)
+	bool TorrentsTunnel::SetTorrentPathWithinRoot (const std::shared_ptr<Torrent> & torrent) const
+	{
+		if (!torrent) return false;
+		auto fullPath = m_TorrentsDir / std::filesystem::path (torrent->GetName ());
+		// This method runs on the network/control service thread. Only use
+		// lexical path operations here; the storage service revalidates with
+		// IsPathWithinRoot and the no-follow helpers before any file access.
+		if (!IsPathLexicallyWithinRoot (m_TorrentsDir, fullPath))
 		{
-			if (ec != std::errc::no_such_file_or_directory) return false;
-			ec.clear ();
-		}
-		else if (std::filesystem::is_symlink (rootStatus))
+			LogPrint (eLogError, "TorrentsTunnel: Refusing torrent name outside ", m_TorrentsDir);
 			return false;
-
-		auto rootIt = root.begin ();
-		auto targetIt = target.begin ();
-		for (; rootIt != root.end (); ++rootIt, ++targetIt)
-		{
-			if (targetIt == target.end () || *rootIt != *targetIt) return false;
 		}
-		if (targetIt == target.end ()) return false; // the torrents directory itself is not a file target
-
-		auto current = root;
-		while (targetIt != target.end ())
-		{
-			current /= *targetIt;
-			auto nextIt = targetIt;
-			++nextIt;
-			bool isLeaf = nextIt == target.end ();
-
-			auto status = std::filesystem::symlink_status (current, ec);
-			if (ec)
-			{
-				if (ec != std::errc::no_such_file_or_directory) return false;
-				ec.clear ();
-				// A missing component will be created by us. Its parent has
-				// already been checked, and the path is checked again before
-				// any file is opened.
-			}
-			else
-			{
-				if (std::filesystem::is_symlink (status)) return false;
-				if (isLeaf)
-				{
-					if (!std::filesystem::is_regular_file (status)
-						&& !(allowDirectoryLeaf && std::filesystem::is_directory (status)))
-						return false;
-				}
-				else if (!std::filesystem::is_directory (status))
-					return false;
-			}
-			targetIt = nextIt;
-		}
+		torrent->SetFullPath (fullPath);
 		return true;
 	}
 
 	std::string TorrentsTunnel::GetDisplayFilePath (const std::filesystem::path & path) const
 	{
 		if (path.empty ()) return "";
-		std::error_code ec;
-		auto relative = std::filesystem::relative (path, m_TorrentsDir, ec);
-		if (!ec && !relative.empty () && !relative.is_absolute () && relative != "." && *relative.begin () != "..")
+		auto relative = path.lexically_relative (m_TorrentsDir);
+		if (!relative.empty () && !relative.is_absolute () && relative != "." && *relative.begin () != "..")
 			return relative.generic_string ();
 		return path.filename ().string ();
 	}
@@ -285,14 +481,12 @@ namespace torrents
 			LogPrint (eLogError, "TorrentsTunnel: Refusing to save torrent file outside ", m_TorrentsDir);
 			return;
 		}
-		std::ofstream f (torrentFilePath, std::ofstream::binary);
-		if (f)
-		{
-			auto content = torrent->CreateTorrentFileContent ();
-			f.write (content.data (), content.size ());
-		}
-		else
-			LogPrint (eLogError, "TorrentsTunnel: Can't open ", torrentFilePath);
+		auto content = torrent->CreateTorrentFileContent ();
+		auto relative = torrentFilePath.lexically_relative (m_TorrentsDir);
+		if (content.empty () || relative.empty () || !IsSafeRelativePath (relative)
+			|| !CreateDirectoriesWithinRootNoFollow (m_TorrentsDir, relative.parent_path ())
+			|| !WriteFileNoFollow (m_TorrentsDir, relative, content.data (), content.size ()))
+			LogPrint (eLogError, "TorrentsTunnel: Can't write ", torrentFilePath);
 	}
 
 	void TorrentsTunnel::InitTorrentFiles (std::shared_ptr<Torrent> torrent)
@@ -308,20 +502,40 @@ namespace torrents
 		for (auto it : torrent->GetFiles ())
 		{
 			if (torrent->IsSingleFile ())
+			{
 				it->SetFullPath (torrent->GetFullPath ());
-			else
-				it->UpdateFullPath (torrent->GetFullPath ());
+				it->SetRootDir (m_TorrentsDir);
+			}
+			else if (!it->UpdateFullPath (torrent->GetFullPath ()))
+			{
+				LogPrint (eLogError, "TorrentsTunnel: Refusing unsafe file path in ", torrent->GetName ());
+				completed = false;
+				continue;
+			}
 			if (!IsContainedPath (it->GetFullFilePath (), false))
 			{
 				LogPrint (eLogError, "TorrentsTunnel: Refusing to create file outside ", m_TorrentsDir);
 				completed = false;
 				continue;
 			}
-			if (!std::filesystem::exists (it->GetFullFilePath ()))
+			std::error_code ec;
+			bool finalExists = std::filesystem::exists (it->GetFullFilePath (), ec);
+			if (ec)
+			{
+				LogPrint (eLogError, "TorrentsTunnel: Can't inspect ", it->GetFullFilePath (), " : ", ec.message ());
+				completed = false;
+				continue;
+			}
+			if (!finalExists)
 			{
 				auto partFilePath = it->GetFullFilePath ();
 				partFilePath += ".part";
-				if (!std::filesystem::exists (partFilePath)) CreateAndReserveFile (partFilePath, it->GetFileLength ());
+				ec.clear ();
+				bool partExists = std::filesystem::exists (partFilePath, ec);
+				if (ec)
+					LogPrint (eLogError, "TorrentsTunnel: Can't inspect ", partFilePath, " : ", ec.message ());
+				else if (!partExists)
+					CreateAndReserveFile (partFilePath, it->GetFileLength ());
 				completed = false;
 			}
 		}
@@ -334,26 +548,55 @@ namespace torrents
 			LogPrint (eLogError, "TorrentsTunnel: Refusing to access resume file outside ", m_TorrentsDir);
 			return;
 		}
-		if (std::filesystem::exists (resumeFilePath))
+		std::error_code resumeStatusError;
+		bool resumeExists = std::filesystem::exists (resumeFilePath, resumeStatusError);
+		if (resumeStatusError)
+			LogPrint (eLogWarning, "TorrentsTunnel: Can't inspect resume file ", resumeFilePath, " : ",
+				resumeStatusError.message ());
+		if (resumeExists)
 		{
 			if (!torrent->IsComplete ())
 			{
-				std::ifstream rs (resumeFilePath, std::ifstream::binary);
-				if (rs)
+				// A resume file is derived data. Only the exact bitfield for
+				// this torrent is acceptable and reads are bounded by that
+				// size; the read itself never follows a symlink leaf.
+				size_t maxResumeSize = (torrent->GetNumPieces () + 7) / 8;
+				std::vector<uint8_t> bitfield;
+				std::string error;
+				bool completed = false, invalid = false;
+				auto relativeResume = resumeFilePath.lexically_relative (m_TorrentsDir);
+				if (relativeResume.empty () || !IsSafeRelativePath (relativeResume)
+					|| !ReadFileBoundedNoFollow (
+						m_TorrentsDir, relativeResume, maxResumeSize, bitfield, error))
 				{
-					rs.seekg (0, std::ios::end);
-					size_t l = rs.tellg ();
-					if (l > 0)
-					{
-						rs.seekg (0, std::ios::beg);
-						std::vector<uint8_t> bitfield (l);
-						rs.read ((char *)bitfield.data (), l);
-						if (torrent->ApplyBitfield (bitfield)) CompleteTorrent (torrent);
-					}
+					if (error.empty ()) error = "unsafe resume file path";
+					LogPrint (eLogWarning, "TorrentsTunnel: Ignoring resume file ", resumeFilePath, " : ", error);
+					invalid = true;
 				}
+				else
+					completed = torrent->ApplyBitfield (bitfield);
+				if (invalid)
+				{
+					std::error_code ec;
+					std::filesystem::remove (resumeFilePath, ec);
+				}
+				if (completed)
+					// A resume bitfield only says which blocks were written;
+					// it is not proof that the bytes still match the piece
+					// hashes. Do not rename .part files here. The status timer
+					// retries CompleteTorrent(), which waits for every piece to
+					// be verified from disk first.
+					LogPrint (eLogInfo, "TorrentsTunnel: Resume marks ", torrent->GetFullPath (),
+						" complete; waiting for local verification before promotion");
 			}
 			else
-				std::filesystem::remove (resumeFilePath);
+			{
+				std::error_code ec;
+				std::filesystem::remove (resumeFilePath, ec);
+				if (ec)
+					LogPrint (eLogWarning, "TorrentsTunnel: Can't remove resume file ", resumeFilePath, " : ",
+						ec.message ());
+			}
 		}
 	}
 
@@ -364,52 +607,41 @@ namespace torrents
 			LogPrint (eLogError, "TorrentsTunnel: Refusing to create file outside ", m_TorrentsDir);
 			return false;
 		}
-		if (std::filesystem::exists (filePath)) return false;
-		auto subdirs = filePath.parent_path ();
-		if (!subdirs.empty ())
+		std::error_code statusError;
+		bool exists = std::filesystem::exists (filePath, statusError);
+		if (statusError || exists)
 		{
-			// try to create all subdirs
-			try
-			{
-				std::filesystem::create_directories (subdirs);
-			}
-			catch (std::exception & ex)
-			{
-				LogPrint (eLogError, "TorrentsTunnel: Can't create subdirs ", subdirs, " : ", ex.what ());
-				return false;
-			}
-			// Directory creation may have raced with a symlink. Never continue
-			// if the path now resolves through one.
-			if (!IsContainedPath (filePath, false))
-			{
-				LogPrint (eLogError, "TorrentsTunnel: Refusing to create file through a changed path ", filePath);
-				return false;
-			}
+			if (statusError)
+				LogPrint (eLogError, "TorrentsTunnel: Can't inspect ", filePath, " : ", statusError.message ());
+			return false;
 		}
-		// create file
-		std::ofstream f (filePath, std::ios::binary);
-		if (!f) return false;
-		f.close ();
+
+		auto relative = filePath.lexically_relative (m_TorrentsDir);
+		if (relative.empty () || !IsSafeRelativePath (relative))
+		{
+			LogPrint (eLogError, "TorrentsTunnel: Refusing unsafe file path ", filePath);
+			return false;
+		}
+		// Create every missing directory with mkdirat/openat(O_NOFOLLOW) on
+		// POSIX instead of create_directories(), which would follow a symlink
+		// planted in an intermediate component. On Windows the components are
+		// checked for reparse points before creation.
+		if (!CreateDirectoriesWithinRootNoFollow (m_TorrentsDir, relative.parent_path ()))
+		{
+			LogPrint (eLogError, "TorrentsTunnel: Can't create subdirs for ", filePath);
+			return false;
+		}
+		if (!CreateFileWithSizeNoFollow (m_TorrentsDir, relative, reserve))
+		{
+			LogPrint (eLogError, "TorrentsTunnel: Can't create file ", filePath);
+			return false;
+		}
 		if (!IsContainedPath (filePath, false))
 		{
 			std::error_code ec;
 			std::filesystem::remove (filePath, ec);
 			LogPrint (eLogError, "TorrentsTunnel: Refusing to use changed file path ", filePath);
 			return false;
-		}
-		if (reserve > 0)
-		{
-			// resize
-			try
-			{
-				std::filesystem::resize_file (filePath, reserve);
-			}
-			catch (std::exception & ex)
-			{
-				LogPrint (
-					eLogError, "TorrentsTunnel: Can't resize file ", filePath, " to ", reserve, " : ", ex.what ());
-				return false;
-			}
 		}
 		return true;
 	}
@@ -419,11 +651,30 @@ namespace torrents
 		boost::asio::post (GetDiskIOService (),
 			[this, torrent] ()
 			{
+				// Never promote .part files based on a resume bitfield. Data
+				// coming from the network is verified in HandlePieceMsg and
+				// reloaded data is verified in the request path, so this gate
+				// only delays promotion until verification actually happened.
+				if (!torrent->AreAllPiecesVerified ())
+				{
+					LogPrint (eLogDebug, "TorrentsTunnel: Deferring completion of ", torrent->GetFullPath (),
+						" until local pieces are verified");
+					return;
+				}
 				bool completed = true;
 				for (auto it : torrent->GetFiles ())
 				{
 					auto partFilePath = it->GetFullFilePath ();
 					partFilePath += ".part";
+					// Recheck both ends immediately before the rename. A part
+					// file that became a symlink is not a completed download,
+					// and a symlinked final path is never replaced.
+					if (!IsContainedPath (partFilePath, false) || !IsContainedPath (it->GetFullFilePath (), false))
+					{
+						completed = false;
+						LogPrint (eLogError, "TorrentsTunnel: Refusing to rename through unsafe path ", partFilePath);
+						continue;
+					}
 					if (std::filesystem::exists (partFilePath))
 					{
 						it->Close (); // make sure file is closed before renaming
@@ -446,12 +697,15 @@ namespace torrents
 
 				if (completed)
 				{
-					torrent->SetComplete ();
 					LogPrint (eLogInfo, "TorrentsTunnel: Download complete ", torrent->GetFullPath ());
 
+					// SetComplete() mutates Torrent (m_IsComplete) and the
+					// piece vector; run it on the service thread, which is the
+					// owner of that state, not on the disk worker.
 					boost::asio::post (GetService (),
 						[this, torrent] ()
 						{
+							torrent->SetComplete ();
 							// inform trackers that we are done
 							RequestTorrentTrackers (torrent, eTrackerAnnounceEventCompleted);
 							// close connections with seeds and reset stats for remaining
@@ -730,6 +984,18 @@ namespace torrents
 			return StopTorrent (command.torrentId)
 				? TorrentCommandResult { true, "stop queued", command.torrentId }
 				: TorrentCommandResult { false, "torrent not found", command.torrentId };
+		case TorrentCommandKind::Pause:
+			// The engine's stop path closes peer connections and announces the
+			// stopped event. Pause is its user-facing operation; resume is the
+			// corresponding start path. Keeping distinct command names lets the
+			// TUI and future controls report the intended state transition.
+			return StopTorrent (command.torrentId)
+				? TorrentCommandResult { true, "pause queued", command.torrentId }
+				: TorrentCommandResult { false, "torrent not found", command.torrentId };
+		case TorrentCommandKind::Resume:
+			return StartTorrent (command.torrentId)
+				? TorrentCommandResult { true, "resume queued", command.torrentId }
+				: TorrentCommandResult { false, "torrent not found", command.torrentId };
 		case TorrentCommandKind::Reannounce:
 			return ReannounceTorrent (command.torrentId)
 				? TorrentCommandResult { true, "reannounce queued", command.torrentId }
@@ -755,7 +1021,7 @@ namespace torrents
 		{
 			std::vector<uint8_t> content;
 			std::string error;
-			if (!ReadTorrentFileBounded (command.argument, MAX_CONTROL_FILE_BYTES, content, error))
+			if (!ReadTorrentFileForControl (command.argument, content, error))
 				return { false, error, 0 };
 			auto [torrent, id]
 				= AddTorrent (std::string_view (reinterpret_cast<const char *> (content.data ()), content.size ()));
@@ -827,26 +1093,40 @@ namespace torrents
 			LogPrint (eLogWarning, "TorrentsTunnel: Rejecting invalid torrent file");
 			return { nullptr, 0 };
 		}
-		auto it = m_Torrents.find (torrent->GetInfoHash ());
-		if (it == m_Torrents.end ())
+		// The announce URL is written back into the persisted .torrent and may
+		// influence future tracker selection. Strip clearnet or malformed
+		// announces before the torrent enters the session; I2P DHT and I2P
+		// trackers remain available.
+		const auto announce = torrent->GetAnnounce ();
+		if (!announce.empty () && !IsI2PTrackerURL (i2p::http::URL (announce)))
 		{
-			torrent->SetFullPath (m_TorrentsDir / std::filesystem::path (torrent->GetName ()));
+			LogPrint (eLogWarning, "TorrentsTunnel: Ignoring non-I2P announce in ", torrent->GetName ());
+			torrent->SetAnnounce ({ });
+		}
+		auto existing = FindTorrent (torrent->GetInfoHash ());
+		if (!existing)
+		{
+			if (!SetTorrentPathWithinRoot (torrent)) return { nullptr, 0 };
 			auto [id, inserted] = InsertTorrent (torrent);
 			if (inserted)
+			{
 				boost::asio::post (GetDiskIOService (),
 					[this, torrent] ()
 					{
 						SaveTorrentFile (torrent);
 						InitTorrentFiles (torrent);
 					});
-			if (!torrent->GetError ())
-				boost::asio::post (
-					GetService (), [this, torrent] { RequestTorrentTrackers (torrent, eTrackerAnnounceEventNone); });
-			return { torrent, id };
+				if (!torrent->GetError ())
+					boost::asio::post (GetService (),
+						[this, torrent] { RequestTorrentTrackers (torrent, eTrackerAnnounceEventNone); });
+				return { torrent, id };
+			}
+			// Lost an insertion race with a removal or another add.
+			existing = FindTorrentByID (id);
+			if (existing) return { existing, id };
+			return { nullptr, 0 };
 		}
-		else
-			return { it->second, FindTorrentID (it->second) };
-		return { torrent, 0 };
+		return { existing, FindTorrentID (existing) };
 	}
 
 	std::pair<std::shared_ptr<Torrent>, int> TorrentsTunnel::AddMagnet (std::string_view magnet)
@@ -916,22 +1196,32 @@ namespace torrents
 			}
 			if (isInfoHashFound)
 			{
-				auto it = m_Torrents.find (infoHash);
-				if (it == m_Torrents.end ())
+				auto existing = FindTorrent (infoHash);
+				if (!existing)
 				{
 					auto torrent = std::make_shared<Torrent> (infoHash);
-					if (!announce.empty ()) torrent->SetAnnounce (announce);
+					if (!announce.empty ())
+					{
+						if (IsI2PTrackerURL (i2p::http::URL (announce)))
+							torrent->SetAnnounce (announce);
+						else
+							LogPrint (eLogWarning, "TorrentsTunnel: Ignoring non-I2P magnet tracker ", announce);
+					}
 					torrent->SetName (name.empty () ? hexStr : name);
 					if (torrent->GetName ().empty ()) torrent->SetName (hexStr);
 					if (torrent->GetName ().empty ()) return { nullptr, 0 };
 					auto [id, inserted] = InsertTorrent (torrent);
 					if (inserted)
+					{
 						boost::asio::post (GetService (),
 							[this, torrent] { RequestTorrentTrackers (torrent, eTrackerAnnounceEventNone); });
-					return { torrent, id };
+						return { torrent, id };
+					}
+					existing = FindTorrentByID (id);
+					if (existing) return { existing, id };
+					return { nullptr, 0 };
 				}
-				else
-					return { it->second, FindTorrentID (it->second) };
+				return { existing, FindTorrentID (existing) };
 			}
 		}
 		return { nullptr, 0 };
@@ -943,16 +1233,45 @@ namespace torrents
 		std::lock_guard<std::mutex> l (m_TorrentsMutex);
 		if (m_Torrents.emplace (torrent->GetInfoHash (), torrent).second)
 		{
+			// Reuse freed ids instead of overflowing int after INT_MAX
+			// additions. The map is ordered, so a hole scan is bounded by the
+			// number of live torrents and only happens at the wrap point.
 			int id = 1;
-			if (!m_TorrentsByID.empty ()) id = m_TorrentsByID.rbegin ()->first + 1;
+			if (!m_TorrentsByID.empty ())
+			{
+				int last = m_TorrentsByID.rbegin ()->first;
+				if (last < std::numeric_limits<int>::max ())
+					id = last + 1;
+				else
+				{
+					id = 0;
+					for (int candidate = 1; candidate < std::numeric_limits<int>::max (); candidate++)
+					{
+						if (!m_TorrentsByID.contains (candidate))
+						{
+							id = candidate;
+							break;
+						}
+					}
+					if (!id)
+					{
+						LogPrint (eLogError, "TorrentsTunnel: No free torrent id");
+						m_Torrents.erase (torrent->GetInfoHash ());
+						return { 0, false };
+					}
+				}
+			}
 			m_TorrentsByID.emplace (id, torrent);
 			if (!torrent->GetAnnounce ().empty ())
 				torrent->SetAnnounceTrackerID (AddTracker (torrent->GetAnnounce (), false)); // add announce to trackers
 			return { id, true };
 		}
-		else // already exists, find id
-			return { FindTorrentID (torrent), false };
-		return { 0, false };
+		else // already exists, find id without re-locking m_TorrentsMutex
+		{
+			for (const auto & [id, torrentByID] : m_TorrentsByID)
+				if (torrentByID.lock () == torrent) return { id, false };
+			return { 0, false };
+		}
 	}
 
 	bool TorrentsTunnel::RemoveTorrent (int id, bool deleteFiles)
@@ -1019,6 +1338,9 @@ namespace torrents
 					LogPrint (eLogError, "TorrentsTunnel: Refusing to delete ", resumeFilePath);
 				if (deleteFiles)
 				{
+					// remove_all removes a symlink entry itself and never
+					// descends through links, so a directory swapped in after
+					// the containment check cannot redirect the deletion.
 					if (IsContainedPath (fullPath, true) && std::filesystem::exists (fullPath))
 					{
 						std::filesystem::remove_all (fullPath, ec);
@@ -1041,6 +1363,7 @@ namespace torrents
 	{
 		if (torrent)
 		{
+			std::lock_guard<std::mutex> l (m_TorrentsMutex);
 			auto it = std::find_if (m_TorrentsByID.begin (), m_TorrentsByID.end (),
 				[torrent] (const auto & torrentByID) { return torrentByID.second.lock () == torrent; });
 			if (it != m_TorrentsByID.end ()) return it->first;
@@ -1168,7 +1491,12 @@ namespace torrents
 	{
 		if (!torrent || torrent->IsStopped ()) return;
 		torrent->ParseInfo (info);
-		torrent->SetFullPath (m_TorrentsDir / std::filesystem::path (torrent->GetName ()));
+		if (!SetTorrentPathWithinRoot (torrent))
+		{
+			torrent->SetError (eTorrentErrorMalformedMetaInfo);
+			LogPrint (eLogError, "TorrentsTunnel: Magnet metadata has an unsafe name");
+			return;
+		}
 		boost::asio::post (GetDiskIOService (),
 			[this, torrent] ()
 			{
@@ -1211,7 +1539,7 @@ namespace torrents
 					!= i2p::http::URL (torrent->GetAnnounce ()).host)) // not common tracker or with torrent's announce
 			return false;
 		i2p::http::URL reqURL = std::get<0> (m_Trackers[trackerID]);
-		if (!reqURL.host.ends_with (".i2p"))
+		if (!IsI2PTrackerURL (reqURL))
 		{
 			LogPrint (
 				eLogWarning, "TorrentsTunnel: Non-I2P address ", reqURL.host, " for torrent ", torrent->GetName ());
@@ -1384,57 +1712,60 @@ namespace torrents
 						it++;
 				}
 			}
-			for (auto it : m_Torrents)
+			// Take a snapshot: RPC removal commands mutate the session map from
+			// their own thread. Iterating m_Torrents directly can invalidate the
+			// iterator and dereference a freed torrent.
+			for (auto torrent : GetTorrents ())
 			{
-				if (!it.second->IsStopped ())
+				if (!torrent->IsStopped ())
 				{
 					for (size_t i = 0; i < m_Trackers.size (); i++)
 					{
-						if (!it.second->GetNextTrackerRequestTime (i) && // first time
-							(std::get<1> (m_Trackers[i]) || it.second->GetAnnounceTrackerID () == (int)i))
+						if (!torrent->GetNextTrackerRequestTime (i) && // first time
+							(std::get<1> (m_Trackers[i]) || torrent->GetAnnounceTrackerID () == (int)i))
 						{
 							auto initialInterval
 								= GetLocalDestination ()->GetRng () () % TRACKER_INITIAL_REQUEST_INTERVAL_VARIANCE;
 							if (initialInterval <= TRACKER_REQUESTS_CHECK_TIMEOUT)
 								initialInterval = 0; // request immeditely
-							it.second->SetNextTrackerRequestTime (i, ts + initialInterval);
+							torrent->SetNextTrackerRequestTime (i, ts + initialInterval);
 						}
-						if (ts >= it.second->GetNextTrackerRequestTime (i))
+						if (ts >= torrent->GetNextTrackerRequestTime (i))
 						{
 							if (i2p::util::GetSecondsSinceEpoch ()
-									> it.second->GetLastTrackerUpdateTime (i) + 2 * it.second->GetInterval (i) / 1000
-								&& it.second->GetTrackerError (i).empty ())
+									> torrent->GetLastTrackerUpdateTime (i) + 2 * torrent->GetInterval (i) / 1000
+								&& torrent->GetTrackerError (i).empty ())
 							{
-								it.second->SetTrackerError (i, "No response");
-								it.second->SetInterval (i, MIN_TRACKER_REQUESTS_INTERVAL); // try again shortly
+								torrent->SetTrackerError (i, "No response");
+								torrent->SetInterval (i, MIN_TRACKER_REQUESTS_INTERVAL); // try again shortly
 							}
-							if (RequestTracker (i, it.second, eTrackerAnnounceEventNone))
+							if (RequestTracker (i, torrent, eTrackerAnnounceEventNone))
 							{
-								auto nextInterval = it.second->GetInterval (i)
+								auto nextInterval = torrent->GetInterval (i)
 									+ GetLocalDestination ()->GetRng () () % TRACKER_REQUESTS_INTERVAL_VARIANCE;
-								it.second->SetNextTrackerRequestTime (i, ts + nextInterval);
+								torrent->SetNextTrackerRequestTime (i, ts + nextInterval);
 							}
 						}
 					}
 					if (SupportsDHT ())
 					{
-						uint64_t nextUpdateTime = it.second->GetNextDHTUpdateTime () * 1000;
+						uint64_t nextUpdateTime = torrent->GetNextDHTUpdateTime () * 1000;
 						if (nextUpdateTime)
 						{
 							if (ts >= nextUpdateTime)
 							{
-								if (m_DHT) m_DHT->GetPeersAndAnnounce (it.second);
-								if (it.second->GetLastDHTAnnounceTime ())
-									it.second->SetNextDHTUpdateTime (ts / 1000 + DHT_TORRENT_UPDATE_INTERVAL
+								if (m_DHT) m_DHT->GetPeersAndAnnounce (torrent);
+								if (torrent->GetLastDHTAnnounceTime ())
+									torrent->SetNextDHTUpdateTime (ts / 1000 + DHT_TORRENT_UPDATE_INTERVAL
 										+ GetLocalDestination ()->GetRng () () % DHT_TORRENT_UPDATE_INTERVAL_VARIANCE);
 								else
-									it.second->SetNextDHTUpdateTime (ts / 1000 + DHT_TORRENT_INITIAL_UPDATE_INTERVAL
+									torrent->SetNextDHTUpdateTime (ts / 1000 + DHT_TORRENT_INITIAL_UPDATE_INTERVAL
 										+ GetLocalDestination ()->GetRng () ()
 											% DHT_TORRENT_INITIAL_UPDATE_INTERVAL_VARIANCE);
 							}
 						}
 						else
-							it.second->SetNextDHTUpdateTime (ts / 1000 + DHT_TORRENT_INITIAL_UPDATE_INTERVAL
+							torrent->SetNextDHTUpdateTime (ts / 1000 + DHT_TORRENT_INITIAL_UPDATE_INTERVAL
 								+ GetLocalDestination ()->GetRng () () % DHT_TORRENT_INITIAL_UPDATE_INTERVAL_VARIANCE);
 					}
 				}
@@ -1477,15 +1808,15 @@ namespace torrents
 		if (ecode != boost::asio::error::operation_aborted)
 		{
 			auto ts = i2p::util::GetMonotonicSeconds ();
-			for (auto it : m_Torrents)
-				if (ts > it.second->GetNextReconnectTime ())
+			for (auto torrent : GetTorrents ())
+				if (ts > torrent->GetNextReconnectTime ())
 				{
-					if (!it.second->IsComplete () && !it.second->IsStopped ())
+					if (!torrent->IsComplete () && !torrent->IsStopped ())
 					{
-						auto numPeers = ConnectToPeers (it.second);
+						auto numPeers = ConnectToPeers (torrent);
 						if (numPeers) LogPrint (eLogDebug, "TorrentsTunnel: Reconnecting to ", numPeers, " peers");
 					}
-					it.second->SetNextReconnectTime (
+					torrent->SetNextReconnectTime (
 						ts + RECONNECT_INTERVAL + GetLocalDestination ()->GetRng () () % RECONNECT_INTERVAL_VARIANCE);
 				}
 
@@ -1506,25 +1837,25 @@ namespace torrents
 		if (ecode != boost::asio::error::operation_aborted)
 		{
 			auto ts = i2p::util::GetMonotonicSeconds ();
-			for (auto it : m_Torrents)
-				if (ts > it.second->GetNextUpdateStatusTime ())
+			for (auto torrent : GetTorrents ())
+				if (ts > torrent->GetNextUpdateStatusTime ())
 				{
-					if (!it.second->IsStopped () && (it.second->IsActive () || !it.second->IsComplete ()))
+					if (!torrent->IsStopped () && (torrent->IsActive () || !torrent->IsComplete ()))
 					{
-						if (it.second->UpdateStatus (ts))
+						if (torrent->UpdateStatus (ts))
 						{
-							if (!it.second->IsComplete ()) CompleteTorrent (it.second);
+							if (!torrent->IsComplete ()) CompleteTorrent (torrent);
 						}
 						else
-							UpdatePeersPerPiece (it.second);
+							UpdatePeersPerPiece (torrent);
 					}
 					boost::asio::post (GetDiskIOService (),
-						[torrent = it.second, ts] ()
+						[torrent, ts] ()
 						{
 							for (auto it : torrent->GetFiles ())
 								if (ts > it->GetLastAccessTime () + TORRENT_FILE_INACTIVITY_TIMEOUT) it->Close ();
 						});
-					it.second->SetNextUpdateStatusTime (ts + TORRENTS_STATUS_UPDATE_INTERVAL
+					torrent->SetNextUpdateStatusTime (ts + TORRENTS_STATUS_UPDATE_INTERVAL
 						+ GetLocalDestination ()->GetRng () () % TORRENTS_STATUS_UPDATE_INTERVAL_VARIANCE);
 				}
 			ScheduleStatusUpdate ();
@@ -1733,26 +2064,34 @@ namespace torrents
 	int TorrentsTunnel::AddTracker (std::string_view announce, bool isCommon)
 	{
 		if (announce.empty ()) return -1;
+		if (announce.size () > MAX_TRACKER_ANNOUNCE_LENGTH)
+		{
+			LogPrint (eLogWarning, "TorrentsTunnel: Ignoring over-long tracker announce");
+			return -1;
+		}
 		i2p::http::URL reqURL (announce);
-		if (!reqURL.host.ends_with (".i2p"))
+		if (!IsI2PTrackerURL (reqURL))
 		{
 			LogPrint (eLogInfo, "TorrentsTunnel: Non-I2P address ", reqURL.host, " in tracker announce");
 			return -1;
 		}
 		auto reqAddr = i2p::client::context.GetAddressBook ().GetAddress (reqURL.host);
-		if (reqAddr)
+		auto it = std::find_if (m_Trackers.begin (), m_Trackers.end (),
+			[host = std::string_view (reqURL.host), reqAddr, announce] (const TrackerInfo & tracker)
+			{
+				const auto & url = std::get<0> (tracker);
+				if (url.host == host) return true;
+				if (url.to_string () == announce) return true;
+				if (!reqAddr) return false;
+				auto addr = i2p::client::context.GetAddressBook ().GetAddress (url.host);
+				return addr && *addr == *reqAddr;
+			});
+		if (it != m_Trackers.end ()) // existing
+			return it - m_Trackers.begin ();
+		if (m_Trackers.size () >= MAX_NUM_TRACKERS)
 		{
-			auto it = std::find_if (m_Trackers.begin (), m_Trackers.end (),
-				[host = std::string_view (reqURL.host), reqAddr] (const TrackerInfo & tracker)
-				{
-					const auto & url = std::get<0> (tracker);
-					if (url.host == host) return true;
-					auto addr = i2p::client::context.GetAddressBook ().GetAddress (url.host);
-					if (!addr) return false;
-					return *addr == *reqAddr;
-				});
-			if (it != m_Trackers.end ()) // existing
-				return it - m_Trackers.begin ();
+			LogPrint (eLogWarning, "TorrentsTunnel: Ignoring tracker above the limit ", MAX_NUM_TRACKERS);
+			return -1;
 		}
 
 		m_Trackers.emplace_back (TrackerInfo { announce, isCommon, 0, 0, 0 });

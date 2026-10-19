@@ -16,11 +16,24 @@
 #include <charconv>
 #include <sstream>
 #include <algorithm>
+#include <cerrno>
+#include <climits>
 #include <functional>
+#include <iterator>
 #include <limits>
 #include <set>
 #include <boost/algorithm/string.hpp>
 #include <boost/algorithm/hex.hpp>
+#ifdef _WIN32
+#include <fcntl.h>
+#include <io.h>
+#include <sys/stat.h>
+#include <windows.h>
+#else
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
 #include "Log.h"
 #include "I2PEndian.h"
 #include "Timestamp.h"
@@ -39,6 +52,528 @@ namespace torrents
 	constexpr size_t BENCODED_MAX_LIST_ITEMS = 1024 * 1024;
 	constexpr size_t MAX_TORRENT_PATH_COMPONENT_LENGTH = 255;
 	constexpr size_t MAX_TORRENT_PATH_COMPONENTS = 256;
+
+#ifndef O_CLOEXEC
+#define O_CLOEXEC 0
+#endif
+#ifndef O_NOFOLLOW
+#define O_NOFOLLOW 0
+#endif
+#ifndef O_NONBLOCK
+#define O_NONBLOCK 0
+#endif
+
+	namespace
+	{
+#ifdef _WIN32
+		bool HasReparsePoint (const std::filesystem::path & path)
+		{
+			auto attributes = GetFileAttributesW (path.c_str ());
+			return attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_REPARSE_POINT);
+		}
+#endif
+
+		bool ArePathComponentsEqual (const std::filesystem::path & a, const std::filesystem::path & b)
+		{
+#ifdef _WIN32
+			return boost::iequals (a.native (), b.native ()); // NTFS is case-insensitive
+#else
+			return a == b;
+#endif
+		}
+
+		enum class FileAccess
+		{
+			eRead,
+			eReadWrite,
+			eReadWriteCreate,
+			eCreateExclusive,
+			eCreateOrTruncate
+		};
+
+		int OpenNoFollowAt (const std::filesystem::path & root, const std::filesystem::path & relative,
+			FileAccess access)
+		{
+			if (!IsSafeRelativePath (relative)) return -1;
+
+#ifdef _WIN32
+			auto fullPath = root;
+			for (auto it = relative.begin (); it != relative.end (); ++it)
+			{
+				fullPath /= *it;
+				auto attributes = GetFileAttributesW (fullPath.c_str ());
+				if (attributes == INVALID_FILE_ATTRIBUTES)
+				{
+					// Missing intermediate directories must not be created by a
+					// file open; a missing leaf is expected before creation.
+					if (std::next (it) != relative.end ()) return -1;
+				}
+				else if (attributes & FILE_ATTRIBUTE_REPARSE_POINT)
+					return -1; // never follow junctions or symlinks below the root
+			}
+			int flags = _O_BINARY | _O_NOINHERIT;
+			switch (access)
+			{
+			case FileAccess::eRead: flags |= _O_RDONLY; break;
+			case FileAccess::eReadWrite: flags |= _O_RDWR; break;
+			case FileAccess::eReadWriteCreate: flags |= _O_RDWR | _O_CREAT; break;
+			case FileAccess::eCreateExclusive: flags |= _O_WRONLY | _O_CREAT | _O_EXCL; break;
+			case FileAccess::eCreateOrTruncate: flags |= _O_WRONLY | _O_CREAT | _O_TRUNC; break;
+			default: return -1;
+			}
+			return _wopen (fullPath.c_str (), flags, _S_IREAD | _S_IWRITE);
+#else
+			int directory = ::open (root.empty () ? "." : root.c_str (),
+				O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+			if (directory < 0) return -1;
+
+			for (auto it = relative.begin (); it != relative.end (); ++it)
+			{
+				bool isLeaf = std::next (it) == relative.end ();
+				int flags;
+				if (isLeaf)
+				{
+					// O_NONBLOCK keeps a planted FIFO from blocking the disk
+					// service; regular files ignore it. The descriptor is
+					// checked with fstat by the caller.
+					flags = O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK;
+					switch (access)
+					{
+					case FileAccess::eRead: flags |= O_RDONLY; break;
+					case FileAccess::eReadWrite: flags |= O_RDWR; break;
+					case FileAccess::eReadWriteCreate: flags |= O_RDWR | O_CREAT; break;
+					case FileAccess::eCreateExclusive: flags |= O_WRONLY | O_CREAT | O_EXCL; break;
+					case FileAccess::eCreateOrTruncate: flags |= O_WRONLY | O_CREAT | O_TRUNC; break;
+					default:
+						::close (directory);
+						errno = EINVAL;
+						return -1;
+					}
+				}
+				else
+					flags = O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC;
+
+				int fd = ::openat (directory, it->c_str (), flags, 0666);
+				int savedErrno = errno;
+				::close (directory);
+				if (fd < 0)
+				{
+					errno = savedErrno;
+					return -1;
+				}
+				if (isLeaf) return fd;
+				directory = fd;
+			}
+			// IsSafeRelativePath() rejects empty paths, so the loop always
+			// returns the leaf descriptor above. Keep a defensive failure for
+			// an unexpected implementation change.
+			::close (directory);
+			errno = EINVAL;
+			return -1;
+#endif
+		}
+
+		int OpenNoFollow (const std::filesystem::path & path, FileAccess access)
+		{
+			if (path.empty ()) return -1;
+			auto parent = path.parent_path ();
+			auto leaf = path.filename ();
+			if (leaf.empty ()) return -1;
+			return OpenNoFollowAt (parent.empty () ? std::filesystem::path (".") : parent, leaf, access);
+		}
+
+		void CloseFile (int fd)
+		{
+			if (fd < 0) return;
+#ifdef _WIN32
+			_close (fd);
+#else
+			::close (fd);
+#endif
+		}
+
+		long ReadSome (int fd, void * buf, size_t len)
+		{
+			if (!len) return 0;
+#ifdef _WIN32
+			return _read (fd, buf, static_cast<unsigned int> (std::min<size_t> (len, INT_MAX)));
+#else
+			ssize_t result;
+			do
+				result = ::read (fd, buf, len);
+			while (result < 0 && errno == EINTR);
+			return static_cast<long> (result);
+#endif
+		}
+
+		bool WriteAll (int fd, const void * buf, size_t len)
+		{
+			auto data = static_cast<const uint8_t *> (buf);
+			if (len && !data) return false;
+			size_t written = 0;
+			while (written < len)
+			{
+#ifdef _WIN32
+				auto n = _write (fd, data + written,
+					static_cast<unsigned int> (std::min<size_t> (len - written, INT_MAX)));
+#else
+				ssize_t n;
+				do
+					n = ::write (fd, data + written, len - written);
+				while (n < 0 && errno == EINTR);
+#endif
+				if (n <= 0) return false;
+				written += static_cast<size_t> (n);
+			}
+			return true;
+		}
+
+		bool ReadAt (int fd, size_t offset, uint8_t * buf, size_t len)
+		{
+			if (offset > std::numeric_limits<size_t>::max () - len) return false;
+			size_t read = 0;
+			while (read < len)
+			{
+#ifdef _WIN32
+				if (_lseeki64 (fd, static_cast<__int64> (offset + read), SEEK_SET) < 0) return false;
+				auto n = _read (fd, buf + read,
+					static_cast<unsigned int> (std::min<size_t> (len - read, INT_MAX)));
+#else
+				ssize_t n;
+				do
+					n = ::pread (fd, buf + read, len - read, static_cast<off_t> (offset + read));
+				while (n < 0 && errno == EINTR);
+#endif
+				if (n < 0) return false;
+				if (n == 0) return false; // truncated file: never accept a short read
+				read += static_cast<size_t> (n);
+			}
+			return true;
+		}
+
+		bool WriteAt (int fd, size_t offset, const uint8_t * buf, size_t len)
+		{
+			if (offset > std::numeric_limits<size_t>::max () - len) return false;
+			size_t written = 0;
+			while (written < len)
+			{
+#ifdef _WIN32
+				if (_lseeki64 (fd, static_cast<__int64> (offset + written), SEEK_SET) < 0) return false;
+				auto n = _write (fd, buf + written,
+					static_cast<unsigned int> (std::min<size_t> (len - written, INT_MAX)));
+#else
+				ssize_t n;
+				do
+					n = ::pwrite (fd, buf + written, len - written, static_cast<off_t> (offset + written));
+				while (n < 0 && errno == EINTR);
+#endif
+				if (n <= 0) return false;
+				written += static_cast<size_t> (n);
+			}
+			return true;
+		}
+
+		bool TruncateFile (int fd, size_t size)
+		{
+#ifdef _WIN32
+			return _chsize_s (fd, static_cast<__int64> (size)) == 0;
+#else
+			return ::ftruncate (fd, static_cast<off_t> (size)) == 0;
+#endif
+		}
+
+		bool IsRegularFileDescriptor (int fd)
+		{
+#ifdef _WIN32
+			struct _stat64 status;
+			return _fstat64 (fd, &status) == 0 && (status.st_mode & _S_IFMT) == _S_IFREG;
+#else
+			struct stat status;
+			return ::fstat (fd, &status) == 0 && S_ISREG (status.st_mode);
+#endif
+		}
+	}
+
+	bool IsSafeRelativePath (const std::filesystem::path & path)
+	{
+		if (path.empty () || path.is_absolute () || path.has_root_name () || path.has_root_directory ()) return false;
+		for (const auto & component : path)
+		{
+			if (component.empty () || component == "." || component == "..") return false;
+			const auto & native = component.native ();
+			if (native.find (static_cast<std::filesystem::path::value_type> ('\0')) != native.npos) return false;
+		}
+		return true;
+	}
+
+	bool IsPathLexicallyWithinRoot (const std::filesystem::path & root, const std::filesystem::path & target)
+	{
+		if (root.empty () || target.empty ()) return false;
+		auto relative = target.lexically_normal ().lexically_relative (root.lexically_normal ());
+		return !relative.empty () && IsSafeRelativePath (relative);
+	}
+
+	bool IsPathWithinRoot (const std::filesystem::path & root, const std::filesystem::path & target,
+		bool allowDirectoryLeaf)
+	{
+		if (root.empty () || target.empty ()) return false;
+
+		std::error_code ec;
+		auto absoluteRoot = std::filesystem::absolute (root, ec).lexically_normal ();
+		if (ec || absoluteRoot.empty ()) return false;
+		auto absoluteTarget = std::filesystem::absolute (target, ec).lexically_normal ();
+		if (ec || absoluteTarget.empty ()) return false;
+
+		auto rootStatus = std::filesystem::symlink_status (absoluteRoot, ec);
+		if (ec)
+		{
+			if (ec != std::errc::no_such_file_or_directory) return false;
+			ec.clear ();
+		}
+		else if (std::filesystem::is_symlink (rootStatus))
+			return false;
+#ifdef _WIN32
+		if (HasReparsePoint (absoluteRoot)) return false;
+#endif
+
+		auto rootIt = absoluteRoot.begin ();
+		auto targetIt = absoluteTarget.begin ();
+		for (; rootIt != absoluteRoot.end (); ++rootIt, ++targetIt)
+		{
+			if (targetIt == absoluteTarget.end () || !ArePathComponentsEqual (*rootIt, *targetIt)) return false;
+		}
+		if (targetIt == absoluteTarget.end ()) return false; // root itself is not a file target
+
+		auto current = absoluteRoot;
+		while (targetIt != absoluteTarget.end ())
+		{
+			current /= *targetIt;
+			auto nextIt = targetIt;
+			++nextIt;
+			bool isLeaf = nextIt == absoluteTarget.end ();
+
+			auto status = std::filesystem::symlink_status (current, ec);
+			if (ec)
+			{
+				if (ec != std::errc::no_such_file_or_directory) return false;
+				ec.clear ();
+				// Missing components may be created by us. Their parent has
+				// already been checked and every later open/creation rechecks
+				// without following symlinks.
+			}
+			else
+			{
+				if (std::filesystem::is_symlink (status)) return false;
+#ifdef _WIN32
+				if (HasReparsePoint (current)) return false;
+#endif
+				if (isLeaf)
+				{
+					if (!std::filesystem::is_regular_file (status)
+						&& !(allowDirectoryLeaf && std::filesystem::is_directory (status)))
+						return false;
+				}
+				else if (!std::filesystem::is_directory (status))
+					return false;
+			}
+			targetIt = nextIt;
+		}
+		return true;
+	}
+
+	namespace
+	{
+		bool ReadBoundedFromFd (int fd, size_t maxBytes, std::vector<uint8_t> & content, std::string & error)
+		{
+			content.clear ();
+			std::array<uint8_t, 64 * 1024> chunk;
+			size_t total = 0;
+			for (;;)
+			{
+				auto n = ReadSome (fd, chunk.data (), chunk.size ());
+				if (n < 0)
+				{
+					error = "can't read file";
+					content.clear ();
+					return false;
+				}
+				if (!n) break;
+				if (static_cast<size_t> (n) > maxBytes - total)
+				{
+					error = "file is too large";
+					content.clear ();
+					return false;
+				}
+				content.insert (content.end (), chunk.begin (), chunk.begin () + n);
+				total += static_cast<size_t> (n);
+			}
+			if (!total)
+			{
+				error = "empty file";
+				return false;
+			}
+			return true;
+		}
+	}
+
+	bool ReadFileBoundedNoFollow (const std::filesystem::path & path, size_t maxBytes,
+		std::vector<uint8_t> & content, std::string & error)
+	{
+		content.clear ();
+		error.clear ();
+		int fd = OpenNoFollow (path, FileAccess::eRead);
+		if (fd < 0)
+		{
+			error = "can't open file";
+			return false;
+		}
+		if (!IsRegularFileDescriptor (fd))
+		{
+			error = "not a regular file";
+			CloseFile (fd);
+			return false;
+		}
+		bool ok = ReadBoundedFromFd (fd, maxBytes, content, error);
+		CloseFile (fd);
+		return ok;
+	}
+
+	bool ReadFileBoundedNoFollow (const std::filesystem::path & root, const std::filesystem::path & relativePath,
+		size_t maxBytes, std::vector<uint8_t> & content, std::string & error)
+	{
+		content.clear ();
+		error.clear ();
+		int fd = OpenNoFollowAt (root, relativePath, FileAccess::eRead);
+		if (fd < 0)
+		{
+			error = "can't open file";
+			return false;
+		}
+		if (!IsRegularFileDescriptor (fd))
+		{
+			error = "not a regular file";
+			CloseFile (fd);
+			return false;
+		}
+		bool ok = ReadBoundedFromFd (fd, maxBytes, content, error);
+		CloseFile (fd);
+		return ok;
+	}
+
+	bool WriteFileNoFollow (const std::filesystem::path & path, const void * data, size_t len)
+	{
+		int fd = OpenNoFollow (path, FileAccess::eCreateOrTruncate);
+		if (fd < 0) return false;
+		if (!IsRegularFileDescriptor (fd))
+		{
+			CloseFile (fd);
+			return false;
+		}
+		bool ok = !len || WriteAll (fd, data, len);
+		CloseFile (fd);
+		return ok;
+	}
+
+	bool WriteFileNoFollow (
+		const std::filesystem::path & root, const std::filesystem::path & relativePath, const void * data, size_t len)
+	{
+		int fd = OpenNoFollowAt (root, relativePath, FileAccess::eCreateOrTruncate);
+		if (fd < 0) return false;
+		if (!IsRegularFileDescriptor (fd))
+		{
+			CloseFile (fd);
+			return false;
+		}
+		bool ok = !len || WriteAll (fd, data, len);
+		CloseFile (fd);
+		return ok;
+	}
+
+	bool CreateFileWithSizeNoFollow (const std::filesystem::path & path, size_t size)
+	{
+		int fd = OpenNoFollow (path, FileAccess::eCreateExclusive);
+		if (fd < 0) return false;
+		bool ok = IsRegularFileDescriptor (fd) && TruncateFile (fd, size);
+		CloseFile (fd);
+		return ok;
+	}
+
+	bool CreateFileWithSizeNoFollow (
+		const std::filesystem::path & root, const std::filesystem::path & relativePath, size_t size)
+	{
+		int fd = OpenNoFollowAt (root, relativePath, FileAccess::eCreateExclusive);
+		if (fd < 0) return false;
+		bool ok = IsRegularFileDescriptor (fd) && TruncateFile (fd, size);
+		CloseFile (fd);
+		return ok;
+	}
+
+	bool CreateDirectoriesWithinRootNoFollow (
+		const std::filesystem::path & root, const std::filesystem::path & relativeDirectory)
+	{
+		if (!relativeDirectory.empty () && relativeDirectory != "." && !IsSafeRelativePath (relativeDirectory)) return false;
+
+		// The root itself is the trusted configuration value. Create it when
+		// missing, but never accept a symlink as the root directory.
+		std::error_code ec;
+		auto rootStatus = std::filesystem::symlink_status (root, ec);
+		if (ec && ec != std::errc::no_such_file_or_directory) return false;
+		ec.clear ();
+		if (!std::filesystem::is_directory (rootStatus))
+		{
+			if (std::filesystem::is_symlink (rootStatus)) return false;
+			std::filesystem::create_directories (root, ec);
+			if (ec) return false;
+			rootStatus = std::filesystem::symlink_status (root, ec);
+			if (ec || std::filesystem::is_symlink (rootStatus) || !std::filesystem::is_directory (rootStatus))
+				return false;
+		}
+#ifdef _WIN32
+		if (HasReparsePoint (root)) return false;
+#endif
+		if (relativeDirectory.empty () || relativeDirectory == ".") return true;
+#ifdef _WIN32
+		auto current = root;
+		for (const auto & component : relativeDirectory)
+		{
+			current /= component;
+			if (!CreateDirectoryW (current.c_str (), nullptr) && GetLastError () != ERROR_ALREADY_EXISTS) return false;
+			auto attributes = GetFileAttributesW (current.c_str ());
+			if (attributes == INVALID_FILE_ATTRIBUTES || !(attributes & FILE_ATTRIBUTE_DIRECTORY)
+				|| (attributes & FILE_ATTRIBUTE_REPARSE_POINT))
+				return false;
+		}
+		return true;
+#else
+		int directory = ::open (root.c_str (), O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+		if (directory < 0) return false;
+		for (const auto & component : relativeDirectory)
+		{
+			if (::mkdirat (directory, component.c_str (), 0755) != 0 && errno != EEXIST)
+			{
+				::close (directory);
+				return false;
+			}
+			int fd = ::openat (directory, component.c_str (), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+			if (fd < 0)
+			{
+				::close (directory);
+				return false;
+			}
+			::close (directory);
+			directory = fd;
+		}
+		::close (directory);
+		return true;
+#endif
+	}
+
+	// Tracker-provided counters travel as signed 64-bit bencode integers. Clamp
+	// them instead of truncating an out-of-range value into int.
+	static int ClampTrackerCount (int64_t value)
+	{
+		return (int)std::clamp<int64_t> (value, 0, std::numeric_limits<int>::max ());
+	}
 
 	std::pair<std::string_view, size_t> ExtractByteString (std::string_view buf)
 	{
@@ -239,27 +774,43 @@ namespace torrents
 
 	bool TorrentFile::Save (size_t offset, const uint8_t * buf, size_t len)
 	{
-		Open ();
-		if (m_File)
+		// A peer-controlled offset/length may never index outside this file or
+		// wrap the bounds check, even if the session layout is corrupted.
+		if (offset > m_FileLength || len > m_FileLength - offset || (len && !buf))
 		{
-			m_File.seekp (offset, std::ios::beg);
-			m_File.write ((const char *)buf, len);
-		}
-		else
+			LogPrint (eLogError, "Torrents: Refusing out-of-range write at ", offset, " length ", len, " to ",
+				m_FullFilePath);
 			return false;
+		}
+		Open (true);
+		if (m_File < 0) return false;
+		if (!len) return true;
+		if (!WriteAt (m_File, offset, buf, len))
+		{
+			LogPrint (eLogError, "Torrents: Failed to write ", len, " bytes at ", offset, " to ", m_FullFilePath);
+			return false;
+		}
 		return true;
 	}
 
 	bool TorrentFile::Load (size_t offset, uint8_t * buf, size_t len)
 	{
-		Open ();
-		if (m_File)
+		if (offset > m_FileLength || len > m_FileLength - offset || (len && !buf))
 		{
-			m_File.seekg (offset, std::ios::beg);
-			m_File.read ((char *)buf, len);
-		}
-		else
+			LogPrint (eLogError, "Torrents: Refusing out-of-range read at ", offset, " length ", len, " from ",
+				m_FullFilePath);
 			return false;
+		}
+		Open (false);
+		if (m_File < 0) return false;
+		if (!len) return true;
+		// A short file or short read is a failure: never hand partially
+		// initialised data to the piece hash check.
+		if (!ReadAt (m_File, offset, buf, len))
+		{
+			LogPrint (eLogError, "Torrents: Failed to read ", len, " bytes at ", offset, " from ", m_FullFilePath);
+			return false;
+		}
 		return true;
 	}
 
@@ -269,45 +820,74 @@ namespace torrents
 		Close ();
 	}
 
-	void TorrentFile::Open ()
+	void TorrentFile::Open (bool create)
 	{
-		if (!m_File.is_open ())
+		if (m_File >= 0) return;
+		auto filePath = m_FullFilePath;
+		if (m_IsPart) filePath += ".part";
+
+		// Prefer opening relative to the trusted root so every component below
+		// it is traversed with O_NOFOLLOW. If a root was supplied, never fall
+		// back to a plain path open on failure: that would reintroduce the
+		// symlink traversal the anchored open just rejected.
+		if (!m_RootDir.empty ())
 		{
-			auto mode = std::ios::binary | std::ios::in;
-			auto filePath = m_FullFilePath;
-			if (m_IsPart)
+			auto relative = filePath.lexically_relative (m_RootDir);
+			if (relative.empty () || !IsSafeRelativePath (relative))
 			{
-				filePath += ".part";
-				mode |= std::ios::out;
+				LogPrint (eLogError, "Torrents: Refusing file path outside root ", filePath);
+				m_LastAccessTime = i2p::util::GetMonotonicSeconds ();
+				return;
 			}
-			m_File.open (filePath, mode);
-			if (!m_File.is_open ())
-				LogPrint (eLogError, "Torrents: Can't open file ", filePath, " : ", std::strerror (errno));
+			const auto access = m_IsPart
+				? (create ? FileAccess::eReadWriteCreate : FileAccess::eReadWrite)
+				: (create ? FileAccess::eReadWrite : FileAccess::eRead);
+			m_File = OpenNoFollowAt (m_RootDir, relative, access);
 		}
-		auto ts = i2p::util::GetMonotonicSeconds ();
-		if (ts > m_LastFlushTime + TORRENT_FILE_FLUSH_INTERVAL)
+		else
 		{
-			m_File.flush ();
-			m_LastFlushTime = ts;
+			const auto access = m_IsPart
+				? (create ? FileAccess::eReadWriteCreate : FileAccess::eReadWrite)
+				: (create ? FileAccess::eReadWrite : FileAccess::eRead);
+			m_File = OpenNoFollow (filePath, access);
 		}
-		m_LastAccessTime = ts;
+		if (m_File >= 0 && !IsRegularFileDescriptor (m_File))
+		{
+			CloseFile (m_File);
+			m_File = -1;
+			errno = EINVAL;
+		}
+		if (m_File < 0)
+			LogPrint (eLogError, "Torrents: Can't open file ", filePath, " : ", std::strerror (errno));
+		m_LastAccessTime = i2p::util::GetMonotonicSeconds ();
 	}
 
 	void TorrentFile::Close ()
 	{
-		m_File.close ();
+		CloseFile (m_File);
+		m_File = -1;
 	}
 
-	void TorrentFile::UpdateFullPath (const std::filesystem::path & rootDir)
+	bool TorrentFile::UpdateFullPath (const std::filesystem::path & rootDir)
 	{
-		m_FullFilePath = rootDir / m_FullFilePath;
+		if (!IsSafeRelativePath (m_FullFilePath))
+		{
+			m_FullFilePath.clear ();
+			m_RootDir.clear ();
+			return false;
+		}
+		m_RootDir = rootDir;
+		m_FullFilePath = (rootDir / m_FullFilePath).lexically_normal ();
+		return true;
 	}
 
 	Piece::Piece (size_t size, const uint8_t * hash)
 		: m_Size (size)
 		, m_Data (nullptr)
 		, m_IsSending (false)
+		, m_IsLoading (false)
 		, m_IsRequested (false)
+		, m_IsVerified (false)
 		, m_LastActivityTimestamp (0)
 		, m_NumPeers (0)
 	{
@@ -315,20 +895,79 @@ namespace torrents
 		m_Blocks = std::make_unique<std::vector<BlockStatus>> (GetNumBlocks (size), BlockStatus::Missing);
 	}
 
+	Piece::Piece (Piece && other) noexcept
+		: m_Size (other.m_Size)
+		, m_Data (nullptr)
+		, m_IsSending (false)
+		, m_IsLoading (false)
+		, m_IsRequested (false)
+		, m_IsVerified (false)
+		, m_LastActivityTimestamp (0)
+		, m_NumPeers (0)
+	{
+		memcpy (m_Hash, other.m_Hash, SHA_DIGEST_LENGTH);
+		std::lock_guard<std::mutex> l (other.m_Mutex);
+		m_Data = other.m_Data;
+		other.m_Data = nullptr;
+		m_Blocks = std::move (other.m_Blocks);
+		m_IsSending = other.m_IsSending;
+		m_IsLoading = other.m_IsLoading;
+		m_IsRequested = other.m_IsRequested;
+		m_IsVerified = other.m_IsVerified;
+		m_LastActivityTimestamp = other.m_LastActivityTimestamp;
+		m_NumPeers = other.m_NumPeers;
+		other.m_IsSending = false;
+		other.m_IsLoading = false;
+		other.m_IsRequested = false;
+		other.m_IsVerified = false;
+		other.m_LastActivityTimestamp = 0;
+		other.m_NumPeers = 0;
+	}
+
 	Piece::~Piece ()
 	{
-		DeleteDataBuffer ();
+		std::lock_guard<std::mutex> l (m_Mutex);
+		DeleteDataBufferLocked ();
 	}
 
-	bool Piece::VerifyHash () const
+	bool Piece::IsComplete () const
 	{
-		if (!m_Data) return false;
+		std::lock_guard<std::mutex> l (m_Mutex);
+		return !m_Blocks;
+	}
+
+	void Piece::Complete ()
+	{
+		std::lock_guard<std::mutex> l (m_Mutex);
+		m_Blocks.reset ();
+		m_IsRequested = false;
+		// Completion alone (a resume bitfield or a pre-existing final file)
+		// is not proof that the bytes match the hash. Only VerifyHash() sets
+		// this flag.
+		m_IsVerified = false;
+	}
+
+	bool Piece::VerifyHash ()
+	{
+		std::lock_guard<std::mutex> l (m_Mutex);
+		if (!m_Data)
+		{
+			m_IsVerified = false;
+			return false;
+		}
 		uint8_t digest[SHA_DIGEST_LENGTH];
 		SHA1 (m_Data, m_Size, digest);
-		return !memcmp (m_Hash, digest, SHA_DIGEST_LENGTH);
+		m_IsVerified = !memcmp (m_Hash, digest, SHA_DIGEST_LENGTH);
+		return m_IsVerified;
 	}
 
-	bool Piece::IsAvailable (int block) const
+	bool Piece::IsVerified () const
+	{
+		std::lock_guard<std::mutex> l (m_Mutex);
+		return m_IsVerified;
+	}
+
+	bool Piece::IsAvailableLocked (int block) const
 	{
 		if (!m_Blocks) return true;
 		if (block < 0 || block >= (int)m_Blocks->size ()) return false;
@@ -337,8 +976,51 @@ namespace torrents
 
 	void Piece::SetIsSending (bool isSending)
 	{
+		std::lock_guard<std::mutex> l (m_Mutex);
 		m_IsSending = isSending;
-		if (m_IsSending) m_LastActivityTimestamp = i2p::util::GetMonotonicSeconds ();
+		if (isSending) m_LastActivityTimestamp = i2p::util::GetMonotonicSeconds ();
+	}
+
+	void Piece::SetIsLoading (bool loading)
+	{
+		std::lock_guard<std::mutex> l (m_Mutex);
+		m_IsLoading = loading;
+	}
+
+	bool Piece::IsSending () const
+	{
+		std::lock_guard<std::mutex> l (m_Mutex);
+		return m_IsSending;
+	}
+
+	bool Piece::IsLoading () const
+	{
+		std::lock_guard<std::mutex> l (m_Mutex);
+		return m_IsLoading;
+	}
+
+	uint64_t Piece::GetLastActivityTimestamp () const
+	{
+		std::lock_guard<std::mutex> l (m_Mutex);
+		return m_LastActivityTimestamp;
+	}
+
+	bool Piece::IsRequested () const
+	{
+		std::lock_guard<std::mutex> l (m_Mutex);
+		return m_IsRequested;
+	}
+
+	size_t Piece::GetNumPeers () const
+	{
+		std::lock_guard<std::mutex> l (m_Mutex);
+		return m_NumPeers;
+	}
+
+	void Piece::SetNumPeers (size_t numPeers)
+	{
+		std::lock_guard<std::mutex> l (m_Mutex);
+		m_NumPeers = numPeers;
 	}
 
 	size_t Piece::GetNumBlocks (size_t len) const
@@ -351,12 +1033,28 @@ namespace torrents
 
 	void Piece::BlockReceived (const uint8_t * block, size_t len, size_t offset)
 	{
-		if (!len || offset + len > m_Size || !m_Blocks) return;
+		std::lock_guard<std::mutex> l (m_Mutex);
+		// Check the subtraction form so a hostile offset cannot wrap the
+		// addition and pass a bounds check on 32-bit size_t.
+		if (!len || !block || !m_Blocks || offset > m_Size || len > m_Size - offset) return;
+		// A requested block is exactly one aligned 16 KiB range (or the final
+		// partial range). Rejecting shorter/misaligned peer payloads prevents
+		// marking a whole block Available after one byte and later serving
+		// uninitialised bytes from the rest of the block.
+		if (offset % REQUEST_BLOCK_SIZE != 0) return;
+		const size_t expectedLen = std::min (REQUEST_BLOCK_SIZE, m_Size - offset);
+		if (len != expectedLen)
+		{
+			LogPrint (eLogWarning, "Torrents: Partial/misaligned block (", offset, ",", len, ")");
+			return;
+		}
 		size_t blockIndex = offset / REQUEST_BLOCK_SIZE;
+		if (blockIndex >= m_Blocks->size ()) return;
 		if ((*m_Blocks)[blockIndex] == BlockStatus::Requested)
 		{
-			if (!m_Data) NewDataBuffer ();
+			if (!m_Data) NewDataBufferLocked ();
 			memcpy (m_Data + offset, block, len);
+			m_IsVerified = false; // the bytes changed since any earlier hash check
 			(*m_Blocks)[blockIndex] = BlockStatus::Available;
 			if (std::find_if (m_Blocks->begin (), m_Blocks->end (),
 					[] (BlockStatus status) { return status != BlockStatus::Available; })
@@ -364,7 +1062,8 @@ namespace torrents
 			{
 				// all blocks are available
 				LogPrint (eLogDebug, "Torrents: piece complete");
-				Complete ();
+				m_Blocks.reset ();
+				m_IsRequested = false;
 			}
 		}
 		else
@@ -378,8 +1077,14 @@ namespace torrents
 
 	void Piece::Dump (PieceFileFragment && fragment)
 	{
+		std::lock_guard<std::mutex> l (m_Mutex);
+		if (!m_IsVerified)
+		{
+			LogPrint (eLogError, "Torrents: Refusing to write an unverified piece");
+			return;
+		}
 		m_IsSending = true;
-		if (m_Data && fragment.fragmentOffset + fragment.fragmentSize <= m_Size)
+		if (m_Data && fragment.fragmentOffset <= m_Size && fragment.fragmentSize <= m_Size - fragment.fragmentOffset)
 		{
 			if (fragment.file->Save (fragment.fileOffset, m_Data + fragment.fragmentOffset, fragment.fragmentSize))
 				LogPrint (eLogDebug, "Torrents: Saved bytes ", fragment.fileOffset, " - ",
@@ -390,11 +1095,11 @@ namespace torrents
 
 	bool Piece::Load (PieceFileFragment && fragment)
 	{
-		if (fragment.fragmentOffset + fragment.fragmentSize > m_Size) return false;
-		uint8_t * data = m_Data;
-		if (!data) data = new uint8_t[m_Size];
-		bool success = fragment.file->Load (fragment.fileOffset, data + fragment.fragmentOffset, fragment.fragmentSize);
-		UpdateDataBuffer (data);
+		std::lock_guard<std::mutex> l (m_Mutex);
+		if (fragment.fragmentOffset > m_Size || fragment.fragmentSize > m_Size - fragment.fragmentOffset)
+			return false;
+		if (!m_Data) m_Data = new uint8_t[m_Size] ();
+		bool success = fragment.file->Load (fragment.fileOffset, m_Data + fragment.fragmentOffset, fragment.fragmentSize);
 		if (success)
 		{
 			LogPrint (eLogDebug, "Torrents: Loaded bytes ", fragment.fileOffset, " - ",
@@ -405,57 +1110,57 @@ namespace torrents
 		{
 			LogPrint (eLogError, "Torrents: Failed to load bytes ", fragment.fileOffset, " - ",
 				fragment.fileOffset + fragment.fragmentSize - 1, " from ", fragment.file->GetFullFilePath ());
+			// Keep the (partial) buffer for the caller to inspect, but the
+			// piece is no longer verified. The caller must MarkCorrupt().
+			m_IsVerified = false;
 			return false;
 		}
 	}
 
-	void Piece::NewDataBuffer ()
+	bool Piece::HasData () const
 	{
-#if defined(__cpp_lib_atomic_ref)
-		std::atomic_ref<uint8_t *> data (m_Data);
-		auto old = data.exchange (new uint8_t[m_Size]);
-		if (old) delete[] old;
-#else
-		if (!m_Data) m_Data = new uint8_t[m_Size];
-#endif
+		std::lock_guard<std::mutex> l (m_Mutex);
+		return m_Data != nullptr;
 	}
 
-	void Piece::DeleteDataBuffer ()
+	bool Piece::CopyBlock (size_t offset, size_t len, std::vector<uint8_t> & out) const
 	{
-#if defined(__cpp_lib_atomic_ref)
-		std::atomic_ref<uint8_t *> data (m_Data);
-		auto old = data.exchange (nullptr);
-		if (old) delete[] old;
-#else
+		std::lock_guard<std::mutex> l (m_Mutex);
+		// Unverified data may come from a resume bitfield or a previous
+		// partial load; never serve it to a peer. The caller falls back to
+		// the disk load path, which hashes the whole piece first.
+		if (!m_IsVerified) return false;
+		if (!len || !m_Data || offset > m_Size || len > m_Size - offset) return false;
+		if (!IsAvailableLocked ((int)(offset / REQUEST_BLOCK_SIZE))
+			|| !IsAvailableLocked ((int)((offset + len - 1) / REQUEST_BLOCK_SIZE)))
+			return false;
+		out.assign (m_Data + offset, m_Data + offset + len);
+		return true;
+	}
+
+	void Piece::NewDataBufferLocked ()
+	{
+		auto old = m_Data;
+		m_Data = new uint8_t[m_Size] ();
+		delete[] old;
+	}
+
+	void Piece::DeleteDataBufferLocked ()
+	{
 		delete[] m_Data;
 		m_Data = nullptr;
-#endif
-	}
-
-	void Piece::UpdateDataBuffer (uint8_t * newData)
-	{
-#if defined(__cpp_lib_atomic_ref)
-		std::atomic_ref<uint8_t *> data (m_Data);
-		auto old = data.exchange (newData);
-		if (old && old != newData) delete[] old;
-#else
-		if (newData != m_Data)
-		{
-			auto old = m_Data;
-			m_Data = newData;
-			delete[] old;
-		}
-#endif
 	}
 
 	bool Piece::HasBlock (size_t offset) const
 	{
+		std::lock_guard<std::mutex> l (m_Mutex);
 		if (offset >= m_Size) return false;
-		return IsAvailable (offset / REQUEST_BLOCK_SIZE);
+		return IsAvailableLocked (offset / REQUEST_BLOCK_SIZE);
 	}
 
 	std::pair<size_t, size_t> Piece::GetNextBlockToRequest ()
 	{
+		std::lock_guard<std::mutex> l (m_Mutex);
 		if (m_Blocks)
 		{
 			size_t ind = 0;
@@ -477,27 +1182,59 @@ namespace torrents
 
 	void Piece::ClearAllRequests ()
 	{
+		std::lock_guard<std::mutex> l (m_Mutex);
 		m_IsRequested = false;
 		if (!m_Blocks) return;
 		for (auto & it : *m_Blocks)
 			if (it == BlockStatus::Requested) it = BlockStatus::Missing;
 	}
 
-	void Piece::InvalidateAllBlocks ()
+	void Piece::MarkCorruptLocked ()
 	{
-		m_Blocks = nullptr;
 		m_Blocks = std::make_unique<std::vector<BlockStatus>> (GetNumBlocks (m_Size), BlockStatus::Missing);
-		if (m_Data) DeleteDataBuffer ();
+		DeleteDataBufferLocked ();
+		m_IsRequested = false;
+		m_IsVerified = false;
+	}
+
+	void Piece::MarkCorrupt ()
+	{
+		std::lock_guard<std::mutex> l (m_Mutex);
+		MarkCorruptLocked ();
+	}
+
+	void Piece::ReleaseDataLocked ()
+	{
+		if (!m_Data) return;
+		DeleteDataBufferLocked ();
+		// Verification is a property of the bytes that were written to disk,
+		// not of the in-memory cache. Keep the flag so a piece evicted while
+		// seeding still counts as verified for completion; a later reload
+		// re-hashes the file before it is served again.
+		LogPrint (eLogDebug, "Torrents: piece's data deleted");
+	}
+
+	void Piece::ReleaseData ()
+	{
+		std::lock_guard<std::mutex> l (m_Mutex);
+		ReleaseDataLocked ();
 	}
 
 	void Piece::Reset ()
 	{
+		std::lock_guard<std::mutex> l (m_Mutex);
 		if (m_Blocks)
-			ClearAllRequests ();
-		else if (m_Data && !m_IsSending)
 		{
-			DeleteDataBuffer ();
-			LogPrint (eLogDebug, "Torrents: piece's data deleted");
+			m_IsRequested = false;
+			for (auto & it : *m_Blocks)
+				if (it == BlockStatus::Requested) it = BlockStatus::Missing;
+		}
+		else
+		{
+			// A complete piece whose data is being reset must become
+			// downloadable again. Deleting only the buffer would leave the
+			// piece marked complete and later promote unverified data.
+			MarkCorruptLocked ();
 		}
 	}
 
@@ -564,6 +1301,13 @@ namespace torrents
 		// the total length and the piece length. Reject missing/extra hashes.
 		size_t numPieces = m_Length / m_PieceLength;
 		if (m_Length % m_PieceLength) numPieces++;
+		const size_t blocksPerPiece = (m_PieceLength + REQUEST_BLOCK_SIZE - 1) / REQUEST_BLOCK_SIZE;
+		if (blocksPerPiece && numPieces > MAX_TORRENT_BLOCKS / blocksPerPiece)
+		{
+			LogPrint (eLogError, "Torrents: Piece/block count exceeds the memory budget");
+			m_Error = eTorrentErrorMalformedMetaInfo;
+			return len;
+		}
 		if (!numPieces || numPieces > MAX_NUM_TORRENT_PIECES || hashes.size () % SHA_DIGEST_LENGTH
 			|| hashes.size () / SHA_DIGEST_LENGTH != numPieces)
 		{
@@ -576,7 +1320,9 @@ namespace torrents
 		size_t totalLen = 0;
 		for (size_t i = 0; i < numPieces; i++)
 		{
-			auto l = (totalLen + m_PieceLength <= m_Length) ? m_PieceLength : m_Length - totalLen;
+			// Subtraction form: totalLen + m_PieceLength could wrap on ILP32
+			// for a torrent close to the size_t maximum.
+			auto l = std::min (m_PieceLength, m_Length - totalLen);
 			m_Pieces.emplace_back (
 				l, (const uint8_t *)hashes.substr (i * SHA_DIGEST_LENGTH, SHA_DIGEST_LENGTH).data ());
 			totalLen += l;
@@ -598,7 +1344,11 @@ namespace torrents
 					auto [value, l] = ExtractInteger (buf);
 					if (!l) return 0;
 					hasLength = true;
-					if (value < 0 || (uint64_t)value > MAX_TORRENT_LENGTH)
+					// MAX_TORRENT_LENGTH is a 64-bit bound. It must not be
+					// truncated into size_t on ILP32, so reject values that
+					// cannot be represented by the platform size type.
+					if (value < 0 || (uint64_t)value > MAX_TORRENT_LENGTH
+						|| (uint64_t)value > (uint64_t)std::numeric_limits<size_t>::max ())
 					{
 						LogPrint (eLogError, "Torrents: Invalid length ", value);
 						m_Error = eTorrentErrorMalformedMetaInfo;
@@ -785,7 +1535,8 @@ namespace torrents
 							hasLength = true;
 							auto [length, l] = ExtractInteger (value);
 							if (!l) return 0;
-							if (length <= 0 || (uint64_t)length > MAX_TORRENT_LENGTH)
+							if (length <= 0 || (uint64_t)length > MAX_TORRENT_LENGTH
+								|| (uint64_t)length > (uint64_t)std::numeric_limits<size_t>::max ())
 							{
 								LogPrint (eLogError, "Torrents: Invalid file length ", length);
 								m_Error = eTorrentErrorMalformedMetaInfo;
@@ -802,7 +1553,12 @@ namespace torrents
 					return len;
 				}
 				if (m_Error != eTorrentErrorNoError) return len;
-				if (fileLength > MAX_TORRENT_LENGTH - totalLength)
+				// Perform the sum and the limit check in 64 bits: on ILP32
+				// MAX_TORRENT_LENGTH - totalLength would otherwise be a huge
+				// size_t and totalLength += fileLength could wrap.
+				if (totalLength > MAX_TORRENT_LENGTH
+					|| (uint64_t)fileLength > MAX_TORRENT_LENGTH - (uint64_t)totalLength
+					|| fileLength > std::numeric_limits<size_t>::max () - totalLength)
 				{
 					LogPrint (eLogError, "Torrents: Total torrent length exceeds limit");
 					m_Error = eTorrentErrorMalformedMetaInfo;
@@ -900,10 +1656,10 @@ namespace torrents
 					auto [value, l] = ExtractInteger (buf);
 					if (l)
 					{
-						int interval = std::clamp ((int)value, MIN_TRACKER_REQUESTS_INTERVAL / 1000,
-										   MAX_TRACKER_REQUESTS_INTERVAL / 1000)
+						auto interval = std::clamp<int64_t> (value, MIN_TRACKER_REQUESTS_INTERVAL / 1000,
+											MAX_TRACKER_REQUESTS_INTERVAL / 1000)
 							* 1000; // in milliseconds
-						std::get<1> (m_TrackerStats[trackerID]) = interval;
+						std::get<1> (m_TrackerStats[trackerID]) = (int)interval;
 						std::get<2> (m_TrackerStats[trackerID])
 							= i2p::util::GetMonotonicMilliseconds () + interval; // reset next request
 					}
@@ -914,13 +1670,13 @@ namespace torrents
 				else if (key == "complete")
 				{
 					auto [seeders, l] = ExtractInteger (buf);
-					if (l) std::get<3> (m_TrackerStats[trackerID]) = seeders;
+					if (l) std::get<3> (m_TrackerStats[trackerID]) = ClampTrackerCount (seeders);
 					return l;
 				}
 				else if (key == "incomplete")
 				{
 					auto [leechers, l] = ExtractInteger (buf);
-					if (l) std::get<4> (m_TrackerStats[trackerID]) = leechers;
+					if (l) std::get<4> (m_TrackerStats[trackerID]) = ClampTrackerCount (leechers);
 					return l;
 				}
 				else if (key == "failure reason")
@@ -1051,20 +1807,27 @@ namespace torrents
 		return complete;
 	}
 
+	bool Torrent::AreAllPiecesVerified () const
+	{
+		for (const auto & it : m_Pieces)
+			if (!it.IsComplete () || !it.IsVerified ()) return false;
+		return !m_Pieces.empty ();
+	}
+
 	RequestedBlock Torrent::GetNextBlockToRequest (std::shared_ptr<PeerConnection> conn, bool skipRequested)
 	{
 		if (conn)
 		{
 			// continue with current piece
 			int lastIndex = conn->GetLastRequestedPieceIndex ();
-			if (lastIndex >= 0)
+			if (lastIndex >= 0 && (size_t)lastIndex < m_Pieces.size ())
 			{
 				auto [offset, len] = m_Pieces[(size_t)lastIndex].GetNextBlockToRequest ();
 				if (len > 0) return { (uint32_t)lastIndex, offset, len };
 			}
 			// try suggested piece
 			int suggestedIndex = conn->ResetSuggestedPieceIndex ();
-			if (suggestedIndex >= 0)
+			if (suggestedIndex >= 0 && (size_t)suggestedIndex < m_Pieces.size ())
 			{
 				Piece & piece = m_Pieces[suggestedIndex];
 				if (!piece.IsComplete () && !piece.IsRequested ())
@@ -1109,29 +1872,41 @@ namespace torrents
 		bool complete = true;
 		for (auto & it : m_Pieces)
 		{
-			if (!it.IsComplete ()) complete = false;
+			bool pieceComplete = it.IsComplete ();
+			if (!pieceComplete) complete = false;
 			if (m_IsStopped
 				|| (ts > it.GetLastActivityTimestamp () + PIECE_INACTIVITY_TIMEOUT)) // piece was inactive recently
-				it.Reset ();
+			{
+				// Evicting a complete piece must not forget that it is
+				// complete; an incomplete piece only loses its outstanding
+				// requests. Reset() is reserved for actual corruption and
+				// makes even a complete piece downloadable again.
+				if (pieceComplete)
+					it.ReleaseData ();
+				else
+					it.Reset ();
+			}
 		}
 		return complete;
 	}
 
 	void Torrent::SetComplete ()
 	{
-		m_IsComplete = true;
 		for (auto & it : m_Pieces)
 			if (!it.IsComplete ()) it.Complete ();
 		for (auto it : m_Files) it->Complete ();
+		// Publish completion after the per-piece state is visible.
+		m_IsComplete.store (true, std::memory_order_release);
 	}
 
 	void Torrent::SaveTorrentResumeFile ()
 	{
+		if (m_FullPath.empty ()) return;
 		auto [bitfield, have] = CreateBitfield ();
 		if (!have) return; // empty
 		std::filesystem::path resumeFilePath = m_FullPath;
 		resumeFilePath += ".resume";
-		if (have) // all
+		if (have && m_IsComplete.load (std::memory_order_acquire)) // all pieces complete and the torrent was promoted
 		{
 			// delete resume file
 			std::error_code ec;
@@ -1140,11 +1915,11 @@ namespace torrents
 		}
 		else
 		{
-			std::ofstream f (resumeFilePath, std::ofstream::binary);
-			if (f.is_open ())
-				f.write ((const char *)bitfield.data (), bitfield.size ());
-			else
-				LogPrint (eLogError, "Torrents: Can't open resume file ", resumeFilePath);
+			// The resume file is derived data but is still opened without
+			// following a symlink leaf, so a swapped path cannot truncate an
+			// unrelated file.
+			if (!WriteFileNoFollow (resumeFilePath, bitfield.data (), bitfield.size ()))
+				LogPrint (eLogError, "Torrents: Can't write resume file ", resumeFilePath);
 		}
 	}
 
@@ -1156,7 +1931,7 @@ namespace torrents
 	void Torrent::ApplyPeerRemoteBitfield (const boost::dynamic_bitset<> & peerRemoteBitfield)
 	{
 		size_t ind = peerRemoteBitfield.find_first ();
-		while (ind != boost::dynamic_bitset<>::npos)
+		while (ind != boost::dynamic_bitset<>::npos && ind < m_Pieces.size ())
 		{
 			auto & piece = m_Pieces[ind];
 			if (!piece.IsComplete ()) piece.SetNumPeers (piece.GetNumPeers () + 1);
@@ -1167,7 +1942,7 @@ namespace torrents
 	bool Torrent::HasIncompletePieces (const boost::dynamic_bitset<> & peerRemoteBitfield) const
 	{
 		size_t ind = peerRemoteBitfield.find_first ();
-		while (ind != boost::dynamic_bitset<>::npos)
+		while (ind != boost::dynamic_bitset<>::npos && ind < m_Pieces.size ())
 		{
 			if (!m_Pieces[ind].IsComplete ()) return true;
 			ind = peerRemoteBitfield.find_next (ind);
@@ -1292,7 +2067,7 @@ namespace torrents
 	TorrentStatus Torrent::GetStatus () const
 	{
 		if (m_IsStopped) return eTorrentStatusStopped;
-		if (m_IsComplete) return eTorrentStatusSeeding;
+		if (m_IsComplete.load (std::memory_order_acquire)) return eTorrentStatusSeeding;
 		return eTorrentStatusDownloading;
 	}
 
@@ -1674,16 +2449,21 @@ namespace torrents
 			return 0;
 		}
 		uint32_t msgLen = bufbe32toh (m_ReceiveBuffer + offset);
-		if (msgLen > PEER_CONNECTION_RECEIVE_BUFFER_SIZE)
+		// Reject the frame before storing m_NextMsgLength. Checking the payload
+		// alone accepted 65535, whose 4-byte prefix does not fit in the receive
+		// buffer and left the connection waiting for bytes that could never
+		// arrive.
+		if (!IsPeerMessageLengthAllowed (msgLen))
 		{
 			LogPrint (eLogError, "Torrents: Unexpected received message length ", msgLen);
 			m_ReceiveBufferOffset = 0;
+			m_NextMsgLength = 0;
 			Terminate ();
 			return 0;
 		}
-		if (len < msgLen + 4)
+		if (len < (size_t)msgLen + 4)
 		{
-			m_NextMsgLength = msgLen + 4;
+			m_NextMsgLength = (size_t)msgLen + 4;
 			return 0;
 		}
 		offset += 4;
@@ -1961,27 +2741,36 @@ namespace torrents
 		if (len && index < m_Torrent->GetNumPieces ())
 		{
 			Piece & piece = m_Torrent->GetPiece (index);
-			piece.BlockReceived (buf + 8, len, offset);
-			if (piece.IsComplete ())
+			auto pieceSize = piece.GetSize ();
+			if (offset > pieceSize || len > pieceSize - offset)
 			{
-				if (piece.VerifyHash ())
+				LogPrint (
+					eLogWarning, "Torrents: Piece block (", index, ",", offset, ",", len, ") is outside the piece");
+			}
+			else
+			{
+				piece.BlockReceived (buf + 8, len, offset);
+				if (piece.IsComplete ())
 				{
-					boost::asio::post (GetTorrentsTunnel ()->GetDiskIOService (),
-						[index, torrent = m_Torrent] () mutable
-						{
-							auto fragments = torrent->GetPieceFileFragments (index);
-							Piece & piece = torrent->GetPiece (index);
-							for (auto & it : fragments) piece.Dump (std::move (it));
-							torrent->SaveTorrentResumeFile ();
-						});
-					// send have
-					auto conns = m_Torrent->GetConnections ();
-					for (auto it : conns) it->SendHaveMsg (index);
-				}
-				else
-				{
-					LogPrint (eLogWarning, "Torrents: Received piece hash mismatch");
-					piece.InvalidateAllBlocks ();
+					if (piece.VerifyHash ())
+					{
+						boost::asio::post (GetTorrentsTunnel ()->GetDiskIOService (),
+							[index, torrent = m_Torrent] () mutable
+							{
+								auto fragments = torrent->GetPieceFileFragments (index);
+								Piece & piece = torrent->GetPiece (index);
+								for (auto & it : fragments) piece.Dump (std::move (it));
+								torrent->SaveTorrentResumeFile ();
+							});
+						// send have
+						auto conns = m_Torrent->GetConnections ();
+						for (auto it : conns) it->SendHaveMsg (index);
+					}
+					else
+					{
+						LogPrint (eLogWarning, "Torrents: Received piece hash mismatch");
+						piece.InvalidateAllBlocks ();
+					}
 				}
 			}
 		}
@@ -2105,15 +2894,28 @@ namespace torrents
 		{
 			LogPrint (eLogDebug, "Torrents: Received request index ", index, " offset ", offset, " length ", length);
 			Piece & piece = m_Torrent->GetPiece (index);
-			if (piece.HasBlock (offset) && offset + length <= piece.GetSize ())
+			auto pieceSize = piece.GetSize ();
+			// Reject zero-length and out-of-range requests. Checking both range
+			// ends also prevents serving uninitialised bytes that belong to a
+			// neighbouring, not yet downloaded block.
+			if (length && offset <= pieceSize && length <= pieceSize - offset && piece.HasBlock (offset)
+				&& piece.HasBlock (offset + length - 1))
 			{
 				if (m_NumPieces >= MAX_NUM_PIECES)
 				{
-					if (m_IncomingRequestsQueue.size () + m_NumPieces < MAX_INCOMING_REQUESTS_QUEUE_SIZE)
-						m_IncomingRequestsQueue.emplace_back (index, offset, length);
-					else if (m_IsFast)
+					// Queue each (index, offset, length) once. Without this a
+					// peer can fill the bounded queue with copies of the same
+					// request and starve useful uploads.
+					const RequestedBlock request { index, offset, length };
+					bool alreadyQueued
+						= std::find (m_IncomingRequestsQueue.begin (), m_IncomingRequestsQueue.end (), request)
+						!= m_IncomingRequestsQueue.end ();
+					if (!alreadyQueued
+						&& m_IncomingRequestsQueue.size () + m_NumPieces < MAX_INCOMING_REQUESTS_QUEUE_SIZE)
+						m_IncomingRequestsQueue.emplace_back (request);
+					else if (!alreadyQueued && m_IsFast)
 						SendRejectRequestMsg (index, offset, length);
-					else if (!m_IsRemoteChoked)
+					else if (!alreadyQueued && !m_IsRemoteChoked)
 					{
 						LogPrint (eLogDebug, "Torrents: Choke");
 						m_IsRemoteChoked = true;
@@ -2131,12 +2933,20 @@ namespace torrents
 							auto [index, offset, len] = requestBlock;
 							Piece & piece = torrent->GetPiece (index);
 							piece.SetIsSending (true);
-							if (!piece.GetData ()) // don't try to load if already loaded
+							piece.SetIsLoading (true);
+							// Data without a matching verified flag (previous
+							// failed load, eviction or corruption) is reloaded
+							// and rehashed instead of being served blindly.
+							if (!piece.HasData () || !piece.IsVerified ())
 							{
 								auto fragments = torrent->GetPieceFileFragments (index);
 								for (auto & it : fragments)
 								{
-									if (!piece.Load (std::move (it))) loaded = false;
+									if (!piece.Load (std::move (it)))
+									{
+										loaded = false;
+										break;
+									}
 								}
 								if (loaded && !piece.VerifyHash ())
 								{
@@ -2144,7 +2954,15 @@ namespace torrents
 									loaded = false;
 								}
 							}
+							piece.SetIsLoading (false);
 							piece.SetIsSending (false);
+							if (!loaded)
+							{
+								// A complete piece whose local data failed to
+								// load or hash must not stay complete: rebuild
+								// it as Missing so it can be downloaded again.
+								piece.MarkCorrupt ();
+							}
 							if (loaded)
 								boost::asio::post (s->GetTorrentsTunnel ()->GetService (),
 									[requestedBlock = std::move (requestBlock), s] ()
@@ -2159,7 +2977,6 @@ namespace torrents
 							else
 							{
 								LogPrint (eLogError, "Torrents: Failed to load piece ", index);
-								piece.Reset ();
 								if (s->m_IsFast)
 									boost::asio::post (s->GetTorrentsTunnel ()->GetService (),
 										[requestedBlock = std::move (requestBlock), s] ()
@@ -2190,10 +3007,18 @@ namespace torrents
 		bool ret = true;
 		auto [index, offset, len] = requestedBlock;
 		Piece & piece = m_Torrent->GetPiece (index);
+		if (piece.IsLoading ())
+		{
+			LogPrint (eLogDebug, "Torrents: Piece ", index, " is still loading");
+			return false;
+		}
 		piece.SetIsSending (true);
-		auto data = piece.GetData ();
-		if (data && piece.HasBlock (offset))
-			SendPieceMsg (index, offset, data + offset, len);
+		// CopyBlock validates the whole request under the piece lock and
+		// returns a private copy, so the buffer cannot be freed by Reset,
+		// MarkCorrupt or the disk thread while SendPieceMsg is using it.
+		std::vector<uint8_t> block;
+		if (piece.CopyBlock (offset, len, block))
+			SendPieceMsg (index, offset, block.data (), block.size ());
 		else
 			ret = false;
 		piece.SetIsSending (false);
@@ -2395,7 +3220,7 @@ namespace torrents
 	void PeerConnection::HandleUtMetadataExtension (const uint8_t * buf, size_t len)
 	{
 		if (!m_Torrent) return;
-		int msgType = -1, piece = -1;
+		int64_t msgType = -1, piece = -1;
 		auto payloadLen = ParseDictionary (std::string_view ((const char *)buf, len),
 			[&msgType, &piece] (std::string_view key, std::string_view buf) -> size_t
 			{
@@ -2416,12 +3241,21 @@ namespace torrents
 			});
 		if (msgType >= 0 && piece >= 0)
 		{
+			if (!payloadLen || payloadLen > len) return; // malformed metadata dictionary
+			// The peer chooses the piece number. Bound it before multiplying so
+			// that a hostile value cannot overflow size_t.
+			if ((uint64_t)piece > std::numeric_limits<size_t>::max () / REQUEST_BLOCK_SIZE)
+			{
+				LogPrint (eLogWarning, "Torrents: ut_metadata piece number ", piece, " is out of range");
+				return;
+			}
+			size_t pieceOffset = (size_t)piece * REQUEST_BLOCK_SIZE;
 			switch (msgType)
 			{
 			case 0: // request
 			{
 				auto & info = m_Torrent->GetInfo ();
-				size_t offset = piece * REQUEST_BLOCK_SIZE;
+				size_t offset = pieceOffset;
 				if (offset < info.size ())
 				{
 					size_t pieceSize = std::min (info.size () - offset, REQUEST_BLOCK_SIZE);
@@ -2445,7 +3279,7 @@ namespace torrents
 					// otherwise unsolicited data, ignore
 					break;
 				}
-				size_t offset = piece * REQUEST_BLOCK_SIZE;
+				size_t offset = pieceOffset;
 				if (offset > m_RemoteMetadataSize) break;
 				size_t size = m_RemoteMetadataSize - offset;
 				if (size > REQUEST_BLOCK_SIZE) size = REQUEST_BLOCK_SIZE;

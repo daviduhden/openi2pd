@@ -10,26 +10,28 @@
 
 #ifndef NO_TORRENTS
 
-#include <boost/version.hpp>
-#if !defined(ANDROID) && (BOOST_VERSION >= 108100) // boost::json since 1.75, boost::url since 1.81
 #include <boost/json.hpp>
 #include <boost/url.hpp>
 #include <boost/url/encode.hpp>
 #include <boost/url/grammar/alnum_chars.hpp>
-#define JSON_SUPPORTED
-#endif
 #include <boost/algorithm/hex.hpp>
 #include <vector>
 #include <array>
+#include <chrono>
 #include <functional>
+#include <future>
 #include <filesystem>
 #include <limits>
 #include <stdexcept>
+#include <type_traits>
+#include <unordered_set>
+#include <utility>
 #include "Base.h"
 #include "Log.h"
 #include "HTTP.h"
 #include "Timestamp.h"
 #include "Torrents.h"
+#include "TorrentsControl.h"
 #include "TorrentsTunnel.h"
 #include "TorrentsRPC.h"
 
@@ -48,6 +50,9 @@ namespace torrents
 		constexpr size_t MAX_RPC_TRACKER_LENGTH = 2048;
 		constexpr size_t MAX_RPC_FIELDS_PER_REQUEST = 64;
 		constexpr size_t MAX_RPC_CREDENTIAL_LENGTH = 256;
+		// One request must not be able to enqueue an unbounded number of
+		// torrent lookups/commands or repeat the same id thousands of times.
+		constexpr size_t MAX_RPC_TORRENT_IDS = 1024;
 
 		bool IsValidCredential (std::string_view credential)
 		{
@@ -72,9 +77,115 @@ namespace torrents
 				throw std::invalid_argument ("Torrents RPC address must be a loopback address (127.0.0.1 or ::1)");
 			return { bindAddress, port };
 		}
+
+
+		// One RPC service round-trip is bounded by the same interval as the
+		// control plane. A stalled or stopped tunnel service must never pin an
+		// RPC I/O thread indefinitely.
+		constexpr std::chrono::milliseconds RPC_SERVICE_TIMEOUT = CONTROL_DEFAULT_TIMEOUT;
+		constexpr std::string_view RPC_SERVICE_TIMEOUT_ERROR = "Torrent service timeout";
+		constexpr std::string_view RPC_SERVICE_FAILURE_ERROR = "Internal error";
+
+		struct DHTStatistics
+		{
+			size_t numNodes = 0;
+			size_t numBuckets = 0;
+			size_t numTorrents = 0;
+			size_t numHeardFrom = 0;
+			size_t numFailedPeers = 0;
+		};
+
+		struct SessionStatistics
+		{
+			size_t torrentCount = 0;
+			size_t downloaded = 0;
+			size_t uploaded = 0;
+			uint64_t downloadRate = 0;
+			uint64_t uploadRate = 0;
+			int stopped = 0;
+		};
+
+		struct TorrentSummary
+		{
+			std::string name;
+			std::string hexHash;
+		};
+
+		struct ServiceTaskVoid
+		{
+		};
+
+		// Runs one operation on the torrent service and waits for it with a
+		// fixed bound. The packaged task owns its result, so a timed-out task
+		// can only complete into its own shared state and never writes to
+		// caller stack storage.
+		template <typename F> auto RunOnTorrentService (const std::shared_ptr<TorrentsTunnel> & tunnel, F && operation)
+		{
+			using OperationResult = std::invoke_result_t<F &>;
+			using Result = std::conditional_t<std::is_void_v<OperationResult>, ServiceTaskVoid, OperationResult>;
+			struct Outcome
+			{
+				bool success = false;
+				bool timedOut = false;
+				Result value { };
+			};
+
+			Outcome outcome;
+			if (!tunnel) return outcome;
+			std::shared_ptr<std::packaged_task<Result ()>> task;
+			try
+			{
+				task = std::make_shared<std::packaged_task<Result ()>> (
+					[operation = std::forward<F> (operation)] () mutable -> Result
+					{
+						if constexpr (std::is_void_v<OperationResult>)
+						{
+							operation ();
+							return { };
+						}
+						else
+							return operation ();
+					});
+			}
+			catch (const std::exception & ex)
+			{
+				LogPrint (eLogWarning, "TorrentsRPC: Failed to create service task: ", ex.what ());
+				return outcome;
+			}
+			auto future = task->get_future ();
+			try
+			{
+				boost::asio::post (tunnel->GetService (), [task] () { (*task) (); });
+			}
+			catch (const std::exception & ex)
+			{
+				LogPrint (eLogWarning, "TorrentsRPC: Failed to queue service task: ", ex.what ());
+				return outcome;
+			}
+			if (future.wait_for (RPC_SERVICE_TIMEOUT) != std::future_status::ready)
+			{
+				LogPrint (eLogWarning, "TorrentsRPC: Torrent service task timed out");
+				outcome.timedOut = true;
+				return outcome;
+			}
+			try
+			{
+				outcome.value = future.get ();
+				outcome.success = true;
+			}
+			catch (const std::exception & ex)
+			{
+				LogPrint (eLogWarning, "TorrentsRPC: Torrent service task failed: ", ex.what ());
+			}
+			catch (...)
+			{
+				LogPrint (eLogWarning, "TorrentsRPC: Torrent service task failed");
+			}
+			return outcome;
+		}
+
 	}
 
-#ifdef JSON_SUPPORTED
 
 	class JSONRPCHandler
 	{
@@ -148,16 +259,22 @@ namespace torrents
 	{
 		if (!arguments.contains ("ids")) return true;
 		const auto & ids = arguments.at ("ids");
-		auto addId = [&torrentIds] (const boost::json::value & value) -> bool
+		std::unordered_set<int> seen;
+		auto addId = [&torrentIds, &seen] (const boost::json::value & value) -> bool
 		{
 			if (!value.is_int64 ()) return false;
 			auto id = value.as_int64 ();
 			if (id <= 0 || id > std::numeric_limits<int>::max ()) return false;
-			torrentIds.push_back ((int)id);
+			if (seen.insert ((int)id).second)
+			{
+				if (torrentIds.size () >= MAX_RPC_TORRENT_IDS) return false;
+				torrentIds.push_back ((int)id);
+			}
 			return true;
 		};
 		if (ids.is_array ())
 		{
+			if (ids.as_array ().size () > MAX_RPC_TORRENT_IDS) return false;
 			for (const auto & it : ids.as_array ())
 				if (!addId (it)) return false;
 		}
@@ -324,12 +441,23 @@ namespace torrents
 		if (torrent)
 		{
 			boost::json::object response, torrentInfo;
-			std::string hexHash;
-			boost::algorithm::hex (
-				torrent->GetInfoHash ().begin (), torrent->GetInfoHash ().end (), std::back_inserter (hexHash));
+			// Name and hash are owned by the service thread and a magnet can
+			// receive its metadata concurrently, so copy them there.
+			auto summary = RunOnTorrentService (m_Tunnel,
+				[torrent] ()
+				{
+					TorrentSummary s;
+					s.name = std::string (torrent->GetName ());
+					boost::algorithm::hex (torrent->GetInfoHash ().begin (), torrent->GetInfoHash ().end (),
+						std::back_inserter (s.hexHash));
+					return s;
+				});
+			if (!summary.success)
+				return ErrorResponse (
+					GetTag (jsonRequest), summary.timedOut ? RPC_SERVICE_TIMEOUT_ERROR : RPC_SERVICE_FAILURE_ERROR);
 			torrentInfo["id"] = id;
-			torrentInfo["hashString"] = hexHash;
-			torrentInfo["name"] = torrent->GetName ();
+			torrentInfo["hashString"] = std::move (summary.value.hexHash);
+			torrentInfo["name"] = std::move (summary.value.name);
 			if (id)
 			{
 				response["torrent-added"] = torrentInfo;
@@ -413,22 +541,32 @@ namespace torrents
 				if (isTable)
 				{
 					bool isFirst = header.empty ();
-					boost::json::array t;
-					boost::asio::post (m_Tunnel->GetService (),
-						boost::asio::use_future ([this, torrent, id, fields, &header, &t] ()
-							{ t = GetTorrentTableRow (torrent, id, fields, header); }))
-						.wait ();
-					if (isFirst) torrents.push_back (header); // add header once
-					torrents.push_back (t);
+					auto outcome = RunOnTorrentService (m_Tunnel,
+						[handler = *this, torrent, id, fields] ()
+						{
+							boost::json::array rowHeader;
+							auto row = handler.GetTorrentTableRow (torrent, id, fields, rowHeader);
+							return std::pair<boost::json::array, boost::json::array> (
+								std::move (row), std::move (rowHeader));
+						});
+					if (!outcome.success)
+						return ErrorResponse (GetTag (jsonRequest),
+							outcome.timedOut ? RPC_SERVICE_TIMEOUT_ERROR : RPC_SERVICE_FAILURE_ERROR);
+					if (isFirst)
+					{
+						header = outcome.value.second;
+						torrents.push_back (std::move (outcome.value.second)); // add header once
+					}
+					torrents.push_back (std::move (outcome.value.first));
 				}
 				else
 				{
-					boost::json::object t;
-					boost::asio::post (m_Tunnel->GetService (),
-						boost::asio::use_future (
-							[this, torrent, id, fields, &t] () { t = GetTorrentObject (torrent, id, fields); }))
-						.wait ();
-					torrents.push_back (t);
+					auto outcome = RunOnTorrentService (m_Tunnel, [handler = *this, torrent, id, fields] ()
+						{ return handler.GetTorrentObject (torrent, id, fields); });
+					if (!outcome.success)
+						return ErrorResponse (GetTag (jsonRequest),
+							outcome.timedOut ? RPC_SERVICE_TIMEOUT_ERROR : RPC_SERVICE_FAILURE_ERROR);
+					torrents.push_back (std::move (outcome.value));
 				}
 			}
 		}
@@ -586,7 +724,6 @@ namespace torrents
 				[] (std::shared_ptr<Torrent> torrent) { return boost::json::value (torrent->GetUploaded ()); } },
 			{ "downloadedEver",
 				[] (std::shared_ptr<Torrent> torrent) { return boost::json::value (torrent->GetDownloaded ()); } },
-			{ "errorString", [] (std::shared_ptr<Torrent> torrent) { return boost::json::value (""); } },
 			{ "isStalled", [] (std::shared_ptr<Torrent> torrent) { return boost::json::value (false); } }, // TODO:
 			{ "labels", [] (std::shared_ptr<Torrent> torrent) { return boost::json::array (); } },
 			{ "queuePosition", [] (std::shared_ptr<Torrent> torrent) { return boost::json::value (1); } },
@@ -846,29 +983,39 @@ namespace torrents
 
 	std::string JSONRPCHandler::HandleSessionStats (boost::json::object && jsonRequest)
 	{
+		// Counters and peer maps belong to the tunnel service thread. Aggregate
+		// them there instead of walking live connections from the RPC thread.
+		auto outcome = RunOnTorrentService (m_Tunnel,
+			[tunnel = m_Tunnel] ()
+			{
+				SessionStatistics statistics;
+				auto torrents = tunnel->GetTorrents ();
+				statistics.torrentCount = torrents.size ();
+				for (auto it : torrents)
+				{
+					statistics.downloaded += it->GetDownloaded ();
+					statistics.uploaded += it->GetUploaded ();
+					statistics.downloadRate += it->GetDownloadRate ();
+					statistics.uploadRate += it->GetUploadRate ();
+					if (it->IsStopped ()) statistics.stopped++;
+				}
+				return statistics;
+			});
+		if (!outcome.success)
+			return ErrorResponse (
+				GetTag (jsonRequest), outcome.timedOut ? RPC_SERVICE_TIMEOUT_ERROR : RPC_SERVICE_FAILURE_ERROR);
+
 		boost::json::object response, stats;
-		auto torrents = m_Tunnel->GetTorrents ();
-		size_t downloaded = 0, uploaded = 0;
-		uint64_t downloadRate = 0, uploadRate = 0;
-		int numStoppedTorrents = 0;
-		for (auto it : torrents)
-		{
-			downloaded += it->GetDownloaded ();
-			uploaded += it->GetUploaded ();
-			downloadRate += it->GetDownloadRate ();
-			uploadRate += it->GetUploadRate ();
-			if (it->IsStopped ()) numStoppedTorrents++;
-		}
-		stats["downloadedBytes"] = downloaded;
-		stats["uploadedBytes"] = uploaded;
-		stats["downloadSpeed"] = downloadRate;
-		stats["uploadSpeed"] = uploadRate;
+		stats["downloadedBytes"] = outcome.value.downloaded;
+		stats["uploadedBytes"] = outcome.value.uploaded;
+		stats["downloadSpeed"] = outcome.value.downloadRate;
+		stats["uploadSpeed"] = outcome.value.uploadRate;
 		stats["sessionCount"] = 1;
 		stats["filesAdded"] = 0; // TODO:
 		stats["secondsActive"] = 0; // TODO:
-		response["torrentCount"] = torrents.size ();
-		response["pausedTorrentCount"] = numStoppedTorrents;
-		response["activeTorrentCount"] = torrents.size () - numStoppedTorrents;
+		response["torrentCount"] = outcome.value.torrentCount;
+		response["pausedTorrentCount"] = outcome.value.stopped;
+		response["activeTorrentCount"] = outcome.value.torrentCount - outcome.value.stopped;
 		response["current-stats"] = stats;
 		response["cumulative-stats"] = stats;
 		return SuccessResponse (GetTag (jsonRequest), std::move (response));
@@ -881,27 +1028,29 @@ namespace torrents
 		response["supported"] = isDHTSupported;
 		if (isDHTSupported)
 		{
-			size_t numNodes = 0, numBuckets = 0, numTorrents = 0, numHeardFrom = 0, numFailedPeers = 0;
-			boost::asio::post (m_Tunnel->GetService (),
-				boost::asio::use_future (
-					[this, &numNodes, &numBuckets, &numTorrents, &numHeardFrom, &numFailedPeers] ()
+			auto outcome = RunOnTorrentService (m_Tunnel,
+				[tunnel = m_Tunnel] ()
+				{
+					DHTStatistics stats;
+					const auto & dht = tunnel->GetDHT ();
+					if (dht)
 					{
-						const auto & dht = m_Tunnel->GetDHT ();
-						if (dht)
-						{
-							numNodes = dht->GetNumNodes ();
-							numBuckets = dht->GetNumBuckets ();
-							numTorrents = dht->GetNumTorrents ();
-							numHeardFrom = dht->GetNumHeardFrom ();
-							numFailedPeers = dht->GetNumFailedPeers ();
-						}
-					}))
-				.wait ();
-			response["numNodes"] = numNodes;
-			response["numBuckets"] = numBuckets;
-			response["numTorrents"] = numTorrents;
-			response["numHeardFrom"] = numHeardFrom;
-			response["numFailedPeers"] = numFailedPeers;
+						stats.numNodes = dht->GetNumNodes ();
+						stats.numBuckets = dht->GetNumBuckets ();
+						stats.numTorrents = dht->GetNumTorrents ();
+						stats.numHeardFrom = dht->GetNumHeardFrom ();
+						stats.numFailedPeers = dht->GetNumFailedPeers ();
+					}
+					return stats;
+				});
+			if (!outcome.success)
+				return ErrorResponse (
+					GetTag (jsonRequest), outcome.timedOut ? RPC_SERVICE_TIMEOUT_ERROR : RPC_SERVICE_FAILURE_ERROR);
+			response["numNodes"] = outcome.value.numNodes;
+			response["numBuckets"] = outcome.value.numBuckets;
+			response["numTorrents"] = outcome.value.numTorrents;
+			response["numHeardFrom"] = outcome.value.numHeardFrom;
+			response["numFailedPeers"] = outcome.value.numFailedPeers;
 		}
 		return SuccessResponse (GetTag (jsonRequest), std::move (response));
 	}
@@ -924,17 +1073,21 @@ namespace torrents
 				if (announce.empty () || announce.size () > MAX_RPC_TRACKER_LENGTH
 					|| announce.find ('\n') != std::string_view::npos)
 					return ErrorResponse (GetTag (jsonRequest), "Invalid tracker");
-				boost::asio::post (m_Tunnel->GetService (),
-					boost::asio::use_future (
-						[this, announce = std::string (announce)] () { m_Tunnel->AddTracker (announce, true); }))
-					.wait ();
+				// A timed-out task is not cancellable: it can still add the
+				// tracker, but it owns its announce string and tunnel reference.
+				auto outcome = RunOnTorrentService (m_Tunnel,
+					[tunnel = m_Tunnel, announce = std::string (announce)] () { return tunnel->AddTracker (announce, true); });
+				if (!outcome.success)
+					return ErrorResponse (
+						GetTag (jsonRequest), outcome.timedOut ? RPC_SERVICE_TIMEOUT_ERROR : RPC_SERVICE_FAILURE_ERROR);
+				if (outcome.value < 0)
+					return ErrorResponse (GetTag (jsonRequest), "Tracker is not a valid I2P announce URL");
 			}
 		}
 		boost::json::object response; // always empty
 		return SuccessResponse (GetTag (jsonRequest), std::move (response));
 	}
 
-#endif
 
 	TorrentsRPCSession::TorrentsRPCSession (TorrentsRPCServer & server, boost::asio::ip::tcp::socket && s)
 		: m_Server (server)
@@ -969,7 +1122,6 @@ namespace torrents
 			return;
 		}
 
-#ifdef JSON_SUPPORTED
 		auto path = request.target ();
 		std::string_view pathView (path.data (), path.size ());
 		auto tunnel = m_Server.GetTunnel (pathView);
@@ -1017,10 +1169,6 @@ namespace torrents
 		JSONRPCHandler jsonHandler (tunnel);
 		auto response = jsonHandler.HandleRequest (request.body ());
 		if (!response.empty ()) SendResponse (boost::beast::http::status::ok, response);
-#else
-		SendResponse (boost::beast::http::status::not_implemented,
-			std::string ("Your boost version ") + BOOST_LIB_VERSION + " is too old");
-#endif
 	}
 
 	void TorrentsRPCSession::SendResponse (boost::beast::http::status result, std::string_view data)
