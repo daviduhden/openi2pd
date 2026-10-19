@@ -95,7 +95,7 @@ int main ()
 		std::vector<std::thread> producers;
 		for (int t = 0; t < 4; t++)
 			producers.emplace_back (
-				[t, &session, &sockets, &start] ()
+				[t, &session, &sockets, &start, now] ()
 				{
 					while (!start.load ()) std::this_thread::yield ();
 					for (size_t i = 0; i < 10; i++) assert (session.EnqueueAccept (sockets[10 + t * 10 + i], now));

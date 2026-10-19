@@ -427,7 +427,10 @@ namespace torrents
 		if (dest)
 		{
 			auto dgramDest = dest->GetDatagramDestination ();
-			if (dgramDest) dgramDest->SetReceiver (std::bind_front (&TorrentsDHT::HandleDatagram, this));
+			if (dgramDest)
+				dgramDest->SetReceiver ([this] (const i2p::data::IdentityEx & from, uint16_t fromPort, uint16_t toPort,
+											const uint8_t * buf, size_t len, const i2p::util::Mapping * options)
+					{ HandleDatagram (from, fromPort, toPort, buf, len, options); });
 			if (m_DHTFileName.empty ()) m_DHTFileName = dest->GetIdentHash ().ToBase32 () + ".dht";
 		}
 		if (m_DHTFileName.empty ()) m_DHTFileName = "nodest.dht";
@@ -1329,7 +1332,8 @@ namespace torrents
 	{
 		m_DHTUpdateCheckTimer.cancel ();
 		m_DHTUpdateCheckTimer.expires_after (std::chrono::seconds (DHT_UPDATE_CHECK_INTERVAL));
-		m_DHTUpdateCheckTimer.async_wait (std::bind_front (&TorrentsDHT::HandleDHTUpdateCheckTimer, this));
+		m_DHTUpdateCheckTimer.async_wait (
+			[this] (const boost::system::error_code & ecode) { HandleDHTUpdateCheckTimer (ecode); });
 	}
 
 	void TorrentsDHT::HandleDHTUpdateCheckTimer (const boost::system::error_code & ecode)
@@ -1353,7 +1357,8 @@ namespace torrents
 	{
 		m_DHTExpirationCheckTimer.cancel ();
 		m_DHTExpirationCheckTimer.expires_after (std::chrono::seconds (DHT_EXPIRATION_CHECK_INTERVAL));
-		m_DHTExpirationCheckTimer.async_wait (std::bind_front (&TorrentsDHT::HandleDHTExpirationCheckTimer, this));
+		m_DHTExpirationCheckTimer.async_wait (
+			[this] (const boost::system::error_code & ecode) { HandleDHTExpirationCheckTimer (ecode); });
 	}
 
 	void TorrentsDHT::HandleDHTExpirationCheckTimer (const boost::system::error_code & ecode)
@@ -1416,7 +1421,8 @@ namespace torrents
 	{
 		m_DHTSendPingCheckTimer.cancel ();
 		m_DHTSendPingCheckTimer.expires_after (std::chrono::seconds (DHT_SEND_PING_CHECK_INTERVAL));
-		m_DHTSendPingCheckTimer.async_wait (std::bind_front (&TorrentsDHT::HandleDHTSendPingCheckTimer, this));
+		m_DHTSendPingCheckTimer.async_wait (
+			[this] (const boost::system::error_code & ecode) { HandleDHTSendPingCheckTimer (ecode); });
 	}
 
 	void TorrentsDHT::HandleDHTSendPingCheckTimer (const boost::system::error_code & ecode)
@@ -1437,7 +1443,8 @@ namespace torrents
 	{
 		m_DHTQueryExpirationCheckTimer.cancel ();
 		m_DHTQueryExpirationCheckTimer.expires_after (std::chrono::seconds (DHT_QUERY_EXPIRATION_CHECK_INTERVAL));
-		m_DHTQueryExpirationCheckTimer.async_wait (std::bind_front (&TorrentsDHT::DHTQueryExpirationCheckTimer, this));
+		m_DHTQueryExpirationCheckTimer.async_wait (
+			[this] (const boost::system::error_code & ecode) { DHTQueryExpirationCheckTimer (ecode); });
 	}
 
 	void TorrentsDHT::DHTQueryExpirationCheckTimer (const boost::system::error_code & ecode)
