@@ -50,7 +50,7 @@ namespace config
 		optionsRegistered = true;
 
 		options_description general ("General options");
-		general.add_options () ("help", "Show this message") ("version", "Show Open I2Pd version") ("conf",
+		general.add_options () ("help", "Show this message") ("version", "Show openi2pd version") ("conf",
 			value<std::string> ()->default_value (""),
 			"Path to main i2pd config file (default: try " path_to_file (i2pd.conf) ")") ("tunconf",
 			value<std::string> ()->default_value (""),
@@ -278,7 +278,7 @@ namespace config
 		options_description upnp ("UPnP options");
 		upnp.add_options () ("upnp.enabled", value<bool> ()->default_value (upnp_default),
 			"Enable or disable UPnP: automatic port forwarding") (
-			"upnp.name", value<std::string> ()->default_value ("I2Pd"), "Name i2pd appears in UPnP forwarding list");
+			"upnp.name", value<std::string> ()->default_value ("openi2pd"), "Name openi2pd appears in UPnP forwarding list");
 
 		options_description precomputation ("Precomputation options");
 		precomputation.add_options () ("precomputation.elgamal",
@@ -487,13 +487,13 @@ namespace config
 
 		if (!ignoreUnknown && (m_Options.count ("help") || m_Options.count ("h")))
 		{
-			std::cout << "Open I2Pd version " << I2PD_VERSION << " (" << I2P_VERSION << ")" << std::endl;
+			std::cout << "openi2pd version " << I2PD_VERSION << " (" << I2P_VERSION << ")" << std::endl;
 			std::cout << m_OptionsDesc;
 			exit (EXIT_SUCCESS);
 		}
 		else if (m_Options.count ("version"))
 		{
-			std::cout << "Open I2Pd version " << I2PD_VERSION << " (" << I2P_VERSION << ")" << std::endl;
+			std::cout << "openi2pd version " << I2PD_VERSION << " (" << I2P_VERSION << ")" << std::endl;
 			std::cout << "Boost version " << BOOST_VERSION / 100000 << "." // maj. version
 					  << BOOST_VERSION / 100 % 1000 << "." // min. version
 					  << BOOST_VERSION % 100 // patch version

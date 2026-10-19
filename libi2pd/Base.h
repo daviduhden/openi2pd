@@ -22,6 +22,8 @@ namespace i2p
 namespace data
 {
 	std::string ByteStreamToBase64 (const uint8_t * InBuffer, size_t InCount);
+	/** Span overload of ByteStreamToBase64. An empty span encodes to an empty string. */
+	std::string ByteStreamToBase64 (std::span<const uint8_t> InBuffer);
 	size_t Base64ToByteStream (std::string_view base64Str, std::span<uint8_t> outBuffer);
 	inline size_t Base64ToByteStream (std::string_view base64Str, uint8_t * outBuffer, size_t len)
 	{

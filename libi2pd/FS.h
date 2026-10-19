@@ -19,16 +19,6 @@
 #include <filesystem>
 #include <inttypes.h>
 
-#ifndef STD_FILESYSTEM
-#if (_WIN32 && __GNUG__) // MinGW GCC somehow incorrectly converts paths
-#define STD_FILESYSTEM 0
-#elif __has_include(<filesystem>) // supports std::filesystem
-#define STD_FILESYSTEM 1
-#else
-#define STD_FILESYSTEM 0
-#endif
-#endif
-
 namespace i2p
 {
 namespace fs
@@ -105,8 +95,7 @@ namespace fs
 	 *
 	 * Examples of autodetected paths:
 	 *
-	 *   Windows < Vista: C:\Documents and Settings\Username\Application Data\i2pd\
-	 *   Windows >= Vista: C:\Users\Username\AppData\Roaming\i2pd\
+	 *   Windows: C:\Users\Username\AppData\Roaming\i2pd\
 	 *   Mac: /Library/Application Support/i2pd/ or ~/Library/Application Support/i2pd/
 	 *   Unix: /var/lib/i2pd/ (system=1) >> ~/.i2pd/ or /tmp/i2pd/
 	 */
@@ -118,8 +107,7 @@ namespace fs
 	 *
 	 * Examples of autodetected paths:
 	 *
-	 *   Windows < Vista: C:\Documents and Settings\Username\Application Data\i2pd\certificates
-	 *   Windows >= Vista: C:\Users\Username\AppData\Roaming\i2pd\certificates
+	 *   Windows: C:\Users\Username\AppData\Roaming\i2pd\certificates
 	 *   Mac: /Library/Application Support/i2pd/ or ~/Library/Application Support/i2pd/certificates
 	 *   Unix: /var/lib/i2pd/certificates (system=1) >> ~/.i2pd/ or /tmp/i2pd/certificates
 	 */

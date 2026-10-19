@@ -111,15 +111,23 @@ namespace data
 		size_t InCount // Number of bytes in the input buffer
 	)
 	{
-		if (!InCount) return { };
 		if (!InBuffer) return { };
+		return ByteStreamToBase64 (std::span<const uint8_t> (InBuffer, InCount));
+	}
 
+	std::string ByteStreamToBase64 ( // base64 encoded string
+		std::span<const uint8_t> InBuffer // Input buffer, binary data
+	)
+	{
+		if (InBuffer.empty ()) return { };
+
+		const size_t InCount = InBuffer.size ();
 		const size_t n = InCount / 3;
 		const size_t m = InCount % 3;
 		std::string out;
 		out.reserve (m ? 4 * (n + 1) : 4 * n);
 
-		const uint8_t * ps = InBuffer;
+		const uint8_t * ps = InBuffer.data ();
 		for (size_t i = 0; i < n; ++i)
 		{
 			const uint8_t b0 = *ps++;

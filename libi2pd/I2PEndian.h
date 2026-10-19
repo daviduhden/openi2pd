@@ -10,65 +10,55 @@
 
 #ifndef I2PENDIAN_H__
 #define I2PENDIAN_H__
-#include <inttypes.h>
 #include <string.h>
+#include <inttypes.h>
 
-#if defined(__linux__) || defined(__OpenBSD__)
+#ifdef _WIN32
+// The Windows SDK has no endian(3) header. C++23 provides the byte-swap
+// primitive without compiler-specific intrinsics.
+#include <bit>
+
+namespace i2p
+{
+namespace endian
+{
+	static_assert (std::endian::native == std::endian::little || std::endian::native == std::endian::big,
+		"mixed-endian hosts are not supported");
+
+	template <typename T> constexpr T ToBig (T value)
+	{
+		if constexpr (std::endian::native == std::endian::big)
+			return value;
+		else
+			return std::byteswap (value);
+	}
+
+	template <typename T> constexpr T ToLittle (T value)
+	{
+		if constexpr (std::endian::native == std::endian::little)
+			return value;
+		else
+			return std::byteswap (value);
+	}
+} // namespace endian
+} // namespace i2p
+
+#define htobe16(x) i2p::endian::ToBig<uint16_t> (x)
+#define htole16(x) i2p::endian::ToLittle<uint16_t> (x)
+#define be16toh(x) i2p::endian::ToBig<uint16_t> (x)
+#define le16toh(x) i2p::endian::ToLittle<uint16_t> (x)
+
+#define htobe32(x) i2p::endian::ToBig<uint32_t> (x)
+#define htole32(x) i2p::endian::ToLittle<uint32_t> (x)
+#define be32toh(x) i2p::endian::ToBig<uint32_t> (x)
+#define le32toh(x) i2p::endian::ToLittle<uint32_t> (x)
+
+#define htobe64(x) i2p::endian::ToBig<uint64_t> (x)
+#define htole64(x) i2p::endian::ToLittle<uint64_t> (x)
+#define be64toh(x) i2p::endian::ToBig<uint64_t> (x)
+#define le64toh(x) i2p::endian::ToLittle<uint64_t> (x)
+#else
 #include <endian.h>
-
-#elif defined(_WIN32)
-#if defined(_MSC_VER)
-#include <stdlib.h>
-#define htobe16(x) _byteswap_ushort (x)
-#define htole16(x) (x)
-#define be16toh(x) _byteswap_ushort (x)
-#define le16toh(x) (x)
-
-#define htobe32(x) _byteswap_ulong (x)
-#define htole32(x) (x)
-#define be32toh(x) _byteswap_ulong (x)
-#define le32toh(x) (x)
-
-#define htobe64(x) _byteswap_uint64 (x)
-#define htole64(x) (x)
-#define be64toh(x) _byteswap_uint64 (x)
-#define le64toh(x) (x)
-#else
-#define htobe16(x) __builtin_bswap16 (x)
-#define htole16(x) (x)
-#define be16toh(x) __builtin_bswap16 (x)
-#define le16toh(x) (x)
-
-#define htobe32(x) __builtin_bswap32 (x)
-#define htole32(x) (x)
-#define be32toh(x) __builtin_bswap32 (x)
-#define le32toh(x) (x)
-
-#define htobe64(x) __builtin_bswap64 (x)
-#define htole64(x) (x)
-#define be64toh(x) __builtin_bswap64 (x)
-#define le64toh(x) (x)
-#endif
-
-#else
-#define NEEDS_LOCAL_ENDIAN
-#include <cstdint>
-uint16_t htobe16 (uint16_t int16);
-uint32_t htobe32 (uint32_t int32);
-uint64_t htobe64 (uint64_t int64);
-
-uint16_t be16toh (uint16_t big16);
-uint32_t be32toh (uint32_t big32);
-uint64_t be64toh (uint64_t big64);
-
-// assume LittleEndian
-#define htole16
-#define htole32
-#define htole64
-#define le16toh
-#define le32toh
-#define le64toh
-
 #endif
 
 inline uint16_t buf16toh (const void * buf)

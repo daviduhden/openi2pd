@@ -22,13 +22,8 @@
 #include "Log.h"
 #include "Garlic.h"
 
-#if STD_FILESYSTEM
 #include <filesystem>
 namespace fs_lib = std::filesystem;
-#else
-#include <boost/filesystem.hpp>
-namespace fs_lib = boost::filesystem;
-#endif
 
 namespace i2p
 {
@@ -98,7 +93,7 @@ namespace fs
 			{
 #ifdef WIN32_APP
 				MessageBox (
-					NULL, TEXT ("Unable to get common AppData path!"), TEXT ("I2Pd: error"), MB_ICONERROR | MB_OK);
+					NULL, TEXT ("Unable to get common AppData path!"), TEXT ("openi2pd: error"), MB_ICONERROR | MB_OK);
 #else
 				fprintf (stderr, "Error: Unable to get common AppData path!");
 #endif
@@ -123,7 +118,7 @@ namespace fs
 		if (!GetModuleFileNameW (NULL, localAppData, MAX_PATH))
 		{
 #ifdef WIN32_APP
-			MessageBox (NULL, TEXT ("Unable to get application path!"), TEXT ("I2Pd: error"), MB_ICONERROR | MB_OK);
+			MessageBox (NULL, TEXT ("Unable to get application path!"), TEXT ("openi2pd: error"), MB_ICONERROR | MB_OK);
 #else
 			fprintf (stderr, "Error: Unable to get application path!");
 #endif
@@ -141,7 +136,7 @@ namespace fs
 				if (SHGetFolderPathW (NULL, CSIDL_APPDATA, NULL, 0, localAppData) != S_OK)
 				{
 #ifdef WIN32_APP
-					MessageBox (NULL, TEXT ("Unable to get AppData path!"), TEXT ("I2Pd: error"), MB_ICONERROR | MB_OK);
+					MessageBox (NULL, TEXT ("Unable to get AppData path!"), TEXT ("openi2pd: error"), MB_ICONERROR | MB_OK);
 #else
 					fprintf (stderr, "Error: Unable to get AppData path!");
 #endif
@@ -231,22 +226,16 @@ namespace fs
 	uint32_t GetLastUpdateTime (const std::string & path)
 	{
 		if (!fs_lib::exists (path)) return 0;
-#if STD_FILESYSTEM
 		std::error_code ec;
 		auto t = std::filesystem::last_write_time (path, ec);
 		if (ec) return 0;
-#if __cpp_lib_chrono >= 201907L // std::chrono::clock_cast
+#if __cpp_lib_chrono >= 201907L // std::chrono::clock_cast (OpenBSD libc++ gap)
 		const auto sctp = std::chrono::clock_cast<std::chrono::system_clock> (t);
 #else
 		const auto sctp = std::chrono::time_point_cast<std::chrono::system_clock::duration> (
 			t - decltype (t)::clock::now () + std::chrono::system_clock::now ());
 #endif
 		return std::chrono::system_clock::to_time_t (sctp);
-#else
-		boost::system::error_code ec;
-		auto t = boost::filesystem::last_write_time (path, ec);
-		return ec ? 0 : t;
-#endif
 	}
 
 	bool Remove (const std::string & path)
