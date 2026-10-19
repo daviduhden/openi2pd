@@ -127,7 +127,7 @@ int main ()
 		auto future = received->get_future ();
 		std::vector<uint8_t> buffer (64);
 		receiver.async_receive (boost::asio::buffer (buffer),
-			[received, buffer = std::move (buffer)] (const boost::system::error_code & ec, std::size_t len) mutable
+			[received, buffer] (const boost::system::error_code & ec, std::size_t len) mutable
 			{
 				if (ec)
 					received->set_value ({ });

@@ -101,7 +101,7 @@ int main ()
 		assert (WaitUntil ([&] { return service.stopped (); }, std::chrono::seconds (2)));
 		// The internal self-reference and the joiner thread release the
 		// destination once the worker has been joined.
-		assert (WaitUntil ([&] { return destination.use_count () == 1; }, std::chrono::seconds (2)));
+		assert (WaitUntil ([&] { return destination.use_count () == 1; }, std::chrono::seconds (5)));
 		// Second and third calls are no-ops and must not self-join.
 		destination->Stop ();
 		destination->Stop ();

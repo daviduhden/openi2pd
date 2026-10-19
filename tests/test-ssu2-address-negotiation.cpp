@@ -157,8 +157,13 @@ int main ()
 	ExpectAccepted (keys, "", "2", "4,3", 4, true);
 
 	// ML-KEM-768 needs 1318 bytes on IPv4. A lower published MTU must select
-	// the ML-KEM-512 version (3) rather than version 4.
+	// the ML-KEM-512 version (3) rather than version 4. LibreSSL does not
+	// provide ML-KEM-512, so its only valid fallback is base version 2.
+#ifdef LIBRESSL_VERSION_NUMBER
+	ExpectAccepted (keys, "1317", "2", "4,3", 2, true);
+#else
 	ExpectAccepted (keys, "1317", "2", "4,3", 3, true);
+#endif
 	ExpectAccepted (keys, "1318", "2", "4,3", 4, true);
 
 	// pq=4 without a usable lower version cannot select Q4; the base SSU2

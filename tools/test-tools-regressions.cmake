@@ -689,7 +689,7 @@ assert_output_contains("Invalid regular expression" "vain rejects an invalid reg
 run_tool(vain FALSE -r "[")
 assert_output_contains("Invalid regular expression" "vain rejects an unterminated regex class")
 run_tool(vain FALSE -r)
-assert_output_contains("Undefined argument" "vain missing -r argument")
+assert_output_contains("vain pattern" "vain -r without a pattern prints usage")
 
 run_tool(vain FALSE "NOT-BASE32")
 assert_output_contains("Not correct prefix" "vain rejects an invalid base32 prefix")

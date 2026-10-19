@@ -39,6 +39,7 @@ namespace util
 	public:
 		MemoryPool ()
 			: m_Head (nullptr)
+			, m_Size (0)
 		{
 		}
 		~MemoryPool () { CleanUp (); }
@@ -50,6 +51,7 @@ namespace util
 			// thread reads or writes it
 			auto head = m_Head;
 			m_Head = nullptr;
+			m_Size = 0;
 			CleanUp (head);
 		}
 
@@ -61,6 +63,7 @@ namespace util
 			{
 				auto tmp = m_Head;
 				m_Head = static_cast<T *> (*(void **)m_Head); // next
+				--m_Size;
 				return new (tmp) T (std::forward<TArgs> (args)...);
 			}
 		}
@@ -69,7 +72,15 @@ namespace util
 		{
 			if (!t) return;
 			t->~T ();
+			// The pool is a cache, not an unbounded allocator. A long-lived
+			// parser must not retain every discarded RouterInfo/Buffer.
+			if (m_Size >= MAX_CACHED)
+			{
+				::operator delete ((void *)t);
+				return;
+			}
 			Splice (t);
+			++m_Size;
 		}
 
 		template <typename... TArgs> std::unique_ptr<T, std::function<void (T *)>> AcquireUnique (TArgs &&... args)
@@ -108,7 +119,9 @@ namespace util
 		}
 
 	protected:
+		static constexpr size_t MAX_CACHED = 256;
 		T * m_Head;
+		size_t m_Size;
 	};
 
 	template <class T> class MemoryPoolMt : private MemoryPool<T>
@@ -130,39 +143,33 @@ namespace util
 		void ReleaseMt (T * t)
 		{
 			if (!t) return;
-			t->~T ();
 			std::lock_guard<std::mutex> l (m_Mutex);
-			this->Splice (t);
+			this->Release (t);
 		}
 
 		void ReleaseMt (T ** arr, size_t num)
 		{
 			if (!arr || !num) return;
-			T * first = nullptr;
+			// Bulk releases are uncommon; free them directly rather than
+			// bypassing the bounded single-object cache accounting.
 			for (size_t i = 0; i < num; i++)
 			{
 				T * t = arr[i];
+				if (!t) continue;
 				t->~T ();
-				*(void **)t = first;
-				first = t;
+				::operator delete ((void *)t);
 			}
-			std::lock_guard<std::mutex> l (m_Mutex);
-			this->Splice (first, arr[0]);
 		}
 
 		template <template <typename, typename...> class C, typename... R> void ReleaseMt (const C<T *, R...> & c)
 		{
-			if (c.empty ()) return;
-			T * first = nullptr;
 			for (auto & it : c)
 			{
 				T * t = it;
+				if (!t) continue;
 				t->~T ();
-				*(void **)t = first;
-				first = t;
+				::operator delete ((void *)t);
 			}
-			std::lock_guard<std::mutex> l (m_Mutex);
-			this->Splice (first, *(c.begin ()));
 		}
 
 		template <typename... TArgs> std::shared_ptr<T> AcquireSharedMt (TArgs &&... args)
@@ -178,6 +185,7 @@ namespace util
 				std::lock_guard<std::mutex> l (m_Mutex);
 				head = this->m_Head;
 				this->m_Head = nullptr;
+				this->m_Size = 0;
 			}
 			if (head) this->CleanUp (head);
 		}
