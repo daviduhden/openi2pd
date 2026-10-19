@@ -30,11 +30,15 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
           persist-credentials: false
+      - name: Install latest build tools from Homebrew
+        uses: ./.github/actions/brew-toolchain
+        with:
+          compilers: 'false'
       - name: Install static validators
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends \
-            cmake shellcheck systemd
+            shellcheck systemd
       - name: Validate service contracts and shell syntax
         run: |
           cmake -DPROJECT_ROOT="$PWD" -P tests/check-services.cmake
@@ -64,7 +68,7 @@ jobs:
       - name: Validate DEP-8 control metadata
         run: |
           sudo apt-get install -y --no-install-recommends autopkgtest
-          autopkgtest -V
+          autopkgtest --version
 
   debian:
     name: Debian packages

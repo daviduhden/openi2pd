@@ -118,7 +118,7 @@ endforeach()
 # Dependency floors and removed compatibility branches are part of the
 # maintained contract. These are compile-free source checks.
 foreach(required IN ITEMS "OpenSSL 3.0.2" "LibreSSL 4.0" "I2PD_LIBRESSL_VERSION" "LIBRESSL_VERSION_TEXT"
-    "MiniUPnPc 2.2.6")
+    "Expected.h lives in libi2pd" "MiniUPnPc 2.2.6")
   string(FIND "${top_cmake_text}" "${required}" position)
   if(position EQUAL -1)
     message(FATAL_ERROR "CMake is missing dependency-floor marker '${required}'")

@@ -158,16 +158,25 @@ find_package(OpenSSL REQUIRED)
 # current LibreSSL. Read the project-specific version text from the selected
 # headers instead of treating that compatibility value as the library version.
 set(I2PD_LIBRESSL_VERSION "")
-if(OPENSSL_INCLUDE_DIR AND EXISTS "${OPENSSL_INCLUDE_DIR}/openssl/opensslv.h")
-  file(STRINGS "${OPENSSL_INCLUDE_DIR}/openssl/opensslv.h" _i2pd_libressl_version_line
-    REGEX "^#[\t ]*define[\t ]+LIBRESSL_VERSION_TEXT[\t ]+\"LibreSSL ([0-9]+\\.[0-9]+)\"")
+set(_i2pd_openssl_include_dir "${OPENSSL_INCLUDE_DIR}")
+if(NOT EXISTS "${_i2pd_openssl_include_dir}/openssl/opensslv.h")
+  find_path(_i2pd_openssl_include_dir openssl/opensslv.h
+    HINTS "${OPENSSL_INCLUDE_DIR}")
+endif()
+if(_i2pd_openssl_include_dir AND EXISTS "${_i2pd_openssl_include_dir}/openssl/opensslv.h")
+  file(STRINGS "${_i2pd_openssl_include_dir}/openssl/opensslv.h" _i2pd_libressl_version_line
+    REGEX "LIBRESSL_VERSION_TEXT")
   if(_i2pd_libressl_version_line)
-    string(REGEX REPLACE
-      "^.*LIBRESSL_VERSION_TEXT[\t ]+\"LibreSSL ([0-9]+\\.[0-9]+)\".*$"
-      "\\1" I2PD_LIBRESSL_VERSION "${_i2pd_libressl_version_line}")
+    string(REGEX MATCH "LibreSSL ([0-9]+\\.[0-9]+)" _i2pd_libressl_version_match
+      "${_i2pd_libressl_version_line}")
+    if(CMAKE_MATCH_1)
+      set(I2PD_LIBRESSL_VERSION "${CMAKE_MATCH_1}")
+    endif()
+    unset(_i2pd_libressl_version_match)
   endif()
   unset(_i2pd_libressl_version_line)
 endif()
+unset(_i2pd_openssl_include_dir)
 if(I2PD_LIBRESSL_VERSION)
   if(I2PD_LIBRESSL_VERSION VERSION_LESS 4.0)
     message(FATAL_ERROR "LibreSSL 4.0 or newer is required (found LibreSSL ${I2PD_LIBRESSL_VERSION})")
@@ -186,6 +195,11 @@ elseif(OPENSSL_VERSION MATCHES "^([0-9]+\\.[0-9]+\\.[0-9]+)")
   endif()
 else()
   message(FATAL_ERROR "Unable to determine OpenSSL/LibreSSL version from '${OPENSSL_VERSION}'")
+endif()
+if(I2PD_LIBRESSL_VERSION)
+  message(STATUS "OpenSSL library    : LibreSSL ${I2PD_LIBRESSL_VERSION} (compatibility ${OPENSSL_VERSION})")
+else()
+  message(STATUS "OpenSSL library    : ${OPENSSL_VERSION}")
 endif()
 find_package(ZLIB 1.2.11 REQUIRED)
 
@@ -376,8 +390,10 @@ if(PRIVSEP_SOURCES AND NOT ANDROID)
   add_library(i2pd_privsep STATIC ${PRIVSEP_SOURCES})
   set_target_properties(i2pd_privsep PROPERTIES PREFIX "" POSITION_INDEPENDENT_CODE ON)
   target_compile_features(i2pd_privsep PRIVATE cxx_std_23)
+  # Expected.h lives in libi2pd and is shared by the IPC targets.
   target_include_directories(i2pd_privsep PRIVATE
     "${PROJECT_ROOT}"
+    "${LIBI2PD_DIR}"
     "${DAEMON_DIR}"
     "${LANG_DIR}"
   )

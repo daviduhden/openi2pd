@@ -1,0 +1,73 @@
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: latest Homebrew toolchain.
+#
+# Installs the newest GCC, LLVM, CMake and Ninja available from Homebrew on
+# Linux and exposes stable command names through a per-run toolchain bin.
+# Project libraries remain the distribution packages so the tests exercise
+# the same ABI as normal Linux builds.
+#
+---
+name: Latest Homebrew toolchain
+description: Install latest GCC, LLVM, CMake and Ninja from Homebrew on Linux.
+inputs:
+  compilers:
+    description: Install and expose GCC and LLVM as well as CMake/Ninja.
+    required: false
+    default: 'true'
+runs:
+  using: composite
+  steps:
+    - name: Install latest toolchain
+      shell: bash
+      env:
+        INSTALL_COMPILERS: ${{ inputs.compilers }}
+      run: |
+        set -euo pipefail
+        if [ ! -x /home/linuxbrew/.linuxbrew/bin/brew ]; then
+          echo 'Homebrew is not available at /home/linuxbrew/.linuxbrew/bin/brew' >&2
+          exit 1
+        fi
+        eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+        export HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_CLEANUP=1
+        brew update
+        packages='cmake ninja'
+        if [ "$INSTALL_COMPILERS" = 'true' ]; then
+          packages="$packages gcc llvm"
+        fi
+        # Install first, then upgrade so a formula preinstalled in the runner
+        # image is replaced with the current Homebrew bottle. Query each
+        # formula explicitly: an unconditional upgrade exits non-zero when a
+        # selected package is already current.
+        brew install $packages
+        for package in $packages; do
+          if brew outdated --quiet "$package" | grep -qx "$package"; then
+            brew upgrade "$package"
+          fi
+        done
+
+        prefix="$(brew --prefix)"
+        toolchain_bin="${RUNNER_TEMP}/openi2pd-toolchain/bin"
+        mkdir -p "$toolchain_bin"
+        ln -sfn "${prefix}/bin/cmake" "${toolchain_bin}/cmake"
+        ln -sfn "${prefix}/bin/ninja" "${toolchain_bin}/ninja"
+
+        if [ "$INSTALL_COMPILERS" = 'true' ]; then
+          gcc_prefix="$(brew --prefix gcc)"
+          llvm_prefix="$(brew --prefix llvm)"
+          gcc_version="$(brew list --versions gcc | awk '{print $2}' | cut -d. -f1)"
+          if [ -z "$gcc_version" ]; then
+            echo 'Unable to determine the installed GCC major version' >&2
+            exit 1
+          fi
+          ln -sfn "${gcc_prefix}/bin/gcc-${gcc_version}" "${toolchain_bin}/gcc"
+          ln -sfn "${gcc_prefix}/bin/g++-${gcc_version}" "${toolchain_bin}/g++"
+          ln -sfn "${llvm_prefix}/bin/clang" "${toolchain_bin}/clang"
+          ln -sfn "${llvm_prefix}/bin/clang++" "${toolchain_bin}/clang++"
+          {
+            echo "LD_LIBRARY_PATH=${gcc_prefix}/lib64:${gcc_prefix}/lib:${llvm_prefix}/lib:${LD_LIBRARY_PATH:-}"
+          } >> "$GITHUB_ENV"
+        fi
+
+        echo "${toolchain_bin}" >> "$GITHUB_PATH"

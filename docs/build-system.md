@@ -214,7 +214,10 @@ service/sandbox files and validation notes are in
   directly.
 - The Windows helper builds with CMake/Ninja; the Windows XP path was removed.
 - CI workflows use Ninja explicitly and remain **manual-only**
-  (`workflow_dispatch`) during the refactoring.
+  (`workflow_dispatch`) during the refactoring. Linux native, sanitizer and
+  fuzz jobs install the latest GCC, LLVM, CMake and Ninja from Homebrew; the
+  Debian package job deliberately retains the distribution toolchain so the
+  produced package is validated against its declared build environment.
 
 ## Static build-system validation
 

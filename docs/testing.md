@@ -122,14 +122,17 @@ running router and `nc`.
 - Linux Clang and GCC: complete build, full CTest, per-label inventory
   (`i2p`, `security`, `memory`, `ipc`, `tui`, `torrent`, `tools`, `perl`,
   `interop`, `platform`, `android`), version, Perl, branding and static
-  interoperability checks.
+  interoperability checks. GCC, LLVM, CMake and Ninja come from Homebrew so
+  the manual runs use the current toolchains; Boost, OpenSSL/LibreSSL, zlib,
+  MiniUPnPc and ncurses remain the distribution libraries.
 - Android: Java 25 guard, English-only resource/locale static check, Gradle unit tests, Lint, native arm64 JNI link and
   an arm64 debug APK build.
 - Interop: pinned Java tag/commit/read-only check plus fixture provenance.
-- Sanitizers: separate ASan+UBSan and TSan builds with the full CTest suite.
+- Sanitizers: separate ASan+UBSan and TSan builds with the full CTest suite,
+  using the current Homebrew Clang.
 
-`.github/workflows/fuzz.yml` builds all eight libFuzzer targets and runs a
-bounded smoke pass for each. `.github/workflows/build-windows.yml` runs the
+`.github/workflows/fuzz.yml` uses the current Homebrew Clang, builds all eight
+libFuzzer targets and runs a bounded smoke pass for each. `.github/workflows/build-windows.yml` runs the
 complete MSYS2/Clang64 target graph and CTest suite; the MSVC job remains
 TUI/API-focused. `.github/workflows/build-openbsd.yml` runs the complete
 OpenBSD CTest suite.

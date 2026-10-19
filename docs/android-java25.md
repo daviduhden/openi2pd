@@ -182,7 +182,7 @@ Exact command:
 ```sh
 JAVA_HOME=/path/to/jdk25 \
 R8_JAR=/path/to/r8.jar \
-ANDROID_JAR=/path/to/android-sdk/platforms/android-37/android.jar \
+ANDROID_JAR=/path/to/android-sdk/platforms/android-37.0/android.jar \
 ./android/tools/java25-probe/verify-java25.sh
 ```
 
