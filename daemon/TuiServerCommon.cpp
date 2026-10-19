@@ -12,6 +12,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <exception>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -19,6 +20,7 @@
 #include <vector>
 
 #include "ClientContext.h"
+#include "Config.h"
 #include "Expected.h"
 #include "Log.h"
 #include "NetDb.hpp"
@@ -87,12 +89,13 @@ namespace tui
 			AppendField (payload, "protocol", PROTOCOL_VERSION);
 			AppendField (payload, "router.version", VERSION);
 			AppendField (payload, "router.hash", i2p::context.GetRouterInfo ().GetIdentHashBase64 ());
-			AppendField (payload, "router.caps", i2p::context.GetRouterInfo ().GetProperty ("caps"));
+			AppendField (payload, "router.caps", i2p::context.GetRouterInfoProperty ("caps"));
 			AppendField (payload, "router.netid", i2p::context.GetNetID ());
 			AppendField (payload, "router.floodfill", i2p::context.IsFloodfill ());
 			AppendField (payload, "router.accepts_tunnels", i2p::context.AcceptsTunnels ());
 			AppendField (payload, "router.uptime", i2p::context.GetUptime ());
 			AppendField (payload, "router.bandwidth_limit", i2p::context.GetBandwidthLimit ());
+			AppendField (payload, "log.level", static_cast<int> (i2p::log::Logger ().GetLogLevel ()));
 
 			AppendField (payload, "network.v4", i2p::context.SupportsV4 ());
 			AppendField (payload, "network.v6", i2p::context.SupportsV6 ());
@@ -116,6 +119,7 @@ namespace tui
 			AppendField (payload, "traffic.sent", transports.GetTotalSentBytes ());
 			AppendField (payload, "traffic.transit", transports.GetTotalTransitTransmittedBytes ());
 			AppendField (payload, "peers.count", transports.GetNumPeers ());
+			AppendField (payload, "connections.count", transports.GetNumConnectedPeers ());
 
 			const auto & tunnels = i2p::tunnel::tunnels;
 			AppendField (payload, "tunnels.inbound", tunnels.CountInboundTunnels ());
@@ -133,22 +137,52 @@ namespace tui
 			return payload;
 		}
 
+		std::string TransportNames (uint8_t transports)
+		{
+			std::string names;
+			auto append = [&names] (const char * name)
+			{
+				if (!names.empty ()) names.push_back (',');
+				names.append (name);
+			};
+			if (transports & i2p::data::RouterInfo::eNTCP2V4) append ("NTCP2v4");
+			if (transports & i2p::data::RouterInfo::eNTCP2V6) append ("NTCP2v6");
+			if (transports & i2p::data::RouterInfo::eSSU2V4) append ("SSU2v4");
+			if (transports & i2p::data::RouterInfo::eSSU2V6) append ("SSU2v6");
+			if (transports & i2p::data::RouterInfo::eNTCP2V6Mesh) append ("Mesh");
+			return names.empty () ? std::string ("none") : names;
+		}
+
+		void AppendPeerSnapshot (std::string & payload, std::string_view field, const i2p::transport::PeerSnapshot & peer)
+		{
+			std::string value = peer.ident.ToBase64 ();
+			value.push_back ('|');
+			value.append (std::to_string (peer.numAttempts));
+			value.push_back ('|');
+			value.append (std::to_string (peer.numSessions));
+			value.push_back ('|');
+			value.append (std::to_string (peer.transports));
+			value.push_back ('|');
+			value.push_back (peer.isHighBandwidth ? '1' : '0');
+			value.push_back ('|');
+			value.append (TransportNames (peer.transports));
+			AppendField (payload, field, value);
+		}
+
 		std::string BuildPeers (uint32_t limit)
 		{
 			std::string payload;
 			for (const auto & peer : i2p::transport::transports.GetPeersSnapshot (limit))
-			{
-				std::string value = peer.ident.ToBase64 ();
-				value.push_back ('|');
-				value.append (std::to_string (peer.numAttempts));
-				value.push_back ('|');
-				value.append (std::to_string (peer.numSessions));
-				value.push_back ('|');
-				value.append (std::to_string (peer.transports));
-				value.push_back ('|');
-				value.push_back (peer.isHighBandwidth ? '1' : '0');
-				AppendField (payload, "peer", value);
-			}
+				AppendPeerSnapshot (payload, "peer", peer);
+			return payload;
+		}
+
+		std::string BuildConnections (uint32_t limit)
+		{
+			std::string payload;
+			const auto peers = i2p::transport::transports.GetConnectedPeersSnapshot (limit);
+			AppendField (payload, "connections.count", peers.size ());
+			for (const auto & peer : peers) AppendPeerSnapshot (payload, "connection", peer);
 			return payload;
 		}
 
@@ -197,6 +231,85 @@ namespace tui
 			return payload;
 		}
 
+		std::string BuildNetDbRouters (uint32_t limit)
+		{
+			std::string payload;
+			const auto routers = i2p::data::netdb.GetRouterInfosSnapshot (limit);
+			AppendField (payload, "netdb.routers.listed", routers.size ());
+			for (const auto & router : routers)
+			{
+				std::string value = router->GetIdentHash ().ToBase64 ();
+				value.push_back ('|');
+				value.append (std::to_string (router->GetVersion ()));
+				value.push_back ('|');
+				value.append (std::to_string (router->GetCaps ()));
+				value.push_back ('|');
+				value.push_back (router->IsFloodfill () ? '1' : '0');
+				value.push_back ('|');
+				value.push_back (router->IsV4 () ? '1' : '0');
+				value.push_back ('|');
+				value.push_back (router->IsV6 () ? '1' : '0');
+				value.push_back ('|');
+				value.append (std::to_string (router->GetTimestamp ()));
+				value.push_back ('|');
+				value.push_back (router->IsUnreachable () ? '0' : '1');
+				AppendField (payload, "netdb.router", value);
+			}
+			return payload;
+		}
+
+		std::string BuildNetDbLeaseSets (uint32_t limit)
+		{
+			std::string payload;
+			const auto leaseSets = i2p::data::netdb.GetLeaseSetsSnapshot (limit);
+			AppendField (payload, "netdb.leasesets.listed", leaseSets.size ());
+			for (const auto & [ident, leaseSet] : leaseSets)
+			{
+				if (!leaseSet) continue;
+				std::string value = ident.ToBase64 ();
+				value.push_back ('|');
+				value.append (std::to_string (leaseSet->GetStoreType ()));
+				value.push_back ('|');
+				value.append (std::to_string (leaseSet->GetExpirationTime ()));
+				value.push_back ('|');
+				value.append (std::to_string (leaseSet->GetEarliestLeaseDate ()));
+				value.push_back ('|');
+				value.push_back (leaseSet->IsValid () ? '1' : '0');
+				value.push_back ('|');
+				value.push_back (leaseSet->IsExpired () ? '1' : '0');
+				AppendField (payload, "netdb.leaseset", value);
+			}
+			return payload;
+		}
+
+		std::string BuildAdminTransit (bool enabled)
+		{
+			// RouterContext::m_AcceptsTunnels is atomic. Changing it from the
+			// IPC thread does not mutate RouterInfo, tunnel pools or NetDb;
+			// it only controls whether future transit requests are accepted.
+			i2p::context.SetAcceptsTunnels (enabled);
+			LogPrint (eLogInfo, "TUI: transit tunnels ", enabled ? "enabled" : "disabled");
+			std::string payload;
+			AppendField (payload, "admin", "transit");
+			AppendField (payload, "result", "ok");
+			AppendField (payload, "transit", enabled);
+			AppendField (payload, "message", enabled ? "transit tunnels enabled" : "transit tunnels disabled");
+			return payload;
+		}
+
+		std::string BuildAdminLogLevel (std::string_view level)
+		{
+			// Log::SetLogLevel only updates an atomic minimum level. No file,
+			// sink or logging thread state is mutated on the IPC thread.
+			i2p::log::Logger ().SetLogLevel (std::string (level));
+			std::string payload;
+			AppendField (payload, "admin", "loglevel");
+			AppendField (payload, "result", "ok");
+			AppendField (payload, "loglevel", level);
+			AppendField (payload, "message", "daemon log level set to " + std::string (level));
+			return payload;
+		}
+
 		std::string BuildDestinations ()
 		{
 			std::string payload;
@@ -210,6 +323,156 @@ namespace tui
 				value.append (hash.ToBase64 ());
 				AppendField (payload, "destination", value);
 			}
+			return payload;
+		}
+
+		enum class ConfigValueKind
+		{
+			Bool,
+			Int,
+			UInt16,
+			UInt32,
+			String
+		};
+
+		struct ConfigOptionDescriptor
+		{
+			const char * name;
+			ConfigValueKind kind;
+		};
+
+		// Deliberately small and explicit. Nothing that can contain a key,
+		// credential, arbitrary filesystem path or URL is included, and the
+		// snapshot never exposes a generic option lookup. Adding an entry is
+		// a protocol change that must stay bounded and documented.
+		constexpr ConfigOptionDescriptor CONFIG_OPTIONS[] = {
+			{ "bandwidth", ConfigValueKind::String },
+			{ "share", ConfigValueKind::Int },
+			{ "netid", ConfigValueKind::Int },
+			{ "floodfill", ConfigValueKind::Bool },
+			{ "notransit", ConfigValueKind::Bool },
+			{ "nat", ConfigValueKind::Bool },
+			{ "ipv4", ConfigValueKind::Bool },
+			{ "ipv6", ConfigValueKind::Bool },
+			{ "port", ConfigValueKind::UInt16 },
+			{ "loglevel", ConfigValueKind::String },
+			{ "logclftime", ConfigValueKind::Bool },
+			{ "family", ConfigValueKind::String },
+			{ "reservedrange", ConfigValueKind::Bool },
+			{ "stan", ConfigValueKind::Bool },
+			{ "ntcp2.enabled", ConfigValueKind::Bool },
+			{ "ntcp2.published", ConfigValueKind::Bool },
+			{ "ntcp2.port", ConfigValueKind::UInt16 },
+			{ "ssu2.enabled", ConfigValueKind::Bool },
+			{ "ssu2.published", ConfigValueKind::Bool },
+			{ "ssu2.port", ConfigValueKind::UInt16 },
+			{ "ssu2.firewalled4", ConfigValueKind::Bool },
+			{ "ssu2.firewalled6", ConfigValueKind::Bool },
+			{ "upnp.enabled", ConfigValueKind::Bool },
+			{ "nettime.enabled", ConfigValueKind::Bool },
+			{ "reseed.verify", ConfigValueKind::Bool },
+			{ "addressbook.enabled", ConfigValueKind::Bool },
+			{ "persist.profiles", ConfigValueKind::Bool },
+			{ "persist.addressbook", ConfigValueKind::Bool },
+			{ "tui.enabled", ConfigValueKind::Bool },
+			{ "limits.transittunnels", ConfigValueKind::UInt32 },
+		};
+
+		constexpr size_t CONFIG_OPTION_COUNT = sizeof (CONFIG_OPTIONS) / sizeof (CONFIG_OPTIONS[0]);
+		static_assert (CONFIG_OPTION_COUNT <= MAX_CONFIG_RECORDS_PER_REQUEST,
+			"TUI configuration allowlist exceeds protocol limit");
+
+		std::string_view ConfigTypeName (ConfigValueKind kind)
+		{
+			switch (kind)
+			{
+			case ConfigValueKind::Bool: return "bool";
+			case ConfigValueKind::Int: return "int";
+			case ConfigValueKind::UInt16: return "uint16";
+			case ConfigValueKind::UInt32: return "uint32";
+			case ConfigValueKind::String: return "string";
+			default: return "string";
+			}
+		}
+
+		std::string SanitizeConfigValue (std::string_view value)
+		{
+			const auto length = std::min (value.size (), MAX_CONFIG_VALUE_LENGTH);
+			std::string result;
+			result.reserve (length);
+			for (size_t i = 0; i < length; ++i)
+			{
+				const auto byte = static_cast<unsigned char> (value[i]);
+				result.push_back (byte < 0x20 || byte == 0x7F ? ' ' : value[i]);
+			}
+			return result;
+		}
+
+		std::string BuildConfig ()
+		{
+			std::string payload;
+			payload.reserve (4096);
+			AppendField (payload, "config.schema", 1);
+			// Version 1 can only read the effective startup configuration.
+			// Writes need validation and a main-loop command queue.
+			AppendField (payload, "config.readonly", true);
+
+			size_t index = 0;
+			auto append = [&payload, &index] (const char * name, ConfigValueKind kind, std::string_view value)
+			{
+				if (index >= MAX_CONFIG_RECORDS_PER_REQUEST) return;
+				const auto prefix = "config.option." + std::to_string (index);
+				AppendField (payload, prefix + ".name", name);
+				AppendField (payload, prefix + ".type", ConfigTypeName (kind));
+				AppendField (payload, prefix + ".value", value);
+				++index;
+			};
+
+			for (const auto & option : CONFIG_OPTIONS)
+			{
+				switch (option.kind)
+				{
+				case ConfigValueKind::Bool:
+				{
+					bool value = false;
+					i2p::config::GetOption (option.name, value);
+					append (option.name, option.kind, value ? "1" : "0");
+					break;
+				}
+				case ConfigValueKind::Int:
+				{
+					int value = 0;
+					i2p::config::GetOption (option.name, value);
+					append (option.name, option.kind, std::to_string (value));
+					break;
+				}
+				case ConfigValueKind::UInt16:
+				{
+					uint16_t value = 0;
+					i2p::config::GetOption (option.name, value);
+					append (option.name, option.kind, std::to_string (value));
+					break;
+				}
+				case ConfigValueKind::UInt32:
+				{
+					uint32_t value = 0;
+					i2p::config::GetOption (option.name, value);
+					append (option.name, option.kind, std::to_string (value));
+					break;
+				}
+				case ConfigValueKind::String:
+				{
+					std::string value;
+					i2p::config::GetOption (option.name, value);
+					append (option.name, option.kind, SanitizeConfigValue (value));
+					break;
+				}
+				}
+			}
+
+			// Report what was actually emitted, not the compile-time array
+			// size, so a future bound regression stays observable.
+			AppendField (payload, "config.count", static_cast<uint64_t> (index));
 			return payload;
 		}
 
@@ -413,80 +676,114 @@ namespace tui
 #endif
 	}
 
+	namespace
+	{
+		DispatchResult DispatchUnchecked (std::string_view line)
+		{
+			auto request = ParseRequest (line);
+			if (!request) return { MakeErrorResponse (request.error ().code, request.error ().message), false };
+
+			// A response that exceeds the wire limit is rejected rather than
+			// truncated: partial snapshots can hide state or mix sections.
+			auto makeOk = [] (std::string payload) -> DispatchResult
+			{
+				if (payload.size () > MAX_RESPONSE_PAYLOAD)
+					return { MakeErrorResponse (ErrorCode::ResponseTooLarge, "snapshot too large"), false };
+				return { MakeResponse (ResponseStatus::Ok, payload), false };
+			};
+
+			auto makeQuery = [] (i2p::expected<std::string, std::string> result) -> DispatchResult
+			{
+				if (!result) return { MakeErrorResponse (ErrorCode::Internal, result.error ()), false };
+				auto payload = std::move (*result);
+				if (payload.size () > MAX_RESPONSE_PAYLOAD)
+					return { MakeErrorResponse (ErrorCode::ResponseTooLarge, "snapshot too large"), false };
+				return { MakeResponse (ResponseStatus::Ok, payload), false };
+			};
+
+			switch (request->type)
+			{
+			case RequestType::State: return makeOk (BuildState ());
+			case RequestType::Peers: return makeOk (BuildPeers (request->limit));
+			case RequestType::Connections: return makeOk (BuildConnections (request->limit));
+			case RequestType::Tunnels: return makeOk (BuildTunnels ());
+			case RequestType::NetDb: return makeOk (BuildNetDb ());
+			case RequestType::NetDbRouters: return makeOk (BuildNetDbRouters (request->limit));
+			case RequestType::NetDbLeaseSets: return makeOk (BuildNetDbLeaseSets (request->limit));
+			case RequestType::Destinations: return makeOk (BuildDestinations ());
+			case RequestType::Logs: return makeOk (BuildLogs (request->after, request->limit));
+			case RequestType::Config: return makeOk (BuildConfig ());
+			case RequestType::AdminTransit: return makeOk (BuildAdminTransit (request->enabled));
+			case RequestType::AdminLogLevel: return makeOk (BuildAdminLogLevel (request->argument));
+			case RequestType::Ping:
+			{
+				std::string payload;
+				AppendField (payload, "pong", i2p::util::GetSecondsSinceEpoch ());
+				return makeOk (std::move (payload));
+			}
+			case RequestType::Quit: return { MakeResponse (ResponseStatus::Ok, { }), true };
+#ifndef NO_TORRENTS
+			case RequestType::TorrentTunnels: return makeOk (BuildTorrentTunnelList ());
+			case RequestType::Torrents: return makeQuery (BuildTorrentList (request->tunnelIndex, request->limit));
+			case RequestType::TorrentDetail:
+				return makeQuery (BuildTorrentDetail (request->tunnelIndex, request->torrentId));
+			case RequestType::TorrentSession: return makeQuery (BuildTorrentSession (request->tunnelIndex));
+			case RequestType::TorrentDht: return makeQuery (BuildTorrentDht (request->tunnelIndex));
+			case RequestType::TorrentStart:
+				return makeOk (BuildTorrentCommandResult (request->tunnelIndex,
+					{ i2p::torrents::TorrentCommandKind::Start, request->torrentId, false, { } }));
+			case RequestType::TorrentStop:
+				return makeOk (BuildTorrentCommandResult (
+					request->tunnelIndex, { i2p::torrents::TorrentCommandKind::Stop, request->torrentId, false, { } }));
+			case RequestType::TorrentPause:
+				return makeOk (BuildTorrentCommandResult (
+					request->tunnelIndex, { i2p::torrents::TorrentCommandKind::Pause, request->torrentId, false, { } }));
+			case RequestType::TorrentResume:
+				return makeOk (BuildTorrentCommandResult (
+					request->tunnelIndex, { i2p::torrents::TorrentCommandKind::Resume, request->torrentId, false, { } }));
+			case RequestType::TorrentReannounce:
+				return makeOk (BuildTorrentCommandResult (request->tunnelIndex,
+					{ i2p::torrents::TorrentCommandKind::Reannounce, request->torrentId, false, { } }));
+			case RequestType::TorrentRemove:
+				return makeOk (BuildTorrentCommandResult (request->tunnelIndex,
+					{ i2p::torrents::TorrentCommandKind::Remove, request->torrentId, request->deleteFiles, { } }));
+			case RequestType::TorrentStartAll:
+				return makeOk (BuildTorrentCommandResult (
+					request->tunnelIndex, { i2p::torrents::TorrentCommandKind::StartAll, 0, false, { } }));
+			case RequestType::TorrentStopAll:
+				return makeOk (BuildTorrentCommandResult (
+					request->tunnelIndex, { i2p::torrents::TorrentCommandKind::StopAll, 0, false, { } }));
+			case RequestType::TorrentReannounceAll:
+				return makeOk (BuildTorrentCommandResult (
+					request->tunnelIndex, { i2p::torrents::TorrentCommandKind::ReannounceAll, 0, false, { } }));
+			case RequestType::TorrentAddMagnet:
+				return makeOk (BuildTorrentCommandResult (request->tunnelIndex,
+					{ i2p::torrents::TorrentCommandKind::AddMagnet, 0, false, request->argument }));
+			case RequestType::TorrentAddFile:
+				return makeOk (BuildTorrentCommandResult (
+					request->tunnelIndex, { i2p::torrents::TorrentCommandKind::AddFile, 0, false, request->argument }));
+#endif
+			default: return { MakeErrorResponse (ErrorCode::UnknownCommand, "unknown command"), false };
+			}
+		}
+	}
+
 	DispatchResult Dispatch (std::string_view line)
 	{
-		auto request = ParseRequest (line);
-		if (!request) return { MakeErrorResponse (request.error ().code, request.error ().message), false };
-
-		// A response that exceeds the wire limit is rejected rather than
-		// truncated: partial snapshots can hide state or mix sections.
-		auto makeOk = [] (std::string payload) -> DispatchResult
+		// Snapshot collection runs on the IPC thread and must never unwind
+		// into std::thread: an allocation or engine failure while serving a
+		// local request would terminate the whole router.
+		try
 		{
-			if (payload.size () > MAX_RESPONSE_PAYLOAD)
-				return { MakeErrorResponse (ErrorCode::ResponseTooLarge, "snapshot too large"), false };
-			return { MakeResponse (ResponseStatus::Ok, payload), false };
-		};
-
-		auto makeQuery = [] (i2p::expected<std::string, std::string> result) -> DispatchResult
-		{
-			if (!result) return { MakeErrorResponse (ErrorCode::Internal, result.error ()), false };
-			auto payload = std::move (*result);
-			if (payload.size () > MAX_RESPONSE_PAYLOAD)
-				return { MakeErrorResponse (ErrorCode::ResponseTooLarge, "snapshot too large"), false };
-			return { MakeResponse (ResponseStatus::Ok, payload), false };
-		};
-
-		switch (request->type)
-		{
-		case RequestType::State: return makeOk (BuildState ());
-		case RequestType::Peers: return makeOk (BuildPeers (request->limit));
-		case RequestType::Tunnels: return makeOk (BuildTunnels ());
-		case RequestType::NetDb: return makeOk (BuildNetDb ());
-		case RequestType::Destinations: return makeOk (BuildDestinations ());
-		case RequestType::Logs: return makeOk (BuildLogs (request->after, request->limit));
-		case RequestType::Ping:
-		{
-			std::string payload;
-			AppendField (payload, "pong", i2p::util::GetSecondsSinceEpoch ());
-			return makeOk (std::move (payload));
+			return DispatchUnchecked (line);
 		}
-		case RequestType::Quit: return { MakeResponse (ResponseStatus::Ok, { }), true };
-#ifndef NO_TORRENTS
-		case RequestType::TorrentTunnels: return makeOk (BuildTorrentTunnelList ());
-		case RequestType::Torrents: return makeQuery (BuildTorrentList (request->tunnelIndex, request->limit));
-		case RequestType::TorrentDetail:
-			return makeQuery (BuildTorrentDetail (request->tunnelIndex, request->torrentId));
-		case RequestType::TorrentSession: return makeQuery (BuildTorrentSession (request->tunnelIndex));
-		case RequestType::TorrentDht: return makeQuery (BuildTorrentDht (request->tunnelIndex));
-		case RequestType::TorrentStart:
-			return makeOk (BuildTorrentCommandResult (
-				request->tunnelIndex, { i2p::torrents::TorrentCommandKind::Start, request->torrentId, false, { } }));
-		case RequestType::TorrentStop:
-			return makeOk (BuildTorrentCommandResult (
-				request->tunnelIndex, { i2p::torrents::TorrentCommandKind::Stop, request->torrentId, false, { } }));
-		case RequestType::TorrentReannounce:
-			return makeOk (BuildTorrentCommandResult (request->tunnelIndex,
-				{ i2p::torrents::TorrentCommandKind::Reannounce, request->torrentId, false, { } }));
-		case RequestType::TorrentRemove:
-			return makeOk (BuildTorrentCommandResult (request->tunnelIndex,
-				{ i2p::torrents::TorrentCommandKind::Remove, request->torrentId, request->deleteFiles, { } }));
-		case RequestType::TorrentStartAll:
-			return makeOk (BuildTorrentCommandResult (
-				request->tunnelIndex, { i2p::torrents::TorrentCommandKind::StartAll, 0, false, { } }));
-		case RequestType::TorrentStopAll:
-			return makeOk (BuildTorrentCommandResult (
-				request->tunnelIndex, { i2p::torrents::TorrentCommandKind::StopAll, 0, false, { } }));
-		case RequestType::TorrentReannounceAll:
-			return makeOk (BuildTorrentCommandResult (
-				request->tunnelIndex, { i2p::torrents::TorrentCommandKind::ReannounceAll, 0, false, { } }));
-		case RequestType::TorrentAddMagnet:
-			return makeOk (BuildTorrentCommandResult (
-				request->tunnelIndex, { i2p::torrents::TorrentCommandKind::AddMagnet, 0, false, request->argument }));
-		case RequestType::TorrentAddFile:
-			return makeOk (BuildTorrentCommandResult (
-				request->tunnelIndex, { i2p::torrents::TorrentCommandKind::AddFile, 0, false, request->argument }));
-#endif
-		default: return { MakeErrorResponse (ErrorCode::UnknownCommand, "unknown command"), false };
+		catch (const std::exception &)
+		{
+			return { MakeErrorResponse (ErrorCode::Internal, "internal error"), false };
+		}
+		catch (...)
+		{
+			return { MakeErrorResponse (ErrorCode::Internal, "internal error"), false };
 		}
 	}
 }

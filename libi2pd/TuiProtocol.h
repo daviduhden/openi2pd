@@ -35,7 +35,10 @@
  * explicit and bounded; the receiver must never allocate based on a value it
  * has not validated. Torrent commands are validated here and then mediated by
  * the torrents tunnel's Asio service thread; the IPC thread never touches
- * mutable engine state.
+ * mutable engine state. Configuration snapshots are read-only and limited to
+ * a server-side allowlist; version 1 has no configuration writer. The only
+ * router-wide writes are the explicitly typed ADMIN TRANSIT and ADMIN LOGLEVEL
+ * operations, which update atomic router/logger state.
  */
 namespace i2p
 {
@@ -51,27 +54,43 @@ namespace tui
 	inline constexpr size_t MAX_FIELD_NAME = 64;
 	inline constexpr size_t MAX_LOG_RECORDS_PER_REQUEST = 200;
 	inline constexpr size_t MAX_PEER_RECORDS_PER_REQUEST = 200;
+	inline constexpr size_t MAX_CONNECTION_RECORDS_PER_REQUEST = 200;
+	inline constexpr size_t MAX_NETDB_RECORDS_PER_REQUEST = 200;
 	inline constexpr size_t MAX_TUNNEL_RECORDS_PER_REQUEST = 200;
 	inline constexpr size_t MAX_TORRENT_RECORDS_PER_REQUEST = 200;
 	inline constexpr size_t MAX_TORRENT_FILE_RECORDS_PER_REQUEST = 1000;
 	inline constexpr size_t MAX_TORRENT_PEER_RECORDS_PER_REQUEST = 200;
 	inline constexpr size_t MAX_TORRENT_TRACKER_RECORDS_PER_REQUEST = 100;
 	inline constexpr size_t MAX_TORRENT_ARGUMENT_LENGTH = 2048;
+	// CONFIG returns an allowlisted, typed snapshot. Both the number of
+	// options and each string value are bounded so a misconfigured router
+	// cannot turn the snapshot into an unbounded response.
+	inline constexpr size_t MAX_CONFIG_RECORDS_PER_REQUEST = 128;
+	inline constexpr size_t MAX_CONFIG_VALUE_LENGTH = 512;
+	inline constexpr size_t MAX_ADMIN_ARGUMENT_LENGTH = 16;
 
 	enum class RequestType
 	{
 		State,
 		Peers,
+		Connections,
 		Tunnels,
 		NetDb,
+		NetDbRouters,
+		NetDbLeaseSets,
 		Destinations,
 		Logs,
+		Config, // bounded, typed snapshot of allowlisted options; no writer
+		AdminTransit,
+		AdminLogLevel,
 		Ping,
 		Quit,
 		Torrents,
 		TorrentDetail,
 		TorrentStart,
 		TorrentStop,
+		TorrentPause,
+		TorrentResume,
 		TorrentReannounce,
 		TorrentRemove,
 		TorrentStartAll,
@@ -88,11 +107,12 @@ namespace tui
 	{
 		RequestType type;
 		uint64_t after = 0; // LOGS: last sequence seen by the client
-		uint32_t limit = 0; // LOGS/PEERS/TORRENTS: requested record count
+		uint32_t limit = 0; // LOGS/PEERS/CONNECTIONS/NETDB-*/TORRENTS: record count
 		uint32_t tunnelIndex = 0; // TORRENT-*: index into the sorted tunnel snapshot
 		int torrentId = 0; // TORRENT-*: engine-assigned torrent id
 		bool deleteFiles = false; // TORRENT-REMOVE: explicit files flag
-		std::string argument; // TORRENT-ADD-MAGNET/FILE: bounded rest of line
+		bool enabled = false; // ADMIN TRANSIT: requested acceptance state
+		std::string argument; // TORRENT-ADD-*/ADMIN LOGLEVEL: bounded argument
 	};
 
 	enum class ErrorCode : uint32_t
@@ -214,6 +234,12 @@ namespace tui
 			if (!rest.empty ()) return ProtocolError { ErrorCode::BadArgument, "unexpected trailing arguments" };
 			return std::nullopt;
 		}
+
+		inline bool IsAdminLogLevel (std::string_view value)
+		{
+			return value == "none" || value == "critical" || value == "error" || value == "warn"
+				|| value == "info" || value == "debug";
+		}
 	}
 
 	/**
@@ -255,6 +281,17 @@ namespace tui
 				request.limit = static_cast<uint32_t> (*limit);
 			}
 		}
+		else if (command == "CONNECTIONS")
+		{
+			request.type = RequestType::Connections;
+			request.limit = MAX_CONNECTION_RECORDS_PER_REQUEST;
+			if (!rest.empty ())
+			{
+				auto limit = detail::ParseLimit (detail::NextToken (rest), MAX_CONNECTION_RECORDS_PER_REQUEST);
+				if (!limit) return i2p::unexpected (limit.error ());
+				request.limit = *limit;
+			}
+		}
 		else if (command == "TUNNELS")
 		{
 			request.type = RequestType::Tunnels;
@@ -262,6 +299,17 @@ namespace tui
 		else if (command == "NETDB")
 		{
 			request.type = RequestType::NetDb;
+		}
+		else if (command == "NETDB-ROUTERS" || command == "NETDB-LEASESETS")
+		{
+			request.type = command == "NETDB-ROUTERS" ? RequestType::NetDbRouters : RequestType::NetDbLeaseSets;
+			request.limit = MAX_NETDB_RECORDS_PER_REQUEST;
+			if (!rest.empty ())
+			{
+				auto limit = detail::ParseLimit (detail::NextToken (rest), MAX_NETDB_RECORDS_PER_REQUEST);
+				if (!limit) return i2p::unexpected (limit.error ());
+				request.limit = *limit;
+			}
 		}
 		else if (command == "DESTINATIONS")
 		{
@@ -282,6 +330,45 @@ namespace tui
 				if (!limit || *limit == 0 || *limit > MAX_LOG_RECORDS_PER_REQUEST)
 					return i2p::unexpected (ProtocolError { ErrorCode::BadArgument, "log limit out of range" });
 				request.limit = static_cast<uint32_t> (*limit);
+			}
+		}
+		else if (command == "CONFIG")
+		{
+			// The snapshot has no selectable sections and no arguments.
+			// In particular there is no CONFIG-SET command in version 1:
+			// configuration writes require a main-loop command queue.
+			auto trailing = detail::RejectTrailing (rest);
+			if (trailing) return i2p::unexpected (*trailing);
+			request.type = RequestType::Config;
+		}
+		else if (command == "ADMIN")
+		{
+			const auto action = detail::NextToken (rest);
+			if (action.empty ())
+				return i2p::unexpected (ProtocolError { ErrorCode::BadArgument, "missing admin action" });
+
+			if (action == "TRANSIT")
+			{
+				const auto value = detail::NextToken (rest);
+				if (value == "ON")
+					request.enabled = true;
+				else if (value == "OFF")
+					request.enabled = false;
+				else
+					return i2p::unexpected (ProtocolError { ErrorCode::BadArgument, "admin transit expects ON or OFF" });
+				request.type = RequestType::AdminTransit;
+			}
+			else if (action == "LOGLEVEL")
+			{
+				const auto level = detail::NextToken (rest);
+				if (level.empty () || level.size () > MAX_ADMIN_ARGUMENT_LENGTH || !detail::IsAdminLogLevel (level))
+					return i2p::unexpected (ProtocolError { ErrorCode::BadArgument, "invalid admin log level" });
+				request.argument = std::string (level);
+				request.type = RequestType::AdminLogLevel;
+			}
+			else
+			{
+				return i2p::unexpected (ProtocolError { ErrorCode::BadArgument, "unknown admin action" });
 			}
 		}
 		else if (command == "PING")
@@ -313,7 +400,8 @@ namespace tui
 			}
 		}
 		else if (command == "TORRENT-DETAIL" || command == "TORRENT-START" || command == "TORRENT-STOP"
-			|| command == "TORRENT-REANNOUNCE" || command == "TORRENT-REMOVE" || command == "TORRENT-START-ALL"
+			|| command == "TORRENT-PAUSE" || command == "TORRENT-RESUME" || command == "TORRENT-REANNOUNCE"
+			|| command == "TORRENT-REMOVE" || command == "TORRENT-START-ALL"
 			|| command == "TORRENT-STOP-ALL" || command == "TORRENT-REANNOUNCE-ALL" || command == "TORRENT-ADD-MAGNET"
 			|| command == "TORRENT-ADD-FILE" || command == "TORRENT-SESSION" || command == "TORRENT-DHT")
 		{
@@ -329,6 +417,10 @@ namespace tui
 				request.type = RequestType::TorrentStart;
 			else if (command == "TORRENT-STOP")
 				request.type = RequestType::TorrentStop;
+			else if (command == "TORRENT-PAUSE")
+				request.type = RequestType::TorrentPause;
+			else if (command == "TORRENT-RESUME")
+				request.type = RequestType::TorrentResume;
 			else if (command == "TORRENT-REANNOUNCE")
 				request.type = RequestType::TorrentReannounce;
 			else if (command == "TORRENT-REMOVE")
@@ -356,7 +448,8 @@ namespace tui
 				rest = { };
 			}
 			else if (request.type == RequestType::TorrentDetail || request.type == RequestType::TorrentStart
-				|| request.type == RequestType::TorrentStop || request.type == RequestType::TorrentReannounce
+				|| request.type == RequestType::TorrentStop || request.type == RequestType::TorrentPause
+				|| request.type == RequestType::TorrentResume || request.type == RequestType::TorrentReannounce
 				|| request.type == RequestType::TorrentRemove)
 			{
 				if (rest.empty ())

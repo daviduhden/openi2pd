@@ -1,5 +1,4 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
 * Copyright (c) 2026, David Uhden Collado
 * SPDX-License-Identifier: BSD-3-Clause
 *
@@ -59,6 +58,10 @@ namespace tui
 		constexpr DWORD PIPE_POLL_MS = 250;
 		constexpr DWORD PIPE_BUFFER_SIZE = 64 * 1024;
 		constexpr DWORD PIPE_MAX_INSTANCES = 1;
+		// Per-connection budgets mirror the UNIX transport: a client cannot
+		// hold the single IPC instance forever or issue unlimited requests.
+		constexpr size_t PIPE_MAX_REQUESTS_PER_CONNECTION = 4096;
+		constexpr auto PIPE_MAX_CONNECTION_DURATION = std::chrono::minutes (5);
 
 		struct LocalFreeDeleter
 		{
@@ -285,7 +288,8 @@ namespace tui
 		bool ConnectClient (HANDLE pipe);
 		void HandleClient (HANDLE pipe);
 		bool WaitForIo (HANDLE pipe, OVERLAPPED & overlapped, DWORD timeoutMs, DWORD & transferred);
-		bool SendAll (HANDLE pipe, HANDLE ioEvent, std::string_view data);
+		bool SendAll (HANDLE pipe, HANDLE ioEvent, std::string_view data,
+			std::chrono::steady_clock::time_point deadline);
 		void Run (HANDLE firstPipe);
 
 		std::string m_Endpoint;
@@ -420,12 +424,30 @@ namespace tui
 			}
 
 			bool connected = ConnectClient (pipe);
-			if (connected) HandleClient (pipe);
-			if (connected) DisconnectNamedPipe (pipe);
-			CloseHandle (pipe);
-			pipe = INVALID_HANDLE_VALUE;
-
-			if (!connected && !m_Stop.load (std::memory_order_relaxed)) WaitForSingleObject (m_StopEvent, 100);
+			if (connected)
+			{
+				HandleClient (pipe);
+				// Reuse the instance for the next client. Closing and
+				// recreating it would leave the pipe name unowned for a
+				// short interval, during which another local user could
+				// squat the name and deny the TUI service. The name stays
+				// continuously owned on the normal path.
+				if (!DisconnectNamedPipe (pipe))
+				{
+					LogPrint (eLogWarning, "TUI: Can't reset named pipe instance: ", Win32ErrorText (GetLastError ()));
+					CloseHandle (pipe);
+					pipe = INVALID_HANDLE_VALUE;
+				}
+			}
+			else
+			{
+				// The instance was aborted before a client connected (or
+				// ConnectNamedPipe failed). Do not reuse a partially
+				// completed overlapped state.
+				CloseHandle (pipe);
+				pipe = INVALID_HANDLE_VALUE;
+				if (!m_Stop.load (std::memory_order_relaxed)) WaitForSingleObject (m_StopEvent, 100);
+			}
 		}
 		if (pipe != INVALID_HANDLE_VALUE) CloseHandle (pipe);
 	}
@@ -550,10 +572,20 @@ namespace tui
 		}
 	}
 
-	bool Server::Impl::SendAll (HANDLE pipe, HANDLE ioEvent, std::string_view data)
+	bool Server::Impl::SendAll (HANDLE pipe, HANDLE ioEvent, std::string_view data,
+		std::chrono::steady_clock::time_point deadline)
 	{
 		while (!data.empty ())
 		{
+			if (m_Stop.load (std::memory_order_relaxed)) return false;
+			const auto now = std::chrono::steady_clock::now ();
+			if (now >= deadline) return false;
+			const auto remaining
+				= std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now).count ();
+			if (remaining <= 0) return false;
+			const DWORD ioTimeout = static_cast<DWORD> (
+				std::min<int64_t> (std::max<int64_t> (remaining, 1), static_cast<int64_t> (PIPE_IO_TIMEOUT_MS)));
+
 			OVERLAPPED overlapped { };
 			overlapped.hEvent = ioEvent;
 			ResetEvent (ioEvent);
@@ -570,7 +602,7 @@ namespace tui
 						LogPrint (eLogWarning, "TUI: Named pipe write: ", Win32ErrorText (error));
 					return false;
 				}
-				if (!WaitForIo (pipe, overlapped, PIPE_IO_TIMEOUT_MS, written)) return false;
+				if (!WaitForIo (pipe, overlapped, ioTimeout, written)) return false;
 			}
 			if (!written) return false;
 			data.remove_prefix (static_cast<size_t> (written));
@@ -587,58 +619,98 @@ namespace tui
 			return;
 		}
 
-		std::string pending;
-		pending.reserve (MAX_REQUEST_LINE);
-		std::array<char, 1024> buffer { };
-		while (!m_Stop.load (std::memory_order_relaxed))
+		// A per-client allocation failure must not escape into std::thread
+		// and terminate the daemon. Dispatch() already contains subsystem
+		// exceptions; this guard covers buffering and response framing.
+		try
 		{
-			OVERLAPPED overlapped { };
-			overlapped.hEvent = ioEvent;
-			ResetEvent (ioEvent);
-
-			DWORD received = 0;
-			BOOL result = ReadFile (pipe, buffer.data (), static_cast<DWORD> (buffer.size ()), &received, &overlapped);
-			if (!result)
+			const auto connectionDeadline = std::chrono::steady_clock::now () + PIPE_MAX_CONNECTION_DURATION;
+			size_t requests = 0;
+			std::string pending;
+			pending.reserve (MAX_REQUEST_LINE);
+			std::array<char, 1024> buffer { };
+			while (!m_Stop.load (std::memory_order_relaxed))
 			{
-				DWORD error = GetLastError ();
-				if (error != ERROR_IO_PENDING)
+				const auto now = std::chrono::steady_clock::now ();
+				if (now >= connectionDeadline) break;
+				const auto remaining
+					= std::chrono::duration_cast<std::chrono::milliseconds> (connectionDeadline - now).count ();
+				const DWORD readTimeout = static_cast<DWORD> (
+					std::min<int64_t> (std::max<int64_t> (remaining, 1), static_cast<int64_t> (PIPE_IO_TIMEOUT_MS)));
+
+				OVERLAPPED overlapped { };
+				overlapped.hEvent = ioEvent;
+				ResetEvent (ioEvent);
+
+				DWORD received = 0;
+				BOOL result = ReadFile (
+					pipe, buffer.data (), static_cast<DWORD> (buffer.size ()), &received, &overlapped);
+				if (!result)
 				{
-					if (error != ERROR_BROKEN_PIPE && error != ERROR_PIPE_NOT_CONNECTED && error != ERROR_NO_DATA
-						&& error != ERROR_OPERATION_ABORTED)
-						LogPrint (eLogWarning, "TUI: Named pipe read: ", Win32ErrorText (error));
+					DWORD error = GetLastError ();
+					if (error != ERROR_IO_PENDING)
+					{
+						if (error != ERROR_BROKEN_PIPE && error != ERROR_PIPE_NOT_CONNECTED && error != ERROR_NO_DATA
+							&& error != ERROR_OPERATION_ABORTED)
+							LogPrint (eLogWarning, "TUI: Named pipe read: ", Win32ErrorText (error));
+						break;
+					}
+					if (!WaitForIo (pipe, overlapped, readTimeout, received)) break;
+				}
+				if (!received) break;
+
+				pending.append (buffer.data (), static_cast<size_t> (received));
+				if (pending.size () > MAX_REQUEST_LINE + 1)
+				{
+					SendAll (pipe, ioEvent, MakeErrorResponse (ErrorCode::MalformedRequest, "request too long"),
+						connectionDeadline);
 					break;
 				}
-				if (!WaitForIo (pipe, overlapped, PIPE_IO_TIMEOUT_MS, received)) break;
-			}
-			if (!received) break;
 
-			pending.append (buffer.data (), static_cast<size_t> (received));
-			if (pending.size () > MAX_REQUEST_LINE + 1)
-			{
-				SendAll (pipe, ioEvent, MakeErrorResponse (ErrorCode::MalformedRequest, "request too long"));
-				break;
-			}
-
-			bool closeConnection = false;
-			size_t newline = 0;
-			while ((newline = pending.find ('\n')) != std::string::npos)
-			{
-				std::string_view line (pending.data (), newline);
-				if (!line.empty () && line.back () == '\r') line.remove_suffix (1);
-				auto response = Dispatch (line);
-				if (!SendAll (pipe, ioEvent, response.response))
+				bool closeConnection = false;
+				size_t newline = 0;
+				while ((newline = pending.find ('\n')) != std::string::npos)
 				{
-					closeConnection = true;
-					break;
+					if (m_Stop.load (std::memory_order_relaxed))
+					{
+						closeConnection = true;
+						break;
+					}
+					if (std::chrono::steady_clock::now () >= connectionDeadline)
+					{
+						closeConnection = true;
+						break;
+					}
+					if (++requests > PIPE_MAX_REQUESTS_PER_CONNECTION)
+					{
+						SendAll (pipe, ioEvent,
+							MakeErrorResponse (ErrorCode::Internal, "connection request limit reached"),
+							connectionDeadline);
+						closeConnection = true;
+						break;
+					}
+					std::string_view line (pending.data (), newline);
+					if (!line.empty () && line.back () == '\r') line.remove_suffix (1);
+					auto response = Dispatch (line);
+					if (!SendAll (pipe, ioEvent, response.response, connectionDeadline))
+					{
+						closeConnection = true;
+						break;
+					}
+					pending.erase (0, newline + 1);
+					if (response.closeConnection)
+					{
+						closeConnection = true;
+						break;
+					}
 				}
-				pending.erase (0, newline + 1);
-				if (response.closeConnection)
-				{
-					closeConnection = true;
-					break;
-				}
+				if (closeConnection) break;
 			}
-			if (closeConnection) break;
+		}
+		catch (...)
+		{
+			// The pipe is disconnected by Run(). Do not log from here: a
+			// second allocation failure while formatting would terminate.
 		}
 
 		CloseHandle (ioEvent);

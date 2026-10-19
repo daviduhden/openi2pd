@@ -37,6 +37,11 @@ namespace tui
 	 * This is the only protocol entry point. Both the UNIX-domain socket
 	 * and the Windows named-pipe transports must call it; neither may build
 	 * snapshots or execute commands itself.
+	 *
+	 * All exceptions are translated into an Internal error frame here. The
+	 * transports must nevertheless wrap their own per-client buffering and
+	 * send loop in catch(...): a bad_alloc in transport state must close one
+	 * client, not unwind through std::thread and terminate the router.
 	 */
 	DispatchResult Dispatch (std::string_view line);
 }

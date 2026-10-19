@@ -1,5 +1,4 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
 * Copyright (c) 2026, David Uhden Collado
 * SPDX-License-Identifier: BSD-3-Clause
 *
@@ -72,11 +71,24 @@ enum class Tab
 	Torrents,
 	NetDb,
 	Logs,
-	Help
+	Help,
+	Destinations,
+	Config,
+	Connections
 };
 
-constexpr std::array<std::string_view, 7> TAB_NAMES
-	= { "Status", "Peers", "Tunnels", "Torrents", "NetDb", "Logs", "Help" };
+// The original 1..9 bindings are preserved; Connections is appended as 0.
+// Tab/arrow navigation visits all ten views in this order.
+constexpr std::array<std::string_view, 10> TAB_NAMES = { "Status", "Peers", "Tunnels", "Torrents", "NetDb",
+	"Logs", "Help", "Destinations", "Config", "Connections" };
+constexpr std::array<std::string_view, 10> TAB_SHORT_NAMES
+	= { "Status", "Peers", "Tunnels", "Torrents", "NetDb", "Logs", "Help", "Dest", "Config", "Conn" };
+
+enum class NetDbView
+{
+	Routers = 0,
+	LeaseSets
+};
 
 enum class TorrentSort
 {
@@ -100,10 +112,12 @@ enum class PromptKind
 {
 	None = 0,
 	Filter,
+	LogFilter,
 	AddMagnet,
 	AddFile,
 	ConfirmRemove,
-	ConfirmRemoveFiles
+	ConfirmRemoveFiles,
+	ConfirmTransit
 };
 
 struct PeerRow
@@ -112,7 +126,30 @@ struct PeerRow
 	long attempts = 0;
 	long sessions = 0;
 	long transports = 0;
+	std::string transportNames;
 	bool highBandwidth = false;
+};
+
+struct NetDbRouterRow
+{
+	std::string hash;
+	long version = 0;
+	long caps = 0;
+	bool floodfill = false;
+	bool v4 = false;
+	bool v6 = false;
+	bool reachable = false;
+	uint64_t timestamp = 0;
+};
+
+struct NetDbLeaseSetRow
+{
+	std::string hash;
+	long storeType = 0;
+	uint64_t expiration = 0;
+	uint64_t earliestLease = 0;
+	bool valid = false;
+	bool expired = false;
 };
 
 struct TunnelRow
@@ -213,6 +250,13 @@ struct TorrentDhtInfo
 	int numTorrents = 0;
 	int numHeardFrom = 0;
 	int numFailedPeers = 0;
+};
+
+struct ConfigOptionRow
+{
+	std::string name;
+	std::string type;
+	std::string value;
 };
 
 struct TorrentLayout
@@ -319,6 +363,25 @@ std::string ToLowerAscii (std::string_view value)
 	for (char & ch : result)
 		if (ch >= 'A' && ch <= 'Z') ch = static_cast<char> (ch - 'A' + 'a');
 	return result;
+}
+
+std::string TransportNamesFromMask (long mask)
+{
+	// These bits mirror RouterInfo::SupportedTransports in the router. The
+	// TUI deliberately does not link libi2pd, so the numeric contract is
+	// decoded locally and rendered as stable ASCII labels.
+	std::string names;
+	auto append = [&names] (const char * name)
+	{
+		if (!names.empty ()) names.push_back (',');
+		names.append (name);
+	};
+	if (mask & 0x01) append ("NTCP2v4");
+	if (mask & 0x02) append ("NTCP2v6");
+	if (mask & 0x04) append ("SSU2v4");
+	if (mask & 0x08) append ("SSU2v6");
+	if (mask & 0x10) append ("Mesh");
+	return names.empty () ? std::string ("-") : names;
 }
 
 std::string BoundUtf8 (std::string_view value, size_t limit)
@@ -637,6 +700,20 @@ std::string_view LevelName (int level)
 	case eLogInfo: return "INFO";
 	case eLogDebug: return "DEBUG";
 	default: return "NONE";
+	}
+}
+
+std::string_view DaemonLogLevelName (int level)
+{
+	switch (level)
+	{
+	case eLogNone: return "none";
+	case eLogCritical: return "critical";
+	case eLogError: return "error";
+	case eLogWarning: return "warn";
+	case eLogInfo: return "info";
+	case eLogDebug: return "debug";
+	default: return "unknown";
 	}
 }
 
@@ -999,6 +1076,8 @@ public:
 	{
 		m_NextConnect = std::chrono::steady_clock::now ();
 		m_NextRefresh = m_NextConnect;
+		m_NextLogs = m_NextConnect;
+		m_NextNetDbList = m_NextConnect;
 		m_NextTorrentTunnels = m_NextConnect;
 		m_NextTorrentList = m_NextConnect;
 		m_NextTorrentSession = m_NextConnect;
@@ -1013,7 +1092,12 @@ private:
 	void Refresh ();
 	bool Request (std::string_view command, std::string & payload);
 	void ParseState (const std::string & payload);
+	void ParseNetDb (const std::string & payload);
+	void ParseNetDbRouters (const std::string & payload);
+	void ParseNetDbLeaseSets (const std::string & payload);
+	void ParseConfig (const std::string & payload);
 	void ParsePeers (const std::string & payload);
+	void ParseConnections (const std::string & payload);
 	void ParseTunnels (const std::string & payload);
 	void ParseDestinations (const std::string & payload);
 	void ParseLogs (const std::string & payload);
@@ -1025,7 +1109,10 @@ private:
 	void ParseTorrentSession (const std::string & payload);
 	void ParseTorrentDht (const std::string & payload);
 	void ParseTorrentDetail (const std::string & payload);
-	void ParseCommandResult (const std::string & payload);
+	bool ParseCommandResult (const std::string & payload);
+	bool SendAdminCommand (std::string_view command);
+	void BeginTransitPrompt ();
+	void CycleDaemonLogLevel ();
 	void SendTorrentCommand (std::string_view command);
 	void ScheduleTorrentRefresh (bool includeTunnels);
 	void ResetTorrentAuxState ();
@@ -1054,9 +1141,13 @@ private:
 	void DrawHeader (int width);
 	void DrawFooter (int height, int width);
 	void DrawStatus (int top, int height, int width);
+	void DrawRateHistory (int & row, int top, int height, int width);
 	void DrawPeers (int top, int height, int width);
+	void DrawConnections (int top, int height, int width);
 	void DrawTunnels (int top, int height, int width);
 	void DrawNetDb (int top, int height, int width);
+	void DrawConfig (int top, int height, int width);
+	void DrawDestinations (int top, int height, int width);
 	void DrawLogs (int top, int height, int width);
 	void DrawHelp (int top, int height, int width);
 	void DrawTorrentContext (int width);
@@ -1080,15 +1171,31 @@ private:
 	std::chrono::steady_clock::time_point m_NextConnect;
 	std::chrono::steady_clock::time_point m_NextRefresh;
 	std::chrono::steady_clock::time_point m_NextLogs;
+	std::chrono::steady_clock::time_point m_NextNetDbList;
 
 	Tab m_Tab = Tab::Status;
 	std::map<std::string, std::string> m_State;
+	std::map<std::string, std::string> m_NetDb;
+	NetDbView m_NetDbView = NetDbView::Routers;
+	std::vector<NetDbRouterRow> m_NetDbRouters;
+	std::vector<NetDbLeaseSetRow> m_NetDbLeaseSets;
+	bool m_NetDbRoutersLoaded = false;
+	bool m_NetDbLeaseSetsLoaded = false;
+	std::vector<ConfigOptionRow> m_Config;
+	int m_ConfigSchema = 0;
+	bool m_ConfigReadOnly = true;
+	bool m_ConfigLoaded = false;
 	std::vector<PeerRow> m_Peers;
+	std::vector<PeerRow> m_Connections;
 	std::vector<TunnelRow> m_Tunnels;
 	std::vector<std::string> m_Destinations;
 	std::deque<LogRow> m_Logs;
+	std::string m_LogFilter;
 	uint64_t m_LastLogSequence = 0;
 	int m_LogLevel = eLogDebug;
+	std::string m_DaemonLogLevel = "info";
+	std::deque<uint32_t> m_InHistory;
+	std::deque<uint32_t> m_OutHistory;
 	int m_Scroll = 0;
 	int m_HelpScroll = 0;
 	bool m_Dirty = true;
@@ -1125,6 +1232,7 @@ private:
 	int m_PendingTorrentId = -1;
 	int m_PendingTorrentTunnel = -1;
 	std::string m_PendingTorrentName;
+	bool m_PendingTransit = false;
 
 	std::string m_StatusMessage;
 	bool m_StatusError = false;
@@ -1223,9 +1331,29 @@ void App::Refresh ()
 
 		if (m_Tab == Tab::Peers && Request ("PEERS 200", payload))
 			ParsePeers (payload);
+		else if (m_Tab == Tab::Connections && Request ("CONNECTIONS 200", payload))
+			ParseConnections (payload);
 		else if (m_Tab == Tab::Tunnels && Request ("TUNNELS", payload))
 			ParseTunnels (payload);
-		else if (m_Tab == Tab::NetDb && Request ("DESTINATIONS", payload))
+		else if (m_Tab == Tab::NetDb)
+		{
+			if (Request ("NETDB", payload)) ParseNetDb (payload);
+			if (now >= m_NextNetDbList)
+			{
+				m_NextNetDbList = now + 5s;
+				const auto command = m_NetDbView == NetDbView::Routers ? "NETDB-ROUTERS 200" : "NETDB-LEASESETS 200";
+				if (Request (command, payload))
+				{
+					if (m_NetDbView == NetDbView::Routers)
+						ParseNetDbRouters (payload);
+					else
+						ParseNetDbLeaseSets (payload);
+				}
+			}
+		}
+		else if (m_Tab == Tab::Config && Request ("CONFIG", payload))
+			ParseConfig (payload);
+		else if (m_Tab == Tab::Destinations && Request ("DESTINATIONS", payload))
 			ParseDestinations (payload);
 
 		if (m_Tab == Tab::Logs && now >= m_NextLogs)
@@ -1296,6 +1424,147 @@ void App::ParseState (const std::string & payload)
 		if (name.size () > i2p::tui::MAX_FIELD_NAME) continue;
 		m_State[name] = i2p::tui::UnescapeValue (line.substr (equals + 1));
 	}
+
+	auto appendHistory = [] (std::deque<uint32_t> & history, std::string_view value)
+	{
+		history.push_back (static_cast<uint32_t> (ToU64 (value)));
+		while (history.size () > 60) history.pop_front ();
+	};
+	if (m_State.contains ("bandwidth.in15") && m_State.contains ("bandwidth.out15"))
+	{
+		appendHistory (m_InHistory, m_State["bandwidth.in15"]);
+		appendHistory (m_OutHistory, m_State["bandwidth.out15"]);
+	}
+	if (m_State.contains ("log.level")) m_DaemonLogLevel = std::string (DaemonLogLevelName (ToInt (m_State["log.level"])));
+	m_Dirty = true;
+}
+
+void App::ParseNetDb (const std::string & payload)
+{
+	m_NetDb.clear ();
+	for (auto line : Split (payload, '\n'))
+	{
+		if (line.empty ()) continue;
+		auto equals = line.find ('=');
+		if (equals == std::string_view::npos) continue;
+		auto name = std::string (line.substr (0, equals));
+		if (name.size () > i2p::tui::MAX_FIELD_NAME) continue;
+		m_NetDb[name] = i2p::tui::UnescapeValue (line.substr (equals + 1));
+	}
+}
+
+void App::ParseNetDbRouters (const std::string & payload)
+{
+	m_NetDbRouters.clear ();
+	for (auto line : Split (payload, '\n'))
+	{
+		if (!line.starts_with ("netdb.router=")) continue;
+		auto value = i2p::tui::UnescapeValue (line.substr (13));
+		auto parts = Split (value, '|');
+		if (parts.size () != 8) continue;
+		NetDbRouterRow row;
+		row.hash = std::string (parts[0]);
+		row.version = ToLong (parts[1]);
+		row.caps = ToLong (parts[2]);
+		row.floodfill = parts[3] == "1";
+		row.v4 = parts[4] == "1";
+		row.v6 = parts[5] == "1";
+		row.timestamp = ToU64 (parts[6]);
+		row.reachable = parts[7] == "1";
+		m_NetDbRouters.push_back (std::move (row));
+		if (m_NetDbRouters.size () >= i2p::tui::MAX_NETDB_RECORDS_PER_REQUEST) break;
+	}
+	std::sort (m_NetDbRouters.begin (), m_NetDbRouters.end (),
+		[] (const NetDbRouterRow & left, const NetDbRouterRow & right) { return left.hash < right.hash; });
+	m_NetDbRoutersLoaded = true;
+	m_Dirty = true;
+}
+
+void App::ParseNetDbLeaseSets (const std::string & payload)
+{
+	m_NetDbLeaseSets.clear ();
+	for (auto line : Split (payload, '\n'))
+	{
+		if (!line.starts_with ("netdb.leaseset=")) continue;
+		auto value = i2p::tui::UnescapeValue (line.substr (15));
+		auto parts = Split (value, '|');
+		if (parts.size () != 6) continue;
+		NetDbLeaseSetRow row;
+		row.hash = std::string (parts[0]);
+		row.storeType = ToLong (parts[1]);
+		row.expiration = ToU64 (parts[2]);
+		row.earliestLease = ToU64 (parts[3]);
+		row.valid = parts[4] == "1";
+		row.expired = parts[5] == "1";
+		m_NetDbLeaseSets.push_back (std::move (row));
+		if (m_NetDbLeaseSets.size () >= i2p::tui::MAX_NETDB_RECORDS_PER_REQUEST) break;
+	}
+	std::sort (m_NetDbLeaseSets.begin (), m_NetDbLeaseSets.end (),
+		[] (const NetDbLeaseSetRow & left, const NetDbLeaseSetRow & right) { return left.hash < right.hash; });
+	m_NetDbLeaseSetsLoaded = true;
+	m_Dirty = true;
+}
+
+void App::ParseConfig (const std::string & payload)
+{
+	auto fields = ParseFieldMap (payload);
+	m_ConfigSchema = ToInt (MapValue (fields, "config.schema"));
+	auto readonly = ToLowerAscii (MapValue (fields, "config.readonly"));
+	m_ConfigReadOnly = readonly == "1" || readonly == "true" || readonly == "yes";
+
+	std::map<long, ConfigOptionRow> rows;
+	for (const auto & [key, value] : fields)
+	{
+		long index = 0;
+		std::string_view field;
+		if (!SplitIndexedKey (key, "config.option.", index, field)) continue;
+		auto it = rows.find (index);
+		if (it == rows.end ())
+		{
+			if (rows.size () >= i2p::tui::MAX_CONFIG_RECORDS_PER_REQUEST) continue;
+			it = rows.emplace (index, ConfigOptionRow { }).first;
+		}
+		auto & option = it->second;
+		if (field == "name")
+			option.name = BoundUtf8 (value, 128);
+		else if (field == "type")
+			option.type = BoundUtf8 (value, 16);
+		else if (field == "value")
+			option.value = BoundUtf8 (value, i2p::tui::MAX_CONFIG_VALUE_LENGTH);
+	}
+
+	m_Config.clear ();
+	for (auto & [index, option] : rows)
+	{
+		(void)index;
+		if (option.name.empty ()) continue;
+		if (option.type.empty ()) option.type = "unknown";
+		m_Config.push_back (std::move (option));
+		if (m_Config.size () >= i2p::tui::MAX_CONFIG_RECORDS_PER_REQUEST) break;
+	}
+	for (const auto & option : m_Config)
+	{
+		if (option.name == "loglevel" && !option.value.empty ())
+		{
+			m_DaemonLogLevel = ToLowerAscii (option.value);
+			break;
+		}
+	}
+	m_ConfigLoaded = true;
+	m_Dirty = true;
+}
+
+bool ParsePeerRow (std::string_view value, PeerRow & row)
+{
+	auto parts = Split (value, '|');
+	if (parts.size () != 5 && parts.size () != 6) return false;
+	row.hash = std::string (parts[0]);
+	row.attempts = ToLong (parts[1]);
+	row.sessions = ToLong (parts[2]);
+	row.transports = ToLong (parts[3]);
+	row.highBandwidth = parts[4] == "1";
+	row.transportNames = parts.size () == 6 ? std::string (parts[5]) : TransportNamesFromMask (row.transports);
+	return true;
 }
 
 void App::ParsePeers (const std::string & payload)
@@ -1305,16 +1574,32 @@ void App::ParsePeers (const std::string & payload)
 	{
 		if (!line.starts_with ("peer=")) continue;
 		auto value = i2p::tui::UnescapeValue (line.substr (5));
-		auto parts = Split (value, '|');
-		if (parts.size () != 5) continue;
 		PeerRow row;
-		row.hash = std::string (parts[0]);
-		row.attempts = ToLong (parts[1]);
-		row.sessions = ToLong (parts[2]);
-		row.transports = ToLong (parts[3]);
-		row.highBandwidth = parts[4] == "1";
+		if (!ParsePeerRow (value, row)) continue;
 		m_Peers.push_back (std::move (row));
+		if (m_Peers.size () >= i2p::tui::MAX_PEER_RECORDS_PER_REQUEST) break;
 	}
+}
+
+void App::ParseConnections (const std::string & payload)
+{
+	m_Connections.clear ();
+	for (auto line : Split (payload, '\n'))
+	{
+		if (!line.starts_with ("connection=")) continue;
+		auto value = i2p::tui::UnescapeValue (line.substr (11));
+		PeerRow row;
+		if (!ParsePeerRow (value, row)) continue;
+		m_Connections.push_back (std::move (row));
+		if (m_Connections.size () >= i2p::tui::MAX_CONNECTION_RECORDS_PER_REQUEST) break;
+	}
+	std::sort (m_Connections.begin (), m_Connections.end (),
+		[] (const PeerRow & left, const PeerRow & right)
+		{
+			if (left.sessions != right.sessions) return left.sessions > right.sessions;
+			return left.hash < right.hash;
+		});
+	m_Dirty = true;
 }
 
 void App::ParseTunnels (const std::string & payload)
@@ -1526,7 +1811,7 @@ void App::ParseTorrentDetail (const std::string & payload)
 	m_Dirty = true;
 }
 
-void App::ParseCommandResult (const std::string & payload)
+bool App::ParseCommandResult (const std::string & payload)
 {
 	auto fields = ParseFieldMap (payload);
 	auto result = ToLowerAscii (MapValue (fields, "result"));
@@ -1534,6 +1819,58 @@ void App::ParseCommandResult (const std::string & payload)
 	bool error = result == "error";
 	if (message.empty ()) message = error ? "daemon rejected the command" : "command accepted";
 	SetStatus (message, error);
+	return !error;
+}
+
+bool App::SendAdminCommand (std::string_view command)
+{
+	if (!m_Connected)
+	{
+		SetStatus ("daemon is not connected", true);
+		return false;
+	}
+	std::string payload;
+	if (!Request (command, payload)) return false;
+	bool accepted = ParseCommandResult (payload);
+	if (accepted)
+	{
+		m_NextRefresh = std::chrono::steady_clock::now ();
+		m_Dirty = true;
+	}
+	return accepted;
+}
+
+void App::BeginTransitPrompt ()
+{
+	if (!m_Connected)
+	{
+		SetStatus ("daemon is not connected", true);
+		return;
+	}
+	const auto & current = Field ("router.accepts_tunnels");
+	if (current.empty ())
+	{
+		SetStatus ("transit state is not available yet", true);
+		return;
+	}
+	m_PendingTransit = current != "1";
+	BeginPrompt (PromptKind::ConfirmTransit,
+		m_PendingTransit ? "Enable transit tunnels? [y/N] " : "Disable transit tunnels? [y/N] ");
+}
+
+void App::CycleDaemonLogLevel ()
+{
+	static constexpr std::array<std::string_view, 6> levels
+		= { "none", "critical", "error", "warn", "info", "debug" };
+	size_t current = 0;
+	for (size_t i = 0; i < levels.size (); ++i)
+		if (levels[i] == m_DaemonLogLevel)
+		{
+			current = i;
+			break;
+		}
+	const auto next = levels[(current + 1) % levels.size ()];
+	if (SendAdminCommand ("ADMIN LOGLEVEL " + std::string (next))) m_DaemonLogLevel = std::string (next);
 }
 
 void App::SendTorrentCommand (std::string_view command)
@@ -1790,6 +2127,27 @@ void App::CommitPrompt ()
 		return;
 	}
 
+	if (kind == PromptKind::LogFilter)
+	{
+		m_LogFilter = BoundUtf8 (Trim (input), 128);
+		m_Scroll = 0;
+		SetStatus (m_LogFilter.empty () ? "log filter cleared" : "log filter: " + m_LogFilter, false);
+		return;
+	}
+
+	if (kind == PromptKind::ConfirmTransit)
+	{
+		auto answer = ToLowerAscii (Trim (input));
+		if (answer != "y" && answer != "yes")
+		{
+			SetStatus ("transit change cancelled", false);
+			return;
+		}
+		SendAdminCommand (m_PendingTransit ? "ADMIN TRANSIT ON" : "ADMIN TRANSIT OFF");
+		m_PendingTransit = false;
+		return;
+	}
+
 	if (kind == PromptKind::AddMagnet)
 	{
 		auto magnet = Trim (input);
@@ -1895,6 +2253,7 @@ void App::CancelPrompt ()
 	m_PendingTorrentId = -1;
 	m_PendingTorrentTunnel = -1;
 	m_PendingTorrentName.clear ();
+	m_PendingTransit = false;
 	SetStatus ("cancelled", false);
 }
 
@@ -1908,8 +2267,8 @@ void App::ToggleSelected ()
 	}
 	if (!RequireTorrentTunnel ()) return;
 	bool stop = IsActiveStatus (torrent->status) && !IsStoppedStatus (torrent->status);
-	std::string command = std::string (stop ? "TORRENT-STOP " : "TORRENT-START ") + std::to_string (m_TorrentTunnel)
-		+ " " + std::to_string (torrent->id);
+	std::string command = std::string (stop ? "TORRENT-PAUSE " : "TORRENT-RESUME ")
+		+ std::to_string (m_TorrentTunnel) + " " + std::to_string (torrent->id);
 	SendTorrentCommand (command);
 }
 
@@ -2037,16 +2396,39 @@ void App::DrawHeader (int width)
 {
 	PutLine (0, " openi2pd TUI ", width, m_Theme.Attributes (ThemeRole::Title));
 
-	int column = 18;
-	for (size_t i = 0; i < TAB_NAMES.size (); ++i)
+	auto keyFor = [] (size_t index)
 	{
-		if (column >= width) break;
-		std::string label = " " + std::to_string (i + 1) + ":" + std::string (TAB_NAMES[i]) + " ";
-		terminal::SetAttribute (
-			m_Theme.Attributes (static_cast<size_t> (m_Tab) == i ? ThemeRole::SelectedTab : ThemeRole::HeaderBar));
+		return index == TAB_NAMES.size () - 1 ? std::string ("0") : std::to_string (index + 1);
+	};
+	auto active = static_cast<size_t> (m_Tab);
+	const int column = 18;
+	if (column >= width) return;
+
+	// Narrow terminals get the active view instead of a truncated row of
+	// unreachable tab labels. Tab/Left/Right still cycle every view.
+	if (width < 112)
+	{
+		std::string label = " " + keyFor (active) + ":" + std::string (TAB_NAMES[active]) + " ("
+			+ std::to_string (active + 1) + "/" + std::to_string (TAB_NAMES.size ()) + ") ";
+		terminal::SetAttribute (m_Theme.Attributes (ThemeRole::SelectedTab));
 		terminal::Move (0, column);
 		terminal::Put (label, width - column);
-		column += static_cast<int> (label.size ());
+		terminal::SetAttribute (terminal::ATTR_NORMAL);
+		return;
+	}
+
+	const bool compact = width < 150;
+	int position = column;
+	for (size_t i = 0; i < TAB_NAMES.size (); ++i)
+	{
+		if (position >= width) break;
+		const auto name = compact ? TAB_SHORT_NAMES[i] : TAB_NAMES[i];
+		std::string label = " " + keyFor (i) + ":" + std::string (name) + " ";
+		terminal::SetAttribute (
+			m_Theme.Attributes (i == active ? ThemeRole::SelectedTab : ThemeRole::HeaderBar));
+		terminal::Move (0, position);
+		terminal::Put (label, width - position);
+		position += static_cast<int> (label.size ());
 	}
 	terminal::SetAttribute (terminal::ATTR_NORMAL);
 }
@@ -2058,9 +2440,19 @@ void App::DrawFooter (int height, int width)
 	if (!m_Error.empty ()) line += " | " + m_Error;
 	line += " | socket " + m_Options.socketPath;
 	if (m_Tab == Tab::Torrents)
-		line += " | a/A add p start/stop R reannounce d/D remove x/z all / search s sort ? help";
+		line += " | a/A add p pause/resume R reannounce d/D remove x/z all / search s sort ? help";
+	else if (m_Tab == Tab::Config)
+		line += " | read-only | Up/Down scroll | q quit, Tab/0-9 switch, r refresh, ? help";
+	else if (m_Tab == Tab::Status)
+		line += " | t transit | q quit, Tab/0-9 switch, r refresh, ? help";
+	else if (m_Tab == Tab::Connections)
+		line += " | t transit | q quit, Tab/0-9 switch, r refresh, ? help";
+	else if (m_Tab == Tab::NetDb)
+		line += " | n routers/leasesets | q quit, Tab/0-9 switch, r refresh, ? help";
+	else if (m_Tab == Tab::Logs)
+		line += " | / filter c clear l level L daemon level | q quit, Tab/0-9 switch, ? help";
 	else
-		line += " | q quit, Tab/1-7 switch, r refresh, ? help";
+		line += " | q quit, Tab/0-9 switch, r refresh, ? help";
 	PutLine (height - 1, line, width, m_Theme.Attributes (ThemeRole::StatusBar));
 }
 
@@ -2132,24 +2524,61 @@ void App::DrawStatus (int top, int height, int width)
 	show ("NTCP2 / SSU2",
 		std::string (Field ("transport.ntcp2") == "1" ? "NTCP2" : "-") + " / "
 			+ (Field ("transport.ssu2") == "1" ? "SSU2" : "-"));
+	show ("Transport online", Field ("transport.online") == "1" ? "yes" : "no");
 	show ("Bandwidth in / out",
 		HumanRate (ToU64 (Field ("bandwidth.in"))) + " / " + HumanRate (ToU64 (Field ("bandwidth.out"))));
+	show ("Bandwidth 15s in / out",
+		HumanRate (ToU64 (Field ("bandwidth.in15"))) + " / " + HumanRate (ToU64 (Field ("bandwidth.out15"))));
 	show ("Transferred",
 		HumanBytes (ToU64 (Field ("traffic.received"))) + " received, " + HumanBytes (ToU64 (Field ("traffic.sent")))
 			+ " sent");
-	show ("Peers / routers", Field ("peers.count") + " / " + Field ("netdb.routers"));
-	show ("Floodfills / leasesets", Field ("netdb.floodfills") + " / " + Field ("netdb.leasesets"));
+	show ("Peers / connections", Field ("peers.count") + " / " + Field ("connections.count"));
+	show ("Routers / floodfills", Field ("netdb.routers") + " / " + Field ("netdb.floodfills"));
+	show ("LeaseSets", Field ("netdb.leasesets"));
 	show ("Tunnels in / out / transit",
 		Field ("tunnels.inbound") + " / " + Field ("tunnels.outbound") + " / " + Field ("tunnels.transit"));
+	show ("Transit tunnels", Field ("router.accepts_tunnels") == "1" ? "accepted (t to change)" : "declined (t to change)");
 	show ("Tunnel creation success", Field ("tunnels.success") + "%");
+	show ("Tunnel queues",
+		Field ("tunnels.queue") + " data / " + Field ("tunnels.build_queue") + " build");
 	show ("Reseeding", Field ("netdb.reseeding") == "1" ? "active" : "idle");
+	show ("Daemon log level", m_DaemonLogLevel);
 	show ("Max bandwidth", HumanBytes (ToLong (Field ("router.bandwidth_limit")) * 1024) + "/s");
+	DrawRateHistory (row, top, height, width);
+}
+
+void App::DrawRateHistory (int & row, int top, int height, int width)
+{
+	if (m_InHistory.empty () || width < 28 || row + 4 > top + height) return;
+	PutLine (row++, "", width);
+	PutLine (row++, " Bandwidth history (15-second samples)", width, m_Theme.Attributes (ThemeRole::Muted));
+	static constexpr std::array<const char *, 8> blocks
+		= { " ", "\xE2\x96\x81", "\xE2\x96\x82", "\xE2\x96\x83", "\xE2\x96\x84", "\xE2\x96\x85", "\xE2\x96\x86", "\xE2\x96\x87" };
+	uint32_t maximum = 1;
+	for (auto value : m_InHistory) maximum = std::max (maximum, value);
+	for (auto value : m_OutHistory) maximum = std::max (maximum, value);
+	auto draw = [&] (std::string_view label, const std::deque<uint32_t> & history, ThemeRole role)
+	{
+		const int available = std::max (0, width - 9);
+		if (available <= 0) return;
+		const size_t start = history.size () > static_cast<size_t> (available) ? history.size () - available : 0;
+		std::string line = "  " + std::string (label) + " ";
+		for (size_t i = start; i < history.size (); ++i)
+		{
+			const uint64_t scaled = static_cast<uint64_t> (history[i]) * 7 / maximum;
+			const size_t index = history[i] ? static_cast<size_t> (std::max<uint64_t> (1, scaled)) : 0;
+			line.append (blocks[std::min (index, blocks.size () - 1)]);
+		}
+		PutLine (row++, line, width, m_Theme.Attributes (role));
+	};
+	draw ("in ", m_InHistory, ThemeRole::TorrentDownload);
+	draw ("out", m_OutHistory, ThemeRole::TorrentUpload);
 }
 
 void App::DrawPeers (int top, int height, int width)
 {
 	int row = top;
-	std::string header = "  Peer hash                                      Sess Attempts Transports High";
+	std::string header = "  Peer hash                                      Sess Attempts Transports            High";
 	PutLine (row++, header, width, m_Theme.Attributes (ThemeRole::Primary));
 	if (m_Peers.empty ()) PutLine (row, "  no known peers", width);
 	int visible = std::max (0, height - 1);
@@ -2158,22 +2587,50 @@ void App::DrawPeers (int top, int height, int width)
 	for (int i = start; i < static_cast<int> (m_Peers.size ()) && row < top + height; ++i)
 	{
 		const auto & peer = m_Peers[i];
-		char buffer[160];
-		char transports[16] = "-";
-		if (peer.transports) snprintf (transports, sizeof (transports), "%ld", peer.transports);
-		snprintf (buffer, sizeof (buffer), "  %-46.46s %4ld %8ld %10s %4s", peer.hash.c_str (), peer.sessions,
-			peer.attempts, transports, peer.highBandwidth ? "yes" : "");
-		PutLine (row++, buffer, width);
+		std::string line = "  " + FitUtf8 (peer.hash, 46) + FitUtf8 (std::to_string (peer.sessions), 5, true)
+			+ FitUtf8 (std::to_string (peer.attempts), 9, true) + " " + FitUtf8 (peer.transportNames, 20)
+			+ FitUtf8 (peer.highBandwidth ? "yes" : "", 5);
+		PutLine (row++, line, width);
+	}
+}
+
+void App::DrawConnections (int top, int height, int width)
+{
+	int row = top;
+	std::string title = "  Active transport connections: " + std::to_string (m_Connections.size ());
+	if (!m_Connected) title = "  Active transport connections: daemon disconnected";
+	PutLine (row++, title, width, m_Theme.Attributes (ThemeRole::Primary));
+	PutLine (row++, "  Peer hash                                      Sess Attempts Transports            High", width,
+		m_Theme.Attributes (ThemeRole::Primary));
+	if (m_Connections.empty ())
+	{
+		PutLine (row, m_Connected ? "  no established transport connections" : "  waiting for daemon",
+			width, m_Theme.Attributes (ThemeRole::Muted));
+		return;
+	}
+	const int visible = std::max (0, height - 2);
+	const int maximum = std::max (0, static_cast<int> (m_Connections.size ()) - visible);
+	m_Scroll = std::clamp (m_Scroll, 0, maximum);
+	for (int i = m_Scroll; i < static_cast<int> (m_Connections.size ()) && row < top + height; ++i)
+	{
+		const auto & peer = m_Connections[i];
+		std::string line = "  " + FitUtf8 (peer.hash, 46) + FitUtf8 (std::to_string (peer.sessions), 5, true)
+			+ FitUtf8 (std::to_string (peer.attempts), 9, true) + " " + FitUtf8 (peer.transportNames, 20)
+			+ FitUtf8 (peer.highBandwidth ? "yes" : "", 5);
+		PutLine (row++, line, width);
 	}
 }
 
 void App::DrawTunnels (int top, int height, int width)
 {
 	int row = top;
+	std::string title = "  Tunnels: in " + Field ("tunnels.inbound") + ", out " + Field ("tunnels.outbound")
+		+ ", transit " + Field ("tunnels.transit") + ", success " + Field ("tunnels.success") + "%";
+	PutLine (row++, title, width, m_Theme.Attributes (ThemeRole::Primary));
 	PutLine (
 		row++, "  Tunnel ID   Dir      State         Hops  Created", width, m_Theme.Attributes (ThemeRole::Primary));
 	if (m_Tunnels.empty ()) PutLine (row, "  no tunnels", width);
-	int visible = std::max (0, height - 1);
+	int visible = std::max (0, height - 2);
 	int start = std::max (0, static_cast<int> (m_Tunnels.size ()) - visible - m_Scroll);
 	if (start < 0) start = 0;
 	for (int i = start; i < static_cast<int> (m_Tunnels.size ()) && row < top + height; ++i)
@@ -2183,53 +2640,180 @@ void App::DrawTunnels (int top, int height, int width)
 		snprintf (buffer, sizeof (buffer), "  %-10.10s %-8.8s %-13.13s %5.5s %s", tunnel.id.c_str (),
 			tunnel.direction.c_str (), tunnel.state.c_str (), tunnel.hops.c_str (),
 			Timestamp (ToLong (tunnel.created)).c_str ());
-		PutLine (row++, buffer, width);
+		ThemeRole role = ThemeRole::Muted;
+		if (tunnel.state == "established")
+			role = ThemeRole::Success;
+		else if (tunnel.state == "failed" || tunnel.state == "build-failed" || tunnel.state == "test-failed")
+			role = ThemeRole::Error;
+		else if (tunnel.state == "pending" || tunnel.state == "build-reply" || tunnel.state == "expiring")
+			role = ThemeRole::Warning;
+		PutLine (row++, buffer, width, m_Theme.Attributes (role));
 	}
 }
 
 void App::DrawNetDb (int top, int height, int width)
 {
 	int row = top;
-	auto show = [&] (std::string_view label, const std::string & value)
+	auto value = [this] (std::string_view name)
+	{
+		auto it = m_NetDb.find (std::string (name));
+		if (it != m_NetDb.end ()) return it->second;
+		return Field (name);
+	};
+	auto show = [&] (std::string_view label, std::string value)
 	{
 		if (row >= top + height) return;
-		PutLine (row++, "  " + FitUtf8 (label, 24) + value, width);
+		PutLine (row++, "  " + FitUtf8 (label, 24) + std::move (value), width);
 	};
-	show ("Routers", Field ("netdb.routers"));
-	show ("Floodfills", Field ("netdb.floodfills"));
-	show ("LeaseSets", Field ("netdb.leasesets"));
-	show ("Reseeding", Field ("netdb.reseeding") == "1" ? "active" : "idle");
-	show ("Floodfill mode", Field ("router.floodfill") == "1" ? "enabled" : "disabled");
-	show ("Hidden mode", Field ("router.hidden") == "1" ? "enabled" : "disabled");
-	show ("Family", Field ("router.family").empty () ? "none" : Field ("router.family"));
-	show ("Connected peers", Field ("peers.count"));
-	show ("Tunnel build queue", Field ("tunnels.build_queue"));
-	if (!m_Destinations.empty ())
+	show ("Routers", value ("netdb.routers"));
+	show ("Floodfills", value ("netdb.floodfills"));
+	show ("LeaseSets", value ("netdb.leasesets"));
+	show ("Reseeding", value ("netdb.reseeding") == "1" ? "active" : "idle");
+	show ("Floodfill mode", value ("router.floodfill") == "1" ? "enabled" : "disabled");
+	show ("Hidden mode", value ("router.hidden") == "1" ? "enabled" : "disabled");
+	show ("Family", value ("router.family").empty () ? "none" : value ("router.family"));
+	show ("Peers / connections", value ("peers.count") + " / " + value ("connections.count"));
+	show ("Tunnel build queue", value ("tunnels.build_queue"));
+
+	if (row >= top + height) return;
+	PutLine (row++, "", width);
+	const bool routers = m_NetDbView == NetDbView::Routers;
+	const size_t count = routers ? m_NetDbRouters.size () : m_NetDbLeaseSets.size ();
+	std::string title = routers ? "  Router directory (" : "  LeaseSet directory (";
+	title += std::to_string (count) + " listed) | n switches view";
+	PutLine (row++, title, width, m_Theme.Attributes (ThemeRole::Primary));
+	const bool loaded = routers ? m_NetDbRoutersLoaded : m_NetDbLeaseSetsLoaded;
+	if (!loaded)
 	{
-		if (row < top + height) PutLine (row++, "", width);
-		if (row < top + height)
-			PutLine (row++, "  Local destinations (b32):", width, m_Theme.Attributes (ThemeRole::Primary));
-		for (const auto & destination : m_Destinations)
+		PutLine (row, "  loading directory...", width, m_Theme.Attributes (ThemeRole::Muted));
+		return;
+	}
+	if (!count)
+	{
+		PutLine (row, routers ? "  no router records" : "  no LeaseSet records", width,
+			m_Theme.Attributes (ThemeRole::Muted));
+		return;
+	}
+
+	const int visible = std::max (0, top + height - row);
+	const int maximum = std::max (0, static_cast<int> (count) - visible);
+	m_Scroll = std::clamp (m_Scroll, 0, maximum);
+	if (routers)
+	{
+		PutLine (row++, "  Hash                                      Ver  Caps F  V4 V6 Updated   Reach", width,
+			m_Theme.Attributes (ThemeRole::Primary));
+		for (int i = m_Scroll; i < static_cast<int> (m_NetDbRouters.size ()) && row < top + height; ++i)
 		{
-			if (row >= top + height) break;
-			PutLine (row++, "  " + destination, width);
+			const auto & router = m_NetDbRouters[i];
+			std::string line = "  " + FitUtf8 (router.hash, 42) + FitUtf8 (std::to_string (router.version), 5, true)
+				+ FitUtf8 (std::to_string (router.caps), 5, true) + FitUtf8 (router.floodfill ? "F" : "-", 2);
+			line += FitUtf8 (router.v4 ? "Y" : "-", 3) + FitUtf8 (router.v6 ? "Y" : "-", 3)
+				+ FitUtf8 (Timestamp64 (router.timestamp), 9) + FitUtf8 (router.reachable ? "yes" : "no", 6);
+			PutLine (row++, line, width);
 		}
 	}
+	else
+	{
+		PutLine (row++, "  Hash                                      Type   Expires            Earliest           State", width,
+			m_Theme.Attributes (ThemeRole::Primary));
+		for (int i = m_Scroll; i < static_cast<int> (m_NetDbLeaseSets.size ()) && row < top + height; ++i)
+		{
+			const auto & leaseSet = m_NetDbLeaseSets[i];
+			std::string state = leaseSet.expired ? "expired" : (leaseSet.valid ? "valid" : "invalid");
+			std::string line = "  " + FitUtf8 (leaseSet.hash, 42)
+				+ FitUtf8 (std::to_string (leaseSet.storeType), 6, true)
+				+ FitUtf8 (Timestamp64 (leaseSet.expiration / 1000), 18) + " "
+				+ FitUtf8 (Timestamp64 (leaseSet.earliestLease / 1000), 18) + " " + FitUtf8 (state, 8);
+			PutLine (row++, line, width);
+		}
+	}
+}
+
+void App::DrawConfig (int top, int height, int width)
+{
+	int row = top;
+	std::string title = "  Router configuration (";
+	title += m_ConfigReadOnly ? "read-only" : "snapshot";
+	if (m_ConfigSchema > 0) title += ", schema " + std::to_string (m_ConfigSchema);
+	title += ")";
+	PutLine (row++, title, width, m_Theme.Attributes (ThemeRole::Primary));
+
+	if (!m_ConfigLoaded)
+	{
+		PutLine (row, "  loading configuration snapshot...", width);
+		return;
+	}
+	if (m_Config.empty ())
+	{
+		PutLine (row, "  no allowlisted configuration options reported", width);
+		return;
+	}
+
+	const int nameColumns = width >= 72 ? 32 : (width >= 56 ? 24 : 18);
+	constexpr int typeColumns = 9;
+	const int valueColumns = std::max (8, width - 2 - nameColumns - typeColumns);
+	std::string header = "  " + FitUtf8 ("Option", nameColumns) + FitUtf8 ("Type", typeColumns);
+	header += FitUtf8 ("Value", valueColumns);
+	PutLine (row++, header, width, m_Theme.Attributes (ThemeRole::Primary));
+
+	const int visible = std::max (0, top + height - row);
+	const int maximum = std::max (0, static_cast<int> (m_Config.size ()) - visible);
+	m_Scroll = std::clamp (m_Scroll, 0, maximum);
+	for (int i = m_Scroll; i < static_cast<int> (m_Config.size ()) && row < top + height; ++i)
+	{
+		const auto & option = m_Config[i];
+		std::string line = "  " + FitUtf8 (option.name, nameColumns) + FitUtf8 (option.type, typeColumns);
+		line += FitUtf8 (option.value, valueColumns);
+		PutLine (row++, line, width);
+	}
+
+	if (row < top + height)
+	{
+		PutLine (row++, "", width);
+		PutLine (row, "  Editing is unavailable in protocol version 1; use the daemon configuration and restart.",
+			width, m_Theme.Attributes (ThemeRole::Muted));
+	}
+}
+
+void App::DrawDestinations (int top, int height, int width)
+{
+	if (m_Destinations.empty ())
+	{
+		PutLine (top, "  No local client destinations are running.", width,
+			m_Theme.Attributes (ThemeRole::Muted));
+		PutLine (top + 1, "  Configure a client tunnel or SAM/I2CP destination, then press r.", width,
+			m_Theme.Attributes (ThemeRole::Muted));
+		return;
+	}
+	PutLine (top, "  Local destinations (current b32 address)", width, m_Theme.Attributes (ThemeRole::Primary));
+	const int visible = std::max (0, height - 1);
+	const int maximum = std::max (0, static_cast<int> (m_Destinations.size ()) - visible);
+	m_Scroll = std::clamp (m_Scroll, 0, maximum);
+	for (int i = m_Scroll; i < static_cast<int> (m_Destinations.size ()) && top + 1 + (i - m_Scroll) < top + height; ++i)
+		PutLine (top + 1 + (i - m_Scroll), "  " + m_Destinations[i], width);
 }
 
 void App::DrawLogs (int top, int height, int width)
 {
 	std::vector<const LogRow *> visible;
+	const auto filter = ToLowerAscii (m_LogFilter);
 	for (const auto & record : m_Logs)
-		if (record.level <= m_LogLevel) visible.push_back (&record);
+	{
+		if (record.level > m_LogLevel) continue;
+		if (!filter.empty () && ToLowerAscii (record.text).find (filter) == std::string::npos) continue;
+		visible.push_back (&record);
+	}
 	int lines = std::max (0, height - 1);
 	int start = std::max (0, static_cast<int> (visible.size ()) - lines - m_Scroll);
 	int row = top;
-	PutLine (row++, "  Time      Level  Message (l cycles filter: debug/info/warn/error/critical)", width,
-		m_Theme.Attributes (ThemeRole::Primary));
+	std::string header = "  Time      Level  Message (l local level, / filter";
+	if (!m_LogFilter.empty ()) header += ": " + TruncateUtf8 (m_LogFilter, 32);
+	header += ", L daemon: " + m_DaemonLogLevel + ")";
+	PutLine (row++, header, width, m_Theme.Attributes (ThemeRole::Primary));
 	if (visible.empty ())
 	{
-		PutLine (row, "  no log records at this level", width);
+		PutLine (row, filter.empty () ? "  no log records at this level" : "  no log records match the filter",
+			width);
 		return;
 	}
 	for (int i = start; i < static_cast<int> (visible.size ()) && row < top + height; ++i)
@@ -2252,14 +2836,26 @@ void App::DrawLogs (int top, int height, int width)
 
 void App::DrawHelp (int top, int height, int width)
 {
-	static constexpr std::array<std::string_view, 35> lines = { "  Keys - global",
-		"  1..7, Tab, Left/Right   switch view (Torrents is 4)",
+	static constexpr std::string_view lines[] = { "  Keys - global",
+		"  1..9, 0, Tab, Left/Right switch view (0 is Connections)",
 		"  q                       quit the TUI (router keeps running)",
-		"  r                       refresh immediately", "  ?                       this help", "", "  Torrents (4)",
-		"  Up/Down, PgUp/PgDn      select a torrent", "  Home/End                first/last torrent",
+		"  r                       refresh immediately", "  ?                       this help", "",
+		"  Status (1), Peers (2), Tunnels (3), Torrents (4), NetDb (5), Logs (6), Help (7)",
+		"  Destinations (8) lists the currently configured local b32 addresses.",
+		"  Config (9) is a read-only allowlisted snapshot. Connections (0) lists live peers.", "",
+		"  Status (1)", "  t                       toggle transit tunnel acceptance (confirmed)",
+		"  The bandwidth history keeps the last 60 fifteen-second samples.", "",
+		"  Connections (0)", "  Up/Down, PgUp/PgDn      scroll established transport sessions",
+		"  t                       toggle transit tunnel acceptance (confirmed)", "",
+		"  NetDb (5)", "  n                       switch between router and LeaseSet directories",
+		"  Up/Down, PgUp/PgDn      scroll the selected directory", "",
+		"  Logs (6)", "  l                       cycle the local display threshold",
+		"  L                       cycle the daemon log level through secure IPC",
+		"  /                       filter records by text", "  c                       clear the log filter", "",
+		"  Torrents (4)", "  Up/Down, PgUp/PgDn      select a torrent", "  Home/End                first/last torrent",
 		"  Enter                   open torrent details", "  Esc                     back, or cancel a prompt",
 		"  a / A                   add magnet / add .torrent file path",
-		"  p                       start or stop the selected torrent",
+		"  p                       pause or resume the selected torrent",
 		"  R                       reannounce the selected torrent",
 		"  Ctrl-R                  reannounce all torrents",
 		"  d / D                   remove / remove with local data", "  D                       requires typing YES",
@@ -2269,12 +2865,13 @@ void App::DrawHelp (int top, int height, int width)
 		"  [ / ]                   previous/next torrent tunnel", "", "  Torrent details",
 		"  Left/Right, Tab         general/files/peers/trackers", "  Up/Down, PgUp/PgDn      scroll detail lines",
 		"  Home/End                first/last detail line", "  Esc                     return to the torrent table", "",
-		"  Notes", "  Actions are sent to the daemon over the local UNIX socket.",
+		"  Notes", "  Actions are sent to the daemon over the local IPC endpoint.",
+		"  Transit and daemon log level are the only router-wide writes; both are",
+		"  operation-specific and do not expose generic configuration editing.",
 		"  The TUI never opens torrent files, peers or trackers directly.",
 		"  Removal with local data is a separate, typed confirmation.",
-		"  Sort order and filter are shown above the table.",
 		"  Long UTF-8 values are truncated without splitting characters." };
-	int total = static_cast<int> (lines.size ());
+	int total = static_cast<int> (sizeof (lines) / sizeof (lines[0]));
 	int visible = std::max (0, height);
 	int maximum = std::max (0, total - visible);
 	m_HelpScroll = std::clamp (m_HelpScroll, 0, maximum);
@@ -2296,7 +2893,7 @@ void App::DrawTorrents (int top, int height, int width)
 	{
 		PutLine (top, "  No torrent service tunnel is available on this router.", width,
 			m_Theme.Attributes (ThemeRole::Warning));
-		PutLine (top + 1, "  Start a torrent client tunnel in i2pd, then press r.", width,
+		PutLine (top + 1, "  Start a torrent client tunnel in openi2pd, then press r.", width,
 			m_Theme.Attributes (ThemeRole::Muted));
 		PutLine (top + 2, "  Torrent administration does not open any files or network links here.", width,
 			m_Theme.Attributes (ThemeRole::Muted));
@@ -2663,16 +3260,19 @@ void App::Draw ()
 	{
 	case Tab::Status: DrawStatus (top, contentHeight, width); break;
 	case Tab::Peers: DrawPeers (top, contentHeight, width); break;
+	case Tab::Connections: DrawConnections (top, contentHeight, width); break;
 	case Tab::Tunnels: DrawTunnels (top, contentHeight, width); break;
+	case Tab::NetDb: DrawNetDb (top, contentHeight, width); break;
+	case Tab::Destinations: DrawDestinations (top, contentHeight, width); break;
 	case Tab::Torrents:
 		if (m_TorrentDetails)
 			DrawTorrentDetails (top, contentHeight, width);
 		else
 			DrawTorrents (top, contentHeight, width);
 		break;
-	case Tab::NetDb: DrawNetDb (top, contentHeight, width); break;
 	case Tab::Logs: DrawLogs (top, contentHeight, width); break;
 	case Tab::Help: DrawHelp (top, contentHeight, width); break;
+	case Tab::Config: DrawConfig (top, contentHeight, width); break;
 	}
 	DrawTorrentStatusLine (height, width);
 	terminal::Refresh ();
@@ -2815,6 +3415,43 @@ void App::HandleKey (int key)
 		}
 	}
 
+	if ((m_Tab == Tab::Status || m_Tab == Tab::Connections) && (key == 't' || key == 'T'))
+	{
+		BeginTransitPrompt ();
+		return;
+	}
+
+	if (m_Tab == Tab::Logs)
+	{
+		if (key == '/')
+		{
+			BeginPrompt (PromptKind::LogFilter, "filter log text: ", m_LogFilter);
+			return;
+		}
+		if (key == 'c' || key == 'C')
+		{
+			m_LogFilter.clear ();
+			m_Scroll = 0;
+			SetStatus ("log filter cleared", false);
+			return;
+		}
+		if (key == 'L')
+		{
+			CycleDaemonLogLevel ();
+			return;
+		}
+	}
+
+	if (m_Tab == Tab::NetDb && (key == 'n' || key == 'N'))
+	{
+		m_NetDbView = m_NetDbView == NetDbView::Routers ? NetDbView::LeaseSets : NetDbView::Routers;
+		m_Scroll = 0;
+		m_NextNetDbList = std::chrono::steady_clock::now ();
+		SetStatus (m_NetDbView == NetDbView::Routers ? "netDb: router directory" : "netDb: LeaseSet directory",
+			false);
+		return;
+	}
+
 	switch (key)
 	{
 	case 'q':
@@ -2839,6 +3476,7 @@ void App::HandleKey (int key)
 	case '5':
 		m_Tab = Tab::NetDb;
 		m_Scroll = 0;
+		m_NextNetDbList = std::chrono::steady_clock::now ();
 		break;
 	case '6':
 		m_Tab = Tab::Logs;
@@ -2850,12 +3488,27 @@ void App::HandleKey (int key)
 		m_Scroll = 0;
 		m_HelpScroll = 0;
 		break;
+	case '8':
+		m_Tab = Tab::Destinations;
+		m_Scroll = 0;
+		break;
+	case '9':
+		m_Tab = Tab::Config;
+		m_Scroll = 0;
+		break;
+	case '0':
+		m_Tab = Tab::Connections;
+		m_Scroll = 0;
+		m_NextRefresh = std::chrono::steady_clock::now ();
+		break;
 	case '\t':
 	{
 		auto next = (static_cast<int> (m_Tab) + 1) % static_cast<int> (TAB_NAMES.size ());
 		m_Tab = static_cast<Tab> (next);
 		m_Scroll = 0;
 		if (m_Tab == Tab::Torrents) ScheduleTorrentRefresh (true);
+		if (m_Tab == Tab::NetDb) m_NextNetDbList = std::chrono::steady_clock::now ();
+		if (m_Tab == Tab::Connections) m_NextRefresh = std::chrono::steady_clock::now ();
 		break;
 	}
 	case terminal::KEY_RIGHT:
@@ -2864,6 +3517,8 @@ void App::HandleKey (int key)
 		m_Tab = static_cast<Tab> (next);
 		m_Scroll = 0;
 		if (m_Tab == Tab::Torrents) ScheduleTorrentRefresh (true);
+		if (m_Tab == Tab::NetDb) m_NextNetDbList = std::chrono::steady_clock::now ();
+		if (m_Tab == Tab::Connections) m_NextRefresh = std::chrono::steady_clock::now ();
 		break;
 	}
 	case terminal::KEY_LEFT:
@@ -2873,6 +3528,8 @@ void App::HandleKey (int key)
 		m_Tab = static_cast<Tab> (previous);
 		m_Scroll = 0;
 		if (m_Tab == Tab::Torrents) ScheduleTorrentRefresh (true);
+		if (m_Tab == Tab::NetDb) m_NextNetDbList = std::chrono::steady_clock::now ();
+		if (m_Tab == Tab::Connections) m_NextRefresh = std::chrono::steady_clock::now ();
 		break;
 	}
 	case 'r':
@@ -2881,7 +3538,6 @@ void App::HandleKey (int key)
 		m_Dirty = true;
 		return;
 	case 'l':
-	case 'L':
 		if (m_LogLevel > eLogCritical)
 			--m_LogLevel;
 		else
@@ -2892,6 +3548,10 @@ void App::HandleKey (int key)
 		{
 			if (m_HelpScroll > 0) --m_HelpScroll;
 		}
+		else if (m_Tab == Tab::Config || m_Tab == Tab::Destinations || m_Tab == Tab::Connections || m_Tab == Tab::NetDb)
+		{
+			if (m_Scroll > 0) --m_Scroll;
+		}
 		else
 			++m_Scroll;
 		m_Dirty = true;
@@ -2899,6 +3559,8 @@ void App::HandleKey (int key)
 	case terminal::KEY_DOWN:
 		if (m_Tab == Tab::Help)
 			++m_HelpScroll;
+		else if (m_Tab == Tab::Config || m_Tab == Tab::Destinations || m_Tab == Tab::Connections || m_Tab == Tab::NetDb)
+			++m_Scroll;
 		else if (m_Scroll > 0)
 			--m_Scroll;
 		m_Dirty = true;
@@ -2906,6 +3568,8 @@ void App::HandleKey (int key)
 	case terminal::KEY_PPAGE:
 		if (m_Tab == Tab::Help)
 			m_HelpScroll = std::max (0, m_HelpScroll - 10);
+		else if (m_Tab == Tab::Config || m_Tab == Tab::Destinations || m_Tab == Tab::Connections || m_Tab == Tab::NetDb)
+			m_Scroll = std::max (0, m_Scroll - 10);
 		else
 			m_Scroll += 10;
 		m_Dirty = true;
@@ -2913,6 +3577,8 @@ void App::HandleKey (int key)
 	case terminal::KEY_NPAGE:
 		if (m_Tab == Tab::Help)
 			m_HelpScroll += 10;
+		else if (m_Tab == Tab::Config || m_Tab == Tab::Destinations || m_Tab == Tab::Connections || m_Tab == Tab::NetDb)
+			m_Scroll += 10;
 		else if (m_Scroll > 10)
 			m_Scroll -= 10;
 		else
@@ -2924,6 +3590,13 @@ void App::HandleKey (int key)
 			m_HelpScroll = 0;
 		else
 			m_Scroll = 0;
+		m_Dirty = true;
+		return;
+	case terminal::KEY_END:
+		if (m_Tab == Tab::Help)
+			m_HelpScroll = INT_MAX;
+		else if (m_Tab == Tab::Config || m_Tab == Tab::Destinations || m_Tab == Tab::Connections || m_Tab == Tab::NetDb)
+			m_Scroll = INT_MAX;
 		m_Dirty = true;
 		return;
 	default: return;
