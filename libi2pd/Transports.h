@@ -203,7 +203,10 @@ namespace transport
 		uint32_t GetTransitBandwidth15s () const { return m_TransitBandwidth15s; };
 		int GetCongestionLevel (bool longTerm) const;
 		size_t GetNumPeers () const;
+		size_t GetNumConnectedPeers () const;
 		std::vector<PeerSnapshot> GetPeersSnapshot (size_t max) const;
+		/** bounded snapshot containing only peers with at least one live session */
+		std::vector<PeerSnapshot> GetConnectedPeersSnapshot (size_t max) const;
 		std::shared_ptr<const i2p::data::RouterInfo> GetRandomPeer (
 			bool isHighBandwidth, i2p::data::PeerOrdering * peerOrdering = nullptr) const;
 
@@ -255,13 +258,13 @@ namespace transport
 	private:
 		volatile bool m_IsOnline;
 		bool m_IsRunning, m_IsNAT, m_CheckReserved;
-		std::thread * m_Thread;
-		boost::asio::io_context * m_Service;
-		boost::asio::executor_work_guard<boost::asio::io_context::executor_type> * m_Work;
-		boost::asio::steady_timer *m_PeerCleanupTimer, *m_PeerTestTimer, *m_UpdateBandwidthTimer;
+		std::unique_ptr<std::thread> m_Thread;
+		std::unique_ptr<boost::asio::io_context> m_Service;
+		std::unique_ptr<boost::asio::executor_work_guard<boost::asio::io_context::executor_type>> m_Work;
+		std::unique_ptr<boost::asio::steady_timer> m_PeerCleanupTimer, m_PeerTestTimer, m_UpdateBandwidthTimer;
 
-		SSU2Server * m_SSU2Server;
-		NTCP2Server * m_NTCP2Server;
+		std::unique_ptr<SSU2Server> m_SSU2Server;
+		std::unique_ptr<NTCP2Server> m_NTCP2Server;
 		mutable std::mutex m_PeersMutex;
 		std::unordered_map<i2p::data::IdentHash, std::shared_ptr<Peer>> m_Peers;
 		mutable std::mutex m_ConnectedNetworksMutex;
@@ -298,8 +301,8 @@ namespace transport
 
 	public:
 		// for administrative views
-		const NTCP2Server * GetNTCP2Server () const { return m_NTCP2Server; };
-		SSU2Server * GetSSU2Server () const { return m_SSU2Server; };
+		const NTCP2Server * GetNTCP2Server () const { return m_NTCP2Server.get (); };
+		SSU2Server * GetSSU2Server () const { return m_SSU2Server.get (); };
 		const decltype (m_Peers) & GetPeers () const { return m_Peers; };
 	};
 

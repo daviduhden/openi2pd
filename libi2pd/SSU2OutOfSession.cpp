@@ -11,11 +11,64 @@
 #include "Log.h"
 #include "SSU2.h"
 #include "SSU2OutOfSession.h"
+#include "Transports.h"
 
 namespace i2p
 {
 namespace transport
 {
+	namespace
+	{
+		// Mirrors Java TransportUtil.isValidPort(): the SSU2 random port range
+		// is always acceptable; outside it, privileged and well-known service
+		// ports are not. Deliberately not the local port-selection blacklist,
+		// which also excludes ports a Java peer may legitimately bind.
+		bool IsValidPeerTestPort (uint16_t port)
+		{
+			if (port < 1024) return false;
+			if (port >= 9151 && port <= 30777) return true;
+			switch (port)
+			{
+			case 1719:
+			case 1720:
+			case 1900:
+			case 2049:
+			case 2827:
+			case 3659:
+			case 4045:
+			case 4444:
+			case 4445:
+			case 5060:
+			case 5061:
+			case 6000:
+			case 6697:
+			case 7070:
+			case 8080:
+			case 9001:
+			case 9030:
+			case 9050:
+			case 9100:
+			case 9150:
+			case 31000:
+			case 32000: return false;
+			default:;
+			}
+			if (port >= 6665 && port <= 6669) return false; // IRC and alternates
+			if (port >= 7650 && port <= 7668) return false; // standard I2P ports
+			return true;
+		}
+	} // namespace
+
+	bool IsValidPeerTestEndpoint (const boost::asio::ip::udp::endpoint & ep)
+	{
+		// A zero port and an unspecified address carry no usable return path.
+		if (ep.address ().is_unspecified () || !ep.port ()) return false;
+		if (!IsValidPeerTestPort (ep.port ())) return false;
+		// Respects the reservedrange switch used by local/test networks.
+		if (transports.IsInReservedRange (ep.address ())) return false;
+		return !transports.IsBanned (ep.address ());
+	}
+
 	SSU2PeerTestSession::SSU2PeerTestSession (SSU2Server & server, uint64_t sourceConnID, uint64_t destConnID)
 		: SSU2Session (server)
 		, m_MsgNumReceived (0)
@@ -30,11 +83,24 @@ namespace transport
 		SetDestConnID (destConnID);
 		SetState (eSSU2SessionStatePeerTest);
 		SetTerminationTimeout (SSU2_PEER_TEST_EXPIRATION_TIMEOUT);
+		// Java PacketBuilder2 caps PeerTest padding at the 1280-byte MTU.
+		AdjustMaxPayloadSize (SSU2_MIN_PACKET_SIZE);
 	}
 
 	bool SSU2PeerTestSession::ProcessPeerTest (uint8_t * buf, size_t len)
 	{
 		// we are Alice or Charlie, msgs 5,6,7
+		const auto & sender = GetRemoteEndpoint ();
+		if (!IsValidPeerTestEndpoint (sender))
+		{
+			LogPrint (eLogWarning, "SSU2: PeerTest from invalid source ", sender);
+			return false;
+		}
+		if (len < 56)
+		{
+			LogPrint (eLogWarning, "SSU2: PeerTest message too short ", len);
+			return false;
+		}
 		Header header;
 		memcpy (header.buf, buf, 16);
 		header.ll[0] ^= CreateHeaderMask (i2p::context.GetSSU2IntroKey (), buf + (len - 24));
@@ -45,15 +111,26 @@ namespace transport
 				eLogWarning, "SSU2: Unexpected message type ", (int)header.h.type, " instead ", (int)eSSU2PeerTest);
 			return false;
 		}
-		if (len < 48)
+		// Out-of-session PeerTest is always version 2, including when the
+		// in-session handshake negotiated a PQ version (Java PacketBuilder2).
+		if (header.h.flags[0] != 2)
 		{
-			LogPrint (eLogWarning, "SSU2: PeerTest message too short ", len);
+			LogPrint (eLogWarning, "SSU2: PeerTest has wrong version ", (int)header.h.flags[0]);
+			return false;
+		}
+		if (header.h.flags[1] != i2p::context.GetNetID ())
+		{
+			LogPrint (eLogWarning, "SSU2: PeerTest has wrong network ID ", (int)header.h.flags[1]);
 			return false;
 		}
 		uint8_t nonce[12] = { 0 };
 		uint64_t headerX[2]; // sourceConnID, token
 		GetServer ().ChaCha20 (buf + 16, 16, i2p::context.GetSSU2IntroKey (), nonce, (uint8_t *)headerX);
-		SetDestConnID (headerX[0]);
+		if (headerX[0] != GetDestConnID ())
+		{
+			LogPrint (eLogWarning, "SSU2: PeerTest has wrong Source Connection ID");
+			return false;
+		}
 		// decrypt and handle payload
 		uint8_t * payload = buf + 32;
 		CreateNonce (be32toh (header.h.packetNum), nonce);
@@ -68,26 +145,111 @@ namespace transport
 		}
 		HandlePayload (payload, len - 48);
 		SetIsDataReceived (false);
+		if (HasInvalidPayload ())
+		{
+			LogPrint (eLogWarning, "SSU2: Invalid block in PeerTest payload");
+			return false;
+		}
 		return true;
 	}
 
 	void SSU2PeerTestSession::HandleAddress (const uint8_t * buf, size_t len)
 	{
-		if (!ExtractEndpoint (buf, len, m_OurEndpoint))
+		boost::asio::ip::udp::endpoint ep;
+		if (!ExtractEndpoint (buf, len, ep))
+		{
 			LogPrint (eLogWarning, "SSU2: Can't handle address block from peer test message");
+			return;
+		}
+		// The Address block reports our own apparent endpoint. Ignore an
+		// unspecified/zero endpoint instead of letting it drive the SNAT
+		// checks. Also ignore a cross-family block: GetAddress() is the
+		// Charlie/Bob address for this test, and the supplied remote endpoint
+		// is the packet source; either identifies the test family.
+		if (ep.address ().is_unspecified () || !ep.port ())
+		{
+			LogPrint (eLogWarning, "SSU2: Invalid address block in peer test message");
+			return;
+		}
+		bool expectV4;
+		if (GetAddress () && GetAddress ()->IsV4 () != GetAddress ()->IsV6 ())
+			expectV4 = GetAddress ()->IsV4 ();
+		else if (!GetRemoteEndpoint ().address ().is_unspecified ())
+			expectV4 = GetRemoteEndpoint ().address ().is_v4 ();
+		else
+		{
+			m_OurEndpoint = ep;
+			return;
+		}
+		if (ep.address ().is_v4 () != expectV4)
+		{
+			LogPrint (
+				eLogWarning, "SSU2: Ignoring cross-family address block ", ep, " in ", expectV4 ? "IPv4" : "IPv6",
+				" peer test");
+			return;
+		}
+		m_OurEndpoint = ep;
+	}
+
+	void SSU2PeerTestSession::ApplyOurEndpoint ()
+	{
+		// The Address block in msgs 5/7 reports our apparent endpoint. Java
+		// passes it to externalAddressReceived()/testComplete(), which updates
+		// the external address and port (unless the result is a symmetric NAT).
+		// Without this, SetReachable() could clear the introducers after a
+		// successful test while the address still had no host, making us
+		// unreachable again.
+		const auto & ep = m_OurEndpoint;
+		if (ep.address ().is_unspecified () || !ep.port () || !IsValidPeerTestPort (ep.port ())) return;
+		if (transports.IsInReservedRange (ep.address ())) return;
+		const bool v4 = ep.address ().is_v4 ();
+		i2p::context.UpdateAddress (ep.address ());
+		if (ep.port () == GetServer ().GetPort (v4)) return;
+		// A different external port is valid for a mapped NAT but must not be
+		// published when a symmetric NAT was detected (Java keeps the test
+		// result UNKNOWN and does not adopt the port in that case).
+		if ((v4 ? i2p::context.GetError () : i2p::context.GetErrorV6 ()) == eRouterErrorSymmetricNAT) return;
+		i2p::context.PublishSSU2Address (ep.port (), true, v4, !v4, GetServer ().GetVersion ());
 	}
 
 	void SSU2PeerTestSession::HandlePeerTest (const uint8_t * buf, size_t len)
 	{
-		// msgs 5-7
-		if (len < 8) return;
+		// msgs 5-7. This session type is deliberately not "established": the
+		// out-of-session PeerTest exchange is authenticated by the test nonce
+		// and the connection IDs derived from it, not by a Noise handshake.
+		if (len < 13)
+		{
+			LogPrint (eLogWarning, "SSU2: PeerTest block is too short ", len);
+			return;
+		}
 		uint8_t msg = buf[0];
+		if (msg < 5 || msg > 7)
+		{
+			LogPrint (eLogWarning, "SSU2: PeerTest unexpected msg num ", (int)msg);
+			return;
+		}
 		if (msg <= m_MsgNumReceived)
 		{
 			LogPrint (eLogDebug, "SSU2: PeerTest msg num ", msg, " received after ", m_MsgNumReceived, ". Ignored");
 			return;
 		}
 		size_t offset = 3; // points to signed data after msg + code + flag
+		if (buf[offset] != 2) // ver
+		{
+			LogPrint (eLogWarning, "SSU2: PeerTest has wrong version ", (int)buf[offset]);
+			return;
+		}
+		uint8_t asz = buf[offset + 9];
+		if (asz != 0 && asz != 6 && asz != 18)
+		{
+			LogPrint (eLogWarning, "SSU2: PeerTest invalid endpoint size ", (int)asz);
+			return;
+		}
+		if (len < offset + 10 + (size_t)asz)
+		{
+			LogPrint (eLogWarning, "SSU2: PeerTest endpoint is truncated");
+			return;
+		}
 		uint32_t nonce = bufbe32toh (buf + offset + 1); // 1 - ver
 		switch (msg) // msg
 		{
@@ -99,6 +261,7 @@ namespace transport
 				if (GetServer ().IsForcedFirewalled (GetRemoteEndpoint ().address ().is_v4 ()))
 					// we assume that msg 5 was not received if forced firewalled
 					return;
+				ApplyOurEndpoint ();
 				m_IsConnectedRecently = GetServer ().IsConnectedRecently (GetRemoteEndpoint ());
 				if (GetAddress ())
 				{
@@ -110,11 +273,22 @@ namespace transport
 				}
 			}
 			else
+			{
 				LogPrint (eLogWarning, "SSU2: Peer test 5 nonce mismatch ", nonce, " connID=", GetSourceConnID ());
+				return;
+			}
 			break;
 		}
 		case 6: // Charlie from Alice
 		{
+			// The two connection IDs are derived from the test nonce (SSU2
+			// spec, Peer Test, Connection IDs). Alice sends msg 6 with our
+			// Destination ID, i.e. ((nonce << 32) | nonce).
+			if (htobe64 (((uint64_t)nonce << 32) | nonce) != GetDestConnID ())
+			{
+				LogPrint (eLogWarning, "SSU2: Peer test 6 nonce mismatch ", nonce, " connID=", GetDestConnID ());
+				return;
+			}
 			m_PeerTestResendTimer.cancel (); // no more msg 5 resends
 			if (GetAddress ())
 				SendPeerTest (7, buf + offset, len - offset);
@@ -126,6 +300,13 @@ namespace transport
 		}
 		case 7: // Alice from Charlie 2
 		{
+			// Our Source ID was set to ((nonce << 32) | nonce) when the test
+			// session was created; msg 7 must use the same nonce.
+			if (htobe64 (((uint64_t)nonce << 32) | nonce) != GetSourceConnID ())
+			{
+				LogPrint (eLogWarning, "SSU2: Peer test 7 nonce mismatch ", nonce, " connID=", GetSourceConnID ());
+				return;
+			}
 			m_PeerTestResendTimer.cancel (); // no more msg 6 resends
 			if (m_MsgNumReceived < 5 && m_OurEndpoint.port ()) // msg 5 was not received
 			{
@@ -150,6 +331,7 @@ namespace transport
 					}
 				}
 			}
+			ApplyOurEndpoint ();
 			GetServer ().AddConnectedRecently (GetRemoteEndpoint (), i2p::util::GetSecondsSinceEpoch ());
 			GetServer ().RequestRemoveSession (GetConnID ());
 			break;
@@ -163,6 +345,9 @@ namespace transport
 	{
 		auto addr = GetAddress ();
 		if (!addr) return;
+		// Out-of-session PeerTest uses the 1280-byte SSU2 floor, matching
+		// PacketBuilder2.getPadding(..., 1280).
+		AdjustMaxPayloadSize (SSU2_MIN_PACKET_SIZE);
 		Header header;
 		uint8_t h[32], payload[SSU2_MAX_PACKET_SIZE];
 		// fill packet
@@ -270,11 +455,13 @@ namespace transport
 		SetState (eSSU2SessionStateHolePunch);
 		SetRemoteEndpoint (remoteEndpoint);
 		SetAddress (addr);
-#if OPENSSL_PQ
-		if (server.GetVersion () > 2) // we support post quantum in config
-			SetVersion (addr->v);
-#endif
+		// A HolePunch header is always SSU2 version 2 (SSU2 spec, Hole Punch,
+		// "ver :: 2"), even when Alice will follow it with a PQ SessionRequest.
+		// The incoming SessionRequest selects its own version in
+		// ProcessFirstIncomingMessage(), so do not pre-set a PQ version here.
+		SetVersion (SSU2_HOLE_PUNCH_VERSION);
 		SetTerminationTimeout (SSU2_RELAY_NONCE_EXPIRATION_TIMEOUT);
+		AdjustMaxPayloadSize (SSU2_MIN_PACKET_SIZE);
 	}
 
 	void SSU2HolePunchSession::SendHolePunch ()
@@ -289,7 +476,7 @@ namespace transport
 		header.h.connID = GetDestConnID (); // dest id
 		RAND_bytes (header.buf + 8, 4); // random packet num
 		header.h.type = eSSU2HolePunch;
-		header.h.flags[0] = GetVersion (); // ver
+		header.h.flags[0] = SSU2_HOLE_PUNCH_VERSION; // ver, always 2
 		header.h.flags[1] = (uint8_t)i2p::context.GetNetID (); // netID
 		header.h.flags[2] = 0; // flag
 		memcpy (h, header.buf, 16);
@@ -302,11 +489,13 @@ namespace transport
 		size_t payloadSize = 7;
 		payloadSize += CreateAddressBlock (payload + payloadSize, GetMaxPayloadSize () - payloadSize, ep);
 		// relay response block
-		if (payloadSize + m_RelayResponseBlock.size () < GetMaxPayloadSize ())
+		if (m_RelayResponseBlock.size () <= GetMaxPayloadSize () - payloadSize)
 		{
 			memcpy (payload + payloadSize, m_RelayResponseBlock.data (), m_RelayResponseBlock.size ());
 			payloadSize += m_RelayResponseBlock.size ();
 		}
+		else
+			LogPrint (eLogError, "SSU2: HolePunch relay response does not fit ", m_RelayResponseBlock.size ());
 		payloadSize += CreatePaddingBlock (payload + payloadSize, GetMaxPayloadSize () - payloadSize);
 		// encrypt
 		uint8_t n[12];

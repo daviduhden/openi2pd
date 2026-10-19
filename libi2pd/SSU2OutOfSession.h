@@ -22,6 +22,28 @@ namespace transport
 	const int SSU2_PEER_TEST_RESEND_INTERVAL_VARIANCE = 2000; // in milliseconds
 	const int SSU2_PEER_TEST_MAX_NUM_RESENDS = 3;
 
+	/**
+	 * The HolePunch long header always carries SSU2 version 2, independent of
+	 * the version that Alice will negotiate in the following SessionRequest
+	 * (SSU2 spec, Hole Punch: "ver :: 2"). Java PacketBuilder2.buildHolePunch()
+	 * hard-codes PROTOCOL_VERSION as well.
+	 */
+	constexpr uint8_t SSU2_HOLE_PUNCH_VERSION = 2;
+
+	/**
+	 * Whether an out-of-session Peer Test packet may be answered.
+	 *
+	 * Java PeerTestManager.receiveTest() rejects a source with an invalid
+	 * port, a non-routable address or a blocklisted address before doing any
+	 * work. The same checks apply here: a spoofed msg 5/6 source must not make
+	 * us send msg 6/7 to a privileged port or a private address. Port
+	 * validation uses the Java TransportUtil.isValidPort() port classes, and
+	 * reserved-range/ban checks use Transports::IsInReservedRange()/IsBanned()
+	 * (including the configured reserved-range switch so local test networks
+	 * can opt out).
+	 */
+	bool IsValidPeerTestEndpoint (const boost::asio::ip::udp::endpoint & ep);
+
 	class SSU2PeerTestSession : public SSU2Session // for PeerTest msgs 5,6,7
 	{
 	public:
@@ -37,6 +59,9 @@ namespace transport
 		void Connect () override; // outgoing
 		bool ProcessFirstIncomingMessage (uint64_t connID, uint8_t * buf, size_t len) override; // incoming
 
+	protected:
+		bool IsPayloadBlockAllowed (uint8_t block) const override { return IsPeerTestPayloadBlockAllowed (block); }
+
 	private:
 		void SendPeerTest (
 			uint8_t msg, const uint8_t * signedData, size_t signedDataLen, bool delayed = false); // PeerTest message
@@ -45,6 +70,7 @@ namespace transport
 		void HandleAddress (const uint8_t * buf, size_t len) override;
 
 		void ScheduleResend (uint8_t msg);
+		void ApplyOurEndpoint (); // update our external host/port from an Address block
 
 	private:
 		uint8_t m_MsgNumReceived, m_NumResends;

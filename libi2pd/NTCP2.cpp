@@ -13,6 +13,7 @@
 #include <openssl/sha.h>
 #include <openssl/hmac.h>
 #include <stdlib.h>
+#include <exception>
 #include <vector>
 #include <chrono>
 #include <limits>
@@ -36,17 +37,65 @@ namespace i2p
 {
 namespace transport
 {
+	namespace
+	{
+		bool IsAllZero (const uint8_t * buf, size_t len)
+		{
+			for (size_t i = 0; i < len; ++i)
+				if (buf[i]) return false;
+			return true;
+		}
+
+		// RFC 7748: an all-zero X25519 output means the peer supplied a
+		// low-order point and the result must not be used. OpenSSL reports some
+		// of these as errors; check the output as well.
+		bool AgreeAndValidate (i2p::crypto::X25519Keys & keys, const uint8_t * pub, uint8_t * shared)
+		{
+			return keys.Agree (pub, shared) && !IsAllZero (shared, 32);
+		}
+	}
+
 	NTCP2Establisher::NTCP2Establisher ()
-		: m_SessionConfirmedBuffer (nullptr)
-		, m_BufferLen (0)
+		: m_BufferLen (0)
 		, m_IsLongPadding (false)
 	{
 		SetVersion (2);
 	}
 
-	NTCP2Establisher::~NTCP2Establisher ()
+	bool ValidateNTCP2SessionConfirmedPayload (const uint8_t * payload, size_t len, size_t & routerInfoDataSize)
 	{
-		delete[] m_SessionConfirmedBuffer;
+		routerInfoDataSize = 0;
+		if (!payload || len < 4) return false; // block header + at least the flag byte
+		if (payload[0] != eNTCP2BlkRouterInfo) return false;
+		size_t size = bufbe16toh (payload + 1);
+		if (size < 1 || size > i2p::data::MAX_RI_BUFFER_SIZE + 1 || size > len - 3) return false;
+		size_t offset = 3 + size;
+		bool gotOptions = false, gotPadding = false;
+		while (offset < len)
+		{
+			if (len - offset < 3) return false;
+			uint8_t blk = payload[offset];
+			size_t blockSize = bufbe16toh (payload + offset + 1);
+			offset += 3;
+			if (blockSize > len - offset) return false;
+			if (blk == eNTCP2BlkOptions)
+			{
+				// Options may only appear once, before padding.
+				if (gotOptions || gotPadding) return false;
+				gotOptions = true;
+			}
+			else if (blk == eNTCP2BlkPadding)
+			{
+				// Padding is optional, may appear only once, and must be last.
+				if (gotPadding || offset + blockSize != len) return false;
+				gotPadding = true;
+			}
+			else
+				return false; // I2NP, DateTime, Termination and unknown blocks are illegal here
+			offset += blockSize;
+		}
+		routerInfoDataSize = size;
+		return true;
 	}
 
 	void NTCP2Establisher::SetVersion (int version)
@@ -81,7 +130,7 @@ namespace transport
 		MixHash (epub, 32);
 		// x25519 between pub and priv
 		uint8_t inputKeyMaterial[32];
-		if (!priv.Agree (pub, inputKeyMaterial)) return false;
+		if (!AgreeAndValidate (priv, pub, inputKeyMaterial)) return false;
 		MixKey (inputKeyMaterial);
 		return true;
 	}
@@ -103,7 +152,7 @@ namespace transport
 
 		// x25519 between remote pub and ephemaral priv
 		uint8_t inputKeyMaterial[32];
-		if (!m_EphemeralKeys->Agree (GetRemotePub (), inputKeyMaterial)) return false;
+		if (!AgreeAndValidate (*m_EphemeralKeys, GetRemotePub (), inputKeyMaterial)) return false;
 		MixKey (inputKeyMaterial);
 		return true;
 	}
@@ -121,7 +170,7 @@ namespace transport
 	bool NTCP2Establisher::KDF3Alice ()
 	{
 		uint8_t inputKeyMaterial[32];
-		if (!i2p::context.GetNTCP2StaticKeys ().Agree (GetRemotePub (), inputKeyMaterial)) return false;
+		if (!AgreeAndValidate (i2p::context.GetNTCP2StaticKeys (), GetRemotePub (), inputKeyMaterial)) return false;
 		MixKey (inputKeyMaterial);
 		return true;
 	}
@@ -129,7 +178,7 @@ namespace transport
 	bool NTCP2Establisher::KDF3Bob ()
 	{
 		uint8_t inputKeyMaterial[32];
-		if (!m_EphemeralKeys->Agree (m_RemoteStaticKey, inputKeyMaterial)) return false;
+		if (!AgreeAndValidate (*m_EphemeralKeys, m_RemoteStaticKey, inputKeyMaterial)) return false;
 		MixKey (inputKeyMaterial);
 		return true;
 	}
@@ -146,6 +195,20 @@ namespace transport
 
 	bool NTCP2Establisher::CreateSessionRequestMessage (std::mt19937 & rng)
 	{
+		// spec/ntcp2 Published Addresses: Alice must validate Bob's static key
+		// and IV before connecting. A zero value is not a valid X25519 point;
+		// the high bit is reserved for the hybrid PQ marker and must be clear
+		// on the published static key (Java OutboundNTCP2State:252-256).
+		if (IsAllZero (m_RemoteStaticKey, 32) || (m_RemoteStaticKey[31] & 0x80))
+		{
+			LogPrint (eLogWarning, "NTCP2: Invalid remote static key");
+			return false;
+		}
+		if (IsAllZero (m_IV, 16))
+		{
+			LogPrint (eLogWarning, "NTCP2: Invalid remote IV");
+			return false;
+		}
 		size_t offset = 0;
 		// encrypt X
 		i2p::crypto::CBCEncryption encryption;
@@ -195,6 +258,11 @@ namespace transport
 			if (maxMsgSize > m_MaxMsgSize) maxMsgSize = m_MaxMsgSize;
 		}
 #endif
+		// Keep the generated padding within the per-version maximum. The local
+		// generation policy may be smaller, but must never emit a value that a
+		// conforming peer is required to reject (spec/ntcp2-hybrid).
+		const size_t versionMaxPadding = NTCP2GetMaxHandshakePadding (GetVersion (), false);
+		if (maxPaddingLength > versionMaxPadding) maxPaddingLength = versionMaxPadding;
 		// calculate padding length
 		if (offset + 32 + maxPaddingLength > maxMsgSize) maxPaddingLength = maxMsgSize - offset - 32;
 		auto paddingLength = maxPaddingLength ? rng () % maxPaddingLength : 0;
@@ -207,7 +275,13 @@ namespace transport
 		// calculate m3p2Len
 		auto riBuffer = i2p::context.CopyRouterInfoBuffer ();
 		auto bufLen = riBuffer->GetBufferLen ();
-		m3p2Len = bufLen + 4 + 16; // (RI header + RI + MAC for now) TODO: implement options
+		size_t part2Len = bufLen + 4 + 16; // (RI header + RI + MAC for now) TODO: implement options
+		if (part2Len > NTCP2_SESSION_CONFIRMED_PART2_MAX_SIZE || part2Len > std::numeric_limits<uint16_t>::max ())
+		{
+			LogPrint (eLogError, "NTCP2: Local RouterInfo is too large for SessionConfirmed (", part2Len, " bytes)");
+			return false;
+		}
+		m3p2Len = static_cast<uint16_t> (part2Len);
 		htobe16buf (options + 4, m3p2Len);
 		// 2 bytes reserved
 		htobe32buf (options + 8, (i2p::util::GetMillisecondsSinceEpoch () + 500) / 1000); // tsA, rounded to seconds
@@ -228,8 +302,8 @@ namespace transport
 		}
 		m_BufferLen = offset + paddingLength;
 		// create m3p2 payload (RouterInfo block) for SessionConfirmed
-		m_SessionConfirmedBuffer = new uint8_t[m3p2Len + 48]; // m3p1 is 48 bytes
-		uint8_t * m3p2 = m_SessionConfirmedBuffer + 48;
+		m_SessionConfirmedBuffer = std::make_unique_for_overwrite<uint8_t[]> (m3p2Len + 48); // m3p1 is 48 bytes
+		uint8_t * m3p2 = m_SessionConfirmedBuffer.get () + 48;
 		m3p2[0] = eNTCP2BlkRouterInfo; // block
 		htobe16buf (m3p2 + 1, bufLen + 1); // flag + RI
 		m3p2[3] = 0; // flag
@@ -274,6 +348,9 @@ namespace transport
 			if (maxMsgSize > m_MaxMsgSize) maxMsgSize = m_MaxMsgSize;
 		}
 #endif
+		// Per-version SessionCreated padding limit (spec/ntcp2-hybrid).
+		const size_t versionMaxPadding = NTCP2GetMaxHandshakePadding (GetVersion (), true);
+		if (maxPaddingLength > versionMaxPadding) maxPaddingLength = versionMaxPadding;
 		// calculate padding length
 		if (offset + 32 + maxPaddingLength > maxMsgSize) maxPaddingLength = maxMsgSize - offset - 32;
 		auto paddingLength = maxPaddingLength ? rng () % maxPaddingLength : 0;
@@ -302,7 +379,7 @@ namespace transport
 	bool NTCP2Establisher::CreateSessionConfirmedMessagePart1 ()
 	{
 		// part1 48 bytes, n = 1
-		if (!Encrypt (i2p::context.GetNTCP2StaticPublicKey (), m_SessionConfirmedBuffer, 32))
+		if (!Encrypt (i2p::context.GetNTCP2StaticPublicKey (), m_SessionConfirmedBuffer.get (), 32))
 		{
 			LogPrint (eLogWarning, "NTCP2: SessionConfirmed failed to encrypt part1");
 			return false;
@@ -314,10 +391,10 @@ namespace transport
 	{
 		// part 2
 		// update AD again
-		MixHash (m_SessionConfirmedBuffer, 48);
+		MixHash (m_SessionConfirmedBuffer.get (), 48);
 		// encrypt m3p2, it must be filled in SessionRequest
 		if (!KDF3Alice ()) return false; // MixKey, n = 0
-		uint8_t * m3p2 = m_SessionConfirmedBuffer + 48;
+		uint8_t * m3p2 = m_SessionConfirmedBuffer.get () + 48;
 		if (!Encrypt (m3p2, m3p2, m3p2Len - 16))
 		{
 			LogPrint (eLogWarning, "NTCP2: SessionConfirmed failed to encrypt part2");
@@ -359,6 +436,14 @@ namespace transport
 			}
 			else
 				SetVersion (2); // regular x25519 requested
+			// Java InboundEstablishState:318-321 and spec/ntcp2 require a valid
+			// X25519 point. All-zero is not a point and makes the DH result
+			// attacker-known.
+			if (IsAllZero (x, 32))
+			{
+				LogPrint (eLogWarning, "NTCP2: SessionRequest X is zero");
+				return false;
+			}
 			// decryption key for next block
 			if (!KDF1Bob ())
 			{
@@ -372,14 +457,17 @@ namespace transport
 		if (m_CryptoType > i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD)
 		{
 			auto keyLen = i2p::crypto::GetMLKEMPublicKeyLen (m_CryptoType);
+			if (!keyLen) return false;
 			std::vector<uint8_t> encapsKey (keyLen);
-			if (Decrypt (m_Buffer + offset, encapsKey.data (), keyLen))
+			if (!Decrypt (m_Buffer + offset, encapsKey.data (), keyLen))
 			{
-				MixHash (m_Buffer + offset, keyLen + 16);
-				offset += keyLen + 16;
-				m_PQKeys = i2p::crypto::CreateMLKEMKeys (m_CryptoType);
-				if (!m_PQKeys || !m_PQKeys->SetPublicKey (encapsKey.data ())) return false;
+				LogPrint (eLogWarning, "NTCP2: SessionRequest ML-KEM encap_key frame AEAD decryption failed");
+				return false;
 			}
+			MixHash (m_Buffer + offset, keyLen + 16);
+			offset += keyLen + 16;
+			m_PQKeys = i2p::crypto::CreateMLKEMKeys (m_CryptoType);
+			if (!m_PQKeys || !m_PQKeys->SetPublicKey (encapsKey.data ())) return false;
 		}
 #endif
 		// verify MAC and decrypt options block (32 bytes)
@@ -398,6 +486,13 @@ namespace transport
 			if (options[1] == 2) // ver is always 2
 			{
 				paddingLen = bufbe16toh (options + 2);
+				const size_t maxPadding = NTCP2GetMaxHandshakePadding (GetVersion (), false);
+				if (paddingLen > maxPadding)
+				{
+					LogPrint (
+						eLogWarning, "NTCP2: SessionRequest padding length ", (int)paddingLen, " exceeds ", maxPadding);
+					return false;
+				}
 				m_BufferLen = paddingLen + offset;
 				// actual padding is not known yet, apply MixHash later
 				if (m_BufferLen > NTCP2_SESSION_HANDSHAKE_MAX_SIZE) m_IsLongPadding = true;
@@ -405,6 +500,11 @@ namespace transport
 				if (m3p2Len < 19) // 16 bytes MAC + at least 1 byte block type + 2 bytes block size
 				{
 					LogPrint (eLogWarning, "NTCP2: SessionRequest m3p2len=", m3p2Len, " is too short");
+					return false;
+				}
+				if (m3p2Len > NTCP2_SESSION_CONFIRMED_PART2_MAX_SIZE)
+				{
+					LogPrint (eLogWarning, "NTCP2: SessionRequest m3p2len=", m3p2Len, " is too long");
 					return false;
 				}
 				// check timestamp
@@ -444,6 +544,13 @@ namespace transport
 		i2p::crypto::CBCDecryption decryption;
 		decryption.SetKey (m_RemoteIdentHash);
 		decryption.Decrypt (m_Buffer + offset, 32, m_IV, GetRemotePub ());
+		// Java OutboundNTCP2State:325-328 and spec/ntcp2 require a valid
+		// X25519 point; reject an all-zero Y before using it in the DH.
+		if (IsAllZero (GetRemotePub (), 32))
+		{
+			LogPrint (eLogWarning, "NTCP2: SessionCreated Y is zero");
+			return false;
+		}
 		offset = 32;
 		// decryption key for next block (m_K)
 		if (!KDF2Alice ())
@@ -479,6 +586,13 @@ namespace transport
 			MixHash (m_Buffer + offset, 32); // encrypted options
 			// options
 			paddingLen = bufbe16toh (options + 2);
+			const size_t maxPadding = NTCP2GetMaxHandshakePadding (GetVersion (), true);
+			if (paddingLen > maxPadding)
+			{
+				LogPrint (
+					eLogWarning, "NTCP2: SessionCreated padding length ", (int)paddingLen, " exceeds ", maxPadding);
+				return false;
+			}
 			// actual padding is not known yet, apply MixHash later
 			// check timestamp
 			auto ts = i2p::util::GetSecondsSinceEpoch ();
@@ -508,12 +622,12 @@ namespace transport
 	bool NTCP2Establisher::ProcessSessionConfirmedMessagePart1 ()
 	{
 		// decrypt S, n = 1
-		if (!Decrypt (m_SessionConfirmedBuffer, m_RemoteStaticKey, 32))
+		if (!Decrypt (m_SessionConfirmedBuffer.get (), m_RemoteStaticKey, 32))
 		{
 			LogPrint (eLogWarning, "NTCP2: SessionConfirmed Part1 AEAD verification failed ");
 			return false;
 		}
-		MixHash (m_SessionConfirmedBuffer, 48);
+		MixHash (m_SessionConfirmedBuffer.get (), 48);
 		return true;
 	}
 
@@ -524,9 +638,9 @@ namespace transport
 			LogPrint (eLogWarning, "NTCP2: SessionConfirmed Part2 KDF failed");
 			return false;
 		}
-		if (Decrypt (m_SessionConfirmedBuffer + 48, m3p2Buf, m3p2Len - 16))
+		if (Decrypt (m_SessionConfirmedBuffer.get () + 48, m3p2Buf, m3p2Len - 16))
 			// calculate new h again for KDF data
-			MixHash (m_SessionConfirmedBuffer + 48, m3p2Len); // h = SHA256(h || ciphertext)
+			MixHash (m_SessionConfirmedBuffer.get () + 48, m3p2Len); // h = SHA256(h || ciphertext)
 		else
 		{
 			LogPrint (eLogWarning, "NTCP2: SessionConfirmed Part2 AEAD verification failed ");
@@ -556,13 +670,14 @@ namespace transport
 		,
 #endif
 		m_NextReceivedLen (0)
-		, m_NextReceivedBuffer (nullptr)
-		, m_NextSendBuffer (nullptr)
 		, m_NextReceivedBufferSize (0)
 		, m_ReceiveSequenceNumber (0)
 		, m_SendSequenceNumber (0)
 		, m_IsSending (false)
 		, m_IsReceiving (false)
+		, m_IsTerminating (false)
+		, m_PendingTerminationReason (-1)
+		, m_PendingRouterInfo (false)
 		, m_NextRouterInfoResendTime (0)
 		, m_NextPaddingSize (16)
 	{
@@ -588,11 +703,9 @@ namespace transport
 
 	NTCP2Session::~NTCP2Session ()
 	{
-		delete[] m_NextReceivedBuffer;
-		delete[] m_NextSendBuffer;
 #if OPENSSL_SIPHASH
-		if (m_SendMDCtx) EVP_MD_CTX_destroy (m_SendMDCtx);
-		if (m_ReceiveMDCtx) EVP_MD_CTX_destroy (m_ReceiveMDCtx);
+		if (m_SendMDCtx) EVP_MD_CTX_free (m_SendMDCtx);
+		if (m_ReceiveMDCtx) EVP_MD_CTX_free (m_ReceiveMDCtx);
 #endif
 	}
 
@@ -635,6 +748,15 @@ namespace transport
 
 	void NTCP2Session::TerminateByTimeout ()
 	{
+		// If a termination frame is already pending on a stalled write, force
+		// the close on the next timeout sweep instead of waiting forever.
+		if (m_IsTerminating || m_PendingTerminationReason >= 0)
+		{
+			// Defer the close: the termination timer may currently be iterating
+			// m_NTCP2Sessions, which Terminate() modifies.
+			boost::asio::post (m_Server.GetService (), std::bind (&NTCP2Session::Terminate, shared_from_this ()));
+			return;
+		}
 		SendTerminationAndTerminate (eNTCP2IdleTimeout);
 	}
 
@@ -663,14 +785,8 @@ namespace transport
 
 	void NTCP2Session::CreateNextReceivedBuffer (size_t size)
 	{
-		if (m_NextReceivedBuffer)
-		{
-			if (size <= m_NextReceivedBufferSize)
-				return; // buffer is good, do nothing
-			else
-				delete[] m_NextReceivedBuffer;
-		}
-		m_NextReceivedBuffer = new uint8_t[size];
+		if (m_NextReceivedBuffer && size <= m_NextReceivedBufferSize) return; // buffer is good, do nothing
+		m_NextReceivedBuffer = std::make_unique_for_overwrite<uint8_t[]> (size);
 		m_NextReceivedBufferSize = size;
 	}
 
@@ -679,8 +795,7 @@ namespace transport
 		if (m_NextReceivedBuffer && !m_IsReceiving
 			&& ts > GetLastActivityTimestamp () + NTCP2_RECEIVE_BUFFER_DELETION_TIMEOUT)
 		{
-			delete[] m_NextReceivedBuffer;
-			m_NextReceivedBuffer = nullptr;
+			m_NextReceivedBuffer.reset ();
 			m_NextReceivedBufferSize = 0;
 		}
 	}
@@ -761,6 +876,12 @@ namespace transport
 	void NTCP2Session::ProcessSessionRequest (size_t len, bool first)
 	{
 		LogPrint (eLogDebug, "NTCP2: SessionRequest ", first ? "received " : "updated ", len);
+		if (first && m_Server.IsHandshakeReplay (m_Establisher->m_Buffer))
+		{
+			LogPrint (eLogWarning, "NTCP2: Replayed SessionRequest from ", m_RemoteEndpoint);
+			ReadSomethingAndTerminate ();
+			return;
+		}
 		uint16_t paddingLen = 0;
 		bool clockSkew = false, pq = false;
 		if (m_Establisher->ProcessSessionRequestMessage (paddingLen, clockSkew, pq, first))
@@ -797,6 +918,13 @@ namespace transport
 						m_Server.GetService (), std::bind (&NTCP2Session::Terminate, shared_from_this ()));
 				}
 			}
+			else if (HasPendingIncomingData ())
+			{
+				// spec/ntcp2 SessionRequest: Bob must fail if any incoming data
+				// remains after validating message 1 and its padding.
+				LogPrint (eLogWarning, "NTCP2: Extra data after SessionRequest from ", m_RemoteEndpoint);
+				ReadSomethingAndTerminate ();
+			}
 			else
 				SendSessionCreated ();
 		}
@@ -820,7 +948,14 @@ namespace transport
 					if (paddingLength < s->m_Establisher->m_BufferLen)
 						s->m_Establisher->ApplyPadding (
 							s->m_Establisher->m_Buffer + s->m_Establisher->m_BufferLen - paddingLength, paddingLength);
-					s->SendSessionCreated ();
+					if (s->HasPendingIncomingData ())
+					{
+						LogPrint (eLogWarning, "NTCP2: Extra data after SessionRequest padding from ",
+							s->GetRemoteEndpoint ());
+						boost::asio::post (s->m_Server.GetService (), std::bind (&NTCP2Session::Terminate, s));
+					}
+					else
+						s->SendSessionCreated ();
 				});
 		}
 	}
@@ -877,6 +1012,12 @@ namespace transport
 	void NTCP2Session::ProcessSessionCreated (size_t len)
 	{
 		LogPrint (eLogDebug, "NTCP2: SessionCreated received ", len);
+		if (m_Server.IsHandshakeReplayOutgoing (m_Establisher->m_Buffer))
+		{
+			LogPrint (eLogWarning, "NTCP2: Replayed SessionCreated from ", m_RemoteEndpoint);
+			boost::asio::post (m_Server.GetService (), std::bind (&NTCP2Session::Terminate, shared_from_this ()));
+			return;
+		}
 		uint16_t paddingLen = 0;
 		if (m_Establisher->ProcessSessionCreatedMessage (paddingLen))
 		{
@@ -896,6 +1037,13 @@ namespace transport
 					boost::asio::post (
 						m_Server.GetService (), std::bind (&NTCP2Session::Terminate, shared_from_this ()));
 				}
+			}
+			else if (HasPendingIncomingData ())
+			{
+				// spec/ntcp2 SessionCreated: Alice must fail if any incoming data
+				// remains after validating message 2 and its padding.
+				LogPrint (eLogWarning, "NTCP2: Extra data after SessionCreated from ", m_RemoteEndpoint);
+				boost::asio::post (m_Server.GetService (), std::bind (&NTCP2Session::Terminate, shared_from_this ()));
 			}
 			else
 				SendSessionConfirmed ();
@@ -924,7 +1072,14 @@ namespace transport
 					s->m_Establisher->ApplyPadding (
 						s->m_Establisher->m_Buffer + s->m_Establisher->m_BufferLen, paddingLength);
 					s->m_Establisher->m_BufferLen += paddingLength;
-					s->SendSessionConfirmed ();
+					if (s->HasPendingIncomingData ())
+					{
+						LogPrint (eLogWarning, "NTCP2: Extra data after SessionCreated padding from ",
+							s->GetRemoteEndpoint ());
+						boost::asio::post (s->m_Server.GetService (), std::bind (&NTCP2Session::Terminate, s));
+					}
+					else
+						s->SendSessionConfirmed ();
 				});
 		}
 	}
@@ -944,7 +1099,7 @@ namespace transport
 		}
 		// send message
 		boost::asio::async_write (m_Socket,
-			boost::asio::buffer (m_Establisher->m_SessionConfirmedBuffer, m_Establisher->m3p2Len + 48),
+			boost::asio::buffer (m_Establisher->m_SessionConfirmedBuffer.get (), m_Establisher->m3p2Len + 48),
 			boost::asio::transfer_all (),
 			std::bind (&NTCP2Session::HandleSessionConfirmedSent, shared_from_this (), std::placeholders::_1,
 				std::placeholders::_2));
@@ -989,9 +1144,10 @@ namespace transport
 		else
 		{
 			LogPrint (eLogDebug, "NTCP2: SessionCreated sent");
-			m_Establisher->m_SessionConfirmedBuffer = new uint8_t[m_Establisher->m3p2Len + 48];
+			m_Establisher->m_SessionConfirmedBuffer
+				= std::make_unique_for_overwrite<uint8_t[]> (m_Establisher->m3p2Len + 48);
 			boost::asio::async_read (m_Socket,
-				boost::asio::buffer (m_Establisher->m_SessionConfirmedBuffer, m_Establisher->m3p2Len + 48),
+				boost::asio::buffer (m_Establisher->m_SessionConfirmedBuffer.get (), m_Establisher->m3p2Len + 48),
 				boost::asio::transfer_all (),
 				std::bind (&NTCP2Session::HandleSessionConfirmedReceived, shared_from_this (), std::placeholders::_1,
 					std::placeholders::_2));
@@ -1027,18 +1183,11 @@ namespace transport
 			if (m_Establisher->ProcessSessionConfirmedMessagePart2 (buf->data ())) // TODO:handle in establisher thread
 			{
 				// payload
-				// RI block must be first
-				if ((*buf)[0] != eNTCP2BlkRouterInfo)
+				// RI block must be first, then optional Options and (last) Padding.
+				size_t size = 0;
+				if (!ValidateNTCP2SessionConfirmedPayload (buf->data (), buf->size (), size))
 				{
-					LogPrint (eLogWarning, "NTCP2: Unexpected block ", (int)(*buf)[0], " in SessionConfirmed");
-					boost::asio::post (
-						m_Server.GetService (), std::bind (&NTCP2Session::Terminate, shared_from_this ()));
-					return;
-				}
-				auto size = bufbe16toh (buf->data () + 1);
-				if (size < 1 || size + 3 > (int)buf->size () || size > i2p::data::MAX_RI_BUFFER_SIZE + 1)
-				{
-					LogPrint (eLogError, "NTCP2: Unexpected RouterInfo size ", size, " in SessionConfirmed");
+					LogPrint (eLogWarning, "NTCP2: Malformed SessionConfirmed payload");
 					boost::asio::post (
 						m_Server.GetService (), std::bind (&NTCP2Session::Terminate, shared_from_this ()));
 					return;
@@ -1183,14 +1332,14 @@ namespace transport
 	{
 #if OPENSSL_SIPHASH
 		EVP_PKEY * sipKey = EVP_PKEY_new_raw_private_key (EVP_PKEY_SIPHASH, nullptr, sendSipKey, 16);
-		m_SendMDCtx = EVP_MD_CTX_create ();
+		m_SendMDCtx = EVP_MD_CTX_new ();
 		EVP_PKEY_CTX * ctx = nullptr;
 		EVP_DigestSignInit (m_SendMDCtx, &ctx, nullptr, nullptr, sipKey);
 		EVP_PKEY_CTX_ctrl (ctx, -1, EVP_PKEY_OP_SIGNCTX, EVP_PKEY_CTRL_SET_DIGEST_SIZE, 8, nullptr);
 		EVP_PKEY_free (sipKey);
 
 		sipKey = EVP_PKEY_new_raw_private_key (EVP_PKEY_SIPHASH, nullptr, receiveSipKey, 16);
-		m_ReceiveMDCtx = EVP_MD_CTX_create ();
+		m_ReceiveMDCtx = EVP_MD_CTX_new ();
 		ctx = nullptr;
 		EVP_DigestSignInit (m_ReceiveMDCtx, &ctx, NULL, NULL, sipKey);
 		EVP_PKEY_CTX_ctrl (ctx, -1, EVP_PKEY_OP_SIGNCTX, EVP_PKEY_CTRL_SET_DIGEST_SIZE, 8, nullptr);
@@ -1203,6 +1352,11 @@ namespace transport
 
 	void NTCP2Session::ClientLogin ()
 	{
+		// Start the establishment budget after the TCP connect (or proxy
+		// handshake) completes, matching Java NTCPTransport.ESTABLISH_TIMEOUT
+		// rather than counting connect time against the handshake.
+		SetTerminationTimeout (NTCP2_ESTABLISH_TIMEOUT);
+		SetLastActivityTimestamp (i2p::util::GetSecondsSinceEpoch ());
 		if (m_Establisher->m_CryptoType > i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD
 			&& !(m_Server.GetRng () () & 0x03))
 			m_Establisher->SetVersion (2); // switch to non-PQ  with a probability of one in four
@@ -1220,6 +1374,13 @@ namespace transport
 			boost::asio::transfer_all (),
 			std::bind (&NTCP2Session::HandleSessionRequestReceived, shared_from_this (), std::placeholders::_1,
 				std::placeholders::_2));
+	}
+
+	bool NTCP2Session::HasPendingIncomingData ()
+	{
+		boost::system::error_code ec;
+		const auto available = m_Socket.available (ec);
+		return !ec && available > 0;
 	}
 
 	void NTCP2Session::ReceiveLength ()
@@ -1266,8 +1427,8 @@ namespace transport
 					{
 						// read and process message immediately if available
 						moreBytes = boost::asio::read (m_Socket,
-							boost::asio::buffer (m_NextReceivedBuffer, m_NextReceivedLen), boost::asio::transfer_all (),
-							ec);
+							boost::asio::buffer (m_NextReceivedBuffer.get (), m_NextReceivedLen),
+							boost::asio::transfer_all (), ec);
 						HandleReceived (ec, moreBytes);
 					}
 					else
@@ -1292,7 +1453,7 @@ namespace transport
 		setsockopt (m_Socket.native_handle (), IPPROTO_TCP, TCP_QUICKACK, &one, sizeof (one));
 #endif
 		m_IsReceiving = true;
-		boost::asio::async_read (m_Socket, boost::asio::buffer (m_NextReceivedBuffer, m_NextReceivedLen),
+		boost::asio::async_read (m_Socket, boost::asio::buffer (m_NextReceivedBuffer.get (), m_NextReceivedLen),
 			boost::asio::transfer_all (),
 			std::bind (
 				&NTCP2Session::HandleReceived, shared_from_this (), std::placeholders::_1, std::placeholders::_2));
@@ -1312,12 +1473,16 @@ namespace transport
 			i2p::transport::transports.UpdateReceivedBytes (bytes_transferred + 2);
 			uint8_t nonce[12];
 			CreateNonce (m_ReceiveSequenceNumber, nonce);
-			m_ReceiveSequenceNumber++;
-			if (m_Server.AEADChaCha20Poly1305Decrypt (m_NextReceivedBuffer, m_NextReceivedLen - 16, nullptr, 0,
-					m_ReceiveKey, nonce, m_NextReceivedBuffer, m_NextReceivedLen))
+			if (m_Server.AEADChaCha20Poly1305Decrypt (m_NextReceivedBuffer.get (), m_NextReceivedLen - 16, nullptr, 0,
+					m_ReceiveKey, nonce, m_NextReceivedBuffer.get (), m_NextReceivedLen))
 			{
+				// Count only authenticated frames. SendTermination() reports
+				// this value as "valid data frames received"; incrementing
+				// before the AEAD check made an AEAD failure report one frame
+				// too many.
+				m_ReceiveSequenceNumber++;
 				LogPrint (eLogDebug, "NTCP2: Received message decrypted");
-				ProcessNextFrame (m_NextReceivedBuffer, m_NextReceivedLen - 16);
+				ProcessNextFrame (m_NextReceivedBuffer.get (), m_NextReceivedLen - 16);
 				m_IsReceiving = false;
 				ReceiveLength ();
 			}
@@ -1332,35 +1497,43 @@ namespace transport
 	void NTCP2Session::ProcessNextFrame (const uint8_t * frame, size_t len)
 	{
 		size_t offset = 0;
-		// A block header is 3 bytes (type + 16-bit size). Stop before reading a
-		// partial header from a truncated frame instead of consuming the MAC
-		// bytes that follow the plaintext.
-		while (offset + 3 <= len)
+		bool gotPadding = false;
+		// A block header is 3 bytes (type + 16-bit size). A truncated header or
+		// a block that claims more bytes than the frame contains is malformed;
+		// stop processing instead of reading into the MAC or the next block.
+		// Padding must be last and termination must be the last non-padding
+		// block (spec/ntcp2 "Block Ordering Rules"), matching Java's
+		// NTCP2Payload.processPayload().
+		while (offset < len)
 		{
+			if (len - offset < 3)
+			{
+				LogPrint (eLogError, "NTCP2: Truncated block header at offset ", offset, " of ", len);
+				break;
+			}
+			if (gotPadding)
+			{
+				LogPrint (eLogError, "NTCP2: Block after padding at offset ", offset);
+				break;
+			}
 			uint8_t blk = frame[offset];
 			offset++;
 			auto size = bufbe16toh (frame + offset);
 			offset += 2;
 			LogPrint (eLogDebug, "NTCP2: Block type ", (int)blk, " of size ", size);
-			if (offset + size > len)
+			if (size > len - offset)
 			{
-				if (blk == eNTCP2BlkPadding)
-					// padding is always last block and we set size up to end of frame
-					size = len - offset;
-				else
-				{
-					LogPrint (eLogError, "NTCP2: Unexpected block length ", size, " of type ", (int)blk);
-					break;
-				}
+				LogPrint (eLogError, "NTCP2: Unexpected block length ", size, " of type ", (int)blk);
+				break;
 			}
 			switch (blk)
 			{
 			case eNTCP2BlkDateTime:
 			{
 				LogPrint (eLogDebug, "NTCP2: Datetime");
-				if (size < 4)
+				if (size != 4)
 				{
-					LogPrint (eLogWarning, "NTCP2: Datetime block is too short ", size);
+					LogPrint (eLogWarning, "NTCP2: Datetime block has invalid size ", size);
 					break;
 				}
 				if (m_IsEstablished)
@@ -1372,11 +1545,16 @@ namespace transport
 						LogPrint (eLogWarning, "NTCP2: Established session time difference ", (int)ts - (int)tsA,
 							" exceeds clock skew");
 						SendTerminationAndTerminate (eNTCP2ClockSkew);
+						m_Handler.Flush ();
+						return;
 					}
 				}
 				break;
 			}
-			case eNTCP2BlkOptions: LogPrint (eLogDebug, "NTCP2: Options"); break;
+			case eNTCP2BlkOptions:
+				if (size < 12) LogPrint (eLogWarning, "NTCP2: Options block is too short ", size);
+				LogPrint (eLogDebug, "NTCP2: Options");
+				break;
 			case eNTCP2BlkRouterInfo:
 			{
 				if (size < 1)
@@ -1434,8 +1612,14 @@ namespace transport
 				}
 				else
 					LogPrint (eLogWarning, "NTCP2: Unexpected termination block size ", size);
+				// Termination must be the last non-padding block; the session
+				// is closed either way, so do not process anything after it.
+				m_Handler.Flush ();
+				return;
+			case eNTCP2BlkPadding:
+				LogPrint (eLogDebug, "NTCP2: Padding");
+				gotPadding = true;
 				break;
-			case eNTCP2BlkPadding: LogPrint (eLogDebug, "NTCP2: Padding"); break;
 			default: LogPrint (eLogWarning, "NTCP2: Unknown block type ", (int)blk);
 			}
 			offset += size;
@@ -1508,13 +1692,14 @@ namespace transport
 		if (!macBuf) // last block was not enough for MAC
 		{
 			// allocate send buffer
-			m_NextSendBuffer = new uint8_t[287]; // can be any size > 16, we just allocate 287 frequently
+			// can be any size > 16, we just allocate 287 frequently
+			m_NextSendBuffer = std::make_unique_for_overwrite<uint8_t[]> (287);
 			// create padding block
-			auto paddingLen = CreatePaddingBlock (totalLen, m_NextSendBuffer, 287 - 16);
+			auto paddingLen = CreatePaddingBlock (totalLen, m_NextSendBuffer.get (), 287 - 16);
 			// and padding block to encrypt and send
-			if (paddingLen) encryptBufs.push_back ({ m_NextSendBuffer, paddingLen });
-			bufs.push_back (boost::asio::buffer (m_NextSendBuffer, paddingLen + 16));
-			macBuf = m_NextSendBuffer + paddingLen;
+			if (paddingLen) encryptBufs.push_back ({ m_NextSendBuffer.get (), paddingLen });
+			bufs.push_back (boost::asio::buffer (m_NextSendBuffer.get (), paddingLen + 16));
+			macBuf = m_NextSendBuffer.get () + paddingLen;
 			totalLen += paddingLen;
 		}
 		if (totalLen > NTCP2_UNENCRYPTED_FRAME_MAX_SIZE)
@@ -1528,83 +1713,122 @@ namespace transport
 		m_Server.AEADChaCha20Poly1305Encrypt (encryptBufs, m_SendKey, nonce, macBuf); // encrypt buffers
 		SetNextSentFrameLength (totalLen + 16, first->GetNTCP2Header () - 5); // frame length right before first block
 
-		// send buffers
+		// send buffers, the staged buffer is moved into the handler so that it outlives the write
 		m_IsSending = true;
+		std::unique_ptr<uint8_t[]> sendBuffer = std::move (m_NextSendBuffer);
 		boost::asio::async_write (m_Socket, bufs, boost::asio::transfer_all (),
-			std::bind (&NTCP2Session::HandleI2NPMsgsSent, shared_from_this (), std::placeholders::_1,
-				std::placeholders::_2, msgs));
+			[s = shared_from_this (), msgs = std::move (msgs), sendBuffer = std::move (sendBuffer)] (
+				const boost::system::error_code & ecode, std::size_t bytes_transferred) mutable
+			{ s->HandleI2NPMsgsSent (ecode, bytes_transferred, std::move (msgs), std::move (sendBuffer)); });
 	}
 
 	void NTCP2Session::HandleI2NPMsgsSent (const boost::system::error_code & ecode, std::size_t bytes_transferred,
-		std::vector<std::shared_ptr<I2NPMessage>> msgs)
+		std::vector<std::shared_ptr<I2NPMessage>> msgs, std::unique_ptr<uint8_t[]> sendBuffer)
 	{
-		HandleNextFrameSent (ecode, bytes_transferred);
+		HandleNextFrameSent (ecode, bytes_transferred, std::move (sendBuffer));
 		// msgs get destroyed here
 	}
 
-	void NTCP2Session::EncryptAndSendNextBuffer (size_t payloadLen)
+	bool NTCP2Session::EncryptAndSendNextBuffer (size_t payloadLen)
 	{
 		if (IsTerminated ())
 		{
-			delete[] m_NextSendBuffer;
-			m_NextSendBuffer = nullptr;
-			return;
+			m_NextSendBuffer.reset ();
+			return false;
+		}
+		// Never start a second async_write on the same TCP stream. Callers that
+		// own a control frame remember the request and retry from the write
+		// completion handler.
+		if (m_IsSending)
+		{
+			m_NextSendBuffer.reset ();
+			return false;
 		}
 		if (payloadLen > NTCP2_UNENCRYPTED_FRAME_MAX_SIZE)
 		{
 			LogPrint (eLogError, "NTCP2: Buffer to send is too long ", payloadLen);
-			delete[] m_NextSendBuffer;
-			m_NextSendBuffer = nullptr;
-			return;
+			m_NextSendBuffer.reset ();
+			return false;
 		}
 		// encrypt
 		uint8_t nonce[12];
 		CreateNonce (m_SendSequenceNumber, nonce);
 		m_SendSequenceNumber++;
-		m_Server.AEADChaCha20Poly1305Encrypt (
-			{ { m_NextSendBuffer + 2, payloadLen } }, m_SendKey, nonce, m_NextSendBuffer + payloadLen + 2);
-		SetNextSentFrameLength (payloadLen + 16, m_NextSendBuffer);
-		// send
+		m_Server.AEADChaCha20Poly1305Encrypt ({ { m_NextSendBuffer.get () + 2, payloadLen } }, m_SendKey, nonce,
+			m_NextSendBuffer.get () + payloadLen + 2);
+		SetNextSentFrameLength (payloadLen + 16, m_NextSendBuffer.get ());
+		// send, the buffer is moved into the handler so that it outlives the write
 		m_IsSending = true;
-		boost::asio::async_write (m_Socket, boost::asio::buffer (m_NextSendBuffer, payloadLen + 16 + 2),
-			boost::asio::transfer_all (),
-			std::bind (
-				&NTCP2Session::HandleNextFrameSent, shared_from_this (), std::placeholders::_1, std::placeholders::_2));
+		std::unique_ptr<uint8_t[]> sendBuffer = std::move (m_NextSendBuffer);
+		// Build the buffer view before moving its owner into the completion handler;
+		// argument evaluation order is otherwise unspecified.
+		auto writeBuffer = boost::asio::buffer (sendBuffer.get (), payloadLen + 16 + 2);
+		boost::asio::async_write (m_Socket, writeBuffer, boost::asio::transfer_all (),
+			[s = shared_from_this (), sendBuffer = std::move (sendBuffer)] (
+				const boost::system::error_code & ecode, std::size_t bytes_transferred) mutable
+			{ s->HandleNextFrameSent (ecode, bytes_transferred, std::move (sendBuffer)); });
+		return true;
 	}
 
-	void NTCP2Session::HandleNextFrameSent (const boost::system::error_code & ecode, std::size_t bytes_transferred)
+	void NTCP2Session::HandleNextFrameSent (
+		const boost::system::error_code & ecode, std::size_t bytes_transferred, std::unique_ptr<uint8_t[]> sendBuffer)
 	{
+		// sendBuffer is released when this handler returns
 		m_IsSending = false;
-		delete[] m_NextSendBuffer;
-		m_NextSendBuffer = nullptr;
 
 		if (ecode)
 		{
 			if (ecode != boost::asio::error::operation_aborted)
 				LogPrint (eLogWarning, "NTCP2: Couldn't send frame ", ecode.message ());
 			Terminate ();
+			return;
+		}
+
+		UpdateNumSentBytes (bytes_transferred);
+		i2p::transport::transports.UpdateSentBytes (bytes_transferred);
+		LogPrint (eLogDebug, "NTCP2: Next frame sent ", bytes_transferred);
+		if (m_IsTerminating)
+		{
+			// The termination frame has been flushed; now close.
+			Terminate ();
+			return;
+		}
+		if (m_PendingTerminationReason >= 0)
+		{
+			// A data or RouterInfo write was in flight when termination was
+			// requested. Send it now and close after its completion.
+			auto reason = (NTCP2TerminationReason)m_PendingTerminationReason;
+			m_PendingTerminationReason = -1;
+			if (SendTermination (reason))
+			{
+				m_IsTerminating = true;
+				return;
+			}
+			Terminate ();
+			return;
+		}
+		if (m_PendingRouterInfo)
+		{
+			m_PendingRouterInfo = false;
+			SendRouterInfo ();
+			if (m_IsSending) return;
+		}
+		if (GetLastActivityTimestamp () > m_NextRouterInfoResendTime && m_NextRouterInfoResendTime)
+		{
+			m_NextRouterInfoResendTime
+				+= NTCP2_ROUTERINFO_RESEND_INTERVAL + m_Server.GetRng () () % NTCP2_ROUTERINFO_RESEND_INTERVAL_VARIANCE;
+			SendRouterInfo ();
 		}
 		else
 		{
-			UpdateNumSentBytes (bytes_transferred);
-			i2p::transport::transports.UpdateSentBytes (bytes_transferred);
-			LogPrint (eLogDebug, "NTCP2: Next frame sent ", bytes_transferred);
-			if (GetLastActivityTimestamp () > m_NextRouterInfoResendTime && m_NextRouterInfoResendTime)
-			{
-				m_NextRouterInfoResendTime += NTCP2_ROUTERINFO_RESEND_INTERVAL
-					+ m_Server.GetRng () () % NTCP2_ROUTERINFO_RESEND_INTERVAL_VARIANCE;
-				SendRouterInfo ();
-			}
-			else
-			{
-				SendQueue ();
-				SetSendQueueSize (m_SendQueue.size ());
-			}
+			SendQueue ();
+			SetSendQueueSize (m_SendQueue.size ());
 		}
 	}
 
 	void NTCP2Session::SendQueue ()
 	{
+		if (m_IsSending || m_IsTerminating || m_PendingTerminationReason >= 0) return;
 		if (!m_SendQueue.empty () && m_IsEstablished)
 		{
 			std::vector<std::shared_ptr<I2NPMessage>> msgs;
@@ -1685,28 +1909,34 @@ namespace transport
 
 	void NTCP2Session::SendRouterInfo ()
 	{
-		if (!IsEstablished ()) return;
+		if (!IsEstablished () || m_IsTerminating || m_PendingTerminationReason >= 0) return;
+		if (m_IsSending)
+		{
+			m_PendingRouterInfo = true;
+			return;
+		}
 		auto riBuffer = i2p::context.CopyRouterInfoBuffer ();
 		auto riLen = riBuffer->GetBufferLen ();
 		size_t payloadLen = riLen + 3 + 1 + 7; // 3 bytes block header + 1 byte RI flag + 7 bytes DateTime
-		m_NextSendBuffer = new uint8_t[payloadLen + 16 + 2 + 64]; // up to 64 bytes padding
+		// up to 64 bytes padding
+		m_NextSendBuffer = std::make_unique_for_overwrite<uint8_t[]> (payloadLen + 16 + 2 + 64);
 		// DateTime	block
 		m_NextSendBuffer[2] = eNTCP2BlkDateTime;
-		htobe16buf (m_NextSendBuffer + 3, 4);
-		htobe32buf (m_NextSendBuffer + 5, (i2p::util::GetMillisecondsSinceEpoch () + 500) / 1000);
+		htobe16buf (m_NextSendBuffer.get () + 3, 4);
+		htobe32buf (m_NextSendBuffer.get () + 5, (i2p::util::GetMillisecondsSinceEpoch () + 500) / 1000);
 		// RouterInfo block
 		m_NextSendBuffer[9] = eNTCP2BlkRouterInfo;
-		htobe16buf (m_NextSendBuffer + 10, riLen + 1); // size
+		htobe16buf (m_NextSendBuffer.get () + 10, riLen + 1); // size
 		m_NextSendBuffer[12] = 0; // flag
-		memcpy (m_NextSendBuffer + 13, riBuffer->data (), riLen); // TODO: eliminate extra copy
+		memcpy (m_NextSendBuffer.get () + 13, riBuffer->data (), riLen); // TODO: eliminate extra copy
 		// padding block
-		auto paddingSize = CreatePaddingBlock (payloadLen, m_NextSendBuffer + 2 + payloadLen, 64);
+		auto paddingSize = CreatePaddingBlock (payloadLen, m_NextSendBuffer.get () + 2 + payloadLen, 64);
 		payloadLen += paddingSize;
 		// encrypt and send
-		EncryptAndSendNextBuffer (payloadLen);
+		if (!EncryptAndSendNextBuffer (payloadLen) && IsEstablished ()) m_PendingRouterInfo = true;
 	}
 
-	void NTCP2Session::SendTermination (NTCP2TerminationReason reason)
+	bool NTCP2Session::SendTermination (NTCP2TerminationReason reason)
 	{
 		if (!m_SendKey ||
 #if OPENSSL_SIPHASH
@@ -1715,26 +1945,40 @@ namespace transport
 			!m_SendSipKey
 #endif
 		)
-			return;
-		m_NextSendBuffer
-			= new uint8_t[49]; // 49 = 12 bytes message + 16 bytes MAC + 2 bytes size + up to 19 padding block
+			return false;
+		if (m_IsSending)
+		{
+			// Complete the in-flight write first; HandleNextFrameSent() sends
+			// this termination frame and then closes the session.
+			m_PendingTerminationReason = (int)reason;
+			return false;
+		}
+		// 49 = 12 bytes message + 16 bytes MAC + 2 bytes size + up to 19 padding block
+		m_NextSendBuffer = std::make_unique_for_overwrite<uint8_t[]> (49);
 		// termination block
 		m_NextSendBuffer[2] = eNTCP2BlkTermination;
 		m_NextSendBuffer[3] = 0;
 		m_NextSendBuffer[4] = 9; // 9 bytes block size
-		htobe64buf (m_NextSendBuffer + 5, m_ReceiveSequenceNumber);
+		htobe64buf (m_NextSendBuffer.get () + 5, m_ReceiveSequenceNumber);
 		m_NextSendBuffer[13] = (uint8_t)reason;
 		// padding block
-		auto paddingSize = CreatePaddingBlock (12, m_NextSendBuffer + 14, 19);
+		auto paddingSize = CreatePaddingBlock (12, m_NextSendBuffer.get () + 14, 19);
 		// encrypt and send
-		EncryptAndSendNextBuffer (paddingSize + 12);
+		return EncryptAndSendNextBuffer (paddingSize + 12);
 	}
 
 	void NTCP2Session::SendTerminationAndTerminate (NTCP2TerminationReason reason)
 	{
-		SendTermination (reason);
-		boost::asio::post (m_Server.GetService (),
-			std::bind (&NTCP2Session::Terminate, shared_from_this ())); // let termination message go
+		if (IsTerminated () || m_IsTerminating) return;
+		if (m_PendingTerminationReason < 0) m_PendingTerminationReason = (int)reason;
+		if (m_IsSending) return; // HandleNextFrameSent() will send and close
+		if (SendTermination (reason))
+		{
+			m_IsTerminating = true; // close from the write completion handler
+			return;
+		}
+		m_PendingTerminationReason = -1;
+		boost::asio::post (m_Server.GetService (), std::bind (&NTCP2Session::Terminate, shared_from_this ()));
 	}
 
 	void NTCP2Session::ReadSomethingAndTerminate ()
@@ -1932,20 +2176,81 @@ namespace transport
 	{
 		m_IsReady = false;
 		m_EstablisherService.Stop ();
-		{
-			// we have to copy it because Terminate changes m_NTCP2Sessions
-			auto ntcpSessions = m_NTCP2Sessions;
-			for (auto & it : ntcpSessions) it.second->Terminate ();
-			for (auto & it : m_PendingIncomingSessions) it.second->Terminate ();
-		}
-		m_NTCP2Sessions.clear ();
-
 		if (IsRunning ())
 		{
+			// Stop() is called from the transports thread. Terminate() mutates
+			// m_NTCP2Sessions/m_PendingIncomingSessions, while the NTCP2 service
+			// may be iterating them in HandleTerminationTimer. Serialize the
+			// teardown on the service thread and wait before stopping it.
+			try
+			{
+				boost::asio::post (GetService (),
+					boost::asio::use_future (
+						[this] ()
+						{
+							auto ntcpSessions = m_NTCP2Sessions;
+							auto pendingSessions = m_PendingIncomingSessions;
+							for (auto & it : ntcpSessions) it.second->Terminate ();
+							for (auto & it : pendingSessions) it.second->Terminate ();
+							m_NTCP2Sessions.clear ();
+							m_PendingIncomingSessions.clear ();
+						}))
+					.get ();
+			}
+			catch (const std::exception & ex)
+			{
+				LogPrint (eLogError, "NTCP2: shutdown task failed: ", ex.what ());
+			}
 			m_TerminationTimer.cancel ();
 			m_ProxyEndpoint = nullptr;
 		}
+		else
+		{
+			m_NTCP2Sessions.clear ();
+			m_PendingIncomingSessions.clear ();
+		}
+		{
+			std::lock_guard<std::mutex> l (m_HandshakeReplayMutex);
+			m_HandshakeReplayCache.clear ();
+			m_HandshakeReplayCacheOutgoing.clear ();
+		}
 		StopIOService ();
+	}
+
+	bool NTCP2Server::IsHandshakeReplay (const uint8_t * encrypted, std::unordered_map<uint64_t, uint64_t> & cache)
+	{
+		if (!encrypted) return false;
+		uint64_t key = 0;
+		memcpy (&key, encrypted, sizeof (key)); // opaque first 8 bytes of the encrypted value
+		auto now = i2p::util::GetSecondsSinceEpoch ();
+		std::lock_guard<std::mutex> l (m_HandshakeReplayMutex);
+		// Drop expired entries first so the cache reflects the current window.
+		for (auto it = cache.begin (); it != cache.end ();)
+			if (it->second <= now)
+				it = cache.erase (it);
+			else
+				++it;
+		auto it = cache.find (key);
+		if (it != cache.end ()) return true;
+		if (cache.size () >= NTCP2_MAX_HANDSHAKE_REPLAY_ENTRIES)
+		{
+			// Bounded cache: evict an arbitrary entry rather than grow without
+			// limit. This can only weaken replay detection under a flood, never
+			// accept a value that is still represented in the cache.
+			cache.erase (cache.begin ());
+		}
+		cache.emplace (key, now + NTCP2_HANDSHAKE_REPLAY_TIMEOUT);
+		return false;
+	}
+
+	bool NTCP2Server::IsHandshakeReplay (const uint8_t * encryptedX)
+	{
+		return IsHandshakeReplay (encryptedX, m_HandshakeReplayCache);
+	}
+
+	bool NTCP2Server::IsHandshakeReplayOutgoing (const uint8_t * encryptedY)
+	{
+		return IsHandshakeReplay (encryptedY, m_HandshakeReplayCacheOutgoing);
 	}
 
 	bool NTCP2Server::AddNTCP2Session (std::shared_ptr<NTCP2Session> session, bool incoming)
@@ -1984,7 +2289,18 @@ namespace transport
 
 	void NTCP2Server::RemoveNTCP2Session (std::shared_ptr<NTCP2Session> session)
 	{
-		if (session && session->GetRemoteIdentity ())
+		if (!session) return;
+		// Release a per-address pending handshake slot immediately, so a peer
+		// that failed or closed a handshake can reconnect without waiting for
+		// the 28-33 second termination sweep.
+		const auto & address = session->GetRemoteEndpoint ().address ();
+		if (!address.is_unspecified ())
+		{
+			auto pending = m_PendingIncomingSessions.find (address);
+			if (pending != m_PendingIncomingSessions.end () && pending->second == session)
+				m_PendingIncomingSessions.erase (pending);
+		}
+		if (session->GetRemoteIdentity ())
 		{
 			auto it = m_NTCP2Sessions.find (session->GetRemoteIdentity ()->GetIdentHash ());
 			if (it != m_NTCP2Sessions.end () && it->second == session) m_NTCP2Sessions.erase (it);
@@ -2015,7 +2331,7 @@ namespace transport
 				{
 					auto timer = std::make_shared<boost::asio::steady_timer> (GetService ());
 					auto timeout = NTCP2_CONNECT_TIMEOUT; // Java NTCPTransport.ESTABLISH_TIMEOUT
-					conn->SetTerminationTimeout (timeout * 2);
+					conn->SetTerminationTimeout (timeout);
 					timer->expires_after (std::chrono::seconds (timeout));
 					timer->async_wait (
 						[conn, timeout] (const boost::system::error_code & ecode)
@@ -2086,7 +2402,9 @@ namespace transport
 				if (!i2p::transport::transports.IsInReservedRange (ep.address ())
 					&& !i2p::transport::transports.IsBanned (ep.address ()))
 				{
-					if (m_PendingIncomingSessions.emplace (ep.address (), conn).second)
+					if (m_PendingIncomingSessions.size () >= NTCP2_MAX_PENDING_INCOMING_SESSIONS)
+						LogPrint (eLogWarning, "NTCP2: Too many pending incoming sessions");
+					else if (m_PendingIncomingSessions.emplace (ep.address (), conn).second)
 					{
 						conn->SetRemoteEndpoint (ep);
 						conn->ServerLogin (m_Version);
@@ -2135,7 +2453,9 @@ namespace transport
 						|| i2p::util::net::IsYggdrasilAddress (ep.address ()))
 					&& !i2p::transport::transports.IsBanned (ep.address ()))
 				{
-					if (m_PendingIncomingSessions.emplace (ep.address (), conn).second)
+					if (m_PendingIncomingSessions.size () >= NTCP2_MAX_PENDING_INCOMING_SESSIONS)
+						LogPrint (eLogWarning, "NTCP2: Too many pending incoming sessions");
+					else if (m_PendingIncomingSessions.emplace (ep.address (), conn).second)
 					{
 						conn->SetRemoteEndpoint (ep);
 						conn->ServerLogin (i2p::util::net::IsYggdrasilAddress (ep.address ())
@@ -2198,15 +2518,16 @@ namespace transport
 			// pending
 			for (auto it = m_PendingIncomingSessions.begin (); it != m_PendingIncomingSessions.end ();)
 			{
-				if (it->second->IsEstablished () || it->second->IsTerminationTimeoutExpired (ts))
+				const auto address = it->first;
+				auto session = it->second;
+				++it;
+				if (session->IsEstablished () || session->IsTerminationTimeoutExpired (ts) || session->IsTerminated ())
 				{
-					it->second->Terminate ();
-					it = m_PendingIncomingSessions.erase (it); // established of expired
+					// Terminate() may remove the pending entry itself, so erase
+					// by key here instead of using an iterator it invalidated.
+					session->Terminate ();
+					m_PendingIncomingSessions.erase (address);
 				}
-				else if (it->second->IsTerminated ())
-					it = m_PendingIncomingSessions.erase (it); // already terminated
-				else
-					it++;
 			}
 			ScheduleTermination ();
 
@@ -2244,7 +2565,7 @@ namespace transport
 				{
 					auto timer = std::make_shared<boost::asio::steady_timer> (GetService ());
 					auto timeout = NTCP2_CONNECT_TIMEOUT; // Java NTCPTransport.ESTABLISH_TIMEOUT
-					conn->SetTerminationTimeout (timeout * 2);
+					conn->SetTerminationTimeout (timeout);
 					timer->expires_after (std::chrono::seconds (timeout));
 					timer->async_wait (
 						[conn, timeout] (const boost::system::error_code & ecode)
@@ -2311,12 +2632,14 @@ namespace transport
 				req.uri = ep.address ().to_string () + ":" + std::to_string (ep.port ());
 			if (!m_ProxyAuthorization.empty ()) req.AddHeader ("Proxy-Authorization", m_ProxyAuthorization);
 
-			boost::asio::streambuf writebuff;
-			std::ostream out (&writebuff);
+			// The buffer must outlive the async_write. Keep a shared owner and
+			// capture it in the completion handler.
+			auto writebuff = std::make_shared<boost::asio::streambuf> ();
+			std::ostream out (writebuff.get ());
 			out << req.to_string ();
 
-			boost::asio::async_write (conn->GetSocket (), writebuff.data (), boost::asio::transfer_all (),
-				[] (const boost::system::error_code & ec, std::size_t transferred)
+			boost::asio::async_write (conn->GetSocket (), writebuff->data (), boost::asio::transfer_all (),
+				[writebuff] (const boost::system::error_code & ec, std::size_t transferred)
 				{
 					(void)transferred;
 					if (ec) LogPrint (eLogError, "NTCP2: HTTP proxy write error ", ec.message ());
@@ -2326,6 +2649,7 @@ namespace transport
 			boost::asio::async_read_until (conn->GetSocket (), *readbuff, "\r\n\r\n",
 				[readbuff, timer, conn] (const boost::system::error_code & ec, std::size_t transferred)
 				{
+					(void)transferred;
 					if (ec)
 					{
 						LogPrint (eLogError, "NTCP2: HTTP proxy read error ", ec.message ());
@@ -2334,7 +2658,8 @@ namespace transport
 					}
 					else
 					{
-						readbuff->commit (transferred);
+						// async_read_until already committed the bytes into the
+						// streambuf; committing again duplicates/corrupts them.
 						i2p::http::HTTPRes res;
 						if (res.parse (std::string { boost::asio::buffers_begin (readbuff->data ()),
 								boost::asio::buffers_begin (readbuff->data ()) + readbuff->size () })

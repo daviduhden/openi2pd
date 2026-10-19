@@ -14,6 +14,9 @@
 #include <memory>
 #include <functional>
 #include <atomic>
+#include <mutex>
+#include <utility>
+#include <cstddef>
 #include <vector>
 #include <map>
 #include <set>
@@ -21,6 +24,7 @@
 #include <boost/asio.hpp>
 #include "version.h"
 #include "Crypto.h"
+#include "I2PEndian.h"
 #include "PostQuantum.h"
 #include "RouterInfo.h"
 #include "RouterContext.h"
@@ -50,7 +54,10 @@ namespace transport
 	const size_t SSU2_MAX_PACKET_SIZE = 1500;
 	const size_t SSU2_MIN_PACKET_SIZE = 1280;
 	const size_t SSU2_MLKEM768_MIN_PAYLOAD_SIZE = 1258;
-	const int SSU2_HANDSHAKE_RESEND_INTERVAL = 1000; // in milliseconds
+	// SSU2 spec recommends 1.25, 2.5 and 5 seconds for SessionRequest and
+	// SessionCreated retransmission; Java OutboundEstablishState.RETRANSMIT_DELAY
+	// is 1250 ms.
+	const int SSU2_HANDSHAKE_RESEND_INTERVAL = 1250; // in milliseconds
 	const int SSU2_MAX_NUM_RESENDS = 5;
 	const int SSU2_RESEND_ATTEMPT_MIN_INTERVAL = 3; // in milliseconds
 	const int SSU2_INCOMPLETE_MESSAGES_CLEANUP_TIMEOUT = 30; // in seconds
@@ -62,16 +69,22 @@ namespace transport
 	const int SSU2_ROUTERINFO_RESEND_INTERVAL_VARIANCE = 30 * 60 * 1000; // in milliseconds
 	const size_t SSU2_MIN_WINDOW_SIZE = 16; // in packets
 	const size_t SSU2_MAX_WINDOW_SIZE = 256; // in packets
-	const size_t SSU2_MIN_RTO = 100; // in milliseconds
-	const size_t SSU2_INITIAL_RTO = 540; // in milliseconds
-	const size_t SSU2_MAX_RTO = 2500; // in milliseconds
+	// RFC 6298 / Java PeerState (MIN_RTO, INIT_RTO, MAX_RTO). The initial
+	// 540 ms value retransmitted data far too eagerly on a normal WAN path.
+	const size_t SSU2_MIN_RTO = 1000; // in milliseconds
+	const size_t SSU2_INITIAL_RTO = 1000; // in milliseconds
+	const size_t SSU2_MAX_RTO = 60 * 1000; // in milliseconds
 	const double SSU2_UNKNOWN_RTT = -1;
 	const double SSU2_RTT_EWMA_ALPHA = 0.125;
-	const float SSU2_kAPPA = 1.8;
 	const int SSU2_MAX_NUM_ACNT = 255; // acnt, acks or nacks
 	const int SSU2_MAX_NUM_ACK_PACKETS = 511; // ackthrough + acnt + 1 range
 	const int SSU2_MAX_NUM_ACK_RANGES = 32; // to send
+	// Per-session bound for reordered packet numbers. Java's receive window is
+	// also far below this; a peer more than one full ACK window ahead is either
+	// broken or trying to grow the set between cleanup passes.
+	const size_t SSU2_MAX_OUT_OF_SEQUENCE_PACKETS = SSU2_MAX_NUM_ACK_PACKETS;
 	const uint8_t SSU2_MAX_NUM_FRAGMENTS = 64;
+	const uint8_t SSU2_MAX_SESSION_CONFIRMED_FRAGMENTS = 15; // 4-bit frag/count field
 	const int SSU2_SEND_DATETIME_NUM_PACKETS = 256;
 	const int SSU2_MIN_RELAY_RESPONSE_RESEND_VERSION = MAKE_VERSION_NUMBER (0, 9, 64); // 0.9.64
 
@@ -116,6 +129,21 @@ namespace transport
 		eSSU2BlkPadding = 254
 	};
 
+	// Out-of-session PeerTest messages (5/6/7) are decrypted with the public
+	// introduction key, so they must never reuse the generic data-phase
+	// dispatcher. Only the blocks used by PeerTest are valid there.
+	inline bool IsPeerTestPayloadBlockAllowed (uint8_t block)
+	{
+		switch (block)
+		{
+		case eSSU2BlkDateTime:
+		case eSSU2BlkPeerTest:
+		case eSSU2BlkAddress:
+		case eSSU2BlkPadding: return true;
+		default: return false;
+		}
+	}
+
 	enum SSU2SessionState
 	{
 		eSSU2SessionStateUnknown,
@@ -135,6 +163,107 @@ namespace transport
 		eSSU2SessionStatePeerTest,
 		eSSU2SessionStateTokenRequestReceived
 	};
+
+	/**
+	 * Payload block whitelist for each SSU2 message context.
+	 *
+	 * Java SSU2Payload.processPayload() is called with an explicit message type
+	 * and rejects a block that does not belong to that message. Applying the
+	 * same rule here prevents a handshake payload from reaching data-phase
+	 * handlers (I2NP injection, address mutation, relay blocks) before the peer
+	 * is authenticated. Data-phase states deliberately keep the historical
+	 * full block set; PeerTest keeps its own narrower override.
+	 */
+	inline bool IsSSU2PayloadBlockAllowedForState (SSU2SessionState state, uint8_t block)
+	{
+		switch (state)
+		{
+		case eSSU2SessionStateTokenRequestReceived:
+			// DateTime is mandatory; Termination is allowed so a responder can
+			// reject the request without building a Retry.
+			return block == eSSU2BlkDateTime || block == eSSU2BlkPadding || block == eSSU2BlkTermination;
+		case eSSU2SessionStateSessionRequestReceived:
+			return block == eSSU2BlkDateTime || block == eSSU2BlkPadding || block == eSSU2BlkRelayTagRequest
+				|| block == eSSU2BlkTermination;
+		case eSSU2SessionStateSessionCreatedReceived:
+			// NewToken and RelayTag are produced by Bob in SessionCreated.
+			return block == eSSU2BlkDateTime || block == eSSU2BlkAddress || block == eSSU2BlkNewToken
+				|| block == eSSU2BlkRelayTag || block == eSSU2BlkPadding;
+		case eSSU2SessionStateTokenReceived: // Retry payload
+			return block == eSSU2BlkDateTime || block == eSSU2BlkAddress || block == eSSU2BlkPadding
+				|| block == eSSU2BlkTermination;
+		case eSSU2SessionStateSessionCreatedSent: // SessionConfirmed payload after RouterInfo
+			// The leading RouterInfo block is parsed by ProcessSessionConfirmed();
+			// FIRST/FOLLOW-ON fragments have their own validation and are not
+			// valid in this context.
+			return block == eSSU2BlkRouterInfo || block == eSSU2BlkOptions || block == eSSU2BlkPadding;
+		default: return true;
+		}
+	}
+
+	/**
+	 * Whether an Address block may update RouterContext from this session.
+	 *
+	 * Address blocks are expected in SessionCreated, Retry and the established
+	 * data phase. Everything else is pre-authentication: accepting it would let
+	 * an unauthenticated packet rewrite our published external address.
+	 */
+	inline bool IsSSU2AddressBlockContextAllowed (SSU2SessionState state, bool hasRemoteIdentity)
+	{
+		if (!hasRemoteIdentity) return false;
+		switch (state)
+		{
+		case eSSU2SessionStateEstablished:
+		case eSSU2SessionStateSessionCreatedReceived:
+		case eSSU2SessionStateTokenReceived: return true;
+		default: return false;
+		}
+	}
+
+	/**
+	 * PeerTest (msgs 1-4), I2NP messages and other data-phase handlers require
+	 * an established session with a known peer identity.
+	 */
+	inline bool IsSSU2EstablishedPayloadContext (SSU2SessionState state, bool hasRemoteIdentity)
+	{
+		return state == eSSU2SessionStateEstablished && hasRemoteIdentity;
+	}
+
+	/**
+	 * Pure framing and block-whitelist validator for decrypted SSU2 payloads.
+	 * It never touches sockets, sessions or global router state, so fuzzers and
+	 * unit tests can exercise the state matrix directly.
+	 *
+	 * The caller's handshake-specific rules (DateTime must be first) remain in
+	 * ProcessSessionRequest/ProcessSessionCreated/ProcessTokenRequest/ProcessRetry.
+	 */
+	inline bool ValidateSSU2PayloadBlocks (SSU2SessionState state, const uint8_t * buf, size_t len)
+	{
+		if (!buf && len) return false;
+		bool gotPadding = false, gotTermination = false;
+		size_t offset = 0;
+		while (offset < len)
+		{
+			if (offset + 3 > len) return false;
+			const uint8_t block = buf[offset++];
+			const size_t size = ((size_t)buf[offset] << 8) | buf[offset + 1];
+			offset += 2;
+			if (!IsSSU2PayloadBlockAllowedForState (state, block)) return false;
+			// SSU2Payload.processPayload() rejects everything after padding and
+			// everything except padding after a termination block.
+			if (gotPadding || (gotTermination && block != eSSU2BlkPadding)) return false;
+			if (offset + size > len) return false;
+			if (block == eSSU2BlkDateTime && size != 4) return false;
+			if (block == eSSU2BlkTermination)
+			{
+				if (size < 9) return false;
+				gotTermination = true;
+			}
+			if (block == eSSU2BlkPadding) gotPadding = true;
+			offset += size;
+		}
+		return offset == len;
+	}
 
 	enum SSU2PeerTestCode
 	{
@@ -215,10 +344,11 @@ namespace transport
 
 		std::shared_ptr<I2NPMessage> msg;
 		int nextFragmentNum;
+		int lastFragmentNum = -1; // highest fragment explicitly marked isLast
 		uint32_t lastFragmentInsertTime; // in seconds
 		std::shared_ptr<Fragment> outOfSequenceFragments; // #1 and more
 
-		void AttachNextFragment (const uint8_t * fragment, size_t fragmentSize);
+		bool AttachNextFragment (const uint8_t * fragment, size_t fragmentSize); // false on size overflow
 		bool ConcatOutOfSequenceFragments (); // true if message complete
 		void AddOutOfSequenceFragment (std::shared_ptr<Fragment> fragment);
 	};
@@ -282,8 +412,34 @@ namespace transport
 		};
 		int GetRemoteVersion () const { return m_RemoteVersion; };
 		std::shared_ptr<const i2p::data::RouterInfo::Address> GetAddress () const { return m_Address; };
-		void SetOnEstablished (OnEstablished e) { m_OnEstablished = e; };
-		OnEstablished GetOnEstablished () const { return m_OnEstablished; };
+		void SetOnEstablished (OnEstablished e)
+		{
+			std::lock_guard<std::mutex> l (m_OnEstablishedMutex);
+			m_OnEstablished = std::move (e);
+		};
+		// Append instead of replacing, so a peer-test or introduction callback
+		// registered while another callback is pending is not lost.
+		void AddOnEstablished (OnEstablished e)
+		{
+			if (!e) return;
+			std::lock_guard<std::mutex> l (m_OnEstablishedMutex);
+			if (!m_OnEstablished)
+			{
+				m_OnEstablished = std::move (e);
+				return;
+			}
+			auto previous = std::move (m_OnEstablished);
+			m_OnEstablished = [previous = std::move (previous), e = std::move (e)] () mutable
+			{
+				previous ();
+				e ();
+			};
+		};
+		OnEstablished GetOnEstablished () const
+		{
+			std::lock_guard<std::mutex> l (m_OnEstablishedMutex);
+			return m_OnEstablished;
+		};
 
 		virtual void Connect ();
 		bool Introduce (std::shared_ptr<SSU2Session> session, uint32_t relayTag);
@@ -329,6 +485,8 @@ namespace transport
 
 		void SetAddress (std::shared_ptr<const i2p::data::RouterInfo::Address> addr) { m_Address = addr; }
 		void HandlePayload (const uint8_t * buf, size_t len);
+		bool HasInvalidPayload () const { return m_IsInvalidMessage; }
+		virtual bool IsPayloadBlockAllowed (uint8_t block) const { return true; }
 
 		size_t CreateAddressBlock (uint8_t * buf, size_t len, const boost::asio::ip::udp::endpoint & ep);
 		size_t CreatePaddingBlock (uint8_t * buf, size_t len, size_t minSize = 0);
@@ -340,6 +498,8 @@ namespace transport
 	private:
 		void Terminate ();
 		void Established ();
+		OnEstablished TakeOnEstablished ();
+		void ClearOnEstablished ();
 		void ScheduleConnectTimer ();
 		void HandleConnectTimer (const boost::system::error_code & ecode);
 		void PostI2NPMessages ();
@@ -351,13 +511,17 @@ namespace transport
 		bool ProcessSessionRequest (Header & header, uint8_t * buf, size_t len);
 		bool ProcessTokenRequest (Header & header, uint8_t * buf, size_t len);
 
+		void SelectOutgoingVersion ();
 		bool SendSessionRequest (uint64_t token = 0);
-		void SendSessionCreated (const uint8_t * X);
-		void SendSessionConfirmed (const uint8_t * Y);
+		bool SendSessionCreated (const uint8_t * X);
+		bool SendSessionConfirmed (const uint8_t * Y);
 		void KDFDataPhase (uint8_t * keydata_ab, uint8_t * keydata_ba);
 		void SendTokenRequest ();
 		void SendRetry ();
-		uint32_t SendData (const uint8_t * buf, size_t len, uint8_t flags = 0); // returns packet num
+		// Returns false when the packet could not be built or sent. Packet
+		// number 0 is a valid data packet number, so it is never used as an
+		// error sentinel.
+		bool SendData (const uint8_t * buf, size_t len, uint8_t flags = 0, uint32_t * packetNum = nullptr);
 		void SendQuickAck ();
 		void SendTermination ();
 		void SendPathResponse (const uint8_t * data, size_t len);
@@ -374,6 +538,10 @@ namespace transport
 		void SetTestingState (bool testing) const;
 		std::shared_ptr<const i2p::data::RouterInfo> ExtractRouterInfo (const uint8_t * buf, size_t size);
 		bool UpdateReceivePacketNum (uint32_t packetNum); // for Ack, returns false if duplicate
+		uint32_t GetHighestReceivedPacketNum () const
+		{
+			return m_OutOfSequencePackets.empty () ? m_ReceivePacketNum : *m_OutOfSequencePackets.rbegin ();
+		}
 		void HandleFirstFragment (const uint8_t * buf, size_t len);
 		void HandleFollowOnFragment (const uint8_t * buf, size_t len);
 		void HandleRelayRequest (const uint8_t * buf, size_t len);
@@ -401,8 +569,9 @@ namespace transport
 		SSU2Server & m_Server;
 		std::shared_ptr<i2p::crypto::X25519Keys> m_EphemeralKeys;
 		std::unique_ptr<i2p::crypto::NoiseSymmetricState> m_NoiseState;
-		std::unique_ptr<HandshakePacket>
-			m_SessionConfirmedFragment; // for Bob if applicable or second fragment for Alice
+		// SessionConfirmed fragments 1..n-1 that Alice must retransmit with
+		// fragment 0. Fragment 0 is m_SentHandshakePacket.
+		std::vector<std::unique_ptr<HandshakePacket>> m_SessionConfirmedFragmentsOut;
 		std::map<uint8_t, std::vector<uint8_t>> m_SessionConfirmedFragments;
 		uint8_t m_SessionConfirmedNumFragments = 0;
 		Header m_SessionConfirmedHeader { };
@@ -419,7 +588,7 @@ namespace transport
 		int m_RemoteVersion;
 		uint64_t m_DestConnID, m_SourceConnID;
 		std::atomic<SSU2SessionState> m_State;
-		uint8_t m_KeyDataSend[64], m_KeyDataReceive[64];
+		uint8_t m_KeyDataSend[64] = { }, m_KeyDataReceive[64] = { };
 		uint32_t m_SendPacketNum, m_ReceivePacketNum, m_LastDatetimeSentPacketNum;
 		std::set<uint32_t> m_OutOfSequencePackets; // packet nums > receive packet num
 		std::map<uint32_t, std::shared_ptr<SSU2SentPacket>> m_SentPackets; // packetNum -> packet
@@ -433,12 +602,15 @@ namespace transport
 		std::list<std::shared_ptr<I2NPMessage>> m_IntermediateQueue; // from transports
 		mutable std::mutex m_IntermediateQueueMutex;
 		bool m_IsDataReceived, m_IsInvalidMessage;
+		bool m_ReceivedTermination;
 		double m_RTT;
+		double m_RTTDeviation; // RFC 6298 variation, in milliseconds
 		int m_MsgLocalExpirationTimeout;
 		int m_MsgLocalSemiExpirationTimeout;
 		size_t m_WindowSize, m_RTO;
 		uint32_t m_RelayTag; // between Bob and Charlie
-		OnEstablished m_OnEstablished; // callback from Established
+		mutable std::mutex m_OnEstablishedMutex;
+		OnEstablished m_OnEstablished; // callback from Established, guarded by m_OnEstablishedMutex
 		boost::asio::steady_timer m_ConnectTimer;
 		SSU2TerminationReason m_TerminationReason;
 		size_t m_MaxPayloadSize;

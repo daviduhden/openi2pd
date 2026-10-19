@@ -39,7 +39,7 @@ namespace transport
 	void X25519KeysPairSupplier::Start ()
 	{
 		m_IsRunning = true;
-		m_Thread.reset (new std::thread (std::bind (&X25519KeysPairSupplier::Run, this)));
+		m_Thread = std::make_unique<std::thread> (std::bind (&X25519KeysPairSupplier::Run, this));
 	}
 
 	void X25519KeysPairSupplier::Stop ()
@@ -53,7 +53,7 @@ namespace transport
 		if (m_Thread)
 		{
 			m_Thread->join ();
-			m_Thread = nullptr;
+			m_Thread.reset ();
 		}
 		if (!m_Queue.empty ())
 		{
@@ -174,14 +174,6 @@ namespace transport
 		, m_IsRunning (false)
 		, m_IsNAT (true)
 		, m_CheckReserved (true)
-		, m_Thread (nullptr)
-		, m_Service (nullptr)
-		, m_Work (nullptr)
-		, m_PeerCleanupTimer (nullptr)
-		, m_PeerTestTimer (nullptr)
-		, m_UpdateBandwidthTimer (nullptr)
-		, m_SSU2Server (nullptr)
-		, m_NTCP2Server (nullptr)
 		, m_X25519KeysPairSupplier (NUM_X25519_PRE_GENERATED_KEYS)
 		, m_TotalSentBytes (0)
 		, m_TotalReceivedBytes (0)
@@ -204,16 +196,13 @@ namespace transport
 		Stop ();
 		if (m_Service)
 		{
-			delete m_PeerCleanupTimer;
-			m_PeerCleanupTimer = nullptr;
-			delete m_PeerTestTimer;
-			m_PeerTestTimer = nullptr;
-			delete m_UpdateBandwidthTimer;
-			m_UpdateBandwidthTimer = nullptr;
-			delete m_Work;
-			m_Work = nullptr;
-			delete m_Service;
-			m_Service = nullptr;
+			// timers must go before the io_context they are bound to
+			m_PeerCleanupTimer.reset ();
+			m_PeerTestTimer.reset ();
+			m_UpdateBandwidthTimer.reset ();
+			m_BanListCleanupTimer.reset ();
+			m_Work.reset ();
+			m_Service.reset ();
 		}
 	}
 
@@ -221,14 +210,16 @@ namespace transport
 	{
 		if (!m_Service)
 		{
-			m_Service = new boost::asio::io_context ();
-			m_Work = new boost::asio::executor_work_guard<boost::asio::io_context::executor_type> (
+			m_Service = std::make_unique<boost::asio::io_context> ();
+			m_Work = std::make_unique<boost::asio::executor_work_guard<boost::asio::io_context::executor_type>> (
 				m_Service->get_executor ());
-			m_PeerCleanupTimer = new boost::asio::steady_timer (*m_Service);
-			m_PeerTestTimer = new boost::asio::steady_timer (*m_Service);
-			m_UpdateBandwidthTimer = new boost::asio::steady_timer (*m_Service);
+			m_PeerCleanupTimer = std::make_unique<boost::asio::steady_timer> (*m_Service);
+			m_PeerTestTimer = std::make_unique<boost::asio::steady_timer> (*m_Service);
+			m_UpdateBandwidthTimer = std::make_unique<boost::asio::steady_timer> (*m_Service);
 			m_BanListCleanupTimer = std::make_unique<boost::asio::steady_timer> (*m_Service);
 		}
+		else if (m_Service->stopped ())
+			m_Service->restart (); // Android daemon restart and explicit Stop/Start
 
 		bool ipv4;
 		i2p::config::GetOption ("ipv4", ipv4);
@@ -237,7 +228,7 @@ namespace transport
 		i2p::config::GetOption ("nat", m_IsNAT);
 		m_X25519KeysPairSupplier.Start ();
 		m_IsRunning = true;
-		m_Thread = new std::thread (std::bind (&Transports::Run, this));
+		m_Thread = std::make_unique<std::thread> (std::bind (&Transports::Run, this));
 		std::string ntcp2proxy;
 		i2p::config::GetOption ("ntcp2.proxy", ntcp2proxy);
 		int ntcp2version = 2, ssu2version = 2;
@@ -255,17 +246,17 @@ namespace transport
 		// create NTCP2. TODO: move to acceptor
 		if (enableNTCP2 || i2p::context.SupportsMesh ())
 		{
+			// The server must exist independently of proxy configuration. An
+			// invalid or unsupported proxy URL disables the proxy, not NTCP2.
+			m_NTCP2Server = std::make_unique<NTCP2Server> ();
 			if (!ntcp2proxy.empty () && enableNTCP2)
 			{
 				if (proxyurl.parse (ntcp2proxy))
 				{
 					if (proxyurl.schema == "socks" || proxyurl.schema == "http")
 					{
-						m_NTCP2Server = new NTCP2Server ();
 						NTCP2Server::ProxyType proxytype = NTCP2Server::eSocksProxy;
-
 						if (proxyurl.schema == "http") proxytype = NTCP2Server::eHTTPProxy;
-
 						m_NTCP2Server->UseProxy (proxytype, proxyurl.host, proxyurl.port, proxyurl.user, proxyurl.pass);
 						i2p::context.SetStatus (eRouterStatusProxy);
 						if (ipv6) i2p::context.SetStatusV6 (eRouterStatusProxy);
@@ -276,15 +267,13 @@ namespace transport
 				else
 					LogPrint (eLogCritical, "Transports: Invalid NTCP2 proxy URL ", ntcp2proxy);
 			}
-			else
-				m_NTCP2Server = new NTCP2Server ();
 			m_NTCP2Server->SetVersion (ntcp2version);
 		}
 
 		// create SSU2 server
 		if (enableSSU2)
 		{
-			m_SSU2Server = new SSU2Server ();
+			m_SSU2Server = std::make_unique<SSU2Server> ();
 			m_SSU2Server->SetVersion (ssu2version);
 			std::string ssu2proxy;
 			i2p::config::GetOption ("ssu2.proxy", ssu2proxy);
@@ -415,31 +404,34 @@ namespace transport
 	{
 		if (m_PeerCleanupTimer) m_PeerCleanupTimer->cancel ();
 		if (m_PeerTestTimer) m_PeerTestTimer->cancel ();
+		if (m_UpdateBandwidthTimer) m_UpdateBandwidthTimer->cancel ();
 		if (m_BanListCleanupTimer) m_BanListCleanupTimer->cancel ();
 
-		if (m_SSU2Server)
-		{
-			m_SSU2Server->Stop ();
-			delete m_SSU2Server;
-			m_SSU2Server = nullptr;
-		}
-
-		if (m_NTCP2Server)
-		{
-			m_NTCP2Server->Stop ();
-			delete m_NTCP2Server;
-			m_NTCP2Server = nullptr;
-		}
-
-		m_X25519KeysPairSupplier.Stop ();
+		// Stop and join our own io_context before releasing the servers. A
+		// queued timer handler (peer test delay, bandwidth update) captures
+		// `this` and dereferences m_SSU2Server, so destroying the server while
+		// that thread can still run would be a use-after-free.
 		m_IsRunning = false;
 		if (m_Service) m_Service->stop ();
 		if (m_Thread)
 		{
 			m_Thread->join ();
-			delete m_Thread;
-			m_Thread = nullptr;
+			m_Thread.reset ();
 		}
+
+		if (m_SSU2Server)
+		{
+			m_SSU2Server->Stop ();
+			m_SSU2Server.reset ();
+		}
+
+		if (m_NTCP2Server)
+		{
+			m_NTCP2Server->Stop ();
+			m_NTCP2Server.reset ();
+		}
+
+		m_X25519KeysPairSupplier.Stop ();
 		m_Peers.clear ();
 	}
 
@@ -686,6 +678,16 @@ namespace transport
 					if (address && address->IsReachableSSU ())
 					{
 						if (m_SSU2Server->CreateSession (peer->router, address)) return true;
+						// CreateSession() also returns false when a session to
+						// the same endpoint is already pending. Do not fall
+						// through to another transport in that case: Java
+						// keeps one establishment state per peer, and a second
+						// concurrent NTCP2 attempt would create a duplicate
+						// connection to the same router.
+						if (!address->host.is_unspecified () && address->port
+							&& m_SSU2Server->FindPendingOutgoingSession (
+								boost::asio::ip::udp::endpoint (address->host, address->port)))
+							return true;
 					}
 					break;
 				}
@@ -808,7 +810,7 @@ namespace transport
 			// try recently connected SSU2 if any
 			auto supportedTransports = context.GetRouterInfo ().GetCompatibleTransports (false)
 				& peer->router->GetCompatibleTransports (false);
-			if ((supportedTransports & (i2p::data::RouterInfo::eSSU2V4 | i2p::data::RouterInfo::eSSU2V6))
+			if (m_SSU2Server && (supportedTransports & (i2p::data::RouterInfo::eSSU2V4 | i2p::data::RouterInfo::eSSU2V6))
 				&& peer->router->HasProfile ())
 			{
 				auto ep = peer->router->GetProfile ()->GetLastEndpoint ();
@@ -1141,6 +1143,18 @@ namespace transport
 		return m_Peers.size ();
 	}
 
+	size_t Transports::GetNumConnectedPeers () const
+	{
+		std::lock_guard<std::mutex> l (m_PeersMutex);
+		size_t count = 0;
+		for (const auto & [ident, peer] : m_Peers)
+		{
+			(void)ident;
+			if (peer && !peer->sessions.empty ()) ++count;
+		}
+		return count;
+	}
+
 	std::vector<PeerSnapshot> Transports::GetPeersSnapshot (size_t max) const
 	{
 		std::vector<PeerSnapshot> peers;
@@ -1155,6 +1169,25 @@ namespace transport
 					if (session) activeTransports |= session->GetTransportType ();
 			peers.push_back (PeerSnapshot { ident, peer ? peer->numAttempts.load () : 0,
 				peer ? peer->sessions.size () : 0, activeTransports, peer ? peer->isHighBandwidth.load () : false });
+		}
+		return peers;
+	}
+
+	std::vector<PeerSnapshot> Transports::GetConnectedPeersSnapshot (size_t max) const
+	{
+		std::vector<PeerSnapshot> peers;
+		if (!max) return peers;
+		std::lock_guard<std::mutex> l (m_PeersMutex);
+		peers.reserve (std::min (max, m_Peers.size ()));
+		for (const auto & [ident, peer] : m_Peers)
+		{
+			if (peers.size () >= max) break;
+			if (!peer || peer->sessions.empty ()) continue;
+			uint8_t activeTransports = 0;
+			for (const auto & session : peer->sessions)
+				if (session) activeTransports |= session->GetTransportType ();
+			peers.push_back (PeerSnapshot { ident, peer->numAttempts.load (), peer->sessions.size (),
+				activeTransports, peer->isHighBandwidth.load () });
 		}
 		return peers;
 	}

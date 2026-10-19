@@ -54,6 +54,19 @@ namespace transport
 	const int SSU2_MIN_HOLE_PUNCH_EXPIRATION = 30; // in seconds
 	const int SSU2_MAX_HOLE_PUNCH_EXPIRATION = 160; // in seconds
 	const size_t SSU2_MAX_NUM_PACKETS_PER_BATCH = 64;
+	// Untrusted endpoints can create token cache entries before the handshake
+	// authenticates them. Java keeps these caches bounded; do the same so a
+	// spoofed SessionRequest/TokenRequest flood cannot grow the maps until the
+	// periodic cleanup timer runs.
+	const size_t SSU2_MAX_INCOMING_TOKENS = 4096;
+	const size_t SSU2_MAX_OUTGOING_TOKENS = 4096;
+	// Recently-connected endpoints are used for hole punching. They are also
+	// populated when a session terminates, so keep that cache bounded too.
+	const size_t SSU2_MAX_CONNECTED_RECENTLY = 4096;
+	// Peer-test nonces are also provided by the remote side (msg 1). Keep the
+	// bookkeeping bounded like the Java establishment manager.
+	const size_t SSU2_MAX_PEER_TESTS = 64;
+	const size_t SSU2_MAX_REQUESTED_PEER_TESTS = 64;
 
 	class SSU2Server : private i2p::util::RunnableServiceWithWork
 	{
@@ -137,6 +150,7 @@ namespace transport
 		void UpdateOutgoingToken (const boost::asio::ip::udp::endpoint & ep, uint64_t token, uint32_t exp);
 		uint64_t FindOutgoingToken (const boost::asio::ip::udp::endpoint & ep);
 		uint64_t GetIncomingToken (const boost::asio::ip::udp::endpoint & ep);
+		void RemoveIncomingToken (const boost::asio::ip::udp::endpoint & ep);
 		std::pair<uint64_t, uint32_t> NewIncomingToken (const boost::asio::ip::udp::endpoint & ep);
 
 		void RescheduleIntroducersUpdateTimer ();
@@ -181,6 +195,9 @@ namespace transport
 		void HandleIntroducersUpdateTimer (const boost::system::error_code & ecode, bool v4);
 		void ScheduleIntroducersUpdateTimerV6 ();
 
+		void EvictIncomingToken (uint64_t now);
+		void EvictOutgoingToken (uint64_t now);
+
 		void SendThroughProxy (const uint8_t * header, size_t headerLen, const uint8_t * headerX, size_t headerXLen,
 			const uint8_t * payload, size_t payloadLen, const boost::asio::ip::udp::endpoint & to);
 		void ProcessNextPacketFromProxy (uint8_t * buf, size_t len);
@@ -194,6 +211,15 @@ namespace transport
 
 	private:
 		ReceiveService m_ReceiveService;
+		// Residual threading hazard (not fixed here): these sockets are shared
+		// by the SSU2 service (synchronous send_to in Send()/SendThroughProxy())
+		// and the receive service (async_receive_from and the error path that
+		// calls OpenSocket()). A socket error on the receive service can
+		// close()/open() the object while the other thread is inside send_to().
+		// Removing it requires a dedicated send socket, or posting every send
+		// onto the receive service and changing Send() to an asynchronous API;
+		// neither is safe as a local patch because senders currently rely on
+		// the synchronous result and buffer lifetime.
 		boost::asio::ip::udp::socket m_SocketV4, m_SocketV6;
 		boost::asio::ip::address m_AddressV4, m_AddressV6;
 		SSU2Sessions m_Sessions;
@@ -235,7 +261,18 @@ namespace transport
 
 		// proxy
 		bool m_IsThroughProxy;
-		uint8_t m_UDPRequestHeader[SOCKS5_UDP_IPV6_REQUEST_HEADER_SIZE];
+		// SOCKS5 handshake/associate scratch buffer. It is owned by the receive
+		// service (ConnectToProxy..ReadUDPAssociateReply) and is never used to
+		// compose outgoing UDP datagrams; SendThroughProxy builds its request
+		// header on its own stack frame.
+		uint8_t m_ProxyHandshakeBuffer[SOCKS5_UDP_IPV6_REQUEST_HEADER_SIZE];
+		// Draining the SOCKS UDP-associate socket must not reuse any handshake
+		// buffer: the receive service has a pending read there.
+		uint8_t m_ProxyUDPAssociateBuffer[1];
+		// m_ProxyRelayEndpoint is published by the receive service and consumed
+		// by SendThroughProxy on the SSU2 service. Copy it under this lock before
+		// dereferencing so a reconnect cannot free it mid-send.
+		std::mutex m_ProxyRelayEndpointMutex;
 		std::unique_ptr<boost::asio::ip::tcp::endpoint> m_ProxyEndpoint;
 		std::unique_ptr<boost::asio::ip::tcp::socket> m_UDPAssociateSocket;
 		std::unique_ptr<boost::asio::ip::udp::endpoint> m_ProxyRelayEndpoint;
@@ -243,6 +280,15 @@ namespace transport
 
 	public:
 		// for HTTP/I2PControl
+		// Safe form: the caller owns the returned copy and does not need to keep
+		// a reference alive until the future completes.
+		std::future<SSU2Sessions> GetSSU2Sessions ()
+		{
+			return boost::asio::post (GetService (), boost::asio::use_future ([this] () { return m_Sessions; }));
+		};
+
+		// Legacy reference form. The caller must keep `sessions` alive until the
+		// future is waited on; prefer the no-argument overload above.
 		std::future<void> GetSSU2Sessions (SSU2Sessions & sessions)
 		{
 			return boost::asio::post (

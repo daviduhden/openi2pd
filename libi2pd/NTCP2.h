@@ -18,6 +18,8 @@
 #include <array>
 #include <random>
 #include <atomic>
+#include <mutex>
+#include <unordered_map>
 #include <openssl/bn.h>
 #include <openssl/evp.h>
 #include <boost/asio.hpp>
@@ -36,7 +38,36 @@ namespace transport
 	constexpr size_t NTCP2_SEND_AFTER_FRAME_SIZE = 16386; // send frame when exceeds this size
 	constexpr size_t NTCP2_SESSION_HANDSHAKE_MAX_SIZE = 287; // SessionRequest/SessionCreated without ML-KEM frame
 	constexpr size_t NTCP2_SESSION_HANDSHAKE_LONG_MAX_SIZE = 944; // for non-PQ
+	// Java 2.13.0 InboundEstablishState.MSG3P2_MAX. The theoretical protocol
+	// maximum is 65487 bytes, but Java rejects anything above 6000 and i2pd's
+	// own RouterInfo is limited to MAX_RI_BUFFER_SIZE, so keep the allocation
+	// and the read bounded by the same value.
+	constexpr size_t NTCP2_SESSION_CONFIRMED_PART2_MAX_SIZE = 6000;
 	const int NTCP2_MAX_PADDING_RATIO = 6; // in %
+
+	// Bob must reject a SessionRequest whose encrypted ephemeral key was seen
+	// before. Java uses a 10 minute decaying set (DecayingHashSet in
+	// NTCPTransport); the spec requires a cache lifetime of at least 2*D.
+	const int NTCP2_HANDSHAKE_REPLAY_TIMEOUT = 10 * 60; // in seconds
+	const size_t NTCP2_MAX_HANDSHAKE_REPLAY_ENTRIES = 8192;
+	// Bound the number of distinct source addresses that can occupy a pending
+	// inbound handshake slot at once. One pending handshake per address is
+	// already enforced by NTCP2Server::m_PendingIncomingSessions.
+	const size_t NTCP2_MAX_PENDING_INCOMING_SESSIONS = 512;
+
+	// spec/ntcp2-hybrid "Maximum Padding": the maximum cleartext padding for
+	// SessionRequest (message 1) and SessionCreated (message 2). ML-KEM-512
+	// uses the same limits as non-PQ NTCP2.
+	constexpr size_t NTCP2GetMaxHandshakePadding (int version, bool sessionCreated)
+	{
+		switch (version)
+		{
+		case 3: return sessionCreated ? 848 : 880;
+		case 4: return sessionCreated ? 1136 : 1264;
+		case 5: return sessionCreated ? 1616 : 1648;
+		default: return sessionCreated ? 848 : 880;
+		}
+	}
 
 	const int NTCP2_CONNECT_TIMEOUT = 10; // in seconds, Java NTCPTransport.ESTABLISH_TIMEOUT
 	const int NTCP2_ESTABLISH_TIMEOUT = 10; // 10 seconds
@@ -88,10 +119,17 @@ namespace transport
 	// RouterInfo flags
 	const uint8_t NTCP2_ROUTER_INFO_FLAG_REQUEST_FLOOD = 0x01;
 
+	// Validates the decrypted payload of SessionConfirmed part 2 (message 3
+	// part 2, with the 16-byte MAC removed). The only permitted layout is:
+	// RouterInfo block, optional Options block, optional Padding block last
+	// (spec/ntcp2 "Block Ordering Rules"). No other block type is allowed in
+	// the handshake. Returns false on any malformed or out-of-order block and
+	// stores the RouterInfo block data size (flag + RouterInfo) on success.
+	bool ValidateNTCP2SessionConfirmedPayload (const uint8_t * payload, size_t len, size_t & routerInfoDataSize);
+
 	struct NTCP2Establisher : private i2p::crypto::NoiseSymmetricState
 	{
 		NTCP2Establisher ();
-		~NTCP2Establisher ();
 
 		void SetVersion (int version);
 
@@ -101,6 +139,7 @@ namespace transport
 
 		const uint8_t * GetCK () const { return m_CK; };
 		const uint8_t * GetH () const { return m_H; };
+		int GetVersion () const { return (int)m_CryptoType - (int)i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD + 2; }
 
 		bool KDF1Alice ();
 		bool KDF1Bob ();
@@ -138,8 +177,9 @@ namespace transport
 #else
 		static constexpr size_t m_MaxMsgSize = NTCP2_SESSION_HANDSHAKE_LONG_MAX_SIZE;
 #endif
-		uint8_t m_Buffer[m_MaxMsgSize], // for SessionRequest and SessionCreated
-			*m_SessionConfirmedBuffer;
+		uint8_t m_Buffer[m_MaxMsgSize]; // for SessionRequest and SessionCreated
+		// SessionConfirmed, m3p1 (48 bytes) followed by the encrypted m3p2
+		std::unique_ptr<uint8_t[]> m_SessionConfirmedBuffer;
 		size_t m_BufferLen;
 		bool m_IsLongPadding;
 	};
@@ -214,16 +254,18 @@ namespace transport
 		void SetNextSentFrameLength (size_t frameLen, uint8_t * lengthBuf);
 		void SendI2NPMsgs (std::vector<std::shared_ptr<I2NPMessage>> & msgs);
 		void HandleI2NPMsgsSent (const boost::system::error_code & ecode, std::size_t bytes_transferred,
-			std::vector<std::shared_ptr<I2NPMessage>> msgs);
-		void EncryptAndSendNextBuffer (size_t payloadLen);
-		void HandleNextFrameSent (const boost::system::error_code & ecode, std::size_t bytes_transferred);
+			std::vector<std::shared_ptr<I2NPMessage>> msgs, std::unique_ptr<uint8_t[]> sendBuffer);
+		bool EncryptAndSendNextBuffer (size_t payloadLen);
+		void HandleNextFrameSent (const boost::system::error_code & ecode, std::size_t bytes_transferred,
+			std::unique_ptr<uint8_t[]> sendBuffer);
 		size_t CreatePaddingBlock (size_t msgLen, uint8_t * buf, size_t len);
 		void SendQueue ();
 		void SendRouterInfo ();
-		void SendTermination (NTCP2TerminationReason reason);
+		bool SendTermination (NTCP2TerminationReason reason);
 		void SendTerminationAndTerminate (NTCP2TerminationReason reason);
 		void ReadSomethingAndTerminate ();
 		void PostI2NPMessages ();
+		bool HasPendingIncomingData ();
 
 	private:
 		NTCP2Server & m_Server;
@@ -241,7 +283,10 @@ namespace transport
 		const uint8_t *m_SendSipKey, *m_ReceiveSipKey;
 #endif
 		uint16_t m_NextReceivedLen;
-		uint8_t *m_NextReceivedBuffer, *m_NextSendBuffer;
+		std::unique_ptr<uint8_t[]> m_NextReceivedBuffer;
+		// staging buffer for the next outgoing frame; ownership is moved into the
+		// write completion handler before async_write
+		std::unique_ptr<uint8_t[]> m_NextSendBuffer;
 		size_t m_NextReceivedBufferSize;
 		union
 		{
@@ -253,6 +298,12 @@ namespace transport
 		i2p::I2NPMessagesHandler m_Handler;
 
 		bool m_IsSending, m_IsReceiving;
+		// A control frame (RouterInfo/termination) must not be started while a
+		// data frame write is in flight. Remember the request and act on it in
+		// HandleNextFrameSent() instead of dropping it.
+		bool m_IsTerminating;
+		int m_PendingTerminationReason; // -1 when none
+		bool m_PendingRouterInfo;
 		std::list<std::shared_ptr<I2NPMessage>> m_SendQueue;
 		uint64_t m_NextRouterInfoResendTime; // seconds since epoch
 
@@ -306,6 +357,14 @@ namespace transport
 		bool AddNTCP2Session (std::shared_ptr<NTCP2Session> session, bool incoming = false);
 		void RemoveNTCP2Session (std::shared_ptr<NTCP2Session> session);
 		std::shared_ptr<NTCP2Session> FindNTCP2Session (const i2p::data::IdentHash & ident);
+		// Returns true if the encrypted X value (first 8 bytes, as in Java)
+		// was already seen within NTCP2_HANDSHAKE_REPLAY_TIMEOUT. Inserts the
+		// value atomically so concurrent handshakes cannot both pass.
+		bool IsHandshakeReplay (const uint8_t * encryptedX);
+		// Alice-side equivalent for the encrypted Y in SessionCreated
+		// (spec/ntcp2 message 2 replay note). Kept in a separate cache so an
+		// X prefix can never alias a Y prefix.
+		bool IsHandshakeReplayOutgoing (const uint8_t * encryptedY);
 
 		void ConnectWithProxy (std::shared_ptr<NTCP2Session> conn);
 		void Connect (std::shared_ptr<NTCP2Session> conn);
@@ -326,6 +385,7 @@ namespace transport
 			std::shared_ptr<boost::asio::steady_timer> timer);
 		void HandleProxyConnect (const boost::system::error_code & ecode, std::shared_ptr<NTCP2Session> conn,
 			std::shared_ptr<boost::asio::steady_timer> timer);
+		bool IsHandshakeReplay (const uint8_t * encrypted, std::unordered_map<uint64_t, uint64_t> & cache);
 
 		// timer
 		void ScheduleTermination ();
@@ -336,6 +396,10 @@ namespace transport
 		std::unique_ptr<boost::asio::ip::tcp::acceptor> m_NTCP2Acceptor, m_NTCP2V6Acceptor;
 		std::map<i2p::data::IdentHash, std::shared_ptr<NTCP2Session>> m_NTCP2Sessions;
 		std::map<boost::asio::ip::address, std::shared_ptr<NTCP2Session>> m_PendingIncomingSessions;
+
+		std::mutex m_HandshakeReplayMutex;
+		std::unordered_map<uint64_t, uint64_t> m_HandshakeReplayCache; // incoming X -> expiry (seconds)
+		std::unordered_map<uint64_t, uint64_t> m_HandshakeReplayCacheOutgoing; // outgoing Y -> expiry
 
 		ProxyType m_ProxyType;
 		std::string m_ProxyAddress, m_ProxyAuthorization;
