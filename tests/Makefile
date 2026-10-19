@@ -3,10 +3,10 @@
 # SPDX-License-Identifier: BSD-3-Clause
 # POSIX make wrapper: tests are defined and built by CMake/CTest.
 
-BUILD_DIR ?= ../build-output
-CMAKE ?= cmake
-CMAKE_GENERATOR ?= Ninja
-CMAKE_FLAGS ?=
+BUILD_DIR = ../build-output
+CMAKE = cmake
+CMAKE_GENERATOR = Ninja
+CMAKE_FLAGS =
 
 configure:
 	"${CMAKE}" -S ../build -B "${BUILD_DIR}" -G "${CMAKE_GENERATOR}" -DBUILD_TESTING=ON ${CMAKE_FLAGS}
