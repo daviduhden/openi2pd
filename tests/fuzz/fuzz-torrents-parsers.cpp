@@ -1,11 +1,12 @@
 /*
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: fuzz torrents parsers.
+ *
+ * Fuzzes magnet, comment, bencode, metainfo, piece-block and DHT parsers, checking piece/bitfield accounting, peer-frame length caps and bounded DHT peer growth from unverified input.
+ *
+ */
 
 #include <cassert>
 #include <cstddef>
@@ -18,6 +19,7 @@
 
 #include "Torrents.h"
 #include "TorrentsControl.h"
+#include "TorrentsComments.h"
 #include "TorrentsDHT.h"
 
 #ifndef NO_TORRENTS
@@ -25,6 +27,9 @@
 extern "C" int LLVMFuzzerTestOneInput (const uint8_t * data, size_t size)
 {
 	std::string_view input (reinterpret_cast<const char *> (data), size);
+
+	(void)i2p::torrents::ParseTorrentMagnet (input);
+	(void)i2p::torrents::DecodeTorrentComments (input, 2000000000);
 
 	// Bencode primitives and the metainfo parser share these entry points.
 	(void)i2p::torrents::ExtractByteString (input);
@@ -40,8 +45,8 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t * data, size_t size)
 		(void)strings;
 	}
 
-	static_assert (i2p::torrents::MAX_TORRENT_LENGTH == (uint64_t { 256 } << 40),
-		"MAX_TORRENT_LENGTH must be a 64-bit constant");
+	static_assert (
+		i2p::torrents::MAX_TORRENT_LENGTH == (uint64_t { 256 } << 40), "MAX_TORRENT_LENGTH must be a 64-bit constant");
 	static_assert (i2p::torrents::MAX_PEER_MSG_LEN + 4 == i2p::torrents::PEER_CONNECTION_RECEIVE_BUFFER_SIZE,
 		"peer frame must fit the receive buffer");
 
@@ -51,8 +56,8 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t * data, size_t size)
 	{
 		uint32_t wireLen = 0;
 		if (size >= 4)
-			wireLen = ((uint32_t)data[0] << 24) | ((uint32_t)data[1] << 16) | ((uint32_t)data[2] << 8)
-				| (uint32_t)data[3];
+			wireLen
+				= ((uint32_t)data[0] << 24) | ((uint32_t)data[1] << 16) | ((uint32_t)data[2] << 8) | (uint32_t)data[3];
 		const bool allowed = i2p::torrents::IsPeerMessageLengthAllowed (wireLen);
 		if (wireLen == 0xFFFF || wireLen > i2p::torrents::MAX_PEER_MSG_LEN) assert (!allowed);
 		assert (i2p::torrents::IsPeerMessageLengthAllowed (i2p::torrents::MAX_PEER_MSG_LEN));

@@ -1,12 +1,14 @@
 /*
-* Copyright (c) 2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Torrents.
+ *
+ * Declares the torrent metadata, piece/file and peer-connection model plus
+ * the BEP-encoded parser, path-containment checks and bounded file I/O
+ * helpers used by the torrent engine.
+ *
+ */
 
 #ifndef TORRENTS_H__
 #define TORRENTS_H__
@@ -33,6 +35,7 @@
 #include <fstream>
 #include <mutex>
 #include "util.h"
+#include "TorrentsComments.h"
 #include "Streaming.h"
 #include "I2PService.h"
 
@@ -57,7 +60,7 @@ namespace torrents
 	template <size_t sz> std::pair<size_t, bool> ParseByteArray (std::string_view buf, std::array<uint8_t, sz> & arr)
 	{
 		auto [str, len] = ExtractByteString (buf);
-		if (len && str.size () >= sz)
+		if (len && str.size () == sz)
 		{
 			memcpy (arr.data (), str.data (), sz);
 			return { len, true };
@@ -97,7 +100,10 @@ namespace torrents
 	// leave the connection permanently unable to make progress.
 	constexpr size_t MAX_PEER_MSG_LEN = PEER_CONNECTION_RECEIVE_BUFFER_SIZE - 4;
 	static_assert (MAX_PEER_MSG_LEN + 4 == PEER_CONNECTION_RECEIVE_BUFFER_SIZE, "peer frame must fit the buffer");
-	constexpr bool IsPeerMessageLengthAllowed (uint64_t msgLen) { return msgLen <= MAX_PEER_MSG_LEN; }
+	constexpr bool IsPeerMessageLengthAllowed (uint64_t msgLen)
+	{
+		return msgLen <= MAX_PEER_MSG_LEN;
+	}
 	constexpr int PEER_CONNECTION_MAX_IDLE = 3600; // in seconds
 	constexpr int PEER_KEEP_ALIVE_TIMEOUT = 120; // in seconds
 	constexpr int PEER_KEEP_SEND_INTERVAL = 95; // in seconds
@@ -171,8 +177,8 @@ namespace torrents
 	// components are accepted so files can be created, but the caller must
 	// recheck before use (and the safe file helpers below do not follow
 	// symlinks at the leaf or below root).
-	bool IsPathWithinRoot (const std::filesystem::path & root, const std::filesystem::path & target,
-		bool allowDirectoryLeaf);
+	bool IsPathWithinRoot (
+		const std::filesystem::path & root, const std::filesystem::path & target, bool allowDirectoryLeaf);
 
 	// Bounded file helpers. Reads stop at maxBytes instead of trusting an
 	// on-disk size, reject symlink leaves/reparse points and non-regular files
@@ -183,9 +189,15 @@ namespace torrents
 	// trusted root, so no such window exists there. Hard links are not
 	// distinguishable portably; the torrent root must already be trusted and
 	// not writable by other users.
-	bool ReadFileBoundedNoFollow (const std::filesystem::path & path, size_t maxBytes,
-		std::vector<uint8_t> & content, std::string & error);
+	bool ReadFileBoundedNoFollow (
+		const std::filesystem::path & path, size_t maxBytes, std::vector<uint8_t> & content, std::string & error);
 	bool WriteFileNoFollow (const std::filesystem::path & path, const void * data, size_t len);
+	// Atomic replace beneath the authorized root. POSIX anchors traversal and
+	// fsyncs data and parent; Windows retains check/open reparse-point races.
+	// Failure after rename may mean the replacement exists but durability is
+	// uncertain; callers must report the error and must not truncate/retry.
+	bool WriteFileAtomicNoFollow (const std::filesystem::path & root, const std::filesystem::path & relativePath,
+		const void * data, size_t len, std::string & error);
 	// Creates path exclusively (O_EXCL) and reserves exactly `size` bytes.
 	bool CreateFileWithSizeNoFollow (const std::filesystem::path & path, size_t size);
 	// Anchored variants: `relativePath` is traversed from `root` one component
@@ -370,6 +382,15 @@ namespace torrents
 		//  seeders, leechers, last update time in seconds since epoch, error)
 	public:
 		using InfoHash = std::array<uint8_t, SHA_DIGEST_LENGTH>;
+		using TrackerTiers = std::vector<std::vector<std::string>>;
+		// Pure metadata builder for the storage/hash worker. Piece hashes cover
+		// concatenated files in the supplied order, including file boundaries.
+		// Empty relative paths denote a single file; otherwise all paths are
+		// relative to name. No filesystem or network operation is performed.
+		static std::shared_ptr<Torrent> CreateV1 (std::string_view name,
+			const std::vector<std::pair<std::filesystem::path, size_t>> & files, size_t pieceLength,
+			const std::vector<InfoHash> & pieceHashes, const TrackerTiers & trackers = { },
+			bool privateTorrent = false);
 
 		Torrent (std::string_view buf);
 		Torrent (const InfoHash & infoHash);
@@ -389,6 +410,14 @@ namespace torrents
 
 		std::string_view GetAnnounce () const { return m_Announce; }
 		void SetAnnounce (std::string_view announce) { m_Announce = announce; }
+		const TrackerTiers & GetTrackerTiers () const { return m_TrackerTiers; }
+		bool HasExplicitTrackers () const { return m_HasExplicitTrackers; }
+		bool SetTrackerTiers (const TrackerTiers & tiers);
+		bool IsPrivate () const { return m_IsPrivate; }
+		// Service-thread only; storage workers receive encoded snapshots.
+		TorrentCommentStore & GetCommentStore () { return m_Comments; }
+		const TorrentCommentStore & GetCommentStore () const { return m_Comments; }
+		void SetCommentsEnabled (bool enabled);
 		int GetAnnounceTrackerID () const { return m_AnnounceTrackerID; }
 		void SetAnnounceTrackerID (int trackerID) { m_AnnounceTrackerID = trackerID; }
 		std::string_view GetName () const { return m_Name; }
@@ -403,6 +432,18 @@ namespace torrents
 		std::list<std::shared_ptr<TorrentFile>> & GetFiles () { return m_Files; }
 		size_t GetLength () const { return m_Length; }
 		size_t GetPieceLength () const { return m_PieceLength; }
+		// Service-thread policy only; metadata, payload and resume bitfields
+		// retain all files. Shared boundary pieces use the maximum priority.
+		int GetFilePriority (size_t index) const;
+		bool SetFilePriority (size_t index, uint8_t priority);
+		std::vector<uint8_t> GetFilePriorities () const { return m_FilePriorities; }
+		bool SetFilePriorities (const std::vector<uint8_t> & priorities);
+		uint8_t GetPiecePriority (size_t index) const;
+		size_t GetSelectedWantedBytes () const;
+		size_t GetSelectedVerifiedBytes () const;
+		// Empty selection is complete; this does not mark the torrent or any
+		// skipped piece complete, verified, or available for upload.
+		bool IsSelectedComplete () const;
 		int GetInterval (size_t trackerID) const
 		{
 			return (trackerID < m_TrackerStats.size ()) ? std::get<1> (m_TrackerStats[trackerID])
@@ -491,15 +532,21 @@ namespace torrents
 		static std::string AdjustName (
 			std::string_view name); // name field from torrent file before to become file path
 		void CheckTrackerStatsSize (size_t trackerID);
+		void RebuildPiecePriorities ();
 
 	private:
 		std::string m_Name, m_Announce;
+		TrackerTiers m_TrackerTiers;
+		bool m_HasExplicitTrackers = false;
+		bool m_IsPrivate = false;
+		TorrentCommentStore m_Comments;
 		int m_AnnounceTrackerID; // -1 not set
 		std::filesystem::path m_FullPath;
 		size_t m_Length, m_PieceLength;
 		std::vector<uint8_t> m_Info; // for BEP9
 		InfoHash m_InfoHash; // SHA1
 		std::vector<Piece> m_Pieces;
+		std::vector<uint8_t> m_FilePriorities, m_PiecePriorities;
 		std::vector<TrackerStats> m_TrackerStats;
 		std::unordered_map<i2p::data::IdentHash, std::weak_ptr<PeerConnection>>
 			m_Connections; // remote ident hash -> connection
@@ -538,6 +585,8 @@ namespace torrents
 		void Close ();
 		void ReceiveHandshake ();
 		void CheckKeepAlive (uint64_t ts);
+		void RefreshComments ();
+		void RefreshFileSelection ();
 
 		bool IsEstablished () const { return m_IsEstablished; };
 		bool IsPieceAvailable (size_t ind) const;
@@ -610,6 +659,8 @@ namespace torrents
 		void AddExtendedMsgHandler (std::string_view extensionName, int64_t msgID);
 		void HandleUtMetadataExtension (const uint8_t * buf, size_t len); // BEP9
 		void RequestUtMetadata (); // BEP9
+		void HandleCommentExtension (const uint8_t * buf, size_t len);
+		void RequestComments ();
 		void HandleI2PPEXExtension (const uint8_t * buf, size_t len); // BEP11
 		void NotifyPEXPeers (); // BEP11
 		void HandleI2PDHTExtension (const uint8_t * buf, size_t len); // BEP5
@@ -638,6 +689,10 @@ namespace torrents
 		// BEP10
 		std::unordered_map<uint8_t, PeerConnection::ExtendedMessageHandler> m_ExtendedMessageHandlers;
 		uint8_t m_RemoteMsgIDUtMetadata, m_RemoteMsgIDI2PPEX, m_RemoteMsgIDI2PDHT;
+		// ut_comment: peer capability does not imply local consent.
+		uint8_t m_RemoteMsgIDComment = 0;
+		uint64_t m_CommentWindow = 0, m_LastCommentRequest = 0, m_LastCommentReply = 0;
+		size_t m_CommentBytes = 0, m_CommentMessages = 0;
 		// BEP9
 		size_t m_RemoteMetadataSize;
 		std::vector<uint8_t> m_RemoteMetadata;

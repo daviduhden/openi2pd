@@ -1,6 +1,11 @@
-# Copyright (c) 2013-2026, The PurpleI2P Project
-# Copyright (c) 2026, David Uhden Collado
-# SPDX-License-Identifier: BSD-3-Clause
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: build.
+#
+# Configures build and manual CI integration.
+#
+
 ---
 name: Linux and Android
 
@@ -53,6 +58,10 @@ jobs:
           cmake --build build-output --parallel 2
           ctest --test-dir build-output --output-on-failure --timeout 120
           ./build-output/i2pd --version
+      - name: Run I2PSnark compatibility regressions
+        run: |
+          ctest --test-dir build-output --output-on-failure --timeout 120 \
+            -R '^test-torrents-(magnet|engine-interop|dht-interop|comments|creator|state|priorities)$' --no-tests=error
       - name: Verify CTest subsystem labels
         run: |
           for label in i2p security memory ipc tui torrent tools perl interop platform android ci static smoke; do

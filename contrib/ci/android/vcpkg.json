@@ -5,11 +5,13 @@
     "boost-asio",
     "boost-beast",
     "boost-dynamic-bitset",
+    "boost-json",
     "boost-logic",
     "boost-program-options",
     "boost-property-tree",
     "boost-smart-ptr",
     "boost-static-assert",
+    "boost-url",
     "miniupnpc",
     "openssl",
     "zlib"

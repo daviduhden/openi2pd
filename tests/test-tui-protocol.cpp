@@ -1,8 +1,13 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: test tui protocol.
+ *
+ * Checks TUI request/response parsing, field escaping, framing and payload limits, config snapshot/write restrictions and torrent command bounds.
+ *
  */
+
 #include <cassert>
 #include <cstdint>
 #include <string>
@@ -14,6 +19,19 @@ using namespace i2p::tui;
 
 static void TestRequests ()
 {
+	auto create = ParseRequest ("I2PDTUI/1 TORRENT-CREATE 0 payload");
+	assert (create && create->type == RequestType::TorrentCreate && create->argument == "payload");
+	assert (!ParseRequest ("I2PDTUI/1 TORRENT-CREATE 0"));
+
+	auto tracker = ParseRequest ("I2PDTUI/1 TORRENT-TRACKER-ADD 0 12 http://tracker.i2p/a");
+	assert (tracker && tracker->type == RequestType::TorrentAddTracker && tracker->torrentId == 12);
+	assert (tracker->argument == "http://tracker.i2p/a");
+	auto removeTracker = ParseRequest ("I2PDTUI/1 TORRENT-TRACKER-REMOVE 1 3 http://tracker.i2p/a");
+	assert (removeTracker && removeTracker->type == RequestType::TorrentRemoveTracker);
+	assert (!ParseRequest ("I2PDTUI/1 TORRENT-TRACKER-ADD 0 1"));
+	assert (!ParseRequest ("I2PDTUI/1 TORRENT-TRACKER-REMOVE 0 -1 http://tracker.i2p/a"));
+	assert (!ParseRequest ("I2PDTUI/1 TORRENT-TRACKER-ADD 0 1 " + std::string (MAX_TORRENT_ARGUMENT_LENGTH + 1, 'a')));
+
 	auto state = ParseRequest ("I2PDTUI/1 STATE");
 	assert (state.has_value ());
 	assert (state->type == RequestType::State);

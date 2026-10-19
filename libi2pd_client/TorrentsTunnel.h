@@ -1,12 +1,15 @@
 /*
-* Copyright (c) 2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: TorrentsTunnel.
+ *
+ * Declares the torrent tunnel service that owns torrents, trackers, peer
+ * connections and the optional DHT, plus its bounded control snapshot/command
+ * interface and background timers. It also coordinates a separate disk I/O
+ * service and enforces root-confined paths.
+ *
+ */
 
 #ifndef NO_TORRENTS
 
@@ -37,6 +40,7 @@
 #include "Torrents.h"
 #include "TorrentsControl.h"
 #include "TorrentsDHT.h"
+#include "TorrentsState.h"
 
 namespace i2p
 {
@@ -162,6 +166,9 @@ namespace torrents
 		void StopOnService ();
 		std::optional<TorrentsSnapshot> BuildControlSnapshot () const;
 		TorrentCommandResult ExecuteControlCommandOnService (const TorrentCommand & command);
+		TorrentCommandResult QueueTorrentCreation (std::string_view source);
+		void LoadTorrentAdminState (const std::shared_ptr<Torrent> & torrent);
+		void SaveTorrentAdminState (const std::shared_ptr<Torrent> & torrent, bool final = false);
 
 		// True when path is lexically inside m_TorrentsDir and neither the
 		// root nor any component in between is a symlink. Existing leaves
@@ -182,7 +189,7 @@ namespace torrents
 		void LoadInitialTorrents ();
 		bool ReadTorrentFileForControl (
 			const std::filesystem::path & path, std::vector<uint8_t> & content, std::string & error);
-		void SaveTorrentFile (std::shared_ptr<Torrent> torrent);
+		void SaveTorrentFile (std::shared_ptr<Torrent> torrent, const std::string & content);
 		void InitTorrentFiles (std::shared_ptr<Torrent> torrent);
 		std::pair<int, bool> InsertTorrent (
 			std::shared_ptr<Torrent> torrent); // returns id > 0 if success and 0 if failed, true if innserted
@@ -191,6 +198,7 @@ namespace torrents
 		bool CreateAndReserveFile (const std::filesystem::path & filePath, size_t reserve);
 		void CompleteTorrent (std::shared_ptr<Torrent> torrent);
 		void StopTorrent (std::shared_ptr<Torrent> torrent);
+		bool IsTorrentTracker (size_t trackerID, const Torrent & torrent) const;
 		bool RequestTracker (size_t trackerID, std::shared_ptr<Torrent> torrent, TrackerAnnounceEvent event);
 		void RequestTorrentTrackers (std::shared_ptr<Torrent> torrent, TrackerAnnounceEvent event);
 		void TrackerRequestSent (const boost::beast::error_code & ecode, size_t bytes_transferred,
@@ -239,6 +247,18 @@ namespace torrents
 		// transactionID->(trackerID, from_port, torrent, timestamp monotonic milliseconds)
 		std::unique_ptr<TorrentsDHT> m_DHT;
 		std::atomic<bool> m_Stopping { false };
+		struct AdminStateStatus
+		{
+			bool loaded = false;
+			bool pending = false;
+			bool dirty = false;
+			uint64_t generation = 0;
+			uint64_t commentRevision = 0;
+			std::string error;
+		};
+		std::map<Torrent::InfoHash, AdminStateStatus> m_AdminState;
+
+		TorrentCreationInfo m_Creation;
 	};
 
 }

@@ -1,11 +1,15 @@
 /*
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: TorrentsControl.
+ *
+ * Defines the bounded snapshot and command structures exchanged with the TUI
+ * and IPC layer, together with magnet, I2P tracker-host and safe torrent-file
+ * helpers. Fixed limits keep responses and control arguments bounded even for
+ * hostile torrents.
+ *
+ */
 
 #ifndef TORRENTS_CONTROL_H__
 #define TORRENTS_CONTROL_H__
@@ -21,6 +25,7 @@
 #include <string>
 #include <string_view>
 #include <vector>
+#include "TorrentsComments.h"
 
 namespace i2p
 {
@@ -49,6 +54,13 @@ namespace torrents
 		StartAll,
 		StopAll,
 		ReannounceAll,
+		AddTracker,
+		RemoveTracker,
+		Create,
+		CommentsEnable,
+		CommentAdd,
+		CommentHide,
+		FilePriority,
 		AddMagnet,
 		AddFile
 	};
@@ -58,6 +70,7 @@ namespace torrents
 		std::string name;
 		uint64_t length;
 		uint64_t completed;
+		int priority = 1;
 	};
 
 	struct TorrentPeerInfo
@@ -100,6 +113,12 @@ namespace torrents
 		int leechers;
 		double percent;
 		std::optional<uint64_t> etaSeconds;
+		bool commentsEnabled = false;
+		size_t commentCount = 0;
+		size_t ratingCount = 0;
+		double averageRating = 0;
+		std::string commentPersistenceError;
+		std::vector<TorrentComment> comments;
 		std::vector<TorrentFileInfo> files;
 		std::vector<TorrentPeerInfo> peerDetails;
 		std::vector<TorrentTrackerInfo> trackers;
@@ -111,6 +130,15 @@ namespace torrents
 		uint64_t uploaded;
 		int active;
 		int paused;
+	};
+
+	struct TorrentCreationInfo
+	{
+		uint64_t job = 0;
+		bool pending = false;
+		bool success = false;
+		int torrentId = 0;
+		std::string message;
 	};
 
 	struct TorrentDhtInfo
@@ -129,6 +157,7 @@ namespace torrents
 		std::vector<TorrentInfo> torrents;
 		TorrentSessionInfo session;
 		TorrentDhtInfo dht;
+		TorrentCreationInfo creation;
 	};
 
 	struct TorrentCommand
@@ -156,6 +185,17 @@ namespace torrents
 	// Lower-case hexadecimal representation, using exactly two characters per
 	// input byte. Used for torrent hashes and display magnets.
 	std::string ToHexString (std::span<const uint8_t> data);
+
+	struct TorrentMagnet
+	{
+		std::array<uint8_t, 20> infoHash { };
+		std::string name;
+		std::vector<std::string> trackers;
+	};
+
+	// Bounded BEP 9 v1 magnet parser. Conflicting exact topics, malformed
+	// escapes and unsupported v2-only magnets fail. Tracker hints are I2P-only.
+	std::optional<TorrentMagnet> ParseTorrentMagnet (std::string_view uri);
 
 	// Builds a display-only magnet from an info hash and an optional name. The
 	// name is percent-encoded; no tracker or filesystem data is included.

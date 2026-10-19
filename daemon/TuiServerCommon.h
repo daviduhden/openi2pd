@@ -1,18 +1,22 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: TuiServerCommon.
+ *
+ * Declares the transport-independent TUI request dispatcher and its result
+ * type. Both the UNIX socket and Windows named-pipe servers must pass every
+ * request line through this entry point, including embedded torrent import.
+ *
+ */
 
 #ifndef TUI_SERVER_COMMON_H__
 #define TUI_SERVER_COMMON_H__
 
 #include <string>
 #include <string_view>
+#include <span>
+#include <cstdint>
 
 namespace i2p
 {
@@ -44,6 +48,9 @@ namespace tui
 	 * client, not unwind through std::thread and terminate the router.
 	 */
 	DispatchResult Dispatch (std::string_view line);
+	// Embedded administration only: caller must establish the same local
+	// application authority as Dispatch. Bytes are metainfo, never a path.
+	DispatchResult ImportTorrent (uint32_t tunnelIndex, std::span<const uint8_t> content);
 }
 }
 

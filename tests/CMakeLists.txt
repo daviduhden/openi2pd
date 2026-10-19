@@ -104,6 +104,13 @@ set(I2PD_TESTS
   test-streaming-buffer
   test-log-lifecycle
   test-torrent-bencode
+  test-torrents-comments
+  test-torrents-creator
+  test-torrents-state
+  test-torrents-priorities
+  test-torrents-magnet
+  test-torrents-engine-interop
+  test-torrents-dht-interop
   test-torrents-security
   test-torrents-concurrency
   test-blinding-b33-strict

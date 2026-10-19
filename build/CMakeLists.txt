@@ -149,7 +149,7 @@ set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 
 find_package(Boost 1.74 REQUIRED COMPONENTS program_options)
-if(WITH_TORRENTS AND NOT ANDROID)
+if(WITH_TORRENTS)
   find_package(Boost 1.81 REQUIRED COMPONENTS json url)
 endif()
 find_package(OpenSSL REQUIRED)
@@ -244,6 +244,9 @@ set(LIBI2PD_CLIENT_SOURCES
   "${LIBI2PD_CLIENT_DIR}/SOCKS.cpp"
   "${LIBI2PD_CLIENT_DIR}/Torrents.cpp"
   "${LIBI2PD_CLIENT_DIR}/TorrentsControl.cpp"
+  "${LIBI2PD_CLIENT_DIR}/TorrentsComments.cpp"
+  "${LIBI2PD_CLIENT_DIR}/TorrentsCreator.cpp"
+  "${LIBI2PD_CLIENT_DIR}/TorrentsState.cpp"
   "${LIBI2PD_CLIENT_DIR}/TorrentsDHT.cpp"
   "${LIBI2PD_CLIENT_DIR}/TorrentsRPC.cpp"
   "${LIBI2PD_CLIENT_DIR}/TorrentsTunnel.cpp"
@@ -419,7 +422,7 @@ target_compile_features(libi2pdclient PUBLIC cxx_std_23)
 target_link_libraries(libi2pdclient PUBLIC libi2pd Threads::Threads)
 target_link_libraries(libi2pdclient PRIVATE $<BUILD_INTERFACE:i2pd_warnings>)
 i2pd_enable_sanitizers(libi2pdclient)
-if(NOT WITH_TORRENTS OR ANDROID)
+if(NOT WITH_TORRENTS)
   target_compile_definitions(libi2pdclient PUBLIC NO_TORRENTS)
 elseif(TARGET Boost::json AND TARGET Boost::url)
   target_link_libraries(libi2pdclient PRIVATE Boost::json Boost::url)

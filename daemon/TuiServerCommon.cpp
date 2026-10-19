@@ -1,12 +1,16 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: TuiServerCommon.
+ *
+ * Implements the shared TUI dispatcher: parses and validates each request
+ * line, rejects oversized responses and builds snapshots of router,
+ * transport, tunnel, NetDb, destination, log, configuration and torrent
+ * state. Exceptions become internal-error frames so a failed snapshot cannot
+ * unwind the IPC thread.
+ *
+ */
 
 #include "TuiServerCommon.h"
 
@@ -153,7 +157,8 @@ namespace tui
 			return names.empty () ? std::string ("none") : names;
 		}
 
-		void AppendPeerSnapshot (std::string & payload, std::string_view field, const i2p::transport::PeerSnapshot & peer)
+		void AppendPeerSnapshot (
+			std::string & payload, std::string_view field, const i2p::transport::PeerSnapshot & peer)
 		{
 			std::string value = peer.ident.ToBase64 ();
 			value.push_back ('|');
@@ -542,6 +547,25 @@ namespace tui
 		void AppendTorrentDetail (std::string & payload, const i2p::torrents::TorrentInfo & torrent)
 		{
 			AppendTorrentSummary (payload, "detail", torrent);
+			AppendField (payload, "comments.enabled", torrent.commentsEnabled);
+			AppendField (payload, "comments.total", torrent.commentCount);
+			AppendField (payload, "comments.count", torrent.comments.size ());
+			AppendField (payload, "comments.ratingCount", torrent.ratingCount);
+			AppendField (payload, "comments.average", std::to_string (torrent.averageRating));
+			AppendField (payload, "comments.persistenceError", torrent.commentPersistenceError);
+			for (size_t i = 0; i < torrent.comments.size (); ++i)
+			{
+				const auto & comment = torrent.comments[i];
+				auto prefix = "comment." + std::to_string (i);
+				AppendField (payload, prefix + ".id", comment.localId);
+				AppendField (payload, prefix + ".owner", comment.owner);
+				AppendField (payload, prefix + ".text", comment.text);
+				AppendField (payload, prefix + ".rating", comment.rating);
+				AppendField (payload, prefix + ".time", comment.time);
+				AppendField (payload, prefix + ".hidden", comment.hidden);
+				AppendField (payload, prefix + ".local", comment.local);
+			}
+
 			size_t count = 0;
 			for (const auto & file : torrent.files)
 			{
@@ -550,6 +574,7 @@ namespace tui
 				AppendField (payload, prefix + ".name", file.name);
 				AppendField (payload, prefix + ".length", file.length);
 				AppendField (payload, prefix + ".completed", file.completed);
+				AppendField (payload, prefix + ".priority", file.priority);
 			}
 			count = 0;
 			for (const auto & peer : torrent.peerDetails)
@@ -639,6 +664,11 @@ namespace tui
 			AppendField (payload, "session.uploaded", snapshot->session.uploaded);
 			AppendField (payload, "session.active", snapshot->session.active);
 			AppendField (payload, "session.paused", snapshot->session.paused);
+			AppendField (payload, "creation.job", snapshot->creation.job);
+			AppendField (payload, "creation.pending", snapshot->creation.pending);
+			AppendField (payload, "creation.success", snapshot->creation.success);
+			AppendField (payload, "creation.torrentId", snapshot->creation.torrentId);
+			AppendField (payload, "creation.message", snapshot->creation.message);
 			return payload;
 		}
 
@@ -736,11 +766,11 @@ namespace tui
 				return makeOk (BuildTorrentCommandResult (
 					request->tunnelIndex, { i2p::torrents::TorrentCommandKind::Stop, request->torrentId, false, { } }));
 			case RequestType::TorrentPause:
-				return makeOk (BuildTorrentCommandResult (
-					request->tunnelIndex, { i2p::torrents::TorrentCommandKind::Pause, request->torrentId, false, { } }));
+				return makeOk (BuildTorrentCommandResult (request->tunnelIndex,
+					{ i2p::torrents::TorrentCommandKind::Pause, request->torrentId, false, { } }));
 			case RequestType::TorrentResume:
-				return makeOk (BuildTorrentCommandResult (
-					request->tunnelIndex, { i2p::torrents::TorrentCommandKind::Resume, request->torrentId, false, { } }));
+				return makeOk (BuildTorrentCommandResult (request->tunnelIndex,
+					{ i2p::torrents::TorrentCommandKind::Resume, request->torrentId, false, { } }));
 			case RequestType::TorrentReannounce:
 				return makeOk (BuildTorrentCommandResult (request->tunnelIndex,
 					{ i2p::torrents::TorrentCommandKind::Reannounce, request->torrentId, false, { } }));
@@ -756,6 +786,29 @@ namespace tui
 			case RequestType::TorrentReannounceAll:
 				return makeOk (BuildTorrentCommandResult (
 					request->tunnelIndex, { i2p::torrents::TorrentCommandKind::ReannounceAll, 0, false, { } }));
+			case RequestType::TorrentAddTracker:
+				return makeOk (BuildTorrentCommandResult (request->tunnelIndex,
+					{ i2p::torrents::TorrentCommandKind::AddTracker, request->torrentId, false, request->argument }));
+			case RequestType::TorrentRemoveTracker:
+				return makeOk (BuildTorrentCommandResult (request->tunnelIndex,
+					{ i2p::torrents::TorrentCommandKind::RemoveTracker, request->torrentId, false,
+						request->argument }));
+			case RequestType::TorrentCommentsEnable:
+				return makeOk (BuildTorrentCommandResult (request->tunnelIndex,
+					{ i2p::torrents::TorrentCommandKind::CommentsEnable, request->torrentId, false,
+						request->argument }));
+			case RequestType::TorrentCommentAdd:
+				return makeOk (BuildTorrentCommandResult (request->tunnelIndex,
+					{ i2p::torrents::TorrentCommandKind::CommentAdd, request->torrentId, false, request->argument }));
+			case RequestType::TorrentCommentHide:
+				return makeOk (BuildTorrentCommandResult (request->tunnelIndex,
+					{ i2p::torrents::TorrentCommandKind::CommentHide, request->torrentId, false, request->argument }));
+			case RequestType::TorrentFilePriority:
+				return makeOk (BuildTorrentCommandResult (request->tunnelIndex,
+					{ i2p::torrents::TorrentCommandKind::FilePriority, request->torrentId, false, request->argument }));
+			case RequestType::TorrentCreate:
+				return makeOk (BuildTorrentCommandResult (
+					request->tunnelIndex, { i2p::torrents::TorrentCommandKind::Create, 0, false, request->argument }));
 			case RequestType::TorrentAddMagnet:
 				return makeOk (BuildTorrentCommandResult (request->tunnelIndex,
 					{ i2p::torrents::TorrentCommandKind::AddMagnet, 0, false, request->argument }));
@@ -784,6 +837,35 @@ namespace tui
 		catch (...)
 		{
 			return { MakeErrorResponse (ErrorCode::Internal, "internal error"), false };
+		}
+	}
+
+	DispatchResult ImportTorrent (uint32_t tunnelIndex, std::span<const uint8_t> content)
+	{
+		try
+		{
+#ifndef NO_TORRENTS
+			if (content.empty () || content.size () > i2p::torrents::MAX_CONTROL_FILE_BYTES)
+				return { MakeErrorResponse (ErrorCode::BadArgument, "invalid metainfo size"), false };
+			auto tunnels = GetSortedTorrentsTunnels ();
+			if (tunnelIndex >= tunnels.size ())
+				return { MakeErrorResponse (ErrorCode::BadArgument, "torrent tunnel not found"), false };
+			auto [torrent, id] = tunnels[tunnelIndex]->AddTorrentFromRpc (
+				std::string_view (reinterpret_cast<const char *> (content.data ()), content.size ()));
+			std::string payload;
+			AppendField (payload, "result", torrent && id ? "ok" : "error");
+			AppendField (
+				payload, "message", torrent && id ? "torrent imported" : "invalid metainfo or import timed out");
+			AppendField (payload, "id", id);
+			AppendField (payload, "tunnel", tunnelIndex);
+			return { MakeResponse (ResponseStatus::Ok, payload), false };
+#else
+			return { MakeErrorResponse (ErrorCode::UnknownCommand, "torrents unavailable"), false };
+#endif
+		}
+		catch (...)
+		{
+			return { MakeErrorResponse (ErrorCode::Internal, "import failed"), false };
 		}
 	}
 }

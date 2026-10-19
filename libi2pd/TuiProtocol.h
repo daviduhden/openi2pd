@@ -1,12 +1,15 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: TuiProtocol.
+ *
+ * Defines the I2PDTUI v1 request/response codec: typed request fields, error
+ * codes, and bounded parsing/serialization helpers shared by the daemon server
+ * and the terminal client. These limits are part of the local-IPC trust
+ * boundary.
+ *
+ */
 
 #ifndef TUI_PROTOCOL_H__
 #define TUI_PROTOCOL_H__
@@ -96,6 +99,13 @@ namespace tui
 		TorrentStartAll,
 		TorrentStopAll,
 		TorrentReannounceAll,
+		TorrentAddTracker,
+		TorrentRemoveTracker,
+		TorrentCreate,
+		TorrentCommentsEnable,
+		TorrentCommentAdd,
+		TorrentCommentHide,
+		TorrentFilePriority,
 		TorrentAddMagnet,
 		TorrentAddFile,
 		TorrentSession,
@@ -237,8 +247,8 @@ namespace tui
 
 		inline bool IsAdminLogLevel (std::string_view value)
 		{
-			return value == "none" || value == "critical" || value == "error" || value == "warn"
-				|| value == "info" || value == "debug";
+			return value == "none" || value == "critical" || value == "error" || value == "warn" || value == "info"
+				|| value == "debug";
 		}
 	}
 
@@ -355,7 +365,8 @@ namespace tui
 				else if (value == "OFF")
 					request.enabled = false;
 				else
-					return i2p::unexpected (ProtocolError { ErrorCode::BadArgument, "admin transit expects ON or OFF" });
+					return i2p::unexpected (
+						ProtocolError { ErrorCode::BadArgument, "admin transit expects ON or OFF" });
 				request.type = RequestType::AdminTransit;
 			}
 			else if (action == "LOGLEVEL")
@@ -401,9 +412,12 @@ namespace tui
 		}
 		else if (command == "TORRENT-DETAIL" || command == "TORRENT-START" || command == "TORRENT-STOP"
 			|| command == "TORRENT-PAUSE" || command == "TORRENT-RESUME" || command == "TORRENT-REANNOUNCE"
-			|| command == "TORRENT-REMOVE" || command == "TORRENT-START-ALL"
-			|| command == "TORRENT-STOP-ALL" || command == "TORRENT-REANNOUNCE-ALL" || command == "TORRENT-ADD-MAGNET"
-			|| command == "TORRENT-ADD-FILE" || command == "TORRENT-SESSION" || command == "TORRENT-DHT")
+			|| command == "TORRENT-REMOVE" || command == "TORRENT-START-ALL" || command == "TORRENT-STOP-ALL"
+			|| command == "TORRENT-REANNOUNCE-ALL" || command == "TORRENT-ADD-MAGNET"
+			|| command == "TORRENT-TRACKER-ADD" || command == "TORRENT-TRACKER-REMOVE" || command == "TORRENT-COMMENTS"
+			|| command == "TORRENT-COMMENT-ADD" || command == "TORRENT-COMMENT-HIDE"
+			|| command == "TORRENT-FILE-PRIORITY" || command == "TORRENT-CREATE" || command == "TORRENT-ADD-FILE"
+			|| command == "TORRENT-SESSION" || command == "TORRENT-DHT")
 		{
 			if (rest.empty ())
 				return i2p::unexpected (ProtocolError { ErrorCode::BadArgument, "missing tunnel index" });
@@ -431,6 +445,20 @@ namespace tui
 				request.type = RequestType::TorrentStopAll;
 			else if (command == "TORRENT-REANNOUNCE-ALL")
 				request.type = RequestType::TorrentReannounceAll;
+			else if (command == "TORRENT-TRACKER-ADD")
+				request.type = RequestType::TorrentAddTracker;
+			else if (command == "TORRENT-TRACKER-REMOVE")
+				request.type = RequestType::TorrentRemoveTracker;
+			else if (command == "TORRENT-COMMENTS")
+				request.type = RequestType::TorrentCommentsEnable;
+			else if (command == "TORRENT-COMMENT-ADD")
+				request.type = RequestType::TorrentCommentAdd;
+			else if (command == "TORRENT-COMMENT-HIDE")
+				request.type = RequestType::TorrentCommentHide;
+			else if (command == "TORRENT-FILE-PRIORITY")
+				request.type = RequestType::TorrentFilePriority;
+			else if (command == "TORRENT-CREATE")
+				request.type = RequestType::TorrentCreate;
 			else if (command == "TORRENT-ADD-MAGNET")
 				request.type = RequestType::TorrentAddMagnet;
 			else if (command == "TORRENT-ADD-FILE")
@@ -440,7 +468,8 @@ namespace tui
 			else
 				request.type = RequestType::TorrentDht;
 
-			if (request.type == RequestType::TorrentAddMagnet || request.type == RequestType::TorrentAddFile)
+			if (request.type == RequestType::TorrentCreate || request.type == RequestType::TorrentAddMagnet
+				|| request.type == RequestType::TorrentAddFile)
 			{
 				auto argument = detail::ParseRestOfLine (rest);
 				if (!argument) return i2p::unexpected (argument.error ());
@@ -450,7 +479,10 @@ namespace tui
 			else if (request.type == RequestType::TorrentDetail || request.type == RequestType::TorrentStart
 				|| request.type == RequestType::TorrentStop || request.type == RequestType::TorrentPause
 				|| request.type == RequestType::TorrentResume || request.type == RequestType::TorrentReannounce
-				|| request.type == RequestType::TorrentRemove)
+				|| request.type == RequestType::TorrentRemove || request.type == RequestType::TorrentAddTracker
+				|| request.type == RequestType::TorrentRemoveTracker
+				|| request.type == RequestType::TorrentCommentsEnable || request.type == RequestType::TorrentCommentAdd
+				|| request.type == RequestType::TorrentCommentHide || request.type == RequestType::TorrentFilePriority)
 			{
 				if (rest.empty ())
 					return i2p::unexpected (ProtocolError { ErrorCode::BadArgument, "missing torrent id" });
@@ -458,6 +490,16 @@ namespace tui
 				if (!id) return i2p::unexpected (id.error ());
 				request.torrentId = *id;
 
+				if (request.type == RequestType::TorrentAddTracker || request.type == RequestType::TorrentRemoveTracker
+					|| request.type == RequestType::TorrentCommentsEnable
+					|| request.type == RequestType::TorrentCommentAdd || request.type == RequestType::TorrentCommentHide
+					|| request.type == RequestType::TorrentFilePriority)
+				{
+					auto argument = detail::ParseRestOfLine (rest);
+					if (!argument) return i2p::unexpected (argument.error ());
+					request.argument = std::move (*argument);
+					rest = { };
+				}
 				if (request.type == RequestType::TorrentRemove && !rest.empty ())
 				{
 					auto option = detail::NextToken (rest);
