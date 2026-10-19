@@ -1,1 +1,0 @@
-Implementazione C++ completa del client I2P

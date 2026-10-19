@@ -1,1 +1,0 @@
-Pełna implementacja klienta I2P napisanej w C++

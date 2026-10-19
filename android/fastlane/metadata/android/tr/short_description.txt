@@ -1,1 +1,0 @@
-C++ ile yazılan tam özellikli I2P istemcisi

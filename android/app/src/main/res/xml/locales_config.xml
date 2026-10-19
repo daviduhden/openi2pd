@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Copyright (c) 2026, David Uhden Collado
+  SPDX-License-Identifier: BSD-3-Clause
+
+  openi2pd ships a single interface locale. The application resources are
+  English-only; declaring that explicitly prevents per-app language pickers
+  and locale splits from advertising unsupported translations.
+-->
+<locale-config xmlns:android="http://schemas.android.com/apk/res/android">
+    <locale android:name="en" />
+</locale-config>
