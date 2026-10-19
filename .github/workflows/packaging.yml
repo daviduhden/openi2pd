@@ -93,7 +93,7 @@ jobs:
           dpkg-buildpackage -us -uc -b
       - name: Lintian
         run: |
-          lintian --fail-on error ../i2pd_*.changes
+          lintian --profile debian --fail-on error ../i2pd_*.changes
       - name: Validate and run DEP-8 smoke test
         run: |
           sudo autopkgtest --no-built-binaries --test-name=smoke \

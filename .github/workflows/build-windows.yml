@@ -84,6 +84,8 @@ jobs:
       - name: Install build dependencies
         run: |
           & "$env:VCPKG_ROOT\vcpkg.exe" install `
+            boost-asio:x64-windows `
+            boost-beast:x64-windows `
             boost-program-options:x64-windows `
             openssl:x64-windows `
             zlib:x64-windows `

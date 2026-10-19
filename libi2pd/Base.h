@@ -52,9 +52,7 @@ namespace data
 	 */
 	constexpr size_t Base64EncodingBufferSize (size_t input_size)
 	{
-		auto d = std::div (input_size, 3);
-		if (d.rem) d.quot++;
-		return 4 * d.quot;
+		return (input_size / 3 + (input_size % 3 ? 1 : 0)) * 4;
 	}
 
 } // data
