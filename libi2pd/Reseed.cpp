@@ -12,6 +12,7 @@
 #include <string.h>
 #include <random>
 #include <fstream>
+#include <memory>
 #include <sstream>
 #include <utility>
 #include <vector>
@@ -20,7 +21,7 @@
 #include <boost/algorithm/string.hpp>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
-#if !defined(LIBRESSL_VERSION_NUMBER) && OPENSSL_VERSION_NUMBER >= 0x30000000L // since 3.0.0
+#ifndef LIBRESSL_VERSION_NUMBER // OpenSSL 3.0.2 is the minimum
 #include <openssl/core_names.h>
 #endif
 #include <zlib.h>
@@ -43,6 +44,11 @@ namespace data
 {
 	const uint64_t MAX_RESEED_CONTENT_LENGTH = 128 * 1024 * 1024; // 128 MB, sanity cap for SU3 content length
 	const uint32_t MAX_RESEED_FILE_SIZE = 64 * 1024 * 1024; // 64 MB, sanity cap for a single file inside the SU3 zip
+	// HTTP headers, chunk framing and redirect bodies are small compared with
+	// the signed payload. Refuse to buffer more than the SU3 cap plus a small
+	// allowance so a malicious or broken reseed server cannot grow the
+	// response string without bound.
+	const size_t MAX_RESEED_HTTP_RESPONSE_SIZE = static_cast<size_t> (MAX_RESEED_CONTENT_LENGTH) + 1024 * 1024;
 
 	Reseeder::Reseeder () { }
 
@@ -205,7 +211,8 @@ namespace data
 			s.seekg (0, std::ios::end);
 			auto len = s.tellg ();
 			s.seekg (0, std::ios::beg);
-			return ProcessZIPStream (s, len);
+			if (len < 0) return 0;
+			return ProcessZIPStream (s, static_cast<uint64_t> (len));
 		}
 		else
 		{
@@ -215,6 +222,30 @@ namespace data
 	}
 
 	const char SU3_MAGIC_NUMBER[] = "I2Psu3";
+
+	namespace
+	{
+		size_t GetSU3SignatureLength (SigningKeyType type)
+		{
+			switch (type)
+			{
+			case SIGNING_KEY_TYPE_DSA_SHA1: return 40;
+			case SIGNING_KEY_TYPE_ECDSA_SHA256_P256: return 64;
+			case SIGNING_KEY_TYPE_ECDSA_SHA384_P384: return 96;
+			case SIGNING_KEY_TYPE_ECDSA_SHA512_P521: return 132;
+			case SIGNING_KEY_TYPE_RSA_SHA256_2048: return 256;
+			case SIGNING_KEY_TYPE_RSA_SHA384_3072: return 384;
+			case SIGNING_KEY_TYPE_RSA_SHA512_4096: return 512;
+			case SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519:
+			case SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519ph:
+			case SIGNING_KEY_TYPE_REDDSA_SHA512_ED25519: return 64;
+			case SIGNING_KEY_TYPE_GOSTR3410_CRYPTO_PRO_A_GOSTR3411_256: return 64;
+			case SIGNING_KEY_TYPE_GOSTR3410_TC26_A_512_GOSTR3411_512: return 128;
+			default: return 0;
+			}
+		}
+	} // namespace
+
 	int Reseeder::ProcessSU3Stream (std::istream & s)
 	{
 		auto readExact = [&s] (void * buffer, size_t size) -> bool
@@ -228,34 +259,59 @@ namespace data
 			return s.good ();
 		};
 
-		char magicNumber[7];
+		// SU3File.java: six-byte magic, one unused byte, then the file version.
+		constexpr size_t SU3_MAGIC_LENGTH = 6;
+		char magicNumber[SU3_MAGIC_LENGTH];
 		if (!readExact (magicNumber, sizeof (magicNumber))
 			|| memcmp (magicNumber, SU3_MAGIC_NUMBER, sizeof (magicNumber)) != 0)
 		{
 			LogPrint (eLogError, "Reseed: Unexpected or truncated SU3 header");
 			return 0;
 		}
-		if (!skip (1)) return 0; // su3 file format version
+		if (!skip (1)) return 0; // unused
+		uint8_t fileVersion = 0;
+		if (!readExact (&fileVersion, sizeof (fileVersion)) || fileVersion != 0)
+		{
+			LogPrint (eLogError, "Reseed: Unsupported SU3 file version ", (int)fileVersion);
+			return 0;
+		}
 		uint16_t signatureTypeRaw = 0, signatureLengthRaw = 0;
 		if (!readExact (&signatureTypeRaw, sizeof (signatureTypeRaw))
 			|| !readExact (&signatureLengthRaw, sizeof (signatureLengthRaw)))
 			return 0;
 		SigningKeyType signatureType = static_cast<SigningKeyType> (be16toh (signatureTypeRaw));
 		uint16_t signatureLength = be16toh (signatureLengthRaw);
-		if (signatureLength > 8192)
+		const size_t expectedSignatureLength = GetSU3SignatureLength (signatureType);
+		if (!expectedSignatureLength || signatureLength != expectedSignatureLength)
 		{
-			LogPrint (eLogError, "Reseed: SU3 signature length too large: ", signatureLength);
+			LogPrint (eLogError, "Reseed: Invalid SU3 signature type/length ", (int)signatureType, "/",
+				signatureLength);
 			return 0;
 		}
 		if (!skip (1)) return 0; // unused
 		uint8_t versionLength = 0;
 		if (!readExact (&versionLength, sizeof (versionLength))) return 0;
+		if (versionLength < 16)
+		{
+			LogPrint (eLogError, "Reseed: SU3 version field too short: ", (int)versionLength);
+			return 0;
+		}
 		if (!skip (1)) return 0; // unused
 		uint8_t signerIDLength = 0;
 		if (!readExact (&signerIDLength, sizeof (signerIDLength))) return 0;
+		if (!signerIDLength)
+		{
+			LogPrint (eLogError, "Reseed: SU3 signer ID is empty");
+			return 0;
+		}
 		uint64_t contentLengthRaw = 0;
 		if (!readExact (&contentLengthRaw, sizeof (contentLengthRaw))) return 0;
 		uint64_t contentLength = be64toh (contentLengthRaw);
+		if (!contentLength)
+		{
+			LogPrint (eLogError, "Reseed: SU3 content is empty");
+			return 0;
+		}
 		if (contentLength > MAX_RESEED_CONTENT_LENGTH)
 		{
 			LogPrint (eLogError, "Reseed: SU3 content length too large: ", contentLength);
@@ -308,6 +364,11 @@ namespace data
 					s.seekg (0, std::ios::beg);
 					if (!readExact (tbs.data (), tbs.size ()) || !readExact (signature.data (), signature.size ()))
 						return 0;
+					if (s.peek () != std::char_traits<char>::eof ())
+					{
+						LogPrint (eLogError, "Reseed: SU3 has data after the signature");
+						return 0;
+					}
 
 					// RSA-raw
 					{
@@ -328,11 +389,12 @@ namespace data
 						BN_bin2bn (it->second, 512, n); // RSA 4096 assumed
 						BN_mod_exp (s, s, i2p::crypto::GetRSAE (), n, bnctx); // s = s^e mod n
 						std::vector<uint8_t> enSigBuf (signatureLength);
-						i2p::crypto::bn2buf (s, enSigBuf.data (), signatureLength);
 						// digest is right aligned
 						// we can't use RSA_verify due wrong padding in SU3
-						if (memcmp (enSigBuf.data () + (signatureLength - SHA512_DIGEST_LENGTH), digest.data (),
-								SHA512_DIGEST_LENGTH))
+						if (!i2p::crypto::bn2buf (s, enSigBuf.data (), signatureLength))
+							LogPrint (eLogWarning, "Reseed: SU3 signature does not fit the declared length");
+						else if (memcmp (enSigBuf.data () + (signatureLength - SHA512_DIGEST_LENGTH), digest.data (),
+									 SHA512_DIGEST_LENGTH))
 							LogPrint (eLogWarning, "Reseed: SU3 signature verification failed");
 						else
 							verify = false; // verified
@@ -427,8 +489,16 @@ namespace data
 					s.read ((char *)&crc_32, 4);
 					crc_32 = le32toh (crc_32);
 					s.read ((char *)&compressedSize, 4);
-					compressedSize
-						= le32toh (compressedSize) + 4; // ??? we must consider signature as part of compressed data
+					compressedSize = le32toh (compressedSize);
+					// The data-descriptor signature is consumed as part of the
+					// compressed data. Reject values that would wrap uint32_t
+					// before the size cap below.
+					if (compressedSize > MAX_RESEED_FILE_SIZE - 4)
+					{
+						LogPrint (eLogError, "Reseed: SU3 compressed size too large: ", compressedSize);
+						return numFiles;
+					}
+					compressedSize += 4;
 					s.read ((char *)&uncompressedSize, 4);
 					uncompressedSize = le32toh (uncompressedSize);
 
@@ -449,45 +519,58 @@ namespace data
 					return numFiles;
 				}
 
-				uint8_t * compressed = new uint8_t[compressedSize];
-				s.read ((char *)compressed, compressedSize);
+				// Both sizes were validated against MAX_RESEED_FILE_SIZE above.
+				// The buffers are owned by the vectors so every early return
+				// (truncated stream, zlib error, CRC failure) releases them.
+				std::vector<uint8_t> compressed (compressedSize);
+				s.read ((char *)compressed.data (), compressedSize);
 				if (!s.good ())
 				{
 					LogPrint (eLogError, "Reseed: Truncated zip file data");
-					delete[] compressed;
 					return numFiles;
 				}
 				if (compressionMethod) // we assume Deflate
 				{
+					// Allocate before touching zlib state so an allocation
+					// failure cannot leave an initialised stream behind.
+					std::vector<uint8_t> uncompressed (uncompressedSize);
 					z_stream inflator;
 					memset (&inflator, 0, sizeof (inflator));
 					inflateInit2 (&inflator, -MAX_WBITS); // no zlib header
-					uint8_t * uncompressed = new uint8_t[uncompressedSize];
-					inflator.next_in = compressed;
+					inflator.next_in = compressed.data ();
 					inflator.avail_in = compressedSize;
-					inflator.next_out = uncompressed;
+					inflator.next_out = uncompressed.data ();
 					inflator.avail_out = uncompressedSize;
 					int err;
-					if ((err = inflate (&inflator, Z_SYNC_FLUSH)) >= 0)
+					// Require the complete deflate stream. Z_OK only means that
+					// more input or output is needed, so accepting it could let
+					// a truncated file reach CRC32/AddRouterInfo.
+					err = inflate (&inflator, Z_SYNC_FLUSH);
+					const size_t produced = uncompressedSize - inflator.avail_out;
+					// Release the zlib state before CRC/netDb work so a later
+					// exception cannot leak it.
+					inflateEnd (&inflator);
+					if (err == Z_STREAM_END)
 					{
-						uncompressedSize -= inflator.avail_out;
-						if (crc32 (0, uncompressed, uncompressedSize) == crc_32)
+						uncompressed.resize (produced);
+						if (crc32 (0, uncompressed.data (), uncompressed.size ()) == crc_32)
 						{
-							if (i2p::data::netdb.AddRouterInfo (uncompressed, uncompressedSize)) numFiles++;
+							if (i2p::data::netdb.AddRouterInfo (
+									uncompressed.data (), static_cast<int> (uncompressed.size ())))
+								numFiles++;
 						}
 						else
 							LogPrint (eLogError, "Reseed: CRC32 verification failed");
 					}
 					else
 						LogPrint (eLogError, "Reseed: SU3 decompression error ", err);
-					delete[] uncompressed;
-					inflateEnd (&inflator);
 				}
 				else // no compression
 				{
-					if (i2p::data::netdb.AddRouterInfo (compressed, compressedSize)) numFiles++;
+					if (i2p::data::netdb.AddRouterInfo (
+							compressed.data (), static_cast<int> (compressed.size ())))
+						numFiles++;
 				}
-				delete[] compressed;
 				if (bitFlag & ZIP_BIT_FLAG_DATA_DESCRIPTOR)
 					s.seekg (12, std::ios::cur); // skip data descriptor section if presented (12 = 16 - 4)
 			}
@@ -555,56 +638,66 @@ namespace data
 
 	void Reseeder::LoadCertificate (const std::string & filename)
 	{
-		SSL_CTX * ctx = SSL_CTX_new (TLS_method ());
-		int ret = SSL_CTX_use_certificate_file (ctx, filename.c_str (), SSL_FILETYPE_PEM);
-		if (ret)
+		using SslCtxPtr = std::unique_ptr<SSL_CTX, decltype (&SSL_CTX_free)>;
+		using SslPtr = std::unique_ptr<SSL, decltype (&SSL_free)>;
+		using PkeyPtr = std::unique_ptr<EVP_PKEY, decltype (&EVP_PKEY_free)>;
+		using BnPtr = std::unique_ptr<BIGNUM, decltype (&BN_free)>;
+
+		SslCtxPtr ctx (SSL_CTX_new (TLS_method ()), SSL_CTX_free);
+		if (!ctx)
 		{
-			SSL * ssl = SSL_new (ctx);
-			X509 * cert = SSL_get_certificate (ssl);
-			// verify
-			if (cert)
-			{
-				// extract issuer name
-				char name[100];
-				X509_NAME_oneline (X509_get_issuer_name (cert), name, 100);
-				char * cn = strstr (name, "CN=");
-				if (cn)
-				{
-					cn += 3;
-					char * terminator = strchr (cn, '/');
-					if (terminator) terminator[0] = 0;
-				}
-				// extract RSA key (we need n only, e = 65537)
-				EVP_PKEY * pubKey = X509_get_pubkey (cert);
-				const BIGNUM * n = nullptr;
-#if !defined(LIBRESSL_VERSION_NUMBER) && OPENSSL_VERSION_NUMBER >= 0x30000000L // since 3.0.0
-				BIGNUM * n1 = BN_new ();
-				if (EVP_PKEY_get_bn_param (pubKey, OSSL_PKEY_PARAM_RSA_N, &n1) > 0) n = n1;
+			LogPrint (eLogCritical, "Reseed: Can't create SSL context for ", filename);
+			return;
+		}
+		if (!SSL_CTX_use_certificate_file (ctx.get (), filename.c_str (), SSL_FILETYPE_PEM))
+		{
+			LogPrint (eLogCritical, "Reseed: Can't open certificate file ", filename);
+			return;
+		}
+
+		SslPtr ssl (SSL_new (ctx.get ()), SSL_free);
+		X509 * cert = ssl ? SSL_get_certificate (ssl.get ()) : nullptr; // owned by SSL
+		if (!cert) return;
+
+		// extract issuer name
+		char name[100];
+		if (!X509_NAME_oneline (X509_get_issuer_name (cert), name, sizeof (name))) name[0] = 0;
+		char * cn = strstr (name, "CN=");
+		if (cn)
+		{
+			cn += 3;
+			char * terminator = strchr (cn, '/');
+			if (terminator) terminator[0] = 0;
+		}
+
+		// extract RSA key (we need n only, e = 65537)
+		PkeyPtr pubKey (X509_get_pubkey (cert), EVP_PKEY_free);
+#ifndef LIBRESSL_VERSION_NUMBER // OpenSSL 3.0.2 is the minimum
+		BnPtr n1 (nullptr, BN_free);
+		BIGNUM * rawN = nullptr;
+		if (pubKey) (void)EVP_PKEY_get_bn_param (pubKey.get (), OSSL_PKEY_PARAM_RSA_N, &rawN);
+		n1.reset (rawN);
+		const BIGNUM * n = n1.get ();
 #else
-				const RSA * key = EVP_PKEY_get0_RSA (pubKey);
-				const BIGNUM *e, *d;
-				RSA_get0_key (key, &n, &e, &d);
+		const RSA * key = pubKey ? EVP_PKEY_get0_RSA (pubKey.get ()) : nullptr;
+		const BIGNUM *e = nullptr, *d = nullptr, *n = nullptr;
+		if (key) RSA_get0_key (key, &n, &e, &d);
 #endif
-				if (n)
-				{
-					PublicKey value;
-					i2p::crypto::bn2buf (n, value, 512);
-					if (cn)
-						m_SigningKeys[cn] = value;
-					else
-						LogPrint (eLogError, "Reseed: Can't find CN field in ", filename);
-				}
+		if (n)
+		{
+			PublicKey value;
+			if (i2p::crypto::bn2buf (n, value, sizeof (value)))
+			{
+				if (cn)
+					m_SigningKeys[cn] = value;
 				else
-					LogPrint (eLogError, "Reseed: Can't extract RSA key from ", filename);
-#if !defined(LIBRESSL_VERSION_NUMBER) && OPENSSL_VERSION_NUMBER >= 0x30000000L // since 3.0.0
-				BN_free (n1);
-#endif
+					LogPrint (eLogError, "Reseed: Can't find CN field in ", filename);
 			}
-			SSL_free (ssl);
+			else
+				LogPrint (eLogError, "Reseed: RSA key is too large in ", filename);
 		}
 		else
-			LogPrint (eLogCritical, "Reseed: Can't open certificate file ", filename);
-		SSL_CTX_free (ctx);
+			LogPrint (eLogError, "Reseed: Can't extract RSA key from ", filename);
 	}
 
 	void Reseeder::LoadCertificates ()
@@ -622,7 +715,9 @@ namespace data
 
 		for (const std::string & file : files)
 		{
-			if (file.compare (file.size () - 4, 4, ".crt") != 0)
+			// file.size () - 4 underflows for a short name and compare()
+			// throws std::out_of_range, terminating the router during startup.
+			if (file.size () < 4 || file.compare (file.size () - 4, 4, ".crt") != 0)
 			{
 				LogPrint (eLogWarning, "Reseed: Ignoring file ", file);
 				continue;
@@ -633,7 +728,7 @@ namespace data
 		LogPrint (eLogInfo, "Reseed: ", numCertificates, " certificates loaded");
 	}
 
-	std::string Reseeder::HttpsRequest (const std::string & address)
+	std::string Reseeder::HttpsRequest (const std::string & address, int redirects)
 	{
 		i2p::http::URL proxyUrl;
 		std::string proxy;
@@ -815,7 +910,7 @@ namespace data
 			if (!ecode)
 			{
 				LogPrint (eLogDebug, "Reseed: Connected to ", url.host, ":", url.port);
-				return ReseedRequest (s, url.to_string ());
+				return ReseedRequest (s, url.to_string (), redirects);
 			}
 			else
 				LogPrint (eLogError, "Reseed: SSL handshake failed: ", ecode.message ());
@@ -825,7 +920,7 @@ namespace data
 		return "";
 	}
 
-	template <typename Stream> std::string Reseeder::ReseedRequest (Stream & s, const std::string & uri)
+	template <typename Stream> std::string Reseeder::ReseedRequest (Stream & s, const std::string & uri, int redirects)
 	{
 		bool follow;
 		i2p::config::GetOption ("reseed.followredirect", follow);
@@ -842,10 +937,20 @@ namespace data
 		std::stringstream rs;
 		char recv_buf[1024];
 		size_t l = 0;
+		size_t received = 0;
 		do
 		{
 			l = s.read_some (boost::asio::buffer (recv_buf, sizeof (recv_buf)), ecode);
-			if (l) rs.write (recv_buf, l);
+			if (l)
+			{
+				if (l > MAX_RESEED_HTTP_RESPONSE_SIZE - received)
+				{
+					LogPrint (eLogError, "Reseed: Response from ", uri, " exceeds size limit");
+					return "";
+				}
+				received += l;
+				rs.write (recv_buf, l);
+			}
 		} while (!ecode && l);
 
 		// process response
@@ -867,8 +972,13 @@ namespace data
 				LogPrint (eLogWarning, "Reseed: Broken redirect from ", uri);
 				return "";
 			}
+			if (redirects >= MAX_RESEED_REDIRECTS)
+			{
+				LogPrint (eLogWarning, "Reseed: Too many redirects from ", uri);
+				return "";
+			}
 			bool isHttps = (location.length () > 8 && location.substr (0, 8) == "https://");
-			return (isHttps ? HttpsRequest (location) : YggdrasilRequest (location));
+			return (isHttps ? HttpsRequest (location, redirects + 1) : YggdrasilRequest (location, redirects + 1));
 		}
 
 		if (res.code != 200)
@@ -893,7 +1003,7 @@ namespace data
 		return data;
 	}
 
-	std::string Reseeder::YggdrasilRequest (const std::string & address)
+	std::string Reseeder::YggdrasilRequest (const std::string & address, int redirects)
 	{
 		i2p::http::URL url;
 		if (!url.parse (address))
@@ -943,7 +1053,7 @@ namespace data
 		if (!ecode)
 		{
 			LogPrint (eLogDebug, "Reseed: Yggdrasil: Connected to ", url.host, ":", url.port);
-			return ReseedRequest (s, url.to_string ());
+			return ReseedRequest (s, url.to_string (), redirects);
 		}
 		else
 			LogPrint (eLogError, "Reseed: Yggdrasil: Couldn't connect to ", url.host, ": ", ecode.message ());

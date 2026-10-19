@@ -23,6 +23,7 @@ namespace i2p
 namespace data
 {
 	constexpr int MAX_NUM_RESEED_ATTEMPTS = 10;
+	constexpr int MAX_RESEED_REDIRECTS = 5;
 	constexpr int RESEED_CONNECT_TIMEOUT = 5; // in seconds
 	constexpr int RESEED_WAITING_INTERVAL = 30; // in second
 	constexpr int RESEED_GIVEUP_TIMEOUT = 180; // in seconds
@@ -50,9 +51,9 @@ namespace data
 
 		bool FindZipDataDescriptor (std::istream & s);
 
-		std::string HttpsRequest (const std::string & address);
-		std::string YggdrasilRequest (const std::string & address);
-		template <typename Stream> std::string ReseedRequest (Stream & s, const std::string & uri);
+		std::string HttpsRequest (const std::string & address, int redirects = 0);
+		std::string YggdrasilRequest (const std::string & address, int redirects = 0);
+		template <typename Stream> std::string ReseedRequest (Stream & s, const std::string & uri, int redirects = 0);
 
 	private:
 		std::map<std::string, PublicKey> m_SigningKeys;
