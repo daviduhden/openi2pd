@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: privilege separation.
+
+Documents project documentation.
+
+-->
+
 # Privilege separation architecture
 
 ## Current state (implemented in this tree)
@@ -137,6 +147,35 @@ log = true
 core separation are complete; enabling it is safe for the log component but
 does not yet satisfy all ten invariants. Do not describe it as full privilege
 separation.
+
+## Service-manager implications
+
+Native Linux service definitions run the router as the unprivileged `i2pd`
+account and keep the data, runtime and local-socket paths available. That is a
+useful process identity and access boundary, but it is **not** the
+multiprocess architecture above and not a claim of full sandboxing.
+
+- Only the log worker is isolated. The core still performs network I/O,
+  persistence and key operations; storage, network and crypto workers remain
+  pending.
+- systemd hardening (`ProtectSystem`, `ReadWritePaths`, `NoNewPrivileges`,
+  namespace restrictions) must remain compatible with local `AF_UNIX`
+  sockets, the TUI/IPC endpoint and persistence. It does not replace worker
+  separation, and a hardened unit must not be documented as full privilege
+  separation.
+- Do not set `PrivateNetwork=true` for a router that must reach I2P, and do not
+  add filesystem restrictions that omit the configured data, runtime, log or
+  socket paths. If a worker sandbox needs namespace creation, a blanket
+  namespace restriction blocks it.
+- The systemd unit is `Type=exec` without `sd_notify`; service start state is
+  not a router-readiness signal.
+- The TUI is an interactive client over the local socket. It is not a service
+  and must not be granted broader privileges than the account that needs to
+  read the socket.
+
+See [Service management](../service-management.md) for the manager-specific
+commands and the pending runtime checks. Service definitions do not enable
+`privsep.enabled` and do not change the status of the worker migration.
 
 ## OpenBSD policy
 

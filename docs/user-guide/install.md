@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: install.
+
+Documents project documentation.
+
+-->
+
 Installing openi2pd
 ===================
 
@@ -10,7 +20,7 @@ project and are not automatically an update path for this fork.
 
 | Platform | Supported installation path |
 |---|---|
-| Linux | Build from source; use the maintained `debian/` or `contrib/rpm/` recipes |
+| Linux | Build from source; native service definitions and the maintained `debian/` or `contrib/rpm/` recipes |
 | OpenBSD | Build from source or use the local `contrib/openbsd/` service recipe |
 | Windows | Build with CMake/MSVC or MSYS2/Clang64, or use a fork release artifact |
 | Android | Build the integrated app under `android/` with OpenJDK 25 |
@@ -32,9 +42,10 @@ guide for the target:
   platform)
 
 The build is CMake/Ninja and requires C++23. The POSIX make front-end delegates
-to CMake and does not require GNU make. The daemon, TUI, tools and documentation
-installation component are selected independently; see
-[CMake and POSIX Make](../build-system.md).
+to CMake and does not require GNU make. The daemon, TUI, tools, documentation
+and `Service` installation components are selected independently; see
+[CMake and POSIX Make](../build-system.md) and
+[Service management](../service-management.md#cmake-install-selection).
 
 ```sh
 cmake -S build -B build-output -G Ninja -DCMAKE_BUILD_TYPE=Release
@@ -68,9 +79,35 @@ package has a different application ID and is not an update path for this fork.
 ## Linux
 
 Build from source using the [Unix guide](../devs/building/unix.md), or use the
-maintained Debian/RPM packaging recipes. The maintained package metadata installs
-the router, TUI and native tools; inspect the recipe before building a
-distribution package.
+maintained Debian/RPM packaging recipes. Native service definitions are
+available for systemd, GNU Shepherd, OpenRC, runit, s6/s6-rc and SysVinit, and
+are selected at install time with the CMake `Service` component. See
+[Service management](../service-management.md) for enabling, start/stop,
+status, reload, logging and hardening notes. The TUI is an interactive client,
+not a service.
+
+### Debian and Ubuntu
+
+The maintained `debian/` package set provides `i2pd` (router, configuration,
+service definitions, man pages and native tools) and `i2pd-tui` (interactive
+ncurses client). It builds with debhelper, CMake and Ninja:
+
+```sh
+sudo apt install i2pd i2pd-tui
+dpkg -L i2pd
+dpkg -L i2pd-tui
+systemctl status i2pd
+service i2pd status
+```
+
+The package installs both a systemd unit and a SysV init script. On a systemd
+host the `service` command reaches the same unit; on a SysV-only host it runs
+the init script. Do not enable both independently. Configuration files such as
+`/etc/i2pd/i2pd.conf`, `/etc/i2pd/tunnels.conf` and `/etc/default/i2pd` are
+conffiles, so local edits survive upgrades. `apt remove` keeps data and
+conffiles; `apt purge` deletes the configuration, keys and logs. See
+[Debian and Ubuntu service management](../service-management.md#debian-and-ubuntu)
+for package, conffile, purge, TUI-socket and coexistence details.
 
 Distribution packages named `i2pd` (Arch, Gentoo, Debian/Ubuntu, Void and
 others) generally track the upstream PurpleI2P source, not this fork. They may

@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: run.
+
+Documents project documentation.
+
+-->
+
 Running openi2pd
 ============
 
@@ -14,17 +24,23 @@ To display all available options:
 
     ./i2pd --help
 
-openi2pd can be controlled with signals. The process ID by is written to the file `~/.i2pd/i2pd.pid` or
-`/var/run/i2pd/i2pd.pid` by default. You can use `kill` utility to send signals like this:
+openi2pd can be controlled with signals. A user process writes its PID to
+`~/.i2pd/i2pd.pid`; packaged Linux services use `/run/i2pd/i2pd.pid`, not the
+historical `/var/run` path. The `pidfile` option overrides the location. Send
+signals with `kill`:
 
-    kill -INT $( cat /var/run/i2pd/i2pd.pid )
+    kill -HUP $( cat /run/i2pd/i2pd.pid )
 
 openi2pd supports the following signals:
 
-* INT - Graceful shutdown. The router waits for up to 10 minutes and then stops. Send a second INT signal to shut it down immediately.
-* HUP - Reload tunnels configuration files.
-* USR1 - Reopen the log file.
+* INT - Graceful shutdown. The router stops accepting transit tunnels, waits up to 10 minutes and then stops. Send a second INT signal to shut it down immediately.
+* TERM - Immediate ordered shutdown. This is not the 10-minute graceful path.
+* HUP - Reload tunnel configuration files. A sandboxed process cannot add a new filesystem path through HUP; restart after changing a configured path.
+* USR1 - Reopen the log file, for example after log rotation.
 * TSTP/CONT - Disconnect from/restore the network when `unix.handle_sigtstp` is enabled.
+
+For a managed service, use the service manager instead of signalling the
+process directly; see [Service management](../service-management.md).
 
 ### Local TUI
 
@@ -32,7 +48,7 @@ openi2pd supports the following signals:
 the daemon does not depend on a terminal:
 
     i2pd-tui --datadir ~/.i2pd
-    i2pd-tui --socket /var/i2pd/i2pd-tui.sock
+    i2pd-tui --socket /var/lib/i2pd/i2pd-tui.sock
 
 Keys: `1`-`9` and `0` switch views (Status, Peers, Tunnels, Torrents, NetDb,
 Logs, Help, Destinations, Config, Connections), `Tab`/arrows navigate, `t`
@@ -59,21 +75,42 @@ an explicit service-account/DACL decision; the TUI is not a service. See
 The former HTTP console at port 7070 no longer exists.
 
 
-### systemd unit
+### Service managers
 
-Some distribution packages include a systemd control unit. Where systemd is used, the service can be managed with it.
-
-To start or stop the service:
+The CMake `Service` component and the Debian packages install native
+definitions for systemd, GNU Shepherd, OpenRC, runit, s6/s6-rc and SysVinit.
+The native supervisor definitions run the router in the foreground and pass
+`--foreground` to override a local `daemon = true` configuration; do not add
+`--daemon` to them. The SysV compatibility script is the documented
+backgrounding exception. On systemd:
 
     sudo systemctl start i2pd.service
-    sudo systemctl stop i2pd.service --no-block
+    sudo systemctl stop i2pd.service
+    sudo systemctl restart i2pd.service
+    sudo systemctl status i2pd.service
+    sudo systemctl reload i2pd.service
+    sudo systemctl enable --now i2pd.service
+    sudo systemctl disable --now i2pd.service
 
-The stop command initiates a graceful shutdown; the router stops after draining transit tunnels (maximum 10 minutes).
+`reload` sends `SIGHUP` to reload tunnel configuration. The packaged unit uses
+`KillSignal=SIGINT` with a 600-second stop timeout, so `systemctl stop` requests
+the graceful transit-tunnel drain and may wait up to 10 minutes. `SIGTERM` is a
+prompt ordered shutdown and is **not** the 10-minute path. Inspect the installed
+unit with `systemctl show -p KillSignal -p TimeoutStopUSec i2pd.service` and
+adjust a drop-in if a different stop policy is wanted.
 
-To enable/disable autostart of i2pd upon bootup:
+The packaged unit is `Type=exec` and does not use `sd_notify`; a successful
+start means the process was executed, not that the router is ready for
+traffic. Logs go to journald by default:
 
-    sudo systemctl enable i2pd.service
-    sudo systemctl disable i2pd.service
+    journalctl -u i2pd.service -f
+
+There is no TUI service. `i2pd-tui` is a separate interactive client that
+connects to the running router over its local socket. See
+[Service management](../service-management.md#systemd) for drop-ins, hardening,
+local-socket compatibility and the equivalent commands for the other managers.
+Manager start/stop and package checks are pending manual CI; this documentation
+is static-only.
 
 
 Recommended way to run openi2pd built from source
@@ -93,20 +130,21 @@ Then, to run openi2pd, change to the installation directory and run:
 
     ./i2pd --datadir .
 
-Overriding systemd service parameters
+Overriding service parameters
 -----
 
-For overriding systemd service defaults create `/etc/systemd/system/i2pd.service.d/override.conf` file and place overriden options. Don't forget use option section.
-
-```
-mkdir -p /etc/systemd/system/i2pd.service.d/
-touch /etc/systemd/system/i2pd.service.d/override.conf
-```
-
-Example content with enabled coredump and increased `nofile` limit
+For systemd, use `systemctl edit i2pd.service` to create a drop-in under
+`/etc/systemd/system/i2pd.service.d/`:
 
 ```
 [Service]
 LimitNOFILE=16386
 LimitCORE=infinity
 ```
+
+Apply it with `sudo systemctl daemon-reload` and restart the service. The
+daemon's `datadir`, `pidfile`, `log` and `logfile` options can also be changed,
+but the service definition must use the same paths and grant the service
+account access to them. [Service management](../service-management.md)
+describes the equivalent native configuration for OpenRC, runit, s6/s6-rc,
+GNU Shepherd and SysVinit.

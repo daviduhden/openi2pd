@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: unix.
+
+Documents project documentation.
+
+-->
+
 # Building on Unix-like systems
 
 This fork supports Linux and OpenBSD. Windows and Android have their own
@@ -51,15 +61,44 @@ sudo cmake --install build-output --prefix /usr
 ```
 
 With `I2PD_BUILD_TOOLS=ON` the install includes all native tools and
-`i2pdctl`; the maintained Debian and RPM recipes install the router, TUI and
-tools together. Set `I2PD_INSTALL_DOCS=OFF` to omit the shared documentation
-component.
+`i2pdctl`. The maintained RPM recipes install the router, TUI and tools; the
+Debian package set splits the interactive client into `i2pd-tui`. Set
+`I2PD_INSTALL_DOCS=OFF` to omit the shared documentation component.
 
 or, after configuring the prefix:
 
 ```sh
 sudo make install
 ```
+
+### Service installation
+
+Linux service definitions are installed by the `Service` component, separately
+from the binaries. Select one manager at configure time:
+
+```sh
+cmake -S build -B build-output -G Ninja \
+  -DCMAKE_INSTALL_PREFIX=/usr \
+  -DI2PD_SERVICE_MANAGER=systemd \
+  -DI2PD_SERVICE_DIR=/usr/lib/systemd/system
+cmake --build build-output --parallel
+sudo cmake --install build-output --component Service
+sudo cmake --install build-output
+```
+
+The supported values are `none`, `systemd`, `openrc`, `runit`, `s6`, `s6-rc`,
+`shepherd` and `sysvinit`. Install the router and the component in the same
+prefix; custom prefixes and service directories must match the unit or script's
+absolute configuration, data, runtime and pidfile paths. The supervised native
+definitions keep the daemon in the foreground and must not pass `--daemon`; the
+SysV compatibility script backgrounds it through its helper, and the OpenBSD
+legacy path is separate. The TUI is an interactive client and has no service.
+See [Service management](../../service-management.md) for commands, hardening
+and the backgrounding exceptions.
+
+Runtime start/stop, `systemd-analyze`, OpenRC/runit/s6/Shepherd checks and
+Debian `lintian`/`autopkgtest` remain pending manual CI; they are not performed
+locally.
 
 ## CMake options
 
@@ -71,6 +110,9 @@ Pass options as `-D<key>=<value>`:
 | `I2PD_BUILD_TOOLS` | ON | Build the auxiliary tools |
 | `I2PD_BUILD_TUI` | ON | Build `i2pd-tui` if ncurses is found |
 | `I2PD_INSTALL_DOCS` | ON | Install documentation, branding assets and manual pages |
+| `I2PD_SERVICE_MANAGER` | `none` | Install a service definition for `systemd`, `openrc`, `runit`, `s6`, `s6-rc`, `shepherd` or `sysvinit` |
+| `I2PD_SERVICE_DIR` | manager default | Destination for the service unit, script or directory |
+| `I2PD_SERVICE_CONFDIR` | `${CMAKE_INSTALL_SYSCONFDIR}/conf.d` | OpenRC `conf.d` installation directory; not the router configuration directory |
 | `I2PD_PERL_CRITIC` | OFF | Opt-in Perl::Critic CTest check when `perlcritic` is installed |
 | `BUILD_TESTING` | OFF | Build unit and protocol tests |
 | `WITH_BINARY` | ON | Build the router |

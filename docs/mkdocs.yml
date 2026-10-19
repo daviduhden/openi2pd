@@ -1,5 +1,12 @@
-# Copyright (c) 2026, David Uhden Collado
-# SPDX-License-Identifier: BSD-3-Clause
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: mkdocs.
+#
+# MkDocs configuration that publishes the documentation tree to
+# build-output/docs with fixed navigation and the openi2pd brand stylesheet.
+#
+
 # Optional static-publication configuration. The daemon, CMake build, TUI and
 # tests do not invoke MkDocs or require it at runtime.
 ---
@@ -53,6 +60,7 @@ nav:
   - User Guide:
       - Installing: user-guide/install.md
       - Running: user-guide/run.md
+      - Service management: service-management.md
       - Configuring: user-guide/configuration.md
       - I2P tunnels: user-guide/tunnels.md
       - Family: user-guide/family.md

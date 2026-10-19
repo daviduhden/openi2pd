@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: build system.
+
+Documents project documentation.
+
+-->
+
 # CMake and POSIX Make migration
 
 ## Result
@@ -127,9 +137,44 @@ cmake --install build-output --prefix /usr
 
 Installed files include `i2pd`, optional `i2pd-tui`, libraries/headers when
 `WITH_LIBRARY=ON`, configuration files under `SYSCONFDIR/i2pd`, certificates
-under `DATADIR/i2pd`, the man page and CMake package files. On Windows the
+under `DATADIR/i2pd`, the man page, CMake package files and, when selected, a
+native service definition. On Windows the
 runtime install places `i2pd.exe` and `i2pd-tui.exe` in `CMAKE_INSTALL_BINDIR`;
 DLLs are supplied by the selected toolchain/package manager.
+
+### Service install selection
+
+The `Service` component installs one native service definition for Linux. It
+is independent of the build and can be omitted entirely. The option is rejected
+on Windows and Android, which use their own service host or JNI wrapper.
+
+| Variable | Values | Purpose |
+|---|---|---|
+| `I2PD_SERVICE_MANAGER` | `none`, `systemd`, `openrc`, `runit`, `s6`, `s6-rc`, `shepherd`, `sysvinit` | Select the service definition to install. `none` installs nothing. |
+| `I2PD_SERVICE_DIR` | path | Destination directory for the unit, init script or service directory. Manager-specific conventional locations are used when unset. |
+| `I2PD_SERVICE_CONFDIR` | path | OpenRC `/etc/conf.d` installation directory (default `${CMAKE_INSTALL_SYSCONFDIR}/conf.d`); it is not the router configuration directory. |
+
+```sh
+cmake -S build -B build-output -G Ninja \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_INSTALL_PREFIX=/usr \
+  -DI2PD_SERVICE_MANAGER=systemd \
+  -DI2PD_SERVICE_DIR=/usr/lib/systemd/system
+cmake --build build-output --parallel
+DESTDIR="$PWD/pkg" cmake --install build-output --component Service
+DESTDIR="$PWD/pkg" cmake --install build-output
+```
+
+Install the `Service` component and the router binary into the same prefix;
+installing only `Service` does not add `i2pd`. Packaging must choose exactly
+one manager per package and must not install competing definitions for the same
+service name. Absolute service paths do not follow `CMAKE_INSTALL_PREFIX`, so a
+custom prefix requires matching `ExecStart`, data, runtime, pidfile,
+configuration and log paths. Confirm the installed path from the package
+manifest or `cmake --install ... --component Service --verbose` rather than
+assuming a distribution's directory. The daemon defaults to foreground, the
+systemd unit is `Type=exec` without `sd_notify`, and the TUI is never a
+service. See [Service management](service-management.md).
 
 ### Windows TUI source selection
 
@@ -161,7 +206,10 @@ service/sandbox files and validation notes are in
 
 - Debian `rules` now configures and builds with CMake/Ninja and installs via
   `cmake --install`. Obsolete Makefile patches and EOL-distribution packaging
-  copies were removed.
+  copies were removed. The package set separates the router/service package
+  (`i2pd`) from the interactive client (`i2pd-tui`). Debian keeps
+  `I2PD_SERVICE_MANAGER=none` and installs the systemd unit and SysV
+  compatibility script through debhelper, avoiding duplicate service files.
 - RPM specs build with `cmake --build` instead of invoking `make` or `ninja`
   directly.
 - The Windows helper builds with CMake/Ninja; the Windows XP path was removed.
@@ -179,6 +227,9 @@ MSVC-only compatibility paths, and verifies the canonical C++23/component
 options, the `i2pd_privsep` component, the required POSIX Make targets and
 dependency floors (OpenSSL 3.0.2, LibreSSL 4.0, MiniUPnPc 2.2.6/API 17). It is
 registered as `build-system-static` and is part of the manual CI suite.
+`tests/check-services.cmake` separately checks the foreground/service-manager
+contract, forbidden readiness claims, ownership and log-directory wiring, and
+is registered as `services-static`.
 
 ## Validation status
 
@@ -187,4 +238,7 @@ build, install, CMake generate, CTest or `bmake -n` run is performed by agents.
 The checks above are prepared for manual GitHub Actions execution. Historical
 Linux results from earlier revisions do not validate the current worktree; no
 Windows, OpenBSD or Android configure/build was executed in this environment.
-See `testing.md` and `AGENTS.md`.
+Service definition installation, `systemd-analyze verify`, manager start/stop
+smoke tests, Debian `lintian`, `autopkgtest` and package purge checks are also
+pending manual CI. See `testing.md`, `AGENTS.md` and
+[Service management](service-management.md#validation-status).

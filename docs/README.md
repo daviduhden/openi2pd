@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: README.
+
+Documents project documentation.
+
+-->
+
 # openi2pd documentation
 
 See the [documentation home](index.md) for supported platforms and build instructions.
@@ -27,6 +37,8 @@ matrix.
 - [C++23 migration](cpp23-migration.md)
 - [Build requirements](devs/building/requirements.md)
 - [CMake and POSIX Make migration](build-system.md)
+- [Service management](service-management.md) — systemd, GNU Shepherd, OpenRC,
+  runit, s6/s6-rc, SysVinit and Debian packages
 - [Multiprocess IPC and privilege separation](security/privilege-separation.md)
 - [Internal IPC protocol](security/ipc-protocol.md)
 - [TUI and IPC design](tui-ipc.md)
@@ -64,7 +76,9 @@ available.
 For a user process, data is stored in `~/.i2pd` on Linux and OpenBSD. With
 `--service`, OpenBSD uses `/var/i2pd`, while Linux uses `/var/lib/i2pd`.
 `--datadir` overrides these defaults. Windows uses the application data folder;
-the Android app uses an app-specific `open-i2pd` directory.
+the Android app uses an app-specific `open-i2pd` directory. Linux service
+definitions and their enable/start/stop commands are documented in
+[Service management](service-management.md).
 
 CI is manual-only while the fork refactoring is validated; see the repository
 README and [CI policy](ci.md). Platform and language support follows the
