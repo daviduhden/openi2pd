@@ -13,6 +13,19 @@
 | `logo-original.png` | PNG, RGBA | Supplied original reference, unchanged |
 | `colors.md` | Markdown | Canonical color tokens and contrast checks |
 
+Derived distribution assets:
+
+| File | Source | Notes |
+|---|---|---|
+| `docs/img/logo.png` | `assets/branding/logo.svg` | 512×512 documentation header |
+| `docs/img/favicon.ico` | `assets/branding/symbol.svg` | 16, 32, 48 and 64 px favicon |
+| `contrib/artwork/openi2pd-256.png` | `assets/branding/symbol.svg` | 256×256 hicolor packaging icon |
+| `contrib/artwork/open-i2pd-icon.svg` | `assets/branding/symbol.svg` | Exact vector copy for packaging |
+| `Win32/openi2pd.ico` | `assets/branding/symbol.svg` | 16–256 px Windows executable/installer icon |
+| Android `mipmap-*dpi/ic_launcher.png` | `assets/branding/symbol.svg` | 48, 72, 96, 144 and 192 px legacy launcher icons |
+| Android `drawable/ic_launcher_foreground.xml`, `ic_launcher_monochrome.xml` | `assets/branding/symbol.svg` | Adaptive/themed icon layers |
+| Android `drawable/ic_logo*.xml` | `assets/branding/symbol.svg` | In-app/notification marks |
+
 The SVGs contain only vector paths and metadata. Validation scripts must reject
 any `<image>`, `data:image`, or embedded raster payload.
 
@@ -21,6 +34,10 @@ any `<image>`, `data:image`, or embedded raster payload.
 `logo.png` and `symbol.png` are generated from the SVG masters with
 `rsvg-convert` (or an equivalent renderer). Do not hand-edit PNGs. The original
 reference is never overwritten.
+
+The MkDocs tree carries an exact copy of the canonical palette at
+`docs/assets/branding/colors.md`. Update both files together; the branding
+validator rejects any difference between them.
 
 ## Provenance
 
@@ -39,6 +56,8 @@ provided; it is not represented as an upstream i2pd asset.
 perl tools/scripts/validate-branding.pl
 ```
 
-This checks required files, rejects embedded raster/font payloads in SVG, and
-verifies the master PNG dimensions. It does not replace visual or device
-rendering checks.
+This checks required files, rejects embedded raster/font payloads in SVG,
+verifies master and derived PNG/ICO dimensions, compares the packaging SVG and
+MkDocs SVG mirror with their canonical masters, checks brand-vector fills, and
+rejects Android, TUI or documentation CSS colours absent from the canonical
+palette. It does not replace visual or device rendering checks.

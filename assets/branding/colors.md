@@ -45,7 +45,6 @@ Use the derived semantic tokens below for text and controls.
 | `chart-download` | `#007C7A` | Download chart series |
 | `chart-upload` | `#0067B1` | Upload chart series |
 | `chart-grid` | `#DCE7EF` | Chart grid lines |
-
 | `background` | `#F7FAFC` | App background |
 | `surface` | `#FFFFFF` | Cards, sheets, dialogs |
 | `on-surface` | `#162737` | Primary text |
@@ -88,7 +87,6 @@ Use the derived semantic tokens below for text and controls.
 | `chart-download` | `#59D8D4` | Download chart series |
 | `chart-upload` | `#7CC7FF` | Upload chart series |
 | `chart-grid` | `#273746` | Chart grid lines |
-
 | `background` | `#0B141C` | App background |
 | `surface` | `#101C26` | Cards, sheets, dialogs |
 | `on-surface` | `#E4EDF4` | Primary text |
@@ -119,3 +117,24 @@ The following pairs were calculated with the WCAG relative-luminance formula:
 
 Do not use `openi2pd-teal` or `openi2pd-blue` as normal-size text on a light
 surface. For small teal/blue text, use the corresponding semantic token.
+
+## Platform mappings
+
+The numeric palette above is the only source of brand values. Platform files
+implement the semantic roles and must not introduce independent hex codes:
+
+| Platform | File |
+|---|---|
+| Android light theme | `android/app/src/main/res/values/colors.xml` |
+| Android dark theme | `android/app/src/main/res/values-night/colors.xml` |
+| Android launcher/vector marks | `android/app/src/main/res/drawable/ic_logo*.xml`, `ic_launcher_*.xml` |
+| ncurses TUI | `tui/Theme.h` |
+| Documentation CSS | `docs/stylesheets/brand.css` |
+| Documentation header/favicon | `docs/img/logo.png`, `docs/img/favicon.ico` |
+| Windows executable/installer icon | `Win32/openi2pd.ico` |
+| Desktop/packaging icons | `contrib/artwork/open-i2pd-icon.svg`, `openi2pd-256.png` |
+| HTTP proxy error page | `libi2pd_client/HTTPProxy.cpp` |
+
+`tools/scripts/validate-branding.pl` rejects any hex value in those files that
+is not listed in this document. The terminal theme approximates these values
+for 8-, 16- and 256-colour terminals and provides a monochrome fallback.

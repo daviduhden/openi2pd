@@ -17,5 +17,6 @@ text on white; use the semantic `primary`/`secondary` tokens from the canonical
 file. That file also records the light/dark error, warning, success, selection,
 focus, disabled and surface roles, with contrast ratios.
 
-Android XML, the ncurses theme and documentation CSS map onto those semantic
-tokens. They must not introduce independent brand hex values.
+Android XML, the ncurses theme, documentation CSS and the HTTP proxy
+information page map onto those semantic tokens. They must not introduce
+independent brand hex values.

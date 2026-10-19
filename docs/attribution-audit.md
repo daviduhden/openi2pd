@@ -35,16 +35,19 @@ history and build output. No commit, tag or push was created.
 | `android/README.md` | Team list, donation/XMR address, upstream release badge and signing fingerprint | Not required to build/use the app; current fork metadata replaces the upstream team list |
 | `android/app/src/main/java/.../WebConsoleActivity.java` | Removed with the WebView console | Feature removed by project requirement |
 
-No source file lost its copyright header. The new TUI and protocol sources use
-the existing project copyright line (`The PurpleI2P Project`) because they are
-derived from the same codebase; no new personal attribution was added.
+No upstream-derived source file lost its copyright header. New files that were
+written for openi2pd and were not copied from an i2pd repository carry only the
+fork copyright (`David Uhden Collado`) and `SPDX-License-Identifier:
+BSD-3-Clause`; the `The PurpleI2P Project` line is reserved for imported or
+derived upstream material. The TUI, IPC, test and tooling files created for the
+fork follow this rule.
 
 ## Preserved by legal obligation
 
 | Location | Preserved content |
 |---|---|
 | `LICENSE` | BSD-3-Clause copyright and text |
-| Every C/C++ header/source | `Copyright (c) ... The PurpleI2P Project` |
+| Upstream-derived C/C++ header/source | `Copyright (c) ... The PurpleI2P Project` preserved; fork-only files use the fork copyright |
 | `debian/copyright` | All upstream and packaging copyright holders, including Kill Your TV, hagen, R4SAS and Yangfl |
 | `docs/LICENSE.i2pd-docs-en` | CC-BY-SA 4.0 copyright for imported documentation |
 | `docs/about/license.md` | Documentation license text |
@@ -52,7 +55,8 @@ derived from the same codebase; no new personal attribution was added.
 | `build/cmake_modules/FindCheck.cmake` | Copyright and license of the CMake module authors |
 | `build/cmake_modules/GetGitRevisionDescription.cmake(.in)` | Copyright and license of Ryan Pavlik |
 | `Win32/Resource.rc2`, `build/win_installer.iss`, `build/build_mingw.cmd` | `LegalCopyright` / copyright notices |
-| `debian/changelog`, `contrib/rpm/*.spec` `%changelog` | Historical attribution and packaging provenance |
+| `debian/control`, current `debian/changelog` entry and `contrib/rpm/*.spec` `%changelog` entries | Required package maintainer contact, expressed as the openi2pd maintainers role; historical entries remain provenance |
+| Historical `debian/changelog` and `contrib/rpm/*.spec` `%changelog` entries | Historical attribution and packaging provenance |
 | `ChangeLog` | Historical project record |
 | `docs/about/community.md` | Community channels, retained as technical/community information |
 | Upstream repository URLs in build/provenance docs | Needed for license compliance and future synchronization |
