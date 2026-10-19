@@ -2,9 +2,16 @@
  * Copyright (c) 2013-2026, The PurpleI2P Project
  * Copyright (c) 2026, David Uhden Collado
  * SPDX-License-Identifier: BSD-3-Clause
+ *
+ * Decoder-level framing and field-bound checks. Channel-level malformed
+ * records, ancillary data, descriptor ownership and queue pressure live in
+ * test-privsep-linux-ipc (Linux) and test-privsep-log. Decoder overflows are
+ * also exercised by the CI-only fuzz-privsep-protocol target; TSan/ASan runs
+ * are CI-only and are not part of local static review.
  */
 #include <cassert>
 #include <cstdint>
+#include <limits>
 #include <string>
 #include <string_view>
 #include <unistd.h>
@@ -19,11 +26,11 @@ namespace
 std::string Header (uint32_t magic, uint16_t version, uint16_t type, uint32_t requestId, uint32_t length)
 {
 	PayloadWriter writer;
-	writer.U32 (magic);
-	writer.U16 (version);
-	writer.U16 (type);
-	writer.U32 (requestId);
-	writer.U32 (length);
+	writer.WriteU32 (magic);
+	writer.WriteU16 (version);
+	writer.WriteU16 (type);
+	writer.WriteU32 (requestId);
+	writer.WriteU32 (length);
 	return writer.Data ();
 }
 
@@ -57,14 +64,59 @@ int main ()
 	ExpectDecodeError (Header (0, PROTOCOL_VERSION, 2, 0, 0), ErrorCode::Malformed);
 	ExpectDecodeError (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION + 1, 2, 0, 0), ErrorCode::UnsupportedVersion);
 	ExpectDecodeError (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 0, 0, 0), ErrorCode::UnknownType);
-	ExpectDecodeError (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 6, 0, 0), ErrorCode::UnknownType);
+	ExpectDecodeError (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 7, 0, 0), ErrorCode::UnknownType);
 	ExpectDecodeError (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 0xffff, 0, 0), ErrorCode::UnknownType);
+
+	// ConfigureLogFd is the last valid type; an empty payload is legal for
+	// control messages, so the boundary is accepted before dispatch.
+	{
+		auto fdConfig = Encode (
+			Message { MessageType::ConfigureLogFd, 8, EncodeLogConfig (false, "/tmp/router.log", "test") });
+		assert (fdConfig.has_value ());
+		auto decodedConfig = Decode (*fdConfig);
+		assert (decodedConfig.has_value ());
+		assert (decodedConfig->type == MessageType::ConfigureLogFd);
+		assert (decodedConfig->requestId == 8);
+		assert (Decode (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 6, 0, 0)).has_value ());
+		assert (Decode (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 3, 0, 0)).has_value ());
+	}
+
+	// Every truncated header prefix is malformed, never a partially parsed
+	// message with default fields.
+	{
+		const auto complete = Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 2, 5, 0);
+		for (size_t length = 0; length < HEADER_SIZE; ++length)
+		{
+			auto truncated = Decode (std::string_view (complete).substr (0, length));
+			assert (!truncated.has_value ());
+			assert (truncated.error ().code == ErrorCode::Malformed);
+		}
+	}
 
 	// A declared payload above the frame limit is a size error; a mismatch
 	// between the declared and actual length is a framing error.
 	ExpectDecodeError (
 		Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 2, 0, static_cast<uint32_t> (MAX_MESSAGE_SIZE)), ErrorCode::TooLarge);
+	// Off-by-one on the documented limit: the largest legal declared length
+	// is MAX_MESSAGE_SIZE - HEADER_SIZE; one more byte is rejected as a size
+	// error even though the frame is short.
+	ExpectDecodeError (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 2, 0,
+							   static_cast<uint32_t> (MAX_MESSAGE_SIZE - HEADER_SIZE + 1)),
+		ErrorCode::TooLarge);
+	ExpectDecodeError (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 2, 0, std::numeric_limits<uint32_t>::max ()),
+		ErrorCode::TooLarge);
+	// A header-only record that declares the maximum payload is a framing
+	// error, not a size error: the length is legal but absent.
+	ExpectDecodeError (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 2, 0,
+							   static_cast<uint32_t> (MAX_MESSAGE_SIZE - HEADER_SIZE)),
+		ErrorCode::Malformed);
 	ExpectDecodeError (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 2, 0, 1), ErrorCode::Malformed);
+	{
+		// Declared zero payload with trailing bytes.
+		auto zeroLength = Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 2, 0, 0);
+		zeroLength.push_back ('x');
+		ExpectDecodeError (zeroLength, ErrorCode::Malformed);
+	}
 	auto trailing = *frame;
 	trailing.push_back ('x');
 	ExpectDecodeError (trailing, ErrorCode::Malformed);
@@ -97,30 +149,30 @@ int main ()
 	assert (!DecodeLogRecord ("").has_value ()); // missing level
 	{
 		PayloadWriter writer;
-		writer.U8 (4);
+		writer.WriteU8 (4);
 		assert (!DecodeLogRecord (writer.Data ()).has_value ()); // missing timestamp
 	}
 	{
 		PayloadWriter writer;
-		writer.U8 (4);
-		writer.U64 (1);
+		writer.WriteU8 (4);
+		writer.WriteU64BE (1);
 		assert (!DecodeLogRecord (writer.Data ()).has_value ()); // missing length
 	}
 	{
 		// String length larger than the remaining buffer.
 		PayloadWriter writer;
-		writer.U8 (4);
-		writer.U64 (1);
-		writer.U32 (5);
-		writer.U8 ('x');
+		writer.WriteU8 (4);
+		writer.WriteU64BE (1);
+		writer.WriteU32 (5);
+		writer.WriteU8 ('x');
 		assert (!DecodeLogRecord (writer.Data ()).has_value ());
 	}
 	{
 		// String length above MAX_TEXT_SIZE is rejected before allocation.
 		PayloadWriter writer;
-		writer.U8 (4);
-		writer.U64 (1);
-		writer.U32 (MAX_TEXT_SIZE + 1);
+		writer.WriteU8 (4);
+		writer.WriteU64BE (1);
+		writer.WriteU32 (MAX_TEXT_SIZE + 1);
 		auto malformed = DecodeLogRecord (writer.Data ());
 		assert (!malformed.has_value ());
 		assert (malformed.error ().code == ErrorCode::BadField);
@@ -128,10 +180,10 @@ int main ()
 	{
 		// Trailing bytes after a complete record are rejected.
 		PayloadWriter writer;
-		writer.U8 (4);
-		writer.U64 (1);
-		writer.String ("ok");
-		writer.U8 (0);
+		writer.WriteU8 (4);
+		writer.WriteU64BE (1);
+		writer.WriteString ("ok");
+		writer.WriteU8 (0);
 		auto malformed = DecodeLogRecord (writer.Data ());
 		assert (!malformed.has_value ());
 		assert (malformed.error ().code == ErrorCode::BadField);
@@ -145,19 +197,19 @@ int main ()
 	assert (std::get<1> (*parsedConfig) == "/tmp/router.log");
 	{
 		PayloadWriter writer;
-		writer.U8 (2); // invalid bool encoding
-		writer.String ("");
-		writer.String ("tag");
+		writer.WriteU8 (2); // invalid bool encoding
+		writer.WriteString ("");
+		writer.WriteString ("tag");
 		auto invalid = DecodeLogConfig (writer.Data ());
 		assert (!invalid.has_value ());
 		assert (invalid.error ().code == ErrorCode::BadField);
 	}
 	{
 		PayloadWriter writer;
-		writer.U8 (1);
-		writer.String ("/tmp/router.log");
-		writer.String ("tag");
-		writer.U8 (0); // trailing byte
+		writer.WriteU8 (1);
+		writer.WriteString ("/tmp/router.log");
+		writer.WriteString ("tag");
+		writer.WriteU8 (0); // trailing byte
 		auto invalid = DecodeLogConfig (writer.Data ());
 		assert (!invalid.has_value ());
 		assert (invalid.error ().code == ErrorCode::BadField);
@@ -165,18 +217,18 @@ int main ()
 	{
 		// Embedded NUL would truncate the path in the worker's C APIs.
 		PayloadWriter writer;
-		writer.U8 (0);
-		writer.String (std::string ("/tmp/bad\0name", 13));
-		writer.String ("tag");
+		writer.WriteU8 (0);
+		writer.WriteString (std::string ("/tmp/bad\0name", 13));
+		writer.WriteString ("tag");
 		auto invalid = DecodeLogConfig (writer.Data ());
 		assert (!invalid.has_value ());
 		assert (invalid.error ().code == ErrorCode::BadField);
 	}
 	{
 		PayloadWriter writer;
-		writer.U8 (1);
-		writer.String ("");
-		writer.String (std::string ("ta\0g", 4));
+		writer.WriteU8 (1);
+		writer.WriteString ("");
+		writer.WriteString (std::string ("ta\0g", 4));
 		auto invalid = DecodeLogConfig (writer.Data ());
 		assert (!invalid.has_value ());
 		assert (invalid.error ().code == ErrorCode::BadField);

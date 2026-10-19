@@ -1,5 +1,4 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
  * Copyright (c) 2026, David Uhden Collado
  * SPDX-License-Identifier: BSD-3-Clause
  *
@@ -28,6 +27,7 @@
 #include <cstring>
 #include <string>
 #include <thread>
+#include <vector>
 
 namespace
 {
@@ -51,13 +51,37 @@ void TestPipeNameShape ()
 	assert (first != second);
 }
 
+std::wstring CurrentUserSidString ()
+{
+	HANDLE token = nullptr;
+	assert (OpenProcessToken (GetCurrentProcess (), TOKEN_QUERY, &token));
+	DWORD size = 0;
+	GetTokenInformation (token, TokenUser, nullptr, 0, &size);
+	assert (GetLastError () == ERROR_INSUFFICIENT_BUFFER && size > 0);
+	std::vector<BYTE> buffer (size);
+	assert (GetTokenInformation (token, TokenUser, buffer.data (), size, &size));
+	CloseHandle (token);
+
+	auto * user = reinterpret_cast<TOKEN_USER *> (buffer.data ());
+	LPWSTR stringSid = nullptr;
+	assert (ConvertSidToStringSidW (user->User.Sid, &stringSid));
+	std::wstring result (stringSid);
+	LocalFree (stringSid);
+	return result;
+}
+
 void TestDaclAndRoundTrip ()
 {
 	PSECURITY_DESCRIPTOR descriptor = nullptr;
-	// Mirrors the product policy: protected DACL, owner rights, SYSTEM and
-	// built-in Administrators only.
+	// Mirrors the product policy: protected DACL with full control for the
+	// process user, SYSTEM and built-in Administrators only. Use the actual
+	// process SID rather than OW: the object owner may be a different
+	// principal in service/CI contexts.
+	const std::wstring userSid = CurrentUserSidString ();
+	assert (!userSid.empty ());
+	const std::wstring sddl = L"D:P(A;;GA;;;" + userSid + L")(A;;GA;;;SY)(A;;GA;;;BA)";
 	assert (ConvertStringSecurityDescriptorToSecurityDescriptorW (
-		L"D:P(A;;GA;;;OW)(A;;GA;;;SY)(A;;GA;;;BA)", SDDL_REVISION_1, &descriptor, nullptr));
+		sddl.c_str (), SDDL_REVISION_1, &descriptor, nullptr));
 	assert (descriptor != nullptr);
 
 	BOOL daclPresent = FALSE;

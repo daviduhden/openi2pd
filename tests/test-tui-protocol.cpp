@@ -32,6 +32,53 @@ static void TestRequests ()
 	assert (peers.has_value ());
 	assert (peers->limit == MAX_PEER_RECORDS_PER_REQUEST);
 
+	auto connections = ParseRequest ("I2PDTUI/1 CONNECTIONS 25");
+	assert (connections.has_value ());
+	assert (connections->type == RequestType::Connections);
+	assert (connections->limit == 25);
+	assert (!ParseRequest ("I2PDTUI/1 CONNECTIONS 0").has_value ());
+	auto clampedConnections = ParseRequest ("I2PDTUI/1 CONNECTIONS 201");
+	assert (clampedConnections.has_value ());
+	assert (clampedConnections->limit == MAX_CONNECTION_RECORDS_PER_REQUEST);
+
+	auto netdb = ParseRequest ("I2PDTUI/1 NETDB");
+	assert (netdb.has_value ());
+	assert (netdb->type == RequestType::NetDb);
+
+	auto netdbRouters = ParseRequest ("I2PDTUI/1 NETDB-ROUTERS");
+	assert (netdbRouters.has_value ());
+	assert (netdbRouters->type == RequestType::NetDbRouters);
+	assert (netdbRouters->limit == MAX_NETDB_RECORDS_PER_REQUEST);
+	assert (!ParseRequest ("I2PDTUI/1 NETDB-ROUTERS 0").has_value ());
+	auto netdbLeaseSets = ParseRequest ("I2PDTUI/1 NETDB-LEASESETS 10");
+	assert (netdbLeaseSets.has_value ());
+	assert (netdbLeaseSets->type == RequestType::NetDbLeaseSets);
+	assert (netdbLeaseSets->limit == 10);
+
+	auto transitOn = ParseRequest ("I2PDTUI/1 ADMIN TRANSIT ON");
+	assert (transitOn.has_value ());
+	assert (transitOn->type == RequestType::AdminTransit);
+	assert (transitOn->enabled);
+	auto transitOff = ParseRequest ("I2PDTUI/1 ADMIN TRANSIT OFF");
+	assert (transitOff.has_value ());
+	assert (transitOff->type == RequestType::AdminTransit);
+	assert (!transitOff->enabled);
+	auto logLevel = ParseRequest ("I2PDTUI/1 ADMIN LOGLEVEL warn");
+	assert (logLevel.has_value ());
+	assert (logLevel->type == RequestType::AdminLogLevel);
+	assert (logLevel->argument == "warn");
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN TRANSIT").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN TRANSIT MAYBE").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN LOGLEVEL verbose").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN LOGLEVEL INFO").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN TRANSIT ON extra").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN NOPE ON").has_value ());
+
+	auto destinations = ParseRequest ("I2PDTUI/1 DESTINATIONS");
+	assert (destinations.has_value ());
+	assert (destinations->type == RequestType::Destinations);
+
 	// Bounds, versions and surface syntax are validated before dispatch.
 	assert (!ParseRequest ("I2PDTUI/2 STATE").has_value ());
 	assert (!ParseRequest ("I2PDTUI/1").has_value ());
@@ -150,6 +197,50 @@ static void TestFields ()
 	assert (frame.substr (newline + 1) == payload);
 }
 
+static void TestConfigRequests ()
+{
+	auto config = ParseRequest ("I2PDTUI/1 CONFIG");
+	assert (config.has_value ());
+	assert (config->type == RequestType::Config);
+
+	// The snapshot command takes no section selector, option name or value.
+	auto extra = ParseRequest ("I2PDTUI/1 CONFIG 1");
+	assert (!extra.has_value ());
+	assert (extra.error ().code == ErrorCode::BadArgument);
+	assert (!ParseRequest ("I2PDTUI/1 CONFIG bandwidth").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 CONFIG ").has_value ());
+	assert (!ParseRequest ("I2PDTUI/2 CONFIG").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 config").has_value ());
+
+	// Version 1 has no configuration writer. It must stay an unknown
+	// command so a client cannot mistake a rejection for a partial update.
+	auto write = ParseRequest ("I2PDTUI/1 CONFIG-SET bandwidth L");
+	assert (!write.has_value ());
+	assert (write.error ().code == ErrorCode::UnknownCommand);
+
+	// A typed record must survive framing and escaping unchanged.
+	std::string payload;
+	AppendField (payload, "config.schema", 1);
+	AppendField (payload, "config.readonly", true);
+	AppendField (payload, "config.count", 1);
+	AppendField (payload, "config.option.0.name", "share");
+	AppendField (payload, "config.option.0.type", "int");
+	AppendField (payload, "config.option.0.value", 100);
+	auto frame = MakeResponse (ResponseStatus::Ok, payload);
+	auto newline = frame.find ('\n');
+	assert (newline != std::string::npos);
+	auto header = ParseResponseHeader (std::string_view (frame).substr (0, newline));
+	assert (header.has_value ());
+	assert (header->payloadSize == payload.size ());
+	assert (frame.substr (newline + 1) == payload);
+
+	// The worst-case indexed field name must fit the wire field-name limit.
+	const auto largest
+		= std::string ("config.option.") + std::to_string (MAX_CONFIG_RECORDS_PER_REQUEST - 1) + ".value";
+	assert (largest.size () <= MAX_FIELD_NAME);
+	assert (MAX_CONFIG_VALUE_LENGTH > 0);
+}
+
 static void TestTorrentRequests ()
 {
 	auto tunnels = ParseRequest ("I2PDTUI/1 TORRENT-TUNNELS");
@@ -165,6 +256,14 @@ static void TestTorrentRequests ()
 	assert (detail.has_value () && detail->type == RequestType::TorrentDetail);
 	assert (detail->tunnelIndex == 1 && detail->torrentId == 7);
 	assert (!ParseRequest ("I2PDTUI/1 TORRENT-DETAIL 1 0").has_value ());
+
+	auto pause = ParseRequest ("I2PDTUI/1 TORRENT-PAUSE 0 3");
+	assert (pause.has_value () && pause->type == RequestType::TorrentPause);
+	assert (pause->tunnelIndex == 0 && pause->torrentId == 3);
+	auto resume = ParseRequest ("I2PDTUI/1 TORRENT-RESUME 0 3");
+	assert (resume.has_value () && resume->type == RequestType::TorrentResume);
+	assert (!ParseRequest ("I2PDTUI/1 TORRENT-PAUSE 0").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 TORRENT-RESUME 0 3 extra").has_value ());
 
 	auto remove = ParseRequest ("I2PDTUI/1 TORRENT-REMOVE 0 3 files");
 	assert (remove.has_value () && remove->type == RequestType::TorrentRemove);
@@ -203,6 +302,7 @@ static void TestTorrentRequests ()
 int main ()
 {
 	TestRequests ();
+	TestConfigRequests ();
 	TestTorrentRequests ();
 	TestResponseHeader ();
 	TestFraming ();
