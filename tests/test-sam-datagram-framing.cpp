@@ -1,10 +1,11 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * Regression checks for the first line of a SAM datagram sent to the UDP
- * port. SAM 3.x clients send "3.x nickname destination [options]"; the older
- * openi2pd/i2pd form omitted the version token. This does not open a socket.
+ * openi2pd: test sam datagram framing.
+ *
+ * Parses SAM 3.x datagram first lines, supporting versioned and legacy forms, per-datagram ports, raw protocol and repeated spaces while rejecting missing nickname/destination and computing resume offsets for split sends.
+ *
  */
 
 #include <cassert>

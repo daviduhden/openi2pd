@@ -1,8 +1,16 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: autoconf i2pd.
+ *
+ * Interactive i2pd.conf generator. It prompts in Russian or English for
+ * clearnet or Yggdrasil-only mode and the individual paths and options, then
+ * writes the assembled configuration to a chosen file. Terminal input is
+ * length-bounded.
+ *
  */
+
 #ifndef AUTOCONFC
 #define AUTOCONFC
 #include <array>

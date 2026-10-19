@@ -1,8 +1,15 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: key.
+ *
+ * Maps numeric or textual signature type names to I2P SigningKeyType values
+ * and back to stable display names for the tools. Empty, unknown or
+ * out-of-range values return std::nullopt instead of a sentinel.
+ *
  */
+
 #ifndef I2PD_TOOLS_COMMON_KEY_HPP
 #define I2PD_TOOLS_COMMON_KEY_HPP
 

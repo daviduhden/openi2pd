@@ -1,7 +1,12 @@
 #!/bin/sh
-# Copyright (c) 2013-2026, The PurpleI2P Project
-# Copyright (c) 2026, David Uhden Collado
-# SPDX-License-Identifier: BSD-3-Clause
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: check reference.
+#
+# Verifies that I2P_JAVA_REFERENCE is a clean checkout at tag i2p-2.13.0 and commit 9134f808337b401e8e53c73734c81fab04280c9d, warning when the reference tree is writable; it does not build or compare code.
+#
+
 set -eu
 
 ref=${I2P_JAVA_REFERENCE:-}

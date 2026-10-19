@@ -1,5 +1,11 @@
-# Copyright (c) 2026, David Uhden Collado
-# SPDX-License-Identifier: BSD-3-Clause
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: .perlcriticrc.
+#
+# Configures project configuration and integration.
+#
+
 #
 # Optional static style profile for the project-maintained Perl scripts.
 # Perl::Critic is not a runtime or base-OpenBSD dependency; CI may run:

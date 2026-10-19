@@ -1,1 +1,9 @@
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: .gitattributes.
+#
+# Configures project configuration and integration.
+#
+
 /build/build_mingw.cmd eol=crlf

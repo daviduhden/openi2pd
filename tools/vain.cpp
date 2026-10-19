@@ -1,8 +1,16 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: vain.
+ *
+ * Multithreaded vanity destination generator that searches an Ed25519
+ * identifying nonce for a base32 prefix or regular expression. It bounds the
+ * thread count, wipes rejected key material and writes found key files
+ * owner-only.
+ *
  */
+
 #include <algorithm>
 #include <atomic>
 #include <charconv>

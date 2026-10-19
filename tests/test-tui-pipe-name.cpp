@@ -1,12 +1,11 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * Portable tests for the Windows named-pipe name derivation.
+ * openi2pd: test tui pipe name.
  *
- * TuiWin32Ipc.cpp only uses the C++ standard library, so this test runs on
- * Unix too. It validates the one-way endpoint normalisation and the stable
- * pipe name; it does not create a pipe or inspect an ACL.
+ * Checks portable Windows named-pipe name derivation: one-way endpoint normalization, ASCII case folding and a stable hashed pipe name so daemon and client agree; no pipe is created.
+ *
  */
 
 #include <cassert>

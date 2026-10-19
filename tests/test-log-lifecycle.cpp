@@ -1,9 +1,11 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * Regression coverage for Log start/stop cycles, sink replacement and
- * signal-thread style Reopen() calls. It does not require a running router.
+ * openi2pd: test log lifecycle.
+ *
+ * Exercises logger start/stop/reopen, sink replacement and destruction while the writer thread runs, requiring records to be drained and the output file to close before removal.
+ *
  */
 
 #include <atomic>

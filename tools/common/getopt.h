@@ -1,7 +1,15 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: getopt.
+ *
+ * Declares the Windows/MSVC getopt compatibility layer and its `struct option`
+ * and argument flags; POSIX builds include the system <getopt.h>. It is a
+ * compatibility shim, not a new CLI grammar.
+ *
  */
+
 #ifndef I2PD_TOOLS_COMMON_GETOPT_H
 #define I2PD_TOOLS_COMMON_GETOPT_H
 

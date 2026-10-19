@@ -1,15 +1,11 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * Regression checks for untrusted key/signature encodings:
- *   - Key certificates shorter than the four-byte header are rejected.
- *   - b33 flags outside proposal 149 and a non-RedDSA blinded type are rejected.
- *   - The GOST R 34.10 verifier rejects the all-zero signature and points that
- *     are not on the curve.
+ * openi2pd: test crypto wire validation.
  *
- * These are pure in-process checks; no network, key files or router state are
- * required.
+ * Checks untrusted key and signature encodings: key-certificate lengths, proposal 149 b33 flags and blinded types, Ed25519ph message binding, and GOST signatures with off-curve or zeroed keys.
+ *
  */
 
 #include <array>

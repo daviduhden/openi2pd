@@ -1,8 +1,15 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: keygen.
+ *
+ * Creates a random I2P destination key file, defaulting to ED25519-SHA512 and
+ * accepting a signature type by name or number. It prints the destination hash
+ * and wipes the serialized private key after writing.
+ *
  */
+
 #include <fstream>
 #include <iostream>
 #include <vector>

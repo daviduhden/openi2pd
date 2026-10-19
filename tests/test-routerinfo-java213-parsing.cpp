@@ -1,29 +1,11 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * This file is part of openi2pd and licensed under BSD-3-Clause
+ * openi2pd: test routerinfo java213 parsing.
  *
- * See full license text in LICENSE file at top of project tree
+ * Checks Java 2.13 RouterInfo/RouterAddress parsing: address and property limits, duplicate rejection, NTCP2 and SSU2 option rules, bandwidth tiers, hidden certificates and every truncation point.
  *
- * Static checks for the Java 2.13.0 RouterInfo/RouterAddress parsing and
- * serialization rules that can be exercised without a network or a running
- * netDb:
- *
- *  - MAX_ADDRESSES, duplicate keys, property/address bounds;
- *  - NTCP2 "v"/"i" requirements (NTCPTransport.getNTCP2Version);
- *  - SSU2 pq/MTU selection (UDPTransport.getSSUVersion);
- *  - optional iexp (proposal 133, UDPAddress exp == 0 means "never");
- *  - caps bandwidth-tier ordering (RouterInfo.getBandwidthTier);
- *  - hidden identity certificate (RouterInfo.isHidden);
- *  - dotted router.version parsing;
- *  - unsorted family/family.sig ordering tolerance.
- *
- * A real EdDSA identity signs every buffer so the production signature path
- * is used. No network or filesystem setup is needed.
- *
- * Register as a CTest target (tests/CMakeLists.txt is owned elsewhere):
- *   test-routerinfo-java213-parsing
  */
 
 #include <algorithm>

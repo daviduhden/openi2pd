@@ -1,8 +1,13 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: test base 64.
+ *
+ * Validates Base64 encode/decode sizing, padding and alphabet rules plus the span overloads, including short-output rejection and the lazily initialized reverse table.
+ *
  */
+
 #include <array>
 #include <cassert>
 #include <cstdint>

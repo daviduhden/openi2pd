@@ -1,8 +1,13 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: test http merge chunked.
+ *
+ * Checks chunked-response de-framing: hex sizes, chunk extensions, content concatenation and rejection of truncated, non-hex or trailing-garbage input without partial output.
+ *
  */
+
 #include <cassert>
 #include "HTTP.h"
 

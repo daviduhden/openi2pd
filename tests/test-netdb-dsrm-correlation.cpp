@@ -1,11 +1,12 @@
 /*
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: test netdb dsrm correlation.
+ *
+ * Checks RequestedDestination correlation for direct and exploratory lookups, recording reply senders once and rejecting DatabaseSearchReply senders outside the requested set.
+ *
+ */
 
 #include <array>
 #include <cassert>

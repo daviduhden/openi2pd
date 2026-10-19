@@ -1,8 +1,13 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: test aes.
+ *
+ * Checks AES-256 ECB and CBC encryption/decryption against fixed known-answer vectors, covering key setup, IV handling and exact 16-byte block output.
+ *
  */
+
 #include <cassert>
 #include <inttypes.h>
 #include <string.h>

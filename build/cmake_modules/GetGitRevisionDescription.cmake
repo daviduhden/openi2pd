@@ -1,3 +1,11 @@
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: GetGitRevisionDescription.
+#
+# Configures build and manual CI integration.
+#
+
 # - Returns a version string from Git
 #
 # These functions force a re-configure on each git commit so that you can

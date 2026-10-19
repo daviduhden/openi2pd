@@ -1,19 +1,11 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * This file is part of openi2pd and licensed under BSD-3-Clause
+ * openi2pd: test ntcp2 session confirmed payload.
  *
- * See full license text in LICENSE file at top of project tree
+ * Validates NTCP2 SessionConfirmed block ordering and lengths: RouterInfo first, optional Options, terminal Padding, and rejection of duplicates, unknown blocks and overruns.
  *
- * Regression checks for the SessionConfirmed part 2 (message 3 part 2)
- * payload validator. spec/ntcp2 requires exactly:
- *   RouterInfo block, optional Options block, optional Padding block last.
- * No other block type is allowed in the handshake. The validator is a pure
- * function; no socket, keys or network access are needed.
- *
- * Register as a CTest target (tests/CMakeLists.txt is owned elsewhere):
- *   test-ntcp2-session-confirmed-payload
  */
 
 #include <cassert>

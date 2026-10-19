@@ -1,10 +1,14 @@
 #!/usr/bin/env perl
-# Copyright (c) 2026, David Uhden Collado
-# SPDX-License-Identifier: BSD-3-Clause
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
 #
-# Static portability and migration guard for the project-maintained Perl
-# scripts. It never builds or runs the project programs. The scan deliberately
-# covers files without an extension so a stray Python shebang cannot hide.
+# openi2pd: perl portability.
+#
+# Static guard against Python sources/shebangs, non-core Perl modules,
+# dangerous shell invocations and build files that still call Python. It scans
+# the maintained scripts and CMake wiring without building or running project
+# programs.
+#
 
 use strict;
 use warnings;

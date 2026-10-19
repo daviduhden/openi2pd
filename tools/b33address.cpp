@@ -1,8 +1,15 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: b33address.
+ *
+ * Reads a base64 destination from stdin and prints its b33 address and the
+ * current daily store hash. Only ED25519-SHA512 and RED25519-SHA512
+ * destinations can be blinded; the input length is bounded.
+ *
  */
+
 #include <array>
 #include <iostream>
 #include <string>

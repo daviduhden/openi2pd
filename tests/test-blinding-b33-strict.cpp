@@ -1,11 +1,11 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * Regression checks for strict b33 parsing in BlindedPublicKey. Overlong
- * addresses were previously truncated and malformed addresses could still
- * report IsValid() because the public-key buffer was left zeroed while the
- * signature type remained acceptable.
+ * openi2pd: test blinding b33 strict.
+ *
+ * Requires exact b33 length and layout so truncated, overlong and trailing-byte addresses are invalid and cannot round-trip, closing the former zero-key acceptance path.
+ *
  */
 
 #include <cassert>

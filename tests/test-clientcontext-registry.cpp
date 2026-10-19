@@ -1,11 +1,11 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * Regression coverage for ClientContext's destination registry. Readers use
- * the locked snapshots while the owner adds, replaces and deletes entries.
- * No router, tunnel or external network is started; destinations are local
- * objects on an in-process io_context.
+ * openi2pd: test clientcontext registry.
+ *
+ * Exercises ClientContext destination registration, replacement and deletion against concurrent snapshot readers, requiring complete consistent views without starting a router or network.
+ *
  */
 
 #include <atomic>

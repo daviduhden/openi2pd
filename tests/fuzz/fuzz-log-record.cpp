@@ -1,10 +1,11 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * libFuzzer target for the bounded administrative log snapshot. Append()
- * is called from arbitrary router threads, so the recent-record copy must
- * never retain control characters or exceed its documented size.
+ * openi2pd: fuzz log record.
+ *
+ * Exercises the bounded recent-log snapshot: records must truncate to the documented text limit, remove control characters except tab, and never reappear after their sequence number.
+ *
  */
 
 #include <cstddef>

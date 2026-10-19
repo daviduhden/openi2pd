@@ -1,26 +1,11 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * This file is part of openi2pd and licensed under BSD-3-Clause
+ * openi2pd: test routerinfo update transaction.
  *
- * See full license text in LICENSE file at top of project tree
+ * Exercises RouterInfo update atomicity: only a newer, correctly signed, same-identity body replaces state, while malformed, wrong-netId or file-loaded bodies leave the old snapshot intact. Also checks local v4/v6 address serialization.
  *
- * Static checks for RouterInfo replacement, buffer ownership and local
- * generation:
- *
- *  - IsNewer()/Update() only advance on a newer, correctly signed body;
- *  - a signed but malformed/unsuitable update leaves the cached RouterInfo
- *    untouched (Java NetDb keeps the previous entry when validation fails);
- *  - signature/identity binding and the MAX_UNCOMPRESSED_SIZE cap;
- *  - CopyBuffer()/GetSharedBuffer()/DeleteBuffer()/LoadBuffer() ownership;
- *  - SaveToFile()/file load round-trip (signature is verified on load, like
- *    Java PersistentDataStore.readBytes(in, true));
- *  - per-family local NTCP2 addresses, introducer limit and the big-endian
- *    RouterAddress expiration field.
- *
- * Register as a CTest target (tests/CMakeLists.txt is owned elsewhere):
- *   test-routerinfo-update-transaction
  */
 
 #include <cassert>

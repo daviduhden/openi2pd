@@ -1,11 +1,12 @@
 /*
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: test protocol bounds.
+ *
+ * Regression checks length handling in LeaseSet, IdentityEx and I2NP parsing, requiring truncated certificates, short buffers and oversized declared lengths to be rejected or clamped.
+ *
+ */
 
 #include <array>
 #include <cassert>

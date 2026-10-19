@@ -1,15 +1,13 @@
 #!/usr/bin/env perl
-# Copyright (c) 2026, David Uhden Collado
-# SPDX-License-Identifier: BSD-3-Clause
-# Part of openi2pd; see the LICENSE file in the project root.
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
 #
-# Regression tests for tools/scripts/i2pdctl.
+# openi2pd: i2pdctl.
 #
-# The tests are self-contained: a fake I2PControl JSON-RPC server listens on a
-# loopback ephemeral port and speaks plain HTTP.  No internet access is needed.
-# The HTTPS transport is exercised through a temporary `openssl` test double
-# placed first on PATH and I2PDCTL_TLS_BACKEND=openssl, so the fallback parser,
-# size bounds and error paths run even when IO::Socket::SSL is installed.
+# Regression tests for tools/scripts/i2pdctl against a self-contained loopback
+# I2PControl server. The HTTPS fallback is exercised with a temporary openssl
+# test double, so no internet or real certificate is needed.
+#
 
 use strict;
 use warnings;

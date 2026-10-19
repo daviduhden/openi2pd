@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
-# Copyright (c) 2013-2026, The PurpleI2P Project
-# Copyright (c) 2026, David Uhden Collado
-# SPDX-License-Identifier: BSD-3-Clause
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: test sam version.
+#
+# Drives a live SAM bridge on 127.0.0.1:7656 with MIN/MAX version ranges, including reversed, unparseable and out-of-range values, expecting OK VERSION=3.3 or NOVERSION replies.
+#
 
 # This script tests the version negotiation in the SAM handshake.
 

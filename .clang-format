@@ -1,3 +1,11 @@
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: .clang format.
+#
+# Configures project configuration and integration.
+#
+
 ---
 Language: Cpp
 BasedOnStyle: WebKit

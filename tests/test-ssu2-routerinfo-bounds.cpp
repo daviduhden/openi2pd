@@ -1,20 +1,11 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * This file is part of openi2pd and licensed under BSD-3-Clause
+ * openi2pd: test ssu2 routerinfo bounds.
  *
- * See full license text in LICENSE file at top of project tree
+ * Signs both valid and malformed RouterInfo bodies with a fresh EdDSA identity, so parsing rather than signature verification must reject overrunning address/property sections and family-mismatched hosts.
  *
- * Regression checks for RouterInfo parsing of untrusted, signed buffers.
- *
- * A valid RouterInfo is built with a freshly generated EdDSA identity so the
- * real signature path in RouterInfo::ReadFromBuffer() is exercised. Malformed
- * address/property sections are then signed too, so the parser (not signature
- * verification) has to reject them. No network or filesystem setup is needed.
- *
- * Register as a CTest target (tests/CMakeLists.txt is owned elsewhere):
- *   test-ssu2-routerinfo-bounds
  */
 
 #include <cassert>

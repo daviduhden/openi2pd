@@ -1,11 +1,13 @@
 #!/usr/bin/env perl
-# Copyright (c) 2026, David Uhden Collado
-# SPDX-License-Identifier: BSD-3-Clause
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
 #
-# Static relative-link and image check for the Markdown documentation.
-# It never builds, starts or downloads anything. External URLs and fragment
-# anchors are intentionally not fetched; paths are checked against the local
-# documentation tree.
+# openi2pd: check doc links.
+#
+# Static checker for relative links, images and heading anchors in the Markdown
+# documentation tree. It never fetches external URLs and exits non-zero when a
+# local target or anchor is missing.
+#
 
 use strict;
 use warnings;

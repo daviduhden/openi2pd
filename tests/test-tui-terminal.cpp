@@ -1,10 +1,11 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * Portable checks for the shared terminal key/attribute contract in
- * tui/Terminal.h. This does not initialise ncurses or a Win32 console and
- * therefore does not validate platform rendering.
+ * openi2pd: test tui terminal.
+ *
+ * Verifies the shared terminal key/attribute contract: special keys stay above printable bytes, and attribute, color-pair and color bits do not overlap; ncurses/Win32 rendering is not exercised.
+ *
  */
 
 #include <cassert>

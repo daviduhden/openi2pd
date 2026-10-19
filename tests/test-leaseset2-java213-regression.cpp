@@ -1,10 +1,11 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * Static regression checks for the Java I2P 2.13 LeaseSet/LeaseSet2/Meta
- * parsing and validation rules. These are self-contained in-process vectors;
- * no netDb thread, network, key file or router state is used.
+ * openi2pd: test leaseset2 java213 regression.
+ *
+ * Static checks for Java 2.13 LeaseSet, LeaseSet2 and MetaLeaseSet parsing: offline signatures, truncated blocks, lease freshness, key-section lengths and duplicate or overrunning mappings.
+ *
  */
 
 #include <cassert>

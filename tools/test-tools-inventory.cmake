@@ -1,8 +1,12 @@
-# Copyright (c) 2026, David Uhden Collado
-# SPDX-License-Identifier: BSD-3-Clause
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
 #
-# Compile-free inventory check: every maintained native tool target produced a
-# runnable artifact in the expected directory. No tool is executed.
+# openi2pd: test tools inventory.
+#
+# Compile-free CTest inventory check that every maintained tool executable and
+# shared source exists, and optionally that the pinned upstream manifest names
+# real local files. It does not execute any tool.
+#
 
 if(NOT DEFINED TOOLS_DIR OR NOT DEFINED TOOLS OR NOT DEFINED TOOLS_SOURCE_DIR)
   message(FATAL_ERROR "TOOLS_DIR, TOOLS and TOOLS_SOURCE_DIR are required")

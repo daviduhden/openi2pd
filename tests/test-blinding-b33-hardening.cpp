@@ -1,13 +1,11 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * Proposal 149 b33 checks:
- *   - a secret-required address cannot be treated as an ordinary address
- *     (there is no secret in this representation);
- *   - the per-client-auth flag survives a parse/encode round trip;
- *   - unknown flag bits and non-canonical Base32 are rejected;
- *   - the two-byte sigtype form parses to the same key as the one-byte form.
+ * openi2pd: test blinding b33 hardening.
+ *
+ * Checks proposal 149 b33 flag handling: secret-required and undefined flags are rejected, per-client authentication survives re-encoding, and two-byte signature types resolve to the canonical key.
+ *
  */
 
 #include <array>

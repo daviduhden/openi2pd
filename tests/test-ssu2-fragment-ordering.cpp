@@ -1,18 +1,11 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * This file is part of openi2pd and licensed under BSD-3-Clause
+ * openi2pd: test ssu2 fragment ordering.
  *
- * See full license text in LICENSE file at top of project tree
+ * Checks SSU2 follow-on fragment ordering: a second last fragment or any fragment at or above a known last marker is rejected, preventing silent truncation at the first marker.
  *
- * Regression checks for SSU2 follow-on fragment ordering. Java
- * InboundMessageState.receiveFragment() rejects a second last fragment and
- * any new fragment at or above a known last fragment; otherwise reassembly
- * would silently truncate at the first "last" marker.
- *
- * Register as a CTest target (tests/CMakeLists.txt is owned elsewhere):
- *   test-ssu2-fragment-ordering
  */
 
 #include <cassert>

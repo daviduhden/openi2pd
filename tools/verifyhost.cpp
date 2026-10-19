@@ -1,8 +1,16 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: verifyhost.
+ *
+ * Verifies the destination signature of a host-registration record and, when
+ * present, the old destination's counter-signature for an `olddest` transition.
+ * It prints a validity diagnostic and exits non-zero on any malformed or
+ * invalid signature.
+ *
  */
+
 #include <iostream>
 #include <optional>
 #include <string>

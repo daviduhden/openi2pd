@@ -1,3 +1,11 @@
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: .gitignore.
+#
+# Configures regression and interoperability checks.
+#
+
 /test-http-merge_chunked
 /test-http-req
 /test-http-res

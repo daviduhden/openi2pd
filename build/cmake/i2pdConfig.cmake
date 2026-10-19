@@ -1,6 +1,13 @@
-# Copyright (c) 2013-2026, The PurpleI2P Project
-# Copyright (c) 2026, David Uhden Collado
-# SPDX-License-Identifier: BSD-3-Clause
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: i2pdConfig.
+#
+# Installed package configuration that re-finds libi2pd's Boost, OpenSSL,
+# Threads and zlib dependencies and loads the exported targets. Include paths
+# are derived relative to the config file so the installation stays relocatable.
+#
+
 include(CMakeFindDependencyMacro)
 find_dependency(Threads)
 find_dependency(Boost 1.74 COMPONENTS program_options)

@@ -1,11 +1,13 @@
-# Copyright (c) 2026, David Uhden Collado
-# SPDX-License-Identifier: BSD-3-Clause
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
 #
-# Per-tool regressions beyond the smoke test. The script is deterministic,
-# uses no network access or external interpreter, and never starts a vanity
-# search or a long-running service. Ephemeral key material stays below
-# WORK_DIR, is restricted to the owner where the platform supports it, and is
-# removed on success and on failure.
+# openi2pd: test tools regressions.
+#
+# Deterministic per-tool CTest regressions for key types, offline/b33 keys,
+# registration records and firewall CLI errors. Each run is time-limited;
+# network access, external interpreters and long-running searches are avoided,
+# and ephemeral keys are removed.
+#
 
 if(NOT DEFINED TOOLS_DIR)
   message(FATAL_ERROR "TOOLS_DIR is required")

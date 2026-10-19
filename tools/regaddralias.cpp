@@ -1,8 +1,15 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: regaddralias.
+ *
+ * Builds an alias registration record linking a new destination to an old one,
+ * signing with both private-key files. The output carries `action=adddest`,
+ * both destinations and both signatures.
+ *
  */
+
 #include <iostream>
 #include <sstream>
 #include <string>

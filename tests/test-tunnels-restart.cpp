@@ -1,14 +1,13 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * Restart contract for i2p::tunnel::tunnels.
+ * openi2pd: test tunnels restart.
  *
- * Stop() must be idempotent, must join both workers, and must clear runtime
- * tunnel maps so Start() can be called again without replacing a joinable
- * thread. No transports are started, so this covers lifecycle state only,
- * not traffic through a restarted tunnel.
+ * Checks tunnel service restart: Stop() is idempotent, joins both workers and clears runtime maps so Start() can run again without replacing a joinable thread; no transports are started.
+ *
  */
+
 #include <atomic>
 #include <chrono>
 #include <cstdlib>

@@ -1,10 +1,13 @@
-# Copyright (c) 2013-2026, The PurpleI2P Project
-# Copyright (c) 2026, David Uhden Collado
-# SPDX-License-Identifier: BSD-3-Clause
-# Auxiliary tools imported from PurpleI2P/i2pd-tools.
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
 #
-# They are built as independent executables against the in-tree libraries.
-# There is no Git submodule, no external i2pd checkout and no separate Makefile.
+# openi2pd: CMakeLists.txt.
+#
+# Defines the auxiliary native tool executables and links them against
+# libi2pd, libi2pdclient and libi2pdlang. It installs i2pdctl and, under
+# BUILD_TESTING with Perl, registers syntax, portability, branding and
+# install-layout tests.
+#
 
 set(I2PD_TOOLS
   autoconf_i2pd

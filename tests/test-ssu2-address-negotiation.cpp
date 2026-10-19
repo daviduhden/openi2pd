@@ -1,20 +1,11 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * This file is part of openi2pd and licensed under BSD-3-Clause
+ * openi2pd: test ssu2 address negotiation.
  *
- * See full license text in LICENSE file at top of project tree
+ * Checks SSU2 RouterInfo address metadata: version-2 compatibility lists, pq preference selection against published MTU, and rejection of sub-1280 MTUs or malformed values.
  *
- * Regression checks for SSU2 RouterInfo address metadata:
- *  - the base "v" option must advertise version 2, but may be a
- *    comma-separated compatibility list ("2,3"),
- *  - "pq" is a preference list; pq=4 is only selectable when the published
- *    MTU can carry ML-KEM-768,
- *  - an SSU2 address with a non-zero MTU below 1280 is not usable.
- *
- * Register as a CTest target (tests/CMakeLists.txt is owned elsewhere):
- *   test-ssu2-address-negotiation
  */
 
 #include <cassert>

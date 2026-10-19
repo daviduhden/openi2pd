@@ -1,6 +1,14 @@
-# Copyright (c) 2013-2026, The PurpleI2P Project
-# Copyright (c) 2026, David Uhden Collado
-# SPDX-License-Identifier: BSD-3-Clause
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: FindMiniUPnPc.
+#
+# Finds MiniUPnPc through the normal CMake search paths, reads its API version
+# from the header and rejects versions below 2.2.6/API 17. It defines the
+# imported MiniUPnPc::MiniUPnPc target without source-relative or downloaded
+# paths.
+#
+
 # - Find MiniUPnPc
 #
 # Uses the normal CMake search path (CMAKE_PREFIX_PATH, toolchain sysroot,

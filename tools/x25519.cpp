@@ -1,8 +1,15 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: x25519.
+ *
+ * Generates an X25519 key pair for encrypted-LeaseSet client authentication
+ * and prints the base64 public and private keys. The private scalar is cleansed
+ * after printing; --help shows the corresponding I2CP server/client options.
+ *
  */
+
 #include <openssl/evp.h>
 #include <openssl/bn.h>
 #include <openssl/crypto.h>

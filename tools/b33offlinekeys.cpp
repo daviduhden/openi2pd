@@ -1,8 +1,16 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: b33offlinekeys.
+ *
+ * Generates a daily b33 offline-key batch from a destination key file and
+ * writes the combined online/b33 key file that the router is given. The batch
+ * is bounded by the 16-bit day count, and plaintext private material is
+ * cleansed.
+ *
  */
+
 #include <iostream>
 #include <stdlib.h>
 #include <inttypes.h>

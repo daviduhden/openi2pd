@@ -1,22 +1,11 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * This file is part of openi2pd and licensed under BSD-3-Clause
+ * openi2pd: test ntcp2 handshake bounds.
  *
- * See full license text in LICENSE file at top of project tree
+ * Bounds NTCP2 handshake payloads across version-dependent padding and replay caches, checking SessionConfirmed block legality, size limits and separation of inbound/outbound replay state.
  *
- * Regression checks for the NTCP2 handshake padding bounds and the separate
- * incoming/outgoing handshake replay caches.
- *
- * spec/ntcp2-hybrid "Maximum Padding" defines the per-version cleartext
- * padding limits:
- *   Message 1: non-PQ/MLKEM512 880, MLKEM768 1264, MLKEM1024 1648
- *   Message 2: non-PQ/MLKEM512 848, MLKEM768 1136, MLKEM1024 1616
- * The pure helper and the replay caches need no socket, keys or peer.
- *
- * Register as a CTest target (tests/CMakeLists.txt is owned elsewhere):
- *   test-ntcp2-handshake-bounds
  */
 
 #include <cassert>

@@ -1,16 +1,11 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * This file is part of openi2pd and licensed under BSD-3-Clause
+ * openi2pd: test ssu2 session fragment bounds.
  *
- * See full license text in LICENSE file at top of project tree
+ * Checks SSU2 SessionConfirmed 4-bit and follow-on 7-bit fragment limits, rejecting out-of-range or duplicate last markers and reassembly that would exceed the I2NP message bound.
  *
- * Regression checks for SSU2 fragment reassembly bounds and the constants
- * that guard SessionConfirmed fragmentation and data-phase retransmission.
- *
- * Register as a CTest target (tests/CMakeLists.txt is owned elsewhere):
- *   test-ssu2-session-fragment-bounds
  */
 
 #include <cassert>

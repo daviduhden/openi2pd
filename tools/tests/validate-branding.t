@@ -1,9 +1,13 @@
 #!/usr/bin/env perl
-# Copyright (c) 2026, David Uhden Collado
-# SPDX-License-Identifier: BSD-3-Clause
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
 #
-# Test::More wrapper for the static branding validator. It runs from the
-# repository root so the validator's relative asset paths are deterministic.
+# openi2pd: validate branding.
+#
+# Test::More wrapper that runs the static branding validator from the
+# repository root and checks its success output. It performs no builds or
+# network requests.
+#
 
 use strict;
 use warnings;

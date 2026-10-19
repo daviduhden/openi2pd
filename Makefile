@@ -1,6 +1,12 @@
-# Copyright (c) 2013-2026, The PurpleI2P Project
-# Copyright (c) 2026, David Uhden Collado
-# SPDX-License-Identifier: BSD-3-Clause
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: Makefile.
+#
+# Convenience targets for the router, TUI, tools, tests, installation and
+# source distribution; CMake/Ninja provide the actual build rules.
+#
+
 # Portable POSIX make front-end for the CMake build.
 #
 # This file intentionally uses only POSIX make syntax: no GNU make functions,

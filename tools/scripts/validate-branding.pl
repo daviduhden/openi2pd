@@ -1,7 +1,14 @@
 #!/usr/bin/env perl
-# Copyright (c) 2026, David Uhden Collado
-# SPDX-License-Identifier: BSD-3-Clause
-# Part of openi2pd; see LICENSE.
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: validate branding.
+#
+# Validates the branding asset inventory, SVG vector constraints, PNG
+# dimensions, palette definitions and documentation mirror hashes. It only
+# reads files and exits non-zero for every missing or non-conforming asset.
+#
+
 use strict;
 use warnings;
 use File::Spec;

@@ -1,8 +1,15 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: offlinekeys.
+ *
+ * Creates an offline-signature key file from a destination's private keys,
+ * with a selectable signature type and an expiry of 1 to 3650 days. Input and
+ * output key buffers are wiped after use.
+ *
  */
+
 #include <charconv>
 #include <cstdint>
 #include <iostream>

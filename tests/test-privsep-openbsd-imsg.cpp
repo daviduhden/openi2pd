@@ -1,10 +1,11 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * OpenBSD imsg adapter smoke test, including one SCM_RIGHTS descriptor and
- * peer credentials. It is compiled and executed only by the manual OpenBSD
- * CI job; local review does not claim a runtime result.
+ * openi2pd: test privsep openbsd imsg.
+ *
+ * Checks the OpenBSD imsg transport against the versioned frame allowlist and payload decoding, including rejection of unknown types.
+ *
  */
 
 #include <cassert>

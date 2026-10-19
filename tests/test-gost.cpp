@@ -1,8 +1,13 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: test gost.
+ *
+ * Validates GOST R 34.11-2012 256- and 512-bit digests against known-answer vectors for two message lengths.
+ *
  */
+
 #include <cassert>
 #include <inttypes.h>
 #include <string.h>

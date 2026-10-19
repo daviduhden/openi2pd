@@ -1,14 +1,11 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * Local UNIX-socket regression test for the TUI transport.
+ * openi2pd: test tui ipc regression.
  *
- * It exercises the real server and client framing code: partial request
- * lines, pipelined requests, the request-line bound, remote errors that keep
- * the connection usable, QUIT teardown and socket removal. It does not start
- * router subsystems, so only commands that do not read router state (PING,
- * QUIT and malformed/unknown requests) are used.
+ * Exercises the UNIX-socket TUI transport with the real server and client framing: partial and pipelined requests, line limits, error recovery, QUIT and bounded shutdown, without router subsystems.
+ *
  */
 
 #ifndef _WIN32

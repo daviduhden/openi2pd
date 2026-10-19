@@ -1,6 +1,11 @@
-# Copyright (c) 2013-2026, The PurpleI2P Project
-# Copyright (c) 2026, David Uhden Collado
-# SPDX-License-Identifier: BSD-3-Clause
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: Version.
+#
+# Configures build and manual CI integration.
+#
+
 # read version
 
 function(set_version version_file output_var)

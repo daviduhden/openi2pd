@@ -1,8 +1,16 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: regaddr 3ld.
+ *
+ * Implements the three-step third-level-domain registration workflow: step1
+ * creates the subdomain record, step2 counter-signs with the old destination,
+ * and step3 signs with the new key. Each step prints the resulting record to
+ * stdout.
+ *
  */
+
 #include <ctime>
 #include <fstream>
 #include <iostream>

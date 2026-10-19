@@ -1,12 +1,11 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * GOST R 34.11-2012 incremental contexts must produce the same digest as the
- * one-shot helpers for every message length and split. The previous context
- * processed a partial block as soon as it had any data and reversed each
- * block, so it disagreed with the one-shot implementation even for lengths
- * below 64 bytes.
+ * openi2pd: test gost hash streaming.
+ *
+ * Requires incremental GOST R 34.11-2012 contexts to match one-shot digests for every message length and split, covering the former partial-block and byte-order regression.
+ *
  */
 
 #include <cassert>

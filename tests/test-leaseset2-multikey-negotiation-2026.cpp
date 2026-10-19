@@ -1,10 +1,11 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * This file is part of openi2pd and licensed under BSD-3-Clause
+ * openi2pd: test leaseset2 multikey negotiation 2026.
  *
- * See full license text in LICENSE file at top of project tree
+ * Checks LeaseSet2 encryption-key negotiation: publisher order versus client preference, unsupported subsets, repeated types, reserved P-256 and key selection for ratchet validation.
+ *
  */
 
 /*

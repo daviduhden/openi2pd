@@ -1,9 +1,11 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * Regression checks for the owning Streaming SendBuffer and its span API.
- * This does not exercise a socket or an asynchronous write.
+ * openi2pd: test streaming buffer.
+ *
+ * Checks the owning Streaming SendBuffer and span constructors copy caller memory, expose owned writable storage, and keep queued bytes alive after the producer releases its buffer.
+ *
  */
 
 #include <cassert>

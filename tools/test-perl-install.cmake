@@ -1,9 +1,12 @@
-# Copyright (c) 2026, David Uhden Collado
-# SPDX-License-Identifier: BSD-3-Clause
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
 #
-# Install-layout smoke test for the Perl i2pdctl client. It installs only the
-# Tools component into a private prefix, verifies the shebang, mode and syntax,
-# and removes the private prefix afterwards. No system prefix is touched.
+# openi2pd: test perl install.
+#
+# CTest install-layout smoke test that installs the Tools component into a
+# private prefix and checks i2pdctl's shebang, Perl syntax and executable
+# mode. The private prefix is deleted and no system prefix is touched.
+#
 
 foreach(required BUILD_DIR WORK_DIR PERL_EXECUTABLE INSTALL_BINDIR)
   if(NOT ${required})

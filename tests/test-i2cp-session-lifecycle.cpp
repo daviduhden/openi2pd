@@ -1,17 +1,11 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * Deterministic lifecycle regressions for I2CP:
- *   - CREATE SESSION identifiers are reserved only after a collision-free
- *     insertion, the 0xFFFF sentinel is rejected and duplicate identifiers do
- *     not overwrite the identifier of the first session;
- *   - Stop()/Terminate() are idempotent;
- *   - a stop requested from a RunnableI2CPDestination's own service thread
- *     does not join that thread from itself.
+ * openi2pd: test i2cp session lifecycle.
  *
- * Only loopback port 0 is used. No router, netDb, external network or live
- * I2CP client is started.
+ * Exercises I2CP session allocation, collision handling, idempotent termination and self-stop joins on loopback port 0, without a router or external network.
+ *
  */
 
 #include <cassert>

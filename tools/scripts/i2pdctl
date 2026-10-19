@@ -1,17 +1,13 @@
 #!/usr/bin/env perl
-# Copyright (c) 2026, David Uhden Collado
-# SPDX-License-Identifier: BSD-3-Clause
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
 #
+# openi2pd: i2pdctl.
 #
-# i2pdctl - command line client for the I2PControl JSON-RPC service.
+# Command-line client for the I2PControl JSON-RPC service with exec, raw_info
+# and info subcommands. It uses core Perl modules plus a shell-free openssl
+# s_client fallback for HTTPS and never permits cleartext.
 #
-# This is a Perl 5 rewrite of the former project-maintained Python script.  It
-# intentionally uses only modules shipped with Perl 5 (Config, File::Spec,
-# Getopt::Long, JSON::PP, HTTP::Tiny, IPC::Open3) plus the system openssl binary
-# for HTTPS when IO::Socket::SSL is not available.  It never falls back to
-# cleartext.
-#
-# Part of openi2pd; see the LICENSE file in the project root.
 
 use strict;
 use warnings;

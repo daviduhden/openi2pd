@@ -1,12 +1,11 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * Regression checks for the bounded SU3 reseed header parser.
+ * openi2pd: test su3 bounds.
  *
- * These cases are deliberately malformed.  They do not contain a valid
- * signature or archive; the parser must reject them without allocating based
- * on an unvalidated length or reading past the stream.
+ * Feeds deliberately malformed SU3 reseed headers to the bounded parser, checking magic, versions, signature type/length, signer and content lengths, and rejection before allocation or decompression.
+ *
  */
 
 #include <cassert>

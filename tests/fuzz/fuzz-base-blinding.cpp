@@ -1,9 +1,11 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * Fuzz target for the Base32/Base64 decoders and the strict b33 parser.
- * Only pure, allocation-bounded helpers are exercised.
+ * openi2pd: fuzz base blinding.
+ *
+ * Fuzzes the Base32/Base64 decoders and the proposal 149 b33 parser using fixed output buffers, so malformed or overlong addresses must fail closed without out-of-bounds reads.
+ *
  */
 
 #include <cstddef>

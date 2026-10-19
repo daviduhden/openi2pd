@@ -1,8 +1,16 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: keyinfo.
+ *
+ * Inspects an I2P private-key file and prints destination, signature,
+ * encryption and offline-signature details. Flags select the b32 address
+ * (default), base64 destination, raw private key, or blinded b33 address plus
+ * any b33 offline-key range.
+ *
  */
+
 #include "Identity.h"
 #include "I2PEndian.h"
 #include "LeaseSet.h"

@@ -1,11 +1,12 @@
 /*
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: test netdb lookup wire bounds.
+ *
+ * Validates DatabaseLookup and DatabaseSearchReply serialization and parsing, including direct/tunnel layouts, excluded-peer caps and rejection of every truncated prefix.
+ *
+ */
 
 #include <array>
 #include <cassert>

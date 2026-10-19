@@ -1,12 +1,11 @@
 #!/usr/bin/env perl
-# Copyright (c) 2026, The PurpleI2P Project
-# Copyright (c) 2026, David Uhden Collado
-# SPDX-License-Identifier: BSD-3-Clause
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
 #
-# Static fixture validator and optional differential runner for tests/interop.
+# openi2pd: check vectors.
 #
-# This script never downloads anything, never writes to the reference tree and
-# never runs the Java build.  The optional C++ binary is supplied by the user.
+# Validates checked-in interoperability fixtures and provenance references, and can optionally run a user-supplied C++ harness per case; it never downloads, writes the reference tree or builds Java.
+#
 
 use strict;
 use warnings;

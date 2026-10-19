@@ -1,7 +1,13 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: fuzz http parser.
+ *
+ * Feeds arbitrary bytes to HTTP request/response parsing, URL decoding and chunked-response merging, exercising header syntax, framing and chunk-length validation without sockets.
+ *
  */
+
 #include <cstddef>
 #include <cstdint>
 #include <sstream>

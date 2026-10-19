@@ -1,7 +1,13 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: fuzz tui protocol.
+ *
+ * Parses arbitrary TUI request and response headers, then re-frames accepted requests and escaped fields, exercising line/payload limits and symmetric escaping without a daemon.
+ *
  */
+
 #include <cstddef>
 #include <cstdint>
 #include <string_view>

@@ -1,11 +1,12 @@
 /*
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: test torrent bencode.
+ *
+ * Checks bencode metainfo parsing and creation bounds: piece/name validation, 64-bit length limits, file-count and depth caps, path sanitization and collisions, and bounded torrent-file reads.
+ *
+ */
 
 #include <cassert>
 #include <cstdint>

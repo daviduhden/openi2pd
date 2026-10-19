@@ -1,7 +1,13 @@
-# Copyright (c) 2013-2026, The PurpleI2P Project
-# Copyright (c) 2026, David Uhden Collado
-# SPDX-License-Identifier: BSD-3-Clause
-# Smoke test for the integrated i2pd-tools. No network access.
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: test tools.
+#
+# Offline CTest smoke test for the native tools: key generation, base64
+# round-trip, host-record signing/verification and routerinfo firewall CLI
+# validation. It runs in a temporary work directory and needs no network.
+#
+
 if(NOT DEFINED TOOLS_DIR)
   message(FATAL_ERROR "TOOLS_DIR is required")
 endif()

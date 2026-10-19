@@ -1,8 +1,13 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: test blinding.
+ *
+ * Round-trips Ed25519 and RedDSA destination blinding: the public key derived from the blinded private key must match GenerateAlpha(), and a blinded signature must verify.
+ *
  */
+
 #include <cassert>
 #include <memory>
 #include <string.h>

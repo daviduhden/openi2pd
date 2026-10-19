@@ -1,12 +1,15 @@
+@REM See the LICENSE file at the top of the project tree for copyright
+@REM and license details.
+@REM
+@REM openi2pd: build mingw.cmd.
+@REM
+@REM Configures build and manual CI integration.
+@REM
+
 @echo off
 setlocal enableextensions enabledelayedexpansion
 title Building i2pd
 
-REM Copyright (c) 2013-2022, The PurpleI2P Project
-REM Copyright (c) 2026, David Uhden Collado
-REM SPDX-License-Identifier: BSD-3-Clause
-REM This file is part of openi2pd and licensed under BSD-3-Clause
-REM See full license text in LICENSE file at top of project tree
 
 REM To use that script, you must have installed in your MSYS installation these packages:
 REM Base: git cmake ninja zip
