@@ -1,5 +1,4 @@
 /*
-* Copyright (c) 2026, The PurpleI2P Project
 * Copyright (c) 2026, David Uhden Collado
 * SPDX-License-Identifier: BSD-3-Clause
 *
@@ -13,6 +12,7 @@
 #include <filesystem>
 #include <fstream>
 #include <initializer_list>
+#include <limits>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -24,6 +24,11 @@
 #ifndef NO_TORRENTS
 
 using namespace i2p::torrents;
+
+// 256 TiB does not fit in a 32-bit size_t. The constant and every length
+// comparison must therefore be performed in 64 bits.
+static_assert (MAX_TORRENT_LENGTH == (uint64_t { 256 } << 40), "limit must stay at 256 TiB");
+static_assert (MAX_TORRENT_LENGTH > std::numeric_limits<uint32_t>::max (), "limit must exceed 32-bit size_t");
 
 static std::string Bytes (std::string_view value)
 {
@@ -71,14 +76,14 @@ static std::string Pieces (size_t numPieces, char fill = 'A')
 }
 
 static std::string SingleFileInfo (
-	size_t length, size_t pieceLength, size_t numHashes, const std::string & name = "file.bin")
+	uint64_t length, size_t pieceLength, size_t numHashes, const std::string & name = "file.bin")
 {
 	return Dict ({ { "length", Int ((int64_t)length) }, { "name", Bytes (name) },
 		{ "piece length", Int ((int64_t)pieceLength) }, { "pieces", Bytes (Pieces (numHashes)) } });
 }
 
 static std::string MultiFileInfo (
-	const std::vector<std::pair<size_t, std::vector<std::string>>> & files, size_t pieceLength, size_t numHashes)
+	const std::vector<std::pair<uint64_t, std::vector<std::string>>> & files, size_t pieceLength, size_t numHashes)
 {
 	std::vector<std::string> entries;
 	for (const auto & [length, components] : files)
@@ -177,13 +182,20 @@ static void TestDepthAndBounds ()
 
 	// A valid length that would require more than MAX_NUM_TORRENT_PIECES is rejected.
 	ExpectMalformed (MakeTorrentFile (SingleFileInfo (MAX_TORRENT_LENGTH, MIN_PIECE_LENGTH, 1)));
+	// The check happens in 64 bits: the limit itself is rejected, and the
+	// value one past it must never wrap back into an accepted length.
+	ExpectMalformed (MakeTorrentFile (SingleFileInfo (MAX_TORRENT_LENGTH + 1, MIN_PIECE_LENGTH, 1)));
+	// 4 GiB is the first length that does not fit in an ILP32 size_t. It is
+	// rejected either by the size_t check (32-bit) or by the piece-count/hash
+	// consistency check (64-bit).
+	ExpectMalformed (MakeTorrentFile (SingleFileInfo (uint64_t { 1 } << 32, MIN_PIECE_LENGTH, 1)));
 
 	// Two individually valid file lengths must not overflow the total length bound.
 	ExpectMalformed (MakeTorrentFile (
 		MultiFileInfo ({ { MAX_TORRENT_LENGTH, { "a" } }, { MAX_TORRENT_LENGTH, { "b" } } }, MIN_PIECE_LENGTH, 1)));
 
 	// File count is bounded before unbounded metadata can create files.
-	std::vector<std::pair<size_t, std::vector<std::string>>> tooManyFiles;
+	std::vector<std::pair<uint64_t, std::vector<std::string>>> tooManyFiles;
 	for (size_t i = 0; i <= MAX_NUM_TORRENT_FILES; i++)
 		tooManyFiles.emplace_back (1, std::vector<std::string> { "f" + std::to_string (i) });
 	ExpectMalformed (MakeTorrentFile (MultiFileInfo (tooManyFiles, MIN_PIECE_LENGTH, 1)));
