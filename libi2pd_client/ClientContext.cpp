@@ -31,23 +31,23 @@ namespace client
 
 	ClientContext::ClientContext ()
 		: m_SharedLocalDestination (nullptr)
-		, m_SamBridge (nullptr)
-		, m_BOBCommandChannel (nullptr)
-		, m_I2CPServer (nullptr)
 	{
 	}
 
 	ClientContext::~ClientContext ()
 	{
-		delete m_SamBridge;
-		delete m_BOBCommandChannel;
-		delete m_I2CPServer;
+		// Preserve the historical destruction order (SAM, BOB, I2CP). Stop()
+		// already resets these; the explicit resets keep the destructor correct
+		// when the context is torn down without a preceding Stop().
+		m_SamBridge.reset ();
+		m_BOBCommandChannel.reset ();
+		m_I2CPServer.reset ();
 	}
 
 	void ClientContext::Start ()
 	{
 		// shared local destination
-		if (!m_SharedLocalDestination) CreateNewSharedLocalDestination ();
+		if (!GetSharedLocalDestination ()) CreateNewSharedLocalDestination ();
 
 		// addressbook
 		m_AddressBook.Start ();
@@ -77,7 +77,7 @@ namespace client
 			LogPrint (eLogInfo, "Clients: Starting SAM bridge at ", samAddr, ":[", samPortTCP, "|", samPortUDP, "]");
 			try
 			{
-				m_SamBridge = new SAMBridge (samAddr, samPortTCP, samPortUDP, singleThread);
+				m_SamBridge = std::make_unique<SAMBridge> (samAddr, samPortTCP, samPortUDP, singleThread);
 				m_SamBridge->Start ();
 			}
 			catch (std::exception & e)
@@ -100,7 +100,7 @@ namespace client
 			LogPrint (eLogInfo, "Clients: Starting BOB command channel at ", bobAddr, ":", bobPort);
 			try
 			{
-				m_BOBCommandChannel = new BOBCommandChannel (bobAddr, bobPort);
+				m_BOBCommandChannel = std::make_unique<BOBCommandChannel> (bobAddr, bobPort);
 				m_BOBCommandChannel->Start ();
 			}
 			catch (std::exception & e)
@@ -124,7 +124,7 @@ namespace client
 			LogPrint (eLogInfo, "Clients: Starting I2CP at ", i2cpAddr, ":", i2cpPort);
 			try
 			{
-				m_I2CPServer = new I2CPServer (i2cpAddr, i2cpPort, singleThread);
+				m_I2CPServer = std::make_unique<I2CPServer> (i2cpAddr, i2cpPort, singleThread);
 				m_I2CPServer->Start ();
 			}
 			catch (std::exception & e)
@@ -138,7 +138,7 @@ namespace client
 
 #ifndef NO_TORRENTS
 		// start torrents RPC server
-		for (auto & it : m_TorrentsRPCServers) it.second->Start ();
+		for (const auto & server : GetTorrentsRPCServersSnapshot ()) server->Start ();
 #endif
 	}
 
@@ -174,57 +174,69 @@ namespace client
 			socksProxy->Stop ();
 		}
 
-		for (auto & it : m_ClientTunnels)
+		std::vector<std::pair<boost::asio::ip::tcp::endpoint, std::shared_ptr<I2PService>>> clientTunnels;
+		std::vector<std::pair<std::pair<i2p::data::IdentHash, int>, std::shared_ptr<I2PServerTunnel>>>
+			serverTunnels;
+		{
+			std::lock_guard<std::mutex> l (m_ProxyMutex);
+			clientTunnels.assign (m_ClientTunnels.begin (), m_ClientTunnels.end ());
+			serverTunnels.assign (m_ServerTunnels.begin (), m_ServerTunnels.end ());
+			m_ClientTunnels.clear ();
+			m_ServerTunnels.clear ();
+		}
+		for (auto & it : clientTunnels)
 		{
 			LogPrint (eLogInfo, "Clients: Stopping I2P client tunnel on port ", it.first);
-			it.second->Stop ();
+			if (it.second) it.second->Stop ();
 		}
-		m_ClientTunnels.clear ();
-
-		for (auto & it : m_ServerTunnels)
+		for (auto & it : serverTunnels)
 		{
 			LogPrint (eLogInfo, "Clients: Stopping I2P server tunnel");
-			it.second->Stop ();
+			if (it.second) it.second->Stop ();
 		}
-		m_ServerTunnels.clear ();
 
 		if (m_SamBridge)
 		{
 			LogPrint (eLogInfo, "Clients: Stopping SAM bridge");
 			m_SamBridge->Stop ();
-			delete m_SamBridge;
-			m_SamBridge = nullptr;
+			m_SamBridge.reset ();
 		}
 
 		if (m_BOBCommandChannel)
 		{
 			LogPrint (eLogInfo, "Clients: Stopping BOB command channel");
 			m_BOBCommandChannel->Stop ();
-			delete m_BOBCommandChannel;
-			m_BOBCommandChannel = nullptr;
+			m_BOBCommandChannel.reset ();
 		}
 
 		if (m_I2CPServer)
 		{
 			LogPrint (eLogInfo, "Clients: Stopping I2CP");
 			m_I2CPServer->Stop ();
-			delete m_I2CPServer;
-			m_I2CPServer = nullptr;
+			m_I2CPServer.reset ();
 		}
 
 		LogPrint (eLogInfo, "Clients: Stopping AddressBook");
 		m_AddressBook.Stop ();
 
 		LogPrint (eLogInfo, "Clients: Stopping UDP Tunnels");
+		std::vector<std::shared_ptr<I2PUDPClientTunnel>> clientForwards;
+		std::vector<std::shared_ptr<I2PUDPServerTunnel>> serverForwards;
 		{
 			std::lock_guard<std::mutex> lock (m_ForwardsMutex);
-			m_ServerForwards.clear ();
+			for (auto & it : m_ClientForwards)
+				if (it.second) clientForwards.push_back (it.second);
+			for (auto & it : m_ServerForwards)
+				if (it.second) serverForwards.push_back (it.second);
 			m_ClientForwards.clear ();
+			m_ServerForwards.clear ();
 		}
+		for (const auto & forward : clientForwards) forward->Stop ();
+		for (const auto & forward : serverForwards) forward->Stop ();
 
 #ifndef NO_TORRENTS
-		// start torrents RPC server
-		for (auto & it : m_TorrentsRPCServers) it.second->Stop ();
+		// stop torrents RPC servers
+		for (const auto & server : GetTorrentsRPCServersSnapshot ()) server->Stop ();
 
 		std::vector<std::shared_ptr<i2p::torrents::TorrentsTunnel>> torrentsTunnelsToStop;
 		{
@@ -247,18 +259,24 @@ namespace client
 		}
 #endif
 
+		// Snapshot and clear under the lock, then stop/join outside it.
+		std::vector<std::shared_ptr<ClientDestination>> destinations;
+		std::shared_ptr<ClientDestination> sharedLocalDestination;
 		{
-			// stop destinations
 			LogPrint (eLogInfo, "Clients: Stopping Destinations");
 			std::lock_guard<std::mutex> lock (m_DestinationsMutex);
-			for (auto & it : m_Destinations) it.second->Stop ();
+			destinations.reserve (m_Destinations.size ());
+			for (auto & it : m_Destinations)
+				if (it.second) destinations.push_back (it.second);
 			LogPrint (eLogInfo, "Clients: Stopping Destinations - Clear");
 			m_Destinations.clear ();
+			sharedLocalDestination = m_SharedLocalDestination;
+			m_SharedLocalDestination = nullptr;
 		}
+		for (const auto & destination : destinations) destination->Stop ();
 
 		LogPrint (eLogInfo, "Clients: Stopping SharedLocalDestination");
-		m_SharedLocalDestination->Release ();
-		m_SharedLocalDestination = nullptr;
+		if (sharedLocalDestination) sharedLocalDestination->Release ();
 	}
 
 	void ClientContext::ReloadConfig ()
@@ -268,7 +286,13 @@ namespace client
 		i2p::config::ParseConfig(config);*/
 
 		// change shared local destination
-		m_SharedLocalDestination->Release ();
+		std::shared_ptr<ClientDestination> oldSharedLocalDestination;
+		{
+			std::lock_guard<std::mutex> l (m_DestinationsMutex);
+			oldSharedLocalDestination = m_SharedLocalDestination;
+			m_SharedLocalDestination = nullptr;
+		}
+		if (oldSharedLocalDestination) oldSharedLocalDestination->Release ();
 		CreateNewSharedLocalDestination ();
 		m_AddressBook.ResetTimers (); // its timers are left on a destination about to go
 
@@ -285,7 +309,14 @@ namespace client
 		// handle tunnels
 		// take the acceptors off first, a tunnel still in the config sets its own back
 		// while it is read, incoming streams wait in the queue meanwhile
-		for (auto & it : m_ServerTunnels) it.second->DetachAcceptor ();
+		std::vector<std::shared_ptr<I2PServerTunnel>> serverTunnels;
+		{
+			std::lock_guard<std::mutex> l (m_ProxyMutex);
+			serverTunnels.reserve (m_ServerTunnels.size ());
+			for (const auto & it : m_ServerTunnels)
+				if (it.second) serverTunnels.push_back (it.second);
+		}
+		for (const auto & tunnel : serverTunnels) tunnel->DetachAcceptor ();
 		// reset isUpdated for each tunnel
 		VisitTunnels (false);
 		// reload tunnels
@@ -293,19 +324,23 @@ namespace client
 		// delete not updated tunnels (not in config anymore)
 		VisitTunnels (true);
 
-		// delete unused destinations
-		std::unique_lock<std::mutex> l (m_DestinationsMutex);
-		for (auto it = m_Destinations.begin (); it != m_Destinations.end ();)
+		// delete unused destinations: collect under the lock, stop outside it
+		std::vector<std::shared_ptr<ClientDestination>> unusedDestinations;
 		{
-			auto dest = it->second;
-			if (dest->GetRefCounter () > 0)
-				++it; // skip
-			else
+			std::lock_guard<std::mutex> l (m_DestinationsMutex);
+			for (auto it = m_Destinations.begin (); it != m_Destinations.end ();)
 			{
-				dest->Stop ();
-				it = m_Destinations.erase (it);
+				auto dest = it->second;
+				if (!dest || dest->GetRefCounter () > 0)
+					++it; // skip
+				else
+				{
+					unusedDestinations.push_back (dest);
+					it = m_Destinations.erase (it);
+				}
 			}
 		}
+		for (const auto & destination : unusedDestinations) destination->Stop ();
 	}
 
 	bool ClientContext::LoadPrivateKeys (i2p::data::PrivateKeys & keys, std::string_view filename,
@@ -325,11 +360,23 @@ namespace client
 		if (s.is_open ())
 		{
 			s.seekg (0, std::ios::end);
-			size_t len = s.tellg ();
+			const auto end = s.tellg ();
+			constexpr std::streamoff MAX_KEYS_FILE_SIZE = 64 * 1024;
+			if (end <= 0 || static_cast<std::streamoff> (end) > MAX_KEYS_FILE_SIZE)
+			{
+				LogPrint (eLogCritical, "Clients: Invalid keyfile size ", filename);
+				return false;
+			}
+			const size_t len = static_cast<size_t> (end);
 			s.seekg (0, std::ios::beg);
-			uint8_t * buf = new uint8_t[len];
-			s.read ((char *)buf, len);
-			if (!keys.FromBuffer (buf, len))
+			std::vector<uint8_t> buf (len);
+			s.read ((char *)buf.data (), static_cast<std::streamsize> (len));
+			if (!s || static_cast<size_t> (s.gcount ()) != len)
+			{
+				LogPrint (eLogCritical, "Clients: Truncated keyfile ", filename);
+				return false;
+			}
+			if (!keys.FromBuffer (buf.data (), len))
 			{
 				LogPrint (eLogCritical, "Clients: Failed to load keyfile ", filename);
 				success = false;
@@ -337,7 +384,6 @@ namespace client
 			else
 				LogPrint (eLogInfo, "Clients: Local address ",
 					m_AddressBook.ToAddress (keys.GetPublic ()->GetIdentHash ()), " loaded");
-			delete[] buf;
 		}
 		else
 		{
@@ -346,10 +392,9 @@ namespace client
 			keys = i2p::data::PrivateKeys::CreateRandomKeys (sigType, cryptoType, true);
 			std::ofstream f (i2p::fs::CreatePrivateFile (fullPath), std::ofstream::binary | std::ofstream::out);
 			size_t len = keys.GetFullLen ();
-			uint8_t * buf = new uint8_t[len];
-			len = keys.ToBuffer (buf, len);
-			f.write ((char *)buf, len);
-			delete[] buf;
+			std::vector<uint8_t> buf (len);
+			len = keys.ToBuffer (buf.data (), len);
+			f.write ((char *)buf.data (), len);
 
 			LogPrint (eLogInfo, "Clients: New private keys file ", fullPath, " for ",
 				m_AddressBook.ToAddress (keys.GetPublic ()->GetIdentHash ()), " created");
@@ -424,7 +469,25 @@ namespace client
 		bool removed = false;
 		{
 			std::unique_lock<std::mutex> l (m_DestinationsMutex);
-			removed = m_Destinations.erase (destination->GetIdentHash ()) > 0;
+			auto it = m_Destinations.find (destination->GetIdentHash ());
+			if (it != m_Destinations.end () && it->second == destination)
+			{
+				m_Destinations.erase (it);
+				removed = true;
+			}
+			else
+			{
+				// The registry key may have been replaced without mutating
+				// the destination object (ReplaceLocalDestinationHash). Remove
+				// by object identity so the replaced key cannot be orphaned.
+				for (it = m_Destinations.begin (); it != m_Destinations.end (); ++it)
+					if (it->second == destination)
+					{
+						m_Destinations.erase (it);
+						removed = true;
+						break;
+					}
+			}
 		}
 		if (removed) destination->Stop ();
 	}
@@ -445,14 +508,19 @@ namespace client
 	std::shared_ptr<ClientDestination> ClientContext::CreateNewLocalDestination (
 		const i2p::data::PrivateKeys & keys, bool isPublic, const i2p::util::Mapping * params)
 	{
-		auto it = m_Destinations.find (keys.GetPublic ()->GetIdentHash ());
-		if (it != m_Destinations.end ())
+		std::shared_ptr<ClientDestination> existing;
+		{
+			std::lock_guard<std::mutex> l (m_DestinationsMutex);
+			auto it = m_Destinations.find (keys.GetPublic ()->GetIdentHash ());
+			if (it != m_Destinations.end ()) existing = it->second;
+		}
+		if (existing)
 		{
 			LogPrint (eLogWarning, "Clients: Local destination ",
 				m_AddressBook.ToAddress (keys.GetPublic ()->GetIdentHash ()), " exists");
-			if (keys.IsOfflineSignature ()) it->second->UpdateOfflineSignature (keys);
-			it->second->Start (); // make sure to start
-			return it->second;
+			if (keys.IsOfflineSignature ()) existing->UpdateOfflineSignature (keys);
+			existing->Start (); // make sure to start
+			return existing;
 		}
 		auto localDestination = std::make_shared<RunnableClientDestination> (keys, isPublic, params);
 		AddLocalDestination (localDestination);
@@ -462,14 +530,19 @@ namespace client
 	std::shared_ptr<ClientDestination> ClientContext::CreateNewLocalDestination (boost::asio::io_context & service,
 		const i2p::data::PrivateKeys & keys, bool isPublic, const i2p::util::Mapping * params)
 	{
-		auto it = m_Destinations.find (keys.GetPublic ()->GetIdentHash ());
-		if (it != m_Destinations.end ())
+		std::shared_ptr<ClientDestination> existing;
+		{
+			std::lock_guard<std::mutex> l (m_DestinationsMutex);
+			auto it = m_Destinations.find (keys.GetPublic ()->GetIdentHash ());
+			if (it != m_Destinations.end ()) existing = it->second;
+		}
+		if (existing)
 		{
 			LogPrint (eLogWarning, "Clients: Local destination ",
 				m_AddressBook.ToAddress (keys.GetPublic ()->GetIdentHash ()), " exists");
-			if (keys.IsOfflineSignature ()) it->second->UpdateOfflineSignature (keys);
-			it->second->Start (); // make sure to start
-			return it->second;
+			if (keys.IsOfflineSignature ()) existing->UpdateOfflineSignature (keys);
+			existing->Start (); // make sure to start
+			return existing;
 		}
 		auto localDestination = std::make_shared<ClientDestination> (service, keys, isPublic, params);
 		AddLocalDestination (localDestination);
@@ -482,14 +555,20 @@ namespace client
 		ReadI2CPOptionsFromConfig ("shareddest.", params);
 		params.Insert (I2CP_PARAM_OUTBOUND_NICKNAME, "SharedDest");
 
-		m_SharedLocalDestination = CreateNewLocalDestination (false, i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519,
-			i2p::data::CRYPTO_KEY_TYPE_ELGAMAL, &params); // non-public, EDDSA
-		m_SharedLocalDestination->Acquire ();
+		auto localDestination = CreateNewLocalDestination (false,
+			i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, i2p::data::CRYPTO_KEY_TYPE_ELGAMAL,
+			&params); // non-public, EDDSA
+		{
+			std::lock_guard<std::mutex> l (m_DestinationsMutex);
+			m_SharedLocalDestination = localDestination;
+		}
+		localDestination->Acquire ();
 	}
 
 	std::shared_ptr<ClientDestination> ClientContext::FindLocalDestination (
 		const i2p::data::IdentHash & destination) const
 	{
+		std::lock_guard<std::mutex> l (m_DestinationsMutex);
 		auto it = m_Destinations.find (destination);
 		if (it != m_Destinations.end ()) return it->second;
 		return nullptr;
@@ -771,7 +850,7 @@ namespace client
 
 					std::shared_ptr<ClientDestination> localDestination = nullptr;
 					if (keys == "shareddest")
-						localDestination = m_SharedLocalDestination;
+						localDestination = GetSharedLocalDestination ();
 					else if (keys.length () > 0)
 					{
 						auto it = destinations.find (keys);
@@ -808,7 +887,7 @@ namespace client
 						// udp client
 						// TODO: hostnames
 						boost::asio::ip::udp::endpoint end (boost::asio::ip::make_address (address), port);
-						if (!localDestination) localDestination = m_SharedLocalDestination;
+						if (!localDestination) localDestination = GetSharedLocalDestination ();
 
 						bool gzip = section.second.get (I2P_CLIENT_TUNNEL_GZIP, true);
 						int datagramVersion = (i2p::datagram::DatagramVersion)section.second.get (
@@ -824,23 +903,33 @@ namespace client
 							LogPrint (eLogInfo, "Clients: UDP Client tunnel keep alive interval set to ", keepAlive);
 						}
 
-						auto ins = m_ClientForwards.insert (std::make_pair (end, clientTunnel));
-						if (ins.second)
+						bool inserted = false;
+						std::shared_ptr<I2PUDPClientTunnel> existing;
+						{
+							std::lock_guard<std::mutex> lock (m_ForwardsMutex);
+							auto ins = m_ClientForwards.insert (std::make_pair (end, clientTunnel));
+							inserted = ins.second;
+							if (!inserted)
+							{
+								existing = ins.first->second;
+								if (existing) existing->isUpdated = true;
+							}
+						}
+						if (inserted)
 						{
 							clientTunnel->Start ();
 							numClientTunnels++;
 						}
-						else
+						else if (existing)
 						{
 							// TODO: update
-							if (ins.first->second->GetLocalDestination () != clientTunnel->GetLocalDestination ())
+							if (existing->GetLocalDestination () != clientTunnel->GetLocalDestination ())
 							{
 								LogPrint (eLogInfo, "Clients: I2P UDP client tunnel destination updated");
-								ins.first->second->Stop ();
-								ins.first->second->SetLocalDestination (clientTunnel->GetLocalDestination ());
-								ins.first->second->Start ();
+								existing->Stop ();
+								existing->SetLocalDestination (clientTunnel->GetLocalDestination ());
+								existing->Start ();
 							}
-							ins.first->second->isUpdated = true;
 							LogPrint (eLogError, "Clients: I2P Client forward for endpoint ", end, " already exists");
 						}
 					}
@@ -908,23 +997,33 @@ namespace client
 								false));
 						}
 
-						auto ins = m_ClientTunnels.insert (std::make_pair (clientEndpoint, clientTunnel));
-						if (ins.second)
+						bool inserted = false;
+						std::shared_ptr<I2PService> existing;
+						{
+							std::lock_guard<std::mutex> lock (m_ProxyMutex);
+							auto ins = m_ClientTunnels.insert (std::make_pair (clientEndpoint, clientTunnel));
+							inserted = ins.second;
+							if (!inserted)
+							{
+								existing = ins.first->second;
+								if (existing) existing->isUpdated = true;
+							}
+						}
+						if (inserted)
 						{
 							clientTunnel->Start ();
 							numClientTunnels++;
 						}
-						else
+						else if (existing)
 						{
 							// TODO: update
-							if (ins.first->second->GetLocalDestination () != clientTunnel->GetLocalDestination ())
+							if (existing->GetLocalDestination () != clientTunnel->GetLocalDestination ())
 							{
 								LogPrint (eLogInfo, "Clients: I2P client tunnel destination updated");
-								ins.first->second->Stop ();
-								ins.first->second->SetLocalDestination (clientTunnel->GetLocalDestination ());
-								ins.first->second->Start ();
+								existing->Stop ();
+								existing->SetLocalDestination (clientTunnel->GetLocalDestination ());
+								existing->Start ();
 							}
-							ins.first->second->isUpdated = true;
 							LogPrint (eLogInfo, "Clients: I2P client tunnel for endpoint ", clientEndpoint,
 								" already exists");
 						}
@@ -966,7 +1065,7 @@ namespace client
 
 					std::shared_ptr<ClientDestination> localDestination = nullptr;
 					if (keys == "shareddest")
-						localDestination = m_SharedLocalDestination;
+						localDestination = GetSharedLocalDestination ();
 					else
 					{
 						auto it = destinations.find (keys);
@@ -1010,10 +1109,20 @@ namespace client
 							LogPrint (eLogInfo, "Clients: Disabling loopback address mapping");
 							serverTunnel->SetUniqueLocal (isUniqueLocal);
 						}
-						std::lock_guard<std::mutex> lock (m_ForwardsMutex);
-						auto ins = m_ServerForwards.insert (
-							std::make_pair (std::make_pair (localDestination->GetIdentHash (), port), serverTunnel));
-						if (ins.second)
+						bool inserted = false;
+						std::shared_ptr<I2PUDPServerTunnel> existing;
+						{
+							std::lock_guard<std::mutex> lock (m_ForwardsMutex);
+							auto ins = m_ServerForwards.insert (
+								std::make_pair (std::make_pair (localDestination->GetIdentHash (), port), serverTunnel));
+							inserted = ins.second;
+							if (!inserted)
+							{
+								existing = ins.first->second;
+								if (existing) existing->isUpdated = true;
+							}
+						}
+						if (inserted)
 						{
 							serverTunnel->Start ();
 							LogPrint (eLogInfo, "Clients: I2P Server Forward created for UDP Endpoint ", host, ":",
@@ -1021,7 +1130,6 @@ namespace client
 						}
 						else
 						{
-							ins.first->second->isUpdated = true;
 							LogPrint (eLogError, "Clients: I2P Server Forward for destination/port ",
 								m_AddressBook.ToAddress (localDestination->GetIdentHash ()), "/", port,
 								" already exists");
@@ -1072,26 +1180,36 @@ namespace client
 						} while (comma != std::string::npos);
 						serverTunnel->SetAccessList (idents);
 					}
-					auto ins = m_ServerTunnels.insert (
-						std::make_pair (std::make_pair (localDestination->GetIdentHash (), inPort), serverTunnel));
-					if (ins.second)
+					bool inserted = false;
+					std::shared_ptr<I2PServerTunnel> existing;
+					{
+						std::lock_guard<std::mutex> lock (m_ProxyMutex);
+						auto ins = m_ServerTunnels.insert (
+							std::make_pair (std::make_pair (localDestination->GetIdentHash (), inPort), serverTunnel));
+						inserted = ins.second;
+						if (!inserted)
+						{
+							existing = ins.first->second;
+							if (existing) existing->isUpdated = true;
+						}
+					}
+					if (inserted)
 					{
 						serverTunnel->Start ();
 						numServerTunnels++;
 					}
-					else
+					else if (existing)
 					{
 						// TODO: update
-						if (ins.first->second->GetLocalDestination () != serverTunnel->GetLocalDestination ())
+						if (existing->GetLocalDestination () != serverTunnel->GetLocalDestination ())
 						{
 							LogPrint (eLogInfo, "Clients: I2P server tunnel destination updated");
-							ins.first->second->Stop ();
-							ins.first->second->SetLocalDestination (serverTunnel->GetLocalDestination ());
-							ins.first->second->Start ();
+							existing->Stop ();
+							existing->SetLocalDestination (serverTunnel->GetLocalDestination ());
+							existing->Start ();
 						}
 						else
-							ins.first->second->Accept (); // still in the config, take the acceptor back
-						ins.first->second->isUpdated = true;
+							existing->Accept (); // still in the config, take the acceptor back
 						LogPrint (eLogInfo, "Clients: I2P server tunnel for destination/port ",
 							m_AddressBook.ToAddress (localDestination->GetIdentHash ()), "/", inPort,
 							" already exists");
@@ -1236,7 +1354,7 @@ namespace client
 				sigType = i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519;
 			LogPrint (eLogInfo, "Clients: Starting HTTP Proxy at ", httpProxyAddr, ":", httpProxyPort);
 			if (httpProxyKeys == "shareddest")
-				localDestination = m_SharedLocalDestination;
+				localDestination = GetSharedLocalDestination ();
 			else if (httpProxyKeys.length () > 0)
 			{
 				i2p::data::PrivateKeys keys;
@@ -1309,7 +1427,7 @@ namespace client
 				httpProxy = m_HttpProxy;
 			}
 			if (socksProxyKeys == "shareddest")
-				localDestination = m_SharedLocalDestination;
+				localDestination = GetSharedLocalDestination ();
 			else if (httpProxyKeys == socksProxyKeys && httpProxy)
 				localDestination = httpProxy->GetLocalDestination ();
 			else if (socksProxyKeys.length () > 0)
@@ -1352,62 +1470,72 @@ namespace client
 
 	void ClientContext::VisitTunnels (bool clean)
 	{
-		for (auto it = m_ClientTunnels.begin (); it != m_ClientTunnels.end ();)
+		// Collect the removed objects under the locks, exit the lock and only
+		// then stop/join them.
+		std::vector<std::shared_ptr<I2PService>> tcpTunnels;
+		std::vector<std::shared_ptr<I2PUDPClientTunnel>> clientForwards;
+		std::vector<std::shared_ptr<I2PUDPServerTunnel>> serverForwards;
 		{
-			if (clean && !it->second->isUpdated)
+			std::lock_guard<std::mutex> l (m_ProxyMutex);
+			for (auto it = m_ClientTunnels.begin (); it != m_ClientTunnels.end ();)
 			{
-				it->second->Stop ();
-				it = m_ClientTunnels.erase (it);
+				if (clean && (!it->second || !it->second->isUpdated))
+				{
+					if (it->second) tcpTunnels.push_back (it->second);
+					it = m_ClientTunnels.erase (it);
+				}
+				else
+				{
+					if (it->second) it->second->isUpdated = false;
+					it++;
+				}
 			}
-			else
+			for (auto it = m_ServerTunnels.begin (); it != m_ServerTunnels.end ();)
 			{
-				it->second->isUpdated = false;
-				it++;
+				if (clean && (!it->second || !it->second->isUpdated))
+				{
+					if (it->second) tcpTunnels.push_back (it->second);
+					it = m_ServerTunnels.erase (it);
+				}
+				else
+				{
+					if (it->second) it->second->isUpdated = false;
+					it++;
+				}
 			}
 		}
-
-		for (auto it = m_ServerTunnels.begin (); it != m_ServerTunnels.end ();)
 		{
-			if (clean && !it->second->isUpdated)
+			std::lock_guard<std::mutex> l (m_ForwardsMutex);
+			for (auto it = m_ClientForwards.begin (); it != m_ClientForwards.end ();)
 			{
-				it->second->Stop ();
-				it = m_ServerTunnels.erase (it);
+				if (clean && (!it->second || !it->second->isUpdated))
+				{
+					if (it->second) clientForwards.push_back (it->second);
+					it = m_ClientForwards.erase (it);
+				}
+				else
+				{
+					if (it->second) it->second->isUpdated = false;
+					it++;
+				}
 			}
-			else
+			for (auto it = m_ServerForwards.begin (); it != m_ServerForwards.end ();)
 			{
-				it->second->isUpdated = false;
-				it++;
+				if (clean && (!it->second || !it->second->isUpdated))
+				{
+					if (it->second) serverForwards.push_back (it->second);
+					it = m_ServerForwards.erase (it);
+				}
+				else
+				{
+					if (it->second) it->second->isUpdated = false;
+					it++;
+				}
 			}
 		}
-
-		// TODO: Write correct UDP tunnels stop
-		for (auto it = m_ClientForwards.begin (); it != m_ClientForwards.end ();)
-		{
-			if (clean && !it->second->isUpdated)
-			{
-				it->second->Stop ();
-				it = m_ClientForwards.erase (it);
-			}
-			else
-			{
-				it->second->isUpdated = false;
-				it++;
-			}
-		}
-
-		for (auto it = m_ServerForwards.begin (); it != m_ServerForwards.end ();)
-		{
-			if (clean && !it->second->isUpdated)
-			{
-				it->second->Stop ();
-				it = m_ServerForwards.erase (it);
-			}
-			else
-			{
-				it->second->isUpdated = false;
-				it++;
-			}
-		}
+		for (const auto & tunnel : tcpTunnels) tunnel->Stop ();
+		for (const auto & tunnel : clientForwards) tunnel->Stop ();
+		for (const auto & tunnel : serverForwards) tunnel->Stop ();
 	}
 
 #ifndef NO_TORRENTS
@@ -1423,13 +1551,11 @@ namespace client
 		{
 			LogPrint (eLogError, "Clients: Can't create torrents RPC server of port: ", port, " :", ex.what ());
 		}
+		std::lock_guard<std::mutex> l (m_TorrentsTunnelsMutex);
 		if (server)
 			return m_TorrentsRPCServers.try_emplace (port, server).first->second;
-		else
-		{
-			auto it = m_TorrentsRPCServers.find (port);
-			if (it != m_TorrentsRPCServers.end ()) return it->second;
-		}
+		auto it = m_TorrentsRPCServers.find (port);
+		if (it != m_TorrentsRPCServers.end ()) return it->second;
 		return nullptr;
 	}
 #endif

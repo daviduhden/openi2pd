@@ -103,7 +103,11 @@ namespace client
 
 		void ReloadConfig ();
 
-		std::shared_ptr<ClientDestination> GetSharedLocalDestination () const { return m_SharedLocalDestination; };
+		std::shared_ptr<ClientDestination> GetSharedLocalDestination () const
+		{
+			std::lock_guard<std::mutex> l (m_DestinationsMutex);
+			return m_SharedLocalDestination;
+		};
 		std::shared_ptr<ClientDestination> CreateNewLocalDestination (bool isPublic = false, // transient
 			i2p::data::SigningKeyType sigType = i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519,
 			i2p::data::CryptoKeyType cryptoType = i2p::data::CRYPTO_KEY_TYPE_ELGAMAL,
@@ -128,9 +132,9 @@ namespace client
 			i2p::data::CryptoKeyType cryptoType = i2p::data::CRYPTO_KEY_TYPE_ELGAMAL);
 
 		AddressBook & GetAddressBook () { return m_AddressBook; };
-		const BOBCommandChannel * GetBOBCommandChannel () const { return m_BOBCommandChannel; };
-		const SAMBridge * GetSAMBridge () const { return m_SamBridge; };
-		const I2CPServer * GetI2CPServer () const { return m_I2CPServer; };
+		const BOBCommandChannel * GetBOBCommandChannel () const { return m_BOBCommandChannel.get (); };
+		const SAMBridge * GetSAMBridge () const { return m_SamBridge.get (); };
+		const I2CPServer * GetI2CPServer () const { return m_I2CPServer.get (); };
 
 		std::vector<std::shared_ptr<DatagramSessionInfo>> GetForwardInfosFor (const i2p::data::IdentHash & destination);
 
@@ -200,9 +204,9 @@ namespace client
 		std::unordered_map<uint16_t, std::shared_ptr<i2p::torrents::TorrentsRPCServer>> m_TorrentsRPCServers;
 #endif
 
-		SAMBridge * m_SamBridge;
-		BOBCommandChannel * m_BOBCommandChannel;
-		I2CPServer * m_I2CPServer;
+		std::unique_ptr<SAMBridge> m_SamBridge;
+		std::unique_ptr<BOBCommandChannel> m_BOBCommandChannel;
+		std::unique_ptr<I2CPServer> m_I2CPServer;
 
 		// i18n
 		std::shared_ptr<const i2p::i18n::Locale> m_Language;
@@ -215,10 +219,39 @@ namespace client
 			return std::vector<std::pair<i2p::data::IdentHash, std::shared_ptr<ClientDestination>>> (
 				m_Destinations.begin (), m_Destinations.end ());
 		}
+		// Legacy reference accessors. They are kept for source compatibility
+		// with the read-only admin/TUI consumers, but a returned reference is
+		// not safe while ReloadConfig()/Stop() can run. New code must use the
+		// snapshot methods below, which copy under the corresponding mutex.
 		const decltype (m_ClientTunnels) & GetClientTunnels () const { return m_ClientTunnels; };
 		const decltype (m_ServerTunnels) & GetServerTunnels () const { return m_ServerTunnels; };
 		const decltype (m_ClientForwards) & GetClientForwards () const { return m_ClientForwards; }
 		const decltype (m_ServerForwards) & GetServerForwards () const { return m_ServerForwards; }
+
+		std::vector<std::pair<boost::asio::ip::tcp::endpoint, std::shared_ptr<I2PService>>>
+		GetClientTunnelsSnapshot () const
+		{
+			std::lock_guard<std::mutex> l (m_ProxyMutex);
+			return { m_ClientTunnels.begin (), m_ClientTunnels.end () };
+		}
+		std::vector<std::pair<std::pair<i2p::data::IdentHash, int>, std::shared_ptr<I2PServerTunnel>>>
+		GetServerTunnelsSnapshot () const
+		{
+			std::lock_guard<std::mutex> l (m_ProxyMutex);
+			return { m_ServerTunnels.begin (), m_ServerTunnels.end () };
+		}
+		std::vector<std::pair<boost::asio::ip::udp::endpoint, std::shared_ptr<I2PUDPClientTunnel>>>
+		GetClientForwardsSnapshot () const
+		{
+			std::lock_guard<std::mutex> l (m_ForwardsMutex);
+			return { m_ClientForwards.begin (), m_ClientForwards.end () };
+		}
+		std::vector<std::pair<std::pair<i2p::data::IdentHash, int>, std::shared_ptr<I2PUDPServerTunnel>>>
+		GetServerForwardsSnapshot () const
+		{
+			std::lock_guard<std::mutex> l (m_ForwardsMutex);
+			return { m_ServerForwards.begin (), m_ServerForwards.end () };
+		}
 #ifndef NO_TORRENTS
 		// Stable, sorted copy of the configured torrents tunnels. Callers
 		// iterate this without holding any ClientContext lock; the TUI
@@ -240,7 +273,17 @@ namespace client
 				});
 			return snapshot;
 		}
+		// Legacy reference accessor; see the tunnel accessors above.
 		const decltype (m_TorrentsRPCServers) & GetTorrentsRPCServers () const { return m_TorrentsRPCServers; }
+		std::vector<std::shared_ptr<i2p::torrents::TorrentsRPCServer>> GetTorrentsRPCServersSnapshot () const
+		{
+			std::lock_guard<std::mutex> l (m_TorrentsTunnelsMutex);
+			std::vector<std::shared_ptr<i2p::torrents::TorrentsRPCServer>> snapshot;
+			snapshot.reserve (m_TorrentsRPCServers.size ());
+			for (const auto & item : m_TorrentsRPCServers)
+				if (item.second) snapshot.push_back (item.second);
+			return snapshot;
+		}
 #endif
 		std::shared_ptr<const I2PService> GetHttpProxy () const
 		{

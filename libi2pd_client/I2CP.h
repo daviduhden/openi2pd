@@ -15,6 +15,7 @@
 #include <string>
 #include <string_view>
 #include <memory>
+#include <atomic>
 #include <mutex>
 #include <thread>
 #include <map>
@@ -126,11 +127,13 @@ namespace client
 			const uint8_t * buf, size_t len, i2p::garlic::ECIESX25519AEADRatchetSession * from) override;
 		void CreateNewLeaseSet (const std::vector<std::shared_ptr<i2p::tunnel::InboundTunnel>> & tunnels) override;
 
-	private:
+	protected:
 		std::shared_ptr<I2CPDestination> GetSharedFromThis ()
 		{
 			return std::static_pointer_cast<I2CPDestination> (shared_from_this ());
 		}
+
+	private:
 		bool SendMsg (std::shared_ptr<I2NPMessage> msg, std::shared_ptr<const i2p::data::LeaseSet> remote);
 		bool SendMsg (std::shared_ptr<I2NPMessage> garlic, std::shared_ptr<i2p::tunnel::OutboundTunnel> outboundTunnel,
 			std::shared_ptr<const i2p::data::Lease> remoteLease);
@@ -157,6 +160,20 @@ namespace client
 
 		void Start ();
 		void Stop ();
+		auto & GetService () { return GetIOService (); }
+
+	private:
+		std::shared_ptr<RunnableI2CPDestination> GetRunnableSharedFromThis ();
+		bool IsInServiceThread () const;
+
+	private:
+		mutable std::mutex m_ServiceThreadMutex;
+		std::thread::id m_ServiceThreadID;
+		std::atomic<bool> m_StopRequested { false };
+		// Keeps the destination alive until its own service thread has been
+		// joined. Without it the last reference could be released on the
+		// service thread, whose destructor would then try to join itself.
+		std::shared_ptr<RunnableI2CPDestination> m_Self;
 	};
 
 	class I2CPServer;
@@ -169,7 +186,11 @@ namespace client
 
 		void Start ();
 		void Stop ();
-		uint16_t GetSessionID () const { return m_SessionID; };
+		uint16_t GetSessionID () const { return m_SessionID.load (); };
+		// Only I2CPServer inserts a session, and only after the identifier has
+		// been checked for collisions. The identifier is never assigned from
+		// an unvalidated CREATE SESSION request.
+		void AssignSessionID (uint16_t sessionID) { m_SessionID.store (sessionID); };
 		std::shared_ptr<const I2CPDestination> GetDestination () const { return m_Destination; };
 
 		// called from I2CPDestination
@@ -201,13 +222,19 @@ namespace client
 		void ReceivePayload ();
 		void HandleReceivedPayload (const boost::system::error_code & ecode, std::size_t bytes_transferred);
 		void HandleMessage ();
+		// Terminate always runs on the I2CP server's service thread, which owns
+		// the socket and the send queue. Callers on another thread only post it.
 		void Terminate ();
+		void TerminateInOwnerThread ();
 
+		void QueueI2CPMessage (std::shared_ptr<i2p::stream::SendBuffer> && sendBuf, size_t len);
+		void StartNextI2CPWrite (size_t len);
 		void HandleI2CPMessageSent (const boost::system::error_code & ecode, std::size_t bytes_transferred);
 
 		void SendSessionStatusMessage (I2CPSessionStatus status);
-		void SendHostReplyMessage (
-			uint32_t requestID, uint16_t sessionID, std::shared_ptr<const i2p::data::IdentityEx> identity);
+		void SendHostReplyMessage (uint32_t requestID, uint16_t sessionID,
+			std::shared_ptr<const i2p::data::IdentityEx> identity, bool withOptions = false,
+			std::shared_ptr<const i2p::data::LeaseSet> leaseSet = nullptr);
 
 	private:
 		I2CPServer & m_Owner;
@@ -219,11 +246,15 @@ namespace client
 		std::mutex m_RoutingSessionsMutex;
 		std::unordered_map<i2p::data::IdentHash, std::shared_ptr<i2p::garlic::GarlicRoutingSession>>
 			m_RoutingSessions; // signing key->session
-		uint16_t m_SessionID;
-		uint32_t m_MessageID;
-		bool m_IsSendAccepted;
+		std::atomic<uint16_t> m_SessionID;
+		std::atomic<uint32_t> m_MessageID;
+		std::atomic<bool> m_IsSendAccepted;
+		std::atomic<bool> m_Terminated { false };
 
-		// to client
+		// to client; guarded by m_SendMutex and only started from the service
+		// thread. The queue holds complete buffers, so no caller-owned memory
+		// outlives a post.
+		std::mutex m_SendMutex;
 		bool m_IsSending;
 		uint8_t m_SendBuffer[I2CP_MAX_MESSAGE_LENGTH];
 		i2p::stream::SendBufferQueue m_SendQueue;
@@ -241,12 +272,24 @@ namespace client
 		auto & GetService () { return GetIOService (); };
 		bool IsSingleThread () const { return m_IsSingleThread; };
 
-		bool InsertSession (std::shared_ptr<I2CPSession> session);
+		// Inserts with an explicit, already validated identifier. The session's
+		// identifier is assigned only after the insertion succeeds.
+		bool InsertSession (std::shared_ptr<I2CPSession> session, uint16_t sessionID);
 		void RemoveSession (uint16_t sessionID);
 		std::shared_ptr<I2CPSession> FindSessionByIdentHash (const i2p::data::IdentHash & ident) const;
 
+		// The I2CP service runs on one worker thread. This is the local
+		// equivalent of RunnableService::IsInServiceThread(), which is not part
+		// of the public utility interface.
+		bool IsInServiceThread () const
+		{
+			std::lock_guard<std::mutex> l (m_ServiceThreadMutex);
+			return m_ServiceThreadID == std::this_thread::get_id ();
+		}
+
 	private:
 		void Accept ();
+		void StopSessions ();
 
 		void HandleAccept (
 			const boost::system::error_code & ecode, std::shared_ptr<boost::asio::ip::tcp::socket> socket);
@@ -256,6 +299,8 @@ namespace client
 		I2CPMessageHandler m_MessagesHandlers[256];
 		mutable std::mutex m_SessionsMutex;
 		std::map<uint16_t, std::shared_ptr<I2CPSession>> m_Sessions;
+		mutable std::mutex m_ServiceThreadMutex;
+		std::thread::id m_ServiceThreadID;
 
 		boost::asio::ip::tcp::acceptor m_Acceptor;
 
