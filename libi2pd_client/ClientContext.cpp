@@ -1,12 +1,16 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: ClientContext.
+ *
+ * Orchestrates client startup and teardown: it creates the shared local
+ * destination, starts the address book, proxies, configured tunnels, SAM,
+ * BOB, I2CP and torrent RPC servers, and parses tunnel sections and I2CP
+ * options on reload. Destinations and tunnels are tracked so they can be
+ * replaced or stopped without dangling references.
+ *
+ */
 
 #include <fstream>
 #include <iostream>
@@ -175,8 +179,7 @@ namespace client
 		}
 
 		std::vector<std::pair<boost::asio::ip::tcp::endpoint, std::shared_ptr<I2PService>>> clientTunnels;
-		std::vector<std::pair<std::pair<i2p::data::IdentHash, int>, std::shared_ptr<I2PServerTunnel>>>
-			serverTunnels;
+		std::vector<std::pair<std::pair<i2p::data::IdentHash, int>, std::shared_ptr<I2PServerTunnel>>> serverTunnels;
 		{
 			std::lock_guard<std::mutex> l (m_ProxyMutex);
 			clientTunnels.assign (m_ClientTunnels.begin (), m_ClientTunnels.end ());
@@ -555,8 +558,8 @@ namespace client
 		ReadI2CPOptionsFromConfig ("shareddest.", params);
 		params.Insert (I2CP_PARAM_OUTBOUND_NICKNAME, "SharedDest");
 
-		auto localDestination = CreateNewLocalDestination (false,
-			i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, i2p::data::CRYPTO_KEY_TYPE_ELGAMAL,
+		auto localDestination = CreateNewLocalDestination (false, i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519,
+			i2p::data::CRYPTO_KEY_TYPE_ELGAMAL,
 			&params); // non-public, EDDSA
 		{
 			std::lock_guard<std::mutex> l (m_DestinationsMutex);
@@ -1113,8 +1116,8 @@ namespace client
 						std::shared_ptr<I2PUDPServerTunnel> existing;
 						{
 							std::lock_guard<std::mutex> lock (m_ForwardsMutex);
-							auto ins = m_ServerForwards.insert (
-								std::make_pair (std::make_pair (localDestination->GetIdentHash (), port), serverTunnel));
+							auto ins = m_ServerForwards.insert (std::make_pair (
+								std::make_pair (localDestination->GetIdentHash (), port), serverTunnel));
 							inserted = ins.second;
 							if (!inserted)
 							{
@@ -1552,8 +1555,7 @@ namespace client
 			LogPrint (eLogError, "Clients: Can't create torrents RPC server of port: ", port, " :", ex.what ());
 		}
 		std::lock_guard<std::mutex> l (m_TorrentsTunnelsMutex);
-		if (server)
-			return m_TorrentsRPCServers.try_emplace (port, server).first->second;
+		if (server) return m_TorrentsRPCServers.try_emplace (port, server).first->second;
 		auto it = m_TorrentsRPCServers.find (port);
 		if (it != m_TorrentsRPCServers.end ()) return it->second;
 		return nullptr;

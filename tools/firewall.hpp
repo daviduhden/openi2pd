@@ -1,7 +1,15 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: firewall.
+ *
+ * Renders outbound allow rules for NTCP2/SSU2 endpoints in iptables, nftables,
+ * Windows Firewall and OpenBSD pf syntax. It accepts only validated numeric
+ * public addresses and rejects unsafe nft identifiers; nothing is executed.
+ *
  */
+
 #ifndef I2PD_TOOLS_FIREWALL_HPP
 #define I2PD_TOOLS_FIREWALL_HPP
 
@@ -99,8 +107,8 @@ inline std::optional<Endpoint> MakeEndpoint (std::string_view addressText, int p
 	{
 		const auto bytes = address.to_v6 ().to_bytes ();
 		if (address.to_v6 ().is_v4_mapped ()) return std::nullopt;
-		const bool ipv4Compatible = std::all_of (bytes.begin (), bytes.begin () + 12,
-			[] (unsigned char byte) { return byte == 0; });
+		const bool ipv4Compatible
+			= std::all_of (bytes.begin (), bytes.begin () + 12, [] (unsigned char byte) { return byte == 0; });
 		if (ipv4Compatible) return std::nullopt;
 		if (bytes[0] == 0xfe && (bytes[1] & 0xc0) == 0x80) return std::nullopt; // fe80::/10
 		if ((bytes[0] & 0xfe) == 0xfc) return std::nullopt; // fc00::/7 ULA
@@ -228,8 +236,8 @@ inline std::optional<std::string> Nftables (const Endpoint & endpoint, const Ren
 inline std::optional<std::string> Windows (const Endpoint & endpoint, const RenderOptions & options)
 {
 	if (!IsSafeRuleTag (options.ruleTag)) return std::nullopt;
-	const std::string name = "openi2pd " + std::string (TransportName (endpoint.transport)) + " " + options.ruleTag + " "
-		+ endpoint.address + ":" + std::to_string (endpoint.port);
+	const std::string name = "openi2pd " + std::string (TransportName (endpoint.transport)) + " " + options.ruleTag
+		+ " " + endpoint.address + ":" + std::to_string (endpoint.port);
 	return "New-NetFirewallRule -DisplayName '" + EscapePowerShell (name)
 		+ "' -Direction Outbound -Action Allow -Protocol " + (endpoint.transport == Transport::NTCP2 ? "TCP" : "UDP")
 		+ " -RemoteAddress '" + EscapePowerShell (endpoint.address) + "' -RemotePort " + std::to_string (endpoint.port);

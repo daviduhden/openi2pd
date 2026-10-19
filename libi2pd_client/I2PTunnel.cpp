@@ -1,12 +1,15 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: I2PTunnel.
+ *
+ * Implements TCP client and server tunnels that bridge local sockets to I2P
+ * streams, including HTTP header rewriting, IRC WEBIRC injection, optional
+ * TLS, gzip and destination access lists. Server tunnels resolve destinations
+ * before connecting and tie each connection to a handler's lifetime.
+ *
+ */
 
 #include <algorithm>
 #include <cassert>
@@ -412,8 +415,8 @@ namespace client
 					m_NumHeaders++;
 					if (m_NumHeaders > I2P_TUNNEL_MAX_NUM_HTTP_HEADERS)
 					{
-						LogPrint (eLogError, "I2PTunnel: HTTP headers number exceeds max ",
-							I2P_TUNNEL_MAX_NUM_HTTP_HEADERS);
+						LogPrint (
+							eLogError, "I2PTunnel: HTTP headers number exceeds max ", I2P_TUNNEL_MAX_NUM_HTTP_HEADERS);
 						Terminate ();
 						return;
 					}
@@ -465,8 +468,7 @@ namespace client
 				m_OutHeader << m_InHeader.view ().substr (m_InHeader.tellg ()); // data right after header
 				m_InHeader.str ("");
 				m_HeaderSent = true;
-				I2PTunnelConnection::Write (
-					(const uint8_t *)m_OutHeader.view ().data (), m_OutHeader.view ().size ());
+				I2PTunnelConnection::Write ((const uint8_t *)m_OutHeader.view ().data (), m_OutHeader.view ().size ());
 			}
 			else if (m_OutHeader.view ().size () < I2P_TUNNEL_HTTP_MAX_HEADER_SIZE
 				&& m_InHeader.view ().size () < I2P_TUNNEL_HTTP_MAX_HEADER_SIZE)
@@ -576,8 +578,7 @@ namespace client
 				m_OutHeader << m_InHeader.view ().substr (m_InHeader.tellg ()); // data right after header
 				m_InHeader.str ("");
 				m_HeaderSent = true;
-				I2PTunnelConnection::Write (
-					(const uint8_t *)m_OutHeader.view ().data (), m_OutHeader.view ().size ());
+				I2PTunnelConnection::Write ((const uint8_t *)m_OutHeader.view ().data (), m_OutHeader.view ().size ());
 			}
 			else if (m_OutHeader.view ().size () < I2P_TUNNEL_HTTP_MAX_HEADER_SIZE
 				&& m_InHeader.view ().size () < I2P_TUNNEL_HTTP_MAX_HEADER_SIZE)

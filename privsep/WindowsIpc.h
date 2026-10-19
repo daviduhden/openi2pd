@@ -1,9 +1,15 @@
 /*
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: WindowsIpc.
+ *
+ * Declares the Windows confinement and IPC layer: restricted worker tokens,
+ * Job Objects, policy checks and probing, plus the message-mode named-pipe
+ * server and channel that carry the shared Protocol frames. The worker
+ * inherits no handles and reconnects by pipe name.
+ *
+ */
 
 #ifndef I2PD_PRIVSEP_WINDOWS_IPC_H__
 #define I2PD_PRIVSEP_WINDOWS_IPC_H__
@@ -79,7 +85,9 @@ class WindowsHandle
 public:
 	WindowsHandle () = default;
 	explicit WindowsHandle (HANDLE handle)
-		: m_Handle (handle) { }
+		: m_Handle (handle)
+	{
+	}
 	~WindowsHandle ();
 	WindowsHandle (WindowsHandle && other) noexcept;
 	WindowsHandle & operator= (WindowsHandle && other) noexcept;
@@ -138,12 +146,13 @@ public:
 	const std::wstring & Name () const { return m_Name; }
 
 private:
-	explicit WindowsServer (HANDLE pipe, std::wstring name, std::wstring userSid,
-		PSECURITY_DESCRIPTOR security)
+	explicit WindowsServer (HANDLE pipe, std::wstring name, std::wstring userSid, PSECURITY_DESCRIPTOR security)
 		: m_Pipe (pipe)
 		, m_Name (std::move (name))
 		, m_UserSid (std::move (userSid))
-		, m_Security (security) { }
+		, m_Security (security)
+	{
+	}
 
 	HANDLE m_Pipe = INVALID_HANDLE_VALUE;
 	std::wstring m_Name;
@@ -175,7 +184,9 @@ private:
 	friend class WindowsServer;
 	explicit WindowsChannel (HANDLE pipe, bool serverSide = false)
 		: m_Pipe (pipe)
-		, m_ServerSide (serverSide) { }
+		, m_ServerSide (serverSide)
+	{
+	}
 
 	HANDLE m_Pipe = INVALID_HANDLE_VALUE;
 	bool m_ServerSide = false;

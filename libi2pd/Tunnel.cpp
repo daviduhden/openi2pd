@@ -1,12 +1,14 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Tunnel.
+ *
+ * Implements tunnel building, build-response validation and state transitions,
+ * the outbound and inbound data paths including zero-hop shortcuts, and the
+ * Tunnels manager loop that dispatches inbound messages and manages pools.
+ *
+ */
 
 #include <string.h>
 #include "I2PEndian.h"
@@ -277,7 +279,7 @@ namespace tunnel
 	{
 		return LatencyIsKnown ()
 			&& m_Latency.load (std::memory_order_relaxed)
-				> HIGH_LATENCY_PER_HOP * GetNumHops () + i2p::transport::transports.GetLocalDelay () * 1000;
+			> HIGH_LATENCY_PER_HOP * GetNumHops () + i2p::transport::transports.GetLocalDelay () * 1000;
 	}
 
 	void Tunnel::VisitTunnelHops (TunnelHopVisitor v)
@@ -467,7 +469,7 @@ namespace tunnel
 		// before the exploratory pool is detached.
 		Stop ();
 		auto exploratoryPool = GetExploratoryPool ();
-		m_ExploratoryPool.store (std::shared_ptr<TunnelPool> {});
+		m_ExploratoryPool.store (std::shared_ptr<TunnelPool> { });
 		DeleteTunnelPool (exploratoryPool);
 	}
 
@@ -640,7 +642,7 @@ namespace tunnel
 		// The exploratory pool is created lazily by the tunnel worker. Remove
 		// it as part of Stop() so a later Start() builds a fresh pool and an
 		// administrative reader cannot observe a stopped worker's pool.
-		auto exploratoryPool = m_ExploratoryPool.exchange (std::shared_ptr<TunnelPool> {});
+		auto exploratoryPool = m_ExploratoryPool.exchange (std::shared_ptr<TunnelPool> { });
 		if (exploratoryPool) DeleteTunnelPool (exploratoryPool);
 
 		// Drop every runtime reference so a later Start() cannot observe ids
@@ -1288,8 +1290,7 @@ namespace tunnel
 
 	void Tunnels::SetMaxNumTransitTunnels (uint32_t maxNumTransitTunnels)
 	{
-		if (maxNumTransitTunnels > 0
-			&& m_MaxNumTransitTunnels.load (std::memory_order_relaxed) != maxNumTransitTunnels)
+		if (maxNumTransitTunnels > 0 && m_MaxNumTransitTunnels.load (std::memory_order_relaxed) != maxNumTransitTunnels)
 		{
 			LogPrint (eLogDebug, "Tunnel: Max number of transit tunnels set to ", maxNumTransitTunnels);
 			m_MaxNumTransitTunnels.store (maxNumTransitTunnels, std::memory_order_relaxed);

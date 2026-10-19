@@ -1,12 +1,15 @@
 /*
-* Copyright (c) 2022-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: SSU2Session.
+ *
+ * Declares SSU2Session and its handshake state machine, packet and block codecs,
+ * ACK/retransmission state, fragment reassembly, relay handling and peer-test
+ * hooks. Protocol limits mirror the SSU2 specification and Java router
+ * behaviour (RTO, windows, fragment counts and resend budgets).
+ *
+ */
 
 #ifndef SSU2_SESSION_H__
 #define SSU2_SESSION_H__
@@ -595,8 +598,7 @@ namespace transport
 		std::unordered_map<uint32_t, std::shared_ptr<SSU2IncompleteMessage>> m_IncompleteMessages; // msgID -> I2NP
 		std::unordered_map<uint32_t, std::pair<std::shared_ptr<SSU2Session>, uint64_t>>
 			m_RelaySessions; // nonce->(Alice, timestamp) for Bob or nonce->(Charlie, timestamp) for Alice
-		std::unordered_map<uint32_t, uint32_t>
-			m_RecentRelayRequests; // nonce->timestamp, Bob replay cache (bounded)
+		std::unordered_map<uint32_t, uint32_t> m_RecentRelayRequests; // nonce->timestamp, Bob replay cache (bounded)
 		std::list<std::shared_ptr<I2NPMessage>> m_SendQueue;
 		i2p::I2NPMessagesHandler m_Handler;
 		std::list<std::shared_ptr<I2NPMessage>> m_IntermediateQueue; // from transports

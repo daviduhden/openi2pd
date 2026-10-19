@@ -1,7 +1,16 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: EnglishOnlyResourceTest.
+ *
+ * Instrumentation test that builds locale-overridden contexts for German,
+ * Spanish, French, Turkish and Arabic and asserts a sample of string resources
+ * still resolves to the English values. It never mutates the process locale and
+ * is intended for the manual device job.
+ *
  */
+
 package org.openi2pd.router;
 
 import static org.junit.Assert.assertEquals;
@@ -59,13 +68,13 @@ public final class EnglishOnlyResourceTest {
             expected[i] = base.getString(ENGLISH_STRINGS[i]);
         }
 
-        for (String tag : new String[]{"de-DE", "es-ES", "fr-FR", "tr-TR", "ar-EG"}) {
+        for (String tag : new String[] {"de-DE", "es-ES", "fr-FR", "tr-TR", "ar-EG"}) {
             Configuration configuration = new Configuration(base.getResources().getConfiguration());
             configuration.setLocale(Locale.forLanguageTag(tag));
             Context localized = base.createConfigurationContext(configuration);
             for (int i = 0; i < ENGLISH_STRINGS.length; i++) {
-                assertEquals("locale " + tag + " changed string resource " + i,
-                        expected[i], localized.getString(ENGLISH_STRINGS[i]));
+                assertEquals("locale " + tag + " changed string resource " + i, expected[i],
+                        localized.getString(ENGLISH_STRINGS[i]));
             }
         }
     }

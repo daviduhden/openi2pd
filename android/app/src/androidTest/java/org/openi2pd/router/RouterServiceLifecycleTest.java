@@ -1,7 +1,16 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: RouterServiceLifecycleTest.
+ *
+ * Instrumentation test that binds the non-exported {@link RouterService}
+ * through {@code ServiceTestRule}, checks the binder is the in-process
+ * {@code LocalBinder} and unbinds again. It clears the persisted run flag first
+ * so binding never starts the daemon or opens sockets.
+ *
  */
+
 package org.openi2pd.router;
 
 import static org.junit.Assert.assertNotNull;
@@ -31,8 +40,7 @@ import org.junit.runner.RunWith;
  */
 @RunWith(AndroidJUnit4.class)
 public final class RouterServiceLifecycleTest {
-    @Rule
-    public final ServiceTestRule serviceRule = new ServiceTestRule();
+    @Rule public final ServiceTestRule serviceRule = new ServiceTestRule();
 
     @Test
     public void bindsNonExportedRouterServiceAndReturnsLocalBinder() throws Exception {

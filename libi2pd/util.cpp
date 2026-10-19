@@ -1,12 +1,14 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: util.
+ *
+ * Implements service thread lifecycle, option mapping encoding and decoding with
+ * bounds checks, platform-specific MTU discovery and address classification
+ * helpers.
+ *
+ */
 
 #include <cstdlib>
 #include <string>
@@ -357,8 +359,8 @@ namespace util
 					if (localInterfaceAddress->sin_addr.S_un.S_addr == inputAddress.sin_addr.S_un.S_addr)
 					{
 						char addr[INET_ADDRSTRLEN];
-						InetNtopA (AF_INET, &(((struct sockaddr_in *)localInterfaceAddress)->sin_addr), addr,
-							INET_ADDRSTRLEN);
+						InetNtopA (
+							AF_INET, &(((struct sockaddr_in *)localInterfaceAddress)->sin_addr), addr, INET_ADDRSTRLEN);
 
 						auto result = pCurrAddresses->Mtu;
 						FREE (pAddresses);

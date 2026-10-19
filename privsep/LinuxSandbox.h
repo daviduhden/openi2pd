@@ -1,9 +1,15 @@
 /*
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: LinuxSandbox.
+ *
+ * Declares the Linux worker policy classes and the Landlock, seccomp,
+ * network-namespace, capability and cgroup-v2 helpers used to confine
+ * workers. Profiles separate network, persistent-write, socket-creation and
+ * namespace requirements; probing only reports kernel support.
+ *
+ */
 
 #ifndef I2PD_PRIVSEP_LINUX_SANDBOX_H__
 #define I2PD_PRIVSEP_LINUX_SANDBOX_H__
@@ -68,7 +74,7 @@ struct LinuxCgroupV2Limits
 {
 	std::string path;
 	uint64_t memoryMax = 0; // 0 leaves memory.max untouched
-	uint32_t pidsMax = 0;   // 0 leaves pids.max untouched
+	uint32_t pidsMax = 0; // 0 leaves pids.max untouched
 	bool moveSelf = true;
 };
 

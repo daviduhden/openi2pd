@@ -1,12 +1,17 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Datagram.
+ *
+ * Serialises datagram1, datagram2 and datagram3 payloads into I2NP Data
+ * messages and dispatches inbound Data, raw and protocol-specific payloads to
+ * port-keyed receivers. Datagram2 signatures cover the remote hash, flags,
+ * options, offline section and payload; Datagram3 options use a bounded
+ * 16-bit-length-prefixed Mapping, and per-peer sessions handle routing paths,
+ * LeaseSet refresh, send queues and idle cleanup.
+ *
+ */
 
 #include <string.h>
 #include "Crypto.h"
@@ -66,8 +71,8 @@ namespace datagram
 		FlushSendQueue (session);
 	}
 
-	void DatagramDestination::SendRawDatagramTo (const uint8_t * payload, size_t len, const i2p::data::IdentHash & identity,
-		uint16_t fromPort, uint16_t toPort, uint8_t protocol)
+	void DatagramDestination::SendRawDatagramTo (const uint8_t * payload, size_t len,
+		const i2p::data::IdentHash & identity, uint16_t fromPort, uint16_t toPort, uint8_t protocol)
 	{
 		auto session = ObtainSession (identity);
 		SendRawDatagram (session, payload, len, fromPort, toPort, protocol);
@@ -123,8 +128,8 @@ namespace datagram
 				}
 				else
 					m_Owner->Sign (payload, len, signature.data ());
-				msg = CreateDataMessage ({ { m_From.data (), m_From.size () }, { signature.data (), signature.size () },
-											 { payload, len } },
+				msg = CreateDataMessage (
+					{ { m_From.data (), m_From.size () }, { signature.data (), signature.size () }, { payload, len } },
 					fromPort, toPort, i2p::client::PROTOCOL_TYPE_DATAGRAM, !session->IsRatchets ()); // datagram1
 				break;
 			}
@@ -135,7 +140,8 @@ namespace datagram
 				// offline section || payload; the toHash is not transmitted.
 				const auto & keys = m_Owner->GetPrivateKeys ();
 				bool isOfflineSignature = keys.IsOfflineSignature ();
-				uint8_t flags[2] = { 0x00, (uint8_t)(0x02 | (isOfflineSignature ? DATAGRAM2_FLAG_OFFLINE_SIGNATURE : 0)) };
+				uint8_t flags[2]
+					= { 0x00, (uint8_t)(0x02 | (isOfflineSignature ? DATAGRAM2_FLAG_OFFLINE_SIGNATURE : 0)) };
 				std::vector<uint8_t> optionsBuf;
 				if (options)
 				{
@@ -161,8 +167,8 @@ namespace datagram
 				}
 				std::vector<uint8_t> signedData;
 				signedData.reserve (32 + 2 + optionsBuf.size () + offlineSignature.size () + len);
-				signedData.insert (signedData.end (), session->GetRemoteIdent ().data (),
-					session->GetRemoteIdent ().data () + 32);
+				signedData.insert (
+					signedData.end (), session->GetRemoteIdent ().data (), session->GetRemoteIdent ().data () + 32);
 				signedData.insert (signedData.end (), flags, flags + 2);
 				signedData.insert (signedData.end (), optionsBuf.begin (), optionsBuf.end ());
 				signedData.insert (signedData.end (), offlineSignature.begin (), offlineSignature.end ());
@@ -171,10 +177,10 @@ namespace datagram
 				if (!signature.empty ())
 				{
 					m_Owner->Sign (signedData.data (), signedData.size (), signature.data ());
-					msg = CreateDataMessage ({ { m_From.data (), m_From.size () }, { flags, 2 },
-												 { optionsBuf.data (), optionsBuf.size () },
-												 { offlineSignature.data (), offlineSignature.size () }, { payload, len },
-												 { signature.data (), signature.size () } },
+					msg = CreateDataMessage (
+						{ { m_From.data (), m_From.size () }, { flags, 2 }, { optionsBuf.data (), optionsBuf.size () },
+							{ offlineSignature.data (), offlineSignature.size () }, { payload, len },
+							{ signature.data (), signature.size () } },
 						fromPort, toPort, i2p::client::PROTOCOL_TYPE_DATAGRAM2, false); // datagram2
 				}
 				break;
@@ -334,8 +340,7 @@ namespace datagram
 				return;
 			}
 		}
-		size_t signatureLen
-			= transientVerifier ? transientVerifier->GetSignatureLen () : identity.GetSignatureLen ();
+		size_t signatureLen = transientVerifier ? transientVerifier->GetSignatureLen () : identity.GetSignatureLen ();
 		if (offset > len || signatureLen > len - offset)
 		{
 			LogPrint (eLogWarning, "Datagram: datagram2 is too short ", len, " expected ", offset + signatureLen);
@@ -433,8 +438,8 @@ namespace datagram
 		{
 			if (from && !ls->IsEncryptionKey (from->GetRemoteStaticKeyType (), from->GetRemoteStaticKey ()))
 			{
-				LogPrint (eLogError, "Datagram: Remote LeaseSet static key mismatch for datagram3 from ",
-					ident.ToBase32 ());
+				LogPrint (
+					eLogError, "Datagram: Remote LeaseSet static key mismatch for datagram3 from ", ident.ToBase32 ());
 				return;
 			}
 			if (!session)
@@ -784,8 +789,8 @@ namespace datagram
 				{
 					m_RequestingLS = true;
 					m_LocalDestination->RequestDestination (m_RemoteIdent,
-						std::bind (&DatagramSession::HandleLeaseSetUpdated, shared_from_this (),
-							std::placeholders::_1));
+						std::bind (
+							&DatagramSession::HandleLeaseSetUpdated, shared_from_this (), std::placeholders::_1));
 				}
 				return nullptr;
 			}

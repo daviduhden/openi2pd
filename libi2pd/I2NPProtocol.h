@@ -1,12 +1,15 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: I2NPProtocol.
+ *
+ * I2NP wire format: message type IDs, field offsets, buffer accessors and header conversion
+ * for NTCP2 framing, with expiration and checksum handling. Also defines tunnel-build record
+ * layouts, database lookup/search-reply bounds, strict DatabaseSearchReply parsing, message
+ * factories and a handler that throttles tunnel-build traffic.
+ *
+ */
 
 #ifndef I2NP_PROTOCOL_H__
 #define I2NP_PROTOCOL_H__
@@ -333,7 +336,7 @@ struct DatabaseSearchReply
 	std::vector<i2p::data::IdentHash> peers;
 };
 
-bool ParseDatabaseSearchReply (const uint8_t * buf, size_t len, DatabaseSearchReply& reply);
+bool ParseDatabaseSearchReply (const uint8_t * buf, size_t len, DatabaseSearchReply & reply);
 
 std::shared_ptr<I2NPMessage> CreateDatabaseStoreMsg (std::shared_ptr<const i2p::data::RouterInfo> router = nullptr,
 	uint32_t replyToken = 0, std::shared_ptr<const i2p::tunnel::InboundTunnel> replyTunnel = nullptr);

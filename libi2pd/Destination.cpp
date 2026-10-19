@@ -1,12 +1,17 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Destination.
+ *
+ * Implements the client-destination lifecycle: tunnel-pool construction,
+ * LeaseSet generation and re-signing, floodfill publication with retry and
+ * delivery verification, and remote LeaseSet resolution. Garlic and delivery
+ * status messages are posted to the destination's own asio service, while
+ * cached LeaseSets, publication intervals and pending lookups are expired on
+ * the destination's cleanup timer.
+ *
+ */
 
 #include <algorithm>
 #include <cassert>
@@ -442,9 +447,8 @@ namespace client
 					return ls;
 				}
 
-				auto ls = std::make_shared<i2p::data::LeaseSet2> (storeType, buf + offset,
-					len - offset, true, shared_from_this (),
-					from ? from->GetRemoteStaticKeyType () : GetPreferredCryptoType ());
+				auto ls = std::make_shared<i2p::data::LeaseSet2> (storeType, buf + offset, len - offset, true,
+					shared_from_this (), from ? from->GetRemoteStaticKeyType () : GetPreferredCryptoType ());
 				if (from && !ls->IsEncryptionKey (from->GetRemoteStaticKeyType (), from->GetRemoteStaticKey ()))
 				{
 					LogPrint (eLogError, "Destination: Remote LeaseSet static key mismatch");
@@ -455,8 +459,7 @@ namespace client
 
 			std::lock_guard<std::mutex> lock (m_RemoteLeaseSetsMutex);
 			auto it = m_RemoteLeaseSets.find (key);
-			if (it != m_RemoteLeaseSets.end ()
-				&& it->second->GetStoreType () == storeType) // update only if same type
+			if (it != m_RemoteLeaseSets.end () && it->second->GetStoreType () == storeType) // update only if same type
 			{
 				if (it->second->IsNewer (buf + offset, len - offset))
 				{
@@ -544,9 +547,7 @@ namespace client
 				LogPrint (eLogWarning, "Destination: Couldn't find request for encrypted LeaseSet2");
 			break;
 		}
-		default:
-			LogPrint (eLogError, "Destination: Unexpected client's DatabaseStore type ",
-				storeType, ", dropped");
+		default: LogPrint (eLogError, "Destination: Unexpected client's DatabaseStore type ", storeType, ", dropped");
 		}
 
 		if (!request)
@@ -578,7 +579,8 @@ namespace client
 			LogPrint (eLogWarning, "Destination: Database search reply has zero sender hash");
 			return;
 		}
-		LogPrint (eLogDebug, "Destination: DatabaseSearchReply for ", reply.key.ToBase64 (), " num=", reply.peers.size ());
+		LogPrint (
+			eLogDebug, "Destination: DatabaseSearchReply for ", reply.key.ToBase64 (), " num=", reply.peers.size ());
 		auto it = m_LeaseSetRequests.find (reply.key);
 		if (it != m_LeaseSetRequests.end ())
 		{

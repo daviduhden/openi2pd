@@ -1,12 +1,16 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Reseed.
+ *
+ * Implements network bootstrap from SU3-signed ZIP bundles, either local files
+ * or HTTPS/Yggdrasil reseed servers with optional HTTP or SOCKS proxies and
+ * redirects. SU3 headers, content and ZIP entries are length-bounded, RSA-4096
+ * SHA-512 signatures are checked against loaded certificates, and accepted
+ * RouterInfos are imported with duplicate and expiry filtering.
+ *
+ */
 
 #include <array>
 #include <string.h>
@@ -284,8 +288,8 @@ namespace data
 		const size_t expectedSignatureLength = GetSU3SignatureLength (signatureType);
 		if (!expectedSignatureLength || signatureLength != expectedSignatureLength)
 		{
-			LogPrint (eLogError, "Reseed: Invalid SU3 signature type/length ", (int)signatureType, "/",
-				signatureLength);
+			LogPrint (
+				eLogError, "Reseed: Invalid SU3 signature type/length ", (int)signatureType, "/", signatureLength);
 			return 0;
 		}
 		if (!skip (1)) return 0; // unused
@@ -567,8 +571,7 @@ namespace data
 				}
 				else // no compression
 				{
-					if (i2p::data::netdb.AddRouterInfo (
-							compressed.data (), static_cast<int> (compressed.size ())))
+					if (i2p::data::netdb.AddRouterInfo (compressed.data (), static_cast<int> (compressed.size ())))
 						numFiles++;
 				}
 				if (bitFlag & ZIP_BIT_FLAG_DATA_DESCRIPTOR)

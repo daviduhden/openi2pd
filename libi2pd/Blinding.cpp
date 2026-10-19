@@ -1,12 +1,17 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Blinding.
+ *
+ * Implements Proposal 149 destination blinding for EdDSA and RedDSA keys:
+ * b33 address parsing, credential/subcredential derivation, daily key
+ * blinding and store-hash calculation. Only canonical base32, supported
+ * signature types and defined flag bits are accepted; malformed, non-blindable
+ * or secret-requiring addresses produce an invalid key instead of a usable
+ * address.
+ *
+ */
 
 #include <cstdint>
 #include <cctype>
@@ -134,8 +139,7 @@ namespace data
 		// wrong store key while still reporting a usable address.
 		const bool blindable = m_SigType == i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519
 			|| m_SigType == i2p::data::SIGNING_KEY_TYPE_REDDSA_SHA512_ED25519;
-		if (blindedVerifier && blindable
-			&& m_BlindedSigType == i2p::data::SIGNING_KEY_TYPE_REDDSA_SHA512_ED25519
+		if (blindedVerifier && blindable && m_BlindedSigType == i2p::data::SIGNING_KEY_TYPE_REDDSA_SHA512_ED25519
 			&& offset + m_PublicKey.size () == l)
 		{
 			memcpy (m_PublicKey.data (), addr.data () + offset, m_PublicKey.size ());
@@ -145,8 +149,7 @@ namespace data
 		{
 			if (!blindedVerifier)
 				LogPrint (eLogError, "Blinding: Unknown signature type ", (int)m_SigType, " in b33");
-			else if (!blindable
-				|| m_BlindedSigType != i2p::data::SIGNING_KEY_TYPE_REDDSA_SHA512_ED25519)
+			else if (!blindable || m_BlindedSigType != i2p::data::SIGNING_KEY_TYPE_REDDSA_SHA512_ED25519)
 				LogPrint (eLogError, "Blinding: Unsupported b33 signature types ", (int)m_SigType, " -> ",
 					(int)m_BlindedSigType);
 			else
@@ -287,8 +290,7 @@ namespace data
 					ok = false;
 					break;
 				}
-		if (ok)
-			ok = EVP_DigestFinal_ex (ctx, (uint8_t *)hash, nullptr) == 1;
+		if (ok) ok = EVP_DigestFinal_ex (ctx, (uint8_t *)hash, nullptr) == 1;
 		if (!ok) memset (hash, 0, 32);
 		EVP_MD_CTX_free (ctx);
 	}

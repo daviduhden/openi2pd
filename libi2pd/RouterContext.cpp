@@ -1,12 +1,17 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: RouterContext.
+ *
+ * Implements the process-wide router context: key/identity loading or
+ * generation, RouterInfo construction with NTCP2 and SSU2 addresses,
+ * capabilities, family and congestion data, publication and router.info
+ * persistence. Status, bandwidth and reachability updates are made safe for
+ * concurrent transport/tunnel access under locks and atomics, with timers on
+ * the context's asio service.
+ *
+ */
 
 #include <fstream>
 #include <openssl/rand.h>
@@ -102,7 +107,7 @@ void RouterContext::Start ()
 void RouterContext::Stop ()
 {
 	std::lock_guard<std::mutex> lifecycle (m_ServiceLifecycleMutex);
-	auto service = m_Service.exchange (std::shared_ptr<RouterService> {});
+	auto service = m_Service.exchange (std::shared_ptr<RouterService> { });
 	if (!service)
 	{
 		// A partially initialised context may still own timers.
@@ -604,7 +609,8 @@ void RouterContext::PublishSSU2Address (int port, bool publish, bool v4, bool v6
 	for (auto & address : *addresses)
 	{
 		if (address && address->IsSSU2 ()
-			&& (!address->port || address->port != port || address->published != publish || address->v != version
+			&& (!address->port || address->port != port || address->published != publish
+				|| address->v != version
 				// A loaded RouterInfo may already have the right port/published/
 				// version but lack the current B/C caps (older builds did not
 				// publish B on non-published addresses). Refresh them too.
@@ -1335,8 +1341,7 @@ void RouterContext::SetMTU (int mtu, bool v4)
 	bool updated = false;
 	for (auto & addr : *addresses)
 	{
-		if (addr && addr->ssu && ((v4 && addr->IsV4 ()) || (!v4 && addr->IsV6 ()))
-			&& addr->ssu->mtu != mtu)
+		if (addr && addr->ssu && ((v4 && addr->IsV4 ()) || (!v4 && addr->IsV6 ())) && addr->ssu->mtu != mtu)
 		{
 			addr->ssu->mtu = mtu;
 			LogPrint (eLogDebug, "Router: MTU for ", v4 ? "ipv4" : "ipv6", " address ", addr->host.to_string (),
@@ -1809,8 +1814,8 @@ uint64_t RouterContext::Publish ()
 		{
 			auto service = m_Service.load (std::memory_order_acquire);
 			if (service)
-				boost::asio::post (service->GetService (),
-					[this] () { HandlePublishResendTimer (boost::system::error_code ()); });
+				boost::asio::post (
+					service->GetService (), [this] () { HandlePublishResendTimer (boost::system::error_code ()); });
 		};
 		if (i2p::transport::transports.IsConnected (floodfill->GetIdentHash ()) || // already connected
 			(floodfill->IsReachableFrom (i2p::context.GetRouterInfo ()) && // are we able to connect

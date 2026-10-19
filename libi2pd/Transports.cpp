@@ -1,12 +1,14 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Transports.
+ *
+ * Implements transport startup and shutdown, peer and session management,
+ * message queueing with retry, ban-list maintenance, bandwidth sampling and the
+ * X25519 key supplier, together with periodic peer tests and RouterInfo updates.
+ *
+ */
 
 #include <boost/algorithm/string.hpp> // for boost::to_lower
 #include "Log.h"
@@ -810,7 +812,8 @@ namespace transport
 			// try recently connected SSU2 if any
 			auto supportedTransports = context.GetRouterInfo ().GetCompatibleTransports (false)
 				& peer->router->GetCompatibleTransports (false);
-			if (m_SSU2Server && (supportedTransports & (i2p::data::RouterInfo::eSSU2V4 | i2p::data::RouterInfo::eSSU2V6))
+			if (m_SSU2Server
+				&& (supportedTransports & (i2p::data::RouterInfo::eSSU2V4 | i2p::data::RouterInfo::eSSU2V6))
 				&& peer->router->HasProfile ())
 			{
 				auto ep = peer->router->GetProfile ()->GetLastEndpoint ();
@@ -1186,8 +1189,8 @@ namespace transport
 			uint8_t activeTransports = 0;
 			for (const auto & session : peer->sessions)
 				if (session) activeTransports |= session->GetTransportType ();
-			peers.push_back (PeerSnapshot { ident, peer->numAttempts.load (), peer->sessions.size (),
-				activeTransports, peer->isHighBandwidth.load () });
+			peers.push_back (PeerSnapshot { ident, peer->numAttempts.load (), peer->sessions.size (), activeTransports,
+				peer->isHighBandwidth.load () });
 		}
 		return peers;
 	}

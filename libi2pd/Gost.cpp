@@ -1,12 +1,16 @@
 /*
-* Copyright (c) 2013-2020, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Gost.
+ *
+ * Implements GOST R 34.10 curve arithmetic, signing, verification and
+ * public-key recovery for the CryptoPro-A and TC26 512 parameter sets, along
+ * with the GOST R 34.11-2012 256/512-bit hash. OpenSSL objects and static
+ * curve parameters are owned by RAII wrappers and shared through thread-safe
+ * one-time initialisation.
+ *
+ */
 
 #include <string.h>
 #include <array>
@@ -110,8 +114,8 @@ namespace crypto
 		// Reject encodings that are not a finite point on the curve. An
 		// unchecked affine point used to reach the verification equation as
 		// the point at infinity.
-		if (!EC_POINT_set_affine_coordinates (m_Group, p, x, y, nullptr)
-			|| EC_POINT_is_at_infinity (m_Group, p) || !EC_POINT_is_on_curve (m_Group, p, nullptr))
+		if (!EC_POINT_set_affine_coordinates (m_Group, p, x, y, nullptr) || EC_POINT_is_at_infinity (m_Group, p)
+			|| !EC_POINT_is_on_curve (m_Group, p, nullptr))
 		{
 			EC_POINT_free (p);
 			return nullptr;
@@ -179,8 +183,8 @@ namespace crypto
 		BIGNUM * z2 = BN_CTX_get (ctx);
 		BIGNUM * x = BN_CTX_get (ctx);
 		EC_POINT * C = EC_POINT_new (m_Group);
-		bool ret = q && h && z1 && z2 && x && C && EC_GROUP_get_order (m_Group, q, ctx) == 1
-			&& !BN_is_zero (r) && !BN_is_zero (s) && BN_cmp (r, q) < 0 && BN_cmp (s, q) < 0;
+		bool ret = q && h && z1 && z2 && x && C && EC_GROUP_get_order (m_Group, q, ctx) == 1 && !BN_is_zero (r)
+			&& !BN_is_zero (s) && BN_cmp (r, q) < 0 && BN_cmp (s, q) < 0;
 		if (ret)
 		{
 			BN_mod (h, digest, q, ctx); // h = digest % q
@@ -275,8 +279,7 @@ namespace crypto
 		auto x = ParseHexBIGNUM (params[paramSet][4]);
 		auto y = ParseHexBIGNUM (params[paramSet][5]);
 		auto curve = std::make_unique<GOSTR3410Curve> (a.get (), b.get (), p.get (), q.get (), x.get (), y.get ());
-		if (!curve->GetGroup ())
-			return nullptr;
+		if (!curve->GetGroup ()) return nullptr;
 		return curve;
 	}
 
@@ -291,9 +294,8 @@ namespace crypto
 
 		const int index = static_cast<int> (paramSet);
 		if (index < 0 || index >= eGOSTR3410NumParamSets) return invalidCurve;
-		std::call_once (onceFlags[index], [index] () {
-			curves[index] = CreateGOSTR3410Curve (static_cast<GOSTR3410ParamSet> (index));
-		});
+		std::call_once (onceFlags[index],
+			[index] () { curves[index] = CreateGOSTR3410Curve (static_cast<GOSTR3410ParamSet> (index)); });
 		return curves[index];
 	}
 

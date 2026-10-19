@@ -1,8 +1,15 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * This file is part of openi2pd and licensed under BSD-3-Clause
+ * openi2pd: OpenBSDSandbox.
+ *
+ * Builds least-privilege pledge and unveil policies per worker role, merges
+ * duplicate path rules by unioning their permissions, then applies unveil
+ * (locking the list) before pledge. Helpers open and validate pre-opened
+ * directories and descriptors and report whether a policy grants network,
+ * persistent-write or process-creation capability.
+ *
  */
 
 #include "OpenBSDSandbox.h"
@@ -40,10 +47,8 @@ namespace
 
 	bool AddUnveil (OpenBSDPolicy & policy, std::string_view path, std::string_view permissions)
 	{
-		if (path.empty ())
-			return true;
-		if (path.front () != '/')
-			return false; // configuration paths must be resolved before the sandbox
+		if (path.empty ()) return true;
+		if (path.front () != '/') return false; // configuration paths must be resolved before the sandbox
 		if (path.find ('\0') != std::string_view::npos || permissions.find ('\0') != std::string_view::npos)
 			return false;
 		for (auto & rule : policy.unveil)
@@ -154,10 +159,8 @@ i2p::expected<OpenBSDPolicy, std::string> BuildOpenBSDPolicy (
 			AppendPromise (policy.pledge, "fattr");
 			if (config.useUnveil)
 			{
-				if (!AddUnveil (policy, "/etc/localtime", "r"))
-					return PolicyError ("invalid localtime unveil rule");
-				if (!AddUnveil (policy, config.logPath, "rwc"))
-					return PolicyError ("invalid log unveil rule");
+				if (!AddUnveil (policy, "/etc/localtime", "r")) return PolicyError ("invalid localtime unveil rule");
+				if (!AddUnveil (policy, config.logPath, "rwc")) return PolicyError ("invalid log unveil rule");
 			}
 		}
 		break;
@@ -226,14 +229,11 @@ i2p::expected<void, std::string> ApplyOpenBSDPolicy (const OpenBSDPolicy & polic
 	{
 		for (const auto & rule : policy.unveil)
 		{
-			if (rule.path.empty () || rule.permissions.empty ())
-				return i2p::unexpected ("empty unveil rule");
+			if (rule.path.empty () || rule.permissions.empty ()) return i2p::unexpected ("empty unveil rule");
 			if (unveil (rule.path.c_str (), rule.permissions.c_str ()) == -1)
-				return i2p::unexpected (
-					"unveil " + rule.path + ": " + std::string (strerror (errno)));
+				return i2p::unexpected ("unveil " + rule.path + ": " + std::string (strerror (errno)));
 		}
-		if (unveil (nullptr, nullptr) == -1)
-			return i2p::unexpected (std::string ("unveil lock: ") + strerror (errno));
+		if (unveil (nullptr, nullptr) == -1) return i2p::unexpected (std::string ("unveil lock: ") + strerror (errno));
 	}
 	if (policy.usePledge && pledge (policy.pledge.c_str (), nullptr) == -1)
 		return i2p::unexpected ("pledge " + policy.pledge + ": " + std::string (strerror (errno)));
@@ -246,8 +246,7 @@ i2p::expected<void, std::string> ApplyOpenBSDPolicy (const OpenBSDPolicy & polic
 
 i2p::expected<int, std::string> OpenPreopenedDirectory (std::string_view path)
 {
-	if (path.empty () || path.front () != '/')
-		return i2p::unexpected ("pre-opened directory path must be absolute");
+	if (path.empty () || path.front () != '/') return i2p::unexpected ("pre-opened directory path must be absolute");
 	int flags = O_RDONLY | O_CLOEXEC;
 #ifdef O_DIRECTORY
 	flags |= O_DIRECTORY;
@@ -257,15 +256,13 @@ i2p::expected<int, std::string> OpenPreopenedDirectory (std::string_view path)
 #endif
 	std::string copy (path);
 	const int fd = ::open (copy.c_str (), flags);
-	if (fd < 0)
-		return i2p::unexpected ("open pre-opened directory: " + std::string (strerror (errno)));
+	if (fd < 0) return i2p::unexpected ("open pre-opened directory: " + std::string (strerror (errno)));
 	struct stat info { };
 	if (fstat (fd, &info) != 0 || !S_ISDIR (info.st_mode))
 	{
 		const int error = errno;
 		::close (fd);
-		return i2p::unexpected (
-			"pre-opened directory is not a directory: " + std::string (strerror (error)));
+		return i2p::unexpected ("pre-opened directory is not a directory: " + std::string (strerror (error)));
 	}
 	return fd;
 }
@@ -279,10 +276,8 @@ i2p::expected<void, std::string> ValidatePreopenedDescriptor (int fd, bool direc
 	struct stat info { };
 	if (fstat (fd, &info) != 0)
 		return i2p::unexpected ("fstat pre-opened descriptor: " + std::string (strerror (errno)));
-	if (directory && !S_ISDIR (info.st_mode))
-		return i2p::unexpected ("pre-opened descriptor is not a directory");
-	if (!directory && !S_ISREG (info.st_mode))
-		return i2p::unexpected ("pre-opened descriptor is not a regular file");
+	if (directory && !S_ISDIR (info.st_mode)) return i2p::unexpected ("pre-opened descriptor is not a directory");
+	if (!directory && !S_ISREG (info.st_mode)) return i2p::unexpected ("pre-opened descriptor is not a regular file");
 	return { };
 }
 

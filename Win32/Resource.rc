@@ -1,8 +1,15 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Resource.
+ *
+ * Defines the English (United States) resources for the Windows build: the
+ * MAINICON application and tray icon plus inclusion of the version resource
+ * when not editing in App Studio.
+ *
  */
+
 #include "resource.h"
 
 #define APSTUDIO_READONLY_SYMBOLS
@@ -38,4 +45,3 @@ MAINICON ICON "openi2pd.ico"
 #ifndef APSTUDIO_INVOKED
 #include "Resource.rc2"
 #endif		// not APSTUDIO_INVOKED
-

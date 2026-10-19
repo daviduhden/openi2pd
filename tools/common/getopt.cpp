@@ -1,7 +1,15 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: getopt.
+ *
+ * Windows/MSVC implementation of the getopt and getopt_long subset used by the
+ * tools, preserving their historical short and long command-line forms. On
+ * POSIX the translation unit is empty and the system <getopt.h> is used.
+ *
  */
+
 #ifdef _WIN32
 
 #include "getopt.h"
@@ -19,12 +27,12 @@ extern "C"
 
 namespace
 {
-	int g_OptionPosition = 1;
+int g_OptionPosition = 1;
 
-	void ReportUnknown (const char * argv0, int option)
-	{
-		if (opterr) std::cerr << argv0 << ": invalid option -- '" << static_cast<char> (option) << "'\n";
-	}
+void ReportUnknown (const char * argv0, int option)
+{
+	if (opterr) std::cerr << argv0 << ": invalid option -- '" << static_cast<char> (option) << "'\n";
+}
 }
 
 extern "C" int getopt (int argc, char * const argv[], const char * optstring)

@@ -1,12 +1,17 @@
 /*
-* Copyright (c) 2013-2025, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: UnixDaemon.
+ *
+ * Implements the UNIX daemon lifecycle: optional fork/setsid daemonisation
+ * with a readiness pipe, pidfile locking and rlimit setup, signal-driven
+ * reload and shutdown, and graceful tunnel draining. On OpenBSD it installs
+ * the startup pledge, spawns privilege-separated workers before the sandbox,
+ * then applies validated unveil rules and a fixed runtime pledge; an add-on
+ * policy file may not grant proc or exec.
+ *
+ */
 
 #include "Daemon.h"
 
@@ -47,49 +52,49 @@
 
 namespace
 {
-	// Owns a short-lived file descriptor for the daemon startup paths. It is
-	// local to this translation unit: the daemon only needs deterministic
-	// close-on-return, not a general-purpose global descriptor type.
-	class UniqueFd
+// Owns a short-lived file descriptor for the daemon startup paths. It is
+// local to this translation unit: the daemon only needs deterministic
+// close-on-return, not a general-purpose global descriptor type.
+class UniqueFd
+{
+public:
+	UniqueFd () = default;
+	explicit UniqueFd (int fd)
+		: m_Fd (fd)
 	{
-	public:
-		UniqueFd () = default;
-		explicit UniqueFd (int fd)
-			: m_Fd (fd)
-		{
-		}
-		~UniqueFd () { Reset (); }
+	}
+	~UniqueFd () { Reset (); }
 
-		UniqueFd (const UniqueFd &) = delete;
-		UniqueFd & operator= (const UniqueFd &) = delete;
+	UniqueFd (const UniqueFd &) = delete;
+	UniqueFd & operator= (const UniqueFd &) = delete;
 
-		UniqueFd (UniqueFd && other) noexcept
-			: m_Fd (other.Release ())
-		{
-		}
-		UniqueFd & operator= (UniqueFd && other) noexcept
-		{
-			if (this != &other) Reset (other.Release ());
-			return *this;
-		}
+	UniqueFd (UniqueFd && other) noexcept
+		: m_Fd (other.Release ())
+	{
+	}
+	UniqueFd & operator= (UniqueFd && other) noexcept
+	{
+		if (this != &other) Reset (other.Release ());
+		return *this;
+	}
 
-		int Get () const { return m_Fd; }
-		bool IsValid () const { return m_Fd >= 0; }
-		int Release ()
-		{
-			int fd = m_Fd;
-			m_Fd = -1;
-			return fd;
-		}
-		void Reset (int fd = -1)
-		{
-			if (m_Fd >= 0) close (m_Fd);
-			m_Fd = fd;
-		}
+	int Get () const { return m_Fd; }
+	bool IsValid () const { return m_Fd >= 0; }
+	int Release ()
+	{
+		int fd = m_Fd;
+		m_Fd = -1;
+		return fd;
+	}
+	void Reset (int fd = -1)
+	{
+		if (m_Fd >= 0) close (m_Fd);
+		m_Fd = fd;
+	}
 
-	private:
-		int m_Fd = -1;
-	};
+private:
+	int m_Fd = -1;
+};
 }
 
 #ifdef __OpenBSD__

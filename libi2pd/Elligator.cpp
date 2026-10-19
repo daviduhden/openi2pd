@@ -1,12 +1,16 @@
 /*
-* Copyright (c) 2013-2020, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Elligator.
+ *
+ * Implements Elligator2 encoding and decoding of X25519 public keys into
+ * 32-byte strings for the ECIES ratchet's oblivious new-session field. Encoding
+ * selects the random alternative branch and high bits, while decoding
+ * reconstructs and validates a curve point, rejecting non-canonical or
+ * unmappable inputs; shared curve constants are initialised thread-safely.
+ *
+ */
 
 #include <openssl/rand.h>
 #include "Crypto.h"
@@ -101,8 +105,7 @@ namespace crypto
 			if (BN_is_zero (x)) highY = false;
 			ret = BN_mod_add (xA, x, A, p, ctx) == 1; // x + A (mod p)
 			if (ret) ret = BN_sub (xA, p, xA) == 1; // -(x + A) (mod p)
-			ret = ret && BN_mod_mul (uxxA, u, x, p, ctx) == 1
-				&& BN_mod_mul (uxxA, uxxA, xA, p, ctx) == 1;
+			ret = ret && BN_mod_mul (uxxA, u, x, p, ctx) == 1 && BN_mod_mul (uxxA, uxxA, xA, p, ctx) == 1;
 		}
 
 		if (ret && Legendre (uxxA, ctx) != -1)
@@ -110,8 +113,7 @@ namespace crypto
 			uint8_t randByte = 0; // random highest bits and high y
 			if (random)
 			{
-				if (RAND_bytes (&randByte, 1) != 1)
-					ret = false;
+				if (RAND_bytes (&randByte, 1) != 1) ret = false;
 				// Java: alternative = (rand & 0x01) == 0. highY is the
 				// C++ name for that same "alternative" branch.
 				else
@@ -123,8 +125,7 @@ namespace crypto
 				// r = (highY ? x : x+A)^-1 * (highY ? x+A : x) / u
 				BIGNUM * numerator = highY ? xA : x;
 				BIGNUM * denominator = highY ? x : xA;
-				ret = BN_mod_inverse (r, denominator, p, ctx) != nullptr
-					&& BN_mod_mul (r, r, numerator, p, ctx) == 1
+				ret = BN_mod_inverse (r, denominator, p, ctx) != nullptr && BN_mod_mul (r, r, numerator, p, ctx) == 1
 					&& BN_mod_mul (r, r, iu, p, ctx) == 1;
 				if (ret)
 				{
@@ -184,9 +185,8 @@ namespace crypto
 		if (ret && BN_cmp (r, p12) < 0) // r < (p-1)/2
 		{
 			// v = -A/(1+u*r^2)
-			ret = BN_mod_sqr (v, r, p, ctx) == 1 && BN_mod_mul (v, v, u, p, ctx) == 1
-				&& BN_add_word (v, 1) == 1 && BN_mod_inverse (v, v, p, ctx) != nullptr
-				&& BN_mod_mul (v, v, nA, p, ctx) == 1;
+			ret = BN_mod_sqr (v, r, p, ctx) == 1 && BN_mod_mul (v, v, u, p, ctx) == 1 && BN_add_word (v, 1) == 1
+				&& BN_mod_inverse (v, v, p, ctx) != nullptr && BN_mod_mul (v, v, nA, p, ctx) == 1;
 			if (ret)
 			{
 				ret = BN_mod_add (vpA, v, A, p, ctx) == 1; // v + A (mod p)

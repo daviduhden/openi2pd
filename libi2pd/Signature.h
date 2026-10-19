@@ -1,12 +1,14 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Signature.
+ *
+ * Declares the Verifier/Signer interfaces and concrete I2P signature types:
+ * DSA, ECDSA P-256/P-384/P-521, Ed25519 and Ed25519ph, RedDSA and GOST R 34.10,
+ * together with random-key generation helpers.
+ *
+ */
 
 #ifndef SIGNATURE_H__
 #define SIGNATURE_H__
@@ -323,7 +325,8 @@ namespace crypto
 		int curve, size_t keyLen, uint8_t * signingPrivateKey, uint8_t * signingPublicKey)
 	{
 		if (!signingPrivateKey || !signingPublicKey) return false;
-		auto clear = [&] () {
+		auto clear = [&] ()
+		{
 			memset (signingPrivateKey, 0, keyLen / 2);
 			memset (signingPublicKey, 0, keyLen);
 		};
@@ -454,7 +457,8 @@ namespace crypto
 	inline bool CreateEDDSA25519RandomKeys (uint8_t * signingPrivateKey, uint8_t * signingPublicKey)
 	{
 		if (!signingPrivateKey || !signingPublicKey) return false;
-		auto clear = [&] () {
+		auto clear = [&] ()
+		{
 			memset (signingPrivateKey, 0, EDDSA25519_PRIVATE_KEY_LENGTH);
 			memset (signingPublicKey, 0, EDDSA25519_PUBLIC_KEY_LENGTH);
 		};
@@ -465,8 +469,7 @@ namespace crypto
 		if (ok)
 		{
 			size_t len = EDDSA25519_PUBLIC_KEY_LENGTH;
-			ok = EVP_PKEY_get_raw_public_key (pkey, signingPublicKey, &len) == 1
-				&& len == EDDSA25519_PUBLIC_KEY_LENGTH;
+			ok = EVP_PKEY_get_raw_public_key (pkey, signingPublicKey, &len) == 1 && len == EDDSA25519_PUBLIC_KEY_LENGTH;
 			len = EDDSA25519_PRIVATE_KEY_LENGTH;
 			ok = ok && EVP_PKEY_get_raw_private_key (pkey, signingPrivateKey, &len) == 1
 				&& len == EDDSA25519_PRIVATE_KEY_LENGTH;
@@ -624,7 +627,8 @@ namespace crypto
 		auto & curve = GetGOSTR3410Curve (paramSet);
 		if (!curve) return false;
 		auto keyLen = curve->GetKeyLen ();
-		auto clear = [&] () {
+		auto clear = [&] ()
+		{
 			memset (signingPrivateKey, 0, keyLen);
 			memset (signingPublicKey, 0, keyLen * 2);
 		};

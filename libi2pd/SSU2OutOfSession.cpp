@@ -1,12 +1,14 @@
 /*
-* Copyright (c) 2024-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: SSU2OutOfSession.
+ *
+ * Implements SSU2 peer-test message exchange with endpoint validation, adoption
+ * of the externally observed address and bounded resends, plus hole-punch
+ * construction and retransmission for relayed introductions.
+ *
+ */
 
 #include "Log.h"
 #include "SSU2.h"
@@ -183,8 +185,7 @@ namespace transport
 		}
 		if (ep.address ().is_v4 () != expectV4)
 		{
-			LogPrint (
-				eLogWarning, "SSU2: Ignoring cross-family address block ", ep, " in ", expectV4 ? "IPv4" : "IPv6",
+			LogPrint (eLogWarning, "SSU2: Ignoring cross-family address block ", ep, " in ", expectV4 ? "IPv4" : "IPv6",
 				" peer test");
 			return;
 		}

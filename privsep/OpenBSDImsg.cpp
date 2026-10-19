@@ -1,8 +1,14 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * This file is part of openi2pd and licensed under BSD-3-Clause
+ * openi2pd: OpenBSDImsg.
+ *
+ * Implements the OpenBSD imsg transport with non-blocking imsg buffers,
+ * poll-driven bounded send and receive, descriptor passing and getpeereid
+ * credentials, while retaining the shared frame codec and size checks.
+ * Non-OpenBSD targets return an explicit unavailability error.
+ *
  */
 
 #include "OpenBSDImsg.h"
@@ -43,8 +49,7 @@ namespace
 	int PollTimeout (bool infinite, SteadyClock::time_point deadline)
 	{
 		if (infinite) return -1;
-		const auto remaining
-			= std::chrono::duration_cast<std::chrono::milliseconds> (deadline - SteadyClock::now ());
+		const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds> (deadline - SteadyClock::now ());
 		if (remaining.count () <= 0) return 0;
 		return static_cast<int> (std::min<int64_t> (remaining.count (), std::numeric_limits<int>::max ()));
 	}
@@ -113,7 +118,7 @@ i2p::expected<ImsgChannel, std::string> ImsgChannel::Adopt (int fd)
 	if (fd < 0) return i2p::unexpected ("invalid imsg descriptor");
 	ImsgChannel channel;
 	channel.m_Fd = fd;
-	channel.m_Buffer = new (std::nothrow) ::imsgbuf ();
+	channel.m_Buffer = new (std::nothrow)::imsgbuf ();
 	if (!channel.m_Buffer) return i2p::unexpected ("cannot allocate imsgbuf");
 	if (imsgbuf_init (channel.m_Buffer, fd) != 0)
 	{
@@ -264,8 +269,7 @@ i2p::expected<PeerCredentials, std::string> ImsgChannel::Credentials () const
 #if defined(__OpenBSD__)
 	uid_t uid = 0;
 	gid_t gid = 0;
-	if (getpeereid (m_Fd, &uid, &gid) != 0)
-		return i2p::unexpected (std::string ("getpeereid: ") + strerror (errno));
+	if (getpeereid (m_Fd, &uid, &gid) != 0) return i2p::unexpected (std::string ("getpeereid: ") + strerror (errno));
 	return PeerCredentials { static_cast<uint32_t> (uid), static_cast<uint32_t> (gid), 0 };
 #else
 	return i2p::unexpected ("getpeereid is available only on BSD");

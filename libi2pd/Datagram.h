@@ -1,12 +1,15 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Datagram.
+ *
+ * Declares the I2P datagram endpoint for I2CP protocols 17, 18, 19 and 20 and
+ * its per-peer garlic sessions. Sessions manage routing paths, LeaseSet
+ * refresh, bounded send queues and idle cleanup, while port-keyed receivers
+ * dispatch Datagram, raw and Datagram2/3 payloads.
+ *
+ */
 
 #ifndef DATAGRAM_H__
 #define DATAGRAM_H__
@@ -177,8 +180,8 @@ namespace datagram
 			const uint8_t * buf, size_t len, const i2p::util::Mapping * options)>
 			HashReceiver;
 		// Includes the I2CP protocol number for SAM 3.2 RAW RECEIVED headers.
-		typedef std::function<void (uint8_t protocol, uint16_t fromPort, uint16_t toPort, const uint8_t * buf,
-			size_t len)>
+		typedef std::function<void (
+			uint8_t protocol, uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len)>
 			RawReceiver;
 
 	public:

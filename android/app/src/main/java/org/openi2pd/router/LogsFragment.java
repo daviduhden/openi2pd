@@ -1,8 +1,16 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: LogsFragment.
+ *
+ * Log screen with debounced local search, severity chips and a capped visible
+ * list so a noisy daemon cannot exhaust the heap. Filtering, empty-state and
+ * summary updates run on the main thread from LiveData, and clearing retained
+ * logs requires a bound service.
+ *
  */
+
 package org.openi2pd.router;
 
 import android.os.Bundle;
@@ -232,13 +240,9 @@ public class LogsFragment extends Fragment {
             return true;
         }
         return (entry.message() != null
-                       && entry.message()
-                               .toLowerCase(Locale.ROOT)
-                               .contains(normalizedQuery))
+                       && entry.message().toLowerCase(Locale.ROOT).contains(normalizedQuery))
                 || (entry.level() != null
-                        && entry.level()
-                                .toLowerCase(Locale.ROOT)
-                                .contains(normalizedQuery));
+                        && entry.level().toLowerCase(Locale.ROOT).contains(normalizedQuery));
     }
 
     private boolean isAtBottom() {

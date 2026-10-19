@@ -1,12 +1,16 @@
 /*
-* Copyright (c) 2013-2025, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: CryptoKey.
+ *
+ * Wraps the I2P asymmetric key types as encryptor/decryptor objects: ElGamal,
+ * ECIES-P256, ECIES-GOST R 34.10 and the ECIES-X25519 ratchet key agreement.
+ * Key import rejects invalid curve points, secret material is cleared on
+ * destruction or generation failure, and LocalEncryptionKey owns a local
+ * destination pair whose decryptor is created lazily.
+ *
+ */
 
 #include <string.h>
 #include <openssl/crypto.h>
@@ -129,9 +133,8 @@ namespace crypto
 		BIGNUM * y = BN_new ();
 		uint8_t scalar[32];
 		bool ok = key && p && x && y && bn2buf (key, scalar, sizeof (scalar))
-			&& EC_POINT_get_affine_coordinates (curve, p, x, y, NULL) == 1
-			&& bn2buf (x, pub, 32) && bn2buf (y, pub + 32, 32) && RAND_bytes (priv + 32, 224) == 1
-			&& RAND_bytes (pub + 64, 192) == 1;
+			&& EC_POINT_get_affine_coordinates (curve, p, x, y, NULL) == 1 && bn2buf (x, pub, 32)
+			&& bn2buf (y, pub + 32, 32) && RAND_bytes (priv + 32, 224) == 1 && RAND_bytes (pub + 64, 192) == 1;
 		if (ok)
 			memcpy (priv, scalar, sizeof (scalar));
 		else
@@ -216,9 +219,8 @@ namespace crypto
 		BIGNUM * x = BN_new ();
 		BIGNUM * y = BN_new ();
 		bool ok = key && p && x && y && bn2buf (key, priv, 32)
-			&& EC_POINT_get_affine_coordinates (curve->GetGroup (), p, x, y, NULL) == 1
-			&& bn2buf (x, pub, 32) && bn2buf (y, pub + 32, 32) && RAND_bytes (priv + 32, 224) == 1
-			&& RAND_bytes (pub + 64, 192) == 1;
+			&& EC_POINT_get_affine_coordinates (curve->GetGroup (), p, x, y, NULL) == 1 && bn2buf (x, pub, 32)
+			&& bn2buf (y, pub + 32, 32) && RAND_bytes (priv + 32, 224) == 1 && RAND_bytes (pub + 64, 192) == 1;
 		if (!ok)
 		{
 			OPENSSL_cleanse (priv, 256);

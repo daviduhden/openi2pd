@@ -1,11 +1,12 @@
 /*
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: test torrents security.
+ *
+ * Adversarial torrent checks: 64-bit size limits, piece-block bounds, peer framing, corrupt pieces and resume bitfields, metadata copy avoidance, and DHT routing-table ownership.
+ *
+ */
 
 #include <cassert>
 #include <cstdint>
@@ -70,13 +71,12 @@ std::string StringList (std::initializer_list<std::string_view> items)
 	return result;
 }
 
-std::string MakeMultiFileTorrent (
-	std::string_view name, std::initializer_list<std::string_view> pathComponents, size_t fileLength = 16384,
-	size_t numPieces = 1)
+std::string MakeMultiFileTorrent (std::string_view name, std::initializer_list<std::string_view> pathComponents,
+	size_t fileLength = 16384, size_t numPieces = 1)
 {
 	std::string hashes (numPieces * SHA_DIGEST_LENGTH, 'A');
-	auto file = Dict ({ { "length", "i" + std::to_string (fileLength) + "e" },
-		{ "path", StringList (pathComponents) } });
+	auto file
+		= Dict ({ { "length", "i" + std::to_string (fileLength) + "e" }, { "path", StringList (pathComponents) } });
 	return Dict ({ { "info",
 		Dict ({ { "files", "l" + file + "e" }, { "name", Bytes (name) }, { "piece length", "i16384e" },
 			{ "pieces", Bytes (hashes) } }) } });
@@ -449,12 +449,9 @@ void TestPathContainment ()
 	// any path that leaves the configured root before storage is asked to
 	// touch the filesystem.
 	assert (IsPathLexicallyWithinRoot (std::filesystem::path ("root"), std::filesystem::path ("root/file.bin")));
-	assert (IsPathLexicallyWithinRoot (
-		std::filesystem::path ("root"), std::filesystem::path ("root/sub/file")));
-	assert (!IsPathLexicallyWithinRoot (
-		std::filesystem::path ("root"), std::filesystem::path ("root/../escape")));
-	assert (!IsPathLexicallyWithinRoot (
-		std::filesystem::path ("root"), std::filesystem::path ("other/file")));
+	assert (IsPathLexicallyWithinRoot (std::filesystem::path ("root"), std::filesystem::path ("root/sub/file")));
+	assert (!IsPathLexicallyWithinRoot (std::filesystem::path ("root"), std::filesystem::path ("root/../escape")));
+	assert (!IsPathLexicallyWithinRoot (std::filesystem::path ("root"), std::filesystem::path ("other/file")));
 
 	TempDir dir;
 	dir.path = MakeTempDir ();
@@ -550,8 +547,7 @@ void TestTorrentFileSymlinkRejection ()
 	std::filesystem::create_directory_symlink (outside, dir.path / "linkdir", ec);
 	if (!ec)
 	{
-		auto nested = std::make_shared<TorrentFile> (dir.path / "linkdir" / "sub" / "nested.bin",
-			sizeof (block));
+		auto nested = std::make_shared<TorrentFile> (dir.path / "linkdir" / "sub" / "nested.bin", sizeof (block));
 		nested->SetRootDir (dir.path);
 		assert (!nested->Save (0, block, sizeof (block)));
 		assert (!nested->Load (0, block, sizeof (block)));

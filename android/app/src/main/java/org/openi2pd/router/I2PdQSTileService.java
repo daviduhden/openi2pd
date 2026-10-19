@@ -1,8 +1,17 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: I2PdQSTileService.
+ *
+ * Quick Settings tile that sends the same explicit start/stop service intents
+ * as the UI, gated behind an unlock prompt on the lock screen, and refreshes
+ * from the process-wide router flag when listening starts. A command the
+ * system refuses is logged and the tile keeps the previous state instead of
+ * showing an optimistic one.
+ *
  */
+
 package org.openi2pd.router;
 
 import android.os.Build;
@@ -69,9 +78,9 @@ public class I2PdQSTileService extends TileService {
         tile.setState(running ? Tile.STATE_ACTIVE : Tile.STATE_INACTIVE);
         tile.setLabel(getString(R.string.app_name));
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            tile.setContentDescription(getString(R.string.tile_state_format,
-                    getString(R.string.app_name),
-                    getString(running ? R.string.value_running : R.string.value_stopped)));
+            tile.setContentDescription(
+                    getString(R.string.tile_state_format, getString(R.string.app_name),
+                            getString(running ? R.string.value_running : R.string.value_stopped)));
         }
         try {
             tile.updateTile();

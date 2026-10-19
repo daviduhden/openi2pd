@@ -1,12 +1,16 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Garlic.
+ *
+ * Garlic message construction and routing for destinations and routers: builds cloves and
+ * wraps payloads with ElGamal/AES+SessionTag or ECIES-X25519-AEAD ratchet sessions, while
+ * tracking session tags, LeaseSet attachment/confirmation and DeliveryStatus correlation.
+ * Session and tag maps are mutex-protected because keys and payloads arrive from router,
+ * client and administrative threads.
+ *
+ */
 
 #ifndef GARLIC_H__
 #define GARLIC_H__
@@ -197,7 +201,7 @@ namespace garlic
 			// move operations remain Windows-guarded in SessionTag itself.
 			explicit UnconfirmedTags (int n)
 				: sessionTags (static_cast<size_t> (n))
-				, tagsCreationTime (0) {};
+				, tagsCreationTime (0) { };
 			uint32_t msgID = 0;
 			std::vector<SessionTag> sessionTags;
 			uint32_t tagsCreationTime;
@@ -217,8 +221,7 @@ namespace garlic
 
 	private:
 		size_t CreateAESBlock (uint8_t * buf, size_t capacity, std::shared_ptr<const I2NPMessage> msg);
-		size_t CreateGarlicPayload (
-			uint8_t * payload, size_t capacity, std::shared_ptr<const I2NPMessage> msg,
+		size_t CreateGarlicPayload (uint8_t * payload, size_t capacity, std::shared_ptr<const I2NPMessage> msg,
 			std::unique_ptr<UnconfirmedTags> newTags);
 		size_t CreateGarlicClove (
 			uint8_t * buf, size_t capacity, std::shared_ptr<const I2NPMessage> msg, bool isDestination);

@@ -1,8 +1,14 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * This file is part of openi2pd and licensed under BSD-3-Clause
+ * openi2pd: WindowsIpc.
+ *
+ * Implements Windows IPC and confinement: private-DACL named-pipe creation
+ * and accept, message-mode framed send and receive, peer identity lookup, and
+ * worker spawning with a restricted token and Job Object. AppContainer and
+ * LPAC support is probed but never silently replaced by a weaker token.
+ *
  */
 
 #include "WindowsIpc.h"
@@ -58,8 +64,8 @@ namespace
 	{
 		char * message = nullptr;
 		const DWORD length = FormatMessageA (
-			FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, nullptr,
-			error, MAKELANGID (LANG_NEUTRAL, SUBLANG_DEFAULT), reinterpret_cast<LPSTR> (&message), 0, nullptr);
+			FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, nullptr, error,
+			MAKELANGID (LANG_NEUTRAL, SUBLANG_DEFAULT), reinterpret_cast<LPSTR> (&message), 0, nullptr);
 		if (!length || !message) return "Windows error " + std::to_string (error);
 		std::string text (message, length);
 		LocalFree (message);
@@ -122,7 +128,8 @@ namespace
 		// grant that explicitly through the service account model. There is no
 		// Everyone, Authenticated Users or anonymous ACE.
 		const std::wstring sddl = L"D:P(A;;GA;;;" + userSid + L")(A;;GA;;;SY)";
-		if (!ConvertStringSecurityDescriptorToSecurityDescriptorW (sddl.c_str (), SDDL_REVISION_1, &descriptor, nullptr))
+		if (!ConvertStringSecurityDescriptorToSecurityDescriptorW (
+				sddl.c_str (), SDDL_REVISION_1, &descriptor, nullptr))
 		{
 			error = "ConvertStringSecurityDescriptorToSecurityDescriptor: " + Win32ErrorText (GetLastError ());
 			return false;
@@ -168,7 +175,8 @@ namespace
 
 	std::wstring NormalizeEndpoint (std::string_view endpoint)
 	{
-		while (!endpoint.empty () && (endpoint.front () == ' ' || endpoint.front () == '\t')) endpoint.remove_prefix (1);
+		while (!endpoint.empty () && (endpoint.front () == ' ' || endpoint.front () == '\t'))
+			endpoint.remove_prefix (1);
 		while (!endpoint.empty () && (endpoint.back () == ' ' || endpoint.back () == '\t')) endpoint.remove_suffix (1);
 		std::wstring result;
 		result.reserve (endpoint.size ());
@@ -284,10 +292,9 @@ i2p::expected<WindowsServer, std::string> WindowsServer::Create (const std::wstr
 	attributes.bInheritHandle = FALSE;
 
 	const DWORD openMode = PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED | FILE_FLAG_FIRST_PIPE_INSTANCE;
-	const DWORD pipeMode
-		= PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS;
-	const HANDLE pipe = CreateNamedPipeW (pipeName.c_str (), openMode, pipeMode, PIPE_MAX_INSTANCES, PIPE_BUFFER_SIZE,
-		PIPE_BUFFER_SIZE, 0, &attributes);
+	const DWORD pipeMode = PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS;
+	const HANDLE pipe = CreateNamedPipeW (
+		pipeName.c_str (), openMode, pipeMode, PIPE_MAX_INSTANCES, PIPE_BUFFER_SIZE, PIPE_BUFFER_SIZE, 0, &attributes);
 	if (pipe == INVALID_HANDLE_VALUE)
 	{
 		LocalFree (descriptor);
@@ -413,13 +420,11 @@ i2p::expected<void, std::string> WindowsChannel::Send (const Message & message, 
 	if (!result)
 	{
 		const DWORD error = GetLastError ();
-		if (error != ERROR_IO_PENDING)
-			return i2p::unexpected ("WriteFile(worker pipe): " + Win32ErrorText (error));
+		if (error != ERROR_IO_PENDING) return i2p::unexpected ("WriteFile(worker pipe): " + Win32ErrorText (error));
 		if (!WaitOverlapped (m_Pipe, overlapped, timeoutMs, written))
 			return i2p::unexpected ("worker pipe send timeout");
 	}
-	if (static_cast<size_t> (written) != encoded->size ())
-		return i2p::unexpected ("worker pipe short message write");
+	if (static_cast<size_t> (written) != encoded->size ()) return i2p::unexpected ("worker pipe short message write");
 	return { };
 }
 
@@ -439,8 +444,7 @@ i2p::expected<std::optional<Message>, std::string> WindowsChannel::Receive (DWOR
 		if (error == ERROR_MORE_DATA) return i2p::unexpected ("worker pipe message is too large");
 		if (error == ERROR_BROKEN_PIPE || error == ERROR_PIPE_NOT_CONNECTED)
 			return i2p::unexpected ("worker pipe closed");
-		if (error != ERROR_IO_PENDING)
-			return i2p::unexpected ("ReadFile(worker pipe): " + Win32ErrorText (error));
+		if (error != ERROR_IO_PENDING) return i2p::unexpected ("ReadFile(worker pipe): " + Win32ErrorText (error));
 		if (!WaitOverlapped (m_Pipe, overlapped, timeoutMs, read))
 			return i2p::unexpected ("worker pipe receive timeout");
 	}
@@ -455,12 +459,10 @@ i2p::expected<WindowsPeer, std::string> WindowsChannel::Peer () const
 	if (!IsOpen ()) return i2p::unexpected ("worker pipe is closed");
 	DWORD processId = 0;
 	DWORD sessionId = 0;
-	const BOOL processOk = m_ServerSide
-		? GetNamedPipeClientProcessId (m_Pipe, &processId)
-		: GetNamedPipeServerProcessId (m_Pipe, &processId);
-	const BOOL sessionOk = m_ServerSide
-		? GetNamedPipeClientSessionId (m_Pipe, &sessionId)
-		: GetNamedPipeServerSessionId (m_Pipe, &sessionId);
+	const BOOL processOk = m_ServerSide ? GetNamedPipeClientProcessId (m_Pipe, &processId)
+										: GetNamedPipeServerProcessId (m_Pipe, &processId);
+	const BOOL sessionOk = m_ServerSide ? GetNamedPipeClientSessionId (m_Pipe, &sessionId)
+										: GetNamedPipeServerSessionId (m_Pipe, &sessionId);
 	if (!processOk) return i2p::unexpected ("GetNamedPipePeerProcessId: " + Win32ErrorText (GetLastError ()));
 	HANDLE process = OpenProcess (PROCESS_QUERY_LIMITED_INFORMATION, FALSE, processId);
 	if (!process) return i2p::unexpected ("OpenProcess(peer): " + Win32ErrorText (GetLastError ()));
@@ -496,14 +498,11 @@ bool WindowsAllowsOperation (WindowsWorkerRole role, MessageType type)
 	{
 	case MessageType::Ping:
 	case MessageType::Pong:
-	case MessageType::Shutdown:
-		return true;
+	case MessageType::Shutdown: return true;
 	case MessageType::ConfigureLog:
 	case MessageType::ConfigureLogFd:
-	case MessageType::LogRecord:
-		return role == WindowsWorkerRole::Log || role == WindowsWorkerRole::Supervisor;
-	default:
-		return false;
+	case MessageType::LogRecord: return role == WindowsWorkerRole::Log || role == WindowsWorkerRole::Supervisor;
+	default: return false;
 	}
 }
 
@@ -570,10 +569,10 @@ WindowsIsolationSupport ProbeWindowsIsolation ()
 
 i2p::expected<WindowsHandle, std::string> CreateRestrictedWorkerToken (const WindowsWorkerPolicy & policy)
 {
-	if (!policy.useRestrictedToken)
-		return i2p::unexpected ("worker token policy requires a restricted token");
+	if (!policy.useRestrictedToken) return i2p::unexpected ("worker token policy requires a restricted token");
 	if (policy.useAppContainer || policy.useLowPrivilegeAppContainer)
-		return i2p::unexpected ("AppContainer/LPAC worker token creation is not implemented; refusing to weaken the policy");
+		return i2p::unexpected (
+			"AppContainer/LPAC worker token creation is not implemented; refusing to weaken the policy");
 	HANDLE token = nullptr;
 	if (!OpenProcessToken (GetCurrentProcess (), TOKEN_DUPLICATE | TOKEN_ASSIGN_PRIMARY | TOKEN_QUERY, &token))
 		return i2p::unexpected ("OpenProcessToken: " + Win32ErrorText (GetLastError ()));
@@ -617,7 +616,8 @@ i2p::expected<WindowsWorkerProcess, std::string> SpawnWindowsWorker (const std::
 	if (!IsLocalPipeName (pipeName)) return i2p::unexpected ("worker pipe name is not local");
 	auto token = CreateRestrictedWorkerToken (policy);
 	if (!token) return i2p::unexpected (token.error ());
-	auto job = policy.useJobObject ? CreateWorkerJobObject (policy) : i2p::expected<WindowsHandle, std::string> (WindowsHandle ());
+	auto job = policy.useJobObject ? CreateWorkerJobObject (policy)
+								   : i2p::expected<WindowsHandle, std::string> (WindowsHandle ());
 	if (!job) return i2p::unexpected (job.error ());
 
 	std::wstring commandLine = L"\"" + executable + L"\" --privsep-worker " + RoleName (role) + L" " + pipeName;
@@ -637,8 +637,7 @@ i2p::expected<WindowsWorkerProcess, std::string> SpawnWindowsWorker (const std::
 		if (!attributeSize || !InitializeProcThreadAttributeList (startup.lpAttributeList, 1, 0, &attributeSize))
 			return i2p::unexpected ("InitializeProcThreadAttributeList: " + Win32ErrorText (GetLastError ()));
 		attributesInitialized = true;
-		DWORD64 mitigation
-			= PROCESS_CREATION_MITIGATION_POLICY_DEP_ENABLE
+		DWORD64 mitigation = PROCESS_CREATION_MITIGATION_POLICY_DEP_ENABLE
 			| PROCESS_CREATION_MITIGATION_POLICY_DEP_ATL_THUNK_DISABLE_ALWAYS_ON
 			| PROCESS_CREATION_MITIGATION_POLICY_SEHOP_ENABLE
 			| PROCESS_CREATION_MITIGATION_POLICY_FORCE_RELOCATE_IMAGES_ALWAYS_ON;
@@ -652,9 +651,8 @@ i2p::expected<WindowsWorkerProcess, std::string> SpawnWindowsWorker (const std::
 
 	PROCESS_INFORMATION processInfo { };
 	const BOOL created = CreateProcessAsUserW (token->Native (), executable.c_str (), mutableCommandLine.data (),
-		nullptr, nullptr, FALSE,
-		CREATE_UNICODE_ENVIRONMENT | CREATE_SUSPENDED | EXTENDED_STARTUPINFO_PRESENT, nullptr, nullptr,
-		&startup.StartupInfo, &processInfo);
+		nullptr, nullptr, FALSE, CREATE_UNICODE_ENVIRONMENT | CREATE_SUSPENDED | EXTENDED_STARTUPINFO_PRESENT, nullptr,
+		nullptr, &startup.StartupInfo, &processInfo);
 	if (attributesInitialized) DeleteProcThreadAttributeList (startup.lpAttributeList);
 	if (!created) return i2p::unexpected ("CreateProcessAsUser: " + Win32ErrorText (GetLastError ()));
 
@@ -687,8 +685,8 @@ i2p::expected<std::wstring, std::string> MakePrivatePipeName (std::string_view e
 		hash *= 1099511628211ULL;
 	}
 	std::wostringstream name;
-	name << L"\\\\.\\pipe\\openi2pd-worker-" << std::hex << std::nouppercase << std::setw (16)
-		 << std::setfill (L'0') << hash;
+	name << L"\\\\.\\pipe\\openi2pd-worker-" << std::hex << std::nouppercase << std::setw (16) << std::setfill (L'0')
+		 << hash;
 	return name.str ();
 }
 }

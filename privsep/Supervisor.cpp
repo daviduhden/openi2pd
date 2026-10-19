@@ -1,9 +1,15 @@
 /*
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Supervisor.
+ *
+ * Implements the privilege-separated supervisor: verifies the control peer's
+ * UID, applies its platform sandbox and starts or restarts a log worker while
+ * forwarding decoded records. It proxies log configuration without opening
+ * the file, answers pings and exits on shutdown or malformed frames.
+ *
+ */
 
 #include "Supervisor.h"
 
@@ -53,7 +59,7 @@ namespace
 			if ((*received)->fd >= 0)
 			{
 				std::cerr << "privsep supervisor: unexpected log descriptor; "
-					<< "the log worker owns the file capability" << std::endl;
+						  << "the log worker owns the file capability" << std::endl;
 				return false;
 			}
 			auto decoded = DecodeLogConfig (message.payload);
@@ -193,8 +199,7 @@ int RunSupervisor (int fd)
 			std::cerr << "privsep supervisor: malformed log record" << std::endl;
 			break;
 		}
-		sink->Write (std::get<0> (*record), static_cast<std::time_t> (std::get<1> (*record)),
-			std::get<2> (*record));
+		sink->Write (std::get<0> (*record), static_cast<std::time_t> (std::get<1> (*record)), std::get<2> (*record));
 		if (!sink->IsOpen ())
 		{
 			// The next loop starts a replacement and reattaches the sink.

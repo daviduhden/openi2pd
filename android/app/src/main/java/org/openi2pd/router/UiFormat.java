@@ -1,8 +1,16 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: UiFormat.
+ *
+ * Pure presentation helpers mapping snapshots to state labels, colours,
+ * addresses, rates, durations, byte counts and percentages with
+ * English-pinned number formatting. They never call JNI or perform I/O and
+ * only rewrite a TextView when its text actually changes.
+ *
  */
+
 package org.openi2pd.router;
 
 import android.content.Context;
@@ -40,10 +48,11 @@ public final class UiFormat {
         }
         return switch (snapshot.state()) {
             case uninitialized, starting -> RouterState.STARTING;
-            case startedOkay -> snapshot.routerStatusCode() < 0
-                    ? RouterState.ERROR
-                    : (snapshot.hasStatus() && snapshot.online() ? RouterState.CONNECTED
-                                                                 : RouterState.DEGRADED);
+            case startedOkay ->
+                snapshot.routerStatusCode() < 0
+                        ? RouterState.ERROR
+                        : (snapshot.hasStatus() && snapshot.online() ? RouterState.CONNECTED
+                                                                     : RouterState.DEGRADED);
             case startFailed -> RouterState.ERROR;
             case gracefulShutdownInProgress, stopping -> RouterState.STOPPING;
             case stopped -> RouterState.STOPPED;
@@ -145,28 +154,29 @@ public final class UiFormat {
         return switch (state) {
             case STARTING -> context.getString(R.string.status_router_starting);
             case STOPPED -> context.getString(R.string.status_router_stopped);
-            case STOPPING -> snapshot.state() == DaemonWrapper.State.stopping
-                    ? context.getString(R.string.state_stopping)
-                    : context.getString(R.string.status_router_graceful,
-                            grace(context, snapshot.graceRemainingMillis()));
+            case STOPPING ->
+                snapshot.state() == DaemonWrapper.State.stopping
+                        ? context.getString(R.string.state_stopping)
+                        : context.getString(R.string.status_router_graceful,
+                                  grace(context, snapshot.graceRemainingMillis()));
             case CONNECTED ->
                 snapshot.reseeding() ? context.getString(R.string.status_router_reseeding)
                                      : context.getString(R.string.status_router_online);
-            case DEGRADED -> snapshot.nativeStarted() && !snapshot.hasStatus()
-                    ? context.getString(R.string.status_status_unavailable)
-                    : context.getString(R.string.status_router_degraded);
+            case DEGRADED ->
+                snapshot.nativeStarted() && !snapshot.hasStatus()
+                        ? context.getString(R.string.status_status_unavailable)
+                        : context.getString(R.string.status_router_degraded);
             case ERROR -> {
                 String detail = errorDetail(snapshot);
                 if (snapshot.state() == DaemonWrapper.State.startFailed) {
-                    yield detail.isEmpty()
-                            ? context.getString(R.string.state_error)
-                            : context.getString(
-                                    R.string.status_start_failed_format, summarize(detail));
+                    yield detail.isEmpty() ? context.getString(R.string.state_error)
+                                           : context.getString(R.string.status_start_failed_format,
+                                                     summarize(detail));
                 }
                 yield detail.isEmpty()
                         ? context.getString(R.string.status_status_unavailable)
                         : context.getString(
-                                R.string.status_status_unavailable_format, summarize(detail));
+                                  R.string.status_status_unavailable_format, summarize(detail));
             }
             case UNKNOWN -> context.getString(R.string.status_service_connecting);
         };
@@ -181,14 +191,13 @@ public final class UiFormat {
         if (state == RouterState.ERROR) {
             String detail = errorDetail(snapshot);
             if (snapshot.state() == DaemonWrapper.State.startFailed) {
-                return detail.isEmpty()
-                        ? context.getString(R.string.warning_router_error)
-                        : context.getString(R.string.warning_start_failed_format, summarize(detail));
+                return detail.isEmpty() ? context.getString(R.string.warning_router_error)
+                                        : context.getString(R.string.warning_start_failed_format,
+                                                  summarize(detail));
             }
-            return detail.isEmpty()
-                    ? context.getString(R.string.warning_status_unavailable)
-                    : context.getString(
-                            R.string.warning_status_unavailable_format, summarize(detail));
+            return detail.isEmpty() ? context.getString(R.string.warning_status_unavailable)
+                                    : context.getString(R.string.warning_status_unavailable_format,
+                                              summarize(detail));
         }
         if (state == RouterState.DEGRADED && snapshot.nativeStarted() && !snapshot.hasStatus()) {
             return context.getString(R.string.warning_status_unavailable);

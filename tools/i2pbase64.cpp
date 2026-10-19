@@ -1,8 +1,15 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: i2pbase64.
+ *
+ * Encodes stdin or one file to I2P base64, or decodes with -d, writing to
+ * stdout. Decoding ignores ASCII whitespace, processes bounded chunks and
+ * rejects truncated or malformed input.
+ *
  */
+
 #include <algorithm>
 #include <array>
 #include <cstdint>
@@ -74,8 +81,7 @@ int Decode (std::istream & input, std::ostream & output)
 			{
 				const auto decoded
 					= i2p::data::Base64ToByteStream (std::string_view (pending).substr (0, complete), outbuf);
-				if (!decoded || !WriteAll (output, std::span<const uint8_t> (outbuf).first (decoded)))
-					return 1;
+				if (!decoded || !WriteAll (output, std::span<const uint8_t> (outbuf).first (decoded))) return 1;
 				pending.erase (0, complete);
 			}
 			if (pending.size () > 4)

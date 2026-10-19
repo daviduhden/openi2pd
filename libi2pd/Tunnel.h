@@ -1,12 +1,14 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Tunnel.
+ *
+ * Declares Tunnel, OutboundTunnel and InboundTunnel together with their state
+ * machine, build-response handling, layered encryption, latency tracking and
+ * gateway sending, plus the Tunnels manager thread, pools and pending builds.
+ *
+ */
 
 #ifndef TUNNEL_H__
 #define TUNNEL_H__
@@ -98,10 +100,7 @@ namespace tunnel
 		bool IsEstablished () const;
 		bool IsFailed () const { return m_State == eTunnelStateFailed; };
 		bool IsRecreated () const { return m_IsRecreated.load (std::memory_order_relaxed); };
-		void SetRecreated (bool recreated)
-		{
-			m_IsRecreated.store (recreated, std::memory_order_relaxed);
-		};
+		void SetRecreated (bool recreated) { m_IsRecreated.store (recreated, std::memory_order_relaxed); };
 		int GetNumHops () const { return m_Hops.size (); };
 		virtual bool IsInbound () const = 0;
 		virtual bool Recreate () = 0;
@@ -128,8 +127,7 @@ namespace tunnel
 			for (;;)
 			{
 				int updated = old != UNKNOWN_LATENCY ? (old + us) >> 1 : us;
-				if (m_Latency.compare_exchange_weak (old, updated, std::memory_order_relaxed))
-					break;
+				if (m_Latency.compare_exchange_weak (old, updated, std::memory_order_relaxed)) break;
 			}
 		}
 		/** @brief get this tunnel's estimated latency */
@@ -270,10 +268,7 @@ namespace tunnel
 		std::shared_ptr<I2NPMessage> NewI2NPTunnelMessage (bool endpoint);
 
 		void SetMaxNumTransitTunnels (uint32_t maxNumTransitTunnels);
-		uint32_t GetMaxNumTransitTunnels () const
-		{
-			return m_MaxNumTransitTunnels.load (std::memory_order_relaxed);
-		};
+		uint32_t GetMaxNumTransitTunnels () const { return m_MaxNumTransitTunnels.load (std::memory_order_relaxed); };
 		int GetCongestionLevel () const
 		{
 			auto maxNumTransitTunnels = m_MaxNumTransitTunnels.load (std::memory_order_relaxed);
@@ -332,14 +327,12 @@ namespace tunnel
 			// at the beginning to accelerate similarity. The success-rate sample
 			// is updated with a CAS loop because build replies and expirations
 			// arrive from different threads.
-			double alpha = TCSR_SMOOTHING_CONSTANT
-				+ (1 - TCSR_SMOOTHING_CONSTANT) / ++m_TunnelCreationAttemptsNum;
+			double alpha = TCSR_SMOOTHING_CONSTANT + (1 - TCSR_SMOOTHING_CONSTANT) / ++m_TunnelCreationAttemptsNum;
 			double old = m_TunnelCreationSuccessRate.load (std::memory_order_relaxed);
 			for (;;)
 			{
 				double updated = alpha * sample + (1 - alpha) * old;
-				if (m_TunnelCreationSuccessRate.compare_exchange_weak (old, updated, std::memory_order_relaxed))
-					break;
+				if (m_TunnelCreationSuccessRate.compare_exchange_weak (old, updated, std::memory_order_relaxed)) break;
 			}
 		}
 

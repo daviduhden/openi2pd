@@ -1,12 +1,14 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Signature.
+ *
+ * Implements the I2P signature suites, including ECDSA DER-to-fixed signature
+ * conversion, Ed25519/Ed25519ph and RedDSA handling, and GOST R 34.10 variants,
+ * with OpenSSL 3 and LibreSSL code paths and scoped EVP resource ownership.
+ *
+ */
 
 #include <memory>
 #include <openssl/evp.h>
@@ -20,29 +22,29 @@
 
 namespace
 {
-	// Digest contexts owned by the verifier/signer entry points. OpenSSL's
-	// EVP_MD_CTX is release-only, so a scoped owner removes the early-return
-	// and exception paths that previously leaked it.
-	struct MDCtxDeleter
-	{
-		void operator() (EVP_MD_CTX * ctx) const { EVP_MD_CTX_free (ctx); }
-	};
+// Digest contexts owned by the verifier/signer entry points. OpenSSL's
+// EVP_MD_CTX is release-only, so a scoped owner removes the early-return
+// and exception paths that previously leaked it.
+struct MDCtxDeleter
+{
+	void operator() (EVP_MD_CTX * ctx) const { EVP_MD_CTX_free (ctx); }
+};
 
-	using MDCtxPtr = std::unique_ptr<EVP_MD_CTX, MDCtxDeleter>;
+using MDCtxPtr = std::unique_ptr<EVP_MD_CTX, MDCtxDeleter>;
 
-	// Encode an ECDSA_SIG into a buffer that is sized from the DER length
-	// reported by OpenSSL. A fixed keyLen + 8 buffer is too small for P-521:
-	// two 66-byte integers with their high bit set need 141 bytes, not 140.
-	bool EncodeECDSASignature (const ECDSA_SIG * sig, std::vector<uint8_t> & der)
-	{
-		if (!sig) return false;
-		const int derLen = i2d_ECDSA_SIG (sig, nullptr);
-		if (derLen <= 0) return false;
-		der.resize (static_cast<size_t> (derLen));
-		uint8_t * out = der.data ();
-		const int written = i2d_ECDSA_SIG (sig, &out);
-		return written > 0 && written <= derLen && static_cast<size_t> (written) == der.size ();
-	}
+// Encode an ECDSA_SIG into a buffer that is sized from the DER length
+// reported by OpenSSL. A fixed keyLen + 8 buffer is too small for P-521:
+// two 66-byte integers with their high bit set need 141 bytes, not 140.
+bool EncodeECDSASignature (const ECDSA_SIG * sig, std::vector<uint8_t> & der)
+{
+	if (!sig) return false;
+	const int derLen = i2d_ECDSA_SIG (sig, nullptr);
+	if (derLen <= 0) return false;
+	der.resize (static_cast<size_t> (derLen));
+	uint8_t * out = der.data ();
+	const int written = i2d_ECDSA_SIG (sig, &out);
+	return written > 0 && written <= derLen && static_cast<size_t> (written) == der.size ();
+}
 }
 
 namespace i2p
@@ -150,7 +152,8 @@ namespace crypto
 	bool CreateDSARandomKeys (uint8_t * signingPrivateKey, uint8_t * signingPublicKey)
 	{
 		if (!signingPrivateKey || !signingPublicKey) return false;
-		auto clear = [&] () {
+		auto clear = [&] ()
+		{
 			memset (signingPrivateKey, 0, DSA_PRIVATE_KEY_LENGTH);
 			memset (signingPublicKey, 0, DSA_PUBLIC_KEY_LENGTH);
 		};
@@ -255,7 +258,8 @@ namespace crypto
 	bool CreateDSARandomKeys (uint8_t * signingPrivateKey, uint8_t * signingPublicKey)
 	{
 		if (!signingPrivateKey || !signingPublicKey) return false;
-		auto clear = [&] () {
+		auto clear = [&] ()
+		{
 			memset (signingPrivateKey, 0, DSA_PRIVATE_KEY_LENGTH);
 			memset (signingPublicKey, 0, DSA_PUBLIC_KEY_LENGTH);
 		};
@@ -312,7 +316,8 @@ namespace crypto
 			LogPrint (eLogError, "ECDSA can't allocate PKEY parameters");
 			return;
 		}
-		bool built = OSSL_PARAM_BLD_push_utf8_string (paramBld, OSSL_PKEY_PARAM_GROUP_NAME, OBJ_nid2ln (m_Curve), 0) == 1
+		bool built
+			= OSSL_PARAM_BLD_push_utf8_string (paramBld, OSSL_PKEY_PARAM_GROUP_NAME, OBJ_nid2ln (m_Curve), 0) == 1
 			&& OSSL_PARAM_BLD_push_octet_string (paramBld, OSSL_PKEY_PARAM_PUB_KEY, pub.data (), pub.size ()) == 1;
 		OSSL_PARAM * params = built ? OSSL_PARAM_BLD_to_param (paramBld) : nullptr;
 
@@ -320,8 +325,7 @@ namespace crypto
 		if (ctx)
 		{
 			EVP_PKEY * pkey = nullptr;
-			if (EVP_PKEY_fromdata_init (ctx) <= 0
-				|| EVP_PKEY_fromdata (ctx, &pkey, EVP_PKEY_PUBLIC_KEY, params) <= 0)
+			if (EVP_PKEY_fromdata_init (ctx) <= 0 || EVP_PKEY_fromdata (ctx, &pkey, EVP_PKEY_PUBLIC_KEY, params) <= 0)
 			{
 				LogPrint (eLogError, "ECDSA can't create PKEY from params");
 				EVP_PKEY_free (pkey);
@@ -384,8 +388,7 @@ namespace crypto
 		if (ctx)
 		{
 			EVP_PKEY * pkey = nullptr;
-			if (EVP_PKEY_fromdata_init (ctx) <= 0
-				|| EVP_PKEY_fromdata (ctx, &pkey, EVP_PKEY_KEYPAIR, params) <= 0)
+			if (EVP_PKEY_fromdata_init (ctx) <= 0 || EVP_PKEY_fromdata (ctx, &pkey, EVP_PKEY_KEYPAIR, params) <= 0)
 			{
 				LogPrint (eLogError, "ECDSA can't create PKEY from params");
 				EVP_PKEY_free (pkey);
@@ -441,7 +444,8 @@ namespace crypto
 	bool CreateECDSARandomKeys (int curve, size_t keyLen, uint8_t * signingPrivateKey, uint8_t * signingPublicKey)
 	{
 		if (!signingPrivateKey || !signingPublicKey) return false;
-		auto clear = [&] () {
+		auto clear = [&] ()
+		{
 			memset (signingPrivateKey, 0, keyLen / 2);
 			memset (signingPublicKey, 0, keyLen);
 		};
@@ -544,8 +548,8 @@ namespace crypto
 			LogPrint (eLogError, "EdDSA private key is not set");
 			return;
 		}
-		m_Pkey.reset (EVP_PKEY_new_raw_private_key (
-			EVP_PKEY_ED25519, NULL, signingPrivateKey, EDDSA25519_PRIVATE_KEY_LENGTH));
+		m_Pkey.reset (
+			EVP_PKEY_new_raw_private_key (EVP_PKEY_ED25519, NULL, signingPrivateKey, EDDSA25519_PRIVATE_KEY_LENGTH));
 		if (!m_Pkey)
 		{
 			if (signingPublicKey)
@@ -560,10 +564,9 @@ namespace crypto
 		}
 		uint8_t publicKey[EDDSA25519_PUBLIC_KEY_LENGTH] = { };
 		size_t len = EDDSA25519_PUBLIC_KEY_LENGTH;
-		bool havePublicKey = EVP_PKEY_get_raw_public_key (m_Pkey.get (), publicKey, &len) == 1
-			&& len == EDDSA25519_PUBLIC_KEY_LENGTH;
-		if (signingPublicKey && (!havePublicKey
-								 || memcmp (publicKey, signingPublicKey, EDDSA25519_PUBLIC_KEY_LENGTH)))
+		bool havePublicKey
+			= EVP_PKEY_get_raw_public_key (m_Pkey.get (), publicKey, &len) == 1 && len == EDDSA25519_PUBLIC_KEY_LENGTH;
+		if (signingPublicKey && (!havePublicKey || memcmp (publicKey, signingPublicKey, EDDSA25519_PUBLIC_KEY_LENGTH)))
 		{
 			LogPrint (eLogWarning, "EdDSA public key mismatch. Fallback");
 			m_Fallback = std::make_unique<EDDSA25519SignerCompat> (signingPrivateKey, signingPublicKey);
@@ -611,8 +614,7 @@ namespace crypto
 		// Java SigType 8 uses EdDSAEngine over the supplied bytes; it does not
 		// apply RFC 8032 dom2/prehash. Use the same plain Ed25519 primitive as
 		// SigType 7. (SU3 callers prehash the payload themselves.)
-		return pkey && ctx
-			&& EVP_DigestVerifyInit (ctx.get (), nullptr, nullptr, nullptr, pkey) == 1
+		return pkey && ctx && EVP_DigestVerifyInit (ctx.get (), nullptr, nullptr, nullptr, pkey) == 1
 			&& EVP_DigestVerify (ctx.get (), signature, 64, buf, len) == 1;
 	}
 
@@ -628,8 +630,7 @@ namespace crypto
 		MDCtxPtr ctx (EVP_MD_CTX_new ());
 		size_t l = 64;
 		uint8_t sig[64] = { };
-		bool ok = pkey && ctx && len >= 0
-			&& EVP_DigestSignInit (ctx.get (), nullptr, nullptr, nullptr, pkey) == 1
+		bool ok = pkey && ctx && len >= 0 && EVP_DigestSignInit (ctx.get (), nullptr, nullptr, nullptr, pkey) == 1
 			&& EVP_DigestSign (ctx.get (), sig, &l, buf, len) == 1 && l == sizeof (sig);
 		if (ok)
 			memcpy (signature, sig, sizeof (sig));

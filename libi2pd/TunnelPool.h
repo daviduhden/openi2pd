@@ -1,12 +1,15 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: TunnelPool.
+ *
+ * Declares per-destination tunnel pools: peer selection (explicit, trusted or
+ * exploratory), inbound/outbound tunnel replacement, latency requirements,
+ * tunnel tests and I2CP reconfiguration. Numeric configuration and pool state
+ * are synchronized for concurrent readers.
+ *
+ */
 
 #ifndef TUNNEL_POOL__
 #define TUNNEL_POOL__
@@ -179,8 +182,12 @@ namespace tunnel
 		std::mt19937 m_Rng; // for tunnel selection
 		i2p::data::PeerOrdering m_InboundPeerOrdering, m_OutboundPeerOrdering;
 
-		std::atomic<int> m_MinLatency { 0 }; // if > 0 this tunnel pool will try building tunnels with minimum latency by ms
-		std::atomic<int> m_MaxLatency { 0 }; // if > 0 this tunnel pool will try building tunnels with maximum latency by ms
+		std::atomic<int> m_MinLatency {
+			0
+		}; // if > 0 this tunnel pool will try building tunnels with minimum latency by ms
+		std::atomic<int> m_MaxLatency {
+			0
+		}; // if > 0 this tunnel pool will try building tunnels with maximum latency by ms
 
 	private:
 		uint32_t NextRng ();

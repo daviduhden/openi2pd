@@ -1,12 +1,16 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Identity.
+ *
+ * Implements standard and extended I2P identities: key and option parsing,
+ * serialisation, signature verification for the supported signing types,
+ * offline-signature sections and b33 offline keys, plus private-key
+ * generation, signing and decryption. Untrusted key blobs and offline
+ * signatures are length-checked and expiry-validated before use.
+ *
+ */
 
 #include "Crypto.h"
 #include "I2PEndian.h"
@@ -287,8 +291,7 @@ namespace data
 		// Copy the owned extended part first, so a failed allocation leaves
 		// this object unchanged.
 		std::unique_ptr<uint8_t[]> extended;
-		if (other.m_IsValid && other.m_ExtendedLen > MAX_EXTENDED_BUFFER_SIZE
-			&& other.m_ExtendedBufferPtr)
+		if (other.m_IsValid && other.m_ExtendedLen > MAX_EXTENDED_BUFFER_SIZE && other.m_ExtendedBufferPtr)
 		{
 			extended = std::make_unique<uint8_t[]> (other.m_ExtendedLen);
 			memcpy (extended.get (), other.m_ExtendedBufferPtr.get (), other.m_ExtendedLen);
@@ -398,8 +401,8 @@ namespace data
 				}
 				if (cryptoType == CRYPTO_KEY_TYPE_ELGAMAL && extendedLen != 4 + signingExtra)
 				{
-					LogPrint (eLogError, "Identity: Key certificate has excess data for crypto key type ",
-						(int)cryptoType);
+					LogPrint (
+						eLogError, "Identity: Key certificate has excess data for crypto key type ", (int)cryptoType);
 					m_ExtendedLen = 0;
 					m_ExtendedBufferPtr.reset ();
 					return 0;
@@ -752,7 +755,8 @@ namespace data
 		m_B33OfflineKeys = B33OfflineKeys ();
 		memset (m_PrivateKey, 0, sizeof (m_PrivateKey));
 
-		auto fail = [this] () {
+		auto fail = [this] ()
+		{
 			m_Public = nullptr;
 			m_Signer = nullptr;
 			m_OfflineSignature.clear ();
@@ -773,8 +777,8 @@ namespace data
 		auto cryptoKeyLen = GetPrivateKeyLen ();
 		if (!cryptoKeyLen)
 		{
-			LogPrint (eLogError, "Identity: Unsupported crypto key type ",
-				(int)m_Public->GetCryptoKeyType (), " in private keys");
+			LogPrint (eLogError, "Identity: Unsupported crypto key type ", (int)m_Public->GetCryptoKeyType (),
+				" in private keys");
 			return fail ();
 		}
 		if (ret > len || cryptoKeyLen > len - ret) return fail ();
@@ -1073,8 +1077,8 @@ namespace data
 			}
 			else if (!GenerateCryptoKeyPair (cryptoType, keys.m_PrivateKey, publicKey))
 			{
-				LogPrint (eLogError, "Identity: Can't generate crypto keys of type ", (int)cryptoType,
-					". Use DSA-SHA1");
+				LogPrint (
+					eLogError, "Identity: Can't generate crypto keys of type ", (int)cryptoType, ". Use DSA-SHA1");
 				return PrivateKeys (i2p::data::CreateRandomKeys ()); // DSA-SHA1
 			}
 			// identity
@@ -1100,8 +1104,7 @@ namespace data
 		uint8_t publicKey[256] { };
 		if (isDestination)
 		{
-			if (RAND_bytes (keys.m_PrivateKey, 256) != 1)
-				return PrivateKeys (i2p::data::CreateRandomKeys ());
+			if (RAND_bytes (keys.m_PrivateKey, 256) != 1) return PrivateKeys (i2p::data::CreateRandomKeys ());
 		}
 		else if (!GenerateCryptoKeyPair (cryptoType, keys.m_PrivateKey, publicKey))
 			return PrivateKeys (i2p::data::CreateRandomKeys ());
@@ -1113,7 +1116,8 @@ namespace data
 
 	bool PrivateKeys::GenerateSigningKeyPair (SigningKeyType type, uint8_t * priv, uint8_t * pub)
 	{
-		auto fail = [&] () {
+		auto fail = [&] ()
+		{
 			SigningKeySizes sizes { };
 			if (priv && pub && GetSigningKeySizes (type, sizes))
 			{
@@ -1135,16 +1139,13 @@ namespace data
 			LogPrint (eLogError, "Identity: RSA signature type ", (int)type, " is not supported");
 			return fail ();
 		case SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519: return i2p::crypto::CreateEDDSA25519RandomKeys (priv, pub);
-		case SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519ph:
-			return i2p::crypto::CreateEDDSA25519RandomKeys (priv, pub);
+		case SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519ph: return i2p::crypto::CreateEDDSA25519RandomKeys (priv, pub);
 		case SIGNING_KEY_TYPE_GOSTR3410_CRYPTO_PRO_A_GOSTR3411_256:
 			return i2p::crypto::CreateGOSTR3410RandomKeys (i2p::crypto::eGOSTR3410CryptoProA, priv, pub);
 		case SIGNING_KEY_TYPE_GOSTR3410_TC26_A_512_GOSTR3411_512:
 			return i2p::crypto::CreateGOSTR3410RandomKeys (i2p::crypto::eGOSTR3410TC26A512, priv, pub);
 		case SIGNING_KEY_TYPE_REDDSA_SHA512_ED25519: return i2p::crypto::CreateRedDSA25519RandomKeys (priv, pub);
-		default:
-			LogPrint (eLogError, "Identity: Signing key type ", (int)type, " is not supported");
-			return fail ();
+		default: LogPrint (eLogError, "Identity: Signing key type ", (int)type, " is not supported"); return fail ();
 		}
 	}
 
@@ -1202,8 +1203,8 @@ namespace data
 			}
 			Sign (keys.m_OfflineSignature.data (), pubKeyLen + 6,
 				keys.m_OfflineSignature.data () + 6 + pubKeyLen); // signature
-			if (!m_Public->Verify (keys.m_OfflineSignature.data (), pubKeyLen + 6,
-					keys.m_OfflineSignature.data () + 6 + pubKeyLen))
+			if (!m_Public->Verify (
+					keys.m_OfflineSignature.data (), pubKeyLen + 6, keys.m_OfflineSignature.data () + 6 + pubKeyLen))
 			{
 				LogPrint (eLogError, "Identity: Generated offline signature does not verify");
 				keys.m_SigningPrivateKey = m_SigningPrivateKey;

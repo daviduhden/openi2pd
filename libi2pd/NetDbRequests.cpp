@@ -1,12 +1,16 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: NetDbRequests.
+ *
+ * Implements requested-destination lookups: request coalescing, tunneled and
+ * direct DatabaseLookup dispatch, excluded-peer tracking, retries and
+ * timeouts, search-reply processing and exploratory sampling. Requests and
+ * callbacks are confined to the service's asio thread, with bounded pending
+ * pools and periodic cleanup.
+ *
+ */
 
 #include "Log.h"
 #include "I2NPProtocol.h"
@@ -191,8 +195,8 @@ namespace data
 		}
 		if (m_RequestedDestinations.size () >= MAX_NUM_PENDING_REQUESTS)
 		{
-			LogPrint (eLogWarning, "NetDbReq: Too many pending requests, dropping lookup for ",
-				destination.ToBase64 ());
+			LogPrint (
+				eLogWarning, "NetDbReq: Too many pending requests, dropping lookup for ", destination.ToBase64 ());
 			if (requestComplete) requestComplete (nullptr);
 			return nullptr;
 		}
@@ -411,8 +415,8 @@ namespace data
 		// A request that has not been sent yet has no valid responder.
 		if (!dest->IsRequestedPeer (reply.from))
 		{
-			LogPrint (eLogWarning, "NetDbReq: Database search reply for ", reply.key.ToBase64 (), " from unexpected sender ",
-				reply.from.ToBase64 ());
+			LogPrint (eLogWarning, "NetDbReq: Database search reply for ", reply.key.ToBase64 (),
+				" from unexpected sender ", reply.from.ToBase64 ());
 			return;
 		}
 		// One queried peer gets one answer per request. Replayed or duplicate

@@ -1,12 +1,17 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: RouterInfo.
+ *
+ * Implements RouterInfo and LocalRouterInfo wire parsing, validation, signing,
+ * capability/transport extraction and persistence, including per-family
+ * NTCP2/SSU2 addresses, introducers, options and congestion metadata. Address
+ * hosts, ports, MTU, versions, introducers and signatures from peers are
+ * strictly bounded, while local updates rebuild the signed buffer and save it
+ * asynchronously.
+ *
+ */
 
 #include <stdio.h>
 #include <string.h>
@@ -46,8 +51,7 @@ namespace data
 		// RouterAddresses for this reason; keep the same independence here so a
 		// v4 firewall/port update cannot modify the v6 address (and vice
 		// versa).
-		void CopyAddressForFamily (
-			const RouterInfo::Address & src, RouterInfo::Address & dst, bool v4)
+		void CopyAddressForFamily (const RouterInfo::Address & src, RouterInfo::Address & dst, bool v4)
 		{
 			dst.transportStyle = src.transportStyle;
 			dst.host = src.host;
@@ -137,9 +141,8 @@ namespace data
 				case RouterInfo::eTransportNTCP2:
 					if (address->IsV4 ()) transports |= RouterInfo::eNTCP2V4;
 					if (address->IsV6 ())
-						transports
-							|= (i2p::util::net::IsYggdrasilAddress (address->host) ? RouterInfo::eNTCP2V6Mesh
-																				 : RouterInfo::eNTCP2V6);
+						transports |= (i2p::util::net::IsYggdrasilAddress (address->host) ? RouterInfo::eNTCP2V6Mesh
+																						  : RouterInfo::eNTCP2V6);
 					// An outbound-only NTCP2 address has no host/port/i and must
 					// not make the router look reachable or published.
 					if (address->IsPublishedNTCP2 () && address->port && !address->host.is_unspecified ())
@@ -646,8 +649,7 @@ namespace data
 							size_t end = value.find (',', start);
 							if (end == std::string_view::npos) end = value.size ();
 							auto token = value.substr (start, end - start);
-							if (token == "3" || token == "4" || token == "5")
-								best = std::max (best, token[0] - '0');
+							if (token == "3" || token == "4" || token == "5") best = std::max (best, token[0] - '0');
 							if (end == value.size ()) break;
 							start = end + 1;
 						}
@@ -729,8 +731,7 @@ namespace data
 			if (address->ssu)
 			{
 				for (auto & introducer : address->ssu->introducers)
-					if (introducer.iTag && !introducer.iExp)
-						introducer.iExp = std::numeric_limits<uint32_t>::max ();
+					if (introducer.iTag && !introducer.iExp) introducer.iExp = std::numeric_limits<uint32_t>::max ();
 			}
 			if (address->transportStyle == eTransportSSU2 && address->pqVersions)
 			{
@@ -742,7 +743,7 @@ namespace data
 				if (address->pqVersions & (1u << 4))
 				{
 					bool ipv6 = !address->host.is_unspecified () ? address->host.is_v6 ()
-														 : ((address->caps & AddressCaps::eV6) != 0);
+																 : ((address->caps & AddressCaps::eV6) != 0);
 					int minMtu = ipv6 ? MIN_SSU2_MLKEM768_MTU_IPV6 : MIN_SSU2_MLKEM768_MTU_IPV4;
 					int mtu = address->ssu ? address->ssu->mtu : 0;
 					if (!mtu || mtu >= minMtu) best = 4;
@@ -842,7 +843,7 @@ namespace data
 					if (!((1u << i) & addressTransports)) continue;
 					bool isV4Slot = (i == eNTCP2V4Idx || i == eSSU2V4Idx);
 					bool isFamilySlot = address->IsNTCP2 () ? (i == eNTCP2V4Idx || i == eNTCP2V6Idx)
-														   : (i == eSSU2V4Idx || i == eSSU2V6Idx);
+															: (i == eSSU2V4Idx || i == eSSU2V6Idx);
 					std::shared_ptr<Address> candidate = address;
 					if (split && isFamilySlot)
 					{
@@ -911,8 +912,7 @@ namespace data
 			if (storesProperties) properties.emplace_back (std::string (key), std::string (value));
 
 			// extract caps
-			if (key == "caps")
-				ExtractCaps (value, caps, bandwidthCap, congestion);
+			if (key == "caps") ExtractCaps (value, caps, bandwidthCap, congestion);
 			// extract version
 			else if (key == ROUTER_INFO_PROPERTY_VERSION)
 				version = ParseRouterVersion (value);
@@ -1205,8 +1205,7 @@ namespace data
 			auto addr = std::make_shared<Address> ();
 			addr->port = port;
 			addr->transportStyle = eTransportNTCP2;
-			addr->caps = (caps & ~(AddressCaps::eV4 | AddressCaps::eV6))
-				| (v4 ? AddressCaps::eV4 : AddressCaps::eV6);
+			addr->caps = (caps & ~(AddressCaps::eV4 | AddressCaps::eV6)) | (v4 ? AddressCaps::eV4 : AddressCaps::eV6);
 			addr->date = 0;
 			addr->published = false;
 			memcpy (addr->s, staticKey, 32);
@@ -1865,8 +1864,7 @@ namespace data
 		// addresses
 		auto v4ntcp = (*addresses)[eNTCP2V4Idx];
 		auto v6ntcp = (*addresses)[eNTCP2V6Idx];
-		const bool mergeNTCP2 = v4ntcp && v6ntcp && v4ntcp != v6ntcp
-			&& IsMergeableNTCP2Twin (*v4ntcp, *v6ntcp);
+		const bool mergeNTCP2 = v4ntcp && v6ntcp && v4ntcp != v6ntcp && IsMergeableNTCP2Twin (*v4ntcp, *v6ntcp);
 		uint8_t numAddresses = 0;
 		for (size_t idx = 0; idx < addresses->size (); idx++)
 		{

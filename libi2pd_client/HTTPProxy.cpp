@@ -1,12 +1,15 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: HTTPProxy.
+ *
+ * Implements an HTTP forward proxy that resolves .i2p hosts through the
+ * address book, handles addresshelper jumps, sanitizes proxy-revealing
+ * headers and rotates between configured outproxies. CONNECT, upstream
+ * HTTP/SOCKS proxying and request parsing use a bounded header buffer.
+ *
+ */
 
 #include <algorithm>
 #include <charconv>
@@ -697,8 +700,8 @@ namespace proxy
 						{
 							if (!self->m_proxysock) return;
 							self->m_proxysock->async_connect (ep,
-								std::bind (&HTTPReqHandler::HandleUpstreamHTTPProxyConnect, self,
-									std::placeholders::_1));
+								std::bind (
+									&HTTPReqHandler::HandleUpstreamHTTPProxyConnect, self, std::placeholders::_1));
 						}));
 			}
 		}
@@ -714,8 +717,7 @@ namespace proxy
 					{
 						if (!self->m_proxysock) return;
 						self->m_proxysock->async_connect (ep,
-							std::bind (&HTTPReqHandler::HandleUpstreamSocksProxyConnect, self,
-								std::placeholders::_1));
+							std::bind (&HTTPReqHandler::HandleUpstreamSocksProxyConnect, self, std::placeholders::_1));
 					}));
 		}
 		else

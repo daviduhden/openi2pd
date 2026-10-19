@@ -1,8 +1,15 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: file.
+ *
+ * Bounded whole-file reads (16 MiB default), owner-only non-following writes on
+ * POSIX and secure buffer wiping for the tools. Read failures are returned as
+ * values rather than exceptions or partial buffers.
+ *
  */
+
 #ifndef I2PD_TOOLS_COMMON_FILE_HPP
 #define I2PD_TOOLS_COMMON_FILE_HPP
 
@@ -95,8 +102,7 @@ inline bool WriteFile (const std::string & path, std::span<const uint8_t> data)
 	while (remaining)
 	{
 		ssize_t written;
-		do
-			written = ::write (fd, cursor, remaining);
+		do written = ::write (fd, cursor, remaining);
 		while (written < 0 && errno == EINTR);
 		if (written <= 0)
 		{

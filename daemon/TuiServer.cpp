@@ -1,11 +1,16 @@
 /*
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: TuiServer.
+ *
+ * Implements the UNIX TUI transport: a 0600 AF_UNIX listener that accepts
+ * only same-UID peers, enforces per-operation and whole-connection budgets,
+ * and dispatches newline-delimited requests sequentially. The socket path is
+ * replaced only after stale-owner checks and is removed only while the
+ * recorded inode still matches.
+ *
+ */
 
 #include "TuiServer.h"
 
@@ -261,8 +266,7 @@ namespace tui
 			if (m_Stop.load (std::memory_order_relaxed)) return false;
 			const auto now = SteadyClock::now ();
 			if (now >= deadline) return false;
-			const auto remaining
-				= std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now).count ();
+			const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now).count ();
 			if (remaining <= 0) return false;
 
 			pollfd pfd { fd, POLLOUT, 0 };
@@ -323,8 +327,8 @@ namespace tui
 						  .count ();
 				const auto connectionRemaining
 					= std::chrono::duration_cast<std::chrono::milliseconds> (connectionDeadline - now).count ();
-				const auto waitMs = std::min<int64_t> (
-					{ CLIENT_POLL_MS, std::max<int64_t> (idleRemaining, 1), std::max<int64_t> (connectionRemaining, 1) });
+				const auto waitMs = std::min<int64_t> ({ CLIENT_POLL_MS, std::max<int64_t> (idleRemaining, 1),
+					std::max<int64_t> (connectionRemaining, 1) });
 
 				pollfd pfd { clientFd, POLLIN, 0 };
 				int ready;

@@ -1,12 +1,16 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: RouterInfo.
+ *
+ * RouterInfo parsing, serialization and capability model: identity, NTCP2/SSU2 addresses for
+ * IPv4, IPv6 and mesh, caps, congestion, introducers, transport bitmasks and family signatures,
+ * bounded by Java-compatible size, address and introducer limits. LocalRouterInfo rebuilds and
+ * signs the published descriptor; instances are non-copyable, keep their signed buffer behind
+ * a mutex and publish transport and profile state atomically for concurrent readers.
+ *
+ */
 
 #ifndef ROUTER_INFO_H__
 #define ROUTER_INFO_H__
@@ -173,7 +177,7 @@ namespace data
 		{
 			TransportStyle transportStyle;
 			boost::asio::ip::address host;
-			Tag<32> s {}, i {}; // keys, i is first 16 bytes for NTCP2 and 32 bytes intro key for SSU
+			Tag<32> s { }, i { }; // keys, i is first 16 bytes for NTCP2 and 32 bytes intro key for SSU
 			int v = 2; // version
 			// Bit N is set when SSU2 version N (3 or 4) was advertised in the
 			// comma-separated "pq" address option. The base "v" option must
@@ -213,8 +217,7 @@ namespace data
 			// could not use it.
 			bool IsReachableSSU () const
 			{
-				return (bool)ssu
-					&& ((published && port && !host.is_unspecified ()) || UsesIntroducer ());
+				return (bool)ssu && ((published && port && !host.is_unspecified ()) || UsesIntroducer ());
 			}
 			bool UsesIntroducer () const { return (bool)ssu && !ssu->introducers.empty (); };
 

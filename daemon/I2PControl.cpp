@@ -1,12 +1,17 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: I2PControl.
+ *
+ * Implements the asynchronous Boost.Asio TLS control service, accepting TCP
+ * or UNIX stream connections and parsing bounded HTTP/JSON-RPC requests.
+ * Passwords are compared in constant time, issued tokens expire after one
+ * hour and every non-Authenticate method requires a valid token. A
+ * self-signed certificate is generated when the configured files are missing
+ * or unreadable.
+ *
+ */
 
 #include <cstdio>
 #include <memory>
@@ -32,26 +37,28 @@
 
 namespace
 {
-	struct FileCloser
+struct FileCloser
+{
+	void operator() (FILE * file) const
 	{
-		void operator() (FILE * file) const
-		{
-			if (file) std::fclose (file);
-		}
-	};
-	using FilePtr = std::unique_ptr<FILE, FileCloser>;
-
-	// Return the first queued OpenSSL error and drain the queue, so a later
-	// unrelated failure is not reported with a stale reason.
-	std::string GetOpenSSLError ()
-	{
-		unsigned long error = ERR_get_error ();
-		if (!error) return "unknown error";
-		char buffer[256];
-		ERR_error_string_n (error, buffer, sizeof (buffer));
-		while (ERR_get_error () != 0) { }
-		return buffer;
+		if (file) std::fclose (file);
 	}
+};
+using FilePtr = std::unique_ptr<FILE, FileCloser>;
+
+// Return the first queued OpenSSL error and drain the queue, so a later
+// unrelated failure is not reported with a stale reason.
+std::string GetOpenSSLError ()
+{
+	unsigned long error = ERR_get_error ();
+	if (!error) return "unknown error";
+	char buffer[256];
+	ERR_error_string_n (error, buffer, sizeof (buffer));
+	while (ERR_get_error () != 0)
+	{
+	}
+	return buffer;
+}
 }
 
 namespace i2p

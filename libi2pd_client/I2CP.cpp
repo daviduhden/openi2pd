@@ -1,12 +1,16 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: I2CP.
+ *
+ * Implements the router-side I2CP server: session handshake, destination
+ * creation, lease-set publication and message send/receive over the binary
+ * protocol. Session identifiers are validated against collisions, message and
+ * send-queue sizes are bounded, and payloads are routed through the local
+ * destination or garlic sessions.
+ *
+ */
 
 #include <string.h>
 #include <stdlib.h>
@@ -53,8 +57,7 @@ namespace client
 		std::mutex g_BlindingInfosMutex;
 		std::map<BlindingInfoKey, BlindingInfo> g_BlindingInfos;
 
-		BlindingInfoKey MakeBlindingInfoKey (
-			i2p::data::SigningKeyType keyType, const uint8_t * key, size_t keyLen)
+		BlindingInfoKey MakeBlindingInfoKey (i2p::data::SigningKeyType keyType, const uint8_t * key, size_t keyLen)
 		{
 			return { (uint16_t)keyType, std::vector<uint8_t> (key, key + keyLen) };
 		}
@@ -96,7 +99,8 @@ namespace client
 					info.authPrivateKey = existing.authPrivateKey;
 				}
 				if (info.secret.empty ()) info.secret = existing.secret;
-				if (!info.expiration) info.expiration = existing.expiration;
+				if (!info.expiration)
+					info.expiration = existing.expiration;
 				else if (existing.expiration && info.expiration < existing.expiration)
 					info.expiration = existing.expiration;
 			}
@@ -114,8 +118,8 @@ namespace client
 			// TYPE_KEY are stored under exactly that key; deriving today's
 			// blinded key and comparing it with the stored unblinded key can
 			// never match.
-			auto it = g_BlindingInfos.find (
-				MakeBlindingInfoKey (blinded.GetSigType (), blinded.GetPublicKey (), keyLen));
+			auto it
+				= g_BlindingInfos.find (MakeBlindingInfoKey (blinded.GetSigType (), blinded.GetPublicKey (), keyLen));
 			if (it == g_BlindingInfos.end ()) return nullptr;
 			if (it->second.expiration && now > it->second.expiration) return nullptr;
 			return it->second.identity;
@@ -840,7 +844,8 @@ namespace client
 		buf[I2CP_HEADER_TYPE_OFFSET] = type;
 		if (len) memcpy (buf + I2CP_HEADER_SIZE, payload, len);
 
-		if (m_Owner.IsInServiceThread ()) QueueI2CPMessage (std::move (sendBuf), l);
+		if (m_Owner.IsInServiceThread ())
+			QueueI2CPMessage (std::move (sendBuf), l);
 		else
 		{
 			auto s = shared_from_this ();
@@ -880,8 +885,8 @@ namespace client
 			return;
 		}
 		boost::asio::async_write (*socket, boost::asio::buffer (m_SendBuffer, len), boost::asio::transfer_all (),
-			[s = shared_from_this (), socket] (const boost::system::error_code & ecode,
-				std::size_t bytes_transferred) { s->HandleI2CPMessageSent (ecode, bytes_transferred); });
+			[s = shared_from_this (), socket] (const boost::system::error_code & ecode, std::size_t bytes_transferred)
+			{ s->HandleI2CPMessageSent (ecode, bytes_transferred); });
 	}
 
 	void I2CPSession::HandleI2CPMessageSent (const boost::system::error_code & ecode, std::size_t bytes_transferred)
@@ -1013,8 +1018,7 @@ namespace client
 					transientKeyStr.remove_prefix (colon + 1);
 				}
 			}
-			if (offlineOk)
-				transientVerifier.reset (i2p::data::IdentityEx::CreateVerifier (transientType));
+			if (offlineOk) transientVerifier.reset (i2p::data::IdentityEx::CreateVerifier (transientType));
 			if (offlineOk && transientVerifier)
 			{
 				auto keyLen = transientVerifier->GetPublicKeyLen ();
@@ -1051,17 +1055,15 @@ namespace client
 			}
 		}
 
-		auto signatureLen
-			= transientVerifier ? transientVerifier->GetSignatureLen () : identity->GetSignatureLen ();
+		auto signatureLen = transientVerifier ? transientVerifier->GetSignatureLen () : identity->GetSignatureLen ();
 		if (offset + signatureLen > len)
 		{
 			LogPrint (eLogError, "I2CP: Create session message is too short for signature");
 			SendSessionStatusMessage (eI2CPSessionStatusInvalid); // invalid
 			return;
 		}
-		bool signatureValid = transientVerifier
-			? transientVerifier->Verify (buf, offset, buf + offset)
-			: identity->Verify (buf, offset, buf + offset);
+		bool signatureValid = transientVerifier ? transientVerifier->Verify (buf, offset, buf + offset)
+												: identity->Verify (buf, offset, buf + offset);
 		if (signatureValid)
 		{
 			auto destination = m_Owner.IsSingleThread ()
@@ -1482,8 +1484,8 @@ namespace client
 								associated->GetIdentHash ().ToBase32 ());
 							leaseSet = nullptr;
 						}
-						s->SendHostReplyMessage (requestID, sessionID,
-							leaseSet ? leaseSet->GetIdentity () : nullptr, requestOptions, std::move (leaseSet));
+						s->SendHostReplyMessage (requestID, sessionID, leaseSet ? leaseSet->GetIdentity () : nullptr,
+							requestOptions, std::move (leaseSet));
 					};
 					if (blinded)
 						destination->RequestDestinationWithEncryptedLeaseSet (blinded, complete);
@@ -1707,7 +1709,8 @@ namespace client
 				// mapping when available, otherwise an empty Mapping.
 				if (leaseSet && leaseSet->GetStoreType () == i2p::data::NETDB_STORE_TYPE_STANDARD_LEASESET2)
 				{
-					const auto & properties = static_cast<const i2p::data::LeaseSet2 *> (leaseSet.get ())->GetProperties ();
+					const auto & properties
+						= static_cast<const i2p::data::LeaseSet2 *> (leaseSet.get ())->GetProperties ();
 					if (!properties.IsEmpty ())
 					{
 						options.resize (4096);
@@ -1807,7 +1810,8 @@ namespace client
 		htobe32buf (buf + I2CP_HEADER_SIZE + 6, len);
 		if (len) memcpy (buf + I2CP_HEADER_SIZE + 10, payload, len);
 
-		if (m_Owner.IsInServiceThread ()) QueueI2CPMessage (std::move (sendBuf), l);
+		if (m_Owner.IsInServiceThread ())
+			QueueI2CPMessage (std::move (sendBuf), l);
 		else
 		{
 			auto s = shared_from_this ();

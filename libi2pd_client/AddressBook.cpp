@@ -1,12 +1,15 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: AddressBook.
+ *
+ * Loads hosts.txt, local addresses and HTTP subscriptions, resolves .i2p
+ * names locally or through destination lookups, and caches identities plus
+ * subscription ETags on disk. A per-destination UDP resolver answers remote
+ * name queries on the address resolver ports.
+ *
+ */
 
 #include <string.h>
 #include <inttypes.h>
@@ -918,8 +921,8 @@ namespace client
 				memcpy (buf.data () + 9, address.data (), address.length ());
 				// SendDatagramTo has no span overload; pass the contiguous buffer
 				// explicitly. It copies the payload before buf is destroyed.
-				datagram->SendDatagramTo (buf.data (), buf.size (), addr->identHash,
-					ADDRESS_RESPONSE_DATAGRAM_PORT, ADDRESS_RESOLVER_DATAGRAM_PORT);
+				datagram->SendDatagramTo (buf.data (), buf.size (), addr->identHash, ADDRESS_RESPONSE_DATAGRAM_PORT,
+					ADDRESS_RESOLVER_DATAGRAM_PORT);
 			}
 		}
 	}

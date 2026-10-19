@@ -1,9 +1,16 @@
 /*
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: LogWorker.
+ *
+ * Implements LogSink configuration and reattachment plus the log worker: the
+ * sink sends configuration (optionally with a pre-opened descriptor) and
+ * records, while the worker applies its role sandbox, sanitises records and
+ * writes to one O_NOFOLLOW file or syslog. Control characters are flattened
+ * so a record cannot forge extra physical log lines.
+ *
+ */
 
 #include "LogWorker.h"
 #include "LinuxSandbox.h"
@@ -142,8 +149,7 @@ i2p::expected<void, std::string> LogSink::Configure (bool useSyslog, std::string
 	if (!useSyslog && !path.empty ())
 	{
 		logFd = OpenLogFile (path);
-		if (logFd < 0)
-			return i2p::unexpected (std::string ("open log file: ") + strerror (errno));
+		if (logFd < 0) return i2p::unexpected (std::string ("open log file: ") + strerror (errno));
 	}
 	Message message { MessageType::ConfigureLogFd, 0, EncodeLogConfig (useSyslog, path, tag) };
 	auto sent = m_Channel.SendWithFd (message, logFd);
@@ -160,8 +166,7 @@ i2p::expected<void, std::string> LogSink::Configure (bool useSyslog, std::string
 	return { };
 }
 
-i2p::expected<void, std::string> LogSink::ConfigureProxy (
-	bool useSyslog, std::string_view path, std::string_view tag)
+i2p::expected<void, std::string> LogSink::ConfigureProxy (bool useSyslog, std::string_view path, std::string_view tag)
 {
 	std::lock_guard<std::mutex> lock (m_Mutex);
 	if (m_Configured) return i2p::unexpected ("log sink already configured");
@@ -190,8 +195,7 @@ i2p::expected<void, std::string> LogSink::Reattach (Channel channel)
 	if (!m_Syslog && !m_Path.empty ())
 	{
 		logFd = OpenLogFile (m_Path);
-		if (logFd < 0)
-			return i2p::unexpected (std::string ("open log file: ") + strerror (errno));
+		if (logFd < 0) return i2p::unexpected (std::string ("open log file: ") + strerror (errno));
 	}
 	m_Channel.Close ();
 	if (!channel.IsOpen ())

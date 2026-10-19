@@ -1,8 +1,16 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: StatisticsFragment.
+ *
+ * Traffic chart and lifetime counters fed only by published snapshots, with
+ * sample history preserved across configuration changes. A sample is appended
+ * once per uptime value and the chart is cleared when uptime moves backwards,
+ * so a restarted daemon does not inherit stale history.
+ *
  */
+
 package org.openi2pd.router;
 
 import android.os.Bundle;
@@ -114,8 +122,7 @@ public class StatisticsFragment extends Fragment {
                     routers, UiFormat.count(requireContext(), snapshot.routers()));
             long totalTunnels = (long) snapshot.inboundTunnels() + snapshot.outboundTunnels()
                     + snapshot.transitTunnels();
-            UiFormat.setTextIfChanged(
-                    tunnels, UiFormat.count(requireContext(), totalTunnels));
+            UiFormat.setTextIfChanged(tunnels, UiFormat.count(requireContext(), totalTunnels));
         } else {
             UiFormat.setTextIfChanged(totalReceived, getString(R.string.value_unknown));
             UiFormat.setTextIfChanged(totalSent, getString(R.string.value_unknown));

@@ -1,12 +1,14 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: TunnelPool.
+ *
+ * Implements tunnel creation, selection and expiration, peer selection including
+ * custom selectors and peer ordering, tunnel testing, garlic and delivery-status
+ * handling, and pool reconfiguration.
+ *
+ */
 
 #include <algorithm>
 #include "I2PEndian.h"
@@ -56,11 +58,9 @@ namespace tunnel
 			m_NumInboundTunnels = TUNNEL_POOL_MAX_INBOUND_TUNNELS_QUANTITY;
 		if (m_NumOutboundTunnels > TUNNEL_POOL_MAX_OUTBOUND_TUNNELS_QUANTITY)
 			m_NumOutboundTunnels = TUNNEL_POOL_MAX_OUTBOUND_TUNNELS_QUANTITY;
-		if (m_InboundVariance.load () < 0
-			&& m_NumInboundHops.load () + m_InboundVariance.load () <= 0)
+		if (m_InboundVariance.load () < 0 && m_NumInboundHops.load () + m_InboundVariance.load () <= 0)
 			m_InboundVariance = m_NumInboundHops.load () ? -m_NumInboundHops.load () + 1 : 0;
-		if (m_OutboundVariance.load () < 0
-			&& m_NumOutboundHops.load () + m_OutboundVariance.load () <= 0)
+		if (m_OutboundVariance.load () < 0 && m_NumOutboundHops.load () + m_OutboundVariance.load () <= 0)
 			m_OutboundVariance = m_NumOutboundHops.load () ? -m_NumOutboundHops.load () + 1 : 0;
 		if (m_InboundVariance.load () > 0
 			&& m_NumInboundHops.load () + m_InboundVariance.load () > STANDARD_NUM_RECORDS)
@@ -192,7 +192,7 @@ namespace tunnel
 	{
 		if (expiredTunnel)
 		{
-			expiredTunnel->SetTunnelPool (std::shared_ptr<TunnelPool> {});
+			expiredTunnel->SetTunnelPool (std::shared_ptr<TunnelPool> { });
 			{
 				std::unique_lock<std::mutex> l (m_TestsMutex);
 				for (auto & it : m_Tests)
@@ -369,7 +369,8 @@ namespace tunnel
 			for (int i = 0; i < num; i++) CreateInboundTunnel (ts);
 		}
 
-		if (num < m_NumInboundTunnels.load (std::memory_order_relaxed) && m_NumInboundHops.load (std::memory_order_relaxed) <= 0)
+		if (num < m_NumInboundTunnels.load (std::memory_order_relaxed)
+			&& m_NumInboundHops.load (std::memory_order_relaxed) <= 0)
 		{
 			if (auto destination = GetLocalDestination ()) // zero hops IB
 				destination->SetLeaseSetUpdated (true); // update LeaseSet immediately
@@ -527,8 +528,7 @@ namespace tunnel
 				m_InboundPeerOrdering.CleanUp (ts);
 				m_OutboundPeerOrdering.CleanUp (ts);
 			}
-			m_NextManageTime
-				= ts + TUNNEL_POOL_MANAGE_INTERVAL + (tunnels.GetRng () % TUNNEL_POOL_MANAGE_INTERVAL) / 2;
+			m_NextManageTime = ts + TUNNEL_POOL_MANAGE_INTERVAL + (tunnels.GetRng () % TUNNEL_POOL_MANAGE_INTERVAL) / 2;
 		}
 	}
 

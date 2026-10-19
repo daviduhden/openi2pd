@@ -1,12 +1,15 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: UDPTunnel.
+ *
+ * Implements UDP client and server tunnels over repliable and raw I2P
+ * datagrams, multiplexing conversations by port. A reliability layer provides
+ * RFC 6298 RTT/RTO estimation, a bounded in-flight window and send-rate
+ * limiting, and expires stale sessions.
+ *
+ */
 
 #include <string_view>
 #include "Log.h"
@@ -507,9 +510,9 @@ namespace client
 			std::bind (&I2PUDPServerTunnel::HandleRecvFromI2P, this, std::placeholders::_1, std::placeholders::_2,
 				std::placeholders::_3, std::placeholders::_4, std::placeholders::_5, std::placeholders::_6),
 			m_inPort);
-		dgram->SetRawReceiver (std::bind (&I2PUDPServerTunnel::HandleRecvFromI2PRaw, this, std::placeholders::_1,
-								   std::placeholders::_2, std::placeholders::_3, std::placeholders::_4,
-								   std::placeholders::_5),
+		dgram->SetRawReceiver (
+			std::bind (&I2PUDPServerTunnel::HandleRecvFromI2PRaw, this, std::placeholders::_1, std::placeholders::_2,
+				std::placeholders::_3, std::placeholders::_4, std::placeholders::_5),
 			m_inPort);
 		m_StatsTimer.reset (new boost::asio::steady_timer (m_LocalDest->GetService ()));
 		ScheduleStatsTimer ();

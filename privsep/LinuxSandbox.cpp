@@ -1,9 +1,15 @@
 /*
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: LinuxSandbox.
+ *
+ * Implements least-privilege Linux sandboxing: no-new-privs, capability
+ * drop, optional network namespace, Landlock path and network rules, a seccomp
+ * socket filter for AF_INET/AF_INET6 or all socket creation, and optional
+ * cgroup-v2 limits. Non-Linux targets return explicit unavailability errors.
+ *
+ */
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
@@ -71,9 +77,9 @@ namespace
 #ifdef SYS_landlock_create_ruleset
 		return syscall (SYS_landlock_create_ruleset, attr, size, flags);
 #else
-		(void) attr;
-		(void) size;
-		(void) flags;
+		(void)attr;
+		(void)size;
+		(void)flags;
 		errno = ENOSYS;
 		return -1;
 #endif
@@ -84,10 +90,10 @@ namespace
 #ifdef SYS_landlock_add_rule
 		return syscall (SYS_landlock_add_rule, ruleset, ruleType, attr, flags);
 #else
-		(void) ruleset;
-		(void) ruleType;
-		(void) attr;
-		(void) flags;
+		(void)ruleset;
+		(void)ruleType;
+		(void)attr;
+		(void)flags;
 		errno = ENOSYS;
 		return -1;
 #endif
@@ -98,8 +104,8 @@ namespace
 #ifdef SYS_landlock_restrict_self
 		return syscall (SYS_landlock_restrict_self, ruleset, flags);
 #else
-		(void) ruleset;
-		(void) flags;
+		(void)ruleset;
+		(void)flags;
 		errno = ENOSYS;
 		return -1;
 #endif
@@ -124,10 +130,8 @@ namespace
 		// caller must either deny socket creation (storage) or explicitly
 		// accept that Landlock cannot constrain UDP.
 		uint64_t mask = 0;
-		if (abi >= 4)
-			mask |= LANDLOCK_ACCESS_NET_BIND_TCP | LANDLOCK_ACCESS_NET_CONNECT_TCP;
-		if (abi >= 10)
-			mask |= LANDLOCK_ACCESS_NET_BIND_UDP | LANDLOCK_ACCESS_NET_CONNECT_SEND_UDP;
+		if (abi >= 4) mask |= LANDLOCK_ACCESS_NET_BIND_TCP | LANDLOCK_ACCESS_NET_CONNECT_TCP;
+		if (abi >= 10) mask |= LANDLOCK_ACCESS_NET_BIND_UDP | LANDLOCK_ACCESS_NET_CONNECT_SEND_UDP;
 		return mask;
 	}
 
@@ -137,8 +141,7 @@ namespace
 		struct __user_cap_data_struct data[2] { };
 		if (syscall (SYS_capset, &header, data) != 0)
 		{
-			if (geteuid () == 0)
-				return i2p::unexpected (std::string ("capset: ") + strerror (errno));
+			if (geteuid () == 0) return i2p::unexpected (std::string ("capset: ") + strerror (errno));
 			// An unprivileged process has no capability set to drop; EPERM
 			// is expected and must not make the worker unusable.
 			if (errno != EPERM) return i2p::unexpected (std::string ("capset: ") + strerror (errno));
@@ -156,8 +159,7 @@ namespace
 		}
 #endif
 #if defined(PR_CAP_AMBIENT) && defined(PR_CAP_AMBIENT_CLEAR_ALL)
-		if (prctl (PR_CAP_AMBIENT, PR_CAP_AMBIENT_CLEAR_ALL, 0, 0, 0) != 0 && errno != EINVAL
-			&& errno != EPERM)
+		if (prctl (PR_CAP_AMBIENT, PR_CAP_AMBIENT_CLEAR_ALL, 0, 0, 0) != 0 && errno != EINVAL && errno != EPERM)
 			return i2p::unexpected (std::string ("PR_CAP_AMBIENT: ") + strerror (errno));
 #endif
 		return { };
@@ -197,8 +199,8 @@ namespace
 			// AF_INET/AF_INET6 are rejected; AF_UNIX (IPC/syslog) is allowed.
 			// The socketpair syscall is left untouched because it is AF_UNIX.
 			filter.push_back (BPF_JUMP (BPF_JMP | BPF_JEQ | BPF_K, SYS_socket, 0, 5));
-			filter.push_back (BPF_STMT (BPF_LD | BPF_W | BPF_ABS,
-				static_cast<uint32_t> (offsetof (struct seccomp_data, args))));
+			filter.push_back (
+				BPF_STMT (BPF_LD | BPF_W | BPF_ABS, static_cast<uint32_t> (offsetof (struct seccomp_data, args))));
 			filter.push_back (BPF_JUMP (BPF_JMP | BPF_JEQ | BPF_K, AF_INET, 0, 1));
 			filter.push_back (BPF_STMT (BPF_RET | BPF_K, deny));
 			filter.push_back (BPF_JUMP (BPF_JMP | BPF_JEQ | BPF_K, AF_INET6, 0, 1));
@@ -226,8 +228,7 @@ namespace
 		if (!ruleset.handled_access_fs && !ruleset.handled_access_net) return { };
 
 		const int rulesetFd = static_cast<int> (LandlockCreateRuleset (&ruleset, sizeof (ruleset), 0));
-		if (rulesetFd < 0)
-			return i2p::unexpected (std::string ("landlock_create_ruleset: ") + strerror (errno));
+		if (rulesetFd < 0) return i2p::unexpected (std::string ("landlock_create_ruleset: ") + strerror (errno));
 
 		bool ok = true;
 		if (profile.allowPersistentWrites)
@@ -275,40 +276,40 @@ LinuxSandboxProfile GetLinuxSandboxProfile (WorkerClass workerClass)
 	LinuxSandboxProfile profile;
 	switch (workerClass)
 	{
-		case WorkerClass::Log:
-			// A file log is expected to use a pre-opened descriptor. Syslog
-			// still needs AF_UNIX, but AF_INET/AF_INET6 are never required.
-			profile.allowNetwork = false;
-			profile.allowPersistentWrites = false;
+	case WorkerClass::Log:
+		// A file log is expected to use a pre-opened descriptor. Syslog
+		// still needs AF_UNIX, but AF_INET/AF_INET6 are never required.
+		profile.allowNetwork = false;
+		profile.allowPersistentWrites = false;
+		profile.denyInetSockets = true;
+		break;
+	case WorkerClass::Storage:
+		// No new socket of any kind, no external network namespace, and
+		// writes only to the explicitly delegated paths.
+		profile.allowNetwork = false;
+		profile.allowPersistentWrites = true;
+		profile.denySocketCreation = true;
+		profile.isolateNetworkNamespace = true;
+		break;
+	case WorkerClass::Network:
+		// Landlock/seccomp deny persistent writes; sockets are the only
+		// external capability this worker is allowed to have.
+		profile.allowNetwork = true;
+		profile.allowPersistentWrites = false;
+		break;
+	case WorkerClass::Crypto:
+	case WorkerClass::Admin:
+	case WorkerClass::Supervisor:
+		profile.allowNetwork = false;
+		profile.allowPersistentWrites = false;
+		profile.isolateNetworkNamespace = true;
+		// The supervisor needs a fresh AF_UNIX socketpair for each log
+		// child; other roles do not need any socket.
+		if (workerClass == WorkerClass::Supervisor)
 			profile.denyInetSockets = true;
-			break;
-		case WorkerClass::Storage:
-			// No new socket of any kind, no external network namespace, and
-			// writes only to the explicitly delegated paths.
-			profile.allowNetwork = false;
-			profile.allowPersistentWrites = true;
+		else
 			profile.denySocketCreation = true;
-			profile.isolateNetworkNamespace = true;
-			break;
-		case WorkerClass::Network:
-			// Landlock/seccomp deny persistent writes; sockets are the only
-			// external capability this worker is allowed to have.
-			profile.allowNetwork = true;
-			profile.allowPersistentWrites = false;
-			break;
-		case WorkerClass::Crypto:
-		case WorkerClass::Admin:
-		case WorkerClass::Supervisor:
-			profile.allowNetwork = false;
-			profile.allowPersistentWrites = false;
-			profile.isolateNetworkNamespace = true;
-			// The supervisor needs a fresh AF_UNIX socketpair for each log
-			// child; other roles do not need any socket.
-			if (workerClass == WorkerClass::Supervisor)
-				profile.denyInetSockets = true;
-			else
-				profile.denySocketCreation = true;
-			break;
+		break;
 	}
 	return profile;
 }
@@ -327,8 +328,7 @@ i2p::expected<void, std::string> ApplyLinuxSandbox (const LinuxSandboxProfile & 
 		if (unshare (CLONE_NEWNET) != 0 && profile.requireNetworkNamespace)
 			return i2p::unexpected (std::string ("unshare(CLONE_NEWNET): ") + strerror (errno));
 #else
-		if (profile.requireNetworkNamespace)
-			return i2p::unexpected ("CLONE_NEWNET is not available on this kernel");
+		if (profile.requireNetworkNamespace) return i2p::unexpected ("CLONE_NEWNET is not available on this kernel");
 #endif
 	}
 	if (auto caps = DropCapabilities (); !caps) return caps;
@@ -345,10 +345,8 @@ i2p::expected<void, std::string> ApplyLinuxCgroupV2Limits (const LinuxCgroupV2Li
 {
 	if (limits.path.empty () || limits.path.front () != '/' || limits.path.find ('\0') != std::string::npos)
 		return i2p::unexpected ("cgroup path must be absolute and NUL-free");
-	const int directory
-		= open (limits.path.c_str (), O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
-	if (directory < 0)
-		return i2p::unexpected (std::string ("open cgroup directory: ") + strerror (errno));
+	const int directory = open (limits.path.c_str (), O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW);
+	if (directory < 0) return i2p::unexpected (std::string ("open cgroup directory: ") + strerror (errno));
 	struct statfs filesystem { };
 	if (fstatfs (directory, &filesystem) != 0)
 	{
@@ -365,8 +363,7 @@ i2p::expected<void, std::string> ApplyLinuxCgroupV2Limits (const LinuxCgroupV2Li
 	auto writeControl = [directory] (const char * name, std::string_view value) -> i2p::expected<void, std::string>
 	{
 		const int fd = openat (directory, name, O_WRONLY | O_CLOEXEC | O_NOFOLLOW);
-		if (fd < 0)
-			return i2p::unexpected (std::string ("open cgroup ") + name + ": " + strerror (errno));
+		if (fd < 0) return i2p::unexpected (std::string ("open cgroup ") + name + ": " + strerror (errno));
 		size_t written = 0;
 		while (written < value.size ())
 		{

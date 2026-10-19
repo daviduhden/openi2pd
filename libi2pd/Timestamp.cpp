@@ -1,12 +1,14 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Timestamp.
+ *
+ * Implements wall-clock and monotonic time accessors, offset-adjusted UTC date
+ * formatting, and the NTP client loop that resolves the configured servers and
+ * updates the shared offset atomically.
+ *
+ */
 
 #include <time.h>
 #include <cstdio>
@@ -123,8 +125,8 @@ namespace util
 					auto ourTs = GetLocalSecondsSinceEpoch ();
 					uint32_t ts = bufbe32toh (buf + 32);
 					if (ts > 2208988800U) ts -= 2208988800U; // 1/1/1970 from 1/1/1900
-					g_TimeOffset.store (static_cast<int64_t> (ts) - static_cast<int64_t> (ourTs),
-						std::memory_order_relaxed);
+					g_TimeOffset.store (
+						static_cast<int64_t> (ts) - static_cast<int64_t> (ourTs), std::memory_order_relaxed);
 					LogPrint (eLogInfo, "Timestamp: ", address, " time offset from system time is ",
 						g_TimeOffset.load (std::memory_order_relaxed), " seconds");
 				}

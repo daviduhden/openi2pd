@@ -1,12 +1,16 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: FS.
+ *
+ * Implements data-directory detection and filesystem helpers: Windows AppData
+ * or service paths, OpenBSD /var/i2pd, Android external storage and Unix home
+ * fallbacks, plus directory/file creation, rename and removal. Hashed storage
+ * maps identities to sanitised leaf names and walks the tree, while private
+ * key files are created owner-readable and owner-writable only.
+ *
+ */
 
 #include <algorithm>
 #include <fstream>
@@ -136,7 +140,8 @@ namespace fs
 				if (SHGetFolderPathW (NULL, CSIDL_APPDATA, NULL, 0, localAppData) != S_OK)
 				{
 #ifdef WIN32_APP
-					MessageBox (NULL, TEXT ("Unable to get AppData path!"), TEXT ("openi2pd: error"), MB_ICONERROR | MB_OK);
+					MessageBox (
+						NULL, TEXT ("Unable to get AppData path!"), TEXT ("openi2pd: error"), MB_ICONERROR | MB_OK);
 #else
 					fprintf (stderr, "Error: Unable to get AppData path!");
 #endif

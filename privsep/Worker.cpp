@@ -1,9 +1,15 @@
 /*
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Worker.
+ *
+ * Implements worker spawning via fork/exec with the inherited descriptor 3,
+ * close-on-exec cleanup and async-signal-safe child setup. ChildProcess
+ * tracks the PID and optional pidfd so liveness checks, bounded
+ * SIGTERM/SIGKILL escalation and reaping avoid PID reuse and unbounded waits.
+ *
+ */
 
 #include "Worker.h"
 #include "LogWorker.h"
@@ -209,11 +215,10 @@ void ChildProcess::Stop (int timeoutMs)
 		// Prefer pidfd_send_signal so a retained PID number cannot race with
 		// recycle; fall back to kill() when the kernel or descriptor cannot
 		// provide it (the unreaped child still holds the PID).
-		auto signalChild = [this] (int signal) {
+		auto signalChild = [this] (int signal)
+		{
 #if defined(__linux__) && defined(SYS_pidfd_send_signal)
-			if (m_PidFd >= 0
-				&& syscall (SYS_pidfd_send_signal, m_PidFd, signal, nullptr, 0) == 0)
-				return;
+			if (m_PidFd >= 0 && syscall (SYS_pidfd_send_signal, m_PidFd, signal, nullptr, 0) == 0) return;
 #endif
 			kill (m_Pid, signal);
 		};

@@ -1,12 +1,15 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Identity.
+ *
+ * I2P identity and key material: the fixed 387-byte Identity layout, extended identities with
+ * signing and crypto key types, IdentHash derivation, sign/verify and encryption helpers, and
+ * Base64/buffer codecs. Private key containers cleanse transient secrets with OPENSSL_cleanse
+ * and support b33 per-day offline signing keys.
+ *
+ */
 
 #ifndef IDENTITY_H__
 #define IDENTITY_H__
@@ -197,8 +200,7 @@ namespace data
 			OPENSSL_cleanse (m_PrivateKey, sizeof (m_PrivateKey));
 			if (!m_SigningPrivateKey.empty ())
 				OPENSSL_cleanse (m_SigningPrivateKey.data (), m_SigningPrivateKey.size ());
-			if (!m_OfflineSignature.empty ())
-				OPENSSL_cleanse (m_OfflineSignature.data (), m_OfflineSignature.size ());
+			if (!m_OfflineSignature.empty ()) OPENSSL_cleanse (m_OfflineSignature.data (), m_OfflineSignature.size ());
 		}
 
 		std::shared_ptr<const IdentityEx> GetPublic () const { return m_Public; };
@@ -273,10 +275,7 @@ namespace data
 			else
 				PrivateKeys::Sign (buf, len, signature);
 		};
-		size_t GetSignatureLen () const
-		{
-			return m_Signer ? m_SignatureLen : PrivateKeys::GetSignatureLen ();
-		};
+		size_t GetSignatureLen () const { return m_Signer ? m_SignatureLen : PrivateKeys::GetSignatureLen (); };
 		const std::vector<uint8_t> & GetOfflineSignature () const { return m_OfflineSignature; };
 
 	private:

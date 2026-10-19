@@ -1,7 +1,15 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: UiFormatTest.
+ *
+ * Pure-JVM tests for the state derivation and formatting helpers, using
+ * hand-built {@link RouterSnapshot} instances. The helpers do not touch Android
+ * resources, so no emulator or Robolectric is needed.
+ *
  */
+
 package org.openi2pd.router;
 
 import static org.junit.Assert.assertEquals;
@@ -27,8 +35,8 @@ public class UiFormatTest {
     private static RouterSnapshot snapshotWithStatus(DaemonWrapper.State state, boolean online,
             int statusCode, String status, String error) {
         return new RouterSnapshot(state, state != null && state.isStartedOkay(), online, status,
-                statusCode, error, 0L, 1, 2, 3, 4, 5, false, true, true, 6L, 7L, 8L, 9L, 10L,
-                11L, 12L, Collections.emptyList(), ServiceStates.NONE, 0L, error, "ok");
+                statusCode, error, 0L, 1, 2, 3, 4, 5, false, true, true, 6L, 7L, 8L, 9L, 10L, 11L,
+                12L, Collections.emptyList(), ServiceStates.NONE, 0L, error, "ok");
     }
 
     @Test

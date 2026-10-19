@@ -1,11 +1,15 @@
 /*
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: TuiServerWin32.
+ *
+ * Implements the Windows TUI transport as a single-instance message-mode
+ * named pipe with a protected DACL admitting only the daemon user, SYSTEM and
+ * Administrators, and rejects remote clients. Overlapped reads and writes
+ * share the UNIX transport's request, idle and connection-duration budgets.
+ *
+ */
 
 #include "TuiServer.h"
 
@@ -288,8 +292,8 @@ namespace tui
 		bool ConnectClient (HANDLE pipe);
 		void HandleClient (HANDLE pipe);
 		bool WaitForIo (HANDLE pipe, OVERLAPPED & overlapped, DWORD timeoutMs, DWORD & transferred);
-		bool SendAll (HANDLE pipe, HANDLE ioEvent, std::string_view data,
-			std::chrono::steady_clock::time_point deadline);
+		bool SendAll (
+			HANDLE pipe, HANDLE ioEvent, std::string_view data, std::chrono::steady_clock::time_point deadline);
 		void Run (HANDLE firstPipe);
 
 		std::string m_Endpoint;
@@ -572,16 +576,15 @@ namespace tui
 		}
 	}
 
-	bool Server::Impl::SendAll (HANDLE pipe, HANDLE ioEvent, std::string_view data,
-		std::chrono::steady_clock::time_point deadline)
+	bool Server::Impl::SendAll (
+		HANDLE pipe, HANDLE ioEvent, std::string_view data, std::chrono::steady_clock::time_point deadline)
 	{
 		while (!data.empty ())
 		{
 			if (m_Stop.load (std::memory_order_relaxed)) return false;
 			const auto now = std::chrono::steady_clock::now ();
 			if (now >= deadline) return false;
-			const auto remaining
-				= std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now).count ();
+			const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now).count ();
 			if (remaining <= 0) return false;
 			const DWORD ioTimeout = static_cast<DWORD> (
 				std::min<int64_t> (std::max<int64_t> (remaining, 1), static_cast<int64_t> (PIPE_IO_TIMEOUT_MS)));
@@ -643,8 +646,8 @@ namespace tui
 				ResetEvent (ioEvent);
 
 				DWORD received = 0;
-				BOOL result = ReadFile (
-					pipe, buffer.data (), static_cast<DWORD> (buffer.size ()), &received, &overlapped);
+				BOOL result
+					= ReadFile (pipe, buffer.data (), static_cast<DWORD> (buffer.size ()), &received, &overlapped);
 				if (!result)
 				{
 					DWORD error = GetLastError ();

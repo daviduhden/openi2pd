@@ -1,12 +1,16 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: SAM.
+ *
+ * Implements the SAM bridge over TCP and UDP: version negotiation,
+ * session/subsession management, stream connect/accept/forward, datagram and
+ * raw send/receive, destination generation and naming lookups. Version-gated
+ * port fields and bounded accept/session tracking keep the protocol replies
+ * compatible and the peer-controlled state limited.
+ *
+ */
 
 #include <string.h>
 #include <cstdio>
@@ -145,8 +149,8 @@ namespace client
 			return 0;
 		}
 
-		int ChooseSAMVersion (bool hasMin, const std::vector<uint64_t> & minVer, bool hasMax,
-			const std::vector<uint64_t> & maxVer)
+		int ChooseSAMVersion (
+			bool hasMin, const std::vector<uint64_t> & minVer, bool hasMax, const std::vector<uint64_t> & maxVer)
 		{
 			static constexpr int candidates[] = { MAKE_SAM_VERSION_NUMBER (3, 3), MAKE_SAM_VERSION_NUMBER (3, 2),
 				MAKE_SAM_VERSION_NUMBER (3, 1), MAKE_SAM_VERSION_NUMBER (3, 0) };
@@ -302,8 +306,7 @@ namespace client
 				memcpy (reply.get (), m_Buffer, l);
 				auto s = shared_from_this ();
 				QueueI2PWrite (std::move (reply), l,
-					[s] (const boost::system::error_code & ecode)
-					{ s->HandleHandshakeReplySent (ecode, 0); });
+					[s] (const boost::system::error_code & ecode) { s->HandleHandshakeReplySent (ecode, 0); });
 			}
 			else
 			{
@@ -350,8 +353,7 @@ namespace client
 			memcpy (reply.get (), msg.data (), msg.size ());
 			auto s = shared_from_this ();
 			QueueI2PWrite (std::move (reply), msg.size (),
-				[s, close] (const boost::system::error_code & ecode)
-				{ s->HandleMessageReplySent (ecode, 0, close); });
+				[s, close] (const boost::system::error_code & ecode) { s->HandleMessageReplySent (ecode, 0, close); });
 		}
 		else
 		{
@@ -435,8 +437,7 @@ namespace client
 					if (!strcmp (m_Buffer, SAM_SESSION_CREATE))
 						ProcessSessionCreate ({ params, paramsLen });
 					else if (!strcmp (m_Buffer, SAM_STREAM_CONNECT))
-						ProcessStreamConnect (
-							params, lineEnd + 1, bytes_transferred - (lineEnd - m_Buffer) - 1);
+						ProcessStreamConnect (params, lineEnd + 1, bytes_transferred - (lineEnd - m_Buffer) - 1);
 					else if (!strcmp (m_Buffer, SAM_STREAM_ACCEPT))
 						ProcessStreamAccept ({ params, paramsLen });
 					else if (!strcmp (m_Buffer, SAM_STREAM_FORWARD))
@@ -646,7 +647,8 @@ namespace client
 			i2p::data::SigningKeyType signatureType;
 			if (!m_Owner.ResolveSignatureType (params[SAM_PARAM_SIGNATURE_TYPE], signatureType))
 			{
-				SendSessionI2PError ("SIGNATURE_TYPE " + std::string (params[SAM_PARAM_SIGNATURE_TYPE]) + " unsupported");
+				SendSessionI2PError (
+					"SIGNATURE_TYPE " + std::string (params[SAM_PARAM_SIGNATURE_TYPE]) + " unsupported");
 				return;
 			}
 		}
@@ -687,10 +689,9 @@ namespace client
 							port);
 				}
 				else // raw
-					dest->SetRawReceiver (
-						std::bind (&SAMSocket::HandleI2PRawDatagramReceive, shared_from_this (), m_ID,
-							std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4,
-							std::placeholders::_5),
+					dest->SetRawReceiver (std::bind (&SAMSocket::HandleI2PRawDatagramReceive, shared_from_this (), m_ID,
+											  std::placeholders::_1, std::placeholders::_2, std::placeholders::_3,
+											  std::placeholders::_4, std::placeholders::_5),
 						port);
 			}
 
@@ -737,10 +738,10 @@ namespace client
 		if (session)
 		{
 			std::string priv = session->GetLocalDestination ()->GetPrivateKeys ().ToBase64 ();
-			const int formatted = std::snprintf (
-				m_Buffer, SAM_SOCKET_BUFFER_SIZE, SAM_SESSION_CREATE_REPLY_OK, priv.c_str ());
-			const size_t l2 = formatted <= 0 ? 0
-				: std::min<size_t> (static_cast<size_t> (formatted), SAM_SOCKET_BUFFER_SIZE - 1);
+			const int formatted
+				= std::snprintf (m_Buffer, SAM_SOCKET_BUFFER_SIZE, SAM_SESSION_CREATE_REPLY_OK, priv.c_str ());
+			const size_t l2
+				= formatted <= 0 ? 0 : std::min<size_t> (static_cast<size_t> (formatted), SAM_SOCKET_BUFFER_SIZE - 1);
 			SendMessageReply ({ m_Buffer, l2 }, false);
 		}
 	}
@@ -815,8 +816,8 @@ namespace client
 							// by the SAM service. Only the network operation inside
 							// CreateNewOutgoingStream is handed to the destination.
 							auto s = shared_from_this ();
-							boost::asio::post (m_Owner.GetService (),
-								[s, leaseSet, session] () { s->Connect (leaseSet, session); });
+							boost::asio::post (
+								m_Owner.GetService (), [s, leaseSet, session] () { s->Connect (leaseSet, session); });
 						}
 						else
 						{
@@ -852,11 +853,9 @@ namespace client
 				auto localDest = session->GetLocalDestination ();
 				uint16_t fromPort = m_ConnectFromPort ? m_ConnectFromPort : session->FromPort;
 				auto streamingDest = localDest->GetStreamingDestination (fromPort);
-				if (!streamingDest && fromPort)
-					streamingDest = localDest->CreateStreamingDestination (fromPort);
-				m_Stream = streamingDest
-					? streamingDest->CreateNewOutgoingStream (remote, m_ConnectToPort)
-					: localDest->CreateStream (remote, m_ConnectToPort);
+				if (!streamingDest && fromPort) streamingDest = localDest->CreateStreamingDestination (fromPort);
+				m_Stream = streamingDest ? streamingDest->CreateNewOutgoingStream (remote, m_ConnectToPort)
+										 : localDest->CreateStream (remote, m_ConnectToPort);
 				if (m_Stream)
 				{
 					m_Stream->Send ((uint8_t *)m_Buffer, m_BufferOffset); // connect and send
@@ -975,8 +974,8 @@ namespace client
 				}
 				else
 				{
-					LogPrint (eLogInfo, "SAM: Session ", m_ID, " accept queue is full ",
-						session->GetAcceptQueueSize ());
+					LogPrint (
+						eLogInfo, "SAM: Session ", m_ID, " accept queue is full ", session->GetAcceptQueueSize ());
 					SendStreamI2PError ("Already accepting");
 				}
 			}
@@ -1126,8 +1125,7 @@ namespace client
 			LogPrint (eLogError, "SAM: Missing SEND DESTINATION");
 			return offset + size;
 		}
-		session->SendDatagram (
-			params[SAM_PARAM_DESTINATION], (const uint8_t *)data, size, fromPort, toPort, protocol);
+		session->SendDatagram (params[SAM_PARAM_DESTINATION], (const uint8_t *)data, size, fromPort, toPort, protocol);
 		return offset + size;
 	}
 
@@ -1192,10 +1190,10 @@ namespace client
 		else
 		{
 			LogPrint (eLogError, "SAM: Naming failed, unknown address ", name);
-			const int formatted = std::snprintf (
-				m_Buffer, SAM_SOCKET_BUFFER_SIZE, SAM_NAMING_REPLY_KEY_NOT_FOUND, name.c_str ());
-			const size_t len = formatted <= 0 ? 0
-				: std::min<size_t> (static_cast<size_t> (formatted), SAM_SOCKET_BUFFER_SIZE - 1);
+			const int formatted
+				= std::snprintf (m_Buffer, SAM_SOCKET_BUFFER_SIZE, SAM_NAMING_REPLY_KEY_NOT_FOUND, name.c_str ());
+			const size_t len
+				= formatted <= 0 ? 0 : std::min<size_t> (static_cast<size_t> (formatted), SAM_SOCKET_BUFFER_SIZE - 1);
 			SendMessageReply ({ m_Buffer, len }, false);
 		}
 	}
@@ -1263,8 +1261,7 @@ namespace client
 				return;
 			}
 			// PROTOCOL is only meaningful for RAW subsessions.
-			if (type == SAMSessionType::eSAMSessionTypeRaw
-				&& !ParseSAMProtocol (params, SAM_PARAM_PROTOCOL, protocol))
+			if (type == SAMSessionType::eSAMSessionTypeRaw && !ParseSAMProtocol (params, SAM_PARAM_PROTOCOL, protocol))
 			{
 				SendSubsessionError (id, "Invalid PROTOCOL");
 				return;
@@ -1346,10 +1343,9 @@ namespace client
 								listenPort);
 					}
 					else
-						dest->SetRawReceiver (
-							std::bind (&SAMSocket::HandleI2PRawDatagramReceive, shared_from_this (), std::string (id),
-								std::placeholders::_1, std::placeholders::_2, std::placeholders::_3, std::placeholders::_4,
-								std::placeholders::_5),
+						dest->SetRawReceiver (std::bind (&SAMSocket::HandleI2PRawDatagramReceive, shared_from_this (),
+												  std::string (id), std::placeholders::_1, std::placeholders::_2,
+												  std::placeholders::_3, std::placeholders::_4, std::placeholders::_5),
 							listenPort);
 				}
 				masterSession->subsessions.insert (std::string (id));
@@ -1397,8 +1393,8 @@ namespace client
 	void SAMSocket::SendReplyWithMessage (const char * reply, const std::string & msg, bool close)
 	{
 		const int formatted = std::snprintf (m_Buffer, SAM_SOCKET_BUFFER_SIZE, reply, msg.c_str ());
-		const size_t len = formatted <= 0 ? 0
-			: std::min<size_t> (static_cast<size_t> (formatted), SAM_SOCKET_BUFFER_SIZE - 1);
+		const size_t len
+			= formatted <= 0 ? 0 : std::min<size_t> (static_cast<size_t> (formatted), SAM_SOCKET_BUFFER_SIZE - 1);
 		SendMessageReply ({ m_Buffer, len }, close);
 	}
 
@@ -1407,18 +1403,18 @@ namespace client
 		const std::string value (id);
 		const int formatted
 			= std::snprintf (m_Buffer, SAM_SOCKET_BUFFER_SIZE, SAM_SUBSESSION_STATUS_OK, value.c_str ());
-		const size_t len = formatted <= 0 ? 0
-			: std::min<size_t> (static_cast<size_t> (formatted), SAM_SOCKET_BUFFER_SIZE - 1);
+		const size_t len
+			= formatted <= 0 ? 0 : std::min<size_t> (static_cast<size_t> (formatted), SAM_SOCKET_BUFFER_SIZE - 1);
 		SendMessageReply ({ m_Buffer, len }, false);
 	}
 
 	void SAMSocket::SendSubsessionError (std::string_view id, std::string_view msg)
 	{
 		const std::string idValue (id), message (msg);
-		const int formatted = std::snprintf (m_Buffer, SAM_SOCKET_BUFFER_SIZE, SAM_SUBSESSION_STATUS_ERROR,
-			idValue.c_str (), message.c_str ());
-		const size_t len = formatted <= 0 ? 0
-			: std::min<size_t> (static_cast<size_t> (formatted), SAM_SOCKET_BUFFER_SIZE - 1);
+		const int formatted = std::snprintf (
+			m_Buffer, SAM_SOCKET_BUFFER_SIZE, SAM_SUBSESSION_STATUS_ERROR, idValue.c_str (), message.c_str ());
+		const size_t len
+			= formatted <= 0 ? 0 : std::min<size_t> (static_cast<size_t> (formatted), SAM_SOCKET_BUFFER_SIZE - 1);
 		SendMessageReply ({ m_Buffer, len }, false);
 	}
 
@@ -1456,7 +1452,8 @@ namespace client
 					LogPrint (eLogError, "SAM: Naming lookup failed. LeaseSet for ", name, " not found");
 					const int formatted = std::snprintf (
 						s->m_Buffer, SAM_SOCKET_BUFFER_SIZE, SAM_NAMING_REPLY_KEY_NOT_FOUND, name.c_str ());
-					const size_t len = formatted <= 0 ? 0
+					const size_t len = formatted <= 0
+						? 0
 						: std::min<size_t> (static_cast<size_t> (formatted), SAM_SOCKET_BUFFER_SIZE - 1);
 					s->SendMessageReply ({ s->m_Buffer, len }, false);
 				}
@@ -1467,10 +1464,10 @@ namespace client
 		const std::string & name, std::shared_ptr<const i2p::data::IdentityEx> identity)
 	{
 		auto base64 = identity->ToBase64 ();
-		const int formatted = std::snprintf (
-			m_Buffer, SAM_SOCKET_BUFFER_SIZE, SAM_NAMING_REPLY, name.c_str (), base64.c_str ());
-		const size_t l = formatted <= 0 ? 0
-			: std::min<size_t> (static_cast<size_t> (formatted), SAM_SOCKET_BUFFER_SIZE - 1);
+		const int formatted
+			= std::snprintf (m_Buffer, SAM_SOCKET_BUFFER_SIZE, SAM_NAMING_REPLY, name.c_str (), base64.c_str ());
+		const size_t l
+			= formatted <= 0 ? 0 : std::min<size_t> (static_cast<size_t> (formatted), SAM_SOCKET_BUFFER_SIZE - 1);
 		SendMessageReply ({ m_Buffer, l }, false);
 	}
 
@@ -1595,8 +1592,8 @@ namespace client
 		QueueI2PWrite (std::move (buff), len, std::function<void (const boost::system::error_code &)> ());
 	}
 
-	void SAMSocket::QueueI2PWrite (std::shared_ptr<uint8_t[]> buff, size_t len,
-		std::function<void (const boost::system::error_code &)> && onSent)
+	void SAMSocket::QueueI2PWrite (
+		std::shared_ptr<uint8_t[]> buff, size_t len, std::function<void (const boost::system::error_code &)> && onSent)
 	{
 		if (!buff || !len) return;
 		if (m_SocketType == SAMSocketType::eSAMSocketTypeTerminated) return;
@@ -1623,8 +1620,7 @@ namespace client
 			});
 	}
 
-	void SAMSocket::HandleI2PWriteCompleted (
-		const boost::system::error_code & ec, std::size_t bytes_transferred)
+	void SAMSocket::HandleI2PWriteCompleted (const boost::system::error_code & ec, std::size_t bytes_transferred)
 	{
 		std::function<void (const boost::system::error_code &)> onSent;
 		if (!m_WriteQueue.empty ())
@@ -1656,8 +1652,7 @@ namespace client
 			[s, ecode, bytes_transferred] () { s->HandleI2PReceiveOnService (ecode, bytes_transferred); });
 	}
 
-	void SAMSocket::HandleI2PReceiveOnService (
-		const boost::system::error_code & ecode, std::size_t bytes_transferred)
+	void SAMSocket::HandleI2PReceiveOnService (const boost::system::error_code & ecode, std::size_t bytes_transferred)
 	{
 		m_IsI2PReceiving = false;
 		if (ecode)
@@ -1685,8 +1680,7 @@ namespace client
 		{
 			if (m_SocketType != SAMSocketType::eSAMSocketTypeTerminated)
 			{
-				if (bytes_transferred > 0)
-					WriteI2PData (bytes_transferred);
+				if (bytes_transferred > 0) WriteI2PData (bytes_transferred);
 				// The write queue owns the copy, so the next read can start
 				// immediately and output order is preserved.
 				I2PReceive ();
@@ -1774,8 +1768,7 @@ namespace client
 	{
 		auto s = shared_from_this ();
 		boost::asio::post (m_Owner.GetService (),
-			[s, stream = std::move (stream), ep] () mutable
-			{ s->HandleI2PForwardOnService (std::move (stream), ep); });
+			[s, stream = std::move (stream), ep] () mutable { s->HandleI2PForwardOnService (std::move (stream), ep); });
 	}
 
 	void SAMSocket::HandleI2PForwardOnService (
@@ -1873,8 +1866,7 @@ namespace client
 					header += std::to_string (toPort);
 				}
 				header.push_back ('\n');
-				m_Owner.SendTo (
-					{ { (const uint8_t *)header.data (), header.size () }, { buf, len } }, *ep);
+				m_Owner.SendTo ({ { (const uint8_t *)header.data (), header.size () }, { buf, len } }, *ep);
 			}
 			else
 			{
@@ -1940,8 +1932,7 @@ namespace client
 					header += std::to_string (toPort);
 				}
 				header.push_back ('\n');
-				m_Owner.SendTo (
-					{ { (const uint8_t *)header.data (), header.size () }, { buf, len } }, *ep);
+				m_Owner.SendTo ({ { (const uint8_t *)header.data (), header.size () }, { buf, len } }, *ep);
 			}
 			else
 			{
@@ -2003,8 +1994,7 @@ namespace client
 					int l = std::snprintf (header, sizeof (header), "PROTOCOL=%u FROM_PORT=%u TO_PORT=%u\n",
 						(unsigned)protocol, (unsigned)fromPort, (unsigned)toPort);
 					if (l > 0 && (size_t)l < sizeof (header))
-						m_Owner.SendTo (
-							{ { (const uint8_t *)header, (size_t)l }, { buf, len } }, *ep);
+						m_Owner.SendTo ({ { (const uint8_t *)header, (size_t)l }, { buf, len } }, *ep);
 					else
 						LogPrint (eLogWarning, "SAM: Raw datagram header too long");
 				}
@@ -2021,8 +2011,8 @@ namespace client
 				}
 				else
 				{
-					l = std::snprintf ((char *)m_StreamBuffer, SAM_STREAM_BUFFER_SIZE, SAM_RAW_RECEIVED,
-						(long unsigned int)len);
+					l = std::snprintf (
+						(char *)m_StreamBuffer, SAM_STREAM_BUFFER_SIZE, SAM_RAW_RECEIVED, (long unsigned int)len);
 				}
 				if (l < 0 || (size_t)l >= SAM_STREAM_BUFFER_SIZE)
 					LogPrint (eLogWarning, "SAM: Raw received header exceeds buffer, dropped");
@@ -2084,8 +2074,8 @@ namespace client
 		}
 	}
 
-	void SAMSession::SendDatagram (std::string_view destination, const uint8_t * payload, size_t len,
-		uint16_t fromPort, uint16_t toPort, uint8_t protocol)
+	void SAMSession::SendDatagram (std::string_view destination, const uint8_t * payload, size_t len, uint16_t fromPort,
+		uint16_t toPort, uint8_t protocol)
 	{
 		auto localDest = GetLocalDestination ();
 		auto datagramDest = localDest ? localDest->GetDatagramDestination () : nullptr;
@@ -2484,12 +2474,12 @@ namespace client
 			const uint8_t * begin = static_cast<const uint8_t *> (buf.data ());
 			data->insert (data->end (), begin, begin + buf.size ());
 		}
-		boost::asio::post (GetIOService (),
-			[this, data = std::move (data), ep] () { QueueDatagramSend (std::move (data), ep); });
+		boost::asio::post (
+			GetIOService (), [this, data = std::move (data), ep] () { QueueDatagramSend (std::move (data), ep); });
 	}
 
-	void SAMBridge::QueueDatagramSend (std::shared_ptr<std::vector<uint8_t>> data,
-		const boost::asio::ip::udp::endpoint & ep)
+	void SAMBridge::QueueDatagramSend (
+		std::shared_ptr<std::vector<uint8_t>> data, const boost::asio::ip::udp::endpoint & ep)
 	{
 		if (!data || data->empty ()) return;
 		m_DatagramSendQueue.push_back (DatagramSendItem { std::move (data), ep });
@@ -2510,8 +2500,7 @@ namespace client
 			});
 	}
 
-	void SAMBridge::HandleDatagramSent (
-		const boost::system::error_code & ecode, std::size_t bytes_transferred)
+	void SAMBridge::HandleDatagramSent (const boost::system::error_code & ecode, std::size_t bytes_transferred)
 	{
 		if (!m_DatagramSendQueue.empty ()) m_DatagramSendQueue.pop_front ();
 		m_IsSendingDatagram = false;
@@ -2543,8 +2532,8 @@ namespace client
 				size_t payloadLen = bytes_transferred - ((uint8_t *)eol - m_DatagramReceiveBuffer);
 				LogPrint (eLogDebug, "SAM: Datagram received ", m_DatagramReceiveBuffer, " size=", payloadLen);
 				SAMDatagramHeader header;
-				if (ParseSAMDatagramHeader (
-						{ (const char *)m_DatagramReceiveBuffer, (size_t)((char *)eol - 1 - (char *)m_DatagramReceiveBuffer) },
+				if (ParseSAMDatagramHeader ({ (const char *)m_DatagramReceiveBuffer,
+												(size_t)((char *)eol - 1 - (char *)m_DatagramReceiveBuffer) },
 						header))
 				{
 					auto session = FindSession (header.sessionID);
@@ -2613,7 +2602,8 @@ namespace client
 		else if (res.ec == std::errc::invalid_argument)
 		{
 			// Java SigType names are case-insensitive.
-			auto equalsIgnoreCase = [] (std::string_view a, std::string_view b) {
+			auto equalsIgnoreCase = [] (std::string_view a, std::string_view b)
+			{
 				if (a.size () != b.size ()) return false;
 				for (size_t i = 0; i < a.size (); ++i)
 					if (std::tolower (static_cast<unsigned char> (a[i]))

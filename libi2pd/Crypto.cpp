@@ -1,12 +1,17 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Crypto.
+ *
+ * Implements the OpenSSL-backed primitives shared by the I2P protocols:
+ * ElGamal and ECIES-P256 encryption, DSA/RSA parameters, X25519 agreement,
+ * AES-ECB/CBC tunnel layers, ChaCha20-Poly1305 AEAD, HKDF and Noise symmetric
+ * state operations. Lengths are checked before conversion to OpenSSL's
+ * int-sized interfaces, failed tunnel/Noise authentication clears its output,
+ * and process-wide crypto initialisation and locking are managed here.
+ *
+ */
 
 #include <string.h>
 #include <string>
@@ -562,8 +567,8 @@ namespace crypto
 		}
 		BN_CTX * ctx = BN_CTX_new ();
 		BIGNUM * p = BN_new ();
-		bool ok = ctx && p && BN_bin2bn (priv, 256, p)
-			&& BN_mod_exp (p, elgg, p, elgp, ctx) == 1 && bn2buf (p, pub, 256);
+		bool ok
+			= ctx && p && BN_bin2bn (priv, 256, p) && BN_mod_exp (p, elgg, p, elgp, ctx) == 1 && bn2buf (p, pub, 256);
 		if (p) BN_free (p);
 		if (ctx) BN_CTX_free (ctx);
 		if (!ok)
@@ -833,8 +838,8 @@ namespace crypto
 		const bool ok = EVP_EncryptInit_ex (m_Ctx, EVP_aes_256_ecb (), nullptr, m_Key, nullptr) == 1
 			&& EVP_CIPHER_CTX_set_padding (m_Ctx, 0) == 1
 			&& EVP_EncryptUpdate (m_Ctx, out, &len, in, I2P_AES_BLOCK_SIZE) == 1
-			&& len == static_cast<int> (I2P_AES_BLOCK_SIZE)
-			&& EVP_EncryptFinal_ex (m_Ctx, out + len, &finalLen) == 1 && finalLen == 0;
+			&& len == static_cast<int> (I2P_AES_BLOCK_SIZE) && EVP_EncryptFinal_ex (m_Ctx, out + len, &finalLen) == 1
+			&& finalLen == 0;
 		if (!ok)
 		{
 			OPENSSL_cleanse (out, I2P_AES_BLOCK_SIZE);
@@ -869,8 +874,8 @@ namespace crypto
 		const bool ok = EVP_DecryptInit_ex (m_Ctx, EVP_aes_256_ecb (), nullptr, m_Key, nullptr) == 1
 			&& EVP_CIPHER_CTX_set_padding (m_Ctx, 0) == 1
 			&& EVP_DecryptUpdate (m_Ctx, out, &len, in, I2P_AES_BLOCK_SIZE) == 1
-			&& len == static_cast<int> (I2P_AES_BLOCK_SIZE)
-			&& EVP_DecryptFinal_ex (m_Ctx, out + len, &finalLen) == 1 && finalLen == 0;
+			&& len == static_cast<int> (I2P_AES_BLOCK_SIZE) && EVP_DecryptFinal_ex (m_Ctx, out + len, &finalLen) == 1
+			&& finalLen == 0;
 		if (!ok)
 		{
 			OPENSSL_cleanse (out, I2P_AES_BLOCK_SIZE);
@@ -905,8 +910,7 @@ namespace crypto
 		int l = 0, finalLen = 0;
 		const bool ok = EVP_EncryptInit_ex (m_Ctx, EVP_aes_256_cbc (), nullptr, m_Key, iv) == 1
 			&& EVP_CIPHER_CTX_set_padding (m_Ctx, 0) == 1
-			&& EVP_EncryptUpdate (m_Ctx, out, &l, in, static_cast<int> (len)) == 1
-			&& l == static_cast<int> (len)
+			&& EVP_EncryptUpdate (m_Ctx, out, &l, in, static_cast<int> (len)) == 1 && l == static_cast<int> (len)
 			&& EVP_EncryptFinal_ex (m_Ctx, out + l, &finalLen) == 1 && finalLen == 0;
 		if (!ok)
 		{
@@ -942,8 +946,7 @@ namespace crypto
 		int l = 0, finalLen = 0;
 		const bool ok = EVP_DecryptInit_ex (m_Ctx, EVP_aes_256_cbc (), nullptr, m_Key, iv) == 1
 			&& EVP_CIPHER_CTX_set_padding (m_Ctx, 0) == 1
-			&& EVP_DecryptUpdate (m_Ctx, out, &l, in, static_cast<int> (len)) == 1
-			&& l == static_cast<int> (len)
+			&& EVP_DecryptUpdate (m_Ctx, out, &l, in, static_cast<int> (len)) == 1 && l == static_cast<int> (len)
 			&& EVP_DecryptFinal_ex (m_Ctx, out + l, &finalLen) == 1 && finalLen == 0;
 		if (!ok)
 		{
@@ -962,8 +965,7 @@ namespace crypto
 	{
 		uint8_t iv[16];
 		const bool ok = m_IVEncryption.EncryptChecked (in, iv) // iv
-			&& m_LayerEncryption.EncryptChecked (
-				in + 16, i2p::tunnel::TUNNEL_DATA_ENCRYPTED_SIZE, iv, out + 16) // data
+			&& m_LayerEncryption.EncryptChecked (in + 16, i2p::tunnel::TUNNEL_DATA_ENCRYPTED_SIZE, iv, out + 16) // data
 			&& m_IVEncryption.EncryptChecked (iv, out); // double iv
 		if (!ok)
 		{
@@ -978,8 +980,7 @@ namespace crypto
 	{
 		uint8_t iv[16];
 		const bool ok = m_IVDecryption.DecryptChecked (in, iv) // iv
-			&& m_LayerDecryption.DecryptChecked (
-				in + 16, i2p::tunnel::TUNNEL_DATA_ENCRYPTED_SIZE, iv, out + 16) // data
+			&& m_LayerDecryption.DecryptChecked (in + 16, i2p::tunnel::TUNNEL_DATA_ENCRYPTED_SIZE, iv, out + 16) // data
 			&& m_IVDecryption.DecryptChecked (iv, out); // double iv
 		if (!ok)
 		{
@@ -1131,8 +1132,7 @@ namespace crypto
 	static bool ChaCha20 (EVP_CIPHER_CTX * ctx, const uint8_t * msg, size_t msgLen, const uint8_t * key,
 		const uint8_t * nonce, uint8_t * out)
 	{
-		if (!ctx || !key || !nonce || (msgLen && (!msg || !out))
-			|| msgLen > (size_t)std::numeric_limits<int>::max ())
+		if (!ctx || !key || !nonce || (msgLen && (!msg || !out)) || msgLen > (size_t)std::numeric_limits<int>::max ())
 			return false;
 		uint32_t iv[4];
 		iv[0] = htole32 (1);
@@ -1210,8 +1210,7 @@ namespace crypto
 			if (out && outLen) OPENSSL_cleanse (out, outLen);
 			return;
 		}
-		bool ok = EVP_PKEY_derive_init (m_Ctx) == 1
-			&& EVP_PKEY_CTX_set_hkdf_md (m_Ctx, EVP_sha256 ()) == 1;
+		bool ok = EVP_PKEY_derive_init (m_Ctx) == 1 && EVP_PKEY_CTX_set_hkdf_md (m_Ctx, EVP_sha256 ()) == 1;
 		if (ok && key && keyLen)
 		{
 			ok = EVP_PKEY_CTX_set1_hkdf_salt (m_Ctx, salt, 32) == 1
@@ -1230,7 +1229,8 @@ namespace crypto
 			}
 			OPENSSL_cleanse (tempKey, sizeof (tempKey));
 		}
-		if (ok && !info.empty ()) ok = EVP_PKEY_CTX_add1_hkdf_info (m_Ctx, (const uint8_t *)info.data (), (int)info.size ()) == 1;
+		if (ok && !info.empty ())
+			ok = EVP_PKEY_CTX_add1_hkdf_info (m_Ctx, (const uint8_t *)info.data (), (int)info.size ()) == 1;
 		if (ok)
 		{
 			size_t derived = outLen;
@@ -1261,8 +1261,8 @@ namespace crypto
 		memcpy (m_CK, ck, 32);
 
 		EVP_MD_CTX * ctx = EVP_MD_CTX_new ();
-		if (!ctx || EVP_DigestInit_ex (ctx, EVP_sha256 (), NULL) != 1
-			|| EVP_DigestUpdate (ctx, hh, 32) != 1 || EVP_DigestUpdate (ctx, pub, 32) != 1
+		if (!ctx || EVP_DigestInit_ex (ctx, EVP_sha256 (), NULL) != 1 || EVP_DigestUpdate (ctx, hh, 32) != 1
+			|| EVP_DigestUpdate (ctx, pub, 32) != 1
 			|| EVP_DigestFinal_ex (ctx, m_H, nullptr) != 1) // h = MixHash(pub) = SHA256(hh || pub)
 		{
 			memset (m_H, 0, sizeof (m_H));
@@ -1276,10 +1276,8 @@ namespace crypto
 	{
 		if (len && !buf) return;
 		EVP_MD_CTX * ctx = EVP_MD_CTX_new ();
-		bool ok = ctx && EVP_DigestInit_ex (ctx, EVP_sha256 (), NULL) == 1
-			&& EVP_DigestUpdate (ctx, m_H, 32) == 1
-			&& (!len || EVP_DigestUpdate (ctx, buf, len) == 1)
-			&& EVP_DigestFinal_ex (ctx, m_H, nullptr) == 1;
+		bool ok = ctx && EVP_DigestInit_ex (ctx, EVP_sha256 (), NULL) == 1 && EVP_DigestUpdate (ctx, m_H, 32) == 1
+			&& (!len || EVP_DigestUpdate (ctx, buf, len) == 1) && EVP_DigestFinal_ex (ctx, m_H, nullptr) == 1;
 		if (!ok) LogPrint (eLogError, "Noise: MixHash failed");
 		EVP_MD_CTX_free (ctx);
 	}
@@ -1287,8 +1285,7 @@ namespace crypto
 	void NoiseSymmetricState::MixHash (const std::vector<std::pair<uint8_t *, size_t>> & bufs)
 	{
 		EVP_MD_CTX * ctx = EVP_MD_CTX_new ();
-		bool ok = ctx && EVP_DigestInit_ex (ctx, EVP_sha256 (), NULL) == 1
-			&& EVP_DigestUpdate (ctx, m_H, 32) == 1;
+		bool ok = ctx && EVP_DigestInit_ex (ctx, EVP_sha256 (), NULL) == 1 && EVP_DigestUpdate (ctx, m_H, 32) == 1;
 		for (const auto & it : bufs)
 		{
 			if (!ok) break;
@@ -1318,7 +1315,8 @@ namespace crypto
 
 	bool NoiseSymmetricState::Encrypt (const uint8_t * in, uint8_t * out, size_t len)
 	{
-		if (!in || !out || len > std::numeric_limits<size_t>::max () - 16 || m_N == std::numeric_limits<uint64_t>::max ())
+		if (!in || !out || len > std::numeric_limits<size_t>::max () - 16
+			|| m_N == std::numeric_limits<uint64_t>::max ())
 			return false;
 		uint8_t nonce[12];
 		if (m_N)

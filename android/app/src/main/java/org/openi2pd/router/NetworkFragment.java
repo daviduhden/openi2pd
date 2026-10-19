@@ -1,8 +1,16 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: NetworkFragment.
+ *
+ * Read-only network screen showing connectivity, per-family transport
+ * addresses, NTCP2/SSU2 and the optional HTTP, SOCKS, BOB, SAM and I2CP
+ * services. All values come from the service snapshot and render as unknown
+ * until live status has been observed.
+ *
  */
+
 package org.openi2pd.router;
 
 import android.content.Context;
@@ -82,8 +90,9 @@ public class NetworkFragment extends Fragment {
             UiFormat.setTextIfChanged(networkState, UiFormat.connectivity(context, snapshot));
         } else {
             UiFormat.setTextIfChanged(networkState,
-                    snapshot == null ? getString(R.string.value_unknown)
-                                     : getString(UiFormat.stateLabelRes(UiFormat.stateOf(snapshot))));
+                    snapshot == null
+                            ? getString(R.string.value_unknown)
+                            : getString(UiFormat.stateLabelRes(UiFormat.stateOf(snapshot))));
         }
 
         boolean ipv4 = hasAddresses && UiFormat.hasAddress(snapshot.addresses(), false);

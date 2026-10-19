@@ -1,9 +1,15 @@
 /*
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Worker.
+ *
+ * Declares the child-process owner used by the core and supervisor, with
+ * bounded spawn/reap, optional pidfd tracking and channel ownership. Also
+ * declares the log-worker and supervisor spawn helpers and executable
+ * resolution.
+ *
+ */
 
 #ifndef I2PD_PRIVSEP_WORKER_H__
 #define I2PD_PRIVSEP_WORKER_H__
@@ -43,8 +49,7 @@ namespace i2p::privsep
 inline bool WaitForChildExitBounded (pid_t pid, int pidFd, int timeoutMs)
 {
 	if (pid <= 0) return true;
-	const auto deadline
-		= std::chrono::steady_clock::now () + std::chrono::milliseconds (std::max (timeoutMs, 0));
+	const auto deadline = std::chrono::steady_clock::now () + std::chrono::milliseconds (std::max (timeoutMs, 0));
 	bool usePidFd = pidFd >= 0;
 	while (true)
 	{
@@ -56,14 +61,13 @@ inline bool WaitForChildExitBounded (pid_t pid, int pidFd, int timeoutMs)
 
 		const auto now = std::chrono::steady_clock::now ();
 		if (now >= deadline) return false;
-		const auto remainingMs
-			= std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now).count ();
+		const auto remainingMs = std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now).count ();
 
 		if (usePidFd)
 		{
 			pollfd pfd { pidFd, POLLIN, 0 };
-			const int waitMs = static_cast<int> (std::min<int64_t> (
-				std::max<int64_t> (remainingMs, 1), std::numeric_limits<int>::max ()));
+			const int waitMs = static_cast<int> (
+				std::min<int64_t> (std::max<int64_t> (remainingMs, 1), std::numeric_limits<int>::max ()));
 			int polled;
 			do polled = ::poll (&pfd, 1, waitMs);
 			while (polled < 0 && errno == EINTR && std::chrono::steady_clock::now () < deadline);

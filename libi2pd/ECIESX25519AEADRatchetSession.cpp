@@ -1,12 +1,17 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: ECIESX25519AEADRatchetSession.
+ *
+ * Implements the ECIES-X25519 AEAD ratchet (Noise IK) for garlic sessions:
+ * new-session and reply handshakes, optional ML-KEM hybrid key exchange,
+ * session-tag and symmetric-key ratchets with 16-bit indices, acknowledgements
+ * and ratchet rotation. Handshakes are trial-authenticated before any state is
+ * committed, and all-zero X25519 outputs, timestamp deviations, replays and
+ * oversized tag/ACK sets are rejected.
+ *
+ */
 
 #include <string.h>
 #include <algorithm>
@@ -323,45 +328,45 @@ namespace garlic
 				if (offset + size > len) return false;
 				switch (type)
 				{
-					case eECIESx25519BlkDateTime:
-					{
-						if (size != 4 || gotDateTime) return false;
-						gotDateTime = true;
-						// widen before adding: a 32-bit second count overflows int
-						const uint64_t timestamp = bufbe32toh (buf + offset);
-						const uint64_t now = i2p::util::GetSecondsSinceEpoch ();
-						if (timestamp + ECIESX25519_DATETIME_MAX_AGE < now
-							|| timestamp > now + ECIESX25519_DATETIME_MAX_FUTURE)
-							return false;
-						break;
-					}
-					case eECIESx25519BlkGalicClove:
-						if (!size) return false; // Java's GarlicClove parser rejects it
-						gotGarlic = true;
-						break;
-					case eECIESx25519BlkOptions: break;
-					case eECIESx25519BlkNextKey:
-						if (handshake || (size != 3 && size != 35)) return false;
-						if (++nextKeyBlocks > 4) return false;
-						break;
-					case eECIESx25519BlkAck:
-						if (size < 4 || (size & 3)) return false;
-						break;
-					case eECIESx25519BlkAckRequest:
-						if (size < 1) return false;
-						break;
-					case eECIESx25519BlkTermination:
-						if (handshake || size < 1) return false;
-						gotTermination = true;
-						break;
-					case eECIESx25519BlkSessionID:
-						if (handshake || size < 2) return false;
-						break;
-					case eECIESx25519BlkPadding: gotPadding = true; break;
-					default:
-						// Java ignores unknown blocks only outside the handshake.
-						if (handshake) return false;
-						break;
+				case eECIESx25519BlkDateTime:
+				{
+					if (size != 4 || gotDateTime) return false;
+					gotDateTime = true;
+					// widen before adding: a 32-bit second count overflows int
+					const uint64_t timestamp = bufbe32toh (buf + offset);
+					const uint64_t now = i2p::util::GetSecondsSinceEpoch ();
+					if (timestamp + ECIESX25519_DATETIME_MAX_AGE < now
+						|| timestamp > now + ECIESX25519_DATETIME_MAX_FUTURE)
+						return false;
+					break;
+				}
+				case eECIESx25519BlkGalicClove:
+					if (!size) return false; // Java's GarlicClove parser rejects it
+					gotGarlic = true;
+					break;
+				case eECIESx25519BlkOptions: break;
+				case eECIESx25519BlkNextKey:
+					if (handshake || (size != 3 && size != 35)) return false;
+					if (++nextKeyBlocks > 4) return false;
+					break;
+				case eECIESx25519BlkAck:
+					if (size < 4 || (size & 3)) return false;
+					break;
+				case eECIESx25519BlkAckRequest:
+					if (size < 1) return false;
+					break;
+				case eECIESx25519BlkTermination:
+					if (handshake || size < 1) return false;
+					gotTermination = true;
+					break;
+				case eECIESx25519BlkSessionID:
+					if (handshake || size < 2) return false;
+					break;
+				case eECIESx25519BlkPadding: gotPadding = true; break;
+				default:
+					// Java ignores unknown blocks only outside the handshake.
+					if (handshake) return false;
+					break;
 				}
 				offset += size;
 			}
@@ -402,11 +407,10 @@ namespace garlic
 		// required to use the strongest one, so try every ratchet key type we
 		// advertise. The list is fixed and bounded; no attacker-supplied type
 		// is accepted.
-		static constexpr i2p::data::CryptoKeyType candidates[] = {
-			i2p::data::CRYPTO_KEY_TYPE_ECIES_MLKEM1024_X25519_AEAD,
-			i2p::data::CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD,
-			i2p::data::CRYPTO_KEY_TYPE_ECIES_MLKEM512_X25519_AEAD,
-			i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD };
+		static constexpr i2p::data::CryptoKeyType candidates[]
+			= { i2p::data::CRYPTO_KEY_TYPE_ECIES_MLKEM1024_X25519_AEAD,
+				  i2p::data::CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD,
+				  i2p::data::CRYPTO_KEY_TYPE_ECIES_MLKEM512_X25519_AEAD, i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD };
 		bool hasCandidates = false;
 		for (auto cryptoType : candidates)
 		{
@@ -693,7 +697,10 @@ namespace garlic
 				LogPrint (eLogDebug, "Garlic: Datetime");
 				break;
 			case eECIESx25519BlkOptions: LogPrint (eLogDebug, "Garlic: Options"); break;
-			case eECIESx25519BlkPadding: LogPrint (eLogDebug, "Garlic: Padding"); gotPadding = true; break;
+			case eECIESx25519BlkPadding:
+				LogPrint (eLogDebug, "Garlic: Padding");
+				gotPadding = true;
+				break;
 			default: LogPrint (eLogWarning, "Garlic: Unknown block type ", (int)blk);
 			}
 			offset += size;
@@ -731,8 +738,7 @@ namespace garlic
 			// This acknowledges one of our outbound keys and creates the next
 			// send tagset. Match the expected key ID before changing state.
 			if (!m_SendForwardKey || !m_NextSendRatchet || !m_NextSendRatchet->key || !m_SendTagset) return;
-			if (!(((!m_NextSendRatchet->newKey || !m_NextSendRatchet->keyID)
-					&& keyID == m_NextSendRatchet->keyID)
+			if (!(((!m_NextSendRatchet->newKey || !m_NextSendRatchet->keyID) && keyID == m_NextSendRatchet->keyID)
 					|| (m_NextSendRatchet->newKey && keyID == m_NextSendRatchet->keyID - 1)))
 			{
 				LogPrint (eLogDebug, "Garlic: Unexpected next key ", keyID);
@@ -1006,7 +1012,8 @@ namespace garlic
 			if (!owner->Decrypt (m_RemoteStaticKey, sharedSecret, m_RemoteStaticKeyType)
 				|| IsZeroBuf (sharedSecret, 32)) // x25519 (ask, bpk)
 			{
-				LogPrint (eLogWarning, "Garlic: Incorrect local static key for encryption type ", m_RemoteStaticKeyType);
+				LogPrint (
+					eLogWarning, "Garlic: Incorrect local static key for encryption type ", m_RemoteStaticKeyType);
 				return false;
 			}
 			noiseState.MixKey (sharedSecret);
@@ -1246,8 +1253,7 @@ namespace garlic
 			buf += cipherTextLen + 16;
 			len -= cipherTextLen + 16;
 			// decaps
-			if (!m_PQKeys || !m_PQKeys->Decaps (kemCiphertext.data (), sharedSecret)
-				|| IsZeroBuf (sharedSecret, 32))
+			if (!m_PQKeys || !m_PQKeys->Decaps (kemCiphertext.data (), sharedSecret) || IsZeroBuf (sharedSecret, 32))
 				return false;
 			MixKey (sharedSecret);
 		}
@@ -1501,7 +1507,8 @@ namespace garlic
 							auto paddingSize = GetNextPaddingSize (len);
 							if (paddingSize)
 							{
-								const auto added = CreatePaddingClove (paddingSize, payload + len, I2NP_MAX_MESSAGE_SIZE - len);
+								const auto added
+									= CreatePaddingClove (paddingSize, payload + len, I2NP_MAX_MESSAGE_SIZE - len);
 								if (!added)
 								{
 									LogPrint (eLogWarning, "Garlic: Dropping oversized batch before padding");
@@ -1697,7 +1704,8 @@ namespace garlic
 			}
 			const uint64_t previousLastSentTimestamp = m_LastSentTimestamp;
 			const uint64_t previousAckRequestSendTime = m_LastAckRequestSendTime;
-			auto abortPayload = [&] () -> size_t {
+			auto abortPayload = [&] () -> size_t
+			{
 				if (leaseSetSubmission)
 				{
 					m_AckRequestMsgID = 0;
@@ -1977,8 +1985,7 @@ namespace garlic
 		// we are Bob
 		m_CurrentNoiseState.MixHash (buf, 32);
 		uint8_t sharedSecret[32];
-		if (!GetOwner ()->Decrypt (
-				buf, sharedSecret, i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD)
+		if (!GetOwner ()->Decrypt (buf, sharedSecret, i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD)
 			|| IsZeroBuf (sharedSecret, 32)) // x25519(bsk, aepk)
 		{
 			LogPrint (eLogWarning, "Garlic: Incorrect N ephemeral public key");

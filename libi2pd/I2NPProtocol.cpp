@@ -1,12 +1,16 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: I2NPProtocol.
+ *
+ * Implements I2NP message allocation, header/checksum framing and
+ * type-specific constructors for database lookup/store/search-reply, delivery
+ * status, tunnel data/gateway and tunnel-build messages, with expiry and clock
+ * skew checks. The batching handler groups tunnel data and gateway traffic and
+ * rate-limits tunnel-build messages under bounded drop counters.
+ *
+ */
 
 #include <string.h>
 #include <atomic>
@@ -240,7 +244,7 @@ std::shared_ptr<I2NPMessage> CreateLeaseSetDatabaseLookupMsg (const i2p::data::I
 	return m;
 }
 
-bool ParseDatabaseSearchReply (const uint8_t * buf, size_t len, DatabaseSearchReply& reply)
+bool ParseDatabaseSearchReply (const uint8_t * buf, size_t len, DatabaseSearchReply & reply)
 {
 	if (!buf || len < DATABASE_SEARCH_REPLY_MIN_SIZE) return false;
 	const size_t num = buf[DATABASE_SEARCH_REPLY_COUNT_OFFSET];
@@ -251,8 +255,7 @@ bool ParseDatabaseSearchReply (const uint8_t * buf, size_t len, DatabaseSearchRe
 	reply.key = i2p::data::IdentHash (buf + DATABASE_SEARCH_REPLY_KEY_OFFSET);
 	reply.peers.clear ();
 	reply.peers.reserve (num);
-	for (size_t i = 0; i < num; i++)
-		reply.peers.emplace_back (buf + DATABASE_SEARCH_REPLY_PEERS_OFFSET + i * 32);
+	for (size_t i = 0; i < num; i++) reply.peers.emplace_back (buf + DATABASE_SEARCH_REPLY_PEERS_OFFSET + i * 32);
 	reply.from = i2p::data::IdentHash (buf + peersEnd);
 	return true;
 }

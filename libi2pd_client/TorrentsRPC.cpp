@@ -1,12 +1,16 @@
 /*
-* Copyright (c) 2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: TorrentsRPC.
+ *
+ * Implements a Transmission-style JSON-RPC endpoint restricted to loopback
+ * HTTP, with optional Basic authentication, strict POST and application/json
+ * checks, and bounded bodies, fields and torrent IDs. A subset of the
+ * Transmission method set is marshalled to the torrent service thread with a
+ * fixed timeout so a stalled engine cannot pin an RPC thread.
+ *
+ */
 
 #ifndef NO_TORRENTS
 
@@ -77,7 +81,6 @@ namespace torrents
 				throw std::invalid_argument ("Torrents RPC address must be a loopback address (127.0.0.1 or ::1)");
 			return { bindAddress, port };
 		}
-
 
 		// One RPC service round-trip is bounded by the same interval as the
 		// control plane. A stalled or stopped tunnel service must never pin an
@@ -185,7 +188,6 @@ namespace torrents
 		}
 
 	}
-
 
 	class JSONRPCHandler
 	{
@@ -1075,8 +1077,8 @@ namespace torrents
 					return ErrorResponse (GetTag (jsonRequest), "Invalid tracker");
 				// A timed-out task is not cancellable: it can still add the
 				// tracker, but it owns its announce string and tunnel reference.
-				auto outcome = RunOnTorrentService (m_Tunnel,
-					[tunnel = m_Tunnel, announce = std::string (announce)] () { return tunnel->AddTracker (announce, true); });
+				auto outcome = RunOnTorrentService (m_Tunnel, [tunnel = m_Tunnel, announce = std::string (announce)] ()
+					{ return tunnel->AddTracker (announce, true); });
 				if (!outcome.success)
 					return ErrorResponse (
 						GetTag (jsonRequest), outcome.timedOut ? RPC_SERVICE_TIMEOUT_ERROR : RPC_SERVICE_FAILURE_ERROR);
@@ -1087,7 +1089,6 @@ namespace torrents
 		boost::json::object response; // always empty
 		return SuccessResponse (GetTag (jsonRequest), std::move (response));
 	}
-
 
 	TorrentsRPCSession::TorrentsRPCSession (TorrentsRPCServer & server, boost::asio::ip::tcp::socket && s)
 		: m_Server (server)

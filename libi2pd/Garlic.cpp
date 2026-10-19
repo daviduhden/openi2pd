@@ -1,12 +1,17 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Garlic.
+ *
+ * Implements garlic routing sessions and clove encoding for ElGamal/AES+
+ * SessionTag and ECIES-X25519 destinations, including session-tag creation,
+ * expiry and persistence, delivery instructions/status and routing-path reuse.
+ * Incoming blocks are bounded to 200 ElGamal tags and fixed per-destination
+ * tag pools, and unknown or malformed tags are discarded without growing
+ * state.
+ *
+ */
 
 #include <inttypes.h>
 #include "I2PEndian.h"
@@ -314,8 +319,7 @@ namespace garlic
 		// Ownership of newTags moves into CreateGarlicPayload: it either stores
 		// the tags together with the DeliveryStatus message that confirms them
 		// or releases them on failure.
-		size_t len = CreateGarlicPayload (
-			buf + blockSize, capacity - blockSize - maxPadding, msg, std::move (newTags));
+		size_t len = CreateGarlicPayload (buf + blockSize, capacity - blockSize - maxPadding, msg, std::move (newTags));
 		if (!len) return 0;
 		htobe32buf (payloadSize, len);
 		SHA256 (buf + blockSize, len, payloadHash);
@@ -341,9 +345,8 @@ namespace garlic
 		return blockSize;
 	}
 
-	size_t ElGamalAESSession::CreateGarlicPayload (
-		uint8_t * payload, size_t capacity, std::shared_ptr<const I2NPMessage> msg,
-		std::unique_ptr<UnconfirmedTags> newTags)
+	size_t ElGamalAESSession::CreateGarlicPayload (uint8_t * payload, size_t capacity,
+		std::shared_ptr<const I2NPMessage> msg, std::unique_ptr<UnconfirmedTags> newTags)
 	{
 		const bool isDestination = m_Destination ? m_Destination->IsDestination () : false;
 		const size_t mainCloveSize = msg ? 1 + (isDestination ? 32 : 0) + msg->GetLength () + 4 + 8 + 3 : 0;
@@ -796,8 +799,7 @@ namespace garlic
 		len -= 2;
 		if (tagCount > MAX_ELGAMAL_AES_TAGS)
 		{
-			LogPrint (eLogError, "Garlic: Tag count ", tagCount, " exceeds the maximum ",
-				(int)MAX_ELGAMAL_AES_TAGS);
+			LogPrint (eLogError, "Garlic: Tag count ", tagCount, " exceeds the maximum ", (int)MAX_ELGAMAL_AES_TAGS);
 			return;
 		}
 		const uint8_t * tagsStart = buf;

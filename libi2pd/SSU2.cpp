@@ -1,12 +1,15 @@
 /*
-* Copyright (c) 2022-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: SSU2.
+ *
+ * Implements SSU2Server lifecycle, batched UDP receive and packet dispatch,
+ * session/relay/peer-test bookkeeping with bounded caches, introducer selection
+ * and timer-driven maintenance. Handshake and data-phase packet handling live in
+ * the session classes.
+ *
+ */
 
 #include <random>
 #include "Log.h"
@@ -1892,7 +1895,8 @@ namespace transport
 		m_ProxyHandshakeBuffer[3] = SOCKS5_ATYP_IPV4; // TODO: implement ipv6 proxy
 		memset (m_ProxyHandshakeBuffer + 4, 0, 6); // address and port all zeros
 		boost::asio::async_write (*m_UDPAssociateSocket,
-			boost::asio::buffer (m_ProxyHandshakeBuffer, SOCKS5_UDP_IPV4_REQUEST_HEADER_SIZE), boost::asio::transfer_all (),
+			boost::asio::buffer (m_ProxyHandshakeBuffer, SOCKS5_UDP_IPV4_REQUEST_HEADER_SIZE),
+			boost::asio::transfer_all (),
 			[this] (const boost::system::error_code & ecode, std::size_t bytes_transferred)
 			{
 				(void)bytes_transferred;
@@ -1911,7 +1915,8 @@ namespace transport
 	{
 		if (!m_UDPAssociateSocket) return;
 		boost::asio::async_read (*m_UDPAssociateSocket,
-			boost::asio::buffer (m_ProxyHandshakeBuffer, SOCKS5_UDP_IPV4_REQUEST_HEADER_SIZE), boost::asio::transfer_all (),
+			boost::asio::buffer (m_ProxyHandshakeBuffer, SOCKS5_UDP_IPV4_REQUEST_HEADER_SIZE),
+			boost::asio::transfer_all (),
 			[this] (const boost::system::error_code & ecode, std::size_t bytes_transferred)
 			{
 				(void)bytes_transferred;
@@ -1941,8 +1946,8 @@ namespace transport
 						}
 						else
 						{
-							LogPrint (
-								eLogError, "SSU2: Proxy UDP associate unsupported ATYP ", (int)m_ProxyHandshakeBuffer[3]);
+							LogPrint (eLogError, "SSU2: Proxy UDP associate unsupported ATYP ",
+								(int)m_ProxyHandshakeBuffer[3]);
 							m_UDPAssociateSocket.reset (nullptr);
 						}
 					}

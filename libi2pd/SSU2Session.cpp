@@ -1,12 +1,15 @@
 /*
-* Copyright (c) 2022-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: SSU2Session.
+ *
+ * Implements the SSU2 handshake (SessionRequest/Created/Confirmed, Retry,
+ * TokenRequest), data-phase packet encoding, ACK generation, fragmentation and
+ * block handlers including relay, address, RouterInfo and peer-test processing.
+ * Timers and the negotiated MTU govern retransmission and payload sizing.
+ *
+ */
 
 #include <string.h>
 #include <algorithm>
@@ -2647,7 +2650,10 @@ namespace transport
 				break;
 			}
 			case eSSU2BlkFirstPacketNumber: break;
-			case eSSU2BlkPadding: LogPrint (eLogDebug, "SSU2: Padding"); gotPadding = true; break;
+			case eSSU2BlkPadding:
+				LogPrint (eLogDebug, "SSU2: Padding");
+				gotPadding = true;
+				break;
 			default: LogPrint (eLogWarning, "SSU2: Unknown block type ", (int)blk);
 			}
 			offset += size;
@@ -4516,8 +4522,8 @@ namespace transport
 		signedData[0] = 2; // ver
 		htobe32buf (signedData.data () + 1, nonce);
 		htobe32buf (signedData.data () + 5, ts);
-		size_t asz = CreateEndpoint (
-			signedData.data () + 10, signedData.size () - 10, boost::asio::ip::udp::endpoint (localAddress->host, localAddress->port));
+		size_t asz = CreateEndpoint (signedData.data () + 10, signedData.size () - 10,
+			boost::asio::ip::udp::endpoint (localAddress->host, localAddress->port));
 		signedData[9] = asz;
 		// signature
 		SignedData<128> s;
@@ -4525,8 +4531,8 @@ namespace transport
 		s.Insert (GetRemoteIdentity ()->GetIdentHash (), 32); // bhash
 		s.Insert (signedData.data (), 10 + asz); // ver, nonce, ts, asz, Alice's endpoint
 		s.Sign (i2p::context.GetPrivateKeys (), signedData.data () + 10 + asz);
-		return CreatePeerTestBlock (buf, len, 1, eSSU2PeerTestCodeAccept, nullptr, signedData.data (),
-			10 + asz + signatureLen);
+		return CreatePeerTestBlock (
+			buf, len, 1, eSSU2PeerTestCodeAccept, nullptr, signedData.data (), 10 + asz + signatureLen);
 	}
 
 	size_t SSU2Session::CreateTerminationBlock (uint8_t * buf, size_t len)

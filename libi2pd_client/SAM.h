@@ -1,12 +1,14 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: SAM.
+ *
+ * Declares the SAM protocol constants, session and master/subsession objects,
+ * the socket state machine and the bridge owning the TCP acceptor and UDP
+ * endpoint.
+ *
+ */
 
 #ifndef SAM_H__
 #define SAM_H__
@@ -81,8 +83,7 @@ namespace client
 	// SAM 3.2 adds the port fields. Do not advertise them when the negotiated
 	// version is older (SAMv1Handler.receiveDatagramBytes/receiveRawBytes).
 	const char SAM_DATAGRAM_RECEIVED[] = "DATAGRAM RECEIVED DESTINATION=%s SIZE=%lu\n";
-	const char SAM_DATAGRAM_RECEIVED_PORTS[]
-		= "DATAGRAM RECEIVED DESTINATION=%s SIZE=%lu FROM_PORT=%u TO_PORT=%u\n";
+	const char SAM_DATAGRAM_RECEIVED_PORTS[] = "DATAGRAM RECEIVED DESTINATION=%s SIZE=%lu FROM_PORT=%u TO_PORT=%u\n";
 	const char SAM_RAW_RECEIVED[] = "RAW RECEIVED SIZE=%lu\n";
 	const char SAM_RAW_RECEIVED_PORTS[] = "RAW RECEIVED SIZE=%lu PROTOCOL=%u FROM_PORT=%u TO_PORT=%u\n";
 	const char SAM_NAMING_REPLY_INVALID_KEY[] = "NAMING REPLY RESULT=INVALID_KEY NAME=%s\n";
@@ -194,11 +195,9 @@ namespace client
 			const uint8_t * buf, size_t len);
 
 		// SAM-service-only implementations.
-		void HandleI2PReceiveOnService (
-			const boost::system::error_code & ecode, std::size_t bytes_transferred);
+		void HandleI2PReceiveOnService (const boost::system::error_code & ecode, std::size_t bytes_transferred);
 		void HandleI2PAcceptOnService (std::shared_ptr<i2p::stream::Stream> stream);
-		void HandleI2PForwardOnService (
-			std::shared_ptr<i2p::stream::Stream> stream, boost::asio::ip::tcp::endpoint ep);
+		void HandleI2PForwardOnService (std::shared_ptr<i2p::stream::Stream> stream, boost::asio::ip::tcp::endpoint ep);
 		void HandleI2PDatagramReceiveOnService (std::string sessionID, const i2p::data::IdentityEx & from,
 			uint16_t fromPort, uint16_t toPort, std::vector<uint8_t> payload);
 		void HandleI2PDatagram3ReceiveOnService (std::string sessionID, const i2p::data::IdentHash & from,
@@ -340,8 +339,7 @@ namespace client
 		// Returns the oldest queued acceptor (or nullptr). Acceptors do not
 		// expire with age, matching Java; the arguments are retained for
 		// source compatibility with the former expiry implementation.
-		std::shared_ptr<SAMSocket> TakeNextAccept (
-			uint64_t now, std::list<std::shared_ptr<SAMSocket>> & expired);
+		std::shared_ptr<SAMSocket> TakeNextAccept (uint64_t now, std::list<std::shared_ptr<SAMSocket>> & expired);
 		std::size_t GetAcceptQueueSize () const;
 
 		// Resolves a datagram destination - a full base64 destination, a plain b32
