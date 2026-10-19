@@ -15,11 +15,9 @@
 #include <algorithm>
 #include <limits>
 #include <memory>
+#include <set>
 #include <charconv>
 #include <boost/algorithm/string.hpp> // for boost::to_lower
-#ifndef __cpp_lib_atomic_shared_ptr
-#include <boost/atomic.hpp>
-#endif
 #include "version.h"
 #include "util.h"
 #include "Crypto.h"
@@ -30,12 +28,162 @@
 #include "NetDb.hpp"
 #include "RouterContext.h"
 #include "CryptoKey.h"
+#if OPENSSL_PQ
+#include "PostQuantum.h"
+#endif
 #include "RouterInfo.h"
 
 namespace i2p
 {
 namespace data
 {
+	namespace
+	{
+		// Copy an address into a distinct object restricted to one address
+		// family. A non-published SSU2 or NTCP2 address can declare both "4"
+		// and "6" in its caps, but host, published state, introducers, MTU and
+		// version are per-family state. Java publishes separate v4 and v6
+		// RouterAddresses for this reason; keep the same independence here so a
+		// v4 firewall/port update cannot modify the v6 address (and vice
+		// versa).
+		void CopyAddressForFamily (
+			const RouterInfo::Address & src, RouterInfo::Address & dst, bool v4)
+		{
+			dst.transportStyle = src.transportStyle;
+			dst.host = src.host;
+			dst.s = src.s;
+			dst.i = src.i;
+			dst.v = src.v;
+			dst.pqVersions = src.pqVersions;
+			dst.port = src.port;
+			dst.date = src.date;
+			dst.published = src.published;
+			dst.caps = (src.caps & ~(RouterInfo::AddressCaps::eV4 | RouterInfo::AddressCaps::eV6))
+				| (v4 ? RouterInfo::AddressCaps::eV4 : RouterInfo::AddressCaps::eV6);
+			if (src.ssu)
+				dst.ssu = std::make_unique<RouterInfo::SSUExt> (*src.ssu);
+			else
+				dst.ssu.reset ();
+		}
+
+		// "router.version" is a dotted version string. i2pd stores it as a
+		// packed integer using the same MAKE_VERSION_NUMBER() scheme as the
+		// NetDb thresholds. Concatenating every digit (the previous behavior)
+		// misparsed multi-digit components: "0.10.0" became 100 instead of
+		// 1000, which is below every 0.9.6x threshold.
+		int ParseRouterVersion (std::string_view value)
+		{
+			int parts[3] = { 0, 0, 0 };
+			size_t part = 0;
+			int current = 0;
+			for (char ch : value)
+			{
+				if (ch >= '0' && ch <= '9')
+					current = std::min (current * 10 + (ch - '0'), 9999);
+				else if (ch == '.')
+				{
+					if (part >= 2) break; // ignore components after micro
+					parts[part++] = current;
+					current = 0;
+				}
+				else
+					break; // qualifier such as "-rc1"
+			}
+			if (part < 3) parts[part] = current;
+			// Minor and micro are two decimal digits in MAKE_VERSION_NUMBER().
+			int minor = std::min (parts[1], 99);
+			int micro = std::min (parts[2], 99);
+			return (parts[0] * 100 + minor) * 100 + micro;
+		}
+
+		int BandwidthRank (char cap)
+		{
+			switch (cap)
+			{
+			case 'K': return 1;
+			case 'L': return 2;
+			case 'M': return 3;
+			case 'N': return 4;
+			case 'O': return 5;
+			case 'P': return 6;
+			case 'X': return 7;
+			default: return 0;
+			}
+		}
+
+		char BandwidthCapForRank (int rank)
+		{
+			static const char caps[] = { 0, 'K', 'L', 'M', 'N', 'O', 'P', 'X' };
+			return (rank >= 1 && rank <= 7) ? caps[rank] : 0;
+		}
+
+		// Derive supported/reachable/published transports from address objects.
+		// Both the RouterInfo parser and UpdateSupportedTransports() use this,
+		// so a parsed RouterInfo and the same object after a local address
+		// update agree.
+		void ComputeAddressTransports (const RouterInfo::Addresses & addresses,
+			RouterInfo::CompatibleTransports & supported, RouterInfo::CompatibleTransports & reachable,
+			RouterInfo::CompatibleTransports & published)
+		{
+			supported = 0;
+			reachable = 0;
+			published = 0;
+			for (const auto & address : addresses)
+			{
+				if (!address) continue;
+				RouterInfo::CompatibleTransports transports = 0;
+				switch (address->transportStyle)
+				{
+				case RouterInfo::eTransportNTCP2:
+					if (address->IsV4 ()) transports |= RouterInfo::eNTCP2V4;
+					if (address->IsV6 ())
+						transports
+							|= (i2p::util::net::IsYggdrasilAddress (address->host) ? RouterInfo::eNTCP2V6Mesh
+																				 : RouterInfo::eNTCP2V6);
+					// An outbound-only NTCP2 address has no host/port/i and must
+					// not make the router look reachable or published.
+					if (address->IsPublishedNTCP2 () && address->port && !address->host.is_unspecified ())
+					{
+						published |= transports;
+						reachable |= transports;
+					}
+					break;
+				case RouterInfo::eTransportSSU2:
+					if (address->IsV4 ()) transports |= RouterInfo::eSSU2V4;
+					if (address->IsV6 ()) transports |= RouterInfo::eSSU2V6;
+					if (address->published && address->port && !address->host.is_unspecified ())
+						published |= transports;
+					if (address->IsReachableSSU ()) reachable |= transports;
+					break;
+				default:;
+				}
+				supported |= transports;
+			}
+			reachable |= published;
+		}
+
+		// A dual-stack firewalled NTCP2 endpoint is one RouterAddress with caps
+		// "46" in Java (setOutboundNTCP2Address). Locally we keep two address
+		// objects so host/port mutations stay family-local, but merge them back
+		// on the wire when everything except the family cap is identical. This
+		// preserves the bytes our RouterInfo published before the split.
+		bool IsMergeableNTCP2Twin (const RouterInfo::Address & v4, const RouterInfo::Address & v6)
+		{
+			if (!v4.IsNTCP2 () || !v6.IsNTCP2 () || v4.published || v6.published) return false;
+			if (!v4.host.is_unspecified () || !v6.host.is_unspecified ()) return false;
+			if (v4.port != v6.port || v4.date != v6.date || v4.v != v6.v || v4.pqVersions != v6.pqVersions)
+				return false;
+			if (v4.s != v6.s) return false;
+			// Only the first 16 bytes of i are the NTCP2 IV; the tail of the
+			// Tag is unused and must not affect comparison.
+			if (std::memcmp (v4.i.data (), v6.i.data (), 16) != 0) return false;
+			constexpr uint8_t familyMask = RouterInfo::AddressCaps::eV4 | RouterInfo::AddressCaps::eV6;
+			if ((v4.caps & familyMask) != RouterInfo::AddressCaps::eV4) return false;
+			if ((v6.caps & familyMask) != RouterInfo::AddressCaps::eV6) return false;
+			return (v4.caps & ~familyMask) == (v6.caps & ~familyMask);
+		}
+	}
+
 	RouterInfo::Buffer::Buffer (const uint8_t * buf, size_t len)
 	{
 		if (len > size ()) len = size ();
@@ -44,13 +192,9 @@ namespace data
 	}
 
 	RouterInfo::RouterInfo ()
-		: m_Buffer (nullptr)
-	{
-		m_Addresses = AddressesPtr (new Addresses ()); // create empty list
-	}
-
-	RouterInfo::RouterInfo (const std::string & fullPath)
 		: m_FamilyID (0)
+		, m_Buffer (nullptr)
+		, m_Timestamp (0)
 		, m_IsUpdated (false)
 		, m_IsUnreachable (false)
 		, m_IsFloodfill (false)
@@ -59,6 +203,26 @@ namespace data
 		, m_ReachableTransports (0)
 		, m_PublishedTransports (0)
 		, m_Caps (0)
+		, m_BandwidthCap (0)
+		, m_Version (0)
+		, m_Congestion (eLowCongestion)
+	{
+		m_Addresses = AddressesPtr (new Addresses ()); // create empty list
+	}
+
+	RouterInfo::RouterInfo (const std::string & fullPath)
+		: m_FamilyID (0)
+		, m_Buffer (nullptr)
+		, m_Timestamp (0)
+		, m_IsUpdated (false)
+		, m_IsUnreachable (false)
+		, m_IsFloodfill (false)
+		, m_IsBufferScheduledToDelete (false)
+		, m_SupportedTransports (0)
+		, m_ReachableTransports (0)
+		, m_PublishedTransports (0)
+		, m_Caps (0)
+		, m_BandwidthCap (0)
 		, m_Version (0)
 		, m_Congestion (eLowCongestion)
 	{
@@ -69,6 +233,8 @@ namespace data
 
 	RouterInfo::RouterInfo (std::shared_ptr<Buffer> && buf, size_t len)
 		: m_FamilyID (0)
+		, m_Buffer (nullptr)
+		, m_Timestamp (0)
 		, m_IsUpdated (true)
 		, m_IsUnreachable (false)
 		, m_IsFloodfill (false)
@@ -77,6 +243,7 @@ namespace data
 		, m_ReachableTransports (0)
 		, m_PublishedTransports (0)
 		, m_Caps (0)
+		, m_BandwidthCap (0)
 		, m_Version (0)
 		, m_Congestion (eLowCongestion)
 	{
@@ -91,6 +258,8 @@ namespace data
 		{
 			LogPrint (eLogError, "RouterInfo: Buffer is too long ", len, ". Ignored");
 			m_Buffer = nullptr;
+			// Keep GetAddresses() non-null even for a rejected buffer.
+			m_Addresses = AddressesPtr (new Addresses ());
 			m_IsUnreachable = true;
 		}
 	}
@@ -104,44 +273,57 @@ namespace data
 
 	bool RouterInfo::Update (const uint8_t * buf, size_t len)
 	{
-		if (len > MAX_RI_BUFFER_SIZE)
+		if (!buf || len > MAX_RI_BUFFER_SIZE)
 		{
 			LogPrint (eLogWarning, "RouterInfo: Updated buffer is too long ", len, ". Not changed");
 			return false;
 		}
-		// verify signature since we have identity already
-		int l = len - m_RouterIdentity->GetSignatureLen ();
-		if (l >= 0 && m_RouterIdentity->Verify (buf, l, buf + l))
+		auto identity = m_RouterIdentity;
+		if (!identity)
 		{
-			// clean up
-			m_IsUpdated = true;
-			m_IsUnreachable = false;
-			m_SupportedTransports = 0;
-			m_ReachableTransports = 0;
-			m_PublishedTransports = 0;
-			m_Caps = 0;
-			m_IsFloodfill = false;
-			// don't clean up m_Addresses, it will be replaced in ReadFromStream
-			ClearProperties ();
-			// skip identity
-			size_t identityLen = m_RouterIdentity->GetFullLen ();
-			// read new RI
-			ReadFromBuffer (buf + identityLen, len - identityLen);
-			if (!m_IsUnreachable) UpdateBuffer (buf, len); // save buffer
-			// don't delete buffer until saved to the file
+			LogPrint (eLogWarning, "RouterInfo: Can't update without an identity");
+			return false;
 		}
-		else
+		// Verify the signature with the identity we already have. This binds the
+		// new body to the cached router identity; the caller also checks that
+		// the announced identity hash matches the store key.
+		size_t signatureLen = identity->GetSignatureLen ();
+		if (len < signatureLen)
+		{
+			LogPrint (eLogWarning, "RouterInfo: Updated buffer is shorter than the signature");
+			return false;
+		}
+		size_t signedLen = len - signatureLen;
+		if (!identity->Verify (buf, signedLen, buf + signedLen))
 		{
 			LogPrint (eLogWarning, "RouterInfo: Updated signature verification failed. Not changed");
 			return false;
 		}
+		size_t identityLen = identity->GetFullLen ();
+		if (identityLen >= signedLen)
+		{
+			LogPrint (eLogError, "RouterInfo: Identity length ", identityLen, " leaves no signed body");
+			return false;
+		}
+		// ReadFromBuffer() commits its result only after the complete body has
+		// been validated. A signed but malformed update therefore leaves the
+		// previously cached RouterInfo untouched instead of destroying it
+		// (Java NetDb keeps the old RouterInfo when validation fails).
+		if (!ReadFromBuffer (buf + identityLen, signedLen - identityLen))
+		{
+			LogPrint (eLogError, "RouterInfo: Updated RouterInfo is malformed. Not changed");
+			return false;
+		}
+		m_IsUpdated.store (true);
+		// save buffer; don't delete it until it has been persisted to disk
+		UpdateBuffer (buf, len);
 		return true;
 	}
 
 	void RouterInfo::SetRouterIdentity (std::shared_ptr<const IdentityEx> identity)
 	{
-		m_RouterIdentity = identity;
-		m_Timestamp = i2p::util::GetMillisecondsSinceEpoch ();
+		m_RouterIdentity = std::move (identity);
+		m_Timestamp.store (i2p::util::GetMillisecondsSinceEpoch ());
 	}
 
 	bool RouterInfo::LoadFile (const std::string & fullPath)
@@ -150,7 +332,13 @@ namespace data
 		if (s.is_open ())
 		{
 			s.seekg (0, std::ios::end);
-			size_t bufferLen = s.tellg ();
+			auto end = s.tellg ();
+			if (end < 0)
+			{
+				LogPrint (eLogError, "RouterInfo: Can't determine size of file ", fullPath);
+				return false;
+			}
+			size_t bufferLen = static_cast<size_t> (end);
 			if (bufferLen < 40 || bufferLen > MAX_RI_BUFFER_SIZE)
 			{
 				LogPrint (eLogError, "RouterInfo: File ", fullPath, " is malformed");
@@ -158,7 +346,16 @@ namespace data
 			}
 			s.seekg (0, std::ios::beg);
 			if (!m_Buffer) m_Buffer = NewBuffer ();
+			if (!m_Buffer) return false;
 			s.read ((char *)m_Buffer->data (), bufferLen);
+			// A short read would leave the uninitialized tail of the pooled
+			// buffer in m_Buffer and feed it to the parser.
+			if (!s || static_cast<size_t> (s.gcount ()) != bufferLen)
+			{
+				LogPrint (eLogError, "RouterInfo: Short read from ", fullPath);
+				m_Buffer->SetBufferLen (0);
+				return false;
+			}
 			m_Buffer->SetBufferLen (bufferLen);
 		}
 		else
@@ -172,78 +369,117 @@ namespace data
 	void RouterInfo::ReadFromFile (const std::string & fullPath)
 	{
 		if (LoadFile (fullPath))
-			ReadFromBuffer (false);
+			// Files are locally stored but can still be corrupted or replaced.
+			// Java PersistentDataStore.read() uses readBytes(in, true), so verify
+			// the signature on load instead of trusting the data directory.
+			ReadFromBuffer (true);
 		else
-			m_IsUnreachable = true;
+			m_IsUnreachable.store (true);
 	}
 
 	void RouterInfo::ReadFromBuffer (bool verifySignature)
 	{
 		if (!m_Buffer)
 		{
-			m_IsUnreachable = true;
+			m_IsUnreachable.store (true);
 			return;
 		}
 		size_t bufferLen = m_Buffer->GetBufferLen ();
 		m_RouterIdentity = NewIdentity (m_Buffer->data (), bufferLen);
+		if (!m_RouterIdentity)
+		{
+			m_IsUnreachable.store (true);
+			return;
+		}
 		size_t identityLen = m_RouterIdentity->GetFullLen ();
 		if (identityLen >= bufferLen)
 		{
 			LogPrint (eLogError, "RouterInfo: Identity length ", identityLen, " exceeds buffer size ", bufferLen);
-			m_IsUnreachable = true;
+			m_IsUnreachable.store (true);
 			return;
 		}
+		size_t signatureLen = m_RouterIdentity->GetSignatureLen ();
+		if (signatureLen > bufferLen - identityLen)
+		{
+			LogPrint (eLogError, "RouterInfo: Signature length ", signatureLen, " exceeds buffer size ", bufferLen);
+			m_IsUnreachable.store (true);
+			return;
+		}
+		size_t signedLen = bufferLen - signatureLen;
 		if (verifySignature)
 		{
 			// reject RSA signatures
 			if (m_RouterIdentity->IsRSA ())
 			{
 				LogPrint (eLogError, "RouterInfo: RSA signature type is not allowed");
-				m_IsUnreachable = true;
+				m_IsUnreachable.store (true);
 				return;
 			}
 			// verify signature
-			int l = bufferLen - m_RouterIdentity->GetSignatureLen ();
-			if (l < 0 || !m_RouterIdentity->Verify ((uint8_t *)m_Buffer->data (), l, (uint8_t *)m_Buffer->data () + l))
+			if (!m_RouterIdentity->Verify (
+					(uint8_t *)m_Buffer->data (), signedLen, (uint8_t *)m_Buffer->data () + signedLen))
 			{
 				LogPrint (eLogError, "RouterInfo: Signature verification failed");
-				m_IsUnreachable = true;
+				m_IsUnreachable.store (true);
 				return;
 			}
 		}
-		// parse RI
-		if (!ReadFromBuffer (m_Buffer->data () + identityLen, bufferLen - identityLen))
+		// parse RI without its trailing signature
+		if (identityLen >= signedLen)
+		{
+			LogPrint (eLogError, "RouterInfo: Identity length ", identityLen, " leaves no signed body");
+			m_IsUnreachable.store (true);
+			return;
+		}
+		if (!ReadFromBuffer (m_Buffer->data () + identityLen, signedLen - identityLen))
 		{
 			LogPrint (eLogError, "RouterInfo: Malformed message");
-			m_IsUnreachable = true;
+			m_IsUnreachable.store (true);
 		}
 	}
 
 	bool RouterInfo::ReadFromBuffer (const uint8_t * buf, size_t len)
 	{
-		if (len < 9) return false;
-		m_Caps = 0;
-		m_Congestion = eLowCongestion;
-		m_Timestamp = bufbe64toh (buf);
+		// Callers pass the signed body only: ReadFromBuffer(bool) and Update()
+		// already removed the identity prefix and the trailing signature. The
+		// parser must not subtract the signature length a second time, otherwise
+		// the property section cannot end at len and every RouterInfo is rejected.
+		if (!buf || len < 9) return false;
+		// Parse into locals and commit only after the complete body is valid.
+		// Update() must keep the previously cached RouterInfo when a signed but
+		// malformed update arrives (Java NetDb keeps the old entry too).
+		uint64_t timestamp = bufbe64toh (buf);
 		size_t offset = 8; // timestamp
 		// read addresses
 		auto addresses = NewAddresses ();
-		uint8_t numAddresses = buf[offset];
-		offset++;
+		if (!addresses) return false;
+		uint8_t numAddresses = buf[offset++];
+		// Java RouterInfo.readBytes() rejects more than MAX_ADDRESSES (16)
+		// before parsing any address. Keep the same bound so a malformed RI
+		// cannot make us iterate over hundreds of empty address entries.
+		if (numAddresses > MAX_RI_ADDRESSES) return false;
 		for (int i = 0; i < numAddresses; i++)
 		{
-			if (offset + 9 > len) return false; // 1 byte cost + 8 bytes date
-			uint8_t supportedTransports = 0;
+			if (offset > len || len - offset < 9) return false; // 1 byte cost + 8 bytes date
+			uint8_t addressTransports = 0;
 			auto address = NewAddress ();
+			if (!address) return false;
 			offset++; // cost, ignore
 			address->date = bufbe64toh (buf + offset);
 			offset += 8; // date
 			bool isHost = false, isStaticKey = false, isV2 = false, isIntroKey = false;
-			auto transportStyle = ExtractString (buf + offset, len - offset);
+			bool validString = false;
+			auto transportStyle = ExtractString (buf + offset, len - offset, validString);
+			if (!validString) return false;
 			offset += transportStyle.length () + 1;
-			if (!transportStyle.compare (0, 4, "NTCP")) // NTCP or NTCP2
+			// Java RouterAddress keeps unknown transport style strings as-is and
+			// the transports only match the exact names. Accept the two known
+			// spellings for each transport (the legacy names are still parsed so
+			// an old cached entry stays syntactically valid), but not a prefix
+			// such as "SSUfoo".
+			if (transportStyle == "NTCP" || transportStyle == "NTCP2")
 				address->transportStyle = eTransportNTCP2;
-			else if (!transportStyle.compare (0, 3, "SSU")) // SSU or SSU2
+			else if (transportStyle == "SSU" || transportStyle == "SSU2")
 			{
 				address->transportStyle = eTransportSSU2;
 				address->ssu.reset (new SSUExt ());
@@ -253,23 +489,38 @@ namespace data
 				address->transportStyle = eTransportUnknown;
 			address->caps = 0;
 			address->port = 0;
-			if (offset + 2 > len) return false;
+			if (offset > len || len - offset < 2) return false;
 			uint16_t size = bufbe16toh (buf + offset);
 			offset += 2; // size
-			if (offset + size >= len) return false;
-			if (address->transportStyle == eTransportUnknown)
-			{
-				// skip unknown address
-				offset += size;
-				continue;
-			}
+			// Bound the declared options block against the remaining RouterInfo,
+			// not against the whole buffer. All address/property offsets below
+			// stay within [0, size].
+			if (size > len - offset) return false;
+			size_t addressEnd = offset + size;
 			size_t r = 0;
+			std::set<std::string_view> keys;
 			while (r < size)
 			{
-				auto [key, value, sz] = ExtractParam (buf + offset, len - offset);
+				auto [key, value, sz] = ExtractParam (buf + offset, size - r);
+				// ExtractParam returns 0 for a malformed key/value/semicolon
+				// sequence. Never let a parameter advance past its own block.
+				if (!sz || sz > size - r) return false;
 				r += sz;
 				offset += sz;
-				if (key.empty ()) continue;
+				if (key.empty ())
+				{
+					LogPrint (eLogWarning, "RouterInfo: Empty address parameter key");
+					return false;
+				}
+				// Java DataHelper.readProperties() rejects duplicate keys and
+				// enforces ordering. We accept unsorted keys for tolerance but
+				// reject duplicates so conflicting host/port/s/i/v/pq values
+				// cannot overwrite each other.
+				if (!keys.insert (key).second)
+				{
+					LogPrint (eLogWarning, "RouterInfo: Duplicate address parameter ", key);
+					return false;
+				}
 				if (key == "host")
 				{
 					boost::system::error_code ecode;
@@ -286,19 +537,30 @@ namespace data
 				}
 				else if (key == "port")
 				{
-					auto res = std::from_chars (value.data (), value.data () + value.size (), address->port);
-					if (res.ec != std::errc ())
-						LogPrint (eLogWarning,
-							"RouterInfo: 'port' conversion error: ", std::make_error_code (res.ec).message ());
+					int port = 0;
+					auto res = std::from_chars (value.data (), value.data () + value.size (), port);
+					if (res.ec != std::errc () || res.ptr != value.data () + value.size () || port < 0 || port > 65535)
+					{
+						LogPrint (eLogWarning, "RouterInfo: Invalid 'port' value ", value);
+						address->port = 0;
+					}
+					else
+						address->port = port;
 				}
 				else if (key == "mtu")
 				{
 					if (address->ssu)
 					{
-						auto res = std::from_chars (value.data (), value.data () + value.size (), address->ssu->mtu);
-						if (res.ec != std::errc ())
-							LogPrint (eLogWarning,
-								"RouterInfo: 'mtu' conversion error: ", std::make_error_code (res.ec).message ());
+						int mtu = 0;
+						auto res = std::from_chars (value.data (), value.data () + value.size (), mtu);
+						if (res.ec != std::errc () || res.ptr != value.data () + value.size () || mtu < 0
+							|| mtu > 65535)
+						{
+							LogPrint (eLogWarning, "RouterInfo: Invalid 'mtu' value ", value);
+							address->ssu->mtu = 0;
+						}
+						else
+							address->ssu->mtu = mtu;
 					}
 					else
 						LogPrint (eLogWarning, "RouterInfo: Unexpected field 'mtu' for NTCP2");
@@ -332,7 +594,35 @@ namespace data
 				}
 				else if (key == "v")
 				{
-					if (value == "2") // only 2 is allowed
+					// The SSU2 spec permits a comma-separated compatibility list
+					// (for example "2,3"). The base version that this transport
+					// understands must still be 2; newer values are negotiated
+					// through the "pq" option, not by treating v=3/4 as PQ.
+					bool foundV2 = false, validList = true;
+					size_t start = 0;
+					while (start <= value.size ())
+					{
+						size_t end = value.find (',', start);
+						if (end == std::string_view::npos) end = value.size ();
+						auto token = value.substr (start, end - start);
+						if (token.empty ())
+							validList = false;
+						else
+						{
+							for (char ch : token)
+							{
+								if (ch < '0' || ch > '9')
+								{
+									validList = false;
+									break;
+								}
+							}
+							if (token == "2") foundV2 = true;
+						}
+						if (!validList || end == value.size ()) break;
+						start = end + 1;
+					}
+					if (validList && foundV2)
 						isV2 = true;
 					else
 					{
@@ -342,20 +632,42 @@ namespace data
 				}
 				else if (key == "pq")
 				{
-					// Java publishes SSU2 as a comma-separated preference list, e.g.
-					// "4,3". Keep the strongest value we understand instead of
-					// silently downgrading to non-PQ.
-					int best = 0, maxVersion = 0;
-					if (address->transportStyle == eTransportNTCP2) maxVersion = 5;
-					else if (address->transportStyle == eTransportSSU2) maxVersion = 4;
-					if (maxVersion)
+					if (address->transportStyle == eTransportNTCP2)
 					{
-						for (char ch : value)
+						// Java publishes NTCP2 as a comma-separated preference
+						// list, e.g. "5,4,3". Keep the strongest value we
+						// understand instead of silently downgrading. Parse
+						// whole tokens so random digits in a malformed value
+						// cannot select a hybrid version.
+						int best = 0;
+						size_t start = 0;
+						while (start <= value.size ())
 						{
-							if (ch >= '3' && ch <= '0' + maxVersion)
-								best = std::max (best, ch - '0');
+							size_t end = value.find (',', start);
+							if (end == std::string_view::npos) end = value.size ();
+							auto token = value.substr (start, end - start);
+							if (token == "3" || token == "4" || token == "5")
+								best = std::max (best, token[0] - '0');
+							if (end == value.size ()) break;
+							start = end + 1;
 						}
 						if (best) address->v = best;
+					}
+					else if (address->transportStyle == eTransportSSU2)
+					{
+						// Validate the list and remember every supported SSU2
+						// hybrid version. The final selection is made after the
+						// options loop, when "mtu" is known regardless of order.
+						size_t start = 0;
+						while (start <= value.size ())
+						{
+							size_t end = value.find (',', start);
+							if (end == std::string_view::npos) end = value.size ();
+							auto token = value.substr (start, end - start);
+							if (token == "3" || token == "4") address->pqVersions |= (uint8_t)(1u << (token[0] - '0'));
+							if (end == value.size ()) break;
+							start = end + 1;
+						}
 					}
 				}
 				else if (key[0] == 'i')
@@ -366,222 +678,376 @@ namespace data
 						LogPrint (eLogError, "RouterInfo: Introducer is presented for non-SSU address. Skipped");
 						continue;
 					}
-					unsigned char index = key[key.length () - 1] - '0'; // TODO:
-					if (index > 9)
+					char indexChar = key.back ();
+					if (indexChar < '0' || indexChar >= '0' + MAX_RI_INTRODUCERS)
 					{
-						LogPrint (eLogError, "RouterInfo: Unexpected introducer's index ", index, " skipped");
+						// SSU2 spec: introducer options are ih[0-2], iexp[0-2],
+						// itag[0-2]. Ignore unknown indices rather than
+						// growing the introducer vector.
+						LogPrint (eLogWarning, "RouterInfo: Invalid introducer index in ", key, " skipped");
 						continue;
 					}
+					unsigned char index = indexChar - '0';
+					auto key1 = key.substr (0, key.length () - 1);
+					if (key1 != "itag" && key1 != "ih" && key1 != "iexp")
+						continue; // unknown i* option, not an introducer field
 					if (index >= address->ssu->introducers.size ())
 					{
 						if (address->ssu->introducers.empty ()) // first time
-							address->ssu->introducers.reserve (3);
+							address->ssu->introducers.reserve (MAX_RI_INTRODUCERS);
 						address->ssu->introducers.resize (index + 1);
 					}
 					Introducer & introducer = address->ssu->introducers.at (index);
-					auto key1 = key.substr (0, key.length () - 1);
 					if (key1 == "itag")
 					{
 						auto res = std::from_chars (value.data (), value.data () + value.size (), introducer.iTag);
-						if (res.ec != std::errc ())
-							LogPrint (eLogWarning,
-								"RouterInfo: 'itag' conversion error: ", std::make_error_code (res.ec).message ());
+						if (res.ec != std::errc () || res.ptr != value.data () + value.size ())
+							LogPrint (eLogWarning, "RouterInfo: Invalid 'itag' value ", value);
 					}
 					else if (key1 == "ih")
-						Base64ToByteStream (value, introducer.iH, 32);
+					{
+						if (Base64ToByteStream (value, introducer.iH, 32) != 32)
+						{
+							introducer.iH.Fill (0);
+							LogPrint (eLogWarning, "RouterInfo: Invalid 'ih' value");
+						}
+					}
 					else if (key1 == "iexp")
 					{
 						auto res = std::from_chars (value.data (), value.data () + value.size (), introducer.iExp);
-						if (res.ec != std::errc ())
-							LogPrint (eLogWarning,
-								"RouterInfo: 'iexp' conversion error: ", std::make_error_code (res.ec).message ());
+						if (res.ec != std::errc () || res.ptr != value.data () + value.size ())
+							LogPrint (eLogWarning, "RouterInfo: Invalid 'iexp' value ", value);
 					}
 				}
 			}
+			if (offset != addressEnd) return false;
+			// Proposal 133 / Java UDPAddress: iexp is optional. An introducer
+			// without an expiration never expires; represent that with the
+			// largest uint32 so the session layer (which compares ts < iExp)
+			// keeps using it. Treating a missing iexp as zero made a valid
+			// firewalled SSU2 router unreachable.
+			if (address->ssu)
+			{
+				for (auto & introducer : address->ssu->introducers)
+					if (introducer.iTag && !introducer.iExp)
+						introducer.iExp = std::numeric_limits<uint32_t>::max ();
+			}
+			if (address->transportStyle == eTransportSSU2 && address->pqVersions)
+			{
+#if OPENSSL_PQ
+				// Java UDPTransport.getSSUVersion(): prefer pq=4 only when both
+				// the published MTU and the local MTU can carry ML-KEM-768.
+				// The local MTU is checked by SSU2Session::SetVersion().
+				int best = 0;
+				if (address->pqVersions & (1u << 4))
+				{
+					bool ipv6 = !address->host.is_unspecified () ? address->host.is_v6 ()
+														 : ((address->caps & AddressCaps::eV6) != 0);
+					int minMtu = ipv6 ? MIN_SSU2_MLKEM768_MTU_IPV6 : MIN_SSU2_MLKEM768_MTU_IPV4;
+					int mtu = address->ssu ? address->ssu->mtu : 0;
+					if (!mtu || mtu >= minMtu) best = 4;
+				}
+				// ML-KEM-512 is not provided by LibreSSL. Never select a
+				// version that the local session cannot establish.
+				if (!best && (address->pqVersions & (1u << 3))
+					&& i2p::crypto::IsMLKEMSupported (CRYPTO_KEY_TYPE_ECIES_MLKEM512_X25519_AEAD))
+					best = 3;
+				address->v = best ? best : 2;
+#else
+				// This build has no ML-KEM provider. Ignore a peer's pq hint
+				// rather than selecting version 3/4 and failing every session.
+				address->v = 2;
+#endif
+			}
 			if (address->transportStyle == eTransportNTCP2)
 			{
-				if (isStaticKey)
+				if (isStaticKey && isV2)
 				{
 					if (isHost && address->port)
 					{
-						if (address->host.is_v6 ())
-							supportedTransports
-								|= (i2p::util::net::IsYggdrasilAddress (address->host) ? eNTCP2V6Mesh : eNTCP2V6);
-						else
-							supportedTransports |= eNTCP2V4;
-						m_PublishedTransports |= supportedTransports;
+						// Java NTCPTransport.getNTCP2Version() also requires the
+						// "i" IV option and v containing "2". Without them the
+						// address is not usable inbound and is not the outbound
+						// form either (that one has no host/port), so reject it
+						// instead of turning it into a fake non-published v4
+						// endpoint.
+						if (address->published)
+						{
+							if (address->host.is_v6 ())
+								addressTransports
+									|= (i2p::util::net::IsYggdrasilAddress (address->host) ? eNTCP2V6Mesh : eNTCP2V6);
+							else
+								addressTransports |= eNTCP2V4;
+						}
 					}
 					else
 					{
 						address->published = false;
 						if (address->caps)
 						{
-							if (address->caps & AddressCaps::eV4) supportedTransports |= eNTCP2V4;
-							if (address->caps & AddressCaps::eV6) supportedTransports |= eNTCP2V6;
+							if (address->caps & AddressCaps::eV4) addressTransports |= eNTCP2V4;
+							if (address->caps & AddressCaps::eV6) addressTransports |= eNTCP2V6;
 						}
 						else
-							supportedTransports |= eNTCP2V4; // most likely, since we don't have host
+							addressTransports |= eNTCP2V4; // most likely, since we don't have host
 					}
 				}
 			}
-			else if (address->transportStyle == eTransportSSU2 && isV2 && isStaticKey && isIntroKey)
+			else if (address->transportStyle == eTransportSSU2 && isV2 && isStaticKey && isIntroKey
+				&& (!address->ssu || !address->ssu->mtu || address->ssu->mtu >= MIN_SSU2_MTU))
 			{
-				if (address->IsV4 ()) supportedTransports |= eSSU2V4;
-				if (address->IsV6 ()) supportedTransports |= eSSU2V6;
+				// SSU2 spec, MTU: below 1280 an address must not be used. Keep
+				// the existing stricter policy of not accepting such an
+				// address at all (test-ssu2-address-negotiation).
 				if (isHost && address->port)
 				{
-					if (address->host.is_v4 ()) m_PublishedTransports |= eSSU2V4;
-					if (address->host.is_v6 ()) m_PublishedTransports |= eSSU2V6;
+					// A concrete endpoint's family is defined by its host. Address
+					// caps are untrusted and must not make a published IPv4 address
+					// selectable as IPv6 (or vice versa), which would make the
+					// session layer connect to the wrong family.
+					if (address->host.is_v4 ())
+						addressTransports |= eSSU2V4;
+					else if (address->host.is_v6 ())
+						addressTransports |= eSSU2V6;
 					address->published = true;
 				}
-				else if (address->ssu && !address->ssu->introducers.empty ())
+				else
 				{
-					// exclude invalid introducers
-					uint32_t ts = i2p::util::GetSecondsSinceEpoch ();
-					UpdateIntroducers (address, ts);
-					if (!address->ssu->introducers.empty ()) // still has something
-						m_ReachableTransports |= supportedTransports;
+					// Non-published addresses use caps to declare the families the
+					// router can be reached on through introducers.
+					if (address->IsV4 ()) addressTransports |= eSSU2V4;
+					if (address->IsV6 ()) addressTransports |= eSSU2V6;
+					if (address->ssu && !address->ssu->introducers.empty ())
+					{
+						// exclude invalid introducers
+						uint32_t ts = i2p::util::GetSecondsSinceEpoch ();
+						UpdateIntroducers (address, ts);
+					}
 				}
 			}
-			if (supportedTransports)
+			if (addressTransports)
 			{
-				if (!(m_SupportedTransports & supportedTransports)) // avoid duplicates
+				// A non-published address with both family caps is a single
+				// RouterAddress entry but two independent endpoints. Give each
+				// family its own object so host, reachability, published state,
+				// introducers and MTU cannot leak across families. Keep the
+				// first address for a transport, but prefer a later published
+				// address over an earlier outbound-only one (Java keeps both and
+				// its transports pick the usable one).
+				bool split = address->host.is_unspecified ()
+					&& ((address->IsNTCP2 () && (addressTransports & eNTCP2V4) && (addressTransports & eNTCP2V6))
+						|| (address->IsSSU2 () && (addressTransports & eSSU2V4) && (addressTransports & eSSU2V6)));
+				for (uint8_t i = 0; i < eNumTransports; i++)
 				{
-					for (uint8_t i = 0; i < eNumTransports; i++)
-						if ((1 << i) & supportedTransports) (*addresses)[i] = address;
+					if (!((1u << i) & addressTransports)) continue;
+					bool isV4Slot = (i == eNTCP2V4Idx || i == eSSU2V4Idx);
+					bool isFamilySlot = address->IsNTCP2 () ? (i == eNTCP2V4Idx || i == eNTCP2V6Idx)
+														   : (i == eSSU2V4Idx || i == eSSU2V6Idx);
+					std::shared_ptr<Address> candidate = address;
+					if (split && isFamilySlot)
+					{
+						auto copy = NewAddress ();
+						if (!copy) continue;
+						CopyAddressForFamily (*address, *copy, isV4Slot);
+						candidate = copy;
+					}
+					auto & slot = (*addresses)[i];
+					if (!slot || (candidate->published && !slot->published)) slot = candidate;
 				}
-				m_SupportedTransports |= supportedTransports;
 			}
 		}
-		m_ReachableTransports |= m_PublishedTransports;
-		// update addresses
-#ifdef __cpp_lib_atomic_shared_ptr
-		m_Addresses = addresses;
-#else
-		boost::atomic_store (&m_Addresses, addresses);
-#endif
+		// Derive the transport masks from the surviving address objects, the
+		// same way UpdateSupportedTransports() does. Keeping one implementation
+		// avoids the parser and later local updates disagreeing.
+		CompatibleTransports supportedTransports = 0, reachableTransports = 0, publishedTransports = 0;
+		ComputeAddressTransports (*addresses, supportedTransports, reachableTransports, publishedTransports);
 		// read peers
-		if (offset + 1 > len) return false;
+		if (offset > len || len - offset < 1) return false;
 		uint8_t numPeers = buf[offset];
 		offset++; // num peers
-		if (offset + (size_t)numPeers * 32 > len) return false;
-		offset += numPeers * 32; // TODO: read peers
+		if (numPeers > (len - offset) / 32) return false;
+		offset += (size_t)numPeers * 32; // TODO: read peers
 		// read properties
-		if (offset + 2 > len) return false;
-		m_Version = 0;
+		if (offset > len || len - offset < 2) return false;
+		int version = 0;
 		bool isNetId = false;
+		bool valid = true;
 		std::string family;
+		std::string familySignature;
+		bool hasFamilySignature = false;
+		uint8_t caps = 0;
+		char bandwidthCap = 0;
+		Congestion congestion = eLowCongestion;
+		// Only LocalRouterInfo keeps a property map; don't allocate a second
+		// copy of every remote RouterInfo's properties just to discard it.
+		const bool storesProperties = StoresProperties ();
+		std::vector<std::pair<std::string, std::string>> properties;
+		if (storesProperties) properties.reserve (16);
 		uint16_t size = bufbe16toh (buf + offset);
 		offset += 2; // size
-		if (offset + size > len) return false;
+		if (size > len - offset) return false;
 		size_t r = 0;
+		std::set<std::string_view> propertyKeys;
 		while (r < size)
 		{
-			auto [key, value, sz] = ExtractParam (buf + offset, len - offset);
+			auto [key, value, sz] = ExtractParam (buf + offset, size - r);
+			if (!sz || sz > size - r) return false;
 			r += sz;
 			offset += sz;
-			if (key.empty ()) continue;
-			SetProperty (key, value);
+			if (key.empty ())
+			{
+				LogPrint (eLogWarning, "RouterInfo: Empty property key");
+				return false;
+			}
+			// Java reads RouterInfo properties with readProperties(..., true),
+			// which rejects duplicate keys (and unsorted input). Keep accepting
+			// unsorted input but do not let a later duplicate override an
+			// earlier router.version/netId/caps/family value.
+			if (!propertyKeys.insert (key).second)
+			{
+				LogPrint (eLogWarning, "RouterInfo: Duplicate property ", key);
+				return false;
+			}
+			if (storesProperties) properties.emplace_back (std::string (key), std::string (value));
 
 			// extract caps
 			if (key == "caps")
-			{
-				ExtractCaps (value);
-				m_IsFloodfill = IsDeclaredFloodfill ();
-			}
+				ExtractCaps (value, caps, bandwidthCap, congestion);
 			// extract version
 			else if (key == ROUTER_INFO_PROPERTY_VERSION)
-			{
-				m_Version = 0;
-				for (auto ch : value)
-				{
-					if (ch >= '0' && ch <= '9')
-					{
-						int digit = ch - '0';
-						if (m_Version > (std::numeric_limits<int>::max () - digit) / 10)
-						{
-							// Reject absurdly long numeric versions instead of
-							// overflowing a signed int on untrusted input.
-							m_Version = 0;
-							break;
-						}
-						m_Version = m_Version * 10 + digit;
-					}
-				}
-				if (m_Version < NETDB_MIN_PEER_TEST_VERSION && (m_SupportedTransports & (eSSU2V4 | eSSU2V6)))
-				{
-					auto addresses = GetAddresses ();
-					if (addresses)
-					{
-						if ((*addresses)[eSSU2V4Idx]) (*addresses)[eSSU2V4Idx]->caps &= ~eSSUTesting;
-						if ((*addresses)[eSSU2V6Idx]) (*addresses)[eSSU2V6Idx]->caps &= ~eSSUTesting;
-					}
-				}
-			}
+				version = ParseRouterVersion (value);
 			// check netId
 			else if (key == ROUTER_INFO_PROPERTY_NETID)
 			{
 				isNetId = true;
 				int netID;
 				auto res = std::from_chars (value.data (), value.data () + value.size (), netID);
-				if (res.ec != std::errc () || netID != i2p::context.GetNetID ())
+				if (res.ec != std::errc () || res.ptr != value.data () + value.size ()
+					|| netID != i2p::context.GetNetID ())
 				{
 					LogPrint (eLogError, "RouterInfo: Unexpected ", ROUTER_INFO_PROPERTY_NETID, "=", value);
-					m_IsUnreachable = true;
+					valid = false;
 				}
 			}
 			// family
 			else if (key == ROUTER_INFO_PROPERTY_FAMILY)
 			{
-				family = value;
+				family.assign (value);
 				boost::to_lower (family);
 			}
 			else if (key == ROUTER_INFO_PROPERTY_FAMILY_SIG)
 			{
-				if (netdb.GetFamilies ().VerifyFamily (family, GetIdentHash (), value)) // TODO
-					m_FamilyID = netdb.GetFamilies ().GetFamilyID (family);
-				else
-				{
-					LogPrint (eLogWarning, "RouterInfo: Family ", family, " signature verification failed");
-					SetUnreachable (true);
-				}
+				familySignature.assign (value);
+				hasFamilySignature = true;
 			}
 		}
 
-		if (!m_SupportedTransports || !isNetId || !m_Version) SetUnreachable (true);
+		// With the signature excluded from len, the property mapping must end
+		// exactly at the end of the signed body. Java reads the signature
+		// immediately after readProperties(); trailing bytes would shift it.
+		if (offset != len)
+		{
+			LogPrint (eLogWarning, "RouterInfo: Malformed property section, unexpected trailing bytes");
+			return false;
+		}
+
+		// Verify the family signature with the final family value. Java reads
+		// the option map first and FamilyKeyCrypto.verify(ri) afterwards, so a
+		// tolerated unsorted "family.sig" before "family" must not disable the
+		// family binding.
+		FamilyID familyID = 0;
+		if (hasFamilySignature)
+		{
+			if (netdb.GetFamilies ().VerifyFamily (family, GetIdentHash (), familySignature)) // TODO
+				familyID = netdb.GetFamilies ().GetFamilyID (family);
+			else
+			{
+				LogPrint (eLogWarning, "RouterInfo: Family ", family, " signature verification failed");
+				valid = false;
+			}
+		}
+
+		if (!supportedTransports || !isNetId || !version) valid = false;
+		if (!valid) return false;
+
+		// Java routers older than the peer-test version must not publish the
+		// SSU2 "B" cap. Apply it after all properties are known so an unsorted
+		// caps/version pair cannot re-add it.
+		if (version < NETDB_MIN_PEER_TEST_VERSION)
+		{
+			for (auto & address : *addresses)
+				if (address && address->IsSSU2 ()) address->caps &= ~eSSUTesting;
+		}
+
+		// Commit the fully validated body. Nothing above changes this object's
+		// state, so Update() can keep the old RouterInfo on any failure.
+		m_Timestamp.store (timestamp);
+		m_Caps.store (caps);
+		m_BandwidthCap.store (bandwidthCap);
+		m_Congestion.store (congestion);
+		m_FamilyID.store (familyID);
+		m_SupportedTransports.store (supportedTransports);
+		m_ReachableTransports.store (reachableTransports);
+		m_PublishedTransports.store (publishedTransports);
+		m_Version.store (version);
+		m_Addresses.store (addresses);
+		m_IsFloodfill.store ((caps & eFloodfill) != 0);
+		m_IsUnreachable.store (false);
+		ClearProperties ();
+		for (const auto & property : properties) SetProperty (property.first, property.second);
 
 		return true;
 	}
 
-	void RouterInfo::ExtractCaps (std::string_view value)
+	void RouterInfo::ExtractCaps (
+		std::string_view value, uint8_t & caps, char & bandwidthCap, Congestion & congestion) const
 	{
+		// Java RouterInfo.getBandwidthTier() searches the fixed strongest-first
+		// list "X P O N M L K", i.e. the result does not depend on the order in
+		// which several bandwidth caps appear. Track the strongest one here and
+		// derive the high/extra flags from it instead of letting the last
+		// character win (which could keep eExtraBandwidth with an "O" tier).
+		int bandwidthRank = BandwidthRank (bandwidthCap);
 		for (auto cap : value)
 		{
 			switch (cap)
 			{
-			case CAPS_FLAG_FLOODFILL: m_Caps |= Caps::eFloodfill; break;
+			case CAPS_FLAG_FLOODFILL: caps |= Caps::eFloodfill; break;
 			case CAPS_FLAG_LOW_BANDWIDTH1:
 			case CAPS_FLAG_LOW_BANDWIDTH2:
 			case CAPS_FLAG_LOW_BANDWIDTH3:
-			case CAPS_FLAG_LOW_BANDWIDTH4: m_BandwidthCap = cap; break;
+			case CAPS_FLAG_LOW_BANDWIDTH4:
 			case CAPS_FLAG_HIGH_BANDWIDTH:
-				m_Caps |= Caps::eHighBandwidth;
-				m_BandwidthCap = cap;
-				break;
 			case CAPS_FLAG_EXTRA_BANDWIDTH1:
 			case CAPS_FLAG_EXTRA_BANDWIDTH2:
-				m_Caps |= Caps::eExtraBandwidth | Caps::eHighBandwidth;
-				m_BandwidthCap = cap;
+			{
+				int rank = BandwidthRank (cap);
+				if (rank > bandwidthRank)
+				{
+					bandwidthRank = rank;
+					bandwidthCap = cap;
+				}
 				break;
-			case CAPS_FLAG_HIDDEN: m_Caps |= Caps::eHidden; break;
-			case CAPS_FLAG_REACHABLE: m_Caps |= Caps::eReachable; break;
-			case CAPS_FLAG_UNREACHABLE: m_Caps |= Caps::eUnreachable; break;
-			case CAPS_FLAG_MEDIUM_CONGESTION: m_Congestion = eMediumCongestion; break;
-			case CAPS_FLAG_HIGH_CONGESTION: m_Congestion = eHighCongestion; break;
-			case CAPS_FLAG_REJECT_ALL_CONGESTION: m_Congestion = eRejectAll; break;
+			}
+			case CAPS_FLAG_HIDDEN: caps |= Caps::eHidden; break;
+			case CAPS_FLAG_REACHABLE: caps |= Caps::eReachable; break;
+			case CAPS_FLAG_UNREACHABLE: caps |= Caps::eUnreachable; break;
+			// Several congestion caps in one string are malformed, but pick the
+			// most severe one independent of their order.
+			case CAPS_FLAG_MEDIUM_CONGESTION:
+				if (congestion < eMediumCongestion) congestion = eMediumCongestion;
+				break;
+			case CAPS_FLAG_HIGH_CONGESTION:
+				if (congestion < eHighCongestion) congestion = eHighCongestion;
+				break;
+			case CAPS_FLAG_REJECT_ALL_CONGESTION: congestion = eRejectAll; break;
 			default:;
 			}
 		}
+		caps &= ~(Caps::eHighBandwidth | Caps::eExtraBandwidth);
+		if (bandwidthRank >= 5) caps |= Caps::eHighBandwidth;
+		if (bandwidthRank >= 6) caps |= Caps::eExtraBandwidth;
+		bandwidthCap = BandwidthCapForRank (bandwidthRank);
 	}
 
 	uint8_t RouterInfo::ExtractAddressCaps (std::string_view value) const
@@ -607,6 +1073,9 @@ namespace data
 		int numValid = 0;
 		for (auto & it : address->ssu->introducers)
 		{
+			// Proposal 133: iexp is optional. A missing expiration means the
+			// introducer does not expire (Java UDPAddress uses exp == 0).
+			if (it.iTag && !it.iExp) it.iExp = std::numeric_limits<uint32_t>::max ();
 			if (it.iTag && ts < it.iExp && !it.iH.IsZero ())
 				numValid++;
 			else
@@ -617,21 +1086,29 @@ namespace data
 
 	bool RouterInfo::IsNewer (const uint8_t * buf, size_t len) const
 	{
-		if (!m_RouterIdentity) return false;
-		size_t size = m_RouterIdentity->GetFullLen ();
+		auto identity = m_RouterIdentity;
+		if (!identity || !buf) return false;
+		size_t size = identity->GetFullLen ();
 		if (size + 8 > len) return false;
-		return bufbe64toh (buf + size) > m_Timestamp;
+		return bufbe64toh (buf + size) > m_Timestamp.load ();
 	}
 
 	const uint8_t * RouterInfo::LoadBuffer (const std::string & fullPath)
 	{
+		std::lock_guard<std::mutex> l (m_BufferMutex);
 		if (!m_Buffer)
 		{
 			if (LoadFile (fullPath))
 				LogPrint (eLogDebug, "RouterInfo: Buffer for ", GetIdentHashAbbreviation (GetIdentHash ()),
 					" loaded from file");
 			else
+			{
+				// LoadFile may have allocated a zero-length buffer before the
+				// short-read/length check failed. Leave it null so a later
+				// call can retry instead of returning a pointer with len 0.
+				m_Buffer = nullptr;
 				return nullptr;
+			}
 		}
 		return m_Buffer->data ();
 	}
@@ -646,52 +1123,70 @@ namespace data
 			return false;
 		}
 		f.write ((char *)buf->data (), buf->GetBufferLen ());
+		if (!f)
+		{
+			LogPrint (eLogError, "RouterInfo: Short write to ", fullPath);
+			return false;
+		}
 		return true;
 	}
 
 	bool RouterInfo::SaveToFile (const std::string & fullPath)
 	{
-		if (m_IsUnreachable) return false; // don't save bad router
-		if (!m_Buffer)
+		if (m_IsUnreachable.load ()) return false; // don't save bad router
+		std::shared_ptr<Buffer> buffer;
+		{
+			std::lock_guard<std::mutex> l (m_BufferMutex);
+			buffer = m_Buffer;
+		}
+		if (!buffer)
 		{
 			LogPrint (eLogWarning, "RouterInfo: Can't save, m_Buffer == NULL");
 			return false;
 		}
-		return SaveToFile (fullPath, m_Buffer);
+		return SaveToFile (fullPath, buffer);
 	}
 
-	std::string_view RouterInfo::ExtractString (const uint8_t * buf, size_t len) const
+	std::string_view RouterInfo::ExtractString (const uint8_t * buf, size_t len, bool & valid) const
 	{
+		valid = false;
 		if (!len) return { };
 		uint8_t l = buf[0];
 		if (l > len - 1)
 		{
 			LogPrint (eLogWarning, "RouterInfo: String length ", (int)l, " exceeds buffer size ", len);
-			l = len - 1;
+			return { };
 		}
+		valid = true;
 		return { (const char *)(buf + 1), l };
 	}
 
 	std::tuple<std::string_view, std::string_view, size_t> RouterInfo::ExtractParam (
 		const uint8_t * buf, size_t len) const
 	{
-		auto key = ExtractString (buf, len);
+		// The returned size is zero for any malformed parameter. Callers must
+		// treat that as a hard parse error and must not advance by a clamped
+		// length (which could desynchronize the address/property loop).
+		bool valid = false;
+		auto key = ExtractString (buf, len, valid);
+		if (!valid) return { std::string_view (), std::string_view (), 0 };
 		size_t offset = key.length () + 1;
-		if (offset >= len) return { std::string_view (), std::string_view (), len };
+		if (offset >= len) return { std::string_view (), std::string_view (), 0 };
 		if (buf[offset] != '=')
 		{
 			LogPrint (eLogWarning, "RouterInfo: Unexpected character ", buf[offset], " instead '=' after ", key);
-			key = std::string_view ();
+			return { std::string_view (), std::string_view (), 0 };
 		}
 		offset++;
-		if (offset >= len) return { key, std::string_view (), len };
-		auto value = ExtractString (buf + offset, len - offset);
+		if (offset >= len) return { std::string_view (), std::string_view (), 0 };
+		auto value = ExtractString (buf + offset, len - offset, valid);
+		if (!valid) return { std::string_view (), std::string_view (), 0 };
 		offset += value.length () + 1;
-		if (offset >= len) return { key, std::string_view (), len };
+		if (offset >= len) return { std::string_view (), std::string_view (), 0 };
 		if (buf[offset] != ';')
 		{
 			LogPrint (eLogWarning, "RouterInfo: Unexpected character ", buf[offset], " instead ';' after ", value);
-			value = std::string_view ();
+			return { std::string_view (), std::string_view (), 0 };
 		}
 		offset++;
 		return { key, value, offset };
@@ -699,24 +1194,44 @@ namespace data
 
 	void RouterInfo::AddNTCP2Address (const uint8_t * staticKey, const uint8_t * iv, int port, uint8_t caps)
 	{
-		auto addr = std::make_shared<Address> ();
-		addr->port = port;
-		addr->transportStyle = eTransportNTCP2;
-		addr->caps = caps;
-		addr->date = 0;
-		addr->published = false;
-		memcpy (addr->s, staticKey, 32);
-		memcpy (addr->i, iv, 16);
-		if (addr->IsV4 ())
+		// A firewalled NTCP2 address with caps "46" is one RouterAddress entry
+		// but two independent per-family endpoints. Storing the same object in
+		// both slots let UpdateAddress()/PublishNTCP2Address() set a v4 host on
+		// the v6 object (and vice versa), silently dropping a family from our
+		// own RouterInfo. Split it exactly like SSU2.
+		auto addresses = GetAddresses ();
+		auto add = [&] (bool v4)
 		{
-			m_SupportedTransports |= eNTCP2V4;
-			(*GetAddresses ())[eNTCP2V4Idx] = addr;
-		}
-		if (addr->IsV6 ())
+			auto addr = std::make_shared<Address> ();
+			addr->port = port;
+			addr->transportStyle = eTransportNTCP2;
+			addr->caps = (caps & ~(AddressCaps::eV4 | AddressCaps::eV6))
+				| (v4 ? AddressCaps::eV4 : AddressCaps::eV6);
+			addr->date = 0;
+			addr->published = false;
+			memcpy (addr->s, staticKey, 32);
+			memcpy (addr->i, iv, 16);
+			if (v4)
+			{
+				m_SupportedTransports.fetch_or (eNTCP2V4);
+				(*addresses)[eNTCP2V4Idx] = addr;
+			}
+			else
+			{
+				m_SupportedTransports.fetch_or (eNTCP2V6);
+				(*addresses)[eNTCP2V6Idx] = addr;
+			}
+		};
+		bool v4 = caps & AddressCaps::eV4, v6 = caps & AddressCaps::eV6;
+		if (v4 && v6)
 		{
-			m_SupportedTransports |= eNTCP2V6;
-			(*GetAddresses ())[eNTCP2V6Idx] = addr;
+			add (true);
+			add (false);
 		}
+		else if (v4)
+			add (true);
+		else if (v6)
+			add (false);
 	}
 
 	void RouterInfo::AddNTCP2Address (
@@ -737,24 +1252,27 @@ namespace data
 			if (host.is_v6 ()) addr->caps |= eV6;
 		}
 		auto addresses = GetAddresses ();
+		// An unspecified host (0.0.0.0/::) is not a usable endpoint; keep it
+		// supported (it carries the keys) but never claim it is reachable.
+		const bool endpoint = !host.is_unspecified () && port;
 		if (addr->IsV4 ())
 		{
-			m_SupportedTransports |= eNTCP2V4;
-			m_ReachableTransports |= eNTCP2V4;
+			m_SupportedTransports.fetch_or (eNTCP2V4);
+			if (endpoint) m_ReachableTransports.fetch_or (eNTCP2V4);
 			(*addresses)[eNTCP2V4Idx] = addr;
 		}
 		if (addr->IsV6 ())
 		{
 			if (i2p::util::net::IsYggdrasilAddress (addr->host))
 			{
-				m_SupportedTransports |= eNTCP2V6Mesh;
-				m_ReachableTransports |= eNTCP2V6Mesh;
+				m_SupportedTransports.fetch_or (eNTCP2V6Mesh);
+				if (endpoint) m_ReachableTransports.fetch_or (eNTCP2V6Mesh);
 				(*addresses)[eNTCP2V6MeshIdx] = addr;
 			}
 			else
 			{
-				m_SupportedTransports |= eNTCP2V6;
-				m_ReachableTransports |= eNTCP2V6;
+				m_SupportedTransports.fetch_or (eNTCP2V6);
+				if (endpoint) m_ReachableTransports.fetch_or (eNTCP2V6);
 				(*addresses)[eNTCP2V6Idx] = addr;
 			}
 		}
@@ -778,26 +1296,40 @@ namespace data
 
 	void RouterInfo::AddSSU2Address (const uint8_t * staticKey, const uint8_t * introKey, int port, uint8_t caps)
 	{
-		auto addr = std::make_shared<Address> ();
-		addr->transportStyle = eTransportSSU2;
-		addr->port = port;
-		addr->caps = caps;
-		addr->date = 0;
-		addr->ssu.reset (new SSUExt ());
-		addr->ssu->mtu = 0;
-		memcpy (addr->s, staticKey, 32);
-		memcpy (addr->i, introKey, 32);
 		auto addresses = GetAddresses ();
-		if (addr->IsV4 ())
+		bool v4 = caps & AddressCaps::eV4, v6 = caps & AddressCaps::eV6;
+		bool split = v4 && v6;
+		auto add = [&] (bool isV4)
 		{
-			m_SupportedTransports |= eSSU2V4;
-			(*addresses)[eSSU2V4Idx] = addr;
-		}
-		if (addr->IsV6 ())
+			auto addr = std::make_shared<Address> ();
+			addr->transportStyle = eTransportSSU2;
+			addr->port = port;
+			addr->caps = split ? (uint8_t)(isV4 ? AddressCaps::eV4 : AddressCaps::eV6) : caps;
+			addr->date = 0;
+			addr->ssu.reset (new SSUExt ());
+			addr->ssu->mtu = 0;
+			memcpy (addr->s, staticKey, 32);
+			memcpy (addr->i, introKey, 32);
+			if (isV4)
+			{
+				m_SupportedTransports |= eSSU2V4;
+				(*addresses)[eSSU2V4Idx] = addr;
+			}
+			else
+			{
+				m_SupportedTransports |= eSSU2V6;
+				(*addresses)[eSSU2V6Idx] = addr;
+			}
+		};
+		if (split)
 		{
-			m_SupportedTransports |= eSSU2V6;
-			(*addresses)[eSSU2V6Idx] = addr;
+			add (true);
+			add (false);
 		}
+		else if (v4)
+			add (true);
+		else if (v6)
+			add (false);
 	}
 
 	void RouterInfo::AddSSU2Address (
@@ -822,16 +1354,17 @@ namespace data
 			if (host.is_v6 ()) addr->caps |= eV6;
 		}
 		auto addresses = GetAddresses ();
+		const bool endpoint = !host.is_unspecified () && port;
 		if (addr->IsV4 ())
 		{
-			m_SupportedTransports |= eSSU2V4;
-			m_ReachableTransports |= eSSU2V4;
+			m_SupportedTransports.fetch_or (eSSU2V4);
+			if (endpoint) m_ReachableTransports.fetch_or (eSSU2V4);
 			(*addresses)[eSSU2V4Idx] = addr;
 		}
 		if (addr->IsV6 ())
 		{
-			m_SupportedTransports |= eSSU2V6;
-			m_ReachableTransports |= eSSU2V6;
+			m_SupportedTransports.fetch_or (eSSU2V6);
+			if (endpoint) m_ReachableTransports.fetch_or (eSSU2V6);
 			(*addresses)[eSSU2V6Idx] = addr;
 		}
 	}
@@ -854,10 +1387,8 @@ namespace data
 
 	bool RouterInfo::IsNTCP2 (bool v4only) const
 	{
-		if (v4only)
-			return m_SupportedTransports & eNTCP2V4;
-		else
-			return m_SupportedTransports & (eNTCP2V4 | eNTCP2V6);
+		auto transports = m_SupportedTransports.load ();
+		return v4only ? (transports & eNTCP2V4) : (transports & (eNTCP2V4 | eNTCP2V6));
 	}
 
 	void RouterInfo::EnableV6 ()
@@ -955,24 +1486,21 @@ namespace data
 
 	std::shared_ptr<const RouterInfo::Address> RouterInfo::GetSSU2Address (bool v4) const
 	{
+		auto transports = m_SupportedTransports.load ();
 		if (v4)
 		{
-			if (m_SupportedTransports & eSSU2V4) return GetSSU2V4Address ();
+			if (transports & eSSU2V4) return GetSSU2V4Address ();
 		}
 		else
 		{
-			if (m_SupportedTransports & eSSU2V6) return GetSSU2V6Address ();
+			if (transports & eSSU2V6) return GetSSU2V6Address ();
 		}
 		return nullptr;
 	}
 
 	RouterInfo::AddressesPtr RouterInfo::GetAddresses () const
 	{
-#ifdef __cpp_lib_atomic_shared_ptr
-		return m_Addresses;
-#else
-		return boost::atomic_load (&m_Addresses);
-#endif
+		return m_Addresses.load ();
 	}
 
 	template <typename Filter> std::shared_ptr<const RouterInfo::Address> RouterInfo::GetAddress (Filter filter) const
@@ -1014,137 +1542,146 @@ namespace data
 
 	std::shared_ptr<RouterProfile> RouterInfo::GetProfile () const
 	{
-		auto profile = m_Profile;
+		auto profile = m_Profile.load ();
 		if (!profile)
 		{
 			profile = GetRouterProfile (GetIdentHash ());
-			m_Profile = profile;
+			// A concurrent caller may have installed one first; either object is
+			// equivalent and the last store is harmless.
+			m_Profile.store (profile);
 		}
 		return profile;
 	}
 
 	void RouterInfo::Encrypt (const uint8_t * data, uint8_t * encrypted) const
 	{
-		auto encryptor = m_RouterIdentity->CreateEncryptor (nullptr);
+		auto identity = m_RouterIdentity;
+		if (!identity) return;
+		auto encryptor = identity->CreateEncryptor (nullptr);
 		if (encryptor) encryptor->Encrypt (data, encrypted);
 	}
 
 	bool RouterInfo::IsEligibleFloodfill () const
 	{
 		// floodfill must have published ipv4 or reachable ipv4 and published ipv6
-		// >= 0.9.59 and not DSA
-		return m_Version >= NETDB_MIN_FLOODFILL_VERSION
+		// >= 0.9.62 and not DSA
+		auto identity = GetIdentity ();
+		if (!identity) return false;
+		return m_Version.load () >= NETDB_MIN_FLOODFILL_VERSION
 			&& (IsPublished (true) || (IsReachableBy (eNTCP2V4 | eSSU2V4) && IsPublished (false)))
-			&& GetIdentity ()->GetSigningKeyType () != SIGNING_KEY_TYPE_DSA_SHA1;
+			&& identity->GetSigningKeyType () != SIGNING_KEY_TYPE_DSA_SHA1;
 	}
 
 	bool RouterInfo::IsPublished (bool v4) const
 	{
-		if (m_Caps & (eUnreachable | eHidden))
-			return false; // if router sets U or H we assume that all addresses are not published
+		if ((m_Caps.load () & eUnreachable) || IsHidden ())
+			return false; // if router sets U or is hidden we assume that all addresses are not published
 		return IsPublishedOn (v4 ? (eNTCP2V4 | eSSU2V4) : (eNTCP2V6 | eSSU2V6));
 	}
 
 	bool RouterInfo::IsPublishedOn (CompatibleTransports transports) const
 	{
-		return m_PublishedTransports & transports;
+		return m_PublishedTransports.load () & transports;
 	}
 
 	bool RouterInfo::IsNAT2NATOnly (const RouterInfo & other) const
 	{
-		return !(m_PublishedTransports & other.m_SupportedTransports)
-			&& !(other.m_PublishedTransports & m_SupportedTransports);
+		return !(m_PublishedTransports.load () & other.m_SupportedTransports.load ())
+			&& !(other.m_PublishedTransports.load () & m_SupportedTransports.load ());
 	}
 
 	bool RouterInfo::IsSSU2PeerTesting (bool v4) const
 	{
-		if (!(m_SupportedTransports & (v4 ? eSSU2V4 : eSSU2V6))) return false;
+		if (!(m_SupportedTransports.load () & (v4 ? eSSU2V4 : eSSU2V6))) return false;
 		auto addr = (*GetAddresses ())[v4 ? eSSU2V4Idx : eSSU2V6Idx];
 		return addr && addr->IsPeerTesting () && addr->IsReachableSSU ();
 	}
 
 	bool RouterInfo::IsSSU2Introducer (bool v4) const
 	{
-		if (!(m_SupportedTransports & (v4 ? eSSU2V4 : eSSU2V6))) return false;
+		if (!(m_SupportedTransports.load () & (v4 ? eSSU2V4 : eSSU2V6))) return false;
 		auto addr = (*GetAddresses ())[v4 ? eSSU2V4Idx : eSSU2V6Idx];
 		return addr && addr->IsIntroducer () && !addr->host.is_unspecified () && addr->port;
 	}
 
 	void RouterInfo::SetUnreachableAddressesTransportCaps (uint8_t transports)
 	{
-		for (auto & addr : *GetAddresses ())
+		// A split address object belongs to exactly one family slot. Applying
+		// the caller's combined "46" mask to every object would make a v4-only
+		// address claim eV6 while the v6 slot stays empty.
+		auto addresses = GetAddresses ();
+		if (!addresses) return;
+		for (uint8_t i = 0; i < eNumTransports; i++)
 		{
-			if (addr && !addr->published)
+			auto & addr = (*addresses)[i];
+			if (!addr || addr->published) continue;
+			uint8_t family = 0;
+			switch (i)
 			{
-				addr->caps &= ~(eV4 | eV6);
-				addr->caps |= transports;
+			case eNTCP2V4Idx:
+			case eSSU2V4Idx: family = eV4; break;
+			case eNTCP2V6Idx:
+			case eSSU2V6Idx:
+			case eNTCP2V6MeshIdx: family = eV6; break;
+			default: continue;
 			}
+			addr->caps &= ~(eV4 | eV6);
+			if (transports & family) addr->caps |= family;
 		}
 	}
 
 	void RouterInfo::UpdateSupportedTransports ()
 	{
-		m_SupportedTransports = 0;
-		m_ReachableTransports = 0;
-		for (const auto & addr : *GetAddresses ())
-		{
-			if (!addr) continue;
-			uint8_t transports = 0;
-			switch (addr->transportStyle)
-			{
-			case eTransportNTCP2:
-				if (addr->IsV4 ()) transports |= eNTCP2V4;
-				if (addr->IsV6 ())
-					transports |= (i2p::util::net::IsYggdrasilAddress (addr->host) ? eNTCP2V6Mesh : eNTCP2V6);
-				if (addr->IsPublishedNTCP2 ()) m_ReachableTransports |= transports;
-				break;
-			case eTransportSSU2:
-				if (addr->IsV4 ()) transports |= eSSU2V4;
-				if (addr->IsV6 ()) transports |= eSSU2V6;
-				if (addr->IsReachableSSU ()) m_ReachableTransports |= transports;
-				break;
-			default:;
-			}
-			m_SupportedTransports |= transports;
-		}
+		auto addresses = GetAddresses ();
+		if (!addresses) return;
+		CompatibleTransports supported = 0, reachable = 0, published = 0;
+		ComputeAddressTransports (*addresses, supported, reachable, published);
+		m_SupportedTransports.store (supported);
+		m_ReachableTransports.store (reachable);
+		m_PublishedTransports.store (published);
 	}
 
 	void RouterInfo::UpdateIntroducers (uint64_t ts)
 	{
-		if (ts * 1000 < m_Timestamp + INTRODUCER_UPDATE_INTERVAL) return;
-		if (m_ReachableTransports & eSSU2V4)
+		if (ts * 1000 < m_Timestamp.load () + INTRODUCER_UPDATE_INTERVAL) return;
+		if (m_ReachableTransports.load () & eSSU2V4)
 		{
 			auto addr = (*GetAddresses ())[eSSU2V4Idx];
 			if (addr && addr->UsesIntroducer ())
 			{
 				UpdateIntroducers (addr, ts);
 				if (!addr->UsesIntroducer ()) // no more valid introducers
-					m_ReachableTransports &= ~eSSU2V4;
+					m_ReachableTransports.fetch_and (static_cast<CompatibleTransports> (~eSSU2V4));
 			}
 		}
-		if (m_ReachableTransports & eSSU2V6)
+		if (m_ReachableTransports.load () & eSSU2V6)
 		{
 			auto addr = (*GetAddresses ())[eSSU2V6Idx];
 			if (addr && addr->UsesIntroducer ())
 			{
 				UpdateIntroducers (addr, ts);
 				if (!addr->UsesIntroducer ()) // no more valid introducers
-					m_ReachableTransports &= ~eSSU2V6;
+					m_ReachableTransports.fetch_and (static_cast<CompatibleTransports> (~eSSU2V6));
 			}
 		}
 	}
 
 	void RouterInfo::UpdateBuffer (const uint8_t * buf, size_t len)
 	{
-		m_IsBufferScheduledToDelete = false;
+		std::lock_guard<std::mutex> l (m_BufferMutex);
+		m_IsBufferScheduledToDelete.store (false);
 		if (!m_Buffer) m_Buffer = NewBuffer ();
+		if (!m_Buffer || !buf) return;
 		if (len > m_Buffer->size ()) len = m_Buffer->size ();
-		memcpy (m_Buffer->data (), buf, len);
+		// Update(GetBuffer(), GetBufferLen()) would otherwise call memcpy()
+		// with identical source and destination.
+		if (buf != m_Buffer->data ()) memcpy (m_Buffer->data (), buf, len);
 		m_Buffer->SetBufferLen (len);
 	}
 
 	std::shared_ptr<RouterInfo::Buffer> RouterInfo::CopyBuffer () const
 	{
+		std::lock_guard<std::mutex> l (m_BufferMutex);
 		if (!m_Buffer) return nullptr;
 		return netdb.NewRouterInfoBuffer (*m_Buffer);
 	}
@@ -1171,17 +1708,17 @@ namespace data
 
 	void RouterInfo::RefreshTimestamp ()
 	{
-		m_Timestamp = i2p::util::GetMillisecondsSinceEpoch ();
+		m_Timestamp.store (i2p::util::GetMillisecondsSinceEpoch ());
 	}
 
 	bool RouterInfo::IsHighCongestion (bool highBandwidth) const
 	{
-		switch (m_Congestion)
+		switch (m_Congestion.load ())
 		{
 		case eLowCongestion: return false; break;
 		case eMediumCongestion: return highBandwidth; break;
 		case eHighCongestion:
-			return i2p::util::GetMillisecondsSinceEpoch () < m_Timestamp + HIGH_CONGESTION_INTERVAL * 1000LL;
+			return i2p::util::GetMillisecondsSinceEpoch () < m_Timestamp.load () + HIGH_CONGESTION_INTERVAL * 1000LL;
 			break;
 		case eRejectAll: return true; break;
 		default: return false;
@@ -1203,9 +1740,10 @@ namespace data
 
 	bool RouterInfo::IsSameSubnet (const RouterInfo & other) const
 	{
-		auto transports = m_SupportedTransports & other.m_SupportedTransports;
+		auto transports = m_SupportedTransports.load () & other.m_SupportedTransports.load ();
 		if (!transports) return false;
 		auto addresses1 = GetAddresses (), addresses2 = other.GetAddresses ();
+		if (!addresses1 || !addresses2) return false;
 		for (int i = 0; i < eNumTransports; i++)
 			if (i != eNTCP2V6MeshIdx && (transports & (1 << i)))
 			{
@@ -1218,28 +1756,54 @@ namespace data
 
 	void LocalRouterInfo::CreateBuffer (const PrivateKeys & privateKeys)
 	{
+		auto publicKeys = privateKeys.GetPublic ();
+		if (!publicKeys) return;
+		const uint64_t previousTimestamp = GetTimestamp ();
 		RefreshTimestamp ();
 		std::stringstream s;
 		uint8_t ident[1024];
-		auto identLen = privateKeys.GetPublic ()->ToBuffer (ident, 1024);
-		auto signatureLen = privateKeys.GetPublic ()->GetSignatureLen ();
+		auto identLen = publicKeys->ToBuffer (ident, sizeof (ident));
+		if (!identLen)
+		{
+			LogPrint (eLogError, "RouterInfo: Can't serialize our identity");
+			SetTimestamp (previousTimestamp);
+			return;
+		}
+		auto signatureLen = publicKeys->GetSignatureLen ();
 		s.write ((char *)ident, identLen);
 		WriteToStream (s);
-		size_t len = s.str ().size ();
+		// Keep one copy; s.str() returns a temporary and was previously
+		// materialized three times.
+		const std::string body = s.str ();
+		size_t len = body.size ();
 		if (len + signatureLen <= MAX_RI_BUFFER_SIZE)
 		{
-			UpdateBuffer ((const uint8_t *)s.str ().c_str (), len);
-			// signature
-			privateKeys.Sign (GetBuffer (), len, GetBufferPointer (len));
-			SetBufferLen (len + signatureLen);
+			UpdateBuffer ((const uint8_t *)body.data (), len);
+			auto buffer = GetSharedBuffer ();
+			if (buffer && buffer->GetBufferLen () == len)
+			{
+				// signature
+				privateKeys.Sign (buffer->data (), len, buffer->data () + len);
+				SetBufferLen (len + signatureLen);
+				return;
+			}
+			LogPrint (eLogError, "RouterInfo: Can't allocate buffer for our RouterInfo");
 		}
 		else
 			LogPrint (eLogError, "RouterInfo: Our RouterInfo is too long ", len + signatureLen);
+		// Do not leave m_Timestamp newer than the retained (old) buffer.
+		SetTimestamp (previousTimestamp);
 	}
 
 	void LocalRouterInfo::UpdateCaps (uint8_t caps)
 	{
 		SetCaps (caps);
+		// Keep IsFloodfill() consistent with the "f" cap (Java reads the cap
+		// string each time). RouterContext keeps its own policy flag separately.
+		if (caps & i2p::data::RouterInfo::eFloodfill)
+			SetFloodfill ();
+		else
+			ResetFloodfill ();
 		UpdateCapsProperty ();
 	}
 
@@ -1299,12 +1863,16 @@ namespace data
 		uint64_t ts = htobe64 (GetTimestamp ());
 		s.write ((const char *)&ts, sizeof (ts));
 		// addresses
+		auto v4ntcp = (*addresses)[eNTCP2V4Idx];
+		auto v6ntcp = (*addresses)[eNTCP2V6Idx];
+		const bool mergeNTCP2 = v4ntcp && v6ntcp && v4ntcp != v6ntcp
+			&& IsMergeableNTCP2Twin (*v4ntcp, *v6ntcp);
 		uint8_t numAddresses = 0;
 		for (size_t idx = 0; idx < addresses->size (); idx++)
 		{
 			auto addr_ptr = (*addresses)[idx];
 			if (!addr_ptr) continue;
-			if (idx == eNTCP2V6Idx && addr_ptr == (*addresses)[eNTCP2V4Idx]) continue;
+			if (idx == eNTCP2V6Idx && (addr_ptr == (*addresses)[eNTCP2V4Idx] || mergeNTCP2)) continue;
 			if (idx == eSSU2V6Idx && addr_ptr == (*addresses)[eSSU2V4Idx]) continue;
 			numAddresses++;
 		}
@@ -1313,7 +1881,7 @@ namespace data
 		{
 			auto addr_ptr = (*addresses)[idx];
 			if (!addr_ptr) continue;
-			if (idx == eNTCP2V6Idx && addr_ptr == (*addresses)[eNTCP2V4Idx]) continue;
+			if (idx == eNTCP2V6Idx && (addr_ptr == (*addresses)[eNTCP2V4Idx] || mergeNTCP2)) continue;
 			if (idx == eSSU2V6Idx && addr_ptr == (*addresses)[eSSU2V4Idx]) continue;
 			const Address & address = *addr_ptr;
 			// calculate cost
@@ -1325,7 +1893,12 @@ namespace data
 			else
 				continue; // skip unknown address
 			s.write ((const char *)&cost, sizeof (cost));
-			s.write ((const char *)&address.date, sizeof (address.date));
+			// RouterAddress expiration is an 8-byte big-endian integer in the
+			// data structure spec (Java DataHelper.writeLong(out, 8, ...)).
+			// The old code wrote host order, which is only correct on big-endian
+			// hosts and only harmless because local addresses use date == 0.
+			uint64_t date = htobe64 (address.date);
+			s.write ((const char *)&date, sizeof (date));
 			std::stringstream properties;
 			bool isPublished = address.published && !address.host.is_unspecified () && address.port;
 			if (address.transportStyle == eTransportNTCP2)
@@ -1339,6 +1912,10 @@ namespace data
 					std::string caps;
 					if (address.IsV4 ()) caps += CAPS_FLAG_V4;
 					if (address.IsV6 () || address.host.is_v6 ()) caps += CAPS_FLAG_V6; // we set 6 for unspecified ipv6
+					// The v6 twin is not written separately; declare both
+					// families on the merged v4 entry, as the pre-split writer
+					// did with its shared object.
+					if (mergeNTCP2 && idx == eNTCP2V4Idx) caps += CAPS_FLAG_V6;
 					if (caps.empty ()) caps += CAPS_FLAG_V4;
 					WriteString (caps, properties);
 					properties << ';';
@@ -1349,16 +1926,20 @@ namespace data
 				WriteString ("SSU2", s);
 				// caps
 				std::string caps;
+				// "B" (peer testing) is valid for non-published SSU2 addresses
+				// too: a firewalled router with introducers still acts as Bob or
+				// Charlie. Java publishes CAP_TESTING_4/CAP_TESTING_6 ("B4"/"B6")
+				// in this case. "C" (introducer) requires a reachable endpoint.
+				if (address.IsPeerTesting ()) caps += CAPS_FLAG_SSU2_TESTING;
 				if (isPublished)
 				{
-					if (address.IsPeerTesting ()) caps += CAPS_FLAG_SSU2_TESTING;
 					if (address.IsIntroducer ()) caps += CAPS_FLAG_SSU2_INTRODUCER;
 				}
 				else
 				{
 					if (address.IsV4 ()) caps += CAPS_FLAG_V4;
 					if (address.IsV6 () || address.host.is_v6 ()) caps += CAPS_FLAG_V6; // we set 6 for unspecified ipv6
-					if (caps.empty ()) caps += CAPS_FLAG_V4;
+					if (!address.IsV4 () && !address.IsV6 () && !address.host.is_v6 ()) caps += CAPS_FLAG_V4;
 				}
 				if (!caps.empty ())
 				{
@@ -1448,9 +2029,41 @@ namespace data
 				WriteString (std::to_string (address.port), properties);
 				properties << ';';
 			}
-			if (address.v >= 3) // post quantum
+#if OPENSSL_PQ
+			if (address.IsSSU2 () && address.v >= 3)
 			{
-				if (address.v <= 4 || (address.v == 5 && address.IsNTCP2 ()))
+				// SSU2 "pq" is a preference list. Java UDPTransport publishes
+				// PQ_VERSION "4,3" when the interface can carry ML-KEM-768 and
+				// PQ_VERSION_LOW_MTU "3" otherwise (addSSU2Options()).
+				// ML-KEM-768 needs 1318 bytes on IPv4 and 1338 on IPv6
+				// (PeerState2.MIN_MLKEM768_IPV4_MTU / _IPV6_MTU). LibreSSL has
+				// no ML-KEM-512, so never publish "3" there.
+				bool ipv6 = address.IsV6 () && !address.IsV4 ();
+				int minMtu = ipv6 ? MIN_SSU2_MLKEM768_MTU_IPV6 : MIN_SSU2_MLKEM768_MTU_IPV4;
+				int mtu = address.ssu ? address.ssu->mtu : 0;
+				bool allow4 = address.v >= 4 && (!mtu || mtu >= minMtu);
+#ifdef LIBRESSL_VERSION_NUMBER
+				if (allow4)
+				{
+					WriteString ("pq", properties);
+					properties << '=';
+					WriteString ("4", properties);
+					properties << ';';
+				}
+#else
+				WriteString ("pq", properties);
+				properties << '=';
+				WriteString (allow4 ? "4,3" : "3", properties);
+				properties << ';';
+#endif
+			}
+			else if (address.v >= 3) // NTCP2 post quantum
+			{
+#ifdef LIBRESSL_VERSION_NUMBER
+				if (address.v >= 4 && address.v <= 5) // no ML-KEM-512
+#else
+				if (address.v <= 5)
+#endif
 				{
 					WriteString ("pq", properties);
 					properties << '=';
@@ -1458,6 +2071,7 @@ namespace data
 					properties << ';';
 				}
 			}
+#endif
 			if (address.IsNTCP2 () || address.IsSSU2 ())
 			{
 				// publish s and v for NTCP2 or SSU2
@@ -1528,7 +2142,13 @@ namespace data
 
 	void LocalRouterInfo::WriteString (const std::string & str, std::ostream & s) const
 	{
-		uint8_t len = str.size ();
+		// Java DataHelper.writeString()/writeProperties() throw on strings over
+		// 255 bytes. CreateBuffer() cannot signal an error, so keep the mapping
+		// well-formed and make the loss visible instead of silently wrapping
+		// the length byte (256 bytes used to become an empty value).
+		if (str.size () > 255)
+			LogPrint (eLogError, "RouterInfo: String of ", str.size (), " bytes exceeds the 255-byte mapping limit");
+		uint8_t len = static_cast<uint8_t> (std::min<size_t> (str.size (), 255));
 		s.write ((char *)&len, 1);
 		s.write (str.c_str (), len);
 	}
@@ -1555,18 +2175,24 @@ namespace data
 
 	bool LocalRouterInfo::AddSSU2Introducer (const Introducer & introducer, bool v4)
 	{
+		if (!introducer.iTag) return false; // Java requires tag > 0
 		auto addresses = GetAddresses ();
 		if (!addresses) return false;
 		auto addr = (*addresses)[v4 ? eSSU2V4Idx : eSSU2V6Idx];
-		if (addr)
+		if (!addr || !addr->ssu) return false;
+		for (auto & intro : addr->ssu->introducers)
+			if (intro.iTag == introducer.iTag) return false; // already presented
+		// SSU2 RouterAddress mappings only define itag0..2/ih0..2/iexp0..2.
+		if (addr->ssu->introducers.size () >= MAX_RI_INTRODUCERS)
 		{
-			for (auto & intro : addr->ssu->introducers)
-				if (intro.iTag == introducer.iTag) return false; // already presented
-			addr->ssu->introducers.push_back (introducer);
-			SetReachableTransports (GetReachableTransports () | ((addr->IsV4 () ? eSSU2V4 : eSSU2V6)));
-			return true;
+			LogPrint (eLogWarning, "RouterInfo: Too many SSU2 introducers, not added");
+			return false;
 		}
-		return false;
+		addr->ssu->introducers.push_back (introducer);
+		if (!addr->ssu->introducers.back ().iExp)
+			addr->ssu->introducers.back ().iExp = std::numeric_limits<uint32_t>::max ();
+		SetReachableTransports (GetReachableTransports () | (addr->IsV4 () ? eSSU2V4 : eSSU2V6));
+		return true;
 	}
 
 	bool LocalRouterInfo::RemoveSSU2Introducer (const IdentHash & h, bool v4)
@@ -1574,14 +2200,15 @@ namespace data
 		auto addresses = GetAddresses ();
 		if (!addresses) return false;
 		auto addr = (*addresses)[v4 ? eSSU2V4Idx : eSSU2V6Idx];
-		if (addr)
+		if (addr && addr->ssu)
 		{
 			for (auto it = addr->ssu->introducers.begin (); it != addr->ssu->introducers.end (); ++it)
 				if (h == it->iH)
 				{
 					addr->ssu->introducers.erase (it);
 					if (addr->ssu->introducers.empty ())
-						SetReachableTransports (GetReachableTransports () & ~(addr->IsV4 () ? eSSU2V4 : eSSU2V6));
+						SetReachableTransports (
+							GetReachableTransports () & (CompatibleTransports) ~(addr->IsV4 () ? eSSU2V4 : eSSU2V6));
 					return true;
 				}
 		}
@@ -1593,7 +2220,7 @@ namespace data
 		auto addresses = GetAddresses ();
 		if (!addresses) return false;
 		auto addr = (*addresses)[v4 ? eSSU2V4Idx : eSSU2V6Idx];
-		if (addr)
+		if (addr && addr->ssu)
 		{
 			for (auto & it : addr->ssu->introducers)
 				if (h == it.iH)

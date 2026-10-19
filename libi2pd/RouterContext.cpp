@@ -35,6 +35,8 @@ RouterContext::RouterContext ()
 	: m_LastUpdateTime (0)
 	, m_AcceptsTunnels (true)
 	, m_IsFloodfill (false)
+	, m_StartupTime (0)
+	, m_BandwidthLimit (0)
 	, m_ShareRatio (100)
 	, m_Status (eRouterStatusUnknown)
 	, m_StatusV6 (eRouterStatusUnknown)
@@ -48,10 +50,29 @@ RouterContext::RouterContext ()
 {
 }
 
+RouterContext::~RouterContext ()
+{
+	Stop ();
+	// Wait for the asynchronous router.info writer outside all RouterInfo
+	// locks. A discarded std::async future would block during static
+	// destruction without a defined order relative to the logger.
+	if (m_SavingRouterInfo.valid ())
+	{
+		try
+		{
+			m_SavingRouterInfo.get ();
+		}
+		catch (const std::exception & ex)
+		{
+			LogPrint (eLogError, "Router: router.info save failed: ", ex.what ());
+		}
+	}
+}
+
 void RouterContext::Init ()
 {
 	srand (GetRng () () % 1000);
-	m_StartupTime = i2p::util::GetMonotonicSeconds ();
+	m_StartupTime.store (i2p::util::GetMonotonicSeconds (), std::memory_order_relaxed);
 
 	if (!Load ()) CreateNewRouter ();
 	m_Decryptor = m_Keys.CreateDecryptor (nullptr);
@@ -63,34 +84,61 @@ void RouterContext::Init ()
 
 void RouterContext::Start ()
 {
-	if (!m_Service)
-	{
-		m_Service.reset (new RouterService);
-		m_Service->Start ();
-		m_PublishTimer.reset (new boost::asio::steady_timer (m_Service->GetService ()));
-		ScheduleInitialPublish ();
-		m_CongestionUpdateTimer.reset (new boost::asio::steady_timer (m_Service->GetService ()));
-		ScheduleCongestionUpdate ();
-		m_CleanupTimer.reset (new boost::asio::steady_timer (m_Service->GetService ()));
-		ScheduleCleanupTimer ();
-	}
+	std::lock_guard<std::mutex> lifecycle (m_ServiceLifecycleMutex);
+	if (m_Service.load ()) return;
+	auto service = std::make_shared<RouterService> ();
+	m_PublishTimer.reset (new boost::asio::steady_timer (service->GetService ()));
+	m_CongestionUpdateTimer.reset (new boost::asio::steady_timer (service->GetService ()));
+	m_CleanupTimer.reset (new boost::asio::steady_timer (service->GetService ()));
+	// Publish the service before scheduling so timer handlers that run once
+	// the worker starts observe a consistent object.
+	m_Service.store (service);
+	ScheduleInitialPublish ();
+	ScheduleCongestionUpdate ();
+	ScheduleCleanupTimer ();
+	service->Start ();
 }
 
 void RouterContext::Stop ()
 {
-	if (m_Service)
+	std::lock_guard<std::mutex> lifecycle (m_ServiceLifecycleMutex);
+	auto service = m_Service.exchange (std::shared_ptr<RouterService> {});
+	if (!service)
 	{
-		if (m_PublishTimer) m_PublishTimer->cancel ();
-		if (m_CongestionUpdateTimer) m_CongestionUpdateTimer->cancel ();
-		m_Service->Stop ();
-		CleanUp (); // GarlicDestination
+		// A partially initialised context may still own timers.
+		m_PublishTimer.reset ();
+		m_CongestionUpdateTimer.reset ();
+		m_CleanupTimer.reset ();
+		return;
 	}
+	// StopIOService() is the documented cross-thread-safe operation and
+	// joins the router thread. Cancel the timers only afterwards, when no
+	// handler can be using them concurrently.
+	service->Stop ();
+	if (m_PublishTimer) m_PublishTimer->cancel ();
+	if (m_CongestionUpdateTimer) m_CongestionUpdateTimer->cancel ();
+	if (m_CleanupTimer) m_CleanupTimer->cancel ();
+	CleanUp (); // GarlicDestination
+	// Release the stopped service and its timers. Start() can then create
+	// a fresh io_context for a later start/stop cycle instead of silently
+	// keeping a permanently stopped service. Posters hold their own
+	// shared_ptr snapshot, so an in-flight post cannot outlive the object.
+	m_PublishTimer.reset ();
+	m_CongestionUpdateTimer.reset ();
+	m_CleanupTimer.reset ();
 }
 
 std::shared_ptr<i2p::data::RouterInfo::Buffer> RouterContext::CopyRouterInfoBuffer () const
 {
 	std::lock_guard<std::mutex> l (m_RouterInfoMutex);
 	return m_RouterInfo.CopyBuffer ();
+}
+
+std::shared_ptr<const i2p::data::RouterInfo> RouterContext::GetRouterInfoSnapshot () const
+{
+	auto buffer = CopyRouterInfoBuffer ();
+	if (!buffer) return nullptr;
+	return std::make_shared<i2p::data::RouterInfo> (buffer->data (), buffer->GetBufferLen ());
 }
 
 void RouterContext::CreateNewRouter ()
@@ -248,12 +296,15 @@ void RouterContext::NewRouterInfo ()
 	}
 
 	routerInfo.UpdateCaps (caps); // caps + L
-	routerInfo.SetProperty ("netId", std::to_string (m_NetID));
+	routerInfo.SetProperty ("netId", std::to_string (m_NetID.load (std::memory_order_relaxed)));
 	routerInfo.SetProperty ("router.version", I2P_VERSION);
 	routerInfo.CreateBuffer (m_Keys);
-	m_RouterInfo.SetRouterIdentity (GetIdentity ());
-	m_RouterInfo.Update (routerInfo.GetBuffer (), routerInfo.GetBufferLen ());
-	m_RouterInfo.SetUnreachable (false);
+	{
+		std::lock_guard<std::mutex> l (m_RouterInfoMutex);
+		m_RouterInfo.SetRouterIdentity (GetIdentity ());
+		m_RouterInfo.Update (routerInfo.GetBuffer (), routerInfo.GetBufferLen ());
+		m_RouterInfo.SetUnreachable (false);
+	}
 }
 
 uint16_t RouterContext::SelectRandomPort () const
@@ -267,102 +318,136 @@ uint16_t RouterContext::SelectRandomPort () const
 	return port;
 }
 
-void RouterContext::UpdateRouterInfo ()
+void RouterContext::UpdateRouterInfoLocked ()
 {
-	std::shared_ptr<i2p::data::RouterInfo::Buffer> buffer;
+	m_RouterInfo.CreateBuffer (m_Keys);
+	auto buffer = m_RouterInfo.CopyBuffer ();
 	{
-		std::lock_guard<std::mutex> l (m_RouterInfoMutex);
-		m_RouterInfo.CreateBuffer (m_Keys);
-		buffer = m_RouterInfo.CopyBuffer ();
-	}
-	{
-		// update save buffer to latest
+		// Empty the save slot and hand the latest snapshot to the writer. The
+		// lock order is m_RouterInfoMutex -> m_SaveBufferMutex; the save worker
+		// never takes m_RouterInfoMutex, so this cannot deadlock.
 		std::lock_guard<std::mutex> l (m_SaveBufferMutex);
 		m_SaveBuffer = buffer;
 	}
 	bool isSaving = m_IsSaving.test_and_set ();
 	if (!isSaving) // try to save only if not being saved
 	{
-		auto savingRouterInfo = std::async (std::launch::async,
-			[this] ()
+		// Never wait for disk I/O while m_RouterInfoMutex is held. A worker
+		// that has already cleared m_IsSaving but whose future is not marked
+		// ready yet leaves the newest buffer in m_SaveBuffer; the next update
+		// (or management pass) will start a writer for it.
+		const bool previousReady = !m_SavingRouterInfo.valid ()
+			|| m_SavingRouterInfo.wait_for (std::chrono::seconds (0)) == std::future_status::ready;
+		if (previousReady)
+		{
+			if (m_SavingRouterInfo.valid ())
 			{
-				std::shared_ptr<i2p::data::RouterInfo::Buffer> buffer;
-				while (m_SaveBuffer)
+				try
 				{
-					{
-						std::lock_guard<std::mutex> l (m_SaveBufferMutex);
-						buffer = m_SaveBuffer;
-						m_SaveBuffer = nullptr;
-					}
-					if (buffer) i2p::data::RouterInfo::SaveToFile (i2p::fs::DataDirPath (ROUTER_INFO), buffer);
+					m_SavingRouterInfo.get ();
 				}
-				m_IsSaving.clear ();
-			});
+				catch (const std::exception & ex)
+				{
+					LogPrint (eLogError, "Router: router.info save failed: ", ex.what ());
+				}
+			}
+			m_SavingRouterInfo = std::async (std::launch::async,
+				[this] ()
+				{
+					while (true)
+					{
+						std::shared_ptr<i2p::data::RouterInfo::Buffer> buffer;
+						{
+							std::lock_guard<std::mutex> l (m_SaveBufferMutex);
+							buffer = m_SaveBuffer;
+							m_SaveBuffer = nullptr;
+						}
+						if (!buffer) break;
+						i2p::data::RouterInfo::SaveToFile (i2p::fs::DataDirPath (ROUTER_INFO), buffer);
+					}
+					m_IsSaving.clear ();
+				});
+		}
+		else
+			m_IsSaving.clear (); // no writer was started; retry on the next update
 	}
-	m_LastUpdateTime = i2p::util::GetSecondsSinceEpoch ();
+	m_LastUpdateTime.store (i2p::util::GetSecondsSinceEpoch (), std::memory_order_relaxed);
+}
+
+void RouterContext::UpdateRouterInfo ()
+{
+	std::lock_guard<std::mutex> l (m_RouterInfoMutex);
+	UpdateRouterInfoLocked ();
+}
+
+void RouterContext::UpdateCapsLocked (uint8_t caps)
+{
+	m_RouterInfo.UpdateCaps (caps);
 }
 
 void RouterContext::UpdateCaps (uint8_t caps)
 {
 	std::lock_guard<std::mutex> l (m_RouterInfoMutex);
-	m_RouterInfo.UpdateCaps (caps);
+	UpdateCapsLocked (caps);
 }
 
 void RouterContext::NewNTCP2Keys ()
 {
-	m_NTCP2StaticKeys.reset (new i2p::crypto::X25519Keys ());
-	m_NTCP2StaticKeys->GenerateKeys ();
-	m_NTCP2Keys.reset (new NTCP2PrivateKeys ());
-	m_NTCP2StaticKeys->GetPrivateKey (m_NTCP2Keys->staticPrivateKey);
-	memcpy (m_NTCP2Keys->staticPublicKey, m_NTCP2StaticKeys->GetPublicKey (), 32);
-	RAND_bytes (m_NTCP2Keys->iv, 16);
+	std::lock_guard<std::mutex> l (m_StaticKeysMutex);
+	if (m_NTCP2Keys) return; // idempotent; never reset loaded keys
+	auto staticKeys = std::make_unique<i2p::crypto::X25519Keys> ();
+	staticKeys->GenerateKeys ();
+	auto keys = std::make_unique<NTCP2PrivateKeys> ();
+	staticKeys->GetPrivateKey (keys->staticPrivateKey);
+	memcpy (keys->staticPublicKey, staticKeys->GetPublicKey (), 32);
+	RAND_bytes (keys->iv, 16);
 	// save
 	std::ofstream fk (
 		i2p::fs::CreatePrivateFile (i2p::fs::DataDirPath (NTCP2_KEYS)), std::ofstream::binary | std::ofstream::out);
-	fk.write ((char *)m_NTCP2Keys.get (), sizeof (NTCP2PrivateKeys));
+	fk.write ((char *)keys.get (), sizeof (NTCP2PrivateKeys));
+	m_NTCP2StaticKeys = std::move (staticKeys);
+	m_NTCP2Keys = std::move (keys);
 }
 
 void RouterContext::NewSSU2Keys ()
 {
-	m_SSU2StaticKeys.reset (new i2p::crypto::X25519Keys ());
-	m_SSU2StaticKeys->GenerateKeys ();
-	m_SSU2Keys.reset (new SSU2PrivateKeys ());
-	m_SSU2StaticKeys->GetPrivateKey (m_SSU2Keys->staticPrivateKey);
-	memcpy (m_SSU2Keys->staticPublicKey, m_SSU2StaticKeys->GetPublicKey (), 32);
-	RAND_bytes (m_SSU2Keys->intro, 32);
+	std::lock_guard<std::mutex> l (m_StaticKeysMutex);
+	if (m_SSU2Keys) return; // idempotent; never reset loaded keys
+	auto staticKeys = std::make_unique<i2p::crypto::X25519Keys> ();
+	staticKeys->GenerateKeys ();
+	auto keys = std::make_unique<SSU2PrivateKeys> ();
+	staticKeys->GetPrivateKey (keys->staticPrivateKey);
+	memcpy (keys->staticPublicKey, staticKeys->GetPublicKey (), 32);
+	RAND_bytes (keys->intro, 32);
 	// save
 	std::ofstream fk (
 		i2p::fs::CreatePrivateFile (i2p::fs::DataDirPath (SSU2_KEYS)), std::ofstream::binary | std::ofstream::out);
-	fk.write ((char *)m_SSU2Keys.get (), sizeof (SSU2PrivateKeys));
+	fk.write ((char *)keys.get (), sizeof (SSU2PrivateKeys));
+	m_SSU2StaticKeys = std::move (staticKeys);
+	m_SSU2Keys = std::move (keys);
 }
 
 void RouterContext::SetTesting (bool testing)
 {
-	if (testing != m_Testing)
-	{
-		m_Testing = testing;
-		if (m_Testing) m_Error = eRouterErrorNone;
-	}
+	if (m_Testing.exchange (testing, std::memory_order_relaxed) != testing && testing)
+		m_Error.store (eRouterErrorNone, std::memory_order_relaxed);
 }
 
 void RouterContext::SetTestingV6 (bool testing)
 {
-	if (testing != m_TestingV6)
-	{
-		m_TestingV6 = testing;
-		if (m_TestingV6) m_ErrorV6 = eRouterErrorNone;
-	}
+	if (m_TestingV6.exchange (testing, std::memory_order_relaxed) != testing && testing)
+		m_ErrorV6.store (eRouterErrorNone, std::memory_order_relaxed);
 }
 
 void RouterContext::SetStatus (RouterStatus status)
 {
 	SetTesting (false);
-	if (status != m_Status)
+	auto previous = m_Status.exchange (status, std::memory_order_relaxed);
+	if (previous != status)
 	{
-		LogPrint (eLogInfo, "Router: network status v4 changed ", ROUTER_STATUS_NAMES[m_Status], " -> ",
+		LogPrint (eLogInfo, "Router: network status v4 changed ", ROUTER_STATUS_NAMES[previous], " -> ",
 			ROUTER_STATUS_NAMES[status]);
-		m_Status = status;
-		switch (m_Status)
+		switch (status)
 		{
 		case eRouterStatusOK:
 			SetReachable (true, false); // ipv4
@@ -370,12 +455,20 @@ void RouterContext::SetStatus (RouterStatus status)
 		case eRouterStatusFirewalled:
 			SetUnreachable (true, false); // ipv4
 			break;
-		case eRouterStatusMesh: UpdateCaps (m_RouterInfo.GetCaps () | i2p::data::RouterInfo::eReachable); break;
+		case eRouterStatusMesh:
+		{
+			std::lock_guard<std::mutex> l (m_RouterInfoMutex);
+			UpdateCapsLocked (m_RouterInfo.GetCaps () | i2p::data::RouterInfo::eReachable);
+			break;
+		}
 		case eRouterStatusProxy:
 		case eRouterStatusStan:
-			UpdateCaps (
+		{
+			std::lock_guard<std::mutex> l (m_RouterInfoMutex);
+			UpdateCapsLocked (
 				(m_RouterInfo.GetCaps () | i2p::data::RouterInfo::eUnreachable) & ~i2p::data::RouterInfo::eReachable);
 			break;
+		}
 		default:;
 		}
 	}
@@ -384,12 +477,12 @@ void RouterContext::SetStatus (RouterStatus status)
 void RouterContext::SetStatusV6 (RouterStatus status)
 {
 	SetTestingV6 (false);
-	if (status != m_StatusV6)
+	auto previous = m_StatusV6.exchange (status, std::memory_order_relaxed);
+	if (previous != status)
 	{
-		LogPrint (eLogInfo, "Router: network status v6 changed ", ROUTER_STATUS_NAMES[m_StatusV6], " -> ",
+		LogPrint (eLogInfo, "Router: network status v6 changed ", ROUTER_STATUS_NAMES[previous], " -> ",
 			ROUTER_STATUS_NAMES[status]);
-		m_StatusV6 = status;
-		switch (m_StatusV6)
+		switch (status)
 		{
 		case eRouterStatusOK:
 			SetReachable (false, true); // ipv6
@@ -404,6 +497,7 @@ void RouterContext::SetStatusV6 (RouterStatus status)
 
 void RouterContext::UpdatePort (int port)
 {
+	std::lock_guard<std::mutex> l (m_RouterInfoMutex);
 	auto addresses = m_RouterInfo.GetAddresses ();
 	if (!addresses) return;
 	bool updated = false;
@@ -415,7 +509,7 @@ void RouterContext::UpdatePort (int port)
 			updated = true;
 		}
 	}
-	if (updated) UpdateRouterInfo ();
+	if (updated) UpdateRouterInfoLocked ();
 }
 
 void RouterContext::PublishNTCP2Address (
@@ -429,11 +523,11 @@ void RouterContext::PublishNTCP2Address (
 	memcpy (address->i, m_NTCP2Keys->iv, 16);
 }
 
-void RouterContext::PublishNTCP2Address (int port, bool publish, bool v4, bool v6, bool ygg, int version)
+bool RouterContext::PublishNTCP2AddressLocked (int port, bool publish, bool v4, bool v6, bool ygg, int version)
 {
-	if (!m_NTCP2Keys) return;
+	if (!m_NTCP2Keys) return false;
 	auto addresses = m_RouterInfo.GetAddresses ();
-	if (!addresses) return;
+	if (!addresses) return false;
 	bool updated = false;
 	if (v4)
 	{
@@ -463,12 +557,19 @@ void RouterContext::PublishNTCP2Address (int port, bool publish, bool v4, bool v
 		}
 	}
 
-	if (updated) UpdateRouterInfo ();
+	return updated;
+}
+
+void RouterContext::PublishNTCP2Address (int port, bool publish, bool v4, bool v6, bool ygg, int version)
+{
+	std::lock_guard<std::mutex> l (m_RouterInfoMutex);
+	if (PublishNTCP2AddressLocked (port, publish, v4, v6, ygg, version)) UpdateRouterInfoLocked ();
 }
 
 void RouterContext::UpdateNTCP2Keys ()
 {
 	if (!m_NTCP2Keys) return;
+	std::lock_guard<std::mutex> l (m_RouterInfoMutex);
 	auto addresses = m_RouterInfo.GetAddresses ();
 	if (!addresses) return;
 	for (auto & it : *addresses)
@@ -484,6 +585,7 @@ void RouterContext::UpdateNTCP2Keys ()
 void RouterContext::PublishSSU2Address (int port, bool publish, bool v4, bool v6, int version)
 {
 	if (!m_SSU2Keys) return;
+	std::lock_guard<std::mutex> l (m_RouterInfoMutex);
 	auto addresses = m_RouterInfo.GetAddresses ();
 	if (!addresses) return;
 	int newPort = 0;
@@ -498,10 +600,16 @@ void RouterContext::PublishSSU2Address (int port, bool publish, bool v4, bool v6
 		if (!newPort) newPort = SelectRandomPort ();
 	}
 	bool updated = false;
+	const bool wantIntroducer = publish && !m_IsFloodfill.load (std::memory_order_relaxed);
 	for (auto & address : *addresses)
 	{
 		if (address && address->IsSSU2 ()
-			&& (!address->port || address->port != port || address->published != publish || address->v != version)
+			&& (!address->port || address->port != port || address->published != publish || address->v != version
+				// A loaded RouterInfo may already have the right port/published/
+				// version but lack the current B/C caps (older builds did not
+				// publish B on non-published addresses). Refresh them too.
+				|| (publish && (!address->IsPeerTesting () || address->IsIntroducer () != wantIntroducer))
+				|| (!publish && address->ssu && !address->ssu->introducers.empty ()))
 			&& ((v4 && address->IsV4 ()) || (v6 && address->IsV6 ())))
 		{
 			if (port)
@@ -513,22 +621,34 @@ void RouterContext::PublishSSU2Address (int port, bool publish, bool v4, bool v6
 			if (publish)
 			{
 				UpdateSSU2AddressCapsTesting (address, true);
-				UpdateSSU2AddressCapsIntroducer (address, !m_IsFloodfill);
+				UpdateSSU2AddressCapsIntroducer (address, !m_IsFloodfill.load (std::memory_order_relaxed));
 			}
 			else
 			{
 				UpdateSSU2AddressCapsTesting (address, false);
 				UpdateSSU2AddressCapsIntroducer (address, false);
+				// Unpublishing must also drop introducers. Otherwise
+				// IsReachableSSU() would still report the address as reachable
+				// through stale introducers even though no host/port is
+				// serialized.
+				if (address->ssu) address->ssu->introducers.clear ();
 			}
 			updated = true;
 		}
 	}
-	if (updated) UpdateRouterInfo ();
+	if (updated)
+	{
+		// Keep supported/reachable transports in sync with the per-address
+		// state changed above (SetReachable()/SetUnreachable() do the same).
+		m_RouterInfo.UpdateSupportedTransports ();
+		UpdateRouterInfoLocked ();
+	}
 }
 
 void RouterContext::UpdateSSU2AddressCapsIntroducer (
 	std::shared_ptr<i2p::data::RouterInfo::Address> address, bool isIntroducer) const
 {
+	// Caller holds m_RouterInfoMutex (or owns the address during setup).
 	if (address)
 	{
 		if (isIntroducer)
@@ -541,6 +661,7 @@ void RouterContext::UpdateSSU2AddressCapsIntroducer (
 void RouterContext::UpdateSSU2AddressCapsTesting (
 	std::shared_ptr<i2p::data::RouterInfo::Address> address, bool isTesting) const
 {
+	// Caller holds m_RouterInfoMutex (or owns the address during setup).
 	if (address)
 	{
 		if (isTesting)
@@ -553,6 +674,7 @@ void RouterContext::UpdateSSU2AddressCapsTesting (
 void RouterContext::UpdateSSU2Keys ()
 {
 	if (!m_SSU2Keys) return;
+	std::lock_guard<std::mutex> l (m_RouterInfoMutex);
 	auto addresses = m_RouterInfo.GetAddresses ();
 	if (!addresses) return;
 	for (auto & it : *addresses)
@@ -567,6 +689,7 @@ void RouterContext::UpdateSSU2Keys ()
 
 void RouterContext::UpdateAddress (const boost::asio::ip::address & host)
 {
+	std::lock_guard<std::mutex> l (m_RouterInfoMutex);
 	auto addresses = m_RouterInfo.GetAddresses ();
 	if (!addresses) return;
 	bool updated = false;
@@ -579,9 +702,28 @@ void RouterContext::UpdateAddress (const boost::asio::ip::address & host)
 			updated = true;
 		}
 		addr = (*addresses)[i2p::data::RouterInfo::eSSU2V4Idx];
-		if (addr && addr->host != host)
+		if (addr && addr->ssu && addr->host != host)
 		{
 			addr->host = host;
+			// Same policy as the IPv6 path below: only probe the interface MTU
+			// for a local address, so a NAT external address (which is not in
+			// getifaddrs()) cannot fall back to the Unix 620-byte default and
+			// make the published SSU2 address unusable. Honour ssu2.mtu4 and
+			// skip proxy mode. Probe only when the host changed, not on every
+			// Address block, to avoid re-signing our RouterInfo continuously.
+			uint16_t configuredMTU;
+			i2p::config::GetOption ("ssu2.mtu4", configuredMTU);
+			if (!configuredMTU && m_Status.load (std::memory_order_relaxed) != eRouterStatusProxy
+				&& i2p::util::net::IsLocalAddress (host))
+			{
+				auto mtu = i2p::util::net::GetMTU (host);
+				if (mtu < 1280)
+					mtu = 1280; // SSU2 minimum (SSU2 spec, MTU)
+				else if (mtu > 1500)
+					mtu = 1500;
+				LogPrint (eLogDebug, "Router: Our v4 MTU=", mtu);
+				addr->ssu->mtu = mtu;
+			}
 			updated = true;
 		}
 	}
@@ -594,23 +736,28 @@ void RouterContext::UpdateAddress (const boost::asio::ip::address & host)
 			updated = true;
 		}
 		addr = (*addresses)[i2p::data::RouterInfo::eSSU2V6Idx];
-		if (addr && addr->ssu && (addr->host != host || !addr->ssu->mtu))
+		if (addr && addr->ssu && addr->host != host)
 		{
 			addr->host = host;
-#ifdef __OpenBSD__
-			// Address updates must not replace an explicitly configured MTU.
+			const auto statusV6 = m_StatusV6.load (std::memory_order_relaxed);
+			// The address came from an Address block/peer test, i.e. it is the
+			// peer-observed external address. Only query the interface MTU when
+			// the address is actually local: getifaddrs() falls back to 1280
+			// for NAT66/privacy/tunnel addresses, which would wrongly limit the
+			// published ML-KEM preference. Honour an explicitly configured MTU
+			// on every platform, not only OpenBSD, and skip proxy mode where
+			// the SOCKS5 encapsulation already caps the packet size.
 			uint16_t configuredMTU;
 			i2p::config::GetOption ("ssu2.mtu6", configuredMTU);
-			if (!configuredMTU && m_StatusV6 != eRouterStatusProxy)
-#else
-			if (m_StatusV6 != eRouterStatusProxy)
-#endif
+			if (!configuredMTU && statusV6 != eRouterStatusProxy && i2p::util::net::IsLocalAddress (host))
 			{
 				// update MTU
 				auto mtu = i2p::util::net::GetMTU (host);
 				if (mtu)
 				{
 					LogPrint (eLogDebug, "Router: Our v6 MTU=", mtu);
+					if (mtu < (int)i2p::transport::SSU2_MIN_PACKET_SIZE)
+						mtu = i2p::transport::SSU2_MIN_PACKET_SIZE; // SSU2 minimum (SSU2 spec, MTU)
 					int maxMTU = i2p::util::net::GetMaxMTU (host.to_v6 ());
 					if (mtu > maxMTU)
 					{
@@ -625,41 +772,46 @@ void RouterContext::UpdateAddress (const boost::asio::ip::address & host)
 	}
 
 	auto ts = i2p::util::GetSecondsSinceEpoch ();
-	if (updated || ts > m_LastUpdateTime + ROUTER_INFO_UPDATE_INTERVAL) UpdateRouterInfo ();
+	if (updated || ts > m_LastUpdateTime.load (std::memory_order_relaxed) + ROUTER_INFO_UPDATE_INTERVAL)
+		UpdateRouterInfoLocked ();
 }
 
 bool RouterContext::AddSSU2Introducer (const i2p::data::RouterInfo::Introducer & introducer, bool v4)
 {
+	std::lock_guard<std::mutex> l (m_RouterInfoMutex);
 	bool ret = m_RouterInfo.AddSSU2Introducer (introducer, v4);
-	if (ret) UpdateRouterInfo ();
+	if (ret) UpdateRouterInfoLocked ();
 	return ret;
 }
 
 void RouterContext::RemoveSSU2Introducer (const i2p::data::IdentHash & h, bool v4)
 {
-	if (m_RouterInfo.RemoveSSU2Introducer (h, v4)) UpdateRouterInfo ();
+	std::lock_guard<std::mutex> l (m_RouterInfoMutex);
+	if (m_RouterInfo.RemoveSSU2Introducer (h, v4)) UpdateRouterInfoLocked ();
 }
 
 void RouterContext::UpdateSSU2Introducer (const i2p::data::IdentHash & h, bool v4, uint32_t iTag, uint32_t iExp)
 {
-	if (m_RouterInfo.UpdateSSU2Introducer (h, v4, iTag, iExp)) UpdateRouterInfo ();
+	std::lock_guard<std::mutex> l (m_RouterInfoMutex);
+	if (m_RouterInfo.UpdateSSU2Introducer (h, v4, iTag, iExp)) UpdateRouterInfoLocked ();
 }
 
 void RouterContext::ClearSSU2Introducers (bool v4)
 {
+	std::lock_guard<std::mutex> l (m_RouterInfoMutex);
 	auto addr = m_RouterInfo.GetSSU2Address (v4);
 	if (addr && addr->ssu && !addr->ssu->introducers.empty ())
 	{
 		addr->ssu->introducers.clear ();
-		UpdateRouterInfo ();
+		UpdateRouterInfoLocked ();
 	}
 }
 
 void RouterContext::SetFloodfill (bool floodfill)
 {
-	if (m_IsFloodfill != floodfill)
+	if (m_IsFloodfill.exchange (floodfill, std::memory_order_relaxed) != floodfill)
 	{
-		m_IsFloodfill = floodfill;
+		std::lock_guard<std::mutex> l (m_RouterInfoMutex);
 		auto addresses = m_RouterInfo.GetAddresses ();
 		if (floodfill)
 		{
@@ -686,19 +838,27 @@ void RouterContext::SetFloodfill (bool floodfill)
 				if (addr && addr->published) UpdateSSU2AddressCapsIntroducer (addr, true);
 			}
 		}
-		UpdateRouterInfo ();
+		UpdateRouterInfoLocked ();
 	}
 }
 
 std::string RouterContext::GetFamily () const
 {
+	std::lock_guard<std::mutex> l (m_RouterInfoMutex);
 	return m_RouterInfo.GetProperty (i2p::data::ROUTER_INFO_PROPERTY_FAMILY);
+}
+
+std::string RouterContext::GetRouterInfoProperty (const std::string & key) const
+{
+	std::lock_guard<std::mutex> l (m_RouterInfoMutex);
+	return m_RouterInfo.GetProperty (key);
 }
 
 void RouterContext::SetFamily (const std::string & family)
 {
 	std::string signature;
 	if (family.length () > 0) signature = i2p::data::CreateFamilySignature (family, GetIdentHash ());
+	std::lock_guard<std::mutex> l (m_RouterInfoMutex);
 	if (signature.length () > 0)
 	{
 		m_RouterInfo.SetProperty (i2p::data::ROUTER_INFO_PROPERTY_FAMILY, family);
@@ -755,6 +915,7 @@ void RouterContext::SetBandwidth (char L)
 	default: limit = i2p::data::LOW_BANDWIDTH_LIMIT; type = low; // 48
 	}
 	/* update caps & flags in RI */
+	std::lock_guard<std::mutex> l (m_RouterInfoMutex);
 	auto caps = m_RouterInfo.GetCaps ();
 	caps &= ~i2p::data::RouterInfo::eHighBandwidth;
 	caps &= ~i2p::data::RouterInfo::eExtraBandwidth;
@@ -766,9 +927,9 @@ void RouterContext::SetBandwidth (char L)
 	// no break here, extra + high means 'X'
 	case high: caps |= i2p::data::RouterInfo::eHighBandwidth; break;
 	}
-	UpdateCaps (caps);
-	UpdateRouterInfo ();
-	m_BandwidthLimit = limit;
+	UpdateCapsLocked (caps);
+	UpdateRouterInfoLocked ();
+	m_BandwidthLimit.store (limit, std::memory_order_relaxed);
 }
 
 void RouterContext::SetBandwidth (int limit)
@@ -803,14 +964,14 @@ void RouterContext::SetBandwidth (int limit)
 	}
 
 	LogPrint (eLogInfo, "RouterContext: Set bandwidth ", limit, ". kb/s");
-	m_BandwidthLimit = limit; // set precise limit
+	m_BandwidthLimit.store (limit, std::memory_order_relaxed); // set precise limit
 }
 
 void RouterContext::SetShareRatio (int percents)
 {
 	if (percents < 0) percents = 0;
 	if (percents > 100) percents = 100;
-	m_ShareRatio = percents;
+	m_ShareRatio.store (percents, std::memory_order_relaxed);
 }
 
 bool RouterContext::IsUnreachable () const
@@ -820,14 +981,15 @@ bool RouterContext::IsUnreachable () const
 
 void RouterContext::SetUnreachable (bool v4, bool v6)
 {
-	if (v4 || (v6 && !SupportsV4 ()))
+	std::lock_guard<std::mutex> l (m_RouterInfoMutex);
+	if (v4 || (v6 && !m_RouterInfo.IsV4 ()))
 	{
 		// set caps
 		uint8_t caps = m_RouterInfo.GetCaps ();
 		caps &= ~i2p::data::RouterInfo::eReachable;
 		caps |= i2p::data::RouterInfo::eUnreachable;
-		if (v6 || !SupportsV6 ()) caps &= ~i2p::data::RouterInfo::eFloodfill; // can't be floodfill
-		UpdateCaps (caps);
+		if (v6 || !m_RouterInfo.IsV6 ()) caps &= ~i2p::data::RouterInfo::eFloodfill; // can't be floodfill
+		UpdateCapsLocked (caps);
 	}
 	uint16_t port = 0;
 	// delete previous introducers
@@ -855,23 +1017,24 @@ void RouterContext::SetUnreachable (bool v4, bool v6)
 		if (ntcp2version == 3) ntcp2version = 2; // ML-KEM-512 is unavailable
 #endif
 #endif
-		PublishNTCP2Address (port, false, v4, v6, false, ntcp2version);
+		PublishNTCP2AddressLocked (port, false, v4, v6, false, ntcp2version);
 	}
 	// update
 	m_RouterInfo.UpdateSupportedTransports ();
-	UpdateRouterInfo ();
+	UpdateRouterInfoLocked ();
 }
 
 void RouterContext::SetReachable (bool v4, bool v6)
 {
-	if (v4 || (v6 && !SupportsV4 ()))
+	std::lock_guard<std::mutex> l (m_RouterInfoMutex);
+	if (v4 || (v6 && !m_RouterInfo.IsV4 ()))
 	{
 		// update caps
 		uint8_t caps = m_RouterInfo.GetCaps ();
 		caps &= ~i2p::data::RouterInfo::eUnreachable;
 		caps |= i2p::data::RouterInfo::eReachable;
-		if (m_IsFloodfill) caps |= i2p::data::RouterInfo::eFloodfill;
-		UpdateCaps (caps);
+		if (m_IsFloodfill.load (std::memory_order_relaxed)) caps |= i2p::data::RouterInfo::eFloodfill;
+		UpdateCapsLocked (caps);
 	}
 	uint16_t port = 0;
 	// delete previous introducers
@@ -884,7 +1047,7 @@ void RouterContext::SetReachable (bool v4, bool v6)
 			if (addr && addr->ssu && isSSU2Published && ((v4 && addr->IsV4 ()) || (v6 && addr->IsV6 ())))
 			{
 				addr->published = true;
-				UpdateSSU2AddressCapsIntroducer (addr, !m_IsFloodfill);
+				UpdateSSU2AddressCapsIntroducer (addr, !m_IsFloodfill.load (std::memory_order_relaxed));
 				addr->ssu->introducers.clear ();
 				if (addr->port) port = addr->port;
 			}
@@ -908,16 +1071,17 @@ void RouterContext::SetReachable (bool v4, bool v6)
 			if (ntcp2version == 3) ntcp2version = 2; // ML-KEM-512 is unavailable
 #endif
 #endif
-			PublishNTCP2Address (ntcp2Port, true, v4, v6, false, ntcp2version);
+			PublishNTCP2AddressLocked (ntcp2Port, true, v4, v6, false, ntcp2version);
 		}
 	}
 	// update
 	m_RouterInfo.UpdateSupportedTransports ();
-	UpdateRouterInfo ();
+	UpdateRouterInfoLocked ();
 }
 
 void RouterContext::SetSupportsV6 (bool supportsV6)
 {
+	std::lock_guard<std::mutex> l (m_RouterInfoMutex);
 	if (supportsV6)
 	{
 		// insert v6 addresses if necessary
@@ -1022,11 +1186,12 @@ void RouterContext::SetSupportsV6 (bool supportsV6)
 	}
 	else
 		m_RouterInfo.DisableV6 ();
-	UpdateRouterInfo ();
+	UpdateRouterInfoLocked ();
 }
 
 void RouterContext::SetSupportsV4 (bool supportsV4)
 {
+	std::lock_guard<std::mutex> l (m_RouterInfoMutex);
 	if (supportsV4)
 	{
 		bool foundNTCP2 = false, foundSSU2 = false;
@@ -1105,8 +1270,6 @@ void RouterContext::SetSupportsV4 (bool supportsV4)
 				i2p::config::GetOption ("host", host);
 				if (ssu2Published && ssu2Port)
 				{
-					std::string host;
-					i2p::config::GetOption ("host", host);
 					if (!host.empty ())
 					{
 						auto addr = boost::asio::ip::make_address (host);
@@ -1129,11 +1292,12 @@ void RouterContext::SetSupportsV4 (bool supportsV4)
 	}
 	else
 		m_RouterInfo.DisableV4 ();
-	UpdateRouterInfo ();
+	UpdateRouterInfoLocked ();
 }
 
 void RouterContext::SetSupportsMesh (bool supportsmesh, const boost::asio::ip::address_v6 & host)
 {
+	std::lock_guard<std::mutex> l (m_RouterInfoMutex);
 	if (supportsmesh)
 	{
 		auto addresses = m_RouterInfo.GetAddresses ();
@@ -1159,27 +1323,37 @@ void RouterContext::SetSupportsMesh (bool supportsmesh, const boost::asio::ip::a
 	}
 	else
 		m_RouterInfo.DisableMesh ();
-	UpdateRouterInfo ();
+	UpdateRouterInfoLocked ();
 }
 
 void RouterContext::SetMTU (int mtu, bool v4)
 {
 	if (mtu < 1280 || mtu > 1500) return;
+	std::lock_guard<std::mutex> l (m_RouterInfoMutex);
 	auto addresses = m_RouterInfo.GetAddresses ();
 	if (!addresses) return;
+	bool updated = false;
 	for (auto & addr : *addresses)
 	{
-		if (addr && addr->ssu && ((v4 && addr->IsV4 ()) || (!v4 && addr->IsV6 ())))
+		if (addr && addr->ssu && ((v4 && addr->IsV4 ()) || (!v4 && addr->IsV6 ()))
+			&& addr->ssu->mtu != mtu)
 		{
 			addr->ssu->mtu = mtu;
 			LogPrint (eLogDebug, "Router: MTU for ", v4 ? "ipv4" : "ipv6", " address ", addr->host.to_string (),
 				" is set to ", mtu);
+			updated = true;
 		}
 	}
+	// The MTU controls the published "mtu" option and whether "pq" may offer
+	// ML-KEM-768. Persist it now: Start() sets the MTU after the last
+	// RouterInfo rebuild, so without this the first published RI would still
+	// advertise the old (or absent) MTU.
+	if (updated) UpdateRouterInfoLocked ();
 }
 
 void RouterContext::UpdateNTCP2V6Address (const boost::asio::ip::address & host)
 {
+	std::lock_guard<std::mutex> l (m_RouterInfoMutex);
 	auto addresses = m_RouterInfo.GetAddresses ();
 	if (!addresses) return;
 	std::shared_ptr<i2p::data::RouterInfo::Address> addr;
@@ -1190,26 +1364,29 @@ void RouterContext::UpdateNTCP2V6Address (const boost::asio::ip::address & host)
 	if (addr && addr->IsPublishedNTCP2 () && addr->host != host)
 	{
 		addr->host = host;
-		UpdateRouterInfo ();
+		UpdateRouterInfoLocked ();
 	}
 }
 
 void RouterContext::UpdateStats ()
 {
-	if (m_IsFloodfill)
+	if (m_IsFloodfill.load (std::memory_order_relaxed))
 	{
-		// update routers and leasesets
+		// Update the properties under the same mutex used by CreateBuffer();
+		// otherwise a transport-thread address update can serialize a map while
+		// these properties are being inserted.
+		std::lock_guard<std::mutex> l (m_RouterInfoMutex);
 		m_RouterInfo.SetProperty (
 			i2p::data::ROUTER_INFO_PROPERTY_LEASESETS, std::to_string (i2p::data::netdb.GetNumLeaseSets ()));
 		m_RouterInfo.SetProperty (
 			i2p::data::ROUTER_INFO_PROPERTY_ROUTERS, std::to_string (i2p::data::netdb.GetNumRouters ()));
-		UpdateRouterInfo ();
+		UpdateRouterInfoLocked ();
 	}
 }
 
 void RouterContext::UpdateTimestamp (uint64_t ts)
 {
-	if (ts > m_LastUpdateTime + ROUTER_INFO_UPDATE_INTERVAL) UpdateRouterInfo ();
+	if (ts > m_LastUpdateTime.load (std::memory_order_relaxed) + ROUTER_INFO_UPDATE_INTERVAL) UpdateRouterInfo ();
 }
 
 bool RouterContext::Load ()
@@ -1218,22 +1395,47 @@ bool RouterContext::Load ()
 		std::ifstream fk (i2p::fs::DataDirPath (ROUTER_KEYS), std::ifstream::in | std::ifstream::binary);
 		if (!fk.is_open ()) return false;
 		fk.seekg (0, std::ios::end);
-		size_t len = fk.tellg ();
+		const auto endPos = fk.tellg ();
+		constexpr std::streamoff MAX_ROUTER_KEYS_FILE_SIZE = 64 * 1024;
+		if (endPos == std::streampos (-1))
+		{
+			LogPrint (eLogError, "Router: cannot determine router.keys size");
+			return false;
+		}
+		const auto end = static_cast<std::streamoff> (endPos);
+		if (end <= 0 || end > MAX_ROUTER_KEYS_FILE_SIZE)
+		{
+			LogPrint (eLogError, "Router: invalid router.keys size");
+			return false;
+		}
+		const size_t len = static_cast<size_t> (end);
 		fk.seekg (0, std::ios::beg);
 
 		if (len == sizeof (i2p::data::Keys)) // old keys file format
 		{
 			i2p::data::Keys keys;
-			fk.read ((char *)&keys, sizeof (keys));
+			if (!fk.read (reinterpret_cast<char *> (&keys), sizeof (keys))) return false;
 			m_Keys = keys;
 		}
 		else // new keys file format
 		{
-			uint8_t * buf = new uint8_t[len];
-			fk.read ((char *)buf, len);
-			m_Keys.FromBuffer (buf, len);
-			delete[] buf;
+			std::vector<uint8_t> buf (len);
+			if (!fk.read (reinterpret_cast<char *> (buf.data ()), len))
+			{
+				LogPrint (eLogError, "Router: truncated router.keys");
+				return false;
+			}
+			if (!m_Keys.FromBuffer (buf.data (), buf.size ()))
+			{
+				LogPrint (eLogError, "Router: malformed router.keys");
+				return false;
+			}
 		}
+	}
+	if (!m_Keys.GetPublic ())
+	{
+		LogPrint (eLogError, "Router: router.keys produced no public identity");
+		return false;
 	}
 	std::shared_ptr<const i2p::data::IdentityEx> oldIdentity;
 	if (m_Keys.GetPublic ()->GetSigningKeyType () == i2p::data::SIGNING_KEY_TYPE_DSA_SHA1
@@ -1255,8 +1457,10 @@ bool RouterContext::Load ()
 		n2k.seekg (0, std::ios::beg);
 		if (len == sizeof (NTCP2PrivateKeys))
 		{
-			m_NTCP2Keys.reset (new NTCP2PrivateKeys ());
-			n2k.read ((char *)m_NTCP2Keys.get (), sizeof (NTCP2PrivateKeys));
+			auto keys = std::make_unique<NTCP2PrivateKeys> ();
+			n2k.read ((char *)keys.get (), sizeof (NTCP2PrivateKeys));
+			std::lock_guard<std::mutex> l (m_StaticKeysMutex);
+			m_NTCP2Keys = std::move (keys);
 		}
 		n2k.close ();
 	}
@@ -1269,19 +1473,22 @@ bool RouterContext::Load ()
 		s2k.seekg (0, std::ios::beg);
 		if (len == sizeof (SSU2PrivateKeys))
 		{
-			m_SSU2Keys.reset (new SSU2PrivateKeys ());
-			s2k.read ((char *)m_SSU2Keys.get (), sizeof (SSU2PrivateKeys));
+			auto keys = std::make_unique<SSU2PrivateKeys> ();
+			s2k.read ((char *)keys.get (), sizeof (SSU2PrivateKeys));
+			std::lock_guard<std::mutex> l (m_StaticKeysMutex);
+			m_SSU2Keys = std::move (keys);
 		}
 		s2k.close ();
 	}
 	// read RouterInfo
-	m_RouterInfo.SetRouterIdentity (oldIdentity ? oldIdentity : GetIdentity ());
 	i2p::data::RouterInfo routerInfo (i2p::fs::DataDirPath (ROUTER_INFO));
 	if (!routerInfo.IsUnreachable ()) // router.info looks good
 	{
+		std::lock_guard<std::mutex> l (m_RouterInfoMutex);
+		m_RouterInfo.SetRouterIdentity (oldIdentity ? oldIdentity : GetIdentity ());
 		m_RouterInfo.Update (routerInfo.GetBuffer (), routerInfo.GetBufferLen ());
 		if (oldIdentity) m_RouterInfo.SetRouterIdentity (GetIdentity ()); // from new keys
-		m_IsFloodfill = m_RouterInfo.IsDeclaredFloodfill ();
+		m_IsFloodfill.store (m_RouterInfo.IsDeclaredFloodfill (), std::memory_order_relaxed);
 		m_RouterInfo.SetProperty ("router.version", I2P_VERSION);
 		m_RouterInfo.DeleteProperty ("coreVersion"); // TODO: remove later
 	}
@@ -1315,8 +1522,11 @@ bool RouterContext::Load ()
 		UpdateSSU2Keys ();
 		updated = true;
 	}
-	if (m_RouterInfo.UpdateCongestion (i2p::data::RouterInfo::eLowCongestion)) updated = true;
-	if (updated) UpdateRouterInfo ();
+	{
+		std::lock_guard<std::mutex> l (m_RouterInfoMutex);
+		if (m_RouterInfo.UpdateCongestion (i2p::data::RouterInfo::eLowCongestion)) updated = true;
+		if (updated) UpdateRouterInfoLocked ();
+	}
 
 	return true;
 }
@@ -1354,6 +1564,10 @@ bool RouterContext::HandleCloveI2NPMessage (I2NPMessageType typeID, const uint8_
 {
 	if (typeID == eI2NPTunnelTest)
 	{
+		// TunnelTest payloads carry msgID and timestamp; a garlic clove can be
+		// shorter than the fixed offsets and the generic clove header does not
+		// guarantee the payload length.
+		if (len < TUNNEL_TEST_SIZE) return false;
 		// try tunnel test
 		auto pool = GetTunnelPool ();
 		if (pool
@@ -1369,8 +1583,9 @@ bool RouterContext::HandleCloveI2NPMessage (I2NPMessageType typeID, const uint8_
 
 void RouterContext::ProcessGarlicMessage (std::shared_ptr<I2NPMessage> msg)
 {
-	if (m_Service)
-		boost::asio::post (m_Service->GetService (), std::bind (&RouterContext::PostGarlicMessage, this, msg));
+	auto service = m_Service.load (std::memory_order_acquire);
+	if (service)
+		boost::asio::post (service->GetService (), std::bind (&RouterContext::PostGarlicMessage, this, msg));
 	else
 		LogPrint (eLogError, "Router: service is NULL");
 }
@@ -1398,8 +1613,9 @@ void RouterContext::PostGarlicMessage (std::shared_ptr<I2NPMessage> msg)
 
 void RouterContext::ProcessDeliveryStatusMessage (std::shared_ptr<I2NPMessage> msg)
 {
-	if (m_Service)
-		boost::asio::post (m_Service->GetService (), std::bind (&RouterContext::PostDeliveryStatusMessage, this, msg));
+	auto service = m_Service.load (std::memory_order_acquire);
+	if (service)
+		boost::asio::post (service->GetService (), std::bind (&RouterContext::PostDeliveryStatusMessage, this, msg));
 	else
 		LogPrint (eLogError, "Router: service is NULL");
 }
@@ -1419,7 +1635,8 @@ void RouterContext::PostDeliveryStatusMessage (std::shared_ptr<I2NPMessage> msg)
 
 void RouterContext::SubmitECIESx25519Key (const uint8_t * key, uint64_t tag)
 {
-	if (m_Service)
+	auto service = m_Service.load (std::memory_order_acquire);
+	if (service)
 	{
 		struct
 		{
@@ -1428,7 +1645,7 @@ void RouterContext::SubmitECIESx25519Key (const uint8_t * key, uint64_t tag)
 		} data;
 		memcpy (data.k, key, 32);
 		data.t = tag;
-		boost::asio::post (m_Service->GetService (), [this, data] (void) { AddECIESx25519Key (data.k, data.t); });
+		boost::asio::post (service->GetService (), [this, data] (void) { AddECIESx25519Key (data.k, data.t); });
 	}
 	else
 		LogPrint (eLogError, "Router: service is NULL");
@@ -1436,7 +1653,7 @@ void RouterContext::SubmitECIESx25519Key (const uint8_t * key, uint64_t tag)
 
 uint32_t RouterContext::GetUptime () const
 {
-	return i2p::util::GetMonotonicSeconds () - m_StartupTime;
+	return i2p::util::GetMonotonicSeconds () - m_StartupTime.load (std::memory_order_relaxed);
 }
 
 bool RouterContext::Decrypt (const uint8_t * encrypted, uint8_t * data, i2p::data::CryptoKeyType preferredCrypto) const
@@ -1481,29 +1698,29 @@ bool RouterContext::DecryptTunnelShortRequestRecord (const uint8_t * encrypted, 
 
 i2p::crypto::X25519Keys & RouterContext::GetNTCP2StaticKeys ()
 {
-	if (!m_NTCP2StaticKeys)
-	{
-		if (!m_NTCP2Keys) NewNTCP2Keys ();
-		auto x = new i2p::crypto::X25519Keys (m_NTCP2Keys->staticPrivateKey, m_NTCP2Keys->staticPublicKey);
-		if (!m_NTCP2StaticKeys)
-			m_NTCP2StaticKeys.reset (x);
-		else
-			delete x;
-	}
+	std::call_once (m_NTCP2KeysOnce,
+		[this] ()
+		{
+			NewNTCP2Keys (); // idempotent, locks m_StaticKeysMutex
+			std::lock_guard<std::mutex> l (m_StaticKeysMutex);
+			if (!m_NTCP2StaticKeys)
+				m_NTCP2StaticKeys = std::make_unique<i2p::crypto::X25519Keys> (
+					m_NTCP2Keys->staticPrivateKey, m_NTCP2Keys->staticPublicKey);
+		});
 	return *m_NTCP2StaticKeys;
 }
 
 i2p::crypto::X25519Keys & RouterContext::GetSSU2StaticKeys ()
 {
-	if (!m_SSU2StaticKeys)
-	{
-		if (!m_SSU2Keys) NewSSU2Keys ();
-		auto x = new i2p::crypto::X25519Keys (m_SSU2Keys->staticPrivateKey, m_SSU2Keys->staticPublicKey);
-		if (!m_SSU2StaticKeys)
-			m_SSU2StaticKeys.reset (x);
-		else
-			delete x;
-	}
+	std::call_once (m_SSU2KeysOnce,
+		[this] ()
+		{
+			NewSSU2Keys (); // idempotent, locks m_StaticKeysMutex
+			std::lock_guard<std::mutex> l (m_StaticKeysMutex);
+			if (!m_SSU2StaticKeys)
+				m_SSU2StaticKeys = std::make_unique<i2p::crypto::X25519Keys> (
+					m_SSU2Keys->staticPrivateKey, m_SSU2Keys->staticPublicKey);
+		});
 	return *m_SSU2StaticKeys;
 }
 
@@ -1553,7 +1770,7 @@ void RouterContext::HandlePublishTimer (const boost::system::error_code & ecode)
 	if (ecode != boost::asio::error::operation_aborted)
 	{
 		UpdateTimestamp (i2p::util::GetSecondsSinceEpoch ());
-		if (!m_IsHiddenMode && !IsLimitedConnectivity ())
+		if (!m_IsHiddenMode.load (std::memory_order_relaxed) && !IsLimitedConnectivity ())
 		{
 			m_PublishExcluded.clear ();
 			m_PublishReplyToken = 0;
@@ -1590,9 +1807,10 @@ uint64_t RouterContext::Publish ()
 			i2p::data::GetIdentHashAbbreviation (floodfill->GetIdentHash ()), ". reply token=", replyToken);
 		auto onDrop = [this] ()
 		{
-			if (m_Service)
-				boost::asio::post (
-					m_Service->GetService (), [this] () { HandlePublishResendTimer (boost::system::error_code ()); });
+			auto service = m_Service.load (std::memory_order_acquire);
+			if (service)
+				boost::asio::post (service->GetService (),
+					[this] () { HandlePublishResendTimer (boost::system::error_code ()); });
 		};
 		if (i2p::transport::transports.IsConnected (floodfill->GetIdentHash ()) || // already connected
 			(floodfill->IsReachableFrom (i2p::context.GetRouterInfo ()) && // are we able to connect
@@ -1694,7 +1912,7 @@ void RouterContext::HandleCongestionUpdateTimer (const boost::system::error_code
 void RouterContext::UpdateCongestion ()
 {
 	auto c = i2p::data::RouterInfo::eLowCongestion;
-	if (!AcceptsTunnels () || !m_ShareRatio)
+	if (!AcceptsTunnels () || !m_ShareRatio.load (std::memory_order_relaxed))
 		c = i2p::data::RouterInfo::eRejectAll;
 	else
 	{
@@ -1708,8 +1926,8 @@ void RouterContext::UpdateCongestion ()
 	{
 		std::lock_guard<std::mutex> l (m_RouterInfoMutex);
 		updated = m_RouterInfo.UpdateCongestion (c);
+		if (updated) UpdateRouterInfoLocked ();
 	}
-	if (updated) UpdateRouterInfo ();
 }
 
 void RouterContext::ScheduleCleanupTimer ()

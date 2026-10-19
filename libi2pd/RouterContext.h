@@ -12,8 +12,11 @@
 #define ROUTER_CONTEXT_H__
 
 #include <inttypes.h>
+#include <atomic>
+#include <future>
 #include <string>
 #include <memory>
+#include <mutex>
 #include <unordered_set>
 #include <utility>
 #include <boost/asio.hpp>
@@ -101,12 +104,18 @@ private:
 
 public:
 	RouterContext ();
+	~RouterContext ();
 	void Init ();
 	void Start ();
 	void Stop ();
 
 	const i2p::data::PrivateKeys & GetPrivateKeys () const { return m_Keys; };
+	// Returns the live RouterInfo by reference. Mutators take m_RouterInfoMutex,
+	// but this accessor cannot hold it for the caller: code that needs a
+	// coherent snapshot while mutations can run concurrently must use
+	// CopyRouterInfoBuffer() instead.
 	i2p::data::LocalRouterInfo & GetRouterInfo () { return m_RouterInfo; };
+	// Alias of the live m_RouterInfo; same caveat as GetRouterInfo().
 	std::shared_ptr<i2p::data::RouterInfo> GetSharedRouterInfo ()
 	{
 		return std::shared_ptr<i2p::data::RouterInfo> (&m_RouterInfo, [] (i2p::data::RouterInfo *) { });
@@ -116,6 +125,10 @@ public:
 		return std::shared_ptr<i2p::garlic::GarlicDestination> (this, [] (i2p::garlic::GarlicDestination *) { });
 	}
 	std::shared_ptr<i2p::data::RouterInfo::Buffer> CopyRouterInfoBuffer () const;
+	// An immutable copy for readers outside the router service (TUI, IPC,
+	// tools). The live GetRouterInfo()/GetSharedRouterInfo() accessors remain
+	// for hot paths that only compare identity hashes.
+	std::shared_ptr<const i2p::data::RouterInfo> GetRouterInfoSnapshot () const;
 
 	const uint8_t * GetNTCP2StaticPublicKey () const { return m_NTCP2Keys ? m_NTCP2Keys->staticPublicKey : nullptr; };
 	const uint8_t * GetNTCP2StaticPrivateKey () const { return m_NTCP2Keys ? m_NTCP2Keys->staticPrivateKey : nullptr; };
@@ -128,23 +141,27 @@ public:
 	i2p::crypto::X25519Keys & GetSSU2StaticKeys ();
 
 	uint32_t GetUptime () const; // in seconds
-	uint64_t GetLastUpdateTime () const { return m_LastUpdateTime; };
-	uint64_t GetBandwidthLimit () const { return m_BandwidthLimit; };
-	uint64_t GetTransitBandwidthLimit () const { return (m_BandwidthLimit * m_ShareRatio) / 100LL; };
-	bool GetTesting () const { return m_Testing; };
+	uint64_t GetLastUpdateTime () const { return m_LastUpdateTime.load (std::memory_order_relaxed); };
+	uint64_t GetBandwidthLimit () const { return m_BandwidthLimit.load (std::memory_order_relaxed); };
+	uint64_t GetTransitBandwidthLimit () const
+	{
+		return (m_BandwidthLimit.load (std::memory_order_relaxed) * m_ShareRatio.load (std::memory_order_relaxed))
+			/ 100LL;
+	};
+	bool GetTesting () const { return m_Testing.load (std::memory_order_relaxed); };
 	void SetTesting (bool testing);
-	RouterStatus GetStatus () const { return m_Status; };
+	RouterStatus GetStatus () const { return m_Status.load (std::memory_order_relaxed); };
 	void SetStatus (RouterStatus status);
-	RouterError GetError () const { return m_Error; };
-	void SetError (RouterError error) { m_Error = error; };
-	bool GetTestingV6 () const { return m_TestingV6; };
+	RouterError GetError () const { return m_Error.load (std::memory_order_relaxed); };
+	void SetError (RouterError error) { m_Error.store (error, std::memory_order_relaxed); };
+	bool GetTestingV6 () const { return m_TestingV6.load (std::memory_order_relaxed); };
 	void SetTestingV6 (bool testing);
-	RouterStatus GetStatusV6 () const { return m_StatusV6; };
+	RouterStatus GetStatusV6 () const { return m_StatusV6.load (std::memory_order_relaxed); };
 	void SetStatusV6 (RouterStatus status);
-	RouterError GetErrorV6 () const { return m_ErrorV6; };
-	void SetErrorV6 (RouterError error) { m_ErrorV6 = error; };
-	int GetNetID () const { return m_NetID; };
-	void SetNetID (int netID) { m_NetID = netID; };
+	RouterError GetErrorV6 () const { return m_ErrorV6.load (std::memory_order_relaxed); };
+	void SetErrorV6 (RouterError error) { m_ErrorV6.store (error, std::memory_order_relaxed); };
+	int GetNetID () const { return m_NetID.load (std::memory_order_relaxed); };
+	void SetNetID (int netID) { m_NetID.store (netID, std::memory_order_relaxed); };
 	bool DecryptTunnelBuildRecord (const uint8_t * encrypted, uint8_t * data);
 	bool DecryptTunnelShortRequestRecord (const uint8_t * encrypted, uint8_t * data);
 
@@ -159,15 +176,22 @@ public:
 	bool IsUnreachable () const;
 	void SetUnreachable (bool v4, bool v6);
 	void SetReachable (bool v4, bool v6);
-	bool IsFloodfill () const { return m_IsFloodfill; };
+	bool IsFloodfill () const { return m_IsFloodfill.load (std::memory_order_relaxed); };
 	void SetFloodfill (bool floodfill);
 	void SetFamily (const std::string & family);
 	std::string GetFamily () const;
+	// Read-only access to a property on the live RouterInfo under the same
+	// mutex used by its mutators. Prefer this over GetRouterInfo().GetProperty()
+	// when the caller is not the router service thread.
+	std::string GetRouterInfoProperty (const std::string & key) const;
 	void SetBandwidth (int limit); /* in kilobytes */
 	void SetBandwidth (char L); /* by letter */
 	void SetShareRatio (int percents); // 0 - 100
-	bool AcceptsTunnels () const { return m_AcceptsTunnels; };
-	void SetAcceptsTunnels (bool acceptsTunnels) { m_AcceptsTunnels = acceptsTunnels; };
+	bool AcceptsTunnels () const { return m_AcceptsTunnels.load (std::memory_order_relaxed); };
+	void SetAcceptsTunnels (bool acceptsTunnels)
+	{
+		m_AcceptsTunnels.store (acceptsTunnels, std::memory_order_relaxed);
+	};
 	int GetCongestionLevel (bool longTerm) const;
 	bool SupportsV6 () const { return m_RouterInfo.IsV6 (); };
 	bool SupportsV4 () const { return m_RouterInfo.IsV4 (); };
@@ -176,9 +200,13 @@ public:
 	void SetSupportsV4 (bool supportsV4);
 	void SetSupportsMesh (bool supportsmesh, const boost::asio::ip::address_v6 & host);
 	void SetMTU (int mtu, bool v4);
-	void SetHidden (bool hide) { m_IsHiddenMode = hide; };
-	bool IsHidden () const { return m_IsHiddenMode; };
-	bool IsLimitedConnectivity () const { return m_Status == eRouterStatusProxy || m_Status == eRouterStatusStan; };
+	void SetHidden (bool hide) { m_IsHiddenMode.store (hide, std::memory_order_relaxed); };
+	bool IsHidden () const { return m_IsHiddenMode.load (std::memory_order_relaxed); };
+	bool IsLimitedConnectivity () const
+	{
+		auto status = m_Status.load (std::memory_order_relaxed);
+		return status == eRouterStatusProxy || status == eRouterStatusStan;
+	};
 	i2p::crypto::NoiseSymmetricState & GetCurrentNoiseState () { return m_CurrentNoiseState; };
 
 	void UpdateNTCP2V6Address (const boost::asio::ip::address & host); // called from Daemon. TODO: remove
@@ -209,6 +237,13 @@ private:
 	void CreateNewRouter ();
 	void NewRouterInfo ();
 	void UpdateRouterInfo ();
+	// Helpers below require m_RouterInfoMutex to be held by the caller. Keeping
+	// the rebuild and the cap update lock-free prevents self-deadlock when a
+	// public mutator has to perform several related changes atomically.
+	void UpdateRouterInfoLocked ();
+	void UpdateCapsLocked (uint8_t caps);
+	// Caller must hold m_RouterInfoMutex. Returns true if an address changed.
+	bool PublishNTCP2AddressLocked (int port, bool publish, bool v4, bool v6, bool ygg, int version);
 	void UpdateCaps (uint8_t caps);
 	void NewNTCP2Keys ();
 	void NewSSU2Keys ();
@@ -246,30 +281,39 @@ private:
 	i2p::data::PrivateKeys m_Keys;
 	std::shared_ptr<i2p::crypto::CryptoKeyDecryptor> m_Decryptor, m_TunnelDecryptor;
 	std::shared_ptr<i2p::garlic::RouterIncomingRatchetSession> m_ECIESSession;
-	uint64_t m_LastUpdateTime; // in seconds
-	bool m_AcceptsTunnels, m_IsFloodfill;
-	uint64_t m_StartupTime; // monotonic seconds
-	uint64_t m_BandwidthLimit; // allowed bandwidth
-	int m_ShareRatio;
-	RouterStatus m_Status, m_StatusV6;
-	RouterError m_Error, m_ErrorV6;
-	bool m_Testing, m_TestingV6;
-	int m_NetID;
+	// Snapshotted concurrently by TUI/IPC. These are independent scalars, so
+	// relaxed ordering is sufficient; no other state is published through them.
+	std::atomic<uint64_t> m_LastUpdateTime; // in seconds
+	std::atomic<bool> m_AcceptsTunnels, m_IsFloodfill;
+	std::atomic<uint64_t> m_StartupTime; // monotonic seconds
+	std::atomic<uint64_t> m_BandwidthLimit; // allowed bandwidth
+	std::atomic<int> m_ShareRatio;
+	std::atomic<RouterStatus> m_Status, m_StatusV6;
+	std::atomic<RouterError> m_Error, m_ErrorV6;
+	std::atomic<bool> m_Testing, m_TestingV6;
+	std::atomic<int> m_NetID;
+	std::mutex m_StaticKeysMutex;
+	std::once_flag m_NTCP2KeysOnce, m_SSU2KeysOnce;
 	std::unique_ptr<NTCP2PrivateKeys> m_NTCP2Keys;
 	std::unique_ptr<SSU2PrivateKeys> m_SSU2Keys;
 	std::unique_ptr<i2p::crypto::X25519Keys> m_NTCP2StaticKeys, m_SSU2StaticKeys;
 	// for ECIESx25519
 	i2p::crypto::NoiseSymmetricState m_InitialNoiseState, m_CurrentNoiseState;
 	// publish
-	std::unique_ptr<RouterService> m_Service;
+	std::mutex m_ServiceLifecycleMutex;
+	std::atomic<std::shared_ptr<RouterService>> m_Service;
 	std::unique_ptr<boost::asio::steady_timer> m_PublishTimer, m_CongestionUpdateTimer, m_CleanupTimer;
 	std::unordered_set<i2p::data::IdentHash> m_PublishExcluded;
 	uint32_t m_PublishReplyToken;
-	bool m_IsHiddenMode; // not publish
+	std::atomic<bool> m_IsHiddenMode; // not publish
+	// Guards m_RouterInfo, its m_Properties map and every Address reachable
+	// through it, including the signed-buffer rebuild. Helpers suffixed
+	// "Locked" require it to be held by the caller.
 	mutable std::mutex m_RouterInfoMutex;
 	std::shared_ptr<i2p::data::RouterInfo::Buffer> m_SaveBuffer;
-	std::mutex m_SaveBufferMutex; // TODO: make m_SaveBuffer atomic
-	std::atomic_flag m_IsSaving;
+	std::mutex m_SaveBufferMutex; // guards m_SaveBuffer
+	std::future<void> m_SavingRouterInfo; // asynchronous router.info writer
+	std::atomic_flag m_IsSaving = ATOMIC_FLAG_INIT;
 };
 
 extern RouterContext context;
