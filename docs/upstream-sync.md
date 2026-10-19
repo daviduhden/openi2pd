@@ -16,7 +16,37 @@ Documents project documentation.
 |---|---|---|---|---|
 | Documentation | https://github.com/PurpleI2P/i2pd_docs_en | default (`master`) | `30ddc4c7c74e055fc858ecff3ae6f69d1a73ab5e` | `docs/` (upstream files; fork reports coexist) |
 | Tools | https://github.com/PurpleI2P/i2pd-tools | default (`master`) | `ca7ece8da86aa80b58fce6fa64375bfd75cbf843` | `tools/` |
-| Router source | https://github.com/PurpleI2P/i2pd | upstream release corresponding to version 2.61.0 | see fork history | existing main tree; not re-imported |
+| Router source | https://github.com/PurpleI2P/i2pd | `openssl` | reviewed through `472ef88b0eb3fbc3eba5fe8e0b9336a9b8df4499` | existing main tree; selective adaptation, no bulk import |
+
+## Reviewed router-source commits (2026-10-18/19 UTC)
+
+The following commits were reviewed from `PurpleI2P/i2pd` branch `openssl`.
+The window is expressed in UTC. Commits whose author date is 17 October in the
+upstream `-04:00` timezone but whose UTC timestamp falls on 18 October are in
+the 18 October group; commits whose author date is 18 October but whose UTC
+timestamp falls on 19 October are in the 19 October group. `472ef88b` was the
+branch tip at review time. This is a review record, not a merge base or a claim
+that the fork is at upstream 3.0.0.
+
+| Upstream commit | UTC date | Subject | Local result |
+|---|---|---|---|
+| `18340106ec7623544e0811192c2acd8439d5d626` | 2026-10-18T01:19:38Z | Use `stringstream::view` and check `getline` EOF | Already present through local `95abd377` in the request-side HTTP tunnel paths. |
+| `475f40f8d925afc7519ffdfa59144a62b2a39017` | 2026-10-18T01:55:50Z | Use `view` in the server tunnel and count headers for the connection | Already present through local `95abd377`; the fork keeps the member header counter and 8192-byte limit. |
+| `7dfc05c098cc62a4e3144d2bb54cf985c14c2c68` | 2026-10-18T13:38:10Z | Do not save a piece of a removed torrent | Adapted: weak capture plus an authoritative `TorrentsTunnel::FindTorrent` membership check at disk-job execution. A removal race after the check remains possible; a storage-generation tombstone is still needed for a strict guarantee. |
+| `77ebf7516ea44cfe0960831c9161d20983f64130` | 2026-10-18T14:40:57Z | Do not save piece blocks for a stopped torrent | Applied through `Torrent::CanAcceptPieceBlock`, preserving the fork's exact offset/length and piece-mutex checks. |
+| `9c3a742dc0ae8e5aa4c104683f604185fa3639cb` | 2026-10-18T14:46:15Z | Allow connections from the Debian 12 i2pd package | Applied: the general peer floor is 0.9.57; `NETDB_MIN_HIGHBANDWIDTH_VERSION` remains 0.9.62. The policy relaxation is documented and test-pinned. |
+| `942d6907d2b2cfa73dceaf117457329d251f4191` | 2026-10-18T14:49:01Z | Display the torrents table after the first added torrent | Not applicable: upstream changes `contrib/torrents/web/main.js`; this fork deliberately removed the browser console. The native TUI already keeps the table visible and refreshes after commands. |
+| `e3856a38fa0fe310726a39faa9df16f035c1bf69` | 2026-10-18T15:01:02Z | Use `stringstream::view` in the server response and IRC paths | Applied, including the response/IRC lifetime conversions and the related incomplete-header compaction fix. No standalone I2PTunnel test seam exists; regression coverage remains a CI/manual gap. |
+| `ec19bfb55d9fb8f4c9f35f3637c8b3c1ca33152c` | 2026-10-18T21:49:36Z | Upstream 3.0.0 release metadata | Not imported as-is. The fork remains 2.61.0/0.9.70 and owns its Debian/RPM/changelog history; changing the advertised version is a separate release-identity decision. |
+| `452da43bbee0bbf0cb14489bdacce7a08c1936e9` | 2026-10-19T01:21:14Z | Reject RelayRequest from a non-established SSU2 session | Already present and stronger: `HandleRelayRequest` requires `IsEstablished`, plus the fork's state whitelist and bounded validation. |
+| `54068be9ca73bfb677617edc330b01eb8f983f37` | 2026-10-19T01:38:25Z | Reject RelayIntro, RelayResponse and PeerTest from a non-established session | Already present and stronger. RelayResponse deliberately permits the `Introduced` hole-punch state; PeerTest additionally requires a remote identity. |
+| `472ef88b0eb3fbc3eba5fe8e0b9336a9b8df4499` | 2026-10-19T01:56:37Z | Reject PathChallenge from a non-established session | Adapted: explicit dispatch guard and state helper. `SendPathResponse()` keeps its independent established/address guard. |
+
+The source changes are implemented by static analysis only and are pending
+manual CI compilation and tests. No upstream file was copied wholesale and no
+merge or cherry-pick was used. `docs/files-changed.md` records the affected
+local files; `TODO.md` tracks the remaining NetDb, I2PTunnel and torrent
+persistence validation.
 
 The pinned upstream documentation tree contains **46 files**: 39 Markdown
 documents, the two branding images (`img/logo.png`, `img/favicon.ico`) and five

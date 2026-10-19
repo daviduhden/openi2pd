@@ -1583,3 +1583,32 @@ OpenBSD or Java/C++ dynamic test was run.
   checks remain pending CI. No build, configure, package build, lintian,
   autopkgtest, service start or daemon execution was performed locally. No
   commit or push.
+
+## 2026-10-19 — selective upstream openssl synchronization (static-only)
+
+- Reviewed the complete 2026-10-18/19 UTC window on
+  `PurpleI2P/i2pd:openssl` at tip `472ef88b`, including author and commit dates,
+  parents, files and patches. The history is recorded in
+  `docs/upstream-sync.md`; this was a review record, not a bulk merge.
+- SSU2 RelayRequest/RelayIntro/RelayResponse/PeerTest guards were already
+  present and stronger in the fork. Added the explicit established-only
+  PathChallenge dispatch helper and test, and documented the required
+  `Introduced` RelayResponse exception.
+- Applied the remaining I2PTunnel `std::stringstream::view()` response/IRC
+  conversions from upstream `e3856a38`, preserving the earlier request-side
+  header limits. Compacted incomplete HTTP header lines so the retained buffer
+  measures only the partial line instead of re-appending the parsed prefix.
+- Applied the NetDb general peer floor change to 0.9.57 for Debian 12
+  interoperability while retaining the 0.9.62 high-bandwidth floor; added
+  compile-time policy assertions.
+- Applied stopped-torrent piece rejection through `CanAcceptPieceBlock`, and
+  changed completed-piece persistence to a weak capture with an authoritative
+  `TorrentsTunnel::FindTorrent` membership check. The removal-after-check race
+  and `.openi2pd-state` cleanup remain open.
+- Omitted upstream `942d6907` because it modifies the deliberately removed
+  browser torrent console. Omitted upstream `ec19bfb5` because copying its
+  3.0.0 release metadata would replace the fork's release identity and package
+  history; the fork remains 2.61.0/0.9.70 pending a separate release decision.
+- No local compiler, CMake configure/build, CTest, sanitizer, fuzzer, package,
+  service, Android or live-peer run was performed. New tests and changes are
+  pending manual CI compilation and tests. No commit or push.

@@ -850,3 +850,18 @@ package install.
   - Priority P0; Status implemented / static; `.github/workflows/packaging.yml` is `workflow_dispatch`-only, actions are pinned and checkout credentials are not persisted; dispatch and failure triage pending.
 - [ ] **[SERVICE-005]** Document enabling, stopping, restarting, status, logging, hardening and Debian package behavior for every supported manager.
   - Priority P1; Status implemented / static; `docs/service-management.md`, `docs/user-guide/run.md`, `docs/user-guide/install.md`, `docs/build-system.md`, `docs/devs/building/unix.md`; rendered documentation and link checks pending CI.
+
+## Selective upstream openssl synchronization (2026-10-18/19)
+
+Reviewed branch `PurpleI2P/i2pd:openssl` through
+`472ef88b0eb3fbc3eba5fe8e0b9336a9b8df4499`. The detailed eleven-commit
+review table and omissions are in `docs/upstream-sync.md`.
+
+- [ ] **[UPSTREAM-001]** Import the compatible 18/19 October router-source corrections without reverting fork architecture.
+  - Priority P0; Status implemented / static; SSU2 PathChallenge state guard, I2PTunnel `view()` and header compaction, NetDb 0.9.57 floor, torrent stopped/removed persistence guards; pending CI compilation and tests. Upstream 3.0.0 release metadata and browser console changes intentionally omitted.
+- [ ] **[UPSTREAM-002]** Validate Debian 12 NetDb peer-floor compatibility and the retained high-bandwidth floor.
+  - Priority P0; Status implemented / static; `libi2pd/NetDb.hpp`, `test-netdb-store-lookup-hardening`; live Debian 12 peer and NetDb selection tests pending CI. The 0.9.57 floor is a peer-policy relaxation, not a parser or cryptographic weakening.
+- [ ] **[UPSTREAM-003]** Add a stable I2PTunnel HTTP header parser test seam.
+  - Priority P1; Status pending; the `view()` lifetime and incomplete-line compaction fixes are static-only because the parser state is private. A helper/extraction or controlled connection harness is required before claiming regression coverage.
+- [ ] **[UPSTREAM-004]** Close the remaining torrent removal/persistence race.
+  - Priority P1; Status pending; weak capture plus `FindTorrent` membership check prevents pre-check writes, but removal after the check can still be overtaken by a queued disk job. A per-torrent tombstone/generation barrier and `.openi2pd-state` deletion policy remain open; `test-torrents-security` covers stopped/in-range blocks only.

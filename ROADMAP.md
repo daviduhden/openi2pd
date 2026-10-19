@@ -368,3 +368,17 @@ and compatible peers before enabling it. Implement OS workers and negative
 capability tests before claiming network/storage separation. All dynamic
 verification remains exclusively in manually dispatched CI; no current result
 validates this local increment.
+
+## Selective upstream openssl synchronization (static, 2026-10-19)
+
+Reviewed `PurpleI2P/i2pd:openssl` through `472ef88b` for commits dated
+2026-10-18/19 UTC. The workstream applies the compatible SSU2,
+I2PTunnel/HTTP, NetDb peer-policy and torrent-persistence corrections while
+preserving C++23, the fork's state whitelists, privilege separation, native
+TUI/Android architecture and fork release identity.
+
+Exit criteria: manual CI compiles the changed paths, `test-ssu2-preauth`,
+`test-netdb-store-lookup-hardening` and `test-torrents-security` pass, and the
+I2PTunnel response/IRC lifetime and torrent removal barriers receive dynamic
+coverage. Upstream 3.0.0 release metadata and browser-console changes remain
+deliberately excluded. Until then this is static-only work.

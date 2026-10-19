@@ -211,8 +211,10 @@ integration.
 
 ## Current uncommitted work
 
-The committed baseline is `800c8627` (native Windows TUI/IPC). The current
-uncommitted work contains parallel OpenBSD/logging hardening, atomic TUI status
+The historical baseline is `800c8627` (native Windows TUI/IPC); the current
+published baseline is `300da64b`. The current uncommitted increment is the
+selective 2026-10-18/19 `openssl` upstream review described at the end of this
+file. The published baseline includes parallel OpenBSD/logging hardening, atomic TUI status
 reads, RouterInfo/SSU2 bounds fixes, bounded Torrents RPC waits, C++23 ownership
 modernization, the memory/concurrency audit (SSU2/RouterInfo, crypto/reseed,
 BitTorrent, IPC/privsep/JNI and daemon lifecycle), dependency-floor cleanup,
@@ -255,3 +257,19 @@ Do not copy GPL Snark implementation into BSD sources; review per-file notices.
 The reference excerpts outside the repository are not a complete verified
 clone. No current changes are dynamically validated; keep all regression tasks
 open until their corresponding manual CI passes.
+
+## Selective upstream openssl integration (2026-10-19)
+
+The current increment reviews `PurpleI2P/i2pd:openssl` through
+`472ef88b` for commits dated 18–19 October 2026 UTC. The exact disposition,
+omissions and rationale are in `docs/upstream-sync.md`; task tracking is
+`UPSTREAM-001..UPSTREAM-004` in `TODO.md`. The fork keeps its C++23,
+privilege-separation, native TUI/Android, CMake and release identity.
+
+The implemented corrections are the explicit SSU2 PathChallenge state guard,
+the I2PTunnel response/IRC `view()` and header-compaction fixes, the NetDb
+0.9.57 general floor with the 0.9.62 high-bandwidth floor retained, and the
+torrent stopped/removed persistence guards. The browser-console commit and the
+upstream 3.0.0 release metadata are intentionally omitted. All changes are
+static-only pending manual CI compilation and tests; no build, CTest,
+sanitizer, package or live-peer evidence exists for this increment.

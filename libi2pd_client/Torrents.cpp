@@ -2287,6 +2287,16 @@ namespace torrents
 		return false;
 	}
 
+	bool Torrent::CanAcceptPieceBlock (uint32_t index, size_t offset, size_t len) const
+	{
+		// Stopping a torrent must stop all inbound payload mutation and the
+		// disk writes it would schedule. Empty blocks are not progress and
+		// must not touch the block map.
+		if (m_IsStopped || !len || index >= m_Pieces.size ()) return false;
+		const auto pieceSize = m_Pieces[index].GetSize ();
+		return offset <= pieceSize && len <= pieceSize - offset;
+	}
+
 	std::vector<PieceFileFragment> Torrent::GetPieceFileFragments (int index) const
 	{
 		if (index < 0 || index >= (int)m_Pieces.size ()) return { };
@@ -3079,11 +3089,14 @@ namespace torrents
 		if (len && index < m_Torrent->GetNumPieces ())
 		{
 			Piece & piece = m_Torrent->GetPiece (index);
-			auto pieceSize = piece.GetSize ();
-			if (offset > pieceSize || len > pieceSize - offset)
+			if (!m_Torrent->CanAcceptPieceBlock (index, offset, len))
 			{
-				LogPrint (
-					eLogWarning, "Torrents: Piece block (", index, ",", offset, ",", len, ") is outside the piece");
+				// A stopped torrent silently ignores late blocks from an
+				// already-established peer. Report malformed ranges only for
+				// a running torrent so pausing does not flood the log.
+				if (!m_Torrent->IsStopped ())
+					LogPrint (
+						eLogWarning, "Torrents: Piece block (", index, ",", offset, ",", len, ") is outside the piece");
 			}
 			else
 			{
@@ -3092,14 +3105,23 @@ namespace torrents
 				{
 					if (piece.VerifyHash ())
 					{
-						boost::asio::post (GetTorrentsTunnel ()->GetDiskIOService (),
-							[index, torrent = m_Torrent] () mutable
-							{
-								auto fragments = torrent->GetPieceFileFragments (index);
-								Piece & piece = torrent->GetPiece (index);
-								for (auto & it : fragments) piece.Dump (std::move (it));
-								torrent->SaveTorrentResumeFile ();
-							});
+						// A removed torrent may still be kept alive by a
+						// PeerConnection. Only the session map is
+						// authoritative: never append payload or rewrite the
+						// .resume file for a torrent that is no longer
+						// registered (or was replaced at the same infohash).
+						if (auto tunnel = GetTorrentsTunnel ())
+							boost::asio::post (tunnel->GetDiskIOService (),
+								[index, torrent = std::weak_ptr<Torrent> (m_Torrent), tunnel,
+									infoHash = m_Torrent->GetInfoHash ()] () mutable
+								{
+									auto current = torrent.lock ();
+									if (!current || tunnel->FindTorrent (infoHash) != current) return;
+									auto fragments = current->GetPieceFileFragments (index);
+									Piece & piece = current->GetPiece (index);
+									for (auto & it : fragments) piece.Dump (std::move (it));
+									current->SaveTorrentResumeFile ();
+								});
 						// send have
 						auto conns = m_Torrent->GetConnections ();
 						for (auto it : conns) it->SendHaveMsg (index);

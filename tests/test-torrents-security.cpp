@@ -4,7 +4,9 @@
  *
  * openi2pd: test torrents security.
  *
- * Adversarial torrent checks: 64-bit size limits, piece-block bounds, peer framing, corrupt pieces and resume bitfields, metadata copy avoidance, and DHT routing-table ownership.
+ * Adversarial torrent checks: 64-bit size limits, piece-block bounds and
+ * stopped-torrent rejection, peer framing, corrupt pieces and resume
+ * bitfields, metadata copy avoidance, and DHT routing-table ownership.
  *
  */
 
@@ -159,6 +161,49 @@ void TestPieceBlockBounds ()
 		assert (!piece.HasBlock (offset));
 		assert (!piece.IsComplete ());
 	}
+}
+
+// A block is accepted only while the torrent is running and only when the
+// peer-supplied offset/length is a non-empty, in-range slice of the actual
+// piece. The helper uses the piece size, not the nominal piece length, so
+// the short final piece is handled without accepting bytes beyond it.
+void TestCanAcceptPieceBlock ()
+{
+	// 20000 bytes at a 16 KiB piece length produces a 16384-byte first piece
+	// and a 3616-byte final piece.
+	Torrent torrent (MakeMultiFileTorrent ("block-bounds", { "file.bin" }, 20000, 2));
+	assert (torrent.GetError () == eTorrentErrorNoError);
+	assert (torrent.GetNumPieces () == 2);
+	assert (torrent.GetPiece (0).GetSize () == 16384);
+	assert (torrent.GetPiece (1).GetSize () == 3616);
+	assert (!torrent.IsStopped ());
+
+	// Running: valid full and final-piece blocks are accepted.
+	assert (torrent.CanAcceptPieceBlock (0, 0, 16384));
+	assert (torrent.CanAcceptPieceBlock (0, 0, 1));
+	assert (torrent.CanAcceptPieceBlock (1, 0, 3616));
+	assert (torrent.CanAcceptPieceBlock (1, 3615, 1));
+
+	// Running: empty, out-of-index, cross-boundary and wrapping ranges are
+	// rejected by the same helper used by HandlePieceMsg.
+	assert (!torrent.CanAcceptPieceBlock (0, 0, 0));
+	assert (!torrent.CanAcceptPieceBlock (2, 0, 1));
+	assert (!torrent.CanAcceptPieceBlock (0, 0, 16385));
+	assert (!torrent.CanAcceptPieceBlock (0, 16384, 1));
+	assert (!torrent.CanAcceptPieceBlock (0, 16383, 2));
+	assert (!torrent.CanAcceptPieceBlock (1, 0, 3617));
+	assert (!torrent.CanAcceptPieceBlock (1, 3616, 1));
+	assert (!torrent.CanAcceptPieceBlock (0, std::numeric_limits<size_t>::max () - 4, 8));
+
+	// Stopped: even a perfectly bounded block is rejected, and resuming
+	// restores the bounds-only decision.
+	torrent.SetStopped (true);
+	assert (torrent.IsStopped ());
+	assert (!torrent.CanAcceptPieceBlock (0, 0, 16384));
+	assert (!torrent.CanAcceptPieceBlock (1, 0, 3616));
+	torrent.SetStopped (false);
+	assert (!torrent.IsStopped ());
+	assert (torrent.CanAcceptPieceBlock (0, 0, 16384));
 }
 
 // A 65535-byte payload plus its 4-byte prefix does not fit in the receive
@@ -639,6 +684,7 @@ int main ()
 {
 	TestI2PTrackerHostValidation ();
 	TestPieceBlockBounds ();
+	TestCanAcceptPieceBlock ();
 	TestPeerMessageFraming ();
 	TestPieceCorruptionAndReset ();
 	TestCorruptResumeBitfield ();

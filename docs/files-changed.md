@@ -903,3 +903,21 @@ package build, lintian, autopkgtest, service start/stop, daemon lifecycle or
 systemd/OpenRC/runit/s6/Shepherd/SysV execution was performed locally. Manual
 CI and disposable-host validation remain required before claiming runtime
 service, package or privilege-separation validation.
+
+## Selective upstream openssl integration (2026-10-19, static)
+
+| Path | Change |
+|---|---|
+| `libi2pd/SSU2Session.cpp`, `libi2pd/SSU2Session.h`, `tests/test-ssu2-preauth.cpp` | Made the PathChallenge response state explicit (`IsSSU2PathChallengeResponseAllowed`), retained the independent `SendPathResponse()` guard, documented the required `Introduced` RelayResponse exception, and added the state-matrix regression. |
+| `libi2pd_client/I2PTunnel.cpp` | Applied the remaining `std::stringstream::view()` conversions for the server response and IRC paths and compacted incomplete header lines to prevent quadratic retention. The existing request-side `view()`/header-count work is preserved. |
+| `libi2pd/NetDb.hpp`, `tests/test-netdb-store-lookup-hardening.cpp` | Lowered the general peer floor to 0.9.57 for Debian 12 interoperability while retaining the separate 0.9.62 high-bandwidth floor; added compile-time policy assertions. |
+| `libi2pd_client/Torrents.cpp`, `libi2pd_client/Torrents.h`, `tests/test-torrents-security.cpp` | Rejected piece blocks after stop, changed completed-piece persistence to a weak capture plus authoritative session-membership check, and added stopped/in-range block regression coverage. |
+| `docs/upstream-sync.md` | Added the verified 11-commit review table for `PurpleI2P/i2pd:openssl`, including adaptation and omission rationale. |
+| `TODO.md`, `ROADMAP.md`, `PROGRESS.md`, `AGENTS.md` | Recorded the upstream-review increment and pending CI validation. |
+
+Upstream `942d6907` (browser torrent table) was omitted because the browser
+console is intentionally removed; the native TUI already refreshes after
+commands and does not hide its table. Upstream `ec19bfb5` (3.0.0 release
+metadata) was not imported because it would assert a release identity and
+replace fork-owned Debian/RPM/changelog history. No build, CTest, sanitizer,
+live peer, packaging or platform validation was performed locally.

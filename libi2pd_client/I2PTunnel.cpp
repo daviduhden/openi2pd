@@ -453,8 +453,9 @@ namespace client
 						Terminate ();
 						return;
 					}
-					// insert incomplete line back
+					// insert incomplete line back, discarding the already parsed part
 					m_InHeader.clear ();
+					m_InHeader.str ("");
 					m_InHeader << line;
 					break;
 				}
@@ -559,8 +560,9 @@ namespace client
 						Terminate ();
 						return;
 					}
-					// insert incomplete line back
+					// insert incomplete line back, discarding the already parsed part
 					m_InHeader.clear ();
+					m_InHeader.str ("");
 					m_InHeader << line;
 					break;
 				}
@@ -598,7 +600,7 @@ namespace client
 		else
 		{
 			m_InHeader.clear ();
-			if (m_InHeader.str ().empty ()) m_OutHeader.str (""); // start of response
+			if (m_InHeader.view ().empty ()) m_OutHeader.str (""); // start of response
 			m_InHeader.write ((const char *)buf, len);
 			std::string line;
 			bool endOfHeader = false;
@@ -626,8 +628,9 @@ namespace client
 				}
 				else
 				{
-					// insert incomplete line back
+					// insert incomplete line back, discarding the already parsed part
 					m_InHeader.clear ();
+					m_InHeader.str ("");
 					m_InHeader << line;
 					break;
 				}
@@ -636,11 +639,12 @@ namespace client
 			if (endOfHeader)
 			{
 				m_OutHeader << "\r\n"; // end of header
-				m_OutHeader << m_InHeader.str ().substr (m_InHeader.tellg ()); // data right after header
+				m_OutHeader << m_InHeader.view ().substr (m_InHeader.tellg ()); // data right after header
 				m_InHeader.str ("");
 				m_ResponseHeaderSent = true;
+				// AsyncSend copies the data before m_OutHeader is cleared
 				I2PTunnelConnection::WriteToStream (
-					(uint8_t *)m_OutHeader.str ().c_str (), m_OutHeader.str ().length ());
+					(const uint8_t *)m_OutHeader.view ().data (), m_OutHeader.view ().size ());
 				m_OutHeader.str ("");
 			}
 			else
@@ -695,7 +699,8 @@ namespace client
 			else
 				m_OutPacket << line << '\n';
 		}
-		I2PTunnelConnection::Write ((uint8_t *)m_OutPacket.str ().c_str (), m_OutPacket.str ().length ());
+		// view() references m_OutPacket, which remains valid until the asynchronous write completes
+		I2PTunnelConnection::Write ((const uint8_t *)m_OutPacket.view ().data (), m_OutPacket.view ().size ());
 	}
 
 	/* This handler tries to establish a connection with the desired server and dies if it fails to do so */

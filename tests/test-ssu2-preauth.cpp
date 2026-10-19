@@ -4,7 +4,7 @@
  *
  * openi2pd: test ssu2 preauth.
  *
- * Enforces SSU2 pre-authentication boundaries: handshake states accept only whitelisted blocks, PeerTest/I2NP/Address handlers require an established session with a remote identity, and data-phase blocks are rejected before authentication.
+ * Enforces SSU2 pre-authentication boundaries: handshake states accept only whitelisted blocks, PeerTest/I2NP/Address handlers require an established session with a remote identity, PathChallenge is answered only from an established session, and data-phase blocks are rejected before authentication.
  *
  */
 
@@ -97,6 +97,23 @@ void TestPreAuthHandlerGuards ()
 		assert (!IsSSU2AddressBlockContextAllowed (state, true));
 }
 
+void TestPathChallengeStateMatrix ()
+{
+	// PathChallenge may only be answered from an established data session.
+	assert (IsSSU2PathChallengeResponseAllowed (eSSU2SessionStateEstablished));
+	for (auto state : { eSSU2SessionStateUnknown, eSSU2SessionStateTokenReceived, eSSU2SessionStateSessionRequestSent,
+			 eSSU2SessionStateSessionRequestReceived, eSSU2SessionStateSessionCreatedSent,
+			 eSSU2SessionStateSessionCreatedReceived, eSSU2SessionStateSessionConfirmedSent,
+			 eSSU2SessionStateClosingConfirmed, eSSU2SessionStateTerminated, eSSU2SessionStateFailed,
+			 eSSU2SessionStateIntroduced, eSSU2SessionStateHolePunch, eSSU2SessionStatePeerTest,
+			 eSSU2SessionStateTokenRequestReceived })
+		assert (!IsSSU2PathChallengeResponseAllowed (state));
+
+	// Closing is not a data phase: the established-only guard must not be
+	// widened to match the termination whitelist.
+	assert (!IsSSU2PathChallengeResponseAllowed (eSSU2SessionStateClosing));
+}
+
 void TestPayloadValidatorRejectsPreAuthInjection ()
 {
 	const auto dateTime = MakeBlock (eSSU2BlkDateTime, 4, 1);
@@ -169,6 +186,7 @@ int main ()
 {
 	TestStateBlockMatrix ();
 	TestPreAuthHandlerGuards ();
+	TestPathChallengeStateMatrix ();
 	TestPayloadValidatorRejectsPreAuthInjection ();
 	return 0;
 }

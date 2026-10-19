@@ -233,6 +233,19 @@ namespace transport
 	}
 
 	/**
+	 * PathChallenge is only meaningful inside an established data session.
+	 *
+	 * Responding earlier would let a pre-authentication or closing packet make
+	 * us emit a PathResponse (with an Address block) toward an endpoint that has
+	 * not completed the handshake. Upstream 472ef88b applies the same guard at
+	 * dispatch; SendPathResponse() keeps its own check as defence in depth.
+	 */
+	inline bool IsSSU2PathChallengeResponseAllowed (SSU2SessionState state)
+	{
+		return state == eSSU2SessionStateEstablished;
+	}
+
+	/**
 	 * Pure framing and block-whitelist validator for decrypted SSU2 payloads.
 	 * It never touches sockets, sessions or global router state, so fuzzers and
 	 * unit tests can exercise the state matrix directly.

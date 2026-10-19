@@ -2634,6 +2634,11 @@ namespace transport
 			}
 			case eSSU2BlkPathChallenge:
 				LogPrint (eLogDebug, "SSU2: Path challenge");
+				if (!IsSSU2PathChallengeResponseAllowed (m_State))
+				{
+					LogPrint (eLogWarning, "SSU2: PathChallenge in invalid state ", (int)m_State);
+					break;
+				}
 				SendPathResponse (buf + offset, size);
 				break;
 			case eSSU2BlkPathResponse:
@@ -3382,6 +3387,11 @@ namespace transport
 		// flag, status, nonce, timestamp, ver, csz, endpoint, signature[, token].
 		// IntroductionManager.receiveRelayResponse() validates time/version for
 		// every path before it looks up the nonce.
+		// eSSU2SessionStateIntroduced is required here: Charlie's HolePunch reply
+		// arrives while Bob is still waiting for the introducer's relay response,
+		// and upstream 54068be9 only applies the established-state guard after the
+		// Introduced branch has been handled. Rejecting it earlier would break
+		// hole punching.
 		if (!IsEstablished () && m_State != eSSU2SessionStateIntroduced)
 		{
 			LogPrint (eLogWarning, "SSU2: RelayResponse in invalid state ", (int)m_State);

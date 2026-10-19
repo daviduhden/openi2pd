@@ -34,6 +34,13 @@ namespace
 {
 using namespace i2p::data;
 
+// Debian 12 interoperability floor. The high-bandwidth floor remains
+// stricter and must not be lowered with it.
+static_assert (NETDB_MIN_ALLOWED_VERSION == MAKE_VERSION_NUMBER (0, 9, 57),
+	"NETDB_MIN_ALLOWED_VERSION must remain the Debian 12 compatibility floor");
+static_assert (NETDB_MIN_HIGHBANDWIDTH_VERSION == MAKE_VERSION_NUMBER (0, 9, 62),
+	"NETDB_MIN_HIGHBANDWIDTH_VERSION must remain 0.9.62");
+
 void AppendBe16 (std::vector<uint8_t> & out, uint16_t value)
 {
 	uint8_t encoded[2];

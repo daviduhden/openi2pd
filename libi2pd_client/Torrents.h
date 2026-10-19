@@ -456,6 +456,11 @@ namespace torrents
 		std::string GetHexStringInfoHash () const; // in url format
 		size_t GetNumPieces () const { return m_Pieces.size (); }
 		Piece & GetPiece (int index) { return m_Pieces[index]; }
+		// A peer-supplied block is acceptable only while the torrent is
+		// running and only when it is a non-empty, in-range slice of the
+		// actual piece (the final piece may be shorter than m_PieceLength).
+		// The subtraction form keeps offset + len from wrapping on ILP32.
+		bool CanAcceptPieceBlock (uint32_t index, size_t offset, size_t len) const;
 		// True only when every piece is complete and its SHA-1 has actually
 		// been checked against the metainfo. A resume bitfield alone does not
 		// satisfy this, so .part files are not promoted to final names until
