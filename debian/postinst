@@ -1,41 +1,53 @@
 #!/bin/sh
-# Copyright (c) 2013-2026, The PurpleI2P Project
-# Copyright (c) 2026, David Uhden Collado
-# SPDX-License-Identifier: BSD-3-Clause
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: postinst.
+#
+# Idempotently create the i2pd system user/group and the persistent state,
+# log and runtime directories. Service start/stop is left to the debhelper
+# systemd and SysV snippets.
+#
+
 set -e
 
-LOGFILE='/var/log/i2pd/i2pd.log'
 I2PDHOME='/var/lib/i2pd'
 I2PDUSER='i2pd'
+LOGDIR='/var/log/i2pd'
+LOGFILE="$LOGDIR/i2pd.log"
+RUNDIR='/run/i2pd'
 
 case "$1" in
   configure|reconfigure)
-    # Older versions of adduser created the home directory.
-    # The version of adduser in Debian unstable does not.
-    # Create user and group as a system user.
-    if getent passwd $I2PDUSER > /dev/null 2>&1; then
-      groupadd -f $I2PDUSER || true
-    else
-      adduser --system --quiet --group --home $I2PDHOME $I2PDUSER
+    if ! getent group "$I2PDUSER" >/dev/null 2>&1; then
+      addgroup --system --quiet "$I2PDUSER"
     fi
 
-    mkdir -p -m0750 /var/log/i2pd
-    chown -f ${I2PDUSER}:adm /var/log/i2pd
-    touch $LOGFILE
-    chmod 640 $LOGFILE
-    chown -f ${I2PDUSER}:adm $LOGFILE
-    mkdir -p $I2PDHOME
-    chown -f -P ${I2PDUSER}:${I2PDUSER} ${I2PDHOME}
-    chmod 0700 $I2PDHOME
-  ;;
-  abort-upgrade|abort-remove|abort-deconfigure)
-    echo "Aborting upgrade"
-    exit 0
-  ;;
+    if ! getent passwd "$I2PDUSER" >/dev/null 2>&1; then
+      adduser --system --quiet --ingroup "$I2PDUSER" \
+        --home "$I2PDHOME" --no-create-home \
+        --shell /usr/sbin/nologin "$I2PDUSER"
+    fi
+
+    install -d -o "$I2PDUSER" -g "$I2PDUSER" -m 0700 "$I2PDHOME"
+    install -d -o "$I2PDUSER" -g "$I2PDUSER" -m 0700 "$LOGDIR"
+    install -d -o "$I2PDUSER" -g "$I2PDUSER" -m 0700 "$RUNDIR"
+    chown "$I2PDUSER":"$I2PDUSER" "$I2PDHOME" "$LOGDIR" "$RUNDIR"
+    chmod 0700 "$I2PDHOME" "$LOGDIR" "$RUNDIR"
+
+    if [ ! -e "$LOGFILE" ]; then
+      install -o "$I2PDUSER" -g "$I2PDUSER" -m 0600 /dev/null "$LOGFILE"
+    else
+      chown "$I2PDUSER":"$I2PDUSER" "$LOGFILE"
+      chmod 0600 "$LOGFILE"
+    fi
+    ;;
+  abort-upgrade|abort-remove|abort-deconfigure|triggered)
+    ;;
   *)
     echo "postinst called with unknown argument '$1'" >&2
-    exit 0
-  ;;
+    exit 1
+    ;;
 esac
 
 #DEBHELPER#

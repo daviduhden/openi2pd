@@ -1,17 +1,25 @@
 #!/bin/sh
-# Copyright (c) 2013-2026, The PurpleI2P Project
-# Copyright (c) 2026, David Uhden Collado
-# SPDX-License-Identifier: BSD-3-Clause
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: postrm.
+#
+# Persistent state and administrator configuration are removed only on purge.
+# An ordinary remove or an upgrade leaves /var/lib/i2pd and /etc/i2pd intact.
+#
+
 set -e
 
-if [ "$1" = "purge" ]; then
-	rm -f /etc/default/i2pd
-	rm -rf /etc/i2pd
-	rm -rf /var/lib/i2pd
-	rm -rf /var/log/i2pd
-	rm -rf /run/i2pd
-fi
-
 #DEBHELPER#
+
+case "$1" in
+  purge)
+    rm -rf /etc/i2pd
+    rm -rf /var/lib/i2pd
+    rm -rf /var/log/i2pd
+    rm -rf /run/i2pd
+    rm -f /etc/default/i2pd
+    ;;
+esac
 
 exit 0

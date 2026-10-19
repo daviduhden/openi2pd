@@ -1,3 +1,18 @@
+i2pd (2.61.0-3) unstable; urgency=medium
+
+  * Modernize the Debian packaging for the C++23/CMake tree: debhelper compat
+    13, explicit install/docs/manpage manifests and autopkgtest smoke checks.
+  * Install native systemd, SysV and tmpfiles integration through debhelper;
+    create the i2pd user and state/log/runtime paths idempotently without
+    manual service starts.
+  * Split the ncurses TUI into i2pd-tui while keeping the daemon, the fifteen
+    native tools, i2pdctl, configuration, certificates and documentation in
+    i2pd. Keep configuration in /etc/i2pd and retain only the certificate
+    compatibility link under /var/lib/i2pd.
+  * Update DEP-5 metadata and document the service/user change in NEWS.
+
+ -- openi2pd maintainers <daviduhden@users.noreply.github.com>  Mon, 19 Oct 2026 12:00:00 +0000
+
 i2pd (2.61.0-2) unstable; urgency=medium
 
   * openi2pd fork: C++23, CMake/Ninja, POSIX make front-end.

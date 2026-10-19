@@ -1,7 +1,14 @@
 #!/usr/bin/make -f
-# Copyright (c) 2013-2026, The PurpleI2P Project
-# Copyright (c) 2026, David Uhden Collado
-# SPDX-License-Identifier: BSD-3-Clause
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: rules.
+#
+# Debhelper rules for the CMake/Ninja build. CMake installs runtime files into
+# debian/tmp; debhelper assigns them to i2pd and i2pd-tui, installs docs and
+# manpages from the source tree, and integrates systemd, SysV and tmpfiles.
+#
+
 # CMake is the only supported build system. This file is executed by
 # debhelper, not by the project's POSIX make front-end.
 export DEB_BUILD_MAINT_OPTIONS = hardening=+all
@@ -15,20 +22,42 @@ override_dh_auto_configure:
 	cmake -S build -B build-debian -G Ninja \
 		-DCMAKE_BUILD_TYPE=RelWithDebInfo \
 		-DCMAKE_INSTALL_PREFIX=/usr \
+		-DCMAKE_INSTALL_SYSCONFDIR=/etc \
+		-DCMAKE_INSTALL_LOCALSTATEDIR=/var \
+		-DCMAKE_INSTALL_RUNSTATEDIR=/run \
+		-DI2PD_BUILD_TUI=ON \
+		-DI2PD_BUILD_TOOLS=ON \
 		-DWITH_LIBRARY=OFF \
-		-I2PD_BUILD_TUI=ON \
-		-I2PD_BUILD_TOOLS=ON \
-		-DBUILD_TESTING=OFF
+		-DBUILD_TESTING=OFF \
+		-DI2PD_INSTALL_DOCS=OFF \
+		-DI2PD_SERVICE_MANAGER=none
 
 override_dh_auto_build:
 	cmake --build build-debian --parallel
 
 override_dh_auto_test:
-	# Router tests need network fixtures; unit tests are run by CTest in CI.
+	# Unit tests belong to CI. Router tests need network fixtures and are not
+	# run during a package build.
 	@true
 
 override_dh_auto_clean:
 	cmake -E remove_directory build-debian
 
 override_dh_auto_install:
-	DESTDIR=$(CURDIR)/debian/i2pd cmake --install build-debian
+	DESTDIR=$(CURDIR)/debian/tmp cmake --install build-debian
+
+# Keep the SysV script for non-systemd systems. dh_installinit performs the
+# single start/stop action through invoke-rc.d, which reaches the native unit
+# on a systemd host and the SysV script elsewhere. dh_installsystemd installs
+# and enables the unit but must not add a second start/stop action.
+override_dh_installinit:
+	dh_installinit
+
+override_dh_installsystemd:
+	dh_installsystemd --no-start
+
+override_dh_installtmpfiles:
+	dh_installtmpfiles
+
+override_dh_missing:
+	dh_missing --fail-missing

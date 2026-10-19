@@ -1,6 +1,40 @@
-usr/bin/
-contrib/i2pd.conf etc/i2pd/
-contrib/tunnels.conf etc/i2pd/
-contrib/certificates/ usr/share/i2pd/
-contrib/tunnels.d/README etc/i2pd/tunnels.conf.d/
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: i2pd.install.
+#
+# Explicit daemon, tool, configuration, certificate, desktop and AppArmor
+# payload. The ncurses binary belongs to i2pd-tui; logrotate is installed by
+# dh_installlogrotate from debian/i2pd.logrotate.
+#
+
+usr/bin/i2pd
+usr/bin/i2pdctl
+usr/bin/autoconf_i2pd
+usr/bin/b33address
+usr/bin/b33offlinekeys
+usr/bin/famtool
+usr/bin/i2pbase64
+usr/bin/keygen
+usr/bin/keyinfo
+usr/bin/offlinekeys
+usr/bin/regaddr
+usr/bin/regaddr_3ld
+usr/bin/regaddralias
+usr/bin/routerinfo
+usr/bin/vain
+usr/bin/verifyhost
+usr/bin/x25519
+etc/i2pd/i2pd.conf
+etc/i2pd/subscriptions.txt
+etc/i2pd/tunnels.conf
+etc/i2pd/tunnels.conf.d/README
+etc/i2pd/tunnels.conf.d/IRC-Ilita.conf
+etc/i2pd/tunnels.conf.d/IRC-Irc2P.conf
+usr/share/i2pd/certificates usr/share/i2pd
+usr/share/applications/openi2pd.desktop
+usr/share/icons/hicolor/scalable/apps/openi2pd.svg
+usr/share/icons/hicolor/256x256/apps/openi2pd.png
 contrib/apparmor/usr.bin.i2pd etc/apparmor.d
+docs usr/share/doc/i2pd
+assets/branding usr/share/doc/i2pd/assets

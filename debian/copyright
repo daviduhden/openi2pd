@@ -1,19 +1,33 @@
-Format: http://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
-Upstream-Name: i2pd
+Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
+Upstream-Name: openi2pd
+Upstream-Contact: openi2pd maintainers <daviduhden@users.noreply.github.com>
 Source: https://github.com/daviduhden/openi2pd
 
 Files: *
-Copyright: 2013-2026 PurpleI2P
+Copyright: 2013-2026 The PurpleI2P Project
            2026 David Uhden Collado
 License: BSD-3-Clause
 
 Files: assets/branding/*
-Copyright: 2013-2026 PurpleI2P
+Copyright: 2013-2026 The PurpleI2P Project
            2026 David Uhden Collado
 License: BSD-3-Clause
 
+Files: docs/*
+Copyright: 2017-2026 The PurpleI2P Project
+           2026 David Uhden Collado
+License: BSD-3-Clause
+
+Files: tools/*
+Copyright: 2016 i2pd-reseed contributors
+           2013-2026 The PurpleI2P Project
+           2026 David Uhden Collado
+Comment: tools/LICENSE carries the original i2pd-reseed BSD-3-Clause notice.
+License: BSD-3-Clause
+
 Files: debian/*
-Copyright: 2013-2015 Kill Your TV <killyourtv@i2pmail.org>
+Copyright: 2026 David Uhden Collado <david@uhden.dev>
+           2013-2015 Kill Your TV <killyourtv@i2pmail.org>
            2014-2016 hagen <hagen@i2pmail.org>
            2016-2023 R4SAS <r4sas@i2pmail.org>
            2017-2020 Yangfl <mmyangfl@gmail.com>

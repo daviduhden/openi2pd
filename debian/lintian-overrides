@@ -1,2 +1,11 @@
-# GPL come from debian/
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: lintian-overrides.
+#
+# Lintian override for the possible-GPL-code-linked-with-OpenSSL warning
+# caused by the historical GPL-2+ Debian packaging files, not the router.
+#
+
+# GPL comes from debian/
 i2pd: possible-gpl-code-linked-with-openssl

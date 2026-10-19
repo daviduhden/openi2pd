@@ -1,3 +1,10 @@
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: i2pd.manpages.
+#
+# Manpages shipped by the daemon package.
+#
+
 man/i2pd.1
-man/i2pd-tui.1
 man/i2pdctl.1

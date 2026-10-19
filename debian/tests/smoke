@@ -1,0 +1,190 @@
+#!/bin/sh
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: smoke.
+#
+# Bounded, non-destructive autopkgtest for the installed packages. It checks
+# the package split, conffiles, service/init/tmpfiles wiring, user and
+# directories, and static syntax only. It never starts the router or uses the
+# network.
+#
+
+set -eu
+
+fail() {
+    echo "FAIL: $*" >&2
+    exit 1
+}
+
+require_exec() {
+    [ -x "$1" ] || fail "missing executable: $1"
+}
+
+require_file() {
+    [ -f "$1" ] || fail "missing file: $1"
+}
+
+require_manpage() {
+    if [ ! -e "/usr/share/man/man1/$1" ] && [ ! -e "/usr/share/man/man1/$1.gz" ]; then
+        fail "missing manpage: $1"
+    fi
+}
+
+# The daemon package owns the router, i2pdctl and all fifteen native tools.
+for binary in i2pd i2pdctl autoconf_i2pd b33address b33offlinekeys famtool \
+              i2pbase64 keygen keyinfo offlinekeys regaddr regaddr_3ld \
+              regaddralias routerinfo vain verifyhost x25519; do
+    require_exec "/usr/bin/$binary"
+done
+
+# The TUI is a separate package and must not duplicate daemon files.
+require_exec /usr/bin/i2pd-tui
+if dpkg-query -L i2pd | grep -qx '/usr/bin/i2pd-tui'; then
+    fail "i2pd contains /usr/bin/i2pd-tui"
+fi
+if dpkg-query -L i2pd-tui | grep -qE '^/etc/|/systemd/|/init\.d/'; then
+    fail "i2pd-tui contains daemon configuration or service files"
+fi
+
+# Exact-version pairing between the TUI and the daemon.
+i2pd_version=$(dpkg-query -W -f='${Version}' i2pd)
+tui_version=$(dpkg-query -W -f='${Version}' i2pd-tui)
+[ "$i2pd_version" = "$tui_version" ] || fail "i2pd/i2pd-tui version mismatch"
+
+# Configuration is installed as conffiles, so upgrades preserve local edits.
+require_file /etc/i2pd/i2pd.conf
+require_file /etc/i2pd/subscriptions.txt
+require_file /etc/i2pd/tunnels.conf
+require_file /etc/i2pd/tunnels.conf.d/README
+require_file /etc/default/i2pd
+conffiles=$(dpkg-query -W -f='${Conffiles}\n' i2pd)
+for conffile in /etc/i2pd/i2pd.conf /etc/i2pd/subscriptions.txt \
+                /etc/i2pd/tunnels.conf \
+                /etc/i2pd/tunnels.conf.d/README \
+                /etc/default/i2pd; do
+    printf '%s\n' "$conffiles" | grep -F " $conffile " >/dev/null \
+        || fail "not a conffile: $conffile"
+done
+
+# Service integration: one native unit, one executable SysV fallback and a
+# tmpfiles policy for non-systemd managers.
+unit=
+for candidate in /lib/systemd/system/i2pd.service \
+                 /usr/lib/systemd/system/i2pd.service; do
+    if [ -f "$candidate" ]; then
+        unit=$candidate
+        break
+    fi
+done
+[ -n "$unit" ] || fail "missing i2pd.service"
+[ -r "$unit" ] || fail "unreadable i2pd.service"
+
+tmpfiles=
+for candidate in /usr/lib/tmpfiles.d/i2pd.conf \
+                 /lib/tmpfiles.d/i2pd.conf; do
+    if [ -f "$candidate" ]; then
+        tmpfiles=$candidate
+        break
+    fi
+done
+[ -n "$tmpfiles" ] || fail "missing i2pd tmpfiles policy"
+
+[ -x /etc/init.d/i2pd ] || fail "/etc/init.d/i2pd is not executable"
+sh -n /etc/init.d/i2pd || fail "/etc/init.d/i2pd has invalid shell syntax"
+grep -qE '^d /var/lib/i2pd ' "$tmpfiles" \
+    || fail "$tmpfiles lacks the persistent state directory"
+grep -qE '^d /var/log/i2pd ' "$tmpfiles" \
+    || fail "$tmpfiles lacks the log directory"
+grep -qE '^d /run/i2pd ' "$tmpfiles" \
+    || fail "$tmpfiles lacks the runtime directory"
+
+# A native systemd unit plus a SysV script must not start the daemon twice.
+# The unit has exactly one ExecStart and the maintainer script must not issue
+# a manual systemctl/invoke-rc.d start.
+execstart_count=$(grep -c '^ExecStart=' "$unit" || true)
+[ "$execstart_count" -eq 1 ] || fail "$unit must have exactly one ExecStart"
+
+postinst=/var/lib/dpkg/info/i2pd.postinst
+postrm=/var/lib/dpkg/info/i2pd.postrm
+require_file "$postinst"
+require_file "$postrm"
+sh -n "$postinst" || fail "postinst has invalid shell syntax"
+sh -n "$postrm" || fail "postrm has invalid shell syntax"
+if grep -qE '(^|[;&|[:space:]])systemctl[[:space:]]+start' "$postinst"; then
+    fail "postinst issues a manual systemctl start"
+fi
+if grep -qE 'invoke-rc\.d[[:space:]]+i2pd[[:space:]]+start' "$postinst"; then
+    fail "postinst issues a manual invoke-rc.d start"
+fi
+
+# Data may only be removed by purge, never by remove or upgrade.
+if grep -qE 'rm -rf /(etc/i2pd|var/lib/i2pd|var/log/i2pd)' "$postrm"; then
+    awk '
+        /^[[:space:]]*purge\)/ { purge = 1 }
+        /^[[:space:]]*;;/ { purge = 0 }
+        /rm -rf \/(etc\/i2pd|var\/lib\/i2pd|var\/log\/i2pd)/ && !purge { bad = 1 }
+        END { exit bad }
+    ' "$postrm" || fail "postrm removes data outside the purge branch"
+fi
+
+if command -v systemd-analyze >/dev/null 2>&1; then
+    verify_status=0
+    if command -v timeout >/dev/null 2>&1; then
+        verify_output=$(timeout 60 systemd-analyze verify "$unit" 2>&1) || verify_status=$?
+    else
+        verify_output=$(systemd-analyze verify "$unit" 2>&1) || verify_status=$?
+    fi
+    if [ "$verify_status" -ne 0 ]; then
+        printf '%s\n' "$verify_output" >&2
+        if [ "$verify_status" -eq 124 ]; then
+            fail "systemd-analyze verify timed out"
+        fi
+        if printf '%s\n' "$verify_output" | grep -q 'i2pd\.service:'; then
+            fail "systemd-analyze verify reported an i2pd.service error"
+        fi
+    fi
+fi
+
+# Optional OpenRC/runit installation paths are checked statically when present.
+# OpenRC reuses /etc/init.d/i2pd on Debian-derived systems, so the syntax check
+# above covers it; runit/s6 paths are tested if a local package supplies them.
+for runit_run in /etc/sv/i2pd/run /etc/s6/sv/i2pd/run; do
+    if [ -e "$runit_run" ]; then
+        sh -n "$runit_run" || fail "invalid runit script: $runit_run"
+    fi
+done
+
+# User, group and writable state/log paths created by the maintainer script.
+getent passwd i2pd >/dev/null || fail "missing i2pd user"
+getent group i2pd >/dev/null || fail "missing i2pd group"
+[ -d /var/lib/i2pd ] || fail "missing /var/lib/i2pd"
+[ -d /var/log/i2pd ] || fail "missing /var/log/i2pd"
+dpkg-query -L i2pd | grep -qx '/var/lib/i2pd/certificates' \
+    || fail "missing certificate directory link"
+[ "$(stat -c '%U' /var/lib/i2pd)" = i2pd ] || fail "/var/lib/i2pd owner"
+[ "$(stat -c '%a' /var/lib/i2pd)" = 700 ] || fail "/var/lib/i2pd mode"
+[ "$(stat -c '%U' /var/log/i2pd)" = i2pd ] || fail "/var/log/i2pd owner"
+case "$(stat -c '%a' /var/log/i2pd)" in
+    700|750) ;;
+    *) fail "/var/log/i2pd mode" ;;
+esac
+
+# Auxiliary payload shipped by the daemon package.
+require_file /etc/apparmor.d/usr.bin.i2pd
+require_file /etc/logrotate.d/i2pd
+require_file /usr/share/applications/openi2pd.desktop
+require_file /usr/share/icons/hicolor/scalable/apps/openi2pd.svg
+require_file /usr/share/icons/hicolor/256x256/apps/openi2pd.png
+
+# Manpages follow the package split.
+require_manpage i2pd.1
+require_manpage i2pdctl.1
+require_manpage i2pd-tui.1
+
+# i2pdctl is Perl with an openssl fallback; syntax-check it without executing
+# a request.
+perl -c /usr/bin/i2pdctl >/dev/null 2>&1 || fail "i2pdctl failed perl -c"
+command -v openssl >/dev/null 2>&1 || fail "missing openssl command"
+
+echo "i2pd packaging smoke test passed"

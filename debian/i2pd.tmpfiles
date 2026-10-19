@@ -1,0 +1,13 @@
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: i2pd.tmpfiles.
+#
+# systemd-tmpfiles policy for the persistent state directory and for the
+# runtime and log paths used by the service definitions. The packaged systemd
+# unit also declares StateDirectory=/RuntimeDirectory= for the same paths.
+#
+
+d /var/lib/i2pd 0700 i2pd i2pd -
+d /var/log/i2pd 0700 i2pd i2pd -
+d /run/i2pd 0700 i2pd i2pd -

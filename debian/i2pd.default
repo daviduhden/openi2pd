@@ -1,14 +1,20 @@
-# Copyright (c) 2013-2026, The PurpleI2P Project
-# Copyright (c) 2026, David Uhden Collado
-# SPDX-License-Identifier: BSD-3-Clause
-# Defaults for i2pd initscript
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: i2pd.default.
+#
+# Defaults for the packaged SysV init script: enablement flag, extra daemon
+# options and the open-file limit. The canonical script is
+# contrib/sysvinit/i2pd.
+#
+
+# Defaults for the i2pd SysV init script
 # sourced by /etc/init.d/i2pd
-# installed at /etc/default/i2pd by the maintainer scripts
 I2PD_ENABLED="yes"
 
-# Additional options that are passed to the Daemon.
-# see possible switches in /usr/share/doc/i2pd/configuration.md.gz
+# Additional options passed to the daemon.
+# See /usr/share/doc/i2pd/docs/user-guide/configuration.md for the options.
 DAEMON_OPTS=""
 
-# If you have problems with hunging i2pd, you can try enable this
-ulimit -n 8192
+# Open-file limit applied by the init script before starting i2pd.
+I2PD_NOFILE="8192"

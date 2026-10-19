@@ -1,5 +1,17 @@
-i2pd (2.53.0-1) unstable; urgency=medium
+i2pd (2.61.0-3) unstable; urgency=medium
 
-  i2pd binary moved from /usr/sbin to /usr/bin. Please check your scripts if you used the old path.
+  * The SysV fallback starts the foreground router in the background as the
+    dedicated i2pd user. The systemd unit uses systemd's native
+    StateDirectory=/RuntimeDirectory= for /var/lib/i2pd and /run/i2pd; the
+    tmpfiles policy creates those paths plus /var/log/i2pd when
+    systemd-tmpfiles is used.
+  * If you copied an older i2pd.service or started i2pd from a custom
+    foreground unit, review or remove that copy before upgrading. Two units
+    can start two routers against the same /var/lib/i2pd and corrupt it.
+  * The ncurses TUI is now in the separate i2pd-tui package. Install it if
+    you use i2pd-tui; the i2pd package no longer ships that binary.
+  * Configuration stays in /etc/i2pd. The old /var/lib/i2pd configuration and
+    tunnel symlinks are no longer created; only the certificate compatibility
+    link is retained.
 
- -- openi2pd maintainers <daviduhden@users.noreply.github.com>  Fri, 19 Jul 2024 16:00:00 +0000
+ -- openi2pd maintainers <daviduhden@users.noreply.github.com>  Mon, 19 Oct 2026 12:00:00 +0000

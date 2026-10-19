@@ -1,9 +1,16 @@
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: .gitignore.
+#
+# Configures system packaging.
+#
+
 debhelper-build-stamp
 files
-i2pd-dbg.substvars
-i2pd.postinst.debhelper
-i2pd.postrm.debhelper
-i2pd.prerm.debhelper
-i2pd.substvars
+tmp/
 i2pd/
 i2pd-dbg/
+i2pd-tui/
+*.debhelper
+*.substvars

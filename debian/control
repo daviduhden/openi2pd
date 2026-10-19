@@ -1,9 +1,30 @@
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: control.
+#
+# Debian source and binary package metadata for the router and its separate
+# ncurses TUI, built with CMake/Ninja and C++23.
+#
+
 Source: i2pd
 Section: net
 Priority: optional
 Maintainer: openi2pd maintainers <daviduhden@users.noreply.github.com>
-Build-Depends: debhelper (>= 12~), cmake (>= 3.22), ninja-build, libboost-program-options-dev (>= 1.83) | libboost-program-options1.81-dev, libboost-json-dev (>= 1.83) | libboost-json1.81-dev, libboost-url-dev (>= 1.83) | libboost-url1.81-dev, libminiupnpc-dev (>= 2.2.6), libssl-dev (>= 3.0.2), libncurses-dev, zlib1g-dev
-Standards-Version: 4.3.0
+Build-Depends: debhelper-compat (= 13),
+               cmake (>= 3.22),
+               ninja-build,
+               g++ (>= 13) | clang (>= 17),
+               libboost-program-options-dev (>= 1.74),
+               libboost-json-dev (>= 1.81),
+               libboost-url-dev (>= 1.81),
+               libminiupnpc-dev (>= 2.2.6),
+               libssl-dev (>= 3.0.2),
+               libncurses-dev,
+               zlib1g-dev
+Standards-Version: 4.7.0
+Rules-Requires-Root: no
+Testsuite: autopkgtest
 Homepage: https://github.com/daviduhden/openi2pd
 Vcs-Git: https://github.com/daviduhden/openi2pd.git
 Vcs-Browser: https://github.com/daviduhden/openi2pd
@@ -11,10 +32,21 @@ Vcs-Browser: https://github.com/daviduhden/openi2pd
 Package: i2pd
 Architecture: any
 Pre-Depends: ${misc:Pre-Depends}, adduser
-Depends: ${shlibs:Depends}, ${misc:Depends}, perl
+Depends: ${shlibs:Depends}, ${misc:Depends}, perl, openssl
+Recommends: ca-certificates, logrotate
+Suggests: apparmor, i2pd-tui, libio-socket-ssl-perl
 Description: C++ I2P router (openi2pd)
  openi2pd is an independent fork of i2pd, a full-featured C++ implementation of
  an I2P client. I2P (Invisible Internet Protocol) is a universal anonymous
  network layer. All communications over I2P are anonymous and end-to-end
  encrypted, participants don't reveal their real IP addresses.
+ .
+ This package contains the router, command-line tools, configuration files,
+ certificates, documentation, AppArmor profile and service integration.
 
+Package: i2pd-tui
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, i2pd (= ${binary:Version})
+Description: ncurses TUI for the openi2pd router
+ Local terminal user interface for monitoring and controlling the openi2pd
+ router over its local IPC channel.
