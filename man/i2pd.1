@@ -1,3 +1,11 @@
+.\" See the LICENSE file at the top of the project tree for copyright
+.\" and license details.
+.\"
+.\" openi2pd: i2pd.1.
+.\"
+.\" Configures project configuration and integration.
+.\"
+
 .Dd October 18, 2026
 .Dt I2PD 1
 .Os openi2pd
@@ -9,6 +17,7 @@
 .Op Fl -conf Ar file
 .Op Fl -datadir Ar directory
 .Op Fl -daemon
+.Op Fl -foreground
 .Op Fl -service
 .Op Fl -log Ar destination
 .Op Fl -loglevel Ar level
@@ -82,6 +91,10 @@ or
 Use full CLF-formatted timestamps in file logs.
 .It Fl -daemon
 Detach and run in the background.
+.It Fl -foreground
+Stay in the foreground even if the configuration enables daemon mode.
+Service definitions use this option so the service manager retains the
+router process.
 .It Fl -service
 Use system service directories and defaults.
 .It Fl -ipv4 , Fl -ipv6

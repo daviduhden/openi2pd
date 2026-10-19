@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: configuration.
+
+Documents project documentation.
+
+-->
+
 openi2pd configuration
 ==================
 
@@ -58,7 +68,8 @@ logclftime                             | Write full CLF-formatted date and time 
 datadir                                | Path to storage of i2pd data (configs, keys, netdb, peer profiles, etc ...). Can be passed as an agrument only.
 host                                   | Router external IP for incoming connections (default: auto if SSU2 is enabled)
 port                                   | Port to listen for incoming connections (default: auto (random))
-daemon                                 | Router will go to background after start (default: true)
+daemon                                 | Router will go to background after start (default: false; service managers should leave it false so they can supervise the foreground process)
+foreground                             | Override daemon mode and stay in the foreground; native service definitions pass this flag so a local daemon=true setting cannot detach the supervised process
 service                                | Router will use system folders like '/var/lib/i2pd' (on Unix) or 'C:\ProgramData\i2pd' (on Windows). Ignored on Android; macOS is not a supported platform (default: false)
 ifname                                 | Network interface to bind to
 ifname4                                | Network interface to bind to for IPv4

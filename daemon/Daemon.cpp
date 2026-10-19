@@ -1,12 +1,18 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Daemon.
+ *
+ * Implements router initialisation, subsystem sequencing, shutdown and the
+ * optional privilege-separated log path. Startup parses configuration,
+ * installs the OpenBSD startup pledge and starts NetDB, transports, tunnels,
+ * clients, TUI IPC, I2PControl, UPnP and NTP; shutdown stops observers before
+ * the state they read. A monitor thread replaces a dead log supervisor with
+ * bounded backoff where exec remains available, and logging never falls back
+ * to a local file.
+ *
+ */
 
 #include <thread>
 #include <memory>
@@ -381,6 +387,12 @@ namespace util
 #endif
 
 		i2p::config::GetOption ("daemon", isDaemon);
+		bool foreground = false;
+		i2p::config::GetOption ("foreground", foreground);
+		// A service manager must retain the process. --foreground overrides a
+		// daemon=true directive that a local administrator may have left in the
+		// configuration file.
+		if (foreground) isDaemon = false;
 
 		std::string certsdir;
 		i2p::config::GetOption ("certsdir", certsdir);

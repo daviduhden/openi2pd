@@ -1,12 +1,17 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Config.
+ *
+ * Defines and parses the Boost.Program_options command line and INI
+ * configuration surface for router, proxy, transport, limit, reseed and
+ * platform-specific settings. Options are registered once and stored values
+ * are cleared on re-initialisation, and help text documents the
+ * platform-specific default paths; missing or invalid configuration
+ * terminates startup with a fatal diagnostic.
+ *
+ */
 
 #include <cstdlib>
 #include <iostream>
@@ -83,6 +88,8 @@ namespace config
 			"Check remote RI for being in blacklist of reserved IP ranges (default: enabled)") (
 			"netid", value<int> ()->default_value (I2PD_NET_ID), "Specify NetID. Main I2P is 2") ("daemon",
 			bool_switch ()->default_value (false), "Router will go to background after start (default: disabled)") (
+			"foreground", bool_switch ()->default_value (false),
+			"Stay in the foreground even if the configuration enables daemon mode") (
 			"service", bool_switch ()->default_value (false),
 			"Router will use system folders like '/var/lib/i2pd' (default: disabled)") ("notransit",
 			bool_switch ()->default_value (false),
@@ -277,8 +284,8 @@ namespace config
 #endif
 		options_description upnp ("UPnP options");
 		upnp.add_options () ("upnp.enabled", value<bool> ()->default_value (upnp_default),
-			"Enable or disable UPnP: automatic port forwarding") (
-			"upnp.name", value<std::string> ()->default_value ("openi2pd"), "Name openi2pd appears in UPnP forwarding list");
+			"Enable or disable UPnP: automatic port forwarding") ("upnp.name",
+			value<std::string> ()->default_value ("openi2pd"), "Name openi2pd appears in UPnP forwarding list");
 
 		options_description precomputation ("Precomputation options");
 		precomputation.add_options () ("precomputation.elgamal",
