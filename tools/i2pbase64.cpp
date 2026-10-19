@@ -81,7 +81,12 @@ int Decode (std::istream & input, std::ostream & output)
 			{
 				const auto decoded
 					= i2p::data::Base64ToByteStream (std::string_view (pending).substr (0, complete), outbuf);
-				if (!decoded || !WriteAll (output, std::span<const uint8_t> (outbuf).first (decoded))) return 1;
+				if (!decoded)
+				{
+					std::cerr << "invalid base64 input" << std::endl;
+					return 1;
+				}
+				if (!WriteAll (output, std::span<const uint8_t> (outbuf).first (decoded))) return 1;
 				pending.erase (0, complete);
 			}
 			if (pending.size () > 4)

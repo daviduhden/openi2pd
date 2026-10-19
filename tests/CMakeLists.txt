@@ -312,6 +312,8 @@ if(WITH_FUZZERS)
   foreach(fuzzer fuzz-tui-protocol fuzz-http-parser fuzz-protocol-bounds fuzz-log-record fuzz-privsep-protocol fuzz-torrents-parsers fuzz-base-blinding fuzz-signature-der)
     add_executable(${fuzzer} "fuzz/${fuzzer}.cpp")
     target_compile_features(${fuzzer} PRIVATE cxx_std_23)
+    # Some fuzzers include privsep/, daemon/ and other project-root headers.
+    target_include_directories(${fuzzer} PRIVATE "${PROJECT_ROOT}")
     target_link_libraries(${fuzzer} PRIVATE libi2pd libi2pdclient libi2pdlang i2pd_warnings)
     target_compile_options(${fuzzer} PRIVATE -fsanitize=fuzzer,address,undefined -fno-omit-frame-pointer)
     target_link_options(${fuzzer} PRIVATE -fsanitize=fuzzer,address,undefined)

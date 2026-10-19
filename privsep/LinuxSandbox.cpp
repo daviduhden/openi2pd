@@ -70,14 +70,12 @@ namespace i2p::privsep
 #ifndef CGROUP2_SUPER_MAGIC
 #define CGROUP2_SUPER_MAGIC 0x63677270
 #endif
-// Landlock ABI 10 adds UDP access rights. Older kernel headers in supported
-// distribution build environments do not define the constants yet, even when
-// the running kernel implements the ABI.
-#ifndef LANDLOCK_ACCESS_NET_BIND_UDP
-#define LANDLOCK_ACCESS_NET_BIND_UDP (1ULL << 2)
-#endif
-#ifndef LANDLOCK_ACCESS_NET_CONNECT_SEND_UDP
-#define LANDLOCK_ACCESS_NET_CONNECT_SEND_UDP (1ULL << 3)
+// Landlock ABI 10 adds UDP access rights. Only request the bits exposed by the
+// build headers; older distribution headers can otherwise make the kernel
+// reject the whole ruleset with EINVAL. Profiles that need UDP confinement
+// additionally deny socket creation/Internet sockets through seccomp.
+#if defined(LANDLOCK_ACCESS_NET_BIND_UDP) && defined(LANDLOCK_ACCESS_NET_CONNECT_SEND_UDP)
+#define I2PD_LANDLOCK_HAS_UDP 1
 #endif
 namespace
 {
@@ -140,7 +138,9 @@ namespace
 		// accept that Landlock cannot constrain UDP.
 		uint64_t mask = 0;
 		if (abi >= 4) mask |= LANDLOCK_ACCESS_NET_BIND_TCP | LANDLOCK_ACCESS_NET_CONNECT_TCP;
+#ifdef I2PD_LANDLOCK_HAS_UDP
 		if (abi >= 10) mask |= LANDLOCK_ACCESS_NET_BIND_UDP | LANDLOCK_ACCESS_NET_CONNECT_SEND_UDP;
+#endif
 		return mask;
 	}
 
