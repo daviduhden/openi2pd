@@ -64,8 +64,12 @@ namespace data
 
 	std::shared_ptr<I2NPMessage> RequestedDestination::CreateRequestMessage (const IdentHash & floodfill)
 	{
+		// The direct form must keep the lookup type too. Java ExploreJob sets
+		// Type.EXPL for a real exploration regardless of whether the lookup is
+		// sent directly or through tunnels (I2NP flags bits 3-2: 11 =
+		// exploration, 10 = RouterInfo).
 		auto msg = i2p::CreateRouterInfoDatabaseLookupMsg (
-			m_Destination, i2p::context.GetRouterInfo ().GetIdentHash (), 0, false, &m_ExcludedPeers);
+			m_Destination, i2p::context.GetRouterInfo ().GetIdentHash (), 0, m_IsExploratory, &m_ExcludedPeers);
 		m_ExcludedPeers.insert (floodfill);
 		m_RequestedPeers.insert (floodfill);
 		m_NumAttempts++;
@@ -170,15 +174,12 @@ namespace data
 	std::shared_ptr<RequestedDestination> NetDbRequests::CreateRequest (const IdentHash & destination,
 		bool isExploratory, bool direct, RequestedDestination::RequestComplete requestComplete)
 	{
-		// request RouterInfo directly
-		auto dest = m_RequestedDestinationsPool.AcquireSharedMt (destination, isExploratory, direct);
-		if (requestComplete) dest->AddRequestComplete (requestComplete);
-
-		auto ret = m_RequestedDestinations.emplace (destination, dest);
-		if (!ret.second) // not inserted
+		// Reuse a pending (or still cached) request before enforcing the cap:
+		// a duplicate must attach its callback to the existing request.
+		auto it = m_RequestedDestinations.find (destination);
+		if (it != m_RequestedDestinations.end ())
 		{
-			dest->ResetRequestComplete (); // don't call requestComplete in destructor
-			dest = ret.first->second; // existing one
+			auto dest = it->second;
 			if (requestComplete)
 			{
 				if (dest->IsActive ())
@@ -188,6 +189,17 @@ namespace data
 			}
 			return nullptr;
 		}
+		if (m_RequestedDestinations.size () >= MAX_NUM_PENDING_REQUESTS)
+		{
+			LogPrint (eLogWarning, "NetDbReq: Too many pending requests, dropping lookup for ",
+				destination.ToBase64 ());
+			if (requestComplete) requestComplete (nullptr);
+			return nullptr;
+		}
+		// request RouterInfo directly
+		auto dest = m_RequestedDestinationsPool.AcquireSharedMt (destination, isExploratory, direct);
+		if (requestComplete) dest->AddRequestComplete (requestComplete);
+		m_RequestedDestinations.emplace (destination, dest);
 		return dest;
 	}
 
@@ -277,16 +289,16 @@ namespace data
 					&& !i2p::transport::transports.IsConnected (nextFloodfill->GetIdentHash ()))
 					direct = false; // floodfill can't be reached directly
 				auto s = shared_from_this ();
+				// I2NPMessage::Drop() may run on a transport or tunnel thread.
+				// Do not read RequestedDestination state there; re-check on the
+				// NetDbRequests strand so all request state stays single-threaded.
 				auto onDrop = [s, dest] ()
 				{
-					if (dest->IsActive ())
-					{
-						boost::asio::post (s->GetIOService (),
-							[s, dest] ()
-							{
-								if (dest->IsActive ()) s->SendNextRequest (dest);
-							});
-					}
+					boost::asio::post (s->GetIOService (),
+						[s, dest] ()
+						{
+							if (dest->IsActive ()) s->SendNextRequest (dest);
+						});
 				};
 				if (direct)
 				{
@@ -372,75 +384,64 @@ namespace data
 
 	void NetDbRequests::HandleDatabaseSearchReplyMsg (std::shared_ptr<const I2NPMessage> msg)
 	{
-		const uint8_t * buf = msg->GetPayload ();
-		size_t payloadLen = msg->GetPayloadLength ();
-		// DatabaseSearchReplyMessage: key (32) + num (1) + num*32 peer hashes
-		// + from hash (32). The trailing sender hash is mandatory; never treat
-		// truncated bytes as peers or accept a reply without it.
-		if (payloadLen < 65)
+		if (!msg) return;
+		DatabaseSearchReply reply;
+		if (!ParseDatabaseSearchReply (msg->GetPayload (), msg->GetPayloadLength (), reply))
 		{
-			LogPrint (eLogWarning, "NetDbReq: Database search reply is too short, ", payloadLen);
+			// Truncated key/count/peer list/from, or a declared count that
+			// does not fit the payload. Never treat trailing bytes as peers.
+			LogPrint (eLogWarning, "NetDbReq: Malformed database search reply, ", msg->GetPayloadLength (), " bytes");
 			return;
 		}
-		std::string key;
-		size_t num = buf[32]; // num
-		if (CheckLogLevel (eLogInfo)) key = i2p::data::ByteStreamToBase64 (buf, 32);
-		LogPrint (eLogDebug, "NetDbReq: DatabaseSearchReply for ", key, " num=", num);
-
-		// Validate the declared count against the complete body before using it.
-		size_t maxNum = (payloadLen - 33 - 32) / 32;
-		if (num > maxNum)
-		{
-			LogPrint (eLogWarning, "NetDbReq: Declared number of peer hashes ", num,
-				" does not fit in database search reply of ", payloadLen, " bytes");
-			return;
-		}
-		const IdentHash from (buf + 33 + num * 32);
-		if (from.IsZero ())
+		LogPrint (eLogDebug, "NetDbReq: DatabaseSearchReply for ", reply.key.ToBase64 (), " num=", reply.peers.size ());
+		if (reply.from.IsZero ())
 		{
 			LogPrint (eLogWarning, "NetDbReq: Database search reply has zero sender hash");
 			return;
 		}
 
-		IdentHash ident (buf);
-		bool isExploratory = false;
-		auto dest = FindRequest (ident);
-		if (dest && dest->IsActive ())
+		auto dest = FindRequest (reply.key);
+		if (!dest || !dest->IsActive ())
 		{
-			// The sender hash is self-claimed, but when the request tracker
-			// still knows which floodfills were queried we can bind the reply
-			// to one of them. Legitimate late replies from earlier attempts
-			// remain accepted because all queried peers are retained.
-			if (dest->HasRequestedPeers () && !dest->IsRequestedPeer (from))
-			{
-				LogPrint (eLogWarning, "NetDbReq: Database search reply for ", key, " from unexpected sender ",
-					from.ToBase64 ());
-				return;
-			}
-			isExploratory = dest->IsExploratory ();
-			if (!isExploratory
-				&& (num > 0 || dest->GetNumAttempts () < 3)) // before 3-rd attempt might be just bad luck
-			{
-				// try to send next requests
-				if (!SendNextRequest (dest)) RequestComplete (ident, nullptr);
-			}
-			else
-				// no more requests for destination possible. delete it
-				RequestComplete (ident, nullptr);
+			LogPrint (eLogInfo, "NetDbReq: Unsolicited or late database search reply for ", reply.key.ToBase64 ());
+			return;
 		}
-		else /*if (!m_FloodfillBootstrap)*/
+		// The DatabaseSearchReply "from" hash is unauthenticated (I2NP spec
+		// note), so bind it to the peers this lookup was actually sent to.
+		// A request that has not been sent yet has no valid responder.
+		if (!dest->IsRequestedPeer (reply.from))
 		{
-			LogPrint (eLogInfo, "NetDbReq: Unsolicited or late database search reply for ", key);
+			LogPrint (eLogWarning, "NetDbReq: Database search reply for ", reply.key.ToBase64 (), " from unexpected sender ",
+				reply.from.ToBase64 ());
+			return;
+		}
+		// One queried peer gets one answer per request. Replayed or duplicate
+		// replies must not consume the remaining retry slots.
+		if (!dest->MarkReplyFromPeer (reply.from))
+		{
+			LogPrint (eLogWarning, "NetDbReq: Duplicate database search reply for ", reply.key.ToBase64 (), " from ",
+				reply.from.ToBase64 ());
 			return;
 		}
 
-		// try responses
-		if (num > NETDB_MAX_NUM_SEARCH_REPLY_PEER_HASHES)
+		bool isExploratory = dest->IsExploratory ();
+		if (!isExploratory
+			&& (!reply.peers.empty () || dest->GetNumAttempts () < 3)) // before 3-rd attempt might be just bad luck
 		{
-			LogPrint (eLogWarning, "NetDbReq: Too many peer hashes ", num, " in database search reply, Reduced to ",
-				NETDB_MAX_NUM_SEARCH_REPLY_PEER_HASHES);
-			num = NETDB_MAX_NUM_SEARCH_REPLY_PEER_HASHES;
+			// try to send next requests
+			if (!SendNextRequest (dest)) RequestComplete (reply.key, nullptr);
 		}
+		else
+			// no more requests for destination possible. delete it
+			RequestComplete (reply.key, nullptr);
+
+		// try responses
+		// I2NP recommends at most 16 returned hashes; follow that receiver
+		// policy even though the wire count is 0-255.
+		size_t num = std::min (reply.peers.size (), NETDB_MAX_NUM_SEARCH_REPLY_PEER_HASHES);
+		if (reply.peers.size () > num)
+			LogPrint (eLogWarning, "NetDbReq: Too many peer hashes ", reply.peers.size (),
+				" in database search reply, reduced to ", num);
 		if (isExploratory && !m_DiscoveredRouterHashes.empty ())
 		{
 			// request outstanding routers
@@ -448,9 +449,17 @@ namespace data
 			m_DiscoveredRouterHashes.clear ();
 			m_DiscoveredRoutersTimer.cancel ();
 		}
+		const auto & ourIdent = i2p::context.GetIdentHash ();
+		std::unordered_set<IdentHash> seenPeers;
+		seenPeers.reserve (num);
 		for (size_t i = 0; i < num; i++)
 		{
-			IdentHash router (buf + 33 + i * 32);
+			const auto & router = reply.peers[i];
+			// Java SingleLookupJob skips our own hash and the sender; a zero
+			// hash is not a router identity. Deduplicate within one reply so
+			// repeated entries cannot multiply lookup work.
+			if (router.IsZero () || router == reply.from || router == ourIdent) continue;
+			if (!seenPeers.insert (router).second) continue;
 			if (CheckLogLevel (eLogDebug)) LogPrint (eLogDebug, "NetDbReq: ", i, ": ", router.ToBase64 ());
 
 			if (isExploratory)

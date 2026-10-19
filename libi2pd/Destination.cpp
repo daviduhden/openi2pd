@@ -23,6 +23,7 @@
 #include "FS.h"
 #include "Timestamp.h"
 #include "NetDb.hpp"
+#include "I2NPProtocol.h"
 #include "Destination.h"
 
 namespace i2p
@@ -418,27 +419,61 @@ namespace client
 		i2p::data::IdentHash key (buf + DATABASE_STORE_KEY_OFFSET);
 		std::shared_ptr<i2p::data::LeaseSet> leaseSet;
 		std::shared_ptr<LeaseSetRequest> request;
-		switch (buf[DATABASE_STORE_TYPE_OFFSET])
+		// DatabaseStoreMessage masks the upper four type bits. Future option
+		// bits must not make an otherwise valid store disappear at the client
+		// layer; the router-level handler already masks them.
+		const uint8_t storeType = buf[DATABASE_STORE_TYPE_OFFSET] & 0x0f;
+		switch (storeType)
 		{
 		case i2p::data::NETDB_STORE_TYPE_LEASESET: // 1
 		case i2p::data::NETDB_STORE_TYPE_STANDARD_LEASESET2: // 3
 		{
 			LogPrint (eLogDebug, "Destination: Remote LeaseSet");
+			// Build a candidate instead of mutating a LeaseSet that may be
+			// referenced by streaming/datagram readers. Readers can keep using
+			// the old immutable object until the map replacement is published.
+			auto makeLeaseSet = [&] () -> std::shared_ptr<i2p::data::LeaseSet>
+			{
+				if (storeType == i2p::data::NETDB_STORE_TYPE_LEASESET)
+				{
+					auto ls = std::make_shared<i2p::data::LeaseSet> (buf + offset, len - offset);
+					if (!SupportsEncryptionType (i2p::data::CRYPTO_KEY_TYPE_ELGAMAL) || from)
+						ls->SetIsIncompatibleCrypto (true);
+					return ls;
+				}
+
+				auto ls = std::make_shared<i2p::data::LeaseSet2> (storeType, buf + offset,
+					len - offset, true, shared_from_this (),
+					from ? from->GetRemoteStaticKeyType () : GetPreferredCryptoType ());
+				if (from && !ls->IsEncryptionKey (from->GetRemoteStaticKeyType (), from->GetRemoteStaticKey ()))
+				{
+					LogPrint (eLogError, "Destination: Remote LeaseSet static key mismatch");
+					return nullptr;
+				}
+				return ls;
+			};
+
 			std::lock_guard<std::mutex> lock (m_RemoteLeaseSetsMutex);
 			auto it = m_RemoteLeaseSets.find (key);
 			if (it != m_RemoteLeaseSets.end ()
-				&& it->second->GetStoreType () == buf[DATABASE_STORE_TYPE_OFFSET]) // update only if same type
+				&& it->second->GetStoreType () == storeType) // update only if same type
 			{
-				leaseSet = it->second;
-				if (leaseSet->IsNewer (buf + offset, len - offset))
+				if (it->second->IsNewer (buf + offset, len - offset))
 				{
-					leaseSet->Update (buf + offset, len - offset, shared_from_this (), true);
-					if (leaseSet->IsValid () && leaseSet->GetIdentHash () == key && !leaseSet->IsExpired ())
+					auto candidate = makeLeaseSet ();
+					if (candidate && candidate->IsValid () && candidate->GetIdentHash () == key
+						&& !candidate->IsExpired () && candidate->GetIdentHash () != GetIdentHash ())
+					{
+						m_RemoteLeaseSets.insert_or_assign (key, candidate);
+						leaseSet = candidate;
+						if (from) from->SetDestination (key);
 						LogPrint (eLogDebug, "Destination: Remote LeaseSet updated");
+					}
 					else
 					{
+						// Keep the previous, still valid snapshot rather than
+						// invalidating it for every reader after a bad update.
 						LogPrint (eLogDebug, "Destination: Remote LeaseSet update failed");
-						m_RemoteLeaseSets.erase (it);
 						leaseSet = nullptr;
 					}
 				}
@@ -447,30 +482,7 @@ namespace client
 			}
 			else
 			{
-				// add or replace
-				if (buf[DATABASE_STORE_TYPE_OFFSET] == i2p::data::NETDB_STORE_TYPE_LEASESET)
-				{
-					leaseSet = std::make_shared<i2p::data::LeaseSet> (buf + offset, len - offset); // LeaseSet
-					if (!SupportsEncryptionType (i2p::data::CRYPTO_KEY_TYPE_ELGAMAL)
-						|| from) // LeaseSet1 can't come from ECIESx25519 session
-						leaseSet->SetIsIncompatibleCrypto (true);
-				}
-				else
-				{
-					leaseSet = std::make_shared<i2p::data::LeaseSet2> (buf[DATABASE_STORE_TYPE_OFFSET], buf + offset,
-						len - offset, true, shared_from_this (),
-						from ? from->GetRemoteStaticKeyType () : GetPreferredCryptoType ()); // LeaseSet2
-					if (from)
-					{
-						if (leaseSet->IsEncryptionKey (from->GetRemoteStaticKeyType (), from->GetRemoteStaticKey ()))
-							from->SetDestination (leaseSet->GetIdentHash ());
-						else
-						{
-							LogPrint (eLogError, "Destination: Remote LeaseSet static key mismatch");
-							leaseSet = nullptr;
-						}
-					}
-				}
+				leaseSet = makeLeaseSet ();
 				if (leaseSet && leaseSet->IsValid () && leaseSet->GetIdentHash () == key && !leaseSet->IsExpired ())
 				{
 					if (leaseSet->GetIdentHash () != GetIdentHash ())
@@ -534,7 +546,7 @@ namespace client
 		}
 		default:
 			LogPrint (eLogError, "Destination: Unexpected client's DatabaseStore type ",
-				buf[DATABASE_STORE_TYPE_OFFSET], ", dropped");
+				storeType, ", dropped");
 		}
 
 		if (!request)
@@ -555,38 +567,34 @@ namespace client
 
 	void LeaseSetDestination::HandleDatabaseSearchReplyMessage (const uint8_t * buf, size_t len)
 	{
-		if (len < 33)
+		i2p::DatabaseSearchReply reply;
+		if (!i2p::ParseDatabaseSearchReply (buf, len, reply))
 		{
-			LogPrint (eLogWarning, "Destination: Database search reply is too short, ", len);
+			LogPrint (eLogWarning, "Destination: Malformed database search reply, ", len, " bytes");
 			return;
 		}
-		i2p::data::IdentHash key (buf);
-		int num = buf[32]; // num
-		size_t maxNum = (len - 33) / 32;
-		if ((size_t)num > maxNum)
+		if (reply.from.IsZero ())
 		{
-			LogPrint (eLogWarning, "Destination: Declared number of peer hashes ", num,
-				" exceeds message size, reduced to ", maxNum);
-			num = maxNum;
+			LogPrint (eLogWarning, "Destination: Database search reply has zero sender hash");
+			return;
 		}
-		LogPrint (eLogDebug, "Destination: DatabaseSearchReply for ", key.ToBase64 (), " num=", num);
-		auto it = m_LeaseSetRequests.find (key);
+		LogPrint (eLogDebug, "Destination: DatabaseSearchReply for ", reply.key.ToBase64 (), " num=", reply.peers.size ());
+		auto it = m_LeaseSetRequests.find (reply.key);
 		if (it != m_LeaseSetRequests.end ())
 		{
 			auto request = it->second;
-			for (int i = 0; i < num; i++)
+			for (const auto & peerHash : reply.peers)
 			{
-				i2p::data::IdentHash peerHash (buf + 33 + i * 32);
 				if (!request->excluded.count (peerHash) && !i2p::data::netdb.FindRouter (peerHash))
 				{
 					LogPrint (eLogInfo, "Destination: Found new floodfill, request it");
 					i2p::data::netdb.RequestDestination (peerHash, nullptr, false); // through exploratory
 				}
 			}
-			SendNextLeaseSetRequest (key, request);
+			SendNextLeaseSetRequest (reply.key, request);
 		}
 		else
-			LogPrint (eLogWarning, "Destination: Request for ", key.ToBase64 (), " not found");
+			LogPrint (eLogWarning, "Destination: Request for ", reply.key.ToBase64 (), " not found");
 	}
 
 	void LeaseSetDestination::SendNextLeaseSetRequest (
@@ -1111,9 +1119,17 @@ namespace client
 
 		for (auto & it : encryptionKeyTypes)
 		{
+			// Hybrid encryption types are LeaseSet keys, not identity types.
+			// Do not advertise a type whose ML-KEM provider is absent (for
+			// example ML-KEM-512 on LibreSSL or any PQ type without OPENSSL_PQ).
+			if (it > i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD)
+			{
 #if OPENSSL_PQ
-			if (it > i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD && !i2p::crypto::IsMLKEMSupported (it)) continue;
+				if (!i2p::crypto::IsMLKEMSupported (it)) continue;
+#else
+				continue;
 #endif
+			}
 			auto encryptionKey = std::make_shared<i2p::crypto::LocalEncryptionKey> (it);
 			if (IsPublic ())
 				PersistTemporaryKeys (encryptionKey);
@@ -1601,9 +1617,9 @@ namespace client
 		std::shared_ptr<i2p::data::LocalLeaseSet> leaseSet;
 		if (GetLeaseSetType () == i2p::data::NETDB_STORE_TYPE_LEASESET)
 		{
-			auto it = m_EncryptionKeys.find (i2p::data::CRYPTO_KEY_TYPE_ELGAMAL);
-			if (it != m_EncryptionKeys.end ())
+			if (SupportsEncryptionType (i2p::data::CRYPTO_KEY_TYPE_ELGAMAL))
 			{
+				auto it = m_EncryptionKeys.find (i2p::data::CRYPTO_KEY_TYPE_ELGAMAL);
 				leaseSet
 					= std::make_shared<i2p::data::LocalLeaseSet> (GetIdentity (), it->second->pub.data (), tunnels);
 				// sign
@@ -1624,17 +1640,27 @@ namespace client
 
 			i2p::data::LocalLeaseSet2::EncryptionKeys keySections;
 			std::shared_ptr<const i2p::crypto::LocalEncryptionKey> preferredSection;
-			if (m_EncryptionKeys.size () == 1)
-				preferredSection = m_EncryptionKeys.begin ()->second; // only key
-			else
+			for (const auto & it : m_EncryptionKeys)
 			{
-				for (const auto & it : m_EncryptionKeys)
-					if (it.first == m_PreferredCryptoType)
-						preferredSection = it.second;
-					else
-						keySections.push_front (it.second); // higher key type should appear first
+				// Do not publish a key whose generation or decryptor creation
+				// failed: peers would select it and the handshake could not
+				// complete.
+				if (!SupportsEncryptionType (it.first))
+				{
+					LogPrint (eLogWarning, "Destination: Skipping unusable encryption key type ", (int)it.first);
+					continue;
+				}
+				if (it.first == m_PreferredCryptoType)
+					preferredSection = it.second;
+				else
+					keySections.push_front (it.second); // higher key type should appear first
 			}
 			if (preferredSection) keySections.push_front (preferredSection); // make preferred first
+			if (keySections.empty ())
+			{
+				LogPrint (eLogError, "Destinations: No usable encryption keys");
+				return;
+			}
 
 			auto publishedTimestamp = i2p::util::GetSecondsSinceEpoch ();
 			if (publishedTimestamp <= m_LastPublishedTimestamp)
@@ -1647,8 +1673,18 @@ namespace client
 				m_Keys, keySections, tunnels, IsPublic (), publishedTimestamp, isPublishedEncrypted);
 			if (isPublishedEncrypted) // encrypt if type 5
 				ls2 = std::make_shared<i2p::data::LocalEncryptedLeaseSet2> (ls2, m_Keys, GetAuthType (), m_AuthKeys);
+			if (!ls2->GetBuffer ())
+			{
+				LogPrint (eLogError, "Destinations: Couldn't serialize local LeaseSet2");
+				return;
+			}
 			leaseSet = ls2;
 			m_LastPublishedTimestamp = publishedTimestamp;
+		}
+		if (!leaseSet || !leaseSet->GetBuffer ())
+		{
+			LogPrint (eLogError, "Destinations: Couldn't create local LeaseSet");
+			return;
 		}
 		SetLeaseSet (leaseSet);
 	}
@@ -1661,41 +1697,44 @@ namespace client
 	bool ClientDestination::Decrypt (
 		const uint8_t * encrypted, uint8_t * data, i2p::data::CryptoKeyType preferredCrypto) const
 	{
-		std::shared_ptr<i2p::crypto::LocalEncryptionKey> encryptionKey;
-		if (!m_EncryptionKeys.empty ())
+		// A type selected by the peer (ratchet static key type or ElGamal/AES)
+		// must map to the same local key type. Falling back to another type
+		// would combine a shared secret from the wrong static key (or, worse,
+		// run the ElGamal and ratchet decoders on each other's encodings).
+		auto it = m_EncryptionKeys.find (preferredCrypto);
+		if (it == m_EncryptionKeys.end () || !it->second || !it->second->decryptor)
 		{
-			if (m_EncryptionKeys.rbegin ()->first == preferredCrypto)
-				encryptionKey = m_EncryptionKeys.rbegin ()->second;
-			else
-			{
-				auto it = m_EncryptionKeys.find (preferredCrypto);
-				if (it != m_EncryptionKeys.end ()) encryptionKey = it->second;
-			}
-			if (!encryptionKey) encryptionKey = m_EncryptionKeys.rbegin ()->second;
+			LogPrint (eLogError, "Destination: No decryptor for encryption type ", (int)preferredCrypto);
+			return false;
 		}
-		if (encryptionKey)
-			return encryptionKey->decryptor->Decrypt (encrypted, data);
-		else
-			LogPrint (eLogError, "Destinations: Decryptor is not set");
-		return false;
+		return it->second->decryptor->Decrypt (encrypted, data);
 	}
 
 	bool ClientDestination::SupportsEncryptionType (i2p::data::CryptoKeyType keyType) const
 	{
-		return m_EncryptionKeys.contains (keyType);
+		auto it = m_EncryptionKeys.find (keyType);
+		// A key whose generation or decryptor creation failed must not be
+		// advertised as supported: peers would select it and we could not
+		// complete the handshake.
+		return it != m_EncryptionKeys.end () && it->second && it->second->decryptor && !it->second->pub.empty ();
 	}
 
 	i2p::data::CryptoKeyType ClientDestination::GetRatchetsHighestCryptoType () const
 	{
-		if (m_EncryptionKeys.empty ()) return 0;
-		auto cryptoType = m_EncryptionKeys.rbegin ()->first;
-		return cryptoType >= i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD ? cryptoType : 0;
+		// std::map is ordered by type ascending. Skip types that are not
+		// usable for ratchets (ElGamal) or whose key/decryptor is missing.
+		for (auto it = m_EncryptionKeys.rbegin (); it != m_EncryptionKeys.rend (); ++it)
+		{
+			if (it->first < i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD) return 0;
+			if (it->second && it->second->decryptor && !it->second->pub.empty ()) return it->first;
+		}
+		return 0;
 	}
 
 	const uint8_t * ClientDestination::GetEncryptionPublicKey (i2p::data::CryptoKeyType keyType) const
 	{
 		auto it = m_EncryptionKeys.find (keyType);
-		if (it != m_EncryptionKeys.end ()) return it->second->pub.data ();
+		if (it != m_EncryptionKeys.end () && it->second && !it->second->pub.empty ()) return it->second->pub.data ();
 		return nullptr;
 	}
 

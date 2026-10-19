@@ -11,57 +11,43 @@
 
 #include "KadDHT.h"
 
+#include <utility>
+
 namespace i2p
 {
 namespace data
 {
-	DHTNode::DHTNode ()
-		: zero (nullptr)
-		, one (nullptr)
-	{
-	}
-
-	DHTNode::~DHTNode ()
-	{
-		if (zero) delete zero;
-		if (one) delete one;
-	}
-
 	void DHTNode::MoveRouterUp (bool fromOne)
 	{
-		DHTNode *& side = fromOne ? one : zero;
+		auto & side = fromOne ? one : zero;
 		if (side)
 		{
 			if (router) router = nullptr; // shouldn't happen
-			router = side->router;
-			side->router = nullptr;
-			delete side;
-			side = nullptr;
+			router = std::move (side->router);
+			side.reset ();
 		}
 	}
 
 	DHTTable::DHTTable ()
-		: m_Size (0)
+		: m_Root (std::make_unique<DHTNode> ())
+		, m_Size (0)
 	{
-		m_Root = new DHTNode;
 	}
 
-	DHTTable::~DHTTable ()
-	{
-		delete m_Root;
-	}
+	DHTTable::~DHTTable () = default;
 
 	void DHTTable::Clear ()
 	{
+		// Allocate the replacement before releasing the old tree so a failed
+		// allocation leaves the table unchanged.
+		m_Root = std::make_unique<DHTNode> ();
 		m_Size = 0;
-		delete m_Root;
-		m_Root = new DHTNode;
 	}
 
 	void DHTTable::Insert (const std::shared_ptr<RouterInfo> & r)
 	{
 		if (!r) return;
-		return Insert (r, m_Root, 0);
+		return Insert (r, m_Root.get (), 0);
 	}
 
 	void DHTTable::Insert (const std::shared_ptr<RouterInfo> & r, DHTNode * root, int level)
@@ -86,30 +72,30 @@ namespace data
 					if (bit1)
 					{
 						if (root->one) return; // something wrong
-						root->one = new DHTNode;
-						root = root->one;
+						root->one = std::make_unique<DHTNode> ();
+						root = root->one.get ();
 					}
 					else
 					{
 						if (root->zero) return; // something wrong
-						root->zero = new DHTNode;
-						root = root->zero;
+						root->zero = std::make_unique<DHTNode> ();
+						root = root->zero.get ();
 					}
 					level++;
 				}
 			} while (bit1 == bit2);
 
-			if (!root->zero) root->zero = new DHTNode;
-			if (!root->one) root->one = new DHTNode;
+			if (!root->zero) root->zero = std::make_unique<DHTNode> ();
+			if (!root->one) root->one = std::make_unique<DHTNode> ();
 			if (bit1)
 			{
-				Insert (r2, root->zero, level + 1);
-				Insert (r, root->one, level + 1);
+				Insert (r2, root->zero.get (), level + 1);
+				Insert (r, root->one.get (), level + 1);
 			}
 			else
 			{
-				Insert (r2, root->one, level + 1);
-				Insert (r, root->zero, level + 1);
+				Insert (r2, root->one.get (), level + 1);
+				Insert (r, root->zero.get (), level + 1);
 			}
 		}
 		else
@@ -123,20 +109,20 @@ namespace data
 			int bit = r->GetIdentHash ().GetBit (level);
 			if (bit)
 			{
-				if (!root->one) root->one = new DHTNode;
-				Insert (r, root->one, level + 1);
+				if (!root->one) root->one = std::make_unique<DHTNode> ();
+				Insert (r, root->one.get (), level + 1);
 			}
 			else
 			{
-				if (!root->zero) root->zero = new DHTNode;
-				Insert (r, root->zero, level + 1);
+				if (!root->zero) root->zero = std::make_unique<DHTNode> ();
+				Insert (r, root->zero.get (), level + 1);
 			}
 		}
 	}
 
 	bool DHTTable::Remove (const IdentHash & h)
 	{
-		return Remove (h, m_Root, 0);
+		return Remove (h, m_Root.get (), 0);
 	}
 
 	bool DHTTable::Remove (const IdentHash & h, DHTNode * root, int level)
@@ -152,12 +138,11 @@ namespace data
 			int bit = h.GetBit (level);
 			if (bit)
 			{
-				if (root->one && Remove (h, root->one, level + 1))
+				if (root->one && Remove (h, root->one.get (), level + 1))
 				{
 					if (root->one->IsEmpty ())
 					{
-						delete root->one;
-						root->one = nullptr;
+						root->one.reset ();
 						if (root->zero && root->zero->router) root->MoveRouterUp (false);
 					}
 					else if (root->one->router && !root->zero)
@@ -167,12 +152,11 @@ namespace data
 			}
 			else
 			{
-				if (root->zero && Remove (h, root->zero, level + 1))
+				if (root->zero && Remove (h, root->zero.get (), level + 1))
 				{
 					if (root->zero->IsEmpty ())
 					{
-						delete root->zero;
-						root->zero = nullptr;
+						root->zero.reset ();
 						if (root->one && root->one->router) root->MoveRouterUp (true);
 					}
 					else if (root->zero->router && !root->one)
@@ -187,7 +171,7 @@ namespace data
 	std::shared_ptr<RouterInfo> DHTTable::FindClosest (const IdentHash & h, const Filter & filter) const
 	{
 		if (filter) m_Filter = filter;
-		auto r = FindClosest (h, m_Root, 0);
+		auto r = FindClosest (h, m_Root.get (), 0);
 		m_Filter = nullptr;
 		return r;
 	}
@@ -202,9 +186,9 @@ namespace data
 			if (!split)
 			{
 				if (root->zero)
-					root = root->zero;
+					root = root->zero.get ();
 				else if (root->one)
-					root = root->one;
+					root = root->one.get ();
 				else
 					return nullptr;
 				level++;
@@ -215,12 +199,12 @@ namespace data
 		{
 			if (root->one)
 			{
-				auto r = FindClosest (h, root->one, level + 1);
+				auto r = FindClosest (h, root->one.get (), level + 1);
 				if (r) return r;
 			}
 			if (root->zero)
 			{
-				auto r = FindClosest (h, root->zero, level + 1);
+				auto r = FindClosest (h, root->zero.get (), level + 1);
 				if (r) return r;
 			}
 		}
@@ -228,12 +212,12 @@ namespace data
 		{
 			if (root->zero)
 			{
-				auto r = FindClosest (h, root->zero, level + 1);
+				auto r = FindClosest (h, root->zero.get (), level + 1);
 				if (r) return r;
 			}
 			if (root->one)
 			{
-				auto r = FindClosest (h, root->one, level + 1);
+				auto r = FindClosest (h, root->one.get (), level + 1);
 				if (r) return r;
 			}
 		}
@@ -247,7 +231,7 @@ namespace data
 		if (num > 0)
 		{
 			if (filter) m_Filter = filter;
-			FindClosest (h, num, m_Root, 0, vec);
+			FindClosest (h, num, m_Root.get (), 0, vec);
 			m_Filter = nullptr;
 		}
 		return vec;
@@ -269,9 +253,9 @@ namespace data
 			if (!split)
 			{
 				if (root->zero)
-					root = root->zero;
+					root = root->zero.get ();
 				else if (root->one)
-					root = root->one;
+					root = root->one.get ();
 				else
 					return;
 				level++;
@@ -280,13 +264,13 @@ namespace data
 		int bit = h.GetBit (level);
 		if (bit)
 		{
-			if (root->one) FindClosest (h, num, root->one, level + 1, hashes);
-			if (hashes.size () < num && root->zero) FindClosest (h, num, root->zero, level + 1, hashes);
+			if (root->one) FindClosest (h, num, root->one.get (), level + 1, hashes);
+			if (hashes.size () < num && root->zero) FindClosest (h, num, root->zero.get (), level + 1, hashes);
 		}
 		else
 		{
-			if (root->zero) FindClosest (h, num, root->zero, level + 1, hashes);
-			if (hashes.size () < num && root->one) FindClosest (h, num, root->one, level + 1, hashes);
+			if (root->zero) FindClosest (h, num, root->zero.get (), level + 1, hashes);
+			if (hashes.size () < num && root->one) FindClosest (h, num, root->one.get (), level + 1, hashes);
 		}
 	}
 
@@ -295,7 +279,7 @@ namespace data
 		if (filter)
 		{
 			m_Filter = filter;
-			Cleanup (m_Root);
+			Cleanup (m_Root.get ());
 			m_Filter = nullptr;
 		}
 		else
@@ -316,20 +300,15 @@ namespace data
 		}
 		if (root->zero)
 		{
-			Cleanup (root->zero);
-			if (root->zero->IsEmpty ())
-			{
-				delete root->zero;
-				root->zero = nullptr;
-			}
+			Cleanup (root->zero.get ());
+			if (root->zero->IsEmpty ()) root->zero.reset ();
 		}
 		if (root->one)
 		{
-			Cleanup (root->one);
+			Cleanup (root->one.get ());
 			if (root->one->IsEmpty ())
 			{
-				delete root->one;
-				root->one = nullptr;
+				root->one.reset ();
 				if (root->zero && root->zero->router) root->MoveRouterUp (false);
 			}
 			else if (root->one->router && !root->zero)
@@ -339,7 +318,7 @@ namespace data
 
 	void DHTTable::Print (std::stringstream & s)
 	{
-		Print (s, m_Root, 0);
+		Print (s, m_Root.get (), 0);
 	}
 
 	void DHTTable::Print (std::stringstream & s, DHTNode * root, int level)
@@ -357,12 +336,12 @@ namespace data
 		if (root->zero)
 		{
 			s << std::string (level, '-') << "0" << std::endl;
-			Print (s, root->zero, level + 1);
+			Print (s, root->zero.get (), level + 1);
 		}
 		if (root->one)
 		{
 			s << std::string (level, '-') << "1" << std::endl;
-			Print (s, root->one, level + 1);
+			Print (s, root->one.get (), level + 1);
 		}
 	}
 }

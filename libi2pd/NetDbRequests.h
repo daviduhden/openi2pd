@@ -39,6 +39,13 @@ namespace data
 	const uint64_t MAX_EXPLORATORY_REQUEST_TIME = 30000; // in milliseconds
 	const uint64_t REQUEST_CACHE_TIME = MAX_REQUEST_TIME + 40000; // in milliseconds
 	const uint64_t REQUESTED_DESTINATIONS_POOL_CLEANUP_INTERVAL = 191; // in seconds
+	// Defensive bound on the request map. Java bounds each search to
+	// MAX_PEERS_QUERIED = 40 and follows at most 2 * SingleLookupJob.MAX_TO_FOLLOW
+	// = 16 hashes per DatabaseSearchReply, but lookups are independent here.
+	// This cap keeps a floodfill returning fabricated hashes from growing the
+	// map without limit while still allowing far more concurrent lookups than
+	// a healthy router needs.
+	const size_t MAX_NUM_PENDING_REQUESTS = 4096;
 
 	class RequestedDestination
 	{
@@ -62,6 +69,10 @@ namespace data
 		// replies when the request tracker still knows the queried sender.
 		bool IsRequestedPeer (const IdentHash & ident) const { return m_RequestedPeers.count (ident) > 0; };
 		bool HasRequestedPeers () const { return !m_RequestedPeers.empty (); };
+		// Record the first DatabaseSearchReply accepted from a queried peer.
+		// Returns false for a repeat so a replayed reply cannot consume every
+		// retry slot of the same lookup.
+		bool MarkReplyFromPeer (const IdentHash & ident) { return m_RepliedPeers.insert (ident).second; };
 		uint64_t GetCreationTime () const { return m_CreationTime; };
 		uint64_t GetLastRequestTime () const { return m_LastRequestTime; };
 		std::shared_ptr<I2NPMessage> CreateRequestMessage (
@@ -82,7 +93,7 @@ namespace data
 	private:
 		IdentHash m_Destination;
 		bool m_IsExploratory, m_IsDirect, m_IsActive, m_IsSentDirectly;
-		std::unordered_set<IdentHash> m_ExcludedPeers, m_RequestedPeers;
+		std::unordered_set<IdentHash> m_ExcludedPeers, m_RequestedPeers, m_RepliedPeers;
 		uint64_t m_CreationTime, m_LastRequestTime; // in milliseconds
 		std::list<RequestComplete> m_RequestComplete;
 		int m_NumAttempts;

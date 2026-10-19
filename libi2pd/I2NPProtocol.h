@@ -17,6 +17,7 @@
 #include <memory>
 #include <list>
 #include <functional>
+#include <vector>
 #include "Crypto.h"
 #include "I2PEndian.h"
 #include "Identity.h"
@@ -61,6 +62,10 @@ const size_t DATABASE_STORE_KEY_OFFSET = 0;
 const size_t DATABASE_STORE_TYPE_OFFSET = DATABASE_STORE_KEY_OFFSET + 32;
 const size_t DATABASE_STORE_REPLY_TOKEN_OFFSET = DATABASE_STORE_TYPE_OFFSET + 1;
 const size_t DATABASE_STORE_HEADER_SIZE = DATABASE_STORE_REPLY_TOKEN_OFFSET + 4;
+// Java DatabaseStoreMessage.readMessage() masks the type byte with 0x0f
+// ("ignore other 4 bits ... in preparation for future options"). Keep the
+// same mask so future-flagged stores are still recognized.
+const uint8_t DATABASE_STORE_TYPE_MASK = 0x0f;
 
 // TunnelBuild
 const size_t TUNNEL_BUILD_RECORD_SIZE = 528;
@@ -139,11 +144,21 @@ const uint8_t DATABASE_LOOKUP_ENCRYPTION_FLAG = 0x02;
 // 32-byte ratchet public key and no tag.
 const uint8_t DATABASE_LOOKUP_RATCHET_FLAG = 0x10;
 const uint8_t DATABASE_LOOKUP_MAX_NUM_TAGS = 32; // proposal 154
+const size_t DATABASE_LOOKUP_MAX_NUM_PEERS = 512; // DatabaseLookupMessage.MAX_NUM_PEERS
 const uint8_t DATABASE_LOOKUP_TYPE_FLAGS_MASK = 0x0C;
 const uint8_t DATABASE_LOOKUP_TYPE_NORMAL_LOOKUP = 0;
 const uint8_t DATABASE_LOOKUP_TYPE_LEASESET_LOOKUP = 0x04; // 0100
 const uint8_t DATABASE_LOOKUP_TYPE_ROUTERINFO_LOOKUP = 0x08; // 1000
 const uint8_t DATABASE_LOOKUP_TYPE_EXPLORATORY_LOOKUP = 0x0C; // 1100
+
+// DatabaseSearchReply: key (32) + num (1) + num*32 peer hashes + from (32).
+// I2NP specifies num as a 1-byte integer (0-255), a typical count of 3 and a
+// recommended maximum of 16 returned hashes.
+const size_t DATABASE_SEARCH_REPLY_KEY_OFFSET = 0;
+const size_t DATABASE_SEARCH_REPLY_COUNT_OFFSET = DATABASE_SEARCH_REPLY_KEY_OFFSET + 32;
+const size_t DATABASE_SEARCH_REPLY_PEERS_OFFSET = DATABASE_SEARCH_REPLY_COUNT_OFFSET + 1;
+const size_t DATABASE_SEARCH_REPLY_MIN_SIZE = DATABASE_SEARCH_REPLY_PEERS_OFFSET + 32; // num=0 plus from
+const size_t DATABASE_SEARCH_REPLY_MAX_NUM_PEERS = 255;
 
 namespace tunnel
 {
@@ -304,6 +319,21 @@ std::shared_ptr<I2NPMessage> CreateLeaseSetDatabaseLookupMsg (const i2p::data::I
 	std::shared_ptr<const i2p::tunnel::InboundTunnel> replyTunnel, const uint8_t * replyKey, uint64_t replyTag);
 std::shared_ptr<I2NPMessage> CreateDatabaseSearchReply (
 	const i2p::data::IdentHash & ident, std::vector<i2p::data::IdentHash> routers);
+
+// Strict structural parser for a DatabaseSearchReply payload (without the
+// I2NP header). The declared count and the trailing "from" hash must fit in
+// the supplied payload; trailing bytes beyond the defined body are ignored,
+// matching Java DatabaseSearchReplyMessage.readMessage(). Semantic checks on
+// the key, "from" and peer hashes belong to the caller because the sender
+// hash is unauthenticated (I2NP DatabaseSearchReply notes).
+struct DatabaseSearchReply
+{
+	i2p::data::IdentHash key;
+	i2p::data::IdentHash from;
+	std::vector<i2p::data::IdentHash> peers;
+};
+
+bool ParseDatabaseSearchReply (const uint8_t * buf, size_t len, DatabaseSearchReply& reply);
 
 std::shared_ptr<I2NPMessage> CreateDatabaseStoreMsg (std::shared_ptr<const i2p::data::RouterInfo> router = nullptr,
 	uint32_t replyToken = 0, std::shared_ptr<const i2p::tunnel::InboundTunnel> replyTunnel = nullptr);

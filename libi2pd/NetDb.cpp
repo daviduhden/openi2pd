@@ -9,6 +9,7 @@
 */
 
 #include <string.h>
+#include <algorithm>
 #include <fstream>
 #include <vector>
 #include <map>
@@ -41,8 +42,100 @@ namespace data
 {
 	NetDb netdb;
 
+	namespace
+	{
+		// KademliaNetworkDatabaseFacade.validate(): earliest <= now - 10m is
+		// rejected for LeaseSet1. Router.CLOCK_FUDGE_FACTOR is 60 seconds.
+		constexpr uint64_t LEASESET1_MAX_EARLIEST_AGE = 10 * 60 * 1000LL;
+
+		bool IsRouterInfoStoreValid (const RouterInfo & router, uint64_t now)
+		{
+			if (router.IsUnreachable () || !router.HasValidAddresses ()) return false;
+			if (router.IsFloodfill ())
+			{
+				auto profile = router.GetProfile ();
+				if (profile && profile->IsUnreachable ()) return false;
+			}
+			// Same bounds as the historical insert path: reject entries more
+			// than two minutes in the future, and entries older than 27 hours
+			// once we have been up long enough to make that judgement.
+			if (now + NETDB_EXPIRATION_TIMEOUT_THRESHOLD * 1000LL <= router.GetTimestamp ()) return false;
+			if (now >= router.GetTimestamp () + NETDB_MAX_EXPIRATION_TIMEOUT * 1000LL
+				&& i2p::context.GetUptime () >= NETDB_CHECK_FOR_EXPIRATION_UPTIME / 10)
+				return false;
+			return true;
+		}
+
+		// LeaseSet1 has no signed published timestamp. Java uses the earliest
+		// and latest lease dates for validate() and isNewer(); reproduce those
+		// bounds from the validated wire buffer.
+		// KademliaNetworkDatabaseFacade.isNewer(): use the signed published
+		// timestamp only when both entries are LS2; for any LS1/LS2 mix use the
+		// earliest lease date. Encrypted and Meta LS2 have no leases and are
+		// represented by 0, matching Java's -1 sentinel for ordering purposes.
+		bool IsLeaseSetNewer (const LeaseSet & candidate, const LeaseSet & stored)
+		{
+			if (candidate.GetStoreType () != NETDB_STORE_TYPE_LEASESET
+				&& stored.GetStoreType () != NETDB_STORE_TYPE_LEASESET)
+				return candidate.GetPublishedTimestamp () > stored.GetPublishedTimestamp ();
+			return candidate.GetEarliestLeaseDate () > stored.GetEarliestLeaseDate ();
+		}
+
+		bool IsLeaseSet1Fresh (const LeaseSet & leaseSet, uint64_t now)
+		{
+			auto identity = leaseSet.GetIdentity ();
+			auto buffer = leaseSet.GetBuffer ();
+			if (!identity || !buffer) return false;
+			size_t offset = identity->GetFullLen () + 256 + identity->GetSigningPublicKeyLen ();
+			size_t len = leaseSet.GetBufferLen ();
+			if (offset >= len) return false;
+			uint8_t numLeases = buffer[offset++];
+			if (!numLeases || numLeases > MAX_NUM_LEASES || offset + static_cast<size_t> (numLeases) * LEASE_SIZE > len)
+				return false;
+			uint64_t earliest = UINT64_MAX, latest = 0;
+			for (uint8_t i = 0; i < numLeases; i++)
+			{
+				auto endDate = bufbe64toh (buffer + offset + static_cast<size_t> (i) * LEASE_SIZE + 36);
+				if (endDate < earliest) earliest = endDate;
+				if (endDate > latest) latest = endDate;
+			}
+			// LeaseSet::IsValid() already rejects an empty, all-expired or
+			// far-future set. These are the Java-specific store bounds.
+			if (now > LEASESET2_CLOCK_FUDGE && latest <= now - LEASESET2_CLOCK_FUDGE) return false;
+			if (now > LEASESET1_MAX_EARLIEST_AGE && earliest <= now - LEASESET1_MAX_EARLIEST_AGE) return false;
+			if (latest > now + LEASESET_MAX_LEASE_FUTURE + LEASESET2_CLOCK_FUDGE) return false;
+			return true;
+		}
+	}
+
+	bool ParseDatabaseLookupReplyKey (
+		const uint8_t * block, size_t len, uint8_t flags, DatabaseLookupReplyKey & replyKey)
+	{
+		replyKey = DatabaseLookupReplyKey { };
+		bool encryptReply = flags & DATABASE_LOOKUP_ENCRYPTION_FLAG;
+		bool ratchetReply = flags & DATABASE_LOOKUP_RATCHET_FLAG;
+		if (!encryptReply && !ratchetReply) return true;
+		if (!block) return false;
+		// Proposal 154 / I2NP: bits 4+1 (0x12) select the ECIES derived-key
+		// reply. The KDF is TBD, Java 2.13 does not implement it, and the
+		// block has no tag or count. There is no specified way to encrypt this
+		// reply, so fail closed instead of guessing or replying in cleartext.
+		if (encryptReply && ratchetReply) return false;
+		if (len < 33) return false;
+		uint8_t numTags = block[32];
+		size_t tagLen = ratchetReply ? 8 : 32;
+		if (numTags < 1 || numTags > DATABASE_LOOKUP_MAX_NUM_TAGS || len < 33 + static_cast<size_t> (numTags) * tagLen)
+			return false;
+		memcpy (replyKey.key.data (), block, replyKey.key.size ());
+		memcpy (replyKey.tag.data (), block + 33, tagLen);
+		replyKey.mode
+			= ratchetReply ? DatabaseLookupReplyKey::Mode::ECIESAEAD : DatabaseLookupReplyKey::Mode::ElGamalAES;
+		return true;
+	}
+
 	NetDb::NetDb ()
 		: m_IsRunning (false)
+		, m_AcceptUpdates (true)
 		, m_Thread (nullptr)
 		, m_Reseeder (nullptr)
 		, m_Storage ("netDb", "r", "routerInfo-", "dat")
@@ -56,21 +149,37 @@ namespace data
 	NetDb::~NetDb ()
 	{
 		Stop ();
-		delete m_Reseeder;
 	}
 
 	void NetDb::Start ()
 	{
-		m_Storage.SetPlace (i2p::fs::GetDataDir ());
-		m_Storage.Init (i2p::data::GetBase64SubstitutionTable (), 64);
+		// A second Start() would destroy a joinable std::thread (and therefore
+		// call std::terminate), so treat repeated starts as a no-op. Serialize
+		// with Stop() because shutdown may come from another thread.
+		std::lock_guard<std::mutex> lifecycle (m_LifecycleMutex);
+		if (m_IsRunning.load (std::memory_order_relaxed) || m_Thread) return;
+
+		m_AcceptUpdates.store (false, std::memory_order_relaxed);
+		{
+			std::lock_guard<std::mutex> storage (m_StorageMutex);
+			m_Storage.SetPlace (i2p::fs::GetDataDir ());
+			m_Storage.Init (i2p::data::GetBase64SubstitutionTable (), 64);
+		}
 		InitProfilesStorage ();
 		m_Families.LoadCertificates ();
 		Load ();
 
-		if (!m_Requests)
+		// Loading is complete; reseed and the request thread may now insert.
+		m_AcceptUpdates.store (true, std::memory_order_relaxed);
+
+		if (!GetRequests ())
 		{
-			m_Requests = std::make_shared<NetDbRequests> ();
-			m_Requests->Start ();
+			auto requests = std::make_shared<NetDbRequests> ();
+			{
+				std::lock_guard<std::mutex> l (m_RequestsMutex);
+				m_Requests = requests;
+			}
+			requests->Start ();
 		}
 
 		uint16_t threshold;
@@ -84,16 +193,28 @@ namespace data
 		else if (!GetRandomRouter (i2p::context.GetSharedRouterInfo (), false, false, false))
 			Reseed (); // we don't have a router we can connect to. Trying to reseed
 
-		auto it = m_RouterInfos.find (i2p::context.GetIdentHash ());
-		if (it != m_RouterInfos.end ())
+		// The request thread may already be running. Mutate the maps under the
+		// same locks used by lookups and ClearRouterInfos; keep the established
+		// router-info -> floodfill lock order.
 		{
-			// remove own router
-			m_Floodfills.Remove (it->second->GetIdentHash ());
-			m_RouterInfos.erase (it);
+			auto ownRouter = i2p::context.GetSharedRouterInfo ();
+			std::lock_guard<std::mutex> l (m_RouterInfosMutex);
+			auto it = m_RouterInfos.find (i2p::context.GetIdentHash ());
+			if (it != m_RouterInfos.end ())
+			{
+				{
+					std::lock_guard<std::mutex> lf (m_FloodfillsMutex);
+					m_Floodfills.Remove (it->second->GetIdentHash ());
+				}
+				m_RouterInfos.erase (it);
+			}
+			m_RouterInfos.emplace (i2p::context.GetIdentHash (), ownRouter);
+			if (i2p::context.IsFloodfill ())
+			{
+				std::lock_guard<std::mutex> lf (m_FloodfillsMutex);
+				m_Floodfills.Insert (ownRouter);
+			}
 		}
-		// insert own router
-		m_RouterInfos.emplace (i2p::context.GetIdentHash (), i2p::context.GetSharedRouterInfo ());
-		if (i2p::context.IsFloodfill ()) m_Floodfills.Insert (i2p::context.GetSharedRouterInfo ());
 
 		i2p::config::GetOption ("persist.profiles", m_PersistProfiles);
 
@@ -103,30 +224,80 @@ namespace data
 		if (persistInterval > NETDB_MAX_PERSIST_INTERVAL) persistInterval = NETDB_MAX_PERSIST_INTERVAL;
 		m_NetDbPersistInterval = persistInterval * 1000LL;
 
-		m_IsRunning = true;
-		m_Thread = new std::thread (std::bind (&NetDb::Run, this));
+		m_IsRunning.store (true, std::memory_order_relaxed);
+		m_Thread = std::make_unique<std::thread> (std::bind (&NetDb::Run, this));
 	}
 
 	void NetDb::Stop ()
 	{
-		if (m_Requests) m_Requests->Stop ();
-		if (m_IsRunning)
+		std::lock_guard<std::mutex> lifecycle (m_LifecycleMutex);
+		// Reject new RouterInfo/LeaseSet insertions before stopping the worker
+		// so a handler racing with shutdown cannot populate the maps again.
+		m_AcceptUpdates.store (false, std::memory_order_relaxed);
+		// Stop and join the worker before touching the request manager or the
+		// containers it reads. The old order stopped requests and cleared
+		// m_RouterInfos while Run() could still be using them.
+		const bool wasRunning = m_IsRunning.exchange (false, std::memory_order_relaxed);
+		m_Queue.WakeUp ();
+		if (m_Thread)
+		{
+			if (m_Thread->joinable ()) m_Thread->join ();
+			m_Thread.reset ();
+		}
+		// Messages queued while the worker was stopping cannot be handled any
+		// more. Drop them so a later Start() does not process stale stores.
+		std::list<std::shared_ptr<const I2NPMessage>> stale;
+		m_Queue.GetWholeQueue (stale);
+
+		std::shared_ptr<NetDbRequests> requests;
+		{
+			std::lock_guard<std::mutex> l (m_RequestsMutex);
+			requests.swap (m_Requests);
+		}
+		if (requests) requests->Stop ();
+
+		// The profile and RouterInfo persistence helpers run on std::async
+		// threads. Wait for them before clearing the maps or returning, so a
+		// restart cannot Load() while an old PersistRouters() still owns the
+		// same buffers and storage paths.
+		auto waitFor = [] (std::future<void> & future, const char * name)
+		{
+			if (!future.valid ()) return;
+			try
+			{
+				future.get ();
+			}
+			catch (const std::exception & ex)
+			{
+				LogPrint (eLogError, "NetDb: ", name, " failed: ", ex.what ());
+			}
+		};
+		waitFor (m_SavingProfiles, "profile save");
+		waitFor (m_DeletingProfiles, "profile cleanup");
+		waitFor (m_ApplyingProfileUpdates, "profile update");
+		waitFor (m_PersistingRouters, "RouterInfo persistence");
+
+		if (wasRunning)
 		{
 			if (m_PersistProfiles) SaveProfiles ();
-			DeleteObsoleteProfiles ();
-			m_RouterInfos.clear ();
-			m_Floodfills.Clear ();
-			if (m_Thread)
-			{
-				m_IsRunning = false;
-				m_Queue.WakeUp ();
-				m_Thread->join ();
-				delete m_Thread;
-				m_Thread = 0;
-			}
+			auto cleanup = DeleteObsoleteProfiles ();
+			waitFor (cleanup, "profile cleanup");
+		}
+		// Clear even if the worker never reached the running state: Start()
+		// may have loaded RouterInfos before a failure or stop request.
+		ClearRouterInfos ();
+		{
+			std::lock_guard<std::mutex> l (m_LeaseSetsMutex);
 			m_LeaseSets.clear ();
 		}
-		m_Requests = nullptr;
+		{
+			// Keep this separate from ClearRouterInfos(): the exploratory path
+			// takes m_ExploratorySelectionMutex before m_RouterInfosMutex, so
+			// clearing here preserves that lock order.
+			std::lock_guard<std::mutex> l (m_ExploratorySelectionMutex);
+			m_ExploratorySelection.clear ();
+			m_LastExploratorySelectionUpdateTime = 0;
+		}
 	}
 
 	void NetDb::Run ()
@@ -139,7 +310,7 @@ namespace data
 		int16_t profilesCleanupVariance = 0, obsoleteProfilesCleanVariance = 0, applyingProfileUpdatesVariance = 0;
 
 		std::list<std::shared_ptr<const I2NPMessage>> msgs;
-		while (m_IsRunning)
+		while (m_IsRunning.load (std::memory_order_relaxed))
 		{
 			try
 			{
@@ -162,7 +333,7 @@ namespace data
 						}
 					}
 				}
-				if (!m_IsRunning) break;
+				if (!m_IsRunning.load (std::memory_order_relaxed)) break;
 				if (!i2p::transport::transports.IsOnline () || !i2p::transport::transports.IsRunning ())
 					continue; // don't manage netdb when offline or transports are not running
 
@@ -198,7 +369,10 @@ namespace data
 							LogPrint (eLogWarning, "NetDb: Can't persist profiles. Profiles are being saved to disk");
 					}
 					lastProfilesCleanup = mts;
-					profilesCleanupVariance = m_Rng () % i2p::data::PEER_PROFILE_AUTOCLEAN_VARIANCE;
+					{
+						std::lock_guard<std::mutex> l (m_RngMutex);
+						profilesCleanupVariance = m_Rng () % i2p::data::PEER_PROFILE_AUTOCLEAN_VARIANCE;
+					}
 				}
 
 				if (mts >= lastObsoleteProfilesCleanup
@@ -219,7 +393,11 @@ namespace data
 					else
 						LogPrint (eLogWarning, "NetDb: Can't delete profiles. Profiles are being deleted from disk");
 					lastObsoleteProfilesCleanup = mts;
-					obsoleteProfilesCleanVariance = m_Rng () % i2p::data::PEER_PROFILE_OBSOLETE_PROFILES_CLEAN_VARIANCE;
+					{
+						std::lock_guard<std::mutex> l (m_RngMutex);
+						obsoleteProfilesCleanVariance
+							= m_Rng () % i2p::data::PEER_PROFILE_OBSOLETE_PROFILES_CLEAN_VARIANCE;
+					}
 				}
 				if (mts >= lastApplyingProfileUpdates + i2p::data::PEER_PROFILE_APPLY_POSTPONED_TIMEOUT
 						+ applyingProfileUpdatesVariance)
@@ -234,8 +412,11 @@ namespace data
 					}
 					if (!isApplying) m_ApplyingProfileUpdates = i2p::data::FlushPostponedRouterProfileUpdates ();
 					lastApplyingProfileUpdates = mts;
-					applyingProfileUpdatesVariance
-						= m_Rng () % i2p::data::PEER_PROFILE_APPLY_POSTPONED_TIMEOUT_VARIANCE;
+					{
+						std::lock_guard<std::mutex> l (m_RngMutex);
+						applyingProfileUpdatesVariance
+							= m_Rng () % i2p::data::PEER_PROFILE_APPLY_POSTPONED_TIMEOUT_VARIANCE;
+					}
 				}
 			}
 			catch (std::exception & ex)
@@ -274,181 +455,171 @@ namespace data
 	std::shared_ptr<const RouterInfo> NetDb::AddRouterInfo (
 		const IdentHash & ident, const uint8_t * buf, int len, bool & updated)
 	{
-		updated = true;
-		if (!buf || len <= 0)
+		updated = false;
+		if (!m_AcceptUpdates.load (std::memory_order_relaxed))
 		{
-			updated = false;
+			LogPrint (eLogWarning, "NetDb: RouterInfo rejected because NetDb is stopped: ", ident.ToBase64 ());
 			return nullptr;
 		}
+		if (!buf || len <= 0) return nullptr;
 		// The DatabaseStore key must be the hash of the RouterInfo identity.
 		// Verify the binding before accepting or updating a cached entry.
 		IdentityEx announcedIdentity;
 		if (!announcedIdentity.FromBuffer (buf, len) || announcedIdentity.GetIdentHash () != ident)
 		{
 			LogPrint (eLogWarning, "NetDb: RouterInfo identity does not match store key ", ident.ToBase64 ());
-			updated = false;
 			return nullptr;
 		}
+
+		auto now = i2p::util::GetMillisecondsSinceEpoch ();
 		auto r = FindRouter (ident);
-		if (r)
+		if (r && !r->IsNewer (buf, len))
 		{
-			if (r->IsNewer (buf, len))
+			r->CancelBufferToDelete (); // since an update received
+			if (CheckLogLevel (eLogDebug)) LogPrint (eLogDebug, "NetDb: RouterInfo is older: ", ident.ToBase64 ());
+			auto requests = GetRequests ();
+			if (requests) requests->RequestComplete (ident, r);
+			return r;
+		}
+
+		// Validate the replacement before changing the stored object. A newer
+		// but malformed, unreachable or far-future RouterInfo must not erase
+		// the valid entry that is already in the map (Java store(): validate()
+		// throws before _ds.put()).
+		auto candidate = std::make_shared<RouterInfo> (buf, len);
+		if (candidate->GetIdentHash () != ident || !IsRouterInfoStoreValid (*candidate, now))
+		{
+			LogPrint (eLogWarning, "NetDb: RouterInfo can't be updated ", ident.ToBase64 ());
+			if (r)
 			{
-				bool wasFloodfill = r->IsFloodfill ();
-				{
-					std::lock_guard<std::mutex> l (m_RouterInfosMutex);
-					if (!r->Update (buf, len))
-					{
-						updated = false;
-						m_Requests->RequestComplete (ident, r);
-						return r;
-					}
-					if (r->IsUnreachable ()
-						|| i2p::util::GetMillisecondsSinceEpoch () + NETDB_EXPIRATION_TIMEOUT_THRESHOLD * 1000LL
-							< r->GetTimestamp ())
-					{
-						// delete router as invalid or from future after update
-						m_RouterInfos.erase (ident);
-						if (wasFloodfill)
-						{
-							std::lock_guard<std::mutex> l (m_FloodfillsMutex);
-							m_Floodfills.Remove (r->GetIdentHash ());
-						}
-						m_Requests->RequestComplete (ident, nullptr);
-						return nullptr;
-					}
-				}
-				if (CheckLogLevel (eLogInfo)) LogPrint (eLogInfo, "NetDb: RouterInfo updated: ", ident.ToBase64 ());
-				if (wasFloodfill != r->IsFloodfill ()) // if floodfill status updated
-				{
-					if (CheckLogLevel (eLogDebug))
-						LogPrint (eLogDebug, "NetDb: RouterInfo floodfill status updated: ", ident.ToBase64 ());
-					std::lock_guard<std::mutex> l (m_FloodfillsMutex);
-					if (wasFloodfill)
-						m_Floodfills.Remove (r->GetIdentHash ());
-					else if (r->IsEligibleFloodfill ())
-					{
-						if (m_Floodfills.GetSize () < NETDB_NUM_FLOODFILLS_THRESHOLD || r->GetProfile ()->IsReal ())
-							m_Floodfills.Insert (r);
-						else
-							r->ResetFloodfill ();
-					}
-					else
-						r->ResetFloodfill (); // declared floodfill but not eligible yet
-				}
+				auto requests = GetRequests ();
+				if (requests) requests->RequestComplete (ident, r);
+				return r;
+			}
+			auto requests = GetRequests ();
+			if (requests) requests->RequestComplete (ident, nullptr);
+			return nullptr;
+		}
+
+		std::shared_ptr<RouterInfo> stored;
+		bool wasFloodfill = false;
+		{
+			std::lock_guard<std::mutex> l (m_RouterInfosMutex);
+			auto it = m_RouterInfos.find (ident);
+			if (it == m_RouterInfos.end ())
+			{
+				// The entry was removed while the candidate was being parsed.
+				stored = candidate;
+				m_RouterInfos.emplace (ident, stored);
+				updated = true;
+			}
+			else if (!it->second)
+			{
+				stored = candidate;
+				it->second = stored;
+				updated = true;
 			}
 			else
 			{
-				r->CancelBufferToDelete (); // since an update received
-				if (CheckLogLevel (eLogDebug)) LogPrint (eLogDebug, "NetDb: RouterInfo is older: ", ident.ToBase64 ());
-				updated = false;
+				stored = it->second;
+				wasFloodfill = stored->IsFloodfill ();
+				if (stored->IsNewer (buf, len))
+				{
+					if (!stored->Update (buf, len))
+					{
+						// The candidate parsed and verified, so Update() should
+						// not fail. If it does, install the validated candidate
+						// rather than leaving a half-updated object in the map.
+						stored = candidate;
+						it->second = stored;
+					}
+					updated = true;
+				}
+				else // another thread stored the same or a newer RI first
+					stored->CancelBufferToDelete ();
 			}
 		}
-		else
+
+		if (updated)
 		{
-			r = std::make_shared<RouterInfo> (buf, len);
-			bool isValid = !r->IsUnreachable () && r->HasValidAddresses ()
-				&& (!r->IsFloodfill () || !r->GetProfile ()->IsUnreachable ());
-			if (isValid)
+			if (CheckLogLevel (eLogInfo)) LogPrint (eLogInfo, "NetDb: RouterInfo updated: ", ident.ToBase64 ());
+			bool isFloodfill = stored->IsFloodfill ();
+			if (wasFloodfill || isFloodfill)
 			{
-				auto mts = i2p::util::GetMillisecondsSinceEpoch ();
-				isValid = mts + NETDB_EXPIRATION_TIMEOUT_THRESHOLD * 1000LL > r->GetTimestamp () && // from future
-					(mts < r->GetTimestamp () + NETDB_MAX_EXPIRATION_TIMEOUT * 1000LL || // too old
-						context.GetUptime () < NETDB_CHECK_FOR_EXPIRATION_UPTIME / 10); // enough uptime
-			}
-			if (isValid)
-			{
-				bool inserted = false;
+				// Rebuild floodfill membership from the new RI. In particular,
+				// a router that still declares 'f' but is no longer eligible
+				// must be removed instead of staying selectable forever.
+				std::lock_guard<std::mutex> l (m_FloodfillsMutex);
+				if (wasFloodfill) m_Floodfills.Remove (ident);
+				if (isFloodfill)
 				{
-					std::lock_guard<std::mutex> l (m_RouterInfosMutex);
-					inserted = m_RouterInfos.insert ({ r->GetIdentHash (), r }).second;
-				}
-				if (inserted)
-				{
-					if (CheckLogLevel (eLogInfo)) LogPrint (eLogInfo, "NetDb: RouterInfo added: ", ident.ToBase64 ());
-					if (r->IsFloodfill () && r->IsEligibleFloodfill ())
+					if (stored->IsEligibleFloodfill ())
 					{
 						if (m_Floodfills.GetSize () < NETDB_NUM_FLOODFILLS_THRESHOLD
-							|| r->GetProfile ()
-								->IsReal ()) // don't insert floodfill until it's known real if we have enough
-						{
-							std::lock_guard<std::mutex> l (m_FloodfillsMutex);
-							m_Floodfills.Insert (r);
-						}
+							|| stored->GetProfile ()->IsReal ())
+							m_Floodfills.Insert (stored);
 						else
-							r->ResetFloodfill ();
+							stored->ResetFloodfill ();
 					}
+					else
+						stored->ResetFloodfill (); // declared floodfill but not eligible
 				}
-				else
-				{
-					LogPrint (eLogWarning, "NetDb: Duplicated RouterInfo ", ident.ToBase64 ());
-					updated = false;
-				}
-			}
-			else
-			{
-				LogPrint (eLogWarning, "NetDb: RouterInfo can't be updated ", ident.ToBase64 ());
-				updated = false;
 			}
 		}
 		// take care about requested destination
-		m_Requests->RequestComplete (ident, r);
-		return r;
+		auto requests = GetRequests ();
+		if (requests) requests->RequestComplete (ident, stored);
+		return stored;
 	}
 
 	bool NetDb::AddLeaseSet (const IdentHash & ident, const uint8_t * buf, int len)
 	{
+		if (!m_AcceptUpdates.load (std::memory_order_relaxed))
+		{
+			LogPrint (eLogWarning, "NetDb: LeaseSet rejected because NetDb is stopped: ", ident.ToBase32 ());
+			return false;
+		}
 		if (!buf || len <= 0) return false;
+		// Build and verify a candidate before touching the cached object. The
+		// old path called Update() on the stored LeaseSet and could leave that
+		// object invalid (and later erase it) if the replacement was rejected.
+		auto leaseSet = std::make_shared<LeaseSet> (buf, len, false); // we don't need leases in netdb
+		auto now = i2p::util::GetMillisecondsSinceEpoch ();
+		if (!leaseSet->IsValid () || !leaseSet->GetIdentity () || leaseSet->GetIdentity ()->GetIdentHash () != ident
+			|| !IsLeaseSet1Fresh (*leaseSet, now))
+		{
+			LogPrint (eLogError, "NetDb: LeaseSet is invalid or does not match store key: ", ident.ToBase32 ());
+			return false;
+		}
+
 		std::lock_guard<std::mutex> lock (m_LeaseSetsMutex);
-		bool updated = false;
 		auto it = m_LeaseSets.find (ident);
-		if (it != m_LeaseSets.end () && it->second->GetStoreType () == i2p::data::NETDB_STORE_TYPE_LEASESET)
+		if (it != m_LeaseSets.end () && (!it->second || !IsLeaseSetNewer (*leaseSet, *it->second)))
 		{
-			// we update only is existing LeaseSet is not LeaseSet2
-			uint64_t expires;
-			// LeaseSetBufferValidate() verifies the signature with the identity
-			// embedded in the buffer. Bind that identity to the store key first,
-			// otherwise a valid LeaseSet for another destination could overwrite
-			// this cache entry.
-			IdentityEx announcedIdentity;
-			if (announcedIdentity.FromBuffer (buf, len) && announcedIdentity.GetIdentHash () == ident
-				&& LeaseSetBufferValidate (buf, len, expires))
-			{
-				if (it->second->GetExpirationTime () < expires)
-				{
-					it->second->Update (buf, len, nullptr, false); // signature is verified already
-					if (CheckLogLevel (eLogInfo)) LogPrint (eLogInfo, "NetDb: LeaseSet updated: ", ident.ToBase32 ());
-					updated = true;
-				}
-				else if (CheckLogLevel (eLogDebug))
-					LogPrint (eLogDebug, "NetDb: LeaseSet is older: ", ident.ToBase32 ());
-			}
-			else
-				LogPrint (eLogError, "NetDb: LeaseSet is invalid or does not match store key: ", ident.ToBase32 ());
+			// Java isNewer(): LS1 uses the earliest lease date; a valid stored
+			// entry is never evicted by an older or replayed replacement.
+			if (CheckLogLevel (eLogDebug)) LogPrint (eLogDebug, "NetDb: LeaseSet is older: ", ident.ToBase32 ());
+			return false;
 		}
-		else
-		{
-			auto leaseSet = std::make_shared<LeaseSet> (buf, len, false); // we don't need leases in netdb
-			if (leaseSet->IsValid () && leaseSet->GetIdentity () && leaseSet->GetIdentity ()->GetIdentHash () == ident)
-			{
-				if (it != m_LeaseSets.end () && leaseSet->GetExpirationTime () <= it->second->GetExpirationTime ())
-				{
-					LogPrint (eLogDebug, "NetDb: LeaseSet is older than existing LS2: ", ident.ToBase32 ());
-					return false;
-				}
-				if (CheckLogLevel (eLogInfo)) LogPrint (eLogInfo, "NetDb: LeaseSet added: ", ident.ToBase32 ());
-				m_LeaseSets[ident] = leaseSet;
-				updated = true;
-			}
-			else
-				LogPrint (eLogError, "NetDb: New LeaseSet validation failed: ", ident.ToBase32 ());
-		}
-		return updated;
+		if (CheckLogLevel (eLogInfo)) LogPrint (eLogInfo, "NetDb: LeaseSet added: ", ident.ToBase32 ());
+		m_LeaseSets[ident] = leaseSet;
+		return true;
 	}
 
 	bool NetDb::AddLeaseSet2 (const IdentHash & ident, const uint8_t * buf, int len, uint8_t storeType)
 	{
+		if (!m_AcceptUpdates.load (std::memory_order_relaxed))
+		{
+			LogPrint (eLogWarning, "NetDb: LeaseSet2 rejected because NetDb is stopped: ", ident.ToBase32 ());
+			return false;
+		}
 		if (!buf || len <= 0) return false;
+		if (storeType != NETDB_STORE_TYPE_STANDARD_LEASESET2 && storeType != NETDB_STORE_TYPE_ENCRYPTED_LEASESET2
+			&& storeType != NETDB_STORE_TYPE_META_LEASESET2)
+		{
+			LogPrint (eLogWarning, "NetDb: Unsupported LeaseSet2 store type ", (int)storeType);
+			return false;
+		}
 		auto leaseSet = std::make_shared<LeaseSet2> (storeType, buf, len, false); // we don't need leases in netdb
 		if (leaseSet->IsValid ())
 		{
@@ -460,10 +631,34 @@ namespace data
 				LogPrint (eLogError, "NetDb: LeaseSet2 does not match store key: ", ident.ToBase32 ());
 				return false;
 			}
+			if (storeType == NETDB_STORE_TYPE_ENCRYPTED_LEASESET2)
+			{
+				// A floodfill cannot decrypt type 5, so apply the outer-header
+				// freshness bounds from KademliaNetworkDatabaseFacade.validate():
+				// earliest = published, latest = expires. Without this an
+				// expired/replayed encrypted LS2 with a fresh published timestamp
+				// or a far-future expiry could remain stored.
+				auto now = i2p::util::GetMillisecondsSinceEpoch ();
+				auto published = leaseSet->GetPublishedTimestamp () * 1000LL;
+				auto expires = leaseSet->GetExpirationTime ();
+				if (published + LEASESET2_META_MAX_PUBLISHED_AGE <= now || expires <= now - LEASESET2_CLOCK_FUDGE
+					|| expires > now + LEASESET_MAX_LEASE_FUTURE + LEASESET2_CLOCK_FUDGE)
+				{
+					LogPrint (eLogWarning,
+						"NetDb: Encrypted LeaseSet2 is expired, stale or too far in the future: ", ident.ToBase32 ());
+					return false;
+				}
+			}
 			std::lock_guard<std::mutex> lock (m_LeaseSetsMutex);
 			auto it = m_LeaseSets.find (ident);
-			if (it == m_LeaseSets.end () || it->second->GetStoreType () != storeType
-				|| leaseSet->GetPublishedTimestamp () > it->second->GetPublishedTimestamp ())
+			bool replace = it == m_LeaseSets.end () || !it->second;
+			if (!replace)
+			{
+				// Java isNewer(): two LS2 entries compare the signed published
+				// timestamp; an LS1/LS2 mix compares the earliest lease date.
+				replace = IsLeaseSetNewer (*leaseSet, *it->second);
+			}
+			if (replace)
 			{
 				if (leaseSet->IsPublic () && !leaseSet->IsExpired ())
 				{
@@ -563,7 +758,7 @@ namespace data
 
 		if (!m_Reseeder)
 		{
-			m_Reseeder = new Reseeder ();
+			m_Reseeder = std::make_unique<Reseeder> ();
 			m_Reseeder->LoadCertificates (); // we need certificates for SU3 verification
 		}
 
@@ -605,43 +800,103 @@ namespace data
 	{
 		auto r = std::make_shared<RouterInfo> (path);
 		if (r->GetRouterIdentity () && !r->IsUnreachable () && r->HasValidAddresses ()
-			&& ts < r->GetTimestamp () + 24 * 60 * 60 * NETDB_MAX_OFFLINE_EXPIRATION_TIMEOUT * 1000LL && // too old
-			(r->GetVersion () >= NETDB_MIN_ALLOWED_VERSION || r->IsHighBandwidth ())) // old version
+			&& ts < r->GetTimestamp () + 24 * 60 * 60 * NETDB_MAX_OFFLINE_EXPIRATION_TIMEOUT * 1000LL // too old
+			&& ts + NETDB_EXPIRATION_TIMEOUT_THRESHOLD * 1000LL > r->GetTimestamp () // from future
+			&& (r->GetVersion () >= NETDB_MIN_ALLOWED_VERSION || r->IsHighBandwidth ())) // old version
 		{
 			r->DeleteBuffer ();
-			if (m_RouterInfos.emplace (r->GetIdentHash (), r).second)
+			bool inserted = false;
 			{
-				if (r->IsFloodfill () && r->IsEligibleFloodfill ()) m_Floodfills.Insert (r);
+				std::lock_guard<std::mutex> l (m_RouterInfosMutex);
+				inserted = m_RouterInfos.emplace (r->GetIdentHash (), r).second;
+			}
+			if (inserted)
+			{
+				if (r->IsFloodfill () && r->IsEligibleFloodfill ())
+				{
+					std::lock_guard<std::mutex> l (m_FloodfillsMutex);
+					m_Floodfills.Insert (r);
+				}
 			}
 		}
 		else
 		{
-			LogPrint (eLogWarning, "NetDb: RI from ", path, " is invalid or too old. Delete");
+			LogPrint (eLogWarning, "NetDb: RI from ", path, " is invalid, from the future or too old. Delete");
 			i2p::fs::Remove (path);
 		}
 		return true;
 	}
 
+	std::vector<std::shared_ptr<const RouterInfo>> NetDb::GetRouterInfosSnapshot (size_t max) const
+	{
+		std::vector<std::shared_ptr<const RouterInfo>> routers;
+		if (!max) return routers;
+		std::lock_guard<std::mutex> lock (m_RouterInfosMutex);
+		routers.reserve (std::min (max, m_RouterInfos.size ()));
+		for (const auto & [ident, router] : m_RouterInfos)
+		{
+			(void)ident;
+			if (routers.size () >= max) break;
+			if (router) routers.push_back (router);
+		}
+		return routers;
+	}
+
+	std::vector<std::pair<IdentHash, std::shared_ptr<LeaseSet>>> NetDb::GetLeaseSetsSnapshot (size_t max) const
+	{
+		std::vector<std::pair<IdentHash, std::shared_ptr<LeaseSet>>> leaseSets;
+		if (!max) return leaseSets;
+		std::lock_guard<std::mutex> lock (m_LeaseSetsMutex);
+		leaseSets.reserve (std::min (max, m_LeaseSets.size ()));
+		for (const auto & [ident, leaseSet] : m_LeaseSets)
+		{
+			if (leaseSets.size () >= max) break;
+			if (leaseSet) leaseSets.emplace_back (ident, leaseSet);
+		}
+		return leaseSets;
+	}
+
 	void NetDb::VisitLeaseSets (LeaseSetVisitor v)
 	{
-		std::lock_guard<std::mutex> lock (m_LeaseSetsMutex);
-		for (auto & entry : m_LeaseSets) v (entry.first, entry.second);
+		// Callbacks may call back into NetDb. Snapshot under the lock and run
+		// the visitor without holding a container mutex.
+		std::vector<std::pair<IdentHash, std::shared_ptr<LeaseSet>>> leaseSets;
+		{
+			std::lock_guard<std::mutex> lock (m_LeaseSetsMutex);
+			leaseSets.reserve (m_LeaseSets.size ());
+			for (const auto & entry : m_LeaseSets) leaseSets.emplace_back (entry.first, entry.second);
+		}
+		for (const auto & entry : leaseSets) v (entry.first, entry.second);
 	}
 
 	void NetDb::VisitStoredRouterInfos (RouterInfoVisitor v)
 	{
-		m_Storage.Iterate (
-			[v] (const std::string & filename)
-			{
-				auto ri = std::make_shared<i2p::data::RouterInfo> (filename);
-				v (ri);
-			});
+		// HashedStorage::Iterate is not synchronized and invokes the visitor
+		// synchronously. Snapshot the file list under m_StorageMutex and run
+		// the (potentially re-entrant) visitor outside it.
+		std::vector<std::string> files;
+		{
+			std::lock_guard<std::mutex> storage (m_StorageMutex);
+			m_Storage.Traverse (files);
+		}
+		for (const auto & filename : files)
+		{
+			auto ri = std::make_shared<i2p::data::RouterInfo> (filename);
+			v (ri);
+		}
 	}
 
 	void NetDb::VisitRouterInfos (RouterInfoVisitor v)
 	{
-		std::lock_guard<std::mutex> lock (m_RouterInfosMutex);
-		for (const auto & item : m_RouterInfos) v (item.second);
+		// As VisitLeaseSets(): do not hold m_RouterInfosMutex across arbitrary
+		// visitor code, which may insert, erase or call FindRouter().
+		std::vector<std::shared_ptr<const RouterInfo>> routers;
+		{
+			std::lock_guard<std::mutex> lock (m_RouterInfosMutex);
+			routers.reserve (m_RouterInfos.size ());
+			for (const auto & item : m_RouterInfos) routers.push_back (item.second);
+		}
+		for (const auto & router : routers) v (router);
 	}
 
 	size_t NetDb::VisitRandomRouterInfos (RouterInfoFilter filter, RouterInfoVisitor v, size_t n)
@@ -651,8 +906,14 @@ namespace data
 		size_t iters = max_iters_per_cyle;
 		while (n > 0)
 		{
+			uint32_t randomValue;
+			{
+				std::lock_guard<std::mutex> rng (m_RngMutex);
+				randomValue = m_Rng ();
+			}
 			std::lock_guard<std::mutex> lock (m_RouterInfosMutex);
-			uint32_t idx = m_Rng () % m_RouterInfos.size ();
+			if (m_RouterInfos.empty ()) break;
+			uint32_t idx = randomValue % m_RouterInfos.size ();
 			uint32_t i = 0;
 			for (const auto & it : m_RouterInfos)
 			{
@@ -696,16 +957,24 @@ namespace data
 	void NetDb::Load ()
 	{
 		// make sure we cleanup netDb from previous attempts
-		m_RouterInfos.clear ();
-		m_Floodfills.Clear ();
+		{
+			std::lock_guard<std::mutex> l (m_RouterInfosMutex);
+			m_RouterInfos.clear ();
+		}
+		{
+			std::lock_guard<std::mutex> l (m_FloodfillsMutex);
+			m_Floodfills.Clear ();
+		}
 
 		uint64_t ts = i2p::util::GetMillisecondsSinceEpoch ();
 		std::vector<std::string> files;
-		m_Storage.Traverse (files);
+		{
+			std::lock_guard<std::mutex> storage (m_StorageMutex);
+			m_Storage.Traverse (files);
+		}
 		for (const auto & path : files) LoadRouterInfo (path, ts);
 
-		LogPrint (
-			eLogInfo, "NetDb: ", m_RouterInfos.size (), " routers loaded (", m_Floodfills.GetSize (), " floodfils)");
+		LogPrint (eLogInfo, "NetDb: ", GetNumRouters (), " routers loaded (", GetNumFloodfills (), " floodfils)");
 	}
 
 	void NetDb::SaveUpdated ()
@@ -728,8 +997,7 @@ namespace data
 		{
 			std::lock_guard<std::mutex> l (m_RouterInfosMutex);
 			routers.reserve (m_RouterInfos.size ());
-			for (const auto & [ident, router] : m_RouterInfos)
-				routers.emplace_back (ident, router);
+			for (const auto & [ident, router] : m_RouterInfos) routers.emplace_back (ident, router);
 		}
 		auto total = routers.size ();
 		size_t totalFloodfills = 0;
@@ -878,8 +1146,21 @@ namespace data
 	void NetDb::PersistRouters (std::list<std::pair<std::string, std::shared_ptr<RouterInfo::Buffer>>> && update,
 		std::list<std::string> && remove)
 	{
-		for (auto it : update) RouterInfo::SaveToFile (m_Storage.Path (it.first), it.second);
-		for (auto it : remove) m_Storage.Remove (it);
+		std::vector<std::pair<std::string, std::shared_ptr<RouterInfo::Buffer>>> saves;
+		std::vector<std::string> removals;
+		{
+			std::lock_guard<std::mutex> storage (m_StorageMutex);
+			saves.reserve (update.size ());
+			for (const auto & it : update) saves.emplace_back (m_Storage.Path (it.first), it.second);
+			removals.reserve (remove.size ());
+			for (const auto & it : remove) removals.push_back (it);
+		}
+		for (const auto & it : saves) RouterInfo::SaveToFile (it.first, it.second);
+		for (const auto & it : removals)
+		{
+			std::lock_guard<std::mutex> storage (m_StorageMutex);
+			m_Storage.Remove (it);
+		}
 	}
 
 	void NetDb::RequestDestination (
@@ -887,8 +1168,9 @@ namespace data
 	{
 		if (direct && (i2p::transport::transports.RoutesRestricted () || i2p::context.IsLimitedConnectivity ()))
 			direct = false; // always use tunnels for restricted routes or limited connectivity
-		if (m_Requests)
-			m_Requests->PostRequestDestination (destination, requestComplete, direct);
+		auto requests = GetRequests ();
+		if (requests)
+			requests->PostRequestDestination (destination, requestComplete, direct);
 		else
 			LogPrint (eLogError, "NetDb: Requests is null");
 	}
@@ -922,6 +1204,11 @@ namespace data
 			if (replyToken != 0xFFFFFFFFU) // if not caught on OBEP or IBGW
 			{
 				IdentHash replyIdent (buf + offset);
+				if (replyIdent.IsZero ())
+				{
+					LogPrint (eLogWarning, "NetDb: Database store reply hash is zero. Dropped");
+					return;
+				}
 				auto deliveryStatus = CreateDeliveryStatusMsg (replyToken);
 				if (!tunnelID) // send response directly
 					transports.SendMessage (replyIdent, deliveryStatus);
@@ -958,7 +1245,11 @@ namespace data
 		size_t payloadOffset = offset;
 
 		bool updated = false;
-		uint8_t storeType = buf[DATABASE_STORE_TYPE_OFFSET];
+		// Java ignores the upper four bits of the DatabaseStore type byte.
+		// Use the masked type for dispatch, entry construction and the
+		// Flood copy so LS2 signature verification remains bound to the
+		// canonical type (3/5/7).
+		uint8_t storeType = buf[DATABASE_STORE_TYPE_OFFSET] & DATABASE_STORE_TYPE_MASK;
 		if (storeType) // LeaseSet or LeaseSet2
 		{
 			if (len > MAX_LS_BUFFER_SIZE + offset)
@@ -1023,6 +1314,7 @@ namespace data
 			auto floodMsg = NewI2NPMessage (DATABASE_STORE_HEADER_SIZE + msgLen);
 			uint8_t * payload = floodMsg->GetPayload ();
 			memcpy (payload, buf, 33); // key + type
+			payload[DATABASE_STORE_TYPE_OFFSET] = storeType; // drop future type bits
 			htobe32buf (payload + DATABASE_STORE_REPLY_TOKEN_OFFSET, 0); // zero reply token
 			floodMsg->len += DATABASE_STORE_HEADER_SIZE + msgLen;
 			if (floodMsg->len <= floodMsg->maxLen)
@@ -1076,9 +1368,42 @@ namespace data
 		}
 		uint16_t numExcluded = bufbe16toh (excluded);
 		excluded += 2;
-		if (numExcluded > 512 || (excluded - buf) + numExcluded * 32 > (int)msg->GetPayloadLength ())
+		if (numExcluded > DATABASE_LOOKUP_MAX_NUM_PEERS
+			|| (excluded - buf) + numExcluded * 32 > (int)msg->GetPayloadLength ())
 		{
 			LogPrint (eLogWarning, "NetDb: Number of excluded peers", numExcluded, " is too much");
+			return;
+		}
+		if (replyIdent.IsZero ())
+		{
+			LogPrint (eLogWarning, "NetDb: DatabaseLookup has a zero reply hash");
+			return;
+		}
+		// HandleDatabaseLookupMessageJob: drop a direct reply addressed to us.
+		// Sending it would loop the DSM/DSRM back through the transport layer.
+		if (!replyTunnelID && replyIdent == i2p::context.GetIdentHash ())
+		{
+			LogPrint (eLogWarning, "NetDb: DatabaseLookup for ", key, " has replies going to us");
+			return;
+		}
+		// Encrypted replies are only meaningful through a tunnel. Do not fall
+		// back to cleartext when a peer sets bit 1 or bit 4 without one.
+		bool encryptReply = flag & DATABASE_LOOKUP_ENCRYPTION_FLAG;
+		bool ratchetReply = flag & DATABASE_LOOKUP_RATCHET_FLAG;
+		if ((encryptReply || ratchetReply) && !replyTunnelID)
+		{
+			LogPrint (eLogWarning, "NetDb: DatabaseLookup requests an encrypted reply without a reply tunnel");
+			return;
+		}
+		const uint8_t * replyKeyBlock = excluded + numExcluded * 32;
+		size_t replyKeyAvailable = msg->GetPayloadLength () - (replyKeyBlock - buf);
+		DatabaseLookupReplyKey replyKey;
+		if (!ParseDatabaseLookupReplyKey (replyKeyBlock, replyKeyAvailable, flag, replyKey))
+		{
+			if (encryptReply && ratchetReply)
+				LogPrint (eLogWarning, "NetDb: DatabaseLookup derived-key ratchet reply is not implemented");
+			else
+				LogPrint (eLogWarning, "NetDb: DatabaseLookup reply key block is invalid or truncated");
 			return;
 		}
 
@@ -1098,6 +1423,9 @@ namespace data
 				excludedRouters.insert (excluded_ident);
 				excluded_ident += 32;
 			}
+			// Java getNearestRouters() adds us; never advertise our own hash in
+			// a search reply (also when we do not declare floodfill).
+			excludedRouters.insert (i2p::context.GetIdentHash ());
 			replyMsg = CreateDatabaseSearchReply (
 				ident, GetExploratoryNonFloodfill (ident, NETDB_MAX_NUM_SEARCH_REPLY_PEER_HASHES, excludedRouters));
 		}
@@ -1108,15 +1436,15 @@ namespace data
 			{
 				// try to find router
 				auto router = FindRouter (ident);
-				if (router && !router->IsUnreachable ())
+				if (router && !router->IsUnreachable () && !router->IsHidden ())
 				{
 					// HandleDatabaseLookupMessageJob.EXPIRE_DELAY: do not send
 					// RouterInfos older than one hour, except our own. Apply
 					// the rule only here, not to LeaseSet or Meta LS replies.
 					// Allow the two-minute rejection threshold for clock skew.
 					bool isSelf = ident == i2p::context.GetIdentHash ();
-					uint64_t maxAge = (uint64_t) NETDB_FLOODFILL_EXPIRATION_TIMEOUT * 1000LL
-						+ (uint64_t) NETDB_EXPIRATION_TIMEOUT_THRESHOLD * 1000LL;
+					uint64_t maxAge = (uint64_t)NETDB_FLOODFILL_EXPIRATION_TIMEOUT * 1000LL
+						+ (uint64_t)NETDB_EXPIRATION_TIMEOUT_THRESHOLD * 1000LL;
 					if (isSelf || router->GetTimestamp () + maxAge >= i2p::util::GetMillisecondsSinceEpoch ())
 					{
 						LogPrint (eLogDebug, "NetDb: Requested RouterInfo ", key, " found");
@@ -1140,7 +1468,7 @@ namespace data
 						// no leaseset found
 						LogPrint (eLogDebug, "NetDb: Requested LeaseSet not found for ", ident.ToBase32 ());
 					}
-					else if (!leaseSet->IsExpired ()) // we don't send back expired leasesets
+					else if (leaseSet->IsValid () && !leaseSet->IsExpired ()) // don't send invalid or expired sets
 					{
 						LogPrint (eLogDebug, "NetDb: Requested LeaseSet ", key, " found");
 						replyMsg = CreateDatabaseStoreMsg (ident, leaseSet);
@@ -1162,6 +1490,7 @@ namespace data
 					excludedRouters.insert (exclude_ident);
 					exclude_ident += 32;
 				}
+				excludedRouters.insert (i2p::context.GetIdentHash ());
 				auto closestFloodfills = GetClosestFloodfills (ident, 3, excludedRouters, false);
 				if (closestFloodfills.empty ())
 					LogPrint (
@@ -1169,76 +1498,28 @@ namespace data
 				replyMsg = CreateDatabaseSearchReply (ident, closestFloodfills);
 			}
 		}
-		excluded += numExcluded * 32;
 		if (replyMsg)
 		{
 			if (replyTunnelID)
 			{
-				// encryption might be used though tunnel only. Reply key block:
-				//   0x02 only: 32-byte session key, count, count*32-byte tags (ElGamal/AES)
-				//   0x10 only: 32-byte session key, count, count*8-byte tags (ECIES)
-				//   0x12:      32-byte ratchet public key, no count and no tag
-				// DatabaseLookupMessage.readMessage, proposal 154.
-				bool encryptReply = flag & DATABASE_LOOKUP_ENCRYPTION_FLAG;
-				bool ratchetReply = flag & DATABASE_LOOKUP_RATCHET_FLAG;
-				if (encryptReply || ratchetReply)
+				if (replyKey.mode == DatabaseLookupReplyKey::Mode::ECIESAEAD)
 				{
-					const uint8_t * replyKey = excluded;
-					size_t available = msg->GetPayloadLength () - (excluded - buf);
-					if (encryptReply && ratchetReply)
-					{
-						// ECIES to ECIES (proposal 154): the enclosed 32-byte
-						// ratchet public key is the one-time target, with no
-						// tag block. Proposal 154's derived-key Existing
-						// Session KDF is still marked TBD and Java 2.13 does
-						// not implement it, so use the standard ECIES New
-						// Session (Noise_N) wrapping to that key. Fail closed
-						// if it is truncated; never fall back to cleartext.
-						if (available < 32)
-						{
-							LogPrint (eLogWarning, "NetDb: DatabaseLookup ratchet public key is truncated");
-							return;
-						}
-						replyMsg = i2p::garlic::WrapECIESX25519MessageForRouter (replyMsg, replyKey);
-						if (!replyMsg)
-						{
-							LogPrint (eLogError, "NetDb: Failed to wrap ratchet reply");
-							return;
-						}
-					}
-					else
-					{
-						size_t tagLen = ratchetReply ? 8 : 32;
-						if (available < 33)
-						{
-							LogPrint (eLogWarning, "NetDb: DatabaseLookup reply key block is truncated");
-							return;
-						}
-						const uint8_t numTags = replyKey[32];
-						if (numTags < 1 || numTags > DATABASE_LOOKUP_MAX_NUM_TAGS
-							|| available < 33 + (size_t) numTags * tagLen)
-						{
-							LogPrint (eLogWarning, "NetDb: DatabaseLookup reply tags are invalid or truncated");
-							return;
-						}
-						if (ratchetReply)
-						{
-							uint64_t tag;
-							memcpy (&tag, replyKey + 33, 8); // take first tag
-							replyMsg = i2p::garlic::WrapECIESX25519Message (replyMsg, replyKey, tag);
-						}
-						else
-						{
-							const i2p::garlic::SessionTag sessionTag (replyKey + 33); // take first tag
-							i2p::garlic::ElGamalAESSession garlic (replyKey, sessionTag);
-							replyMsg = garlic.WrapSingleMessage (replyMsg);
-						}
-						if (!replyMsg)
-						{
-							LogPrint (eLogError, "NetDb: Failed to wrap message");
-							return;
-						}
-					}
+					uint64_t tag;
+					memcpy (&tag, replyKey.tag.data (), sizeof (tag)); // first 8-byte tag, n = 0
+					replyMsg = i2p::garlic::WrapECIESX25519Message (replyMsg, replyKey.key.data (), tag);
+				}
+				else if (replyKey.mode == DatabaseLookupReplyKey::Mode::ElGamalAES)
+				{
+					const i2p::garlic::SessionTag sessionTag (replyKey.tag.data ()); // first 32-byte tag
+					i2p::garlic::ElGamalAESSession garlic (replyKey.key.data (), sessionTag);
+					replyMsg = garlic.WrapSingleMessage (replyMsg);
+				}
+				if (!replyMsg)
+				{
+					// Never send an unencrypted reply after the requester
+					// selected an encrypted mode.
+					LogPrint (eLogError, "NetDb: Failed to wrap DatabaseLookup reply");
+					return;
 				}
 				bool direct = true;
 				if (!i2p::transport::transports.IsConnected (replyIdent))
@@ -1402,7 +1683,6 @@ namespace data
 
 	template <typename Filter> std::shared_ptr<const RouterInfo> NetDb::GetRandomRouter (Filter filter) const
 	{
-		if (m_RouterInfos.empty ()) return nullptr;
 		uint16_t inds[3];
 		RAND_bytes ((uint8_t *)inds, sizeof (inds));
 		std::lock_guard<std::mutex> l (m_RouterInfosMutex);
@@ -1462,7 +1742,9 @@ namespace data
 
 	void NetDb::PostDatabaseSearchReplyMsg (std::shared_ptr<const I2NPMessage> msg)
 	{
-		if (msg && m_Requests) m_Requests->PostDatabaseSearchReplyMsg (msg);
+		if (!msg) return;
+		auto requests = GetRequests ();
+		if (requests) requests->PostDatabaseSearchReplyMsg (msg);
 	}
 
 	std::shared_ptr<const RouterInfo> NetDb::GetClosestFloodfill (
@@ -1515,19 +1797,23 @@ namespace data
 		const IdentHash & destination, size_t num, const std::unordered_set<IdentHash> & excluded)
 	{
 		std::vector<IdentHash> ret;
-		if (!num || m_RouterInfos.empty ()) return ret; // empty list
+		if (!num) return ret; // empty list
+		// m_ExploratorySelection and m_LastExploratorySelectionUpdateTime are
+		// also reachable from administrative calls; do not rebuild them while
+		// another caller is iterating.
+		std::lock_guard<std::mutex> selectionLock (m_ExploratorySelectionMutex);
 		auto ts = i2p::util::GetMonotonicSeconds ();
 		if (ts > m_LastExploratorySelectionUpdateTime + NETDB_EXPLORATORY_SELECTION_UPDATE_INTERVAL)
 		{
 			// update selection
 			m_ExploratorySelection.clear ();
 			std::vector<std::shared_ptr<const RouterInfo>> eligible;
-			eligible.reserve (m_RouterInfos.size ());
 			{
 				// collect eligible from current netdb
 				bool checkIsReal = i2p::tunnel::tunnels.GetPreciseTunnelCreationSuccessRate ()
 					< NETDB_TUNNEL_CREATION_RATE_THRESHOLD; // too low rate
 				std::lock_guard<std::mutex> l (m_RouterInfosMutex);
+				eligible.reserve (m_RouterInfos.size ());
 				for (const auto & it : m_RouterInfos)
 					if (!it.second->IsDeclaredFloodfill ()
 						&& (!checkIsReal || (it.second->HasProfile () && it.second->GetProfile ()->IsReal ())))
@@ -1535,6 +1821,7 @@ namespace data
 			}
 			if (eligible.size () > NETDB_MAX_EXPLORATORY_SELECTION_SIZE)
 			{
+				std::lock_guard<std::mutex> rng (m_RngMutex);
 				std::sample (eligible.begin (), eligible.end (), std::back_inserter (m_ExploratorySelection),
 					NETDB_MAX_EXPLORATORY_SELECTION_SIZE, m_Rng);
 			}
@@ -1588,7 +1875,12 @@ namespace data
 	{
 		if (!r) return false;
 		if (r->GetBuffer ()) return true;
-		return r->LoadBuffer (m_Storage.Path (r->GetIdentHashBase64 ()));
+		std::string path;
+		{
+			std::lock_guard<std::mutex> storage (m_StorageMutex);
+			path = m_Storage.Path (r->GetIdentHashBase64 ());
+		}
+		return r->LoadBuffer (path);
 	}
 }
 }

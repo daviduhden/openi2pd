@@ -147,6 +147,7 @@ std::shared_ptr<I2NPMessage> CreateRouterInfoDatabaseLookupMsg (const uint8_t * 
 	// set cannot make the serialized block overflow.
 	size_t headerLen = 32 + 32 + (replyTunnelID ? 5 : 1) + 2;
 	size_t maxPeers = (I2NP_MAX_MESSAGE_SIZE - 2 - I2NP_HEADER_SIZE - headerLen) / 32;
+	maxPeers = std::min<size_t> (maxPeers, DATABASE_LOOKUP_MAX_NUM_PEERS);
 	size_t cnt = excludedPeers ? std::min<size_t> (excludedPeers->size (), maxPeers) : 0;
 	auto m = NewI2NPMessage (headerLen + cnt * 32);
 	uint8_t * buf = m->GetPayload ();
@@ -196,7 +197,7 @@ std::shared_ptr<I2NPMessage> CreateLeaseSetDatabaseLookupMsg (const i2p::data::I
 	std::shared_ptr<const i2p::tunnel::InboundTunnel> replyTunnel, const uint8_t * replyKey, uint64_t replyTag)
 {
 	size_t cnt = excludedFloodfills.size ();
-	if (cnt > 512)
+	if (cnt > DATABASE_LOOKUP_MAX_NUM_PEERS)
 	{
 		LogPrint (eLogWarning, "I2NP: Too many peers to exclude ", cnt, " for DatabaseLookup");
 		cnt = 0;
@@ -239,13 +240,30 @@ std::shared_ptr<I2NPMessage> CreateLeaseSetDatabaseLookupMsg (const i2p::data::I
 	return m;
 }
 
+bool ParseDatabaseSearchReply (const uint8_t * buf, size_t len, DatabaseSearchReply& reply)
+{
+	if (!buf || len < DATABASE_SEARCH_REPLY_MIN_SIZE) return false;
+	const size_t num = buf[DATABASE_SEARCH_REPLY_COUNT_OFFSET];
+	const size_t peersEnd = DATABASE_SEARCH_REPLY_PEERS_OFFSET + num * 32;
+	// num*32 cannot overflow: num is at most 255. Reject a declared count
+	// whose peer list or mandatory trailing "from" hash is truncated.
+	if (peersEnd > len || len - peersEnd < 32) return false;
+	reply.key = i2p::data::IdentHash (buf + DATABASE_SEARCH_REPLY_KEY_OFFSET);
+	reply.peers.clear ();
+	reply.peers.reserve (num);
+	for (size_t i = 0; i < num; i++)
+		reply.peers.emplace_back (buf + DATABASE_SEARCH_REPLY_PEERS_OFFSET + i * 32);
+	reply.from = i2p::data::IdentHash (buf + peersEnd);
+	return true;
+}
+
 std::shared_ptr<I2NPMessage> CreateDatabaseSearchReply (
 	const i2p::data::IdentHash & ident, std::vector<i2p::data::IdentHash> routers)
 {
 	// "num" is one byte. Also keep the whole serialized message inside the
 	// selected I2NP buffer instead of truncating the count field.
-	size_t cnt = std::min<size_t> (routers.size (), 255);
-	auto m = NewI2NPMessage (32 + 1 + cnt * 32 + 32);
+	size_t cnt = std::min<size_t> (routers.size (), DATABASE_SEARCH_REPLY_MAX_NUM_PEERS);
+	auto m = NewI2NPMessage (DATABASE_SEARCH_REPLY_PEERS_OFFSET + cnt * 32 + 32);
 	uint8_t * buf = m->GetPayload ();
 	size_t len = 0;
 	memcpy (buf, ident, 32);
@@ -270,18 +288,26 @@ std::shared_ptr<I2NPMessage> CreateDatabaseStoreMsg (std::shared_ptr<const i2p::
 	if (!router) // we send own RouterInfo
 		router = context.GetSharedRouterInfo ();
 
-	if (!router->GetBuffer ())
+	// Keep one owning snapshot for the whole serialization. GetBuffer() only
+	// returns a raw pointer after releasing m_BufferMutex, so a concurrent
+	// DeleteBuffer()/Update() could otherwise free or rewrite it while Gzip
+	// reads it.
+	auto routerBuffer = router->GetSharedBuffer ();
+	if (!routerBuffer)
 	{
 		LogPrint (eLogError, "I2NP: Invalid RouterInfo buffer for DatabaseStore");
 		return nullptr;
 	}
+	const size_t routerBufferLen = routerBuffer->GetBufferLen ();
+	const uint8_t * routerBufferData = routerBuffer->data ();
 
 	// Select a buffer that can hold the uncompressed RouterInfo too. A
 	// RouterInfo may be up to MAX_RI_BUFFER_SIZE (4096) bytes; a fixed
 	// short-message buffer would otherwise reject valid large RouterInfos
 	// even if compression is not applied.
-	size_t required = DATABASE_STORE_HEADER_SIZE + (replyToken ? 36 : 0) + 2 + router->GetBufferLen ();
+	size_t required = DATABASE_STORE_HEADER_SIZE + (replyToken ? 36 : 0) + 2 + routerBufferLen;
 	auto m = NewI2NPMessage (required);
+	if (!m) return nullptr;
 	uint8_t * payload = m->GetPayload ();
 
 	memcpy (payload + DATABASE_STORE_KEY_OFFSET, router->GetIdentHash (), 32);
@@ -310,12 +336,12 @@ std::shared_ptr<I2NPMessage> CreateDatabaseStoreMsg (std::shared_ptr<const i2p::
 	buf += 2;
 	m->len += (buf - payload); // payload size
 	size_t size = 0;
-	if (router->GetBufferLen () + (buf - payload) <= 940) // fits one tunnel message
-		size = i2p::data::GzipNoCompression (router->GetBuffer (), router->GetBufferLen (), buf, m->maxLen - m->len);
+	if (routerBufferLen + (buf - payload) <= 940) // fits one tunnel message
+		size = i2p::data::GzipNoCompression (routerBufferData, routerBufferLen, buf, m->maxLen - m->len);
 	else
 	{
 		i2p::data::GzipDeflator deflator;
-		size = deflator.Deflate (router->GetBuffer (), router->GetBufferLen (), buf, m->maxLen - m->len);
+		size = deflator.Deflate (routerBufferData, routerBufferLen, buf, m->maxLen - m->len);
 	}
 	if (size)
 	{
@@ -355,7 +381,12 @@ std::shared_ptr<I2NPMessage> CreateDatabaseStoreMsg (std::shared_ptr<const i2p::
 	uint32_t replyToken, std::shared_ptr<const i2p::tunnel::InboundTunnel> replyTunnel)
 {
 	if (!leaseSet) return nullptr;
-	size_t required = DATABASE_STORE_HEADER_SIZE + ((replyToken && replyTunnel) ? 36 : 0) + leaseSet->GetBufferLen ();
+	// A non-zero reply token always requires the 4-byte reply tunnel ID and
+	// 32-byte reply gateway. Java's DatabaseStoreMessage.writeMessageBody()
+	// writes a zero tunnel ID plus the writer's hash when no tunnel is set;
+	// omitting the block entirely would make the receiver treat the first
+	// LeaseSet bytes as reply information.
+	size_t required = DATABASE_STORE_HEADER_SIZE + (replyToken ? 36 : 0) + leaseSet->GetBufferLen ();
 	auto m = NewI2NPMessage (required);
 	if (required > m->maxLen)
 	{
@@ -367,12 +398,22 @@ std::shared_ptr<I2NPMessage> CreateDatabaseStoreMsg (std::shared_ptr<const i2p::
 	payload[DATABASE_STORE_TYPE_OFFSET] = leaseSet->GetStoreType (); // LeaseSet or LeaseSet2
 	htobe32buf (payload + DATABASE_STORE_REPLY_TOKEN_OFFSET, replyToken);
 	size_t size = DATABASE_STORE_HEADER_SIZE;
-	if (replyToken && replyTunnel)
+	if (replyToken)
 	{
-		htobe32buf (payload + size, replyTunnel->GetNextTunnelID ());
-		size += 4; // reply tunnelID
-		memcpy (payload + size, replyTunnel->GetNextIdentHash (), 32);
-		size += 32; // reply tunnel gateway
+		if (replyTunnel)
+		{
+			htobe32buf (payload + size, replyTunnel->GetNextTunnelID ());
+			size += 4; // reply tunnelID
+			memcpy (payload + size, replyTunnel->GetNextIdentHash (), 32);
+			size += 32; // reply tunnel gateway
+		}
+		else
+		{
+			htobe32buf (payload + size, 0); // zero tunnelID means direct reply
+			size += 4;
+			memcpy (payload + size, i2p::context.GetIdentHash (), 32);
+			size += 32;
+		}
 	}
 	memcpy (payload + size, leaseSet->GetBuffer (), leaseSet->GetBufferLen ());
 	size += leaseSet->GetBufferLen ();
@@ -384,7 +425,8 @@ std::shared_ptr<I2NPMessage> CreateDatabaseStoreMsg (std::shared_ptr<const i2p::
 bool IsRouterInfoMsg (std::shared_ptr<I2NPMessage> msg)
 {
 	if (!msg || msg->GetTypeID () != eI2NPDatabaseStore) return false;
-	return !msg->GetPayload ()[DATABASE_STORE_TYPE_OFFSET]; // 0- RouterInfo
+	if (msg->GetPayloadLength () < DATABASE_STORE_HEADER_SIZE) return false;
+	return !(msg->GetPayload ()[DATABASE_STORE_TYPE_OFFSET] & DATABASE_STORE_TYPE_MASK); // 0- RouterInfo
 }
 
 std::shared_ptr<I2NPMessage> CreateTunnelDataMsg (const uint8_t * buf)

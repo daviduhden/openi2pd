@@ -12,6 +12,7 @@
 #define NETDB_H__
 // this file is called NetDb.hpp to resolve conflict with libc's netdb.h on case insensitive fs
 #include <inttypes.h>
+#include <array>
 #include <atomic>
 #include <unordered_set>
 #include <unordered_map>
@@ -20,6 +21,9 @@
 #include <mutex>
 #include <future>
 #include <random>
+#include <memory>
+#include <utility>
+#include <vector>
 
 #include "Base.h"
 #include "Gzip.h"
@@ -75,6 +79,38 @@ namespace data
 
 	/** function for visiting a router info and determining if we want to use it */
 	typedef std::function<bool (std::shared_ptr<const i2p::data::RouterInfo>)> RouterInfoFilter;
+
+	/**
+	 * Decoded DatabaseLookup reply-key block (I2NP DatabaseLookup, bit 1/bit 4).
+	 *
+	 * The block starts after the excluded-peer hashes. `mode == None` means no
+	 * key block is present. `tag` holds 32 bytes for ElGamal/AES and 8 bytes
+	 * for ECIES; the remaining bytes are zero.
+	 */
+	struct DatabaseLookupReplyKey
+	{
+		enum class Mode : uint8_t
+		{
+			None = 0,
+			ElGamalAES, // 0x02
+			ECIESAEAD // 0x10
+		};
+
+		Mode mode = Mode::None;
+		std::array<uint8_t, 32> key { };
+		std::array<uint8_t, 32> tag { };
+	};
+
+	/**
+	 * Validate and decode a DatabaseLookup reply-key block.
+	 *
+	 * Returns false for truncated blocks, an invalid tag count, or the
+	 * unimplemented derived-key mode (bits 4 and 1 both set, 0x12). This
+	 * function never selects a cleartext fallback. It is public so the wire
+	 * bounds can be regression-tested without starting the netDb thread.
+	 */
+	bool ParseDatabaseLookupReplyKey (
+		const uint8_t * block, size_t len, uint8_t flags, DatabaseLookupReplyKey & replyKey);
 
 	class NetDb
 	{
@@ -142,6 +178,15 @@ namespace data
 		}
 		bool IsReseeding () const { return m_IsReseeding.load (std::memory_order_relaxed); }
 
+		/**
+		 * Bounded immutable snapshots for administrative interfaces.
+		 * The returned RouterInfo/LeaseSet shared pointers keep each object
+		 * alive while the caller formats it; container iteration itself is
+		 * serialized by the corresponding NetDb mutex.
+		 */
+		std::vector<std::shared_ptr<const RouterInfo>> GetRouterInfosSnapshot (size_t max) const;
+		std::vector<std::pair<IdentHash, std::shared_ptr<LeaseSet>>> GetLeaseSetsSnapshot (size_t max) const;
+
 		/** visit all lease sets we currently store */
 		void VisitLeaseSets (LeaseSetVisitor v);
 		/** visit all router infos we have currently on disk, usually insanely expensive, does not access in memory RI */
@@ -151,7 +196,17 @@ namespace data
 		/** visit N random router that match using filter, then visit them with a visitor, return number of RouterInfos that were visited */
 		size_t VisitRandomRouterInfos (RouterInfoFilter f, RouterInfoVisitor v, size_t n);
 
-		void ClearRouterInfos () { m_RouterInfos.clear (); };
+		void ClearRouterInfos ()
+		{
+			// Called by Reseeder while the netDb/transport threads may still
+			// look up or insert RouterInfos. Keep the same router -> floodfill
+			// lock order as AddRouterInfo(), and do not leave floodfill entries
+			// that reference routers removed from the map.
+			std::lock_guard<std::mutex> l (m_RouterInfosMutex);
+			m_RouterInfos.clear ();
+			std::lock_guard<std::mutex> lf (m_FloodfillsMutex);
+			m_Floodfills.Clear ();
+		};
 		template <typename... TArgs> std::shared_ptr<RouterInfo::Buffer> NewRouterInfoBuffer (TArgs &&... args)
 		{
 			return m_RouterInfoBuffersPool.AcquireSharedMt (std::forward<TArgs> (args)...);
@@ -176,6 +231,14 @@ namespace data
 		std::shared_ptr<RouterProfile> NewRouterProfile () { return m_RouterProfilesPool.AcquireSharedMt (); };
 
 	private:
+		// Keep the request manager alive for the duration of a call even if
+		// Stop() swaps m_Requests out concurrently.
+		std::shared_ptr<NetDbRequests> GetRequests () const
+		{
+			std::lock_guard<std::mutex> l (m_RequestsMutex);
+			return m_Requests;
+		}
+
 		void Load ();
 		bool LoadRouterInfo (const std::string & path, uint64_t ts);
 		void SaveUpdated ();
@@ -213,25 +276,37 @@ namespace data
 		mutable std::mutex m_FloodfillsMutex;
 		DHTTable m_Floodfills;
 
-		bool m_IsRunning;
-		std::thread * m_Thread;
+		std::atomic<bool> m_IsRunning;
+		// False between Stop() and the next Start(). Guards every public
+		// insertion path, including reseed and DatabaseStore handlers.
+		std::atomic<bool> m_AcceptUpdates;
+		std::unique_ptr<std::thread> m_Thread;
 		i2p::util::Queue<std::shared_ptr<const I2NPMessage>> m_Queue; // of I2NPDatabaseStoreMsg
 
 		GzipInflator m_Inflator;
-		Reseeder * m_Reseeder;
+		std::unique_ptr<Reseeder> m_Reseeder;
 		std::mutex m_ReseedMutex;
 		std::atomic<bool> m_IsReseeding { false };
 		Families m_Families;
 		i2p::fs::HashedStorage m_Storage;
+		// HashedStorage is not internally synchronized. Serialize Init(),
+		// Traverse()/Iterate(), Path() and Remove() against TUI/IPC readers and
+		// against Start()/Stop().
+		mutable std::mutex m_StorageMutex;
 
+		mutable std::mutex m_RequestsMutex;
 		std::shared_ptr<NetDbRequests> m_Requests;
 
+		// Start()/Stop() may run on different threads (daemon and I2PControl).
+		std::mutex m_LifecycleMutex;
 		bool m_PersistProfiles;
 		std::future<void> m_SavingProfiles, m_DeletingProfiles, m_ApplyingProfileUpdates, m_PersistingRouters;
 		uint64_t m_NetDbPersistInterval; // in milliseconds
 
+		std::mutex m_ExploratorySelectionMutex;
 		std::vector<std::shared_ptr<const RouterInfo>> m_ExploratorySelection;
 		uint64_t m_LastExploratorySelectionUpdateTime; // in monotonic seconds
+		std::mutex m_RngMutex;
 		std::mt19937 m_Rng;
 	};
 

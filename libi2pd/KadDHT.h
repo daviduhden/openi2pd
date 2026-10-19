@@ -26,11 +26,14 @@ namespace data
 {
 	struct DHTNode
 	{
-		DHTNode *zero, *one;
+		std::unique_ptr<DHTNode> zero, one;
 		std::shared_ptr<RouterInfo> router;
 
-		DHTNode ();
-		~DHTNode ();
+		DHTNode () = default;
+		~DHTNode () = default;
+
+		DHTNode (const DHTNode &) = delete;
+		DHTNode & operator= (const DHTNode &) = delete;
 
 		bool IsEmpty () const { return !zero && !one && !router; };
 		void MoveRouterUp (bool fromOne);
@@ -65,7 +68,7 @@ namespace data
 		void Print (std::stringstream & s, DHTNode * root, int level);
 
 	private:
-		DHTNode * m_Root;
+		std::unique_ptr<DHTNode> m_Root;
 		size_t m_Size;
 		// transient
 		mutable Filter m_Filter;
