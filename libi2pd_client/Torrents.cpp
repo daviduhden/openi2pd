@@ -3330,8 +3330,8 @@ namespace torrents
 										if (!s->SendRequestedBlock (requestedBlock))
 										{
 											LogPrint (eLogError, "Torrents: Couldn't send block from loaded piece");
-											std::apply (std::bind_front (&PeerConnection::SendRejectRequestMsg, s),
-												requestedBlock);
+											auto [rejectIndex, rejectOffset, rejectLength] = requestedBlock;
+											s->SendRejectRequestMsg (rejectIndex, rejectOffset, rejectLength);
 										}
 									});
 							else
@@ -3341,8 +3341,8 @@ namespace torrents
 									boost::asio::post (s->GetTorrentsTunnel ()->GetService (),
 										[requestedBlock = std::move (requestBlock), s] ()
 										{
-											std::apply (std::bind_front (&PeerConnection::SendRejectRequestMsg, s),
-												requestedBlock);
+											auto [rejectIndex, rejectOffset, rejectLength] = requestedBlock;
+											s->SendRejectRequestMsg (rejectIndex, rejectOffset, rejectLength);
 										});
 							}
 						});

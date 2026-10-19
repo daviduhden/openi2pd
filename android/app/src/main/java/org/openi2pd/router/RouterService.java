@@ -881,7 +881,10 @@ public class RouterService extends Service {
     }
 
     private void createNotificationChannel() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O || notificationManager == null) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            return;
+        }
+        if (notificationManager == null) {
             return;
         }
         try {

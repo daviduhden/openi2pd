@@ -115,6 +115,11 @@ jobs:
         run: |
           cd android
           ./gradlew :i2pd:testDebugUnitTest :i2pd:lintDebug --no-daemon
+      - name: Show Android lint report on failure
+        if: failure()
+        run: |
+          report=android/app/build/intermediates/lint_intermediate_text_report/debug/lintReportDebug/lint-results-debug.txt
+          if [ -f "$report" ]; then cat "$report"; fi
       - name: Checkout vcpkg
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:

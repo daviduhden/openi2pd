@@ -656,9 +656,23 @@ public class DaemonWrapper {
                 java.io.FileDescriptor descriptor = android.system.Os.open(config.getAbsolutePath(),
                         android.system.OsConstants.O_CREAT | android.system.OsConstants.O_EXCL
                                 | android.system.OsConstants.O_WRONLY
-                                | android.system.OsConstants.O_NOFOLLOW
-                                | android.system.OsConstants.O_CLOEXEC,
+                                | android.system.OsConstants.O_NOFOLLOW,
                         0600);
+                try {
+                    // O_CLOEXEC itself is API 27; FD_CLOEXEC and F_SETFD are
+                    // available at the API 24 floor and provide the same
+                    // close-on-exec guarantee after opening the descriptor.
+                    android.system.Os.fcntlInt(descriptor,
+                            android.system.OsConstants.F_SETFD,
+                            android.system.OsConstants.FD_CLOEXEC);
+                } catch (android.system.ErrnoException error) {
+                    try {
+                        android.system.Os.close(descriptor);
+                    } catch (android.system.ErrnoException ignored) {
+                        // Best effort after the fcntl failure.
+                    }
+                    throw new IOException("Unable to secure torrent configuration descriptor", error);
+                }
                 try (FileOutputStream output = new FileOutputStream(descriptor)) {
                     output.write(content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
                     output.getFD().sync();
