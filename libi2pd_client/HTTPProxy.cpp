@@ -55,12 +55,12 @@ namespace proxy
 	static constexpr std::string_view pageHead
 		= "<head>\r\n"
 		  "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">\r\n"
-		  "  <title>I2Pd HTTP proxy</title>\r\n"
+		  "  <title>openi2pd HTTP proxy</title>\r\n"
 		  "  <style type=\"text/css\">\r\n"
-		  "    body { font: 100%/1.5em sans-serif; margin: 0; padding: 1.5em; background: #FAFAFA; color: #103456; "
+		  "    body { font: 100%/1.5em sans-serif; margin: 0; padding: 1.5em; background: #F7FAFC; color: #162737; "
 		  "}\r\n"
-		  "    h1 { font-size: 1.7em; color: #894C84; }\r\n"
-		  "    @media screen and (max-width: 980px) { h1 { font-size: 1.7em; text-align: center; color: #894C84; }}\r\n"
+		  "    h1 { font-size: 1.7em; color: #007C7A; }\r\n"
+		  "    @media screen and (max-width: 980px) { h1 { font-size: 1.7em; text-align: center; color: #007C7A; }}\r\n"
 		  "  </style>\r\n"
 		  "</head>\r\n";
 
@@ -78,6 +78,8 @@ namespace proxy
 		bool HandleRequest ();
 		void HandleSockRecv (const boost::system::error_code & ecode, std::size_t bytes_transfered);
 		void Terminate ();
+		/** Close both sockets without calling Done (safe in the destructor). */
+		void CloseSockets () noexcept;
 		void AsyncSockRead ();
 		static bool ExtractAddressHelper (i2p::http::URL & url, std::string & jump, bool & confirm);
 		static bool VerifyAddressHelper (std::string_view jump);
@@ -115,7 +117,7 @@ namespace proxy
 		bool m_Addresshelper, m_SendUserAgent;
 		i2p::http::URL m_ProxyURL;
 		i2p::http::URL m_RequestURL;
-		int m_req_len;
+		int m_req_len = 0;
 		i2p::http::URL m_ClientRequestURL;
 		i2p::http::HTTPReq m_ClientRequest;
 		i2p::http::HTTPRes m_ClientResponse;
@@ -133,7 +135,10 @@ namespace proxy
 			, m_SendUserAgent (std::static_pointer_cast<HTTPProxy> (parent)->GetSendUserAgent ())
 		{
 		}
-		~HTTPReqHandler () { Terminate (); }
+		// A handler can time out and be destroyed by the owner. Done() must
+		// not be called here because shared_from_this() is invalid once the
+		// last reference is gone; closing the sockets is still required.
+		~HTTPReqHandler () { CloseSockets (); }
 		void Handle () { AsyncSockRead (); } /* overload */
 	};
 
@@ -150,22 +155,42 @@ namespace proxy
 				&HTTPReqHandler::HandleSockRecv, shared_from_this (), std::placeholders::_1, std::placeholders::_2));
 	}
 
+	void HTTPReqHandler::CloseSockets () noexcept
+	{
+		// Move the references out first so an exception from logging or from a
+		// socket operation cannot leave a half-closed member behind. The
+		// remaining shared_ptr destructors close the descriptors.
+		auto sock = std::move (m_sock);
+		auto proxysock = std::move (m_proxysock);
+		try
+		{
+			if (sock)
+			{
+				LogPrint (eLogDebug, "HTTPProxy: Close sock");
+				boost::system::error_code ec;
+				sock->close (ec);
+			}
+			if (proxysock)
+			{
+				LogPrint (eLogDebug, "HTTPProxy: Close proxysock");
+				boost::system::error_code ec;
+				proxysock->close (ec);
+			}
+		}
+		catch (...)
+		{
+			// Closing is best-effort; the destructor must not throw.
+		}
+	}
+
 	void HTTPReqHandler::Terminate ()
 	{
-		if (Kill ()) return;
-		if (m_sock)
-		{
-			LogPrint (eLogDebug, "HTTPProxy: Close sock");
-			m_sock->close ();
-			m_sock = nullptr;
-		}
-		if (m_proxysock)
-		{
-			LogPrint (eLogDebug, "HTTPProxy: Close proxysock");
-			if (m_proxysock->is_open ()) m_proxysock->close ();
-			m_proxysock = nullptr;
-		}
-		Done (shared_from_this ());
+		// Idempotent: Kill() may already have been called by another callback,
+		// in which case the owner's reference was already released (or the
+		// owner is clearing its handler set). Sockets are always closed.
+		const bool alreadyDead = Kill ();
+		CloseSockets ();
+		if (!alreadyDead) Done (shared_from_this ());
 	}
 
 	void HTTPReqHandler::GenericProxyError (std::string_view title, std::string_view description)
@@ -203,6 +228,11 @@ namespace proxy
 
 	void HTTPReqHandler::SendProxyError (std::string_view content)
 	{
+		if (!m_sock)
+		{
+			Terminate ();
+			return;
+		}
 		i2p::http::HTTPRes res;
 		res.code = 500;
 		res.add_header ("Content-Type", "text/html; charset=UTF-8");
@@ -219,6 +249,11 @@ namespace proxy
 
 	void HTTPReqHandler::SendRedirect (const std::string & address)
 	{
+		if (!m_sock)
+		{
+			Terminate ();
+			return;
+		}
 		i2p::http::HTTPRes res;
 		res.code = 302;
 		res.add_header ("Location", address);
@@ -373,6 +408,17 @@ namespace proxy
 			LogPrint (eLogError, "HTTPProxy: Unable to parse request");
 			GenericProxyError (tr ("Invalid request"), tr ("Proxy unable to parse your request"));
 			return true; /* parse error */
+		}
+
+		// The incremental buffer cap is enforced before appending, but keep a
+		// second bound on the parsed header length so a future change to the
+		// read path cannot feed an oversized header to the request parser.
+		if (static_cast<size_t> (m_req_len) > HTTP_PROXY_MAX_HEADER_SIZE)
+		{
+			LogPrint (eLogWarning, "HTTPProxy: Request header exceeds ", HTTP_PROXY_MAX_HEADER_SIZE, " bytes");
+			m_recv_buf.clear ();
+			GenericProxyError (tr ("Request too large"), tr ("HTTP request header is too large"));
+			return true;
 		}
 
 		/* parsing success, now let's look inside request */
@@ -643,14 +689,16 @@ namespace proxy
 			}
 			else
 			{
+				auto self = shared_from_this ();
 				m_proxy_resolver.async_resolve (m_ProxyURL.host, std::to_string (m_ProxyURL.port),
-					std::bind (&HTTPReqHandler::HandleUpstreamProxyResolved, this, std::placeholders::_1,
+					std::bind (&HTTPReqHandler::HandleUpstreamProxyResolved, self, std::placeholders::_1,
 						std::placeholders::_2,
-						[&] (boost::asio::ip::tcp::endpoint ep)
+						[self] (boost::asio::ip::tcp::endpoint ep)
 						{
-							m_proxysock->async_connect (ep,
-								std::bind (
-									&HTTPReqHandler::HandleUpstreamHTTPProxyConnect, this, std::placeholders::_1));
+							if (!self->m_proxysock) return;
+							self->m_proxysock->async_connect (ep,
+								std::bind (&HTTPReqHandler::HandleUpstreamHTTPProxyConnect, self,
+									std::placeholders::_1));
 						}));
 			}
 		}
@@ -658,13 +706,16 @@ namespace proxy
 		{
 			/* handle upstream socks proxy */
 			if (!m_ProxyURL.port) m_ProxyURL.port = 9050; // default to tor default if not specified
+			auto self = shared_from_this ();
 			m_proxy_resolver.async_resolve (m_ProxyURL.host, std::to_string (m_ProxyURL.port),
-				std::bind (&HTTPReqHandler::HandleUpstreamProxyResolved, this, std::placeholders::_1,
+				std::bind (&HTTPReqHandler::HandleUpstreamProxyResolved, self, std::placeholders::_1,
 					std::placeholders::_2,
-					[&] (boost::asio::ip::tcp::endpoint ep)
+					[self] (boost::asio::ip::tcp::endpoint ep)
 					{
-						m_proxysock->async_connect (ep,
-							std::bind (&HTTPReqHandler::HandleUpstreamSocksProxyConnect, this, std::placeholders::_1));
+						if (!self->m_proxysock) return;
+						self->m_proxysock->async_connect (ep,
+							std::bind (&HTTPReqHandler::HandleUpstreamSocksProxyConnect, self,
+								std::placeholders::_1));
 					}));
 		}
 		else
@@ -679,7 +730,7 @@ namespace proxy
 	{
 		if (ec)
 			GenericProxyError (tr ("Cannot resolve upstream proxy"), ec.message ());
-		else
+		else if (endpoints.begin () != endpoints.end () && handler)
 			handler (*endpoints.begin ());
 	}
 
@@ -687,6 +738,11 @@ namespace proxy
 	{
 		if (!ec)
 		{
+			if (!m_proxysock)
+			{
+				Terminate ();
+				return;
+			}
 			if (m_RequestURL.host.size () > 255)
 			{
 				GenericProxyError (tr ("Hostname is too long"), m_RequestURL.host);
@@ -717,6 +773,12 @@ namespace proxy
 		if (!owner)
 		{
 			Terminate ();
+			return;
+		}
+		if (!m_proxysock || !m_sock)
+		{
+			LogPrint (eLogError, "HTTPProxy: Cannot hand over, a socket is already closed");
+			GenericProxyError (tr ("SOCKS proxy error"), tr ("Connection closed during handover"));
 			return;
 		}
 		auto connection = CreateSocketsPipe (owner, m_proxysock, m_sock);
@@ -755,6 +817,7 @@ namespace proxy
 				auto owner = GetOwner ();
 				if (!owner)
 				{
+					stream->AsyncClose ();
 					Terminate ();
 					return;
 				}
@@ -770,35 +833,51 @@ namespace proxy
 		else
 		{
 			GenericProxyError (tr ("CONNECT error"), tr ("Failed to connect"));
+			// The error response keeps its own handler reference; release the
+			// owner's accounting entry now instead of waiting for the write.
+			Done (shared_from_this ());
 		}
 	}
 
 	void HTTPReqHandler::SocksProxySuccess ()
 	{
+		// Capture a strong reference instead of binding [&]: the asynchronous
+		// write may complete after this stack frame is gone.
+		auto self = shared_from_this ();
 		if (m_ClientRequest.method == "CONNECT")
 		{
+			if (!m_sock)
+			{
+				self->Terminate ();
+				return;
+			}
 			m_ClientResponse.code = 200;
 			m_send_buf = m_ClientResponse.to_string ();
 			boost::asio::async_write (*m_sock, boost::asio::buffer (m_send_buf), boost::asio::transfer_all (),
-				[&] (const boost::system::error_code & ec, std::size_t transferred)
+				[self] (const boost::system::error_code & ec, std::size_t)
 				{
 					if (ec)
-						GenericProxyError (tr ("SOCKS proxy error"), ec.message ());
+						self->GenericProxyError (tr ("SOCKS proxy error"), ec.message ());
 					else
-						HandoverToUpstreamProxy ();
+						self->HandoverToUpstreamProxy ();
 				});
 		}
 		else
 		{
+			if (!m_proxysock)
+			{
+				self->Terminate ();
+				return;
+			}
 			m_send_buf = m_ClientRequestBuffer.str ();
 			LogPrint (eLogDebug, "HTTPProxy: Send ", m_send_buf.size (), " bytes");
 			boost::asio::async_write (*m_proxysock, boost::asio::buffer (m_send_buf), boost::asio::transfer_all (),
-				[&] (const boost::system::error_code & ec, std::size_t transferred)
+				[self] (const boost::system::error_code & ec, std::size_t)
 				{
 					if (ec)
-						GenericProxyError (tr ("Failed to send request to upstream"), ec.message ());
+						self->GenericProxyError (tr ("Failed to send request to upstream"), ec.message ());
 					else
-						HandoverToUpstreamProxy ();
+						self->HandoverToUpstreamProxy ();
 				});
 		}
 	}
@@ -826,6 +905,19 @@ namespace proxy
 			return;
 		}
 
+		// Invariant: a previous HandleRequest() that saw the end of headers
+		// either consumed the request (m_recv_buf cleared) or stopped reading.
+		// Whenever this callback runs, m_recv_buf therefore holds at most an
+		// incomplete header, and the ceiling is checked before every append.
+		if (HTTPProxyHeaderLimitExceeded (m_recv_buf.size (), len))
+		{
+			LogPrint (eLogWarning, "HTTPProxy: Request header exceeds ", HTTP_PROXY_MAX_HEADER_SIZE,
+				" bytes, dropping connection");
+			m_recv_buf.clear ();
+			GenericProxyError (tr ("Request too large"), tr ("HTTP request header is too large"));
+			return;
+		}
+
 		m_recv_buf.append (reinterpret_cast<const char *> (m_recv_chunk), len);
 		if (HandleRequest ())
 		{
@@ -847,22 +939,52 @@ namespace proxy
 		{
 			LogPrint (
 				eLogError, "HTTPProxy: Error when creating the stream, check the previous warnings for more info");
+			if (Kill ())
+			{
+				// Another completion already killed the handler (the owner
+				// either removed it or is clearing its set). Still close the
+				// sockets instead of depending on an error write that may
+				// never run for an already-gone client.
+				CloseSockets ();
+				return;
+			}
 			GenericProxyError (tr ("Host is down"),
 				tr ("Can't create connection to requested host, it may be down. Please try again later."));
+			// The error response keeps its own reference to this handler.
+			// Release the owner's reference now so request accounting does
+			// not depend on the async write ever completing.
+			Done (shared_from_this ());
 			return;
 		}
-		if (Kill ()) return;
+		if (Kill ())
+		{
+			stream->AsyncClose ();
+			CloseSockets ();
+			return;
+		}
 		LogPrint (eLogDebug, "HTTPProxy: Created new I2PTunnel stream, sSID=", stream->GetSendStreamID (),
 			", rSID=", stream->GetRecvStreamID ());
 		auto owner = GetOwner ();
 		if (!owner)
 		{
+			stream->AsyncClose ();
+			CloseSockets ();
+			Done (shared_from_this ());
+			return;
+		}
+		if (!m_sock)
+		{
+			stream->AsyncClose ();
+			CloseSockets ();
 			Done (shared_from_this ());
 			return;
 		}
 		auto connection = std::make_shared<i2p::client::I2PClientTunnelConnectionHTTP> (owner, m_sock, stream);
 		owner->AddHandler (connection);
 		connection->I2PConnect (reinterpret_cast<const uint8_t *> (m_send_buf.data ()), m_send_buf.length ());
+		// Ownership of the client socket is handed to the tunnel connection.
+		// Do not close it from this handler's destructor.
+		m_sock = nullptr;
 		Done (shared_from_this ());
 	}
 

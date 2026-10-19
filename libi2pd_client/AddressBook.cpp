@@ -10,6 +10,8 @@
 
 #include <string.h>
 #include <inttypes.h>
+#include <algorithm>
+#include <cctype>
 #include <string>
 #include <unordered_map>
 #include <fstream>
@@ -30,13 +32,8 @@
 #include "BoostStream.h"
 #include "AddressBook.h"
 
-#if STD_FILESYSTEM
 #include <filesystem>
 namespace fs_lib = std::filesystem;
-#else
-#include <boost/filesystem.hpp>
-namespace fs_lib = boost::filesystem;
-#endif
 
 namespace i2p
 {
@@ -391,8 +388,7 @@ namespace client
 	}
 
 	AddressBook::AddressBook ()
-		: m_Storage (nullptr)
-		, m_IsLoaded (false)
+		: m_IsLoaded (false)
 		, m_NumRetries (0)
 		, m_DefaultSubscription (nullptr)
 		, m_SubscriptionsUpdateTimer (nullptr)
@@ -410,7 +406,7 @@ namespace client
 		i2p::config::GetOption ("addressbook.enabled", m_IsEnabled);
 		if (m_IsEnabled)
 		{
-			if (!m_Storage) m_Storage = new AddressBookFilesystemStorage;
+			if (!m_Storage) m_Storage = std::make_unique<AddressBookFilesystemStorage> ();
 			m_Storage->Init ();
 			LoadHosts (); /* try storage, then hosts.txt, then download */
 			StartSubscriptions ();
@@ -465,8 +461,7 @@ namespace client
 		if (m_Storage)
 		{
 			m_Storage->Save (m_Addresses);
-			delete m_Storage;
-			m_Storage = nullptr;
+			m_Storage.reset ();
 		}
 		m_DefaultSubscription = nullptr;
 		m_Subscriptions.clear ();
@@ -474,10 +469,14 @@ namespace client
 
 	std::shared_ptr<const Address> AddressBook::GetAddress (std::string_view address)
 	{
-		auto pos = address.find (".b32.i2p");
-		if (pos != std::string::npos)
+		// Java lowercases the host before the .b32.i2p check, and the suffix
+		// must terminate the address (not merely occur in the middle).
+		std::string lower (address);
+		std::transform (lower.begin (), lower.end (), lower.begin (),
+			[] (unsigned char c) { return static_cast<char> (std::tolower (c)); });
+		if (lower.ends_with (".b32.i2p"))
 		{
-			auto addr = std::make_shared<const Address> (address.substr (0, pos));
+			auto addr = std::make_shared<const Address> (lower.substr (0, lower.size () - 8));
 			return addr->IsValid () ? addr : nullptr;
 		}
 		else if (address.ends_with (".i2p"))
@@ -896,6 +895,14 @@ namespace client
 			auto datagram = dest->GetDatagramDestination ();
 			if (datagram)
 			{
+				// The wire format stores the requested name length in a single
+				// byte, so refuse names that cannot be represented instead of
+				// silently truncating them.
+				if (address.length () > 255)
+				{
+					LogPrint (eLogError, "Addressbook: Lookup name is too long ", address.length ());
+					return;
+				}
 				uint32_t nonce;
 				RAND_bytes ((uint8_t *)&nonce, 4);
 				{
@@ -904,15 +911,15 @@ namespace client
 				}
 				LogPrint (eLogDebug, "Addressbook: Lookup of ", address, " to ", addr->identHash.ToBase32 (),
 					" nonce=", nonce);
-				size_t len = address.length () + 9;
-				uint8_t * buf = new uint8_t[len];
-				memset (buf, 0, 4);
-				htobe32buf (buf + 4, nonce);
-				buf[8] = address.length ();
-				memcpy (buf + 9, address.data (), address.length ());
-				datagram->SendDatagramTo (
-					buf, len, addr->identHash, ADDRESS_RESPONSE_DATAGRAM_PORT, ADDRESS_RESOLVER_DATAGRAM_PORT);
-				delete[] buf;
+				// reserved (4) || nonce (4) || name length (1) || name
+				std::vector<uint8_t> buf (address.length () + 9, 0);
+				htobe32buf (buf.data () + 4, nonce);
+				buf[8] = static_cast<uint8_t> (address.length ());
+				memcpy (buf.data () + 9, address.data (), address.length ());
+				// SendDatagramTo has no span overload; pass the contiguous buffer
+				// explicitly. It copies the payload before buf is destroyed.
+				datagram->SendDatagramTo (buf.data (), buf.size (), addr->identHash,
+					ADDRESS_RESPONSE_DATAGRAM_PORT, ADDRESS_RESOLVER_DATAGRAM_PORT);
 			}
 		}
 	}

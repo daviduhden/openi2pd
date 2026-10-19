@@ -149,7 +149,7 @@ namespace client
 		std::map<i2p::data::IdentHash, std::shared_ptr<AddressResolver>> m_Resolvers; // local destination->resolver
 		std::mutex m_LookupsMutex;
 		std::map<uint32_t, std::string> m_Lookups; // nonce -> address
-		AddressBookStorage * m_Storage;
+		std::unique_ptr<AddressBookStorage> m_Storage;
 		volatile bool m_IsLoaded;
 		std::future<void> m_Downloading;
 		int m_NumRetries;

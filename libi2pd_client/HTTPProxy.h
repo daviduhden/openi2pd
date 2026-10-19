@@ -11,10 +11,31 @@
 #ifndef HTTP_PROXY_H__
 #define HTTP_PROXY_H__
 
+#include <cstddef>
+
 namespace i2p
 {
 namespace proxy
 {
+	/**
+	 * Hard ceiling for an incomplete HTTP request header accumulated from a
+	 * client. It bounds m_recv_buf while the handler is still searching for
+	 * the end of headers. The limit is checked before each append, so a peer
+	 * cannot grow the buffer past it by sending one byte at a time.
+	 */
+	constexpr std::size_t HTTP_PROXY_MAX_HEADER_SIZE = 1024 * 1024; // 1 MiB
+
+	/**
+	 * @return true when appending @a incoming bytes to a header that has no
+	 * end-of-headers marker yet would exceed HTTP_PROXY_MAX_HEADER_SIZE.
+	 * Only call this while the buffered header is still incomplete.
+	 */
+	inline bool HTTPProxyHeaderLimitExceeded (std::size_t buffered, std::size_t incoming) noexcept
+	{
+		if (buffered > HTTP_PROXY_MAX_HEADER_SIZE) return true;
+		return incoming > HTTP_PROXY_MAX_HEADER_SIZE - buffered;
+	}
+
 	class HTTPProxy : public i2p::client::TCPIPAcceptor
 	{
 	public:
