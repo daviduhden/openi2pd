@@ -1,6 +1,12 @@
-# Copyright (c) 2013-2026, The PurpleI2P Project
-# Copyright (c) 2026, David Uhden Collado
-# SPDX-License-Identifier: BSD-3-Clause
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: CMakeLists.txt.
+#
+# Registers the C++ tests plus interoperability and static build-system checks
+# as CTest targets, labelled by unit, torrent, IPC, TUI and security groups.
+#
+
 enable_testing()
 
 function(i2pd_add_test name)
@@ -84,6 +90,7 @@ set(I2PD_TESTS
   test-blinding
   test-elligator
   test-eddsa
+  test-siphash
   test-aes
   test-tui-protocol
   test-tui-terminal
@@ -187,10 +194,10 @@ foreach(test IN LISTS I2PD_TESTS)
   if(test MATCHES "bounds|audit|hardening|security|race|concurrency|lifecycle|sandbox|policy")
     set_property(TEST ${test} APPEND PROPERTY LABELS memory)
   endif()
-  if(test MATCHES "^test-(http|base-64|gost|aead|blinding|elligator|eddsa|aes|ntcp2|ssu2|protocol|netdb|leaseset|routerinfo|routercontext|kad|addressbook|datagram|streaming|timestamp|ntp|i2cp|sam|clientcontext|log|tunnel)")
+  if(test MATCHES "^test-(http|base-64|gost|aead|blinding|elligator|eddsa|siphash|aes|ntcp2|ssu2|protocol|netdb|leaseset|routerinfo|routercontext|kad|addressbook|datagram|streaming|timestamp|ntp|i2cp|sam|clientcontext|log|tunnel)")
     set_property(TEST ${test} APPEND PROPERTY LABELS i2p)
   endif()
-  if(test MATCHES "leaseset|routerinfo-java213")
+  if(test MATCHES "leaseset|routerinfo-java213|torrents-(engine-interop|dht-interop|comments|magnet)")
     set_property(TEST ${test} APPEND PROPERTY LABELS interop)
   endif()
   if(test MATCHES "privsep-(linux|openbsd)|tui-win32|privsep-windows")
