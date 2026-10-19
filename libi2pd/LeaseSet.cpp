@@ -9,6 +9,7 @@
 */
 
 #include <string.h>
+#include <algorithm>
 #include "I2PEndian.h"
 #include "Crypto.h"
 #include "PostQuantum.h"
@@ -25,13 +26,83 @@ namespace i2p
 {
 namespace data
 {
+	namespace
+	{
+		// Encryption key types that i2pd can actually use for a LeaseSet2.
+		// Java marks EC_P256/P384/P521 unavailable (EncType.isAvailable() is
+		// false for every EncAlgo::EC placeholder), and i2pd routes every
+		// non-ratchet type through ElGamal/AES. Selecting a reserved EC type
+		// would therefore create a session whose 514-byte ElGamal block is
+		// produced by a P256 or unknown encryptor. Keep the sections for
+		// IsEncryptionKey(), but never make one the active encryptor.
+		bool IsSelectableLS2EncryptionKeyType (CryptoKeyType keyType)
+		{
+			switch (keyType)
+			{
+			case CRYPTO_KEY_TYPE_ELGAMAL:
+			case CRYPTO_KEY_TYPE_ECIES_X25519_AEAD: return true;
+#if OPENSSL_PQ
+			case CRYPTO_KEY_TYPE_ECIES_MLKEM512_X25519_AEAD:
+			case CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD:
+			case CRYPTO_KEY_TYPE_ECIES_MLKEM1024_X25519_AEAD: return i2p::crypto::IsMLKEMSupported (keyType);
+#endif
+			default: return false;
+			}
+		}
+
+		// Java EncType.EC_P256 (code 1) carries a 64-byte uncompressed point
+		// on the wire. GetCryptoPublicKeyLen() reports 256 for this type only
+		// to keep the legacy 256-byte key file layout; LS2 uses the wire size.
+		size_t GetLS2PublicKeyLen (CryptoKeyType keyType)
+		{
+			switch (keyType)
+			{
+			case CRYPTO_KEY_TYPE_ECIES_P256_SHA256_AES256CBC: return 64;
+			// Proposal 145 / common structures: P384 and P521 are reserved
+			// wire types with explicit lengths even though they have no
+			// encryptor here. Without these cases a section of that type is
+			// stored with a zero length and cannot be compared by
+			// IsEncryptionKey().
+			case 2: return 96; // EC_P384
+			case 3: return 132; // EC_P521
+			default: return i2p::crypto::GetCryptoPublicKeyLen (keyType);
+			}
+		}
+
+		// Mapping::FromBuffer() tolerates a malformed or duplicate entry and
+		// returns the declared size anyway. Java's DataHelper.readProperties()
+		// throws DataFormatException for both, so validate before populating.
+		bool ReadProperties (const uint8_t * buf, size_t len, uint16_t size, i2p::util::Mapping & mapping)
+		{
+			if (!size) return true;
+			if (len < (size_t)size + 2) return false;
+			size_t offset = 2, end = (size_t)size + 2;
+			while (offset < end)
+			{
+				uint8_t keyLen = buf[offset++];
+				if (keyLen > end - offset) return false;
+				auto key = std::string_view (reinterpret_cast<const char *> (buf + offset), keyLen);
+				offset += keyLen;
+				if (offset >= end || buf[offset] != '=') return false;
+				offset++;
+				if (offset >= end) return false;
+				uint8_t valueLen = buf[offset++];
+				if (valueLen > end - offset) return false;
+				auto value = std::string_view (reinterpret_cast<const char *> (buf + offset), valueLen);
+				offset += valueLen;
+				if (offset >= end || buf[offset] != ';') return false;
+				offset++;
+				if (!mapping.Insert (key, value)) return false; // duplicate key
+			}
+			return offset == end;
+		}
+	}
+
 	LeaseSet::LeaseSet (bool storeLeases)
 		: m_IsValid (false)
 		, m_IsIncompatibleCrypto (false)
 		, m_StoreLeases (storeLeases)
 		, m_ExpirationTime (0)
-		, m_EncryptionKey (nullptr)
-		, m_Buffer (nullptr)
 		, m_BufferLen (0)
 	{
 	}
@@ -41,10 +112,9 @@ namespace data
 		, m_IsIncompatibleCrypto (false)
 		, m_StoreLeases (storeLeases)
 		, m_ExpirationTime (0)
-		, m_EncryptionKey (nullptr)
 	{
-		m_Buffer = new uint8_t[len];
-		memcpy (m_Buffer, buf, len);
+		m_Buffer = std::make_unique<uint8_t[]> (len);
+		if (len) memcpy (m_Buffer.get (), buf, len);
 		m_BufferLen = len;
 		ReadFromBuffer ();
 	}
@@ -64,10 +134,11 @@ namespace data
 
 	void LeaseSet::ReadFromBuffer (bool readIdentity, bool verifySignature)
 	{
-		// Reused objects must not keep a previous valid flag if this buffer is
-		// malformed; every successful path sets it again below.
+		// Reused objects must not keep a previous valid flag or lease date if
+		// this buffer is malformed; every successful path sets them again.
 		m_IsValid = false;
-		if (readIdentity || !m_Identity) m_Identity = netdb.NewIdentity (m_Buffer, m_BufferLen);
+		m_EarliestLeaseDate = 0;
+		if (readIdentity || !m_Identity) m_Identity = netdb.NewIdentity (m_Buffer.get (), m_BufferLen);
 		if (!m_Identity)
 		{
 			LogPrint (eLogError, "LeaseSet: Can't read identity");
@@ -82,8 +153,8 @@ namespace data
 		}
 		if (m_StoreLeases)
 		{
-			if (!m_EncryptionKey) m_EncryptionKey = new uint8_t[256];
-			memcpy (m_EncryptionKey, m_Buffer + size, 256);
+			if (!m_EncryptionKey) m_EncryptionKey = std::make_unique<uint8_t[]> (256);
+			memcpy (m_EncryptionKey.get (), m_Buffer.get () + size, 256);
 		}
 		size += 256; // encryption key
 		size += m_Identity->GetSigningPublicKeyLen (); // unused signing key
@@ -109,11 +180,36 @@ namespace data
 			return;
 		}
 
+		// KademliaNetworkDatabaseFacade.validate() rejects a lease set whose
+		// earliest lease is more than 10 minutes old and whose latest lease is
+		// more than CLOCK_FUDGE + MAX_LEASE_FUTURE ahead. Do this before
+		// changing any stored leases so a forged far-future LS1 cannot occupy
+		// a netDb entry indefinitely.
+		auto ts = i2p::util::GetMillisecondsSinceEpoch ();
+		const uint8_t * leases = m_Buffer.get () + size;
+		uint64_t earliestLease = UINT64_MAX;
+		for (int i = 0; i < num; i++)
+		{
+			auto endDate = bufbe64toh (leases + i * LEASE_SIZE + 36);
+			if (endDate > ts + LEASESET_MAX_LEASE_FUTURE + LEASESET2_CLOCK_FUDGE)
+			{
+				LogPrint (eLogWarning, "LeaseSet: Lease end date is too far in the future ", endDate);
+				m_IsValid = false;
+				return;
+			}
+			if (endDate < earliestLease) earliestLease = endDate;
+		}
+		if (earliestLease + LEASESET_MAX_LEASE_AGE <= ts)
+		{
+			LogPrint (eLogWarning, "LeaseSet: Earliest lease is too old ", earliestLease);
+			m_IsValid = false;
+			return;
+		}
+		m_EarliestLeaseDate = earliestLease;
+
 		UpdateLeasesBegin ();
 		// process leases
 		m_ExpirationTime = 0;
-		auto ts = i2p::util::GetMillisecondsSinceEpoch ();
-		const uint8_t * leases = m_Buffer + size;
 		for (int i = 0; i < num; i++)
 		{
 			Lease lease;
@@ -138,13 +234,13 @@ namespace data
 		// verify
 		if (verifySignature)
 		{
-			auto signedSize = leases - m_Buffer;
+			auto signedSize = leases - m_Buffer.get ();
 			if (signedSize + m_Identity->GetSignatureLen () > m_BufferLen)
 			{
 				LogPrint (eLogError, "LeaseSet: Signature exceeds buffer size ", int (m_BufferLen));
 				m_IsValid = false;
 			}
-			else if (!m_Identity->Verify (m_Buffer, signedSize, leases))
+			else if (!m_Identity->Verify (m_Buffer.get (), signedSize, leases))
 			{
 				LogPrint (eLogWarning, "LeaseSet: Verification failed");
 				m_IsValid = false;
@@ -197,7 +293,7 @@ namespace data
 
 	uint64_t LeaseSet::ExtractExpirationTimestamp (const uint8_t * buf, size_t len) const
 	{
-		if (!m_Identity) return 0;
+		if (!buf || !len || !m_Identity) return 0;
 		size_t size = m_Identity->GetFullLen ();
 		if (size > len) return 0;
 		size += 256; // encryption key
@@ -219,7 +315,7 @@ namespace data
 
 	bool LeaseSet::IsNewer (const uint8_t * buf, size_t len) const
 	{
-		return ExtractExpirationTimestamp (buf, len) > ExtractExpirationTimestamp (m_Buffer, m_BufferLen);
+		return ExtractExpirationTimestamp (buf, len) > ExtractExpirationTimestamp (m_Buffer.get (), m_BufferLen);
 	}
 
 	bool LeaseSet::ExpiresSoon (const uint64_t dlt, const uint64_t fudge) const
@@ -271,8 +367,8 @@ namespace data
 
 	void LeaseSet::Encrypt (const uint8_t * data, uint8_t * encrypted) const
 	{
-		if (!m_EncryptionKey || !data || !encrypted) return;
-		auto encryptor = m_Identity->CreateEncryptor (m_EncryptionKey);
+		if (!m_Identity || !m_EncryptionKey || !data || !encrypted) return;
+		auto encryptor = m_Identity->CreateEncryptor (m_EncryptionKey.get ());
 		if (encryptor) encryptor->Encrypt (data, encrypted);
 	}
 
@@ -285,12 +381,11 @@ namespace data
 		}
 		if (m_Buffer && len > m_BufferLen)
 		{
-			delete[] m_Buffer;
-			m_Buffer = nullptr;
+			m_Buffer.reset ();
 		}
-		if (!m_Buffer) m_Buffer = new uint8_t[len];
+		if (!m_Buffer) m_Buffer = std::make_unique<uint8_t[]> (len);
 		m_BufferLen = len;
-		memcpy (m_Buffer, buf, len);
+		if (len) memcpy (m_Buffer.get (), buf, len);
 	}
 
 	void LeaseSet::SetBufferLen (size_t len)
@@ -311,9 +406,9 @@ namespace data
 	{
 		SetBuffer (buf, len);
 		if (storeType == NETDB_STORE_TYPE_ENCRYPTED_LEASESET2)
-			ReadFromBufferEncrypted (buf, len, nullptr, dest, nullptr);
+			ReadFromBufferEncrypted (GetBuffer (), GetBufferLen (), nullptr, dest, nullptr);
 		else
-			ReadFromBuffer (buf, len, dest);
+			ReadFromBuffer (GetBuffer (), GetBufferLen (), dest);
 	}
 
 	LeaseSet2::LeaseSet2 (const uint8_t * buf, size_t len, std::shared_ptr<const BlindedPublicKey> key,
@@ -323,7 +418,8 @@ namespace data
 		, m_EncryptionType (0)
 		, m_PreferredEncryptionType (preferredCrypto)
 	{
-		ReadFromBufferEncrypted (buf, len, key, dest, secret);
+		SetBuffer (buf, len);
+		ReadFromBufferEncrypted (GetBuffer (), GetBufferLen (), key, dest, secret);
 	}
 
 	void LeaseSet2::Update (
@@ -331,8 +427,12 @@ namespace data
 	{
 		SetBuffer (buf, len);
 		if (GetStoreType () != NETDB_STORE_TYPE_ENCRYPTED_LEASESET2)
-			ReadFromBuffer (buf, len, dest, false, verifySignature);
-		// TODO: implement encrypted
+			ReadFromBuffer (GetBuffer (), GetBufferLen (), dest, false, verifySignature);
+		else
+			// A floodfill cannot decrypt type 5 and has no secret/blinded key
+			// here. Validate and keep the outer layer instead of leaving the
+			// previous buffer's validity and leases in place.
+			ReadFromBufferEncrypted (GetBuffer (), GetBufferLen (), nullptr, dest, nullptr);
 	}
 
 	bool LeaseSet2::IsNewer (const uint8_t * buf, size_t len) const
@@ -353,6 +453,7 @@ namespace data
 		m_EncryptionType = 0;
 		m_Encryptor = nullptr;
 		SetIsIncompatibleCrypto (false);
+		SetEarliestLeaseDate (0);
 		m_EncryptionKeys.clear ();
 		m_Properties.CleanUp ();
 
@@ -372,7 +473,7 @@ namespace data
 		offset += 4; // published timestamp (seconds)
 		uint16_t expires = bufbe16toh (buf + offset);
 		offset += 2; // expires (seconds)
-		SetExpirationTime ((m_PublishedTimestamp + expires) * 1000LL); // in milliseconds
+		SetExpirationTime ((static_cast<uint64_t> (m_PublishedTimestamp) + expires) * 1000LL); // in milliseconds
 		uint16_t flags = bufbe16toh (buf + offset);
 		offset += 2; // flags
 		if (flags & LEASESET2_FLAG_OFFLINE_KEYS)
@@ -386,28 +487,35 @@ namespace data
 			}
 		}
 		if (flags & LEASESET2_FLAG_UNPUBLISHED_LEASESET) m_IsPublic = false;
-		if (flags & LEASESET2_FLAG_PUBLISHED_ENCRYPTED)
-		{
-			m_IsPublishedEncrypted = true;
-			m_IsPublic = true;
-		}
+		// 0x04 (Java FLAG_BLINDED) only says that a future publication of
+		// this unencrypted LS2 will be blinded/encrypted. It must not clear
+		// the UNPUBLISHED flag: Java's getReceivedAsPublished() is
+		// super && !isUnpublished(), so a 0x06 LS2 stays unpublished.
+		if (flags & LEASESET2_FLAG_PUBLISHED_ENCRYPTED) m_IsPublishedEncrypted = true;
 		// type specific part. Type 7 (Meta LS2) shares the standard LS2
 		// header but has MetaLease entries (proposal 123, MetaLeaseSet.java).
 		size_t s = 0;
 		switch (m_StoreType)
 		{
-			case NETDB_STORE_TYPE_STANDARD_LEASESET2:
-				s = ReadStandardLS2TypeSpecificPart (buf + offset, len - offset, dest);
-				break;
-			case NETDB_STORE_TYPE_META_LEASESET2:
-				s = ReadMetaLS2TypeSpecificPart (buf + offset, len - offset);
-				break;
-			default:
-				LogPrint (eLogWarning, "LeaseSet2: Store type ", (int)m_StoreType, " is not supported");
-				return;
+		case NETDB_STORE_TYPE_STANDARD_LEASESET2:
+			s = ReadStandardLS2TypeSpecificPart (buf + offset, len - offset, dest);
+			break;
+		case NETDB_STORE_TYPE_META_LEASESET2: s = ReadMetaLS2TypeSpecificPart (buf + offset, len - offset); break;
+		default: LogPrint (eLogWarning, "LeaseSet2: Store type ", (int)m_StoreType, " is not supported"); return;
 		}
 		if (!s) return;
 		offset += s;
+		// The signature is part of the structure even when the caller already
+		// verified it (Update/PopulateLeases). Reject a truncated trailing
+		// signature before marking the object valid.
+		auto signatureLen
+			= m_TransientVerifier ? m_TransientVerifier->GetSignatureLen () : identity->GetSignatureLen ();
+		if (offset > len || signatureLen > len - offset)
+		{
+			LogPrint (eLogWarning, "LeaseSet2: short buffer: wanted ", int (offset + signatureLen), " bytes, have ",
+				int (len));
+			return;
+		}
 		if (verifySignature || m_TransientVerifier)
 		{
 			// verify signature
@@ -417,25 +525,24 @@ namespace data
 		}
 		else
 			SetIsValid (true);
-		offset += m_TransientVerifier ? m_TransientVerifier->GetSignatureLen () : identity->GetSignatureLen ();
-		if (offset > len)
-		{
-			LogPrint (eLogWarning, "LeaseSet2: short buffer: wanted ", int (offset), "bytes, have ", int (len));
-			return;
-		}
+		offset += signatureLen;
 		SetBufferLen (offset);
 	}
 
 	template <typename Verifier>
 	bool LeaseSet2::VerifySignature (Verifier & verifier, const uint8_t * buf, size_t len, size_t signatureOffset)
 	{
-		if (signatureOffset + verifier->GetSignatureLen () > len) return false;
-		// we assume buf inside DatabaseStore message, so buf[-1] is valid memory
-		// change it for signature verification, and restore back
-		uint8_t c = buf[-1];
-		const_cast<uint8_t *> (buf)[-1] = m_StoreType;
-		bool verified = verifier->Verify (buf - 1, signatureOffset + 1, buf + signatureOffset);
-		const_cast<uint8_t *> (buf)[-1] = c;
+		auto signatureLen = verifier->GetSignatureLen ();
+		if (signatureOffset > len || signatureLen > len - signatureOffset) return false;
+		// The signed data is the canonical store type followed by the buffer.
+		// Do not write buf[-1]: callers may pass a buffer that has no preceding
+		// byte (for example the inner layer extracted from I2CP) and the
+		// previous implementation performed an out-of-bounds store.
+		std::vector<uint8_t> signedData;
+		signedData.reserve (signatureOffset + 1);
+		signedData.push_back (m_StoreType);
+		signedData.insert (signedData.end (), buf, buf + signatureOffset);
+		bool verified = verifier->Verify (signedData.data (), signedData.size (), buf + signatureOffset);
 		if (!verified) LogPrint (eLogWarning, "LeaseSet2: Verification failed");
 		return verified;
 	}
@@ -448,7 +555,7 @@ namespace data
 		if (offset + 2 > len) return 0;
 		uint16_t propertiesLen = bufbe16toh (buf + offset);
 		if (propertiesLen > len - offset - 2) return 0;
-		if (propertiesLen) m_Properties.FromBuffer (buf + offset, len - offset);
+		if (!ReadProperties (buf + offset, len - offset, propertiesLen, m_Properties)) return 0;
 		offset += propertiesLen + 2;
 		// key sections (LeaseSet2.java rejects 0 or more than MAX_KEYS)
 		CryptoKeyType newEncryptionType = 0;
@@ -462,6 +569,7 @@ namespace data
 			LogPrint (eLogWarning, "LeaseSet2: Bad key count ", numKeySections);
 			return 0;
 		}
+		m_EncryptionKeys.reserve (numKeySections);
 		for (int i = 0; i < numKeySections; i++)
 		{
 			if (offset + 4 > len) return 0;
@@ -470,33 +578,43 @@ namespace data
 			uint16_t encryptionKeyLen = bufbe16toh (buf + offset);
 			offset += 2;
 			if (offset + encryptionKeyLen > len) return 0;
-			auto expectedKeyLen = i2p::crypto::GetCryptoPublicKeyLen (keyType);
-			// Keep the explicit wire length. GetCryptoPublicKeyLen() uses 256
-			// for EC_P256 for legacy key-file compatibility, while LS2 carries
-			// the 64-byte wire key (EncType.EC_P256 in Java I2P).
-			if (expectedKeyLen && expectedKeyLen == encryptionKeyLen)
-				m_EncryptionKeys[keyType] = std::vector<uint8_t> (buf + offset, buf + offset + encryptionKeyLen);
-			if (IsStoreLeases () && !preferredKeyFound && // create encryptor with leases only
-				i2p::crypto::GetCryptoPublicKeyLen (keyType)
-					== encryptionKeyLen) // key length mismatch or unknown key type
+			// LeaseSet2.java carries the explicit encLen on the wire. Use the
+			// LS2 wire length (EC_P256 is 64 bytes), not the legacy key-file
+			// size, so valid EC_P256 sections are not discarded.
+			auto expectedKeyLen = GetLS2PublicKeyLen (keyType);
+			if (expectedKeyLen && expectedKeyLen != encryptionKeyLen)
 			{
-				// we pick max key type if preferred not found
-#if OPENSSL_PQ
-				if (keyType <= i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD || i2p::crypto::IsMLKEMSupported (keyType))
-#else
-				if (keyType <= i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD) // skip PQ keys if not supported
-#endif
+				// Java PublicKey(type, data) rejects a known key type whose
+				// explicit length does not match the type. Silently skipping
+				// it used to make a malformed section part of a valid LS2.
+				LogPrint (eLogWarning, "LeaseSet2: Key type ", keyType, " has length ", encryptionKeyLen, ", expected ",
+					expectedKeyLen);
+				return 0;
+			}
+			if (expectedKeyLen)
+			{
+				// Preserve every section in wire order. Java keeps a List and
+				// does not reject a repeated type; overwriting an earlier entry
+				// would make IsEncryptionKey() reject a key the publisher (and
+				// the peer's ratchet) actually advertised.
+				m_EncryptionKeys.push_back (
+					{ keyType, std::vector<uint8_t> (buf + offset, buf + offset + encryptionKeyLen) });
+			}
+			if (IsStoreLeases () && !preferredKeyFound && expectedKeyLen && // create encryptor with leases only
+				IsSelectableLS2EncryptionKeyType (keyType) && (!dest || dest->SupportsEncryptionType (keyType)))
+			{
+				// Prefer the locally configured type (or the type the peer's
+				// ratchet session selected), otherwise keep the first
+				// supported key in the publisher's preference order without
+				// advancing (proposal 123, "Encryption Key Preference").
+				if (!newEncryptor || keyType == m_PreferredEncryptionType)
 				{
-					if ((keyType == m_PreferredEncryptionType || !newEncryptor || keyType > newEncryptionType)
-						&& (!dest || dest->SupportsEncryptionType (keyType)))
+					auto encryptor = i2p::data::IdentityEx::CreateEncryptor (keyType, buf + offset);
+					if (encryptor)
 					{
-						auto encryptor = i2p::data::IdentityEx::CreateEncryptor (keyType, buf + offset);
-						if (encryptor)
-						{
-							newEncryptor = encryptor;
-							newEncryptionType = keyType;
-							if (keyType == m_PreferredEncryptionType) preferredKeyFound = true;
-						}
+						newEncryptor = encryptor;
+						newEncryptionType = keyType;
+						preferredKeyFound = keyType == m_PreferredEncryptionType;
 					}
 				}
 			}
@@ -519,13 +637,17 @@ namespace data
 		if (offset + 1 > len) return 0;
 		int numLeases = buf[offset];
 		offset++;
-		if (numLeases > MAX_NUM_LEASES)
+		if (numLeases <= 0 || numLeases > MAX_NUM_LEASES)
 		{
-			LogPrint (eLogWarning, "LeaseSet2: Too many leases ", numLeases);
+			LogPrint (eLogWarning, "LeaseSet2: Bad lease count ", numLeases);
 			return 0;
 		}
+		if ((size_t)numLeases * LEASE2_SIZE > len - offset) return 0;
 		auto ts = i2p::util::GetMillisecondsSinceEpoch ();
-		if (GetExpirationTime () > ts + LEASESET_EXPIRATION_TIME_THRESHOLD)
+		// KademliaNetworkDatabaseFacade.MAX_LEASE_FUTURE plus clock fudge.
+		// The old 12-minute check rejected valid LS2s from peers whose clock
+		// was a few minutes fast.
+		if (GetExpirationTime () > ts + LEASESET_MAX_LEASE_FUTURE + LEASESET2_CLOCK_FUDGE)
 		{
 			LogPrint (eLogWarning, "LeaseSet2: Expiration time is from future ", GetExpirationTime () / 1000LL);
 			return 0;
@@ -536,16 +658,36 @@ namespace data
 			LogPrint (eLogWarning, "LeaseSet2: Expiration time is in the past ", GetExpirationTime () / 1000LL);
 			return 0;
 		}
-		if (ts > m_PublishedTimestamp * 1000LL + LEASESET_EXPIRATION_TIME_THRESHOLD)
-		{
-			LogPrint (eLogWarning, "LeaseSet2: Published time is too old ", m_PublishedTimestamp);
-			return 0;
-		}
-		if (IsStoreLeases ()) UpdateLeasesBegin ();
-		bool hasCurrentLease = false;
+		// Java validates the individual leases, not the published timestamp,
+		// for a standard LS2: earliest > now - 10 min, latest > now - fudge,
+		// latest <= now + CLOCK_FUDGE + MAX_LEASE_FUTURE. A stale published
+		// timestamp with current leases is therefore still valid.
+		uint64_t earliestLease = UINT64_MAX, latestLease = 0;
 		for (int i = 0; i < numLeases; i++)
 		{
-			if (offset + LEASE2_SIZE > len) return 0;
+			uint64_t endDate = static_cast<uint64_t> (bufbe32toh (buf + offset + i * LEASE2_SIZE + 36)) * 1000LL;
+			if (endDate > ts + LEASESET_MAX_LEASE_FUTURE + LEASESET2_CLOCK_FUDGE)
+			{
+				LogPrint (eLogWarning, "LeaseSet2: Lease end date is from future ", endDate);
+				return 0;
+			}
+			if (endDate < earliestLease) earliestLease = endDate;
+			if (endDate > latestLease) latestLease = endDate;
+		}
+		if (earliestLease + LEASESET_MAX_LEASE_AGE <= ts)
+		{
+			LogPrint (eLogWarning, "LeaseSet2: Earliest lease is too old ", earliestLease);
+			return 0;
+		}
+		if (latestLease + LEASESET2_CLOCK_FUDGE <= ts)
+		{
+			LogPrint (eLogWarning, "LeaseSet2: All leases are expired");
+			return 0;
+		}
+		SetEarliestLeaseDate (earliestLease);
+		if (IsStoreLeases ()) UpdateLeasesBegin ();
+		for (int i = 0; i < numLeases; i++)
+		{
 			Lease lease;
 			lease.tunnelGateway = buf + offset;
 			offset += 32; // gateway
@@ -553,18 +695,7 @@ namespace data
 			offset += 4; // tunnel ID
 			lease.endDate = bufbe32toh (buf + offset) * 1000LL;
 			offset += 4; // end date
-			if (lease.endDate > ts + LEASESET_EXPIRATION_TIME_THRESHOLD)
-			{
-				LogPrint (eLogWarning, "LeaseSet2: Lease end date is from future ", lease.endDate);
-				return 0;
-			}
-			if (lease.endDate > ts) hasCurrentLease = true;
 			if (IsStoreLeases ()) UpdateLease (lease, ts);
-		}
-		if (!hasCurrentLease)
-		{
-			LogPrint (eLogWarning, "LeaseSet2: All leases are expired");
-			return 0;
 		}
 		if (IsStoreLeases ()) UpdateLeasesEnd ();
 
@@ -581,59 +712,106 @@ namespace data
 		if (offset + 2 > len) return 0;
 		uint16_t propertiesLen = bufbe16toh (buf + offset);
 		if (propertiesLen > len - offset - 2) return 0;
-		if (propertiesLen) m_Properties.FromBuffer (buf + offset, len - offset);
+		if (!ReadProperties (buf + offset, len - offset, propertiesLen, m_Properties)) return 0;
 		offset += propertiesLen + 2;
 		// entries
 		if (offset + 1 > len) return 0;
 		uint8_t numEntries = buf[offset++];
+		// MetaLeaseSet.readBytes() adds every entry through LeaseSet.addLease(),
+		// which enforces MAX_LEASES (16); a 17th entry throws.
+		if (numEntries > MAX_NUM_LEASES)
+		{
+			LogPrint (eLogWarning, "LeaseSet2: Too many Meta leases ", (int)numEntries);
+			return 0;
+		}
+		if ((size_t)numEntries * META_LEASE_SIZE > len - offset) return 0;
 		auto ts = i2p::util::GetMillisecondsSinceEpoch ();
 		uint64_t expiration = GetExpirationTime ();
 		// Meta LS2 may live for hours (proposal 123: max 18.2 hours).
-		if (expiration <= ts - LEASESET2_CLOCK_FUDGE || expiration > ts + LEASESET2_META_MAX_FUTURE + LEASESET2_CLOCK_FUDGE)
+		if (expiration + LEASESET2_CLOCK_FUDGE <= ts
+			|| expiration > ts + LEASESET2_META_MAX_FUTURE + LEASESET2_CLOCK_FUDGE)
 		{
 			LogPrint (eLogWarning, "LeaseSet2: Meta expiration time is invalid ", expiration / 1000LL);
 			return 0;
 		}
-		if (ts > m_PublishedTimestamp * 1000LL + LEASESET2_META_MAX_PUBLISHED_AGE)
+		if (m_PublishedTimestamp * 1000LL + LEASESET_MAX_LEASE_AGE <= ts)
 		{
 			LogPrint (eLogWarning, "LeaseSet2: Meta published time is too old ", m_PublishedTimestamp);
 			return 0;
 		}
+		if (numEntries == 0)
+		{
+			LogPrint (eLogWarning, "LeaseSet2: Meta LeaseSet has no entries");
+			return 0;
+		}
+		uint64_t earliestEntry = UINT64_MAX, latestEntry = 0;
 		bool hasCurrentEntry = false;
 		for (int i = 0; i < numEntries; i++)
 		{
-			if (offset + META_LEASE_SIZE > len) return 0;
 			const uint8_t * entry = buf + offset;
 			// flags at entry[32..33], type at entry[34], cost at entry[35],
 			// 4-byte expiration at entry[36..39].
 			uint64_t endDate = bufbe32toh (entry + 36) * 1000LL;
-			if (endDate > ts + LEASESET2_META_MAX_FUTURE + LEASESET2_CLOCK_FUDGE)
-			{
-				LogPrint (eLogWarning, "LeaseSet2: Meta lease end date is from future ", endDate);
-				return 0;
-			}
-			if (endDate > ts - LEASESET2_CLOCK_FUDGE) hasCurrentEntry = true;
+			if (endDate < earliestEntry) earliestEntry = endDate;
+			if (endDate > latestEntry) latestEntry = endDate;
+			if (endDate + LEASESET2_CLOCK_FUDGE > ts) hasCurrentEntry = true;
 			offset += META_LEASE_SIZE;
+		}
+		// Java's validate() uses min(earliest entry, published) for the age
+		// check and min(latest entry, header expiration) for freshness. A
+		// child entry may legitimately outlive the header; only the minimum
+		// bounds the MetaLeaseSet itself.
+		if (std::min (latestEntry, expiration) > ts + LEASESET2_META_MAX_FUTURE + LEASESET2_CLOCK_FUDGE)
+		{
+			LogPrint (eLogWarning, "LeaseSet2: Meta latest lease/expiration is from future ",
+				std::min (latestEntry, expiration));
+			return 0;
+		}
+		if (earliestEntry + LEASESET_MAX_LEASE_AGE <= ts)
+		{
+			LogPrint (eLogWarning, "LeaseSet2: Earliest Meta lease is too old ", earliestEntry);
+			return 0;
 		}
 		if (!hasCurrentEntry)
 		{
 			LogPrint (eLogWarning, "LeaseSet2: All Meta leases are expired");
 			return 0;
 		}
+		// Java's MetaLeaseSet derives getEarliestLeaseDate() from its entries,
+		// so cross-type LS1/Meta replacement must compare this value rather
+		// than the zero sentinel used for encrypted outer layers.
+		SetEarliestLeaseDate (earliestEntry);
 		// revocations (validated for length; revocation processing is not
 		// implemented, as in MetaLeaseSet.java where it is also a TODO)
 		if (offset + 1 > len) return 0;
 		uint8_t numRevocations = buf[offset++];
-		if ((size_t) numRevocations * 32 > len - offset) return 0;
-		offset += (size_t) numRevocations * 32;
+		if ((size_t)numRevocations * 32 > len - offset) return 0;
+		offset += (size_t)numRevocations * 32;
 		return offset;
 	}
 
 	void LeaseSet2::ReadFromBufferEncrypted (const uint8_t * buf, size_t len,
 		std::shared_ptr<const BlindedPublicKey> key, std::shared_ptr<LocalDestination> dest, const uint8_t * secret)
 	{
+		// Reused objects (Update) must not keep the previous outer validity,
+		// leases, keys or flags while parsing a new encrypted buffer.
 		SetIsValid (false);
+		UpdateLeasesBegin ();
+		UpdateLeasesEnd ();
+		SetExpirationTime (0);
+		SetIdentity (nullptr); // an encrypted outer layer has no Destination
+		m_StoreType = NETDB_STORE_TYPE_ENCRYPTED_LEASESET2;
+		m_TransientVerifier = nullptr;
 		m_HasStoreHash = false;
+		m_IsPublic = true;
+		m_IsPublishedEncrypted = false;
+		m_EncryptionType = 0;
+		m_Encryptor = nullptr;
+		SetIsIncompatibleCrypto (false);
+		SetEarliestLeaseDate (0);
+		m_EncryptionKeys.clear ();
+		m_Properties.CleanUp ();
+
 		size_t offset = 0;
 		// blinded key
 		if (len < 2) return;
@@ -643,7 +821,7 @@ namespace data
 		std::unique_ptr<i2p::crypto::Verifier> blindedVerifier (i2p::data::IdentityEx::CreateVerifier (blindedKeyType));
 		if (!blindedVerifier) return;
 		auto blindedKeyLen = blindedVerifier->GetPublicKeyLen ();
-		if (offset + blindedKeyLen >= len) return;
+		if (offset + blindedKeyLen > len) return;
 		const uint8_t * blindedPublicKey = buf + offset;
 		blindedVerifier->SetPublicKey (blindedPublicKey);
 		{
@@ -658,15 +836,18 @@ namespace data
 		}
 		offset += blindedKeyLen;
 		// expiration
-		if (offset + 8 >= len) return;
+		if (offset + 8 > len) return;
 		const uint8_t * publishedTimestamp = buf + offset;
 		m_PublishedTimestamp = bufbe32toh (publishedTimestamp);
 		offset += 4; // published timestamp (seconds)
 		uint16_t expires = bufbe16toh (buf + offset);
 		offset += 2; // expires (seconds)
-		SetExpirationTime ((m_PublishedTimestamp + expires) * 1000LL); // in milliseconds
+		SetExpirationTime ((static_cast<uint64_t> (m_PublishedTimestamp) + expires) * 1000LL); // in milliseconds
 		uint16_t flags = bufbe16toh (buf + offset);
 		offset += 2; // flags
+		// Java's getReceivedAsPublished() excludes unpublished entries for
+		// every LS2 type, including encrypted LS2.
+		if (flags & LEASESET2_FLAG_UNPUBLISHED_LEASESET) m_IsPublic = false;
 		if (flags & LEASESET2_FLAG_OFFLINE_KEYS)
 		{
 			// transient key
@@ -681,6 +862,10 @@ namespace data
 		if (offset + 2 > len) return;
 		uint16_t lenOuterCiphertext = bufbe16toh (buf + offset);
 		offset += 2;
+		// EncryptedLeaseSet.MIN_ENCRYPTED_SIZE is 8 + 16 = 24. The layer 1
+		// plaintext still needs a salt and a flag byte, but that is checked
+		// below once the outer signature has been authenticated.
+		if (lenOuterCiphertext < 24 || lenOuterCiphertext > len - offset) return;
 		const uint8_t * outerCiphertext = buf + offset;
 		offset += lenOuterCiphertext;
 		// verify signature
@@ -688,9 +873,17 @@ namespace data
 											: VerifySignature (blindedVerifier, buf, len, offset);
 		SetIsValid (verified);
 		// handle ciphertext
-		if (verified && key && lenOuterCiphertext >= 32)
+		if (verified && key)
 		{
-			SetIsValid (false); // we must verify it again in Layer 2
+			// We must verify the inner LeaseSet again in Layer 2. Once a key
+			// is supplied a too-short ciphertext is malformed, not merely an
+			// outer-only entry that a floodfill would store.
+			SetIsValid (false);
+			if (lenOuterCiphertext < 33) // outerSalt(32) + layer 1 flags(1)
+			{
+				LogPrint (eLogError, "LeaseSet2: Encrypted payload is too short ", lenOuterCiphertext);
+				return;
+			}
 			if (blindedKeyType == key->GetBlindedSigType ())
 			{
 				// verify blinding
@@ -710,6 +903,12 @@ namespace data
 					key->GetBlindedSigType ());
 				return;
 			}
+			// Remember the outer metadata. The inner layer must not make the
+			// object appear newer or valid for longer than the signed outer
+			// expiry that the netDb store rules validated.
+			const uint32_t outerPublishedTimestamp = m_PublishedTimestamp;
+			const uint64_t outerExpirationTime = GetExpirationTime ();
+			const bool outerIsPublic = m_IsPublic;
 			// outer key
 			// outerInput = subcredential || publishedTimestamp
 			uint8_t subcredential[36];
@@ -732,6 +931,11 @@ namespace data
 			uint8_t innerInput[68];
 			size_t authDataLen
 				= ExtractClientAuthData (outerPlainText.data (), lenOuterPlaintext, secret, subcredential, innerInput);
+			if (authDataLen == static_cast<size_t> (-1))
+			{
+				LogPrint (eLogError, "LeaseSet2: Invalid or undecryptable client auth data");
+				return;
+			}
 			if (lenOuterPlaintext
 				< authDataLen + 34) // flag + authData + inner salt + at least one byte of inner plaintext
 			{
@@ -763,6 +967,15 @@ namespace data
 				m_TransientVerifier = nullptr; // Layer 2 has a signer of its own
 				// parse and verify Layer 2
 				ReadFromBuffer (innerPlainText.data () + 1, lenInnerPlaintext - 1, dest);
+				// Keep the outer timestamp/flags for IsNewer/IsPublic and do
+				// not extend the lifetime beyond the signed outer expiry.
+				m_PublishedTimestamp = outerPublishedTimestamp;
+				if (GetExpirationTime () > outerExpirationTime) SetExpirationTime (outerExpirationTime);
+				m_IsPublic = outerIsPublic;
+				// Preserve the inner PUBLISHED_ENCRYPTED bit. Streaming uses
+				// IsPublishedEncrypted() to decide whether a refresh must ask
+				// for the blinded LeaseSet after the decrypted leases expire.
+				// Only the outer public/expiry metadata is authoritative.
 			}
 			else
 				LogPrint (eLogError, "LeaseSet2: Unexpected LeaseSet type ", (int)innerPlainText[0],
@@ -773,6 +986,7 @@ namespace data
 			// we set actual length of encrypted buffer
 			offset
 				+= m_TransientVerifier ? m_TransientVerifier->GetSignatureLen () : blindedVerifier->GetSignatureLen ();
+			if (offset > len) return;
 			SetBufferLen (offset);
 		}
 	}
@@ -798,86 +1012,112 @@ namespace data
 	size_t LeaseSet2::ExtractClientAuthData (const uint8_t * buf, size_t len, const uint8_t * secret,
 		const uint8_t * subcredential, uint8_t * authCookie) const
 	{
-		if (len < 1) return 0;
+		static constexpr size_t AUTH_DATA_FAILED = static_cast<size_t> (-1);
+		if (len < 1) return AUTH_DATA_FAILED;
 		size_t offset = 0;
 		uint8_t flag = buf[offset];
 		offset++; // flag
-		if (flag & 0x01) // client auth
+		// Bits 3-1 describe the auth scheme only when bit 0 is set.
+		uint8_t scheme = flag & 0x0E;
+		if (!(flag & 0x01)) // no per-client auth
+			return scheme ? AUTH_DATA_FAILED : 0;
+		if (scheme == 0x00) // DH
 		{
-			if (!(flag & 0x0E)) // DH, bit 1-3 all zeroes
+			if (offset + 34 > len) // ephemeralPublicKey(32) + numClients(2)
 			{
-				if (offset + 34 > len) // ephemeralPublicKey(32) + numClients(2)
-				{
-					LogPrint (eLogError, "LeaseSet2: Buffer too short for DH auth data header");
-					return 0;
-				}
-				const uint8_t * ephemeralPublicKey = buf + offset;
-				offset += 32; // ephemeralPublicKey
-				uint16_t numClients = bufbe16toh (buf + offset);
-				offset += 2; // clients
-				const uint8_t * authClients = buf + offset;
-				offset += numClients * 40; // authClients
-				if (offset > len)
-				{
-					LogPrint (eLogError, "LeaseSet2: Too many clients ", numClients, " in DH auth data");
-					return 0;
-				}
-				// calculate authCookie
-				if (secret)
-				{
-					i2p::crypto::X25519Keys ck (secret, nullptr); // derive cpk_i from csk_i
-					uint8_t authInput[100];
-					ck.Agree (ephemeralPublicKey, authInput); // sharedSecret is first 32 bytes of authInput
-					memcpy (authInput + 32, ck.GetPublicKey (), 32); // cpk_i
-					memcpy (authInput + 64, subcredential, 36);
-					uint8_t okm[64]; // 52 actual data
-					i2p::crypto::HKDF (ephemeralPublicKey, authInput, 100, "ELS2_XCA", okm);
-					if (!GetAuthCookie (authClients, numClients, okm, authCookie))
-						LogPrint (eLogError, "LeaseSet2: Client cookie DH not found");
-				}
-				else
-					LogPrint (eLogError, "LeaseSet2: Can't calculate authCookie: csk_i is not provided");
+				LogPrint (eLogError, "LeaseSet2: Buffer too short for DH auth data header");
+				return AUTH_DATA_FAILED;
 			}
-			else if (flag & 0x02) // PSK, bit 1 is set to 1
+			const uint8_t * ephemeralPublicKey = buf + offset;
+			offset += 32; // ephemeralPublicKey
+			uint16_t numClients = bufbe16toh (buf + offset);
+			offset += 2; // clients
+			const uint8_t * authClients = buf + offset;
+			offset += (size_t)numClients * 40; // authClients
+			if (offset > len)
 			{
-				if (offset + 34 > len) // authSalt(32) + numClients(2)
-				{
-					LogPrint (eLogError, "LeaseSet2: Buffer too short for PSK auth data header");
-					return 0;
-				}
-				const uint8_t * authSalt = buf + offset;
-				offset += 32; // authSalt
-				uint16_t numClients = bufbe16toh (buf + offset);
-				offset += 2; // clients
-				const uint8_t * authClients = buf + offset;
-				offset += numClients * 40; // authClients
-				if (offset > len)
-				{
-					LogPrint (eLogError, "LeaseSet2: Too many clients ", numClients, " in PSK auth data");
-					return 0;
-				}
-				// calculate authCookie
-				if (secret)
-				{
-					uint8_t authInput[68];
-					memcpy (authInput, secret, 32);
-					memcpy (authInput + 32, subcredential, 36);
-					uint8_t okm[64]; // 52 actual data
-					i2p::crypto::HKDF (authSalt, authInput, 68, "ELS2PSKA", okm);
-					if (!GetAuthCookie (authClients, numClients, okm, authCookie))
-						LogPrint (eLogError, "LeaseSet2: Client cookie PSK not found");
-				}
-				else
-					LogPrint (eLogError, "LeaseSet2: Can't calculate authCookie: psk_i is not provided");
+				LogPrint (eLogError, "LeaseSet2: Too many clients ", numClients, " in DH auth data");
+				return AUTH_DATA_FAILED;
 			}
-			else
-				LogPrint (eLogError, "LeaseSet2: Unknown client auth type ", (int)flag);
+			if (!numClients)
+			{
+				LogPrint (eLogError, "LeaseSet2: DH auth data has no clients");
+				return AUTH_DATA_FAILED;
+			}
+			if (!secret)
+			{
+				// Java throws DataFormatException rather than continuing with
+				// an uninitialised authCookie.
+				LogPrint (eLogError, "LeaseSet2: Can't calculate authCookie: csk_i is not provided");
+				return AUTH_DATA_FAILED;
+			}
+			i2p::crypto::X25519Keys ck (secret, nullptr); // derive cpk_i from csk_i
+			uint8_t authInput[100];
+			if (!ck.Agree (ephemeralPublicKey, authInput)) // sharedSecret is first 32 bytes of authInput
+			{
+				LogPrint (eLogError, "LeaseSet2: DH auth key agreement failed");
+				return AUTH_DATA_FAILED;
+			}
+			memcpy (authInput + 32, ck.GetPublicKey (), 32); // cpk_i
+			memcpy (authInput + 64, subcredential, 36);
+			uint8_t okm[64]; // 52 actual data
+			i2p::crypto::HKDF (ephemeralPublicKey, authInput, 100, "ELS2_XCA", okm);
+			if (!GetAuthCookie (authClients, numClients, okm, authCookie))
+			{
+				LogPrint (eLogError, "LeaseSet2: Client cookie DH not found");
+				return AUTH_DATA_FAILED;
+			}
+		}
+		else if (scheme == 0x02) // PSK
+		{
+			if (offset + 34 > len) // authSalt(32) + numClients(2)
+			{
+				LogPrint (eLogError, "LeaseSet2: Buffer too short for PSK auth data header");
+				return AUTH_DATA_FAILED;
+			}
+			const uint8_t * authSalt = buf + offset;
+			offset += 32; // authSalt
+			uint16_t numClients = bufbe16toh (buf + offset);
+			offset += 2; // clients
+			const uint8_t * authClients = buf + offset;
+			offset += (size_t)numClients * 40; // authClients
+			if (offset > len)
+			{
+				LogPrint (eLogError, "LeaseSet2: Too many clients ", numClients, " in PSK auth data");
+				return AUTH_DATA_FAILED;
+			}
+			if (!numClients)
+			{
+				LogPrint (eLogError, "LeaseSet2: PSK auth data has no clients");
+				return AUTH_DATA_FAILED;
+			}
+			if (!secret)
+			{
+				LogPrint (eLogError, "LeaseSet2: Can't calculate authCookie: psk_i is not provided");
+				return AUTH_DATA_FAILED;
+			}
+			uint8_t authInput[68];
+			memcpy (authInput, secret, 32);
+			memcpy (authInput + 32, subcredential, 36);
+			uint8_t okm[64]; // 52 actual data
+			i2p::crypto::HKDF (authSalt, authInput, 68, "ELS2PSKA", okm);
+			if (!GetAuthCookie (authClients, numClients, okm, authCookie))
+			{
+				LogPrint (eLogError, "LeaseSet2: Client cookie PSK not found");
+				return AUTH_DATA_FAILED;
+			}
+		}
+		else
+		{
+			LogPrint (eLogError, "LeaseSet2: Unknown client auth type ", (int)flag);
+			return AUTH_DATA_FAILED;
 		}
 		return offset - 1;
 	}
 
 	void LeaseSet2::Encrypt (const uint8_t * data, uint8_t * encrypted) const
 	{
+		if (!encrypted) return;
 		auto encryptor = m_Encryptor; // TODO: atomic
 		if (encryptor) encryptor->Encrypt (data, encrypted);
 	}
@@ -885,11 +1125,18 @@ namespace data
 	bool LeaseSet2::IsEncryptionKey (CryptoKeyType type, const uint8_t * key) const
 	{
 		if (!key) return false;
-		auto it = m_EncryptionKeys.find (type);
-		if (it == m_EncryptionKeys.end ()) return false;
-		// Do not assume X25519: ML-KEM and future key types have other lengths.
-		auto keyLen = i2p::crypto::GetCryptoPublicKeyLen (type);
-		return keyLen && it->second.size () == keyLen && !memcmp (it->second.data (), key, keyLen);
+		// Do not assume X25519: ML-KEM and future key types have other
+		// lengths. Compare against the stored LS2 wire key length.
+		auto keyLen = GetLS2PublicKeyLen (type);
+		if (!keyLen) return false;
+		// Every advertised section is kept, including a repeated type. Java's
+		// List may contain the same type twice and either key can be the one
+		// the peer's ratchet selected, so match any section rather than only
+		// the last one.
+		for (const auto & section : m_EncryptionKeys)
+			if (section.type == type && section.key.size () == keyLen && !memcmp (section.key.data (), key, keyLen))
+				return true;
+		return false;
 	}
 
 	bool LeaseSet2::IsStoreKey (const IdentHash & key) const
@@ -908,7 +1155,7 @@ namespace data
 
 	uint64_t LeaseSet2::ExtractPublishedTimestamp (const uint8_t * buf, size_t len, uint64_t & expiration) const
 	{
-		if (len < 8) return 0;
+		if (!buf || len < 8) return 0;
 		if (m_StoreType == NETDB_STORE_TYPE_ENCRYPTED_LEASESET2)
 		{
 			// encrypted LS2
@@ -919,13 +1166,13 @@ namespace data
 				i2p::data::IdentityEx::CreateVerifier (blindedKeyType));
 			if (!blindedVerifier) return 0;
 			auto blindedKeyLen = blindedVerifier->GetPublicKeyLen ();
-			if (offset + blindedKeyLen + 6 >= len) return 0;
+			if (offset + blindedKeyLen + 6 > len) return 0;
 			offset += blindedKeyLen;
 			uint32_t timestamp = bufbe32toh (buf + offset);
 			offset += 4;
 			uint16_t expires = bufbe16toh (buf + offset);
 			offset += 2;
-			expiration = (timestamp + expires) * 1000LL;
+			expiration = (static_cast<uint64_t> (timestamp) + expires) * 1000LL;
 			return timestamp;
 		}
 		else
@@ -933,12 +1180,12 @@ namespace data
 			auto identity = GetIdentity ();
 			if (!identity) return 0;
 			size_t offset = identity->GetFullLen ();
-			if (offset + 6 >= len) return 0;
+			if (offset + 6 > len) return 0;
 			uint32_t timestamp = bufbe32toh (buf + offset);
 			offset += 4;
 			uint16_t expires = bufbe16toh (buf + offset);
 			offset += 2;
-			expiration = (timestamp + expires) * 1000LL;
+			expiration = (static_cast<uint64_t> (timestamp) + expires) * 1000LL;
 			return timestamp;
 		}
 	}
@@ -954,18 +1201,18 @@ namespace data
 		auto signingKeyLen = m_Identity->GetSigningPublicKeyLen ();
 		m_BufferLen
 			= m_Identity->GetFullLen () + 256 + signingKeyLen + 1 + num * LEASE_SIZE + m_Identity->GetSignatureLen ();
-		m_Buffer = new uint8_t[m_BufferLen];
-		auto offset = m_Identity->ToBuffer (m_Buffer, m_BufferLen);
-		memcpy (m_Buffer + offset, encryptionPublicKey, 256);
+		m_Buffer = std::make_unique<uint8_t[]> (m_BufferLen);
+		auto offset = m_Identity->ToBuffer (m_Buffer.get (), m_BufferLen);
+		memcpy (m_Buffer.get () + offset, encryptionPublicKey, 256);
 		offset += 256;
-		memset (m_Buffer + offset, 0, signingKeyLen);
+		memset (m_Buffer.get () + offset, 0, signingKeyLen);
 		offset += signingKeyLen;
 		// num leases
 		auto numLeasesPos = offset;
 		m_Buffer[offset] = num;
 		offset++;
 		// leases
-		m_Leases = m_Buffer + offset;
+		m_Leases = m_Buffer.get () + offset;
 		auto currentTime = i2p::util::GetMillisecondsSinceEpoch ();
 		int skipped = 0;
 		for (int i = 0; i < num; i++)
@@ -983,11 +1230,11 @@ namespace data
 			// make sure leaseset is newer than previous, but adding some time to expiration date
 			ts += (currentTime - tunnels[i]->GetCreationTime () * 1000LL) * 2
 				/ i2p::tunnel::TUNNEL_EXPIRATION_TIMEOUT; // up to 2 secs
-			memcpy (m_Buffer + offset, tunnels[i]->GetNextIdentHash (), 32);
+			memcpy (m_Buffer.get () + offset, tunnels[i]->GetNextIdentHash (), 32);
 			offset += 32; // gateway id
-			htobe32buf (m_Buffer + offset, tunnels[i]->GetNextTunnelID ());
+			htobe32buf (m_Buffer.get () + offset, tunnels[i]->GetNextTunnelID ());
 			offset += 4; // tunnel id
-			htobe64buf (m_Buffer + offset, ts);
+			htobe64buf (m_Buffer.get () + offset, ts);
 			offset += 8; // end date
 		}
 		if (skipped > 0)
@@ -1008,12 +1255,12 @@ namespace data
 		if (buf)
 		{
 			m_BufferLen = len;
-			m_Buffer = new uint8_t[m_BufferLen];
-			memcpy (m_Buffer, buf, len);
+			m_Buffer = std::make_unique<uint8_t[]> (m_BufferLen);
+			if (len) memcpy (m_Buffer.get (), buf, len);
 		}
 		else
 		{
-			m_Buffer = nullptr;
+			m_Buffer.reset ();
 			m_BufferLen = 0;
 		}
 	}
@@ -1026,9 +1273,11 @@ namespace data
 
 	bool LeaseSetBufferValidate (const uint8_t * ptr, size_t sz, uint64_t & expires)
 	{
+		expires = 0;
+		if (!ptr || !sz) return false;
 		IdentityEx ident (ptr, sz);
 		size_t size = ident.GetFullLen ();
-		if (size > sz)
+		if (!size || size > sz)
 		{
 			LogPrint (eLogError, "LeaseSet: Identity length ", size, " exceeds buffer size ", sz);
 			return false;
@@ -1055,14 +1304,29 @@ namespace data
 			return false;
 		}
 		const uint8_t * leases = ptr + size;
-		expires = 0;
-		/** find lease with the max expiration timestamp */
+		uint64_t earliest = UINT64_MAX;
+		/** find the earliest and latest lease expiration timestamps */
 		for (int i = 0; i < numLeases; i++)
 		{
 			leases += 36; // gateway + tunnel ID
 			uint64_t endDate = bufbe64toh (leases);
 			leases += 8; // end date
 			if (endDate > expires) expires = endDate;
+			if (endDate < earliest) earliest = endDate;
+		}
+		auto now = i2p::util::GetMillisecondsSinceEpoch ();
+		// Same bounds as Java's validate(): the latest lease must not be
+		// years into the future and the earliest must not be more than
+		// 10 minutes old.
+		if (expires > now + LEASESET_MAX_LEASE_FUTURE + LEASESET2_CLOCK_FUDGE)
+		{
+			LogPrint (eLogWarning, "LeaseSet: Lease end date is too far in the future ", expires);
+			return false;
+		}
+		if (earliest + LEASESET_MAX_LEASE_AGE <= now)
+		{
+			LogPrint (eLogWarning, "LeaseSet: Earliest lease is too old ", earliest);
+			return false;
 		}
 		if ((size_t)(leases - ptr) + ident.GetSignatureLen () > sz)
 		{
@@ -1081,9 +1345,43 @@ namespace data
 		// assume standard LS2
 		int num = tunnels.size ();
 		if (num > MAX_NUM_LEASES) num = MAX_NUM_LEASES;
-		size_t keySectionsLen = 0;
+		// Build the key section list once. GetLS2PublicKeyLen() is the wire
+		// length (EC_P256 is 64 bytes, legacy EC_P256 key files are 256);
+		// skipping a key whose stored public material is shorter prevents
+		// publishing a section that every peer must reject as malformed.
+		struct KeySection
+		{
+			const i2p::crypto::LocalEncryptionKey * key;
+			size_t len;
+		};
+		std::vector<KeySection> keySections;
+		keySections.reserve (std::min<size_t> (encryptionKeys.size (), MAX_NUM_ENCRYPTION_KEYS));
 		for (const auto & it : encryptionKeys)
-			keySectionsLen += 2 /*key type*/ + 2 /*key len*/ + it->pub.size () /*key*/;
+		{
+			if (keySections.size () >= MAX_NUM_ENCRYPTION_KEYS)
+			{
+				LogPrint (eLogWarning, "LeaseSet2: Truncating ", encryptionKeys.size (), " encryption keys to ",
+					MAX_NUM_ENCRYPTION_KEYS);
+				break;
+			}
+			auto keyLen = GetLS2PublicKeyLen (it->keyType);
+			if (!keyLen || it->pub.size () < keyLen)
+			{
+				LogPrint (eLogWarning, "LeaseSet2: Skipping unusable local encryption key type ", (int)it->keyType,
+					" with ", it->pub.size (), " public bytes, expected ", keyLen);
+				continue;
+			}
+			keySections.push_back ({ it.get (), keyLen });
+		}
+		if (keySections.empty ())
+		{
+			// LeaseSet2.java rejects numKeys == 0.
+			LogPrint (eLogError, "LeaseSet2: No usable local encryption keys");
+			return;
+		}
+		size_t keySectionsLen = 0;
+		for (const auto & section : keySections) keySectionsLen += 2 /*key type*/ + 2 /*key len*/ + section.len /*key*/;
+		auto numKeys = keySections.size ();
 		m_BufferLen = identity->GetFullLen ()
 			+ 4 /*published*/ + 2 /*expires*/ + 2 /*flag*/ + 2 /*properties len*/ + 1 /*num keys*/ + keySectionsLen
 			+ 1 /*num leases*/ + num * LEASE2_SIZE + keys.GetSignatureLen ();
@@ -1095,41 +1393,44 @@ namespace data
 		}
 		if (isPublishedEncrypted)
 		{
-			flags |= LEASESET2_FLAG_PUBLISHED_ENCRYPTED;
-			isPublic = true;
+			// The inner LeaseSet of an encrypted publication is never served
+			// directly. Java writes UNPUBLISHED | PUBLISHED_ENCRYPTED (0x06),
+			// which keeps a floodfill from serving the extracted destination.
+			flags |= LEASESET2_FLAG_PUBLISHED_ENCRYPTED | LEASESET2_FLAG_UNPUBLISHED_LEASESET;
 		}
-		if (!isPublic) flags |= LEASESET2_FLAG_UNPUBLISHED_LEASESET;
+		else if (!isPublic)
+			flags |= LEASESET2_FLAG_UNPUBLISHED_LEASESET;
 
-		m_Buffer = new uint8_t[m_BufferLen + 1];
+		m_Buffer = std::make_unique<uint8_t[]> (m_BufferLen + 1);
 		m_Buffer[0] = storeType;
 		// LS2 header
-		auto offset = identity->ToBuffer (m_Buffer + 1, m_BufferLen) + 1;
-		htobe32buf (m_Buffer + offset, publishedTimestamp);
+		auto offset = identity->ToBuffer (m_Buffer.get () + 1, m_BufferLen) + 1;
+		htobe32buf (m_Buffer.get () + offset, publishedTimestamp);
 		offset += 4; // published timestamp (seconds)
-		uint8_t * expiresBuf = m_Buffer + offset;
+		uint8_t * expiresBuf = m_Buffer.get () + offset;
 		offset += 2; // expires, fill later
-		htobe16buf (m_Buffer + offset, flags);
+		htobe16buf (m_Buffer.get () + offset, flags);
 		offset += 2; // flags
 		if (keys.IsOfflineSignature ())
 		{
 			// offline signature
 			const auto & offlineSignature = keys.GetOfflineSignature ();
-			memcpy (m_Buffer + offset, offlineSignature.data (), offlineSignature.size ());
+			memcpy (m_Buffer.get () + offset, offlineSignature.data (), offlineSignature.size ());
 			offset += offlineSignature.size ();
 		}
-		htobe16buf (m_Buffer + offset, 0);
+		htobe16buf (m_Buffer.get () + offset, 0);
 		offset += 2; // properties len
 		// keys
-		m_Buffer[offset] = encryptionKeys.size ();
+		m_Buffer[offset] = (uint8_t)numKeys;
 		offset++; // 1 key
-		for (const auto & it : encryptionKeys)
+		for (const auto & section : keySections)
 		{
-			htobe16buf (m_Buffer + offset, it->keyType);
+			htobe16buf (m_Buffer.get () + offset, section.key->keyType);
 			offset += 2; // key type
-			htobe16buf (m_Buffer + offset, it->pub.size ());
+			htobe16buf (m_Buffer.get () + offset, section.len);
 			offset += 2; // key len
-			memcpy (m_Buffer + offset, it->pub.data (), it->pub.size ());
-			offset += it->pub.size (); // key
+			memcpy (m_Buffer.get () + offset, section.key->pub.data (), section.len);
+			offset += section.len; // key
 		}
 		// leases
 		uint32_t expirationTime = 0; // in seconds
@@ -1148,11 +1449,11 @@ namespace data
 				continue;
 			}
 			if (ts > expirationTime) expirationTime = ts;
-			memcpy (m_Buffer + offset, tunnels[i]->GetNextIdentHash (), 32);
+			memcpy (m_Buffer.get () + offset, tunnels[i]->GetNextIdentHash (), 32);
 			offset += 32; // gateway id
-			htobe32buf (m_Buffer + offset, tunnels[i]->GetNextTunnelID ());
+			htobe32buf (m_Buffer.get () + offset, tunnels[i]->GetNextTunnelID ());
 			offset += 4; // tunnel id
-			htobe32buf (m_Buffer + offset, ts);
+			htobe32buf (m_Buffer.get () + offset, ts);
 			offset += 4; // end date
 		}
 		if (skipped > 0)
@@ -1167,8 +1468,9 @@ namespace data
 		if (expirationTime)
 		{
 			SetExpirationTime (expirationTime * 1000LL);
-			auto expires = (int)expirationTime - publishedTimestamp;
-			htobe16buf (expiresBuf, expires > 0 ? expires : 0);
+			auto expires = expirationTime > publishedTimestamp ? expirationTime - publishedTimestamp : 0;
+			if (expires > 0xFFFF) expires = 0xFFFF; // 16-bit wire field, 18.2 hours
+			htobe16buf (expiresBuf, expires);
 		}
 		else
 		{
@@ -1177,27 +1479,59 @@ namespace data
 			memset (expiresBuf, 0, 2); // expires immediately
 		}
 		// sign
-		keys.Sign (m_Buffer, offset, m_Buffer + offset); // LS + leading store type
+		keys.Sign (m_Buffer.get (), offset, m_Buffer.get () + offset); // LS + leading store type
 	}
 
 	LocalLeaseSet2::LocalLeaseSet2 (
 		uint8_t storeType, std::shared_ptr<const IdentityEx> identity, const uint8_t * buf, size_t len)
 		: LocalLeaseSet (identity, nullptr, 0)
 	{
+		if (!buf) len = 0;
 		m_BufferLen = len;
-		m_Buffer = new uint8_t[m_BufferLen + 1];
-		memcpy (m_Buffer + 1, buf, len);
+		m_Buffer = std::make_unique<uint8_t[]> (m_BufferLen + 1);
+		if (len) memcpy (m_Buffer.get () + 1, buf, len);
 		m_Buffer[0] = storeType;
 	}
 
 	LocalEncryptedLeaseSet2::LocalEncryptedLeaseSet2 (std::shared_ptr<const LocalLeaseSet2> ls,
 		const i2p::data::PrivateKeys & keys, int authType, std::shared_ptr<std::vector<AuthPublicKey>> authKeys)
-		: LocalLeaseSet2 (ls->GetIdentity ())
+		: LocalLeaseSet2 (ls ? ls->GetIdentity () : nullptr)
 		, m_InnerLeaseSet (ls)
 	{
+		if (!ls)
+		{
+			LogPrint (eLogError, "LeaseSet2: Can't encrypt a null inner LeaseSet");
+			return;
+		}
+		if (!ls->GetBuffer () || !ls->GetBufferLen ())
+		{
+			LogPrint (eLogError, "LeaseSet2: Can't encrypt an uninitialised inner LeaseSet");
+			return;
+		}
+		// Java rejects per-client auth without client keys. Silently falling
+		// back to AUTH_NONE publishes an unauthenticated LeaseSet even though
+		// the operator requested restricted access.
+		if (authType != ENCRYPTED_LEASESET_AUTH_TYPE_NONE)
+		{
+			if (authType != ENCRYPTED_LEASESET_AUTH_TYPE_DH && authType != ENCRYPTED_LEASESET_AUTH_TYPE_PSK)
+			{
+				LogPrint (eLogError, "LeaseSet2: Unknown client auth type ", authType);
+				return;
+			}
+			if (!authKeys || authKeys->empty ())
+			{
+				LogPrint (eLogError, "LeaseSet2: Client auth type ", authType, " requires client keys");
+				return;
+			}
+			if (authKeys->size () > 0xFFFF)
+			{
+				LogPrint (eLogError, "LeaseSet2: Too many client auth keys ", authKeys->size ());
+				return;
+			}
+		}
 		size_t lenInnerPlaintext = ls->GetBufferLen () + 1, lenOuterPlaintext = lenInnerPlaintext + 32 + 1;
 		uint8_t layer1Flags = 0;
-		if (authKeys)
+		if (authKeys && !authKeys->empty ())
 		{
 			if (authType == ENCRYPTED_LEASESET_AUTH_TYPE_DH)
 				layer1Flags |= 0x01; // DH, authentication scheme 0, auth bit 1
@@ -1206,6 +1540,13 @@ namespace data
 			if (layer1Flags) lenOuterPlaintext += 32 + 2 + authKeys->size () * 40; // auth data len
 		}
 		size_t lenOuterCiphertext = lenOuterPlaintext + 32;
+		// lenOuterCiphertext is a 16-bit wire field and Java caps the
+		// encrypted payload at 4096 bytes.
+		if (lenOuterCiphertext > MAX_LS_BUFFER_SIZE)
+		{
+			LogPrint (eLogError, "LeaseSet2: Encrypted LeaseSet is too large ", lenOuterCiphertext);
+			return;
+		}
 
 		BlindedPublicKey blindedKey (ls->GetIdentity ());
 		auto timestamp = i2p::util::GetSecondsSinceEpoch ();
@@ -1235,30 +1576,36 @@ namespace data
 			+ 4 /*published*/ + 2 /*expires*/ + 2 /*flags*/ + offlineSignature.size ()
 			+ 2 /*lenOuterCiphertext*/ + lenOuterCiphertext
 			+ (blindedSigner ? 64 /*signature*/ : offlineKeys.GetSignatureLen ());
-		m_Buffer = new uint8_t[m_BufferLen + 1];
+		if (m_BufferLen + 1 > MAX_LS_BUFFER_SIZE)
+		{
+			LogPrint (eLogError, "LeaseSet2: Encrypted LeaseSet buffer is too large ", m_BufferLen + 1);
+			m_BufferLen = 0;
+			return;
+		}
+		m_Buffer = std::make_unique<uint8_t[]> (m_BufferLen + 1);
 		m_Buffer[0] = NETDB_STORE_TYPE_ENCRYPTED_LEASESET2;
 		auto offset = 1;
-		htobe16buf (m_Buffer + offset, blindedKey.GetBlindedSigType ());
+		htobe16buf (m_Buffer.get () + offset, blindedKey.GetBlindedSigType ());
 		offset += 2; // Blinded Public Key Sig Type
-		memcpy (m_Buffer + offset, blindedPub, publicKeyLen);
+		memcpy (m_Buffer.get () + offset, blindedPub, publicKeyLen);
 		offset += publicKeyLen; // Blinded Public Key
-		htobe32buf (m_Buffer + offset, timestamp);
+		htobe32buf (m_Buffer.get () + offset, timestamp);
 		offset += 4; // published timestamp (seconds)
 		auto nextMidnight = (timestamp / 86400LL + 1) * 86400LL; // 86400 = 24*3600 seconds
 		auto expirationTime = ls->GetExpirationTime () / 1000LL;
 		if (expirationTime > nextMidnight) expirationTime = nextMidnight;
 		SetExpirationTime (expirationTime * 1000LL);
-		htobe16buf (m_Buffer + offset, expirationTime > timestamp ? expirationTime - timestamp : 0);
+		htobe16buf (m_Buffer.get () + offset, expirationTime > timestamp ? expirationTime - timestamp : 0);
 		offset += 2; // expires
 		uint16_t flags = offlineKeys.IsOfflineSignature () ? LEASESET2_FLAG_OFFLINE_KEYS : 0;
-		htobe16buf (m_Buffer + offset, flags);
+		htobe16buf (m_Buffer.get () + offset, flags);
 		offset += 2; // flags
 		if (flags)
 		{
-			memcpy (m_Buffer + offset, offlineSignature.data (), offlineSignature.size ());
+			memcpy (m_Buffer.get () + offset, offlineSignature.data (), offlineSignature.size ());
 			offset += offlineSignature.size ();
 		}
-		htobe16buf (m_Buffer + offset, lenOuterCiphertext);
+		htobe16buf (m_Buffer.get () + offset, lenOuterCiphertext);
 		offset += 2; // lenOuterCiphertext
 		// outerChipherText
 		// Layer 1
@@ -1267,43 +1614,67 @@ namespace data
 		htobe32buf (subcredential + 32, timestamp); // outerInput = subcredential || publishedTimestamp
 		// keys = HKDF(outerSalt, outerInput, "ELS2_L1K", 44)
 		uint8_t keys1[64]; // 44 bytes actual data
-		RAND_bytes (m_Buffer + offset, 32); // outerSalt = CSRNG(32)
-		i2p::crypto::HKDF (m_Buffer + offset, subcredential, 36, "ELS2_L1K", keys1);
+		if (RAND_bytes (m_Buffer.get () + offset, 32) != 1) // outerSalt = CSRNG(32)
+		{
+			LogPrint (eLogError, "LeaseSet2: Can't generate the outer salt");
+			m_BufferLen = 0;
+			m_Buffer.reset ();
+			return;
+		}
+		i2p::crypto::HKDF (m_Buffer.get () + offset, subcredential, 36, "ELS2_L1K", keys1);
 		offset += 32; // outerSalt
-		uint8_t * outerPlainText = m_Buffer + offset;
+		uint8_t * outerPlainText = m_Buffer.get () + offset;
 		m_Buffer[offset] = layer1Flags;
 		offset++; // layer 1 flags
 		// auth data
 		uint8_t innerInput[68]; // authCookie || subcredential || publishedTimestamp
 		if (layer1Flags)
 		{
-			RAND_bytes (innerInput, 32); // authCookie
-			CreateClientAuthData (subcredential, authType, authKeys, innerInput, m_Buffer + offset);
+			if (RAND_bytes (innerInput, 32) != 1) // authCookie
+			{
+				LogPrint (eLogError, "LeaseSet2: Can't generate the auth cookie");
+				m_BufferLen = 0;
+				m_Buffer.reset ();
+				return;
+			}
+			if (!CreateClientAuthData (subcredential, authType, authKeys, innerInput, m_Buffer.get () + offset))
+			{
+				LogPrint (eLogError, "LeaseSet2: Can't create the client auth data");
+				m_BufferLen = 0;
+				m_Buffer.reset ();
+				return;
+			}
 			offset += 32 + 2 + authKeys->size () * 40; // auth clients
 		}
 		// Layer 2
 		// keys = HKDF(outerSalt, outerInput, "ELS2_L2K", 44)
 		uint8_t keys2[64]; // 44 bytes actual data
-		RAND_bytes (m_Buffer + offset, 32); // innerSalt = CSRNG(32)
+		if (RAND_bytes (m_Buffer.get () + offset, 32) != 1) // innerSalt = CSRNG(32)
+		{
+			LogPrint (eLogError, "LeaseSet2: Can't generate the inner salt");
+			m_BufferLen = 0;
+			m_Buffer.reset ();
+			return;
+		}
 		if (layer1Flags)
 		{
 			memcpy (innerInput + 32, subcredential, 36); // + subcredential || publishedTimestamp
-			i2p::crypto::HKDF (m_Buffer + offset, innerInput, 68, "ELS2_L2K", keys2);
+			i2p::crypto::HKDF (m_Buffer.get () + offset, innerInput, 68, "ELS2_L2K", keys2);
 		}
 		else
-			i2p::crypto::HKDF (m_Buffer + offset, subcredential, 36, "ELS2_L2K", keys2); // no authCookie
+			i2p::crypto::HKDF (m_Buffer.get () + offset, subcredential, 36, "ELS2_L2K", keys2); // no authCookie
 		offset += 32; // innerSalt
 		m_Buffer[offset] = ls->GetStoreType ();
-		memcpy (m_Buffer + offset + 1, ls->GetBuffer (), ls->GetBufferLen ());
-		i2p::crypto::ChaCha20 (
-			m_Buffer + offset, lenInnerPlaintext, keys2, keys2 + 32, m_Buffer + offset); // encrypt Layer 2
+		memcpy (m_Buffer.get () + offset + 1, ls->GetBuffer (), ls->GetBufferLen ());
+		i2p::crypto::ChaCha20 (m_Buffer.get () + offset, lenInnerPlaintext, keys2, keys2 + 32,
+			m_Buffer.get () + offset); // encrypt Layer 2
 		offset += lenInnerPlaintext;
 		i2p::crypto::ChaCha20 (outerPlainText, lenOuterPlaintext, keys1, keys1 + 32, outerPlainText); // encrypt Layer 1
 		// signature
 		if (blindedSigner)
-			blindedSigner->Sign (m_Buffer, offset, m_Buffer + offset);
+			blindedSigner->Sign (m_Buffer.get (), offset, m_Buffer.get () + offset);
 		else
-			offlineKeys.Sign (m_Buffer, offset, m_Buffer + offset);
+			offlineKeys.Sign (m_Buffer.get (), offset, m_Buffer.get () + offset);
 		// store hash
 		m_StoreHash = blindedKey.GetStoreHash (date);
 	}
@@ -1325,13 +1696,15 @@ namespace data
 			LogPrint (eLogError, "LeaseSet2: Couldn't extract inner layer");
 	}
 
-	void LocalEncryptedLeaseSet2::CreateClientAuthData (const uint8_t * subcredential, int authType,
+	bool LocalEncryptedLeaseSet2::CreateClientAuthData (const uint8_t * subcredential, int authType,
 		std::shared_ptr<std::vector<AuthPublicKey>> authKeys, const uint8_t * authCookie, uint8_t * authData) const
 	{
+		if (!subcredential || !authCookie || !authData || !authKeys || authKeys->empty ()) return false;
 		if (authType == ENCRYPTED_LEASESET_AUTH_TYPE_DH)
 		{
 			i2p::crypto::X25519Keys ek;
 			ek.GenerateKeys (); // esk and epk
+			if (i2p::data::Tag<32> (ek.GetPublicKey ()).IsZero ()) return false;
 			memcpy (authData, ek.GetPublicKey (), 32);
 			authData += 32; // epk
 			htobe16buf (authData, authKeys->size ());
@@ -1340,7 +1713,7 @@ namespace data
 			memcpy (authInput + 64, subcredential, 36);
 			for (auto & it : *authKeys)
 			{
-				ek.Agree (it, authInput); // sharedSecret = DH(esk, cpk_i)
+				if (!ek.Agree (it, authInput)) return false; // sharedSecret = DH(esk, cpk_i)
 				memcpy (authInput + 32, it, 32);
 				uint8_t okm[64]; // 52 actual data
 				i2p::crypto::HKDF (ek.GetPublicKey (), authInput, 100, "ELS2_XCA", okm);
@@ -1353,7 +1726,7 @@ namespace data
 		else // assume PSK
 		{
 			uint8_t authSalt[32];
-			RAND_bytes (authSalt, 32);
+			if (RAND_bytes (authSalt, sizeof (authSalt)) != 1) return false;
 			memcpy (authData, authSalt, 32);
 			authData += 32; // authSalt
 			htobe16buf (authData, authKeys->size ());
@@ -1371,6 +1744,7 @@ namespace data
 				authData += 32; // clientCookie_i
 			}
 		}
+		return true;
 	}
 }
 }

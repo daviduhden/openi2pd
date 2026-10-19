@@ -9,6 +9,8 @@
 */
 
 #include <cstdint>
+#include <cctype>
+#include <string>
 #include <zlib.h> // for crc32
 #include <openssl/sha.h>
 #include <openssl/hmac.h>
@@ -28,7 +30,7 @@ namespace i2p
 namespace data
 {
 	const uint8_t B33_TWO_BYTES_SIGTYPE_FLAG = 0x01;
-	// const uint8_t B33_PER_SECRET_FLAG = 0x02; // not used for now
+	const uint8_t B33_PER_SECRET_FLAG = 0x02;
 	const uint8_t B33_PER_CLIENT_AUTH_FLAG = 0x04;
 
 	BlindedPublicKey::BlindedPublicKey (std::shared_ptr<const IdentityEx> identity, bool clientAuth)
@@ -39,33 +41,79 @@ namespace data
 		m_BlindedSigType = i2p::data::SIGNING_KEY_TYPE_REDDSA_SHA512_ED25519; // always 11
 		if (m_SigType == i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519
 			|| m_SigType == i2p::data::SIGNING_KEY_TYPE_REDDSA_SHA512_ED25519)
-			memcpy (m_PublicKey.data (), identity->GetSigningPublicKeyBuffer (), m_PublicKey.size ());
+		{
+			const uint8_t * signingKey = identity->GetSigningPublicKeyBuffer ();
+			if (signingKey && identity->GetSigningPublicKeyLen () == m_PublicKey.size ())
+			{
+				memcpy (m_PublicKey.data (), signingKey, m_PublicKey.size ());
+				m_IsValid = true;
+			}
+			else
+				LogPrint (eLogError, "Blinding: Signing key of type ", (int)m_SigType, " has the wrong length");
+		}
 		else
 			LogPrint (eLogError, "Blinding: Unsupported signature type ", (int)m_SigType);
 	}
 
 	BlindedPublicKey::BlindedPublicKey (std::string_view b33)
-		: m_SigType (0) // 0 means invalid, we can't blind DSA, set it later
 	{
-		uint8_t addr[40]; // TODO: define length from b33
-		size_t l = i2p::data::Base32ToByteStream (b33, addr, 40);
-		if (l < 32)
+		// Base32 addresses are case-insensitive; Java lowercases before
+		// decoding. Normalise first so the canonical re-encoding check below
+		// compares like with like.
+		std::string address (b33);
+		for (char & ch : address) ch = (char)std::tolower ((unsigned char)ch);
+		// Decode with room for the largest b33 we accept and reject inputs that
+		// decode to more than 40 bytes. The old fixed 40-byte destination
+		// silently truncated overlong addresses.
+		std::array<uint8_t, 64> addr { };
+		size_t l = i2p::data::Base32ToByteStream (address, addr.data (), addr.size ());
+		if (l < 32 || l > 40)
 		{
 			LogPrint (eLogError, "Blinding: Malformed b33 ", b33);
 			return;
 		}
-		uint32_t checksum = crc32 (0, addr + 3, l - 3);
+		// Base32 decoders may silently drop unused trailing bits. Require the
+		// canonical encoding so a non-standard string cannot alias a different
+		// b33 address.
+		if (i2p::data::ByteStreamToBase32 (addr.data (), l) != address)
+		{
+			LogPrint (eLogError, "Blinding: Non-canonical b33 ", b33);
+			return;
+		}
+		uint32_t checksum = crc32 (0, addr.data () + 3, l - 3);
 		// checksum is Little Endian
 		addr[0] ^= checksum;
 		addr[1] ^= (checksum >> 8);
 		addr[2] ^= (checksum >> 16);
 		uint8_t flags = addr[0];
+		if (flags & 0xF8)
+		{
+			// Proposal 149 defines only bits 0, 1 and 2. Java rejects any
+			// other bit as a corrupt or unsupported address, and two
+			// different flag sets must not map to the same store key.
+			LogPrint (eLogError, "Blinding: Unsupported b33 flags ", (int)flags);
+			m_SigType = i2p::data::SIGNING_KEY_TYPE_DSA_SHA1;
+			m_PublicKey.fill (0);
+			m_IsValid = false;
+			return;
+		}
+		if (flags & B33_PER_SECRET_FLAG)
+		{
+			// This class has no way to carry the blinding secret. Treating a
+			// secret-required address as if it had no secret would derive a
+			// store key that no peer can ever serve.
+			LogPrint (eLogError, "Blinding: b33 requires a blinding secret, which is not supported");
+			m_SigType = i2p::data::SIGNING_KEY_TYPE_DSA_SHA1;
+			m_PublicKey.fill (0);
+			m_IsValid = false;
+			return;
+		}
 		size_t offset = 1;
 		if (flags & B33_TWO_BYTES_SIGTYPE_FLAG) // two bytes signatures
 		{
-			m_SigType = bufbe16toh (addr + offset);
+			m_SigType = bufbe16toh (addr.data () + offset);
 			offset += 2;
-			m_BlindedSigType = bufbe16toh (addr + offset);
+			m_BlindedSigType = bufbe16toh (addr.data () + offset);
 			offset += 2;
 		}
 		else // one byte sig
@@ -77,21 +125,41 @@ namespace data
 		}
 		m_IsClientAuth = flags & B33_PER_CLIENT_AUTH_FLAG;
 
+		// The b33 encoding of a 32-byte signing key is exactly the header plus
+		// the key. Reject trailing bytes so two different strings cannot
+		// denote the same blinded destination.
 		std::unique_ptr<i2p::crypto::Verifier> blindedVerifier (i2p::data::IdentityEx::CreateVerifier (m_SigType));
-		if (blindedVerifier)
+		// Proposal 149 only defines EdDSA/RedDSA inputs and a RedDSA blinded
+		// key. Accepting another signature or blinded type would hash the
+		// wrong store key while still reporting a usable address.
+		const bool blindable = m_SigType == i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519
+			|| m_SigType == i2p::data::SIGNING_KEY_TYPE_REDDSA_SHA512_ED25519;
+		if (blindedVerifier && blindable
+			&& m_BlindedSigType == i2p::data::SIGNING_KEY_TYPE_REDDSA_SHA512_ED25519
+			&& offset + m_PublicKey.size () == l)
 		{
-			if (offset + m_PublicKey.size () <= l)
-				memcpy (m_PublicKey.data (), addr + offset, m_PublicKey.size ());
-			else
-				LogPrint (
-					eLogError, "Blinding: Public key in b33 address is too short for signature type ", (int)m_SigType);
+			memcpy (m_PublicKey.data (), addr.data () + offset, m_PublicKey.size ());
+			m_IsValid = true;
 		}
 		else
-			LogPrint (eLogError, "Blinding: Unknown signature type ", (int)m_SigType, " in b33");
+		{
+			if (!blindedVerifier)
+				LogPrint (eLogError, "Blinding: Unknown signature type ", (int)m_SigType, " in b33");
+			else if (!blindable
+				|| m_BlindedSigType != i2p::data::SIGNING_KEY_TYPE_REDDSA_SHA512_ED25519)
+				LogPrint (eLogError, "Blinding: Unsupported b33 signature types ", (int)m_SigType, " -> ",
+					(int)m_BlindedSigType);
+			else
+				LogPrint (eLogError, "Blinding: Unexpected b33 length for signature type ", (int)m_SigType);
+			m_SigType = i2p::data::SIGNING_KEY_TYPE_DSA_SHA1;
+			m_PublicKey.fill (0);
+			m_IsValid = false;
+		}
 	}
 
 	bool BlindedPublicKey::IsValid () const
 	{
+		if (!m_IsValid || m_BlindedSigType != i2p::data::SIGNING_KEY_TYPE_REDDSA_SHA512_ED25519) return false;
 		switch (m_SigType)
 		{
 		case i2p::data::SIGNING_KEY_TYPE_REDDSA_SHA512_ED25519:
@@ -102,7 +170,7 @@ namespace data
 
 	std::string BlindedPublicKey::ToB33 () const
 	{
-		if (m_PublicKey.size () > 32) return ""; // assume 25519
+		if (!m_IsValid || m_PublicKey.size () > 32) return ""; // assume 25519
 		uint8_t addr[35];
 		uint8_t flags = 0;
 		if (m_IsClientAuth) flags |= B33_PER_CLIENT_AUTH_FLAG;
@@ -141,6 +209,11 @@ namespace data
 
 	void BlindedPublicKey::GenerateAlpha (const char * date, uint8_t * seed) const
 	{
+		if (!date)
+		{
+			memset (seed, 0, 64);
+			return;
+		}
 		uint16_t stA = htobe16 (GetSigType ()), stA1 = htobe16 (GetBlindedSigType ());
 		uint8_t salt[32];
 		//seed = HKDF(H("I2PGenerateAlpha", keydata), datestring || secret, "i2pblinding1", 64)
@@ -152,7 +225,8 @@ namespace data
 
 	size_t BlindedPublicKey::GetBlindedKey (const char * date, uint8_t * blindedKey) const
 	{
-		uint8_t seed[64];
+		if (!date || !blindedKey) return 0;
+		uint8_t seed[64] { };
 		GenerateAlpha (date, seed);
 
 		size_t publicKeyLength = 0;
@@ -171,7 +245,8 @@ namespace data
 	size_t BlindedPublicKey::BlindPrivateKey (
 		const uint8_t * priv, const char * date, uint8_t * blindedPriv, uint8_t * blindedPub) const
 	{
-		uint8_t seed[64];
+		if (!priv || !date || !blindedPriv || !blindedPub) return 0;
+		uint8_t seed[64] { };
 		GenerateAlpha (date, seed);
 		size_t publicKeyLength = 0;
 		switch (m_SigType)
@@ -197,11 +272,24 @@ namespace data
 		const std::string & p, const std::vector<std::pair<const uint8_t *, size_t>> & bufs, uint8_t * hash) const
 	{
 		EVP_MD_CTX * ctx = EVP_MD_CTX_new ();
+		if (!ctx)
+		{
+			memset (hash, 0, 32);
+			return;
+		}
 
-		EVP_DigestInit_ex (ctx, EVP_sha256 (), NULL);
-		EVP_DigestUpdate (ctx, p.c_str (), p.length ());
-		for (const auto & it : bufs) EVP_DigestUpdate (ctx, it.first, it.second);
-		EVP_DigestFinal_ex (ctx, (uint8_t *)hash, nullptr);
+		bool ok = EVP_DigestInit_ex (ctx, EVP_sha256 (), NULL) == 1;
+		if (ok) ok = EVP_DigestUpdate (ctx, p.c_str (), p.length ()) == 1;
+		if (ok)
+			for (const auto & it : bufs)
+				if (EVP_DigestUpdate (ctx, it.first, it.second) != 1)
+				{
+					ok = false;
+					break;
+				}
+		if (ok)
+			ok = EVP_DigestFinal_ex (ctx, (uint8_t *)hash, nullptr) == 1;
+		if (!ok) memset (hash, 0, 32);
 		EVP_MD_CTX_free (ctx);
 	}
 
@@ -222,10 +310,12 @@ namespace data
 		{
 			auto stA1 = htobe16 (m_BlindedSigType);
 			EVP_MD_CTX * ctx = EVP_MD_CTX_new ();
-			EVP_DigestInit_ex (ctx, EVP_sha256 (), NULL);
-			EVP_DigestUpdate (ctx, (const uint8_t *)&stA1, 2);
-			EVP_DigestUpdate (ctx, blinded, publicKeyLength);
-			EVP_DigestFinal_ex (ctx, (uint8_t *)hash, nullptr);
+			if (!ctx) return hash;
+			bool ok = EVP_DigestInit_ex (ctx, EVP_sha256 (), NULL) == 1
+				&& EVP_DigestUpdate (ctx, (const uint8_t *)&stA1, 2) == 1
+				&& EVP_DigestUpdate (ctx, blinded, publicKeyLength) == 1
+				&& EVP_DigestFinal_ex (ctx, (uint8_t *)hash, nullptr) == 1;
+			if (!ok) hash.Fill (0);
 			EVP_MD_CTX_free (ctx);
 		}
 		else

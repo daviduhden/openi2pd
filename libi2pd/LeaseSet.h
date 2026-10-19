@@ -73,6 +73,12 @@ namespace data
 	const uint8_t MAX_NUM_ENCRYPTION_KEYS = 8; // LeaseSet2.MAX_KEYS
 	const uint64_t LEASESET_EXPIRATION_TIME_THRESHOLD = 12 * 60 * 1000; // in milliseconds
 	const uint64_t LEASESET2_CLOCK_FUDGE = 60 * 1000; // Router.CLOCK_FUDGE_FACTOR
+	// KademliaNetworkDatabaseFacade.validate() rejects an entry whose earliest
+	// lease is more than 10 minutes old. This applies to LS1 and LS2.
+	const uint64_t LEASESET_MAX_LEASE_AGE = 10 * 60 * 1000; // in milliseconds
+	// KademliaNetworkDatabaseFacade.MAX_LEASE_FUTURE. This applies to LS1
+	// and LS2 lease dates. Clock fudge is added separately.
+	const uint64_t LEASESET_MAX_LEASE_FUTURE = 15 * 60 * 1000; // in milliseconds
 	// KademliaNetworkDatabaseFacade.MAX_META_LEASE_FUTURE. Standard LS2
 	// expiration is capped by the 16-bit expires field (65535 seconds).
 	const uint64_t LEASESET2_META_MAX_FUTURE = 65535 * 1000LL; // in milliseconds
@@ -83,17 +89,13 @@ namespace data
 	{
 	public:
 		LeaseSet (const uint8_t * buf, size_t len, bool storeLeases = true);
-		virtual ~LeaseSet ()
-		{
-			delete[] m_EncryptionKey;
-			delete[] m_Buffer;
-		};
+		virtual ~LeaseSet () = default;
 		virtual void Update (
 			const uint8_t * buf, size_t len, std::shared_ptr<LocalDestination> dest, bool verifySignature);
 		virtual bool IsNewer (const uint8_t * buf, size_t len) const;
 		void PopulateLeases (); // from buffer
 
-		const uint8_t * GetBuffer () const { return m_Buffer; };
+		const uint8_t * GetBuffer () const { return m_Buffer.get (); };
 		size_t GetBufferLen () const { return m_BufferLen; };
 		bool IsValid () const { return m_IsValid; };
 		bool IsIncompatibleCrypto () const { return m_IsIncompatibleCrypto; };
@@ -105,10 +107,15 @@ namespace data
 		bool IsExpired () const;
 		bool IsEmpty () const { return m_Leases.empty (); };
 		uint64_t GetExpirationTime () const { return m_ExpirationTime; };
+		// Earliest lease end date in milliseconds. 0 means "no leases",
+		// matching Java's -1 sentinel for cross-type isNewer() comparisons
+		// without using an unsigned wraparound.
+		uint64_t GetEarliestLeaseDate () const { return m_EarliestLeaseDate; };
 		bool ExpiresSoon (const uint64_t dlt = 1000 * 5, const uint64_t fudge = 0) const;
 		bool operator== (const LeaseSet & other) const
 		{
-			return m_BufferLen == other.m_BufferLen && !memcmp (m_Buffer, other.m_Buffer, m_BufferLen);
+			if (m_BufferLen != other.m_BufferLen) return false;
+			return m_BufferLen == 0 || !memcmp (m_Buffer.get (), other.m_Buffer.get (), m_BufferLen);
 		};
 		virtual uint8_t GetStoreType () const { return NETDB_STORE_TYPE_LEASESET; };
 		virtual uint32_t GetPublishedTimestamp () const { return 0; }; // should be set for LeaseSet2 only
@@ -135,21 +142,23 @@ namespace data
 		void SetBufferLen (size_t len);
 		void SetIdentity (std::shared_ptr<const IdentityEx> identity) { m_Identity = identity; };
 		void SetExpirationTime (uint64_t t) { m_ExpirationTime = t; };
+		void SetEarliestLeaseDate (uint64_t t) { m_EarliestLeaseDate = t; };
 		void SetIsValid (bool isValid) { m_IsValid = isValid; };
 		bool IsStoreLeases () const { return m_StoreLeases; };
 
 	private:
 		void ReadFromBuffer (bool readIdentity = true, bool verifySignature = true);
 		virtual uint64_t ExtractExpirationTimestamp (
-			const uint8_t * buf, size_t len) const; // returns max expiration time
+			const uint8_t * buf, size_t len) const; // LS1: earliest lease end date
 
 	private:
 		bool m_IsValid, m_IsIncompatibleCrypto, m_StoreLeases; // we don't need to store leases for floodfill
 		std::set<std::shared_ptr<Lease>, LeaseCmp> m_Leases;
 		uint64_t m_ExpirationTime; // in milliseconds
+		uint64_t m_EarliestLeaseDate = 0; // in milliseconds; 0 = no leases
 		std::shared_ptr<const IdentityEx> m_Identity;
-		uint8_t * m_EncryptionKey;
-		uint8_t * m_Buffer;
+		std::unique_ptr<uint8_t[]> m_EncryptionKey;
+		std::unique_ptr<uint8_t[]> m_Buffer;
 		size_t m_BufferLen;
 	};
 
@@ -185,6 +194,8 @@ namespace data
 		uint8_t GetStoreType () const override { return m_StoreType; };
 		uint32_t GetPublishedTimestamp () const override { return m_PublishedTimestamp; };
 		bool IsPublic () const { return m_IsPublic; };
+		// LeaseSet2 options mapping (proposal 167 HostReply types 2-4).
+		const i2p::util::Mapping & GetProperties () const { return m_Properties; };
 		bool IsPublishedEncrypted () const override { return m_IsPublishedEncrypted; };
 		bool IsEncryptionKey (CryptoKeyType type, const uint8_t * key) const override;
 		bool IsStoreKey (const IdentHash & key) const;
@@ -219,6 +230,16 @@ namespace data
 			const; // subcredential is subcredential + timestamp, return length of autData without flag
 
 	private:
+		// One wire key section, kept in the order the publisher advertised it.
+		// A std::map keyed by type would silently drop an earlier section when
+		// the same type is advertised twice; Java keeps every section in a List
+		// and only getEncryptionKey()/IsEncryptionKey() collapse them by type.
+		struct EncryptionKeySection
+		{
+			CryptoKeyType type;
+			std::vector<uint8_t> key;
+		};
+
 		uint8_t m_StoreType;
 		uint32_t m_PublishedTimestamp = 0; // seconds
 		bool m_IsPublic = true, m_IsPublishedEncrypted = false;
@@ -226,7 +247,7 @@ namespace data
 		CryptoKeyType m_EncryptionType;
 		const CryptoKeyType m_PreferredEncryptionType;
 		std::shared_ptr<i2p::crypto::CryptoKeyEncryptor> m_Encryptor; // for standardLS2
-		std::map<CryptoKeyType, std::vector<uint8_t>> m_EncryptionKeys; // all advertised key sections
+		std::vector<EncryptionKeySection> m_EncryptionKeys; // all advertised key sections, wire order
 		IdentHash m_StoreHash;
 		bool m_HasStoreHash = false;
 		i2p::util::Mapping m_Properties;
@@ -237,7 +258,10 @@ namespace data
 	std::shared_ptr<i2p::crypto::Verifier> ProcessOfflineSignature (
 		const Verifier & verifier, const uint8_t * buf, size_t len, size_t & offset)
 	{
-		if (offset + 6 >= len) return nullptr;
+		// The offline section may end exactly at the end of the buffer (the
+		// LeaseSet2 signature is the last field). Use strict greater-than
+		// checks; ">=" rejected every offline-signed LeaseSet2.
+		if (offset + 6 > len) return nullptr;
 		const uint8_t * signedData = buf + offset;
 		uint32_t expiresTimestamp = bufbe32toh (buf + offset);
 		offset += 4; // expires timestamp
@@ -247,12 +271,13 @@ namespace data
 		std::shared_ptr<i2p::crypto::Verifier> transientVerifier (i2p::data::IdentityEx::CreateVerifier (keyType));
 		if (!transientVerifier) return nullptr;
 		auto keyLen = transientVerifier->GetPublicKeyLen ();
-		if (offset + keyLen >= len) return nullptr;
+		if (offset + keyLen > len) return nullptr;
 		transientVerifier->SetPublicKey (buf + offset);
 		offset += keyLen;
-		if (offset + verifier->GetSignatureLen () >= len) return nullptr;
+		auto signatureLen = verifier->GetSignatureLen ();
+		if (offset + signatureLen > len) return nullptr;
 		if (!verifier->Verify (signedData, keyLen + 6, buf + offset)) return nullptr;
-		offset += verifier->GetSignatureLen ();
+		offset += signatureLen;
 		return transientVerifier;
 	}
 
@@ -263,9 +288,9 @@ namespace data
 		LocalLeaseSet (std::shared_ptr<const IdentityEx> identity, const uint8_t * encryptionPublicKey,
 			std::vector<std::shared_ptr<i2p::tunnel::InboundTunnel>> tunnels);
 		LocalLeaseSet (std::shared_ptr<const IdentityEx> identity, const uint8_t * buf, size_t len);
-		virtual ~LocalLeaseSet () { delete[] m_Buffer; };
+		virtual ~LocalLeaseSet () = default;
 
-		virtual uint8_t * GetBuffer () const { return m_Buffer; };
+		virtual uint8_t * GetBuffer () const { return m_Buffer.get (); };
 		uint8_t * GetSignature () { return GetBuffer () + GetBufferLen () - GetSignatureLen (); };
 		virtual size_t GetBufferLen () const { return m_BufferLen; };
 		size_t GetSignatureLen () const { return m_Identity->GetSignatureLen (); };
@@ -278,8 +303,8 @@ namespace data
 		void SetExpirationTime (uint64_t expirationTime) { m_ExpirationTime = expirationTime; };
 		bool operator== (const LeaseSet & other) const
 		{
-			return GetBufferLen () == other.GetBufferLen ()
-				&& !memcmp (GetBuffer (), other.GetBuffer (), GetBufferLen ());
+			if (GetBufferLen () != other.GetBufferLen ()) return false;
+			return GetBufferLen () == 0 || !memcmp (GetBuffer (), other.GetBuffer (), GetBufferLen ());
 		};
 
 		virtual uint8_t GetStoreType () const { return NETDB_STORE_TYPE_LEASESET; };
@@ -295,7 +320,8 @@ namespace data
 	private:
 		uint64_t m_ExpirationTime; // in milliseconds
 		std::shared_ptr<const IdentityEx> m_Identity;
-		uint8_t *m_Buffer, *m_Leases;
+		std::unique_ptr<uint8_t[]> m_Buffer;
+		uint8_t * m_Leases = nullptr;
 		size_t m_BufferLen;
 	};
 
@@ -311,22 +337,21 @@ namespace data
 		LocalLeaseSet2 (uint8_t storeType, std::shared_ptr<const IdentityEx> identity, const uint8_t * buf,
 			size_t len); // from I2CP
 
-		virtual ~LocalLeaseSet2 () { delete[] m_Buffer; };
+		virtual ~LocalLeaseSet2 () = default;
 
-		uint8_t * GetBuffer () const { return m_Buffer + 1; };
+		uint8_t * GetBuffer () const { return m_Buffer ? m_Buffer.get () + 1 : nullptr; };
 		size_t GetBufferLen () const { return m_BufferLen; };
 
-		uint8_t GetStoreType () const { return m_Buffer[0]; };
+		uint8_t GetStoreType () const { return m_Buffer ? m_Buffer[0] : NETDB_STORE_TYPE_STANDARD_LEASESET2; };
 
 	protected:
 		LocalLeaseSet2 (std::shared_ptr<const IdentityEx> identity)
 			: LocalLeaseSet (identity, nullptr, 0)
-			, m_Buffer (nullptr)
 			, m_BufferLen (0) { }; // called from LocalEncryptedLeaseSet2
 
 	protected:
-		uint8_t * m_Buffer; // 1 byte store type + actual buffer
-		size_t m_BufferLen;
+		std::unique_ptr<uint8_t[]> m_Buffer; // 1 byte store type + actual buffer
+		size_t m_BufferLen = 0;
 	};
 
 	const int ENCRYPTED_LEASESET_AUTH_TYPE_NONE = 0;
@@ -349,7 +374,7 @@ namespace data
 		std::shared_ptr<const LocalLeaseSet> GetInnerLeaseSet () const { return m_InnerLeaseSet; };
 
 	private:
-		void CreateClientAuthData (const uint8_t * subcredential, int authType,
+		bool CreateClientAuthData (const uint8_t * subcredential, int authType,
 			std::shared_ptr<std::vector<AuthPublicKey>> authKeys, const uint8_t * authCookie, uint8_t * authData) const;
 
 	private:

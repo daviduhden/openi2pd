@@ -50,9 +50,11 @@ namespace data
 			const std::string & p, const std::vector<std::pair<const uint8_t *, size_t>> & bufs, uint8_t * hash) const;
 
 	private:
-		std::array<uint8_t, i2p::crypto::EDDSA25519_PUBLIC_KEY_LENGTH> m_PublicKey;
-		i2p::data::SigningKeyType m_SigType, m_BlindedSigType;
+		std::array<uint8_t, i2p::crypto::EDDSA25519_PUBLIC_KEY_LENGTH> m_PublicKey { };
+		i2p::data::SigningKeyType m_SigType = i2p::data::SIGNING_KEY_TYPE_DSA_SHA1;
+		i2p::data::SigningKeyType m_BlindedSigType = i2p::data::SIGNING_KEY_TYPE_DSA_SHA1;
 		bool m_IsClientAuth = false;
+		bool m_IsValid = false;
 	};
 }
 }
