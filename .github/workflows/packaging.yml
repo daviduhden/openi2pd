@@ -94,7 +94,7 @@ jobs:
       - name: Lintian
         run: |
           lintian --profile debian --fail-on error ../i2pd_*.changes
-      - name: Validate and run DEP-8 smoke test
+      - name: Install packages and run DEP-8 smoke test
         run: |
-          sudo autopkgtest --no-built-binaries --test-name=smoke \
-            ../i2pd_*.changes -- unshare
+          sudo apt-get install -y ../i2pd_*.deb ../i2pd-tui_*.deb
+          sudo sh debian/tests/smoke

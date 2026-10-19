@@ -21,7 +21,12 @@
 #include "Channel.h"
 
 #if defined(__OpenBSD__)
+// OpenBSD's imsg.h has no __BEGIN_DECLS guard; without this wrapper the C++
+// compiler expects mangled symbols that libutil does not export.
+extern "C"
+{
 #include <imsg.h>
+}
 #endif
 
 namespace i2p::privsep

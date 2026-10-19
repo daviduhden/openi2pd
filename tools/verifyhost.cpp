@@ -34,7 +34,9 @@ std::optional<std::string_view> FindValue (std::string_view record, std::string_
 	const auto marker = record.find (key);
 	if (marker == std::string_view::npos) return std::nullopt;
 	auto value = record.substr (marker + key.size ());
-	const auto end = value.find ('#');
+	// A record can carry an internal newline between the old signature and a
+	// later marker. Stop at record delimiters, not only at '#'.
+	const auto end = value.find_first_of ("#\r\n");
 	if (end != std::string_view::npos) value = value.substr (0, end);
 	return value;
 }

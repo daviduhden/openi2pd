@@ -26,10 +26,6 @@
 #include <sys/socket.h>
 #include <unistd.h>
 
-#if defined(__OpenBSD__)
-#include <imsg.h>
-#endif
-
 namespace i2p::privsep
 {
 namespace

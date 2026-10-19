@@ -111,15 +111,6 @@ jobs:
             "build-tools;36.0.0" \
             "ndk;30.0.16248370"
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/30.0.16248370" >> "$GITHUB_ENV"
-      - name: Android unit tests and Lint
-        run: |
-          cd android
-          ./gradlew :i2pd:testDebugUnitTest :i2pd:lintDebug --no-daemon
-      - name: Show Android lint report on failure
-        if: failure()
-        run: |
-          report=android/app/build/intermediates/lint_intermediate_text_report/debug/lintReportDebug/lint-results-debug.txt
-          if [ -f "$report" ]; then cat "$report"; fi
       - name: Checkout vcpkg
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
@@ -153,6 +144,18 @@ jobs:
             -DI2PD_BUILD_JNI=ON -DWITH_BINARY=OFF
           cmake --build build-android --parallel 2 --target i2pd_jni
           file build-android/libi2pd.so | grep 'ARM aarch64'
+      - name: Android unit tests and Lint
+        run: |
+          cd android
+          ./gradlew :i2pd:testDebugUnitTest :i2pd:lintDebug --no-daemon \
+            -Pi2pd.ndkVersion="$NDK_VERSION" \
+            -Pandroid.injected.build.abi=arm64-v8a \
+            -Pi2pd.cmakeArgs="-DCMAKE_PREFIX_PATH=$VCPKG_ROOT/installed/arm64-android"
+      - name: Show Android lint report on failure
+        if: failure()
+        run: |
+          report=android/app/build/intermediates/lint_intermediate_text_report/debug/lintReportDebug/lint-results-debug.txt
+          if [ -f "$report" ]; then cat "$report"; fi
       - name: Build debug APK for arm64
         run: |
           cd android

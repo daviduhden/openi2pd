@@ -24,7 +24,7 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t * data, size_t size)
 	(void)response.parse (input);
 	(void)i2p::http::UrlDecode (input);
 
-	std::istringstream in (std::string (input));
+	std::istringstream in {std::string (input)};
 	std::ostringstream out;
 	(void)i2p::http::MergeChunkedResponse (in, out);
 	return 0;
