@@ -54,7 +54,7 @@ The following existing behavior is preserved rather than reimplemented:
 
 The browser console's presentation logic has been mapped to native
 operations: table refresh, progress/status formatting, details, add
-file/magnet, start/stop/reannounce/delete, session stats and DHT stats. The
+file/magnet, pause/resume/reannounce/delete, session stats and DHT stats. The
 engine already performs the actual transfers; only browser-specific state and
 DOM rendering are discarded.
 
@@ -70,10 +70,13 @@ an accepted/error result; completion is observed by the next snapshot.
 ## Process separation (staged)
 
 The current daemon still combines network, storage and control in one process.
-The torrent TUI therefore uses a typed control API, but the requested
-invariant ("no process can both connect externally and write persistent
-storage") is **not yet achieved** for torrents. It depends on the pending
-storage/network worker work (`PRIVSEP-006`/`007` and `TORRENT-IPC-003`).
+The torrent TUI therefore uses a typed control API. Network/control and storage
+callbacks run on distinct Asio execution domains, startup scans and all file
+access are posted to storage, and the network thread performs only lexical path
+checks. However, the requested OS-level invariant ("no process can both connect
+to peers and write persistent storage") is **not yet achieved** for torrents.
+It depends on the pending process/worker work (`PRIVSEP-006`/`007` and
+`TORRENT-IPC-003`).
 
 The intended split is:
 

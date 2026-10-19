@@ -3,6 +3,8 @@ Anonymous filesharing
 
 **BitTorrent software with I2P support**
 
+- [openi2pd Built-in Torrent Client](built-in-torrent/built-inTorrent.md) — native BitTorrent engine over I2P, managed by the local `i2pd-tui` Torrents view; optional loopback-only JSON-RPC is documented separately.
+
 - [qBittorrent](http://qbittorrent.org/) (qBittorrent experimental I2P support). qBittorrent uses SAM protocol and can be used in mixed mode or I2P-only mode. Currently setting qBittorrent up for I2P support is not user-friendly and there is no official documentation, so you have to combine [this](qBittorrent.md), [this](http://www.i2pforum.net/viewtopic.php?t=1224) and [this](https://strict3443.codeberg.page/i2p-info/hugo/public/posts/how-to-use-i2p-on-qbittorrent-nox/) guide. Remember it is experimental, so you need qBittorrent version v4.6.0 or higher, bugs can happen. *Use carefully and pay attention to the settings. The software works both in I2P and via clearnet. Unwanted leaks of your addresses are likely.*
 
 - [I2PSnark standalone](https://i2pplus.github.io/installers/i2psnark-standalone.zip) (standalone build provided by [I2P+ project](https://i2pplus.github.io/)). I2PSnark uses I2CP protocol, i2pd must be run with parameter `--i2cp.enabled=true` or with a similar setting in the configuration file.

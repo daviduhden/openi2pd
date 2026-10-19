@@ -5,9 +5,9 @@ about/license.md
 devs/api/BOB.md
 devs/api/I2CP.md
 devs/api/I2PControl.md
+devs/api/SAM.md
 devs/api/index.md
 devs/api/libi2pd.md
-devs/api/SAM.md
 devs/building/android.md
 devs/building/cross.md
 devs/building/haikuos.md
@@ -21,10 +21,12 @@ devs/i2pd-specifics.md
 img/favicon.ico
 img/logo.png
 index.md
-tutorials/blinded-addresse.md
-tutorials/Filesharing/built-inTorrent.md
-tutorials/Filesharing/qBittorrent.md
+tutorials/Filesharing/I2PD Built-in Torrent/built-inTorrent.md
+tutorials/Filesharing/I2PD Built-in Torrent/torrents-rpc.md
 tutorials/Filesharing/Software.md
+tutorials/Filesharing/qBittorrent.md
+tutorials/Monero.md
+tutorials/blinded-addresse.md
 tutorials/glossary.md
 tutorials/http.md
 tutorials/irc.md
@@ -33,13 +35,12 @@ tutorials/media/xmpp-2.png
 tutorials/media/xmpp-3.png
 tutorials/media/xmpp-4.png
 tutorials/media/xmpp-5.png
-tutorials/Monero.md
 tutorials/retroshare.md
 tutorials/xmpp.md
 tutorials/yggdrasil-only-mode.md
+user-guide/FAQ.md
 user-guide/configuration.md
 user-guide/family.md
-user-guide/FAQ.md
 user-guide/install.md
 user-guide/run.md
 user-guide/tunnels.md

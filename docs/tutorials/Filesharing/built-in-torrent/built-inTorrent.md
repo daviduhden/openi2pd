@@ -1,4 +1,4 @@
-# I2PD Built-in Torrent Client
+# openi2pd Built-in Torrent Client
 
 > **Requirements:** compiled in by default unless built with `NO_TORRENTS`.
 > The optional Transmission-compatible JSON-RPC surface requires Boost ≥ 1.81
@@ -41,8 +41,9 @@ The web console is gone. Do not set `web`; that option and the bundled
 Use `i2pd-tui` and open the **Torrents** section. The TUI talks to the daemon
 over the local `I2PDTUI/1` UNIX socket; it does not use HTTP, JSON-RPC or a
 browser. It can list torrents, show details (files, peers, trackers, session
-and DHT state), add magnets or local `.torrent` files, start/pause, reannounce,
-and remove torrents. Removing local data requires an explicit confirmation.
+and DHT state), add magnets or local `.torrent` files, pause/resume,
+reannounce, and remove torrents. Removing local data requires an explicit
+confirmation.
 
 The TUI never opens peer connections or writes downloads itself; validated
 administrative operations are performed by the daemon. The torrent engine
@@ -74,7 +75,9 @@ http://127.0.0.1:<rpcport>/[<rpcpath>/]rpc
 Supported methods include `torrent-add` (`metainfo` or `filename`),
 `torrent-remove`, `torrent-get`, `torrent-start`, `torrent-stop`,
 `torrent-set`, `torrent-reannounce`, `session-get`, `session-stats` and
-`dht-stats`. See `docs/torrent/security.md` for the threat model and any
+`dht-stats`. The generated parameter/response reference is in
+[Torrents JSON-RPC API](torrents-rpc.md). See
+[torrent security](../../../torrent/security.md) for the threat model and any
 compatibility limitations.
 
 ## 4. Security notes

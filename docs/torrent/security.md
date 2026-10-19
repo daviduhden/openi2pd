@@ -36,18 +36,36 @@ not need I2P network access.
 ## Filesystem containment
 
 `TorrentsTunnel::IsContainedPath` checks lexical containment under
-`torrentsdir`, rejects symlink metadata and non-directory intermediates, and
-rechecks paths after subdirectory creation. Save, resume and delete operations
-use the check. `TORRENT-ADD-FILE` and startup loading use
-`ReadTorrentFileBounded`, which requires a regular `.torrent` file, rejects
-symlinks and bounds the read size. Delete-local-data is a distinct command and
-requires explicit confirmation in the TUI.
+`torrentsdir`, rejects symlink metadata and non-directory intermediates.
+`IsSafeRelativePath` rejects empty, absolute, `.`/`..`, root and NUL components.
+The network/control thread uses only the purely lexical
+`IsPathLexicallyWithinRoot`; the dedicated storage execution domain rechecks
+with `IsPathWithinRoot` and the anchored no-follow helpers before any file is
+opened, created, renamed or deleted.
+Downloads, resume files, `.torrent` input and delete-local-data are rechecked
+before use; delete-local-data remains an explicit command and requires a typed
+TUI confirmation.
 
-Residual risk: this is a check-then-use design over `std::filesystem`; a local
-attacker able to mutate the download directory concurrently could race the
-check and the subsequent open/rename/remove. The daemon should use `openat`/
-`O_NOFOLLOW`/directory file descriptors in a future hardening pass. The current
-code does not claim immunity to a same-UID TOCTOU attacker.
+Open, create, read and write operations use anchored directory descriptors on
+POSIX: `OpenNoFollowAt` walks every component below the trusted root with
+`openat(O_NOFOLLOW)`, `CreateDirectoriesWithinRootNoFollow` uses
+`mkdirat`/`openat`, and `TorrentFile` uses `pread`/`pwrite` with exact bounds.
+This removes the ordinary symlink-leaf and intermediate-symlink redirects and
+rejects FIFOs/devices. `SetTorrentPathWithinRoot` validates the sanitized
+torrent root before it enters the session map. The `TORRENT-ADD-FILE` control
+path reads the selected `.torrent` through the tunnel's dedicated disk service;
+the network service thread only waits for a bounded result. That path is
+user-selected and read-only: it may point outside `torrentsdir`, but it is
+restricted to an existing regular non-symlink `.torrent` file, the read is
+bounded, and a same-UID administrator can already read that file. It can never
+be used as a write, delete or directory-enumeration primitive.
+
+Residual risk: a same-UID attacker with write access to the download tree can
+still race path checks, `rename`/`remove_all` and Windows pre-open checks;
+hard links are not distinguishable portably. The resume writer does not always
+have a trusted root component to anchor. The daemon therefore continues to
+require a non-shared/trusted torrent directory and does not claim immunity to
+a same-UID TOCTOU attacker.
 
 ## I2P-only operation
 
@@ -55,6 +73,13 @@ The torrent engine is the existing I2P implementation:
 
 - peers are I2P stream destinations; tracker HTTP and UDP datagrams go through
   I2P destinations;
+- `IsI2PTrackerHost` accepts only well-formed `.i2p` hosts (case-insensitive,
+  no port, credentials, separators or trailing dot); the tunnel constructor,
+  `AddTracker`, `RequestTracker` and RPC `trackerAdd` all use it, and
+  `CreateStream` resolves only I2P AddressBook destinations;
+- clearnet/malformed announce URLs in `.torrent` metadata or magnets are
+  stripped before the torrent enters the session and before the `.torrent` is
+  persisted, so they cannot become a future tracker;
 - DHT extensions and peer discovery are I2P-specific;
 - no clearnet tracker/peer/DNS fallback was added;
 - no public host IP address is advertised by the torrent control layer;
@@ -97,16 +122,22 @@ preserved where the engine supports them.
 
 ## Privilege separation
 
-The control API is typed and bounded, but the daemon still combines network and
-storage. `TORRENT-IPC-003` / `PRIVSEP-006`/`007` remain open. The invariant
-"no process both connects externally and writes persistent storage" is **not**
-satisfied for torrents yet; do not treat this document as a privilege-separation
-completion claim.
+The control API is typed and bounded. Torrent network work is dispatched on the
+tunnel service, while directory scans, file reads, creation, resume and
+deletion are dispatched on the dedicated storage service; `TORRENT-ADD-FILE`
+uses the bounded storage-service read. Startup enumeration and reads also run
+on storage, and the network service uses only lexical path checks. The daemon
+still combines both services in one process, so `TORRENT-IPC-003` /
+`PRIVSEP-006`/`007` remain open. The execution-domain separation is implemented
+in-process, but the OS-level invariant "no process both connects to peers and
+writes persistent storage" is **not** satisfied for torrents yet; do not treat
+this document as a privilege-separation completion claim.
 
 ## Pending validation
 
 - ASan/UBSan/TSan and fuzzing with malformed bencode/peer messages.
-- Symlink/TOCTOU and permission tests on Linux and OpenBSD.
+- Symlink/TOCTOU and permission tests on Linux and OpenBSD; the deterministic
+  lexical/symlink cases in `test-torrents-security` are prepared but not executed.
 - Traffic-capture test proving no clearnet DNS/TCP/UDP.
 - RPC auth/loopback/body-limit integration test and a real Transmission client.
 - TUI delete confirmation and path-containment tests.

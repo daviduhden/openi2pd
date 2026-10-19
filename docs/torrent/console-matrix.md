@@ -19,8 +19,8 @@ it.
 | DHT stats | JS `dht-stats` | DHT getters | Details/DHT | Implemented / validation pending |
 | Add `.torrent` | File input, base64 to RPC | `AddTorrent` | Path submitted to daemon; daemon reads bounded file | Implemented / validation pending |
 | Add magnet | Prompt, RPC | `AddMagnet` | Native dialog/line input | Implemented / validation pending |
-| Start/pause | Buttons, RPC | `StartTorrent/StopTorrent` | Keys + confirmation/status | Implemented / validation pending |
-| Resume | start button | `StartTorrent` | Start/pause key | Implemented / validation pending |
+| Start/pause | Buttons, RPC | `Pause` command → `StopTorrent` | `p` pause with status | Implemented / validation pending |
+| Resume | start button | `Resume` command → `StartTorrent` | `p` resume with status | Implemented / validation pending |
 | Reannounce | Button, RPC | `ReannounceTorrent` | Key per selection/all | Implemented / validation pending |
 | Remove torrent | Confirm, RPC | `RemoveTorrent(id,false)` | Explicit key/confirmation | Implemented / validation pending |
 | Remove + data | Confirm, RPC | `RemoveTorrent(id,true)` | Separate key + second confirmation | Implemented / validation pending |

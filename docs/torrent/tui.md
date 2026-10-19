@@ -6,19 +6,19 @@ browser dependency.
 
 ## Navigation
 
-The main TUI retains Status, Peers, Tunnels, NetDb, Logs and Help and adds a
-Torrents section. Key assignments are implemented in `tui/main.cpp` and mirrored in the help
-screen; the model is:
+The main TUI retains Status, Peers, Tunnels, NetDb, Destinations, Logs,
+Config, Connections and Help and adds a Torrents section. Key assignments are
+implemented in `tui/main.cpp` and mirrored in the help screen; the model is:
 
 | Key | Action |
 |---|---|
-| `1`..`7` | switch main view |
+| `1`..`9`, `0` | switch main view (Torrents is `4`, Connections is `0`) |
 | `Tab` / arrows | move between views/fields |
 | `Up`/`Down`, PgUp/PgDn, Home/End | select/scroll |
 | `Enter` | open details / confirm |
 | `a` | add magnet |
 | `A` | add `.torrent` by local path |
-| `p` | start/pause selected torrent |
+| `p` | pause/resume selected torrent |
 | `R` | reannounce selected/all depending on context |
 | `d` | remove torrent |
 | `D` | remove torrent and local data (explicit confirmation) |

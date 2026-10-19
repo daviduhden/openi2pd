@@ -3,7 +3,7 @@
 
 qBittorrent can be configured to torrent anonymously, some of these settings would most likely also work for any libtorrent based program.
 
-## Setup I2P Router i2pd.conf
+## Setup the openi2pd router
 
 ```
 bandwidth = <Apropriate band width value>
@@ -30,8 +30,8 @@ Click on 'tools' in the top menubar then select options. Alternatively use the s
 
 ![qBittorrent 5.1.4 Connection Settings.][qBitcon]
 
-In the 'Connection' tab go to the 'I2P(experimental)' section, click the checkbox to enable I2P, enter the IP your I2PD is listening on[Most likely 'localhost' if both programs are running on the same machine] & the SAM port you previously entered into the i2pd.conf file.
-Under the Proxy Server section select HTTP, enter your I2PD IP & your I2PD HTTP proxy port, the same one used in your browser.
+In the 'Connection' tab go to the 'I2P(experimental)' section, click the checkbox to enable I2P, enter the IP your openi2pd router is listening on[Most likely 'localhost' if both programs are running on the same machine] & the SAM port you previously entered into the i2pd.conf file.
+Under the Proxy Server section select HTTP, enter your openi2pd host IP and HTTP proxy port, the same one used in your browser.
 You should also select the options 'Perform hostname lookup via proxy' & 'Use proxy for bittorrent purposes'.
 
 ![qBittorrent 5.1.4 BitTorrent Settings.][qBittrac]

@@ -37,6 +37,8 @@ TORRENTS <tunnel-index> [limit]
 TORRENT-DETAIL <tunnel-index> <torrent-id>
 TORRENT-START <tunnel-index> <torrent-id>
 TORRENT-STOP <tunnel-index> <torrent-id>
+TORRENT-PAUSE <tunnel-index> <torrent-id>
+TORRENT-RESUME <tunnel-index> <torrent-id>
 TORRENT-REANNOUNCE <tunnel-index> <torrent-id>
 TORRENT-REMOVE <tunnel-index> <torrent-id> [files]
 TORRENT-START-ALL <tunnel-index>
@@ -48,8 +50,11 @@ TORRENT-SESSION <tunnel-index>
 TORRENT-DHT <tunnel-index>
 ```
 
-`magnet` and `path` are the bounded rest of the request line (maximum 2048
-bytes), not shell fragments. `tunnel-index` refers to a sorted snapshot of
+`PAUSE` maps to the engine stop path (it announces the stop event and closes
+peer connections), while `RESUME` maps to the start path (it clears the stopped
+flag and announces the start event). `START`/`STOP` remain available for
+compatibility. `magnet` and `path` are the bounded rest of the request line
+(maximum 2048 bytes), not shell fragments. `tunnel-index` refers to a sorted snapshot of
 configured torrents tunnels; IDs are per tunnel. All IDs/indexes must resolve;
 unknown values return an error rather than creating state.
 
@@ -86,8 +91,11 @@ buffering.
 
 ## Worker separation
 
-The control channel is ready to be mediated by a future network/storage worker
-split, but the current daemon remains monolithic. In particular, it does not
-yet satisfy the invariant that no process both connects externally and writes
-persistent storage. That remains `TORRENT-IPC-003` / `PRIVSEP-006/007` and must
-not be claimed as completed until implemented and validated on each platform.
+Network/control callbacks and storage callbacks already use separate Asio
+execution domains: startup enumeration, reads, creation, resume and deletion
+run on the storage service, while the network thread performs only lexical path
+checks and never opens the torrent directory. This is **not** an OS process
+boundary. The daemon remains monolithic and does not yet satisfy the invariant
+that no process both connects to peers and writes persistent storage. That
+remains `TORRENT-IPC-003` / `PRIVSEP-006/007` and must not be claimed as
+completed until implemented and validated on each platform.

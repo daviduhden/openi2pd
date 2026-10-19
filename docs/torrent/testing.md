@@ -26,8 +26,11 @@ Prepared coverage:
   empty root name; absolute, `..`, separator, control-character and colliding
   paths; bounded `.torrent` input checks (extension, regular file, symlink,
   empty/oversized file).
-- `test-tui-protocol`: torrent commands, bounds, index/ID validation,
-  request-line limits and field parsing.
+- `test-tui-protocol`: torrent commands including pause/resume, bounds,
+  index/ID validation, request-line limits and field parsing.
+- `test-torrents-security`: tracker-host validation, lexical root containment,
+  anchored no-follow file operations, path traversal/symlink rejection and
+  resume bounds; `test-torrents-concurrency` covers piece/torrent publication.
 - Control snapshot tests (when the target is added): deterministic formatting,
   empty state, unavailable engine fields, command result mapping.
 - `-DNO_TORRENTS` build: daemon/TUI must compile without the engine; torrent UI
@@ -39,7 +42,7 @@ Prepared coverage:
 2. Open `i2pd-tui`; verify Status/Peers/Tunnels/NetDb/Logs still work.
 3. Torrents view: empty state; add magnet; add a local `.torrent`; verify
    listing and details (general/files/peers/trackers/session/DHT).
-4. Start/pause/reannounce; verify state changes and errors.
+4. Pause/resume/reannounce; verify state changes and errors.
 5. Remove torrent; verify confirmation. Remove-with-files: verify second
    confirmation and that only files inside `torrentsdir` are deleted.
 6. Resize terminal, use a narrow terminal and long Unicode torrent names;
@@ -67,14 +70,16 @@ prove -v tools/tests/i2pdctl.t
 perl -MTest::More -e 1
 ```
 
-- Compare `exec`, `raw_info`, `info` output and exit codes against the old
-  Python script using the same fake I2PControl responses.
+- The Test::More suite preserves `exec`, `raw_info` and `info` output and exit
+  codes using fake I2PControl responses; no Python comparison target remains.
 - Invalid arguments/JSON, missing URL/password, HTTP errors, Unicode names,
-  self-signed TLS fallback, and a response larger than the configured bound.
-- `perlcritic tools/scripts/i2pdctl` if installed; do not treat style warnings
-  as functional failures.
+  self-signed TLS fallback, proxy-environment isolation, repeated-request
+  stability and responses larger than the configured bound are covered.
+- `perlcritic --profile .perlcriticrc tools/scripts/i2pdctl` is optional; CTest
+  registers it only with `-DI2PD_PERL_CRITIC=ON`.
 - Verify no Python invocation remains in CMake/Make/docs/CI and no Perl
-  runtime dependency is added to the daemon.
+  runtime dependency is added to the daemon; `perl-portability.t` enforces the
+  source/build-consumer side.
 
 ## Android cross-check (Torrent IPC design)
 
