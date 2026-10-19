@@ -1,8 +1,15 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: resource.
+ *
+ * Defines the resource identifiers used by the Windows build, currently the
+ * MAINICON icon (101), plus the App Studio placeholder values used when the
+ * resource files are edited in Visual Studio.
+ *
  */
+
 //{{NO_DEPENDENCIES}}
 #define MAINICON 101
 

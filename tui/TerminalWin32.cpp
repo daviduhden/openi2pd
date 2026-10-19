@@ -1,11 +1,17 @@
 /*
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: TerminalWin32.
+ *
+ * Implements the terminal boundary on the Win32 console using virtual-terminal
+ * output and the alternate screen. It enables VT processing, disables line and
+ * echo input, diffs a cell buffer into UTF-8 updates, and translates console
+ * key events, including surrogate pairs and Ctrl letters, into shared key
+ * codes. An attached console is required; redirected input or output fails
+ * instead of allocating one.
+ *
+ */
 
 #ifdef _WIN32
 

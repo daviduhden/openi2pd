@@ -1,8 +1,14 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * This file is part of openi2pd and licensed under BSD-3-Clause
+ * openi2pd: OpenBSDImsg.
+ *
+ * Declares the OpenBSD imsg adapter, which carries the same versioned worker
+ * frames over native imsg message boundaries and SCM_RIGHTS. It stays
+ * separate from the portable seqpacket channel and is available only on
+ * OpenBSD.
+ *
  */
 
 #ifndef I2PD_PRIVSEP_OPENBSD_IMSG_H__

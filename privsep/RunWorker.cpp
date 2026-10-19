@@ -1,9 +1,14 @@
 /*
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: RunWorker.
+ *
+ * Validates the worker role and channel descriptor, requiring an inherited
+ * SOCK_SEQPACKET socket in descriptor 3 and refusing euid 0, then dispatches
+ * to the log worker or supervisor. Windows builds provide a failing stub.
+ *
+ */
 
 #include "RunWorker.h"
 #include "LogWorker.h"

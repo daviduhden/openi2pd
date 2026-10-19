@@ -1,8 +1,13 @@
 /*
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
  *
- * This file is part of openi2pd and licensed under BSD-3-Clause
+ * openi2pd: OpenBSDSandbox.
+ *
+ * Declares the OpenBSD role-based policy model: per-role pledge promises,
+ * explicit unveil rules and validation of pre-opened descriptors. Builders
+ * reject malformed paths and never add implicit broad rules.
+ *
  */
 
 #ifndef I2PD_PRIVSEP_OPENBSD_SANDBOX_H__

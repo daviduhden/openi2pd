@@ -1,12 +1,15 @@
 /*
-* Copyright (c) 2013-2024, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Win32NetState.
+ *
+ * Declares the COM Network List Manager event sink that maps Windows
+ * connectivity changes to the router's online or offline state. The sink
+ * tracks IPv4 and IPv6 internet capability and releases itself through
+ * reference counting.
+ *
+ */
 
 #ifndef WIN_32_NETSTATE_H__
 #define WIN_32_NETSTATE_H__

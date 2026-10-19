@@ -1,12 +1,14 @@
 /*
-* Copyright (c) 2013-2022, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: I2PControlHandlers.
+ *
+ * Declares the I2PControl method handlers that expose router status, tunnel,
+ * transport, NetDb and client-destination data and apply bandwidth settings.
+ * Handlers append JSON fields through type-specific InsertParam overloads.
+ *
+ */
 
 #ifndef I2P_CONTROL_HANDLERS_H__
 #define I2P_CONTROL_HANDLERS_H__

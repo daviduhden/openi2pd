@@ -1,11 +1,14 @@
 /*
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: TuiServer.
+ *
+ * Declares the pimpl facade for the daemon-side local administrative server
+ * used by i2pd-tui. Platform implementations own the listening socket or
+ * named pipe, while the shared dispatcher validates and executes requests.
+ *
+ */
 
 #ifndef TUI_SERVER_H__
 #define TUI_SERVER_H__

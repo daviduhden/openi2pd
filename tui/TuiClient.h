@@ -1,11 +1,15 @@
 /*
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: TuiClient.
+ *
+ * Declares the local IPC client used by i2pd-tui, including command-line
+ * parsing, endpoint resolution and a framed request API. Requests return
+ * either a payload or a typed transport, protocol or remote error so callers
+ * can distinguish recoverable daemon errors from a broken connection.
+ *
+ */
 
 #ifndef I2PD_TUI_CLIENT_H__
 #define I2PD_TUI_CLIENT_H__

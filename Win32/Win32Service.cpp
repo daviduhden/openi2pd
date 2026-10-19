@@ -1,12 +1,15 @@
 /*
-* Copyright (c) 2013-2022, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Win32Service.
+ *
+ * Implements the Windows service lifecycle: registers the control handler,
+ * reports pending, running and stopped states, and starts the router on a
+ * worker thread that Stop waits for. Pause, continue and shutdown are accepted
+ * but leave the daemon running unless a subclass overrides the matching hook.
+ *
+ */
 
 #include "Win32Service.h"
 #include <assert.h>

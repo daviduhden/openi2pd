@@ -1,9 +1,15 @@
 /*
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Channel.
+ *
+ * Implements the UNIX seqpacket channel: atomic framed sends and receives
+ * with absolute deadlines, peer credential checks and at most one
+ * SCM_RIGHTS descriptor per message. Endpoints are close-on-exec and Linux
+ * validates credentials on every delivered record.
+ *
+ */
 
 #include "Channel.h"
 

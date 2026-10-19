@@ -1,11 +1,16 @@
 /*
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: TuiClientWin32.
+ *
+ * Implements the Windows local-IPC client over the derived named pipe, using
+ * overlapped I/O and three-second connect and request timeouts. Before use it
+ * verifies that the pipe server image is i2pd.exe and that its token belongs
+ * to the current user, SYSTEM or Administrators, then exchanges versioned,
+ * length-framed TUI protocol requests.
+ *
+ */
 
 #include "TuiClient.h"
 

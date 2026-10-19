@@ -1,11 +1,15 @@
 /*
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: TuiWin32Ipc.
+ *
+ * Derives the Windows named-pipe path shared by the daemon and i2pd-tui from
+ * the configured local endpoint. The endpoint is normalised and hashed with
+ * FNV-1a into \\.\pipe\openi2pd-tui-<16 hex digits>, so path spelling cannot
+ * change the pipe and arbitrary pipe names cannot be selected.
+ *
+ */
 
 #ifndef TUI_WIN32_IPC_H__
 #define TUI_WIN32_IPC_H__

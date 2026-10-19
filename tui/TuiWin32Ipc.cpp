@@ -1,11 +1,15 @@
 /*
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: TuiWin32Ipc.
+ *
+ * Normalises configured local endpoints and hashes them with 64-bit FNV-1a to
+ * produce the named-pipe path mounted under \\.\pipe\openi2pd-tui-. ASCII case
+ * is folded and separators are collapsed, so equivalent endpoint spellings
+ * yield the same bounded pipe name on both sides.
+ *
+ */
 
 #include "TuiWin32Ipc.h"
 

@@ -1,9 +1,15 @@
 /*
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Channel.
+ *
+ * Declares the SOCK_SEQPACKET channel abstraction for isolated workers,
+ * including bounded sends and receives, SCM_RIGHTS descriptor transfer and
+ * peer credential lookup. Received descriptors are owned by the caller, and
+ * Linux per-message credentials are checked against SO_PEERCRED.
+ *
+ */
 
 #ifndef I2PD_PRIVSEP_CHANNEL_H__
 #define I2PD_PRIVSEP_CHANNEL_H__

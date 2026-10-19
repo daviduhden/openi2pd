@@ -1,11 +1,16 @@
 /*
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: TuiClient.
+ *
+ * Implements the Unix local-IPC client: resolves the socket from options or
+ * i2pd.conf, connects with bounded send and receive timeouts, and exchanges
+ * versioned, length-framed TUI protocol requests. Transport and protocol
+ * failures close the connection, while a well-formed remote error leaves it
+ * usable.
+ *
+ */
 
 #include "TuiClient.h"
 

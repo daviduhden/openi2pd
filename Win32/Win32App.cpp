@@ -1,12 +1,17 @@
 /*
-* Copyright (c) 2013-2025, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Win32App.
+ *
+ * Implements the Win32 desktop shell: a hidden main window with tray icon and
+ * popup menu, About, exit, reload, transit and datadir actions, and a
+ * periodically repainted status window. Timers drive frame updates and
+ * graceful shutdown, which stops accepting tunnels and exits when transit
+ * tunnels drain or ten minutes elapse; COM network-state monitoring starts
+ * only outside service mode.
+ *
+ */
 
 #include <stdio.h>
 #include <string.h>

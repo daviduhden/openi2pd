@@ -1,12 +1,15 @@
 /*
-* Copyright (c) 2013-2025, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Daemon.
+ *
+ * Declares the platform-neutral Daemon_Singleton lifecycle (init, start, run
+ * and stop), the per-platform daemon singletons and the optional
+ * privilege-separated log supervisor. The private implementation owns the
+ * TUI, I2PControl, UPnP and NTP helpers.
+ *
+ */
 
 #ifndef DAEMON_H__
 #define DAEMON_H__

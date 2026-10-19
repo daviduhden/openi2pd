@@ -1,11 +1,15 @@
 /*
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Terminal.
+ *
+ * Defines the platform-neutral terminal boundary shared by i2pd-tui:
+ * integer attributes, fixed key codes and UTF-8 input/output operations.
+ * Unix backs it with ncursesw and Windows with the Win32 console and VT
+ * sequences, so presentation code never depends on either API.
+ *
+ */
 
 #ifndef OPENI2PD_TUI_TERMINAL_H
 #define OPENI2PD_TUI_TERMINAL_H

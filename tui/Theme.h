@@ -1,11 +1,15 @@
 /*
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Theme.
+ *
+ * Maps semantic interface roles to the openi2pd palette and allocates
+ * terminal colour pairs. Support degrades from direct and 256-colour output
+ * through 16- and 8-colour ANSI to monochrome attributes, keeping default
+ * terminal colours when they are usable.
+ *
+ */
 
 #ifndef OPENI2PD_TUI_THEME_H
 #define OPENI2PD_TUI_THEME_H

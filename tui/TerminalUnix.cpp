@@ -1,11 +1,16 @@
 /*
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: TerminalUnix.
+ *
+ * Implements the terminal boundary with ncursesw: initialises cbreak,
+ * no-echo keypad input, maps ncurses keys to stable shared codes and exposes
+ * colour-pair and timeout-based read operations. It is compiled only on
+ * non-Windows targets and translates resize and keypad input for the shared
+ * TUI loop.
+ *
+ */
 
 #ifndef _WIN32
 

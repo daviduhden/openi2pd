@@ -1,12 +1,15 @@
 /*
-* Copyright (c) 2013-2020, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: i2pd.
+ *
+ * Process entry point: a QT build delegates to RunQT, otherwise a validated
+ * --privsep-worker invocation is dispatched to the isolated worker runner and
+ * normal execution runs the Daemon init/start/run/stop sequence. The Windows
+ * WinMain wrapper forwards to main.
+ *
+ */
 
 #include <stdlib.h>
 #include <string_view>

@@ -1,9 +1,15 @@
 /*
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Protocol.
+ *
+ * Defines the versioned worker frame, bounded payload and text codecs, and
+ * the typed log-record and log-configuration encodings shared by every
+ * transport. Decoders reject bad magic, versions, types, oversized lengths,
+ * truncation, trailing bytes and embedded NULs in path fields.
+ *
+ */
 
 #ifndef I2PD_PRIVSEP_PROTOCOL_H__
 #define I2PD_PRIVSEP_PROTOCOL_H__

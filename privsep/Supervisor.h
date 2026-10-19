@@ -1,9 +1,13 @@
 /*
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Supervisor.
+ *
+ * Declares the supervisor entry point. The supervisor owns the log-worker
+ * process, forwards framed log records and never opens the log file itself.
+ *
+ */
 
 #ifndef I2PD_PRIVSEP_SUPERVISOR_H__
 #define I2PD_PRIVSEP_SUPERVISOR_H__

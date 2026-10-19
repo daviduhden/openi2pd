@@ -1,9 +1,15 @@
 /*
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: LogWorker.
+ *
+ * Declares the parent-side LogSink and the isolated log-worker entry point.
+ * The sink serialises bounded records and supports reattachment after a
+ * restart, while the worker owns log-file or syslog output and text
+ * sanitisation.
+ *
+ */
 
 #ifndef I2PD_PRIVSEP_LOG_WORKER_H__
 #define I2PD_PRIVSEP_LOG_WORKER_H__
