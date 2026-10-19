@@ -1,5 +1,4 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
  * Copyright (c) 2026, David Uhden Collado
  * SPDX-License-Identifier: BSD-3-Clause
  */
@@ -25,6 +24,13 @@ public class UiFormatTest {
                 Collections.emptyList(), ServiceStates.NONE, 0L, "", "");
     }
 
+    private static RouterSnapshot snapshotWithStatus(DaemonWrapper.State state, boolean online,
+            int statusCode, String status, String error) {
+        return new RouterSnapshot(state, state != null && state.isStartedOkay(), online, status,
+                statusCode, error, 0L, 1, 2, 3, 4, 5, false, true, true, 6L, 7L, 8L, 9L, 10L,
+                11L, 12L, Collections.emptyList(), ServiceStates.NONE, 0L, error, "ok");
+    }
+
     @Test
     public void mapsDaemonStatesToPresentationStates() {
         assertEquals(UiFormat.RouterState.UNKNOWN, UiFormat.stateOf(null));
@@ -40,6 +46,8 @@ public class UiFormatTest {
                 UiFormat.stateOf(snapshot(DaemonWrapper.State.startedOkay, false)));
         assertEquals(UiFormat.RouterState.STOPPING,
                 UiFormat.stateOf(snapshot(DaemonWrapper.State.gracefulShutdownInProgress, true)));
+        assertEquals(UiFormat.RouterState.STOPPING,
+                UiFormat.stateOf(snapshot(DaemonWrapper.State.stopping, false)));
     }
 
     @Test
@@ -48,6 +56,7 @@ public class UiFormatTest {
         RouterSnapshot connected = snapshot(DaemonWrapper.State.startedOkay, true);
         RouterSnapshot degraded = snapshot(DaemonWrapper.State.startedOkay, false);
         RouterSnapshot starting = snapshot(DaemonWrapper.State.starting, false);
+        RouterSnapshot stopping = snapshot(DaemonWrapper.State.stopping, false);
         RouterSnapshot failed = snapshot(DaemonWrapper.State.startFailed, false);
 
         assertTrue(UiFormat.canStart(stopped));
@@ -58,15 +67,20 @@ public class UiFormatTest {
         assertTrue(UiFormat.canStop(connected));
         assertTrue(UiFormat.canStop(degraded));
         assertTrue(UiFormat.canStop(starting));
+        assertTrue(UiFormat.canStop(stopping));
+        assertTrue("a failed start must be dismissible/stopped", UiFormat.canStop(failed));
         assertFalse(UiFormat.canStop(stopped));
 
         assertTrue(UiFormat.canRestart(connected));
         assertTrue(UiFormat.canRestart(degraded));
         assertFalse(UiFormat.canRestart(starting));
         assertFalse(UiFormat.canRestart(stopped));
+        assertTrue(UiFormat.canGraceful(connected));
+        assertFalse(UiFormat.canGraceful(failed));
 
         assertTrue(UiFormat.isRunning(connected));
         assertTrue(UiFormat.isRunning(degraded));
+        assertTrue(UiFormat.isRunning(stopping));
         assertFalse(UiFormat.isRunning(stopped));
         assertTrue(UiFormat.isConnected(connected));
         assertFalse(UiFormat.isConnected(starting));
@@ -92,6 +106,25 @@ public class UiFormatTest {
                         DaemonWrapper.State.startedOkay, ServiceStates.NONE, 0L, "", "ok");
         assertEquals(UiFormat.RouterState.ERROR, UiFormat.stateOf(failed));
         assertFalse(UiFormat.isConnected(failed));
+        assertTrue("Stop must stay available when only the status snapshot failed",
+                UiFormat.canStop(failed));
+    }
+
+    @Test
+    public void zeroInitialisedCountersAreNotLiveMetrics() {
+        RouterSnapshot startedWithoutStatus =
+                snapshotWithStatus(DaemonWrapper.State.startedOkay, false, 0, "", "");
+        RouterSnapshot startedWithStatus =
+                snapshotWithStatus(DaemonWrapper.State.startedOkay, true, 0, "OK", "");
+        RouterSnapshot unknownStatus =
+                snapshotWithStatus(DaemonWrapper.State.startedOkay, true, 0, "Unknown", "");
+
+        assertFalse(startedWithoutStatus.hasLiveMetrics());
+        assertFalse(UiFormat.hasLiveMetrics(startedWithoutStatus));
+        assertFalse(unknownStatus.hasLiveMetrics());
+        assertTrue(startedWithStatus.hasLiveMetrics());
+        assertTrue(UiFormat.hasLiveMetrics(startedWithStatus));
+        assertTrue(UiFormat.isStarted(startedWithoutStatus));
     }
 
     @Test
