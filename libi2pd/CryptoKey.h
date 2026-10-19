@@ -49,6 +49,7 @@ namespace crypto
 	{
 	public:
 		ElGamalDecryptor (const uint8_t * priv);
+		~ElGamalDecryptor () override;
 		bool Decrypt (const uint8_t * encrypted, uint8_t * data) override; // 514 bytes encrypted, 222 bytes data
 		size_t GetPublicKeyLen () const override { return 256; };
 

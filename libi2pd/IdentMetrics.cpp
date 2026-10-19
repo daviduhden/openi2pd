@@ -53,7 +53,7 @@ namespace data
 	PeerOrdering::~PeerOrdering ()
 	{
 #if OPENSSL_SIPHASH
-		if (m_MDCtx) EVP_MD_CTX_destroy (m_MDCtx);
+		if (m_MDCtx) EVP_MD_CTX_free (m_MDCtx);
 #endif
 	}
 
@@ -64,9 +64,9 @@ namespace data
 		else
 			RAND_bytes (m_PeerOrderingKey, 16);
 #if OPENSSL_SIPHASH
-		if (m_MDCtx) EVP_MD_CTX_destroy (m_MDCtx); // delete previous
+		if (m_MDCtx) EVP_MD_CTX_free (m_MDCtx); // delete previous
 		EVP_PKEY * sipKey = EVP_PKEY_new_raw_private_key (EVP_PKEY_SIPHASH, nullptr, m_PeerOrderingKey, 16);
-		m_MDCtx = EVP_MD_CTX_create ();
+		m_MDCtx = EVP_MD_CTX_new ();
 		EVP_DigestSignInit (m_MDCtx, nullptr, nullptr, nullptr, sipKey);
 		EVP_PKEY_free (sipKey);
 #endif

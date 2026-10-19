@@ -11,18 +11,45 @@
 #include <memory>
 #include <openssl/evp.h>
 #include <openssl/crypto.h>
-#if !defined(LIBRESSL_VERSION_NUMBER) && OPENSSL_VERSION_NUMBER >= 0x30000000L // since 3.0.0
+#ifndef LIBRESSL_VERSION_NUMBER // OpenSSL 3.0.2 is the minimum
 #include <openssl/core_names.h>
 #include <openssl/param_build.h>
 #endif
 #include "Log.h"
 #include "Signature.h"
 
+namespace
+{
+	// Digest contexts owned by the verifier/signer entry points. OpenSSL's
+	// EVP_MD_CTX is release-only, so a scoped owner removes the early-return
+	// and exception paths that previously leaked it.
+	struct MDCtxDeleter
+	{
+		void operator() (EVP_MD_CTX * ctx) const { EVP_MD_CTX_free (ctx); }
+	};
+
+	using MDCtxPtr = std::unique_ptr<EVP_MD_CTX, MDCtxDeleter>;
+
+	// Encode an ECDSA_SIG into a buffer that is sized from the DER length
+	// reported by OpenSSL. A fixed keyLen + 8 buffer is too small for P-521:
+	// two 66-byte integers with their high bit set need 141 bytes, not 140.
+	bool EncodeECDSASignature (const ECDSA_SIG * sig, std::vector<uint8_t> & der)
+	{
+		if (!sig) return false;
+		const int derLen = i2d_ECDSA_SIG (sig, nullptr);
+		if (derLen <= 0) return false;
+		der.resize (static_cast<size_t> (derLen));
+		uint8_t * out = der.data ();
+		const int written = i2d_ECDSA_SIG (sig, &out);
+		return written > 0 && written <= derLen && static_cast<size_t> (written) == der.size ();
+	}
+}
+
 namespace i2p
 {
 namespace crypto
 {
-#if !defined(LIBRESSL_VERSION_NUMBER) && OPENSSL_VERSION_NUMBER >= 0x30000000L // since 3.0.0
+#ifndef LIBRESSL_VERSION_NUMBER // OpenSSL 3.0.2 is the minimum
 	DSAVerifier::DSAVerifier ()
 		: m_PublicKey (nullptr)
 	{
@@ -35,36 +62,54 @@ namespace crypto
 
 	void DSAVerifier::SetPublicKey (const uint8_t * signingKey)
 	{
-		if (m_PublicKey) EVP_PKEY_free (m_PublicKey);
+		if (m_PublicKey)
+		{
+			EVP_PKEY_free (m_PublicKey);
+			m_PublicKey = nullptr;
+		}
+		if (!signingKey) return;
 		BIGNUM * pub = BN_bin2bn (signingKey, DSA_PUBLIC_KEY_LENGTH, NULL);
+		if (!pub) return;
 		m_PublicKey = CreateDSA (pub);
 		BN_free (pub);
+		if (!m_PublicKey) LogPrint (eLogError, "DSA can't create public key");
 	}
 
 	bool DSAVerifier::Verify (const uint8_t * buf, size_t len, const uint8_t * signature) const
 	{
+		if (!m_PublicKey || !signature) return false;
 		// signature
 		DSA_SIG * sig = DSA_SIG_new ();
-		DSA_SIG_set0 (sig, BN_bin2bn (signature, DSA_SIGNATURE_LENGTH / 2, NULL),
-			BN_bin2bn (signature + DSA_SIGNATURE_LENGTH / 2, DSA_SIGNATURE_LENGTH / 2, NULL));
+		BIGNUM * r = BN_bin2bn (signature, DSA_SIGNATURE_LENGTH / 2, NULL);
+		BIGNUM * s = BN_bin2bn (signature + DSA_SIGNATURE_LENGTH / 2, DSA_SIGNATURE_LENGTH / 2, NULL);
+		if (!sig || !r || !s || DSA_SIG_set0 (sig, r, s) != 1)
+		{
+			BN_free (r);
+			BN_free (s);
+			DSA_SIG_free (sig);
+			return false;
+		}
 		// to DER format
 		uint8_t sign[DSA_SIGNATURE_LENGTH + 8];
-		uint8_t * s = sign;
-		auto l = i2d_DSA_SIG (sig, &s);
+		uint8_t * der = sign;
+		auto l = i2d_DSA_SIG (sig, &der);
 		DSA_SIG_free (sig);
+		if (l <= 0) return false;
 		// verify
-		EVP_MD_CTX * ctx = EVP_MD_CTX_create ();
-		EVP_DigestVerifyInit (ctx, NULL, EVP_sha1 (), NULL, m_PublicKey);
-		auto ret = EVP_DigestVerify (ctx, sign, l, buf, len) == 1;
-		EVP_MD_CTX_destroy (ctx);
-		return ret;
+		MDCtxPtr ctx (EVP_MD_CTX_new ());
+		return ctx && EVP_DigestVerifyInit (ctx.get (), NULL, EVP_sha1 (), NULL, m_PublicKey) == 1
+			&& EVP_DigestVerify (ctx.get (), sign, l, buf, len) == 1;
 	}
 
 	DSASigner::DSASigner (const uint8_t * signingPrivateKey, const uint8_t * signingPublicKey)
+		: m_PrivateKey (nullptr)
 	{
+		if (!signingPrivateKey) return;
 		BIGNUM * priv = BN_bin2bn (signingPrivateKey, DSA_PRIVATE_KEY_LENGTH, NULL);
+		if (!priv) return;
 		m_PrivateKey = CreateDSA (nullptr, priv);
 		BN_free (priv);
+		if (!m_PrivateKey) LogPrint (eLogError, "DSA can't create private key");
 	}
 
 	DSASigner::~DSASigner ()
@@ -74,39 +119,61 @@ namespace crypto
 
 	void DSASigner::Sign (const uint8_t * buf, int len, uint8_t * signature) const
 	{
+		if (!m_PrivateKey || !signature)
+		{
+			if (signature) memset (signature, 0, DSA_SIGNATURE_LENGTH);
+			return;
+		}
 		uint8_t sign[DSA_SIGNATURE_LENGTH + 8];
-		size_t l = DSA_SIGNATURE_LENGTH + 8;
-		EVP_MD_CTX * ctx = EVP_MD_CTX_create ();
-		EVP_DigestSignInit (ctx, NULL, EVP_sha1 (), NULL, m_PrivateKey);
-		EVP_DigestSign (ctx, sign, &l, buf, len);
-		EVP_MD_CTX_destroy (ctx);
+		size_t l = sizeof (sign);
+		MDCtxPtr ctx (EVP_MD_CTX_new ());
+		bool ok = ctx && EVP_DigestSignInit (ctx.get (), NULL, EVP_sha1 (), NULL, m_PrivateKey) == 1
+			&& EVP_DigestSign (ctx.get (), sign, &l, buf, len) == 1 && l > 0 && l <= sizeof (sign);
 		// decode r and s
-		const uint8_t * s1 = sign;
-		DSA_SIG * sig = d2i_DSA_SIG (NULL, &s1, l);
-		const BIGNUM *r, *s;
-		DSA_SIG_get0 (sig, &r, &s);
-		bn2buf (r, signature, DSA_SIGNATURE_LENGTH / 2);
-		bn2buf (s, signature + DSA_SIGNATURE_LENGTH / 2, DSA_SIGNATURE_LENGTH / 2);
+		DSA_SIG * sig = nullptr;
+		if (ok)
+		{
+			const uint8_t * s1 = sign;
+			sig = d2i_DSA_SIG (NULL, &s1, l);
+		}
+		const BIGNUM *r = nullptr, *s = nullptr;
+		if (sig) DSA_SIG_get0 (sig, &r, &s);
+		if (!r || !s || !bn2buf (r, signature, DSA_SIGNATURE_LENGTH / 2)
+			|| !bn2buf (s, signature + DSA_SIGNATURE_LENGTH / 2, DSA_SIGNATURE_LENGTH / 2))
+		{
+			memset (signature, 0, DSA_SIGNATURE_LENGTH);
+			LogPrint (eLogError, "DSA signing failed");
+		}
 		DSA_SIG_free (sig);
 	}
 
-	void CreateDSARandomKeys (uint8_t * signingPrivateKey, uint8_t * signingPublicKey)
+	bool CreateDSARandomKeys (uint8_t * signingPrivateKey, uint8_t * signingPublicKey)
 	{
+		if (!signingPrivateKey || !signingPublicKey) return false;
+		auto clear = [&] () {
+			memset (signingPrivateKey, 0, DSA_PRIVATE_KEY_LENGTH);
+			memset (signingPublicKey, 0, DSA_PUBLIC_KEY_LENGTH);
+		};
 		EVP_PKEY * paramskey = CreateDSA ();
-		EVP_PKEY_CTX * ctx = EVP_PKEY_CTX_new_from_pkey (NULL, paramskey, NULL);
-		EVP_PKEY_keygen_init (ctx);
+		EVP_PKEY_CTX * ctx = paramskey ? EVP_PKEY_CTX_new_from_pkey (NULL, paramskey, NULL) : nullptr;
 		EVP_PKEY * pkey = nullptr;
-		EVP_PKEY_keygen (ctx, &pkey);
+		bool ok = ctx && EVP_PKEY_keygen_init (ctx) == 1 && EVP_PKEY_keygen (ctx, &pkey) == 1 && pkey;
 		BIGNUM *pub = NULL, *priv = NULL;
-		EVP_PKEY_get_bn_param (pkey, OSSL_PKEY_PARAM_PUB_KEY, &pub);
-		bn2buf (pub, signingPublicKey, DSA_PUBLIC_KEY_LENGTH);
-		EVP_PKEY_get_bn_param (pkey, OSSL_PKEY_PARAM_PRIV_KEY, &priv);
-		bn2buf (priv, signingPrivateKey, DSA_PRIVATE_KEY_LENGTH);
+		ok = ok && EVP_PKEY_get_bn_param (pkey, OSSL_PKEY_PARAM_PUB_KEY, &pub) == 1 && pub
+			&& EVP_PKEY_get_bn_param (pkey, OSSL_PKEY_PARAM_PRIV_KEY, &priv) == 1 && priv
+			&& bn2buf (pub, signingPublicKey, DSA_PUBLIC_KEY_LENGTH)
+			&& bn2buf (priv, signingPrivateKey, DSA_PRIVATE_KEY_LENGTH);
 		BN_free (pub);
 		BN_free (priv);
 		EVP_PKEY_free (pkey);
 		EVP_PKEY_free (paramskey);
 		EVP_PKEY_CTX_free (ctx);
+		if (!ok)
+		{
+			clear ();
+			return false;
+		}
+		return true;
 	}
 #else
 
@@ -122,18 +189,27 @@ namespace crypto
 
 	void DSAVerifier::SetPublicKey (const uint8_t * signingKey)
 	{
+		if (!signingKey) return;
 		DSA_set0_key (m_PublicKey, BN_bin2bn (signingKey, DSA_PUBLIC_KEY_LENGTH, NULL), NULL);
 	}
 
 	bool DSAVerifier::Verify (const uint8_t * buf, size_t len, const uint8_t * signature) const
 	{
+		if (!m_PublicKey || !signature) return false;
 		// calculate SHA1 digest
 		uint8_t digest[20];
 		SHA1 (buf, len, digest);
 		// signature
 		DSA_SIG * sig = DSA_SIG_new ();
-		DSA_SIG_set0 (sig, BN_bin2bn (signature, DSA_SIGNATURE_LENGTH / 2, NULL),
-			BN_bin2bn (signature + DSA_SIGNATURE_LENGTH / 2, DSA_SIGNATURE_LENGTH / 2, NULL));
+		BIGNUM * r = BN_bin2bn (signature, DSA_SIGNATURE_LENGTH / 2, NULL);
+		BIGNUM * s = BN_bin2bn (signature + DSA_SIGNATURE_LENGTH / 2, DSA_SIGNATURE_LENGTH / 2, NULL);
+		if (!sig || !r || !s || DSA_SIG_set0 (sig, r, s) != 1)
+		{
+			BN_free (r);
+			BN_free (s);
+			DSA_SIG_free (sig);
+			return false;
+		}
 		// DSA verification
 		int ret = DSA_do_verify (digest, 20, sig, m_PublicKey) == 1;
 		DSA_SIG_free (sig);
@@ -141,10 +217,13 @@ namespace crypto
 	}
 
 	DSASigner::DSASigner (const uint8_t * signingPrivateKey, const uint8_t * signingPublicKey)
+		: m_PrivateKey (nullptr)
 	{
+		if (!signingPrivateKey || !signingPublicKey) return;
 		m_PrivateKey = CreateDSA ();
-		DSA_set0_key (m_PrivateKey, BN_bin2bn (signingPublicKey, DSA_PUBLIC_KEY_LENGTH, NULL),
-			BN_bin2bn (signingPrivateKey, DSA_PRIVATE_KEY_LENGTH, NULL));
+		if (m_PrivateKey)
+			DSA_set0_key (m_PrivateKey, BN_bin2bn (signingPublicKey, DSA_PUBLIC_KEY_LENGTH, NULL),
+				BN_bin2bn (signingPrivateKey, DSA_PRIVATE_KEY_LENGTH, NULL));
 	}
 
 	DSASigner::~DSASigner ()
@@ -154,29 +233,54 @@ namespace crypto
 
 	void DSASigner::Sign (const uint8_t * buf, int len, uint8_t * signature) const
 	{
+		if (!m_PrivateKey || !signature)
+		{
+			if (signature) memset (signature, 0, DSA_SIGNATURE_LENGTH);
+			return;
+		}
 		uint8_t digest[20];
 		SHA1 (buf, len, digest);
 		DSA_SIG * sig = DSA_do_sign (digest, 20, m_PrivateKey);
-		const BIGNUM *r, *s;
-		DSA_SIG_get0 (sig, &r, &s);
-		bn2buf (r, signature, DSA_SIGNATURE_LENGTH / 2);
-		bn2buf (s, signature + DSA_SIGNATURE_LENGTH / 2, DSA_SIGNATURE_LENGTH / 2);
+		const BIGNUM *r = nullptr, *s = nullptr;
+		if (sig) DSA_SIG_get0 (sig, &r, &s);
+		if (!r || !s || !bn2buf (r, signature, DSA_SIGNATURE_LENGTH / 2)
+			|| !bn2buf (s, signature + DSA_SIGNATURE_LENGTH / 2, DSA_SIGNATURE_LENGTH / 2))
+		{
+			memset (signature, 0, DSA_SIGNATURE_LENGTH);
+			LogPrint (eLogError, "DSA signing failed");
+		}
 		DSA_SIG_free (sig);
 	}
 
-	void CreateDSARandomKeys (uint8_t * signingPrivateKey, uint8_t * signingPublicKey)
+	bool CreateDSARandomKeys (uint8_t * signingPrivateKey, uint8_t * signingPublicKey)
 	{
+		if (!signingPrivateKey || !signingPublicKey) return false;
+		auto clear = [&] () {
+			memset (signingPrivateKey, 0, DSA_PRIVATE_KEY_LENGTH);
+			memset (signingPublicKey, 0, DSA_PUBLIC_KEY_LENGTH);
+		};
 		DSA * dsa = CreateDSA ();
-		DSA_generate_key (dsa);
+		if (!dsa || DSA_generate_key (dsa) != 1)
+		{
+			DSA_free (dsa);
+			clear ();
+			return false;
+		}
 		const BIGNUM *pub_key, *priv_key;
 		DSA_get0_key (dsa, &pub_key, &priv_key);
-		bn2buf (priv_key, signingPrivateKey, DSA_PRIVATE_KEY_LENGTH);
-		bn2buf (pub_key, signingPublicKey, DSA_PUBLIC_KEY_LENGTH);
+		bool ok = pub_key && priv_key && bn2buf (priv_key, signingPrivateKey, DSA_PRIVATE_KEY_LENGTH)
+			&& bn2buf (pub_key, signingPublicKey, DSA_PUBLIC_KEY_LENGTH);
 		DSA_free (dsa);
+		if (!ok)
+		{
+			clear ();
+			return false;
+		}
+		return true;
 	}
 #endif
 
-#if !defined(LIBRESSL_VERSION_NUMBER) && OPENSSL_VERSION_NUMBER >= 0x30000000L // since 3.0.0
+#ifndef LIBRESSL_VERSION_NUMBER // OpenSSL 3.0.2 is the minimum
 	ECDSAVerifier::ECDSAVerifier (int curve, size_t keyLen, const EVP_MD * hash)
 		: m_Curve (curve)
 		, m_KeyLen (keyLen)
@@ -197,21 +301,33 @@ namespace crypto
 			EVP_PKEY_free (m_PublicKey);
 			m_PublicKey = nullptr;
 		}
+		if (!signingKey) return;
 		auto plen = GetPublicKeyLen ();
 		std::vector<uint8_t> pub (plen + 1);
 		pub[0] = POINT_CONVERSION_UNCOMPRESSED;
 		memcpy (pub.data () + 1, signingKey, plen); // 0x04|x|y
 		OSSL_PARAM_BLD * paramBld = OSSL_PARAM_BLD_new ();
-		OSSL_PARAM_BLD_push_utf8_string (paramBld, OSSL_PKEY_PARAM_GROUP_NAME, OBJ_nid2ln (m_Curve), 0);
-		OSSL_PARAM_BLD_push_octet_string (paramBld, OSSL_PKEY_PARAM_PUB_KEY, pub.data (), pub.size ());
-		OSSL_PARAM * params = OSSL_PARAM_BLD_to_param (paramBld);
+		if (!paramBld)
+		{
+			LogPrint (eLogError, "ECDSA can't allocate PKEY parameters");
+			return;
+		}
+		bool built = OSSL_PARAM_BLD_push_utf8_string (paramBld, OSSL_PKEY_PARAM_GROUP_NAME, OBJ_nid2ln (m_Curve), 0) == 1
+			&& OSSL_PARAM_BLD_push_octet_string (paramBld, OSSL_PKEY_PARAM_PUB_KEY, pub.data (), pub.size ()) == 1;
+		OSSL_PARAM * params = built ? OSSL_PARAM_BLD_to_param (paramBld) : nullptr;
 
-		EVP_PKEY_CTX * ctx = EVP_PKEY_CTX_new_from_name (NULL, "EC", NULL);
+		EVP_PKEY_CTX * ctx = params ? EVP_PKEY_CTX_new_from_name (NULL, "EC", NULL) : nullptr;
 		if (ctx)
 		{
+			EVP_PKEY * pkey = nullptr;
 			if (EVP_PKEY_fromdata_init (ctx) <= 0
-				|| EVP_PKEY_fromdata (ctx, &m_PublicKey, EVP_PKEY_PUBLIC_KEY, params) <= 0)
+				|| EVP_PKEY_fromdata (ctx, &pkey, EVP_PKEY_PUBLIC_KEY, params) <= 0)
+			{
 				LogPrint (eLogError, "ECDSA can't create PKEY from params");
+				EVP_PKEY_free (pkey);
+			}
+			else
+				m_PublicKey = pkey;
 			EVP_PKEY_CTX_free (ctx);
 		}
 		else
@@ -223,21 +339,27 @@ namespace crypto
 
 	bool ECDSAVerifier::Verify (const uint8_t * buf, size_t len, const uint8_t * signature) const
 	{
+		if (!m_PublicKey || !signature) return false;
 		// signature
 		ECDSA_SIG * sig = ECDSA_SIG_new ();
-		ECDSA_SIG_set0 (sig, BN_bin2bn (signature, GetSignatureLen () / 2, NULL),
-			BN_bin2bn (signature + GetSignatureLen () / 2, GetSignatureLen () / 2, NULL));
-		// to DER format
-		std::vector<uint8_t> sign (GetSignatureLen () + 8);
-		uint8_t * s = sign.data ();
-		auto l = i2d_ECDSA_SIG (sig, &s);
+		BIGNUM * r = BN_bin2bn (signature, GetSignatureLen () / 2, NULL);
+		BIGNUM * s = BN_bin2bn (signature + GetSignatureLen () / 2, GetSignatureLen () / 2, NULL);
+		if (!sig || !r || !s || ECDSA_SIG_set0 (sig, r, s) != 1)
+		{
+			BN_free (r);
+			BN_free (s);
+			ECDSA_SIG_free (sig);
+			return false;
+		}
+		// to DER format, sized exactly from the encoder
+		std::vector<uint8_t> sign;
+		const bool encoded = EncodeECDSASignature (sig, sign);
 		ECDSA_SIG_free (sig);
+		if (!encoded || sign.empty ()) return false;
 		// verify
-		EVP_MD_CTX * ctx = EVP_MD_CTX_create ();
-		EVP_DigestVerifyInit (ctx, NULL, m_Hash, NULL, m_PublicKey);
-		auto ret = EVP_DigestVerify (ctx, sign.data (), l, buf, len) == 1;
-		EVP_MD_CTX_destroy (ctx);
-		return ret;
+		MDCtxPtr ctx (EVP_MD_CTX_new ());
+		return ctx && EVP_DigestVerifyInit (ctx.get (), NULL, m_Hash, NULL, m_PublicKey) == 1
+			&& EVP_DigestVerify (ctx.get (), sign.data (), sign.size (), buf, len) == 1;
 	}
 
 	ECDSASigner::ECDSASigner (int curve, size_t keyLen, const EVP_MD * hash, const uint8_t * signingPrivateKey)
@@ -245,18 +367,31 @@ namespace crypto
 		, m_Hash (hash)
 		, m_PrivateKey (nullptr)
 	{
+		if (!signingPrivateKey) return;
 		BIGNUM * priv = BN_bin2bn (signingPrivateKey, keyLen / 2, NULL);
+		if (!priv) return;
 		OSSL_PARAM_BLD * paramBld = OSSL_PARAM_BLD_new ();
-		OSSL_PARAM_BLD_push_utf8_string (paramBld, OSSL_PKEY_PARAM_GROUP_NAME, OBJ_nid2ln (curve), 0);
-		OSSL_PARAM_BLD_push_BN (paramBld, OSSL_PKEY_PARAM_PRIV_KEY, priv);
-		OSSL_PARAM * params = OSSL_PARAM_BLD_to_param (paramBld);
+		if (!paramBld)
+		{
+			BN_free (priv);
+			return;
+		}
+		bool built = OSSL_PARAM_BLD_push_utf8_string (paramBld, OSSL_PKEY_PARAM_GROUP_NAME, OBJ_nid2ln (curve), 0) == 1
+			&& OSSL_PARAM_BLD_push_BN (paramBld, OSSL_PKEY_PARAM_PRIV_KEY, priv) == 1;
+		OSSL_PARAM * params = built ? OSSL_PARAM_BLD_to_param (paramBld) : nullptr;
 
-		EVP_PKEY_CTX * ctx = EVP_PKEY_CTX_new_from_name (NULL, "EC", NULL);
+		EVP_PKEY_CTX * ctx = params ? EVP_PKEY_CTX_new_from_name (NULL, "EC", NULL) : nullptr;
 		if (ctx)
 		{
+			EVP_PKEY * pkey = nullptr;
 			if (EVP_PKEY_fromdata_init (ctx) <= 0
-				|| EVP_PKEY_fromdata (ctx, &m_PrivateKey, EVP_PKEY_KEYPAIR, params) <= 0)
+				|| EVP_PKEY_fromdata (ctx, &pkey, EVP_PKEY_KEYPAIR, params) <= 0)
+			{
 				LogPrint (eLogError, "ECDSA can't create PKEY from params");
+				EVP_PKEY_free (pkey);
+			}
+			else
+				m_PrivateKey = pkey;
 			EVP_PKEY_CTX_free (ctx);
 		}
 		else
@@ -274,39 +409,67 @@ namespace crypto
 
 	void ECDSASigner::Sign (const uint8_t * buf, int len, uint8_t * signature) const
 	{
-		std::vector<uint8_t> sign (m_KeyLen + 8);
+		if (!m_PrivateKey || !signature)
+		{
+			if (signature) memset (signature, 0, m_KeyLen);
+			return;
+		}
+		// DER needs up to keyLen + 9 bytes (two high-bit integers plus the
+		// long-form SEQUENCE header), so keep a conservative margin.
+		std::vector<uint8_t> sign (m_KeyLen + 16);
 		size_t l = sign.size ();
-		EVP_MD_CTX * ctx = EVP_MD_CTX_create ();
-		EVP_DigestSignInit (ctx, NULL, m_Hash, NULL, m_PrivateKey);
-		EVP_DigestSign (ctx, sign.data (), &l, buf, len);
-		EVP_MD_CTX_destroy (ctx);
+		MDCtxPtr ctx (EVP_MD_CTX_new ());
+		bool ok = ctx && EVP_DigestSignInit (ctx.get (), NULL, m_Hash, NULL, m_PrivateKey) == 1
+			&& EVP_DigestSign (ctx.get (), sign.data (), &l, buf, len) == 1 && l > 0 && l <= sign.size ();
 		// decode r and s
-		const uint8_t * s1 = sign.data ();
-		ECDSA_SIG * sig = d2i_ECDSA_SIG (NULL, &s1, l);
-		const BIGNUM *r, *s;
-		ECDSA_SIG_get0 (sig, &r, &s);
-		bn2buf (r, signature, m_KeyLen / 2);
-		bn2buf (s, signature + m_KeyLen / 2, m_KeyLen / 2);
+		ECDSA_SIG * sig = nullptr;
+		if (ok)
+		{
+			const uint8_t * s1 = sign.data ();
+			sig = d2i_ECDSA_SIG (NULL, &s1, l);
+		}
+		const BIGNUM *r = nullptr, *s = nullptr;
+		if (sig) ECDSA_SIG_get0 (sig, &r, &s);
+		if (!r || !s || !bn2buf (r, signature, m_KeyLen / 2) || !bn2buf (s, signature + m_KeyLen / 2, m_KeyLen / 2))
+		{
+			memset (signature, 0, m_KeyLen);
+			LogPrint (eLogError, "ECDSA signing failed");
+		}
 		ECDSA_SIG_free (sig);
 	}
 
-	void CreateECDSARandomKeys (int curve, size_t keyLen, uint8_t * signingPrivateKey, uint8_t * signingPublicKey)
+	bool CreateECDSARandomKeys (int curve, size_t keyLen, uint8_t * signingPrivateKey, uint8_t * signingPublicKey)
 	{
+		if (!signingPrivateKey || !signingPublicKey) return false;
+		auto clear = [&] () {
+			memset (signingPrivateKey, 0, keyLen / 2);
+			memset (signingPublicKey, 0, keyLen);
+		};
 		EVP_PKEY * pkey = EVP_EC_gen (OBJ_nid2ln (curve));
+		if (!pkey)
+		{
+			clear ();
+			return false;
+		}
 		// private
-		BIGNUM * priv = BN_new ();
-		EVP_PKEY_get_bn_param (pkey, OSSL_PKEY_PARAM_PRIV_KEY, &priv);
-		bn2buf (priv, signingPrivateKey, keyLen / 2);
-		BN_free (priv);
+		BIGNUM * priv = nullptr;
 		// public
-		BIGNUM *x = BN_new (), *y = BN_new ();
-		EVP_PKEY_get_bn_param (pkey, OSSL_PKEY_PARAM_EC_PUB_X, &x);
-		EVP_PKEY_get_bn_param (pkey, OSSL_PKEY_PARAM_EC_PUB_Y, &y);
-		bn2buf (x, signingPublicKey, keyLen / 2);
-		bn2buf (y, signingPublicKey + keyLen / 2, keyLen / 2);
+		BIGNUM *x = nullptr, *y = nullptr;
+		bool ok = EVP_PKEY_get_bn_param (pkey, OSSL_PKEY_PARAM_PRIV_KEY, &priv) == 1 && priv
+			&& EVP_PKEY_get_bn_param (pkey, OSSL_PKEY_PARAM_EC_PUB_X, &x) == 1 && x
+			&& EVP_PKEY_get_bn_param (pkey, OSSL_PKEY_PARAM_EC_PUB_Y, &y) == 1 && y
+			&& bn2buf (priv, signingPrivateKey, keyLen / 2) && bn2buf (x, signingPublicKey, keyLen / 2)
+			&& bn2buf (y, signingPublicKey + keyLen / 2, keyLen / 2);
+		BN_free (priv);
 		BN_free (x);
 		BN_free (y);
 		EVP_PKEY_free (pkey);
+		if (!ok)
+		{
+			clear ();
+			return false;
+		}
+		return true;
 	}
 
 #endif
@@ -316,26 +479,24 @@ namespace crypto
 	{
 	}
 
-	EDDSA25519Verifier::~EDDSA25519Verifier ()
-	{
-		EVP_PKEY_free (m_Pkey);
-	}
+	EDDSA25519Verifier::~EDDSA25519Verifier () = default;
 
 	void EDDSA25519Verifier::SetPublicKey (const uint8_t * signingKey)
 	{
-		if (m_Pkey) EVP_PKEY_free (m_Pkey);
-		m_Pkey = EVP_PKEY_new_raw_public_key (EVP_PKEY_ED25519, NULL, signingKey, 32);
+		m_Pkey.reset ();
+		if (!signingKey) return;
+		m_Pkey.reset (EVP_PKEY_new_raw_public_key (EVP_PKEY_ED25519, NULL, signingKey, EDDSA25519_PUBLIC_KEY_LENGTH));
+		if (!m_Pkey) LogPrint (eLogError, "EdDSA can't create public key");
 	}
 
 	bool EDDSA25519Verifier::Verify (const uint8_t * buf, size_t len, const uint8_t * signature) const
 	{
+		if (!signature) return false;
 		if (m_Pkey)
 		{
-			EVP_MD_CTX * ctx = EVP_MD_CTX_create ();
-			EVP_DigestVerifyInit (ctx, NULL, NULL, NULL, m_Pkey);
-			auto ret = EVP_DigestVerify (ctx, signature, 64, buf, len) == 1;
-			EVP_MD_CTX_destroy (ctx);
-			return ret;
+			MDCtxPtr ctx (EVP_MD_CTX_new ());
+			return ctx && EVP_DigestVerifyInit (ctx.get (), NULL, NULL, NULL, m_Pkey.get ()) == 1
+				&& EVP_DigestVerify (ctx.get (), signature, EDDSA25519_SIGNATURE_LENGTH, buf, len) == 1;
 		}
 		else
 			LogPrint (eLogError, "EdDSA verification key is not set");
@@ -362,7 +523,12 @@ namespace crypto
 		BN_CTX_free (ctx);
 	}
 
-	EDDSA25519SignerCompat::~EDDSA25519SignerCompat () { }
+	EDDSA25519SignerCompat::~EDDSA25519SignerCompat ()
+	{
+		// The expanded private scalar is key material; do not leave it in the
+		// heap block that the fallback signer occupied.
+		OPENSSL_cleanse (m_ExpandedPrivateKey, sizeof (m_ExpandedPrivateKey));
+	}
 
 	void EDDSA25519SignerCompat::Sign (const uint8_t * buf, int len, uint8_t * signature) const
 	{
@@ -373,58 +539,81 @@ namespace crypto
 		: m_Pkey (nullptr)
 		, m_Fallback (nullptr)
 	{
-		m_Pkey = EVP_PKEY_new_raw_private_key (EVP_PKEY_ED25519, NULL, signingPrivateKey, 32);
-		uint8_t publicKey[EDDSA25519_PUBLIC_KEY_LENGTH];
+		if (!signingPrivateKey)
+		{
+			LogPrint (eLogError, "EdDSA private key is not set");
+			return;
+		}
+		m_Pkey.reset (EVP_PKEY_new_raw_private_key (
+			EVP_PKEY_ED25519, NULL, signingPrivateKey, EDDSA25519_PRIVATE_KEY_LENGTH));
+		if (!m_Pkey)
+		{
+			if (signingPublicKey)
+			{
+				// The compatibility signer does not depend on the provider and
+				// can still validate the private/public key pair.
+				m_Fallback = std::make_unique<EDDSA25519SignerCompat> (signingPrivateKey, signingPublicKey);
+				return;
+			}
+			LogPrint (eLogError, "EdDSA can't create private key");
+			return;
+		}
+		uint8_t publicKey[EDDSA25519_PUBLIC_KEY_LENGTH] = { };
 		size_t len = EDDSA25519_PUBLIC_KEY_LENGTH;
-		EVP_PKEY_get_raw_public_key (m_Pkey, publicKey, &len);
-		if (signingPublicKey && memcmp (publicKey, signingPublicKey, EDDSA25519_PUBLIC_KEY_LENGTH))
+		bool havePublicKey = EVP_PKEY_get_raw_public_key (m_Pkey.get (), publicKey, &len) == 1
+			&& len == EDDSA25519_PUBLIC_KEY_LENGTH;
+		if (signingPublicKey && (!havePublicKey
+								 || memcmp (publicKey, signingPublicKey, EDDSA25519_PUBLIC_KEY_LENGTH)))
 		{
 			LogPrint (eLogWarning, "EdDSA public key mismatch. Fallback");
-			m_Fallback = new EDDSA25519SignerCompat (signingPrivateKey, signingPublicKey);
-			EVP_PKEY_free (m_Pkey);
-			m_Pkey = nullptr;
+			m_Fallback = std::make_unique<EDDSA25519SignerCompat> (signingPrivateKey, signingPublicKey);
+			m_Pkey.reset ();
 		}
+		else if (!havePublicKey)
+			LogPrint (eLogWarning, "EdDSA can't read the public key from the private key");
 	}
 
-	EDDSA25519Signer::~EDDSA25519Signer ()
-	{
-		if (m_Fallback) delete m_Fallback;
-		if (m_Pkey) EVP_PKEY_free (m_Pkey);
-	}
+	EDDSA25519Signer::~EDDSA25519Signer () = default;
 
 	void EDDSA25519Signer::Sign (const uint8_t * buf, int len, uint8_t * signature) const
 	{
+		if (!signature) return;
 		if (m_Fallback)
 			return m_Fallback->Sign (buf, len, signature);
 		else if (m_Pkey)
 		{
-
-			EVP_MD_CTX * ctx = EVP_MD_CTX_create ();
-			size_t l = 64;
-			uint8_t sig[64]; // temporary buffer for signature. openssl issue #7232
-			EVP_DigestSignInit (ctx, NULL, NULL, NULL, m_Pkey);
-			if (!EVP_DigestSign (ctx, sig, &l, buf, len)) LogPrint (eLogError, "EdDSA signing failed");
-			memcpy (signature, sig, 64);
-			EVP_MD_CTX_destroy (ctx);
+			MDCtxPtr ctx (EVP_MD_CTX_new ());
+			size_t l = EDDSA25519_SIGNATURE_LENGTH;
+			uint8_t sig[EDDSA25519_SIGNATURE_LENGTH] = { }; // openssl issue #7232
+			bool ok = ctx && EVP_DigestSignInit (ctx.get (), NULL, NULL, NULL, m_Pkey.get ()) == 1
+				&& EVP_DigestSign (ctx.get (), sig, &l, buf, len) == 1 && l == sizeof (sig);
+			if (ok)
+				memcpy (signature, sig, sizeof (sig));
+			else
+			{
+				memset (signature, 0, EDDSA25519_SIGNATURE_LENGTH);
+				LogPrint (eLogError, "EdDSA signing failed");
+			}
+			OPENSSL_cleanse (sig, sizeof (sig));
 		}
 		else
+		{
+			memset (signature, 0, EDDSA25519_SIGNATURE_LENGTH);
 			LogPrint (eLogError, "EdDSA signing key is not set");
+		}
 	}
-
-#if OPENSSL_ED25519PH
-	static const OSSL_PARAM EDDSA25519phParams[]
-		= { OSSL_PARAM_utf8_string ("instance", (char *)"Ed25519ph", 9), OSSL_PARAM_END };
 
 	bool EDDSA25519phVerifier::Verify (const uint8_t * buf, size_t len, const uint8_t * signature) const
 	{
+		if (!signature) return false;
 		auto pkey = GetPkey ();
-		EVP_MD_CTX * ctx = EVP_MD_CTX_new ();
-		// The provider applies SHA-512 for the Ed25519ph instance.
-		bool ret = pkey && ctx
-			&& EVP_DigestVerifyInit_ex (ctx, nullptr, nullptr, nullptr, nullptr, pkey, EDDSA25519phParams) == 1
-			&& EVP_DigestVerify (ctx, signature, 64, buf, len) == 1;
-		EVP_MD_CTX_free (ctx);
-		return ret;
+		MDCtxPtr ctx (EVP_MD_CTX_new ());
+		// Java SigType 8 uses EdDSAEngine over the supplied bytes; it does not
+		// apply RFC 8032 dom2/prehash. Use the same plain Ed25519 primitive as
+		// SigType 7. (SU3 callers prehash the payload themselves.)
+		return pkey && ctx
+			&& EVP_DigestVerifyInit (ctx.get (), nullptr, nullptr, nullptr, pkey) == 1
+			&& EVP_DigestVerify (ctx.get (), signature, 64, buf, len) == 1;
 	}
 
 	EDDSA25519phSigner::EDDSA25519phSigner (const uint8_t * signingPrivateKey)
@@ -434,23 +623,22 @@ namespace crypto
 
 	void EDDSA25519phSigner::Sign (const uint8_t * buf, int len, uint8_t * signature) const
 	{
+		if (!signature) return;
 		auto pkey = GetPkey ();
-		EVP_MD_CTX * ctx = EVP_MD_CTX_new ();
+		MDCtxPtr ctx (EVP_MD_CTX_new ());
 		size_t l = 64;
-		uint8_t sig[64];
+		uint8_t sig[64] = { };
 		bool ok = pkey && ctx && len >= 0
-			&& EVP_DigestSignInit_ex (ctx, nullptr, nullptr, nullptr, nullptr, pkey, EDDSA25519phParams) == 1
-			&& EVP_DigestSign (ctx, sig, &l, buf, len) == 1 && l == sizeof (sig);
+			&& EVP_DigestSignInit (ctx.get (), nullptr, nullptr, nullptr, pkey) == 1
+			&& EVP_DigestSign (ctx.get (), sig, &l, buf, len) == 1 && l == sizeof (sig);
 		if (ok)
 			memcpy (signature, sig, sizeof (sig));
 		else
 		{
 			memset (signature, 0, sizeof (sig));
-			LogPrint (eLogError, "Ed25519ph signing failed");
+			LogPrint (eLogError, "Ed25519ph-compatible signing failed");
 		}
 		OPENSSL_cleanse (sig, sizeof (sig));
-		EVP_MD_CTX_free (ctx);
 	}
-#endif
 }
 }

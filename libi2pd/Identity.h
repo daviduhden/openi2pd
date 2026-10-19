@@ -18,6 +18,7 @@
 #include <memory>
 #include <vector>
 #include <span>
+#include <openssl/crypto.h>
 #include "Base.h"
 #include "I2PEndian.h"
 #include "Signature.h"
@@ -57,9 +58,9 @@ namespace data
 
 	struct Identity
 	{
-		uint8_t publicKey[256];
-		uint8_t signingKey[128];
-		uint8_t certificate[3]; // byte 1 - type, bytes 2-3 - length
+		uint8_t publicKey[256] { };
+		uint8_t signingKey[128] { };
+		uint8_t certificate[3] { }; // byte 1 - type, bytes 2-3 - length
 
 		Identity () = default;
 		Identity (const Keys & keys) { *this = keys; };
@@ -116,12 +117,13 @@ namespace data
 		size_t FromBase64 (std::string_view s);
 		std::string ToBase64 () const;
 		const Identity & GetStandardIdentity () const { return m_StandardIdentity; };
+		bool IsValid () const { return m_IsValid; };
 
 		const IdentHash & GetIdentHash () const { return m_IdentHash; };
 		const uint8_t * GetEncryptionPublicKey () const { return m_StandardIdentity.publicKey; };
 		uint8_t * GetEncryptionPublicKeyBuffer () { return m_StandardIdentity.publicKey; };
 		std::shared_ptr<i2p::crypto::CryptoKeyEncryptor> CreateEncryptor (const uint8_t * key) const;
-		size_t GetFullLen () const { return m_ExtendedLen + DEFAULT_IDENTITY_SIZE; };
+		size_t GetFullLen () const { return m_IsValid ? m_ExtendedLen + DEFAULT_IDENTITY_SIZE : 0; };
 		size_t GetSigningPublicKeyLen () const;
 		const uint8_t * GetSigningPublicKeyBuffer () const; // returns NULL for P521
 		size_t GetSigningPrivateKeyLen () const;
@@ -140,17 +142,19 @@ namespace data
 
 	private:
 		void CreateVerifier ();
+		const uint8_t * GetExtendedBuffer () const
+		{
+			return m_ExtendedLen <= MAX_EXTENDED_BUFFER_SIZE ? m_ExtendedBuffer : m_ExtendedBufferPtr.get ();
+		}
 
 	private:
 		Identity m_StandardIdentity;
 		IdentHash m_IdentHash;
 		std::unique_ptr<i2p::crypto::Verifier> m_Verifier;
 		size_t m_ExtendedLen;
-		union
-		{
-			uint8_t m_ExtendedBuffer[MAX_EXTENDED_BUFFER_SIZE];
-			uint8_t * m_ExtendedBufferPtr;
-		};
+		uint8_t m_ExtendedBuffer[MAX_EXTENDED_BUFFER_SIZE] { };
+		std::unique_ptr<uint8_t[]> m_ExtendedBufferPtr;
+		bool m_IsValid = false;
 	};
 
 	size_t GetIdentityBufferLen (const uint8_t * buf, size_t len); // return actual identity length in buffer
@@ -165,6 +169,10 @@ namespace data
 	class B33OfflineKeys
 	{
 	public:
+		~B33OfflineKeys ()
+		{
+			if (!m_Buf.empty ()) OPENSSL_cleanse (m_Buf.data (), m_Buf.size ());
+		}
 		size_t GetLen () const { return m_Buf.size (); };
 		const uint8_t * GetBuffer () const { return m_Buf.data (); };
 		bool operator== (const B33OfflineKeys & other) const { return m_Buf == other.m_Buf; };
@@ -183,7 +191,15 @@ namespace data
 		PrivateKeys (const Keys & keys) { *this = keys; };
 		PrivateKeys & operator= (const Keys & keys);
 		PrivateKeys & operator= (const PrivateKeys & other);
-		~PrivateKeys () = default;
+		~PrivateKeys ()
+		{
+			m_Signer.reset ();
+			OPENSSL_cleanse (m_PrivateKey, sizeof (m_PrivateKey));
+			if (!m_SigningPrivateKey.empty ())
+				OPENSSL_cleanse (m_SigningPrivateKey.data (), m_SigningPrivateKey.size ());
+			if (!m_OfflineSignature.empty ())
+				OPENSSL_cleanse (m_OfflineSignature.data (), m_OfflineSignature.size ());
+		}
 
 		std::shared_ptr<const IdentityEx> GetPublic () const { return m_Public; };
 		const uint8_t * GetPrivateKey () const { return m_PrivateKey; };
@@ -207,8 +223,8 @@ namespace data
 			CryptoKeyType cryptoType, const uint8_t * key);
 		static PrivateKeys CreateRandomKeys (SigningKeyType type = SIGNING_KEY_TYPE_DSA_SHA1,
 			CryptoKeyType cryptoType = CRYPTO_KEY_TYPE_ELGAMAL, bool isDestination = false);
-		static void GenerateSigningKeyPair (SigningKeyType type, uint8_t * priv, uint8_t * pub);
-		static void GenerateCryptoKeyPair (
+		static bool GenerateSigningKeyPair (SigningKeyType type, uint8_t * priv, uint8_t * pub);
+		static bool GenerateCryptoKeyPair (
 			CryptoKeyType type, uint8_t * priv, uint8_t * pub); // priv and pub are 256 bytes long
 		static i2p::crypto::Signer * CreateSigner (SigningKeyType keyType, const uint8_t * priv);
 
@@ -225,7 +241,7 @@ namespace data
 
 	private:
 		std::shared_ptr<IdentityEx> m_Public;
-		uint8_t m_PrivateKey[256];
+		uint8_t m_PrivateKey[256] { };
 		std::vector<uint8_t> m_SigningPrivateKey;
 		mutable std::unique_ptr<i2p::crypto::Signer> m_Signer;
 		std::vector<uint8_t> m_OfflineSignature; // non zero length, if applicable
@@ -250,8 +266,17 @@ namespace data
 			return m_TransientPrivateKey.empty () ? PrivateKeys::GetSigningPrivateKey ()
 												  : m_TransientPrivateKey.data ();
 		};
-		void Sign (const uint8_t * buf, int len, uint8_t * signature) const { m_Signer->Sign (buf, len, signature); };
-		size_t GetSignatureLen () const { return m_SignatureLen; };
+		void Sign (const uint8_t * buf, int len, uint8_t * signature) const
+		{
+			if (m_Signer)
+				m_Signer->Sign (buf, len, signature);
+			else
+				PrivateKeys::Sign (buf, len, signature);
+		};
+		size_t GetSignatureLen () const
+		{
+			return m_Signer ? m_SignatureLen : PrivateKeys::GetSignatureLen ();
+		};
 		const std::vector<uint8_t> & GetOfflineSignature () const { return m_OfflineSignature; };
 
 	private:

@@ -23,7 +23,7 @@ namespace data
 	static int GetFamilyKeyCurve (EVP_PKEY * pkey)
 	{
 		if (!pkey || EVP_PKEY_base_id (pkey) != EVP_PKEY_EC) return -1;
-#if !defined(LIBRESSL_VERSION_NUMBER) && OPENSSL_VERSION_NUMBER >= 0x30000000L
+#ifndef LIBRESSL_VERSION_NUMBER // OpenSSL 3.0.2 is the minimum
 		char groupName[80];
 		if (EVP_PKEY_get_group_name (pkey, groupName, sizeof (groupName), nullptr) != 1) return -1;
 		return OBJ_txt2nid (groupName);
@@ -141,10 +141,10 @@ namespace data
 				uint8_t * s = sign;
 				auto l = i2d_ECDSA_SIG (sig, &s);
 				ECDSA_SIG_free (sig);
-				EVP_MD_CTX * ctx = EVP_MD_CTX_create ();
+				EVP_MD_CTX * ctx = EVP_MD_CTX_new ();
 				EVP_DigestVerifyInit (ctx, NULL, EVP_sha256 (), NULL, it->second.first);
 				auto ret = EVP_DigestVerify (ctx, sign, l, buf, len) == 1;
-				EVP_MD_CTX_destroy (ctx);
+				EVP_MD_CTX_free (ctx);
 				return ret;
 			}
 		}
@@ -179,10 +179,10 @@ namespace data
 				len += 32;
 
 				size_t l = 72;
-				EVP_MD_CTX * mdctx = EVP_MD_CTX_create ();
+				EVP_MD_CTX * mdctx = EVP_MD_CTX_new ();
 				EVP_DigestSignInit (mdctx, NULL, EVP_sha256 (), NULL, pkey);
 				EVP_DigestSign (mdctx, sign, &l, buf, len);
-				EVP_MD_CTX_destroy (mdctx);
+				EVP_MD_CTX_free (mdctx);
 
 				const uint8_t * s1 = sign;
 				ECDSA_SIG * sig1 = d2i_ECDSA_SIG (NULL, &s1, l);

@@ -58,7 +58,15 @@ namespace data
 
 		void Fill (uint8_t c) { memset (m_Buf, c, sz); }
 
-		void Randomize () { RAND_bytes (m_Buf, sz); }
+		bool Randomize ()
+		{
+			// Clear first so a partially written buffer is never mistaken for
+			// a freshly generated tag if the provider fails.
+			memset (m_Buf, 0, sz);
+			if (RAND_bytes (m_Buf, sz) == 1) return true;
+			memset (m_Buf, 0, sz);
+			return false;
+		}
 
 		std::string ToBase64 (size_t len = sz) const { return i2p::data::ByteStreamToBase64 (m_Buf, len); }
 

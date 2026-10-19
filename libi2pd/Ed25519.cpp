@@ -9,6 +9,7 @@
 */
 
 #include <openssl/evp.h>
+#include <openssl/crypto.h>
 #include "Log.h"
 #include "Crypto.h"
 #include "Ed25519.h"
@@ -136,7 +137,7 @@ namespace crypto
 	{
 		BN_CTX * bnCtx = BN_CTX_new ();
 		// calculate r
-		EVP_MD_CTX * ctx = EVP_MD_CTX_create ();
+		EVP_MD_CTX * ctx = EVP_MD_CTX_new ();
 		EVP_DigestInit_ex (ctx, EVP_sha512 (), NULL);
 		EVP_DigestUpdate (ctx, expandedPrivateKey + EDDSA25519_PRIVATE_KEY_LENGTH,
 			EDDSA25519_PRIVATE_KEY_LENGTH); // right half of expanded key
@@ -144,21 +145,21 @@ namespace crypto
 		uint8_t digest[64];
 		unsigned int dl = 64;
 		EVP_DigestFinal_ex (ctx, digest, &dl);
-		EVP_MD_CTX_destroy (ctx);
+		EVP_MD_CTX_free (ctx);
 		BIGNUM * r = DecodeBN<32> (digest); // DecodeBN<64> (digest); // for test vectors
 		// calculate R
 		uint8_t R[EDDSA25519_SIGNATURE_LENGTH / 2]; // we must use separate buffer because signature might be inside buf
 		EncodePoint (
 			Normalize (MulB (digest, bnCtx), bnCtx), R); // EncodePoint (Mul (B, r, bnCtx), R); // for test vectors
 		// calculate S
-		ctx = EVP_MD_CTX_create ();
+		ctx = EVP_MD_CTX_new ();
 		EVP_DigestInit_ex (ctx, EVP_sha512 (), NULL);
 		EVP_DigestUpdate (ctx, R, EDDSA25519_SIGNATURE_LENGTH / 2); // R
 		EVP_DigestUpdate (ctx, publicKeyEncoded, EDDSA25519_PUBLIC_KEY_LENGTH); // public key
 		EVP_DigestUpdate (ctx, buf, len); // data
 		dl = 64;
 		EVP_DigestFinal_ex (ctx, digest, &dl);
-		EVP_MD_CTX_destroy (ctx);
+		EVP_MD_CTX_free (ctx);
 		BIGNUM * h = DecodeBN<64> (digest);
 		// S = (r + h*a) % l
 		BIGNUM * a = DecodeBN<EDDSA25519_PRIVATE_KEY_LENGTH> (expandedPrivateKey); // left half of expanded key
@@ -178,9 +179,17 @@ namespace crypto
 		BN_CTX * bnCtx = BN_CTX_new ();
 		// T = 80 random bytes
 		uint8_t T[80];
-		RAND_bytes (T, 80);
+		if (!bnCtx || RAND_bytes (T, sizeof (T)) != 1)
+		{
+			// A predictable RedDSA nonce would reveal the private scalar.
+			OPENSSL_cleanse (T, sizeof (T));
+			if (bnCtx) BN_CTX_free (bnCtx);
+			memset (signature, 0, EDDSA25519_SIGNATURE_LENGTH);
+			LogPrint (eLogError, "RedDSA: random nonce generation failed");
+			return;
+		}
 		// calculate r = H*(T || publickey || data)
-		EVP_MD_CTX * ctx = EVP_MD_CTX_create ();
+		EVP_MD_CTX * ctx = EVP_MD_CTX_new ();
 		EVP_DigestInit_ex (ctx, EVP_sha512 (), NULL);
 		EVP_DigestUpdate (ctx, T, 80);
 		EVP_DigestUpdate (ctx, publicKeyEncoded, 32);
@@ -188,7 +197,7 @@ namespace crypto
 		uint8_t digest[64];
 		unsigned int dl = 64;
 		EVP_DigestFinal_ex (ctx, digest, &dl);
-		EVP_MD_CTX_destroy (ctx);
+		EVP_MD_CTX_free (ctx);
 		BIGNUM * r = DecodeBN<64> (digest);
 		BN_mod (r, r, l, bnCtx); // % l
 		EncodeBN (r, digest, 32);
@@ -196,14 +205,14 @@ namespace crypto
 		uint8_t R[EDDSA25519_SIGNATURE_LENGTH / 2]; // we must use separate buffer because signature might be inside buf
 		EncodePoint (Normalize (MulB (digest, bnCtx), bnCtx), R);
 		// calculate S
-		ctx = EVP_MD_CTX_create ();
+		ctx = EVP_MD_CTX_new ();
 		EVP_DigestInit_ex (ctx, EVP_sha512 (), NULL);
 		EVP_DigestUpdate (ctx, R, EDDSA25519_SIGNATURE_LENGTH / 2); // R
 		EVP_DigestUpdate (ctx, publicKeyEncoded, EDDSA25519_PUBLIC_KEY_LENGTH); // public key
 		EVP_DigestUpdate (ctx, buf, len); // data
 		dl = 64;
 		EVP_DigestFinal_ex (ctx, digest, &dl);
-		EVP_MD_CTX_destroy (ctx);
+		EVP_MD_CTX_free (ctx);
 		BIGNUM * h = DecodeBN<64> (digest);
 		// S = (r + h*a) % l
 		BIGNUM * a = DecodeBN<EDDSA25519_PRIVATE_KEY_LENGTH> (privateKey);
@@ -211,6 +220,8 @@ namespace crypto
 		BN_mod_add (h, h, r, l, bnCtx); // %l
 		memcpy (signature, R, EDDSA25519_SIGNATURE_LENGTH / 2);
 		EncodeBN (h, signature + EDDSA25519_SIGNATURE_LENGTH / 2, EDDSA25519_SIGNATURE_LENGTH / 2); // S
+		OPENSSL_cleanse (T, sizeof (T));
+		OPENSSL_cleanse (digest, sizeof (digest));
 		BN_free (r);
 		BN_free (h);
 		BN_free (a);
@@ -523,30 +534,36 @@ namespace crypto
 		expandedKey[EDDSA25519_PRIVATE_KEY_LENGTH - 1] |= 0x40; // set second bit
 	}
 
-	void Ed25519::CreateRedDSAPrivateKey (uint8_t * priv)
+	bool Ed25519::CreateRedDSAPrivateKey (uint8_t * priv)
 	{
+		if (!priv) return false;
 		uint8_t seed[32];
-		RAND_bytes (seed, 32);
+		if (RAND_bytes (seed, sizeof (seed)) != 1)
+		{
+			OPENSSL_cleanse (seed, sizeof (seed));
+			memset (priv, 0, EDDSA25519_PRIVATE_KEY_LENGTH);
+			return false;
+		}
 		BIGNUM * p = DecodeBN<32> (seed);
 		BN_CTX * ctx = BN_CTX_new ();
-		BN_mod (p, p, l, ctx); // % l
-		EncodeBN (p, priv, 32);
-		BN_CTX_free (ctx);
+		bool ok = p && ctx && BN_mod (p, p, l, ctx) == 1;
+		if (ok)
+			EncodeBN (p, priv, EDDSA25519_PRIVATE_KEY_LENGTH);
+		else
+			memset (priv, 0, EDDSA25519_PRIVATE_KEY_LENGTH);
+		if (ctx) BN_CTX_free (ctx);
 		BN_free (p);
+		OPENSSL_cleanse (seed, sizeof (seed));
+		return ok;
 	}
 
-	static std::unique_ptr<Ed25519> g_Ed25519;
 	std::unique_ptr<Ed25519> & GetEd25519 ()
 	{
-		if (!g_Ed25519)
-		{
-			auto c = new Ed25519 ();
-			if (!g_Ed25519) // make sure it was not created already
-				g_Ed25519.reset (c);
-			else
-				delete c;
-		}
-		return g_Ed25519;
+		// Function-local static initialization is thread-safe. A caller's
+		// reference therefore points to an object that no other thread can
+		// replace while it is in use.
+		static std::unique_ptr<Ed25519> instance = std::make_unique<Ed25519> ();
+		return instance;
 	}
 }
 }

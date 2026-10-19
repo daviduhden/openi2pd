@@ -10,6 +10,9 @@
 
 #include <string.h>
 #include <array>
+#include <memory>
+#include <mutex>
+#include <vector>
 #include <openssl/bn.h>
 #include <openssl/sha.h>
 #include <openssl/evp.h>
@@ -21,87 +24,182 @@ namespace i2p
 namespace crypto
 {
 
+	namespace
+	{
+		struct BIGNUM_Deleter
+		{
+			void operator() (BIGNUM * bn) const { BN_free (bn); }
+		};
+		using BIGNUM_ptr = std::unique_ptr<BIGNUM, BIGNUM_Deleter>;
+
+		// BN_hex2bn takes a BIGNUM ** output and allocates on success. Wrap the
+		// six static parameters so every early return releases what was parsed.
+		BIGNUM_ptr ParseHexBIGNUM (const char * hex)
+		{
+			BIGNUM * bn = nullptr;
+			if (!hex || BN_hex2bn (&bn, hex) == 0)
+			{
+				BN_free (bn);
+				return nullptr;
+			}
+			return BIGNUM_ptr (bn);
+		}
+	}
+
 	// GOST R 34.10
 
 	GOSTR3410Curve::GOSTR3410Curve (BIGNUM * a, BIGNUM * b, BIGNUM * p, BIGNUM * q, BIGNUM * x, BIGNUM * y)
+		: m_Group (nullptr)
+		, m_KeyLen (0)
 	{
+		if (!a || !b || !p || !q || !x || !y) return;
 		m_KeyLen = BN_num_bytes (p);
 		BN_CTX * ctx = BN_CTX_new ();
+		if (!ctx)
+		{
+			m_KeyLen = 0;
+			return;
+		}
 		m_Group = EC_GROUP_new_curve_GFp (p, a, b, ctx);
-		EC_POINT * P = EC_POINT_new (m_Group);
-		EC_POINT_set_affine_coordinates (m_Group, P, x, y, ctx);
-		EC_GROUP_set_generator (m_Group, P, q, nullptr);
-		EC_GROUP_set_curve_name (m_Group, NID_id_GostR3410_2001);
-		EC_POINT_free (P);
+		EC_POINT * P = m_Group ? EC_POINT_new (m_Group) : nullptr;
+		bool ok = P && EC_POINT_set_affine_coordinates (m_Group, P, x, y, ctx) == 1
+			&& EC_GROUP_set_generator (m_Group, P, q, nullptr) == 1;
+		if (ok)
+			EC_GROUP_set_curve_name (m_Group, NID_id_GostR3410_2001);
+		else
+		{
+			EC_GROUP_free (m_Group);
+			m_Group = nullptr;
+			m_KeyLen = 0;
+		}
+		if (P) EC_POINT_free (P);
 		BN_CTX_free (ctx);
 	}
 
 	GOSTR3410Curve::~GOSTR3410Curve ()
 	{
-		EC_GROUP_free (m_Group);
+		if (m_Group) EC_GROUP_free (m_Group);
 	}
 
 	EC_POINT * GOSTR3410Curve::MulP (const BIGNUM * n) const
 	{
+		if (!m_Group || !n) return nullptr;
 		BN_CTX * ctx = BN_CTX_new ();
+		if (!ctx) return nullptr;
 		auto p = EC_POINT_new (m_Group);
-		EC_POINT_mul (m_Group, p, n, nullptr, nullptr, ctx);
+		if (!p || EC_POINT_mul (m_Group, p, n, nullptr, nullptr, ctx) != 1)
+		{
+			if (p) EC_POINT_free (p);
+			p = nullptr;
+		}
 		BN_CTX_free (ctx);
 		return p;
 	}
 
 	bool GOSTR3410Curve::GetXY (const EC_POINT * p, BIGNUM * x, BIGNUM * y) const
 	{
-		return EC_POINT_get_affine_coordinates (m_Group, p, x, y, nullptr);
+		if (!m_Group || !p) return false;
+		return EC_POINT_get_affine_coordinates (m_Group, p, x, y, nullptr) == 1;
 	}
 
 	EC_POINT * GOSTR3410Curve::CreatePoint (const BIGNUM * x, const BIGNUM * y) const
 	{
+		if (!m_Group || !x || !y) return nullptr;
 		EC_POINT * p = EC_POINT_new (m_Group);
-		EC_POINT_set_affine_coordinates (m_Group, p, x, y, nullptr);
+		if (!p) return nullptr;
+		// Reject encodings that are not a finite point on the curve. An
+		// unchecked affine point used to reach the verification equation as
+		// the point at infinity.
+		if (!EC_POINT_set_affine_coordinates (m_Group, p, x, y, nullptr)
+			|| EC_POINT_is_at_infinity (m_Group, p) || !EC_POINT_is_on_curve (m_Group, p, nullptr))
+		{
+			EC_POINT_free (p);
+			return nullptr;
+		}
 		return p;
 	}
 
 	void GOSTR3410Curve::Sign (const BIGNUM * priv, const BIGNUM * digest, BIGNUM * r, BIGNUM * s)
 	{
+		if (!priv || !digest || !r || !s) return;
+		if (!m_Group)
+		{
+			BN_zero (r);
+			BN_zero (s);
+			return;
+		}
 		BN_CTX * ctx = BN_CTX_new ();
+		if (!ctx) return;
 		BN_CTX_start (ctx);
 		BIGNUM * q = BN_CTX_get (ctx);
-		EC_GROUP_get_order (m_Group, q, ctx);
 		BIGNUM * k = BN_CTX_get (ctx);
-		BN_rand_range (k, q); // 0 < k < q
-		EC_POINT * C = MulP (k); // C = k*P
-		GetXY (C, r, nullptr); // r = Cx
-		EC_POINT_free (C);
-		BN_mod_mul (s, r, priv, q, ctx); // (r*priv)%q
 		BIGNUM * tmp = BN_CTX_get (ctx);
-		BN_mod_mul (tmp, k, digest, q, ctx); // (k*digest)%q
-		BN_mod_add (s, s, tmp, q, ctx); // (r*priv+k*digest)%q
+		if (!q || !k || !tmp || EC_GROUP_get_order (m_Group, q, ctx) != 1)
+		{
+			BN_CTX_end (ctx);
+			BN_CTX_free (ctx);
+			return;
+		}
+		// r and s must be in [1, q-1]; retry the rare degenerate nonce.
+		for (int attempt = 0; attempt < 16; ++attempt)
+		{
+			if (BN_rand_range (k, q) != 1 || BN_is_zero (k)) continue;
+			EC_POINT * C = MulP (k); // C = k*P
+			if (!C) continue;
+			bool ok = GetXY (C, r, nullptr) == 1; // r = Cx
+			EC_POINT_free (C);
+			if (!ok) continue;
+			BN_mod (r, r, q, ctx); // r = Cx mod q
+			if (BN_is_zero (r)) continue;
+			BN_mod_mul (s, r, priv, q, ctx); // (r*priv)%q
+			BN_mod_mul (tmp, k, digest, q, ctx); // (k*digest)%q
+			BN_mod_add (s, s, tmp, q, ctx); // (r*priv+k*digest)%q
+			if (!BN_is_zero (s)) break;
+		}
+		if (BN_is_zero (r) || BN_is_zero (s))
+		{
+			BN_zero (r);
+			BN_zero (s);
+		}
 		BN_CTX_end (ctx);
 		BN_CTX_free (ctx);
 	}
 
 	bool GOSTR3410Curve::Verify (const EC_POINT * pub, const BIGNUM * digest, const BIGNUM * r, const BIGNUM * s)
 	{
+		if (!m_Group || !pub || !digest || !r || !s || EC_POINT_is_at_infinity (m_Group, pub)
+			|| !EC_POINT_is_on_curve (m_Group, pub, nullptr))
+			return false;
 		BN_CTX * ctx = BN_CTX_new ();
+		if (!ctx) return false;
 		BN_CTX_start (ctx);
 		BIGNUM * q = BN_CTX_get (ctx);
-		EC_GROUP_get_order (m_Group, q, ctx);
 		BIGNUM * h = BN_CTX_get (ctx);
-		BN_mod (h, digest, q, ctx); // h = digest % q
-		BN_mod_inverse (h, h, q, ctx); // 1/h mod q
 		BIGNUM * z1 = BN_CTX_get (ctx);
-		BN_mod_mul (z1, s, h, q, ctx); // z1 = s/h
 		BIGNUM * z2 = BN_CTX_get (ctx);
-		BN_sub (z2, q, r); // z2 = -r
-		BN_mod_mul (z2, z2, h, q, ctx); // z2 = -r/h
-		EC_POINT * C = EC_POINT_new (m_Group);
-		EC_POINT_mul (m_Group, C, z1, pub, z2, ctx); // z1*P + z2*pub
 		BIGNUM * x = BN_CTX_get (ctx);
-		GetXY (C, x, nullptr); // Cx
-		BN_mod (x, x, q, ctx); // Cx % q
-		bool ret = !BN_cmp (x, r); // Cx = r ?
-		EC_POINT_free (C);
+		EC_POINT * C = EC_POINT_new (m_Group);
+		bool ret = q && h && z1 && z2 && x && C && EC_GROUP_get_order (m_Group, q, ctx) == 1
+			&& !BN_is_zero (r) && !BN_is_zero (s) && BN_cmp (r, q) < 0 && BN_cmp (s, q) < 0;
+		if (ret)
+		{
+			BN_mod (h, digest, q, ctx); // h = digest % q
+			ret = !BN_is_zero (h) && BN_mod_inverse (h, h, q, ctx) != nullptr; // 1/h mod q
+		}
+		if (ret)
+		{
+			BN_mod_mul (z1, s, h, q, ctx); // z1 = s/h
+			BN_sub (z2, q, r); // z2 = -r
+			BN_mod_mul (z2, z2, h, q, ctx); // z2 = -r/h
+			ret = EC_POINT_mul (m_Group, C, z1, pub, z2, ctx) == 1 // z1*P + z2*pub
+				&& !EC_POINT_is_at_infinity (m_Group, C) && GetXY (C, x, nullptr) == 1;
+		}
+		if (ret)
+		{
+			BN_mod (x, x, q, ctx); // Cx % q
+			ret = !BN_cmp (x, r); // Cx = r ?
+		}
+		if (C) EC_POINT_free (C);
 		BN_CTX_end (ctx);
 		BN_CTX_free (ctx);
 		return ret;
@@ -110,37 +208,46 @@ namespace crypto
 	EC_POINT * GOSTR3410Curve::RecoverPublicKey (
 		const BIGNUM * digest, const BIGNUM * r, const BIGNUM * s, bool isNegativeY) const
 	{
+		if (!m_Group || !digest || !r || !s) return nullptr;
 		// s*P = r*Q + h*C
 		BN_CTX * ctx = BN_CTX_new ();
+		if (!ctx) return nullptr;
 		BN_CTX_start (ctx);
 		EC_POINT * C = EC_POINT_new (m_Group); // C = k*P = (rx, ry)
 		EC_POINT * Q = nullptr;
-		if (EC_POINT_set_compressed_coordinates (m_Group, C, r, isNegativeY ? 1 : 0, ctx))
+		BIGNUM * q = BN_CTX_get (ctx);
+		BIGNUM * h = BN_CTX_get (ctx);
+		BIGNUM * r1 = BN_CTX_get (ctx);
+		if (C && q && h && r1 && EC_GROUP_get_order (m_Group, q, ctx) == 1
+			&& EC_POINT_set_compressed_coordinates (m_Group, C, r, isNegativeY ? 1 : 0, ctx))
 		{
 			EC_POINT * S = EC_POINT_new (m_Group); // S = s*P
-			EC_POINT_mul (m_Group, S, s, nullptr, nullptr, ctx);
-			BIGNUM * q = BN_CTX_get (ctx);
-			EC_GROUP_get_order (m_Group, q, ctx);
-			BIGNUM * h = BN_CTX_get (ctx);
-			BN_mod (h, digest, q, ctx); // h = digest % q
-			BN_sub (h, q, h); // h = -h
 			EC_POINT * H = EC_POINT_new (m_Group);
-			EC_POINT_mul (m_Group, H, nullptr, C, h, ctx); // -h*C
-			EC_POINT_add (m_Group, C, S, H, ctx); // s*P - h*C
-			EC_POINT_free (H);
-			EC_POINT_free (S);
-			BIGNUM * r1 = BN_CTX_get (ctx);
-			BN_mod_inverse (r1, r, q, ctx);
-			Q = EC_POINT_new (m_Group);
-			EC_POINT_mul (m_Group, Q, nullptr, C, r1, ctx); // (s*P - h*C)/r
+			if (S && H && EC_POINT_mul (m_Group, S, s, nullptr, nullptr, ctx))
+			{
+				BN_mod (h, digest, q, ctx); // h = digest % q
+				BN_sub (h, q, h); // h = -h
+				if (EC_POINT_mul (m_Group, H, nullptr, C, h, ctx) && EC_POINT_add (m_Group, C, S, H, ctx)
+					&& BN_mod_inverse (r1, r, q, ctx))
+				{
+					Q = EC_POINT_new (m_Group);
+					if (Q && !EC_POINT_mul (m_Group, Q, nullptr, C, r1, ctx))
+					{
+						EC_POINT_free (Q);
+						Q = nullptr;
+					}
+				}
+			}
+			if (H) EC_POINT_free (H);
+			if (S) EC_POINT_free (S);
 		}
-		EC_POINT_free (C);
+		if (C) EC_POINT_free (C);
 		BN_CTX_end (ctx);
 		BN_CTX_free (ctx);
 		return Q;
 	}
 
-	static GOSTR3410Curve * CreateGOSTR3410Curve (GOSTR3410ParamSet paramSet)
+	static std::unique_ptr<GOSTR3410Curve> CreateGOSTR3410Curve (GOSTR3410ParamSet paramSet)
 	{
 		// a, b, p, q, x, y
 		static const char * params[eGOSTR3410NumParamSets][6] = {
@@ -161,35 +268,33 @@ namespace crypto
 				"5FC235F5B889A589CB5215F2A4" } // tc26-2012-paramSetA-512
 		};
 
-		BIGNUM *a = nullptr, *b = nullptr, *p = nullptr, *q = nullptr, *x = nullptr, *y = nullptr;
-		BN_hex2bn (&a, params[paramSet][0]);
-		BN_hex2bn (&b, params[paramSet][1]);
-		BN_hex2bn (&p, params[paramSet][2]);
-		BN_hex2bn (&q, params[paramSet][3]);
-		BN_hex2bn (&x, params[paramSet][4]);
-		BN_hex2bn (&y, params[paramSet][5]);
-		auto curve = new GOSTR3410Curve (a, b, p, q, x, y);
-		BN_free (a);
-		BN_free (b);
-		BN_free (p);
-		BN_free (q);
-		BN_free (x);
-		BN_free (y);
+		auto a = ParseHexBIGNUM (params[paramSet][0]);
+		auto b = ParseHexBIGNUM (params[paramSet][1]);
+		auto p = ParseHexBIGNUM (params[paramSet][2]);
+		auto q = ParseHexBIGNUM (params[paramSet][3]);
+		auto x = ParseHexBIGNUM (params[paramSet][4]);
+		auto y = ParseHexBIGNUM (params[paramSet][5]);
+		auto curve = std::make_unique<GOSTR3410Curve> (a.get (), b.get (), p.get (), q.get (), x.get (), y.get ());
+		if (!curve->GetGroup ())
+			return nullptr;
 		return curve;
 	}
 
-	static std::array<std::unique_ptr<GOSTR3410Curve>, eGOSTR3410NumParamSets> g_GOSTR3410Curves;
 	std::unique_ptr<GOSTR3410Curve> & GetGOSTR3410Curve (GOSTR3410ParamSet paramSet)
 	{
-		if (!g_GOSTR3410Curves[paramSet])
-		{
-			auto c = CreateGOSTR3410Curve (paramSet);
-			if (!g_GOSTR3410Curves[paramSet]) // make sure it was not created already
-				g_GOSTR3410Curves[paramSet].reset (c);
-			else
-				delete c;
-		}
-		return g_GOSTR3410Curves[paramSet];
+		// Keep one published curve per parameter set. Function-local statics
+		// make publication thread-safe without ever moving the object out from
+		// under a caller that already holds a reference to it.
+		static std::array<std::unique_ptr<GOSTR3410Curve>, eGOSTR3410NumParamSets> curves;
+		static std::array<std::once_flag, eGOSTR3410NumParamSets> onceFlags;
+		static std::unique_ptr<GOSTR3410Curve> invalidCurve;
+
+		const int index = static_cast<int> (paramSet);
+		if (index < 0 || index >= eGOSTR3410NumParamSets) return invalidCurve;
+		std::call_once (onceFlags[index], [index] () {
+			curves[index] = CreateGOSTR3410Curve (static_cast<GOSTR3410ParamSet> (index));
+		});
+		return curves[index];
 	}
 
 	// GOST 34.11-2012
@@ -748,7 +853,7 @@ namespace crypto
 			memset (m.buf, 0, padding - 1);
 			m.buf[padding - 1] = 1;
 		}
-		memcpy (m.buf + padding, buf, l);
+		if (l) memcpy (m.buf + padding, buf, l);
 
 		h = gN (N, h, m);
 		N.Add (l * 8);
@@ -778,11 +883,13 @@ namespace crypto
 		H (iv, buf, len, digest);
 	}
 
-	// reverse order
+	// The GOST 34.11-2012 compression consumes the message from its last
+	// 512-bit block. An incremental encoder cannot emit a block before the end
+	// of the message without buffering the input, so the context retains the
+	// bytes and Finish() runs the same one-shot transform as the helpers above.
 	struct GOSTR3411_2012_CTX
 	{
-		GOST3411Block h, N, s, m;
-		size_t len;
+		std::vector<uint8_t> data;
 		bool is512;
 	};
 
@@ -798,69 +905,24 @@ namespace crypto
 
 	void GOSTR3411_2012_CTX_Init (GOSTR3411_2012_CTX * ctx, bool is512)
 	{
-		uint8_t iv[64];
-		memset (iv, is512 ? 0 : 1, 64);
-		memcpy (ctx->h.buf, iv, 64);
-		memset (ctx->N.buf, 0, 64);
-		memset (ctx->s.buf, 0, 64);
-		ctx->len = 0;
+		if (!ctx) return;
+		ctx->data.clear ();
 		ctx->is512 = is512;
 	}
 
 	void GOSTR3411_2012_CTX_Update (const uint8_t * buf, size_t len, GOSTR3411_2012_CTX * ctx)
 	{
-		if (!len) return;
-		if (ctx->len > 0) // something left from buffer
-		{
-			size_t l = 64 - ctx->len;
-			if (len < l) l = len;
-			for (size_t i = 0; i < l; i++) ctx->m.buf[ctx->len + i] = buf[l - i - 1]; // invert
-			ctx->len += l;
-			len -= l;
-			buf += l;
-
-			ctx->h = gN (ctx->N, ctx->h, ctx->m);
-			ctx->N.Add (512);
-			ctx->s = ctx->m + ctx->s;
-		}
-		while (len >= 64)
-		{
-			for (size_t i = 0; i < 64; i++) ctx->m.buf[i] = buf[63 - i]; // invert
-			len -= 64;
-			buf += 64;
-			ctx->h = gN (ctx->N, ctx->h, ctx->m);
-			ctx->N.Add (512);
-			ctx->s = ctx->m + ctx->s;
-		}
-		if (len > 0) // carry remaining
-		{
-			for (size_t i = 0; i < len; i++) ctx->m.buf[i] = buf[len - i - 1]; // invert
-		}
-		ctx->len = len;
+		if (!ctx || !buf || !len) return;
+		ctx->data.insert (ctx->data.end (), buf, buf + len);
 	}
 
 	void GOSTR3411_2012_CTX_Finish (uint8_t * digest, GOSTR3411_2012_CTX * ctx)
 	{
-		GOST3411Block m;
-		size_t padding = 64 - ctx->len;
-		if (padding)
-		{
-			memset (m.buf, 0, padding - 1);
-			m.buf[padding - 1] = 1;
-		}
-		memcpy (m.buf + padding, ctx->m.buf, ctx->len);
-
-		ctx->h = gN (ctx->N, ctx->h, m);
-		ctx->N.Add (ctx->len * 8);
-		ctx->s = m + ctx->s;
-
-		GOST3411Block N0;
-		memset (N0.buf, 0, 64);
-		ctx->h = gN (N0, ctx->h, ctx->N);
-		ctx->h = gN (N0, ctx->h, ctx->s);
-
-		size_t sz = ctx->is512 ? 64 : 32;
-		for (size_t i = 0; i < sz; i++) digest[i] = ctx->h.buf[sz - i - 1];
+		if (!ctx || !digest) return;
+		if (ctx->is512)
+			GOSTR3411_2012_512 (ctx->data.data (), ctx->data.size (), digest);
+		else
+			GOSTR3411_2012_256 (ctx->data.data (), ctx->data.size (), digest);
 	}
 
 }

@@ -68,9 +68,11 @@ namespace crypto
 
 	bool Elligator2::Encode (const uint8_t * key, uint8_t * encoded, bool highY, bool random) const
 	{
-		bool ret = true;
+		if (!key || !encoded) return false;
 		BN_CTX * ctx = BN_CTX_new ();
+		if (!ctx) return false;
 		BN_CTX_start (ctx);
+		bool ret = true;
 
 		uint8_t key1[32];
 		for (size_t i = 0; i < 16; i++) // from Little Endian
@@ -80,46 +82,66 @@ namespace crypto
 		}
 
 		BIGNUM * x = BN_CTX_get (ctx);
-		BN_bin2bn (key1, 32, x);
 		BIGNUM * xA = BN_CTX_get (ctx);
-		BN_add (xA, x, A); // x + A
-		BN_sub (xA, p, xA); // p - (x + A)
+		BIGNUM * uxxA = BN_CTX_get (ctx);
+		BIGNUM * r = BN_CTX_get (ctx);
+		if (!x || !xA || !uxxA || !r)
+		{
+			BN_CTX_end (ctx);
+			BN_CTX_free (ctx);
+			return false;
+		}
+		// Java operates on the field element, so non-canonical input is
+		// reduced before the multiplication below.
+		ret = BN_bin2bn (key1, 32, x) != nullptr && BN_nnmod (x, x, p, ctx) == 1;
+		if (ret)
+		{
+			// Java forces the non-alternative branch for x = 0 instead of
+			// attempting to invert zero.
+			if (BN_is_zero (x)) highY = false;
+			ret = BN_mod_add (xA, x, A, p, ctx) == 1; // x + A (mod p)
+			if (ret) ret = BN_sub (xA, p, xA) == 1; // -(x + A) (mod p)
+			ret = ret && BN_mod_mul (uxxA, u, x, p, ctx) == 1
+				&& BN_mod_mul (uxxA, uxxA, xA, p, ctx) == 1;
+		}
 
-		BIGNUM * uxxA = BN_CTX_get (ctx); // u*x*xA
-		BN_mod_mul (uxxA, u, x, p, ctx);
-		BN_mod_mul (uxxA, uxxA, xA, p, ctx);
-
-		if (Legendre (uxxA, ctx) != -1)
+		if (ret && Legendre (uxxA, ctx) != -1)
 		{
 			uint8_t randByte = 0; // random highest bits and high y
 			if (random)
 			{
-				RAND_bytes (&randByte, 1);
-				highY = randByte & 0x01;
+				if (RAND_bytes (&randByte, 1) != 1)
+					ret = false;
+				// Java: alternative = (rand & 0x01) == 0. highY is the
+				// C++ name for that same "alternative" branch.
+				else
+					highY = (randByte & 0x01) == 0;
 			}
 
-			BIGNUM * r = BN_CTX_get (ctx);
-			if (highY)
+			if (ret)
 			{
-				BN_mod_inverse (r, x, p, ctx);
-				BN_mod_mul (r, r, xA, p, ctx);
-			}
-			else
-			{
-				BN_mod_inverse (r, xA, p, ctx);
-				BN_mod_mul (r, r, x, p, ctx);
-			}
-			BN_mod_mul (r, r, iu, p, ctx);
+				// r = (highY ? x : x+A)^-1 * (highY ? x+A : x) / u
+				BIGNUM * numerator = highY ? xA : x;
+				BIGNUM * denominator = highY ? x : xA;
+				ret = BN_mod_inverse (r, denominator, p, ctx) != nullptr
+					&& BN_mod_mul (r, r, numerator, p, ctx) == 1
+					&& BN_mod_mul (r, r, iu, p, ctx) == 1;
+				if (ret)
+				{
+					SquareRoot (r, r, ctx);
+					ret = bn2buf (r, encoded, 32);
+				}
 
-			SquareRoot (r, r, ctx);
-			bn2buf (r, encoded, 32);
-
-			if (random) encoded[0] |= (randByte & 0xC0); // copy two highest bits from randByte
-			for (size_t i = 0; i < 16; i++) // To Little Endian
-			{
-				uint8_t tmp = encoded[i];
-				encoded[i] = encoded[31 - i];
-				encoded[31 - i] = tmp;
+				if (ret)
+				{
+					if (random) encoded[0] |= (randByte & 0xC0); // copy two highest bits from randByte
+					for (size_t i = 0; i < 16; i++) // To Little Endian
+					{
+						uint8_t tmp = encoded[i];
+						encoded[i] = encoded[31 - i];
+						encoded[31 - i] = tmp;
+					}
+				}
 			}
 		}
 		else
@@ -132,9 +154,11 @@ namespace crypto
 
 	bool Elligator2::Decode (const uint8_t * encoded, uint8_t * key) const
 	{
-		bool ret = true;
+		if (!encoded || !key) return false;
 		BN_CTX * ctx = BN_CTX_new ();
+		if (!ctx) return false;
 		BN_CTX_start (ctx);
+		bool ret = true;
 
 		uint8_t encoded1[32];
 		for (size_t i = 0; i < 16; i++) // from Little Endian
@@ -145,42 +169,50 @@ namespace crypto
 		encoded1[0] &= 0x3F; // drop two highest bits
 
 		BIGNUM * r = BN_CTX_get (ctx);
-		BN_bin2bn (encoded1, 32, r);
+		BIGNUM * v = BN_CTX_get (ctx);
+		BIGNUM * vpA = BN_CTX_get (ctx);
+		BIGNUM * t = BN_CTX_get (ctx);
+		BIGNUM * x = BN_CTX_get (ctx);
+		if (!r || !v || !vpA || !t || !x)
+		{
+			BN_CTX_end (ctx);
+			BN_CTX_free (ctx);
+			return false;
+		}
+		ret = BN_bin2bn (encoded1, 32, r) != nullptr;
 
-		if (BN_cmp (r, p12) < 0) // r < (p-1)/2
+		if (ret && BN_cmp (r, p12) < 0) // r < (p-1)/2
 		{
 			// v = -A/(1+u*r^2)
-			BIGNUM * v = BN_CTX_get (ctx);
-			BN_mod_sqr (v, r, p, ctx);
-			BN_mod_mul (v, v, u, p, ctx);
-			BN_add_word (v, 1);
-			BN_mod_inverse (v, v, p, ctx);
-			BN_mod_mul (v, v, nA, p, ctx);
-
-			BIGNUM * vpA = BN_CTX_get (ctx);
-			BN_add (vpA, v, A); // v + A
-			// t = v^3+A*v^2+v = v^2*(v+A)+v
-			BIGNUM * t = BN_CTX_get (ctx);
-			BN_mod_sqr (t, v, p, ctx);
-			BN_mod_mul (t, t, vpA, p, ctx);
-			BN_mod_add (t, t, v, p, ctx);
-
-			int legendre = Legendre (t, ctx);
-			BIGNUM * x = BN_CTX_get (ctx);
-			if (legendre == 1)
-				BN_copy (x, v);
-			else
+			ret = BN_mod_sqr (v, r, p, ctx) == 1 && BN_mod_mul (v, v, u, p, ctx) == 1
+				&& BN_add_word (v, 1) == 1 && BN_mod_inverse (v, v, p, ctx) != nullptr
+				&& BN_mod_mul (v, v, nA, p, ctx) == 1;
+			if (ret)
 			{
-				BN_sub (x, p, v);
-				BN_mod_sub (x, x, A, p, ctx);
+				ret = BN_mod_add (vpA, v, A, p, ctx) == 1; // v + A (mod p)
+				// t = v^3+A*v^2+v = v^2*(v+A)+v
+				ret = ret && BN_mod_sqr (t, v, p, ctx) == 1 && BN_mod_mul (t, t, vpA, p, ctx) == 1
+					&& BN_mod_add (t, t, v, p, ctx) == 1;
 			}
-
-			bn2buf (x, key, 32);
-			for (size_t i = 0; i < 16; i++) // To Little Endian
+			if (ret)
 			{
-				uint8_t tmp = key[i];
-				key[i] = key[31 - i];
-				key[31 - i] = tmp;
+				int legendre = Legendre (t, ctx);
+				if (legendre == 1)
+					ret = BN_copy (x, v) != nullptr;
+				else
+				{
+					ret = BN_sub (x, p, v) == 1 && BN_mod_sub (x, x, A, p, ctx) == 1;
+				}
+			}
+			if (ret) ret = bn2buf (x, key, 32);
+			if (ret)
+			{
+				for (size_t i = 0; i < 16; i++) // To Little Endian
+				{
+					uint8_t tmp = key[i];
+					key[i] = key[31 - i];
+					key[31 - i] = tmp;
+				}
 			}
 		}
 		else
@@ -218,17 +250,12 @@ namespace crypto
 		return -1;
 	}
 
-	static std::unique_ptr<Elligator2> g_Elligator;
 	std::unique_ptr<Elligator2> & GetElligator ()
 	{
-		if (!g_Elligator)
-		{
-			auto el = new Elligator2 ();
-			if (!g_Elligator) // make sure it was not created already
-				g_Elligator.reset (el);
-			else
-				delete el;
-		}
+		// Function-local static initialisation is thread-safe in C++11 and
+		// later. The old check-then-create pattern could construct two
+		// Elligator2 instances concurrently and race on the global pointer.
+		static std::unique_ptr<Elligator2> g_Elligator = std::make_unique<Elligator2> ();
 		return g_Elligator;
 	}
 }

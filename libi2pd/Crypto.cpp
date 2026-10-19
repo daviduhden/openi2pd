@@ -14,13 +14,11 @@
 #include <mutex>
 #include <memory>
 #include <limits>
-#include <openssl/dh.h>
-#include <openssl/md5.h>
 #include <openssl/crypto.h>
 #include "TunnelBase.h"
 #include <openssl/ssl.h>
 #include <openssl/kdf.h>
-#if !defined(LIBRESSL_VERSION_NUMBER) && OPENSSL_VERSION_NUMBER >= 0x30000000L // since 3.0.0
+#ifndef LIBRESSL_VERSION_NUMBER // OpenSSL 3.0.2 is the minimum
 #include <openssl/param_build.h>
 #include <openssl/core_names.h>
 #endif
@@ -126,10 +124,12 @@ namespace crypto
 	bool bn2buf (const BIGNUM * bn, uint8_t * buf, size_t len)
 	{
 		if (!bn) return false; // BN_num_bytes dereferences its argument
-		int offset = (int)len - (int)BN_num_bytes (bn);
-		if (offset < 0) return false;
-		BN_bn2bin (bn, buf + offset);
-		memset (buf, 0, offset);
+		const int numBytes = BN_num_bytes (bn);
+		if (numBytes < 0 || static_cast<size_t> (numBytes) > len) return false;
+		if (!buf && (len || numBytes)) return false;
+		const size_t offset = len - static_cast<size_t> (numBytes);
+		if (numBytes && BN_bn2bin (bn, buf + offset) != numBytes) return false;
+		if (offset) memset (buf, 0, offset);
 		return true;
 	}
 
@@ -144,7 +144,7 @@ namespace crypto
 #define dsap GetCryptoConstants ().dsap
 #define dsaq GetCryptoConstants ().dsaq
 #define dsag GetCryptoConstants ().dsag
-#if !defined(LIBRESSL_VERSION_NUMBER) && OPENSSL_VERSION_NUMBER >= 0x30000000L // since 3.0.0
+#ifndef LIBRESSL_VERSION_NUMBER // OpenSSL 3.0.2 is the minimum
 	EVP_PKEY * CreateDSA (BIGNUM * pubKey, BIGNUM * privKey)
 	{
 		EVP_PKEY * pkey = nullptr;
@@ -257,10 +257,17 @@ namespace crypto
 	static BIGNUM * ElggPow (const BIGNUM * exp, BIGNUM * table[][255], BN_CTX * ctx)
 	{
 		auto len = BN_num_bytes (exp);
-		uint8_t * buf = new uint8_t[len];
-		BN_bn2bin (exp, buf);
-		auto ret = ElggPow (buf, len, table, ctx);
-		delete[] buf;
+		if (len <= 0) return nullptr;
+		// The exponent is the secret ElGamal nonce; the vector owns it only for
+		// the duration of the table walk and is cleansed before it is released.
+		std::vector<uint8_t> buf (len);
+		if (BN_bn2bin (exp, buf.data ()) != len)
+		{
+			OPENSSL_cleanse (buf.data (), buf.size ());
+			return nullptr;
+		}
+		auto ret = ElggPow (buf.data (), len, table, ctx);
+		OPENSSL_cleanse (buf.data (), buf.size ());
 		return ret;
 	}
 
@@ -271,90 +278,182 @@ namespace crypto
 	{
 		m_Ctx = EVP_PKEY_CTX_new_id (NID_X25519, NULL);
 		m_Pkey = nullptr;
+		memset (m_PublicKey, 0, sizeof (m_PublicKey));
 	}
 
 	X25519Keys::X25519Keys (const uint8_t * priv, const uint8_t * pub)
 	{
-		m_Pkey = EVP_PKEY_new_raw_private_key (EVP_PKEY_X25519, NULL, priv, 32);
-		m_Ctx = EVP_PKEY_CTX_new (m_Pkey, NULL);
+		memset (m_PublicKey, 0, sizeof (m_PublicKey));
+		m_Pkey = priv ? EVP_PKEY_new_raw_private_key (EVP_PKEY_X25519, NULL, priv, 32) : nullptr;
+		m_Ctx = m_Pkey ? EVP_PKEY_CTX_new (m_Pkey, NULL) : nullptr;
+		if (!m_Pkey) return;
 		if (pub)
 			memcpy (m_PublicKey, pub, 32); // TODO: verify against m_Pkey
 		else
 		{
 			size_t len = 32;
-			EVP_PKEY_get_raw_public_key (m_Pkey, m_PublicKey, &len);
+			if (EVP_PKEY_get_raw_public_key (m_Pkey, m_PublicKey, &len) != 1 || len != 32)
+				memset (m_PublicKey, 0, sizeof (m_PublicKey));
 		}
 	}
 
 	X25519Keys::~X25519Keys ()
 	{
-		EVP_PKEY_CTX_free (m_Ctx);
+		if (m_Ctx) EVP_PKEY_CTX_free (m_Ctx);
 		if (m_Pkey) EVP_PKEY_free (m_Pkey);
 	}
 
 	void X25519Keys::GenerateKeys ()
 	{
+		// The pool reuses X25519Keys objects. A key that was ineligible for
+		// Elligator2 must become eligible again once its key material is
+		// replaced, otherwise the flag outlives the key it described.
+		m_IsElligatorIneligible = false;
 		if (m_Pkey)
 		{
 			EVP_PKEY_free (m_Pkey);
 			m_Pkey = nullptr;
 		}
-		EVP_PKEY_keygen_init (m_Ctx);
-		EVP_PKEY_keygen (m_Ctx, &m_Pkey);
+		if (!m_Ctx) m_Ctx = EVP_PKEY_CTX_new_id (NID_X25519, NULL);
+		if (!m_Ctx || EVP_PKEY_keygen_init (m_Ctx) != 1 || EVP_PKEY_keygen (m_Ctx, &m_Pkey) != 1)
+		{
+			LogPrint (eLogError, "X25519: key generation failed");
+			memset (m_PublicKey, 0, sizeof (m_PublicKey));
+			if (m_Pkey)
+			{
+				EVP_PKEY_free (m_Pkey);
+				m_Pkey = nullptr;
+			}
+			return;
+		}
 		EVP_PKEY_CTX_free (m_Ctx);
 		m_Ctx = EVP_PKEY_CTX_new (m_Pkey, NULL); // TODO: do we really need to re-create m_Ctx?
 		size_t len = 32;
-		EVP_PKEY_get_raw_public_key (m_Pkey, m_PublicKey, &len);
+		if (!m_Ctx || EVP_PKEY_get_raw_public_key (m_Pkey, m_PublicKey, &len) != 1 || len != 32)
+		{
+			LogPrint (eLogError, "X25519: failed to export generated public key");
+			memset (m_PublicKey, 0, sizeof (m_PublicKey));
+			EVP_PKEY_free (m_Pkey);
+			m_Pkey = nullptr;
+			if (m_Ctx)
+			{
+				EVP_PKEY_CTX_free (m_Ctx);
+				m_Ctx = nullptr;
+			}
+		}
 	}
 
 	bool X25519Keys::Agree (const uint8_t * pub, uint8_t * shared)
 	{
-		if (!pub || (pub[31] & 0x80)) return false; // not x25519 key
-		EVP_PKEY_derive_init (m_Ctx);
+		// No output buffer means there is nothing to report.
+		if (!shared) return false;
+		// Clear the output before every failure path, including the early
+		// peer-key validation below.
+		memset (shared, 0, 32);
+		// not x25519 key, no local key or invalid peer encoding
+		if (!pub || (pub[31] & 0x80) || !m_Ctx || !m_Pkey) return false;
+		if (EVP_PKEY_derive_init (m_Ctx) != 1) return false;
 		auto pkey = EVP_PKEY_new_raw_public_key (EVP_PKEY_X25519, NULL, pub, 32);
 		if (!pkey) return false;
-		EVP_PKEY_derive_set_peer (m_Ctx, pkey);
 		size_t len = 32;
-		EVP_PKEY_derive (m_Ctx, shared, &len);
+		bool ok
+			= EVP_PKEY_derive_set_peer (m_Ctx, pkey) == 1 && EVP_PKEY_derive (m_Ctx, shared, &len) == 1 && len == 32;
 		EVP_PKEY_free (pkey);
-		return true;
+		if (ok)
+		{
+			// Java's Curve25519.eval() throws GeneralSecurityException on an
+			// all-zero result. Some LibreSSL/OpenSSL builds return success for
+			// low-order peers, so enforce the RFC 7748 check here as well.
+			uint8_t acc = 0;
+			for (size_t i = 0; i < 32; ++i) acc |= shared[i];
+			ok = acc != 0;
+		}
+		if (!ok) memset (shared, 0, 32);
+		return ok;
 	}
 
 	void X25519Keys::GetPrivateKey (uint8_t * priv) const
 	{
+		if (!priv) return;
 		size_t len = 32;
-		EVP_PKEY_get_raw_private_key (m_Pkey, priv, &len);
+		if (!m_Pkey || EVP_PKEY_get_raw_private_key (m_Pkey, priv, &len) != 1 || len != 32) memset (priv, 0, 32);
 	}
 
 	void X25519Keys::SetPrivateKey (const uint8_t * priv, bool calculatePublic)
 	{
-		if (m_Ctx) EVP_PKEY_CTX_free (m_Ctx);
-		if (m_Pkey) EVP_PKEY_free (m_Pkey);
+		m_IsElligatorIneligible = false;
+		if (m_Ctx)
+		{
+			EVP_PKEY_CTX_free (m_Ctx);
+			m_Ctx = nullptr;
+		}
+		if (m_Pkey)
+		{
+			EVP_PKEY_free (m_Pkey);
+			m_Pkey = nullptr;
+		}
+		memset (m_PublicKey, 0, sizeof (m_PublicKey));
+		if (!priv) return;
 		m_Pkey = EVP_PKEY_new_raw_private_key (EVP_PKEY_X25519, NULL, priv, 32);
-		m_Ctx = EVP_PKEY_CTX_new (m_Pkey, NULL);
-		if (calculatePublic)
+		m_Ctx = m_Pkey ? EVP_PKEY_CTX_new (m_Pkey, NULL) : nullptr;
+		// Always derive the public key. Leaving m_PublicKey untouched when the
+		// caller passed calculatePublic=false used to expose uninitialised
+		// bytes through GetPublicKey().
+		(void)calculatePublic;
+		if (m_Pkey)
 		{
 			size_t len = 32;
-			EVP_PKEY_get_raw_public_key (m_Pkey, m_PublicKey, &len);
+			if (!m_Ctx || EVP_PKEY_get_raw_public_key (m_Pkey, m_PublicKey, &len) != 1 || len != 32)
+			{
+				memset (m_PublicKey, 0, sizeof (m_PublicKey));
+				EVP_PKEY_free (m_Pkey);
+				m_Pkey = nullptr;
+				if (m_Ctx)
+				{
+					EVP_PKEY_CTX_free (m_Ctx);
+					m_Ctx = nullptr;
+				}
+			}
 		}
 	}
 
 	// ElGamal
 	void ElGamalEncrypt (const uint8_t * key, const uint8_t * data, uint8_t * encrypted)
 	{
+		if (!key || !data || !encrypted) return;
 		BN_CTX * ctx = BN_CTX_new ();
+		if (!ctx)
+		{
+			memset (encrypted, 0, 514);
+			return;
+		}
 		BN_CTX_start (ctx);
 		// everything, but a, because a might come from table
 		BIGNUM * k = BN_CTX_get (ctx);
 		BIGNUM * y = BN_CTX_get (ctx);
 		BIGNUM * b1 = BN_CTX_get (ctx);
 		BIGNUM * b = BN_CTX_get (ctx);
+		BIGNUM * pm1 = BN_CTX_get (ctx);
+		bool validKey = k && y && b1 && b && pm1;
+		// restore y from key and reject the trivial subgroup elements. y = 0,
+		// y = 1 and y = p - 1 make the ciphertext independent of the random
+		// exponent and would leak the plaintext.
+		validKey = validKey && BN_bin2bn (key, 256, y) != nullptr && BN_copy (pm1, elgp) != nullptr
+			&& BN_sub_word (pm1, 1) == 1 && BN_cmp (y, BN_value_one ()) > 0 && BN_cmp (y, pm1) < 0;
 		// select random k
 #if IS_X86_64
-		BN_rand (k, ELGAMAL_FULL_EXPONENT_NUM_BITS, -1, 1); // full exponent for x64
+		validKey = validKey && BN_rand (k, ELGAMAL_FULL_EXPONENT_NUM_BITS, -1, 1) == 1; // full exponent for x64
 #else
-		BN_rand (k, ELGAMAL_SHORT_EXPONENT_NUM_BITS, -1, 1); // short exponent of 226 bits
+		validKey = validKey && BN_rand (k, ELGAMAL_SHORT_EXPONENT_NUM_BITS, -1, 1) == 1; // short exponent of 226 bits
 #endif
+		if (!validKey)
+		{
+			LogPrint (eLogError, "ElGamal: invalid public key or random exponent");
+			memset (encrypted, 0, 514);
+			BN_CTX_end (ctx);
+			BN_CTX_free (ctx);
+			return;
+		}
 		// calculate a
 		BIGNUM * a;
 		if (g_ElggTable)
@@ -364,9 +463,6 @@ namespace crypto
 			a = BN_new ();
 			BN_mod_exp (a, elgg, k, elgp, ctx);
 		}
-
-		// restore y from key
-		BN_bin2bn (key, 256, y);
 		// calculate b1
 		BN_mod_exp (b1, y, k, elgp, ctx);
 		// create m
@@ -379,9 +475,8 @@ namespace crypto
 		BN_mod_mul (b, b1, b, elgp, ctx);
 		// copy a and b
 		encrypted[0] = 0;
-		bn2buf (a, encrypted + 1, 256);
 		encrypted[257] = 0;
-		bn2buf (b, encrypted + 258, 256);
+		if (!bn2buf (a, encrypted + 1, 256) || !bn2buf (b, encrypted + 258, 256)) memset (encrypted, 0, 514);
 
 		BN_free (a);
 		BN_CTX_end (ctx);
@@ -390,19 +485,46 @@ namespace crypto
 
 	bool ElGamalDecrypt (const uint8_t * key, const uint8_t * encrypted, uint8_t * data)
 	{
+		if (!key || !encrypted || !data) return false;
 		BN_CTX * ctx = BN_CTX_new ();
+		if (!ctx) return false;
 		BN_CTX_start (ctx);
 		BIGNUM *x = BN_CTX_get (ctx), *a = BN_CTX_get (ctx), *b = BN_CTX_get (ctx);
-		BN_bin2bn (key, 256, x);
+		if (!x || !a || !b)
+		{
+			BN_CTX_end (ctx);
+			BN_CTX_free (ctx);
+			return false;
+		}
+		if (!BN_bin2bn (key, 256, x) || BN_is_zero (x) || BN_cmp (x, elgp) >= 0)
+		{
+			// 0 and values >= p are not valid private exponents
+			BN_CTX_end (ctx);
+			BN_CTX_free (ctx);
+			return false;
+		}
 		BN_sub (x, elgp, x);
 		BN_sub_word (x, 1); // x = elgp - x- 1
+		if (BN_is_zero (x)) // private exponent p-1 maps to the trivial key y = 1
+		{
+			BN_CTX_end (ctx);
+			BN_CTX_free (ctx);
+			return false;
+		}
 		BN_bin2bn (encrypted + 1, 256, a);
 		BN_bin2bn (encrypted + 258, 256, b);
 		// m = b*(a^x mod p) mod p
 		BN_mod_exp (x, a, x, elgp, ctx);
 		BN_mod_mul (b, b, x, elgp, ctx);
-		uint8_t m[255];
-		bn2buf (b, m, 255);
+		uint8_t m[255] = { };
+		if (!bn2buf (b, m, sizeof (m)))
+		{
+			// b does not fit the 255-byte message space. Previously the
+			// uninitialised stack buffer was hashed and compared.
+			BN_CTX_end (ctx);
+			BN_CTX_free (ctx);
+			return false;
+		}
 		BN_CTX_end (ctx);
 		BN_CTX_free (ctx);
 		uint8_t hash[32];
@@ -415,112 +537,205 @@ namespace crypto
 
 	void GenerateElGamalKeyPair (uint8_t * priv, uint8_t * pub)
 	{
+		if (!priv || !pub) return;
+		// A failed RNG must never turn into an all-zero (or partially random)
+		// private exponent that still gets published as a valid key.
+		memset (pub, 0, 256);
 #if IS_X86 || defined(_MSC_VER)
-		RAND_bytes (priv, 256);
+		bool randomOk = RAND_bytes (priv, 256) == 1;
 #else
 		// lower 226 bits (28 bytes and 2 bits) only. short exponent
 		auto numBytes = (ELGAMAL_SHORT_EXPONENT_NUM_BITS) / 8 + 1; // 29
 		auto numZeroBytes = 256 - numBytes;
-		RAND_bytes (priv + numZeroBytes, numBytes);
-		memset (priv, 0, numZeroBytes);
-		priv[numZeroBytes] &= 0x03;
+		bool randomOk = RAND_bytes (priv + numZeroBytes, numBytes) == 1;
+		if (randomOk)
+		{
+			memset (priv, 0, numZeroBytes);
+			priv[numZeroBytes] &= 0x03;
+		}
 #endif
+		if (!randomOk)
+		{
+			OPENSSL_cleanse (priv, 256);
+			LogPrint (eLogError, "ElGamal: random key generation failed");
+			return;
+		}
 		BN_CTX * ctx = BN_CTX_new ();
 		BIGNUM * p = BN_new ();
-		BN_bin2bn (priv, 256, p);
-		BN_mod_exp (p, elgg, p, elgp, ctx);
-		bn2buf (p, pub, 256);
-		BN_free (p);
-		BN_CTX_free (ctx);
+		bool ok = ctx && p && BN_bin2bn (priv, 256, p)
+			&& BN_mod_exp (p, elgg, p, elgp, ctx) == 1 && bn2buf (p, pub, 256);
+		if (p) BN_free (p);
+		if (ctx) BN_CTX_free (ctx);
+		if (!ok)
+		{
+			OPENSSL_cleanse (priv, 256);
+			memset (pub, 0, 256);
+			LogPrint (eLogError, "ElGamal: public key generation failed");
+		}
 	}
 
 	// ECIES
+	namespace
+	{
+		// The I2P ECIES envelope is fixed at 514 bytes: one leading zero,
+		// x/y coordinates padded into 256 bytes, the unused byte and 256
+		// bytes of CBC ciphertext.
+		constexpr size_t ECIES_ENCRYPTED_SIZE = 514;
+		// P-521 coordinates are 66 bytes; 64 bytes was too small for the
+		// generic ECIES helper even though the I2P default is P-256.
+		constexpr size_t ECIES_KEY_BUF_SIZE = 128;
+
+		void ClearECIESOutput (uint8_t * encrypted)
+		{
+			if (encrypted) memset (encrypted, 0, ECIES_ENCRYPTED_SIZE);
+		}
+	}
+
 	void ECIESEncrypt (const EC_GROUP * curve, const EC_POINT * key, const uint8_t * data, uint8_t * encrypted)
 	{
+		if (!curve || !key || !data || !encrypted || EC_POINT_is_at_infinity (curve, key))
+		{
+			// Never leave the caller's fixed-size envelope uninitialised or
+			// encrypt to the point at infinity (whose shared secret is public).
+			ClearECIESOutput (encrypted);
+			return;
+		}
 		BN_CTX * ctx = BN_CTX_new ();
+		if (!ctx)
+		{
+			ClearECIESOutput (encrypted);
+			return;
+		}
 		BN_CTX_start (ctx);
 		BIGNUM * q = BN_CTX_get (ctx);
-		EC_GROUP_get_order (curve, q, ctx);
-		int len = BN_num_bytes (q);
 		BIGNUM * k = BN_CTX_get (ctx);
-		BN_rand_range (k, q); // 0 < k < q
-		// point for shared secret
-		auto p = EC_POINT_new (curve);
-		EC_POINT_mul (curve, p, k, nullptr, nullptr, ctx);
-		BIGNUM *x = BN_CTX_get (ctx), *y = BN_CTX_get (ctx);
-		EC_POINT_get_affine_coordinates (curve, p, x, y, nullptr);
-		encrypted[0] = 0;
-		bn2buf (x, encrypted + 1, len);
-		bn2buf (y, encrypted + 1 + len, len);
-		RAND_bytes (encrypted + 1 + 2 * len, 256 - 2 * len);
-		// encryption key and iv
-		EC_POINT_mul (curve, p, nullptr, key, k, ctx);
-		EC_POINT_get_affine_coordinates (curve, p, x, y, nullptr);
-		uint8_t keyBuf[64], iv[64], shared[32];
-		bn2buf (x, keyBuf, len);
-		bn2buf (y, iv, len);
-		SHA256 (keyBuf, len, shared);
-		// create buffer
-		uint8_t m[256];
-		m[0] = 0xFF;
-		m[255] = 0xFF;
-		memcpy (m + 33, data, 222);
-		SHA256 (m + 33, 222, m + 1);
-		// encrypt
-		CBCEncryption encryption;
-		encryption.SetKey (shared);
-		encrypted[257] = 0;
-		encryption.Encrypt (m, 256, iv, encrypted + 258);
-		EC_POINT_free (p);
+		BIGNUM * x = BN_CTX_get (ctx);
+		BIGNUM * y = BN_CTX_get (ctx);
+		EC_POINT * p = EC_POINT_new (curve);
+		bool ok = q && k && x && y && p;
+		int len = 0;
+		if (ok && EC_GROUP_get_order (curve, q, ctx) == 1)
+		{
+			len = BN_num_bytes (q);
+			ok = len > 0 && static_cast<size_t> (len) <= ECIES_KEY_BUF_SIZE && 2 * len <= 256;
+		}
+		else
+			ok = false;
+		if (ok)
+		{
+			// point for shared secret
+			ok = BN_rand_range (k, q) == 1; // 0 < k < q
+			ok = ok && EC_POINT_mul (curve, p, k, nullptr, nullptr, ctx) == 1
+				&& EC_POINT_get_affine_coordinates (curve, p, x, y, nullptr) == 1;
+		}
+		if (ok)
+		{
+			encrypted[0] = 0;
+			ok = bn2buf (x, encrypted + 1, len) && bn2buf (y, encrypted + 1 + len, len)
+				&& RAND_bytes (encrypted + 1 + 2 * len, 256 - 2 * len) == 1;
+		}
+		if (ok)
+		{
+			// encryption key and iv
+			ok = EC_POINT_mul (curve, p, nullptr, key, k, ctx) == 1
+				&& EC_POINT_get_affine_coordinates (curve, p, x, y, nullptr) == 1;
+		}
+		if (ok)
+		{
+			uint8_t keyBuf[ECIES_KEY_BUF_SIZE], iv[ECIES_KEY_BUF_SIZE], shared[32];
+			ok = bn2buf (x, keyBuf, len) && bn2buf (y, iv, len);
+			if (ok)
+			{
+				SHA256 (keyBuf, len, shared);
+				// create buffer
+				uint8_t m[256];
+				m[0] = 0xFF;
+				m[255] = 0xFF;
+				memcpy (m + 33, data, 222);
+				SHA256 (m + 33, 222, m + 1);
+				// encrypt
+				CBCEncryption encryption;
+				encryption.SetKey (shared);
+				encrypted[257] = 0;
+				ok = encryption.EncryptChecked (m, 256, iv, encrypted + 258);
+			}
+		}
+		if (!ok) ClearECIESOutput (encrypted);
+		if (p) EC_POINT_free (p);
 		BN_CTX_end (ctx);
 		BN_CTX_free (ctx);
 	}
 
 	bool ECIESDecrypt (const EC_GROUP * curve, const BIGNUM * key, const uint8_t * encrypted, uint8_t * data)
 	{
-		bool ret = true;
+		if (!curve || !key || !encrypted || !data) return false;
+		bool ret = false;
 		BN_CTX * ctx = BN_CTX_new ();
+		if (!ctx) return false;
 		BN_CTX_start (ctx);
 		BIGNUM * q = BN_CTX_get (ctx);
-		EC_GROUP_get_order (curve, q, ctx);
-		int len = BN_num_bytes (q);
-		// point for shared secret
-		BIGNUM *x = BN_CTX_get (ctx), *y = BN_CTX_get (ctx);
-		BN_bin2bn (encrypted + 1, len, x);
-		BN_bin2bn (encrypted + 1 + len, len, y);
-		auto p = EC_POINT_new (curve);
-		if (EC_POINT_set_affine_coordinates (curve, p, x, y, nullptr))
+		BIGNUM * x = BN_CTX_get (ctx);
+		BIGNUM * y = BN_CTX_get (ctx);
+		EC_POINT * p = EC_POINT_new (curve);
+		EC_POINT * s = nullptr;
+		if (!q || !x || !y || !p)
 		{
-			auto s = EC_POINT_new (curve);
-			EC_POINT_mul (curve, s, nullptr, p, key, ctx);
-			EC_POINT_get_affine_coordinates (curve, s, x, y, nullptr);
-			EC_POINT_free (s);
-			uint8_t keyBuf[64], iv[64], shared[32];
-			bn2buf (x, keyBuf, len);
-			bn2buf (y, iv, len);
-			SHA256 (keyBuf, len, shared);
-			// decrypt
-			uint8_t m[256];
-			CBCDecryption decryption;
-			decryption.SetKey (shared);
-			decryption.Decrypt (encrypted + 258, 256, iv, m);
-			// verify and copy
-			uint8_t hash[32];
-			SHA256 (m + 33, 222, hash);
-			if (!CRYPTO_memcmp (m + 1, hash, 32))
-				memcpy (data, m + 33, 222);
-			else
+			if (p) EC_POINT_free (p);
+			BN_CTX_end (ctx);
+			BN_CTX_free (ctx);
+			return false;
+		}
+		if (EC_GROUP_get_order (curve, q, ctx) != 1)
+		{
+			EC_POINT_free (p);
+			BN_CTX_end (ctx);
+			BN_CTX_free (ctx);
+			return false;
+		}
+		const int len = BN_num_bytes (q);
+		if (len <= 0 || static_cast<size_t> (len) > ECIES_KEY_BUF_SIZE || 2 * len > 256)
+		{
+			EC_POINT_free (p);
+			BN_CTX_end (ctx);
+			BN_CTX_free (ctx);
+			return false;
+		}
+		// point for shared secret
+		if (BN_bin2bn (encrypted + 1, len, x) && BN_bin2bn (encrypted + 1 + len, len, y)
+			&& EC_POINT_set_affine_coordinates (curve, p, x, y, nullptr) == 1 && !EC_POINT_is_at_infinity (curve, p))
+		{
+			s = EC_POINT_new (curve);
+			if (s && EC_POINT_mul (curve, s, nullptr, p, key, ctx) == 1
+				&& EC_POINT_get_affine_coordinates (curve, s, x, y, nullptr) == 1)
 			{
-				LogPrint (eLogError, "ECIES decrypt hash doesn't match");
-				ret = false;
+				uint8_t keyBuf[ECIES_KEY_BUF_SIZE], iv[ECIES_KEY_BUF_SIZE], shared[32];
+				if (bn2buf (x, keyBuf, len) && bn2buf (y, iv, len))
+				{
+					SHA256 (keyBuf, len, shared);
+					// decrypt
+					uint8_t m[256];
+					CBCDecryption decryption;
+					decryption.SetKey (shared);
+					if (decryption.DecryptChecked (encrypted + 258, 256, iv, m))
+					{
+						// verify and copy
+						uint8_t hash[32];
+						SHA256 (m + 33, 222, hash);
+						if (!CRYPTO_memcmp (m + 1, hash, 32))
+						{
+							memcpy (data, m + 33, 222);
+							ret = true;
+						}
+						else
+							LogPrint (eLogError, "ECIES decrypt hash doesn't match");
+					}
+				}
 			}
 		}
 		else
-		{
 			LogPrint (eLogError, "ECIES decrypt point is invalid");
-			ret = false;
-		}
 
+		if (s) EC_POINT_free (s);
 		EC_POINT_free (p);
 		BN_CTX_end (ctx);
 		BN_CTX_free (ctx);
@@ -529,18 +744,74 @@ namespace crypto
 
 	void GenerateECIESKeyPair (const EC_GROUP * curve, BIGNUM *& priv, EC_POINT *& pub)
 	{
+		priv = nullptr;
+		pub = nullptr;
+		if (!curve) return;
 		BN_CTX * ctx = BN_CTX_new ();
 		BIGNUM * q = BN_new ();
-		EC_GROUP_get_order (curve, q, ctx);
-		priv = BN_new ();
-		BN_rand_range (priv, q);
-		pub = EC_POINT_new (curve);
-		EC_POINT_mul (curve, pub, priv, nullptr, nullptr, ctx);
+		if (!ctx || !q)
+		{
+			if (q) BN_free (q);
+			if (ctx) BN_CTX_free (ctx);
+			return;
+		}
+		if (EC_GROUP_get_order (curve, q, ctx) != 1 || BN_is_zero (q))
+		{
+			BN_free (q);
+			BN_CTX_free (ctx);
+			return;
+		}
+		BIGNUM * key = BN_new ();
+		EC_POINT * point = EC_POINT_new (curve);
+		bool ok = key && point;
+		if (ok)
+		{
+			// BN_rand_range() may return zero; a zero scalar maps to the
+			// point at infinity whose "shared secret" is public.
+			do
+			{
+				if (BN_rand_range (key, q) != 1)
+				{
+					ok = false;
+					break;
+				}
+			} while (BN_is_zero (key));
+		}
+		if (ok)
+			ok = EC_POINT_mul (curve, point, key, nullptr, nullptr, ctx) == 1
+				&& !EC_POINT_is_at_infinity (curve, point);
+		if (ok)
+		{
+			priv = key;
+			pub = point;
+		}
+		else
+		{
+			if (point) EC_POINT_free (point);
+			if (key) BN_clear_free (key);
+		}
 		BN_free (q);
 		BN_CTX_free (ctx);
 	}
 
 	// AES
+	namespace
+	{
+		constexpr size_t I2P_AES_BLOCK_SIZE = 16;
+
+		bool IsValidAESLength (size_t len)
+		{
+			return len <= static_cast<size_t> (std::numeric_limits<int>::max ()) && len % I2P_AES_BLOCK_SIZE == 0;
+		}
+
+		void WipeAESOutput (uint8_t * out, size_t len)
+		{
+			// Never wipe based on an unvalidated length: a caller that passed a
+			// huge or misaligned size may not own that much output storage.
+			if (out && IsValidAESLength (len) && len) OPENSSL_cleanse (out, len);
+		}
+	}
+
 	ECBEncryption::ECBEncryption ()
 	{
 		m_Ctx = EVP_CIPHER_CTX_new ();
@@ -551,13 +822,30 @@ namespace crypto
 		if (m_Ctx) EVP_CIPHER_CTX_free (m_Ctx);
 	}
 
+	bool ECBEncryption::EncryptChecked (const uint8_t * in, uint8_t * out)
+	{
+		if (!m_Ctx || !in || !out)
+		{
+			if (out) OPENSSL_cleanse (out, I2P_AES_BLOCK_SIZE);
+			return false;
+		}
+		int len = 0, finalLen = 0;
+		const bool ok = EVP_EncryptInit_ex (m_Ctx, EVP_aes_256_ecb (), nullptr, m_Key, nullptr) == 1
+			&& EVP_CIPHER_CTX_set_padding (m_Ctx, 0) == 1
+			&& EVP_EncryptUpdate (m_Ctx, out, &len, in, I2P_AES_BLOCK_SIZE) == 1
+			&& len == static_cast<int> (I2P_AES_BLOCK_SIZE)
+			&& EVP_EncryptFinal_ex (m_Ctx, out + len, &finalLen) == 1 && finalLen == 0;
+		if (!ok)
+		{
+			OPENSSL_cleanse (out, I2P_AES_BLOCK_SIZE);
+			LogPrint (eLogError, "AES: ECB encryption failed");
+		}
+		return ok;
+	}
+
 	void ECBEncryption::Encrypt (const uint8_t * in, uint8_t * out)
 	{
-		EVP_EncryptInit_ex (m_Ctx, EVP_aes_256_ecb (), NULL, m_Key, NULL);
-		EVP_CIPHER_CTX_set_padding (m_Ctx, 0);
-		int len;
-		EVP_EncryptUpdate (m_Ctx, out, &len, in, 16);
-		EVP_EncryptFinal_ex (m_Ctx, out + len, &len);
+		(void)EncryptChecked (in, out);
 	}
 
 	ECBDecryption::ECBDecryption ()
@@ -570,13 +858,30 @@ namespace crypto
 		if (m_Ctx) EVP_CIPHER_CTX_free (m_Ctx);
 	}
 
+	bool ECBDecryption::DecryptChecked (const uint8_t * in, uint8_t * out)
+	{
+		if (!m_Ctx || !in || !out)
+		{
+			if (out) OPENSSL_cleanse (out, I2P_AES_BLOCK_SIZE);
+			return false;
+		}
+		int len = 0, finalLen = 0;
+		const bool ok = EVP_DecryptInit_ex (m_Ctx, EVP_aes_256_ecb (), nullptr, m_Key, nullptr) == 1
+			&& EVP_CIPHER_CTX_set_padding (m_Ctx, 0) == 1
+			&& EVP_DecryptUpdate (m_Ctx, out, &len, in, I2P_AES_BLOCK_SIZE) == 1
+			&& len == static_cast<int> (I2P_AES_BLOCK_SIZE)
+			&& EVP_DecryptFinal_ex (m_Ctx, out + len, &finalLen) == 1 && finalLen == 0;
+		if (!ok)
+		{
+			OPENSSL_cleanse (out, I2P_AES_BLOCK_SIZE);
+			LogPrint (eLogError, "AES: ECB decryption failed");
+		}
+		return ok;
+	}
+
 	void ECBDecryption::Decrypt (const uint8_t * in, uint8_t * out)
 	{
-		EVP_DecryptInit_ex (m_Ctx, EVP_aes_256_ecb (), NULL, m_Key, NULL);
-		EVP_CIPHER_CTX_set_padding (m_Ctx, 0);
-		int len;
-		EVP_DecryptUpdate (m_Ctx, out, &len, in, 16);
-		EVP_DecryptFinal_ex (m_Ctx, out + len, &len);
+		(void)DecryptChecked (in, out);
 	}
 
 	CBCEncryption::CBCEncryption ()
@@ -589,14 +894,31 @@ namespace crypto
 		if (m_Ctx) EVP_CIPHER_CTX_free (m_Ctx);
 	}
 
+	bool CBCEncryption::EncryptChecked (const uint8_t * in, size_t len, const uint8_t * iv, uint8_t * out)
+	{
+		if (!m_Ctx || !iv || !IsValidAESLength (len) || (len && (!in || !out)))
+		{
+			WipeAESOutput (out, len);
+			return false;
+		}
+		if (!len) return true;
+		int l = 0, finalLen = 0;
+		const bool ok = EVP_EncryptInit_ex (m_Ctx, EVP_aes_256_cbc (), nullptr, m_Key, iv) == 1
+			&& EVP_CIPHER_CTX_set_padding (m_Ctx, 0) == 1
+			&& EVP_EncryptUpdate (m_Ctx, out, &l, in, static_cast<int> (len)) == 1
+			&& l == static_cast<int> (len)
+			&& EVP_EncryptFinal_ex (m_Ctx, out + l, &finalLen) == 1 && finalLen == 0;
+		if (!ok)
+		{
+			WipeAESOutput (out, len);
+			LogPrint (eLogError, "AES: CBC encryption failed");
+		}
+		return ok;
+	}
+
 	void CBCEncryption::Encrypt (const uint8_t * in, size_t len, const uint8_t * iv, uint8_t * out)
 	{
-		// len/16
-		EVP_EncryptInit_ex (m_Ctx, EVP_aes_256_cbc (), NULL, m_Key, iv);
-		EVP_CIPHER_CTX_set_padding (m_Ctx, 0);
-		int l;
-		EVP_EncryptUpdate (m_Ctx, out, &l, in, len);
-		EVP_EncryptFinal_ex (m_Ctx, out + l, &l);
+		(void)EncryptChecked (in, len, iv, out);
 	}
 
 	CBCDecryption::CBCDecryption ()
@@ -609,30 +931,61 @@ namespace crypto
 		if (m_Ctx) EVP_CIPHER_CTX_free (m_Ctx);
 	}
 
+	bool CBCDecryption::DecryptChecked (const uint8_t * in, size_t len, const uint8_t * iv, uint8_t * out)
+	{
+		if (!m_Ctx || !iv || !IsValidAESLength (len) || (len && (!in || !out)))
+		{
+			WipeAESOutput (out, len);
+			return false;
+		}
+		if (!len) return true;
+		int l = 0, finalLen = 0;
+		const bool ok = EVP_DecryptInit_ex (m_Ctx, EVP_aes_256_cbc (), nullptr, m_Key, iv) == 1
+			&& EVP_CIPHER_CTX_set_padding (m_Ctx, 0) == 1
+			&& EVP_DecryptUpdate (m_Ctx, out, &l, in, static_cast<int> (len)) == 1
+			&& l == static_cast<int> (len)
+			&& EVP_DecryptFinal_ex (m_Ctx, out + l, &finalLen) == 1 && finalLen == 0;
+		if (!ok)
+		{
+			WipeAESOutput (out, len);
+			LogPrint (eLogError, "AES: CBC decryption failed");
+		}
+		return ok;
+	}
+
 	void CBCDecryption::Decrypt (const uint8_t * in, size_t len, const uint8_t * iv, uint8_t * out)
 	{
-		// len/16
-		EVP_DecryptInit_ex (m_Ctx, EVP_aes_256_cbc (), NULL, m_Key, iv);
-		EVP_CIPHER_CTX_set_padding (m_Ctx, 0);
-		int l;
-		EVP_DecryptUpdate (m_Ctx, out, &l, in, len);
-		EVP_DecryptFinal_ex (m_Ctx, out + l, &l);
+		(void)DecryptChecked (in, len, iv, out);
 	}
 
 	void TunnelEncryption::Encrypt (const uint8_t * in, uint8_t * out)
 	{
 		uint8_t iv[16];
-		m_IVEncryption.Encrypt (in, iv); // iv
-		m_LayerEncryption.Encrypt (in + 16, i2p::tunnel::TUNNEL_DATA_ENCRYPTED_SIZE, iv, out + 16); // data
-		m_IVEncryption.Encrypt (iv, out); // double iv
+		const bool ok = m_IVEncryption.EncryptChecked (in, iv) // iv
+			&& m_LayerEncryption.EncryptChecked (
+				in + 16, i2p::tunnel::TUNNEL_DATA_ENCRYPTED_SIZE, iv, out + 16) // data
+			&& m_IVEncryption.EncryptChecked (iv, out); // double iv
+		if (!ok)
+		{
+			// There is no return value. A caller must never forward a partially
+			// encrypted tunnel payload.
+			if (out) OPENSSL_cleanse (out, 16 + i2p::tunnel::TUNNEL_DATA_ENCRYPTED_SIZE);
+			LogPrint (eLogError, "AES: tunnel encryption failed");
+		}
 	}
 
 	void TunnelDecryption::Decrypt (const uint8_t * in, uint8_t * out)
 	{
 		uint8_t iv[16];
-		m_IVDecryption.Decrypt (in, iv); // iv
-		m_LayerDecryption.Decrypt (in + 16, i2p::tunnel::TUNNEL_DATA_ENCRYPTED_SIZE, iv, out + 16); // data
-		m_IVDecryption.Decrypt (iv, out); // double iv
+		const bool ok = m_IVDecryption.DecryptChecked (in, iv) // iv
+			&& m_LayerDecryption.DecryptChecked (
+				in + 16, i2p::tunnel::TUNNEL_DATA_ENCRYPTED_SIZE, iv, out + 16) // data
+			&& m_IVDecryption.DecryptChecked (iv, out); // double iv
+		if (!ok)
+		{
+			if (out) OPENSSL_cleanse (out, 16 + i2p::tunnel::TUNNEL_DATA_ENCRYPTED_SIZE);
+			LogPrint (eLogError, "AES: tunnel decryption failed");
+		}
 	}
 
 	// AEAD/ChaCha20/Poly1305
@@ -640,42 +993,58 @@ namespace crypto
 	static bool AEADChaCha20Poly1305 (EVP_CIPHER_CTX * ctx, const uint8_t * msg, size_t msgLen, const uint8_t * ad,
 		size_t adLen, const uint8_t * key, const uint8_t * nonce, uint8_t * buf, size_t len, bool encrypt)
 	{
-		if (!ctx || len < msgLen || (encrypt && len - msgLen < 16)) return false;
+		if (!ctx || !key || !nonce || !buf) return false;
+		// The authentication tag lives at msg + msgLen, so decryption always
+		// needs a message pointer even for a zero-length plaintext.
+		if (!msg && (!encrypt || msgLen)) return false;
+		if (adLen && !ad) return false;
+		if (len < msgLen || (encrypt && len - msgLen < 16)) return false;
 		// EVP update lengths are int in both OpenSSL and LibreSSL.
 		if (msgLen > (size_t)std::numeric_limits<int>::max () || adLen > (size_t)std::numeric_limits<int>::max ())
 			return false;
+		const size_t outputLen = encrypt ? msgLen + 16 : msgLen;
+		bool ok = false;
 		int outlen = 0, finalLen = 0;
 		if (encrypt)
 		{
-			if (EVP_EncryptInit_ex (ctx, EVP_chacha20_poly1305 (), nullptr, nullptr, nullptr) != 1
-				|| EVP_CIPHER_CTX_ctrl (ctx, EVP_CTRL_AEAD_SET_IVLEN, 12, nullptr) != 1
-				|| EVP_EncryptInit_ex (ctx, nullptr, nullptr, key, nonce) != 1)
-				return false;
-			if (adLen && EVP_EncryptUpdate (ctx, nullptr, &outlen, ad, (int)adLen) != 1) return false;
-			outlen = 0;
-			if (msgLen && EVP_EncryptUpdate (ctx, buf, &outlen, msg, (int)msgLen) != 1) return false;
-			if (outlen != (int)msgLen || EVP_EncryptFinal_ex (ctx, buf + outlen, &finalLen) != 1 || finalLen != 0)
-				return false;
-			return EVP_CIPHER_CTX_ctrl (ctx, EVP_CTRL_AEAD_GET_TAG, 16, buf + msgLen) == 1;
+			ok = EVP_EncryptInit_ex (ctx, EVP_chacha20_poly1305 (), nullptr, nullptr, nullptr) == 1
+				&& EVP_CIPHER_CTX_ctrl (ctx, EVP_CTRL_AEAD_SET_IVLEN, 12, nullptr) == 1
+				&& EVP_EncryptInit_ex (ctx, nullptr, nullptr, key, nonce) == 1;
+			if (ok && adLen) ok = EVP_EncryptUpdate (ctx, nullptr, &outlen, ad, (int)adLen) == 1;
+			if (ok)
+			{
+				outlen = 0;
+				ok = !msgLen || EVP_EncryptUpdate (ctx, buf, &outlen, msg, (int)msgLen) == 1;
+			}
+			if (ok)
+			{
+				finalLen = 0;
+				ok = outlen == (int)msgLen && EVP_EncryptFinal_ex (ctx, buf + outlen, &finalLen) == 1 && finalLen == 0;
+			}
+			if (ok) ok = EVP_CIPHER_CTX_ctrl (ctx, EVP_CTRL_AEAD_GET_TAG, 16, buf + msgLen) == 1;
 		}
-#if defined(LIBRESSL_VERSION_NUMBER) && LIBRESSL_VERSION_NUMBER < 0x4000000fL
-		std::vector<uint8_t> m;
-		if (msg == buf)
+		else
 		{
-			// Older LibreSSL cannot authenticate in-place decryption.
-			m.assign (msg, msg + msgLen + 16);
-			msg = m.data ();
+			ok = EVP_DecryptInit_ex (ctx, EVP_chacha20_poly1305 (), nullptr, nullptr, nullptr) == 1
+				&& EVP_CIPHER_CTX_ctrl (ctx, EVP_CTRL_AEAD_SET_IVLEN, 12, nullptr) == 1
+				&& EVP_DecryptInit_ex (ctx, nullptr, nullptr, key, nonce) == 1
+				&& EVP_CIPHER_CTX_ctrl (ctx, EVP_CTRL_AEAD_SET_TAG, 16, (void *)(msg + msgLen)) == 1;
+			if (ok && adLen) ok = EVP_DecryptUpdate (ctx, nullptr, &outlen, ad, (int)adLen) == 1;
+			if (ok)
+			{
+				outlen = 0;
+				ok = !msgLen || EVP_DecryptUpdate (ctx, buf, &outlen, msg, (int)msgLen) == 1;
+			}
+			if (ok)
+			{
+				finalLen = 0;
+				ok = outlen == (int)msgLen && EVP_DecryptFinal_ex (ctx, buf + outlen, &finalLen) == 1 && finalLen == 0;
+			}
 		}
-#endif
-		if (EVP_DecryptInit_ex (ctx, EVP_chacha20_poly1305 (), nullptr, nullptr, nullptr) != 1
-			|| EVP_CIPHER_CTX_ctrl (ctx, EVP_CTRL_AEAD_SET_IVLEN, 12, nullptr) != 1
-			|| EVP_DecryptInit_ex (ctx, nullptr, nullptr, key, nonce) != 1
-			|| EVP_CIPHER_CTX_ctrl (ctx, EVP_CTRL_AEAD_SET_TAG, 16, (void *)(msg + msgLen)) != 1)
-			return false;
-		if (adLen && EVP_DecryptUpdate (ctx, nullptr, &outlen, ad, (int)adLen) != 1) return false;
-		outlen = 0;
-		if (msgLen && EVP_DecryptUpdate (ctx, buf, &outlen, msg, (int)msgLen) != 1) return false;
-		return outlen == (int)msgLen && EVP_DecryptFinal_ex (ctx, buf + outlen, &finalLen) == 1 && finalLen == 0;
+		// OpenSSL may have written unauthenticated plaintext (or partial
+		// ciphertext) before the tag check failed. Never expose it.
+		if (!ok && outputLen) OPENSSL_cleanse (buf, outputLen);
+		return ok;
 	}
 
 	bool AEADChaCha20Poly1305 (const uint8_t * msg, size_t msgLen, const uint8_t * ad, size_t adLen,
@@ -706,14 +1075,41 @@ namespace crypto
 	void AEADChaCha20Poly1305Encryptor::Encrypt (const std::vector<std::pair<uint8_t *, size_t>> & bufs,
 		const uint8_t * key, const uint8_t * nonce, uint8_t * mac)
 	{
-		if (bufs.empty ()) return;
-		int outlen = 0;
-		EVP_EncryptInit_ex (m_Ctx, EVP_chacha20_poly1305 (), 0, 0, 0);
-		EVP_CIPHER_CTX_ctrl (m_Ctx, EVP_CTRL_AEAD_SET_IVLEN, 12, 0);
-		EVP_EncryptInit_ex (m_Ctx, NULL, NULL, key, nonce);
-		for (const auto & it : bufs) EVP_EncryptUpdate (m_Ctx, it.first, &outlen, it.first, it.second);
-		EVP_EncryptFinal_ex (m_Ctx, NULL, &outlen);
-		EVP_CIPHER_CTX_ctrl (m_Ctx, EVP_CTRL_AEAD_GET_TAG, 16, mac);
+		if (bufs.empty () || !m_Ctx || !key || !nonce || !mac)
+		{
+			// There is no return value to report failure. A zero tag cannot
+			// authenticate any packet, so the peer will discard it.
+			if (mac) memset (mac, 0, 16);
+			return;
+		}
+		bool ok = EVP_EncryptInit_ex (m_Ctx, EVP_chacha20_poly1305 (), nullptr, nullptr, nullptr) == 1
+			&& EVP_CIPHER_CTX_ctrl (m_Ctx, EVP_CTRL_AEAD_SET_IVLEN, 12, nullptr) == 1
+			&& EVP_EncryptInit_ex (m_Ctx, nullptr, nullptr, key, nonce) == 1;
+		for (const auto & it : bufs)
+		{
+			if (!ok) break;
+			if (!it.second) continue;
+			if (it.second > (size_t)std::numeric_limits<int>::max () || !it.first)
+			{
+				ok = false;
+				break;
+			}
+			int outlen = 0;
+			ok = EVP_EncryptUpdate (m_Ctx, it.first, &outlen, it.first, (int)it.second) == 1
+				&& outlen == (int)it.second;
+		}
+		if (ok)
+		{
+			uint8_t finalBuf[16];
+			int outlen = 0;
+			ok = EVP_EncryptFinal_ex (m_Ctx, finalBuf, &outlen) == 1 && outlen == 0
+				&& EVP_CIPHER_CTX_ctrl (m_Ctx, EVP_CTRL_AEAD_GET_TAG, 16, mac) == 1;
+		}
+		if (!ok)
+		{
+			memset (mac, 0, 16);
+			LogPrint (eLogError, "AEAD: multi-buffer encryption failed");
+		}
 	}
 
 	AEADChaCha20Poly1305Decryptor::AEADChaCha20Poly1305Decryptor ()
@@ -732,22 +1128,40 @@ namespace crypto
 		return AEADChaCha20Poly1305 (m_Ctx, msg, msgLen, ad, adLen, key, nonce, buf, len, false);
 	}
 
-	static void ChaCha20 (EVP_CIPHER_CTX * ctx, const uint8_t * msg, size_t msgLen, const uint8_t * key,
+	static bool ChaCha20 (EVP_CIPHER_CTX * ctx, const uint8_t * msg, size_t msgLen, const uint8_t * key,
 		const uint8_t * nonce, uint8_t * out)
 	{
+		if (!ctx || !key || !nonce || (msgLen && (!msg || !out))
+			|| msgLen > (size_t)std::numeric_limits<int>::max ())
+			return false;
 		uint32_t iv[4];
 		iv[0] = htole32 (1);
 		memcpy (iv + 1, nonce, 12); // counter | nonce
-		EVP_EncryptInit_ex (ctx, EVP_chacha20 (), NULL, key, (const uint8_t *)iv);
+		if (EVP_EncryptInit_ex (ctx, EVP_chacha20 (), NULL, key, (const uint8_t *)iv) != 1) return false;
 		int outlen = 0;
-		EVP_EncryptUpdate (ctx, out, &outlen, msg, msgLen);
-		EVP_EncryptFinal_ex (ctx, NULL, &outlen);
+		if (msgLen && EVP_EncryptUpdate (ctx, out, &outlen, msg, (int)msgLen) != 1) return false;
+		if (outlen != (int)msgLen) return false;
+		int finalLen = 0;
+		uint8_t finalBuf[16];
+		return EVP_EncryptFinal_ex (ctx, finalBuf, &finalLen) == 1 && finalLen == 0;
+	}
+
+	static void ChaCha20AndWipeOnFailure (EVP_CIPHER_CTX * ctx, const uint8_t * msg, size_t msgLen, const uint8_t * key,
+		const uint8_t * nonce, uint8_t * out)
+	{
+		if (!ChaCha20 (ctx, msg, msgLen, key, nonce, out))
+		{
+			// No return value: never leave a partially transformed buffer
+			// (which can be plaintext) for the caller to transmit.
+			if (out && msgLen) OPENSSL_cleanse (out, msgLen);
+			LogPrint (eLogError, "ChaCha20: encryption failed");
+		}
 	}
 
 	void ChaCha20 (const uint8_t * msg, size_t msgLen, const uint8_t * key, const uint8_t * nonce, uint8_t * out)
 	{
 		EVP_CIPHER_CTX * ctx = EVP_CIPHER_CTX_new ();
-		ChaCha20 (ctx, msg, msgLen, key, nonce, out);
+		ChaCha20AndWipeOnFailure (ctx, msg, msgLen, key, nonce, out);
 		EVP_CIPHER_CTX_free (ctx);
 	}
 
@@ -764,7 +1178,7 @@ namespace crypto
 	void ChaCha20Context::operator() (
 		const uint8_t * msg, size_t msgLen, const uint8_t * key, const uint8_t * nonce, uint8_t * out)
 	{
-		ChaCha20 (m_Ctx, msg, msgLen, key, nonce, out);
+		ChaCha20AndWipeOnFailure (m_Ctx, msg, msgLen, key, nonce, out);
 	}
 
 	void HKDF (
@@ -787,24 +1201,46 @@ namespace crypto
 	void HKDFContext::operator() (
 		const uint8_t * salt, const uint8_t * key, size_t keyLen, std::string_view info, uint8_t * out, size_t outLen)
 	{
-		EVP_PKEY_derive_init (m_Ctx);
-		EVP_PKEY_CTX_set_hkdf_md (m_Ctx, EVP_sha256 ());
-		if (key && keyLen)
+		// RFC 5869 allows at most 255 * HashLen output bytes.
+		constexpr size_t MAX_HKDF_OUTPUT = 255 * 32;
+		if (!m_Ctx || !out || !outLen || outLen > MAX_HKDF_OUTPUT || !salt || (!key && keyLen)
+			|| keyLen > (size_t)std::numeric_limits<int>::max ()
+			|| info.size () > (size_t)std::numeric_limits<int>::max ())
 		{
-			EVP_PKEY_CTX_set1_hkdf_salt (m_Ctx, salt, 32);
-			EVP_PKEY_CTX_set1_hkdf_key (m_Ctx, key, keyLen);
+			if (out && outLen) OPENSSL_cleanse (out, outLen);
+			return;
 		}
-		else
+		bool ok = EVP_PKEY_derive_init (m_Ctx) == 1
+			&& EVP_PKEY_CTX_set_hkdf_md (m_Ctx, EVP_sha256 ()) == 1;
+		if (ok && key && keyLen)
+		{
+			ok = EVP_PKEY_CTX_set1_hkdf_salt (m_Ctx, salt, 32) == 1
+				&& EVP_PKEY_CTX_set1_hkdf_key (m_Ctx, key, (int)keyLen) == 1;
+		}
+		else if (ok)
 		{
 			// zerolen
-			EVP_PKEY_CTX_hkdf_mode (m_Ctx, EVP_PKEY_HKDEF_MODE_EXPAND_ONLY);
+			ok = EVP_PKEY_CTX_hkdf_mode (m_Ctx, EVP_PKEY_HKDEF_MODE_EXPAND_ONLY) == 1;
 			uint8_t tempKey[32];
-			unsigned int len;
-			HMAC (EVP_sha256 (), salt, 32, nullptr, 0, tempKey, &len);
-			EVP_PKEY_CTX_set1_hkdf_key (m_Ctx, tempKey, len);
+			unsigned int len = 0;
+			if (ok)
+			{
+				ok = HMAC (EVP_sha256 (), salt, 32, nullptr, 0, tempKey, &len) != nullptr && len == 32;
+				if (ok) ok = EVP_PKEY_CTX_set1_hkdf_key (m_Ctx, tempKey, (int)len) == 1;
+			}
+			OPENSSL_cleanse (tempKey, sizeof (tempKey));
 		}
-		if (info.length () > 0) EVP_PKEY_CTX_add1_hkdf_info (m_Ctx, (const uint8_t *)info.data (), info.length ());
-		EVP_PKEY_derive (m_Ctx, out, &outLen);
+		if (ok && !info.empty ()) ok = EVP_PKEY_CTX_add1_hkdf_info (m_Ctx, (const uint8_t *)info.data (), (int)info.size ()) == 1;
+		if (ok)
+		{
+			size_t derived = outLen;
+			ok = EVP_PKEY_derive (m_Ctx, out, &derived) == 1 && derived == outLen;
+		}
+		if (!ok)
+		{
+			OPENSSL_cleanse (out, outLen);
+			LogPrint (eLogError, "HKDF: derivation failed");
+		}
 	}
 
 	// Noise
@@ -812,39 +1248,69 @@ namespace crypto
 	void NoiseSymmetricState::Init (const uint8_t * ck, const uint8_t * hh, const uint8_t * pub)
 	{
 		// pub is Bob's public static key, hh = SHA256(h)
+		if (!ck || !hh || !pub)
+		{
+			OPENSSL_cleanse (m_CK, sizeof (m_CK));
+			memset (m_H, 0, sizeof (m_H));
+			m_N = 0;
+			return;
+		}
+		// m_CK[32:63] becomes the cipher key only after MixKey(). Clear it so
+		// a caller that reads the state early cannot observe stale bytes.
+		OPENSSL_cleanse (m_CK, sizeof (m_CK));
 		memcpy (m_CK, ck, 32);
 
 		EVP_MD_CTX * ctx = EVP_MD_CTX_new ();
-		EVP_DigestInit_ex (ctx, EVP_sha256 (), NULL);
-		EVP_DigestUpdate (ctx, hh, 32);
-		EVP_DigestUpdate (ctx, pub, 32);
-		EVP_DigestFinal_ex (ctx, m_H, nullptr); // h = MixHash(pub) = SHA256(hh || pub)
+		if (!ctx || EVP_DigestInit_ex (ctx, EVP_sha256 (), NULL) != 1
+			|| EVP_DigestUpdate (ctx, hh, 32) != 1 || EVP_DigestUpdate (ctx, pub, 32) != 1
+			|| EVP_DigestFinal_ex (ctx, m_H, nullptr) != 1) // h = MixHash(pub) = SHA256(hh || pub)
+		{
+			memset (m_H, 0, sizeof (m_H));
+			LogPrint (eLogError, "Noise: failed to initialise symmetric state");
+		}
 		EVP_MD_CTX_free (ctx);
 		m_N = 0;
 	}
 
 	void NoiseSymmetricState::MixHash (const uint8_t * buf, size_t len)
 	{
+		if (len && !buf) return;
 		EVP_MD_CTX * ctx = EVP_MD_CTX_new ();
-		EVP_DigestInit_ex (ctx, EVP_sha256 (), NULL);
-		EVP_DigestUpdate (ctx, m_H, 32);
-		EVP_DigestUpdate (ctx, buf, len);
-		EVP_DigestFinal_ex (ctx, m_H, nullptr);
+		bool ok = ctx && EVP_DigestInit_ex (ctx, EVP_sha256 (), NULL) == 1
+			&& EVP_DigestUpdate (ctx, m_H, 32) == 1
+			&& (!len || EVP_DigestUpdate (ctx, buf, len) == 1)
+			&& EVP_DigestFinal_ex (ctx, m_H, nullptr) == 1;
+		if (!ok) LogPrint (eLogError, "Noise: MixHash failed");
 		EVP_MD_CTX_free (ctx);
 	}
 
 	void NoiseSymmetricState::MixHash (const std::vector<std::pair<uint8_t *, size_t>> & bufs)
 	{
 		EVP_MD_CTX * ctx = EVP_MD_CTX_new ();
-		EVP_DigestInit_ex (ctx, EVP_sha256 (), NULL);
-		EVP_DigestUpdate (ctx, m_H, 32);
-		for (const auto & it : bufs) EVP_DigestUpdate (ctx, it.first, it.second);
-		EVP_DigestFinal_ex (ctx, m_H, nullptr);
+		bool ok = ctx && EVP_DigestInit_ex (ctx, EVP_sha256 (), NULL) == 1
+			&& EVP_DigestUpdate (ctx, m_H, 32) == 1;
+		for (const auto & it : bufs)
+		{
+			if (!ok) break;
+			if (it.second && !it.first)
+			{
+				ok = false;
+				break;
+			}
+			ok = !it.second || EVP_DigestUpdate (ctx, it.first, it.second) == 1;
+		}
+		ok = ok && EVP_DigestFinal_ex (ctx, m_H, nullptr) == 1;
+		if (!ok) LogPrint (eLogError, "Noise: MixHash failed");
 		EVP_MD_CTX_free (ctx);
 	}
 
 	void NoiseSymmetricState::MixKey (const uint8_t * sharedSecret)
 	{
+		if (!sharedSecret)
+		{
+			LogPrint (eLogError, "Noise: MixKey called without a shared secret");
+			return;
+		}
 		HKDF (m_CK, sharedSecret, 32, "", m_CK);
 		// new ck is m_CK[0:31], key is m_CK[32:63]
 		m_N = 0;
@@ -852,6 +1318,8 @@ namespace crypto
 
 	bool NoiseSymmetricState::Encrypt (const uint8_t * in, uint8_t * out, size_t len)
 	{
+		if (!in || !out || len > std::numeric_limits<size_t>::max () - 16 || m_N == std::numeric_limits<uint64_t>::max ())
+			return false;
 		uint8_t nonce[12];
 		if (m_N)
 		{
@@ -867,6 +1335,8 @@ namespace crypto
 
 	bool NoiseSymmetricState::Decrypt (const uint8_t * in, uint8_t * out, size_t len)
 	{
+		// Java's ChaChaPolyCipherState rejects nonce 2^64-1 before use.
+		if (!in || !out || m_N == std::numeric_limits<uint64_t>::max ()) return false;
 		uint8_t nonce[12];
 		if (m_N)
 		{

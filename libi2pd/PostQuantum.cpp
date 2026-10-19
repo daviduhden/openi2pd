@@ -95,6 +95,11 @@ namespace crypto
 
 	bool MLKEMKeys::GetPublicKey (uint8_t * pub) const
 	{
+		if (!pub)
+		{
+			LogPrint (eLogError, "MLKEM: null public key output buffer");
+			return false;
+		}
 #ifndef LIBRESSL_VERSION_NUMBER
 		size_t len = 0;
 		if (m_Pkey && EVP_PKEY_get_octet_string_param (m_Pkey, OSSL_PKEY_PARAM_PUB_KEY, pub, m_KeyLen, &len) == 1
@@ -117,6 +122,11 @@ namespace crypto
 	{
 		// A failed import must not leave a previous key available for use.
 		FreeKeys ();
+		if (!pub)
+		{
+			LogPrint (eLogError, "MLKEM: null public key input buffer");
+			return false;
+		}
 #ifndef LIBRESSL_VERSION_NUMBER
 		OSSL_PARAM params[]
 			= { OSSL_PARAM_octet_string (OSSL_PKEY_PARAM_PUB_KEY, (void *)pub, m_KeyLen), OSSL_PARAM_END };
@@ -136,6 +146,12 @@ namespace crypto
 
 	bool MLKEMKeys::Encaps (uint8_t * ciphertext, uint8_t * shared)
 	{
+		if (!ciphertext || !shared)
+		{
+			if (shared) OPENSSL_cleanse (shared, 32);
+			LogPrint (eLogError, "MLKEM: null encapsulation buffer");
+			return false;
+		}
 #ifndef LIBRESSL_VERSION_NUMBER
 		auto ctx = m_Pkey ? EVP_PKEY_CTX_new_from_pkey (nullptr, m_Pkey, nullptr) : nullptr;
 		size_t len = m_CTLen, sharedLen = 32;
@@ -161,6 +177,12 @@ namespace crypto
 
 	bool MLKEMKeys::Decaps (const uint8_t * ciphertext, uint8_t * shared)
 	{
+		if (!ciphertext || !shared)
+		{
+			if (shared) OPENSSL_cleanse (shared, 32);
+			LogPrint (eLogError, "MLKEM: null decapsulation buffer");
+			return false;
+		}
 #ifndef LIBRESSL_VERSION_NUMBER
 		auto ctx = m_Pkey ? EVP_PKEY_CTX_new_from_pkey (nullptr, m_Pkey, nullptr) : nullptr;
 		size_t sharedLen = 32;
@@ -217,9 +239,15 @@ namespace crypto
 
 	void InitNoiseIKStateMLKEM (NoiseSymmetricState & state, i2p::data::CryptoKeyType type, const uint8_t * pub)
 	{
-		if (type <= i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD
+		if (!pub || type <= i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD
 			|| type - i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD > (int)NoiseIKInitMLKEMKeys.size ())
+		{
+			LogPrint (eLogError, "Noise: unsupported ML-KEM IK key type ", (int)type);
+			OPENSSL_cleanse (state.m_CK, sizeof (state.m_CK));
+			memset (state.m_H, 0, sizeof (state.m_H));
+			state.m_N = 0;
 			return;
+		}
 		auto ind = type - i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD - 1;
 		state.Init (NoiseIKInitMLKEMKeys[ind].first.data (), NoiseIKInitMLKEMKeys[ind].second.data (), pub);
 	}
@@ -252,9 +280,15 @@ namespace crypto
 
 	void InitNoiseXKStateMLKEM (NoiseSymmetricState & state, i2p::data::CryptoKeyType type, const uint8_t * pub)
 	{
-		if (type <= i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD
+		if (!pub || type <= i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD
 			|| type - i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD > (int)NoiseXKInitMLKEMKeys.size ())
+		{
+			LogPrint (eLogError, "Noise: unsupported ML-KEM XK key type ", (int)type);
+			OPENSSL_cleanse (state.m_CK, sizeof (state.m_CK));
+			memset (state.m_H, 0, sizeof (state.m_H));
+			state.m_N = 0;
 			return;
+		}
 		auto ind = type - i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD - 1;
 		state.Init (NoiseXKInitMLKEMKeys[ind].first.data (), NoiseXKInitMLKEMKeys[ind].second.data (), pub);
 	}
@@ -281,9 +315,15 @@ namespace crypto
 
 	void InitNoiseXKStateMLKEM1 (NoiseSymmetricState & state, i2p::data::CryptoKeyType type, const uint8_t * pub)
 	{
-		if (type <= i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD
+		if (!pub || type <= i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD
 			|| type - i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD > (int)NoiseXKInitMLKEMKeys1.size ())
+		{
+			LogPrint (eLogError, "Noise: unsupported ML-KEM SSU2 key type ", (int)type);
+			OPENSSL_cleanse (state.m_CK, sizeof (state.m_CK));
+			memset (state.m_H, 0, sizeof (state.m_H));
+			state.m_N = 0;
 			return;
+		}
 		auto ind = type - i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD - 1;
 		state.Init (NoiseXKInitMLKEMKeys1[ind].first.data (), NoiseXKInitMLKEMKeys1[ind].second.data (), pub);
 	}

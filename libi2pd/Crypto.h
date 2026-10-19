@@ -30,19 +30,13 @@
 #include "Tag.h"
 
 // recognize openssl version and features
-#if (!defined(LIBRESSL_VERSION_NUMBER)                                                                                 \
-	&& (OPENSSL_VERSION_NUMBER != 0x030000000)) // 3.0.0, regression in SipHash, not implemented in LibreSSL
+#ifndef LIBRESSL_VERSION_NUMBER // SipHash is not implemented in LibreSSL
 #define OPENSSL_SIPHASH 1
 #endif
 #if (!defined(LIBRESSL_VERSION_NUMBER) && OPENSSL_VERSION_NUMBER >= 0x030500000)                                       \
 	|| ((defined(LIBRESSL_VERSION_NUMBER)                                                                              \
 		&& (LIBRESSL_VERSION_NUMBER >= 0x4030000fL))) // 3.5.0 openssl, 4.3.0 libressl
 #define OPENSSL_PQ 1
-#endif
-
-// The Ed25519ph instance parameter first appeared in OpenSSL 3.2.
-#if !defined(LIBRESSL_VERSION_NUMBER) && OPENSSL_VERSION_NUMBER >= 0x30200000L
-#define OPENSSL_ED25519PH 1
 #endif
 
 namespace i2p
@@ -52,7 +46,7 @@ namespace crypto
 	bool bn2buf (const BIGNUM * bn, uint8_t * buf, size_t len);
 
 	// DSA
-#if !defined(LIBRESSL_VERSION_NUMBER) && OPENSSL_VERSION_NUMBER >= 0x30000000L // since 3.0.0
+#ifndef LIBRESSL_VERSION_NUMBER // OpenSSL 3.0.2 is the minimum
 	EVP_PKEY * CreateDSA (BIGNUM * pubKey = nullptr, BIGNUM * privKey = nullptr);
 #else
 	DSA * CreateDSA ();
@@ -110,6 +104,7 @@ namespace crypto
 
 		void SetKey (const uint8_t * key) { m_Key = key; };
 		void Encrypt (const uint8_t * in, uint8_t * out);
+		bool EncryptChecked (const uint8_t * in, uint8_t * out);
 
 	private:
 		AESKey m_Key;
@@ -124,6 +119,7 @@ namespace crypto
 
 		void SetKey (const uint8_t * key) { m_Key = key; };
 		void Decrypt (const uint8_t * in, uint8_t * out);
+		bool DecryptChecked (const uint8_t * in, uint8_t * out);
 
 	private:
 		AESKey m_Key;
@@ -138,6 +134,7 @@ namespace crypto
 
 		void SetKey (const uint8_t * key) { m_Key = key; }; // 32 bytes
 		void Encrypt (const uint8_t * in, size_t len, const uint8_t * iv, uint8_t * out);
+		bool EncryptChecked (const uint8_t * in, size_t len, const uint8_t * iv, uint8_t * out);
 
 	private:
 		AESKey m_Key;
@@ -152,6 +149,7 @@ namespace crypto
 
 		void SetKey (const uint8_t * key) { m_Key = key; }; // 32 bytes
 		void Decrypt (const uint8_t * in, size_t len, const uint8_t * iv, uint8_t * out);
+		bool DecryptChecked (const uint8_t * in, size_t len, const uint8_t * iv, uint8_t * out);
 
 	private:
 		AESKey m_Key;

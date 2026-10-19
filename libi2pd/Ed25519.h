@@ -126,7 +126,7 @@ namespace crypto
 
 		static void ExpandPrivateKey (
 			const uint8_t * key, uint8_t * expandedKey); // key - 32 bytes, expandedKey - 64 bytes
-		void CreateRedDSAPrivateKey (uint8_t * priv); // priv is 32 bytes
+		bool CreateRedDSAPrivateKey (uint8_t * priv); // priv is 32 bytes
 
 	private:
 		EDDSAPoint Sum (const EDDSAPoint & p1, const EDDSAPoint & p2, BN_CTX * ctx) const;
