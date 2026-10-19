@@ -7,7 +7,7 @@
 # |                                         |
 # | docker run --security-opt               |
 # | "apparmor=docker-i2pd" ...              |
-# | purplei2p/i2pd                          |
+# | openi2pd container image                |
 # |                                         |
 # \ And "aa-status" to verify it's loaded.  /
 #  -----------------------------------------

@@ -30,11 +30,13 @@ The default runtime policy is:
 stdio rpath wpath cpath fattr inet dns unix flock
 ```
 
-plus `mcast` when UPnP is enabled. There is no `proc`, `exec`, `id`, `chown`,
-`route`, `settime` or descriptor-passing promise. Startup uses a temporary
-superset (`proc`, and `unveil` when enabled) for `fork`, `setsid`,
-`setrlimit`, PID locking and the unveil calls; it is dropped before any service
-thread or network socket exists.
+plus `mcast` when UPnP is enabled. There is no `exec`, `id`, `chown`, `route`,
+`settime` or descriptor-passing promise. When `privsep.log` is active, the
+runtime core retains `proc` only for bounded supervisor reaping/signalling;
+`exec` is never retained. Startup uses a temporary superset (`proc`, `exec`
+when private workers are enabled, and `unveil` when enabled) for `fork`,
+`setsid`, `setrlimit`, PID locking and worker spawning; `exec` is dropped before
+any service thread or network socket exists.
 
 Additional notes:
 
@@ -47,30 +49,33 @@ Additional notes:
   Name-service files (`/etc/resolv.conf`, `/etc/hosts`, `/etc/services`,
   `/etc/protocols`) are opened internally by libc under the `dns` promise and
   do not need separate unveil rules.
-- `reseed.file` may be an `https://` URL. URLs are not treated as filesystem
-  paths during unveil setup; a local path is unveiled read-only.
-  **Known OpenBSD defect:** path canonicalization in `daemon/Daemon.cpp`
-  currently prepends the working directory to a non-absolute `reseed.file`,
-  so an `https://` value becomes `/cwd/https://...` and later reseed code
-  treats it as a local file. The unveil skip prevents a startup abort but does
-  not restore remote reseeding; fix the canonicalization in the daemon owner's
-  scope.
+- `reseed.file` may be an `https://` URL. URLs are left unchanged during
+  canonicalization and are not treated as filesystem paths during unveil
+  setup; a local path is unveiled read-only. Dynamic reseed remains a
+  validation item, not a claimed result.
 - `i2pcontrol` certificate/key paths and an I2PControl UNIX socket, when
   configured, are unveiled with `rwc`. A SOCKS outproxy without a port (a
   local socket) is unveiled with `w`.
 - `openbsd.unveil_file` lists extra paths, one per line; each is unveiled with
-  `rwc`. Use absolute paths. `openbsd.pledge_file` replaces the runtime pledge
-  promises. When it is set, the fixed startup pledge is skipped (existing
-  override behaviour), so the startup phase is unpledged until the runtime
-  transition; keep the file minimal and include every promise the runtime
-  needs. In particular, `rpath`/`cpath` are required to remove the pidfile and
-  the TUI socket at shutdown, and `fattr` is required when saving keys.
-- The log worker (`privsep.log`) is not available together with the OpenBSD
-  sandbox. It is spawned after the runtime pledge, which would need `proc` and
-  `exec`; the daemon refuses to start instead of silently disabling either the
-  isolation or the sandbox. Keep `privsep.log = false` while the sandbox is
-  enabled, or disable
-  `openbsd.pledge_enabled`/`openbsd.unveil_enabled` explicitly.
+  `rwc`. Use absolute paths. `openbsd.pledge_file` is additive, not an
+  override: the fixed startup and runtime baselines are always retained, and
+  custom whitespace-separated tokens are appended. `#` starts a comment,
+  duplicates are ignored and unknown tokens abort startup. The runtime policy
+  rejects `proc` and `exec`; workers are spawned before the runtime sandbox and
+  the core must not regain process-creation capability. Keep the file to
+  genuinely additional promises. In particular, `rpath`/`cpath` are required
+  to remove the pidfile and the TUI socket at shutdown, and `fattr` is required
+  when saving keys; the baseline already includes them.
+- `privsep.log` can run with the OpenBSD sandbox enabled since 2026: the
+  supervisor/log pair is spawned while the startup pledge still has
+  `proc`/`exec`, and each process installs its own policy after `execve`.
+  Workers refuse to run as root; run the service as `_i2pd`. The supervisor
+  owns log-worker replacement. If the supervisor itself dies, the core does not
+  fork a replacement under the runtime sandbox; logging stops without a local
+  fallback.
+- Storage, network, crypto and admin policy profiles exist in
+  `privsep/OpenBSDSandbox`, but those worker backends are not yet migrated into
+  the core. Do not describe `privsep.enabled` as full privilege separation.
 
 The pidfile defaults to `/var/i2pd/i2pd.pid`. It is opened with
 `O_CLOEXEC | O_NOFOLLOW`, must be a regular file, is locked with `lockf(3)`
