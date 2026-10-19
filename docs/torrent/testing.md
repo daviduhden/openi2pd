@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: testing.
+
+Documents project documentation.
+
+-->
+
 # Torrent and Perl test plan
 
 Status: prepared; dynamic results must be recorded after execution. A static
@@ -87,3 +97,16 @@ The torrent IPC remains local to the daemon; Android's same-process service is
 not claimed to provide network/storage separation. Device/Gradle checks remain
 in the Android plan. The user instruction after the checkpoint is that all
 builds/tests run only in CI.
+
+## I2PSnark parity increment
+
+The manual Linux workflow registers four additional CTest regressions:
+`test-torrents-magnet`, `test-torrents-engine-interop`,
+`test-torrents-dht-interop` and `test-torrents-comments`. These cover conflicting
+magnet topics and escapes, tracker hints, v1 construction/roundtrip/infohash,
+explicit empty tracker lists, fixed node/identity lengths and opaque tokens,
+and comment age timestamps/Unicode bounds/local moderation. The TUI protocol
+test includes paused-tracker command syntax; Android adds `TorrentControlTest`.
+The existing torrent parser fuzzer now invokes magnet and comment parsers.
+All are prepared only: pending CI compilation and pending CI tests. None
+establishes live interoperability with Java or OS capability separation.

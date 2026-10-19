@@ -44,6 +44,7 @@ nav:
           - IPC: torrent/ipc.md
           - Security: torrent/security.md
           - Functionality matrix: torrent/console-matrix.md
+          - I2PSnark compatibility: torrent/snark-compatibility.md
           - Testing: torrent/testing.md
       - Perl migration: development/perl-migration.md
       - Android modernization: android-modernization.md

@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: ipc.
+
+Documents project documentation.
+
+-->
+
 # Torrent control IPC
 
 Status: **source implementation complete; dynamic validation pending.** The
@@ -99,3 +109,14 @@ boundary. The daemon remains monolithic and does not yet satisfy the invariant
 that no process both connects to peers and writes persistent storage. That
 remains `TORRENT-IPC-003` / `PRIVSEP-006/007` and must not be claimed as
 completed until implemented and validated on each platform.
+
+### Paused torrent tracker administration
+
+`TORRENT-TRACKER-ADD <tunnel> <id> <URL>` and
+`TORRENT-TRACKER-REMOVE <tunnel> <id> <URL>` use the same authenticated local
+transport and bounded argument parser. The service validates I2P HTTP/UDP
+URLs, complete metadata, paused state and quotas. Explicit tracker membership
+replaces fallback to common trackers. An empty explicit list remains empty on
+reload. Success means the update and immutable persistence job were queued;
+it is not a durability acknowledgement. These commands do not create a new
+wire or persisted torrent format (outer BEP 12 dictionary only).

@@ -1,6 +1,17 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: architecture.
+
+Documents project documentation.
+
+-->
+
 # Native torrent architecture
 
-Status: **source implementation complete; dynamic validation pending.** This
+Status: **partial implementation by static analysis; pending CI compilation
+and pending CI tests.** This
 document describes the boundaries and current implementation. It is not a
 claim that the multi-process separation is complete.
 
@@ -96,3 +107,19 @@ as a residual risk rather than presented as privilege-separated.
 - Clearnet tracker/peer/DHT fallback.
 - TUI direct filesystem or peer access.
 - HTTP/JSON-RPC as the TUI transport.
+
+## I2PSnark continuation
+
+See [functional and protocol matrices](snark-compatibility.md) for exact scope.
+Android now enables the bundled engine and a Material Views torrent panel using
+bounded JNI dispatch on the service worker. This remains a same-process control
+boundary. Network/storage/verification workers and negative capability tests
+are still required before claiming operating-system privilege separation.
+
+Tracker edits require paused torrents with complete metadata. The TUI uses
+`TORRENT-TRACKER-ADD` / `TORRENT-TRACKER-REMOVE tunnel id URL`. Metadata is
+serialized on the service thread and queued as immutable bytes to storage.
+Explicit tracker lists, including an empty list, survive persistence without
+changing the info dictionary. Registry slots remain bounded and are not
+reclaimed until restart; repeated edits may exhaust that quota. Tier grouping
+is preserved, but BEP 12 failover/shuffling is not yet implemented.

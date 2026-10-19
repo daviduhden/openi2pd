@@ -1,3 +1,13 @@
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: tui.
+
+Documents project documentation.
+
+-->
+
 # Torrent TUI
 
 Status: **source implementation complete; dynamic validation pending.** The
@@ -83,3 +93,9 @@ Prepared tests cover protocol parsing, action serialization, empty/error
 states, key handling and long names. Live terminal tests (resize, Unicode,
 reconnect, large torrent lists) remain to be run by the user; see
 `docs/torrent/architecture.md` and `TODO.md` for status.
+
+Tracker editing: select a torrent, pause it, then press `t` to add an I2P
+tracker URL or `T` to remove one. Complete metadata is required. Resume after
+editing. Changes queue persistence; errors are reported through the bounded
+local IPC. Editing an endpoint means removing its old URL and adding its new
+URL. The infohash stays unchanged.
