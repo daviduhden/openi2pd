@@ -14,6 +14,7 @@
 #include <cstdint>
 #include <cstring>
 #include <dirent.h>
+#include <iostream>
 #include <fcntl.h>
 #include <string>
 #include <string_view>
@@ -503,6 +504,8 @@ void TestSendDeadlineAfterDrain ()
 	const std::string resumedPayload (64, 's');
 	auto sent = pair->first.Send (Message { MessageType::LogRecord, 1000, resumedPayload }, 1000);
 	const auto elapsed = std::chrono::steady_clock::now () - started;
+	if (!sent)
+		std::cerr << "post-drain send failed after " << queued << " queued frames: " << sent.error () << std::endl;
 	assert (sent.has_value ());
 	assert (elapsed < std::chrono::seconds (2));
 

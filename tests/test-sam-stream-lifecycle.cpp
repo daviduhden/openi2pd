@@ -142,8 +142,9 @@ int main ()
 		{
 			std::string firstPart = "SAM-";
 			std::string secondPart = "DATAGRAM";
-			bridge.SendTo (
-				{ { firstPart.data (), firstPart.size () }, { secondPart.data (), secondPart.size () } }, endpoint);
+			std::vector<boost::asio::const_buffer> parts { boost::asio::buffer (firstPart),
+				boost::asio::buffer (secondPart) };
+			bridge.SendTo (parts, endpoint);
 		}
 
 		assert (future.wait_for (std::chrono::seconds (2)) == std::future_status::ready);

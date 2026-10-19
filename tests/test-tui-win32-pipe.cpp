@@ -21,6 +21,7 @@
 #include <sddl.h>
 
 #include <cassert>
+#include <cstdio>
 #include <cstring>
 #include <string>
 #include <thread>
@@ -96,6 +97,7 @@ void TestDaclAndRoundTrip ()
 	const auto name = MakePipeName (L"roundtrip");
 	HANDLE server = CreateNamedPipeW (name.c_str (), PIPE_ACCESS_DUPLEX | PIPE_REJECT_REMOTE_CLIENTS,
 		PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT, 1, 4096, 4096, 0, &attributes);
+	if (server == INVALID_HANDLE_VALUE) std::fwprintf (stderr, L"CreateNamedPipeW failed: %lu\n", GetLastError ());
 	assert (server != INVALID_HANDLE_VALUE);
 
 	HANDLE client = INVALID_HANDLE_VALUE;

@@ -44,7 +44,7 @@ jobs:
             fuzz-base-blinding fuzz-signature-der
       - name: Run bounded fuzz smoke checks
         env:
-          ASAN_OPTIONS: "detect_leaks=0:halt_on_error=1:abort_on_error=1"
+          ASAN_OPTIONS: "detect_leaks=0:halt_on_error=1:abort_on_error=1:quarantine_size_mb=64:thread_local_quarantine_size_kb=256"
           UBSAN_OPTIONS: "halt_on_error=1:print_stacktrace=1"
         run: |
           mkdir -p "$RUNNER_TEMP/fuzz-artifacts"

@@ -191,7 +191,11 @@ void TestRecoveryAfterClose ()
 	const std::wstring replacementName = MakeTestPipeName (L"replacement");
 	auto replacement = WindowsServer::Create (replacementName);
 	assert (replacement.has_value ());
-	assert (!WindowsChannel::Connect (replacementName, 1).has_value ());
+	// A fresh listener is independent from the closed pair and accepts a new
+	// client; it is the old name that must no longer connect.
+	auto replacementClient = WindowsChannel::Connect (replacementName, 1000);
+	assert (replacementClient.has_value ());
+	replacementClient->Close ();
 }
 }
 

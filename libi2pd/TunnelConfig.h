@@ -196,7 +196,7 @@ namespace tunnel
 			// Unit tests can construct a zero-hop config before RouterContext
 			// has loaded keys. A zero hash is safer than dereferencing a null
 			// identity and is never used by a running router in that state.
-			static const i2p::data::IdentHash empty {};
+			static const i2p::data::IdentHash empty { };
 			auto identity = i2p::context.GetIdentity ();
 			return identity ? identity->GetIdentHash () : empty;
 		}

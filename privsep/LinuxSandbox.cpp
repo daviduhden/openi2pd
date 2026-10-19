@@ -256,8 +256,24 @@ namespace
 					ok = false;
 					break;
 				}
+				struct stat pathStat { };
+				if (fstat (pathFd, &pathStat) != 0)
+				{
+					ok = false;
+					close (pathFd);
+					break;
+				}
 				struct landlock_path_beneath_attr beneath { };
 				beneath.allowed_access = ruleset.handled_access_fs;
+				if (S_ISREG (pathStat.st_mode))
+				{
+					// Directory-only rights (make/remove/refer) are invalid for a
+					// regular file and make landlock_add_rule fail with EINVAL.
+					beneath.allowed_access = LANDLOCK_ACCESS_FS_WRITE_FILE;
+#ifdef LANDLOCK_ACCESS_FS_TRUNCATE
+					if (abi >= 3) beneath.allowed_access |= LANDLOCK_ACCESS_FS_TRUNCATE;
+#endif
+				}
 				beneath.parent_fd = pathFd;
 				if (LandlockAddRule (rulesetFd, LANDLOCK_RULE_PATH_BENEATH, &beneath, 0) != 0)
 				{
