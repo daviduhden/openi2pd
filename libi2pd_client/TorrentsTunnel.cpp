@@ -212,7 +212,7 @@ namespace torrents
 			return;
 		}
 
-		auto service = localDestination->GetService ();
+		auto & service = localDestination->GetService ();
 		if (service.get_executor ().running_in_this_thread ())
 		{
 			StopOnService ();

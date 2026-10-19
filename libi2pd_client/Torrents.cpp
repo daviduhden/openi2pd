@@ -33,6 +33,9 @@
 #include <fcntl.h>
 #include <io.h>
 #include <sys/stat.h>
+// Boost.Asio requires Winsock 2 to be included before windows.h.
+#include <winsock2.h>
+#include <ws2tcpip.h>
 #include <windows.h>
 #else
 #include <fcntl.h>
