@@ -1,13 +1,16 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: NTCP2.
+ *
+ * NTCP2 transport: Noise XK handshake with optional ML-KEM hybrid key exchange,
+ * SessionRequest/Created/Confirmed processing, AEAD-ChaCha20-Poly1305 data framing, SipHash
+ * obfuscation and padding policy. The server bounds handshake allocation, enforces replay
+ * caches and per-address pending-session limits, and uses Java-compatible termination timers.
+ *
+ */
+
 #ifndef NTCP2_H__
 #define NTCP2_H__
 

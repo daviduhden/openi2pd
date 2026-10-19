@@ -1,12 +1,15 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Profiling.
+ *
+ * Peer profiles used for tunnel and routing decisions: participation, usage, reachability and
+ * last-endpoint history with decline and usefulness thresholds. Profiles persist to disk,
+ * expire after 1.5 days, and are updated through a coalesced path so the router thread is not
+ * blocked by storage.
+ *
+ */
 
 #ifndef PROFILING_H__
 #define PROFILING_H__

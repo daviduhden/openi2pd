@@ -1,12 +1,15 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Streaming.
+ *
+ * Declares the I2P streaming layer: packet flags and MTU limits, asynchronous
+ * send buffers, the per-connection Stream state (sequence/ACK, RTT, window, RTO,
+ * resend and pacing) and StreamingDestination for accepting, pooling and
+ * dispatching streams. Receive timeouts are capped by MAX_RECEIVE_TIMEOUT.
+ *
+ */
 
 #ifndef STREAMING_H__
 #define STREAMING_H__

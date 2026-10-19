@@ -1,12 +1,15 @@
 /*
-* Copyright (c) 2013-2025, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: NetDbRequests.
+ *
+ * Tracks outstanding network-database lookups: retry limits, excluded peers, exploratory and
+ * direct requests, completion callbacks, and rejection of spoofed or replayed
+ * DatabaseSearchReply messages by matching them to queried peers. Runs on a dedicated asio
+ * service with randomized timers and a bounded pending-request map.
+ *
+ */
 
 #ifndef NETDB_REQUESTS_H__
 #define NETDB_REQUESTS_H__

@@ -1,12 +1,15 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Queue.
+ *
+ * Thread-safe FIFO queue built on std::list, a mutex and a condition variable, with blocking,
+ * timed and non-blocking dequeue, bulk splice insertion and queue swapping. The queue is
+ * unbounded, so producers must limit their own pressure; Get() and Peek() return nullptr when
+ * empty.
+ *
+ */
 
 #ifndef QUEUE_H__
 #define QUEUE_H__

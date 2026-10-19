@@ -1,12 +1,15 @@
 /*
-* Copyright (c) 2013-2025, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: MatchedDestination.
+ *
+ * Builds a client destination whose outbound tunnel pool reuses the remote
+ * lease set's inbound gateway as the last hop, keeping traffic to a service
+ * on matched peers. The remote lease set is resolved asynchronously and
+ * refreshed when it expires.
+ *
+ */
 
 #include "MatchedDestination.h"
 #include "Log.h"

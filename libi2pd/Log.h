@@ -1,12 +1,15 @@
 /*
-* Copyright (c) 2013-2024, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Log.
+ *
+ * Asynchronous logger with a bounded message queue, level filtering, configurable file,
+ * stream or syslog destinations and type-safe variadic LogPrint helpers. A pluggable sink
+ * forwards records to the privilege-separated log worker, and a bounded sanitized recent
+ * ring serves the TUI; mutexes keep Reopen() from waiting on slow disk writes.
+ *
+ */
 
 #ifndef LOG_H__
 #define LOG_H__

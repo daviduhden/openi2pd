@@ -1,12 +1,15 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Destination.
+ *
+ * Defines client destinations that own a tunnel pool, publish and refresh
+ * LeaseSets, resolve remote destinations and expose streaming and datagram
+ * endpoints. Includes I2CP option handling, publish retry and verification
+ * timers, and the asynchronous destination lifecycle.
+ *
+ */
 
 #ifndef DESTINATION_H__
 #define DESTINATION_H__

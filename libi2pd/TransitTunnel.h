@@ -1,12 +1,14 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: TransitTunnel.
+ *
+ * Declares transit tunnel roles (participant, gateway and endpoint) that
+ * decrypt, forward or terminate tunnel data messages, and TransitTunnels, which
+ * accepts build requests and tracks active transit tunnels on a worker thread.
+ *
+ */
 
 #ifndef TRANSIT_TUNNEL_H__
 #define TRANSIT_TUNNEL_H__

@@ -1,12 +1,16 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: NetDb.
+ *
+ * Implements the router's network database: validated RouterInfo and LeaseSet
+ * storage, lookup, expiry and replacement policy, floodfill DatabaseStore/
+ * DatabaseLookup handling, reseed fallback and asynchronous persistence. The
+ * in-memory maps are mutex-protected, and Java-compatible clock-skew,
+ * lease-age and store-type rules decide freshness and publication.
+ *
+ */
 
 #include <string.h>
 #include <algorithm>

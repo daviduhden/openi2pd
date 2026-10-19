@@ -1,12 +1,15 @@
 /*
-* Copyright (c) 2013-2024, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Ed25519.
+ *
+ * Implements Ed25519 and RedDSA point arithmetic, signing and verification on
+ * top of OpenSSL BIGNUM, using projective coordinates and a precomputed
+ * base-point table. Includes the key-blinding operations needed for encrypted
+ * LeaseSet2.
+ *
+ */
 
 #ifndef ED25519_H__
 #define ED25519_H__

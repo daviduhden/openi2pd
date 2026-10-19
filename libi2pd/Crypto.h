@@ -1,12 +1,15 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Crypto.
+ *
+ * Declares the OpenSSL-backed primitives used across the router: X25519,
+ * ElGamal and ECIES key agreement, AES tunnel layers, ChaCha20-Poly1305,
+ * HKDF and Noise symmetric states. Feature macros adapt the interface to the
+ * detected OpenSSL or LibreSSL version.
+ *
+ */
 
 #ifndef CRYPTO_H__
 #define CRYPTO_H__

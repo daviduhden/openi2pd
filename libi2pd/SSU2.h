@@ -1,12 +1,16 @@
 /*
-* Copyright (c) 2022-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: SSU2.
+ *
+ * Declares SSU2Server, the UDP transport manager: socket receive queue, session
+ * and pending-handshake tables, bounded token, relay and peer-test caches, and
+ * timers for termination, cleanup, resends and introducer updates. It also owns
+ * ChaCha20-Poly1305 helpers, MTU/firewall bookkeeping and the SOCKS5
+ * UDP-associate proxy path.
+ *
+ */
 
 #ifndef SSU2_H__
 #define SSU2_H__

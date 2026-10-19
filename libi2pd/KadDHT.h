@@ -1,13 +1,14 @@
 /*
-* Copyright (c) 2023, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: KadDHT.
+ *
+ * Binary-trie Kademlia routing table ordered by XOR distance over IdentHash. Supports insert,
+ * remove, closest-peer lookup with an optional filter and cleanup of stale RouterInfo entries;
+ * nodes are uniquely owned and non-copyable.
+ *
+ */
 
 #ifndef KADDHT_H__
 #define KADDHT_H__

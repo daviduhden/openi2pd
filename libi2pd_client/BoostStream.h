@@ -1,12 +1,14 @@
 /*
-* Copyright (c) 2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: BoostStream.
+ *
+ * Adapts an I2P streaming socket to the Boost.Asio asynchronous read/write
+ * stream concepts so Boost.Beast HTTP and WebSocket code can use it directly.
+ * Reads honor the stream receive timeout; Beast teardown closes the stream.
+ *
+ */
 
 #ifndef BOOST_STREAM_H_
 #define BOOST_STREAM_H_

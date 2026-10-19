@@ -1,13 +1,16 @@
 /*
-* Copyright (c) 2023, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: KadDHT.
+ *
+ * Implements a binary-trie Kademlia routing table keyed by IdentHash bits,
+ * supporting insert, remove, closest-peer selection (one or many, with an
+ * optional filter) and stale-entry cleanup. Child nodes are uniquely owned and
+ * collapsed singles are promoted; the table does no locking and relies on the
+ * caller's synchronisation.
+ *
+ */
 
 #include "KadDHT.h"
 

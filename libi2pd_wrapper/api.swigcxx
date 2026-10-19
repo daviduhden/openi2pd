@@ -1,8 +1,14 @@
 /*
- * Copyright (c) 2013-2026, The PurpleI2P Project
- * Copyright (c) 2026, David Uhden Collado
- * SPDX-License-Identifier: BSD-3-Clause
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: api.swigcxx.
+ *
+ * SWIG interface definition that wraps the flat C API declared in capi.h for
+ * generated language bindings.
+ *
  */
+
 // See swig.org for more interface options,
 // e.g. map std::string to Go string
 

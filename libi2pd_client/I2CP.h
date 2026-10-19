@@ -1,12 +1,14 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: I2CP.
+ *
+ * Declares the I2CP server, the per-connection session state machine and the
+ * destination adapter that exposes a client-managed destination to the
+ * streaming and datagram layers.
+ *
+ */
 
 #ifndef I2CP_H__
 #define I2CP_H__

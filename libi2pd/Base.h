@@ -1,12 +1,14 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Base.
+ *
+ * Declares the Base64 and Base32 codecs used for I2P addresses and signatures.
+ * Provides I2P's URL-safe Base64 alphabet, span-based buffer helpers and
+ * encoded-size calculation.
+ *
+ */
 
 #ifndef BASE_H__
 #define BASE_H__

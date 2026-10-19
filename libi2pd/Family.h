@@ -1,12 +1,14 @@
 /*
-* Copyright (c) 2013-2025, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Family.
+ *
+ * Handles I2P family certificates: loads trusted family signing keys and
+ * verifies that a destination identity and signature belong to a named family.
+ * Also creates the family signature attached to published destinations.
+ *
+ */
 
 #ifndef FAMILY_H__
 #define FAMILY_H__

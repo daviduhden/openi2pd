@@ -1,12 +1,16 @@
 /*
-* Copyright (c) 2013-2025, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Family.
+ *
+ * Loads P-256 family certificates from the certificates/family directory,
+ * extracts the CN family name and verifies ECDSA-SHA256 signatures over the
+ * family name concatenated with the router identity. It also generates the
+ * corresponding base64 signature from the family private key; certificates on
+ * other curves and duplicate family names are rejected.
+ *
+ */
 
 #include <string.h>
 #include <openssl/ssl.h>

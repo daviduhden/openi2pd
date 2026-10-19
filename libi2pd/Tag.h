@@ -1,12 +1,14 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Tag.
+ *
+ * Fixed-size, byte-comparable tag type used for garlic and session
+ * identifiers, with Base32/Base64 conversion and CSPRNG-backed randomization
+ * that zeroes the buffer if the provider fails.
+ *
+ */
 
 #ifndef TAG_H__
 #define TAG_H__

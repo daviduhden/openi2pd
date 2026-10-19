@@ -1,12 +1,15 @@
 /*
-* Copyright (c) 2013-2022, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: I2PEndian.
+ *
+ * Endian conversion for I2P's big-endian wire fields, with memcpy-based unaligned buffer
+ * access and htobe/be16toh-style macros. POSIX builds use endian(3); Windows uses C++23
+ * std::byteswap because its SDK lacks that header, and mixed-endian hosts are rejected at
+ * compile time.
+ *
+ */
 
 #ifndef I2PENDIAN_H__
 #define I2PENDIAN_H__

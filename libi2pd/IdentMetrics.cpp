@@ -1,12 +1,15 @@
 /*
-* Copyright (c) 2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: IdentMetrics.
+ *
+ * Implements daily Kademlia routing-key derivation, XOR distance metrics and
+ * the SipHash-based peer ordering groups used to spread tunnel selection.
+ * Ordering groups are cached per router with an inactivity timeout, and the
+ * SipHash key can be reseeded or fixed for deterministic grouping.
+ *
+ */
 
 #include <openssl/evp.h>
 #include <openssl/rand.h>

@@ -1,12 +1,14 @@
 /*
-* Copyright (c) 2013-2020, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Gost.
+ *
+ * GOST R 34.10 curve arithmetic and signature primitives with GOST R 34.11-2012 hashing,
+ * implemented over OpenSSL EC and BIGNUM. Covers the CryptoPro-A and TC26 512 parameter sets
+ * used by I2P signing key types 9 and 10, plus public-key recovery.
+ *
+ */
 
 #ifndef GOST_H__
 #define GOST_H__

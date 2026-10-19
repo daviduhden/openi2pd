@@ -1,12 +1,16 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Gzip.
+ *
+ * Implements gzip inflate and deflate over zlib for I2NP payloads, including
+ * i2pd's stored (uncompressed) block form and 16 KiB streaming through
+ * iostreams. Every declared length is checked against both the input and
+ * output bounds before copying or inflating, and stream-level errors are
+ * reported through the stream state.
+ *
+ */
 
 #include <string.h> /* memset */
 #include <array>

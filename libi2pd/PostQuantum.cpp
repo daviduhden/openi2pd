@@ -1,12 +1,16 @@
 /*
-* Copyright (c) 2025-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: PostQuantum.
+ *
+ * Implements ML-KEM-512/768/1024 generation, import/export, encapsulation and
+ * decapsulation over OpenSSL EVP, with a LibreSSL-specific backend, and
+ * initialises the Noise protocol names for the hybrid IK and XK handshakes.
+ * Shared secrets and temporary encoded keys are wiped on every failure path,
+ * and unsupported parameter sets fail closed.
+ *
+ */
 
 #include <cstring>
 #include <openssl/crypto.h>

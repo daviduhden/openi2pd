@@ -1,12 +1,15 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: ECIESX25519AEADRatchetSession.
+ *
+ * Declares the ECIES-X25519-AEAD-Ratchet garlic session state machine with its
+ * DH and tag ratchets, session negotiation, ACK tracking and replay-protected
+ * New Session handling. Enforces protocol timing, tag and payload bounds, and
+ * supports optional ML-KEM hybrid keys when OpenSSL provides them.
+ *
+ */
 
 #ifndef ECIES_X25519_AEAD_RATCHET_SESSION_H__
 #define ECIES_X25519_AEAD_RATCHET_SESSION_H__

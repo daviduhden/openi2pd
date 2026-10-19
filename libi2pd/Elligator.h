@@ -1,12 +1,14 @@
 /*
-* Copyright (c) 2013-2020, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Elligator.
+ *
+ * Declares Elligator2 encoding and decoding, which make X25519 public keys
+ * indistinguishable from random bytes. The shared instance holds the curve
+ * constants and square-root helpers required by the mapping.
+ *
+ */
 
 #ifndef ELLIGATOR_H__
 #define ELLIGATOR_H__

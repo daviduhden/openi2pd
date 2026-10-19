@@ -1,12 +1,15 @@
 /*
-* Copyright (c) 2024, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: SSU2OutOfSession.
+ *
+ * Declares out-of-session SSU2 helpers: peer-test sessions for messages 5-7,
+ * which validate the reported endpoint before replying, and Charlie-side
+ * hole-punch sessions that consume relay responses. Both derive from
+ * SSU2Session to share header parsing and crypto state.
+ *
+ */
 
 #ifndef SSU2_OUT_OF_SESSION_H__
 #define SSU2_OUT_OF_SESSION_H__

@@ -1,12 +1,16 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: RouterContext.
+ *
+ * Router-wide state: the local RouterInfo and private keys, NTCP2/SSU2 static keys, status,
+ * bandwidth and congestion settings, publish/cleanup timers and the current ECIES noise state.
+ * Provides mutex-protected mutation and immutable snapshots for TUI/IPC readers, and
+ * implements LocalDestination plus GarlicDestination so router-targeted garlic and
+ * tunnel-build records can be decrypted.
+ *
+ */
 
 #ifndef ROUTER_CONTEXT_H__
 #define ROUTER_CONTEXT_H__

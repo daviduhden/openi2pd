@@ -1,12 +1,15 @@
 /*
-* Copyright (c) 2025-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: PostQuantum.
+ *
+ * ML-KEM (FIPS 203) key encapsulation wrappers for the hybrid I2P crypto types, with
+ * key/ciphertext sizes selected by CryptoKeyType and OpenSSL/LibreSSL feature detection.
+ * Provides the Noise IK, XK and XK1 state initialization used by ratchets, NTCP2 and SSU2;
+ * operations report failure so a handshake aborts instead of continuing with partial output.
+ *
+ */
 
 #ifndef POST_QUANTUM_H__
 #define POST_QUANTUM_H__

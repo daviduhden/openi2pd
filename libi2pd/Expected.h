@@ -1,11 +1,15 @@
 /*
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: Expected.
+ *
+ * Provides a minimal value-or-error type for toolchains that advertise C++23
+ * but do not ship <expected>, notably the OpenBSD base libc++. Implements
+ * expected<T, E>, expected<void, E> and unexpected<E> with the subset of
+ * operations used by this tree.
+ *
+ */
 
 #ifndef I2PD_EXPECTED_H__
 #define I2PD_EXPECTED_H__

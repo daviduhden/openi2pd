@@ -1,12 +1,16 @@
 /*
-* Copyright (c) 2013-2026, The PurpleI2P Project
-* Copyright (c) 2026, David Uhden Collado
-* SPDX-License-Identifier: BSD-3-Clause
-*
-* This file is part of openi2pd and licensed under BSD-3-Clause
-*
-* See full license text in LICENSE file at top of project tree
-*/
+ * See the LICENSE file at the top of the project tree for copyright
+ * and license details.
+ *
+ * openi2pd: HTTP.
+ *
+ * Implements HTTP/1.0 and 1.1 request/response parsing and serialisation with
+ * strict token, header and version validation, URL and query-string handling,
+ * percent encoding, chunked-response merging, gzip detection and Basic
+ * authentication. Content lengths are capped before allocation, and malformed
+ * headers or body framing are rejected.
+ *
+ */
 
 #include <algorithm>
 #include <optional>
