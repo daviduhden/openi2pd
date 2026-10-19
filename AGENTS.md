@@ -3,6 +3,94 @@
 This file is for agents working in this repository. It is not user-facing
 documentation.
 
+## Permanent priority policy: static-only local work
+
+This policy applies to the coordinator and to every current and future
+subagent. It overrides any earlier instruction that suggests local build or
+test execution.
+
+### No local builds or tests
+
+Do not compile, link, configure a build, or execute tests locally. This
+includes, without limitation:
+
+- CMake configure/build and CTest.
+- GNU make, BSD make and Ninja.
+- Direct Clang, GCC, MSVC or other compiler invocations, including
+  syntax-only checks.
+- Existing test binaries, project binaries, benchmark tools and smoke tests.
+- Gradle and Android builds.
+- ASan, UBSan, TSan, fuzzing and integration runs.
+- Installing dependencies in order to compile or run tests.
+
+Do not perform a partial build "just to check" a change. Compilation and all
+dynamic validation belong exclusively to manually dispatched GitHub Actions
+workflows. Agents may prepare tests, edit CMake and workflows, and perform
+static analysis without invoking a compiler or test binary.
+
+### Implementation before local validation
+
+The required workflow is:
+
+1. Read the relevant code, specifications, Java reference and current diff.
+2. Identify the complete architectural change.
+3. Implement the solution, including broad internal API changes when needed.
+4. Review affected interfaces statically.
+5. Prepare or update tests and register them for CI.
+6. Add them to the manual workflows.
+7. Record risks and possible incompatibilities.
+8. Continue with the next independent task.
+
+Do not stop an implementation merely because it may not compile locally.
+Do not ask for confirmation for ordinary technical changes or justified
+architectural refactors. Do not replace a complete design with a temporary
+workaround merely to keep the worktree artificially buildable.
+
+Risky refactors are expressly allowed: deep architecture changes, large code
+changes, internal API breaks, removal of obsolete code, library/executable
+reorganisation, and C++23/Java 25/IPC changes that require later integration
+fixes. Compilation and regression failures are identified and corrected in CI.
+Never introduce deliberate vulnerabilities, data loss, cryptographic
+weakening, or removal of security restrictions.
+
+### CI is the only dynamic validator
+
+All builds and tests run through GitHub Actions. Workflows remain
+`workflow_dispatch`-only, with `workflow_call` where needed. Do not attribute
+results from an earlier revision to current local changes. Do not commit or
+push without authorization. When changes exist only locally, prepare the tests
+and leave their execution pending in CI.
+
+Do not hide failures with `continue-on-error` or unjustified suppressions.
+When CI reports a failure, fix the cause rather than deleting functionality,
+disabling tests or indiscriminately reverting the new architecture.
+
+### Tracking states
+
+Maintain `AGENTS.md`, `TODO.md`, `ROADMAP.md` and `PROGRESS.md` as work
+progresses. Distinguish exactly between:
+
+- pending;
+- in implementation;
+- implemented by static analysis;
+- pending CI compilation;
+- pending CI tests;
+- CI failure detected;
+- correction pending;
+- validated by CI.
+
+Never describe a change as compiled, tested or validated until the relevant
+manual CI run has passed. Keep regression tasks open while verification is
+pending.
+
+### Subagent coordination
+
+When creating a subagent, pass this policy explicitly. Prevent subagents from
+building or running tests on their own initiative. Parallelise independent
+refactors, coordinate shared interfaces, accept not-yet-compiled
+implementations, review diffs statically, record integration risks and update
+the tracking files.
+
 ## Hard rules
 
 - Do not create commits, pushes, tags or releases.
@@ -54,8 +142,8 @@ integration.
 2. Inspect the real code and current diff.
 3. Implement only the assigned task; keep diffs reviewable.
 4. Add or update tests when the component has a test target.
-5. Run static checks possible without the user's dynamic environment
-   (`git diff --check`, XML parsing, compile if available).
+5. Run only static checks that do not invoke a compiler or test runner
+   (`git diff --check`, text/XML/JSON parsing, source inspection).
 6. Report:
    - task IDs addressed;
    - files changed;
@@ -63,7 +151,8 @@ integration.
    - unresolved findings;
    - tests prepared but not run;
    - dynamic validations required.
-7. Do not mark a task validated unless it was actually executed.
+7. Do not mark a task validated unless the relevant manual CI run executed and
+   passed. Local static review is not dynamic validation.
 
 ## Visual identity
 
@@ -81,8 +170,10 @@ integration.
 
 ## Licensing
 
-- Project code/config files must carry the two `LICENSE` copyright lines and
-  `SPDX-License-Identifier: BSD-3-Clause`.
+- Upstream-derived project code/config files retain the two `LICENSE` copyright
+  lines and `SPDX-License-Identifier: BSD-3-Clause`. New files written for
+  openi2pd that were not copied from an i2pd repository carry only
+  `Copyright (c) 2026, David Uhden Collado` and the SPDX identifier.
 - Documentation remains CC-BY-SA-4.0 as declared in its license file.
   Third-party files retain their own SPDX/license notices; do not relicense
   Apache-2.0, BSL-1.0, Windows SDK, OpenBSD ports or imported components.
@@ -108,9 +199,22 @@ integration.
 
 ## Current uncommitted work
 
-The working tree contains privilege-separated logging (`privsep/`), Android
-Java 25/UI refactoring, torrent control/TUI migration, Perl tooling, security
-docs and tool hardening. Agents must not revert or overwrite those changes.
+The committed baseline is `800c8627` (native Windows TUI/IPC). The current
+uncommitted work contains parallel OpenBSD/logging hardening, atomic TUI status
+reads, RouterInfo/SSU2 bounds fixes, bounded Torrents RPC waits, C++23 ownership
+modernization, the memory/concurrency audit (SSU2/RouterInfo, crypto/reseed,
+BitTorrent, IPC/privsep/JNI and daemon lifecycle), dependency-floor cleanup,
+the five-subsystem Java 2.13.0 static-interoperability pass, and the
+LeaseSet/RouterInfo/netDb Java 2.13.0 pass, static-only crypto/client/IPC
+work, the RouterContext/torrent-containment/read-only TUI-config pass with
+per-tool and IPC regressions, and the C++23 ownership/RAII continuation
+(Kademlia/Garlic/Reseed, daemon descriptors/OpenSSL, client owners, span tools
+and signature scopes). Historical local Linux/GCC 16 builds and CTest
+runs predate the current static-only policy and do not validate the present
+uncommitted tree.
+Current changes are pending manual CI compilation and tests; no Java peer, live
+floodfill, sanitizer, fuzzer, Windows, Android or OpenBSD dynamic run exists.
+Agents must not revert or overwrite those changes.
 Torrent TUI control must use the bounded local IPC; it must not access engine
 internals, sockets, download files or JSON-RPC. Python is not an allowed
 runtime dependency for project-maintained scripts once the Perl replacement
