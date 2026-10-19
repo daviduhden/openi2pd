@@ -1,6 +1,11 @@
-; Copyright (c) 2013-2026, The PurpleI2P Project
-; Copyright (c) 2026, David Uhden Collado
-; SPDX-License-Identifier: BSD-3-Clause
+; See the LICENSE file at the top of the project tree for copyright
+; and license details.
+;
+; openi2pd: win installer.iss.
+;
+; Configures build and manual CI integration.
+;
+
 #define I2Pd_AppName "openi2pd"
 #define I2Pd_Publisher "openi2pd contributors"
 
@@ -29,7 +34,7 @@ ExtraDiskSpaceRequired=15
 
 AppID={{09F80FCB-ED87-4A5E-8539-16C38DFEC7F8}
 AppVerName={#I2Pd_AppName}
-AppCopyright=Copyright (c) 2013-2026, The PurpleI2P Project; Copyright (c) 2026, David Uhden Collado
+AppCopyright=Copyright (c) 2026, David Uhden Collado
 AppPublisherURL=https://github.com/daviduhden/openi2pd
 AppSupportURL=https://github.com/daviduhden/openi2pd/issues
 AppUpdatesURL=https://github.com/daviduhden/openi2pd/releases
