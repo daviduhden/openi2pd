@@ -4,8 +4,9 @@
 ---
 name: Linux and Android
 
-# Automatic runs are intentionally suspended during the refactoring. Only a
-# maintainer may start this workflow manually from the Actions tab.
+# All runs are manual. Do not add push, pull_request, schedule or workflow_call
+# triggers: this repository validates every revision only when a maintainer
+# explicitly dispatches the workflow.
 on:
   workflow_dispatch:
 
@@ -18,8 +19,19 @@ concurrency:
 
 jobs:
   linux:
+    name: Linux (${{ matrix.name }})
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: clang
+            cc: clang
+            cxx: clang++
+          - name: gcc
+            cc: gcc
+            cxx: g++
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
@@ -27,24 +39,42 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends clang cmake ninja-build libboost-dev libboost-atomic-dev libboost-filesystem-dev libboost-program-options-dev libboost-json-dev libboost-url-dev libssl-dev zlib1g-dev libminiupnpc-dev
-      - name: Build and run basic tests
+          sudo apt-get install -y --no-install-recommends \
+            clang gcc g++ cmake ninja-build libncurses-dev \
+            libboost-dev libboost-program-options-dev libboost-json-dev \
+            libboost-url-dev libssl-dev zlib1g-dev libminiupnpc-dev
+      - name: Build and run all CTest targets
         run: |
           cmake -S build -B build-output -G Ninja \
-            -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
-            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+            -DCMAKE_C_COMPILER=${{ matrix.cc }} \
+            -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
+            -DI2PD_BUILD_TUI=ON
           cmake --build build-output --parallel 2
-          ctest --test-dir build-output --output-on-failure --timeout 60
+          ctest --test-dir build-output --output-on-failure --timeout 120
           ./build-output/i2pd --version
-      - name: Validate Perl i2pdctl
+      - name: Verify CTest subsystem labels
+        run: |
+          for label in i2p security memory ipc tui torrent tools perl interop platform android ci static smoke; do
+            ctest --test-dir build-output -N -L "$label" --no-tests=error
+          done
+      - name: Validate Perl and static interoperability fixtures
         run: |
           perl -c tools/scripts/i2pdctl
+          perl -c tools/scripts/validate-branding.pl
+          perl -c tools/scripts/check-doc-links.pl
+          perl -c tests/interop/check-vectors.pl
+          perl -c android/tools/check-english-only.pl
           perl tools/scripts/validate-branding.pl
+          perl tools/scripts/check-doc-links.pl docs
+          perl tests/interop/check-vectors.pl
           prove -v tools/tests/i2pdctl.t
+          prove -v tools/tests/validate-branding.t
+          prove -v tools/tests/perl-portability.t
 
   android:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
@@ -56,8 +86,31 @@ jobs:
           java-version: '25'
       - name: Validate Android Gradle toolchain
         run: |
+          sh android/tools/java25-probe/check-config.sh
+          perl android/tools/check-english-only.pl
           cd android
           ./gradlew --version --no-daemon
+      - name: Install Android platform used by the app
+        run: |
+          if [ -z "${ANDROID_HOME:-}" ]; then
+            echo "ANDROID_HOME is not set" >&2
+            exit 1
+          fi
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          if [ ! -x "$SDKMANAGER" ]; then
+            SDKMANAGER="$(command -v sdkmanager)"
+          fi
+          test -x "$SDKMANAGER"
+          yes | "$SDKMANAGER" --licenses >/dev/null
+          "$SDKMANAGER" --install \
+            "platforms;android-37" \
+            "build-tools;36.0.0" \
+            "ndk;30.0.16248370"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/30.0.16248370" >> "$GITHUB_ENV"
+      - name: Android unit tests and Lint
+        run: |
+          cd android
+          ./gradlew :i2pd:testDebugUnitTest :i2pd:lintDebug --no-daemon
       - name: Checkout vcpkg
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
@@ -87,6 +140,77 @@ jobs:
             -DVCPKG_OVERLAY_TRIPLETS="$GITHUB_WORKSPACE/contrib/ci/android" \
             -DVCPKG_TARGET_TRIPLET=arm64-android \
             -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-28 \
-            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF
-          cmake --build build-android --parallel 2 --target i2pd
-          file build-android/i2pd | grep 'ARM aarch64'
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF \
+            -DI2PD_BUILD_JNI=ON -DWITH_BINARY=OFF
+          cmake --build build-android --parallel 2 --target i2pd_jni
+          file build-android/libi2pd.so | grep 'ARM aarch64'
+      - name: Build debug APK for arm64
+        run: |
+          cd android
+          ./gradlew :i2pd:assembleDebug --no-daemon \
+            -Pi2pd.ndkVersion="$NDK_VERSION" \
+            -Pandroid.injected.build.abi=arm64-v8a \
+            -Pi2pd.cmakeArgs="-DCMAKE_PREFIX_PATH=$VCPKG_ROOT/installed/arm64-android"
+
+  interop:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          persist-credentials: false
+      - name: Install Perl
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends perl git
+      - name: Clone pinned I2P Java reference
+        run: |
+          git clone --depth 1 --branch i2p-2.13.0 \
+            https://github.com/i2p/i2p.i2p.git "$RUNNER_TEMP/i2p-java"
+          chmod -R a-w "$RUNNER_TEMP/i2p-java"
+      - name: Validate reference and interoperability fixtures
+        env:
+          I2P_JAVA_REFERENCE: ${{ runner.temp }}/i2p-java
+        run: |
+          tests/interop/check-reference.sh
+          perl tests/interop/check-vectors.pl --require-reference
+          perl tests/interop/check-vectors.pl --reference "$I2P_JAVA_REFERENCE" --require-reference
+
+  sanitizers:
+    name: Sanitizers (${{ matrix.name }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: asan-ubsan
+            flags: "-DWITH_ADDRSANITIZER=ON -DWITH_UNDEFSANITIZER=ON"
+            asan_options: "detect_leaks=1:halt_on_error=1:abort_on_error=1"
+            ubsan_options: "halt_on_error=1:print_stacktrace=1"
+          - name: tsan
+            flags: "-DWITH_THREADSANITIZER=ON"
+            asan_options: ""
+            ubsan_options: ""
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          persist-credentials: false
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends clang cmake ninja-build libboost-dev libboost-program-options-dev libboost-json-dev libboost-url-dev libssl-dev zlib1g-dev libminiupnpc-dev libncurses-dev
+      - name: Build and run sanitizer CTest matrix
+        env:
+          ASAN_OPTIONS: ${{ matrix.asan_options }}
+          UBSAN_OPTIONS: ${{ matrix.ubsan_options }}
+          TSAN_OPTIONS: "halt_on_error=1:second_deadlock_stack=1"
+        run: |
+          cmake -S build -B build-sanitizers -G Ninja \
+            -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DBUILD_TESTING=ON -DWITH_UPNP=OFF \
+            -DI2PD_BUILD_TUI=ON \
+            ${{ matrix.flags }}
+          cmake --build build-sanitizers --parallel 2
+          ctest --test-dir build-sanitizers --output-on-failure --timeout 180

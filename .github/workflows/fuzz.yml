@@ -1,0 +1,61 @@
+# Copyright (c) 2013-2026, The PurpleI2P Project
+# Copyright (c) 2026, David Uhden Collado
+# SPDX-License-Identifier: BSD-3-Clause
+---
+name: Fuzzing
+
+# Manual-only. Fuzzers are not part of the normal build or CTest suite.
+# Run this workflow only on a maintainer-dispatched revision.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fuzz-smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          persist-credentials: false
+      - name: Install dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends clang cmake ninja-build libboost-dev libboost-program-options-dev libboost-json-dev libboost-url-dev libssl-dev zlib1g-dev
+      - name: Build libFuzzer targets
+        run: |
+          cmake -S build -B build-fuzz -G Ninja \
+            -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DBUILD_TESTING=ON -DWITH_FUZZERS=ON \
+            -DWITH_UPNP=OFF -DI2PD_BUILD_TUI=OFF
+          cmake --build build-fuzz --parallel 2 --target \
+            fuzz-tui-protocol fuzz-http-parser fuzz-protocol-bounds \
+            fuzz-log-record fuzz-privsep-protocol fuzz-torrents-parsers \
+            fuzz-base-blinding fuzz-signature-der
+      - name: Run bounded fuzz smoke checks
+        env:
+          ASAN_OPTIONS: "detect_leaks=0:halt_on_error=1:abort_on_error=1"
+          UBSAN_OPTIONS: "halt_on_error=1:print_stacktrace=1"
+        run: |
+          mkdir -p "$RUNNER_TEMP/fuzz-artifacts"
+          for fuzzer in \
+            fuzz-tui-protocol fuzz-http-parser fuzz-protocol-bounds \
+            fuzz-log-record fuzz-privsep-protocol fuzz-torrents-parsers \
+            fuzz-base-blinding fuzz-signature-der
+          do
+            corpus="$RUNNER_TEMP/corpus/$fuzzer"
+            mkdir -p "$corpus"
+            "build-fuzz/tests/$fuzzer" \
+              -max_total_time=30 \
+              -timeout=10 \
+              -print_final_stats=1 \
+              -artifact_prefix="$RUNNER_TEMP/fuzz-artifacts/" \
+              "$corpus"
+          done
