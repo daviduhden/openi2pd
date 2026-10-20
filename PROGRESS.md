@@ -1824,3 +1824,40 @@ OpenBSD or Java/C++ dynamic test was run.
   to a definite boolean before invoking the `std::function`.
 - No workflow was dispatched. The fixes are static-only, pending CI
   compilation and tests; no pass is claimed.
+
+## Agent Skills system (2026-10-20)
+
+- Added `.agents/skills/` using the open Agent Skills layout: a discovery
+  index plus 16 subsystem skills (`cpp23`, `memory-security`, `i2p-interop`,
+  `cryptography`, `privsep`, `openbsd`, `linux-windows`, `torrent`, `tui`,
+  `android`, `build`, `packaging`, `tooling`, `upstream`, `ci`,
+  `documentation`).
+- Each `SKILL.md` has YAML frontmatter with a directory-matching `name` and a
+  `description` that states when to load it. Each skill documents activation,
+  files to inspect, authoritative references, reconnaissance, parallel work,
+  conventions, prohibited changes, CI preparation and tracking.
+- Added `references/` checklists for ownership, security surfaces, wire parity,
+  cryptographic boundaries, worker/IPC lifecycle, OpenBSD/Linux/Windows
+  policies, torrent storage, TUI protocol, Android service/SAF, build matrices,
+  packaging/services, tools/firewall, upstream sync, CI jobs and docs/tracking.
+- Integrated discovery into `AGENTS.md` without copying the skills. Permanent
+  static-only, security, CI-only and licensing policy remains in `AGENTS.md`;
+  skills link to it. Subagents report proposed tracking edits to the coordinator.
+- Added `tests/check-agent-skills.cmake` and registered compile-free
+  `agent-skills-static` in CTest (`ci;static`). It validates expected skill
+  directories, frontmatter names, required sections, `AGENTS.md` references and
+  `references/*.md` links. It was prepared but not executed locally; its CI run
+  remains pending.
+- Reconnaissance was performed by read-only subagents covering policy/tracking,
+  architecture-to-skill mapping, technical references/CI workflows and
+  duplicate/gap analysis. No implementation subagent was allowed to compile,
+  run tests or edit concurrently.
+- A second read-only review pass corrected stale packaging paths, CTest
+  names/labels, `docs/mkdocs.yml`, the OpenBSD storage reference and the
+  privilege-separation status wording. It also separated build-side test
+  registration from CI workflow ownership and clarified Android SAF, torrent
+  storage, man-page, Perl-script and shared-file boundaries.
+- No compile, CTest, Gradle, sanitizer, fuzzer, workflow dispatch, link checker
+  or branding validator was executed. Verification is static inspection only;
+  documentation-link and branding checks remain pending manual CI. The skill
+  set is not claimed dynamically validated.

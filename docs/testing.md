@@ -115,6 +115,11 @@ registers `interop-reference` and `interop-reference-vectors` for a read-only
 pinned checkout. The live SAM shell probe remains manual because it needs a
 running router and `nc`.
 
+The compile-free `agent-skills-static` check reads `.agents/skills/*/SKILL.md`
+and verifies frontmatter names, required sections, `AGENTS.md` references and
+`references/*.md` links. It does not execute a skill, build a target or call an
+external validator; its CI execution remains pending the next manual run.
+
 ### Manual CI execution matrix
 
 `.github/workflows/build.yml` now runs, on `workflow_dispatch` only:
@@ -535,6 +540,7 @@ No Java router is available in this environment. The static matrix in
 | Unit tests and `tools-smoke` | 48/48 passed on 2026-10-18 (Linux/GCC 16) |
 | ASan/UBSan/TSan | Separate manual CI jobs prepared; not run for the current tree |
 | Build-system static check | `build-system-static` prepared, including dependency-floor, removed-compatibility and test/fuzzer inventory assertions; static check passes, no build execution |
+| Agent Skills static check | `agent-skills-static` prepared for frontmatter, required sections and reference-link validation; not executed for the current tree |
 | CTest registration and labels | Static inventory prepared; Linux-only and OpenBSD-only tests are registered on their host, with i2p/security/memory/ipc/tui/torrent/tools/perl/interop/platform/android groups; CTest execution pending CI |
 | Fuzzers | Eight targets and manual smoke workflow prepared; not run |
 | OpenBSD build/runtime | Baseline `39160543186` failed at `getexecname()`; local `<stdlib.h>` fix and full CTest pending. New dispatch `39189495752` reproduced the same old-revision failure |

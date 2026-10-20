@@ -190,7 +190,8 @@ web-console/GNU-make instructions.
    message-mode Named Pipes, protected DACL, restricted tokens and Job Objects.
 7. Negative capability tests and dynamic validation (storage/no-network and
    network/no-persistent-write are prepared for OpenBSD/Linux; Windows tests
-   cover DACL, malformed IPC, peer identity and recovery).
+   assert a protected DACL, malformed IPC and peer identity, while live
+   cross-user ACL denial and recovery remain pending).
 
 Exit criteria: the four invariants in the privilege-separation request hold for
 every supported platform, with evidence from OS-level capability tests. Until
@@ -229,8 +230,8 @@ tests prepared; full worker separation validated before claiming it.
 5. Update CMake install, docs and packaging; remove Python only after migration.
 
 Exit criteria: no maintained Python script, all consumers migrated, Perl tests
-pass locally and on OpenBSD base Perl, and no Perl runtime dependency is added
-to the daemon.
+pass in manual Linux/OpenBSD CI, and no Perl runtime dependency is added to the
+daemon.
 
 ### 11. Native Windows TUI and IPC
 
@@ -255,6 +256,25 @@ compatibility claim from static inspection alone.
 4. Keep workflows manual-only.
 
 Exit criteria: OpenBSD build/runtime evidence and manual CI results recorded.
+
+### 12. Reusable Agent Skills
+
+1. Keep `.agents/skills/README.md` as the compact discovery index.
+2. Maintain one `SKILL.md` per subsystem with valid `name`/`description`
+   frontmatter and a `references/` checklist for file maps, invariants and CI
+   lanes.
+3. Keep `AGENTS.md` as the permanent-policy source; skills link to it rather
+   than duplicating the static-only, security and tracking rules.
+4. Update skills whenever component paths, shared interfaces, tests or workflow
+   ownership change.
+5. Require coordinator review for shared interfaces and concurrent tracking
+   edits.
+
+Exit criteria: every skill name matches its directory, descriptions state
+activation conditions, references resolve, no skill contradicts `AGENTS.md`,
+and `agent-skills-static`, documentation-link and branding checks pass in
+manual CI. No agent may claim the skill set dynamically validated before that
+run.
 
 ## Parallelization rules
 

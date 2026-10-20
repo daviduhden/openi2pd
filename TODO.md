@@ -399,6 +399,11 @@ subsystem owner in the ownership table unless a task says otherwise. The
   - Priority P0; Status In progress.
 - [x] **[GOV-006]** Run zizmor and yamllint on `.github/workflows`; pin actions to commit SHAs, disable checkout credential persistence and add `.yamllint.yml`.
   - Priority P0; Status Implemented; zizmor reports no findings (5 suppressed); yamllint clean. CI triggers remain manual-only.
+- [ ] **[GOV-007]** Establish reusable Agent Skills for the project's subsystem workflows.
+  - Priority P1; Status Implemented / static; `.agents/skills/` contains the index plus 16 domain skills (`cpp23`, `memory-security`, `i2p-interop`, `cryptography`, `privsep`, `openbsd`, `linux-windows`, `torrent`, `tui`, `android`, `build`, `packaging`, `tooling`, `upstream`, `ci`, `documentation`), each with valid `name`/`description` frontmatter and a `references/` checklist. `AGENTS.md` now documents discovery, combination and tracking ownership.
+  - Files: `.agents/skills/**`, `AGENTS.md`, `TODO.md`, `ROADMAP.md`, `PROGRESS.md`, `tests/check-agent-skills.cmake`, `tests/CMakeLists.txt`, `docs/testing.md`.
+  - Acceptance: names match directories; descriptions state activation conditions; references point to existing files; skills link to global policy instead of duplicating it.
+  - Validation: source/link inspection only; compile-free `agent-skills-static` CTest check prepared for manual CI, alongside the existing documentation-link and branding checks. No local validator or workflow execution.
 
 ## K. Rebranding and identity
 

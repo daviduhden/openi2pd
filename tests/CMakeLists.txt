@@ -246,6 +246,14 @@ add_test(NAME services-static
     -P "${CMAKE_CURRENT_SOURCE_DIR}/check-services.cmake")
 set_tests_properties(services-static PROPERTIES LABELS "services;static")
 
+# Static Agent Skills contract check. It reads the skill frontmatter,
+# references and required sections; it does not execute a skill or a workflow.
+add_test(NAME agent-skills-static
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPROJECT_ROOT=${PROJECT_ROOT}"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/check-agent-skills.cmake")
+set_tests_properties(agent-skills-static PROPERTIES LABELS "ci;static")
+
 # Shell-level checks that only need the built router binary.
 if(TARGET i2pd)
   add_test(NAME i2pd-version COMMAND i2pd --version)

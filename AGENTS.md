@@ -98,8 +98,8 @@ pending.
 When creating a subagent, pass this policy explicitly. Prevent subagents from
 building or running tests on their own initiative. Parallelise independent
 refactors, coordinate shared interfaces, accept not-yet-compiled
-implementations, review diffs statically, record integration risks and update
-the tracking files.
+implementations, review diffs statically, record integration risks and report
+proposed tracking updates to the coordinator.
 
 ## Hard rules
 
@@ -109,7 +109,8 @@ the tracking files.
 - Do not overwrite existing modifications. Inspect `git status` and `git diff`
   before editing.
 - Do not edit files outside the assigned scope.
-- Do not modify `TODO.md`, `ROADMAP.md` or `PROGRESS.md`; report changes to the
+- Do not modify `TODO.md`, `ROADMAP.md` or `PROGRESS.md` unless the coordinator
+  explicitly assigns a tracking update; subagents report proposed rows to the
   coordinator.
 - Do not reintroduce GNU make, the HTTP admin console, web assets, submodules
   or hidden downloads.
@@ -164,6 +165,26 @@ integration.
 7. Do not mark a task validated unless the relevant manual CI run executed and
    passed. Local static review is not dynamic validation.
 
+## Agent Skills
+
+Specialized procedures are stored under `.agents/skills/<name>/SKILL.md` in
+the open Agent Skills layout. Each skill has YAML frontmatter with a unique
+`name` matching its directory and a `description` saying when to use it.
+Longer file maps, review matrices and reconnaissance prompts live in the
+skill's `references/` directory.
+
+Discover skills by reading `.agents/skills/README.md` and then only the
+skills relevant to the task. Combine a subsystem skill with a second skill
+when a change crosses boundaries, but do not load every skill for every
+task. `AGENTS.md` remains the source of permanent policy; skills add
+procedures and must not override this file.
+
+Skills are maintained with the code. When a component, path, test or policy
+changes, update the owning skill and its references. Keep shared-interface
+changes under coordinator review. A subagent that identifies a needed
+tracking change reports it to the coordinator; the coordinator owns
+concurrent edits to `TODO.md`, `ROADMAP.md` and `PROGRESS.md`.
+
 ## Visual identity
 
 - The official identity is **openi2pd** with the supplied geometric node/tunnel
@@ -203,9 +224,11 @@ integration.
 - Every workflow is `workflow_dispatch`-only, actions are SHA-pinned and
   checkout credentials are not persisted.
 - OpenBSD is first-class; do not weaken pledge/unveil or LibreSSL support.
-- Do not claim full privilege separation until network/storage workers,
-  supervisor and negative capability tests actually exist. The log worker is
-  only the first isolated component.
+- Do not claim full privilege separation until network/router/verifier
+  workers, complete storage authority and negative capability tests exist and
+  pass. The log worker has historical Linux runtime evidence; the opt-in
+  payload-storage, router-storage and Android SAF broker boundaries are
+  implemented statically and remain pending CI/device validation.
 - Preserve copyright, license, NOTICE, third-party attribution and upstream
   provenance; do not reintroduce duplicated project SPDX boilerplate.
 
@@ -368,3 +391,14 @@ validation exists. Native tunnel/address-book administration, selected-file
 promotion, durable queue/bandwidth scheduling, secret-blinded I2CP, Android SAF
 recovery and genuine network/router/verifier separation remain implementation
 tasks, not test-only work. Do not claim global privilege separation.
+
+## Agent Skills integration status (2026-10-20)
+
+The local `.agents/skills/` collection is implemented by static analysis:
+one discovery index and 16 subsystem skills, each with valid frontmatter and a
+`references/` checklist. `agent-skills-static` checks the frontmatter, required
+sections and reference links without executing a skill. The permanent policies
+above remain authoritative; skills link to them and do not authorize local
+builds, tests, workflow dispatches, commits or pushes. Documentation-link,
+branding and agent-skills checks are pending manual CI; the collection is not
+dynamically validated.
