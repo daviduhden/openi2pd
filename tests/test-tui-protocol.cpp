@@ -225,6 +225,63 @@ static void TestFields ()
 	assert (frame.substr (newline + 1) == payload);
 }
 
+static void TestAdminCommands ()
+{
+	auto reseed = ParseRequest ("I2PDTUI/1 ADMIN RESEED");
+	assert (reseed.has_value () && reseed->type == RequestType::AdminReseed);
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN RESEED now").has_value ());
+
+	auto graceful = ParseRequest ("I2PDTUI/1 ADMIN SHUTDOWN GRACEFUL");
+	assert (graceful.has_value () && graceful->type == RequestType::AdminShutdown);
+	assert (graceful->shutdownMode == AdminShutdownMode::Graceful);
+	auto immediate = ParseRequest ("I2PDTUI/1 ADMIN SHUTDOWN IMMEDIATE");
+	assert (immediate.has_value () && immediate->shutdownMode == AdminShutdownMode::Immediate);
+	auto cancel = ParseRequest ("I2PDTUI/1 ADMIN SHUTDOWN CANCEL");
+	assert (cancel.has_value () && cancel->shutdownMode == AdminShutdownMode::Cancel);
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN SHUTDOWN").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN SHUTDOWN NOW").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN SHUTDOWN graceful").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN SHUTDOWN CANCEL now").has_value ());
+
+	auto reload = ParseRequest ("I2PDTUI/1 ADMIN RELOAD TUNNELS");
+	assert (reload.has_value () && reload->type == RequestType::AdminReloadTunnels);
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN RELOAD").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN RELOAD CONFIG").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN RELOAD /etc/i2pd.conf").has_value ());
+
+	auto bandwidth = ParseRequest ("I2PDTUI/1 ADMIN BANDWIDTH L");
+	assert (bandwidth.has_value () && bandwidth->type == RequestType::AdminBandwidth);
+	assert (bandwidth->adminValue == static_cast<uint32_t> ('L'));
+	for (auto token : { "K", "L", "M", "N", "O", "P", "X" })
+		assert (ParseRequest (std::string ("I2PDTUI/1 ADMIN BANDWIDTH ") + token).has_value ());
+	for (auto token : { "k", "Q", "LL", "1", "1000", "L/s", "" })
+		assert (!ParseRequest (std::string ("I2PDTUI/1 ADMIN BANDWIDTH ") + token).has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN BANDWIDTH L extra").has_value ());
+
+	for (int percent = 0; percent <= 100; ++percent)
+	{
+		auto share = ParseRequest ("I2PDTUI/1 ADMIN SHARE " + std::to_string (percent));
+		assert (share.has_value () && share->type == RequestType::AdminShare);
+		assert (share->adminValue == static_cast<uint32_t> (percent));
+	}
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN SHARE 101").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN SHARE -1").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN SHARE 50%").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN SHARE").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN SHARE 10 extra").has_value ());
+
+	// Existing typed admin operations now carry a canonical level index.
+	auto logLevel = ParseRequest ("I2PDTUI/1 ADMIN LOGLEVEL warn");
+	assert (logLevel.has_value () && logLevel->type == RequestType::AdminLogLevel);
+	assert (logLevel->adminValue == 3 && logLevel->argument == "warn");
+
+	// No generic option or file/URL carrying forms exist.
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN SET bandwidth L").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN BANDWIDTH").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN RELOAD https://example.invalid/").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN SHUTDOWN GRACEFUL;reboot").has_value ());
+}
+
 static void TestConfigRequests ()
 {
 	auto config = ParseRequest ("I2PDTUI/1 CONFIG");
@@ -330,6 +387,7 @@ static void TestTorrentRequests ()
 int main ()
 {
 	TestRequests ();
+	TestAdminCommands ();
 	TestConfigRequests ();
 	TestTorrentRequests ();
 	TestResponseHeader ();

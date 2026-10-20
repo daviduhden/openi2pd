@@ -16,12 +16,86 @@
 #include <string>
 #include <string_view>
 #include <span>
+#include <cstddef>
 #include <cstdint>
+#include <chrono>
 
 namespace i2p
 {
 namespace tui
 {
+	/**
+	 * Closed set of router-wide administrative operations.
+	 *
+	 * Every variant carries only bounded, typed data. There is deliberately no
+	 * generic option name, path, URL or command string: adding an operation is
+	 * a source change reviewed at the local-IPC trust boundary.
+	 */
+	enum class AdminCommandKind : uint8_t
+	{
+		Reseed = 0,
+		ShutdownGraceful,
+		ShutdownImmediate,
+		ShutdownCancel,
+		ReloadTunnels,
+		Bandwidth,
+		Share,
+		Transit,
+		LogLevel
+	};
+
+	struct AdminCommand
+	{
+		AdminCommandKind kind = AdminCommandKind::Reseed;
+		// Bandwidth: ASCII class letter. Share: 0..100.
+		// LogLevel: zero-based index into the fixed level table.
+		int32_t value = 0;
+		bool enabled = false; // Transit only
+	};
+
+	enum class AdminResultCode : uint8_t
+	{
+		Ok = 0,
+		Accepted, // queued/executing; the IPC wait expired first
+		QueueFull,
+		Unavailable, // daemon not started or queue stopped
+		Invalid,
+		Failed
+	};
+
+	struct AdminCommandResult
+	{
+		AdminResultCode code = AdminResultCode::Failed;
+		int32_t value = 0;
+		bool enabled = false;
+		// Fixed storage: the IPC thread only copies, never allocates, this.
+		char message[96] = { };
+	};
+
+	/**
+	 * Executes one command on the daemon-owned administrative thread. The
+	 * callback must not block the IPC transport and must fill a typed result.
+	 */
+	using AdminCommandExecutor = void (*) (const AdminCommand &, AdminCommandResult &);
+
+	inline constexpr size_t ADMIN_COMMAND_QUEUE_CAPACITY = 8;
+	inline constexpr auto ADMIN_COMMAND_TIMEOUT = std::chrono::milliseconds (2000);
+
+	// Start/stop the single daemon-owned executor. Start fails if it is
+	// already running or the executor is null. The queue is fixed-capacity and
+	// Submit never allocates.
+	bool StartAdminCommandQueue (AdminCommandExecutor executor);
+	void StopAdminCommandQueue ();
+
+	/**
+	 * Enqueue one typed command and wait up to timeout for its result.
+	 *
+	 * A timeout does not cancel an accepted command: it returns Accepted while
+	 * the daemon-owned thread continues. QueueFull and Unavailable are reported
+	 * without waiting. This call is made by the local-IPC thread.
+	 */
+	AdminCommandResult SubmitAdminCommand (const AdminCommand & command, std::chrono::milliseconds timeout);
+
 	/**
 	 * Result of handling one request line.
 	 *

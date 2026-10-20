@@ -15,11 +15,18 @@
 #include "TuiServerCommon.h"
 
 #include <algorithm>
+#include <array>
+#include <atomic>
+#include <chrono>
+#include <condition_variable>
 #include <cstdint>
+#include <cstdio>
 #include <exception>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <string_view>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -43,6 +50,148 @@ namespace tui
 {
 	namespace
 	{
+		enum class QueueSlotState : uint8_t
+		{
+			Free = 0,
+			Queued,
+			Running,
+			Done
+		};
+
+		struct QueueSlot
+		{
+			AdminCommand command { };
+			AdminCommandResult result { };
+			QueueSlotState state = QueueSlotState::Free;
+			// Set by an IPC caller that stopped waiting. The executor then
+			// drops the result instead of publishing it to a dead waiter.
+			bool discard = false;
+		};
+
+		struct AdminQueue
+		{
+			~AdminQueue ()
+			{
+				// A joinable thread at static destruction would terminate the
+				// process. Normal shutdown stops the queue first; this is the
+				// last-resort guard for an abnormal exit path.
+				{
+					std::lock_guard<std::mutex> lock (mutex);
+					stopping.store (true, std::memory_order_relaxed);
+				}
+				changed.notify_all ();
+				if (executorThread.joinable ()) executorThread.join ();
+			}
+
+			std::mutex mutex;
+			std::condition_variable changed;
+			std::array<QueueSlot, ADMIN_COMMAND_QUEUE_CAPACITY> slots { };
+			std::thread executorThread;
+			std::atomic<bool> stopping { false };
+			AdminCommandExecutor executor = nullptr;
+			bool running = false;
+		};
+
+		AdminQueue & GetAdminQueue ()
+		{
+			// Function-local so transport-only unit tests can link this
+			// translation unit without constructing the daemon singleton.
+			static AdminQueue queue;
+			return queue;
+		}
+
+		bool HasQueuedSlot (const AdminQueue & queue)
+		{
+			for (const auto & slot : queue.slots)
+				if (slot.state == QueueSlotState::Queued) return true;
+			return false;
+		}
+
+		void SetAdminMessage (AdminCommandResult & result, const char * message)
+		{
+			std::snprintf (result.message, sizeof (result.message), "%s", message ? message : "");
+		}
+
+		void RunAdminQueue (AdminQueue * queue)
+		{
+			for (;;)
+			{
+				AdminCommand command { };
+				size_t index = 0;
+				AdminCommandExecutor executor = nullptr;
+				{
+					std::unique_lock<std::mutex> lock (queue->mutex);
+					queue->changed.wait (lock,
+						[queue] { return queue->stopping.load (std::memory_order_relaxed) || HasQueuedSlot (*queue); });
+					if (queue->stopping.load (std::memory_order_relaxed))
+					{
+						// Stop() must not leave a waiter blocked behind a
+						// command that was never going to run.
+						for (auto & slot : queue->slots)
+						{
+							if (slot.state == QueueSlotState::Queued) slot.state = QueueSlotState::Free;
+							slot.discard = false;
+						}
+						queue->changed.notify_all ();
+						return;
+					}
+
+					while (index < queue->slots.size () && queue->slots[index].state != QueueSlotState::Queued) ++index;
+					if (index == queue->slots.size ()) continue;
+
+					auto & slot = queue->slots[index];
+					if (slot.discard)
+					{
+						slot.state = QueueSlotState::Free;
+						slot.discard = false;
+						continue;
+					}
+					slot.state = QueueSlotState::Running;
+					command = slot.command;
+					executor = queue->executor;
+				}
+
+				AdminCommandResult result { };
+				if (executor)
+				{
+					try
+					{
+						executor (command, result);
+					}
+					catch (...)
+					{
+						// A subsystem exception must not kill the single
+						// administrative executor and strand every later IPC
+						// waiter. The operation is reported as failed.
+						result = AdminCommandResult { };
+						result.code = AdminResultCode::Failed;
+						SetAdminMessage (result, "admin command failed");
+					}
+				}
+				else
+				{
+					result.code = AdminResultCode::Unavailable;
+					SetAdminMessage (result, "admin command executor is unavailable");
+				}
+
+				{
+					std::lock_guard<std::mutex> lock (queue->mutex);
+					auto & slot = queue->slots[index];
+					if (slot.discard)
+					{
+						slot.state = QueueSlotState::Free;
+						slot.discard = false;
+					}
+					else
+					{
+						slot.result = result;
+						slot.state = QueueSlotState::Done;
+					}
+					queue->changed.notify_all ();
+				}
+			}
+		}
+
 		std::string_view StatusName (i2p::RouterStatus status)
 		{
 			switch (status)
@@ -287,31 +436,37 @@ namespace tui
 			return payload;
 		}
 
-		std::string BuildAdminTransit (bool enabled)
+		std::string_view AdminResultCodeName (AdminResultCode code)
 		{
-			// RouterContext::m_AcceptsTunnels is atomic. Changing it from the
-			// IPC thread does not mutate RouterInfo, tunnel pools or NetDb;
-			// it only controls whether future transit requests are accepted.
-			i2p::context.SetAcceptsTunnels (enabled);
-			LogPrint (eLogInfo, "TUI: transit tunnels ", enabled ? "enabled" : "disabled");
-			std::string payload;
-			AppendField (payload, "admin", "transit");
-			AppendField (payload, "result", "ok");
-			AppendField (payload, "transit", enabled);
-			AppendField (payload, "message", enabled ? "transit tunnels enabled" : "transit tunnels disabled");
-			return payload;
+			switch (code)
+			{
+			case AdminResultCode::Ok: return "ok";
+			case AdminResultCode::Accepted: return "accepted";
+			case AdminResultCode::QueueFull: return "queue-full";
+			case AdminResultCode::Unavailable: return "unavailable";
+			case AdminResultCode::Invalid: return "invalid";
+			case AdminResultCode::Failed: return "failed";
+			default: return "failed";
+			}
 		}
 
-		std::string BuildAdminLogLevel (std::string_view level)
+		std::string BuildAdminCommandResult (std::string_view action, const AdminCommandResult & result)
 		{
-			// Log::SetLogLevel only updates an atomic minimum level. No file,
-			// sink or logging thread state is mutated on the IPC thread.
-			i2p::log::Logger ().SetLogLevel (std::string (level));
+			// The queue already executed the operation on the daemon-owned
+			// administrative thread. This function only serializes the typed
+			// outcome; it never touches router, tunnel or logger state.
 			std::string payload;
-			AppendField (payload, "admin", "loglevel");
-			AppendField (payload, "result", "ok");
-			AppendField (payload, "loglevel", level);
-			AppendField (payload, "message", "daemon log level set to " + std::string (level));
+			AppendField (payload, "admin", action);
+			std::string_view status = "error";
+			if (result.code == AdminResultCode::Ok)
+				status = "ok";
+			else if (result.code == AdminResultCode::Accepted)
+				status = "accepted";
+			AppendField (payload, "result", status);
+			AppendField (payload, "code", AdminResultCodeName (result.code));
+			AppendField (payload, "value", result.value);
+			if (action == "transit") AppendField (payload, "transit", result.enabled);
+			AppendField (payload, "message", std::string_view (result.message));
 			return payload;
 		}
 
@@ -710,6 +865,118 @@ namespace tui
 #endif
 	}
 
+	bool StartAdminCommandQueue (AdminCommandExecutor executor)
+	{
+		if (!executor) return false;
+		auto & queue = GetAdminQueue ();
+		{
+			std::lock_guard<std::mutex> lock (queue.mutex);
+			if (queue.running) return false;
+			for (auto & slot : queue.slots)
+			{
+				slot = QueueSlot { };
+				slot.state = QueueSlotState::Free;
+			}
+			queue.executor = executor;
+			queue.stopping.store (false, std::memory_order_relaxed);
+			queue.running = true;
+		}
+		try
+		{
+			queue.executorThread = std::thread ([&queue] { RunAdminQueue (&queue); });
+		}
+		catch (...)
+		{
+			std::lock_guard<std::mutex> lock (queue.mutex);
+			queue.running = false;
+			queue.executor = nullptr;
+			return false;
+		}
+		return true;
+	}
+
+	void StopAdminCommandQueue ()
+	{
+		auto & queue = GetAdminQueue ();
+		{
+			std::lock_guard<std::mutex> lock (queue.mutex);
+			if (!queue.running) return;
+			queue.stopping.store (true, std::memory_order_relaxed);
+			queue.changed.notify_all ();
+		}
+		if (queue.executorThread.joinable ()) queue.executorThread.join ();
+		{
+			std::lock_guard<std::mutex> lock (queue.mutex);
+			for (auto & slot : queue.slots)
+			{
+				slot = QueueSlot { };
+				slot.state = QueueSlotState::Free;
+			}
+			queue.executor = nullptr;
+			queue.running = false;
+			queue.stopping.store (false, std::memory_order_relaxed);
+		}
+	}
+
+	AdminCommandResult SubmitAdminCommand (const AdminCommand & command, std::chrono::milliseconds timeout)
+	{
+		AdminCommandResult unavailable { };
+		unavailable.code = AdminResultCode::Unavailable;
+		SetAdminMessage (unavailable, "admin command queue is not running");
+
+		auto & queue = GetAdminQueue ();
+		std::unique_lock<std::mutex> lock (queue.mutex);
+		if (!queue.running || queue.stopping.load (std::memory_order_relaxed) || !queue.executor) return unavailable;
+
+		QueueSlot * selected = nullptr;
+		size_t index = 0;
+		for (; index < queue.slots.size (); ++index)
+		{
+			if (queue.slots[index].state == QueueSlotState::Free)
+			{
+				selected = &queue.slots[index];
+				break;
+			}
+		}
+		if (!selected)
+		{
+			AdminCommandResult full { };
+			full.code = AdminResultCode::QueueFull;
+			SetAdminMessage (full, "admin command queue is full");
+			return full;
+		}
+
+		selected->command = command;
+		selected->result = AdminCommandResult { };
+		selected->discard = false;
+		selected->state = QueueSlotState::Queued;
+		queue.changed.notify_all ();
+
+		auto & slot = queue.slots[index];
+		if (!queue.changed.wait_for (lock, timeout, [&slot] { return slot.state == QueueSlotState::Done; }))
+		{
+			// Stop() may have retired the queued command while we waited.
+			if (slot.state == QueueSlotState::Free) return unavailable;
+			// The command is still queued or executing. Do not cancel it:
+			// record that the result is no longer wanted and let the daemon
+			// thread finish at its own bounded pace.
+			if (slot.state != QueueSlotState::Done)
+			{
+				slot.discard = true;
+				AdminCommandResult accepted { };
+				accepted.code = AdminResultCode::Accepted;
+				SetAdminMessage (accepted, "command accepted; still running");
+				return accepted;
+			}
+		}
+
+		auto result = slot.result;
+		slot.state = QueueSlotState::Free;
+		slot.discard = false;
+		queue.changed.notify_all ();
+		return result;
+	}
+
 	namespace
 	{
 		DispatchResult DispatchUnchecked (std::string_view line)
@@ -735,6 +1002,13 @@ namespace tui
 				return { MakeResponse (ResponseStatus::Ok, payload), false };
 			};
 
+			// Router-wide writes are handed to the daemon-owned executor. The
+			// IPC thread only submits a fixed-size command and waits for a
+			// bounded, typed result; it never mutates router, tunnel, NetDb or
+			// logger state itself.
+			auto runAdmin = [&makeOk] (std::string_view action, const AdminCommand & command) -> DispatchResult
+			{ return makeOk (BuildAdminCommandResult (action, SubmitAdminCommand (command, ADMIN_COMMAND_TIMEOUT))); };
+
 			switch (request->type)
 			{
 			case RequestType::State: return makeOk (BuildState ());
@@ -747,8 +1021,33 @@ namespace tui
 			case RequestType::Destinations: return makeOk (BuildDestinations ());
 			case RequestType::Logs: return makeOk (BuildLogs (request->after, request->limit));
 			case RequestType::Config: return makeOk (BuildConfig ());
-			case RequestType::AdminTransit: return makeOk (BuildAdminTransit (request->enabled));
-			case RequestType::AdminLogLevel: return makeOk (BuildAdminLogLevel (request->argument));
+			case RequestType::AdminTransit:
+				return runAdmin ("transit", { AdminCommandKind::Transit, 0, request->enabled });
+			case RequestType::AdminLogLevel:
+				return runAdmin (
+					"loglevel", { AdminCommandKind::LogLevel, static_cast<int32_t> (request->adminValue), false });
+			case RequestType::AdminReseed: return runAdmin ("reseed", { AdminCommandKind::Reseed, 0, false });
+			case RequestType::AdminReloadTunnels:
+				return runAdmin ("reload-tunnels", { AdminCommandKind::ReloadTunnels, 0, false });
+			case RequestType::AdminBandwidth:
+				return runAdmin (
+					"bandwidth", { AdminCommandKind::Bandwidth, static_cast<int32_t> (request->adminValue), false });
+			case RequestType::AdminShare:
+				return runAdmin (
+					"share", { AdminCommandKind::Share, static_cast<int32_t> (request->adminValue), false });
+			case RequestType::AdminShutdown:
+			{
+				switch (request->shutdownMode)
+				{
+				case AdminShutdownMode::Graceful:
+					return runAdmin ("shutdown", { AdminCommandKind::ShutdownGraceful, 0, false });
+				case AdminShutdownMode::Immediate:
+					return runAdmin ("shutdown", { AdminCommandKind::ShutdownImmediate, 0, false });
+				case AdminShutdownMode::Cancel:
+					return runAdmin ("shutdown", { AdminCommandKind::ShutdownCancel, 0, false });
+				}
+				return { MakeErrorResponse (ErrorCode::BadArgument, "unknown shutdown mode"), false };
+			}
 			case RequestType::Ping:
 			{
 				std::string payload;

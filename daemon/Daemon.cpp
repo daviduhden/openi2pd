@@ -18,8 +18,10 @@
 #include <memory>
 #include <regex>
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
+#include <cstdio>
 #include "Expected.h"
 #include <iostream>
 #include <signal.h>
@@ -59,6 +61,7 @@
 #include "Destination.h"
 #include "I2PControl.h"
 #include "TuiServer.h"
+#include "TuiServerCommon.h"
 #if !defined(_WIN32) && !defined(I2PD_NO_PRIVSEP)
 #include "privsep/LogWorker.h"
 #include "privsep/Worker.h"
@@ -117,6 +120,123 @@ namespace util
 		std::unique_ptr<i2p::transport::UPnP> UPnP;
 		std::unique_ptr<i2p::util::NTPTimeSync> m_NTPSync;
 	};
+
+	namespace
+	{
+		constexpr std::array<std::string_view, 6> ADMIN_LOG_LEVEL_NAMES
+			= { "none", "critical", "error", "warn", "info", "debug" };
+
+		void SetAdminResultMessage (i2p::tui::AdminCommandResult & result, const char * message)
+		{
+			std::snprintf (result.message, sizeof (result.message), "%s", message ? message : "");
+		}
+
+		/**
+		 * Execute one typed administrator command.
+		 *
+		 * This runs on the daemon-owned administrative thread started by
+		 * Daemon_Singleton::start(), never on the local-IPC thread. Reseed is
+		 * already single-flight in NetDb; ReloadConfig is the same path SIGHUP
+		 * uses; bandwidth, share and transit only touch atomic RouterContext
+		 * state; the log level only touches the logger's atomic threshold.
+		 */
+		void ExecuteAdminCommand (const i2p::tui::AdminCommand & command, i2p::tui::AdminCommandResult & result)
+		{
+			using i2p::tui::AdminCommandKind;
+			using i2p::tui::AdminResultCode;
+
+			result = i2p::tui::AdminCommandResult { };
+			result.code = AdminResultCode::Ok;
+			switch (command.kind)
+			{
+			case AdminCommandKind::Reseed:
+			{
+				const bool active = i2p::data::netdb.IsReseeding ();
+				if (!active) i2p::data::netdb.Reseed ();
+				result.value = i2p::data::netdb.IsReseeding () ? 1 : 0;
+				SetAdminResultMessage (result, active ? "reseed already in progress" : "reseed requested");
+				break;
+			}
+			case AdminCommandKind::ShutdownGraceful:
+				if (!Daemon.BeginGracefulShutdown ())
+				{
+					result.code = AdminResultCode::Failed;
+					SetAdminResultMessage (result, "graceful shutdown is not supported");
+				}
+				else
+				{
+					result.value = Daemon.GetGracefulShutdownInterval ();
+					SetAdminResultMessage (result, "graceful shutdown started");
+				}
+				break;
+			case AdminCommandKind::ShutdownImmediate:
+				Daemon.RequestImmediateShutdown ();
+				SetAdminResultMessage (result, "immediate shutdown requested");
+				break;
+			case AdminCommandKind::ShutdownCancel:
+				if (!Daemon.CancelGracefulShutdown ())
+				{
+					result.code = AdminResultCode::Failed;
+					SetAdminResultMessage (result, "graceful shutdown is not supported");
+				}
+				else
+					SetAdminResultMessage (result, "graceful shutdown cancelled");
+				break;
+			case AdminCommandKind::ReloadTunnels:
+				i2p::client::context.ReloadConfig ();
+				SetAdminResultMessage (result, "tunnel configuration reloaded");
+				break;
+			case AdminCommandKind::Bandwidth:
+			{
+				const auto token = static_cast<char> (command.value);
+				if (token != 'K' && token != 'L' && token != 'M' && token != 'N' && token != 'O' && token != 'P'
+					&& token != 'X')
+				{
+					result.code = AdminResultCode::Invalid;
+					SetAdminResultMessage (result, "invalid bandwidth class");
+					break;
+				}
+				i2p::context.SetBandwidth (token);
+				result.value = static_cast<int32_t> (i2p::context.GetBandwidthLimit ());
+				SetAdminResultMessage (result, "bandwidth class applied");
+				break;
+			}
+			case AdminCommandKind::Share:
+				if (command.value < 0 || command.value > 100)
+				{
+					result.code = AdminResultCode::Invalid;
+					SetAdminResultMessage (result, "share percentage must be 0..100");
+					break;
+				}
+				i2p::context.SetShareRatio (command.value);
+				result.value = command.value;
+				SetAdminResultMessage (result, "share ratio applied");
+				break;
+			case AdminCommandKind::Transit:
+				i2p::context.SetAcceptsTunnels (command.enabled);
+				result.enabled = command.enabled;
+				SetAdminResultMessage (
+					result, command.enabled ? "transit tunnels enabled" : "transit tunnels disabled");
+				break;
+			case AdminCommandKind::LogLevel:
+				if (command.value < 0 || command.value >= static_cast<int32_t> (ADMIN_LOG_LEVEL_NAMES.size ()))
+				{
+					result.code = AdminResultCode::Invalid;
+					SetAdminResultMessage (result, "invalid daemon log level");
+					break;
+				}
+				i2p::log::Logger ().SetLogLevel (
+					std::string (ADMIN_LOG_LEVEL_NAMES[static_cast<size_t> (command.value)]));
+				result.value = command.value;
+				SetAdminResultMessage (result, "daemon log level applied");
+				break;
+			default:
+				result.code = AdminResultCode::Invalid;
+				SetAdminResultMessage (result, "unknown admin command");
+				break;
+			}
+		}
+	}
 
 #if !defined(_WIN32) && !defined(I2PD_NO_PRIVSEP)
 	namespace
@@ -321,6 +441,33 @@ namespace util
 		bool service = false;
 		i2p::config::GetOption ("service", service);
 		return service;
+	}
+
+	bool Daemon_Singleton::BeginGracefulShutdown ()
+	{
+		if (!SupportsGracefulShutdown ()) return false;
+		// Signal-driven and IPC-driven requests are idempotent: a second
+		// request while the drain is active must not restart the countdown.
+		if (GetGracefulShutdownInterval () > 0) return true;
+
+		m_GracefulTransitRestore = i2p::context.AcceptsTunnels ();
+		i2p::context.SetAcceptsTunnels (false);
+		int timeout = i2p::tunnel::tunnels.GetTransitTunnelsExpirationTimeout ();
+		if (timeout <= 0) timeout = 10 * 60;
+		SetGracefulShutdownInterval (timeout);
+		LogPrint (eLogInfo, "Daemon: Graceful shutdown after ", timeout, " seconds");
+		return true;
+	}
+
+	bool Daemon_Singleton::CancelGracefulShutdown ()
+	{
+		if (!SupportsGracefulShutdown ()) return false;
+		if (GetGracefulShutdownInterval () <= 0) return true;
+		SetGracefulShutdownInterval (0);
+		i2p::context.SetAcceptsTunnels (m_GracefulTransitRestore);
+		m_GracefulTransitRestore = false;
+		LogPrint (eLogInfo, "Daemon: Graceful shutdown cancelled");
+		return true;
 	}
 
 	void Daemon_Singleton::setDataDir (std::string_view path)
@@ -831,6 +978,11 @@ namespace util
 		LogPrint (eLogInfo, "Daemon: Starting Client");
 		i2p::client::context.Start ();
 
+		// Destructive and router-wide TUI operations are serialized on this
+		// daemon-owned executor, not executed on the local-IPC thread.
+		if (!i2p::tui::StartAdminCommandQueue (&ExecuteAdminCommand))
+			LogPrint (eLogWarning, "Daemon: Admin command queue unavailable");
+
 		bool tuiEnabled;
 		i2p::config::GetOption ("tui.enabled", tuiEnabled);
 		if (tuiEnabled)
@@ -892,6 +1044,8 @@ namespace util
 			d->tuiServer->Stop ();
 			d->tuiServer = nullptr;
 		}
+		// No IPC thread can submit after the server above has been joined.
+		i2p::tui::StopAdminCommandQueue ();
 		if (d->m_I2PControlService)
 		{
 			LogPrint (eLogInfo, "Daemon: Stopping I2PControl");

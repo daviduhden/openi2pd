@@ -35,6 +35,18 @@ namespace util
 		virtual void run () { };
 
 		virtual int GetGracefulShutdownInterval () const { return 0; };
+		virtual void SetGracefulShutdownInterval (int seconds) { (void)seconds; };
+		virtual bool SupportsGracefulShutdown () const { return false; };
+
+		/**
+		 * Begin or cancel a graceful drain without going through a signal
+		 * handler. The implementation only changes the tunnel-acceptance flag
+		 * and the platform shutdown countdown; the daemon loop remains the
+		 * owner of the actual exit.
+		 */
+		bool BeginGracefulShutdown ();
+		bool CancelGracefulShutdown ();
+		void RequestImmediateShutdown () { running = false; };
 		void setDataDir (std::string_view path);
 
 	public:
@@ -68,6 +80,10 @@ namespace util
 		void StopPrivsepLogWorker ();
 		void RunPrivsepLogSupervisor ();
 #endif
+
+		// Transit acceptance observed when a graceful drain started, so a
+		// cancellation restores the configured policy instead of forcing ON.
+		bool m_GracefulTransitRestore = false;
 
 		std::string DaemonDataDir;
 	};
@@ -140,7 +156,9 @@ namespace util
 		bool stop ();
 		void run ();
 
-		int GetGracefulShutdownInterval () const { return gracefulShutdownInterval; };
+		bool SupportsGracefulShutdown () const override { return true; }
+		void SetGracefulShutdownInterval (int seconds) override { gracefulShutdownInterval = seconds; }
+		int GetGracefulShutdownInterval () const override { return gracefulShutdownInterval; };
 
 	private:
 		std::string pidfile;

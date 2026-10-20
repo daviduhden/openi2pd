@@ -40,9 +40,13 @@
  * has not validated. Torrent commands are validated here and then mediated by
  * the torrents tunnel's Asio service thread; the IPC thread never touches
  * mutable engine state. Configuration snapshots are read-only and limited to
- * a server-side allowlist; version 1 has no configuration writer. The only
- * router-wide writes are the explicitly typed ADMIN TRANSIT and ADMIN LOGLEVEL
- * operations, which update atomic router/logger state.
+ * a server-side allowlist; version 1 has no configuration writer. Router-wide
+ * writes are restricted to a closed set of explicitly typed ADMIN operations:
+ * reseed, shutdown/cancel, tunnel reload, bandwidth class, share percentage,
+ * transit acceptance and daemon log level. The dispatcher converts each into a
+ * bounded daemon command; no request carries a generic option name, path, URL
+ * or shell string. ADMIN replies carry typed fields: admin=<action>,
+ * result=ok|accepted|error, code=<reason>, value=<integer>, message=<text>.
  */
 namespace i2p
 {
@@ -72,6 +76,14 @@ namespace tui
 	inline constexpr size_t MAX_CONFIG_RECORDS_PER_REQUEST = 128;
 	inline constexpr size_t MAX_CONFIG_VALUE_LENGTH = 512;
 	inline constexpr size_t MAX_ADMIN_ARGUMENT_LENGTH = 16;
+	inline constexpr size_t MAX_ADMIN_BANDWIDTH_TOKEN_LENGTH = 1;
+
+	enum class AdminShutdownMode : uint8_t
+	{
+		Graceful = 0,
+		Immediate,
+		Cancel
+	};
 
 	enum class RequestType
 	{
@@ -87,6 +99,11 @@ namespace tui
 		Config, // bounded, typed snapshot of allowlisted options; no writer
 		AdminTransit,
 		AdminLogLevel,
+		AdminReseed,
+		AdminShutdown,
+		AdminReloadTunnels,
+		AdminBandwidth,
+		AdminShare,
 		Ping,
 		Quit,
 		Torrents,
@@ -125,6 +142,10 @@ namespace tui
 		int torrentId = 0; // TORRENT-*: engine-assigned torrent id
 		bool deleteFiles = false; // TORRENT-REMOVE: explicit files flag
 		bool enabled = false; // ADMIN TRANSIT: requested acceptance state
+		AdminShutdownMode shutdownMode = AdminShutdownMode::Graceful; // ADMIN SHUTDOWN
+		// ADMIN BANDWIDTH: ASCII class; ADMIN SHARE: percent;
+		// ADMIN LOGLEVEL: zero-based index into the fixed level table.
+		uint32_t adminValue = 0;
 		std::string argument; // TORRENT-ADD-*/ADMIN LOGLEVEL: bounded argument
 		uint32_t createPieceLength = 0;
 		bool createPrivate = false;
@@ -256,6 +277,44 @@ namespace tui
 			return value == "none" || value == "critical" || value == "error" || value == "warn" || value == "info"
 				|| value == "debug";
 		}
+
+		inline std::optional<uint32_t> AdminLogLevelIndex (std::string_view value)
+		{
+			if (value == "none") return 0;
+			if (value == "critical") return 1;
+			if (value == "error") return 2;
+			if (value == "warn") return 3;
+			if (value == "info") return 4;
+			if (value == "debug") return 5;
+			return std::nullopt;
+		}
+
+		// Only the router's documented bandwidth classes are accepted. The
+		// token is an exact one-byte capability letter; ranges, suffixes and
+		// free-form configuration values are deliberately not expressible.
+		inline bool IsAdminBandwidthToken (std::string_view value)
+		{
+			if (value.size () != MAX_ADMIN_BANDWIDTH_TOKEN_LENGTH) return false;
+			switch (value.front ())
+			{
+			case 'K':
+			case 'L':
+			case 'M':
+			case 'N':
+			case 'O':
+			case 'P':
+			case 'X': return true;
+			default: return false;
+			}
+		}
+
+		inline std::optional<AdminShutdownMode> ParseAdminShutdownMode (std::string_view value)
+		{
+			if (value == "GRACEFUL") return AdminShutdownMode::Graceful;
+			if (value == "IMMEDIATE") return AdminShutdownMode::Immediate;
+			if (value == "CANCEL") return AdminShutdownMode::Cancel;
+			return std::nullopt;
+		}
 	}
 
 	/**
@@ -378,10 +437,47 @@ namespace tui
 			else if (action == "LOGLEVEL")
 			{
 				const auto level = detail::NextToken (rest);
-				if (level.empty () || level.size () > MAX_ADMIN_ARGUMENT_LENGTH || !detail::IsAdminLogLevel (level))
+				auto index = detail::AdminLogLevelIndex (level);
+				if (level.empty () || level.size () > MAX_ADMIN_ARGUMENT_LENGTH || !index)
 					return i2p::unexpected (ProtocolError { ErrorCode::BadArgument, "invalid admin log level" });
+				request.adminValue = *index;
 				request.argument = std::string (level);
 				request.type = RequestType::AdminLogLevel;
+			}
+			else if (action == "RESEED")
+			{
+				request.type = RequestType::AdminReseed;
+			}
+			else if (action == "SHUTDOWN")
+			{
+				const auto mode = detail::ParseAdminShutdownMode (detail::NextToken (rest));
+				if (!mode)
+					return i2p::unexpected (ProtocolError {
+						ErrorCode::BadArgument, "admin shutdown expects GRACEFUL, IMMEDIATE or CANCEL" });
+				request.shutdownMode = *mode;
+				request.type = RequestType::AdminShutdown;
+			}
+			else if (action == "RELOAD")
+			{
+				if (detail::NextToken (rest) != "TUNNELS")
+					return i2p::unexpected (ProtocolError { ErrorCode::BadArgument, "admin reload expects TUNNELS" });
+				request.type = RequestType::AdminReloadTunnels;
+			}
+			else if (action == "BANDWIDTH")
+			{
+				const auto token = detail::NextToken (rest);
+				if (!detail::IsAdminBandwidthToken (token))
+					return i2p::unexpected (ProtocolError { ErrorCode::BadArgument, "invalid admin bandwidth class" });
+				request.adminValue = static_cast<uint32_t> (token.front ());
+				request.type = RequestType::AdminBandwidth;
+			}
+			else if (action == "SHARE")
+			{
+				auto percent = detail::ParseUnsigned (detail::NextToken (rest));
+				if (!percent || *percent > 100)
+					return i2p::unexpected (ProtocolError { ErrorCode::BadArgument, "admin share expects 0..100" });
+				request.adminValue = static_cast<uint32_t> (*percent);
+				request.type = RequestType::AdminShare;
 			}
 			else
 			{

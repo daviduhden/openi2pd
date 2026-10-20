@@ -131,7 +131,13 @@ enum class PromptKind
 	CommentHide,
 	ConfirmRemove,
 	ConfirmRemoveFiles,
-	ConfirmTransit
+	ConfirmTransit,
+	ConfirmReseed,
+	ConfirmReloadTunnels,
+	ConfirmShutdownGraceful,
+	ConfirmShutdownImmediate,
+	Bandwidth,
+	Share
 };
 
 struct PeerRow
@@ -1148,6 +1154,11 @@ private:
 	bool SendAdminCommand (std::string_view command);
 	void BeginTransitPrompt ();
 	void CycleDaemonLogLevel ();
+	void BeginReseedPrompt ();
+	void BeginReloadTunnelsPrompt ();
+	void BeginShutdownPrompt (bool immediate);
+	void BeginBandwidthPrompt ();
+	void BeginSharePrompt ();
 	void SendTorrentCommand (std::string_view command);
 	void ScheduleTorrentRefresh (bool includeTunnels);
 	void ResetTorrentAuxState ();
@@ -1919,6 +1930,59 @@ void App::CycleDaemonLogLevel ()
 	if (SendAdminCommand ("ADMIN LOGLEVEL " + std::string (next))) m_DaemonLogLevel = std::string (next);
 }
 
+void App::BeginReseedPrompt ()
+{
+	if (!m_Connected)
+	{
+		SetStatus ("daemon is not connected", true);
+		return;
+	}
+	BeginPrompt (PromptKind::ConfirmReseed, "Reseed the NetDb from the network? [y/N] ");
+}
+
+void App::BeginReloadTunnelsPrompt ()
+{
+	if (!m_Connected)
+	{
+		SetStatus ("daemon is not connected", true);
+		return;
+	}
+	BeginPrompt (PromptKind::ConfirmReloadTunnels, "Reload tunnel configuration? [y/N] ");
+}
+
+void App::BeginShutdownPrompt (bool immediate)
+{
+	if (!m_Connected)
+	{
+		SetStatus ("daemon is not connected", true);
+		return;
+	}
+	if (immediate)
+		BeginPrompt (PromptKind::ConfirmShutdownImmediate, "Stop the daemon immediately? Type SHUTDOWN to confirm: ");
+	else
+		BeginPrompt (PromptKind::ConfirmShutdownGraceful, "Begin graceful shutdown (stop accepting tunnels)? [y/N] ");
+}
+
+void App::BeginBandwidthPrompt ()
+{
+	if (!m_Connected)
+	{
+		SetStatus ("daemon is not connected", true);
+		return;
+	}
+	BeginPrompt (PromptKind::Bandwidth, "bandwidth class K/L/M/N/O/P/X: ");
+}
+
+void App::BeginSharePrompt ()
+{
+	if (!m_Connected)
+	{
+		SetStatus ("daemon is not connected", true);
+		return;
+	}
+	BeginPrompt (PromptKind::Share, "share ratio percent 0-100: ");
+}
+
 void App::SendTorrentCommand (std::string_view command)
 {
 	if (!m_Connected)
@@ -2193,6 +2257,85 @@ void App::CommitPrompt ()
 		}
 		SendAdminCommand (m_PendingTransit ? "ADMIN TRANSIT ON" : "ADMIN TRANSIT OFF");
 		m_PendingTransit = false;
+		return;
+	}
+
+	if (kind == PromptKind::ConfirmReseed)
+	{
+		auto answer = ToLowerAscii (Trim (input));
+		if (answer != "y" && answer != "yes")
+		{
+			SetStatus ("reseed cancelled", false);
+			return;
+		}
+		SendAdminCommand ("ADMIN RESEED");
+		return;
+	}
+
+	if (kind == PromptKind::ConfirmReloadTunnels)
+	{
+		auto answer = ToLowerAscii (Trim (input));
+		if (answer != "y" && answer != "yes")
+		{
+			SetStatus ("tunnel reload cancelled", false);
+			return;
+		}
+		SendAdminCommand ("ADMIN RELOAD TUNNELS");
+		return;
+	}
+
+	if (kind == PromptKind::ConfirmShutdownGraceful)
+	{
+		auto answer = ToLowerAscii (Trim (input));
+		if (answer != "y" && answer != "yes")
+		{
+			SetStatus ("shutdown cancelled", false);
+			return;
+		}
+		SendAdminCommand ("ADMIN SHUTDOWN GRACEFUL");
+		return;
+	}
+
+	if (kind == PromptKind::ConfirmShutdownImmediate)
+	{
+		// Immediate shutdown is destructive to all active sessions, so the
+		// confirmation is typed rather than a single key.
+		if (Trim (input) != "SHUTDOWN")
+		{
+			SetStatus ("immediate shutdown cancelled", false);
+			return;
+		}
+		SendAdminCommand ("ADMIN SHUTDOWN IMMEDIATE");
+		return;
+	}
+
+	if (kind == PromptKind::Bandwidth)
+	{
+		auto value = Trim (input);
+		bool valid = value.size () == 1
+			&& (value[0] == 'K' || value[0] == 'L' || value[0] == 'M' || value[0] == 'N' || value[0] == 'O'
+				|| value[0] == 'P' || value[0] == 'X');
+		if (!valid)
+		{
+			SetStatus ("bandwidth class must be one of K/L/M/N/O/P/X", true);
+			return;
+		}
+		SendAdminCommand ("ADMIN BANDWIDTH " + value);
+		return;
+	}
+
+	if (kind == PromptKind::Share)
+	{
+		auto value = Trim (input);
+		int percent = -1;
+		auto parsed = std::from_chars (value.data (), value.data () + value.size (), percent);
+		if (value.empty () || parsed.ec != std::errc () || parsed.ptr != value.data () + value.size () || percent < 0
+			|| percent > 100)
+		{
+			SetStatus ("share ratio must be an integer from 0 to 100", true);
+			return;
+		}
+		SendAdminCommand ("ADMIN SHARE " + std::to_string (percent));
 		return;
 	}
 
@@ -2617,7 +2760,8 @@ void App::DrawFooter (int height, int width)
 	else if (m_Tab == Tab::Config)
 		line += " | read-only | Up/Down scroll | q quit, Tab/0-9 switch, r refresh, ? help";
 	else if (m_Tab == Tab::Status)
-		line += " | t transit | q quit, Tab/0-9 switch, r refresh, ? help";
+		line += " | e reseed H reload s/S shutdown c cancel b bandwidth % share t transit | q quit, Tab/0-9 switch, r "
+				"refresh, ? help";
 	else if (m_Tab == Tab::Connections)
 		line += " | t transit | q quit, Tab/0-9 switch, r refresh, ? help";
 	else if (m_Tab == Tab::NetDb)
@@ -3016,6 +3160,11 @@ void App::DrawHelp (int top, int height, int width)
 		"  Status (1), Peers (2), Tunnels (3), Torrents (4), NetDb (5), Logs (6), Help (7)",
 		"  Destinations (8) lists the currently configured local b32 addresses.",
 		"  Config (9) is a read-only allowlisted snapshot. Connections (0) lists live peers.", "", "  Status (1)",
+		"  e                       request a NetDb reseed from the network (confirmed)",
+		"  H                       reload tunnel configuration (confirmed)",
+		"  s / S                   graceful / immediate shutdown (confirmed; S requires SHUTDOWN)",
+		"  c                       cancel a pending graceful shutdown",
+		"  b / %                   set bandwidth class / share ratio percent",
 		"  t                       toggle transit tunnel acceptance (confirmed)",
 		"  The bandwidth history keeps the last 60 fifteen-second samples.", "", "  Connections (0)",
 		"  Up/Down, PgUp/PgDn      scroll established transport sessions",
@@ -3047,8 +3196,9 @@ void App::DrawHelp (int top, int height, int width)
 		"  Up/Down, PgUp/PgDn      scroll detail lines",
 		"  Home/End                first/last detail line", "  Esc                     return to the torrent table", "",
 		"  Notes", "  Actions are sent to the daemon over the local IPC endpoint.",
-		"  Transit and daemon log level are the only router-wide writes; both are",
-		"  operation-specific and do not expose generic configuration editing.",
+		"  Reseed, shutdown, tunnel reload, bandwidth, share, transit and daemon",
+		"  log level use a closed, typed command set; there is no generic",
+		"  configuration editor or command execution.",
 		"  The TUI never opens torrent files, peers or trackers directly.",
 		"  Removal with local data is a separate, typed confirmation.",
 		"  Long UTF-8 values are truncated without splitting characters." };
@@ -3718,6 +3868,24 @@ void App::HandleKey (int key)
 		m_NextNetDbList = std::chrono::steady_clock::now ();
 		SetStatus (m_NetDbView == NetDbView::Routers ? "netDb: router directory" : "netDb: LeaseSet directory", false);
 		return;
+	}
+
+	if (m_Tab == Tab::Status)
+	{
+		switch (key)
+		{
+		case 'e':
+		case 'E': BeginReseedPrompt (); return;
+		case 'H': BeginReloadTunnelsPrompt (); return;
+		case 's': BeginShutdownPrompt (false); return;
+		case 'S': BeginShutdownPrompt (true); return;
+		case 'b':
+		case 'B': BeginBandwidthPrompt (); return;
+		case '%': BeginSharePrompt (); return;
+		case 'c':
+		case 'C': SendAdminCommand ("ADMIN SHUTDOWN CANCEL"); return;
+		default: break;
+		}
 	}
 
 	switch (key)

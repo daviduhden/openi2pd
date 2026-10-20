@@ -11,8 +11,10 @@
 #ifndef _WIN32
 
 #include <cassert>
+#include <atomic>
 #include <cerrno>
 #include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <string>
@@ -26,6 +28,7 @@
 
 #include "TuiProtocol.h"
 #include "daemon/TuiServer.h"
+#include "daemon/TuiServerCommon.h"
 #include "tui/TuiClient.h"
 
 #ifndef MSG_NOSIGNAL
@@ -34,6 +37,24 @@
 
 namespace
 {
+std::atomic<bool> g_BlockAdminExecutor { false };
+std::atomic<bool> g_AdminExecutorStarted { false };
+std::atomic<bool> g_ReleaseAdminExecutor { false };
+
+void FakeAdminExecutor (const i2p::tui::AdminCommand & command, i2p::tui::AdminCommandResult & result)
+{
+	g_AdminExecutorStarted.store (true, std::memory_order_relaxed);
+	while (g_BlockAdminExecutor.load (std::memory_order_relaxed)
+		&& !g_ReleaseAdminExecutor.load (std::memory_order_relaxed))
+		std::this_thread::sleep_for (std::chrono::milliseconds (1));
+
+	result = i2p::tui::AdminCommandResult { };
+	result.code = i2p::tui::AdminResultCode::Ok;
+	result.value = command.value;
+	result.enabled = command.enabled;
+	std::snprintf (result.message, sizeof (result.message), "fake admin command executed");
+}
+
 bool SendAll (int fd, std::string_view data)
 {
 	while (!data.empty ())
@@ -143,6 +164,23 @@ void TestClientRoundTrip (const std::string & path)
 	auto admin = client.Request ("ADMIN LOGLEVEL info");
 	assert (admin.has_value ());
 	assert (admin->find ("result=ok") != std::string::npos);
+	assert (admin->find ("code=ok") != std::string::npos);
+
+	// Every typed router-wide command travels through the fixed-size daemon
+	// queue. The test executor only records the variant; no daemon subsystem
+	// is linked or changed here.
+	for (const auto * command :
+		{ "ADMIN RESEED", "ADMIN SHUTDOWN GRACEFUL", "ADMIN SHUTDOWN IMMEDIATE", "ADMIN SHUTDOWN CANCEL",
+			"ADMIN RELOAD TUNNELS", "ADMIN BANDWIDTH L", "ADMIN SHARE 50", "ADMIN TRANSIT ON" })
+	{
+		auto response = client.Request (command);
+		assert (response.has_value ());
+		assert (response->find ("result=ok") != std::string::npos);
+		assert (response->find ("code=ok") != std::string::npos);
+	}
+	auto bandwidth = client.Request ("ADMIN BANDWIDTH P");
+	assert (bandwidth.has_value ());
+	assert (bandwidth->find ("value=80") != std::string::npos); // ASCII 'P'
 
 	// A well-formed remote error keeps the connection usable.
 	auto unknown = client.Request ("BOGUS");
@@ -261,6 +299,44 @@ void TestAbortedClient (const std::string & path)
 	second.Disconnect ();
 }
 
+void TestAdminQueueBounds ()
+{
+	// Running the queue without a daemon proves its fixed capacity and
+	// bounded wait: a blocked executor occupies one slot, the remaining
+	// slots accept commands that time out as Accepted, and the next submit
+	// is rejected as QueueFull without waiting.
+	assert (i2p::tui::StartAdminCommandQueue (&FakeAdminExecutor));
+	g_BlockAdminExecutor.store (true, std::memory_order_relaxed);
+	g_ReleaseAdminExecutor.store (false, std::memory_order_relaxed);
+	g_AdminExecutorStarted.store (false, std::memory_order_relaxed);
+
+	i2p::tui::AdminCommand first { i2p::tui::AdminCommandKind::Reseed, 0, false };
+	auto firstResult = i2p::tui::SubmitAdminCommand (first, std::chrono::milliseconds (1500));
+	assert (firstResult.code == i2p::tui::AdminResultCode::Accepted);
+
+	for (int i = 0; i < 1000 && !g_AdminExecutorStarted.load (std::memory_order_relaxed); ++i)
+		std::this_thread::sleep_for (std::chrono::milliseconds (1));
+	assert (g_AdminExecutorStarted.load (std::memory_order_relaxed));
+
+	i2p::tui::AdminCommand queued { i2p::tui::AdminCommandKind::Share, 50, false };
+	for (size_t i = 1; i < i2p::tui::ADMIN_COMMAND_QUEUE_CAPACITY; ++i)
+	{
+		auto result = i2p::tui::SubmitAdminCommand (queued, std::chrono::milliseconds (20));
+		assert (result.code == i2p::tui::AdminResultCode::Accepted);
+	}
+	auto full = i2p::tui::SubmitAdminCommand (queued, std::chrono::milliseconds (20));
+	assert (full.code == i2p::tui::AdminResultCode::QueueFull);
+	assert (std::string_view (full.message).find ("full") != std::string_view::npos);
+
+	g_ReleaseAdminExecutor.store (true, std::memory_order_relaxed);
+	i2p::tui::StopAdminCommandQueue ();
+	g_BlockAdminExecutor.store (false, std::memory_order_relaxed);
+
+	// Stopping makes further submissions fail closed instead of hanging.
+	auto stopped = i2p::tui::SubmitAdminCommand (first, std::chrono::milliseconds (20));
+	assert (stopped.code == i2p::tui::AdminResultCode::Unavailable);
+}
+
 void TestBoundedStop (const std::string & directory)
 {
 	const std::string path = directory + "/stop.sock";
@@ -290,6 +366,9 @@ int main ()
 	char directory[] = "/tmp/openi2pd-tui-ipc-XXXXXX";
 	assert (mkdtemp (directory) != nullptr);
 
+	TestAdminQueueBounds ();
+	assert (i2p::tui::StartAdminCommandQueue (&FakeAdminExecutor));
+
 	const std::string socketPath = std::string (directory) + "/tui.sock";
 	{
 		i2p::tui::Server server (socketPath);
@@ -309,6 +388,7 @@ int main ()
 		assert (lstat (socketPath.c_str (), &info) != 0 && errno == ENOENT);
 	}
 
+	i2p::tui::StopAdminCommandQueue ();
 	TestBoundedStop (directory);
 
 	assert (rmdir (directory) == 0);
