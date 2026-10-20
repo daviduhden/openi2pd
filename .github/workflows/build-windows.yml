@@ -87,6 +87,7 @@ jobs:
             boost-asio:x64-windows `
             boost-beast:x64-windows `
             boost-program-options:x64-windows `
+            boost-property-tree:x64-windows `
             openssl:x64-windows `
             zlib:x64-windows `
             --clean-after-build
