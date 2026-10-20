@@ -129,7 +129,6 @@ namespace torrents
 		std::optional<TorrentsSnapshot> GetControlSnapshot (std::chrono::milliseconds timeout);
 		TorrentCommandResult ExecuteControlCommand (const TorrentCommand & command, std::chrono::milliseconds timeout);
 
-		const std::string & GetPeerID () const { return m_PeerID; }
 		const std::filesystem::path & GetTorrentsDir () const { return m_TorrentsDir; }
 		std::string GetTrackerAnnounce (size_t id) const
 		{
@@ -230,6 +229,19 @@ namespace torrents
 		size_t ConnectToPeers (std::shared_ptr<Torrent> torrent, size_t trackerID);
 		void UpdatePeersPerPiece (std::shared_ptr<Torrent> torrent);
 
+		// Peer accounting on the service thread. CountPeerHandlers() covers
+		// every PeerConnection, including inbound streams that have not
+		// completed a handshake yet, so the global bound cannot be bypassed by
+		// opening streams without announcing a torrent.
+		size_t CountPeerHandlers ();
+		bool CanDial (Torrent & torrent);
+		void FinishDial (uint64_t dial);
+		void ExpireDials (uint64_t now);
+		// One piece per storage-service job, chained through the service
+		// thread so tracker, control and peer work keeps running in between.
+		void ScheduleLocalVerification (const std::shared_ptr<Torrent> & torrent);
+		void VerifyNextLocalPiece (const std::shared_ptr<Torrent> & torrent);
+
 		void HandleRecvFromI2PRaw (
 			uint8_t protocol, uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len);
 		void ConnectToDatagramTracker (size_t trackerID, std::string_view dest, uint16_t port);
@@ -240,7 +252,7 @@ namespace torrents
 			std::string_view dest, uint16_t port, uint16_t fromPort, TrackerAnnounceEvent event);
 
 	private:
-		std::string m_Name, m_PeerID; // 20 characters
+		std::string m_Name;
 		std::filesystem::path m_TorrentsDir;
 		std::vector<TrackerInfo> m_Trackers;
 		std::map<Torrent::InfoHash, std::shared_ptr<Torrent>> m_Torrents;
@@ -257,6 +269,16 @@ namespace torrents
 		// transactionID->(trackerID, from_port, torrent, timestamp monotonic milliseconds)
 		std::unique_ptr<TorrentsDHT> m_DHT;
 		std::atomic<bool> m_Stopping { false };
+		// Outbound dials whose stream is still being established. Each entry
+		// expires so a lost completion callback cannot leak a slot, and the
+		// map is bounded by MAX_TOTAL_DIALS before a dial starts.
+		struct PendingDial
+		{
+			std::weak_ptr<Torrent> torrent;
+			uint64_t started = 0; // monotonic seconds
+		};
+		std::unordered_map<uint64_t, PendingDial> m_PendingDials;
+		uint64_t m_NextDialID = 1;
 		struct AdminStateStatus
 		{
 			bool loaded = false;

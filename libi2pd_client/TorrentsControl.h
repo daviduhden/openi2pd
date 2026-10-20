@@ -63,7 +63,10 @@ namespace torrents
 		CommentHide,
 		FilePriority,
 		AddMagnet,
-		AddFile
+		AddFile,
+		// Re-hashes local data with the storage service before publishing
+		// availability again. Engine-internal: no TUI/IPC encoding exists.
+		Recheck
 	};
 
 	struct TorrentFileInfo
@@ -110,6 +113,8 @@ namespace torrents
 		uint64_t downRate;
 		uint64_t upRate;
 		int peers;
+		// Per-torrent connection limit enforced by the engine.
+		int maxPeers = 0;
 		int seeders;
 		int leechers;
 		double percent;
@@ -160,6 +165,10 @@ namespace torrents
 		TorrentSessionInfo session;
 		TorrentDhtInfo dht;
 		TorrentCreationInfo creation;
+		// Session-wide connection limits, reported so a client never has to
+		// guess the engine bound.
+		int maxPeersPerTorrent = 0;
+		int maxTotalPeers = 0;
 	};
 
 	struct TorrentCommand
@@ -190,6 +199,11 @@ namespace torrents
 	// Lower-case hexadecimal representation, using exactly two characters per
 	// input byte. Used for torrent hashes and display magnets.
 	std::string ToHexString (std::span<const uint8_t> data);
+
+	// Percent-encodes one query value, keeping only RFC 3986 unreserved
+	// characters. URL::create_query() does not encode values, so a peer id or
+	// opaque tracker id containing reserved bytes must be encoded first.
+	std::string PercentEncodeQueryValue (std::string_view value);
 
 	struct TorrentMagnet
 	{

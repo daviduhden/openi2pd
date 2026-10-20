@@ -105,6 +105,33 @@ namespace torrents
 			return (url.schema == "http" || url.schema == "udp") && IsI2PTrackerHost (url.host) && url.user.empty ()
 				&& url.pass.empty () && !url.ipv6;
 		}
+
+		// Percent-encodes a query value. The tracker query is assembled by
+		// URL::create_query(), which does not encode parameters, so a peer id
+		// with reserved bytes would otherwise corrupt the request.
+		std::string PercentEncode (std::string_view value)
+		{
+			static constexpr char hex[] = "0123456789ABCDEF";
+			std::string out;
+			out.reserve (value.size () * 3);
+			for (const unsigned char ch : value)
+			{
+				if (std::isalnum (ch) || ch == '-' || ch == '_' || ch == '.' || ch == '~')
+					out.push_back (static_cast<char> (ch));
+				else
+				{
+					out.push_back ('%');
+					out.push_back (hex[ch >> 4]);
+					out.push_back (hex[ch & 0x0F]);
+				}
+			}
+			return out;
+		}
+	}
+
+	std::string PercentEncodeQueryValue (std::string_view value)
+	{
+		return PercentEncode (value);
 	}
 
 	TorrentsTunnel::TorrentsTunnel (std::string_view name,
@@ -112,15 +139,12 @@ namespace torrents
 		std::string_view trackers, bool dht, std::string_view dhtFileName, bool isolatedStorage)
 		: i2p::client::I2PService (localDestination)
 		, m_Name (name)
-		, m_PeerID ("-I2PD-")
 		, m_TorrentsDir (torrentsDir)
 		, m_TrackerRequestsCheckTimer (GetService ())
 		, m_KeepAliveCheckTimer (GetService ())
 		, m_ReconnectCheckTimer (GetService ())
 		, m_TorrentsStatusUpdateTimer (GetService ())
 	{
-		if (localDestination) m_PeerID += localDestination->GetIdentHash ().ToBase64 ();
-		m_PeerID.resize (20, '0');
 		m_UseIsolatedStorage = isolatedStorage;
 		if (!trackers.empty ())
 		{
@@ -327,6 +351,7 @@ namespace torrents
 			SaveTorrentAdminState (it, true);
 			StopTorrent (it);
 		}
+		m_PendingDials.clear ();
 		{
 			std::lock_guard<std::mutex> l (m_TorrentsMutex);
 			m_Torrents.clear ();
@@ -627,6 +652,12 @@ namespace torrents
 					CreateAndReserveFile (partFilePath, it->GetFileLength ());
 				completed = false;
 			}
+			else
+			{
+				// Data that already exists under its final name is read from
+				// the final path (no .part rename) but is still unverified.
+				it->SetIsPart (false);
+			}
 		}
 		if (documentStorage)
 		{
@@ -648,7 +679,25 @@ namespace torrents
 			if (torrent->AreAllPiecesVerified ()) CompleteTorrent (torrent);
 			return; // Native resume/allocation paths do not name SAF documents.
 		}
-		if (completed) torrent->SetComplete ();
+		if (completed)
+		{
+			// Every file is already present under its final name. A name is not
+			// proof of content: hash all pieces on the storage service before
+			// the torrent may be advertised as complete or promoted. A mismatch
+			// turns the piece into Missing so it can be downloaded again.
+			const auto hash = torrent->GetInfoHash ();
+			boost::asio::post (GetService (),
+				[this, torrent, hash] ()
+				{
+					if (m_Stopping || FindTorrent (hash) != torrent) return;
+					// final-named files exist at full length; mark the pieces
+					// complete only as a verification claim, then withdraw the
+					// completion until every hash matches.
+					torrent->SetComplete ();
+					torrent->RequestLocalVerification (true);
+					ScheduleLocalVerification (torrent);
+				});
+		}
 
 		auto resumeFilePath = torrent->GetFullPath ();
 		resumeFilePath += ".resume";
@@ -672,7 +721,7 @@ namespace torrents
 				size_t maxResumeSize = (torrent->GetNumPieces () + 7) / 8;
 				std::vector<uint8_t> bitfield;
 				std::string error;
-				bool completed = false, invalid = false;
+				bool invalid = false;
 				auto relativeResume = resumeFilePath.lexically_relative (m_TorrentsDir);
 				if (relativeResume.empty () || !IsSafeRelativePath (relativeResume)
 					|| !ReadFileBoundedNoFollow (m_TorrentsDir, relativeResume, maxResumeSize, bitfield, error))
@@ -681,8 +730,6 @@ namespace torrents
 					LogPrint (eLogWarning, "TorrentsTunnel: Ignoring resume file ", resumeFilePath, " : ", error);
 					invalid = true;
 				}
-				else
-					completed = torrent->ApplyBitfield (bitfield);
 				if (invalid)
 				{
 					std::error_code ec;
@@ -690,14 +737,25 @@ namespace torrents
 						(void)m_StorageWorker->RemoveMetadata (resumeFilePath.lexically_relative (m_TorrentsDir), error);
 					else std::filesystem::remove (resumeFilePath, ec);
 				}
-				if (completed)
-					// A resume bitfield only says which blocks were written;
-					// it is not proof that the bytes still match the piece
-					// hashes. Do not rename .part files here. The status timer
-					// retries CompleteTorrent(), which waits for every piece to
-					// be verified from disk first.
-					LogPrint (eLogInfo, "TorrentsTunnel: Resume marks ", torrent->GetFullPath (),
-						" complete; waiting for local verification before promotion");
+				else
+				{
+					// A resume bitfield only says which blocks were written. It
+					// is applied on the service thread, the owner of the piece
+					// state that peers observe, and every restored piece is
+					// marked for local hashing before availability is published.
+					const auto hash = torrent->GetInfoHash ();
+					boost::asio::post (GetService (),
+						[this, torrent, hash, bitfield = std::move (bitfield)] ()
+						{
+							if (m_Stopping || FindTorrent (hash) != torrent) return;
+							const bool complete = torrent->ApplyBitfield (bitfield);
+							torrent->RequestLocalVerification (false);
+							if (complete)
+								LogPrint (eLogInfo, "TorrentsTunnel: Resume marks ", torrent->GetFullPath (),
+									" complete; verifying local data before promotion");
+							ScheduleLocalVerification (torrent);
+						});
+				}
 			}
 			else
 			{
@@ -954,6 +1012,14 @@ namespace torrents
 							LogPrint (eLogError, "TorrentsTunnel: Can't rename ", partFilePath);
 						}
 					}
+					else if (IsContainedPath (it->GetFullFilePath (), false)
+						&& std::filesystem::exists (it->GetFullFilePath ()))
+					{
+						// The data was already under its final name (for example
+						// rechecked after a restart). Every piece was hashed from
+						// that file, so there is nothing to rename.
+						it->Complete ();
+					}
 					else
 					{
 						LogPrint (eLogError, "TorrentsTunnel: ", partFilePath, " doesn't exist");
@@ -972,6 +1038,16 @@ namespace torrents
 						[this, torrent] ()
 						{
 							torrent->SetComplete ();
+							// The resume bitfield is only meaningful while data is
+							// unverified; removing it once promotion committed
+							// avoids re-verifying a finished torrent on restart.
+							const auto hash = torrent->GetInfoHash ();
+							boost::asio::post (GetDiskIOService (),
+								[this, torrent, hash] ()
+								{
+									if (m_Stopping || FindTorrent (hash) != torrent) return;
+									torrent->SaveTorrentResumeFile ();
+								});
 							// inform trackers that we are done
 							RequestTorrentTrackers (torrent, eTrackerAnnounceEventCompleted);
 							// close connections with seeds and reset stats for remaining
@@ -985,6 +1061,93 @@ namespace torrents
 							}
 						});
 				}
+			});
+	}
+
+	void TorrentsTunnel::ScheduleLocalVerification (const std::shared_ptr<Torrent> & torrent)
+	{
+		if (m_Stopping || !torrent || !torrent->IsLocalVerificationRequested ()) return;
+		if (!torrent->BeginLocalVerification ()) return; // a pass is already chained
+		VerifyNextLocalPiece (torrent);
+	}
+
+	void TorrentsTunnel::VerifyNextLocalPiece (const std::shared_ptr<Torrent> & torrent)
+	{
+		if (!torrent) return;
+		const auto infoHash = torrent->GetInfoHash ();
+		if (m_Stopping || FindTorrent (infoHash) != torrent)
+		{
+			torrent->EndLocalVerification ();
+			return;
+		}
+		const int index = torrent->GetNextPieceToVerify ();
+		if (index < 0)
+		{
+			torrent->EndLocalVerification ();
+			LogPrint (eLogInfo, "TorrentsTunnel: Local data verification finished for ", torrent->GetFullPath ());
+			// Persist the corrected bitfield (a mismatch invalidated its
+			// piece). Promotion/completion is decided by CompleteTorrent(),
+			// which requires every piece to be verified.
+			const auto hash = infoHash;
+			boost::asio::post (GetDiskIOService (),
+				[this, torrent, hash] ()
+				{
+					if (m_Stopping || FindTorrent (hash) != torrent)
+					{
+						torrent->EndLocalVerification ();
+						return;
+					}
+					torrent->SaveTorrentResumeFile ();
+					bool complete = torrent->AreAllPiecesVerified ();
+					boost::asio::post (GetService (),
+						[this, torrent, hash, complete] ()
+						{
+							if (m_Stopping || FindTorrent (hash) != torrent || !complete) return;
+							if (!torrent->IsComplete ()) CompleteTorrent (torrent);
+						});
+				});
+			return;
+		}
+		// Exactly one piece per storage job: the pass is bounded in memory
+		// (one piece buffer) and the service thread stays responsive between
+		// pieces, so tracker/control/peer work is never blocked by a recheck.
+		boost::asio::post (GetDiskIOService (),
+			[this, torrent, hash = infoHash, index] ()
+			{
+				if (m_Stopping || FindTorrent (hash) != torrent)
+				{
+					torrent->EndLocalVerification ();
+					return;
+				}
+				Piece & piece = torrent->GetPiece (index);
+				piece.SetIsLoading (true);
+				bool loaded = true;
+				for (auto & fragment : torrent->GetPieceFileFragments (index))
+				{
+					if (!piece.Load (std::move (fragment)))
+					{
+						loaded = false;
+						break;
+					}
+				}
+				const bool verified = loaded && piece.VerifyHash ();
+				piece.SetIsLoading (false);
+				if (!verified)
+					LogPrint (
+						eLogWarning, "TorrentsTunnel: Local piece ", index, " failed verification; marking it corrupt");
+				boost::asio::post (GetService (),
+					[this, torrent, hash, index, verified] ()
+					{
+						if (m_Stopping || FindTorrent (hash) != torrent) return;
+						if (verified)
+						{
+							torrent->FinishPieceVerification (static_cast<size_t> (index));
+							torrent->GetPiece (index).ReleaseData ();
+						}
+						else
+							torrent->InvalidatePiece (static_cast<size_t> (index));
+						VerifyNextLocalPiece (torrent);
+					});
 			});
 	}
 
@@ -1079,6 +1242,8 @@ namespace torrents
 			snapshot.creation.filesDone = std::min (m_CreationProgress->filesDone.load (), snapshot.creation.totalFiles);
 		}
 		snapshot.dht.supported = SupportsDHT ();
+		snapshot.maxPeersPerTorrent = ClampToInt (MAX_PEERS_PER_TORRENT);
+		snapshot.maxTotalPeers = ClampToInt (MAX_TOTAL_PEERS);
 		if (m_DHT)
 		{
 			snapshot.dht.numNodes = ClampToInt (m_DHT->GetNumNodes ());
@@ -1117,6 +1282,7 @@ namespace torrents
 			info.downRate = torrent->GetDownloadRate ();
 			info.upRate = torrent->GetUploadRate ();
 			info.peers = ClampToInt (torrent->GetConnections ().size ());
+			info.maxPeers = ClampToInt (MAX_PEERS_PER_TORRENT);
 			info.percent
 				= total ? std::min (100.0, 100.0 * static_cast<double> (have) / static_cast<double> (total)) : 0.0;
 			if (!torrent->IsComplete () && left && info.downRate)
@@ -1285,6 +1451,19 @@ namespace torrents
 			return ReannounceTorrent (command.torrentId)
 				? TorrentCommandResult { true, "reannounce queued", command.torrentId }
 				: TorrentCommandResult { false, "torrent not found", command.torrentId };
+		case TorrentCommandKind::Recheck:
+		{
+			// Engine-internal re-hash: every piece is treated as unverified
+			// until the storage service has read and hashed it again. A
+			// mismatch makes the piece downloadable instead of trusting the
+			// existing bytes.
+			auto torrent = FindTorrentByID (command.torrentId);
+			if (!torrent || !torrent->IsValid ())
+				return { false, "complete torrent metadata required", command.torrentId };
+			torrent->RequestLocalVerification (true);
+			ScheduleLocalVerification (torrent);
+			return { true, "local data recheck queued", command.torrentId };
+		}
 		case TorrentCommandKind::Remove:
 			return RemoveTorrent (command.torrentId, command.deleteFiles)
 				? TorrentCommandResult { true, command.deleteFiles ? "remove with files queued" : "remove queued",
@@ -2030,16 +2209,65 @@ namespace torrents
 				localDestination->AcceptStreams (
 					[this] (std::shared_ptr<i2p::stream::Stream> stream)
 					{
-						if (stream)
+						if (!stream) return;
+						if (m_Stopping || CountPeerHandlers () >= MAX_TOTAL_PEERS)
 						{
-							auto conn = std::make_shared<PeerConnection> (shared_from_this (), stream);
-							AddHandler (conn);
-							conn->ReceiveHandshake ();
+							// Bound inbound accepts before any handshake or
+							// torrent lookup happens: unknown streams must not
+							// accumulate handlers.
+							LogPrint (eLogWarning, "TorrentsTunnel: Refusing inbound peer at the connection limit ",
+								MAX_TOTAL_PEERS);
+							stream->Close ();
+							return;
 						}
+						auto conn = std::make_shared<PeerConnection> (shared_from_this (), stream);
+						AddHandler (conn);
+						conn->ReceiveHandshake ();
 					});
 		}
 		else
 			LogPrint (eLogError, "TorrentsTunnel: Local destination not set");
+	}
+
+	size_t TorrentsTunnel::CountPeerHandlers ()
+	{
+		size_t count = 0;
+		IterateHandlers (
+			[&count] (std::shared_ptr<i2p::client::I2PServiceHandler> handler)
+			{
+				if (handler) count++;
+			});
+		return count;
+	}
+
+	bool TorrentsTunnel::CanDial (Torrent & torrent)
+	{
+		size_t torrentDials = 0;
+		for (const auto & pending : m_PendingDials)
+			if (pending.second.torrent.lock ().get () == &torrent) torrentDials++;
+		if (torrentDials >= MAX_DIALS_PER_TORRENT) return false;
+		if (m_PendingDials.size () >= MAX_TOTAL_DIALS) return false;
+		if (torrent.GetConnections ().size () + torrentDials >= MAX_PEERS_PER_TORRENT) return false;
+		return CountPeerHandlers () + m_PendingDials.size () < MAX_TOTAL_PEERS;
+	}
+
+	void TorrentsTunnel::FinishDial (uint64_t dial)
+	{
+		m_PendingDials.erase (dial);
+	}
+
+	void TorrentsTunnel::ExpireDials (uint64_t now)
+	{
+		for (auto it = m_PendingDials.begin (); it != m_PendingDials.end ();)
+		{
+			// A completed dial erases itself; these entries only survive when
+			// the completion callback never ran (for example a destination
+			// that was not ready). Never let them pin a slot forever.
+			if (it->second.torrent.expired () || now > it->second.started + PEER_DIAL_TIMEOUT)
+				it = m_PendingDials.erase (it);
+			else
+				++it;
+		}
 	}
 
 	void TorrentsTunnel::RequestTorrentTrackers (std::shared_ptr<Torrent> torrent, TrackerAnnounceEvent event)
@@ -2054,12 +2282,22 @@ namespace torrents
 		const auto & url = std::get<0> (m_Trackers[trackerID]);
 		const auto matches = [&url] (std::string_view announce)
 		{ return !announce.empty () && url.to_string () == i2p::http::URL (announce).to_string (); };
+		if (torrent.IsPrivate ())
+		{
+			// A private swarm announces to its primary announce URL only: the
+			// "announce" key or the first entry of the first tier. Secondary
+			// tiers are never contacted, which keeps the swarm membership
+			// closed.
+			if (matches (torrent.GetAnnounce ())) return true;
+			const auto & tiers = torrent.GetTrackerTiers ();
+			return !tiers.empty () && !tiers.front ().empty () && matches (tiers.front ().front ());
+		}
 		for (const auto & tier : torrent.GetTrackerTiers ())
 			for (const auto & announce : tier)
 				if (matches (announce)) return true;
 		if (torrent.GetTrackerTiers ().empty () && matches (torrent.GetAnnounce ())) return true;
-		// Private swarms must never be advertised to unrelated common trackers.
-		return !torrent.IsPrivate () && !torrent.HasExplicitTrackers () && std::get<1> (m_Trackers[trackerID]);
+		// Common trackers are only announced for public torrents.
+		return !torrent.HasExplicitTrackers () && std::get<1> (m_Trackers[trackerID]);
 	}
 
 	bool TorrentsTunnel::RequestTracker (size_t trackerID, std::shared_ptr<Torrent> torrent, TrackerAnnounceEvent event)
@@ -2092,7 +2330,12 @@ namespace torrents
 		}
 		std::map<std::string, std::string> params;
 		params.emplace ("info_hash", torrent->GetHexStringInfoHash ());
-		params.emplace ("peer_id", m_PeerID);
+		// Percent-encoded per-torrent random peer id. The tunnel identity is
+		// never announced and never used as a peer id.
+		const auto & peerID = torrent->GetPeerID ();
+		params.emplace ("peer_id",
+			PercentEncodeQueryValue (
+				std::string_view (reinterpret_cast<const char *> (peerID.data ()), peerID.size ())));
 		params.emplace ("ip", GetLocalDestination ()->GetIdentity ()->ToBase64 () + ".i2p");
 		params.emplace ("port", std::to_string (TORRENT_PORT)); // 6881
 		params.emplace ("compact", "1");
@@ -2100,6 +2343,9 @@ namespace torrents
 		params.emplace ("downloaded", std::to_string (torrent->GetLength () - torrent->GetLeft ()));
 		params.emplace (
 			"left", torrent->GetLength () ? std::to_string (torrent->GetLeft ()) : "1"); // phony 1 for magnet
+		// Echo the opaque tracker id a previous response supplied (BEP 3).
+		auto trackerIDValue = torrent->GetTrackerID (trackerID);
+		if (!trackerIDValue.empty ()) params.emplace ("trackerid", PercentEncodeQueryValue (trackerIDValue));
 		int numWant = 0;
 		if (!torrent->IsComplete () && (event == eTrackerAnnounceEventNone || event == eTrackerAnnounceEventStarted))
 			numWant = TRACKER_MAX_NUM_WANT;
@@ -2134,24 +2380,34 @@ namespace torrents
 	{
 		if (!ecode)
 		{
-			// receive
+			// Receive. A parser (rather than a bare response) enforces a body
+			// limit, so a hostile tracker cannot make the client buffer an
+			// unbounded document before it is parsed.
 			auto buf = std::make_shared<boost::beast::flat_buffer> ();
-			auto res = std::make_shared<boost::beast::http::response<boost::beast::http::string_body>> ();
-			boost::beast::http::async_read (*httpStream, *buf, *res,
-				[this, httpStream, torrent, buf, res, trackerID] (
+			auto parser = std::make_shared<boost::beast::http::response_parser<boost::beast::http::string_body>> ();
+			parser->body_limit (MAX_TRACKER_RESPONSE_BODY);
+			boost::beast::http::async_read (*httpStream, *buf, *parser,
+				[this, httpStream, torrent, buf, parser, trackerID] (
 					const boost::beast::error_code & ecode, size_t bytes_transferred)
 				{
 					httpStream->GetStream ()->AsyncClose ();
-					if (!ecode && !torrent->IsStopped () && IsTorrentTracker (trackerID, *torrent))
+					if (ecode)
 					{
-						if (res->result () == boost::beast::http::status::ok)
+						LogPrint (eLogWarning, "TorrentsTunnel: Tracker ", trackerID,
+							" response rejected: ", ecode.message ());
+						return;
+					}
+					if (!torrent->IsStopped () && IsTorrentTracker (trackerID, *torrent))
+					{
+						const auto & res = parser->get ();
+						if (res.result () == boost::beast::http::status::ok)
 						{
-							torrent->ParseTrackerResponse (trackerID, res->body ());
+							torrent->ParseTrackerResponse (trackerID, res.body ());
 							ConnectToPeers (torrent, trackerID);
 						}
 						else
 							LogPrint (eLogWarning, "TorrentsTunnel: Tracker ", trackerID, " response code ",
-								res->result_int ());
+								res.result_int ());
 					}
 				});
 		}
@@ -2163,15 +2419,23 @@ namespace torrents
 		if (!torrent || torrent->IsStopped () || torrent->IsConnectedToPeer (peer)
 			|| (torrent->IsPrivate () && origin != ePeerConnectionOriginTracker))
 			return;
+		if (!CanDial (*torrent))
+		{
+			LogPrint (eLogDebug, "TorrentsTunnel: Peer dial limit reached; deferring connection");
+			return;
+		}
 		LogPrint (eLogDebug, "TorrentsTunnel: Connecting to peer ", peer.ToBase32 () + ".b32.i2p");
 		if (peer == GetLocalDestination ()->GetIdentHash ())
 		{
 			LogPrint (eLogInfo, "TorrentsTunnel: Can't connect to self");
 			return;
 		}
+		const uint64_t dial = m_NextDialID++;
+		m_PendingDials.emplace (dial, PendingDial { torrent, i2p::util::GetMonotonicSeconds () });
 		CreateStream (
-			[this, torrent, peer, origin] (std::shared_ptr<i2p::stream::Stream> stream)
+			[this, torrent, peer, origin, dial] (std::shared_ptr<i2p::stream::Stream> stream)
 			{
+				FinishDial (dial);
 				if (stream && !torrent->IsStopped ()
 					&& (!torrent->IsPrivate () || origin == ePeerConnectionOriginTracker))
 				{
@@ -2376,7 +2640,14 @@ namespace torrents
 		if (ecode != boost::asio::error::operation_aborted)
 		{
 			auto ts = i2p::util::GetMonotonicSeconds ();
+			ExpireDials (ts);
 			for (auto torrent : GetTorrents ())
+			{
+				// Safety net: a verification pass that was never started (or
+				// was interrupted by an add/remove cycle) must not stall
+				// promotion forever. ScheduleLocalVerification() is a no-op
+				// while a pass is already chained.
+				if (!m_Stopping && torrent->IsLocalVerificationRequested ()) ScheduleLocalVerification (torrent);
 				if (ts > torrent->GetNextUpdateStatusTime ())
 				{
 					if (!torrent->IsStopped () && (torrent->IsActive () || !torrent->IsComplete ()))
@@ -2402,6 +2673,7 @@ namespace torrents
 					torrent->SetNextUpdateStatusTime (ts + TORRENTS_STATUS_UPDATE_INTERVAL
 						+ GetLocalDestination ()->GetRng () () % TORRENTS_STATUS_UPDATE_INTERVAL_VARIANCE);
 				}
+			}
 			ScheduleStatusUpdate ();
 		}
 	}
@@ -2548,7 +2820,7 @@ namespace torrents
 				uint32_t transactionID = localDestination->GetRng () ();
 				htobe32buf (announce + 12, transactionID); // transaction_id
 				memcpy (announce + 16, torrent->GetInfoHash ().data (), 20); // info_hash
-				memcpy (announce + 36, m_PeerID.data (), 20); // peer_id
+				memcpy (announce + 36, torrent->GetPeerID ().data (), 20); // per-torrent peer_id
 				auto left = torrent->GetLeft ();
 				htobe64buf (announce + 56, torrent->GetLength () - left); // downloaded
 				htobe64buf (announce + 64, torrent->GetLength () ? left : 1); // left, phony 1 for magnet

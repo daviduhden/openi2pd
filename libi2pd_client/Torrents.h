@@ -27,11 +27,14 @@
 #include <array>
 #include <atomic>
 #include <list>
+#include <map>
 #include <string>
 #include <string_view>
 #include <random>
 #include <tuple>
 #include <optional>
+#include <unordered_map>
+#include <unordered_set>
 #include <filesystem>
 #include <fstream>
 #include <mutex>
@@ -95,6 +98,27 @@ namespace torrents
 	constexpr int DHT_TORRENT_UPDATE_INTERVAL_VARIANCE = 130; // in seconds
 	constexpr int DHT_TORRENT_INITIAL_UPDATE_INTERVAL = 100; // in seconds
 	constexpr int DHT_TORRENT_INITIAL_UPDATE_INTERVAL_VARIANCE = 40; // in seconds
+	// Peer/connection limits. They bound outbound dialing and inbound accepts
+	// per torrent and for the whole tunnel, so neither tracker responses, PEX,
+	// DHT answers nor incoming streams can create an unbounded set of
+	// connections. Rotation evicts only idle established peers.
+	constexpr size_t MAX_PEERS_PER_TORRENT = 40;
+	constexpr size_t MAX_TOTAL_PEERS = 200;
+	// Concurrent outbound dials whose stream is still being established.
+	constexpr size_t MAX_DIALS_PER_TORRENT = 5;
+	constexpr size_t MAX_TOTAL_DIALS = 32;
+	constexpr uint64_t PEER_DIAL_TIMEOUT = 60; // in seconds
+	// One tracker response may only contribute this many candidates.
+	constexpr size_t MAX_PEERS_PER_TRACKER_RESPONSE = 200;
+	// Reject oversized tracker bodies before bencode parsing; a response
+	// cannot need megabytes to describe a bounded peer set.
+	constexpr size_t MAX_TRACKER_RESPONSE_BODY = 512 * 1024;
+	constexpr size_t MAX_TRACKER_ID_LENGTH = 64;
+	// I2P PEX keeps its 32-byte destination format: bound the number of
+	// destinations per message and the per-connection announcement memory.
+	constexpr size_t MAX_PEX_PEERS_PER_MESSAGE = 50;
+	constexpr size_t MAX_PEX_TRACKED_PEERS = 200;
+	constexpr int PEER_PEX_SEND_INTERVAL = 120; // in seconds
 	constexpr size_t PEER_CONNECTION_RECEIVE_BUFFER_SIZE = 65535;
 	// A peer-wire message is prefixed by a 4-byte big-endian length. The whole
 	// frame (prefix included) must fit in the receive buffer, otherwise a
@@ -323,6 +347,14 @@ namespace torrents
 		void Complete (bool pendingVerification = false);
 		bool VerifyHash (); // marks the piece verified when the digest matches
 		bool IsVerified () const;
+		// Local data re-verification. A resume bitfield or a pre-existing final
+		// file only claims which bytes should be on disk; this state marks a
+		// complete piece whose bytes have not been hashed in this session.
+		// It is owned by the tunnel's bounded verification pass and is not the
+		// same as a pending write (m_IsSaving).
+		void MarkPendingVerification ();
+		bool IsVerificationPending () const;
+		void FinishLocalVerification ();
 		void SetIsSaving (bool saving);
 		bool IsSaving () const;
 		void SetIsSending (bool isSending);
@@ -371,6 +403,7 @@ namespace torrents
 		std::unique_ptr<std::vector<BlockStatus>> m_Blocks;
 		bool m_IsSending, m_IsLoading, m_IsRequested, m_IsVerified;
 		bool m_IsSaving = false;
+		bool m_IsVerificationPending = false;
 		uint64_t m_LastActivityTimestamp; // monotonic seconds
 		size_t m_NumPeers; // where this piece is available
 	};
@@ -402,11 +435,14 @@ namespace torrents
 	class Torrent final
 	{
 		using TrackerStats
-			= std::tuple<std::unordered_set<i2p::data::IdentHash>, int, uint64_t, int, int, uint64_t, std::string>;
+			= std::tuple<std::unordered_set<i2p::data::IdentHash>, int, uint64_t, int, int, uint64_t, std::string, int>;
 		// (peers, interval, next tracker request time in monotonic milliseconds,
-		//  seeders, leechers, last update time in seconds since epoch, error)
+		//  seeders, leechers, last update time in seconds since epoch, error,
+		//  minimum interval announced by the tracker in milliseconds)
 	public:
 		using InfoHash = std::array<uint8_t, SHA_DIGEST_LENGTH>;
+		// Per-torrent random peer id. Never derived from the tunnel identity.
+		using PeerID = std::array<uint8_t, 20>;
 		using TrackerTiers = std::vector<std::vector<std::string>>;
 		// Pure metadata builder for the storage/hash worker. Piece hashes cover
 		// concatenated files in the supplied order, including file boundaries.
@@ -445,6 +481,17 @@ namespace torrents
 		void SetCommentsEnabled (bool enabled);
 		int GetAnnounceTrackerID () const { return m_AnnounceTrackerID; }
 		void SetAnnounceTrackerID (int trackerID) { m_AnnounceTrackerID = trackerID; }
+		// Per-torrent random 20-byte peer id used in handshakes and announces.
+		const PeerID & GetPeerID () const { return m_PeerID; }
+		// Opaque tracker id (BEP 3 "tracker id") echoed on later announces.
+		std::string GetTrackerID (size_t trackerID) const;
+		void SetTrackerID (size_t trackerID, std::string_view id);
+		int GetMinInterval (size_t trackerID) const
+		{
+			return (trackerID < m_TrackerStats.size ()) ? std::get<7> (m_TrackerStats[trackerID])
+														: MIN_TRACKER_REQUESTS_INTERVAL;
+		}
+		void SetMinInterval (size_t trackerID, int interval);
 		std::string_view GetName () const { return m_Name; }
 		void SetName (std::string_view name) { m_Name = AdjustName (name); }
 		bool IsValid () const { return !m_Name.empty () && m_PieceLength && (m_Length || !m_Files.empty ()); }
@@ -519,6 +566,34 @@ namespace torrents
 		std::list<std::shared_ptr<PeerConnection>> GetConnections ();
 		bool IsConnectedToPeer (const i2p::data::IdentHash & peer);
 
+		// Service-thread connection accounting. Outbound dials in progress are
+		// accounted for by the tunnel, which also enforces the global limit.
+		bool HasConnectionRoom () const { return m_Connections.size () < MAX_PEERS_PER_TORRENT; }
+		// Closes one established, idle peer to make room for a new one. Peers
+		// that transfer data or are interested in either direction are never
+		// rotated; eviction uses the posted Close() path so handler lifetime
+		// stays owned by the service thread.
+		bool EvictIdleConnection ();
+
+		// Bounded local data verification. markAllPieces claims every piece
+		// (used when final-named data already exists); otherwise only pieces
+		// that are already complete and unverified become pending. The pass is
+		// driven one piece at a time by the tunnel's storage service.
+		void RequestLocalVerification (bool markAllPieces);
+		bool IsLocalVerificationRequested () const
+		{
+			return m_LocalVerificationRequested.load (std::memory_order_acquire);
+		}
+		// True only for the caller that starts the single verification chain.
+		bool BeginLocalVerification ();
+		void EndLocalVerification () { m_LocalVerificationActive.store (false, std::memory_order_release); }
+		// Service thread: next complete piece that still needs hashing, or -1.
+		// Clears the request flag when the whole set has been walked.
+		int GetNextPieceToVerify ();
+		// Service thread: clears the pending flag; a mismatch has already been
+		// invalidated by the caller.
+		void FinishPieceVerification (size_t index);
+
 		uint64_t GetNextTrackerRequestTime (size_t trackerID) const;
 		void SetNextTrackerRequestTime (size_t trackerID, uint64_t ts);
 		size_t GetUploaded () const { return m_Uploaded; }
@@ -564,6 +639,7 @@ namespace torrents
 
 	private:
 		Torrent ();
+		void InitPeerID ();
 		size_t ParsePieces (std::string_view buf);
 		size_t ParsePeers (size_t trackerID, std::string_view buf);
 		size_t ParseFiles (std::string_view buf);
@@ -575,6 +651,7 @@ namespace torrents
 	private:
 		ResumePersistence m_ResumePersistence;
 		std::string m_Name, m_Announce;
+		PeerID m_PeerID { };
 		TrackerTiers m_TrackerTiers;
 		bool m_HasExplicitTrackers = false;
 		bool m_IsPrivate = false;
@@ -589,6 +666,7 @@ namespace torrents
 		std::vector<TrackerStats> m_TrackerStats;
 		std::unordered_map<i2p::data::IdentHash, std::weak_ptr<PeerConnection>>
 			m_Connections; // remote ident hash -> connection
+		std::map<size_t, std::string> m_TrackerIDs; // bounded opaque tracker ids
 		std::atomic<bool> m_IsComplete;
 		bool m_IsStopped, m_IsSingleFile;
 		std::list<std::shared_ptr<TorrentFile>> m_Files;
@@ -596,6 +674,11 @@ namespace torrents
 		uint64_t m_NextUpdateStatusTime, m_NextReconnectTime, m_NextDHTUpdateTime,
 			m_LastDHTAnnounceTime; // in monotonic seconds
 		TorrentError m_Error;
+		// Local verification state is only mutated on the tunnel service
+		// thread. The atomics make the status-timer safety net cheap.
+		size_t m_VerifyCursor = 0;
+		std::atomic<bool> m_LocalVerificationRequested { false };
+		std::atomic<bool> m_LocalVerificationActive { false };
 	};
 
 	enum PeerConnectionOrigin
@@ -632,6 +715,10 @@ namespace torrents
 		std::shared_ptr<i2p::stream::Stream> GetStream () const { return m_Stream; }
 		std::shared_ptr<Torrent> GetTorrent () const { return m_Torrent; }
 		int GetLastRequestedPieceIndex () const { return m_LastRequestedPieceIndex; }
+		bool IsEstablishedAndIdle () const
+		{
+			return m_IsEstablished && !IsDownloading () && !IsUploading () && !m_IsInterested && !m_IsRemoteInterested;
+		}
 		int ResetSuggestedPieceIndex ()
 		{
 			auto index = m_SuggestedPieceIndex;
@@ -738,6 +825,9 @@ namespace torrents
 		// BEP6
 		bool m_IsFast;
 		int m_SuggestedPieceIndex;
+		// BEP11: bounded incremental announcement bookkeeping.
+		std::unordered_set<i2p::data::IdentHash> m_SentPEXPeers;
+		uint64_t m_LastPEXTime = 0; // monotonic seconds
 		// stats
 		uint64_t m_DownloadRate, m_UploadRate; // B/sec
 		uint64_t m_LastBlockDownloadTimestamp, m_LastBlockUploadTimestamp; // monotonic milliseconds
