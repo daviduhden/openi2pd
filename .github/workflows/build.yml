@@ -56,7 +56,7 @@ jobs:
       - name: Run I2PSnark compatibility regressions
         run: |
           ctest --test-dir build-output --output-on-failure --timeout 120 \
-            -R '^test-torrents-(magnet|engine-interop|dht-interop|comments|creator|state|priorities)$' --no-tests=error
+            -R '^test-(torrents-(magnet|engine-interop|dht-interop|comments|creator|state|priorities)|torrent-payload-storage)$' --no-tests=error
       - name: Verify CTest subsystem labels
         run: |
           for label in i2p security memory ipc tui torrent tools perl interop platform android ci static smoke; do
@@ -150,7 +150,7 @@ jobs:
           ./gradlew :i2pd:testDebugUnitTest :i2pd:lintDebug --no-daemon \
             -Pi2pd.ndkVersion="$NDK_VERSION" \
             -Pandroid.injected.build.abi=arm64-v8a \
-            -Pi2pd.cmakeArgs="-DCMAKE_PREFIX_PATH=$GITHUB_WORKSPACE/build-android/vcpkg_installed/arm64-android -DBOOST_ROOT=$GITHUB_WORKSPACE/build-android/vcpkg_installed/arm64-android -DBOOST_INCLUDEDIR=$GITHUB_WORKSPACE/build-android/vcpkg_installed/arm64-android/include -DBOOST_LIBRARYDIR=$GITHUB_WORKSPACE/build-android/vcpkg_installed/arm64-android/lib -DBoost_INCLUDE_DIR=$GITHUB_WORKSPACE/build-android/vcpkg_installed/arm64-android/include -DBoost_NO_BOOST_CMAKE=ON -DBoost_NO_SYSTEM_PATHS=ON"
+            -Pi2pd.cmakeArgs="-DCMAKE_PREFIX_PATH=$GITHUB_WORKSPACE/build-android/vcpkg_installed/arm64-android -DBOOST_ROOT=$GITHUB_WORKSPACE/build-android/vcpkg_installed/arm64-android -DBOOST_INCLUDEDIR=$GITHUB_WORKSPACE/build-android/vcpkg_installed/arm64-android/include -DBOOST_LIBRARYDIR=$GITHUB_WORKSPACE/build-android/vcpkg_installed/arm64-android/lib -DBoost_INCLUDE_DIR=$GITHUB_WORKSPACE/build-android/vcpkg_installed/arm64-android/include -DBoost_NO_BOOST_CMAKE=ON -DBoost_NO_SYSTEM_PATHS=ON -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=BOTH -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=BOTH -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH -DBoost_LIBRARY_DIR_RELEASE=$GITHUB_WORKSPACE/build-android/vcpkg_installed/arm64-android/lib -DBoost_LIBRARY_DIR_DEBUG=$GITHUB_WORKSPACE/build-android/vcpkg_installed/arm64-android/lib"
       - name: Show Android lint report on failure
         if: failure()
         run: |
@@ -159,10 +159,10 @@ jobs:
       - name: Build debug APK for arm64
         run: |
           cd android
-          ./gradlew :i2pd:assembleDebug --no-daemon \
+          ./gradlew :i2pd:assembleDebug :i2pd:assembleDebugAndroidTest --no-daemon \
             -Pi2pd.ndkVersion="$NDK_VERSION" \
             -Pandroid.injected.build.abi=arm64-v8a \
-            -Pi2pd.cmakeArgs="-DCMAKE_PREFIX_PATH=$GITHUB_WORKSPACE/build-android/vcpkg_installed/arm64-android -DBOOST_ROOT=$GITHUB_WORKSPACE/build-android/vcpkg_installed/arm64-android -DBOOST_INCLUDEDIR=$GITHUB_WORKSPACE/build-android/vcpkg_installed/arm64-android/include -DBOOST_LIBRARYDIR=$GITHUB_WORKSPACE/build-android/vcpkg_installed/arm64-android/lib -DBoost_INCLUDE_DIR=$GITHUB_WORKSPACE/build-android/vcpkg_installed/arm64-android/include -DBoost_NO_BOOST_CMAKE=ON -DBoost_NO_SYSTEM_PATHS=ON"
+            -Pi2pd.cmakeArgs="-DCMAKE_PREFIX_PATH=$GITHUB_WORKSPACE/build-android/vcpkg_installed/arm64-android -DBOOST_ROOT=$GITHUB_WORKSPACE/build-android/vcpkg_installed/arm64-android -DBOOST_INCLUDEDIR=$GITHUB_WORKSPACE/build-android/vcpkg_installed/arm64-android/include -DBOOST_LIBRARYDIR=$GITHUB_WORKSPACE/build-android/vcpkg_installed/arm64-android/lib -DBoost_INCLUDE_DIR=$GITHUB_WORKSPACE/build-android/vcpkg_installed/arm64-android/include -DBoost_NO_BOOST_CMAKE=ON -DBoost_NO_SYSTEM_PATHS=ON -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=BOTH -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=BOTH -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH -DBoost_LIBRARY_DIR_RELEASE=$GITHUB_WORKSPACE/build-android/vcpkg_installed/arm64-android/lib -DBoost_LIBRARY_DIR_DEBUG=$GITHUB_WORKSPACE/build-android/vcpkg_installed/arm64-android/lib"
 
   interop:
     runs-on: ubuntu-24.04

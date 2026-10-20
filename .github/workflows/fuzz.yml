@@ -58,7 +58,8 @@ jobs:
             "build-fuzz/tests/$fuzzer" \
               -max_total_time=30 \
               -timeout=10 \
-              -rss_limit_mb=4096 \
+              -rss_limit_mb=6144 \
+              -malloc_limit_mb=6144 \
               -print_final_stats=1 \
               -artifact_prefix="$RUNNER_TEMP/fuzz-artifacts/" \
               "$corpus"
