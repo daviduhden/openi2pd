@@ -298,7 +298,9 @@ namespace config
 			"Enable or disable elgamal precomputation table");
 
 		options_description reseed ("Reseed options");
-		reseed.add_options () ("reseed.verify", value<bool> ()->default_value (false), "Verify .su3 signature") (
+		// Java SU3File always verifies signatures. Keep the compiled default
+		// fail-closed so an absent option never disables verification.
+		reseed.add_options () ("reseed.verify", value<bool> ()->default_value (true), "Verify .su3 signature") (
 			"reseed.threshold", value<uint16_t> ()->default_value (25),
 			"Minimum number of known routers before requesting reseed") (
 			"reseed.floodfill", value<std::string> ()->default_value (""), "Ignored. Always empty") ("reseed.file",

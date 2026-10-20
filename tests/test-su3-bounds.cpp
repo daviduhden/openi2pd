@@ -15,6 +15,7 @@
 #include <string>
 #include <vector>
 
+#include "Config.h"
 #include "Reseed.h"
 
 namespace
@@ -137,6 +138,25 @@ int main ()
 
 	i2p::data::Reseeder reseeder;
 	for (const auto & path : cases) assert (reseeder.ProcessSU3File (path.c_str ()) == 0);
+
+	// Java SU3File always verifies. The compiled default must be fail-closed
+	// when the configuration does not mention reseed.verify at all.
+	{
+		i2p::config::Init ();
+		const auto configPath = directory / "empty.conf";
+		{
+			std::ofstream file (configPath, std::ios::trunc);
+			assert (file);
+			file << "# reseed.verify intentionally omitted\n";
+			file.close ();
+			assert (file);
+		}
+		i2p::config::ParseConfig (configPath.string ());
+		i2p::config::Finalize ();
+		bool verify = false;
+		assert (i2p::config::GetOption ("reseed.verify", verify));
+		assert (verify);
+	}
 
 	std::filesystem::remove_all (directory, error);
 	return 0;

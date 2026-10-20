@@ -411,14 +411,9 @@ namespace data
 		size_t signedLen = bufferLen - signatureLen;
 		if (verifySignature)
 		{
-			// reject RSA signatures
-			if (m_RouterIdentity->IsRSA ())
-			{
-				LogPrint (eLogError, "RouterInfo: RSA signature type is not allowed");
-				m_IsUnreachable.store (true);
-				return;
-			}
-			// verify signature
+			// RSA types 4/5/6 are legacy but Java can still publish them.
+			// IdentityEx::Verify now selects the raw PKCS#1 v1.5 verifier;
+			// unsupported/zero key material remains fail-closed there.
 			if (!m_RouterIdentity->Verify (
 					(uint8_t *)m_Buffer->data (), signedLen, (uint8_t *)m_Buffer->data () + signedLen))
 			{

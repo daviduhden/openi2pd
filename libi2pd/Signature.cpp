@@ -5,8 +5,9 @@
  * openi2pd: Signature.
  *
  * Implements the I2P signature suites, including ECDSA DER-to-fixed signature
- * conversion, Ed25519/Ed25519ph and RedDSA handling, and GOST R 34.10 variants,
- * with OpenSSL 3 and LibreSSL code paths and scoped EVP resource ownership.
+ * conversion, raw RSA PKCS#1 v1.5 verification, Ed25519/Ed25519ph and RedDSA
+ * handling, and GOST R 34.10 variants, with OpenSSL 3 and LibreSSL code paths
+ * and scoped EVP resource ownership.
  *
  */
 
@@ -477,6 +478,102 @@ namespace crypto
 	}
 
 #endif
+
+	RSAVerifier::RSAVerifier (size_t keyLen, const EVP_MD * hash)
+		: m_KeyLen (keyLen)
+		, m_Hash (hash)
+		, m_PublicKey (nullptr)
+	{
+	}
+
+	RSAVerifier::~RSAVerifier () = default;
+
+	void RSAVerifier::SetPublicKey (const uint8_t * signingKey)
+	{
+		m_PublicKey.reset ();
+		if (!signingKey || !m_KeyLen || !m_Hash) return;
+		BIGNUM * n = BN_bin2bn (signingKey, m_KeyLen, nullptr);
+		if (!n || BN_is_zero (n) || !BN_is_odd (n))
+		{
+			BN_free (n);
+			LogPrint (eLogError, "RSA public modulus is invalid");
+			return;
+		}
+		BIGNUM * e = BN_dup (GetRSAE ());
+		if (!e)
+		{
+			BN_free (n);
+			LogPrint (eLogError, "RSA can't allocate public exponent");
+			return;
+		}
+#ifndef LIBRESSL_VERSION_NUMBER // OpenSSL 3.0.2 is the minimum
+		OSSL_PARAM_BLD * paramBld = OSSL_PARAM_BLD_new ();
+		const bool built = paramBld && OSSL_PARAM_BLD_push_BN (paramBld, OSSL_PKEY_PARAM_RSA_N, n) == 1
+			&& OSSL_PARAM_BLD_push_BN (paramBld, OSSL_PKEY_PARAM_RSA_E, e) == 1;
+		OSSL_PARAM * params = built ? OSSL_PARAM_BLD_to_param (paramBld) : nullptr;
+		EVP_PKEY_CTX * ctx = params ? EVP_PKEY_CTX_new_from_name (nullptr, "RSA", nullptr) : nullptr;
+		if (ctx)
+		{
+			EVP_PKEY * pkey = nullptr;
+			if (EVP_PKEY_fromdata_init (ctx) <= 0 || EVP_PKEY_fromdata (ctx, &pkey, EVP_PKEY_PUBLIC_KEY, params) <= 0)
+			{
+				LogPrint (eLogError, "RSA can't create PKEY from params");
+				EVP_PKEY_free (pkey);
+			}
+			else
+				m_PublicKey.reset (pkey);
+			EVP_PKEY_CTX_free (ctx);
+		}
+		else
+			LogPrint (eLogError, "RSA can't create PKEY context");
+		OSSL_PARAM_free (params);
+		OSSL_PARAM_BLD_free (paramBld);
+		BN_free (n);
+		BN_free (e);
+#else
+		RSA * rsa = RSA_new ();
+		if (!rsa || RSA_set0_key (rsa, n, e, nullptr) != 1)
+		{
+			RSA_free (rsa);
+			BN_free (n);
+			BN_free (e);
+			LogPrint (eLogError, "RSA can't set public key");
+			return;
+		}
+		EVP_PKEY * pkey = EVP_PKEY_new ();
+		if (!pkey || EVP_PKEY_assign_RSA (pkey, rsa) != 1)
+		{
+			EVP_PKEY_free (pkey);
+			RSA_free (rsa);
+			LogPrint (eLogError, "RSA can't create PKEY");
+			return;
+		}
+		m_PublicKey.reset (pkey);
+#endif
+	}
+
+	bool RSAVerifier::Verify (const uint8_t * buf, size_t len, const uint8_t * signature) const
+	{
+		if (!m_PublicKey || !m_Hash || !signature || (!buf && len)) return false;
+		// Java verifies the digest of the signed data with NONEwithRSA (raw
+		// PKCS#1 v1.5), so hash exactly once and do not set a signature MD.
+		uint8_t digest[EVP_MAX_MD_SIZE];
+		unsigned int digestLength = 0;
+		if (EVP_Digest (buf, len, digest, &digestLength, m_Hash, nullptr) != 1 || !digestLength
+			|| digestLength > m_KeyLen)
+		{
+			OPENSSL_cleanse (digest, sizeof (digest));
+			return false;
+		}
+		EVP_PKEY_CTX * ctx = EVP_PKEY_CTX_new (m_PublicKey.get (), nullptr);
+		bool verified = ctx && EVP_PKEY_verify_init (ctx) > 0
+			&& EVP_PKEY_CTX_set_rsa_padding (ctx, RSA_PKCS1_PADDING) > 0
+			&& EVP_PKEY_verify (ctx, signature, m_KeyLen, digest, digestLength) == 1;
+		EVP_PKEY_CTX_free (ctx);
+		OPENSSL_cleanse (digest, sizeof (digest));
+		if (!verified) LogPrint (eLogWarning, "RSA signature verification failed");
+		return verified;
+	}
 
 	EDDSA25519Verifier::EDDSA25519Verifier ()
 		: m_Pkey (nullptr)

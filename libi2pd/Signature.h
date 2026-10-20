@@ -5,8 +5,9 @@
  * openi2pd: Signature.
  *
  * Declares the Verifier/Signer interfaces and concrete I2P signature types:
- * DSA, ECDSA P-256/P-384/P-521, Ed25519 and Ed25519ph, RedDSA and GOST R 34.10,
- * together with random-key generation helpers.
+ * DSA, ECDSA P-256/P-384/P-521, RSA PKCS#1 v1.5 verification, Ed25519 and
+ * Ed25519ph, RedDSA and GOST R 34.10, together with random-key generation
+ * helpers.
  *
  */
 
@@ -383,6 +384,30 @@ namespace crypto
 	}
 
 #endif
+
+	// RSA PKCS#1 v1.5 verification (types 4/5/6). Java hashes the signed data
+	// and verifies the resulting digest with NONEwithRSA, so this verifier
+	// hashes once and then applies the raw PKCS#1 v1.5 operation. Signing and
+	// key generation are intentionally not provided.
+	class RSAVerifier : public Verifier
+	{
+	public:
+		RSAVerifier (size_t keyLen, const EVP_MD * hash);
+		~RSAVerifier ();
+
+		void SetPublicKey (const uint8_t * signingKey) override;
+		bool Verify (const uint8_t * buf, size_t len, const uint8_t * signature) const override;
+
+		size_t GetPublicKeyLen () const override { return m_KeyLen; };
+		size_t GetSignatureLen () const override { return m_KeyLen; }; // modulus-sized raw signature
+		// I2P RSA private keys are n || d, so twice the modulus size.
+		size_t GetPrivateKeyLen () const override { return 2 * m_KeyLen; };
+
+	private:
+		const size_t m_KeyLen;
+		const EVP_MD * m_Hash;
+		EVP_PKEY_ptr m_PublicKey;
+	};
 
 	// EdDSA
 	class EDDSA25519Verifier : public Verifier

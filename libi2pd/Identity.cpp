@@ -520,11 +520,9 @@ namespace data
 		case SIGNING_KEY_TYPE_GOSTR3410_TC26_A_512_GOSTR3411_512:
 			return new i2p::crypto::GOSTR3410_512_Verifier (i2p::crypto::eGOSTR3410TC26A512);
 		case SIGNING_KEY_TYPE_REDDSA_SHA512_ED25519: return new i2p::crypto::RedDSA25519Verifier ();
-		case SIGNING_KEY_TYPE_RSA_SHA256_2048:
-		case SIGNING_KEY_TYPE_RSA_SHA384_3072:
-		case SIGNING_KEY_TYPE_RSA_SHA512_4096:
-			LogPrint (eLogError, "Identity: RSA signing key type ", (int)keyType, " is not supported");
-			break;
+		case SIGNING_KEY_TYPE_RSA_SHA256_2048: return new i2p::crypto::RSAVerifier (256, EVP_sha256 ());
+		case SIGNING_KEY_TYPE_RSA_SHA384_3072: return new i2p::crypto::RSAVerifier (384, EVP_sha384 ());
+		case SIGNING_KEY_TYPE_RSA_SHA512_4096: return new i2p::crypto::RSAVerifier (512, EVP_sha512 ());
 		default: LogPrint (eLogError, "Identity: Signing key type ", (int)keyType, " is not supported");
 		}
 		return nullptr;
@@ -543,7 +541,31 @@ namespace data
 			if (verifier)
 			{
 				auto keyLen = verifier->GetPublicKeyLen ();
-				if (keyLen <= 128) verifier->SetPublicKey (m_StandardIdentity.signingKey + 128 - keyLen);
+				const auto keyType = GetSigningKeyType ();
+				const bool isRSA
+					= keyType >= SIGNING_KEY_TYPE_RSA_SHA256_2048 && keyType <= SIGNING_KEY_TYPE_RSA_SHA512_4096;
+				if (keyLen <= 128)
+					verifier->SetPublicKey (m_StandardIdentity.signingKey + 128 - keyLen);
+				else if (isRSA)
+				{
+					// RSA public keys are the modulus: 128 bytes in the
+					// standard identity and the remainder in the key
+					// certificate, like P-521. Handle this before the PQ
+					// branch, which uses a different layout.
+					std::vector<uint8_t> signingKey (keyLen);
+					memcpy (signingKey.data (), m_StandardIdentity.signingKey, 128);
+					size_t excessLen = keyLen - 128;
+					const uint8_t * extended = GetExtendedBuffer ();
+					if (!extended || m_ExtendedLen < 4 + excessLen)
+					{
+						LogPrint (
+							eLogError, "Identity: Key certificate has no room for RSA signing key type ", (int)keyType);
+						m_Verifier = nullptr;
+						return;
+					}
+					memcpy (signingKey.data () + 128, extended + 4, excessLen);
+					verifier->SetPublicKey (signingKey.data ());
+				}
 #if OPENSSL_PQ
 				else if (keyLen > 384)
 				{
@@ -975,7 +997,8 @@ namespace data
 		case SIGNING_KEY_TYPE_RSA_SHA256_2048:
 		case SIGNING_KEY_TYPE_RSA_SHA384_3072:
 		case SIGNING_KEY_TYPE_RSA_SHA512_4096:
-			LogPrint (eLogError, "Identity: RSA signing key type ", (int)keyType, " is not supported");
+			LogPrint (eLogError, "Identity: RSA signing key type ", (int)keyType,
+				" is verification-only; no RSA signer is available");
 			break;
 		case SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519: return new i2p::crypto::EDDSA25519Signer (priv, nullptr); break;
 		case SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519ph: return new i2p::crypto::EDDSA25519phSigner (priv); break;
@@ -1134,9 +1157,11 @@ namespace data
 		case SIGNING_KEY_TYPE_RSA_SHA256_2048:
 		case SIGNING_KEY_TYPE_RSA_SHA384_3072:
 		case SIGNING_KEY_TYPE_RSA_SHA512_4096:
-			// Do not label an EdDSA key as RSA: the certificate and the key
-			// would disagree.
-			LogPrint (eLogError, "Identity: RSA signature type ", (int)type, " is not supported");
+			// RSA verification is implemented, but RSA signing/key generation
+			// is not. Do not label an EdDSA key as RSA: the certificate and
+			// the key would disagree.
+			LogPrint (eLogError, "Identity: RSA signature type ", (int)type,
+				" supports verification only; key generation is not available");
 			return fail ();
 		case SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519: return i2p::crypto::CreateEDDSA25519RandomKeys (priv, pub);
 		case SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519ph: return i2p::crypto::CreateEDDSA25519RandomKeys (priv, pub);

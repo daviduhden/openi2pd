@@ -6,9 +6,10 @@
  *
  * Implements network bootstrap from SU3-signed ZIP bundles, either local files
  * or HTTPS/Yggdrasil reseed servers with optional HTTP or SOCKS proxies and
- * redirects. SU3 headers, content and ZIP entries are length-bounded, RSA-4096
- * SHA-512 signatures are checked against loaded certificates, and accepted
- * RouterInfos are imported with duplicate and expiry filtering.
+ * redirects. SU3 headers, content and ZIP entries are length-bounded, RSA and
+ * Ed25519 SU3 signatures are checked against loaded certificates (verification
+ * defaults to enabled), and accepted RouterInfos are imported with duplicate
+ * and expiry filtering.
  *
  */
 
@@ -248,6 +249,49 @@ namespace data
 			default: return 0;
 			}
 		}
+
+		// SU3File verifies the digest of the header and content. RSA uses the
+		// raw PKCS#1 v1.5 operation over that digest (NONEwithRSA in Java), and
+		// EdDSA verifies the digest bytes directly.
+		const EVP_MD * GetSU3Digest (SigningKeyType type)
+		{
+			switch (type)
+			{
+			case SIGNING_KEY_TYPE_RSA_SHA256_2048: return EVP_sha256 ();
+			case SIGNING_KEY_TYPE_RSA_SHA384_3072: return EVP_sha384 ();
+			case SIGNING_KEY_TYPE_RSA_SHA512_4096:
+			case SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519:
+			case SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519ph:
+			case SIGNING_KEY_TYPE_REDDSA_SHA512_ED25519: return EVP_sha512 ();
+			default: return nullptr;
+			}
+		}
+
+		bool IsSU3EdDSAType (SigningKeyType type)
+		{
+			return type == SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519 || type == SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519ph
+				|| type == SIGNING_KEY_TYPE_REDDSA_SHA512_ED25519;
+		}
+
+		bool IsSU3RSAType (SigningKeyType type)
+		{
+			return type == SIGNING_KEY_TYPE_RSA_SHA256_2048 || type == SIGNING_KEY_TYPE_RSA_SHA384_3072
+				|| type == SIGNING_KEY_TYPE_RSA_SHA512_4096;
+		}
+
+		// Check the complete PKCS#1 v1.5 type-1 encoding that Java's
+		// NONEwithRSA expects, not only the digest tail: 00 01 FF..FF 00 hash.
+		bool IsValidSU3RSAEncoding (
+			const uint8_t * encoded, size_t encodedLen, const uint8_t * digest, size_t digestLen)
+		{
+			if (encodedLen < digestLen + 11) return false;
+			if (encoded[0] != 0x00 || encoded[1] != 0x01) return false;
+			const size_t separator = encodedLen - digestLen - 1;
+			for (size_t i = 2; i < separator; i++)
+				if (encoded[i] != 0xFF) return false;
+			if (encoded[separator] != 0x00) return false;
+			return memcmp (encoded + encodedLen - digestLen, digest, digestLen) == 0;
+		}
 	} // namespace
 
 	int Reseeder::ProcessSU3Stream (std::istream & s)
@@ -345,16 +389,22 @@ namespace data
 		if (!readExact (signerID.data (), signerIDLength)) return 0;
 		signerID[signerIDLength] = 0;
 
-		bool verify;
-		i2p::config::GetOption ("reseed.verify", verify);
+		// GetOption() clears the value when the option is absent. Keep the
+		// fail-closed default even if Finalize() has not populated the option
+		// (for example in tools or tests that only read a local SU3 file).
+		bool verify = true;
+		if (!i2p::config::GetOption ("reseed.verify", verify)) verify = true;
 		if (verify)
 		{
-			//try to verify signature
 			auto it = m_SigningKeys.find (signerID.data ());
 			if (it != m_SigningKeys.end ())
 			{
-				// TODO: implement all signature types
-				if (signatureType == SIGNING_KEY_TYPE_RSA_SHA512_4096 && signatureLength >= SHA512_DIGEST_LENGTH)
+				const EVP_MD * digestAlgorithm = GetSU3Digest (signatureType);
+				const bool eddsa = IsSU3EdDSAType (signatureType);
+				if (!digestAlgorithm || (!eddsa && !IsSU3RSAType (signatureType)))
+					// Fail closed for signer types this build cannot check.
+					LogPrint (eLogWarning, "Reseed: Signature type ", signatureType, " is not supported");
+				else
 				{
 					auto pos = s.tellg ();
 					if (pos < 0) return 0;
@@ -374,12 +424,38 @@ namespace data
 						return 0;
 					}
 
-					// RSA-raw
+					std::array<uint8_t, EVP_MAX_MD_SIZE> digest { };
+					unsigned int digestLength = 0;
+					if (EVP_Digest (tbs.data (), tbsLen, digest.data (), &digestLength, digestAlgorithm, nullptr) != 1
+						|| !digestLength)
 					{
-						// calculate digest
-						std::array<uint8_t, SHA512_DIGEST_LENGTH> digest { };
-						SHA512 (tbs.data (), tbsLen, digest.data ());
-						// encrypt signature
+						LogPrint (eLogError, "Reseed: Can't calculate SU3 digest");
+						return 0;
+					}
+
+					if (eddsa)
+					{
+						// The Ed25519/RedDSA public key is stored right-aligned
+						// in the certificate slot.
+						i2p::crypto::EDDSA25519Verifier verifier;
+						verifier.SetPublicKey (
+							it->second.data () + it->second.len - i2p::crypto::EDDSA25519_PUBLIC_KEY_LENGTH);
+						if (digestLength != 64 || signature.size () != i2p::crypto::EDDSA25519_SIGNATURE_LENGTH
+							|| !verifier.Verify (digest.data (), digestLength, signature.data ()))
+							LogPrint (eLogWarning, "Reseed: SU3 EdDSA signature verification failed");
+						else
+							verify = false; // verified
+					}
+					else
+					{
+						// RSA raw PKCS#1 v1.5 over the digest, right-aligned.
+						// We can't use RSA_verify because SU3 signs the digest
+						// without a DigestInfo wrapper.
+						if (signatureLength < digestLength + 11)
+						{
+							LogPrint (eLogError, "Reseed: SU3 RSA signature is too short for its digest");
+							return 0;
+						}
 						BN_CTX * bnctx = BN_CTX_new ();
 						BIGNUM *s = BN_new (), *n = BN_new ();
 						if (!bnctx || !s || !n)
@@ -390,15 +466,16 @@ namespace data
 							return 0;
 						}
 						BN_bin2bn (signature.data (), signatureLength, s);
-						BN_bin2bn (it->second, 512, n); // RSA 4096 assumed
-						BN_mod_exp (s, s, i2p::crypto::GetRSAE (), n, bnctx); // s = s^e mod n
+						BN_bin2bn (it->second.data (), it->second.len, n);
 						std::vector<uint8_t> enSigBuf (signatureLength);
-						// digest is right aligned
-						// we can't use RSA_verify due wrong padding in SU3
-						if (!i2p::crypto::bn2buf (s, enSigBuf.data (), signatureLength))
+						if (!BN_is_odd (n) || BN_mod_exp (s, s, i2p::crypto::GetRSAE (), n, bnctx) != 1)
+							// A malformed or non-RSA certificate slot must fail
+							// closed instead of dividing by zero.
+							LogPrint (eLogWarning, "Reseed: SU3 RSA key or signature is invalid");
+						else if (!i2p::crypto::bn2buf (s, enSigBuf.data (), signatureLength))
 							LogPrint (eLogWarning, "Reseed: SU3 signature does not fit the declared length");
-						else if (memcmp (enSigBuf.data () + (signatureLength - SHA512_DIGEST_LENGTH), digest.data (),
-									 SHA512_DIGEST_LENGTH))
+						else if (!IsValidSU3RSAEncoding (
+									 enSigBuf.data (), enSigBuf.size (), digest.data (), digestLength))
 							LogPrint (eLogWarning, "Reseed: SU3 signature verification failed");
 						else
 							verify = false; // verified
@@ -408,8 +485,6 @@ namespace data
 					}
 					s.seekg (pos, std::ios::beg);
 				}
-				else
-					LogPrint (eLogWarning, "Reseed: Signature type ", signatureType, " is not supported");
 			}
 			else
 				LogPrint (eLogWarning, "Reseed: Certificate for ", signerID.data (), " not loaded");
@@ -673,34 +748,64 @@ namespace data
 			if (terminator) terminator[0] = 0;
 		}
 
-		// extract RSA key (we need n only, e = 65537)
+		// Extract the signing key. RSA keeps the modulus only (e = 65537).
+		// Ed25519 certificates contribute their 32-byte public key.
 		PkeyPtr pubKey (X509_get_pubkey (cert), EVP_PKEY_free);
-#ifndef LIBRESSL_VERSION_NUMBER // OpenSSL 3.0.2 is the minimum
-		BnPtr n1 (nullptr, BN_free);
-		BIGNUM * rawN = nullptr;
-		if (pubKey) (void)EVP_PKEY_get_bn_param (pubKey.get (), OSSL_PKEY_PARAM_RSA_N, &rawN);
-		n1.reset (rawN);
-		const BIGNUM * n = n1.get ();
-#else
-		const RSA * key = pubKey ? EVP_PKEY_get0_RSA (pubKey.get ()) : nullptr;
-		const BIGNUM *e = nullptr, *d = nullptr, *n = nullptr;
-		if (key) RSA_get0_key (key, &n, &e, &d);
-#endif
-		if (n)
+		bool stored = false;
+		if (pubKey && EVP_PKEY_base_id (pubKey.get ()) == EVP_PKEY_ED25519)
 		{
-			PublicKey value;
-			if (i2p::crypto::bn2buf (n, value, sizeof (value)))
+			PublicKey value { };
+			size_t keyLength = 0;
+			if (EVP_PKEY_get_raw_public_key (pubKey.get (), nullptr, &keyLength) == 1
+				&& keyLength == i2p::crypto::EDDSA25519_PUBLIC_KEY_LENGTH
+				&& EVP_PKEY_get_raw_public_key (pubKey.get (), value () + (sizeof (value) - keyLength), &keyLength)
+					== 1)
 			{
 				if (cn)
+				{
 					m_SigningKeys[cn] = value;
+					stored = true;
+				}
 				else
 					LogPrint (eLogError, "Reseed: Can't find CN field in ", filename);
 			}
 			else
-				LogPrint (eLogError, "Reseed: RSA key is too large in ", filename);
+				LogPrint (eLogError, "Reseed: Can't extract Ed25519 key from ", filename);
 		}
 		else
-			LogPrint (eLogError, "Reseed: Can't extract RSA key from ", filename);
+		{
+#ifndef LIBRESSL_VERSION_NUMBER // OpenSSL 3.0.2 is the minimum
+			BnPtr n1 (nullptr, BN_free);
+			BIGNUM * rawN = nullptr;
+			if (pubKey) (void)EVP_PKEY_get_bn_param (pubKey.get (), OSSL_PKEY_PARAM_RSA_N, &rawN);
+			n1.reset (rawN);
+			const BIGNUM * n = n1.get ();
+#else
+			const RSA * key = pubKey ? EVP_PKEY_get0_RSA (pubKey.get ()) : nullptr;
+			const BIGNUM *e = nullptr, *d = nullptr, *n = nullptr;
+			if (key) RSA_get0_key (key, &n, &e, &d);
+#endif
+			if (n)
+			{
+				PublicKey value { };
+				if (i2p::crypto::bn2buf (n, value, sizeof (value)))
+				{
+					if (cn)
+					{
+						m_SigningKeys[cn] = value;
+						stored = true;
+					}
+					else
+						LogPrint (eLogError, "Reseed: Can't find CN field in ", filename);
+				}
+				else
+					LogPrint (eLogError, "Reseed: RSA key is too large in ", filename);
+			}
+			else
+				LogPrint (eLogError, "Reseed: Can't extract RSA key from ", filename);
+		}
+		if (!stored && cn)
+			LogPrint (eLogError, "Reseed: Certificate ", filename, " did not provide a usable signing key");
 	}
 
 	void Reseeder::LoadCertificates ()

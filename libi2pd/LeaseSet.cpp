@@ -148,6 +148,14 @@ namespace data
 			LogPrint (eLogError, "LeaseSet: Can't read identity");
 			return;
 		}
+		// Java's Kademlia facade rejects RSA destinations for LeaseSets even
+		// though it can still verify legacy RSA RouterInfos. Keep that policy
+		// explicit so a local RSA verifier does not widen LeaseSet acceptance.
+		if (m_Identity->IsRSA ())
+		{
+			LogPrint (eLogWarning, "LeaseSet: RSA destination signature type is not accepted");
+			return;
+		}
 		size_t size = m_Identity->GetFullLen ();
 		if (size + 256 > m_BufferLen)
 		{
@@ -471,6 +479,13 @@ namespace data
 		}
 		else
 			identity = GetIdentity ();
+		// Match Java's destination policy: RSA LeaseSet signatures are not
+		// accepted, while legacy RSA RouterInfo verification remains enabled.
+		if (identity && identity->IsRSA ())
+		{
+			LogPrint (eLogWarning, "LeaseSet2: RSA destination signature type is not accepted");
+			return;
+		}
 		size_t offset = identity->GetFullLen ();
 		if (offset + 8 > len) return;
 		m_PublishedTimestamp = bufbe32toh (buf + offset);

@@ -4,7 +4,7 @@
  *
  * openi2pd: test signature identity hardening.
  *
- * Checks identity and signature encodings: P-521 certificate sizes and DER bounds, Ed25519 excess-data rejection, malformed identities, RSA wire lengths and private-key round trips, all by in-process verification.
+ * Checks identity and signature encodings: P-521 certificate sizes and DER bounds, Ed25519 excess-data rejection, malformed identities, RSA wire lengths and Java-compatible raw RSA verification, and private-key round trips, all by in-process verification.
  *
  */
 
@@ -14,6 +14,10 @@
 #include <cstring>
 #include <vector>
 
+#include <openssl/opensslv.h>
+#ifndef LIBRESSL_VERSION_NUMBER
+#include <openssl/core_names.h>
+#endif
 #include "I2PEndian.h"
 #include "Identity.h"
 #include "Signature.h"
@@ -167,7 +171,8 @@ void TestRsaWireLengths ()
 	assert (identity.GetSigningPublicKeyLen () == 256);
 	assert (identity.GetSigningPrivateKeyLen () == 512);
 	assert (identity.GetSignatureLen () == 256);
-	// No RSA verifier is advertised in this build.
+	// A zero modulus is not a usable RSA key, so verification fails closed.
+	// RSA signing/key generation remains unavailable.
 	assert (!identity.Verify (TEST_MESSAGE, sizeof (TEST_MESSAGE), buffer.data ()));
 
 	uint8_t priv[512] { };
@@ -228,6 +233,109 @@ void TestEddsaFallbackMatchesCompat ()
 	assert (verifier.Verify (TEST_MESSAGE, sizeof (TEST_MESSAGE), signerSignature));
 	assert (!verifier.Verify (TEST_MESSAGE, sizeof (TEST_MESSAGE) - 1, signerSignature));
 }
+
+// Produce an RSA-2048 modulus and a Java-compatible raw PKCS#1 v1.5
+// signature: SHA-256 of the message, then the raw private operation over the
+// 32-byte digest (NONEwithRSA), with no DigestInfo wrapper.
+void CreateRsaRawTestSignature (std::array<uint8_t, 256> & modulus, std::array<uint8_t, 256> & signature)
+{
+	using namespace i2p::crypto;
+
+	BIGNUM *n = nullptr, *d = nullptr;
+#ifndef LIBRESSL_VERSION_NUMBER
+	EVP_PKEY_CTX * keygen = EVP_PKEY_CTX_new_from_name (nullptr, "RSA", nullptr);
+	assert (keygen);
+	EVP_PKEY * pkey = nullptr;
+	assert (EVP_PKEY_keygen_init (keygen) > 0);
+	assert (EVP_PKEY_CTX_set_rsa_keygen_bits (keygen, 2048) > 0);
+	assert (EVP_PKEY_keygen (keygen, &pkey) > 0);
+	EVP_PKEY_CTX_free (keygen);
+	assert (EVP_PKEY_get_bn_param (pkey, OSSL_PKEY_PARAM_RSA_N, &n) == 1);
+	assert (EVP_PKEY_get_bn_param (pkey, OSSL_PKEY_PARAM_RSA_D, &d) == 1);
+#else
+	RSA * rsa = RSA_new ();
+	assert (rsa);
+	BIGNUM * e = BN_new ();
+	assert (e && BN_set_word (e, 65537) == 1);
+	assert (RSA_generate_key_ex (rsa, 2048, e, nullptr) == 1);
+	BN_free (e);
+	const BIGNUM *rawN = nullptr, *rawD = nullptr, *rawE = nullptr;
+	RSA_get0_key (rsa, &rawN, &rawE, &rawD);
+	n = BN_dup (rawN);
+	d = BN_dup (rawD);
+	assert (n && d);
+#endif
+	assert (bn2buf (n, modulus.data (), modulus.size ()));
+
+	uint8_t digest[32];
+	SHA256 (TEST_MESSAGE, sizeof (TEST_MESSAGE), digest);
+	std::array<uint8_t, 256> encoded { };
+	encoded[0] = 0;
+	encoded[1] = 1; // PKCS#1 v1.5 block type 1
+	memset (encoded.data () + 2, 0xFF, encoded.size () - 2 - 1 - sizeof (digest));
+	encoded[encoded.size () - 1 - sizeof (digest)] = 0;
+	memcpy (encoded.data () + encoded.size () - sizeof (digest), digest, sizeof (digest));
+
+	BN_CTX * ctx = BN_CTX_new ();
+	BIGNUM * message = BN_bin2bn (encoded.data (), encoded.size (), nullptr);
+	BIGNUM * raw = BN_new ();
+	assert (ctx && message && raw);
+	assert (BN_mod_exp (raw, message, d, n, ctx) == 1);
+	assert (bn2buf (raw, signature.data (), signature.size ()));
+
+	BN_free (raw);
+	BN_free (message);
+	BN_CTX_free (ctx);
+	BN_free (n);
+	BN_free (d);
+#ifndef LIBRESSL_VERSION_NUMBER
+	EVP_PKEY_free (pkey);
+#else
+	RSA_free (rsa);
+#endif
+}
+
+void TestRsaRawSignatureVerification ()
+{
+	using namespace i2p::data;
+	using namespace i2p::crypto;
+
+	std::array<uint8_t, 256> modulus { };
+	std::array<uint8_t, 256> signature { };
+	CreateRsaRawTestSignature (modulus, signature);
+
+	// The verifier consumes Java's raw digest signature, not SHA256withRSA
+	// over the message (which would hash twice).
+	RSAVerifier verifier (modulus.size (), EVP_sha256 ());
+	assert (verifier.GetPublicKeyLen () == modulus.size ());
+	assert (verifier.GetSignatureLen () == modulus.size ());
+	verifier.SetPublicKey (modulus.data ());
+	assert (verifier.Verify (TEST_MESSAGE, sizeof (TEST_MESSAGE), signature.data ()));
+	assert (!verifier.Verify (TEST_MESSAGE, sizeof (TEST_MESSAGE) - 1, signature.data ()));
+	auto tampered = signature;
+	tampered[tampered.size () - 1] ^= 0x01;
+	assert (!verifier.Verify (TEST_MESSAGE, sizeof (TEST_MESSAGE), tampered.data ()));
+
+	// Same key in an I2P identity certificate: 128 modulus bytes in the
+	// standard identity, the remainder in the extended key certificate.
+	constexpr size_t excess = 256 - 128;
+	std::array<uint8_t, DEFAULT_IDENTITY_SIZE + 4 + excess> buffer { };
+	PutCertificate (buffer.data (), CERTIFICATE_TYPE_KEY, 4 + excess);
+	htobe16buf (buffer.data () + DEFAULT_IDENTITY_SIZE, SIGNING_KEY_TYPE_RSA_SHA256_2048);
+	htobe16buf (buffer.data () + DEFAULT_IDENTITY_SIZE + 2, CRYPTO_KEY_TYPE_ELGAMAL);
+	memcpy (buffer.data () + 256, modulus.data (), 128);
+	memcpy (buffer.data () + DEFAULT_IDENTITY_SIZE + 4, modulus.data () + 128, excess);
+
+	IdentityEx identity (buffer.data (), buffer.size ());
+	assert (identity.IsValid ());
+	assert (identity.IsRSA ());
+	assert (identity.GetSigningKeyType () == SIGNING_KEY_TYPE_RSA_SHA256_2048);
+	assert (identity.GetSigningPublicKeyLen () == 256);
+	assert (identity.GetSigningPrivateKeyLen () == 512); // n || d
+	assert (identity.GetSignatureLen () == 256);
+	assert (identity.Verify (TEST_MESSAGE, sizeof (TEST_MESSAGE), signature.data ()));
+	assert (!identity.Verify (TEST_MESSAGE, sizeof (TEST_MESSAGE), tampered.data ()));
+}
 } // namespace
 
 int main ()
@@ -239,5 +347,6 @@ int main ()
 	TestRsaWireLengths ();
 	TestPrivateKeysRoundTrip ();
 	TestEddsaFallbackMatchesCompat ();
+	TestRsaRawSignatureVerification ();
 	return 0;
 }
