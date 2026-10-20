@@ -8,4 +8,8 @@
 #
 
 include("$ENV{VCPKG_ROOT}/triplets/arm64-android.cmake")
+# Upstream's Android triplet pins API 28. The application's minSdk is 24, so
+# build every dependency against API 24; otherwise fortified libc symbols such
+# as __sendto_chk (API 26+) remain unresolved in the final JNI link.
+set(VCPKG_CMAKE_SYSTEM_VERSION 24)
 set(VCPKG_BUILD_TYPE release)

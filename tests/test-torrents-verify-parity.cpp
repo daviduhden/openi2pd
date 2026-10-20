@@ -47,6 +47,9 @@ using namespace i2p::torrents;
 class MemoryStorage final : public TorrentPayloadStorage
 {
 public:
+	explicit MemoryStorage (bool finalNames) : m_FinalNames (finalNames) {}
+	bool UsesFinalNames () const override { return m_FinalNames; }
+
 	std::map<std::string, std::vector<uint8_t>> files;
 	struct Handle
 	{
@@ -89,6 +92,9 @@ public:
 		return true;
 	}
 	bool Close (uint64_t handle, std::string &) override { return handles.erase (handle) == 1; }
+
+private:
+	bool m_FinalNames;
 };
 
 constexpr size_t PIECE_LENGTH = 16384;
@@ -114,7 +120,7 @@ Fixture MakeVerifiedTorrent (std::string_view name, bool finalNames)
 	fixture.torrent = Torrent::CreateV1 (
 		name, { { "a.bin", PIECE_LENGTH }, { "b.bin", PIECE_LENGTH } }, PIECE_LENGTH, { first, second });
 	assert (fixture.torrent && fixture.torrent->GetNumPieces () == 2);
-	fixture.backend = std::make_shared<MemoryStorage> ();
+	fixture.backend = std::make_shared<MemoryStorage> (finalNames);
 	size_t offset = 0;
 	for (const auto & file : fixture.torrent->GetFiles ())
 	{

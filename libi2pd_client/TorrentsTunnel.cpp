@@ -1993,7 +1993,7 @@ namespace torrents
 							{ return a.native ().size () > b.native ().size (); });
 						directories.erase (std::unique (directories.begin (), directories.end ()), directories.end ());
 						for (const auto & directory : directories)
-							(void)m_StorageWorker->RemoveDirectory (directory, error); // Only empty directories.
+							(void)m_StorageWorker->RemoveEmptyDirectory (directory, error); // Only empty directories.
 					}
 					return; // No direct filesystem fallback after any worker error.
 				}

@@ -30,7 +30,7 @@ int main (int argc, char ** argv)
  i2p::torrents::TorrentStorageWorker worker;
  std::string error;
  assert (worker.Start (root, error));
- std::array<uint8_t, 4> bytes {1, 2, 3, 4}, loaded {};
+ std::array<uint8_t, 4> bytes {1, 2, 3, 4};
  auto handle = worker.Register ("nested/payload.part", bytes.size (), error, true);
  assert (handle && worker.Write (handle, 0, bytes, error) && worker.Release (handle, error));
  assert (!worker.Promote ("../outside", "nested/payload", bytes.size (), error));
@@ -75,12 +75,12 @@ int main (int argc, char ** argv)
   std::filesystem::remove (root / (".openi2pd-pending-" + std::to_string (slot)));
  assert (worker.ReplaceMetadata ("test.resume", data, error));
  assert (worker.RemoveMetadata ("test.resume", error));
- assert (!worker.RemoveDirectory ("nested", error));
+ assert (!worker.RemoveEmptyDirectory ("nested", error));
  assert (!worker.Remove ("nested/payload", 99, error));
  assert (worker.Remove ("nested/payload", bytes.size (), error));
  assert (worker.Remove ("nested/payload", bytes.size (), error));
  assert (worker.Remove ("nested/payload.part", bytes.size (), error));
- assert (worker.RemoveDirectory ("nested", error));
+ assert (worker.RemoveEmptyDirectory ("nested", error));
  worker.Stop ();
  assert (!worker.RemoveMetadata ("test.torrent", error));
  return 0;

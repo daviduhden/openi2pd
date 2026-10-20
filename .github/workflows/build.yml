@@ -177,9 +177,10 @@ jobs:
           sudo apt-get install -y --no-install-recommends perl git
       - name: Clone pinned I2P Java reference
         run: |
-          git init "$RUNNER_TEMP/i2p-java"
+          git -c init.defaultBranch=main init --quiet "$RUNNER_TEMP/i2p-java"
           git -C "$RUNNER_TEMP/i2p-java" remote add origin https://github.com/i2p/i2p.i2p.git
-          git -C "$RUNNER_TEMP/i2p-java" fetch --depth 1 origin refs/tags/i2p-2.13.0
+          git -C "$RUNNER_TEMP/i2p-java" fetch --depth 1 origin \
+            refs/tags/i2p-2.13.0:refs/tags/i2p-2.13.0
           git -C "$RUNNER_TEMP/i2p-java" checkout --detach refs/tags/i2p-2.13.0
           chmod -R a-w "$RUNNER_TEMP/i2p-java"
       - name: Validate reference and interoperability fixtures

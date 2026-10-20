@@ -197,7 +197,7 @@ bool TorrentStorageWorker::Remove (const std::filesystem::path & relative, uint6
  (void)relative; (void)length; error = "isolated torrent storage unavailable"; return false;
 #endif
 }
-bool TorrentStorageWorker::RemoveDirectory (const std::filesystem::path & relative, std::string & error)
+bool TorrentStorageWorker::RemoveEmptyDirectory (const std::filesystem::path & relative, std::string & error)
 {
  std::lock_guard lock (m_Impl->mutex); error.clear ();
 #ifdef I2PD_HAS_TORRENT_STORAGE_WORKER

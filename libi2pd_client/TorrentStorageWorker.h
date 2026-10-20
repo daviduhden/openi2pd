@@ -34,7 +34,7 @@ public:
  // Administrative payload lifecycle only; no recursive deletion or overwrite.
  bool Promote (const std::filesystem::path & source, const std::filesystem::path & target, uint64_t length, std::string & error);
  bool Remove (const std::filesystem::path & relative, uint64_t length, std::string & error);
- bool RemoveDirectory (const std::filesystem::path & relative, std::string & error);
+ bool RemoveEmptyDirectory (const std::filesystem::path & relative, std::string & error);
  // Trusted startup configuration only: authorize one legacy flat DHT state filename.
  bool AuthorizeDHTMetadata (const std::filesystem::path & relative, std::string & error);
  bool ReadMetadata (const std::filesystem::path & relative, std::vector<uint8_t> & bytes, std::string & error);

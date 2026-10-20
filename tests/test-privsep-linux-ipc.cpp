@@ -499,7 +499,7 @@ void TestSendDeadlineAfterDrain ()
 	assert (first.has_value ());
 	assert (first->has_value ());
 	assert ((*first)->requestId == 0);
-	first.reset ();
+	first->reset ();
 
 	const auto started = std::chrono::steady_clock::now ();
 	const std::string resumedPayload (64, 's');

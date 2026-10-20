@@ -18,6 +18,11 @@ export DEB_LDFLAGS_MAINT_APPEND =
 %:
 	dh $@
 
+# perl is declared explicitly in debian/control; do not generate an unused
+# ${perl:Depends} substvar for the installed i2pdctl script.
+override_dh_perl:
+	@true
+
 override_dh_auto_configure:
 	cmake -S build -B build-debian -G Ninja \
 		-DCMAKE_BUILD_TYPE=RelWithDebInfo \
