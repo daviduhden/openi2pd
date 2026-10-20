@@ -140,10 +140,10 @@ Central; every POM returned HTTP 200. `:i2pd:dependencies` resolved the
 The branding pass did not change the Java 25/Gradle toolchain or add a
 dependency. It added source resources only:
 
-- adaptive launcher icon (`mipmap-anydpi-v26/ic_launcher.xml`, plus a v33
+- adaptive launcher icon (`mipmap-anydpi/ic_launcher.xml`, plus a v33
   `<monochrome>` variant), a 108dp vector foreground generated from
-  `assets/branding/symbol.svg`, legacy PNG mipmaps at mdpi/hdpi/xhdpi/xxhdpi/
-  xxxhdpi, and `values-v31/themes.xml` for the platform Android 12+ splash;
+  `assets/branding/symbol.svg`, and `values-v31/themes.xml` for the platform
+  Android 12+ splash;
 - semantic light/dark palettes in `values/colors.xml` and
   `values-night/colors.xml`, wired into the existing Material 3 theme;
 - a full-colour About mark and a single-colour notification/Quick Settings

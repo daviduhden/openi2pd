@@ -32,7 +32,7 @@ Derived distribution assets:
 | `contrib/artwork/openi2pd-256.png` | `assets/branding/symbol.svg` | 256×256 hicolor packaging icon |
 | `contrib/artwork/open-i2pd-icon.svg` | `assets/branding/symbol.svg` | Exact vector copy for packaging |
 | `Win32/openi2pd.ico` | `assets/branding/symbol.svg` | 16–256 px Windows executable/installer icon |
-| Android `mipmap-*dpi/ic_launcher.png` | `assets/branding/symbol.svg` | 48, 72, 96, 144 and 192 px legacy launcher icons |
+| Android `mipmap-anydpi/ic_launcher.xml`, `mipmap-anydpi-v33/ic_launcher.xml` | `assets/branding/symbol.svg` | Adaptive and Android 13 themed icon |
 | Android `drawable/ic_launcher_foreground.xml`, `ic_launcher_monochrome.xml` | `assets/branding/symbol.svg` | Adaptive/themed icon layers |
 | Android `drawable/ic_logo*.xml` | `assets/branding/symbol.svg` | In-app/notification marks |
 

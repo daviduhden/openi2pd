@@ -158,7 +158,7 @@ RouterService (started + bound, non-exported, same process)
 - The launcher icon is generated from the official vector master
   `assets/branding/symbol.svg`; no raster tracing or embedded bitmap is used in
   the vector layers.
-- `mipmap-anydpi-v26/ic_launcher.xml` is an adaptive icon with an opaque
+- `mipmap-anydpi/ic_launcher.xml` is an adaptive icon with an opaque
   `@color/ic_launcher_background` (`openi2pd-white`) background and a 108dp
   `drawable/ic_launcher_foreground.xml` layer. The mark is scaled into a 68dp
   box centred in the 108dp layer, inside the 66dp foreground safe zone.
@@ -265,10 +265,9 @@ RouterService (started + bound, non-exported, same process)
   `:i2pd:connectedDebugAndroidTest` (device/emulator; includes
   `RouterServiceLifecycleTest` and `MainActivityNavigationTest`) and
   `:i2pd:lintDebug`.
-- AAPT2/APK: link the adaptive icon (`mipmap-anydpi-v26`/`-v33`), legacy PNG
-  mipmap fallback assets, `<monochrome>` layer and `values-v31` splash
-  attributes; inspect the packaged resources and install the APK on API 29/30
-  and API 31+/33+ (adaptive/themed icon).
+- AAPT2/APK: link the adaptive icon (`mipmap-anydpi`/`-v33`), `<monochrome>`
+  layer and `values-v31` splash attributes; inspect the packaged resources and
+  install the APK on API 29/30 and API 31+/33+ (adaptive/themed icon).
 - Lint: run `IconLocation`, adaptive-icon, monochrome, splash-screen, NewApi
   and unused-resource checks; the palette intentionally defines tokens that
   current views do not yet consume.

@@ -34,11 +34,6 @@ for third-party licenses. The supplied logo-original.png is unchanged.
 | `android/LICENSE` | Legal/provenance text; retained verbatim with its own license terms. |
 | `android/app/src/main/assets/addressbook/addresses.csv` | Certificate or structured/exact-byte data; comment headers are not part of its format. |
 | `android/app/src/main/assets/certificates` | Symbolic link; target provenance is retained. |
-| `android/app/src/main/res/mipmap-hdpi/ic_launcher.png` | Binary asset; an inline text header would corrupt its format. |
-| `android/app/src/main/res/mipmap-mdpi/ic_launcher.png` | Binary asset; an inline text header would corrupt its format. |
-| `android/app/src/main/res/mipmap-xhdpi/ic_launcher.png` | Binary asset; an inline text header would corrupt its format. |
-| `android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png` | Binary asset; an inline text header would corrupt its format. |
-| `android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png` | Binary asset; an inline text header would corrupt its format. |
 | `android/fastlane/metadata/android/en-US/full_description.txt` | Exact-format package, store or protocol fixture data; retained without extra records. |
 | `android/fastlane/metadata/android/en-US/short_description.txt` | Exact-format package, store or protocol fixture data; retained without extra records. |
 | `android/fastlane/metadata/android/en-US/title.txt` | Exact-format package, store or protocol fixture data; retained without extra records. |

@@ -32,11 +32,8 @@ my @required = qw(
     docs/img/logo.png
     docs/img/favicon.ico
     Win32/openi2pd.ico
-    android/app/src/main/res/mipmap-mdpi/ic_launcher.png
-    android/app/src/main/res/mipmap-hdpi/ic_launcher.png
-    android/app/src/main/res/mipmap-xhdpi/ic_launcher.png
-    android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png
-    android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+    android/app/src/main/res/mipmap-anydpi/ic_launcher.xml
+    android/app/src/main/res/mipmap-anydpi-v33/ic_launcher.xml
     docs/branding/README.md
     docs/branding/colors.md
     docs/branding/logo-usage.md
@@ -98,11 +95,6 @@ for my $pair (
     ['assets/branding/logo-original.png', 1254, 1254],
     ['contrib/artwork/openi2pd-256.png', 256, 256],
     ['docs/img/logo.png', 512, 512],
-    ['android/app/src/main/res/mipmap-mdpi/ic_launcher.png', 48, 48],
-    ['android/app/src/main/res/mipmap-hdpi/ic_launcher.png', 72, 72],
-    ['android/app/src/main/res/mipmap-xhdpi/ic_launcher.png', 96, 96],
-    ['android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png', 144, 144],
-    ['android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png', 192, 192],
 ) {
     my ($rel, $w, $h) = @$pair;
     my $path = File::Spec->catfile($root, split m{/}, $rel);

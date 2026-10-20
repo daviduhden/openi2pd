@@ -48,8 +48,9 @@ provenance.
 - App-specific data directory `i2pd` → `open-i2pd`.
 - WebView console, `[http]` preferences, permission gates and broad storage
   permissions removed (previous work).
-- Official openi2pd symbol, adaptive icon, legacy mipmaps and splash resources
-  are generated from `assets/branding/`; old placeholder artwork removed.
+- Official openi2pd symbol, adaptive icon and splash resources are generated
+  from `assets/branding/`; old placeholder and pre-API-29 launcher artwork was
+  removed.
 - No signing keys or certificates were changed or generated.
 
 **Migration warning:** changing `applicationId` means Android treats this as a
