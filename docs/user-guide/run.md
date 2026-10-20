@@ -52,7 +52,9 @@ the daemon does not depend on a terminal:
 
 Keys: `1`-`9` and `0` switch views (Status, Peers, Tunnels, Torrents, NetDb,
 Logs, Help, Destinations, Config, Connections), `Tab`/arrows navigate, `t`
-toggles transit acceptance after confirmation, `l` cycles the local log
+toggles transit acceptance after confirmation, `e` reseeds the NetDb, `H`
+reloads tunnel configuration, `s`/`S` begin graceful/immediate shutdown, `c`
+cancels a graceful drain, `b`/`%` set bandwidth/share, `l` cycles the local log
 threshold, `L` cycles the daemon log level, `n` switches the NetDb directory
 and `/` filters logs or torrents. `r` refreshes and `q` quits. The socket is
 mode 0600. Use the normal signals or the service manager to reload or stop the

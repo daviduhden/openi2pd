@@ -22,9 +22,10 @@ shared.
 - `i2pd-tui` is a separate process and links neither `libi2pd` nor
   `libi2pdclient`.
 - The channel is local, versioned and bounded. Router state snapshots are
-  read-only. Administrative writes are limited to explicit, allowlisted
-  transit and daemon-log-level operations; torrent actions are explicit,
-  allowlisted commands.
+  read-only. Administrative writes are a closed typed set (transit, log level,
+  reseed, shutdown/cancel, tunnel reload, bandwidth and share) executed by a
+  fixed daemon-owned queue; torrent actions are explicit, allowlisted
+  commands.
 - A broken or malicious TUI cannot crash, block indefinitely or exhaust the
   router.
 
@@ -104,6 +105,11 @@ I2PDTUI/1 CONFIG
 I2PDTUI/1 LOGS <after-sequence> [limit]
 I2PDTUI/1 ADMIN TRANSIT ON|OFF
 I2PDTUI/1 ADMIN LOGLEVEL none|critical|error|warn|info|debug
+I2PDTUI/1 ADMIN RESEED
+I2PDTUI/1 ADMIN SHUTDOWN GRACEFUL|IMMEDIATE|CANCEL
+I2PDTUI/1 ADMIN RELOAD TUNNELS
+I2PDTUI/1 ADMIN BANDWIDTH K|L|M|N|O|P|X
+I2PDTUI/1 ADMIN SHARE 0..100
 I2PDTUI/1 PING
 I2PDTUI/1 QUIT
 ```
@@ -208,26 +214,41 @@ container snapshots and never expose private keys, addresses or raw records.
 
 ### Administrative operations
 
-Version 1 exposes exactly two router-wide writes:
+Version 1 exposes a closed set of typed router-wide writes:
 
 ```
 I2PDTUI/1 ADMIN TRANSIT ON
 I2PDTUI/1 ADMIN TRANSIT OFF
 I2PDTUI/1 ADMIN LOGLEVEL info
+I2PDTUI/1 ADMIN RESEED
+I2PDTUI/1 ADMIN SHUTDOWN GRACEFUL
+I2PDTUI/1 ADMIN SHUTDOWN IMMEDIATE
+I2PDTUI/1 ADMIN SHUTDOWN CANCEL
+I2PDTUI/1 ADMIN RELOAD TUNNELS
+I2PDTUI/1 ADMIN BANDWIDTH L
+I2PDTUI/1 ADMIN SHARE 50
 ```
+
+The fixed command queue is owned by the daemon, not the IPC thread. A request
+is validated and copied into a fixed-capacity slot (eight slots); the daemon
+thread executes it and returns a typed payload containing `admin`, `result`
+(`ok`/`accepted`/`error`), `code`, `value`, and `message`. A command that is
+still running after the bounded wait is reported as `accepted`; further
+submissions are rejected as queue-full when every slot is occupied.
 
 `ADMIN TRANSIT` updates the atomic `RouterContext` acceptance flag only. It
 does not create, tear down or modify existing tunnels. `ADMIN LOGLEVEL` updates
 the logger's atomic minimum level; valid values are `none`, `critical`,
-`error`, `warn`, `info` and `debug`. Both commands return a typed payload with
-`admin`, `result`, `message` and the resulting value. Neither command writes the
-configuration file: the change lasts for the current router process and is
-reported by the next `STATE` snapshot.
+`error`, `warn`, `info` and `debug`. `ADMIN RESEED` requests the existing
+single-flight NetDb reseed. `ADMIN SHUTDOWN` uses the daemon's graceful/immediate
+shutdown paths; immediate shutdown requires a separate typed confirmation in
+the TUI. `ADMIN RELOAD TUNNELS` reuses the client tunnel reload path. Bandwidth
+accepts only the one-letter classes `K/L/M/N/O/P/X`; share accepts `0..100`.
 
-Every other administrative action remains unavailable in version 1. In
-particular there is no configuration, reload, reseed, shutdown, arbitrary file
-or shell operation. Arguments are validated before dispatch and trailing
-tokens are rejected.
+None of these commands writes the configuration file, accepts a path, URL or
+shell string, or exposes a generic option name. Changes last for the current
+router process and are reported by the next `STATE`/`CONFIG` snapshot. Arguments
+are validated before dispatch and trailing tokens are rejected.
 
 ## Data exposed
 
@@ -266,12 +287,14 @@ need. `router.hash` is the public IdentHash.
    paths, URLs or generic option access. Torrent operations (start, stop,
    reannounce, remove, add) are explicit, allowlisted protocol commands; they
    are mediated by the torrents tunnel's service thread and never execute
-   shell commands or expose arbitrary file paths. The only router-wide writes
-   in version 1 are `ADMIN TRANSIT` (an atomic acceptance flag) and
-   `ADMIN LOGLEVEL` (an atomic logger level). Neither performs filesystem
-   access, network I/O, arbitrary configuration writes or unbounded work on
-   the IPC thread. Any future command must remain operation-specific and
-   validate its complete input.
+   shell commands or expose arbitrary file paths. Router-wide writes are the
+   closed `ADMIN` set above; each is a typed enum/range, not a generic option
+   name. The IPC thread only submits to the daemon-owned fixed queue and waits
+   boundedly; reseed, reload, shutdown, bandwidth, share, transit and logger
+   updates execute on the daemon thread. No command performs arbitrary
+   configuration writes, accepts a path/URL, or runs unbounded work on the IPC
+   thread. Any future command must remain operation-specific and validate its
+   complete input.
 5. **Terminal safety.** Log control characters are flattened in the log ring;
    the protocol also escapes newlines/backslashes. The TUI prints with
    `addnstr`, never as a format string.
@@ -292,9 +315,12 @@ code, but its ACLs and cross-user rejection are pending runtime validation.
   `1`-`9` mappings are unchanged; Connections is `0`. All ten views are
   reachable by cycling with `Tab` or the arrow keys. Narrow terminals show the
   active view in the header instead of truncated tab labels.
-- Status: `t` opens a typed confirmation and toggles transit acceptance. The
-  view includes a 60-sample bandwidth history, transport state, 1/15-second
-  rates, tunnel queues, creation success and netDb counters.
+- Status: `t` opens a typed confirmation and toggles transit acceptance;
+  `e` confirms a NetDb reseed, `H` reloads tunnels, `s`/`S` begin graceful or
+  immediate shutdown, `c` cancels a pending graceful drain, and `b`/`%` set the
+  bandwidth class/share ratio. The view includes a 60-sample bandwidth history,
+  transport state, 1/15-second rates, tunnel queues, creation success and netDb
+  counters.
 - Connections: bounded table of established transport sessions, sorted by
   session count; `t` also toggles transit acceptance.
 - NetDb: `n` switches between the bounded router and LeaseSet directories;
@@ -441,10 +467,10 @@ No live TUI session or visual comparison has been executed for this change.
 
 - Tunnel/router status fields are read through existing accessors that are not
   all atomic. TSan validation is pending; see `security-audit.md`.
-- Version 1 has only the two atomic administrative writes described above.
-  Reload, reseed, shutdown, floodfill changes and generic configuration writes
-  remain intentionally unavailable until a main-loop command queue exists.
-  Toggling transit does not modify existing tunnels.
+- Version 1 has the closed typed administrative set described above, executed
+  through a fixed daemon-owned queue. Floodfill changes, arbitrary configuration
+  writing, paths, URLs and generic command execution remain intentionally
+  unavailable. Toggling transit does not modify existing tunnels.
 - `CONFIG` is a read-only snapshot. Editing is pending: it needs (a) a named
   allowlist with per-option type/range validation, (b) a daemon main-loop
   command queue so `SetOption()`/subsystem updates never run on the IPC
@@ -459,11 +485,13 @@ No live TUI session or visual comparison has been executed for this change.
 `tests/test-tui-protocol.cpp` covers request/response parsing, version
 rejection, numeric bounds, field escaping, framing, inclusive size limits,
 payload round-tripping, the `CONFIG` request/allowlist bounds, the
-`CONNECTIONS`/`NETDB-*` limits and strict `ADMIN TRANSIT`/`ADMIN LOGLEVEL`
-validation. It also checks that `CONFIG-SET` remains an unknown command and
-that the largest `config.option.N` field name fits the wire field-name limit.
-`tests/test-tui-ipc-regression.cpp` dispatches the bounded directory views and
-an atomic daemon log-level update over the real local socket.
+`CONNECTIONS`/`NETDB-*` limits and strict `ADMIN` validation for transit,
+loglevel, reseed, shutdown, tunnel reload, bandwidth and share. It also checks
+that `CONFIG-SET` remains an unknown command and that the largest
+`config.option.N` field name fits the wire field-name limit.
+`tests/test-tui-ipc-regression.cpp` dispatches the bounded directory views,
+the typed admin queue and an atomic daemon log-level update over the real local
+socket.
 `tests/test-tui-win32-pipe.cpp` (Windows only) covers
 the named-pipe/DACL primitives, not console rendering. Both are registered with
 CTest; no live Windows TUI session or cross-user ACL test has been executed in

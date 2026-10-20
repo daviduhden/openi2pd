@@ -114,9 +114,10 @@ needed or change deferred with rationale; **Removed** = attack surface deleted.
 - **Controls:** 0600 socket, same-UID peer credentials, refusal to unlink a
   non-owned/non-socket path, bounded request/response sizes, numeric bounds,
   per-connection timeouts, one sequential client, `MSG_NOSIGNAL`, read-only
-  snapshots, two atomic administrative writes (`ADMIN TRANSIT`,
-  `ADMIN LOGLEVEL`), no secret fields, no command execution and no generic
-  configuration writer.
+  snapshots, a closed typed administrative set (`ADMIN TRANSIT`, `LOGLEVEL`,
+  `RESEED`, `SHUTDOWN`, `RELOAD TUNNELS`, `BANDWIDTH`, `SHARE`) executed through
+  a fixed daemon-owned queue, no secret fields, no command execution and no
+  generic configuration writer.
 - **Windows transport (static):** `daemon/TuiServerWin32.cpp` uses a hashed
   local named-pipe name, `FILE_FLAG_FIRST_PIPE_INSTANCE` against squatting, a
   protected DACL limited to the daemon user/SYSTEM/Administrators, and

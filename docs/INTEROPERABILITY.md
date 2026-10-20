@@ -19,12 +19,18 @@ Reference implementation audited statically in this session:
 | Commit | `9134f808337b401e8e53c73734c81fab04280c9d` |
 | Release date | 2026-07-24 (tag commit 2026-07-20) |
 | Version | 2.13.0 |
-| Local copy | A read-only clone was not present in this environment; Java sources were rechecked against the pinned GitHub tag. The reference is not bundled. |
-| Newer stable | None found on 2026-10-19; GitHub latest release and tags still resolve to 2.13.0 |
-| Harness recheck | 2026-10-19: 26 checked-in cases reviewed statically (24 static-OK expectations, 2 documented known gaps); the pinned checkout and differential runner were not executed |
+| Local copy | Read-only external clone at `/tmp/i2p-java-2.13.0`; the reference is not bundled or built. |
+| Newer stable | Rechecked 2026-10-20: 2.13.0 remains the latest stable tag; 2.14.0 was a late-October target and had not been released |
+| Harness recheck | 2026-10-20: previous 26 cases re-reviewed statically; the new parity regressions are prepared; the pinned checkout and differential runner were not executed |
 
 The Java tree is **not** vendored and is not a build/runtime dependency of
 openi2pd. No Java code was modified.
+
+Functional and administrative coverage (TUI, Android, services, torrents and
+resource limits) is tracked separately in
+[`FEATURE-PARITY.md`](FEATURE-PARITY.md). This document remains the
+wire-level/interoperability evidence matrix; neither document claims dynamic
+validation without a manual CI or device run.
 
 Normative specifications: <https://i2p.net/en/docs/specs>.
 
@@ -58,10 +64,10 @@ Status vocabulary:
 | Garlic / tunnel messages | `spec/tunnel-message`, garlic | `router/.../router/...` message handling, garlic | `Garlic.cpp`, `TransitTunnel.cpp` | Layered messages, delivery instructions | Equivalent | None found | Compatible (static) | P1 | None | Needs live tunnel traffic |
 | ECIES-X25519-AEAD-Ratchet | `spec/ecies` | `core/.../crypto/ecies/...`, ratchet session classes | `ECIESX25519AEADRatchetSession.*` | IK/ratchet, tags, AEAD, nonces | Same external format; NS requires a Garlic clove and valid DateTime; NSR/ES payloads are pre-validated before side effects | NSR/ES partial application and replay-cache lifetime fixed statically | Implemented (static); tests registered but not executed | P0 | `test-eciesx25519-ratchet-session`, `test-eciesx25519-ratchet-tagsets`; no Java vector | Needs CI/cross-vectors |
 | Signatures | `spec/common-structures` | `SigType.java` types 0–8, 11 | `Identity.h`, `Signature.*` | DSA/ECDSA/RSA/Ed25519/Ed25519ph/RedDSA | Same constants plus GOST 9/10; type 8 now uses Java-compatible plain Ed25519 over the supplied bytes | GOST is not in Java stable list; optional | No interoperability impact for common types | P2 | Type-8 vectors still needed | Existing vectors/static review |
-| ML-KEM encryption types | proposal 169 / `spec/ecies` | `EncType.java` codes 5–7 | `PostQuantum.*`, `Crypto.h` | MLKEM512/768/1024 hybrid | Same codes when the provider exposes ML-KEM; LibreSSL 4 excludes ML-KEM-512; no-PQ builds no longer select/publish hybrid addresses | Runtime provider probing and type-5/7 session vectors remain missing | PQ sessions only when both support | P1 | Capability checks retained; publication/selection gated | Needs PQ interop |
+| ML-KEM encryption types | proposal 169 / `spec/ecies` | `EncType.java` codes 5–7 | `PostQuantum.*`, `Crypto.h` | MLKEM512/768/1024 hybrid | Same codes when the provider exposes ML-KEM; capability is now probed at runtime and cached, LibreSSL 4 excludes ML-KEM-512, and unsupported key creation fails closed | Provider probe implemented statically; type-5/7 session and Java provider vectors remain missing | PQ sessions only when both support | P1 | Capability checks retained; publication/selection gated | Needs PQ interop |
 | Streaming | `spec/streaming` | `router/.../client/streaming/*.java` | `Streaming.*` | SYN/SYN-ACK, windows, resets, close | Equivalent | None found | Compatible (static) | P1 | None | Needs dynamic stream test |
 | Datagrams v1/2/3 | `spec/datagrams` | `core/.../client/Datagram*.java` | `Datagram.*` | Repliable/raw, ports, auth | Same | None found | Compatible (static) | P1 | Existing code | Needs client interop |
-| SAM | `spec/samv3` | `apps/sam/java/src/net/i2p/sam/*` | `libi2pd_client/SAM.cpp` | Session/handshake/naming/streams | Same commands | None found | Compatible (static) | P1 | `test-sam-version.sh` not run | Pending |
+| SAM | `spec/samv3` | `apps/sam/java/src/net/i2p/sam/*` | `libi2pd_client/SAM.cpp` | Session/handshake/naming/streams, pipelined commands and one-word controls | Same commands plus persistent bounded framing, quoted parameter values, case-insensitive keys and repeated-space command words; LISTEN_PROTOCOL routing remains partial | New framing/control fixes are statically implemented; live SAM client and split-frame tests remain | Interoperability improvement for pipelined clients | P1 | `test-sam-control-framing`; `test-sam-version.sh` not run | Pending |
 | I2CP | `spec/i2cp` | `core/.../client/I2CP*.java` | `I2CP.cpp` | Message codes, options, LeaseSet lookup | Same | None found | Compatible (static) | P1 | None | Needs dynamic client |
 | HTTP client proxy | RFC 9110/9112 | Java apps use HTTP client/proxy separately | `HTTP.cpp`, `HTTPProxy.cpp` | Not a router wire protocol | Header OWS and strict lengths fixed | Interop improvement | Compatible (unit tested) | P2 | Tests passed | Linux unit test |
 | Web console | Java router feature | Java console classes | removed | Java-only UI | Removed | Intentional; not protocol | None | — | N/A | N/A |
@@ -320,9 +326,9 @@ the earlier matrix. **No dynamic test was executed.**
 | NET-155 | SSU2 receive window | `PeerState2.receivePacket`, `SSU2Bitfield`; SSU2 Packet Numbering | Bob baselined the data phase at packet 0 while Alice's first data packet is 1, so every packet was parked out of sequence and packet 512+ was silently dropped | Fixed (static): inbound first data packet advances the contiguous baseline; packet 0 remains accepted once |
 | NET-156 | SSU2 cleanup ACKs | `SSU2Bitfield.fromACKBlock`; `PeerState2.finishMessages` | Cleanup advanced the receive baseline over unreceived packets and ACKed gaps | Fixed (static): no synthetic receipt; ACK encoder keeps NACK-only ranges and retransmission |
 | NET-157 | SSU2 Address trust | `PeerState2.gotAddress`; `UDPTransport.externalAddressReceived` | Any established peer could publish a new external IP, including NTCP2, via an Address block | Fixed (static): ordinary Address observations are ignored; only the PeerTest state updates RouterContext |
-| NET-158 | SSU2 path challenge | `PeerState2.MAX_PATH_CHALLENGE_SENDS/TIME` | A single lost challenge terminated the session at the next sweep | Residual; deadline/retransmit parity still needs implementation and dynamic loss testing |
+| NET-158 | SSU2 path challenge | `PeerState2.MAX_PATH_CHALLENGE_SENDS/TIME` | A single lost challenge terminated the session at the next sweep | Fixed (static): bounded 5/10/20 s retransmission, 30 s deadline, same-family check, authenticated PathResponse and old-endpoint retention; dynamic loss test pending |
 | NET-159 | Out-of-session MTU | `PacketBuilder2.encryptPeerTest/buildPing`; SSU2 MTU | PeerTest/HolePunch padding used the default 1420/1500 budget, not the peer/spec 1280 path | Fixed (static): out-of-session sessions clamp to `SSU2_MIN_PACKET_SIZE`; MTU capture pending |
-| NET-160 | SSU2 flood flag | `PeerState2.gotRI`; `NTCP2Payload` | RouterInfo flag `0x01` is logged but not propagated | Residual; honor the flood-request bit |
+| NET-160 | SSU2 flood flag | `PeerState2.gotRI`; `NTCP2Payload` | RouterInfo flag `0x01` is logged but not propagated | Fixed (static): only a newly accepted/replaced RouterInfo is forwarded with `CreateDatabaseStoreMsg` and NetDb floodfill selection, so a replayed old RI cannot trigger repeated flooding; amplification/DoS dynamic test pending |
 | NET-161 | NTCP2 proxy startup | `NTCPTransport` proxy configuration | An invalid/unsupported `ntcp2.proxy` left `m_NTCP2Server` null and dereferenced it | Fixed (static): server is created independently; invalid proxy disables only the proxy |
 | LS-119 | Encrypted inner flag | `EncryptedLeaseSet.setBlindedWhenPublished`; `LeaseSet2` | Decryption cleared the inner `PUBLISHED_ENCRYPTED` bit, breaking encrypted-LS refresh | Fixed (static): preserve the inner flag; outer public/expiry metadata remains authoritative |
 | LS-120 | Meta earliest date | `MetaLeaseSet.addLease`; `LeaseSet.getEarliestLeaseDate` | Meta `GetEarliestLeaseDate()` stayed zero, so LS1↔Meta replacement was inverted | Fixed (static): Meta earliest entry is recorded and used for cross-type freshness |
@@ -336,7 +342,7 @@ the earlier matrix. **No dynamic test was executed.**
 | CRY-202 | ElGamal/AES padding | `AESEngine.getPadding` | AES block padding was uninitialized heap data | Fixed (static): randomize padding before encryption |
 | CRY-203 | Router N replay | `ECIESAEADEngine.decryptNewSession_N` | Router incoming N had no duplicate-ephemeral cache | Fixed (static): bounded 600 s/256-entry cache after AEAD and payload validation |
 | CRY-204 | Ed25519ph primitive | `SigType.java:63`; `DSAEngine.altSign`; SU3 notes | Type 8 used a provider Ed25519ph/dom2 primitive while Java calls plain Ed25519 over the supplied bytes | Fixed (static): both paths use plain Ed25519; callers prehash where required; Java vector still absent |
-| CRY-205 | RSA verification | `SigType.java` 4-6; `DSAEngine` | C++ has no RSA verifier for legacy RouterInfo/LS1 | Residual; optional legacy verifier, never advertise RSA for LS2 |
+| CRY-205 | RSA verification | `SigType.java` 4-6; `DSAEngine` | C++ had no RSA verifier for legacy RouterInfo/LS1 | Fixed (static): raw PKCS#1 v1.5 digest verification and certificate layout; validated legacy RouterInfo RSA is accepted, LeaseSet RSA remains rejected like Java, signing/key generation is unavailable and LS2 never advertises RSA. Java-generated key/signature vector pending |
 | CRY-206 | Ratchet payload transactionality | `RatchetPayload.java:97-214`; `ECIESAEADEngine.java:591-919` | NSR/ES payload parser applied a valid prefix before a late framing/DateTime error | Fixed (static): `ValidateRatchetPayload` runs before cloves, ACKs, NEXT_KEY and termination |
 | CRY-207 | New Session minimum | `ECIESAEADEngine.java:619-630,735-746` | A DateTime-only NS created a session although Java requires at least one Garlic clove | Fixed (static): handshake validator requires a non-empty Garlic block |
 | CRY-208 | NS replay cache | `RatchetSKM.java:118,213` | 256-entry FIFO without age allowed eviction/replay inside the 5-minute window | Fixed (static): 4096-entry, 5-minute decaying cache |
@@ -346,8 +352,8 @@ the earlier matrix. **No dynamic test was executed.**
 | CRY-212 | Hybrid key advertisement | `spec/common-structures`; `LeaseSet2` | A non-PQ build could keep a type-5/6/7 identity key in its encryption-key map | Fixed (static): unsupported hybrid types are filtered before LS2 publication |
 | CRY-213 | RedDSA key lifetime | Zcash RedDSA key handling | RedDSA signer destructor did not wipe the private scalar | Fixed (static): `OPENSSL_cleanse` on destruction |
 | CRY-214 | Inbound session replacement age | `RatchetSKM.SESSION_REPLACE_AGE` | A pending inbound NS had `m_SessionCreatedTimestamp == 0`, so any valid NS could replace it immediately | Fixed (static): set the creation timestamp when the NS is authenticated |
-| SAM-111 | SAM parser grammar | `SAMUtils.parseParams` | Quotes/escapes, repeated spaces and bare PING/PONG are not fully parsed | Residual; tokenizer and response matrix pending |
-| I2CP-105 | BlindingInfo TYPE_KEY/secret | `ClientMessageEventListener.handleBlindingInfo`; `LookupDestJob` | TYPE_KEY is merged with TYPE_DEST, but secret-blinded/client-auth decryption is absent | Residual; no secret-blinded interoperability claim |
+| SAM-111 | SAM parser grammar | `SAMUtils.parseParams` | Quotes/escapes, repeated spaces and bare PING/PONG are not fully parsed | Fixed (static) for bare PING/PONG/HELP/QUIT, case-insensitive command/key normalization, quoted/escaped values, repeated-space command words, persistent bounded framing and pipelined commands; LISTEN_PROTOCOL routing remains residual |
+| I2CP-105 | BlindingInfo TYPE_KEY/secret | `ClientMessageEventListener.handleBlindingInfo`; `LookupDestJob` | TYPE_KEY is merged with TYPE_DEST, but secret-blinded/client-auth decryption is absent | Partial (static): routing sessions are now keyed by the parsed full identity hash, closing cross-destination reuse; secret-blinded/client-auth decryption remains residual |
 
 The stale “no newer stable” date, the DG-103 “not implemented” row and the
 NTCP2 outgoing-replay residual have been corrected above.
@@ -372,7 +378,31 @@ NTCP2 outgoing-replay residual have been corrected above.
 
 ### Known remaining incompatibilities (not claimed fixed)
 
-SAM 3.2/3.3 quoted/escaped parser, pipelined commands and `LISTEN_PROTOCOL` routing, I2CP secret-blinded/TYPE_KEY b33 auth, per-session outgoing Datagram1/2/3 selection, Datagram2 offline-signature vectors, proposal-154 derived-key reply KDFs, and GOST signature types 9/10 toward Java. The Java 2.13 tree has no usable caller for the 0x12 public-key lookup form; that path is fail-closed and marked pending. SSU2 Path Challenge retransmission, RouterInfo flood-request propagation, RelayResponse role disambiguation, RSA verification, runtime ML-KEM provider probing, type-5/type-7 NSR vectors and the 7/4 multi-key session matrix also remain residual. Some timeout/keepalive policies need dynamic evidence.
+SAM 3.2/3.3 `LISTEN_PROTOCOL` routing, I2CP secret-blinded/TYPE_KEY b33 authorization, per-session outgoing Datagram1/2/3 selection, Datagram2 offline-signature vectors, proposal-154 derived-key reply KDFs, and GOST signature types 9/10 toward Java. The Java 2.13 tree has no usable caller for the 0x12 public-key lookup form; that path is fail-closed and marked pending. RelayResponse role disambiguation, type-5/type-7 NSR vectors and the 7/4 multi-key session matrix remain residual. SSU2 Path Challenge retransmission, RouterInfo flood-request propagation, RSA verification/identity-key layout, runtime ML-KEM provider probing, SAM persistent pipelining/bare controls/quoted values and I2CP identity-hash routing keys are now implemented statically, but none has dynamic evidence. Some timeout/keepalive policies need dynamic evidence.
+
+## 2026-10-20 functional-parity continuation
+
+The full feature inventory is in [`FEATURE-PARITY.md`](FEATURE-PARITY.md).
+This pass added the following static changes; **no build, CTest, sanitizer,
+fuzzer, Java peer, Android device, OpenBSD, Windows or live-network run has
+validated them**:
+
+| Area | Java reference | Static change | Remaining evidence |
+|---|---|---|---|
+| SSU2 migration | `PeerState2.java` | Bounded retries/deadline, authenticated PathResponse and old-endpoint retention | Packet-loss/path migration test |
+| ML-KEM | `EncType.java`, ML-KEM provider | Cached runtime provider probe gates publication and key creation | OpenSSL/LibreSSL provider matrix and Java PQ session |
+| RSA/SU3 | `SigType.java`, `SU3File.java` | RSA raw verification, `reseed.verify=true` default, Ed25519/RedDSA SU3 paths | Java-generated key/signature and signed-reseed bundle |
+| SAM | `SAMv3Handler`, `SAMUtils` | Persistent bounded framing, pipelined commands, bare controls and case-insensitive keys | Split-frame, pipelined and live SAM client tests |
+| I2CP | `ClientMessageEventListener`, `LookupDestJob` | Routing-session cache keyed by parsed identity hash | Secret-blinded auth and live Java client |
+| Address book | `apps/addressbook`, `NamingService` | ASCII case folding with exact b33/base64 spelling | Live naming lookup and subscription update |
+| Torrents | I2PSnark peers/tracker/resume | Re-verification, tracker forms/limits, private announce, PEX, peer IDs and connection caps | Live Java trackerless/tracker exchange and crash recovery |
+| TUI administration | Java console operations | Typed daemon queue for reseed, shutdown, reload, bandwidth, share, transit and log level | Manual TUI/daemon lifecycle tests |
+| Android administration | Java console operations | Confirmed Reseed action and runtime log-level apply through service-worker JNI and a closed set | Gradle/JNI/device and accessibility tests |
+
+The TUI deliberately exposes a closed command set rather than a generic
+configuration writer or shell. The Android application continues to use
+Material 3/Java and the shared native engine; no web console or Java runtime is
+reintroduced.
 
 ## Confirmed findings and fixes (hardening pass)
 
@@ -610,12 +640,13 @@ are registered in `tests/CMakeLists.txt` (`test-protocol-bounds` in
   no RFC 8032 dom2 primitive is assumed. A Java-generated type-8/SU3 vector is
   still required before claiming interoperability.
 - Ratchet NSR/ES payloads are structurally pre-validated before side effects;
-  the handshake still does not have a Java-generated malformed corpus and the
-  runtime ML-KEM provider probe is not implemented.
+  the handshake still does not have a Java-generated malformed corpus. The
+  runtime ML-KEM provider probe is implemented statically but has no
+  OpenSSL/LibreSSL matrix or Java PQ session evidence.
 - SAM no longer expires queued STREAM ACCEPTs after three seconds, and STREAM
-  subsessions use `LISTEN_PORT`; the quoted/escaped tokenizer, pipelined
-  commands, `LISTEN_PROTOCOL` routing, receiver reset and large-frame
-  regression execution remain residual.
+  subsessions use `LISTEN_PORT`; persistent bounded framing, pipelining and
+  quoted parameter values are now implemented statically. `LISTEN_PROTOCOL`
+  routing, receiver reset and live large-frame execution remain residual.
 - No Java peer, network handshake, ASan/UBSan/TSan, libFuzzer, LibreSSL,
   OpenBSD, Windows, Android or multi-UID validation exists for these changes.
 

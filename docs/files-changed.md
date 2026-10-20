@@ -117,6 +117,8 @@ was created.
 - `docs/attribution-audit.md`
 - `docs/upstream-sync.md`
 - `docs/INTEROPERABILITY.md`
+- `docs/FEATURE-PARITY.md` — functional/administrative parity matrix for
+  Java 2.13.0, TUI, Android, torrents and security boundaries
 - `docs/android-modernization.md`
 - `docs/REBRANDING.md`
 - `TODO.md`, `ROADMAP.md`, `PROGRESS.md`, `AGENTS.md`
@@ -763,7 +765,7 @@ validation was performed.
 
 | Path | Change |
 |---|---|
-| `libi2pd/TuiProtocol.h` | Added bounded `CONNECTIONS`, `NETDB-ROUTERS`/`NETDB-LEASESETS` and strict `ADMIN TRANSIT`/`ADMIN LOGLEVEL` request parsing. |
+| `libi2pd/TuiProtocol.h` | Added bounded `CONNECTIONS`, `NETDB-ROUTERS`/`NETDB-LEASESETS`, strict typed `ADMIN` parsing and the daemon-owned command queue contract (reseed, shutdown/cancel, reload, bandwidth, share, transit and log level). |
 | `libi2pd/Transports.h`, `Transports.cpp` | Added connected-peer count and bounded live-session snapshot accessors. |
 | `libi2pd/NetDb.hpp`, `NetDb.cpp` | Added bounded router and LeaseSet snapshot accessors for administrative views. |
 | `daemon/TuiServerCommon.cpp` | Added connection/netDb directory payloads, atomic transit and daemon-log-level operations, and `log.level` state reporting. |

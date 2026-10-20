@@ -158,8 +158,9 @@ is prepared for the optional libFuzzer target.
 - the read-only, typed `CONFIG` allowlist, argument rejection and absence of a
   `CONFIG-SET` writer;
 - bounded `CONNECTIONS` and `NETDB-ROUTERS`/`NETDB-LEASESETS` requests;
-- strict `ADMIN TRANSIT ON|OFF` and `ADMIN LOGLEVEL` validation, including
-  rejected actions, values and trailing arguments;
+- strict `ADMIN` validation for transit, loglevel, reseed, shutdown, tunnel
+  reload, bandwidth and share, including rejected actions, values, ranges and
+  trailing arguments;
 - exact request-line and payload limits accepted, one byte over rejected.
 
 `tests/test-tui-terminal.cpp` checks the shared `tui/Terminal.h` key values,
@@ -235,7 +236,7 @@ adds deterministic lifecycle and concurrency probes, while
 the native tool CLI surface; it must not be confused with the historical
 `tools-smoke` run. None of these new tests has executed in the current tree.
 
-The 2026-10-18 Java 2.13.0 static-interoperability regressions are:
+The Java 2.13.0 static-interoperability and 2026-10-20 parity regressions are:
 
 - `test-ntcp2-session-confirmed-payload.cpp` — ordered RI/Options/Padding,
   truncation, overrun, unknown and out-of-order NTCP2 handshake blocks.
@@ -243,6 +244,26 @@ The 2026-10-18 Java 2.13.0 static-interoperability regressions are:
   mappings and truncation.
 - `test-sam-datagram-framing.cpp` — SAM 3.x UDP first-line parsing,
   version tokens, sessions and legacy form.
+- `test-sam-control-framing.cpp` — persistent bounded SAM framing, pipelined
+  commands, split SEND payloads, one-word controls and quoted/normalized
+  parameters.
+- `test-i2cp-routing-session-key.cpp` — identity-hash routing keys across
+  signature types and the former fixed-slice collision.
+- `test-addressbook-case.cpp` — ASCII host-name folding, b32/b33 spelling and
+  exact base64 destination handling.
+- `test-torrents-verify-parity.cpp` — resume/final-name re-verification,
+  tracker peer forms/limits, tracker id/min interval, percent-encoded peer id
+  and connection-limit relationships.
+- `test-signature-identity-hardening.cpp` — Java-compatible raw RSA
+  verification and RSA identity certificate layout.
+- `test-su3-bounds.cpp` — malformed SU3 bounds plus the fail-closed
+  `reseed.verify` default.
+- `test-ssu2-preauth.cpp` — SSU2 PathChallenge retry/deadline schedule in
+  addition to the existing block whitelist.
+- `test-crypto-x25519-noise-elligator-mlkem-audit.cpp` — cached runtime
+  ML-KEM provider gating.
+- `test-tui-protocol.cpp` / `test-tui-ipc-regression.cpp` — typed TUI admin
+  parsing/manual queue and real socket dispatch.
 - `test-leaseset-netdb-2.13-freshness.cpp` — LS1/LS2 future lease windows,
   unpublished/blinded flags, EC_P256 wire keys, DatabaseStore type mask.
 - `test-ssu2-address-negotiation.cpp` — SSU2 `v` lists, PQ/MTU selection and

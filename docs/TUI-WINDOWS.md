@@ -184,6 +184,11 @@ I2PDTUI/1 DESTINATIONS
 I2PDTUI/1 LOGS <after-sequence> [limit]
 I2PDTUI/1 ADMIN TRANSIT ON|OFF
 I2PDTUI/1 ADMIN LOGLEVEL none|critical|error|warn|info|debug
+I2PDTUI/1 ADMIN RESEED
+I2PDTUI/1 ADMIN SHUTDOWN GRACEFUL|IMMEDIATE|CANCEL
+I2PDTUI/1 ADMIN RELOAD TUNNELS
+I2PDTUI/1 ADMIN BANDWIDTH K|L|M|N|O|P|X
+I2PDTUI/1 ADMIN SHARE 0..100
 I2PDTUI/1 TORRENT-TUNNELS
 I2PDTUI/1 TORRENTS <tunnel-index> [limit]
 I2PDTUI/1 TORRENT-* ...
@@ -211,11 +216,13 @@ I2PDTUI/1 ERR <error-code> <message-length>\n<message>
 
 Router snapshots are read-only. Torrent actions are explicit protocol commands,
 are confirmed in the TUI and are mediated by the daemon's torrent service
-thread. `ADMIN TRANSIT` and `ADMIN LOGLEVEL` are the only router-wide writes in
-version 1; they update atomic router/logger state, are not persisted to the
-configuration file, and never execute a command, open a file or perform network
-I/O on the IPC thread. The Windows named-pipe DACL remains the authorization
-boundary for these operations.
+thread. `ADMIN` exposes a closed set of typed operations (transit, log level,
+reseed, shutdown/cancel, tunnel reload, bandwidth and share); the IPC thread
+submits them to a fixed daemon-owned queue and never mutates router, tunnel,
+NetDb or logger state itself. They are not persisted to the configuration file,
+accept no path/URL/generic option, and never execute a command or open a file on
+the IPC thread. The Windows named-pipe DACL remains the authorization boundary
+for these operations.
 
 ## Build and install
 

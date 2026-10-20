@@ -111,11 +111,12 @@ reload paths is still pending.
 | ID | Severity | Finding and correction | Regression / validation |
 |---|---|---|---|
 | TUI-008 | Low/medium | The TUI had no way to inspect effective router options without opening configuration files, while any write path would bypass validation and the main-loop command queue. `I2PDTUI/1 CONFIG` now returns a bounded, typed, server-side allowlist snapshot; it exposes no keys, credentials, paths or URLs and has no `CONFIG-SET` command. | Protocol vectors added to `test-tui-protocol`; no live TUI/socket run yet. |
-| TUI-009 | Medium | Administrative writes could have become an arbitrary router control channel. Version 1 now exposes only `ADMIN TRANSIT ON|OFF` (atomic future-transit acceptance) and `ADMIN LOGLEVEL` (atomic logger threshold); both reject unknown actions, invalid values and trailing arguments. There is still no generic configuration, reload, reseed, shutdown, file or command operation. | Parsing vectors in `test-tui-protocol` and socket dispatch in `test-tui-ipc-regression`; live TUI/Windows validation pending. |
+| TUI-009 | Medium | Administrative writes could have become an arbitrary router control channel. Version 1 exposes a closed typed set (`ADMIN TRANSIT`, `LOGLEVEL`, `RESEED`, `SHUTDOWN`, `RELOAD TUNNELS`, `BANDWIDTH`, `SHARE`) dispatched through a fixed daemon-owned queue; each validates its action/range and rejects trailing arguments. There is still no generic configuration option, path, URL, file or command operation. | Parsing vectors in `test-tui-protocol`, queue/socket dispatch in `test-tui-ipc-regression`; live TUI/Windows validation pending. |
 
 Residual: the snapshot is effective startup configuration, not a live
-reconfiguration API. Editing requires a future main-loop command queue with
-validation, atomic persistence and explicit restart semantics.
+reconfiguration API. The typed daemon queue now exists for a closed admin set,
+but generic configuration editing still requires a separately reviewed,
+validated and atomically persisted interface with explicit restart semantics.
 
 ## Tooling and IPC regression coverage
 

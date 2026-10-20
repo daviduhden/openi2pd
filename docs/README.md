@@ -33,6 +33,7 @@ matrix.
 - [Architecture and refactoring report](architecture.md)
 - [Architecture decisions (ADR)](architecture/README.md)
 - [I2P Java interoperability audit](INTEROPERABILITY.md)
+- [I2P Java functional parity matrix](FEATURE-PARITY.md)
 - [Dependency and minimum-version inventory](dependencies.md)
 - [C++23 migration](cpp23-migration.md)
 - [Build requirements](devs/building/requirements.md)

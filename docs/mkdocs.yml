@@ -33,6 +33,7 @@ nav:
       - Architecture: architecture.md
       - Architecture decisions: architecture/README.md
       - Interoperability: INTEROPERABILITY.md
+      - Functional parity: FEATURE-PARITY.md
       - Dependencies: dependencies.md
       - C++23: cpp23-migration.md
       - Build system: build-system.md
