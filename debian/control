@@ -32,7 +32,7 @@ Vcs-Browser: https://github.com/daviduhden/openi2pd
 Package: i2pd
 Architecture: any
 Pre-Depends: ${misc:Pre-Depends}, adduser
-Depends: ${shlibs:Depends}, ${misc:Depends}, perl, openssl
+Depends: ${shlibs:Depends}, ${misc:Depends}, ${perl:Depends}, openssl
 Recommends: ca-certificates, logrotate
 Suggests: apparmor, i2pd-tui, libio-socket-ssl-perl
 Description: C++ I2P router (openi2pd)
