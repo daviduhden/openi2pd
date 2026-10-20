@@ -126,7 +126,14 @@ namespace data
 		void Stop ();
 
 		std::shared_ptr<const RouterInfo> AddRouterInfo (const uint8_t * buf, int len);
+		// The updated flag lets a transport distinguish a newly accepted or
+		// replaced RouterInfo from a stale replay before requesting a flood.
+		std::shared_ptr<const RouterInfo> AddRouterInfo (const uint8_t * buf, int len, bool & updated);
 		bool AddRouterInfo (const IdentHash & ident, const uint8_t * buf, int len);
+		// Forward an already validated RouterInfo through the bounded
+		// closest-floodfill selection. Used by the SSU2 request-flood flag;
+		// the netDb remains the owner of the actual flood routing.
+		bool FloodRouterInfo (std::shared_ptr<const RouterInfo> router);
 		bool AddLeaseSet (const IdentHash & ident, const uint8_t * buf, int len);
 		bool AddLeaseSet2 (const IdentHash & ident, const uint8_t * buf, int len, uint8_t storeType);
 		std::shared_ptr<RouterInfo> FindRouter (const IdentHash & ident) const;
@@ -256,7 +263,6 @@ namespace data
 
 		void ReseedFromFloodfill (const RouterInfo & ri, int numRouters = 40, int numFloodfills = 20);
 
-		std::shared_ptr<const RouterInfo> AddRouterInfo (const uint8_t * buf, int len, bool & updated);
 		std::shared_ptr<const RouterInfo> AddRouterInfo (
 			const IdentHash & ident, const uint8_t * buf, int len, bool & updated);
 

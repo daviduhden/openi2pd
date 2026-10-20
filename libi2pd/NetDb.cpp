@@ -436,6 +436,16 @@ namespace data
 		return AddRouterInfo (buf, len, updated);
 	}
 
+	bool NetDb::FloodRouterInfo (std::shared_ptr<const RouterInfo> router)
+	{
+		if (!router || !m_AcceptUpdates.load (std::memory_order_relaxed)) return false;
+		auto ident = router->GetIdentHash ();
+		auto msg = CreateDatabaseStoreMsg (std::move (router));
+		if (!msg) return false;
+		Flood (ident, std::move (msg));
+		return true;
+	}
+
 	std::shared_ptr<const RouterInfo> NetDb::AddRouterInfo (const uint8_t * buf, int len, bool & updated)
 	{
 		if (!buf || len <= 0)

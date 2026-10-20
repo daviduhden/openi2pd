@@ -503,13 +503,27 @@ void TestMLKEM ()
 	assert (GetMLKEMPublicKeyLen ((CryptoKeyType)8) == 0);
 	assert (!CreateMLKEMKeys (CRYPTO_KEY_TYPE_ECIES_X25519_AEAD));
 	assert (!CreateMLKEMKeys ((CryptoKeyType)8));
+	// Support is a cached runtime provider probe, not just the compile-time
+	// OPENSSL_PQ gate. The LibreSSL ML-KEM-512 rank does not exist, so that
+	// type must always report false there. The other results depend on the
+	// active provider; whatever the result, the cached value must be stable
+	// and CreateMLKEMKeys() must agree with it.
 #ifdef LIBRESSL_VERSION_NUMBER
 	assert (!IsMLKEMSupported (CRYPTO_KEY_TYPE_ECIES_MLKEM512_X25519_AEAD));
-#else
-	assert (IsMLKEMSupported (CRYPTO_KEY_TYPE_ECIES_MLKEM512_X25519_AEAD));
 #endif
-	assert (IsMLKEMSupported (CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD));
-	assert (IsMLKEMSupported (CRYPTO_KEY_TYPE_ECIES_MLKEM1024_X25519_AEAD));
+	for (auto type : { CRYPTO_KEY_TYPE_ECIES_MLKEM512_X25519_AEAD, CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD,
+			 CRYPTO_KEY_TYPE_ECIES_MLKEM1024_X25519_AEAD })
+	{
+		const bool supported = IsMLKEMSupported (type);
+		assert (IsMLKEMSupported (type) == supported); // cached, deterministic
+		if (supported)
+			assert (CreateMLKEMKeys (type));
+		else
+			assert (!CreateMLKEMKeys (type));
+	}
+	// Non-ML-KEM crypto types never report support and never create keys.
+	assert (!IsMLKEMSupported (CRYPTO_KEY_TYPE_ECIES_X25519_AEAD));
+	assert (!IsMLKEMSupported ((CryptoKeyType)8));
 
 	CheckMLKEMInit (CRYPTO_KEY_TYPE_ECIES_MLKEM512_X25519_AEAD, "Noise_IKhfselg2_25519+MLKEM512_ChaChaPoly_SHA256");
 	CheckMLKEMInit (CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD, "Noise_IKhfselg2_25519+MLKEM768_ChaChaPoly_SHA256");
@@ -601,6 +615,7 @@ void TestMLKEM ()
 	}
 
 	// A malformed public key must fail import and clear the previous key.
+	if (IsMLKEMSupported (CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD))
 	{
 		auto keys = CreateMLKEMKeys (CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD);
 		assert (keys && keys->GenerateKeys ());

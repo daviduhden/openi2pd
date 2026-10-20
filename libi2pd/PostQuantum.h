@@ -64,15 +64,12 @@ namespace crypto
 		return std::get<2> (MLKEMS[type - i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD - 1]);
 	}
 
-	constexpr bool IsMLKEMSupported (i2p::data::CryptoKeyType type)
-	{
-		if (!GetMLKEMPublicKeyLen (type)) return false;
-#ifdef LIBRESSL_VERSION_NUMBER
-		return type != i2p::data::CRYPTO_KEY_TYPE_ECIES_MLKEM512_X25519_AEAD;
-#else
-		return true;
-#endif
-	}
+	// Runtime availability of the parameter set in the active crypto provider.
+	// The first call for each type performs a bounded probe (key generation
+	// with no caller-visible key material) and caches the result, so callers
+	// can gate publication and selection on what the provider can actually
+	// create. Unknown types and providers without the API report false.
+	bool IsMLKEMSupported (i2p::data::CryptoKeyType type);
 
 	class MLKEMKeys
 	{

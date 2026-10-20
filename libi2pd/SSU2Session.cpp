@@ -782,6 +782,14 @@ namespace transport
 			m_NextRouterInfoResendTime = ts + SSU2_ROUTERINFO_RESEND_INTERVAL
 				+ m_Server.GetRng () () % SSU2_ROUTERINFO_RESEND_INTERVAL_VARIANCE;
 		}
+		// Drop an expired connection migration promptly. This only restores
+		// the old endpoint; it never terminates the session.
+		if (m_PathChallenge && IsSSU2PathChallengeExpired (ts, m_PathChallenge->startedTime, m_PathChallenge->numSends))
+		{
+			LogPrint (eLogInfo, "SSU2: Connection migration to ", m_PathChallenge->endpoint, " timed out; keeping ",
+				m_RemoteEndpoint);
+			CancelPathChallenge (false);
+		}
 		// Resend data packets. RFC 6298 section 5.5 requires exponential
 		// backoff, and the SSU2 spec does not require tearing down the session
 		// when one I2NP message's delivery eventually fails.
@@ -2405,11 +2413,38 @@ namespace transport
 		if (acceptPacket)
 		{
 			// Only a packet that passed AEAD and was accepted may trigger
-			// connection migration. Previously any packet from a new source
-			// could elicit a path challenge before authentication.
-			if (from != m_RemoteEndpoint && !i2p::transport::transports.IsInReservedRange (from.address ())
-				&& (!m_PathChallenge
-					|| from != m_PathChallenge->second)) // path challenge was not sent to this endpoint yet
+			// connection migration. Java PeerState2 also requires the same
+			// address family, so an IPv4/IPv6 change never starts migration.
+			const auto now = i2p::util::GetMillisecondsSinceEpoch ();
+			if (m_PathChallenge)
+			{
+				if (from == m_RemoteEndpoint)
+				{
+					// A valid packet from the old endpoint cancels the pending
+					// migration and restores the previous MTU/window.
+					LogPrint (eLogInfo, "SSU2: Connection migration to ", m_PathChallenge->endpoint,
+						" cancelled by packet from ", from);
+					CancelPathChallenge (false);
+				}
+				else if (from == m_PathChallenge->endpoint)
+				{
+					if (IsSSU2PathChallengeExpired (now, m_PathChallenge->startedTime, m_PathChallenge->numSends))
+					{
+						LogPrint (eLogInfo, "SSU2: Connection migration to ", m_PathChallenge->endpoint,
+							" timed out; keeping ", m_RemoteEndpoint);
+						CancelPathChallenge (false);
+					}
+					else if (now > m_PathChallenge->nextSendTime)
+						RetransmitPathChallenge (now);
+				}
+				else
+					LogPrint (
+						eLogDebug, "SSU2: Ignoring packet from third address ", from, " during connection migration");
+			}
+			else if (m_State == eSSU2SessionStateEstablished && from != m_RemoteEndpoint
+				&& from.address ().is_v4 () == m_RemoteEndpoint.address ().is_v4 () && from.port () != 0
+				&& packetNum == GetHighestReceivedPacketNum () // not a reordered packet
+				&& !i2p::transport::transports.IsInReservedRange (from.address ()))
 			{
 				LogPrint (eLogInfo, "SSU2: Remote endpoint update ", m_RemoteEndpoint, "->", from);
 				SendPathChallenge (from);
@@ -2418,7 +2453,7 @@ namespace transport
 			// if Java's single ACK0 was lost.
 			if (m_State == eSSU2SessionStateSessionConfirmedSent) Established ();
 			m_IsInvalidMessage = false;
-			HandlePayload (payload, payloadSize);
+			HandlePayload (payload, payloadSize, &from);
 			if (m_IsInvalidMessage)
 			{
 				LogPrint (eLogError, "SSU2: Invalid block in data phase, terminating");
@@ -2427,7 +2462,7 @@ namespace transport
 		}
 	}
 
-	void SSU2Session::HandlePayload (const uint8_t * buf, size_t len)
+	void SSU2Session::HandlePayload (const uint8_t * buf, size_t len, const boost::asio::ip::udp::endpoint * from)
 	{
 		m_IsInvalidMessage = false;
 		m_ReceivedTermination = false;
@@ -2646,11 +2681,16 @@ namespace transport
 				LogPrint (eLogDebug, "SSU2: Path response");
 				if (size >= 8 && m_PathChallenge)
 				{
-					if (buf64toh (buf + offset) == m_PathChallenge->first)
+					const auto now = i2p::util::GetMillisecondsSinceEpoch ();
+					if (from && *from == m_PathChallenge->endpoint
+						&& buf64toh (buf + offset) == m_PathChallenge->challenge
+						&& !IsSSU2PathChallengeExpired (now, m_PathChallenge->startedTime, m_PathChallenge->numSends))
 					{
-						m_RemoteEndpoint = m_PathChallenge->second;
-						m_PathChallenge.reset (nullptr);
+						LogPrint (eLogInfo, "SSU2: Connection migration to ", *from, " confirmed");
+						CancelPathChallenge (true);
 					}
+					else
+						LogPrint (eLogDebug, "SSU2: Ignoring PathResponse that does not complete migration");
 				}
 				break;
 			}
@@ -2717,16 +2757,22 @@ namespace transport
 		if (len < 2) return;
 		// not from SessionConfirmed, we must add it instantly to use in next block
 		std::shared_ptr<const i2p::data::RouterInfo> newRi;
+		bool updated = false;
 		if (buf[0] & SSU2_ROUTER_INFO_FLAG_GZIP) // compressed?
 		{
 			auto ri = ExtractRouterInfo (buf, len);
-			if (ri) newRi = i2p::data::netdb.AddRouterInfo (ri->GetBuffer (), ri->GetBufferLen ());
+			if (ri) newRi = i2p::data::netdb.AddRouterInfo (ri->GetBuffer (), ri->GetBufferLen (), updated);
 		}
 		else // use buffer directly. TODO: handle frag
-			newRi = i2p::data::netdb.AddRouterInfo (buf + 2, len - 2);
+			newRi = i2p::data::netdb.AddRouterInfo (buf + 2, len - 2, updated);
 
 		if (newRi)
 		{
+			// PeerState2.gotRI honors the request-flood bit: only a newly
+			// accepted/replaced RouterInfo is forwarded to the closest
+			// floodfills. A replayed old RI must not cause repeated flooding.
+			if (updated && (buf[0] & SSU2_ROUTER_INFO_FLAG_REQUEST_FLOOD))
+				i2p::data::netdb.FloodRouterInfo (newRi);
 			auto remoteIdentity = GetRemoteIdentity ();
 			if (remoteIdentity && remoteIdentity->GetIdentHash () == newRi->GetIdentHash ())
 			{
@@ -4700,9 +4746,36 @@ namespace transport
 
 	void SSU2Session::SendPathChallenge (const boost::asio::ip::udp::endpoint & to)
 	{
+		if (m_PathChallenge) return; // one pending connection migration at a time
+		const auto now = i2p::util::GetMillisecondsSinceEpoch ();
+		auto state = std::make_unique<SSU2PathChallengeState> ();
+		if (RAND_bytes ((uint8_t *)&state->challenge, 8) != 1)
+		{
+			LogPrint (eLogError, "SSU2: Can't generate PathChallenge value");
+			return;
+		}
+		state->endpoint = to;
+		state->startedTime = now;
+		state->numSends = 1;
+		state->nextSendTime = now + GetSSU2PathChallengeRetryDelay (state->numSends);
+		state->previousWindowSize = m_WindowSize;
+		state->previousMaxPayloadSize = m_MaxPayloadSize;
+
 		AdjustMaxPayloadSize (SSU2_MIN_PACKET_SIZE); // reduce to minimum
 		m_WindowSize = SSU2_MIN_WINDOW_SIZE; // reduce window to minimum
+		if (!SendPathChallengePacket (*state))
+		{
+			// Do not leave a pending migration that was never sent.
+			LogPrint (eLogWarning, "SSU2: Can't send PathChallenge to ", to);
+			m_WindowSize = state->previousWindowSize;
+			m_MaxPayloadSize = state->previousMaxPayloadSize;
+			return;
+		}
+		m_PathChallenge = std::move (state);
+	}
 
+	bool SSU2Session::SendPathChallengePacket (const SSU2PathChallengeState & state)
+	{
 		uint8_t payload[SSU2_MAX_PACKET_SIZE];
 		size_t payloadSize = 0;
 		// datetime block
@@ -4711,15 +4784,15 @@ namespace transport
 		htobe32buf (payload + 3, (i2p::util::GetMillisecondsSinceEpoch () + 500) / 1000);
 		payloadSize += 7;
 		// address block with new address
-		payloadSize += CreateAddressBlock (payload + payloadSize, m_MaxPayloadSize - payloadSize, to);
-		// path challenge block
+		size_t addressSize = CreateAddressBlock (payload + payloadSize, m_MaxPayloadSize - payloadSize, state.endpoint);
+		if (!addressSize) return false;
+		payloadSize += addressSize;
+		// path challenge block, always 8 bytes, reused by every retransmission
+		if (payloadSize + 11 > m_MaxPayloadSize) return false;
 		payload[payloadSize] = eSSU2BlkPathChallenge;
-		uint64_t challenge;
-		RAND_bytes ((uint8_t *)&challenge, 8);
-		htobe16buf (payload + payloadSize + 1, 8); // always 8 bytes
-		htobuf64 (payload + payloadSize + 3, challenge);
+		htobe16buf (payload + payloadSize + 1, 8);
+		htobuf64 (payload + payloadSize + 3, state.challenge);
 		payloadSize += 11;
-		m_PathChallenge = std::make_unique<std::pair<uint64_t, boost::asio::ip::udp::endpoint>> (challenge, to);
 		// ack block
 		if (payloadSize < m_MaxPayloadSize)
 			payloadSize += CreateAckBlock (payload + payloadSize, m_MaxPayloadSize - payloadSize);
@@ -4728,9 +4801,40 @@ namespace transport
 			payloadSize += CreatePaddingBlock (payload + payloadSize, m_MaxPayloadSize - payloadSize);
 		// send to new endpoint
 		auto existing = m_RemoteEndpoint;
-		m_RemoteEndpoint = to; // send path challenge to new endpoint
-		SendData (payload, payloadSize);
+		m_RemoteEndpoint = state.endpoint; // send path challenge to new endpoint
+		bool sent = SendData (payload, payloadSize);
 		m_RemoteEndpoint = existing; // restore endpoint back until path response received
+		return sent;
+	}
+
+	void SSU2Session::RetransmitPathChallenge (uint64_t now)
+	{
+		if (!m_PathChallenge) return;
+		LogPrint (eLogInfo, "SSU2: Retransmitting PathChallenge to ", m_PathChallenge->endpoint, " (",
+			m_PathChallenge->numSends + 1, " of ", SSU2_MAX_PATH_CHALLENGE_SENDS, ")");
+		SendPathChallengePacket (*m_PathChallenge);
+		m_PathChallenge->numSends++;
+		m_PathChallenge->nextSendTime = now + GetSSU2PathChallengeRetryDelay (m_PathChallenge->numSends);
+	}
+
+	void SSU2Session::CancelPathChallenge (bool migrated)
+	{
+		if (!m_PathChallenge) return;
+		if (migrated)
+		{
+			m_RemoteEndpoint = m_PathChallenge->endpoint;
+			// Java resets the MTU to MIN_MTU on a successful migration.
+			AdjustMaxPayloadSize (SSU2_MIN_PACKET_SIZE);
+			m_WindowSize = SSU2_MIN_WINDOW_SIZE;
+		}
+		else
+		{
+			// Expired or cancelled migration must not leave the reduced
+			// MTU/window behind: keep using the old endpoint as before.
+			m_WindowSize = m_PathChallenge->previousWindowSize;
+			m_MaxPayloadSize = m_PathChallenge->previousMaxPayloadSize;
+		}
+		m_PathChallenge.reset (nullptr);
 	}
 
 	void SSU2Session::CleanUp (uint64_t ts)
@@ -4779,7 +4883,16 @@ namespace transport
 			else
 				++it;
 		}
-		if (m_PathChallenge) RequestTermination (eSSU2TerminationReasonNormalClose);
+		if (m_PathChallenge
+			&& IsSSU2PathChallengeExpired (
+				i2p::util::GetMillisecondsSinceEpoch (), m_PathChallenge->startedTime, m_PathChallenge->numSends))
+		{
+			// A lost PathChallenge must not terminate the session. Java ends
+			// only the pending migration and keeps the old endpoint.
+			LogPrint (eLogInfo, "SSU2: Connection migration to ", m_PathChallenge->endpoint, " timed out; keeping ",
+				m_RemoteEndpoint);
+			CancelPathChallenge (false);
+		}
 	}
 
 	void SSU2Session::FlushData ()

@@ -114,6 +114,45 @@ void TestPathChallengeStateMatrix ()
 	assert (!IsSSU2PathChallengeResponseAllowed (eSSU2SessionStateClosing));
 }
 
+void TestPathChallengeRetransmissionSchedule ()
+{
+	// Java PeerState2: initial send, then retries after 5 s, 10 s, 20 s and a
+	// 30 s overall deadline. The delay doubles after every send.
+	assert (SSU2_MAX_PATH_CHALLENGE_SENDS == 4);
+	assert (SSU2_PATH_CHALLENGE_DELAY == 5000);
+	assert (SSU2_MAX_PATH_CHALLENGE_TIME == 30000);
+	assert (GetSSU2PathChallengeRetryDelay (1) == 5000);
+	assert (GetSSU2PathChallengeRetryDelay (2) == 10000);
+	assert (GetSSU2PathChallengeRetryDelay (3) == 20000);
+	assert (GetSSU2PathChallengeRetryDelay (4) == 40000);
+	// A corrupt counter must not shift out of range.
+	assert (GetSSU2PathChallengeRetryDelay (0) == 5000);
+	assert (GetSSU2PathChallengeRetryDelay (99) == 80000);
+
+	// The deadline is strict and an exhausted send count also expires the
+	// migration. Neither outcome terminates the session, so this helper is
+	// the only decision involved in keeping the old address.
+	const uint64_t started = 1000000;
+	assert (!IsSSU2PathChallengeExpired (started, started, 1));
+	assert (!IsSSU2PathChallengeExpired (started + SSU2_MAX_PATH_CHALLENGE_TIME, started, 1));
+	assert (IsSSU2PathChallengeExpired (started + SSU2_MAX_PATH_CHALLENGE_TIME + 1, started, 1));
+	// Exactly four sends are still allowed; only a fifth exceeds the bound.
+	assert (!IsSSU2PathChallengeExpired (started + 1, started, SSU2_MAX_PATH_CHALLENGE_SENDS));
+	assert (IsSSU2PathChallengeExpired (started + 1, started, SSU2_MAX_PATH_CHALLENGE_SENDS + 1));
+
+	// The 5/10/20 schedule cannot reach a fourth retry before the 30 s
+	// deadline, so the expiry keeps the old endpoint without a fifth send.
+	uint64_t next = started + GetSSU2PathChallengeRetryDelay (1);
+	unsigned int sends = 1;
+	while (!IsSSU2PathChallengeExpired (next, started, sends) && sends < SSU2_MAX_PATH_CHALLENGE_SENDS)
+	{
+		sends++;
+		next += GetSSU2PathChallengeRetryDelay (sends);
+	}
+	assert (sends <= SSU2_MAX_PATH_CHALLENGE_SENDS);
+	assert (next > started + SSU2_MAX_PATH_CHALLENGE_TIME);
+}
+
 void TestPayloadValidatorRejectsPreAuthInjection ()
 {
 	const auto dateTime = MakeBlock (eSSU2BlkDateTime, 4, 1);
@@ -187,6 +226,7 @@ int main ()
 	TestStateBlockMatrix ();
 	TestPreAuthHandlerGuards ();
 	TestPathChallengeStateMatrix ();
+	TestPathChallengeRetransmissionSchedule ();
 	TestPayloadValidatorRejectsPreAuthInjection ();
 	return 0;
 }

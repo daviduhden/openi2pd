@@ -12,7 +12,9 @@
  *
  */
 
+#include <array>
 #include <cstring>
+#include <mutex>
 #include <openssl/crypto.h>
 #include "Log.h"
 #include "PostQuantum.h"
@@ -28,6 +30,65 @@ namespace i2p
 {
 namespace crypto
 {
+	namespace
+	{
+		// One cached provider probe per parameter set. Probe keys are generated
+		// only to prove that the provider implements the algorithm; they are
+		// released immediately and never used as protocol key material.
+		struct MLKEMProviderProbe
+		{
+			std::once_flag flag;
+			bool supported = false;
+		};
+
+		std::array<MLKEMProviderProbe, MLKEMS.size ()> g_MLKEMProviderProbes { };
+
+		bool ProbeMLKEMProvider (size_t index)
+		{
+			if (index >= MLKEMS.size ()) return false;
+#ifndef LIBRESSL_VERSION_NUMBER
+			const char * name = std::get<0> (MLKEMS[index]);
+			EVP_PKEY_CTX * ctx = EVP_PKEY_CTX_new_from_name (nullptr, name, nullptr);
+			if (!ctx) return false;
+			EVP_PKEY * pkey = nullptr;
+			bool supported = EVP_PKEY_keygen_init (ctx) > 0 && EVP_PKEY_keygen (ctx, &pkey) > 0 && pkey;
+			if (supported)
+			{
+				// Also confirm the provider returns the wire size this build
+				// expects, so a mismatched alias cannot be advertised.
+				size_t publicKeyLength = 0;
+				supported
+					= EVP_PKEY_get_octet_string_param (pkey, OSSL_PKEY_PARAM_PUB_KEY, nullptr, 0, &publicKeyLength) == 1
+					&& publicKeyLength == std::get<1> (MLKEMS[index]);
+			}
+			EVP_PKEY_free (pkey);
+			EVP_PKEY_CTX_free (ctx);
+			return supported;
+#else
+			// LibreSSL has no provider interface; probe the rank-specific API.
+			// ML-KEM-512 has no rank in the supported LibreSSL API and stays
+			// unsupported.
+			const int rank = index == 1 ? MLKEM768_RANK : index == 2 ? MLKEM1024_RANK : 0;
+			if (!rank) return false;
+			MLKEM_private_key * key = MLKEM_private_key_new (rank);
+			if (!key) return false;
+			MLKEM_private_key_free (key);
+			return true;
+#endif
+		}
+	} // namespace
+
+	bool IsMLKEMSupported (i2p::data::CryptoKeyType type)
+	{
+		const size_t keyLength = GetMLKEMPublicKeyLen (type);
+		if (!keyLength) return false;
+		const size_t index = type - i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD - 1;
+		if (index >= g_MLKEMProviderProbes.size ()) return false;
+		auto & probe = g_MLKEMProviderProbes[index];
+		std::call_once (probe.flag, [&probe, index] () { probe.supported = ProbeMLKEMProvider (index); });
+		return probe.supported;
+	}
+
 #ifdef LIBRESSL_VERSION_NUMBER
 	// LibreSSL allocates operation outputs. Always wipe and release them,
 	// including when an operation or a subsequent length check fails.

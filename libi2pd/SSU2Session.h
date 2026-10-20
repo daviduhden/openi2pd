@@ -90,6 +90,12 @@ namespace transport
 	const uint8_t SSU2_MAX_SESSION_CONFIRMED_FRAGMENTS = 15; // 4-bit frag/count field
 	const int SSU2_SEND_DATETIME_NUM_PACKETS = 256;
 	const int SSU2_MIN_RELAY_RESPONSE_RESEND_VERSION = MAKE_VERSION_NUMBER (0, 9, 64); // 0.9.64
+	// Java PeerState2 connection migration: at most four PathChallenge sends and
+	// a 30 s overall budget, with the retry delay doubling from 5 s. The
+	// session keeps using the old endpoint when the challenge expires.
+	const unsigned int SSU2_MAX_PATH_CHALLENGE_SENDS = 4;
+	const uint64_t SSU2_PATH_CHALLENGE_DELAY = 5 * 1000; // in milliseconds
+	const uint64_t SSU2_MAX_PATH_CHALLENGE_TIME = 30 * 1000; // in milliseconds
 
 	// flags
 	const uint8_t SSU2_FLAG_IMMEDIATE_ACK_REQUESTED = 0x01;
@@ -244,6 +250,50 @@ namespace transport
 	{
 		return state == eSSU2SessionStateEstablished;
 	}
+
+	/**
+	 * Delay before the next PathChallenge retransmission.
+	 *
+	 * `sent` is the number of challenges already sent, including the initial
+	 * one, so the schedule is 5 s, 10 s, 20 s. PeerState2 uses the same
+	 * `PATH_CHALLENGE_DELAY << count` schedule and stops at the overall
+	 * deadline before the 40 s step is reached.
+	 */
+	constexpr uint64_t GetSSU2PathChallengeRetryDelay (unsigned int sent)
+	{
+		// Clamp the shift so a corrupted counter cannot invoke undefined
+		// behaviour. The send/deadline bounds end the migration long before
+		// this matters.
+		const unsigned int shift = sent > 4 ? 4 : (sent ? sent - 1 : 0);
+		return SSU2_PATH_CHALLENGE_DELAY << shift;
+	}
+
+	/**
+	 * Whether pending connection migration must be abandoned. Java checks the
+	 * strict `now > started + MAX_PATH_CHALLENGE_TIME` and send-count bounds.
+	 * Expiry never terminates the SSU2 session; it keeps the old endpoint.
+	 */
+	constexpr bool IsSSU2PathChallengeExpired (uint64_t now, uint64_t started, unsigned int sent)
+	{
+		return now > started + SSU2_MAX_PATH_CHALLENGE_TIME || sent > SSU2_MAX_PATH_CHALLENGE_SENDS;
+	}
+
+	/**
+	 * Pending connection migration state, matching PeerState2's
+	 * MIGRATION_STATE_PENDING fields. A single challenge value is reused for
+	 * every retransmission, and only a PathResponse from the pending endpoint
+	 * carrying that value may move the session.
+	 */
+	struct SSU2PathChallengeState
+	{
+		uint64_t challenge;
+		boost::asio::ip::udp::endpoint endpoint;
+		uint64_t startedTime; // in milliseconds
+		uint64_t nextSendTime; // in milliseconds
+		unsigned int numSends;
+		size_t previousWindowSize;
+		size_t previousMaxPayloadSize;
+	};
 
 	/**
 	 * Pure framing and block-whitelist validator for decrypted SSU2 payloads.
@@ -500,7 +550,9 @@ namespace transport
 		void SetDestConnID (uint64_t destConnID) { m_DestConnID = destConnID; }
 
 		void SetAddress (std::shared_ptr<const i2p::data::RouterInfo::Address> addr) { m_Address = addr; }
-		void HandlePayload (const uint8_t * buf, size_t len);
+		// `from` is the authenticated source of a data-phase packet. It is
+		// required before accepting a PathResponse for pending migration.
+		void HandlePayload (const uint8_t * buf, size_t len, const boost::asio::ip::udp::endpoint * from = nullptr);
 		bool HasInvalidPayload () const { return m_IsInvalidMessage; }
 		virtual bool IsPayloadBlockAllowed (uint8_t block) const { return true; }
 
@@ -542,6 +594,9 @@ namespace transport
 		void SendTermination ();
 		void SendPathResponse (const uint8_t * data, size_t len);
 		void SendPathChallenge (const boost::asio::ip::udp::endpoint & to);
+		bool SendPathChallengePacket (const SSU2PathChallengeState & state);
+		void RetransmitPathChallenge (uint64_t now);
+		void CancelPathChallenge (bool migrated);
 
 		void HandleDateTime (const uint8_t * buf, size_t len);
 		void HandleRouterInfo (const uint8_t * buf, size_t len);
@@ -629,7 +684,7 @@ namespace transport
 		boost::asio::steady_timer m_ConnectTimer;
 		SSU2TerminationReason m_TerminationReason;
 		size_t m_MaxPayloadSize;
-		std::unique_ptr<std::pair<uint64_t, boost::asio::ip::udp::endpoint>> m_PathChallenge;
+		std::unique_ptr<SSU2PathChallengeState> m_PathChallenge;
 		std::unordered_map<uint32_t, uint32_t> m_ReceivedI2NPMsgIDs; // msgID -> timestamp in seconds
 		uint64_t m_LastResendTime, m_LastResendAttemptTime, m_NextRouterInfoResendTime; // in milliseconds
 		int m_NumRanges;
