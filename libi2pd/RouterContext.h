@@ -28,6 +28,7 @@
 #include "RouterInfo.h"
 #include "Garlic.h"
 #include "util.h"
+#include "AtomicSharedPtr.h"
 
 namespace i2p
 {
@@ -305,9 +306,8 @@ private:
 	i2p::crypto::NoiseSymmetricState m_InitialNoiseState, m_CurrentNoiseState;
 	// publish
 	std::mutex m_ServiceLifecycleMutex;
-	// libc++ does not implement the C++20 atomic<shared_ptr> specialization.
-	// Use the standard free atomic shared_ptr operations at the access points.
-	mutable std::shared_ptr<RouterService> m_Service;
+	// Portable atomic shared_ptr storage with a libc++ fallback.
+	mutable i2p::util::AtomicSharedPtr<RouterService> m_Service;
 	std::unique_ptr<boost::asio::steady_timer> m_PublishTimer, m_CongestionUpdateTimer, m_CleanupTimer;
 	std::unordered_set<i2p::data::IdentHash> m_PublishExcluded;
 	uint32_t m_PublishReplyToken;

@@ -195,8 +195,8 @@ namespace crypto
 	const int ELGAMAL_SHORT_EXPONENT_NUM_BITS = 226;
 	const int ELGAMAL_SHORT_EXPONENT_NUM_BYTES = ELGAMAL_SHORT_EXPONENT_NUM_BITS / 8 + 1;
 #endif
-	const int ELGAMAL_FULL_EXPONENT_NUM_BITS = 2048;
-	const int ELGAMAL_FULL_EXPONENT_NUM_BYTES = ELGAMAL_FULL_EXPONENT_NUM_BITS / 8;
+	[[maybe_unused]] const int ELGAMAL_FULL_EXPONENT_NUM_BITS = 2048;
+	[[maybe_unused]] const int ELGAMAL_FULL_EXPONENT_NUM_BYTES = ELGAMAL_FULL_EXPONENT_NUM_BITS / 8;
 
 #define elgp GetCryptoConstants ().elgp
 #define elgg GetCryptoConstants ().elgg

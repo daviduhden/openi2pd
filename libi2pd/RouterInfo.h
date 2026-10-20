@@ -28,6 +28,7 @@
 #include <mutex>
 #include <utility>
 #include <boost/asio.hpp>
+#include "AtomicSharedPtr.h"
 #include "Identity.h"
 #include "Profiling.h"
 #include "Family.h"
@@ -404,8 +405,8 @@ namespace data
 		static bool SaveToFile (const std::string & fullPath, std::shared_ptr<Buffer> buf);
 
 		std::shared_ptr<RouterProfile> GetProfile () const;
-		void DropProfile () { std::atomic_store (&m_Profile, std::shared_ptr<RouterProfile> { }); };
-		bool HasProfile () const { return std::atomic_load (&m_Profile) != nullptr; };
+		void DropProfile () { m_Profile.Store (std::shared_ptr<RouterProfile> { }); };
+		bool HasProfile () const { return m_Profile.Load () != nullptr; };
 
 		bool Update (const uint8_t * buf, size_t len);
 		bool IsNewer (const uint8_t * buf, size_t len) const;
@@ -465,18 +466,17 @@ namespace data
 		std::shared_ptr<const IdentityEx> m_RouterIdentity;
 		std::shared_ptr<Buffer> m_Buffer;
 		std::atomic<uint64_t> m_Timestamp; // in milliseconds
-		// libc++ does not provide the C++20 atomic<shared_ptr> specialization
-		// used by the other toolchains. Keep these as ordinary shared_ptr
-		// objects and use the standard atomic_load/atomic_store free functions
-		// at the access points; the mutable marker is required by const readers.
-		mutable AddressesPtr m_Addresses;
+		// AtomicSharedPtr uses std::atomic<std::shared_ptr> where available and
+		// a mutex-backed fallback on libc++ targets that lack the C++20
+		// specialization. The mutable marker is required by const readers.
+		mutable i2p::util::AtomicSharedPtr<Addresses> m_Addresses;
 		std::atomic<bool> m_IsUpdated, m_IsUnreachable, m_IsFloodfill, m_IsBufferScheduledToDelete;
 		std::atomic<CompatibleTransports> m_SupportedTransports, m_ReachableTransports, m_PublishedTransports;
 		std::atomic<uint8_t> m_Caps;
 		std::atomic<char> m_BandwidthCap;
 		std::atomic<int> m_Version;
 		std::atomic<Congestion> m_Congestion;
-		mutable std::shared_ptr<RouterProfile> m_Profile;
+		mutable i2p::util::AtomicSharedPtr<RouterProfile> m_Profile;
 		mutable std::mutex m_BufferMutex;
 
 	public:

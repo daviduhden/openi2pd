@@ -2894,7 +2894,7 @@ namespace stream
 
 	uint32_t StreamingDestination::GetRandom ()
 	{
-		return m_Owner ? m_Owner->GetRng () () : rand ();
+		return m_Owner ? m_Owner->GetRng () () : i2p::crypto::RandomUInt32 ();
 	}
 
 	void StreamingDestination::CleanupExpiredNumConnectionsPerSecond (

@@ -30,6 +30,7 @@
 #include <openssl/opensslv.h>
 
 #include "Base.h"
+#include "Random.h"
 #include "Tag.h"
 
 // recognize openssl version and features

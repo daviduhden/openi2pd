@@ -14,6 +14,7 @@
 #include "MatchedDestination.h"
 #include "Log.h"
 #include "ClientContext.h"
+#include "Random.h"
 
 namespace i2p
 {
@@ -100,7 +101,7 @@ namespace client
 				std::shared_ptr<i2p::data::RouterInfo> obep;
 				while (!obep && leases.size () > 0)
 				{
-					auto idx = rand () % leases.size ();
+					auto idx = i2p::crypto::RandomBelow (static_cast<uint32_t> (leases.size ()));
 					auto lease = leases[idx];
 					obep = i2p::data::netdb.FindRouter (lease->tunnelGateway);
 					leases.erase (leases.begin () + idx);

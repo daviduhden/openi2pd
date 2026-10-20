@@ -228,7 +228,9 @@ namespace util
 	{
 		if (!m_IsRunning.load (std::memory_order_relaxed)) return;
 		if (m_NTPServersList.size () > 0)
-			SyncTimeWithNTP (m_NTPServersList[rand () % m_NTPServersList.size ()], m_IsRunning);
+			SyncTimeWithNTP (
+				m_NTPServersList[i2p::crypto::RandomBelow (static_cast<uint32_t> (m_NTPServersList.size ()))],
+				m_IsRunning);
 		else
 			m_IsRunning.store (false, std::memory_order_relaxed);
 
@@ -311,7 +313,17 @@ namespace util
 			return;
 		}
 #endif
-		std::snprintf (date, 9, "%04i%02i%02i", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
+		int year = tm.tm_year + 1900;
+		if (year < 0 || year > 9999) year = 0;
+		date[0] = static_cast<char> ('0' + year / 1000);
+		date[1] = static_cast<char> ('0' + (year / 100) % 10);
+		date[2] = static_cast<char> ('0' + (year / 10) % 10);
+		date[3] = static_cast<char> ('0' + year % 10);
+		date[4] = static_cast<char> ('0' + (tm.tm_mon + 1) / 10);
+		date[5] = static_cast<char> ('0' + (tm.tm_mon + 1) % 10);
+		date[6] = static_cast<char> ('0' + tm.tm_mday / 10);
+		date[7] = static_cast<char> ('0' + tm.tm_mday % 10);
+		date[8] = 0;
 	}
 
 	void AdjustTimeOffset (int64_t offset)

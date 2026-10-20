@@ -325,7 +325,7 @@ namespace data
 	bool LeaseSet::ExpiresSoon (const uint64_t dlt, const uint64_t fudge) const
 	{
 		auto now = i2p::util::GetMillisecondsSinceEpoch ();
-		if (fudge) now += rand () % fudge;
+		if (fudge) now += i2p::crypto::RandomBelow (static_cast<uint32_t> (fudge));
 		if (now >= m_ExpirationTime) return true;
 		return m_ExpirationTime - now <= dlt;
 	}

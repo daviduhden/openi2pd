@@ -2063,7 +2063,7 @@ namespace garlic
 		int delta = (int)optimalSize - (int)len;
 		if (delta < 0 || delta > 3) // don't create padding if we are close to optimal size
 		{
-			uint8_t paddingSize = rand () & 0x0F; // 0 - 15
+			uint8_t paddingSize = static_cast<uint8_t> (i2p::crypto::RandomBelow (16)); // 0 - 15
 			if (delta > 3)
 			{
 				delta -= 3;

@@ -25,6 +25,7 @@
 #include "Timestamp.h"
 #include "I2PEndian.h"
 #include "Blinding.h"
+#include "Crypto.h"
 #include "CryptoKey.h"
 #include "util.h"
 
@@ -49,7 +50,7 @@ namespace data
 		bool ExpiresWithin (const uint64_t t, const uint64_t fudge = 1000) const
 		{
 			auto expire = i2p::util::GetMillisecondsSinceEpoch ();
-			if (fudge) expire += rand () % fudge;
+			if (fudge) expire += i2p::crypto::RandomBelow (static_cast<uint32_t> (fudge));
 			if (endDate < expire) return true;
 			return (endDate - expire) < t;
 		}

@@ -889,7 +889,7 @@ namespace datagram
 					{
 						int idx = -1;
 						if (m_LocalDestination) idx = m_LocalDestination->GetRng () () % sz;
-						if (idx < 0) idx = rand () % sz;
+						if (idx < 0) idx = i2p::crypto::RandomBelow (static_cast<uint32_t> (sz));
 						path->remoteLease = ls[idx];
 					}
 					else
@@ -918,7 +918,7 @@ namespace datagram
 				{
 					int idx = -1;
 					if (m_LocalDestination) idx = m_LocalDestination->GetRng () () % sz;
-					if (idx < 0) idx = rand () % sz;
+					if (idx < 0) idx = i2p::crypto::RandomBelow (static_cast<uint32_t> (sz));
 					path->remoteLease = ls[idx];
 				}
 				else

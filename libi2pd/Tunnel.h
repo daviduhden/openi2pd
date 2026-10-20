@@ -25,6 +25,7 @@
 #include <memory>
 #include <random>
 #include "util.h"
+#include "AtomicSharedPtr.h"
 #include "Queue.h"
 #include "Crypto.h"
 #include "TunnelConfig.h"
@@ -105,13 +106,10 @@ namespace tunnel
 		virtual bool IsInbound () const = 0;
 		virtual bool Recreate () = 0;
 
-		std::shared_ptr<TunnelPool> GetTunnelPool () const
-		{
-			return std::atomic_load_explicit (&m_Pool, std::memory_order_acquire);
-		};
+		std::shared_ptr<TunnelPool> GetTunnelPool () const { return m_Pool.Load (std::memory_order_acquire); };
 		void SetTunnelPool (std::shared_ptr<TunnelPool> pool)
 		{
-			std::atomic_store_explicit (&m_Pool, std::move (pool), std::memory_order_release);
+			m_Pool.Store (std::move (pool), std::memory_order_release);
 		};
 
 		bool HandleTunnelBuildResponse (uint8_t * msg, size_t len);
@@ -147,9 +145,8 @@ namespace tunnel
 	private:
 		std::shared_ptr<TunnelConfig> m_Config;
 		std::vector<TunnelHop> m_Hops;
-		// Keep the standard-library free atomic shared_ptr operations instead
-		// of std::atomic<shared_ptr>: libc++ lacks the latter specialization.
-		mutable std::shared_ptr<TunnelPool> m_Pool; // pool, tunnel belongs to, or null
+		// Portable atomic shared_ptr storage with a libc++ fallback.
+		mutable i2p::util::AtomicSharedPtr<TunnelPool> m_Pool; // pool, tunnel belongs to, or null
 		std::atomic<TunnelState> m_State;
 		i2p::data::RouterInfo::CompatibleTransports m_FarEndTransports;
 		std::atomic<bool> m_IsRecreated; // if tunnel is replaced by new, or new tunnel requested to replace
@@ -250,7 +247,7 @@ namespace tunnel
 		std::shared_ptr<OutboundTunnel> GetPendingOutboundTunnel (uint32_t replyMsgID);
 		std::shared_ptr<InboundTunnel> GetNextInboundTunnel ();
 		std::shared_ptr<OutboundTunnel> GetNextOutboundTunnel ();
-		std::shared_ptr<TunnelPool> GetExploratoryPool () const { return std::atomic_load (&m_ExploratoryPool); };
+		std::shared_ptr<TunnelPool> GetExploratoryPool () const { return m_ExploratoryPool.Load (); };
 		std::shared_ptr<TunnelBase> GetTunnel (uint32_t tunnelID);
 		bool AddTunnel (std::shared_ptr<TunnelBase> tunnel);
 		void RemoveTunnel (uint32_t tunnelID);
@@ -356,7 +353,7 @@ namespace tunnel
 		std::unordered_map<uint32_t, std::shared_ptr<TunnelBase>> m_Tunnels; // tunnelID->tunnel known by this id
 		mutable std::mutex m_PoolsMutex;
 		std::list<std::shared_ptr<TunnelPool>> m_Pools;
-		mutable std::shared_ptr<TunnelPool> m_ExploratoryPool;
+		mutable i2p::util::AtomicSharedPtr<TunnelPool> m_ExploratoryPool;
 		i2p::util::Queue<std::shared_ptr<I2NPMessage>> m_Queue;
 		std::atomic<uint32_t> m_MaxNumTransitTunnels;
 		// count of tunnels for total TCSR algorithm

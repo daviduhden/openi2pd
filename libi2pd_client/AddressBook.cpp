@@ -23,6 +23,7 @@
 #include <openssl/rand.h>
 #include <boost/algorithm/string.hpp>
 #include "Base.h"
+#include "Random.h"
 #include "util.h"
 #include "Timestamp.h"
 #include "Identity.h"
@@ -842,7 +843,7 @@ namespace client
 				else if (!m_Subscriptions.empty ())
 				{
 					// pick random subscription
-					auto ind = rand () % m_Subscriptions.size ();
+					auto ind = i2p::crypto::RandomBelow (static_cast<uint32_t> (m_Subscriptions.size ()));
 					m_Downloading = std::async (
 						std::launch::async, std::bind (&AddressBookSubscription::CheckUpdates, m_Subscriptions[ind]));
 				}
