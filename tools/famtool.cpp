@@ -13,6 +13,10 @@
 /**
  * famtool - a tool for creating and verifying router families
  */
+// The family-signature format is defined in terms of the legacy EC_KEY API,
+// which OpenSSL 3 still provides. Keep that documented compatibility surface
+// here instead of emitting a warning for every deliberate legacy call.
+#define OPENSSL_SUPPRESS_DEPRECATED
 #include <cerrno>
 #include <cstdio>
 #include <cstring>

@@ -35,7 +35,7 @@ using MDCtxPtr = std::unique_ptr<EVP_MD_CTX, MDCtxDeleter>;
 // Encode an ECDSA_SIG into a buffer that is sized from the DER length
 // reported by OpenSSL. A fixed keyLen + 8 buffer is too small for P-521:
 // two 66-byte integers with their high bit set need 141 bytes, not 140.
-bool EncodeECDSASignature (const ECDSA_SIG * sig, std::vector<uint8_t> & der)
+[[maybe_unused]] bool EncodeECDSASignature (const ECDSA_SIG * sig, std::vector<uint8_t> & der)
 {
 	if (!sig) return false;
 	const int derLen = i2d_ECDSA_SIG (sig, nullptr);

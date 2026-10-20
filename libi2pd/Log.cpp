@@ -85,8 +85,8 @@ namespace log
 		, m_HasColors (true)
 		, m_TimeFormat ("%H:%M:%S")
 		, m_IsRunning (false)
-		, m_StartRequested (false)
 		, m_Thread (nullptr)
+		, m_StartRequested (false)
 		, m_RecentSequence (0)
 	{
 	}

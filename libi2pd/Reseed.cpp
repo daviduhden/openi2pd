@@ -341,7 +341,7 @@ namespace data
 
 		if (!skip (versionLength)) return 0; // skip version
 		std::array<char, 256> signerID { };
-		if (signerIDLength >= signerID.size ()) return 0;
+		if (static_cast<size_t> (signerIDLength) >= signerID.size ()) return 0;
 		if (!readExact (signerID.data (), signerIDLength)) return 0;
 		signerID[signerIDLength] = 0;
 
@@ -644,7 +644,7 @@ namespace data
 		using SslCtxPtr = std::unique_ptr<SSL_CTX, decltype (&SSL_CTX_free)>;
 		using SslPtr = std::unique_ptr<SSL, decltype (&SSL_free)>;
 		using PkeyPtr = std::unique_ptr<EVP_PKEY, decltype (&EVP_PKEY_free)>;
-		using BnPtr = std::unique_ptr<BIGNUM, decltype (&BN_free)>;
+		[[maybe_unused]] using BnPtr = std::unique_ptr<BIGNUM, decltype (&BN_free)>;
 
 		SslCtxPtr ctx (SSL_CTX_new (TLS_method ()), SSL_CTX_free);
 		if (!ctx)
