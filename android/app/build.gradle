@@ -5,7 +5,7 @@
  * openi2pd: build.
  *
  * Configures the single application module: Java 25 source and target with an
- * exact JDK 25 toolchain, compileSdk/targetSdk 37 at minSdk 24, pinned
+ * exact JDK 25 toolchain, compileSdk/targetSdk 37 at minSdk 29 (Android 10), pinned
  * AndroidX/Material versions, per-ABI version codes and the in-tree CMake JNI
  * build. Release builds are unminified and contain no signing material; unit
  * and instrumentation tests are prepared but run only when invoked.
@@ -58,10 +58,9 @@ android {
     defaultConfig {
         applicationId "org.openi2pd.router"
         targetSdk 37
-        // Android 7.0: getifaddrs is available and the app remains usable on
-        // devices that still receive I2P traffic. No newer API is required by
-        // the modernized Java code.
-        minSdk 24
+        // Android 10 (API 29) is the supported floor. It provides the modern
+        // ART/libc surface and avoids obsolete Android 7/8 compatibility paths.
+        minSdk 29
         versionCode 2610000
         versionName "2.61.0"
 
@@ -69,7 +68,7 @@ android {
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
         // NDK r30 LTS provides the current Clang/C++23 toolchain and
-        // getifaddrs at the API 24 baseline. The property keeps the CI pin
+        // getifaddrs at the API 29 baseline. The property keeps the CI pin
         // explicit without hard-coding a runner installation path.
         ndkVersion project.findProperty("i2pd.ndkVersion") ?: "30.0.16248370"
 

@@ -947,11 +947,10 @@ public class RouterService extends Service {
                 // Android 15 and cannot be started from BOOT_COMPLETED.
                 startForeground(NOTIFICATION_ID, notification,
                         ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
-            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            } else {
+                // The Android 10 floor guarantees the typed dataSync overload.
                 startForeground(NOTIFICATION_ID, notification,
                         ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
-            } else {
-                startForeground(NOTIFICATION_ID, notification);
             }
             foregroundShown = true;
             lastNotificationState = daemon.getState();
@@ -1011,9 +1010,6 @@ public class RouterService extends Service {
     }
 
     private void createNotificationChannel() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
-            return;
-        }
         if (notificationManager == null) {
             return;
         }

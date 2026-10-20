@@ -39,7 +39,6 @@ import android.content.res.AssetManager;
 import android.net.ConnectivityManager;
 import android.net.Network;
 import android.net.NetworkCapabilities;
-import android.os.Build;
 import android.util.Log;
 
 /**
@@ -778,13 +777,8 @@ public class DaemonWrapper {
                 int openFlags = android.system.OsConstants.O_CREAT
                         | android.system.OsConstants.O_EXCL
                         | android.system.OsConstants.O_WRONLY
-                        | android.system.OsConstants.O_NOFOLLOW;
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-                    // O_CLOEXEC is not part of the public API 24-26 surface.
-                    // The descriptor is written and closed synchronously, and
-                    // this process does not exec while it is open.
-                    openFlags |= android.system.OsConstants.O_CLOEXEC;
-                }
+                        | android.system.OsConstants.O_NOFOLLOW
+                        | android.system.OsConstants.O_CLOEXEC;
                 java.io.FileDescriptor descriptor = android.system.Os.open(
                         config.getAbsolutePath(), openFlags, 0600);
                 try (FileOutputStream output = new FileOutputStream(descriptor)) {

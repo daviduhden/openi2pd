@@ -8,8 +8,8 @@
 #
 
 include("$ENV{VCPKG_ROOT}/triplets/arm64-android.cmake")
-# Upstream's Android triplet pins API 28. The application's minSdk is 24, so
-# build every dependency against API 24; otherwise fortified libc symbols such
-# as __sendto_chk (API 26+) remain unresolved in the final JNI link.
-set(VCPKG_CMAKE_SYSTEM_VERSION 24)
+# Upstream's Android triplet pins API 28, while the application's Android 10
+# floor is API 29. Build every dependency against API 29 so the JNI link and
+# all packaged native libraries share the supported libc/fortify surface.
+set(VCPKG_CMAKE_SYSTEM_VERSION 29)
 set(VCPKG_BUILD_TYPE release)

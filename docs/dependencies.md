@@ -47,7 +47,7 @@ matrix.
 | `_MSC_VER` `sprintf_s` branches in SAM/Timestamp | MSVC 19.35 provides C99 `snprintf`; checked lengths now use one portable path |
 | `JSON_SUPPORTED` / "Your boost version ... is too old" fallback in TorrentsRPC | CMake requires Boost 1.81 JSON/URL whenever torrents are enabled |
 | `BOOST_ASIO_HAS_STD_ARRAY` and Boost.Bind placeholder workarounds | C++23 `std::array` and current Boost.Asio need no fallback |
-| Android non-Clang `std::to_string`/`std::stoi` polyfill and `__ANDROID_API__ < 24` `ifaddrs.h` branch | Android minSdk is 24 with a Clang NDK; libc++ and `getifaddrs` are available |
+| Android non-Clang `std::to_string`/`std::stoi` polyfill and `__ANDROID_API__ < 24` `ifaddrs.h` branch | Android minSdk is 29 (Android 10) with a Clang NDK; libc++ and `getifaddrs` are available |
 | Legacy `LittleBigEndian.h`, `I2PEndian.cpp` fallback and compiler-specific byte-swap intrinsics | Windows uses C++23 `std::endian`/`std::byteswap`; Unix/Android use the platform `endian(3)` header directly |
 | OpenSSL 3.0.0 SipHash exception | OpenSSL 3.0.2 is the enforced minimum |
 | LibreSSL `< 4.0` in-place ChaCha20-Poly1305 copy | LibreSSL 4.0 is the enforced minimum |

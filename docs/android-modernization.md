@@ -27,7 +27,7 @@ environment.**
 | Gradle | 9.8.1 | checksum pinned |
 | Android Gradle Plugin | 9.4.1 | compileSdk 37 |
 | compileSdk / targetSdk | 37 | |
-| minSdk | 24 | `getifaddrs` and existing support |
+| minSdk | 29 | Android 10 minimum; pre-29 compatibility paths removed |
 | NDK | 30.0.16248370 (overridable) | r30 LTS; C++23 JNI build |
 | Runtime | ART | executes DEX; no OpenJDK/V8 in APK |
 
@@ -103,7 +103,7 @@ RouterService (started + bound, non-exported, same process)
   it from `BOOT_COMPLETED`; a continuous router must not use it. A timeout
   callback still shuts the daemon down cleanly if a platform ever applies one.
 - The legacy manifest `CONNECTIVITY_CHANGE` receiver was removed. It was never
-  delivered on the API 24+ baseline; `DaemonWrapper` registers a
+  delivered on the API 29+ baseline; `DaemonWrapper` registers a
   `registerDefaultNetworkCallback` only while the daemon is running.
 
 ## UI
@@ -180,7 +180,7 @@ RouterService (started + bound, non-exported, same process)
   only platform attributes (`windowSplashScreenBackground`,
   `windowSplashScreenAnimatedIcon`, `windowSplashScreenIconBackgroundColor`,
   `windowSplashScreenAnimationDuration`). No `core-splashscreen` or other
-  dependency was added; API 24-30 keep the branded `windowBackground`.
+  dependency was added; API 29-30 keep the branded `windowBackground`.
 - `values/colors.xml` and `values-night/colors.xml` now carry the semantic
   palette from `assets/branding/colors.md`: primary/on-primary/containers,
   secondary, tertiary, background/surface/on-surface, variants, outline,
@@ -265,10 +265,10 @@ RouterService (started + bound, non-exported, same process)
   `:i2pd:connectedDebugAndroidTest` (device/emulator; includes
   `RouterServiceLifecycleTest` and `MainActivityNavigationTest`) and
   `:i2pd:lintDebug`.
-- AAPT2/APK: link the new adaptive icon (`mipmap-anydpi-v26`/`-v33`), legacy
-  PNG mipmaps, `<monochrome>` layer and `values-v31` splash attributes; inspect
-  the packaged resources and install the APK on API 24/25 (legacy bitmap) and
-  API 26+/33+ (adaptive/themed icon).
+- AAPT2/APK: link the adaptive icon (`mipmap-anydpi-v26`/`-v33`), legacy PNG
+  mipmap fallback assets, `<monochrome>` layer and `values-v31` splash
+  attributes; inspect the packaged resources and install the APK on API 29/30
+  and API 31+/33+ (adaptive/themed icon).
 - Lint: run `IconLocation`, adaptive-icon, monochrome, splash-screen, NewApi
   and unused-resource checks; the palette intentionally defines tokens that
   current views do not yet consume.

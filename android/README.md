@@ -23,8 +23,8 @@ state and local control actions natively.
 
 - OpenJDK 25 (build/runtime for Gradle; Android still runs ART)
 - Gradle 9.8.1 and AGP 9.4.1 (wrapper pinned)
-- Android SDK: platform 37, Build Tools 36.0.0, CMake, NDK r30 LTS
-  (`30.0.16248370`) or newer
+- Android SDK: platform 37, Build Tools 36.0.0, minSdk 29 (Android 10),
+  CMake, NDK r30 LTS (`30.0.16248370`) or newer
 - NDK path in `ANDROID_NDK_HOME` or `local.properties`
 - Boost, OpenSSL/LibreSSL, zlib and MiniUPnPc 2.2.6+ for the Android ABI,
   discoverable by CMake (for example through a vcpkg installation). No

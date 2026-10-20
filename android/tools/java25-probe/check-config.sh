@@ -33,7 +33,7 @@ grep -Fq 'languageVersion = JavaLanguageVersion.of(25)' "$app_gradle" \
 grep -Fq 'compileSdk 37' "$app_gradle" || fail 'compileSdk is not 37'
 grep -Fq "buildToolsVersion '36.0.0'" "$app_gradle" || fail 'Build Tools pin is not 36.0.0'
 grep -Fq 'targetSdk 37' "$app_gradle" || fail 'targetSdk is not 37'
-grep -Fq 'minSdk 24' "$app_gradle" || fail 'minSdk is not 24'
+grep -Fq 'minSdk 29' "$app_gradle" || fail 'minSdk is not 29'
 grep -Fq '30.0.16248370' "$app_gradle" || fail 'NDK r30 LTS pin is missing'
 grep -Fq "classpath 'com.android.tools.build:gradle:9.4.1'" "$root_gradle" \
     || fail 'AGP pin is not 9.4.1'

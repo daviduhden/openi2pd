@@ -5,7 +5,7 @@
 # openi2pd: verify java25.
 #
 # Runs the compiled probe on the build JDK and, when both R8_JAR and
-# ANDROID_JAR are set, dexes the classes with D8 and R8 at --min-api 24 and
+# ANDROID_JAR are set, dexes the classes with D8 and R8 at --min-api 29 and
 # prints the DEX magic; supplying only one of the two jars is an error.
 #
 
@@ -69,20 +69,20 @@ if [ -n "${R8_JAR:-}" ] || [ -n "${ANDROID_JAR:-}" ]; then
     class_files=$(find "$classes_dir" -name '*.class' -print)
 
     echo
-    echo "== D8 --min-api 24 =="
+    echo "== D8 --min-api 29 =="
     # shellcheck disable=SC2086 # class_files is a newline-free file list here.
     "$java_bin" -cp "$R8_JAR" com.android.tools.r8.D8 \
-        --min-api 24 \
+        --min-api 29 \
         --lib "$ANDROID_JAR" \
         --output "$dex_dir" \
         $class_files
     ls -l "$dex_dir/classes.dex"
 
     echo
-    echo "== R8 --min-api 24 =="
+    echo "== R8 --min-api 29 =="
     # shellcheck disable=SC2086
     "$java_bin" -cp "$R8_JAR" com.android.tools.r8.R8 \
-        --min-api 24 \
+        --min-api 29 \
         --lib "$ANDROID_JAR" \
         --pg-conf "$keep_file" \
         --output "$r8_dir" \
@@ -97,7 +97,7 @@ if [ -n "${R8_JAR:-}" ] || [ -n "${ANDROID_JAR:-}" ]; then
     fi
 else
     echo
-    echo "D8/R8: skipped (set R8_JAR and ANDROID_JAR to run the --min-api 24 checks)"
+    echo "D8/R8: skipped (set R8_JAR and ANDROID_JAR to run the --min-api 29 checks)"
 fi
 
 echo

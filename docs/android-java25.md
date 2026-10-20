@@ -33,9 +33,9 @@ packaged in the APK and Android does not execute OpenJDK bytecode.
 | Kotlin | **disabled** (AGP bundles Kotlin 2.4.10) | `android.builtInKotlin=false`; see the AGP investigation below |
 | compileSdk / targetSdk | **37** | unchanged in `android/app/build.gradle` |
 | SDK Build Tools | **36.0.0** | AGP 9.4 default; CI installs it explicitly |
-| minSdk | **24** | unchanged |
+| minSdk | **29** | Android 10 minimum; raised from 24 |
 | NDK | **30.0.16248370** (overridable) | r30 LTS; C++23 JNI build |
-| Device runtime | ART, API 24+ | no JVM/JDK in the APK |
+| Device runtime | ART, API 29+ | no JVM/JDK in the APK |
 | Core library desugaring | not enabled | not needed for the language features used |
 
 The root build script (`android/build.gradle`) still rejects a Gradle JVM below
@@ -63,8 +63,9 @@ re-run the actual app compile, resource link, D8/R8, Lint and device tests.
 - `targetCompatibility = JavaVersion.VERSION_25` makes `javac` emit class-file
   major version 69.
 - The Java toolchain compiles with an exact JDK 25 compiler.
-- D8/R8 reads class-file 69 and emits DEX. The emitted DEX version for
-  `--min-api 24` was **037**.
+- D8/R8 reads class-file 69 and emits DEX. The recorded DEX version from the
+  earlier `--min-api 24` probe was **037**; rerun at the current `--min-api 29`
+  is pending.
 - ART executes DEX, not class files. Source/target 25 neither raises `minSdk`
   nor puts a JDK into the APK.
 - Language features are a compile-time property. D8/R8 desugars records,
@@ -78,8 +79,8 @@ re-run the actual app compile, resource link, D8/R8, Lint and device tests.
 | Layer | Checked fact | Not claimed |
 |---|---|---|
 | `javac` | The standalone Java 25 probe builds with `--release 25` and reports class-file major 69. AGP is configured for source/target 25 with an exact JDK 25 toolchain. | The current app source has not been recompiled after the latest lifecycle edits in this environment. |
-| D8/R8 | The probe's class-file 69 output was accepted by D8/R8 9.4.28 at `--min-api 24`, producing DEX 037. | The real app's debug/release DEX, R8 shrinking, resource linking and APK packaging are not validated. |
-| ART | ART executes DEX; records/pattern switches are desugared for API 24. Java 25-only library APIs are absent from API 37 `android.jar`. | No emulator/device run proves every Java 25 construct or API on API 24 or current Android. |
+| D8/R8 | The probe's class-file 69 output was accepted by D8/R8 9.4.28 at the historical `--min-api 24`, producing DEX 037. | The real app's debug/release DEX, R8 shrinking, resource linking and APK packaging are not validated; rerun at 29 is pending. |
+| ART | ART executes DEX; records/pattern switches are desugared for the configured minSdk (29 in the current build). Java 25-only library APIs are absent from API 37 `android.jar`. | No emulator/device run proves every Java 25 construct or API on API 29 or current Android. |
 
 These are separate claims. A successful `javac` or synthetic D8/R8 probe does
 not imply that the openi2pd APK, minified release or ART runtime is validated.
@@ -114,7 +115,7 @@ not imply that the openi2pd APK, minified release or ART runtime is validated.
   parsers, state/control presentation, INI value validation and immutable
   model bounds live under `android/app/src/test/`; they are not run
   automatically and their execution is deferred to CI.
-- `compileSdk`/`targetSdk` remain 37 and `minSdk` remains 24. The NDK pin is
+- `compileSdk`/`targetSdk` remain 37 and `minSdk` is 29 (Android 10). The NDK pin is
   updated to r30 LTS (`30.0.16248370`) for the current C++23 Clang toolchain;
   the CMake graph remains the same. ABI splits, signing policy, release
   minification and Lint settings were not changed. No JDK is bundled and core
@@ -157,7 +158,7 @@ pending list below.
 
 `android/tools/java25-probe/check-config.sh` is a compile-free guard for CI. It
 verifies Java 25 source/target and toolchain pins, compile/target SDK 37,
-minSdk 24, NDK/AGP/Gradle pins, disabled JDK auto-download, the AGP
+minSdk 29, NDK/AGP/Gradle pins, disabled JDK auto-download, the AGP
 bundled-Kotlin workaround and the certificates asset target. It also rejects
 known JDK-only APIs (`java.lang.foreign`, `java.lang.invoke`,
 `java.lang.classfile`, `ScopedValue`, `StableValue`, `java.util.Sequenced`,
@@ -186,7 +187,9 @@ ANDROID_JAR=/path/to/android-sdk/platforms/android-37.0/android.jar \
 ./android/tools/java25-probe/verify-java25.sh
 ```
 
-Observed result with JDK 25:
+Observed result with JDK 25. The transcript below was recorded before the
+Android 10 bump and still shows `--min-api 24`; it is historical evidence and
+must be rerun at `--min-api 29` before being treated as current validation.
 
 ```text
 javac: javac 25.0.4.1
@@ -319,23 +322,23 @@ Android Lint alone is not a complete check for JDK-only APIs.
 ## Pending dynamic validation
 
 - Run `:i2pd:assembleDebug`, resource linking and `:i2pd:lintDebug` in CI.
-- AAPT2: link the new adaptive icon, legacy mipmaps, `<monochrome>` layer,
+- AAPT2: link the adaptive icon, `<monochrome>` layer,
   `values-v31` splash attributes and palette resources; verify the packaged
   resource table and APK contents. This was not run locally.
 - Lint: icon location/adaptive-icon/splash/NewApi checks and unused-resource
   warnings for the semantic tokens that views do not consume yet.
 - Device: launcher mask/crop, Android 12+ splash in light/dark, themed icon,
   notification small icon, Quick Settings tint and the
-  About mark on API 24 and current API levels.
+  About mark on API 29 and current API levels.
 - Exercise AGP's own D8/R8 on the real app (debug and minified release) and
-  verify the resulting DEX at `minSdk 24`.
+  verify the resulting DEX at `minSdk 29`.
 - Run the prepared pure-JVM tests and the added
   `RouterServiceLifecycleTest` instrumentation smoke test in CI.
 - Build the native JNI library (NDK/CMake dependency set not exercised here).
 - Test the JNI UTF-8-to-UTF-16 conversion with embedded NUL, supplementary
   characters, malformed sequences and a bounded large log snapshot. The
   conversion is implemented statically; no on-device test has run.
-- Verify runtime behavior on API 24 and a current API level, including records
+- Verify runtime behavior on API 29 and a current API level, including records
   and pattern switches.
 - Re-check AGP 10, where `android.builtInKotlin=false` is scheduled for
   removal, and the Kotlin toolchain's JVM target support.

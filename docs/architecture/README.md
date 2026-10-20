@@ -50,7 +50,7 @@ This directory records cross-component decisions for the openi2pd fork.
 - **Decision:** Application ID/namespace `org.openi2pd.router`, UI name
   `openi2pd`, app-specific storage, no WebView console, no broad storage
   permission. Build with OpenJDK 25, Gradle 9.8.1, AGP 9.4.1, compile/target
-  SDK 37, minSdk 24, Java source/target 25 (class-file major 69, D8/R8
+  SDK 37, minSdk 29 (Android 10), Java source/target 25 (class-file major 69, D8/R8
   converted to DEX), NDK r30 LTS+. Java 25 is intentional and is not lowered to 17;
   see `docs/android-java25.md` for the D8/R8/ART evidence and the AGP 9.4.1
   bundled-Kotlin target workaround.
