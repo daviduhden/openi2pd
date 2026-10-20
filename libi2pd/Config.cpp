@@ -123,7 +123,8 @@ namespace config
 		options_description privsep ("Privilege-separation options (Unix only)");
 		privsep.add_options () ("privsep.enabled", value<bool> ()->default_value (false),
 			"Enable the isolated log worker (default: false)") (
-			"privsep.log", value<bool> ()->default_value (true), "Isolate log writing in a worker process");
+			"privsep.log", value<bool> ()->default_value (true), "Isolate log writing in a worker process") (
+			"privsep.routerstorage", value<bool> ()->default_value (false), "Delegate fixed router state writes to a storage worker");
 
 		options_description tui ("Local TUI options");
 #if defined(ANDROID)

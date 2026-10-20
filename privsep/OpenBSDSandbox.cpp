@@ -145,8 +145,9 @@ i2p::expected<OpenBSDPolicy, std::string> BuildOpenBSDPolicy (
 		}
 		else if (config.preopenedLog)
 		{
-			// The sender opened the file and passes one descriptor. Do not
-			// grant wpath/cpath/fattr or a rule for the log path.
+			// The sender opened the file and passes one descriptor before the
+			// sandbox is installed. Do not grant wpath/cpath/fattr or a rule
+			// for the log path; descriptor reception is not needed afterwards.
 			AppendPromise (policy.pledge, "rpath");
 			if (config.useUnveil && !AddUnveil (policy, "/etc/localtime", "r"))
 				return PolicyError ("invalid localtime unveil rule");
@@ -170,7 +171,7 @@ i2p::expected<OpenBSDPolicy, std::string> BuildOpenBSDPolicy (
 		// promise and no generic path operation: the backend maps typed
 		// resources to these roots.
 		AppendPromise (policy.pledge, "stdio");
-		AppendPromise (policy.pledge, "unix");
+		if (!config.preopenedStorageIpc) AppendPromise (policy.pledge, "unix");
 		AppendPromise (policy.pledge, "rpath");
 		AppendPromise (policy.pledge, "wpath");
 		AppendPromise (policy.pledge, "cpath");
@@ -179,7 +180,7 @@ i2p::expected<OpenBSDPolicy, std::string> BuildOpenBSDPolicy (
 		// Storage roots and other bounded objects may be delivered as one
 		// pre-opened descriptor. recvfd is local descriptor reception only;
 		// it does not grant external network or pathname write access.
-		AppendPromise (policy.pledge, "recvfd");
+		if (!config.preopenedStorageIpc) AppendPromise (policy.pledge, "recvfd");
 		if (config.useUnveil)
 		{
 			if (!AddUnveil (policy, config.dataDir, "rwc"))

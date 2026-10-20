@@ -49,6 +49,9 @@
 #include "ClientContext.h"
 #include "Transports.h"
 #include "util.h"
+#if defined(__OpenBSD__) && !defined(I2PD_NO_PRIVSEP)
+#include "../privsep/Supervisor.h"
+#endif
 
 namespace
 {
@@ -120,6 +123,7 @@ static const char * g_RequiredPledgePromises[] = {
 	"inet", // NTCP2/SSU2, HTTP proxies and reseed
 	"dns", // resolver support
 	"unix", // local IPC and /dev/log
+	"recvfd", // bounded worker channels returned by that supervisor
 	"flock" // pidfile lockf(3)
 };
 
@@ -617,6 +621,19 @@ namespace util
 		// proc/exec. Pledge and unveil are cleared by execve; every worker
 		// installs its own policy after exec instead of inheriting this one.
 		if (!PreparePrivsepWorkers ()) return abortStart ();
+#if !defined(I2PD_NO_PRIVSEP) && !defined(NO_TORRENTS)
+		// Separate broker is created before runtime pledge removes exec. Its root
+		// authority is immutable; roots outside datadir are deliberately rejected.
+		if (::geteuid () != 0)
+		{
+			std::string storageError;
+			if (!i2p::privsep::PrepareTorrentStorageSupervisor (i2p::fs::GetDataDir (), storageError))
+			{
+				std::cerr << "storage supervisor: " << storageError << std::endl;
+				return abortStart ();
+			}
+		}
+#endif
 		// Resolve/read sandbox policy before the first unveil hides it.
 		bool useUnveil, usePledge;
 		i2p::config::GetOption ("openbsd.unveil_enabled", useUnveil);

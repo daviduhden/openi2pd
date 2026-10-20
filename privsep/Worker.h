@@ -137,6 +137,13 @@ private:
  */
 i2p::expected<ChildProcess, std::string> SpawnLogWorker (std::string_view executable = { });
 i2p::expected<ChildProcess, std::string> SpawnSupervisor ();
+i2p::expected<ChildProcess, std::string> SpawnWorker (const char * role, std::string_view executableOverride);
+// Pre-sandbox only: orphan the supervisor via a reaped intermediate process.
+// The returned channel is its lifetime token; no proc promise is needed later.
+i2p::expected<Channel, std::string> SpawnDetachedWorker (const char * role);
+/** Pre-pledge startup only; inherited fd4, channel EOF owns worker lifetime. */
+i2p::expected<Channel, std::string> SpawnDetachedWorkerWithRoot (const char * role, int rootFd);
+i2p::expected<ChildProcess, std::string> SpawnWorkerWithRoot (const char * role, std::string_view executable, int rootFd);
 std::string ExecutablePath ();
 }
 

@@ -46,7 +46,15 @@ enum class MessageType : uint16_t
 	 * exactly one SCM_RIGHTS descriptor for an already-open log file. This
 	 * lets the worker drop wpath/cpath and retain only stdio/rpath.
 	 */
-	ConfigureLogFd = 6
+	ConfigureLogFd = 6,
+	ConfigureTorrentStorage = 7,
+	TorrentStorageRequest = 8,
+	TorrentStorageReply = 9,
+	SpawnTorrentStorage = 10,
+	TorrentStorageSupervisorReply = 11,
+	ConfigureRouterStorage = 12,
+	RouterStorageRequest = 13,
+	RouterStorageReply = 14
 };
 
 struct Message
@@ -197,7 +205,7 @@ inline i2p::expected<Message, ProtocolError> Decode (std::string_view frame)
 	if (*version != PROTOCOL_VERSION)
 		return i2p::unexpected (ProtocolError { ErrorCode::UnsupportedVersion, "bad version" });
 	if (*type < static_cast<uint16_t> (MessageType::ConfigureLog)
-		|| *type > static_cast<uint16_t> (MessageType::ConfigureLogFd))
+		|| *type > static_cast<uint16_t> (MessageType::RouterStorageReply))
 		return i2p::unexpected (ProtocolError { ErrorCode::UnknownType, "unknown type" });
 	if (*length > MAX_MESSAGE_SIZE - HEADER_SIZE)
 		return i2p::unexpected (ProtocolError { ErrorCode::TooLarge, "payload too large" });

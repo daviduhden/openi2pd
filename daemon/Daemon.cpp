@@ -50,6 +50,7 @@
 #include "Transports.h"
 #include "RouterInfo.h"
 #include "RouterContext.h"
+#include "PersistentStorage.h"
 #include "Tunnel.h"
 #include "HTTP.h"
 #include "NetDb.hpp"
@@ -61,6 +62,7 @@
 #if !defined(_WIN32) && !defined(I2PD_NO_PRIVSEP)
 #include "privsep/LogWorker.h"
 #include "privsep/Worker.h"
+#include "privsep/RouterStorage.h"
 #endif
 #include "ClientContext.h"
 #include "Crypto.h"
@@ -100,6 +102,7 @@ namespace util
 
 		std::unique_ptr<i2p::tui::Server> tuiServer;
 #if !defined(_WIN32) && !defined(I2PD_NO_PRIVSEP)
+		std::shared_ptr<i2p::privsep::RouterStorageClient> routerStorage;
 		std::unique_ptr<i2p::privsep::LogSink> logSink;
 		std::unique_ptr<i2p::privsep::ChildProcess> logWorker;
 		std::thread logSupervisor;
@@ -164,6 +167,7 @@ namespace util
 	void Daemon_Singleton::StopPrivsepWorkers ()
 	{
 #if !defined(_WIN32) && !defined(I2PD_NO_PRIVSEP)
+		if (d->routerStorage) d->routerStorage->Stop ();
 		if (d->privsepLog) StopPrivsepLogWorker ();
 #endif
 	}
@@ -299,6 +303,7 @@ namespace util
 	Daemon_Singleton::~Daemon_Singleton ()
 	{
 #if !defined(_WIN32) && !defined(I2PD_NO_PRIVSEP)
+		if (d && d->routerStorage) d->routerStorage->Stop ();
 		if (d && d->logSink)
 		{
 			// Normal shutdown calls stop(), but an early exit or a failed
@@ -554,6 +559,28 @@ namespace util
 		bool checkReserved;
 		i2p::config::GetOption ("reservedrange", checkReserved);
 		i2p::transport::transports.SetCheckReserved (checkReserved);
+
+		bool routerStorage = false;
+		i2p::config::GetOption ("privsep.routerstorage", routerStorage);
+		if (routerStorage)
+		{
+			i2p::data::InstallRouterPersistenceWriter ([] (auto, auto) { return false; });
+#if !defined(_WIN32) && !defined(__ANDROID__) && !defined(I2PD_NO_PRIVSEP)
+			std::string error;
+			d->routerStorage = std::make_shared<i2p::privsep::RouterStorageClient> ();
+			if (!d->routerStorage->Start (i2p::fs::GetDataDir (), error))
+			{
+				LogPrint (eLogError, "Daemon: Required router storage failed: ", error);
+				return false;
+			}
+			i2p::data::InstallRouterPersistenceWriter ([worker = d->routerStorage] (auto file, auto bytes)
+				{ return worker->Write (file, bytes); });
+#else
+			LogPrint (eLogError, "Daemon: Router storage worker unavailable on this platform");
+			return false;
+#endif
+		}
+		else i2p::data::InstallRouterPersistenceWriter ({});
 
 		i2p::context.Init ();
 
@@ -897,6 +924,9 @@ namespace util
 		i2p::transport::transports.Stop ();
 		LogPrint (eLogInfo, "Daemon: Stopping NetDB");
 		i2p::data::netdb.Stop ();
+#if !defined(_WIN32) && !defined(I2PD_NO_PRIVSEP)
+		if (d->routerStorage) d->routerStorage->Stop ();
+#endif
 		i2p::crypto::TerminateCrypto ();
 		// Keep the worker and its monitor alive while the logger drains the
 		// queue. StopPrivsepLogWorker then joins the monitor before sending

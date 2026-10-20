@@ -70,6 +70,12 @@ void TestPolicySeparation ()
 	assert (storage->HasPersistentWrite ());
 	assert (!storage->HasProcessCreation ());
 	assert (storage->HasLocalIpc ());
+	auto inheritedConfig = BaseConfig ();
+	inheritedConfig.preopenedStorageIpc = true;
+	auto inheritedStorage = BuildOpenBSDPolicy (OpenBSDWorkerRole::Storage, inheritedConfig);
+	assert (inheritedStorage && !inheritedStorage->HasExternalNetwork ());
+	assert (inheritedStorage->HasPersistentWrite () && !inheritedStorage->HasProcessCreation ());
+	assert (!inheritedStorage->HasLocalIpc ()); // No new UNIX endpoints/fd reception.
 
 	auto network = BuildOpenBSDPolicy (OpenBSDWorkerRole::Network, BaseConfig ());
 	assert (network.has_value ());

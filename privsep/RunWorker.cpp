@@ -13,6 +13,8 @@
 #include "RunWorker.h"
 #include "LogWorker.h"
 #include "Supervisor.h"
+#include "TorrentStorage.h"
+#include "RouterStorage.h"
 
 #ifndef _WIN32
 
@@ -63,6 +65,11 @@ int RunWorker (std::string_view role, std::string_view fdArgument)
 		std::fprintf (stderr, "privsep worker: refusing to run with euid 0\n");
 		return 1;
 	}
+	if (role == "torrent-storage-supervisor") return RunTorrentStorageSupervisor (fd);
+	if (role == "torrent-storage-inherited") return RunTorrentStorageWorker (fd, 4);
+	if (role == "torrent-storage") return RunTorrentStorageWorker (fd);
+	if (role == "router-storage-inherited") return RunRouterStorageWorker (fd, 4);
+	if (role == "router-storage") return RunRouterStorageWorker (fd);
 	if (role == "log") return RunLogWorker (fd);
 	if (role == "supervisor") return RunSupervisor (fd);
 	std::fprintf (stderr, "privsep worker: unknown role\n");

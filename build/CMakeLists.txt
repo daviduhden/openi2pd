@@ -246,6 +246,7 @@ set(LIBI2PD_SOURCES
   "${LIBI2PD_DIR}/Profiling.cpp"
   "${LIBI2PD_DIR}/Reseed.cpp"
   "${LIBI2PD_DIR}/RouterContext.cpp"
+  "${LIBI2PD_DIR}/PersistentStorage.cpp"
   "${LIBI2PD_DIR}/RouterInfo.cpp"
   "${LIBI2PD_DIR}/Signature.cpp"
   "${LIBI2PD_DIR}/SSU2.cpp"
@@ -279,6 +280,7 @@ set(LIBI2PD_CLIENT_SOURCES
   "${LIBI2PD_CLIENT_DIR}/TorrentsControl.cpp"
   "${LIBI2PD_CLIENT_DIR}/TorrentsComments.cpp"
   "${LIBI2PD_CLIENT_DIR}/TorrentsCreator.cpp"
+  "${LIBI2PD_CLIENT_DIR}/TorrentStorageWorker.cpp"
   "${LIBI2PD_CLIENT_DIR}/TorrentsState.cpp"
   "${LIBI2PD_CLIENT_DIR}/TorrentsDHT.cpp"
   "${LIBI2PD_CLIENT_DIR}/TorrentsRPC.cpp"
@@ -316,6 +318,8 @@ if(UNIX)
     "${PROJECT_ROOT}/privsep/OpenBSDSandbox.cpp"
     "${PROJECT_ROOT}/privsep/LogWorker.cpp"
     "${PROJECT_ROOT}/privsep/RunWorker.cpp"
+    "${PROJECT_ROOT}/privsep/TorrentStorage.cpp"
+    "${PROJECT_ROOT}/privsep/RouterStorage.cpp"
     "${PROJECT_ROOT}/privsep/Supervisor.cpp"
     "${PROJECT_ROOT}/privsep/Worker.cpp"
   )
@@ -397,7 +401,7 @@ if(PRIVSEP_SOURCES AND NOT ANDROID)
     "${DAEMON_DIR}"
     "${LANG_DIR}"
   )
-  target_link_libraries(i2pd_privsep PRIVATE Threads::Threads i2pd_warnings)
+  target_link_libraries(i2pd_privsep PRIVATE Threads::Threads $<BUILD_INTERFACE:i2pd_warnings>)
   if(CMAKE_SYSTEM_NAME STREQUAL "OpenBSD")
     # OpenBSD imsg lives in libutil.
     target_link_libraries(i2pd_privsep PUBLIC util)
@@ -455,6 +459,9 @@ target_include_directories(libi2pdclient
 )
 target_compile_features(libi2pdclient PUBLIC cxx_std_23)
 target_link_libraries(libi2pdclient PUBLIC libi2pd Threads::Threads)
+if(UNIX AND TARGET i2pd_privsep)
+  target_link_libraries(libi2pdclient PRIVATE i2pd_privsep)
+endif()
 target_link_libraries(libi2pdclient PRIVATE $<BUILD_INTERFACE:i2pd_warnings>)
 i2pd_enable_sanitizers(libi2pdclient)
 if(NOT WITH_TORRENTS)
@@ -583,6 +590,10 @@ endif()
 
 # Installation
 if(WITH_LIBRARY)
+  if(UNIX AND TARGET i2pd_privsep)
+    install(TARGETS i2pd_privsep EXPORT i2pd-targets
+      ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT Libraries)
+  endif()
   install(TARGETS libi2pd libi2pdclient libi2pdlang
     EXPORT i2pd-targets
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}

@@ -12,6 +12,10 @@
 #ifndef I2PD_PRIVSEP_SUPERVISOR_H__
 #define I2PD_PRIVSEP_SUPERVISOR_H__
 
+#include <string>
+#include <string_view>
+#include "Worker.h"
+
 namespace i2p::privsep
 {
 /**
@@ -21,6 +25,14 @@ namespace i2p::privsep
  * persistent-write capability of its own.
  */
 int RunSupervisor (int fd);
+// Prepared by the daemon before runtime pledge. The immutable root bounds all
+// later worker delegation; this supervisor never has persistent-write access.
+bool PrepareTorrentStorageSupervisor (const std::string & root, std::string & error);
+// rootFd stays local: only relative path and fstat identity travel to broker.
+// OpenBSD pledge sendfd/recvfd explicitly exclude directory descriptors.
+i2p::expected<Channel, std::string> SpawnSupervisedTorrentStorage (
+ int rootFd, std::string_view rootPath);
+int RunTorrentStorageSupervisor (int fd);
 }
 
 #endif

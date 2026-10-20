@@ -78,12 +78,16 @@ template <typename Exchange> int RunScenario (Exchange exchange, int expectedExi
 
 	int status = 0;
 	assert (WaitForExit (pid, status, 5000));
-	assert (WIFEXITED (status));
 	if (expectedExit == 0)
+	{
+		assert (WIFEXITED (status));
 		assert (WEXITSTATUS (status) == 0);
-	else
-		assert (WEXITSTATUS (status) != 0);
-	return WEXITSTATUS (status);
+		return 0;
+	}
+	// A sandbox may terminate a forbidden operation with SIGSYS instead of
+	// letting the worker print a protocol error. Both are valid rejections.
+	assert (!WIFEXITED (status) || WEXITSTATUS (status) != 0);
+	return WIFEXITED (status) ? WEXITSTATUS (status) : 128 + WTERMSIG (status);
 }
 
 std::string ReadFile (const std::string & path)
@@ -284,7 +288,7 @@ int main ()
 	{
 		const std::string path = std::string (dir) + "/early.log";
 		RunScenario (
-			[&path] (Channel & channel)
+			[] (Channel & channel)
 			{
 				assert (channel.Send (Message { MessageType::LogRecord, 1, EncodeLogRecord (4, 1, "too early") })
 						.has_value ());

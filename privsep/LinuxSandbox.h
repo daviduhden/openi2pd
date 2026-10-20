@@ -41,6 +41,8 @@ struct LinuxSandboxProfile
 {
 	bool allowNetwork = false;
 	bool allowPersistentWrites = false;
+	/** Restrict regular-file/directory reads to delegated writable roots. */
+	bool restrictFilesystemReads = false;
 	/** Deny every new socket/socketpair, including AF_UNIX. */
 	bool denySocketCreation = false;
 	/** Deny AF_INET/AF_INET6 but permit AF_UNIX for IPC/syslog. */

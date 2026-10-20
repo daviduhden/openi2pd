@@ -48,6 +48,9 @@ struct OpenBSDPolicyConfig
 {
 	bool useUnveil = true;
 	bool usePledge = true;
+	// Configured storage workers need only their inherited channel, no new
+	// UNIX connections or descriptor reception after bootstrap.
+	bool preopenedStorageIpc = false;
 
 	/** Absolute data/certificate roots used by the storage policy. */
 	std::string dataDir;

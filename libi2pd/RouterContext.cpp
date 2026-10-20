@@ -13,7 +13,10 @@
  *
  */
 
+#include "PersistentStorage.h"
 #include <fstream>
+#include <stdexcept>
+#include <openssl/crypto.h>
 #include <openssl/rand.h>
 #include "Config.h"
 #include "Crypto.h"
@@ -368,7 +371,9 @@ void RouterContext::UpdateRouterInfoLocked ()
 							m_SaveBuffer = nullptr;
 						}
 						if (!buffer) break;
-						i2p::data::RouterInfo::SaveToFile (i2p::fs::DataDirPath (ROUTER_INFO), buffer);
+						if (!i2p::data::WriteRouterPersistentFile (i2p::data::RouterPersistentFile::RouterInfo,
+							std::span<const uint8_t> (buffer->data (), buffer->GetBufferLen ())))
+							LogPrint (eLogError, "Router: isolated router.info persistence failed");
 					}
 					m_IsSaving.clear ();
 				});
@@ -407,9 +412,9 @@ void RouterContext::NewNTCP2Keys ()
 	memcpy (keys->staticPublicKey, staticKeys->GetPublicKey (), 32);
 	RAND_bytes (keys->iv, 16);
 	// save
-	std::ofstream fk (
-		i2p::fs::CreatePrivateFile (i2p::fs::DataDirPath (NTCP2_KEYS)), std::ofstream::binary | std::ofstream::out);
-	fk.write ((char *)keys.get (), sizeof (NTCP2PrivateKeys));
+	if (!i2p::data::WriteRouterPersistentFile (i2p::data::RouterPersistentFile::NTCP2Keys,
+		std::span<const uint8_t> (reinterpret_cast<const uint8_t *> (keys.get ()), sizeof (NTCP2PrivateKeys))))
+		throw std::runtime_error ("Router: NTCP2 key persistence failed");
 	m_NTCP2StaticKeys = std::move (staticKeys);
 	m_NTCP2Keys = std::move (keys);
 }
@@ -425,9 +430,9 @@ void RouterContext::NewSSU2Keys ()
 	memcpy (keys->staticPublicKey, staticKeys->GetPublicKey (), 32);
 	RAND_bytes (keys->intro, 32);
 	// save
-	std::ofstream fk (
-		i2p::fs::CreatePrivateFile (i2p::fs::DataDirPath (SSU2_KEYS)), std::ofstream::binary | std::ofstream::out);
-	fk.write ((char *)keys.get (), sizeof (SSU2PrivateKeys));
+	if (!i2p::data::WriteRouterPersistentFile (i2p::data::RouterPersistentFile::SSU2Keys,
+		std::span<const uint8_t> (reinterpret_cast<const uint8_t *> (keys.get ()), sizeof (SSU2PrivateKeys))))
+		throw std::runtime_error ("Router: SSU2 key persistence failed");
 	m_SSU2StaticKeys = std::move (staticKeys);
 	m_SSU2Keys = std::move (keys);
 }
@@ -1538,14 +1543,13 @@ bool RouterContext::Load ()
 
 void RouterContext::SaveKeys ()
 {
-	// save in the same format as .dat files
-	std::ofstream fk (
-		i2p::fs::CreatePrivateFile (i2p::fs::DataDirPath (ROUTER_KEYS)), std::ofstream::binary | std::ofstream::out);
-	size_t len = m_Keys.GetFullLen ();
-	uint8_t * buf = new uint8_t[len];
-	m_Keys.ToBuffer (buf, len);
-	fk.write ((char *)buf, len);
-	delete[] buf;
+	// Preserve the exact existing key serialization; only IO authority changes.
+	std::vector<uint8_t> buffer (m_Keys.GetFullLen ());
+	m_Keys.ToBuffer (buffer.data (), buffer.size ());
+	const bool saved = i2p::data::WriteRouterPersistentFile (i2p::data::RouterPersistentFile::RouterKeys, buffer);
+	OPENSSL_cleanse (buffer.data (), buffer.size ());
+	if (!saved)
+		throw std::runtime_error ("Router: identity key persistence failed");
 }
 
 std::shared_ptr<i2p::tunnel::TunnelPool> RouterContext::GetTunnelPool () const

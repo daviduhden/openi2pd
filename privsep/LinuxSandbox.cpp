@@ -196,6 +196,26 @@ namespace
 			BPF_STMT (BPF_RET | BPF_K, SECCOMP_RET_KILL_PROCESS),
 			BPF_STMT (BPF_LD | BPF_W | BPF_ABS, static_cast<uint32_t> (offsetof (struct seccomp_data, nr))),
 		};
+		// x32 shares AUDIT_ARCH_X86_64 but adds a syscall-number bit. Do not
+		// let that alternate socket ABI bypass the native-number checks.
+#if defined(__x86_64__)
+		filter.push_back (BPF_JUMP (BPF_JMP | BPF_JSET | BPF_K, 0x40000000U, 0, 1));
+		filter.push_back (BPF_STMT (BPF_RET | BPF_K, deny));
+#endif
+		// io_uring can create sockets without SYS_socket; descriptor stealing
+		// likewise must not restore network authority to a storage process.
+#ifdef SYS_io_uring_setup
+		filter.push_back (BPF_JUMP (BPF_JMP | BPF_JEQ | BPF_K, SYS_io_uring_setup, 0, 1));
+		filter.push_back (BPF_STMT (BPF_RET | BPF_K, deny));
+#endif
+#ifdef SYS_pidfd_getfd
+		filter.push_back (BPF_JUMP (BPF_JMP | BPF_JEQ | BPF_K, SYS_pidfd_getfd, 0, 1));
+		filter.push_back (BPF_STMT (BPF_RET | BPF_K, deny));
+#endif
+#ifdef SYS_ptrace
+		filter.push_back (BPF_JUMP (BPF_JMP | BPF_JEQ | BPF_K, SYS_ptrace, 0, 1));
+		filter.push_back (BPF_STMT (BPF_RET | BPF_K, deny));
+#endif
 		if (denyAll)
 		{
 			filter.push_back (BPF_JUMP (BPF_JMP | BPF_JEQ | BPF_K, SYS_socket, 0, 1));
@@ -233,6 +253,8 @@ namespace
 		}
 		struct landlock_ruleset_attr ruleset { };
 		ruleset.handled_access_fs = FilesystemWriteMask (abi);
+		if (profile.restrictFilesystemReads)
+			ruleset.handled_access_fs |= LANDLOCK_ACCESS_FS_READ_FILE | LANDLOCK_ACCESS_FS_READ_DIR;
 		if (!profile.allowNetwork) ruleset.handled_access_net = NetworkMask (abi);
 		if (!ruleset.handled_access_fs && !ruleset.handled_access_net) return { };
 
@@ -270,6 +292,7 @@ namespace
 					// Directory-only rights (make/remove/refer) are invalid for a
 					// regular file and make landlock_add_rule fail with EINVAL.
 					beneath.allowed_access = LANDLOCK_ACCESS_FS_WRITE_FILE;
+					if (profile.restrictFilesystemReads) beneath.allowed_access |= LANDLOCK_ACCESS_FS_READ_FILE;
 #ifdef LANDLOCK_ACCESS_FS_TRUNCATE
 					if (abi >= 3) beneath.allowed_access |= LANDLOCK_ACCESS_FS_TRUNCATE;
 #endif

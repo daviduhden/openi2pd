@@ -20,6 +20,12 @@
 #include <memory>
 #include <string>
 #include <thread>
+#include <mutex>
+#include <filesystem>
+#include <vector>
+#include <fcntl.h>
+#include <sys/stat.h>
+#include "TorrentStorage.h"
 #include <unistd.h>
 
 #include "Channel.h"
@@ -74,6 +80,163 @@ namespace
 			return true;
 		}
 	}
+}
+
+namespace
+{
+ std::mutex storageSupervisorMutex;
+ std::unique_ptr<Channel> storageSupervisor;
+ uint32_t storageSupervisorRequest = 0;
+ std::filesystem::path storageSupervisorRoot;
+}
+
+bool PrepareTorrentStorageSupervisor (const std::string & root, std::string & error)
+{
+ std::lock_guard lock (storageSupervisorMutex);
+ error.clear ();
+ if (storageSupervisor) { error = "storage supervisor already prepared"; return false; }
+ if (::geteuid () == 0) { error = "storage supervisor requires unprivileged identity"; return false; }
+ std::error_code ec;
+ const auto absolute = std::filesystem::canonical (root, ec);
+ if (ec) { error = "invalid storage supervisor root"; return false; }
+ auto spawned = SpawnDetachedWorker ("torrent-storage-supervisor");
+ if (!spawned) { error = spawned.error (); return false; }
+ PayloadWriter config; config.WriteString (absolute.string ()); config.WriteString (ExecutablePath ());
+ auto sent = spawned->Send ({ MessageType::ConfigureTorrentStorage, 1, config.Data () }, 5000);
+ if (!sent) { error = sent.error (); return false; }
+ auto reply = spawned->Receive (5000);
+ if (!reply || !*reply || (**reply).type != MessageType::TorrentStorageSupervisorReply
+   || (**reply).requestId != 1 || !(**reply).payload.empty ())
+ { error = "storage supervisor initialization failed"; return false; }
+ storageSupervisor = std::make_unique<Channel> (std::move (*spawned));
+ storageSupervisorRequest = 1;
+ storageSupervisorRoot = absolute;
+ return true;
+}
+
+i2p::expected<Channel, std::string> SpawnSupervisedTorrentStorage (int rootFd, std::string_view rootPath)
+{
+ std::lock_guard lock (storageSupervisorMutex);
+ if (!storageSupervisor || storageSupervisorRequest == UINT32_MAX)
+  return i2p::unexpected (std::string ("storage supervisor unavailable"));
+ const auto id = ++storageSupervisorRequest;
+ struct stat expected {};
+ if (rootFd < 0 || ::fstat (rootFd, &expected) || !S_ISDIR (expected.st_mode))
+  return i2p::unexpected (std::string ("invalid local root identity"));
+ const auto relative = std::filesystem::path (rootPath).lexically_relative (storageSupervisorRoot).generic_string ();
+ PayloadWriter request; request.WriteString (relative);
+ request.WriteU64BE (static_cast<uint64_t> (expected.st_dev));
+ request.WriteU64BE (static_cast<uint64_t> (expected.st_ino));
+ auto & channel = *storageSupervisor;
+ auto sent = channel.Send ({ MessageType::SpawnTorrentStorage, id, request.Data () }, 5000);
+ if (!sent) { storageSupervisor.reset (); return i2p::unexpected (sent.error ()); }
+ auto received = channel.ReceiveWithFd (5000);
+ if (!received || !*received)
+ { storageSupervisor.reset (); return i2p::unexpected (std::string ("storage supervisor disconnected")); }
+ auto & reply = **received;
+ if (reply.message.type != MessageType::TorrentStorageSupervisorReply || reply.message.requestId != id
+   || !reply.message.payload.empty () || reply.fd < 0)
+ {
+  if (reply.fd >= 0) ::close (reply.fd);
+  storageSupervisor.reset ();
+  return i2p::unexpected (std::string ("storage supervisor rejected worker capability"));
+ }
+ return Channel::Adopt (reply.fd);
+}
+
+int RunTorrentStorageSupervisor (int fd)
+{
+#if !defined(__OpenBSD__)
+ (void)fd; return 1; // This broker is used only by the pre-pledge OpenBSD path.
+#else
+ Channel control = Channel::Adopt (fd);
+ auto uid = control.PeerUid ();
+ if (!uid || *uid != ::geteuid () || ::geteuid () == 0) return 1;
+ // An inherited terminal/log descriptor might itself be network-capable.
+ ::close (0); ::close (1); ::close (2);
+ auto received = control.ReceiveWithFd (5000);
+ if (!received || !*received) return 1;
+ auto & initial = **received;
+ struct RootOwner { int fd; ~RootOwner () { if (fd >= 0) ::close (fd); } } unexpected { initial.fd };
+ struct stat rootInfo {};
+ PayloadReader setup (initial.message.payload);
+ auto configuredRoot = setup.ReadString ();
+ auto configuredExecutable = setup.ReadString ();
+ if (initial.message.type != MessageType::ConfigureTorrentStorage || initial.message.requestId != 1
+   || initial.fd >= 0
+   || !configuredRoot || !configuredExecutable || !setup.Done () || configuredRoot->empty () || configuredRoot->front () != '/'
+   || configuredRoot->find ('\0') != std::string_view::npos) return 1;
+ const std::string rootPath (*configuredRoot);
+ // Trusted bootstrap only: open before confinement, and never accept another
+ // absolute authority once this immutable root capability has been installed.
+ RootOwner root { ::open (rootPath.c_str (), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC) };
+ if (root.fd < 0 || ::fstat (root.fd, &rootInfo) || !S_ISDIR (rootInfo.st_mode)
+   || rootInfo.st_uid != ::geteuid () || (rootInfo.st_mode & 0022)) return 1;
+ const std::string executable (*configuredExecutable); // Frozen by trusted pre-pledge startup.
+ if (executable.empty () || executable.front () != '/' || executable.find ('\0') != std::string::npos
+   || ::access (executable.c_str (), X_OK)) return 1;
+ // No inet/dns/wpath/cpath/fattr. rpath is needed only to compare delegated
+ // directory identities through the immutable root FD. Each exec-ed child
+ // installs its own storage-only policy before processing file requests.
+ if (::unveil (rootPath.c_str (), "r") || ::unveil (executable.c_str (), "x")
+   || ::unveil (nullptr, nullptr)
+   || ::pledge ("stdio rpath unix proc exec sendfd recvfd", nullptr)) return 1;
+ if (!control.Send ({ MessageType::TorrentStorageSupervisorReply, 1, {} }, 5000)) return 1;
+ std::vector<ChildProcess> children;
+ uint32_t launches = 0, lastRequest = 1;
+ while (true)
+ {
+  for (auto it = children.begin (); it != children.end ();)
+   if (!it->IsRunning ()) it = children.erase (it); else ++it;
+  auto next = control.ReceiveWithFd (500);
+  if (!next) return 1; // RAII stops/reaps every owned worker.
+  if (!*next) continue;
+  auto & request = **next;
+  RootOwner unexpectedRequestFd { request.fd };
+  if (request.message.type == MessageType::Shutdown && request.fd < 0) return 0;
+  if (request.message.type != MessageType::SpawnTorrentStorage || request.message.requestId <= lastRequest
+    || request.fd >= 0 || children.size () >= 16 || launches >= 128) return 1;
+  lastRequest = request.message.requestId;
+  PayloadReader payload (request.message.payload);
+  auto path = payload.ReadString ();
+  auto expectedDevice = payload.ReadU64BE (); auto expectedInode = payload.ReadU64BE ();
+  if (!path || !expectedDevice || !expectedInode || !payload.Done ()) return 1;
+  const std::string relative (*path);
+  if (relative != "." && !SafeStoragePath (relative)) return 1;
+  // Walk beneath the pre-authorized root without following symlinks. Expected
+  // device/inode values detect replacement between the client's open and ours;
+  // they never grant authority outside this root.
+  RootOwner checked { ::dup (root.fd) };
+  size_t start = 0;
+  while (relative != "." && start < relative.size ())
+  {
+   auto slash = relative.find ('/', start);
+   auto part = relative.substr (start, slash == std::string::npos ? relative.size () - start : slash - start);
+   int child = ::openat (checked.fd, part.c_str (), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+   if (child < 0) return 1;
+   ::close (checked.fd); checked.fd = child;
+   if (slash == std::string::npos) break;
+   start = slash + 1;
+  }
+  struct stat actual {};
+  if (::fstat (checked.fd, &actual) || static_cast<uint64_t> (actual.st_dev) != *expectedDevice
+    || static_cast<uint64_t> (actual.st_ino) != *expectedInode
+    || actual.st_uid != ::geteuid () || !S_ISDIR (actual.st_mode) || (actual.st_mode & 0022)) return 1;
+  auto child = SpawnWorkerWithRoot ("torrent-storage-inherited", executable, checked.fd);
+  if (!child) return 1;
+  ++launches;
+  // Bind the worker to the checked capability here, before releasing its
+  // channel. The client cannot substitute another root after authorization.
+  PayloadWriter workerSetup; workerSetup.WriteString (relative == "." ? rootPath : rootPath + "/" + relative);
+  if (!child->ChannelFd ().Send ({ MessageType::ConfigureTorrentStorage, 1, workerSetup.Data () }, 5000)) return 1;
+  auto ready = child->ChannelFd ().Receive (5000);
+  if (!ready || !*ready || (**ready).type != MessageType::TorrentStorageReply
+    || (**ready).requestId != 1 || (**ready).payload != std::string (1, '\0')) return 1;
+  if (!control.SendWithFd ({ MessageType::TorrentStorageSupervisorReply, lastRequest, {} }, child->ChannelFd ().Fd (), 5000)) return 1;
+  child->ChannelFd ().Close (); // Do not keep the client endpoint alive.
+  children.emplace_back (std::move (*child));
+ }
+#endif
 }
 
 int RunSupervisor (int fd)

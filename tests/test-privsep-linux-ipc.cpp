@@ -127,7 +127,7 @@ void TestPeerCredentials ()
 	assert (credentials.has_value ());
 	assert (credentials->uid == geteuid ());
 	assert (credentials->gid == getegid ());
-	assert (credentials->pid == getpid ());
+	assert (credentials->pid == static_cast<uint32_t> (getpid ()));
 
 	auto uid = pair->first.PeerUid ();
 	assert (uid.has_value ());
@@ -499,6 +499,7 @@ void TestSendDeadlineAfterDrain ()
 	assert (first.has_value ());
 	assert (first->has_value ());
 	assert ((*first)->requestId == 0);
+	first.reset ();
 
 	const auto started = std::chrono::steady_clock::now ();
 	const std::string resumedPayload (64, 's');

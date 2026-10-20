@@ -63,10 +63,11 @@ int main ()
 	ExpectDecodeError (Header (0, PROTOCOL_VERSION, 2, 0, 0), ErrorCode::Malformed);
 	ExpectDecodeError (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION + 1, 2, 0, 0), ErrorCode::UnsupportedVersion);
 	ExpectDecodeError (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 0, 0, 0), ErrorCode::UnknownType);
-	ExpectDecodeError (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 7, 0, 0), ErrorCode::UnknownType);
+	ExpectDecodeError (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 15, 0, 0), ErrorCode::UnknownType);
 	ExpectDecodeError (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 0xffff, 0, 0), ErrorCode::UnknownType);
 
-	// ConfigureLogFd is the last valid type; an empty payload is legal for
+	// Configuration and supervisor types are accepted by framing; role-specific
+	// payload and descriptor authorization belongs to dispatch. Empty payload is legal for
 	// control messages, so the boundary is accepted before dispatch.
 	{
 		auto fdConfig
@@ -77,6 +78,8 @@ int main ()
 		assert (decodedConfig->type == MessageType::ConfigureLogFd);
 		assert (decodedConfig->requestId == 8);
 		assert (Decode (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 6, 0, 0)).has_value ());
+		for (uint16_t type = 7; type <= 14; ++type)
+			assert (Decode (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, type, 1, 0)).has_value ());
 		assert (Decode (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 3, 0, 0)).has_value ());
 	}
 

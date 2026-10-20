@@ -265,7 +265,7 @@ void ChildProcess::Stop (int timeoutMs)
 	ClosePidFd ();
 }
 
-i2p::expected<ChildProcess, std::string> SpawnWorker (const char * role, std::string_view executableOverride)
+static i2p::expected<ChildProcess, std::string> SpawnWorkerInternal (const char * role, std::string_view executableOverride, int rootFd)
 {
 	if (!role || !*role) return i2p::unexpected ("missing worker role");
 	const std::string executable = executableOverride.empty () ? ExecutablePath () : std::string (executableOverride);
@@ -273,8 +273,16 @@ i2p::expected<ChildProcess, std::string> SpawnWorker (const char * role, std::st
 	if (!pair) return i2p::unexpected (pair.error ());
 	auto & parent = pair->first;
 	auto & child = pair->second;
+	// https://man.openbsd.org/pledge.2: sendfd/recvfd exclude directories.
+	// Preserve the validated root through exec as fd4, never through SCM_RIGHTS.
+	const int inheritedRoot = rootFd >= 0 ? ::fcntl (rootFd, F_DUPFD_CLOEXEC, 5) : -1;
+	if (rootFd >= 0 && inheritedRoot < 0) return i2p::unexpected (std::string ("cannot duplicate inherited root"));
 	pid_t pid = fork ();
-	if (pid < 0) return i2p::unexpected (std::string ("fork: ") + strerror (errno));
+	if (pid < 0)
+	{
+		if (inheritedRoot >= 0) ::close (inheritedRoot);
+		return i2p::unexpected (std::string ("fork: ") + strerror (errno));
+	}
 	if (pid == 0)
 	{
 		// Restarts fork from the multi-threaded router. The child may only
@@ -297,7 +305,12 @@ i2p::expected<ChildProcess, std::string> SpawnWorker (const char * role, std::st
 		}
 		int flags = fcntl (3, F_GETFD);
 		if (flags < 0 || fcntl (3, F_SETFD, flags & ~FD_CLOEXEC) < 0) _exit (127);
-		CloseFrom (4);
+		if (inheritedRoot >= 0)
+		{
+			if (::dup2 (inheritedRoot, 4) < 0) _exit (127);
+			CloseFrom (5); // dup2 clears FD_CLOEXEC on fd4
+		}
+		else CloseFrom (4);
 		// Parent death is detected through EOF on the channel; a
 		// PR_SET_PDEATHSIG would be tied to the forking thread and could
 		// kill a restarted worker when that thread is joined.
@@ -308,8 +321,79 @@ i2p::expected<ChildProcess, std::string> SpawnWorker (const char * role, std::st
 		_exit (127);
 	}
 	// Parent
+	if (inheritedRoot >= 0) ::close (inheritedRoot);
 	child.Close ();
 	return ChildProcess::Adopt (pid, std::move (parent));
+}
+
+i2p::expected<ChildProcess, std::string> SpawnWorker (const char * role, std::string_view executable)
+{
+ return SpawnWorkerInternal (role, executable, -1);
+}
+i2p::expected<ChildProcess, std::string> SpawnWorkerWithRoot (const char * role, std::string_view executable, int rootFd)
+{
+ if (rootFd < 0) return i2p::unexpected (std::string ("missing inherited root"));
+ return SpawnWorkerInternal (role, executable, rootFd);
+}
+
+static i2p::expected<Channel, std::string> SpawnDetachedWorkerInternal (const char * role, int rootFd)
+{
+ if (!role || !*role) return i2p::unexpected (std::string ("missing worker role"));
+ const auto executable = ExecutablePath ();
+ auto pair = Channel::CreatePair ();
+ if (!pair) return i2p::unexpected (pair.error ());
+ const int inheritedRoot = rootFd >= 0 ? ::fcntl (rootFd, F_DUPFD_CLOEXEC, 5) : -1;
+ if (rootFd >= 0 && inheritedRoot < 0) return i2p::unexpected (std::string ("cannot duplicate worker root"));
+ const pid_t intermediate = ::fork ();
+ if (intermediate < 0) { if (inheritedRoot >= 0) ::close (inheritedRoot); return i2p::unexpected (std::string ("cannot fork worker intermediary")); }
+ if (intermediate == 0)
+ {
+  // Async-signal-safe only between forks and exec. The intermediate is reaped
+  // before pledge; init subsequently reaps the broker when its channel closes.
+  const pid_t broker = ::fork ();
+  if (broker < 0) _exit (127);
+  if (broker > 0) _exit (0);
+  sigset_t empty;
+  sigemptyset (&empty); sigprocmask (SIG_SETMASK, &empty, nullptr);
+  const int fd = pair->second.Fd ();
+  const int parent = pair->first.Fd ();
+  if (parent >= 0 && parent != fd) ::close (parent);
+  if (fd != 3)
+  {
+   if (::dup2 (fd, 3) < 0) _exit (127);
+   ::close (fd);
+  }
+  int flags = ::fcntl (3, F_GETFD);
+  if (flags < 0 || ::fcntl (3, F_SETFD, flags & ~FD_CLOEXEC) < 0) _exit (127);
+  if (inheritedRoot >= 0)
+  {
+   if (::dup2 (inheritedRoot, 4) < 0) _exit (127);
+   CloseFrom (5);
+  }
+  else CloseFrom (4);
+  char fdText[] = "3";
+  char * const argv[] = { const_cast<char *> ("i2pd"), const_cast<char *> ("--privsep-worker"),
+   const_cast<char *> (role), fdText, nullptr };
+  ::execv (executable.c_str (), argv);
+  _exit (127);
+ }
+ if (inheritedRoot >= 0) ::close (inheritedRoot);
+ pair->second.Close ();
+ if (!WaitForChildExitBounded (intermediate, -1, 5000))
+ {
+  ::kill (intermediate, SIGKILL);
+  (void)WaitForChildExitBounded (intermediate, -1, 500);
+  return i2p::unexpected (std::string ("worker intermediary did not exit"));
+ }
+ return std::move (pair->first);
+}
+
+i2p::expected<Channel, std::string> SpawnDetachedWorker (const char * role)
+{ return SpawnDetachedWorkerInternal (role, -1); }
+i2p::expected<Channel, std::string> SpawnDetachedWorkerWithRoot (const char * role, int rootFd)
+{
+ if (rootFd < 0) return i2p::unexpected (std::string ("invalid worker root"));
+ return SpawnDetachedWorkerInternal (role, rootFd);
 }
 
 i2p::expected<ChildProcess, std::string> SpawnLogWorker (std::string_view executable)
