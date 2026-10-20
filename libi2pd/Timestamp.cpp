@@ -257,12 +257,15 @@ namespace util
 
 	uint32_t GetMinutesSinceEpoch ()
 	{
-		return GetLocalMinutesSinceEpoch () + g_TimeOffset.load (std::memory_order_relaxed) / 60;
+		// Epoch minutes fit uint32_t until well beyond the protocol lifetime.
+		return static_cast<uint32_t> (
+			GetLocalMinutesSinceEpoch () + g_TimeOffset.load (std::memory_order_relaxed) / 60);
 	}
 
 	uint32_t GetHoursSinceEpoch ()
 	{
-		return GetLocalHoursSinceEpoch () + g_TimeOffset.load (std::memory_order_relaxed) / 3600;
+		return static_cast<uint32_t> (
+			GetLocalHoursSinceEpoch () + g_TimeOffset.load (std::memory_order_relaxed) / 3600);
 	}
 
 	uint64_t GetMonotonicMicroseconds ()

@@ -273,7 +273,7 @@ namespace data
 		std::string GetIdentHashBase64 () const { return GetIdentHash ().ToBase64 (); };
 		uint64_t GetTimestamp () const { return m_Timestamp.load (); };
 		int GetVersion () const { return m_Version.load (); };
-		virtual void SetProperty (std::string_view key, std::string_view value) { };
+		virtual void SetProperty (std::string_view /* key */, std::string_view /* value */) { };
 		virtual void ClearProperties () { };
 		AddressesPtr GetAddresses () const; // should be called for local RI only, otherwise must return shared_ptr
 		std::shared_ptr<const Address> GetNTCP2V4Address () const;

@@ -259,7 +259,7 @@ namespace client
 		}
 		uint64_t interval = ts - m_SendRateUpdateTime;
 		if (interval < I2P_UDP_SEND_RATE_INTERVAL) return;
-		uint32_t rate = m_NumSentSinceRateUpdate * 1000 / interval;
+		uint32_t rate = static_cast<uint32_t> (m_NumSentSinceRateUpdate * 1000 / interval);
 		m_NumSentSinceRateUpdate = 0;
 		m_SendRateUpdateTime = ts;
 		// best rate of the last few seconds, a rate following every dip would shrink the window
@@ -467,8 +467,8 @@ namespace client
 			}
 			if (numPackets > 0)
 				LogPrint (eLogDebug, "UDPSession: Forward more ", numPackets, "packets B from ", FromEndpoint);
-			m_NextSendPacketNum += numPackets + 1;
-			UpdateSendRate (numPackets + 1, ts);
+			m_NextSendPacketNum += static_cast<uint32_t> (numPackets + 1);
+			UpdateSendRate (static_cast<uint32_t> (numPackets + 1), ts);
 			m_Destination->FlushSendQueue (session);
 			LastActivity = ts;
 			Receive ();
@@ -817,11 +817,11 @@ namespace client
 		size_t numPackets = 0;
 		while (numPackets < i2p::datagram::DATAGRAM_SEND_QUEUE_MAX_SIZE)
 		{
-			boost::system::error_code ec;
-			size_t moreBytes = m_LocalSocket->available (ec);
-			if (ec || !moreBytes) break;
+			boost::system::error_code drainEc;
+			size_t moreBytes = m_LocalSocket->available (drainEc);
+			if (drainEc || !moreBytes) break;
 			transferred = m_LocalSocket->receive_from (
-				boost::asio::buffer (m_RecvBuff, I2P_UDP_MAX_MTU), m_RecvEndpoint, 0, ec);
+				boost::asio::buffer (m_RecvBuff, I2P_UDP_MAX_MTU), m_RecvEndpoint, 0, drainEc);
 			remotePort = m_RecvEndpoint.port ();
 			// TODO: check remotePort
 			m_Destination->SendRawDatagram (session, m_RecvBuff, transferred, remotePort, RemotePort);
@@ -829,8 +829,8 @@ namespace client
 		}
 		if (numPackets)
 			LogPrint (eLogDebug, "UDP Client: Sent ", numPackets, " more packets to ", Identity.ToBase32 ());
-		m_NextSendPacketNum += numPackets + 1;
-		UpdateSendRate (numPackets + 1, ts);
+		m_NextSendPacketNum += static_cast<uint32_t> (numPackets + 1);
+		UpdateSendRate (static_cast<uint32_t> (numPackets + 1), ts);
 		m_Destination->FlushSendQueue (session);
 
 		// mark convo as active
@@ -908,7 +908,7 @@ namespace client
 	}
 
 	void I2PUDPClientTunnel::HandleRecvFromI2PRaw (
-		uint8_t /*protocol*/, uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len)
+		uint8_t /*protocol*/, uint16_t /*fromPort*/, uint16_t toPort, const uint8_t * buf, size_t len)
 	{
 		m_LastReceivedTime = i2p::util::GetMillisecondsSinceEpoch ();
 		std::shared_ptr<UDPConvo> convo;

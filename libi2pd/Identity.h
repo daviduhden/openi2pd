@@ -316,7 +316,7 @@ namespace data
 		{
 			return GetIdentity ()->GetCryptoKeyType () == keyType;
 		}; // override for LeaseSet
-		virtual const uint8_t * GetEncryptionPublicKey (CryptoKeyType keyType) const
+		virtual const uint8_t * GetEncryptionPublicKey (CryptoKeyType /* keyType */) const
 		{
 			return GetIdentity ()->GetEncryptionPublicKey ();
 		}; // override for LeaseSet

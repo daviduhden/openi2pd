@@ -267,7 +267,7 @@ namespace client
 	}
 
 	void I2CPDestination::HandleDataMessage (
-		const uint8_t * buf, size_t len, i2p::garlic::ECIESX25519AEADRatchetSession * from)
+		const uint8_t * buf, size_t len, i2p::garlic::ECIESX25519AEADRatchetSession *)
 	{
 		if (len < 4)
 		{
@@ -275,7 +275,7 @@ namespace client
 			return;
 		}
 		uint32_t length = bufbe32toh (buf);
-		if (length > len - 4) length = len - 4;
+		if (length > len - 4) length = static_cast<uint32_t> (len - 4);
 		if (m_Owner) m_Owner->SendMessagePayloadMessage (buf + 4, length);
 	}
 
@@ -372,7 +372,7 @@ namespace client
 		auto msg = m_I2NPMsgsPool.AcquireSharedMt ();
 		if (!msg) return;
 		uint8_t * buf = msg->GetPayload ();
-		htobe32buf (buf, len);
+		htobe32buf (buf, static_cast<uint32_t> (len));
 		if (len) memcpy (buf + 4, payload, len);
 		msg->len += len + 4;
 		msg->FillI2NPMessageHeader (eI2NPData, GetRng () ());
@@ -527,7 +527,7 @@ namespace client
 			return false;
 		}
 		uint8_t * buf = msg->GetPayload ();
-		htobe32buf (buf, len);
+		htobe32buf (buf, static_cast<uint32_t> (len));
 		if (len) memcpy (buf + 4, payload, len);
 		msg->len += len + 4;
 		msg->FillI2NPMessageHeader (eI2NPData, GetRng () ());
@@ -705,7 +705,7 @@ namespace client
 			{ s->HandleReceivedHeader (ecode, bytes_transferred); });
 	}
 
-	void I2CPSession::HandleReceivedHeader (const boost::system::error_code & ecode, std::size_t bytes_transferred)
+	void I2CPSession::HandleReceivedHeader (const boost::system::error_code & ecode, std::size_t)
 	{
 		if (ecode)
 			Terminate ();
@@ -765,7 +765,7 @@ namespace client
 			{ s->HandleReceivedPayload (ecode, bytes_transferred); });
 	}
 
-	void I2CPSession::HandleReceivedPayload (const boost::system::error_code & ecode, std::size_t bytes_transferred)
+	void I2CPSession::HandleReceivedPayload (const boost::system::error_code & ecode, std::size_t)
 	{
 		if (ecode)
 			Terminate ();
@@ -845,7 +845,7 @@ namespace client
 		// only place where it is copied into the in-flight buffer or queued.
 		auto sendBuf = std::make_shared<i2p::stream::SendBuffer> (l);
 		uint8_t * buf = sendBuf->buf;
-		htobe32buf (buf + I2CP_HEADER_LENGTH_OFFSET, len);
+		htobe32buf (buf + I2CP_HEADER_LENGTH_OFFSET, static_cast<uint32_t> (len));
 		buf[I2CP_HEADER_TYPE_OFFSET] = type;
 		if (len) memcpy (buf + I2CP_HEADER_SIZE, payload, len);
 
@@ -894,7 +894,7 @@ namespace client
 			{ s->HandleI2CPMessageSent (ecode, bytes_transferred); });
 	}
 
-	void I2CPSession::HandleI2CPMessageSent (const boost::system::error_code & ecode, std::size_t bytes_transferred)
+	void I2CPSession::HandleI2CPMessageSent (const boost::system::error_code & ecode, std::size_t)
 	{
 		if (ecode)
 		{
@@ -920,7 +920,7 @@ namespace client
 			m_IsSending = false;
 	}
 
-	void I2CPSession::GetDateMessageHandler (const uint8_t * buf, size_t len)
+	void I2CPSession::GetDateMessageHandler (const uint8_t *, size_t)
 	{
 		constexpr std::string_view version (I2P_VERSION);
 		std::array<uint8_t, version.size () + 8 + 1> payload;
@@ -1110,7 +1110,7 @@ namespace client
 		}
 	}
 
-	void I2CPSession::DestroySessionMessageHandler (const uint8_t * buf, size_t len)
+	void I2CPSession::DestroySessionMessageHandler (const uint8_t *, size_t)
 	{
 		SendSessionStatusMessage (eI2CPSessionStatusDestroyed); // destroy
 		LogPrint (eLogDebug, "I2CP: Session ", m_SessionID.load (), " destroyed");
@@ -1797,16 +1797,16 @@ namespace client
 			SendI2CPMessage (I2CP_DEST_REPLY_MESSAGE, buf, 32);
 	}
 
-	void I2CPSession::GetBandwidthLimitsMessageHandler (const uint8_t * buf, size_t len)
+	void I2CPSession::GetBandwidthLimitsMessageHandler (const uint8_t *, size_t)
 	{
 		uint8_t limits[64];
 		memset (limits, 0, 64);
 		uint32_t limit;
 		i2p::config::GetOption ("i2cp.inboundlimit", limit);
-		if (!limit) limit = i2p::context.GetBandwidthLimit ();
+		if (!limit) limit = static_cast<uint32_t> (i2p::context.GetBandwidthLimit ());
 		htobe32buf (limits, limit); // inbound
 		i2p::config::GetOption ("i2cp.outboundlimit", limit);
-		if (!limit) limit = i2p::context.GetBandwidthLimit ();
+		if (!limit) limit = static_cast<uint32_t> (i2p::context.GetBandwidthLimit ());
 		htobe32buf (limits + 4, limit); // outbound
 		SendI2CPMessage (I2CP_BANDWIDTH_LIMITS_MESSAGE, limits, 64);
 	}
@@ -1822,11 +1822,11 @@ namespace client
 		}
 		auto sendBuf = std::make_shared<i2p::stream::SendBuffer> (l);
 		uint8_t * buf = sendBuf->buf;
-		htobe32buf (buf + I2CP_HEADER_LENGTH_OFFSET, len + 10);
+		htobe32buf (buf + I2CP_HEADER_LENGTH_OFFSET, static_cast<uint32_t> (len + 10));
 		buf[I2CP_HEADER_TYPE_OFFSET] = I2CP_MESSAGE_PAYLOAD_MESSAGE;
 		htobe16buf (buf + I2CP_HEADER_SIZE, m_SessionID.load ());
 		htobe32buf (buf + I2CP_HEADER_SIZE + 2, m_MessageID.fetch_add (1));
-		htobe32buf (buf + I2CP_HEADER_SIZE + 6, len);
+		htobe32buf (buf + I2CP_HEADER_SIZE + 6, static_cast<uint32_t> (len));
 		if (len) memcpy (buf + I2CP_HEADER_SIZE + 10, payload, len);
 
 		if (m_Owner.IsInServiceThread ())

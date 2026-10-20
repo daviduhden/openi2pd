@@ -87,12 +87,12 @@ namespace tunnel
 		return i2p::data::GetIdentHashAbbreviation (GetNextIdentHash ());
 	}
 
-	void TransitTunnel::SendTunnelDataMsg (std::shared_ptr<i2p::I2NPMessage> msg)
+	void TransitTunnel::SendTunnelDataMsg (std::shared_ptr<i2p::I2NPMessage> /* msg */)
 	{
 		LogPrint (eLogError, "TransitTunnel: We are not a gateway for ", GetTunnelID ());
 	}
 
-	void TransitTunnel::HandleTunnelDataMsg (std::shared_ptr<i2p::I2NPMessage> && tunnelMsg)
+	void TransitTunnel::HandleTunnelDataMsg (std::shared_ptr<i2p::I2NPMessage> && /* tunnelMsg */)
 	{
 		LogPrint (eLogError, "TransitTunnel: Incoming tunnel message is not supported ", GetTunnelID ());
 	}
@@ -443,7 +443,7 @@ namespace tunnel
 					uint32_t bw = 0, bwLimit = 0, bwUse = 0;
 					if (buildOptions.Get (TRANSIT_TUNNEL_MINIMUM_BANDWIDTH, bw))
 					{
-						bwLimit = i2p::context.GetBandwidthLimit () * 1024; // in bytes
+						bwLimit = static_cast<uint32_t> (i2p::context.GetBandwidthLimit () * 1024); // in bytes
 						bwUse = i2p::transport::transports.GetTransitBandwidth ();
 						if ((uint64_t)bw * 1024 + bwUse
 							> bwLimit) // bw comes from the request, 32-bit product overflows
@@ -451,7 +451,8 @@ namespace tunnel
 					}
 					if (!retCode && buildOptions.Get (TRANSIT_TUNNEL_REQUESTED_BANDWIDTH, bw))
 					{
-						if (!bwLimit) bwLimit = i2p::context.GetBandwidthLimit () * 1024; // in bytes
+						if (!bwLimit)
+							bwLimit = static_cast<uint32_t> (i2p::context.GetBandwidthLimit () * 1024); // in bytes
 						if (!bwUse) bwUse = i2p::transport::transports.GetTransitBandwidth ();
 						if (bwUse < bwLimit)
 						{
@@ -489,7 +490,7 @@ namespace tunnel
 				uint8_t * reply = buf + 1;
 				for (int j = 0; j < num; j++)
 				{
-					nonce[4] = j; // nonce is record #
+					nonce[4] = static_cast<uint8_t> (j); // nonce is record #
 					if (j == i)
 					{
 						i2p::util::Mapping replyOptions;
@@ -561,10 +562,11 @@ namespace tunnel
 				}
 				else
 				{
-					auto msg = CreateI2NPMessage (eI2NPShortTunnelBuild, buf, len,
+					auto relayMsg = CreateI2NPMessage (eI2NPShortTunnelBuild, buf, len,
 						bufbe32toh (clearText + SHORT_REQUEST_RECORD_SEND_MSG_ID_OFFSET));
-					if (transitTunnel) msg->onDrop = onDrop;
-					i2p::transport::transports.SendMessage (clearText + SHORT_REQUEST_RECORD_NEXT_IDENT_OFFSET, msg);
+					if (transitTunnel) relayMsg->onDrop = onDrop;
+					i2p::transport::transports.SendMessage (
+						clearText + SHORT_REQUEST_RECORD_NEXT_IDENT_OFFSET, relayMsg);
 				}
 				return;
 			}
@@ -763,7 +765,7 @@ namespace tunnel
 	int TransitTunnels::GetTransitTunnelsExpirationTimeout ()
 	{
 		int timeout = 0;
-		uint32_t ts = i2p::util::GetSecondsSinceEpoch ();
+		uint32_t ts = static_cast<uint32_t> (i2p::util::GetSecondsSinceEpoch ());
 		std::lock_guard<std::mutex> l (m_TransitTunnelsMutex);
 		for (const auto & it : m_TransitTunnels)
 		{

@@ -56,7 +56,7 @@ namespace tunnel
 		}
 		int numRecords = numHops <= STANDARD_NUM_RECORDS ? STANDARD_NUM_RECORDS : MAX_NUM_RECORDS;
 		auto msg = numRecords <= STANDARD_NUM_RECORDS ? NewI2NPShortMessage () : NewI2NPMessage ();
-		*msg->GetPayload () = numRecords;
+		*msg->GetPayload () = static_cast<uint8_t> (numRecords);
 		msg->len += numRecords * SHORT_TUNNEL_BUILD_RECORD_SIZE + 1;
 		// shuffle records
 		std::vector<int> recordIndicies;
@@ -80,9 +80,9 @@ namespace tunnel
 			hop = hop->next;
 		}
 		// fill up fake records with random data
-		for (int i = numHops; i < numRecords; i++)
+		for (int j = numHops; j < numRecords; j++)
 		{
-			int idx = recordIndicies[i];
+			int idx = recordIndicies[j];
 			RAND_bytes (records + idx * SHORT_TUNNEL_BUILD_RECORD_SIZE, SHORT_TUNNEL_BUILD_RECORD_SIZE);
 		}
 
@@ -244,7 +244,7 @@ namespace tunnel
 		}
 	}
 
-	void Tunnel::SendTunnelDataMsg (std::shared_ptr<i2p::I2NPMessage> msg)
+	void Tunnel::SendTunnelDataMsg (std::shared_ptr<i2p::I2NPMessage> /* msg */)
 	{
 		LogPrint (eLogWarning, "Tunnel: Can't send I2NP messages without delivery instructions");
 	}
@@ -391,7 +391,7 @@ namespace tunnel
 		m_Gateway.SendBuffer ();
 	}
 
-	void OutboundTunnel::HandleTunnelDataMsg (std::shared_ptr<i2p::I2NPMessage> && tunnelMsg)
+	void OutboundTunnel::HandleTunnelDataMsg (std::shared_ptr<i2p::I2NPMessage> && /* tunnelMsg */)
 	{
 		LogPrint (eLogError, "Tunnel: Incoming message for outbound tunnel ", GetTunnelID ());
 	}
@@ -859,7 +859,7 @@ namespace tunnel
 			m_TransitTunnels.PostTransitTunnelBuildMsg (std::move (msg));
 	}
 
-	void Tunnels::HandleTunnelBuildReplyMsg (std::shared_ptr<I2NPMessage> msg, bool isShort)
+	void Tunnels::HandleTunnelBuildReplyMsg (std::shared_ptr<I2NPMessage> msg, bool /* isShort */)
 	{
 		auto tunnel = GetPendingOutboundTunnel (msg->GetMsgID ()); // replyMsgID
 		if (tunnel)

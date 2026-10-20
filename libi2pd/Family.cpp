@@ -121,7 +121,7 @@ namespace data
 	}
 
 	bool Families::VerifyFamily (
-		const std::string & family, const IdentHash & ident, std::string_view signature, const char * key) const
+		const std::string & family, const IdentHash & ident, std::string_view signature, const char * /* key */) const
 	{
 		uint8_t buf[100], signatureBuf[64];
 		size_t len = family.length ();
@@ -189,7 +189,7 @@ namespace data
 				EVP_MD_CTX_free (mdctx);
 
 				const uint8_t * s1 = sign;
-				ECDSA_SIG * sig1 = d2i_ECDSA_SIG (NULL, &s1, l);
+				ECDSA_SIG * sig1 = d2i_ECDSA_SIG (NULL, &s1, static_cast<long> (l));
 				const BIGNUM *r, *s;
 				ECDSA_SIG_get0 (sig1, &r, &s);
 				i2p::crypto::bn2buf (r, signature, 32);

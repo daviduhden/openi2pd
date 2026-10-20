@@ -117,7 +117,8 @@ namespace tunnel
 						HandleCurrenMessageFollowOnFragment (fragment, size, isLastFragment); // previous
 					else
 					{
-						HandleFollowOnFragment (msgID, isLastFragment, fragmentNum, fragment, size); // another
+						HandleFollowOnFragment (msgID, isLastFragment, static_cast<uint8_t> (fragmentNum),
+							fragment, size); // another
 						m_CurrentMsgID = 0;
 						m_CurrentMessage.data = nullptr;
 					}

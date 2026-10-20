@@ -123,7 +123,7 @@ void I2PService::Start (DWORD dwArgc, PSTR * pszArgv)
 	}
 }
 
-void I2PService::OnStart (DWORD dwArgc, PSTR * pszArgv)
+void I2PService::OnStart (DWORD /*dwArgc*/, PSTR * /*pszArgv*/)
 {
 	LogPrint (eLogInfo, "Win32Service: in OnStart (", EVENTLOG_INFORMATION_TYPE, ")");
 	Daemon.start ();

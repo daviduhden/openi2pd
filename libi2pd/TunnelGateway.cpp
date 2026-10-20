@@ -63,7 +63,7 @@ namespace tunnel
 			memcpy (di + diLen, block.hash, 32);
 			diLen += 32; //len
 		}
-		di[0] = block.deliveryType << 5; // set delivery type
+		di[0] = static_cast<uint8_t> (block.deliveryType << 5); // set delivery type
 
 		// create fragments
 		const std::shared_ptr<I2NPMessage> & msg = block.data;
@@ -84,7 +84,7 @@ namespace tunnel
 		if (fullMsgLen <= m_RemainingSize)
 		{
 			// message fits. First and last fragment
-			htobe16buf (di + diLen, msg->GetLength ());
+			htobe16buf (di + diLen, static_cast<uint16_t> (msg->GetLength ()));
 			diLen += 2; // size
 			memcpy (m_CurrentTunnelDataMsg->buf + m_CurrentTunnelDataMsg->len, di, diLen);
 			memcpy (m_CurrentTunnelDataMsg->buf + m_CurrentTunnelDataMsg->len + diLen, msg->GetBuffer (),
@@ -106,7 +106,7 @@ namespace tunnel
 				di[0] |= 0x08; // fragmented
 				htobuf32 (di + diLen, msgID);
 				diLen += 4; // Message ID
-				htobe16buf (di + diLen, size);
+				htobe16buf (di + diLen, static_cast<uint16_t> (size));
 				diLen += 2; // size
 				memcpy (m_CurrentTunnelDataMsg->buf + m_CurrentTunnelDataMsg->len, di, diLen);
 				memcpy (m_CurrentTunnelDataMsg->buf + m_CurrentTunnelDataMsg->len + diLen, msg->GetBuffer (), size);
@@ -118,7 +118,7 @@ namespace tunnel
 				{
 					CreateCurrentTunnelDataMessage ();
 					uint8_t * buf = m_CurrentTunnelDataMsg->GetBuffer ();
-					buf[0] = 0x80 | (fragmentNumber << 1); // frag
+					buf[0] = static_cast<uint8_t> (0x80 | (fragmentNumber << 1)); // frag
 					bool isLastFragment = false;
 					size_t s = msg->GetLength () - size;
 					if (s > TUNNEL_DATA_MAX_PAYLOAD_SIZE - 7) // 7 follow on instructions
@@ -129,7 +129,7 @@ namespace tunnel
 						isLastFragment = true;
 					}
 					htobuf32 (buf + 1, msgID); //Message ID
-					htobe16buf (buf + 5, s); // size
+					htobe16buf (buf + 5, static_cast<uint16_t> (s)); // size
 					memcpy (buf + 7, msg->GetBuffer () + size, s);
 					m_CurrentTunnelDataMsg->len += s + 7;
 					if (isLastFragment)

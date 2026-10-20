@@ -53,26 +53,44 @@ namespace win32
 	static DWORD g_GracefulShutdownEndtime = 0;
 	bool g_isWinService;
 
-	static void ShowPopupMenu (HWND hWnd, POINT * curpos, int wDefaultItem)
+	// InsertMenu appends the new item when uPosition is (UINT)-1.
+	static constexpr UINT MENU_APPEND_POSITION = static_cast<UINT> (-1);
+
+	// Copy the fixed notification texts with an explicit bound. This avoids the
+	// deprecated strcpy without depending on the optional MSVC _s extensions in
+	// the MinGW build.
+	static void CopyFixedString (char * dest, size_t size, const char * src)
+	{
+		if (!size) return;
+		size_t len = strlen (src);
+		if (len >= size) len = size - 1;
+		memcpy (dest, src, len);
+		dest[len] = '\0';
+	}
+
+	static void ShowPopupMenu (HWND hWnd, POINT * curpos, int /*wDefaultItem*/)
 	{
 		HMENU hPopup = CreatePopupMenu ();
-		InsertMenu (hPopup, -1, MF_BYPOSITION | MF_STRING, ID_DATADIR, "Open &datadir");
-		InsertMenu (hPopup, -1, MF_BYPOSITION | MF_STRING, ID_APP, "&Show app");
-		InsertMenu (hPopup, -1, MF_BYPOSITION | MF_STRING, ID_ABOUT, "&About...");
-		InsertMenu (hPopup, -1, MF_BYPOSITION | MF_SEPARATOR, 0, NULL);
+		InsertMenu (hPopup, MENU_APPEND_POSITION, MF_BYPOSITION | MF_STRING, ID_DATADIR, "Open &datadir");
+		InsertMenu (hPopup, MENU_APPEND_POSITION, MF_BYPOSITION | MF_STRING, ID_APP, "&Show app");
+		InsertMenu (hPopup, MENU_APPEND_POSITION, MF_BYPOSITION | MF_STRING, ID_ABOUT, "&About...");
+		InsertMenu (hPopup, MENU_APPEND_POSITION, MF_BYPOSITION | MF_SEPARATOR, 0, NULL);
 		if (!i2p::context.AcceptsTunnels ())
-			InsertMenu (hPopup, -1,
+			InsertMenu (hPopup, MENU_APPEND_POSITION,
 				i2p::util::DaemonWin32::Instance ().isGraceful ? MF_BYPOSITION | MF_STRING | MF_GRAYED
 															   : MF_BYPOSITION | MF_STRING,
 				ID_ACCEPT_TRANSIT, "Accept &transit");
 		else
-			InsertMenu (hPopup, -1, MF_BYPOSITION | MF_STRING, ID_DECLINE_TRANSIT, "Decline &transit");
-		InsertMenu (hPopup, -1, MF_BYPOSITION | MF_STRING, ID_RELOAD, "&Reload tunnels config");
+			InsertMenu (
+				hPopup, MENU_APPEND_POSITION, MF_BYPOSITION | MF_STRING, ID_DECLINE_TRANSIT, "Decline &transit");
+		InsertMenu (hPopup, MENU_APPEND_POSITION, MF_BYPOSITION | MF_STRING, ID_RELOAD, "&Reload tunnels config");
 		if (!i2p::util::DaemonWin32::Instance ().isGraceful)
-			InsertMenu (hPopup, -1, MF_BYPOSITION | MF_STRING, ID_GRACEFUL_SHUTDOWN, "&Graceful shutdown");
+			InsertMenu (
+				hPopup, MENU_APPEND_POSITION, MF_BYPOSITION | MF_STRING, ID_GRACEFUL_SHUTDOWN, "&Graceful shutdown");
 		else
-			InsertMenu (hPopup, -1, MF_BYPOSITION | MF_STRING, ID_STOP_GRACEFUL_SHUTDOWN, "Stop &graceful shutdown");
-		InsertMenu (hPopup, -1, MF_BYPOSITION | MF_STRING, ID_EXIT, "E&xit");
+			InsertMenu (hPopup, MENU_APPEND_POSITION, MF_BYPOSITION | MF_STRING, ID_STOP_GRACEFUL_SHUTDOWN,
+				"Stop &graceful shutdown");
+		InsertMenu (hPopup, MENU_APPEND_POSITION, MF_BYPOSITION | MF_STRING, ID_EXIT, "E&xit");
 		SetMenuDefaultItem (hPopup, ID_APP, FALSE);
 		SendMessage (hWnd, WM_INITMENUPOPUP, (WPARAM)hPopup, 0);
 
@@ -83,8 +101,8 @@ namespace win32
 			curpos = &p;
 		}
 
-		WORD cmd = TrackPopupMenu (hPopup, TPM_LEFTALIGN | TPM_RIGHTBUTTON | TPM_RETURNCMD | TPM_NONOTIFY, curpos->x,
-			curpos->y, 0, hWnd, NULL);
+		UINT cmd = static_cast<UINT> (TrackPopupMenu (hPopup,
+			TPM_LEFTALIGN | TPM_RIGHTBUTTON | TPM_RETURNCMD | TPM_NONOTIFY, curpos->x, curpos->y, 0, hWnd, NULL));
 		SendMessage (hWnd, WM_COMMAND, cmd, 0);
 
 		DestroyMenu (hPopup);
@@ -101,8 +119,8 @@ namespace win32
 		nid.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP | NIF_INFO;
 		nid.uCallbackMessage = WM_TRAYICON;
 		nid.hIcon = LoadIcon (GetModuleHandle (NULL), MAKEINTRESOURCE (MAINICON));
-		strcpy (nid.szTip, "openi2pd");
-		if (notify) strcpy (nid.szInfo, "openi2pd is starting");
+		CopyFixedString (nid.szTip, sizeof (nid.szTip), "openi2pd");
+		if (notify) CopyFixedString (nid.szInfo, sizeof (nid.szInfo), "openi2pd is starting");
 		Shell_NotifyIcon (NIM_ADD, &nid);
 	}
 
@@ -301,7 +319,8 @@ namespace win32
 			SetTextColor (hDC, 0x00D43B69);
 			hFont = CreateFont (18, 0, 0, 0, 0, 0, 0, 0, DEFAULT_CHARSET, 0, 0, 0, 0, TEXT ("Times New Roman"));
 			SelectObject (hDC, hFont);
-			DrawText (hDC, TEXT (s.str ().c_str ()), s.str ().length (), &rp, DT_CENTER | DT_VCENTER);
+			DrawText (
+				hDC, TEXT (s.str ().c_str ()), static_cast<int> (s.str ().length ()), &rp, DT_CENTER | DT_VCENTER);
 			DeleteObject (hFont);
 			EndPaint (hWnd, &ps);
 			break;
@@ -360,7 +379,7 @@ namespace win32
 			TranslateMessage (&msg);
 			DispatchMessage (&msg);
 		}
-		return msg.wParam;
+		return static_cast<int> (msg.wParam);
 	}
 
 	void StopWin32App ()

@@ -273,9 +273,9 @@ namespace transport
 		// fill options
 		uint8_t options[32]; // actual options size is 16 bytes
 		memset (options, 0, 16);
-		options[0] = i2p::context.GetNetID (); // network ID
+		options[0] = static_cast<uint8_t> (i2p::context.GetNetID ()); // network ID
 		options[1] = 2; // ver, always 2 regardless actual version
-		htobe16buf (options + 2, paddingLength); // padLen
+		htobe16buf (options + 2, static_cast<uint16_t> (paddingLength)); // padLen
 		// calculate m3p2Len
 		auto riBuffer = i2p::context.CopyRouterInfoBuffer ();
 		auto bufLen = riBuffer->GetBufferLen ();
@@ -288,7 +288,8 @@ namespace transport
 		m3p2Len = static_cast<uint16_t> (part2Len);
 		htobe16buf (options + 4, m3p2Len);
 		// 2 bytes reserved
-		htobe32buf (options + 8, (i2p::util::GetMillisecondsSinceEpoch () + 500) / 1000); // tsA, rounded to seconds
+		htobe32buf (options + 8,
+			static_cast<uint32_t> ((i2p::util::GetMillisecondsSinceEpoch () + 500) / 1000)); // tsA, rounded to seconds
 		// 4 bytes reserved
 		// encrypt options
 		if (!Encrypt (options, m_Buffer + offset, 16))
@@ -301,7 +302,7 @@ namespace transport
 		// padding
 		if (paddingLength)
 		{
-			RAND_bytes (m_Buffer + offset, paddingLength);
+			RAND_bytes (m_Buffer + offset, static_cast<int> (paddingLength));
 			MixHash (m_Buffer + offset, paddingLength);
 		}
 		m_BufferLen = offset + paddingLength;
@@ -309,7 +310,7 @@ namespace transport
 		m_SessionConfirmedBuffer = std::make_unique_for_overwrite<uint8_t[]> (m3p2Len + 48); // m3p1 is 48 bytes
 		uint8_t * m3p2 = m_SessionConfirmedBuffer.get () + 48;
 		m3p2[0] = eNTCP2BlkRouterInfo; // block
-		htobe16buf (m3p2 + 1, bufLen + 1); // flag + RI
+		htobe16buf (m3p2 + 1, static_cast<uint16_t> (bufLen + 1)); // flag + RI
 		m3p2[3] = 0; // flag
 		memcpy (m3p2 + 4, riBuffer->data (), bufLen); // TODO: eliminate extra copy
 
@@ -360,8 +361,9 @@ namespace transport
 		auto paddingLength = maxPaddingLength ? rng () % maxPaddingLength : 0;
 		uint8_t options[16];
 		memset (options, 0, 16);
-		htobe16buf (options + 2, paddingLength); // padLen
-		htobe32buf (options + 8, (i2p::util::GetMillisecondsSinceEpoch () + 500) / 1000); // tsB, rounded to seconds
+		htobe16buf (options + 2, static_cast<uint16_t> (paddingLength)); // padLen
+		htobe32buf (options + 8,
+			static_cast<uint32_t> ((i2p::util::GetMillisecondsSinceEpoch () + 500) / 1000)); // tsB, rounded to seconds
 		// encrypt options
 		if (!Encrypt (options, m_Buffer + offset, 16))
 		{
@@ -373,7 +375,7 @@ namespace transport
 		// padding
 		if (paddingLength)
 		{
-			RAND_bytes (m_Buffer + offset, paddingLength);
+			RAND_bytes (m_Buffer + offset, static_cast<int> (paddingLength));
 			MixHash (m_Buffer + offset, paddingLength);
 		}
 		m_BufferLen = offset + paddingLength;
@@ -692,7 +694,8 @@ namespace transport
 			{
 				memcpy (m_Establisher->m_RemoteStaticKey, addr->s, 32);
 				memcpy (m_Establisher->m_IV, addr->i, 16);
-				m_RemoteEndpoint = boost::asio::ip::tcp::endpoint (addr->host, addr->port);
+				m_RemoteEndpoint
+					= boost::asio::ip::tcp::endpoint (addr->host, static_cast<uint16_t> (addr->port));
 #if OPENSSL_PQ
 				if (m_Server.GetVersion () > 2) // we support post quantum in config
 					m_Establisher->SetVersion (addr->v);
@@ -1251,7 +1254,8 @@ namespace transport
 		}
 		// update RouterInfo in netdb
 		auto ri1
-			= i2p::data::netdb.AddRouterInfo (ri.GetBuffer (), ri.GetBufferLen ()); // ri1 points to one from netdb now
+			= i2p::data::netdb.AddRouterInfo (
+				ri.GetBuffer (), static_cast<int> (ri.GetBufferLen ())); // ri1 points to one from netdb now
 		if (!ri1)
 		{
 			LogPrint (eLogError, "NTCP2: Couldn't update RouterInfo from SessionConfirmed in netdb");
@@ -1399,7 +1403,7 @@ namespace transport
 				std::placeholders::_2));
 	}
 
-	void NTCP2Session::HandleReceivedLength (const boost::system::error_code & ecode, std::size_t bytes_transferred)
+	void NTCP2Session::HandleReceivedLength (const boost::system::error_code & ecode, std::size_t /* bytes_transferred */)
 	{
 		if (ecode)
 		{
@@ -1642,7 +1646,7 @@ namespace transport
 		i2p::crypto::Siphash<8> (m_SendIV.buf, m_SendIV.buf, 8, m_SendSipKey);
 #endif
 		// length must be in BigEndian
-		htobe16buf (lengthBuf, frameLen ^ le16toh (m_SendIV.key));
+		htobe16buf (lengthBuf, static_cast<uint16_t> (frameLen ^ le16toh (m_SendIV.key)));
 		LogPrint (eLogDebug, "NTCP2: Sent length ", frameLen);
 	}
 
@@ -1663,7 +1667,7 @@ namespace transport
 			// block header
 			buf -= 3;
 			buf[0] = eNTCP2BlkI2NPMessage; // blk
-			htobe16buf (buf + 1, len); // size
+			htobe16buf (buf + 1, static_cast<uint16_t> (len)); // size
 			len += 3;
 			totalLen += len;
 			encryptBufs.push_back ({ buf, len });
@@ -1727,7 +1731,7 @@ namespace transport
 	}
 
 	void NTCP2Session::HandleI2NPMsgsSent (const boost::system::error_code & ecode, std::size_t bytes_transferred,
-		std::vector<std::shared_ptr<I2NPMessage>> msgs, std::unique_ptr<uint8_t[]> sendBuffer)
+		std::vector<std::shared_ptr<I2NPMessage>> /* msgs */, std::unique_ptr<uint8_t[]> sendBuffer)
 	{
 		HandleNextFrameSent (ecode, bytes_transferred, std::move (sendBuffer));
 		// msgs get destroyed here
@@ -1774,8 +1778,8 @@ namespace transport
 		return true;
 	}
 
-	void NTCP2Session::HandleNextFrameSent (
-		const boost::system::error_code & ecode, std::size_t bytes_transferred, std::unique_ptr<uint8_t[]> sendBuffer)
+	void NTCP2Session::HandleNextFrameSent (const boost::system::error_code & ecode, std::size_t bytes_transferred,
+		std::unique_ptr<uint8_t[]> /* sendBuffer */)
 	{
 		// sendBuffer is released when this handler returns
 		m_IsSending = false;
@@ -1891,7 +1895,7 @@ namespace transport
 		size_t paddingSize = (msgLen * NTCP2_MAX_PADDING_RATIO) / 100;
 		if (msgLen + paddingSize + 3 > NTCP2_UNENCRYPTED_FRAME_MAX_SIZE)
 		{
-			int l = (int)NTCP2_UNENCRYPTED_FRAME_MAX_SIZE - msgLen - 3;
+			int l = static_cast<int> (NTCP2_UNENCRYPTED_FRAME_MAX_SIZE - msgLen - 3);
 			if (l <= 0) return 0;
 			paddingSize = l;
 		}
@@ -1906,7 +1910,7 @@ namespace transport
 			paddingSize = m_PaddingSizes[m_NextPaddingSize++] % (paddingSize + 1);
 		}
 		buf[0] = eNTCP2BlkPadding; // blk
-		htobe16buf (buf + 1, paddingSize); // size
+		htobe16buf (buf + 1, static_cast<uint16_t> (paddingSize)); // size
 		memset (buf + 3, 0, paddingSize);
 		return paddingSize + 3;
 	}
@@ -1927,10 +1931,11 @@ namespace transport
 		// DateTime	block
 		m_NextSendBuffer[2] = eNTCP2BlkDateTime;
 		htobe16buf (m_NextSendBuffer.get () + 3, 4);
-		htobe32buf (m_NextSendBuffer.get () + 5, (i2p::util::GetMillisecondsSinceEpoch () + 500) / 1000);
+		htobe32buf (m_NextSendBuffer.get () + 5,
+			static_cast<uint32_t> ((i2p::util::GetMillisecondsSinceEpoch () + 500) / 1000));
 		// RouterInfo block
 		m_NextSendBuffer[9] = eNTCP2BlkRouterInfo;
-		htobe16buf (m_NextSendBuffer.get () + 10, riLen + 1); // size
+		htobe16buf (m_NextSendBuffer.get () + 10, static_cast<uint16_t> (riLen + 1)); // size
 		m_NextSendBuffer[12] = 0; // flag
 		memcpy (m_NextSendBuffer.get () + 13, riBuffer->data (), riLen); // TODO: eliminate extra copy
 		// padding block
@@ -1991,8 +1996,7 @@ namespace transport
 		if (len > 0 && m_Establisher)
 			boost::asio::async_read (m_Socket, boost::asio::buffer (m_Establisher->m_Buffer, len),
 				boost::asio::transfer_all (),
-				[s = shared_from_this ()] (const boost::system::error_code & ecode, size_t bytes_transferred)
-				{ s->Terminate (); });
+				[s = shared_from_this ()] (const boost::system::error_code &, size_t) { s->Terminate (); });
 		else
 			boost::asio::post (m_Server.GetService (), std::bind (&NTCP2Session::Terminate, shared_from_this ()));
 	}
@@ -2111,8 +2115,10 @@ namespace transport
 						try
 						{
 							auto ep = m_Address4
-								? boost::asio::ip::tcp::endpoint (m_Address4->address (), address->port)
-								: boost::asio::ip::tcp::endpoint (boost::asio::ip::tcp::v4 (), address->port);
+								? boost::asio::ip::tcp::endpoint (
+									m_Address4->address (), static_cast<uint16_t> (address->port))
+								: boost::asio::ip::tcp::endpoint (
+									boost::asio::ip::tcp::v4 (), static_cast<uint16_t> (address->port));
 							m_NTCP2Acceptor.reset (new boost::asio::ip::tcp::acceptor (GetService (), ep));
 						}
 						catch (std::exception & ex)
@@ -2147,11 +2153,14 @@ namespace transport
 									IPV6_PREFER_SRC_PUBLIC | IPV6_PREFER_SRC_HOME | IPV6_PREFER_SRC_NONCGA));
 							}
 #endif
-							auto ep = boost::asio::ip::tcp::endpoint (boost::asio::ip::tcp::v6 (), address->port);
+							auto ep = boost::asio::ip::tcp::endpoint (
+								boost::asio::ip::tcp::v6 (), static_cast<uint16_t> (address->port));
 							if (m_Address6 && !context.SupportsMesh ())
-								ep = boost::asio::ip::tcp::endpoint (m_Address6->address (), address->port);
+								ep = boost::asio::ip::tcp::endpoint (
+									m_Address6->address (), static_cast<uint16_t> (address->port));
 							else if (m_YggdrasilAddress && !context.SupportsV6 ())
-								ep = boost::asio::ip::tcp::endpoint (m_YggdrasilAddress->address (), address->port);
+								ep = boost::asio::ip::tcp::endpoint (
+									m_YggdrasilAddress->address (), static_cast<uint16_t> (address->port));
 							m_NTCP2V6Acceptor->bind (ep);
 							m_NTCP2V6Acceptor->listen ();
 

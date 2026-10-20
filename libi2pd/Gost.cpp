@@ -770,7 +770,7 @@ namespace crypto
 			for (int i = 63; i >= 0; i--)
 			{
 				uint16_t sum = buf[i] + other.buf[i] + carry;
-				ret.buf[i] = sum;
+				ret.buf[i] = static_cast<uint8_t> (sum);
 				carry = sum >> 8;
 			}
 			return ret;
@@ -782,7 +782,7 @@ namespace crypto
 			{
 				if (!c) return;
 				c += buf[i];
-				buf[i] = c;
+				buf[i] = static_cast<uint8_t> (c);
 				c >>= 8;
 			}
 		}
@@ -858,7 +858,7 @@ namespace crypto
 		if (l) memcpy (m.buf + padding, buf, l);
 
 		h = gN (N, h, m);
-		N.Add (l * 8);
+		N.Add (static_cast<uint32_t> (l * 8));
 		s = m + s;
 
 		GOST3411Block N0;

@@ -100,10 +100,23 @@ namespace http
 	void gen_rfc7231_date (std::string & out)
 	{
 		std::time_t now = std::time (nullptr);
+		struct tm tm;
+#ifdef _WIN32
+		if (gmtime_s (&tm, &now) != 0)
+		{
+			out.clear ();
+			return;
+		}
+#else
+		if (!gmtime_r (&now, &tm))
+		{
+			out.clear ();
+			return;
+		}
+#endif
 		char buf[128];
-		std::tm * tm = std::gmtime (&now);
-		snprintf (buf, sizeof (buf), "%s, %02d %s %d %02d:%02d:%02d GMT", weekdays[tm->tm_wday], tm->tm_mday,
-			months[tm->tm_mon], tm->tm_year + 1900, tm->tm_hour, tm->tm_min, tm->tm_sec);
+		snprintf (buf, sizeof (buf), "%s, %02d %s %d %02d:%02d:%02d GMT", weekdays[tm.tm_wday], tm.tm_mday,
+			months[tm.tm_mon], tm.tm_year + 1900, tm.tm_hour, tm.tm_min, tm.tm_sec);
 		out = buf;
 	}
 
@@ -403,7 +416,7 @@ namespace http
 			pos = eol + CRLF.length ();
 			if (pos >= eoh) break;
 		}
-		return eoh + HTTP_EOH.length ();
+		return static_cast<int> (eoh + HTTP_EOH.length ());
 	}
 
 	void HTTPReq::write (std::ostream & o) const
@@ -548,7 +561,7 @@ namespace http
 			pos = eol + CRLF.length ();
 			if (pos >= eoh) break;
 		}
-		return eoh + HTTP_EOH.length ();
+		return static_cast<int> (eoh + HTTP_EOH.length ());
 	}
 
 	std::string HTTPRes::to_string ()

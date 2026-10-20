@@ -131,7 +131,7 @@ namespace garlic
 	public:
 		SymmetricKeyTagSet (GarlicDestination * destination, const uint8_t * key);
 
-		bool IsIndexExpired (int index) const override { return false; };
+		bool IsIndexExpired (int /* index */) const override { return false; };
 		bool HandleNextMessage (uint8_t * buf, size_t len, int index) override;
 		bool IsSessionTerminated () const override { return false; }
 

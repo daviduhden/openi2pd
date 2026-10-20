@@ -65,7 +65,7 @@ namespace transport
 
 		void Sign (const i2p::data::PrivateKeys & keys, uint8_t * signature) const
 		{
-			keys.Sign (m_Buf, m_Size, signature);
+			keys.Sign (m_Buf, static_cast<int> (m_Size), signature);
 		}
 
 	private:
@@ -95,7 +95,7 @@ namespace transport
 			, m_OutBandwidth (0)
 		{
 			if (router) m_RemoteIdentity = router->GetRouterIdentity ();
-			m_CreationTime = m_LastActivityTimestamp;
+			m_CreationTime = static_cast<uint32_t> (m_LastActivityTimestamp);
 		}
 
 		virtual ~TransportSession () { };
@@ -163,7 +163,7 @@ namespace transport
 		uint8_t GetVersion () const { return m_Version; };
 
 		virtual uint32_t GetRelayTag () const { return 0; };
-		virtual void SendLocalRouterInfo (bool update = false)
+		virtual void SendLocalRouterInfo (bool /* update */ = false)
 		{
 			std::list<std::shared_ptr<I2NPMessage>> msgs { CreateDatabaseStoreMsg () };
 			SendI2NPMessages (msgs);
@@ -187,9 +187,11 @@ namespace transport
 			}
 			if ((uint64_t)interval > TRANSPORT_SESSION_BANDWIDTH_UPDATE_MIN_INTERVAL)
 			{
-				m_OutBandwidth = (m_NumSentBytes - m_LastBandWidthUpdateNumSentBytes) / interval;
+				m_OutBandwidth
+					= static_cast<uint32_t> ((m_NumSentBytes - m_LastBandWidthUpdateNumSentBytes) / interval);
 				m_LastBandWidthUpdateNumSentBytes = m_NumSentBytes;
-				m_InBandwidth = (m_NumReceivedBytes - m_LastBandWidthUpdateNumReceivedBytes) / interval;
+				m_InBandwidth
+					= static_cast<uint32_t> ((m_NumReceivedBytes - m_LastBandWidthUpdateNumReceivedBytes) / interval);
 				m_LastBandWidthUpdateNumReceivedBytes = m_NumReceivedBytes;
 				m_LastBandwidthUpdateTimestamp = m_LastActivityTimestamp;
 			}

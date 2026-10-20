@@ -102,7 +102,7 @@ namespace tunnel
 		bool IsFailed () const { return m_State == eTunnelStateFailed; };
 		bool IsRecreated () const { return m_IsRecreated.load (std::memory_order_relaxed); };
 		void SetRecreated (bool recreated) { m_IsRecreated.store (recreated, std::memory_order_relaxed); };
-		int GetNumHops () const { return m_Hops.size (); };
+		int GetNumHops () const { return static_cast<int> (m_Hops.size ()); };
 		virtual bool IsInbound () const = 0;
 		virtual bool Recreate () = 0;
 
@@ -115,7 +115,7 @@ namespace tunnel
 		bool HandleTunnelBuildResponse (uint8_t * msg, size_t len);
 
 		// implements TunnelBase
-		void SendTunnelDataMsg (std::shared_ptr<i2p::I2NPMessage> msg) override;
+		void SendTunnelDataMsg (std::shared_ptr<i2p::I2NPMessage> /* msg */) override;
 		void EncryptTunnelMsg (std::shared_ptr<const I2NPMessage> in, std::shared_ptr<I2NPMessage> out) override;
 
 		/** @brief add latency sample */
@@ -169,7 +169,7 @@ namespace tunnel
 		virtual size_t GetNumSentBytes () const { return m_Gateway.GetNumSentBytes (); };
 
 		// implements TunnelBase
-		void HandleTunnelDataMsg (std::shared_ptr<i2p::I2NPMessage> && tunnelMsg) override;
+		void HandleTunnelDataMsg (std::shared_ptr<i2p::I2NPMessage> && /* tunnelMsg */) override;
 
 		bool IsInbound () const override { return false; }
 		bool Recreate () override;
@@ -275,7 +275,7 @@ namespace tunnel
 		{
 			auto maxNumTransitTunnels = m_MaxNumTransitTunnels.load (std::memory_order_relaxed);
 			return maxNumTransitTunnels
-				? CONGESTION_LEVEL_FULL * m_TransitTunnels.GetNumTransitTunnels () / maxNumTransitTunnels
+				? static_cast<int> (CONGESTION_LEVEL_FULL * m_TransitTunnels.GetNumTransitTunnels () / maxNumTransitTunnels)
 				: CONGESTION_LEVEL_FULL;
 		}
 		/** Returns one value from the shared tunnel RNG. */
@@ -298,7 +298,7 @@ namespace tunnel
 		void HandleTunnelGatewayMsg (std::shared_ptr<TunnelBase> tunnel, std::shared_ptr<I2NPMessage> msg);
 		void HandleShortTunnelBuildMsg (std::shared_ptr<I2NPMessage> msg);
 		void HandleVariableTunnelBuildMsg (std::shared_ptr<I2NPMessage> msg);
-		void HandleTunnelBuildReplyMsg (std::shared_ptr<I2NPMessage> msg, bool isShort);
+		void HandleTunnelBuildReplyMsg (std::shared_ptr<I2NPMessage> msg, bool /* isShort */);
 
 		void Run ();
 		void ManageTunnels (uint64_t ts);
@@ -386,7 +386,7 @@ namespace tunnel
 		size_t GetTBMQueueSize () const { return m_TransitTunnels.GetTunnelBuildMsgQueueSize (); };
 		int GetTunnelCreationSuccessRate () const
 		{
-			return std::round (m_TunnelCreationSuccessRate.load (std::memory_order_relaxed) * 100);
+			return static_cast<int> (std::lround (m_TunnelCreationSuccessRate.load (std::memory_order_relaxed) * 100));
 		} // in percents
 		double GetPreciseTunnelCreationSuccessRate () const
 		{

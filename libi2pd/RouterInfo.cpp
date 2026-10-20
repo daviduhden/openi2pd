@@ -62,8 +62,9 @@ namespace data
 			dst.port = src.port;
 			dst.date = src.date;
 			dst.published = src.published;
-			dst.caps = (src.caps & ~(RouterInfo::AddressCaps::eV4 | RouterInfo::AddressCaps::eV6))
-				| (v4 ? RouterInfo::AddressCaps::eV4 : RouterInfo::AddressCaps::eV6);
+			dst.caps = static_cast<uint8_t> (
+				(src.caps & ~(RouterInfo::AddressCaps::eV4 | RouterInfo::AddressCaps::eV6))
+				| (v4 ? RouterInfo::AddressCaps::eV4 : RouterInfo::AddressCaps::eV6));
 			if (src.ssu)
 				dst.ssu = std::make_unique<RouterInfo::SSUExt> (*src.ssu);
 			else
@@ -816,7 +817,7 @@ namespace data
 					if (address->ssu && !address->ssu->introducers.empty ())
 					{
 						// exclude invalid introducers
-						uint32_t ts = i2p::util::GetSecondsSinceEpoch ();
+						uint32_t ts = static_cast<uint32_t> (i2p::util::GetSecondsSinceEpoch ());
 						UpdateIntroducers (address, ts);
 					}
 				}
@@ -833,12 +834,12 @@ namespace data
 				bool split = address->host.is_unspecified ()
 					&& ((address->IsNTCP2 () && (addressTransports & eNTCP2V4) && (addressTransports & eNTCP2V6))
 						|| (address->IsSSU2 () && (addressTransports & eSSU2V4) && (addressTransports & eSSU2V6)));
-				for (uint8_t i = 0; i < eNumTransports; i++)
+				for (uint8_t idx = 0; idx < eNumTransports; idx++)
 				{
-					if (!((1u << i) & addressTransports)) continue;
-					bool isV4Slot = (i == eNTCP2V4Idx || i == eSSU2V4Idx);
-					bool isFamilySlot = address->IsNTCP2 () ? (i == eNTCP2V4Idx || i == eNTCP2V6Idx)
-															: (i == eSSU2V4Idx || i == eSSU2V6Idx);
+					if (!((1u << idx) & addressTransports)) continue;
+					bool isV4Slot = (idx == eNTCP2V4Idx || idx == eSSU2V4Idx);
+					bool isFamilySlot = address->IsNTCP2 () ? (idx == eNTCP2V4Idx || idx == eNTCP2V6Idx)
+															: (idx == eSSU2V4Idx || idx == eSSU2V6Idx);
 					std::shared_ptr<Address> candidate = address;
 					if (split && isFamilySlot)
 					{
@@ -847,7 +848,7 @@ namespace data
 						CopyAddressForFamily (*address, *copy, isV4Slot);
 						candidate = copy;
 					}
-					auto & slot = (*addresses)[i];
+					auto & slot = (*addresses)[idx];
 					if (!slot || (candidate->published && !slot->published)) slot = candidate;
 				}
 			}
@@ -1200,7 +1201,8 @@ namespace data
 			auto addr = std::make_shared<Address> ();
 			addr->port = port;
 			addr->transportStyle = eTransportNTCP2;
-			addr->caps = (caps & ~(AddressCaps::eV4 | AddressCaps::eV6)) | (v4 ? AddressCaps::eV4 : AddressCaps::eV6);
+			addr->caps = static_cast<uint8_t> (
+				(caps & ~(AddressCaps::eV4 | AddressCaps::eV6)) | (v4 ? AddressCaps::eV4 : AddressCaps::eV6));
 			addr->date = 0;
 			addr->published = false;
 			memcpy (addr->s, staticKey, 32);
@@ -1462,8 +1464,8 @@ namespace data
 	{
 		if (IsMesh ())
 		{
-			m_SupportedTransports &= ~eNTCP2V6Mesh;
-			m_ReachableTransports &= ~eNTCP2V6Mesh;
+			m_SupportedTransports &= static_cast<CompatibleTransports> (~eNTCP2V6Mesh);
+			m_ReachableTransports &= static_cast<CompatibleTransports> (~eNTCP2V6Mesh);
 			(*GetAddresses ())[eNTCP2V6MeshIdx].reset ();
 		}
 	}
@@ -1777,7 +1779,8 @@ namespace data
 			if (buffer && buffer->GetBufferLen () == len)
 			{
 				// signature
-				privateKeys.Sign (buffer->data (), len, buffer->data () + len);
+				// len is bounded by MAX_RI_BUFFER_SIZE above.
+				privateKeys.Sign (buffer->data (), static_cast<int> (len), buffer->data () + len);
 				SetBufferLen (len + signatureLen);
 				return;
 			}
@@ -2078,7 +2081,7 @@ namespace data
 				properties << ';';
 			}
 
-			uint16_t size = htobe16 (properties.str ().size ());
+			uint16_t size = htobe16 (static_cast<uint16_t> (properties.str ().size ()));
 			s.write ((char *)&size, sizeof (size));
 			s.write (properties.str ().c_str (), properties.str ().size ());
 		}
@@ -2096,7 +2099,7 @@ namespace data
 			WriteString (p.second, properties);
 			properties << ';';
 		}
-		uint16_t size = htobe16 (properties.str ().size ());
+		uint16_t size = htobe16 (static_cast<uint16_t> (properties.str ().size ()));
 		s.write ((char *)&size, sizeof (size));
 		s.write (properties.str ().c_str (), properties.str ().size ());
 	}
@@ -2184,7 +2187,8 @@ namespace data
 		addr->ssu->introducers.push_back (introducer);
 		if (!addr->ssu->introducers.back ().iExp)
 			addr->ssu->introducers.back ().iExp = std::numeric_limits<uint32_t>::max ();
-		SetReachableTransports (GetReachableTransports () | (addr->IsV4 () ? eSSU2V4 : eSSU2V6));
+		SetReachableTransports (
+			static_cast<CompatibleTransports> (GetReachableTransports () | (addr->IsV4 () ? eSSU2V4 : eSSU2V6)));
 		return true;
 	}
 

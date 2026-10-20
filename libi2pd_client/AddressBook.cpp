@@ -655,8 +655,8 @@ namespace client
 				std::string_view name = std::string_view (s).substr (0, pos++);
 				std::string_view addr = std::string_view (s).substr (pos);
 
-				size_t pos = addr.find ('#');
-				if (pos != addr.npos) addr = addr.substr (0, pos); // remove comments
+				size_t commentPos = addr.find ('#');
+				if (commentPos != addr.npos) addr = addr.substr (0, commentPos); // remove comments
 				// The map key is the normalised name; the original spelling is
 				// kept in diagnostics (and in the jump-link writer's output).
 				auto key = NormalizeHostName (name);
@@ -987,7 +987,7 @@ namespace client
 	}
 
 	void AddressBook::HandleLookupResponse (
-		const i2p::data::IdentityEx & from, uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len)
+		const i2p::data::IdentityEx & from, uint16_t, uint16_t, const uint8_t * buf, size_t len)
 	{
 		if (len < 44)
 		{
@@ -1080,7 +1080,8 @@ namespace client
 		std::string dest_host = url.host;
 		int dest_port = url.port ? url.port : 80;
 		// try to create stream to addressbook site
-		auto stream = i2p::client::context.GetSharedLocalDestination ()->CreateStream (m_Ident, dest_port);
+		auto stream = i2p::client::context.GetSharedLocalDestination ()->CreateStream (
+			m_Ident, static_cast<uint16_t> (dest_port));
 		if (!stream)
 		{
 			LogPrint (eLogWarning, "Addressbook: LeaseSet for address ", url.host, " not found");

@@ -149,7 +149,7 @@ namespace data
 					m_NumTunnelsDeclined = participations.get (PEER_PROFILE_PARTICIPATION_DECLINED, 0);
 					m_NumTunnelsNonReplied = participations.get (PEER_PROFILE_PARTICIPATION_NON_REPLIED, 0.0f);
 				}
-				catch (boost::property_tree::ptree_bad_path & ex)
+				catch (boost::property_tree::ptree_bad_path &)
 				{
 					LogPrint (eLogWarning, "Profiling: Missing section ", PEER_PROFILE_SECTION_PARTICIPATION,
 						" in profile for ", ident);
@@ -163,7 +163,7 @@ namespace data
 					m_HasConnected = usage.get (PEER_PROFILE_USAGE_CONNECTED, false);
 					m_IsDuplicated = usage.get (PEER_PROFILE_USAGE_DUPLICATED, false);
 				}
-				catch (boost::property_tree::ptree_bad_path & ex)
+				catch (boost::property_tree::ptree_bad_path &)
 				{
 					LogPrint (eLogWarning, "Profiling: Missing section ", PEER_PROFILE_SECTION_USAGE,
 						" in profile for ", ident);

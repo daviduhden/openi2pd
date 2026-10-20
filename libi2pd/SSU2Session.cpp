@@ -120,7 +120,7 @@ namespace transport
 				outOfSequenceFragments = fragment;
 		}
 		if (fragment->isLast) lastFragmentNum = fragment->fragmentNum;
-		lastFragmentInsertTime = i2p::util::GetSecondsSinceEpoch ();
+		lastFragmentInsertTime = static_cast<uint32_t> (i2p::util::GetSecondsSinceEpoch ());
 	}
 
 	SSU2Session::SSU2Session (SSU2Server & server, std::shared_ptr<const i2p::data::RouterInfo> in_RemoteRouter,
@@ -159,7 +159,8 @@ namespace transport
 		if (in_RemoteRouter && m_Address)
 		{
 			// outgoing
-			m_RemoteEndpoint = boost::asio::ip::udp::endpoint (m_Address->host, m_Address->port);
+			m_RemoteEndpoint
+				= boost::asio::ip::udp::endpoint (m_Address->host, static_cast<uint16_t> (m_Address->port));
 			m_RemoteTransports = in_RemoteRouter->GetCompatibleTransports (false);
 			m_RemoteVersion = in_RemoteRouter->GetVersion ();
 			if (in_RemoteRouter->IsSSU2PeerTesting (true)) m_RemotePeerTestTransports |= i2p::data::RouterInfo::eSSU2V4;
@@ -243,12 +244,12 @@ namespace transport
 		payload[3] = 0; // flag
 		htobe32buf (payload + 4, nonce);
 		htobe32buf (payload + 8, relayTag);
-		htobe32buf (payload + 12, ts / 1000);
+		htobe32buf (payload + 12, static_cast<uint32_t> (ts / 1000));
 		payload[16] = 2; // relay protocol version is fixed to 2
 		size_t asz = CreateEndpoint (payload + 18, m_MaxPayloadSize - 18,
-			boost::asio::ip::udp::endpoint (localAddress->host, localAddress->port));
+			boost::asio::ip::udp::endpoint (localAddress->host, static_cast<uint16_t> (localAddress->port)));
 		if (!asz) return false;
-		payload[17] = asz;
+		payload[17] = static_cast<uint8_t> (asz);
 		packet->payloadSize = asz + 18;
 		SignedData<128> s;
 		s.Insert ((const uint8_t *)"RelayRequestData", 16); // prologue
@@ -257,7 +258,7 @@ namespace transport
 		s.Insert (payload + 4, 14 + asz); // nonce, relay tag, timestamp, ver, asz and Alice's endpoint
 		s.Sign (i2p::context.GetPrivateKeys (), payload + packet->payloadSize);
 		packet->payloadSize += i2p::context.GetIdentity ()->GetSignatureLen ();
-		htobe16buf (payload + 1, packet->payloadSize - 3); // size
+		htobe16buf (payload + 1, static_cast<uint16_t> (packet->payloadSize - 3)); // size
 		packet->payloadSize
 			+= CreatePaddingBlock (payload + packet->payloadSize, m_MaxPayloadSize - packet->payloadSize);
 		// send
@@ -965,7 +966,7 @@ namespace transport
 #endif
 		payload[payloadSize] = eSSU2BlkDateTime;
 		htobe16buf (payload + payloadSize + 1, 4);
-		htobe32buf (payload + payloadSize + 3, (ts + 500) / 1000);
+		htobe32buf (payload + payloadSize + 3, static_cast<uint32_t> ((ts + 500) / 1000));
 		payloadSize += 7;
 		if (GetRouterStatus () == eRouterStatusFirewalled && m_Address->IsIntroducer ())
 		{
@@ -1273,7 +1274,7 @@ namespace transport
 #endif
 		payload[payloadSize] = eSSU2BlkDateTime;
 		htobe16buf (payload + payloadSize + 1, 4);
-		htobe32buf (payload + payloadSize + 3, (ts + 500) / 1000);
+		htobe32buf (payload + payloadSize + 3, static_cast<uint32_t> ((ts + 500) / 1000));
 		payloadSize += 7;
 		payloadSize += CreateAddressBlock (payload + payloadSize, maxPayloadSize - payloadSize, m_RemoteEndpoint);
 		if (m_RelayTag)
@@ -1536,7 +1537,7 @@ namespace transport
 		if (paddingTotal)
 		{
 			jumbo[payloadSize] = eSSU2BlkPadding;
-			htobe16buf (jumbo.data () + payloadSize + 1, paddingTotal - 3);
+			htobe16buf (jumbo.data () + payloadSize + 1, static_cast<uint16_t> (paddingTotal - 3));
 			memset (jumbo.data () + payloadSize + 3, 0, paddingTotal - 3);
 			payloadSize += paddingTotal;
 		}
@@ -1825,7 +1826,8 @@ namespace transport
 		}
 		// update RouterInfo in netdb
 		auto ri1
-			= i2p::data::netdb.AddRouterInfo (ri->GetBuffer (), ri->GetBufferLen ()); // ri points to one from netdb now
+			= i2p::data::netdb.AddRouterInfo (
+				ri->GetBuffer (), static_cast<int> (ri->GetBufferLen ())); // ri points to one from netdb now
 		if (!ri1)
 		{
 			LogPrint (eLogError, "SSU2: Couldn't update RouterInfo from SessionConfirmed in netdb");
@@ -1950,7 +1952,7 @@ namespace transport
 		// payload
 		payload[0] = eSSU2BlkDateTime;
 		htobe16buf (payload + 1, 4);
-		htobe32buf (payload + 3, (i2p::util::GetMillisecondsSinceEpoch () + 500) / 1000);
+		htobe32buf (payload + 3, static_cast<uint32_t> ((i2p::util::GetMillisecondsSinceEpoch () + 500) / 1000));
 		size_t payloadSize = 7;
 		payloadSize += CreatePaddingBlock (payload + payloadSize, 25 - payloadSize, 1);
 		// encrypt
@@ -2065,7 +2067,7 @@ namespace transport
 		// payload
 		payload[0] = eSSU2BlkDateTime;
 		htobe16buf (payload + 1, 4);
-		htobe32buf (payload + 3, (i2p::util::GetMillisecondsSinceEpoch () + 500) / 1000);
+		htobe32buf (payload + 3, static_cast<uint32_t> ((i2p::util::GetMillisecondsSinceEpoch () + 500) / 1000));
 		size_t payloadSize = 7;
 		payloadSize += CreateAddressBlock (payload + payloadSize, 56 - payloadSize, m_RemoteEndpoint);
 		if (m_TerminationReason != eSSU2TerminationReasonNormalClose)
@@ -2137,7 +2139,8 @@ namespace transport
 		uint64_t token = headerX[1];
 		if (token)
 			m_Server.UpdateOutgoingToken (
-				m_RemoteEndpoint, token, i2p::util::GetSecondsSinceEpoch () + SSU2_TOKEN_EXPIRATION_TIMEOUT);
+				m_RemoteEndpoint, token,
+				static_cast<uint32_t> (i2p::util::GetSecondsSinceEpoch () + SSU2_TOKEN_EXPIRATION_TIMEOUT));
 		// decrypt and handle payload
 		uint8_t * payload = buf + 32;
 		CreateNonce (be32toh (header.h.packetNum), nonce);
@@ -2285,7 +2288,7 @@ namespace transport
 		return true;
 	}
 
-	bool SSU2Session::ProcessPeerTest (uint8_t * buf, size_t len)
+	bool SSU2Session::ProcessPeerTest (uint8_t * /* buf */, size_t /* len */)
 	{
 		LogPrint (eLogWarning, "SSU2:  Unexpected peer test message for this session type");
 		return false;
@@ -2761,10 +2764,12 @@ namespace transport
 		if (buf[0] & SSU2_ROUTER_INFO_FLAG_GZIP) // compressed?
 		{
 			auto ri = ExtractRouterInfo (buf, len);
-			if (ri) newRi = i2p::data::netdb.AddRouterInfo (ri->GetBuffer (), ri->GetBufferLen (), updated);
+			if (ri)
+				newRi = i2p::data::netdb.AddRouterInfo (
+					ri->GetBuffer (), static_cast<int> (ri->GetBufferLen ()), updated);
 		}
 		else // use buffer directly. TODO: handle frag
-			newRi = i2p::data::netdb.AddRouterInfo (buf + 2, len - 2, updated);
+			newRi = i2p::data::netdb.AddRouterInfo (buf + 2, static_cast<int> (len - 2), updated);
 
 		if (newRi)
 		{
@@ -3044,7 +3049,7 @@ namespace transport
 		}
 		m->msg = msg;
 		m->nextFragmentNum = 1;
-		m->lastFragmentInsertTime = i2p::util::GetSecondsSinceEpoch ();
+		m->lastFragmentInsertTime = static_cast<uint32_t> (i2p::util::GetSecondsSinceEpoch ());
 		if (found && m->ConcatOutOfSequenceFragments ())
 		{
 			// we have all follow-on fragments already
@@ -3114,7 +3119,8 @@ namespace transport
 						m_IncompleteMessages.erase (it);
 					}
 					else
-						it->second->lastFragmentInsertTime = i2p::util::GetSecondsSinceEpoch ();
+						it->second->lastFragmentInsertTime
+							= static_cast<uint32_t> (i2p::util::GetSecondsSinceEpoch ());
 				}
 				return;
 			}
@@ -3532,7 +3538,8 @@ namespace transport
 			uint64_t token;
 			memcpy (&token, buf + 2 + signedLen + sigLen, 8);
 			m_Server.UpdateOutgoingToken (
-				m_RemoteEndpoint, token, i2p::util::GetSecondsSinceEpoch () + SSU2_TOKEN_EXPIRATION_TIMEOUT);
+				m_RemoteEndpoint, token,
+				static_cast<uint32_t> (i2p::util::GetSecondsSinceEpoch () + SSU2_TOKEN_EXPIRATION_TIMEOUT));
 			ConnectAfterIntroduction ();
 			return;
 		}
@@ -3553,7 +3560,7 @@ namespace transport
 				auto packet = m_Server.GetSentPacketsPool ().AcquireShared ();
 				uint8_t * payload = packet->payload;
 				payload[0] = eSSU2BlkRelayResponse;
-				htobe16buf (payload + 1, len);
+				htobe16buf (payload + 1, static_cast<uint16_t> (len));
 				memcpy (payload + 3, buf, len); // forward to Alice as is
 				packet->payloadSize = len + 3;
 				packet->payloadSize
@@ -3632,7 +3639,7 @@ namespace transport
 							uint64_t token;
 							memcpy (&token, buf + 2 + signedLen + sigLen, 8);
 							m_Server.UpdateOutgoingToken (relaySession->m_RemoteEndpoint, token,
-								i2p::util::GetSecondsSinceEpoch () + SSU2_TOKEN_EXPIRATION_TIMEOUT);
+								static_cast<uint32_t> (i2p::util::GetSecondsSinceEpoch () + SSU2_TOKEN_EXPIRATION_TIMEOUT));
 							// connect to Charlie, HolePunch will be ignored
 							relaySession->ConnectAfterIntroduction ();
 						}
@@ -3720,7 +3727,8 @@ namespace transport
 		case 1: // Bob from Alice
 		{
 			auto session = m_Server.GetRandomPeerTestSession (
-				(asz == 6) ? i2p::data::RouterInfo::eSSU2V4 : i2p::data::RouterInfo::eSSU2V6,
+				static_cast<i2p::data::RouterInfo::CompatibleTransports> (
+					(asz == 6) ? i2p::data::RouterInfo::eSSU2V4 : i2p::data::RouterInfo::eSSU2V6),
 				GetRemoteIdentity ()->GetIdentHash ());
 			if (session) // session with Charlie
 			{
@@ -3965,8 +3973,8 @@ namespace transport
 										// schedule msg 6 with delay
 										if (!addr->host.is_unspecified () && addr->port)
 										{
-											session->SetRemoteEndpoint (
-												boost::asio::ip::udp::endpoint (addr->host, addr->port));
+											session->SetRemoteEndpoint (boost::asio::ip::udp::endpoint (
+												addr->host, static_cast<uint16_t> (addr->port)));
 											session->SendPeerTest (6, buf + offset, len - offset, addr, true);
 										}
 										SetTestingState (false);
@@ -4060,13 +4068,15 @@ namespace transport
 		{
 			boost::asio::ip::address_v4::bytes_type bytes;
 			memcpy (bytes.data (), buf + 2, 4);
-			ep = boost::asio::ip::udp::endpoint (boost::asio::ip::address_v4 (bytes), port);
+			ep = boost::asio::ip::udp::endpoint (
+				boost::asio::ip::address_v4 (bytes), static_cast<uint16_t> (port));
 		}
 		else if (size == 18)
 		{
 			boost::asio::ip::address_v6::bytes_type bytes;
 			memcpy (bytes.data (), buf + 2, 16);
-			ep = boost::asio::ip::udp::endpoint (boost::asio::ip::address_v6 (bytes), port);
+			ep = boost::asio::ip::udp::endpoint (
+				boost::asio::ip::address_v6 (bytes), static_cast<uint16_t> (port));
 		}
 		else
 		{
@@ -4115,8 +4125,8 @@ namespace transport
 		if (addr && addr->ssu)
 		{
 			int mtu = addr->ssu->mtu;
-			if (!mtu) mtu = SSU2_MAX_PACKET_SIZE;
-			if (mtu > (int)maxMtu) mtu = maxMtu;
+			if (!mtu) mtu = static_cast<int> (SSU2_MAX_PACKET_SIZE);
+			if (mtu > (int)maxMtu) mtu = static_cast<int> (maxMtu);
 			if (m_Address && m_Address->ssu && m_Address->ssu->mtu && (!mtu || m_Address->ssu->mtu < mtu))
 				mtu = m_Address->ssu->mtu;
 			if (mtu)
@@ -4178,7 +4188,7 @@ namespace transport
 		buf[0] = eSSU2BlkAddress;
 		size_t size = CreateEndpoint (buf + 3, len - 3, ep);
 		if (!size) return 0;
-		htobe16buf (buf + 1, size);
+		htobe16buf (buf + 1, static_cast<uint16_t> (size));
 		return size + 3;
 	}
 
@@ -4208,7 +4218,7 @@ namespace transport
 			if (!size) return 0; // doesn't fit
 			buf[3] = SSU2_ROUTER_INFO_FLAG_GZIP; // flag
 		}
-		htobe16buf (buf + 1, size + 2); // size
+		htobe16buf (buf + 1, static_cast<uint16_t> (size + 2)); // size
 		buf[4] = 1; // frag
 		return size + 5;
 	}
@@ -4240,7 +4250,7 @@ namespace transport
 			}
 			else
 			{
-				int maxNumRanges = (len - 8) >> 1;
+				int maxNumRanges = static_cast<int> ((len - 8) >> 1);
 				if (maxNumRanges > SSU2_MAX_NUM_ACK_RANGES) maxNumRanges = SSU2_MAX_NUM_ACK_RANGES;
 				auto it = m_OutOfSequencePackets.rbegin ();
 				it++; // prev packet num
@@ -4280,7 +4290,7 @@ namespace transport
 						if (d.rem > 0 && numRanges < maxNumRanges)
 						{
 							m_Ranges[numRanges * 2] = 0;
-							m_Ranges[numRanges * 2 + 1] = d.rem;
+							m_Ranges[numRanges * 2 + 1] = static_cast<uint8_t> (d.rem);
 							numRanges++;
 						}
 					}
@@ -4308,7 +4318,7 @@ namespace transport
 						// m_Ranges.
 						if (numRanges >= maxNumRanges) break;
 						// NACKs and Acks ranges
-						m_Ranges[numRanges * 2] = lastNum - (*it) - 1; // NACKs
+						m_Ranges[numRanges * 2] = static_cast<uint8_t> (lastNum - (*it) - 1); // NACKs
 						numPackets += m_Ranges[numRanges * 2];
 						lastNum = *it;
 						it++;
@@ -4375,7 +4385,7 @@ namespace transport
 									m_Ranges[numRanges * 2] = (uint8_t)nacks64;
 									m_Ranges[numRanges * 2 + 1] = (uint8_t)acks;
 									numRanges++;
-									numPackets += nacks64 + acks;
+									numPackets += static_cast<int> (nacks64 + acks);
 								}
 							}
 						}
@@ -4393,7 +4403,7 @@ namespace transport
 		// ranges that follow.
 		if (acnt > SSU2_MAX_NUM_ACNT) acnt = SSU2_MAX_NUM_ACNT;
 		buf[7] = (uint8_t)acnt; // acnt
-		htobe16buf (buf + 1, 5 + m_NumRanges * 2);
+		htobe16buf (buf + 1, static_cast<uint16_t> (5 + m_NumRanges * 2));
 		return 8 + m_NumRanges * 2;
 	}
 
@@ -4406,7 +4416,7 @@ namespace transport
 		else if (paddingSize + 3 < minSize)
 			paddingSize = minSize - 3;
 		buf[0] = eSSU2BlkPadding;
-		htobe16buf (buf + 1, paddingSize);
+		htobe16buf (buf + 1, static_cast<uint16_t> (paddingSize));
 		memset (buf + 3, 0, paddingSize);
 		return paddingSize + 3;
 	}
@@ -4421,7 +4431,7 @@ namespace transport
 		// fragmentation path when the message does not fit.
 		if (msgLen + 3 > len) return 0;
 		buf[0] = eSSU2BlkI2NPMessage;
-		htobe16buf (buf + 1, msgLen); // size
+		htobe16buf (buf + 1, static_cast<uint16_t> (msgLen)); // size
 		memcpy (buf + 3, msgBuf, msgLen);
 		return msgLen + 3;
 	}
@@ -4437,7 +4447,7 @@ namespace transport
 		if (msgLen + 3 <= len) return 0;
 		msgLen = len - 3;
 		buf[0] = eSSU2BlkFirstFragment;
-		htobe16buf (buf + 1, msgLen); // size
+		htobe16buf (buf + 1, static_cast<uint16_t> (msgLen)); // size
 		memcpy (buf + 3, msgBuf, msgLen);
 		msg->offset = (msgBuf - msg->buf) + msgLen;
 		return msgLen + 3;
@@ -4459,9 +4469,9 @@ namespace transport
 		}
 		if (!msgLen) return 0;
 		buf[0] = eSSU2BlkFollowOnFragment;
-		htobe16buf (buf + 1, msgLen + 5); // size
+		htobe16buf (buf + 1, static_cast<uint16_t> (msgLen + 5)); // size
 		fragmentNum++;
-		buf[3] = fragmentNum << 1;
+		buf[3] = static_cast<uint8_t> (fragmentNum << 1);
 		if (isLast) buf[3] |= 0x01;
 		memcpy (buf + 4, &msgID, 4);
 		memcpy (buf + 8, msg->buf + msg->offset, msgLen);
@@ -4476,7 +4486,7 @@ namespace transport
 		buf[0] = eSSU2BlkRelayIntro;
 		size_t payloadSize = 1 /* flag */ + 32 /* Alice router hash */ + introDataLen;
 		if (payloadSize + 3 > len) return 0;
-		htobe16buf (buf + 1, payloadSize); // size
+		htobe16buf (buf + 1, static_cast<uint16_t> (payloadSize)); // size
 		buf[3] = 0; // flag
 		memcpy (buf + 4, GetRemoteIdentity ()->GetIdentHash (), 32); // Alice router hash
 		memcpy (buf + 36, introData, introDataLen);
@@ -4489,9 +4499,9 @@ namespace transport
 		if (len < 15) return 0; // fixed fields before the optional endpoint/signature
 		buf[0] = eSSU2BlkRelayResponse;
 		buf[3] = 0; // flag
-		buf[4] = code; // code
+		buf[4] = static_cast<uint8_t> (code); // code
 		htobe32buf (buf + 5, nonce); // nonce
-		htobe32buf (buf + 9, i2p::util::GetSecondsSinceEpoch ()); // timestamp
+		htobe32buf (buf + 9, static_cast<uint32_t> (i2p::util::GetSecondsSinceEpoch ())); // timestamp
 		buf[13] = 2; // ver
 		size_t csz = 0;
 		if (code == eSSU2RelayResponseCodeAccept)
@@ -4502,14 +4512,15 @@ namespace transport
 				LogPrint (eLogError, "SSU2: Can't find local address for RelayResponse");
 				return 0;
 			}
-			csz = CreateEndpoint (buf + 15, len - 15, boost::asio::ip::udp::endpoint (addr->host, addr->port));
+			csz = CreateEndpoint (buf + 15, len - 15,
+				boost::asio::ip::udp::endpoint (addr->host, static_cast<uint16_t> (addr->port)));
 			if (!csz)
 			{
 				LogPrint (eLogError, "SSU2: Can't create local endpoint for RelayResponse");
 				return 0;
 			}
 		}
-		buf[14] = csz; // csz
+		buf[14] = static_cast<uint8_t> (csz); // csz
 		// signature
 		size_t signatureLen = i2p::context.GetIdentity ()->GetSignatureLen ();
 		if (15 + csz + signatureLen > len)
@@ -4536,7 +4547,7 @@ namespace transport
 			memcpy (buf + 3 + payloadSize, &token, 8);
 			payloadSize += 8;
 		}
-		htobe16buf (buf + 1, payloadSize); // size
+		htobe16buf (buf + 1, static_cast<uint16_t> (payloadSize)); // size
 		return payloadSize + 3;
 	}
 
@@ -4548,7 +4559,7 @@ namespace transport
 		size_t payloadSize = 3 /* msg, code, flag */ + signedDataLen;
 		if (routerHash) payloadSize += 32; // router hash
 		if (payloadSize + 3 > len) return 0;
-		htobe16buf (buf + 1, payloadSize); // size
+		htobe16buf (buf + 1, static_cast<uint16_t> (payloadSize)); // size
 		buf[3] = msg; // msg
 		buf[4] = (uint8_t)code; // code
 		buf[5] = 0; //flag
@@ -4577,10 +4588,10 @@ namespace transport
 		std::vector<uint8_t> signedData (10 + 18 + signatureLen);
 		signedData[0] = 2; // ver
 		htobe32buf (signedData.data () + 1, nonce);
-		htobe32buf (signedData.data () + 5, ts);
+		htobe32buf (signedData.data () + 5, static_cast<uint32_t> (ts));
 		size_t asz = CreateEndpoint (signedData.data () + 10, signedData.size () - 10,
-			boost::asio::ip::udp::endpoint (localAddress->host, localAddress->port));
-		signedData[9] = asz;
+			boost::asio::ip::udp::endpoint (localAddress->host, static_cast<uint16_t> (localAddress->port)));
+		signedData[9] = static_cast<uint8_t> (asz);
 		// signature
 		SignedData<128> s;
 		s.Insert ((const uint8_t *)"PeerTestValidate", 16); // prologue
@@ -4688,7 +4699,7 @@ namespace transport
 		{
 			payload[0] = eSSU2BlkDateTime;
 			htobe16buf (payload + 1, 4);
-			htobe32buf (payload + 3, (i2p::util::GetMillisecondsSinceEpoch () + 500) / 1000);
+			htobe32buf (payload + 3, static_cast<uint32_t> ((i2p::util::GetMillisecondsSinceEpoch () + 500) / 1000));
 			payloadSize += 7;
 			m_LastDatetimeSentPacketNum = m_SendPacketNum;
 		}
@@ -4721,7 +4732,7 @@ namespace transport
 		// datetime block
 		payload[0] = eSSU2BlkDateTime;
 		htobe16buf (payload + 1, 4);
-		htobe32buf (payload + 3, (i2p::util::GetMillisecondsSinceEpoch () + 500) / 1000);
+		htobe32buf (payload + 3, static_cast<uint32_t> ((i2p::util::GetMillisecondsSinceEpoch () + 500) / 1000));
 		payloadSize += 7;
 		// address block
 		payloadSize += CreateAddressBlock (payload + payloadSize, m_MaxPayloadSize - payloadSize, m_RemoteEndpoint);
@@ -4732,7 +4743,7 @@ namespace transport
 			return;
 		}
 		payload[payloadSize] = eSSU2BlkPathResponse;
-		htobe16buf (payload + payloadSize + 1, len);
+		htobe16buf (payload + payloadSize + 1, static_cast<uint16_t> (len));
 		memcpy (payload + payloadSize + 3, data, len);
 		payloadSize += len + 3;
 		// ack block
@@ -4781,7 +4792,7 @@ namespace transport
 		// datetime block
 		payload[0] = eSSU2BlkDateTime;
 		htobe16buf (payload + 1, 4);
-		htobe32buf (payload + 3, (i2p::util::GetMillisecondsSinceEpoch () + 500) / 1000);
+		htobe32buf (payload + 3, static_cast<uint32_t> ((i2p::util::GetMillisecondsSinceEpoch () + 500) / 1000));
 		payloadSize += 7;
 		// address block with new address
 		size_t addressSize = CreateAddressBlock (payload + payloadSize, m_MaxPayloadSize - payloadSize, state.endpoint);

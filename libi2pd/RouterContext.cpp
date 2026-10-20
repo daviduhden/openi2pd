@@ -1013,7 +1013,7 @@ void RouterContext::SetUnreachable (bool v4, bool v6)
 				addr->published = false;
 				UpdateSSU2AddressCapsIntroducer (addr, false); // can't be introducer
 				addr->ssu->introducers.clear ();
-				port = addr->port;
+				port = static_cast<uint16_t> (addr->port);
 			}
 	}
 	// unpublish NTCP2 addreeses
@@ -1060,7 +1060,7 @@ void RouterContext::SetReachable (bool v4, bool v6)
 				addr->published = true;
 				UpdateSSU2AddressCapsIntroducer (addr, !m_IsFloodfill.load (std::memory_order_relaxed));
 				addr->ssu->introducers.clear ();
-				if (addr->port) port = addr->port;
+				if (addr->port) port = static_cast<uint16_t> (addr->port);
 			}
 	}
 	// publish NTCP2
@@ -1112,7 +1112,7 @@ void RouterContext::SetSupportsV6 (bool supportsV6)
 					default:;
 					}
 				}
-				if (addr) port = addr->port;
+				if (addr) port = static_cast<uint16_t> (addr->port);
 			}
 		}
 		if (!port)
@@ -1221,7 +1221,7 @@ void RouterContext::SetSupportsV4 (bool supportsV4)
 					default:;
 					}
 				}
-				if (addr && addr->port) port = addr->port;
+				if (addr && addr->port) port = static_cast<uint16_t> (addr->port);
 			}
 		}
 		if (!port)
@@ -1324,7 +1324,7 @@ void RouterContext::SetSupportsMesh (bool supportsmesh, const boost::asio::ip::a
 			{
 				if (addr && addr->port)
 				{
-					port = addr->port;
+					port = static_cast<uint16_t> (addr->port);
 					break;
 				}
 			}
@@ -1569,7 +1569,7 @@ void RouterContext::HandleI2NPMessage (const uint8_t * buf, size_t len)
 }
 
 bool RouterContext::HandleCloveI2NPMessage (I2NPMessageType typeID, const uint8_t * payload, size_t len, uint32_t msgID,
-	i2p::garlic::ECIESX25519AEADRatchetSession * from)
+	i2p::garlic::ECIESX25519AEADRatchetSession * /* from */)
 {
 	if (typeID == eI2NPTunnelTest)
 	{
@@ -1662,10 +1662,12 @@ void RouterContext::SubmitECIESx25519Key (const uint8_t * key, uint64_t tag)
 
 uint32_t RouterContext::GetUptime () const
 {
-	return i2p::util::GetMonotonicSeconds () - m_StartupTime.load (std::memory_order_relaxed);
+	return static_cast<uint32_t> (
+		i2p::util::GetMonotonicSeconds () - m_StartupTime.load (std::memory_order_relaxed));
 }
 
-bool RouterContext::Decrypt (const uint8_t * encrypted, uint8_t * data, i2p::data::CryptoKeyType preferredCrypto) const
+bool RouterContext::Decrypt (
+	const uint8_t * encrypted, uint8_t * data, i2p::data::CryptoKeyType /* preferredCrypto */) const
 {
 	return m_Decryptor ? m_Decryptor->Decrypt (encrypted, data) : false;
 }

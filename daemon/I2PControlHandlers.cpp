@@ -246,19 +246,19 @@ namespace client
 
 	void I2PControlHandlers::TunnelsParticipatingHandler (std::ostringstream & results)
 	{
-		int transit = i2p::tunnel::tunnels.CountTransitTunnels ();
+		int transit = static_cast<int> (i2p::tunnel::tunnels.CountTransitTunnels ());
 		InsertParam (results, "i2p.router.net.tunnels.participating", transit);
 	}
 
 	void I2PControlHandlers::TunnelsInboundHandler (std::ostringstream & results)
 	{
-		int inbound = i2p::tunnel::tunnels.CountInboundTunnels ();
+		int inbound = static_cast<int> (i2p::tunnel::tunnels.CountInboundTunnels ());
 		InsertParam (results, "i2p.router.net.tunnels.inbound", inbound);
 	}
 
 	void I2PControlHandlers::TunnelsOutboundHandler (std::ostringstream & results)
 	{
-		int outbound = i2p::tunnel::tunnels.CountOutboundTunnels ();
+		int outbound = static_cast<int> (i2p::tunnel::tunnels.CountOutboundTunnels ());
 		InsertParam (results, "i2p.router.net.tunnels.outbound", outbound);
 	}
 
@@ -276,13 +276,13 @@ namespace client
 
 	void I2PControlHandlers::TunnelsQueueHandler (std::ostringstream & results)
 	{
-		int queue = i2p::tunnel::tunnels.GetQueueSize ();
+		int queue = static_cast<int> (i2p::tunnel::tunnels.GetQueueSize ());
 		InsertParam (results, "i2p.router.net.tunnels.queue", queue);
 	}
 
 	void I2PControlHandlers::TunnelsTBMQueueHandler (std::ostringstream & results)
 	{
-		int queue = i2p::tunnel::tunnels.GetTBMQueueSize ();
+		int queue = static_cast<int> (i2p::tunnel::tunnels.GetTBMQueueSize ());
 		InsertParam (results, "i2p.router.net.tunnels.tbmqueue", queue);
 	}
 
@@ -355,14 +355,14 @@ namespace client
 	void I2PControlHandlers::InboundBandwidthLimit (const std::string & value, std::ostringstream & results)
 	{
 		if (value != "null") i2p::context.SetBandwidth (std::atoi (value.c_str ()));
-		int bw = i2p::context.GetBandwidthLimit ();
+		int bw = static_cast<int> (i2p::context.GetBandwidthLimit ());
 		InsertParam (results, "i2p.router.net.bw.in", bw);
 	}
 
 	void I2PControlHandlers::OutboundBandwidthLimit (const std::string & value, std::ostringstream & results)
 	{
 		if (value != "null") i2p::context.SetBandwidth (std::atoi (value.c_str ()));
-		int bw = i2p::context.GetBandwidthLimit ();
+		int bw = static_cast<int> (i2p::context.GetBandwidthLimit ());
 		InsertParam (results, "i2p.router.net.bw.out", bw);
 	}
 

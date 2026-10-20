@@ -160,14 +160,14 @@ namespace stream
 		, m_AckSendTimer (m_Service)
 		, m_NumSentBytes (0)
 		, m_NumReceivedBytes (0)
-		, m_Port (port)
+		, m_Port (static_cast<uint16_t> (port))
 		, m_LocalPort (local.GetLocalPort ())
 		, m_RTT (INITIAL_RTT)
 		, m_MinRTT (INITIAL_RTT)
 		, m_SlowRTT (INITIAL_RTT)
 		, m_FastRTT (INITIAL_RTT)
 		, m_WindowSize (INITIAL_WINDOW_SIZE)
-		, m_MaxWindowSize (local.GetOwner ()->GetStreamingMaxWindowSize ())
+		, m_MaxWindowSize (static_cast<float> (local.GetOwner ()->GetStreamingMaxWindowSize ()))
 		, m_LastWindowDropSize (0)
 		, m_WindowDropTargetSize (0)
 		, m_WindowIncCounter (0)
@@ -248,7 +248,7 @@ namespace stream
 		, m_SlowRTT (INITIAL_RTT)
 		, m_FastRTT (INITIAL_RTT)
 		, m_WindowSize (INITIAL_WINDOW_SIZE)
-		, m_MaxWindowSize (local.GetOwner ()->GetStreamingMaxWindowSize ())
+		, m_MaxWindowSize (static_cast<float> (local.GetOwner ()->GetStreamingMaxWindowSize ()))
 		, m_LastWindowDropSize (0)
 		, m_WindowDropTargetSize (0)
 		, m_WindowIncCounter (0)
@@ -306,7 +306,7 @@ namespace stream
 	{
 		if (m_RoutingSession && !m_SentPackets.empty ()) // free up space in shared window
 		{
-			int numPackets = m_SentPackets.size ();
+			int numPackets = static_cast<int> (m_SentPackets.size ());
 			int numSentPackets = m_RoutingSession->NumSentPackets ();
 			numSentPackets -= numPackets;
 			if (numSentPackets < 0) numSentPackets = 0;
@@ -379,7 +379,7 @@ namespace stream
 					auto ts = i2p::util::GetMillisecondsSinceEpoch ();
 					if (m_IsFirstRttSample)
 					{
-						m_RTT = ts - m_LastSendTime;
+						m_RTT = static_cast<double> (ts - m_LastSendTime);
 						m_IsFirstRttSample = false;
 					}
 					else
@@ -402,7 +402,7 @@ namespace stream
 				SendQuickAck ();
 				auto ackTimeout = m_RTT / 10;
 				if (ackTimeout > m_AckDelay) ackTimeout = m_AckDelay;
-				ScheduleAck (ackTimeout);
+				ScheduleAck (static_cast<int> (ackTimeout));
 			}
 			return;
 		}
@@ -438,7 +438,7 @@ namespace stream
 				{
 					auto ackTimeout = m_RTT / 10;
 					if (ackTimeout > m_AckDelay) ackTimeout = m_AckDelay;
-					ScheduleAck (ackTimeout);
+					ScheduleAck (static_cast<int> (ackTimeout));
 				}
 			}
 			else if (packet->IsSYN ())
@@ -465,7 +465,7 @@ namespace stream
 					SendQuickAck (); // resend ack for previous message again
 					auto ackTimeout = m_RTT / 10;
 					if (ackTimeout > m_AckDelay) ackTimeout = m_AckDelay;
-					ScheduleAck (ackTimeout);
+					ScheduleAck (static_cast<int> (ackTimeout));
 				}
 			}
 			else
@@ -515,7 +515,7 @@ namespace stream
 						SendQuickAck ();
 						auto ackTimeout = m_RTT / 10;
 						if (ackTimeout > m_AckDelay) ackTimeout = m_AckDelay;
-						ScheduleAck (ackTimeout);
+						ScheduleAck (static_cast<int> (ackTimeout));
 					}
 				}
 				else
@@ -856,7 +856,7 @@ namespace stream
 							s->SendQuickAck ();
 							auto ackTimeout = s->m_RTT / 10;
 							if (ackTimeout > s->m_AckDelay) ackTimeout = s->m_AckDelay;
-							s->ScheduleAck (ackTimeout);
+							s->ScheduleAck (static_cast<int> (ackTimeout));
 						}
 						else
 							s->SendQuickAck ();
@@ -938,7 +938,7 @@ namespace stream
 				if (!seqn)
 				{
 					m_IsFirstRttSample = true;
-					rttSample = rtt < 0 ? 1 : rtt;
+					rttSample = rtt < 0 ? 1 : static_cast<int> (rtt);
 				}
 				else if (!sentPacket->resent && seqn > m_TunnelsChangeSequenceNumber && rtt >= 0)
 					rttSample = std::min (rttSample, (int)rtt);
@@ -975,7 +975,7 @@ namespace stream
 				m_PrevRTTSample = rttSample;
 				m_Jitter = rttSample / 5; // 20%
 				m_Jitter += 5; // for low-latency connections
-				m_JitterAccum = m_Jitter;
+				m_JitterAccum = static_cast<uint64_t> (m_Jitter);
 				m_JitterDiv = 1;
 				m_IsFirstRttSample = false;
 			}
@@ -996,8 +996,8 @@ namespace stream
 				if (jitter)
 				{
 					jitter += 5; // for low-latency connections
-					m_JitterAccum += jitter;
-					m_Jitter = m_JitterAccum / m_JitterDiv;
+					m_JitterAccum += static_cast<uint64_t> (jitter);
+					m_Jitter = static_cast<double> (m_JitterAccum / m_JitterDiv);
 					m_JitterDiv++;
 				}
 				if (m_MinRTT > m_RTT)
@@ -1174,7 +1174,7 @@ namespace stream
 		if (m_RemoteLeaseSet) // don't schedule send for first SYN for incoming stream
 			ScheduleSend ();
 		auto ts = i2p::util::GetMillisecondsSinceEpoch ();
-		int numMsgs = m_WindowSize - m_SentPackets.size ();
+		int numMsgs = static_cast<int> (m_WindowSize - m_SentPackets.size ());
 		if (numMsgs <= 0 || !m_IsSendTime) // window is full
 		{
 			m_LastSendTime = ts;
@@ -1196,7 +1196,7 @@ namespace stream
 			m_IsJavaClient = m_RoutingSession->IsWithJava ();
 			if (m_IsJavaClient) m_MaxWindowSize = 64;
 			int numSentPackets = m_RoutingSession->NumSentPackets ();
-			int numPacketsToSend = m_MaxWindowSize - numSentPackets;
+			int numPacketsToSend = static_cast<int> (m_MaxWindowSize - numSentPackets);
 			if (numPacketsToSend <= 0) // shared window is full
 			{
 				if (m_LastReceivedSequenceNumber <= 0 && m_SequenceNumber == 0)
@@ -1255,7 +1255,7 @@ namespace stream
 				packet[size] = 0;
 				size++; // NACK count
 			}
-			packet[size] = m_RTO / 1000;
+			packet[size] = static_cast<uint8_t> (m_RTO / 1000);
 			size++; // resend delay
 			if (m_Status == eStreamStatusNew)
 			{
@@ -1288,11 +1288,11 @@ namespace stream
 				size += 2; // options size
 				m_LocalDestination.GetOwner ()->GetIdentity ()->ToBuffer (packet + size, identityLen);
 				size += identityLen; // from
-				htobe16buf (packet + size, m_MTU);
+				htobe16buf (packet + size, static_cast<uint16_t> (m_MTU));
 				size += 2; // max packet size
 				if (m_DontSign)
 				{
-					htobe16buf (optionsSize, packet + size - 2 - optionsSize); // actual options size
+					htobe16buf (optionsSize, static_cast<uint16_t> (packet + size - 2 - optionsSize)); // actual options size
 					size += m_SendBuffer.Get (packet + size, m_MTU); // payload
 				}
 				else
@@ -1307,9 +1307,9 @@ namespace stream
 					uint8_t * signature = packet + size; // set it later
 					memset (signature, 0, signatureLen); // zeroes for now
 					size += signatureLen; // signature
-					htobe16buf (optionsSize, packet + size - 2 - optionsSize); // actual options size
+					htobe16buf (optionsSize, static_cast<uint16_t> (packet + size - 2 - optionsSize)); // actual options size
 					size += m_SendBuffer.Get (packet + size, m_MTU); // payload
-					m_LocalDestination.GetOwner ()->Sign (packet, size, signature);
+					m_LocalDestination.GetOwner ()->Sign (packet, static_cast<int> (size), signature);
 				}
 			}
 			else
@@ -1342,7 +1342,7 @@ namespace stream
 			m_IsBufferEmpty = true;
 		else
 			m_IsBufferEmpty = false;
-		int numPackets = packets.size ();
+		int numPackets = static_cast<int> (packets.size ());
 		if (packets.size () > 0)
 		{
 			if (m_SavedPackets.empty ()) // no NACKS
@@ -1384,12 +1384,12 @@ namespace stream
 			m_PacketACKIntervalRem = 0;
 		if (m_LastConfirmedReceivedSequenceNumber + numPackets < m_LastReceivedSequenceNumber)
 		{
-			lastReceivedSeqn = m_LastConfirmedReceivedSequenceNumber + numPackets;
+			lastReceivedSeqn = static_cast<int32_t> (m_LastConfirmedReceivedSequenceNumber + numPackets);
 			if (!m_IsAckSendScheduled)
 			{
 				auto ackTimeout = m_RTT / 10;
 				if (ackTimeout > m_AckDelay) ackTimeout = m_AckDelay;
-				ScheduleAck (ackTimeout);
+				ScheduleAck (static_cast<int> (ackTimeout));
 			}
 		}
 		if (numPackets == 0) return;
@@ -1406,7 +1406,7 @@ namespace stream
 					{
 						auto ackTimeout = m_RTT / 10;
 						if (ackTimeout > m_AckDelay) ackTimeout = m_AckDelay;
-						ScheduleAck (ackTimeout);
+						ScheduleAck (static_cast<int> (ackTimeout));
 					}
 					if (lostPackets)
 						break;
@@ -1548,7 +1548,7 @@ namespace stream
 		m_LocalDestination.GetOwner ()->GetIdentity ()->ToBuffer (packet + size, identityLen);
 		size += identityLen; // from
 		if (m_DontSign)
-			htobe16buf (optionsSize, packet + size - 2 - optionsSize); // actual options size
+			htobe16buf (optionsSize, static_cast<uint16_t> (packet + size - 2 - optionsSize)); // actual options size
 		else
 		{
 			if (isOfflineSignature)
@@ -1562,8 +1562,8 @@ namespace stream
 			uint8_t * signature = packet + size; // set it later
 			memset (signature, 0, signatureLen); // zeroes for now
 			size += signatureLen; // signature
-			htobe16buf (optionsSize, packet + size - 2 - optionsSize); // actual options size
-			m_LocalDestination.GetOwner ()->Sign (packet, size, signature);
+			htobe16buf (optionsSize, static_cast<uint16_t> (packet + size - 2 - optionsSize)); // actual options size
+			m_LocalDestination.GetOwner ()->Sign (packet, static_cast<int> (size), signature);
 		}
 		p.len = size;
 		SendPackets ({ &p });
@@ -1654,8 +1654,8 @@ namespace stream
 			uint8_t * signature = packet + size; // set it later
 			memset (signature, 0, signatureLen); // zeroes for now
 			size += signatureLen; // signature
-			htobe16buf (optionsSize, packet + size - 2 - optionsSize); // actual options size
-			m_LocalDestination.GetOwner ()->Sign (packet, size, signature);
+			htobe16buf (optionsSize, static_cast<uint16_t> (packet + size - 2 - optionsSize)); // actual options size
+			m_LocalDestination.GetOwner ()->Sign (packet, static_cast<int> (size), signature);
 		}
 
 		p->len = size;
@@ -1718,8 +1718,8 @@ namespace stream
 			uint8_t * signature = packet + size;
 			memset (signature, 0, signatureLen);
 			size += signatureLen;
-			htobe16buf (optionsSize, packet + size - 2 - optionsSize);
-			m_LocalDestination.GetOwner ()->Sign (packet, size, signature);
+			htobe16buf (optionsSize, static_cast<uint16_t> (packet + size - 2 - optionsSize));
+			m_LocalDestination.GetOwner ()->Sign (packet, static_cast<int> (size), signature);
 		}
 		p->len = size;
 		boost::asio::post (m_Service, std::bind (&Stream::SendPacket, shared_from_this (), p));
@@ -1946,14 +1946,14 @@ namespace stream
 						{
 							auto numPackets
 								= std::lldiv (m_PacingTimeRem + ts * 1000 - lastSendTime * 1000, m_PacingTime);
-							m_NumPacketsToSend = numPackets.quot;
+							m_NumPacketsToSend = static_cast<int> (numPackets.quot);
 							m_PacingTimeRem = numPackets.rem;
 						}
 						else
 						{
 							auto numPackets
 								= std::lldiv (m_PacingTimeRem + ts * 1000 - m_LastSendTime * 1000, m_PacingTime);
-							m_NumPacketsToSend = numPackets.quot;
+							m_NumPacketsToSend = static_cast<int> (numPackets.quot);
 							m_PacingTimeRem = numPackets.rem;
 						}
 					}
@@ -1973,25 +1973,26 @@ namespace stream
 					if (m_WindowDropTargetSize) winSize = m_WindowDropTargetSize;
 					float maxWinSize = m_MaxWindowSize;
 					if (m_LastWindowIncTime)
-						maxWinSize = (ts - m_LastWindowIncTime) / (m_RTT / MAX_WINDOW_SIZE_INC_PER_RTT) + winSize;
+						maxWinSize = static_cast<float> (
+							(ts - m_LastWindowIncTime) / (m_RTT / MAX_WINDOW_SIZE_INC_PER_RTT) + winSize);
 
 					int windowIncCounter = std::min (m_NumPacketsToSend, m_WindowIncCounter);
 					if (m_WindowDropTargetSize)
 					{
 						if (m_LastWindowDropSize && (m_LastWindowDropSize >= m_WindowDropTargetSize))
-							m_WindowDropTargetSize += windowIncCounter
+							m_WindowDropTargetSize += static_cast<float> (windowIncCounter
 								* (1
 									- (1
 										/ ((m_LastWindowDropSize + PREV_SPEED_KEEP_TIME_COEFF)
-											/ m_WindowDropTargetSize))); // some magic here
+											/ m_WindowDropTargetSize)))); // some magic here
 						else if (m_LastWindowDropSize && (m_LastWindowDropSize < m_WindowDropTargetSize))
-							m_WindowDropTargetSize += windowIncCounter
+							m_WindowDropTargetSize += static_cast<float> (windowIncCounter
 								* ((m_WindowDropTargetSize - (m_LastWindowDropSize - PREV_SPEED_KEEP_TIME_COEFF)))
-								/ m_WindowDropTargetSize; // some magic here
+								/ m_WindowDropTargetSize); // some magic here
 						else
-							m_WindowDropTargetSize += windowIncCounter
+							m_WindowDropTargetSize += static_cast<float> (windowIncCounter
 								* ((m_WindowDropTargetSize - (1 - PREV_SPEED_KEEP_TIME_COEFF))
-									/ m_WindowDropTargetSize);
+									/ m_WindowDropTargetSize));
 						if (m_WindowDropTargetSize > m_MaxWindowSize) m_WindowDropTargetSize = m_MaxWindowSize;
 						m_WindowIncCounter -= windowIncCounter;
 						if (m_WindowDropTargetSize >= maxWinSize)
@@ -2002,18 +2003,18 @@ namespace stream
 					else
 					{
 						if (m_LastWindowDropSize && (m_LastWindowDropSize >= m_WindowSize))
-							m_WindowSize += windowIncCounter
+							m_WindowSize += static_cast<float> (windowIncCounter
 								* (1
 									- (1
 										/ ((m_LastWindowDropSize + PREV_SPEED_KEEP_TIME_COEFF)
-											/ m_WindowSize))); // some magic here
+											/ m_WindowSize)))); // some magic here
 						else if (m_LastWindowDropSize && (m_LastWindowDropSize < m_WindowSize))
-							m_WindowSize += windowIncCounter
+							m_WindowSize += static_cast<float> (windowIncCounter
 								* ((m_WindowSize - (m_LastWindowDropSize - PREV_SPEED_KEEP_TIME_COEFF))
-									/ m_WindowSize); // some magic here
+									/ m_WindowSize)); // some magic here
 						else
-							m_WindowSize += windowIncCounter
-								* ((m_WindowSize - (1 - PREV_SPEED_KEEP_TIME_COEFF)) / m_WindowSize);
+							m_WindowSize += static_cast<float> (windowIncCounter
+								* ((m_WindowSize - (1 - PREV_SPEED_KEEP_TIME_COEFF)) / m_WindowSize));
 						if (m_WindowSize > m_MaxWindowSize) m_WindowSize = m_MaxWindowSize;
 						m_WindowIncCounter -= windowIncCounter;
 						if (m_WindowSize >= maxWinSize)
@@ -2138,7 +2139,7 @@ namespace stream
 						m_LastWindowDropSize = m_WindowDropTargetSize;
 					else
 						m_LastWindowDropSize = m_WindowSize;
-					m_WindowDropTargetSize = m_LastWindowDropSize * 0.5; // -50% to drain queue
+					m_WindowDropTargetSize = static_cast<float> (m_LastWindowDropSize * 0.5); // -50% to drain queue
 					if (m_WindowDropTargetSize < MIN_WINDOW_SIZE) m_WindowDropTargetSize = MIN_WINDOW_SIZE;
 					m_WindowIncCounter = 0; // disable window growth
 					m_DropWindowDelaySequenceNumber = m_SequenceNumber + int (m_WindowDropTargetSize);
@@ -2414,9 +2415,9 @@ namespace stream
 		double rtt = m_MinRTT;
 		if (m_IsWinDropped) rtt = m_SlowRTT;
 		if (m_WindowDropTargetSize)
-			m_PacingTime = std::round (rtt * 1000 / m_WindowDropTargetSize);
+			m_PacingTime = static_cast<uint64_t> (std::round (rtt * 1000 / m_WindowDropTargetSize));
 		else
-			m_PacingTime = std::round (rtt * 1000 / m_WindowSize);
+			m_PacingTime = static_cast<uint64_t> (std::round (rtt * 1000 / m_WindowSize));
 		if (m_MinPacingTime && m_PacingTime < m_MinPacingTime) m_PacingTime = m_MinPacingTime;
 	}
 
@@ -2424,14 +2425,16 @@ namespace stream
 	{
 		if (m_WindowDropTargetSize)
 		{
-			m_LastWindowDropSize = m_WindowDropTargetSize * ((m_MinRTT + m_Jitter * 6) / m_SlowRTT);
-			m_WindowDropTargetSize
-				= m_LastWindowDropSize * m_MinRTT / m_SlowRTT; // we start send faster when rtt will decrease
+			m_LastWindowDropSize
+				= static_cast<float> (m_WindowDropTargetSize * ((m_MinRTT + m_Jitter * 6) / m_SlowRTT));
+			m_WindowDropTargetSize = static_cast<float> (
+				m_LastWindowDropSize * m_MinRTT / m_SlowRTT); // we start send faster when rtt will decrease
 		}
 		else
 		{
-			m_LastWindowDropSize = m_WindowSize * ((m_MinRTT + m_Jitter * 6) / m_SlowRTT);
-			m_WindowDropTargetSize = m_WindowSize * m_MinRTT / m_SlowRTT; // we start send faster when rtt will decrease
+			m_LastWindowDropSize = static_cast<float> (m_WindowSize * ((m_MinRTT + m_Jitter * 6) / m_SlowRTT));
+			m_WindowDropTargetSize = static_cast<float> (
+				m_WindowSize * m_MinRTT / m_SlowRTT); // we start send faster when rtt will decrease
 		}
 		if (m_WindowDropTargetSize < MIN_WINDOW_SIZE) m_WindowDropTargetSize = MIN_WINDOW_SIZE;
 		m_WindowIncCounter = 0; // disable window growth
@@ -2605,7 +2608,7 @@ namespace stream
 					{
 						LogPrint (eLogDebug, "Streaming: Processing ", it->second.size (),
 							" saved packets for rSID=", receiveStreamID);
-						for (auto it1 : it->second) incomingStream->HandleNextPacket (it1);
+						for (auto savedPacket : it->second) incomingStream->HandleNextPacket (savedPacket);
 						m_SavedPackets.erase (it);
 					}
 				}
@@ -2876,11 +2879,11 @@ namespace stream
 		if (m_Gzip || gzip)
 			size = m_Deflator.Deflate (payload, len, buf, msg->maxLen - msg->len);
 		else
-			size = i2p::data::GzipNoCompression (payload, len, buf, msg->maxLen - msg->len);
+			size = i2p::data::GzipNoCompression (payload, static_cast<uint16_t> (len), buf, msg->maxLen - msg->len);
 
 		if (size)
 		{
-			htobe32buf (msg->GetPayload (), size); // length
+			htobe32buf (msg->GetPayload (), static_cast<uint32_t> (size)); // length
 			htobe16buf (buf + 4, m_LocalPort); // source port
 			htobe16buf (buf + 6, toPort); // destination port
 			buf[9] = i2p::client::PROTOCOL_TYPE_STREAMING; // streaming protocol

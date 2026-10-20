@@ -364,7 +364,8 @@ namespace transport
 		// payload
 		payload[0] = eSSU2BlkDateTime;
 		htobe16buf (payload + 1, 4);
-		htobe32buf (payload + 3, (i2p::util::GetMillisecondsSinceEpoch () + 500) / 1000);
+		htobe32buf (payload + 3,
+			static_cast<uint32_t> ((i2p::util::GetMillisecondsSinceEpoch () + 500) / 1000));
 		size_t payloadSize = 7;
 		if (msg == 6 || msg == 7)
 			payloadSize
@@ -407,7 +408,7 @@ namespace transport
 		LogPrint (eLogError, "SSU2: Can't connect peer test session");
 	}
 
-	bool SSU2PeerTestSession::ProcessFirstIncomingMessage (uint64_t connID, uint8_t * buf, size_t len)
+	bool SSU2PeerTestSession::ProcessFirstIncomingMessage (uint64_t /* connID */, uint8_t * /* buf */, size_t /* len */)
 	{
 		LogPrint (eLogError, "SSU2: Can't handle incoming message in peer test session");
 		return false;
@@ -486,7 +487,8 @@ namespace transport
 		// payload
 		payload[0] = eSSU2BlkDateTime;
 		htobe16buf (payload + 1, 4);
-		htobe32buf (payload + 3, (i2p::util::GetMillisecondsSinceEpoch () + 500) / 1000);
+		htobe32buf (payload + 3,
+			static_cast<uint32_t> ((i2p::util::GetMillisecondsSinceEpoch () + 500) / 1000));
 		size_t payloadSize = 7;
 		payloadSize += CreateAddressBlock (payload + payloadSize, GetMaxPayloadSize () - payloadSize, ep);
 		// relay response block

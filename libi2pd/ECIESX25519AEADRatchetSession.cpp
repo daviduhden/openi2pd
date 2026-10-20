@@ -178,7 +178,7 @@ namespace garlic
 		Expire ();
 	}
 
-	bool SymmetricKeyTagSet::HandleNextMessage (uint8_t * buf, size_t len, int index)
+	bool SymmetricKeyTagSet::HandleNextMessage (uint8_t * buf, size_t len, int /* index */)
 	{
 		if (len < 24) return false;
 		uint8_t nonce[12];
@@ -1602,7 +1602,7 @@ namespace garlic
 		default: return nullptr;
 		}
 
-		htobe32buf (m->GetPayload (), len);
+		htobe32buf (m->GetPayload (), static_cast<uint32_t> (len));
 		m->len += len + 4;
 		m->FillI2NPMessageHeader (eI2NPGarlic, GetOwner ()->GetRng () ());
 		return m;
@@ -1723,7 +1723,7 @@ namespace garlic
 				offset++;
 				htobe16buf (payload + offset, 4);
 				offset += 2;
-				htobe32buf (payload + offset, ts / 1000);
+				htobe32buf (payload + offset, static_cast<uint32_t> (ts / 1000));
 				offset += 4; // in seconds
 			}
 			// LeaseSet
@@ -1772,7 +1772,7 @@ namespace garlic
 				{
 					htobe16buf (payload + offset, it->first);
 					offset += 2;
-					htobe16buf (payload + offset, it->second);
+					htobe16buf (payload + offset, static_cast<uint16_t> (it->second));
 					offset += 2;
 					++it;
 				}
@@ -1793,7 +1793,7 @@ namespace garlic
 					keyID++;
 				}
 				offset++; // flag
-				htobe16buf (payload + offset, keyID);
+				htobe16buf (payload + offset, static_cast<uint16_t> (keyID));
 				offset += 2; // keyid
 				if (m_NextReceiveRatchet->newKey)
 				{
@@ -1814,7 +1814,7 @@ namespace garlic
 				if (!m_NextSendRatchet->newKey || !m_NextSendRatchet->keyID)
 					payload[offset] |= ECIESX25519_NEXT_KEY_REQUEST_REVERSE_KEY_FLAG;
 				offset++; // flag
-				htobe16buf (payload + offset, m_NextSendRatchet->keyID);
+				htobe16buf (payload + offset, static_cast<uint16_t> (m_NextSendRatchet->keyID));
 				offset += 2; // keyid
 				if (m_NextSendRatchet->newKey)
 				{
@@ -1863,7 +1863,7 @@ namespace garlic
 		// The clove length is a 16-bit wire field.
 		const size_t destinationOverhead = m_Destination ? 32 : 0;
 		if (msg->GetPayloadLength () > 0xFFFF - 10 - destinationOverhead) return 0;
-		uint16_t cloveSize = msg->GetPayloadLength () + 9 + 1;
+		uint16_t cloveSize = static_cast<uint16_t> (msg->GetPayloadLength () + 9 + 1);
 		if (m_Destination) cloveSize += 32;
 		if ((int)len < cloveSize + 3) return 0;
 		buf[0] = eECIESx25519BlkGalicClove; // clove type
@@ -1880,7 +1880,7 @@ namespace garlic
 		buf++; // flag and delivery instructions
 		*buf = msg->GetTypeID (); // I2NP msg type
 		htobe32buf (buf + 1, msg->GetMsgID ()); // msgID
-		htobe32buf (buf + 5, msg->GetExpiration () / 1000); // expiration in seconds
+		htobe32buf (buf + 5, static_cast<uint32_t> (msg->GetExpiration () / 1000)); // expiration in seconds
 		memcpy (buf + 9, msg->GetPayload (), msg->GetPayloadLength ());
 		return cloveSize + 3;
 	}
@@ -1893,7 +1893,8 @@ namespace garlic
 			LogPrint (eLogError, "Garlic: Incorrect LeaseSet type to send");
 			return 0;
 		}
-		uint16_t cloveSize = 1 + 9 + DATABASE_STORE_HEADER_SIZE + ls->GetBufferLen (); // to local
+		uint16_t cloveSize
+			= static_cast<uint16_t> (1 + 9 + DATABASE_STORE_HEADER_SIZE + ls->GetBufferLen ()); // to local
 		if ((int)len < cloveSize + 3) return 0;
 		buf[0] = eECIESx25519BlkGalicClove; // clove type
 		htobe16buf (buf + 1, cloveSize); // size
@@ -1908,7 +1909,7 @@ namespace garlic
 			return 0;
 		}
 		buf += 4; // msgID
-		htobe32buf (buf, (ts + I2NP_MESSAGE_EXPIRATION_TIMEOUT) / 1000);
+		htobe32buf (buf, static_cast<uint32_t> ((ts + I2NP_MESSAGE_EXPIRATION_TIMEOUT) / 1000));
 		buf += 4; // expiration
 		// payload
 		memcpy (buf + DATABASE_STORE_KEY_OFFSET, ls->GetStoreHash (), 32);
@@ -2042,20 +2043,20 @@ namespace garlic
 			// DateTime
 			payload[0] = eECIESx25519BlkDateTime;
 			htobe16buf (payload + 1, 4);
-			htobe32buf (payload + 3, i2p::util::GetSecondsSinceEpoch ());
+			htobe32buf (payload + 3, static_cast<uint32_t> (i2p::util::GetSecondsSinceEpoch ()));
 			len = 7;
 		}
 		// I2NP
 		payload += len;
 		if (msg->GetPayloadLength () > 0xFFFF - 10) return 0;
-		uint16_t cloveSize = msg->GetPayloadLength () + 10;
+		uint16_t cloveSize = static_cast<uint16_t> (msg->GetPayloadLength () + 10);
 		payload[0] = eECIESx25519BlkGalicClove; // clove type
 		htobe16buf (payload + 1, cloveSize); // size
 		payload += 3;
 		payload[0] = 0; // flag and delivery instructions
 		payload[1] = msg->GetTypeID (); // I2NP msg type
 		htobe32buf (payload + 2, msg->GetMsgID ()); // msgID
-		htobe32buf (payload + 6, msg->GetExpiration () / 1000); // expiration in seconds
+		htobe32buf (payload + 6, static_cast<uint32_t> (msg->GetExpiration () / 1000)); // expiration in seconds
 		memcpy (payload + 10, msg->GetPayload (), msg->GetPayloadLength ());
 		len += cloveSize + 3;
 		payload += cloveSize;
@@ -2116,7 +2117,7 @@ namespace garlic
 			return nullptr;
 		}
 		offset += len + 16;
-		htobe32buf (m->GetPayload (), offset);
+		htobe32buf (m->GetPayload (), static_cast<uint32_t> (offset));
 		m->len += offset + 4;
 		m->FillI2NPMessageHeader (eI2NPGarlic);
 		if (msg->onDrop)
@@ -2186,7 +2187,7 @@ namespace garlic
 			return nullptr;
 		}
 		offset += len + 16;
-		htobe32buf (m->GetPayload (), offset);
+		htobe32buf (m->GetPayload (), static_cast<uint32_t> (offset));
 		m->len += offset + 4;
 		m->FillI2NPMessageHeader (eI2NPGarlic);
 		if (msg->onDrop)

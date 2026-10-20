@@ -554,7 +554,7 @@ namespace transport
 		// required before accepting a PathResponse for pending migration.
 		void HandlePayload (const uint8_t * buf, size_t len, const boost::asio::ip::udp::endpoint * from = nullptr);
 		bool HasInvalidPayload () const { return m_IsInvalidMessage; }
-		virtual bool IsPayloadBlockAllowed (uint8_t block) const { return true; }
+		virtual bool IsPayloadBlockAllowed (uint8_t /* block */) const { return true; }
 
 		size_t CreateAddressBlock (uint8_t * buf, size_t len, const boost::asio::ip::udp::endpoint & ep);
 		size_t CreatePaddingBlock (uint8_t * buf, size_t len, size_t minSize = 0);

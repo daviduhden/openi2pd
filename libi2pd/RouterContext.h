@@ -221,7 +221,7 @@ public:
 	// implements LocalDestination
 	std::shared_ptr<const i2p::data::IdentityEx> GetIdentity () const override { return m_Keys.GetPublic (); };
 	bool Decrypt (const uint8_t * encrypted, uint8_t * data, i2p::data::CryptoKeyType preferredCrypto) const override;
-	void SetLeaseSetUpdated (bool post) override { };
+	void SetLeaseSetUpdated (bool /* post */) override { };
 
 	// implements GarlicDestination
 	std::shared_ptr<const i2p::data::LocalLeaseSet> GetLeaseSet () override { return nullptr; };

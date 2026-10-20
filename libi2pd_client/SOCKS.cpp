@@ -40,7 +40,7 @@ namespace proxy
 		char value[max_socks_hostname_size];
 		void SetString (std::string_view str)
 		{
-			size = str.length ();
+			size = static_cast<uint8_t> (str.length ());
 			if (size > max_socks_hostname_size) size = max_socks_hostname_size;
 			memcpy (value, str.data (), size);
 		}
@@ -260,7 +260,7 @@ namespace proxy
 	{
 		assert (error >= SOCKS4_OK);
 		m_response[0] = '\x00'; // version
-		m_response[1] = error; // response code
+		m_response[1] = static_cast<uint8_t> (error); // response code
 		htobe16buf (m_response + 2, port); // port
 		htobe32buf (m_response + 4, ip); // IP
 		return boost::asio::const_buffer (m_response, 8);
@@ -272,9 +272,9 @@ namespace proxy
 		size_t size = 6; // header + port
 		assert (error <= SOCKS5_ADDR_UNSUP);
 		m_response[0] = '\x05'; // version
-		m_response[1] = error; // response code
+		m_response[1] = static_cast<uint8_t> (error); // response code
 		m_response[2] = '\x00'; // reserved
-		m_response[3] = type; // address type
+		m_response[3] = static_cast<uint8_t> (type); // address type
 		switch (type)
 		{
 		case ADDR_IPV4:
@@ -311,7 +311,7 @@ namespace proxy
 	bool SOCKSHandler::Socks5ChooseAuth ()
 	{
 		m_response[0] = '\x05'; // Version
-		m_response[1] = m_authchosen; // Response code
+		m_response[1] = static_cast<uint8_t> (m_authchosen); // Response code
 		boost::asio::const_buffer response (m_response, 2);
 		if (m_authchosen == AUTH_UNACCEPTABLE)
 		{
@@ -684,9 +684,10 @@ namespace proxy
 						{
 							// the name only starts like an address: make_address throws on
 							// anything else, to_v4 throws on v6, and nothing catches here
-							boost::system::error_code ecode;
-							auto addr = boost::asio::ip::make_address (m_address.dns.GetString (), ecode);
-							if (!ecode && addr.is_v4 ()) resolved = GetServer ()->GetResolvedAddress (addr.to_v4 ());
+							boost::system::error_code addrEcode;
+							auto addr = boost::asio::ip::make_address (m_address.dns.GetString (), addrEcode);
+							if (!addrEcode && addr.is_v4 ())
+								resolved = GetServer ()->GetResolvedAddress (addr.to_v4 ());
 						}
 					}
 					if (!resolved.empty ())
@@ -984,7 +985,7 @@ namespace proxy
 	}
 
 	void SOCKSHandler::HandleUpstreamConnected (
-		const boost::system::error_code & ecode, const boost::asio::ip::tcp::endpoint & ep)
+		const boost::system::error_code & ecode, const boost::asio::ip::tcp::endpoint &)
 	{
 		if (ecode)
 		{

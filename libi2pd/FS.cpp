@@ -65,13 +65,15 @@ namespace fs
 	const std::string GetUTF8DataDir ()
 	{
 #ifdef _WIN32
-		int size = MultiByteToWideChar (CP_ACP, 0, dataDir.c_str (), dataDir.size (), nullptr, 0);
+		int size = MultiByteToWideChar (
+			CP_ACP, 0, dataDir.c_str (), static_cast<int> (dataDir.size ()), nullptr, 0);
 		std::wstring utf16Str (size, L'\0');
-		MultiByteToWideChar (CP_ACP, 0, dataDir.c_str (), dataDir.size (), &utf16Str[0], size);
-		int utf8Size
-			= WideCharToMultiByte (CP_UTF8, 0, utf16Str.c_str (), utf16Str.size (), nullptr, 0, nullptr, nullptr);
+		MultiByteToWideChar (CP_ACP, 0, dataDir.c_str (), static_cast<int> (dataDir.size ()), &utf16Str[0], size);
+		int utf8Size = WideCharToMultiByte (CP_UTF8, 0, utf16Str.c_str (), static_cast<int> (utf16Str.size ()), nullptr, 0,
+			nullptr, nullptr);
 		std::string utf8Str (utf8Size, '\0');
-		WideCharToMultiByte (CP_UTF8, 0, utf16Str.c_str (), utf16Str.size (), &utf8Str[0], utf8Size, nullptr, nullptr);
+		WideCharToMultiByte (CP_UTF8, 0, utf16Str.c_str (), static_cast<int> (utf16Str.size ()), &utf8Str[0], utf8Size,
+			nullptr, nullptr);
 		return utf8Str;
 #else
 		return dataDir; // linux, osx, android uses UTF-8 by default
@@ -240,7 +242,7 @@ namespace fs
 		const auto sctp = std::chrono::time_point_cast<std::chrono::system_clock::duration> (
 			t - decltype (t)::clock::now () + std::chrono::system_clock::now ());
 #endif
-		return std::chrono::system_clock::to_time_t (sctp);
+		return static_cast<uint32_t> (std::chrono::system_clock::to_time_t (sctp));
 	}
 
 	bool Remove (const std::string & path)

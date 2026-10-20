@@ -39,7 +39,7 @@ namespace tunnel
 		TunnelHopConfig (std::shared_ptr<const i2p::data::IdentityEx> r);
 		virtual ~TunnelHopConfig () { };
 
-		void SetNextIdent (const i2p::data::IdentHash & ident);
+		void SetNextIdent (const i2p::data::IdentHash & identHash);
 		void SetReplyHop (uint32_t replyTunnelID, const i2p::data::IdentHash & replyIdent);
 		void SetNext (TunnelHopConfig * n);
 		void SetPrev (TunnelHopConfig * p);
@@ -77,10 +77,10 @@ namespace tunnel
 			: TunnelHopConfig (nullptr)
 		{
 		}
-		uint8_t GetRetCode (const uint8_t * records) const override { return 0; }
-		bool DecryptBuildResponseRecord (uint8_t * records) const override { return true; }
-		void DecryptRecord (uint8_t * records, int index) const override { } // do nothing
-		void CreateBuildRequestRecord (uint8_t * records, uint32_t replyMsgID) override;
+		uint8_t GetRetCode (const uint8_t * /* records */) const override { return 0; }
+		bool DecryptBuildResponseRecord (uint8_t * /* records */) const override { return true; }
+		void DecryptRecord (uint8_t * /* records */, int /* index */) const override { } // do nothing
+		void CreateBuildRequestRecord (uint8_t * records, uint32_t /* replyMsgID */) override;
 	};
 
 	class TunnelConfig

@@ -1174,6 +1174,9 @@ namespace tui
 			AppendField (payload, "tunnel", tunnelIndex);
 			return { MakeResponse (ResponseStatus::Ok, payload), false };
 #else
+			// Keep the shared signature used by the torrent-enabled build.
+			(void)tunnelIndex;
+			(void)content;
 			return { MakeErrorResponse (ErrorCode::UnknownCommand, "torrents unavailable"), false };
 #endif
 		}

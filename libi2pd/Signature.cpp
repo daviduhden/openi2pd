@@ -104,7 +104,7 @@ namespace crypto
 			&& EVP_DigestVerify (ctx.get (), sign, l, buf, len) == 1;
 	}
 
-	DSASigner::DSASigner (const uint8_t * signingPrivateKey, const uint8_t * signingPublicKey)
+	DSASigner::DSASigner (const uint8_t * signingPrivateKey, const uint8_t * /* signingPublicKey */)
 		: m_PrivateKey (nullptr)
 	{
 		if (!signingPrivateKey) return;
@@ -137,7 +137,7 @@ namespace crypto
 		if (ok)
 		{
 			const uint8_t * s1 = sign;
-			sig = d2i_DSA_SIG (NULL, &s1, l);
+			sig = d2i_DSA_SIG (NULL, &s1, static_cast<long> (l));
 		}
 		const BIGNUM *r = nullptr, *s = nullptr;
 		if (sig) DSA_SIG_get0 (sig, &r, &s);
@@ -347,8 +347,9 @@ namespace crypto
 		if (!m_PublicKey || !signature) return false;
 		// signature
 		ECDSA_SIG * sig = ECDSA_SIG_new ();
-		BIGNUM * r = BN_bin2bn (signature, GetSignatureLen () / 2, NULL);
-		BIGNUM * s = BN_bin2bn (signature + GetSignatureLen () / 2, GetSignatureLen () / 2, NULL);
+		BIGNUM * r = BN_bin2bn (signature, static_cast<int> (GetSignatureLen () / 2), NULL);
+		BIGNUM * s
+			= BN_bin2bn (signature + GetSignatureLen () / 2, static_cast<int> (GetSignatureLen () / 2), NULL);
 		if (!sig || !r || !s || ECDSA_SIG_set0 (sig, r, s) != 1)
 		{
 			BN_free (r);
@@ -373,7 +374,7 @@ namespace crypto
 		, m_PrivateKey (nullptr)
 	{
 		if (!signingPrivateKey) return;
-		BIGNUM * priv = BN_bin2bn (signingPrivateKey, keyLen / 2, NULL);
+		BIGNUM * priv = BN_bin2bn (signingPrivateKey, static_cast<int> (keyLen / 2), NULL);
 		if (!priv) return;
 		OSSL_PARAM_BLD * paramBld = OSSL_PARAM_BLD_new ();
 		if (!paramBld)
@@ -430,7 +431,7 @@ namespace crypto
 		if (ok)
 		{
 			const uint8_t * s1 = sign.data ();
-			sig = d2i_ECDSA_SIG (NULL, &s1, l);
+			sig = d2i_ECDSA_SIG (NULL, &s1, static_cast<long> (l));
 		}
 		const BIGNUM *r = nullptr, *s = nullptr;
 		if (sig) ECDSA_SIG_get0 (sig, &r, &s);
@@ -492,7 +493,7 @@ namespace crypto
 	{
 		m_PublicKey.reset ();
 		if (!signingKey || !m_KeyLen || !m_Hash) return;
-		BIGNUM * n = BN_bin2bn (signingKey, m_KeyLen, nullptr);
+		BIGNUM * n = BN_bin2bn (signingKey, static_cast<int> (m_KeyLen), nullptr);
 		if (!n || BN_is_zero (n) || !BN_is_odd (n))
 		{
 			BN_free (n);

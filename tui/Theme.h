@@ -17,6 +17,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdlib>
+#include <string>
 
 #include "Terminal.h"
 
@@ -355,13 +356,31 @@ namespace tui
 			return ((colour.r & 0xFF) << 16) | ((colour.g & 0xFF) << 8) | (colour.b & 0xFF);
 		}
 
+		// std::getenv is reported as deprecated by the MSVC CRT. Use the
+		// bounds-checked _dupenv_s variant there and keep the portable call
+		// elsewhere; an unset variable yields an empty string in both cases.
+		inline std::string EnvironmentValue (const char * name)
+		{
+#ifdef _MSC_VER
+			char * value = nullptr;
+			std::size_t size = 0;
+			if (_dupenv_s (&value, &size, name) != 0 || !value) return { };
+			std::string result (value);
+			std::free (value);
+			return result;
+#else
+			const char * value = std::getenv (name);
+			return value ? std::string (value) : std::string ();
+#endif
+		}
+
 		inline bool DetectLightBackground ()
 		{
-			const char * value = std::getenv ("COLORFGBG");
-			if (!value || !*value) return false;
+			const std::string value = EnvironmentValue ("COLORFGBG");
+			if (value.empty ()) return false;
 
 			int last = -1;
-			const char * cursor = value;
+			const char * cursor = value.c_str ();
 			while (*cursor)
 			{
 				while (*cursor && (*cursor < '0' || *cursor > '9')) ++cursor;
@@ -394,8 +413,8 @@ namespace tui
 			m_DefaultColors = false;
 			m_BackgroundKnown = false;
 			m_LightBackground = theme_detail::DetectLightBackground ();
-			const char * colorfgbg = std::getenv ("COLORFGBG");
-			m_BackgroundKnown = colorfgbg != nullptr && *colorfgbg != '\0';
+			const std::string colorfgbg = theme_detail::EnvironmentValue ("COLORFGBG");
+			m_BackgroundKnown = !colorfgbg.empty ();
 			m_Mode = Mode::Monochrome;
 
 			if (!terminal::HasColors ()) return false;

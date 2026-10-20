@@ -129,10 +129,10 @@ namespace garlic
 		virtual bool IsRatchets () const { return false; };
 		virtual bool IsReadyToSend () const { return true; };
 		virtual bool IsTerminated () const { return !GetOwner (); };
-		virtual bool IsInactive (uint64_t ts) const { return false; }; // override in ECIESX25519AEADRatchetSession
+		virtual bool IsInactive (uint64_t /* ts */) const { return false; }; // override in ECIESX25519AEADRatchetSession
 		virtual uint64_t GetLastActivityTimestamp () const { return 0; }; // non-zero for rathets only
 		virtual void SetAckRequestInterval (
-			int interval) { }; // in milliseconds, override in ECIESX25519AEADRatchetSession
+			int /* interval */) { }; // in milliseconds, override in ECIESX25519AEADRatchetSession
 		virtual std::vector<std::shared_ptr<I2NPMessage>> WrapMultipleMessages (
 			const std::vector<std::shared_ptr<const I2NPMessage>> & msgs);
 
@@ -312,7 +312,7 @@ namespace garlic
 				: 0;
 		}
 
-		virtual void ScheduleSessionResponseTimer (std::shared_ptr<ECIESX25519AEADRatchetSession> session) { };
+		virtual void ScheduleSessionResponseTimer (std::shared_ptr<ECIESX25519AEADRatchetSession> /* session */) { };
 
 	protected:
 		bool HandleECIESx25519TagMessage (uint8_t * buf, size_t len); // return true if found

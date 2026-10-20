@@ -124,7 +124,7 @@ namespace data
 	}
 
 	void LeaseSet::Update (
-		const uint8_t * buf, size_t len, std::shared_ptr<LocalDestination> dest, bool verifySignature)
+		const uint8_t * buf, size_t len, std::shared_ptr<LocalDestination> /* dest */, bool verifySignature)
 	{
 		SetBuffer (buf, len);
 		ReadFromBuffer (false, verifySignature);
@@ -340,7 +340,7 @@ namespace data
 
 	const std::vector<std::shared_ptr<const Lease>> LeaseSet::GetNonExpiredLeases (bool withThreshold) const
 	{
-		return GetNonExpiredLeasesExcluding ([] (const Lease & l) -> bool { return false; }, withThreshold);
+		return GetNonExpiredLeasesExcluding ([] (const Lease &) -> bool { return false; }, withThreshold);
 	}
 
 	const std::vector<std::shared_ptr<const Lease>> LeaseSet::GetNonExpiredLeasesExcluding (
@@ -1214,7 +1214,7 @@ namespace data
 		: m_ExpirationTime (0)
 		, m_Identity (identity)
 	{
-		int num = tunnels.size ();
+		int num = static_cast<int> (tunnels.size ());
 		if (num > MAX_NUM_LEASES) num = MAX_NUM_LEASES;
 		// identity
 		auto signingKeyLen = m_Identity->GetSigningPublicKeyLen ();
@@ -1228,7 +1228,7 @@ namespace data
 		offset += signingKeyLen;
 		// num leases
 		auto numLeasesPos = offset;
-		m_Buffer[offset] = num;
+		m_Buffer[offset] = static_cast<uint8_t> (num);
 		offset++;
 		// leases
 		m_Leases = m_Buffer.get () + offset;
@@ -1262,7 +1262,7 @@ namespace data
 			if (skipped > num) skipped = num;
 			num -= skipped;
 			m_BufferLen -= skipped * LEASE_SIZE;
-			m_Buffer[numLeasesPos] = num;
+			m_Buffer[numLeasesPos] = static_cast<uint8_t> (num);
 		}
 		// we don't sign it yet. must be signed later on
 	}
@@ -1362,7 +1362,7 @@ namespace data
 	{
 		auto identity = keys.GetPublic ();
 		// assume standard LS2
-		int num = tunnels.size ();
+		int num = static_cast<int> (tunnels.size ());
 		if (num > MAX_NUM_LEASES) num = MAX_NUM_LEASES;
 		// Build the key section list once. GetLS2PublicKeyLen() is the wire
 		// length (EC_P256 is 64 bytes, legacy EC_P256 key files are 256);
@@ -1424,7 +1424,7 @@ namespace data
 		m_Buffer[0] = storeType;
 		// LS2 header
 		auto offset = identity->ToBuffer (m_Buffer.get () + 1, m_BufferLen) + 1;
-		htobe32buf (m_Buffer.get () + offset, publishedTimestamp);
+		htobe32buf (m_Buffer.get () + offset, static_cast<uint32_t> (publishedTimestamp));
 		offset += 4; // published timestamp (seconds)
 		uint8_t * expiresBuf = m_Buffer.get () + offset;
 		offset += 2; // expires, fill later
@@ -1446,7 +1446,7 @@ namespace data
 		{
 			htobe16buf (m_Buffer.get () + offset, section.key->keyType);
 			offset += 2; // key type
-			htobe16buf (m_Buffer.get () + offset, section.len);
+			htobe16buf (m_Buffer.get () + offset, static_cast<uint16_t> (section.len));
 			offset += 2; // key len
 			memcpy (m_Buffer.get () + offset, section.key->pub.data (), section.len);
 			offset += section.len; // key
@@ -1455,7 +1455,7 @@ namespace data
 		uint32_t expirationTime = 0; // in seconds
 		int skipped = 0;
 		auto numLeasesPos = offset;
-		m_Buffer[offset] = num;
+		m_Buffer[offset] = static_cast<uint8_t> (num);
 		offset++; // num leases
 		for (int i = 0; i < num; i++)
 		{
@@ -1481,7 +1481,7 @@ namespace data
 			if (skipped > num) skipped = num;
 			num -= skipped;
 			m_BufferLen -= skipped * LEASE2_SIZE;
-			m_Buffer[numLeasesPos] = num;
+			m_Buffer[numLeasesPos] = static_cast<uint8_t> (num);
 		}
 		// update expiration
 		if (expirationTime)
@@ -1489,7 +1489,7 @@ namespace data
 			SetExpirationTime (expirationTime * 1000LL);
 			auto expires = expirationTime > publishedTimestamp ? expirationTime - publishedTimestamp : 0;
 			if (expires > 0xFFFF) expires = 0xFFFF; // 16-bit wire field, 18.2 hours
-			htobe16buf (expiresBuf, expires);
+			htobe16buf (expiresBuf, static_cast<uint16_t> (expires));
 		}
 		else
 		{
@@ -1498,7 +1498,7 @@ namespace data
 			memset (expiresBuf, 0, 2); // expires immediately
 		}
 		// sign
-		keys.Sign (m_Buffer.get (), offset, m_Buffer.get () + offset); // LS + leading store type
+		keys.Sign (m_Buffer.get (), static_cast<int> (offset), m_Buffer.get () + offset); // LS + leading store type
 	}
 
 	LocalLeaseSet2::LocalLeaseSet2 (
@@ -1607,14 +1607,15 @@ namespace data
 		htobe16buf (m_Buffer.get () + offset, blindedKey.GetBlindedSigType ());
 		offset += 2; // Blinded Public Key Sig Type
 		memcpy (m_Buffer.get () + offset, blindedPub, publicKeyLen);
-		offset += publicKeyLen; // Blinded Public Key
-		htobe32buf (m_Buffer.get () + offset, timestamp);
+		offset += static_cast<int> (publicKeyLen); // Blinded Public Key
+		htobe32buf (m_Buffer.get () + offset, static_cast<uint32_t> (timestamp));
 		offset += 4; // published timestamp (seconds)
 		auto nextMidnight = (timestamp / 86400LL + 1) * 86400LL; // 86400 = 24*3600 seconds
 		auto expirationTime = ls->GetExpirationTime () / 1000LL;
 		if (expirationTime > nextMidnight) expirationTime = nextMidnight;
 		SetExpirationTime (expirationTime * 1000LL);
-		htobe16buf (m_Buffer.get () + offset, expirationTime > timestamp ? expirationTime - timestamp : 0);
+		htobe16buf (m_Buffer.get () + offset,
+			static_cast<uint16_t> (expirationTime > timestamp ? expirationTime - timestamp : 0));
 		offset += 2; // expires
 		uint16_t flags = offlineKeys.IsOfflineSignature () ? LEASESET2_FLAG_OFFLINE_KEYS : 0;
 		htobe16buf (m_Buffer.get () + offset, flags);
@@ -1622,15 +1623,16 @@ namespace data
 		if (flags)
 		{
 			memcpy (m_Buffer.get () + offset, offlineSignature.data (), offlineSignature.size ());
-			offset += offlineSignature.size ();
+			offset += static_cast<int> (offlineSignature.size ());
 		}
-		htobe16buf (m_Buffer.get () + offset, lenOuterCiphertext);
+		htobe16buf (m_Buffer.get () + offset, static_cast<uint16_t> (lenOuterCiphertext));
 		offset += 2; // lenOuterCiphertext
 		// outerChipherText
 		// Layer 1
 		uint8_t subcredential[36];
 		blindedKey.GetSubcredential (blindedPub, 32, subcredential);
-		htobe32buf (subcredential + 32, timestamp); // outerInput = subcredential || publishedTimestamp
+		// outerInput = subcredential || publishedTimestamp
+		htobe32buf (subcredential + 32, static_cast<uint32_t> (timestamp));
 		// keys = HKDF(outerSalt, outerInput, "ELS2_L1K", 44)
 		uint8_t keys1[64]; // 44 bytes actual data
 		if (RAND_bytes (m_Buffer.get () + offset, 32) != 1) // outerSalt = CSRNG(32)
@@ -1663,7 +1665,7 @@ namespace data
 				m_Buffer.reset ();
 				return;
 			}
-			offset += 32 + 2 + authKeys->size () * 40; // auth clients
+			offset += static_cast<int> (32 + 2 + authKeys->size () * 40); // auth clients
 		}
 		// Layer 2
 		// keys = HKDF(outerSalt, outerInput, "ELS2_L2K", 44)
@@ -1687,7 +1689,7 @@ namespace data
 		memcpy (m_Buffer.get () + offset + 1, ls->GetBuffer (), ls->GetBufferLen ());
 		i2p::crypto::ChaCha20 (m_Buffer.get () + offset, lenInnerPlaintext, keys2, keys2 + 32,
 			m_Buffer.get () + offset); // encrypt Layer 2
-		offset += lenInnerPlaintext;
+		offset += static_cast<int> (lenInnerPlaintext);
 		i2p::crypto::ChaCha20 (outerPlainText, lenOuterPlaintext, keys1, keys1 + 32, outerPlainText); // encrypt Layer 1
 		// signature
 		if (blindedSigner)
@@ -1726,7 +1728,7 @@ namespace data
 			if (i2p::data::Tag<32> (ek.GetPublicKey ()).IsZero ()) return false;
 			memcpy (authData, ek.GetPublicKey (), 32);
 			authData += 32; // epk
-			htobe16buf (authData, authKeys->size ());
+			htobe16buf (authData, static_cast<uint16_t> (authKeys->size ()));
 			authData += 2; // num clients
 			uint8_t authInput[100]; // sharedSecret || cpk_i || subcredential || publishedTimestamp
 			memcpy (authInput + 64, subcredential, 36);
@@ -1748,7 +1750,7 @@ namespace data
 			if (RAND_bytes (authSalt, sizeof (authSalt)) != 1) return false;
 			memcpy (authData, authSalt, 32);
 			authData += 32; // authSalt
-			htobe16buf (authData, authKeys->size ());
+			htobe16buf (authData, static_cast<uint16_t> (authKeys->size ()));
 			authData += 2; // num clients
 			uint8_t authInput[68]; // authInput = psk_i || subcredential || publishedTimestamp
 			memcpy (authInput + 32, subcredential, 36);

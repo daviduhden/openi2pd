@@ -127,7 +127,7 @@ namespace datagram
 					m_Owner->Sign (hash, 32, signature.data ());
 				}
 				else
-					m_Owner->Sign (payload, len, signature.data ());
+					m_Owner->Sign (payload, static_cast<int> (len), signature.data ());
 				msg = CreateDataMessage (
 					{ { m_From.data (), m_From.size () }, { signature.data (), signature.size () }, { payload, len } },
 					fromPort, toPort, i2p::client::PROTOCOL_TYPE_DATAGRAM, !session->IsRatchets ()); // datagram1
@@ -176,7 +176,7 @@ namespace datagram
 				std::vector<uint8_t> signature (keys.GetSignatureLen ());
 				if (!signature.empty ())
 				{
-					m_Owner->Sign (signedData.data (), signedData.size (), signature.data ());
+					m_Owner->Sign (signedData.data (), static_cast<int> (signedData.size ()), signature.data ());
 					msg = CreateDataMessage (
 						{ { m_From.data (), m_From.size () }, { flags, 2 }, { optionsBuf.data (), optionsBuf.size () },
 							{ offlineSignature.data (), offlineSignature.size () }, { payload, len },
@@ -625,7 +625,7 @@ namespace datagram
 
 		if (size)
 		{
-			htobe32buf (msg->GetPayload (), size); // length
+			htobe32buf (msg->GetPayload (), static_cast<uint32_t> (size)); // length
 			htobe16buf (buf + 4, fromPort); // source port
 			htobe16buf (buf + 6, toPort); // destination port
 			buf[9] = protocolType; // raw or datagram protocol
@@ -774,7 +774,7 @@ namespace datagram
 	{
 		m_LastUse = i2p::util::GetMillisecondsSinceEpoch ();
 		auto path = GetSharedRoutingPath ();
-		if (path) path->updateTime = i2p::util::GetSecondsSinceEpoch ();
+		if (path) path->updateTime = static_cast<uint32_t> (i2p::util::GetSecondsSinceEpoch ());
 		if (IsRatchets ()) SendMsg (nullptr); // send empty message in case if we don't have some data to send
 	}
 
@@ -999,7 +999,7 @@ namespace datagram
 		}
 		else
 		{
-			m_NumDroppedNoPath += m_SendQueue.size ();
+			m_NumDroppedNoPath += static_cast<uint32_t> (m_SendQueue.size ());
 			LogPrint (eLogWarning, "Datagram: No routing path, dropped ", m_SendQueue.size (), " messages, ",
 				m_NumDroppedNoPath, " total");
 		}

@@ -48,7 +48,7 @@ namespace transport
 		auto readbuff = std::make_shared<std::vector<int8_t>> (258); // max possible
 		boost::asio::async_read (s, boost::asio::buffer (readbuff->data (), 5),
 			boost::asio::transfer_all (), // read 4 bytes of header + first byte of address
-			[readbuff, &s, handler] (const boost::system::error_code & ec, std::size_t transferred)
+			[readbuff, &s, handler] (const boost::system::error_code & ec, std::size_t /*transferred*/)
 			{
 				if (!ec)
 				{
@@ -67,7 +67,7 @@ namespace transport
 							len += 2; // port
 							boost::asio::async_read (s, boost::asio::buffer (readbuff->data (), len),
 								boost::asio::transfer_all (),
-								[readbuff, handler] (const boost::system::error_code & ec, std::size_t transferred)
+								[readbuff, handler] (const boost::system::error_code & ec, std::size_t /*transferred*/)
 								{
 									if (!ec)
 										handler (boost::system::error_code ()); // success
@@ -170,7 +170,7 @@ namespace transport
 		{
 			auto buff = std::make_shared<std::vector<uint8_t>> (addr.length () + 7);
 			(*buff)[3] = SOCKS5_ATYP_NAME;
-			(*buff)[4] = addr.length ();
+			(*buff)[4] = static_cast<uint8_t> (addr.length ());
 			memcpy (buff->data () + 5, addr.c_str (), addr.length ());
 			Socks5Connect (s, handler, buff, ep.second);
 		}

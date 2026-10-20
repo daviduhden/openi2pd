@@ -85,7 +85,7 @@ namespace data
 			LogPrint (eLogError, "Blinding: Non-canonical b33 ", b33);
 			return;
 		}
-		uint32_t checksum = crc32 (0, addr.data () + 3, l - 3);
+		uint32_t checksum = crc32 (0, addr.data () + 3, static_cast<uInt> (l - 3));
 		// checksum is Little Endian
 		addr[0] ^= checksum;
 		addr[1] ^= (checksum >> 8);
@@ -178,10 +178,10 @@ namespace data
 		uint8_t flags = 0;
 		if (m_IsClientAuth) flags |= B33_PER_CLIENT_AUTH_FLAG;
 		addr[0] = flags; // flags
-		addr[1] = m_SigType; // sig type
-		addr[2] = m_BlindedSigType; // blinded sig type
+		addr[1] = static_cast<uint8_t> (m_SigType); // sig type
+		addr[2] = static_cast<uint8_t> (m_BlindedSigType); // blinded sig type
 		memcpy (addr + 3, m_PublicKey.data (), m_PublicKey.size ());
-		uint32_t checksum = crc32 (0, addr + 3, m_PublicKey.size ());
+		uint32_t checksum = crc32 (0, addr + 3, static_cast<uInt> (m_PublicKey.size ()));
 		// checksum is Little Endian
 		addr[0] ^= checksum;
 		addr[1] ^= (checksum >> 8);

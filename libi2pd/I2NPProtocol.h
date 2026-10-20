@@ -212,7 +212,7 @@ struct I2NPMessage
 	uint64_t GetEnqueueTime () const { return enqueueTime; };
 	void SetSize (uint16_t size) { htobe16buf (GetHeader () + I2NP_HEADER_SIZE_OFFSET, size); };
 	uint16_t GetSize () const { return bufbe16toh (GetHeader () + I2NP_HEADER_SIZE_OFFSET); };
-	void UpdateSize () { SetSize (GetPayloadLength ()); };
+	void UpdateSize () { SetSize (static_cast<uint16_t> (GetPayloadLength ())); };
 	void SetChks (uint8_t chks) { GetHeader ()[I2NP_HEADER_CHKS_OFFSET] = chks; };
 	void UpdateChks ()
 	{
@@ -265,14 +265,15 @@ struct I2NPMessage
 		const uint8_t * ntcp2 = GetNTCP2Header ();
 		memcpy (GetHeader () + I2NP_HEADER_TYPEID_OFFSET, ntcp2 + I2NP_HEADER_TYPEID_OFFSET, 5); // typeid + msgid
 		SetExpiration (bufbe32toh (ntcp2 + I2NP_HEADER_EXPIRATION_OFFSET) * 1000LL);
-		SetSize (len - offset - I2NP_HEADER_SIZE);
+		SetSize (static_cast<uint16_t> (len - offset - I2NP_HEADER_SIZE));
 		SetChks (0);
 	}
 	void ToNTCP2 ()
 	{
 		uint8_t * ntcp2 = GetNTCP2Header ();
 		htobe32buf (
-			ntcp2 + I2NP_HEADER_EXPIRATION_OFFSET, bufbe64toh (GetHeader () + I2NP_HEADER_EXPIRATION_OFFSET) / 1000LL);
+			ntcp2 + I2NP_HEADER_EXPIRATION_OFFSET,
+			static_cast<uint32_t> (bufbe64toh (GetHeader () + I2NP_HEADER_EXPIRATION_OFFSET) / 1000LL));
 		memcpy (ntcp2 + I2NP_HEADER_TYPEID_OFFSET, GetHeader () + I2NP_HEADER_TYPEID_OFFSET, 5); // typeid + msgid
 	}
 

@@ -252,7 +252,7 @@ namespace client
 		int GetNumRemoteLeaseSets () const
 		{
 			std::lock_guard<std::mutex> lock (m_RemoteLeaseSetsMutex);
-			return m_RemoteLeaseSets.size ();
+			return static_cast<int> (m_RemoteLeaseSets.size ());
 		};
 		// copy for other threads, unlike GetLeaseSets which hands out the container itself
 		std::vector<std::shared_ptr<i2p::data::LeaseSet>> GetLeaseSetsList () const

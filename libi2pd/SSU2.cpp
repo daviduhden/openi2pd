@@ -103,7 +103,8 @@ namespace transport
 							found = true;
 							i2p::config::GetOption ("ssu2.firewalled4", m_IsForcedFirewalled4);
 							LogPrint (eLogDebug, "SSU2: Opening IPv4 socket at Start");
-							OpenSocket (boost::asio::ip::udp::endpoint (m_AddressV4, port));
+							OpenSocket (
+								boost::asio::ip::udp::endpoint (m_AddressV4, static_cast<uint16_t> (port)));
 							boost::asio::post (m_ReceiveService.GetService (), [this] () { Receive (m_SocketV4); });
 							ScheduleIntroducersUpdateTimer (); // wait for 30 seconds and decide if we need introducers
 						}
@@ -112,7 +113,8 @@ namespace transport
 							found = true;
 							i2p::config::GetOption ("ssu2.firewalled6", m_IsForcedFirewalled6);
 							LogPrint (eLogDebug, "SSU2: Opening IPv6 socket at Start");
-							OpenSocket (boost::asio::ip::udp::endpoint (m_AddressV6, port));
+							OpenSocket (
+								boost::asio::ip::udp::endpoint (m_AddressV6, static_cast<uint16_t> (port)));
 							boost::asio::post (m_ReceiveService.GetService (), [this] () { Receive (m_SocketV6); });
 							ScheduleIntroducersUpdateTimerV6 (); // wait for 30 seconds and decide if we need introducers
 						}
@@ -229,7 +231,7 @@ namespace transport
 			m_AddressV4 = localAddress;
 			uint16_t mtu;
 			i2p::config::GetOption ("ssu2.mtu4", mtu);
-			if (!mtu) mtu = i2p::util::net::GetMTU (localAddress);
+			if (!mtu) mtu = static_cast<uint16_t> (i2p::util::net::GetMTU (localAddress));
 			if (mtu < (int)SSU2_MIN_PACKET_SIZE) mtu = SSU2_MIN_PACKET_SIZE;
 			if (mtu > (int)SSU2_MAX_PACKET_SIZE) mtu = SSU2_MAX_PACKET_SIZE;
 			i2p::context.SetMTU (mtu, true);
@@ -242,8 +244,8 @@ namespace transport
 			if (!mtu)
 			{
 				int maxMTU = i2p::util::net::GetMaxMTU (localAddress.to_v6 ());
-				mtu = i2p::util::net::GetMTU (localAddress);
-				if (mtu > maxMTU) mtu = maxMTU;
+				mtu = static_cast<uint16_t> (i2p::util::net::GetMTU (localAddress));
+				if (mtu > maxMTU) mtu = static_cast<uint16_t> (maxMTU);
 			}
 			else if (mtu > (int)SSU2_MAX_PACKET_SIZE)
 				mtu = SSU2_MAX_PACKET_SIZE;
@@ -369,8 +371,8 @@ namespace transport
 			uint64_t bufferSize = i2p::context.GetBandwidthLimit () * 1024 / 5; // max lag = 200ms
 			bufferSize = std::max (SSU2_SOCKET_MIN_BUFFER_SIZE, std::min (bufferSize, SSU2_SOCKET_MAX_BUFFER_SIZE));
 
-			boost::asio::socket_base::receive_buffer_size receiveBufferSizeSet (bufferSize);
-			boost::asio::socket_base::send_buffer_size sendBufferSizeSet (bufferSize);
+			boost::asio::socket_base::receive_buffer_size receiveBufferSizeSet (static_cast<int> (bufferSize));
+			boost::asio::socket_base::send_buffer_size sendBufferSizeSet (static_cast<int> (bufferSize));
 			socket.set_option (receiveBufferSizeSet);
 			socket.set_option (sendBufferSizeSet);
 			boost::asio::socket_base::receive_buffer_size receiveBufferSizeGet;
@@ -713,7 +715,7 @@ namespace transport
 		i2p::data::RouterInfo::CompatibleTransports remoteTransports, const i2p::data::IdentHash & excluded)
 	{
 		if (m_Sessions.empty ()) return nullptr;
-		int ind = m_Rng () % m_Sessions.size ();
+		int ind = static_cast<int> (m_Rng () % m_Sessions.size ());
 		auto it = m_Sessions.begin ();
 		std::advance (it, ind);
 		while (it != m_Sessions.end ())
@@ -909,7 +911,7 @@ namespace transport
 					auto session = std::make_shared<SSU2Session> (*this);
 					session->SetRemoteEndpoint (senderEndpoint);
 					session->AdjustMaxPayloadSize ();
-					session->SetVersion (m_Version);
+					session->SetVersion (static_cast<uint8_t> (m_Version));
 					session->ProcessFirstIncomingMessage (connID, buf, len);
 				}
 				else
@@ -1034,7 +1036,8 @@ namespace transport
 			{
 				if (i2p::transport::transports.IsInReservedRange (address->host)) return false;
 				if (CheckPendingOutgoingSession (
-						boost::asio::ip::udp::endpoint (address->host, address->port), peerTest))
+						boost::asio::ip::udp::endpoint (address->host, static_cast<uint16_t> (address->port)),
+						peerTest))
 					return false;
 			}
 
@@ -1152,7 +1155,8 @@ namespace transport
 			if (relayTag && addr)
 			{
 				// introducer and tag found connect to it through SSU2
-				auto s = FindPendingOutgoingSession (boost::asio::ip::udp::endpoint (addr->host, addr->port));
+				auto s = FindPendingOutgoingSession (
+					boost::asio::ip::udp::endpoint (addr->host, static_cast<uint16_t> (addr->port)));
 				if (!s)
 				{
 					s = std::make_shared<SSU2Session> (*this, r, addr);
@@ -1445,7 +1449,8 @@ namespace transport
 		uint64_t token;
 		RAND_bytes ((uint8_t *)&token, 8);
 		if (!token) token = 1; // token can't be zero
-		uint32_t expires = i2p::util::GetSecondsSinceEpoch () + SSU2_NEXT_TOKEN_EXPIRATION_TIMEOUT;
+		uint32_t expires
+			= static_cast<uint32_t> (i2p::util::GetSecondsSinceEpoch () + SSU2_NEXT_TOKEN_EXPIRATION_TIMEOUT);
 		if (m_IncomingTokens.find (ep) == m_IncomingTokens.end ()
 			&& m_IncomingTokens.size () >= SSU2_MAX_INCOMING_TOKENS)
 			EvictIncomingToken (i2p::util::GetSecondsSinceEpoch ());
@@ -1482,7 +1487,7 @@ namespace transport
 
 	void SSU2Server::UpdateIntroducers (bool v4)
 	{
-		uint32_t ts = i2p::util::GetSecondsSinceEpoch ();
+		uint32_t ts = static_cast<uint32_t> (i2p::util::GetSecondsSinceEpoch ());
 		std::list<std::pair<i2p::data::IdentHash, uint32_t>> newList, impliedList;
 		auto & introducers = v4 ? m_Introducers : m_IntroducersV6;
 		std::unordered_set<i2p::data::IdentHash> excluded;
@@ -1524,7 +1529,8 @@ namespace transport
 		int numOldSessions = 0;
 		if (newList.size () < SSU2_MAX_NUM_INTRODUCERS)
 		{
-			auto sessions = FindIntroducers (SSU2_MAX_NUM_INTRODUCERS - newList.size (), v4, excluded);
+			auto sessions = FindIntroducers (
+				static_cast<int> (SSU2_MAX_NUM_INTRODUCERS - newList.size ()), v4, excluded);
 			if (sessions.empty () && !impliedList.empty ())
 			{
 				LogPrint (eLogDebug, "SSU2: No new introducers found. Trying to reuse existing");

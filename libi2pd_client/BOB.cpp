@@ -307,7 +307,7 @@ namespace client
 				std::placeholders::_2));
 	}
 
-	void BOBCommandSession::HandleReceivedLine (const boost::system::error_code & ecode, std::size_t bytes_transferred)
+	void BOBCommandSession::HandleReceivedLine (const boost::system::error_code & ecode, std::size_t)
 	{
 		if (ecode)
 		{
@@ -347,7 +347,7 @@ namespace client
 				&BOBCommandSession::HandleSent, shared_from_this (), std::placeholders::_1, std::placeholders::_2));
 	}
 
-	void BOBCommandSession::HandleSent (const boost::system::error_code & ecode, std::size_t bytes_transferred)
+	void BOBCommandSession::HandleSent (const boost::system::error_code & ecode, std::size_t)
 	{
 		if (ecode)
 		{
@@ -433,20 +433,20 @@ namespace client
 		return ss.str ();
 	}
 
-	void BOBCommandSession::ZapCommandHandler (const char * operand, size_t len)
+	void BOBCommandSession::ZapCommandHandler (const char *, size_t)
 	{
 		LogPrint (eLogDebug, "BOB: zap");
 		Terminate ();
 	}
 
-	void BOBCommandSession::QuitCommandHandler (const char * operand, size_t len)
+	void BOBCommandSession::QuitCommandHandler (const char *, size_t)
 	{
 		LogPrint (eLogDebug, "BOB: quit");
 		m_IsOpen = false;
 		SendReplyOK ("Bye!");
 	}
 
-	void BOBCommandSession::StartCommandHandler (const char * operand, size_t len)
+	void BOBCommandSession::StartCommandHandler (const char *, size_t)
 	{
 		LogPrint (eLogDebug, "BOB: start ", m_Nickname);
 		if (m_IsActive)
@@ -542,7 +542,7 @@ namespace client
 		m_IsActive = true;
 	}
 
-	void BOBCommandSession::StopCommandHandler (const char * operand, size_t len)
+	void BOBCommandSession::StopCommandHandler (const char *, size_t)
 	{
 		LogPrint (eLogDebug, "BOB: stop ", m_Nickname);
 		if (!m_IsActive)
@@ -563,7 +563,7 @@ namespace client
 		m_IsActive = false;
 	}
 
-	void BOBCommandSession::SetNickCommandHandler (const char * operand, size_t len)
+	void BOBCommandSession::SetNickCommandHandler (const char * operand, size_t)
 	{
 		LogPrint (eLogDebug, "BOB: setnick ", operand);
 		if (*operand)
@@ -581,7 +581,7 @@ namespace client
 			SendReplyError ("no nickname has been set");
 	}
 
-	void BOBCommandSession::GetNickCommandHandler (const char * operand, size_t len)
+	void BOBCommandSession::GetNickCommandHandler (const char * operand, size_t)
 	{
 		LogPrint (eLogDebug, "BOB: getnick ", operand);
 		if (*operand)
@@ -607,7 +607,7 @@ namespace client
 			SendReplyError ("no nickname has been set");
 	}
 
-	void BOBCommandSession::NewkeysCommandHandler (const char * operand, size_t len)
+	void BOBCommandSession::NewkeysCommandHandler (const char * operand, size_t)
 	{
 		LogPrint (eLogDebug, "BOB: newkeys");
 		i2p::data::SigningKeyType signatureType = i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519;
@@ -621,9 +621,9 @@ namespace client
 				{
 					*operand1 = 0;
 					operand1++;
-					cryptoType = std::stoi (operand1);
+					cryptoType = static_cast<i2p::data::CryptoKeyType> (std::stoi (operand1));
 				}
-				signatureType = std::stoi (operand);
+				signatureType = static_cast<i2p::data::SigningKeyType> (std::stoi (operand));
 			}
 			catch (std::invalid_argument & ex)
 			{
@@ -635,7 +635,7 @@ namespace client
 		SendReplyOK (m_Keys.GetPublic ()->ToBase64 ());
 	}
 
-	void BOBCommandSession::SetkeysCommandHandler (const char * operand, size_t len)
+	void BOBCommandSession::SetkeysCommandHandler (const char * operand, size_t)
 	{
 		LogPrint (eLogDebug, "BOB: setkeys ", operand);
 		if (*operand && m_Keys.FromBase64 (operand))
@@ -644,7 +644,7 @@ namespace client
 			SendReplyError ("invalid keys");
 	}
 
-	void BOBCommandSession::GetkeysCommandHandler (const char * operand, size_t len)
+	void BOBCommandSession::GetkeysCommandHandler (const char *, size_t)
 	{
 		LogPrint (eLogDebug, "BOB: getkeys");
 		if (m_Keys.GetPublic ()) // keys are set ?
@@ -653,7 +653,7 @@ namespace client
 			SendReplyError ("keys are not set");
 	}
 
-	void BOBCommandSession::GetdestCommandHandler (const char * operand, size_t len)
+	void BOBCommandSession::GetdestCommandHandler (const char *, size_t)
 	{
 		LogPrint (eLogDebug, "BOB: getdest");
 		if (m_Keys.GetPublic ()) // keys are set ?
@@ -662,7 +662,7 @@ namespace client
 			SendReplyError ("keys are not set");
 	}
 
-	void BOBCommandSession::OuthostCommandHandler (const char * operand, size_t len)
+	void BOBCommandSession::OuthostCommandHandler (const char * operand, size_t)
 	{
 		LogPrint (eLogDebug, "BOB: outhost ", operand);
 		if (*operand)
@@ -674,7 +674,7 @@ namespace client
 			SendReplyError ("empty outhost");
 	}
 
-	void BOBCommandSession::OutportCommandHandler (const char * operand, size_t len)
+	void BOBCommandSession::OutportCommandHandler (const char * operand, size_t)
 	{
 		LogPrint (eLogDebug, "BOB: outport ", operand);
 		if (*operand)
@@ -682,7 +682,7 @@ namespace client
 			int port = std::stoi (operand);
 			if (port >= 0 && port < 65536)
 			{
-				m_OutPort = port;
+				m_OutPort = static_cast<uint16_t> (port);
 				SendReplyOK ("outbound port set");
 			}
 			else
@@ -692,7 +692,7 @@ namespace client
 			SendReplyError ("empty outport");
 	}
 
-	void BOBCommandSession::InhostCommandHandler (const char * operand, size_t len)
+	void BOBCommandSession::InhostCommandHandler (const char * operand, size_t)
 	{
 		LogPrint (eLogDebug, "BOB: inhost ", operand);
 		if (*operand)
@@ -704,7 +704,7 @@ namespace client
 			SendReplyError ("empty inhost");
 	}
 
-	void BOBCommandSession::InportCommandHandler (const char * operand, size_t len)
+	void BOBCommandSession::InportCommandHandler (const char * operand, size_t)
 	{
 		LogPrint (eLogDebug, "BOB: inport ", operand);
 		if (*operand)
@@ -712,7 +712,7 @@ namespace client
 			int port = std::stoi (operand);
 			if (port >= 0 && port < 65536)
 			{
-				m_InPort = port;
+				m_InPort = static_cast<uint16_t> (port);
 				SendReplyOK ("inbound port set");
 			}
 			else
@@ -722,7 +722,7 @@ namespace client
 			SendReplyError ("empty inport");
 	}
 
-	void BOBCommandSession::QuietCommandHandler (const char * operand, size_t len)
+	void BOBCommandSession::QuietCommandHandler (const char *, size_t)
 	{
 		LogPrint (eLogDebug, "BOB: quiet");
 		if (m_Nickname.length () > 0)
@@ -739,7 +739,7 @@ namespace client
 			SendReplyError ("no nickname has been set");
 	}
 
-	void BOBCommandSession::LookupCommandHandler (const char * operand, size_t len)
+	void BOBCommandSession::LookupCommandHandler (const char * operand, size_t)
 	{
 		LogPrint (eLogDebug, "BOB: lookup ", operand);
 		if (*operand)
@@ -786,7 +786,7 @@ namespace client
 			SendReplyError ("empty lookup address");
 	}
 
-	void BOBCommandSession::LookupLocalCommandHandler (const char * operand, size_t len)
+	void BOBCommandSession::LookupLocalCommandHandler (const char * operand, size_t)
 	{
 		LogPrint (eLogDebug, "BOB: lookup local ", operand);
 		if (*operand)
@@ -807,7 +807,7 @@ namespace client
 			SendReplyError ("empty lookup address");
 	}
 
-	void BOBCommandSession::PingCommandHandler (const char * operand, size_t len)
+	void BOBCommandSession::PingCommandHandler (const char * operand, size_t)
 	{
 		LogPrint (eLogDebug, "BOB: ping ", operand);
 		if (*operand)
@@ -886,7 +886,7 @@ namespace client
 		streamingDestination->SetPongHandler (
 			[streamingDestination, timer, ts, s = shared_from_this ()] (const i2p::data::IdentHash * from)
 			{
-				int t = i2p::util::GetMillisecondsSinceEpoch () - ts;
+				int t = static_cast<int> (i2p::util::GetMillisecondsSinceEpoch () - ts);
 				if (t < 0) t = 0;
 				streamingDestination->ResetPongHandler ();
 				timer->cancel ();
@@ -899,7 +899,7 @@ namespace client
 		streamingDestination->SendPing (ls);
 	}
 
-	void BOBCommandSession::ClearCommandHandler (const char * operand, size_t len)
+	void BOBCommandSession::ClearCommandHandler (const char *, size_t)
 	{
 		LogPrint (eLogDebug, "BOB: clear");
 		m_Owner.DeleteDestination (m_Nickname);
@@ -907,7 +907,7 @@ namespace client
 		SendReplyOK ("cleared");
 	}
 
-	void BOBCommandSession::ListCommandHandler (const char * operand, size_t len)
+	void BOBCommandSession::ListCommandHandler (const char *, size_t)
 	{
 		LogPrint (eLogDebug, "BOB: list");
 		bool sentCurrent = false;
@@ -925,7 +925,7 @@ namespace client
 		SendReplyOK ("Listing done");
 	}
 
-	void BOBCommandSession::OptionCommandHandler (const char * operand, size_t len)
+	void BOBCommandSession::OptionCommandHandler (const char * operand, size_t)
 	{
 		LogPrint (eLogDebug, "BOB: option ", operand);
 		const char * value = strchr (operand, '=');
@@ -940,7 +940,7 @@ namespace client
 			SendReplyError ("malformed");
 	}
 
-	void BOBCommandSession::StatusCommandHandler (const char * operand, size_t len)
+	void BOBCommandSession::StatusCommandHandler (const char * operand, size_t)
 	{
 		LogPrint (eLogDebug, "BOB: status ", operand);
 		const std::string name = operand;
@@ -959,7 +959,7 @@ namespace client
 				SendReplyError ("no nickname has been set");
 		}
 	}
-	void BOBCommandSession::HelpCommandHandler (const char * operand, size_t len)
+	void BOBCommandSession::HelpCommandHandler (const char * operand, size_t)
 	{
 		auto helpStrings = m_Owner.GetHelpStrings ();
 		if (!*operand)

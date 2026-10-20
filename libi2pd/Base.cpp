@@ -231,7 +231,7 @@ namespace data
 			if (bits >= 8)
 			{
 				if (ret >= outLen) return ret;
-				outBuf[ret] = tmp >> (bits - 8);
+				outBuf[ret] = static_cast<uint8_t> (tmp >> (bits - 8));
 				bits -= 8;
 				ret++;
 			}
@@ -268,7 +268,7 @@ namespace data
 
 			bits -= 5;
 			int ind = (tmp >> bits) & 0x1F;
-			out.push_back ((ind < 26) ? (ind + 'a') : ((ind - 26) + '2'));
+			out.push_back (static_cast<char> ((ind < 26) ? (ind + 'a') : ((ind - 26) + '2')));
 		}
 		return out;
 	}

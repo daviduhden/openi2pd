@@ -63,6 +63,18 @@ namespace tui
 		};
 		using LocalPtr = std::unique_ptr<void, LocalFreeDeleter>;
 
+		// std::getenv is reported as deprecated by the MSVC CRT. This is a
+		// Windows-only translation unit, so read the value through the Win32
+		// API instead: no heap allocation is needed and a missing, empty or
+		// oversized variable is treated exactly like an unset one.
+		std::string ReadEnvironmentVariable (const char * name)
+		{
+			std::array<char, 32768> buffer;
+			DWORD length = GetEnvironmentVariableA (name, buffer.data (), static_cast<DWORD> (buffer.size ()));
+			if (!length || length >= static_cast<DWORD> (buffer.size ())) return { };
+			return std::string (buffer.data (), length);
+		}
+
 		std::string Trim (std::string_view value)
 		{
 			while (!value.empty () && (value.front () == ' ' || value.front () == '\t')) value.remove_prefix (1);
@@ -108,8 +120,8 @@ namespace tui
 		{
 			if (service)
 			{
-				const char * programData = std::getenv ("PROGRAMDATA");
-				if (programData && *programData) return std::string (programData) + "\\i2pd";
+				const std::string programData = ReadEnvironmentVariable ("PROGRAMDATA");
+				if (!programData.empty ()) return programData + "\\i2pd";
 				return "C:\\ProgramData\\i2pd";
 			}
 
@@ -129,11 +141,11 @@ namespace tui
 					return executableDirectory.string ();
 			}
 
-			const char * appData = std::getenv ("APPDATA");
-			if (appData && *appData) return std::string (appData) + "\\i2pd";
+			const std::string appData = ReadEnvironmentVariable ("APPDATA");
+			if (!appData.empty ()) return appData + "\\i2pd";
 
-			const char * profile = std::getenv ("USERPROFILE");
-			if (profile && *profile) return std::string (profile) + "\\AppData\\Roaming\\i2pd";
+			const std::string profile = ReadEnvironmentVariable ("USERPROFILE");
+			if (!profile.empty ()) return profile + "\\AppData\\Roaming\\i2pd";
 			return "i2pd";
 		}
 

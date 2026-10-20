@@ -39,9 +39,9 @@ namespace tunnel
 		prev = nullptr;
 	}
 
-	void TunnelHopConfig::SetNextIdent (const i2p::data::IdentHash & ident)
+	void TunnelHopConfig::SetNextIdent (const i2p::data::IdentHash & identHash)
 	{
-		nextIdent = ident;
+		nextIdent = identHash;
 		isEndpoint = false;
 		RAND_bytes ((uint8_t *)&nextTunnelID, 4);
 		if (!nextTunnelID) nextTunnelID = 1; // tunnelID can't be zero
@@ -144,7 +144,7 @@ namespace tunnel
 		uint8_t * record = records + recordIndex * SHORT_TUNNEL_BUILD_RECORD_SIZE;
 		uint8_t nonce[12];
 		memset (nonce, 0, 12);
-		nonce[4] = recordIndex; // nonce is record index
+		nonce[4] = static_cast<uint8_t> (recordIndex); // nonce is record index
 		if (!i2p::crypto::AEADChaCha20Poly1305 (record, SHORT_TUNNEL_BUILD_RECORD_SIZE - 16, m_H, 32, replyKey, nonce,
 				record, SHORT_TUNNEL_BUILD_RECORD_SIZE - 16, false)) // decrypt
 		{
@@ -159,7 +159,7 @@ namespace tunnel
 		uint8_t * record = records + index * SHORT_TUNNEL_BUILD_RECORD_SIZE;
 		uint8_t nonce[12];
 		memset (nonce, 0, 12);
-		nonce[4] = index; // nonce is index
+		nonce[4] = static_cast<uint8_t> (index); // nonce is index
 		i2p::crypto::ChaCha20 (record, SHORT_TUNNEL_BUILD_RECORD_SIZE, replyKey, nonce, record);
 	}
 
@@ -168,7 +168,7 @@ namespace tunnel
 		return { m_CK + 32, buf64toh (m_CK) };
 	}
 
-	void ShortPhonyTunnelHopConfig::CreateBuildRequestRecord (uint8_t * records, uint32_t replyMsgID)
+	void ShortPhonyTunnelHopConfig::CreateBuildRequestRecord (uint8_t * records, uint32_t /* replyMsgID */)
 	{
 		uint8_t * record = records + recordIndex * SHORT_TUNNEL_BUILD_RECORD_SIZE;
 		memcpy (record + BUILD_REQUEST_RECORD_TO_PEER_OFFSET, (const uint8_t *)i2p::context.GetIdentHash (), 16);

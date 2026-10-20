@@ -145,6 +145,9 @@ namespace client
 
 	void I2PTunnelConnection::Connect (bool isUniqueLocal)
 	{
+#ifndef __linux__
+		(void)isUniqueLocal; // unique-local loopback mapping is Linux-only
+#endif
 		if (m_Socket)
 		{
 			I2PTunnelSetSocketOptions (m_Socket);
@@ -274,7 +277,7 @@ namespace client
 		if (m_Stream)
 		{
 			m_Stream->AsyncSend (buf, len,
-				[s = shared_from_this ()] (const boost::system::error_code & ecode, size_t bytes_transferred)
+				[s = shared_from_this ()] (const boost::system::error_code & ecode, size_t)
 				{
 					if (!ecode)
 						s->Receive ();

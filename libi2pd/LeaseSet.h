@@ -123,7 +123,7 @@ namespace data
 		};
 		virtual uint8_t GetStoreType () const { return NETDB_STORE_TYPE_LEASESET; };
 		virtual uint32_t GetPublishedTimestamp () const { return 0; }; // should be set for LeaseSet2 only
-		virtual bool IsEncryptionKey (CryptoKeyType type, const uint8_t * key) const { return false; };
+		virtual bool IsEncryptionKey (CryptoKeyType /* type */, const uint8_t * /* key */) const { return false; };
 		virtual std::shared_ptr<const i2p::crypto::Verifier> GetTransientVerifier () const { return nullptr; };
 		virtual bool IsPublishedEncrypted () const { return false; };
 

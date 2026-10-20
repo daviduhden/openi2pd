@@ -70,9 +70,9 @@ namespace data
 			return false;
 		}
 
-		std::string ToBase64 (size_t len = sz) const { return i2p::data::ByteStreamToBase64 (m_Buf, len); }
+		std::string ToBase64 (size_t length = sz) const { return i2p::data::ByteStreamToBase64 (m_Buf, length); }
 
-		std::string ToBase32 (size_t len = sz) const { return i2p::data::ByteStreamToBase32 (m_Buf, len); }
+		std::string ToBase32 (size_t length = sz) const { return i2p::data::ByteStreamToBase32 (m_Buf, length); }
 
 		size_t FromBase32 (std::string_view s) { return i2p::data::Base32ToByteStream (s, m_Buf, sz); }
 

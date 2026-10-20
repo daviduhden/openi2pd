@@ -147,7 +147,7 @@ namespace data
 			return -1;
 		}
 
-		int numReseeds = httpsReseedHostList.size () + yggReseedHostList.size ();
+		int numReseeds = static_cast<int> (httpsReseedHostList.size () + yggReseedHostList.size ());
 		int reseedAttempts = std::min (numReseeds, MAX_NUM_RESEED_ATTEMPTS);
 		if (reseedAttempts)
 		{
@@ -457,29 +457,30 @@ namespace data
 							return 0;
 						}
 						BN_CTX * bnctx = BN_CTX_new ();
-						BIGNUM *s = BN_new (), *n = BN_new ();
-						if (!bnctx || !s || !n)
+						BIGNUM *sig = BN_new (), *n = BN_new ();
+						if (!bnctx || !sig || !n)
 						{
 							if (bnctx) BN_CTX_free (bnctx);
-							if (s) BN_free (s);
+							if (sig) BN_free (sig);
 							if (n) BN_free (n);
 							return 0;
 						}
-						BN_bin2bn (signature.data (), signatureLength, s);
-						BN_bin2bn (it->second.data (), it->second.len, n);
+						BN_bin2bn (signature.data (), signatureLength, sig);
+						// A certificate slot is at most 512 bytes (Tag<512>).
+						BN_bin2bn (it->second.data (), static_cast<int> (it->second.len), n);
 						std::vector<uint8_t> enSigBuf (signatureLength);
-						if (!BN_is_odd (n) || BN_mod_exp (s, s, i2p::crypto::GetRSAE (), n, bnctx) != 1)
+						if (!BN_is_odd (n) || BN_mod_exp (sig, sig, i2p::crypto::GetRSAE (), n, bnctx) != 1)
 							// A malformed or non-RSA certificate slot must fail
 							// closed instead of dividing by zero.
 							LogPrint (eLogWarning, "Reseed: SU3 RSA key or signature is invalid");
-						else if (!i2p::crypto::bn2buf (s, enSigBuf.data (), signatureLength))
+						else if (!i2p::crypto::bn2buf (sig, enSigBuf.data (), signatureLength))
 							LogPrint (eLogWarning, "Reseed: SU3 signature does not fit the declared length");
 						else if (!IsValidSU3RSAEncoding (
 									 enSigBuf.data (), enSigBuf.size (), digest.data (), digestLength))
 							LogPrint (eLogWarning, "Reseed: SU3 signature verification failed");
 						else
 							verify = false; // verified
-						BN_free (s);
+						BN_free (sig);
 						BN_free (n);
 						BN_CTX_free (bnctx);
 					}
@@ -632,7 +633,8 @@ namespace data
 					if (err == Z_STREAM_END)
 					{
 						uncompressed.resize (produced);
-						if (crc32 (0, uncompressed.data (), uncompressed.size ()) == crc_32)
+						// produced is bounded by MAX_RESEED_FILE_SIZE (64 MiB).
+						if (crc32 (0, uncompressed.data (), static_cast<uInt> (uncompressed.size ())) == crc_32)
 						{
 							if (i2p::data::netdb.AddRouterInfo (
 									uncompressed.data (), static_cast<int> (uncompressed.size ())))

@@ -563,8 +563,9 @@ namespace crypto
 			if (!signingKey) return;
 			auto & curve = GetGOSTR3410Curve (m_ParamSet);
 			if (!curve) return;
-			BIGNUM * x = BN_bin2bn (signingKey, GetPublicKeyLen () / 2, NULL);
-			BIGNUM * y = BN_bin2bn (signingKey + GetPublicKeyLen () / 2, GetPublicKeyLen () / 2, NULL);
+			BIGNUM * x = BN_bin2bn (signingKey, static_cast<int> (GetPublicKeyLen () / 2), NULL);
+			BIGNUM * y
+				= BN_bin2bn (signingKey + GetPublicKeyLen () / 2, static_cast<int> (GetPublicKeyLen () / 2), NULL);
 			if (x && y) m_PublicKey = curve->CreatePoint (x, y);
 			BN_free (x);
 			BN_free (y);
@@ -582,8 +583,9 @@ namespace crypto
 			uint8_t digest[Hash::hashLen];
 			Hash::CalculateHash (buf, len, digest);
 			BIGNUM * d = BN_bin2bn (digest, Hash::hashLen, nullptr);
-			BIGNUM * r = BN_bin2bn (signature, GetSignatureLen () / 2, NULL);
-			BIGNUM * s = BN_bin2bn (signature + GetSignatureLen () / 2, GetSignatureLen () / 2, NULL);
+			BIGNUM * r = BN_bin2bn (signature, static_cast<int> (GetSignatureLen () / 2), NULL);
+			BIGNUM * s
+				= BN_bin2bn (signature + GetSignatureLen () / 2, static_cast<int> (GetSignatureLen () / 2), NULL);
 			bool ret = curve->Verify (m_PublicKey, d, r, s);
 			BN_free (d);
 			BN_free (r);
@@ -657,13 +659,13 @@ namespace crypto
 			memset (signingPrivateKey, 0, keyLen);
 			memset (signingPublicKey, 0, keyLen * 2);
 		};
-		if (RAND_bytes (signingPrivateKey, keyLen) != 1)
+		if (RAND_bytes (signingPrivateKey, static_cast<int> (keyLen)) != 1)
 		{
 			clear ();
 			return false;
 		}
 		BN_CTX * ctx = BN_CTX_new ();
-		BIGNUM * priv = BN_bin2bn (signingPrivateKey, keyLen, nullptr);
+		BIGNUM * priv = BN_bin2bn (signingPrivateKey, static_cast<int> (keyLen), nullptr);
 		BIGNUM * q = BN_new ();
 		if (!ctx || !priv || !q || EC_GROUP_get_order (curve->GetGroup (), q, ctx) != 1)
 		{

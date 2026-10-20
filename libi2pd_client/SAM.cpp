@@ -58,7 +58,7 @@ namespace client
 		m_Stream = nullptr;
 	}
 
-	void SAMSocket::Terminate (const char * reason)
+	void SAMSocket::Terminate (const char *)
 	{
 		// Terminate is idempotent and may be re-entered by CloseSession() ->
 		// CloseStreams() -> Terminate() for the same socket.
@@ -546,7 +546,7 @@ namespace client
 	}
 
 	void SAMSocket::HandleMessageReplySent (
-		const boost::system::error_code & ecode, std::size_t bytes_transferred, bool close)
+		const boost::system::error_code & ecode, std::size_t, bool close)
 	{
 		m_IsReplyQueued = false;
 		if (ecode)
@@ -1789,7 +1789,7 @@ namespace client
 			});
 	}
 
-	void SAMSocket::HandleI2PWriteCompleted (const boost::system::error_code & ec, std::size_t bytes_transferred)
+	void SAMSocket::HandleI2PWriteCompleted (const boost::system::error_code & ec, std::size_t)
 	{
 		std::function<void (const boost::system::error_code &)> onSent;
 		if (!m_WriteQueue.empty ())
@@ -1998,7 +1998,7 @@ namespace client
 	}
 
 	void SAMSocket::HandleI2PDatagramReceive (std::string sessionID, const i2p::data::IdentityEx & from,
-		uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len, const i2p::util::Mapping * options)
+		uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len, const i2p::util::Mapping *)
 	{
 		// This callback may run on the destination's service. Copy the payload
 		// before it is reused by the next datagram, then handle it on SAM.
@@ -2067,7 +2067,7 @@ namespace client
 	}
 
 	void SAMSocket::HandleI2PDatagram3Receive (std::string sessionID, const i2p::data::IdentHash & from,
-		uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len, const i2p::util::Mapping * options)
+		uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len, const i2p::util::Mapping *)
 	{
 		std::vector<uint8_t> payload;
 		if (buf && len) payload.assign (buf, buf + len);
@@ -2586,7 +2586,7 @@ namespace client
 	}
 
 	void SAMBridge::HandleSessionCleanupTimer (const boost::system::error_code & ecode,
-		std::shared_ptr<SAMSession> session, std::shared_ptr<boost::asio::steady_timer> timer)
+		std::shared_ptr<SAMSession> session, std::shared_ptr<boost::asio::steady_timer>)
 	{
 		if (ecode != boost::asio::error::operation_aborted && session)
 		{
@@ -2672,7 +2672,7 @@ namespace client
 			});
 	}
 
-	void SAMBridge::HandleDatagramSent (const boost::system::error_code & ecode, std::size_t bytes_transferred)
+	void SAMBridge::HandleDatagramSent (const boost::system::error_code & ecode, std::size_t)
 	{
 		if (!m_DatagramSendQueue.empty ()) m_DatagramSendQueue.pop_front ();
 		m_IsSendingDatagram = false;

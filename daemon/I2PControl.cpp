@@ -13,7 +13,10 @@
  *
  */
 
+#include <cerrno>
 #include <cstdio>
+#include <cstring>
+#include <ctime>
 #include <memory>
 #include <sstream>
 #include <iomanip>
@@ -46,6 +49,31 @@ struct FileCloser
 };
 using FilePtr = std::unique_ptr<FILE, FileCloser>;
 
+// The POSIX text helpers are reported as deprecated by the MSVC CRT, so the
+// bounds-checked variants are used on Windows while the portable calls are
+// kept on every other platform.
+FilePtr OpenBinaryFile (const char * path)
+{
+#ifdef _WIN32
+	FILE * file = nullptr;
+	if (fopen_s (&file, path, "wb") != 0) return FilePtr (nullptr);
+	return FilePtr (file);
+#else
+	return FilePtr (fopen (path, "wb"));
+#endif
+}
+
+std::string ErrorText (int error)
+{
+#ifdef _WIN32
+	char buffer[128];
+	if (strerror_s (buffer, sizeof (buffer), error) != 0) return "unknown error";
+	return buffer;
+#else
+	return strerror (error);
+#endif
+}
+
 // Return the first queued OpenSSL error and drain the queue, so a later
 // unrelated failure is not reported with a stale reason.
 std::string GetOpenSSLError ()
@@ -71,8 +99,9 @@ namespace client
 		, m_ShutdownTimer (m_Service)
 	{
 		if (port)
-			m_Acceptor = std::make_unique<boost::asio::ip::tcp::acceptor> (
-				m_Service, boost::asio::ip::tcp::endpoint (boost::asio::ip::make_address (address), port));
+			m_Acceptor = std::make_unique<boost::asio::ip::tcp::acceptor> (m_Service,
+				boost::asio::ip::tcp::endpoint (
+					boost::asio::ip::make_address (address), static_cast<boost::asio::ip::port_type> (port)));
 		else
 #if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
 		{
@@ -360,14 +389,20 @@ namespace client
 			header << "Content-Type: application/json\r\n";
 			header << "Date: ";
 			std::time_t t = std::time (nullptr);
-			std::tm tm = *std::gmtime (&t);
-			header << std::put_time (&tm, "%a, %d %b %Y %T GMT") << "\r\n";
+			std::tm tm { };
+#ifdef _WIN32
+			const bool haveTime = gmtime_s (&tm, &t) == 0;
+#else
+			const bool haveTime = gmtime_r (&t, &tm) != nullptr;
+#endif
+			if (haveTime) header << std::put_time (&tm, "%a, %d %b %Y %T GMT");
+			header << "\r\n";
 			header << "\r\n";
 			*message = header.str ();
 		}
 		*message += response.str ();
 		boost::asio::async_write (*socket, boost::asio::buffer (*message), boost::asio::transfer_all (),
-			[socket, message] (const boost::system::error_code & ecode, std::size_t bytes_transferred)
+			[socket, message] (const boost::system::error_code & ecode, std::size_t /*bytes_transferred*/)
 			{
 				if (ecode) LogPrint (eLogError, "I2PControl: Write error: ", ecode.message ());
 			});
@@ -474,7 +509,7 @@ namespace client
 		LogPrint (eLogInfo, "I2PControl: Shutdown requested");
 		InsertParam (results, "Shutdown", "");
 		m_ShutdownTimer.expires_after (std::chrono::seconds (1)); // 1 second to make sure response has been sent
-		m_ShutdownTimer.async_wait ([] (const boost::system::error_code & ecode) { Daemon.running = 0; });
+		m_ShutdownTimer.async_wait ([] (const boost::system::error_code &) { Daemon.running = 0; });
 	}
 
 	void I2PControlService::ShutdownGracefulHandler (std::ostringstream & results)
@@ -484,7 +519,7 @@ namespace client
 		LogPrint (eLogInfo, "I2PControl: Graceful shutdown requested, ", timeout, " seconds remains");
 		InsertParam (results, "ShutdownGraceful", "");
 		m_ShutdownTimer.expires_after (std::chrono::seconds (timeout + 1)); // + 1 second
-		m_ShutdownTimer.async_wait ([] (const boost::system::error_code & ecode) { Daemon.running = 0; });
+		m_ShutdownTimer.async_wait ([] (const boost::system::error_code &) { Daemon.running = 0; });
 	}
 
 	void I2PControlService::ReseedHandler (std::ostringstream & results)
@@ -576,32 +611,32 @@ namespace client
 			}
 
 			// save cert
-			FilePtr f (fopen (crt_path, "wb"));
+			FilePtr f = OpenBinaryFile (crt_path);
 			if (f)
 			{
 				LogPrint (eLogInfo, "I2PControl: Saving new cert to ", crt_path);
 				if (PEM_write_X509 (f.get (), x509.get ()) != 1)
 					LogPrint (eLogError, "I2PControl: Can't write cert: ", GetOpenSSLError ());
 				else if (std::fclose (f.release ()) != 0)
-					LogPrint (eLogError, "I2PControl: Can't close cert: ", strerror (errno));
+					LogPrint (eLogError, "I2PControl: Can't close cert: ", ErrorText (errno));
 			}
 			else
-				LogPrint (eLogError, "I2PControl: Can't write cert: ", strerror (errno));
+				LogPrint (eLogError, "I2PControl: Can't write cert: ", ErrorText (errno));
 		}
 
 		// save key
 		i2p::fs::CreatePrivateFile (key_path);
-		FilePtr f (fopen (key_path, "wb"));
+		FilePtr f = OpenBinaryFile (key_path);
 		if (f)
 		{
 			LogPrint (eLogInfo, "I2PControl: saving cert key to ", key_path);
 			if (PEM_write_PrivateKey (f.get (), pkey.get (), NULL, NULL, 0, NULL, NULL) != 1)
 				LogPrint (eLogError, "I2PControl: Can't write key: ", GetOpenSSLError ());
 			else if (std::fclose (f.release ()) != 0)
-				LogPrint (eLogError, "I2PControl: Can't close key: ", strerror (errno));
+				LogPrint (eLogError, "I2PControl: Can't close key: ", ErrorText (errno));
 		}
 		else
-			LogPrint (eLogError, "I2PControl: Can't write key: ", strerror (errno));
+			LogPrint (eLogError, "I2PControl: Can't write key: ", ErrorText (errno));
 	}
 }
 }

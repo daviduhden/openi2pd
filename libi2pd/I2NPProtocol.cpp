@@ -58,7 +58,7 @@ std::shared_ptr<I2NPMessage> NewI2NPMessage (size_t len)
 
 void I2NPMessage::FillI2NPMessageHeader (I2NPMessageType msgType, uint32_t msgID, bool checksum)
 {
-	SetTypeID (msgType);
+	SetTypeID (static_cast<uint8_t> (msgType));
 	if (!msgID) RAND_bytes ((uint8_t *)&msgID, 4);
 	SetMsgID (msgID);
 	SetExpiration (i2p::util::GetMillisecondsSinceEpoch () + I2NP_MESSAGE_EXPIRATION_TIMEOUT);
@@ -340,7 +340,8 @@ std::shared_ptr<I2NPMessage> CreateDatabaseStoreMsg (std::shared_ptr<const i2p::
 	m->len += (buf - payload); // payload size
 	size_t size = 0;
 	if (routerBufferLen + (buf - payload) <= 940) // fits one tunnel message
-		size = i2p::data::GzipNoCompression (routerBufferData, routerBufferLen, buf, m->maxLen - m->len);
+		size = i2p::data::GzipNoCompression (
+			routerBufferData, static_cast<uint16_t> (routerBufferLen), buf, m->maxLen - m->len);
 	else
 	{
 		i2p::data::GzipDeflator deflator;
@@ -348,7 +349,7 @@ std::shared_ptr<I2NPMessage> CreateDatabaseStoreMsg (std::shared_ptr<const i2p::
 	}
 	if (size)
 	{
-		htobe16buf (sizePtr, size); // size
+		htobe16buf (sizePtr, static_cast<uint16_t> (size)); // size
 		m->len += size;
 	}
 	else
@@ -462,7 +463,9 @@ std::shared_ptr<I2NPMessage> CreateTunnelGatewayMsg (uint32_t tunnelID, const ui
 	auto msg = NewI2NPMessage (len);
 	uint8_t * payload = msg->GetPayload ();
 	htobe32buf (payload + TUNNEL_GATEWAY_HEADER_TUNNELID_OFFSET, tunnelID);
-	htobe16buf (payload + TUNNEL_GATEWAY_HEADER_LENGTH_OFFSET, len);
+	// The payload length is bounded by the I2NP message size, which fits the
+	// 16-bit gateway length field.
+	htobe16buf (payload + TUNNEL_GATEWAY_HEADER_LENGTH_OFFSET, static_cast<uint16_t> (len));
 	msg->len += TUNNEL_GATEWAY_HEADER_SIZE;
 	if (msg->Concat (buf, len) < len) LogPrint (eLogError, "I2NP: Tunnel gateway buffer overflow ", msg->maxLen);
 	msg->FillI2NPMessageHeader (eI2NPTunnelGateway);
@@ -476,8 +479,8 @@ std::shared_ptr<I2NPMessage> CreateTunnelGatewayMsg (uint32_t tunnelID, std::sha
 		// message is capable to be used without copying
 		uint8_t * payload = msg->GetBuffer () - TUNNEL_GATEWAY_HEADER_SIZE;
 		htobe32buf (payload + TUNNEL_GATEWAY_HEADER_TUNNELID_OFFSET, tunnelID);
-		int len = msg->GetLength ();
-		htobe16buf (payload + TUNNEL_GATEWAY_HEADER_LENGTH_OFFSET, len);
+		const size_t len = msg->GetLength ();
+		htobe16buf (payload + TUNNEL_GATEWAY_HEADER_LENGTH_OFFSET, static_cast<uint16_t> (len));
 		msg->offset -= (I2NP_HEADER_SIZE + TUNNEL_GATEWAY_HEADER_SIZE);
 		msg->len = msg->offset + I2NP_HEADER_SIZE + TUNNEL_GATEWAY_HEADER_SIZE + len;
 		msg->FillI2NPMessageHeader (eI2NPTunnelGateway);
@@ -504,7 +507,7 @@ std::shared_ptr<I2NPMessage> CreateTunnelGatewayMsg (
 	msg->offset -= gatewayMsgOffset;
 	uint8_t * payload = msg->GetPayload ();
 	htobe32buf (payload + TUNNEL_GATEWAY_HEADER_TUNNELID_OFFSET, tunnelID);
-	htobe16buf (payload + TUNNEL_GATEWAY_HEADER_LENGTH_OFFSET, len);
+	htobe16buf (payload + TUNNEL_GATEWAY_HEADER_LENGTH_OFFSET, static_cast<uint16_t> (len));
 	msg->FillI2NPMessageHeader (eI2NPTunnelGateway); // gateway message
 	return msg;
 }

@@ -14,6 +14,7 @@
 
 #include <string.h> /* memset */
 #include <array>
+#include <limits>
 #include "Log.h"
 #include "I2PEndian.h"
 #include "Gzip.h"
@@ -23,6 +24,16 @@ namespace i2p
 namespace data
 {
 	constexpr size_t GZIP_CHUNK_SIZE = 16384;
+
+	namespace
+	{
+		// zlib describes its input and output through 32-bit uInt fields. Reject
+		// buffers that cannot be represented instead of silently truncating them.
+		bool IsZlibLength (size_t len)
+		{
+			return len <= std::numeric_limits<uInt>::max ();
+		}
+	}
 
 	GzipInflator::GzipInflator ()
 		: m_IsDirty (false)
@@ -53,10 +64,15 @@ namespace data
 		}
 		if (m_IsDirty) inflateReset (&m_Inflator);
 		m_IsDirty = true;
+		if (!IsZlibLength (inLen) || !IsZlibLength (outLen))
+		{
+			LogPrint (eLogError, "Gzip: Buffer is too large");
+			return 0;
+		}
 		m_Inflator.next_in = const_cast<uint8_t *> (in);
-		m_Inflator.avail_in = inLen;
+		m_Inflator.avail_in = static_cast<uInt> (inLen);
 		m_Inflator.next_out = out;
-		m_Inflator.avail_out = outLen;
+		m_Inflator.avail_out = static_cast<uInt> (outLen);
 		int err = inflate (&m_Inflator, Z_NO_FLUSH);
 		if (err == Z_STREAM_END) return outLen - m_Inflator.avail_out;
 		if (err) LogPrint (eLogError, "Gzip: Inflate error ", err);
@@ -82,10 +98,15 @@ namespace data
 		}
 		if (m_IsDirty) inflateReset (&m_Inflator);
 		m_IsDirty = true;
+		if (!IsZlibLength (inLen) || !IsZlibLength (outLen))
+		{
+			LogPrint (eLogError, "Gzip: Buffer is too large");
+			return false;
+		}
 		m_Inflator.next_in = const_cast<uint8_t *> (in);
-		m_Inflator.avail_in = inLen;
+		m_Inflator.avail_in = static_cast<uInt> (inLen);
 		m_Inflator.next_out = out;
-		m_Inflator.avail_out = outLen;
+		m_Inflator.avail_out = static_cast<uInt> (outLen);
 		int err = inflate (&m_Inflator, Z_NO_FLUSH);
 		if (err == Z_STREAM_END)
 		{
@@ -100,13 +121,19 @@ namespace data
 	{
 		m_IsDirty = true;
 		std::array<uint8_t, GZIP_CHUNK_SIZE> out;
+		if (!IsZlibLength (inLen))
+		{
+			LogPrint (eLogError, "Gzip: Input is too large");
+			os.setstate (std::ios_base::failbit);
+			return;
+		}
 		m_Inflator.next_in = const_cast<uint8_t *> (in);
-		m_Inflator.avail_in = inLen;
+		m_Inflator.avail_in = static_cast<uInt> (inLen);
 		int ret;
 		do
 		{
 			m_Inflator.next_out = out.data ();
-			m_Inflator.avail_out = GZIP_CHUNK_SIZE;
+			m_Inflator.avail_out = static_cast<uInt> (GZIP_CHUNK_SIZE);
 			ret = inflate (&m_Inflator, Z_NO_FLUSH);
 			if (ret < 0)
 			{
@@ -150,10 +177,15 @@ namespace data
 	{
 		if (m_IsDirty) deflateReset (&m_Deflator);
 		m_IsDirty = true;
+		if (!IsZlibLength (inLen) || !IsZlibLength (outLen))
+		{
+			LogPrint (eLogError, "Gzip: Buffer is too large");
+			return 0;
+		}
 		m_Deflator.next_in = const_cast<uint8_t *> (in);
-		m_Deflator.avail_in = inLen;
+		m_Deflator.avail_in = static_cast<uInt> (inLen);
 		m_Deflator.next_out = out;
-		m_Deflator.avail_out = outLen;
+		m_Deflator.avail_out = static_cast<uInt> (outLen);
 		int err;
 		if ((err = deflate (&m_Deflator, Z_FINISH)) == Z_STREAM_END)
 		{
@@ -170,16 +202,26 @@ namespace data
 	{
 		if (m_IsDirty) deflateReset (&m_Deflator);
 		m_IsDirty = true;
+		if (!IsZlibLength (outLen))
+		{
+			LogPrint (eLogError, "Gzip: Buffer is too large");
+			return 0;
+		}
 		size_t offset = 0;
 		int err = 0;
 		for (const auto & it : bufs)
 		{
 			if (it.second > 0)
 			{
+				if (!IsZlibLength (it.second))
+				{
+					LogPrint (eLogError, "Gzip: Input is too large");
+					return 0;
+				}
 				m_Deflator.next_in = const_cast<uint8_t *> (it.first);
-				m_Deflator.avail_in = it.second;
+				m_Deflator.avail_in = static_cast<uInt> (it.second);
 				m_Deflator.next_out = out + offset;
-				m_Deflator.avail_out = outLen - offset;
+				m_Deflator.avail_out = static_cast<uInt> (outLen - offset);
 				err = deflate (&m_Deflator, Z_NO_FLUSH);
 				if (err) break;
 				offset = outLen - m_Deflator.avail_out;
@@ -191,7 +233,7 @@ namespace data
 			m_Deflator.next_in = nullptr;
 			m_Deflator.avail_in = 0;
 			m_Deflator.next_out = out + offset;
-			m_Deflator.avail_out = outLen - offset;
+			m_Deflator.avail_out = static_cast<uInt> (outLen - offset);
 			err = deflate (&m_Deflator, Z_FINISH);
 			if (err == Z_STREAM_END)
 			{
@@ -239,15 +281,16 @@ namespace data
 				auto len1 = len;
 				len += it.second;
 				if (outLen < len + 23) return 0;
+				if (!IsZlibLength (it.second)) return 0; // crc32() length is 32-bit
 				memcpy (out + 15 + len1, it.first, it.second);
-				crc = crc32 (crc, it.first, it.second);
+				crc = crc32 (crc, it.first, static_cast<uInt> (it.second));
 			}
 		}
 		if (len > 0xffff) return 0;
 		htole32buf (out + len + 15, crc);
-		htole32buf (out + len + 19, len);
-		htole16buf (out + 11, len);
-		htole16buf (out + 13, 0xffff - len);
+		htole32buf (out + len + 19, static_cast<uint32_t> (len));
+		htole16buf (out + 11, static_cast<uint16_t> (len));
+		htole16buf (out + 13, static_cast<uint16_t> (0xffff - len));
 		return len + 23;
 	}
 

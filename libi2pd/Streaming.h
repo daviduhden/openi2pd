@@ -271,8 +271,8 @@ namespace stream
 		size_t GetSendQueueSize () const { return m_SentPackets.size (); };
 		size_t GetReceiveQueueSize () const { return m_ReceiveQueue.size (); };
 		size_t GetSendBufferSize () const { return m_SendBuffer.GetSize (); };
-		int GetWindowSize () const { return m_WindowSize; };
-		int GetRTT () const { return m_RTT; };
+		int GetWindowSize () const { return static_cast<int> (m_WindowSize); };
+		int GetRTT () const { return static_cast<int> (m_RTT); };
 
 		void Terminate (bool deleteFromDestination = true);
 

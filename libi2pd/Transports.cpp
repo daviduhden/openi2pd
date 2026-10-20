@@ -157,15 +157,15 @@ namespace transport
 			LogPrint (eLogError, "Transports: Return null keys");
 	}
 
-	void Peer::UpdateParams (std::shared_ptr<const i2p::data::RouterInfo> router)
+	void Peer::UpdateParams (std::shared_ptr<const i2p::data::RouterInfo> routerInfo)
 	{
-		if (router)
+		if (routerInfo)
 		{
-			isHighBandwidth = router->IsHighBandwidth ();
-			isEligible = (bool)router->GetCompatibleTransports (true) && // reachable
-				router->GetCongestion () < i2p::data::RouterInfo::eHighCongestion
+			isHighBandwidth = routerInfo->IsHighBandwidth ();
+			isEligible = (bool)routerInfo->GetCompatibleTransports (true) && // reachable
+				routerInfo->GetCongestion () < i2p::data::RouterInfo::eHighCongestion
 				&& // accepts tunnel and not overloaded
-				router->IsECIES () && router->GetVersion () >= NETDB_MIN_HIGHBANDWIDTH_VERSION; // not too old
+				routerInfo->IsECIES () && routerInfo->GetVersion () >= NETDB_MIN_HIGHBANDWIDTH_VERSION; // not too old
 		}
 	}
 
@@ -466,9 +466,10 @@ namespace transport
 				eLogError, "Transports: Backward clock jump detected, got ", delta, " instead of ", interval * 1000);
 			return;
 		}
-		in = (sample1.TotalReceivedBytes - sample2.TotalReceivedBytes) * 1000 / delta;
-		out = (sample1.TotalSentBytes - sample2.TotalSentBytes) * 1000 / delta;
-		transit = (sample1.TotalTransitTransmittedBytes - sample2.TotalTransitTransmittedBytes) * 1000 / delta;
+		in = static_cast<uint32_t> ((sample1.TotalReceivedBytes - sample2.TotalReceivedBytes) * 1000 / delta);
+		out = static_cast<uint32_t> ((sample1.TotalSentBytes - sample2.TotalSentBytes) * 1000 / delta);
+		transit = static_cast<uint32_t> (
+			(sample1.TotalTransitTransmittedBytes - sample2.TotalTransitTransmittedBytes) * 1000 / delta);
 	}
 
 	void Transports::HandleUpdateBandwidthTimer (const boost::system::error_code & ecode)
@@ -515,7 +516,7 @@ namespace transport
 		}
 		auto bwCongestionLevel = CONGESTION_LEVEL_FULL * bw / bwLimit;
 		auto tbwCongestionLevel = CONGESTION_LEVEL_FULL * tbw / tbwLimit;
-		return std::max (bwCongestionLevel, tbwCongestionLevel);
+		return static_cast<int> (std::max (bwCongestionLevel, tbwCongestionLevel));
 	}
 
 	std::future<std::shared_ptr<TransportSession>> Transports::SendMessage (
@@ -688,7 +689,8 @@ namespace transport
 						// connection to the same router.
 						if (!address->host.is_unspecified () && address->port
 							&& m_SSU2Server->FindPendingOutgoingSession (
-								boost::asio::ip::udp::endpoint (address->host, address->port)))
+								boost::asio::ip::udp::endpoint (address->host,
+									static_cast<uint16_t> (address->port)))))
 							return true;
 					}
 					break;
@@ -772,8 +774,8 @@ namespace transport
 					if (addr && addr->v == 2) isSSU2PQ = false;
 					if (isSSU2PQ)
 					{
-						auto addr = peer->router->GetSSU2V6Address ();
-						if (addr && addr->v == 2) isSSU2PQ = false;
+						auto addrV6 = peer->router->GetSSU2V6Address ();
+						if (addrV6 && addrV6->v == 2) isSSU2PQ = false;
 					}
 				}
 #endif
@@ -992,11 +994,12 @@ namespace transport
 					if (peer->numAttempts > 1)
 					{
 						// exclude failed transports
-						i2p::data::RouterInfo::CompatibleTransports transports = 0;
+						i2p::data::RouterInfo::CompatibleTransports excludeTransports = 0;
 						int numExcluded = peer->numAttempts - 1;
-						if (numExcluded > (int)peer->priority.size ()) numExcluded = peer->priority.size ();
-						for (int i = 0; i < numExcluded; i++) transports |= peer->priority[i];
-						i2p::data::netdb.ExcludeReachableTransports (ident, transports);
+						if (numExcluded > (int)peer->priority.size ())
+							numExcluded = static_cast<int> (peer->priority.size ());
+						for (int i = 0; i < numExcluded; i++) excludeTransports |= peer->priority[i];
+						i2p::data::netdb.ExcludeReachableTransports (ident, excludeTransports);
 					}
 					if (peer->router && peer->numAttempts)
 					{
@@ -1052,12 +1055,12 @@ namespace transport
 							if (profile) profile->Connected ();
 						});
 					auto ts = i2p::util::GetSecondsSinceEpoch ();
-					auto peer = std::make_shared<Peer> (r, ts);
-					peer->sessions.push_back (session);
-					peer->router = nullptr;
+					auto newPeer = std::make_shared<Peer> (r, ts);
+					newPeer->sessions.push_back (session);
+					newPeer->router = nullptr;
 					{
 						std::lock_guard<std::mutex> l (m_PeersMutex);
-						m_Peers.emplace (ident, peer);
+						m_Peers.emplace (ident, newPeer);
 					}
 				}
 				if (IsCheckReserved ())
@@ -1375,14 +1378,15 @@ namespace transport
 				// from inds[1] to inds[2]
 				for (auto i = inds[1]; i < inds[2]; i++)
 				{
-					auto & [ident, peer] = peers[i];
-					if (!peer->isDone && ts > peer->lastSelectionTime + PEER_SELECTION_MIN_INTERVAL)
+					auto & [otherIdent, otherPeer] = peers[i];
+					if (!otherPeer->isDone && ts > otherPeer->lastSelectionTime + PEER_SELECTION_MIN_INTERVAL)
 					{
-						bool eligibleForFirstHop = peerOrdering ? peerOrdering->IsFirstHop (ident) : true;
-						if (eligibleForFirstHop && filter (peer))
+						bool eligibleForFirstHop
+							= peerOrdering ? peerOrdering->IsFirstHop (otherIdent) : true;
+						if (eligibleForFirstHop && filter (otherPeer))
 						{
-							foundIdent = ident;
-							peer->lastSelectionTime = ts;
+							foundIdent = otherIdent;
+							otherPeer->lastSelectionTime = ts;
 							found = true;
 							break;
 						}
@@ -1394,14 +1398,16 @@ namespace transport
 					// still not found, try from the beginning to inds[1]
 					for (size_t i = 0; i < inds[1]; i++)
 					{
-						auto & [ident, peer] = peers[i];
-						if (!peer->isDone && ts > peer->lastSelectionTime + PEER_SELECTION_MIN_INTERVAL)
+						auto & [otherIdent, otherPeer] = peers[i];
+						if (!otherPeer->isDone
+							&& ts > otherPeer->lastSelectionTime + PEER_SELECTION_MIN_INTERVAL)
 						{
-							bool eligibleForFirstHop = peerOrdering ? peerOrdering->IsFirstHop (ident) : true;
-							if (eligibleForFirstHop && filter (peer))
+							bool eligibleForFirstHop
+								= peerOrdering ? peerOrdering->IsFirstHop (otherIdent) : true;
+							if (eligibleForFirstHop && filter (otherPeer))
 							{
-								foundIdent = ident;
-								peer->lastSelectionTime = ts;
+								foundIdent = otherIdent;
+								otherPeer->lastSelectionTime = ts;
 								found = true;
 								break;
 							}
@@ -1413,14 +1419,16 @@ namespace transport
 						// still not found, try from inds[2] to the end
 						for (auto i = inds[2]; i < peers.size (); i++)
 						{
-							auto & [ident, peer] = peers[i];
-							if (!peer->isDone && ts > peer->lastSelectionTime + PEER_SELECTION_MIN_INTERVAL)
+							auto & [otherIdent, otherPeer] = peers[i];
+							if (!otherPeer->isDone
+								&& ts > otherPeer->lastSelectionTime + PEER_SELECTION_MIN_INTERVAL)
 							{
-								bool eligibleForFirstHop = peerOrdering ? peerOrdering->IsFirstHop (ident) : true;
-								if (eligibleForFirstHop && filter (peer))
+								bool eligibleForFirstHop
+									= peerOrdering ? peerOrdering->IsFirstHop (otherIdent) : true;
+								if (eligibleForFirstHop && filter (otherPeer))
 								{
-									foundIdent = ident;
-									peer->lastSelectionTime = ts;
+									foundIdent = otherIdent;
+									otherPeer->lastSelectionTime = ts;
 									found = true;
 									break;
 								}

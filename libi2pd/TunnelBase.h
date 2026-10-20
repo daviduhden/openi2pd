@@ -57,7 +57,7 @@ namespace tunnel
 			: m_TunnelID (tunnelID)
 			, m_NextTunnelID (nextTunnelID)
 			, m_NextIdent (nextIdent)
-			, m_CreationTime (i2p::util::GetSecondsSinceEpoch ()) { };
+			, m_CreationTime (static_cast<uint32_t> (i2p::util::GetSecondsSinceEpoch ())) { };
 		virtual ~TunnelBase () { };
 		virtual void Cleanup () { };
 

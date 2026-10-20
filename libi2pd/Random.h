@@ -32,7 +32,7 @@ namespace crypto
 	{
 		if (bound < 2) return 0;
 		// Reject the short top interval to avoid modulo bias.
-		const uint32_t threshold = static_cast<uint32_t> (-bound) % bound;
+		const uint32_t threshold = (uint32_t { 0 } - bound) % bound;
 		uint32_t value;
 		do value = RandomUInt32 ();
 		while (value < threshold);

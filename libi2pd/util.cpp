@@ -153,7 +153,7 @@ namespace util
 		THREADNAME_INFO info;
 		info.dwType = 0x1000;
 		info.szName = name;
-		info.dwThreadID = -1;
+		info.dwThreadID = static_cast<DWORD> (-1);
 		info.dwFlags = 0;
 #pragma warning(push)
 #pragma warning(disable : 6320 6322)
@@ -218,7 +218,8 @@ namespace util
 	std::string_view Mapping::ExtractString (const uint8_t * buf, size_t len)
 	{
 		if (!len) return { };
-		uint8_t l = buf[0];
+		// The length prefix is one byte, so the clamped size always fits size_t.
+		size_t l = buf[0];
 		if (l > len - 1) l = len - 1;
 		return { (const char *)(buf + 1), l };
 	}
@@ -233,7 +234,8 @@ namespace util
 			if (!l) break;
 			offset += l;
 		}
-		htobe16buf (buf, offset - 2);
+		// Option buffers are tunnel/datagram-size, far below the 16-bit prefix.
+		htobe16buf (buf, static_cast<uint16_t> (offset - 2));
 		return offset;
 	}
 
@@ -243,7 +245,7 @@ namespace util
 		auto l = str.length ();
 		if (l + 1 >= len) l = len - 1;
 		if (l > 255) l = 255; // 1 byte max
-		buf[0] = l;
+		buf[0] = static_cast<uint8_t> (l);
 		memcpy (buf + 1, str.data (), l);
 		return l + 1;
 	}
@@ -316,7 +318,7 @@ namespace util
 
 	uint_fast32_t GetRngSeed ()
 	{
-		return GetMonotonicMicroseconds ();
+		return static_cast<uint_fast32_t> (GetMonotonicMicroseconds ());
 	}
 
 	namespace net
@@ -547,12 +549,12 @@ namespace util
 #else
 			return GetMTUUnix (localAddress, fallback);
 #endif
-			return fallback;
 		}
 
 		const boost::asio::ip::address GetInterfaceAddress (const std::string & ifname, bool ipv6)
 		{
 #ifdef _WIN32
+			(void) ifname; // no reliable name-to-address mapping in the Windows API path
 			LogPrint (eLogError, "NetIface: Cannot get address by interface name, not implemented on WIN32");
 			if (ipv6)
 				return boost::asio::ip::make_address ("::1");

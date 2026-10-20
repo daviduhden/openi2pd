@@ -101,7 +101,7 @@ namespace tunnel
 	void TunnelPool::SetExplicitPeers (std::vector<i2p::data::IdentHash> explicitPeers)
 	{
 		m_ExplicitPeers.swap (explicitPeers);
-		int size = m_ExplicitPeers.size ();
+		int size = static_cast<int> (m_ExplicitPeers.size ());
 		if (size > 0)
 		{
 			if (m_NumInboundHops > size)
@@ -272,7 +272,7 @@ namespace tunnel
 		i2p::data::RouterInfo::CompatibleTransports compatible)
 	{
 		if (tunnels.empty ()) return nullptr;
-		uint32_t ind = NextRng () % (tunnels.size () / 2 + 1), i = 0;
+		uint32_t ind = static_cast<uint32_t> (NextRng () % (tunnels.size () / 2 + 1)), i = 0;
 		bool skipped = false;
 		typename TTunnels::value_type tunnel = nullptr;
 		for (const auto & it : tunnels)
@@ -576,7 +576,7 @@ namespace tunnel
 		}
 		if (found)
 		{
-			int dlt = (uint64_t)i2p::util::GetMonotonicMicroseconds () - (int64_t)timestamp;
+			int dlt = static_cast<int> ((uint64_t)i2p::util::GetMonotonicMicroseconds () - (int64_t)timestamp);
 			LogPrint (eLogDebug, "Tunnels: Test of ", msgID, " successful. ", dlt, " microseconds");
 			if (dlt < 0) dlt = 0; // should not happen
 			int numHops = 0;
@@ -739,7 +739,7 @@ namespace tunnel
 		if (m_ExplicitPeers.empty ()) return false;
 		int numHops = isInbound ? m_NumInboundHops.load (std::memory_order_relaxed)
 								: m_NumOutboundHops.load (std::memory_order_relaxed);
-		if (numHops > (int)m_ExplicitPeers.size ()) numHops = m_ExplicitPeers.size ();
+		if (numHops > (int)m_ExplicitPeers.size ()) numHops = static_cast<int> (m_ExplicitPeers.size ());
 		for (int i = 0; i < numHops; i++)
 		{
 			auto & ident = m_ExplicitPeers[i];

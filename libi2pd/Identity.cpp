@@ -140,14 +140,14 @@ namespace data
 			case SIGNING_KEY_TYPE_ECDSA_SHA256_P256:
 			{
 				size_t padding = 128 - i2p::crypto::ECDSAP256_KEY_LENGTH; // 64 = 128 - 64
-				RAND_bytes (m_StandardIdentity.signingKey, padding);
+				RAND_bytes (m_StandardIdentity.signingKey, static_cast<int> (padding));
 				memcpy (m_StandardIdentity.signingKey + padding, signingKey, i2p::crypto::ECDSAP256_KEY_LENGTH);
 				break;
 			}
 			case SIGNING_KEY_TYPE_ECDSA_SHA384_P384:
 			{
 				size_t padding = 128 - i2p::crypto::ECDSAP384_KEY_LENGTH; // 32 = 128 - 96
-				RAND_bytes (m_StandardIdentity.signingKey, padding);
+				RAND_bytes (m_StandardIdentity.signingKey, static_cast<int> (padding));
 				memcpy (m_StandardIdentity.signingKey + padding, signingKey, i2p::crypto::ECDSAP384_KEY_LENGTH);
 				break;
 			}
@@ -188,7 +188,7 @@ namespace data
 			{
 				// 256
 				size_t padding = 128 - i2p::crypto::GOSTR3410_256_PUBLIC_KEY_LENGTH; // 64 = 128 - 64
-				RAND_bytes (m_StandardIdentity.signingKey, padding);
+				RAND_bytes (m_StandardIdentity.signingKey, static_cast<int> (padding));
 				memcpy (
 					m_StandardIdentity.signingKey + padding, signingKey, i2p::crypto::GOSTR3410_256_PUBLIC_KEY_LENGTH);
 				break;
@@ -215,7 +215,7 @@ namespace data
 			m_ExtendedLen = extendedLen; // 4 bytes extra + excess length
 			// fill certificate
 			m_StandardIdentity.certificate[0] = CERTIFICATE_TYPE_KEY;
-			htobe16buf (m_StandardIdentity.certificate + 1, m_ExtendedLen);
+			htobe16buf (m_StandardIdentity.certificate + 1, static_cast<uint16_t> (m_ExtendedLen));
 			// fill extended buffer
 			htobe16buf (m_ExtendedBuffer, type);
 			htobe16buf (m_ExtendedBuffer + 2, cryptoType);
@@ -250,7 +250,7 @@ namespace data
 				// DSA-SHA1. The legacy null certificate cannot express it.
 				m_ExtendedLen = 4;
 				m_StandardIdentity.certificate[0] = CERTIFICATE_TYPE_KEY;
-				htobe16buf (m_StandardIdentity.certificate + 1, m_ExtendedLen);
+				htobe16buf (m_StandardIdentity.certificate + 1, static_cast<uint16_t> (m_ExtendedLen));
 				htobe16buf (m_ExtendedBuffer, type);
 				htobe16buf (m_ExtendedBuffer + 2, cryptoType);
 				RecalculateIdentHash ();
@@ -1239,7 +1239,7 @@ namespace data
 				keys.CreateSigner ();
 				return keys;
 			}
-			Sign (keys.m_OfflineSignature.data (), pubKeyLen + 6,
+			Sign (keys.m_OfflineSignature.data (), static_cast<int> (pubKeyLen + 6),
 				keys.m_OfflineSignature.data () + 6 + pubKeyLen); // signature
 			if (!m_Public->Verify (
 					keys.m_OfflineSignature.data (), pubKeyLen + 6, keys.m_OfflineSignature.data () + 6 + pubKeyLen))

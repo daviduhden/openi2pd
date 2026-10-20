@@ -1083,7 +1083,7 @@ namespace client
 				{
 					try
 					{
-						i2p::data::CryptoKeyType cryptoType = std::stoi (it1);
+						auto cryptoType = static_cast<i2p::data::CryptoKeyType> (std::stoi (it1));
 #if OPENSSL_PQ
 						if (cryptoType <= i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD
 							|| i2p::crypto::IsMLKEMSupported (cryptoType))
@@ -1632,7 +1632,7 @@ namespace client
 				const size_t leaseSetBufferLen = leaseSet->LocalLeaseSet::GetBufferLen ();
 				const size_t signatureLen = leaseSet->GetSignatureLen ();
 				if (leaseSetBuffer && leaseSetBufferLen >= signatureLen)
-					Sign (leaseSetBuffer, leaseSetBufferLen - signatureLen,
+					Sign (leaseSetBuffer, static_cast<int> (leaseSetBufferLen - signatureLen),
 						leaseSetBuffer + leaseSetBufferLen - signatureLen);
 				else
 					LogPrint (eLogError, "Destination: LS1 buffer is too short to sign");

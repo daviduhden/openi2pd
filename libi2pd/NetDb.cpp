@@ -745,13 +745,13 @@ namespace data
 		}
 	}
 
-	void NetDb::ExcludeReachableTransports (const IdentHash & ident, RouterInfo::CompatibleTransports transports)
+	void NetDb::ExcludeReachableTransports (const IdentHash & ident, RouterInfo::CompatibleTransports compatibleTransports)
 	{
 		auto r = FindRouter (ident);
 		if (r)
 		{
 			std::lock_guard<std::mutex> l (m_RouterInfosMutex);
-			r->ExcludeReachableTransports (transports);
+			r->ExcludeReachableTransports (compatibleTransports);
 		}
 	}
 
@@ -1266,6 +1266,8 @@ namespace data
 		uint8_t storeType = buf[DATABASE_STORE_TYPE_OFFSET] & DATABASE_STORE_TYPE_MASK;
 		if (storeType) // LeaseSet or LeaseSet2
 		{
+			// len is capped by MAX_LS_BUFFER_SIZE here, so the fits-in-int
+			// lengths below cannot overflow.
 			if (len > MAX_LS_BUFFER_SIZE + offset)
 			{
 				LogPrint (eLogError, "NetDb: Database store message is too long ", len);
@@ -1282,14 +1284,15 @@ namespace data
 				{
 					if (CheckLogLevel (eLogDebug))
 						LogPrint (eLogDebug, "NetDb: Store request: LeaseSet for ", ident.ToBase32 ());
-					updated = AddLeaseSet (ident, buf + offset, len - offset);
+					updated = AddLeaseSet (ident, buf + offset, static_cast<int> (len - offset));
 				}
 				else // all others are considered as LeaseSet2
 				{
 					if (CheckLogLevel (eLogDebug))
 						LogPrint (eLogDebug, "NetDb: Store request: LeaseSet2 of type ", int (storeType), " for ",
 							ident.ToBase32 ());
-					updated = AddLeaseSet2 (ident, buf + offset, len - offset, storeType);
+					updated = AddLeaseSet2 (
+						ident, buf + offset, static_cast<int> (len - offset), storeType);
 				}
 			}
 		}
@@ -1311,7 +1314,7 @@ namespace data
 			uint8_t uncompressed[MAX_RI_BUFFER_SIZE];
 			size_t uncompressedSize = m_Inflator.Inflate (buf + offset, size, uncompressed, MAX_RI_BUFFER_SIZE);
 			if (uncompressedSize && uncompressedSize <= MAX_RI_BUFFER_SIZE)
-				updated = AddRouterInfo (ident, uncompressed, uncompressedSize);
+				updated = AddRouterInfo (ident, uncompressed, static_cast<int> (uncompressedSize));
 			else
 			{
 				LogPrint (eLogInfo, "NetDb: Decompression failed ", uncompressedSize);

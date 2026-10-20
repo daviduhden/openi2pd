@@ -92,21 +92,21 @@ namespace crypto
 		// RSA
 		BIGNUM * rsae;
 
-		CryptoConstants (const uint8_t * elgp_, int elgg_, const uint8_t * dsap_, const uint8_t * dsaq_,
-			const uint8_t * dsag_, int rsae_)
+		CryptoConstants (const uint8_t * elgpBytes, int elggValue, const uint8_t * dsapBytes,
+			const uint8_t * dsaqBytes, const uint8_t * dsagBytes, int rsaeValue)
 		{
 			elgp = BN_new ();
-			BN_bin2bn (elgp_, 256, elgp);
+			BN_bin2bn (elgpBytes, 256, elgp);
 			elgg = BN_new ();
-			BN_set_word (elgg, elgg_);
+			BN_set_word (elgg, elggValue);
 			dsap = BN_new ();
-			BN_bin2bn (dsap_, 128, dsap);
+			BN_bin2bn (dsapBytes, 128, dsap);
 			dsaq = BN_new ();
-			BN_bin2bn (dsaq_, 20, dsaq);
+			BN_bin2bn (dsaqBytes, 20, dsaq);
 			dsag = BN_new ();
-			BN_bin2bn (dsag_, 128, dsag);
+			BN_bin2bn (dsagBytes, 128, dsag);
 			rsae = BN_new ();
-			BN_set_word (rsae, rsae_);
+			BN_set_word (rsae, rsaeValue);
 		}
 
 		~CryptoConstants ()
