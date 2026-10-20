@@ -26,7 +26,10 @@ Workflows remain **manual-only** (`workflow_dispatch`); no `push`,
   runs the full CTest suite and validates `i2pd --version`. The Perl syntax,
   Python-free portability, branding, documentation-link, `i2pdctl`,
   install-layout and static interoperability-fixture checks run in the same
-  jobs. A `ctest -N -L` inventory also verifies that the i2p, security, memory,
+  jobs. The Homebrew toolchain action installs the latest Homebrew Perl and
+  exposes both `perl` and `prove` ahead of the runner Perl, so CMake's
+  `find_package(Perl)` and the shell checks use one interpreter. A
+  `ctest -N -L` inventory also verifies that the i2p, security, memory,
   IPC, TUI, torrent, tools, Perl, interop, platform and Android groups are
   registered. `.perlcriticrc` is prepared for an opt-in style pass
   (`-DI2PD_PERL_CRITIC=ON`); Perl::Critic is not a required dependency.

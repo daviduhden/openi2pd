@@ -3,13 +3,13 @@
 #
 # openi2pd: latest Homebrew toolchain.
 #
-# Installs the newest GCC, LLVM, CMake, Ninja, Boost, OpenSSL, zlib,
+# Installs the newest GCC, LLVM, CMake, Ninja, Perl, Boost, OpenSSL, zlib,
 # MiniUPnPc and ncurses available from Homebrew on Linux. Stable command names
 # and CMake/runtime hints are exposed through a per-run file.
 #
 ---
 name: Latest Homebrew toolchain
-description: Install latest GCC, LLVM, CMake, Ninja, Boost, OpenSSL and dependencies.
+description: Install latest GCC, LLVM, CMake, Ninja, Perl, Boost, OpenSSL and dependencies.
 inputs:
   compilers:
     description: Install and expose GCC and LLVM as well as CMake/Ninja.
@@ -36,7 +36,7 @@ runs:
         eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
         export HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_CLEANUP=1
         brew update
-        packages='cmake ninja pkgconf'
+        packages='cmake ninja pkgconf perl'
         if [ "$INSTALL_COMPILERS" = 'true' ]; then
           packages="$packages gcc llvm"
         fi
@@ -63,6 +63,18 @@ runs:
         if [ -x "${prefix}/bin/pkg-config" ]; then
           ln -sfn "${prefix}/bin/pkg-config" "${toolchain_bin}/pkg-config"
         fi
+        # Use the Homebrew Perl in every job that tests the latest Homebrew
+        # dependency set. CMake's find_package(Perl) and the shell steps then
+        # agree, and prove runs with the same interpreter as perl.
+        perl_prefix="$(brew --prefix perl)"
+        for tool in perl prove; do
+          if [ -x "${perl_prefix}/bin/${tool}" ]; then
+            ln -sfn "${perl_prefix}/bin/${tool}" "${toolchain_bin}/${tool}"
+          else
+            echo "Homebrew Perl is missing ${perl_prefix}/bin/${tool}" >&2
+            exit 1
+          fi
+        done
 
         ld_path="${LD_LIBRARY_PATH:-}"
         if [ "$INSTALL_COMPILERS" = 'true' ]; then
@@ -113,6 +125,7 @@ runs:
 
         cmake --version | head -1
         ninja --version
+        perl --version | sed -n '1,2p'
         if [ "$INSTALL_COMPILERS" = 'true' ]; then
           gcc --version | head -1
           clang --version | head -1
