@@ -27,12 +27,14 @@ namespace qt
 }
 }
 
-int main (int argc, char * argv[])
+namespace
 {
-	return i2p::qt::RunQT (argc, argv);
-}
+int RunI2PD (int argc, char * argv[]) { return i2p::qt::RunQT (argc, argv); }
+} // namespace
 #else
-int main (int argc, char * argv[])
+namespace
+{
+int RunI2PD (int argc, char * argv[])
 {
 #ifndef _WIN32
 	if (argc == 4 && std::string_view (argv[1]) == "--privsep-worker")
@@ -48,13 +50,19 @@ int main (int argc, char * argv[])
 	}
 	return EXIT_SUCCESS;
 }
+} // namespace
 #endif
+
+int main (int argc, char * argv[])
+{
+	return RunI2PD (argc, argv);
+}
 
 #ifdef _WIN32
 #include <windows.h>
 
 int CALLBACK WinMain (_In_ HINSTANCE hInstance, _In_ HINSTANCE hPrevInstance, _In_ LPSTR lpCmdLine, _In_ int nCmdShow)
 {
-	return main (__argc, __argv);
+	return RunI2PD (__argc, __argv);
 }
 #endif

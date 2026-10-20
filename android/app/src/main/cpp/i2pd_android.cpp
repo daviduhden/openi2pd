@@ -1018,7 +1018,7 @@ extern "C" JNIEXPORT jbyteArray JNICALL Java_org_openi2pd_router_I2PD_1JNI_build
             catch (...) { if (path) env->DeleteLocalRef (path); throw; }
             env->DeleteLocalRef (path);
             if (static_cast<uint64_t> (sizes[i]) > std::numeric_limits<size_t>::max ()) return nullptr;
-            files.emplace_back (std::filesystem::u8path (text), static_cast<size_t> (sizes[i]));
+            files.emplace_back (std::filesystem::path (text), static_cast<size_t> (sizes[i]));
         }
         auto rawHashes = bytes (hashes, 5 * 1024 * 1024);
         if (rawHashes.size () % 20) return nullptr;

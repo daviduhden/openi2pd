@@ -11,7 +11,7 @@
 // Torrent piece publication contract, suitable for a normal CTest run and
 // for the manual TSan sanitizer job:
 //
-//   c++ -std=c++23 -fsanitize=thread -Ilibi2pd -Ilibi2pd_client \
+//   c++ -std=c++23 -fsanitize=thread -Ilibi2pd -Ilibi2pd_client
 //       tests/test-torrents-concurrency.cpp libi2pd_client/Torrents.cpp ...
 //
 // The test only relies on the public Piece/Torrent API. It is registered in

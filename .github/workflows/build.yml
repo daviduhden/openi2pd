@@ -130,7 +130,7 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830  # v4
         with:
           path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
-          key: android-arm64-${{ env.NDK_VERSION }}-${{ hashFiles('contrib/ci/android/*') }}
+          key: android-arm64-android-24-${{ env.NDK_VERSION }}-${{ hashFiles('contrib/ci/android/*') }}
       - name: Build Android arm64
         run: |
           cmake -S build -B build-android -G Ninja \
@@ -139,7 +139,7 @@ jobs:
             -DVCPKG_MANIFEST_DIR="$GITHUB_WORKSPACE/contrib/ci/android" \
             -DVCPKG_OVERLAY_TRIPLETS="$GITHUB_WORKSPACE/contrib/ci/android" \
             -DVCPKG_TARGET_TRIPLET=arm64-android \
-            -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-28 \
+            -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-24 \
             -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF \
             -DI2PD_BUILD_JNI=ON -DWITH_BINARY=OFF
           cmake --build build-android --parallel 2 --target i2pd_jni

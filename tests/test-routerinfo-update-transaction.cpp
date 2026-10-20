@@ -259,7 +259,8 @@ int main ()
 
 		// Flip one signature byte: verification fails and the old state stays.
 		auto tampered = first;
-		tampered.back () ^= 0x01;
+		assert (!tampered.empty ());
+		tampered.at (tampered.size () - 1) ^= 0x01;
 		assert (!router.Update (tampered.data (), tampered.size ()));
 		ExpectSameState (router, timestamp, 12345, 25000);
 	}
@@ -322,7 +323,8 @@ int main ()
 		ExpectSameState (loaded, timestamp, 12345, 25000);
 
 		auto corrupted = buffer;
-		corrupted.back () ^= 0x80;
+		assert (!corrupted.empty ());
+		corrupted.at (corrupted.size () - 1) ^= 0x80;
 		{
 			std::ofstream out (path.string (), std::ofstream::binary | std::ofstream::trunc);
 			assert (out.is_open ());

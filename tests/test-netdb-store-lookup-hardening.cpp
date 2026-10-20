@@ -205,7 +205,8 @@ void TestRouterInfoReplacementPreservesValidEntry ()
 
 	// A newer RI with an invalid signature is also rejected without erasing.
 	auto badSignature = BuildRouterInfo (keys, now, false, "2.13.0");
-	badSignature.back () ^= 0x80;
+	assert (!badSignature.empty ());
+	badSignature.at (badSignature.size () - 1) ^= 0x80;
 	assert (!db.AddRouterInfo (ident, badSignature.data (), badSignature.size ()));
 	assert (db.FindRouter (ident) == original);
 

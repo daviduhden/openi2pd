@@ -149,10 +149,14 @@ int main ()
 		std::atomic<int> remaining { 8 };
 		auto second = std::make_shared<std::promise<void>> ();
 		auto secondFuture = second->get_future ();
-		std::function<void ()> receiveNext = [&, second] ()
+		// The handler owns this buffer. Reusing a single queued receive buffer is
+		// safe because the next async_receive is only posted after the previous
+		// handler has consumed the datagram.
+		auto nextBuffer = std::make_shared<std::vector<uint8_t>> (64);
+		std::function<void ()> receiveNext = [&, second, nextBuffer] ()
 		{
-			receiver.async_receive (boost::asio::buffer (buffer),
-				[&, second] (const boost::system::error_code & ec, std::size_t len)
+			receiver.async_receive (boost::asio::buffer (*nextBuffer),
+				[&, second, nextBuffer] (const boost::system::error_code & ec, std::size_t len)
 				{
 					assert (!ec);
 					assert (len > 0);

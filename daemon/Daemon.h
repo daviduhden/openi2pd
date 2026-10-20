@@ -114,12 +114,12 @@ namespace util
 			return instance;
 		}
 
-		bool init (int argc, char * argv[]);
-		bool start ();
-		bool stop ();
-		void run ();
+		bool init (int argc, char * argv[]) override;
+		bool start () override;
+		bool stop () override;
+		void run () override;
 
-		int GetGracefulShutdownInterval () const;
+		int GetGracefulShutdownInterval () const override;
 
 	public:
 		bool isGraceful;
@@ -152,9 +152,9 @@ namespace util
 			return instance;
 		}
 
-		bool start ();
-		bool stop ();
-		void run ();
+		bool start () override;
+		bool stop () override;
+		void run () override;
 
 		bool SupportsGracefulShutdown () const override { return true; }
 		void SetGracefulShutdownInterval (int seconds) override { gracefulShutdownInterval = seconds; }

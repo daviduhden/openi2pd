@@ -325,7 +325,7 @@ if(WITH_FUZZERS)
     message(FATAL_ERROR "WITH_FUZZERS requires Clang")
   endif()
   foreach(fuzzer fuzz-tui-protocol fuzz-http-parser fuzz-protocol-bounds fuzz-log-record fuzz-privsep-protocol fuzz-torrents-parsers fuzz-base-blinding fuzz-signature-der)
-    add_executable(${fuzzer} "fuzz/${fuzzer}.cpp")
+    add_executable(${fuzzer} "fuzz/${fuzzer}.cpp" "fuzz-initialize.cpp")
     target_compile_features(${fuzzer} PRIVATE cxx_std_23)
     # Some fuzzers include privsep/, daemon/ and other project-root headers.
     target_include_directories(${fuzzer} PRIVATE "${PROJECT_ROOT}")
