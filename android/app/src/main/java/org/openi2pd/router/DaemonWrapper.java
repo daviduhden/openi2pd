@@ -420,6 +420,8 @@ public class DaemonWrapper {
             processAssets();
             prepareTorrentSession();
             I2PD_JNI.loadLibraries();
+            if (!I2PD_JNI.installSafStorageBridge(TorrentSafStorage.class))
+                throw new IllegalStateException("SAF storage bridge initialization failed");
         } catch (Throwable tr) {
             lastThrowable = tr;
             synchronized (lock) {

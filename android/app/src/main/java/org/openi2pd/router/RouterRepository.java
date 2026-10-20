@@ -172,6 +172,23 @@ public final class RouterRepository implements RouterService.Listener {
         local.torrentCommand(request, callback);
     }
 
+    public void createSafTorrent(android.net.Uri source, boolean tree, int pieceLength, String[] trackers, boolean privateTorrent,
+            java.util.function.LongConsumer progress, java.util.function.Consumer<byte[]> callback) {
+        RouterService local = service;
+        if (closed || local == null) { callback.accept(null); return; }
+        local.createSafTorrent(source, tree, pieceLength, trackers, privateTorrent, progress, callback);
+    }
+    public void cancelSafCreation() {
+        RouterService local = service;
+        if (local != null) local.cancelSafCreation();
+    }
+    public void exportTorrent(android.net.Uri target, byte[] metadata,
+            java.util.function.Consumer<Boolean> callback) {
+        RouterService local = service;
+        if (closed || local == null) { callback.accept(false); return; }
+        local.exportTorrent(target, metadata, callback);
+    }
+
     public void importTorrent(
             int tunnel, android.net.Uri document, java.util.function.Consumer<String> callback) {
         RouterService local = service;

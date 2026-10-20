@@ -44,6 +44,15 @@ public final class TorrentsFragment extends Fragment {
     private int tunnel;
     private int generation;
     private int importTunnel;
+    private String storageTunnel = "", storageHash = "", currentTunnelName = "";
+    private final ActivityResultLauncher<android.net.Uri> selectPayloadTree =
+            registerForActivityResult(new ActivityResultContracts.OpenDocumentTree(), uri -> {
+                if (uri == null || !isAdded()) return;
+                boolean saved = TorrentSafStorage.select(requireContext(), storageTunnel, storageHash, uri);
+                if (status != null) status.setText(saved
+                        ? "Storage selected. Restart the router to attach documents and verify existing pieces."
+                        : "Persistent read/write document permission is required");
+            });
     // Registration is unconditional and precedes STARTED, so the registry
     // restores picker results across Activity/Fragment recreation.
     private final ActivityResultLauncher<String[]> openTorrent =
@@ -59,12 +68,29 @@ public final class TorrentsFragment extends Fragment {
                 model.importTorrent(importTunnel, document);
             });
 
+    private final ActivityResultLauncher<String[]> createDocumentSource =
+            registerForActivityResult(new ActivityResultContracts.OpenDocument(), uri -> {
+                if (uri != null) configureSafCreation(uri, false);
+            });
+    private final ActivityResultLauncher<android.net.Uri> createTreeSource =
+            registerForActivityResult(new ActivityResultContracts.OpenDocumentTree(), uri -> {
+                if (uri != null) configureSafCreation(uri, true);
+            });
+    private final ActivityResultLauncher<String> exportMetadata = registerForActivityResult(
+            new ActivityResultContracts.CreateDocument("application/x-bittorrent"), uri -> {
+                if (uri != null) model.exportTorrent(uri, success -> {
+                    if (status != null) status.setText(success ? "Torrent exported" : "Export failed");
+                });
+            });
+
     @Override
     public void onCreate(@Nullable Bundle state) {
         super.onCreate(state);
         if (state != null) {
             tunnel = state.getInt("torrent_tunnel", 0);
             importTunnel = state.getInt("torrent_import_tunnel", tunnel);
+            storageTunnel = state.getString("torrent_storage_tunnel", "");
+            storageHash = state.getString("torrent_storage_hash", "");
         }
     }
 
@@ -73,6 +99,8 @@ public final class TorrentsFragment extends Fragment {
         super.onSaveInstanceState(state);
         state.putInt("torrent_tunnel", tunnel);
         state.putInt("torrent_import_tunnel", importTunnel);
+        state.putString("torrent_storage_tunnel", storageTunnel);
+        state.putString("torrent_storage_hash", storageHash);
     }
 
     @Nullable
@@ -100,7 +128,19 @@ public final class TorrentsFragment extends Fragment {
         });
         button(content, R.string.torrent_dht,
                 ignored -> request("TORRENT-DHT " + tunnel, this::showFields));
-        button(content, R.string.torrent_create, ignored -> createTorrent());
+        button(content, R.string.torrent_create, ignored -> {
+            new MaterialAlertDialogBuilder(requireContext()).setTitle(R.string.torrent_create)
+                    .setItems(new String[] {"File in private storage", "SAF document", "SAF folder",
+                            "Export generated torrent", "Cancel SAF creation"}, (dialog, item) -> {
+                        switch (item) {
+                            case 0 -> createTorrent();
+                            case 1 -> createDocumentSource.launch(new String[] {"*/*"});
+                            case 2 -> createTreeSource.launch(null);
+                            case 3 -> exportMetadata.launch("created.torrent");
+                            case 4 -> model.cancelSafCreation();
+                        }
+                    }).show();
+        });
         button(content, R.string.torrent_creation_status,
                 ignored -> request("TORRENT-SESSION " + tunnel, this::showCreation));
         rows = new LinearLayout(requireContext());
@@ -118,6 +158,12 @@ public final class TorrentsFragment extends Fragment {
     @Override
     public void onViewCreated(@NonNull View view, @Nullable Bundle state) {
         super.onViewCreated(view, state);
+        model.getSafCreation().observe(getViewLifecycleOwner(), creation -> {
+            if (creation == null) return;
+            if (creation.running()) status.setText("Creating torrent: " + creation.bytes() + " bytes hashed");
+            else if (creation.error() != null) status.setText(creation.error());
+            else status.setText("Metadata ready. Choose Export generated torrent. SAF source seeding is not available.");
+        });
         busy = model.isImportingTorrent();
         if (busy)
             status.setText(R.string.torrent_importing);
@@ -183,7 +229,8 @@ public final class TorrentsFragment extends Fragment {
         request("TORRENT-TUNNELS", fields -> {
             int count = number(fields, "torrent.tunnels", 200);
             if (count == 0) {
-                rows.removeAllViews();
+                currentTunnelName = fields.getOrDefault("torrent.tunnel.name", "");
+            rows.removeAllViews();
                 status.setText(R.string.torrent_no_session);
                 return;
             }
@@ -229,7 +276,7 @@ public final class TorrentsFragment extends Fragment {
         String[] labels = {getString(R.string.torrent_details), getString(R.string.torrent_pause),
                 getString(R.string.torrent_resume), getString(R.string.torrent_share),
                 getString(R.string.torrent_remove), getString(R.string.torrent_trackers),
-                getString(R.string.torrent_comments), getString(R.string.torrent_priorities)};
+                getString(R.string.torrent_comments), getString(R.string.torrent_priorities), "Download / seed document tree"};
         new MaterialAlertDialogBuilder(requireContext())
                 .setItems(labels,
                         (dialog, action) -> {
@@ -269,6 +316,15 @@ public final class TorrentsFragment extends Fragment {
                             case 7 ->
                                 request("TORRENT-DETAIL " + tunnel + " " + id,
                                         fields -> priorities(id, fields));
+                            case 8 -> request("TORRENT-DETAIL " + tunnel + " " + id, fields -> {
+                                storageTunnel = currentTunnelName;
+                                storageHash = fields.getOrDefault("detail.hash", "");
+                                if (storageTunnel.isEmpty() || !storageHash.matches("[0-9a-fA-F]{40}")) return;
+                                new MaterialAlertDialogBuilder(requireContext())
+                                        .setMessage(TorrentSafStorage.status(storageTunnel, storageHash) + "\n\nSelect an existing payload tree or an empty download directory. Existing pieces will be verified. Restart the router after selection.")
+                                        .setNegativeButton(android.R.string.cancel, null)
+                                        .setPositiveButton("Select directory", (confirmation, which) -> selectPayloadTree.launch(null)).show();
+                            });
                             default -> {
                             }
                             }
@@ -452,6 +508,52 @@ public final class TorrentsFragment extends Fragment {
                 .setView(scroll)
                 .setPositiveButton(android.R.string.ok, null)
                 .show();
+    }
+
+    private void configureSafCreation(android.net.Uri source, boolean tree) {
+        LinearLayout options = new LinearLayout(requireContext());
+        options.setOrientation(LinearLayout.VERTICAL);
+        TextInputLayout trackersLayout = new TextInputLayout(requireContext());
+        trackersLayout.setHint("I2P trackers (one per line, each as a failover tier)");
+        TextInputEditText trackers = new TextInputEditText(trackersLayout.getContext());
+        trackers.setMinLines(2);
+        trackers.setFilters(new android.text.InputFilter[] {
+                new android.text.InputFilter.LengthFilter(8192)});
+        trackersLayout.addView(trackers);
+        options.addView(trackersLayout);
+        var privacy = new com.google.android.material.checkbox.MaterialCheckBox(requireContext());
+        privacy.setText("Private torrent (requires tracker; disables DHT/PEX)");
+        options.addView(privacy);
+        var size = new com.google.android.material.button.MaterialButton(requireContext());
+        int[] pieceLength = {1024 * 1024};
+        size.setText("Piece size: 1 MiB");
+        size.setOnClickListener(view -> new MaterialAlertDialogBuilder(requireContext())
+                .setTitle("Piece size").setItems(new String[] {"256 KiB", "512 KiB", "1 MiB", "2 MiB", "4 MiB"},
+                        (dialog, selected) -> {
+                            pieceLength[0] = 262144 << selected;
+                            size.setText("Piece size: " + pieceLength[0] / 1024 + " KiB");
+                        }).show());
+        options.addView(size);
+        var dialog = new MaterialAlertDialogBuilder(requireContext()).setTitle("Create from SAF source")
+                .setMessage("Exports metadata only. Seeding from SAF sources is not available.")
+                .setView(options).setNegativeButton(android.R.string.cancel, null)
+                .setPositiveButton(R.string.torrent_create, null).create();
+        dialog.setOnShowListener(ignored -> dialog.getButton(android.content.DialogInterface.BUTTON_POSITIVE)
+                .setOnClickListener(view -> {
+                    try {
+                        String value = String.valueOf(trackers.getText()).trim();
+                        String[] addresses = value.isEmpty() ? new String[0] : value.split("\\R");
+                        if (addresses.length > 32 || (privacy.isChecked() && addresses.length == 0))
+                            throw new IllegalArgumentException("Private torrents require an I2P tracker (maximum 32)");
+                        for (int i = 0; i < addresses.length; ++i) {
+                            addresses[i] = addresses[i].trim();
+                            TorrentControl.tracker(true, 0, "0", addresses[i]);
+                        }
+                        model.createSafTorrent(source, tree, pieceLength[0], addresses, privacy.isChecked());
+                        dialog.dismiss();
+                    } catch (IllegalArgumentException error) { trackersLayout.setError(error.getMessage()); }
+                }));
+        dialog.show();
     }
 
     private void createTorrent() {

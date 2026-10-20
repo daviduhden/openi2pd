@@ -42,6 +42,12 @@ public final class I2PD_JNI {
         // Native entry points only.
     }
 
+    public static native byte[] buildTorrentMetadata(byte[] name, byte[][] paths, long[] lengths,
+            int pieceLength, byte[] hashes, byte[][] trackers, boolean privateTorrent);
+
+    static native boolean installSafStorageBridge(Class<?> bridge);
+    static native boolean restrictSafStorageProcess();
+
     public static native String getABICompiledWith();
 
     /**

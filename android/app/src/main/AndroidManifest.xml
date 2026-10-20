@@ -52,6 +52,9 @@ Defines native Android application resources.
             A future isolated-process design would add a separate process plus
             an AIDL interface; the local binder must not be exported.
         -->
+        <service android:name=".TorrentSafStorageService" android:process=":torrent_storage"
+            android:exported="false" android:stopWithTask="false" />
+
         <service
             android:name=".RouterService"
             android:enabled="true"

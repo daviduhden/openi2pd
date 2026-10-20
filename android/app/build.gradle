@@ -127,6 +127,7 @@ android {
     buildFeatures {
         // DaemonWrapper uses BuildConfig.VERSION_NAME for the asset cache key.
         buildConfig true
+        aidl true
     }
 
     lint {

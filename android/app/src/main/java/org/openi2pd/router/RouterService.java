@@ -117,6 +117,11 @@ public class RouterService extends Service {
     private final AtomicBoolean restartInProgress = new AtomicBoolean(false);
     private final IBinder binder = new LocalBinder();
 
+    private final ExecutorService safWorker = Executors.newSingleThreadExecutor(runnable -> {
+        Thread thread = new Thread(runnable, "openi2pd-saf");
+        thread.setDaemon(true);
+        return thread;
+    });
     private ExecutorService worker;
     private DaemonWrapper daemon;
     private NotificationManager notificationManager;
@@ -239,6 +244,7 @@ public class RouterService extends Service {
     public void onCreate() {
         super.onCreate();
         Context appContext = getApplicationContext();
+        TorrentSafStorage.initialize(appContext);
         notificationManager =
                 (NotificationManager) appContext.getSystemService(NOTIFICATION_SERVICE);
         createNotificationChannel();
@@ -371,6 +377,7 @@ public class RouterService extends Service {
         Runnable cancelImport = cancelTorrentImport;
         if (cancelImport != null)
             cancelImport.run();
+        safWorker.shutdownNow();
         routerRunning = false;
         mainHandler.removeCallbacksAndMessages(null);
         if (daemon != null) {
@@ -1036,6 +1043,95 @@ public class RouterService extends Service {
             cancelTorrentImport = null;
             torrentInFlight.set(false);
             mainHandler.post(() -> callback.accept("I2PDTUI/1 ERR 6 14\nrouter stopped"));
+        }
+    }
+
+    /** SAF creation exports metadata only; it does not claim the sources are seedable. */
+    public void createSafTorrent(android.net.Uri source, boolean tree, int pieceLength, String[] trackers, boolean privateTorrent,
+            java.util.function.LongConsumer progress,
+            java.util.function.Consumer<byte[]> callback) {
+        if (destroyed || !torrentInFlight.compareAndSet(false, true)) {
+            mainHandler.post(() -> callback.accept(null));
+            return;
+        }
+        var cancel = new android.os.CancellationSignal();
+        cancelTorrentImport = cancel::cancel;
+        Runnable deadline = cancel::cancel;
+        mainHandler.postDelayed(deadline, 30 * 60 * 1000L);
+        try {
+            if (destroyed) throw new RejectedExecutionException();
+            safWorker.execute(() -> {
+                byte[] metadata = null;
+                boolean release = false;
+                try {
+                    var resolver = getContentResolver();
+                    boolean granted = false;
+                    for (var permission : resolver.getPersistedUriPermissions())
+                        if (source.equals(permission.getUri()) && permission.isReadPermission())
+                            granted = true;
+                    if (!granted) {
+                        resolver.takePersistableUriPermission(source, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                        release = true;
+                    }
+                    metadata = TorrentSafCreator.create(resolver, source, tree, cancel,
+                            value -> mainHandler.post(() -> progress.accept(value)), pieceLength, trackers, privateTorrent);
+                } catch (Exception | LinkageError ignored) {
+                    // Provider diagnostics may disclose document names or account identifiers.
+                } finally {
+                    if (release) try {
+                        getContentResolver().releasePersistableUriPermission(source,
+                                Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                    } catch (RuntimeException ignored) {}
+                    mainHandler.removeCallbacks(deadline);
+                    cancelTorrentImport = null;
+                    torrentInFlight.set(false);
+                }
+                byte[] result = metadata;
+                mainHandler.post(() -> callback.accept(result));
+            });
+        } catch (RejectedExecutionException error) {
+            mainHandler.removeCallbacks(deadline);
+            cancelTorrentImport = null;
+            torrentInFlight.set(false);
+            mainHandler.post(() -> callback.accept(null));
+        }
+    }
+
+    public void cancelSafCreation() {
+        Runnable cancel = cancelTorrentImport;
+        if (cancel != null) cancel.run();
+    }
+
+    public void exportTorrent(android.net.Uri target, byte[] metadata,
+            java.util.function.Consumer<Boolean> callback) {
+        if (target == null || !"content".equals(target.getScheme()) || metadata == null
+                || metadata.length > TorrentControl.MAX_IMPORT_BYTES
+                || destroyed || !torrentInFlight.compareAndSet(false, true)) {
+            mainHandler.post(() -> callback.accept(false));
+            return;
+        }
+        var canceled = new java.util.concurrent.atomic.AtomicBoolean();
+        Runnable cancel = () -> { canceled.set(true); TorrentSafStorage.cancelPending(); };
+        cancelTorrentImport = cancel;
+        mainHandler.postDelayed(cancel, 20_000L);
+        try {
+            if (destroyed) throw new RejectedExecutionException();
+            safWorker.execute(() -> {
+                boolean success = false;
+                try { success = TorrentSafStorage.export(target, metadata, canceled) && !canceled.get(); }
+                finally {
+                    mainHandler.removeCallbacks(cancel);
+                    cancelTorrentImport = null;
+                    torrentInFlight.set(false);
+                }
+                boolean result = success;
+                mainHandler.post(() -> callback.accept(result));
+            });
+        } catch (RejectedExecutionException error) {
+            mainHandler.removeCallbacks(cancel);
+            cancelTorrentImport = null;
+            torrentInFlight.set(false);
+            mainHandler.post(() -> callback.accept(false));
         }
     }
 

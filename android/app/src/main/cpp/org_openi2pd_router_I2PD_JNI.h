@@ -29,6 +29,9 @@ extern "C"
 {
 #endif
 
+	JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_installSafStorageBridge (JNIEnv *, jclass, jclass);
+	JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_restrictSafStorageProcess (JNIEnv *, jclass);
+
 	JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getABICompiledWith (JNIEnv *, jclass);
 
 	JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_startDaemon (JNIEnv *, jclass);
@@ -67,6 +70,9 @@ extern "C"
 	JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getRecentLogs (JNIEnv *, jclass, jlong, jint);
 
 	JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_torrentCommand (JNIEnv *, jclass, jbyteArray);
+
+	JNIEXPORT jbyteArray JNICALL Java_org_openi2pd_router_I2PD_1JNI_buildTorrentMetadata (
+        JNIEnv *, jclass, jbyteArray, jobjectArray, jlongArray, jint, jbyteArray, jobjectArray, jboolean);
 
 	JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_importTorrent (JNIEnv *, jclass, jint, jbyteArray);
 

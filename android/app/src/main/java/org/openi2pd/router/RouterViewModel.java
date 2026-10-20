@@ -89,6 +89,25 @@ public class RouterViewModel extends AndroidViewModel {
         });
     }
 
+    public record SafCreation(boolean running, long bytes, byte[] metadata, String error) {}
+    private final MutableLiveData<SafCreation> safCreation = new MutableLiveData<>();
+    public LiveData<SafCreation> getSafCreation() { return safCreation; }
+    public void createSafTorrent(android.net.Uri source, boolean tree, int pieceLength, String[] trackers, boolean privateTorrent) {
+        SafCreation old = safCreation.getValue();
+        if (old != null && old.running()) return;
+        safCreation.setValue(new SafCreation(true, 0, null, null));
+        repository.createSafTorrent(source, tree, pieceLength, trackers, privateTorrent,
+                bytes -> safCreation.setValue(new SafCreation(true, bytes, null, null)),
+                metadata -> safCreation.setValue(new SafCreation(false, 0, metadata,
+                        metadata == null ? "Creation failed or cancelled" : null)));
+    }
+    public void cancelSafCreation() { repository.cancelSafCreation(); }
+    public void exportTorrent(android.net.Uri target, java.util.function.Consumer<Boolean> result) {
+        SafCreation state = safCreation.getValue();
+        if (state == null || state.metadata() == null) { result.accept(false); return; }
+        repository.exportTorrent(target, state.metadata(), result);
+    }
+
     public void startRouter() {
         repository.startRouter();
     }
