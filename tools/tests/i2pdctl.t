@@ -22,6 +22,11 @@ use JSON::PP ();
 use Symbol qw(gensym);
 use Test::More;
 
+# The harness uses fork() and IO::Select around a loopback listener. Windows
+# Perl does not provide a portable fork emulation for this pattern, so keep the
+# cross-platform unit coverage and run the POSIX integration harness here.
+plan skip_all => 'i2pdctl integration harness requires POSIX fork/select' if $^O eq 'MSWin32';
+
 my $script = File::Spec->catfile($Bin, File::Spec->updir, 'scripts', 'i2pdctl');
 
 my ($server_pid, $server_port);
@@ -624,7 +629,7 @@ SKIP: {
         my $log = File::Spec->catfile($shim_dir, 'argv.log');
 
         my %base = (
-            PATH                  => $shim_dir,
+            PATH                  => join(':', $shim_dir, $ENV{PATH} // ''),
             I2PCONTROL_PASSWORD   => 'itoopie',
             I2PDCTL_TLS_BACKEND   => 'openssl',
             I2PDCTL_TEST_ARGV_LOG => $log,
@@ -752,7 +757,7 @@ SKIP: {
         unlink $log;
         ($out, $err, $code) = _run_command(
             {
-                PATH                => $shim_dir,
+                PATH                => join(':', $shim_dir, $ENV{PATH} // ''),
                 I2PCONTROL_URL      => 'https://127.0.0.1:7650/',
                 I2PDCTL_TLS_BACKEND => 'cleartext',
             },

@@ -15,6 +15,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "Base.h"
@@ -52,7 +53,26 @@ int main (int argc, char * argv[])
 
 	CryptoGuard guard;
 	i2p::data::IdentityEx identity, oldIdentity;
-	const std::string record (argv[1]);
+	std::string record (argv[1]);
+	// CMake and the Windows text-mode tool chain may hand us CRLF while the
+	// signer canonicalized the same record with LF. Signatures cover the
+	// logical record, so normalize the line endings before verification.
+	if (record.find ('\r') != std::string::npos)
+	{
+		std::string normalized;
+		normalized.reserve (record.size ());
+		for (size_t i = 0; i < record.size (); ++i)
+		{
+			if (record[i] == '\r')
+			{
+				if (i + 1 < record.size () && record[i + 1] == '\n') continue;
+				normalized.push_back ('\n');
+			}
+			else
+				normalized.push_back (record[i]);
+		}
+		record = std::move (normalized);
+	}
 
 	const auto command = record.find ("#!");
 	const std::string_view hostRecord = std::string_view (record).substr (0, command);
