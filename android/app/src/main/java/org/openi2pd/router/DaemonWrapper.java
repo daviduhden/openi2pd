@@ -5,8 +5,9 @@
  * openi2pd: DaemonWrapper.
  *
  * Process-wide owner of the native daemon: asset extraction into app-specific
- * storage, start on a dedicated thread, stop, restart, tunnel reload, the
- * graceful-shutdown deadline and connectivity callbacks forwarded to JNI.
+ * storage, start on a dedicated thread, stop, restart, tunnel reload, netDb
+ * reseed, runtime log level, the graceful-shutdown deadline and connectivity
+ * callbacks forwarded to JNI.
  * State transitions are lock-guarded and listeners are invoked after the
  * monitor is released, so no Activity or Service reference is retained.
  *
@@ -28,6 +29,8 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -52,6 +55,15 @@ public class DaemonWrapper {
     private static final String TAG = "open-i2pd";
     private static final String DATA_DIR_NAME = "open-i2pd";
     private static final int COPY_BUFFER_SIZE = 8192;
+
+    /**
+     * Runtime log levels accepted by the native logger, in severity order.
+     * The native {@code setRuntimeLogLevel} entry point validates the same
+     * exact, case-sensitive closed set before it changes any state.
+     */
+    private static final String[] RUNTIME_LOG_LEVELS = {
+        "none", "critical", "error", "warn", "info", "debug"
+    };
 
     /**
      * Time transit tunnels are given to drain during a graceful shutdown.
@@ -102,6 +114,16 @@ public class DaemonWrapper {
     private final AtomicBoolean stopRequested = new AtomicBoolean(false);
     private final AtomicLong gracefulStopDeadlineMillis = new AtomicLong(0L);
 
+    /**
+     * Connectivity callbacks are delivered on the main thread, while the native
+     * update takes the native-call lock that start, stop and reseed hold. This
+     * dispatcher keeps that JNI call off the UI thread and preserves callback
+     * order, so a reseed that runs for minutes cannot turn a network change
+     * into an ANR. {@link RouterService} passes its serial control worker; the
+     * inline fallback preserves the previous behaviour for other callers.
+     */
+    private final Executor networkStateExecutor;
+
     private volatile File dataDir;
     private volatile State state = State.uninitialized;
     private volatile Throwable lastThrowable;
@@ -137,7 +159,7 @@ public class DaemonWrapper {
 
     public DaemonWrapper(
             Context context, AssetManager assetManager, ConnectivityManager connectivityManager) {
-        this(context, assetManager, connectivityManager, true);
+        this(context, assetManager, connectivityManager, true, null);
     }
 
     /**
@@ -149,6 +171,20 @@ public class DaemonWrapper {
      */
     public DaemonWrapper(Context context, AssetManager assetManager,
             ConnectivityManager connectivityManager, boolean autoStart) {
+        this(context, assetManager, connectivityManager, autoStart, null);
+    }
+
+    /**
+     * @param networkStateExecutor serial executor for the connectivity update.
+     *                             Connectivity callbacks arrive on the main
+     *                             thread; {@link RouterService} passes its
+     *                             control worker so the blocking native call
+     *                             never runs on the UI thread. {@code null}
+     *                             keeps the inline behaviour for other callers.
+     */
+    public DaemonWrapper(Context context, AssetManager assetManager,
+            ConnectivityManager connectivityManager, boolean autoStart,
+            Executor networkStateExecutor) {
         Objects.requireNonNull(context, "context");
         Context appContext = context.getApplicationContext();
         if (appContext == null) {
@@ -157,6 +193,8 @@ public class DaemonWrapper {
 
         this.assetManager = assetManager != null ? assetManager : appContext.getAssets();
         this.connectivityManager = connectivityManager;
+        this.networkStateExecutor =
+                networkStateExecutor != null ? networkStateExecutor : Runnable::run;
 
         File external = appContext.getExternalFilesDir(null);
         this.dataDir = defaultDataDir(appContext);
@@ -478,6 +516,75 @@ public class DaemonWrapper {
         }
     }
 
+    /**
+     * Exact, case-sensitive check against the closed runtime log level set.
+     * Shared by {@link RouterService}'s binder and intent paths so an invalid
+     * value is rejected before any native call is attempted.
+     */
+    public static boolean isRuntimeLogLevel(String level) {
+        if (level == null) {
+            return false;
+        }
+        for (String candidate : RUNTIME_LOG_LEVELS) {
+            if (candidate.equals(level)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Ask the running netDb to reseed from the configured reseed servers.
+     *
+     * <p>This is only valid while the daemon is started. The native call is
+     * synchronous and single-flight, so the caller must be the service worker:
+     * it can block for minutes on a poor connection and must stay ordered
+     * against stop and reload commands.</p>
+     *
+     * @return {@code true} when the request was issued; {@code false} when the
+     *         daemon is not started, a reseed is already running or the native
+     *         call failed
+     */
+    public boolean requestReseed() {
+        synchronized (lock) {
+            if (!state.isStartedOkay()) {
+                return false;
+            }
+        }
+        try {
+            return I2PD_JNI.requestReseed();
+        } catch (RuntimeException | LinkageError e) {
+            Log.e(TAG, "native reseed request failed", e);
+            return false;
+        }
+    }
+
+    /**
+     * Apply a runtime log level to the running logger without restarting the
+     * daemon. The value is validated here and again in native code; this path
+     * never writes {@code i2pd.conf}, so persisting a preference stays a
+     * separate, explicit step.
+     *
+     * @return {@code true} only when the running logger accepted the level
+     */
+    public boolean applyRuntimeLogLevel(String level) {
+        if (!isRuntimeLogLevel(level)) {
+            Log.w(TAG, "refusing unknown runtime log level");
+            return false;
+        }
+        synchronized (lock) {
+            if (!state.isStartedOkay()) {
+                return false;
+            }
+        }
+        try {
+            return I2PD_JNI.setRuntimeLogLevel(level);
+        } catch (RuntimeException | LinkageError e) {
+            Log.e(TAG, "native log level update failed", e);
+            return false;
+        }
+    }
+
     public int getTransitTunnelsCount() {
         return I2PD_JNI.getTransitTunnelsCount();
     }
@@ -589,10 +696,22 @@ public class DaemonWrapper {
         if (!state.isStartedOkay()) {
             return;
         }
+        // The callback arrives on the main thread; hand the blocking JNI call
+        // to the serial dispatcher described above. The state is re-checked
+        // there so a queued update cannot reach a router that has just stopped.
         try {
-            I2PD_JNI.onNetworkStateChanged(connected);
-        } catch (Throwable tr) {
-            Log.e(TAG, "native network state update failed", tr);
+            networkStateExecutor.execute(() -> {
+                if (!state.isStartedOkay()) {
+                    return;
+                }
+                try {
+                    I2PD_JNI.onNetworkStateChanged(connected);
+                } catch (Throwable tr) {
+                    Log.e(TAG, "native network state update failed", tr);
+                }
+            });
+        } catch (RejectedExecutionException e) {
+            Log.w(TAG, "network state update rejected after shutdown", e);
         }
     }
 

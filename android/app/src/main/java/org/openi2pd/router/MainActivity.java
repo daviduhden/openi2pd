@@ -15,6 +15,7 @@ package org.openi2pd.router;
 
 import android.Manifest;
 import android.annotation.SuppressLint;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.drawable.Drawable;
@@ -159,7 +160,8 @@ public class MainActivity extends AppCompatActivity {
             int mask = (UiFormat.gracefulActive(snapshot) ? 1 : 0)
                     | (UiFormat.canGraceful(snapshot) ? 2 : 0)
                     | (UiFormat.isConnected(snapshot) ? 4 : 0)
-                    | (UiFormat.canStop(snapshot) ? 8 : 0);
+                    | (UiFormat.canStop(snapshot) ? 8 : 0)
+                    | (snapshot != null && snapshot.reseeding() ? 16 : 0);
             if (mask != lastActionMask) {
                 lastActionMask = mask;
                 invalidateOptionsMenu();
@@ -424,6 +426,7 @@ public class MainActivity extends AppCompatActivity {
     public boolean onPrepareOptionsMenu(Menu menu) {
         MenuItem graceful = menu.findItem(R.id.action_graceful_stop);
         MenuItem reload = menu.findItem(R.id.action_reload_tunnels);
+        MenuItem reseed = menu.findItem(R.id.action_reseed);
         MenuItem stop = menu.findItem(R.id.action_stop);
 
         boolean detail = getSupportFragmentManager().getBackStackEntryCount() > 0;
@@ -444,6 +447,12 @@ public class MainActivity extends AppCompatActivity {
         }
         if (reload != null) {
             reload.setEnabled(UiFormat.isConnected(lastSnapshot));
+        }
+        if (reseed != null) {
+            // A reseed downloads SU3 bundles, so require a connected router and
+            // block a second request while the native bootstrap is active.
+            reseed.setEnabled(UiFormat.isConnected(lastSnapshot)
+                    && !(lastSnapshot != null && lastSnapshot.reseeding()));
         }
         if (stop != null) {
             stop.setEnabled(UiFormat.canStop(lastSnapshot));
@@ -479,6 +488,10 @@ public class MainActivity extends AppCompatActivity {
             Toast.makeText(this, R.string.tunnels_reloading, Toast.LENGTH_SHORT).show();
             return true;
         }
+        if (id == R.id.action_reseed) {
+            confirmReseed();
+            return true;
+        }
         if (id == R.id.action_graceful_stop) {
             toggleGracefulStop();
             return true;
@@ -493,6 +506,27 @@ public class MainActivity extends AppCompatActivity {
             return true;
         }
         return super.onOptionsItemSelected(item);
+    }
+
+    /**
+     * Reseeding contacts the configured reseed servers over HTTPS and can run
+     * for minutes on a poor connection, so it is confirmed first. The immediate
+     * Toast tells the user the request left the UI thread; the bounded result
+     * arrives later from the service worker. Both Toasts use the application
+     * context, so a rotation during the bootstrap cannot retain the Activity.
+     */
+    private void confirmReseed() {
+        final Context appContext = getApplicationContext();
+        confirm(R.string.confirm_reseed_title, R.string.confirm_reseed_message,
+                R.string.action_reseed, () -> {
+                    Toast.makeText(appContext, R.string.toast_reseed_started, Toast.LENGTH_SHORT)
+                            .show();
+                    viewModel.requestReseed(issued -> Toast.makeText(appContext,
+                            Boolean.TRUE.equals(issued) ? R.string.toast_reseed_finished
+                                                        : R.string.toast_reseed_failed,
+                            Toast.LENGTH_SHORT)
+                            .show());
+                });
     }
 
     private void toggleGracefulStop() {

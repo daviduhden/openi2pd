@@ -36,6 +36,10 @@ Defines native Android application resources.
         android:title="@string/action_reload_tunnels_config"
         app:showAsAction="never" />
     <item
+        android:id="@+id/action_reseed"
+        android:title="@string/action_reseed"
+        app:showAsAction="never" />
+    <item
         android:id="@+id/action_graceful_stop"
         android:icon="@drawable/ic_graceful"
         android:title="@string/action_graceful_stop"

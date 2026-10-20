@@ -246,6 +246,35 @@ public final class RouterRepository implements RouterService.Listener {
         }
     }
 
+    /**
+     * Ask the running router to reseed. The service runs the blocking native
+     * bootstrap on its worker and reports the bounded result on the main
+     * thread. A missing binding is reported as {@code false} rather than an
+     * intent fallback because the result is part of the contract.
+     */
+    public void requestReseed(java.util.function.Consumer<Boolean> callback) {
+        RouterService local = service;
+        if (closed || local == null) {
+            mainHandler.post(() -> callback.accept(false));
+            return;
+        }
+        local.requestReseed(callback);
+    }
+
+    /**
+     * Apply one runtime log level to the running logger. Persisting the value
+     * is the caller's explicit, separate step.
+     */
+    public void applyRuntimeLogLevel(
+            String level, java.util.function.Consumer<Boolean> callback) {
+        RouterService local = service;
+        if (closed || local == null) {
+            mainHandler.post(() -> callback.accept(false));
+            return;
+        }
+        local.applyRuntimeLogLevel(level, callback);
+    }
+
     /** True only when no run state has ever been persisted by the service. */
     public boolean shouldStartOnFirstLaunch() {
         return !RouterService.hasPersistedRunState(appContext);

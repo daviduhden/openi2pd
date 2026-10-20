@@ -26,6 +26,7 @@ Defines native Android application resources.
 
     <string-array name="pref_loglevel_values">
         <item>none</item>
+        <item>critical</item>
         <item>error</item>
         <item>warn</item>
         <item>info</item>
@@ -34,6 +35,7 @@ Defines native Android application resources.
 
     <string-array name="pref_loglevel_labels">
         <item>@string/pref_loglevel_none</item>
+        <item>@string/pref_loglevel_critical</item>
         <item>@string/pref_loglevel_error</item>
         <item>@string/pref_loglevel_warn</item>
         <item>@string/pref_loglevel_info</item>

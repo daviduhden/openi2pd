@@ -6,9 +6,9 @@
  *
  * Started and bound foreground service that is the sole owner of
  * {@link DaemonWrapper} and the native control boundary. It serialises
- * stop/reload work on a worker executor, polls bounded status and log
- * snapshots on a background thread, holds the Wi-Fi multicast lock for SSDP
- * and schedules the graceful-stop deadline on the main handler.
+ * stop/reload/reseed/log-level work on a worker executor, polls bounded status
+ * and log snapshots on a background thread, holds the Wi-Fi multicast lock for
+ * SSDP and schedules the graceful-stop deadline on the main handler.
  *
  */
 
@@ -85,6 +85,29 @@ public class RouterService extends Service {
             "org.openi2pd.router.action.CANCEL_GRACEFUL_STOP";
     public static final String ACTION_RELOAD_TUNNELS = "org.openi2pd.router.action.RELOAD_TUNNELS";
 
+    /**
+     * Typed reseed command for callers that cannot bind (the result is not
+     * observable through an intent; the binder method reports it). The worker
+     * issues at most one native request and the native path is single-flight.
+     */
+    public static final String ACTION_RESEED = "org.openi2pd.router.action.RESEED";
+
+    /**
+     * Typed runtime log-level command for callers that cannot bind. The extra
+     * is validated against {@link DaemonWrapper#isRuntimeLogLevel}; an intent
+     * with a missing or unknown value is ignored without touching native state.
+     */
+    public static final String ACTION_SET_RUNTIME_LOG_LEVEL =
+            "org.openi2pd.router.action.SET_RUNTIME_LOG_LEVEL";
+
+    /**
+     * Bounded runtime log level extra for {@link #ACTION_SET_RUNTIME_LOG_LEVEL}.
+     * Only the exact closed set accepted by {@link DaemonWrapper#isRuntimeLogLevel}
+     * is forwarded; an intent carrying anything else is ignored.
+     */
+    public static final String EXTRA_RUNTIME_LOG_LEVEL =
+            "org.openi2pd.router.extra.RUNTIME_LOG_LEVEL";
+
     private static final String CHANNEL_ID = "i2pd_service";
     private static final int NOTIFICATION_ID = 1;
     private static final long POLL_INTERVAL_MS = 1000L;
@@ -113,6 +136,8 @@ public class RouterService extends Service {
     private final CopyOnWriteArrayList<Listener> listeners = new CopyOnWriteArrayList<>();
     private final AtomicBoolean pollInFlight = new AtomicBoolean(false);
     private final AtomicBoolean torrentInFlight = new AtomicBoolean(false);
+    /** Bounds concurrent reseed requests; the native bootstrap is single-flight too. */
+    private final AtomicBoolean reseedInFlight = new AtomicBoolean(false);
     private volatile Runnable cancelTorrentImport;
     private final AtomicBoolean restartInProgress = new AtomicBoolean(false);
     private final IBinder binder = new LocalBinder();
@@ -257,7 +282,12 @@ public class RouterService extends Service {
 
         ConnectivityManager connectivityManager =
                 (ConnectivityManager) appContext.getSystemService(CONNECTIVITY_SERVICE);
-        daemon = new DaemonWrapper(appContext, appContext.getAssets(), connectivityManager, false);
+        // The control worker is also the serial dispatcher for connectivity
+        // updates: the native call takes the shared native-call lock, which a
+        // reseed can hold for minutes, and the ConnectivityManager callback
+        // itself arrives on the main thread.
+        daemon = new DaemonWrapper(
+                appContext, appContext.getAssets(), connectivityManager, false, worker);
         daemon.addStateChangeListener(daemonStateListener);
         lastSnapshot = localSnapshot();
         routerRunning = false;
@@ -345,6 +375,30 @@ public class RouterService extends Service {
             enqueueControl(daemon::cancelGracefulShutdown);
         }
         case ACTION_RELOAD_TUNNELS -> enqueueControl(daemon::reloadTunnelsConfigs);
+        case ACTION_RESEED -> enqueueControl(() -> {
+            DaemonWrapper local = daemon;
+            if (local != null) {
+                local.requestReseed();
+            }
+        });
+        case ACTION_SET_RUNTIME_LOG_LEVEL -> {
+            String level = intent.getStringExtra(EXTRA_RUNTIME_LOG_LEVEL);
+            if (DaemonWrapper.isRuntimeLogLevel(level)) {
+                enqueueControl(() -> {
+                    DaemonWrapper local = daemon;
+                    if (local != null) {
+                        local.applyRuntimeLogLevel(level);
+                    }
+                });
+            } else {
+                // Reject without touching native state. The shared return below
+                // keeps the service's current stickiness for a malformed extra.
+                Log.w(TAG, "ignoring runtime log level request with an invalid value");
+                if (!readShouldRun() && !daemon.isStartedOkay()) {
+                    stopSelfResult(startId);
+                }
+            }
+        }
         default -> {
             Log.w(TAG, "ignoring unknown service action");
             if (!readShouldRun() && !daemon.isStartedOkay()) {
@@ -574,6 +628,75 @@ public class RouterService extends Service {
 
     public void reloadTunnels() {
         runOnMain(() -> enqueueControl(daemon::reloadTunnelsConfigs));
+    }
+
+    /**
+     * Request a NetDb reseed without restarting the router.
+     *
+     * <p>The native call is synchronous and single-flight, so only one request
+     * is outstanding at a time and it runs on the service worker, ordered with
+     * stop and reload. The callback is invoked on the main thread with
+     * {@code true} only when the request was issued.</p>
+     */
+    public void requestReseed(java.util.function.Consumer<Boolean> callback) {
+        if (destroyed || !reseedInFlight.compareAndSet(false, true)) {
+            mainHandler.post(() -> callback.accept(false));
+            return;
+        }
+        ExecutorService executor = worker;
+        try {
+            if (executor == null) {
+                throw new RejectedExecutionException();
+            }
+            executor.execute(() -> {
+                boolean issued = false;
+                try {
+                    DaemonWrapper local = daemon;
+                    issued = local != null && local.requestReseed();
+                } catch (RuntimeException | LinkageError error) {
+                    issued = false;
+                } finally {
+                    reseedInFlight.set(false);
+                }
+                boolean result = issued;
+                mainHandler.post(() -> callback.accept(result));
+            });
+        } catch (RejectedExecutionException error) {
+            reseedInFlight.set(false);
+            mainHandler.post(() -> callback.accept(false));
+        }
+    }
+
+    /**
+     * Apply one runtime log level to the running logger on the control worker.
+     * The caller persists any preference separately; this path only changes
+     * the live logger and never writes {@code i2pd.conf}.
+     */
+    public void applyRuntimeLogLevel(
+            String level, java.util.function.Consumer<Boolean> callback) {
+        if (destroyed || !DaemonWrapper.isRuntimeLogLevel(level)) {
+            mainHandler.post(() -> callback.accept(false));
+            return;
+        }
+        ExecutorService executor = worker;
+        try {
+            if (executor == null) {
+                throw new RejectedExecutionException();
+            }
+            executor.execute(() -> {
+                boolean applied = false;
+                try {
+                    DaemonWrapper local = daemon;
+                    applied = local != null && local.applyRuntimeLogLevel(level);
+                } catch (RuntimeException | LinkageError error) {
+                    applied = false;
+                }
+                boolean result = applied;
+                mainHandler.post(() -> callback.accept(result));
+            });
+        } catch (RejectedExecutionException error) {
+            mainHandler.post(() -> callback.accept(false));
+        }
     }
 
     public void clearLogs() {

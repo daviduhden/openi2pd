@@ -224,6 +224,18 @@ template <typename T, typename Callback> T JniScalarCall (JNIEnv * env, Callback
 constexpr size_t MAX_RECENT_LOG_RECORDS = 256;
 
 /**
+	 * Exact, case-sensitive closed set of runtime log level names accepted by
+	 * the in-process logger. Log::SetLogLevel() lowercases its argument and
+	 * only logs an unknown name, so validating here keeps an invalid value from
+	 * reaching native state at all and lets Java report a definite rejection.
+	 */
+inline bool IsRuntimeLogLevelName (std::string_view level) noexcept
+{
+	return level == "none" || level == "critical" || level == "error" || level == "warn"
+		|| level == "info" || level == "debug";
+}
+
+/**
 	 * Fixed, bounded snapshot returned when collecting the real snapshot
 	 * throws or while the router is not running. It has the same keys and
 	 * ordering as a normal snapshot so that Java can parse it with the same
@@ -651,6 +663,63 @@ JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_reloadTunnelsConfigs (
 			if (!call.IsRunning ()) return;
 			i2p::client::context.ReloadConfig ();
 		});
+}
+
+/**
+	 * Ask the running netDb to reseed from the configured reseed servers.
+	 *
+	 * NetDb::Reseed() is single-flight and synchronous: it performs the
+	 * certificate load and the SU3 bootstrap on the calling thread, which can
+	 * take minutes on a poor connection. Java must therefore call this only
+	 * from the RouterService worker, never from the Android main thread. A
+	 * request while one is already active returns false without starting a
+	 * second bootstrap, and no URL, path or option is accepted from Java.
+	 */
+JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_requestReseed (JNIEnv * env, jclass clazz)
+{
+	return JniScalarCall<jboolean> (
+		env,
+		[] () -> jboolean
+		{
+			i2p::android::NativeCallGuard call;
+			if (!call.IsRunning ()) return JNI_FALSE;
+			if (i2p::data::netdb.IsReseeding ()) return JNI_FALSE;
+			i2p::data::netdb.Reseed ();
+			return JNI_TRUE;
+		},
+		JNI_FALSE);
+}
+
+/**
+	 * Apply one runtime log level to the running logger.
+	 *
+	 * Only the exact closed set IsRuntimeLogLevelName() accepts is forwarded;
+	 * the value is validated before the native-call lock is taken so an
+	 * unknown name cannot change any router state. Nothing is written to
+	 * i2pd.conf and no restart is required.
+	 */
+JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_setRuntimeLogLevel (
+	JNIEnv * env, jclass clazz, jstring jlevel)
+{
+	return JniScalarCall<jboolean> (
+		env,
+		[&] () -> jboolean
+		{
+			ScopedUtfChars level (env, jlevel);
+			if (!level)
+			{
+				ClearJniException (env);
+				return JNI_FALSE;
+			}
+			const std::string_view name (level.c_str ());
+			if (!IsRuntimeLogLevelName (name)) return JNI_FALSE;
+
+			i2p::android::NativeCallGuard call;
+			if (!call.IsRunning ()) return JNI_FALSE;
+			i2p::log::Logger ().SetLogLevel (std::string (name));
+			return JNI_TRUE;
+		},
+		JNI_FALSE);
 }
 
 JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_onNetworkStateChanged (

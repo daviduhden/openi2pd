@@ -120,6 +120,30 @@ public final class I2PD_JNI {
     public static native void stopAcceptingTunnels();
     public static native void reloadTunnelsConfigs();
 
+    /**
+     * Ask the running netDb to reseed from the configured reseed servers.
+     *
+     * <p>The native call is synchronous and single-flight: it performs the SU3
+     * bootstrap on the calling thread, so it must run on the service worker and
+     * never on the main thread. No URL, path or option crosses this boundary.</p>
+     *
+     * @return {@code true} when a reseed request was issued and
+     *         {@code NetDb::Reseed()} returned; {@code false} when the router
+     *         is not started, a reseed is already running or native code failed
+     */
+    public static native boolean requestReseed();
+
+    /**
+     * Apply one runtime log level to the running logger without a restart.
+     *
+     * @param level one of {@code none}, {@code critical}, {@code error},
+     *              {@code warn}, {@code info} or {@code debug}. Any other value
+     *              (including different case) is rejected before native state
+     *              is touched.
+     * @return {@code true} only when the running logger accepted the level
+     */
+    public static native boolean setRuntimeLogLevel(String level);
+
     public static native void setDataDir(String jdataDir);
 
     public static native int getTransitTunnelsCount();

@@ -5,9 +5,10 @@
  * openi2pd: RouterViewModel.
  *
  * {@link AndroidViewModel} that owns one {@link RouterRepository} and exposes
- * its LiveData, forwarding start/stop/reload/log and torrent commands. All
- * public methods are main-thread safe, first-launch auto-start consults
- * persisted run state, and {@code onCleared} releases the service binding.
+ * its LiveData, forwarding start/stop/reload/log, reseed, runtime log-level and
+ * torrent commands. All public methods are main-thread safe, first-launch
+ * auto-start consults persisted run state, and {@code onCleared} releases the
+ * service binding.
  *
  */
 
@@ -130,6 +131,17 @@ public class RouterViewModel extends AndroidViewModel {
 
     public void reloadTunnels() {
         repository.reloadTunnels();
+    }
+
+    /** Request a bounded, single-flight NetDb reseed; the callback runs on the main thread. */
+    public void requestReseed(java.util.function.Consumer<Boolean> callback) {
+        repository.requestReseed(callback);
+    }
+
+    /** Apply a runtime log level to the running logger; the file is written separately. */
+    public void applyRuntimeLogLevel(
+            String level, java.util.function.Consumer<Boolean> callback) {
+        repository.applyRuntimeLogLevel(level, callback);
     }
 
     public void clearLogs() {

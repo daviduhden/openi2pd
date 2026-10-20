@@ -170,15 +170,20 @@ public final class RouterConfigStore {
     /**
      * How a changed option becomes visible to the running router.
      *
-     * <p>No current option is safely hot-reloadable through the Android
-     * control surface, so the conservative answer is {@link ApplyMode#RESTART}
-     * except for tunnel configuration files.</p>
+     * <p>The log level is hot: {@link SettingsFragment} writes the exact same
+     * closed value to the file and also hands it to the running logger through
+     * {@link RouterService}'s typed worker action, so no restart is needed.
+     * Every other option is conservatively {@link ApplyMode#RESTART} except
+     * tunnel configuration files.</p>
      */
     public ApplyMode applyModeFor(String key) {
         if (key == null || key.isEmpty()) {
             return ApplyMode.RESTART;
         }
-        String lower = key.toLowerCase(Locale.ROOT);
+        String lower = canonicalKey(key.toLowerCase(Locale.ROOT));
+        if ("loglevel".equals(lower)) {
+            return ApplyMode.HOT;
+        }
         if (lower.startsWith("tunnels.") || "tunnelsdir".equals(lower) || "tunnels".equals(lower)) {
             return ApplyMode.RELOAD_TUNNELS;
         }

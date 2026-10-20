@@ -158,7 +158,7 @@ public class SettingsFragment extends PreferenceFragmentCompat {
         bindText("transitTunnelPreference", "limits.transittunnels", "3000", Kind.POSITIVE_INTEGER);
 
         bindList("bandwidthPreference", "bandwidth", "L");
-        bindList("logLevelPreference", "log", "info");
+        bindLogLevel();
 
         bindSwitch("httpProxyEnablePreference", "httpproxy.enabled", true);
         bindText("httpProxyAddressPreference", "httpproxy.address", "127.0.0.1", Kind.ADDRESS);
@@ -277,6 +277,84 @@ public class SettingsFragment extends PreferenceFragmentCompat {
             persist(configKey, value,
                     () -> showApplyMode(configKey), () -> preference.setValue(previous));
             return true;
+        });
+    }
+
+    /**
+     * Runtime apply control for the log level.
+     *
+     * <p>The preference file keeps the value for the next start; a running
+     * router is updated through the service's typed worker action so the new
+     * level takes effect without a restart. The accepted values come from the
+     * same {@code pref_loglevel_values} array used by the list, which mirrors
+     * the exact closed set the native logger accepts.</p>
+     */
+    private void bindLogLevel() {
+        ListPreference preference = findPreference("logLevelPreference");
+        if (preference == null) {
+            return;
+        }
+        final String[] accepted = getResources().getStringArray(R.array.pref_loglevel_values);
+        String current = configValues.get("log");
+        if (current != null && isAcceptedLogLevel(accepted, current)) {
+            preference.setValue(current);
+        }
+        preference.setSummaryProvider(ListPreference.SimpleSummaryProvider.getInstance());
+        preference.setOnPreferenceChangeListener((changed, newValue) -> {
+            if (newValue == null) {
+                return false;
+            }
+            String value = newValue.toString().trim();
+            if (!isAcceptedLogLevel(accepted, value)) {
+                Toast.makeText(requireContext(), R.string.pref_invalid_value, Toast.LENGTH_SHORT)
+                        .show();
+                return false;
+            }
+            String previous = preference.getValue();
+            persist("log", value,
+                    () -> applyRuntimeLogLevel(value), () -> preference.setValue(previous));
+            return true;
+        });
+    }
+
+    private static boolean isAcceptedLogLevel(@NonNull String[] accepted, @NonNull String value) {
+        for (String candidate : accepted) {
+            if (candidate.equals(value)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Hand the saved level to the running logger. A stopped router keeps the
+     * value in the file and applies it on the next start; a running router
+     * that rejects it is reported as a failure instead of looking applied.
+     */
+    private void applyRuntimeLogLevel(@NonNull String level) {
+        RouterViewModel local = viewModel;
+        if (local == null) {
+            // Without a view model there is no service bridge, so the saved
+            // value can only take effect at the next start.
+            Toast.makeText(requireContext(), R.string.pref_apply_restart, Toast.LENGTH_SHORT)
+                    .show();
+            return;
+        }
+        local.applyRuntimeLogLevel(level, applied -> {
+            if (viewDestroyed || !isAdded()) {
+                return;
+            }
+            if (Boolean.TRUE.equals(applied)) {
+                Toast.makeText(requireContext(), R.string.pref_log_level_applied,
+                             Toast.LENGTH_SHORT)
+                        .show();
+                return;
+            }
+            Toast.makeText(requireContext(),
+                         RouterService.isRouterRunning() ? R.string.pref_log_level_failed
+                                                         : R.string.pref_apply_restart,
+                         Toast.LENGTH_SHORT)
+                    .show();
         });
     }
 

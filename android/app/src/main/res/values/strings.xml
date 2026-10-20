@@ -18,6 +18,7 @@ Defines native Android application resources.
     <string name="action_graceful_stop">Graceful stop</string>
     <string name="action_cancel_graceful_stop">Cancel graceful stop</string>
     <string name="action_reload_tunnels_config">Reload tunnels</string>
+    <string name="action_reseed">Reseed NetDb</string>
 
     <string name="gracefulShutdownInProgress">Graceful shutdown in progress</string>
 
@@ -121,6 +122,11 @@ Defines native Android application resources.
     <string name="confirm_exit_message">The router will stop and the app will close. I2P services and tunnels will be disconnected.</string>
     <string name="confirm_clear_logs_title">Clear logs?</string>
     <string name="confirm_clear_logs_message">This removes the log entries shown by the app. It does not change files on disk.</string>
+    <string name="confirm_reseed_title">Reseed the network database?</string>
+    <string name="confirm_reseed_message">The router will contact the configured reseed servers over HTTPS to refresh router information. This uses network traffic and can take a few minutes on a poor connection; status and stop requests may be delayed until it finishes.</string>
+    <string name="toast_reseed_started">Requesting a NetDb reseed…</string>
+    <string name="toast_reseed_finished">NetDb reseed finished.</string>
+    <string name="toast_reseed_failed">Reseed was not started. The router may be stopped or another reseed may already be running.</string>
     <string name="toast_starting">Starting the router…</string>
     <string name="toast_stopping">Stopping the router…</string>
     <string name="toast_restarting">Restarting the router…</string>
@@ -251,7 +257,7 @@ Defines native Android application resources.
     <string name="pref_bandwidth_title">Bandwidth limit</string>
     <string name="pref_bandwidth_summary">Limit for transit traffic. Higher limits use more battery and data.</string>
     <string name="pref_log_level_title">Log level</string>
-    <string name="pref_log_level_summary">Native logging level. Logs are visible only when the core exposes them.</string>
+    <string name="pref_log_level_summary">Native logging level. A running router applies the new level immediately.</string>
     <string name="pref_http_enable_title">Enable HTTP proxy</string>
     <string name="pref_http_address_title">HTTP proxy address</string>
     <string name="pref_http_port_title">HTTP proxy port</string>
@@ -278,10 +284,13 @@ Defines native Android application resources.
     <string name="pref_bandwidth_high">High</string>
     <string name="pref_bandwidth_unlimited">Unlimited</string>
     <string name="pref_loglevel_none">None</string>
+    <string name="pref_loglevel_critical">Critical</string>
     <string name="pref_loglevel_error">Error</string>
     <string name="pref_loglevel_warn">Warning</string>
     <string name="pref_loglevel_info">Info</string>
     <string name="pref_loglevel_debug">Debug</string>
+    <string name="pref_log_level_applied">Log level applied to the running router.</string>
+    <string name="pref_log_level_failed">The log level was saved, but the running router did not accept it. Restart the router to apply it.</string>
 
     <string name="torrent_title">Torrents</string>
     <string name="torrent_priorities">Files and priorities</string>
