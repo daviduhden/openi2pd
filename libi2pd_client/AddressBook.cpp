@@ -6,8 +6,10 @@
  *
  * Loads hosts.txt, local addresses and HTTP subscriptions, resolves .i2p
  * names locally or through destination lookups, and caches identities plus
- * subscription ETags on disk. A per-destination UDP resolver answers remote
- * name queries on the address resolver ports.
+ * subscription ETags on disk. Host names are matched ASCII
+ * case-insensitively, while b33 labels and base64 destinations keep their
+ * exact spelling. A per-destination UDP resolver answers remote name queries
+ * on the address resolver ports.
  *
  */
 
@@ -43,6 +45,53 @@ namespace i2p
 {
 namespace client
 {
+	namespace
+	{
+		bool HasSuffixIgnoreCase (std::string_view value, std::string_view suffix)
+		{
+			if (value.size () < suffix.size ()) return false;
+			auto tail = value.substr (value.size () - suffix.size ());
+			for (size_t i = 0; i < suffix.size (); i++)
+			{
+				char ch = tail[i];
+				char expected = suffix[i];
+				if (ch >= 'A' && ch <= 'Z') ch = static_cast<char> (ch - 'A' + 'a');
+				if (expected >= 'A' && expected <= 'Z') expected = static_cast<char> (expected - 'A' + 'a');
+				if (ch != expected) return false;
+			}
+			return true;
+		}
+	}
+
+	std::string NormalizeHostName (std::string_view name)
+	{
+		// A blinded destination label is URL-safe base64 and therefore
+		// case-sensitive. It is either the final label of ".i2p" (the Address
+		// parser treats a label longer than B33_ADDRESS_THRESHOLD this way) or
+		// the label immediately before an explicit ".b33.i2p" suffix. Preserve
+		// that label verbatim and fold the suffix and any subdomain prefix.
+		constexpr std::string_view b33Suffix = ".b33.i2p";
+		bool explicitB33 = HasSuffixIgnoreCase (name, b33Suffix) && name.size () > b33Suffix.size ();
+		size_t labelEnd = name.size ();
+		if (explicitB33)
+			labelEnd = name.size () - b33Suffix.size ();
+		else if (HasSuffixIgnoreCase (name, ".i2p"))
+			labelEnd = name.size () - 4;
+
+		auto dot = labelEnd ? name.rfind ('.', labelEnd - 1) : std::string_view::npos;
+		size_t labelStart = dot == std::string_view::npos ? 0 : dot + 1;
+		bool b33 = explicitB33 || (labelEnd > labelStart && labelEnd - labelStart > B33_ADDRESS_THRESHOLD);
+
+		std::string normalized (name);
+		for (size_t i = 0; i < normalized.size (); i++)
+		{
+			if (b33 && i >= labelStart && i < labelEnd) continue;
+			auto ch = normalized[i];
+			if (ch >= 'A' && ch <= 'Z') normalized[i] = static_cast<char> (ch - 'A' + 'a');
+		}
+		return normalized;
+	}
+
 	// TODO: this is actually proxy class
 	class AddressBookFilesystemStorage : public AddressBookStorage
 	{
@@ -204,7 +253,7 @@ namespace client
 				std::string name = s.substr (0, pos++);
 				std::string addr = s.substr (pos);
 
-				addresses[name] = std::make_shared<Address> (addr);
+				addresses[NormalizeHostName (name)] = std::make_shared<Address> (addr);
 				num++;
 			}
 		}
@@ -474,20 +523,20 @@ namespace client
 	std::shared_ptr<const Address> AddressBook::GetAddress (std::string_view address)
 	{
 		// Java lowercases the host before the .b32.i2p check, and the suffix
-		// must terminate the address (not merely occur in the middle).
-		std::string lower (address);
-		std::transform (lower.begin (), lower.end (), lower.begin (),
-			[] (unsigned char c) { return static_cast<char> (std::tolower (c)); });
-		if (lower.ends_with (".b32.i2p"))
+		// must terminate the address (not merely occur in the middle). Host
+		// names are ASCII case-insensitive; base64 destinations are not and
+		// are parsed from the original spelling below.
+		std::string normalized = NormalizeHostName (address);
+		if (normalized.ends_with (".b32.i2p"))
 		{
-			auto addr = std::make_shared<const Address> (lower.substr (0, lower.size () - 8));
+			auto addr = std::make_shared<const Address> (normalized.substr (0, normalized.size () - 8));
 			return addr->IsValid () ? addr : nullptr;
 		}
-		else if (address.ends_with (".i2p"))
+		else if (normalized.ends_with (".i2p"))
 		{
 			if (!m_IsEnabled) return nullptr;
-			auto addr = FindAddress (address);
-			if (!addr) LookupAddress (address); // TODO:
+			auto addr = FindAddress (normalized);
+			if (!addr) LookupAddress (normalized); // TODO:
 			return addr;
 		}
 		// if not .b32 we assume full base64 address
@@ -498,8 +547,11 @@ namespace client
 
 	std::shared_ptr<const Address> AddressBook::FindAddress (std::string_view address)
 	{
+		// The address book is keyed by the normalised name, so a mixed-case
+		// .I2P/.B32.I2P query resolves like its lower-case spelling.
+		auto normalized = NormalizeHostName (address);
 		std::lock_guard<std::mutex> l (m_AddressBookMutex);
-		auto it = m_Addresses.find (address);
+		auto it = m_Addresses.find (normalized);
 		if (it != m_Addresses.end ()) return it->second;
 		return nullptr;
 	}
@@ -526,11 +578,14 @@ namespace client
 
 	void AddressBook::InsertAddress (const std::string & address, const std::string & jump)
 	{
+		// Store under the normalised key; the jump link and the log keep the
+		// original spelling.
+		auto key = NormalizeHostName (address);
 		std::lock_guard<std::mutex> l (m_AddressBookMutex);
 		auto pos = jump.find (".b32.i2p");
 		if (pos != std::string::npos)
 		{
-			m_Addresses[address] = std::make_shared<Address> (jump.substr (0, pos));
+			m_Addresses[key] = std::make_shared<Address> (jump.substr (0, pos));
 			LogPrint (eLogInfo, "Addressbook: Added ", address, " -> ", jump);
 		}
 		else
@@ -540,7 +595,7 @@ namespace client
 			if (ident->FromBase64 (jump))
 			{
 				if (m_Storage) m_Storage->AddAddress (ident);
-				m_Addresses[address] = std::make_shared<Address> (ident->GetIdentHash ());
+				m_Addresses[key] = std::make_shared<Address> (ident->GetIdentHash ());
 				LogPrint (eLogInfo, "Addressbook: Added ", address, " -> ", ToAddress (ident->GetIdentHash ()));
 			}
 			else
@@ -602,13 +657,16 @@ namespace client
 
 				size_t pos = addr.find ('#');
 				if (pos != addr.npos) addr = addr.substr (0, pos); // remove comments
-				if (name.ends_with (".b32.i2p"))
+				// The map key is the normalised name; the original spelling is
+				// kept in diagnostics (and in the jump-link writer's output).
+				auto key = NormalizeHostName (name);
+				if (key.ends_with (".b32.i2p"))
 				{
 					LogPrint (eLogError, "Addressbook: Skipped adding of b32 address: ", name);
 					continue;
 				}
 
-				if (!name.ends_with (".i2p"))
+				if (!key.ends_with (".i2p"))
 				{
 					LogPrint (eLogError, "Addressbook: Malformed domain: ", name);
 					continue;
@@ -622,7 +680,7 @@ namespace client
 					continue;
 				}
 				numAddresses++;
-				auto it = m_Addresses.find (name);
+				auto it = m_Addresses.find (key);
 				if (it != m_Addresses.end ()) // already exists ?
 				{
 					if (it->second->IsIdentHash () && it->second->identHash != ident->GetIdentHash ()
@@ -640,7 +698,7 @@ namespace client
 				}
 				else
 				{
-					m_Addresses.emplace (name, std::make_shared<Address> (ident->GetIdentHash ()));
+					m_Addresses.emplace (key, std::make_shared<Address> (ident->GetIdentHash ()));
 					if (m_Storage) m_Storage->AddAddress (ident);
 					if (is_update) LogPrint (eLogInfo, "Addressbook: Added new host: ", name);
 				}
@@ -955,8 +1013,9 @@ namespace client
 			i2p::data::IdentHash hash (buf + 8);
 			if (!hash.IsZero ())
 			{
+				auto key = NormalizeHostName (address);
 				std::lock_guard<std::mutex> l (m_AddressBookMutex);
-				m_Addresses[address] = std::make_shared<Address> (hash);
+				m_Addresses[key] = std::make_shared<Address> (hash);
 			}
 			else
 				LogPrint (eLogInfo, "AddressBook: Lookup response: ", address, " not found");
@@ -1162,7 +1221,7 @@ namespace client
 		uint8_t response[44];
 		memset (response, 0, 4); // reserved
 		memcpy (response + 4, buf + 4, 4); // nonce
-		auto it = m_LocalAddresses.find (address); // address lookup
+		auto it = m_LocalAddresses.find (NormalizeHostName (std::string_view (address, l)));
 		if (it != m_LocalAddresses.end ())
 			memcpy (response + 8, it->second, 32); // ident
 		else
@@ -1174,7 +1233,7 @@ namespace client
 
 	void AddressResolver::AddAddress (const std::string & name, const i2p::data::IdentHash & ident)
 	{
-		m_LocalAddresses[name] = ident;
+		m_LocalAddresses[NormalizeHostName (name)] = ident;
 	}
 
 }

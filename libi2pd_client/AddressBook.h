@@ -71,6 +71,14 @@ namespace client
 		return ident.ToBase32 ().append (".b32.i2p");
 	}
 
+	// Host names in the address book are case-insensitive: Java lowercases the
+	// name in its naming service and before the ".b32.i2p" check. Returns an
+	// ASCII-lowercase copy suitable as a lookup/insertion key; callers keep the
+	// original spelling for display and replies. Only 'A'-'Z' are folded so the
+	// result does not depend on the process locale, and a b33 label (URL-safe
+	// base64, case-sensitive) is preserved byte-for-byte.
+	std::string NormalizeHostName (std::string_view name);
+
 	class AddressBookStorage // interface for storage
 	{
 	public:

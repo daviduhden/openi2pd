@@ -5,8 +5,8 @@
  * openi2pd: SAM.
  *
  * Declares the SAM protocol constants, session and master/subsession objects,
- * the socket state machine and the bridge owning the TCP acceptor and UDP
- * endpoint.
+ * the socket state machine, the bounded control-input framer and the bridge
+ * owning the TCP acceptor and UDP endpoint.
  *
  */
 
@@ -14,6 +14,7 @@
 #define SAM_H__
 
 #include <inttypes.h>
+#include <charconv>
 #include <string>
 #include <string_view>
 #include <map>
@@ -118,7 +119,14 @@ namespace client
 	constexpr std::string_view SAM_VALUE_PRIMARY { "PRIMARY" };
 
 	constexpr std::string_view SAM_PING { "PING" };
-	const char SAM_PONG[] = "PONG %s\n";
+	constexpr std::string_view SAM_PONG { "PONG\n" };
+	// SAMv3Handler.handle(): HELP is answered and the session is kept open.
+	constexpr std::string_view SAM_HELP_REPLY { "HELP STATUS RESULT=OK MESSAGE=https://i2p.net/en/docs/api/samv3\n" };
+
+	// Largest payload accepted by DATAGRAM SEND and RAW SEND, matching
+	// SAMv1Handler.checkDatagramSize()/checkSize().
+	constexpr size_t SAM_DATAGRAM_SEND_MAX_SIZE = 31744;
+	constexpr size_t SAM_RAW_SEND_MAX_SIZE = 32768;
 
 	constexpr int MAKE_SAM_VERSION_NUMBER (int major, int minor)
 	{
@@ -132,6 +140,198 @@ namespace client
 	constexpr int SAM_VERSION_33 = MAKE_SAM_VERSION_NUMBER (3, 3); // SAM 3.3
 	// SAMv3StreamSession.connect(): default I2PSocket connect timeout
 	constexpr int SAM_STREAM_CONNECT_TIMEOUT = 60 * 1000; // milliseconds
+
+	// One-word control commands accepted by SAMv3Handler.handle() before the
+	// two-word SAM dispatch. Java's SAMUtils.parseParams() upper-cases the
+	// COMMAND token, so the classification is ASCII case-insensitive.
+	enum class SAMControlCommand
+	{
+		eSAMControlCommandNone, // a two-word SAM command
+		eSAMControlCommandUnknown, // a single word that is not a control command
+		eSAMControlCommandPing,
+		eSAMControlCommandPong,
+		eSAMControlCommandHelp,
+		eSAMControlCommandQuit,
+		eSAMControlCommandStop,
+		eSAMControlCommandExit
+	};
+
+	inline bool SAMCommandEquals (std::string_view word, std::string_view expected)
+	{
+		if (word.size () != expected.size ()) return false;
+		for (size_t i = 0; i < word.size (); i++)
+		{
+			auto ch = word[i];
+			auto expectedCh = expected[i];
+			if (ch >= 'a' && ch <= 'z') ch = static_cast<char> (ch - 'a' + 'A');
+			if (expectedCh >= 'a' && expectedCh <= 'z')
+				expectedCh = static_cast<char> (expectedCh - 'a' + 'A');
+			if (ch != expectedCh) return false;
+		}
+		return true;
+	}
+
+	inline std::string ToUpperSAMCommand (std::string_view word)
+	{
+		std::string upper (word);
+		for (auto & ch : upper)
+			if (ch >= 'a' && ch <= 'z') ch = static_cast<char> (ch - 'a' + 'A');
+		return upper;
+	}
+
+	// Classifies the first token of a control line. `argument` receives the
+	// remainder after the first space; SAMv3Handler keeps the rest of a
+	// PING/PONG line verbatim instead of parsing key=value fields.
+	inline SAMControlCommand ParseSAMControlCommand (std::string_view line, std::string_view & argument)
+	{
+		argument = { };
+		auto space = line.find (' ');
+		auto word = space == std::string_view::npos ? line : line.substr (0, space);
+		if (space != std::string_view::npos) argument = line.substr (space + 1);
+		if (SAMCommandEquals (word, "PING")) return SAMControlCommand::eSAMControlCommandPing;
+		if (SAMCommandEquals (word, "PONG")) return SAMControlCommand::eSAMControlCommandPong;
+		if (SAMCommandEquals (word, "HELP")) return SAMControlCommand::eSAMControlCommandHelp;
+		if (SAMCommandEquals (word, "QUIT")) return SAMControlCommand::eSAMControlCommandQuit;
+		if (SAMCommandEquals (word, "STOP")) return SAMControlCommand::eSAMControlCommandStop;
+		if (SAMCommandEquals (word, "EXIT")) return SAMControlCommand::eSAMControlCommandExit;
+		if (space == std::string_view::npos) return SAMControlCommand::eSAMControlCommandUnknown;
+		return SAMControlCommand::eSAMControlCommandNone;
+	}
+
+	// Builds the reply line for a one-word control command. Returns an empty
+	// string when no reply must be written (PONG, ordinary commands). `word`
+	// is the token as received; replies use the upper-case spelling that Java
+	// derives from parseParams().
+	inline std::string MakeSAMControlReply (SAMControlCommand command, std::string_view word, std::string_view argument)
+	{
+		std::string reply;
+		switch (command)
+		{
+		case SAMControlCommand::eSAMControlCommandPing:
+			if (argument.empty ())
+			{
+				reply = SAM_PONG;
+				break;
+			}
+			reply = "PONG ";
+			reply.append (argument);
+			reply.push_back ('\n');
+			break;
+		case SAMControlCommand::eSAMControlCommandHelp: reply = SAM_HELP_REPLY; break;
+		case SAMControlCommand::eSAMControlCommandQuit:
+		case SAMControlCommand::eSAMControlCommandStop:
+		case SAMControlCommand::eSAMControlCommandExit:
+			reply = ToUpperSAMCommand (word);
+			reply.append (" STATUS RESULT=OK MESSAGE=bye\n");
+			break;
+		case SAMControlCommand::eSAMControlCommandUnknown:
+			reply = ToUpperSAMCommand (word);
+			reply.append (" STATUS RESULT=I2P_ERROR MESSAGE=\"unknown command or missing subcommand, "
+						  "enter HELP for help\"\n");
+			break;
+		default: break;
+		}
+		return reply;
+	}
+
+	enum class SAMFrameStatus
+	{
+		eSAMFrameComplete,
+		eSAMFrameNeedMore,
+		eSAMFrameTooLong // the bounded control buffer cannot hold the frame
+	};
+
+	struct SAMFrame
+	{
+		size_t lineLength = 0; // command line including the '\n' terminator
+		size_t frameLength = 0; // command line plus SEND payload
+		size_t payloadLength = 0; // SEND payload (DATAGRAM SEND/RAW SEND only)
+	};
+
+	inline bool IsSAMSendCommand (std::string_view line)
+	{
+		auto firstSpace = line.find (' ');
+		if (firstSpace == std::string_view::npos) return false;
+		size_t secondStart = firstSpace + 1;
+		while (secondStart < line.size () && line[secondStart] == ' ') ++secondStart;
+		auto secondSpace = secondStart < line.size () ? line.find (' ', secondStart) : std::string_view::npos;
+		auto second = line.substr (secondStart,
+			secondSpace == std::string_view::npos ? std::string_view::npos : secondSpace - secondStart);
+		return (SAMCommandEquals (line.substr (0, firstSpace), "DATAGRAM")
+				   || SAMCommandEquals (line.substr (0, firstSpace), "RAW"))
+			&& SAMCommandEquals (second, "SEND");
+	}
+
+	// Returns the value of a `NAME=value` field in a SAM parameter list. Like
+	// Java's parseParams(), only whole space-delimited fields match, so bytes
+	// of a SEND payload can never be mistaken for a parameter.
+	inline std::string_view FindSAMParam (std::string_view params, std::string_view name)
+	{
+		size_t pos = 0;
+		while (pos < params.size ())
+		{
+			auto end = params.find (' ', pos);
+			if (end == std::string_view::npos) end = params.size ();
+			auto field = params.substr (pos, end - pos);
+			if (field.size () > name.size () && field[name.size ()] == '='
+				&& SAMCommandEquals (field.substr (0, name.size ()), name))
+				return field.substr (name.size () + 1);
+			pos = end + 1;
+		}
+		return { };
+	}
+
+	// SAM 3.2 port, protocol and SIZE fields must be complete decimal numbers.
+	// Unlike Mapping::Get, this rejects trailing garbage instead of silently
+	// truncating it.
+	template <typename T> bool ParseSAMNumber (std::string_view s, T & value)
+	{
+		if (s.empty ()) return false;
+		auto res = std::from_chars (s.data (), s.data () + s.size (), value);
+		return res.ec == std::errc () && res.ptr == s.data () + s.size ();
+	}
+
+	// Frames the bounded SAM control input. A command line is one frame; the
+	// DATAGRAM SEND/RAW SEND commands additionally carry SIZE payload bytes
+	// after the line terminator, so a split payload is reported as NeedMore
+	// instead of being parsed as further commands. `sendLimit` is the largest
+	// SIZE accepted for the addressed session (31744 DATAGRAM, 32768 RAW);
+	// 0 means the addressed session cannot accept a SEND at all, so the line is
+	// completed immediately for the handler to report. An invalid SIZE also
+	// completes the line so the SEND handler can report it and close the
+	// session exactly as the non-pipelined path does.
+	inline SAMFrameStatus GetSAMNextFrame (std::string_view input, size_t sendLimit, SAMFrame & frame)
+	{
+		frame = { };
+		auto newline = input.find ('\n');
+		if (newline == std::string_view::npos)
+			return input.size () >= SAM_SOCKET_BUFFER_SIZE ? SAMFrameStatus::eSAMFrameTooLong
+														   : SAMFrameStatus::eSAMFrameNeedMore;
+		frame.lineLength = newline + 1;
+		frame.frameLength = frame.lineLength;
+		auto line = input.substr (0, newline);
+		if (!line.empty () && line.back () == '\r') line.remove_suffix (1);
+		if (!IsSAMSendCommand (line)) return SAMFrameStatus::eSAMFrameComplete;
+		if (!sendLimit) return SAMFrameStatus::eSAMFrameComplete; // no SEND-capable session
+		// Locate the end of the second command word; repeated spaces are
+		// allowed between the words. A SEND without a parameter list is
+		// complete immediately so the handler can report the missing SIZE.
+		auto firstSpace = line.find (' ');
+		size_t secondStart = firstSpace + 1;
+		while (secondStart < line.size () && line[secondStart] == ' ') ++secondStart;
+		auto secondSpace = secondStart < line.size () ? line.find (' ', secondStart) : std::string_view::npos;
+		if (secondSpace == std::string_view::npos) return SAMFrameStatus::eSAMFrameComplete;
+		size_t size = 0;
+		if (!ParseSAMNumber (FindSAMParam (line.substr (secondSpace + 1), SAM_PARAM_SIZE), size) || !size
+			|| size > sendLimit)
+			return SAMFrameStatus::eSAMFrameComplete; // the handler validates and reports it
+		if (input.size () - frame.lineLength < size)
+			return input.size () >= SAM_SOCKET_BUFFER_SIZE ? SAMFrameStatus::eSAMFrameTooLong
+														   : SAMFrameStatus::eSAMFrameNeedMore;
+		frame.payloadLength = size;
+		frame.frameLength = frame.lineLength + size;
+		return SAMFrameStatus::eSAMFrameComplete;
+	}
 
 	enum class SAMSocketType
 	{
@@ -169,9 +369,18 @@ namespace client
 	private:
 		void TerminateClose () { Terminate (nullptr); }
 
-		void HandleHandshakeReceived (const boost::system::error_code & ecode, std::size_t bytes_transferred);
-		void HandleHandshakeReplySent (const boost::system::error_code & ecode, std::size_t bytes_transferred);
+		// Control-protocol parsing. The SAM service thread is the only owner
+		// of the input buffer; every entry point appends at most
+		// SAM_SOCKET_BUFFER_SIZE bytes and then drains complete frames.
 		void HandleMessage (const boost::system::error_code & ecode, std::size_t bytes_transferred);
+		void ProcessBufferedCommands ();
+		bool ProcessOneBufferedFrame ();
+		void ProcessControlLine (std::string_view line, size_t lineLength);
+		void ProcessHandshakeLine (std::string_view line);
+		void ConsumeInput (size_t len);
+		void ContinueProcessing ();
+		size_t GetSAMSendLimit () const;
+
 		void SendMessageReply (std::string_view msg, bool close);
 		void HandleMessageReplySent (
 			const boost::system::error_code & ecode, std::size_t bytes_transferred, bool close);
@@ -206,7 +415,7 @@ namespace client
 			std::string sessionID, uint8_t protocol, uint16_t fromPort, uint16_t toPort, std::vector<uint8_t> payload);
 
 		void ProcessSessionCreate (std::string_view buf);
-		void ProcessStreamConnect (char * buf, const char * payload, size_t rem);
+		void ProcessStreamConnect (std::string_view buf, const char * payload, size_t rem);
 		void ProcessStreamAccept (std::string_view buf);
 		void ProcessStreamForward (std::string_view buf);
 		void ProcessDestGenerate (std::string_view buf);
@@ -220,7 +429,10 @@ namespace client
 		void SendSessionI2PError (const std::string & msg);
 		void SendStreamI2PError (const std::string & msg);
 		void SendStreamCantReachPeer (const std::string & msg);
-		size_t ProcessDatagramSend (char * buf, size_t len, const char * data); // from SAM 1.0
+		// Returns the payload bytes consumed (0 when the payload is not
+		// buffered yet). `line` is the parameter list after the command words,
+		// `payload` the bytes following the line terminator.
+		size_t ProcessDatagramSend (std::string_view line, const char * payload, size_t available);
 
 		void Connect (std::shared_ptr<const i2p::data::LeaseSet> remote, std::shared_ptr<SAMSession> session = nullptr);
 		void HandleConnectLeaseSetRequestComplete (std::shared_ptr<i2p::data::LeaseSet> leaseSet);
@@ -247,8 +459,14 @@ namespace client
 		SAMBridge & m_Owner;
 		Socket_t m_Socket;
 		boost::asio::steady_timer m_Timer;
+		// Scratch buffer for replies and for the STREAM CONNECT pre-connect
+		// payload (m_BufferOffset bytes).
 		char m_Buffer[SAM_SOCKET_BUFFER_SIZE + 1];
 		size_t m_BufferOffset; // for session only
+		// Bounded control input, retained across reads so that pipelined
+		// commands and split lines are parsed without dropping bytes.
+		char m_InputBuffer[SAM_SOCKET_BUFFER_SIZE + 1];
+		size_t m_InputSize; // pending bytes at the start of m_InputBuffer
 		uint8_t m_StreamBuffer[SAM_STREAM_BUFFER_SIZE];
 
 		struct OutputBuffer
@@ -267,6 +485,17 @@ namespace client
 		bool m_IsAccepting; // for eSAMSocketTypeAcceptor only
 		bool m_IsReceiving; // for eSAMSocketTypeStream only
 		bool m_IsI2PReceiving = false; // one outstanding I2P-side read
+		bool m_IsReading = false; // one outstanding control read
+		// Offset used by the control read that may complete after STREAM
+		// CONNECT switched the socket to stream mode. m_InputSize is consumed
+		// by the command parser while the read is still outstanding, so the
+		// completion handler must not recompute this offset.
+		size_t m_ControlReadOffset = 0;
+		bool m_IsHandshakeDone = false;
+		bool m_IsDispatching = false; // inside ProcessBufferedCommands
+		bool m_IsContinueRequested = false;
+		bool m_IsReplyQueued = false; // a control reply is being written
+		bool m_IsCommandPending = false; // a command with a deferred reply is in flight
 		std::shared_ptr<i2p::stream::Stream> m_Stream;
 		int m_Version;
 		int m_ConnectAttempts;
@@ -286,12 +515,12 @@ namespace client
 
 	bool ParseSAMDatagramHeader (std::string_view line, SAMDatagramHeader & header);
 
-	// Byte offset to preserve in m_Buffer for the next read after processing a
-	// DATAGRAM SEND/RAW SEND frame. `paramsOffset` is the start of the
-	// parameters inside the socket buffer, `len` the bytes from there to the
-	// end of the buffer and `processed` the return value of the frame parser.
-	// A partial frame keeps the complete command line plus the bytes received
-	// so far; a complete frame keeps only a trailing next-command fragment.
+	// Byte offset the former single-buffer parser preserved between reads for
+	// a DATAGRAM SEND/RAW SEND frame. The socket now keeps an explicit bounded
+	// input buffer (SAMFrame), so this helper is retained only for the
+	// datagram-framing regression vector. `paramsOffset` is the start of the
+	// parameters inside the old socket buffer, `len` the bytes from there to
+	// the end of the buffer and `processed` the former frame parser result.
 	inline size_t GetSAMSendResumeOffset (size_t paramsOffset, size_t len, size_t processed)
 	{
 		if (processed >= len) return 0;

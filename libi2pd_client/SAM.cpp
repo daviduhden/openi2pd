@@ -6,9 +6,11 @@
  *
  * Implements the SAM bridge over TCP and UDP: version negotiation,
  * session/subsession management, stream connect/accept/forward, datagram and
- * raw send/receive, destination generation and naming lookups. Version-gated
- * port fields and bounded accept/session tracking keep the protocol replies
- * compatible and the peer-controlled state limited.
+ * raw send/receive, destination generation and naming lookups. A persistent
+ * bounded input buffer frames pipelined commands, preserves split lines and
+ * SEND payloads across reads, and serialises replies so protocol order is
+ * unchanged. Version-gated port fields and bounded accept/session tracking
+ * keep the protocol replies compatible and the peer-controlled state limited.
  *
  */
 
@@ -38,6 +40,7 @@ namespace client
 		, m_Socket (owner.GetService ())
 		, m_Timer (m_Owner.GetService ())
 		, m_BufferOffset (0)
+		, m_InputSize (0)
 		, m_IsWriting (false)
 		, m_SocketType (SAMSocketType::eSAMSocketTypeUnknown)
 		, m_IsSilent (false)
@@ -98,9 +101,9 @@ namespace client
 
 	void SAMSocket::ReceiveHandshake ()
 	{
-		m_Socket.async_read_some (boost::asio::buffer (m_Buffer, SAM_SOCKET_BUFFER_SIZE),
-			std::bind (&SAMSocket::HandleHandshakeReceived, shared_from_this (), std::placeholders::_1,
-				std::placeholders::_2));
+		// The HELLO line is framed from the same bounded control input as the
+		// commands that may be pipelined behind it in the same read.
+		Receive ();
 	}
 
 	namespace
@@ -170,15 +173,6 @@ namespace client
 		return std::to_string (d.quot) + "." + std::to_string (d.rem);
 	}
 
-	// SAM 3.2 port and protocol fields must be complete decimal numbers. Unlike
-	// Mapping::Get, this rejects trailing garbage instead of silently truncating it.
-	template <typename T> static bool ParseSAMNumber (std::string_view s, T & value)
-	{
-		if (s.empty ()) return false;
-		auto res = std::from_chars (s.data (), s.data () + s.size (), value);
-		return res.ec == std::errc () && res.ptr == s.data () + s.size ();
-	}
-
 	static bool ParseSAMPort (const i2p::util::Mapping & params, std::string_view name, uint16_t & value)
 	{
 		if (!params.Contains (name)) return true; // absent, keep default
@@ -243,76 +237,274 @@ namespace client
 		return true;
 	}
 
-	void SAMSocket::HandleHandshakeReceived (const boost::system::error_code & ecode, std::size_t bytes_transferred)
+	void SAMSocket::ConsumeInput (size_t len)
 	{
-		if (ecode)
+		if (len >= m_InputSize)
 		{
-			LogPrint (eLogError, "SAM: Handshake read error: ", ecode.message ());
-			if (ecode != boost::asio::error::operation_aborted) Terminate ("SAM: handshake read error");
+			m_InputSize = 0;
+			return;
+		}
+		memmove (m_InputBuffer, m_InputBuffer + len, m_InputSize - len);
+		m_InputSize -= len;
+	}
+
+	size_t SAMSocket::GetSAMSendLimit () const
+	{
+		// SAMv1Handler.checkDatagramSize()/checkSize(): a DATAGRAM SEND frame
+		// carries at most 31744 bytes, a RAW SEND frame 32768. 0 tells the
+		// framer that this socket has no SEND-capable session, so the line is
+		// handed to the handler immediately instead of waiting for a payload
+		// the client may never send.
+		auto session = m_Owner.FindSession (m_ID);
+		if (session && session->Type == SAMSessionType::eSAMSessionTypeRaw) return SAM_RAW_SEND_MAX_SIZE;
+		if (session && session->Type == SAMSessionType::eSAMSessionTypeDatagram) return SAM_DATAGRAM_SEND_MAX_SIZE;
+		return 0;
+	}
+
+	void SAMSocket::ProcessHandshakeLine (std::string_view line)
+	{
+		LogPrint (eLogDebug, "SAM: Handshake ", line);
+		if (line.size () >= SAM_SOCKET_BUFFER_SIZE)
+		{
+			Terminate ("SAM: handshake line too long");
+			return;
+		}
+		// Work on a bounded copy: m_InputBuffer retains the pipelined commands
+		// that may follow the HELLO line, and the reply reuses m_Buffer.
+		memcpy (m_Buffer, line.data (), line.size ());
+		m_Buffer[line.size ()] = 0;
+		char * separator = strchr (m_Buffer, ' ');
+		if (separator)
+		{
+			separator = strchr (separator + 1, ' ');
+			if (separator) *separator = 0;
+		}
+
+		if (strcmp (m_Buffer, SAM_HANDSHAKE))
+		{
+			LogPrint (eLogError, "SAM: Handshake mismatch");
+			Terminate ("SAM: handshake mismatch");
+			return;
+		}
+
+		bool hasMin = false, hasMax = false, verErr = false;
+		std::vector<uint64_t> minVer, maxVer;
+		if (separator)
+		{
+			separator++;
+			auto params = ExtractParams (separator);
+			auto maxVerStr = params[SAM_PARAM_MAX];
+			if (!maxVerStr.empty ())
+			{
+				hasMax = true;
+				if (!ParseSAMVersion (maxVerStr, maxVer)) verErr = true;
+			}
+			auto minVerStr = params[SAM_PARAM_MIN];
+			if (!minVerStr.empty ())
+			{
+				hasMin = true;
+				if (!ParseSAMVersion (minVerStr, minVer)) verErr = true;
+			}
+		}
+		// A min > max range simply selects nothing (NOVERSION).
+		int selected = verErr ? -1 : ChooseSAMVersion (hasMin, minVer, hasMax, maxVer);
+		if (verErr || selected < 0)
+		{
+			LogPrint (eLogError, "SAM: Handshake version mismatch");
+			SendMessageReply (SAM_HANDSHAKE_NOVERSION, true);
+			return;
+		}
+		m_Version = selected;
+		m_IsHandshakeDone = true;
+		SendReplyWithMessage (SAM_HANDSHAKE_REPLY, CreateVersion (m_Version), false);
+	}
+
+	void SAMSocket::ContinueProcessing ()
+	{
+		if (m_SocketType == SAMSocketType::eSAMSocketTypeStream)
+		{
+			// Stream mode forwards every further client byte to the I2P stream.
+			Receive ();
+			return;
+		}
+		ProcessBufferedCommands ();
+	}
+
+	void SAMSocket::ProcessBufferedCommands ()
+	{
+		if (m_IsDispatching)
+		{
+			m_IsContinueRequested = true;
+			return;
+		}
+		m_IsDispatching = true;
+		for (;;)
+		{
+			m_IsContinueRequested = false;
+			while (ProcessOneBufferedFrame ())
+			{
+			}
+			if (!m_IsContinueRequested) break;
+		}
+		m_IsDispatching = false;
+	}
+
+	bool SAMSocket::ProcessOneBufferedFrame ()
+	{
+		// A queued reply or a command awaiting an asynchronous reply keeps
+		// protocol order: later commands must not produce replies first.
+		if (m_IsReplyQueued || m_IsCommandPending) return false;
+		// Only a control socket (before or after SESSION CREATE) parses
+		// commands. Acceptors and forwarders stay idle until a stream arrives.
+		if (m_SocketType != SAMSocketType::eSAMSocketTypeUnknown
+			&& m_SocketType != SAMSocketType::eSAMSocketTypeSession)
+			return false;
+
+		SAMFrame frame;
+		auto status = GetSAMNextFrame ({ m_InputBuffer, m_InputSize }, GetSAMSendLimit (), frame);
+		if (status == SAMFrameStatus::eSAMFrameNeedMore)
+		{
+			Receive ();
+			return false;
+		}
+		if (status == SAMFrameStatus::eSAMFrameTooLong)
+		{
+			LogPrint (eLogError, "SAM: Command frame exceeds the control buffer ", m_InputSize);
+			Terminate ("SAM: command frame too long");
+			return false;
+		}
+
+		std::string_view line (m_InputBuffer, frame.lineLength);
+		line.remove_suffix (1); // '\n'
+		if (!line.empty () && line.back () == '\r') line.remove_suffix (1);
+
+		if (!m_IsHandshakeDone)
+		{
+			ProcessHandshakeLine (line);
+			ConsumeInput (frame.lineLength);
+			return false; // the HELLO REPLY must precede every command reply
+		}
+
+		ProcessControlLine (line, frame.lineLength);
+		return !m_IsReplyQueued && !m_IsCommandPending && m_SocketType != SAMSocketType::eSAMSocketTypeTerminated
+			&& m_SocketType != SAMSocketType::eSAMSocketTypeStream;
+	}
+
+	void SAMSocket::ProcessControlLine (std::string_view line, size_t lineLength)
+	{
+		while (!line.empty () && line.front () == ' ') line.remove_prefix (1);
+		if (line.empty ())
+		{
+			// SAMv3Handler ignores empty lines.
+			ConsumeInput (lineLength);
+			return;
+		}
+
+		std::string_view argument;
+		auto control = ParseSAMControlCommand (line, argument);
+		if (control != SAMControlCommand::eSAMControlCommandNone)
+		{
+			auto space = line.find (' ');
+			auto word = space == std::string_view::npos ? line : line.substr (0, space);
+			auto reply = MakeSAMControlReply (control, word, argument);
+			LogPrint (eLogDebug, "SAM: Command ", word, " ", argument);
+			ConsumeInput (lineLength);
+			switch (control)
+			{
+			case SAMControlCommand::eSAMControlCommandPong: return; // answer to our PING
+			case SAMControlCommand::eSAMControlCommandQuit:
+			case SAMControlCommand::eSAMControlCommandStop:
+			case SAMControlCommand::eSAMControlCommandExit:
+				LogPrint (eLogInfo, "SAM: Client requested ", word);
+				SendMessageReply (reply, true);
+				return;
+			case SAMControlCommand::eSAMControlCommandPing:
+			case SAMControlCommand::eSAMControlCommandHelp: SendMessageReply (reply, false); return;
+			case SAMControlCommand::eSAMControlCommandUnknown:
+				LogPrint (eLogError, "SAM: Unknown command ", word);
+				SendMessageReply (reply, false);
+				return;
+			default: return;
+			}
+		}
+
+		// Two-word command: normalize the separator between the words so a
+		// repeated space cannot turn "SESSION  CREATE" into a one-word command.
+		std::string commandStorage;
+		std::string_view command;
+		std::string_view params;
+		auto firstSpace = line.find (' ');
+		if (firstSpace == std::string_view::npos)
+			command = line;
+		else
+		{
+			size_t secondStart = firstSpace + 1;
+			while (secondStart < line.size () && line[secondStart] == ' ') ++secondStart;
+			auto secondSpace = secondStart < line.size () ? line.find (' ', secondStart) : std::string_view::npos;
+			commandStorage.reserve (
+				firstSpace + 1 + (secondSpace == std::string_view::npos ? line.size () - secondStart
+																	   : secondSpace - secondStart));
+			commandStorage.append (line.substr (0, firstSpace));
+			commandStorage.push_back (' ');
+			if (secondStart < line.size ())
+				commandStorage.append (line.substr (secondStart,
+					secondSpace == std::string_view::npos ? std::string_view::npos : secondSpace - secondStart));
+			command = commandStorage;
+			if (secondSpace != std::string_view::npos) params = line.substr (secondSpace + 1);
+		}
+
+		if (SAMCommandEquals (command, SAM_SESSION_CREATE))
+		{
+			ProcessSessionCreate (params);
+			ConsumeInput (lineLength);
+		}
+		else if (SAMCommandEquals (command, SAM_STREAM_CONNECT))
+		{
+			// Bytes behind the command line are stream payload, as in
+			// SAMv3Handler; copy them into the pre-connect buffer.
+			ProcessStreamConnect (params, m_InputBuffer + lineLength, m_InputSize - lineLength);
+			ConsumeInput (m_InputSize);
+		}
+		else if (SAMCommandEquals (command, SAM_STREAM_ACCEPT))
+		{
+			ProcessStreamAccept (params);
+			ConsumeInput (lineLength);
+		}
+		else if (SAMCommandEquals (command, SAM_STREAM_FORWARD))
+		{
+			ProcessStreamForward (params);
+			ConsumeInput (lineLength);
+		}
+		else if (SAMCommandEquals (command, SAM_DEST_GENERATE))
+		{
+			ProcessDestGenerate (params);
+			ConsumeInput (lineLength);
+		}
+		else if (SAMCommandEquals (command, SAM_NAMING_LOOKUP))
+		{
+			ProcessNamingLookup (params);
+			ConsumeInput (lineLength);
+		}
+		else if (SAMCommandEquals (command, SAM_SESSION_ADD))
+		{
+			ProcessSessionAdd (params);
+			ConsumeInput (lineLength);
+		}
+		else if (SAMCommandEquals (command, SAM_SESSION_REMOVE))
+		{
+			ProcessSessionRemove (params);
+			ConsumeInput (lineLength);
+		}
+		else if (SAMCommandEquals (command, SAM_DATAGRAM_SEND) || SAMCommandEquals (command, SAM_RAW_SEND))
+		{
+			size_t available = m_InputSize - lineLength;
+			size_t consumed = ProcessDatagramSend (params, m_InputBuffer + lineLength, available);
+			ConsumeInput (lineLength + consumed);
 		}
 		else
 		{
-			m_Buffer[bytes_transferred] = 0;
-			char * eol = (char *)memchr (m_Buffer, '\n', bytes_transferred);
-			if (eol) *eol = 0;
-			LogPrint (eLogDebug, "SAM: Handshake ", m_Buffer);
-			char * separator = strchr (m_Buffer, ' ');
-			if (separator)
-			{
-				separator = strchr (separator + 1, ' ');
-				if (separator) *separator = 0;
-			}
-
-			if (!strcmp (m_Buffer, SAM_HANDSHAKE))
-			{
-				bool hasMin = false, hasMax = false, verErr = false;
-				std::vector<uint64_t> minVer, maxVer;
-				if (separator)
-				{
-					separator++;
-					auto params = ExtractParams (separator);
-					auto maxVerStr = params[SAM_PARAM_MAX];
-					if (!maxVerStr.empty ())
-					{
-						hasMax = true;
-						if (!ParseSAMVersion (maxVerStr, maxVer)) verErr = true;
-					}
-					auto minVerStr = params[SAM_PARAM_MIN];
-					if (!minVerStr.empty ())
-					{
-						hasMin = true;
-						if (!ParseSAMVersion (minVerStr, minVer)) verErr = true;
-					}
-				}
-				// A min > max range simply selects nothing (NOVERSION).
-				int selected = verErr ? -1 : ChooseSAMVersion (hasMin, minVer, hasMax, maxVer);
-				if (verErr || selected < 0)
-				{
-					LogPrint (eLogError, "SAM: Handshake version mismatch");
-					SendMessageReply (SAM_HANDSHAKE_NOVERSION, true);
-					return;
-				}
-				m_Version = selected;
-				// send reply
-				const int l = std::snprintf (
-					m_Buffer, SAM_SOCKET_BUFFER_SIZE, SAM_HANDSHAKE_REPLY, CreateVersion (m_Version).c_str ());
-				if (l <= 0 || static_cast<size_t> (l) >= SAM_SOCKET_BUFFER_SIZE)
-				{
-					LogPrint (eLogError, "SAM: Handshake reply exceeds buffer");
-					Terminate ("SAM: handshake reply too long");
-					return;
-				}
-				auto reply = std::make_shared<uint8_t[]> (l);
-				memcpy (reply.get (), m_Buffer, l);
-				auto s = shared_from_this ();
-				QueueI2PWrite (std::move (reply), l,
-					[s] (const boost::system::error_code & ecode) { s->HandleHandshakeReplySent (ecode, 0); });
-			}
-			else
-			{
-				LogPrint (eLogError, "SAM: Handshake mismatch");
-				Terminate ("SAM: handshake mismatch");
-			}
+			LogPrint (eLogError, "SAM: Unexpected message ", line);
+			Terminate ("SAM: unexpected message");
 		}
 	}
 
@@ -328,29 +520,18 @@ namespace client
 		m_ID.assign (id);
 	}
 
-	void SAMSocket::HandleHandshakeReplySent (const boost::system::error_code & ecode, std::size_t bytes_transferred)
-	{
-		if (ecode)
-		{
-			LogPrint (eLogError, "SAM: Handshake reply send error: ", ecode.message ());
-			if (ecode != boost::asio::error::operation_aborted) Terminate ("SAM: handshake reply send error");
-		}
-		else
-		{
-			m_Socket.async_read_some (boost::asio::buffer (m_Buffer, SAM_SOCKET_BUFFER_SIZE),
-				std::bind (
-					&SAMSocket::HandleMessage, shared_from_this (), std::placeholders::_1, std::placeholders::_2));
-		}
-	}
-
 	void SAMSocket::SendMessageReply (std::string_view msg, bool close)
 	{
 		LogPrint (eLogDebug, "SAMSocket::SendMessageReply, close=", close ? "true" : "false", " reason: ", msg);
 
+		// The reply (or the decision not to send one) settles any deferred
+		// command: further commands may now be parsed once the write is done.
+		m_IsCommandPending = false;
 		if ((!m_IsSilent || m_SocketType == SAMSocketType::eSAMSocketTypeForward) && !msg.empty ())
 		{
 			auto reply = std::make_shared<uint8_t[]> (msg.size ());
 			memcpy (reply.get (), msg.data (), msg.size ());
+			m_IsReplyQueued = true;
 			auto s = shared_from_this ();
 			QueueI2PWrite (std::move (reply), msg.size (),
 				[s, close] (const boost::system::error_code & ecode) { s->HandleMessageReplySent (ecode, 0, close); });
@@ -360,13 +541,14 @@ namespace client
 			if (close)
 				Terminate ("SAMSocket::SendMessageReply(close=true)");
 			else
-				Receive ();
+				ContinueProcessing ();
 		}
 	}
 
 	void SAMSocket::HandleMessageReplySent (
 		const boost::system::error_code & ecode, std::size_t bytes_transferred, bool close)
 	{
+		m_IsReplyQueued = false;
 		if (ecode)
 		{
 			LogPrint (eLogError, "SAM: Reply send error: ", ecode.message ());
@@ -381,119 +563,38 @@ namespace client
 				// STREAM CONNECT STATUS=OK must reach the client before any payload
 				// from the I2P side, so start both directions only after the reply.
 				if (m_SocketType == SAMSocketType::eSAMSocketTypeStream && m_Stream) I2PReceive ();
-				Receive ();
+				ContinueProcessing ();
 			}
 		}
 	}
 
 	void SAMSocket::HandleMessage (const boost::system::error_code & ecode, std::size_t bytes_transferred)
 	{
+		m_IsReading = false;
 		if (ecode)
 		{
 			LogPrint (eLogError, "SAM: Read error: ", ecode.message ());
 			if (ecode != boost::asio::error::operation_aborted) Terminate ("SAM: read error");
 		}
 		else if (m_SocketType == SAMSocketType::eSAMSocketTypeStream)
-			HandleReceived (ecode, bytes_transferred);
+		{
+			// A control read may complete just after the socket switched to
+			// stream mode; those bytes are payload, not commands. The read
+			// started at m_InputSize, which cannot change while it is pending.
+			if (!bytes_transferred) return Receive ();
+			if (!m_Stream)
+			{
+				Terminate ("No Stream Remaining");
+				return;
+			}
+			m_Stream->AsyncSend (reinterpret_cast<uint8_t *> (m_InputBuffer + m_ControlReadOffset),
+				bytes_transferred,
+				std::bind (&SAMSocket::HandleStreamSend, shared_from_this (), std::placeholders::_1));
+		}
 		else
 		{
-			bytes_transferred += m_BufferOffset;
-			m_BufferOffset = 0;
-			m_Buffer[bytes_transferred] = 0;
-			char * lineEnd = (char *)memchr (m_Buffer, '\n', bytes_transferred); // includes CRLF
-			char * eol = lineEnd;
-			if (eol)
-			{
-				if (eol > m_Buffer && eol[-1] == '\r') eol--;
-				*eol = 0;
-				char * separator = strchr (m_Buffer, ' ');
-				if (separator)
-				{
-					// one word command
-					if (std::string_view (m_Buffer, separator - m_Buffer) == SAM_PING)
-					{
-						ProcessPing ({ separator + 1, (size_t)(eol - separator - 1) });
-						return;
-					}
-
-					// two words command
-					char * commandEnd = strchr (separator + 1, ' ');
-					char * params = nullptr;
-					size_t paramsLen = 0;
-					if (commandEnd)
-					{
-						*commandEnd = 0;
-						params = commandEnd + 1;
-						paramsLen = eol - params;
-					}
-					else
-					{
-						// no parameters: do not compute eol - separator - 1 on
-						// the newline position (it would underflow).
-						params = eol;
-						paramsLen = 0;
-					}
-
-					if (!strcmp (m_Buffer, SAM_SESSION_CREATE))
-						ProcessSessionCreate ({ params, paramsLen });
-					else if (!strcmp (m_Buffer, SAM_STREAM_CONNECT))
-						ProcessStreamConnect (params, lineEnd + 1, bytes_transferred - (lineEnd - m_Buffer) - 1);
-					else if (!strcmp (m_Buffer, SAM_STREAM_ACCEPT))
-						ProcessStreamAccept ({ params, paramsLen });
-					else if (!strcmp (m_Buffer, SAM_STREAM_FORWARD))
-						ProcessStreamForward ({ params, paramsLen });
-					else if (!strcmp (m_Buffer, SAM_DEST_GENERATE))
-						ProcessDestGenerate ({ params, paramsLen });
-					else if (!strcmp (m_Buffer, SAM_NAMING_LOOKUP))
-						ProcessNamingLookup ({ params, paramsLen });
-					else if (!strcmp (m_Buffer, SAM_SESSION_ADD))
-						ProcessSessionAdd ({ params, paramsLen });
-					else if (!strcmp (m_Buffer, SAM_SESSION_REMOVE))
-						ProcessSessionRemove ({ params, paramsLen });
-					else if (!strcmp (m_Buffer, SAM_DATAGRAM_SEND) || !strcmp (m_Buffer, SAM_RAW_SEND))
-					{
-						size_t len = bytes_transferred - (params - m_Buffer);
-						size_t processed = ProcessDatagramSend (params, len, lineEnd + 1);
-						if (processed < len)
-						{
-							if (processed > 0)
-							{
-								// complete datagram followed by bytes of the next
-								// command: keep only the trailing bytes
-								m_BufferOffset = GetSAMSendResumeOffset ((size_t)(params - m_Buffer), len, processed);
-								memmove (m_Buffer, params + processed, m_BufferOffset);
-							}
-							else
-							{
-								// incomplete payload: retain the whole command
-								// line, not just the bytes after the parameters.
-								m_BufferOffset = GetSAMSendResumeOffset ((size_t)(params - m_Buffer), len, 0);
-								if (commandEnd) *commandEnd = ' ';
-								*eol = (eol == lineEnd) ? '\n' : '\r';
-							}
-						}
-						// since it's SAM v1 reply is not expected
-						Receive ();
-					}
-					else
-					{
-						LogPrint (eLogError, "SAM: Unexpected message ", m_Buffer);
-						Terminate ("SAM: unexpected message");
-					}
-				}
-				else
-				{
-					LogPrint (eLogError, "SAM: Malformed message ", m_Buffer);
-					Terminate ("malformed message");
-				}
-			}
-			else
-			{
-				LogPrint (eLogWarning, "SAM: Incomplete message ", bytes_transferred);
-				m_BufferOffset = bytes_transferred;
-				// try to receive remaining message
-				Receive ();
-			}
+			m_InputSize += bytes_transferred;
+			ProcessBufferedCommands ();
 		}
 	}
 
@@ -509,8 +610,19 @@ namespace client
 		return true;
 	}
 
+	// .i2p host names are case-insensitive, unlike base64 destinations. Java
+	// lowercases the name before its ".b32.i2p" check and the naming service
+	// matches case-insensitively.
+	static bool IsI2PHostName (std::string_view address)
+	{
+		return address.size () > 4 && SAMCommandEquals (address.substr (address.size () - 4), ".I2P");
+	}
+
 	void SAMSocket::ProcessSessionCreate (std::string_view buf)
 	{
+		// SESSION STATUS may be delayed until the destination is ready; no
+		// later command may be dispatched (or answered) before it.
+		m_IsCommandPending = true;
 		LogPrint (eLogDebug, "SAM: Session create: ", buf);
 		auto params = ExtractParams (buf);
 		std::string_view style = params[SAM_PARAM_STYLE];
@@ -533,19 +645,19 @@ namespace client
 
 		SAMSessionType type = SAMSessionType::eSAMSessionTypeUnknown;
 		i2p::datagram::DatagramVersion datagramVersion = i2p::datagram::eDatagramV1;
-		if (style == SAM_VALUE_STREAM)
+		if (SAMCommandEquals (style, SAM_VALUE_STREAM))
 			type = SAMSessionType::eSAMSessionTypeStream;
-		else if (style == SAM_VALUE_DATAGRAM || style == SAM_VALUE_DATAGRAM2 || style == SAM_VALUE_DATAGRAM3)
+		else if (SAMCommandEquals (style, SAM_VALUE_DATAGRAM) || SAMCommandEquals (style, SAM_VALUE_DATAGRAM2) || SAMCommandEquals (style, SAM_VALUE_DATAGRAM3))
 		{
 			type = SAMSessionType::eSAMSessionTypeDatagram;
-			if (style == SAM_VALUE_DATAGRAM2)
+			if (SAMCommandEquals (style, SAM_VALUE_DATAGRAM2))
 				datagramVersion = i2p::datagram::eDatagramV2;
-			else if (style == SAM_VALUE_DATAGRAM3)
+			else if (SAMCommandEquals (style, SAM_VALUE_DATAGRAM3))
 				datagramVersion = i2p::datagram::eDatagramV3;
 		}
-		else if (style == SAM_VALUE_RAW)
+		else if (SAMCommandEquals (style, SAM_VALUE_RAW))
 			type = SAMSessionType::eSAMSessionTypeRaw;
-		else if (style == SAM_VALUE_MASTER || style == SAM_VALUE_PRIMARY)
+		else if (SAMCommandEquals (style, SAM_VALUE_MASTER) || SAMCommandEquals (style, SAM_VALUE_PRIMARY))
 		{
 			if (m_Version < SAM_VERSION_33) // < SAM 3.3
 			{
@@ -583,7 +695,7 @@ namespace client
 		// HEADER=true makes forwarded raw datagrams carry a PROTOCOL/FROM_PORT/
 		// TO_PORT line, as in SAMv3RawSession (SAM 3.2+).
 		bool header = m_Version >= SAM_VERSION_32 && type == SAMSessionType::eSAMSessionTypeRaw
-			&& params[SAM_PARAM_HEADER] == SAM_VALUE_TRUE;
+			&& SAMCommandEquals (params[SAM_PARAM_HEADER], SAM_VALUE_TRUE);
 
 		std::shared_ptr<boost::asio::ip::udp::endpoint> forward = nullptr;
 		if ((type == SAMSessionType::eSAMSessionTypeDatagram || type == SAMSessionType::eSAMSessionTypeRaw)
@@ -630,7 +742,7 @@ namespace client
 			return;
 		}
 
-		if (destination != SAM_VALUE_TRANSIENT)
+		if (!SAMCommandEquals (destination, SAM_VALUE_TRANSIENT))
 		{
 			//ensure it's a base64 string
 			i2p::data::PrivateKeys keys;
@@ -654,7 +766,7 @@ namespace client
 		}
 
 		// create destination
-		auto session = m_Owner.CreateSession (id, type, destination == SAM_VALUE_TRANSIENT ? "" : destination, params);
+		auto session = m_Owner.CreateSession (id, type, SAMCommandEquals (destination, SAM_VALUE_TRANSIENT) ? "" : destination, params);
 		if (session)
 		{
 			m_SocketType = SAMSocketType::eSAMSocketTypeSession;
@@ -746,8 +858,11 @@ namespace client
 		}
 	}
 
-	void SAMSocket::ProcessStreamConnect (char * buf, const char * payload, size_t rem)
+	void SAMSocket::ProcessStreamConnect (std::string_view buf, const char * payload, size_t rem)
 	{
+		// The reply arrives after the connect completes, so no further command
+		// may be parsed (or replied to) in the meantime.
+		m_IsCommandPending = true;
 		LogPrint (eLogDebug, "SAM: Stream connect: ", buf);
 		if (m_SocketType != SAMSocketType::eSAMSocketTypeUnknown)
 		{
@@ -758,7 +873,7 @@ namespace client
 		std::string_view id = params[SAM_PARAM_ID];
 		std::string_view destination = params[SAM_PARAM_DESTINATION];
 		std::string_view silent = params[SAM_PARAM_SILENT];
-		if (silent == SAM_VALUE_TRUE) m_IsSilent = true;
+		if (SAMCommandEquals (silent, SAM_VALUE_TRUE)) m_IsSilent = true;
 		SetID (id);
 		auto session = m_Owner.FindSession (id);
 		m_ConnectFromPort = session ? session->FromPort : 0;
@@ -790,8 +905,8 @@ namespace client
 				m_BufferOffset = 0;
 
 			std::shared_ptr<const Address> addr;
-			if (destination.find (".i2p") != std::string::npos)
-				addr = context.GetAddressBook ().GetAddress (destination);
+			if (IsI2PHostName (destination))
+				addr = context.GetAddressBook ().GetAddress (std::string (destination));
 			else
 			{
 				auto dest = std::make_shared<i2p::data::IdentityEx> ();
@@ -932,7 +1047,7 @@ namespace client
 		auto params = ExtractParams (buf);
 		std::string_view id = params[SAM_PARAM_ID];
 		std::string_view silent = params[SAM_PARAM_SILENT];
-		if (silent == SAM_VALUE_TRUE) m_IsSilent = true;
+		if (SAMCommandEquals (silent, SAM_VALUE_TRUE)) m_IsSilent = true;
 		SetID (id);
 		auto session = m_Owner.FindSession (id);
 		if (session)
@@ -1064,7 +1179,7 @@ namespace client
 		SetID (id);
 		m_IsAccepting = true;
 
-		if (params[SAM_PARAM_SILENT] == SAM_VALUE_TRUE) m_IsSilent = true;
+		if (SAMCommandEquals (params[SAM_PARAM_SILENT], SAM_VALUE_TRUE)) m_IsSilent = true;
 
 		session->GetLocalDestination ()->AcceptStreams (
 			std::bind (&SAMSocket::HandleI2PForward, shared_from_this (), std::placeholders::_1, ep));
@@ -1072,35 +1187,35 @@ namespace client
 		SendMessageReply (SAM_STREAM_STATUS_OK, false);
 	}
 
-	size_t SAMSocket::ProcessDatagramSend (char * buf, size_t len, const char * data)
+	size_t SAMSocket::ProcessDatagramSend (std::string_view line, const char * payload, size_t available)
 	{
-		LogPrint (eLogDebug, "SAM: Datagram send: ", buf, " ", len);
-		auto params = ExtractParams (buf);
+		LogPrint (eLogDebug, "SAM: Datagram send: ", line);
+		auto params = ExtractParams (line);
 		auto session = m_Owner.FindSession (m_ID);
 		if (!session)
 		{
 			LogPrint (eLogError, "SAM: Session is not created from DATAGRAM SEND");
-			return len; // consume the unusable command, payload included
+			return available; // consume the unusable command, payload included
 		}
 		if (session->Type != SAMSessionType::eSAMSessionTypeRaw
 			&& session->Type != SAMSessionType::eSAMSessionTypeDatagram)
 		{
 			LogPrint (eLogError, "SAM: SEND on a non-datagram session ", session->Name);
-			return len;
+			return available;
 		}
 		bool isRaw = session->Type == SAMSessionType::eSAMSessionTypeRaw;
 		size_t size = 0;
+		// SAMRawSession/SAMDatagramSession limits
 		if (!ParseSAMNumber (params[SAM_PARAM_SIZE], size) || !size
-			|| size > (isRaw ? 32768u : 31744u)) // SAMRawSession/SAMDatagramSession limits
+			|| size > (isRaw ? SAM_RAW_SEND_MAX_SIZE : SAM_DATAGRAM_SEND_MAX_SIZE))
 		{
 			LogPrint (eLogWarning, "SAM: Invalid SEND size ", params[SAM_PARAM_SIZE]);
 			Terminate ("SAM: invalid SEND size");
-			return len;
+			return available;
 		}
-		size_t offset = data - buf;
-		if (offset > len || size > len - offset)
+		if (size > available)
 		{
-			LogPrint (eLogWarning, "SAM: Sent datagram size ", size, " exceeds buffer ", len - offset);
+			LogPrint (eLogWarning, "SAM: Sent datagram size ", size, " exceeds buffered ", available);
 			return 0; // try to receive more
 		}
 		uint16_t fromPort = session->FromPort, toPort = session->ToPort;
@@ -1123,10 +1238,11 @@ namespace client
 		if (params[SAM_PARAM_DESTINATION].empty ())
 		{
 			LogPrint (eLogError, "SAM: Missing SEND DESTINATION");
-			return offset + size;
+			return size;
 		}
-		session->SendDatagram (params[SAM_PARAM_DESTINATION], (const uint8_t *)data, size, fromPort, toPort, protocol);
-		return offset + size;
+		session->SendDatagram (
+			params[SAM_PARAM_DESTINATION], (const uint8_t *)payload, size, fromPort, toPort, protocol);
+		return size;
 	}
 
 	void SAMSocket::ProcessDestGenerate (std::string_view buf)
@@ -1159,6 +1275,9 @@ namespace client
 
 	void SAMSocket::ProcessNamingLookup (std::string_view buf)
 	{
+		// A lease set request can defer the NAMING REPLY; keep later commands
+		// from producing replies first.
+		m_IsCommandPending = true;
 		LogPrint (eLogDebug, "SAM: Naming lookup: ", buf);
 		auto params = ExtractParams (buf);
 		std::string name (params[SAM_PARAM_NAME]);
@@ -1230,17 +1349,17 @@ namespace client
 			std::string_view style = params[SAM_PARAM_STYLE];
 			SAMSessionType type = SAMSessionType::eSAMSessionTypeUnknown;
 			i2p::datagram::DatagramVersion datagramVersion = i2p::datagram::eDatagramV1;
-			if (style == SAM_VALUE_STREAM)
+			if (SAMCommandEquals (style, SAM_VALUE_STREAM))
 				type = SAMSessionType::eSAMSessionTypeStream;
-			else if (style == SAM_VALUE_DATAGRAM || style == SAM_VALUE_DATAGRAM2 || style == SAM_VALUE_DATAGRAM3)
+			else if (SAMCommandEquals (style, SAM_VALUE_DATAGRAM) || SAMCommandEquals (style, SAM_VALUE_DATAGRAM2) || SAMCommandEquals (style, SAM_VALUE_DATAGRAM3))
 			{
 				type = SAMSessionType::eSAMSessionTypeDatagram;
-				if (style == SAM_VALUE_DATAGRAM2)
+				if (SAMCommandEquals (style, SAM_VALUE_DATAGRAM2))
 					datagramVersion = i2p::datagram::eDatagramV2;
-				else if (style == SAM_VALUE_DATAGRAM3)
+				else if (SAMCommandEquals (style, SAM_VALUE_DATAGRAM3))
 					datagramVersion = i2p::datagram::eDatagramV3;
 			}
-			else if (style == SAM_VALUE_RAW)
+			else if (SAMCommandEquals (style, SAM_VALUE_RAW))
 				type = SAMSessionType::eSAMSessionTypeRaw;
 			if (type == SAMSessionType::eSAMSessionTypeUnknown)
 			{
@@ -1267,7 +1386,7 @@ namespace client
 				return;
 			}
 			bool header = m_Version >= SAM_VERSION_32 && type == SAMSessionType::eSAMSessionTypeRaw
-				&& params[SAM_PARAM_HEADER] == SAM_VALUE_TRUE;
+				&& SAMCommandEquals (params[SAM_PARAM_HEADER], SAM_VALUE_TRUE);
 
 			std::shared_ptr<boost::asio::ip::udp::endpoint> forward = nullptr;
 			if ((type == SAMSessionType::eSAMSessionTypeDatagram || type == SAMSessionType::eSAMSessionTypeRaw)
@@ -1387,7 +1506,7 @@ namespace client
 	void SAMSocket::ProcessPing (std::string_view text)
 	{
 		LogPrint (eLogDebug, "SAM: Ping ", text);
-		SendReplyWithMessage (SAM_PONG, std::string (text), false);
+		SendMessageReply (MakeSAMControlReply (SAMControlCommand::eSAMControlCommandPing, SAM_PING, text), false);
 	}
 
 	void SAMSocket::SendReplyWithMessage (const char * reply, const std::string & msg, bool close)
@@ -1475,22 +1594,58 @@ namespace client
 	{
 		i2p::util::Mapping params;
 		size_t pos = 0;
-		while (pos < buf.length ())
+		auto skipSpaces = [&buf, &pos] ()
 		{
-			std::string_view field;
-			auto separator = buf.find (' ', pos);
-			if (separator != std::string_view::npos)
+			while (pos < buf.size () && buf[pos] == ' ') ++pos;
+		};
+		while (pos < buf.size ())
+		{
+			skipSpaces ();
+			if (pos >= buf.size ()) break;
+
+			const size_t keyStart = pos;
+			while (pos < buf.size () && buf[pos] != '=' && buf[pos] != ' ') ++pos;
+			if (pos >= buf.size () || buf[pos] != '=')
 			{
-				field = buf.substr (pos, separator - pos);
-				pos = separator + 1;
+				// A bare token is not a SAM parameter. Skip it without
+				// desynchronising the rest of the line.
+				while (pos < buf.size () && buf[pos] != ' ') ++pos;
+				continue;
+			}
+			auto key = ToUpperSAMCommand (buf.substr (keyStart, pos - keyStart));
+			++pos;
+			std::string value;
+			if (pos < buf.size () && buf[pos] == '"')
+			{
+				// SAMUtils.parseParams() supports quoted values. A backslash
+				// escapes the next byte; an unterminated quote consumes the
+				// remainder as a bounded value.
+				++pos;
+				bool escaped = false;
+				while (pos < buf.size ())
+				{
+					const char ch = buf[pos++];
+					if (escaped)
+					{
+						value.push_back (ch);
+						escaped = false;
+					}
+					else if (ch == '\\')
+						escaped = true;
+					else if (ch == '"')
+						break;
+					else
+						value.push_back (ch);
+				}
+				if (escaped) value.push_back ('\\');
 			}
 			else
 			{
-				field = buf.substr (pos);
-				pos = buf.length ();
+				const size_t valueStart = pos;
+				while (pos < buf.size () && buf[pos] != ' ') ++pos;
+				value.assign (buf.substr (valueStart, pos - valueStart));
 			}
-			auto value = field.find ('=');
-			if (value != std::string_view::npos) params.Insert (field.substr (0, value), field.substr (value + 1));
+			if (!key.empty ()) params.Insert (key, value);
 		}
 		return params;
 	}
@@ -1514,10 +1669,24 @@ namespace client
 					&SAMSocket::HandleReceived, shared_from_this (), std::placeholders::_1, std::placeholders::_2));
 		}
 		else
-			m_Socket.async_read_some (
-				boost::asio::buffer (m_Buffer + m_BufferOffset, SAM_SOCKET_BUFFER_SIZE - m_BufferOffset),
+		{
+			if (m_IsReading || m_IsReplyQueued || m_IsCommandPending) return;
+			if (m_SocketType != SAMSocketType::eSAMSocketTypeUnknown
+				&& m_SocketType != SAMSocketType::eSAMSocketTypeSession)
+				return; // acceptors/forwarders only start reading when a stream arrives
+			size_t capacity = SAM_SOCKET_BUFFER_SIZE - m_InputSize;
+			if (!capacity)
+			{
+				LogPrint (eLogError, "SAM: Control input buffer is full");
+				Terminate ("SAM: control input overflow");
+				return;
+			}
+			m_IsReading = true;
+			m_ControlReadOffset = m_InputSize;
+			m_Socket.async_read_some (boost::asio::buffer (m_InputBuffer + m_ControlReadOffset, capacity),
 				std::bind (
 					&SAMSocket::HandleMessage, shared_from_this (), std::placeholders::_1, std::placeholders::_2));
+		}
 	}
 
 	void SAMSocket::HandleReceived (const boost::system::error_code & ecode, std::size_t bytes_transferred)
@@ -1758,6 +1927,9 @@ namespace client
 					QueueI2PData (reinterpret_cast<const uint8_t *> (ident.data ()), ident.size ());
 				}
 			}
+			// The socket was an acceptor and did not read commands; start the
+			// client->I2P direction now that it carries stream payload.
+			if (m_SocketType != SAMSocketType::eSAMSocketTypeTerminated) Receive ();
 			I2PReceive ();
 		}
 		else
@@ -2087,7 +2259,7 @@ namespace client
 		// Resolve like a stream connect: a full base64 destination, or a .i2p host
 		// that is either a plain b32 (ident hash) or a blinded b33 (encrypted leaseset).
 		std::shared_ptr<const Address> addr;
-		if (destination.find (".i2p") != std::string_view::npos)
+		if (IsI2PHostName (destination))
 			addr = context.GetAddressBook ().GetAddress (std::string (destination));
 		else
 		{

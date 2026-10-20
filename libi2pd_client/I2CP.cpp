@@ -7,8 +7,9 @@
  * Implements the router-side I2CP server: session handshake, destination
  * creation, lease-set publication and message send/receive over the binary
  * protocol. Session identifiers are validated against collisions, message and
- * send-queue sizes are bounded, and payloads are routed through the local
- * destination or garlic sessions.
+ * send-queue sizes are bounded, payloads are routed through the local
+ * destination or garlic sessions, and cached routing sessions are keyed by the
+ * parsed identity hash of the wire destination.
  *
  */
 
@@ -464,8 +465,12 @@ namespace client
 			else
 				remoteSession->SetSharedRoutingPath (nullptr);
 		}
-		m_Owner->AddRoutingSession (
-			remote->GetIdentity ()->GetStandardIdentity ().signingKey + 96, remoteSession); // last 32 bytes
+		// Key the cache by the destination's identity hash. The former key was
+		// the 32-byte signing-key slice at identity offset 352 (DSA's last key
+		// bytes, but type-specific padding or a key fragment for every other
+		// signature type); a crafted identity could reproduce that slice with a
+		// different public key and select another destination's routing session.
+		m_Owner->AddRoutingSession (remote->GetIdentHash (), remoteSession);
 		return SendMsg (garlic, outboundTunnel, remoteLease);
 	}
 
@@ -1196,13 +1201,26 @@ namespace client
 		SendI2CPMessage (I2CP_MESSAGE_STATUS_MESSAGE, buf, 15);
 	}
 
+	// Full-identity hash: the same value IdentityEx derives for a destination
+	// and LeaseSet::GetIdentHash() returns for the cached lease set, so inserts
+	// and lookups agree for every key type.
+	i2p::data::IdentHash GetI2CPRoutingSessionKey (const uint8_t * identity, size_t len)
+	{
+		i2p::data::IdentHash key;
+		if (identity && len)
+			SHA256 (identity, len, key);
+		else
+			key.Fill (0);
+		return key;
+	}
+
 	void I2CPSession::AddRoutingSession (
-		const i2p::data::IdentHash & signingKey, std::shared_ptr<i2p::garlic::GarlicRoutingSession> remoteSession)
+		const i2p::data::IdentHash & identHash, std::shared_ptr<i2p::garlic::GarlicRoutingSession> remoteSession)
 	{
 		if (!remoteSession) return;
 		remoteSession->SetAckRequestInterval (I2CP_SESSION_ACK_REQUEST_INTERVAL);
 		std::lock_guard<std::mutex> l (m_RoutingSessionsMutex);
-		m_RoutingSessions[signingKey] = remoteSession;
+		m_RoutingSessions[identHash] = remoteSession;
 	}
 
 	void I2CPSession::CleanupRoutingSessions ()
@@ -1323,11 +1341,14 @@ namespace client
 						{
 							if (m_IsSendAccepted.load ())
 								SendMessageStatusMessage (nonce, eI2CPMessageStatusAccepted); // accepted
+							// The cache is indexed by the parsed identity hash, so
+							// every signature/crypto type keys its own entry and a
+							// crafted identity cannot reuse another peer's session.
+							auto remoteIdentHash = GetI2CPRoutingSessionKey (ident, identSize);
 							std::shared_ptr<i2p::garlic::GarlicRoutingSession> remoteSession;
 							{
 								std::lock_guard<std::mutex> l (m_RoutingSessionsMutex);
-								auto it = m_RoutingSessions.find (
-									ident + i2p::data::DEFAULT_IDENTITY_SIZE - 35); // 32 bytes signing key
+								auto it = m_RoutingSessions.find (remoteIdentHash);
 								if (it != m_RoutingSessions.end ())
 								{
 									if (!it->second->IsTerminated () && it->second->IsReadyToSend ())
@@ -1339,10 +1360,8 @@ namespace client
 							if (!remoteSession
 								|| !m_Destination->SendMsg (buf + offset, payloadLen, remoteSession, nonce))
 							{
-								i2p::data::IdentHash identHash;
-								SHA256 (ident, identSize,
-									identHash); // calculate ident hash, because we don't need full identity
-								m_Destination->SendMsgTo (buf + offset, payloadLen, identHash, nonce);
+								// calculate ident hash, because we don't need full identity
+								m_Destination->SendMsgTo (buf + offset, payloadLen, remoteIdentHash, nonce);
 							}
 						}
 						else

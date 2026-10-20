@@ -89,6 +89,11 @@ namespace client
 	// params
 	const char I2CP_PARAM_MESSAGE_RELIABILITY[] = "i2cp.messageReliability";
 
+	// Cache key for a remote garlic routing session. The complete wire identity
+	// is hashed, so DSA, ECDSA, EdDSA and offline-signed destinations each key
+	// their own entry; no fixed signing-key offset is involved.
+	i2p::data::IdentHash GetI2CPRoutingSessionKey (const uint8_t * identity, size_t len);
+
 	class I2CPSession;
 	class I2CPDestination : public LeaseSetDestination
 	{
@@ -200,7 +205,7 @@ namespace client
 		void SendMessagePayloadMessage (const uint8_t * payload, size_t len);
 		void SendMessageStatusMessage (uint32_t nonce, I2CPMessageStatus status);
 		void AddRoutingSession (
-			const i2p::data::IdentHash & signingKey, std::shared_ptr<i2p::garlic::GarlicRoutingSession> remoteSession);
+			const i2p::data::IdentHash & identHash, std::shared_ptr<i2p::garlic::GarlicRoutingSession> remoteSession);
 		void CleanupRoutingSessions ();
 
 		// message handlers
@@ -247,7 +252,7 @@ namespace client
 		std::shared_ptr<I2CPDestination> m_Destination;
 		std::mutex m_RoutingSessionsMutex;
 		std::unordered_map<i2p::data::IdentHash, std::shared_ptr<i2p::garlic::GarlicRoutingSession>>
-			m_RoutingSessions; // signing key->session
+			m_RoutingSessions; // destination ident hash -> session
 		std::atomic<uint16_t> m_SessionID;
 		std::atomic<uint32_t> m_MessageID;
 		std::atomic<bool> m_IsSendAccepted;
