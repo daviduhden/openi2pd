@@ -246,17 +246,32 @@ Android changes are implemented by static analysis only, pending CI compilation
 and pending CI tests. Task inventory: SNARK-001..SNARK-008 in TODO; functional
 and protocol matrices: `docs/torrent/snark-compatibility.md`.
 
-Do not advertise the unintegrated `ut_comment` codec/store as peer support.
-`CreateV1` accepts ordered lengths and precomputed piece hashes; disk creation
-and hashing are separate pending work. Explicit tracker lists suppress common
-fallback and must preserve that property on reload. Tracker edits require
-paused, fully metadated torrents. Global tracker quota reclamation and BEP 12
-failover remain pending. Native Android JNI controls do not establish OS
-network/storage isolation; SAF and advanced GUI operations remain pending.
-Do not copy GPL Snark implementation into BSD sources; review per-file notices.
-The reference excerpts outside the repository are not a complete verified
-clone. No current changes are dynamically validated; keep all regression tasks
-open until their corresponding manual CI passes.
+The native disk creator, persisted file priorities and opt-in negotiated
+`ut_comment` exchange are now implemented by static analysis. Keep consent,
+private-swarm suppression, rate limits, empty bencode fields and original info
+bytes intact. TUI and Android controls exist; do not repeat this work based on
+older matrix descriptions. Advanced creation uses automatic/explicit piece
+length, privacy, tracker tiers, cancellation and progress.
+
+The real payload storage worker is opt-in (`isolatedstorage=true`) on
+Linux and fails closed if requested isolation is unavailable. Root FD,
+read-only/writable numeric handles and bounded single-flight IPC are the
+capability boundary. Parent metadata/allocation/promotion and router writes
+remain; Windows backend and network/session/verifier processes are pending.
+OpenBSD supervision and Android SAF payload integration are described below. Do not describe this as global privilege separation.
+
+SAF document/tree creation exports native v1 metainfo with bounded incremental
+hashing. URI-backed payload downloads/seeding now use the common backend;
+broker/process recovery and provider fixtures now exist statically;
+end-to-end device validation remains pending. Preserve URI authority instead of manufacturing filesystem
+paths. Full local state schema and storage worker boundaries are documented
+in `docs/torrent/local-state.md` and `docs/torrent/storage-worker.md`.
+
+Current continuation started from clean `0cf32519`; all new changes remain
+local and pending CI compilation/tests. Preserve the user-requested descriptive
+license-reference headers and all existing notices/provenance. The reference
+excerpts outside this repository are not a complete verified clone. No task is
+validated without its corresponding manual CI pass.
 
 ## Selective upstream openssl integration (2026-10-19)
 
@@ -273,3 +288,62 @@ torrent stopped/removed persistence guards. The browser-console commit and the
 upstream 3.0.0 release metadata are intentionally omitted. All changes are
 static-only pending manual CI compilation and tests; no build, CTest,
 sanitizer, package or live-peer evidence exists for this increment.
+
+## Native payload continuation (2026-10-20)
+
+Actual checkout HEAD remains `0cf32519`; existing uncommitted changes were
+preserved. The native payload abstraction now connects Android SAF document
+read/write and seeding through a non-exported separate-process AIDL/JNI broker.
+Persisted grants key tunnel+infohash; final-name document IO skips POSIX payload
+allocation/promotion. Startup rehashes provider pieces. No URI-to-path fallback
+or unlimited staging is allowed. Unsupported seek fails explicitly. Binder
+death/timeout now retires the old process and recovers through generation-fenced
+rebind; cancellation and fault-provider fixtures are implemented statically. Earlier SAF-export-only statements
+above describe the previous increment.
+
+OpenBSD storage startup now uses a pre-pledge root-authorized supervisor. The
+worker inherits root fd4 at exec and installs its own sandbox before requests;
+only a UNIX socket is returned via SCM_RIGHTS. Never send a directory FD after
+pledge: sendfd/recvfd prohibit it. Core requires recvfd, no additional proc/exec.
+Broker failure needs daemon restart; replacement of a worker is explicit.
+
+Pending writes are withheld from HAVE/bitfield/serving/promotion; failed writes
+invalidate the piece. Isolated native allocation is delegated. Parent router/DHT persistence and network/core/verifier split remain pending;
+this is not global privilege separation. New tests are prepared, not executed.
+All this increment is implemented by static analysis, pending CI compilation
+and pending CI tests. First-party headers use only the short LICENSE reference.
+
+## Binder recovery and narrowed persistence authority
+
+SAF client IDs now remain local across broker generations; URI/path/length/mode
+are immutable authority. Rebinding requires actual death of an old writer;
+stale callbacks/results cannot authorize another tree. Cancel/retire is oneway
+and independent of IO locks, with CancellationSignal plus bounded process
+retirement for ignored cancellation. Do not automatically replay ambiguous
+writes. Cleanup of stale handles must not wait/rebind once per file.
+
+Native isolated mode delegates promotion, exact-file deletion, empty-directory
+removal and atomic metainfo/resume/settings replacement to storage workers.
+Metadata paths are narrow and capped8MiB, chunks16KiB; fixed staging slots cap
+crash leftovers. Keep DHT/router persistence, network/router/verifier processes
+and global enforcement open. No global separation claim is justified.
+
+All new recovery/lifecycle/provider tests are prepared but unexecuted; current
+changes remain implemented by static analysis, pending CI compilation and tests.
+
+## DHT/router persistence and SAF administrative completion
+
+Isolated tunnels now delegate DHT load/save under the original torrents state
+root, preserving54-byte records and explicit legacy flat filename authority.
+RouterContext four fixed-file writes use a transport-independent callback;
+privsep.routerstorage initializes the network-denied worker before context.Init.
+No installed-writer failure can fall back to core filesystem writes. OpenBSD
+workers inherit root at exec and drop new UNIX/fd-reception authority after
+bootstrap; do not reintroduce directory SCM_RIGHTS or execpromises.
+
+SAF exact document deletion and metainfo export are now brokered, cancelable
+operations. Close cached descriptors before deleting exact capabilities, verify
+identity/size and never recursively delete a selected tree. Tests are prepared
+only. Global netDb/config/profile/client persistence, networking/router/verifier
+process separation and cross-platform completion remain implementation tasks;
+never relabel all remaining work as pending tests.

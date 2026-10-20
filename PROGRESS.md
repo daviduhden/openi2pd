@@ -1612,3 +1612,162 @@ OpenBSD or Java/C++ dynamic test was run.
 - No local compiler, CMake configure/build, CTest, sanitizer, fuzzer, package,
   service, Android or live-peer run was performed. New tests and changes are
   pending manual CI compilation and tests. No commit or push.
+
+## 2026-10-19 — intensive I2PSnark native implementation continuation
+
+- Recovered a clean checkout at actual HEAD `0cf32519`. Earlier-session work
+  had already entered this baseline, including disk creation, priorities,
+  comment negotiation/persistence and Android admin controls. No commit or
+  push was made by this continuation. Recognition identified stale tracking
+  text; existing correct engine behavior was retained.
+- Used separate reconnaissance/core, desktop TUI and Android assignments,
+  followed by disjoint implementation/review scopes. No local compilation,
+  configuration, compiler syntax checks, CTest, Gradle, test binaries,
+  sanitizer, fuzzer, Java peer or device execution occurred.
+- Disk creation now selects automatic or explicit bounded power-of-two piece
+  sizes, carries private status and tracker tiers through typed IPC, reports
+  byte/file progress and accepts cancellation. TUI n remains basic; N is
+  advanced, K cancels. Existing safe streaming traversal/hash logic is reused.
+- Desktop Files now exposes indices and priorities with f. A Comments tab
+  supports c ON/OFF, C explicit rating/pseudonym/text and H local moderation.
+  Prompts recheck torrent ID, infohash and session identity; no payload access
+  or engine/network handles enter the TUI.
+- Added Android SAF creation from a document or tree: bounded enumeration,
+  incremental cross-file hashes, explicit descriptor cancellation, private/
+  tracker/size options, native CreateV1 metainfo and CreateDocument export.
+  Service work uses a separate executor; ViewModel retains results across
+  rotation. URI-backed downloads/seeding and process-death recovery are not
+  implemented by this export feature. Instrumented JNI regressions prepared.
+- Added a real exec-ed payload storage worker and connected it to TorrentFile
+  IO via `isolatedstorage=true`. Linux uses authenticated inherited IPC,
+  one delegated root FD, bounded numeric handles, read-only/writable modes,
+  <=16KiB operations, timeouts, durable writes and denied external networking.
+  Linux also confines reads to the root and denies x32/socket, io_uring and
+  descriptor-stealing bypasses. Unsupported requested backends fail closed;
+  the default and remaining parent IO are explicitly not globally isolated.
+- Fixed bencode constructors to encode empty strings as 0:, order keys and
+  reject duplicate constructed dictionary keys. This is necessary for empty
+  foreign DHT tokens and anonymous/rating-only ut_comment entries. Existing
+  imported info dictionaries remain byte-preserved.
+- Added stopped-service/admin-load/paused-announce guards, preserved existing
+  removed-torrent persistence guards, and reviewed storage-root identity for
+  multi-file torrents, shutdown draining and fallback behavior.
+- Integrated worker source/client/test and library export dependencies in
+  CMake. Existing manual workflows retain their triggers; Android now also
+  builds the instrumentation APK. Creator/IPC/comment/storage regressions and
+  local-state/request fuzz input coverage are prepared, not executed.
+- Updated compatibility/protocol matrices, TODO, ROADMAP and AGENTS; added
+  local-state and storage-worker format/boundary documentation. Remaining
+  essential work remains open under SNARK-001..SNARK-010.
+- Static checks: `git diff --check` and affected source/interface inspection.
+  Current implementation is pending CI compilation and pending CI tests;
+  nothing in this session is claimed validated by CI.
+
+- Final static review corrected OpenBSD worker startup: reject before fork/exec
+  because runtime pledge has removed those promises. Pre-pledge supervisor
+  delegation remains pending, without widening pledge. Worker limits (1 TiB per
+  file, 4096 handles, tunnel-wide root) are documented compatibility boundaries.
+
+### Native payload continuation — 2026-10-20
+
+- Reused existing uncommitted creator/priorities/comments/TUI/Android changes
+  after parallel recognition; actual HEAD is `0cf32519`. No commits or push.
+- Added shared TorrentPayloadStorage and adapted native worker/TorrentFile.
+  Exact IO is chunked to 16 KiB; failed writes invalidate pieces, withhold HAVE
+  and resume updates, and require reacquiring authority. Saving pieces cannot
+  be served/published/promoted or lose their pending buffer.
+- Connected Android persistent per-torrent SAF trees through JNI and a private
+  separate-process AIDL broker. Safe descendants, bounded handles/ranges, regular
+  seekable descriptors, partial IO loops, fsync and grant/existence checks are
+  implemented. Startup hashes one piece at a time; no POSIX payload allocation,
+  .part promotion or native payload deletion applies to provider documents.
+- Added fail-closed broker seccomp TSYNC setup. Unsupported seek has no staging
+  fallback. Binder death/timeout invalidates the application-lifetime connection;
+  full app restart restores grants. Root bindings are frozen until router
+  restart, preventing mixed destinations; stale capabilities are not replayed.
+- Added OpenBSD pre-pledge supervisor with immutable datadir authority, bounded
+  children/launches, ownership/identity checks, own worker sandbox and socket
+  handoff only after initialization ACK. Corrected the directory-SCM restriction
+  by inheriting root fd4 across exec; core only adds recvfd, no proc/exec/sendfd.
+  Worker replacement is explicit, broker failure requires daemon restart.
+- Moved isolated native file allocation to storage-worker registration. Parent
+  metadata/promotion/router writes remain; full capability separation is pending.
+- Registered payload/OpenBSD regressions in CMake; Android path/range fixtures
+  and existing manual instrumentation APK build are prepared. Extended manual
+  torrent regression selection; no workflow trigger changed. Added SAF/IPC
+  architecture and refreshed tracking/matrices. Provider fixtures, cancellation,
+  OS-negative runtime checks and all dynamic interoperability remain pending.
+- No configure, compiler, build, CTest, Gradle, test binary, sanitizer, fuzzer or
+  device run was performed. Current increment is implemented by static analysis,
+  pending CI compilation and pending CI tests; no CI validation is claimed.
+
+- Final static integration corrected the private protocol regression boundary
+  for message types7..11, and keeps candidates hidden during SAF startup
+  verification as well as pending writes. Android manifest XML parsed and
+  `git diff --check` passed; neither is dynamic validation.
+- JNI bridge initialization now installs a denying backend first and must
+  succeed before every native start/restart. Missing context or JNI setup
+  failure cannot silently select direct native payload IO.
+
+### Binder recovery and persistent authority continuation
+
+- Implemented stable local SAF root/file identities with immutable authority,
+  lazy remote remapping per Binder generation, stale-reply rejection and bounded
+  exponential rebind. Lifecycle loss retires a live broker and waits for actual
+  death before replacement. No automatic replay of ambiguous writes.
+- Added operation tokens, CancellationSignal for query/open, oneway cancel/retire
+  independent of data locks, max8 active operations and watchdog retirement.
+  One bounded executor and a total5s client deadline prevent thread/queue growth.
+  Dead-generation handle cleanup returns without connection waits.
+- Prepared AIDL cancellation-wire and DocumentsProvider fixtures for cooperative
+  cancellation, ignored cancellation, nonseekable pipes and revoked documents.
+  Actual cross-process grant/death/rebind tests remain pending.
+- Added worker promotion/removal and bounded chunked atomic metadata transaction
+  operations; connected isolated tunnel allocation/promotion/delete, metainfo,
+  resume and settings writes. No fallback to parent IO after failure. Metadata
+  commit fsyncs file and parent;8MiB cap/16KiB chunks and30s transaction budget.
+  Fixed8 staging slots cap SIGKILL remnants to64MiB per metadata directory;
+  explicit cleanup is still needed after exhaustion.
+- Queued metadata saves recheck session membership before IO. Removed isolated
+  torrent settings are deleted through the worker. Failed/corrupted seed pieces
+  now clear torrent-wide completion so recovery does not leave false seeding.
+- Registered test-torrent-storage-lifecycle in existing manual CI CTest graph;
+  extended payload regression for torrent completion invalidation. Updated
+  architecture/capability matrix and tracking. Router/DHT writes remain in the
+  network-capable parent; global privilege separation is NOT complete.
+- No build/configure/compiler/test/Gradle/device invocation, commits or push.
+  Implemented by static analysis only, pending CI compilation and CI tests.
+
+- Final static checks: main/instrumentation manifest XML parsing and
+  `git diff --check` passed. These checks do not validate Android, Binder,
+  seccomp or filesystem behavior; manual CI/device validation remains pending.
+
+### DHT/router persistence and SAF administrative completion
+
+- Implemented isolated DHT persistence callbacks with exact54-byte binary
+  records,8MiB limit, pinned read-only worker reads and explicit bounded legacy
+  flat-name authorization. Tunnel startup binds callbacks before DHT start;
+  backend failure unwinds before starting torrent services.
+- Added PersistentStorage core callback and fixed router-state worker. Connected
+  daemon privsep.routerstorage before context.Init, covering initial identity
+  creation and router.info/NTCP2/SSU2 state without fallback. OpenBSD detached
+  bootstrap inherits root4; role installs own sandbox. Startup rollback and
+  shutdown close capabilities. Four-name/32KiB authority and serialization
+  preserved; failed key persistence aborts instead of ephemeral identity use.
+- Configured OpenBSD storage workers now drop unix/recvfd promises after setup,
+  retaining only inherited-channel IO plus their root filesystem policy.
+- Connected SAF delete-files removal to exact-document capabilities, with
+  fresh descriptor identity checks; no recursive deletion. Export now executes
+  in the bounded broker with cancellation; interrupted provider output can
+  remain partial and is not replayed. Added native Remove wiring and status UI.
+- Added/registers test-router-storage and test-torrents-dht-persistence plus
+  OpenBSD policy and Android document replacement regressions. Protocol framing
+  now accepts private message types12..14 with15 as invalid boundary.
+- Static-only review and diff checks; no configure/compiler/build/CTest/Gradle/
+  test binary/fuzzer/device run, commits or push. Pending CI compilation/tests.
+  Global separation is not complete: other persistent authorities and genuine
+  network/router/verifier workers remain implementation tasks.
+
+- Final source checks: Android main/test manifest XML parsed and
+  `git diff --check` passed. These are static checks only; no current change
+  is described as compiled, tested or validated by CI.

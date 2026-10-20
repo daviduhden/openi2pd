@@ -45,6 +45,10 @@ nav:
           - Security: torrent/security.md
           - Functionality matrix: torrent/console-matrix.md
           - I2PSnark compatibility: torrent/snark-compatibility.md
+          - Local state: torrent/local-state.md
+          - Storage worker: torrent/storage-worker.md
+          - Router storage: torrent/router-storage.md
+          - Android SAF payload storage: torrent/saf-storage.md
           - Testing: torrent/testing.md
       - Perl migration: development/perl-migration.md
       - Android modernization: android-modernization.md

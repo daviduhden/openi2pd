@@ -800,37 +800,47 @@ residual risks.
 
 ## I2PSnark native parity continuation (2026-10-19)
 
-Reference and exhaustive area inventory: `docs/torrent/snark-compatibility.md`.
-These tasks supplement, and do not close, TORRENT/PRIVSEP/ANDROID/MEM tasks above.
-All current changes are local: **pending CI compilation; pending CI tests**.
+Reference and full functional/protocol inventory: `docs/torrent/snark-compatibility.md`.
+Existing task IDs remain open until their manual CI verification passes. The
+current continuation began from clean HEAD `0cf32519`; no current local result
+is dynamically validated. No local builds/configuration/tests or commits/push.
 
-- [ ] **[SNARK-001]** Magnet and v1 metadata parity.
+- [ ] **[SNARK-001]** Magnet, v1 metadata and full disk creation.
   - Priority P0; Status implemented by static analysis; pending CI compilation; pending CI tests.
-  - Bounded hex/base32/percent-decoded btih, contradictory-topic rejection, multiple I2P tracker hints; BEP 12 tier roundtrip and pure ordered-file/piece-hash v1 constructor. Private metadata suppresses DHT/PEX and closes pre-metadata connections; late discovery callbacks are guarded.
-  - Files: `Torrents*`, `tests/test-torrents-magnet.cpp`, `tests/test-torrents-engine-interop.cpp`.
-  - Still pending: storage-domain directory enumeration/streamed hashing and complete create operation via IPC/TUI/Android. v2-only unsupported; hybrid v1 projection is not BEP 52 validation.
+  - Preserves multitracker magnets, exact infohashes, BEP 12 tiers and private-swarm guards. `TorrentsCreator` now enumerates/hashes incrementally with no-follow bounds, automatic/explicit piece sizes, cancellation and progress. `TORRENT-CREATE-V1` carries tracker tiers/privacy; TUI n/N/K and native Android root creation are connected.
+  - Pending: live Java exchange, filesystem mutation/failure injection, fully empty payload policy, nested-root session persistence and source snapshot semantics. Pure v2 unsupported; hybrid v1 projection is not BEP 52 validation.
 - [ ] **[SNARK-002]** I2P tracker administration and exact endpoint membership.
-  - Priority P0; Status implemented by static analysis; pending CI compilation; pending CI tests.
-  - Paused-torrent add/remove through typed local IPC and TUI t/T; validates I2P HTTP/UDP URLs, preserves infohash, captures immutable metainfo for storage. Explicit empty list persists and suppresses common-tracker fallback. Private swarms never use unrelated common trackers.
-  - Still pending: BEP 12 failover/shuffling, reclaim unused global tracker slots, persistence failure acknowledgements/crash atomicity and Android tracker editing. Edit churn safely reaches the bounded registry quota until restart.
+  - Priority P0; Status implemented by static analysis for paused add/remove in TUI and Android; pending CI compilation; pending CI tests.
+  - Exact endpoint membership and explicit empty lists survive persistence; private swarms cannot use unrelated common trackers. Announce paths now reject paused/state-loading torrents and late started announces after a pause.
+  - Pending: BEP 12 failover/shuffling, unused global registry-slot reclamation, persistence acknowledgements and crash/failure testing. Bounded edit churn may exhaust registry capacity until restart.
 - [ ] **[SNARK-003]** I2P DHT and PEX interoperability/security.
-  - Priority P0; Status implemented by static analysis for opaque tokens, transaction/NID binding, packet/port validation, private/stopped guards and complete PEX/DHT extension dictionaries; pending CI compilation; pending CI tests.
-  - Prepared `test-torrents-dht-interop`; existing parser fuzzer extended. Remaining: Java live trackerless exchange, zero-length foreign tokens, seed/noseed semantics, XOR routing parity, per-origin abuse budgets, raw sender metadata and response-size reconciliation.
-- [ ] **[SNARK-004]** Comments/ratings interoperable opt-in subsystem.
-  - Priority P1; Status implemented by static analysis for independent `ut_comment` codec and disabled-by-default bounded local store; pending CI compilation; pending CI tests.
-  - UTF-8/UTF-16 field bounds, age timestamps, ratings, deduplication and local hiding; regression and fuzz entry prepared. Remaining: negotiated peer exchange, rate budgets, per-torrent persistence, admin IPC, native TUI/Android controls and differential Java fixtures. No comments capability is advertised yet; labels are unauthenticated pseudonyms.
-- [ ] **[SNARK-005]** Autonomous native Android torrent client.
-  - Priority P0; Status implemented by static analysis for enabled native engine, private-storage session bootstrap, bounded service/JNI administration and Material Views torrent panel; pending CI compilation; pending CI tests.
-  - Panel supports magnets, sharing, list/progress, pause/resume/remove, files/peers/trackers details and DHT. Prepared Java protocol regressions; Android vcpkg includes Boost JSON/URL.
-  - Remaining: SAF broker and torrent import, creation, selection/priorities, tracker edits, comments, external-router mode, notifications/device battery/service lifecycle validation; first config write crash recovery.
-- [ ] **[SNARK-006]** Enforce torrent operating-system capability separation.
-  - Priority P0; Status pending. Same-process service/disk threads and JNI are not OS privilege separation. Network, session, storage and verification workers, supervisor, typed descriptor/capability IPC and negative tests are still required on Linux/OpenBSD/Windows/Android. No claim of satisfying the no-network-plus-persistent-write invariant.
-- [ ] **[SNARK-007]** Native parity CI and reference provenance.
-  - Priority P0; Status implemented by static analysis for test/CMake/manual-workflow registration, functional/protocol matrices and per-file license review notes; pending CI compilation; pending CI tests.
-  - Four new CTest targets: magnet, engine-interop, dht-interop, comments; existing TUI protocol regression expanded and torrent fuzzer extended. Java live/differential, sanitizer/fuzzer, OpenBSD/LibreSSL, Windows and Android device validation remain pending.
-  - No local build/configure/compiler/test/Gradle/binary execution; no commit/push. Earlier CI results apply only to their recorded revisions.
-- [ ] **[SNARK-008]** Complete remaining functional inventory.
-  - Priority P1; Status pending. File selection/priorities and piece-boundary scheduling, per-session/per-torrent bandwidth/connection limits, durable pause/queue state and crash recovery, full error/retry parity, advanced TUI/Android settings, creation and comments must remain open until implemented and validated.
+  - Priority P0; Status implemented by static analysis; pending CI compilation; pending CI tests.
+  - Opaque present-empty tokens, secure transactions/NID binding, raw source-port checks, seed/noseed filtering, global XOR selection, per-origin budgets, enforced retry bounds and immediate correlated error progression are in source. Complete PEX/DHT dictionaries and private/stopped guards preserved.
+  - Pending: live Java trackerless exchanges, adversarial churn, seed outgoing connection policy and process-separated DHT persistence. Prepared fixed vectors and malformed/error regressions remain unexecuted.
+- [ ] **[SNARK-004]** Opt-in interoperable comments/ratings.
+  - Priority P1; Status implemented by static analysis for negotiated exchange, bounded per-peer budgets, store/moderation/statistics and native control persistence; pending CI compilation; pending CI tests.
+  - TUI Comments/c/C/H and Android controls connected. Disabled by default; private torrents suppress exchange. Bencode now correctly retains anonymous/rating-only empty fields; labels are never authenticated identities.
+  - Pending: differential Java peer exchange, consent/renegotiation/lifecycle and crash tests. Do not infer interoperability validation from codec roundtrips.
+- [ ] **[SNARK-005]** Autonomous Android native client and SAF.
+  - Priority P0; Status implemented by static analysis for existing native panel, bounded SAF torrent import, priorities/comments/trackers, root creation and new document/tree SAF creation/export; pending CI compilation; pending CI tests.
+  - SAF hashes incrementally, preserves URI authority, builds metainfo with native CreateV1 and exposes size/privacy/trackers/cancel/progress. Instrumented JNI vectors prepared and instrumentation APK added to manual workflow.
+  - Connected SAF tree payload reads/writes, persisted per-torrent grants, startup rehashing and Binder/JNI broker. Pending: provider fixtures, transparent worker recovery, per-operation cancellation/revocation/device tests, external-router mode and first configuration-write crash recovery.
+- [ ] **[SNARK-006]** Operating-system capability separation.
+  - Priority P0; Status implemented by static analysis for an opt-in payload storage process and Android Binder backend; pending CI compilation; pending CI tests; global invariant pending.
+  - `isolatedstorage=true` connects TorrentFile IO to inherited authenticated bounded IPC, delegated root FD, read-only/writable handles, 16KiB transfers, timeout poisoning and denied external sockets. Read/write path confinement and negative tests prepared. Requested backend failures never fall back to parent IO.
+  - Pending: remove parent router/DHT writes, network/session/verification workers and complete supervisor policy; Windows backend; Android Binder recovery validation and end-to-end negative capability validation. No global no-network-plus-write claim.
+- [ ] **[SNARK-007]** CI, provenance and regression coverage.
+  - Priority P0; Status implemented by static analysis; pending CI compilation; pending CI tests.
+  - Retains magnet/engine/DHT/comments/creator/state/priorities targets; adds real storage-worker/TorrentFile regression, option/cancellation/canonical-empty bencode vectors, JNI instrumentation source and local-state/request fuzz coverage. Manual workflow compiles both Android APKs; all triggers remain manual.
+  - Pending: actual Linux/OpenBSD/LibreSSL/Windows/Android, Java differential/live, sanitizer/fuzzer and device runs. No earlier revision result validates this local tree.
+- [ ] **[SNARK-008]** Complete advanced functional inventory.
+  - Priority P1; Status in implementation.
+  - Selection, shared-boundary scheduling and persisted priorities now exist. Remaining: individual selected-file promotion from .part, full bandwidth/connection controls, durable magnet/queue recovery, advanced settings and exact error/retry parity. Keep essential-operation tasks open while any capability or validation remains missing.
+- [ ] **[SNARK-009]** Complete SAF payload backend and lifecycle recovery.
+  - Priority P0; Status implemented by static analysis for URI-backed tree download/seeding via bounded Binder/JNI and common native payload storage; pending CI compilation; pending CI tests. Grants and priorities persist; provider bytes are rehashed after restart. Unsupported seek fails without staging. Implemented statically: bounded Binder generation recovery, cancellation/retirement and provider fault fixtures. Implemented statically: exact-document deletion and brokered cancelable export. Pending: end-to-end death/grant/provider tests.
+- [ ] **[SNARK-010]** Complete multiprocess platforms and remove remaining parent authority.
+  - Priority P0; Status pending. Complete Windows storage backend and Android recovery; isolate networking/session/verification; move metadata, allocation, rename/delete, DHT and router persistent IO out of network-capable processes. Add OS-negative tests and capability-supervisor teardown/restart coverage.
+
 
 ## Native init services and Debian packaging (2026-10-19)
 
@@ -865,3 +875,49 @@ review table and omissions are in `docs/upstream-sync.md`.
   - Priority P1; Status pending; the `view()` lifetime and incomplete-line compaction fixes are static-only because the parser state is private. A helper/extraction or controlled connection harness is required before claiming regression coverage.
 - [ ] **[UPSTREAM-004]** Close the remaining torrent removal/persistence race.
   - Priority P1; Status pending; weak capture plus `FindTorrent` membership check prevents pre-check writes, but removal after the check can still be overtaken by a queued disk job. A per-torrent tombstone/generation barrier and `.openi2pd-state` deletion policy remain open; `test-torrents-security` covers stopped/in-range blocks only.
+
+- [ ] SNARK-010: validate OpenBSD pre-pledge supervised storage startup and explicit
+  worker replacement. Socket-only handoff and inherited root are implemented
+  statically; preserve runtime pledge and validate limits against admission.
+
+## Native payload continuation (2026-10-20)
+
+- [ ] SNARK-006/SNARK-009: common C++ payload capabilities, Android Binder piece
+  IO and durable-publication guard implemented by static analysis; pending CI
+  compilation and tests. Linux isolated allocation now runs in storage worker.
+- [ ] SNARK-010: OpenBSD supervisor bootstrap is implemented by static analysis; pending CI compilation and tests. Respect the
+  pledge prohibition on passing directory FDs; inherit authorized root at exec
+  and transfer only socket channels after pledge. Keep global network/core/
+  router/DHT persistence separation and Windows backend pending.
+
+## Binder recovery and persistent-authority continuation (2026-10-20)
+
+- [ ] SNARK-009: implemented by static analysis: stable local capabilities,
+  immutable URI authority, generation/death fencing, bounded rebind/backoff,
+  out-of-band cancellation and watchdog retirement. Pending CI compilation,
+  CI tests and actual persisted-grant broker-death/remapping instrumentation.
+- [ ] SNARK-006/SNARK-010: implemented by static analysis: isolated native
+  payload promotion/removal and bounded atomic metainfo/resume/settings writes.
+  Lifecycle regression registered, pending CI compilation/tests. Eight exclusive
+  staging slots bound crash remnants; exhaustion requires explicit cleanup.
+- [ ] SNARK-010: global privilege separation remains in implementation. Router
+  keys/config/netDb/DHT persistence still runs in the network-capable parent;
+  network/router/verifier worker integration and platform enforcement are not
+  implemented by these torrent storage operations. Do not mark global invariant
+  complete or validated.
+
+## Persistent authority completion increment
+
+- [ ] SNARK-009: exact SAF document deletion, brokered cancelable metainfo
+  export and storage status UI implemented by static analysis; pending CI
+  compilation/tests and real provider/device execution.
+- [ ] SNARK-006/SNARK-010: DHT load/save delegated in isolated tunnels, with
+  preserved54-byte records, bounded metadata reads and explicit legacy-name
+  authority. Fixed router state worker connected before core initialization
+  through privsep.routerstorage. Implemented by static analysis; pending CI
+  compilation/tests. Unsupported requested backends fail closed.
+- [ ] SNARK-010: global separation remains in implementation: netDb/profile/
+  config/client writes, actual network/router/verifier processes and complete
+  Windows/Android authority backends are still missing. These tasks cannot be
+  relabelled as only pending tests. Remaining bandwidth/queue/per-file native
+  promotion and protocol interoperability tasks above remain open.

@@ -382,3 +382,62 @@ Exit criteria: manual CI compiles the changed paths, `test-ssu2-preauth`,
 I2PTunnel response/IRC lifetime and torrent removal barriers receive dynamic
 coverage. Upstream 3.0.0 release metadata and browser-console changes remain
 deliberately excluded. Until then this is static-only work.
+
+## Intensive native torrent continuation (2026-10-19)
+
+Status: implemented by static analysis for scoped interfaces and operations;
+pending CI compilation; pending CI tests. The starting checkout was clean at
+`0cf32519`. Recognition reused the existing disk creator, priorities, comment
+exchange and native Android controls rather than reimplementing them.
+
+New source behavior includes advanced disk creation with automatic/explicit
+piece sizes, tracker tiers/privacy, cancellation and progress; complete desktop
+priority/comment controls; SAF document/tree creation and export through native
+metadata construction; and opt-in exec-ed Linux payload storage with
+bounded typed IPC and negative capability regressions. Empty bencode strings
+and canonical dictionary ordering were corrected, preserving imported info
+bytes. Native settings loading and paused announces gained additional guards.
+
+The next essential blocks remain URI-backed SAF download/seeding, durable
+provider permission/operation recovery, individual selected-file promotion,
+complete queue/bandwidth controls, BEP 12 failover/registry cleanup, Windows and
+Android storage processes, and network/session/verifier/supervisor integration.
+Parent-side persistent operations must be removed before the global capability
+invariant can be claimed. None of these obligations is closed by source review
+or by earlier-revision CI evidence. See SNARK-001..SNARK-010 and the updated
+functional/protocol matrices for exact boundaries.
+
+### Native payload continuation — 2026-10-20
+
+Implemented by static analysis; pending CI compilation and CI tests: common
+C++23 payload capability interface, SAF Binder/JNI piece IO and final-name
+provider storage, startup rehash, persistent tree selection, bounded fail-closed
+provider access, and pending-write publication guard. Native isolated allocation
+is delegated to storage. OpenBSD adds pre-pledge supervision, inherited root
+and socket-only handoff without runtime proc/exec. Prepared native/OpenBSD and
+Android regressions need manual CI/device execution.
+
+Next: provider cancellation/fixtures, transparent broker recovery, detailed
+storage errors, SAF deletion, Windows backend, parent metadata/promotion/router
+writes, and genuine network/core/verification separation. Keep all unfinished
+SNARK and non-torrent modernization tasks open.
+
+### Binder recovery and native persistent authority
+
+Implemented by static analysis; pending CI compilation/tests: stable SAF local
+capabilities, generation-aware reauthorization, actual-death fencing, bounded
+reconnect/backoff, independent cancellation and retirement of blocked brokers.
+Prepared bounded provider fault fixtures. Writes with uncertain results are
+invalidated rather than replayed. Isolated native torrent promotion/removal and
+metainfo/resume/settings writes now execute in storage workers via typed bounded
+operations. Global separation remains in implementation: router/DHT writes and
+network/router/verifier process integration are still required.
+
+### DHT/router state and SAF completion increment
+
+Implemented by static analysis: isolated DHT state callbacks and worker reads,
+legacy-name authorization, optional fixed-router persistence worker initialized
+before key generation, SAF exact-document removal and cancelable brokered
+export. CMake/manual CI sources and regressions are prepared. Network/router/
+verifier isolation and other persistent authorities remain implementation work;
+no global completion or validation claim is made.
