@@ -64,7 +64,7 @@ void TestP521ExcessSigningKey ()
 
 	// The old reader accepted five-byte P-521 certificates and copied four
 	// excess bytes from an uninitialised part of the inline buffer.
-	std::array<uint8_t, DEFAULT_IDENTITY_SIZE + 5> truncated { };
+	std::array<uint8_t, DEFAULT_IDENTITY_SIZE + 6> truncated { };
 	memcpy (truncated.data () + 256, pub, 128);
 	PutCertificate (truncated.data (), CERTIFICATE_TYPE_KEY, 5);
 	htobe16buf (truncated.data () + DEFAULT_IDENTITY_SIZE, SIGNING_KEY_TYPE_ECDSA_SHA512_P521);

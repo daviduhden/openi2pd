@@ -35,7 +35,7 @@ bool IsAllZero (const uint8_t * data, size_t len)
 	return true;
 }
 
-bool IsAllValue (const uint8_t * data, size_t len, uint8_t value)
+[[maybe_unused]] bool IsAllValue (const uint8_t * data, size_t len, uint8_t value)
 {
 	for (size_t i = 0; i < len; ++i)
 		if (data[i] != value) return false;

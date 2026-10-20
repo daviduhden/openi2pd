@@ -52,6 +52,7 @@ int main ()
 	res->status = "Not Modified";
 	res->add_header ("Content-Length", "0");
 	assert (res->to_string () == buf);
+	delete res;
 
 	/* test: case-insensitive header parsing (RFC 7230) */
 	buf = "HTTP/1.1 200 OK\r\n"

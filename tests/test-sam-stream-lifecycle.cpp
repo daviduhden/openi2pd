@@ -38,16 +38,6 @@ struct TestSession : SAMSession
 	void StopLocalDestination () override { }
 };
 
-bool WaitFor (const std::function<bool ()> & predicate, std::chrono::milliseconds timeout)
-{
-	auto deadline = std::chrono::steady_clock::now () + timeout;
-	while (std::chrono::steady_clock::now () < deadline)
-	{
-		if (predicate ()) return true;
-		std::this_thread::sleep_for (std::chrono::milliseconds (5));
-	}
-	return predicate ();
-}
 } // namespace
 
 int main ()
@@ -126,22 +116,22 @@ int main ()
 		auto endpoint = receiver.local_endpoint ();
 		auto received = std::make_shared<std::promise<std::vector<uint8_t>>> ();
 		auto future = received->get_future ();
-		std::vector<uint8_t> buffer (64);
-		receiver.async_receive (boost::asio::buffer (buffer),
-			[received, buffer] (const boost::system::error_code & ec, std::size_t len) mutable
+		auto receiveBuffer = std::make_shared<std::vector<uint8_t>> (64);
+		receiver.async_receive (boost::asio::buffer (*receiveBuffer),
+			[received, receiveBuffer] (const boost::system::error_code & ec, std::size_t len)
 			{
 				if (ec)
 					received->set_value ({ });
 				else
 				{
-					buffer.resize (len);
-					received->set_value (std::move (buffer));
+					receiveBuffer->resize (len);
+					received->set_value (std::move (*receiveBuffer));
 				}
 			});
 
 		{
-			std::string firstPart = "SAM-";
-			std::string secondPart = "DATAGRAM";
+			const std::vector<uint8_t> firstPart { 'S', 'A', 'M', '-' };
+			const std::vector<uint8_t> secondPart { 'D', 'A', 'T', 'A', 'G', 'R', 'A', 'M' };
 			std::vector<boost::asio::const_buffer> parts { boost::asio::buffer (firstPart),
 				boost::asio::buffer (secondPart) };
 			bridge.SendTo (parts, endpoint);

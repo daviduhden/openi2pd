@@ -71,4 +71,5 @@ int main ()
 	i2p::crypto::EDDSA25519Verifier verifier;
 	verifier.SetPublicKey (pub);
 	assert (verifier.Verify (msg, 1023, s));
+	BN_free (input);
 }
