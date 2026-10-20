@@ -669,6 +669,10 @@ namespace tui
 			AppendField (payload, "creation.success", snapshot->creation.success);
 			AppendField (payload, "creation.torrentId", snapshot->creation.torrentId);
 			AppendField (payload, "creation.message", snapshot->creation.message);
+			AppendField (payload, "creation.bytesDone", snapshot->creation.bytesDone);
+			AppendField (payload, "creation.totalBytes", snapshot->creation.totalBytes);
+			AppendField (payload, "creation.filesDone", snapshot->creation.filesDone);
+			AppendField (payload, "creation.totalFiles", snapshot->creation.totalFiles);
 			return payload;
 		}
 
@@ -806,6 +810,17 @@ namespace tui
 			case RequestType::TorrentFilePriority:
 				return makeOk (BuildTorrentCommandResult (request->tunnelIndex,
 					{ i2p::torrents::TorrentCommandKind::FilePriority, request->torrentId, false, request->argument }));
+			case RequestType::TorrentCreateV1:
+			{
+				i2p::torrents::TorrentCommand command { i2p::torrents::TorrentCommandKind::Create, 0, false, request->argument };
+				command.createPieceLength = request->createPieceLength;
+				command.createPrivate = request->createPrivate;
+				command.createTrackers = request->createTrackers;
+				return makeOk (BuildTorrentCommandResult (request->tunnelIndex, command));
+			}
+			case RequestType::TorrentCreateCancel:
+				return makeOk (BuildTorrentCommandResult (request->tunnelIndex,
+					{ i2p::torrents::TorrentCommandKind::CancelCreate, 0, false, {} }));
 			case RequestType::TorrentCreate:
 				return makeOk (BuildTorrentCommandResult (
 					request->tunnelIndex, { i2p::torrents::TorrentCommandKind::Create, 0, false, request->argument }));

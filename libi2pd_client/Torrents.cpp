@@ -849,7 +849,6 @@ namespace torrents
 
 	std::string CreateByteString (std::string_view str)
 	{
-		if (str.empty ()) return "";
 		std::string ret (std::to_string (str.length ()));
 		ret += ":";
 		ret += str;
@@ -866,14 +865,16 @@ namespace torrents
 
 	std::string CreateDictionary (const std::vector<std::pair<std::string_view, std::string_view>> & items)
 	{
+		std::map<std::string_view, std::string_view> ordered;
+		for (const auto & [name, value] : items)
+			if (!value.empty () && !ordered.emplace (name, value).second) return {};
 		std::stringstream s;
 		s << 'd';
-		for (const auto & [name, value] : items)
-			if (!name.empty () && !value.empty ())
-			{
-				s << CreateByteString (name);
-				s << value;
-			}
+		for (const auto & [name, value] : ordered)
+		{
+			s << CreateByteString (name);
+			s << value;
+		}
 		s << 'e';
 		return s.str ();
 	}
@@ -900,8 +901,24 @@ namespace torrents
 			return false;
 		}
 		Open (true);
-		if (m_File < 0) return false;
+		if (m_PayloadStorage ? !m_StorageHandle : m_File < 0) return false;
 		if (!len) return true;
+		if (m_PayloadStorage)
+		{
+			std::string error;
+			for (size_t done = 0; done < len;)
+			{
+				auto chunk = std::min (len - done, TorrentPayloadStorage::MaxTransfer);
+				if (!m_PayloadStorage->Write (m_StorageHandle, offset + done, { buf + done, chunk }, error))
+				{
+					LogPrint (eLogError, "Torrents: Payload storage write failed: ", error);
+					Close (); // Retry must reacquire authority after provider/IPC recovery.
+					return false;
+				}
+				done += chunk;
+			}
+			return true;
+		}
 		if (!WriteAt (m_File, offset, buf, len))
 		{
 			LogPrint (eLogError, "Torrents: Failed to write ", len, " bytes at ", offset, " to ", m_FullFilePath);
@@ -919,10 +936,26 @@ namespace torrents
 			return false;
 		}
 		Open (false);
-		if (m_File < 0) return false;
+		if (m_PayloadStorage ? !m_StorageHandle : m_File < 0) return false;
 		if (!len) return true;
 		// A short file or short read is a failure: never hand partially
 		// initialised data to the piece hash check.
+		if (m_PayloadStorage)
+		{
+			std::string error;
+			for (size_t done = 0; done < len;)
+			{
+				auto chunk = std::min (len - done, TorrentPayloadStorage::MaxTransfer);
+				if (!m_PayloadStorage->Read (m_StorageHandle, offset + done, { buf + done, chunk }, error))
+				{
+					LogPrint (eLogError, "Torrents: Payload storage read failed: ", error);
+					Close ();
+					return false;
+				}
+				done += chunk;
+			}
+			return true;
+		}
 		if (!ReadAt (m_File, offset, buf, len))
 		{
 			LogPrint (eLogError, "Torrents: Failed to read ", len, " bytes at ", offset, " from ", m_FullFilePath);
@@ -941,7 +974,21 @@ namespace torrents
 	{
 		if (m_File >= 0) return;
 		auto filePath = m_FullFilePath;
-		if (m_IsPart) filePath += ".part";
+		if (m_IsPart && (!m_PayloadStorage || !m_PayloadStorage->UsesFinalNames ())) filePath += ".part";
+		if (m_PayloadStorage)
+		{
+			m_LastAccessTime = i2p::util::GetMonotonicSeconds ();
+			if (m_StorageHandle && (!create || m_StorageWritable)) return;
+			std::string error;
+			if (m_StorageHandle) { m_PayloadStorage->Close (m_StorageHandle, error); m_StorageHandle = 0; }
+			auto relative = filePath.lexically_relative (m_StorageRootDir);
+			if (m_StorageRootDir.empty () || !IsSafeRelativePath (relative)) return;
+			m_StorageHandle = m_PayloadStorage->Open (relative, m_FileLength, create, error);
+			m_StorageWritable = create && m_StorageHandle;
+			if (!m_StorageHandle) LogPrint (eLogError, "Torrents: Isolated file registration failed: ", error);
+			return; // Never fall back to direct filesystem IO after worker failure.
+		}
+
 
 		// Prefer opening relative to the trusted root so every component below
 		// it is traversed with O_NOFOLLOW. If a root was supplied, never fall
@@ -978,6 +1025,13 @@ namespace torrents
 
 	void TorrentFile::Close ()
 	{
+		if (m_StorageHandle && m_PayloadStorage)
+		{
+			std::string error;
+			(void)m_PayloadStorage->Close (m_StorageHandle, error);
+			m_StorageHandle = 0;
+			m_StorageWritable = false;
+		}
 		CloseFile (m_File);
 		m_File = -1;
 	}
@@ -1028,12 +1082,14 @@ namespace torrents
 		m_IsLoading = other.m_IsLoading;
 		m_IsRequested = other.m_IsRequested;
 		m_IsVerified = other.m_IsVerified;
+		m_IsSaving = other.m_IsSaving;
 		m_LastActivityTimestamp = other.m_LastActivityTimestamp;
 		m_NumPeers = other.m_NumPeers;
 		other.m_IsSending = false;
 		other.m_IsLoading = false;
 		other.m_IsRequested = false;
 		other.m_IsVerified = false;
+		other.m_IsSaving = false;
 		other.m_LastActivityTimestamp = 0;
 		other.m_NumPeers = 0;
 	}
@@ -1050,11 +1106,12 @@ namespace torrents
 		return !m_Blocks;
 	}
 
-	void Piece::Complete ()
+	void Piece::Complete (bool pendingVerification)
 	{
 		std::lock_guard<std::mutex> l (m_Mutex);
 		m_Blocks.reset ();
 		m_IsRequested = false;
+		m_IsSaving = pendingVerification;
 		// Completion alone (a resume bitfield or a pre-existing final file)
 		// is not proof that the bytes match the hash. Only VerifyHash() sets
 		// this flag.
@@ -1078,7 +1135,19 @@ namespace torrents
 	bool Piece::IsVerified () const
 	{
 		std::lock_guard<std::mutex> l (m_Mutex);
-		return m_IsVerified;
+		return m_IsVerified && !m_IsSaving;
+	}
+
+	void Piece::SetIsSaving (bool saving)
+	{
+		std::lock_guard<std::mutex> l (m_Mutex);
+		m_IsSaving = saving;
+	}
+
+	bool Piece::IsSaving () const
+	{
+		std::lock_guard<std::mutex> l (m_Mutex);
+		return m_IsSaving;
 	}
 
 	bool Piece::IsAvailableLocked (int block) const
@@ -1189,22 +1258,23 @@ namespace torrents
 		}
 	}
 
-	void Piece::Dump (PieceFileFragment && fragment)
+	bool Piece::Dump (PieceFileFragment && fragment)
 	{
 		std::lock_guard<std::mutex> l (m_Mutex);
-		if (!m_IsVerified)
+		if (!m_IsVerified || !m_Data || !fragment.file || fragment.fragmentOffset > m_Size
+			|| fragment.fragmentSize > m_Size - fragment.fragmentOffset)
 		{
-			LogPrint (eLogError, "Torrents: Refusing to write an unverified piece");
-			return;
+			LogPrint (eLogError, "Torrents: Refusing an unverified or invalid piece write");
+			return false;
 		}
 		m_IsSending = true;
-		if (m_Data && fragment.fragmentOffset <= m_Size && fragment.fragmentSize <= m_Size - fragment.fragmentOffset)
-		{
-			if (fragment.file->Save (fragment.fileOffset, m_Data + fragment.fragmentOffset, fragment.fragmentSize))
-				LogPrint (eLogDebug, "Torrents: Saved bytes ", fragment.fileOffset, " - ",
-					fragment.fileOffset + fragment.fragmentSize - 1, " to ", fragment.file->GetFullFilePath ());
-		}
+		const bool success = fragment.file->Save (fragment.fileOffset,
+			m_Data + fragment.fragmentOffset, fragment.fragmentSize);
 		m_IsSending = false;
+		if (success && fragment.fragmentSize)
+			LogPrint (eLogDebug, "Torrents: Saved bytes ", fragment.fileOffset, " - ",
+				fragment.fileOffset + fragment.fragmentSize - 1, " to ", fragment.file->GetFullFilePath ());
+		return success;
 	}
 
 	bool Piece::Load (PieceFileFragment && fragment)
@@ -1243,7 +1313,7 @@ namespace torrents
 		// Unverified data may come from a resume bitfield or a previous
 		// partial load; never serve it to a peer. The caller falls back to
 		// the disk load path, which hashes the whole piece first.
-		if (!m_IsVerified) return false;
+		if (!m_IsVerified || m_IsSaving) return false;
 		if (!len || !m_Data || offset > m_Size || len > m_Size - offset) return false;
 		if (!IsAvailableLocked ((int)(offset / REQUEST_BLOCK_SIZE))
 			|| !IsAvailableLocked ((int)((offset + len - 1) / REQUEST_BLOCK_SIZE)))
@@ -1268,7 +1338,7 @@ namespace torrents
 	bool Piece::HasBlock (size_t offset) const
 	{
 		std::lock_guard<std::mutex> l (m_Mutex);
-		if (offset >= m_Size) return false;
+		if (offset >= m_Size || m_IsSaving) return false;
 		return IsAvailableLocked (offset / REQUEST_BLOCK_SIZE);
 	}
 
@@ -1309,6 +1379,7 @@ namespace torrents
 		DeleteDataBufferLocked ();
 		m_IsRequested = false;
 		m_IsVerified = false;
+		m_IsSaving = false;
 	}
 
 	void Piece::MarkCorrupt ()
@@ -1319,7 +1390,7 @@ namespace torrents
 
 	void Piece::ReleaseDataLocked ()
 	{
-		if (!m_Data) return;
+		if (!m_Data || m_IsSaving) return;
 		DeleteDataBufferLocked ();
 		// Verification is a property of the bytes that were written to disk,
 		// not of the in-memory cache. Keep the flag so a piece evicted while
@@ -2011,7 +2082,7 @@ namespace torrents
 			for (int j = 0; j < 8; j++)
 			{
 				if (idx >= numPieces) break;
-				if (m_Pieces[idx].IsComplete ())
+				if (m_Pieces[idx].IsComplete () && !m_Pieces[idx].IsSaving ())
 				{
 					ret[i] |= bit;
 					none = false;
@@ -2052,7 +2123,7 @@ namespace torrents
 	bool Torrent::AreAllPiecesVerified () const
 	{
 		for (const auto & it : m_Pieces)
-			if (!it.IsComplete () || !it.IsVerified ()) return false;
+			if (!it.IsComplete () || !it.IsVerified () || it.IsSaving ()) return false;
 		return !m_Pieces.empty ();
 	}
 
@@ -2244,6 +2315,12 @@ namespace torrents
 		if (m_FullPath.empty ()) return;
 		auto [bitfield, have] = CreateBitfield ();
 		if (!have) return; // empty
+		if (m_ResumePersistence)
+		{
+			if (!m_ResumePersistence (bitfield, have && m_IsComplete.load (std::memory_order_acquire)))
+				LogPrint (eLogError, "Torrents: Isolated resume persistence failed");
+			return; // No direct fallback after delegated persistence failure.
+		}
 		std::filesystem::path resumeFilePath = m_FullPath;
 		resumeFilePath += ".resume";
 		if (have && m_IsComplete.load (std::memory_order_acquire)) // all pieces complete and the torrent was promoted
@@ -3104,8 +3181,9 @@ namespace torrents
 			else
 			{
 				piece.BlockReceived (buf + 8, len, offset);
-				if (piece.IsComplete ())
+				if (piece.IsComplete () && !piece.IsSaving ())
 				{
+					piece.SetIsSaving (true);
 					if (piece.VerifyHash ())
 					{
 						// A removed torrent may still be kept alive by a
@@ -3122,17 +3200,30 @@ namespace torrents
 									if (!current || tunnel->FindTorrent (infoHash) != current) return;
 									auto fragments = current->GetPieceFileFragments (index);
 									Piece & piece = current->GetPiece (index);
-									for (auto & it : fragments) piece.Dump (std::move (it));
+									bool saved = !fragments.empty ();
+									for (auto & it : fragments)
+										if (!piece.Dump (std::move (it))) { saved = false; break; }
+									if (!saved)
+									{
+										current->InvalidatePiece (index);
+										LogPrint (eLogError, "Torrents: Piece storage failed; piece remains unavailable");
+										return;
+									}
+									piece.SetIsSaving (false);
 									current->SaveTorrentResumeFile ();
+									boost::asio::post (tunnel->GetService (), [torrent, tunnel, infoHash, index] ()
+									{
+										auto current = torrent.lock ();
+										if (!current || current->IsStopped () || tunnel->FindTorrent (infoHash) != current) return;
+										for (auto & connection : current->GetConnections ()) connection->SendHaveMsg (index);
+									});
 								});
-						// send have
-						auto conns = m_Torrent->GetConnections ();
-						for (auto it : conns) it->SendHaveMsg (index);
+						else m_Torrent->InvalidatePiece (index);
 					}
 					else
 					{
 						LogPrint (eLogWarning, "Torrents: Received piece hash mismatch");
-						piece.InvalidateAllBlocks ();
+						m_Torrent->InvalidatePiece (index);
 					}
 				}
 			}
@@ -3324,7 +3415,7 @@ namespace torrents
 								// A complete piece whose local data failed to
 								// load or hash must not stay complete: rebuild
 								// it as Missing so it can be downloaded again.
-								piece.MarkCorrupt ();
+								torrent->InvalidatePiece (index);
 							}
 							if (loaded)
 								boost::asio::post (s->GetTorrentsTunnel ()->GetService (),

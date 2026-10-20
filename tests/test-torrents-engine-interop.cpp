@@ -17,6 +17,10 @@
 int main ()
 {
 	using namespace i2p::torrents;
+	assert (CreateByteString ("") == "0:");
+	assert (CreateDictionary ({ { "z", "i1e" }, { "a", "0:" } }) == "d1:a0:1:zi1ee");
+	assert (CreateDictionary ({ { "a", "i1e" }, { "a", "i2e" } }).empty ());
+
 	std::vector<Torrent::InfoHash> hashes (1);
 	const std::string data ("abc");
 	SHA1 (reinterpret_cast<const uint8_t *> (data.data ()), data.size (), hashes[0].data ());

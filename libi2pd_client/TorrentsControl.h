@@ -57,6 +57,7 @@ namespace torrents
 		AddTracker,
 		RemoveTracker,
 		Create,
+		CancelCreate,
 		CommentsEnable,
 		CommentAdd,
 		CommentHide,
@@ -139,6 +140,7 @@ namespace torrents
 		bool success = false;
 		int torrentId = 0;
 		std::string message;
+		uint64_t bytesDone = 0, totalBytes = 0, filesDone = 0, totalFiles = 0;
 	};
 
 	struct TorrentDhtInfo
@@ -166,6 +168,9 @@ namespace torrents
 		int torrentId = 0;
 		bool deleteFiles = false;
 		std::string argument;
+		size_t createPieceLength = 0;
+		bool createPrivate = false;
+		std::vector<std::vector<std::string>> createTrackers;
 	};
 
 	struct TorrentCommandResult

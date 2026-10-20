@@ -123,3 +123,50 @@ Explicit tracker lists, including an empty list, survive persistence without
 changing the info dictionary. Registry slots remain bounded and are not
 reclaimed until restart; repeated edits may exhaust that quota. Tier grouping
 is preserved, but BEP 12 failover/shuffling is not yet implemented.
+
+## Current process and native UI increment
+
+The [storage worker](storage-worker.md) is a real exec-ed process connected to
+payload reads/writes when `isolatedstorage=true` is configured. This opt-in
+path requires an unprivileged identity and a private, owned root; requested
+backend failure stops that torrent service and never falls back to direct
+payload IO. Allocation is delegated to the worker in isolated mode. Metadata/promotion and
+router persistence remain in the parent. Network/session/verifier workers and the Windows backend are still
+required before global capability separation can be claimed.
+
+[Local state version 1](local-state.md) documents pause, priorities and comment
+persistence. Desktop priority/comment operations and advanced creation are now
+connected over IPC. Android adds creation/export from SAF documents and trees,
+with native v1 serialization, cancellation and progress. SAF tree payload download/seeding is connected through the shared
+TorrentPayloadStorage interface and a separate-process Binder/JNI broker; see
+[SAF storage](saf-storage.md). Provider/device coverage and transparent recovery
+remain pending. All new paths are pending
+manual CI compilation and tests.
+
+## Recovery and current capability boundary
+
+SAF Binder recovery uses logical local capabilities, generation/death fencing,
+bounded backoff and cancellation outside data locks. Ambiguous writes are not
+replayed. See [SAF storage](saf-storage.md). Native isolated torrent lifecycle
+now delegates allocation, promotion, exact-file deletion, metainfo/resume and
+settings persistence; no fallback writer is used on a worker error.
+
+| Process | External network | Persistent writes | Current status |
+|---|---|---|---|
+| Native torrent storage worker | Denied by role sandbox | Delegated root only | Implemented statically; pending negative CI tests. |
+| Android SAF broker | Native socket operations denied | Persisted document authority | Implemented statically; provider/device validation pending. |
+| OpenBSD storage supervisor | Denied | Denied | Root-read/process/socket-handoff authority only; pending CI. |
+| Router/engine parent | Present | Still present | Global invariant is NOT achieved. |
+| Document provider | Outside project control | Provider controlled | Explicit trust boundary, may use its own network. |
+
+The parent still persists router keys/configuration, netDb and DHT state. Moving
+selected torrent operations does not establish global privilege separation.
+Transport/network, router state, verifier and administrative process boundaries
+remain implementation work, alongside cross-platform negative capability tests.
+
+The next increment delegates isolated DHT persistence as well as the four fixed
+router state files through [router storage](router-storage.md). This removes
+those write paths, including initial identity creation when the option is
+requested. NetDb/profile/config/client persistence and enforcement of the global
+network-versus-persistent-write boundary remain implementation work. SAF export
+and exact-document deletion are now broker operations.

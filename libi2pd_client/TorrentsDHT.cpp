@@ -434,7 +434,7 @@ namespace torrents
 			if (m_DHTFileName.empty ()) m_DHTFileName = dest->GetIdentHash ().ToBase32 () + ".dht";
 		}
 		if (m_DHTFileName.empty ()) m_DHTFileName = "nodest.dht";
-		if (m_DHTFileName[0]) // first byte zero means non persistent
+		if (!m_DHTFileName.empty () && m_DHTFileName[0]) // first byte zero means non persistent
 			Load (GetDHTFilePath (m_DHTFileName));
 		ScheduleDHTUpdateCheck ();
 		ScheduleDHTExpirationCheck ();
@@ -457,7 +457,7 @@ namespace torrents
 			auto dgramDest = dest->GetDatagramDestination ();
 			if (dgramDest) dgramDest->ResetReceiver ();
 		}
-		if (m_DHTFileName[0]) // first byte zero means non persistent
+		if (!m_DHTFileName.empty () && m_DHTFileName[0]) // first byte zero means non persistent
 			Save (GetDHTFilePath (m_DHTFileName));
 	}
 
@@ -465,73 +465,91 @@ namespace torrents
 	{
 		std::filesystem::path dhtFilePath (i2p::fs::GetDataDir ());
 		dhtFilePath /= "torrents";
-		if (!std::filesystem::exists (dhtFilePath)) std::filesystem::create_directories (dhtFilePath);
+		if (!m_DelegatedPersistence && !std::filesystem::exists (dhtFilePath)) std::filesystem::create_directories (dhtFilePath);
 		dhtFilePath /= filename;
 		return dhtFilePath;
 	}
 
 	void TorrentsDHT::Save (const std::filesystem::path & file)
 	{
-		if (m_RoutingTable)
+		if (!m_RoutingTable) return;
+		std::vector<uint8_t> bytes;
+		auto append = [&bytes] (const NodeInfo & node)
 		{
-			std::ofstream f (file, std::ofstream::binary);
-			if (f.is_open ())
+			if (bytes.size () > MaxStateBytes - node.size ()) return false;
+			bytes.insert (bytes.end (), node.begin (), node.end ());
+			return true;
+		};
+		auto dest = m_Tunnel.GetLocalDestination ();
+		if (dest) append (Node (m_NodeID, dest->GetIdentHash (), m_Port).GetNodeInfo ());
+		for (const auto & node : m_RoutingTable->GetNodes ())
+			if (!append (node->GetNodeInfo ()))
 			{
-				auto dest = m_Tunnel.GetLocalDestination ();
-				if (dest)
-				{
-					// save our nodeInfo first
-					NodeInfo nodeInfo = Node (m_NodeID, dest->GetIdentHash (), m_Port).GetNodeInfo ();
-					f.write ((const char *)nodeInfo.data (), nodeInfo.size ());
-				}
-				int numSaved = 0;
-				for (auto it : m_RoutingTable->GetNodes ())
-				{
-					auto nodeInfo = it->GetNodeInfo ();
-					if (f.write ((const char *)nodeInfo.data (), nodeInfo.size ())) numSaved++;
-				}
-				if (numSaved > 0) LogPrint (eLogInfo, "TorrentsDHT: ", numSaved, " DHT nodes saved");
+				LogPrint (eLogError, "TorrentsDHT: State exceeds persistence limit");
+				return;
 			}
+		if (m_DelegatedPersistence)
+		{
+			std::string error;
+			if (!m_SaveState || !m_SaveState (file, bytes, error))
+				LogPrint (eLogError, "TorrentsDHT: Delegated save failed: ", error);
+			return;
 		}
+		std::ofstream f (file, std::ofstream::binary);
+		if (f.is_open () && !bytes.empty ())
+			f.write (reinterpret_cast<const char *> (bytes.data ()), bytes.size ());
 	}
 
 	void TorrentsDHT::Load (const std::filesystem::path & file)
 	{
-		std::ifstream f (file, std::ifstream::in | std::ifstream::binary);
-		if (f.is_open ())
+		std::vector<uint8_t> bytes;
+		if (m_DelegatedPersistence)
 		{
-			NodeInfo nodeInfo;
-			if (f.read ((char *)nodeInfo.data (), nodeInfo.size ()))
+			std::string error;
+			if (!m_LoadState || !m_LoadState (file, bytes, error))
 			{
-				auto dest = m_Tunnel.GetLocalDestination ();
-				if (dest)
-				{
-					Node node (nodeInfo);
-					if (node.VerifyID () && node.peer == dest->GetIdentHash ()) // first nodeInfo is ours
-					{
-						m_NodeID = node.id;
-						m_Port = node.port;
-					}
-					else
-						f.seekg (0, std::ios::beg);
-				}
-			}
-			else
+				LogPrint (eLogWarning, "TorrentsDHT: Delegated load failed: ", error);
 				return;
-
-			m_RoutingTable = std::make_unique<RoutingTable> (m_NodeID);
-			while (f.read ((char *)nodeInfo.data (), nodeInfo.size ()))
-			{
-				auto bytesRead = f.gcount ();
-				if (bytesRead == nodeInfo.size ())
-				{
-					auto node = std::make_shared<Node> (nodeInfo);
-					if (node->VerifyID ()) m_RoutingTable->AddNode (node);
-				}
 			}
-			LogPrint (eLogInfo, "TorrentsDHT: ", m_RoutingTable->GetNumNodes (), " DHT nodes loaded to ",
-				m_RoutingTable->GetNumBuckets (), " buckets");
 		}
+		else
+		{
+			std::ifstream f (file, std::ifstream::binary | std::ifstream::ate);
+			if (!f.is_open ()) return;
+			const auto size = f.tellg ();
+			if (size < 0 || static_cast<uint64_t> (size) > MaxStateBytes) return;
+			bytes.resize (static_cast<size_t> (size));
+			f.seekg (0);
+			if (!bytes.empty () && !f.read (reinterpret_cast<char *> (bytes.data ()), bytes.size ())) return;
+		}
+		// Keep the existing flat 54-byte NodeInfo format; reject partial files
+		// before changing identity or routing state.
+		if (bytes.empty () || bytes.size () > MaxStateBytes || bytes.size () % NodeInfo {}.size ()) return;
+		size_t offset = 0;
+		NodeInfo first;
+		std::copy_n (bytes.data (), first.size (), first.data ());
+		auto dest = m_Tunnel.GetLocalDestination ();
+		if (dest)
+		{
+			Node node (first);
+			if (node.VerifyID () && node.peer == dest->GetIdentHash ())
+			{
+				m_NodeID = node.id;
+				m_Port = node.port;
+				offset = first.size ();
+			}
+		}
+		auto table = std::make_unique<RoutingTable> (m_NodeID);
+		for (; offset < bytes.size (); offset += first.size ())
+		{
+			NodeInfo info;
+			std::copy_n (bytes.data () + offset, info.size (), info.data ());
+			auto node = std::make_shared<Node> (info);
+			if (node->VerifyID ()) table->AddNode (node);
+		}
+		m_RoutingTable = std::move (table);
+		LogPrint (eLogInfo, "TorrentsDHT: ", m_RoutingTable->GetNumNodes (), " DHT nodes loaded to ",
+			m_RoutingTable->GetNumBuckets (), " buckets");
 	}
 
 	std::optional<DHTErrorReply> DecodeDHTErrorReply (std::string_view encoded)

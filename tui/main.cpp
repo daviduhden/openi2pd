@@ -110,7 +110,8 @@ enum class TorrentDetailTab
 	General = 0,
 	Files,
 	Peers,
-	Trackers
+	Trackers,
+	Comments
 };
 
 enum class PromptKind
@@ -121,8 +122,13 @@ enum class PromptKind
 	AddMagnet,
 	AddFile,
 	CreateTorrent,
+	CreateTorrentAdvanced,
 	AddTracker,
 	RemoveTracker,
+	FilePriority,
+	CommentsToggle,
+	CommentAdd,
+	CommentHide,
 	ConfirmRemove,
 	ConfirmRemoveFiles,
 	ConfirmTransit
@@ -200,6 +206,8 @@ struct TorrentRow
 
 struct TorrentFileRow
 {
+	long index = 0;
+	int priority = 1;
 	std::string name;
 	uint64_t length = 0;
 	uint64_t completed = 0;
@@ -233,6 +241,7 @@ struct TorrentDetail
 	std::vector<TorrentFileRow> files;
 	std::vector<TorrentPeerRow> peers;
 	std::vector<TorrentTrackerRow> trackers;
+	std::map<std::string, std::string> comments;
 };
 
 struct TorrentTunnelRow
@@ -249,6 +258,10 @@ struct TorrentSessionInfo
 	int active = 0;
 	int paused = 0;
 	uint64_t creationJob = 0;
+	uint64_t creationBytesDone = 0;
+	uint64_t creationTotalBytes = 0;
+	uint64_t creationFilesDone = 0;
+	uint64_t creationTotalFiles = 0;
 	bool creationPending = false;
 	bool creationSuccess = false;
 	int creationTorrentId = 0;
@@ -889,6 +902,12 @@ TorrentDetail BuildTorrentDetail (const std::map<std::string, std::string> & fie
 
 	for (const auto & [key, value] : fields)
 	{
+		if (key.starts_with ("comments.") || key.starts_with ("comment."))
+		{
+			if (detail.comments.size () < 2048)
+				detail.comments.emplace (key, BoundUtf8 (value, 4096));
+			continue;
+		}
 		if (key.starts_with ("detail."))
 		{
 			AssignTorrentField (detail.info, std::string_view (key).substr (7), value);
@@ -906,12 +925,15 @@ TorrentDetail BuildTorrentDetail (const std::map<std::string, std::string> & fie
 				it = files.emplace (index, TorrentFileRow { }).first;
 			}
 			auto & file = it->second;
+			file.index = index;
 			if (field == "name")
 				file.name = BoundUtf8 (value, 2048);
 			else if (field == "length")
 				file.length = ToU64 (value);
 			else if (field == "completed")
 				file.completed = ToU64 (value);
+			else if (field == "priority")
+				file.priority = std::clamp (ToInt (value), 0, 2);
 		}
 		else if (SplitIndexedKey (key, "peer.", index, field))
 		{
@@ -1246,6 +1268,7 @@ private:
 	int m_PendingTorrentTunnel = -1;
 	std::string m_PendingTorrentName;
 	std::string m_PendingTrackerHash;
+	std::string m_PendingTunnelName;
 	bool m_PendingTransit = false;
 
 	std::string m_StatusMessage;
@@ -1799,6 +1822,10 @@ void App::ParseTorrentSession (const std::string & payload)
 	m_TorrentSession.active = ToInt (MapValue (fields, "session.active"));
 	m_TorrentSession.paused = ToInt (MapValue (fields, "session.paused"));
 	m_TorrentSession.creationJob = ToU64 (MapValue (fields, "creation.job"));
+	m_TorrentSession.creationBytesDone = ToU64 (MapValue (fields, "creation.bytesDone"));
+	m_TorrentSession.creationTotalBytes = ToU64 (MapValue (fields, "creation.totalBytes"));
+	m_TorrentSession.creationFilesDone = ToU64 (MapValue (fields, "creation.filesDone"));
+	m_TorrentSession.creationTotalFiles = ToU64 (MapValue (fields, "creation.totalFiles"));
 	m_TorrentSession.creationPending = ToInt (MapValue (fields, "creation.pending")) != 0;
 	m_TorrentSession.creationSuccess = ToInt (MapValue (fields, "creation.success")) != 0;
 	m_TorrentSession.creationTorrentId = ToInt (MapValue (fields, "creation.torrentId"));
@@ -2088,6 +2115,7 @@ void App::LeaveTorrentDetails ()
 void App::BeginPrompt (PromptKind kind, std::string label, std::string initial)
 {
 	m_Prompt = kind;
+	m_PendingTunnelName = m_TorrentTunnelName;
 	m_PromptLabel = std::move (label);
 	m_InputBuffer = std::move (initial);
 	if (m_InputBuffer.size () > 2048) m_InputBuffer.resize (2048);
@@ -2131,6 +2159,7 @@ bool App::HandlePromptKey (int key)
 void App::CommitPrompt ()
 {
 	auto kind = m_Prompt;
+	auto tunnelName = std::move (m_PendingTunnelName);
 	auto input = m_InputBuffer;
 	m_Prompt = PromptKind::None;
 	m_InputBuffer.clear ();
@@ -2190,22 +2219,25 @@ void App::CommitPrompt ()
 		return;
 	}
 
-	if (kind == PromptKind::CreateTorrent)
+	if (kind == PromptKind::CreateTorrent || kind == PromptKind::CreateTorrentAdvanced)
 	{
 		const int tunnel = m_PendingTorrentTunnel;
 		m_PendingTorrentTunnel = -1;
 		auto source = Trim (input);
-		if (source.empty () || source.size () > 2048 || source.find_first_of ("\r\n") != std::string::npos)
+		if (source.empty () || source.size () > 2048
+			|| std::any_of (source.begin (), source.end (), [] (unsigned char c) { return c < 32 || c == 127; }))
 		{
 			SetStatus ("invalid source name", true);
 			return;
 		}
-		if (!RequireTorrentTunnel () || tunnel != m_TorrentTunnel)
+		if (!RequireTorrentTunnel () || tunnel != m_TorrentTunnel || tunnelName != m_TorrentTunnelName)
 		{
 			SetStatus ("torrent session changed; creation cancelled", true);
 			return;
 		}
-		SendTorrentCommand ("TORRENT-CREATE " + std::to_string (tunnel) + " " + source);
+		// The daemon validates sizes, tracker tiers and paths. The terminal never opens the source.
+		SendTorrentCommand (std::string (kind == PromptKind::CreateTorrent ? "TORRENT-CREATE " : "TORRENT-CREATE-V1 ")
+			+ std::to_string (tunnel) + " " + source);
 		return;
 	}
 
@@ -2232,6 +2264,65 @@ void App::CommitPrompt ()
 		return;
 	}
 
+	if (kind == PromptKind::FilePriority || kind == PromptKind::CommentsToggle
+		|| kind == PromptKind::CommentAdd || kind == PromptKind::CommentHide)
+	{
+		const auto id = m_PendingTorrentId;
+		const auto tunnel = m_PendingTorrentTunnel;
+		auto hash = std::move (m_PendingTrackerHash);
+		m_PendingTorrentId = m_PendingTorrentTunnel = -1;
+		m_PendingTorrentName.clear ();
+		bool present = false;
+		if (tunnel == m_TorrentTunnel && tunnelName == m_TorrentTunnelName && !hash.empty ())
+			for (const auto & torrent : m_Torrents)
+				if (torrent.id == id && torrent.hash == hash) present = true;
+		if (!present)
+		{
+			SetStatus ("selected torrent changed; edit cancelled", true);
+			return;
+		}
+		auto value = Trim (input);
+		bool valid = !value.empty () && value.size () <= 2048;
+		for (unsigned char ch : value)
+			if (ch < 32 || ch == 127) valid = false;
+		auto digits = [] (std::string_view text) {
+			return !text.empty () && text.size () <= 20
+				&& std::all_of (text.begin (), text.end (), [] (char c) { return c >= '0' && c <= '9'; });
+		};
+		std::string command;
+		if (kind == PromptKind::FilePriority)
+		{
+			auto split = value.find (' ');
+			valid = valid && split != std::string::npos && digits (value.substr (0, split))
+				&& split + 2 == value.size () && value.back () >= '0' && value.back () <= '2';
+			command = "TORRENT-FILE-PRIORITY ";
+		}
+		else if (kind == PromptKind::CommentsToggle)
+		{
+			valid = valid && (value == "ON" || value == "OFF");
+			command = "TORRENT-COMMENTS ";
+		}
+		else if (kind == PromptKind::CommentHide)
+		{
+			valid = valid && digits (value);
+			command = "TORRENT-COMMENT-HIDE ";
+		}
+		else
+		{
+			auto separator = value.find ('|');
+			valid = valid && value.size () >= 4 && value[0] >= '0' && value[0] <= '5'
+				&& value[1] == ' ' && separator != std::string::npos && separator >= 2
+				&& separator - 2 <= 32 && value.size () - separator - 1 <= 512;
+			command = "TORRENT-COMMENT-ADD ";
+		}
+		if (!valid)
+		{
+			SetStatus ("invalid edit; check the prompt format and size limits", true);
+			return;
+		}
+		SendTorrentCommand (command + std::to_string (tunnel) + " " + std::to_string (id) + " " + value);
+		return;
+	}
 	if (kind == PromptKind::AddTracker || kind == PromptKind::RemoveTracker)
 	{
 		const int id = m_PendingTorrentId;
@@ -2241,7 +2332,7 @@ void App::CommitPrompt ()
 		m_PendingTorrentTunnel = -1;
 		m_PendingTorrentName.clear ();
 		if (!RequireTorrentTunnel ()) return;
-		bool present = tunnel == m_TorrentTunnel && !hash.empty ();
+		bool present = tunnel == m_TorrentTunnel && tunnelName == m_TorrentTunnelName && !hash.empty ();
 		if (present)
 		{
 			present = false;
@@ -2297,7 +2388,7 @@ void App::CommitPrompt ()
 			return;
 		}
 		bool present = false;
-		if (m_PendingTorrentId >= 0 && m_PendingTorrentTunnel == m_TorrentTunnel)
+		if (m_PendingTorrentId >= 0 && m_PendingTorrentTunnel == m_TorrentTunnel && tunnelName == m_TorrentTunnelName)
 		{
 			for (const auto & torrent : m_Torrents)
 			{
@@ -2332,6 +2423,7 @@ void App::CommitPrompt ()
 void App::CancelPrompt ()
 {
 	m_Prompt = PromptKind::None;
+	m_PendingTunnelName.clear ();
 	m_InputBuffer.clear ();
 	m_PendingTorrentId = -1;
 	m_PendingTorrentTunnel = -1;
@@ -2937,6 +3029,9 @@ void App::DrawHelp (int top, int height, int width)
 		"  Enter                   open torrent details", "  Esc                     back, or cancel a prompt",
 		"  a / A                   add magnet / add .torrent file path",
 		"  n                       create from file/directory in torrent root",
+		"  N                       advanced creation: pieceBytes public|private trackerCount tier:URL... source",
+		"                          pieceBytes 0=auto; tracker tiers contiguous 0..99",
+		"  K                       cancel creation for the selected torrent session",
 		"  t / T                   add / remove tracker URL for selected torrent",
 		"  p                       pause or resume the selected torrent",
 		"  R                       reannounce the selected torrent",
@@ -2946,7 +3041,10 @@ void App::DrawHelp (int top, int height, int width)
 		"  s / S                   cycle sort / reverse sort direction",
 		"  /                       filter by torrent name or hash", "  c                       clear the filter",
 		"  [ / ]                   previous/next torrent tunnel", "", "  Torrent details",
-		"  Left/Right, Tab         general/files/peers/trackers", "  Up/Down, PgUp/PgDn      scroll detail lines",
+		"  Left/Right, Tab         general/files/peers/trackers/comments",
+		"  f                       set file priority (index 0|1|2)",
+		"  c / C / H               enable comments / publish / hide local comment",
+		"  Up/Down, PgUp/PgDn      scroll detail lines",
 		"  Home/End                first/last detail line", "  Esc                     return to the torrent table", "",
 		"  Notes", "  Actions are sent to the daemon over the local IPC endpoint.",
 		"  Transit and daemon log level are the only router-wide writes; both are",
@@ -3142,11 +3240,17 @@ void App::BuildDetailGeneral (std::vector<std::string> & lines, const TorrentRow
 		add ("Active / paused",
 			std::to_string (m_TorrentSession.active) + " / " + std::to_string (m_TorrentSession.paused));
 		if (m_TorrentSession.creationJob)
+		{
 			add ("Creation job " + std::to_string (m_TorrentSession.creationJob),
 				(m_TorrentSession.creationPending		   ? "working: "
 						: m_TorrentSession.creationSuccess ? "complete: "
 														   : "failed: ")
 					+ m_TorrentSession.creationMessage);
+			add ("Creation progress", HumanBytes (m_TorrentSession.creationBytesDone) + " / "
+				+ HumanBytes (m_TorrentSession.creationTotalBytes) + " | files "
+				+ std::to_string (m_TorrentSession.creationFilesDone) + " / "
+				+ std::to_string (m_TorrentSession.creationTotalFiles));
+		}
 	}
 	else
 		add ("State", "not loaded yet");
@@ -3170,6 +3274,7 @@ void App::BuildDetailGeneral (std::vector<std::string> & lines, const TorrentRow
 
 void App::BuildDetailFiles (std::vector<std::string> & lines, const TorrentDetail & detail, int width) const
 {
+	lines.push_back ("  f set file index and priority: 0 skip, 1 normal, 2 high");
 	int nameColumns = std::max (8, width - 2 - 9 - 9 - 7);
 	lines.push_back ("  " + FitUtf8 ("File", nameColumns) + FitUtf8 ("Size", 9, true) + FitUtf8 ("Done", 9, true)
 		+ FitUtf8 ("Prog", 7, true));
@@ -3185,7 +3290,8 @@ void App::BuildDetailFiles (std::vector<std::string> & lines, const TorrentDetai
 		if (percent > 100.0) percent = 100.0;
 		char progress[32];
 		snprintf (progress, sizeof (progress), "%.1f%%", percent);
-		lines.push_back ("  " + FitUtf8 (file.name, nameColumns) + FitUtf8 (HumanBytes (file.length), 9, true)
+		lines.push_back ("  " + FitUtf8 ("[" + std::to_string (file.index) + "] p"
+			+ std::to_string (file.priority) + " " + SanitizeText (file.name), nameColumns) + FitUtf8 (HumanBytes (file.length), 9, true)
 			+ FitUtf8 (HumanBytes (file.completed), 9, true) + FitUtf8 (progress, 7, true));
 	}
 }
@@ -3260,7 +3366,7 @@ void App::DrawTorrentDetails (int top, int height, int width)
 	PutLine (
 		row++, "  " + FitUtf8 (info->name, std::max (1, width - 2)), width, m_Theme.Attributes (ThemeRole::Primary));
 
-	static constexpr std::array<std::string_view, 4> tabNames = { "General", "Files", "Peers", "Trackers" };
+	static constexpr std::array<std::string_view, 5> tabNames = { "General", "Files", "Peers", "Trackers", "Comments" };
 	std::string tabs = "  ";
 	for (size_t i = 0; i < tabNames.size (); ++i)
 	{
@@ -3279,6 +3385,33 @@ void App::DrawTorrentDetails (int top, int height, int width)
 	case TorrentDetailTab::Files: BuildDetailFiles (lines, m_TorrentDetail, width); break;
 	case TorrentDetailTab::Peers: BuildDetailPeers (lines, m_TorrentDetail, width); break;
 	case TorrentDetailTab::Trackers: BuildDetailTrackers (lines, m_TorrentDetail, width); break;
+	case TorrentDetailTab::Comments:
+	{
+		lines.push_back ("  c enable/disable | C publish | H hide local comment ID");
+		lines.push_back ("  Author is optional; avoid identifying information.");
+		for (const auto & [key, value] : m_TorrentDetail.comments)
+		{
+			if (key.starts_with ("comments."))
+				lines.push_back ("  " + key.substr (9) + ": " + SanitizeText (value));
+			if (!key.starts_with ("comment.") || !key.ends_with (".id")) continue;
+			auto prefix = key.substr (0, key.size () - 2);
+			auto get = [&] (const char * field) {
+				auto it = m_TorrentDetail.comments.find (prefix + field);
+				return it == m_TorrentDetail.comments.end () ? std::string () : SanitizeText (it->second);
+			};
+			if (get ("hidden") == "1" || get ("hidden") == "true")
+			{
+				lines.push_back ("  [" + SanitizeText (value) + "] hidden locally");
+				continue;
+			}
+			lines.push_back ("  [" + SanitizeText (value) + "] rating " + get ("rating")
+				+ " | " + (get ("owner").empty () ? "anonymous" : get ("owner"))
+				+ " | " + Timestamp64 (ToU64 (get ("time"))) + " | local=" + get ("local"));
+			lines.push_back ("    " + get ("text"));
+		}
+		if (m_TorrentDetail.comments.empty ()) lines.push_back ("  no comment snapshot reported");
+		break;
+	}
 	}
 
 	int visible = std::max (0, top + height - row);
@@ -3378,16 +3511,38 @@ void App::HandleKey (int key)
 
 	if (m_Tab == Tab::Torrents)
 	{
+		if (key == 'K')
+		{
+			if (RequireTorrentTunnel ())
+				SendTorrentCommand ("TORRENT-CREATE-CANCEL " + std::to_string (m_TorrentTunnel));
+			return;
+		}
 		if (m_TorrentDetails)
 		{
 			switch (key)
 			{
 			case 27: LeaveTorrentDetails (); return;
+			case 'f':
+			case 'c':
+			case 'C':
+			case 'H':
+			{
+				const auto * torrent = SelectedTorrent ();
+				if (!RequireTorrentTunnel () || !torrent || torrent->hash.empty ()) return;
+				m_PendingTorrentId = torrent->id;
+				m_PendingTorrentTunnel = m_TorrentTunnel;
+				m_PendingTrackerHash = torrent->hash;
+				if (key == 'f') BeginPrompt (PromptKind::FilePriority, "file index and priority (0 skip, 1 normal, 2 high): ");
+				else if (key == 'c') BeginPrompt (PromptKind::CommentsToggle, "comments ON or OFF: ");
+				else if (key == 'C') BeginPrompt (PromptKind::CommentAdd, "rating (0-5) author|text (author optional): ");
+				else BeginPrompt (PromptKind::CommentHide, "hide local comment ID: ");
+				return;
+			}
 			case terminal::KEY_LEFT:
 			case terminal::KEY_BTAB:
 			{
 				int tab = static_cast<int> (m_TorrentDetailTab);
-				m_TorrentDetailTab = static_cast<TorrentDetailTab> ((tab + 3) % 4);
+				m_TorrentDetailTab = static_cast<TorrentDetailTab> ((tab + 4) % 5);
 				m_TorrentDetailScroll = 0;
 				m_Dirty = true;
 				return;
@@ -3396,7 +3551,7 @@ void App::HandleKey (int key)
 			case '\t':
 			{
 				int tab = static_cast<int> (m_TorrentDetailTab);
-				m_TorrentDetailTab = static_cast<TorrentDetailTab> ((tab + 1) % 4);
+				m_TorrentDetailTab = static_cast<TorrentDetailTab> ((tab + 1) % 5);
 				m_TorrentDetailScroll = 0;
 				m_Dirty = true;
 				return;
@@ -3481,9 +3636,12 @@ void App::HandleKey (int key)
 			case 'a': BeginPrompt (PromptKind::AddMagnet, "add magnet URI: "); return;
 			case 'A': BeginPrompt (PromptKind::AddFile, "add .torrent path: "); return;
 			case 'n':
+			case 'N':
 				if (!RequireTorrentTunnel ()) return;
 				m_PendingTorrentTunnel = m_TorrentTunnel;
-				BeginPrompt (PromptKind::CreateTorrent, "create from file/directory name in torrent root: ");
+				if (key == 'n') BeginPrompt (PromptKind::CreateTorrent, "create from file/directory name in torrent root: ");
+				else BeginPrompt (PromptKind::CreateTorrentAdvanced,
+					"create: pieceBytes public|private trackerCount tier:URL... source: ", "0 public 0 ");
 				return;
 			case 't':
 			case 'T':

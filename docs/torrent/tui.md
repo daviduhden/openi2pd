@@ -99,3 +99,23 @@ tracker URL or `T` to remove one. Complete metadata is required. Resume after
 editing. Changes queue persistence; errors are reported through the bounded
 local IPC. Editing an endpoint means removing its old URL and adding its new
 URL. The infohash stays unchanged.
+
+## Complete native controls in this increment
+
+`n` creates from a file/directory directly below the authorized torrent root.
+`N` accepts advanced creation options: `pieceBytes public|private trackerCount
+tier:URL... source`. Zero selects automatic piece size; tiers start at zero
+and are contiguous. `K` requests cancellation. Session details show hashed
+bytes and file counts. Example: `0 private 2 0:http://first.i2p/a
+1:http://second.i2p/a payload`.
+
+The Files detail tab shows file indices and priorities. `f` accepts `index
+priority`, with 0 skipped, 1 normal and 2 high. Shared pieces use the highest
+selected priority; all bytes of those pieces are verified. Selected completion
+does not announce a partially selected torrent as a full seeder.
+
+The Comments tab shows local IDs, ratings, labels, time and rating statistics.
+`c` switches ON/OFF, `C` submits `rating owner|text` (empty owner is allowed),
+and `H` hides a local ID. Prompts remain tied to the captured tunnel, torrent
+ID and infohash. All operations use authenticated bounded IPC; the TUI opens
+no payloads, peer sockets or engine objects.

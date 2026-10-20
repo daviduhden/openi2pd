@@ -31,6 +31,8 @@
 #include <optional>
 #include <vector>
 #include <filesystem>
+#include <functional>
+#include <span>
 #include <boost/asio.hpp>
 #include "Base.h"
 #include "Identity.h"
@@ -271,6 +273,12 @@ namespace torrents
 	public:
 		TorrentsDHT (TorrentsTunnel & tunnel, uint16_t port, std::string_view dhtFileName);
 
+		// Set before Start. Delegated persistence never falls back to parent IO.
+		using LoadState = std::function<bool (const std::filesystem::path &, std::vector<uint8_t> &, std::string &)>;
+		using SaveState = std::function<bool (const std::filesystem::path &, std::span<const uint8_t>, std::string &)>;
+		void SetPersistence (LoadState load, SaveState save)
+		{ m_LoadState = std::move (load); m_SaveState = std::move (save); m_DelegatedPersistence = true; }
+		static constexpr size_t MaxStateBytes = 8 * 1024 * 1024;
 		void Start ();
 		void Stop ();
 
@@ -352,6 +360,9 @@ namespace torrents
 		TorrentsTunnel & m_Tunnel;
 		uint16_t m_Port;
 		std::string m_DHTFileName;
+		LoadState m_LoadState;
+		SaveState m_SaveState;
+		bool m_DelegatedPersistence = false;
 		NodeID m_NodeID;
 		boost::asio::steady_timer m_DHTUpdateCheckTimer, m_DHTExpirationCheckTimer, m_DHTSendPingCheckTimer,
 			m_DHTQueryExpirationCheckTimer;

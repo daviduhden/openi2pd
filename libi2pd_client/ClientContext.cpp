@@ -1268,7 +1268,8 @@ namespace client
 							localDestination->SetPublic (true);
 					}
 					auto torrentsTunnel = std::make_shared<i2p::torrents::TorrentsTunnel> (
-						name, localDestination, torrentsDir, trackers, dht, dhtFileName);
+						name, localDestination, torrentsDir, trackers, dht, dhtFileName,
+						section.second.get<bool> ("isolatedstorage", false));
 					bool inserted = false;
 					{
 						std::lock_guard<std::mutex> l (m_TorrentsTunnelsMutex);

@@ -110,3 +110,37 @@ test includes paused-tracker command syntax; Android adds `TorrentControlTest`.
 The existing torrent parser fuzzer now invokes magnet and comment parsers.
 All are prepared only: pending CI compilation and pending CI tests. None
 establishes live interoperability with Java or OS capability separation.
+
+The continuation adds automatic-piece-size, creation-option/progress and
+canonical/empty bencode regressions; advanced creation/cancellation request
+parsing; anonymous rating-only comments; and `test-torrent-storage-worker`.
+The latter exercises the real exec-ed backend, TorrentFile integration,
+read-only/writable handles, bounds, symlinks/hardlinks and denied network
+capabilities on Linux. Code 77 is limited to root or explicitly unsupported
+kernel isolation; operational failures on a supported kernel fail the test.
+Android `TorrentMetadataJniTest` prepares native single/multi-file hashing and
+rejection vectors. The manual Android workflow builds its instrumentation APK;
+execution on a device remains pending. The parser fuzzer also covers local
+state and advanced administrative requests. None has been run locally.
+
+The new `test-torrent-payload-storage` exercises bounded backend transfers, pieces
+crossing files, failed persistence, unavailable capabilities and the saving gate.
+OpenBSD registers `test-torrent-storage-openbsd` for pre-pledge supervision and
+replacement without runtime proc/exec. Android instrumentation includes
+`TorrentSafStorageTest` path/range rejection; realistic provider fixtures,
+nonseekable/revoked/ENOSPC/corrupted documents, process death and seccomp-negative
+device runs remain pending. These sources have not been executed locally.
+
+Prepared (not run): `test-torrent-storage-lifecycle` covers no-clobber promotion,
+interrupted same-inode completion, metadata chunking/replacement, traversal,
+symlink/hardlink refusal and fixed staging-slot exhaustion. The payload test
+also verifies that invalidating a previously seeded piece clears torrent-wide
+completion. Android adds cancellation wire and fault-provider fixtures; actual
+cross-process death/rebind and persisted-grant exercises remain pending.
+
+Prepared Linux targets `test-router-storage` and
+`test-torrents-dht-persistence` cover fixed-name atomic router state, failed
+callbacks without fallback, DHT format/callback limits, metadata block reads and
+legacy-name authorization. OpenBSD policy regressions cover the configured
+storage-worker restriction to preopened IPC. Android adds same-size document
+replacement rejection. All are pending manual CI compilation and tests.

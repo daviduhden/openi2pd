@@ -103,7 +103,14 @@ namespace
 		if (!S_ISDIR (status.st_mode)) return false;
 		// fdopendir takes ownership. Child opens remain rooted at the trusted
 		// anchor, so a renamed/symlinked intermediate path cannot redirect IO.
-		std::unique_ptr<DIR, decltype (&::closedir)> directory (::fdopendir (fd.value), ::closedir);
+		struct DirectoryCloser
+		{
+			void operator() (DIR * directory) const
+			{
+				if (directory) ::closedir (directory);
+			}
+		};
+		std::unique_ptr<DIR, DirectoryCloser> directory (::fdopendir (fd.value));
 		if (!directory) return false;
 		fd.value = -1;
 		errno = 0;
@@ -163,6 +170,21 @@ namespace
 #endif
 }
 
+size_t SelectTorrentPieceLength (uint64_t totalBytes, size_t requested)
+{
+	if (!totalBytes || totalBytes > MAX_TORRENT_LENGTH) return 0;
+	if (requested && (requested < MIN_PIECE_LENGTH || requested > MAX_PIECE_LENGTH
+		|| (requested & (requested - 1)))) return 0;
+	size_t selected = requested ? requested : 256 * 1024;
+	if (!requested)
+		while (selected < MAX_PIECE_LENGTH && totalBytes / selected + (totalBytes % selected != 0) > 2048)
+			selected *= 2;
+	const uint64_t count = totalBytes / selected + (totalBytes % selected != 0);
+	const size_t blocks = (selected + REQUEST_BLOCK_SIZE - 1) / REQUEST_BLOCK_SIZE;
+	if (count > MAX_NUM_TORRENT_PIECES || count > MAX_TORRENT_BLOCKS / blocks) return 0;
+	return selected;
+}
+
 std::shared_ptr<Torrent> CreateTorrentFromPath (const std::filesystem::path & root,
 	const std::filesystem::path & relativePath, const TorrentCreateOptions & options, std::string & error)
 try
@@ -175,7 +197,8 @@ try
 	};
 	if (root.empty () || !IsSafeRelativePath (relativePath))
 		return fail ("source must be relative to the authorized root");
-	if (options.pieceLength < MIN_PIECE_LENGTH || options.pieceLength > MAX_PIECE_LENGTH)
+	if (options.pieceLength && (options.pieceLength < MIN_PIECE_LENGTH || options.pieceLength > MAX_PIECE_LENGTH
+		|| (options.pieceLength & (options.pieceLength - 1)) ))
 		return fail ("invalid piece length");
 	std::vector<File> files;
 	size_t entries = 0;
@@ -187,13 +210,15 @@ try
 #else
 	if (!Collect (root, relativePath, 0, files, entries, total, options.cancelled))
 #endif
-		return fail ("source contains inaccessible, unsafe or excessive entries");
+		return fail (options.cancelled && options.cancelled () ? "creation cancelled" : "source contains inaccessible, unsafe or excessive entries");
 	if (files.empty () || !total || total > std::numeric_limits<size_t>::max ())
 		return fail ("empty or excessive source size");
-	const auto count = total / options.pieceLength + (total % options.pieceLength != 0);
-	const auto blocks = (options.pieceLength + REQUEST_BLOCK_SIZE - 1) / REQUEST_BLOCK_SIZE;
-	if (count > MAX_NUM_TORRENT_PIECES || count > MAX_TORRENT_BLOCKS / blocks)
-		return fail ("piece budget exceeded; select a larger piece length");
+	const auto pieceLength = SelectTorrentPieceLength (total, options.pieceLength);
+	if (!pieceLength) return fail ("piece budget exceeded or invalid piece length");
+	const auto count = total / pieceLength + (total % pieceLength != 0);
+	uint64_t bytesDone = 0;
+	size_t filesDone = 0;
+	if (options.progress) options.progress (0, total, 0, files.size ());
 	std::sort (files.begin (), files.end (),
 		[] (const File & a, const File & b) { return a.path.generic_string () < b.path.generic_string (); });
 	const bool single = files.size () == 1 && files.front ().path == relativePath;
@@ -238,7 +263,7 @@ try
 		{
 			if (options.cancelled && options.cancelled ()) return fail ("creation cancelled");
 			auto wanted = static_cast<size_t> (
-				std::min<uint64_t> (remaining, std::min (buffer.size (), options.pieceLength - pieceBytes)));
+				std::min<uint64_t> (remaining, std::min (buffer.size (), pieceLength - pieceBytes)));
 #ifdef _WIN32
 			auto read = _read (fd.value, buffer.data (), static_cast<unsigned int> (wanted));
 #else
@@ -253,7 +278,9 @@ try
 				return fail ("piece digest update failed");
 			remaining -= read;
 			pieceBytes += read;
-			if (pieceBytes == options.pieceLength && !finish ()) return fail ("piece digest finalization failed");
+			bytesDone += static_cast<uint64_t> (read);
+			if (options.progress) options.progress (bytesDone, total, filesDone, files.size ());
+			if (pieceBytes == pieceLength && !finish ()) return fail ("piece digest finalization failed");
 		}
 #ifndef _WIN32
 		if (::fstat (fd.value, &after) || after.st_size != before.st_size
@@ -262,9 +289,11 @@ try
 #endif
 			|| after.st_mtime != before.st_mtime || after.st_ctime != before.st_ctime)
 			return fail ("source changed while hashing");
+		++filesDone;
+		if (options.progress) options.progress (bytesDone, total, filesDone, files.size ());
 	}
 	if (pieceBytes && !finish ()) return fail ("last piece digest failed");
-	auto torrent = Torrent::CreateV1 (relativePath.filename ().string (), layout, options.pieceLength, hashes,
+	auto torrent = Torrent::CreateV1 (relativePath.filename ().string (), layout, pieceLength, hashes,
 		options.trackers, options.privateTorrent);
 	if (!torrent) return fail ("source names, tracker list or metadata are invalid");
 	return torrent;

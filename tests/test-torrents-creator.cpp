@@ -35,10 +35,25 @@ int main ()
 	{
 		std::ofstream out (root / "payload/empty", std::ios::binary);
 	}
+	assert (SelectTorrentPieceLength (1) == 256 * 1024);
+	assert (SelectTorrentPieceLength (uint64_t { 1 } << 30) == 512 * 1024);
+	assert (SelectTorrentPieceLength (100, MIN_PIECE_LENGTH) == MIN_PIECE_LENGTH);
+	assert (!SelectTorrentPieceLength (100, MIN_PIECE_LENGTH + 1));
+	assert (!SelectTorrentPieceLength (0));
+
 	TorrentCreateOptions options;
 	options.pieceLength = MIN_PIECE_LENGTH;
+	uint64_t observedBytes = 0, observedTotal = 0;
+	size_t observedFiles = 0;
+	options.progress = [&] (uint64_t done, uint64_t total, size_t files, size_t all)
+	{
+		assert (done >= observedBytes && done <= total && files <= all);
+		observedBytes = done; observedTotal = total; observedFiles = files;
+	};
 	std::string error;
 	auto torrent = CreateTorrentFromPath (root, "payload", options, error);
+	assert (observedBytes == first.size () + second.size () && observedTotal == observedBytes && observedFiles == 3);
+	options.progress = {};
 	assert (torrent && error.empty () && torrent->GetNumPieces () == 2 && torrent->GetFiles ().size () == 3);
 	std::string bytes = first + second;
 	Torrent::InfoHash hash;
@@ -53,12 +68,20 @@ int main ()
 		"payload", { { "a", first.size () }, { "b", second.size () }, { "empty", 0 } }, MIN_PIECE_LENGTH, hashes);
 	assert (expected && torrent->GetInfoHash () == expected->GetInfoHash ());
 	assert (!torrent->IsComplete ());
+	options.privateTorrent = true;
+	options.trackers = {{ "http://first.i2p/a", "http://backup.i2p/a" }, { "udp://second.i2p/a" }};
+	auto privateTorrent = CreateTorrentFromPath (root, "payload", options, error);
+	assert (privateTorrent && privateTorrent->IsPrivate () && privateTorrent->GetTrackerTiers () == options.trackers);
+	assert (privateTorrent->GetInfoHash () != torrent->GetInfoHash ());
+	options.privateTorrent = false;
+	options.trackers.clear ();
+
 	auto single = CreateTorrentFromPath (root, "payload/a", options, error);
 	assert (single && single->IsSingleFile () && single->GetName () == "a");
 	assert (!CreateTorrentFromPath (root, "../escape", options, error));
 	assert (!CreateTorrentFromPath (root, root / "payload", options, error));
 	assert (!CreateTorrentFromPath (root, "payload/empty", options, error));
-	options.pieceLength = 0;
+	options.pieceLength = MIN_PIECE_LENGTH + 1;
 	assert (!CreateTorrentFromPath (root, "payload", options, error));
 	options.pieceLength = MIN_PIECE_LENGTH;
 #ifndef _WIN32

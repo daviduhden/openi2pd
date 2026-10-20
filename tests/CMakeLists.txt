@@ -106,6 +106,7 @@ set(I2PD_TESTS
   test-torrent-bencode
   test-torrents-comments
   test-torrents-creator
+  test-torrent-payload-storage
   test-torrents-state
   test-torrents-priorities
   test-torrents-magnet
@@ -167,6 +168,10 @@ endif()
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   list(APPEND I2PD_TESTS
+    test-torrent-storage-worker
+    test-torrent-storage-lifecycle
+    test-torrents-dht-persistence
+    test-router-storage
     test-privsep-linux-ipc
     test-privsep-linux-sandbox)
 endif()
@@ -174,7 +179,8 @@ endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "OpenBSD")
   list(APPEND I2PD_TESTS
     test-privsep-openbsd-policy
-    test-privsep-openbsd-imsg)
+    test-privsep-openbsd-imsg
+    test-torrent-storage-openbsd)
 endif()
 
 if(WIN32)
@@ -185,6 +191,11 @@ endif()
 
 foreach(test IN LISTS I2PD_TESTS)
   i2pd_add_test(${test})
+  if(test STREQUAL "test-torrent-storage-worker" OR test STREQUAL "test-torrent-storage-openbsd" OR test STREQUAL "test-torrent-storage-lifecycle" OR test STREQUAL "test-torrents-dht-persistence" OR test STREQUAL "test-router-storage")
+    target_link_libraries(${test} PRIVATE i2pd_privsep)
+    set_tests_properties(${test} PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 120)
+    set_property(TEST ${test} APPEND PROPERTY LABELS "ipc;security;platform")
+  endif()
   set_property(TEST ${test} APPEND PROPERTY LABELS unit)
   if(test MATCHES "^test-torrent")
     set_property(TEST ${test} APPEND PROPERTY LABELS torrent)

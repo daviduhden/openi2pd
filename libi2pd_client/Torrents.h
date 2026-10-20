@@ -22,6 +22,7 @@
 #include <boost/dynamic_bitset.hpp>
 #include <boost/logic/tribool.hpp>
 #include <memory>
+#include <functional>
 #include <vector>
 #include <array>
 #include <atomic>
@@ -36,6 +37,7 @@
 #include <mutex>
 #include "util.h"
 #include "TorrentsComments.h"
+#include "TorrentPayloadStorage.h"
 #include "Streaming.h"
 #include "I2PService.h"
 
@@ -240,6 +242,21 @@ namespace torrents
 		// Trusted anchor used to open every component below it with
 		// O_NOFOLLOW. Must contain m_FullFilePath.
 		void SetRootDir (const std::filesystem::path & root) { m_RootDir = root; }
+		void SetStorageWorker (const std::shared_ptr<TorrentStorageWorker> & worker, const std::filesystem::path & root)
+		{ SetPayloadStorage (worker ? std::make_shared<WorkerPayloadStorage> (worker) : nullptr, root); }
+		// Administrative capability injection; never derives authority from peer paths.
+		void SetPayloadStorage (std::shared_ptr<TorrentPayloadStorage> storage, const std::filesystem::path & root)
+		{ Close (); m_PayloadStorage = std::move (storage); m_StorageRootDir = root; }
+		bool HasPayloadStorage () const { return static_cast<bool> (m_PayloadStorage); }
+		bool HasFinalNameStorage () const { return m_PayloadStorage && m_PayloadStorage->UsesFinalNames (); }
+		bool RemovePayload (std::string & error)
+		{
+			if (!HasFinalNameStorage ()) { error = "document storage unavailable"; return false; }
+			Close ();
+			auto relative = m_FullFilePath.lexically_relative (m_StorageRootDir);
+			if (!IsSafeRelativePath (relative)) { error = "unsafe document path"; return false; }
+			return m_PayloadStorage->Remove (relative, m_FileLength, error);
+		}
 		size_t GetFileLength () const { return m_FileLength; }
 		uint64_t GetLastAccessTime () const { return m_LastAccessTime; }
 		void SetIsPart (bool isPart) { m_IsPart = isPart; }
@@ -253,6 +270,10 @@ namespace torrents
 		size_t m_FileLength;
 		bool m_IsPart;
 		int m_File;
+		std::shared_ptr<TorrentPayloadStorage> m_PayloadStorage;
+		std::filesystem::path m_StorageRootDir;
+		uint64_t m_StorageHandle = 0;
+		bool m_StorageWritable = false;
 		uint64_t m_LastAccessTime; // monotonic seconds
 	};
 
@@ -298,9 +319,12 @@ namespace torrents
 		// data buffer, the block map and the sending/loading flags, because
 		// the service thread and the disk I/O thread both touch a piece.
 		bool IsComplete () const;
-		void Complete ();
+		// Pending local verification must not publish candidate availability.
+		void Complete (bool pendingVerification = false);
 		bool VerifyHash (); // marks the piece verified when the digest matches
 		bool IsVerified () const;
+		void SetIsSaving (bool saving);
+		bool IsSaving () const;
 		void SetIsSending (bool isSending);
 		void SetIsLoading (bool loading);
 		bool IsSending () const;
@@ -311,7 +335,7 @@ namespace torrents
 		void SetNumPeers (size_t numPeers);
 
 		void BlockReceived (const uint8_t * block, size_t len, size_t offset);
-		void Dump (PieceFileFragment && fragment);
+		bool Dump (PieceFileFragment && fragment);
 		bool Load (PieceFileFragment && fragment);
 		bool HasData () const;
 		// Copies a validated block under the piece lock. The caller never
@@ -346,6 +370,7 @@ namespace torrents
 		uint8_t *m_Data, m_Hash[SHA_DIGEST_LENGTH];
 		std::unique_ptr<std::vector<BlockStatus>> m_Blocks;
 		bool m_IsSending, m_IsLoading, m_IsRequested, m_IsVerified;
+		bool m_IsSaving = false;
 		uint64_t m_LastActivityTimestamp; // monotonic seconds
 		size_t m_NumPeers; // where this piece is available
 	};
@@ -456,6 +481,12 @@ namespace torrents
 		std::string GetHexStringInfoHash () const; // in url format
 		size_t GetNumPieces () const { return m_Pieces.size (); }
 		Piece & GetPiece (int index) { return m_Pieces[index]; }
+		void InvalidatePiece (size_t index)
+		{
+			if (index >= m_Pieces.size ()) return;
+			m_Pieces[index].MarkCorrupt ();
+			m_IsComplete.store (false, std::memory_order_release);
+		}
 		// A peer-supplied block is acceptable only while the torrent is
 		// running and only when it is a non-empty, in-range slice of the
 		// actual piece (the final piece may be shorter than m_PieceLength).
@@ -496,6 +527,8 @@ namespace torrents
 		void AddDownloaded (size_t add) { m_Downloaded += add; }
 
 		void SaveTorrentResumeFile ();
+		using ResumePersistence = std::function<bool (std::span<const uint8_t>, bool remove)>;
+		void SetResumePersistence (ResumePersistence persistence) { m_ResumePersistence = std::move (persistence); }
 
 		void StartCountingPeers ();
 		void ApplyPeerRemoteBitfield (const boost::dynamic_bitset<> & peerRemoteBitfield);
@@ -540,6 +573,7 @@ namespace torrents
 		void RebuildPiecePriorities ();
 
 	private:
+		ResumePersistence m_ResumePersistence;
 		std::string m_Name, m_Announce;
 		TrackerTiers m_TrackerTiers;
 		bool m_HasExplicitTrackers = false;

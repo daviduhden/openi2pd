@@ -120,3 +120,42 @@ replaces fallback to common trackers. An empty explicit list remains empty on
 reload. Success means the update and immutable persistence job were queued;
 it is not a durability acknowledgement. These commands do not create a new
 wire or persisted torrent format (outer BEP 12 dictionary only).
+
+### Creation options, progress and cancellation
+
+`TORRENT-CREATE-V1 <tunnel> <pieceBytes> <public|private> <trackerCount>
+<tier:URL>... <source>` adds explicit creation options. `pieceBytes=0` selects
+automatically; otherwise it must be a supported power of two. Tiers start at
+zero, are contiguous and remain bounded along with URL count and line length.
+Sources remain immediate children of the authorized root. URL authority is
+validated by the engine as I2P HTTP/UDP only. `TORRENT-CREATE-CANCEL <tunnel>`
+requests cooperative cancellation of the one outstanding job. Session fields
+`creation.bytesDone/totalBytes/filesDone/totalFiles` expose bounded progress.
+
+File-priority and comment operations are `TORRENT-FILE-PRIORITY tunnel id
+index priority`, `TORRENT-COMMENTS tunnel id ON|OFF`, `TORRENT-COMMENT-ADD
+tunnel id rating owner|text` and `TORRENT-COMMENT-HIDE tunnel id localId`.
+Administrative success queues immutable persistence; it is not a durability
+acknowledgement. The [worker protocol](storage-worker.md) is a separate private
+capability channel, never exposed directly to the terminal or peers.
+
+## Android payload capabilities
+
+The app-private AIDL service accepts only authorized tree capabilities, validated
+relative names and numeric file handles. Positional IO is exact and limited to
+16 KiB per call, with bounded client waits and no raw descriptor export. JNI
+implements the common native payload backend; the native TUI continues to use
+only administrative IPC. See [SAF storage](saf-storage.md) for authority, failure
+and restart boundaries. All paths are pending manual CI and device validation.
+
+SAF IO now carries operation tokens; oneway cancel/retire bypass the provider IO
+lock. Stable local capabilities remap only after actual Binder death. Replies
+from stale generations are discarded and writes with uncertain results are not
+replayed. Native storage IPC now includes narrow metadata transactions and
+nonrecursive promotion/removal operations, documented in storage-worker.md.
+
+Private envelope message types12/13/14 configure/request/reply for fixed router
+persistence. The request carries only a fixed file enum plus <=32KiB bytes.
+Torrent storage adds read-only bounded metadata reads and explicit exact-name
+DHT authorization. These are local additive IPC changes; I2P wire formats and
+state serialization remain unchanged.

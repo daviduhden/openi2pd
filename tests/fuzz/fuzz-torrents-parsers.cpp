@@ -20,6 +20,8 @@
 #include "Torrents.h"
 #include "TorrentsControl.h"
 #include "TorrentsComments.h"
+#include "TorrentsState.h"
+#include "TuiProtocol.h"
 #include "TorrentsDHT.h"
 
 #ifndef NO_TORRENTS
@@ -29,6 +31,13 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t * data, size_t size)
 	std::string_view input (reinterpret_cast<const char *> (data), size);
 
 	(void)i2p::torrents::ParseTorrentMagnet (input);
+	(void)i2p::tui::ParseRequest (input);
+	if (size <= i2p::torrents::MAX_TORRENT_LOCAL_STATE_BYTES)
+	{
+		i2p::torrents::TorrentLocalState local;
+		std::string error;
+		(void)i2p::torrents::DecodeTorrentLocalState (input, 2000000000, local, error);
+	}
 	(void)i2p::torrents::DecodeTorrentComments (input, 2000000000);
 
 	// Bencode primitives and the metainfo parser share these entry points.
@@ -60,6 +69,7 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t * data, size_t size)
 				= ((uint32_t)data[0] << 24) | ((uint32_t)data[1] << 16) | ((uint32_t)data[2] << 8) | (uint32_t)data[3];
 		const bool allowed = i2p::torrents::IsPeerMessageLengthAllowed (wireLen);
 		if (wireLen == 0xFFFF || wireLen > i2p::torrents::MAX_PEER_MSG_LEN) assert (!allowed);
+		(void)allowed;
 		assert (i2p::torrents::IsPeerMessageLengthAllowed (i2p::torrents::MAX_PEER_MSG_LEN));
 	}
 
@@ -91,6 +101,8 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t * data, size_t size)
 			}
 			assert (counted <= numPieces);
 			assert (pieceTotal == torrent.GetLength ());
+			(void)counted;
+			(void)pieceTotal;
 			if (expectedSize)
 			{
 				for (size_t i = numPieces; i < expectedSize * 8; i++)

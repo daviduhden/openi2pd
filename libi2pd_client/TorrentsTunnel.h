@@ -31,6 +31,7 @@
 #include <chrono>
 #include <atomic>
 #include <optional>
+#include <functional>
 #include <boost/asio.hpp>
 #include <boost/beast.hpp>
 #include "HTTP.h"
@@ -46,6 +47,12 @@ namespace i2p
 {
 namespace torrents
 {
+	// Administrative registration before service startup. A selected but unavailable
+	// backend must return an erroring capability, never nullptr/native fallback.
+	using TorrentPayloadStorageFactory = std::function<std::shared_ptr<TorrentPayloadStorage>
+		(const std::string & tunnelName, const std::string & infoHash)>;
+	void SetTorrentPayloadStorageFactory (TorrentPayloadStorageFactory factory);
+
 	constexpr int TRACKER_RESPONSE_TIMEOUT = 8; // in seconds
 	constexpr int DATAGRAM_TRACKER_TRANSACTION_TIMEOUT = 10000; // in milliseconds
 	constexpr int DATAGRAM_TRACKER_CONNECTION_EXPIRATION = 60000; // in milliseconds
@@ -106,7 +113,7 @@ namespace torrents
 	public:
 		TorrentsTunnel (std::string_view name, std::shared_ptr<i2p::client::ClientDestination> localDestination,
 			std::string_view torrentsDir, std::string_view trackers = "", bool dht = true,
-			std::string_view dhtFileName = "");
+			std::string_view dhtFileName = "", bool isolatedStorage = false);
 		~TorrentsTunnel () override;
 
 		void Start () override;
@@ -166,7 +173,7 @@ namespace torrents
 		void StopOnService ();
 		std::optional<TorrentsSnapshot> BuildControlSnapshot () const;
 		TorrentCommandResult ExecuteControlCommandOnService (const TorrentCommand & command);
-		TorrentCommandResult QueueTorrentCreation (std::string_view source);
+		TorrentCommandResult QueueTorrentCreation (const TorrentCommand & command);
 		void LoadTorrentAdminState (const std::shared_ptr<Torrent> & torrent);
 		void SaveTorrentAdminState (const std::shared_ptr<Torrent> & torrent, bool final = false);
 
@@ -242,6 +249,9 @@ namespace torrents
 		boost::asio::steady_timer m_TrackerRequestsCheckTimer, m_KeepAliveCheckTimer, m_ReconnectCheckTimer,
 			m_TorrentsStatusUpdateTimer;
 		DiskIOService m_DiskIOService;
+		bool m_UseIsolatedStorage = false;
+		std::shared_ptr<TorrentStorageWorker> m_StorageWorker;
+		std::shared_ptr<TorrentStorageWorker> m_DHTStorageWorker;
 		std::unordered_map<uint32_t, std::tuple<size_t, uint16_t, std::weak_ptr<Torrent>, uint64_t>>
 			m_DatragramTrackerTransactions;
 		// transactionID->(trackerID, from_port, torrent, timestamp monotonic milliseconds)
@@ -257,6 +267,13 @@ namespace torrents
 			std::string error;
 		};
 		std::map<Torrent::InfoHash, AdminStateStatus> m_AdminState;
+
+		struct CreationProgress
+		{
+			std::atomic<bool> cancelled { false };
+			std::atomic<uint64_t> bytesDone { 0 }, totalBytes { 0 }, filesDone { 0 }, totalFiles { 0 };
+		};
+		std::shared_ptr<CreationProgress> m_CreationProgress;
 
 		TorrentCreationInfo m_Creation;
 	};

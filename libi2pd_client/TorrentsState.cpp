@@ -55,9 +55,8 @@ std::string EncodeTorrentLocalState (const TorrentLocalState & state, std::strin
 	std::string priorities;
 	priorities.reserve (state.priorities.size ());
 	for (auto value : state.priorities) priorities.push_back (static_cast<char> (value));
-	// CreateByteString("") is the empty string, and CreateDictionary omits
-	// empty values. The format requires the priorities key even when no file
-	// override is present, so encode the empty byte string explicitly.
+	// The local format requires the priorities key, including an explicit
+	// zero-length byte string when no overrides are present.
 	auto encodedPriorities = priorities.empty () ? std::string ("0:") : CreateByteString (priorities);
 	auto encoded = CreateDictionary ({ { "comments", comments }, { "priorities", encodedPriorities },
 		{ "stopped", CreateInteger (state.stopped) }, { "version", CreateInteger (1) } });

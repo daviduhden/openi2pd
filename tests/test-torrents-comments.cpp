@@ -48,6 +48,10 @@ int main ()
 	invalid.text = std::string (513, 'x');
 	assert (DecodeTorrentComments (EncodeTorrentComments ({ invalid }, now), now)->comments.empty ());
 
+	TorrentComment anonymousRating { "", "", 5, now, false };
+	auto ratingOnly = DecodeTorrentComments (EncodeTorrentComments ({ anonymousRating }, now), now);
+	assert (ratingOnly && ratingOnly->comments.size () == 1 && ratingOnly->comments.front ().owner.empty ());
+
 	TorrentCommentStore store;
 	assert (!store.IsEnabled () && !store.Add (original));
 	store.SetEnabled (true);

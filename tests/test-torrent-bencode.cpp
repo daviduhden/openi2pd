@@ -61,7 +61,7 @@ static std::string List (const std::vector<std::string> & items)
 	return result;
 }
 
-static std::string List (std::initializer_list<std::string> items)
+[[maybe_unused]] static std::string List (std::initializer_list<std::string> items)
 {
 	return List (std::vector<std::string> (items));
 }

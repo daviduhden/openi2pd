@@ -25,6 +25,7 @@
 #include <string_view>
 #include <system_error>
 #include <utility>
+#include <vector>
 
 /**
  * Versioned, line-framed protocol used between the router and i2pd-tui over
@@ -102,6 +103,8 @@ namespace tui
 		TorrentAddTracker,
 		TorrentRemoveTracker,
 		TorrentCreate,
+		TorrentCreateV1,
+		TorrentCreateCancel,
 		TorrentCommentsEnable,
 		TorrentCommentAdd,
 		TorrentCommentHide,
@@ -123,6 +126,9 @@ namespace tui
 		bool deleteFiles = false; // TORRENT-REMOVE: explicit files flag
 		bool enabled = false; // ADMIN TRANSIT: requested acceptance state
 		std::string argument; // TORRENT-ADD-*/ADMIN LOGLEVEL: bounded argument
+		uint32_t createPieceLength = 0;
+		bool createPrivate = false;
+		std::vector<std::vector<std::string>> createTrackers;
 	};
 
 	enum class ErrorCode : uint32_t
@@ -416,7 +422,8 @@ namespace tui
 			|| command == "TORRENT-REANNOUNCE-ALL" || command == "TORRENT-ADD-MAGNET"
 			|| command == "TORRENT-TRACKER-ADD" || command == "TORRENT-TRACKER-REMOVE" || command == "TORRENT-COMMENTS"
 			|| command == "TORRENT-COMMENT-ADD" || command == "TORRENT-COMMENT-HIDE"
-			|| command == "TORRENT-FILE-PRIORITY" || command == "TORRENT-CREATE" || command == "TORRENT-ADD-FILE"
+			|| command == "TORRENT-FILE-PRIORITY" || command == "TORRENT-CREATE-V1"
+			|| command == "TORRENT-CREATE-CANCEL" || command == "TORRENT-CREATE" || command == "TORRENT-ADD-FILE"
 			|| command == "TORRENT-SESSION" || command == "TORRENT-DHT")
 		{
 			if (rest.empty ())
@@ -457,6 +464,10 @@ namespace tui
 				request.type = RequestType::TorrentCommentHide;
 			else if (command == "TORRENT-FILE-PRIORITY")
 				request.type = RequestType::TorrentFilePriority;
+			else if (command == "TORRENT-CREATE-V1")
+				request.type = RequestType::TorrentCreateV1;
+			else if (command == "TORRENT-CREATE-CANCEL")
+				request.type = RequestType::TorrentCreateCancel;
 			else if (command == "TORRENT-CREATE")
 				request.type = RequestType::TorrentCreate;
 			else if (command == "TORRENT-ADD-MAGNET")
@@ -468,7 +479,33 @@ namespace tui
 			else
 				request.type = RequestType::TorrentDht;
 
-			if (request.type == RequestType::TorrentCreate || request.type == RequestType::TorrentAddMagnet
+			if (request.type == RequestType::TorrentCreateV1)
+			{
+				auto size = detail::ParseUnsigned (detail::NextToken (rest));
+				auto privacy = detail::NextToken (rest);
+				auto count = detail::ParseUnsigned (detail::NextToken (rest));
+				if (!size || *size > 256 * 1024 * 1024 || (*size && (*size < 16384 || (*size & (*size - 1))))
+					|| (privacy != "public" && privacy != "private") || !count || *count > MAX_TORRENT_TRACKER_RECORDS_PER_REQUEST)
+					return i2p::unexpected (ProtocolError { ErrorCode::BadArgument, "invalid creation options" });
+				request.createPieceLength = static_cast<uint32_t> (*size);
+				request.createPrivate = privacy == "private";
+				for (uint64_t i = 0; i < *count; ++i)
+				{
+					auto token = detail::NextToken (rest);
+					auto split = token.find (':');
+					auto tier = detail::ParseUnsigned (token.substr (0, split));
+					if (split == std::string_view::npos || !tier || *tier > request.createTrackers.size ()
+						|| token.size () <= split + 1 || token.size () > MAX_TORRENT_ARGUMENT_LENGTH)
+						return i2p::unexpected (ProtocolError { ErrorCode::BadArgument, "invalid creation tracker tier" });
+					if (*tier == request.createTrackers.size ()) request.createTrackers.emplace_back ();
+					request.createTrackers[static_cast<size_t> (*tier)].emplace_back (token.substr (split + 1));
+				}
+				auto source = detail::ParseRestOfLine (rest);
+				if (!source) return i2p::unexpected (source.error ());
+				request.argument = std::move (*source);
+				rest = {};
+			}
+			else if (request.type == RequestType::TorrentCreate || request.type == RequestType::TorrentAddMagnet
 				|| request.type == RequestType::TorrentAddFile)
 			{
 				auto argument = detail::ParseRestOfLine (rest);
