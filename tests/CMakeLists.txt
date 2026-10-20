@@ -101,6 +101,7 @@ set(I2PD_TESTS
   test-ntcp2-handshake-bounds
   test-datagram-options
   test-sam-datagram-framing
+  test-sam-control-framing
   test-streaming-buffer
   test-log-lifecycle
   test-torrent-bencode
@@ -113,6 +114,7 @@ set(I2PD_TESTS
   test-torrents-engine-interop
   test-torrents-dht-interop
   test-torrents-security
+  test-torrents-verify-parity
   test-torrents-concurrency
   test-blinding-b33-strict
   test-crypto-audit-bounds
@@ -125,6 +127,7 @@ set(I2PD_TESTS
   test-routercontext-static-keys
   test-kad-dht
   test-addressbook
+  test-addressbook-case
   test-ssu2-address-negotiation
   test-ssu2-fragment-ordering
   test-ssu2-session-fragment-bounds
@@ -146,6 +149,7 @@ set(I2PD_TESTS
   test-protocol-bounds
   test-http-proxy-limits
   test-i2cp-session-lifecycle
+  test-i2cp-routing-session-key
   test-clientcontext-registry
   test-sam-stream-lifecycle
   test-tunnelpool-zero-hop
@@ -206,10 +210,10 @@ foreach(test IN LISTS I2PD_TESTS)
   if(test MATCHES "^test-tui")
     set_property(TEST ${test} APPEND PROPERTY LABELS tui)
   endif()
-  if(test MATCHES "crypto|blinding|su3|reseed|gost|signature|ecies|protocol-bounds|routerinfo|ssu2|ntcp2|netdb|leaseset|torrents-security|race|concurrency|sandbox|policy|imsg")
+  if(test MATCHES "crypto|blinding|su3|reseed|gost|signature|ecies|protocol-bounds|routerinfo|ssu2|ntcp2|netdb|leaseset|torrents-security|torrents-verify-parity|i2cp-routing-session|sam-control|race|concurrency|sandbox|policy|imsg")
     set_property(TEST ${test} APPEND PROPERTY LABELS security)
   endif()
-  if(test MATCHES "bounds|audit|hardening|security|race|concurrency|lifecycle|sandbox|policy")
+  if(test MATCHES "bounds|audit|hardening|security|verify-parity|race|concurrency|lifecycle|sandbox|policy")
     set_property(TEST ${test} APPEND PROPERTY LABELS memory)
   endif()
   if(test MATCHES "^test-(http|base-64|gost|aead|blinding|elligator|eddsa|siphash|aes|ntcp2|ssu2|protocol|netdb|leaseset|routerinfo|routercontext|kad|addressbook|datagram|streaming|timestamp|ntp|i2cp|sam|clientcontext|log|tunnel)")
