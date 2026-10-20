@@ -719,7 +719,6 @@ namespace data
 		using SslCtxPtr = std::unique_ptr<SSL_CTX, decltype (&SSL_CTX_free)>;
 		using SslPtr = std::unique_ptr<SSL, decltype (&SSL_free)>;
 		using PkeyPtr = std::unique_ptr<EVP_PKEY, decltype (&EVP_PKEY_free)>;
-		[[maybe_unused]] using BnPtr = std::unique_ptr<BIGNUM, decltype (&BN_free)>;
 
 		SslCtxPtr ctx (SSL_CTX_new (TLS_method ()), SSL_CTX_free);
 		if (!ctx)
@@ -775,7 +774,7 @@ namespace data
 		else
 		{
 #ifndef LIBRESSL_VERSION_NUMBER // OpenSSL 3.0.2 is the minimum
-			BnPtr n1 (nullptr, BN_free);
+			std::unique_ptr<BIGNUM, decltype (&BN_free)> n1 (nullptr, BN_free);
 			BIGNUM * rawN = nullptr;
 			if (pubKey) (void)EVP_PKEY_get_bn_param (pubKey.get (), OSSL_PKEY_PARAM_RSA_N, &rawN);
 			n1.reset (rawN);

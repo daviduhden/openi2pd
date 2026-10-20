@@ -1624,9 +1624,18 @@ namespace client
 				auto it = m_EncryptionKeys.find (i2p::data::CRYPTO_KEY_TYPE_ELGAMAL);
 				leaseSet
 					= std::make_shared<i2p::data::LocalLeaseSet> (GetIdentity (), it->second->pub.data (), tunnels);
-				// sign
-				Sign (leaseSet->GetBuffer (), leaseSet->GetBufferLen () - leaseSet->GetSignatureLen (),
-					leaseSet->GetSignature ());
+				// Sign this concrete LS1 object through the base accessors.
+				// A virtual GetBuffer()/GetBufferLen() call here makes GCC
+				// consider a derived LS2 layout for a base allocation and
+				// emit a false array-bounds warning.
+				uint8_t * leaseSetBuffer = leaseSet->LocalLeaseSet::GetBuffer ();
+				const size_t leaseSetBufferLen = leaseSet->LocalLeaseSet::GetBufferLen ();
+				const size_t signatureLen = leaseSet->GetSignatureLen ();
+				if (leaseSetBuffer && leaseSetBufferLen >= signatureLen)
+					Sign (leaseSetBuffer, leaseSetBufferLen - signatureLen,
+						leaseSetBuffer + leaseSetBufferLen - signatureLen);
+				else
+					LogPrint (eLogError, "Destination: LS1 buffer is too short to sign");
 			}
 			else
 				LogPrint (eLogError, "Destinations: Wrong encryption key type for LeaseSet type 1");

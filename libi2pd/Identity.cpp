@@ -164,7 +164,10 @@ namespace data
 			case SIGNING_KEY_TYPE_RSA_SHA512_4096:
 			{
 				SigningKeySizes sizes { };
-				if (!GetSigningKeySizes (type, sizes) || sizes.publicKey <= 128) break;
+				// RSA-4096 is the largest defined signing public key (512
+				// bytes). Bound the excess explicitly so the allocation and
+				// copy below cannot be widened by a malformed size value.
+				if (!GetSigningKeySizes (type, sizes) || sizes.publicKey <= 128 || sizes.publicKey > 512) break;
 				memcpy (m_StandardIdentity.signingKey, signingKey, 128);
 				excessLen = sizes.publicKey - 128;
 				excessBuf = std::make_unique<uint8_t[]> (excessLen);
@@ -199,7 +202,17 @@ namespace data
 			}
 			default: LogPrint (eLogError, "Identity: Signing key type ", (int)type, " is not supported");
 			}
-			m_ExtendedLen = 4 + excessLen; // 4 bytes extra + excess length
+			// The largest defined signing key excess is RSA-4096's 384
+			// bytes. Keep the derived allocation explicitly bounded so a
+			// compromised or future size table cannot widen this copy.
+			const size_t extendedLen = 4 + excessLen;
+			if (extendedLen > 4 + 384)
+			{
+				m_IsValid = false;
+				m_ExtendedLen = 0;
+				return;
+			}
+			m_ExtendedLen = extendedLen; // 4 bytes extra + excess length
 			// fill certificate
 			m_StandardIdentity.certificate[0] = CERTIFICATE_TYPE_KEY;
 			htobe16buf (m_StandardIdentity.certificate + 1, m_ExtendedLen);
@@ -210,7 +223,7 @@ namespace data
 			{
 				if (m_ExtendedLen > MAX_EXTENDED_BUFFER_SIZE)
 				{
-					auto newBuf = std::make_unique<uint8_t[]> (m_ExtendedLen);
+					auto newBuf = std::make_unique<uint8_t[]> (extendedLen);
 					memcpy (newBuf.get (), m_ExtendedBuffer, 4);
 					memcpy (newBuf.get () + 4, excessBuf.get (), excessLen);
 					m_ExtendedBufferPtr = std::move (newBuf);

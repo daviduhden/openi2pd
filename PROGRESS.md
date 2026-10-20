@@ -1804,3 +1804,20 @@ OpenBSD or Java/C++ dynamic test was run.
   Java peer or live-network run was performed. Static checks only
   (`git diff --check`, source/interface inspection). All changes are pending
   manual CI compilation and pending CI tests; no CI validation is claimed.
+
+### CI correction after the first parity runs (2026-10-20)
+
+- Corrected `Reseed.cpp`'s invalid `[[maybe_unused]] using` declaration and
+  replaced the local `BnPtr` alias with a scoped `std::unique_ptr<BIGNUM>`.
+  This was the compilation failure in Linux, Android, OpenBSD, Fuzzing,
+  packaging, MSVC and MinGW runs.
+- Bounded the RSA excess-key allocation in `Identity.cpp` and explicitly
+  checked the derived extended-identity length, addressing GCC's
+  `-Wstringop-overflow` and `-Walloc-size-larger-than` warnings.
+- Avoided the virtual `GetBuffer()`/`GetBufferLen()` dispatch on the concrete
+  LS1 object in `Destination.cpp`, addressing GCC's false
+  `-Warray-bounds` warning.
+- Removed the unused `${perl:Depends}` substvar from the Debian package and
+  declared the required `perl` runtime dependency explicitly.
+- No workflow was dispatched. The fixes are static-only, pending CI
+  compilation and tests; no pass is claimed.
