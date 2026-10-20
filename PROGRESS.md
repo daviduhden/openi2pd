@@ -1771,3 +1771,36 @@ OpenBSD or Java/C++ dynamic test was run.
 - Final source checks: Android main/test manifest XML parsed and
   `git diff --check` passed. These are static checks only; no current change
   is described as compiled, tested or validated by CI.
+
+### Session 43 — comprehensive Java feature-parity continuation (2026-10-20)
+
+- Verified the reference again: stable `i2p-2.13.0` at
+  `9134f808337b401e8e53c73734c81fab04280c9d`; 2.14.0 was a late-October target,
+  not a released stable tag. The read-only clone remains external and is not
+  vendored or built.
+- Seven independent read-only recognition passes covered router/transports/
+  netDb, crypto/identities, client services, I2PSnark, administration/tools,
+  TUI/Android and security/privilege architecture. The combined inventory is
+  `docs/FEATURE-PARITY.md`; wire status remains in `docs/INTEROPERABILITY.md`.
+- Implemented by static analysis: SSU2 bounded migration retries/deadline with
+  old-endpoint retention; runtime ML-KEM provider probing; RSA raw signature
+  verification and RSA/Ed25519 SU3 paths with `reseed.verify=true`; SAM
+  persistent bounded framing/pipelining and one-word controls; I2CP
+  identity-hash routing-session keys; case-preserving address-book matching;
+  torrent resume/final-name re-verification, tracker form/limits, private
+  announce, PEX and peer/dial caps; and a typed daemon-owned TUI admin queue.
+- Added focused regressions for SSU2 migration timing, ML-KEM provider gating,
+  RSA identity layout, SU3 default verification, SAM framing/control, I2CP
+  routing keys, address-book case and torrent verification/tracker behavior.
+  Registered the new tests in `tests/CMakeLists.txt`.
+- Android reseed/runtime log-level parity is implemented by static analysis:
+  confirmed Reseed NetDb action, service-worker JNI, closed log-level set,
+  persistence plus live apply, and a static instrumentation consistency test.
+  Remaining implementation gaps are tracked as PARITY-007: native
+  tunnel/address-book editing, selected-file promotion, durable queue/bandwidth
+  controls, secret-blinded I2CP, Android SAF recovery and genuine
+  network/router/verifier separation.
+- No configure, compiler, build, CTest, Gradle, sanitizer, fuzzer, device,
+  Java peer or live-network run was performed. Static checks only
+  (`git diff --check`, source/interface inspection). All changes are pending
+  manual CI compilation and pending CI tests; no CI validation is claimed.

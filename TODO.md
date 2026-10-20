@@ -44,7 +44,7 @@ subsystem owner in the ownership table unless a task says otherwise. The
   - Priority P0; Status Implemented; tag `i2p-2.13.0`, commit `9134f808337b401e8e53c73734c81fab04280c9d`, released 2026-07-24; read-only clone outside the tree (not bundled).
   - Files: external read-only Java reference; `docs/INTEROPERABILITY.md`, `tests/interop/README.md`.
   - Acceptance: tag, commit, version, date recorded; no Java code added to fork.
-  - Validation: GitHub releases/tags rechecked 2026-10-19; `i2p-2.13.0` is still the latest stable release and tag.
+  - Validation: GitHub releases/tags rechecked 2026-10-20; `i2p-2.13.0` is still the latest stable release and tag; 2.14.0 was not released.
 - [ ] **[NET-002]** Audit NTCP2 handshake, obfuscation, options, version negotiation and PQ variants against Java.
   - Priority P0; Status Implemented / static; NET-118..NET-123 plus NET-134..NET-140 cover replay, block ordering, termination/control queueing, X/Y/static-key validation, Alice replay, pending-handshake bounds, extra pending bytes, per-version padding and proxy buffer lifetime.
   - Files: `libi2pd/NTCP2.cpp`, `NTCP2.h`; Java `router/transport/ntcp2`; `test-ntcp2-session-confirmed-payload` and `test-ntcp2-handshake-bounds` passed locally.
@@ -93,11 +93,11 @@ subsystem owner in the ownership table unless a task says otherwise. The
 - [ ] **[NET-022]** Align cross-type LeaseSet1/LeaseSet2 replacement with Java `isNewer()`.
   - Priority P1; Status Implemented by static analysis; `LeaseSet::GetEarliestLeaseDate` and `NetDb::IsLeaseSetNewer` now compare earliest leases whenever either entry is LS1; LS2/LS2 uses published; encrypted outer layers use zero, and Meta now records its earliest entry. `test-leaseset2-java213-regression` checks Meta earliest; pending CI.
 - [ ] **[NET-023]** Apply the 2026-10-19 third static pass against Java 2.13.0 (latest stable).
-  - Priority P1; Status Implemented / static, CI pending; NET-155..NET-161, LS-119..LS-121, DB-113/DB-114, RS-101, SAM-110, DG-105, STR-104 and CRY-202..CRY-203 corrected. Residual: SSU2 path-challenge retransmit, RouterInfo flood bit, SAM tokenizer/routing edge cases, per-session datagram version, I2CP TYPE_KEY/secret association and RSA verifier. No Java peer, differential run or sanitizer execution.
+  - Priority P1; Status Implemented / static, CI pending; NET-155..NET-161, LS-119..LS-121, DB-113/DB-114, RS-101, SAM-110, DG-105, STR-104 and CRY-202..CRY-203 corrected. PARITY-002..PARITY-004 subsequently added SSU2 path/flood retransmission, runtime ML-KEM probing, RSA verification and SAM persistent framing; residual SAM quoted/routing edge cases, per-session datagram version and I2CP TYPE_KEY/secret association remain. No Java peer, differential run or sanitizer execution.
 - [ ] **[I2P-001]** Implement MetaLeaseSet (DatabaseStore type 7) parsing, signature/identity/lease validation, storage, lookup and malformed-input handling.
   - Priority P1; Status Implemented / static; LS-115 Meta parsing, 16-entry/earliest bounds and netDb store/serve; dynamic Java vector pending. `LeaseSet.*`, `NetDb.cpp`; `test-leaseset2-java213-regression` passed locally.
 - [ ] **[NET-024]** Apply the 2026-10-19 crypto/ratchet/PQ static audit.
-  - Priority P0/P1; Status Implemented / static, CI pending; CRY-206..CRY-214: NSR/ES payloads are pre-validated before side effects, NS requires a Garlic clove, NS replay cache is 5-minute/4096-entry, tag index 65534 is accepted, tag-budget checks precede chain advancement, LibreSSL/no-PQ publication and selection are gated, unsupported hybrid keys are not advertised, Ed25519ph now uses Java-compatible plain Ed25519, and RedDSA keys are wiped. Residual: runtime ML-KEM provider probe, type-5/type-7 NSR vectors, 7/4 multi-key session matrix, Java-generated NS/NSR vectors and ASan/TSan/CI execution. No dynamic validation.
+  - Priority P0/P1; Status Implemented / static, CI pending; CRY-206..CRY-214: NSR/ES payloads are pre-validated before side effects, NS requires a Garlic clove, NS replay cache is 5-minute/4096-entry, tag index 65534 is accepted, tag-budget checks precede chain advancement, LibreSSL/no-PQ publication and selection are gated, unsupported hybrid keys are not advertised, Ed25519ph now uses Java-compatible plain Ed25519, and RedDSA keys are wiped. PARITY-002 added the runtime ML-KEM provider probe. Residual: type-5/type-7 NSR vectors, 7/4 multi-key session matrix, Java-generated NS/NSR vectors and ASan/TSan/CI execution. No dynamic validation.
 - [ ] **[NET-025]** Apply the 2026-10-19 client-protocol static pass.
   - Priority P1; Status Implemented / static, CI pending; SAM-112..SAM-116 (large frames, SILENT connect, LISTEN_PORT accept, no 3 s expiry, signature types), I2CP-106..I2CP-108 (direct b33 association, HostReply LS2 options, TYPE_KEY merge), DG-106/DG-107 (session-table null guard, no inbound version mutation, hash-only DG3) and STR-105..STR-107 (async incoming LeaseSet, SYN MTU, offline/close authentication). Residual: SAM tokenizer/pipelining, LISTEN_PROTOCOL and receiver reset, secret-blinded I2CP, per-session datagram version, Datagram3/Streaming vectors and all dynamic validation.
 - [ ] **[I2P-002]** Implement DatabaseLookup reply-key flags `0x12` (ECIES ratchet public key without tag) with correct encrypted replies and no cleartext fallback.
@@ -680,7 +680,7 @@ when there is no older ID.
   - Status Pending CI; historical compiles predate the latest JNI/lifecycle edits.
 - [ ] **[DEF-004]** `routerinfo` firewall backends not yet dynamically syntax-checked.
 - [ ] **[DEF-005]** Full Java I2P differential audit not yet performed.
-  - Status: latest stable remains 2.13.0 (rechecked 2026-10-19); third static pass added NET-155..NET-161/LS-119..LS-121/DB-113..DB-114/RS-101/SAM-110/DG-105/STR-104/CRY-202..CRY-203. No dynamic Java/C++ test or build executed.
+  - Status: latest stable remains 2.13.0 (rechecked 2026-10-20); third static pass added NET-155..NET-161/LS-119..LS-121/DB-113..DB-114/RS-101/SAM-110/DG-105/STR-104/CRY-202..CRY-203. The 2026-10-20 parity continuation added `docs/FEATURE-PARITY.md` and PARITY-001..PARITY-008; no dynamic Java/C++ test or build executed.
 - [ ] **[DEF-006]** Android manifest still allows cleartext? Removed; verify merged manifest.
 - [ ] **[DEF-007]** `tools/vain` raw key-buffer arrays were replaced with zeroing RAII ownership, jthread joins and checked serialization/error paths.
   - Status Implemented / static only; ASan/TSan and one-character search pending.
@@ -921,3 +921,62 @@ review table and omissions are in `docs/upstream-sync.md`.
   Windows/Android authority backends are still missing. These tasks cannot be
   relabelled as only pending tests. Remaining bandwidth/queue/per-file native
   promotion and protocol interoperability tasks above remain open.
+
+## Comprehensive Java functional-parity audit (2026-10-20)
+
+Status: recognition and scoped implementation are static only. The reference
+is stable `i2p-2.13.0` at `9134f808337b401e8e53c73734c81fab04280c9d`; 2.14.0
+was still a late-October target, not released. Full inventory:
+`docs/FEATURE-PARITY.md`; wire findings: `docs/INTEROPERABILITY.md`.
+
+- [ ] **[PARITY-001]** Complete the functional inventory for router, crypto,
+  services, I2PSnark, administration/TUI, Android and security.
+  - Priority P0; Status implemented by static analysis; reference and status
+    categories recorded. No Java source was vendored or executed.
+  - Files: `docs/FEATURE-PARITY.md`, `docs/INTEROPERABILITY.md`.
+  - Validation: documentation/link and source inspection only.
+- [ ] **[PARITY-002]** Implement SSU2 migration, ML-KEM provider probing,
+  RSA/SU3 verification and reseed default hardening.
+  - Priority P0; Status implemented by static analysis; pending CI compilation
+    and pending CI tests.
+  - Files: `SSU2Session.*`, `PostQuantum.*`, `Signature.*`, `Identity.cpp`,
+    `Reseed.cpp`, `Config.cpp`; focused tests registered.
+  - Validation: dynamic loss/provider/RSA/SU3 vectors pending.
+- [ ] **[PARITY-003]** Implement SAM pipelining/control grammar, I2CP identity-hash
+  routing keys and case-preserving address-book normalization.
+  - Priority P0/P1; Status implemented by static analysis; pending CI
+    compilation and pending CI tests.
+  - Files: `libi2pd_client/SAM.*`, `I2CP.*`, `AddressBook.*`; new tests.
+  - Validation: split-frame/pipelined SAM, live I2CP and naming tests pending.
+- [ ] **[PARITY-004]** Implement torrent resume/final-name verification, tracker
+  parsing/limits, private-swarm announce selection, PEX and connection caps.
+  - Priority P0; Status implemented by static analysis; pending CI compilation
+    and pending CI tests. No live Java tracker/trackerless exchange or crash
+    recovery exists.
+  - Files: `Torrents.*`, `TorrentsTunnel.*`, `TorrentsControl.h`; prepared
+    parity regression.
+- [ ] **[PARITY-005]** Add a typed daemon-owned TUI administrative command queue
+  for reseed, shutdown/cancel, tunnel reload, bandwidth, share, transit and log
+  level.
+  - Priority P0; Status implemented by static analysis; pending CI compilation
+    and pending CI tests. No generic config writer was added.
+  - Files: `TuiProtocol.h`, `daemon/TuiServerCommon.*`, `daemon/Daemon.*`,
+    `tui/main.cpp`; protocol/IPC regressions prepared.
+- [ ] **[PARITY-006]** Add Android reseed and runtime log-level parity without
+  main-thread JNI, retaining Material 3/Java and the existing service lifecycle.
+  - Priority P1; Status implemented by static analysis; pending CI compilation,
+  JNI and device tests. Confirmed Reseed action, service-worker JNI, closed
+  runtime log-level set, live apply after persistence and a static
+  instrumentation consistency test are prepared.
+- [ ] **[PARITY-007]** Close remaining functional gaps in native client/server
+  tunnel editing, address-book administration, selected-file torrent promotion,
+  durable queue/bandwidth scheduling, secret-blinded I2CP and Android SAF
+  recovery.
+  - Priority P1; Status pending. These are implementation tasks, not merely
+  validation tasks.
+- [ ] **[PARITY-008]** Validate every changed path through manual CI and
+  controlled interoperability/device runs.
+  - Priority P0; Status pending CI. Required: Linux/OpenBSD/LibreSSL/Windows
+  compilation, CTest, sanitizers/fuzzers, Java 2.13.0 differential harness,
+  Android Gradle/JNI/Lint/device and package/service tests.
+  - No local build, test, workflow run, commit or push is authorized here.

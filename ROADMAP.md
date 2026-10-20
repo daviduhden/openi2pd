@@ -47,10 +47,11 @@ earlier revisions, not validation of current uncommitted changes.
   point. The daemon remains monolithic, so the OS-level network/storage
   process invariant is still pending. Dynamic TUI/engine/RPC/TLS validation
   is deferred to CI.
-- Java I2P: latest stable `2.13.0` rechecked on 2026-10-19 and pinned
+- Java I2P: latest stable `2.13.0` rechecked on 2026-10-20 and pinned
   (`9134f808337b401e8e53c73734c81fab04280c9d`); the five-subsystem static
-  pass, compatibility matrix and local unit regressions are complete, but no
-  Java peer, handshake or network interoperability has been executed.
+  pass, functional matrix, compatibility matrix and prepared regressions are
+  complete, but no Java peer, handshake or network interoperability has been
+  executed. The 2026-10-20 parity increment is tracked by PARITY-001..008.
 - Java I2P remaining work is tracked as `NET-016..NET-020` and the older
   I2P-001..I2P-013 evidence rows in `TODO.md`; dynamic tests remain blocked.
 - Windows TUI/IPC: shared terminal abstraction, native Win32/VT backend,
@@ -441,3 +442,33 @@ before key generation, SAF exact-document removal and cancelable brokered
 export. CMake/manual CI sources and regressions are prepared. Network/router/
 verifier isolation and other persistent authorities remain implementation work;
 no global completion or validation claim is made.
+
+## Comprehensive Java parity continuation (2026-10-20)
+
+Reference: stable `i2p-2.13.0` at
+`9134f808337b401e8e53c73734c81fab04280c9d`; 2.14.0 was a late-October target
+and was not a released stable tag. The full functional/administrative matrix is
+[`docs/FEATURE-PARITY.md`](docs/FEATURE-PARITY.md); wire evidence remains in
+[`docs/INTEROPERABILITY.md`](docs/INTEROPERABILITY.md).
+
+Status: implemented by static analysis for the scoped increment; pending CI
+compilation; pending CI tests. No local build/test, Java peer, Android device,
+sanitizer/fuzzer, OpenBSD/Windows or live-network run exists.
+
+Implemented source changes: SSU2 migration retransmission/deadline and old
+endpoint retention; runtime ML-KEM provider probing; RSA/Ed25519 SU3 and RSA
+identity verification with a fail-closed reseed default; SAM persistent bounded
+framing/pipelining and control grammar; I2CP identity-hash routing keys;
+case-preserving address-book normalization; torrent resume/final-name
+verification, tracker forms/limits, private announce, PEX and connection caps;
+and a typed daemon-owned TUI admin queue for reseed, shutdown/cancel, tunnel
+reload, bandwidth, share, transit and log level. Android reseed and runtime
+log-level parity is implemented by static analysis with service-worker JNI,
+Material 3 confirmation UI and a static instrumentation consistency test.
+
+Remaining work is not relabelled as only testing: native tunnel/address-book
+editing, selected-file torrent promotion, durable queue/bandwidth scheduling,
+secret-blinded I2CP, Android SAF recovery and genuine network/router/verifier
+separation remain implementation tasks. Every changed path needs manual CI,
+differential Java, device and platform validation before a parity or
+privilege-separation claim is made.

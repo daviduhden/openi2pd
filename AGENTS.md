@@ -347,3 +347,24 @@ identity/size and never recursively delete a selected tree. Tests are prepared
 only. Global netDb/config/profile/client persistence, networking/router/verifier
 process separation and cross-platform completion remain implementation tasks;
 never relabel all remaining work as pending tests.
+
+## Java feature-parity continuation (2026-10-20)
+
+The latest stable reference was rechecked as `i2p-2.13.0`, commit
+`9134f808337b401e8e53c73734c81fab04280c9d`; 2.14.0 had not been released. Seven
+read-only recognition passes produced `docs/FEATURE-PARITY.md`. The in-scope
+static increment adds SSU2 migration retries, runtime ML-KEM probing, RSA/SU3
+verification and a fail-closed reseed default, SAM bounded pipelining/control
+grammar, I2CP identity-hash routing keys, case-preserving address-book
+normalization, torrent re-verification/tracker/PEX/connection bounds and a
+typed daemon-owned TUI admin queue. Android reseed/runtime log-level parity is
+implemented statically with service-worker JNI and a static instrumentation
+consistency test.
+
+Everything in this increment remains implemented by static analysis only,
+pending CI compilation and pending CI tests. No build, CTest, sanitizer,
+fuzzer, Java peer, Android device, service, OpenBSD, Windows or live-network
+validation exists. Native tunnel/address-book administration, selected-file
+promotion, durable queue/bandwidth scheduling, secret-blinded I2CP, Android SAF
+recovery and genuine network/router/verifier separation remain implementation
+tasks, not test-only work. Do not claim global privilege separation.
