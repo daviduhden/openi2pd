@@ -1819,5 +1819,8 @@ OpenBSD or Java/C++ dynamic test was run.
   `-Warray-bounds` warning.
 - Removed the unused `${perl:Depends}` substvar from the Debian package and
   declared the required `perl` runtime dependency explicitly.
+- Corrected the resume-persistence callback call in `Torrents.cpp`: pass an
+  explicit `std::span<const uint8_t>` and convert the tribool completion state
+  to a definite boolean before invoking the `std::function`.
 - No workflow was dispatched. The fixes are static-only, pending CI
   compilation and tests; no pass is claimed.

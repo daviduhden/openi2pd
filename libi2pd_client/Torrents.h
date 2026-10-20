@@ -28,6 +28,7 @@
 #include <atomic>
 #include <list>
 #include <map>
+#include <span>
 #include <string>
 #include <string_view>
 #include <random>

@@ -2529,7 +2529,8 @@ namespace torrents
 		if (!have) return; // empty
 		if (m_ResumePersistence)
 		{
-			if (!m_ResumePersistence (bitfield, have && m_IsComplete.load (std::memory_order_acquire)))
+			const bool remove = static_cast<bool> (have) && m_IsComplete.load (std::memory_order_acquire);
+			if (!m_ResumePersistence (std::span<const uint8_t> (bitfield), remove))
 				LogPrint (eLogError, "Torrents: Isolated resume persistence failed");
 			return; // No direct fallback after delegated persistence failure.
 		}
