@@ -268,8 +268,9 @@ cmake --build build-msvc --config Release --parallel --target i2pd i2pd-tui
 ctest --test-dir build-msvc -C Release --output-on-failure
 ```
 
-`-DWITH_TORRENTS=OFF -DWITH_UPNP=OFF` is valid for a TUI-focused smoke build;
-the full feature build needs Boost.JSON/URL and MiniUPnPc.
+Torrents are enabled by default. `-DWITH_TORRENTS=OFF -DWITH_UPNP=OFF` remains
+valid for a reduced TUI/API smoke build; the full feature build needs
+Boost.JSON/URL and MiniUPnPc.
 
 ### Installation
 

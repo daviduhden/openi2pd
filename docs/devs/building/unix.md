@@ -119,7 +119,7 @@ Pass options as `-D<key>=<value>`:
 | `WITH_LIBRARY` | ON | Install libraries and headers |
 | `WITH_STATIC` | OFF | Static-link the router where supported |
 | `WITH_UPNP` | ON | Require MiniUPnPc |
-| `WITH_TORRENTS` | ON | Require Boost.JSON/URL (off on Android) |
+| `WITH_TORRENTS` | ON | Include the BitTorrent client; pass `-DWITH_TORRENTS=OFF` to disable it on Linux or OpenBSD (also supported on Windows) |
 | `WITH_HARDENING` | OFF | Stack protector, FORTIFY, RELRO/NOW |
 | `WITH_ADDRSANITIZER` | OFF | AddressSanitizer |
 | `WITH_THREADSANITIZER` | OFF | ThreadSanitizer |

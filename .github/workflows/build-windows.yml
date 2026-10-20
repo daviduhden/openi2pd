@@ -55,10 +55,10 @@ jobs:
           ctest --test-dir build-output --output-on-failure --timeout 120
           ./build-output/i2pd.exe --version
 
-  # Native MSVC uses the runner's vcpkg for third-party dependencies. This job
-  # is intentionally TUI/API-focused (`WITH_TORRENTS=OFF`, `WITH_UPNP=OFF`) to
-  # keep the manual validation bounded; the MSYS2 job covers the full feature
-  # set. No runtime download is part of the product build.
+  # Native MSVC uses the runner's vcpkg for third-party dependencies. It builds
+  # the default feature set, including torrents, while the reduced TUI/API
+  # configuration remains available explicitly through -DWITH_TORRENTS=OFF.
+  # No runtime download is part of the product build.
   build-msvc:
     # windows-latest moved past the VS 2022 image used by the project's
     # documented MSVC generator. Pin the image that provides it.
@@ -86,8 +86,10 @@ jobs:
           & "$env:VCPKG_ROOT\vcpkg.exe" install `
             boost-asio:x64-windows `
             boost-beast:x64-windows `
+            boost-json:x64-windows `
             boost-program-options:x64-windows `
             boost-property-tree:x64-windows `
+            boost-url:x64-windows `
             openssl:x64-windows `
             zlib:x64-windows `
             --clean-after-build
@@ -97,8 +99,8 @@ jobs:
             -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
             -DCMAKE_BUILD_TYPE=Release `
             -DBUILD_TESTING=ON `
-            -DWITH_UPNP=OFF `
-            -DWITH_TORRENTS=OFF
+            -DI2PD_BUILD_TOOLS=OFF `
+            -DWITH_UPNP=OFF
       - name: Build MSVC TUI and tests
         run: |
           cmake --build build-msvc --config Release --parallel 2 `

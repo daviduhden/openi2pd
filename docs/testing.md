@@ -467,13 +467,16 @@ Build with the manual `Windows` workflow or locally with MSVC/MSYS2, then:
 cmake -S build -B build-msvc -G "Visual Studio 17 2022" -A x64 `
   -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" `
   -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON `
-  -DWITH_UPNP=OFF -DWITH_TORRENTS=OFF
+  -DWITH_UPNP=OFF
 cmake --build build-msvc --config Release `
   --target i2pd i2pd-tui test-tui-protocol test-tui-terminal `
     test-tui-pipe-name test-tui-win32-pipe test-privsep-windows-ipc
 ctest --test-dir build-msvc -C Release --output-on-failure `
   -R '^(test-(tui-protocol|tui-terminal|tui-pipe-name|tui-win32-pipe|privsep-windows-ipc))$'
 ```
+
+Torrents are enabled by default. Pass `-DWITH_TORRENTS=OFF` to configure a
+reduced TUI/API build without the Boost.JSON/URL dependency.
 
 Then, on a Windows host with a real console:
 

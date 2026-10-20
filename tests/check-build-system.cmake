@@ -189,6 +189,7 @@ foreach(required IN ITEMS
     "i2pd_privsep"
     "WITH_BINARY"
     "WITH_LIBRARY"
+    "WITH_TORRENTS"
     "I2PD_SERVICE_MANAGER"
     "I2PD_SERVICE_DIR"
     "I2PD_SERVICE_CONFDIR")

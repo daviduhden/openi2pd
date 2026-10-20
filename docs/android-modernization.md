@@ -89,7 +89,7 @@ RouterService (started + bound, non-exported, same process)
   fragments are moved to `CREATED` with `setMaxLifecycle`. JNI status/log
   polling therefore stops when the UI is not visible instead of continuing in
   the background.
-- The Android JNI CMake graph sets `WITH_BINARY=OFF`, `WITH_TORRENTS=OFF` and
+- The Android JNI CMake graph sets `WITH_BINARY=OFF`, `WITH_TORRENTS=ON` and
   `WITH_UPNP=ON`, builds the common daemon lifecycle plus `UPnP.cpp`, and does
   not link `i2pd_privsep`; `I2PD_NO_PRIVSEP` removes the POSIX supervisor path
   from the Android build. The Android service remains same-process; the C++
