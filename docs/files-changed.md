@@ -937,3 +937,32 @@ live peer, packaging or platform validation was performed locally.
 No build, CTest, sanitizer, package build, rpmbuild, lintian, service start or
 live-peer run was performed. The new port-table test and RPM guards remain
 pending manual CI.
+
+## Client and persistence continuation (2026-10-21, static)
+
+| Paths | Change |
+|---|---|
+| `libi2pd_client/I2PTunnel.cpp`, `I2PTunnel.h`, `I2PTunnelHTTP.h`, `tests/test-i2ptunnel-http.cpp`, `tests/fuzz/fuzz-http-parser.cpp` | Extracted the production bounded incremental transformer; independent request/response state and stable output; fragmentation/bounds regressions and differential segmentation fuzz input. |
+| `libi2pd_client/AddressBook.cpp`, `AddressBook.h`, `tests/test-addressbook-case.cpp` | Bound lookup replies to the expected authenticated resolver, checked ports/RNG and capped/expired pending authority; production-registry regressions prepared. |
+| `libi2pd_client/Torrents.cpp`, `Torrents.h`, `TorrentsTunnel.cpp`, `TorrentsTunnel.h`, `tests/test-torrents-security.cpp` | Added irreversible removal authority, serialized cleanup/re-add gating, native settings deletion in both backends, final-shutdown snapshot authority and deterministic removal regression cases. |
+| `tests/CMakeLists.txt`, `.github/workflows/build.yml` | Registered the HTTP target and security/memory labels; selected the three client/persistence targets explicitly within the existing manual Linux workflow. |
+| `AGENTS.md`, `TODO.md`, `ROADMAP.md`, `PROGRESS.md`, `docs/testing.md`, `docs/security/memory-safety-2026.md`, `docs/torrent/local-state.md`, `docs/upstream-sync.md`, owning skill references | Recorded decisions, prepared tests, pending CI and residual limitations. |
+
+No wire or persisted schema changed. No compilation, tests, project validators
+or workflows were executed. Windows deletion races, broader client lifecycle,
+dedicated shutdown/crash coverage and global process separation remain open.
+
+## Java comparison target update (2026-10-21, static)
+
+The current target is `i2p-2.14.0` at
+`3c98503c5f14efe7bdd783528ba7f621f12d8081`. Updated the interoperability,
+functional-parity and Snark reference sections; interop skill/index; AGENTS
+and tracking; and the test/CI documentation. `check-reference.sh` checks the
+new pin, while `check-vectors.pl` keeps the historical 2.13.0 corpus pin and
+uses `I2P_JAVA_FIXTURE_REFERENCE`. CMake and the manual interop job separate
+the current-target checkout from the historical provenance checkout.
+
+Fixture JSON/hex and their expectations are unchanged. NET-026 tracks the
+pending 2.14.0 source re-audit and evidence migration. No build, test,
+validator or workflow was executed; existing implementation changes remain
+uncommitted and preserved.

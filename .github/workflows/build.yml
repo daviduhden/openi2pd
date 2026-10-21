@@ -57,6 +57,10 @@ jobs:
         run: |
           ctest --test-dir build-output --output-on-failure --timeout 120 \
             -R '^test-(torrents-(magnet|engine-interop|dht-interop|comments|creator|state|priorities)|torrent-payload-storage)$' --no-tests=error
+      - name: Run client parsing and persistence regressions
+        run: |
+          ctest --test-dir build-output --output-on-failure --timeout 120 \
+            -R '^test-(i2ptunnel-http|addressbook-case|torrents-security)$' --no-tests=error
       - name: Verify CTest subsystem labels
         run: |
           for label in i2p security memory ipc tui torrent tools perl interop platform android ci static smoke; do

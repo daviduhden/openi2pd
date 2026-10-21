@@ -110,9 +110,11 @@ and imsg tests only on OpenBSD. The source files retain portable stubs, but
 they are not built or reported as platform tests on the wrong host.
 
 The static `interop-static` target validates all checked-in fixtures without
-Java. `-DI2PD_INTEROP_REFERENCE=/path/to/i2p-java-2.13.0` additionally
-registers `interop-reference` and `interop-reference-vectors` for a read-only
-pinned checkout. The live SAM shell probe remains manual because it needs a
+Java. `-DI2PD_INTEROP_REFERENCE=/path/to/i2p-java-2.14.0` additionally
+registers `interop-reference` for the current comparison target. Separately,
+`-DI2PD_INTEROP_FIXTURE_REFERENCE=/path/to/i2p-java-2.13.0` registers
+`interop-reference-vectors` for historical fixture provenance. Neither check
+executes Java or proves compatibility. The live SAM shell probe remains manual because it needs a
 running router and `nc`.
 
 The compile-free `agent-skills-static` check reads `.agents/skills/*/SKILL.md`
@@ -520,7 +522,10 @@ datadir and verify the TUI socket path appears in unveil. This is pending.
 
 No Java router is available in this environment. The static matrix in
 `docs/INTEROPERABILITY.md` records the 2026-10-18 recheck of the latest stable
-`i2p-2.13.0`; it does not claim verified interoperability. Recommended setup:
+`i2p-2.13.0`; it does not claim verified interoperability. The current target
+is `i2p-2.14.0` at `3c98503c5f14efe7bdd783528ba7f621f12d8081`; reviewing
+the Java delta and updating the matrix remains pending under NET-026.
+Recommended setup for the current target:
 
 1. Run a current Java I2P router on a separate host or network namespace.
 2. Exchange RouterInfos; verify NTCP2 and SSU2 sessions establish in both
@@ -591,3 +596,40 @@ No Java router is available in this environment. The static matrix in
   No Java router was executed and no interoperability is claimed.
 
 A successful Linux build does not upgrade the pending rows to validated.
+
+## Prepared client and persistence regressions (2026-10-21)
+
+`test-i2ptunnel-http` exercises the production incremental HTTP transformer
+without sockets: fragmentation, independent request/response output, binary
+body bytes, header rewriting and byte/line limits. It is registered with
+`unit`, `i2p`, `security` and `memory` labels.
+
+`test-addressbook-case` also exercises the production resolver-request
+registry: authenticated resolver binding, replay/nonce collision, duplicate
+normalized names, capacity, expiry and shutdown clearing. It now carries
+`security` and `memory` labels in addition to its existing labels.
+
+The manual Linux workflow explicitly selects `test-i2ptunnel-http`,
+`test-addressbook-case` and `test-torrents-security` after the full suite.
+The existing manual sanitizer, Windows and OpenBSD jobs consume the registered
+tests through their full CTest runs. Android still requires JNI/native
+compilation and device tests; these offline tests do not demonstrate live
+HTTP/datagram interoperability or crash recovery.
+
+All tests in this continuation are prepared only, pending CI compilation and
+pending CI tests. No local build, test or project validator was executed.
+
+The existing `fuzz-http-parser` target now also feeds all three production
+tunnel modes, comparing whole-buffer and fragmented delivery including the
+untouched body tail. Input for this additional comparison is bounded to
+12 KiB. Its existing manual Fuzzing job and one-input CTest smoke registration
+are retained; neither was executed for this increment.
+
+`test-torrents-security` adds irreversible removal, direct/delegated resume
+revocation, deterministic service/disk queue draining and replacement gating.
+It checks that retaining payload still deletes native settings and that a
+directory at the settings filename keeps removal fail-closed. POSIX cases
+also cover symlink parents/leaves for anchored metadata deletion. No live
+router, peer, sleeps or worker thread is required by these added cases.
+Real shutdown snapshot draining, worker failures and crash durability still
+need dedicated manual CI/device execution.

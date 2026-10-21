@@ -40,11 +40,16 @@ subsystem owner in the ownership table unless a task says otherwise. The
 
 ## A. I2P Java interoperability
 
-- [x] **[NET-001]** Clone the latest stable I2P Java release outside this tree and record tag/commit/date.
+Current comparison target: `i2p-2.14.0`, commit
+`3c98503c5f14efe7bdd783528ba7f621f12d8081` (remote annotated tag peeled on
+2026-10-21). Existing 2.13.0 findings/vectors retain their original provenance;
+they do not establish 2.14.0 compatibility. See NET-026.
+
+- [x] **[NET-001]** Record the original I2P Java 2.13.0 comparison checkout (historical).
   - Priority P0; Status Implemented; tag `i2p-2.13.0`, commit `9134f808337b401e8e53c73734c81fab04280c9d`, released 2026-07-24; read-only clone outside the tree (not bundled).
   - Files: external read-only Java reference; `docs/INTEROPERABILITY.md`, `tests/interop/README.md`.
   - Acceptance: tag, commit, version, date recorded; no Java code added to fork.
-  - Validation: GitHub releases/tags rechecked 2026-10-20; `i2p-2.13.0` is still the latest stable release and tag; 2.14.0 was not released.
+  - Validation: original 2.13.0 reference only; superseded as comparison target by 2.14.0 on 2026-10-21. No 2.14.0 review is attributed to this task.
 - [ ] **[NET-002]** Audit NTCP2 handshake, obfuscation, options, version negotiation and PQ variants against Java.
   - Priority P0; Status Implemented / static; NET-118..NET-123 plus NET-134..NET-140 cover replay, block ordering, termination/control queueing, X/Y/static-key validation, Alice replay, pending-handshake bounds, extra pending bytes, per-version padding and proxy buffer lifetime.
   - Files: `libi2pd/NTCP2.cpp`, `NTCP2.h`; Java `router/transport/ntcp2`; `test-ntcp2-session-confirmed-payload` and `test-ntcp2-handshake-bounds` passed locally.
@@ -685,7 +690,7 @@ when there is no older ID.
   - Status Pending CI; historical compiles predate the latest JNI/lifecycle edits.
 - [ ] **[DEF-004]** `routerinfo` firewall backends not yet dynamically syntax-checked.
 - [ ] **[DEF-005]** Full Java I2P differential audit not yet performed.
-  - Status: latest stable remains 2.13.0 (rechecked 2026-10-20); third static pass added NET-155..NET-161/LS-119..LS-121/DB-113..DB-114/RS-101/SAM-110/DG-105/STR-104/CRY-202..CRY-203. The 2026-10-20 parity continuation added `docs/FEATURE-PARITY.md` and PARITY-001..PARITY-008; no dynamic Java/C++ test or build executed.
+  - Status: historical 2.13.0 third static pass added NET-155..NET-161/LS-119..LS-121/DB-113..DB-114/RS-101/SAM-110/DG-105/STR-104/CRY-202..CRY-203. Current comparison target is 2.14.0; NET-026 tracks the new review. The 2026-10-20 parity continuation added `docs/FEATURE-PARITY.md` and PARITY-001..PARITY-008; no dynamic Java/C++ test or build executed.
 - [ ] **[DEF-006]** Android manifest still allows cleartext? Removed; verify merged manifest.
 - [ ] **[DEF-007]** `tools/vain` raw key-buffer arrays were replaced with zeroing RAII ownership, jthread joins and checked serialization/error paths.
   - Status Implemented / static only; ASan/TSan and one-character search pending.
@@ -877,9 +882,11 @@ omissions are in `docs/upstream-sync.md`.
 - [ ] **[UPSTREAM-002]** Validate Debian 12 NetDb peer-floor compatibility and the retained high-bandwidth floor.
   - Priority P0; Status implemented / static; `libi2pd/NetDb.hpp`, `test-netdb-store-lookup-hardening`; live Debian 12 peer and NetDb selection tests pending CI. The 0.9.57 floor is a peer-policy relaxation, not a parser or cryptographic weakening.
 - [ ] **[UPSTREAM-003]** Add a stable I2PTunnel HTTP header parser test seam.
-  - Priority P1; Status pending; the `view()` lifetime and incomplete-line compaction fixes are static-only because the parser state is private. A helper/extraction or controlled connection harness is required before claiming regression coverage.
+  - Priority P1; Status implemented by static analysis; `I2PTunnelHTTP.h` owns independent bounded incremental request/response state and stable transformed output. The production connections use the same parser as `test-i2ptunnel-http`; fragmented Connection/Upgrade, binary body, interleaved directions and byte/header bounds have prepared regressions. Pending CI compilation and pending CI tests; no socket or live HTTP validation is claimed.
 - [ ] **[UPSTREAM-004]** Close the remaining torrent removal/persistence race.
-  - Priority P1; Status pending; weak capture plus `FindTorrent` membership check prevents pre-check writes, but removal after the check can still be overtaken by a queued disk job. A per-torrent tombstone/generation barrier and `.openi2pd-state` deletion policy remain open; `test-torrents-security` covers stopped/in-range blocks only.
+  - Priority P1; Status implemented by static analysis; irreversible instance tombstones revoke new writes, and a hash reservation blocks replacement until serialized disk cleanup succeeds. Both native and isolated removal delete `.openi2pd-state` even when payload is retained; cleanup failure keeps the hash blocked until daemon restart. In-flight disk operations may finish before cleanup, never after replacement is admitted. Final shutdown snapshots retain narrowly scoped authority after membership clearing; removed instances never do.
+  - Validation: prepared `test-torrents-security` regressions for direct/delegated resume revocation, queued removal/re-add, retained payload, metadata failure and POSIX no-follow removal. Pending CI compilation and pending CI tests, ASan+UBSan/TSan, storage-worker and real shutdown/crash tests. Windows path-check/delete TOCTOU and global process separation remain open.
+  - Pending implementation: a dedicated regression for final shutdown snapshots after membership clearing; the source correction exists but is not covered by the deterministic removal harness.
 - [ ] **[UPSTREAM-005]** Apply the applicable 2026-10-19/20 `openssl` continuation without reverting the fork architecture.
   - Priority P0/P1; Status implemented / static; `37090fe0` Intel AMT ports 16992-16995 are in `IsPortInReservedRange` with `test-routercontext-port-range`; `21ad7d43` reseed wording is adapted while retaining fail-closed `reseed.verify=true`; `db761a54`/`2598a94e`/`86dd211a` RPM Fedora Boost guards are adapted; `452da43b`/`54068be9`/`472ef88b` remain already implemented/stronger. `38cf542b`, `f8a12d9d`, `357fcc14`, `a8915cd1`, `e34db4f7`, `233e5111` and `de32c8c3` are recorded as not applicable, merge-only or obsolete in `docs/upstream-sync.md`; the RHEL 9 torrent branch is omitted pending a validated GCC 13 toolset path.
   - Files: `libi2pd/util.cpp`, `tests/test-routercontext-port-range.cpp`, `tests/CMakeLists.txt`, `contrib/rpm/i2pd.spec`, `contrib/rpm/i2pd-git.spec`, `contrib/i2pd.conf`, `contrib/openbsd/i2pd.conf`, `docs/upstream-sync.md`, `docs/files-changed.md`, `docs/dependencies.md`, `docs/build-system.md`, `docs/devs/building/unix.md`, `docs/user-guide/configuration.md`, `tests/check-build-system.cmake`, `.agents/skills/openi2pd-upstream/references/sync-checklist.md`.
@@ -933,9 +940,9 @@ omissions are in `docs/upstream-sync.md`.
 
 ## Comprehensive Java functional-parity audit (2026-10-20)
 
-Status: recognition and scoped implementation are static only. The reference
-is stable `i2p-2.13.0` at `9134f808337b401e8e53c73734c81fab04280c9d`; 2.14.0
-was still a late-October target, not released. Full inventory:
+Status: recognition and scoped implementation are static only. That pass used
+`i2p-2.13.0` at `9134f808337b401e8e53c73734c81fab04280c9d`. The current
+target is 2.14.0; re-auditing these findings is pending under NET-026. Full inventory:
 `docs/FEATURE-PARITY.md`; wire findings: `docs/INTEROPERABILITY.md`.
 
 - [ ] **[PARITY-001]** Complete the functional inventory for router, crypto,
@@ -986,6 +993,18 @@ was still a late-October target, not released. Full inventory:
 - [ ] **[PARITY-008]** Validate every changed path through manual CI and
   controlled interoperability/device runs.
   - Priority P0; Status pending CI. Required: Linux/OpenBSD/LibreSSL/Windows
-  compilation, CTest, sanitizers/fuzzers, Java 2.13.0 differential harness,
+  compilation, CTest, sanitizers/fuzzers, Java 2.14.0 differential harness,
   Android Gradle/JNI/Lint/device and package/service tests.
   - No local build, test, workflow run, commit or push is authorized here.
+
+## Client hardening continuation (2026-10-21)
+
+- [ ] **[NET-026]** Rebase the comparison and interoperability evidence on I2P Java 2.14.0.
+  - Priority P0; Status in implementation. Reference configuration/docs are implemented by static analysis: tag `i2p-2.14.0`, peeled commit `3c98503c5f14efe7bdd783528ba7f621f12d8081`, tag object `9db233ed7241599eba76f29b8c334eaaf3db2e87`. Current-target and historical-fixture checks use separate external checkouts; existing 2.13.0 bytes and source citations are preserved.
+  - Pending implementation: read-only 2.13.0-to-2.14.0 subsystem delta review, new or rechecked provenance/vectors, functional matrix updates and justified native corrections. Reference pinning alone does not complete that work.
+  - Validation: official remote refs inspected; scripts/CMake/manual workflow edits pending CI tests. No source comparison against 2.14.0, Java execution, compilation or interoperability validation has been performed for this transition.
+
+- [ ] **[SEC-015]** Bind address-book datagram lookup replies to the requested resolver and bound outstanding authority.
+  - Priority P0; Status implemented by static analysis; the production lookup registry binds nonce, normalized name, authenticated resolver identity and monotonic creation time. Pending requests are capped at 256, expire after 120 seconds and reject duplicate requests/nonce collisions. Wrong senders and ports cannot consume a legitimate request; RNG failure is fail-closed and shutdown clears the registry.
+  - Files: `libi2pd_client/AddressBook.cpp`, `libi2pd_client/AddressBook.h`, `tests/test-addressbook-case.cpp`, `tests/CMakeLists.txt`, `.github/workflows/build.yml`.
+  - Validation: prepared resolver-authority, replay, collision, capacity, expiry and shutdown regressions; pending CI compilation and pending CI tests on Linux/OpenBSD/Windows, ASan+UBSan/TSan and controlled datagram exchange. Slow replies beyond the deadline are deliberately rejected. Broader subscription and destination lifecycle work remains open.

@@ -21,6 +21,13 @@ Use with `SKILL.md`. All jobs are manual; no result here validates a revision.
 All use `workflow_dispatch` only. Actions are SHA-pinned and checkout
 credentials are not persisted.
 
+The interop job verifies the current Java 2.14.0 reference separately from
+historical 2.13.0 fixture provenance. Use `I2P_JAVA_REFERENCE` for the current
+target checker and `I2P_JAVA_FIXTURE_REFERENCE` for the existing corpus
+checker. The corresponding CMake options are `I2PD_INTEROP_REFERENCE` and
+`I2PD_INTEROP_FIXTURE_REFERENCE`. A reference pin check is not a source audit
+or a dynamic compatibility result.
+
 ## CTest labels
 
 `unit`, `i2p`, `security`, `memory`, `ipc`, `tui`, `torrent`, `tools`,
@@ -37,6 +44,13 @@ Platform-only tests register only on their host:
 `test-privsep-linux-*`, `test-privsep-windows-ipc`, `test-tui-win32-pipe`.
 
 ## Before dispatch
+
+The manual Linux job also explicitly selects `test-i2ptunnel-http`,
+`test-addressbook-case` and `test-torrents-security` for the 2026-10-21
+client/persistence continuation. These remain in the full CTest and sanitizer
+suites; `fuzz-http-parser` also feeds the production HTTP tunnel transformer
+and compares whole-buffer versus fragmented delivery. Registration does not
+mean these checks have run.
 
 - Workflow is present on the published revision.
 - The tree is committed/pushed only if the coordinator explicitly authorized

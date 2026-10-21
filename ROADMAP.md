@@ -47,11 +47,11 @@ earlier revisions, not validation of current uncommitted changes.
   point. The daemon remains monolithic, so the OS-level network/storage
   process invariant is still pending. Dynamic TUI/engine/RPC/TLS validation
   is deferred to CI.
-- Java I2P: latest stable `2.13.0` rechecked on 2026-10-20 and pinned
-  (`9134f808337b401e8e53c73734c81fab04280c9d`); the five-subsystem static
-  pass, functional matrix, compatibility matrix and prepared regressions are
-  complete, but no Java peer, handshake or network interoperability has been
-  executed. The 2026-10-20 parity increment is tracked by PARITY-001..008.
+- Java I2P: comparison target `2.14.0`, pinned to
+  `3c98503c5f14efe7bdd783528ba7f621f12d8081` on 2026-10-21. The earlier
+  five-subsystem static pass and matrices were based on 2.13.0; they require
+  a new delta review under NET-026. Historical fixtures keep their 2.13.0
+  provenance. No Java peer/handshake/network interoperability is claimed.
 - Java I2P remaining work is tracked as `NET-016..NET-020` and the older
   I2P-001..I2P-013 evidence rows in `TODO.md`; dynamic tests remain blocked.
 - Windows TUI/IPC: shared terminal abstraction, native Win32/VT backend,
@@ -471,9 +471,9 @@ no global completion or validation claim is made.
 
 ## Comprehensive Java parity continuation (2026-10-20)
 
-Reference: stable `i2p-2.13.0` at
-`9134f808337b401e8e53c73734c81fab04280c9d`; 2.14.0 was a late-October target
-and was not a released stable tag. The full functional/administrative matrix is
+Historical reference for that pass: `i2p-2.13.0` at
+`9134f808337b401e8e53c73734c81fab04280c9d`. Current target is 2.14.0;
+NET-026 tracks the pending review. The full functional/administrative matrix is
 [`docs/FEATURE-PARITY.md`](docs/FEATURE-PARITY.md); wire evidence remains in
 [`docs/INTEROPERABILITY.md`](docs/INTEROPERABILITY.md).
 
@@ -498,3 +498,39 @@ secret-blinded I2CP, Android SAF recovery and genuine network/router/verifier
 separation remain implementation tasks. Every changed path needs manual CI,
 differential Java, device and platform validation before a parity or
 privilege-separation claim is made.
+
+## Client and persistence hardening (2026-10-21)
+
+Implemented by static analysis; pending CI compilation and pending CI tests:
+UPSTREAM-003 extracts and integrates bounded incremental HTTP header parsing
+with independent output ownership; UPSTREAM-004 revokes removed torrent
+instances, orders cleanup before replacement and deletes native settings in
+both storage modes; SEC-015 binds datagram naming responses to the expected
+authenticated resolver and bounds pending requests.
+
+Prepared tests cover fragmentation/byte limits, resolver identity/replay/
+expiry, removal during disk IO, failed cleanup and re-add ordering. The
+existing HTTP fuzzer now compares whole versus fragmented tunnel delivery.
+The manual Linux job selects these regressions explicitly; existing full
+CTest, sanitizer, OpenBSD and Windows jobs consume their registrations.
+
+Exit criteria remain manual CI compilation/tests, sanitizer execution,
+controlled HTTP/datagram exchanges and real shutdown/crash storage tests.
+The shutdown-final-snapshot correction has no dedicated regression yet.
+Windows reparse-point races, direct payload deletion TOCTOU, full native
+administration, durable scheduling, SAF/device recovery and actual network/
+router/verifier process separation remain independent implementation work.
+
+## Java 2.14.0 comparison transition (2026-10-21)
+
+Current reference: `i2p-2.14.0`, peeled commit
+`3c98503c5f14efe7bdd783528ba7f621f12d8081`. Reference docs, skills and
+CI checker configuration are implemented by static analysis, pending CI tests.
+The fixture corpus remains explicitly pinned to historical 2.13.0 provenance,
+with a separate optional CMake checkout and manual CI check.
+
+NET-026 remains in implementation. Exit criteria: read-only review of the
+2.13.0-to-2.14.0 source delta for router/crypto/client/Snark behavior, updated
+matrices and properly sourced vectors, justified native corrections, manual
+CI compilation/tests and controlled 2.14.0 peer exchanges. Existing 2.13.0
+audit evidence must not be presented as a completed 2.14.0 comparison.

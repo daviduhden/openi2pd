@@ -235,11 +235,11 @@ concurrent edits to `TODO.md`, `ROADMAP.md` and `PROGRESS.md`.
 ## Current uncommitted work
 
 The historical pre-rewrite baseline was `800c8627` (native Windows TUI/IPC);
-the current published baseline is `f844f35` (the Agent Skills commit), with
-`3b223ab` immediately before it. Pre-rewrite hashes in the historical sections
-below may not resolve in this clone. The current uncommitted increment is the
-selective 2026-10-18/19/20 `openssl` upstream review described at the end of
-this file. The published baseline includes parallel OpenBSD/logging hardening, atomic TUI status
+the current published baseline is `14283908`, including the Agent Skills and
+selective 2026-10-18/19/20 upstream review commits. Pre-rewrite hashes in the
+historical sections below may not resolve in this clone. The current
+uncommitted increment is the 2026-10-21 client/persistence continuation below.
+The published baseline includes parallel OpenBSD/logging hardening, atomic TUI status
 reads, RouterInfo/SSU2 bounds fixes, bounded Torrents RPC waits, C++23 ownership
 modernization, the memory/concurrency audit (SSU2/RouterInfo, crypto/reseed,
 BitTorrent, IPC/privsep/JNI and daemon lifecycle), dependency-floor cleanup,
@@ -378,10 +378,22 @@ only. Global netDb/config/profile/client persistence, networking/router/verifier
 process separation and cross-platform completion remain implementation tasks;
 never relabel all remaining work as pending tests.
 
-## Java feature-parity continuation (2026-10-20)
+## Current Java comparison reference (updated 2026-10-21)
 
-The latest stable reference was rechecked as `i2p-2.13.0`, commit
-`9134f808337b401e8e53c73734c81fab04280c9d`; 2.14.0 had not been released. Seven
+The comparison target is I2P Java `i2p-2.14.0`, peeled commit
+`3c98503c5f14efe7bdd783528ba7f621f12d8081` (official annotated tag object
+`9db233ed7241599eba76f29b8c334eaaf3db2e87`, verified by remote ref inspection).
+Earlier Java 2.13.0 audits, source-line citations and vectors remain historical
+evidence; they have not been re-audited or validated against 2.14.0. Never
+relabel their provenance. The current-reference check and historical fixture
+provenance check use separate external checkouts. NET-026 tracks the 2.14.0
+review and evidence migration; no Java checkout/build/test is implied by
+verifying remote refs. Do not describe 2.13.0 as the current comparison target.
+
+## Java feature-parity continuation (2026-10-20, historical baseline)
+
+The reference for that earlier pass was `i2p-2.13.0`, commit
+`9134f808337b401e8e53c73734c81fab04280c9d`. Seven
 read-only recognition passes produced `docs/FEATURE-PARITY.md`. The in-scope
 static increment adds SSU2 migration retries, runtime ML-KEM probing, RSA/SU3
 verification and a fail-closed reseed default, SAM bounded pipelining/control
@@ -409,3 +421,24 @@ above remain authoritative; skills link to them and do not authorize local
 builds, tests, workflow dispatches, commits or pushes. Documentation-link,
 branding and agent-skills checks are pending manual CI; the collection is not
 dynamically validated.
+
+## Client and persistence continuation (2026-10-21)
+
+UPSTREAM-003 and UPSTREAM-004 are implemented by static analysis, pending CI
+compilation and pending CI tests. HTTP tunnel connections use the bounded
+`I2PTunnelHTTPHeader` seam with independent request/response ownership; the
+new test and extended HTTP fuzzer are prepared. Torrent removal tombstones
+revoke instance authority, reserve the infohash until serialized cleanup
+succeeds and delete native settings in both backends even when retaining
+payload. Failed cleanup blocks re-add until daemon restart. Final shutdown
+snapshots have a narrow stopping/nonremoved exception to live membership;
+their dedicated shutdown regression remains pending.
+
+SEC-015 binds pending address-book lookup nonces to authenticated resolver
+identities, caps/ages the registry and rejects wrong-port replies. Prepared
+HTTP, address-book and torrent regressions are registered in the existing
+manual workflows; no workflow was dispatched. Windows path-check/delete
+TOCTOU, direct payload deletion races, broader client lifecycle, full Java
+parity and global network/router/verifier separation remain open. No local
+build, test or project validator was run. No commit or push is authorized for
+this continuation.

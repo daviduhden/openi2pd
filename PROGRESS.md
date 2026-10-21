@@ -1896,3 +1896,73 @@ OpenBSD or Java/C++ dynamic test was run.
   rpmbuild, lintian, service or live-peer run was performed. The new
   `test-routercontext-port-range` and `build-system-static` checks remain
   pending manual CI compilation/tests; no validation is claimed.
+
+## 2026-10-21 — parallel client/persistence hardening (static-only)
+
+- Started from clean `main@14283908`. Read-only reconnaissance reviewed
+  AGENTS/TODO/ROADMAP/PROGRESS, current diffs and the feature-parity,
+  memory-safety and torrent state/security reports. Three agents worked on
+  disjoint HTTP tunnel, torrent persistence and address-book files;
+  coordinator review integrated shared CMake, CI and tracking changes.
+- UPSTREAM-003: extracted the production HTTP tunnel header transformer to
+  `I2PTunnelHTTP.h`. Independent request/response state fixes fragmented
+  Connection handling and response output loss; stable owned output preserves
+  async socket lifetimes. Requests retain their line-count policy; all modes
+  enforce aggregate input/output header limits. Prepared
+  `test-i2ptunnel-http` and extended `fuzz-http-parser` for segmentation
+  comparisons, retaining the existing header rewriting and body semantics.
+- UPSTREAM-004: added irreversible torrent instance tombstones and an
+  infohash reservation until disk cleanup and its service callback succeed.
+  In-flight disk writes finish before cleanup; stale jobs cannot mutate a
+  replacement. Both storage modes delete `.openi2pd-state` even when retaining
+  payload. Direct POSIX metadata deletion uses anchored no-follow parents,
+  exact unlink and directory sync. Failed cleanup retains the reservation
+  until daemon restart. RemoveAll admin-state cleanup now runs on the service
+  domain, and completion callbacks verify current instance authority.
+- Corrected shutdown final snapshots being skipped after membership clearing;
+  the exception requires a stopping tunnel and a nonremoved instance. This
+  correction remains without a dedicated shutdown regression. Prepared
+  `test-torrents-security` cases for revocation, removal during disk IO,
+  queued cleanup/re-add, retained payload and failed metadata cleanup.
+- SEC-015: address-book lookups now bind nonces to the authenticated resolver
+  and normalized name, cap pending requests at 256 and expire them after 120
+  monotonic seconds. Wrong senders/ports do not consume valid requests;
+  failed RNG cannot send a request. Prepared production-registry regressions
+  in `test-addressbook-case` cover replay, collision, capacity and expiry.
+- Registered HTTP tests and security/memory labels, added an explicit manual
+  Linux regression selection and updated owning skill references. Cross-agent
+  static review corrected an unsigned capacity subtraction and identified
+  residual Windows deletion races. No wire or persisted format was changed.
+- Local verification was source/interface inspection and `git diff --check`
+  only. No configure, compiler, build, CTest, sanitizer, fuzzer, Gradle,
+  project validator, workflow dispatch, commit or push was run. Everything
+  remains implemented by static analysis, pending CI compilation and pending
+  CI tests. Full privilege separation, broader lifecycle/admin/scheduling work
+  and live Java/device/platform validation are not claimed complete.
+
+## 2026-10-21 — update the Java comparison target to 2.14.0
+
+- Adopted the user's current comparison target, I2P Java `i2p-2.14.0`.
+  `git ls-remote` against the official GitHub mirror returned annotated tag
+  object `9db233ed7241599eba76f29b8c334eaaf3db2e87` and peeled commit
+  `3c98503c5f14efe7bdd783528ba7f621f12d8081`. No release date or local
+  checkout availability is inferred from those refs.
+- Updated the current reference in AGENTS, skills, interoperability/functional/
+  Snark documentation and tracking. Historical 2.13.0 findings, vectors,
+  template provenance and earlier progress entries retain their original
+  attribution. NET-026 is in implementation: source delta review and migration
+  of comparison evidence to 2.14.0 remain pending.
+- `check-reference.sh` now expects the 2.14.0 tag and commit. The existing
+  vector checker retains its 2.13.0 pin and now accepts the dedicated
+  `I2P_JAVA_FIXTURE_REFERENCE` environment variable; `--reference` remains
+  the explicit historical corpus option. CMake separates current
+  `I2PD_INTEROP_REFERENCE` from `I2PD_INTEROP_FIXTURE_REFERENCE`.
+- Prepared the existing manual interop CI job to check two external read-only
+  checkouts: current target identity and historical fixture provenance. The
+  workflow remains manual-only; no fixture bytes, expectations or Java source
+  were rewritten. Prior client/torrent implementation changes were preserved.
+- Local verification: remote ref inspection, source/diff review and
+  `git diff --check` only. No compiler, build, Java run, test, project validator,
+  workflow dispatch, commit or push. Reference-checker/CI changes are
+  implemented by static analysis and pending CI tests; no 2.14.0 parity or
+  interoperability validation is claimed.

@@ -184,3 +184,32 @@ Static checks performed in the working tree: `git diff --check`,
 `build-system-static`, documentation-link validation, workflow linting
 (yamllint/actionlint/zizmor) and the static interoperability-fixture validator.
 No dynamic result is attributed to the current uncommitted tree.
+
+## 2026-10-21 client hardening continuation
+
+Implemented by static analysis; pending CI compilation and pending CI tests:
+
+- Address-book datagram replies previously consumed a nonce without checking
+  the authenticated sender. `AddressLookupRequests`, used by the actual
+  lookup path, now binds that nonce to the expected resolver and normalized
+  name. Wrong senders leave the legitimate request intact. Replies must use
+  resolver/response ports 53/54, and nonce generation fails closed on RNG
+  failure. The registry caps outstanding entries at 256, expires them after
+  120 monotonic seconds, rejects duplicates/collisions and clears at shutdown.
+  `test-addressbook-case` prepares identity, replay, collision, normalization,
+  capacity and expiry cases against this production registry. Authentication
+  remains the existing Datagram1/Datagram2 signature-verification boundary.
+- I2PTunnel HTTP header state is extracted into `I2PTunnelHTTPHeader` and
+  used directly by the socket connections. Request and response state and
+  output are independent; incomplete lines and Connection/Upgrade state
+  survive fragment boundaries. Socket writes borrow stable parser-owned
+  output, while stream sends retain their existing synchronous copy contract.
+  Responses gain the same bounded incremental processing as requests.
+  `test-i2ptunnel-http` prepares split-input, binary-body and bounds cases.
+
+The manual Linux workflow selects these regressions explicitly in addition to
+the complete CTest suite; they carry security/memory labels. Manual sanitizer,
+OpenBSD/LibreSSL, Windows and Android native compilation and controlled peer/
+socket tests remain necessary. No compiler, test, project validator or workflow
+was executed for this continuation. These changes do not close global
+privilege separation, address-book subscription lifecycle or live Java parity.
