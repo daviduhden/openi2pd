@@ -83,6 +83,7 @@ set(I2PD_TESTS
   test-http-res
   test-http-url
   test-http-url_decode
+  test-i2ptunnel-http
   test-base-64
   test-gost
   test-gost-sig
@@ -211,8 +212,11 @@ foreach(test IN LISTS I2PD_TESTS)
   if(test MATCHES "^test-tui")
     set_property(TEST ${test} APPEND PROPERTY LABELS tui)
   endif()
-  if(test STREQUAL "test-routercontext-port-range")
+  if(test STREQUAL "test-routercontext-port-range" OR test STREQUAL "test-i2ptunnel-http" OR test STREQUAL "test-addressbook-case")
     set_property(TEST ${test} APPEND PROPERTY LABELS security)
+  endif()
+  if(test STREQUAL "test-i2ptunnel-http" OR test STREQUAL "test-addressbook-case")
+    set_property(TEST ${test} APPEND PROPERTY LABELS memory)
   endif()
   if(test MATCHES "crypto|blinding|su3|reseed|gost|signature|ecies|protocol-bounds|routerinfo|ssu2|ntcp2|netdb|leaseset|torrents-security|torrents-verify-parity|i2cp-routing-session|sam-control|race|concurrency|sandbox|policy|imsg")
     set_property(TEST ${test} APPEND PROPERTY LABELS security)
@@ -220,7 +224,7 @@ foreach(test IN LISTS I2PD_TESTS)
   if(test MATCHES "bounds|audit|hardening|security|verify-parity|race|concurrency|lifecycle|sandbox|policy")
     set_property(TEST ${test} APPEND PROPERTY LABELS memory)
   endif()
-  if(test MATCHES "^test-(http|base-64|gost|aead|blinding|elligator|eddsa|siphash|aes|ntcp2|ssu2|protocol|netdb|leaseset|routerinfo|routercontext|kad|addressbook|datagram|streaming|timestamp|ntp|i2cp|sam|clientcontext|log|tunnel)")
+  if(test MATCHES "^test-(http|base-64|gost|aead|blinding|elligator|eddsa|siphash|aes|ntcp2|ssu2|protocol|netdb|leaseset|routerinfo|routercontext|kad|addressbook|datagram|streaming|timestamp|ntp|i2cp|i2ptunnel|sam|clientcontext|log|tunnel)")
     set_property(TEST ${test} APPEND PROPERTY LABELS i2p)
   endif()
   if(test MATCHES "leaseset|routerinfo-java213|torrents-(engine-interop|dht-interop|comments|magnet)")

@@ -402,86 +402,26 @@ namespace client
 
 	void I2PClientTunnelConnectionHTTP::Write (const uint8_t * buf, size_t len)
 	{
-		if (m_HeaderSent)
-			I2PTunnelConnection::Write (buf, len);
-		else
+		if (m_RequestHeader.State () == I2PTunnelHTTPHeader::Result::Complete)
 		{
-			m_InHeader.clear ();
-			m_InHeader.write ((const char *)buf, len);
-			std::string line;
-			bool endOfHeader = false;
-			while (!endOfHeader)
+			I2PTunnelConnection::Write (buf, len);
+			return;
+		}
+		switch (m_RequestHeader.Feed ({reinterpret_cast<const char *> (buf), len}))
+		{
+			case I2PTunnelHTTPHeader::Result::Complete:
 			{
-				std::getline (m_InHeader, line);
-				if (!m_InHeader.fail () && !m_InHeader.eof ())
-				{
-					m_NumHeaders++;
-					if (m_NumHeaders > I2P_TUNNEL_MAX_NUM_HTTP_HEADERS)
-					{
-						LogPrint (
-							eLogError, "I2PTunnel: HTTP headers number exceeds max ", I2P_TUNNEL_MAX_NUM_HTTP_HEADERS);
-						Terminate ();
-						return;
-					}
-					if (line == "\r")
-						endOfHeader = true;
-					else
-					{
-						if (!m_ConnectionSent && line.starts_with ("Connection"))
-						{
-							/* close connection, if not Connection: (U|u)pgrade (for websocket) */
-							auto x = line.find ("pgrade");
-							if (x != std::string::npos && x && std::tolower (line[x - 1]) == 'u')
-								m_OutHeader << line << "\r\n";
-							else
-								m_OutHeader << "Connection: close\r\n";
-
-							m_ConnectionSent = true;
-						}
-						else if (!m_ProxyConnectionSent && line.starts_with ("Proxy-Connection"))
-						{
-							m_OutHeader << "Proxy-Connection: close\r\n";
-							m_ProxyConnectionSent = true;
-						}
-						else
-							m_OutHeader << line << "\n";
-					}
-				}
-				else
-				{
-					if (line.length () > I2P_TUNNEL_HTTP_MAX_HEADER_SIZE)
-					{
-						LogPrint (eLogError, "I2PTunnel: HTTP header line exceeds max size ",
-							I2P_TUNNEL_HTTP_MAX_HEADER_SIZE);
-						Terminate ();
-						return;
-					}
-					// insert incomplete line back, discarding the already parsed part
-					m_InHeader.clear ();
-					m_InHeader.str ("");
-					m_InHeader << line;
-					break;
-				}
+				const auto & output = m_RequestHeader.Output ();
+				// The parser owns this output until connection destruction. It is
+				// never mutated after completion, including by response parsing.
+				I2PTunnelConnection::Write (reinterpret_cast<const uint8_t *> (output.data ()), output.size ());
+				break;
 			}
-
-			if (endOfHeader)
-			{
-				if (!m_ConnectionSent) m_OutHeader << "Connection: close\r\n";
-				if (!m_ProxyConnectionSent) m_OutHeader << "Proxy-Connection: close\r\n";
-				m_OutHeader << "\r\n"; // end of header
-				m_OutHeader << m_InHeader.view ().substr (m_InHeader.tellg ()); // data right after header
-				m_InHeader.str ("");
-				m_HeaderSent = true;
-				I2PTunnelConnection::Write ((const uint8_t *)m_OutHeader.view ().data (), m_OutHeader.view ().size ());
-			}
-			else if (m_OutHeader.view ().size () < I2P_TUNNEL_HTTP_MAX_HEADER_SIZE
-				&& m_InHeader.view ().size () < I2P_TUNNEL_HTTP_MAX_HEADER_SIZE)
-				StreamReceive (); // read more header
-			else
-			{
-				LogPrint (eLogError, "I2PTunnel: HTTP header exceeds max size ", I2P_TUNNEL_HTTP_MAX_HEADER_SIZE);
+			case I2PTunnelHTTPHeader::Result::Incomplete: StreamReceive (); break;
+			case I2PTunnelHTTPHeader::Result::Rejected:
+				LogPrint (eLogError, "I2PTunnel: HTTP request header exceeds bounds");
 				Terminate ();
-			}
+				break;
 		}
 	}
 
@@ -489,169 +429,58 @@ namespace client
 		std::shared_ptr<i2p::stream::Stream> stream, const boost::asio::ip::tcp::endpoint & target,
 		const std::string & host, const std::string & XI2P, std::shared_ptr<boost::asio::ssl::context> sslCtx)
 		: I2PTunnelConnection (owner, stream, target, sslCtx)
-		, m_Host (host)
-		, m_XI2P (XI2P)
-		, m_HeaderSent (false)
-		, m_ResponseHeaderSent (false)
-		, m_NumHeaders (0)
+		, m_RequestHeader (I2PTunnelHTTPHeader::Mode::ServerRequest, host, XI2P)
+		, m_ResponseHeader (I2PTunnelHTTPHeader::Mode::ServerResponse)
 	{
 		if (sslCtx) SSL_set_tlsext_host_name (GetSSL ()->native_handle (), host.c_str ());
 	}
 
 	void I2PServerTunnelConnectionHTTP::Write (const uint8_t * buf, size_t len)
 	{
-		if (m_HeaderSent)
-			I2PTunnelConnection::Write (buf, len);
-		else
+		if (m_RequestHeader.State () == I2PTunnelHTTPHeader::Result::Complete)
 		{
-			m_InHeader.clear ();
-			m_InHeader.write ((const char *)buf, len);
-			std::string line;
-			bool endOfHeader = false, connection = false;
-			while (!endOfHeader)
+			I2PTunnelConnection::Write (buf, len);
+			return;
+		}
+		switch (m_RequestHeader.Feed ({reinterpret_cast<const char *> (buf), len}))
+		{
+			case I2PTunnelHTTPHeader::Result::Complete:
 			{
-				std::getline (m_InHeader, line);
-				if (m_InHeader.fail ()) break;
-				if (!m_InHeader.eof ())
-				{
-					if (line == "\r")
-						endOfHeader = true;
-					else
-					{
-						m_NumHeaders++;
-						if (m_NumHeaders > I2P_TUNNEL_MAX_NUM_HTTP_HEADERS)
-						{
-							LogPrint (eLogError, "I2PTunnel: HTTP headers number exceeds max ",
-								I2P_TUNNEL_MAX_NUM_HTTP_HEADERS);
-							Terminate ();
-							return;
-						}
-						// strip up some headers
-						static constexpr std::array<std::string_view, 2> excluded // list of excluded headers
-							{ "Keep-Alive:", "X-I2P" };
-						bool matched = false;
-						for (const auto & it : excluded)
-							if (boost::iequals (line.substr (0, it.length ()), it))
-							{
-								matched = true;
-								break;
-							}
-						if (matched) continue;
-
-						// replace some headers
-						if (!m_Host.empty () && boost::iequals (line.substr (0, 5), "Host:"))
-							m_OutHeader << "Host: " << m_Host << "\r\n"; // override host
-						else if (boost::iequals (line.substr (0, 11), "Connection:"))
-						{
-							auto x = line.find ("pgrade");
-							if (x != std::string::npos && x && std::tolower (line[x - 1]) == 'u') // upgrade or Upgrade
-								m_OutHeader << line << "\n";
-							else
-								m_OutHeader << "Connection: close\r\n";
-							connection = true;
-						}
-						else // forward as is
-							m_OutHeader << line << "\n";
-					}
-				}
-				else
-				{
-					if (line.length () > I2P_TUNNEL_HTTP_MAX_HEADER_SIZE)
-					{
-						LogPrint (eLogError, "I2PTunnel: HTTP header line exceeds max size ",
-							I2P_TUNNEL_HTTP_MAX_HEADER_SIZE);
-						Terminate ();
-						return;
-					}
-					// insert incomplete line back, discarding the already parsed part
-					m_InHeader.clear ();
-					m_InHeader.str ("");
-					m_InHeader << line;
-					break;
-				}
+				const auto & output = m_RequestHeader.Output ();
+				// The parser owns this output until connection destruction. It is
+				// never mutated after completion, including by response parsing.
+				I2PTunnelConnection::Write (reinterpret_cast<const uint8_t *> (output.data ()), output.size ());
+				break;
 			}
-
-			if (endOfHeader)
-			{
-				// add Connection if not presented
-				if (!connection) m_OutHeader << "Connection: close\r\n";
-				// add X-I2P fields
-				m_OutHeader << m_XI2P;
-				// end of header
-				m_OutHeader << "\r\n";
-
-				m_OutHeader << m_InHeader.view ().substr (m_InHeader.tellg ()); // data right after header
-				m_InHeader.str ("");
-				m_HeaderSent = true;
-				I2PTunnelConnection::Write ((const uint8_t *)m_OutHeader.view ().data (), m_OutHeader.view ().size ());
-			}
-			else if (m_OutHeader.view ().size () < I2P_TUNNEL_HTTP_MAX_HEADER_SIZE
-				&& m_InHeader.view ().size () < I2P_TUNNEL_HTTP_MAX_HEADER_SIZE)
-				StreamReceive (); // read more header
-			else
-			{
-				LogPrint (eLogError, "I2PTunnel: HTTP header exceeds max size ", I2P_TUNNEL_HTTP_MAX_HEADER_SIZE);
+			case I2PTunnelHTTPHeader::Result::Incomplete: StreamReceive (); break;
+			case I2PTunnelHTTPHeader::Result::Rejected:
+				LogPrint (eLogError, "I2PTunnel: HTTP request header exceeds bounds");
 				Terminate ();
-			}
+				break;
 		}
 	}
 
 	void I2PServerTunnelConnectionHTTP::WriteToStream (const uint8_t * buf, size_t len)
 	{
-		if (m_ResponseHeaderSent)
-			I2PTunnelConnection::WriteToStream (buf, len);
-		else
+		if (m_ResponseHeader.State () == I2PTunnelHTTPHeader::Result::Complete)
 		{
-			m_InHeader.clear ();
-			if (m_InHeader.view ().empty ()) m_OutHeader.str (""); // start of response
-			m_InHeader.write ((const char *)buf, len);
-			std::string line;
-			bool endOfHeader = false;
-			while (!endOfHeader)
+			I2PTunnelConnection::WriteToStream (buf, len);
+			return;
+		}
+		switch (m_ResponseHeader.Feed ({reinterpret_cast<const char *> (buf), len}))
+		{
+			case I2PTunnelHTTPHeader::Result::Complete:
 			{
-				std::getline (m_InHeader, line);
-				if (m_InHeader.fail ()) break;
-				if (!m_InHeader.eof ())
-				{
-					if (line == "\r")
-						endOfHeader = true;
-					else
-					{
-						static constexpr std::array<std::string_view, 5> excluded // list of excluded headers
-							{ "Server:", "Date:", "X-Runtime:", "X-Powered-By:", "Proxy" };
-						bool matched = false;
-						for (const auto & it : excluded)
-							if (line.starts_with (it))
-							{
-								matched = true;
-								break;
-							}
-						if (!matched) m_OutHeader << line << "\n";
-					}
-				}
-				else
-				{
-					// insert incomplete line back, discarding the already parsed part
-					m_InHeader.clear ();
-					m_InHeader.str ("");
-					m_InHeader << line;
-					break;
-				}
-			}
-
-			if (endOfHeader)
-			{
-				m_OutHeader << "\r\n"; // end of header
-				m_OutHeader << m_InHeader.view ().substr (m_InHeader.tellg ()); // data right after header
-				m_InHeader.str ("");
-				m_ResponseHeaderSent = true;
-				// AsyncSend copies the data before m_OutHeader is cleared
+				const auto & output = m_ResponseHeader.Output ();
 				I2PTunnelConnection::WriteToStream (
-					(const uint8_t *)m_OutHeader.view ().data (), m_OutHeader.view ().size ());
-				m_OutHeader.str ("");
+					reinterpret_cast<const uint8_t *> (output.data ()), output.size ());
+				break;
 			}
-			else
-				Receive ();
+			case I2PTunnelHTTPHeader::Result::Incomplete: Receive (); break;
+			case I2PTunnelHTTPHeader::Result::Rejected:
+				LogPrint (eLogError, "I2PTunnel: HTTP response header exceeds bounds");
+				Terminate ();
+				break;
 		}
 	}
 
