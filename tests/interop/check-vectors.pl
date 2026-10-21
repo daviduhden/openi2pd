@@ -16,12 +16,14 @@ use File::Find qw(find);
 use File::Spec;
 use File::Basename qw(dirname);
 
+# These pins describe the existing corpus provenance, not the current Java
+# compatibility target (2.14.0). Do not relabel unchecked fixtures.
 my $TAG = 'i2p-2.13.0';
 my $COMMIT = '9134f808337b401e8e53c73734c81fab04280c9d';
 my $SCRIPT_DIR = dirname(File::Spec->rel2abs($0));
 
 my ($reference, $binary, $vectors, $case, $list, $require_reference, $help);
-$reference = $ENV{I2P_JAVA_REFERENCE} if defined $ENV{I2P_JAVA_REFERENCE};
+$reference = $ENV{I2P_JAVA_FIXTURE_REFERENCE} if defined $ENV{I2P_JAVA_FIXTURE_REFERENCE};
 
 GetOptions(
     'reference=s'         => \$reference,
@@ -44,8 +46,8 @@ sub usage {
     print STDERR <<"USAGE";
 usage: $name [options]
 
-  --reference DIR        validate the pinned I2P Java checkout (default:
-                         \$I2P_JAVA_REFERENCE, if set)
+  --reference DIR        validate historical I2P Java 2.13.0 corpus provenance
+                         (default: \$I2P_JAVA_FIXTURE_REFERENCE, if set)
   --require-reference    fail when no reference checkout is available
   --binary PATH          run a C++ vector harness: PATH --case ID INPUT
   --vectors DIR          fixture root (default: tests/interop/vectors)
@@ -56,6 +58,8 @@ usage: $name [options]
 Without --binary the script only validates checked-in fixtures (hashes,
 field sizes, I2NP checksums, I2CP length framing) and provenance line
 references.  It prints "not executed" for every differential case.
+The current 2.14.0 target checkout belongs to check-reference.sh instead;
+these fixtures have not been re-derived or validated against that target.
 USAGE
     exit $code;
 }
@@ -253,7 +257,7 @@ if (defined $reference && length $reference) {
     $ref_state = validate_reference();
     exit 2 if $ref_state == 2;
 } elsif ($require_reference) {
-    print STDERR "no reference checkout: set I2P_JAVA_REFERENCE or pass --reference\n";
+    print STDERR "no fixture reference checkout: set I2P_JAVA_FIXTURE_REFERENCE or pass --reference\n";
     exit 2;
 } else {
     print "reference: not supplied; skipping tag/commit and provenance line checks\n";

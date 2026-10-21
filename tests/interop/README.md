@@ -22,28 +22,51 @@ validator is registered as the static CTest test `interop-static`; the pinned
 Java checkout and the differential runner remain opt-in because they require
 an external, read-only reference tree. No differential test has been executed.
 
-## Pinned reference
+All validation and build/run commands below are manual CI runbooks. The
+repository's static-only local policy prohibits executing these validators,
+building Java/C++ or running peers locally.
+
+## Current target and historical fixture provenance
 
 | Item | Value |
 |---|---|
 | Repository | `https://github.com/i2p/i2p.i2p` (official mirror) |
-| Stable tag | `i2p-2.13.0` |
-| Commit | `9134f808337b401e8e53c73734c81fab04280c9d` |
-| Release date | 2026-07-24 |
-| Latest stable checked | 2026-10-20; 2.13.0 remains the latest stable tag; 2.14.0 was a late-October target and was not released |
+| Current target tag | `i2p-2.14.0` |
+| Target commit | `3c98503c5f14efe7bdd783528ba7f621f12d8081` |
+| Annotated tag object | `9db233ed7241599eba76f29b8c334eaaf3db2e87` |
+| Target checked | 2026-10-21; official remote tag and peeled commit verified; source/parity review and CI remain pending |
+| Existing corpus tag | `i2p-2.13.0` |
+| Corpus commit | `9134f808337b401e8e53c73734c81fab04280c9d` |
 
 Keep the clone outside this repository and make it read-only:
 
 ```sh
-git clone --depth 1 --branch i2p-2.13.0 \
-  https://github.com/i2p/i2p.i2p.git /var/tmp/i2p-java-2.13.0
-chmod -R a-w /var/tmp/i2p-java-2.13.0
-I2P_JAVA_REFERENCE=/var/tmp/i2p-java-2.13.0 \
+git clone --depth 1 --branch i2p-2.14.0 \
+  https://github.com/i2p/i2p.i2p.git /var/tmp/i2p-java-2.14.0
+chmod -R a-w /var/tmp/i2p-java-2.14.0
+I2P_JAVA_REFERENCE=/var/tmp/i2p-java-2.14.0 \
   tests/interop/check-reference.sh
 ```
 
 `check-reference.sh` verifies the tag, commit, cleanliness and read-only state.
 It never modifies the reference tree.
+
+The checked-in JSON/hex fixtures and their Java line citations retain their
+original 2.13.0 provenance. `check-vectors.pl --reference` checks that older
+source, with `I2P_JAVA_FIXTURE_REFERENCE` as its default environment variable.
+It deliberately does not inherit `I2P_JAVA_REFERENCE`, which names the current
+2.14.0 target. Updating the target neither re-derives fixtures nor establishes
+2.14.0 compatibility. Keep the historical checkout separate:
+
+```sh
+git clone --depth 1 --branch i2p-2.13.0 \
+  https://github.com/i2p/i2p.i2p.git /var/tmp/i2p-java-2.13.0
+chmod -R a-w /var/tmp/i2p-java-2.13.0
+```
+
+CMake uses `I2PD_INTEROP_REFERENCE` for the 2.14.0 target and
+`I2PD_INTEROP_FIXTURE_REFERENCE` for the historical 2.13.0 corpus. Either
+optional checkout may be supplied independently.
 
 ## Layout
 
@@ -61,7 +84,7 @@ It never modifies the reference tree.
 
 ```sh
 # Validate the reference tag, commit, cleanliness and read-only state.
-I2P_JAVA_REFERENCE=/var/tmp/i2p-java-2.13.0 \
+I2P_JAVA_REFERENCE=/var/tmp/i2p-java-2.14.0 \
   tests/interop/check-reference.sh
 
 # Validate every checked-in fixture: SHA-256, I2NP size/checksum and I2CP
@@ -69,9 +92,9 @@ I2P_JAVA_REFERENCE=/var/tmp/i2p-java-2.13.0 \
 # not supplied.
 perl tests/interop/check-vectors.pl
 
-# With the pinned reference, also check tag/commit/cleanliness and Java
+# With the historical corpus reference, also check tag/commit/cleanliness and Java
 # file/line/substring provenance.
-I2P_JAVA_REFERENCE=/var/tmp/i2p-java-2.13.0 \
+I2P_JAVA_FIXTURE_REFERENCE=/var/tmp/i2p-java-2.13.0 \
   perl tests/interop/check-vectors.pl --require-reference
 
 # List cases without reading inputs.
@@ -118,8 +141,9 @@ test can be added safely. I2NP-only cases can already be implemented with
 `i2p::GetI2NPMessageLength()` and the `I2NPMessage` accessors.
 
 The static fixtures run in CTest as `interop-static` and in the manual Linux
-CI job. The `interop` CI job clones the pinned Java tag into a temporary
-read-only directory and runs `check-reference.sh` plus the provenance checks.
+CI job. The `interop` CI job clones the current 2.14.0 target and historical
+2.13.0 corpus source into separate temporary read-only directories, runs
+`check-reference.sh` for the target and checks corpus provenance against 2.13.0.
 Neither path publishes, downloads into the repository, or contacts a live I2P
 peer.
 
@@ -152,15 +176,16 @@ run before any row is promoted from static to validated.
 
 ## Runbook
 
-Every command below in the **dynamic** sections is **NOT EXECUTED** in this
-repository. Run them only in a disposable, network-isolated environment.
+Commands below are runbooks for manually dispatched CI only. No command was
+executed for the 2.14.0 target update. Dynamic sections require a disposable,
+network-isolated environment.
 
-### 1. Static reference and fixture checks (safe)
+### 1. Reference and fixture checks — manual CI
 
 ```sh
-I2P_JAVA_REFERENCE=/var/tmp/i2p-java-2.13.0 \
+I2P_JAVA_REFERENCE=/var/tmp/i2p-java-2.14.0 \
   tests/interop/check-reference.sh
-I2P_JAVA_REFERENCE=/var/tmp/i2p-java-2.13.0 \
+I2P_JAVA_FIXTURE_REFERENCE=/var/tmp/i2p-java-2.13.0 \
   tests/interop/check-vectors.pl
 ```
 
@@ -278,8 +303,8 @@ using the reference's built classpath and a disposable config:
 ```sh
 mkdir -p /var/tmp/i2p-java-interop
 printf 'router.networkID=42\n' >> /var/tmp/i2p-java-interop/router.config
-java -cp '/var/tmp/i2p-java-2.13.0/lib/*' \
-  -Di2p.dir.base=/var/tmp/i2p-java-2.13.0 \
+java -cp '/var/tmp/i2p-java-2.14.0/lib/*' \
+  -Di2p.dir.base=/var/tmp/i2p-java-2.14.0 \
   -Drouter.configLocation=/var/tmp/i2p-java-interop/router.config \
   net.i2p.router.RouterLaunch
 ```

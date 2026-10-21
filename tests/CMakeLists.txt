@@ -308,10 +308,10 @@ if(UNIX)
   endif()
 endif()
 
-# Optional pinned-Java provenance check. The reference is deliberately kept
-# outside the source tree; set -DI2PD_INTEROP_REFERENCE=/path/to/java-checkout
-# at configure time to register it.
-set(I2PD_INTEROP_REFERENCE "" CACHE PATH "Read-only pinned I2P Java checkout")
+# Current comparison target and historical fixture provenance are separate
+# read-only external checkouts. Do not apply old source-line citations to a
+# newer release merely by changing its reference pin.
+set(I2PD_INTEROP_REFERENCE "" CACHE PATH "Read-only I2P Java 2.14.0 comparison checkout")
 if(I2PD_INTEROP_REFERENCE)
   add_test(NAME interop-reference
     COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/interop/check-reference.sh")
@@ -321,10 +321,14 @@ if(I2PD_INTEROP_REFERENCE)
     LABELS "interop;reference"
     TIMEOUT 60)
 
+endif()
+
+set(I2PD_INTEROP_FIXTURE_REFERENCE "" CACHE PATH "Read-only I2P Java 2.13.0 fixture provenance checkout")
+if(I2PD_INTEROP_FIXTURE_REFERENCE)
   if(PERL_EXECUTABLE)
     add_test(NAME interop-reference-vectors
       COMMAND "${PERL_EXECUTABLE}" "${CMAKE_CURRENT_SOURCE_DIR}/interop/check-vectors.pl"
-        --reference "${I2PD_INTEROP_REFERENCE}" --require-reference)
+        --reference "${I2PD_INTEROP_FIXTURE_REFERENCE}" --require-reference)
     set_tests_properties(interop-reference-vectors PROPERTIES
       WORKING_DIRECTORY "${PROJECT_ROOT}"
       LABELS "interop;reference"

@@ -20,13 +20,18 @@ the broader user-visible and administrative feature set.
 | Item | Value |
 |---|---|
 | Repository | <https://github.com/i2p/i2p.i2p> |
-| Stable tag | `i2p-2.13.0` |
-| Commit | `9134f808337b401e8e53c73734c81fab04280c9d` |
-| Release date | 2026-07-24 (tag commit 2026-07-20) |
-| Recheck date | 2026-10-20 |
-| Newer stable | 2.14.0 was still a late-October 2026 target, not a released stable tag |
+| Current target tag | `i2p-2.14.0` |
+| Target commit (peeled tag) | `3c98503c5f14efe7bdd783528ba7f621f12d8081` |
+| Tag object | `9db233ed7241599eba76f29b8c334eaaf3db2e87` |
+| Pin verification | Official remote tag refs inspected with `git ls-remote`; source re-audit pending |
+| Historical audit baseline | `i2p-2.13.0`, commit `9134f808337b401e8e53c73734c81fab04280c9d` |
 | Reference use | Read-only external clone; no Java source is vendored, built or shipped |
-| C++ tree | `bce8771b` plus the current uncommitted parity increment |
+| Historical audited C++ tree | `bce8771b` plus the parity increment recorded at that audit |
+
+The matrices and findings below retain their historical Java 2.13.0 evidence.
+They have not been re-audited against 2.14.0. Earlier statements that 2.14.0
+was unreleased are superseded by the verified tag pin above; tag existence
+does not establish feature parity or dynamic interoperability.
 
 The Java reference is used to understand behavior and specification
 compliance, not as an architectural template. No Java code, JVM or Java

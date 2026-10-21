@@ -10,6 +10,12 @@ Documents regression and interoperability checks.
 
 # Checked-in deterministic vectors
 
+This corpus retains its I2P Java 2.13.0 provenance at commit
+`9134f808337b401e8e53c73734c81fab04280c9d`. The current compatibility target
+is 2.14.0, checked separately; these bytes and Java line citations have not
+been re-derived for it. `--reference` and `I2P_JAVA_FIXTURE_REFERENCE` select
+the historical corpus checkout, not the current target.
+
 Every `*.case.json` describes one input and the normalized parse that a C++
 harness must produce. Inputs are either:
 
@@ -155,7 +161,7 @@ does not exist yet.
 4. Run:
 
    ```sh
-   I2P_JAVA_REFERENCE=/var/tmp/i2p-java-2.13.0 \
+   I2P_JAVA_FIXTURE_REFERENCE=/var/tmp/i2p-java-2.13.0 \
      tests/interop/check-vectors.pl
    ```
 

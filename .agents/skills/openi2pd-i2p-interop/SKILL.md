@@ -1,6 +1,6 @@
 ---
 name: openi2pd-i2p-interop
-description: Use when checking or changing I2P wire behavior against I2P Java 2.13.0, including NTCP2, SSU2, I2NP, netDb, RouterInfo, LeaseSet, SAM, I2CP, Streaming and Datagram parity.
+description: Use when checking or changing I2P wire behavior against the pinned I2P Java 2.14.0 target, including NTCP2, SSU2, I2NP, netDb, RouterInfo, LeaseSet, SAM, I2CP, Streaming and Datagram parity.
 ---
 <!--
 See the LICENSE file at the top of the project tree for copyright
@@ -16,9 +16,14 @@ signature scope, replay rules or client behavior that must match I2P Java.
 Combine it with the transport/client implementation skill and with
 `openi2pd-cryptography` when keys, signatures or ratchets are involved.
 
-Read [`../../../AGENTS.md`](../../../AGENTS.md) first. The current reference is
-stable I2P Java `i2p-2.13.0`, commit
-`9134f808337b401e8e53c73734c81fab04280c9d`; it is external and read-only.
+Read [`../../../AGENTS.md`](../../../AGENTS.md) first. The current comparison
+target is
+I2P Java `i2p-2.14.0`, peeled commit
+`3c98503c5f14efe7bdd783528ba7f621f12d8081` (tag object
+`9db233ed7241599eba76f29b8c334eaaf3db2e87`), verified from the official
+remote tag refs. It is external and read-only. Existing audit matrices use
+historical 2.13.0 evidence and are pending a 2.14.0 source re-audit; do not
+relabel old findings, fixtures or runs as 2.14.0 evidence.
 
 ## Inspect first
 

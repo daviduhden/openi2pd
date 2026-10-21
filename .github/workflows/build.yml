@@ -175,21 +175,32 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends perl git
-      - name: Clone pinned I2P Java reference
+      - name: Clone current I2P Java comparison reference
         run: |
           git -c init.defaultBranch=main init --quiet "$RUNNER_TEMP/i2p-java"
           git -C "$RUNNER_TEMP/i2p-java" remote add origin https://github.com/i2p/i2p.i2p.git
           git -C "$RUNNER_TEMP/i2p-java" fetch --depth 1 origin \
-            refs/tags/i2p-2.13.0:refs/tags/i2p-2.13.0
-          git -C "$RUNNER_TEMP/i2p-java" checkout --detach refs/tags/i2p-2.13.0
+            refs/tags/i2p-2.14.0:refs/tags/i2p-2.14.0
+          git -C "$RUNNER_TEMP/i2p-java" checkout --detach refs/tags/i2p-2.14.0
           chmod -R a-w "$RUNNER_TEMP/i2p-java"
-      - name: Validate reference and interoperability fixtures
+      - name: Validate current comparison reference
         env:
           I2P_JAVA_REFERENCE: ${{ runner.temp }}/i2p-java
         run: |
           tests/interop/check-reference.sh
+      - name: Clone historical fixture provenance reference
+        run: |
+          git -c init.defaultBranch=main init --quiet "$RUNNER_TEMP/i2p-java-fixtures"
+          git -C "$RUNNER_TEMP/i2p-java-fixtures" remote add origin https://github.com/i2p/i2p.i2p.git
+          git -C "$RUNNER_TEMP/i2p-java-fixtures" fetch --depth 1 origin \
+            refs/tags/i2p-2.13.0:refs/tags/i2p-2.13.0
+          git -C "$RUNNER_TEMP/i2p-java-fixtures" checkout --detach refs/tags/i2p-2.13.0
+          chmod -R a-w "$RUNNER_TEMP/i2p-java-fixtures"
+      - name: Validate historical interoperability fixtures
+        env:
+          I2P_JAVA_FIXTURE_REFERENCE: ${{ runner.temp }}/i2p-java-fixtures
+        run: |
           perl tests/interop/check-vectors.pl --require-reference
-          perl tests/interop/check-vectors.pl --reference "$I2P_JAVA_REFERENCE" --require-reference
 
   sanitizers:
     name: Sanitizers (${{ matrix.name }})

@@ -20,7 +20,15 @@ validates this revision.
 
 ## Reference and provenance
 
-The stable reference is official I2P Java `i2p-2.13.0`, commit
+The current comparison target is official I2P Java `i2p-2.14.0`, peeled
+commit `3c98503c5f14efe7bdd783528ba7f621f12d8081` (tag object
+`9db233ed7241599eba76f29b8c334eaaf3db2e87`), verified from the official
+remote tag refs with `git ls-remote`. Its Snark source area is
+[`apps/i2psnark/java/src/org/klomp/snark`](https://github.com/i2p/i2p.i2p/tree/i2p-2.14.0/apps/i2psnark/java/src/org/klomp/snark).
+The matrices and source findings below have not been re-audited against
+2.14.0; no 2.14.0 compatibility claim follows from the tag pin.
+
+The historical source audit used I2P Java `i2p-2.13.0`, commit
 `9134f808337b401e8e53c73734c81fab04280c9d`, under
 [`apps/i2psnark/java/src/org/klomp/snark`](https://github.com/i2p/i2p.i2p/tree/i2p-2.13.0/apps/i2psnark/java/src/org/klomp/snark).
 `/tmp/i2pjava` initially contained transport/SAM excerpts, not a complete Snark
@@ -28,15 +36,16 @@ checkout. Missing reference files were fetched explicitly from that tag for
 read-only source inspection. They are not distributed with openi2pd.
 
 On 2026-10-19, master HEAD was `8416c8771d9c62c24ac753706cd1746ad24d7ff3`
-(197 commits ahead of the pinned stable reference). The comparison API also
+(197 commits ahead of the historical 2.13.0 reference). The comparison API also
 shows new experimental `v2/` files; their presence is not evidence of complete
 BEP 52 support. `master` versions of `dht/KRPC.java`, `dht/NodeInfo.java` and
 `MetaInfo.java` were also inspected. This comparison covers these files only;
 it is not a full review of every post-release Snark change. NodeInfo's compact
 format is unchanged. KRPC changes include sorted outgoing dictionaries,
 set-based lookup bookkeeping and Datagram1 compression policy. C++ dictionary
-encoding already sorts keys. The inspected stable and master MetaInfo parsers
-both require v1 piece hashes; master still has BEP 52 implementation TODOs.
+encoding already sorts keys. The inspected 2.13.0 and historical master
+MetaInfo parsers both require v1 piece hashes; that master snapshot still has
+BEP 52 implementation TODOs.
 
 Directory `COPYING` points to the GPLv2 license. Individual `Comment.java`
 and `CommentSet.java` declare public domain; licensing must be checked per file.
@@ -80,7 +89,7 @@ to the repository. “Present” means source exists and still requires manual C
 | Wire surface | Reference / format | Native implementation | Compatibility boundary |
 |---|---|---|---|
 | BitTorrent v1 | BEP 3; `MetaInfo`, `PeerState` | 20-byte SHA-1 infohash and piece hashes | Supported target. Hash the original encoded info dictionary, preserve interoperable byte sequences. |
-| v2 and hybrids | BEP 52; stable/master `MetaInfo` pieces check | v1 parser/creator | Pure v2 is unsupported. A hybrid is eligible only through a valid v1 layout and v1 hash; no claim of SHA-256 Merkle validation or v2 exchange. Unknown dictionaries must not silently become v2 support. |
+| v2 and hybrids | BEP 52; historical 2.13.0/master `MetaInfo` pieces check | v1 parser/creator | Pure v2 is unsupported. A hybrid is eligible only through a valid v1 layout and v1 hash; no claim of SHA-256 Merkle validation or v2 exchange. Unknown dictionaries must not silently become v2 support. |
 | Extension handshake | BEP 10; `ExtensionHandler.getHandshake` | Native peer extension maps | Use negotiated remote message IDs, bounded dictionaries and per-torrent privacy restrictions. |
 | Magnet metadata | BEP 9; `MagnetState`, `ExtensionHandler.handleMetadata` | Native metadata chunk exchange | Verify assembled metadata against requested v1 infohash before applying paths or allocating pieces. |
 | I2P tracker replies | `TrackerClient` | tunnel HTTP/Datagram tracker handling | I2P destinations/hashes only, validate tracker URLs at every ingress; no public UDP DHT or DNS fallback. |
@@ -157,7 +166,9 @@ resume/crash recovery, comments, IPC authorization/limits, symlink/path attacks,
 JNI and Android SAF/service lifecycle. Extend fuzz targets for nested bencode,
 metadata extensions and DHT/comment packets; use ASan/UBSan/TSan where supported.
 
-Run controlled Java2.13.0/C++ exchanges with no public-network dependency:
+Re-audit Snark against the pinned 2.14.0 source, then run controlled
+Java 2.14.0/C++ exchanges with no public-network dependency. Historical
+2.13.0 fixtures retain their original provenance. Cover:
 trackerless metadata/download, DHT get/announce/retry, PEX-only discovery,
 private-torrent suppression, seed behavior, malformed messages and future
 comment fixtures. Native platforms require manual Linux/OpenBSD/Windows and

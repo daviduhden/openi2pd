@@ -10,9 +10,16 @@ Documents regression and interoperability checks.
 
 # Interoperability fixture matrix
 
-Pinned reference: I2P Java `i2p-2.13.0`, commit
+Historical corpus provenance: I2P Java `i2p-2.13.0`, commit
 `9134f808337b401e8e53c73734c81fab04280c9d`, at
-`$I2P_JAVA_REFERENCE` (read-only, outside this repository).
+`$I2P_JAVA_FIXTURE_REFERENCE` (read-only, outside this repository).
+
+The current compatibility target is I2P Java `i2p-2.14.0`, commit
+`3c98503c5f14efe7bdd783528ba7f621f12d8081`. The existing fixtures, templates
+and line citations below retain 2.13.0 provenance; they have not been
+re-derived or validated against 2.14.0. The reference checker and manual CI
+keep target and corpus checkouts separate. No fixture bytes or expected
+results were changed by the target update.
 
 This matrix lists every fixture needed to make the differential harness
 reproducible. It separates what is **checked in** from what the user must
@@ -30,8 +37,9 @@ Status vocabulary:
 | **Capture** | Must be produced by the user from the reference build or a controlled loopback run, then normalized to hex/JSON with provenance. Never invent these values. |
 | **Dynamic** | End-to-end scenario, not a file. Recorded in a run log, not in this repository. |
 
-**No dynamic test has been executed.** The only executed checks are the static
-fixture-integrity checks described in `README.md`.
+**No dynamic test has been executed.** Historical fixture-integrity evidence
+does not validate the current tree or the 2.14.0 target. All checks for this
+update remain pending manual CI.
 
 ## 1. NetDb data structures
 
@@ -142,7 +150,7 @@ router keys.
 
 ## 6b. Third-pass differential cases (2026-10-19)
 
-These cases capture the differences found in the latest Java 2.13.0 static
+These cases capture the differences found in the historical Java 2.13.0 static
 pass. Signature/AEAD cases require a Java-generated vector or a controlled
 loopback capture; none has been executed.
 

@@ -46,7 +46,7 @@ coordinator review. `openi2pd-build` owns CMake-side test registration;
 |---|---|---|
 | `openi2pd-cpp23` | C++23 refactors, RAII, spans, expected, owned lifetimes | `libi2pd/`, `libi2pd_client/` |
 | `openi2pd-memory-security` | Parser bounds, concurrency, lifetime and security audits | Protocol/crypto/client parsers |
-| `openi2pd-i2p-interop` | Java 2.13.0 wire and behavior parity | Transports, netDb, client protocols |
+| `openi2pd-i2p-interop` | Java 2.14.0 comparison target; historical 2.13.0 evidence | Transports, netDb, client protocols |
 | `openi2pd-cryptography` | Primitives, signatures, ratchets, PQ and reseed trust | Crypto/identity/reseed |
 | `openi2pd-privsep` | Supervisor/worker architecture and capability boundaries | `privsep/`, daemon wiring |
 | `openi2pd-openbsd` | pledge/unveil, LibreSSL, imsg and OpenBSD service paths | OpenBSD-specific code |

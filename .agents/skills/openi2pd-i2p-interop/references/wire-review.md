@@ -12,8 +12,14 @@ not a claim of compatibility.
 ## Reference pin
 
 - Product: I2P Java
-- Release: `i2p-2.13.0`
-- Commit: `9134f808337b401e8e53c73734c81fab04280c9d`
+- Current target: `i2p-2.14.0`
+- Target commit (peeled tag): `3c98503c5f14efe7bdd783528ba7f621f12d8081`
+- Tag object: `9db233ed7241599eba76f29b8c334eaaf3db2e87`
+- Verification: official remote tag refs inspected with `git ls-remote`.
+- Historical audit baseline: `i2p-2.13.0`, commit
+  `9134f808337b401e8e53c73734c81fab04280c9d`. Existing matrices and findings
+  have not been re-audited against 2.14.0; retain version-specific fixture and
+  validation provenance.
 - Location: external read-only checkout selected by the coordinator; never
   vendored into this repository or downloaded by a build.
 - Source of truth for open work: `docs/INTEROPERABILITY.md` and

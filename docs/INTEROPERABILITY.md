@@ -10,18 +10,26 @@ Documents project documentation.
 
 # I2P Java interoperability audit
 
-Reference implementation audited statically in this session:
+Current comparison target and historical audit provenance:
 
 | Item | Value |
 |---|---|
 | Repository | https://github.com/i2p/i2p.i2p |
-| Tag | `i2p-2.13.0` |
-| Commit | `9134f808337b401e8e53c73734c81fab04280c9d` |
-| Release date | 2026-07-24 (tag commit 2026-07-20) |
-| Version | 2.13.0 |
-| Local copy | Read-only external clone at `/tmp/i2p-java-2.13.0`; the reference is not bundled or built. |
-| Newer stable | Rechecked 2026-10-20: 2.13.0 remains the latest stable tag; 2.14.0 was a late-October target and had not been released |
+| Current target tag | `i2p-2.14.0` |
+| Target commit (peeled tag) | `3c98503c5f14efe7bdd783528ba7f621f12d8081` |
+| Tag object | `9db233ed7241599eba76f29b8c334eaaf3db2e87` |
+| Pin verification | Official remote tag refs inspected with `git ls-remote`; source re-audit pending |
+| Historical audited tag | `i2p-2.13.0` |
+| Historical audited commit | `9134f808337b401e8e53c73734c81fab04280c9d` |
+| Reference use | External read-only sources; not bundled or built |
 | Harness recheck | 2026-10-20: previous 26 cases re-reviewed statically; the new parity regressions are prepared; the pinned checkout and differential runner were not executed |
+
+The matrices, Java method references and findings below record historical
+2.13.0 source review unless a section explicitly states otherwise. None has
+been re-audited against 2.14.0. Historical claims that no newer stable tag
+existed are superseded by the verified 2.14.0 target above. Existing test
+names and historical validation records remain tied to their original
+revisions; they provide no 2.14.0 validation.
 
 The Java tree is **not** vendored and is not a build/runtime dependency of
 openi2pd. No Java code was modified.
@@ -314,9 +322,9 @@ row above is a claim of dynamic interoperability.
 These are static fixes; the corresponding dynamic/negative tests remain
 pending.
 
-## Third static pass — latest stable recheck 2026-10-19
+## Third static pass — historical 2.13.0 recheck 2026-10-19
 
-The latest official stable release is still `i2p-2.13.0` at commit
+The reference used for this historical pass was `i2p-2.13.0` at commit
 `9134f808337b401e8e53c73734c81fab04280c9d`; the audited C++ tree was compared
 against that tag and the normative specs. The following findings were not in
 the earlier matrix. **No dynamic test was executed.**
@@ -407,7 +415,7 @@ reintroduced.
 ## Confirmed findings and fixes (hardening pass)
 
 These follow-up findings come from code inspection and the I2P specifications.
-The Java 2.13.0 reference is now available for the current audit; historical
+The Java 2.13.0 reference was used for this historical audit; the
 findings below remain **Fixed (validation pending)** until the listed
 differential test is executed.
 
@@ -652,7 +660,9 @@ are registered in `tests/CMakeLists.txt` (`test-protocol-bounds` in
 
 ## Open items requiring dynamic evidence
 
-1. NTCP2 session establishment against 2.13.0 with and without ML-KEM.
+1. Re-audit the source differences against the pinned 2.14.0 target, then
+   exercise NTCP2 session establishment with and without ML-KEM. Historical
+   2.13.0 scenarios remain version-specific regression cases.
 2. SSU2 relay, peer test and MTU discovery on IPv4/IPv6, especially OpenBSD.
 3. Large RouterInfo (3073–4096) publication and lookup.
 4. EncryptedLeaseSet/b33 lookup with Java clients.
@@ -674,6 +684,8 @@ No claim of "fully compatible" is made until these are executed.
 
 See [`tests/interop/README.md`](../tests/interop/README.md) and
 [`tests/interop/check-reference.sh`](../tests/interop/check-reference.sh).
-The harness pins I2P Java 2.13.0 and requires an isolated loopback network; it
-is a test procedure, not a Java build/runtime dependency. No result in this
-document becomes validated until the dynamic run is recorded.
+For new differential runs, the harness configuration must match the pinned
+Java 2.14.0 target commit above. Earlier 2.13.0 fixtures and results retain their original provenance.
+It requires an isolated loopback network and is a test procedure, not a Java
+build/runtime dependency. No result in this document becomes validated until
+the dynamic run is recorded.

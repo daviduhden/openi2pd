@@ -38,9 +38,12 @@ Workflows remain **manual-only** (`workflow_dispatch`); no `push`,
   APK step uses the vcpkg-installed Android prefix and the runner's NDK; no
   dependency is downloaded into the source tree. Instrumentation tests remain
   a device/emulator-only manual step.
-- The `interop` job clones the pinned `i2p-2.13.0` reference into a temporary
-  read-only directory and validates `check-reference.sh` plus checked-in
-  vectors/provenance. It never contacts a live I2P peer and never publishes.
+- The `interop` job checks the current comparison target `i2p-2.14.0` with
+  `check-reference.sh`. A separate read-only `i2p-2.13.0` checkout validates
+  the historical vectors' source-line provenance using `check-vectors.pl`.
+  Both checkouts are temporary and external to the source tree. Neither
+  reference verification nor historical fixture checks establish 2.14.0
+  interoperability. The job never contacts a live I2P peer or publishes.
 - The sanitizer matrix builds ASan+UBSan and TSan configurations separately and
   runs the full CTest suite. Sanitizer failures are not suppressed.
 - The separate `Fuzzing` workflow builds all eight libFuzzer targets and runs a
