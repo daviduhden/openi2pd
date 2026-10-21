@@ -36,6 +36,13 @@ BuildRequires: ncurses-devel
 BuildRequires: openssl-devel-engine
 %endif
 
+# Fedora in this range packages Boost.JSON/URL separately. The default
+# torrent client requires both at build time (see build/CMakeLists.txt).
+%if 0%{?fedora} && 0%{?fedora} <= 43
+BuildRequires: boost-json
+BuildRequires: boost-url
+%endif
+
 Requires:      logrotate
 Requires:      systemd
 Requires:      perl

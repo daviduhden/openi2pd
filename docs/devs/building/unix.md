@@ -154,6 +154,11 @@ sudo dnf install cmake ninja-build gcc gcc-c++ boost-devel \
 ```
 
 MiniUPnPc is in `miniupnpc-devel`; static Boost is in `boost-static` if needed.
+On Fedora through 43, add `boost-json boost-url` to the install command.
+RHEL 9 cannot meet the GCC 13/C++23 floor with its default
+toolchain and does not package Boost.URL for its Boost 1.75; enable a
+`gcc-toolset-13` environment and use `-DWITH_TORRENTS=OFF` before attempting
+that platform.
 
 ## OpenBSD
 

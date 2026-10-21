@@ -211,7 +211,10 @@ service/sandbox files and validation notes are in
   `I2PD_SERVICE_MANAGER=none` and installs the systemd unit and SysV
   compatibility script through debhelper, avoiding duplicate service files.
 - RPM specs build with `cmake --build` instead of invoking `make` or `ninja`
-  directly.
+  directly. They declare the separate Boost.JSON/URL packages for Fedora
+  releases through 43. RHEL 9 needs a separate `gcc-toolset-13` environment
+  and `-DWITH_TORRENTS=OFF`; the current specs do not claim that toolchain
+  path is validated.
 - The Windows helper builds with CMake/Ninja; the Windows XP path was removed.
 - CI workflows use Ninja explicitly and remain **manual-only**
   (`workflow_dispatch`) during the refactoring. Linux native, sanitizer and
@@ -229,8 +232,10 @@ dependency paths in `FindMiniUPnPc.cmake`, hard-coded MSYS2/Inno paths or
 `git pull` in the Windows helper, the removed OpenSSL 3.0.0/LibreSSL <4.0/XP/
 MSVC-only compatibility paths, and verifies the canonical C++23/component
 options, the `i2pd_privsep` component, the required POSIX Make targets and
-dependency floors (OpenSSL 3.0.2, LibreSSL 4.0, MiniUPnPc 2.2.6/API 17). It is
-registered as `build-system-static` and is part of the manual CI suite.
+dependency floors (OpenSSL 3.0.2, LibreSSL 4.0, MiniUPnPc 2.2.6/API 17), and
+the RPM specs' `cmake --build` path, Fedora Boost guard and absence of direct
+make/ninja macros. It is registered as `build-system-static` and is part of the
+manual CI suite.
 `tests/check-services.cmake` separately checks the foreground/service-manager
 contract, forbidden readiness claims, ownership and log-directory wiring, and
 is registered as `services-static`.

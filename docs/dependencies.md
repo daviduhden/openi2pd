@@ -74,6 +74,13 @@ without ML-KEM:
   `__cpp_lib_chrono` fallback are retained only for the OpenBSD base libc++
   gaps; modern libc++/libstdc++/MSVC use the standard facilities.
 
+The RPM specs declare the separate Boost.JSON/URL packages for Fedora
+releases through 43. RHEL 9 is not supported by its default GCC 11/Boost 1.75
+toolchain: it needs a separate `gcc-toolset-13` environment, and the torrent
+client must be disabled with `-DWITH_TORRENTS=OFF` because Boost.URL is not
+available. The specs do not claim RHEL support until that toolset path is
+validated.
+
 No dependency is downloaded during configure, build or run. Android
 dependencies continue to be provided by the existing vcpkg manifest used in CI;
 the project itself has no hidden fetch step. CMake discovery relies on the

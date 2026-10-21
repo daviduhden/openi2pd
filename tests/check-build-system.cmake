@@ -27,6 +27,13 @@ function(assert_absent text needle description)
   endif()
 endfunction()
 
+function(assert_present text needle description)
+  string(FIND "${text}" "${needle}" position)
+  if(position EQUAL -1)
+    message(FATAL_ERROR "${description}: missing required '${needle}'")
+  endif()
+endfunction()
+
 set(root_makefile "${PROJECT_ROOT}/Makefile")
 set(test_makefile "${PROJECT_ROOT}/tests/Makefile")
 set(top_cmake "${PROJECT_ROOT}/build/CMakeLists.txt")
@@ -44,6 +51,8 @@ set(timestamp_source "${PROJECT_ROOT}/libi2pd/Timestamp.cpp")
 set(util_source "${PROJECT_ROOT}/libi2pd/util.cpp")
 set(win32_netstate "${PROJECT_ROOT}/Win32/Win32NetState.cpp")
 set(upnp_source "${PROJECT_ROOT}/daemon/UPnP.cpp")
+set(rpm_spec "${PROJECT_ROOT}/contrib/rpm/i2pd.spec")
+set(rpm_git_spec "${PROJECT_ROOT}/contrib/rpm/i2pd-git.spec")
 
 read_required("${root_makefile}" root_make)
 read_required("${test_makefile}" test_make)
@@ -62,6 +71,8 @@ read_required("${timestamp_source}" timestamp_text)
 read_required("${util_source}" util_text)
 read_required("${win32_netstate}" win32_netstate_text)
 read_required("${upnp_source}" upnp_text)
+read_required("${rpm_spec}" rpm_text)
+read_required("${rpm_git_spec}" rpm_git_text)
 
 # POSIX make has no ?= or GNU pattern/functions. The front-end must be usable
 # with BSD make on OpenBSD.
@@ -256,6 +267,24 @@ foreach(_source IN LISTS _i2pd_fuzz_sources)
   if(_fuzzer_position EQUAL -1)
     message(FATAL_ERROR "tests/CMakeLists.txt does not register ${_fuzzer_name}")
   endif()
+endforeach()
+
+# The RPM specs must not invoke GNU make or Ninja directly: they build through
+# cmake --build and let %cmake select the generator. Boost.JSON/URL package
+# requirements must stay behind a defined Fedora guard so an undefined distro
+# macro cannot enable the wrong branch.
+foreach(_rpm_text IN ITEMS "${rpm_text}" "${rpm_git_text}")
+  assert_absent("${_rpm_text}" "_smp_mflags" "RPM spec uses make/ninja directly")
+  assert_absent("${_rpm_text}" "%make_build" "RPM spec uses %make_build")
+  assert_absent("${_rpm_text}" "%ninja_build" "RPM spec uses %ninja_build")
+  assert_absent("${_rpm_text}" "%ninja" "RPM spec uses a Ninja macro")
+  assert_present("${_rpm_text}" "0%{?fedora} && 0%{?fedora} <= 43"
+    "RPM spec lacks the guarded Fedora Boost dependency")
+  assert_present("${_rpm_text}" "boost-json"
+    "RPM spec lacks the Boost.JSON build dependency")
+  assert_present("${_rpm_text}" "boost-url"
+    "RPM spec lacks the Boost.URL build dependency")
+  assert_present("${_rpm_text}" "cmake --build" "RPM spec lacks cmake --build")
 endforeach()
 
 message(STATUS "build-system-static: OK")
