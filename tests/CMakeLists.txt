@@ -125,6 +125,7 @@ set(I2PD_TESTS
   test-routercontext-update-race
   test-routercontext-service-lifecycle
   test-routercontext-static-keys
+  test-routercontext-port-range
   test-kad-dht
   test-addressbook
   test-addressbook-case
@@ -209,6 +210,9 @@ foreach(test IN LISTS I2PD_TESTS)
   endif()
   if(test MATCHES "^test-tui")
     set_property(TEST ${test} APPEND PROPERTY LABELS tui)
+  endif()
+  if(test STREQUAL "test-routercontext-port-range")
+    set_property(TEST ${test} APPEND PROPERTY LABELS security)
   endif()
   if(test MATCHES "crypto|blinding|su3|reseed|gost|signature|ecies|protocol-bounds|routerinfo|ssu2|ntcp2|netdb|leaseset|torrents-security|torrents-verify-parity|i2cp-routing-session|sam-control|race|concurrency|sandbox|policy|imsg")
     set_property(TEST ${test} APPEND PROPERTY LABELS security)
