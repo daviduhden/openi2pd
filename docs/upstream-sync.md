@@ -16,37 +16,62 @@ Documents project documentation.
 |---|---|---|---|---|
 | Documentation | https://github.com/PurpleI2P/i2pd_docs_en | default (`master`) | `30ddc4c7c74e055fc858ecff3ae6f69d1a73ab5e` | `docs/` (upstream files; fork reports coexist) |
 | Tools | https://github.com/PurpleI2P/i2pd-tools | default (`master`) | `ca7ece8da86aa80b58fce6fa64375bfd75cbf843` | `tools/` |
-| Router source | https://github.com/PurpleI2P/i2pd | `openssl` | reviewed through `472ef88b0eb3fbc3eba5fe8e0b9336a9b8df4499` | existing main tree; selective adaptation, no bulk import |
+| Router source | https://github.com/PurpleI2P/i2pd | `openssl` | reviewed through `de32c8c3f580c2c43ca09154ecfe6a20db80d19f` | existing main tree; selective adaptation, no bulk import |
 
-## Reviewed router-source commits (2026-10-18/19 UTC)
+## Reviewed router-source commits (2026-10-18/19/20 UTC)
 
 The following commits were reviewed from `PurpleI2P/i2pd` branch `openssl`.
-The window is expressed in UTC. Commits whose author date is 17 October in the
-upstream `-04:00` timezone but whose UTC timestamp falls on 18 October are in
-the 18 October group; commits whose author date is 18 October but whose UTC
-timestamp falls on 19 October are in the 19 October group. `472ef88b` was the
-branch tip at review time. This is a review record, not a merge base or a claim
-that the fork is at upstream 3.0.0.
+The window is expressed in UTC and grouped by the author timestamp; the
+committer timestamp is used only when it differs, as noted below. Upstream
+authors use `-04:00`, `+02:00` and `+03:00`, so a commit's local calendar date
+is never a grouping key: the three SSU2 commits dated 18 October `-04:00` are
+19 October UTC, while several 20 October `+02:00`/`+03:00` commits are
+19 October UTC. `de32c8c3` was the observed branch tip at the end of this
+review; 20 October was still in progress, so later upstream commits are not
+covered by this pin. This is a review record, not a merge base or a claim that
+the fork is at upstream 3.0.0.
+
+Do not enumerate the window with `git log --since/--until` alone: it filters
+on the committer timestamp in the local timezone and reproduces the off-by-one
+grouping. Use `%H %aI %cI %s`, convert both timestamps with `date -u`, and
+account for merge commits separately. The table retains eight earlier
+18 October rows for context; **15 commits** fall in the 19–20 October UTC
+window.
 
 | Upstream commit | UTC date | Subject | Local result |
 |---|---|---|---|
-| `18340106ec7623544e0811192c2acd8439d5d626` | 2026-10-18T01:19:38Z | Use `stringstream::view` and check `getline` EOF | Already present through local `95abd377` in the request-side HTTP tunnel paths. |
-| `475f40f8d925afc7519ffdfa59144a62b2a39017` | 2026-10-18T01:55:50Z | Use `view` in the server tunnel and count headers for the connection | Already present through local `95abd377`; the fork keeps the member header counter and 8192-byte limit. |
+| `18340106ec7623544e0811192c2acd8439d5d626` | 2026-10-18T01:19:38Z | Use `stringstream::view` and check `getline` EOF | Already present through local `9c54986d` in the request-side HTTP tunnel paths. |
+| `475f40f8d925afc7519ffdfa59144a62b2a39017` | 2026-10-18T01:55:50Z | Use `view` in the server tunnel and count headers for the connection | Already present through local `9c54986d`; the fork keeps the member header counter and 8192-byte limit. |
 | `7dfc05c098cc62a4e3144d2bb54cf985c14c2c68` | 2026-10-18T13:38:10Z | Do not save a piece of a removed torrent | Adapted: weak capture plus an authoritative `TorrentsTunnel::FindTorrent` membership check at disk-job execution. A removal race after the check remains possible; a storage-generation tombstone is still needed for a strict guarantee. |
-| `77ebf7516ea44cfe0960831c9161d20983f64130` | 2026-10-18T14:40:57Z | Do not save piece blocks for a stopped torrent | Applied through `Torrent::CanAcceptPieceBlock`, preserving the fork's exact offset/length and piece-mutex checks. |
-| `9c3a742dc0ae8e5aa4c104683f604185fa3639cb` | 2026-10-18T14:46:15Z | Allow connections from the Debian 12 i2pd package | Applied: the general peer floor is 0.9.57; `NETDB_MIN_HIGHBANDWIDTH_VERSION` remains 0.9.62. The policy relaxation is documented and test-pinned. |
+| `77ebf7516ea44cfe0960831c9161d20983f64130` | 2026-10-18T14:40:57Z | Do not save piece blocks for a stopped torrent | Applied through `Torrent::CanAcceptPieceBlock`, preserving the fork's exact offset/length checks; the piece-level mutex remains in `Piece::BlockReceived`. |
+| `9c3a742dc0ae8e5aa4c104683f604185fa3639cb` | 2026-10-18T14:46:15Z | Allow connections from the Debian 12 i2pd package | Applied: the general peer floor is 0.9.57; `NETDB_MIN_HIGHBANDWIDTH_VERSION` remains 0.9.62. The policy is test-pinned; its rationale is recorded in this sync record. |
 | `942d6907d2b2cfa73dceaf117457329d251f4191` | 2026-10-18T14:49:01Z | Display the torrents table after the first added torrent | Not applicable: upstream changes `contrib/torrents/web/main.js`; this fork deliberately removed the browser console. The native TUI already keeps the table visible and refreshes after commands. |
-| `e3856a38fa0fe310726a39faa9df16f035c1bf69` | 2026-10-18T15:01:02Z | Use `stringstream::view` in the server response and IRC paths | Applied, including the response/IRC lifetime conversions and the related incomplete-header compaction fix. No standalone I2PTunnel test seam exists; regression coverage remains a CI/manual gap. |
+| `e3856a38fa0fe310726a39faa9df16f035c1bf69` | 2026-10-18T15:01:02Z | Use `stringstream::view` in the server response and IRC paths | Applied the response/IRC lifetime conversions; the incomplete-header compaction is covered by the `475f40f8` row. No standalone I2PTunnel test seam exists; regression coverage remains a CI/manual gap. |
 | `ec19bfb55d9fb8f4c9f35f3637c8b3c1ca33152c` | 2026-10-18T21:49:36Z | Upstream 3.0.0 release metadata | Not imported as-is. The fork remains 2.61.0/0.9.70 and owns its Debian/RPM/changelog history; changing the advertised version is a separate release-identity decision. |
 | `452da43bbee0bbf0cb14489bdacce7a08c1936e9` | 2026-10-19T01:21:14Z | Reject RelayRequest from a non-established SSU2 session | Already present and stronger: `HandleRelayRequest` requires `IsEstablished`, plus the fork's state whitelist and bounded validation. |
 | `54068be9ca73bfb677617edc330b01eb8f983f37` | 2026-10-19T01:38:25Z | Reject RelayIntro, RelayResponse and PeerTest from a non-established session | Already present and stronger. RelayResponse deliberately permits the `Introduced` hole-punch state; PeerTest additionally requires a remote identity. |
 | `472ef88b0eb3fbc3eba5fe8e0b9336a9b8df4499` | 2026-10-19T01:56:37Z | Reject PathChallenge from a non-established session | Adapted: explicit dispatch guard and state helper. `SendPathResponse()` keeps its independent established/address guard. |
+| `37090fe09f7effbf65af371e71d3f4df0393514f` | 2026-10-19T11:51:09Z | Add Intel AMT ports to the reserved-port list | Applied: 16992-16995 added to `IsPortInReservedRange`; `test-routercontext-port-range` pins the complete table and the Intel AMT boundaries. |
+| `38cf542b13c5d0a39ec42a38522fe08835f6cb71` | 2026-10-19T21:55:52Z | Lower the Debian Boost floor to 1.81 | Not applied as-is: the fork deliberately retains Boost.ProgramOptions 1.74 and already requires Boost.JSON/URL 1.81. Raising the program-options floor adds no needed API and would narrow supported Debian builds; GCC 13 remains the real Debian floor. |
+| `f8a12d9dc757a4d225922d8c1b5ec63732ccbf4e` | 2026-10-19T22:14:46Z | Re-add pinned Boost 1.81 alternatives for bookworm | Not applicable: Debian bookworm ships GCC 12, below the fork's GCC 13/C++23 baseline. Alternative Boost package names do not solve the compiler floor. |
+| `357fcc14d5b273fbaa67ef8e468a32a8d39ec7e4` | 2026-10-19T22:37:43Z | Add Ubuntu jammy packaging and refresh the UPnP patch | Omitted: `contrib/debian/` and `debian/patches/` were deliberately removed; the patch targets the old GNU make/`filelist.mk` build. Jammy's GCC 11 also cannot build this C++23 tree. The maintained Debian packaging is CMake/Ninja based. |
+| `db761a5455e6ca89c1fcc6d135ff634cf17c5dd8` | 2026-10-19T23:31:36Z | Add a CMake torrents switch and RPM dependency gating | CMake half already present and stronger: `WITH_TORRENTS=ON`, target-scoped `NO_TORRENTS`, and Boost.JSON/URL gated on the option. RPM half adapted for Fedora `boost-json`/`boost-url`. The RHEL 9 `-DWITH_TORRENTS=OFF` branch is omitted: its default GCC 11 cannot build this C++23 tree and no validated `gcc-toolset-13` RPM path exists. |
+| `a8915cd1d682d168d1a285a465fb2d8296176497` | 2026-10-19T23:56:57Z | `[rpm] fix typo` (missing line continuation) | Not applicable: the fork has no RHEL torrent block after the preceding omission; both specs retain valid `cmake --build` invocations and `build-system-static` rejects direct make/ninja macros. |
+| `21ad7d43c81021877a1c01f1bb3e6dc0a11ab708` | 2026-10-20T01:35:49Z | Fix reseed defaults in the sample config | Partially adapted: the fork rejects the `reseed.verify=false` wording because it is fail-closed (`reseed.verify=true`, tested). Applied the built-in reseed-list wording and current URL example in `contrib/i2pd.conf` and `contrib/openbsd/i2pd.conf`; Android has no stale URL example. |
+| `e34db4f7cbb3a2732d8742fe5874e8e7ff059e22` | 2026-10-20T01:53:51Z | Merge PR #2604 | Merge only; no tree change (`git diff e34db4f7 21ad7d43` is empty). Disposition is carried by the `21ad7d43` row. |
+| `2598a94e4b64cf57eebb33987e6025beefe05b5e` | 2026-10-20T08:44:14Z (committer 08:44:37Z) | Require Boost.URL only on Fedora | Adapted in form: the fork declares Boost.URL only under a defined Fedora guard through F43. The 23-second author/committer skew is retained here; both timestamps are on the same UTC day. |
+| `86dd211a08a12b982abab422925dd407f27e7936` | 2026-10-20T10:03:28Z | Do not install Boost.JSON/URL on Mageia | Covered by the Fedora-only Boost condition: Mageia does not install those separate packages. Mageia 9 is below the fork's GCC 13 floor regardless. |
+| `233e5111ad5b9b0d4f8636fef6909435ab66dda5` | 2026-10-20T10:10:24Z | Use Ninja on Mageia 9+ | Omitted: the fork uses `cmake --build . --parallel`; it never invokes `make` or `ninja` directly. `%cmake` owns generator selection, and `build-system-static` rejects `_smp_mflags`, `%make_build`, `%ninja_build` and `%ninja` in both specs. |
+| `de32c8c3f580c2c43ca09154ecfe6a20db80d19f` | 2026-10-20T10:18:46Z | Use Ninja on Mageia 9 and 11+ | Omitted for the same reason as `233e5111`; this is the review high-water mark. |
 
 The source changes are implemented by static analysis only and are pending
-manual CI compilation and tests. No upstream file was copied wholesale and no
-merge or cherry-pick was used. `docs/files-changed.md` records the affected
-local files; `TODO.md` tracks the remaining NetDb, I2PTunnel and torrent
-persistence validation.
+manual CI compilation and tests. The continuation adds the Intel AMT reserved
+port table and its regression, adapts the reseed sample wording without
+changing the fail-closed verification default, and carries the applicable RPM
+Fedora Boost guard. No upstream file was copied wholesale and no merge or
+cherry-pick was used. `docs/files-changed.md` records the affected local files;
+`TODO.md` tracks the remaining NetDb, I2PTunnel, torrent persistence and
+packaging validation.
 
 The pinned upstream documentation tree contains **46 files**: 39 Markdown
 documents, the two branding images (`img/logo.png`, `img/favicon.ico`) and five
@@ -132,6 +157,12 @@ add an HTML converter, JavaScript runtime or download step to the daemon build.
 ```sh
 # Confirm whether the pinned upstream branch has moved (no tracked writes).
 git ls-remote https://github.com/PurpleI2P/i2pd_docs_en HEAD refs/heads/master
+
+# Router source: fetch into a read-only tracking ref without touching the
+# worktree, then verify the pin used by this document.
+git fetch --no-tags https://github.com/PurpleI2P/i2pd.git \
+  openssl:refs/remotes/upstream/openssl
+git rev-parse upstream/openssl
 
 # Documentation only: coverage checks plus read-only diffs.
 contrib/upstream/sync.sh --docs

@@ -390,19 +390,25 @@ capability tests before claiming network/storage separation. All dynamic
 verification remains exclusively in manually dispatched CI; no current result
 validates this local increment.
 
-## Selective upstream openssl synchronization (static, 2026-10-19)
+## Selective upstream openssl synchronization (static, 2026-10-19/20)
 
-Reviewed `PurpleI2P/i2pd:openssl` through `472ef88b` for commits dated
-2026-10-18/19 UTC. The workstream applies the compatible SSU2,
-I2PTunnel/HTTP, NetDb peer-policy and torrent-persistence corrections while
-preserving C++23, the fork's state whitelists, privilege separation, native
-TUI/Android architecture and fork release identity.
+Reviewed `PurpleI2P/i2pd:openssl` through
+`de32c8c3f580c2c43ca09154ecfe6a20db80d19f` for commits dated 2026-10-18,
+2026-10-19 and 2026-10-20 UTC. The workstream applies the compatible SSU2,
+I2PTunnel/HTTP, NetDb peer-policy, torrent-persistence and Intel AMT
+reserved-port corrections, adapts the reseed sample wording without weakening
+verification, and carries the applicable RPM Boost guards while preserving
+C++23, privilege separation, native TUI/Android architecture and fork release
+identity.
 
 Exit criteria: manual CI compiles the changed paths, `test-ssu2-preauth`,
-`test-netdb-store-lookup-hardening` and `test-torrents-security` pass, and the
-I2PTunnel response/IRC lifetime and torrent removal barriers receive dynamic
-coverage. Upstream 3.0.0 release metadata and browser-console changes remain
-deliberately excluded. Until then this is static-only work.
+`test-routercontext-port-range`, `test-netdb-store-lookup-hardening`,
+`test-torrents-security` and `build-system-static` pass, and the I2PTunnel
+response/IRC lifetime and torrent removal barriers receive dynamic coverage.
+An RPM lane must be added and validate the Fedora guards on a disposable host;
+no RPM lane exists yet. Upstream 3.0.0 release metadata, browser-console
+changes, obsolete GNU-make/Jammy packaging and the unvalidated RHEL 9 toolset
+path remain deliberately excluded. Until then this is static-only work.
 
 ## Intensive native torrent continuation (2026-10-19)
 

@@ -923,3 +923,17 @@ commands and does not hide its table. Upstream `ec19bfb5` (3.0.0 release
 metadata) was not imported because it would assert a release identity and
 replace fork-owned Debian/RPM/changelog history. No build, CTest, sanitizer,
 live peer, packaging or platform validation was performed locally.
+
+## Selective upstream openssl continuation (2026-10-20, static)
+
+| Path | Change |
+|---|---|
+| `libi2pd/util.cpp`, `tests/test-routercontext-port-range.cpp`, `tests/CMakeLists.txt` | Added Intel AMT ports 16992-16995 to the reserved-port table from upstream `37090fe0` and pinned the complete table plus boundary values in a new CTest regression. |
+| `contrib/i2pd.conf`, `contrib/openbsd/i2pd.conf`, `docs/user-guide/configuration.md` | Adapted the reseed URL/built-in-list wording from upstream `21ad7d43`; retained the fork's fail-closed `reseed.verify=true` default and rejected the upstream `false` comment. |
+| `contrib/rpm/i2pd.spec`, `contrib/rpm/i2pd-git.spec`, `tests/check-build-system.cmake` | Added guarded Fedora Boost.JSON/URL requirements and static assertions that the specs never invoke make/ninja macros or lose the Fedora guard. The RHEL 9 torrent branch is omitted pending a validated GCC 13 toolset. |
+| `docs/upstream-sync.md`, `docs/dependencies.md`, `docs/build-system.md`, `docs/devs/building/unix.md`, `.agents/skills/openi2pd-upstream/references/sync-checklist.md` | Recorded the complete 18–20 October UTC window, timezone/merge rules, dispositions, omitted packaging changes and the RHEL 9 GCC 13 caveat. |
+| `TODO.md`, `ROADMAP.md`, `PROGRESS.md` | Recorded the continuation, prepared regression and pending manual CI compilation/tests. |
+
+No build, CTest, sanitizer, package build, rpmbuild, lintian, service start or
+live-peer run was performed. The new port-table test and RPM guards remain
+pending manual CI.

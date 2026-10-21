@@ -8,6 +8,16 @@ openi2pd upstream synchronization checklist.
 
 Use with `SKILL.md`. This is a review template, not an import script.
 
+## Commit window
+
+Record both author and committer timestamps, convert them to UTC, and do not
+group by a local calendar date. Do not use `git log --since/--until` as the
+only window filter: it filters on the committer timestamp in the local
+timezone and can shift a commit by one day. Enumerate with
+`git log --first-parent --format='%H %aI %cI %s'`, convert both timestamps with
+`date -u`, and treat merge commits as carriers of no independent tree change
+unless the merge itself resolves a conflict.
+
 ## Review record
 
 For each upstream revision:

@@ -234,10 +234,12 @@ concurrent edits to `TODO.md`, `ROADMAP.md` and `PROGRESS.md`.
 
 ## Current uncommitted work
 
-The historical baseline is `800c8627` (native Windows TUI/IPC); the current
-published baseline is `300da64b`. The current uncommitted increment is the
-selective 2026-10-18/19 `openssl` upstream review described at the end of this
-file. The published baseline includes parallel OpenBSD/logging hardening, atomic TUI status
+The historical pre-rewrite baseline was `800c8627` (native Windows TUI/IPC);
+the current published baseline is `f844f35` (the Agent Skills commit), with
+`3b223ab` immediately before it. Pre-rewrite hashes in the historical sections
+below may not resolve in this clone. The current uncommitted increment is the
+selective 2026-10-18/19/20 `openssl` upstream review described at the end of
+this file. The published baseline includes parallel OpenBSD/logging hardening, atomic TUI status
 reads, RouterInfo/SSU2 bounds fixes, bounded Torrents RPC waits, C++23 ownership
 modernization, the memory/concurrency audit (SSU2/RouterInfo, crypto/reseed,
 BitTorrent, IPC/privsep/JNI and daemon lifecycle), dependency-floor cleanup,
@@ -263,7 +265,7 @@ is installed.
 
 ## I2PSnark continuation ownership/state (2026-10-19)
 
-The actual checkout HEAD at this increment was `c8f2eba1`, initially clean.
+The historical checkout at that increment was `c8f2eba1`, initially clean.
 The older baseline description above is historical. Current torrent/native
 Android changes are implemented by static analysis only, pending CI compilation
 and pending CI tests. Task inventory: SNARK-001..SNARK-008 in TODO; functional
@@ -290,33 +292,38 @@ end-to-end device validation remains pending. Preserve URI authority instead of 
 paths. Full local state schema and storage worker boundaries are documented
 in `docs/torrent/local-state.md` and `docs/torrent/storage-worker.md`.
 
-Current continuation started from clean `0cf32519`; all new changes remain
-local and pending CI compilation/tests. Preserve the user-requested descriptive
+That continuation started from clean `0cf32519`; its changes remained local
+and pending CI compilation/tests. Preserve the user-requested descriptive
 license-reference headers and all existing notices/provenance. The reference
 excerpts outside this repository are not a complete verified clone. No task is
 validated without its corresponding manual CI pass.
 
-## Selective upstream openssl integration (2026-10-19)
+## Selective upstream openssl integration (2026-10-19/20)
 
-The current increment reviews `PurpleI2P/i2pd:openssl` through
-`472ef88b` for commits dated 18–19 October 2026 UTC. The exact disposition,
-omissions and rationale are in `docs/upstream-sync.md`; task tracking is
-`UPSTREAM-001..UPSTREAM-004` in `TODO.md`. The fork keeps its C++23,
-privilege-separation, native TUI/Android, CMake and release identity.
+The review covers `PurpleI2P/i2pd:openssl` through
+`de32c8c3f580c2c43ca09154ecfe6a20db80d19f` for commits dated 18–20 October
+2026 UTC. The exact disposition, timezone/merge rules, omissions and rationale
+are in `docs/upstream-sync.md`; task tracking is `UPSTREAM-001..UPSTREAM-005`
+in `TODO.md`. The fork keeps its C++23, privilege-separation, native
+TUI/Android, CMake and release identity.
 
 The implemented corrections are the explicit SSU2 PathChallenge state guard,
 the I2PTunnel response/IRC `view()` and header-compaction fixes, the NetDb
-0.9.57 general floor with the 0.9.62 high-bandwidth floor retained, and the
-torrent stopped/removed persistence guards. The browser-console commit and the
-upstream 3.0.0 release metadata are intentionally omitted. All changes are
-static-only pending manual CI compilation and tests; no build, CTest,
-sanitizer, package or live-peer evidence exists for this increment.
+0.9.57 general floor with the 0.9.62 high-bandwidth floor retained, the torrent
+stopped/removed persistence guards, the Intel AMT reserved-port table and
+regression, the reseed sample wording without weakening fail-closed
+verification, and the guarded RPM Boost branches. The browser-console
+commit, upstream 3.0.0 release metadata and obsolete GNU make/Jammy packaging
+are intentionally omitted. All changes are static-only pending manual CI
+compilation and tests; no build, CTest, sanitizer, package or live-peer evidence
+exists for this increment.
 
 ## Native payload continuation (2026-10-20)
 
-Actual checkout HEAD remains `0cf32519`; existing uncommitted changes were
-preserved. The native payload abstraction now connects Android SAF document
-read/write and seeding through a non-exported separate-process AIDL/JNI broker.
+The historical checkout for that increment was `0cf32519`; existing
+uncommitted changes were preserved. The native payload abstraction now connects
+Android SAF document read/write and seeding through a non-exported
+separate-process AIDL/JNI broker.
 Persisted grants key tunnel+infohash; final-name document IO skips POSIX payload
 allocation/promotion. Startup rehashes provider pieces. No URI-to-path fallback
 or unlimited staging is allowed. Unsupported seek fails explicitly. Binder

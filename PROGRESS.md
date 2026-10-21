@@ -1861,3 +1861,38 @@ OpenBSD or Java/C++ dynamic test was run.
   or branding validator was executed. Verification is static inspection only;
   documentation-link and branding checks remain pending manual CI. The skill
   set is not claimed dynamically validated.
+
+## 2026-10-20 — selective upstream openssl 19/20 continuation (static-only)
+
+- Fetched `PurpleI2P/i2pd:openssl` to `upstream/openssl` without changing the
+  worktree. The reviewed tip is
+  `de32c8c3f580c2c43ca09154ecfe6a20db80d19f`; the 18/19/20 October window is
+  grouped by UTC and documented in `docs/upstream-sync.md`, including author
+  versus committer timezone shifts and merge-only commits.
+- Verified `452da43b`, `54068be9` and `472ef88b`: the RelayRequest,
+  RelayIntro/RelayResponse/PeerTest and PathChallenge state guards are already
+  present and stronger in the fork. The required `Introduced` RelayResponse
+  exception remains intentional.
+- Applied `37090fe0`: added Intel AMT ports 16992-16995 to
+  `libi2pd/util.cpp`'s reserved-port table and added
+  `tests/test-routercontext-port-range.cpp` to pin the complete table and its
+  boundaries.
+- Adapted `21ad7d43`: updated the reseed URLs/built-in-list wording in
+  `contrib/i2pd.conf`, `contrib/openbsd/i2pd.conf` and
+  `docs/user-guide/configuration.md`. Rejected the upstream
+  `reseed.verify=false` comment because this fork is fail-closed and tests
+  `reseed.verify=true`.
+- Adapted `db761a54`, `2598a94e` and `86dd211a` in the RPM specs: guarded
+  Fedora Boost.JSON/URL package requirements. `tests/check-build-system.cmake`
+  now rejects direct make/ninja macros and checks the Fedora guard. The RHEL 9
+  `-DWITH_TORRENTS=OFF` branch is omitted because its default GCC 11 cannot
+  build the C++23 tree and no validated `gcc-toolset-13` RPM path exists.
+- Recorded `38cf542b`, `f8a12d9d`, `357fcc14`, `a8915cd1`, `e34db4f7`,
+  `233e5111` and `de32c8c3` as not applicable, merge-only, or obsolete for the
+  fork's C++23/CMake/Ninja, Debian and RPM architecture. No upstream release
+  metadata, browser console, GNU-make patch or EOL Jammy packaging was
+  restored.
+- No compiler, CMake configure/build, CTest, sanitizer, fuzzer, package build,
+  rpmbuild, lintian, service or live-peer run was performed. The new
+  `test-routercontext-port-range` and `build-system-static` checks remain
+  pending manual CI compilation/tests; no validation is claimed.

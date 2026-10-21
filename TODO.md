@@ -866,11 +866,11 @@ package install.
 - [ ] **[SERVICE-005]** Document enabling, stopping, restarting, status, logging, hardening and Debian package behavior for every supported manager.
   - Priority P1; Status implemented / static; `docs/service-management.md`, `docs/user-guide/run.md`, `docs/user-guide/install.md`, `docs/build-system.md`, `docs/devs/building/unix.md`; rendered documentation and link checks pending CI.
 
-## Selective upstream openssl synchronization (2026-10-18/19)
+## Selective upstream openssl synchronization (2026-10-18/19/20)
 
 Reviewed branch `PurpleI2P/i2pd:openssl` through
-`472ef88b0eb3fbc3eba5fe8e0b9336a9b8df4499`. The detailed eleven-commit
-review table and omissions are in `docs/upstream-sync.md`.
+`de32c8c3f580c2c43ca09154ecfe6a20db80d19f`. The detailed commit table and
+omissions are in `docs/upstream-sync.md`.
 
 - [ ] **[UPSTREAM-001]** Import the compatible 18/19 October router-source corrections without reverting fork architecture.
   - Priority P0; Status implemented / static; SSU2 PathChallenge state guard, I2PTunnel `view()` and header compaction, NetDb 0.9.57 floor, torrent stopped/removed persistence guards; pending CI compilation and tests. Upstream 3.0.0 release metadata and browser console changes intentionally omitted.
@@ -880,6 +880,10 @@ review table and omissions are in `docs/upstream-sync.md`.
   - Priority P1; Status pending; the `view()` lifetime and incomplete-line compaction fixes are static-only because the parser state is private. A helper/extraction or controlled connection harness is required before claiming regression coverage.
 - [ ] **[UPSTREAM-004]** Close the remaining torrent removal/persistence race.
   - Priority P1; Status pending; weak capture plus `FindTorrent` membership check prevents pre-check writes, but removal after the check can still be overtaken by a queued disk job. A per-torrent tombstone/generation barrier and `.openi2pd-state` deletion policy remain open; `test-torrents-security` covers stopped/in-range blocks only.
+- [ ] **[UPSTREAM-005]** Apply the applicable 2026-10-19/20 `openssl` continuation without reverting the fork architecture.
+  - Priority P0/P1; Status implemented / static; `37090fe0` Intel AMT ports 16992-16995 are in `IsPortInReservedRange` with `test-routercontext-port-range`; `21ad7d43` reseed wording is adapted while retaining fail-closed `reseed.verify=true`; `db761a54`/`2598a94e`/`86dd211a` RPM Fedora Boost guards are adapted; `452da43b`/`54068be9`/`472ef88b` remain already implemented/stronger. `38cf542b`, `f8a12d9d`, `357fcc14`, `a8915cd1`, `e34db4f7`, `233e5111` and `de32c8c3` are recorded as not applicable, merge-only or obsolete in `docs/upstream-sync.md`; the RHEL 9 torrent branch is omitted pending a validated GCC 13 toolset path.
+  - Files: `libi2pd/util.cpp`, `tests/test-routercontext-port-range.cpp`, `tests/CMakeLists.txt`, `contrib/rpm/i2pd.spec`, `contrib/rpm/i2pd-git.spec`, `contrib/i2pd.conf`, `contrib/openbsd/i2pd.conf`, `docs/upstream-sync.md`, `docs/files-changed.md`, `docs/dependencies.md`, `docs/build-system.md`, `docs/devs/building/unix.md`, `docs/user-guide/configuration.md`, `tests/check-build-system.cmake`, `.agents/skills/openi2pd-upstream/references/sync-checklist.md`.
+  - Validation: static source/diff inspection only; `build-system-static`, `test-routercontext-port-range`, Linux/OpenBSD/Windows compilation, CTest, package/RPM checks and manual CI remain pending. No local build or test was run.
 
 - [ ] SNARK-010: validate OpenBSD pre-pledge supervised storage startup and explicit
   worker replacement. Socket-only handoff and inherited root are implemented
