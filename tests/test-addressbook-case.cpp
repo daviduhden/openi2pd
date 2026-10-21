@@ -173,6 +173,49 @@ void TestBase64StaysCaseSensitive ()
 	assert (addr);
 	assert (addr->identHash == hash);
 }
+
+void TestLookupReplyAuthority ()
+{
+	using Requests = i2p::client::detail::AddressLookupRequests;
+	Requests requests;
+	const auto resolver = MakeDestinationKeys ().GetPublic ()->GetIdentHash ();
+	const auto stranger = MakeDestinationKeys ().GetPublic ()->GetIdentHash ();
+	assert (requests.Insert (42, "Host.Domain.I2P", resolver, 100));
+	// A valid signature from a different destination does not authorize this
+	// nonce and must leave the real request available to its resolver.
+	assert (!requests.Take (42, stranger, 100));
+	assert (!requests.Take (43, resolver, 100));
+	assert (!requests.Insert (42, "other.domain.i2p", resolver, 100));
+	assert (!requests.Insert (43, "HOST.DOMAIN.I2P", resolver, 100));
+	auto name = requests.Take (42, resolver, 101);
+	assert (name && *name == "host.domain.i2p");
+	assert (!requests.Take (42, resolver, 101)); // replay
+	assert (requests.Insert (42, "host.domain.i2p", resolver, 101));
+	requests.Clear ();
+	assert (!requests.Take (42, resolver, 101)); // stopped lookup service
+}
+
+void TestLookupBoundsAndExpiry ()
+{
+	using Requests = i2p::client::detail::AddressLookupRequests;
+	Requests requests;
+	const auto resolver = MakeDestinationKeys ().GetPublic ()->GetIdentHash ();
+	assert (!requests.Insert (1, "", resolver, 100));
+	assert (!requests.Insert (1, std::string (256, 'a'), resolver, 100));
+	for (size_t i = 0; i < Requests::MAX_PENDING; ++i)
+		assert (requests.Insert (static_cast<uint32_t> (i), std::to_string (i) + ".domain.i2p", resolver, 100));
+	assert (!requests.Insert (1000, "overflow.domain.i2p", resolver, 100));
+	// Just before the deadline, the original slot still belongs to its name.
+	auto name = requests.Take (0, resolver, 100 + Requests::TIMEOUT_SECONDS - 1);
+	assert (name && *name == "0.domain.i2p");
+	// At the deadline, neither an authenticated late reply nor stale requests
+	// may retain authority or prevent a new lookup from acquiring a slot.
+	assert (!requests.Take (1, resolver, 100 + Requests::TIMEOUT_SECONDS));
+	assert (requests.Insert (1000, "new.domain.i2p", resolver, 100 + Requests::TIMEOUT_SECONDS));
+	assert (requests.Take (1000, resolver, 100 + Requests::TIMEOUT_SECONDS));
+	assert (requests.Insert (1001, "reset.domain.i2p", resolver, 500));
+	assert (!requests.Take (1001, resolver, 499)); // clock reset fails closed
+}
 } // namespace
 
 int main ()
@@ -183,5 +226,7 @@ int main ()
 	TestB32Case ();
 	TestInsertAddressCase ();
 	TestBase64StaysCaseSensitive ();
+	TestLookupReplyAuthority ();
+	TestLookupBoundsAndExpiry ();
 	return 0;
 }

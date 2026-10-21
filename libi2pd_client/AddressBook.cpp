@@ -92,6 +92,47 @@ namespace client
 		return normalized;
 	}
 
+	void detail::AddressLookupRequests::Prune (uint64_t now)
+	{
+		std::erase_if (m_Requests, [now] (const auto & entry)
+			{
+				auto created = entry.second.Created;
+				return now < created || now - created >= TIMEOUT_SECONDS;
+			});
+	}
+
+	bool detail::AddressLookupRequests::Insert (
+		uint32_t nonce, std::string_view name, const i2p::data::IdentHash & resolver, uint64_t now)
+	{
+		if (name.empty () || name.size () > 255) return false;
+		auto key = NormalizeHostName (name);
+		std::lock_guard<std::mutex> l (m_Mutex);
+		Prune (now);
+		if (m_Requests.size () >= MAX_PENDING) return false;
+		for (const auto & [unused, request] : m_Requests)
+			if (request.Name == key && request.Resolver == resolver) return false;
+		return m_Requests.emplace (nonce, Request { std::move (key), resolver, now }).second;
+	}
+
+	std::optional<std::string> detail::AddressLookupRequests::Take (
+		uint32_t nonce, const i2p::data::IdentHash & resolver, uint64_t now)
+	{
+		std::lock_guard<std::mutex> l (m_Mutex);
+		Prune (now);
+		auto it = m_Requests.find (nonce);
+		// An unrelated authenticated sender must not consume the real request.
+		if (it == m_Requests.end () || it->second.Resolver != resolver) return std::nullopt;
+		auto name = std::move (it->second.Name);
+		m_Requests.erase (it);
+		return name;
+	}
+
+	void detail::AddressLookupRequests::Clear ()
+	{
+		std::lock_guard<std::mutex> l (m_Mutex);
+		m_Requests.clear ();
+	}
+
 	// TODO: this is actually proxy class
 	class AddressBookFilesystemStorage : public AddressBookStorage
 	{
@@ -932,6 +973,7 @@ namespace client
 
 	void AddressBook::StopLookups ()
 	{
+		m_Lookups.Clear ();
 		auto dest = i2p::client::context.GetSharedLocalDestination ();
 		if (dest)
 		{
@@ -966,11 +1008,8 @@ namespace client
 					return;
 				}
 				uint32_t nonce;
-				RAND_bytes ((uint8_t *)&nonce, 4);
-				{
-					std::unique_lock<std::mutex> l (m_LookupsMutex);
-					m_Lookups[nonce] = address;
-				}
+				if (RAND_bytes (reinterpret_cast<unsigned char *> (&nonce), sizeof (nonce)) != 1) return;
+				if (!m_Lookups.Insert (nonce, address, addr->identHash, i2p::util::GetMonotonicSeconds ())) return;
 				LogPrint (eLogDebug, "Addressbook: Lookup of ", address, " to ", addr->identHash.ToBase32 (),
 					" nonce=", nonce);
 				// reserved (4) || nonce (4) || name length (1) || name
@@ -987,8 +1026,9 @@ namespace client
 	}
 
 	void AddressBook::HandleLookupResponse (
-		const i2p::data::IdentityEx & from, uint16_t, uint16_t, const uint8_t * buf, size_t len)
+		const i2p::data::IdentityEx & from, uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len)
 	{
+		if (fromPort != ADDRESS_RESOLVER_DATAGRAM_PORT || toPort != ADDRESS_RESPONSE_DATAGRAM_PORT) return;
 		if (len < 44)
 		{
 			LogPrint (eLogError, "Addressbook: Lookup response is too short ", len);
@@ -997,28 +1037,18 @@ namespace client
 		uint32_t nonce = bufbe32toh (buf + 4);
 		LogPrint (eLogDebug, "Addressbook: Lookup response received from ", from.GetIdentHash ().ToBase32 (),
 			" nonce=", nonce);
-		std::string address;
+		auto address = m_Lookups.Take (nonce, from.GetIdentHash (), i2p::util::GetMonotonicSeconds ());
+		if (address)
 		{
-			std::unique_lock<std::mutex> l (m_LookupsMutex);
-			auto it = m_Lookups.find (nonce);
-			if (it != m_Lookups.end ())
-			{
-				address = it->second;
-				m_Lookups.erase (it);
-			}
-		}
-		if (address.length () > 0)
-		{
-			// TODO: verify from
 			i2p::data::IdentHash hash (buf + 8);
 			if (!hash.IsZero ())
 			{
-				auto key = NormalizeHostName (address);
+				auto key = NormalizeHostName (*address);
 				std::lock_guard<std::mutex> l (m_AddressBookMutex);
 				m_Addresses[key] = std::make_shared<Address> (hash);
 			}
 			else
-				LogPrint (eLogInfo, "AddressBook: Lookup response: ", address, " not found");
+				LogPrint (eLogInfo, "AddressBook: Lookup response: ", *address, " not found");
 		}
 	}
 

@@ -21,6 +21,7 @@
 #include <mutex>
 #include <future>
 #include <memory>
+#include <optional>
 #include <boost/asio.hpp>
 #include "Base.h"
 #include "Identity.h"
@@ -78,6 +79,32 @@ namespace client
 	// result does not depend on the process locale, and a b33 label (URL-safe
 	// base64, case-sensitive) is preserved byte-for-byte.
 	std::string NormalizeHostName (std::string_view name);
+
+	namespace detail
+	{
+		// Correlate authenticated datagram replies with a bounded, short-lived
+		// request. The nonce alone never grants authority to change a name.
+		class AddressLookupRequests
+		{
+		public:
+			static constexpr size_t MAX_PENDING = 256;
+			static constexpr uint64_t TIMEOUT_SECONDS = 120;
+			bool Insert (uint32_t nonce, std::string_view name, const i2p::data::IdentHash & resolver, uint64_t now);
+			std::optional<std::string> Take (uint32_t nonce, const i2p::data::IdentHash & resolver, uint64_t now);
+			void Clear ();
+
+		private:
+			struct Request
+			{
+				std::string Name;
+				i2p::data::IdentHash Resolver;
+				uint64_t Created;
+			};
+			void Prune (uint64_t now); // caller holds m_Mutex
+			std::mutex m_Mutex;
+			std::map<uint32_t, Request> m_Requests;
+		};
+	}
 
 	class AddressBookStorage // interface for storage
 	{
@@ -156,8 +183,7 @@ namespace client
 		std::mutex m_AddressBookMutex;
 		AddressBookStorage::Addresses m_Addresses;
 		std::map<i2p::data::IdentHash, std::shared_ptr<AddressResolver>> m_Resolvers; // local destination->resolver
-		std::mutex m_LookupsMutex;
-		std::map<uint32_t, std::string> m_Lookups; // nonce -> address
+		detail::AddressLookupRequests m_Lookups;
 		std::unique_ptr<AddressBookStorage> m_Storage;
 		volatile bool m_IsLoaded;
 		std::future<void> m_Downloading;
