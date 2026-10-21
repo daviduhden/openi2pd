@@ -24,6 +24,7 @@
 #include <vector>
 #include <list>
 #include <map>
+#include <set>
 #include <unordered_map>
 #include <unordered_set>
 #include <mutex>
@@ -258,6 +259,9 @@ namespace torrents
 		std::map<Torrent::InfoHash, std::shared_ptr<Torrent>> m_Torrents;
 		std::map<int, std::weak_ptr<Torrent>> m_TorrentsByID;
 		mutable std::mutex m_TorrentsMutex;
+		// Protected by m_TorrentsMutex; re-add is rejected until serialized
+		// cleanup succeeds. Failures retain the reservation until restart.
+		std::set<Torrent::InfoHash> m_RemovingTorrents;
 		boost::asio::steady_timer m_TrackerRequestsCheckTimer, m_KeepAliveCheckTimer, m_ReconnectCheckTimer,
 			m_TorrentsStatusUpdateTimer;
 		DiskIOService m_DiskIOService;

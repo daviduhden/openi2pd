@@ -38,11 +38,18 @@ Use with `SKILL.md`. This is a source map, not a parity or isolation claim.
 8. `isolatedstorage=true` means no parent payload/metadata/DHT write fallback.
 9. SAF uses provider URI authority; never manufacture a filesystem path.
 10. Deletion is exact-file/empty-directory only; never recursive tree deletion.
+11. Removal tombstones revoke an instance permanently. Reserve its infohash
+    until serialized disk cleanup succeeds; stale jobs must not mutate a
+    replacement. Delete native settings even when retaining payload. Cleanup
+    failures retain the reservation until daemon restart; see
+    `docs/torrent/local-state.md` for backend limits.
 
 ## Test map
 
 - Parsing/security: `test-torrent-bencode`, `test-torrents-security`,
   `test-torrents-magnet`, `test-torrents-verify-parity`.
+  `test-torrents-security` also prepares removal/re-add queue ordering,
+  irreversible persistence revocation and metadata cleanup failure cases.
 - Engine/control: `test-torrents-engine-interop`, `test-torrents-concurrency`,
   `test-torrents-priorities`, `test-torrents-comments`.
 - State/creator: `test-torrents-state`, `test-torrents-creator`,

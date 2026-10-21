@@ -58,6 +58,28 @@ interoperability remain manual CI obligations.
 
 In isolated native storage mode, metainfo, resume and settings mutations use
 bounded storage-worker transactions. Removing a torrent deletes its native
-settings file in this mode. Disk saves recheck session membership before IO;
-queued stale snapshots cannot resurrect settings after the serialized removal.
-The version-1 data encoding and torrent infohash remain unchanged.
+settings file in both isolated and direct modes, including when payload is
+retained. The version-1 data encoding and torrent infohash remain unchanged.
+
+Removal irreversibly revokes the old instance through an atomic tombstone.
+The tunnel reserves its infohash before removing membership and refuses a new
+instance until cleanup finishes on the single disk queue. Already-running IO
+may complete before that cleanup; later stale save/promotion jobs are rejected.
+Successful cleanup releases the reservation on the service domain. A failed
+cleanup logs an error and retains the reservation until daemon restart;
+removal acknowledgement is queue acceptance, not a durability acknowledgement.
+No network/control callback waits for disk IO to revoke the instance.
+
+Direct metadata deletion walks POSIX parents from the trusted root using
+no-follow directory descriptors, unlinks only the exact leaf and synchronizes
+its containing directory. A missing file is success; directories at metadata
+filenames are rejected. Windows retains the existing path-check/delete race
+against a same-UID reparse-point attacker. Isolated failures never fall back to
+direct filesystem writes. These controls do not complete global privilege
+separation or eliminate the documented payload deletion TOCTOU risks.
+
+Shutdown final snapshots may finish after membership is cleared only while
+the tunnel is stopping and the instance has not been removed. Ordinary saves
+still require matching live membership. Deterministic queue/removal cases in
+`test-torrents-security` are prepared; real shutdown, crash and power-loss
+validation remains pending manual CI.

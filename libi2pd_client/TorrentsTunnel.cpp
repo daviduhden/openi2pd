@@ -554,7 +554,7 @@ namespace torrents
 
 	void TorrentsTunnel::SaveTorrentFile (std::shared_ptr<Torrent> torrent, const std::string & content)
 	{
-		if (!torrent || FindTorrent (torrent->GetInfoHash ()) != torrent) return;
+		if (!torrent || torrent->IsRemoved () || FindTorrent (torrent->GetInfoHash ()) != torrent) return;
 		auto torrentFilePath = torrent->GetFullPath ();
 		torrentFilePath += ".torrent";
 		if (!IsContainedPath (torrentFilePath, false))
@@ -585,7 +585,7 @@ namespace torrents
 
 	void TorrentsTunnel::InitTorrentFiles (std::shared_ptr<Torrent> torrent)
 	{
-		if (!torrent || torrent->GetError () == eTorrentErrorMalformedMetaInfo) return;
+		if (!torrent || torrent->IsRemoved () || torrent->GetError () == eTorrentErrorMalformedMetaInfo) return;
 		if (!IsContainedPath (torrent->GetFullPath (), true))
 		{
 			LogPrint (eLogError, "TorrentsTunnel: Refusing to initialise torrent outside ", m_TorrentsDir);
@@ -775,7 +775,7 @@ namespace torrents
 
 	void TorrentsTunnel::LoadTorrentAdminState (const std::shared_ptr<Torrent> & torrent)
 	{
-		if (!torrent) return;
+		if (!torrent || torrent->IsRemoved ()) return;
 		auto self = std::static_pointer_cast<TorrentsTunnel> (shared_from_this ());
 		const auto hash = torrent->GetInfoHash ();
 		auto & status = m_AdminState[hash];
@@ -840,7 +840,7 @@ namespace torrents
 
 	void TorrentsTunnel::SaveTorrentAdminState (const std::shared_ptr<Torrent> & torrent, bool final)
 	{
-		if (!torrent || !torrent->IsValid ()) return;
+		if (!torrent || torrent->IsRemoved () || !torrent->IsValid ()) return;
 		auto & status = m_AdminState[torrent->GetInfoHash ()];
 		++status.generation;
 		status.dirty = true;
@@ -866,11 +866,12 @@ namespace torrents
 		try
 		{
 			boost::asio::post (GetDiskIOService (),
-				[self, torrent, hash, relative, generation, content = std::move (content)]
+				[self, torrent, hash, relative, generation, final, content = std::move (content)]
 				{
-					// Disk jobs are serialized. Once removal erases membership, a
-					// queued stale save cannot resurrect state after its deletion.
-					if (self->FindTorrent (hash) != torrent) return;
+					// Only shutdown's final immutable snapshot may outlive map
+					// membership. Removal revokes even that authority permanently.
+					if (torrent->IsRemoved () || (self->FindTorrent (hash) != torrent
+						&& !(final && self->m_Stopping.load (std::memory_order_acquire)))) return;
 					std::string error;
 					bool ok = self->m_StorageWorker
 						? self->m_StorageWorker->ReplaceMetadata (relative,
@@ -964,6 +965,7 @@ namespace torrents
 		boost::asio::post (GetDiskIOService (),
 			[this, torrent] ()
 			{
+				if (torrent->IsRemoved ()) return;
 				// Never promote .part files based on a resume bitfield. Data
 				// coming from the network is verified in HandlePieceMsg and
 				// reloaded data is verified in the request path, so this gate
@@ -1037,6 +1039,7 @@ namespace torrents
 					boost::asio::post (GetService (),
 						[this, torrent] ()
 						{
+							if (torrent->IsRemoved () || FindTorrent (torrent->GetInfoHash ()) != torrent) return;
 							torrent->SetComplete ();
 							// The resume bitfield is only meaningful while data is
 							// unverified; removing it once promotion committed
@@ -1860,8 +1863,9 @@ namespace torrents
 
 	std::pair<int, bool> TorrentsTunnel::InsertTorrent (std::shared_ptr<Torrent> torrent)
 	{
-		if (!torrent) return { 0, false };
+		if (!torrent || torrent->IsRemoved ()) return { 0, false };
 		std::lock_guard<std::mutex> l (m_TorrentsMutex);
+		if (m_RemovingTorrents.contains (torrent->GetInfoHash ())) return { 0, false };
 		if (m_Torrents.emplace (torrent->GetInfoHash (), torrent).second)
 		{
 			// Reuse freed ids instead of overflowing int after INT_MAX
@@ -1918,9 +1922,14 @@ namespace torrents
 			torrent = it->second.lock ();
 			m_TorrentsByID.erase (it);
 			if (!torrent) return false;
+			// No IO lock or wait here: revoke new jobs immediately. Any IO
+			// already running finishes before the serialized disk deletion.
+			torrent->MarkRemoved ();
+			m_RemovingTorrents.insert (torrent->GetInfoHash ());
 			m_Torrents.erase (torrent->GetInfoHash ());
 		}
-		boost::asio::post (GetService (), [this, torrent, deleteFiles] () { RemoveTorrent (torrent, deleteFiles); });
+		auto self = std::static_pointer_cast<TorrentsTunnel> (shared_from_this ());
+		boost::asio::post (GetService (), [self, torrent, deleteFiles] () { self->RemoveTorrent (torrent, deleteFiles); });
 		return true;
 	}
 
@@ -1929,29 +1938,56 @@ namespace torrents
 		std::list<std::shared_ptr<Torrent>> torrentsToRemove;
 		{
 			std::lock_guard<std::mutex> l (m_TorrentsMutex);
-			for (const auto & it : m_Torrents) torrentsToRemove.push_back (it.second);
+			for (const auto & it : m_Torrents)
+			{
+				it.second->MarkRemoved ();
+				m_RemovingTorrents.insert (it.first);
+				torrentsToRemove.push_back (it.second);
+			}
 			m_Torrents.clear ();
 			m_TorrentsByID.clear ();
-			m_AdminState.clear ();
 		}
+		auto self = std::static_pointer_cast<TorrentsTunnel> (shared_from_this ());
 		boost::asio::post (GetService (),
-			[this, torrentsToRemove = std::move (torrentsToRemove), deleteFiles] ()
+			[self, torrentsToRemove = std::move (torrentsToRemove), deleteFiles] ()
 			{
-				for (auto it : torrentsToRemove) RemoveTorrent (it, deleteFiles);
+				for (auto it : torrentsToRemove) self->RemoveTorrent (it, deleteFiles);
 			});
 	}
 
 	void TorrentsTunnel::RemoveTorrent (std::shared_ptr<Torrent> torrent, bool deleteFiles)
 	{
 		if (!torrent) return;
+		m_AdminState.erase (torrent->GetInfoHash ()); // service-thread state only
 		StopTorrent (torrent);
+		auto self = std::static_pointer_cast<TorrentsTunnel> (shared_from_this ());
 		boost::asio::post (GetDiskIOService (),
-			[this, torrent, deleteFiles] ()
+			[this, self, torrent, deleteFiles] ()
 			{
+				bool cleanupSucceeded = false;
+				bool cleanupFailed = false;
+				// Release on the service domain only after all disk mutations.
+				// Failed cleanup keeps the hash reserved until restart, so a
+				// replacement cannot inherit partially deleted old state.
+				auto finish = [self, &cleanupSucceeded] (Torrent * removed)
+				{
+					if (!cleanupSucceeded)
+					{
+						LogPrint (eLogError, "TorrentsTunnel: Removal incomplete; re-add blocked until restart");
+						return;
+					}
+					boost::asio::post (self->GetService (), [self, hash = removed->GetInfoHash ()]
+						{
+							std::lock_guard lock (self->m_TorrentsMutex);
+							self->m_RemovingTorrents.erase (hash);
+						});
+				};
+				std::unique_ptr<Torrent, decltype (finish)> completion (torrent.get (), finish);
 				auto fullPath = torrent->GetFullPath ();
 				if (!IsContainedPath (fullPath, true))
 				{
 					LogPrint (eLogError, "TorrentsTunnel: Refusing to remove path outside ", m_TorrentsDir);
+					cleanupFailed = true;
 					return;
 				}
 				if (m_StorageWorker)
@@ -1962,12 +1998,18 @@ namespace torrents
 					{
 						auto metadata = relative; metadata += suffix;
 						if (!m_StorageWorker->RemoveMetadata (metadata, error))
+						{
+							cleanupFailed = true;
 							LogPrint (eLogError, "TorrentsTunnel: Isolated metadata removal failed: ", error);
+						}
 					}
 					const auto state = std::filesystem::path (".openi2pd-state")
 						/ (ToHexString (torrent->GetInfoHash ()) + ".state");
 					if (!m_StorageWorker->RemoveMetadata (state, error))
+					{
+						cleanupFailed = true;
 						LogPrint (eLogError, "TorrentsTunnel: Isolated settings removal failed: ", error);
+					}
 					if (deleteFiles)
 					{
 						std::vector<std::filesystem::path> directories;
@@ -1975,7 +2017,11 @@ namespace torrents
 						{
 							if (file->HasFinalNameStorage ())
 							{
-								if (!file->RemovePayload (error)) LogPrint (eLogError, "TorrentsTunnel: SAF deletion failed: ", error);
+								if (!file->RemovePayload (error))
+								{
+									cleanupFailed = true;
+									LogPrint (eLogError, "TorrentsTunnel: SAF deletion failed: ", error);
+								}
 								continue;
 							}
 							file->Close ();
@@ -1984,7 +2030,10 @@ namespace torrents
 							{
 								auto payload = name; payload += suffix;
 								if (!m_StorageWorker->Remove (payload, file->GetFileLength (), error))
+								{
+									cleanupFailed = true;
 									LogPrint (eLogError, "TorrentsTunnel: Isolated payload removal failed: ", error);
+								}
 							}
 							for (auto parent = name.parent_path (); !parent.empty (); parent = parent.parent_path ())
 								directories.push_back (parent);
@@ -1995,25 +2044,30 @@ namespace torrents
 						for (const auto & directory : directories)
 							(void)m_StorageWorker->RemoveEmptyDirectory (directory, error); // Only empty directories.
 					}
+					cleanupSucceeded = !cleanupFailed;
 					return; // No direct filesystem fallback after any worker error.
 				}
-				auto torrentFilePath = fullPath;
-				torrentFilePath += ".torrent";
-				std::error_code ec;
-				if (IsContainedPath (torrentFilePath, false))
-					std::filesystem::remove (torrentFilePath, ec);
-				else
-					LogPrint (eLogError, "TorrentsTunnel: Refusing to delete ", torrentFilePath);
-				if (ec) LogPrint (eLogError, "TorrentsTunnel: Can't delete ", torrentFilePath);
-				auto resumeFilePath = fullPath;
-				resumeFilePath += ".resume";
-				if (IsContainedPath (resumeFilePath, false) && std::filesystem::exists (resumeFilePath))
+				// Settings belong to the torrent registration, not its payload:
+				// remove them even when deleteFiles is false, in both backends.
+				std::string metadataError;
+				auto relative = fullPath.lexically_relative (m_TorrentsDir);
+				for (const auto & suffix : { ".torrent", ".resume" })
 				{
-					std::filesystem::remove (resumeFilePath, ec);
-					if (ec) LogPrint (eLogError, "TorrentsTunnel: Can't delete ", resumeFilePath);
+					auto metadata = relative; metadata += suffix;
+					if (!RemoveFileNoFollow (m_TorrentsDir, metadata, metadataError))
+					{
+						cleanupFailed = true;
+						LogPrint (eLogError, "TorrentsTunnel: Metadata removal failed: ", metadataError);
+					}
 				}
-				else if (!IsContainedPath (resumeFilePath, false))
-					LogPrint (eLogError, "TorrentsTunnel: Refusing to delete ", resumeFilePath);
+				const auto state = std::filesystem::path (".openi2pd-state")
+					/ (ToHexString (torrent->GetInfoHash ()) + ".state");
+				if (!RemoveFileNoFollow (m_TorrentsDir, state, metadataError))
+				{
+					cleanupFailed = true;
+					LogPrint (eLogError, "TorrentsTunnel: Settings removal failed: ", metadataError);
+				}
+				std::error_code ec;
 				const auto files = torrent->GetFiles ();
 				const bool documents = std::any_of (files.begin (), files.end (),
 					[] (const auto & file) { return file->HasFinalNameStorage (); });
@@ -2021,28 +2075,49 @@ namespace torrents
 				{
 					std::string error;
 					for (const auto & file : files)
-						if (!file->RemovePayload (error)) LogPrint (eLogError, "TorrentsTunnel: SAF deletion failed: ", error);
+						if (!file->RemovePayload (error))
+						{
+							cleanupFailed = true;
+							LogPrint (eLogError, "TorrentsTunnel: SAF deletion failed: ", error);
+						}
 				}
 				if (deleteFiles && !documents)
 				{
 					// remove_all removes a symlink entry itself and never
 					// descends through links, so a directory swapped in after
 					// the containment check cannot redirect the deletion.
-					if (IsContainedPath (fullPath, true) && std::filesystem::exists (fullPath))
+					if (!IsContainedPath (fullPath, true))
+					{
+						cleanupFailed = true;
+						LogPrint (eLogError, "TorrentsTunnel: Refusing changed payload path ", fullPath);
+					}
+					else if (std::filesystem::exists (fullPath))
 					{
 						std::filesystem::remove_all (fullPath, ec);
-						if (ec) LogPrint (eLogError, "TorrentsTunnel: Can't delete ", fullPath);
+						if (ec)
+						{
+							cleanupFailed = true;
+							LogPrint (eLogError, "TorrentsTunnel: Can't delete ", fullPath);
+						}
 					}
 					auto partFilePath = fullPath;
 					partFilePath += ".part";
 					if (IsContainedPath (partFilePath, false) && std::filesystem::exists (partFilePath))
 					{
 						std::filesystem::remove (partFilePath, ec);
-						if (ec) LogPrint (eLogError, "TorrentsTunnel: Can't delete ", partFilePath);
+						if (ec)
+						{
+							cleanupFailed = true;
+							LogPrint (eLogError, "TorrentsTunnel: Can't delete ", partFilePath);
+						}
 					}
 					else if (!IsContainedPath (partFilePath, false))
+					{
+						cleanupFailed = true;
 						LogPrint (eLogError, "TorrentsTunnel: Refusing to delete ", partFilePath);
+					}
 				}
+				cleanupSucceeded = !cleanupFailed;
 			});
 	}
 
@@ -2176,7 +2251,7 @@ namespace torrents
 
 	void TorrentsTunnel::UpdateTorrentInfo (std::shared_ptr<Torrent> torrent, std::string_view info)
 	{
-		if (!torrent || torrent->IsStopped ()) return;
+		if (!torrent || torrent->IsRemoved () || torrent->IsStopped ()) return;
 		torrent->ParseInfo (info);
 		if (torrent->IsValid () && !torrent->GetError ()) LoadTorrentAdminState (torrent);
 		if (torrent->IsPrivate ())

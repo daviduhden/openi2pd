@@ -225,6 +225,10 @@ namespace torrents
 	// uncertain; callers must report the error and must not truncate/retry.
 	bool WriteFileAtomicNoFollow (const std::filesystem::path & root, const std::filesystem::path & relativePath,
 		const void * data, size_t len, std::string & error);
+	// Missing files are success; POSIX anchors parents without following links.
+	// Windows retains the existing path-check/delete reparse-point race.
+	bool RemoveFileNoFollow (const std::filesystem::path & root,
+		const std::filesystem::path & relativePath, std::string & error);
 	// Creates path exclusively (O_EXCL) and reserves exactly `size` bytes.
 	bool CreateFileWithSizeNoFollow (const std::filesystem::path & path, size_t size);
 	// Anchored variants: `relativePath` is traversed from `root` one component
@@ -603,6 +607,10 @@ namespace torrents
 		void AddDownloaded (size_t add) { m_Downloaded += add; }
 
 		void SaveTorrentResumeFile ();
+		// Irreversible instance tombstone. IO already running may finish, but
+		// the single disk queue drains it before removal; later jobs must stop.
+		void MarkRemoved () { m_Removed.store (true, std::memory_order_release); }
+		bool IsRemoved () const { return m_Removed.load (std::memory_order_acquire); }
 		using ResumePersistence = std::function<bool (std::span<const uint8_t>, bool remove)>;
 		void SetResumePersistence (ResumePersistence persistence) { m_ResumePersistence = std::move (persistence); }
 
@@ -651,6 +659,7 @@ namespace torrents
 
 	private:
 		ResumePersistence m_ResumePersistence;
+		std::atomic<bool> m_Removed { false };
 		std::string m_Name, m_Announce;
 		PeerID m_PeerID { };
 		TrackerTiers m_TrackerTiers;

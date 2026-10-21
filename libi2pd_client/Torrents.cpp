@@ -493,6 +493,59 @@ namespace torrents
 		return ok;
 	}
 
+	bool RemoveFileNoFollow (const std::filesystem::path & root,
+		const std::filesystem::path & relativePath, std::string & error)
+	{
+		error.clear ();
+		if (root.empty () || !IsSafeRelativePath (relativePath))
+		{
+			error = "invalid removal target";
+			return false;
+		}
+#ifdef _WIN32
+		auto target = root / relativePath;
+		if (!IsPathWithinRoot (root, target, false))
+		{
+			error = "unsafe removal path";
+			return false;
+		}
+		if (DeleteFileW (target.c_str ())) return true;
+		auto code = GetLastError ();
+		if (code == ERROR_FILE_NOT_FOUND || code == ERROR_PATH_NOT_FOUND) return true;
+		error = "cannot remove file";
+		return false;
+#else
+		int directory = ::open (root.c_str (), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+		if (directory < 0)
+		{
+			if (errno == ENOENT) return true;
+			error = "cannot open removal root";
+			return false;
+		}
+		for (const auto & component : relativePath.parent_path ())
+		{
+			int next = ::openat (directory, component.c_str (), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+			int code = errno;
+			::close (directory);
+			if (next < 0)
+			{
+				if (code == ENOENT) return true;
+				error = "unsafe removal parent";
+				return false;
+			}
+			directory = next;
+		}
+		int result = ::unlinkat (directory, relativePath.filename ().c_str (), 0);
+		int code = errno;
+		// Missing derived state needs no durability write. A successful unlink
+		// is durable only after its containing directory has been synced.
+		bool ok = result == 0 ? ::fsync (directory) == 0 : code == ENOENT;
+		::close (directory);
+		if (!ok) error = "cannot remove file or synchronize removal";
+		return ok;
+#endif
+	}
+
 	bool WriteFileAtomicNoFollow (const std::filesystem::path & root, const std::filesystem::path & relativePath,
 		const void * data, size_t len, std::string & error)
 	{
@@ -2524,7 +2577,7 @@ namespace torrents
 
 	void Torrent::SaveTorrentResumeFile ()
 	{
-		if (m_FullPath.empty ()) return;
+		if (IsRemoved () || m_FullPath.empty ()) return;
 		auto [bitfield, have] = CreateBitfield ();
 		if (!have) return; // empty
 		if (m_ResumePersistence)
@@ -2585,7 +2638,7 @@ namespace torrents
 		// Stopping a torrent must stop all inbound payload mutation and the
 		// disk writes it would schedule. Empty blocks are not progress and
 		// must not touch the block map.
-		if (m_IsStopped || !len || index >= m_Pieces.size ()) return false;
+		if (IsRemoved () || m_IsStopped || !len || index >= m_Pieces.size ()) return false;
 		const auto pieceSize = m_Pieces[index].GetSize ();
 		return offset <= pieceSize && len <= pieceSize - offset;
 	}
@@ -3438,7 +3491,7 @@ namespace torrents
 									infoHash = m_Torrent->GetInfoHash ()] () mutable
 								{
 									auto current = torrent.lock ();
-									if (!current || tunnel->FindTorrent (infoHash) != current) return;
+									if (!current || current->IsRemoved () || tunnel->FindTorrent (infoHash) != current) return;
 									auto fragments = current->GetPieceFileFragments (index);
 									Piece & piece = current->GetPiece (index);
 									bool saved = !fragments.empty ();
@@ -3624,6 +3677,7 @@ namespace torrents
 						[requestBlock = RequestedBlock { index, offset, length }, torrent = m_Torrent,
 							s = shared_from_this ()] () mutable
 						{
+							if (torrent->IsRemoved ()) return;
 							bool loaded = true;
 							auto [index, offset, len] = requestBlock;
 							Piece & piece = torrent->GetPiece (index);
