@@ -81,6 +81,15 @@ client must be disabled with `-DWITH_TORRENTS=OFF` because Boost.URL is not
 available. The specs do not claim RHEL support until that toolset path is
 validated.
 
+String formatting uses `snprintf`/`vsnprintf`, `inet_ntop` and
+`if_indextoname`, which are guaranteed by the declared compiler and platform
+minima. The project does not depend on `strlcpy` or `strlcat`; fixed C-style
+buffers use the internal `CopyString` helper instead, avoiding a libc-specific
+symbol or fallback. No new CMake feature probe is added because no
+non-guaranteed libc function is used. The `BOOST_ASIO_HAS_SNPRINTF` definition selects Asio's
+bounded `snprintf` fallback for scope IDs; project address/endpoint formatting
+avoids Asio's remaining POSIX `strcat` scope path.
+
 No dependency is downloaded during configure, build or run. Android
 dependencies continue to be provided by the existing vcpkg manifest used in CI;
 the project itself has no hidden fetch step. CMake discovery relies on the

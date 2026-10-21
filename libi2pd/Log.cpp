@@ -11,6 +11,7 @@
  *
  */
 
+#include <cstdio>
 #include <time.h>
 
 #include "Log.h"
@@ -205,7 +206,14 @@ namespace log
 #else
 		localtime_r (&t, &caltime);
 #endif
-		strftime (m_LastDateTime, sizeof (m_LastDateTime), format.c_str (), &caltime);
+		m_LastDateTime[0] = 0;
+		if (!format.empty ()
+			&& !strftime (m_LastDateTime, sizeof (m_LastDateTime), format.c_str (), &caltime))
+		{
+			std::snprintf (
+				m_LastDateTime, sizeof (m_LastDateTime), "%lld", static_cast<long long> (t));
+		}
+		m_LastDateTime[sizeof (m_LastDateTime) - 1] = 0;
 		m_LastTimestamp = t;
 		return m_LastDateTime;
 	}

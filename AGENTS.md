@@ -238,8 +238,9 @@ The historical pre-rewrite baseline was `800c8627` (native Windows TUI/IPC);
 the current published baseline is `14283908`, including the Agent Skills and
 selective 2026-10-18/19/20 upstream review commits. Pre-rewrite hashes in the
 historical sections below may not resolve in this clone. The current
-uncommitted increment is the 2026-10-21 client/persistence continuation below.
-The published baseline includes parallel OpenBSD/logging hardening, atomic TUI status
+uncommitted increments are the 2026-10-21 client/persistence continuation and
+the string-safety continuation below. The published baseline includes parallel
+OpenBSD/logging hardening, atomic TUI status
 reads, RouterInfo/SSU2 bounds fixes, bounded Torrents RPC waits, C++23 ownership
 modernization, the memory/concurrency audit (SSU2/RouterInfo, crypto/reseed,
 BitTorrent, IPC/privsep/JNI and daemon lifecycle), dependency-floor cleanup,
@@ -442,3 +443,21 @@ TOCTOU, direct payload deletion races, broader client lifecycle, full Java
 parity and global network/router/verifier separation remain open. No local
 build, test or project validator was run. No commit or push is authorized for
 this continuation.
+
+## String safety continuation (2026-10-21)
+
+SEC-016 is implemented by static analysis, pending CI compilation and pending
+CI tests. First-party C++ sources no longer call `sprintf`, `strcat`, `strcpy`,
+`strncpy` or their unbounded variants. `AddressFormat.h` provides bounded
+IPv4/IPv6/scope-ID and endpoint formatting; `LogPrint` overloads avoid
+Boost.Asio's unsafe scope-ID formatter; `BOOST_ASIO_HAS_SNPRINTF=1` selects
+Asio's bounded `snprintf` fallback while project formatting avoids its
+remaining `strcat` path. `CopyString` replaces the remaining fixed-buffer
+copy, `I18N` uses a checked single-buffer formatter, and SOCKS domain buffers
+reject zero-length/overflow input. No `strlcpy`/`strlcat` fallback is added
+because the supported platform minima guarantee the selected primitives.
+
+Prepared tests cover address/endpoint scope IDs, small/zero-capacity buffers,
+embedded NULs, i18n formatting and SOCKS length limits; `build-system-static`
+also rejects the unsafe call family. No local build, test, sanitizer, fuzzer
+or project validator was run. These changes are not dynamically validated.

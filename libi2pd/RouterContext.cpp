@@ -1349,7 +1349,8 @@ void RouterContext::SetMTU (int mtu, bool v4)
 		if (addr && addr->ssu && ((v4 && addr->IsV4 ()) || (!v4 && addr->IsV6 ())) && addr->ssu->mtu != mtu)
 		{
 			addr->ssu->mtu = mtu;
-			LogPrint (eLogDebug, "Router: MTU for ", v4 ? "ipv4" : "ipv6", " address ", addr->host.to_string (),
+			LogPrint (eLogDebug, "Router: MTU for ", v4 ? "ipv4" : "ipv6", " address ",
+				i2p::util::net::FormatAddress (addr->host),
 				" is set to ", mtu);
 			updated = true;
 		}

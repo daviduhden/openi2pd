@@ -1952,7 +1952,7 @@ namespace data
 			{
 				WriteString ("host", properties);
 				properties << '=';
-				WriteString (address.host.to_string (), properties);
+				WriteString (i2p::util::net::FormatAddress (address.host), properties);
 				properties << ';';
 			}
 			if ((address.IsNTCP2 () && isPublished) || address.IsSSU2 ())

@@ -32,6 +32,7 @@
 #include <functional>
 #include <utility>
 #include <vector>
+#include "AddressFormat.h"
 #include "Queue.h"
 
 #ifndef _WIN32
@@ -249,6 +250,34 @@ namespace log
 inline bool CheckLogLevel (LogLevel level) noexcept
 {
 	return level <= i2p::log::Logger ().GetLogLevel ();
+}
+
+// Format Asio addresses without instantiating Asio's scope-ID formatter,
+// which uses unsafe sprintf/strcat on POSIX platforms. These overloads are
+// declared before the generic fold so existing LogPrint call sites use them.
+inline void LogPrint (std::stringstream & s, const boost::asio::ip::address & value) noexcept
+{
+	s << i2p::util::net::FormatAddress (value);
+}
+
+inline void LogPrint (std::stringstream & s, const boost::asio::ip::address_v4 & value) noexcept
+{
+	s << i2p::util::net::FormatAddress (value);
+}
+
+inline void LogPrint (std::stringstream & s, const boost::asio::ip::address_v6 & value) noexcept
+{
+	s << i2p::util::net::FormatAddress (value);
+}
+
+inline void LogPrint (std::stringstream & s, const boost::asio::ip::tcp::endpoint & value) noexcept
+{
+	s << i2p::util::net::FormatEndpoint (value);
+}
+
+inline void LogPrint (std::stringstream & s, const boost::asio::ip::udp::endpoint & value) noexcept
+{
+	s << i2p::util::net::FormatEndpoint (value);
 }
 
 /** internal usage only -- folding args array to single string */

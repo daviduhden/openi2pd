@@ -534,3 +534,24 @@ NET-026 remains in implementation. Exit criteria: read-only review of the
 matrices and properly sourced vectors, justified native corrections, manual
 CI compilation/tests and controlled 2.14.0 peer exchanges. Existing 2.13.0
 audit evidence must not be presented as a completed 2.14.0 comparison.
+
+## String safety and libc compatibility (static, 2026-10-21)
+
+The first-party C++23 tree no longer calls `sprintf`, `strcat`, `strcpy`,
+`strncpy` or their unbounded variants. Address and endpoint diagnostics use a
+project-owned bounded formatter rather than Boost.Asio's scope-ID
+`sprintf`/`strcat` path; `BOOST_ASIO_HAS_SNPRINTF=1` selects Asio's bounded
+`snprintf` fallback for scope IDs while project formatting avoids the
+remaining `strcat` path. Fixed platform buffers use the
+internal `CopyString` helper. The supported platforms guarantee `snprintf`,
+`inet_ntop` and `if_indextoname`, so no `strlcpy`/`strlcat` libc shim is
+introduced.
+
+Prepared regressions cover IPv4/IPv6/scope-ID/endpoint formatting, small and
+zero-capacity buffers, embedded NUL bytes, i18n formatting, and SOCKS domain
+length/overflow boundaries. `build-system-static` rejects the unsafe call
+family and requires the Asio definition.
+
+Exit criteria: manual CI compilation on Linux/OpenBSD/Windows/Android, full
+CTest, ASan+UBSan/TSan, fuzzing and the new regressions pass. Until then this
+is static-only work; no diagnostic removal or validation is claimed.

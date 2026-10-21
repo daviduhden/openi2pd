@@ -17,6 +17,7 @@
 
 #ifndef _WIN32
 
+#include <cstdio>
 #include <errno.h>
 #include <signal.h>
 #include <stdlib.h>

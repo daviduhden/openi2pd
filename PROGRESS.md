@@ -1966,3 +1966,25 @@ OpenBSD or Java/C++ dynamic test was run.
   workflow dispatch, commit or push. Reference-checker/CI changes are
   implemented by static analysis and pending CI tests; no 2.14.0 parity or
   interoperability validation is claimed.
+
+## 2026-10-21 — string safety and libc compatibility (static-only)
+
+- Audited first-party formatting and concatenation. The tree had one remaining
+  unbounded call (`strncpy` for an interface name) and no first-party
+  `sprintf`/`strcat`/`strcpy`; Boost.Asio 1.90 still compiled an unsafe POSIX
+  scope-ID `sprintf`/`strcat` path in `inet_ntop`.
+- Added `AddressFormat.h` with bounded IPv4/IPv6/scope-ID and endpoint
+  formatting using `inet_ntop` and explicit scope suffixes. Added `LogPrint`
+  overloads and converted direct address formatting so Asio's unsafe formatter
+  is not instantiated; selected `BOOST_ASIO_HAS_SNPRINTF=1` as an upstream
+  bounded fallback for any remaining Asio use.
+- Added `CopyString` and replaced the interface-name `strncpy`. Hardened
+  `I18N` formatting with a checked vector buffer, checked `Family` certificate
+  name extraction, bounded `Log` timestamp fallback, torrent hex output, and
+  SOCKS domain-name length checks (including zero-length and capacity overflow).
+- Prepared `test-address-format`, `test-util-copy-string`, `test-i18n-format`
+  and `test-socks-address`; registered them in CTest and added static
+  `build-system-static` checks for the unsafe call family and the Asio macro.
+- No compiler, CMake configure/build, CTest, sanitizer, fuzzer, package,
+  Android/Gradle or live run was performed. All fixes and tests are static-only,
+  pending manual CI compilation and tests.

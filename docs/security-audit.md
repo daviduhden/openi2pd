@@ -252,3 +252,33 @@ TOCTOU rather than claiming a clean dynamic result. The TUI configuration
 snapshot surface is read-only and allowlisted; the only writes are the typed,
 atomic transit and daemon-log-level operations. No key, credential, arbitrary
 path or URL is exposed.
+
+## 2026-10-21 format and buffer-safety pass
+
+Static review confirmed and corrected the remaining first-party unsafe string
+patterns. No dynamic result is claimed.
+
+- **S-15 — interface-name copy (Low/Medium, Fixed):** `util.cpp` used an
+  uninitialised `ifreq` and `strncpy(..., IFNAMSIZ - 1)`, which could leave the
+  name unterminated. It now uses zero-initialised storage and bounded
+  `CopyString`.
+- **S-16 — Boost.Asio scope-ID formatting (Medium mitigation, Fixed):** Asio's
+  POSIX `inet_ntop` path uses `sprintf`/`strcat` for IPv6 scope IDs. The
+  project now formats addresses and endpoints through `AddressFormat.h`,
+  `LogPrint` overloads, and selects Asio's bounded `snprintf` fallback with
+  `BOOST_ASIO_HAS_SNPRINTF=1`; the project path avoids Asio's remaining
+  `strcat`. No system header or linker warning suppression was used.
+- **S-17 — i18n two-pass formatting (Low/Medium, Fixed):** `tr`/`ntr` now use a
+  checked vector-backed formatter with negative/short-write handling and no
+  empty-string `front()` access.
+- **S-18 — SOCKS domain length (High, Fixed):** a zero-length SOCKS5 domain
+  could wrap the `uint8_t` length and write past the 255-byte union member.
+  The buffer now rejects zero-length and over-capacity input and is covered by
+  a prepared regression.
+- **S-19 — certificate/log/hex truncation (Low, Fixed):** certificate-name
+  extraction is zero-initialised and terminated, `strftime` failure falls back
+  to a bounded timestamp, and torrent info-hash hex formatting uses a fixed
+  nibble table without `snprintf`.
+
+The new address, copy-string, i18n and SOCKS tests are prepared for manual CI;
+no compiler, CTest, sanitizer, fuzzer or runtime validation was performed.

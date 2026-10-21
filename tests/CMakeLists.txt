@@ -127,6 +127,10 @@ set(I2PD_TESTS
   test-routercontext-service-lifecycle
   test-routercontext-static-keys
   test-routercontext-port-range
+  test-address-format
+  test-util-copy-string
+  test-i18n-format
+  test-socks-address
   test-kad-dht
   test-addressbook
   test-addressbook-case
@@ -212,10 +216,21 @@ foreach(test IN LISTS I2PD_TESTS)
   if(test MATCHES "^test-tui")
     set_property(TEST ${test} APPEND PROPERTY LABELS tui)
   endif()
-  if(test STREQUAL "test-routercontext-port-range" OR test STREQUAL "test-i2ptunnel-http" OR test STREQUAL "test-addressbook-case")
+  if(test STREQUAL "test-routercontext-port-range"
+      OR test STREQUAL "test-i2ptunnel-http"
+      OR test STREQUAL "test-addressbook-case"
+      OR test STREQUAL "test-address-format"
+      OR test STREQUAL "test-util-copy-string"
+      OR test STREQUAL "test-i18n-format"
+      OR test STREQUAL "test-socks-address")
     set_property(TEST ${test} APPEND PROPERTY LABELS security)
   endif()
-  if(test STREQUAL "test-i2ptunnel-http" OR test STREQUAL "test-addressbook-case")
+  if(test STREQUAL "test-i2ptunnel-http"
+      OR test STREQUAL "test-addressbook-case"
+      OR test STREQUAL "test-address-format"
+      OR test STREQUAL "test-util-copy-string"
+      OR test STREQUAL "test-i18n-format"
+      OR test STREQUAL "test-socks-address")
     set_property(TEST ${test} APPEND PROPERTY LABELS memory)
   endif()
   if(test MATCHES "crypto|blinding|su3|reseed|gost|signature|ecies|protocol-bounds|routerinfo|ssu2|ntcp2|netdb|leaseset|torrents-security|torrents-verify-parity|i2cp-routing-session|sam-control|race|concurrency|sandbox|policy|imsg")

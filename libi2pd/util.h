@@ -25,7 +25,10 @@
 #include <utility>
 #include <charconv>
 #include <cstdint>
+#include <cstring>
+#include <string_view>
 #include <boost/asio.hpp>
+#include "AddressFormat.h"
 
 namespace i2p
 {
@@ -323,6 +326,18 @@ namespace util
 	};
 
 	uint_fast32_t GetRngSeed ();
+
+	// Bounded, NUL-terminating copy for fixed platform buffers. Returns the
+	// required source length (like strlcpy) without reading past the view.
+	inline std::size_t CopyString (char * destination, std::size_t capacity, std::string_view source) noexcept
+	{
+		const std::size_t required = source.size ();
+		if (!destination || capacity == 0) return required;
+		const std::size_t copied = required < capacity - 1 ? required : capacity - 1;
+		if (copied) std::memcpy (destination, source.data (), copied);
+		destination[copied] = '\0';
+		return required;
+	}
 
 	namespace net
 	{

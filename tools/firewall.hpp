@@ -23,6 +23,7 @@
 #include <vector>
 
 #include <boost/asio/ip/address.hpp>
+#include "AddressFormat.h"
 
 namespace i2p::tools::firewall
 {
@@ -134,7 +135,8 @@ inline std::optional<Endpoint> MakeEndpoint (std::string_view addressText, int p
 		if (address.to_v4 () == boost::asio::ip::address_v4::broadcast ()) return std::nullopt;
 	}
 
-	return Endpoint { address.to_string (), static_cast<uint16_t> (port), transport, address.is_v6 () };
+	return Endpoint {
+		i2p::util::net::FormatAddress (address), static_cast<uint16_t> (port), transport, address.is_v6 () };
 }
 
 /**

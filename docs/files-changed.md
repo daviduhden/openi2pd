@@ -938,6 +938,21 @@ No build, CTest, sanitizer, package build, rpmbuild, lintian, service start or
 live-peer run was performed. The new port-table test and RPM guards remain
 pending manual CI.
 
+## String safety and libc compatibility (2026-10-21, static)
+
+| Path | Change |
+|---|---|
+| `libi2pd/AddressFormat.h`, `libi2pd/Log.h`, `libi2pd/Reseed.cpp` | Added bounded IPv4/IPv6/scope-ID and endpoint formatting and `LogPrint` overloads, avoiding Boost.Asio's unsafe POSIX `sprintf`/`strcat` scope-ID path at Reseed and other address log sites. |
+| `libi2pd/util.h`, `libi2pd/util.cpp` | Added the bounded `CopyString` helper and replaced the uninitialised `ifreq`/`strncpy` interface-name copy; switched address logs to the safe formatter. |
+| `i18n/I18N.h` | Replaced the two-pass `snprintf`/`front()` pattern with a checked vector-backed formatter and guarded plural indexing. |
+| `libi2pd/Family.cpp`, `libi2pd/Log.cpp`, `libi2pd_client/Torrents.cpp` | Hardened fixed-buffer certificate-name extraction, timestamp fallback/termination and torrent hex formatting. |
+| `libi2pd_client/SOCKSAddress.h`, `libi2pd_client/SOCKS.cpp` | Moved the SOCKS domain buffer to a bounded helper that rejects zero-length/overflow input and cannot wrap its length byte. |
+| `build/CMakeLists.txt`, `tests/check-build-system.cmake` | Selected `BOOST_ASIO_HAS_SNPRINTF=1`, added the TUI header include path, and rejected unbounded C string functions in first-party sources. |
+| `tests/test-address-format.cpp`, `tests/test-util-copy-string.cpp`, `tests/test-i18n-format.cpp`, `tests/test-socks-address.cpp` | Added prepared regressions for scope IDs, endpoints, small/zero-capacity buffers, embedded NULs, i18n formatting and SOCKS length boundaries. |
+
+No compiler, CTest, sanitizer, fuzzer, project validator or runtime test was
+performed. These changes remain pending manual CI compilation and tests.
+
 ## Client and persistence continuation (2026-10-21, static)
 
 | Paths | Change |

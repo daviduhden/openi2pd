@@ -2375,7 +2375,8 @@ namespace transport
 						boost::system::error_code ec;
 						conn->GetSocket ().bind (*localAddress, ec);
 						if (ec)
-							LogPrint (eLogError, "NTCP2: Can't bind to ", localAddress->address ().to_string (), ": ",
+							LogPrint (eLogError, "NTCP2: Can't bind to ",
+								i2p::util::net::FormatAddress (localAddress->address ()), ": ",
 								ec.message ());
 					}
 					conn->GetSocket ().async_connect (conn->GetRemoteEndpoint (),
@@ -2639,10 +2640,7 @@ namespace transport
 			i2p::http::HTTPReq req;
 			req.method = "CONNECT";
 			req.version = "HTTP/1.1";
-			if (ep.address ().is_v6 ())
-				req.uri = "[" + ep.address ().to_string () + "]:" + std::to_string (ep.port ());
-			else
-				req.uri = ep.address ().to_string () + ":" + std::to_string (ep.port ());
+			req.uri = i2p::util::net::FormatEndpoint (ep);
 			if (!m_ProxyAuthorization.empty ()) req.AddHeader ("Proxy-Authorization", m_ProxyAuthorization);
 
 			// The buffer must outlive the async_write. Keep a shared owner and

@@ -4104,7 +4104,8 @@ namespace transport
 		}
 		else
 		{
-			LogPrint (eLogWarning, "SSU2: Wrong address type ", ep.address ().to_string ());
+			LogPrint (
+				eLogWarning, "SSU2: Wrong address type ", i2p::util::net::FormatAddress (ep.address ()));
 			return 0;
 		}
 		return size;

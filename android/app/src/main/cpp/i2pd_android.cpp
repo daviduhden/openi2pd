@@ -418,7 +418,7 @@ std::vector<AddressSnapshot> CopyAddressSnapshot ()
 		item.transport = transport;
 		item.ipv6 = address->host.is_v6 ();
 		item.unspecified = address->host.is_unspecified ();
-		item.host = address->host.to_string ();
+		item.host = i2p::util::net::FormatAddress (address->host);
 		item.port = address->port;
 		item.published = address->published;
 		result.push_back (std::move (item));

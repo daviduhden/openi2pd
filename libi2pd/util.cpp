@@ -62,7 +62,9 @@ typedef struct tagTHREADNAME_INFO
 
 #else /* !_WIN32 => UNIX */
 #include <sys/types.h>
+#include <sys/ioctl.h>
 #include <ifaddrs.h>
+#include <net/if.h>
 #endif
 
 #define address_pair_v4(a, b)                                                                                          \
@@ -360,9 +362,8 @@ namespace util
 					sockaddr_in * localInterfaceAddress = (sockaddr_in *)lpAddr;
 					if (localInterfaceAddress->sin_addr.S_un.S_addr == inputAddress.sin_addr.S_un.S_addr)
 					{
-						char addr[INET_ADDRSTRLEN];
-						InetNtopA (
-							AF_INET, &(((struct sockaddr_in *)localInterfaceAddress)->sin_addr), addr, INET_ADDRSTRLEN);
+						const auto addr = i2p::util::net::FormatAddressBytes (
+							false, &(((struct sockaddr_in *)localInterfaceAddress)->sin_addr), 0);
 
 						auto result = pCurrAddresses->Mtu;
 						FREE (pAddresses);
@@ -426,9 +427,8 @@ namespace util
 
 					if (found_address)
 					{
-						char addr[INET6_ADDRSTRLEN];
-						InetNtopA (AF_INET6, &(((struct sockaddr_in6 *)localInterfaceAddress)->sin6_addr), addr,
-							INET6_ADDRSTRLEN);
+						const auto addr = i2p::util::net::FormatAddressBytes (
+							true, &(((struct sockaddr_in6 *)localInterfaceAddress)->sin6_addr), 0);
 
 						auto result = pCurrAddresses->Mtu;
 						FREE (pAddresses);
@@ -449,7 +449,7 @@ namespace util
 
 		int GetMTUWindows (const boost::asio::ip::address & localAddress, int fallback)
 		{
-			const std::string localAddressUniversal = localAddress.to_string ();
+			const std::string localAddressUniversal = i2p::util::net::FormatAddress (localAddress);
 			if (localAddress.is_v4 ())
 			{
 				sockaddr_in inputAddress { };
@@ -519,8 +519,9 @@ namespace util
 				int fd = socket (family, SOCK_DGRAM, 0);
 				if (fd > 0)
 				{
-					ifreq ifr;
-					strncpy (ifr.ifr_name, ifa->ifa_name, IFNAMSIZ - 1); // set interface for query
+					ifreq ifr {};
+					i2p::util::CopyString (
+						ifr.ifr_name, sizeof (ifr.ifr_name), ifa->ifa_name ? ifa->ifa_name : "");
 					if (ioctl (fd, SIOCGIFMTU, &ifr) >= 0)
 						mtu = ifr.ifr_mtu; // MTU
 					else
@@ -533,7 +534,8 @@ namespace util
 			}
 			else
 				LogPrint (
-					eLogWarning, "NetIface: Interface for local address", localAddress.to_string (), " not found");
+					eLogWarning, "NetIface: Interface for local address", i2p::util::net::FormatAddress (localAddress),
+					" not found");
 			freeifaddrs (ifaddr);
 
 			return mtu;

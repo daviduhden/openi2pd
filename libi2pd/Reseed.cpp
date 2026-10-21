@@ -999,7 +999,8 @@ namespace data
 
 						if (!ecode)
 						{
-							LogPrint (eLogDebug, "Reseed: Connected to ", ep.address ());
+							LogPrint (
+								eLogDebug, "Reseed: Connected to ", i2p::util::net::FormatAddress (ep.address ()));
 							connected = true;
 							break;
 						}
@@ -1136,7 +1137,8 @@ namespace data
 				boost::asio::ip::tcp::endpoint ep = it;
 				if (i2p::util::net::IsYggdrasilAddress (ep.address ()) && i2p::context.SupportsMesh ())
 				{
-					LogPrint (eLogDebug, "Reseed: Yggdrasil: Resolved to ", ep.address ());
+					LogPrint (
+						eLogDebug, "Reseed: Yggdrasil: Resolved to ", i2p::util::net::FormatAddress (ep.address ()));
 					s.async_connect (ep, [&ecode] (const boost::system::error_code & ec) { ecode = ec; });
 					service.run_for (std::chrono::seconds (2 * RESEED_CONNECT_TIMEOUT));
 					if (!service.stopped ())

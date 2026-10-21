@@ -58,8 +58,9 @@ namespace data
 			{
 				std::shared_ptr<i2p::crypto::Verifier> verifier;
 				// extract issuer name
-				char name[100];
-				X509_NAME_oneline (X509_get_issuer_name (cert), name, 100);
+				char name[100] {};
+				if (!X509_NAME_oneline (X509_get_issuer_name (cert), name, sizeof (name))) name[0] = 0;
+				name[sizeof (name) - 1] = 0;
 				char * cn = strstr (name, "CN=");
 				if (cn)
 				{

@@ -13,11 +13,14 @@
 #ifndef __I18N_H__
 #define __I18N_H__
 
+#include <cstddef>
+#include <cstdio>
 #include <string>
 #include <string_view>
 #include <map>
 #include <utility>
 #include <functional>
+#include <vector>
 
 namespace i2p
 {
@@ -63,7 +66,8 @@ namespace i18n
 			else
 			{
 				int form = m_Formula (n);
-				return it->second[form];
+				if (form < 0 || static_cast<std::size_t> (form) >= it->second.size ()) form = 0;
+				return it->second.empty () ? (n == 1 ? arg : arg2) : it->second[form];
 			}
 		}
 
@@ -79,6 +83,24 @@ namespace i18n
 	void SetLanguage (const std::string &);
 	std::string_view translate (std::string_view arg);
 	std::string translate (const std::string & arg, const std::string & arg2, int n);
+
+	namespace detail
+	{
+		template <typename... TArgs>
+		std::string FormatPrintf (std::string_view format, TArgs &&... args)
+		{
+			if constexpr (sizeof... (TArgs) == 0) return std::string (format);
+			const std::string formatString (format);
+			const int required
+				= std::snprintf (nullptr, 0, formatString.c_str (), std::forward<TArgs> (args)...);
+			if (required < 0) return {};
+			std::vector<char> buffer (static_cast<std::size_t> (required) + 1);
+			const int written = std::snprintf (
+				buffer.data (), buffer.size (), formatString.c_str (), std::forward<TArgs> (args)...);
+			if (written < 0 || written > required) return {};
+			return std::string (buffer.data (), static_cast<std::size_t> (written));
+		}
+	} // detail
 } // i18n
 } // i2p
 
@@ -98,13 +120,8 @@ template <typename TValue> std::string_view tr (TValue && arg)
 */
 template <typename TValue, typename... TArgs> std::string tr (TValue && arg, TArgs &&... args)
 {
-	std::string tr_str = std::string (i2p::i18n::translate (std::forward<TValue> (arg))); // TODO:
-
-	size_t size = std::snprintf (NULL, 0, tr_str.c_str (), std::forward<TArgs> (args)...);
-	std::string str (size, 0);
-	std::snprintf (&str.front (), size + 1, tr_str.c_str (), std::forward<TArgs> (args)...);
-
-	return str;
+	return i2p::i18n::detail::FormatPrintf (
+		i2p::i18n::translate (std::forward<TValue> (arg)), std::forward<TArgs> (args)...);
 }
 
 /**
@@ -128,14 +145,9 @@ template <typename TValue, typename TValue2> std::string ntr (TValue && arg, TVa
 template <typename TValue, typename TValue2, typename... TArgs>
 std::string ntr (TValue && arg, TValue2 && arg2, int n, TArgs &&... args)
 {
-	std::string tr_str
-		= i2p::i18n::translate (std::forward<TValue> (arg), std::forward<TValue2> (arg2), std::forward<int> (n));
-
-	size_t size = std::snprintf (NULL, 0, tr_str.c_str (), std::forward<TArgs> (args)...);
-	std::string str (size, 0);
-	std::snprintf (&str.front (), size + 1, tr_str.c_str (), std::forward<TArgs> (args)...);
-
-	return str;
+	return i2p::i18n::detail::FormatPrintf (
+		i2p::i18n::translate (std::forward<TValue> (arg), std::forward<TValue2> (arg2), std::forward<int> (n)),
+		std::forward<TArgs> (args)...);
 }
 
 #endif // __I18N_H__

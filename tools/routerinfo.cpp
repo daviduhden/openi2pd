@@ -121,7 +121,8 @@ bool PrintRules (const std::string & hash,
 		// treating the whole file as malformed.
 		if (address->host.is_unspecified () || address->port <= 0) continue;
 
-		auto endpoint = i2p::tools::firewall::MakeEndpoint (address->host.to_string (), address->port, *transport);
+		auto endpoint = i2p::tools::firewall::MakeEndpoint (
+			i2p::util::net::FormatAddress (address->host), address->port, *transport);
 		if (!endpoint)
 		{
 			std::cerr << "routerinfo: invalid endpoint for " << hash << std::endl;
@@ -289,7 +290,8 @@ int main (int argc, char * argv[])
 				std::cout << "Router Hash: " << hash << std::endl;
 				for (const auto & address : addresses)
 				{
-					std::cout << AddressStyle (*address) << ": " << address->host;
+					std::cout << AddressStyle (*address) << ": "
+					          << i2p::util::net::FormatAddress (address->host);
 					if (options.printPort) std::cout << ":" << address->port;
 					std::cout << std::endl;
 				}

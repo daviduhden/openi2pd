@@ -138,7 +138,10 @@ namespace client
 			auto ourIP = isV4 ? GetLoopbackAddressFor (addr) : GetLoopbackAddress6For (addr);
 			boost::system::error_code ec;
 			sock->bind (boost::asio::ip::tcp::endpoint (ourIP, 0), ec);
-			if (ec) LogPrint (eLogError, "I2PTunnel: Can't bind ourIP to ", ourIP.to_string (), ": ", ec.message ());
+			if (ec)
+				LogPrint (
+					eLogError, "I2PTunnel: Can't bind ourIP to ", i2p::util::net::FormatAddress (ourIP), ": ",
+					ec.message ());
 		}
 	}
 #endif
@@ -182,7 +185,10 @@ namespace client
 				m_Socket->open (boost::asio::ip::tcp::v4 ());
 			boost::system::error_code ec;
 			m_Socket->bind (boost::asio::ip::tcp::endpoint (localAddress, 0), ec);
-			if (ec) LogPrint (eLogError, "I2PTunnel: Can't bind to ", localAddress.to_string (), ": ", ec.message ());
+			if (ec)
+				LogPrint (
+					eLogError, "I2PTunnel: Can't bind to ", i2p::util::net::FormatAddress (localAddress), ": ",
+					ec.message ());
 		}
 		Connect (false);
 	}
@@ -502,7 +508,7 @@ namespace client
 			m_NeedsWebIrc = false;
 			m_OutPacket << "WEBIRC " << m_WebircPass << " cgiirc "
 						<< context.GetAddressBook ().ToAddress (m_From->GetIdentHash ()) << " "
-						<< GetSocket ()->local_endpoint ().address () << std::endl;
+						<< i2p::util::net::FormatAddress (GetSocket ()->local_endpoint ().address ()) << std::endl;
 		}
 
 		m_InPacket.clear ();

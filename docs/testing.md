@@ -611,6 +611,12 @@ normalized names, capacity, expiry and shutdown clearing. It now carries
 
 The manual Linux workflow explicitly selects `test-i2ptunnel-http`,
 `test-addressbook-case` and `test-torrents-security` after the full suite.
+
+Formatting and fixed-buffer regressions are prepared as `test-address-format`
+(IPv4/IPv6/scope IDs and endpoints), `test-util-copy-string` (zero capacity,
+truncation, embedded NUL), `test-i18n-format` (empty/large/percent input) and
+`test-socks-address` (zero-length and 255/256-byte domain names). They are
+registered in CTest; execution remains pending manual CI.
 The existing manual sanitizer, Windows and OpenBSD jobs consume the registered
 tests through their full CTest runs. Android still requires JNI/native
 compilation and device tests; these offline tests do not demonstrate live

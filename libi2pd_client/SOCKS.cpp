@@ -16,6 +16,7 @@
 #include <string>
 #include <atomic>
 #include "SOCKS.h"
+#include "SOCKSAddress.h"
 #include "Identity.h"
 #include "Streaming.h"
 #include "Destination.h"
@@ -32,21 +33,6 @@ namespace i2p
 namespace proxy
 {
 	static const size_t socks_buffer_size = 8192;
-	static const size_t max_socks_hostname_size = 255; // Limit for socks5 and bad idea to traverse
-
-	struct SOCKSDnsAddress
-	{
-		uint8_t size;
-		char value[max_socks_hostname_size];
-		void SetString (std::string_view str)
-		{
-			size = static_cast<uint8_t> (str.length ());
-			if (size > max_socks_hostname_size) size = max_socks_hostname_size;
-			memcpy (value, str.data (), size);
-		}
-		std::string_view GetString () const { return std::string_view (value, size); }
-		void push_back (char c) { value[size++] = c; }
-	};
 
 	class SOCKSServer;
 	class SOCKSHandler : public i2p::client::I2PServiceHandler, public std::enable_shared_from_this<SOCKSHandler>
@@ -163,8 +149,8 @@ namespace proxy
 		std::shared_ptr<i2p::stream::Stream> m_stream;
 		uint8_t * m_remaining_data; //Data left to be sent
 		uint8_t * m_remaining_upstream_data; //upstream data left to be forwarded
-		uint8_t m_response[7 + max_socks_hostname_size];
-		address m_address; //Address
+		uint8_t m_response[7 + SOCKS_MAX_HOSTNAME_SIZE];
+		address m_address {}; //Address
 		std::size_t m_remaining_data_len; //Size of the data left to be sent
 		uint32_t m_4aip; //Used in 4a requests
 		uint16_t m_port;
@@ -389,7 +375,12 @@ namespace proxy
 				auto s
 					= i2p::client::context.GetAddressBook ().ToAddress (owner->GetLocalDestination ()->GetIdentHash ());
 				address ad;
-				ad.dns.SetString (s);
+				if (!ad.dns.SetString (s))
+				{
+					LogPrint (eLogError, "SOCKS: v5 response destination is too large");
+					SocksRequestFailed (SOCKS5_ADDR_UNSUP);
+					return;
+				}
 				// HACK only 16 bits passed in port as SOCKS5 doesn't allow for more
 				response = GenerateSOCKS5Response (
 					SOCKS5_OK, ADDR_DNS, ad, m_stream ? (uint16_t)m_stream->GetRecvStreamID () : 0);
@@ -551,13 +542,18 @@ namespace proxy
 					EnterState (READY);
 					break;
 				}
-				if (m_address.dns.size >= max_socks_hostname_size)
+				if (m_address.dns.size >= SOCKS_MAX_HOSTNAME_SIZE)
 				{
 					LogPrint (eLogError, "SOCKS: v4a req failed: destination is too large");
 					SocksRequestFailed (SOCKS4_FAIL);
 					return false;
 				}
-				m_address.dns.push_back (*sock_buff);
+				if (!m_address.dns.push_back (*sock_buff))
+				{
+					LogPrint (eLogError, "SOCKS: v4a req failed: destination is too large");
+					SocksRequestFailed (SOCKS4_FAIL);
+					return false;
+				}
 				break;
 			case GET5_REQUESTV:
 				if (*sock_buff != SOCKS5)
@@ -594,9 +590,22 @@ namespace proxy
 				m_parseleft--;
 				if (m_parseleft == 0) EnterState (GET_PORT);
 				break;
-			case GET5_HOST_SIZE: EnterState (GET5_HOST, *sock_buff); break;
+			case GET5_HOST_SIZE:
+				if (*sock_buff == 0)
+				{
+					LogPrint (eLogError, "SOCKS: v5 empty destination name");
+					SocksRequestFailed (SOCKS5_ADDR_UNSUP);
+					return false;
+				}
+				EnterState (GET5_HOST, *sock_buff);
+				break;
 			case GET5_HOST:
-				m_address.dns.push_back (*sock_buff);
+				if (!m_address.dns.push_back (*sock_buff))
+				{
+					LogPrint (eLogError, "SOCKS: v5 destination name is too large");
+					SocksRequestFailed (SOCKS5_ADDR_UNSUP);
+					return false;
+				}
 				m_parseleft--;
 				if (m_parseleft == 0) EnterState (GET_PORT);
 				break;
@@ -696,7 +705,12 @@ namespace proxy
 							LogPrint (eLogInfo, "SOCKS: Replaced ", m_address.dns.GetString (), " to ", resolved);
 						else
 							LogPrint (eLogInfo, "SOCKS: Replaced to ", resolved);
-						m_address.dns.SetString (resolved);
+						if (!m_address.dns.SetString (resolved))
+						{
+							LogPrint (eLogError, "SOCKS: resolved destination is too large");
+							SocksRequestFailed (SOCKS5_ADDR_UNSUP);
+							return;
+						}
 						m_addrtype = ADDR_DNS;
 					}
 				}

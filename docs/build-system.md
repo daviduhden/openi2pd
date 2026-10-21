@@ -234,8 +234,10 @@ MSVC-only compatibility paths, and verifies the canonical C++23/component
 options, the `i2pd_privsep` component, the required POSIX Make targets and
 dependency floors (OpenSSL 3.0.2, LibreSSL 4.0, MiniUPnPc 2.2.6/API 17), and
 the RPM specs' `cmake --build` path, Fedora Boost guard and absence of direct
-make/ninja macros. It is registered as `build-system-static` and is part of the
-manual CI suite.
+make/ninja macros. It also scans first-party C++ sources for unbounded
+`sprintf`/`strcat`/`strcpy`/`strncpy`-family calls and requires the bounded
+`BOOST_ASIO_HAS_SNPRINTF=1` selection. It is registered as
+`build-system-static` and is part of the manual CI suite.
 `tests/check-services.cmake` separately checks the foreground/service-manager
 contract, forbidden readiness claims, ownership and log-directory wiring, and
 is registered as `services-static`.

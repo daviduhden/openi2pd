@@ -142,6 +142,8 @@ foreach(required IN ITEMS "MINIUPNPC_API_VERSION" "LESS 17")
   endif()
 endforeach()
 
+assert_present("${top_cmake_text}" "BOOST_ASIO_HAS_SNPRINTF=1"
+  "Boost.Asio scope-ID formatting must select the bounded snprintf path")
 assert_absent("${top_cmake_text}" "OPENSSL_SUPPRESS_DEPRECATED"
   "CMake still suppresses OpenSSL deprecation diagnostics")
 assert_absent("${crypto_header_text}" "OPENSSL_VERSION_NUMBER != 0x030000000"
@@ -285,6 +287,29 @@ foreach(_rpm_text IN ITEMS "${rpm_text}" "${rpm_git_text}")
   assert_present("${_rpm_text}" "boost-url"
     "RPM spec lacks the Boost.URL build dependency")
   assert_present("${_rpm_text}" "cmake --build" "RPM spec lacks cmake --build")
+endforeach()
+
+# Keep first-party source free of the unbounded C string functions. The
+# token boundary prevents std::snprintf from matching; Boost/OpenSSL/system
+# headers are excluded.
+file(GLOB_RECURSE _i2pd_format_sources
+  "${PROJECT_ROOT}/libi2pd/*.cpp" "${PROJECT_ROOT}/libi2pd/*.h" "${PROJECT_ROOT}/libi2pd/*.hpp"
+  "${PROJECT_ROOT}/libi2pd_client/*.cpp" "${PROJECT_ROOT}/libi2pd_client/*.h"
+  "${PROJECT_ROOT}/libi2pd_client/*.hpp" "${PROJECT_ROOT}/daemon/*.cpp"
+  "${PROJECT_ROOT}/daemon/*.h" "${PROJECT_ROOT}/privsep/*.cpp" "${PROJECT_ROOT}/privsep/*.h"
+  "${PROJECT_ROOT}/tui/*.cpp" "${PROJECT_ROOT}/tui/*.h" "${PROJECT_ROOT}/tools/*.cpp"
+  "${PROJECT_ROOT}/tools/*.hpp" "${PROJECT_ROOT}/i18n/*.cpp" "${PROJECT_ROOT}/i18n/*.h"
+  "${PROJECT_ROOT}/tests/*.cpp" "${PROJECT_ROOT}/tests/*.h"
+  "${PROJECT_ROOT}/android/app/src/main/cpp/*.cpp" "${PROJECT_ROOT}/Win32/*.cpp"
+  "${PROJECT_ROOT}/Win32/*.h")
+foreach(_format_source IN LISTS _i2pd_format_sources)
+  file(READ "${_format_source}" _format_text)
+  string(REGEX MATCH
+    "(^|[^A-Za-z0-9_])(sprintf|vsprintf|strcat|strncat|strcpy|strncpy)[[:space:]]*[(]"
+    _unsafe_match "${_format_text}")
+  if(_unsafe_match)
+    message(FATAL_ERROR "unsafe C string function in ${_format_source}: ${_unsafe_match}")
+  endif()
 endforeach()
 
 message(STATUS "build-system-static: OK")

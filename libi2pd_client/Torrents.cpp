@@ -2047,12 +2047,14 @@ namespace torrents
 
 	std::string Torrent::GetHexStringInfoHash () const
 	{
+		static constexpr char hex[] = "0123456789abcdef";
 		std::string infoHash;
+		infoHash.reserve (m_InfoHash.size () * 3);
 		for (auto it : m_InfoHash)
 		{
-			char str[4];
-			snprintf (str, 4, "%%%02x", it);
-			infoHash.append (str);
+			infoHash.push_back ('%');
+			infoHash.push_back (hex[it >> 4]);
+			infoHash.push_back (hex[it & 0x0f]);
 		}
 		return infoHash;
 	}

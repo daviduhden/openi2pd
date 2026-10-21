@@ -424,6 +424,11 @@ target_include_directories(libi2pd
     ${LANG_DIR}
 )
 target_compile_features(libi2pd PUBLIC cxx_std_23)
+# Asio selects an unsafe sprintf fallback for IPv6 scope IDs on POSIX unless
+# this upstream-supported macro is preselected. The project formatter avoids
+# Asio's remaining strcat path; the definition is PUBLIC because the inline
+# Asio functions must agree across all consumers.
+target_compile_definitions(libi2pd PUBLIC BOOST_ASIO_HAS_SNPRINTF=1)
 target_link_libraries(libi2pd
   PUBLIC
     OpenSSL::SSL OpenSSL::Crypto ZLIB::ZLIB
@@ -559,7 +564,9 @@ if(I2PD_BUILD_TUI)
       )
       target_compile_features(i2pd-tui PRIVATE cxx_std_23)
       target_include_directories(i2pd-tui PRIVATE
-        "${LIBI2PD_DIR}" "${TUI_DIR}" ${CURSES_INCLUDE_DIRS})
+        "${LIBI2PD_DIR}" "${TUI_DIR}" ${CURSES_INCLUDE_DIRS}
+        ${Boost_INCLUDE_DIRS}
+        "$<TARGET_PROPERTY:Boost::program_options,INTERFACE_INCLUDE_DIRECTORIES>")
       target_link_libraries(i2pd-tui PRIVATE
         ${CURSES_LIBRARIES} Threads::Threads i2pd_warnings)
       i2pd_enable_sanitizers(i2pd-tui)
@@ -577,14 +584,16 @@ if(I2PD_BUILD_TUI)
     )
     target_compile_features(i2pd-tui PRIVATE cxx_std_23)
     target_include_directories(i2pd-tui PRIVATE
-      "${LIBI2PD_DIR}" "${TUI_DIR}")
+      "${LIBI2PD_DIR}" "${TUI_DIR}"
+      ${Boost_INCLUDE_DIRS}
+      "$<TARGET_PROPERTY:Boost::program_options,INTERFACE_INCLUDE_DIRECTORIES>")
     target_compile_definitions(i2pd-tui PRIVATE
       WIN32_LEAN_AND_MEAN NOMINMAX WINVER=0x0A00 _WIN32_WINNT=0x0A00)
     # advapi32: token/SID inspection used for the named-pipe authorization
-    # policy. The console backend uses kernel32 only; no Winsock, shell or
-    # Curses library is required.
+    # policy. ws2_32 is required by the inline Boost.Asio address types pulled
+    # in through Log.h. No shell or Curses library is required.
     target_link_libraries(i2pd-tui PRIVATE
-      advapi32 Threads::Threads i2pd_warnings)
+      advapi32 ws2_32 Threads::Threads i2pd_warnings)
   endif()
 endif()
 
