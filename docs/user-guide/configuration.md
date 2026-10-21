@@ -254,8 +254,8 @@ precomputation.elgamal                 | Use ElGamal precomputated tables. (defa
 Option                                 | Description
 -------------------------------------- | --------------------------------------
 reseed.verify                          | Verify .su3 signature. (default: true)
-reseed.urls                            | Reseed URLs, separated by comma
-reseed.yggurls                         | Reseed Yggdrasil's URLs, separated by comma
+reseed.urls                            | Reseed URLs, separated by comma; the built-in mainline list is used when unset
+reseed.yggurls                         | Reseed Yggdrasil's URLs, separated by comma; the built-in list is used when unset
 reseed.file                            | Path to local .su3 file or HTTPS URL to reseed from
 reseed.zipfile                         | Path to local .zip file to reseed from
 reseed.threshold                       | Minimum number of known routers before requesting reseed. (default: 25)
