@@ -196,8 +196,7 @@ namespace tui
 			{
 				std::mbstate_t state { };
 				wchar_t character = 0;
-				const size_t consumed
-					= std::mbrtowc (&character, text.data () + offset, text.size () - offset, &state);
+				const size_t consumed = std::mbrtowc (&character, text.data () + offset, text.size () - offset, &state);
 				size_t bytes = consumed;
 				int width = 1;
 				if (consumed == static_cast<size_t> (-1) || consumed == static_cast<size_t> (-2) || consumed == 0)

@@ -257,8 +257,7 @@ namespace tui
 #endif
 	}
 
-	bool Server::Impl::SendAll (
-		int fd, std::string_view data, SteadyClock::time_point deadline, std::stop_token token)
+	bool Server::Impl::SendAll (int fd, std::string_view data, SteadyClock::time_point deadline, std::stop_token token)
 	{
 		while (!data.empty ())
 		{

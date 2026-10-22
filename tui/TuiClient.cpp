@@ -171,8 +171,8 @@ namespace tui
 			options.socketPath = AbsolutePath (options.socketPath);
 			if (options.language.empty ())
 			{
-				auto configPath = options.configPath.empty () ? options.dataDir + "/i2pd.conf"
-															 : AbsolutePath (options.configPath);
+				auto configPath
+					= options.configPath.empty () ? options.dataDir + "/i2pd.conf" : AbsolutePath (options.configPath);
 				struct stat st { };
 				if (stat (configPath.c_str (), &st) == 0)
 				{

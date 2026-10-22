@@ -19,7 +19,8 @@ using namespace i2p::tui;
 
 static void TestRequests ()
 {
-	auto advanced = ParseRequest ("I2PDTUI/1 TORRENT-CREATE-V1 0 0 private 3 0:http://a.i2p/a 0:http://b.i2p/a 1:udp://c.i2p/a payload");
+	auto advanced = ParseRequest (
+		"I2PDTUI/1 TORRENT-CREATE-V1 0 0 private 3 0:http://a.i2p/a 0:http://b.i2p/a 1:udp://c.i2p/a payload");
 	assert (advanced && advanced->type == RequestType::TorrentCreateV1 && advanced->createPrivate);
 	assert (!advanced->createPieceLength && advanced->argument == "payload");
 	assert (advanced->createTrackers.size () == 2 && advanced->createTrackers.front ().size () == 2);

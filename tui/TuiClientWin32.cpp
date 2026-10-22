@@ -385,7 +385,7 @@ namespace tui
 			if (options.language.empty ())
 			{
 				auto configPath = options.configPath.empty () ? JoinPath (options.dataDir, "i2pd.conf")
-															 : AbsolutePath (options.configPath);
+															  : AbsolutePath (options.configPath);
 				std::error_code error;
 				if (std::filesystem::is_regular_file (configPath, error))
 				{

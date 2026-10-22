@@ -114,11 +114,9 @@ namespace tui
 
 		void SetAdminMessage (AdminCommandResult & result, const char * message)
 		{
-			const int written
-				= std::snprintf (result.message, sizeof (result.message), "%s", message ? message : "");
-			result.messageLength = written > 0
-				? std::min<size_t> (static_cast<size_t> (written), sizeof (result.message) - 1)
-				: 0;
+			const int written = std::snprintf (result.message, sizeof (result.message), "%s", message ? message : "");
+			result.messageLength
+				= written > 0 ? std::min<size_t> (static_cast<size_t> (written), sizeof (result.message) - 1) : 0;
 		}
 
 		void RunAdminQueue (AdminQueue * queue)
@@ -475,8 +473,7 @@ namespace tui
 			AppendField (payload, "value", result.value);
 			if (action == "transit") AppendField (payload, "transit", result.enabled);
 			AppendField (payload, "message",
-				std::string_view (result.message,
-					std::min (result.messageLength, sizeof (result.message) - 1)));
+				std::string_view (result.message, std::min (result.messageLength, sizeof (result.message) - 1)));
 			return payload;
 		}
 
@@ -507,7 +504,7 @@ namespace tui
 				return text;
 			};
 			auto add = [&] (std::string_view kind, std::string_view name, std::string endpoint, std::string address,
-							bool enabled)
+						   bool enabled)
 			{
 				if (count >= limit) return;
 				std::string value (kind);
@@ -523,9 +520,7 @@ namespace tui
 				++count;
 			};
 			auto addressOf = [] (const std::shared_ptr<const i2p::client::ClientDestination> & destination)
-			{
-				return destination ? destination->GetIdentHash ().ToBase32 () + ".b32.i2p" : std::string ();
-			};
+			{ return destination ? destination->GetIdentHash ().ToBase32 () + ".b32.i2p" : std::string (); };
 
 			for (const auto & [endpoint, service] : i2p::client::context.GetClientTunnelsSnapshot ())
 			{
@@ -558,11 +553,11 @@ namespace tui
 			if (auto proxy = i2p::client::context.GetSocksProxy ())
 				add ("socks-proxy", proxy->GetName (), "local proxy", addressOf (proxy->GetLocalDestination ()), true);
 			const auto sam = i2p::client::context.GetSAMBridge ();
-			add ("sam", "SAM bridge", "local control", {}, sam != nullptr);
+			add ("sam", "SAM bridge", "local control", { }, sam != nullptr);
 			const auto bob = i2p::client::context.GetBOBCommandChannel ();
-			add ("bob", "BOB command channel", "local control", {}, bob != nullptr);
+			add ("bob", "BOB command channel", "local control", { }, bob != nullptr);
 			const auto i2cp = i2p::client::context.GetI2CPServer ();
-			add ("i2cp", "I2CP server", "local control", {}, i2cp != nullptr);
+			add ("i2cp", "I2CP server", "local control", { }, i2cp != nullptr);
 			AppendField (payload, "service.count", count);
 			return payload;
 		}
@@ -815,8 +810,7 @@ namespace tui
 			AppendField (payload, "detail.createdBy", torrent.createdBy);
 			AppendField (payload, "comments.enabled", torrent.commentsEnabled);
 			AppendField (payload, "comments.total", torrent.commentCount);
-			const size_t shownComments
-				= std::min (torrent.comments.size (), MAX_TORRENT_COMMENT_RECORDS_PER_REQUEST);
+			const size_t shownComments = std::min (torrent.comments.size (), MAX_TORRENT_COMMENT_RECORDS_PER_REQUEST);
 			// comments.count is the number of records actually emitted; the
 			// total retained count remains in comments.total. Clients must not
 			// iterate count against a truncated comments array.
@@ -1188,8 +1182,7 @@ namespace tui
 					action = "address-unblock";
 				}
 				std::snprintf (command.name, sizeof (command.name), "%s", request->argument.c_str ());
-				std::snprintf (
-					command.destination, sizeof (command.destination), "%s", request->argument2.c_str ());
+				std::snprintf (command.destination, sizeof (command.destination), "%s", request->argument2.c_str ());
 				return runAdmin (action, command);
 			}
 			case RequestType::AdminShutdown:
@@ -1266,8 +1259,9 @@ namespace tui
 			case RequestType::TorrentCommentHide:
 			case RequestType::TorrentCommentUnhide:
 				return makeOk (BuildTorrentCommandResult (request->tunnelIndex,
-					{ request->type == RequestType::TorrentCommentHide ? i2p::torrents::TorrentCommandKind::CommentHide
-																		   : i2p::torrents::TorrentCommandKind::CommentUnhide,
+					{ request->type == RequestType::TorrentCommentHide
+							? i2p::torrents::TorrentCommandKind::CommentHide
+							: i2p::torrents::TorrentCommandKind::CommentUnhide,
 						request->torrentId, false, request->argument }));
 			case RequestType::TorrentFilePriority:
 				return makeOk (BuildTorrentCommandResult (request->tunnelIndex,
@@ -1278,19 +1272,19 @@ namespace tui
 						request->argument }));
 			case RequestType::TorrentSetCreatedBy:
 				return makeOk (BuildTorrentCommandResult (request->tunnelIndex,
-					{ i2p::torrents::TorrentCommandKind::SetCreatedBy, request->torrentId, false,
-						request->argument }));
+					{ i2p::torrents::TorrentCommandKind::SetCreatedBy, request->torrentId, false, request->argument }));
 			case RequestType::TorrentCreateV1:
 			{
-				i2p::torrents::TorrentCommand command { i2p::torrents::TorrentCommandKind::Create, 0, false, request->argument };
+				i2p::torrents::TorrentCommand command { i2p::torrents::TorrentCommandKind::Create, 0, false,
+					request->argument };
 				command.createPieceLength = request->createPieceLength;
 				command.createPrivate = request->createPrivate;
 				command.createTrackers = request->createTrackers;
 				return makeOk (BuildTorrentCommandResult (request->tunnelIndex, command));
 			}
 			case RequestType::TorrentCreateCancel:
-				return makeOk (BuildTorrentCommandResult (request->tunnelIndex,
-					{ i2p::torrents::TorrentCommandKind::CancelCreate, 0, false, {} }));
+				return makeOk (BuildTorrentCommandResult (
+					request->tunnelIndex, { i2p::torrents::TorrentCommandKind::CancelCreate, 0, false, { } }));
 			case RequestType::TorrentCreate:
 				return makeOk (BuildTorrentCommandResult (
 					request->tunnelIndex, { i2p::torrents::TorrentCommandKind::Create, 0, false, request->argument }));

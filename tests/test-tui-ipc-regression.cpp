@@ -339,9 +339,8 @@ void TestAdminQueueBounds ()
 	g_ReleaseAdminExecutor.store (true, std::memory_order_relaxed);
 	// A timed-out IPC waiter must not discard the command itself. The single
 	// executor has to run every accepted slot exactly once before shutdown.
-	for (int i = 0; i < 2000
-		&& g_AdminExecutorCount.load (std::memory_order_relaxed) < i2p::tui::ADMIN_COMMAND_QUEUE_CAPACITY;
-		++i)
+	for (int i = 0;
+		i < 2000 && g_AdminExecutorCount.load (std::memory_order_relaxed) < i2p::tui::ADMIN_COMMAND_QUEUE_CAPACITY; ++i)
 		std::this_thread::sleep_for (std::chrono::milliseconds (1));
 	assert (g_AdminExecutorCount.load (std::memory_order_relaxed) == i2p::tui::ADMIN_COMMAND_QUEUE_CAPACITY);
 	i2p::tui::StopAdminCommandQueue ();

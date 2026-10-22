@@ -353,9 +353,7 @@ namespace tui
 		inline bool IsSafeAdminText (std::string_view value, size_t maximum)
 		{
 			if (value.empty () || value.size () > maximum) return false;
-			return std::all_of (value.begin (), value.end (), [] (unsigned char ch) {
-				return ch > 32 && ch != 127;
-			});
+			return std::all_of (value.begin (), value.end (), [] (unsigned char ch) { return ch > 32 && ch != 127; });
 		}
 	}
 
@@ -543,8 +541,8 @@ namespace tui
 				request.adminValue = static_cast<uint32_t> (*percent);
 				request.type = RequestType::AdminShare;
 			}
-			else if (action == "ADDRESS-ADD" || action == "ADDRESS-REMOVE"
-				|| action == "ADDRESS-BLOCK" || action == "ADDRESS-UNBLOCK")
+			else if (action == "ADDRESS-ADD" || action == "ADDRESS-REMOVE" || action == "ADDRESS-BLOCK"
+				|| action == "ADDRESS-UNBLOCK")
 			{
 				const auto name = detail::NextToken (rest);
 				if (!detail::IsSafeAdminText (name, action == "ADDRESS-ADD" ? 67 : 255))
@@ -554,8 +552,7 @@ namespace tui
 				{
 					const auto destination = detail::NextToken (rest);
 					if (!detail::IsSafeAdminText (destination, 1024))
-						return i2p::unexpected (
-							ProtocolError { ErrorCode::BadArgument, "invalid base64 destination" });
+						return i2p::unexpected (ProtocolError { ErrorCode::BadArgument, "invalid base64 destination" });
 					request.argument2 = std::string (destination);
 					request.type = RequestType::AdminAddressAdd;
 				}
@@ -602,15 +599,13 @@ namespace tui
 		else if (command == "TORRENT-DETAIL" || command == "TORRENT-START" || command == "TORRENT-STOP"
 			|| command == "TORRENT-PAUSE" || command == "TORRENT-RESUME" || command == "TORRENT-REANNOUNCE"
 			|| command == "TORRENT-RECHECK" || command == "TORRENT-REMOVE" || command == "TORRENT-START-ALL"
-			|| command == "TORRENT-STOP-ALL"
-			|| command == "TORRENT-REANNOUNCE-ALL" || command == "TORRENT-ADD-MAGNET"
+			|| command == "TORRENT-STOP-ALL" || command == "TORRENT-REANNOUNCE-ALL" || command == "TORRENT-ADD-MAGNET"
 			|| command == "TORRENT-TRACKER-ADD" || command == "TORRENT-TRACKER-REMOVE" || command == "TORRENT-COMMENTS"
 			|| command == "TORRENT-COMMENT-ADD" || command == "TORRENT-COMMENT-HIDE"
-			|| command == "TORRENT-COMMENT-UNHIDE"
-			|| command == "TORRENT-FILE-PRIORITY" || command == "TORRENT-META-COMMENT"
-			|| command == "TORRENT-META-CREATED-BY" || command == "TORRENT-CREATE-V1"
-			|| command == "TORRENT-CREATE-CANCEL" || command == "TORRENT-CREATE" || command == "TORRENT-ADD-FILE"
-			|| command == "TORRENT-SESSION" || command == "TORRENT-DHT")
+			|| command == "TORRENT-COMMENT-UNHIDE" || command == "TORRENT-FILE-PRIORITY"
+			|| command == "TORRENT-META-COMMENT" || command == "TORRENT-META-CREATED-BY"
+			|| command == "TORRENT-CREATE-V1" || command == "TORRENT-CREATE-CANCEL" || command == "TORRENT-CREATE"
+			|| command == "TORRENT-ADD-FILE" || command == "TORRENT-SESSION" || command == "TORRENT-DHT")
 		{
 			if (rest.empty ())
 				return i2p::unexpected (ProtocolError { ErrorCode::BadArgument, "missing tunnel index" });
@@ -679,7 +674,8 @@ namespace tui
 				auto privacy = detail::NextToken (rest);
 				auto count = detail::ParseUnsigned (detail::NextToken (rest));
 				if (!size || *size > 256 * 1024 * 1024 || (*size && (*size < 16384 || (*size & (*size - 1))))
-					|| (privacy != "public" && privacy != "private") || !count || *count > MAX_TORRENT_TRACKER_RECORDS_PER_REQUEST)
+					|| (privacy != "public" && privacy != "private") || !count
+					|| *count > MAX_TORRENT_TRACKER_RECORDS_PER_REQUEST)
 					return i2p::unexpected (ProtocolError { ErrorCode::BadArgument, "invalid creation options" });
 				request.createPieceLength = static_cast<uint32_t> (*size);
 				request.createPrivate = privacy == "private";
@@ -690,14 +686,15 @@ namespace tui
 					auto tier = detail::ParseUnsigned (token.substr (0, split));
 					if (split == std::string_view::npos || !tier || *tier > request.createTrackers.size ()
 						|| token.size () <= split + 1 || token.size () > MAX_TORRENT_ARGUMENT_LENGTH)
-						return i2p::unexpected (ProtocolError { ErrorCode::BadArgument, "invalid creation tracker tier" });
+						return i2p::unexpected (
+							ProtocolError { ErrorCode::BadArgument, "invalid creation tracker tier" });
 					if (*tier == request.createTrackers.size ()) request.createTrackers.emplace_back ();
 					request.createTrackers[static_cast<size_t> (*tier)].emplace_back (token.substr (split + 1));
 				}
 				auto source = detail::ParseRestOfLine (rest);
 				if (!source) return i2p::unexpected (source.error ());
 				request.argument = std::move (*source);
-				rest = {};
+				rest = { };
 			}
 			else if (request.type == RequestType::TorrentCreate || request.type == RequestType::TorrentAddMagnet
 				|| request.type == RequestType::TorrentAddFile)
@@ -711,12 +708,10 @@ namespace tui
 				|| request.type == RequestType::TorrentStop || request.type == RequestType::TorrentPause
 				|| request.type == RequestType::TorrentResume || request.type == RequestType::TorrentReannounce
 				|| request.type == RequestType::TorrentRecheck || request.type == RequestType::TorrentRemove
-				|| request.type == RequestType::TorrentAddTracker
-				|| request.type == RequestType::TorrentRemoveTracker
+				|| request.type == RequestType::TorrentAddTracker || request.type == RequestType::TorrentRemoveTracker
 				|| request.type == RequestType::TorrentCommentsEnable || request.type == RequestType::TorrentCommentAdd
 				|| request.type == RequestType::TorrentCommentHide || request.type == RequestType::TorrentFilePriority
-				|| request.type == RequestType::TorrentSetComment
-				|| request.type == RequestType::TorrentSetCreatedBy)
+				|| request.type == RequestType::TorrentSetComment || request.type == RequestType::TorrentSetCreatedBy)
 			{
 				if (rest.empty ())
 					return i2p::unexpected (ProtocolError { ErrorCode::BadArgument, "missing torrent id" });
