@@ -16,6 +16,7 @@
 #include <unordered_set>
 #include <utility>
 #include <boost/asio.hpp>
+#include <openssl/rand.h>
 
 #include "util.h"
 #include "Log.h"
@@ -104,15 +105,25 @@ namespace util
 
 	void RunnableService::StopIOService (bool stopService)
 	{
-		std::lock_guard<std::mutex> l (m_LifecycleMutex);
-		if (!m_IsRunning.load (std::memory_order_relaxed) && !m_Thread) return;
-		m_IsRunning.store (false, std::memory_order_relaxed);
-		if (stopService) m_Service.stop ();
-		if (m_Thread)
+		std::unique_ptr<std::thread> thread;
 		{
-			if (m_Thread->joinable ()) m_Thread->join ();
-			m_Thread.reset ();
+			std::lock_guard<std::mutex> l (m_LifecycleMutex);
+			if (!m_IsRunning.load (std::memory_order_relaxed) && !m_Thread) return;
+			m_IsRunning.store (false, std::memory_order_relaxed);
+			if (stopService) m_Service.stop ();
+			thread = std::move (m_Thread);
 		}
+		if (!thread) return;
+		if (thread->get_id () == std::this_thread::get_id ())
+		{
+			// A handler must not self-join. Keep the joinable thread in the
+			// service so a later Stop() from another thread can join it; the
+			// destructor handles the final same-thread case.
+			std::lock_guard<std::mutex> l (m_LifecycleMutex);
+			m_Thread = std::move (thread);
+			return;
+		}
+		if (thread->joinable ()) thread->join ();
 	}
 
 	void RunnableService::Run ()
@@ -320,7 +331,17 @@ namespace util
 
 	uint_fast32_t GetRngSeed ()
 	{
-		return static_cast<uint_fast32_t> (GetMonotonicMicroseconds ());
+		// Protocol-visible choices (I2NP message IDs, padding, tunnel order and
+		// peer ordering) must not be derived from an observable monotonic
+		// clock. mt19937 is only a fast non-cryptographic mixer here; its seed
+		// comes from the provider CSPRNG. Fail closed to a mixed clock value
+		// rather than a constant if the provider is unavailable.
+		uint32_t seed = 0;
+		if (RAND_bytes (reinterpret_cast<unsigned char *> (&seed), sizeof (seed)) == 1)
+			return static_cast<uint_fast32_t> (seed);
+		LogPrint (eLogError, "Util: CSPRNG seed unavailable");
+		const uint64_t now = GetMonotonicMicroseconds ();
+		return static_cast<uint_fast32_t> (now ^ (now >> 32) ^ 0x9e3779b9u);
 	}
 
 	namespace net

@@ -105,6 +105,8 @@ namespace util
 			{
 				auto tmp = head;
 				head = static_cast<T *> (*(void **)head); // next
+				// Release() already ran ~T() before placing the object on the
+				// free list; destroying it again would be a double destruction.
 				::operator delete ((void *)tmp);
 			}
 		}
@@ -208,7 +210,18 @@ namespace util
 		// The base destructor stops and joins the worker. Derived services
 		// must not leave a joinable thread behind; this is the explicit safe
 		// contract for objects whose Stop() was never called.
-		virtual ~RunnableService () { StopIOService (); }
+		virtual ~RunnableService ()
+		{
+			if (m_Thread && m_Thread->joinable () && m_Thread->get_id () == std::this_thread::get_id ())
+			{
+				// Destruction from the service's own handler: detaching avoids
+				// std::terminate and is the only safe option here.
+				m_Thread->detach ();
+				m_Thread.reset ();
+			}
+			else
+				StopIOService ();
+		}
 
 		auto & GetIOService () { return m_Service; }
 		bool IsRunning () const { return m_IsRunning.load (std::memory_order_relaxed); }

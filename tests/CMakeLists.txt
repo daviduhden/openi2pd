@@ -78,6 +78,8 @@ function(i2pd_add_test name)
 endfunction()
 
 set(I2PD_TESTS
+  test-rng-seed
+  test-runnableservice-lifecycle
   test-transport-connector
   test-tunnel-dsm-policy
   test-tunnelconfig-ownership
