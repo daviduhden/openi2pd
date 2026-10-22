@@ -4,8 +4,7 @@
  *
  * openi2pd: I18N langs.
  *
- * Declares the locale accessor for each compiled-in language unit; only the
- * English locale is currently present.
+ * Declares the locale accessor for each compiled-in language unit.
  *
  */
 
@@ -19,6 +18,18 @@ namespace i2p
 namespace i18n
 {
 	namespace english
+	{
+		std::shared_ptr<const Locale> GetLocale ();
+	}
+	namespace spanish
+	{
+		std::shared_ptr<const Locale> GetLocale ();
+	}
+	namespace russian
+	{
+		std::shared_ptr<const Locale> GetLocale ();
+	}
+	namespace chinese_simplified
 	{
 		std::shared_ptr<const Locale> GetLocale ();
 	}

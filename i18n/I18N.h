@@ -79,8 +79,15 @@ namespace i18n
 		std::function<int (int)> m_Formula;
 	};
 
-	// Retained for native Android integration; the local TUI always uses English.
-	void SetLanguage (const std::string &);
+	/**
+	 * Select the active UI language. Accepts BCP-47/locale tags such as `en`,
+	 * `es`, `ru`, `zh-Hans`, `zh_CN` and `es_ES`; an empty tag consults
+	 * LC_ALL/LC_MESSAGES/LANG. Unknown or unsupported languages fall back to
+	 * English, and LC_NUMERIC is pinned to C after selection.
+	 */
+	void SetLanguage (const std::string & tag);
+	/** Active normalized tag (`en`, `es`, `ru` or `zh-Hans`). */
+	std::string GetLanguageTag ();
 	std::string_view translate (std::string_view arg);
 	std::string translate (const std::string & arg, const std::string & arg2, int n);
 

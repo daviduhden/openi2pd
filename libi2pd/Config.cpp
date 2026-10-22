@@ -69,7 +69,8 @@ namespace config
 			"Logs destination: stdout, file, syslog (stdout if not set)") ("logfile",
 			value<std::string> ()->default_value (""), "Path to logfile (stdout if not set, autodetect if daemon)") (
 			"loglevel", value<std::string> ()->default_value ("warn"),
-			"Set the minimal level of log messages (debug, info, warn, error, none)") ("logclftime",
+			"Set the minimal level of log messages (debug, info, warn, error, none)") ("lang",
+			value<std::string> ()->default_value (""), "UI language: en, es, ru, zh-Hans (empty follows locale)") ("logclftime",
 			bool_switch ()->default_value (false),
 			"Write full CLF-formatted date and time to log (default: disabled, write only time)") (
 			"family", value<std::string> ()->default_value (""), "Specify a family, router belongs to") ("datadir",

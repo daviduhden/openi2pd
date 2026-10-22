@@ -427,11 +427,14 @@ set(LIBI2PD_CLIENT_SOURCES
   "${LIBI2PD_CLIENT_DIR}/TorrentsRPC.cpp"
   "${LIBI2PD_CLIENT_DIR}/TorrentsTunnel.cpp"
   "${LIBI2PD_CLIENT_DIR}/UDPTunnel.cpp"
-  "${LANG_DIR}/I18N.cpp"
 )
 
 set(LANG_SOURCES
+  "${LANG_DIR}/I18N.cpp"
   "${LANG_DIR}/English.cpp"
+  "${LANG_DIR}/Spanish.cpp"
+  "${LANG_DIR}/Russian.cpp"
+  "${LANG_DIR}/ChineseSimplified.cpp"
 )
 
 set(DAEMON_SOURCES
@@ -487,7 +490,7 @@ endif()
 # the same interface plus its own definitions.
 add_library(i2pd_warnings INTERFACE)
 if(MSVC)
-  target_compile_options(i2pd_warnings INTERFACE /W4 /permissive- /Zc:__cplusplus)
+  target_compile_options(i2pd_warnings INTERFACE /W4 /permissive- /Zc:__cplusplus /utf-8)
 else()
   target_compile_options(i2pd_warnings INTERFACE
     -Wall -Wextra -Wpedantic -Wno-unused-parameter -Wno-uninitialized
