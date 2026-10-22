@@ -702,8 +702,7 @@ namespace stream
 
 		// Java ConnectionPacketHandler rejects a SYN that has no FROM identity
 		// unless the stream was already authenticated by a ratchet session.
-		if ((flags & PACKET_FLAG_SYNCHRONIZE) && !(flags & PACKET_FLAG_FROM_INCLUDED)
-			&& !m_RemoteIdentity)
+		if ((flags & PACKET_FLAG_SYNCHRONIZE) && !(flags & PACKET_FLAG_FROM_INCLUDED) && !m_RemoteIdentity)
 		{
 			LogPrint (eLogInfo, "Streaming: SYN without authenticated FROM identity, dropped");
 			return false;
@@ -1308,7 +1307,8 @@ namespace stream
 				size += 2; // max packet size
 				if (m_DontSign)
 				{
-					htobe16buf (optionsSize, static_cast<uint16_t> (packet + size - 2 - optionsSize)); // actual options size
+					htobe16buf (
+						optionsSize, static_cast<uint16_t> (packet + size - 2 - optionsSize)); // actual options size
 					size += m_SendBuffer.Get (packet + size, m_MTU); // payload
 				}
 				else
@@ -1323,7 +1323,8 @@ namespace stream
 					uint8_t * signature = packet + size; // set it later
 					memset (signature, 0, signatureLen); // zeroes for now
 					size += signatureLen; // signature
-					htobe16buf (optionsSize, static_cast<uint16_t> (packet + size - 2 - optionsSize)); // actual options size
+					htobe16buf (
+						optionsSize, static_cast<uint16_t> (packet + size - 2 - optionsSize)); // actual options size
 					size += m_SendBuffer.Get (packet + size, m_MTU); // payload
 					m_LocalDestination.GetOwner ()->Sign (packet, static_cast<int> (size), signature);
 				}
@@ -2034,8 +2035,8 @@ namespace stream
 								* ((m_WindowSize - (m_LastWindowDropSize - PREV_SPEED_KEEP_TIME_COEFF))
 									/ m_WindowSize)); // some magic here
 						else
-							m_WindowSize += static_cast<float> (windowIncCounter
-								* ((m_WindowSize - (1 - PREV_SPEED_KEEP_TIME_COEFF)) / m_WindowSize));
+							m_WindowSize += static_cast<float> (
+								windowIncCounter * ((m_WindowSize - (1 - PREV_SPEED_KEEP_TIME_COEFF)) / m_WindowSize));
 						if (m_WindowSize > m_MaxWindowSize) m_WindowSize = m_MaxWindowSize;
 						m_WindowIncCounter -= windowIncCounter;
 						if (m_WindowSize >= maxWinSize)

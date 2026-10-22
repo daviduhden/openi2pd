@@ -46,16 +46,15 @@ namespace transport
 		std::shared_ptr<const i2p::data::RouterInfo::Address> SelectNTCP2Address (
 			i2p::data::RouterInfo::SupportedTransports transport) const
 		{
-			return transport == i2p::data::RouterInfo::eNTCP2V6
-				? router->GetPublishedNTCP2V6Address ()
-				: router->GetPublishedNTCP2V4Address ();
+			return transport == i2p::data::RouterInfo::eNTCP2V6 ? router->GetPublishedNTCP2V6Address ()
+																: router->GetPublishedNTCP2V4Address ();
 		}
 
 		std::shared_ptr<const i2p::data::RouterInfo::Address> SelectSSU2Address (
 			i2p::data::RouterInfo::SupportedTransports transport) const
 		{
 			return transport == i2p::data::RouterInfo::eSSU2V6 ? router->GetSSU2V6Address ()
-																 : router->GetSSU2V4Address ();
+															   : router->GetSSU2V4Address ();
 		}
 	};
 
@@ -71,15 +70,13 @@ namespace transport
 	public:
 		virtual ~ITransportConnector () = default;
 		[[nodiscard]] virtual bool TryConnect (
-			const TransportConnectContext & context,
-			i2p::data::RouterInfo::SupportedTransports transport) const = 0;
+			const TransportConnectContext & context, i2p::data::RouterInfo::SupportedTransports transport) const = 0;
 	};
 
 	class NTCP2Connector final : public ITransportConnector
 	{
 	public:
-		[[nodiscard]] bool TryConnect (
-			const TransportConnectContext & context,
+		[[nodiscard]] bool TryConnect (const TransportConnectContext & context,
 			i2p::data::RouterInfo::SupportedTransports transport) const override
 		{
 			if (!context.ntcp2) return false;
@@ -97,8 +94,7 @@ namespace transport
 	class SSU2Connector final : public ITransportConnector
 	{
 	public:
-		[[nodiscard]] bool TryConnect (
-			const TransportConnectContext & context,
+		[[nodiscard]] bool TryConnect (const TransportConnectContext & context,
 			i2p::data::RouterInfo::SupportedTransports transport) const override
 		{
 			if (!context.ssu2) return false;
@@ -119,8 +115,7 @@ namespace transport
 	class YggdrasilNTCP2Connector final : public ITransportConnector
 	{
 	public:
-		[[nodiscard]] bool TryConnect (
-			const TransportConnectContext & context,
+		[[nodiscard]] bool TryConnect (const TransportConnectContext & context,
 			i2p::data::RouterInfo::SupportedTransports /* transport */) const override
 		{
 			if (!context.ntcp2) return false;

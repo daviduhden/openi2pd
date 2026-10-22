@@ -464,9 +464,9 @@ namespace datagram
 			// LeaseSet, may create/refresh a reply session. Hash-only delivery
 			// below remains available without authentication.
 			const bool authenticated = from
-				&& (from->GetDestinationPtr () ? *from->GetDestinationPtr () == ident
-											   : ls->IsEncryptionKey (from->GetRemoteStaticKeyType (),
-													 from->GetRemoteStaticKey ()));
+				&& (from->GetDestinationPtr ()
+						? *from->GetDestinationPtr () == ident
+						: ls->IsEncryptionKey (from->GetRemoteStaticKeyType (), from->GetRemoteStaticKey ()));
 			if (authenticated)
 			{
 				if (!session)
@@ -503,8 +503,7 @@ namespace datagram
 	void DatagramDestination::SetReceiver (const Receiver & receiver, uint16_t port)
 	{
 		std::lock_guard<std::mutex> lock (m_ReceiversMutex);
-		if (port)
-			m_ReceiversByPorts[port] = receiver;
+		if (port) m_ReceiversByPorts[port] = receiver;
 		// Java's demultiplexer replaces a listener for the same (protocol,
 		// port) key. A second wildcard registration must not be silently
 		// ignored.

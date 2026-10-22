@@ -91,8 +91,7 @@ namespace transport
 				// condition_variable_any makes stop requests wake the wait
 				// without a separate boolean flag. The predicate preserves the
 				// previous "wait until the pool has room" behavior.
-				if (!m_Acquired.wait (l, token,
-						[this] { return m_Queue.size () < static_cast<size_t> (m_QueueSize); }))
+				if (!m_Acquired.wait (l, token, [this] { return m_Queue.size () < static_cast<size_t> (m_QueueSize); }))
 					break;
 				num = m_QueueSize - (int)m_Queue.size ();
 			}
@@ -668,8 +667,8 @@ namespace transport
 		if (peer->router) // we have RI already
 		{
 			if (peer->priority.empty ()) SetPriority (peer);
-			const TransportConnectContext connectContext {
-				peer->router, m_NTCP2Server.get (), m_SSU2Server.get (), IsCheckReserved () };
+			const TransportConnectContext connectContext { peer->router, m_NTCP2Server.get (), m_SSU2Server.get (),
+				IsCheckReserved () };
 			while (peer->numAttempts < (int)peer->priority.size ())
 			{
 				auto tr = peer->priority[peer->numAttempts];
@@ -1124,8 +1123,8 @@ namespace transport
 	size_t Transports::GetNumConnectedPeers () const
 	{
 		std::lock_guard<std::mutex> l (m_PeersMutex);
-		return static_cast<size_t> (std::ranges::count_if (m_Peers,
-			[] (const auto & entry) { return entry.second && !entry.second->sessions.empty (); }));
+		return static_cast<size_t> (std::ranges::count_if (
+			m_Peers, [] (const auto & entry) { return entry.second && !entry.second->sessions.empty (); }));
 	}
 
 	std::vector<PeerSnapshot> Transports::GetPeersSnapshot (size_t max) const
@@ -1348,8 +1347,7 @@ namespace transport
 					auto & [otherIdent, otherPeer] = peers[i];
 					if (!otherPeer->isDone && ts > otherPeer->lastSelectionTime + PEER_SELECTION_MIN_INTERVAL)
 					{
-						bool eligibleForFirstHop
-							= peerOrdering ? peerOrdering->IsFirstHop (otherIdent) : true;
+						bool eligibleForFirstHop = peerOrdering ? peerOrdering->IsFirstHop (otherIdent) : true;
 						if (eligibleForFirstHop && filter (otherPeer))
 						{
 							foundIdent = otherIdent;
@@ -1366,11 +1364,9 @@ namespace transport
 					for (size_t i = 0; i < inds[1]; i++)
 					{
 						auto & [otherIdent, otherPeer] = peers[i];
-						if (!otherPeer->isDone
-							&& ts > otherPeer->lastSelectionTime + PEER_SELECTION_MIN_INTERVAL)
+						if (!otherPeer->isDone && ts > otherPeer->lastSelectionTime + PEER_SELECTION_MIN_INTERVAL)
 						{
-							bool eligibleForFirstHop
-								= peerOrdering ? peerOrdering->IsFirstHop (otherIdent) : true;
+							bool eligibleForFirstHop = peerOrdering ? peerOrdering->IsFirstHop (otherIdent) : true;
 							if (eligibleForFirstHop && filter (otherPeer))
 							{
 								foundIdent = otherIdent;
@@ -1387,11 +1383,9 @@ namespace transport
 						for (auto i = inds[2]; i < peers.size (); i++)
 						{
 							auto & [otherIdent, otherPeer] = peers[i];
-							if (!otherPeer->isDone
-								&& ts > otherPeer->lastSelectionTime + PEER_SELECTION_MIN_INTERVAL)
+							if (!otherPeer->isDone && ts > otherPeer->lastSelectionTime + PEER_SELECTION_MIN_INTERVAL)
 							{
-								bool eligibleForFirstHop
-									= peerOrdering ? peerOrdering->IsFirstHop (otherIdent) : true;
+								bool eligibleForFirstHop = peerOrdering ? peerOrdering->IsFirstHop (otherIdent) : true;
 								if (eligibleForFirstHop && filter (otherPeer))
 								{
 									foundIdent = otherIdent;
@@ -1631,12 +1625,10 @@ namespace transport
 			std::string ifname4;
 			i2p::config::GetOption ("ifname4", ifname4);
 			if (!ifname4.empty ())
-				i2p::config::SetOption (
-					"address4",
+				i2p::config::SetOption ("address4",
 					i2p::util::net::FormatAddress (i2p::util::net::GetInterfaceAddress (ifname4, false))); // v4
 			else if (!ifname.empty ())
-				i2p::config::SetOption (
-					"address4",
+				i2p::config::SetOption ("address4",
 					i2p::util::net::FormatAddress (i2p::util::net::GetInterfaceAddress (ifname, false))); // v4
 		}
 		if (ipv6 && i2p::config::IsDefault ("address6"))
@@ -1644,12 +1636,10 @@ namespace transport
 			std::string ifname6;
 			i2p::config::GetOption ("ifname6", ifname6);
 			if (!ifname6.empty ())
-				i2p::config::SetOption (
-					"address6",
+				i2p::config::SetOption ("address6",
 					i2p::util::net::FormatAddress (i2p::util::net::GetInterfaceAddress (ifname6, true))); // v6
 			else if (!ifname.empty ())
-				i2p::config::SetOption (
-					"address6",
+				i2p::config::SetOption ("address6",
 					i2p::util::net::FormatAddress (i2p::util::net::GetInterfaceAddress (ifname, true))); // v6
 		}
 	}

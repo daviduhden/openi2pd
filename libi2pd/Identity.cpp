@@ -83,8 +83,8 @@ namespace data
 
 		constexpr std::optional<SigningKeySizes> LookupSigningKeySizes (SigningKeyType type) noexcept
 		{
-			const auto entry = std::ranges::find_if (SIGNING_KEY_SIZES,
-				[type] (const SigningKeySizeEntry & candidate) { return candidate.type == type; });
+			const auto entry = std::ranges::find_if (
+				SIGNING_KEY_SIZES, [type] (const SigningKeySizeEntry & candidate) { return candidate.type == type; });
 			if (entry == SIGNING_KEY_SIZES.end ()) return std::nullopt;
 			return entry->sizes;
 		}

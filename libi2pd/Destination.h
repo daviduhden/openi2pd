@@ -322,8 +322,8 @@ namespace client
 		std::shared_ptr<i2p::stream::Stream> CreateStream (
 			std::shared_ptr<const i2p::data::LeaseSet> remote, uint16_t port = 0);
 		void SendPing (const i2p::data::IdentHash & to, uint16_t fromPort = 0, uint16_t toPort = 0);
-		void SendPing (std::shared_ptr<const i2p::data::BlindedPublicKey> to,
-			uint16_t fromPort = 0, uint16_t toPort = 0);
+		void SendPing (
+			std::shared_ptr<const i2p::data::BlindedPublicKey> to, uint16_t fromPort = 0, uint16_t toPort = 0);
 		void AcceptStreams (const i2p::stream::StreamingDestination::Acceptor & acceptor);
 		void StopAcceptingStreams (uint16_t port = 0);
 		bool IsAcceptingStreams () const;

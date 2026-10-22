@@ -608,9 +608,9 @@ namespace client
 			for (const auto & peerHash : reply.peers)
 			{
 				if (followed >= i2p::data::NETDB_MAX_NUM_SEARCH_REPLY_PEER_HASHES) break;
-				if (peerHash.IsZero () || peerHash == i2p::context.GetIdentHash ()
-					|| peerHash == reply.from || request->excluded.count (peerHash)
-					|| request->requestedPeers.count (peerHash) || i2p::data::netdb.FindRouter (peerHash))
+				if (peerHash.IsZero () || peerHash == i2p::context.GetIdentHash () || peerHash == reply.from
+					|| request->excluded.count (peerHash) || request->requestedPeers.count (peerHash)
+					|| i2p::data::netdb.FindRouter (peerHash))
 					continue;
 				LogPrint (eLogInfo, "Destination: Found new floodfill, request it");
 				i2p::data::netdb.RequestDestination (peerHash, nullptr, false); // through exploratory

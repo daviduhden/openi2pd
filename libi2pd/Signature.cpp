@@ -348,8 +348,7 @@ namespace crypto
 		// signature
 		ECDSA_SIG * sig = ECDSA_SIG_new ();
 		BIGNUM * r = BN_bin2bn (signature, static_cast<int> (GetSignatureLen () / 2), NULL);
-		BIGNUM * s
-			= BN_bin2bn (signature + GetSignatureLen () / 2, static_cast<int> (GetSignatureLen () / 2), NULL);
+		BIGNUM * s = BN_bin2bn (signature + GetSignatureLen () / 2, static_cast<int> (GetSignatureLen () / 2), NULL);
 		if (!sig || !r || !s || ECDSA_SIG_set0 (sig, r, s) != 1)
 		{
 			BN_free (r);

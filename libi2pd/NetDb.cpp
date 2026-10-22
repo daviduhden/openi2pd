@@ -323,14 +323,15 @@ namespace data
 		if (!m_AcceptUpdates.load (std::memory_order_relaxed)) return;
 		for (auto it = m_RouterInfos.begin (); it != m_RouterInfos.end ();)
 		{
-			if (own && it->second == own) ++it;
-			else it = m_RouterInfos.erase (it);
+			if (own && it->second == own)
+				++it;
+			else
+				it = m_RouterInfos.erase (it);
 		}
 		{
 			std::lock_guard<std::mutex> lf (m_FloodfillsMutex);
 			m_Floodfills.Clear ();
-			if (own && i2p::context.IsFloodfill ()
-				&& m_RouterInfos.find (own->GetIdentHash ()) != m_RouterInfos.end ())
+			if (own && i2p::context.IsFloodfill () && m_RouterInfos.find (own->GetIdentHash ()) != m_RouterInfos.end ())
 				m_Floodfills.Insert (own);
 		}
 	}
@@ -776,7 +777,8 @@ namespace data
 		}
 	}
 
-	void NetDb::ExcludeReachableTransports (const IdentHash & ident, RouterInfo::CompatibleTransports compatibleTransports)
+	void NetDb::ExcludeReachableTransports (
+		const IdentHash & ident, RouterInfo::CompatibleTransports compatibleTransports)
 	{
 		auto r = FindRouter (ident);
 		if (r)
@@ -1321,8 +1323,7 @@ namespace data
 					if (CheckLogLevel (eLogDebug))
 						LogPrint (eLogDebug, "NetDb: Store request: LeaseSet2 of type ", int (storeType), " for ",
 							ident.ToBase32 ());
-					updated = AddLeaseSet2 (
-						ident, buf + offset, static_cast<int> (len - offset), storeType);
+					updated = AddLeaseSet2 (ident, buf + offset, static_cast<int> (len - offset), storeType);
 				}
 			}
 		}

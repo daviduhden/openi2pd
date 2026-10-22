@@ -690,8 +690,7 @@ namespace garlic
 		// only affects old tag windows; keeping the hard bound is more important
 		// than preserving one abusive session's tags. A later message fails
 		// authentication/decryption instead of blocking all new handshakes.
-		while (m_ECIESx25519Tags.size () + minSlots > MAX_INCOMING_ECIES_TAGS
-			&& !m_ECIESx25519Tags.empty ())
+		while (m_ECIESx25519Tags.size () + minSlots > MAX_INCOMING_ECIES_TAGS && !m_ECIESx25519Tags.empty ())
 			m_ECIESx25519Tags.erase (m_ECIESx25519Tags.begin ());
 	}
 

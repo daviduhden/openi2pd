@@ -92,8 +92,8 @@ namespace crypto
 		// RSA
 		BIGNUM * rsae;
 
-		CryptoConstants (const uint8_t * elgpBytes, int elggValue, const uint8_t * dsapBytes,
-			const uint8_t * dsaqBytes, const uint8_t * dsagBytes, int rsaeValue)
+		CryptoConstants (const uint8_t * elgpBytes, int elggValue, const uint8_t * dsapBytes, const uint8_t * dsaqBytes,
+			const uint8_t * dsagBytes, int rsaeValue)
 		{
 			elgp = BN_new ();
 			BN_bin2bn (elgpBytes, 256, elgp);
@@ -1519,11 +1519,11 @@ namespace crypto
 			m_OpenSSLMutexes.emplace_back (new std::mutex);
 		CRYPTO_set_locking_callback (OpensslLockingCallback);*/
 		const auto & capabilities = GetCryptoCapabilities ();
-		if (!capabilities.sha256 || !capabilities.aes256Cbc || !capabilities.aes256Ecb
-			|| !capabilities.chacha20 || !capabilities.chacha20Poly1305 || !capabilities.hkdf
-			|| (OPENSSL_SIPHASH && !capabilities.sipHash))
-			LogPrint (eLogCritical, "Crypto: active libcrypto provider is missing a required algorithm "
-									"(SHA256/AES-256-CBC/AES-256-ECB/ChaCha20/ChaCha20-Poly1305/HKDF/SipHash)");
+		if (!capabilities.sha256 || !capabilities.aes256Cbc || !capabilities.aes256Ecb || !capabilities.chacha20
+			|| !capabilities.chacha20Poly1305 || !capabilities.hkdf || (OPENSSL_SIPHASH && !capabilities.sipHash))
+			LogPrint (eLogCritical,
+				"Crypto: active libcrypto provider is missing a required algorithm "
+				"(SHA256/AES-256-CBC/AES-256-ECB/ChaCha20/ChaCha20-Poly1305/HKDF/SipHash)");
 		if (precomputation)
 		{
 #if IS_X86_64

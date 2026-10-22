@@ -103,8 +103,7 @@ namespace transport
 							found = true;
 							i2p::config::GetOption ("ssu2.firewalled4", m_IsForcedFirewalled4);
 							LogPrint (eLogDebug, "SSU2: Opening IPv4 socket at Start");
-							OpenSocket (
-								boost::asio::ip::udp::endpoint (m_AddressV4, static_cast<uint16_t> (port)));
+							OpenSocket (boost::asio::ip::udp::endpoint (m_AddressV4, static_cast<uint16_t> (port)));
 							boost::asio::post (m_ReceiveService.GetService (), [this] () { Receive (m_SocketV4); });
 							ScheduleIntroducersUpdateTimer (); // wait for 30 seconds and decide if we need introducers
 						}
@@ -113,8 +112,7 @@ namespace transport
 							found = true;
 							i2p::config::GetOption ("ssu2.firewalled6", m_IsForcedFirewalled6);
 							LogPrint (eLogDebug, "SSU2: Opening IPv6 socket at Start");
-							OpenSocket (
-								boost::asio::ip::udp::endpoint (m_AddressV6, static_cast<uint16_t> (port)));
+							OpenSocket (boost::asio::ip::udp::endpoint (m_AddressV6, static_cast<uint16_t> (port)));
 							boost::asio::post (m_ReceiveService.GetService (), [this] () { Receive (m_SocketV6); });
 							ScheduleIntroducersUpdateTimerV6 (); // wait for 30 seconds and decide if we need introducers
 						}
@@ -643,7 +641,8 @@ namespace transport
 	{
 		const bool hasOwner = static_cast<bool> (owner);
 		std::weak_ptr<SSU2Session> expected = owner;
-		boost::asio::post (GetService (), [connID, this, expected, hasOwner] ()
+		boost::asio::post (GetService (),
+			[connID, this, expected, hasOwner] ()
 			{
 				if (!hasOwner)
 				{
@@ -818,8 +817,10 @@ namespace transport
 		std::lock_guard<std::mutex> l (m_RecentHolePunchesMutex);
 		for (auto it = m_RecentHolePunches.begin (); it != m_RecentHolePunches.end ();)
 		{
-			if (now < it->second || now - it->second >= window) it = m_RecentHolePunches.erase (it);
-			else ++it;
+			if (now < it->second || now - it->second >= window)
+				it = m_RecentHolePunches.erase (it);
+			else
+				++it;
 		}
 		auto it = m_RecentHolePunches.find (ep);
 		if (it != m_RecentHolePunches.end ()) return false;
@@ -1567,8 +1568,8 @@ namespace transport
 		int numOldSessions = 0;
 		if (newList.size () < SSU2_MAX_NUM_INTRODUCERS)
 		{
-			auto sessions = FindIntroducers (
-				static_cast<int> (SSU2_MAX_NUM_INTRODUCERS - newList.size ()), v4, excluded);
+			auto sessions
+				= FindIntroducers (static_cast<int> (SSU2_MAX_NUM_INTRODUCERS - newList.size ()), v4, excluded);
 			if (sessions.empty () && !impliedList.empty ())
 			{
 				LogPrint (eLogDebug, "SSU2: No new introducers found. Trying to reuse existing");

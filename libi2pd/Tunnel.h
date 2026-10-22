@@ -275,9 +275,9 @@ namespace tunnel
 		int GetCongestionLevel () const
 		{
 			auto maxNumTransitTunnels = m_MaxNumTransitTunnels.load (std::memory_order_relaxed);
-			return maxNumTransitTunnels
-				? static_cast<int> (CONGESTION_LEVEL_FULL * m_TransitTunnels.GetNumTransitTunnels () / maxNumTransitTunnels)
-				: CONGESTION_LEVEL_FULL;
+			return maxNumTransitTunnels ? static_cast<int> (CONGESTION_LEVEL_FULL
+											  * m_TransitTunnels.GetNumTransitTunnels () / maxNumTransitTunnels)
+										: CONGESTION_LEVEL_FULL;
 		}
 		/** Returns one value from the shared tunnel RNG. */
 		uint32_t GetRng ();

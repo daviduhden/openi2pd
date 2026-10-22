@@ -139,8 +139,7 @@ namespace crypto
 		BIGNUM * k = BN_CTX_get (ctx);
 		BIGNUM * e = BN_CTX_get (ctx);
 		BIGNUM * tmp = BN_CTX_get (ctx);
-		if (!q || !k || !e || !tmp || EC_GROUP_get_order (m_Group, q, ctx) != 1
-			|| BN_mod (e, digest, q, ctx) != 1)
+		if (!q || !k || !e || !tmp || EC_GROUP_get_order (m_Group, q, ctx) != 1 || BN_mod (e, digest, q, ctx) != 1)
 		{
 			BN_CTX_end (ctx);
 			BN_CTX_free (ctx);
@@ -193,8 +192,8 @@ namespace crypto
 		BIGNUM * z2 = BN_CTX_get (ctx);
 		BIGNUM * x = BN_CTX_get (ctx);
 		EC_POINT * C = EC_POINT_new (m_Group);
-		bool ret = q && e && h && z1 && z2 && x && C && EC_GROUP_get_order (m_Group, q, ctx) == 1
-			&& !BN_is_zero (r) && !BN_is_zero (s) && BN_cmp (r, q) < 0 && BN_cmp (s, q) < 0;
+		bool ret = q && e && h && z1 && z2 && x && C && EC_GROUP_get_order (m_Group, q, ctx) == 1 && !BN_is_zero (r)
+			&& !BN_is_zero (s) && BN_cmp (r, q) < 0 && BN_cmp (s, q) < 0;
 		if (ret)
 		{
 			// RFC 7091 section 6: e = digest mod q, with e = 1 when zero.

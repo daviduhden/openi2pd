@@ -62,8 +62,7 @@ namespace data
 			dst.port = src.port;
 			dst.date = src.date;
 			dst.published = src.published;
-			dst.caps = static_cast<uint8_t> (
-				(src.caps & ~(RouterInfo::AddressCaps::eV4 | RouterInfo::AddressCaps::eV6))
+			dst.caps = static_cast<uint8_t> ((src.caps & ~(RouterInfo::AddressCaps::eV4 | RouterInfo::AddressCaps::eV6))
 				| (v4 ? RouterInfo::AddressCaps::eV4 : RouterInfo::AddressCaps::eV6));
 			if (src.ssu)
 				dst.ssu = std::make_unique<RouterInfo::SSUExt> (*src.ssu);
@@ -752,8 +751,7 @@ namespace data
 				}
 				// ML-KEM-512 is not provided by LibreSSL. Never select a
 				// version that the local session cannot establish.
-				if (!best && (address->pqVersions & (1u << 3)) && i2p::crypto::CanPublishPQ (3))
-					best = 3;
+				if (!best && (address->pqVersions & (1u << 3)) && i2p::crypto::CanPublishPQ (3)) best = 3;
 				address->v = best ? best : 2;
 #else
 				// This build has no ML-KEM provider. Ignore a peer's pq hint
@@ -2069,8 +2067,7 @@ namespace data
 				bool ipv6 = address.IsV6 () && !address.IsV4 ();
 				int minMtu = ipv6 ? MIN_SSU2_MLKEM768_MTU_IPV6 : MIN_SSU2_MLKEM768_MTU_IPV4;
 				int mtu = address.ssu ? address.ssu->mtu : 0;
-				const bool allow4 = address.v >= 4 && (!mtu || mtu >= minMtu)
-					&& i2p::crypto::CanPublishPQ (4);
+				const bool allow4 = address.v >= 4 && (!mtu || mtu >= minMtu) && i2p::crypto::CanPublishPQ (4);
 				const bool allow3 = address.v >= 3 && i2p::crypto::CanPublishPQ (3);
 				if (allow4 || allow3)
 				{

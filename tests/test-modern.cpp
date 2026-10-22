@@ -74,10 +74,11 @@ int main ()
 	bool visitedInt = false;
 	bool visitedString = false;
 	std::variant<int, std::string> value { 42 };
-	std::visit (i2p::modern::Overloaded {
-					[&visitedInt] (int) { visitedInt = true; },
-					[&visitedString] (const std::string &) { visitedString = true; },
-				},
+	std::visit (
+		i2p::modern::Overloaded {
+			[&visitedInt] (int) { visitedInt = true; },
+			[&visitedString] (const std::string &) { visitedString = true; },
+		},
 		value);
 	assert (visitedInt && !visitedString);
 

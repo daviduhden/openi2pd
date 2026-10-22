@@ -27,7 +27,7 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t * data, size_t size)
 	(void)response.parse (input);
 	(void)i2p::http::UrlDecode (input);
 
-	std::istringstream in {std::string (input)};
+	std::istringstream in { std::string (input) };
 	std::ostringstream out;
 	(void)i2p::http::MergeChunkedResponse (in, out);
 
@@ -44,8 +44,8 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t * data, size_t size)
 		size_t offset = 0;
 		while (offset < tunnelInput.size () && fragmented.State () == Parser::Result::Incomplete)
 		{
-			const size_t chunk = std::min (tunnelInput.size () - offset,
-				size_t { 1 } + static_cast<unsigned char> (tunnelInput[offset]) % 64);
+			const size_t chunk = std::min (
+				tunnelInput.size () - offset, size_t { 1 } + static_cast<unsigned char> (tunnelInput[offset]) % 64);
 			(void)fragmented.Feed (tunnelInput.substr (offset, chunk));
 			offset += chunk;
 		}

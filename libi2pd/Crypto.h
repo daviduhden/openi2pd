@@ -297,7 +297,7 @@ namespace crypto
 
 	struct NoiseSymmetricState
 	{
-		uint8_t m_H[32] /*h*/ {}, m_CK[64] /*[ck, k]*/ {};
+		uint8_t m_H[32] /*h*/ { }, m_CK[64] /*[ck, k]*/ { };
 		uint64_t m_N = 0;
 
 		~NoiseSymmetricState () { OPENSSL_cleanse (m_CK, sizeof (m_CK)); }

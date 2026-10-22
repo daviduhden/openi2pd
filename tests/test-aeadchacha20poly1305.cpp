@@ -60,6 +60,6 @@ int main ()
 	// still transmit.
 	uint8_t failedTag[16];
 	memset (failedTag, 0xAA, sizeof (failedTag));
-	assert (!encryptor.Encrypt ({}, key, nonce, failedTag));
+	assert (!encryptor.Encrypt ({ }, key, nonce, failedTag));
 	for (auto b : failedTag) assert (b == 0);
 }

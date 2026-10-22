@@ -162,8 +162,9 @@ namespace tunnel
 		{
 			m_NumInboundHops = inHops > MAX_NUM_RECORDS ? MAX_NUM_RECORDS : inHops;
 			m_NumOutboundHops = outHops > MAX_NUM_RECORDS ? MAX_NUM_RECORDS : outHops;
-			m_NumInboundTunnels
-				= inQuant > TUNNEL_POOL_MAX_INBOUND_TUNNELS_QUANTITY ? TUNNEL_POOL_MAX_INBOUND_TUNNELS_QUANTITY : inQuant;
+			m_NumInboundTunnels = inQuant > TUNNEL_POOL_MAX_INBOUND_TUNNELS_QUANTITY
+				? TUNNEL_POOL_MAX_INBOUND_TUNNELS_QUANTITY
+				: inQuant;
 			m_NumOutboundTunnels = outQuant > TUNNEL_POOL_MAX_OUTBOUND_TUNNELS_QUANTITY
 				? TUNNEL_POOL_MAX_OUTBOUND_TUNNELS_QUANTITY
 				: outQuant;
@@ -377,8 +378,7 @@ namespace tunnel
 			for (int i = 0; i < num; i++) CreateInboundTunnel (ts);
 		}
 
-		if (createdInbound
-			&& m_NumInboundHops.load (std::memory_order_relaxed) <= 0)
+		if (createdInbound && m_NumInboundHops.load (std::memory_order_relaxed) <= 0)
 		{
 			if (auto destination = GetLocalDestination ()) // zero hops IB
 				destination->SetLeaseSetUpdated (true); // update LeaseSet immediately
@@ -659,8 +659,8 @@ namespace tunnel
 		if (i2p::transport::transports.RoutesRestricted () || hasTrustedRouters)
 		{
 			/** if routes are restricted or trusted prepend trusted first hop */
-			auto hop = hasTrustedRouters ? SelectTrustedRouter (inbound)
-													: i2p::transport::transports.GetRestrictedPeer ();
+			auto hop
+				= hasTrustedRouters ? SelectTrustedRouter (inbound) : i2p::transport::transports.GetRestrictedPeer ();
 			if (!hop) return false;
 			path.Add (hop);
 			prevHop = hop;
@@ -899,8 +899,7 @@ namespace tunnel
 			CreateInboundTunnel (i2p::util::GetSecondsSinceEpoch ());
 			return;
 		}
-		if (!peers.empty ())
-			config = std::make_shared<TunnelConfig> (peers, tunnel->GetFarEndTransports ());
+		if (!peers.empty ()) config = std::make_shared<TunnelConfig> (peers, tunnel->GetFarEndTransports ());
 		if (peers.empty () || config)
 		{
 			auto newTunnel = tunnels.CreateInboundTunnel (config, shared_from_this (), outboundTunnel);

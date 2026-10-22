@@ -129,7 +129,10 @@ namespace garlic
 		virtual bool IsRatchets () const { return false; };
 		virtual bool IsReadyToSend () const { return true; };
 		virtual bool IsTerminated () const { return !GetOwner (); };
-		virtual bool IsInactive (uint64_t /* ts */) const { return false; }; // override in ECIESX25519AEADRatchetSession
+		virtual bool IsInactive (uint64_t /* ts */) const
+		{
+			return false;
+		}; // override in ECIESX25519AEADRatchetSession
 		virtual uint64_t GetLastActivityTimestamp () const { return 0; }; // non-zero for rathets only
 		virtual void SetAckRequestInterval (
 			int /* interval */) { }; // in milliseconds, override in ECIESX25519AEADRatchetSession

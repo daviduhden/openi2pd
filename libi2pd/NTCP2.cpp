@@ -699,8 +699,7 @@ namespace transport
 			{
 				memcpy (m_Establisher->m_RemoteStaticKey, addr->s, 32);
 				memcpy (m_Establisher->m_IV, addr->i, 16);
-				m_RemoteEndpoint
-					= boost::asio::ip::tcp::endpoint (addr->host, static_cast<uint16_t> (addr->port));
+				m_RemoteEndpoint = boost::asio::ip::tcp::endpoint (addr->host, static_cast<uint16_t> (addr->port));
 #if OPENSSL_PQ
 				if (m_Server.GetVersion () > 2) // we support post quantum in config
 					m_Establisher->SetVersion (addr->v);
@@ -1278,9 +1277,8 @@ namespace transport
 			return;
 		}
 		// update RouterInfo in netdb
-		auto ri1
-			= i2p::data::netdb.AddRouterInfo (
-				ri.GetBuffer (), static_cast<int> (ri.GetBufferLen ())); // ri1 points to one from netdb now
+		auto ri1 = i2p::data::netdb.AddRouterInfo (
+			ri.GetBuffer (), static_cast<int> (ri.GetBufferLen ())); // ri1 points to one from netdb now
 		if (!ri1)
 		{
 			LogPrint (eLogError, "NTCP2: Couldn't update RouterInfo from SessionConfirmed in netdb");
@@ -1372,9 +1370,7 @@ namespace transport
 			EVP_MD_CTX * md = EVP_MD_CTX_new ();
 			EVP_PKEY_CTX * pkeyCtx = nullptr;
 			const bool ok = md && EVP_DigestSignInit (md, &pkeyCtx, nullptr, nullptr, sipKey) == 1 && pkeyCtx
-				&& EVP_PKEY_CTX_ctrl (
-					   pkeyCtx, -1, EVP_PKEY_OP_SIGNCTX, EVP_PKEY_CTRL_SET_DIGEST_SIZE, 8, nullptr)
-					== 1;
+				&& EVP_PKEY_CTX_ctrl (pkeyCtx, -1, EVP_PKEY_OP_SIGNCTX, EVP_PKEY_CTRL_SET_DIGEST_SIZE, 8, nullptr) == 1;
 			EVP_PKEY_free (sipKey);
 			if (!ok)
 			{
@@ -1447,7 +1443,8 @@ namespace transport
 				std::placeholders::_2));
 	}
 
-	void NTCP2Session::HandleReceivedLength (const boost::system::error_code & ecode, std::size_t /* bytes_transferred */)
+	void NTCP2Session::HandleReceivedLength (
+		const boost::system::error_code & ecode, std::size_t /* bytes_transferred */)
 	{
 		if (ecode)
 		{
@@ -2176,11 +2173,10 @@ namespace transport
 					{
 						try
 						{
-							auto ep = m_Address4
-								? boost::asio::ip::tcp::endpoint (
-									m_Address4->address (), static_cast<uint16_t> (address->port))
-								: boost::asio::ip::tcp::endpoint (
-									boost::asio::ip::tcp::v4 (), static_cast<uint16_t> (address->port));
+							auto ep = m_Address4 ? boost::asio::ip::tcp::endpoint (
+													   m_Address4->address (), static_cast<uint16_t> (address->port))
+												 : boost::asio::ip::tcp::endpoint (boost::asio::ip::tcp::v4 (),
+													   static_cast<uint16_t> (address->port));
 							m_NTCP2Acceptor.reset (new boost::asio::ip::tcp::acceptor (GetService (), ep));
 						}
 						catch (std::exception & ex)
@@ -2438,8 +2434,7 @@ namespace transport
 						conn->GetSocket ().bind (*localAddress, ec);
 						if (ec)
 							LogPrint (eLogError, "NTCP2: Can't bind to ",
-								i2p::util::net::FormatAddress (localAddress->address ()), ": ",
-								ec.message ());
+								i2p::util::net::FormatAddress (localAddress->address ()), ": ", ec.message ());
 					}
 					conn->GetSocket ().async_connect (conn->GetRemoteEndpoint (),
 						std::bind (&NTCP2Server::HandleConnect, this, std::placeholders::_1, conn, timer));

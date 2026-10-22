@@ -573,7 +573,7 @@ namespace data
 					LogPrint (eLogError, "Reseed: SU3 fileNameLength too large: ", fileNameLength);
 					return numFiles;
 				}
-				char localFileName[255] {};
+				char localFileName[255] { };
 				s.read (localFileName, fileNameLength);
 				if (!s || s.gcount () != static_cast<std::streamsize> (fileNameLength))
 				{

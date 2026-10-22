@@ -540,9 +540,8 @@ namespace util
 				int fd = socket (family, SOCK_DGRAM, 0);
 				if (fd > 0)
 				{
-					ifreq ifr {};
-					i2p::util::CopyString (
-						ifr.ifr_name, sizeof (ifr.ifr_name), ifa->ifa_name ? ifa->ifa_name : "");
+					ifreq ifr { };
+					i2p::util::CopyString (ifr.ifr_name, sizeof (ifr.ifr_name), ifa->ifa_name ? ifa->ifa_name : "");
 					if (ioctl (fd, SIOCGIFMTU, &ifr) >= 0)
 						mtu = ifr.ifr_mtu; // MTU
 					else
@@ -554,9 +553,8 @@ namespace util
 #endif
 			}
 			else
-				LogPrint (
-					eLogWarning, "NetIface: Interface for local address", i2p::util::net::FormatAddress (localAddress),
-					" not found");
+				LogPrint (eLogWarning, "NetIface: Interface for local address",
+					i2p::util::net::FormatAddress (localAddress), " not found");
 			freeifaddrs (ifaddr);
 
 			return mtu;
@@ -577,7 +575,7 @@ namespace util
 		const boost::asio::ip::address GetInterfaceAddress (const std::string & ifname, bool ipv6)
 		{
 #ifdef _WIN32
-			(void) ifname; // no reliable name-to-address mapping in the Windows API path
+			(void)ifname; // no reliable name-to-address mapping in the Windows API path
 			LogPrint (eLogError, "NetIface: Cannot get address by interface name, not implemented on WIN32");
 			if (ipv6)
 				return boost::asio::ip::make_address ("::1");
@@ -664,9 +662,9 @@ namespace util
 			// + Tor browser (9150) + Intel AMT (16992-16995)
 			static const std::unordered_set<uint16_t> reservedPorts { 9119, 9150, 9306, 9312, 9389, 9418, 9535, 9536,
 				9695, 9800, 9899, 10000, 10050, 10051, 10110, 10212, 10933, 11001, 11112, 11235, 11371, 12222, 12223,
-				13075, 13400, 13720, 13721, 13724, 13782, 13783, 13785, 13786, 15345, 16992, 16993, 16994, 16995,
-				17224, 17225, 17500, 18104, 19788, 19812, 19813, 19814, 19999, 20000, 24465, 24554, 26000, 27000,
-				27001, 27002, 27003, 27004, 27005, 27006, 27007, 27008, 27009, 28000 };
+				13075, 13400, 13720, 13721, 13724, 13782, 13783, 13785, 13786, 15345, 16992, 16993, 16994, 16995, 17224,
+				17225, 17500, 18104, 19788, 19812, 19813, 19814, 19999, 20000, 24465, 24554, 26000, 27000, 27001, 27002,
+				27003, 27004, 27005, 27006, 27007, 27008, 27009, 28000 };
 
 			return (reservedPorts.find (port) != reservedPorts.end ());
 		}

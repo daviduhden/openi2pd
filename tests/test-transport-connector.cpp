@@ -37,8 +37,7 @@ int main ()
 	assert (ssu2v4 == ssu2v6);
 	assert (mesh != nullptr);
 	assert (mesh != ntcp2v4);
-	assert (i2p::transport::FindTransportConnector (static_cast<RouterInfo::SupportedTransports> (0x7fff))
-		== nullptr);
+	assert (i2p::transport::FindTransportConnector (static_cast<RouterInfo::SupportedTransports> (0x7fff)) == nullptr);
 
 	i2p::transport::TransportConnectContext context { nullptr, nullptr, nullptr, false };
 	assert (!context.IsReserved (boost::asio::ip::make_address ("127.0.0.1")));

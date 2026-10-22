@@ -800,8 +800,7 @@ namespace tunnel
 		}
 		const uint8_t * payload = msg->GetPayload ();
 		uint16_t len = bufbe16toh (payload + TUNNEL_GATEWAY_HEADER_LENGTH_OFFSET);
-		if (len < I2NP_HEADER_SIZE
-			|| msg->offset + I2NP_HEADER_SIZE + TUNNEL_GATEWAY_HEADER_SIZE + len > msg->len)
+		if (len < I2NP_HEADER_SIZE || msg->offset + I2NP_HEADER_SIZE + TUNNEL_GATEWAY_HEADER_SIZE + len > msg->len)
 		{
 			LogPrint (eLogError, "Tunnel: Gateway payload ", (int)len, " exceeds message length ", (int)msg->len);
 			return;
@@ -811,8 +810,7 @@ namespace tunnel
 		const uint8_t * inner = payload + TUNNEL_GATEWAY_HEADER_SIZE;
 		const uint64_t innerExpiration = bufbe64toh (inner + I2NP_HEADER_EXPIRATION_OFFSET);
 		const uint64_t now = i2p::util::GetMillisecondsSinceEpoch ();
-		if (now > innerExpiration + I2NP_MESSAGE_CLOCK_SKEW
-			|| now < innerExpiration - 3 * I2NP_MESSAGE_CLOCK_SKEW)
+		if (now > innerExpiration + I2NP_MESSAGE_CLOCK_SKEW || now < innerExpiration - 3 * I2NP_MESSAGE_CLOCK_SKEW)
 		{
 			LogPrint (eLogWarning, "Tunnel: Gateway inner I2NP message is expired or too far in the future");
 			return;

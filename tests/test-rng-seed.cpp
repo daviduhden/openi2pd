@@ -19,8 +19,7 @@
 int main ()
 {
 	std::set<uint_fast32_t> seeds;
-	for (int i = 0; i < 512; ++i)
-		seeds.insert (i2p::util::GetRngSeed ());
+	for (int i = 0; i < 512; ++i) seeds.insert (i2p::util::GetRngSeed ());
 	// A clock-seeded generator produced identical values when two callers
 	// sampled the same microsecond. CSPRNG-derived seeds must not collapse.
 	assert (seeds.size () == 512);

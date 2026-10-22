@@ -99,12 +99,12 @@ namespace data
 	int PeerOrdering::CalculatePeerOrderingGroup (const IdentHash & routerIdent)
 	{
 		if (!m_IsKeyValid) return 0;
-		uint8_t hash[16] {};
+		uint8_t hash[16] { };
 #if OPENSSL_SIPHASH
 		size_t l = sizeof (hash);
 		const bool ok = m_MDCtx && EVP_DigestSignInit (m_MDCtx, nullptr, nullptr, nullptr, nullptr) == 1
-			&& EVP_DigestSignUpdate (m_MDCtx, routerIdent, 32) == 1
-			&& EVP_DigestSignFinal (m_MDCtx, hash, &l) == 1 && l == sizeof (hash);
+			&& EVP_DigestSignUpdate (m_MDCtx, routerIdent, 32) == 1 && EVP_DigestSignFinal (m_MDCtx, hash, &l) == 1
+			&& l == sizeof (hash);
 		if (!ok)
 		{
 			// A provider without SipHash must not turn uninitialised stack

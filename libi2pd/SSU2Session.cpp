@@ -37,8 +37,7 @@ namespace transport
 			return len >= 7 && buf[0] == eSSU2BlkDateTime && bufbe16toh (buf + 1) == 4;
 		}
 
-		bool SamePeerTestAddress (
-			const boost::asio::ip::address & left, const boost::asio::ip::address & right)
+		bool SamePeerTestAddress (const boost::asio::ip::address & left, const boost::asio::ip::address & right)
 		{
 			if (left.is_v4 () != right.is_v4 ()) return false;
 			if (left.is_v4 ()) return left.to_v4 () == right.to_v4 ();
@@ -1444,7 +1443,8 @@ namespace transport
 			if (!m_PQKeys) return failHandshake ();
 			i2p::data::CryptoKeyType cryptoType = (i2p::data::CryptoKeyType)(m_Version + 2);
 			size_t cipherTextLen = i2p::crypto::GetMLKEMCipherTextLen (cryptoType);
-			if (!i2p::crypto::IsMLKEMSupported (cryptoType) || offset + cipherTextLen + 16 > len) return failHandshake ();
+			if (!i2p::crypto::IsMLKEMSupported (cryptoType) || offset + cipherTextLen + 16 > len)
+				return failHandshake ();
 			std::vector<uint8_t> kemCiphertext (cipherTextLen);
 			if (!m_NoiseState->Decrypt (buf + offset, kemCiphertext.data (), cipherTextLen))
 			{
@@ -1886,9 +1886,8 @@ namespace transport
 			return false;
 		}
 		// update RouterInfo in netdb
-		auto ri1
-			= i2p::data::netdb.AddRouterInfo (
-				ri->GetBuffer (), static_cast<int> (ri->GetBufferLen ())); // ri points to one from netdb now
+		auto ri1 = i2p::data::netdb.AddRouterInfo (
+			ri->GetBuffer (), static_cast<int> (ri->GetBufferLen ())); // ri points to one from netdb now
 		if (!ri1)
 		{
 			LogPrint (eLogError, "SSU2: Couldn't update RouterInfo from SessionConfirmed in netdb");
@@ -2200,8 +2199,7 @@ namespace transport
 		}
 		uint64_t token = headerX[1];
 		if (token)
-			m_Server.UpdateOutgoingToken (
-				m_RemoteEndpoint, token,
+			m_Server.UpdateOutgoingToken (m_RemoteEndpoint, token,
 				static_cast<uint32_t> (i2p::util::GetSecondsSinceEpoch () + SSU2_TOKEN_EXPIRATION_TIMEOUT));
 		// decrypt and handle payload
 		uint8_t * payload = buf + 32;
@@ -2854,8 +2852,7 @@ namespace transport
 			// PeerState2.gotRI honors the request-flood bit: only a newly
 			// accepted/replaced RouterInfo is forwarded to the closest
 			// floodfills. A replayed old RI must not cause repeated flooding.
-			if (updated && (buf[0] & SSU2_ROUTER_INFO_FLAG_REQUEST_FLOOD))
-				i2p::data::netdb.FloodRouterInfo (newRi);
+			if (updated && (buf[0] & SSU2_ROUTER_INFO_FLAG_REQUEST_FLOOD)) i2p::data::netdb.FloodRouterInfo (newRi);
 			auto remoteIdentity = GetRemoteIdentity ();
 			if (remoteIdentity && remoteIdentity->GetIdentHash () == newRi->GetIdentHash ())
 			{
@@ -3197,8 +3194,7 @@ namespace transport
 						m_IncompleteMessages.erase (it);
 					}
 					else
-						it->second->lastFragmentInsertTime
-							= static_cast<uint32_t> (i2p::util::GetSecondsSinceEpoch ());
+						it->second->lastFragmentInsertTime = static_cast<uint32_t> (i2p::util::GetSecondsSinceEpoch ());
 				}
 				return;
 			}
@@ -3621,8 +3617,7 @@ namespace transport
 			// new token follows the signature
 			uint64_t token;
 			memcpy (&token, buf + 2 + signedLen + sigLen, 8);
-			m_Server.UpdateOutgoingToken (
-				m_RemoteEndpoint, token,
+			m_Server.UpdateOutgoingToken (m_RemoteEndpoint, token,
 				static_cast<uint32_t> (i2p::util::GetSecondsSinceEpoch () + SSU2_TOKEN_EXPIRATION_TIMEOUT));
 			ConnectAfterIntroduction ();
 			return;
@@ -3723,7 +3718,8 @@ namespace transport
 							uint64_t token;
 							memcpy (&token, buf + 2 + signedLen + sigLen, 8);
 							m_Server.UpdateOutgoingToken (relaySession->m_RemoteEndpoint, token,
-								static_cast<uint32_t> (i2p::util::GetSecondsSinceEpoch () + SSU2_TOKEN_EXPIRATION_TIMEOUT));
+								static_cast<uint32_t> (
+									i2p::util::GetSecondsSinceEpoch () + SSU2_TOKEN_EXPIRATION_TIMEOUT));
 							// connect to Charlie, HolePunch will be ignored
 							relaySession->ConnectAfterIntroduction ();
 						}
@@ -3803,8 +3799,7 @@ namespace transport
 		if (msg == 1)
 		{
 			boost::asio::ip::udp::endpoint testEndpoint;
-			if (!ExtractEndpoint (buf + offset + 10, asz, testEndpoint)
-				|| !IsValidPeerTestEndpoint (testEndpoint)
+			if (!ExtractEndpoint (buf + offset + 10, asz, testEndpoint) || !IsValidPeerTestEndpoint (testEndpoint)
 				|| !SamePeerTestAddress (testEndpoint.address (), m_RemoteEndpoint.address ()))
 			{
 				LogPrint (eLogWarning, "SSU2: PeerTest msg 1 target does not match the authenticated source");
@@ -3924,8 +3919,7 @@ namespace transport
 						{
 							boost::asio::ip::udp::endpoint ep;
 							std::shared_ptr<const i2p::data::RouterInfo::Address> addr;
-							if (ExtractEndpoint (buf + offset + 10, asz, ep)
-								&& IsValidPeerTestEndpoint (ep))
+							if (ExtractEndpoint (buf + offset + 10, asz, ep) && IsValidPeerTestEndpoint (ep))
 								addr = r->GetSSU2Address (ep.address ().is_v4 ());
 							if (addr && m_Server.IsSupported (ep.address ())
 								&& i2p::context.GetRouterInfo ().IsSSU2PeerTesting (ep.address ().is_v4 ()))
@@ -4172,15 +4166,13 @@ namespace transport
 		{
 			boost::asio::ip::address_v4::bytes_type bytes;
 			memcpy (bytes.data (), buf + 2, 4);
-			ep = boost::asio::ip::udp::endpoint (
-				boost::asio::ip::address_v4 (bytes), static_cast<uint16_t> (port));
+			ep = boost::asio::ip::udp::endpoint (boost::asio::ip::address_v4 (bytes), static_cast<uint16_t> (port));
 		}
 		else if (size == 18)
 		{
 			boost::asio::ip::address_v6::bytes_type bytes;
 			memcpy (bytes.data (), buf + 2, 16);
-			ep = boost::asio::ip::udp::endpoint (
-				boost::asio::ip::address_v6 (bytes), static_cast<uint16_t> (port));
+			ep = boost::asio::ip::udp::endpoint (boost::asio::ip::address_v6 (bytes), static_cast<uint16_t> (port));
 		}
 		else
 		{
@@ -4208,8 +4200,7 @@ namespace transport
 		}
 		else
 		{
-			LogPrint (
-				eLogWarning, "SSU2: Wrong address type ", i2p::util::net::FormatAddress (ep.address ()));
+			LogPrint (eLogWarning, "SSU2: Wrong address type ", i2p::util::net::FormatAddress (ep.address ()));
 			return 0;
 		}
 		return size;
@@ -4617,8 +4608,8 @@ namespace transport
 				LogPrint (eLogError, "SSU2: Can't find local address for RelayResponse");
 				return 0;
 			}
-			csz = CreateEndpoint (buf + 15, len - 15,
-				boost::asio::ip::udp::endpoint (addr->host, static_cast<uint16_t> (addr->port)));
+			csz = CreateEndpoint (
+				buf + 15, len - 15, boost::asio::ip::udp::endpoint (addr->host, static_cast<uint16_t> (addr->port)));
 			if (!csz)
 			{
 				LogPrint (eLogError, "SSU2: Can't create local endpoint for RelayResponse");
@@ -5041,9 +5032,7 @@ namespace transport
 		{
 		case 3: m_Version = i2p::crypto::CanPublishPQ (3) ? 3 : 2; break;
 		case 4:
-			m_Version = (i2p::crypto::CanPublishPQ (4) && m_MaxPayloadSize >= SSU2_MLKEM768_MIN_PAYLOAD_SIZE)
-				? 4
-				: 2;
+			m_Version = (i2p::crypto::CanPublishPQ (4) && m_MaxPayloadSize >= SSU2_MLKEM768_MIN_PAYLOAD_SIZE) ? 4 : 2;
 			break;
 		default: m_Version = 2;
 		}

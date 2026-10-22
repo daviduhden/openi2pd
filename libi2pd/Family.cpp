@@ -41,12 +41,12 @@ namespace data
 
 		std::string GetFamilyName (X509 * cert)
 		{
-			if (!cert) return {};
-			std::array<char, 100> name {};
-			if (!X509_NAME_oneline (X509_get_issuer_name (cert), name.data (), name.size ())) return {};
+			if (!cert) return { };
+			std::array<char, 100> name { };
+			if (!X509_NAME_oneline (X509_get_issuer_name (cert), name.data (), name.size ())) return { };
 			std::string_view view (name.data ());
 			const auto cn = view.find ("CN=");
-			if (cn == std::string_view::npos) return {};
+			if (cn == std::string_view::npos) return { };
 			const auto start = cn + 3;
 			auto end = view.find (".family", start);
 			if (end == std::string_view::npos) end = view.find ('/', start);
@@ -61,8 +61,7 @@ namespace data
 		if (!pkey || EVP_PKEY_is_a (pkey, "EC") != 1) return -1;
 		char groupName[80];
 		size_t groupLength = 0;
-		if (EVP_PKEY_get_group_name (pkey, groupName, sizeof (groupName), &groupLength) != 1
-			|| groupLength == 0)
+		if (EVP_PKEY_get_group_name (pkey, groupName, sizeof (groupName), &groupLength) != 1 || groupLength == 0)
 			return -1;
 		return OBJ_txt2nid (groupName);
 #else
@@ -146,7 +145,7 @@ namespace data
 	bool Families::VerifyFamily (
 		const std::string & family, const IdentHash & ident, std::string_view signature, const char * /* key */) const
 	{
-		std::array<uint8_t, 100> buf {};
+		std::array<uint8_t, 100> buf { };
 		const size_t familyLength = family.length ();
 		if (familyLength + IdentHash::len > buf.size ())
 		{
@@ -164,7 +163,7 @@ namespace data
 			return true;
 		}
 
-		std::array<uint8_t, 64> signatureBuf {};
+		std::array<uint8_t, 64> signatureBuf { };
 		const auto signatureBufLen = Base64ToByteStream (signature, signatureBuf);
 		if (signatureBufLen != signatureBuf.size ())
 		{
@@ -187,7 +186,7 @@ namespace data
 		(void)r.release ();
 		(void)s.release ();
 
-		std::array<uint8_t, 72> der {};
+		std::array<uint8_t, 72> der { };
 		uint8_t * derPos = der.data ();
 		const int derLength = i2d_ECDSA_SIG (sig.get (), &derPos);
 		if (derLength <= 0 || static_cast<size_t> (derLength) > der.size ()) return false;
@@ -213,59 +212,59 @@ namespace data
 		if (family.length () + IdentHash::len > 100)
 		{
 			LogPrint (eLogError, "Family: ", family, " is too long");
-			return {};
+			return { };
 		}
 
 		SslCtxPtr ctx (SSL_CTX_new (TLS_method ()), SSL_CTX_free);
 		if (!ctx)
 		{
 			LogPrint (eLogError, "Family: Can't create SSL context for keys file: ", filename);
-			return {};
+			return { };
 		}
 		if (SSL_CTX_use_PrivateKey_file (ctx.get (), filename.c_str (), SSL_FILETYPE_PEM) != 1)
 		{
 			LogPrint (eLogError, "Family: Can't open keys file: ", filename);
-			return {};
+			return { };
 		}
 
 		SslPtr ssl (SSL_new (ctx.get ()), SSL_free);
-		if (!ssl) return {};
+		if (!ssl) return { };
 		EVP_PKEY * pkey = SSL_get_privatekey (ssl.get ());
 		if (!pkey)
 		{
 			LogPrint (eLogError, "Family: No private key in ", filename);
-			return {};
+			return { };
 		}
 		const int curve = GetFamilyKeyCurve (pkey);
 		if (curve != NID_X9_62_prime256v1)
 		{
 			LogPrint (eLogWarning, "Family: elliptic curve ", curve, " is not supported");
-			return {};
+			return { };
 		}
 
-		std::array<uint8_t, 100> buf {};
+		std::array<uint8_t, 100> buf { };
 		std::memcpy (buf.data (), family.data (), family.size ());
 		std::memcpy (buf.data () + family.size (), ident.data (), IdentHash::len);
 		const size_t messageLength = family.size () + IdentHash::len;
 
 		MdCtxPtr mdCtx (EVP_MD_CTX_new (), EVP_MD_CTX_free);
-		if (!mdCtx || EVP_DigestSignInit (mdCtx.get (), nullptr, EVP_sha256 (), nullptr, pkey) != 1) return {};
+		if (!mdCtx || EVP_DigestSignInit (mdCtx.get (), nullptr, EVP_sha256 (), nullptr, pkey) != 1) return { };
 
-		std::array<uint8_t, 72> der {};
+		std::array<uint8_t, 72> der { };
 		size_t derLength = der.size ();
-		if (EVP_DigestSign (mdCtx.get (), der.data (), &derLength, buf.data (), messageLength) != 1
-			|| derLength == 0 || derLength > der.size ())
-			return {};
+		if (EVP_DigestSign (mdCtx.get (), der.data (), &derLength, buf.data (), messageLength) != 1 || derLength == 0
+			|| derLength > der.size ())
+			return { };
 
 		const uint8_t * derPos = der.data ();
 		EcdsaSigPtr sig (d2i_ECDSA_SIG (nullptr, &derPos, static_cast<long> (derLength)), ECDSA_SIG_free);
-		if (!sig || derPos != der.data () + derLength) return {};
+		if (!sig || derPos != der.data () + derLength) return { };
 		const BIGNUM *r = nullptr, *s = nullptr;
 		ECDSA_SIG_get0 (sig.get (), &r, &s);
-		std::array<uint8_t, 64> signature {};
+		std::array<uint8_t, 64> signature { };
 		if (!r || !s || !i2p::crypto::bn2buf (r, signature.data (), 32)
 			|| !i2p::crypto::bn2buf (s, signature.data () + 32, 32))
-			return {};
+			return { };
 		return ByteStreamToBase64 (signature.data (), signature.size ());
 	}
 }

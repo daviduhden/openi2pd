@@ -276,8 +276,7 @@ struct I2NPMessage
 	void ToNTCP2 ()
 	{
 		uint8_t * ntcp2 = GetNTCP2Header ();
-		htobe32buf (
-			ntcp2 + I2NP_HEADER_EXPIRATION_OFFSET,
+		htobe32buf (ntcp2 + I2NP_HEADER_EXPIRATION_OFFSET,
 			static_cast<uint32_t> (bufbe64toh (GetHeader () + I2NP_HEADER_EXPIRATION_OFFSET) / 1000LL));
 		memcpy (ntcp2 + I2NP_HEADER_TYPEID_OFFSET, GetHeader () + I2NP_HEADER_TYPEID_OFFSET, 5); // typeid + msgid
 	}
