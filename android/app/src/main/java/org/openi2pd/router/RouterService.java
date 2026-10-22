@@ -43,6 +43,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
@@ -116,13 +117,13 @@ public class RouterService extends Service {
     private static final int MAX_ERROR_TEXT = 4096;
     private static final String PREFERENCES = "router_state";
     private static final String PREF_SHOULD_RUN = "should_run";
-
     /**
      * Coarse process-wide flag for components that cannot bind (Quick Settings
      * tile, deprecated connectivity receiver). It only mirrors the daemon
      * state; it is not a service singleton and holds no listener references.
      */
     private static volatile boolean routerRunning;
+    private long ownerEpoch;
 
     public interface Listener {
         /** Called on the main thread with an immutable snapshot. */
@@ -147,7 +148,7 @@ public class RouterService extends Service {
         thread.setDaemon(true);
         return thread;
     });
-    private ExecutorService worker;
+    private Executor worker;
     private DaemonWrapper daemon;
     private NotificationManager notificationManager;
     /**
@@ -201,7 +202,7 @@ public class RouterService extends Service {
                 });
             } catch (RejectedExecutionException e) {
                 pollInFlight.set(false);
-                Log.w(TAG, "poll rejected after shutdown");
+                Log.w(TAG, "poll rejected after service owner retired");
             }
         }
     };
@@ -224,37 +225,44 @@ public class RouterService extends Service {
         });
     };
 
-    private final DaemonWrapper.StateUpdateListener daemonStateListener = (oldState, newState) -> {
-        routerRunning = newState.isStartedOkay();
-        if (newState == DaemonWrapper.State.stopped) {
-            mainHandler.removeCallbacks(gracefulStopExpired);
-            if (!restartInProgress.get()) {
-                releaseMulticastLock();
-            }
-        } else if (newState == DaemonWrapper.State.startFailed) {
-            releaseMulticastLock();
-        }
-        if (newState == DaemonWrapper.State.stopped && !destroyed && !restartInProgress.get()) {
-            // Stop, graceful-stop expiration and a failed restart all
-            // converge here. An explicit restart keeps the flag set
-            // until the new start completes, so stopIfIdle() cannot
-            // tear the service down between the stop and start
-            // phases. During service destruction the flag is left
-            // intact so START_STICKY can restore a router that the
-            // system stopped for resource pressure.
-            setShouldRun(false);
-        }
-        mainHandler.post(() -> {
+    private final DaemonWrapper.StateUpdateListener daemonStateListener = this::onDaemonStateChanged;
+
+    private void onDaemonStateChanged(DaemonWrapper.State oldState, DaemonWrapper.State newState) {
+        ServiceOwnerEpoch.runIfCurrent(ownerEpoch, () -> {
             if (destroyed) {
                 return;
             }
-            updateNotification();
-            if (!listeners.isEmpty()) {
-                pollNow();
+            routerRunning = newState.isStartedOkay();
+            if (newState == DaemonWrapper.State.stopped) {
+                mainHandler.removeCallbacks(gracefulStopExpired);
+                if (!restartInProgress.get()) {
+                    releaseMulticastLock();
+                }
+            } else if (newState == DaemonWrapper.State.startFailed) {
+                releaseMulticastLock();
             }
-            stopIfIdle();
+            if (newState == DaemonWrapper.State.stopped && !destroyed && !restartInProgress.get()) {
+                // Stop, graceful-stop expiration and a failed restart all
+                // converge here. An explicit restart keeps the flag set
+                // until the new start completes, so stopIfIdle() cannot
+                // tear the service down between the stop and start
+                // phases. During service destruction the flag is left
+                // intact so START_STICKY can restore a router that the
+                // system stopped for resource pressure.
+                setShouldRun(false);
+            }
+            mainHandler.post(() -> {
+                if (destroyed || !ServiceOwnerEpoch.isCurrent(ownerEpoch)) {
+                    return;
+                }
+                updateNotification();
+                if (!listeners.isEmpty()) {
+                    pollNow();
+                }
+                stopIfIdle();
+            });
         });
-    };
+    }
 
     /**
      * In-process binder. Do not turn this into an exported interface: clients
@@ -270,17 +278,16 @@ public class RouterService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
+        ownerEpoch = ServiceOwnerEpoch.acquire();
         Context appContext = getApplicationContext();
         TorrentSafStorage.initialize(appContext);
         notificationManager =
                 (NotificationManager) appContext.getSystemService(NOTIFICATION_SERVICE);
         createNotificationChannel();
 
-        worker = Executors.newSingleThreadExecutor(runnable -> {
-            Thread thread = new Thread(runnable, "i2pd-router");
-            thread.setDaemon(true);
-            return thread;
-        });
+        // All owners share one process-local FIFO. The owner gate fences stale
+        // submissions; NativeCallGuard still serializes JNI entry itself.
+        worker = ServiceOwnerEpoch.ownerExecutor(ownerEpoch);
 
         ConnectivityManager connectivityManager =
                 (ConnectivityManager) appContext.getSystemService(CONNECTIVITY_SERVICE);
@@ -470,12 +477,25 @@ public class RouterService extends Service {
 
     @Override
     public void onDestroy() {
-        destroyed = true;
+        ServiceOwnerEpoch.retireAndQueueStop(ownerEpoch, wasCurrentOwner -> {
+            destroyed = true;
+            if (wasCurrentOwner) {
+                routerRunning = false;
+            }
+        }, () -> {
+            if (daemon == null) {
+                return;
+            }
+            try {
+                daemon.stopDaemon();
+            } catch (Throwable tr) {
+                Log.w(TAG, "shutdown task failed", tr);
+            }
+        });
         Runnable cancelImport = cancelTorrentImport;
         if (cancelImport != null)
             cancelImport.run();
         safWorker.shutdownNow();
-        routerRunning = false;
         mainHandler.removeCallbacks(pollTick);
         mainHandler.removeCallbacks(gracefulStopExpired);
         if (daemon != null) {
@@ -487,17 +507,6 @@ public class RouterService extends Service {
         // after the service and its notification are gone. The persisted
         // should-run flag is intentionally not cleared, so START_STICKY can
         // still restore the router after a system-initiated destruction.
-        ExecutorService executor = worker;
-        if (executor != null && daemon != null) {
-            try {
-                executor.execute(daemon::stopDaemon);
-            } catch (RejectedExecutionException e) {
-                Log.w(TAG, "shutdown task rejected", e);
-            }
-        }
-        if (executor != null) {
-            executor.shutdown();
-        }
         releaseMulticastLock();
         stopForegroundCompat();
         super.onDestroy();
@@ -687,7 +696,7 @@ public class RouterService extends Service {
             mainHandler.post(() -> callback.accept(false));
             return;
         }
-        ExecutorService executor = worker;
+        Executor executor = worker;
         try {
             if (executor == null) {
                 throw new RejectedExecutionException();
@@ -721,7 +730,7 @@ public class RouterService extends Service {
             mainHandler.post(() -> callback.accept(false));
             return;
         }
-        ExecutorService executor = worker;
+        Executor executor = worker;
         try {
             if (executor == null) {
                 throw new RejectedExecutionException();
@@ -1114,7 +1123,7 @@ public class RouterService extends Service {
             mainHandler.post(() -> callback.accept("I2PDTUI/1 ERR 4 12\ncontrol busy"));
             return;
         }
-        ExecutorService executor = worker;
+        Executor executor = worker;
         try {
             if (executor == null)
                 throw new RejectedExecutionException();
@@ -1139,7 +1148,7 @@ public class RouterService extends Service {
 
     /** Bounded address-book rows on the control worker. */
     public void readAddressBook(java.util.function.Consumer<String> callback) {
-        ExecutorService executor = worker;
+        Executor executor = worker;
         try {
             if (destroyed || executor == null)
                 throw new RejectedExecutionException();
@@ -1162,7 +1171,7 @@ public class RouterService extends Service {
     /** Add/replace one validated address-book name on the control worker. */
     public void addAddress(
             String name, String destination, java.util.function.Consumer<Boolean> callback) {
-        ExecutorService executor = worker;
+        Executor executor = worker;
         try {
             if (destroyed || executor == null)
                 throw new RejectedExecutionException();
@@ -1184,7 +1193,7 @@ public class RouterService extends Service {
 
     /** Read deleted-host patterns on the control worker. */
     public void readBlockedAddresses(java.util.function.Consumer<String> callback) {
-        ExecutorService executor = worker;
+        Executor executor = worker;
         try {
             if (destroyed || executor == null)
                 throw new RejectedExecutionException();
@@ -1206,7 +1215,7 @@ public class RouterService extends Service {
 
     /** Block a validated subscription name or wildcard on the control worker. */
     public void blockAddress(String name, java.util.function.Consumer<Boolean> callback) {
-        ExecutorService executor = worker;
+        Executor executor = worker;
         try {
             if (destroyed || executor == null)
                 throw new RejectedExecutionException();
@@ -1228,7 +1237,7 @@ public class RouterService extends Service {
 
     /** Remove one exact deleted-host pattern on the control worker. */
     public void unblockAddress(String name, java.util.function.Consumer<Boolean> callback) {
-        ExecutorService executor = worker;
+        Executor executor = worker;
         try {
             if (destroyed || executor == null)
                 throw new RejectedExecutionException();
@@ -1250,7 +1259,7 @@ public class RouterService extends Service {
 
     /** Remove one validated address-book name on the control worker. */
     public void removeAddress(String name, java.util.function.Consumer<Boolean> callback) {
-        ExecutorService executor = worker;
+        Executor executor = worker;
         try {
             if (destroyed || executor == null)
                 throw new RejectedExecutionException();
@@ -1285,7 +1294,7 @@ public class RouterService extends Service {
         Runnable cancel = cancellation::cancel;
         cancelTorrentImport = cancel;
         mainHandler.postDelayed(cancel, 20_000L);
-        ExecutorService executor = worker;
+        Executor executor = worker;
         try {
             if (executor == null)
                 throw new RejectedExecutionException();
@@ -1474,12 +1483,15 @@ public class RouterService extends Service {
     }
 
     private void enqueueControl(Runnable command) {
-        ExecutorService executor = worker;
-        if (executor == null) {
+        Executor executor = worker;
+        if (executor == null || destroyed || !ServiceOwnerEpoch.isCurrent(ownerEpoch)) {
             return;
         }
         try {
             executor.execute(() -> {
+                if (destroyed || !ServiceOwnerEpoch.isCurrent(ownerEpoch)) {
+                    return;
+                }
                 try {
                     command.run();
                 } catch (Throwable tr) {

@@ -23,6 +23,14 @@ public static native boolean setRuntimeLogLevel(String level);
 They are implemented in `android/app/src/main/cpp/i2pd_android.cpp` and
 declared in `android/app/src/main/cpp/org_openi2pd_router_I2PD_JNI.h`.
 
+Native start and stop share `NativeCallGuard` with these status/control calls.
+`DaemonLifecycle.h` owns the `Stopped -> Starting -> Running` transition;
+the inner daemon adapter invokes the real start operation while `Starting`
+is already published. A failed start after successful initialization attempts
+teardown and restores `Stopped`. The host `test-android-daemon-lifecycle`
+regression uses the same transition helper with injected operations. JNI
+linking and device startup/restart validation remain pending manual CI.
+
 The status/log methods expose only aggregate counters, the local router's
 published/tested transport addresses, and the bounded log ring. No private
 keys, router identity material, pointers, session objects or raw memory are
@@ -229,3 +237,19 @@ increment.
 A real Android NDK build, linking, on-device execution and JNI runtime checks
 are **not** performed and must be validated in the Android CI/device
 environment.
+
+ANDROID-018 adds common daemon initialization rollback through
+`daemon/DaemonInit.h`. Phases register before acquisition; reverse cleanup joins
+context persistence, revokes storage with a failing writer, releases crypto and
+resets the stopped logger destination. Durable keys/configuration and sandbox
+effects are retained. Host ledger/log tests are prepared only; production
+callback failures, JNI linking and device restart remain pending manual CI.
+
+ANDROID-019 adds a Java owner executor across service recreation. All service
+worker submissions share a process FIFO; retirement queues mandatory old-owner
+native stop before new-owner commands and rejects stale submissions. Already
+accepted operations drain before the stop barrier, retaining their callback
+completion paths. Listener snapshots and notification posts are owner-fenced.
+The monitor protects only metadata/queue insertion, never JNI; NativeCallGuard
+still serializes native calls. JVM regression coverage is prepared, and full
+Android service recreation/device validation remains pending manual CI.
