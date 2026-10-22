@@ -10,6 +10,7 @@
  *
  */
 
+#include <algorithm>
 #include <boost/algorithm/string.hpp> // for boost::to_lower
 #include "Log.h"
 #include "Crypto.h"
@@ -17,6 +18,7 @@
 #include "I2NPProtocol.h"
 #include "NetDb.hpp"
 #include "Transports.h"
+#include "TransportConnector.h"
 #include "Config.h"
 #include "HTTP.h"
 #include "util.h"
@@ -29,7 +31,6 @@ namespace transport
 {
 	X25519KeysPairSupplier::X25519KeysPairSupplier (int size)
 		: m_QueueSize (size)
-		, m_IsRunning (false)
 	{
 	}
 
@@ -40,23 +41,15 @@ namespace transport
 
 	void X25519KeysPairSupplier::Start ()
 	{
-		m_IsRunning = true;
-		m_Thread = std::make_unique<std::thread> (std::bind (&X25519KeysPairSupplier::Run, this));
+		if (m_Thread.joinable ()) return;
+		m_Thread = std::jthread ([this] (std::stop_token token) { Run (token); });
 	}
 
 	void X25519KeysPairSupplier::Stop ()
 	{
-		{
-			std::unique_lock<std::mutex> l (m_AcquiredMutex);
-			m_IsRunning = false;
-		}
-		m_Acquired.notify_one ();
-
-		if (m_Thread)
-		{
-			m_Thread->join ();
-			m_Thread.reset ();
-		}
+		if (m_Thread.joinable ()) m_Thread.request_stop ();
+		m_Acquired.notify_all ();
+		if (m_Thread.joinable ()) m_Thread.join ();
 		if (!m_Queue.empty ())
 		{
 			// clean up queue
@@ -66,12 +59,12 @@ namespace transport
 		m_KeysPool.CleanUpMt ();
 	}
 
-	void X25519KeysPairSupplier::Run ()
+	void X25519KeysPairSupplier::Run (std::stop_token token)
 	{
 		i2p::util::SetThreadName ("Ephemerals");
 
 		int num = 0;
-		while (m_IsRunning)
+		while (!token.stop_requested ())
 		{
 			if (num <= 0)
 			{
@@ -95,8 +88,12 @@ namespace transport
 			{
 				m_KeysPool.CleanUpMt ();
 				std::unique_lock<std::mutex> l (m_AcquiredMutex);
-				if (!m_IsRunning) break;
-				m_Acquired.wait (l); // wait for element gets acquired
+				// condition_variable_any makes stop requests wake the wait
+				// without a separate boolean flag. The predicate preserves the
+				// previous "wait until the pool has room" behavior.
+				if (!m_Acquired.wait (l, token,
+						[this] { return m_Queue.size () < static_cast<size_t> (m_QueueSize); }))
+					break;
 				num = m_QueueSize - (int)m_Queue.size ();
 			}
 		}
@@ -210,6 +207,19 @@ namespace transport
 
 	void Transports::Start (bool enableNTCP2, bool enableSSU2)
 	{
+		bool expected = false;
+		if (!m_IsRunning.compare_exchange_strong (expected, true, std::memory_order_acq_rel))
+			return; // Start/Stop are single lifecycle calls; never replace a live thread
+		if (m_Thread)
+		{
+			// A previous self-stop may have left a joinable worker. Join it
+			// before replacing the thread object.
+			if (m_Thread->joinable () && m_Thread->get_id () != std::this_thread::get_id ())
+				m_Thread->join ();
+			else if (m_Thread->joinable ())
+				m_Thread->detach ();
+			m_Thread.reset ();
+		}
 		if (!m_Service)
 		{
 			m_Service = std::make_unique<boost::asio::io_context> ();
@@ -229,7 +239,6 @@ namespace transport
 		i2p::config::GetOption ("ipv6", ipv6);
 		i2p::config::GetOption ("nat", m_IsNAT);
 		m_X25519KeysPairSupplier.Start ();
-		m_IsRunning = true;
 		m_Thread = std::make_unique<std::thread> (std::bind (&Transports::Run, this));
 		std::string ntcp2proxy;
 		i2p::config::GetOption ("ntcp2.proxy", ntcp2proxy);
@@ -251,6 +260,7 @@ namespace transport
 			// The server must exist independently of proxy configuration. An
 			// invalid or unsupported proxy URL disables the proxy, not NTCP2.
 			m_NTCP2Server = std::make_unique<NTCP2Server> ();
+			m_HasNTCP2.store (true, std::memory_order_release);
 			if (!ntcp2proxy.empty () && enableNTCP2)
 			{
 				if (proxyurl.parse (ntcp2proxy))
@@ -276,6 +286,7 @@ namespace transport
 		if (enableSSU2)
 		{
 			m_SSU2Server = std::make_unique<SSU2Server> ();
+			m_HasSSU2.store (true, std::memory_order_release);
 			m_SSU2Server->SetVersion (ssu2version);
 			std::string ssu2proxy;
 			i2p::config::GetOption ("ssu2.proxy", ssu2proxy);
@@ -404,37 +415,49 @@ namespace transport
 
 	void Transports::Stop ()
 	{
+		// The transport thread owns the timers and may be inside a handler
+		// that re-arms one. Stop/join first, then cancel from this thread.
+		m_IsRunning.store (false, std::memory_order_release);
+		if (m_Service) m_Service->stop ();
+		if (m_Thread)
+		{
+			if (m_Thread->joinable () && m_Thread->get_id () != std::this_thread::get_id ())
+				m_Thread->join ();
+			else if (m_Thread->joinable ())
+				m_Thread->detach ();
+			m_Thread.reset ();
+		}
+
 		if (m_PeerCleanupTimer) m_PeerCleanupTimer->cancel ();
 		if (m_PeerTestTimer) m_PeerTestTimer->cancel ();
 		if (m_UpdateBandwidthTimer) m_UpdateBandwidthTimer->cancel ();
 		if (m_BanListCleanupTimer) m_BanListCleanupTimer->cancel ();
 
-		// Stop and join our own io_context before releasing the servers. A
-		// queued timer handler (peer test delay, bandwidth update) captures
-		// `this` and dereferences m_SSU2Server, so destroying the server while
-		// that thread can still run would be a use-after-free.
-		m_IsRunning = false;
-		if (m_Service) m_Service->stop ();
-		if (m_Thread)
-		{
-			m_Thread->join ();
-			m_Thread.reset ();
-		}
-
+		// Stop and release the servers before dropping the last peer refs. Each
+		// server drains its own service and destroys executor-bound sessions
+		// while its io_context is still alive.
 		if (m_SSU2Server)
 		{
+			m_HasSSU2.store (false, std::memory_order_release);
 			m_SSU2Server->Stop ();
-			m_SSU2Server.reset ();
 		}
 
 		if (m_NTCP2Server)
 		{
+			m_HasNTCP2.store (false, std::memory_order_release);
 			m_NTCP2Server->Stop ();
-			m_NTCP2Server.reset ();
 		}
 
+		// Drop the peer table while both server io_contexts are still alive:
+		// Peer::sessions owns executor-bound session objects.
+		{
+			std::lock_guard<std::mutex> l (m_PeersMutex);
+			m_Peers.clear ();
+		}
+		m_SSU2Server.reset ();
+		m_NTCP2Server.reset ();
+
 		m_X25519KeysPairSupplier.Stop ();
-		m_Peers.clear ();
 	}
 
 	void Transports::Run ()
@@ -645,70 +668,19 @@ namespace transport
 		if (peer->router) // we have RI already
 		{
 			if (peer->priority.empty ()) SetPriority (peer);
+			const TransportConnectContext connectContext {
+				peer->router, m_NTCP2Server.get (), m_SSU2Server.get (), IsCheckReserved () };
 			while (peer->numAttempts < (int)peer->priority.size ())
 			{
 				auto tr = peer->priority[peer->numAttempts];
 				peer->numAttempts++;
-				switch (tr)
+				const auto * connector = FindTransportConnector (tr);
+				if (!connector)
 				{
-				case i2p::data::RouterInfo::eNTCP2V4:
-				case i2p::data::RouterInfo::eNTCP2V6:
-				{
-					if (!m_NTCP2Server) continue;
-					std::shared_ptr<const RouterInfo::Address> address = (tr == i2p::data::RouterInfo::eNTCP2V6)
-						? peer->router->GetPublishedNTCP2V6Address ()
-						: peer->router->GetPublishedNTCP2V4Address ();
-					if (address && IsInReservedRange (address->host)) address = nullptr;
-					if (address)
-					{
-						auto s = std::make_shared<NTCP2Session> (*m_NTCP2Server, peer->router, address);
-						if (m_NTCP2Server->UsingProxy ())
-							m_NTCP2Server->ConnectWithProxy (s);
-						else
-							m_NTCP2Server->Connect (s);
-						return true;
-					}
-					break;
+					LogPrint (eLogError, "Transports: Unknown transport ", (int)tr);
+					continue;
 				}
-				case i2p::data::RouterInfo::eSSU2V4:
-				case i2p::data::RouterInfo::eSSU2V6:
-				{
-					if (!m_SSU2Server) continue;
-					std::shared_ptr<const RouterInfo::Address> address = (tr == i2p::data::RouterInfo::eSSU2V6)
-						? peer->router->GetSSU2V6Address ()
-						: peer->router->GetSSU2V4Address ();
-					if (address && IsInReservedRange (address->host)) address = nullptr;
-					if (address && address->IsReachableSSU ())
-					{
-						if (m_SSU2Server->CreateSession (peer->router, address)) return true;
-						// CreateSession() also returns false when a session to
-						// the same endpoint is already pending. Do not fall
-						// through to another transport in that case: Java
-						// keeps one establishment state per peer, and a second
-						// concurrent NTCP2 attempt would create a duplicate
-						// connection to the same router.
-						if (!address->host.is_unspecified () && address->port
-							&& m_SSU2Server->FindPendingOutgoingSession (
-								boost::asio::ip::udp::endpoint (address->host,
-									static_cast<uint16_t> (address->port)))))
-							return true;
-					}
-					break;
-				}
-				case i2p::data::RouterInfo::eNTCP2V6Mesh:
-				{
-					if (!m_NTCP2Server) continue;
-					auto address = peer->router->GetYggdrasilAddress ();
-					if (address)
-					{
-						auto s = std::make_shared<NTCP2Session> (*m_NTCP2Server, peer->router, address);
-						m_NTCP2Server->Connect (s);
-						return true;
-					}
-					break;
-				}
-				default: LogPrint (eLogError, "Transports: Unknown transport ", (int)tr);
-				}
+				if (connector->TryConnect (connectContext, tr)) return true;
 			}
 
 			LogPrint (eLogInfo, "Transports: No compatible addresses available");
@@ -1152,13 +1124,8 @@ namespace transport
 	size_t Transports::GetNumConnectedPeers () const
 	{
 		std::lock_guard<std::mutex> l (m_PeersMutex);
-		size_t count = 0;
-		for (const auto & [ident, peer] : m_Peers)
-		{
-			(void)ident;
-			if (peer && !peer->sessions.empty ()) ++count;
-		}
-		return count;
+		return static_cast<size_t> (std::ranges::count_if (m_Peers,
+			[] (const auto & entry) { return entry.second && !entry.second->sessions.empty (); }));
 	}
 
 	std::vector<PeerSnapshot> Transports::GetPeersSnapshot (size_t max) const

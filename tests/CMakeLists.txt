@@ -78,6 +78,7 @@ function(i2pd_add_test name)
 endfunction()
 
 set(I2PD_TESTS
+  test-transport-connector
   test-tunnel-dsm-policy
   test-tunnelconfig-ownership
   test-openssl-capabilities

@@ -15,6 +15,7 @@
 #define TRANSPORTS_H__
 
 #include <thread>
+#include <stop_token>
 #include <mutex>
 #include <future>
 #include <condition_variable>
@@ -53,7 +54,7 @@ namespace transport
 		void Return (std::shared_ptr<i2p::crypto::X25519Keys> pair);
 
 	private:
-		void Run ();
+		void Run (std::stop_token token);
 		size_t CreateEphemeralKeys (int num); // return new queue size
 
 	private:
@@ -61,9 +62,8 @@ namespace transport
 		i2p::util::MemoryPoolMt<i2p::crypto::X25519Keys> m_KeysPool;
 		std::list<std::shared_ptr<i2p::crypto::X25519Keys>> m_Queue;
 
-		std::atomic<bool> m_IsRunning;
-		std::unique_ptr<std::thread> m_Thread;
-		std::condition_variable m_Acquired;
+		std::jthread m_Thread;
+		std::condition_variable_any m_Acquired;
 		std::mutex m_AcquiredMutex;
 	};
 
@@ -168,12 +168,12 @@ namespace transport
 
 		void Start (bool enableNTCP2 = true, bool enableSSU2 = true);
 		void Stop ();
-		bool IsRunning () const { return m_IsRunning; }
+		bool IsRunning () const { return m_IsRunning.load (std::memory_order_acquire); }
 
-		bool IsBoundSSU2 () const { return m_SSU2Server != nullptr; }
-		bool IsBoundNTCP2 () const { return m_NTCP2Server != nullptr; }
+		bool IsBoundSSU2 () const { return m_HasSSU2.load (std::memory_order_acquire); }
+		bool IsBoundNTCP2 () const { return m_HasNTCP2.load (std::memory_order_acquire); }
 
-		bool IsOnline () const { return m_IsOnline; };
+		bool IsOnline () const { return m_IsOnline.load (std::memory_order_acquire); };
 		void SetOnline (bool online);
 
 		int GetLocalDelay () const; // in milliseconds
@@ -259,8 +259,11 @@ namespace transport
 		boost::asio::ip::address GetNetworkAddress (const boost::asio::ip::address & addr) const;
 
 	private:
-		volatile bool m_IsOnline;
-		bool m_IsRunning, m_IsNAT, m_CheckReserved;
+		std::atomic<bool> m_IsOnline { true };
+		std::atomic<bool> m_IsRunning { false };
+		std::atomic<bool> m_HasSSU2 { false };
+		std::atomic<bool> m_HasNTCP2 { false };
+		bool m_IsNAT, m_CheckReserved;
 		std::unique_ptr<std::thread> m_Thread;
 		std::unique_ptr<boost::asio::io_context> m_Service;
 		std::unique_ptr<boost::asio::executor_work_guard<boost::asio::io_context::executor_type>> m_Work;
