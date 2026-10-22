@@ -48,7 +48,7 @@ namespace data
 		int ReseedFromSU3Url (const std::string & url, bool isHttps = true);
 		void LoadCertificate (const std::string & filename);
 
-		int ProcessSU3Stream (std::istream & s);
+		int ProcessSU3Stream (std::istream & s, bool requireFresh = false);
 		int ProcessZIPStream (std::istream & s, uint64_t contentLength);
 
 		bool FindZipDataDescriptor (std::istream & s);

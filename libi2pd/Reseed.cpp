@@ -15,6 +15,7 @@
 
 #include <array>
 #include <string.h>
+#include <cstdlib>
 #include <random>
 #include <fstream>
 #include <memory>
@@ -26,12 +27,12 @@
 #include <boost/algorithm/string.hpp>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
-#ifndef LIBRESSL_VERSION_NUMBER // OpenSSL 3.0.2 is the minimum
-#include <openssl/core_names.h>
-#endif
 #include <zlib.h>
 
 #include "Crypto.h"
+#if I2PD_HAVE_EVP_PKEY_BN_PARAM && !defined(LIBRESSL_VERSION_NUMBER)
+#include <openssl/core_names.h>
+#endif
 #include "I2PEndian.h"
 #include "Reseed.h"
 #include "FS.h"
@@ -47,8 +48,10 @@ namespace i2p
 {
 namespace data
 {
-	const uint64_t MAX_RESEED_CONTENT_LENGTH = 128 * 1024 * 1024; // 128 MB, sanity cap for SU3 content length
-	const uint32_t MAX_RESEED_FILE_SIZE = 64 * 1024 * 1024; // 64 MB, sanity cap for a single file inside the SU3 zip
+	const uint64_t MAX_RESEED_CONTENT_LENGTH = 8 * 1024 * 1024; // 8 MB signed SU3 content
+	const uint32_t MAX_RESEED_FILE_SIZE = 1 * 1024 * 1024; // 1 MB per ZIP entry
+	const uint64_t MAX_RESEED_UNCOMPRESSED_TOTAL = 32 * 1024 * 1024; // 32 MB total inflated data
+	const size_t MAX_RESEED_ENTRIES = 400; // Java Reseeder bound
 	// HTTP headers, chunk framing and redirect bodies are small compared with
 	// the signed payload. Refuse to buffer more than the SU3 cap plus a small
 	// allowance so a malicious or broken reseed server cannot grow the
@@ -187,7 +190,7 @@ namespace data
 		if (su3.length () > 0)
 		{
 			std::stringstream s (su3);
-			return ProcessSU3Stream (s);
+			return ProcessSU3Stream (s, true);
 		}
 		else
 		{
@@ -294,7 +297,7 @@ namespace data
 		}
 	} // namespace
 
-	int Reseeder::ProcessSU3Stream (std::istream & s)
+	int Reseeder::ProcessSU3Stream (std::istream & s, bool requireFresh)
 	{
 		auto readExact = [&s] (void * buffer, size_t size) -> bool
 		{
@@ -383,7 +386,23 @@ namespace data
 		}
 		if (!skip (12)) return 0; // unused
 
-		if (!skip (versionLength)) return 0; // skip version
+		std::array<char, 256> version { };
+		if (static_cast<size_t> (versionLength) >= version.size ()) return 0;
+		if (!readExact (version.data (), versionLength)) return 0;
+		version[versionLength] = 0;
+		if (requireFresh)
+		{
+			char * end = nullptr;
+			const unsigned long long epoch = std::strtoull (version.data (), &end, 10);
+			const auto now = i2p::util::GetMillisecondsSinceEpoch ();
+			constexpr uint64_t MAX_FILE_AGE = 30ULL * 24 * 60 * 60 * 1000;
+			if (end == version.data () || *end || epoch < 1400000000ULL
+				|| static_cast<uint64_t> (epoch) * 1000ULL + MAX_FILE_AGE < now)
+			{
+				LogPrint (eLogError, "Reseed: Stale or invalid SU3 version ", version.data ());
+				return 0;
+			}
+		}
 		std::array<char, 256> signerID { };
 		if (static_cast<size_t> (signerIDLength) >= signerID.size ()) return 0;
 		if (!readExact (signerID.data (), signerIDLength)) return 0;
@@ -507,6 +526,7 @@ namespace data
 	int Reseeder::ProcessZIPStream (std::istream & s, uint64_t contentLength)
 	{
 		int numFiles = 0;
+		uint64_t totalUncompressed = 0;
 		auto contentPosition = s.tellg ();
 		if (contentPosition < 0) return 0;
 		size_t contentPos = static_cast<size_t> (contentPosition);
@@ -553,8 +573,13 @@ namespace data
 					LogPrint (eLogError, "Reseed: SU3 fileNameLength too large: ", fileNameLength);
 					return numFiles;
 				}
-				char localFileName[255];
+				char localFileName[255] {};
 				s.read (localFileName, fileNameLength);
+				if (!s || s.gcount () != static_cast<std::streamsize> (fileNameLength))
+				{
+					LogPrint (eLogError, "Reseed: Truncated zip file name");
+					return numFiles;
+				}
 				localFileName[fileNameLength] = 0;
 				s.seekg (extraFieldLength, std::ios::cur);
 				// take care about data descriptor if presented
@@ -592,12 +617,15 @@ namespace data
 					LogPrint (eLogWarning, "Reseed: Unexpected size 0. Skipped");
 					continue;
 				}
-				if (compressedSize > MAX_RESEED_FILE_SIZE || uncompressedSize > MAX_RESEED_FILE_SIZE)
+				const uint64_t entryUncompressed = compressionMethod ? uncompressedSize : compressedSize;
+				if (compressedSize > MAX_RESEED_FILE_SIZE || uncompressedSize > MAX_RESEED_FILE_SIZE
+					|| entryUncompressed > MAX_RESEED_UNCOMPRESSED_TOTAL - totalUncompressed)
 				{
 					LogPrint (eLogError, "Reseed: SU3 file size too large, compressed=", compressedSize,
 						" uncompressed=", uncompressedSize);
 					return numFiles;
 				}
+				totalUncompressed += entryUncompressed;
 
 				// Both sizes were validated against MAX_RESEED_FILE_SIZE above.
 				// The buffers are owned by the vectors so every early return
@@ -633,7 +661,7 @@ namespace data
 					if (err == Z_STREAM_END)
 					{
 						uncompressed.resize (produced);
-						// produced is bounded by MAX_RESEED_FILE_SIZE (64 MiB).
+						// produced is bounded by MAX_RESEED_FILE_SIZE.
 						if (crc32 (0, uncompressed.data (), static_cast<uInt> (uncompressed.size ())) == crc_32)
 						{
 							if (i2p::data::netdb.AddRouterInfo (
@@ -690,7 +718,7 @@ namespace data
 					"	**_________**\n"
 					"	 *_________*\n"
 					"	  ***___***");
-				i2p::data::netdb.ClearRouterInfos ();
+				i2p::data::netdb.ResetRemoteRouterInfos ();
 				numFiles = 0;
 			}
 		}
@@ -753,7 +781,12 @@ namespace data
 		// Ed25519 certificates contribute their 32-byte public key.
 		PkeyPtr pubKey (X509_get_pubkey (cert), EVP_PKEY_free);
 		bool stored = false;
-		if (pubKey && EVP_PKEY_base_id (pubKey.get ()) == EVP_PKEY_ED25519)
+#if I2PD_HAVE_EVP_PKEY_IS_A
+		const bool isEd25519 = pubKey && EVP_PKEY_is_a (pubKey.get (), "ED25519") == 1;
+#else
+		const bool isEd25519 = pubKey && EVP_PKEY_base_id (pubKey.get ()) == EVP_PKEY_ED25519;
+#endif
+		if (isEd25519)
 		{
 			PublicKey value { };
 			size_t keyLength = 0;
@@ -775,7 +808,7 @@ namespace data
 		}
 		else
 		{
-#ifndef LIBRESSL_VERSION_NUMBER // OpenSSL 3.0.2 is the minimum
+#if I2PD_HAVE_EVP_PKEY_BN_PARAM && !defined(LIBRESSL_VERSION_NUMBER)
 			std::unique_ptr<BIGNUM, decltype (&BN_free)> n1 (nullptr, BN_free);
 			BIGNUM * rawN = nullptr;
 			if (pubKey) (void)EVP_PKEY_get_bn_param (pubKey.get (), OSSL_PKEY_PARAM_RSA_N, &rawN);
@@ -881,8 +914,20 @@ namespace data
 		boost::asio::io_context service;
 		boost::system::error_code ecode;
 
-		boost::asio::ssl::context ctx (boost::asio::ssl::context::sslv23);
-		ctx.set_verify_mode (boost::asio::ssl::context::verify_none);
+		boost::asio::ssl::context ctx (boost::asio::ssl::context::tls_client);
+		ctx.set_options (boost::asio::ssl::context::default_workarounds | boost::asio::ssl::context::no_sslv2
+			| boost::asio::ssl::context::no_sslv3 | boost::asio::ssl::context::no_tlsv1
+			| boost::asio::ssl::context::no_tlsv1_1);
+		// Reseed transport must authenticate the server chain and hostname.
+		// SU3 protects the bundle contents, but TLS prevents bootstrap
+		// fingerprinting and stale/mirror substitution at the transport layer.
+		ctx.set_default_verify_paths (ecode);
+		if (ecode)
+		{
+			LogPrint (eLogError, "Reseed: Can't load system trust store: ", ecode.message ());
+			return "";
+		}
+		ctx.set_verify_mode (boost::asio::ssl::context::verify_peer);
 		boost::asio::ssl::stream<boost::asio::ip::tcp::socket> s (service, ctx);
 
 		if (proxyUrl.schema.size ())
@@ -1016,6 +1061,7 @@ namespace data
 		if (!ecode)
 		{
 			SSL_set_tlsext_host_name (s.native_handle (), url.host.c_str ());
+			SSL_set1_host (s.native_handle (), url.host.c_str ());
 			s.handshake (boost::asio::ssl::stream_base::client, ecode);
 			if (!ecode)
 			{
