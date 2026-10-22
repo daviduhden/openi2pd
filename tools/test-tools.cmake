@@ -11,6 +11,9 @@
 if(NOT DEFINED TOOLS_DIR)
   message(FATAL_ERROR "TOOLS_DIR is required")
 endif()
+if(NOT DEFINED ROUTERINFO_FIXTURE_HELPER OR NOT EXISTS "${ROUTERINFO_FIXTURE_HELPER}")
+  message(FATAL_ERROR "ROUTERINFO_FIXTURE_HELPER must name the built fixture helper")
+endif()
 set(EXE "${CMAKE_EXECUTABLE_SUFFIX}")
 set(WORK "${WORK_DIR}/tools-smoke")
 file(REMOVE_RECURSE "${WORK}")
@@ -85,6 +88,71 @@ if(NOT LAST_TOOL_OUTPUT MATCHES "--firewall=iptables"
    OR NOT LAST_TOOL_OUTPUT MATCHES "-f")
   message(FATAL_ERROR "routerinfo help does not document all backends and legacy -f")
 endif()
+
+# Generate a valid, signed RouterInfo with documentation-range v4/v6
+# endpoints through the production LocalRouterInfo serializer. The helper
+# creates ephemeral keys in memory and writes only the public RouterInfo.
+execute_process(COMMAND "${ROUTERINFO_FIXTURE_HELPER}" "${WORK}/valid-routerinfo.dat"
+  WORKING_DIRECTORY "${WORK}"
+  RESULT_VARIABLE fixture_result
+  OUTPUT_VARIABLE fixture_output
+  ERROR_VARIABLE fixture_error)
+if(NOT fixture_result EQUAL 0 OR NOT EXISTS "${WORK}/valid-routerinfo.dat")
+  message(FATAL_ERROR "RouterInfo fixture helper failed (${fixture_result}): ${fixture_output}${fixture_error}")
+endif()
+
+# Positive CLI coverage for IPv6 address selection and both legacy/explicit
+# iptables output families. TOOL-012 intentionally keeps IPv4 -f bytes stable
+# and prefixes IPv6 commands with ip6tables.
+run_tool(routerinfo -6 -p valid-routerinfo.dat)
+foreach(expected
+    "NTCP2: 192.0.2.10:12345"
+    "SSU2: 198.51.100.20:12346"
+    "NTCP2: 2001:db8::10:12347"
+    "SSU2: 2001:db8::20:12348")
+  string(FIND "${LAST_TOOL_OUTPUT}" "${expected}" position)
+  if(position EQUAL -1)
+    message(FATAL_ERROR "routerinfo -6 -p omitted '${expected}': ${LAST_TOOL_OUTPUT}")
+  endif()
+endforeach()
+
+run_tool(routerinfo -6 -f valid-routerinfo.dat)
+foreach(expected
+    " -A OUTPUT -p tcp -d 192.0.2.10 --dport 12345 -j ACCEPT"
+    " -A OUTPUT -p udp -d 198.51.100.20 --dport 12346 -j ACCEPT"
+    "ip6tables -A OUTPUT -p tcp -d 2001:db8::10 --dport 12347 -j ACCEPT"
+    "ip6tables -A OUTPUT -p udp -d 2001:db8::20 --dport 12348 -j ACCEPT")
+  string(FIND "${LAST_TOOL_OUTPUT}" "${expected}" position)
+  if(position EQUAL -1)
+    message(FATAL_ERROR "routerinfo -6 -f omitted '${expected}': ${LAST_TOOL_OUTPUT}")
+  endif()
+endforeach()
+
+run_tool(routerinfo --firewall=iptables valid-routerinfo.dat)
+foreach(expected
+    "iptables -A OUTPUT -p tcp -d 192.0.2.10 --dport 12345 -j ACCEPT"
+    "iptables -A OUTPUT -p udp -d 198.51.100.20 --dport 12346 -j ACCEPT")
+  string(FIND "${LAST_TOOL_OUTPUT}" "${expected}" position)
+  if(position EQUAL -1)
+    message(FATAL_ERROR "routerinfo --firewall=iptables omitted '${expected}': ${LAST_TOOL_OUTPUT}")
+  endif()
+endforeach()
+string(FIND "${LAST_TOOL_OUTPUT}" "2001:db8::" ipv6_position)
+if(NOT ipv6_position EQUAL -1)
+  message(FATAL_ERROR "routerinfo selected IPv6 without -6: ${LAST_TOOL_OUTPUT}")
+endif()
+
+run_tool(routerinfo -6 --firewall=iptables valid-routerinfo.dat)
+foreach(expected
+    "iptables -A OUTPUT -p tcp -d 192.0.2.10 --dport 12345 -j ACCEPT"
+    "iptables -A OUTPUT -p udp -d 198.51.100.20 --dport 12346 -j ACCEPT"
+    "ip6tables -A OUTPUT -p tcp -d 2001:db8::10 --dport 12347 -j ACCEPT"
+    "ip6tables -A OUTPUT -p udp -d 2001:db8::20 --dport 12348 -j ACCEPT")
+  string(FIND "${LAST_TOOL_OUTPUT}" "${expected}" position)
+  if(position EQUAL -1)
+    message(FATAL_ERROR "routerinfo --firewall=iptables omitted '${expected}': ${LAST_TOOL_OUTPUT}")
+  endif()
+endforeach()
 
 execute_process(COMMAND "${TOOLS_DIR}/routerinfo${EXE}" --firewall=bogus
   RESULT_VARIABLE bad_backend)

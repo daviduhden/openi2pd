@@ -63,9 +63,10 @@ SSU2: 198.51.100.20:4567
 
 The address listing is unchanged from the original tool.
 
-## Legacy iptables fragments (`-f`)
+## Legacy iptables output (`-f`)
 
-`-f` keeps the historical output exactly:
+`-f` keeps historical IPv4 output exactly and identifies IPv6 commands with
+the `ip6tables` executable prefix:
 
 ```sh
 routerinfo -f routerInfo.dat
@@ -78,12 +79,20 @@ routerinfo -6 -f routerInfo.dat
  -A OUTPUT -p udp -d 198.51.100.20 --dport 4567 -j ACCEPT
 ```
 
-This is a rule fragment, not a complete command. The leading space and lack of
-an `iptables` prefix are intentional compatibility. IPv4 fragments belong in an
-`iptables` file and IPv6 fragments in an `ip6tables` file; a mixed `-6 -f`
-stream cannot be loaded as one ruleset. Non-public or unspecified endpoints are
-skipped under the shared public-endpoint policy, so `-f` preserves the fragment
-shape rather than blindly reproducing unsafe upstream lines.
+IPv4 output keeps the historical leading space and rule-fragment shape byte
+for byte. IPv6 uses an explicit `ip6tables` prefix so the selected address
+family is unambiguous:
+
+```text
+# <router hash>
+ip6tables -A OUTPUT -p tcp -d 2001:db8::10 --dport 12345 -j ACCEPT
+```
+
+A mixed `-6 -f` stream therefore contains IPv4 rule fragments and complete
+IPv6 commands; separate the families before applying the IPv4 fragments. The
+tool never executes these lines. Non-public or unspecified endpoints are
+skipped under the shared public-endpoint policy rather than blindly
+reproducing unsafe upstream lines.
 
 ## iptables/ip6tables commands
 
@@ -221,15 +230,20 @@ backend. RouterInfo key/address formats are unchanged.
 ## Tests
 
 `tests/test-routerinfo-firewall.cpp` checks IPv4/IPv6 NTCP2/SSU2 rendering,
-legacy output stability, nft family filtering, identifier rejection,
-PowerShell escaping, PF syntax, numeric-only address grammar, rejection of
-scoped/bracketed/link-local/IPv4-compatible/IPv4-mapped/broadcast addresses,
-invalid nftables families and chains, outbound-only output, display-name tag
-validation, port boundaries and rendering-boundary endpoint revalidation. `tools-smoke` checks CLI help for every backend and legacy `-f`,
-invalid backends, unsafe table names, conflicting options, nftables options
-without a backend, an invalid nft family, nftables options with a non-nft
-backend and malformed RouterInfo input through every backend and `-f`. These
-are static/deterministic checks; see `testing.md`.
+byte-stable IPv4 legacy output and explicit `ip6tables` legacy output, nft
+family filtering, identifier rejection, PowerShell escaping, PF syntax,
+numeric-only address grammar, rejection of scoped/bracketed/link-local/IPv4-
+compatible/IPv4-mapped/broadcast addresses, invalid nftables families and
+chains, outbound-only output, display-name tag validation, port boundaries
+and rendering-boundary endpoint revalidation.
+`tools-smoke` creates a valid signed RouterInfo through the production
+serializer and checks positive `-6 -p`, `-6 -f`, and explicit iptables CLI
+output for both address families. It also checks CLI help for every backend,
+legacy `-f`, family selection without `-6`, invalid backends, unsafe table
+names, conflicting options, nftables options without a backend, an invalid nft
+family, nftables options with a non-nft backend and malformed RouterInfo input
+through every backend and `-f`. The checks are deterministic and offline; see
+`testing.md`.
 
 External syntax validation is prepared for CI/dedicated hosts, but is not run
 by the static test suite:

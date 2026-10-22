@@ -62,6 +62,19 @@ install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE"
   RENAME LICENSE.i2pd-tools COMPONENT Tools)
 
 if(BUILD_TESTING)
+  # CI creates a signed public RouterInfo through the production serializer;
+  # no binary fixture or private keys are installed or checked into the tree.
+  add_executable(routerinfo-fixture "${CMAKE_CURRENT_SOURCE_DIR}/tests/routerinfo-fixture.cpp")
+  target_compile_features(routerinfo-fixture PRIVATE cxx_std_23)
+  target_include_directories(routerinfo-fixture PRIVATE "${LIBI2PD_DIR}")
+  target_link_libraries(routerinfo-fixture PRIVATE
+    libi2pd libi2pdclient libi2pdlang i2pd_warnings Threads::Threads)
+  if(WIN32)
+    target_link_libraries(routerinfo-fixture PRIVATE mswsock ws2_32)
+  endif()
+  i2pd_enable_sanitizers(routerinfo-fixture)
+  add_dependencies(routerinfo routerinfo-fixture)
+
   find_package(Perl)
   find_program(PROVE_EXECUTABLE prove)
 
@@ -170,6 +183,7 @@ if(BUILD_TESTING)
   add_test(NAME tools-smoke
     COMMAND ${CMAKE_COMMAND}
       -DTOOLS_DIR=$<TARGET_FILE_DIR:keygen>
+      "-DROUTERINFO_FIXTURE_HELPER=$<TARGET_FILE:routerinfo-fixture>"
       -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}
       -DCMAKE_EXECUTABLE_SUFFIX=${CMAKE_EXECUTABLE_SUFFIX}
       -P "${CMAKE_CURRENT_SOURCE_DIR}/test-tools.cmake")

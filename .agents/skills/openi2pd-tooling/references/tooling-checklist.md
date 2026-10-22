@@ -25,7 +25,7 @@ duplicate ad-hoc parsers.
 
 - Endpoint model in `tools/firewall.hpp`; CLI in `tools/routerinfo.cpp`.
 - Backends: `iptables`, `nftables`, `windows`, `pf`; legacy `-f` output stays
-  compatible.
+  byte-compatible for IPv4, while IPv6 rules explicitly start with `ip6tables`.
 - Validate address/port before rendering; deduplicate multi-file input;
   reject malformed endpoint records.
 - Never execute a rule. Tests compare rendered text; no root or network.
@@ -50,6 +50,8 @@ checks. See [`perl-inventory.md`](perl-inventory.md) for the script/test/CI map.
 - `tools/test-tools-inventory.cmake`: every expected tool/target.
 - `tools/test-tools.cmake`, `tools/test-tools-regressions.cmake`: smoke and
   CLI behavior.
+- `tools/tests/routerinfo-fixture.cpp`: BUILD_TESTING-only signed RouterInfo
+  generator for positive CLI checks; never installed, and never run locally.
 - `tests/test-routerinfo-firewall.cpp`: endpoint/firewall renderers.
 - `tools/tests/*.t`: Perl syntax/portability/client/branding/install.
 - `tools/test-perl-install.cmake`: installed layout.

@@ -221,9 +221,11 @@ inline std::string EscapePowerShell (std::string_view value)
 
 inline std::string IptablesLegacy (const Endpoint & endpoint)
 {
-	// This exact leading-space fragment is the historical -f output.
-	return " -A OUTPUT -p " + std::string (L4Protocol (endpoint.transport)) + " -d " + endpoint.address + " --dport "
-		+ std::to_string (endpoint.port) + " -j ACCEPT";
+	// Preserve the historical IPv4 fragment exactly. IPv6 needs an explicit
+	// executable prefix because iptables and ip6tables are separate programs.
+	const std::string rule = " -A OUTPUT -p " + std::string (L4Protocol (endpoint.transport)) + " -d "
+		+ endpoint.address + " --dport " + std::to_string (endpoint.port) + " -j ACCEPT";
+	return endpoint.ipv6 ? "ip6tables" + rule : rule;
 }
 
 inline std::string IptablesCommand (const Endpoint & endpoint)

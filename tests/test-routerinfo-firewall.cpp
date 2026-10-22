@@ -110,10 +110,13 @@ int main ()
 		assert (Render (wrongFamily, options) == std::nullopt);
 	}
 
-	// Historical -f output must stay byte-for-byte stable.
+	// Preserve historical IPv4 -f output; IPv6 is explicitly routed through
+	// ip6tables so the family-specific command is unambiguous.
 	options.backend = Backend::IptablesLegacy;
 	assert (Render (ntcp4, options) == " -A OUTPUT -p tcp -d 192.0.2.10 --dport 12345 -j ACCEPT");
-	assert (Render (ssu6, options) == " -A OUTPUT -p udp -d 2001:db8::20 --dport 4567 -j ACCEPT");
+	assert (Render (ssu4, options) == " -A OUTPUT -p udp -d 198.51.100.20 --dport 4567 -j ACCEPT");
+	assert (Render (ntcp6, options) == "ip6tables -A OUTPUT -p tcp -d 2001:db8::10 --dport 12345 -j ACCEPT");
+	assert (Render (ssu6, options) == "ip6tables -A OUTPUT -p udp -d 2001:db8::20 --dport 4567 -j ACCEPT");
 	AssertSafeRule (Render (ntcp4, options));
 
 	options.backend = Backend::Iptables;
