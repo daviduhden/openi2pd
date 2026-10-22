@@ -147,8 +147,8 @@ bool PrintRules (const std::string & hash,
 		auto rule = i2p::tools::firewall::Render (*endpoint, render);
 		if (!rule)
 		{
-			std::cerr << "routerinfo: cannot render endpoint " << endpoint->address << ":"
-				<< endpoint->port << " for " << hash << std::endl;
+			std::cerr << "routerinfo: cannot render endpoint " << endpoint->address << ":" << endpoint->port << " for "
+					  << hash << std::endl;
 			valid = false;
 			continue;
 		}
@@ -329,8 +329,7 @@ int main (int argc, char * argv[])
 				std::cout << "Router Hash: " << hash << std::endl;
 				for (const auto & address : addresses)
 				{
-					std::cout << AddressStyle (*address) << ": "
-					          << i2p::util::net::FormatAddress (address->host);
+					std::cout << AddressStyle (*address) << ": " << i2p::util::net::FormatAddress (address->host);
 					if (options.printPort) std::cout << ":" << address->port;
 					std::cout << std::endl;
 				}

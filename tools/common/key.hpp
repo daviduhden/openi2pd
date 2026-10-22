@@ -31,7 +31,7 @@ struct SigTypeName
 	uint16_t type;
 };
 
-inline constexpr std::array<SigTypeName, 16> SIG_TYPE_NAMES {{
+inline constexpr std::array<SigTypeName, 16> SIG_TYPE_NAMES { {
 	{ "DSA-SHA1", i2p::data::SIGNING_KEY_TYPE_DSA_SHA1 },
 	{ "ECDSA-P256", i2p::data::SIGNING_KEY_TYPE_ECDSA_SHA256_P256 },
 	{ "ECDSA-SHA256-P256", i2p::data::SIGNING_KEY_TYPE_ECDSA_SHA256_P256 },
@@ -48,7 +48,7 @@ inline constexpr std::array<SigTypeName, 16> SIG_TYPE_NAMES {{
 	{ "RED25519-SHA512", i2p::data::SIGNING_KEY_TYPE_REDDSA_SHA512_ED25519 },
 	{ "GOSTR3410-A-GOSTR3411-256", i2p::data::SIGNING_KEY_TYPE_GOSTR3410_CRYPTO_PRO_A_GOSTR3411_256 },
 	{ "GOSTR3410-TC26-A-GOSTR3411-512", i2p::data::SIGNING_KEY_TYPE_GOSTR3410_TC26_A_512_GOSTR3411_512 },
-}};
+} };
 
 /** @brief returns stable string representation of a signing key type */
 inline std::string SigTypeToName (uint16_t keytype)
@@ -65,8 +65,7 @@ inline std::string SigTypeToName (uint16_t keytype)
  * Returns std::nullopt for invalid or unknown input; no sentinel value is
  * passed to CreateRandomKeys.
  */
-inline i2p::expected<void, std::string> LoadPrivateKeys (
-	const std::string & path, i2p::data::PrivateKeys & keys)
+inline i2p::expected<void, std::string> LoadPrivateKeys (const std::string & path, i2p::data::PrivateKeys & keys)
 {
 	auto input = i2p::tools::ReadFile (path);
 	if (!input) return i2p::unexpected (input.error ());
@@ -74,7 +73,7 @@ inline i2p::expected<void, std::string> LoadPrivateKeys (
 	const size_t consumed = keys.FromBuffer (input->data (), size);
 	i2p::tools::Wipe (*input);
 	if (!consumed || consumed != size) return i2p::unexpected ("bad keys file format");
-	return {};
+	return { };
 }
 
 inline std::optional<uint16_t> NameToSigType (std::string_view keyname)
@@ -91,15 +90,14 @@ inline std::optional<uint16_t> NameToSigType (std::string_view keyname)
 	}
 
 	std::string name (keyname);
-	std::ranges::transform (name, name.begin (),
-		[] (unsigned char ch) { return static_cast<char> (std::toupper (ch)); });
+	std::ranges::transform (
+		name, name.begin (), [] (unsigned char ch) { return static_cast<char> (std::toupper (ch)); });
 	std::replace (name.begin (), name.end (), '_', '-');
 	for (const auto & entry : SIG_TYPE_NAMES)
 		if (name == entry.name) return entry.type;
 	if (name == "GOSTR3410-CRYPTO-PRO-A-GOSTR3411-256")
 		return i2p::data::SIGNING_KEY_TYPE_GOSTR3410_CRYPTO_PRO_A_GOSTR3411_256;
-	if (name == "GOSTR3410-TC26-A-GOSTR3411-512")
-		return i2p::data::SIGNING_KEY_TYPE_GOSTR3410_TC26_A_512_GOSTR3411_512;
+	if (name == "GOSTR3410-TC26-A-GOSTR3411-512") return i2p::data::SIGNING_KEY_TYPE_GOSTR3410_TC26_A_512_GOSTR3411_512;
 	return std::nullopt;
 }
 

@@ -135,8 +135,8 @@ inline std::optional<Endpoint> MakeEndpoint (std::string_view addressText, int p
 		if (address.to_v4 () == boost::asio::ip::address_v4::broadcast ()) return std::nullopt;
 	}
 
-	return Endpoint {
-		i2p::util::net::FormatAddress (address), static_cast<uint16_t> (port), transport, address.is_v6 () };
+	return Endpoint { i2p::util::net::FormatAddress (address), static_cast<uint16_t> (port), transport,
+		address.is_v6 () };
 }
 
 /**
@@ -183,8 +183,7 @@ inline bool IsSafeOutputChain (std::string_view value)
 {
 	if (!IsSafeIdentifier (value)) return false;
 	std::string lower (value.begin (), value.end ());
-	std::transform (lower.begin (), lower.end (), lower.begin (),
-		[] (unsigned char ch) { return AsciiLower (ch); });
+	std::transform (lower.begin (), lower.end (), lower.begin (), [] (unsigned char ch) { return AsciiLower (ch); });
 	return lower != "input" && lower != "forward" && lower != "prerouting" && lower != "postrouting";
 }
 
@@ -237,7 +236,8 @@ inline std::string IptablesCommand (const Endpoint & endpoint)
 inline std::optional<std::string> Nftables (const Endpoint & endpoint, const RenderOptions & options)
 {
 	if (!IsSafeIdentifier (options.nftTable) || !IsSafeOutputChain (options.nftChain)
-		|| !IsSafeRuleTag (options.ruleTag)) return std::nullopt;
+		|| !IsSafeRuleTag (options.ruleTag))
+		return std::nullopt;
 
 	const bool useInet = options.nftFamily == "inet";
 	const bool useIp = options.nftFamily == "ip";
@@ -246,11 +246,12 @@ inline std::optional<std::string> Nftables (const Endpoint & endpoint, const Ren
 	if ((useIp && endpoint.ipv6) || (useIp6 && !endpoint.ipv6)) return std::nullopt;
 
 	const char * family = endpoint.ipv6 ? "ip6" : "ip";
-	std::string rule = "nft add rule " + options.nftFamily + " " + options.nftTable + " " + options.nftChain + " " + family
-		+ " daddr " + endpoint.address + " " + L4Protocol (endpoint.transport) + " dport "
+	std::string rule = "nft add rule " + options.nftFamily + " " + options.nftTable + " " + options.nftChain + " "
+		+ family + " daddr " + endpoint.address + " " + L4Protocol (endpoint.transport) + " dport "
 		+ std::to_string (endpoint.port) + " accept";
 	if (!options.ruleTag.empty ())
-		rule += " comment \"openi2pd " + std::string (TransportName (endpoint.transport)) + " " + options.ruleTag + "\"";
+		rule
+			+= " comment \"openi2pd " + std::string (TransportName (endpoint.transport)) + " " + options.ruleTag + "\"";
 	return rule;
 }
 
@@ -263,15 +264,15 @@ inline std::optional<std::string> Windows (const Endpoint & endpoint, const Rend
 	const std::string name = "openi2pd " + std::string (TransportName (endpoint.transport)) + " " + family + " "
 		+ options.ruleTag + " " + endpoint.address + ":" + std::to_string (endpoint.port);
 	std::string tagId = options.ruleTag;
-	std::replace_if (tagId.begin (), tagId.end (),
+	std::replace_if (
+		tagId.begin (), tagId.end (),
 		[] (unsigned char ch) { return !(IsAsciiAlnum (ch) || ch == '_' || ch == '-' || ch == '.'); }, '_');
 	const std::string ruleName = "openi2pd_" + std::string (TransportName (endpoint.transport)) + "_" + family + "_"
 		+ tagId + "_" + addressId + "_" + std::to_string (endpoint.port);
-	return "New-NetFirewallRule -Name '" + EscapePowerShell (ruleName)
-		+ "' -DisplayName '" + EscapePowerShell (name)
+	return "New-NetFirewallRule -Name '" + EscapePowerShell (ruleName) + "' -DisplayName '" + EscapePowerShell (name)
 		+ "' -Group 'openi2pd' -Direction Outbound -Action Allow -Protocol "
-		+ (endpoint.transport == Transport::NTCP2 ? "TCP" : "UDP")
-		+ " -RemoteAddress '" + EscapePowerShell (endpoint.address) + "' -RemotePort " + std::to_string (endpoint.port)
+		+ (endpoint.transport == Transport::NTCP2 ? "TCP" : "UDP") + " -RemoteAddress '"
+		+ EscapePowerShell (endpoint.address) + "' -RemotePort " + std::to_string (endpoint.port)
 		+ " -ErrorAction Stop";
 }
 
@@ -285,7 +286,6 @@ inline std::optional<std::string> Pf (const Endpoint & endpoint, const RenderOpt
 		rule += " label \"openi2pd " + std::string (TransportName (endpoint.transport)) + " " + options.ruleTag + "\"";
 	return rule;
 }
-
 
 /** True when the backend's configured family deliberately excludes endpoint. */
 inline bool IsSelectedByFamily (const Endpoint & endpoint, const RenderOptions & options)

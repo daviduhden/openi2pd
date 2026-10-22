@@ -191,6 +191,5 @@ int main (int argc, char * argv[])
 			  << "  keys = " << argv[1] << std::endl
 			  << "  i2cp.leaseSetType = 5" << std::endl;
 
-
 	return 0;
 }

@@ -94,8 +94,7 @@ static bool IsP256Key (EVP_PKEY * pkey)
 #else
 	// LibreSSL and older compatibility builds retain the EC_KEY accessor.
 	// The OpenSSL 3/4 path above never relies on a deprecated low-level API.
-	std::unique_ptr<EC_KEY, decltype (&EC_KEY_free)> ecKey (
-		EVP_PKEY_get1_EC_KEY (pkey), EC_KEY_free);
+	std::unique_ptr<EC_KEY, decltype (&EC_KEY_free)> ecKey (EVP_PKEY_get1_EC_KEY (pkey), EC_KEY_free);
 	if (!ecKey) return false;
 	const EC_GROUP * group = EC_KEY_get0_group (ecKey.get ());
 	return group && EC_GROUP_get_curve_name (group) == NID_X9_62_prime256v1;
@@ -119,8 +118,7 @@ static bool GetP256PublicKey (EVP_PKEY * pkey, uint8_t * signingKey)
 	x.reset (xRaw);
 	y.reset (yRaw);
 #else
-	std::unique_ptr<EC_KEY, decltype (&EC_KEY_free)> ecKey (
-		EVP_PKEY_get1_EC_KEY (pkey), EC_KEY_free);
+	std::unique_ptr<EC_KEY, decltype (&EC_KEY_free)> ecKey (EVP_PKEY_get1_EC_KEY (pkey), EC_KEY_free);
 	if (!ecKey) return false;
 	const EC_GROUP * group = EC_KEY_get0_group (ecKey.get ());
 	const EC_POINT * point = EC_KEY_get0_public_key (ecKey.get ());
@@ -184,21 +182,15 @@ static bool CreateFamilySignature (
 	// share the same ownership and error handling. The wire format is still
 	// the two fixed 32-byte r/s values expected by I2P family signatures.
 	std::unique_ptr<EVP_MD_CTX, decltype (&EVP_MD_CTX_free)> mdCtx (EVP_MD_CTX_new (), EVP_MD_CTX_free);
-	if (!mdCtx
-		|| EVP_DigestSignInit (mdCtx.get (), nullptr, EVP_sha256 (), nullptr, pkey) != 1)
-		return false;
+	if (!mdCtx || EVP_DigestSignInit (mdCtx.get (), nullptr, EVP_sha256 (), nullptr, pkey) != 1) return false;
 
-	if (EVP_DigestSignUpdate (mdCtx.get (), message.data (), message.size ()) != 1)
-		return false;
+	if (EVP_DigestSignUpdate (mdCtx.get (), message.data (), message.size ()) != 1) return false;
 
 	size_t derLength = 0;
-	if (EVP_DigestSignFinal (mdCtx.get (), nullptr, &derLength) != 1
-		|| derLength == 0 || derLength > 128)
-		return false;
+	if (EVP_DigestSignFinal (mdCtx.get (), nullptr, &derLength) != 1 || derLength == 0 || derLength > 128) return false;
 
 	std::vector<uint8_t> der (derLength);
-	if (EVP_DigestSignFinal (mdCtx.get (), der.data (), &derLength) != 1)
-		return false;
+	if (EVP_DigestSignFinal (mdCtx.get (), der.data (), &derLength) != 1) return false;
 	der.resize (derLength);
 
 	const unsigned char * derPos = der.data ();
@@ -332,8 +324,7 @@ int main (int argc, char * argv[])
 		std::string cn = fam + ".family.i2p.net";
 
 #if I2PD_HAVE_EVP_EC_GEN
-		std::unique_ptr<EVP_PKEY, decltype (&EVP_PKEY_free)> evKey (
-			EVP_EC_gen ("P-256"), EVP_PKEY_free);
+		std::unique_ptr<EVP_PKEY, decltype (&EVP_PKEY_free)> evKey (EVP_EC_gen ("P-256"), EVP_PKEY_free);
 		if (!evKey)
 		{
 			std::cerr << "cannot generate EC key" << std::endl;
@@ -392,14 +383,12 @@ int main (int argc, char * argv[])
 		const auto addName = [&name] (const char * field, const char * value)
 		{
 			return X509_NAME_add_entry_by_txt (
-					   name.get (), field, MBSTRING_ASC,
-					   reinterpret_cast<const unsigned char *> (value), -1, -1, 0)
+					   name.get (), field, MBSTRING_ASC, reinterpret_cast<const unsigned char *> (value), -1, -1, 0)
 				== 1;
 		};
 		if (!addName ("C", "XX") || !addName ("ST", "XX") || !addName ("L", "XX")
 			|| !addName ("O", "I2P Anonymous Network") || !addName ("OU", "family") || !addName ("CN", cn.c_str ())
-			|| X509_set_subject_name (x.get (), name.get ()) != 1
-			|| X509_set_issuer_name (x.get (), name.get ()) != 1)
+			|| X509_set_subject_name (x.get (), name.get ()) != 1 || X509_set_issuer_name (x.get (), name.get ()) != 1)
 		{
 			std::cerr << "cannot set certificate name" << std::endl;
 			return 1;
@@ -425,8 +414,7 @@ int main (int argc, char * argv[])
 		// silently leave the key readable by other users.
 		if (::fchmod (::fileno (privf.get ()), S_IRUSR | S_IWUSR) != 0)
 		{
-			std::fprintf (stderr, "cannot restrict permissions on %s: %s\n", privkey.c_str (),
-				std::strerror (errno));
+			std::fprintf (stderr, "cannot restrict permissions on %s: %s\n", privkey.c_str (), std::strerror (errno));
 			return 1;
 		}
 #endif

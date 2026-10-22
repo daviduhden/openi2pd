@@ -124,8 +124,12 @@ int main ()
 	AssertSafeRule (Render (ssu4, options));
 
 	options.backend = Backend::Nftables;
-	assert (Render (ntcp4, options) == "nft add rule inet filter output ip daddr 192.0.2.10 tcp dport 12345 accept comment \"openi2pd NTCP2 abcdef12\"");
-	assert (Render (ssu6, options) == "nft add rule inet filter output ip6 daddr 2001:db8::20 udp dport 4567 accept comment \"openi2pd SSU2 abcdef12\"");
+	assert (Render (ntcp4, options)
+		== "nft add rule inet filter output ip daddr 192.0.2.10 tcp dport 12345 accept comment \"openi2pd NTCP2 "
+		   "abcdef12\"");
+	assert (Render (ssu6, options)
+		== "nft add rule inet filter output ip6 daddr 2001:db8::20 udp dport 4567 accept comment \"openi2pd SSU2 "
+		   "abcdef12\"");
 
 	// Family-specific nftables output never silently widens to the other family.
 	options.nftFamily = "ip";
@@ -218,8 +222,10 @@ int main ()
 	assert (EscapePowerShell ("a'b") == "a''b");
 
 	options.backend = Backend::Pf;
-	assert (Render (ntcp4, options) == "pass out quick inet proto tcp to 192.0.2.10 port 12345 keep state label \"openi2pd NTCP2 abcdef12\"");
-	assert (Render (ssu6, options) == "pass out quick inet6 proto udp to 2001:db8::20 port 4567 keep state label \"openi2pd SSU2 abcdef12\"");
+	assert (Render (ntcp4, options)
+		== "pass out quick inet proto tcp to 192.0.2.10 port 12345 keep state label \"openi2pd NTCP2 abcdef12\"");
+	assert (Render (ssu6, options)
+		== "pass out quick inet6 proto udp to 2001:db8::20 port 4567 keep state label \"openi2pd SSU2 abcdef12\"");
 	AssertSafeRule (Render (ntcp4, options));
 
 	// Deduplication is independent of the rendering backend.

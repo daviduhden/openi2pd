@@ -61,7 +61,7 @@ int main (int argc, char * argv[])
 		if (!requested)
 		{
 			std::cerr << "Incorrect signature type" << std::endl;
-				return 2;
+			return 2;
 		}
 		type = static_cast<i2p::data::SigningKeyType> (*requested);
 	}

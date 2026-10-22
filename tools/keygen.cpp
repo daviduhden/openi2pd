@@ -22,8 +22,7 @@
 
 int main (int argc, char * argv[])
 {
-	if (argc < 2 || argc > 3 || std::string_view (argv[1]) == "-h"
-		|| std::string_view (argv[1]) == "--help")
+	if (argc < 2 || argc > 3 || std::string_view (argv[1]) == "-h" || std::string_view (argv[1]) == "--help")
 	{
 		std::cerr << "Usage: keygen filename <signature type>" << std::endl;
 		return 1;
@@ -43,7 +42,7 @@ int main (int argc, char * argv[])
 		if (!requested)
 		{
 			std::cerr << "Incorrect signature type" << std::endl;
-				return 2;
+			return 2;
 		}
 		type = static_cast<i2p::data::SigningKeyType> (*requested);
 	}
