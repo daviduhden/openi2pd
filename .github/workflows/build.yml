@@ -76,6 +76,11 @@ jobs:
         run: |
           ctest --test-dir build-output --output-on-failure --timeout 120 \
             -R '^test-(i2ptunnel-http|addressbook-case|torrents-security)$' --no-tests=error
+      - name: Run profile, Android lifecycle and firewall regressions
+        # The native Android seam runs on the host; JNI/device evidence is separate.
+        run: |
+          ctest --test-dir build-output --output-on-failure --timeout 120 \
+            -R '^(test-(datagram-receiver-lifecycle|netdb-stop-admission|tunnels-restart|router-profile-(race|storage)|daemon-init-rollback|android-daemon-lifecycle|routerinfo-firewall)|tools-smoke)$' --no-tests=error
       - name: Verify CTest subsystem labels
         run: |
           for label in i2p security memory ipc tui torrent tools perl docs interop platform android ci static packaging services unit install smoke; do
