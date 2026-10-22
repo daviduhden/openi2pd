@@ -14,6 +14,7 @@
 #ifndef TUNNEL_CONFIG_H__
 #define TUNNEL_CONFIG_H__
 
+#include <memory>
 #include <vector>
 #include "Identity.h"
 #include "RouterContext.h"
@@ -95,17 +96,9 @@ namespace tunnel
 			i2p::data::RouterInfo::CompatibleTransports farEndTransports
 			= i2p::data::RouterInfo::eAllTransports); // outbound
 
-		virtual ~TunnelConfig ()
-		{
-			TunnelHopConfig * hop = m_FirstHop;
-
-			while (hop)
-			{
-				auto tmp = hop;
-				hop = hop->next;
-				delete tmp;
-			}
-		}
+		virtual ~TunnelConfig () = default;
+		TunnelConfig (const TunnelConfig &) = delete;
+		TunnelConfig & operator= (const TunnelConfig &) = delete;
 
 		i2p::data::RouterInfo::CompatibleTransports GetFarEndTransports () const { return m_FarEndTransports; }
 
@@ -175,7 +168,8 @@ namespace tunnel
 		void CreatePeers (const std::vector<std::shared_ptr<const i2p::data::IdentityEx>> & peers);
 
 	private:
-		TunnelHopConfig *m_FirstHop = nullptr, *m_LastHop = nullptr;
+		std::vector<std::unique_ptr<TunnelHopConfig>> m_Hops; // owning, ordered
+		TunnelHopConfig *m_FirstHop = nullptr, *m_LastHop = nullptr; // observers into m_Hops
 		i2p::data::RouterInfo::CompatibleTransports m_FarEndTransports;
 	};
 

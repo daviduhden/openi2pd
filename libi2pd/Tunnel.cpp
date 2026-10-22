@@ -61,8 +61,7 @@ namespace tunnel
 		// shuffle records
 		std::vector<int> recordIndicies;
 		for (int i = 0; i < numRecords; i++) recordIndicies.push_back (i);
-		auto rng = tunnels.GetRngSnapshot ();
-		std::shuffle (recordIndicies.begin (), recordIndicies.end (), rng);
+		tunnels.Shuffle (recordIndicies.begin (), recordIndicies.end ());
 		// create real records
 		uint8_t * records = msg->GetPayload () + 1;
 		TunnelHopConfig * hop = m_Config->GetFirstHop ();
@@ -301,6 +300,11 @@ namespace tunnel
 				auto dest = pool->GetLocalDestination ();
 				if (dest) dest->SetLeaseSetUpdated (true);
 			}
+		}
+		if (msg->GetPayloadLength () < 4 + 16 || !CheckAndStoreIV (msg->GetPayload () + 4))
+		{
+			LogPrint (eLogWarning, "Tunnel: Dropped replayed or truncated inbound tunnel message");
+			return;
 		}
 		EncryptTunnelMsg (msg, msg);
 		msg->from = GetSharedFromThis ();
@@ -796,13 +800,25 @@ namespace tunnel
 		}
 		const uint8_t * payload = msg->GetPayload ();
 		uint16_t len = bufbe16toh (payload + TUNNEL_GATEWAY_HEADER_LENGTH_OFFSET);
-		// we make payload as new I2NP message to send
-		msg->offset += I2NP_HEADER_SIZE + TUNNEL_GATEWAY_HEADER_SIZE;
-		if (msg->offset + len > msg->len)
+		if (len < I2NP_HEADER_SIZE
+			|| msg->offset + I2NP_HEADER_SIZE + TUNNEL_GATEWAY_HEADER_SIZE + len > msg->len)
 		{
 			LogPrint (eLogError, "Tunnel: Gateway payload ", (int)len, " exceeds message length ", (int)msg->len);
 			return;
 		}
+		// Validate the contained I2NP expiration as well as the wrapper. Java
+		// TunnelDispatcher checks both against the same clock-skew window.
+		const uint8_t * inner = payload + TUNNEL_GATEWAY_HEADER_SIZE;
+		const uint64_t innerExpiration = bufbe64toh (inner + I2NP_HEADER_EXPIRATION_OFFSET);
+		const uint64_t now = i2p::util::GetMillisecondsSinceEpoch ();
+		if (now > innerExpiration + I2NP_MESSAGE_CLOCK_SKEW
+			|| now < innerExpiration - 3 * I2NP_MESSAGE_CLOCK_SKEW)
+		{
+			LogPrint (eLogWarning, "Tunnel: Gateway inner I2NP message is expired or too far in the future");
+			return;
+		}
+		// we make payload as new I2NP message to send
+		msg->offset += I2NP_HEADER_SIZE + TUNNEL_GATEWAY_HEADER_SIZE;
 		msg->len = msg->offset + len;
 		auto typeID = msg->GetTypeID ();
 		LogPrint (eLogDebug, "Tunnel: Gateway of ", (int)len, " bytes for tunnel ", tunnel->GetTunnelID (),
@@ -891,8 +907,7 @@ namespace tunnel
 		// rec-create in random order
 		if (!tunnelsToRecreate.empty ())
 		{
-			auto rng = GetRngSnapshot ();
-			if (tunnelsToRecreate.size () > 1) std::shuffle (tunnelsToRecreate.begin (), tunnelsToRecreate.end (), rng);
+			if (tunnelsToRecreate.size () > 1) Shuffle (tunnelsToRecreate.begin (), tunnelsToRecreate.end ());
 			for (auto & it : tunnelsToRecreate) it->Recreate ();
 		}
 	}
@@ -986,7 +1001,7 @@ namespace tunnel
 					{
 						auto pool = tunnel->GetTunnelPool ();
 						// let it die if the tunnel pool has been reconfigured and this is old
-						if (pool && tunnel->GetNumHops () == pool->GetNumOutboundHops ()) toRecreate.push_back (tunnel);
+						if (pool && pool->AcceptsOutboundLength (tunnel->GetNumHops ())) toRecreate.push_back (tunnel);
 					}
 					if (ts + TUNNEL_EXPIRATION_THRESHOLD > tunnel->GetCreationTime () + TUNNEL_EXPIRATION_TIMEOUT)
 						tunnel->SetState (eTunnelStateExpiring);
@@ -1047,7 +1062,7 @@ namespace tunnel
 					{
 						auto pool = tunnel->GetTunnelPool ();
 						// let it die if the tunnel pool was reconfigured and has different number of hops
-						if (pool && tunnel->GetNumHops () == pool->GetNumInboundHops ()) toRecreate.push_back (tunnel);
+						if (pool && pool->AcceptsInboundLength (tunnel->GetNumHops ())) toRecreate.push_back (tunnel);
 					}
 
 					if (ts + TUNNEL_EXPIRATION_THRESHOLD > tunnel->GetCreationTime () + TUNNEL_EXPIRATION_TIMEOUT)

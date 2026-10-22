@@ -207,15 +207,19 @@ namespace tunnel
 
 	void TunnelConfig::CreatePeers (const std::vector<std::shared_ptr<const i2p::data::IdentityEx>> & peers)
 	{
+		m_Hops.clear ();
+		m_FirstHop = m_LastHop = nullptr;
 		TunnelHopConfig * prev = nullptr;
 		for (const auto & it : peers)
 		{
-			TunnelHopConfig * hop = new ShortECIESTunnelHopConfig (it);
+			auto hop = std::make_unique<ShortECIESTunnelHopConfig> (it);
+			TunnelHopConfig * raw = hop.get ();
 			if (prev)
-				prev->SetNext (hop);
+				prev->SetNext (raw);
 			else
-				m_FirstHop = hop;
-			prev = hop;
+				m_FirstHop = raw;
+			m_Hops.push_back (std::move (hop));
+			prev = raw;
 		}
 		m_LastHop = prev;
 	}
@@ -224,24 +228,26 @@ namespace tunnel
 	{
 		if (m_LastHop && m_LastHop->ident)
 		{
-			TunnelHopConfig * hop = new ShortPhonyTunnelHopConfig ();
-			hop->prev = m_LastHop;
-			m_LastHop->next = hop;
-			m_LastHop = hop;
+			auto hop = std::make_unique<ShortPhonyTunnelHopConfig> ();
+			TunnelHopConfig * raw = hop.get ();
+			raw->prev = m_LastHop;
+			m_LastHop->next = raw;
+			m_Hops.push_back (std::move (hop));
+			m_LastHop = raw;
 		}
 	}
 
 	void TunnelConfig::DeletePhonyHop ()
 	{
-		if (m_LastHop && !m_LastHop->ident)
+		if (m_LastHop && !m_LastHop->ident && !m_Hops.empty ())
 		{
-			if (m_LastHop->prev)
-				m_LastHop->prev->next = nullptr;
+			TunnelHopConfig * previous = m_LastHop->prev;
+			if (previous)
+				previous->next = nullptr;
 			else
 				m_FirstHop = nullptr;
-			auto tmp = m_LastHop;
-			m_LastHop = m_LastHop->prev;
-			delete tmp;
+			m_Hops.pop_back ();
+			m_LastHop = previous;
 		}
 	}
 }

@@ -39,6 +39,7 @@ namespace client
 
 	private:
 		std::string m_RemoteName;
+		std::mutex m_RemoteMutex;
 		i2p::data::IdentHash m_RemoteIdent;
 		std::shared_ptr<const i2p::data::LeaseSet> m_RemoteLeaseSet;
 		std::shared_ptr<boost::asio::steady_timer> m_ResolveTimer;

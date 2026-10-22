@@ -15,6 +15,7 @@
 
 #include <inttypes.h>
 #include <atomic>
+#include <algorithm>
 #include <map>
 #include <unordered_map>
 #include <list>
@@ -280,8 +281,14 @@ namespace tunnel
 		}
 		/** Returns one value from the shared tunnel RNG. */
 		uint32_t GetRng ();
-		/** Returns a copy of the shared RNG for algorithms such as std::shuffle. */
+		/** Returns a copy of the shared RNG for read-only algorithms. */
 		std::mt19937 GetRngSnapshot () const;
+		/** Shuffle in place while advancing the shared RNG under its mutex. */
+		template <typename RandomIt> void Shuffle (RandomIt first, RandomIt last)
+		{
+			std::lock_guard<std::mutex> l (m_RngMutex);
+			std::shuffle (first, last, m_Rng);
+		}
 
 	private:
 		template <class TTunnel>

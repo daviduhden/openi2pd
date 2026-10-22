@@ -271,9 +271,17 @@ namespace tunnel
 	{
 		if (m_CurrentMsgID)
 		{
-			auto ret = m_IncompleteMessages.emplace (m_CurrentMsgID, m_CurrentMessage);
-			if (!ret.second)
-				LogPrint (eLogError, "TunnelMessage: Incomplete message ", m_CurrentMsgID, " already exists");
+			constexpr size_t MAX_INCOMPLETE_MESSAGES = 128; // Java FragmentHandler
+			if (m_IncompleteMessages.size () >= MAX_INCOMPLETE_MESSAGES)
+			{
+				LogPrint (eLogWarning, "TunnelMessage: Incomplete message table is full");
+			}
+			else
+			{
+				auto ret = m_IncompleteMessages.emplace (m_CurrentMsgID, m_CurrentMessage);
+				if (!ret.second)
+					LogPrint (eLogError, "TunnelMessage: Incomplete message ", m_CurrentMsgID, " already exists");
+			}
 			m_CurrentMessage.data = nullptr;
 			m_CurrentMsgID = 0;
 		}
@@ -282,6 +290,12 @@ namespace tunnel
 	void TunnelEndpoint::AddOutOfSequenceFragment (
 		uint32_t msgID, uint8_t fragmentNum, bool isLastFragment, const uint8_t * fragment, size_t size)
 	{
+		constexpr size_t MAX_OUT_OF_SEQUENCE_FRAGMENTS = 4096;
+		if (m_OutOfSequenceFragments.size () >= MAX_OUT_OF_SEQUENCE_FRAGMENTS)
+		{
+			LogPrint (eLogWarning, "TunnelMessage: Out-of-sequence fragment table is full");
+			return;
+		}
 		if (!m_OutOfSequenceFragments
 				.try_emplace ((uint64_t)msgID << 32 | fragmentNum, isLastFragment,
 					i2p::util::GetMillisecondsSinceEpoch (), fragment, size)
@@ -359,7 +373,17 @@ namespace tunnel
 
 		switch (msg.deliveryType)
 		{
-		case eDeliveryTypeLocal: i2p::HandleI2NPMessage (msg.data); break;
+		case eDeliveryTypeLocal:
+			// Java OutboundTunnelEndpoint rejects LOCAL delivery. Accepting it
+			// here would make tunnel-controlled plaintext look like a directly
+			// received I2NP message (token DSM reflection, DLM admission, etc.).
+			if (!m_IsInbound)
+			{
+				LogPrint (eLogWarning, "TunnelMessage: Delivery type 'local' at outbound endpoint, dropped");
+				break;
+			}
+			i2p::HandleI2NPMessage (msg.data);
+			break;
 		case eDeliveryTypeTunnel:
 			if (!m_IsInbound) // outbound transit tunnel
 				SendMessageTo (msg.hash, i2p::CreateTunnelGatewayMsg (msg.tunnelID, msg.data));

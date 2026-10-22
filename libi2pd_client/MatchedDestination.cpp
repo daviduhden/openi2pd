@@ -29,6 +29,7 @@ namespace client
 
 	MatchedTunnelDestination::~MatchedTunnelDestination ()
 	{
+		if (auto pool = GetTunnelPool ()) pool->UnsetCustomPeerSelector ();
 		if (m_ResolveTimer) m_ResolveTimer->cancel ();
 	}
 
@@ -37,12 +38,16 @@ namespace client
 		auto addr = i2p::client::context.GetAddressBook ().GetAddress (m_RemoteName);
 		if (addr && addr->IsIdentHash ())
 		{
-			m_RemoteIdent = addr->identHash;
-			auto ls = FindLeaseSet (m_RemoteIdent);
+			i2p::data::IdentHash ident = addr->identHash;
+			{
+				std::lock_guard<std::mutex> lock (m_RemoteMutex);
+				m_RemoteIdent = ident;
+			}
+			auto ls = FindLeaseSet (ident);
 			if (ls)
 				HandleFoundCurrentLeaseSet (ls);
 			else
-				RequestDestination (m_RemoteIdent,
+				RequestDestination (ident,
 					std::bind (&MatchedTunnelDestination::HandleFoundCurrentLeaseSet, this, std::placeholders::_1));
 		}
 		else
@@ -54,6 +59,7 @@ namespace client
 		if (ls)
 		{
 			LogPrint (eLogDebug, "Destination: Resolved remote lease set for ", m_RemoteName);
+			std::lock_guard<std::mutex> lock (m_RemoteMutex);
 			m_RemoteLeaseSet = ls;
 		}
 		else
@@ -71,12 +77,13 @@ namespace client
 	{
 		ClientDestination::Start ();
 		m_ResolveTimer = std::make_shared<boost::asio::steady_timer> (GetService ());
-		GetTunnelPool ()->SetCustomPeerSelector (this);
+		GetTunnelPool ()->SetCustomPeerSelector (this, shared_from_this ());
 		ResolveCurrentLeaseSet ();
 	}
 
 	void MatchedTunnelDestination::Stop ()
 	{
+		if (auto pool = GetTunnelPool ()) pool->UnsetCustomPeerSelector ();
 		ClientDestination::Stop ();
 		if (m_ResolveTimer) m_ResolveTimer->cancel ();
 	}
@@ -90,13 +97,18 @@ namespace client
 					std::placeholders::_3)))
 			return false;
 		// more here for outbound tunnels
-		if (!inbound && m_RemoteLeaseSet)
+		std::shared_ptr<const i2p::data::LeaseSet> remoteLeaseSet;
 		{
-			if (m_RemoteLeaseSet->IsExpired ()) ResolveCurrentLeaseSet ();
-			if (m_RemoteLeaseSet && !m_RemoteLeaseSet->IsExpired ())
+			std::lock_guard<std::mutex> lock (m_RemoteMutex);
+			remoteLeaseSet = m_RemoteLeaseSet;
+		}
+		if (!inbound && remoteLeaseSet)
+		{
+			if (remoteLeaseSet->IsExpired ()) ResolveCurrentLeaseSet ();
+			if (remoteLeaseSet && !remoteLeaseSet->IsExpired ())
 			{
 				// remote lease set is good
-				auto leases = m_RemoteLeaseSet->GetNonExpiredLeases ();
+				auto leases = remoteLeaseSet->GetNonExpiredLeases ();
 				// pick lease
 				std::shared_ptr<i2p::data::RouterInfo> obep;
 				while (!obep && leases.size () > 0)

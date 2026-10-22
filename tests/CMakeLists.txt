@@ -78,6 +78,8 @@ function(i2pd_add_test name)
 endfunction()
 
 set(I2PD_TESTS
+  test-tunnel-dsm-policy
+  test-tunnelconfig-ownership
   test-openssl-capabilities
   test-modern
   test-http-merge_chunked

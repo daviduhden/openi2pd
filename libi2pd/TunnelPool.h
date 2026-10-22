@@ -16,6 +16,7 @@
 
 #include <inttypes.h>
 #include <atomic>
+#include <algorithm>
 #include <set>
 #include <vector>
 #include <utility>
@@ -109,11 +110,23 @@ namespace tunnel
 		int GetNumOutboundTunnels () const { return m_NumOutboundTunnels.load (std::memory_order_relaxed); };
 		int GetNumInboundHops () const { return m_NumInboundHops.load (std::memory_order_relaxed); };
 		int GetNumOutboundHops () const { return m_NumOutboundHops.load (std::memory_order_relaxed); };
+		bool AcceptsInboundLength (int hops) const
+		{
+			const int base = m_NumInboundHops.load (std::memory_order_relaxed);
+			const int variance = m_InboundVariance.load (std::memory_order_relaxed);
+			return hops >= base + std::min (0, variance) && hops <= base + std::max (0, variance);
+		}
+		bool AcceptsOutboundLength (int hops) const
+		{
+			const int base = m_NumOutboundHops.load (std::memory_order_relaxed);
+			const int variance = m_OutboundVariance.load (std::memory_order_relaxed);
+			return hops >= base + std::min (0, variance) && hops <= base + std::max (0, variance);
+		}
 
 		/** i2cp reconfigure */
 		bool Reconfigure (int inboundHops, int outboundHops, int inboundQuant, int outboundQuant);
 
-		void SetCustomPeerSelector (ITunnelPeerSelector * selector);
+		void SetCustomPeerSelector (ITunnelPeerSelector * selector, std::shared_ptr<void> owner = nullptr);
 		void UnsetCustomPeerSelector ();
 		bool HasCustomPeerSelector ();
 
@@ -166,6 +179,7 @@ namespace tunnel
 		// reads the pool shape, so the numeric configuration is atomic too.
 		std::atomic<int> m_NumInboundHops, m_NumOutboundHops, m_NumInboundTunnels, m_NumOutboundTunnels,
 			m_InboundVariance, m_OutboundVariance;
+		mutable std::mutex m_PeersConfigMutex;
 		std::vector<i2p::data::IdentHash> m_ExplicitPeers, m_TrustedRouters;
 		mutable std::mutex m_InboundTunnelsMutex;
 		std::set<std::shared_ptr<InboundTunnel>, TunnelCreationTimeCmp> m_InboundTunnels; // recent tunnel appears first
@@ -178,6 +192,8 @@ namespace tunnel
 		uint64_t m_NextManageTime; // in seconds
 		std::mutex m_CustomPeerSelectorMutex;
 		ITunnelPeerSelector * m_CustomPeerSelector;
+		std::weak_ptr<void> m_CustomPeerSelectorOwner;
+		bool m_CustomPeerSelectorHasOwner = false;
 		mutable std::mutex m_RngMutex;
 		std::mt19937 m_Rng; // for tunnel selection
 		i2p::data::PeerOrdering m_InboundPeerOrdering, m_OutboundPeerOrdering;
