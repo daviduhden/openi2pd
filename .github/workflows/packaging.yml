@@ -50,6 +50,15 @@ jobs:
             contrib/runit/i2pd/run \
             contrib/runit/i2pd/log/run \
             debian/postinst debian/postrm debian/tests/smoke
+      - name: Check maintenance shell scripts
+        run: |
+          shellcheck \
+            contrib/docker/entrypoint.sh \
+            contrib/static/package.sh \
+            contrib/upstream/sync.sh \
+            tests/test-sam-version.sh \
+            android/tools/java25-probe/check-config.sh \
+            android/tools/java25-probe/verify-java25.sh
       - name: Check SAM mismatch exit status without a live router
         run: |
           fixture=$(mktemp -d "$RUNNER_TEMP/sam-version.XXXXXX")
