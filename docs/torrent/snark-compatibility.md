@@ -67,19 +67,19 @@ to the repository. “Present” means source exists and still requires manual C
 | Torrent/session administration | `SnarkManager`, `Snark`, `PeerCoordinator` | `TorrentsTunnel.*`, `TorrentsControl.*` | Present: add, start/stop, explicit pause/resume, remove, bulk operations, snapshots; advanced queue policy pending. |
 | `.torrent` import | `MetaInfo`, `SnarkManager` | `Torrent::Parse*`, `ReadTorrentFileBounded`, tunnel AddFile control | Present: bounded input, metadata and file-layout validation; malformed corpus and Java exchange pending. |
 | Magnet import/share | `MagnetURI`, `MagnetState`, `ExtensionHandler.handleMetadata` | `ParseTorrentMagnet`, `BuildTorrentMagnet`, torrent metadata extension handlers | Present: btih hex/base32, display name and tracker validation, BEP 9 metadata; complete interoperability pending. |
-| Torrent creation | `Storage`, `MetaInfo` construction, manager creation operations | `TorrentsCreator.*`, `Torrent::CreateV1`, service creation jobs | Implemented by static analysis: anchored directory traversal, streaming cross-file SHA-1, canonical v1 metainfo, automatic/explicit piece size, tracker tiers/private flag, cancellation and byte/file progress. TUI n/N/K and Android private-root creation are connected. SAF creates and exports metainfo through native CreateV1; SAF source seeding is still pending. |
-| Trackers | `TrackerClient`, `SnarkManager`, `MetaInfo` | `TorrentsTunnel::AddTracker`, tracker request handlers, tracker snapshots | Multiple I2P trackers and announce lifecycle present; t/T add/remove paused-torrent trackers through typed IPC, preserving infohash and queuing persistence. Explicit lists override common trackers, including an explicitly empty list. BEP 12 tier failover policy and global registry quota reclamation remain pending. |
-| Download and seed | `PeerState`, `PeerCoordinator`, `Storage` | `Torrent`, `Peer`, `TorrentsTunnel` | Native piece transfer, choke/request handling and seeding present; Java peer exchange and recovery tests pending. |
-| Files and priorities | `Storage`, `PeerCoordinator` | `Torrent::SetFilePriority`, selected-byte accounting, `TorrentsState.*`, native controls | Implemented by static analysis: skip/normal/high, max selected priority for shared pieces, priority then rarity scheduling, dynamic refresh and persisted preferences. TUI f and Android dialogs connected. Full payload verification remains mandatory; individually completed selected files may retain .part names until whole-torrent promotion. |
-| Integrity and incomplete resume | `Storage`, `BitField` | torrent piece verification, torrent loading/storage domain | SHA-1 piece validation and existing-data checks present; interrupted writes, crash recovery and partial-piece differential tests pending. |
+| Torrent creation | `Storage`, `MetaInfo` construction, manager creation operations | `TorrentsCreator.*`, `Torrent::CreateV1`, service creation jobs | Implemented by static analysis: anchored directory traversal, streaming cross-file SHA-1, canonical v1 metainfo, automatic/explicit piece size, tracker tiers/private flag, cancellation and byte/file progress. TUI n/N/K and Android private-root creation are connected. SAF creates and exports metainfo through native CreateV1; SAF source seeding is still pending. A public creation with no trackers now inherits the tunnel's common endpoints instead of setting an explicit empty list; a private creation without any tracker is rejected before hashing. |
+| Trackers | `TrackerClient`, `SnarkManager`, `MetaInfo` | `TorrentsTunnel::AddTracker`, tracker request handlers, tracker snapshots | Multiple I2P trackers and announce lifecycle present; t/T add/remove paused-torrent trackers through typed IPC, preserving infohash and queuing persistence. Explicit lists override common trackers, including an explicitly empty list. A primary `announce` outside a non-empty `announce-list` is normalized into tier 0. Private torrents keep a fixed tracker list and reject admin mutation. Tracker snapshots expose the tier (`-1` common). Malformed, oversized, transport-failed and non-200 responses are failures with bounded error text and exponential backoff; a success without an interval re-bases it. Tracker peer lists expire after max(2*interval, 30 min), capped at two hours. Datagram tracker transactions avoid ID collisions and validate the local reply port. Native announces every eligible tracker, matching Java's practical behavior; BEP 12 failover and global registry quota reclamation remain pending. |
+| Download and seed | `PeerState`, `PeerCoordinator`, `Storage` | `Torrent`, `Peer`, `TorrentsTunnel` | Native piece transfer, choke/request handling and seeding present. Accepted blocks refresh piece activity, avoiding the 22-second inactivity reset during a slow multi-megabyte piece, and each connection now releases its own outstanding block claims on choke, keep-alive reset, reject or disconnect instead of leaking them until the inactivity sweep. Selected completion stops peer dialing after the wanted set is verified. Java peer exchange, endgame and recovery tests remain pending. |
+| Files and priorities | `Storage`, `PeerCoordinator` | `Torrent::SetFilePriority`, selected-byte accounting, `TorrentsState.*`, native controls | Implemented by static analysis: skip/normal/high, max selected priority for shared pieces, priority then rarity scheduling, dynamic refresh and persisted preferences. TUI f and Android dialogs connected. Completion, tracker `left` and promotion are now selected-file based: a skipped file no longer prevents `Seeding`, selected files with every backing piece verified are promoted individually, and unselected `.part` files remain untouched. `GetFullLeft()` preserves whole-torrent accounting for diagnostics. Force recheck for a paused torrent is exposed as `TORRENT-RECHECK`/`V`/Android and hashes all pieces, including an incomplete bitmap-lost `.part`. Metainfo comment/created-by editing is exposed through `TORRENT-META-COMMENT`/`TORRENT-META-CREATED-BY` (TUI e/E, Android metadata dialog). |
+| Integrity and incomplete resume | `Storage`, `BitField` | torrent piece verification, torrent loading/storage domain | SHA-1 piece validation and existing-data checks present. Resume bitfields now require exactly `ceil(pieces/8)` bytes with zero padding; short/spare-bit files are discarded. Native resume replacement is atomic and removes a stale bitmap when no piece or every piece is complete. Startup hashes every piece fully backed by an existing final or `.part` file, so a mixed final/missing restart does not re-download intact files. Explicit recheck hashes all pieces, including incomplete `.part` ranges. Pending writes remain withheld from HAVE/serving. Crash/failure injection and partial-piece differential tests remain pending. |
 | Statistics | `Peer`, `PeerCoordinator`, `Snark` | `TorrentInfo`, `TorrentPeerInfo`, `TorrentSessionInfo` | Torrent/peer progress, rates, transfer totals and state present; exact accounting semantics need differential review. |
 | Limits | `BandwidthManager`, utility configuration, peer coordinator | engine/tunnel bounds and control facade | Resource limits exist; equivalent per-session/per-torrent bandwidth and connection configuration with UI persistence pending. |
 | Errors and state | `SnarkManager`, `Storage`, configuration persistence | `TorrentsState.*`, admin state loading/writing and bounded control facade | Versioned local stopped/priorities/comments state uses immutable snapshots and atomic no-follow replacement; startup gates announces until settings load. Bulk controls now respect pending state. Crash/failure injection and full magnet/session queue recovery remain pending. |
-| DHT | `dht/KRPC`, `DHTNodes`, `DHTTracker`, `NodeInfo`, `Token`, `MsgID` | `TorrentsDHT.*` | Global XOR nearest nodes, empty opaque token presence, seed/noseed filtering, raw reply-port binding, per-origin budgets, bounded attempts and immediate correlated KRPC errors are implemented by static analysis. Live Java, adversarial churn, seed outgoing connection policy and OS-separated DHT persistence remain pending. |
-| Peer exchange | `ExtensionHandler.handlePEX/sendPEX` | `Torrents.h` I2P extension constants, peer extension handlers | I2P 32-byte destination hashes, not public compact IP peers. Peer/private-torrent policy and malformed-extension regressions pending CI. |
+| DHT | `dht/KRPC`, `DHTNodes`, `DHTTracker`, `NodeInfo`, `Token`, `MsgID` | `TorrentsDHT.*` | Global XOR nearest nodes, empty opaque token presence, seed/noseed filtering, raw reply-port binding, per-origin budgets, bounded attempts and immediate correlated KRPC errors are implemented by static analysis. The rendezvous path reuses local peers and advertises our destination when the torrent hash is in our own k-bucket. Queries from a full foreign bucket still receive replies; responses are capped at k nodes/64 fresh peer values; query timeouts are 60 s and an authenticated response clears prior failure state; incoming announce tokens are bound to the queried infohash and old tokens are evicted at capacity. Private/stopped/removed suppression and self-unannounce remain. DHT state filenames are validated, loads are capped, and non-delegated saves use atomic replacement before the receiver is published. Live Java, churn and OS-separated DHT persistence remain pending. |
+| Peer exchange | `ExtensionHandler.handlePEX/sendPEX` | `Torrents.h` I2P extension constants, peer extension handlers | I2P 32-byte destination hashes, not public compact IP peers. Inbound PEX is limited to two messages and 100 candidates per 60 s, drops zero destinations, and outgoing PEX announces only established non-seed peers. Extension IDs are positive and write-once; private torrents with metadata do not advertise or serve `ut_metadata`. DHT extension hints are port-checked, write-once and rate-limited. Malformed-extension regressions remain pending CI. |
 | Comments/ratings | `ExtensionHandler.handleComment/sendCommentReq/locked_sendComments`, `comments/Comment`, `CommentSet` | `TorrentsComments.*`, `PeerConnection`, admin state and native controls | Opt-in negotiated ut_comment exchange, bounded request/reply/ingress budgets, age timestamps, duplicate suppression, stable local moderation IDs, rating statistics and persistence are implemented by static analysis. TUI Comments/c/C/H and Android controls connected; private swarms suppress exchange. Java peer/differential validation remains pending. |
-| Desktop UI | Java servlet administration is reference behavior only | `tui/main.cpp`, `TuiProtocol.h`, shared daemon dispatcher | Native torrent list/details, creation with options/progress/cancel, file priorities, comments/ratings/moderation and tracker administration use only restricted IPC. Advanced queueing/bandwidth settings and interaction CI remain pending. |
-| Android UI | Java desktop servlet is not reused | `TorrentsFragment`, `TorrentSafCreator`, service/ViewModel and JNI | Material administration includes magnets, SAF torrent import, priorities, tracker edits, comments, private-root creation and SAF document/tree metainfo creation/export with options/cancel/progress. No URI-to-path conversion. SAF tree payload download/seeding is connected through a bounded separate-process Binder/JNI backend. Existing provider bytes are rehashed; unsupported seek fails closed. Device/provider and lifecycle validation remains pending. |
+| Desktop UI | Java servlet administration is reference behavior only | `tui/main.cpp`, `TuiProtocol.h`, shared daemon dispatcher | Native torrent list/details, creation with options/progress/cancel, force recheck, file priorities, comments/ratings/moderation and tracker administration use only restricted IPC. Detail views show selected size, privacy and tracker tier; private tracker edits are refused before a prompt. Metainfo comment/created-by editing and Android remove-with-data are connected. Advanced queueing/bandwidth settings and interaction CI remain pending. |
+| Android UI | Java desktop servlet is not reused | `TorrentsFragment`, `TorrentSafCreator`, service/ViewModel and JNI | Material administration includes magnets, SAF torrent import, priorities, tracker edits, metainfo comment/created-by editing, remove-with-data, comments, private-root creation and SAF document/tree metainfo creation/export with options/cancel/progress. The list/detail marks private swarms and uses selected size for completion; private tracker edits are blocked. No URI-to-path conversion. SAF tree payload download/seeding is connected through a bounded separate-process Binder/JNI backend. Existing provider bytes are rehashed; unsupported seek fails closed. Device/provider and lifecycle validation remains pending. |
 | Android autonomous router | Router/session integration in Java distribution | Android foreground service and native daemon/JNI | Router/native library packaging and service ownership exist; Activity closure must not stop router/torrents. External-router mode requires an explicit compatible transport design. |
 | Storage isolation | Java storage behavior supplies semantic reference only | `TorrentStorageWorker.*`, `privsep/TorrentStorage.*`, native sandbox profiles | A real exec-ed storage process is connected to TorrentFile payload reads/writes when isolatedstorage=true on Linux. OpenBSD uses a pre-pledge supervisor, inherited root descriptor and socket-only capability handoff; see storage-worker.md. Authenticated inherited IPC, delegated root FD, numeric handles, bounded transfers and negative-capability regressions are prepared. Allocation, promotion/removal and metainfo/resume/settings writes are delegated in isolated mode; isolated DHT persistence is delegated and four fixed router files have an opt-in worker; other router persistence remains; network/session/verifier split and Windows backend remain pending; Android SAF uses its own app-private Binder storage process. No global isolation claim. |
 | Security and privacy | Protocol and local policy analysis | bencode bounds, I2P tracker validation, contained no-follow storage helpers | No clearnet fallback is authorized. TOCTOU, resource saturation, lifecycle and privacy tests remain open until manual CI verifies them. |
@@ -130,9 +130,10 @@ Java negotiates `ut_comment`. A request has `msg_type=0`, optional `num`
 (default20) and an outgoing64-byte `filter` placeholder. A reply has
 `msg_type=1` and a `comments` list. Each entry contains `owner`, `text`, `like`
 and `timestamp`. Timestamp is **age in seconds**, not Unix time. Java computes
-local receive time minus nonnegative age. Rating is clamped to0..5;0 can
-represent an unrated comment. Association is the torrent's peer session,
-not a separate global comment identifier.
+local receive time minus nonnegative age (clamped to its 2005 epoch) and can
+return up to 256 entries. Rating is clamped to0..5;0 can represent an unrated
+comment. Association is the torrent's peer session, not a separate global
+comment identifier.
 
 `Comment` normalizes author labels to32 Java characters and comment text to512,
 removes or replaces newlines, clamps future times and ratings, and records
@@ -142,21 +143,34 @@ hiding/removal and tracks ratings. These are implementation behaviors, not
 cryptographic author authentication. UTF-8 byte limits in C++ need an explicit
 mapping to Java character bounds without splitting encoded characters.
 
-The independent codec/store is now integrated with PeerConnection negotiation,
+The independent codec/store is integrated with PeerConnection negotiation,
 periodic requests and bounded replies. It remains disabled by default and is
-suppressed for private torrents. Requests are limited to one per 600 seconds,
-replies to one per 60 seconds; ingress is limited to 8 messages/128 KiB per
-minute and 60 KiB per message. Stable local IDs support hiding while retaining
-duplicate suppression. Native controls use explicit pseudonyms; no router,
-destination or device identity is inferred. Local state is persisted separately
-from Java state and peer-wire age timestamps.
+suppressed for private torrents. `ut_comment` is omitted entirely when disabled
+or private (never advertised as ID 0). A local add triggers a bounded
+handshake/request instead of waiting for the next periodic cycle. Requests are
+limited to one per 600 seconds, replies to one per 60 seconds; ingress is
+limited to 8 messages/128 KiB per minute. The wire message cap is 16482 bytes
+(Java's 16484-byte peer-message bound, excluding the type and extension ID),
+and replies drop oldest selected entries until they fit. Replies publish
+newest-first, may carry up to 256 entries, and skip a malformed entry without
+discarding the rest. Content dedupe ignores the rating. Visible entries are
+capped at 8 per non-empty pseudonym, hidden retention at 64 entries, and
+capacity pressure evicts the oldest foreign visible entry rather than
+permanently filling the store. CR/LF are
+normalized to spaces; strict UTF-8/control validation otherwise remains.
+Stable local IDs support hiding/unhiding while retaining duplicate suppression.
+Native controls use explicit pseudonyms; no router, destination or device
+identity is inferred. Local state is persisted separately from Java state and
+peer-wire age timestamps.
 
 The bencode encoder now retains empty strings as `0:` and sorts dictionary
 keys, with duplicate-key rejection. This fixes rating-only/anonymous comments
 and empty DHT tokens; original imported info bytes remain unchanged. Prepared
-regressions include independent comment fields, empty owner/text and canonical
-constructor output. Publication, persistence and privacy behavior still require
-manual Java/native interoperability validation.
+regressions include independent comment fields, empty owner/text, canonical
+constructor output, malformed-entry isolation, newest-first selection, rating
+dedupe, per-owner spam bounds, capacity eviction, unhide and TUI command
+parsing. Publication, persistence and privacy behavior still require manual
+Java/native interoperability validation.
 
 ## Required manual validation
 
@@ -185,12 +199,21 @@ existing creator, selection and comment-exchange code; this inventory now
 reflects the real native interfaces.
 
 SAF creation/export remains independent of payload authority. A selected download
-tree now supplies native piece reads/writes through Binder and JNI, with exact
-bounded positional IO and startup rehashing. Providers denying seek/write are
-rejected without staging; provider timeouts or Binder death now trigger bounded, generation-fenced
-recovery without an app restart. Grants and priorities persist, operation handles do not. Delete-files removal now deletes exact authorized provider documents without
-recursive tree deletion. Cancellation tokens, independent retirement and provider fixtures are prepared;
-full cross-process grant/death/remapping validation remains open. See [SAF storage](saf-storage.md).
+tree supplies native piece reads/writes through Binder and JNI with exact bounded
+positional IO, multi-file fragments and one-piece-per-disk-job startup
+verification. A private resume bitfield is read but every restored piece is
+rehashed before publication; large-torrent startup no longer blocks the disk
+worker on an inline tree scan. Zero-length files never open a document. Providers denying
+seek/write are rejected without staging. Read/write validate the persisted grant,
+document ID and exact size before each transfer, so truncation or same-length
+replacement fails closed; write mode may extend a shorter existing document
+without trusting its bytes. Grant URIs are reference-counted across torrents, a
+new selection is resolved on the next open, and cached native handles are closed
+when the tree generation changes. Export grows progressively and commits only at
+the declared exact size; failed/cancelled exports truncate to zero. Provider
+timeouts or Binder death still trigger bounded, generation-fenced recovery.
+Full cross-process grant/death/remapping and device provider-fault validation
+remain open. See [SAF storage](saf-storage.md).
 
 Per-file native promotion, complete bandwidth/queue controls, BEP 12 failover,
 tracker-slot reclamation and full multiprocess capability separation remain
@@ -207,3 +230,15 @@ legacy flat names through explicit authorization; fixed router state has an
 opt-in storage worker; SAF exact deletion and brokered cancelable export are
 connected. Tests for these paths are prepared. Essential global process and
 persistent-authority separation still needs implementation, not only CI.
+
+The peer-discovery continuation adds bounded DHT responses, valid-query replies for full buckets, hash-bound/evicting tokens, longer query lifetimes, failure clearing, safe/atomic DHT state names and loads, tracker failure backoff/peer expiry/datagram transaction binding, and PEX/DHT hint receive budgets with write-once extension IDs. It remains I2P-only: no public DHT, clearnet DNS or clearnet peer/DHT fallback is introduced.
+
+The 2026-10-21 piece/resume/selection continuation adds exact resume-bitfield
+validation, atomic bitmap replacement, mixed final/`.part` startup verification,
+all-piece explicit recheck, selected-file completion/promotion, selected tracker
+`left`, per-connection request release, primary `announce` tier normalization,
+private tracker immutability and public/private creation tracker policy. It
+changes no peer-wire or Java-compatible metainfo format; original `info` bytes
+and infohashes remain authoritative. Endgame, corrupt-peer accounting, BEP 12
+failover, tracker registry reclamation, durable magnets and nested-root creation
+remain open. No dynamic validation is claimed.

@@ -61,6 +61,11 @@ int main ()
 	assert (!store.Add (original)); // hidden spam cannot immediately reappear
 	assert (!store.Hide (10));
 	assert (store.Snapshot ().size () == 1 && store.Snapshot ()[0].localId != 0);
+	const auto hiddenId = store.Snapshot ()[0].localId;
+	assert (store.UnhideId (hiddenId) && store.Visible ().size () == 1);
+	assert (store.HideId (hiddenId) && store.Visible ().empty ());
+	assert (store.UnhideId (hiddenId) && store.Visible ().size () == 1);
+	assert (store.HideId (hiddenId)); // state fixture below expects a hidden entry
 	auto state = EncodeTorrentCommentState (store);
 	TorrentCommentStore restored;
 	assert (DecodeTorrentCommentState (state, now, restored));
@@ -79,6 +84,124 @@ int main ()
 	auto revision = restored.Revision ();
 	assert (!DecodeTorrentCommentState (state + "trailing", now, restored));
 	assert (restored.Revision () == revision);
+
+	// Invalid entries are skipped without discarding the valid ones, and Java's
+	// larger reply count is accepted.
+	TorrentComment good { "good", "keep me", 2, now, false };
+	const auto badEntry = CreateDictionary ({ { "like", CreateInteger (0) }, { "owner", CreateByteString ("bad") },
+		{ "text", CreateByteString ("\x1b") }, { "timestamp", CreateInteger (0) } });
+	const auto goodEntry = CreateDictionary ({ { "like", CreateInteger (2) }, { "owner", CreateByteString ("good") },
+		{ "text", CreateByteString ("keep me") }, { "timestamp", CreateInteger (0) } });
+	auto mixedReply = CreateDictionary (
+		{ { "comments", CreateList ({ badEntry, goodEntry }) }, { "msg_type", CreateInteger (1) } });
+	auto mixed = DecodeTorrentComments (mixedReply, now);
+	assert (mixed && mixed->comments.size () == 1 && mixed->comments[0].owner == good.owner);
+
+	// The same pseudonym/text cannot inflate ratings by replaying 0..5.
+	TorrentCommentStore rated;
+	rated.SetEnabled (true);
+	auto firstRating = original;
+	firstRating.owner = "same";
+	firstRating.text = "same text";
+	firstRating.rating = 1;
+	assert (rated.Add (firstRating));
+	firstRating.rating = 5;
+	assert (!rated.Add (firstRating));
+
+	// Newest comments are published first, even if older entries fill the store.
+	TorrentCommentStore newest;
+	newest.SetEnabled (true);
+	for (size_t i = 0; i < 25; ++i)
+	{
+		TorrentComment c;
+		c.owner = "owner" + std::to_string (i);
+		c.text = "text" + std::to_string (i);
+		c.rating = 1;
+		c.time = now - i;
+		assert (newest.Add (c));
+	}
+	auto newestWire = EncodeTorrentComments (newest.Visible (), now, 20);
+	auto newestDecoded = DecodeTorrentComments (newestWire, now);
+	assert (newestDecoded && newestDecoded->comments.size () == 20);
+	assert (newestDecoded->comments.front ().time == now);
+	assert (newestDecoded->comments.back ().time == now - 19);
+
+	// Capacity pressure evicts an old foreign entry instead of permanently
+	// rejecting every later comment.
+	TorrentCommentStore full;
+	full.SetEnabled (true);
+	for (size_t owner = 0; owner < 8; ++owner)
+		for (size_t i = 0; i < MAX_COMMENT_PER_OWNER; ++i)
+		{
+			TorrentComment c;
+			c.owner = "filler" + std::to_string (owner);
+			c.text = std::string (64, 'x') + std::to_string (i);
+			c.time = now - 1000;
+			assert (full.Add (c));
+		}
+	TorrentComment freshComment;
+	freshComment.owner = "fresh";
+	freshComment.text = "new";
+	freshComment.rating = 1;
+	freshComment.time = now;
+	assert (full.Add (freshComment));
+	assert (full.Snapshot ().size () <= MAX_COMMENT_COUNT);
+
+	// Anonymous rating-only entries do not share one pseudonym quota.
+	TorrentCommentStore anonymous;
+	anonymous.SetEnabled (true);
+	for (size_t i = 0; i < 9; ++i)
+	{
+		auto c = anonymousRating;
+		c.text = "anonymous " + std::to_string (i);
+		c.time = now - i;
+		assert (anonymous.Add (c));
+	}
+	assert (anonymous.Snapshot ().size () == 9);
+
+	// Hiding releases visible text budget but keeps the entry for dedupe.
+	TorrentCommentStore hiddenBudget;
+	hiddenBudget.SetEnabled (true);
+	for (size_t i = 0; i < 8; ++i)
+	{
+		TorrentComment c;
+		c.owner = "owner" + std::to_string (i);
+		c.text = std::string (512, 'z');
+		c.time = now - i;
+		assert (hiddenBudget.Add (c));
+	}
+	const auto hiddenTextId = hiddenBudget.Snapshot ().front ().localId;
+	assert (hiddenBudget.HideId (hiddenTextId));
+	TorrentComment replacement;
+	replacement.owner = "replacement";
+	replacement.text = std::string (512, 'y');
+	replacement.time = now;
+	assert (hiddenBudget.Add (replacement));
+	bool hiddenStillPresent = false;
+	for (const auto & c : hiddenBudget.Snapshot ())
+		if (c.localId == hiddenTextId && c.hidden) hiddenStillPresent = true;
+	assert (hiddenStillPresent);
+	// The visible budget is full, so unhide must fail rather than create a
+	// state that the persistence decoder would reject.
+	assert (!hiddenBudget.UnhideId (hiddenTextId));
+	TorrentCommentStore budgetRoundTrip;
+	assert (DecodeTorrentCommentState (EncodeTorrentCommentState (hiddenBudget), now, budgetRoundTrip));
+
+	// Hide/unhide must survive a state round-trip without changing the stable
+	// local ID or resurrecting a duplicate.
+	TorrentCommentStore persisted;
+	persisted.SetEnabled (true);
+	assert (persisted.Add (original));
+	const auto persistedId = persisted.Snapshot ().front ().localId;
+	assert (persisted.HideId (persistedId));
+	TorrentCommentStore hiddenRoundTrip;
+	assert (DecodeTorrentCommentState (EncodeTorrentCommentState (persisted), now, hiddenRoundTrip));
+	assert (hiddenRoundTrip.Snapshot ().front ().hidden && hiddenRoundTrip.Visible ().empty ());
+	assert (hiddenRoundTrip.UnhideId (persistedId) && hiddenRoundTrip.Visible ().size () == 1);
+	TorrentCommentStore visibleRoundTrip;
+	assert (DecodeTorrentCommentState (EncodeTorrentCommentState (hiddenRoundTrip), now, visibleRoundTrip));
+	assert (visibleRoundTrip.Visible ().size () == 1
+		&& visibleRoundTrip.Snapshot ().front ().localId == persistedId);
 	store.SetEnabled (false);
 	assert (store.Visible ().empty ());
 	TorrentCommentStore disabled;

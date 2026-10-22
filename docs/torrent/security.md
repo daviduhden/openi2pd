@@ -72,10 +72,10 @@ be used as a write, delete or directory-enumeration primitive.
 
 Residual risk: a same-UID attacker with write access to the download tree can
 still race path checks, `rename`/`remove_all` and Windows pre-open checks;
-hard links are not distinguishable portably. The resume writer does not always
-have a trusted root component to anchor. The daemon therefore continues to
-require a non-shared/trusted torrent directory and does not claim immunity to
-a same-UID TOCTOU attacker.
+hard links are not distinguishable portably. The resume writer now anchors
+replacement at the torrent's parent directory and rejects spare-bit or
+short bitfields, but the daemon still requires a non-shared/trusted torrent
+directory and does not claim immunity to a same-UID TOCTOU attacker.
 
 ## I2P-only operation
 

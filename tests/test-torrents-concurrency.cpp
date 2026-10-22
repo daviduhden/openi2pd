@@ -104,7 +104,7 @@ void TestTorrentBitfieldConsistency ()
 
 	std::atomic<bool> start { false };
 	std::atomic<bool> done { false };
-	std::vector<uint8_t> allOnes (1, 0xFF);
+	std::vector<uint8_t> allOnes (1, 0xC0);
 
 	std::thread writer (
 		[&]

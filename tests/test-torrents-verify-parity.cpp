@@ -220,6 +220,12 @@ static void TestResumeVerificationGate ()
 	auto & torrent = *fixture.torrent;
 
 	assert (torrent.GetError () == eTorrentErrorNoError);
+	// Exact length and zero padding are part of the resume contract. A short,
+	// oversized or spare-bit bitfield is discarded without mutating pieces.
+	assert (!torrent.ApplyBitfield ({ }));
+	assert (!torrent.ApplyBitfield ({ 0xC0, 0x00 }));
+	assert (!torrent.ApplyBitfield ({ 0xC1 }));
+	assert (torrent.CreateBitfield ().first == std::vector<uint8_t> ({ 0x00 }));
 	assert (torrent.ApplyBitfield ({ 0xC0 }));
 	// Applying a resume bitfield alone must not count as verified data.
 	assert (!torrent.AreAllPiecesVerified ());
@@ -270,6 +276,27 @@ static void TestResumeVerificationGate ()
 	}
 	// The walk ends and clears the request so the status timer stops.
 	assert (!torrent.IsLocalVerificationRequested ());
+}
+
+// A restart can find one final-named file and one absent file. Only pieces
+// fully backed by existing files are verified; the missing range remains
+// downloadable instead of causing a whole-torrent re-download.
+static void TestMixedExistingFiles ()
+{
+	auto fixture = MakeVerifiedTorrent ("mixed-existing", true);
+	auto & torrent = *fixture.torrent;
+	assert (fixture.backend->files.erase ("b.bin") == 1);
+	std::vector<bool> present { true, false };
+	assert (torrent.RequestLocalVerificationForExistingFiles (present) == 1);
+	assert (torrent.GetPiece (0).IsVerificationPending ());
+	assert (!torrent.GetPiece (1).IsVerificationPending ());
+	assert (torrent.BeginLocalVerification ());
+	assert (RunLocalVerification (torrent) == 0);
+	torrent.EndLocalVerification ();
+	assert (torrent.GetPiece (0).IsVerified ());
+	assert (!torrent.GetPiece (1).IsComplete ());
+	assert (torrent.GetSelectedVerifiedBytes () == PIECE_LENGTH);
+	assert (torrent.GetLeft () == PIECE_LENGTH);
 }
 
 // Data that already exists under its final name must be hashed, never trusted
@@ -390,12 +417,33 @@ static void TestTrackerIntervalAndTrackerID ()
 	assert (torrent.GetTrackerID (2).empty ());
 
 	// Oversized bodies are rejected without touching previously known peers.
-	torrent.ParseTrackerResponse (0, CompactPeers ({ 0x01 }));
+	torrent.ParseTrackerResponse (0, Dict ({ { "peers", CompactPeers ({ 0x01 }) } }));
 	assert (torrent.GetNumPeers (0) == 1);
 	const std::string oversized (MAX_TRACKER_RESPONSE_BODY + 1, 'x');
 	torrent.ParseTrackerResponse (0, Dict ({ { "peers", Bytes (oversized) } }));
 	assert (torrent.GetNumPeers (0) == 1);
 	assert (!torrent.GetTrackerError (0).empty ());
+
+	// A non-bencode HTTP 200 body is a failure, not a successful announce.
+	torrent.ParseTrackerResponse (0, "<html>not bencode</html>");
+	assert (!torrent.GetTrackerError (0).empty ());
+	assert (torrent.GetNumPeers (0) == 1); // previous good list retained
+
+	// Transport/parse failures back off exponentially and a successful
+	// response without an interval re-bases the interval to the minimum.
+	const int before = torrent.GetInterval (3);
+	torrent.ReportTrackerFailure (3, "request failed");
+	assert (torrent.GetInterval (3) >= before);
+	assert (!torrent.GetTrackerError (3).empty ());
+	torrent.ParseTrackerResponse (3, Dict ({ { "peers", CompactPeers ({ 0x11 }) } }));
+	assert (torrent.GetInterval (3) == MIN_TRACKER_REQUESTS_INTERVAL);
+	assert (torrent.GetTrackerError (3).empty ());
+
+	// A tracker's peer list expires after its bounded freshness window.
+	torrent.ParseTrackerResponse (4, Dict ({ { "interval", "i60e" }, { "peers", CompactPeers ({ 0x12 }) } }));
+	assert (torrent.GetNumPeers (4) == 1);
+	torrent.ExpireTrackerPeers (torrent.GetLastTrackerUpdateTime (4) + 2 * 3600 + 1);
+	assert (torrent.GetNumPeers (4) == 0);
 }
 
 // Query values (peer id, tracker id) must be percent-encoded because
@@ -458,6 +506,7 @@ static void TestConnectionLimitRelations ()
 int main ()
 {
 	TestResumeVerificationGate ();
+	TestMixedExistingFiles ();
 	TestExistingFinalDataIsHashed ();
 	TestTrackerPeerForms ();
 	TestTrackerIntervalAndTrackerID ();

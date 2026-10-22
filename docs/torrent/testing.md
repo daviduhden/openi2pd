@@ -38,9 +38,29 @@ Prepared coverage:
   empty/oversized file).
 - `test-tui-protocol`: torrent commands including pause/resume, bounds,
   index/ID validation, request-line limits and field parsing.
+- `test-torrents-comments`: request/reply codec, age timestamps, malformed
+  entry isolation, newest-first bounded replies, rating/content dedupe,
+  per-pseudonym spam limits, capacity eviction, hide/unhide and state
+  round-trip; `test-tui-protocol` pins the comment command grammar.
 - `test-torrents-security`: tracker-host validation, lexical root containment,
   anchored no-follow file operations, path traversal/symlink rejection and
-  resume bounds; `test-torrents-concurrency` covers piece/torrent publication.
+  resume bounds; per-block request release returns a claim to the scheduler;
+  `test-torrents-concurrency` covers piece/torrent publication.
+- `test-torrents-verify-parity`: exact resume-bitfield length/padding rejection,
+  final-name and mixed final/`.part` startup verification, explicit all-piece
+  recheck, bounded pending-HAVE gating, tracker malformed-body rejection,
+  exponential failure backoff, success interval reset and tracker-peer expiry.
+- `test-torrents-priorities`: skip/normal/high boundary pieces, selected
+  completion, selected `GetLeft` versus full `GetFullLeft`, file-complete
+  promotion inputs and the selected-seeding status.
+- `test-torrents-dht-interop`: secure compact nodes, token presence/expiry,
+  XOR nearest selection, request/response caps, worst-case state filenames and
+  bounded peer-value replies; `test-torrents-dht-persistence` covers delegated
+  flat records and worker names.
+- `test-torrents-creator` and `test-torrents-engine-interop`: multifile and
+  zero-length entries, public tracker inheritance, private-without-tracker
+  rejection, primary `announce` plus `announce-list` tier normalization and
+  exact info-hash preservation.
 - Control snapshot tests (when the target is added): deterministic formatting,
   empty state, unavailable engine fields, command result mapping.
 - `-DNO_TORRENTS` build: daemon/TUI must compile without the engine; torrent UI
@@ -61,6 +81,17 @@ Prepared coverage:
    reconnect, with no UI hang.
 8. Verify no browser assets/routes remain and the TUI never opens download
    files or peer sockets.
+
+## Decentralized discovery differential cases
+
+Manual Java/C++ comparison should feed the same recorded KRPC dictionaries to
+both implementations and compare observable I2P-only decisions: get_peers
+response size, node/value caps, token acceptance/expiry, seed/noseed filtering,
+PEX added-hash handling, DHT hint port validation and tracker failure/backoff.
+Negative cases must include zero destinations, oversized/truncated 54-byte
+nodes, tokens replayed for another info_hash, unsolicited raw responses, wrong
+reply ports, private torrents, stopped/removed torrents and injected clear-net
+tracker/DHT URLs. No public DHT or clearnet fallback is permitted.
 
 ## Security checks
 
@@ -124,12 +155,17 @@ execution on a device remains pending. The parser fuzzer also covers local
 state and advanced administrative requests. None has been run locally.
 
 The new `test-torrent-payload-storage` exercises bounded backend transfers, pieces
-crossing files, failed persistence, unavailable capabilities and the saving gate.
-OpenBSD registers `test-torrent-storage-openbsd` for pre-pledge supervision and
-replacement without runtime proc/exec. Android instrumentation includes
+crossing files, zero-length-file fragment suppression, failed persistence,
+unavailable capabilities and the saving gate. OpenBSD registers
+`test-torrent-storage-openbsd` for pre-pledge supervision and replacement without
+runtime proc/exec. Android `src/test` now runs framework-free
+`TorrentSafPolicyTest` (range wraparound, export growth/commit, document identity,
+shorter-document extension) and `TorrentSafGrantsTest` (shared-tree reference
+counting) in `testDebugUnitTest`. Instrumentation still includes
 `TorrentSafStorageTest` path/range rejection; realistic provider fixtures,
-nonseekable/revoked/ENOSPC/corrupted documents, process death and seccomp-negative
-device runs remain pending. These sources have not been executed locally.
+nonseekable/revoked/ENOSPC/corrupted documents, same-length replacement, broker
+death and seccomp-negative device runs remain pending. These sources have not
+been executed locally.
 
 Prepared (not run): `test-torrent-storage-lifecycle` covers no-clobber promotion,
 interrupted same-inode completion, metadata chunking/replacement, traversal,

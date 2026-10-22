@@ -223,6 +223,24 @@ void TestPeerMessageFraming ()
 // A complete piece whose bytes do not match the metainfo hash must be turned
 // back into a Missing block map, not left complete with corrupt data. Reset()
 // of a complete piece has the same contract so it can be downloaded again.
+void TestPieceRequestRelease ()
+{
+	std::vector<uint8_t> block (2 * 16384, 0x33);
+	uint8_t hash[SHA_DIGEST_LENGTH];
+	SHA1 (block.data (), block.size (), hash);
+	Piece piece (block.size (), hash);
+	auto first = piece.GetNextBlockToRequest ();
+	auto second = piece.GetNextBlockToRequest ();
+	assert (std::get<0> (first) == 0 && std::get<0> (second) == 16384);
+	const auto epoch = piece.GetBlockEpoch ();
+	piece.ReleaseBlock (std::get<0> (first), epoch);
+	auto released = piece.GetNextBlockToRequest ();
+	assert (std::get<0> (released) == 0);
+	piece.ReleaseBlock (std::get<0> (released), epoch);
+	piece.ReleaseBlock (std::get<0> (second), epoch);
+	assert (!piece.IsRequested ());
+}
+
 void TestPieceCorruptionAndReset ()
 {
 	std::vector<uint8_t> good (16384, 0x42);
@@ -280,7 +298,7 @@ void TestCorruptResumeBitfield ()
 {
 	Torrent torrent (MakeMultiFileTorrent ("resume-corrupt", { "file.bin" }, 32768, 2));
 	assert (torrent.GetError () == eTorrentErrorNoError);
-	std::vector<uint8_t> allOnes (1, 0xFF);
+	std::vector<uint8_t> allOnes (1, 0xC0);
 	assert (torrent.ApplyBitfield (allOnes));
 	assert (!torrent.IsComplete ()); // Torrent-level completion is separate
 	assert (!torrent.AreAllPiecesVerified ());
@@ -380,6 +398,16 @@ void TestDHTPeerBounds ()
 	// Re-adding an existing peer refreshes it but does not grow the map.
 	i2p::data::IdentHash peer { };
 	assert (!torrent.AddPeer (peer));
+	// One reserved slot lets the rendezvous identity publish itself even
+	// when remote announcers have filled the normal cap.
+	i2p::data::IdentHash local { };
+	local[31] = 0x7f;
+	assert (torrent.AddPeer (local, false, true));
+	i2p::data::IdentHash extra { };
+	extra[31] = 0x7e;
+	assert (!torrent.AddPeer (extra));
+	assert (torrent.RemovePeer (local));
+	assert (!torrent.RemovePeer (local));
 }
 
 void TestTorrentFileIO ()
@@ -790,6 +818,7 @@ int main ()
 	TestPieceBlockBounds ();
 	TestCanAcceptPieceBlock ();
 	TestPeerMessageFraming ();
+	TestPieceRequestRelease ();
 	TestPieceCorruptionAndReset ();
 	TestCorruptResumeBitfield ();
 	TestInfoIsNotCopied ();

@@ -94,6 +94,15 @@ int main ()
 	assert (budget.AddNode (inserted[0]) && budget.AddNode (inserted[1]));
 	assert (budget.GetNextNode () && !budget.GetNextNode ());
 
+	// Persisted DHT state must remain a single safe leaf name.
+	assert (TorrentsDHT::IsValidStateFileName ("nodes.dht"));
+	assert (TorrentsDHT::IsValidStateFileName ("legacy-cache"));
+	assert (!TorrentsDHT::IsValidStateFileName (""));
+	assert (!TorrentsDHT::IsValidStateFileName ("../escape"));
+	assert (!TorrentsDHT::IsValidStateFileName ("/tmp/escape"));
+	assert (!TorrentsDHT::IsValidStateFileName ("a/b"));
+	assert (!TorrentsDHT::IsValidStateFileName (".hidden"));
+
 	// Seed announcements are refreshed in place, and noseed excludes seeds
 	// without excluding leechers or returning the requester to itself.
 	DHTTorrent swarm;
@@ -111,7 +120,35 @@ int main ()
 	assert (swarm.GetBEncodedPeers (true, &leecher) == "le");
 	assert (!swarm.AddPeer (peer, false));
 	assert (swarm.HasPeers (true));
+	auto livePeers = swarm.GetPeers ();
+	assert (livePeers.size () == 2 && livePeers.contains (peer) && livePeers.contains (leecher));
 	assert (swarm.CleanUp (i2p::util::GetMonotonicSeconds () + DHT_TORRENT_PEER_EXPIRATION_TIME + 1));
+	assert (swarm.GetPeers ().empty ());
+
+	// A single get_peers reply is bounded even when the local swarm map holds
+	// more peers. This caps amplification and per-response follow-up work.
+	DHTTorrent bounded;
+	for (size_t i = 0; i < MAX_DHT_VALUES_PER_RESPONSE + 32; ++i)
+	{
+		i2p::data::IdentHash candidate { };
+		candidate ()[0] = static_cast<uint8_t> (i >> 8);
+		candidate ()[1] = static_cast<uint8_t> (i);
+		candidate ()[2] = 0x42;
+		assert (bounded.AddPeer (candidate, false));
+	}
+	auto boundedEncoded = bounded.GetBEncodedPeers ();
+	auto boundedPeers = ParseStringList (boundedEncoded);
+	assert (boundedPeers.second == boundedEncoded.size ());
+	assert (boundedPeers.first.size () <= MAX_DHT_VALUES_PER_RESPONSE);
+
+	// An empty leaf is not a rendezvous signal; upstream falls back to a
+	// populated successor and otherwise returns early.
+	RoutingTable selfBucket (local);
+	assert (!selfBucket.IsInOurBucket (local));
+	// After a split, the predicate distinguishes our populated bucket from
+	// the adjacent bucket.
+	assert (routing.IsInOurBucket (local));
+	assert (!routing.IsInOurBucket (target));
 
 	DHTQueryLimiter limiter;
 	for (size_t i = 0; i < MAX_DHT_QUERIES_PER_ORIGIN; ++i) assert (limiter.Allow (peer, 100));
@@ -119,16 +156,16 @@ int main ()
 	assert (!limiter.Allow (peer, 99)); // clock regression cannot reset the quota
 	assert (limiter.Allow (leecher, 100));
 	assert (limiter.Allow (peer, 100 + DHT_QUERY_RATE_WINDOW));
-	DHTQueryLimiter bounded;
+	DHTQueryLimiter boundedLimiter;
 	for (size_t i = 0; i < MAX_DHT_QUERY_ORIGINS; ++i)
 	{
 		i2p::data::IdentHash origin = peer;
 		origin ()[0] = i >> 8;
 		origin ()[1] = i & 0xff;
-		assert (bounded.Allow (origin, 100));
+		assert (boundedLimiter.Allow (origin, 100));
 	}
-	assert (!bounded.Allow (peer, 100));
-	assert (bounded.Allow (peer, 100 + DHT_QUERY_RATE_WINDOW));
+	assert (!boundedLimiter.Allow (peer, 100));
+	assert (boundedLimiter.Allow (peer, 100 + DHT_QUERY_RATE_WINDOW));
 
 	// KRPC errors omit r.id: decode their own envelope before ordinary
 	// successful replies. Transaction bytes are opaque, including NULs.

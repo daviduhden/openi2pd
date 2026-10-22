@@ -49,7 +49,11 @@ int main ()
 		assert (torrent->GetSelectedVerifiedBytes () == static_cast<size_t> ((index + 1) * 8192));
 	}
 	assert (torrent->IsSelectedComplete ());
-	assert (!torrent->IsComplete () && !torrent->AreAllPiecesVerified ());
+	assert (torrent->GetLeft () == 0 && torrent->GetFullLeft () == 16384);
+	assert (torrent->IsFileComplete (1));
+	torrent->SetSelectedComplete ();
+	assert (torrent->IsComplete () && torrent->GetStatus () == eTorrentStatusSeeding);
+	assert (!torrent->AreAllPiecesVerified () && torrent->GetFullLeft () == 16384);
 	assert (!torrent->GetPiece (2).IsComplete () && !torrent->GetPiece (2).IsVerified ());
 	// A boundary piece includes skipped bytes and must retain both fragments.
 	auto fragments = torrent->GetPieceFileFragments (0);
@@ -58,6 +62,7 @@ int main ()
 	assert (torrent->IsSelectedComplete () && torrent->GetSelectedWantedBytes () == 0);
 	assert (torrent->GetSelectedVerifiedBytes () == 0);
 	assert (!torrent->AreAllPiecesVerified ());
+	assert (torrent->GetLeft () == 0);
 	return 0;
 }
 #else

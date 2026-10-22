@@ -246,9 +246,9 @@ namespace torrents
 		void HandleRecvFromI2PRaw (
 			uint8_t protocol, uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len);
 		void ConnectToDatagramTracker (size_t trackerID, std::string_view dest, uint16_t port);
-		void HandleConnectResponse (const uint8_t * buf, size_t len);
-		void HandleErrorResponse (const uint8_t * buf, size_t len);
-		void HandleAnnounceResponse (const uint8_t * buf, size_t len);
+		void HandleConnectResponse (const uint8_t * buf, size_t len, uint16_t fromPort, uint16_t toPort);
+		void HandleErrorResponse (const uint8_t * buf, size_t len, uint16_t fromPort, uint16_t toPort);
+		void HandleAnnounceResponse (const uint8_t * buf, size_t len, uint16_t fromPort, uint16_t toPort);
 		void SendAnnounceToDatagramTracker (size_t trackerID, uint64_t connectionID, std::shared_ptr<Torrent> torrent,
 			std::string_view dest, uint16_t port, uint16_t fromPort, TrackerAnnounceEvent event);
 

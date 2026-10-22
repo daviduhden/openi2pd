@@ -281,6 +281,18 @@ namespace torrents
 		bucket->nodes.erase (id);
 	}
 
+	void RoutingTable::RemoveNodeByPeer (const i2p::data::IdentHash & peer)
+	{
+		for (auto bucket = m_Buckets.get (); bucket; bucket = bucket->next.get ())
+			for (auto it = bucket->nodes.begin (); it != bucket->nodes.end ();)
+			{
+				if (it->second && it->second->peer == peer)
+					it = bucket->nodes.erase (it);
+				else
+					++it;
+			}
+	}
+
 	std::list<std::pair<NodeID, Bucket *>> RoutingTable::GetExploratoryTargets (std::mt19937 & rng, uint64_t ts)
 	{
 		std::list<std::pair<NodeID, Bucket *>> ret;
@@ -333,20 +345,44 @@ namespace torrents
 
 	std::string DHTTorrent::GetBEncodedPeers (bool noSeeds, const i2p::data::IdentHash * exclude) const
 	{
-		std::vector<std::string> peers;
+		// Serve only fresh peers, freshest first, and cap the response. A
+		// single get_peers query must not return the whole 128-entry map.
+		const auto now = i2p::util::GetMonotonicSeconds ();
+		std::vector<std::pair<uint64_t, i2p::data::IdentHash>> candidates;
+		candidates.reserve (m_Peers.size ());
 		for (const auto & [peer, state] : m_Peers)
-			if ((!noSeeds || !state.second) && (!exclude || peer != *exclude))
-				peers.emplace_back (CreateByteString (std::string_view ((const char *)peer.data (), peer.len)));
+			if ((!exclude || peer != *exclude) && IsFresh (now, state.first, state.second, noSeeds))
+				candidates.emplace_back (state.first, peer);
+		std::sort (candidates.begin (), candidates.end (),
+			[] (const auto & left, const auto & right) { return left.first > right.first; });
+		if (candidates.size () > MAX_DHT_VALUES_PER_RESPONSE)
+			candidates.resize (MAX_DHT_VALUES_PER_RESPONSE);
+		std::vector<std::string> peers;
+		peers.reserve (candidates.size ());
+		for (const auto & [time, peer] : candidates)
+			peers.emplace_back (CreateByteString (std::string_view ((const char *)peer.data (), peer.len)));
 		return CreateList (peers);
 	}
 
 	bool DHTTorrent::HasPeers (bool noSeeds) const
 	{
+		const auto now = i2p::util::GetMonotonicSeconds ();
 		return std::any_of (m_Peers.begin (), m_Peers.end (),
-			[noSeeds] (const auto & entry) { return !noSeeds || !entry.second.second; });
+			[this, now, noSeeds] (const auto & entry)
+			{ return IsFresh (now, entry.second.first, entry.second.second, noSeeds); });
 	}
 
-	bool DHTTorrent::AddPeer (const i2p::data::IdentHash & peer, bool seed)
+	std::unordered_set<i2p::data::IdentHash> DHTTorrent::GetPeers () const
+	{
+		const auto now = i2p::util::GetMonotonicSeconds ();
+		std::unordered_set<i2p::data::IdentHash> peers;
+		peers.reserve (m_Peers.size ());
+		for (const auto & [peer, state] : m_Peers)
+			if (IsFresh (now, state.first, state.second, false)) peers.insert (peer);
+		return peers;
+	}
+
+	bool DHTTorrent::AddPeer (const i2p::data::IdentHash & peer, bool seed, bool local)
 	{
 		auto ts = i2p::util::GetMonotonicSeconds ();
 		auto it = m_Peers.find (peer);
@@ -355,9 +391,15 @@ namespace torrents
 			it->second = std::make_pair (ts, seed);
 			return false;
 		}
-		if (m_Peers.size () >= MAX_DHT_PEERS_PER_TORRENT) return false;
+		const size_t limit = MAX_DHT_PEERS_PER_TORRENT + (local ? 1 : 0);
+		if (m_Peers.size () >= limit) return false;
 		m_Peers.emplace (peer, std::make_pair (ts, seed));
 		return true;
+	}
+
+	bool DHTTorrent::RemovePeer (const i2p::data::IdentHash & peer)
+	{
+		return m_Peers.erase (peer) > 0;
 	}
 
 	bool DHTTorrent::CleanUp (uint64_t ts)
@@ -424,6 +466,16 @@ namespace torrents
 	void TorrentsDHT::Start ()
 	{
 		auto dest = m_Tunnel.GetLocalDestination ();
+		if (dest && m_DHTFileName.empty ()) m_DHTFileName = dest->GetIdentHash ().ToBase32 () + ".dht";
+		if (m_DHTFileName.empty ()) m_DHTFileName = "nodest.dht";
+		if (!m_DHTFileName.empty () && m_DHTFileName[0] && IsValidStateFileName (m_DHTFileName))
+		{
+			// Load before publishing the receiver: an inbound query must not
+			// race replacement of the routing table or identity/port.
+			Load (GetDHTFilePath (m_DHTFileName));
+		}
+		else if (!m_DHTFileName.empty () && m_DHTFileName[0])
+			LogPrint (eLogError, "TorrentsDHT: Refusing unsafe DHT state filename");
 		if (dest)
 		{
 			auto dgramDest = dest->GetDatagramDestination ();
@@ -431,11 +483,7 @@ namespace torrents
 				dgramDest->SetReceiver ([this] (const i2p::data::IdentityEx & from, uint16_t fromPort, uint16_t toPort,
 											const uint8_t * buf, size_t len, const i2p::util::Mapping * options)
 					{ HandleDatagram (from, fromPort, toPort, buf, len, options); });
-			if (m_DHTFileName.empty ()) m_DHTFileName = dest->GetIdentHash ().ToBase32 () + ".dht";
 		}
-		if (m_DHTFileName.empty ()) m_DHTFileName = "nodest.dht";
-		if (!m_DHTFileName.empty () && m_DHTFileName[0]) // first byte zero means non persistent
-			Load (GetDHTFilePath (m_DHTFileName));
 		ScheduleDHTUpdateCheck ();
 		ScheduleDHTExpirationCheck ();
 		ScheduleDHTSendPingCheck ();
@@ -457,12 +505,21 @@ namespace torrents
 			auto dgramDest = dest->GetDatagramDestination ();
 			if (dgramDest) dgramDest->ResetReceiver ();
 		}
-		if (!m_DHTFileName.empty () && m_DHTFileName[0]) // first byte zero means non persistent
+		if (!m_DHTFileName.empty () && m_DHTFileName[0] && IsValidStateFileName (m_DHTFileName))
 			Save (GetDHTFilePath (m_DHTFileName));
+	}
+
+	bool TorrentsDHT::IsValidStateFileName (std::string_view name)
+	{
+		if (name.empty () || name.size () > 255 || name == "." || name == ".." || name.front () == '.') return false;
+		for (unsigned char c : name)
+			if (c <= 0x20 || c == 0x7f || c == '/' || c == '\\' || c == ':') return false;
+		return true;
 	}
 
 	std::filesystem::path TorrentsDHT::GetDHTFilePath (std::string_view filename) const
 	{
+		if (!IsValidStateFileName (filename)) return { };
 		std::filesystem::path dhtFilePath (i2p::fs::GetDataDir ());
 		dhtFilePath /= "torrents";
 		if (!m_DelegatedPersistence && !std::filesystem::exists (dhtFilePath)) std::filesystem::create_directories (dhtFilePath);
@@ -472,7 +529,7 @@ namespace torrents
 
 	void TorrentsDHT::Save (const std::filesystem::path & file)
 	{
-		if (!m_RoutingTable) return;
+		if (!m_RoutingTable || file.empty () || !IsValidStateFileName (file.filename ().string ())) return;
 		std::vector<uint8_t> bytes;
 		auto append = [&bytes] (const NodeInfo & node)
 		{
@@ -495,13 +552,14 @@ namespace torrents
 				LogPrint (eLogError, "TorrentsDHT: Delegated save failed: ", error);
 			return;
 		}
-		std::ofstream f (file, std::ofstream::binary);
-		if (f.is_open () && !bytes.empty ())
-			f.write (reinterpret_cast<const char *> (bytes.data ()), bytes.size ());
+		std::string error;
+		if (!WriteFileAtomicNoFollow (file.parent_path (), file.filename (), bytes.data (), bytes.size (), error))
+			LogPrint (eLogError, "TorrentsDHT: Can't write state file: ", error);
 	}
 
 	void TorrentsDHT::Load (const std::filesystem::path & file)
 	{
+		if (file.empty () || !IsValidStateFileName (file.filename ().string ())) return;
 		std::vector<uint8_t> bytes;
 		if (m_DelegatedPersistence)
 		{
@@ -540,7 +598,8 @@ namespace torrents
 			}
 		}
 		auto table = std::make_unique<RoutingTable> (m_NodeID);
-		for (; offset < bytes.size (); offset += first.size ())
+		size_t records = 0;
+		for (; offset < bytes.size () && records++ < MAX_DHT_LOADED_NODES; offset += first.size ())
 		{
 			NodeInfo info;
 			std::copy_n (bytes.data () + offset, info.size (), info.data ());
@@ -837,11 +896,14 @@ namespace torrents
 		}
 		if (type == 'q')
 		{
-			auto node = std::make_shared<Node> (id, from.GetIdentHash (), fromPort);
-			if (!node->VerifyID () || !m_QueryLimiter.Allow (from.GetIdentHash (), i2p::util::GetMonotonicSeconds ()))
+			auto candidate = std::make_shared<Node> (id, from.GetIdentHash (), fromPort);
+			if (!candidate->VerifyID ()
+				|| !m_QueryLimiter.Allow (from.GetIdentHash (), i2p::util::GetMonotonicSeconds ()))
 				return;
-			node = UpdateNode (node);
-			if (!node) return;
+			// Routing-table admission is best effort. A valid query from a
+			// node whose bucket is full must still receive a response.
+			auto stored = UpdateNode (candidate);
+			auto node = stored ? stored : candidate;
 			UpdateHeardFrom (node->id);
 			if (query == "ping")
 				HandlePingQuery (from.GetIdentHash (), fromPort, transactionID, id);
@@ -873,13 +935,20 @@ namespace torrents
 	{
 		LogPrint (eLogDebug, "TorrentsDHT: Get peers query msg received from ", from->id.ToBase64 ());
 
-		if (m_IncomingTokens.size () >= MAX_DHT_INCOMING_TOKENS) return;
+		if (m_IncomingTokens.size () >= MAX_DHT_INCOMING_TOKENS)
+		{
+			auto oldest = m_IncomingTokens.begin ();
+			auto it = oldest;
+			for (++it; it != m_IncomingTokens.end (); ++it)
+				if (it->second.time < oldest->second.time) oldest = it;
+			m_IncomingTokens.erase (oldest);
+		}
 		GetPeersToken token (8, '\0');
 		do
 		{
 			if (RAND_bytes (reinterpret_cast<unsigned char *> (token.data ()), token.size ()) != 1) return;
 		} while (m_IncomingTokens.contains (token));
-		m_IncomingTokens.emplace (token, std::make_pair (from, i2p::util::GetMonotonicSeconds ()));
+		m_IncomingTokens.emplace (token, IncomingToken { from, infoHash, i2p::util::GetMonotonicSeconds () });
 
 		auto it = m_Torrents.find (infoHash);
 		if (it != m_Torrents.end () && it->second->HasPeers (noSeeds))
@@ -893,8 +962,9 @@ namespace torrents
 				nodes.insert (nodes.end (), compact.begin (), compact.end ());
 			}
 
-			SendGetPeersResponse (transactionID, std::string_view ((const char *)nodes.data (), nodes.size ()), token,
-				from->peer, from->port + 1); // to rport
+			SendGetPeersResponse (transactionID,
+				nodes.empty () ? std::string_view {} : std::string_view ((const char *) nodes.data (), nodes.size ()),
+				token, from->peer, from->port + 1); // to rport
 		}
 	}
 
@@ -912,7 +982,8 @@ namespace torrents
 				nodes.insert (nodes.end (), compact.begin (), compact.end ());
 				if (node->id == target) break; // exact known target needs no further referrals
 			}
-			SendFindNodeResponse (transactionID, std::string_view ((const char *)nodes.data (), nodes.size ()),
+			SendFindNodeResponse (transactionID,
+				nodes.empty () ? std::string_view {} : std::string_view ((const char *) nodes.data (), nodes.size ()),
 				fromIdent, fromPort + 1); // empty table still receives a valid reply
 		}
 	}
@@ -925,14 +996,20 @@ namespace torrents
 		if (it != m_IncomingTokens.end ())
 		{
 			auto ts = i2p::util::GetMonotonicSeconds ();
-			if (ts > it->second.second + DHT_INCOMING_GET_PEERS_TOKEN_EXPIRATION_TIME)
+			if (ts > it->second.time + DHT_INCOMING_GET_PEERS_TOKEN_EXPIRATION_TIME)
 			{
 				LogPrint (eLogInfo, "TorrentsDHT: Token for announce expired");
 				m_IncomingTokens.erase (it);
 				return;
 			}
-			auto node = it->second.first;
+			if (infoHash != it->second.infoHash)
+			{
+				LogPrint (eLogInfo, "TorrentsDHT: Token bound to another info_hash");
+				return;
+			}
+			auto node = it->second.node;
 			if (node->id != nodeID || node->port != fromPort || !m_QueryLimiter.Allow (node->peer, ts)) return;
+			it->second.time = ts; // bounded refresh for legitimate re-announcers
 			auto torrentIt = m_Torrents.find (infoHash);
 			if (torrentIt == m_Torrents.end ())
 			{
@@ -971,6 +1048,7 @@ namespace torrents
 				&& request->lastNode && request->lastNode->id != nodeID)
 				return;
 			UpdateHeardFrom (nodeID);
+			m_FailedPeers.erase (expectedIdent);
 			// erase the completed transaction before dispatching it; the
 			// handlers can send and insert a new query, which may rehash the
 			// unordered_map and invalidate this iterator.
@@ -1024,7 +1102,8 @@ namespace torrents
 	void TorrentsDHT::HandleGetPeersResponseNodes (std::shared_ptr<RequestInfo> info, std::string_view nodes)
 	{
 		NodeInfo nodeInfo;
-		while (nodes.size () >= nodeInfo.size ())
+		size_t processed = 0;
+		while (nodes.size () >= nodeInfo.size () && processed++ < MAX_DHT_NODES_PER_RESPONSE)
 		{
 			memcpy (nodeInfo.data (), nodes.data (), nodeInfo.size ());
 			auto node = std::make_shared<Node> (nodeInfo);
@@ -1048,8 +1127,14 @@ namespace torrents
 		if (!info->torrent->IsComplete ())
 		{
 			std::unordered_set<i2p::data::IdentHash> newPeers;
+			size_t count = 0;
 			for (auto it : peers)
-				if (it.size () == i2p::data::IdentHash::len) newPeers.emplace ((const uint8_t *)it.data ());
+			{
+				if (count++ >= MAX_DHT_VALUES_PER_RESPONSE) break;
+				if (it.size () != i2p::data::IdentHash::len) continue;
+				i2p::data::IdentHash peer ((const uint8_t *)it.data ());
+				if (!peer.IsZero ()) newPeers.emplace (peer);
+			}
 			if (!newPeers.empty ())
 			{
 				LogPrint (eLogDebug, "TorrentsDHT: ", newPeers.size (), " new peers received");
@@ -1066,7 +1151,8 @@ namespace torrents
 	void TorrentsDHT::HandleFindNodeResponse (std::shared_ptr<RequestInfo> info, std::string_view nodes)
 	{
 		NodeInfo nodeInfo;
-		while (nodes.size () >= nodeInfo.size ())
+		size_t processed = 0;
+		while (nodes.size () >= nodeInfo.size () && processed++ < MAX_DHT_NODES_PER_RESPONSE)
 		{
 			memcpy (nodeInfo.data (), nodes.data (), nodeInfo.size ());
 			auto node = std::make_shared<Node> (nodeInfo);
@@ -1202,9 +1288,10 @@ namespace torrents
 		else
 			LogPrint (eLogDebug, "TorrentsDHT: Closest node not found after ", DHT_MAX_NUM_GET_PEERS_ATTEMPTS,
 				" get_peers attempts");
-		if (!sent && !info->tokens.empty () && info->torrent)
+		if (!sent && !info->announced && !info->tokens.empty () && info->torrent)
 		{
-			// announce
+			// Announce once per iterative lookup; late responses/timeouts must
+			// not replay the same announce set.
 			int numAnnounces = 0;
 			for (const auto & [distance, node, token] : info->tokens)
 			{
@@ -1213,7 +1300,10 @@ namespace torrents
 				if (numAnnounces >= DHT_MAX_NUM_CLOSEST_NODES_TO_ANNOUNCE) break;
 			}
 			if (numAnnounces > 0)
+			{
+				info->announced = true;
 				LogPrint (eLogDebug, "TorrentsDHT: Announce sent to ", numAnnounces, " closest nodes");
+			}
 		}
 	}
 
@@ -1425,7 +1515,7 @@ namespace torrents
 				auto it = m_IncomingTokens.begin ();
 				while (it != m_IncomingTokens.end ())
 				{
-					if (ts > it->second.second + DHT_INCOMING_GET_PEERS_TOKEN_EXPIRATION_TIME)
+					if (ts > it->second.time + DHT_INCOMING_GET_PEERS_TOKEN_EXPIRATION_TIME)
 						it = m_IncomingTokens.erase (it);
 					else
 						it++;
@@ -1478,9 +1568,13 @@ namespace torrents
 				{
 					if (m_FailedPeers.contains (std::get<0> (it->second))
 						|| m_FailedPeers.size () < MAX_DHT_FAILED_PEERS)
-						m_FailedPeers.insert_or_assign (std::get<0> (it->second), std::get<4> (it->second));
+						m_FailedPeers.insert_or_assign (std::get<0> (it->second), ts);
 					switch (std::get<2> (it->second))
 					{
+					case eKRPCQueryPing:
+						if (m_RoutingTable && !m_HeardFrom.contains (std::get<0> (it->second)))
+							m_RoutingTable->RemoveNodeByPeer (std::get<0> (it->second));
+						break;
 					case eKRPCQueryGetPeers: getpeers.push_back (std::get<3> (it->second)); break;
 					case eKRPCQueryFindNode: findnode.push_back (std::get<3> (it->second)); break;
 					default:;
@@ -1516,9 +1610,50 @@ namespace torrents
 		}
 	}
 
+	void TorrentsDHT::Unannounce (const Torrent::InfoHash & infoHash)
+	{
+		auto dest = m_Tunnel.GetLocalDestination ();
+		if (!dest) return;
+		auto it = m_Torrents.find (infoHash);
+		if (it == m_Torrents.end ()) return;
+		it->second->RemovePeer (dest->GetIdentHash ());
+		if (it->second->CleanUp (i2p::util::GetMonotonicSeconds ())) m_Torrents.erase (it);
+	}
+
 	void TorrentsDHT::GetPeersAndAnnounce (std::shared_ptr<Torrent> torrent)
 	{
-		if (!torrent || torrent->IsPrivate () || torrent->IsStopped () || !m_RoutingTable) return;
+		if (!torrent || torrent->IsPrivate () || torrent->IsStopped () || torrent->IsRemoved ()
+			|| !m_RoutingTable)
+			return;
+
+		// If this torrent's hash is in our own k-bucket, we are one of the
+		// closest DHT nodes for the swarm. Reuse peers that already announced
+		// themselves here and publish our destination as a rendezvous point
+		// instead of immediately performing a full iterative lookup.
+		auto dest = m_Tunnel.GetLocalDestination ();
+		if (dest && m_RoutingTable->IsInOurBucket (torrent->GetInfoHash ()))
+		{
+			auto it = m_Torrents.find (torrent->GetInfoHash ());
+			if (it == m_Torrents.end () && m_Torrents.size () < MAX_DHT_TORRENTS)
+				it = m_Torrents.emplace (torrent->GetInfoHash (), std::make_shared<DHTTorrent> ()).first;
+			if (it != m_Torrents.end ())
+			{
+				auto peers = it->second->GetPeers ();
+				peers.erase (dest->GetIdentHash ());
+				if (!peers.empty ())
+				{
+					LogPrint (eLogDebug, "TorrentsDHT: ", peers.size (), " rendezvous peers received");
+					m_Tunnel.ConnectToNewPeers (torrent, peers, ePeerConnectionOriginDHT);
+				}
+				// Mark ourselves as a seed when complete so a later noseed
+				// query does not receive a leecher-only result. Reserve one
+				// slot so a full remote peer map cannot suppress the
+				// rendezvous announcement.
+				if (!it->second->AddPeer (dest->GetIdentHash (), torrent->IsComplete (), true))
+					LogPrint (eLogDebug, "TorrentsDHT: Rendezvous peer was refreshed or the map is full");
+			}
+		}
+
 		auto request = std::make_shared<RequestInfo> (torrent, DHT_MAX_NUM_GET_PEERS_ATTEMPTS);
 		for (const auto & node : m_RoutingTable->GetClosestNodes (torrent->GetInfoHash ())) request->AddNode (node);
 		SendNextGetPeersQuery (request);

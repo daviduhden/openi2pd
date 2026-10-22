@@ -43,6 +43,28 @@ int main ()
 	assert (trackerless.HasExplicitTrackers () && trackerless.GetTrackerTiers ().empty ());
 	assert (trackerless.GetAnnounce ().empty () && trackerless.GetInfoHash () == torrent->GetInfoHash ());
 
+	// A primary announce outside a non-empty announce-list remains part of the
+	// policy and is normalized into tier 0 without changing the info hash.
+	auto splitTrackers = CreateDictionary ({ { "announce", CreateByteString ("http://primary.i2p/a") },
+		{ "announce-list", CreateList ({ CreateList ({ CreateByteString ("http://backup.i2p/a") }) }) },
+		{ "info", info } });
+	Torrent split (splitTrackers);
+	assert (split.GetError () == eTorrentErrorNoError);
+	assert (split.GetTrackerTiers ().size () == 1);
+	assert (split.GetTrackerTiers ().front ().size () == 2);
+	assert (split.GetTrackerTiers ().front ().front () == "http://primary.i2p/a");
+	assert (split.GetInfoHash () == torrent->GetInfoHash ());
+
+	// A created public torrent with no trackers inherits the tunnel's common
+	// endpoints instead of being marked as explicitly trackerless.
+	Torrent::TrackerTiers emptyTiers;
+	auto trackerlessCreated
+		= Torrent::CreateV1 ("trackerless", { { { }, data.size () } }, MIN_PIECE_LENGTH, hashes, emptyTiers);
+	assert (trackerlessCreated && !trackerlessCreated->HasExplicitTrackers ());
+	assert (trackerlessCreated->GetAnnounce ().empty ());
+	assert (!Torrent::CreateV1 (
+		"private-trackerless", { { { }, data.size () } }, MIN_PIECE_LENGTH, hashes, emptyTiers, true));
+
 	// SHA-1 spans file boundaries; zero-length entries remain represented.
 	auto multi = Torrent::CreateV1 (
 		"directory", { { "first", 1 }, { "empty", 0 }, { "sub/second", 2 } }, MIN_PIECE_LENGTH, hashes);
@@ -58,6 +80,30 @@ int main ()
 	auto info = std::string (reinterpret_cast<const char *> (torrent->GetInfo ().data ()), torrent->GetInfo ().size ());
 	Torrent malformed (CreateDictionary ({ { "announce-list", "li1ee" }, { "info", info } }));
 	assert (malformed.GetError () == eTorrentErrorMalformedMetaInfo);
+
+	// Tracker/metadata rewrites preserve top-level keys the engine does not
+	// interpret. Java's MetaInfo copy constructor has the same guarantee.
+	auto withExtras = CreateDictionary ({ { "announce", CreateByteString ("http://tracker.i2p/announce") },
+		{ "comment", CreateByteString ("original comment") }, { "created by", CreateByteString ("fixture") },
+		{ "creation date", "i1700000000e" }, { "url-list", CreateList ({ CreateByteString ("http://seed.i2p/file") }) },
+		{ "info", info } });
+	Torrent extras (withExtras);
+	assert (extras.GetError () == eTorrentErrorNoError);
+	assert (extras.GetMetaComment () == "original comment");
+	assert (extras.GetCreatedBy () == "fixture");
+	assert (extras.SetMetaComment ("edited comment"));
+	assert (extras.SetCreatedBy ("openi2pd"));
+	assert (!extras.SetMetaComment (std::string (1025, 'x')));
+	assert (!extras.SetCreatedBy (std::string (256, 'x')));
+	auto rewritten = extras.CreateTorrentFileContent ();
+	assert (!rewritten.empty ());
+	assert (rewritten.find ("creation date") != std::string::npos);
+	assert (rewritten.find ("url-list") != std::string::npos);
+	Torrent reparsed (rewritten);
+	assert (reparsed.GetError () == eTorrentErrorNoError);
+	assert (reparsed.GetMetaComment () == "edited comment");
+	assert (reparsed.GetCreatedBy () == "openi2pd");
+	assert (reparsed.GetInfoHash () == torrent->GetInfoHash ());
 	return 0;
 }
 #else

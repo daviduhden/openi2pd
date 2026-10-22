@@ -73,8 +73,15 @@ int main ()
 	auto privateTorrent = CreateTorrentFromPath (root, "payload", options, error);
 	assert (privateTorrent && privateTorrent->IsPrivate () && privateTorrent->GetTrackerTiers () == options.trackers);
 	assert (privateTorrent->GetInfoHash () != torrent->GetInfoHash ());
-	options.privateTorrent = false;
+	// A private torrent without a tracker cannot discover peers and must fail
+	// closed, matching the Java manager's "no I2P trackers" policy.
 	options.trackers.clear ();
+	assert (!CreateTorrentFromPath (root, "payload", options, error));
+	options.privateTorrent = false;
+	auto publicTrackerless = CreateTorrentFromPath (root, "payload", options, error);
+	assert (publicTrackerless && !publicTrackerless->HasExplicitTrackers ());
+	assert (publicTrackerless->GetAnnounce ().empty ());
+	assert (publicTrackerless->CreateTorrentFileContent ().find ("announce") == std::string::npos);
 
 	auto single = CreateTorrentFromPath (root, "payload/a", options, error);
 	assert (single && single->IsSingleFile () && single->GetName () == "a");

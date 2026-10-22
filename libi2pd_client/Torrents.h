@@ -120,6 +120,10 @@ namespace torrents
 	constexpr size_t MAX_PEX_PEERS_PER_MESSAGE = 50;
 	constexpr size_t MAX_PEX_TRACKED_PEERS = 200;
 	constexpr int PEER_PEX_SEND_INTERVAL = 120; // in seconds
+	constexpr int PEER_PEX_RECEIVE_WINDOW = 60; // in seconds
+	constexpr size_t MAX_PEX_RECEIVE_MESSAGES = 2;
+	constexpr size_t MAX_PEX_RECEIVE_PEERS = 100;
+	constexpr int PEER_DHT_HINT_INTERVAL = 60; // in seconds
 	constexpr size_t PEER_CONNECTION_RECEIVE_BUFFER_SIZE = 65535;
 	// A peer-wire message is prefixed by a 4-byte big-endian length. The whole
 	// frame (prefix included) must fit in the receive buffer, otherwise a
@@ -383,6 +387,10 @@ namespace torrents
 		std::pair<size_t, size_t>
 		GetNextBlockToRequest (); // return (offset, len) of next buffer, len = 0 if no next buffer
 		void ClearAllRequests ();
+		// Releases one outstanding block owned by a connection. No-op if the
+		// block is already Available, complete or no longer Requested.
+		void ReleaseBlock (size_t offset, uint64_t epoch);
+		uint64_t GetBlockEpoch () const;
 		// Rebuilds the block map as Missing, drops the data buffer and clears
 		// the verified flag, so a complete-but-corrupt piece becomes
 		// downloadable again.
@@ -404,7 +412,9 @@ namespace torrents
 	private:
 		mutable std::mutex m_Mutex;
 		size_t m_Size;
-		uint8_t *m_Data, m_Hash[SHA_DIGEST_LENGTH];
+		uint64_t m_BlockEpoch = 0;
+		std::unique_ptr<uint8_t[]> m_Data;
+		uint8_t m_Hash[SHA_DIGEST_LENGTH];
 		std::unique_ptr<std::vector<BlockStatus>> m_Blocks;
 		bool m_IsSending, m_IsLoading, m_IsRequested, m_IsVerified;
 		bool m_IsSaving = false;
@@ -478,12 +488,17 @@ namespace torrents
 		void SetAnnounce (std::string_view announce) { m_Announce = announce; }
 		const TrackerTiers & GetTrackerTiers () const { return m_TrackerTiers; }
 		bool HasExplicitTrackers () const { return m_HasExplicitTrackers; }
+		void SetHasExplicitTrackers (bool explicitTrackers) { m_HasExplicitTrackers = explicitTrackers; }
 		bool SetTrackerTiers (const TrackerTiers & tiers);
 		bool IsPrivate () const { return m_IsPrivate; }
 		// Service-thread only; storage workers receive encoded snapshots.
 		TorrentCommentStore & GetCommentStore () { return m_Comments; }
 		const TorrentCommentStore & GetCommentStore () const { return m_Comments; }
 		void SetCommentsEnabled (bool enabled);
+		// Re-announce support and request the current view from established
+		// peers. The normal 600 s request throttle still applies; no unsolicited
+		// comment push is invented.
+		void PublishComments ();
 		int GetAnnounceTrackerID () const { return m_AnnounceTrackerID; }
 		void SetAnnounceTrackerID (int trackerID) { m_AnnounceTrackerID = trackerID; }
 		// Per-torrent random 20-byte peer id used in handshakes and announces.
@@ -498,6 +513,10 @@ namespace torrents
 		}
 		void SetMinInterval (size_t trackerID, int interval);
 		std::string_view GetName () const { return m_Name; }
+		std::string_view GetMetaComment () const { return m_MetaComment; }
+		std::string_view GetCreatedBy () const { return m_CreatedBy; }
+		bool SetMetaComment (std::string_view comment);
+		bool SetCreatedBy (std::string_view createdBy);
 		void SetName (std::string_view name) { m_Name = AdjustName (name); }
 		bool IsValid () const { return !m_Name.empty () && m_PieceLength && (m_Length || !m_Files.empty ()); }
 		TorrentError GetError () const { return m_Error; }
@@ -529,7 +548,11 @@ namespace torrents
 		void SetInterval (size_t trackerID, int interval);
 		const std::vector<uint8_t> & GetInfo () const { return m_Info; }
 		const InfoHash & GetInfoHash () const { return m_InfoHash; }
+		// Selected-file left bytes. Skips priority-0 files, whose pieces are
+		// never requested. GetFullLeft() retains the whole-torrent truth used
+		// by resume persistence and diagnostics.
 		size_t GetLeft () const;
+		size_t GetFullLeft () const;
 		std::string GetHexStringInfoHash () const; // in url format
 		size_t GetNumPieces () const { return m_Pieces.size (); }
 		Piece & GetPiece (int index) { return m_Pieces[index]; }
@@ -549,8 +572,17 @@ namespace torrents
 		// satisfy this, so .part files are not promoted to final names until
 		// the local data has been verified.
 		bool AreAllPiecesVerified () const;
+		// True when every piece that belongs to at least one selected file has
+		// been completed and hash-verified in this session. An empty selection
+		// is complete by definition.
+		bool AreAllSelectedPiecesVerified () const;
+		bool IsFileComplete (size_t index) const;
+		void SetSelectedComplete ();
 		std::pair<std::vector<uint8_t>, boost::logic::tribool>
 		CreateBitfield () const; // (bitfield, true - all false - none)
+		// Exact wire length and zero spare bits. Separate from ApplyBitfield
+		// because a valid partial resume is not "complete".
+		bool IsBitfieldValid (const std::vector<uint8_t> & bitfield) const;
 		bool ApplyBitfield (const std::vector<uint8_t> & bitfield); // return true if complete
 		std::unordered_set<i2p::data::IdentHash> GetNonConnectedPeers ();
 		std::unordered_set<i2p::data::IdentHash> GetNonConnectedPeers (size_t trackerID);
@@ -584,7 +616,11 @@ namespace torrents
 		// (used when final-named data already exists); otherwise only pieces
 		// that are already complete and unverified become pending. The pass is
 		// driven one piece at a time by the tunnel's storage service.
-		void RequestLocalVerification (bool markAllPieces);
+		void RequestLocalVerification (bool markAllPieces, bool includeIncomplete = false);
+		// Mark every piece whose fragments are all backed by an existing file
+		// (final or .part). Used on restart when only part of a multi-file
+		// torrent is present, so intact data is not downloaded again.
+		size_t RequestLocalVerificationForExistingFiles (const std::vector<bool> & presentFiles);
 		bool IsLocalVerificationRequested () const
 		{
 			return m_LocalVerificationRequested.load (std::memory_order_acquire);
@@ -645,6 +681,12 @@ namespace torrents
 			return (trackerID < m_TrackerStats.size ()) ? std::get<6> (m_TrackerStats[trackerID]) : "";
 		}
 		void SetTrackerError (size_t trackerID, std::string_view error);
+		// Records a transport/parse failure, doubles the current interval
+		// within the configured bounds and schedules the next attempt.
+		void ReportTrackerFailure (size_t trackerID, std::string_view reason);
+		// Drops tracker peers after the tracker has not produced a successful
+		// response for max(2*interval, 30 min), capped at two hours.
+		void ExpireTrackerPeers (uint64_t nowEpoch);
 
 	private:
 		Torrent ();
@@ -661,6 +703,11 @@ namespace torrents
 		ResumePersistence m_ResumePersistence;
 		std::atomic<bool> m_Removed { false };
 		std::string m_Name, m_Announce;
+		std::string m_MetaComment, m_CreatedBy;
+		// Raw top-level bencode values other than announce/announce-list/info.
+		// Bounded so a hostile metainfo cannot make a rewrite allocate freely.
+		std::vector<std::pair<std::string, std::string>> m_TopLevelExtras;
+		bool m_MetaInfoComplete = true;
 		PeerID m_PeerID { };
 		TrackerTiers m_TrackerTiers;
 		bool m_HasExplicitTrackers = false;
@@ -805,6 +852,8 @@ namespace torrents
 		std::optional<RequestedBlock> GetNextBlockToRequest ();
 		bool RequestNextBlocks ();
 		bool SendRequestedBlock (const RequestedBlock & requestedBlock);
+		void ReleaseOutgoingRequest (uint32_t index, uint32_t offset);
+		void ReleaseOutgoingRequests ();
 
 	private:
 		std::shared_ptr<i2p::stream::Stream> m_Stream;
@@ -819,6 +868,14 @@ namespace torrents
 		bool m_IsHandshakeSent, m_IsEstablished, m_IsChoked, m_IsRemoteChoked, m_IsInterested, m_IsRemoteInterested;
 		uint64_t m_LastReceiveTime, m_LastSendTime; // monotonic seconds
 		size_t m_NumRequests, m_NumPieces; // outgoing
+		struct OutgoingRequest
+		{
+			uint32_t index;
+			uint32_t offset;
+			uint32_t length;
+			uint64_t epoch;
+		};
+		std::list<OutgoingRequest> m_OutgoingRequests;
 		std::list<RequestedBlock> m_IncomingRequestsQueue;
 		int m_LastRequestedPieceIndex;
 		std::unique_ptr<boost::asio::steady_timer> m_HandshakeReceiveTimer;
@@ -838,6 +895,10 @@ namespace torrents
 		// BEP11: bounded incremental announcement bookkeeping.
 		std::unordered_set<i2p::data::IdentHash> m_SentPEXPeers;
 		uint64_t m_LastPEXTime = 0; // monotonic seconds
+		uint64_t m_PexReceiveWindow = 0;
+		size_t m_PexReceiveMessages = 0;
+		size_t m_PexReceivePeers = 0;
+		uint64_t m_LastDHTHintTime = 0;
 		// stats
 		uint64_t m_DownloadRate, m_UploadRate; // B/sec
 		uint64_t m_LastBlockDownloadTimestamp, m_LastBlockUploadTimestamp; // monotonic milliseconds

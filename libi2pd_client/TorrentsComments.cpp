@@ -7,7 +7,8 @@
  * Encodes and decodes bounded ut_comment request/response messages using
  * peer-wire age timestamps, and maintains the per-torrent store with
  * deduplication, hidden-entry retention and rating aggregation. Malformed
- * counts, ratings, sizes and text are rejected before state changes.
+ * frames are rejected; an invalid entry is skipped without discarding a
+ * valid entry from the same peer reply.
  *
  */
 
@@ -22,11 +23,10 @@ namespace i2p::torrents
 {
 namespace
 {
-	// Validate UTF-8 and limit Java-compatible UTF-16 code units, without
+	// Validate UTF-8 and return Java-compatible UTF-16 code units, without
 	// accepting surrogate encodings, overlong encodings or terminal controls.
-	bool ValidText (std::string_view text, size_t maxUnits)
+	size_t TextUnits (std::string_view text)
 	{
-		if (text.size () > maxUnits * 4) return false;
 		size_t units = 0;
 		for (size_t i = 0; i < text.size ();)
 		{
@@ -49,25 +49,31 @@ namespace
 				extra = 3;
 			}
 			else if (ch >= 0x80)
-				return false;
-			if (extra > text.size () - i) return false;
+				return static_cast<size_t> (-1);
+			if (extra > text.size () - i) return static_cast<size_t> (-1);
 			for (size_t j = 0; j < extra; ++j)
 			{
 				auto next = static_cast<unsigned char> (text[i++]);
-				if ((next & 0xC0) != 0x80) return false;
+				if ((next & 0xC0) != 0x80) return static_cast<size_t> (-1);
 				cp = (cp << 6) | (next & 63);
 			}
 			if ((extra == 1 && cp < 0x80) || (extra == 2 && cp < 0x800) || (extra == 3 && cp < 0x10000) || cp > 0x10FFFF
 				|| (cp >= 0xD800 && cp <= 0xDFFF) || cp < 0x20 || (cp >= 0x7F && cp <= 0x9F))
-				return false;
+				return static_cast<size_t> (-1);
 			units += cp >= 0x10000 ? 2 : 1;
-			if (units > maxUnits) return false;
+			if (units > MAX_COMMENT_TEXT_UNITS * 4) return static_cast<size_t> (-1);
 		}
-		return true;
+		return units;
+	}
+	bool ValidText (std::string_view text, size_t maxUnits)
+	{
+		const auto units = TextUnits (text);
+		return units != static_cast<size_t> (-1) && units <= maxUnits;
 	}
 	bool ValidComment (const TorrentComment & comment)
 	{
-		return comment.rating <= 5 && ValidText (comment.owner, 32) && ValidText (comment.text, 512);
+		return comment.rating <= 5 && ValidText (comment.owner, MAX_COMMENT_OWNER_UNITS)
+			&& ValidText (comment.text, MAX_COMMENT_TEXT_UNITS);
 	}
 	bool Integer (const std::map<std::string_view, std::string_view> & fields, std::string_view key, int64_t & result)
 	{
@@ -93,7 +99,9 @@ std::optional<TorrentCommentMessage> DecodeTorrentComments (std::string_view enc
 		int64_t count = MAX_COMMENT_MESSAGE_COUNT;
 		if (fields.count ("num") && !Integer (fields, "num", count)) return std::nullopt;
 		if (count < 0) return std::nullopt;
-		message.requested = std::min<uint64_t> (count, MAX_COMMENT_MESSAGE_COUNT);
+		// A Java peer may request up to CommentSet.MAX_SIZE (256); the reply
+		// encoder enforces the 16 KiB wire budget independently.
+		message.requested = std::min<uint64_t> (count, MAX_COMMENT_COUNT);
 		if (auto it = fields.find ("filter"); it != fields.end ())
 		{
 			auto [filter, n] = ExtractByteString (it->second);
@@ -102,50 +110,40 @@ std::optional<TorrentCommentMessage> DecodeTorrentComments (std::string_view enc
 		return message;
 	}
 	if (type != 1 || !fields.count ("comments")) return std::nullopt;
-	bool valid = true;
 	auto list = fields.at ("comments");
 	auto consumed = ParseList (list,
 		[&] (std::string_view entry)
 		{
 			auto [values, size] = ExtractDictionary (entry);
-			if (!size || message.comments.size () >= MAX_COMMENT_MESSAGE_COUNT)
-			{
-				valid = false;
-				return size;
-			}
+			if (!size) return size; // structural: stop the list
+			// Java may return up to MAX_COMMENT_COUNT entries and can include
+			// a legacy entry that native considers invalid. Ignore that entry
+			// rather than discarding every valid comment in the reply.
+			if (message.comments.size () >= MAX_COMMENT_COUNT) return size;
 			TorrentComment comment;
 			int64_t rating = -1, age = -1;
-			if (!Integer (values, "like", rating) || rating < 0 || rating > 5 || !Integer (values, "timestamp", age)
-				|| age < 0 || age > std::numeric_limits<int32_t>::max ())
-			{
-				valid = false;
+			if (!Integer (values, "like", rating) || !Integer (values, "timestamp", age))
 				return size;
-			}
 			for (auto key : { "owner", "text" })
 			{
 				auto it = values.find (key);
-				if (it == values.end ())
-				{
-					valid = false;
-					return size;
-				}
+				if (it == values.end ()) return size;
 				auto [text, n] = ExtractByteString (it->second);
-				if (!n || n != it->second.size ())
-				{
-					valid = false;
-					return size;
-				}
-				(key == std::string_view ("owner") ? comment.owner : comment.text).assign (text);
+				if (!n || n != it->second.size ()) return size;
+				std::string & target = key == std::string_view ("owner") ? comment.owner : comment.text;
+				target.assign (text);
+				// Java normalizes CR/LF in comments to a single space.
+				for (char & ch : target)
+					if (ch == '\r' || ch == '\n') ch = ' ';
 			}
-			comment.rating = static_cast<uint8_t> (rating);
+			// Java clamps ratings to 0..5 and negative ages to "now".
+			comment.rating = static_cast<uint8_t> (std::clamp<int64_t> (rating, 0, 5));
+			age = std::clamp<int64_t> (age, 0, std::numeric_limits<int32_t>::max ());
 			comment.time = static_cast<uint64_t> (age) > now ? 0 : now - age;
-			if (!ValidComment (comment))
-				valid = false;
-			else
-				message.comments.push_back (std::move (comment));
+			if (ValidComment (comment)) message.comments.push_back (std::move (comment));
 			return size;
 		});
-	if (!valid || !consumed || consumed != list.size ()) return std::nullopt;
+	if (!consumed || consumed != list.size ()) return std::nullopt;
 	return message;
 }
 
@@ -157,38 +155,81 @@ std::string EncodeTorrentCommentRequest (size_t count)
 
 std::string EncodeTorrentComments (const std::vector<TorrentComment> & comments, uint64_t now, size_t count)
 {
-	std::vector<std::string> entries;
-	count = std::min (count, MAX_COMMENT_MESSAGE_COUNT);
+	std::vector<const TorrentComment *> selected;
+	selected.reserve (comments.size ());
 	for (const auto & comment : comments)
+		if (!comment.hidden && ValidComment (comment)) selected.push_back (&comment);
+	// Java publishes the newest N, not the first N inserted.
+	std::sort (selected.begin (), selected.end (), [] (const TorrentComment * left, const TorrentComment * right)
 	{
-		if (entries.size () >= count) break;
-		if (comment.hidden || !ValidComment (comment)) continue;
-		auto age = now > comment.time ? now - comment.time : 0;
+		if (left->time != right->time) return left->time > right->time;
+		return left->localId > right->localId;
+	});
+	count = std::min (count, MAX_COMMENT_COUNT);
+	if (selected.size () > count) selected.resize (count);
+	std::vector<std::string> entries;
+	entries.reserve (selected.size ());
+	for (const auto * comment : selected)
+	{
+		auto age = now > comment->time ? now - comment->time : 0;
 		age = std::min<uint64_t> (age, std::numeric_limits<int32_t>::max ());
 		entries.push_back (CreateDictionary (
-			{ { "like", CreateInteger (comment.rating) }, { "owner", CreateByteString (comment.owner) },
-				{ "text", CreateByteString (comment.text) }, { "timestamp", CreateInteger (age) } }));
+			{ { "like", CreateInteger (comment->rating) }, { "owner", CreateByteString (comment->owner) },
+				{ "text", CreateByteString (comment->text) }, { "timestamp", CreateInteger (age) } }));
 	}
-	return CreateDictionary ({ { "comments", CreateList (entries) }, { "msg_type", CreateInteger (1) } });
+	auto encode = [&] ()
+	{ return CreateDictionary ({ { "comments", CreateList (entries) }, { "msg_type", CreateInteger (1) } }); };
+	std::string encoded = encode ();
+	// Java disconnects on an extension payload above 16482 bytes. Drop the
+	// oldest selected entries until the frame fits rather than sending a
+	// message the peer will reject.
+	while (encoded.size () > MAX_COMMENT_MESSAGE_BYTES && !entries.empty ())
+	{
+		entries.pop_back ();
+		encoded = encode ();
+	}
+	return encoded;
 }
 
 bool TorrentCommentStore::Add (TorrentComment comment)
 {
 	if (!m_Enabled || !ValidComment (comment)
-		|| m_NextId >= static_cast<uint64_t> (std::numeric_limits<int64_t>::max ())
-		|| m_Comments.size () >= MAX_COMMENT_COUNT || comment.text.size () > 4096 - m_TextBytes)
+		|| m_NextId >= static_cast<uint64_t> (std::numeric_limits<int64_t>::max ()))
 		return false;
+	// Content deduplication is independent of the rating. Otherwise the same
+	// pseudonymous text could be replayed six times with ratings 0..5.
 	for (const auto & existing : m_Comments)
-	{
-		auto delta = existing.time > comment.time ? existing.time - comment.time : comment.time - existing.time;
-		if (delta <= 4 * 3600 && existing.owner == comment.owner && existing.text == comment.text
-			&& existing.rating == comment.rating)
+		if (existing.owner == comment.owner && existing.text == comment.text)
 			return false;
+	const auto textUnits = TextUnits (comment.text);
+	if (textUnits == static_cast<size_t> (-1)) return false;
+	// Bound one pseudonym's share of the visible store. Hidden entries remain
+	// for dedupe but do not count toward this per-author quota.
+	size_t ownerEntries = 0;
+	for (const auto & existing : m_Comments)
+		if (!comment.owner.empty () && !existing.hidden && existing.owner == comment.owner
+			&& ++ownerEntries >= MAX_COMMENT_PER_OWNER)
+			return false;
+	// Evict the oldest foreign entry rather than becoming permanently full.
+	while (m_Comments.size () >= MAX_COMMENT_COUNT
+		|| m_TextUnits > MAX_COMMENT_TEXT_TOTAL_UNITS || textUnits > MAX_COMMENT_TEXT_TOTAL_UNITS - m_TextUnits)
+	{
+		auto victim = m_Comments.end ();
+		for (auto it = m_Comments.begin (); it != m_Comments.end (); ++it)
+			if (!it->local && !it->hidden)
+			{
+				victim = it;
+				break;
+			}
+		if (victim == m_Comments.end ()) return false;
+		m_TextUnits -= std::min (m_TextUnits, TextUnits (victim->text));
+		m_Comments.erase (victim);
 	}
 	comment.hidden = false;
 	comment.localId = m_NextId++;
-	m_TextBytes += comment.text.size ();
+	m_TextUnits += textUnits;
 	m_Comments.push_back (std::move (comment));
+	TrimHidden ();
 	++m_Revision;
 	return true;
 }
@@ -196,8 +237,15 @@ bool TorrentCommentStore::Add (TorrentComment comment)
 bool TorrentCommentStore::Hide (size_t localIndex)
 {
 	if (localIndex >= m_Comments.size ()) return false;
-	if (!m_Comments[localIndex].hidden) ++m_Revision;
+	if (!m_Comments[localIndex].hidden)
+	{
+		const auto units = TextUnits (m_Comments[localIndex].text);
+		if (units != static_cast<size_t> (-1))
+			m_TextUnits -= std::min (m_TextUnits, units);
+		++m_Revision;
+	}
 	m_Comments[localIndex].hidden = true;
+	TrimHidden ();
 	return true;
 }
 
@@ -206,8 +254,38 @@ bool TorrentCommentStore::HideId (uint64_t id)
 	for (auto & comment : m_Comments)
 		if (comment.localId == id)
 		{
-			if (!comment.hidden) ++m_Revision;
+			if (!comment.hidden)
+			{
+				const auto units = TextUnits (comment.text);
+				if (units != static_cast<size_t> (-1))
+					m_TextUnits -= std::min (m_TextUnits, units);
+				++m_Revision;
+			}
 			comment.hidden = true;
+			TrimHidden ();
+			return true;
+		}
+	return false;
+}
+
+bool TorrentCommentStore::UnhideId (uint64_t id)
+{
+	for (auto & comment : m_Comments)
+		if (comment.localId == id)
+		{
+			if (comment.hidden)
+			{
+				const auto units = TextUnits (comment.text);
+				// Hidden text is excluded from the visible budget. Refuse an
+				// unhide that would make the persisted state invalid instead
+				// of wedging every later settings write.
+				if (units == static_cast<size_t> (-1) || m_TextUnits > MAX_COMMENT_TEXT_TOTAL_UNITS
+					|| units > MAX_COMMENT_TEXT_TOTAL_UNITS - m_TextUnits)
+					return false;
+				comment.hidden = false;
+				m_TextUnits += units;
+				++m_Revision;
+			}
 			return true;
 		}
 	return false;
@@ -216,32 +294,71 @@ bool TorrentCommentStore::HideId (uint64_t id)
 bool TorrentCommentStore::Restore (bool enabled, const std::vector<TorrentComment> & comments)
 {
 	if (comments.size () > MAX_COMMENT_COUNT) return false;
-	size_t bytes = 0;
+	size_t units = 0;
 	uint64_t next = 1;
 	std::set<uint64_t> ids;
 	for (const auto & comment : comments)
 	{
-		if (!ValidComment (comment) || comment.text.size () > 4096 - bytes || !comment.localId
+		const auto textUnits = TextUnits (comment.text);
+		if (!ValidComment (comment)
+			|| (!comment.hidden
+				&& (units > MAX_COMMENT_TEXT_TOTAL_UNITS || textUnits > MAX_COMMENT_TEXT_TOTAL_UNITS - units))
+			|| !comment.localId
 			|| comment.localId >= static_cast<uint64_t> (std::numeric_limits<int64_t>::max ())
 			|| !ids.insert (comment.localId).second)
 			return false;
-		bytes += comment.text.size ();
+		if (!comment.hidden) units += textUnits;
 		next = std::max (next, comment.localId + 1);
 	}
 	m_Comments = comments;
-	m_TextBytes = bytes;
+	m_TextUnits = units;
 	m_NextId = next;
 	m_Enabled = enabled;
+	TrimHidden ();
 	++m_Revision;
 	return true;
+}
+
+void TorrentCommentStore::TrimHidden ()
+{
+	size_t hidden = 0;
+	for (const auto & comment : m_Comments)
+		if (comment.hidden) ++hidden;
+	while (hidden > MAX_COMMENT_HIDDEN_COUNT)
+	{
+		auto victim = m_Comments.end ();
+		for (auto it = m_Comments.begin (); it != m_Comments.end (); ++it)
+			if (it->hidden)
+			{
+				victim = it;
+				break;
+			}
+		if (victim == m_Comments.end ()) break;
+		m_Comments.erase (victim);
+		--hidden;
+	}
+}
+
+namespace
+{
+	// A pseudonym cannot inflate the aggregate by posting many rated texts.
+	// Anonymous entries have no stable label and each count separately.
+	template <typename Callback> void ForEachRating (const std::vector<TorrentComment> & comments, Callback callback)
+	{
+		std::set<std::string> seenOwners;
+		for (const auto & comment : comments)
+			if (!comment.hidden && comment.rating)
+			{
+				if (!comment.owner.empty () && !seenOwners.insert (comment.owner).second) continue;
+				callback (comment.rating);
+			}
+	}
 }
 
 size_t TorrentCommentStore::RatingCount () const
 {
 	size_t count = 0;
-	if (m_Enabled)
-		for (const auto & comment : m_Comments)
-			if (!comment.hidden && comment.rating) ++count;
+	if (m_Enabled) ForEachRating (m_Comments, [&count] (uint8_t) { ++count; });
 	return count;
 }
 
@@ -249,12 +366,12 @@ double TorrentCommentStore::AverageRating () const
 {
 	size_t total = 0, count = 0;
 	if (m_Enabled)
-		for (const auto & comment : m_Comments)
-			if (!comment.hidden && comment.rating)
+		ForEachRating (m_Comments,
+			[&total, &count] (uint8_t rating)
 			{
-				total += comment.rating;
+				total += rating;
 				++count;
-			}
+			});
 	return count ? static_cast<double> (total) / count : 0;
 }
 

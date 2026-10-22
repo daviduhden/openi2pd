@@ -62,11 +62,15 @@ namespace torrents
 		CommentsEnable,
 		CommentAdd,
 		CommentHide,
+		CommentUnhide,
 		FilePriority,
+		SetMetaComment,
+		SetCreatedBy,
 		AddMagnet,
 		AddFile,
 		// Re-hashes local data with the storage service before publishing
-		// availability again. Engine-internal: no TUI/IPC encoding exists.
+		// availability again. Exposed as TORRENT-RECHECK; the torrent must be
+		// paused so the verification pass has a stable data set.
 		Recheck
 	};
 
@@ -91,6 +95,7 @@ namespace torrents
 	struct TorrentTrackerInfo
 	{
 		std::string announce;
+		int tier = -1; // -1 = common/default endpoint, otherwise announce-list tier
 		int peers;
 		int seeders;
 		int leechers;
@@ -107,7 +112,12 @@ namespace torrents
 		std::string error;
 		std::string hash;
 		std::string magnet;
+		std::string metaComment;
+		std::string createdBy;
 		uint64_t totalSize;
+		// Selected-file total (priority > 0). totalSize remains the complete
+		// metainfo length so the UI can distinguish skipped bytes.
+		uint64_t wantedSize = 0;
 		uint64_t have;
 		uint64_t downloaded;
 		uint64_t uploaded;
@@ -120,6 +130,7 @@ namespace torrents
 		int leechers;
 		double percent;
 		std::optional<uint64_t> etaSeconds;
+		bool privateTorrent = false;
 		bool commentsEnabled = false;
 		size_t commentCount = 0;
 		size_t ratingCount = 0;

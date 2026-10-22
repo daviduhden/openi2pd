@@ -617,7 +617,8 @@ namespace torrents
 			{ "isFinished",
 				[] (std::shared_ptr<Torrent> torrent) { return boost::json::value (torrent->IsComplete ()); } },
 			{ "sizeWhenDone",
-				[] (std::shared_ptr<Torrent> torrent) { return boost::json::value (torrent->GetLength ()); } },
+				[] (std::shared_ptr<Torrent> torrent)
+				{ return boost::json::value (torrent->GetSelectedWantedBytes ()); } },
 			{ "leftUntilDone",
 				[] (std::shared_ptr<Torrent> torrent) { return boost::json::value (torrent->GetLeft ()); } },
 			{ "rateDownload",
@@ -637,9 +638,10 @@ namespace torrents
 			{ "percentDone",
 				[] (std::shared_ptr<Torrent> torrent)
 				{
-					if (!torrent->GetLength ()) return boost::json::value (0.0);
+					const auto wanted = torrent->GetSelectedWantedBytes ();
+					if (!wanted) return boost::json::value (0.0);
 					return boost::json::value (
-						(float)(torrent->GetLength () - torrent->GetLeft ()) / (float)torrent->GetLength ());
+						(float)torrent->GetSelectedVerifiedBytes () / (float)wanted);
 				} },
 			{ "hashString",
 				[] (std::shared_ptr<Torrent> torrent)
@@ -687,7 +689,8 @@ namespace torrents
 					size_t numFiles = torrent->GetFiles ().size ();
 					if (!numFiles) numFiles = 1;
 					wanted.resize (numFiles);
-					std::fill (wanted.begin (), wanted.end (), 1);
+					for (size_t i = 0; i < torrent->GetFiles ().size (); ++i)
+						wanted[i] = torrent->GetFilePriority (i) > 0 ? 1 : 0;
 					return wanted;
 				} },
 			{ "priorities",
@@ -697,7 +700,8 @@ namespace torrents
 					size_t numFiles = torrent->GetFiles ().size ();
 					if (!numFiles) numFiles = 1;
 					priorities.resize (numFiles);
-					std::fill (priorities.begin (), priorities.end (), 0);
+					for (size_t i = 0; i < torrent->GetFiles ().size (); ++i)
+						priorities[i] = torrent->GetFilePriority (i);
 					return priorities;
 				} },
 			{ "error", [] (std::shared_ptr<Torrent> torrent)
@@ -721,7 +725,7 @@ namespace torrents
 			{ "metadataPercentComplete", [] (std::shared_ptr<Torrent> torrent)
 				{ return boost::json::value (torrent->GetLength () ? 1.0 : 0.0); } },
 			{ "haveValid", [] (std::shared_ptr<Torrent> torrent)
-				{ return boost::json::value (torrent->GetLength () - torrent->GetLeft ()); } },
+				{ return boost::json::value (torrent->GetSelectedVerifiedBytes ()); } },
 			{ "uploadedEver",
 				[] (std::shared_ptr<Torrent> torrent) { return boost::json::value (torrent->GetUploaded ()); } },
 			{ "downloadedEver",

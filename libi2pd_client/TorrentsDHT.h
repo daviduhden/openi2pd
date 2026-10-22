@@ -26,6 +26,7 @@
 #include <list>
 #include <map>
 #include <unordered_map>
+#include <unordered_set>
 #include <algorithm>
 #include <utility>
 #include <optional>
@@ -58,8 +59,10 @@ namespace torrents
 	constexpr int DHT_TORRENT_PEER_EXPIRATION_TIME = 3 * 3600; // in seconds
 	constexpr int DHT_INCOMING_GET_PEERS_TOKEN_EXPIRATION_TIME = 600; // in seconds
 	constexpr int DHT_HEARD_FROM_EXPIRATION_TIME = 330; // in seconds
-	constexpr int DHT_QUERY_EXPIRATION_TIME = 25; // in seconds
-	constexpr int DHT_PEER_FAILURE_INTERVAL = 250; // in seconds
+	// I2P stream/datagram round trips routinely exceed 25 s. Mirror Java's
+	// 75 s class of timeout while keeping a bounded sweep cadence.
+	constexpr int DHT_QUERY_EXPIRATION_TIME = 60; // in seconds
+	constexpr int DHT_PEER_FAILURE_INTERVAL = 600; // in seconds
 	constexpr int DHT_MAX_NUM_GET_PEERS_ATTEMPTS = 22;
 	constexpr int DHT_MAX_NUM_FIND_NODE_ATTEMPTS = 8;
 	constexpr int DHT_MAX_NUM_CLOSEST_NODES_TO_ANNOUNCE = 4;
@@ -73,6 +76,11 @@ namespace torrents
 	constexpr size_t MAX_DHT_FAILED_PEERS = 2048;
 	constexpr size_t MAX_DHT_QUERIES = 2048;
 	constexpr size_t MAX_DHT_REQUEST_NODES = 256;
+	// A compliant reply carries at most k nodes/peer values. Bound the work
+	// and follow-up pings triggered by one hostile response.
+	constexpr size_t MAX_DHT_NODES_PER_RESPONSE = 8; // Kademlia k
+	constexpr size_t MAX_DHT_VALUES_PER_RESPONSE = 64;
+	constexpr size_t MAX_DHT_LOADED_NODES = 2048;
 	constexpr size_t MAX_DHT_REQUEST_TOKENS = 8;
 	constexpr size_t MAX_DHT_QUERY_ORIGINS = 1024;
 	constexpr size_t MAX_DHT_QUERIES_PER_ORIGIN = 64;
@@ -165,9 +173,25 @@ namespace torrents
 		std::vector<std::shared_ptr<Node>> GetClosestNodes (const Torrent::InfoHash & target,
 			size_t count = MAX_BUCKET_CAPACITY, const NodeID * exclude = nullptr) const;
 		Bucket * FindBucket (const Torrent::InfoHash & id) const; // non-owning; valid until the chain is mutated
+		// True when the target maps to the same bucket as our own node ID.
+		// Used by the torrent self-announce rendezvous path.
+		bool IsInOurBucket (const Torrent::InfoHash & id) const
+		{
+			auto bucket = FindBucket (id);
+			if (!bucket) return false;
+			// Match upstream's empty-bucket fallback: an empty leaf is not a
+			// useful rendezvous signal, but a populated successor can be.
+			if (bucket->IsEmpty ())
+			{
+				if (bucket->next && !bucket->next->IsEmpty ()) bucket = bucket->next.get ();
+				else return false;
+			}
+			return bucket->IsInBucket (m_OurNode);
+		}
 
 		std::shared_ptr<Node> AddNode (std::shared_ptr<Node> node);
 		void RemoveNode (const NodeID & id);
+		void RemoveNodeByPeer (const i2p::data::IdentHash & peer);
 		std::list<std::pair<NodeID, Bucket *>> GetExploratoryTargets (
 			std::mt19937 & rng, uint64_t ts); // (target, non-owning node to send find_node to)
 		size_t DeleteExpiredNodes (uint64_t ts);
@@ -204,9 +228,20 @@ namespace torrents
 		DHTTorrent () = default;
 
 		std::string GetBEncodedPeers (bool noSeeds = false, const i2p::data::IdentHash * exclude = nullptr) const;
-		bool AddPeer (const i2p::data::IdentHash & peer, bool seed = false);
+		// local=true reserves one slot for our own rendezvous identity even
+		// when remote announcers have filled the normal per-torrent cap.
+		bool AddPeer (const i2p::data::IdentHash & peer, bool seed = false, bool local = false);
+		bool RemovePeer (const i2p::data::IdentHash & peer);
 		bool CleanUp (uint64_t ts); // return true if empty
 		bool HasPeers (bool noSeeds = false) const;
+		bool IsFresh (uint64_t now, uint64_t lastUpdate, bool seed, bool noSeeds) const
+		{
+			return (!noSeeds || !seed)
+				&& (now < lastUpdate || now - lastUpdate < DHT_TORRENT_PEER_EXPIRATION_TIME);
+		}
+		// Non-expired peers for a rendezvous reuse; copied so callers can
+		// erase/modify the set without touching the DHT map under iteration.
+		std::unordered_set<i2p::data::IdentHash> GetPeers () const;
 
 	private:
 		std::unordered_map<i2p::data::IdentHash, std::pair<uint64_t, bool>> m_Peers; // monotonic update time, seed
@@ -253,6 +288,7 @@ namespace torrents
 		std::set<NodeToken, NodeTokenCmp> tokens; // token received from nodes for get_peers
 		std::set<NodeID> tried;
 		int numAttempts, maxNumAttempts;
+		bool announced = false;
 		std::shared_ptr<Node> lastNode;
 
 		RequestInfo (std::shared_ptr<Torrent> t, int maxNumAttempts1)
@@ -279,6 +315,9 @@ namespace torrents
 		void SetPersistence (LoadState load, SaveState save)
 		{ m_LoadState = std::move (load); m_SaveState = std::move (save); m_DelegatedPersistence = true; }
 		static constexpr size_t MaxStateBytes = 8 * 1024 * 1024;
+		// Legacy flat DHT filename: one component beneath <datadir>/torrents,
+		// no traversal, separators, reserved prefixes or control bytes.
+		static bool IsValidStateFileName (std::string_view name);
 		void Start ();
 		void Stop ();
 
@@ -288,6 +327,9 @@ namespace torrents
 
 		void SendPingQuery (const i2p::data::IdentHash & toIdent, uint16_t toPort);
 		void GetPeersAndAnnounce (std::shared_ptr<Torrent> torrent);
+		// Remove only our own rendezvous identity after stop/remove. Remote
+		// announcers remain until their normal expiry.
+		void Unannounce (const Torrent::InfoHash & infoHash);
 
 		size_t GetNumBuckets () const { return m_RoutingTable ? m_RoutingTable->GetNumBuckets () : 0; }
 		size_t GetNumNodes () const { return m_RoutingTable ? m_RoutingTable->GetNumNodes () : 0; }
@@ -369,8 +411,13 @@ namespace torrents
 		std::unique_ptr<RoutingTable> m_RoutingTable;
 		std::map<NodeID, uint64_t> m_HeardFrom; // nodeid -> time in monotonic seconds
 		std::unordered_map<i2p::data::IdentHash, uint64_t> m_FailedPeers; // peer -> failure time in monotonic seconds
-		std::unordered_map<GetPeersToken, std::pair<std::shared_ptr<Node>, uint64_t>>
-			m_IncomingTokens; // token ->(node, time in monotonic second)
+		struct IncomingToken
+		{
+			std::shared_ptr<Node> node;
+			Torrent::InfoHash infoHash;
+			uint64_t time; // monotonic seconds
+		};
+		std::unordered_map<GetPeersToken, IncomingToken> m_IncomingTokens;
 		// transactionID -> (ident, port, query,  request info, time in monotonic seconds)
 		std::unordered_map<uint64_t,
 			std::tuple<i2p::data::IdentHash, uint16_t, KRPCQuery, std::shared_ptr<RequestInfo>, uint64_t>>
