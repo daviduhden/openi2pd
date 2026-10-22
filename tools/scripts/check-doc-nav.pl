@@ -13,14 +13,14 @@ use warnings;
 use File::Find qw(find);
 use File::Spec;
 
-my $root = shift @ARGV // '.';
-my $docs = File::Spec->catdir($root, 'docs');
-my $config = File::Spec->catfile($docs, 'mkdocs.yml');
+my $root   = shift @ARGV // '.';
+my $docs   = File::Spec->catdir( $root, 'docs' );
+my $config = File::Spec->catfile( $docs, 'mkdocs.yml' );
 die "missing $config\n" unless -f $config;
 
 open my $fh, '<', $config or die "open $config: $!\n";
-my (@nav, $in_nav);
-while (my $line = <$fh>) {
+my ( @nav, $in_nav );
+while ( my $line = <$fh> ) {
     $in_nav = 1 if $line =~ /^nav:\s*$/;
     last if $in_nav && $line =~ /^\S/ && $line !~ /^nav:/;
     next unless $in_nav;
@@ -30,45 +30,61 @@ close $fh;
 
 my @missing;
 for my $entry (@nav) {
-    my $path = File::Spec->catfile($docs, split m{/}, $entry);
+    my $path = File::Spec->catfile( $docs, split m{/}, $entry );
     push @missing, "nav target missing: $entry" unless -f $path;
 }
 
 my %navigated = map { $_ => 1 } @nav;
-my %allowed = map { $_ => 1 } qw(
-    README.md
-    UPSTREAM-README.md
-    file-headers.md
-    assets/README.md
-    assets/branding/colors.md
-    devs/building/ios.md
-    devs/building/qt-desktop-gui.md
-    devs/building/haikuos.md
+my %allowed   = map { $_ => 1 } qw(
+  README.md
+  UPSTREAM-README.md
+  file-headers.md
+  assets/README.md
+  assets/branding/colors.md
+  devs/building/ios.md
+  devs/building/qt-desktop-gui.md
+  devs/building/haikuos.md
 );
 my @unlisted;
-find({
-    no_chdir => 1,
-    wanted => sub {
-        return unless -f $_ && /\.md\z/;
-        my $rel = File::Spec->abs2rel($File::Find::name, $docs);
-        push @unlisted, $rel unless $navigated{$rel} || $allowed{$rel};
+find(
+    {
+        no_chdir => 1,
+        wanted   => sub {
+            return unless -f $_ && /\.md\z/;
+            my $rel = File::Spec->abs2rel( $File::Find::name, $docs );
+            push @unlisted, $rel unless $navigated{$rel} || $allowed{$rel};
+        },
     },
-}, $docs);
+    $docs
+);
 
 my @html;
-find({
-    no_chdir => 1,
-    wanted => sub { push @html, $File::Find::name if -f $_ && /\.(?:html?|xhtml)\z/i; },
-}, $docs);
+find(
+    {
+        no_chdir => 1,
+        wanted   => sub {
+            push @html, $File::Find::name if -f $_ && /\.(?:html?|xhtml)\z/i;
+        },
+    },
+    $docs
+);
 
 for my $asset (qw(img/logo.png img/favicon.ico)) {
     push @missing, "theme asset missing: $asset"
-        unless -f File::Spec->catfile($docs, split m{/}, $asset);
+      unless -f File::Spec->catfile( $docs, split m{/}, $asset );
 }
 
-for my $problem (@missing, map { "unlisted Markdown: $_" } @unlisted,
-    map { "HTML documentation remains: $_" } @html) {
+for my $problem (
+    @missing,
+    map { "unlisted Markdown: $_" } @unlisted,
+    map { "HTML documentation remains: $_" } @html
+  )
+{
     print STDERR "$problem\n";
 }
 exit 1 if @missing || @unlisted || @html;
-print "Documentation navigation OK (" . scalar(@nav) . " entries, " . scalar(@unlisted) . " allowlisted)\n";
+print "Documentation navigation OK ("
+  . scalar(@nav)
+  . " entries, "
+  . scalar(@unlisted)
+  . " allowlisted)\n";

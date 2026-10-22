@@ -19,10 +19,10 @@ my $docs = shift @ARGV // 'docs';
 $docs =~ s{/+$}{};
 die "documentation directory not found: $docs\n" unless -d $docs;
 
-my $root = abs_path($docs) or die "cannot resolve $docs\n";
-my $repo_root = abs_path(File::Spec->catdir($root, File::Spec->updir));
+my $root      = abs_path($docs) or die "cannot resolve $docs\n";
+my $repo_root = abs_path( File::Spec->catdir( $root, File::Spec->updir ) );
 die "cannot resolve repository root\n" unless defined $repo_root;
-my $repo_prefix = File::Spec->catdir($repo_root, 'x');
+my $repo_prefix = File::Spec->catdir( $repo_root, 'x' );
 $repo_prefix =~ s/x\z//;
 my @files;
 find(
@@ -61,7 +61,7 @@ sub anchors_for {
     my $add_heading = sub {
         my ($heading) = @_;
         my $explicit;
-        if ($heading =~ s/\s*\{#([A-Za-z0-9_.:-]+)\}\s*\z//) {
+        if ( $heading =~ s/\s*\{#([A-Za-z0-9_.:-]+)\}\s*\z// ) {
             $explicit = $1;
         }
         $anchors{$explicit} = 1 if defined $explicit;
@@ -77,16 +77,19 @@ sub anchors_for {
     };
     my $in_fence = 0;
     my $previous = '';
-    while (my $line = <$fh>) {
+    while ( my $line = <$fh> ) {
         $in_fence = !$in_fence if $line =~ /^\s*(?:```|~~~)/;
-        next if $in_fence;
-        if ($line =~ /^\s{0,3}#{1,6}\s+(.+?)\s*\z/) {
+        next                   if $in_fence;
+        if ( $line =~ /^\s{0,3}#{1,6}\s+(.+?)\s*\z/ ) {
             $add_heading->($1);
             $previous = '';
             next;
         }
-        if ($line =~ /^\s{0,3}(?:=+|-+)\s*\z/ && $previous =~ /\S/
-            && $previous !~ /^\s*(?:[-*+]|\d+\.)\s/ && $previous !~ /^\s*\|/) {
+        if (   $line =~ /^\s{0,3}(?:=+|-+)\s*\z/
+            && $previous =~ /\S/
+            && $previous !~ /^\s*(?:[-*+]|\d+\.)\s/
+            && $previous !~ /^\s*\|/ )
+        {
             $add_heading->($previous);
             $previous = '';
             next;
@@ -100,15 +103,15 @@ sub anchors_for {
 
 my @missing;
 my @missing_anchors;
-for my $file (sort @files) {
+for my $file ( sort @files ) {
     open my $fh, '<', $file or die "cannot read $file: $!\n";
-    my $in_fence = 0;
+    my $in_fence    = 0;
     my $line_number = 0;
-    while (my $line = <$fh>) {
+    while ( my $line = <$fh> ) {
         ++$line_number;
         $in_fence = !$in_fence if $line =~ /^\s*(?:```|~~~)/;
-        next if $in_fence;
-        while ($line =~ /!?\[[^\]]*\]\(\s*([^)\s]+)(?:\s+"[^"]*")?\s*\)/g) {
+        next                   if $in_fence;
+        while ( $line =~ /!?\[[^\]]*\]\(\s*([^)\s]+)(?:\s+"[^"]*")?\s*\)/g ) {
             my $target = $1;
             next if $target =~ m{\A(?:[a-z][a-z0-9+.-]*:|//)}i;
 
@@ -116,56 +119,63 @@ for my $file (sort @files) {
             $fragment = $1 if $target =~ /#(.*)\z/;
             $target =~ s/[?#].*\z//;
             $target =~ s/%([0-9A-Fa-f]{2})/chr(hex($1))/ge;
-            if ($target =~ /\0/) {
+            if ( $target =~ /\0/ ) {
                 push @missing, "$file:$line_number: $target (NUL in target)";
                 next;
             }
 
             my $path;
-            if ($target eq '') {
+            if ( $target eq '' ) {
                 $path = File::Spec->rel2abs($file);
-            } elsif ($target =~ m{\A/}) {
-                $path = File::Spec->catfile($root, split m{/}, substr($target, 1));
-            } else {
-                my (undef, $dir) = File::Spec->splitpath(File::Spec->rel2abs($file));
-                $path = File::Spec->catfile($dir, split m{/}, $target);
+            }
+            elsif ( $target =~ m{\A/} ) {
+                $path = File::Spec->catfile( $root, split m{/},
+                    substr( $target, 1 ) );
+            }
+            else {
+                my ( undef, $dir ) =
+                  File::Spec->splitpath( File::Spec->rel2abs($file) );
+                $path = File::Spec->catfile( $dir, split m{/}, $target );
             }
             my $resolved = abs_path($path);
             $resolved = File::Spec->canonpath($path) unless defined $resolved;
-            if (index($resolved, $repo_prefix) != 0) {
-                push @missing, "$file:$line_number: $target (escapes repository)";
+            if ( index( $resolved, $repo_prefix ) != 0 ) {
+                push @missing,
+                  "$file:$line_number: $target (escapes repository)";
                 next;
             }
-            unless (-e $resolved) {
+            unless ( -e $resolved ) {
                 push @missing, "$file:$line_number: $target";
                 next;
             }
-            if (defined $fragment && $fragment ne '' && $path =~ /\.md\z/) {
+            if ( defined $fragment && $fragment ne '' && $path =~ /\.md\z/ ) {
                 my $anchors = anchors_for($path);
                 push @missing_anchors, "$file:$line_number: $target#$fragment"
-                    unless $anchors->{$fragment};
+                  unless $anchors->{$fragment};
             }
         }
-        while ($line =~ /<img\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/gi) {
+        while ( $line =~ /<img\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/gi ) {
             my $target = $1;
             next if $target =~ m{\A(?:[a-z][a-z0-9+.-]*:|//|\#)}i;
             $target =~ s/[?#].*\z//;
             next if $target eq '';
             $target =~ s/%([0-9A-Fa-f]{2})/chr(hex($1))/ge;
-            if ($target =~ /\0/) {
+            if ( $target =~ /\0/ ) {
                 push @missing, "$file:$line_number: $target (NUL in target)";
                 next;
             }
-            my (undef, $dir) = File::Spec->splitpath(File::Spec->rel2abs($file));
-            my $path = $target =~ m{\A/}
-                ? File::Spec->catfile($root, split m{/}, substr($target, 1))
-                : File::Spec->catfile($dir, split m{/}, $target);
+            my ( undef, $dir ) =
+              File::Spec->splitpath( File::Spec->rel2abs($file) );
+            my $path =
+              $target =~ m{\A/}
+              ? File::Spec->catfile( $root, split m{/}, substr( $target, 1 ) )
+              : File::Spec->catfile( $dir,  split m{/}, $target );
             my $resolved = abs_path($path);
             $resolved = File::Spec->canonpath($path) unless defined $resolved;
             push @missing, "$file:$line_number: $target (escapes repository)"
-                if index($resolved, $repo_prefix) != 0;
+              if index( $resolved, $repo_prefix ) != 0;
             push @missing, "$file:$line_number: $target"
-                if index($resolved, $repo_prefix) == 0 && !-e $resolved;
+              if index( $resolved, $repo_prefix ) == 0 && !-e $resolved;
         }
     }
     close $fh;
@@ -179,7 +189,9 @@ if (@missing_anchors) {
     print STDERR "Missing documentation anchors:\n";
     print STDERR "  $_\n" for @missing_anchors;
 }
-if (@missing || @missing_anchors) {
+if ( @missing || @missing_anchors ) {
     exit 1;
 }
-print "Documentation links and anchors OK (" . scalar(@files) . " Markdown files)\n";
+print "Documentation links and anchors OK ("
+  . scalar(@files)
+  . " Markdown files)\n";

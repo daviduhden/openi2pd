@@ -16,21 +16,24 @@ use FindBin qw($Bin);
 use File::Spec;
 use Test::More;
 
-my $script = File::Spec->catfile($Bin, File::Spec->updir, 'scripts', 'validate-branding.pl');
-ok(-f $script, 'validate-branding.pl exists');
+my $script = File::Spec->catfile( $Bin, File::Spec->updir, 'scripts',
+    'validate-branding.pl' );
+ok( -f $script, 'validate-branding.pl exists' );
 
-my $opened = open(my $fh, '-|', $^X, $script);
-ok($opened, 'validator starts');
+my $opened = open( my $fh, '-|', $^X, $script );
+ok( $opened, 'validator starts' );
 my $output = '';
-if (!$opened) {
+if ( !$opened ) {
     fail('validator exits successfully');
     fail('validator reports success');
-} else {
+}
+else {
     local $/;
     $output = <$fh>;
     my $closed = close $fh;
-    is($closed ? 0 : ($? >> 8), 0, 'validator exits successfully');
-    like($output, qr/branding validation passed/, 'validator reports success');
+    is( $closed ? 0 : ( $? >> 8 ), 0, 'validator exits successfully' );
+    like( $output, qr/branding validation passed/,
+        'validator reports success' );
 }
 
 done_testing();
