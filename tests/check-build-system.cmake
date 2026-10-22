@@ -162,14 +162,21 @@ assert_present("${top_cmake_text}" "PATH_VARS CMAKE_INSTALL_INCLUDEDIR"
 assert_present("${top_cmake_text}" "lib/systemd/system" "systemd units need an architecture-independent path")
 assert_absent("${top_cmake_text}" "CMAKE_INSTALL_LIBDIR}/systemd/system"
   "systemd unit destination must not use multiarch LIBDIR")
-assert_absent("${top_cmake_text}" "find_package(Boost 1.81 REQUIRED COMPONENTS json url)"
-  "header-only Boost.JSON/URL must not be requested as compiled components")
+assert_present("${top_cmake_text}" "find_package(Boost 1.81 REQUIRED COMPONENTS program_options json url)"
+  "torrent builds require the compiled Boost.JSON/URL components")
+assert_present("${top_cmake_text}" "target_link_libraries(libi2pdclient PRIVATE Boost::json Boost::url)"
+  "torrent RPC must link the Boost.JSON/URL implementations")
+read_required("${PROJECT_ROOT}/build/cmake/i2pdConfig.cmake" package_config_text)
+assert_present("${package_config_text}" "@I2PD_BOOST_MIN_VERSION@ COMPONENTS @I2PD_BOOST_COMPONENTS@"
+  "installed consumers must discover the configured Boost components")
 assert_absent("${top_cmake_text}" "set(CMAKE_MODULE_PATH"
   "CMake module path must be prepended rather than overwritten")
 assert_present("${top_cmake_text}" "CMAKE_GENERATOR MATCHES \"Makefiles"
   "OpenBSD must reject the Unix Makefiles generator")
 assert_present("${top_cmake_text}" "BOOST_ASIO_HAS_SNPRINTF=1"
   "Boost.Asio scope-ID formatting must select the bounded snprintf path")
+assert_present("${tests_cmake_text}" "test-boost-linkage"
+  "compiled Boost.JSON/URL dependencies need a link regression")
 assert_absent("${top_cmake_text}" "OPENSSL_SUPPRESS_DEPRECATED"
   "CMake still suppresses OpenSSL deprecation diagnostics")
 assert_absent("${famtool_text}" "OPENSSL_SUPPRESS_DEPRECATED"
@@ -314,9 +321,9 @@ foreach(_source IN LISTS _i2pd_fuzz_sources)
 endforeach()
 
 # The RPM specs must not invoke GNU make or Ninja directly: they build through
-# cmake --build and pin the Ninja generator explicitly. Boost.JSON/URL are
-# header-only but some Fedora releases package their headers separately, so the
-# guarded build requirements must keep a defined distro-macro test.
+# cmake --build and pin the Ninja generator explicitly. Some Fedora releases
+# package the required Boost.JSON/URL libraries separately, so the guarded
+# build requirements must keep a defined distro-macro test.
 foreach(_rpm_text IN ITEMS "${rpm_text}" "${rpm_git_text}")
   assert_absent("${_rpm_text}" "_smp_mflags" "RPM spec uses make/ninja directly")
   assert_absent("${_rpm_text}" "%make_build" "RPM spec uses %make_build")

@@ -97,6 +97,9 @@ Ask for exact paths and package names. Do not let them run `dpkg-buildpackage`,
 
 ## Known issues and decisions
 
+- Torrent-enabled Docker runtimes require `boost-json` and `boost-url` shared
+  libraries as well as `boost-program_options`; JSON/URL are compiled
+  dependencies, not automatically header-only implementations.
 - Debian `i2pd`/`i2pd-tui` ownership, TUI desktop assets, systemd
   sysusers/tmpfiles and OpenBSD `/var/i2pd` vs Linux `/var/lib/i2pd` paths are
   deliberate. Preserve administrator modes/ownership on upgrade.

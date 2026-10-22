@@ -243,12 +243,21 @@ jobs:
           set(CMAKE_CXX_STANDARD 23)
           find_package(i2pd CONFIG REQUIRED)
           add_executable(consumer main.cpp)
-          target_link_libraries(consumer PRIVATE i2pd::libi2pd)
+          target_link_libraries(consumer PRIVATE i2pd::libi2pdclient)
           EOF
-          printf '#include "Log.h"\nint main(){ return 0; }\n' > "$consumer/main.cpp"
+          cat > "$consumer/main.cpp" <<'EOF'
+          #include <boost/json.hpp>
+          #include <boost/url.hpp>
+          int main() {
+            const auto value = boost::json::parse("{}");
+            const auto url = boost::urls::parse_uri("http://tracker.i2p/announce");
+            return value.is_object() && url ? 0 : 1;
+          }
+          EOF
           cmake -S "$consumer" -B "$consumer/build" -G Ninja \
             -DCMAKE_PREFIX_PATH="$prefix" -DCMAKE_BUILD_TYPE=Release
           cmake --build "$consumer/build" --parallel 2
+          "$consumer/build/consumer"
       - name: Stage installed component tree
         if: always()
         run: |

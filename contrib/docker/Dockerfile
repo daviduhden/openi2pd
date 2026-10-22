@@ -21,7 +21,7 @@ FROM alpine:latest
 LABEL org.opencontainers.image.title="openi2pd"
 LABEL org.opencontainers.image.source="https://github.com/daviduhden/openi2pd"
 LABEL org.opencontainers.image.licenses="BSD-3-Clause"
-RUN apk add --no-cache boost-program_options openssl miniupnpc zlib libstdc++ \
+RUN apk add --no-cache boost-program_options boost-json boost-url openssl miniupnpc zlib libstdc++ \
     && adduser -S -h /home/i2pd i2pd \
     && mkdir -p /home/i2pd/data \
     && chown -R i2pd:nobody /home/i2pd

@@ -133,5 +133,5 @@ assert_contains("${openbsd_plist}" "share/i2pd/certificates"
   "OpenBSD PLIST must ship the certificate tree")
 
 assert_contains("${docker}" " zlib " "container runtime must install zlib")
-assert_absent("${docker}" "boost-json" "container runtime must not install header-only Boost.JSON")
-assert_absent("${docker}" "boost-url" "container runtime must not install header-only Boost.URL")
+assert_contains("${docker}" "boost-json" "container runtime must install the Boost.JSON library")
+assert_contains("${docker}" "boost-url" "container runtime must install the Boost.URL library")

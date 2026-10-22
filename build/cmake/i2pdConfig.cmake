@@ -13,7 +13,7 @@
 
 include(CMakeFindDependencyMacro)
 find_dependency(Threads)
-find_dependency(Boost 1.74 COMPONENTS program_options)
+find_dependency(Boost @I2PD_BOOST_MIN_VERSION@ COMPONENTS @I2PD_BOOST_COMPONENTS@)
 find_dependency(OpenSSL)
 find_dependency(ZLIB)
 

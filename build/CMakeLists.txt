@@ -189,32 +189,15 @@ set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 
 if(WITH_TORRENTS)
-  # Boost.JSON and Boost.URL are header-only and have no compiled component
-  # libraries; requesting them as find_package components breaks module-mode
-  # discovery (notably Android vcpkg). Link Boost::headers and verify the
-  # headers explicitly so a missing dependency fails at configure time.
-  find_package(Boost 1.81 REQUIRED COMPONENTS program_options)
-  include(CheckIncludeFileCXX)
-  set(_i2pd_saved_required_includes "${CMAKE_REQUIRED_INCLUDES}")
-  set(_i2pd_saved_try_compile_target_type "${CMAKE_TRY_COMPILE_TARGET_TYPE}")
-  set(CMAKE_REQUIRED_INCLUDES ${Boost_INCLUDE_DIRS})
-  set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
-  check_include_file_cxx("boost/json.hpp" I2PD_HAVE_BOOST_JSON)
-  check_include_file_cxx("boost/url.hpp" I2PD_HAVE_BOOST_URL)
-  set(CMAKE_REQUIRED_INCLUDES "${_i2pd_saved_required_includes}")
-  if(_i2pd_saved_try_compile_target_type)
-    set(CMAKE_TRY_COMPILE_TARGET_TYPE "${_i2pd_saved_try_compile_target_type}")
-  else()
-    unset(CMAKE_TRY_COMPILE_TARGET_TYPE)
-  endif()
-  unset(_i2pd_saved_required_includes)
-  unset(_i2pd_saved_try_compile_target_type)
-  if(NOT I2PD_HAVE_BOOST_JSON OR NOT I2PD_HAVE_BOOST_URL)
-    message(FATAL_ERROR
-      "Boost 1.81+ json.hpp and url.hpp headers are required when WITH_TORRENTS=ON")
-  endif()
+  # JSON and URL declare out-of-line symbols. We use their compiled libraries,
+  # rather than including either library's src.hpp in a project source file.
+  find_package(Boost 1.81 REQUIRED COMPONENTS program_options json url)
+  set(I2PD_BOOST_MIN_VERSION 1.81)
+  set(I2PD_BOOST_COMPONENTS program_options json url)
 else()
   find_package(Boost 1.74 REQUIRED COMPONENTS program_options)
+  set(I2PD_BOOST_MIN_VERSION 1.74)
+  set(I2PD_BOOST_COMPONENTS program_options)
 endif()
 find_package(OpenSSL REQUIRED COMPONENTS Crypto SSL)
 # LibreSSL deliberately keeps OPENSSL_VERSION_NUMBER frozen at 0x20000000
@@ -670,9 +653,9 @@ target_link_libraries(libi2pdclient PRIVATE $<BUILD_INTERFACE:i2pd_warnings>)
 i2pd_enable_sanitizers(libi2pdclient)
 if(NOT WITH_TORRENTS)
   target_compile_definitions(libi2pdclient PUBLIC NO_TORRENTS)
+else()
+  target_link_libraries(libi2pdclient PRIVATE Boost::json Boost::url)
 endif()
-# Boost.JSON and Boost.URL are header-only. Their headers are provided by
-# Boost::headers; do not export a nonexistent compiled-library dependency.
 
 add_library(libi2pdlang STATIC ${LANG_SOURCES})
 set_target_properties(libi2pdlang PROPERTIES PREFIX "" POSITION_INDEPENDENT_CODE ON)

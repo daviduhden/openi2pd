@@ -92,6 +92,10 @@ build.
 
 ## Known issues and decisions
 
+- Boost.JSON and Boost.URL require compiled implementations: torrent builds
+  link `Boost::json`/`Boost::url`, and the installed config re-finds the same
+  enabled components. Header discovery alone cannot establish link closure.
+  `test-boost-linkage` and the manual installed-consumer lane cover both paths.
 - `language-modernization-static` is a compile-free but literal contract: it
   pins C++23/Java 25 levels, `minSdk 29`, the availability matrix and named
   seams (`Modern.h`, `ITransportConnector`, `jthread`/`stop_token`,

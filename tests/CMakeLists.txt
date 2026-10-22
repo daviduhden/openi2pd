@@ -174,6 +174,10 @@ set(I2PD_TESTS
   test-ntp-timesync-lifecycle
 )
 
+if(WITH_TORRENTS)
+  list(APPEND I2PD_TESTS test-boost-linkage)
+endif()
+
 if(UNIX)
   # Portable Unix IPC/protocol tests. Platform-specific sandbox/transport
   # tests are registered only below; the source files also contain stubs, but
@@ -210,6 +214,9 @@ endif()
 
 foreach(test IN LISTS I2PD_TESTS)
   i2pd_add_test(${test})
+  if(test STREQUAL "test-boost-linkage")
+    set_property(TEST ${test} APPEND PROPERTY LABELS "ci;torrent")
+  endif()
   if(test STREQUAL "test-torrent-storage-worker" OR test STREQUAL "test-torrent-storage-openbsd" OR test STREQUAL "test-torrent-storage-lifecycle" OR test STREQUAL "test-torrents-dht-persistence" OR test STREQUAL "test-router-storage")
     target_link_libraries(${test} PRIVATE i2pd_privsep)
     set_tests_properties(${test} PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 120)

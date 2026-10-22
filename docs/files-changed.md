@@ -1059,7 +1059,7 @@ No compiler, TSan/ASan, fuzzer, device or live-peer run was performed.
 | Paths | Change |
 |---|---|
 | `Makefile`, `tests/Makefile`, `build/CMakePresets.json` | POSIX phony targets, `all` default, build-before-install, `DESTDIR`/`PREFIX`, safe clean guard, Ninja presets. |
-| `build/CMakeLists.txt`, `build/cmake/i2pdConfig.cmake` | CMake 3.24, OpenBSD Unix-Makefiles rejection, `Development` install components, relocatable `configure_package_config_file` includes, non-multiarch systemd path, docs outside `WITH_BINARY`, explicit Unix TUI dependency, Boost::headers/header-only JSON/URL modelling, top-level fuzz option, MSVC static suffix. |
+| `build/CMakeLists.txt`, `build/cmake/i2pdConfig.cmake` | CMake 3.24, OpenBSD Unix-Makefiles rejection, `Development` install components, relocatable `configure_package_config_file` includes, non-multiarch systemd path, docs outside `WITH_BINARY`, explicit Unix TUI dependency, Boost::headers plus compiled JSON/URL dependencies (the earlier header-only model is corrected by the static build audit), top-level fuzz option, MSVC static suffix. |
 | `android/app/src/main/cpp/CMakeLists.txt` | Align the Android wrapper with the CMake 3.24 floor. |
 | `build/build_mingw.cmd`, `contrib/rpm/*.spec`, `contrib/static/package.sh`, `contrib/docker/Dockerfile`, `.dockerignore`, `debian/control` | Root-safe Windows helper without in-place config rewriting, Ninja/Boost RPM requirements, removed old Fedora/Mageia build-dir branches and ENGINE dependency, fixed cert/static paths, Docker zlib and context hygiene. |
 | `tests/check-build-system.cmake`, `tests/check-packaging.cmake`, `.github/workflows/*` | Static packaging assertions and manual component/consumer, POSIX-make, OpenBSD TUI and instrumented-fuzz CI paths. |
