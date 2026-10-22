@@ -57,7 +57,10 @@ LinuxIsolationSupport ProbeLinuxIsolation ()
 #include <linux/audit.h>
 #include <linux/capability.h>
 #include <linux/filter.h>
+#if __has_include(<linux/landlock.h>)
 #include <linux/landlock.h>
+#define I2PD_LANDLOCK_HEADERS_AVAILABLE 1
+#endif
 #include <linux/magic.h>
 #include <linux/seccomp.h>
 #include <sched.h>
@@ -84,6 +87,39 @@ namespace i2p::privsep
 #endif
 namespace
 {
+#ifdef I2PD_LANDLOCK_HEADERS_AVAILABLE
+	// Linux UAPI linux/landlock.h: ABI 2 adds REFER (bit 13), ABI 3 adds
+	// TRUNCATE (bit 14), and ABI 4 appends handled_access_net with TCP bits
+	// 0 (bind) and 1 (connect). Keep the exact extensible syscall layout here
+	// so older distribution headers do not dictate the running kernel's policy.
+	// The kernel accepts a zero extension on older ABIs; masks below include
+	// each right only when the probed kernel ABI supports it.
+	struct LandlockRulesetAttributes
+	{
+		uint64_t handled_access_fs = 0;
+		uint64_t handled_access_net = 0;
+	};
+	static_assert (sizeof (LandlockRulesetAttributes) == 16);
+	static_assert (offsetof (LandlockRulesetAttributes, handled_access_net) == 8);
+	constexpr uint64_t LandlockFsRefer = uint64_t {1} << 13;
+	constexpr uint64_t LandlockFsTruncate = uint64_t {1} << 14;
+	constexpr uint64_t LandlockNetBindTcp = uint64_t {1} << 0;
+	constexpr uint64_t LandlockNetConnectTcp = uint64_t {1} << 1;
+	static_assert (offsetof (landlock_ruleset_attr, handled_access_fs)
+		== offsetof (LandlockRulesetAttributes, handled_access_fs));
+#ifdef LANDLOCK_ACCESS_FS_REFER
+	static_assert (LandlockFsRefer == LANDLOCK_ACCESS_FS_REFER);
+#endif
+#ifdef LANDLOCK_ACCESS_FS_TRUNCATE
+	static_assert (LandlockFsTruncate == LANDLOCK_ACCESS_FS_TRUNCATE);
+#endif
+#if defined(LANDLOCK_ACCESS_NET_BIND_TCP) && defined(LANDLOCK_ACCESS_NET_CONNECT_TCP)
+	static_assert (LandlockNetBindTcp == LANDLOCK_ACCESS_NET_BIND_TCP);
+	static_assert (LandlockNetConnectTcp == LANDLOCK_ACCESS_NET_CONNECT_TCP);
+	static_assert (offsetof (landlock_ruleset_attr, handled_access_net)
+		== offsetof (LandlockRulesetAttributes, handled_access_net));
+#endif
+
 	long LandlockCreateRuleset (void * attr, size_t size, uint32_t flags)
 	{
 #ifdef SYS_landlock_create_ruleset
@@ -131,8 +167,8 @@ namespace
 			| LANDLOCK_ACCESS_FS_MAKE_CHAR | LANDLOCK_ACCESS_FS_MAKE_DIR | LANDLOCK_ACCESS_FS_MAKE_REG
 			| LANDLOCK_ACCESS_FS_MAKE_SOCK | LANDLOCK_ACCESS_FS_MAKE_FIFO | LANDLOCK_ACCESS_FS_MAKE_BLOCK
 			| LANDLOCK_ACCESS_FS_MAKE_SYM;
-		if (abi >= 2) mask |= LANDLOCK_ACCESS_FS_REFER;
-		if (abi >= 3) mask |= LANDLOCK_ACCESS_FS_TRUNCATE;
+		if (abi >= 2) mask |= LandlockFsRefer;
+		if (abi >= 3) mask |= LandlockFsTruncate;
 		return mask;
 	}
 
@@ -142,12 +178,13 @@ namespace
 		// caller must either deny socket creation (storage) or explicitly
 		// accept that Landlock cannot constrain UDP.
 		uint64_t mask = 0;
-		if (abi >= 4) mask |= LANDLOCK_ACCESS_NET_BIND_TCP | LANDLOCK_ACCESS_NET_CONNECT_TCP;
+		if (abi >= 4) mask |= LandlockNetBindTcp | LandlockNetConnectTcp;
 #ifdef I2PD_LANDLOCK_HAS_UDP
 		if (abi >= 10) mask |= LANDLOCK_ACCESS_NET_BIND_UDP | LANDLOCK_ACCESS_NET_CONNECT_SEND_UDP;
 #endif
 		return mask;
 	}
+#endif
 
 	i2p::expected<void, std::string> DropCapabilities ()
 	{
@@ -286,6 +323,12 @@ namespace
 
 	i2p::expected<void, std::string> ApplyLandlock (const LinuxSandboxProfile & profile)
 	{
+#ifndef I2PD_LANDLOCK_HEADERS_AVAILABLE
+		(void)profile;
+		// Missing build headers must never turn a requested boundary into an
+		// unenforced success, even when optional kernel probing was requested.
+		return i2p::unexpected ("Landlock build headers are unavailable");
+#else
 		const long abi = LandlockCreateRuleset (nullptr, 0, LANDLOCK_CREATE_RULESET_VERSION);
 		if (abi < 0)
 		{
@@ -293,7 +336,7 @@ namespace
 				return i2p::unexpected (std::string ("landlock_create_ruleset(version): ") + strerror (errno));
 			return { };
 		}
-		struct landlock_ruleset_attr ruleset { };
+		LandlockRulesetAttributes ruleset;
 		ruleset.handled_access_fs = FilesystemWriteMask (abi);
 		if (profile.restrictFilesystemReads)
 			ruleset.handled_access_fs |= LANDLOCK_ACCESS_FS_READ_FILE | LANDLOCK_ACCESS_FS_READ_DIR;
@@ -335,9 +378,7 @@ namespace
 					// regular file and make landlock_add_rule fail with EINVAL.
 					beneath.allowed_access = LANDLOCK_ACCESS_FS_WRITE_FILE;
 					if (profile.restrictFilesystemReads) beneath.allowed_access |= LANDLOCK_ACCESS_FS_READ_FILE;
-#ifdef LANDLOCK_ACCESS_FS_TRUNCATE
-					if (abi >= 3) beneath.allowed_access |= LANDLOCK_ACCESS_FS_TRUNCATE;
-#endif
+					if (abi >= 3) beneath.allowed_access |= LandlockFsTruncate;
 				}
 				beneath.parent_fd = pathFd;
 				if (LandlockAddRule (rulesetFd, LANDLOCK_RULE_PATH_BENEATH, &beneath, 0) != 0)
@@ -358,6 +399,7 @@ namespace
 			return i2p::unexpected (std::string ("landlock restriction: ") + strerror (errno));
 		}
 		return { };
+#endif
 	}
 }
 
@@ -512,6 +554,7 @@ i2p::expected<void, std::string> ApplyLinuxCgroupV2Limits (const LinuxCgroupV2Li
 LinuxIsolationSupport ProbeLinuxIsolation ()
 {
 	LinuxIsolationSupport support;
+#ifdef I2PD_LANDLOCK_HEADERS_AVAILABLE
 	const long abi = LandlockCreateRuleset (nullptr, 0, LANDLOCK_CREATE_RULESET_VERSION);
 	if (abi >= 0)
 	{
@@ -520,6 +563,7 @@ LinuxIsolationSupport ProbeLinuxIsolation ()
 		support.tcpNetwork = abi >= 4;
 		support.udpNetwork = abi >= 10;
 	}
+#endif
 #ifdef SECCOMP_MODE_FILTER
 	support.seccompFilter = SeccompArchitecture () != 0;
 #else

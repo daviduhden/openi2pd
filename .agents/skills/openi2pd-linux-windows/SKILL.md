@@ -93,6 +93,10 @@ execution. Ask for:
 
 ## Known issues and decisions
 
+- Linux build-header age and runtime Landlock ABI are independent. The sandbox
+  uses the stable extensible two-u64 ruleset layout and runtime-gated rights,
+  with compile-time checks against available UAPI declarations. Absent base
+  Landlock headers reject sandbox installation rather than bypass it.
 - Windows has a named-pipe worker transport and restricted-token/Job policy, but
   no `--privsep-worker` daemon wiring, AppContainer/LPAC token construction or
   per-role WFP/ACL enforcement. Do not claim Windows separation.

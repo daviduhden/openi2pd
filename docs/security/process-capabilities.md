@@ -209,3 +209,14 @@ isolation, SELinux domains and service lifecycle make a desktop-style worker
 split non-trivial. Current app changes remove broad storage permissions and the
 WebView console; full worker separation is a documented platform limitation, not
 a claimed guarantee.
+
+## Linux build headers and Landlock ABI
+
+The compile-time Linux UAPI version and the running kernel's Landlock ABI are
+independent. `LinuxSandbox.cpp` uses the stable two-u64 extensible ruleset
+layout, with runtime-gated REFER/TRUNCATE/TCP rights and compile-time assertions
+against constants and offsets exposed by installed headers. Missing base
+Landlock headers produce an explicit sandbox-installation error. They never
+convert requested confinement into success. UDP rights remain conditional on
+available build-header declarations. Old/new header and kernel combinations
+are pending manual CI; see [the static build audit](../static-build-audit.md).
