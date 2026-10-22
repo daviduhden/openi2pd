@@ -108,7 +108,7 @@ workflow, run `gh`, build or test.
 
 - The installed-consumer lane links `i2pd::libi2pdclient` and calls compiled
   Boost.JSON/URL APIs; merely including a core header misses dependency
-  closure failures.
+  closure failures. MSYS2 also enables `WITH_HARDENING` to exercise PE flags.
 - Manual dispatch must target the published revision. Remote results never
   validate the local uncommitted worktree; record revision, run ID and outcome.
 - `skills-static` runs the Agent Skills and language-modernization checks

@@ -522,7 +522,12 @@ else()
       -fstack-protector-strong -Wformat -Wformat-security -Werror=format-security
     )
     target_compile_definitions(i2pd_warnings INTERFACE _FORTIFY_SOURCE=2)
-    target_link_options(i2pd_warnings INTERFACE -Wl,-z,relro -Wl,-z,now)
+    if(WIN32)
+      # MinGW/Clang64 produce PE images; ELF -z flags are not accepted here.
+      target_link_options(i2pd_warnings INTERFACE -Wl,--dynamicbase -Wl,--nxcompat)
+    else()
+      target_link_options(i2pd_warnings INTERFACE -Wl,-z,relro -Wl,-z,now)
+    endif()
   endif()
 endif()
 
