@@ -240,7 +240,8 @@ namespace tunnel
 		// Stop() tears down the worker, the transit worker and all runtime
 		// tunnel maps. Start()/Stop() cycles are supported for an orderly
 		// restart with no in-flight traffic; wire messages queued for the old
-		// instance are dropped and must be retransmitted by peers.
+		// instance are dropped and must be retransmitted by peers. Producers
+		// must be quiesced across restart; posts carry no instance generation.
 		void Start ();
 		void Stop ();
 
@@ -259,8 +260,10 @@ namespace tunnel
 			std::shared_ptr<TunnelPool> pool, std::shared_ptr<OutboundTunnel> outboundTunnel);
 		std::shared_ptr<OutboundTunnel> CreateOutboundTunnel (
 			std::shared_ptr<TunnelConfig> config, std::shared_ptr<TunnelPool> pool);
-		void PostTunnelData (std::shared_ptr<I2NPMessage> msg);
-		void PostTunnelData (std::list<std::shared_ptr<I2NPMessage>> & msgs); // and cleanup msgs
+		// Returns false for a null message or when the service is stopped. The
+		// list overload consumes its input on both accepted and rejected posts.
+		bool PostTunnelData (std::shared_ptr<I2NPMessage> msg);
+		bool PostTunnelData (std::list<std::shared_ptr<I2NPMessage>> & msgs);
 		void AddPendingTunnel (uint32_t replyMsgID, std::shared_ptr<InboundTunnel> tunnel);
 		void AddPendingTunnel (uint32_t replyMsgID, std::shared_ptr<OutboundTunnel> tunnel);
 		std::shared_ptr<TunnelPool> CreateTunnelPool (int numInboundHops, int numOuboundHops, int numInboundTunnels,
@@ -347,6 +350,10 @@ namespace tunnel
 
 	private:
 		std::atomic<bool> m_IsRunning;
+		// Serialize whole lifecycle transitions separately from short queue
+		// admission sections, so producers reject promptly while Stop joins.
+		std::mutex m_LifecycleMutex;
+		std::mutex m_QueueAdmissionMutex;
 		std::unique_ptr<std::thread> m_Thread;
 		i2p::util::MemoryPoolMt<I2NPMessageBuffer<I2NP_TUNNEL_ENPOINT_MESSAGE_SIZE>>
 			m_I2NPTunnelEndpointMessagesMemoryPool;

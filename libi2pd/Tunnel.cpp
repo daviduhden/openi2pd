@@ -607,41 +607,54 @@ namespace tunnel
 
 	void Tunnels::Start ()
 	{
+		std::lock_guard lifecycleLock (m_LifecycleMutex);
 		// Replacing a joinable thread would call std::terminate, so a second
-		// Start() without an intervening Stop() is a no-op. Keep the flag in
-		// the running state only after the workers exist.
-		bool expected = false;
-		if (!m_IsRunning.compare_exchange_strong (expected, true)) return;
-		if (m_Thread)
-		{
-			m_IsRunning.store (false, std::memory_order_relaxed);
-			return;
-		}
+		// Start() without an intervening Stop() is a no-op. Publish the running
+		// state under the admission lock immediately before creating the worker;
+		// posts cannot enter until that worker has been created.
+		if (m_IsRunning.load (std::memory_order_relaxed) || m_Thread) return;
 		try
 		{
 			m_TransitTunnels.Start ();
-			m_Thread = std::make_unique<std::thread> (std::bind (&Tunnels::Run, this));
+			std::lock_guard admissionLock (m_QueueAdmissionMutex);
+			m_IsRunning.store (true, std::memory_order_relaxed);
+			try
+			{
+				m_Thread = std::make_unique<std::thread> (std::bind (&Tunnels::Run, this));
+			}
+			catch (...)
+			{
+				m_IsRunning.store (false, std::memory_order_relaxed);
+				throw;
+			}
 		}
 		catch (...)
 		{
 			m_TransitTunnels.Stop ();
-			m_IsRunning.store (false, std::memory_order_relaxed);
 			throw;
 		}
 	}
 
 	void Tunnels::Stop ()
 	{
+		std::lock_guard lifecycleLock (m_LifecycleMutex);
+		{
+			std::lock_guard admissionLock (m_QueueAdmissionMutex);
+			m_IsRunning.store (false, std::memory_order_relaxed);
+		}
 		// Stop the transit worker first: it is the only producer that can add
 		// transit tunnels to m_Tunnels from its own thread.
 		m_TransitTunnels.Stop ();
-		m_IsRunning.store (false, std::memory_order_relaxed);
 		m_Queue.WakeUp ();
 		if (m_Thread)
 		{
 			if (m_Thread->joinable ()) m_Thread->join ();
 			m_Thread.reset ();
 		}
+		// Any messages left after the worker exits belong to the stopped
+		// instance and must not be dispatched after a later Start().
+		std::list<std::shared_ptr<I2NPMessage>> staleMessages;
+		m_Queue.GetWholeQueue (staleMessages);
 
 		// The exploratory pool is created lazily by the tunnel worker. Remove
 		// it as part of Stop() so a later Start() builds a fresh pool and an
@@ -684,7 +697,9 @@ namespace tunnel
 		{
 			try
 			{
-				if (m_Queue.Wait (1, 0)) // 1 sec
+				auto queueReady = m_Queue.Wait (1, 0); // 1 sec
+				if (!m_IsRunning.load (std::memory_order_relaxed)) break;
+				if (queueReady)
 				{
 					m_Queue.GetWholeQueue (msgs);
 					auto mts = i2p::util::GetMillisecondsSinceEpoch ();
@@ -1140,14 +1155,25 @@ namespace tunnel
 		}
 	}
 
-	void Tunnels::PostTunnelData (std::shared_ptr<I2NPMessage> msg)
+	bool Tunnels::PostTunnelData (std::shared_ptr<I2NPMessage> msg)
 	{
-		if (msg) m_Queue.Put (msg);
+		if (!msg) return false;
+		std::lock_guard admissionLock (m_QueueAdmissionMutex);
+		if (!m_IsRunning.load (std::memory_order_relaxed)) return false;
+		m_Queue.Put (std::move (msg));
+		return true;
 	}
 
-	void Tunnels::PostTunnelData (std::list<std::shared_ptr<I2NPMessage>> & msgs)
+	bool Tunnels::PostTunnelData (std::list<std::shared_ptr<I2NPMessage>> & msgs)
 	{
+		std::lock_guard admissionLock (m_QueueAdmissionMutex);
+		if (!m_IsRunning.load (std::memory_order_relaxed))
+		{
+			msgs.clear ();
+			return false;
+		}
 		m_Queue.Put (msgs);
+		return true;
 	}
 
 	template <class TTunnel>
