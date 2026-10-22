@@ -42,7 +42,7 @@ invocation returns to a maintained build consumer.
 | `tools/tests/validate-branding.t` | Test::More branding wrapper | `perl-validate-branding` |
 | `tools/tests/perl-portability.t` | Python-free/core-module/permissions guard | `perl-portability` |
 | `tests/interop/check-vectors.pl` | static interoperability fixtures | syntax, `interop-static` |
-| `android/tools/check-english-only.pl` | compile-free English-only guard | syntax, Android workflow |
+| `android/tools/check-android-locales.pl` | compile-free four-locale parity guard | syntax, Android workflow |
 
 All imports are core modules. The portability test also rejects `system`,
 `exec`, `qx`, string `eval`, insecure temporary-name helpers and a
@@ -103,7 +103,7 @@ perl -c tools/scripts/i2pdctl
 perl -c tools/scripts/check-doc-links.pl
 perl -c tools/scripts/validate-branding.pl
 perl -c tests/interop/check-vectors.pl
-perl -c android/tools/check-english-only.pl
+perl -c android/tools/check-android-locales.pl
 prove -v tools/tests/i2pdctl.t
 I2PDCTL_TLS_BACKEND=openssl prove -v tools/tests/i2pdctl.t
 prove -v tools/tests/validate-branding.t
@@ -127,11 +127,13 @@ checks when Perl is available. `perl-i2pdctl` runs through `prove` when that
 wrapper exists and directly runs the TAP file otherwise.
 The registered names include `perl-i2pdctl-syntax`, the other
 `perl-syntax-*` targets, `perl-i2pdctl`, `perl-portability`,
-`perl-validate-branding` and `perl-install-layout`.
+`perl-validate-branding`, `perl-install-layout`, `perl-doc-links`,
+`docs-nav-static` and `android-locale-policy`.
 `tools/tests/validate-branding.t` wraps the static asset validator with
 Test::More. `perl-install-layout` installs only the `Tools` component into a
-private prefix and verifies the executable mode, portable shebang and
-`perl -c` syntax of the installed `i2pdctl`.
+private prefix and verifies every declared native tool, the executable mode,
+portable shebang and `perl -c` syntax of the installed `i2pdctl`, and the
+installed `LICENSE.i2pd-tools` notice.
 `.perlcriticrc` is a non-blocking optional profile. Set
 `-DI2PD_PERL_CRITIC=ON` to register the opt-in `perl-critic` CTest target when
 `perlcritic` is installed; it is not a required dependency and no CPAN module

@@ -3,14 +3,14 @@
 #
 # openi2pd: .perlcriticrc.
 #
-# Configures project configuration and integration.
+# Configures the optional Perl::Critic profile for maintained scripts.
 #
 
 #
 # Optional static style profile for the project-maintained Perl scripts.
-# Perl::Critic is not a runtime or base-OpenBSD dependency; CI may run:
-#   perlcritic --profile .perlcriticrc tools/scripts/i2pdctl
-#   perlcritic --profile .perlcriticrc tools/scripts/validate-branding.pl
+# Perl::Critic is not a runtime or base-OpenBSD dependency. The CMake
+# `perl-critic` target, enabled with -DI2PD_PERL_CRITIC=ON, is the canonical
+# file list and runs only when perlcritic is already installed.
 severity = 3
 theme = core
 verbose = 8

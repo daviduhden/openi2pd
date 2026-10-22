@@ -138,7 +138,7 @@ sub _serve_connection {
     }
     elsif (($request->{method} // '') eq 'Authenticate') {
         my $password = $request->{params}{Password} // '';
-        $response = $password eq 'itoopie'
+        $response = ($password eq 'itoopie' || $password eq "p\x{e4}ss")
             ? {
                 id      => 1,
                 result  => { API => 1, Token => 'test-token' },
@@ -474,6 +474,41 @@ ok($server_port > 0, 'fake I2PControl server is listening');
     is(ref $decoded, 'HASH', 'raw_info output is JSON');
     is($decoded->{RouterInfo}{'i2p.router.uptime'}, '5000',
         'raw_info returns the requested result');
+}
+
+{
+    my ($out, $err, $code) = run_i2pdctl('raw_info', 'RouterInfo', 'RouterInfo');
+    is($code, 0, 'duplicate raw_info methods exit 0');
+    my $key_count = () = $out =~ /"RouterInfo"/g;
+    is($key_count, 1, 'duplicate raw_info methods produce one JSON key');
+}
+
+{
+    my ($out, $err, $code) = _run_command(
+        {
+            I2PCONTROL_URL      => "http://127.0.0.1:$server_port/",
+            I2PCONTROL_PASSWORD => 'wrong-password',
+            I2PDCTL_TLS_BACKEND => 'auto',
+        },
+        $^X, $script, 'exec', 'Echo', '{}',
+    );
+    is($code, 1, 'authentication failure exits 1');
+    like($err, qr/authentication failed \(no token returned\)/,
+        'authentication failure is reported');
+    is($out, '', 'authentication failure prints no result');
+}
+
+{
+    my ($out, $err, $code) = _run_command(
+        {
+            I2PCONTROL_URL      => "http://127.0.0.1:$server_port/",
+            I2PCONTROL_PASSWORD => "p\x{c3}\x{a4}ss",
+            I2PDCTL_TLS_BACKEND => 'auto',
+        },
+        $^X, $script, 'exec', 'Echo', '{"Echo":"utf8"}',
+    );
+    is($code, 0, 'a UTF-8 password authenticates');
+    like($out, qr/'Result': 'utf8'/, 'the UTF-8-password request succeeds');
 }
 
 {

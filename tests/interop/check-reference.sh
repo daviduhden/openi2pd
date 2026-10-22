@@ -30,6 +30,12 @@ commit=$(git -C "$ref" rev-parse HEAD)
     echo "unexpected commit: $commit" >&2
     exit 1
 }
+tag_object=$(git -C "$ref" rev-parse refs/tags/i2p-2.14.0 2>/dev/null || true)
+tag_type=$(git -C "$ref" cat-file -t "$tag_object" 2>/dev/null || true)
+[ "$tag_type" = "tag" ] && [ "$tag_object" = "9db233ed7241599eba76f29b8c334eaaf3db2e87" ] || {
+    echo "unexpected annotated tag object: ${tag_object:-<missing>} (${tag_type:-<unknown>})" >&2
+    exit 1
+}
 if [ -n "$(git -C "$ref" status --porcelain)" ]; then
     echo "reference tree is not clean" >&2
     exit 1

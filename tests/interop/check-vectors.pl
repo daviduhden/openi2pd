@@ -15,6 +15,7 @@ use JSON::PP;
 use File::Find qw(find);
 use File::Spec;
 use File::Basename qw(dirname);
+use Cwd ();
 
 # These pins describe the existing corpus provenance, not the current Java
 # compatibility target (2.14.0). Do not relabel unchecked fixtures.
@@ -64,13 +65,32 @@ USAGE
     exit $code;
 }
 
+sub find_git {
+    if (defined $ENV{GIT} && length $ENV{GIT}
+        && File::Spec->file_name_is_absolute($ENV{GIT}) && -x $ENV{GIT}) {
+        return Cwd::abs_path($ENV{GIT});
+    }
+    for my $directory (File::Spec->path) {
+        next unless length $directory && File::Spec->file_name_is_absolute($directory);
+        my $candidate = File::Spec->catfile($directory, 'git');
+        next unless -f $candidate && -x _;
+        my $absolute = Cwd::abs_path($candidate);
+        return $absolute if defined $absolute && -x $absolute;
+    }
+    return undef;
+}
+
 sub run_git {
     my (@args) = @_;
-    open my $fh, '-|', 'git', '-C', $reference, @args or return (undef, "git: $!");
+    my $git = find_git();
+    return (undef, 'git not found in an absolute PATH directory') unless defined $git;
+    open my $fh, '-|', $git, '-C', $reference, @args or return (undef, "git: $!");
     local $/;
     my $out = <$fh>;
-    close $fh;
+    my $closed = close $fh;
     $out = '' unless defined $out;
+    return (undef, 'git ' . join(' ', @args) . ' failed')
+        unless $closed;
     return ($out, undef);
 }
 
@@ -162,14 +182,30 @@ sub check_provenance {
     }
     return @errors unless defined $ref && length $ref;
     for my $j (@{$prov->{java}}) {
-        my $p = File::Spec->catfile($ref, $j->{path});
+        my $line_no = $j->{line};
+        my $relative = $j->{path};
+        if (!defined $line_no || ref $line_no
+            || $line_no !~ /\A[1-9][0-9]{0,6}\z/) {
+            push @errors, 'provenance line must be a positive integer';
+            next;
+        }
+        if (!defined $relative || ref $relative
+            || $relative =~ m{\A/} || $relative =~ m{(?:\A|/)\.\.(?:/|\z)}) {
+            push @errors, 'provenance path must be relative';
+            next;
+        }
+        if (!defined $j->{contains} || ref $j->{contains} || !length $j->{contains}) {
+            push @errors, 'provenance contains must be a non-empty string';
+            next;
+        }
+        my $p = File::Spec->catfile($ref, $relative);
         if (!-f $p) {
             push @errors, "provenance file missing: $j->{path}";
             next;
         }
         open my $fh, '<', $p or do { push @errors, "open $p: $!"; next; };
         my $line;
-        for (my $i = 1; $i <= $j->{line}; ++$i) { $line = <$fh>; }
+        for (my $i = 1; $i <= $line_no; ++$i) { $line = <$fh>; }
         close $fh;
         if (!defined $line) {
             push @errors, "provenance line $j->{line} past EOF: $j->{path}";

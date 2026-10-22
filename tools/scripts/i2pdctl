@@ -13,6 +13,7 @@ use strict;
 use warnings;
 
 use Config;
+use Cwd ();
 use File::Spec;
 use Getopt::Long qw(GetOptionsFromArray);
 use JSON::PP ();
@@ -235,21 +236,21 @@ sub _quote_string {
     $text =~ s/\r/\\r/g;
     $text =~ s/\t/\\t/g;
     $text =~ s/([\x00-\x1f\x7f])/sprintf('\\x%02x', ord($1))/ge;
-    $text =~ s/([\x80-\x9f])/sprintf('\\x{%02x}', ord($1))/ge;
+    $text =~ s/([^\x20-\x7e])/sprintf('\\x{%x}', ord($1))/ge;
     return "'" . $text . "'";
 }
 
-# Server-controlled values are written to the operator's terminal.  Escape
-# control characters (C0, DEL and the 8-bit C1 range, which includes CSI) so a
-# spoofed or compromised I2PControl endpoint cannot inject ANSI sequences or
-# forge extra output lines through MITM (TLS verification is intentionally
-# disabled for the self-signed certificate).
+# Server-controlled values are written to the operator's terminal. Escape
+# control, format and non-ASCII characters so a spoofed or compromised
+# I2PControl endpoint cannot inject ANSI/bidi sequences, cause encoding
+# warnings, or forge extra output lines through MITM (TLS verification is
+# intentionally disabled for the self-signed certificate).
 sub _display {
     my ($value) = @_;
     return '' if !defined $value || ref $value;
     my $text = "$value";
     $text =~ s/([\x00-\x1f\x7f])/sprintf('\\x%02x', ord($1))/ge;
-    $text =~ s/([\x80-\x9f])/sprintf('\\x{%02x}', ord($1))/ge;
+    $text =~ s/([^\x20-\x7e])/sprintf('\\x{%x}', ord($1))/ge;
     return $text;
 }
 
@@ -356,11 +357,14 @@ sub _parse_url {
 
 sub _which {
     my ($name) = @_;
-    my $path = defined $ENV{PATH} ? $ENV{PATH} : '';
-    for my $directory (split /:/, $path) {
-        next unless length $directory;
-        my $candidate = "$directory/$name";
-        return $candidate if -f $candidate && -x _;
+    $name .= $Config{_exe}
+        if length $Config{_exe} && $name !~ /\Q$Config{_exe}\E\z/;
+    for my $directory (File::Spec->path) {
+        next unless length $directory && File::Spec->file_name_is_absolute($directory);
+        my $candidate = File::Spec->catfile($directory, $name);
+        next unless -f $candidate && -x _;
+        my $absolute = Cwd::abs_path($candidate);
+        return $absolute if defined $absolute && -f $absolute && -x _;
     }
     return undef;
 }
@@ -662,6 +666,12 @@ sub _post_raw {
         ($status, $content) = _https_post($url, $body);
     }
     else {
+        # HTTP::Tiny's proxy option semantics vary by core version. Remove
+        # proxy variables in a localized environment so credentials never
+        # travel through an operator- or environment-selected proxy.
+        local %ENV = %ENV;
+        delete @ENV{qw(http_proxy HTTP_PROXY https_proxy HTTPS_PROXY
+                       all_proxy ALL_PROXY no_proxy NO_PROXY)};
         my $http = HTTP::Tiny->new(
             verify_SSL => 0,
             timeout    => $TIMEOUT,
@@ -814,7 +824,7 @@ sub _cmd_exec {
     if (@remaining > 2) {
         return _usage_error(
             'exec',
-            'unrecognized arguments: ' . join(' ', @remaining[2 .. $#remaining]),
+            'unrecognized arguments: ' . join(' ', map { _display($_) } @remaining[2 .. $#remaining]),
         );
     }
 
@@ -869,6 +879,8 @@ sub _cmd_raw_info {
     }
 
     my @methods = @remaining;
+    my %seen_method;
+    @methods = grep { !$seen_method{$_}++ } @methods;
     for my $method (@methods) {
         if (!exists $INFO_PARAMS{$method}) {
             print "Invalid method " . _display($method) . ". Supported methods are "
@@ -1002,7 +1014,7 @@ sub _cmd_info {
     if (@remaining) {
         return _usage_error(
             'info',
-            'unrecognized arguments: ' . join(' ', @remaining),
+            'unrecognized arguments: ' . join(' ', map { _display($_) } @remaining),
         );
     }
 
@@ -1046,6 +1058,10 @@ sub main {
     my $password = exists $ENV{I2PCONTROL_PASSWORD}
         ? $ENV{I2PCONTROL_PASSWORD}
         : $DEFAULT_PASSWORD;
+    # %ENV values are bytes. Decode valid UTF-8 so JSON::PP->ascii does not
+    # turn a non-ASCII password into a different Latin-1 code point sequence.
+    utf8::decode($url);
+    utf8::decode($password);
 
     my $control = {
         url      => $url,
@@ -1059,7 +1075,7 @@ sub main {
 
     return _usage_error(
         undef,
-        "argument action: invalid choice: '$command' "
+        'argument action: invalid choice: ' . _display($command) . ' '
             . "(choose from 'exec', 'raw_info', 'info')",
     );
 }
