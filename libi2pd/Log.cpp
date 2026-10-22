@@ -160,36 +160,23 @@ namespace log
 
 	void Log::SetLogLevel (const std::string & level_)
 	{
-		std::string level = str_tolower (level_);
-		if (level == "none")
-		{
-			m_MinLevel.store (eLogNone, std::memory_order_relaxed);
-		}
-		else if (level == "critical")
-		{
-			m_MinLevel.store (eLogCritical, std::memory_order_relaxed);
-		}
-		else if (level == "error")
-		{
-			m_MinLevel.store (eLogError, std::memory_order_relaxed);
-		}
-		else if (level == "warn")
-		{
-			m_MinLevel.store (eLogWarning, std::memory_order_relaxed);
-		}
-		else if (level == "info")
-		{
-			m_MinLevel.store (eLogInfo, std::memory_order_relaxed);
-		}
-		else if (level == "debug")
-		{
-			m_MinLevel.store (eLogDebug, std::memory_order_relaxed);
-		}
-		else
+		static constexpr std::array<std::pair<std::string_view, LogLevel>, 6> levels { {
+			{ "none", eLogNone },
+			{ "critical", eLogCritical },
+			{ "error", eLogError },
+			{ "warn", eLogWarning },
+			{ "info", eLogInfo },
+			{ "debug", eLogDebug },
+		} };
+		const std::string level = str_tolower (level_);
+		const auto found = std::ranges::find_if (levels,
+			[&level] (const auto & entry) { return entry.first == std::string_view (level); });
+		if (found == levels.end ())
 		{
 			LogPrint (eLogCritical, "Log: Unknown loglevel: ", level);
 			return;
 		}
+		m_MinLevel.store (found->second, std::memory_order_relaxed);
 		LogPrint (eLogInfo, "Log: Logging level set to ", level);
 	}
 
@@ -312,6 +299,7 @@ namespace log
 	{
 		if (msg)
 		{
+			if (msg->text.size () > LOG_QUEUE_MAX_TEXT) msg->text.resize (LOG_QUEUE_MAX_TEXT);
 			// Make a bounded copy before handing the message to the writer.
 			// Control characters are flattened so a malformed log line cannot
 			// inject terminal escapes into an administrative client.
@@ -324,7 +312,8 @@ namespace log
 				while (m_Recent.size () > LOG_RECENT_CAPACITY) m_Recent.pop_front ();
 			}
 		}
-		m_Queue.Put (msg);
+		if (!m_Queue.PutIfBelow (msg, LOG_QUEUE_MAX_RECORDS))
+			m_QueuedDropped.fetch_add (1, std::memory_order_relaxed);
 	}
 
 	std::vector<LogRecord> Log::GetRecent (uint64_t after, size_t max) const

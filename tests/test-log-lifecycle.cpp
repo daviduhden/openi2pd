@@ -117,6 +117,18 @@ int main ()
 		assert (out->str ().find ("destructor-drain") != std::string::npos);
 	}
 
+	// An unwritable/stalled sink must not grow the queue without bound. The
+	// writer is intentionally not started, so every accepted record stays in
+	// the queue and records beyond the fixed quota are counted and dropped.
+	{
+		i2p::log::Log log;
+		for (size_t i = 0; i < i2p::log::LOG_QUEUE_MAX_RECORDS; ++i)
+			Append (log, "queued-" + std::to_string (i));
+		assert (log.GetDroppedCount () == 0);
+		for (int i = 0; i < 5; ++i) Append (log, "dropped-" + std::to_string (i));
+		assert (log.GetDroppedCount () == 5);
+	}
+
 	// Reopen() is called from the signal-handling thread while the writer is
 	// active. Every record must reach the same file and no stream swap may
 	// deadlock against the writer.

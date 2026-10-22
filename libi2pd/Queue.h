@@ -5,9 +5,9 @@
  * openi2pd: Queue.
  *
  * Thread-safe FIFO queue built on std::list, a mutex and a condition variable, with blocking,
- * timed and non-blocking dequeue, bulk splice insertion and queue swapping. The queue is
- * unbounded, so producers must limit their own pressure; Get() and Peek() return nullptr when
- * empty.
+ * timed and non-blocking dequeue, bulk splice insertion and queue swapping. Put() is
+ * unbounded, so callers that need backpressure use PutIfBelow(); Get() and Peek() return
+ * nullptr when empty.
  *
  */
 
@@ -33,6 +33,21 @@ namespace util
 			std::unique_lock<std::mutex> l (m_QueueMutex);
 			m_Queue.push_back (std::move (e));
 			m_NonEmpty.notify_one ();
+		}
+
+		/**
+		 * Enqueue only while the queue is below an explicit limit. The size
+		 * check and insertion are one critical section, so concurrent
+		 * producers cannot exceed the limit. Returns false when the record was
+		 * rejected; the element is then left untouched.
+		 */
+		bool PutIfBelow (Element e, size_t limit)
+		{
+			std::unique_lock<std::mutex> l (m_QueueMutex);
+			if (m_Queue.size () >= limit) return false;
+			m_Queue.push_back (std::move (e));
+			m_NonEmpty.notify_one ();
+			return true;
 		}
 
 		void Put (std::list<Element> & list)

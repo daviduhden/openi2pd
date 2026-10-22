@@ -82,6 +82,10 @@ namespace log
 
 	inline constexpr size_t LOG_RECENT_CAPACITY = 512;
 	inline constexpr size_t LOG_RECENT_TEXT_LIMIT = 512;
+	// Bound the writer queue even when a sink (for example the optional log
+	// worker) stalls. Records beyond this limit are dropped and counted.
+	inline constexpr size_t LOG_QUEUE_MAX_RECORDS = 8192;
+	inline constexpr size_t LOG_QUEUE_MAX_TEXT = 8192;
 
 	using SinkFunction = std::function<void (LogLevel, std::time_t, std::string_view)>;
 
@@ -112,6 +116,7 @@ namespace log
 		mutable std::mutex m_RecentMutex;
 		std::deque<LogRecord> m_Recent;
 		uint64_t m_RecentSequence;
+		std::atomic<uint64_t> m_QueuedDropped { 0 };
 
 		// Guards destination, stream, path, color and sink replacement.
 		// Formatting and flushing copy the stream under the lock and perform
@@ -215,6 +220,7 @@ namespace log
 			 * @note Thread-safe. Intended for the local TUI IPC service.
 			 */
 		std::vector<LogRecord> GetRecent (uint64_t after, size_t max) const;
+		uint64_t GetDroppedCount () const { return m_QueuedDropped.load (std::memory_order_relaxed); };
 	};
 
 	/**
