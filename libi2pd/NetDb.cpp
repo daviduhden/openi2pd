@@ -292,10 +292,17 @@ namespace data
 
 		if (wasRunning)
 		{
+			// The embedding daemon/API stops profile producers before NetDb::Stop.
+			// Apply updates queued after the last periodic flush before the final save.
+			auto pendingProfileUpdates = i2p::data::FlushPostponedRouterProfileUpdates ();
+			waitFor (pendingProfileUpdates, "final profile update");
 			if (m_PersistProfiles) SaveProfiles ();
 			auto cleanup = DeleteObsoleteProfiles ();
 			waitFor (cleanup, "profile cleanup");
 		}
+		else
+			// A failed/not-started NetDb must not carry stale queued callbacks into a restart.
+			i2p::data::DiscardPostponedRouterProfileUpdates ();
 		// Clear even if the worker never reached the running state: Start()
 		// may have loaded RouterInfos before a failure or stop request.
 		ClearRouterInfos ();

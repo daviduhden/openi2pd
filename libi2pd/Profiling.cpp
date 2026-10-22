@@ -16,6 +16,9 @@
 #include <list>
 #include <thread>
 #include <random>
+#include <sstream>
+#include <string_view>
+#include <stdexcept>
 #include <iomanip>
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/ini_parser.hpp>
@@ -33,12 +36,18 @@ namespace i2p
 namespace data
 {
 	static i2p::fs::HashedStorage g_ProfilesStorage ("peerProfiles", "p", "profile-", "txt");
+	// Storage lock is outermost for filesystem work; no map/state lock is held
+	// while performing file IO. Profile methods acquire their IO lock first.
+	static std::mutex g_ProfilesStorageMutex;
+	static bool g_ProfilesStorageInitialized = false;
+	static std::string g_ProfilesStoragePlace;
 	static std::unordered_map<i2p::data::IdentHash, std::shared_ptr<RouterProfile>> g_Profiles;
 	static std::mutex g_ProfilesMutex;
 	static std::list<std::pair<i2p::data::IdentHash, std::function<void (std::shared_ptr<RouterProfile>)>>>
 		g_PostponedUpdates;
 	static std::mutex g_PostponedUpdatesMutex;
 	static std::mt19937 m_ProfilesRng (i2p::util::GetRngSeed ());
+	static std::mutex m_ProfilesRngMutex;
 
 	RouterProfile::RouterProfile ()
 		: m_IsUpdated (false)
@@ -63,55 +72,91 @@ namespace data
 		m_IsUpdated = true;
 	}
 
-	void RouterProfile::Save (const IdentHash & identHash)
+	bool RouterProfile::Save (const IdentHash & identHash)
 	{
+		std::lock_guard ioLock (m_IoMutex);
+		uint64_t lastUpdateTime = 0;
+		uint64_t lastUnreachableTime = 0;
+		uint32_t numTunnelsAgreed = 0;
+		uint32_t numTunnelsDeclined = 0;
+		float numTunnelsNonReplied = 0;
+		uint32_t numTimesTaken = 0;
+		uint32_t numTimesRejected = 0;
+		bool hasConnected = false;
+		bool isDuplicated = false;
+		{
+			std::lock_guard lock (m_Mutex);
+			lastUpdateTime = m_LastUpdateTime;
+			lastUnreachableTime = m_LastUnreachableTime;
+			numTunnelsAgreed = m_NumTunnelsAgreed;
+			numTunnelsDeclined = m_NumTunnelsDeclined;
+			numTunnelsNonReplied = m_NumTunnelsNonReplied;
+			numTimesTaken = m_NumTimesTaken;
+			numTimesRejected = m_NumTimesRejected;
+			hasConnected = m_HasConnected;
+			isDuplicated = m_IsDuplicated;
+		}
 		// fill sections
 		boost::property_tree::ptree participation;
-		participation.put (PEER_PROFILE_PARTICIPATION_AGREED, m_NumTunnelsAgreed);
-		participation.put (PEER_PROFILE_PARTICIPATION_DECLINED, m_NumTunnelsDeclined);
-		participation.put (PEER_PROFILE_PARTICIPATION_NON_REPLIED, m_NumTunnelsNonReplied);
+		participation.put (PEER_PROFILE_PARTICIPATION_AGREED, numTunnelsAgreed);
+		participation.put (PEER_PROFILE_PARTICIPATION_DECLINED, numTunnelsDeclined);
+		participation.put (PEER_PROFILE_PARTICIPATION_NON_REPLIED, numTunnelsNonReplied);
 		boost::property_tree::ptree usage;
-		usage.put (PEER_PROFILE_USAGE_TAKEN, m_NumTimesTaken);
-		usage.put (PEER_PROFILE_USAGE_REJECTED, m_NumTimesRejected);
-		usage.put (PEER_PROFILE_USAGE_CONNECTED, m_HasConnected);
-		if (m_IsDuplicated) usage.put (PEER_PROFILE_USAGE_DUPLICATED, true);
+		usage.put (PEER_PROFILE_USAGE_TAKEN, numTimesTaken);
+		usage.put (PEER_PROFILE_USAGE_REJECTED, numTimesRejected);
+		usage.put (PEER_PROFILE_USAGE_CONNECTED, hasConnected);
+		if (isDuplicated) usage.put (PEER_PROFILE_USAGE_DUPLICATED, true);
 		// fill property tree
 		boost::property_tree::ptree pt;
-		pt.put (PEER_PROFILE_LAST_UPDATE_TIMESTAMP, m_LastUpdateTime);
-		if (m_LastUnreachableTime) pt.put (PEER_PROFILE_LAST_UNREACHABLE_TIME, m_LastUnreachableTime);
+		pt.put (PEER_PROFILE_LAST_UPDATE_TIMESTAMP, lastUpdateTime);
+		if (lastUnreachableTime) pt.put (PEER_PROFILE_LAST_UNREACHABLE_TIME, lastUnreachableTime);
 		pt.put_child (PEER_PROFILE_SECTION_PARTICIPATION, participation);
 		pt.put_child (PEER_PROFILE_SECTION_USAGE, usage);
 
 		// save to file
-		std::string ident = identHash.ToBase64 ();
-		std::string path = g_ProfilesStorage.Path (ident);
-
 		try
 		{
-			boost::property_tree::write_ini (path, pt, 0, std::locale::classic ());
+			std::ostringstream serialized;
+			serialized.imbue (std::locale::classic ());
+			boost::property_tree::write_ini (serialized, pt);
+			std::lock_guard storageLock (g_ProfilesStorageMutex);
+			if (!g_ProfilesStorageInitialized)
+			{
+				LogPrint (eLogError, "Profiling: Storage is not initialized; refusing profile write");
+				return false;
+			}
+			const auto path = g_ProfilesStorage.Path (identHash.ToBase64 ());
+			if (!i2p::fs::AtomicWrite (path, serialized.str ())) return false;
 		}
 		catch (std::exception & ex)
 		{
 			/* boost exception verbose enough */
 			LogPrint (eLogError, "Profiling: ", ex.what ());
+			return false;
 		}
+		return true;
 	}
 
 	void RouterProfile::Load (const IdentHash & identHash)
 	{
-		m_IsUpdated = false;
-		std::string ident = identHash.ToBase64 ();
-		std::string path = g_ProfilesStorage.Path (ident);
+		std::lock_guard ioLock (m_IoMutex);
+		const auto ident = identHash.ToBase64 ();
 		boost::property_tree::ptree pt;
-
-		if (!i2p::fs::Exists (path))
-		{
-			LogPrint (eLogWarning, "Profiling: No profile yet for ", ident);
-			return;
-		}
 
 		try
 		{
+			std::lock_guard storageLock (g_ProfilesStorageMutex);
+			if (!g_ProfilesStorageInitialized)
+			{
+				LogPrint (eLogWarning, "Profiling: Storage is not initialized; skipping profile load");
+				return;
+			}
+			const auto path = g_ProfilesStorage.Path (ident);
+			if (!i2p::fs::Exists (path))
+			{
+				LogPrint (eLogWarning, "Profiling: No profile yet for ", ident);
+				return;
+			}
 			boost::property_tree::read_ini (path, pt, std::locale::classic ());
 		}
 		catch (std::exception & ex)
@@ -121,11 +166,20 @@ namespace data
 			return;
 		}
 
+		uint64_t lastUpdateTime = i2p::util::GetSecondsSinceEpoch ();
+		uint64_t lastUnreachableTime = 0;
+		uint32_t numTunnelsAgreed = 0;
+		uint32_t numTunnelsDeclined = 0;
+		float numTunnelsNonReplied = 0;
+		uint32_t numTimesTaken = 0;
+		uint32_t numTimesRejected = 0;
+		bool hasConnected = false;
+		bool isDuplicated = false;
 		try
 		{
 			auto ts = pt.get (PEER_PROFILE_LAST_UPDATE_TIMESTAMP, 0);
 			if (ts)
-				m_LastUpdateTime = ts;
+				lastUpdateTime = ts;
 			else
 			{
 				// try old lastupdatetime
@@ -133,21 +187,21 @@ namespace data
 				if (ut.length () > 0)
 				{
 					std::istringstream ss (ut);
-					std::tm t;
+					std::tm t { };
 					ss >> std::get_time (&t, "%Y-%b-%d %H:%M:%S");
-					if (!ss.fail ()) m_LastUpdateTime = mktime (&t); // t is local time
+					if (!ss.fail ()) lastUpdateTime = mktime (&t); // t is local time
 				}
 			}
-			if (i2p::util::GetSecondsSinceEpoch () - m_LastUpdateTime < PEER_PROFILE_EXPIRATION_TIMEOUT)
+			if (i2p::util::GetSecondsSinceEpoch () - lastUpdateTime < PEER_PROFILE_EXPIRATION_TIMEOUT)
 			{
-				m_LastUnreachableTime = pt.get (PEER_PROFILE_LAST_UNREACHABLE_TIME, 0);
+				lastUnreachableTime = pt.get (PEER_PROFILE_LAST_UNREACHABLE_TIME, 0);
 				try
 				{
 					// read participations
 					auto participations = pt.get_child (PEER_PROFILE_SECTION_PARTICIPATION);
-					m_NumTunnelsAgreed = participations.get (PEER_PROFILE_PARTICIPATION_AGREED, 0);
-					m_NumTunnelsDeclined = participations.get (PEER_PROFILE_PARTICIPATION_DECLINED, 0);
-					m_NumTunnelsNonReplied = participations.get (PEER_PROFILE_PARTICIPATION_NON_REPLIED, 0.0f);
+					numTunnelsAgreed = participations.get (PEER_PROFILE_PARTICIPATION_AGREED, 0);
+					numTunnelsDeclined = participations.get (PEER_PROFILE_PARTICIPATION_DECLINED, 0);
+					numTunnelsNonReplied = participations.get (PEER_PROFILE_PARTICIPATION_NON_REPLIED, 0.0f);
 				}
 				catch (boost::property_tree::ptree_bad_path &)
 				{
@@ -158,10 +212,10 @@ namespace data
 				{
 					// read usage
 					auto usage = pt.get_child (PEER_PROFILE_SECTION_USAGE);
-					m_NumTimesTaken = usage.get (PEER_PROFILE_USAGE_TAKEN, 0);
-					m_NumTimesRejected = usage.get (PEER_PROFILE_USAGE_REJECTED, 0);
-					m_HasConnected = usage.get (PEER_PROFILE_USAGE_CONNECTED, false);
-					m_IsDuplicated = usage.get (PEER_PROFILE_USAGE_DUPLICATED, false);
+					numTimesTaken = usage.get (PEER_PROFILE_USAGE_TAKEN, 0);
+					numTimesRejected = usage.get (PEER_PROFILE_USAGE_REJECTED, 0);
+					hasConnected = usage.get (PEER_PROFILE_USAGE_CONNECTED, false);
+					isDuplicated = usage.get (PEER_PROFILE_USAGE_DUPLICATED, false);
 				}
 				catch (boost::property_tree::ptree_bad_path &)
 				{
@@ -170,16 +224,46 @@ namespace data
 				}
 			}
 			else
-				*this = RouterProfile ();
+			{
+				lastUpdateTime = i2p::util::GetSecondsSinceEpoch ();
+				lastUnreachableTime = 0;
+				numTunnelsAgreed = 0;
+				numTunnelsDeclined = 0;
+				numTunnelsNonReplied = 0;
+				numTimesTaken = 0;
+				numTimesRejected = 0;
+				hasConnected = false;
+				isDuplicated = false;
+			}
 		}
 		catch (std::exception & ex)
 		{
 			LogPrint (eLogError, "Profiling: Can't read profile ", ident, " :", ex.what ());
+			return;
+		}
+
+		{
+			std::lock_guard lock (m_Mutex);
+			m_LastDeclineTime = 0;
+			m_LastUnreachableTime = lastUnreachableTime;
+			m_LastUpdateTime = lastUpdateTime;
+			m_LastAccessTime = 0;
+			m_LastPersistTime = 0;
+			m_IsUpdated = false;
+			m_NumTunnelsAgreed = numTunnelsAgreed;
+			m_NumTunnelsDeclined = numTunnelsDeclined;
+			m_NumTunnelsNonReplied = numTunnelsNonReplied;
+			m_NumTimesTaken = numTimesTaken;
+			m_NumTimesRejected = numTimesRejected;
+			m_HasConnected = hasConnected;
+			m_IsDuplicated = isDuplicated;
+			m_LastEndpoint = { };
 		}
 	}
 
 	void RouterProfile::TunnelBuildResponse (uint8_t ret)
 	{
+		std::lock_guard lock (m_Mutex);
 		UpdateTime ();
 		if (ret > 0)
 		{
@@ -196,6 +280,7 @@ namespace data
 	void RouterProfile::TunnelNonReplied (int tunnelLength)
 	{
 		if (!tunnelLength) return;
+		std::lock_guard lock (m_Mutex);
 		if (tunnelLength == 1)
 			m_NumTunnelsNonReplied++;
 		else
@@ -209,33 +294,25 @@ namespace data
 
 	void RouterProfile::Unreachable (bool unreachable)
 	{
+		std::lock_guard lock (m_Mutex);
 		m_LastUnreachableTime = unreachable ? i2p::util::GetSecondsSinceEpoch () : 0;
 		UpdateTime ();
 	}
 
 	void RouterProfile::Connected ()
 	{
+		std::lock_guard lock (m_Mutex);
 		m_HasConnected = true;
 		UpdateTime ();
 	}
 
 	void RouterProfile::Duplicated ()
 	{
+		std::lock_guard lock (m_Mutex);
 		m_IsDuplicated = true;
 	}
 
-	bool RouterProfile::IsLowPartcipationRate () const
-	{
-		return 4 * m_NumTunnelsAgreed < m_NumTunnelsDeclined; // < 20% rate
-	}
-
-	bool RouterProfile::IsLowReplyRate () const
-	{
-		auto total = m_NumTunnelsAgreed + m_NumTunnelsDeclined;
-		return m_NumTunnelsNonReplied > 10 * (total + 1);
-	}
-
-	bool RouterProfile::IsDeclinedRecently (uint64_t ts)
+	bool RouterProfile::IsDeclinedRecentlyLocked (uint64_t ts)
 	{
 		if (!m_LastDeclineTime) return false;
 		if (ts > m_LastDeclineTime + PEER_PROFILE_DECLINED_RECENTLY_INTERVAL
@@ -246,10 +323,17 @@ namespace data
 
 	bool RouterProfile::IsBad ()
 	{
-		if (IsUnreachable () || m_IsDuplicated) return true;
-		auto ts = i2p::util::GetSecondsSinceEpoch ();
-		if (IsDeclinedRecently (ts)) return true;
-		bool checkIsKnown = i2p::tunnel::tunnels.GetPreciseTunnelCreationSuccessRate () < (m_ProfilesRng () % 100);
+		uint32_t randomValues[3];
+		{
+			std::lock_guard lock (m_ProfilesRngMutex);
+			for (auto & value : randomValues) value = m_ProfilesRng ();
+		}
+		const auto successRate = i2p::tunnel::tunnels.GetPreciseTunnelCreationSuccessRate ();
+		std::lock_guard lock (m_Mutex);
+		const auto ts = i2p::util::GetSecondsSinceEpoch ();
+		if (IsUnreachableLocked (ts) || m_IsDuplicated) return true;
+		if (IsDeclinedRecentlyLocked (ts)) return true;
+		bool checkIsKnown = successRate < (randomValues[0] % 100);
 		if (checkIsKnown)
 		{
 			if (!m_NumTunnelsAgreed && !m_NumTunnelsDeclined) return true;
@@ -257,9 +341,9 @@ namespace data
 		bool isBad = false;
 		auto total = m_NumTunnelsAgreed + m_NumTunnelsDeclined;
 		if (total)
-			isBad = m_NumTunnelsAgreed < m_ProfilesRng () % total;
+			isBad = m_NumTunnelsAgreed < randomValues[1] % total;
 		else if ((int)m_NumTunnelsNonReplied)
-			isBad = m_ProfilesRng () % (int)m_NumTunnelsNonReplied;
+			isBad = randomValues[2] % (int)m_NumTunnelsNonReplied;
 		if (isBad)
 			m_NumTimesRejected++;
 		else
@@ -269,8 +353,13 @@ namespace data
 
 	bool RouterProfile::IsUnreachable ()
 	{
+		std::lock_guard lock (m_Mutex);
+		return IsUnreachableLocked (i2p::util::GetSecondsSinceEpoch ());
+	}
+
+	bool RouterProfile::IsUnreachableLocked (uint64_t ts)
+	{
 		if (!m_LastUnreachableTime) return false;
-		auto ts = i2p::util::GetSecondsSinceEpoch ();
 		if (ts > m_LastUnreachableTime + PEER_PROFILE_UNREACHABLE_INTERVAL
 			|| ts + PEER_PROFILE_UNREACHABLE_INTERVAL < m_LastUnreachableTime)
 			m_LastUnreachableTime = 0;
@@ -279,7 +368,122 @@ namespace data
 
 	bool RouterProfile::IsUseful () const
 	{
-		return IsReal () || m_NumTunnelsNonReplied >= PEER_PROFILE_USEFUL_THRESHOLD;
+		std::lock_guard lock (m_Mutex);
+		return IsRealLocked () || m_NumTunnelsNonReplied >= PEER_PROFILE_USEFUL_THRESHOLD;
+	}
+
+	bool RouterProfile::IsReal () const
+	{
+		std::lock_guard lock (m_Mutex);
+		return IsRealLocked ();
+	}
+
+	bool RouterProfile::IsRealLocked () const
+	{
+		return m_HasConnected || m_NumTunnelsAgreed > 0 || m_NumTunnelsDeclined > 0;
+	}
+
+	uint64_t RouterProfile::GetLastUpdateTime () const
+	{
+		std::lock_guard lock (m_Mutex);
+		return m_LastUpdateTime;
+	}
+
+	bool RouterProfile::IsUpdated () const
+	{
+		std::lock_guard lock (m_Mutex);
+		return m_IsUpdated;
+	}
+
+	void RouterProfile::SetUpdated (bool updated)
+	{
+		std::lock_guard lock (m_Mutex);
+		m_IsUpdated = updated;
+	}
+
+	bool RouterProfile::MarkPersistenceDue (uint64_t ts)
+	{
+		std::lock_guard lock (m_Mutex);
+		if (!m_IsUpdated || ts <= m_LastPersistTime + PEER_PROFILE_PERSIST_INTERVAL) return false;
+		m_LastPersistTime = ts;
+		m_IsUpdated = false;
+		return true;
+	}
+
+	void RouterProfile::MarkPersistenceFailed ()
+	{
+		std::lock_guard lock (m_Mutex);
+		m_IsUpdated = true;
+		m_LastPersistTime = 0;
+	}
+
+	bool RouterProfile::IsExpiredFromCache (uint64_t ts) const
+	{
+		std::lock_guard lock (m_Mutex);
+		return !m_IsUpdated
+			&& ts > std::max (m_LastUpdateTime, m_LastAccessTime) + PEER_PROFILE_PERSIST_INTERVAL;
+	}
+
+	bool RouterProfile::IsExpiredByLifetime (uint64_t ts) const
+	{
+		std::lock_guard lock (m_Mutex);
+		return !m_IsUpdated && ts - m_LastUpdateTime >= PEER_PROFILE_EXPIRATION_TIMEOUT;
+	}
+
+	bool RouterProfile::ShouldSaveOnShutdown (uint64_t ts) const
+	{
+		std::lock_guard lock (m_Mutex);
+		return (IsRealLocked () || m_NumTunnelsNonReplied >= PEER_PROFILE_USEFUL_THRESHOLD)
+			&& (m_IsUpdated || ts - m_LastUpdateTime < PEER_PROFILE_EXPIRATION_TIMEOUT);
+	}
+
+	uint64_t RouterProfile::GetLastAccessTime () const
+	{
+		std::lock_guard lock (m_Mutex);
+		return m_LastAccessTime;
+	}
+
+	void RouterProfile::SetLastAccessTime (uint64_t ts)
+	{
+		std::lock_guard lock (m_Mutex);
+		m_LastAccessTime = ts;
+	}
+
+	uint64_t RouterProfile::GetLastPersistTime () const
+	{
+		std::lock_guard lock (m_Mutex);
+		return m_LastPersistTime;
+	}
+
+	void RouterProfile::SetLastPersistTime (uint64_t ts)
+	{
+		std::lock_guard lock (m_Mutex);
+		m_LastPersistTime = ts;
+	}
+
+	bool RouterProfile::IsDuplicated () const
+	{
+		std::lock_guard lock (m_Mutex);
+		return m_IsDuplicated;
+	}
+
+	boost::asio::ip::udp::endpoint RouterProfile::GetLastEndpoint () const
+	{
+		std::lock_guard lock (m_Mutex);
+		return m_LastEndpoint;
+	}
+
+	void RouterProfile::SetLastEndpoint (const boost::asio::ip::udp::endpoint & ep)
+	{
+		std::lock_guard lock (m_Mutex);
+		m_LastEndpoint = ep;
+	}
+
+	bool RouterProfile::HasLastEndpoint (bool v4) const
+	{
+		std::lock_guard lock (m_Mutex);
+		return !m_LastEndpoint.address ().is_unspecified () && m_LastEndpoint.port ()
+			&& ((v4 && m_LastEndpoint.address ().is_v4 ()) || (!v4 && m_LastEndpoint.address ().is_v6 ()));
 	}
 
 	std::shared_ptr<RouterProfile> GetRouterProfile (const IdentHash & identHash)
@@ -295,8 +499,12 @@ namespace data
 		}
 		auto profile = netdb.NewRouterProfile ();
 		profile->Load (identHash); // if possible
-		std::lock_guard<std::mutex> l (g_ProfilesMutex);
-		g_Profiles.emplace (identHash, profile);
+		{
+			std::lock_guard<std::mutex> l (g_ProfilesMutex);
+			auto it = g_Profiles.emplace (identHash, profile).first;
+			profile = it->second;
+		}
+		profile->SetLastAccessTime (i2p::util::GetSecondsSinceEpoch ());
 		return profile;
 	}
 
@@ -318,34 +526,59 @@ namespace data
 
 	void InitProfilesStorage ()
 	{
-		g_ProfilesStorage.SetPlace (i2p::fs::GetDataDir ());
-		g_ProfilesStorage.Init (i2p::data::GetBase64SubstitutionTable (), 64);
+		InitProfilesStorage (i2p::fs::GetDataDir ());
+	}
+
+	void InitProfilesStorage (const std::string & place)
+	{
+		if (place.empty ()) throw std::runtime_error ("Profiling: Refusing empty storage root");
+		const auto requested = std::filesystem::weakly_canonical (place).string ();
+		std::lock_guard storageLock (g_ProfilesStorageMutex);
+		if (g_ProfilesStorageInitialized)
+		{
+			if (requested != g_ProfilesStoragePlace)
+				throw std::runtime_error ("Profiling: Storage root is immutable after initialization");
+			return;
+		}
+		g_ProfilesStorage.SetPlace (requested);
+		if (!g_ProfilesStorage.Init (i2p::data::GetBase64SubstitutionTable (), 64))
+			throw std::runtime_error ("Profiling: Failed to initialize storage root");
+		g_ProfilesStoragePlace = requested;
+		g_ProfilesStorageInitialized = true;
 	}
 
 	static void SaveProfilesToDisk (
 		std::list<std::pair<i2p::data::IdentHash, std::shared_ptr<RouterProfile>>> && profiles)
 	{
 		for (auto & it : profiles)
-			if (it.second) it.second->Save (it.first);
+			if (it.second && !it.second->Save (it.first)) it.second->MarkPersistenceFailed ();
 	}
 
 	std::future<void> PersistProfiles ()
 	{
+		{
+			std::lock_guard storageLock (g_ProfilesStorageMutex);
+			if (!g_ProfilesStorageInitialized)
+			{
+				LogPrint (eLogWarning, "Profiling: Storage is not initialized; skipping persistence");
+				return std::future<void> ();
+			}
+		}
 		auto ts = i2p::util::GetSecondsSinceEpoch ();
 		std::list<std::pair<i2p::data::IdentHash, std::shared_ptr<RouterProfile>>> tmp;
 		{
 			std::lock_guard<std::mutex> l (g_ProfilesMutex);
 			for (auto it = g_Profiles.begin (); it != g_Profiles.end ();)
 			{
-				if (it->second->IsUpdated () && ts > it->second->GetLastPersistTime () + PEER_PROFILE_PERSIST_INTERVAL)
+				if (it->second->MarkPersistenceDue (ts))
 				{
 					tmp.push_back (*it);
-					it->second->SetLastPersistTime (ts);
-					it->second->SetUpdated (false);
+					++it;
+					continue;
 				}
-				if (!it->second->IsUpdated ()
-					&& ts > std::max (it->second->GetLastUpdateTime (), it->second->GetLastAccessTime ())
-							+ PEER_PROFILE_PERSIST_INTERVAL)
+				// A shared owner may still mutate this profile outside the map lock.
+				// Keep it canonical until the map is its only remaining owner.
+				if (it->second.use_count () == 1 && it->second->IsExpiredFromCache (ts))
 					it = g_Profiles.erase (it);
 				else
 					it++;
@@ -364,13 +597,18 @@ namespace data
 		}
 		auto ts = i2p::util::GetSecondsSinceEpoch ();
 		for (auto & it : tmp)
-			if (it.second->IsUseful ()
-				&& (it.second->IsUpdated () || ts - it.second->GetLastUpdateTime () < PEER_PROFILE_EXPIRATION_TIMEOUT))
-				it.second->Save (it.first);
+			if (it.second->ShouldSaveOnShutdown (ts))
+				if (!it.second->Save (it.first)) it.second->MarkPersistenceFailed ();
 	}
 
 	static void DeleteFilesFromDisk ()
 	{
+		std::lock_guard storageLock (g_ProfilesStorageMutex);
+		if (!g_ProfilesStorageInitialized)
+		{
+			LogPrint (eLogWarning, "Profiling: Storage is not initialized; skipping cleanup");
+			return;
+		}
 		std::vector<std::string> files;
 		g_ProfilesStorage.Traverse (files);
 
@@ -378,6 +616,22 @@ namespace data
 		std::time_t now = std::time (nullptr);
 		for (const auto & path : files)
 		{
+			// Traverse is shared with other hashed stores and includes unrelated
+			// regular files. Expiry owns only canonical profile leaves in their
+			// expected shard, never staging files, backups or symlink leaves.
+			const std::filesystem::path candidate (path);
+			const auto filename = candidate.filename ().string ();
+			constexpr std::string_view prefix = "profile-", suffix = ".txt";
+			constexpr size_t encodedHashLength = 4 * ((IdentHash::len + 2) / 3);
+			if (filename.size () != prefix.size () + encodedHashLength + suffix.size ()
+				|| !filename.starts_with (prefix) || !filename.ends_with (suffix)) continue;
+			const auto encoded = std::string_view (filename).substr (prefix.size (), encodedHashLength);
+			IdentHash hash;
+			if (hash.FromBase64 (encoded) != IdentHash::len || hash.ToBase64 () != encoded
+				|| candidate != std::filesystem::path (g_ProfilesStorage.Path (std::string (encoded)))) continue;
+			std::error_code error;
+			if (!std::filesystem::is_regular_file (std::filesystem::symlink_status (candidate, error)) || error)
+				continue;
 			if (stat (path.c_str (), &st) != 0)
 			{
 				LogPrint (eLogWarning, "Profiling: Can't stat(): ", path);
@@ -394,11 +648,21 @@ namespace data
 	std::future<void> DeleteObsoleteProfiles ()
 	{
 		{
+			std::lock_guard storageLock (g_ProfilesStorageMutex);
+			if (!g_ProfilesStorageInitialized)
+			{
+				LogPrint (eLogWarning, "Profiling: Storage is not initialized; skipping cleanup");
+				return std::future<void> ();
+			}
+		}
+		{
 			auto ts = i2p::util::GetSecondsSinceEpoch ();
 			std::lock_guard<std::mutex> l (g_ProfilesMutex);
 			for (auto it = g_Profiles.begin (); it != g_Profiles.end ();)
 			{
-				if (ts - it->second->GetLastUpdateTime () >= PEER_PROFILE_EXPIRATION_TIMEOUT)
+				// The map lock prevents new lookups; an existing owner keeps the
+				// profile canonical until it can no longer be mutated externally.
+				if (it->second.use_count () == 1 && it->second->IsExpiredByLifetime (ts))
 					it = g_Profiles.erase (it);
 				else
 					it++;
@@ -440,14 +704,22 @@ namespace data
 
 	std::future<void> FlushPostponedRouterProfileUpdates ()
 	{
-		if (g_PostponedUpdates.empty ()) return std::future<void> ();
-
 		std::list<std::pair<i2p::data::IdentHash, std::function<void (std::shared_ptr<RouterProfile>)>>> updates;
 		{
 			std::lock_guard<std::mutex> l (g_PostponedUpdatesMutex);
+			if (g_PostponedUpdates.empty ()) return std::future<void> ();
 			g_PostponedUpdates.swap (updates);
 		}
 		return std::async (std::launch::async, ApplyPostponedUpdates, std::move (updates));
+	}
+
+	void DiscardPostponedRouterProfileUpdates ()
+	{
+		std::list<std::pair<i2p::data::IdentHash, std::function<void (std::shared_ptr<RouterProfile>)>>> discarded;
+		{
+			std::lock_guard lock (g_PostponedUpdatesMutex);
+			discarded.swap (g_PostponedUpdates);
+		}
 	}
 }
 }

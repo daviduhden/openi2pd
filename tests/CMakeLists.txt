@@ -127,6 +127,8 @@ set(I2PD_TESTS
   test-routercontext-service-lifecycle
   test-routercontext-static-keys
   test-routercontext-port-range
+  test-router-profile-race
+  test-router-profile-storage
   test-tunnel-dsm-policy
   test-tunnelconfig-ownership
   test-transport-connector
@@ -226,6 +228,12 @@ foreach(test IN LISTS I2PD_TESTS)
     set_tests_properties(${test} PROPERTIES SKIP_RETURN_CODE 77)
   endif()
   set_property(TEST ${test} APPEND PROPERTY LABELS unit)
+  if(test STREQUAL "test-router-profile-race")
+    set_property(TEST ${test} APPEND PROPERTY LABELS i2p)
+  endif()
+  if(test STREQUAL "test-router-profile-storage")
+    set_property(TEST ${test} APPEND PROPERTY LABELS "i2p;security;memory")
+  endif()
   if(test MATCHES "^test-torrent")
     set_property(TEST ${test} APPEND PROPERTY LABELS torrent)
   endif()

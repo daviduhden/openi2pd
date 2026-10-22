@@ -17,6 +17,8 @@
 #include <memory>
 #include <future>
 #include <functional>
+#include <mutex>
+#include <string>
 #include <boost/asio.hpp>
 #include "Identity.h"
 
@@ -58,12 +60,13 @@ namespace data
 	public:
 		RouterProfile ();
 
-		void Save (const IdentHash & identHash);
+		bool Save (const IdentHash & identHash);
+		// Load before publication; do not replace state while callers mutate it.
 		void Load (const IdentHash & identHash);
 
 		bool IsBad ();
 		bool IsUnreachable ();
-		bool IsReal () const { return m_HasConnected || m_NumTunnelsAgreed > 0 || m_NumTunnelsDeclined > 0; }
+		bool IsReal () const;
 
 		void TunnelBuildResponse (uint8_t ret);
 		void TunnelNonReplied (int tunnelLength);
@@ -72,34 +75,36 @@ namespace data
 		void Connected ();
 		void Duplicated ();
 
-		uint64_t GetLastUpdateTime () const { return m_LastUpdateTime; };
-		bool IsUpdated () const { return m_IsUpdated; };
-		void SetUpdated (bool updated) { m_IsUpdated = updated; }
-		uint64_t GetLastAccessTime () const { return m_LastAccessTime; };
-		void SetLastAccessTime (uint64_t ts) { m_LastAccessTime = ts; };
-		uint64_t GetLastPersistTime () const { return m_LastPersistTime; };
-		void SetLastPersistTime (uint64_t ts) { m_LastPersistTime = ts; };
+		uint64_t GetLastUpdateTime () const;
+		bool IsUpdated () const;
+		void SetUpdated (bool updated);
+		bool MarkPersistenceDue (uint64_t ts);
+		void MarkPersistenceFailed ();
+		bool IsExpiredFromCache (uint64_t ts) const;
+		bool IsExpiredByLifetime (uint64_t ts) const;
+		bool ShouldSaveOnShutdown (uint64_t ts) const;
+		uint64_t GetLastAccessTime () const;
+		void SetLastAccessTime (uint64_t ts);
+		uint64_t GetLastPersistTime () const;
+		void SetLastPersistTime (uint64_t ts);
 
 		bool IsUseful () const;
-		bool IsDuplicated () const { return m_IsDuplicated; };
+		bool IsDuplicated () const;
 
-		const boost::asio::ip::udp::endpoint & GetLastEndpoint () const { return m_LastEndpoint; }
-		void SetLastEndpoint (const boost::asio::ip::udp::endpoint & ep) { m_LastEndpoint = ep; }
-		bool HasLastEndpoint (bool v4) const
-		{
-			return !m_LastEndpoint.address ().is_unspecified () && m_LastEndpoint.port ()
-				&& ((v4 && m_LastEndpoint.address ().is_v4 ()) || (!v4 && m_LastEndpoint.address ().is_v6 ()));
-		}
+		boost::asio::ip::udp::endpoint GetLastEndpoint () const;
+		void SetLastEndpoint (const boost::asio::ip::udp::endpoint & ep);
+		bool HasLastEndpoint (bool v4) const;
 
 	private:
 		void UpdateTime ();
 
-		bool IsAlwaysDeclining () const { return !m_NumTunnelsAgreed && m_NumTunnelsDeclined >= 5; };
-		bool IsLowPartcipationRate () const;
-		bool IsLowReplyRate () const;
-		bool IsDeclinedRecently (uint64_t ts);
+		bool IsRealLocked () const;
+		bool IsUnreachableLocked (uint64_t ts);
+		bool IsDeclinedRecentlyLocked (uint64_t ts);
 
 	private:
+		mutable std::mutex m_Mutex;
+		mutable std::mutex m_IoMutex;
 		bool m_IsUpdated;
 		uint64_t m_LastDeclineTime, m_LastUnreachableTime, m_LastUpdateTime, m_LastAccessTime,
 			m_LastPersistTime; // in seconds
@@ -120,13 +125,19 @@ namespace data
 	bool IsRouterBanned (const IdentHash & identHash); // check only existing profiles
 	bool IsRouterDuplicated (const IdentHash & identHash); // check only existing profiles
 	void InitProfilesStorage ();
+	// The selected root is immutable for the process lifetime; changing datadir
+	// requires a process restart. Calls are coordinated within this process and
+	// require exclusive ownership of the data directory. The overload accepts a test root.
+	void InitProfilesStorage (const std::string & place);
 	std::future<void> DeleteObsoleteProfiles ();
+	// Caller must stop profile producers and drain NetDb-owned async profile work first.
 	void SaveProfiles ();
 	std::future<void> PersistProfiles ();
 	bool UpdateRouterProfile (const IdentHash & identHash,
 		std::function<void (std::shared_ptr<RouterProfile>)>
 			update); // return true if updated immediately, and false if postponed
 	std::future<void> FlushPostponedRouterProfileUpdates ();
+	void DiscardPostponedRouterProfileUpdates ();
 }
 }
 
