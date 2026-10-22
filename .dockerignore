@@ -7,7 +7,14 @@
 #
 
 .git
+.agents
+.github
+android
+audit
 build-output
+debian
+docs
 obj
+tests
 *.a
 *.so

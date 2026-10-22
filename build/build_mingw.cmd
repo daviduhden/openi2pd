@@ -13,8 +13,8 @@ title Building i2pd
 
 REM To use that script, you must have installed in your MSYS installation these packages:
 REM Base: git cmake ninja zip
-REM UCRT64: mingw-w64-ucrt-x86_64-boost mingw-w64-ucrt-x86_64-openssl mingw-w64-ucrt-x86_64-gcc
-REM MINGW32: mingw-w64-i686-boost mingw-w64-i686-openssl mingw-w64-i686-gcc
+REM UCRT64: mingw-w64-ucrt-x86_64-boost mingw-w64-ucrt-x86_64-openssl mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-miniupnpc
+REM MINGW32: mingw-w64-i686-boost mingw-w64-i686-openssl mingw-w64-i686-gcc mingw-w64-i686-miniupnpc
 
 REM setting up variables for MSYS
 REM Set MSYS2_ROOT when MSYS2 is not on PATH; no hard-coded installation
@@ -35,13 +35,17 @@ if not defined WD (
 )
 set "xSH=%WD%bash -lc"
 
-set "BASE_FILES=README.txt contrib/i2pd.conf contrib/tunnels.conf contrib/certificates contrib/tunnels.d"
+set "BASE_FILES=README.txt contrib/i2pd.conf contrib/tunnels.conf contrib/certificates contrib/tunnels.d tools/LICENSE"
 
 REM detecting number of processors
 set /a threads=%NUMBER_OF_PROCESSORS%
 
-REM we must work in root of repo
-cd ..
+REM Work in the repository root regardless of the caller's directory.
+pushd "%~dp0.." >nul
+if not exist "build\CMakeLists.txt" (
+  echo This script must live inside the openi2pd build directory. >&2
+  exit /b 1
+)
 
 REM deleting old log files
 del /S build_*.log >> nul 2>&1
@@ -63,8 +67,9 @@ echo Preparing configuration files and README for packaging...
 
 %xSH% "echo To use configs and certificates, move all files and certificates folder from contrib directory here. > README.txt" >> nul
 
-REM converting configuration files to DOS format (make usable in Windows Notepad)
-%xSH% "unix2dos contrib/i2pd.conf contrib/tunnels.conf contrib/tunnels.d/*" >> build\build.log 2>&1
+REM Configuration files are distributed with native LF line endings. Modern
+REM Windows editors handle LF and the parser is line based, so do not rewrite
+REM tracked sources in place merely to normalise Notepad input.
 
 REM Prepare binary signing command if signing key and password provided
 if defined SIGN (

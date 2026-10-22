@@ -17,13 +17,13 @@ matrix.
 | Dependency | Minimum | Why this minimum | Used by |
 |---|---|---|---|
 | C++ compiler | GCC 13, Clang 17, MSVC 19.35 (VS 2022 17.5) | C++23 language/library baseline (`std::jthread`, `std::span`, concepts, `std::atomic_ref`, `std::filesystem`, `std::endian`/`std::byteswap`); the portable `i2p::expected` shim remains only for the OpenBSD base libc++ gap | Everything |
-| CMake | 3.22 | Modern target/usage requirements, `install(EXPORT)`, `CMakePackageConfigHelpers`, CMP0077 behaviour; available on all supported platforms | Build |
+| CMake | 3.24 | Modern target/usage requirements, `install(EXPORT)`, `CMakePackageConfigHelpers`, CMP0077 behaviour; available on all supported platforms | Build |
 | Ninja | 1.10 | Generator for the POSIX make front-end; CMake's `Unix Makefiles` generator emits GNU make syntax | Build front-end |
 | Boost | 1.74 for program_options; 1.81 for JSON/URL | `boost::program_options` is the only compiled core Boost library now that Boost.Atomic and Boost.Filesystem are no longer used; Asio/Beast/property_tree/algorithm are header-only. `boost::json` and `boost::url` are required by the torrent RPC and only exist from 1.81. | `libi2pd`, `libi2pd_client` |
-| OpenSSL | 3.0.2 | EVP/KDF/param-building APIs used by the supported code paths; the 3.0.0-only SipHash regression is no longer supported. Enforced by CMake. Ed25519ph/type 8 uses plain Ed25519 (no OpenSSL 3.2 provider dependency); ML-KEM remains gated at 3.5. | `libi2pd`, `libi2pd_client`, daemon |
-| LibreSSL | 4.0 (OpenBSD 7.6+) | SHA-1/SipHash/Ed25519 APIs used by the code; the pre-4.0 in-place ChaCha20-Poly1305 workaround is gone. Enforced by CMake when `OPENSSL_VERSION` identifies LibreSSL. PQ code remains capability-gated. | OpenBSD builds |
+| OpenSSL | 3.0.2 through 4.0.x | EVP/provider/KDF/param-building APIs used by the supported code paths. OpenSSL 4.0 removed fixed TLS version methods, opaque ASN.1 strings, engine/custom-method APIs and several deprecated entry points; the tree uses `TLS_method()`/Asio role contexts, ASN.1 accessors and provider fetches. CMake reads the selected headers directly and runs compile-only feature probes. Ed25519ph/type 8 uses plain Ed25519; ML-KEM remains a runtime-gated 3.5+ feature. | `libi2pd`, `libi2pd_client`, daemon, tools |
+| LibreSSL | 4.0 (OpenBSD 7.6+) | SHA-1/SipHash/Ed25519 APIs used by the code; the pre-4.0 in-place ChaCha20-Poly1305 workaround is gone. CMake reads `LIBRESSL_VERSION_TEXT` from the selected `opensslv.h` rather than treating the frozen compatibility version as an OpenSSL release. Feature probes select legacy EC/RSA accessors only where the provider API is absent. PQ code remains capability-gated. | OpenBSD builds |
 | zlib | 1.2.11 | `inflateInit2`, raw-deflate SU3 ZIP handling; enforced by CMake | `libi2pd`, tests |
-| ncursesw | 6.0 | Optional TUI; wide-character build preferred, ASCII rendering used | `i2pd-tui` only |
+| ncursesw | 6.0 | TUI; required when `I2PD_BUILD_TUI=ON` (default) and `I2PD_TUI_REQUIRED=ON`, otherwise optional. Wide-character build preferred; ASCII rendering used. | `i2pd-tui` only |
 | MiniUPnPc | 2.2.6 / API 17 | Optional UPnP client; 2.2.6 is the current Ubuntu 24.04 package. API 18 adds the external-address `UPNP_GetValidIGD` signature and is selected when present; older API branches are rejected. | daemon and Android JNI when `WITH_UPNP=ON` |
 | Perl | OpenBSD base Perl / any Perl 5 with core modules | `i2pdctl` uses `Config`, `File::Spec`, `Getopt::Long`, `JSON::PP`, `HTTP::Tiny`, `IPC::Open3`, `IO::Select`, `POSIX` and `Symbol`; tests use `Test::More`. No CPAN or runtime download is performed. | `i2pdctl` and optional static/CI checks only |
 | `openssl` command | Same OpenSSL/LibreSSL base already required | Used only by the shell-free `s_client` fallback when `IO::Socket::SSL` is absent; HTTPS never downgrades to cleartext. | `i2pdctl` HTTPS fallback |
@@ -34,7 +34,7 @@ matrix.
 |---|---|
 | C++20 fallback in CMake and make | C++23 is a hard requirement; accepting C++20 silently removed `std::expected` |
 | `-D_GLIBCXX_USE_NANOSLEEP` | GCC 4.7/4.8 workaround |
-| CMake < 3.22 policy downgrade | Unsupported build environment |
+| CMake < 3.24 policy downgrade | Unsupported build environment |
 | Boost < 1.55 Asio option branch | Superseded by the declared Boost 1.74 minimum |
 | `#if __cplusplus >= 202002L` branches | Always true under the new standard |
 | Boost.Filesystem fallback (`STD_FILESYSTEM=0`, MinGW path workaround) | C++23 `std::filesystem` is unconditional on supported toolchains |
@@ -42,7 +42,7 @@ matrix.
 | `std::atomic_ref` fallback in Torrents | C++20/C++23 standard library baseline |
 | `WITH_TUI` and `I2PD_BUILD_TESTS` aliases | Canonical `I2PD_BUILD_TUI` and `BUILD_TESTING` remain |
 | `filelist.mk`, `Makefile.linux`, `Makefile.openbsd`, `Makefile.mingw`, GNU make syntax | Replaced by CMake and a POSIX make front-end |
-| CMake < 3.21 `crypt32` workaround | Not reachable with CMake 3.22+ |
+| CMake < 3.21 `crypt32` workaround | Not reachable with CMake 3.24+ |
 | Windows XP build path, `inet_pton_xp`/`inet_ntop_xp` and `WINVER == 0x0501` branches | C++23/MSVC 19.35 support Windows 10+; `InetPtonA`/`InetNtopA` and Network List Manager are available directly |
 | `_MSC_VER` `sprintf_s` branches in SAM/Timestamp | MSVC 19.35 provides C99 `snprintf`; checked lengths now use one portable path |
 | `JSON_SUPPORTED` / "Your boost version ... is too old" fallback in TorrentsRPC | CMake requires Boost 1.81 JSON/URL whenever torrents are enabled |
@@ -62,10 +62,19 @@ These are **not** obsolete-version branches. They select between APIs that
 really differ between OpenSSL and LibreSSL, or between libraries with and
 without ML-KEM:
 
-- `OPENSSL_VERSION_NUMBER` / `LIBRESSL_VERSION_NUMBER` guards in
-  `Crypto.*`, `Signature.*`, `PostQuantum.*`, `Reseed.cpp`, `SSU2Session.cpp`,
-  `NTCP2.cpp`, `I2PControl.cpp`.
-- `OPENSSL_PQ` for ML-KEM availability.
+- Compile-only CMake probes in `build/CMakeLists.txt` for
+  `EVP_PKEY_is_a`, `EVP_PKEY_get_group_name`, `EVP_PKEY_get_bn_param`,
+  `EVP_MD_fetch`, `EVP_CIPHER_fetch`, `EVP_KDF_fetch`, `EVP_EC_gen`,
+  `ASN1_STRING_get0_data` and `TLS_method`. OpenSSL must provide the modern
+  probes; LibreSSL keeps the small legacy fallback branches. The probes are
+  compile tests only and never execute a target binary.
+- `I2PD_OPENSSL_EXPECT` / `I2PD_OPENSSL_EXPECT_VERSION` are optional CI guards
+  that fail configuration when the selected backend is not the intended one.
+- `OPENSSL_VERSION_NUMBER` / `LIBRESSL_VERSION_NUMBER` guards remain only where
+  the API genuinely differs (for example the LibreSSL ML-KEM header/API).
+- `OPENSSL_PQ` for ML-KEM availability, plus the runtime `CanPublishPQ()` /
+  `HighestSupportedPQVersion()` gates. A compile-time PQ build never
+  advertises a parameter set that the active provider cannot create.
 - `MINIUPNPC_API_VERSION >= 18` for the external-address `UPNP_GetValidIGD` signature; API 17 uses the older call plus `UPNP_GetExternalIPAddress`.
 - `BOOST_ASIO_HAS_LOCAL_SOCKETS` for I2PControl's local socket.
 - `__linux__`/`__OpenBSD__` guards for peer credentials, `pledge`/`unveil`,
@@ -85,8 +94,8 @@ String formatting uses `snprintf`/`vsnprintf`, `inet_ntop` and
 `if_indextoname`, which are guaranteed by the declared compiler and platform
 minima. The project does not depend on `strlcpy` or `strlcat`; fixed C-style
 buffers use the internal `CopyString` helper instead, avoiding a libc-specific
-symbol or fallback. No new CMake feature probe is added because no
-non-guaranteed libc function is used. The `BOOST_ASIO_HAS_SNPRINTF` definition selects Asio's
+symbol or fallback. CMake feature probes are limited to OpenSSL/LibreSSL API
+selection and do not probe optional libc formatting functions. The `BOOST_ASIO_HAS_SNPRINTF` definition selects Asio's
 bounded `snprintf` fallback for scope IDs; project address/endpoint formatting
 avoids Asio's remaining POSIX `strcat` scope path.
 
@@ -107,5 +116,6 @@ installation paths in the maintained build files.
   `rwc` access to its configured path and relies on the existing `unix` and
   `stdio` promises.
 - The port integration is external to this repository. The maintained tree no
-  longer requires `gmake`; a port should invoke CMake with Ninja or the POSIX
-  make front-end.
+  longer requires `gmake`; `contrib/openbsd/port/` is a merge template and a
+  port should invoke CMake with Ninja or the POSIX make front-end. The default
+  TUI adds `devel/ncurses`/`ncursesw` to the port dependencies.

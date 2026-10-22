@@ -9,12 +9,12 @@
 # cover Boost, OpenSSL/LibreSSL, zlib and optional MiniUPnPc.
 #
 
-cmake_minimum_required(VERSION 3.22)
+cmake_minimum_required(VERSION 3.24)
 
 # The project deliberately keeps its CMake entry point in build/ for
 # compatibility with existing package recipes.
 set(PROJECT_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/..")
-set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake_modules")
+list(PREPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake_modules")
 
 include(Version)
 set_version("${PROJECT_ROOT}/libi2pd/version.h" PROJECT_VERSION)
@@ -28,6 +28,14 @@ project(
 
 if(NOT CMAKE_SYSTEM_NAME MATCHES "^(Windows|Linux|OpenBSD|Android)$")
   message(FATAL_ERROR "openi2pd supports Windows, Linux, OpenBSD and Android")
+endif()
+
+# CMake's Unix Makefiles generator emits GNU make syntax. OpenBSD's make
+# cannot consume it, so reject that combination instead of producing a
+# tree that only appears to be buildable.
+if(CMAKE_SYSTEM_NAME STREQUAL "OpenBSD" AND CMAKE_GENERATOR MATCHES "Makefiles$")
+  message(FATAL_ERROR
+    "The ${CMAKE_GENERATOR} generator emits GNU make syntax; use -G Ninja on OpenBSD")
 endif()
 
 # C++23 is a hard requirement. The portable Expected shim provides the
@@ -49,6 +57,7 @@ option(WITH_HARDENING       "Use hardening compiler flags"                 OFF)
 option(WITH_LIBRARY         "Install libraries and headers"                ON)
 option(WITH_BINARY          "Build the router executable"                  ON)
 option(I2PD_BUILD_TUI       "Build the TUI (ncursesw on Unix, Win32 on Windows)" ON)
+option(I2PD_TUI_REQUIRED    "Fail configuration when the Unix TUI dependency is missing" ON)
 option(I2PD_BUILD_TOOLS     "Build i2pd auxiliary tools"                   ON)
 option(I2PD_INSTALL_DOCS   "Install documentation and branding assets"    ON)
 option(I2PD_PERL_CRITIC    "Run optional Perl::Critic checks in CTest"    OFF)
@@ -60,8 +69,29 @@ option(WITH_ADDRSANITIZER   "Build with AddressSanitizer (Unix)"           OFF)
 option(WITH_THREADSANITIZER "Build with ThreadSanitizer (Unix)"            OFF)
 option(WITH_UNDEFSANITIZER  "Build with UndefinedBehaviorSanitizer (Unix)" OFF)
 option(BUILD_TESTING        "Build unit and protocol tests"                OFF)
+option(WITH_FUZZERS         "Build libFuzzer targets (Clang, requires tests)" OFF)
+if(WITH_FUZZERS AND NOT BUILD_TESTING)
+  message(FATAL_ERROR "WITH_FUZZERS requires BUILD_TESTING=ON")
+endif()
+if(WITH_FUZZERS AND (NOT WITH_ADDRSANITIZER OR NOT WITH_UNDEFSANITIZER))
+  message(FATAL_ERROR
+    "WITH_FUZZERS requires WITH_ADDRSANITIZER=ON and WITH_UNDEFSANITIZER=ON; "
+    "an uninstrumented library archive would make the fuzzers report false success.")
+endif()
 
 include(GNUInstallDirs)
+# GNUInstallDirs 3.30+ derives DOCDIR from PROJECT_NAME (OpenI2Pd here), while
+# the package and documentation paths are maintained as "i2pd". Replace only
+# that derived default; preserve an explicit user override.
+if(NOT DEFINED CMAKE_INSTALL_DOCDIR
+    OR CMAKE_INSTALL_DOCDIR STREQUAL "${CMAKE_INSTALL_DATAROOTDIR}/doc/${PROJECT_NAME}")
+  set(CMAKE_INSTALL_DOCDIR "${CMAKE_INSTALL_DATAROOTDIR}/doc/i2pd" CACHE PATH
+    "Documentation installation directory" FORCE)
+  # GNUInstallDirs may have created a normal variable that shadows the cache
+  # on the first configure. Remove it so install() and later reconfigures read
+  # the selected cache value consistently.
+  unset(CMAKE_INSTALL_DOCDIR)
+endif()
 
 include(CTest)
 
@@ -142,8 +172,10 @@ endif()
 if(WITH_STATIC)
   if(MSVC)
     set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+    set(CMAKE_FIND_LIBRARY_SUFFIXES ".lib")
+  else()
+    set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
   endif()
-  set(CMAKE_FIND_LIBRARY_SUFFIXES ".a")
   set(Boost_USE_STATIC_LIBS ON)
   set(OPENSSL_USE_STATIC_LIBS ON)
   set(ZLIB_USE_STATIC_LIBS ON)
@@ -517,7 +549,9 @@ function(i2pd_enable_sanitizers target)
   # than emitting an invalid or unsupported command line.
   if(WIN32)
     if(WITH_ADDRSANITIZER OR WITH_THREADSANITIZER OR WITH_UNDEFSANITIZER)
-      message(WARNING "Sanitizer options are not supported on Windows; ignoring them")
+      message(FATAL_ERROR
+        "Sanitizer options are not supported on this Windows toolchain; "
+        "refusing to configure an uninstrumented build.")
     endif()
     return()
   endif()
@@ -533,7 +567,7 @@ function(i2pd_enable_sanitizers target)
     target_link_options(${target} PRIVATE -fsanitize=thread)
   endif()
   if(WITH_UNDEFSANITIZER)
-    target_compile_options(${target} PRIVATE -fsanitize=undefined -fno-sanitize=vptr -fno-sanitize=enum)
+    target_compile_options(${target} PRIVATE -fsanitize=undefined -fno-sanitize-recover=all)
     target_link_options(${target} PRIVATE -fsanitize=undefined)
   endif()
 endfunction()
@@ -636,9 +670,9 @@ target_link_libraries(libi2pdclient PRIVATE $<BUILD_INTERFACE:i2pd_warnings>)
 i2pd_enable_sanitizers(libi2pdclient)
 if(NOT WITH_TORRENTS)
   target_compile_definitions(libi2pdclient PUBLIC NO_TORRENTS)
-elseif(TARGET Boost::json AND TARGET Boost::url)
-  target_link_libraries(libi2pdclient PRIVATE Boost::json Boost::url)
 endif()
+# Boost.JSON and Boost.URL are header-only. Their headers are provided by
+# Boost::headers; do not export a nonexistent compiled-library dependency.
 
 add_library(libi2pdlang STATIC ${LANG_SOURCES})
 set_target_properties(libi2pdlang PROPERTIES PREFIX "" POSITION_INDEPENDENT_CODE ON)
@@ -652,8 +686,8 @@ target_include_directories(libi2pdlang
 target_compile_features(libi2pdlang PUBLIC cxx_std_23)
 target_link_libraries(libi2pdlang PRIVATE $<BUILD_INTERFACE:i2pd_warnings>)
 i2pd_enable_sanitizers(libi2pdlang)
-# The translation glue uses the active client language and therefore lives in
-# libi2pdclient; the language data library stays free of client dependencies.
+# The language registry is process-local and intentionally independent of the
+# client context, so the TUI and tools can translate without linking the router.
 target_link_libraries(libi2pdclient PUBLIC libi2pdlang)
 
 if(I2PD_BUILD_JNI AND ANDROID)
@@ -672,7 +706,10 @@ if(I2PD_BUILD_JNI AND ANDROID)
     "${DAEMON_DIR}/TuiServerCommon.cpp"
     "${DAEMON_DIR}/TuiServer.cpp"
   )
-  set_target_properties(i2pd_jni PROPERTIES OUTPUT_NAME i2pd PREFIX "lib")
+  set_target_properties(i2pd_jni PROPERTIES
+    OUTPUT_NAME i2pd PREFIX "lib"
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN ON)
   target_compile_features(i2pd_jni PRIVATE cxx_std_23)
   target_include_directories(i2pd_jni PRIVATE
     "${PROJECT_ROOT}/android/app/src/main/cpp" ${DAEMON_DIR} ${LANG_DIR} ${TUI_DIR})
@@ -681,7 +718,10 @@ if(I2PD_BUILD_JNI AND ANDROID)
     target_compile_definitions(i2pd_jni PRIVATE USE_UPNP)
     target_link_libraries(i2pd_jni PRIVATE MiniUPnPc::MiniUPnPc)
   endif()
-  target_link_libraries(i2pd_jni PRIVATE libi2pd libi2pdclient libi2pdlang log)
+  target_link_libraries(i2pd_jni PRIVATE libi2pd libi2pdclient libi2pdlang log i2pd_warnings)
+  # Only the Java_* entry points are part of the JNI ABI. Keep static-library
+  # internals out of the dynamic symbol table.
+  target_link_options(i2pd_jni PRIVATE -Wl,--exclude-libs,ALL)
   i2pd_enable_sanitizers(i2pd_jni)
   install(TARGETS i2pd_jni LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR} COMPONENT Runtime)
 elseif(WITH_BINARY)
@@ -714,13 +754,18 @@ elseif(WITH_BINARY)
   i2pd_enable_sanitizers(i2pd)
 endif()
 
-# The TUI is a separate process and never links the router libraries. Both
-# backends share main.cpp, Theme.h and TuiProtocol.h; only the terminal and
-# transport implementations differ.
+# The TUI is a separate process and never links the router libraries. It links
+# only the dependency-free language catalog. Both backends share main.cpp,
+# Theme.h and TuiProtocol.h; only the terminal and transport implementations
+# differ.
 if(I2PD_BUILD_TUI)
   if(UNIX)
     set(CURSES_NEED_WIDE TRUE)
-    find_package(Curses)
+    if(I2PD_TUI_REQUIRED)
+      find_package(Curses REQUIRED)
+    else()
+      find_package(Curses)
+    endif()
     if(CURSES_FOUND)
       add_executable(i2pd-tui
         "${TUI_DIR}/main.cpp"
@@ -729,11 +774,10 @@ if(I2PD_BUILD_TUI)
       )
       target_compile_features(i2pd-tui PRIVATE cxx_std_23)
       target_include_directories(i2pd-tui PRIVATE
-        "${LIBI2PD_DIR}" "${TUI_DIR}" ${CURSES_INCLUDE_DIRS}
-        ${Boost_INCLUDE_DIRS}
-        "$<TARGET_PROPERTY:Boost::program_options,INTERFACE_INCLUDE_DIRECTORIES>")
+        "${LIBI2PD_DIR}" "${LANG_DIR}" "${TUI_DIR}" ${CURSES_INCLUDE_DIRS})
+      target_compile_definitions(i2pd-tui PRIVATE BOOST_ASIO_HAS_SNPRINTF=1)
       target_link_libraries(i2pd-tui PRIVATE
-        ${CURSES_LIBRARIES} Threads::Threads i2pd_warnings)
+        ${CURSES_LIBRARIES} Boost::headers Threads::Threads libi2pdlang i2pd_warnings)
       i2pd_enable_sanitizers(i2pd-tui)
     else()
       message(WARNING "ncursesw not found: building without i2pd-tui")
@@ -749,16 +793,15 @@ if(I2PD_BUILD_TUI)
     )
     target_compile_features(i2pd-tui PRIVATE cxx_std_23)
     target_include_directories(i2pd-tui PRIVATE
-      "${LIBI2PD_DIR}" "${TUI_DIR}"
-      ${Boost_INCLUDE_DIRS}
-      "$<TARGET_PROPERTY:Boost::program_options,INTERFACE_INCLUDE_DIRECTORIES>")
+      "${LIBI2PD_DIR}" "${LANG_DIR}" "${TUI_DIR}")
     target_compile_definitions(i2pd-tui PRIVATE
+      BOOST_ASIO_HAS_SNPRINTF=1
       WIN32_LEAN_AND_MEAN NOMINMAX WINVER=0x0A00 _WIN32_WINNT=0x0A00)
     # advapi32: token/SID inspection used for the named-pipe authorization
     # policy. ws2_32 is required by the inline Boost.Asio address types pulled
     # in through Log.h. No shell or Curses library is required.
     target_link_libraries(i2pd-tui PRIVATE
-      advapi32 ws2_32 Threads::Threads i2pd_warnings)
+      Boost::headers advapi32 ws2_32 Threads::Threads libi2pdlang i2pd_warnings)
   endif()
 endif()
 
@@ -776,10 +819,13 @@ if(WITH_LIBRARY)
     COMPONENT Libraries
   )
   install(DIRECTORY "${LIBI2PD_DIR}/" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/libi2pd
+    COMPONENT Development
     FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp")
   install(DIRECTORY "${LIBI2PD_CLIENT_DIR}/" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/libi2pdclient
+    COMPONENT Development
     FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp")
   install(DIRECTORY "${LANG_DIR}/" DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/libi2pdlang
+    COMPONENT Development
     FILES_MATCHING PATTERN "*.h" PATTERN "*.hpp")
 
   include(CMakePackageConfigHelpers)
@@ -787,15 +833,21 @@ if(WITH_LIBRARY)
     "${CMAKE_CURRENT_BINARY_DIR}/i2pdConfigVersion.cmake"
     VERSION ${PROJECT_VERSION}
     COMPATIBILITY SameMajorVersion)
-  configure_file(cmake/i2pdConfig.cmake "${CMAKE_CURRENT_BINARY_DIR}/i2pdConfig.cmake" @ONLY)
+  configure_package_config_file(
+    cmake/i2pdConfig.cmake
+    "${CMAKE_CURRENT_BINARY_DIR}/i2pdConfig.cmake"
+    INSTALL_DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/i2pd
+    PATH_VARS CMAKE_INSTALL_INCLUDEDIR)
   install(EXPORT i2pd-targets
     FILE i2pd-targets.cmake
     NAMESPACE i2pd::
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/i2pd)
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/i2pd
+    COMPONENT Development)
   install(FILES
     "${CMAKE_CURRENT_BINARY_DIR}/i2pdConfig.cmake"
     "${CMAKE_CURRENT_BINARY_DIR}/i2pdConfigVersion.cmake"
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/i2pd)
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/i2pd
+    COMPONENT Development)
 endif()
 
 if(WITH_BINARY)
@@ -812,38 +864,56 @@ if(WITH_BINARY)
   install(DIRECTORY "${PROJECT_ROOT}/contrib/certificates/"
     DESTINATION ${CMAKE_INSTALL_DATADIR}/i2pd/certificates
     COMPONENT Runtime)
+endif()
+
+# The TUI is a client, not a service. Its desktop launcher and icons are
+# installed with the Tui component so a packager can ship i2pd-tui separately
+# without adding a second router instance or a second service definition.
+if(TARGET i2pd-tui AND UNIX)
+  install(FILES "${PROJECT_ROOT}/contrib/openi2pd.desktop"
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/applications
+    COMPONENT Tui)
+  install(FILES "${PROJECT_ROOT}/assets/branding/symbol.svg"
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps
+    RENAME openi2pd.svg
+    COMPONENT Tui)
+  install(FILES "${PROJECT_ROOT}/contrib/artwork/openi2pd-256.png"
+    DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/256x256/apps
+    RENAME openi2pd.png
+    COMPONENT Tui)
+endif()
+
+if(I2PD_INSTALL_DOCS)
+  install(FILES
+    "${PROJECT_ROOT}/ChangeLog" "${PROJECT_ROOT}/LICENSE" "${PROJECT_ROOT}/README.md"
+    DESTINATION ${CMAKE_INSTALL_DOCDIR}
+    COMPONENT Documentation)
+  install(DIRECTORY "${PROJECT_ROOT}/docs/"
+    DESTINATION ${CMAKE_INSTALL_DOCDIR}/docs
+    COMPONENT Documentation
+    FILES_MATCHING PATTERN "*.md" PATTERN "*.png" PATTERN "*.ico" PATTERN "*.css" PATTERN "*.svg"
+    PATTERN "Doxyfile" EXCLUDE)
+  install(DIRECTORY "${PROJECT_ROOT}/assets/branding/"
+    DESTINATION ${CMAKE_INSTALL_DOCDIR}/assets/branding
+    COMPONENT Documentation)
+  install(FILES "${PROJECT_ROOT}/docs/LICENSE.i2pd-docs-en"
+    DESTINATION ${CMAKE_INSTALL_DOCDIR}/docs
+    COMPONENT Documentation)
   if(UNIX)
-    install(FILES "${PROJECT_ROOT}/contrib/openi2pd.desktop"
-      DESTINATION ${CMAKE_INSTALL_DATADIR}/applications
-      COMPONENT Runtime)
-    install(FILES "${PROJECT_ROOT}/assets/branding/symbol.svg"
-      DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps
-      RENAME openi2pd.svg
-      COMPONENT Runtime)
-    install(FILES "${PROJECT_ROOT}/contrib/artwork/openi2pd-256.png"
-      DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/256x256/apps
-      RENAME openi2pd.png
-      COMPONENT Runtime)
-  endif()
-  if(I2PD_INSTALL_DOCS)
-    install(FILES
-      "${PROJECT_ROOT}/ChangeLog" "${PROJECT_ROOT}/LICENSE" "${PROJECT_ROOT}/README.md"
-      "${PROJECT_ROOT}/TODO.md" "${PROJECT_ROOT}/ROADMAP.md" "${PROJECT_ROOT}/PROGRESS.md"
-      DESTINATION ${CMAKE_INSTALL_DOCDIR}
-      COMPONENT Documentation)
-    install(DIRECTORY "${PROJECT_ROOT}/docs/"
-      DESTINATION ${CMAKE_INSTALL_DOCDIR}/docs
-      COMPONENT Documentation
-      FILES_MATCHING PATTERN "*.md" PATTERN "*.png" PATTERN "*.ico" PATTERN "*.css" PATTERN "*.svg"
-      PATTERN "Doxyfile" EXCLUDE)
-    install(DIRECTORY "${PROJECT_ROOT}/assets/branding/"
-      DESTINATION ${CMAKE_INSTALL_DOCDIR}/assets/branding
-      COMPONENT Documentation)
-    if(UNIX)
-      install(DIRECTORY "${PROJECT_ROOT}/man/"
+    if(WITH_BINARY)
+      install(FILES "${PROJECT_ROOT}/man/i2pd.1"
         DESTINATION ${CMAKE_INSTALL_MANDIR}/man1
-        COMPONENT Documentation
-        FILES_MATCHING PATTERN "*.1")
+        COMPONENT Documentation)
+    endif()
+    if(TARGET i2pd-tui)
+      install(FILES "${PROJECT_ROOT}/man/i2pd-tui.1"
+        DESTINATION ${CMAKE_INSTALL_MANDIR}/man1
+        COMPONENT Documentation)
+    endif()
+    if(I2PD_BUILD_TOOLS)
+      install(FILES "${PROJECT_ROOT}/man/i2pdctl.1"
+        DESTINATION ${CMAKE_INSTALL_MANDIR}/man1
+        COMPONENT Documentation)
     endif()
   endif()
 endif()
@@ -910,7 +980,7 @@ elseif(I2PD_SERVICE_MANAGER STREQUAL "shepherd")
 endif()
 
 if(TARGET i2pd-tui)
-  install(TARGETS i2pd-tui RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT Runtime)
+  install(TARGETS i2pd-tui RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT Tui)
 endif()
 
 if(I2PD_BUILD_TOOLS)

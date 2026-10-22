@@ -49,6 +49,7 @@ Options:
 | `WITH_LIBRARY` | ON | Install libraries and headers |
 | `WITH_BINARY` | ON | Build the router |
 | `I2PD_BUILD_TUI` | ON | Build `i2pd-tui` (ncursesw on Unix; Win32 backend on Windows) |
+| `I2PD_TUI_REQUIRED` | ON | Fail configuration if ncursesw is missing on Unix; set OFF for an explicitly degraded build without the TUI |
 | `I2PD_BUILD_TOOLS` | ON | Build and install the auxiliary tools |
 | `I2PD_BUILD_JNI` | OFF | Android-only JNI shared library; rejected on other platforms |
 | `I2PD_INSTALL_DOCS` | ON | Install documentation, branding assets and manual pages |
@@ -61,6 +62,7 @@ Options:
 | `WITH_THREADSANITIZER` | OFF | TSan (mutually exclusive with ASan) |
 | `WITH_UNDEFSANITIZER` | OFF | UBSan |
 | `BUILD_TESTING` | OFF | Build and register tests |
+| `WITH_FUZZERS` | OFF | Build the libFuzzer targets; requires `BUILD_TESTING=ON` and Clang |
 
 Sources are explicit lists. This intentionally replaces `file(GLOB ...)`:
 glob results are not reliable dependency information and made installs depend
@@ -75,7 +77,7 @@ Component dependencies are target-scoped:
 | `i2pd_privsep` | Threads; OpenBSD `util`; Windows `advapi32` | — |
 | `i2pd` | `libi2pd`, `libi2pdclient`, `libi2pdlang`, `i2pd_privsep` | MiniUPnPc when `WITH_UPNP=ON` |
 | `i2pd_jni` (Android) | `libi2pd`, `libi2pdclient`, `libi2pdlang`, common daemon lifecycle, UPnP, I2PControl, TUI server; no `i2pd_privsep` (`I2PD_NO_PRIVSEP`) | MiniUPnPc when `WITH_UPNP=ON` |
-| `i2pd-tui` | Threads; ncursesw on Unix; Win32 libraries on Windows | — |
+| `i2pd-tui` | Threads; Boost headers; ncursesw on Unix; Win32 libraries on Windows | — |
 | tools | in-tree libraries, Threads, portability/getopt source | — |
 | tests | in-tree libraries and component sources | Perl/prove for syntax, portability, client and install checks; fuzzers require Clang |
 
@@ -85,8 +87,10 @@ installation prefix or a hidden external checkout.
 ## Generator compatibility
 
 CMake's `Unix Makefiles` generator produces GNU make syntax. It is therefore
-not a portable generator for this project's POSIX Make objective. The POSIX
-make front-end defaults to `-G Ninja`:
+not a portable generator for this project's POSIX Make objective. OpenBSD
+configuration rejects that generator explicitly. The POSIX make front-end
+defaults to `-G Ninja`, declares all action targets `.PHONY`, builds before
+installing, and forwards `DESTDIR`/`PREFIX`:
 
 ```sh
 make configure
@@ -107,12 +111,21 @@ Generator portability:
 |---|---|
 | Ninja | Default for POSIX make and all maintained CI jobs; no GNU make |
 | Visual Studio 17 2022 | Windows native CI; builds via CMake |
-| Unix Makefiles | Only when the user deliberately has GNU make; not used by the POSIX front-end or maintained CI |
+| Unix Makefiles | Rejected on OpenBSD; not used by the POSIX front-end or maintained CI. Only usable on GNU-make platforms when explicitly selected. |
 | Xcode/other IDE generators | CMake may generate them, but they are outside the validated matrix |
 
 This requires Ninja, which is a declared build dependency. It does not require
 GNU make. Users may still invoke CMake directly with any generator that matches
 their environment; the CMake project itself does not emit make syntax.
+
+The Ninja presets live next to the CMake entry point in `build/`:
+
+```sh
+cd build
+cmake --preset default
+cmake --build --preset default
+ctest --preset default
+```
 
 Parallel build jobs are controlled with CMake, not `make -j`:
 
@@ -130,22 +143,47 @@ are not used by the Makefile and are not required.
 ```sh
 cmake -S build -B build-output -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_INSTALL_PREFIX=/usr
+  -DCMAKE_INSTALL_PREFIX=/usr \
+  -DCMAKE_INSTALL_SYSCONFDIR=/etc
 cmake --build build-output --parallel
 cmake --install build-output --prefix /usr
 ```
 
-Installed files include `i2pd`, optional `i2pd-tui`, libraries/headers when
-`WITH_LIBRARY=ON`, configuration files under `SYSCONFDIR/i2pd`, certificates
-under `DATADIR/i2pd`, the man page, CMake package files and, when selected, a
-native service definition. On Windows the
+Installed files include `i2pd`, optional `i2pd-tui`, its desktop launcher and
+icons in the `Tui` component, libraries/headers when `WITH_LIBRARY=ON`,
+configuration files under `SYSCONFDIR/i2pd`, certificates under
+`DATADIR/i2pd`, the man pages matching enabled targets, CMake package files and,
+when selected, a native service definition. On Windows the
 runtime install places `i2pd.exe` and `i2pd-tui.exe` in `CMAKE_INSTALL_BINDIR`;
 DLLs are supplied by the selected toolchain/package manager.
+
+### Install components
+
+Staging can select one CMake install component at a time:
+
+| Component | Contents |
+|---|---|
+| `Runtime` | `i2pd`, configuration and certificates |
+| `Tui` | `i2pd-tui`, its desktop launcher and icons; no service definition |
+| `Libraries` | `libi2pd`, `libi2pdclient`, `libi2pdlang` and the internal privilege-separation archive |
+| `Development` | Public headers, `i2pd-targets.cmake`, `i2pdConfig.cmake` and the version file |
+| `Tools` | Native auxiliary tools and `i2pdctl` |
+| `Documentation` | License, README, documentation tree including its licence, branding assets and the man pages matching enabled targets |
+| `Service` | The selected native service definition; requires `WITH_BINARY=ON` |
+
+The exported package uses `configure_package_config_file` and `@PACKAGE_INIT@`,
+so it remains relocatable and resolves multiarch `LIBDIR`/`INCLUDEDIR` layouts.
+Consumers must install both `Libraries` and `Development` before calling
+`find_package(i2pd CONFIG)`.
+`DESTDIR` is honoured by `cmake --install` and by the POSIX `make install`
+front-end; `PREFIX` overrides the configured install prefix only for that
+invocation.
 
 ### Service install selection
 
 The `Service` component installs one native service definition for Linux. It
-is independent of the build and can be omitted entirely. The option is rejected
+requires `WITH_BINARY=ON`, is independent of the library/TUI selection and can
+be omitted entirely. The option is rejected
 on Windows and Android, which use their own service host or JNI wrapper.
 
 | Variable | Values | Purpose |
@@ -158,6 +196,7 @@ on Windows and Android, which use their own service host or JNI wrapper.
 cmake -S build -B build-output -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_INSTALL_PREFIX=/usr \
+  -DCMAKE_INSTALL_SYSCONFDIR=/etc \
   -DI2PD_SERVICE_MANAGER=systemd \
   -DI2PD_SERVICE_DIR=/usr/lib/systemd/system
 cmake --build build-output --parallel
@@ -182,7 +221,8 @@ service. See [Service management](service-management.md).
 `tui/main.cpp`, `tui/TuiClientWin32.cpp`, `tui/TerminalWin32.cpp` and
 `tui/TuiWin32Ipc.cpp`, and links only the Win32 libraries it uses. On Unix the
 same target uses `tui/TuiClient.cpp` and `tui/TerminalUnix.cpp` with ncursesw.
-The daemon always compiles `daemon/TuiServerCommon.cpp`; it adds
+Missing ncursesw is a configuration error unless `I2PD_TUI_REQUIRED=OFF` is
+passed explicitly. The daemon always compiles `daemon/TuiServerCommon.cpp`; it adds
 `daemon/TuiServer.cpp` only on Unix and `daemon/TuiServerWin32.cpp` plus
 `tui/TuiWin32Ipc.cpp` only on Windows. See
 [TUI on Windows](TUI-WINDOWS.md).

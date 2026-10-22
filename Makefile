@@ -21,7 +21,7 @@
 #   make
 #   make BUILD_DIR=build-release CMAKE_FLAGS="-DCMAKE_BUILD_TYPE=Release"
 #   make test
-#   make install
+#   make DESTDIR=/tmp/stage PREFIX=/usr install
 #
 # Parallelism is controlled with CMAKE_BUILD_PARALLEL_LEVEL, not make -j.
 
@@ -29,6 +29,12 @@ BUILD_DIR = build-output
 CMAKE = cmake
 CMAKE_GENERATOR = Ninja
 CMAKE_FLAGS =
+DESTDIR =
+PREFIX =
+
+.PHONY: all configure build router tui tools test check install clean dist
+
+all: build
 
 configure:
 	"${CMAKE}" -S build -B "${BUILD_DIR}" -G "${CMAKE_GENERATOR}" ${CMAKE_FLAGS}
@@ -36,9 +42,8 @@ configure:
 build: configure
 	"${CMAKE}" --build "${BUILD_DIR}"
 
-all: build
-
-router: configure
+router:
+	"${CMAKE}" -S build -B "${BUILD_DIR}" -G "${CMAKE_GENERATOR}" -DI2PD_BUILD_TUI=OFF ${CMAKE_FLAGS}
 	"${CMAKE}" --build "${BUILD_DIR}" --target i2pd
 
 tui:
@@ -46,21 +51,32 @@ tui:
 	"${CMAKE}" --build "${BUILD_DIR}" --target i2pd-tui
 
 tools:
-	"${CMAKE}" -S build -B "${BUILD_DIR}" -G "${CMAKE_GENERATOR}" -DI2PD_BUILD_TOOLS=ON ${CMAKE_FLAGS}
+	"${CMAKE}" -S build -B "${BUILD_DIR}" -G "${CMAKE_GENERATOR}" -DI2PD_BUILD_TOOLS=ON -DI2PD_BUILD_TUI=OFF ${CMAKE_FLAGS}
 	"${CMAKE}" --build "${BUILD_DIR}"
 
 test:
-	"${CMAKE}" -S build -B "${BUILD_DIR}" -G "${CMAKE_GENERATOR}" -DBUILD_TESTING=ON ${CMAKE_FLAGS}
+	"${CMAKE}" -S build -B "${BUILD_DIR}" -G "${CMAKE_GENERATOR}" -DBUILD_TESTING=ON -DI2PD_BUILD_TUI=OFF ${CMAKE_FLAGS}
 	"${CMAKE}" --build "${BUILD_DIR}"
 	ctest --test-dir "${BUILD_DIR}" --output-on-failure
 
 check: test
 
-install: configure
-	"${CMAKE}" --install "${BUILD_DIR}"
+install: build
+	@if [ -n "${PREFIX}" ]; then \
+		DESTDIR="${DESTDIR}" "${CMAKE}" --install "${BUILD_DIR}" --prefix "${PREFIX}"; \
+	else \
+		DESTDIR="${DESTDIR}" "${CMAKE}" --install "${BUILD_DIR}"; \
+	fi
 
 clean:
-	"${CMAKE}" -E remove_directory "${BUILD_DIR}"
+	@case "${BUILD_DIR}" in ""|"."|".."|"/") \
+		echo "refusing to remove unsafe BUILD_DIR" >&2; exit 1;; \
+	esac
+	@if [ -f "${BUILD_DIR}/CMakeCache.txt" ]; then \
+		"${CMAKE}" -E remove_directory "${BUILD_DIR}"; \
+	else \
+		echo "refusing to remove ${BUILD_DIR}: no CMakeCache.txt" >&2; exit 1; \
+	fi
 
 dist:
 	git archive --format=tar.gz -9 --prefix=openi2pd/ HEAD -o openi2pd.tar.gz

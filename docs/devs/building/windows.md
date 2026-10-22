@@ -32,7 +32,7 @@ paths like /c/dev/ for C:\dev\.
 
 > **openi2pd note:** the maintained entry point is CMake; there are no GNU
 > make build commands in the supported Windows procedure. Windows 10 or newer
-> is required (`WINVER=0x0A00`). The router requires C++23, CMake 3.22+,
+> is required (`WINVER=0x0A00`). The router requires C++23, CMake 3.24+,
 > Boost 1.74 (1.81 for torrent JSON/URL), OpenSSL 3.0.2+
 > (or LibreSSL 4.0+) and zlib 1.2.11+; MiniUPnPc 2.2.6/API 17 is required
 > while `WITH_UPNP=ON` (API 18 is used when available). The manual Windows
@@ -114,7 +114,7 @@ You may now skip directly to the [build process](#creating-visual-studio-project
 Provide the same current dependencies through a local prefix and pass it as
 `-DCMAKE_PREFIX_PATH=<prefix>`:
 
-* CMake 3.22 or newer.
+* CMake 3.24 or newer.
 * Visual Studio 2022 17.5 (MSVC 19.35) or newer with the C++23 toolset.
 * Boost 1.74+ with `program_options`; Boost 1.81+ with `json` and `url` when
   torrents are enabled.

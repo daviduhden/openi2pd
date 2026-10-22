@@ -26,6 +26,7 @@ set(I2PD_TOOLS
   verifyhost
   x25519
 )
+string(REPLACE ";" "," I2PD_TOOLS_INVENTORY "${I2PD_TOOLS}")
 
 foreach(tool IN LISTS I2PD_TOOLS)
   add_executable(${tool}
@@ -55,6 +56,10 @@ endforeach()
 # Perl 5 interpreter and either IO::Socket::SSL or the openssl command.
 install(PROGRAMS "${CMAKE_CURRENT_SOURCE_DIR}/scripts/i2pdctl"
   DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT Tools)
+# Every imported tool binary must travel with its BSD-3 attribution.
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE"
+  DESTINATION ${CMAKE_INSTALL_DOCDIR}
+  RENAME LICENSE.i2pd-tools COMPONENT Tools)
 
 if(BUILD_TESTING)
   find_package(Perl)
@@ -70,12 +75,13 @@ if(BUILD_TESTING)
     # the regression tests run.
     set(I2PD_PERL_SYNTAX_SCRIPTS
       "${CMAKE_CURRENT_SOURCE_DIR}/scripts/check-doc-links.pl"
+      "${CMAKE_CURRENT_SOURCE_DIR}/scripts/check-doc-nav.pl"
       "${CMAKE_CURRENT_SOURCE_DIR}/scripts/validate-branding.pl"
       "${CMAKE_CURRENT_SOURCE_DIR}/tests/i2pdctl.t"
       "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate-branding.t"
       "${CMAKE_CURRENT_SOURCE_DIR}/tests/perl-portability.t"
       "${PROJECT_ROOT}/tests/interop/check-vectors.pl"
-      "${PROJECT_ROOT}/android/tools/check-english-only.pl")
+      "${PROJECT_ROOT}/android/tools/check-android-locales.pl")
     foreach(script IN LISTS I2PD_PERL_SYNTAX_SCRIPTS)
       get_filename_component(script_name "${script}" NAME)
       string(REPLACE "." "-" script_name "${script_name}")
@@ -104,6 +110,9 @@ if(BUILD_TESTING)
           "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/perl-install"
           "-DPERL_EXECUTABLE=${PERL_EXECUTABLE}"
           "-DINSTALL_BINDIR=${CMAKE_INSTALL_BINDIR}"
+          "-DINSTALL_DOCDIR=${CMAKE_INSTALL_DOCDIR}"
+          "-DTOOLS=${I2PD_TOOLS_INVENTORY}"
+          "-DEXE_SUFFIX=${CMAKE_EXECUTABLE_SUFFIX}"
           "-DINSTALL_CONFIG=$<CONFIG>"
           "-DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}"
           -P "${CMAKE_CURRENT_SOURCE_DIR}/test-perl-install.cmake")
@@ -132,27 +141,30 @@ if(BUILD_TESTING)
   # Perl runtime and no CPAN or runtime download is permitted.
   if(I2PD_PERL_CRITIC)
     if(NOT PERL_EXECUTABLE)
-      message(FATAL_ERROR "I2PD_PERL_CRITIC requires Perl")
+      message(STATUS "I2PD_PERL_CRITIC requested but Perl is unavailable; skipping")
+    else()
+      find_program(PERLCRITIC_EXECUTABLE perlcritic)
     endif()
-    find_program(PERLCRITIC_EXECUTABLE perlcritic)
-    if(NOT PERLCRITIC_EXECUTABLE)
-      message(FATAL_ERROR "I2PD_PERL_CRITIC=ON requires the perlcritic executable")
-    endif()
+    if(PERL_EXECUTABLE AND NOT PERLCRITIC_EXECUTABLE)
+      message(STATUS "I2PD_PERL_CRITIC requested but perlcritic is unavailable; skipping")
+    elseif(PERL_EXECUTABLE)
     add_test(NAME perl-critic
       COMMAND "${PERLCRITIC_EXECUTABLE}"
         --profile "${PROJECT_ROOT}/.perlcriticrc"
         "${CMAKE_CURRENT_SOURCE_DIR}/scripts/i2pdctl"
         "${CMAKE_CURRENT_SOURCE_DIR}/scripts/check-doc-links.pl"
+        "${CMAKE_CURRENT_SOURCE_DIR}/scripts/check-doc-nav.pl"
         "${CMAKE_CURRENT_SOURCE_DIR}/scripts/validate-branding.pl"
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/i2pdctl.t"
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/validate-branding.t"
         "${CMAKE_CURRENT_SOURCE_DIR}/tests/perl-portability.t"
         "${PROJECT_ROOT}/tests/interop/check-vectors.pl"
-        "${PROJECT_ROOT}/android/tools/check-english-only.pl")
+        "${PROJECT_ROOT}/android/tools/check-android-locales.pl")
     set_tests_properties(perl-critic PROPERTIES
       WORKING_DIRECTORY "${PROJECT_ROOT}"
       LABELS "perl;static;critic"
       TIMEOUT 300)
+    endif()
   endif()
 
   add_test(NAME tools-smoke
@@ -171,7 +183,6 @@ if(BUILD_TESTING)
       -P "${CMAKE_CURRENT_SOURCE_DIR}/test-tools-regressions.cmake")
   set_tests_properties(tools-regressions PROPERTIES TIMEOUT 600 LABELS "tools;integration")
 
-  string(REPLACE ";" "," I2PD_TOOLS_INVENTORY "${I2PD_TOOLS}")
   add_test(NAME tools-inventory
     COMMAND ${CMAKE_COMMAND}
       "-DTOOLS_DIR=$<TARGET_FILE_DIR:keygen>"

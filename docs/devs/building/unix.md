@@ -29,8 +29,8 @@ cmake -S build -B build-output -G Ninja \
 cmake --build build-output --parallel
 ```
 
-The resulting binaries are `build-output/i2pd` and, when ncursesw was found,
-`build-output/i2pd-tui`. Auxiliary tools are in `build-output/tools/`.
+The resulting binaries are `build-output/i2pd` and, when `I2PD_BUILD_TUI` is
+enabled, `build-output/i2pd-tui`. Auxiliary tools are in `build-output/tools/`.
 
 The POSIX make front-end performs the same steps:
 
@@ -39,9 +39,11 @@ CMAKE_BUILD_PARALLEL_LEVEL=8 make
 ```
 
 Available front-end targets are `configure`, `build`, `all`, `router`, `tui`,
-`tools`, `test`, `check`, `install`, `clean` and `dist`. `tests/Makefile`
-configures with `BUILD_TESTING=ON`, builds and runs CTest. Do not pass `-j` to
-the front-end; parallelism is controlled by CMake.
+`tools`, `test`, `check`, `install`, `clean` and `dist`. `router`, `tools` and
+`test` configure with the TUI disabled, so they do not require ncursesw; use
+`make tui` or plain `make` when the TUI is wanted. `tests/Makefile` configures
+with `BUILD_TESTING=ON` and the TUI disabled, builds and runs CTest. Do not pass `-j` to the
+front-end; parallelism is controlled by CMake.
 
 ## Tests
 
@@ -79,6 +81,7 @@ from the binaries. Select one manager at configure time:
 ```sh
 cmake -S build -B build-output -G Ninja \
   -DCMAKE_INSTALL_PREFIX=/usr \
+  -DCMAKE_INSTALL_SYSCONFDIR=/etc \
   -DI2PD_SERVICE_MANAGER=systemd \
   -DI2PD_SERVICE_DIR=/usr/lib/systemd/system
 cmake --build build-output --parallel
@@ -108,7 +111,8 @@ Pass options as `-D<key>=<value>`:
 |---|---|---|
 | `CMAKE_BUILD_TYPE` | none | `Debug`, `Release`, `RelWithDebInfo` |
 | `I2PD_BUILD_TOOLS` | ON | Build the auxiliary tools |
-| `I2PD_BUILD_TUI` | ON | Build `i2pd-tui` if ncurses is found |
+| `I2PD_BUILD_TUI` | ON | Build `i2pd-tui` |
+| `I2PD_TUI_REQUIRED` | ON | Fail configuration if ncursesw is missing; set OFF for an explicitly TUI-less Unix build |
 | `I2PD_INSTALL_DOCS` | ON | Install documentation, branding assets and manual pages |
 | `I2PD_SERVICE_MANAGER` | `none` | Install a service definition for `systemd`, `openrc`, `runit`, `s6`, `s6-rc`, `shepherd` or `sysvinit` |
 | `I2PD_SERVICE_DIR` | manager default | Destination for the service unit, script or directory |
@@ -163,12 +167,14 @@ that platform.
 ## OpenBSD
 
 ```sh
-doas pkg_add cmake ninja boost
+doas pkg_add cmake ninja boost ncurses
 doas pkg_add miniupnpc   # optional
 ```
 
 OpenSSL is provided as LibreSSL in base; openi2pd requires LibreSSL 4.0 or
-newer (OpenBSD 7.6+). Build with CMake/Ninja or with the POSIX make front-end
+newer (OpenBSD 7.6+). The default TUI needs wide-character `ncursesw` from
+`devel/ncurses`, and C++23 needs base Clang 17+ or `ports-gcc`. Build with
+CMake/Ninja or with the POSIX make front-end
 (`bmake`):
 
 ```sh

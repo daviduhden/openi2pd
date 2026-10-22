@@ -1,0 +1,56 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 24,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "default",
+      "displayName": "Ninja release with tests (run from build/)",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/../build-output",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
+        "BUILD_TESTING": "ON"
+      }
+    },
+    {
+      "name": "portable",
+      "displayName": "Ninja without optional UPnP/TUI",
+      "inherits": "default",
+      "cacheVariables": {
+        "WITH_UPNP": "OFF",
+        "I2PD_BUILD_TUI": "OFF"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "default",
+      "configurePreset": "default"
+    },
+    {
+      "name": "portable",
+      "configurePreset": "portable"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "default",
+      "configurePreset": "default",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "portable",
+      "configurePreset": "portable",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}

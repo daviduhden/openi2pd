@@ -45,6 +45,7 @@ set(miniupnpc_module "${PROJECT_ROOT}/build/cmake_modules/FindMiniUPnPc.cmake")
 set(check_atomic "${PROJECT_ROOT}/build/cmake_modules/CheckAtomic.cmake")
 set(crypto_header "${PROJECT_ROOT}/libi2pd/Crypto.h")
 set(crypto_source "${PROJECT_ROOT}/libi2pd/Crypto.cpp")
+set(famtool_source "${PROJECT_ROOT}/tools/famtool.cpp")
 set(endian_header "${PROJECT_ROOT}/libi2pd/I2PEndian.h")
 set(sam_source "${PROJECT_ROOT}/libi2pd_client/SAM.cpp")
 set(timestamp_source "${PROJECT_ROOT}/libi2pd/Timestamp.cpp")
@@ -53,6 +54,8 @@ set(win32_netstate "${PROJECT_ROOT}/Win32/Win32NetState.cpp")
 set(upnp_source "${PROJECT_ROOT}/daemon/UPnP.cpp")
 set(rpm_spec "${PROJECT_ROOT}/contrib/rpm/i2pd.spec")
 set(rpm_git_spec "${PROJECT_ROOT}/contrib/rpm/i2pd-git.spec")
+set(presets_file "${PROJECT_ROOT}/build/CMakePresets.json")
+set(fuzz_workflow "${PROJECT_ROOT}/.github/workflows/fuzz.yml")
 
 read_required("${root_makefile}" root_make)
 read_required("${test_makefile}" test_make)
@@ -65,6 +68,7 @@ read_required("${miniupnpc_module}" miniupnpc_text)
 read_required("${check_atomic}" check_atomic_text)
 read_required("${crypto_header}" crypto_header_text)
 read_required("${crypto_source}" crypto_source_text)
+read_required("${famtool_source}" famtool_text)
 read_required("${endian_header}" endian_header_text)
 read_required("${sam_source}" sam_text)
 read_required("${timestamp_source}" timestamp_text)
@@ -73,6 +77,8 @@ read_required("${win32_netstate}" win32_netstate_text)
 read_required("${upnp_source}" upnp_text)
 read_required("${rpm_spec}" rpm_text)
 read_required("${rpm_git_spec}" rpm_git_text)
+read_required("${presets_file}" presets_text)
+read_required("${fuzz_workflow}" fuzz_workflow_text)
 
 # POSIX make has no ?= or GNU pattern/functions. The front-end must be usable
 # with BSD make on OpenBSD.
@@ -128,8 +134,9 @@ endforeach()
 
 # Dependency floors and removed compatibility branches are part of the
 # maintained contract. These are compile-free source checks.
-foreach(required IN ITEMS "OpenSSL 3.0.2" "LibreSSL 4.0" "I2PD_LIBRESSL_VERSION" "LIBRESSL_VERSION_TEXT"
-    "Expected.h lives in libi2pd" "MiniUPnPc 2.2.6")
+foreach(required IN ITEMS "OpenSSL 3.0.2" "LibreSSL 4.0" "cmake_minimum_required(VERSION 3.24)" "I2PD_LIBRESSL_VERSION" "LIBRESSL_VERSION_TEXT"
+    "I2PD_OPENSSL_EXPECT" "I2PD_HAVE_EVP_PKEY_IS_A" "I2PD_HAVE_EVP_KDF_FETCH"
+    "I2PD_HAVE_EVP_EC_GEN" "Expected.h lives in libi2pd" "MiniUPnPc 2.2.6")
   string(FIND "${top_cmake_text}" "${required}" position)
   if(position EQUAL -1)
     message(FATAL_ERROR "CMake is missing dependency-floor marker '${required}'")
@@ -142,10 +149,31 @@ foreach(required IN ITEMS "MINIUPNPC_API_VERSION" "LESS 17")
   endif()
 endforeach()
 
+assert_present("${root_make}" ".PHONY:" "POSIX Makefile must declare phony targets")
+assert_present("${root_make}" "install: build" "POSIX make install must build first")
+assert_present("${presets_text}" "\"generator\": \"Ninja\"" "CMake presets must default to Ninja")
+assert_present("${top_cmake_text}" "COMPONENT Development" "development installs need a component")
+assert_present("${top_cmake_text}" "COMPONENT Tui" "the TUI needs a separate install component")
+assert_present("${top_cmake_text}" "COMPONENT Service" "service files need a separate install component")
+assert_present("${top_cmake_text}" "configure_package_config_file"
+  "the package config must use configure_package_config_file")
+assert_present("${top_cmake_text}" "PATH_VARS CMAKE_INSTALL_INCLUDEDIR"
+  "the package config must derive the include path from PATH_VARS")
+assert_present("${top_cmake_text}" "lib/systemd/system" "systemd units need an architecture-independent path")
+assert_absent("${top_cmake_text}" "CMAKE_INSTALL_LIBDIR}/systemd/system"
+  "systemd unit destination must not use multiarch LIBDIR")
+assert_absent("${top_cmake_text}" "find_package(Boost 1.81 REQUIRED COMPONENTS json url)"
+  "header-only Boost.JSON/URL must not be requested as compiled components")
+assert_absent("${top_cmake_text}" "set(CMAKE_MODULE_PATH"
+  "CMake module path must be prepended rather than overwritten")
+assert_present("${top_cmake_text}" "CMAKE_GENERATOR MATCHES \"Makefiles"
+  "OpenBSD must reject the Unix Makefiles generator")
 assert_present("${top_cmake_text}" "BOOST_ASIO_HAS_SNPRINTF=1"
   "Boost.Asio scope-ID formatting must select the bounded snprintf path")
 assert_absent("${top_cmake_text}" "OPENSSL_SUPPRESS_DEPRECATED"
   "CMake still suppresses OpenSSL deprecation diagnostics")
+assert_absent("${famtool_text}" "OPENSSL_SUPPRESS_DEPRECATED"
+  "famtool still suppresses OpenSSL deprecation diagnostics")
 assert_absent("${crypto_header_text}" "OPENSSL_VERSION_NUMBER != 0x030000000"
   "Crypto.h still excludes the OpenSSL 3.0.0 SipHash regression")
 assert_absent("${crypto_source_text}" "LIBRESSL_VERSION_NUMBER < 0x4000000fL"
@@ -181,6 +209,7 @@ endforeach()
 # graph. HTTP proxy/tunnel and reseed services are separate and retained.
 foreach(removed IN ITEMS
     "${PROJECT_ROOT}/contrib/webconsole"
+    "${PROJECT_ROOT}/contrib/torrents/web"
     "${PROJECT_ROOT}/daemon/HTTPServer.cpp"
     "${PROJECT_ROOT}/daemon/HTTPServer.h"
     "${PROJECT_ROOT}/daemon/HTTPServerResources.h")
@@ -230,10 +259,19 @@ foreach(service_source IN ITEMS
     "contrib/sysvinit/i2pd"
     "contrib/openrc/i2pd.openrc"
     "contrib/openrc/conf.d/i2pd"
-    "contrib/runit/i2pd"
-    "contrib/s6/i2pd"
-    "contrib/s6-rc/source"
-    "contrib/shepherd/i2pd.scm")
+    "contrib/runit/i2pd/run"
+    "contrib/runit/i2pd/log/run"
+    "contrib/s6/i2pd/run"
+    "contrib/s6/i2pd/down-signal"
+    "contrib/s6/i2pd/timeout-kill"
+    "contrib/s6-rc/source/i2pd/run"
+    "contrib/s6-rc/source/i2pd/type"
+    "contrib/s6-rc/source/i2pd/down-signal"
+    "contrib/s6-rc/source/i2pd/timeout-kill"
+    "contrib/s6-rc/source/i2pd/dependencies.d/base"
+    "contrib/shepherd/i2pd.scm"
+    "contrib/sysusers.d/i2pd.conf"
+    "contrib/tmpfiles.d/i2pd.conf")
   string(REGEX MATCHALL "${service_source}" service_matches "${top_cmake_text}")
   list(LENGTH service_matches service_match_count)
   if(NOT service_match_count EQUAL 1)
@@ -269,19 +307,29 @@ foreach(_source IN LISTS _i2pd_fuzz_sources)
   if(_fuzzer_position EQUAL -1)
     message(FATAL_ERROR "tests/CMakeLists.txt does not register ${_fuzzer_name}")
   endif()
+  string(FIND "${fuzz_workflow_text}" "${_fuzzer_name}" _fuzz_workflow_position)
+  if(_fuzz_workflow_position EQUAL -1)
+    message(FATAL_ERROR ".github/workflows/fuzz.yml does not build/run ${_fuzzer_name}")
+  endif()
 endforeach()
 
 # The RPM specs must not invoke GNU make or Ninja directly: they build through
-# cmake --build and let %cmake select the generator. Boost.JSON/URL package
-# requirements must stay behind a defined Fedora guard so an undefined distro
-# macro cannot enable the wrong branch.
+# cmake --build and pin the Ninja generator explicitly. Boost.JSON/URL are
+# header-only but some Fedora releases package their headers separately, so the
+# guarded build requirements must keep a defined distro-macro test.
 foreach(_rpm_text IN ITEMS "${rpm_text}" "${rpm_git_text}")
   assert_absent("${_rpm_text}" "_smp_mflags" "RPM spec uses make/ninja directly")
   assert_absent("${_rpm_text}" "%make_build" "RPM spec uses %make_build")
   assert_absent("${_rpm_text}" "%ninja_build" "RPM spec uses %ninja_build")
   assert_absent("${_rpm_text}" "%ninja" "RPM spec uses a Ninja macro")
+  assert_present("${_rpm_text}" "BuildRequires: cmake >= 3.24"
+    "RPM spec lacks the CMake 3.24 floor")
+  assert_present("${_rpm_text}" "BuildRequires: ninja-build"
+    "RPM spec lacks the Ninja build dependency")
+  assert_present("${_rpm_text}" "_cmake_generator Ninja"
+    "RPM spec does not pin the Ninja generator")
   assert_present("${_rpm_text}" "0%{?fedora} && 0%{?fedora} <= 43"
-    "RPM spec lacks the guarded Fedora Boost dependency")
+    "RPM spec lacks the defined Fedora Boost.JSON/URL guard")
   assert_present("${_rpm_text}" "boost-json"
     "RPM spec lacks the Boost.JSON build dependency")
   assert_present("${_rpm_text}" "boost-url"
