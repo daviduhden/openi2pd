@@ -420,8 +420,7 @@ namespace data
 	bool RouterProfile::IsExpiredFromCache (uint64_t ts) const
 	{
 		std::lock_guard lock (m_Mutex);
-		return !m_IsUpdated
-			&& ts > std::max (m_LastUpdateTime, m_LastAccessTime) + PEER_PROFILE_PERSIST_INTERVAL;
+		return !m_IsUpdated && ts > std::max (m_LastUpdateTime, m_LastAccessTime) + PEER_PROFILE_PERSIST_INTERVAL;
 	}
 
 	bool RouterProfile::IsExpiredByLifetime (uint64_t ts) const
@@ -624,11 +623,13 @@ namespace data
 			constexpr std::string_view prefix = "profile-", suffix = ".txt";
 			constexpr size_t encodedHashLength = 4 * ((IdentHash::len + 2) / 3);
 			if (filename.size () != prefix.size () + encodedHashLength + suffix.size ()
-				|| !filename.starts_with (prefix) || !filename.ends_with (suffix)) continue;
+				|| !filename.starts_with (prefix) || !filename.ends_with (suffix))
+				continue;
 			const auto encoded = std::string_view (filename).substr (prefix.size (), encodedHashLength);
 			IdentHash hash;
 			if (hash.FromBase64 (encoded) != IdentHash::len || hash.ToBase64 () != encoded
-				|| candidate != std::filesystem::path (g_ProfilesStorage.Path (std::string (encoded)))) continue;
+				|| candidate != std::filesystem::path (g_ProfilesStorage.Path (std::string (encoded))))
+				continue;
 			std::error_code error;
 			if (!std::filesystem::is_regular_file (std::filesystem::symlink_status (candidate, error)) || error)
 				continue;

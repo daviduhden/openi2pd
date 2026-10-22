@@ -26,7 +26,8 @@ int main ()
 	std::atomic<bool> start = false;
 	std::vector<std::jthread> workers;
 	for (int worker = 0; worker < 4; ++worker)
-		workers.emplace_back ([&, worker]
+		workers.emplace_back (
+			[&, worker]
 			{
 				while (!start.load (std::memory_order_acquire)) std::this_thread::yield ();
 				for (int i = 0; i < 2000; ++i)
@@ -39,7 +40,8 @@ int main ()
 				}
 			});
 	for (int reader = 0; reader < 4; ++reader)
-		workers.emplace_back ([&]
+		workers.emplace_back (
+			[&]
 			{
 				while (!start.load (std::memory_order_acquire)) std::this_thread::yield ();
 				for (int i = 0; i < 4000; ++i)
@@ -77,8 +79,7 @@ int main ()
 	assert (!persistenceProfile.IsUpdated ());
 
 	const auto profileRoot = std::filesystem::temp_directory_path ()
-		/ ("openi2pd-profile-race-" + std::to_string (
-			std::chrono::steady_clock::now ().time_since_epoch ().count ()));
+		/ ("openi2pd-profile-race-" + std::to_string (std::chrono::steady_clock::now ().time_since_epoch ().count ()));
 	std::filesystem::create_directories (profileRoot);
 	i2p::data::InitProfilesStorage (profileRoot.string ());
 
@@ -88,7 +89,8 @@ int main ()
 	std::vector<std::shared_ptr<i2p::data::RouterProfile>> published (24);
 	workers.clear ();
 	for (size_t i = 0; i < published.size (); ++i)
-		workers.emplace_back ([&, i]
+		workers.emplace_back (
+			[&, i]
 			{
 				while (!start.load (std::memory_order_acquire)) std::this_thread::yield ();
 				published[i] = i2p::data::GetRouterProfile (ident);
@@ -105,18 +107,21 @@ int main ()
 	start.store (false, std::memory_order_relaxed);
 	workers.clear ();
 	for (int producer = 0; producer < 4; ++producer)
-		workers.emplace_back ([&]
+		workers.emplace_back (
+			[&]
 			{
 				while (!start.load (std::memory_order_acquire)) std::this_thread::yield ();
 				for (int i = 0; i < 250; ++i)
-					i2p::data::UpdateRouterProfile (queuedIdent, [&] (auto targetProfile)
+					i2p::data::UpdateRouterProfile (queuedIdent,
+						[&] (auto targetProfile)
 						{
 							targetProfile->Connected ();
 							applied.fetch_add (1, std::memory_order_relaxed);
 						});
 			});
 	for (int flusher = 0; flusher < 4; ++flusher)
-		workers.emplace_back ([&]
+		workers.emplace_back (
+			[&]
 			{
 				while (!start.load (std::memory_order_acquire)) std::this_thread::yield ();
 				for (int i = 0; i < 32; ++i)

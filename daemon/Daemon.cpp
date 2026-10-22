@@ -545,30 +545,26 @@ namespace util
 		{
 			switch (phase)
 			{
-				case DaemonInitPhase::Logging:
-					// init() owns the destination setup; the logger worker starts
-					// later in start(). Reset only this component, not the daemon.
-					i2p::log::Logger ().Stop ();
-					(void)i2p::log::Logger ().ResetDestination ();
-					break;
-				case DaemonInitPhase::RouterContext:
-					i2p::context.ResetAfterFailedInit ();
-					break;
-				case DaemonInitPhase::RouterStorage:
-					// Replace the callback before stopping its authority. A failed
-					// isolated initialization must never fall back to core writes.
-					i2p::data::InstallRouterPersistenceWriter ([] (auto, auto) { return false; });
+			case DaemonInitPhase::Logging:
+				// init() owns the destination setup; the logger worker starts
+				// later in start(). Reset only this component, not the daemon.
+				i2p::log::Logger ().Stop ();
+				(void)i2p::log::Logger ().ResetDestination ();
+				break;
+			case DaemonInitPhase::RouterContext: i2p::context.ResetAfterFailedInit (); break;
+			case DaemonInitPhase::RouterStorage:
+				// Replace the callback before stopping its authority. A failed
+				// isolated initialization must never fall back to core writes.
+				i2p::data::InstallRouterPersistenceWriter ([] (auto, auto) { return false; });
 #if !defined(_WIN32) && !defined(__ANDROID__) && !defined(I2PD_NO_PRIVSEP)
-					if (d->routerStorage)
-					{
-						d->routerStorage->Stop ();
-						d->routerStorage.reset ();
-					}
+				if (d->routerStorage)
+				{
+					d->routerStorage->Stop ();
+					d->routerStorage.reset ();
+				}
 #endif
-					break;
-				case DaemonInitPhase::Crypto:
-					i2p::crypto::TerminateCrypto ();
-					break;
+				break;
+			case DaemonInitPhase::Crypto: i2p::crypto::TerminateCrypto (); break;
 			}
 		};
 		DaemonInitTransaction initTransaction (rollbackPhase);
@@ -810,7 +806,8 @@ namespace util
 		i2p::config::GetOption ("privsep.routerstorage", routerStorage);
 		if (routerStorage)
 		{
-			const bool storageReady = initTransaction.Run (DaemonInitPhase::RouterStorage, [&] ()
+			const bool storageReady = initTransaction.Run (DaemonInitPhase::RouterStorage,
+				[&] ()
 				{
 					i2p::data::InstallRouterPersistenceWriter ([] (auto, auto) { return false; });
 #if !defined(_WIN32) && !defined(__ANDROID__) && !defined(I2PD_NO_PRIVSEP)

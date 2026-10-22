@@ -496,7 +496,8 @@ namespace datagram
 		if (acknowledgeSession && session) session->Ack ();
 	}
 
-	DatagramDestination::ReceiverRegistration DatagramDestination::SetReceiver (const Receiver & receiver, uint16_t port)
+	DatagramDestination::ReceiverRegistration DatagramDestination::SetReceiver (
+		const Receiver & receiver, uint16_t port)
 	{
 		auto owner = weak_from_this ();
 		if (owner.expired ()) throw std::logic_error ("DatagramDestination receiver requires shared ownership");
@@ -583,60 +584,60 @@ namespace datagram
 		bool drained = false;
 		switch (registration.m_Kind)
 		{
-			case ReceiverRegistration::Kind::Identity:
+		case ReceiverRegistration::Kind::Identity:
+		{
+			auto slot = std::static_pointer_cast<detail::ReceiverSlot<Receiver>> (identity);
 			{
-				auto slot = std::static_pointer_cast<detail::ReceiverSlot<Receiver>> (identity);
+				std::lock_guard<std::mutex> lock (m_ReceiversMutex);
+				auto it = m_ReceiversByPorts.find (registration.m_Port);
+				if (registration.m_Port && it != m_ReceiversByPorts.end () && it->second.get () == identity.get ())
 				{
-					std::lock_guard<std::mutex> lock (m_ReceiversMutex);
-					auto it = m_ReceiversByPorts.find (registration.m_Port);
-					if (registration.m_Port && it != m_ReceiversByPorts.end () && it->second.get () == identity.get ())
-					{
-						m_ReceiversByPorts.erase (it);
-					}
-					if (m_DefaultReceiver.get () == identity.get ())
-					{
-						m_DefaultReceiver.reset ();
-					}
+					m_ReceiversByPorts.erase (it);
 				}
-				if (slot) drained = slot->DeactivateAndWait ();
-				break;
+				if (m_DefaultReceiver.get () == identity.get ())
+				{
+					m_DefaultReceiver.reset ();
+				}
 			}
-			case ReceiverRegistration::Kind::Hash:
+			if (slot) drained = slot->DeactivateAndWait ();
+			break;
+		}
+		case ReceiverRegistration::Kind::Hash:
+		{
+			auto slot = std::static_pointer_cast<detail::ReceiverSlot<HashReceiver>> (identity);
 			{
-				auto slot = std::static_pointer_cast<detail::ReceiverSlot<HashReceiver>> (identity);
+				std::lock_guard<std::mutex> lock (m_HashReceiversMutex);
+				auto it = m_HashReceiversByPorts.find (registration.m_Port);
+				if (registration.m_Port && it != m_HashReceiversByPorts.end () && it->second.get () == identity.get ())
 				{
-					std::lock_guard<std::mutex> lock (m_HashReceiversMutex);
-					auto it = m_HashReceiversByPorts.find (registration.m_Port);
-					if (registration.m_Port && it != m_HashReceiversByPorts.end () && it->second.get () == identity.get ())
-					{
-						m_HashReceiversByPorts.erase (it);
-					}
-					if (m_DefaultHashReceiver.get () == identity.get ())
-					{
-						m_DefaultHashReceiver.reset ();
-					}
+					m_HashReceiversByPorts.erase (it);
 				}
-				if (slot) drained = slot->DeactivateAndWait ();
-				break;
+				if (m_DefaultHashReceiver.get () == identity.get ())
+				{
+					m_DefaultHashReceiver.reset ();
+				}
 			}
-			case ReceiverRegistration::Kind::Raw:
+			if (slot) drained = slot->DeactivateAndWait ();
+			break;
+		}
+		case ReceiverRegistration::Kind::Raw:
+		{
+			auto slot = std::static_pointer_cast<detail::ReceiverSlot<RawReceiver>> (identity);
 			{
-				auto slot = std::static_pointer_cast<detail::ReceiverSlot<RawReceiver>> (identity);
+				std::lock_guard<std::mutex> lock (m_RawReceiversMutex);
+				auto it = m_RawReceiversByPorts.find (registration.m_Port);
+				if (registration.m_Port && it != m_RawReceiversByPorts.end () && it->second.get () == identity.get ())
 				{
-					std::lock_guard<std::mutex> lock (m_RawReceiversMutex);
-					auto it = m_RawReceiversByPorts.find (registration.m_Port);
-					if (registration.m_Port && it != m_RawReceiversByPorts.end () && it->second.get () == identity.get ())
-					{
-						m_RawReceiversByPorts.erase (it);
-					}
-					if (m_DefaultRawReceiver.get () == identity.get ())
-					{
-						m_DefaultRawReceiver.reset ();
-					}
+					m_RawReceiversByPorts.erase (it);
 				}
-				if (slot) drained = slot->DeactivateAndWait ();
-				break;
+				if (m_DefaultRawReceiver.get () == identity.get ())
+				{
+					m_DefaultRawReceiver.reset ();
+				}
 			}
+			if (slot) drained = slot->DeactivateAndWait ();
+			break;
+		}
 		}
 		return drained;
 	}

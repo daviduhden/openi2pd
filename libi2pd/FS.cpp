@@ -287,15 +287,15 @@ namespace fs
 		for (unsigned attempt = 0; attempt < 16 && !written; ++attempt)
 		{
 			auto temporary = target;
-		#ifdef _WIN32
+#ifdef _WIN32
 			const auto process = GetCurrentProcessId ();
-		#else
+#else
 			const auto process = static_cast<uint64_t> (getpid ());
-		#endif
+#endif
 			temporary += ".tmp-" + std::to_string (process) + "-" + std::to_string (++sequence);
 #ifdef _WIN32
-			HANDLE file = CreateFileW (temporary.c_str (), GENERIC_WRITE, 0, nullptr, CREATE_NEW,
-				FILE_ATTRIBUTE_TEMPORARY, nullptr);
+			HANDLE file = CreateFileW (
+				temporary.c_str (), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_TEMPORARY, nullptr);
 			if (file == INVALID_HANDLE_VALUE)
 			{
 				if (GetLastError () == ERROR_FILE_EXISTS) continue;
@@ -303,11 +303,13 @@ namespace fs
 				return false;
 			}
 			bool tempCommitted = false;
-			auto cleanupTemp = i2p::modern::ScopeExit ([&]
+			auto cleanupTemp = i2p::modern::ScopeExit (
+				[&]
 				{
 					if (!tempCommitted) DeleteFileW (temporary.c_str ());
 				});
-			auto closeFile = i2p::modern::ScopeExit ([&]
+			auto closeFile = i2p::modern::ScopeExit (
+				[&]
 				{
 					if (file != INVALID_HANDLE_VALUE) CloseHandle (file);
 				});
@@ -325,34 +327,40 @@ namespace fs
 				offset += actual;
 			}
 			if (written && !FlushFileBuffers (file)) written = false;
-			if (!CloseHandle (file)) written = false;
-			else file = INVALID_HANDLE_VALUE;
-			if (written && !MoveFileExW (temporary.c_str (), target.c_str (),
-				MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) written = false;
-			else if (written) tempCommitted = true;
+			if (!CloseHandle (file))
+				written = false;
+			else
+				file = INVALID_HANDLE_VALUE;
+			if (written
+				&& !MoveFileExW (
+					temporary.c_str (), target.c_str (), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+				written = false;
+			else if (written)
+				tempCommitted = true;
 #else
 			int flags = O_WRONLY | O_CREAT | O_EXCL;
-			#ifdef O_NOFOLLOW
+#ifdef O_NOFOLLOW
 			flags |= O_NOFOLLOW;
-			#endif
-			#ifdef O_CLOEXEC
+#endif
+#ifdef O_CLOEXEC
 			flags |= O_CLOEXEC;
-			#endif
+#endif
 			int directoryFlags = O_RDONLY;
-			#ifdef O_DIRECTORY
+#ifdef O_DIRECTORY
 			directoryFlags |= O_DIRECTORY;
-			#endif
-			#ifdef O_NOFOLLOW
+#endif
+#ifdef O_NOFOLLOW
 			directoryFlags |= O_NOFOLLOW;
-			#endif
-			#ifdef O_CLOEXEC
+#endif
+#ifdef O_CLOEXEC
 			directoryFlags |= O_CLOEXEC;
-			#endif
+#endif
 			const auto directory = parent.empty () ? fs_lib::path (".") : parent;
 			const int dirfd = ::open (directory.c_str (), directoryFlags);
 			if (dirfd < 0)
 			{
-				LogPrint (eLogError, "FS: Can't securely open destination directory ", directory.string (), ": ", strerror (errno));
+				LogPrint (eLogError, "FS: Can't securely open destination directory ", directory.string (), ": ",
+					strerror (errno));
 				return false;
 			}
 			auto closeDirectory = i2p::modern::ScopeExit ([&] { ::close (dirfd); });
@@ -366,7 +374,8 @@ namespace fs
 			const auto targetName = target.filename ().string ();
 			bool tempCreated = false;
 			bool tempCommitted = false;
-			auto cleanupTemp = i2p::modern::ScopeExit ([&]
+			auto cleanupTemp = i2p::modern::ScopeExit (
+				[&]
 				{
 					if (tempCreated && !tempCommitted) ::unlinkat (dirfd, temporaryName.c_str (), 0);
 				});
@@ -380,7 +389,8 @@ namespace fs
 			}
 			tempCreated = true;
 			bool fileOpen = true;
-			auto closeFile = i2p::modern::ScopeExit ([&]
+			auto closeFile = i2p::modern::ScopeExit (
+				[&]
 				{
 					if (fileOpen) ::close (fd);
 				});
@@ -400,14 +410,17 @@ namespace fs
 			if (written && ::fsync (fd) != 0) written = false;
 			if (::close (fd) != 0) written = false;
 			fileOpen = false;
-			if (written && ::renameat (dirfd, temporaryName.c_str (), dirfd, targetName.c_str ()) != 0) written = false;
-			else if (written) tempCommitted = true;
+			if (written && ::renameat (dirfd, temporaryName.c_str (), dirfd, targetName.c_str ()) != 0)
+				written = false;
+			else if (written)
+				tempCommitted = true;
 			if (written)
 			{
 				if (::fsync (dirfd) != 0)
 				{
 					written = false;
-					LogPrint (eLogError, "FS: Replacement committed but directory durability is uncertain for ", target.string ());
+					LogPrint (eLogError, "FS: Replacement committed but directory durability is uncertain for ",
+						target.string ());
 				}
 			}
 #endif

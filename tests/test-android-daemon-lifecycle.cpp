@@ -36,8 +36,18 @@ int main ()
 			++initializeCalls;
 			assert (lifecycle.load () == DaemonLifecycle::Starting);
 			nestedResult = StartDaemonLifecycle (
-				lifecycle, [&] () { ++nestedInitializeCalls; return true; },
-				[&] () { ++nestedStartCalls; return true; }, [&] () { ++nestedStopCalls; });
+				lifecycle,
+				[&] ()
+				{
+					++nestedInitializeCalls;
+					return true;
+				},
+				[&] ()
+				{
+					++nestedStartCalls;
+					return true;
+				},
+				[&] () { ++nestedStopCalls; });
 			return true;
 		},
 		[&] ()
@@ -58,7 +68,17 @@ int main ()
 	assert (lifecycle.load () == DaemonLifecycle::Running);
 
 	const auto duplicate = StartDaemonLifecycle (
-		lifecycle, [&] () { ++initializeCalls; return true; }, [&] () { ++startCalls; return true; },
+		lifecycle,
+		[&] ()
+		{
+			++initializeCalls;
+			return true;
+		},
+		[&] ()
+		{
+			++startCalls;
+			return true;
+		},
 		[&] () { ++stopCalls; });
 	assert (duplicate == DaemonStartResult::AlreadyRunning);
 	assert (initializeCalls == 1);
@@ -67,7 +87,12 @@ int main ()
 
 	lifecycle.store (DaemonLifecycle::Stopped);
 	const auto failed = StartDaemonLifecycle (
-		lifecycle, [&] () { ++initializeCalls; return true; },
+		lifecycle,
+		[&] ()
+		{
+			++initializeCalls;
+			return true;
+		},
 		[&] ()
 		{
 			++startCalls;
@@ -84,7 +109,17 @@ int main ()
 	assert (lifecycle.load () == DaemonLifecycle::Stopped);
 
 	const auto initFailed = StartDaemonLifecycle (
-		lifecycle, [&] () { ++initializeCalls; return false; }, [&] () { ++startCalls; return true; },
+		lifecycle,
+		[&] ()
+		{
+			++initializeCalls;
+			return false;
+		},
+		[&] ()
+		{
+			++startCalls;
+			return true;
+		},
 		[&] () { ++stopCalls; });
 	assert (initFailed == DaemonStartResult::InitializationFailed);
 	assert (startCalls == 2);
@@ -95,7 +130,12 @@ int main ()
 	try
 	{
 		StartDaemonLifecycle (
-			lifecycle, [] () -> bool { throw 17; }, [&] () { ++startCalls; return true; },
+			lifecycle, [] () -> bool { throw 17; },
+			[&] ()
+			{
+				++startCalls;
+				return true;
+			},
 			[&] () { ++stopCalls; });
 	}
 	catch (int error)
@@ -110,7 +150,8 @@ int main ()
 	bool startExceptionObserved = false;
 	try
 	{
-		StartDaemonLifecycle (lifecycle, [] () { return true; }, [] () -> bool { throw 23; },
+		StartDaemonLifecycle (
+			lifecycle, [] () { return true; }, [] () -> bool { throw 23; },
 			[&] ()
 			{
 				++stopCalls;
@@ -128,7 +169,17 @@ int main ()
 
 	lifecycle.store (DaemonLifecycle::Stopping);
 	const auto stopping = StartDaemonLifecycle (
-		lifecycle, [&] () { ++initializeCalls; return true; }, [&] () { ++startCalls; return true; },
+		lifecycle,
+		[&] ()
+		{
+			++initializeCalls;
+			return true;
+		},
+		[&] ()
+		{
+			++startCalls;
+			return true;
+		},
 		[&] () { ++stopCalls; });
 	assert (stopping == DaemonStartResult::Stopping);
 	assert (initializeCalls == 3);

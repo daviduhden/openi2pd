@@ -421,8 +421,8 @@ namespace client
 		void ProcessNamingLookup (std::string_view buf);
 		void ProcessSessionAdd (std::string_view buf);
 		void ProcessSessionRemove (std::string_view buf);
-		void TrackDatagramReceiver (std::string_view sessionID,
-			i2p::datagram::DatagramDestination::ReceiverRegistration registration);
+		void TrackDatagramReceiver (
+			std::string_view sessionID, i2p::datagram::DatagramDestination::ReceiverRegistration registration);
 		void ResetDatagramReceivers (std::string_view sessionID);
 		void ResetAllDatagramReceivers ();
 		void ProcessPing (std::string_view text);

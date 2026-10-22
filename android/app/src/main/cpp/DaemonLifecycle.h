@@ -19,25 +19,25 @@
 
 namespace i2p::android
 {
-	enum class DaemonLifecycle
-	{
-		Stopped,
-		Starting,
-		Running,
-		Stopping
-	};
+enum class DaemonLifecycle
+{
+	Stopped,
+	Starting,
+	Running,
+	Stopping
+};
 
-	enum class DaemonStartResult
-	{
-		Started,
-		InitializationFailed,
-		StartFailed,
-		AlreadyRunning,
-		AlreadyStarting,
-		Stopping
-	};
+enum class DaemonStartResult
+{
+	Started,
+	InitializationFailed,
+	StartFailed,
+	AlreadyRunning,
+	AlreadyStarting,
+	Stopping
+};
 
-	/**
+/**
 	 * Own one complete start transition. Initialization and the underlying
 	 * daemon start are invoked only after Stopped has been atomically claimed.
 	 * If initialization fails, the lifecycle returns to Stopped without calling
@@ -52,68 +52,68 @@ namespace i2p::android
 	 * claiming makes ownership explicit and protects against accidental nested
 	 * transitions; it does not replace that guard.
 	 */
-	template <typename Initialize, typename Start, typename Stop>
-	DaemonStartResult StartDaemonLifecycle (
-		std::atomic<DaemonLifecycle> & lifecycle, Initialize && initialize, Start && start, Stop && stop)
-	{
-		auto expected = DaemonLifecycle::Stopped;
-		if (!lifecycle.compare_exchange_strong (
+template <typename Initialize, typename Start, typename Stop>
+DaemonStartResult StartDaemonLifecycle (
+	std::atomic<DaemonLifecycle> & lifecycle, Initialize && initialize, Start && start, Stop && stop)
+{
+	auto expected = DaemonLifecycle::Stopped;
+	if (!lifecycle.compare_exchange_strong (
 			expected, DaemonLifecycle::Starting, std::memory_order_acq_rel, std::memory_order_acquire))
+	{
+		switch (expected)
 		{
-			switch (expected)
-			{
-				case DaemonLifecycle::Running: return DaemonStartResult::AlreadyRunning;
-				case DaemonLifecycle::Starting: return DaemonStartResult::AlreadyStarting;
-				case DaemonLifecycle::Stopping: return DaemonStartResult::Stopping;
-				case DaemonLifecycle::Stopped: break;
-			}
-			return DaemonStartResult::Stopping;
+		case DaemonLifecycle::Running: return DaemonStartResult::AlreadyRunning;
+		case DaemonLifecycle::Starting: return DaemonStartResult::AlreadyStarting;
+		case DaemonLifecycle::Stopping: return DaemonStartResult::Stopping;
+		case DaemonLifecycle::Stopped: break;
 		}
+		return DaemonStartResult::Stopping;
+	}
 
-		bool initialized = false;
-		bool rollbackAttempted = false;
-		const auto rollback = [&] () noexcept
+	bool initialized = false;
+	bool rollbackAttempted = false;
+	const auto rollback = [&] () noexcept
+	{
+		if (initialized && !rollbackAttempted)
 		{
-			if (initialized && !rollbackAttempted)
+			rollbackAttempted = true;
+			lifecycle.store (DaemonLifecycle::Stopping, std::memory_order_release);
+			try
 			{
-				rollbackAttempted = true;
-				lifecycle.store (DaemonLifecycle::Stopping, std::memory_order_release);
-				try
-				{
-					std::forward<Stop> (stop) ();
-				}
-				catch (...)
-				{
-					// Preserve the original initialization/start failure.
-				}
+				std::forward<Stop> (stop) ();
 			}
+			catch (...)
+			{
+				// Preserve the original initialization/start failure.
+			}
+		}
+		lifecycle.store (DaemonLifecycle::Stopped, std::memory_order_release);
+	};
+
+	try
+	{
+		initialized = std::forward<Initialize> (initialize) ();
+		if (!initialized)
+		{
 			lifecycle.store (DaemonLifecycle::Stopped, std::memory_order_release);
-		};
-
-		try
-		{
-			initialized = std::forward<Initialize> (initialize) ();
-			if (!initialized)
-			{
-				lifecycle.store (DaemonLifecycle::Stopped, std::memory_order_release);
-				return DaemonStartResult::InitializationFailed;
-			}
-
-			if (!std::forward<Start> (start) ())
-			{
-				rollback ();
-				return DaemonStartResult::StartFailed;
-			}
+			return DaemonStartResult::InitializationFailed;
 		}
-		catch (...)
+
+		if (!std::forward<Start> (start) ())
 		{
 			rollback ();
-			throw;
+			return DaemonStartResult::StartFailed;
 		}
-
-		lifecycle.store (DaemonLifecycle::Running, std::memory_order_release);
-		return DaemonStartResult::Started;
 	}
+	catch (...)
+	{
+		rollback ();
+		throw;
+	}
+
+	lifecycle.store (DaemonLifecycle::Running, std::memory_order_release);
+	return DaemonStartResult::Started;
+}
 }
 
 #endif // I2PD_ANDROID_DAEMON_LIFECYCLE_H

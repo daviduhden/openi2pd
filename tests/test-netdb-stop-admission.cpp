@@ -17,22 +17,22 @@
 
 namespace i2p::data
 {
-	struct NetDbLifecycleTestAccess
+struct NetDbLifecycleTestAccess
+{
+	static void OpenAdmission (NetDb & database)
 	{
-		static void OpenAdmission (NetDb & database)
-		{
-			std::lock_guard lock (database.m_QueueAdmissionMutex);
-			database.m_AcceptMessages = true;
-		}
-		static bool LookupThrottled (NetDb & database, const IdentHash & hash)
-		{
-			return database.ShouldThrottleLookup (hash, 1);
-		}
-		static bool FloodThrottled (NetDb & database, const IdentHash & hash)
-		{
-			return database.ShouldThrottleFlood (hash);
-		}
-	};
+		std::lock_guard lock (database.m_QueueAdmissionMutex);
+		database.m_AcceptMessages = true;
+	}
+	static bool LookupThrottled (NetDb & database, const IdentHash & hash)
+	{
+		return database.ShouldThrottleLookup (hash, 1);
+	}
+	static bool FloodThrottled (NetDb & database, const IdentHash & hash)
+	{
+		return database.ShouldThrottleFlood (hash);
+	}
+};
 }
 
 int main ()
@@ -60,7 +60,8 @@ int main ()
 		std::atomic<bool> ready { false };
 		std::vector<std::jthread> producers;
 		for (int n = 0; n < 4; ++n)
-			producers.emplace_back ([&]
+			producers.emplace_back (
+				[&]
 				{
 					while (!ready.load (std::memory_order_acquire)) std::this_thread::yield ();
 					for (int i = 0; i < 1000; ++i) database.PostI2NPMsg (message);

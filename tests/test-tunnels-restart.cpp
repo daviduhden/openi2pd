@@ -22,9 +22,9 @@
 int main ()
 {
 	using namespace i2p::tunnel;
+	using i2p::eI2NPData;
 	using i2p::I2NPMessage;
 	using i2p::I2NPMessageBuffer;
-	using i2p::eI2NPData;
 	auto makeMessage = [] () -> std::shared_ptr<i2p::I2NPMessage>
 	{
 		auto msg = std::make_shared<i2p::I2NPMessageBuffer<32>> ();
@@ -91,17 +91,18 @@ int main ()
 		std::vector<std::thread> producers;
 		for (int producer = 0; producer < 2; ++producer)
 		{
-			producers.emplace_back ([&] ()
-			{
-				while (!raceStarted.load (std::memory_order_acquire)) std::this_thread::yield ();
-				for (int post = 0; post < 128; ++post)
+			producers.emplace_back (
+				[&] ()
 				{
-					tunnels.PostTunnelData (makeMessage ());
-					std::list<std::shared_ptr<I2NPMessage>> queued { makeMessage () };
-					tunnels.PostTunnelData (queued);
-					if (!queued.empty ()) raceSemanticsOk.store (false, std::memory_order_release);
-				}
-			});
+					while (!raceStarted.load (std::memory_order_acquire)) std::this_thread::yield ();
+					for (int post = 0; post < 128; ++post)
+					{
+						tunnels.PostTunnelData (makeMessage ());
+						std::list<std::shared_ptr<I2NPMessage>> queued { makeMessage () };
+						tunnels.PostTunnelData (queued);
+						if (!queued.empty ()) raceSemanticsOk.store (false, std::memory_order_release);
+					}
+				});
 		}
 		raceStarted.store (true, std::memory_order_release);
 		std::this_thread::sleep_for (std::chrono::milliseconds (25));

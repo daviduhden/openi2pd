@@ -23,16 +23,18 @@ import java.util.function.Consumer;
  * native daemon-call guard remains responsible for JNI serialization.
  */
 final class ServiceOwnerEpoch {
-    private static final ExecutorService PROCESS_WORKER = Executors.newSingleThreadExecutor(runnable -> {
-        Thread thread = new Thread(runnable, "i2pd-router");
-        thread.setDaemon(true);
-        return thread;
-    });
+    private static final ExecutorService PROCESS_WORKER =
+            Executors.newSingleThreadExecutor(runnable -> {
+                Thread thread = new Thread(runnable, "i2pd-router");
+                thread.setDaemon(true);
+                return thread;
+            });
     private static long nextEpoch;
     private static long currentEpoch;
     private static final Set<Long> drainingEpochs = new HashSet<>();
 
-    private ServiceOwnerEpoch() {}
+    private ServiceOwnerEpoch() {
+    }
 
     static ExecutorService processWorker() {
         return PROCESS_WORKER;

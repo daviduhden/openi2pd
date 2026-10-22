@@ -83,7 +83,7 @@ sub _read_http_request {
         return unless defined $read && $read > 0;
         $buffer .= $chunk;
         $header_end = index( $buffer, "\r\n\r\n" );
-        last         if $header_end >= 0;
+        last   if $header_end >= 0;
         return if length($buffer) > 65_536;
     }
 

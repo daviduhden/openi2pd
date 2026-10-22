@@ -47,12 +47,11 @@ public final class ServiceOwnerEpochTest {
         long owner = ServiceOwnerEpoch.acquire();
         assertTrue(ServiceOwnerEpoch.isCurrent(owner));
 
-        ServiceOwnerEpoch.retireAndQueueStop(owner, wasCurrent -> assertTrue(wasCurrent), () -> { });
+        ServiceOwnerEpoch.retireAndQueueStop(owner, wasCurrent -> assertTrue(wasCurrent), () -> {});
         assertFalse(ServiceOwnerEpoch.isCurrent(owner));
-        assertFalse(ServiceOwnerEpoch.runIfCurrent(owner, () -> {
-            throw new AssertionError("retired owner callback must not run");
-        }));
-        ServiceOwnerEpoch.processWorker().submit(() -> { }).get(5, TimeUnit.SECONDS);
+        assertFalse(ServiceOwnerEpoch.runIfCurrent(
+                owner, () -> { throw new AssertionError("retired owner callback must not run"); }));
+        ServiceOwnerEpoch.processWorker().submit(() -> {}).get(5, TimeUnit.SECONDS);
     }
 
     @Test
@@ -61,16 +60,17 @@ public final class ServiceOwnerEpochTest {
         long newOwner = ServiceOwnerEpoch.acquire();
         int[] stops = {0};
 
-        ServiceOwnerEpoch.retireAndQueueStop(oldOwner, wasCurrent -> assertFalse(wasCurrent),
-                () -> stops[0]++);
-        ServiceOwnerEpoch.processWorker().submit(() -> { }).get(5, TimeUnit.SECONDS);
+        ServiceOwnerEpoch.retireAndQueueStop(
+                oldOwner, wasCurrent -> assertFalse(wasCurrent), () -> stops[0]++);
+        ServiceOwnerEpoch.processWorker().submit(() -> {}).get(5, TimeUnit.SECONDS);
 
         assertTrue(ServiceOwnerEpoch.isCurrent(newOwner));
         assertEquals(0, stops[0]);
     }
 
     @Test
-    public void ownerExecutorFencesStaleSubmissionsAndDrainsAcceptedWorkBeforeStop() throws Exception {
+    public void ownerExecutorFencesStaleSubmissionsAndDrainsAcceptedWorkBeforeStop()
+            throws Exception {
         long oldOwner = ServiceOwnerEpoch.acquire();
         Executor oldExecutor = ServiceOwnerEpoch.ownerExecutor(oldOwner);
         ExecutorService worker = ServiceOwnerEpoch.processWorker();
@@ -92,8 +92,8 @@ public final class ServiceOwnerEpochTest {
             assertTrue(blockerStarted.await(5, TimeUnit.SECONDS));
 
             oldExecutor.execute(() -> order.add("old-work"));
-            ServiceOwnerEpoch.retireAndQueueStop(oldOwner, wasCurrent -> assertTrue(wasCurrent),
-                    () -> order.add("old-stop"));
+            ServiceOwnerEpoch.retireAndQueueStop(
+                    oldOwner, wasCurrent -> assertTrue(wasCurrent), () -> order.add("old-stop"));
             long newOwner = ServiceOwnerEpoch.acquire();
             Executor newExecutor = ServiceOwnerEpoch.ownerExecutor(newOwner);
             try {
@@ -106,7 +106,7 @@ public final class ServiceOwnerEpochTest {
 
             releaseBlocker.countDown();
             blocker.get(5, TimeUnit.SECONDS);
-            worker.submit(() -> { }).get(5, TimeUnit.SECONDS);
+            worker.submit(() -> {}).get(5, TimeUnit.SECONDS);
             assertEquals(List.of("old-work", "old-stop", "new-start"), order);
         } finally {
             releaseBlocker.countDown();

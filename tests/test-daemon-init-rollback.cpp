@@ -29,24 +29,19 @@ int main ()
 
 	const auto failedAttempt = [&] (bool throwAfterContext, bool throwDuringCleanup)
 	{
-		DaemonInitTransaction transaction ([&] (DaemonInitPhase phase)
+		DaemonInitTransaction transaction (
+			[&] (DaemonInitPhase phase)
 			{
 				released.push_back (phase);
 				switch (phase)
 				{
-					case DaemonInitPhase::Logging:
-						--loggingResources;
-						break;
-					case DaemonInitPhase::RouterContext:
-						--contextResources;
-						break;
-					case DaemonInitPhase::RouterStorage:
-						--storageResources;
-						if (throwDuringCleanup) throw std::runtime_error ("injected cleanup failure");
-						break;
-					case DaemonInitPhase::Crypto:
-						--cryptoResources;
-						break;
+				case DaemonInitPhase::Logging: --loggingResources; break;
+				case DaemonInitPhase::RouterContext: --contextResources; break;
+				case DaemonInitPhase::RouterStorage:
+					--storageResources;
+					if (throwDuringCleanup) throw std::runtime_error ("injected cleanup failure");
+					break;
+				case DaemonInitPhase::Crypto: --cryptoResources; break;
 				}
 			});
 		transaction.Run (DaemonInitPhase::Logging, [&] { ++loggingResources; });

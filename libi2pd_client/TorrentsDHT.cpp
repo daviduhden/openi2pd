@@ -480,8 +480,9 @@ namespace torrents
 			if (dgramDest)
 			{
 				m_DatagramReceiver.Reset ();
-				m_DatagramReceiver = dgramDest->SetReceiver ([this] (const i2p::data::IdentityEx & from, uint16_t fromPort, uint16_t toPort,
-											const uint8_t * buf, size_t len, const i2p::util::Mapping * options)
+				m_DatagramReceiver = dgramDest->SetReceiver (
+					[this] (const i2p::data::IdentityEx & from, uint16_t fromPort, uint16_t toPort, const uint8_t * buf,
+						size_t len, const i2p::util::Mapping * options)
 					{ HandleDatagram (from, fromPort, toPort, buf, len, options); });
 			}
 		}

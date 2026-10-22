@@ -25,8 +25,8 @@
 int main ()
 {
 	const auto root = std::filesystem::temp_directory_path ()
-		/ ("openi2pd-profile-storage-" + std::to_string (
-			std::chrono::steady_clock::now ().time_since_epoch ().count ()));
+		/ ("openi2pd-profile-storage-"
+			+ std::to_string (std::chrono::steady_clock::now ().time_since_epoch ().count ()));
 	std::filesystem::create_directories (root);
 	const auto abandonedStage = root / "peerProfiles" / "pA" / "profile-stale.txt.tmp-previous";
 	std::filesystem::create_directories (abandonedStage.parent_path ());
@@ -106,14 +106,12 @@ int main ()
 	expired.Connected ();
 	assert (expired.Save (expiredIdent));
 	const auto expiredName = "profile-" + expiredIdent.ToBase64 () + ".txt";
-	const auto expiredPath = root / "peerProfiles"
-		/ ("p" + expiredIdent.ToBase64 ().substr (0, 1)) / expiredName;
+	const auto expiredPath = root / "peerProfiles" / ("p" + expiredIdent.ToBase64 ().substr (0, 1)) / expiredName;
 	std::filesystem::last_write_time (expiredPath, staleTime);
 #ifndef _WIN32
 	i2p::data::IdentHash linkIdent;
 	linkIdent.Fill (0x43);
-	const auto linkPath = root / "peerProfiles"
-		/ ("p" + linkIdent.ToBase64 ().substr (0, 1))
+	const auto linkPath = root / "peerProfiles" / ("p" + linkIdent.ToBase64 ().substr (0, 1))
 		/ ("profile-" + linkIdent.ToBase64 () + ".txt");
 	std::filesystem::create_symlink (unrelated, linkPath);
 #endif

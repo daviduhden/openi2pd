@@ -810,22 +810,26 @@ namespace client
 				if (type == SAMSessionType::eSAMSessionTypeDatagram)
 				{
 					if (datagramVersion == i2p::datagram::eDatagramV3)
-						TrackDatagramReceiver (m_ID, dest->SetHashReceiver (
-							std::bind (&SAMSocket::HandleI2PDatagram3Receive, shared_from_this (), m_ID,
-								std::placeholders::_1, std::placeholders::_2, std::placeholders::_3,
-								std::placeholders::_4, std::placeholders::_5, std::placeholders::_6),
-							port));
+						TrackDatagramReceiver (m_ID,
+							dest->SetHashReceiver (
+								std::bind (&SAMSocket::HandleI2PDatagram3Receive, shared_from_this (), m_ID,
+									std::placeholders::_1, std::placeholders::_2, std::placeholders::_3,
+									std::placeholders::_4, std::placeholders::_5, std::placeholders::_6),
+								port));
 					else
-						TrackDatagramReceiver (m_ID, dest->SetReceiver (std::bind (&SAMSocket::HandleI2PDatagramReceive, shared_from_this (), m_ID,
-											   std::placeholders::_1, std::placeholders::_2, std::placeholders::_3,
-											   std::placeholders::_4, std::placeholders::_5, std::placeholders::_6),
-							port));
+						TrackDatagramReceiver (m_ID,
+							dest->SetReceiver (
+								std::bind (&SAMSocket::HandleI2PDatagramReceive, shared_from_this (), m_ID,
+									std::placeholders::_1, std::placeholders::_2, std::placeholders::_3,
+									std::placeholders::_4, std::placeholders::_5, std::placeholders::_6),
+								port));
 				}
 				else // raw
-					TrackDatagramReceiver (m_ID, dest->SetRawReceiver (std::bind (&SAMSocket::HandleI2PRawDatagramReceive, shared_from_this (), m_ID,
-											  std::placeholders::_1, std::placeholders::_2, std::placeholders::_3,
-											  std::placeholders::_4, std::placeholders::_5),
-						port));
+					TrackDatagramReceiver (m_ID,
+						dest->SetRawReceiver (std::bind (&SAMSocket::HandleI2PRawDatagramReceive, shared_from_this (),
+												  m_ID, std::placeholders::_1, std::placeholders::_2,
+												  std::placeholders::_3, std::placeholders::_4, std::placeholders::_5),
+							port));
 			}
 
 			if (session->GetLocalDestination ()->IsReady ())
@@ -1489,23 +1493,28 @@ namespace client
 					if (type == SAMSessionType::eSAMSessionTypeDatagram)
 					{
 						if (datagramVersion == i2p::datagram::eDatagramV3)
-							TrackDatagramReceiver (id, dest->SetHashReceiver (
-								std::bind (&SAMSocket::HandleI2PDatagram3Receive, shared_from_this (), std::string (id),
-									std::placeholders::_1, std::placeholders::_2, std::placeholders::_3,
-									std::placeholders::_4, std::placeholders::_5, std::placeholders::_6),
-								listenPort));
+							TrackDatagramReceiver (id,
+								dest->SetHashReceiver (
+									std::bind (&SAMSocket::HandleI2PDatagram3Receive, shared_from_this (),
+										std::string (id), std::placeholders::_1, std::placeholders::_2,
+										std::placeholders::_3, std::placeholders::_4, std::placeholders::_5,
+										std::placeholders::_6),
+									listenPort));
 						else
-							TrackDatagramReceiver (id, dest->SetReceiver (
-								std::bind (&SAMSocket::HandleI2PDatagramReceive, shared_from_this (), std::string (id),
-									std::placeholders::_1, std::placeholders::_2, std::placeholders::_3,
-									std::placeholders::_4, std::placeholders::_5, std::placeholders::_6),
-								listenPort));
+							TrackDatagramReceiver (id,
+								dest->SetReceiver (std::bind (&SAMSocket::HandleI2PDatagramReceive, shared_from_this (),
+													   std::string (id), std::placeholders::_1, std::placeholders::_2,
+													   std::placeholders::_3, std::placeholders::_4,
+													   std::placeholders::_5, std::placeholders::_6),
+									listenPort));
 					}
 					else
-						TrackDatagramReceiver (id, dest->SetRawReceiver (std::bind (&SAMSocket::HandleI2PRawDatagramReceive, shared_from_this (),
-												  std::string (id), std::placeholders::_1, std::placeholders::_2,
-												  std::placeholders::_3, std::placeholders::_4, std::placeholders::_5),
-							listenPort));
+						TrackDatagramReceiver (id,
+							dest->SetRawReceiver (
+								std::bind (&SAMSocket::HandleI2PRawDatagramReceive, shared_from_this (),
+									std::string (id), std::placeholders::_1, std::placeholders::_2,
+									std::placeholders::_3, std::placeholders::_4, std::placeholders::_5),
+								listenPort));
 				}
 				masterSession->subsessions.insert (std::string (id));
 				SendSubsessionStatusOk (id);

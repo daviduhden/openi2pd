@@ -160,18 +160,16 @@ namespace android
 					}
 					return true;
 				},
-				[] () { return daemon.start (); },
-				[] () { daemon.stop (); });
+				[] () { return daemon.start (); }, [] () { daemon.stop (); });
 
 			switch (result)
 			{
-				case DaemonStartResult::Started: return "ok";
-				case DaemonStartResult::InitializationFailed:
-				case DaemonStartResult::StartFailed:
-					return setupFailure.empty () ? "Daemon start failed" : setupFailure;
-				case DaemonStartResult::AlreadyRunning: return "Daemon already running";
-				case DaemonStartResult::AlreadyStarting: return "Daemon start already in progress";
-				case DaemonStartResult::Stopping: return "Daemon stopping";
+			case DaemonStartResult::Started: return "ok";
+			case DaemonStartResult::InitializationFailed:
+			case DaemonStartResult::StartFailed: return setupFailure.empty () ? "Daemon start failed" : setupFailure;
+			case DaemonStartResult::AlreadyRunning: return "Daemon already running";
+			case DaemonStartResult::AlreadyStarting: return "Daemon start already in progress";
+			case DaemonStartResult::Stopping: return "Daemon stopping";
 			}
 			return "unknown daemon lifecycle state";
 		}

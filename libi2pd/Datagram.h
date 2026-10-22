@@ -49,12 +49,18 @@ namespace datagram
 
 		inline thread_local ReceiverInvocationFrame * g_ReceiverInvocationFrame = nullptr;
 
-		inline bool IsInReceiverCallback () { return g_ReceiverInvocationFrame != nullptr; }
+		inline bool IsInReceiverCallback ()
+		{
+			return g_ReceiverInvocationFrame != nullptr;
+		}
 
 		template <typename Callback> class ReceiverSlot
 		{
 		public:
-			explicit ReceiverSlot (Callback callback) : m_Callback (std::move (callback)) { }
+			explicit ReceiverSlot (Callback callback)
+				: m_Callback (std::move (callback))
+			{
+			}
 			bool HasCallback () const { return static_cast<bool> (m_Callback); }
 
 			template <typename... Args> bool Invoke (Args &&... args)
@@ -74,7 +80,8 @@ namespace datagram
 					ReceiverSlot & slot;
 					ReceiverInvocationFrame frame;
 					Invocation (ReceiverSlot & s)
-						: slot (s), frame { &s, g_ReceiverInvocationFrame }
+						: slot (s)
+						, frame { &s, g_ReceiverInvocationFrame }
 					{
 						g_ReceiverInvocationFrame = &frame;
 					}
@@ -276,11 +283,19 @@ namespace datagram
 			explicit operator bool () const { return !m_Slot.expired () && !m_Destination.expired (); }
 
 		private:
-			enum class Kind : uint8_t { Identity, Hash, Raw };
+			enum class Kind : uint8_t
+			{
+				Identity,
+				Hash,
+				Raw
+			};
 			friend class DatagramDestination;
-			ReceiverRegistration (std::weak_ptr<DatagramDestination> destination, std::weak_ptr<void> slot,
-				uint16_t port, Kind kind)
-				: m_Destination (std::move (destination)), m_Slot (std::move (slot)), m_Port (port), m_Kind (kind)
+			ReceiverRegistration (
+				std::weak_ptr<DatagramDestination> destination, std::weak_ptr<void> slot, uint16_t port, Kind kind)
+				: m_Destination (std::move (destination))
+				, m_Slot (std::move (slot))
+				, m_Port (port)
+				, m_Kind (kind)
 			{
 			}
 			std::weak_ptr<DatagramDestination> m_Destination;

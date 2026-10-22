@@ -225,7 +225,8 @@ public class RouterService extends Service {
         });
     };
 
-    private final DaemonWrapper.StateUpdateListener daemonStateListener = this::onDaemonStateChanged;
+    private final DaemonWrapper.StateUpdateListener daemonStateListener =
+            this::onDaemonStateChanged;
 
     private void onDaemonStateChanged(DaemonWrapper.State oldState, DaemonWrapper.State newState) {
         ServiceOwnerEpoch.runIfCurrent(ownerEpoch, () -> {
@@ -477,21 +478,24 @@ public class RouterService extends Service {
 
     @Override
     public void onDestroy() {
-        ServiceOwnerEpoch.retireAndQueueStop(ownerEpoch, wasCurrentOwner -> {
-            destroyed = true;
-            if (wasCurrentOwner) {
-                routerRunning = false;
-            }
-        }, () -> {
-            if (daemon == null) {
-                return;
-            }
-            try {
-                daemon.stopDaemon();
-            } catch (Throwable tr) {
-                Log.w(TAG, "shutdown task failed", tr);
-            }
-        });
+        ServiceOwnerEpoch.retireAndQueueStop(ownerEpoch,
+                wasCurrentOwner
+                -> {
+                    destroyed = true;
+                    if (wasCurrentOwner) {
+                        routerRunning = false;
+                    }
+                },
+                () -> {
+                    if (daemon == null) {
+                        return;
+                    }
+                    try {
+                        daemon.stopDaemon();
+                    } catch (Throwable tr) {
+                        Log.w(TAG, "shutdown task failed", tr);
+                    }
+                });
         Runnable cancelImport = cancelTorrentImport;
         if (cancelImport != null)
             cancelImport.run();
