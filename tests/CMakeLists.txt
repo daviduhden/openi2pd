@@ -7,7 +7,6 @@
 # as CTest targets, labelled by unit, torrent, IPC, TUI and security groups.
 #
 
-enable_testing()
 
 function(i2pd_add_test name)
   add_executable(${name} "${name}.cpp")
@@ -75,18 +74,10 @@ function(i2pd_add_test name)
   endif()
   i2pd_enable_sanitizers(${name})
   add_test(NAME ${name} COMMAND ${name})
+  set_tests_properties(${name} PROPERTIES TIMEOUT 120)
 endfunction()
 
 set(I2PD_TESTS
-  test-i18n-locale
-  test-addressbook-admin
-  test-rng-seed
-  test-runnableservice-lifecycle
-  test-transport-connector
-  test-tunnel-dsm-policy
-  test-tunnelconfig-ownership
-  test-openssl-capabilities
-  test-modern
   test-http-merge_chunked
   test-http-req
   test-http-res
@@ -136,12 +127,20 @@ set(I2PD_TESTS
   test-routercontext-service-lifecycle
   test-routercontext-static-keys
   test-routercontext-port-range
+  test-tunnel-dsm-policy
+  test-tunnelconfig-ownership
+  test-transport-connector
+  test-modern
   test-address-format
   test-util-copy-string
+  test-rng-seed
+  test-runnableservice-lifecycle
   test-i18n-format
+  test-i18n-locale
   test-socks-address
   test-kad-dht
   test-addressbook
+  test-addressbook-admin
   test-addressbook-case
   test-ssu2-address-negotiation
   test-ssu2-fragment-ordering
@@ -150,6 +149,7 @@ set(I2PD_TESTS
   test-ssu2-preauth
   test-crypto-wire-validation
   test-crypto-x25519-noise-elligator-mlkem-audit
+  test-openssl-capabilities
   test-eciesx25519-ratchet-session
   test-eciesx25519-ratchet-tagsets
   test-signature-identity-hardening
@@ -215,6 +215,9 @@ foreach(test IN LISTS I2PD_TESTS)
     set_tests_properties(${test} PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 120)
     set_property(TEST ${test} APPEND PROPERTY LABELS "ipc;security;platform")
   endif()
+  if(test STREQUAL "test-privsep-linux-sandbox")
+    set_tests_properties(${test} PROPERTIES SKIP_RETURN_CODE 77)
+  endif()
   set_property(TEST ${test} APPEND PROPERTY LABELS unit)
   if(test MATCHES "^test-torrent")
     set_property(TEST ${test} APPEND PROPERTY LABELS torrent)
@@ -222,36 +225,50 @@ foreach(test IN LISTS I2PD_TESTS)
   if(test MATCHES "privsep|tui-ipc|tui-pipe|tui-win32")
     set_property(TEST ${test} APPEND PROPERTY LABELS ipc)
   endif()
+  if(test MATCHES "^test-torrent" AND NOT WITH_TORRENTS)
+    set_tests_properties(${test} PROPERTIES DISABLED TRUE)
+  endif()
   if(test MATCHES "^test-tui")
     set_property(TEST ${test} APPEND PROPERTY LABELS tui)
   endif()
   if(test STREQUAL "test-routercontext-port-range"
       OR test STREQUAL "test-i2ptunnel-http"
+      OR test STREQUAL "test-addressbook-admin"
       OR test STREQUAL "test-addressbook-case"
+      OR test STREQUAL "test-tunnelconfig-ownership"
+      OR test STREQUAL "test-runnableservice-lifecycle"
       OR test STREQUAL "test-address-format"
       OR test STREQUAL "test-util-copy-string"
+      OR test STREQUAL "test-rng-seed"
       OR test STREQUAL "test-i18n-format"
-      OR test STREQUAL "test-socks-address")
+      OR test STREQUAL "test-socks-address"
+      OR test STREQUAL "test-openssl-capabilities"
+      OR test STREQUAL "test-http-proxy-limits")
     set_property(TEST ${test} APPEND PROPERTY LABELS security)
   endif()
   if(test STREQUAL "test-i2ptunnel-http"
+      OR test STREQUAL "test-addressbook-admin"
       OR test STREQUAL "test-addressbook-case"
+      OR test STREQUAL "test-tunnelconfig-ownership"
       OR test STREQUAL "test-address-format"
       OR test STREQUAL "test-util-copy-string"
+      OR test STREQUAL "test-rng-seed"
       OR test STREQUAL "test-i18n-format"
-      OR test STREQUAL "test-socks-address")
+      OR test STREQUAL "test-socks-address"
+      OR test STREQUAL "test-openssl-capabilities"
+      OR test STREQUAL "test-http-proxy-limits")
     set_property(TEST ${test} APPEND PROPERTY LABELS memory)
   endif()
-  if(test MATCHES "crypto|blinding|su3|reseed|gost|signature|ecies|protocol-bounds|routerinfo|ssu2|ntcp2|netdb|leaseset|torrents-security|torrents-verify-parity|i2cp-routing-session|sam-control|race|concurrency|sandbox|policy|imsg")
+  if(test MATCHES "crypto|aead|aes|siphash|eddsa|elligator|blinding|su3|reseed|gost|signature|ecies|openssl|http-proxy-limits|protocol-bounds|routerinfo|ssu2|ntcp2|netdb|leaseset|torrents-security|torrents-verify-parity|i2cp-routing-session|sam-control|race|concurrency|sandbox|policy|imsg")
     set_property(TEST ${test} APPEND PROPERTY LABELS security)
   endif()
   if(test MATCHES "bounds|audit|hardening|security|verify-parity|race|concurrency|lifecycle|sandbox|policy")
     set_property(TEST ${test} APPEND PROPERTY LABELS memory)
   endif()
-  if(test MATCHES "^test-(http|base-64|gost|aead|blinding|elligator|eddsa|siphash|aes|ntcp2|ssu2|protocol|netdb|leaseset|routerinfo|routercontext|kad|addressbook|datagram|streaming|timestamp|ntp|i2cp|i2ptunnel|sam|clientcontext|log|tunnel)")
+  if(test MATCHES "^test-(http|base-64|gost|aead|blinding|elligator|eddsa|siphash|aes|crypto|ecies|signature|su3|reseed|openssl|ntcp2|ssu2|protocol|netdb|leaseset|routerinfo|routercontext|kad|addressbook|datagram|streaming|timestamp|ntp|i2cp|i2ptunnel|sam|clientcontext|log|tunnel|transport)")
     set_property(TEST ${test} APPEND PROPERTY LABELS i2p)
   endif()
-  if(test MATCHES "leaseset|routerinfo-java213|torrents-(engine-interop|dht-interop|comments|magnet)")
+  if(test MATCHES "leaseset|routerinfo-java213|torrents-(engine-interop|dht-interop|comments|magnet|creator|verify-parity)")
     set_property(TEST ${test} APPEND PROPERTY LABELS interop)
   endif()
   if(test MATCHES "privsep-(linux|openbsd)|tui-win32|privsep-windows")
@@ -268,7 +285,28 @@ add_test(NAME build-system-static
   COMMAND "${CMAKE_COMMAND}"
     "-DPROJECT_ROOT=${PROJECT_ROOT}"
     -P "${CMAKE_CURRENT_SOURCE_DIR}/check-build-system.cmake")
-set_tests_properties(build-system-static PROPERTIES LABELS "ci;static")
+set_tests_properties(build-system-static PROPERTIES
+  LABELS "ci;static"
+  TIMEOUT 60)
+
+# Compile-free modern-language policy/availability check. It reads AGENTS.md,
+# CMake, Gradle, documentation and the modernization seam headers only.
+add_test(NAME language-modernization-static
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPROJECT_ROOT=${PROJECT_ROOT}"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/check-language-modernization.cmake")
+set_tests_properties(language-modernization-static PROPERTIES
+  LABELS "ci;docs;static"
+  TIMEOUT 30)
+
+# Compile-free native/Android translation contract check.
+add_test(NAME i18n-static
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPROJECT_ROOT=${PROJECT_ROOT}"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/check-i18n.cmake")
+set_tests_properties(i18n-static PROPERTIES
+  LABELS "ci;docs;static"
+  TIMEOUT 30)
 
 # Static init-system service contract check. It reads the canonical service
 # sources and never invokes a shell, service manager or compiler.
@@ -276,7 +314,19 @@ add_test(NAME services-static
   COMMAND "${CMAKE_COMMAND}"
     "-DPROJECT_ROOT=${PROJECT_ROOT}"
     -P "${CMAKE_CURRENT_SOURCE_DIR}/check-services.cmake")
-set_tests_properties(services-static PROPERTIES LABELS "services;static")
+set_tests_properties(services-static PROPERTIES
+  LABELS "services;static"
+  TIMEOUT 60)
+
+# Compile-free packaging/install-contract check. It reads the POSIX Makefile,
+# RPM/Docker/static packaging files and CMake install rules only.
+add_test(NAME packaging-static
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPROJECT_ROOT=${PROJECT_ROOT}"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/check-packaging.cmake")
+set_tests_properties(packaging-static PROPERTIES
+  LABELS "packaging;install;static"
+  TIMEOUT 30)
 
 # Static Agent Skills contract check. It reads the skill frontmatter,
 # references and required sections; it does not execute a skill or a workflow.
@@ -284,12 +334,17 @@ add_test(NAME agent-skills-static
   COMMAND "${CMAKE_COMMAND}"
     "-DPROJECT_ROOT=${PROJECT_ROOT}"
     -P "${CMAKE_CURRENT_SOURCE_DIR}/check-agent-skills.cmake")
-set_tests_properties(agent-skills-static PROPERTIES LABELS "ci;static")
+set_tests_properties(agent-skills-static PROPERTIES
+  LABELS "ci;docs;static"
+  TIMEOUT 60)
 
 # Shell-level checks that only need the built router binary.
 if(TARGET i2pd)
   add_test(NAME i2pd-version COMMAND i2pd --version)
-  set_tests_properties(i2pd-version PROPERTIES LABELS "ci;smoke")
+  set_tests_properties(i2pd-version PROPERTIES
+    LABELS "ci;smoke"
+    TIMEOUT 30
+    PASS_REGULAR_EXPRESSION "i2pd")
 endif()
 
 # Interoperability fixtures and documentation/provenance checks. These are
@@ -307,14 +362,21 @@ if(PERL_EXECUTABLE)
     COMMAND "${PERL_EXECUTABLE}" "${PROJECT_ROOT}/tools/scripts/check-doc-links.pl" docs)
   set_tests_properties(perl-doc-links PROPERTIES
     WORKING_DIRECTORY "${PROJECT_ROOT}"
-    LABELS "perl;static"
+    LABELS "docs;perl;static"
+    TIMEOUT 60)
+
+  add_test(NAME docs-nav-static
+    COMMAND "${PERL_EXECUTABLE}" "${PROJECT_ROOT}/tools/scripts/check-doc-nav.pl" "${PROJECT_ROOT}")
+  set_tests_properties(docs-nav-static PROPERTIES
+    WORKING_DIRECTORY "${PROJECT_ROOT}"
+    LABELS "docs;perl;static"
     TIMEOUT 60)
 
   # Android static policy tests are compile-free and can run on every host
   # with Perl. Gradle/APK/Lint/device execution remains in the Android job.
-  add_test(NAME android-english-only
-    COMMAND "${PERL_EXECUTABLE}" "${PROJECT_ROOT}/android/tools/check-english-only.pl")
-  set_tests_properties(android-english-only PROPERTIES
+  add_test(NAME android-locale-policy
+    COMMAND "${PERL_EXECUTABLE}" "${PROJECT_ROOT}/android/tools/check-android-locales.pl")
+  set_tests_properties(android-locale-policy PROPERTIES
     WORKING_DIRECTORY "${PROJECT_ROOT}"
     LABELS "android;perl;static"
     TIMEOUT 60)
@@ -363,7 +425,6 @@ endif()
 # Optional libFuzzer targets. They are not built by default; when enabled,
 # one-input smoke entries are registered under the fuzz label while the manual
 # workflow runs each target with a corpus and a wall-clock budget.
-option(WITH_FUZZERS "Build libFuzzer targets (Clang)" OFF)
 if(WITH_FUZZERS)
   if(NOT CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     message(FATAL_ERROR "WITH_FUZZERS requires Clang")
