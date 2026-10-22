@@ -268,7 +268,8 @@ version branches; comment-only changes are included:
   torrent guide and RPC reference.
 - `tools/scripts/check-doc-links.pl` — offline relative Markdown/image checker
   with local heading/anchor validation; wired into the manual Linux workflow.
-- `docs/user-guide/run.md` — TUI key/views updated to the current ten views,
+- `docs/user-guide/run.md` — TUI key/views updated to the current eleven views
+  (including Services `v`),
   including Connections (`0`), Config (`9`), NetDb (`5`) and the torrent view.
 - Upstream-derived pages retain their copyright/license; new fork documentation
   follows the fork-only header rule.
@@ -711,7 +712,7 @@ validation was performed.
 | `daemon/Daemon.h`, `daemon/Daemon.cpp`, `build/CMakeLists.txt` | Core now starts and monitors the supervisor process rather than the log worker. |
 | `docs/security/*`, `docs/architecture/README.md`, `TODO.md` | Updated supervisor boundary/status and explicit remaining storage/network/crypto/core migration. |
 
-## Android English-only cleanup (2026-10-19)
+## Android English-only cleanup (2026-10-19, historical; superseded by I18N-001/002)
 
 | Path | Change |
 |---|---|
@@ -887,17 +888,18 @@ validation was performed.
 
 | Path | Change |
 |---|---|
-| `contrib/i2pd.service`, `libi2pd/Config.cpp`, `daemon/Daemon.cpp` | Native foreground systemd unit with `i2pd` account, State/RuntimeDirectory, journald, SIGINT stop, bounded restart and IPC-compatible hardening; explicit `--foreground` overrides a local `daemon=true`. |
-| `contrib/sysvinit/i2pd`, `debian/i2pd.init` | LSB SysV fallback using `start-stop-daemon --background`, secure dirs, HUP/INT/USR1 handling and full status/reload actions. |
-| `contrib/openrc/i2pd.openrc`, `contrib/openrc/conf.d/i2pd` | OpenRC `supervise-daemon` runscript and `/etc/conf.d` defaults. |
-| `contrib/runit/i2pd/`, `contrib/s6/i2pd/`, `contrib/s6-rc/source/i2pd/` | Native foreground run scripts, separate runit logger, s6-rc longrun and dependency marker. |
-| `contrib/shepherd/i2pd.scm` | Native GNU Shepherd service with foreground start, `i2pd` account, syslog and SIGINT grace. |
-| `contrib/dinit/i2pd` | Foreground dinit sample with file logging and bounded restart. |
-| `build/CMakeLists.txt` | Added mutually exclusive `I2PD_SERVICE_MANAGER`/`I2PD_SERVICE_DIR`/`I2PD_SERVICE_CONFDIR` install selection and `Service` component. |
-| `tests/check-services.cmake`, `tests/check-build-system.cmake`, `tests/CMakeLists.txt` | Static service-contract checks and install-graph assertions; `services-static` test. |
+| `contrib/i2pd.service`, `contrib/sysusers.d/i2pd.conf`, `contrib/tmpfiles.d/i2pd.conf`, `libi2pd/Config.cpp`, `daemon/Daemon.cpp` | Native foreground systemd unit with `i2pd` account, State/RuntimeDirectory, journald, 660-second stop budget, `KillMode=mixed`, bounded restart and IPC-compatible hardening; explicit `--foreground` overrides a local `daemon=true`; sysusers/tmpfiles policy is installed for the account and directories. |
+| `daemon/i2pd.cpp` | Initialisation failure now returns `EXIT_FAILURE` instead of falling through to success, so restart/respawn policies observe a refused worker or configuration. |
+| `contrib/sysvinit/i2pd`, `debian/i2pd.init` | LSB SysV fallback using `start-stop-daemon --background`, secure dirs, HUP/INT/USR1 handling, a 660-second stop budget and daemon-owned identity-checked pidfile cleanup. |
+| `contrib/openrc/i2pd.openrc`, `contrib/openrc/conf.d/i2pd` | OpenRC `supervise-daemon` runscript and `/etc/conf.d` defaults; `stopsig` selects the stop signal and derives `SIGINT/660` or `SIGTERM/30`, with a private umask and a pidfile-parent check. |
+| `contrib/runit/i2pd/`, `contrib/s6/i2pd/`, `contrib/s6-rc/source/i2pd/` | Native foreground run scripts, separate runit logger, s6-rc longrun and dependency marker; runit applies a private mask and s6/s6-rc ship `down-signal=INT` and `timeout-kill=660000`. |
+| `contrib/shepherd/i2pd.scm` | Native GNU Shepherd service with foreground start, `i2pd` account, syslog, data-directory pidfile and SIGINT grace. |
+| `contrib/dinit/i2pd`, `contrib/upstart/i2pd.upstart` | Foreground dinit and Upstart samples with restricted accounts, SIGINT/660-second stop policies and bounded respawn; Upstart also applies a private umask. Neither is selected by `I2PD_SERVICE_MANAGER`. |
+| `build/CMakeLists.txt` | Added mutually exclusive `I2PD_SERVICE_MANAGER`/`I2PD_SERVICE_DIR`/`I2PD_SERVICE_CONFDIR` install selection, `Service` component, exact runit/s6/s6-rc install modes and systemd sysusers/tmpfiles installation. |
+| `tests/check-services.cmake`, `tests/check-build-system.cmake`, `tests/CMakeLists.txt` | Static service-contract checks and install-graph assertions; `services-static` test covers stop budgets, down-signal/timeout, OpenRC stopsig, sysusers/tmpfiles, SysV pidfile ownership and s6/s6-rc run-script identity. |
 | `debian/control`, `debian/rules`, `debian/*.install`, `debian/*.manpages`, `debian/*.links`, `debian/*.default`, `debian/*.tmpfiles`, `debian/postinst`, `debian/postrm`, `debian/changelog`, `debian/NEWS`, `debian/copyright` | Debhelper 13 packaging, `i2pd`/`i2pd-tui` split, conffiles, service/tmpfiles integration, autopkgtest smoke test and packaging metadata. |
-| `.github/workflows/packaging.yml` | Manual service-contract, lintian and Debian autopkgtest workflow. |
-| `docs/service-management.md`, `docs/user-guide/run.md`, `docs/user-guide/install.md`, `docs/build-system.md`, `docs/devs/building/unix.md`, `docs/README.md`, `docs/mkdocs.yml`, `docs/security/privilege-separation.md` | Documented native manager operation, Debian packages, CMake `Service` selection, hardening, logs and pending runtime validation. |
+| `.github/workflows/packaging.yml` | Manual service-contract, OpenRC/runit shell-syntax, systemd unit, lintian and Debian autopkgtest workflow. |
+| `docs/service-management.md`, `docs/user-guide/run.md`, `docs/user-guide/install.md`, `docs/build-system.md`, `docs/devs/building/unix.md`, `docs/README.md`, `docs/mkdocs.yml`, `docs/security/privilege-separation.md`, `contrib/openbsd/README.md`, `docs/security/openbsd-validation.md` | Documented native manager operation, foreground OpenBSD rc.subr supervision, Debian packages, CMake `Service` selection, hardening, logs and pending runtime validation. |
 | `TODO.md`, `ROADMAP.md`, `PROGRESS.md`, `AGENTS.md` | Recorded SERVICE/DEB work, static-only status and pending CI/package/service validation. |
 
 All entries above are implemented by static analysis only. No build, configure,
@@ -981,3 +983,475 @@ Fixture JSON/hex and their expectations are unchanged. NET-026 tracks the
 pending 2.14.0 source re-audit and evidence migration. No build, test,
 validator or workflow was executed; existing implementation changes remain
 uncommitted and preserved.
+
+## Functional parity continuation (2026-10-21, static)
+
+| Paths | Change |
+|---|---|
+| `libi2pd_client/AddressBook.h`, `AddressBook.cpp`, `tests/test-addressbook-admin.cpp` | Added bounded address-book list/add/replace/remove APIs, Java-compatible `.i2p` name validation, shared-identity reference safety, empty-index persistence and a storage-injection regression seam. |
+| `libi2pd/TuiProtocol.h`, `daemon/TuiServerCommon.*`, `daemon/Daemon.cpp`, `tui/main.cpp` | Added `ADDRESSBOOK`, `ADMIN ADDRESS-ADD/REMOVE`, Destinations add/remove prompts and list rows; the admin queue remains fixed-size and allocation-free. |
+| Android `I2PD_JNI`, `DaemonWrapper`, `RouterService`, `RouterRepository`, `RouterViewModel`, `AddressBookFragment`, menu/strings | Added an app-internal, service-worker address-book list/add/remove screen; no filesystem paths or key material cross the UI bridge. |
+| `libi2pd/TuiProtocol.h`, `daemon/TuiServerCommon.cpp`, `libi2pd_client/TorrentsTunnel.cpp`, `TorrentsControl.h`, `tui/main.cpp`, Android `TorrentsFragment`/`TorrentControl` | Added end-to-end force recheck for paused complete torrents; running torrents are rejected. |
+| `libi2pd/NetDb.hpp`, `NetDb.cpp`, `tests/test-tunnel-dsm-policy.cpp` | Drop token-bearing DatabaseStore messages that arrive through a router tunnel before constructing a DeliveryStatus reply, matching Java exploratory-tunnel policy. |
+| `tests/CMakeLists.txt`, Android `TorrentControlTest`, `TODO.md`, `ROADMAP.md`, `PROGRESS.md`, `AGENTS.md`, parity/TUI/torrent/security/testing docs | Registered regressions and recorded static status, remaining gaps and pending manual CI. |
+
+No compiler, CTest, Gradle/device run, sanitizer, fuzzer, validator or live
+peer/tracker/address lookup was executed. Tunnel creation/editing, selected-file
+promotion, queue/bandwidth policy, deleted-host tombstones and subscription
+editing remain open implementation work.
+
+## Upstream openssl continuation (2026-10-21, static)
+
+| Paths | Change |
+|---|---|
+| `libi2pd_client/HTTPProxy.cpp`, `libi2pd/HTTP.cpp`, `tests/test-http-res.cpp` | Ported `35e25db2` proxy error classification with typed 400/431/500/502/504 pages, preserving the fork's 1 MiB header bound, nil-socket guard and bounded response construction; added 431 reason/status regressions. |
+| `libi2pd_client/TorrentsDHT.h`, `TorrentsDHT.cpp`, `tests/test-torrents-dht-interop.cpp` | Adapted `9725b8b2` DHT rendezvous self-announce: live peer snapshot, own-bucket predicate, own destination publication with the correct seed bit, private/stopped suppression and `MAX_DHT_TORRENTS`/peer caps. |
+| `tests/test-i2ptunnel-http.cpp` | Pinned the already-integrated `032b8a61` case-insensitive header semantics with mixed-case Host/Keep-Alive/X-I2P and lowercase Upgrade cases. |
+| `docs/upstream-sync.md`, `TODO.md`, `ROADMAP.md`, `PROGRESS.md`, `AGENTS.md`, `docs/torrent/`, `docs/testing.md` | Recorded every post-`de32c8c3` SHA and disposition, the merge-only/incompatible/obsolete packaging rows, and the prepared CI state. |
+
+`137dde2f` remains partially integrated/obsolete, `8710fd89` is merge-only and
+`c5e8e10a` is incompatible with the removed web console. No compiler, CTest,
+sanitizer, fuzzer, package, proxy/DHT/peer, workflow, commit or push was
+performed.
+
+## OpenSSL 4 and C++23 ownership continuation (2026-10-21, static)
+
+| Paths | Change |
+|---|---|
+| `build/CMakeLists.txt`, `tests/check-build-system.cmake`, `docs/dependencies.md` | Read the selected `opensslv.h`, reject mixed header/library prefixes, enforce OpenSSL 3.0.2+/LibreSSL 4.0+, add `I2PD_OPENSSL_EXPECT*` guards and compile-only EVP/X.509/TLS probes; document the probe matrix. |
+| `libi2pd/Crypto.*`, `Family.*`, `Reseed.cpp`, `PostQuantum.*`, `RouterInfo.cpp`, `NTCP2.cpp`, `SSU2.cpp`, `SSU2Session.cpp` | Added provider capability fetch/probing, provider key inspection, RAII family keys and checked family signatures, runtime ML-KEM gating with version cascading, and SipHash capability/fallback separation. |
+| `daemon/I2PControl.cpp`, `libi2pd_client/I2PTunnel.cpp`, `tools/famtool.cpp`, `docs/tools/famtool.md` | Explicit TLS client/server roles, TLS 1.2 floor, SHA-256 control certificates, checked RNG, checked EVP family signing/PKCS#8 keys and strict DER conversion; removed deprecation suppression. |
+| `libi2pd/TunnelConfig.*`, `Garlic.*`, `ECIESX25519AEADRatchetSession.cpp`, `libi2pd_client/Torrents.*`, `UDPTunnel.*`, `tests/test-tunnelconfig-ownership.cpp` | Owned tunnel-hop vector, per-wrap Garlic payload buffer, `unique_ptr` piece data, optional/atomic resolver thread state and an ownership regression. |
+| `libi2pd_client/AddressBook.cpp`, `tests/test-addressbook-admin.cpp`, Android `TorrentControl.java`/`TorrentControlTest.java` | Atomic index temp/rename, no empty authoritative index on clean shutdown, bounded identity reads, stream-error handling, orphan cleanup and id-0 command rejection. |
+| `tests/CMakeLists.txt`, `tests/test-openssl-capabilities.cpp`, `TODO.md`, `ROADMAP.md`, `PROGRESS.md`, `AGENTS.md`, `docs/testing.md` | Registered the provider/ownership regressions and recorded the static-only status, remaining residuals and pending CI matrix. |
+
+No compiler, CMake configure/build, CTest, sanitizer, fuzzer, package,
+Android/Gradle/device, live TLS/PQ, workflow, commit or push was performed.
+
+## Memory-safety audit continuation (2026-10-21, static)
+
+| Paths | Change |
+|---|---|
+| `libi2pd/Family.cpp`, `RouterContext.cpp`, `Garlic.cpp` | Fail-closed family signature length, bounded garlic/DeliveryStatus payloads, and checked clove pointer/I2NP lengths. |
+| `libi2pd/NTCP2.cpp`, `NTCP2.h` | Fallible, fully checked SipHash context setup; both handshake directions terminate on provider failure. |
+| `libi2pd/Identity.cpp`, `Reseed.cpp`, `HTTP.cpp` | Reject offline-key chaining, truncated SU3 file names and C0/DEL HTTP header values. |
+| `libi2pd_client/Torrents.cpp`, `TorrentsDHT.cpp` | Piece-count checks on peer have/choke/terminate paths; empty DHT replies no longer construct a null-data `string_view`. |
+| `daemon/TuiServerCommon.*`, `daemon/Daemon.cpp`, `libi2pd/TuiProtocol.h`, `tui` tests | Cap torrent-detail comments, carry explicit admin message lengths and reject control bytes in rest-of-line arguments. |
+| Android `i2pd_android.cpp`, `DaemonAndroid.cpp`, `TorrentsFragment.java` | Pending-exception-safe SAF/JNI ordering, idempotent native start guard and guarded recheck action. |
+| `tests/test-http-res.cpp`, `tests/test-tui-protocol.cpp`, `TODO.md`, `ROADMAP.md`, `PROGRESS.md`, `AGENTS.md`, `docs/security-audit.md` | Prepared malformed-input cases, recorded fixed/residual findings and pending manual ASan/TSan/fuzz/device validation. |
+
+No compiler, sanitizer, fuzzer, device or workflow run was performed.
+
+## Concurrency and lifecycle continuation (2026-10-21, static)
+
+| Paths | Change |
+|---|---|
+| `libi2pd/util.*`, `tests/test-runnableservice-lifecycle.cpp` | Safe same-thread `StopIOService`, idempotent start, bounded self-stop regression. |
+| `libi2pd/Transports.*`, `libi2pd/I2PControl.*`, `daemon/Daemon.*`, `daemon/UnixDaemon.cpp` | Atomic lifecycle/shutdown flags, idempotent transport start, ordered timer/server teardown, I2PControl `io_context` restart. |
+| `libi2pd/RouterContext.*`, `libi2pd/TransitTunnel.cpp`, `libi2pd/Family.*` | Caller-owned tunnel-build Noise state, shared-mutex family key map. |
+| `libi2pd/SSU2.cpp`, `SSU2Session.*`, `libi2pd/NTCP2.*` | SSU2 terminal latch/late-handshake rejection and pending-session cleanup; NTCP2 terminated/ready admission checks. |
+| `TODO.md`, `ROADMAP.md`, `PROGRESS.md`, `AGENTS.md`, `docs/security-audit.md`, `docs/testing.md` | Recorded `CONC-001..CONC-005`, prepared TSan/stress follow-ups and residual ownership hotspots. |
+
+No compiler, TSan/ASan, fuzzer, device or live-peer run was performed.
+
+## Build/dependency consolidation (2026-10-21, static)
+
+| Paths | Change |
+|---|---|
+| `Makefile`, `tests/Makefile`, `build/CMakePresets.json` | POSIX phony targets, `all` default, build-before-install, `DESTDIR`/`PREFIX`, safe clean guard, Ninja presets. |
+| `build/CMakeLists.txt`, `build/cmake/i2pdConfig.cmake` | CMake 3.24, OpenBSD Unix-Makefiles rejection, `Development` install components, relocatable `configure_package_config_file` includes, non-multiarch systemd path, docs outside `WITH_BINARY`, explicit Unix TUI dependency, Boost::headers/header-only JSON/URL modelling, top-level fuzz option, MSVC static suffix. |
+| `android/app/src/main/cpp/CMakeLists.txt` | Align the Android wrapper with the CMake 3.24 floor. |
+| `build/build_mingw.cmd`, `contrib/rpm/*.spec`, `contrib/static/package.sh`, `contrib/docker/Dockerfile`, `.dockerignore`, `debian/control` | Root-safe Windows helper without in-place config rewriting, Ninja/Boost RPM requirements, removed old Fedora/Mageia build-dir branches and ENGINE dependency, fixed cert/static paths, Docker zlib and context hygiene. |
+| `tests/check-build-system.cmake`, `tests/check-packaging.cmake`, `.github/workflows/*` | Static packaging assertions and manual component/consumer, POSIX-make, OpenBSD TUI and instrumented-fuzz CI paths. |
+
+No configure, build, package, workflow dispatch, commit or push was performed.
+
+## Address-book and I2PSnark parity continuation (2026-10-21, static)
+
+| Paths | Change |
+|---|---|
+| `libi2pd_client/AddressBook.*` | Bounded deleted-host tombstone load/save, anchored wildcard matching, subscription merge skip, remove/add integration. |
+| `libi2pd/TuiProtocol.h`, `daemon/TuiServerCommon.*`, `daemon/Daemon.cpp`, `tui/main.cpp` | `ADDRESSBOOK-BLOCKED`, `ADMIN ADDRESS-BLOCK/UNBLOCK`, Destinations `b`/`u` and bounded result payloads. |
+| Android address-book/JNI bridge | Service-worker block/unblock/list methods, JNI entry points, Material dialogs and strings. |
+| `libi2pd_client/Torrents.*`, `TorrentsTunnel.cpp` | Bounded unknown top-level metainfo retention and re-emission; comment/created-by validation and editing; no lossy rewrite. |
+| `libi2pd_client/TorrentsControl.h`, `libi2pd/TuiProtocol.h`, `daemon/TuiServerCommon.cpp`, `tui/main.cpp` | Metainfo command kinds/parser, TUI detail `e`/`E`, comment/created-by display. |
+| Android `TorrentsFragment`, `TorrentControl`, strings/tests | Metadata dialog, remove-with-data action, metainfo display and command builders. |
+| `tests/*`, `docs/FEATURE-PARITY.md`, `TODO.md`, `PROGRESS.md`, `AGENTS.md`, `docs/tui-ipc.md`, `docs/testing.md`, torrent docs | Tombstone/metainfo regressions and matrix/backlog updates. |
+
+No compiler, CTest, sanitizer, fuzzer, Gradle/device, Java peer or workflow run
+was performed; no commit or push.
+
+## Upstream openssl post-tip verification (2026-10-21, static)
+
+| Paths | Change |
+|---|---|
+| `libi2pd_client/TorrentsDHT.*`, `TorrentsTunnel.cpp` | DHT self-unannounce on stop/remove, reserved local peer slot, removed-torrent suppression and upstream empty-bucket predicate fallback. |
+| `libi2pd_client/HTTPProxy.*`, `tests/test-http-res.cpp`, `tests/test-http-proxy-limits.cpp` | Test-visible 400/431/500/502/504 constants and failure mapping; serialized status regressions. |
+| `libi2pd_client/I2PTunnelHTTP.h`, `tests/test-i2ptunnel-http.cpp` | Reject obs-fold leading SP/HTAB continuations and pin mixed-case `Proxy-Connection`. |
+| `tests/test-torrents-dht-interop.cpp`, `tests/test-torrents-security.cpp` | Multi-bucket own-bucket predicate, reserved local DHT slot and removal regressions. |
+| `docs/upstream-sync.md`, `TODO.md`, `ROADMAP.md`, `PROGRESS.md`, `AGENTS.md`, `docs/testing.md` | Post-tip verification, no-new-commit state, `UPSTREAM-007`, corrected `137dde2f` classification and test inventory. |
+
+No compiler, CTest, sanitizer, fuzzer, live proxy/DHT/peer or workflow run was
+performed; no commit or push.
+
+## SSU2/NTCP2 continuation (2026-10-21, static)
+
+| Paths | Change |
+|---|---|
+| `libi2pd/SSU2Session.*`, `SSU2.*`, `SSU2OutOfSession.cpp` | Monotonic receive window, wrong-type drop, owner-checked removal, Noise reset, resend throttle, PeerTest source/target/timestamp checks, HolePunch admission and Established-callback handoff. |
+| `libi2pd/NTCP2.*` | Java 2.14.0 msg3p2 459..4048 bounds and banned-termination profile signal. |
+| `tests/test-ntcp2-*`, `tests/test-ssu2-*` | Updated/static assertions and prepared malformed/reordered/loss regressions. |
+| `docs/INTEROPERABILITY.md`, `TODO.md`, `PROGRESS.md`, `AGENTS.md` | Continuation matrix rows, NET-162/163 and tracking updates. |
+
+No compiler, CTest, sanitizer, fuzzer, live relay/PeerTest/MTU/IPv6 or workflow
+run was performed; no commit or push.
+
+## Cryptography continuation (2026-10-21, static)
+
+| Paths | Change |
+|---|---|
+| `libi2pd/util.cpp`, `IdentMetrics.*`, `Tag.h` | CSPRNG RNG seed, fail-closed peer ordering, key wiping. |
+| `libi2pd/Crypto.*`, `libi2pd/NTCP2.*` | Fail-closed multi-buffer AEAD, NTCP2 abort before sequence advance, key cleansing. |
+| `libi2pd/ECIESX25519AEADRatchetSession.*`, `Garlic.*` | Tag boundary 0..65535, tag eviction, forward/reverse NEXT_KEY limit, zeroization, one-timer-per-session fallback. |
+| `libi2pd/Destination.*`, `libi2pd_client/I2CP.*` | Automatic in-process NSR/ACK timer and strict I2CP LeaseSet2 key lengths. |
+| `libi2pd/LeaseSet.*`, `Datagram.cpp`, `Streaming.cpp` | LS2 RSA transient policy split. |
+| `libi2pd/Ed25519.*`, `Blinding.cpp`, `Gost.cpp`, `Signature.h` | Ed25519 point validation, scalar cleansing, RFC 7091 e=0 rule. |
+| `libi2pd/SSU2Session.cpp` | KEM reset and version-fallback Retry handling. |
+| `tests/test-rng-seed.cpp`, `tests/test-aeadchacha20poly1305.cpp`, `tests/test-gost-sig.cpp`, `tests/test-eciesx25519-ratchet-tagsets.cpp` | Prepared differential/negative regressions. |
+
+No compiler, CTest, sanitizer, fuzzer, Java/provider or workflow run was
+performed; no commit or push.
+
+## netDb/RouterInfo/LeaseSet continuation (2026-10-21, static)
+
+| Paths | Change |
+|---|---|
+| `libi2pd/I2NPProtocol.*`, `RouterContext.cpp` | Preserve clove origin for direct-only DLM/DSM policy. |
+| `libi2pd/RouterInfo.*`, `NetDb.*`, `Reseed.cpp` | Atomic updated-buffer snapshot, atomic file rename, zero-address freshness, reseed self preservation, locked startup counts, lookup/flood throttles. |
+| `libi2pd/Destination.*` | Bind client DSRM to queried peers, deduplicate and cap followed hashes. |
+| `libi2pd/LeaseSet.*` | Reject RSA blinded LS2, virtual LS2 PopulateLeases, Meta latest-entry expiry, canonical LS1 trim. |
+| `tests/test-tunnel-dsm-policy.cpp`, `tests/test-leaseset2-java213-regression.cpp` | Updated/prepared policy and serialization regressions. |
+| `docs/INTEROPERABILITY.md`, `TODO.md`, `PROGRESS.md`, `AGENTS.md` | DB-115..DB-123, LS-122..LS-125 and NET-165 tracking. |
+
+No compiler, CTest, sanitizer, fuzzer, live floodfill/Java peer or workflow run
+was performed; no commit or push.
+
+## Tunnel-build/I2NP/Garlic continuation (2026-10-21, static)
+
+| Paths | Change |
+|---|---|
+| `libi2pd/Tunnel.*`, `TunnelBase.h`, `TunnelPool.*` | Peer uniqueness, zero-ID rejection, zero-hop path/replacement fixes, shared-RNG shuffle, varied-length recreation, IV filter, selector/config ownership. |
+| `libi2pd/TunnelEndpoint.*`, `TransitTunnel.cpp` | OBEP LOCAL drop, transit zero-ID validation, reassembly caps, IV replay checks. |
+| `libi2pd/I2NPProtocol.*`, `RouterContext.cpp` | Clove origin/type whitelist, gateway sizing/overflow, inner expiration. |
+| `libi2pd/Garlic.*`, `CryptoKey.*`, `Identity.h`, `LeaseSet.*`, `RouterInfo.*` | Fallible encryption, clove freshness and local length checks, router-session null check. |
+| `libi2pd_client/MatchedDestination.*` | Selector unregistration and lease-set mutex. |
+| `tests/test-tunnel-dsm-policy.cpp`, `tests/test-eciesx25519-ratchet-session.cpp` | Updated API/policy regressions. |
+| `docs/INTEROPERABILITY.md`, `TODO.md`, `PROGRESS.md`, `AGENTS.md` | TU/I2NP/GAR/CONC tracking. |
+
+No compiler, CTest, sanitizer, fuzzer, live tunnel/Java peer or workflow run
+was performed; no commit or push.
+
+## SAM/I2CP/Streaming/Datagram continuation (2026-10-21, static)
+
+| Paths | Change |
+|---|---|
+| `libi2pd_client/SAM.*` | Per-port acceptor teardown, subsession PORT/duplicate validation, SESSION STATUS errors, HELLO tokenization, shutdown accounting. |
+| `libi2pd_client/I2CP.cpp`, `libi2pd/LeaseSet.h` | Blinded store-key HostReply, single terminal status, staged CreateLeaseSet2 keys. |
+| `libi2pd/Streaming.*`, `libi2pd/Destination.*` | Bounded saved packets, locked stream lookup, ping/pong ports, SYN validation, terminated-send guard. |
+| `libi2pd/Datagram.*` | Datagram3 authentication gate, wildcard receiver replacement, identity refresh. |
+| `tests/test-tunnel-dsm-policy.cpp`, docs/tracking | Updated policy and continuation matrix. |
+
+No compiler, CTest, sanitizer, fuzzer, Java peer, SAM/I2CP client or workflow
+run was performed; no commit or push.
+
+## User-services continuation (2026-10-21, static)
+
+| Paths | Change |
+|---|---|
+| `libi2pd_client/AddressBook.*`, `HTTPProxy.*`, `SOCKS.cpp` | Case-insensitive `.i2p`/`.i2p.alt`, `www.` fallback, blocked clearnet targets, SOCKS IP literals/port rules, subscription bounds and tombstone enforcement. |
+| `libi2pd/Reseed.*`, `Config.cpp` | TLS verification, SU3/ZIP/HTTP caps, entry limits and network bundle freshness; removed expired-cert default host. |
+| `docs/FEATURE-PARITY.md`, `TODO.md` | `PARITY-015`, HTTP/SOCKS/RS/AB tracking and matrix rows. |
+
+No compiler, CTest, sanitizer, fuzzer, Java peer, live proxy/reseed or device
+run was performed; no commit or push.
+
+## Multiprocess trust-boundary continuation (2026-10-21, static)
+
+| Paths | Change |
+|---|---|
+| `privsep/LinuxSandbox.*`, `privsep/Supervisor.cpp` | Capability-only supervisor bootstrap; no inherited Landlock/seccomp/netns domain; bounded log-worker restart with exponential backoff, attempt cap and stable reset. |
+| `privsep/Supervisor.*` | OpenBSD torrent-storage broker receives a pre-opened root fd 4, drops `rpath`, and rejects unsafe/inherited descriptors; startup pledge keeps `exec` only for the worker-spawn window. |
+| `privsep/RouterStorage.cpp`, `privsep/RunWorker.cpp` | Worker-level write rejection is non-fatal for the channel; malformed frames/request IDs still poison it. Worker channels must be fd 3 so they cannot alias inherited root fd 4. |
+| `libi2pd/Log.*`, `libi2pd/Queue.h` | Bounded 8192-record queue (`PutIfBelow` atomic size check), 8192-byte record truncation and dropped-record accounting. |
+| `tests/test-privsep-linux-sandbox.cpp`, `tests/test-log-lifecycle.cpp`, `tests/test-router-storage.cpp` | Supervisor-bootstrap delegation, queue saturation and transient storage-failure regressions. |
+| `TODO.md`, `PROGRESS.md`, `docs/security/privilege-separation.md`, `docs/security/process-capabilities.md`, `docs/security/ipc-protocol.md` | Accurate static status and residual boundaries. |
+
+No compiler, CTest, sanitizer, fuzzer, package, Windows/OpenBSD/Linux runtime,
+Android device or workflow run was performed; no commit or push.
+
+## IPC protocol consolidation (2026-10-21, static)
+
+| Paths | Change |
+|---|---|
+| `privsep/Protocol.h` | Protocol v2/min v1, typed bounded `Error`, shared endpoint allowlist, fallible path/string encoders and `MAX_PATH_SIZE`/`MAX_ERROR_DETAIL` bounds. |
+| `privsep/Channel.*` | Validated channel adoption (seqpacket + peer UID + CLOEXEC), descriptor release, zero-length record handling and hangup classification. |
+| `privsep/LogWorker.*` | Configure/readiness Ping/Pong handshake, role allowlist, empty Ping/Shutdown validation and sink drop accounting. |
+| `privsep/RouterStorage.cpp`, `privsep/TorrentStorage.cpp` | Strictly increasing request IDs; torrent failures use typed `Error`; Ping/Shutdown and role checks. |
+| `privsep/Supervisor.cpp` | Non-fatal broker capacity/path/replaced-root errors, validated adopted channels, protocol-violation exit status and bounded path encoding. |
+| `privsep/OpenBSDImsg.cpp` | Drain buffered `imsgbuf_read` messages before polling again. |
+| `privsep/WindowsIpc.*` | Oversized records terminate the pipe; PID/session-bound acceptance. |
+| `libi2pd_client/TorrentStorageWorker.cpp` | Typed error handling, bounded path encoding and non-poisoning operation errors. |
+| `tests/test-privsep-*`, `tests/test-torrent-storage-openbsd.cpp` | v2/Error/allowlist/path, empty-record, adopted-fd, handshake/drop, buffered imsg, oversized pipe and broker recovery cases. |
+| `TODO.md`, `PROGRESS.md`, `AGENTS.md`, `docs/security/ipc-protocol.md`, `docs/torrent/storage-worker.md`, `docs/security/windows-worker-ipc.md`, `docs/testing.md` | Status, protocol contract and manual-CI test tracking. |
+
+No compiler, CTest, sanitizer, fuzzer, OpenBSD/Linux/Windows runtime, Android
+device or workflow run was performed; no commit or push.
+
+## OpenBSD supervisor/storage continuation (2026-10-21, static)
+
+| Paths | Change |
+|---|---|
+| `privsep/Supervisor.cpp`, `privsep/Worker.h` | Broker no longer walks the root after pledge; inherited fd4 root is passed to the worker. Forwarded workers are disowned/reaped without signals; launch window replenishes; timeout keeps the broker and drains stale replies. |
+| `privsep/TorrentStorage.cpp` | Supervised worker walks the relative delegated path, checks dev/inode/ownership and pathname identity before applying pledge/unveil, then replaces fd4 with the subdirectory. |
+| `privsep/OpenBSDSandbox.*` | Storage requires an absolute unveil root and drops unused `fattr`/`flock`; Network exposes `socketHandoff`, `routeInfo` and optional DNS; `ValidatePreopenedSocket` added. |
+| `privsep/OpenBSDImsg.*` | `AdoptValidated` checks socket type/CLOEXEC/getpeereid before fdpass; compose failure preserves caller fd ownership; send timeout poisons the channel. |
+| `tests/test-privsep-openbsd-policy.cpp`, `test-privsep-openbsd-imsg.cpp`, `test-torrent-storage-openbsd.cpp` | Negative policy, imsg ownership and supervised path-replacement cases. |
+| `TODO.md`, `PROGRESS.md`, `AGENTS.md`, `docs/torrent/storage-worker.md`, `docs/security/process-capabilities.md`, `docs/security/ipc-protocol.md` | Status, policy and staged-separation documentation. |
+
+No OpenBSD compiler, CTest, pledge/unveil runtime, imsg run or workflow dispatch
+was performed; no commit or push.
+
+## Linux multiprocess hardening continuation (2026-10-21, static)
+
+| Paths | Change |
+|---|---|
+| `privsep/Channel.*` | AF_UNIX/seqpacket adoption checks, listening rejection, Linux SO_PASSCRED, empty-record credential/flood handling. |
+| `privsep/Worker.*` | `PR_SET_NO_NEW_PRIVS` before exec; close() fallback ceiling from RLIMIT_NOFILE; socket stdio sanitizer. |
+| `privsep/LinuxSandbox.cpp` | Deny process_vm/kcmp/pidfd/handle/userfaultfd/bpf/perf syscalls for storage/log workers. |
+| `privsep/RouterStorage.cpp`, `privsep/TorrentStorage.cpp`, `libi2pd_client/TorrentStorageWorker.cpp` | Storage root dev/inode binding; Linux inherited-role gating; clients keep O_RDONLY roots so directory fsync remains valid. |
+| `privsep/Supervisor.cpp`, `LogWorker.cpp` | Inherited socket stdio cleanup before role work. |
+| `tests/test-privsep-linux-ipc.cpp`, `test-privsep-linux-sandbox.cpp` | SO_PASSCRED adoption, empty-record flood and process-memory/pidfd denial regressions. |
+| `TODO.md`, `PROGRESS.md`, `AGENTS.md`, security/capability/testing docs | Linux hardening status and kernel-floor documentation. |
+
+No Linux compiler, CTest, sanitizer, fuzzer, runtime or workflow run was
+performed; no commit or push.
+
+## Windows multiprocess hardening continuation (2026-10-21, static)
+
+| Paths | Change |
+|---|---|
+| `privsep/WindowsIpc.*` | Cancel/drain overlapped I/O, terminal timeouts/malformed frames, listener re-arm, server-bound `ConnectBound`, CSPRNG pipe names, privilege deletion/LUA_TOKEN, Job exception/memory/UI limits, stricter Windows operation matrix. |
+| `build/CMakeLists.txt` | Link `bcrypt` for BCryptGenRandom on the Windows privsep target. |
+| `tests/test-privsep-windows-ipc.cpp` | Random-name, server-bound connect, storage/configure and malformed/timeout-related assertions. |
+| `TODO.md`, `PROGRESS.md`, `AGENTS.md`, `docs/security/windows-worker-ipc.md`, `ipc-protocol.md`, `process-capabilities.md`, `testing.md` | Windows status, transport decision and residual gaps. |
+
+No Windows compiler, CTest, service/cross-user/AppContainer runtime or workflow
+run was performed; no commit or push.
+
+## Android multiprocess/SAF continuation (2026-10-21, static)
+
+| Paths | Change |
+|---|---|
+| `AndroidManifest.xml`, `receivers/BootUpReceiver.java`, `RouterService.java` | `MY_PACKAGE_REPLACED` resume for an already-requested router; `isStartRequested` persisted intent. |
+| `MainActivity.java` | Durable pending first-launch autostart across process/Activity death. |
+| `TorrentSafStorage.java` | Tree/grant validation, replaced-grant release, detach, export grant handling, non-poisoning close/release, operation-scoped cancellation, null-safe configured/status. |
+| `TorrentSafStorageService.java` | Async descriptor close reaper, zero-length export start, created-name/non-extension rules, operation-scoped cancel, `:`/`\` display names. |
+| `RouterService.java` | Export grant persistence/release; descriptor owner is the reading worker only; callback always completes on Throwable. |
+| `TorrentControl.java` | Reject torrent id 0. |
+| `i2pd_android.cpp`, `DaemonAndroid.cpp` | UTF-16→UTF-8 inbound JNI strings with NUL/surrogate rejection; bounded start diagnostics. |
+| `docs/android-modernization.md`, `docs/android-java25.md`, `docs/torrent/saf-storage.md`, `TODO.md`, `PROGRESS.md`, `AGENTS.md` | Android/SAF boundary status, limitations and manual test matrix. |
+
+No Gradle/NDK/Lint/unit/instrumentation/device run was performed; no commit or
+push.
+
+## ncursesw TUI panel/error continuation (2026-10-21, static)
+
+| Paths | Change |
+|---|---|
+| `libi2pd/TuiProtocol.h` | Bounded `SERVICES` request, `MAX_SERVICE_RECORDS_PER_REQUEST`, typed `ErrorCodeName()`; protocol tests cover limits and error names. |
+| `daemon/TuiServerCommon.cpp` | Read-only `BuildServices()` over lock-safe client/server tunnel, forward, proxy and protocol-server snapshots; LeaseSet encryption field; accepted admin commands are executed after a waiter timeout and only their result is discarded. |
+| `tui/TuiClient.h`, `tui/TuiClient.cpp` | Preserve the remote `ErrorCode` in `RequestError`; the header is self-contained. |
+| `tui/main.cpp` | Eleventh Services view (`v`), NetDb encryption/aged timestamps/raw caps label, Status net-ID/transit counters, Peers snapshot size, bounded destinations, restart-safe log cursor, prompt suspension below minimum terminal size and typed remote error text. |
+| `tests/test-tui-protocol.cpp`, `tests/test-tui-ipc-regression.cpp` | SERVICES parsing/clamping, service snapshot dispatch, error-code preservation and exact-once execution of timed-out admin slots. |
+| `docs/tui-ipc.md`, `docs/TUI-WINDOWS.md`, `docs/torrent/tui.md`, `TODO.md`, `PROGRESS.md` | Services protocol/view, new limits/timestamps, terminal/error behavior and pending validation status. |
+
+No compiler, CTest, ncurses session, sanitizer, fuzzer, Windows console, live
+daemon/socket or workflow run was performed; no commit or push.
+
+## I2PSnark piece/resume/selection continuation (2026-10-21, static)
+
+| Paths | Change |
+|---|---|
+| `libi2pd_client/Torrents.*` | Exact resume-bitfield validation; atomic resume replacement and stale removal; mixed final/`.part` piece verification; selected completion, `GetFullLeft`, per-file completion and selected-file tracker accounting; accepted-block activity refresh; `announce`/`announce-list` normalization; selected files emitted without explicit empty trackers; private creation requires a tracker. |
+| `libi2pd_client/TorrentsTunnel.cpp` | Startup builds a present-file map and verifies only fully backed pieces; invalid resume files are removed; explicit recheck includes incomplete pieces; `CompleteTorrent` promotes only complete selected files; stop saves resume; control snapshots expose `wanted`, `private` and tracker tier. |
+| `libi2pd_client/TorrentsControl.h`, `libi2pd_client/TorrentsRPC.cpp` | Selected-size/privacy snapshot fields; RPC `sizeWhenDone/percentDone/haveValid/wanted/priorities` follow file selection. |
+| `daemon/TuiServerCommon.cpp`, `tui/main.cpp` | Torrent summary fields and detail rendering for selected size/privacy/tracker tier; private tracker edits fail closed. |
+| `Android TorrentsFragment.java`, `strings.xml` | List/detail privacy marker and selected-size completion; private tracker edit policy message. |
+| `tests/test-torrents-verify-parity.cpp`, `test-torrents-priorities.cpp`, `test-torrents-engine-interop.cpp`, `test-torrents-creator.cpp`, `test-torrents-security.cpp`, `test-torrents-concurrency.cpp` | Prepared regressions for invalid resume bitfields, mixed final/`.part`, selected completion/full-left, primary-plus-list normalization, public tracker inheritance, private-no-tracker rejection and valid spare-bit test fixtures. |
+| `docs/torrent/snark-compatibility.md`, `docs/torrent/ipc.md`, `docs/torrent/testing.md`, `docs/torrent/security.md`, `docs/FEATURE-PARITY.md`, `TODO.md`, `PROGRESS.md` | Coverage, fields, validation status and remaining boundaries. |
+
+No compiler, CTest, sanitizer, fuzzer, Java peer, live tracker/peer, Android
+device or workflow run was performed; no commit or push.
+
+## Decentralized peer-discovery continuation (2026-10-21, static)
+
+| Paths | Change |
+|---|---|
+| `libi2pd_client/TorrentsDHT.*` | Replies for full foreign buckets; k/64-value response caps; 60 s query lifetime; failure clearing on authenticated response; infohash-bound/evicting tokens; safe single-leaf state names; capped loads; load-before-receiver; atomic non-delegated state replacement; fresh/ordered peer replies. |
+| `libi2pd_client/Torrents.*` | PEX receive budget and zero filtering; established non-seed-only PEX sends; positive/write-once extension IDs; private metadata handshake/service suppression; bounded/write-once DHT hints; tracker malformed/transport failure backoff, success reset, expired peer lists and bounded error text. |
+| `libi2pd_client/TorrentsTunnel.*` | Tracker failure reporting from stream/read/non-200 paths; tracker peer expiry sweep; datagram transaction-ID collision avoidance and local reply-port validation; error responses drive backoff. |
+| `tests/test-torrents-dht-interop.cpp`, `tests/test-torrents-verify-parity.cpp` | Prepared bounded peer-value, safe state-name, malformed tracker, failure-backoff, success-reset and peer-expiry regressions. |
+| `docs/torrent/snark-compatibility.md`, `docs/torrent/testing.md`, `TODO.md`, `PROGRESS.md` | Discovery coverage, limits, I2P-only guarantee and pending validation status. |
+
+No compiler, CTest, sanitizer, fuzzer, Java peer, live DHT/tracker/peer or
+workflow run was performed; no commit or push.
+
+## I2PSnark comments/ratings continuation (2026-10-21, static)
+
+| Paths | Change |
+|---|---|
+| `libi2pd_client/TorrentsComments.*` | 16482-byte Java wire cap; up-to-256-entry replies; malformed-entry skip; CR/LF normalization; Java rating/age clamping; newest-first bounded publication; rating-independent dedupe; per-pseudonym cap; capacity eviction; UTF-16 aggregate units; local unhide. |
+| `libi2pd_client/Torrents.*`, `TorrentsTunnel.cpp` | Omit `ut_comment` when disabled/private; immediate bounded handshake/request after local add; privacy-preserving publication. |
+| `tui/main.cpp`, `daemon/TuiServerCommon.cpp` | Numeric comment order, unrated/shown/total/rating summary, UTF-16 field limits, private/disabled gating, one-decimal average and honest local-add label. |
+| Android `TorrentsFragment.java`, `TorrentControl.java`, `strings.xml`, JNI allowlist | Private-policy display, enable/add gating, unrated rendering, local-add wording, hidden-row unhide and bounded COMMENT-UNHIDE command construction. |
+| `tests/test-torrents-comments.cpp`, `tests/test-tui-protocol.cpp`, `TorrentControlTest.java` | Prepared malformed-entry, newest-first, rating dedupe, capacity, unhide-budget, persistence, comment-command and Android command-builder regressions. |
+| `docs/torrent/snark-compatibility.md`, `docs/torrent/ipc.md`, `docs/torrent/testing.md`, `TODO.md`, `PROGRESS.md` | Wire limits, spam/privacy behavior, comment fields and pending validation status. |
+
+No compiler, CTest, sanitizer, fuzzer, Java peer, live swarm or workflow run
+was performed; no commit or push.
+
+## Android SAF payload continuation (2026-10-21, static)
+
+| Paths | Change |
+|---|---|
+| `android/app/src/main/java/org/openi2pd/router/TorrentSafStorageService.java`, `ITorrentSafStorage.aidl` | Progressive export growth with exact-size `finishExport`/abort; document-ID + size revalidation before every transfer; write-mode extension of shorter existing documents; exported/cancelled targets truncate to zero on normal failure. |
+| `TorrentSafStorage.java`, `TorrentSafGrants.java`, `TorrentSafPolicy.java` | Reference-counted persisted tree grants; next-open root re-resolution; failed handles removed instead of leaking; framework-free range/export/identity policy. |
+| `android/app/src/main/cpp/i2pd_android.cpp` | `SafPayload` tracks logical handles, closes them on tree-generation change, and re-resolves the root on every open/remove; selected-tree changes no longer require a daemon restart for future opens. |
+| `libi2pd_client/TorrentsTunnel.cpp`, `Torrents.cpp` | SAF startup uses the shared one-piece-per-disk-job verification chain and reads the private resume bitfield; zero-length files emit no fragment/open. |
+| `TorrentsFragment.java` | Correct `TORRENTS`/`TORRENT-TUNNELS` tunnel-name field handling; storage actions use the selected tunnel; plain removal detaches its grant. |
+| Android JVM tests | `TorrentSafPolicyTest` and `TorrentSafGrantsTest` for export size, ranges, identity, extension and grant reference counting. |
+| C++ tests | `test-torrent-payload-storage` adds zero-length multi-file piece-planning coverage. |
+| Docs/tracking | `docs/torrent/saf-storage.md`, `docs/torrent/testing.md`, `TODO.md`, `PROGRESS.md`. |
+
+No compiler, CTest, sanitizer, fuzzer, Gradle/NDK/Lint, Android device,
+Java peer, provider fixture or workflow run was performed; no commit or push.
+
+
+## Android Java 25/toolchain and lifecycle continuation (2026-10-21, static)
+
+| Paths | Change |
+|---|---|
+| `android/app/build.gradle`, `android/build.gradle`, `android/gradle.properties`, `android/tools/java25-probe/check-config.sh` | NDK version moved to the Android extension; assignment-form build tools; universal APK highest version code; release native debug symbols; Lint text/XML reports; corrected Kotlin version claim. |
+| `RouterService.java`, `TorrentSafStorage.java`, `TorrentSafStorageTest.java` | Preserve queued completions on destroy; log-clear epoch; stoppable starting/startFailed states; bounded broker bind retries; API-29-safe test string construction. |
+| `android/app/src/main/cpp/i2pd_android.cpp`, `build/CMakeLists.txt` | SAF local-reference frame and metadata exception check; Starting status shortcut; fail-closed NO_TORRENTS; JNI warnings/hardening linkage and hidden non-JNI symbols; extra seccomp denials. |
+| `docs/android-java25.md`, `docs/android-modernization.md`, `TODO.md`, `PROGRESS.md` | Real D8/R8/AGP/Kotlin evidence limits, manual ABI/API/device matrix and AND-023..AND-030 tracking. |
+
+No Gradle, javac, D8/R8, Lint, NDK/CMake, emulator/device or workflow run was
+performed; no commit or push.
+
+
+## Android native GUI continuation (2026-10-21, static)
+
+| Paths | Change |
+|---|---|
+| `DashboardFragment.java`, `fragment_dashboard.xml`, `UiFormat.java` | Native status/error detail line and a Reseed action gated by connected/not-reseeding state. |
+| `SettingsFragment.java`, `preferences_root.xml`, `strings.xml` | Editable listening port with existing validation/restart mode; Notifications row opening app notification settings with enabled/disabled summary. |
+| `StatisticsFragment.java`, `TrafficChartView.java`, `fragment_statistics.xml` | Instantaneous rates and chart peak labels; accessible chart role. |
+| `LogsFragment.java`, `LogFilter.java`, `fragment_logs.xml`, `item_log.xml` | Minimum-severity filter semantics, pure JVM filter helper, wrapping chips, live summary and one-stop screen-reader log rows. |
+| `TorrentsFragment.java`, `TorrentControl.java` | Start all/Stop all/Reannounce all bulk actions with validated command builder, session identity in the status line and resource-backed SAF/export strings. |
+| `MainActivity.java`, `fragment_tunnels.xml`, `RouterService.java` | Address-book toolbar title/pane titles and notification action/accessibility cleanup. |
+| Tests/docs | `LogFilterTest`, `UiFormatTest`, `TorrentControlTest`, prepared `UiContractTest`; `TODO.md` AND-031..036 and `PROGRESS.md`. |
+
+No Gradle, javac, Lint, instrumentation, emulator/device or workflow run was
+performed; no commit or push.
+
+
+## i2pd-tools modernization continuation (2026-10-21, static)
+
+| Paths | Change |
+|---|---|
+| `tools/common/crypto.hpp`, `common/key.hpp`, `common/file.hpp` | RAII crypto lifetime, exact-consumption private-key loader and shared bounded IO for tools. |
+| `tools/autoconf_i2pd.cpp`, `tools/keygen.cpp`, `offlinekeys.cpp`, `b33offlinekeys.cpp`, `b33address.cpp`, `x25519.cpp`, `verifyhost.cpp`, `routerinfo.cpp` | Removed obsolete `[http]` output; strict signature-generator and offline-key checks; common loaders/guard; bounded RouterInfo read; stricter CLI/exit behavior. |
+| `tools/CMakeLists.txt`, `tools/test-tools-inventory.cmake`, `tools/test-perl-install.cmake`, `tools/test-tools-regressions.cmake` | Tools licence installation, fail-closed inventory/manifest checks, full install-layout assertions and new CLI/config regressions. |
+| `build/build_mingw.cmd`, `build/win_installer.iss` | Ship the imported tool licence with Windows archives/installer. |
+| `tools/README.md`, `docs/tools/README.md`, `docs/tools/provenance.md`, `docs/attribution-audit.md`, `TODO.md`, `PROGRESS.md` | Key aliases, strict failure behavior, licence/provenance and pending-validation tracking. |
+
+No compiler, CMake, CTest, Perl/prove, tool, network or workflow run was
+performed; no commit or push.
+
+
+## Python-free Perl hardening continuation (2026-10-21, static)
+
+| Paths | Change |
+|---|---|
+| `tools/tests/perl-portability.t` | Complete Python/shebang inventory, expanded build/packager consumers, module/`require`, pipe/temp/chmod and inventory-drift guards. |
+| `tools/scripts/i2pdctl` | Absolute-only `openssl` lookup, localized proxy environment, UTF-8 password decoding, ASCII/control escaping and duplicate `raw_info` collapse. |
+| `tools/scripts/check-doc-links.pl`, `validate-branding.pl`, `tests/interop/check-vectors.pl`, `android/tools/check-english-only.pl` | Safe link/path validation, script-relative branding root, checked git and provenance fields, and fixed line-oriented Java policy scan. |
+| `tools/tests/i2pdctl.t`, `tools/tests/validate-branding.t` | Authentication/UTF-8/duplicate-result regressions and safer validator assertion. |
+| `tools/CMakeLists.txt`, `.github/workflows/build.yml` | Optional non-fatal Perl::Critic registration; install-lane checks for every tool, `i2pdctl` and tool licence. |
+| `.gitignore`, `.perlcriticrc`, docs/TODO/PROGRESS | Removed Python ignore block, clarified optional Critic profile and tracking. |
+
+No Perl, prove, CMake, CTest, network, tool or workflow run was performed; no
+commit or push.
+
+
+## routerinfo firewall generator continuation (2026-10-21, static)
+
+| Paths | Change |
+|---|---|
+| `tools/firewall.hpp` | Locale-independent ASCII identifier checks; nft rule comments and tag validation; PF labels; Windows stable `-Name`/`-Group`/family/`-ErrorAction Stop`; family-selection helper. |
+| `tools/routerinfo.cpp` | Dedupe-before-budget, terminal budget overflow, explicit nft family skip vs render failure, lazy rule headers, `ip6`/Yggdrasil `-6` guards and early `-f` conflict diagnostics. |
+| `tests/test-routerinfo-firewall.cpp`, `tools/test-tools.cmake` | Updated nft/Windows/PF goldens and new CLI/validation negatives. |
+| `docs/tools/routerinfo.md`, `docs/tools/provenance.md`, `docs/testing.md`, `TODO.md`, `PROGRESS.md` | Backend attribution, no-execution policy, validation status and FIREWALL-010 tracking. |
+
+No compiler, CTest, routerinfo, firewall, PowerShell or workflow run was
+performed; no commit or push.
+
+
+## Documentation, identity and resource consolidation (2026-10-21, static)
+
+| Paths | Change |
+|---|---|
+| `docs/`, `README.md`, `docs/mkdocs.yml` | Corrected CMake/Android/I2CP/Yggdrasil/AppArmor/FAQ/build facts; added history/API content; reconciled BSD-3-Clause documentation license; removed unsupported nav entries and added file-header/nav coverage. |
+| `libi2pd_client/HTTPProxy.cpp`, `android/.../values-night/colors.xml` | Added proxy dark/error palette tokens and Android launcher-background parity. |
+| `assets/branding`, `docs/branding`, `docs/assets/branding` | Corrected palette/proxy labels, symbol inventory, monochrome usage, binary-validation wording and mirror documentation. |
+| `tools/scripts/check-doc-links.pl`, `tools/scripts/check-doc-nav.pl`, `tools/scripts/validate-branding.pl`, `tests/CMakeLists.txt`, `.github/workflows/build.yml` | Repository-contained link anchors/setext/duplicates, nav/theme/unlisted/HTML checks, fail-closed SVG/PNG/color mirrors and docs CI registration. |
+| `TODO.md`, `PROGRESS.md` | Added DOCS-011 and BRAND-012 with pending validation status. |
+
+No MkDocs, link/branding validator, CMake/CTest, Android/Gradle, TUI or
+workflow run was performed; no commit or push.
+
+
+## Packaging hardening and OpenBSD port template (2026-10-22, static)
+
+| Paths | Change |
+|---|---|
+| `debian/rules`, `debian/control` | Pass `dpkg-buildflags` explicitly to the direct CMake configure (PIE/FORTIFY/RELRO/NOW); use `${perl:Depends}`; keep only the debhelper init `Pre-Depends`; move optional OpenSSL to Recommends. |
+| `debian/postinst`, `debian/i2pd.tmpfiles`, `contrib/tmpfiles.d/i2pd.conf`, `contrib/static/debian/i2pd.postinst` | Create missing state/log/runtime paths only, preserve administrator ownership/modes on upgrades, and use the documented 0700/0600 private log policy consistently. |
+| `debian/i2pd.install`, `debian/i2pd-tui.install`, `contrib/openi2pd.desktop`, `build/CMakeLists.txt` | Add the missing `LICENSE.i2pd-tools` and CC-BY-SA notice; split `i2pd-tui`, its desktop launcher and icons into the `Tui` component so the daemon package cannot start an unmanaged second router. |
+| `debian/copyright`, `debian/CC-BY-SA-4.0`, `debian/i2pd.lintian-overrides`, `debian/watch` | Correct DEP-5 BSD/GPL/CC-BY-SA/Apache file classes, install the documentation licence notice, use the binary-package lintian override path, and accept GitHub archive URLs in uscan. |
+| `debian/tests/smoke`, `.github/workflows/packaging.yml` | Check the daemon/TUI split, desktop target, private modes, binary `--version`, strict `systemd-analyze`, manifest/conffile preservation, autopkgtest and remove/purge behavior. |
+| `contrib/static/debian/{control,rules,i2pd.postinst,i2pd.prerm,source/format}`, `contrib/static/package.sh` | Use a native version without a Debian revision, current Standards-Version/Rules-Requires-Root, one debhelper service action, and an installable CC-BY-SA notice. |
+| `contrib/openbsd/{i2pd.rc,i2pd.conf,i2pd.login,README.md}`, `contrib/openbsd/port/*`, `docs/security/openbsd-validation.md` | Align `tunnels.conf.d` and read-only certificate paths, add `daemon_timeout`/`daemon_logger`, retain foreground `rc_bg` semantics, correct login-class/hash claims, and add a merge template with `PLIST`, `@rcscript`, `@sample`, user/group and permissions. |
+| `tests/check-services.cmake`, `tests/check-packaging.cmake`, `tests/check-build-system.cmake`, `docs/build-system.md`, `docs/user-guide/install.md`, `docs/service-management.md` | Validate OpenBSD rc.d/login/config, TUI/daemon component split, static-native package metadata, OpenBSD PLIST/samples and package-safe upgrades. |
+
+No local Debian build, `dpkg-deb`, lintian, autopkgtest, RPM/static package,
+CMake install, `pkg_create`/`pkg_add`, `rcctl` or OpenBSD runtime was
+performed. Remote dispatches and their exact baseline results are recorded in
+the validation-infrastructure section below.
+
+## Validation infrastructure and remote dispatch (2026-10-21/22, static + partial remote)
+
+| Paths | Change |
+|---|---|
+| `tests/CMakeLists.txt`, `tests/test-privsep-linux-sandbox.cpp` | Added per-test timeouts, Windows `bcrypt` linkage, torrent-test disabling without `-DWITH_TORRENTS`, security/memory/i2p/interop label corrections, `i2pd-version` output assertion and explicit Landlock SKIP status. |
+| `build/CMakeLists.txt` | `WITH_FUZZERS` requires ASan+UBSan, UBSan recovery is disabled, and unsupported Windows sanitizer requests fail closed. |
+| `.github/workflows/{build,build-openbsd,build-windows,fuzz,packaging}.yml` | Added pinned artifact uploads for CTest logs, installed components, Android reports/APKs, Windows package lists, OpenBSD logs, Debian packages/lintian logs and fuzz corpora; manual concurrency no longer cancels evidence; MSYS2 pinned to `windows-2022`; sanitizers use Debug; fuzz runs the CTest entries and continues through all targets. |
+| `tests/interop/check-reference.sh` | Verifies the annotated I2P Java 2.14.0 tag object as well as the peeled commit. |
+| `tests/check-build-system.cmake`, `docs/ci.md`, `docs/testing.md`, `TODO.md`, `PROGRESS.md` | Added fuzzer-workflow inventory checking, current dispatch recovery/evidence rules, exact remote run ids/revision and the distinction between published baseline failures and uncommitted local corrections. |
+
+No local compiler, CTest, sanitizer, fuzzer, Gradle, package or project validator
+was run. Five `workflow_dispatch` runs were started with `gh` against published
+`main@284544a5`; the interop and service-contract jobs passed, while the other
+completed jobs failed on the published `libi2pd/Transports.cpp:693` parse error.
+Those results are not attributed to the local worktree.

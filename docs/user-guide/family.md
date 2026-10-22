@@ -30,7 +30,7 @@ Specify &lt;your family name>.family.i2p.net for the CN (Common Name) when reque
 
 Once you are done generating it place &lt;your-family-name>.key and &lt;your-family-name>.crt in the <ip2d data>/family folder (for example ~/.i2pd/family).
 You should provide these two files to other members joining your family.
-If you want to register your family and let the I2P network recognize it, create a pull request for your .crt file into contrib/certificate/family.
+If you want to register your family and let the I2P network recognize it, create a pull request for your .crt file into contrib/certificates/family.
 Certificates added into the public repository this way will appear in i2pd and I2P next releases packages. Don't place .key file, it must be shared between you family members only.
 
 How to join existing family

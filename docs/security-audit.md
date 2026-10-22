@@ -280,5 +280,422 @@ patterns. No dynamic result is claimed.
   to a bounded timestamp, and torrent info-hash hex formatting uses a fixed
   nibble table without `snprintf`.
 
-The new address, copy-string, i18n and SOCKS tests are prepared for manual CI;
-no compiler, CTest, sanitizer, fuzzer or runtime validation was performed.
+- **S-20 — tunnel DatabaseStore reply reflection (Medium, Fixed):** a
+  DatabaseStore carrying a nonzero reply token was accepted after arriving
+  through the router's exploratory inbound tunnel, allowing the last hop to
+  make the router emit DeliveryStatus messages to an arbitrary reply
+  hash/tunnel. Direct stores and the `0xFFFFFFFF` no-reply marker remain valid;
+  tunnel-delivered token-bearing stores are now dropped before any reply is
+  built, matching the Java exploratory-tunnel policy.
+
+The new address, copy-string, i18n, SOCKS and tunnel-DSM tests are prepared for
+manual CI; no compiler, CTest, sanitizer, fuzzer or runtime validation was
+performed.
+
+## 2026-10-21 OpenSSL 4 and ownership pass
+
+- **S-21 — provider/PQ capability drift (High, Fixed statically):** a
+  compile-time `OPENSSL_PQ` build could publish a `pq` address even when the
+  active provider could not create that ML-KEM parameter set, causing failed
+  sessions. Publication and session selection now use runtime
+  `CanPublishPQ()`/`HighestSupportedPQVersion()` gating.
+- **S-22 — family trust-path ownership (High, Fixed statically):** the family
+  verifier/signing path used unchecked `SSL_CTX_new`, `EVP_DigestSign`,
+  `d2i_ECDSA_SIG` and `ECDSA_SIG_get0` results and could dereference null or
+  uninitialised data. It now uses scoped OpenSSL owners, checked returns and
+  strict DER consumption.
+- **S-23 — TLS role/version and control certificate (Medium, Fixed
+  statically):** the local SSL server-tunnel context was created as a TLS
+  server while the code performs a client handshake. It is now `tls_client`;
+  control/admin contexts use explicit roles, TLS 1.2 floors and SHA-256
+  certificates. `RAND_bytes` failure now refuses to issue a control token.
+- **S-24 — address-book persistence and identity bounds (Medium/High, Fixed
+  statically):** index replacement uses a same-directory temporary, unreadable
+  or oversized identity files are rejected, stream errors do not loop, and
+  failed adds clean up unreferenced identity files. No filesystem fault
+  injection or ASan run has been performed.
+
+No compiler, CTest, sanitizer, fuzzer, live TLS/provider or filesystem fault
+run was performed; the changes remain pending manual CI.
+
+## 2026-10-21 memory-safety audit (SSU2/NTCP2, ratchet, netDb, torrent, IPC, JNI)
+
+Static subagent audits of the peer-controlled paths found the following. No
+dynamic validation exists for any item.
+
+### Fixed statically
+
+- **S-25 — Family signature fail-open (High):** a known family with a malformed
+  or non-64-byte signature returned true. It now fails closed; unknown families
+  retain the “no local policy opinion” result.
+- **S-26 — Router garlic/DeliveryStatus bounds (Medium):** the garlic length
+  was checked against the whole I2NP length rather than the payload after the
+  four-byte prefix; DeliveryStatus read its token without a minimum length.
+  Both now reject truncated messages before tag lookup or token use.
+- **S-27 — Garlic clove pointer/length handling (Medium):** encrypted,
+  destination, tunnel and router clove fields are validated before pointer
+  advancement; the I2NP body must contain a full header; allocation failure is
+  handled; the trailing clove fields are bounded before advancing.
+- **S-28 — NTCP2 SipHash setup (Medium):** `SetSipKeys` now checks every EVP
+  return and refuses a partially initialized MD context; both handshake
+  directions terminate instead of using it.
+- **S-29 — Torrent piece/DHT bounds (Medium/Low):** peer `have`, choke and
+  terminate paths check the piece count before `GetPiece`; empty DHT node
+  vectors no longer feed a possibly-null `string_view`.
+- **S-30 — Offline-key chaining (Medium, tool path):** `CreateOfflineKeys`
+  refuses an already-offline key, preventing a transient signature length from
+  overflowing a buffer sized with the destination signature length.
+- **S-31 — Reseed/HTTP malformed input (Low):** truncated SU3 file names are
+  rejected using `gcount`; HTTP header values reject C0/DEL controls.
+- **S-32 — Android SAF/JNI exception ordering (Medium):** SAF root/read/remove
+  no longer call JNI with a pending Java exception; scalar JNI calls clear a
+  pending exception; native start refuses an already-running/stopping daemon;
+  the torrent recheck action catches an invalid torrent id.
+- **S-33 — IPC/TUI bounds (Low/Medium):** torrent-detail comments are capped;
+  admin-result messages carry an explicit length; rest-of-line arguments reject
+  control bytes. A queued admin command whose waiter expired is still executed
+  exactly once (only the result is discarded), remote error codes survive the
+  client, and destructive prompts cannot be committed while the terminal is too
+  small to display them.
+
+### Residual findings not fixed
+
+- `SSU2Server` memory pools can be destroyed before deferred session handlers
+  release pooled objects; `SSU2Session::m_Address`/`m_RemoteEndpoint` are read
+  and written from different services; the per-session fragment budget is
+  count-only; `RouterInfo` introducer/address-slot containers are mutated in
+  place while readers copy elements; ratchet session and destination
+  AEAD/HKDF/RNG contexts are shared across threads; datagram receivers capture
+  raw `this` after being copied out of their lock; several TUI/IPC and JNI
+  teardown/contract issues remain.
+- These are tracked as `SEC-025` and require TSan/ASan, shutdown stress,
+  receiver-lifetime and provider-failure tests in manual CI. No compiler,
+  CTest, sanitizer, fuzzer, device or network run was performed.
+
+## 2026-10-21 concurrency and lifecycle audit
+
+Independent static reviews covered callbacks/timers, network sessions, netDb,
+BitTorrent, IPC workers and Android JNI.
+
+### Fixed statically
+
+- **C-01 — RunnableService self-join:** `StopIOService` no longer calls
+  `join()` on the current service thread. Same-thread requests leave the
+  joinable worker for a later external join; destruction from the handler
+  detaches instead of terminating. Start remains idempotent.
+- **C-02 — Transports shutdown:** running/online/bound state is atomic, `Start`
+  is idempotent, timers are cancelled only after joining their owner, peer/session
+  references are dropped while both server io_contexts are alive, and the peer
+  map is cleared under its mutex.
+- **C-03 — I2PControl restart:** the control service now calls `restart()` and
+  uses an atomic running flag, eliminating the 100% spin/dead endpoint after a
+  daemon restart. Daemon `running`, graceful countdown and transit-restore
+  state are atomic.
+- **C-04 — shared crypto scratch:** tunnel-build decryption uses a caller-owned
+  `NoiseSymmetricState` instead of `RouterContext::m_CurrentNoiseState`;
+  `Families` protects its key map with a shared mutex.
+- **C-05 — SSU2 session termination:** a separate terminated latch prevents
+  `Terminate()` and late `ProcessSessionCreated/Confirmed/Retry/HolePunch`
+  paths from resurrecting a session; pending entries are removed and expired
+  pending sessions are terminated rather than silently erased.
+
+### Residual
+
+- Raw `this` captures in `TorrentsTunnel` timers/posts, datagram receiver
+  first-wins/teardown, `RouterInfo` address/buffer copy-on-write,
+  `RouterProfile` and profile-storage synchronization, `Piece`/`TorrentFile`
+  disk-domain ownership, SSU2 `m_Address`/`m_RemoteEndpoint` publication,
+  fragment byte budgets, IPC worker cancellation and Android service-owner
+  epochs remain open (`CONC-005`). No dynamic validation exists.
+
+## 2026-10-21 cryptography continuation (static)
+
+A read-only subagent pass covered Ratchet/ECIES, AEAD and key lifetime,
+signatures/Elligator2/blinding, ML-KEM and OpenSSL/LibreSSL negotiation. No
+compiler, sanitizer, provider run, Java peer or workflow was executed.
+
+- **CRY-215** `GetRngSeed()` now sources its 32-bit mt19937 seed from
+  `RAND_bytes` and falls back to a mixed monotonic value only on provider
+  failure. `PeerOrdering` zeroes its key and fails closed if the CSPRNG or
+  SipHash provider is unavailable.
+- **CRY-216** multi-buffer ChaCha20-Poly1305 encryption returns `bool`, wipes
+  every output on failure and NTCP2 terminates before sending or advancing the
+  sequence number.
+- **CRY-217** ratchet tag roots, intermediate symmetric keys, AES keys,
+  ECIES session secrets and NTCP2 KDF/SipHash keys are cleansed on destruction.
+- **CRY-218** a payload may carry at most one forward and one reverse NEXT_KEY;
+  the global inbound ECIES tag map evicts expired/terminated entries and then
+  arbitrary entries instead of permanently refusing all new tags.
+- **CRY-219** every `ClientDestination` (not only I2CP) arms a one-second NSR/ACK
+  fallback; one timer per session is enforced with an atomic flag.
+- **CRY-220** LeaseSet2/EncryptedLeaseSet2 reject an RSA offline transient key
+  (Java `LeaseSet2` policy) while Datagram2/Streaming keep Java's permissive
+  policy.
+- **CRY-221** Ed25519 blinding checks that the decoded key actually satisfies
+  the curve equation; Java-valid low-order/all-zero encodings are not rejected
+  merely for being low order.
+- **CRY-222** GOST sign/verify normalizes `e = digest mod q` to 1 when zero
+  (RFC 7091) and private scalars use `BN_clear_free`.
+- **CRY-223** SSU2 regenerates ML-KEM state on each SessionRequest attempt and
+  consumes an `IncompatibleVersion` Retry before the generic termination abort.
+- **CRY-224** an explicit unsupported `i2cp.leaseSetEncType` list now fails
+  closed rather than being replaced by defaults.
+- **CRY-225** I2CP CreateLeaseSet2 private-key lengths are checked per EncType;
+  unknown types and mismatched lengths are rejected, and the legacy 256-byte
+  P256 storage is zero-filled before the 32-byte scalar is copied.
+
+Elligator2 was compared line-by-line and showed no new correctness defect.
+The NSR timer is implemented but its lifecycle test, the deliberate NS
+empty-clove policy, provider PQ transcripts, type-5/7 NSR vectors, multi-key
+7/4 sessions and all dynamic/sanitizer evidence remain pending. Do not describe these paths as compiled or validated.
+
+## 2026-10-21 netDb/RouterInfo/LeaseSet continuation (static)
+
+A second netDb-focused read-only pass covered RouterInfo, DatabaseLookup,
+DatabaseSearchReply, floodfill request handling, LeaseSet/LeaseSet2,
+EncryptedLeaseSet and MetaLeaseSet. No compiler, CTest, sanitizer, fuzzer,
+live floodfill or Java peer was run.
+
+- **DB-115** `I2NPMessage` now records `fromClove`; clove-delivered DSM/DLM no
+  longer looks direct. Token-bearing stores from a tunnel/clove are rejected,
+  including the legacy `0xFFFFFFFF` marker.
+- **DB-116** client LeaseSet search replies are bound to queried peers, accepted
+  once, capped at 16 followed hashes and filtered for self/sender/excluded
+  duplicates.
+- **DB-117/DB-118** bounded lookup (14/2 min per reply hash/tunnel) and flood
+  (3/90 s per key) throttles were added; stores and acks are still processed
+  when flooding is throttled.
+- **DB-119** a fresh signature-valid zero-address RouterInfo is storable for 54
+  minutes like Java but remains unselectable; load uses the same bound.
+- **DB-120** RouterInfo persistence consumes one buffer-mutex snapshot, updates
+  the body before publishing the flag, and cannot erase a concurrently installed
+  update.
+- **DB-121/DB-122** reseed preserves our RouterInfo/floodfill entry, is fenced
+  by `Stop()`, and `Start()` uses locked router/floodfill counts.
+- **DB-123** RouterInfo files are written to a same-directory temporary and
+  renamed, preserving the previous valid cache on a failed write.
+- **LS-122** encrypted LS2 rejects RSA blinded/transient signature types before
+  any public-key operation.
+- **LS-123** `PopulateLeases()` is virtual; LS2 is a no-op so the LS1 parser
+  cannot clear a cached LS2.
+- **LS-124** MetaLeaseSet effective expiry is clamped to the latest entry,
+  matching Java `addLease()`.
+- **LS-125** LS1 buffers are trimmed to the signed body plus signature, so
+  trailing unauthenticated bytes are not stored or served.
+
+Reply-key `0x12` remains intentionally fail-closed: Java 2.14.0 still has no
+sender and proposal 154's derived-key KDF is TBD. Meta revocations are accepted
+for length but not applied; Java peers currently verify only the zero-revocation
+form, recorded as an intentional spec/implementation difference. Deep residual:
+RouterInfo copy-on-write, RouterProfile synchronization, shared profile storage
+and NetDbRequests raw-`this` lifetime. No dynamic evidence exists.
+
+## 2026-10-21 tunnel-build/I2NP/Garlic continuation (static)
+
+Four read-only audits covered tunnel construction/peer selection/time windows/
+records, tunnel pool concurrency and recovery, I2NP framing and tunnel dispatch,
+and garlic clove routing. No compiler, CTest, sanitizer, fuzzer, live tunnel or
+Java peer ran.
+
+- **TU-102..TU-106**: duplicate tunnel peers are rejected; zero receive/next
+  transit IDs are dropped; zero-hop creation follows the selected path and
+  publishes the replacement outbound tunnel; build-record shuffles advance the
+  shared RNG; pre-expiry recreation accepts varied lengths.
+- **I2NP-006..I2NP-010**: LOCAL at an OBEP is dropped; clove-delivered types are
+  whitelisted; TunnelGateway reserves its header, rejects >65535-byte bodies and
+  fails on overflow; inner I2NP expiration is checked; per-tunnel IV replay and
+  bounded reassembly tables were added.
+- **GAR-001..GAR-004**: local clove lengths are validated; ElGamal/ECIES clove
+  freshness uses Java's -90/+240 s window; encryption failure propagates as null
+  instead of cleartext; router wrapping null-checks its session.
+- **CONC-006/CONC-007**: custom peer selectors are owner-bound and unregistered
+  on Stop; explicit/trusted peer vectors are copied under a mutex.
+
+Residual: adaptive build shaping/backoff, RouterInfo copy-on-write and
+RouterProfile synchronization, live multi-process/tunnel evidence, and
+transport-authenticated previous-hop loop checks for build records. Tunnel keys,
+build records and hop Noise state remain core-only; no storage/IPC boundary was
+widened.
+
+## 2026-10-21 SAM/I2CP/Streaming/Datagram continuation (static)
+
+A read-only pass covered SAM 3.2/3.3, I2CP session/key handling, Streaming packet
+state and Datagram1/2/3. No compiler, CTest, sanitizer, fuzzer, Java peer or
+client run was performed.
+
+- **SAM-117..SAM-121**: per-port acceptors are disarmed/removed on teardown;
+  closed acceptors no longer adopt a stream; DATAGRAM/RAW subsessions require
+  PORT and reject duplicate protocol/port pairs; SESSION CREATE parameter
+  failures use SESSION STATUS; HELLO accepts Java whitespace/case variants; and
+  CloseSessions balances destination Acquire/Release.
+- **I2CP-109..I2CP-111**: b33 HostReply checks the requested blinded store key,
+  terminal MessageStatus has one owner, and CreateLeaseSet2 validates/stages all
+  private keys before installing or publishing.
+- **STR-108..STR-112**: saved pre-SYN tables are bounded, stream lookup is locked,
+  ping/pong ports are preserved, invalid/FROM-less SYNs are not accepted, and a
+  terminated stream cancels queued sends before touching the destination.
+- **DG-108..DG-110**: unauthenticated Datagram3 cannot create/ack a session,
+  wildcard receivers use last-wins replacement, and Datagram1/2 refresh their
+  cached sender identity after key/offline changes.
+
+Residual: I2CP key/owner publication under `i2cp.singlethread=false` remains a
+TSan item; SAM `LISTEN_PROTOCOL`, UDP SEND_TAGS/EXPIRES and full b33 secret
+authorization remain open. No dynamic evidence exists.
+
+## 2026-10-21 user-services continuation (static)
+
+HTTP/SOCKS, reseed and address-book audits produced and statically fixed:
+case-insensitive `.i2p`/`.i2p.alt` classification, `.i2p.alt` lookup aliases and
+`www.` fallback; loopback/private clearnet refusal and SOCKS IP-literal/port-0
+policy; 5 MiB subscription bodies/10 000-entry caps and tombstone enforcement;
+reseed TLS chain+hostname verification, 8 MiB SU3, 1 MiB per ZIP entry,
+32 MiB inflated, 400-entry and 30-day network-bundle freshness bounds. No
+compiler, CTest, sanitizer, fuzzer, live proxy/reseed, Android/device or Java
+peer run exists. Remaining: HTTP/SOCKS authentication, full HTTP
+response-direction limits, server-tunnel TLS CA/config, reload of changed tunnel
+sections, per-tunnel admin inventory and `.i2p.alt` subscription semantics.
+
+## 2026-10-21 multiprocess trust-boundary continuation (static)
+
+Six read-only passes covered supervisor lifecycle, Linux worker bootstrap,
+storage roots, router-core capabilities, network/socket ownership, crypto/key
+custody and log-worker recovery. No compiler, CTest, sanitizer, fuzzer,
+OpenBSD/Linux/Windows runtime or live-peer run exists.
+
+- **Supervisor bootstrap**: the Linux supervisor previously installed a
+  write-deny Landlock domain and an AF_INET-deny seccomp filter that were
+  inherited by every `fork`+`exec` child. That silently broke the log worker's
+  file sink and any future storage/network child. The supervisor now applies
+  `ApplyLinuxSupervisorSandbox` (no-new-privs plus capability/bounding-set
+  drop) and each worker applies its own role profile. This is a delegation
+  bootstrap, not a claim that the supervisor has network/write isolation.
+- **Restart recovery**: log-worker replacement has 250 ms exponential backoff
+  capped at 30 s, eight consecutive attempts and a 60 s stable-period reset;
+  exhaustion exits the supervisor. The core logger queue is capped at 8192
+  records with 8192-byte truncation and a dropped counter.
+- **Storage root handoff**: the OpenBSD torrent-storage broker receives a
+  validated data root as inherited fd4 instead of re-opening a path after
+  pledge. It uses `pledge("stdio unix proc exec sendfd recvfd")` without
+  `rpath`; directory descriptors are never sent through `SCM_RIGHTS`.
+- **Router storage recovery**: a worker-level write rejection (status 1) no
+  longer poisons the IPC channel; only malformed frames/request IDs do. This
+  prevents one ENOSPC/symlink rejection from disabling later persistence.
+  Worker entry now requires the channel at descriptor 3, preventing a manual
+  invocation from aliasing inherited root descriptor 4.
+- **Startup pledge**: OpenBSD carries `exec` only during the startup worker
+  window, including when `privsep.log` is disabled; the runtime policy still
+  drops it.
+
+Residual: the core still owns transport sockets, most netDb/profile/
+address-book/destination-key writes and long-term keys. Network and crypto
+workers remain policy-builder-only, and no single supervisor owns all workers.
+Do not claim global privilege separation.
+
+## 2026-10-21 IPC protocol consolidation (static)
+
+Five read-only audits covered serialization, worker contracts, authorization,
+buffers/backpressure and disconnect recovery. No compiler, CTest, sanitizer,
+fuzzer, OpenBSD/Linux/Windows runtime or workflow run exists.
+
+- **Typed/versioned frames**: protocol v2/min v1, typed `Error` replies with
+  bounded detail, shared `EndpointRole` allowlist and fallible path encoders.
+  Over-long/NUL paths no longer truncate silently to a different path.
+- **Authorization**: every POSIX dispatch checks its role allowlist; Ping and
+  Shutdown require empty payloads; storage request IDs must increase
+  monotonically, so replay cannot repeat mutations. Adopted channels are
+  revalidated for seqpacket type, peer UID and CLOEXEC.
+- **Readiness/recovery**: log configuration uses a bounded Ping/Pong handshake,
+  so queued configuration is not reported as a working sink. The supervisor
+  returns nonzero on protocol violations and distinguishes clean shutdown.
+  Broker capacity/path/replaced-root rejections are typed and non-fatal.
+- **Bounds/backpressure**: logger sink drops are counted; zero-length
+  seqpacket records are consumed rather than treated as EOF; imsg drains its
+  buffered message queue; Windows oversized records close the pipe.
+- **Residual**: automatic storage-client restart and handle-generation fencing,
+  explicit transaction cancellation IDs, typed `Channel` error classes,
+  Windows daemon integration and cross-UID/live-platform tests remain pending.
+
+## 2026-10-21 OpenBSD supervisor/storage continuation (static)
+
+Four read-only audits covered Linux storage parity, OpenBSD semantics, IPC
+channels and per-process/network policy. No OpenBSD compiler, CTest,
+pledge/unveil runtime, imsg run or workflow exists.
+
+- **Broker path bug**: the broker had used `openat()` after a pledge without
+  `rpath` and with a locked unveil list. It now passes its immutable root at
+  fd4; the worker performs the relative walk and dev/inode/path validation
+  before applying its own policy.
+- **Ownership/recovery**: forwarded workers are disowned after channel handoff
+  and reaped non-blockingly; broker shutdown cannot kill in-flight storage.
+  Launch churn uses a replenished one-minute window. A broker timeout retains
+  the channel and late replies are drained by request id.
+- **Policy**: storage requires an absolute unveil root and drops unused
+  `fattr`/`flock`. Network gains explicit socket-handoff/route/DNS flags;
+  `ValidatePreopenedSocket` checks type, CLOEXEC and listening state.
+- **imsg**: validated adoption checks socket/CLOEXEC/getpeereid before fdpass;
+  descriptor ownership on compose failure matches `Channel`; timeouts poison.
+- Residual: no network/crypto backend, core `inet` removal, router storage
+  broker, log descriptor-only policy or OpenBSD runtime evidence.
+
+## 2026-10-21 Linux multiprocess hardening continuation (static)
+
+Five read-only audits covered AF_UNIX/SOCK_SEQPACKET, credentials, pidfd,
+descriptor transfer and the BitTorrent-connected storage worker. No Linux
+runtime, compiler, CTest, sanitizer, fuzzer or workflow exists.
+
+- **Channel**: adopted descriptors require AF_UNIX/seqpacket where available,
+  reject listening sockets and enable SO_PASSCRED; zero-length records now
+  require the same credentials as data and are bounded against floods.
+- **Spawn**: `PR_SET_NO_NEW_PRIVS` is installed before exec; inherited standard
+  socket descriptors are closed in supervisor/log workers; the close() fallback
+  uses the actual RLIMIT_NOFILE with a documented infinite-limit cap.
+- **seccomp**: storage/log deny process_vm_readv/writev, kcmp, pidfd_open,
+  pidfd_send_signal, open/name_to_handle_at, userfaultfd, bpf and
+  perf_event_open in addition to ptrace/io_uring/socket.
+- **Descriptors/storage**: both storage clients keep O_RDONLY directory
+  descriptors and bind the root by dev/inode before Landlock; Linux rejects the
+  OpenBSD-only `*-inherited` role names.
+- Residual: kill/tgkill self-filtering, pidfd deferred-reap/total stop budget,
+  cgroup v2/kill, descriptor classification and true network-worker separation.
+  Kernel-version behaviours and fallbacks are documented, not dynamically
+  validated.
+
+## 2026-10-21 Windows multiprocess hardening continuation (static)
+
+Five read-only audits covered Named Pipes, ncalrpc, restricted
+tokens/AppContainer/LPAC, Job Objects/mitigations and protocol parity. The
+transport decision is to retain documented message-mode Named Pipes; ncalrpc
+would require MIDL/generated stubs and does not provide handle transfer.
+
+- **Named Pipe lifecycle**: canceled overlapped operations are drained before
+  buffer/OVERLAPPED release; timeout and malformed frames are terminal;
+  rejected peers leave the listener reusable; ConnectBound validates the
+  expected server PID/session; random per-spawn names reduce squatting.
+- **Tokens/Jobs**: all parent privileges are deleted, LUA_TOKEN is used for
+  elevated parents, and Jobs apply exception, memory and UI restrictions.
+- **Authorization**: ConfigureLogFd is rejected because Windows has no
+  descriptor channel; typed storage requests are represented in the Windows
+  matrix.
+- Residual: no worker entry/supervisor/daemon wiring, no functional
+  AppContainer/LPAC token + capability/ACL enforcement, no cross-user or
+  Windows runtime negative tests. No Windows build or dispatch exists.
+
+## 2026-10-21 Android multiprocess/SAF continuation (static)
+
+Five read-only audits covered Android services/lifecycle, JNI, Binder/AIDL, SAF
+and the embedded C++23 engine. No Gradle, NDK, Lint, emulator/device or workflow
+exists.
+
+- **Lifecycle**: Activity destruction still does not stop transfers; first-launch
+  autostart is persisted, and `MY_PACKAGE_REPLACED` resumes only an already
+  requested router.
+- **JNI**: inbound strings are decoded from UTF-16 to UTF-8 with NUL/unpaired
+  surrogate rejection; start diagnostics are bounded/sanitized.
+- **SAF**: tree grants are validated/released, export grants are scoped, close/
+  release no longer retire the broker on a client timeout, broker close is
+  queued, cancellation is operation-scoped, created names are checked and export
+  starts empty. Display-name `:`/`\` are accepted.
+- **Boundary limit**: the router/UI share a UID; `android:process` is not UID
+  isolation, `isolatedProcess` cannot keep persisted SAF grants, and INTERNET is
+  per-UID. No router AIDL split, session-scoped SAF capability, document-read
+  confinement, minimal SAF seccomp library or device evidence is claimed.

@@ -50,10 +50,11 @@ the daemon does not depend on a terminal:
     i2pd-tui --datadir ~/.i2pd
     i2pd-tui --socket /var/lib/i2pd/i2pd-tui.sock
 
-Keys: `1`-`9` and `0` switch views (Status, Peers, Tunnels, Torrents, NetDb,
-Logs, Help, Destinations, Config, Connections), `Tab`/arrows navigate, `t`
-toggles transit acceptance after confirmation, `e` reseeds the NetDb, `H`
-reloads tunnel configuration, `s`/`S` begin graceful/immediate shutdown, `c`
+Keys: `1`-`9`, `v` and `0` switch views (Status, Peers, Tunnels, Torrents,
+NetDb, Logs, Services, Help, Destinations, Config, Connections), `Tab`/arrows
+navigate, `t` toggles transit acceptance after confirmation, `e` reseeds the
+NetDb, `H` reloads tunnel configuration, `s`/`S` begin graceful/immediate
+shutdown, `c`
 cancels a graceful drain, `b`/`%` set bandwidth/share, `l` cycles the local log
 threshold, `L` cycles the daemon log level, `n` switches the NetDb directory
 and `/` filters logs or torrents. `r` refreshes and `q` quits. The socket is
@@ -95,7 +96,7 @@ backgrounding exception. On systemd:
     sudo systemctl disable --now i2pd.service
 
 `reload` sends `SIGHUP` to reload tunnel configuration. The packaged unit uses
-`KillSignal=SIGINT` with a 600-second stop timeout, so `systemctl stop` requests
+`KillSignal=SIGINT` with a 660-second stop timeout, so `systemctl stop` requests
 the graceful transit-tunnel drain and may wait up to 10 minutes. `SIGTERM` is a
 prompt ordered shutdown and is **not** the 10-minute path. Inspect the installed
 unit with `systemctl show -p KillSignal -p TimeoutStopUSec i2pd.service` and
@@ -126,7 +127,7 @@ openi2pd-related files under `$HOME/dist`. The executable and configuration name
     cp -R contrib/certificates $HOME/dist
     cp contrib/i2pd.conf $HOME/dist
     cd $HOME/dist
-    ulimit -n 4096  # only on Linux, increasing open file limit
+    ulimit -n 8192  # only on Linux, increasing open file limit
 
 Then, to run openi2pd, change to the installation directory and run:
 

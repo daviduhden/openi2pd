@@ -25,7 +25,7 @@ Notes on multithreading
 
 * every component runs in its own thread
 
-* each component (usually) has a public function `GetService()` which can be used to obtain the `boost::asio::io_service` that it uses.
+* each component (usually) has a public function `GetService()` which can be used to obtain the `boost::asio::io_context` that it uses.
 
 * when talking between components/threads, **always** use `GetService().post()` and be mindful of stack allocated memory.
 
@@ -36,7 +36,7 @@ Notes on multithreading
 
 The `i2p::data::netdb` is a `i2p::data::NetDb` instance processes and dispatches *inbound* i2np messages passed in from transports.
 
-global singleton at `i2p::data::netdb` as of 2.10.1
+global singleton at `i2p::data::netdb` in the current openi2pd tree
 
 #### NetDbRequests.h
 
@@ -49,7 +49,7 @@ For Pending RouterInfo/LeaseSet lookup and store requests
 
 `i2p::client::ClientContext` spawns all destinations used by the I2P router including the shared local destination.
 
-global singleton at `i2p::client::context` as of 2.10.1
+global singleton at `i2p::client::context` in the current openi2pd tree
 
 
 

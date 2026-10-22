@@ -16,7 +16,7 @@ Documents project documentation.
 |---|---|---|---|---|
 | Documentation | https://github.com/PurpleI2P/i2pd_docs_en | default (`master`) | `30ddc4c7c74e055fc858ecff3ae6f69d1a73ab5e` | `docs/` (upstream files; fork reports coexist) |
 | Tools | https://github.com/PurpleI2P/i2pd-tools | default (`master`) | `ca7ece8da86aa80b58fce6fa64375bfd75cbf843` | `tools/` |
-| Router source | https://github.com/PurpleI2P/i2pd | `openssl` | reviewed through `de32c8c3f580c2c43ca09154ecfe6a20db80d19f` | existing main tree; selective adaptation, no bulk import |
+| Router source | https://github.com/PurpleI2P/i2pd | `openssl` | reviewed through `9725b8b227293a796c069ac270fa6b5b47cf9a13` | existing main tree; selective adaptation, no bulk import |
 
 ## Reviewed router-source commits (2026-10-18/19/20 UTC)
 
@@ -26,17 +26,17 @@ committer timestamp is used only when it differs, as noted below. Upstream
 authors use `-04:00`, `+02:00` and `+03:00`, so a commit's local calendar date
 is never a grouping key: the three SSU2 commits dated 18 October `-04:00` are
 19 October UTC, while several 20 October `+02:00`/`+03:00` commits are
-19 October UTC. `de32c8c3` was the observed branch tip at the end of this
-review; 20 October was still in progress, so later upstream commits are not
-covered by this pin. This is a review record, not a merge base or a claim that
-the fork is at upstream 3.0.0.
+19 October UTC. `de32c8c3` was the observed branch tip at the end of the first
+review; the continuation section below covers the later commits through
+`9725b8b2`. This is a review record, not a merge base or a claim that the fork
+is at upstream 3.0.0.
 
 Do not enumerate the window with `git log --since/--until` alone: it filters
 on the committer timestamp in the local timezone and reproduces the off-by-one
 grouping. Use `%H %aI %cI %s`, convert both timestamps with `date -u`, and
 account for merge commits separately. The table retains eight earlier
-18 October rows for context; **15 commits** fall in the 19–20 October UTC
-window.
+18 October rows for context; **15 commits** fall in this first table (21 in the
+19–20 October UTC window once the continuation section is included).
 
 | Upstream commit | UTC date | Subject | Local result |
 |---|---|---|---|
@@ -62,16 +62,44 @@ window.
 | `2598a94e4b64cf57eebb33987e6025beefe05b5e` | 2026-10-20T08:44:14Z (committer 08:44:37Z) | Require Boost.URL only on Fedora | Adapted in form: the fork declares Boost.URL only under a defined Fedora guard through F43. The 23-second author/committer skew is retained here; both timestamps are on the same UTC day. |
 | `86dd211a08a12b982abab422925dd407f27e7936` | 2026-10-20T10:03:28Z | Do not install Boost.JSON/URL on Mageia | Covered by the Fedora-only Boost condition: Mageia does not install those separate packages. Mageia 9 is below the fork's GCC 13 floor regardless. |
 | `233e5111ad5b9b0d4f8636fef6909435ab66dda5` | 2026-10-20T10:10:24Z | Use Ninja on Mageia 9+ | Omitted: the fork uses `cmake --build . --parallel`; it never invokes `make` or `ninja` directly. `%cmake` owns generator selection, and `build-system-static` rejects `_smp_mflags`, `%make_build`, `%ninja_build` and `%ninja` in both specs. |
-| `de32c8c3f580c2c43ca09154ecfe6a20db80d19f` | 2026-10-20T10:18:46Z | Use Ninja on Mageia 9 and 11+ | Omitted for the same reason as `233e5111`; this is the review high-water mark. |
+| `de32c8c3f580c2c43ca09154ecfe6a20db80d19f` | 2026-10-20T10:18:46Z | Use Ninja on Mageia 9 and 11+ | Omitted for the same reason as `233e5111`; this was the previous review high-water mark. |
+
+## Reviewed router-source commits (2026-10-20 UTC continuation)
+
+The branch tip moved from `de32c8c3` to
+`9725b8b227293a796c069ac270fa6b5b47cf9a13`. Six commits are in this
+continuation. `35e25db2` is not a descendant of `de32c8c3`; its merge base is
+`a8915cd1`, and it entered the branch through merge `8710fd89`. The merge
+commit adds no independent tree change.
+
+| Upstream commit | UTC date | Subject | Classification and local result |
+|---|---|---|---|
+| `35e25db2008a45c3beb6fba139976571999e17e3` | 2026-10-20T01:26:38Z | Use proper HTTP status codes for proxy errors | Applicable, implemented by static analysis. Proxy-generated 400/500/502/504 pages now use typed status codes; the fork's 1 MiB header-limit paths use 431 and `HTTPCodeToStatus(431)` was added. `HostNotFound` is 502, upstream failures 502, missing I2 stream 504. `GenericProxyInfo` keeps the default 500 as upstream does. Existing nil-socket and bounded-buffer guards were preserved. |
+| `137dde2f433b2142eec7a2307608d7d082be086f` | 2026-10-20T15:10:48Z | `[rpm] update release spec` | No applicable hunk. The Fedora-only Boost.JSON/URL guards predate this commit (`2598a94e`/`86dd211a`); the Ninja/Mageia matrix is obsolete under `%cmake` + `cmake --build`; the `0%{?rhel} <= 9` condition is false-positive when `%rhel` is undefined and incompatible with the Boost 1.81 torrent floor. |
+| `c5e8e10a6ca88089756a306386bbed7bce761cac` | 2026-10-20T17:33:44Z | `[build] win: add torrent web ui files to package` | Incompatible and obsolete. It packages `contrib/torrents/web`, which the fork deliberately removed; there is no browser console or matching Windows installer structure to update. Copyright-year edits also conflict with the short LICENSE-reference header policy. |
+| `8710fd894136e80afc769a30138ffe99ba461467` | 2026-10-20T19:07:44Z | Merge pull request #2603 from pobregat0/proxy-error-codes | Merge-only. Its tree change is exactly `35e25db2`; disposition is carried by that row. |
+| `032b8a61cec906a01c728da2b9ee6135dac89e38` | 2026-10-20T19:55:14Z | Use `istarts_with` instead of `iequals` | Integrated (superseded by a stronger parser). The fork's `I2PTunnelHTTP.h` already uses an ASCII case-insensitive `StartsWith` and the bounded parser; mixed-case Host/Connection/Keep-Alive/X-I2P and lowercase Upgrade regressions were added to `test-i2ptunnel-http`. |
+| `9725b8b227293a796c069ac270fa6b5b47cf9a13` | 2026-10-20T22:29:04Z | Get peers and announce torrent to our node if in our bucket | Applicable, implemented by static analysis with fork guards. `DHTTorrent::GetPeers()`/`RemovePeer()`, the reserved local rendezvous slot and `RoutingTable::IsInOurBucket()` empty-leaf fallback support the path; private/stopped/removed suppression, `MAX_DHT_TORRENTS`, per-torrent peer caps, unannounce-on-stop and the fork's seed bit for `noseed` queries are preserved. |
+
+Dependency/impact review: the HTTP commit depends only on the existing
+`HTTPRes`/`HTTPCodeToStatus` stack; the `istarts_with` cleanup is already
+absorbed by the fork's header-only bounded parser; the DHT change reuses the
+existing `TorrentsDHT`, `TorrentsTunnel`, identity and peer-origin APIs with no
+new library or wire format. The RPM/Windows rows are packaging-only. The fork
+keeps C++23, CMake/Ninja through `cmake --build`, native TUI/Android and no
+browser console.
 
 The source changes are implemented by static analysis only and are pending
-manual CI compilation and tests. The continuation adds the Intel AMT reserved
-port table and its regression, adapts the reseed sample wording without
-changing the fail-closed verification default, and carries the applicable RPM
-Fedora Boost guard. No upstream file was copied wholesale and no merge or
-cherry-pick was used. `docs/files-changed.md` records the affected local files;
-`TODO.md` tracks the remaining NetDb, I2PTunnel, torrent persistence and
-packaging validation.
+manual CI compilation and tests. The previous continuation adds the Intel AMT
+reserved-port table and its regression, adapts the reseed sample wording
+without changing the fail-closed verification default, and carries the
+applicable RPM Fedora Boost guard. The 2026-10-20 continuation adds the proxy
+error status classification (including the fork-only 431 header-limit path),
+the DHT rendezvous self-announce with fork caps/seed semantics, and mixed-case
+HTTP tunnel header regressions. No upstream file was copied wholesale and no
+merge or cherry-pick was used. `docs/files-changed.md` records the affected
+local files; `TODO.md` tracks the remaining NetDb, I2PTunnel, torrent,
+packaging and device validation.
 
 The pinned upstream documentation tree contains **46 files**: 39 Markdown
 documents, the two branding images (`img/logo.png`, `img/favicon.ico`) and five
@@ -213,7 +241,7 @@ git diff --check -- docs contrib/upstream
 ```
 
 - `docs/about/contributing.md` and `docs/testing.md` describe the static checks.
-- `docs/README.md` is the documentation index; `docs/developer-guide/README.md`
+- `docs/index.md` is the published documentation home and `docs/README.md` is its source-tree pointer; `docs/developer-guide/README.md`
   is the developer entry point; `docs/mkdocs.yml` is publication-only.
 - The upstream pages that mention the removed web console are adapted locally
   to the TUI and optional loopback RPC. Do not restore a browser UI.
@@ -222,10 +250,10 @@ git diff --check -- docs contrib/upstream
   RPC, no CORS/preflight, no static web route and no clearnet fallback.
   `docs/torrent/ipc.md` must match `daemon/TuiServerCommon.cpp` and
   `libi2pd/TuiProtocol.h`.
-- TUI keys and views must match `tui/main.cpp` (`TAB_NAMES`, `HandleKey`):
-  ten views, `1`-`9` plus `0` for Connections, `t` transit confirmation,
-  `l` local log threshold, `L` daemon log level, `n` NetDb directory and
-  `/` filtering.
+- TUI keys and views must match `tui/main.cpp` (`TAB_NAMES`, `TAB_KEYS`,
+  `HandleKey`): eleven views, `1`-`9`, `v` for Services and `0` for
+  Connections, `t` transit confirmation, `l` local log threshold, `L` daemon
+  log level, `n` NetDb directory and `/` filtering.
 - Android build instructions must match `android/app/build.gradle`,
   `android/gradle/wrapper/gradle-wrapper.properties`, the Android CMake graph
   and `android/tools/java25-probe/check-config.sh`.
@@ -259,3 +287,33 @@ git diff --check -- docs contrib/upstream
 7. Let manual CI perform configure/build/CTest and Markdown publication checks;
    automatic CI remains `workflow_dispatch` only. MkDocs is still optional and
    is not added to the daemon build or runtime.
+
+## Post-high-water verification (2026-10-21)
+
+A fresh read-only `git ls-remote` and clone check on 2026-10-21 confirms that
+`9725b8b227293a796c069ac270fa6b5b47cf9a13` is still the `openssl` branch tip.
+`git rev-list --all --not 9725b8b2 --count` is **0**; there is no later commit,
+merge or tag to classify. The six commits in `de32c8c3..9725b8b2` remain the
+complete continuation table above; no upstream file was copied wholesale and
+no merge/cherry-pick was used.
+
+The verification pass closed fork-side integration gaps exposed by that
+continuation:
+
+- `9725b8b2` now removes our own rendezvous peer on stop/remove
+  (`DHTTorrent::RemovePeer`, `TorrentsDHT::Unannounce`), reserves one local
+  slot when remote announcers fill `MAX_DHT_PEERS_PER_TORRENT`, checks
+  `Torrent::IsRemoved`, and matches upstream's empty-bucket fallback in
+  `RoutingTable::IsInOurBucket`. The DHT interop/security regressions pin the
+  multi-bucket predicate, local reserved slot and removal.
+- `35e25db2` status constants moved to `HTTPProxy.h` with
+  `HTTPProxyFailureStatus()`; `test-http-proxy-limits` pins 400/431/500/502/504
+  and `test-http-res` serializes each proxy-generated status line.
+- The bounded `I2PTunnelHTTP` parser now rejects obsolete obs-fold
+  (leading SP/HTAB) header continuations, with mixed-case
+  `Proxy-Connection` and folded-header regressions.
+- The 137dde2f row records why even its RHEL conditional is unsafe to copy
+  (`0 <= 9` when undefined), not merely why this fork omits it.
+
+These are static-only changes pending manual CI compilation/tests; no new
+upstream commit or dynamic interoperability evidence is claimed.

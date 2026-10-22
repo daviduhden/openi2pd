@@ -20,7 +20,7 @@ every component has been validated dynamically.
 |---|---|---|---|
 | Core library | `libi2pd/` | Identity, crypto, I2NP, transports (NTCP2/SSU2), tunnels, netDb, reseed, streaming, HTTP parsing | `libi2pd.a`, installed headers |
 | Client library | `libi2pd_client/` | HTTP/SOCKS proxies, SAM, BOB, I2CP, client tunnels, torrents | `libi2pdclient.a`, installed headers |
-| Language data | `i18n/` | English strings and translation helper | `libi2pdlang.a` |
+| Language data | `i18n/` | en/es/ru/zh-Hans UI catalogs and translation helper | `libi2pdlang.a` |
 | Daemon | `daemon/` | Lifecycle, configuration, signals, I2PControl, UPnP, local TUI IPC | `i2pd` executable |
 | Diagnostics UI | `tui/` | ncursesw (Unix) or Win32/VT (Windows) client, no router state ownership | `i2pd-tui` executable |
 | Tests | `tests/` | Parsing, encoding and crypto vectors | CTest |

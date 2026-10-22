@@ -14,8 +14,8 @@ This directory records cross-component decisions for the openi2pd fork.
 
 ## ADR-001 — Supervised logging worker; monolithic core remains interim
 
-- **Status:** Accepted as an intermediate step; full multiprocess split is
-  deferred by project instruction.
+- **Status:** In progress; logging and opt-in storage are split, while the
+  network/crypto/router-core split remains a tracked implementation task.
 - **Context:** I2P session state, tunnel crypto, netDb persistence and the event
   loop are coupled to process-wide singletons. Splitting a state machine
   without clear ownership risks nonce reuse, lost retransmissions and
@@ -25,9 +25,11 @@ This directory records cross-component decisions for the openi2pd fork.
   `AF_UNIX/SOCK_SEQPACKET` channel. A separate supervisor process owns the
   logging worker and forwards structured records; the core never opens the
   configured log file and never owns the logging child.
-- **Consequences:** Real reduction of the log-file capability from the core and
-  a separate supervisor boundary for the logger. The core still combines
-  network, persistence and long-term keys; this is a documented risk.
+- **Consequences:** Real reduction of the log-file capability from the core, a
+  separate supervisor boundary for the logger, and opt-in router/torrent
+  storage workers. The core still combines network, most persistence and
+  long-term keys; this is a documented risk and not global privilege
+  separation.
 - **Follow-up:** `PRIVSEP-005..014` in `TODO.md`.
 
 ## ADR-002 — IPC framing and authentication
@@ -39,8 +41,9 @@ This directory records cross-component decisions for the openi2pd fork.
   with `SO_PEERCRED`/`getpeereid`; channel fds are `CLOEXEC`; worker processes
   are exec'ed and close inherited descriptors.
 - **Limits:** 64 KiB frame, 8 KiB text, poll timeouts. Descriptor passing is
-  limited to the legacy/test `ConfigureLogFd` operation; there is no generic
-  filesystem or arbitrary-descriptor API.
+  limited to typed operations: the log sink, isolated torrent/router storage
+  roots and Android SAF broker handles. There is no generic arbitrary-descriptor
+  API; storage paths and capabilities are explicit per operation.
 - **Consequences:** The protocol can be reused for future workers; each new
   worker needs its own operation allowlist and OS policy.
 

@@ -65,8 +65,9 @@ ctest --test-dir <build-dir> -R build-system-static --output-on-failure
 ```
 
 It also checks that every `tests/test-*.cpp` and `tests/fuzz/*.cpp` source is
-named in `tests/CMakeLists.txt`, so a new subsystem test or fuzzer cannot be
-added without CMake wiring.
+named in `tests/CMakeLists.txt`, and that every fuzz source/CMake target is
+also wired into `.github/workflows/fuzz.yml`, so a new subsystem test or fuzzer
+cannot be added without registration.
 
 Executed on 2026-10-18: **48/48 passed**. This includes the new
 interoperability regressions listed below, `tools-smoke`, `test-tui-protocol`
@@ -94,15 +95,28 @@ current platform and registers it with CTest. The suite labels are:
 - `tui`: terminal/protocol tests;
 - `torrent`: bencode, torrent security and control-plane tests;
 - `tools`: tool inventory, smoke and firewall generator tests;
-- `perl`: Perl syntax, portability/Python-free inventory, `i2pdctl`, branding,
-  documentation-link and install-layout checks; optional `perl-critic` when
-  `-DI2PD_PERL_CRITIC=ON` and the analyzer is installed;
+- `docs`: MkDocs navigation targets, theme assets, unlisted Markdown/HTML
+  checks, relative link/anchor validation and internationalization catalog policy;
+- `perl`: Perl syntax, expanded portability/Python-free inventory (versioned
+  interpreters, consumers, shebang/BOM, `require`, process/temp/chmod and
+  inventory drift), `i2pdctl`, branding, documentation-link and install-layout
+  checks; optional `perl-critic` when `-DI2PD_PERL_CRITIC=ON` and the analyzer
+  is installed;
 - `interop`: static checked-in Java interoperability vectors;
 - `platform`: Linux/OpenBSD sandbox, Windows pipe and platform transport tests;
-- `android`: compile-free Java 25 configuration and English-only resource
+- `android`: compile-free Java 25 configuration and four-locale resource/catalog
   policy checks; Gradle/APK/Lint/device execution stays in the Android job;
 - `fuzz`: optional one-input libFuzzer smoke entries when
   `-DWITH_FUZZERS=ON`;
+- `packaging`/`install`: compile-free POSIX make, install-component,
+  exported-package, Debian/static/OpenBSD port template and packaging-file
+  checks;
+- `docs`: documentation links, navigation, branding and Agent Skills
+  contracts, in addition to the documentation checks below;
+- `services`: init-system definition contract checks for foreground
+  supervision, stop budgets, s6 `down-signal`/`timeout-kill`, OpenRC
+  `stopsig`, SysV pidfile ownership, systemd sysusers/tmpfiles, OpenBSD
+  rc.d/login/config and the unselected Upstart/dinit samples;
 - `ci`, `static`, `smoke`: build-policy, version and static checks.
 
 Linux-specific IPC/sandbox tests are registered only on Linux; OpenBSD policy
@@ -117,10 +131,13 @@ registers `interop-reference` for the current comparison target. Separately,
 executes Java or proves compatibility. The live SAM shell probe remains manual because it needs a
 running router and `nc`.
 
-The compile-free `agent-skills-static` check reads `.agents/skills/*/SKILL.md`
-and verifies frontmatter names, required sections, `AGENTS.md` references and
-`references/*.md` links. It does not execute a skill, build a target or call an
-external validator; its CI execution remains pending the next manual run.
+The compile-free `agent-skills-static` check reads `.agents/skills/README.md`,
+every `SKILL.md` and `references/*.md`. It verifies the exact directory
+inventory against the README, single-line frontmatter/name/description bounds,
+required sections including `Known issues and decisions`, `Do not`, `AGENTS.md`
+references, reference links, orphan references and LICENSE headers. It does
+not execute a skill, build a target or call an external validator; manual CI
+execution remains pending.
 
 ### Manual CI execution matrix
 
@@ -132,8 +149,7 @@ external validator; its CI execution remains pending the next manual run.
   interoperability checks. GCC, LLVM, CMake, Ninja, Boost, OpenSSL, zlib,
   MiniUPnPc and ncurses come from Homebrew so the manual runs compile against
   the current releases.
-- Android: Java 25 guard, English-only resource/locale static check, Gradle unit tests, Lint, native arm64 JNI link and
-  an arm64 debug APK build.
+- Android: Java 25 guard, en/es/ru/zh-CN resource/locale static check, Gradle unit tests, debug/release Lint, class-file-69 assertion, native arm64 JNI link with hardening, debug APK packaging assertion and unsigned release APK. ABI/API/device matrices remain documented but not executed.
 - Interop: pinned Java tag/commit/read-only check plus fixture provenance.
 - Sanitizers: separate ASan+UBSan and TSan builds with the full CTest suite,
   using the current Homebrew Clang, Boost, OpenSSL, zlib and MiniUPnPc.
@@ -164,7 +180,9 @@ is prepared for the optional libFuzzer target.
   framing;
 - the read-only, typed `CONFIG` allowlist, argument rejection and absence of a
   `CONFIG-SET` writer;
-- bounded `CONNECTIONS` and `NETDB-ROUTERS`/`NETDB-LEASESETS` requests;
+- bounded `CONNECTIONS`, `NETDB-ROUTERS`/`NETDB-LEASESETS` and `SERVICES`
+  requests, including limit clamping;
+- typed error-code names preserved by the client;
 - strict `ADMIN` validation for transit, loglevel, reseed, shutdown, tunnel
   reload, bandwidth and share, including rejected actions, values, ranges and
   trailing arguments;
@@ -202,11 +220,13 @@ semantics, the `std::span<const uint8_t>` constructor and the writable staging
 constructor. It does not exercise a live socket or an asynchronous completion.
 
 `tests/test-log-lifecycle.cpp` exercises repeated `Log::Start`/`Stop`, sink
-replacement and concurrent signal-style `Reopen` calls without starting the
+replacement, concurrent signal-style `Reopen` calls and the bounded
+8192-record logger queue with its dropped-record counter without starting the
 router. `tests/test-tui-ipc-regression.cpp` is a Unix-only real-socket test for
 partial/pipelined TUI requests, malformed input, bounded connection/netDb
-directory dispatch, atomic daemon log-level control, `QUIT`, socket permissions
-and cleanup. `tests/test-torrents-security.cpp` covers piece block bounds, metadata
+directory/service dispatch, atomic daemon log-level control, exact-once
+execution of an accepted admin command after its waiter times out, typed remote
+error codes, `QUIT`, socket permissions and cleanup. `tests/test-torrents-security.cpp` covers piece block bounds, metadata
 reference lifetime, DHT peer/bucket limits and torrent file range I/O.
 `tests/test-ssu2-routerinfo-bounds.cpp` signs valid and malformed RouterInfo
 bodies to isolate parser checks from signature rejection. The crypto audit
@@ -220,15 +240,29 @@ is the meaningful validator. `tests/test-kad-dht.cpp` exercises deterministic
 Kademlia insertion/removal/promotion/clear/filter-owner paths through
 `std::unique_ptr` trees. `tests/test-addressbook.cpp` parses in-memory
 hosts/identity forms without starting storage, resolvers or a network.
-`tests/test-privsep-linux-ipc.cpp` exercises raw `SOCK_SEQPACKET` framing,
-credentials, descriptor ownership, ancillary-data rejection and bounded send
-pressure; `tests/test-privsep-linux-sandbox.cpp` checks storage socketpair and
-capability denial, log AF_INET-deny/AF_UNIX-allow and supervisor socketpair
-behavior; `tests/test-privsep-log.cpp` adds real fork/worker descriptor
-policies. On OpenBSD, `test-privsep-openbsd-policy` forks children and requires
-a pledge violation for storage's AF_INET socket and network's persistent file
-creation; `test-privsep-openbsd-imsg` covers the libutil adapter, peer UID and
-one descriptor. Cross-UID rejection still needs a second account/root, and the
+`tests/test-privsep-protocol.cpp` covers protocol v2/v1 frame negotiation,
+typed `Error` replies, the shared endpoint allowlist, fallible path encoders and
+text/record bounds. `tests/test-privsep-linux-ipc.cpp` exercises raw
+`SOCK_SEQPACKET` framing, credentials, descriptor ownership, validated channel
+adoption (including AF_UNIX/SO_PASSCRED), zero-length records and empty-record
+flood bounds, ancillary-data rejection and bounded send pressure; `tests/test-privsep-linux-sandbox.cpp` checks storage socketpair and
+capability denial, process-memory/pidfd syscall denial, log
+AF_INET-deny/AF_UNIX-allow, and that the supervisor bootstrap drops
+capabilities without installing an inherited Landlock/seccomp domain that
+would break exec'ed storage/network children;
+`tests/test-privsep-log.cpp` adds real fork/worker descriptor policies.
+`tests/test-router-storage.cpp` checks fixed-name atomic writes and that a
+worker-level rejection does not poison later requests. On OpenBSD, `test-privsep-openbsd-policy` forks children, requires a pledge
+violation for storage's AF_INET socket and network's persistent file creation,
+and checks the empty-storage-root rejection plus pre-opened socket type/
+CLOEXEC/listening validation. `test-privsep-openbsd-imsg` covers validated
+adoption (getpeereid/socket type/CLOEXEC), one descriptor, descriptor ownership
+on failed compose and multiple frames buffered by a single `imsgbuf_read`.
+`test-torrent-storage-openbsd` exercises nested supervised delegation and a
+symlinked/replaced path rejection that leaves the broker alive. The Windows
+test covers oversized-message/malformed-channel termination, PID-bound
+acceptance, server-PID-bound connect, random per-spawn pipe names, DACL
+assertions and restricted-token/Job primitives. Cross-UID rejection still needs a second account/root, and the
 queue-pressure case is not a TSan proof.
 `tests/test-ssu2-preauth.cpp` exercises the SSU2 state-by-block whitelist and
 pre-auth PeerTest/Address/I2NP guards without a socket. The lifecycle set
@@ -240,7 +274,10 @@ pre-auth PeerTest/Address/I2NP guards without a socket. The lifecycle set
 adds deterministic lifecycle and concurrency probes, while
 `test-torrents-concurrency` is a TSan-oriented piece publication target.
 `tools-regressions` is a CMake-only CTest script with a 600 s timeout covering
-the native tool CLI surface; it must not be confused with the historical
+the native tool CLI surface; `test-routerinfo-firewall` pins the endpoint
+grammar, iptables/ip6tables and legacy `-f`, nftables family/tag comments,
+Windows stable names/groups/error handling and PF labels. No firewall command is
+executed by any test; it must not be confused with the historical
 `tools-smoke` run. None of these new tests has executed in the current tree.
 
 The Java 2.13.0 static-interoperability and 2026-10-20 parity regressions are:
@@ -258,9 +295,15 @@ The Java 2.13.0 static-interoperability and 2026-10-20 parity regressions are:
   signature types and the former fixed-slice collision.
 - `test-addressbook-case.cpp` — ASCII host-name folding, b32/b33 spelling and
   exact base64 destination handling.
+- `test-addressbook-admin.cpp` — local address-book name validation,
+  add/replace/remove, deleted-host block/unblock, tombstone merge-skip,
+  save-count/rollback behavior and shared-identity reference retention.
+- `test-tunnel-dsm-policy.cpp` — direct/tunnel DatabaseStore reply-token
+  acceptance policy.
 - `test-torrents-verify-parity.cpp` — resume/final-name re-verification,
-  tracker peer forms/limits, tracker id/min interval, percent-encoded peer id
-  and connection-limit relationships.
+  tracker peer forms/limits, tracker id/min interval, percent-encoded peer id,
+  connection-limit relationships and top-level metainfo preservation/edit
+  round trips.
 - `test-signature-identity-hardening.cpp` — Java-compatible raw RSA
   verification and RSA identity certificate layout.
 - `test-su3-bounds.cpp` — malformed SU3 bounds plus the fail-closed
@@ -279,6 +322,15 @@ The Java 2.13.0 static-interoperability and 2026-10-20 parity regressions are:
   rejection.
 - `test-crypto-wire-validation.cpp` — key-certificate lengths, strict b33
   flags, Ed25519ph and GOST signature rejection.
+- `test-openssl-capabilities.cpp` — provider/algorithm probing for SHA/AES/
+  ChaCha20/HKDF/SipHash and the runtime ML-KEM version gate.
+- `test-tunnelconfig-ownership.cpp` — owned hop chains, ordering and
+  phony-hop add/remove transitions without a router or tunnel pool.
+- `test-runnableservice-lifecycle.cpp` — self-stop from a posted handler and a
+  bounded lifecycle without self-join; TSan/restart stress remains pending.
+- `packaging-static` — compile-free checks for POSIX make semantics, install
+  development components, Ninja/OpenSSL guards, RPM generator/certificate
+  metadata, static-package paths and Docker runtime dependencies.
 - `test-ntcp2-handshake-bounds.cpp` — per-version hybrid padding, replay-cache
   separation and SessionConfirmed payload bounds.
 - `test-ssu2-session-fragment-bounds.cpp` — SessionConfirmed fragment count,
@@ -354,9 +406,13 @@ expected to flag the non-atomic tunnel/router status reads listed in
 
 ## Fuzzing
 
-The manual `Fuzzing` workflow builds every target below and runs a bounded
-`-max_total_time=30` smoke pass. With `-DWITH_FUZZERS=ON`, one-input
-`ctest -L fuzz` entries are also registered for inventory and quick local
+The manual `Fuzzing` workflow builds every target below, runs the one-input
+`ctest -L fuzz` entries, and then a bounded `-max_total_time=30` smoke pass.
+The fuzz lane sets `detect_leaks=0` because libFuzzer's process lifetime is not
+one test-process lifetime; the ASan CTest lane keeps leak detection enabled.
+Corpora and crash artifacts are uploaded with short retention. With
+`-DWITH_FUZZERS=ON`, one-input `ctest -L fuzz` entries are also registered for
+inventory and quick local
 checks; they do not replace the corpus workflow. The commands remain the
 reproducible local or CI recipe; no fuzz run is claimed for the current tree.
 
@@ -455,15 +511,18 @@ ls -l /tmp/i2pd-test/i2pd-tui.sock        # expect srw------- owner-only
 Check:
 
 1. Status values update without blocking the UI.
-2. Resize the terminal; the layout redraws.
-3. Disconnect the TUI (`q`); the router keeps running.
-4. Kill the router; the TUI shows a connection error and retries when it
-   returns.
-5. `kill -TERM` the TUI; it exits cleanly.
-6. Run the router with `--daemon` and no TTY; confirm the daemon stays up and
+2. Resize the terminal; the layout redraws and a prompt below the minimum
+   size is suspended until Esc or a resize.
+3. Open Services (`v`), NetDb (`5`/`n`) and Logs (`6`) and confirm rows are
+   bounded and the view does not block.
+4. Disconnect the TUI (`q`); the router keeps running.
+5. Kill the router; the TUI shows a connection error and retries when it
+   returns. After restart, verify the Logs view resumes instead of freezing.
+6. `kill -TERM` the TUI; it exits cleanly.
+7. Run the router with `--daemon` and no TTY; confirm the daemon stays up and
    the socket exists.
-7. Attempt to connect from another UID; expect rejection.
-8. Send a malformed overlong request with `socat`; expect an error frame and
+8. Attempt to connect from another UID; expect rejection.
+9. Send a malformed overlong request with `socat`; expect an error frame and
    connection close, not a router crash.
 
 ## Windows TUI checks (pending)
@@ -538,14 +597,19 @@ Recommended setup for the current target:
 
 ## Status summary
 
+Rows marked *historical* predate the static-only policy and do not validate the
+current uncommitted tree.
+
 | Check | Status |
 |---|---|
-| Baseline compile (before changes) | Passed |
-| Modified compile (Linux/GCC 16) | Passed on 2026-10-18 (196 targets) |
-| Unit tests and `tools-smoke` | 48/48 passed on 2026-10-18 (Linux/GCC 16) |
+| Baseline compile (before changes) | Historical; not current evidence |
+| Modified compile (Linux/GCC 16) | Historical: passed on 2026-10-18 (196 targets) |
+| Unit tests and `tools-smoke` | Historical: 48/48 on 2026-10-18; no current run |
 | ASan/UBSan/TSan | Separate manual CI jobs prepared; not run for the current tree |
 | Build-system static check | `build-system-static` prepared, including dependency-floor, removed-compatibility and test/fuzzer inventory assertions; static check passes, no build execution |
-| Agent Skills static check | `agent-skills-static` prepared for frontmatter, required sections and reference-link validation; not executed for the current tree |
+| Agent Skills static check | `agent-skills-static` passed locally as a compile-free source check for exact inventory, README, frontmatter/name, required sections including `Known issues and decisions`, `AGENTS.md`, reference links and LICENSE headers; CI execution pending |
+| Translation check | `i18n-static` validates native catalog registration, TUI selection/boundaries and Android locale metadata without compiling; CI execution pending |
+| Language modernization check | `language-modernization-static` validates the AGENTS.md modernization and Agent Knowledge Maintenance policy, C++23/Java 25 levels, availability matrix, Strategy/`jthread`/registry seams and typed Java models without compiling; CI execution pending |
 | CTest registration and labels | Static inventory prepared; Linux-only and OpenBSD-only tests are registered on their host, with i2p/security/memory/ipc/tui/torrent/tools/perl/interop/platform/android groups; CTest execution pending CI |
 | Fuzzers | Eight targets and manual smoke workflow prepared; not run |
 | OpenBSD build/runtime | Baseline `39160543186` failed at `getexecname()`; local `<stdlib.h>` fix and full CTest pending. New dispatch `39189495752` reproduced the same old-revision failure |
@@ -562,11 +626,11 @@ Recommended setup for the current target:
 - **CTest:** 48/48 passed on 2026-10-18, including the new protocol, streaming, SSU2, LeaseSet/netDb, crypto and SAM regressions.
 - **CMake install:** passed into a temporary prefix (`i2pd`, `i2pd-tui`,
   libraries, headers, configs, certificates, man page).
-- **Android English-only policy:** `android/tools/check-english-only.pl` is a
-  compile-free CI guard for English-only resources, `locales_config.xml`,
-  Fastlane listings and locale overrides. `EnglishOnlyResourceTest` uses
-  `createConfigurationContext` (not `Locale.setDefault`) and is prepared for
-  the manual device job.
+- **Android locale policy:** `android/tools/check-android-locales.pl` is a
+  compile-free CI guard for en/es/ru/zh-CN catalog parity, placeholders,
+  `locales_config.xml`, locale filters and the per-app override boundary.
+  `LocaleResourceTest` uses `createConfigurationContext` (not
+  `Locale.setDefault`) and is prepared for the manual device job.
 - **Privilege-separated logging:** live Linux run with `privsep.enabled=true`;
   the core process had no log-file descriptor and the worker had the only write
   descriptor. OpenBSD pledge/unveil was not dynamically tested.
@@ -617,10 +681,59 @@ Formatting and fixed-buffer regressions are prepared as `test-address-format`
 truncation, embedded NUL), `test-i18n-format` (empty/large/percent input) and
 `test-socks-address` (zero-length and 255/256-byte domain names). They are
 registered in CTest; execution remains pending manual CI.
+The parity continuation adds `test-addressbook-admin` (Java-compatible name
+validation, add/replace/remove, deleted-host block/unblock, tombstone merge-skip,
+shared-identity reference safety and empty-book persistence through a fake
+storage), `test-tunnel-dsm-policy` (token-bearing DatabaseStore rejection only
+for tunnel-delivered messages), the `TORRENT-RECHECK`/`TORRENT-META-*` protocol
+regressions, the metainfo-preservation round trip and Android `TorrentControl`
+recheck/remove/metainfo command tests. The Android address-book screen uses
+service-worker JNI; its device/instrumentation run remains pending.
+
+The modern-language continuation prepares `test-modern` (concepts,
+`constexpr` enum conversion, overload composition, move-only scope guard and
+byte-span views), `test-transport-connector` (static strategy mapping and
+null-server short-circuit), `RouterCommandTest` (sealed record action decoding)
+and `LogFilterTest` (typed log levels and locale-independent classification).
+The compile-free `language-modernization-static` check validates the policy,
+language levels and seam inventory.
+
+The i18n continuation adds `test-i18n-locale` (language normalization,
+English fallback, UTF-8 catalog values, formatting and plural fallback) and
+`i18n-static` (catalog registration, TUI linkage, Android locale metadata and
+placeholder/key policy). `android-locale-policy` runs
+`check-android-locales.pl`; `LocaleResourceTest` is the prepared device test.
+None of these tests has run.
+
+The OpenSSL 4 continuation adds `test-openssl-capabilities` (provider fetch
+probing and the runtime PQ version gate) and `test-tunnelconfig-ownership`
+(the remaining owned tunnel-hop chain). The manual workflow now has separate
+OpenSSL 3.x, pinned OpenSSL 4.0.0/4.0.3 and Homebrew-latest lanes; the OpenBSD
+job asserts LibreSSL via `I2PD_OPENSSL_EXPECT=LibreSSL`. The `famtool` positive
+sign/verify round trip is still not exercised by `test-tools-regressions`; a
+real RouterInfo fixture is required before claiming that path dynamically
+tested.
+
+The memory-safety continuation extends `test-http-res` with a bare-LF header
+injection case and `test-tui-protocol` with C0/DEL rest-of-line argument
+rejection. Garlic clove, RouterContext garlic/DeliveryStatus, SAF/JNI
+pending-exception, SSU2 pool/address race, fragment-byte budget and
+reseed/offline-key ASan cases remain prepared follow-ups; none has been run.
+
+The upstream continuation extends `test-http-res` with serialized
+400/431/500/502/504 status lines and `test-http-proxy-limits` with the
+status-mapping constants; `test-torrents-dht-interop` pins multi-bucket
+own-bucket membership, and `test-torrents-security` pins the reserved local
+DHT peer slot and removal. `test-i2ptunnel-http` covers mixed-case
+Host/Connection/Keep-Alive/X-I2P/Proxy-Connection headers and rejects obs-fold
+continuations. These are registered in the existing CTest targets; no proxy
+listener, DHT peer or live tracker is used.
+
 The existing manual sanitizer, Windows and OpenBSD jobs consume the registered
 tests through their full CTest runs. Android still requires JNI/native
 compilation and device tests; these offline tests do not demonstrate live
-HTTP/datagram interoperability or crash recovery.
+HTTP/datagram interoperability, tracker/peer exchange, address lookup or
+crash recovery.
 
 All tests in this continuation are prepared only, pending CI compilation and
 pending CI tests. No local build, test or project validator was executed.
@@ -639,3 +752,52 @@ also cover symlink parents/leaves for anchored metadata deletion. No live
 router, peer, sleeps or worker thread is required by these added cases.
 Real shutdown snapshot draining, worker failures and crash durability still
 need dedicated manual CI/device execution.
+
+The SSU2/NTCP2 continuation adds prepared static/unit coverage for late packet
+0 and monotonic ACK state, wrong-type packet flooding, owner-checked session
+removal, failed SessionCreated Noise reset, PeerTest source/family/timestamp
+and private/reserved target rejection, RelayIntro HolePunch rate limiting,
+late `Established` callbacks, NTCP2 msg3p2 459/4048 boundaries and banned
+termination handling. These remain pending CI compilation and CTest; no
+live relay/PeerTest/MTU/IPv6 or TSan/ASan execution exists.
+
+The 2026-10-21 cryptography continuation prepares `test-rng-seed`, extends the
+AEAD empty-operation failure check, aligns the Ratchet tag boundary to
+0..65535, adds GOST e=q/e=0 sign/verify vectors and Ed25519 on-curve/all-zero boundary
+checks, and keeps the existing Elligator2, blinding, ML-KEM and NTCP2/SSU2
+regressions. New negative
+coverage is planned for invalid Ed25519 points, RSA/P-521 LS2 offline sections,
+I2CP private-key length mismatches, AEAD provider faults, ratchet NEXT_KEY
+amplification and SSU2 version fallback. None of these tests has been compiled
+or executed in this worktree.
+
+The netDb continuation extends `test-tunnel-dsm-policy` for the clove/tunnel
+token rule, adds canonical LS1 trailing-byte coverage, LS2 PopulateLeases and
+Meta latest-entry expiry checks, and prepares clove-origin, client DSRM binding,
+lookup/flood throttle, zero-address RouterInfo, persistence snapshot, reseed
+lifecycle and atomic file replacement regressions. None has been compiled or
+executed locally.
+
+The tunnel/I2NP/Garlic continuation prepares peer-uniqueness and zero-ID transit
+tests, zero-hop replacement/variance tests, shared-RNG shuffle checks, OBEP
+LOCAL and clove-type policy cases, gateway boundary/expiry vectors, IV replay
+and reassembly caps, clove freshness/underflow cases, encryption-failure
+canaries, custom-selector lifetime and peer-config race tests. None has been
+compiled or executed locally.
+
+The SAM/I2CP/Streaming/Datagram continuation prepares per-port accept teardown,
+subsession PORT/duplicate checks, HELLO whitespace vectors, SESSION STATUS error
+prefixes, b33 store-key lookups, single terminal I2CP statuses, staged
+CreateLeaseSet2 validation, saved-packet/reassembly caps, stream-map races,
+ping/pong ports, SYN authentication, Datagram3 unauthenticated hash delivery,
+wildcard replacement and identity-refresh regressions. None has been compiled or
+executed locally.
+
+### Android IPC/SAF continuation
+
+Prepared for manual Android CI/device only: JNI UTF-16/NUL/surrogate rejection;
+bounded start diagnostics; SAF tree/grant release and detach; export grant scope
+and zero-length failure state; close/release not retiring the broker; created
+document name verification; display-name `:`/`\`; pending autostart across
+Activity death; `MY_PACKAGE_REPLACED` resume; torrent id 0 rejection. No Gradle,
+Lint, JNI link, emulator or device run exists.

@@ -22,8 +22,10 @@ canonical palette in [assets/branding/colors.md](assets/branding/colors.md).
 
 The supported platforms are **Windows, Linux, OpenBSD and Android**. macOS,
 FreeBSD and Solaris are outside the CMake support matrix; use upstream i2pd
-there. The TUI and documentation are in English. OpenSSL and LibreSSL are
-supported. The HTTP administrative console has been removed.
+there. The Android UI ships complete English, Spanish, Russian and Simplified Chinese
+catalogs; the native TUI, proxy messages and daemon UI use en/es/ru/zh-Hans
+catalogs with English fallback. Documentation remains in English. OpenSSL and
+LibreSSL are supported. The HTTP administrative console has been removed.
 
 The executable remains `i2pd`, and existing configuration files, service names
 and data directories remain compatible. OpenBSD services store data in
@@ -31,7 +33,7 @@ and data directories remain compatible. OpenBSD services store data in
 
 ## Build
 
-Install a C++23 compiler (GCC 13+, Clang 17+ or MSVC 19.35+), CMake 3.22+,
+Install a C++23 compiler (GCC 13+, Clang 17+ or MSVC 19.35+), CMake 3.24+,
 Ninja, Boost 1.74+ with program_options (Boost 1.81+ with JSON/URL for the
 torrent client), OpenSSL 3.0.2+ or LibreSSL 4.0+, and zlib. UPnP support is
 compiled in by default and requires MiniUPnPc 2.2.6+ (API 17). From the
@@ -48,8 +50,8 @@ add `-DBUILD_TESTING=ON` and run
 
 The root `Makefile` is a POSIX make front-end for the same CMake build and
 works with BSD make on OpenBSD. It uses the Ninja generator because CMake's
-"Unix Makefiles" generator emits GNU make syntax. GNU make is no longer
-required or supported by the maintained build files. Targets include
+"Unix Makefiles" generator emits GNU make syntax. GNU make is not required by
+the CMake build or the POSIX front-end. Targets include
 `configure`, `build`, `router`, `tui`, `tools`, `test`, `check` and `install`;
 `tests/Makefile` configures, builds and runs CTest. Windows build
 instructions are in [build_mingw.cmd](build/build_mingw.cmd).
@@ -69,7 +71,7 @@ endpoint (an `AF_UNIX` socket on Unix, `<datadir>/i2pd-tui.sock` by default, or
 a local named pipe on Windows); router status is read-only and torrent actions
 require explicit confirmation. The router runs without a terminal, stdin or the
 TUI. See the [configuration example](contrib/i2pd.conf),
-[documentation](docs/README.md), the [fork guide index](docs/index.md) and the
+[documentation](docs/index.md), the [fork guide index](docs/index.md) and the
 [Windows TUI guide](docs/TUI-WINDOWS.md). OpenBSD configuration is in
 [contrib/openbsd](contrib/openbsd). Upstream documentation provenance and the
 manual synchronization procedure are recorded in

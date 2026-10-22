@@ -105,8 +105,8 @@ webirc {
 
    Still as root, run:
 ```
-    echo "/etc/i2pd/unrealircd/ip2d_ircd.socket rw," >>/etc/apparmor.d/local/system_i2pd
-    apparmor_parser -r /etc/apparmor.d/system_i2pd
+    echo "/etc/i2pd/unrealircd/i2pd_ircd.socket rw," >>/etc/apparmor.d/local/usr.bin.i2pd
+    apparmor_parser -r /etc/apparmor.d/usr.bin.i2pd
 ```
 
    Configure UnrealIRCd, adding this to your unrealircd.conf file:

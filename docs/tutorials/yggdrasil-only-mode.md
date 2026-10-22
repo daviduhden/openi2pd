@@ -17,7 +17,6 @@ Start yggdrasil first and make sure you're running from a fresh i2pd installatio
 daemon=true # note: remove it if you running on Windows!
 ipv4=false
 ipv6=false
-ssu=false
 ntcp2.enabled=false
 ssu2.enabled=false
 meshnets.yggdrasil=true  

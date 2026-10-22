@@ -28,10 +28,10 @@ A deeper technical introduction of I2P can be found [here](https://geti2p.net/en
 
 While [Java I2P](https://geti2p.net) and openi2pd are both clients for the I2P network, openi2pd has some major differences and advantages:
 
-* Java I2P has built-in applications for torrents, e-mail and so on. openi2pd is a router which you can use with other software through the I2CP interface.
+* Java I2P has built-in applications for torrents, e-mail and so on. openi2pd includes a native I2PSnark-compatible torrent engine and TUI, and other software can connect through I2CP, SAM, BOB, HTTP or SOCKS.
 * openi2pd does not require Java. It is written in C++.
 * openi2pd consumes less memory and CPU.
-* openi2pd can be compiled wherever GCC or Clang is available (including Raspberry Pi and routers).
+* openi2pd targets the supported Linux, OpenBSD and Windows build matrix with a C++23 compiler and CMake 3.24 or newer; see the build guides for current requirements.
 * openi2pd has optimizations for faster cryptography, reducing processor time and energy use.
 
 ## Why is the I2P network so slow and unstable sometimes?
@@ -83,7 +83,7 @@ The openi2pd SOCKS proxy can pass non-I2P traffic to a Tor SOCKS proxy. Make sur
 
 ## What is a floodfill mode?
 
-Floodfill mode make your router a floodfill, that means what other routers will publish and get LeaseSets and RIs on your router. [Read more](http://geti2p.net/en/docs/how/network-database).
+Floodfill mode make your router a floodfill, that means what other routers will publish and get LeaseSets and RIs on your router. [Read more](https://i2p.net/en/docs/overview/network-database/).
 Floodfill mode require more bandwith, CPU time. You can enable floodfill only if it has public ipv4 address and minimal bandwidth O: `floodfill = true`
 
 ## How is I2P different from Tor?

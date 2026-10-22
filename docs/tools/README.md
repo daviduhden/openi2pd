@@ -69,7 +69,7 @@ format.
 
 ## Tests
 
-CTest registers three native-tool tests:
+CTest registers three native-tool tests plus the library-level firewall test:
 
 - `tools-smoke`: key generation, key inspection, base64, registration and
   verification, offline keys, X25519 and CLI validation.
@@ -83,8 +83,10 @@ CTest registers three native-tool tests:
   bytes, embedded NULs, whitespace and malformed input; `offlinekeys` defaults,
   limits and output parseability; and `vain` thread, pattern, signature and
   regex bounds. It never starts a vanity search or contacts the network.
-- `tools-inventory`: every native tool target and its source are present, and
-  the pinned upstream manifest is checked for missing files.
+- `tools-inventory`: every native tool target and its source are present, the
+  pinned upstream manifest is checked for missing files, and an unregistered
+  top-level `tools/*.cpp` fails the check. `test-routerinfo-firewall` separately
+  pins the endpoint grammar and renderers.
 
 The regression test generates ephemeral keys below the build tree, restricts
 them to the owner where the platform supports it, and removes the directory on
@@ -96,8 +98,9 @@ fuzzing has been run on the imported parsers, and dynamic Windows CLI testing
 also remains pending.
 
 The Perl `i2pdctl` client is covered separately by `perl-i2pdctl-syntax`,
-`perl-portability`, `perl-install-layout` and the Test::More suites; see
-[i2pdctl](i2pdctl.md).
+`perl-portability`, `perl-install-layout` and the Test::More suites. The install
+test verifies all declared native executables and `LICENSE.i2pd-tools` in the
+`Tools` component; see [i2pdctl](i2pdctl.md).
 
 The maintained native tools use C++23 and the in-tree `libi2pd`/`libi2pdclient`
 libraries. `tools/common/getopt.*` provides the small getopt/getopt_long

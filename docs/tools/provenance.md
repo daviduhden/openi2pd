@@ -41,20 +41,20 @@ the working tree.
 | Executable | Source | Main test coverage |
 |---|---|---|
 | `autoconf_i2pd` | `tools/autoconf_i2pd.cpp` | `tools-regressions` scripted non-interactive transcript |
-| `b33address` | `tools/b33address.cpp` | `tools-regressions`: Ed25519/RedDSA, invalid and oversized stdin |
+| `b33address` | `tools/b33address.cpp` | `tools-regressions`: Ed25519/RedDSA, invalid/oversized stdin and non-zero failures |
 | `b33offlinekeys` | `tools/b33offlinekeys.cpp` | `tools-regressions`: day bounds, output parseability, read-only key rejection |
 | `famtool` | `tools/famtool.cpp` | `tools-regressions`: generation, family-name bounds, negative options |
 | `i2pbase64` | `tools/i2pbase64.cpp` | smoke and regressions: binary, UTF-8, NUL, I2P alphabet and malformed input |
-| `keygen` | `tools/keygen.cpp` | smoke and regressions: Ed25519, RedDSA and P-256 |
+| `keygen` | `tools/keygen.cpp` | smoke and regressions: Ed25519, RedDSA and P-256; unsupported generators and `--help` fail without writing |
 | `keyinfo` | `tools/keyinfo.cpp` | regressions: all output modes, offline batches and malformed keys |
 | `offlinekeys` | `tools/offlinekeys.cpp` | regressions: defaults, bounds, output parsed by `keyinfo` |
 | `regaddr` | `tools/regaddr.cpp` | regressions plus `verifyhost` cross-check |
 | `regaddr_3ld` | `tools/regaddr_3ld.cpp` | three-step records plus `verifyhost` cross-check |
 | `regaddralias` | `tools/regaddralias.cpp` | alias records plus `verifyhost` cross-check |
-| `routerinfo` | `tools/routerinfo.cpp` | `test-routerinfo-firewall` and `tools-smoke` |
+| `routerinfo` | `tools/routerinfo.cpp` | `test-routerinfo-firewall` (iptables/ip6tables, nftables comments, Windows stable names and PF labels), `tools-smoke` CLI conflicts and legacy `-f` |
 | `vain` | `tools/vain.cpp` | regressions: CLI bounds only; no long search |
 | `verifyhost` | `tools/verifyhost.cpp` | regressions: valid, tampered and malformed records |
-| `x25519` | `tools/x25519.cpp` | `tools-smoke`: key-pair output |
+| `x25519` | `tools/x25519.cpp` | `tools-smoke`: key-pair output and unknown-option rejection |
 
 `tools/scripts/i2pdctl` is the Perl I2PControl client. It is installed with the
 same `Tools` component and has separate syntax and `prove` checks. It is not a
@@ -70,8 +70,9 @@ imports:
 - `tools/common/getopt.cpp` / `getopt.h` — MSVC-compatible `getopt`/
   `getopt_long` surface.
 - `tools/firewall.hpp` — endpoint model and firewall renderers.
+- `tools/common/crypto.hpp` — RAII crypto lifetime for key-generating tools.
 - `tools/CMakeLists.txt`, `tools/test-tools*.cmake`,
-  `tools/tests/validate-branding.t` — CMake/CTest integration.
+  `tools/test-perl-install.cmake`, `tools/tests/*.t` — CMake/CTest integration.
 - `tools/scripts/check-doc-links.pl`, `tools/scripts/validate-branding.pl` —
   offline repository checks.
 
@@ -79,7 +80,8 @@ imports:
 
 All 15 native targets are created by `tools/CMakeLists.txt` with C++23 enabled
 and are installed to `CMAKE_INSTALL_BINDIR` under the `Tools` component when
-`I2PD_BUILD_TOOLS=ON` (the default). `I2PD_BUILD_TOOLS=OFF` removes both the
+`I2PD_BUILD_TOOLS=ON` (the default). `LICENSE.i2pd-tools` is installed to
+`CMAKE_INSTALL_DOCDIR` in the same component. `I2PD_BUILD_TOOLS=OFF` removes both the
 targets and the tool tests. The router, TUI, libraries and tools are configured
 by the same CMake graph; the POSIX Make front-end only invokes CMake/Ninja.
 

@@ -64,6 +64,7 @@ pidfile                                | Where to write pidfile (default: i2pd.p
 log                                    | Logs destination: stdout, file, syslog (stdout if not set or invalid) (if daemon, stdout/unspecified are replaced by file in some cases)
 logfile                                | Path to logfile (default - autodetect)
 loglevel                               | Log messages above this level (debug, info, warn, error, none; default - warn)
+lang                                   | UI language for built-in web/proxy and desktop messages: en, es, ru, zh-Hans; empty follows the process locale
 logclftime                             | Write full CLF-formatted date and time to log (default: false (write only time))
 datadir                                | Path to storage of i2pd data (configs, keys, netdb, peer profiles, etc ...). Can be passed as an agrument only.
 host                                   | Router external IP for incoming connections (default: auto if SSU2 is enabled)
@@ -132,6 +133,7 @@ Option                                 | Description
 -------------------------------------- | --------------------------------------
 tui.enabled                            | Enable the local TUI IPC channel (default: true; false on Android)
 tui.socket                             | Unix socket path or Windows logical endpoint (default: `<datadir>/i2pd-tui.sock`; the Windows pipe name is derived from it)
+tui.language                           | TUI language: en, es, ru, zh-Hans (overridden by `--lang`; empty follows `LC_ALL`/`LC_MESSAGES`/`LANG`)
 
 On Unix the socket is created with mode 0600 and only accepts the daemon's
 effective UID. On Windows the pipe uses a protected DACL and rejects remote
@@ -218,7 +220,7 @@ bob.port                               | Port of BOB command channel. Usually 28
 
 Option                                 | Description
 -------------------------------------- | --------------------------------------
-i2cp.enabled                           | If I2CP is enabled. (default: true)
+i2cp.enabled                           | If I2CP is enabled. (default: false; enable explicitly)
 i2cp.address                           | The address to listen on or an abstract address for Android LocalSocket
 i2cp.port                              | Port of I2CP server. Usually 7654. Ignored for Andorid
 i2cp.singlethread                      | If false every I2CP session runs in own thread. (default: true)

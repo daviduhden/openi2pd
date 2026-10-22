@@ -153,10 +153,17 @@ Set the UNIX-domain socket used by
 .Xr i2pd-tui 1 .
 .It Fl -privsep.enabled Ar bool
 Enable supported privilege-separation workers.
-The log worker is currently the only isolated worker.
+The log worker and the opt-in torrent/router storage workers use separate
+processes; networking, crypto and the router core are not separated by this
+option.
 .It Fl -privsep.log Ar bool
 Route file logging through the isolated log worker.
-This combination is refused when the .Ox pledge/unveil sandbox is active.
+On .Ox the supervisor is spawned while the startup pledge still permits
+.Fn exec ;
+the runtime core retains
+.Va proc
+but never
+.Va exec .
 .It Fl -reseed.file Ar path-or-url
 Reseed from a local SU3 file or an HTTPS URL.
 .It Fl -reseed.urls Ar urls
@@ -184,9 +191,14 @@ Default local TUI socket, relative to the data directory.
 .It Dv SIGHUP
 Reload tunnel configuration.
 .It Dv SIGUSR1
-Reopen log files for rotation.
-.It Dv SIGINT , Dv SIGTERM , Dv SIGABRT
-Perform an orderly shutdown.
+Reopen an in-process file log for rotation.
+This is a no-op for stdout, syslog and
+.Va privsep.log
+logging; use copy-truncate rotation for the isolated log worker.
+.It Dv SIGINT
+Perform a graceful shutdown, draining transit tunnels.
+.It Dv SIGTERM , Dv SIGABRT
+Perform an orderly shutdown without the transit-tunnel grace period.
 .It Dv SIGTSTP
 Disconnect from the network when
 .Va unix.handle_sigtstp

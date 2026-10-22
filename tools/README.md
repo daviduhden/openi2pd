@@ -133,6 +133,12 @@ or
 | GOSTR3410_TC26_A_512-GOSTR3411-512   | 10     |
 | RED25519-SHA512                      | 11     |
 
+Names are case-insensitive, `_` is accepted in place of `-`, and the
+`ECDSA-SHA256/384/512-*`, `EDDSA-SHA512-ED25519`, `GOSTR3410_CRYPTO_PRO_A`
+and `GOSTR3410_TC26_A` spellings are aliases. A requested signature type whose
+generator is unavailable fails instead of writing a fallback DSA key. Numeric
+types remain accepted.
+
 For more information on the types of signatures, see the
 [local tunnel documentation](../docs/user-guide/tunnels.md#signature-types).
 ### vain
@@ -222,7 +228,7 @@ sign a router info with family signing key
 ```./famtool -s -n i2pfam -k myfam.pem -i router.keys -f router.info```
 
 verify signed router.info
-```./famtool -V -n i2pfam -c myfam.pem -f router.info```
+```./famtool -V -n i2pfam -c myfam.crt -f router.info```
 #### Example of usage
     $ ./famtool -g -n i2pfam -c myfam.crt -k myfam.pem
     family i2pfam made
@@ -241,7 +247,7 @@ verify signed router.info
     bQ==
     -----END CERTIFICATE-----
     $ cat myfam.pem
-    -----BEGIN EC PRIVATE KEY-----
+    -----BEGIN PRIVATE KEY-----
     MHcCAQEEIAFA82vZzZN8nZIOVnadSS73G2NNc5pUsh4qmpK2M0nsoAoGCCqGSM49
     AwEHoUQDQgAEt6M2nVjW2cwYVpQi7M2k0vwH0q9p5JKH45aFFwefbHUPxM8JUDgg
     xLSOIwih0Jx3JObPRCBJexYOpPYJsEwQ1A==
@@ -272,4 +278,4 @@ A program to help create the openi2pd configuration file
 
 For a now a better way to manual write the config file
 
-For usage just run ./AutoConf or AutoConf.exe
+For usage run `./autoconf_i2pd` (or `autoconf_i2pd.exe` on Windows).
