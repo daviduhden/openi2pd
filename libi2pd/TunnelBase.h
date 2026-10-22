@@ -19,9 +19,14 @@
 #include <memory>
 #include <future>
 #include <list>
+#include <deque>
+#include <mutex>
+#include <unordered_set>
+#include <utility>
 #include "Timestamp.h"
 #include "I2NPProtocol.h"
 #include "Identity.h"
+#include "Tag.h"
 
 namespace i2p
 {
@@ -72,10 +77,40 @@ namespace tunnel
 		uint32_t GetCreationTime () const { return m_CreationTime.load (std::memory_order_relaxed); };
 		void SetCreationTime (uint32_t t) { m_CreationTime.store (t, std::memory_order_relaxed); };
 
+		// Bounded per-tunnel IV replay filter (Java BloomFilterIVValidator).
+		// The tunnel worker is the only producer for a given receive tunnel,
+		// but the mutex also protects administrative/diagnostic callers.
+		bool CheckAndStoreIV (const uint8_t * iv)
+		{
+			if (!iv) return false;
+			constexpr uint64_t window = 10 * 60 * 1000LL; // Java 10-minute half-life
+			constexpr size_t maximum = 512;
+			const auto now = i2p::util::GetMillisecondsSinceEpoch ();
+			std::lock_guard<std::mutex> l (m_IVMutex);
+			while (!m_RecentIVs.empty () && m_RecentIVs.front ().second + window <= now)
+			{
+				m_RecentIVSet.erase (m_RecentIVs.front ().first);
+				m_RecentIVs.pop_front ();
+			}
+			i2p::data::Tag<16> tag (iv);
+			if (m_RecentIVSet.count (tag)) return false;
+			if (m_RecentIVs.size () >= maximum)
+			{
+				m_RecentIVSet.erase (m_RecentIVs.front ().first);
+				m_RecentIVs.pop_front ();
+			}
+			m_RecentIVs.emplace_back (tag, now);
+			m_RecentIVSet.insert (tag);
+			return true;
+		}
+
 	private:
 		uint32_t m_TunnelID, m_NextTunnelID;
 		i2p::data::IdentHash m_NextIdent;
 		std::atomic<uint32_t> m_CreationTime; // seconds since epoch, read by TUI/IPC
+		std::mutex m_IVMutex;
+		std::deque<std::pair<i2p::data::Tag<16>, uint64_t>> m_RecentIVs;
+		std::unordered_set<i2p::data::Tag<16>> m_RecentIVSet;
 	};
 
 	struct TunnelCreationTimeCmp

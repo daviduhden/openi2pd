@@ -825,6 +825,7 @@ namespace crypto
 	ECBEncryption::~ECBEncryption ()
 	{
 		if (m_Ctx) EVP_CIPHER_CTX_free (m_Ctx);
+		m_Key.Wipe ();
 	}
 
 	bool ECBEncryption::EncryptChecked (const uint8_t * in, uint8_t * out)
@@ -861,6 +862,7 @@ namespace crypto
 	ECBDecryption::~ECBDecryption ()
 	{
 		if (m_Ctx) EVP_CIPHER_CTX_free (m_Ctx);
+		m_Key.Wipe ();
 	}
 
 	bool ECBDecryption::DecryptChecked (const uint8_t * in, uint8_t * out)
@@ -897,6 +899,7 @@ namespace crypto
 	CBCEncryption::~CBCEncryption ()
 	{
 		if (m_Ctx) EVP_CIPHER_CTX_free (m_Ctx);
+		m_Key.Wipe ();
 	}
 
 	bool CBCEncryption::EncryptChecked (const uint8_t * in, size_t len, const uint8_t * iv, uint8_t * out)
@@ -933,6 +936,7 @@ namespace crypto
 	CBCDecryption::~CBCDecryption ()
 	{
 		if (m_Ctx) EVP_CIPHER_CTX_free (m_Ctx);
+		m_Key.Wipe ();
 	}
 
 	bool CBCDecryption::DecryptChecked (const uint8_t * in, size_t len, const uint8_t * iv, uint8_t * out)
@@ -1073,16 +1077,22 @@ namespace crypto
 		return AEADChaCha20Poly1305 (m_Ctx, msg, msgLen, ad, adLen, key, nonce, buf, len, true);
 	}
 
-	void AEADChaCha20Poly1305Encryptor::Encrypt (const std::vector<std::pair<uint8_t *, size_t>> & bufs,
+	bool AEADChaCha20Poly1305Encryptor::Encrypt (const std::vector<std::pair<uint8_t *, size_t>> & bufs,
 		const uint8_t * key, const uint8_t * nonce, uint8_t * mac)
 	{
-		if (bufs.empty () || !m_Ctx || !key || !nonce || !mac)
+		auto fail = [&] () -> bool
 		{
-			// There is no return value to report failure. A zero tag cannot
-			// authenticate any packet, so the peer will discard it.
-			if (mac) memset (mac, 0, 16);
-			return;
-		}
+			// A partially updated in-place buffer may contain ciphertext for
+			// earlier entries and plaintext for later ones. Never let the
+			// caller transmit that frame with a zero tag; wipe every output
+			// buffer and report failure.
+			for (const auto & it : bufs)
+				if (it.first && it.second) OPENSSL_cleanse (it.first, it.second);
+			if (mac) OPENSSL_cleanse (mac, 16);
+			LogPrint (eLogError, "AEAD: multi-buffer encryption failed");
+			return false;
+		};
+		if (bufs.empty () || !m_Ctx || !key || !nonce || !mac) return fail ();
 		bool ok = EVP_EncryptInit_ex (m_Ctx, EVP_chacha20_poly1305 (), nullptr, nullptr, nullptr) == 1
 			&& EVP_CIPHER_CTX_ctrl (m_Ctx, EVP_CTRL_AEAD_SET_IVLEN, 12, nullptr) == 1
 			&& EVP_EncryptInit_ex (m_Ctx, nullptr, nullptr, key, nonce) == 1;
@@ -1106,11 +1116,7 @@ namespace crypto
 			ok = EVP_EncryptFinal_ex (m_Ctx, finalBuf, &outlen) == 1 && outlen == 0
 				&& EVP_CIPHER_CTX_ctrl (m_Ctx, EVP_CTRL_AEAD_GET_TAG, 16, mac) == 1;
 		}
-		if (!ok)
-		{
-			memset (mac, 0, 16);
-			LogPrint (eLogError, "AEAD: multi-buffer encryption failed");
-		}
+		return ok ? true : fail ();
 	}
 
 	AEADChaCha20Poly1305Decryptor::AEADChaCha20Poly1305Decryptor ()
@@ -1404,12 +1410,120 @@ namespace crypto
 		}
 	}*/
 
+	namespace
+	{
+		[[maybe_unused]] bool FetchDigest (const char * name)
+		{
+#if I2PD_HAVE_EVP_MD_FETCH
+			EVP_MD * md = EVP_MD_fetch (nullptr, name, nullptr);
+			if (!md) return false;
+			EVP_MD_free (md);
+			return true;
+#else
+			(void)name;
+			return false;
+#endif
+		}
+
+		[[maybe_unused]] bool FetchCipher (const char * name)
+		{
+#if I2PD_HAVE_EVP_CIPHER_FETCH
+			EVP_CIPHER * cipher = EVP_CIPHER_fetch (nullptr, name, nullptr);
+			if (!cipher) return false;
+			EVP_CIPHER_free (cipher);
+			return true;
+#else
+			(void)name;
+			return false;
+#endif
+		}
+
+		bool FetchHKDF ()
+		{
+#if I2PD_HAVE_EVP_KDF_FETCH
+			EVP_KDF * kdf = EVP_KDF_fetch (nullptr, "HKDF", nullptr);
+			if (!kdf) return false;
+			EVP_KDF_free (kdf);
+			return true;
+#else
+#ifdef EVP_PKEY_HKDF
+			EVP_PKEY_CTX * ctx = EVP_PKEY_CTX_new_id (EVP_PKEY_HKDF, nullptr);
+			if (!ctx) return false;
+			EVP_PKEY_CTX_free (ctx);
+			return true;
+#else
+			return false;
+#endif
+#endif
+		}
+
+		bool FetchSipHash ()
+		{
+#if OPENSSL_SIPHASH
+			EVP_PKEY * key = EVP_PKEY_new_raw_private_key (
+				EVP_PKEY_SIPHASH, nullptr, reinterpret_cast<const unsigned char *> ("0123456789abcdef"), 16);
+			if (!key) return false;
+			EVP_PKEY_free (key);
+			return true;
+#else
+			// The project-owned SipHash-2-4 implementation is the fallback for
+			// LibreSSL and for OpenSSL builds without this provider algorithm.
+			return true;
+#endif
+		}
+
+		CryptoCapabilities ProbeCryptoCapabilities ()
+		{
+			CryptoCapabilities capabilities { };
+#if I2PD_HAVE_EVP_MD_FETCH
+			capabilities.sha1 = FetchDigest ("SHA1");
+			capabilities.sha256 = FetchDigest ("SHA256");
+			capabilities.sha512 = FetchDigest ("SHA512");
+#else
+			capabilities.sha1 = EVP_sha1 () != nullptr;
+			capabilities.sha256 = EVP_sha256 () != nullptr;
+			capabilities.sha512 = EVP_sha512 () != nullptr;
+#endif
+#if I2PD_HAVE_EVP_CIPHER_FETCH
+			capabilities.aes256Cbc = FetchCipher ("AES-256-CBC");
+			capabilities.aes256Ecb = FetchCipher ("AES-256-ECB");
+			capabilities.aes256Ctr = FetchCipher ("AES-256-CTR");
+			capabilities.chacha20 = FetchCipher ("ChaCha20");
+			capabilities.chacha20Poly1305 = FetchCipher ("ChaCha20-Poly1305");
+#else
+			capabilities.aes256Cbc = EVP_aes_256_cbc () != nullptr;
+			capabilities.aes256Ecb = EVP_aes_256_ecb () != nullptr;
+			capabilities.aes256Ctr = EVP_aes_256_ctr () != nullptr;
+			capabilities.chacha20 = EVP_chacha20 () != nullptr;
+			capabilities.chacha20Poly1305 = EVP_chacha20_poly1305 () != nullptr;
+#endif
+			capabilities.hkdf = FetchHKDF ();
+			capabilities.sipHash = FetchSipHash ();
+			return capabilities;
+		}
+
+		CryptoCapabilities g_CryptoCapabilities { };
+		std::once_flag g_CryptoCapabilitiesOnce;
+	}
+
+	const CryptoCapabilities & GetCryptoCapabilities ()
+	{
+		std::call_once (g_CryptoCapabilitiesOnce, [] () { g_CryptoCapabilities = ProbeCryptoCapabilities (); });
+		return g_CryptoCapabilities;
+	}
+
 	void InitCrypto (bool precomputation)
 	{
 		/*		auto numLocks = CRYPTO_num_locks();
 		for (int i = 0; i < numLocks; i++)
 			m_OpenSSLMutexes.emplace_back (new std::mutex);
 		CRYPTO_set_locking_callback (OpensslLockingCallback);*/
+		const auto & capabilities = GetCryptoCapabilities ();
+		if (!capabilities.sha256 || !capabilities.aes256Cbc || !capabilities.aes256Ecb
+			|| !capabilities.chacha20 || !capabilities.chacha20Poly1305 || !capabilities.hkdf
+			|| (OPENSSL_SIPHASH && !capabilities.sipHash))
+			LogPrint (eLogCritical, "Crypto: active libcrypto provider is missing a required algorithm "
+									"(SHA256/AES-256-CBC/AES-256-ECB/ChaCha20/ChaCha20-Poly1305/HKDF/SipHash)");
 		if (precomputation)
 		{
 #if IS_X86_64

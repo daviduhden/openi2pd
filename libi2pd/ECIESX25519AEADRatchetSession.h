@@ -16,6 +16,7 @@
 
 #include <string.h>
 #include <inttypes.h>
+#include <atomic>
 #include <functional>
 #include <memory>
 #include <vector>
@@ -66,7 +67,16 @@ namespace garlic
 	{
 	public:
 		RatchetTagSet () { };
-		virtual ~RatchetTagSet () { };
+		virtual ~RatchetTagSet ()
+		{
+			m_SessionTagKeyData.Wipe ();
+			OPENSSL_cleanse (m_SessTagConstant, sizeof (m_SessTagConstant));
+			OPENSSL_cleanse (m_SymmKeyCK, sizeof (m_SymmKeyCK));
+			OPENSSL_cleanse (m_CurrentSymmKeyCK, sizeof (m_CurrentSymmKeyCK));
+			OPENSSL_cleanse (m_NextRootKey, sizeof (m_NextRootKey));
+			for (auto & it : m_ItermediateSymmKeys) it.second.Wipe ();
+			m_ItermediateSymmKeys.clear ();
+		};
 
 		void DHInitialize (const uint8_t * rootKey, const uint8_t * k);
 		void NextSessionTagRatchet ();
@@ -130,6 +140,7 @@ namespace garlic
 	{
 	public:
 		SymmetricKeyTagSet (GarlicDestination * destination, const uint8_t * key);
+		~SymmetricKeyTagSet () override { OPENSSL_cleanse (m_Key, sizeof (m_Key)); }
 
 		bool IsIndexExpired (int /* index */) const override { return false; };
 		bool HandleNextMessage (uint8_t * buf, size_t len, int index) override;
@@ -162,7 +173,7 @@ namespace garlic
 	// lengths, and Padding/Termination ordering.
 	bool ValidateRatchetPayload (const uint8_t * buf, size_t len);
 	// Validates the payload of a New Session (NS/N): exactly one DateTime block
-	// inside the Java 2.13.0 window, at least one Garlic clove, no
+	// inside the Java 2.14.0 window, a deliberately stricter non-empty Garlic policy, no
 	// Termination/SessionID/unknown blocks and nothing after Padding.
 	// Exposed for the self-contained regression tests.
 	bool ValidateNewSessionPayload (const uint8_t * buf, size_t len);
@@ -211,7 +222,7 @@ namespace garlic
 			m_RemoteStaticKeyType = keyType;
 			memcpy (m_RemoteStaticKey, key, 32);
 		}
-		void Terminate () { m_IsTerminated = true; }
+		void Terminate () { m_IsTerminated.store (true, std::memory_order_release); }
 		void SetDestination (const i2p::data::IdentHash & dest)
 		{
 			if (!m_Destination) m_Destination.reset (new i2p::data::IdentHash (dest));
@@ -231,10 +242,14 @@ namespace garlic
 		{
 			return m_State == eSessionStateNewSessionReceived || m_SendReverseKey || !m_AckRequests.empty ();
 		};
+		// One fallback ACK/NSR timer per session. ACK-request floods must not
+		// allocate an unbounded number of timers.
+		bool ArmResponseTimer () { return !m_ResponseTimerArmed.exchange (true); }
+		void DisarmResponseTimer () { m_ResponseTimerArmed.store (false); }
 
 		bool IsRatchets () const override { return true; };
 		bool IsReadyToSend () const override { return m_State != eSessionStateNewSessionSent; };
-		bool IsTerminated () const override { return m_IsTerminated; }
+		bool IsTerminated () const override { return m_IsTerminated.load (std::memory_order_acquire); }
 		uint64_t GetLastActivityTimestamp () const override { return m_LastActivityTimestamp; };
 		void SetAckRequestInterval (int interval) override { m_AckRequestInterval = interval; };
 		bool CleanupUnconfirmedTags () override; // return true if unanswered Ack requests, called from I2CP
@@ -299,7 +314,9 @@ namespace garlic
 		std::shared_ptr<RatchetTagSet> m_SendTagset, m_NSRSendTagset;
 		std::unique_ptr<i2p::data::IdentHash> m_Destination; // must be set for NS if outgoing and NSR if incoming
 		std::list<std::pair<uint16_t, int>> m_AckRequests; // incoming (tagsetid, index)
-		bool m_SendReverseKey = false, m_SendForwardKey = false, m_IsTerminated = false;
+		bool m_SendReverseKey = false, m_SendForwardKey = false;
+		std::atomic_bool m_IsTerminated { false };
+		std::atomic_bool m_ResponseTimerArmed { false };
 		std::unique_ptr<DHRatchet> m_NextReceiveRatchet, m_NextSendRatchet;
 
 		uint64_t m_LastAckRequestSendTime = 0; // milliseconds

@@ -41,11 +41,11 @@ namespace transport
 	constexpr size_t NTCP2_SEND_AFTER_FRAME_SIZE = 16386; // send frame when exceeds this size
 	constexpr size_t NTCP2_SESSION_HANDSHAKE_MAX_SIZE = 287; // SessionRequest/SessionCreated without ML-KEM frame
 	constexpr size_t NTCP2_SESSION_HANDSHAKE_LONG_MAX_SIZE = 944; // for non-PQ
-	// Java 2.13.0 InboundEstablishState.MSG3P2_MAX. The theoretical protocol
-	// maximum is 65487 bytes, but Java rejects anything above 6000 and i2pd's
-	// own RouterInfo is limited to MAX_RI_BUFFER_SIZE, so keep the allocation
-	// and the read bounded by the same value.
-	constexpr size_t NTCP2_SESSION_CONFIRMED_PART2_MAX_SIZE = 6000;
+	// Java 2.14.0 InboundEstablishState: BUFFER_SIZE (4096) - MSG3P1_SIZE
+	// (48) = 4048. MSG3P2_MIN is 459 (minimum RI block plus MAC/block
+	// overhead). Keep both directions on the reference bounds.
+	constexpr size_t NTCP2_SESSION_CONFIRMED_PART2_MIN_SIZE = 459;
+	constexpr size_t NTCP2_SESSION_CONFIRMED_PART2_MAX_SIZE = 4048;
 	const int NTCP2_MAX_PADDING_RATIO = 6; // in %
 
 	// Bob must reject a SessionRequest whose encrypted ephemeral key was seen
@@ -222,7 +222,7 @@ namespace transport
 		void CreateNonce (uint64_t seqn, uint8_t * nonce);
 		void CreateNextReceivedBuffer (size_t size);
 		void KeyDerivationFunctionDataPhase ();
-		void SetSipKeys (const uint8_t * sendSipKey, const uint8_t * receiveSipKey);
+		bool SetSipKeys (const uint8_t * sendSipKey, const uint8_t * receiveSipKey);
 
 		// establish
 		void SendSessionRequest ();
@@ -352,7 +352,7 @@ namespace transport
 		auto & GetEstablisherService () { return m_EstablisherService.GetService (); };
 		std::mt19937 & GetRng () { return m_Rng; };
 		std::mt19937 & GetEstablisherRng () { return m_EstablisherService.GetRng (); };
-		void AEADChaCha20Poly1305Encrypt (const std::vector<std::pair<uint8_t *, size_t>> & bufs, const uint8_t * key,
+		bool AEADChaCha20Poly1305Encrypt (const std::vector<std::pair<uint8_t *, size_t>> & bufs, const uint8_t * key,
 			const uint8_t * nonce, uint8_t * mac);
 		bool AEADChaCha20Poly1305Decrypt (const uint8_t * msg, size_t msgLen, const uint8_t * ad, size_t adLen,
 			const uint8_t * key, const uint8_t * nonce, uint8_t * buf, size_t len);
@@ -417,7 +417,7 @@ namespace transport
 		i2p::crypto::AEADChaCha20Poly1305Decryptor m_Decryptor;
 
 		int m_Version;
-		bool m_IsReady;
+		std::atomic<bool> m_IsReady;
 
 	public:
 		// for HTTP/I2PControl

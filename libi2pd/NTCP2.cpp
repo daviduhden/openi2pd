@@ -105,16 +105,21 @@ namespace transport
 	void NTCP2Establisher::SetVersion (int version)
 	{
 #if OPENSSL_PQ
-		switch (version)
+		if (version >= 3 && version <= 5 && i2p::crypto::CanPublishPQ (version))
 		{
-#ifndef LIBRESSL_VERSION_NUMBER
-		case 3: m_CryptoType = i2p::data::CRYPTO_KEY_TYPE_ECIES_MLKEM512_X25519_AEAD; break;
-#endif
-		case 4: m_CryptoType = i2p::data::CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD; break;
-		case 5: m_CryptoType = i2p::data::CRYPTO_KEY_TYPE_ECIES_MLKEM1024_X25519_AEAD; break;
-		default: m_CryptoType = i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD; m_IsLongPadding = false;
+			switch (version)
+			{
+			case 3: m_CryptoType = i2p::data::CRYPTO_KEY_TYPE_ECIES_MLKEM512_X25519_AEAD; break;
+			case 4: m_CryptoType = i2p::data::CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD; break;
+			case 5: m_CryptoType = i2p::data::CRYPTO_KEY_TYPE_ECIES_MLKEM1024_X25519_AEAD; break;
+			default: break;
+			}
+			return;
 		}
+		m_CryptoType = i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD;
+		m_IsLongPadding = false;
 #else
+		(void)version;
 		m_CryptoType = i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD;
 #endif
 	}
@@ -503,7 +508,7 @@ namespace transport
 				// actual padding is not known yet, apply MixHash later
 				if (m_BufferLen > NTCP2_SESSION_HANDSHAKE_MAX_SIZE) m_IsLongPadding = true;
 				m3p2Len = bufbe16toh (options + 4);
-				if (m3p2Len < 19) // 16 bytes MAC + at least 1 byte block type + 2 bytes block size
+				if (m3p2Len < NTCP2_SESSION_CONFIRMED_PART2_MIN_SIZE)
 				{
 					LogPrint (eLogWarning, "NTCP2: SessionRequest m3p2len=", m3p2Len, " is too short");
 					return false;
@@ -714,6 +719,10 @@ namespace transport
 		if (m_SendMDCtx) EVP_MD_CTX_free (m_SendMDCtx);
 		if (m_ReceiveMDCtx) EVP_MD_CTX_free (m_ReceiveMDCtx);
 #endif
+		OPENSSL_cleanse (m_Kab, sizeof (m_Kab));
+		OPENSSL_cleanse (m_Kba, sizeof (m_Kba));
+		OPENSSL_cleanse (m_Sipkeysab, sizeof (m_Sipkeysab));
+		OPENSSL_cleanse (m_Sipkeysba, sizeof (m_Sipkeysba));
 	}
 
 	void NTCP2Session::Terminate ()
@@ -774,7 +783,13 @@ namespace transport
 
 	void NTCP2Session::Established ()
 	{
+		if (IsTerminated ()) return;
 		m_IsEstablished = true;
+		if (IsTerminated ())
+		{
+			m_IsEstablished = false;
+			return;
+		}
 		m_Version = (uint8_t)m_Establisher->m_CryptoType - 2;
 		m_Establisher.reset (nullptr);
 		SetTerminationTimeout (NTCP2_TERMINATION_TIMEOUT + m_Server.GetRng () () % NTCP2_TERMINATION_TIMEOUT_VARIANCE);
@@ -1128,7 +1143,12 @@ namespace transport
 			// Alice data phase keys
 			m_SendKey = m_Kab;
 			m_ReceiveKey = m_Kba;
-			SetSipKeys (m_Sipkeysab, m_Sipkeysba);
+			if (!SetSipKeys (m_Sipkeysab, m_Sipkeysba))
+			{
+				LogPrint (eLogError, "NTCP2: SipHash provider is unavailable");
+				Terminate ();
+				return;
+			}
 			memcpy (m_ReceiveIV.buf, m_Sipkeysba + 16, 8);
 			memcpy (m_SendIV.buf, m_Sipkeysab + 16, 8);
 			Established ();
@@ -1216,7 +1236,12 @@ namespace transport
 		// Bob data phase keys
 		m_SendKey = m_Kba;
 		m_ReceiveKey = m_Kab;
-		SetSipKeys (m_Sipkeysba, m_Sipkeysab);
+		if (!SetSipKeys (m_Sipkeysba, m_Sipkeysab))
+		{
+			LogPrint (eLogError, "NTCP2: SipHash provider is unavailable");
+			Terminate ();
+			return;
+		}
 		memcpy (m_ReceiveIV.buf, m_Sipkeysab + 16, 8);
 		memcpy (m_SendIV.buf, m_Sipkeysba + 16, 8);
 		// we need to set keys for SendTerminationAndTerminate
@@ -1336,26 +1361,45 @@ namespace transport
 			Terminate ();
 	}
 
-	void NTCP2Session::SetSipKeys (const uint8_t * sendSipKey, const uint8_t * receiveSipKey)
+	bool NTCP2Session::SetSipKeys (const uint8_t * sendSipKey, const uint8_t * receiveSipKey)
 	{
+		if (!sendSipKey || !receiveSipKey) return false;
 #if OPENSSL_SIPHASH
-		EVP_PKEY * sipKey = EVP_PKEY_new_raw_private_key (EVP_PKEY_SIPHASH, nullptr, sendSipKey, 16);
-		m_SendMDCtx = EVP_MD_CTX_new ();
-		EVP_PKEY_CTX * ctx = nullptr;
-		EVP_DigestSignInit (m_SendMDCtx, &ctx, nullptr, nullptr, sipKey);
-		EVP_PKEY_CTX_ctrl (ctx, -1, EVP_PKEY_OP_SIGNCTX, EVP_PKEY_CTRL_SET_DIGEST_SIZE, 8, nullptr);
-		EVP_PKEY_free (sipKey);
-
-		sipKey = EVP_PKEY_new_raw_private_key (EVP_PKEY_SIPHASH, nullptr, receiveSipKey, 16);
-		m_ReceiveMDCtx = EVP_MD_CTX_new ();
-		ctx = nullptr;
-		EVP_DigestSignInit (m_ReceiveMDCtx, &ctx, NULL, NULL, sipKey);
-		EVP_PKEY_CTX_ctrl (ctx, -1, EVP_PKEY_OP_SIGNCTX, EVP_PKEY_CTRL_SET_DIGEST_SIZE, 8, nullptr);
-		EVP_PKEY_free (sipKey);
+		auto makeContext = [] (const uint8_t * key) -> EVP_MD_CTX *
+		{
+			EVP_PKEY * sipKey = EVP_PKEY_new_raw_private_key (EVP_PKEY_SIPHASH, nullptr, key, 16);
+			if (!sipKey) return nullptr;
+			EVP_MD_CTX * md = EVP_MD_CTX_new ();
+			EVP_PKEY_CTX * pkeyCtx = nullptr;
+			const bool ok = md && EVP_DigestSignInit (md, &pkeyCtx, nullptr, nullptr, sipKey) == 1 && pkeyCtx
+				&& EVP_PKEY_CTX_ctrl (
+					   pkeyCtx, -1, EVP_PKEY_OP_SIGNCTX, EVP_PKEY_CTRL_SET_DIGEST_SIZE, 8, nullptr)
+					== 1;
+			EVP_PKEY_free (sipKey);
+			if (!ok)
+			{
+				EVP_MD_CTX_free (md);
+				return nullptr;
+			}
+			return md;
+		};
+		EVP_MD_CTX * send = makeContext (sendSipKey);
+		if (!send) return false;
+		EVP_MD_CTX * receive = makeContext (receiveSipKey);
+		if (!receive)
+		{
+			EVP_MD_CTX_free (send);
+			return false;
+		}
+		if (m_SendMDCtx) EVP_MD_CTX_free (m_SendMDCtx);
+		if (m_ReceiveMDCtx) EVP_MD_CTX_free (m_ReceiveMDCtx);
+		m_SendMDCtx = send;
+		m_ReceiveMDCtx = receive;
 #else
 		m_SendSipKey = sendSipKey;
 		m_ReceiveSipKey = receiveSipKey;
 #endif
+		return true;
 	}
 
 	void NTCP2Session::ClientLogin ()
@@ -1615,7 +1659,13 @@ namespace transport
 			case eNTCP2BlkTermination:
 				if (size >= 9)
 				{
-					LogPrint (eLogDebug, "NTCP2: Termination. reason=", (int)(frame[offset + 8]));
+					const auto reason = static_cast<NTCP2TerminationReason> (frame[offset + 8]);
+					LogPrint (eLogDebug, "NTCP2: Termination. reason=", (int)reason);
+					// Java NTCPConnection.gotTermination applies a per-hash
+					// unreachable signal for REASON_BANNED so the next
+					// ConnectToPeer does not retry a router that banned us.
+					if (reason == eNTCP2Banned && GetRemoteIdentity ())
+						i2p::data::netdb.SetUnreachable (GetRemoteIdentity ()->GetIdentHash (), true);
 					Terminate ();
 				}
 				else
@@ -1717,8 +1767,14 @@ namespace transport
 		}
 		uint8_t nonce[12];
 		CreateNonce (m_SendSequenceNumber, nonce);
+		if (!m_Server.AEADChaCha20Poly1305Encrypt (encryptBufs, m_SendKey, nonce, macBuf))
+		{
+			LogPrint (eLogError, "NTCP2: AEAD encryption failed; dropping frame");
+			m_NextSendBuffer.reset ();
+			Terminate ();
+			return;
+		}
 		m_SendSequenceNumber++;
-		m_Server.AEADChaCha20Poly1305Encrypt (encryptBufs, m_SendKey, nonce, macBuf); // encrypt buffers
 		SetNextSentFrameLength (totalLen + 16, first->GetNTCP2Header () - 5); // frame length right before first block
 
 		// send buffers, the staged buffer is moved into the handler so that it outlives the write
@@ -1761,9 +1817,15 @@ namespace transport
 		// encrypt
 		uint8_t nonce[12];
 		CreateNonce (m_SendSequenceNumber, nonce);
+		if (!m_Server.AEADChaCha20Poly1305Encrypt ({ { m_NextSendBuffer.get () + 2, payloadLen } }, m_SendKey, nonce,
+				m_NextSendBuffer.get () + payloadLen + 2))
+		{
+			LogPrint (eLogError, "NTCP2: AEAD encryption failed; dropping frame");
+			m_NextSendBuffer.reset ();
+			Terminate ();
+			return false;
+		}
 		m_SendSequenceNumber++;
-		m_Server.AEADChaCha20Poly1305Encrypt ({ { m_NextSendBuffer.get () + 2, payloadLen } }, m_SendKey, nonce,
-			m_NextSendBuffer.get () + payloadLen + 2);
 		SetNextSentFrameLength (payloadLen + 16, m_NextSendBuffer.get ());
 		// send, the buffer is moved into the handler so that it outlives the write
 		m_IsSending = true;
@@ -2268,7 +2330,7 @@ namespace transport
 
 	bool NTCP2Server::AddNTCP2Session (std::shared_ptr<NTCP2Session> session, bool incoming)
 	{
-		if (!session || !m_IsReady) return false;
+		if (!session || !m_IsReady || session->IsTerminated ()) return false;
 		if (incoming) m_PendingIncomingSessions.erase (session->GetRemoteEndpoint ().address ());
 		if (!session->GetRemoteIdentity ())
 		{
@@ -2711,7 +2773,7 @@ namespace transport
 			m_Address4 = addr;
 	}
 
-	void NTCP2Server::AEADChaCha20Poly1305Encrypt (const std::vector<std::pair<uint8_t *, size_t>> & bufs,
+	bool NTCP2Server::AEADChaCha20Poly1305Encrypt (const std::vector<std::pair<uint8_t *, size_t>> & bufs,
 		const uint8_t * key, const uint8_t * nonce, uint8_t * mac)
 	{
 		return m_Encryptor.Encrypt (bufs, key, nonce, mac);
@@ -2726,10 +2788,11 @@ namespace transport
 	void NTCP2Server::SetVersion (int version)
 	{
 #if OPENSSL_PQ
-#ifdef LIBRESSL_VERSION_NUMBER
-		if (version == 3) version = 2; // ML-KEM-512 is not supported by LibreSSL
-#endif
-		m_Version = version;
+		const int selected = i2p::crypto::HighestSupportedPQVersion (version, 5);
+		m_Version = selected ? selected : 2;
+#else
+		(void)version;
+		m_Version = 2;
 #endif
 	}
 }

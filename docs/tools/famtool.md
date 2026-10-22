@@ -31,13 +31,18 @@ famtool -V -c myfam.crt -f router.info
 
 ## Security
 
-- `-g` writes an **unencrypted** EC private key PEM. On POSIX the file is
-  explicitly restricted to owner read/write; keep it offline and never publish
-  `myfam.pem`. Windows uses the process ACL and should be checked manually.
+- `-g` writes an **unencrypted** private key PEM. OpenSSL builds use the
+  provider `EVP_EC_gen("P-256")` path and PKCS#8 `BEGIN PRIVATE KEY` output;
+  LibreSSL uses its EC fallback. On POSIX the file is explicitly restricted to
+  owner read/write and a failed `fchmod` aborts generation. Keep it offline and
+  never publish `myfam.pem`. Windows uses the process ACL and should be
+  checked manually.
 - The family name is limited so it fits the 50-byte signed family blob.
-- Certificate parsing uses OpenSSL; the tool now uses `TLS_method()` and checks
-  allocations instead of the removed `TLSv1_method()`.
-- Signatures are decoded with strict base64 before verification.
+- Certificate parsing uses OpenSSL's `TLS_method()` and checked EVP ownership;
+  no removed fixed-version TLS method or deprecation-suppression macro is used.
+- Family signatures use `EVP_DigestSignUpdate`/`EVP_DigestSignFinal`, strict DER
+  decoding and the fixed 32-byte `r || s` I2P wire representation. Signatures
+  are decoded with strict base64 before verification.
 
 ## Compatibility
 

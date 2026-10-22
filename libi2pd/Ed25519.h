@@ -115,6 +115,10 @@ namespace crypto
 		EDDSAPoint GeneratePublicKey (const uint8_t * expandedPrivateKey, BN_CTX * ctx) const;
 		EDDSAPoint DecodePublicKey (const uint8_t * buf, BN_CTX * ctx) const;
 		void EncodePublicKey (const EDDSAPoint & publicKey, uint8_t * buf, BN_CTX * ctx) const;
+		// Java GroupElement decoding rejects a y encoding whose recovered x
+		// does not satisfy the curve equation. Callers must not blind or hash
+		// through such a key.
+		bool IsValidPublicKey (const uint8_t * buf) const;
 
 		void BlindPublicKey (const uint8_t * pub, const uint8_t * seed,
 			uint8_t * blinded); // for encrypted LeaseSet2, pub - 32, seed - 64, blinded - 32

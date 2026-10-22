@@ -17,6 +17,7 @@
 #include <string>
 #include <string_view>
 #include <memory>
+#include <shared_mutex>
 #include <openssl/evp.h>
 #include "Identity.h"
 
@@ -25,6 +26,13 @@ namespace i2p
 namespace data
 {
 	typedef int FamilyID;
+
+	struct FamilySigningKey
+	{
+		std::unique_ptr<EVP_PKEY, decltype (&EVP_PKEY_free)> pkey { nullptr, EVP_PKEY_free };
+		FamilyID id = 0;
+	};
+
 	class Families
 	{
 	public:
@@ -39,7 +47,8 @@ namespace data
 		void LoadCertificate (const std::string & filename);
 
 	private:
-		std::map<std::string, std::pair<EVP_PKEY *, FamilyID>> m_SigningKeys; // family -> (verification pkey, id)
+		mutable std::shared_mutex m_SigningKeysMutex;
+		std::map<std::string, FamilySigningKey> m_SigningKeys; // family -> verification key and id
 	};
 
 	std::string CreateFamilySignature (const std::string & family, const IdentHash & ident);

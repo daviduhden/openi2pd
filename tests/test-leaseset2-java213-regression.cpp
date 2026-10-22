@@ -299,6 +299,47 @@ void TestLeaseSet2KeySections ()
 	}
 }
 
+void TestLeaseSet1CanonicalBuffer ()
+{
+	auto keys = PrivateKeys::CreateRandomKeys (
+		SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, true);
+	const auto now = i2p::util::GetMillisecondsSinceEpoch ();
+	auto canonical = BuildLeaseSet1 (keys, { now + 300000 });
+	auto padded = canonical;
+	padded.insert (padded.end (), 64, 0x5A);
+	LeaseSet leaseSet (padded.data (), padded.size (), false);
+	assert (leaseSet.IsValid ());
+	// The signature covers only the canonical body; trailing unauthenticated
+	// bytes must not be stored or re-served by a floodfill.
+	assert (leaseSet.GetBufferLen () == canonical.size ());
+	assert (!std::memcmp (leaseSet.GetBuffer (), canonical.data (), canonical.size ()));
+
+	// The cached-LS refresh path calls PopulateLeases(). For LS2 this must be
+	// a no-op rather than re-running the LS1 parser over the LS2 body.
+	{
+		std::vector<uint8_t> key (32, 0x7B);
+		auto ls2Buffer = BuildLeaseSet2 (keys, static_cast<uint32_t> (now / 1000), 600, 0,
+			{ { CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, key } }, { static_cast<uint32_t> (now / 1000 + 300) });
+		LeaseSet2 ls2 (NETDB_STORE_TYPE_STANDARD_LEASESET2, ls2Buffer.data () + 1, ls2Buffer.size () - 1, false);
+		const auto valid = ls2.IsValid ();
+		const auto earliest = ls2.GetEarliestLeaseDate ();
+		const auto bufferLen = ls2.GetBufferLen ();
+		ls2.PopulateLeases ();
+		assert (ls2.IsValid () == valid);
+		assert (ls2.GetEarliestLeaseDate () == earliest);
+		assert (ls2.GetBufferLen () == bufferLen);
+	}
+}
+
+void TestEncryptedBlindedRsaRejected ()
+{
+	// stA1 = RSA-4096 (6). Java rejects the RSA signature type before any
+	// public-key operation; a two-byte header is enough to exercise the guard.
+	const uint8_t header[2] = { 0x00, static_cast<uint8_t> (SIGNING_KEY_TYPE_RSA_SHA512_4096) };
+	LeaseSet2 leaseSet (NETDB_STORE_TYPE_ENCRYPTED_LEASESET2, header, sizeof (header), false);
+	assert (!leaseSet.IsValid ());
+}
+
 void TestMetaLeaseValidation ()
 {
 	auto keys = PrivateKeys::CreateRandomKeys (
@@ -333,13 +374,16 @@ void TestMetaLeaseValidation ()
 			{ now + 300, NETDB_STORE_TYPE_STANDARD_LEASESET2, 1 },
 			{ now + 600, NETDB_STORE_TYPE_META_LEASESET2, 5 },
 		};
-		auto buffer = BuildMetaLeaseSet (keys, now, 600, entries);
+		auto buffer = BuildMetaLeaseSet (keys, now, 3600, entries);
 		auto leaseSet = ParseLeaseSet2 (buffer);
 		assert (leaseSet.IsValid ());
 		// MetaLeaseSet derives its earliest lease from the entries; the
 		// cross-type LS1/Meta replacement rule must not use the encrypted
 		// outer-layer zero sentinel.
 		assert (leaseSet.GetEarliestLeaseDate () == static_cast<uint64_t> (now + 300) * 1000);
+		// Java's addLease() rewrites _expires to the latest entry, so a longer
+		// signed header must not extend the served Meta LS lifetime.
+		assert (leaseSet.GetExpirationTime () == static_cast<uint64_t> (now + 600) * 1000);
 	}
 }
 
@@ -429,7 +473,9 @@ int main ()
 	TestOfflineSignatureAtEndOfBuffer ();
 	TestTruncatedSignatureWithSkipVerify ();
 	TestStandardLeaseFreshness ();
+	TestLeaseSet1CanonicalBuffer ();
 	TestLeaseSet2KeySections ();
+	TestEncryptedBlindedRsaRejected ();
 	TestMetaLeaseValidation ();
 	TestEncryptedOuterAndInnerLayers ();
 	TestAuthProtectedInnerNeedsSecret ();

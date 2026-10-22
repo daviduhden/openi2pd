@@ -21,6 +21,7 @@
 #include <unordered_set>
 #include <unordered_map>
 #include <string>
+#include <map>
 #include <thread>
 #include <mutex>
 #include <future>
@@ -115,6 +116,15 @@ namespace data
 	 */
 	bool ParseDatabaseLookupReplyKey (
 		const uint8_t * block, size_t len, uint8_t flags, DatabaseLookupReplyKey & replyKey);
+
+	// Java drops a DatabaseStore carrying any non-zero reply token when it
+	// arrives through a tunnel or a garlic clove: otherwise a last hop could
+	// make the router reflect DeliveryStatus messages to an arbitrary reply
+	// hash/tunnel. Only a direct store may carry a token.
+	inline bool IsTunnelDatabaseStoreAccepted (bool fromTunnel, uint32_t replyToken)
+	{
+		return !fromTunnel || replyToken == 0;
+	}
 
 	class NetDb
 	{
@@ -218,6 +228,10 @@ namespace data
 			std::lock_guard<std::mutex> lf (m_FloodfillsMutex);
 			m_Floodfills.Clear ();
 		};
+		// Reseed path: clear remote entries but preserve the local RouterInfo
+		// (and our floodfill registration). No-op after Stop() so a late
+		// reseeder cannot wipe a freshly started netDb.
+		void ResetRemoteRouterInfos ();
 		template <typename... TArgs> std::shared_ptr<RouterInfo::Buffer> NewRouterInfoBuffer (TArgs &&... args)
 		{
 			return m_RouterInfoBuffersPool.AcquireSharedMt (std::forward<TArgs> (args)...);
@@ -270,6 +284,10 @@ namespace data
 
 		void HandleDatabaseStoreMsg (std::shared_ptr<const I2NPMessage> msg);
 		void HandleDatabaseLookupMsg (std::shared_ptr<const I2NPMessage> msg);
+		// Java LookupThrottler/FloodThrottler: bound lookup replies and
+		// repeated floods independently of the stored-entry deduplication.
+		bool ShouldThrottleLookup (const IdentHash & from, uint32_t tunnelID);
+		bool ShouldThrottleFlood (const IdentHash & ident);
 
 	private:
 		i2p::util::MemoryPoolMt<RouterInfo::Buffer> m_RouterInfoBuffersPool;
@@ -318,6 +336,11 @@ namespace data
 		uint64_t m_LastExploratorySelectionUpdateTime; // in monotonic seconds
 		std::mutex m_RngMutex;
 		std::mt19937 m_Rng;
+		// Bounded per-(from, reply tunnel) and per-key throttles. These are
+		// deliberately in-memory only; restart clears them like Java.
+		std::mutex m_ThrottleMutex;
+		std::map<std::pair<IdentHash, uint32_t>, std::pair<uint64_t, uint32_t>> m_LookupThrottle;
+		std::map<IdentHash, std::pair<uint64_t, uint32_t>> m_FloodThrottle;
 	};
 
 	extern NetDb netdb;

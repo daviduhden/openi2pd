@@ -36,6 +36,17 @@ namespace transport
 			// first handshake block to be DateTime with exactly four data bytes.
 			return len >= 7 && buf[0] == eSSU2BlkDateTime && bufbe16toh (buf + 1) == 4;
 		}
+
+		bool SamePeerTestAddress (
+			const boost::asio::ip::address & left, const boost::asio::ip::address & right)
+		{
+			if (left.is_v4 () != right.is_v4 ()) return false;
+			if (left.is_v4 ()) return left.to_v4 () == right.to_v4 ();
+			// Java compares IPv6 PeerTest sources on the /64 prefix.
+			const auto l = left.to_v6 ().to_bytes ();
+			const auto r = right.to_v6 ().to_bytes ();
+			return std::equal (l.begin (), l.begin () + 8, r.begin ());
+		}
 	}
 
 	bool SSU2IncompleteMessage::AttachNextFragment (const uint8_t * fragment, size_t fragmentSize)
@@ -298,7 +309,7 @@ namespace transport
 			// move session to pending outgoing
 			if (m_Server.AddPendingOutgoingSession (shared_from_this ()))
 			{
-				m_Server.RemoveSession (GetConnID ());
+				m_Server.RemoveSession (GetConnID (), shared_from_this ());
 				// update endpoint in profile because we know it now
 				auto identity = GetRemoteIdentity ();
 				if (identity)
@@ -313,7 +324,7 @@ namespace transport
 			else
 			{
 				LogPrint (eLogError, "SSU2: Session ", GetConnID (), " is already pending");
-				m_Server.RequestRemoveSession (GetConnID ());
+				m_Server.RequestRemoveSession (GetConnID (), shared_from_this ());
 			}
 		}
 	}
@@ -358,6 +369,7 @@ namespace transport
 
 	void SSU2Session::Terminate ()
 	{
+		if (m_Terminated.exchange (true, std::memory_order_acq_rel)) return;
 		auto state = m_State.exchange (eSSU2SessionStateTerminated);
 		if (state != eSSU2SessionStateTerminated)
 		{
@@ -391,7 +403,8 @@ namespace transport
 			m_RelaySessions.clear ();
 			m_RecentRelayRequests.clear ();
 			m_ReceivedI2NPMsgIDs.clear ();
-			m_Server.RemoveSession (m_SourceConnID);
+			m_Server.RemovePendingOutgoingSession (m_RemoteEndpoint, shared_from_this ());
+			m_Server.RemoveSession (m_SourceConnID, shared_from_this ());
 			transports.PeerDisconnected (shared_from_this ());
 			auto remoteIdentity = GetRemoteIdentity ();
 			if (remoteIdentity)
@@ -439,6 +452,33 @@ namespace transport
 		// appends another one while running is observed by the next iteration;
 		// TakeOnEstablished() guarantees each function is invoked only once.
 		while (auto onEstablished = TakeOnEstablished ()) onEstablished ();
+	}
+
+	void SSU2Session::AddOnEstablished (OnEstablished e)
+	{
+		if (!e) return;
+		OnEstablished late;
+		{
+			std::lock_guard<std::mutex> l (m_OnEstablishedMutex);
+			// Established() publishes the state before draining the callback
+			// under this mutex. If it has already drained, run the late
+			// callback on the SSU2 service thread instead of losing it (peer
+			// tests/introduction callbacks are registered from transports).
+			if (m_State.load () == eSSU2SessionStateEstablished)
+				late = std::move (e);
+			else if (!m_OnEstablished)
+				m_OnEstablished = std::move (e);
+			else
+			{
+				auto previous = std::move (m_OnEstablished);
+				m_OnEstablished = [previous = std::move (previous), e = std::move (e)] () mutable
+				{
+					previous ();
+					e ();
+				};
+			}
+		}
+		if (late) boost::asio::post (m_Server.GetService (), std::move (late));
 	}
 
 	SSU2Session::OnEstablished SSU2Session::TakeOnEstablished ()
@@ -758,7 +798,7 @@ namespace transport
 
 	size_t SSU2Session::Resend (uint64_t ts)
 	{
-		if (ts + SSU2_RESEND_ATTEMPT_MIN_INTERVAL < m_LastResendAttemptTime) return 0;
+		if (ts < m_LastResendAttemptTime + SSU2_RESEND_ATTEMPT_MIN_INTERVAL) return 0;
 		m_LastResendAttemptTime = ts;
 		// resend handshake packet. Java backs off 1.25, 2.5, 5, ... seconds
 		// (OutboundEstablishState.java:117,123) while the overall budget is
@@ -934,6 +974,12 @@ namespace transport
 		// we are Alice
 		if (!m_Address) return false;
 		SelectOutgoingVersion ();
+#if OPENSSL_PQ
+		// A Retry may downgrade an existing attempt to version 2. The hybrid
+		// key from the previous version must never prefix a non-hybrid
+		// SessionRequest; every attempt regenerates fresh KEM material.
+		m_PQKeys.reset ();
+#endif
 		m_EphemeralKeys = i2p::transport::transports.GetNextX25519KeysPair ();
 		if (!m_EphemeralKeys) return false;
 		m_SentHandshakePacket.reset (new HandshakePacket);
@@ -1006,7 +1052,7 @@ namespace transport
 		m_NoiseState->MixKey (sharedSecret);
 		// encrypt
 #if OPENSSL_PQ
-		if (m_PQKeys)
+		if (m_Version > 2 && m_PQKeys)
 		{
 			size_t keyLen = m_PQKeys->GetKeyLen ();
 			std::vector<uint8_t> encapsKey (keyLen);
@@ -1324,6 +1370,7 @@ namespace transport
 
 	bool SSU2Session::ProcessSessionCreated (uint8_t * buf, size_t len)
 	{
+		if (IsTerminated ()) return false;
 		// we are Alice
 		if (!m_NoiseState || !m_Address)
 		{
@@ -1335,6 +1382,19 @@ namespace transport
 			LogPrint (eLogWarning, "SSU2: SessionCreated message too short ", len);
 			return false;
 		}
+		// Once MixHash/MixKey has run, the Noise state is consumed. A failed
+		// authentication must discard it so a Retry can reinitialize cleanly
+		// and stale SessionCreated retransmissions fail cheaply.
+		auto failHandshake = [this] () -> bool
+		{
+			m_NoiseState.reset ();
+			m_EphemeralKeys.reset ();
+			m_SentHandshakePacket.reset ();
+#if OPENSSL_PQ
+			m_PQKeys.reset ();
+#endif
+			return false;
+		};
 		Header header;
 		memcpy (header.buf, buf, 16);
 		header.ll[0] ^= CreateHeaderMask (m_Address->i, buf + (len - 24));
@@ -1375,25 +1435,25 @@ namespace transport
 		m_NoiseState->MixHash ({ { header.buf, 16 }, { headerX, 16 } }); // h = SHA256(h || header)
 		m_NoiseState->MixHash (headerX + 16, 32); // h = SHA256(h || bepk);
 		uint8_t sharedSecret[32];
-		if (!m_EphemeralKeys || !m_EphemeralKeys->Agree (headerX + 16, sharedSecret)) return false;
+		if (!m_EphemeralKeys || !m_EphemeralKeys->Agree (headerX + 16, sharedSecret)) return failHandshake ();
 		m_NoiseState->MixKey (sharedSecret);
 		size_t offset = 64;
 #if OPENSSL_PQ
 		if (m_Version > 2)
 		{
-			if (!m_PQKeys) return false;
+			if (!m_PQKeys) return failHandshake ();
 			i2p::data::CryptoKeyType cryptoType = (i2p::data::CryptoKeyType)(m_Version + 2);
 			size_t cipherTextLen = i2p::crypto::GetMLKEMCipherTextLen (cryptoType);
-			if (!i2p::crypto::IsMLKEMSupported (cryptoType) || offset + cipherTextLen + 16 > len) return false;
+			if (!i2p::crypto::IsMLKEMSupported (cryptoType) || offset + cipherTextLen + 16 > len) return failHandshake ();
 			std::vector<uint8_t> kemCiphertext (cipherTextLen);
 			if (!m_NoiseState->Decrypt (buf + offset, kemCiphertext.data (), cipherTextLen))
 			{
 				LogPrint (eLogWarning, "SSU2: SessionCreated ML-KEM ciphertext section AEAD decryption failed");
-				return false;
+				return failHandshake ();
 			}
 			m_NoiseState->MixHash (buf + offset, cipherTextLen + 16);
 			offset += cipherTextLen + 16;
-			if (!m_PQKeys || !m_PQKeys->Decaps (kemCiphertext.data (), sharedSecret)) return false;
+			if (!m_PQKeys || !m_PQKeys->Decaps (kemCiphertext.data (), sharedSecret)) return failHandshake ();
 			m_NoiseState->MixKey (sharedSecret);
 		}
 #endif
@@ -1401,7 +1461,7 @@ namespace transport
 		if (offset + 16 > len)
 		{
 			LogPrint (eLogWarning, "SSU2: SessionCreated message is too short ", len);
-			return false;
+			return failHandshake ();
 		}
 		uint8_t * payload = buf + offset;
 		std::vector<uint8_t> decryptedPayload (len - offset - 16);
@@ -1410,7 +1470,7 @@ namespace transport
 			LogPrint (eLogWarning, "SSU2: SessionCreated AEAD verification failed");
 			if (GetRemoteIdentity ())
 				i2p::data::netdb.SetUnreachable (GetRemoteIdentity ()->GetIdentHash (), true); // assume wrong s key
-			return false;
+			return failHandshake ();
 		}
 		m_NoiseState->MixHash (
 			payload, len - offset); // h = SHA256(h || encrypted payload from SessionCreated) for SessionConfirmed
@@ -1418,27 +1478,27 @@ namespace transport
 		if (!HasDateTimeFirstBlock (decryptedPayload.data (), decryptedPayload.size ()))
 		{
 			LogPrint (eLogWarning, "SSU2: SessionCreated has no valid DateTime first block");
-			return false;
+			return failHandshake ();
 		}
 		m_State = eSSU2SessionStateSessionCreatedReceived;
 		HandlePayload (decryptedPayload.data (), decryptedPayload.size ());
 		if (m_IsInvalidMessage || m_ReceivedTermination)
 		{
 			LogPrint (eLogWarning, "SSU2: Invalid or terminating block in SessionCreated");
-			return false;
+			return failHandshake ();
 		}
 
 		if (!SendSessionConfirmed (headerX + 16))
 		{
 			LogPrint (eLogError, "SSU2: Could not build SessionConfirmed for ", m_RemoteEndpoint);
-			m_Server.RemovePendingOutgoingSession (m_RemoteEndpoint);
-			return false;
+			m_Server.RemovePendingOutgoingSession (m_RemoteEndpoint, shared_from_this ());
+			return failHandshake ();
 		}
 		if (!m_Server.AddSession (shared_from_this ()))
 		{
 			LogPrint (eLogError, "SSU2: Duplicate connection ID for SessionConfirmed");
-			m_Server.RemovePendingOutgoingSession (m_RemoteEndpoint);
-			return false;
+			m_Server.RemovePendingOutgoingSession (m_RemoteEndpoint, shared_from_this ());
+			return failHandshake ();
 		}
 		KDFDataPhase (m_KeyDataSend, m_KeyDataReceive);
 
@@ -1632,6 +1692,7 @@ namespace transport
 
 	bool SSU2Session::ProcessSessionConfirmed (uint8_t * buf, size_t len)
 	{
+		if (IsTerminated ()) return false;
 		// we are Bob
 		if (!m_NoiseState)
 		{
@@ -2089,6 +2150,7 @@ namespace transport
 
 	bool SSU2Session::ProcessRetry (uint8_t * buf, size_t len)
 	{
+		if (IsTerminated ()) return false;
 		// we are Alice
 		if (!m_Address) return false;
 		if (len < 56)
@@ -2159,6 +2221,8 @@ namespace transport
 			return false;
 		}
 		m_State = eSSU2SessionStateTokenReceived;
+		m_ReceivedTermination = false;
+		m_TerminationReason = eSSU2TerminationReasonNormalClose;
 		HandlePayload (payload, len - 48);
 		if (m_IsInvalidMessage)
 		{
@@ -2167,10 +2231,13 @@ namespace transport
 		}
 		if (m_TerminationReason == eSSU2TerminationReasonIncompatibleVersion)
 		{
-			// Try the next mutually supported version before dropping to the
-			// base protocol. Java only retries version 2 here.
+			// The Retry carried a version rejection. Consume the hint before
+			// the generic termination abort and retry at the next mutually
+			// supported version; Java's responder expects a fresh
+			// SessionRequest with the selected version.
 			m_Version = (m_Version > 3 && m_Address && m_Address->SupportsSSU2Version (3)) ? 3 : 2;
 			m_IsVersionFallback = true;
+			m_ReceivedTermination = false;
 		}
 		if (m_ReceivedTermination)
 		{
@@ -2181,6 +2248,7 @@ namespace transport
 		{
 			// we should handle payload even for zero token to handle Datetime block and adjust clock in case of clock skew
 			LogPrint (eLogWarning, "SSU2: Retry token is zero");
+			Done ();
 			return false;
 		}
 
@@ -2220,6 +2288,7 @@ namespace transport
 
 	bool SSU2Session::ProcessHolePunch (uint8_t * buf, size_t len)
 	{
+		if (IsTerminated ()) return false;
 		// we are Alice
 		LogPrint (eLogDebug, "SSU2: HolePunch");
 		if (len < 56)
@@ -2352,11 +2421,10 @@ namespace transport
 		header.ll[1] ^= CreateHeaderMask (m_KeyDataReceive + 32, buf + (len - 12));
 		if (header.h.type != eSSU2Data)
 		{
+			// The type is read from the masked header before AEAD. Never turn
+			// unauthenticated input into a handshake/RouterInfo retransmission:
+			// that is a bounded-input/unbounded-output amplification path.
 			LogPrint (eLogWarning, "SSU2: Unexpected message type ", (int)header.h.type, " instead ", (int)eSSU2Data);
-			if (IsEstablished ())
-				SendQuickAck (); // in case it was SessionConfirmed
-			else
-				ResendHandshakePacket (); // assume we receive
 			return;
 		}
 		uint8_t payload[SSU2_MAX_PACKET_SIZE];
@@ -2377,9 +2445,11 @@ namespace transport
 		{
 			// Packet 0 is the session's first data packet number. Accept it
 			// once even if it arrives after higher-numbered reordered packets.
+			// Never rewind m_ReceivePacketNum: Java SSU2Bitfield.set() treats
+			// bits below the window as already seen, and ACK blocks must not
+			// regress after a late packet 0.
 			m_ReceivedPacketZero = true;
 			m_IsFirstReceivePacket = false;
-			m_ReceivePacketNum = 0;
 			acceptPacket = true;
 		}
 		else if (m_IsFirstReceivePacket)
@@ -2580,10 +2650,18 @@ namespace transport
 					LogPrint (eLogDebug, "SSU2: Termination reason=", (int)rsn);
 					if (IsEstablished () && rsn != eSSU2TerminationReasonTerminationReceived)
 						RequestTermination (eSSU2TerminationReasonTerminationReceived);
+					else if (!IsEstablished () && rsn == eSSU2TerminationReasonIncompatibleVersion)
+					{
+						// Handshake fallback: ProcessRetry consumes this hint and
+						// retries at the next supported version. Do not schedule
+						// Done() before it can act on the reason.
+						m_TerminationReason = eSSU2TerminationReasonIncompatibleVersion;
+					}
 					else if (m_State != eSSU2SessionStateTerminated)
 					{
 						if (m_State == eSSU2SessionStateClosing && rsn == eSSU2TerminationReasonTerminationReceived)
 							m_State = eSSU2SessionStateClosingConfirmed;
+						m_TerminationReason = (SSU2TerminationReason)rsn;
 						Done ();
 					}
 					else
@@ -3351,7 +3429,7 @@ namespace transport
 				// obtain and check endpoint and address for HolePunch
 				if (ExtractEndpoint (buf + 47, asz, ep))
 				{
-					if (!ep.address ().is_unspecified () && ep.port ())
+					if (IsValidPeerTestEndpoint (ep))
 					{
 						if (m_Server.IsSupported (ep.address ()))
 						{
@@ -3405,11 +3483,17 @@ namespace transport
 			LogPrint (eLogWarning, "SSU2: RelayIntro unknown router to introduce");
 			code = eSSU2RelayResponseCodeCharlieAliceIsUnknown;
 		}
-		// send relay response to Bob
+		if (code == eSSU2RelayResponseCodeAccept && addr && !m_Server.AllowRelayHolePunch (ep))
+		{
+			LogPrint (eLogInfo, "SSU2: RelayIntro rate limit for ", ep);
+			code = eSSU2RelayResponseCodeCharlieLimit;
+		}
+		// send relay response to Bob. Do not mint a token for a rejected intro.
 		auto packet = m_Server.GetSentPacketsPool ().AcquireShared ();
 		uint32_t nonce = bufbe32toh (buf + 33);
+		const uint64_t incomingToken = code == eSSU2RelayResponseCodeAccept ? m_Server.GetIncomingToken (ep) : 0;
 		packet->payloadSize = CreateRelayResponseBlock (
-			packet->payload, m_MaxPayloadSize, code, nonce, m_Server.GetIncomingToken (ep), ep.address ().is_v4 ());
+			packet->payload, m_MaxPayloadSize, code, nonce, incomingToken, ep.address ().is_v4 ());
 		if (code == eSSU2RelayResponseCodeAccept && addr)
 		{
 			// send HolePunch
@@ -3707,6 +3791,26 @@ namespace transport
 			LogPrint (eLogWarning, "SSU2: PeerTest endpoint is truncated");
 			return;
 		}
+		// PeerTestManager rejects a signed timestamp outside +/-2 minutes on
+		// every message, before any state change or forwarding.
+		const int64_t peerTestSkew = static_cast<int64_t> (bufbe32toh (buf + offset + 5))
+			- static_cast<int64_t> (i2p::util::GetSecondsSinceEpoch ());
+		if (peerTestSkew > SSU2_RELAY_MAX_SKEW || peerTestSkew < -SSU2_RELAY_MAX_SKEW)
+		{
+			LogPrint (eLogWarning, "SSU2: PeerTest timestamp skew ", peerTestSkew, " seconds");
+			return;
+		}
+		if (msg == 1)
+		{
+			boost::asio::ip::udp::endpoint testEndpoint;
+			if (!ExtractEndpoint (buf + offset + 10, asz, testEndpoint)
+				|| !IsValidPeerTestEndpoint (testEndpoint)
+				|| !SamePeerTestAddress (testEndpoint.address (), m_RemoteEndpoint.address ()))
+			{
+				LogPrint (eLogWarning, "SSU2: PeerTest msg 1 target does not match the authenticated source");
+				return;
+			}
+		}
 		if (msg == 1 || msg == 2)
 		{
 			if (buf[1] != 0)
@@ -3820,8 +3924,8 @@ namespace transport
 						{
 							boost::asio::ip::udp::endpoint ep;
 							std::shared_ptr<const i2p::data::RouterInfo::Address> addr;
-							if (ExtractEndpoint (buf + offset + 10, asz, ep) && !ep.address ().is_unspecified ()
-								&& ep.port ())
+							if (ExtractEndpoint (buf + offset + 10, asz, ep)
+								&& IsValidPeerTestEndpoint (ep))
 								addr = r->GetSSU2Address (ep.address ().is_v4 ());
 							if (addr && m_Server.IsSupported (ep.address ())
 								&& i2p::context.GetRouterInfo ().IsSSU2PeerTesting (ep.address ().is_v4 ()))
@@ -4932,18 +5036,21 @@ namespace transport
 
 	bool SSU2Session::SetVersion (uint8_t version)
 	{
+#if OPENSSL_PQ
 		switch (version)
 		{
-		case 3:
-#ifndef LIBRESSL_VERSION_NUMBER
-			m_Version = 3;
-#else
-			m_Version = 2; // MLKEM512 is not supported by LibreSSL
-#endif
+		case 3: m_Version = i2p::crypto::CanPublishPQ (3) ? 3 : 2; break;
+		case 4:
+			m_Version = (i2p::crypto::CanPublishPQ (4) && m_MaxPayloadSize >= SSU2_MLKEM768_MIN_PAYLOAD_SIZE)
+				? 4
+				: 2;
 			break;
-		case 4: m_Version = (m_MaxPayloadSize >= SSU2_MLKEM768_MIN_PAYLOAD_SIZE) ? 4 : 2; break;
 		default: m_Version = 2;
 		}
+#else
+		(void)version;
+		m_Version = 2;
+#endif
 		return m_Version == version;
 	}
 }

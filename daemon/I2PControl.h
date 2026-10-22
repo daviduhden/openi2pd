@@ -14,6 +14,7 @@
 #define I2P_CONTROL_H__
 
 #include <inttypes.h>
+#include <atomic>
 #include <thread>
 #include <memory>
 #include <array>
@@ -85,7 +86,7 @@ namespace client
 
 	private:
 		std::string m_Password;
-		bool m_IsRunning;
+		std::atomic<bool> m_IsRunning;
 		std::unique_ptr<std::thread> m_Thread;
 
 		boost::asio::io_context m_Service;

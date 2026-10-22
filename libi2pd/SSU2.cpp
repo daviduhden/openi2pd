@@ -158,8 +158,12 @@ namespace transport
 							auto sessions = m_Sessions;
 							for (auto & it : sessions)
 							{
-								it.second->RequestTermination (eSSU2TerminationReasonRouterShutdown);
-								it.second->Done ();
+								if (it.second->IsEstablished ())
+									it.second->RequestTermination (eSSU2TerminationReasonRouterShutdown);
+								// Terminate directly on the service thread. Done()
+								// posts another handler which StopIOService() would
+								// abandon while pooled session objects still exist.
+								it.second->Terminate ();
 							}
 							m_Sessions.clear ();
 							m_LastSession = nullptr;
@@ -603,7 +607,7 @@ namespace transport
 
 	bool SSU2Server::AddSession (std::shared_ptr<SSU2Session> session)
 	{
-		if (session)
+		if (session && !session->IsTerminated ())
 		{
 			if (m_Sessions.emplace (session->GetConnID (), session).second)
 			{
@@ -614,10 +618,10 @@ namespace transport
 		return false;
 	}
 
-	void SSU2Server::RemoveSession (uint64_t connID)
+	void SSU2Server::RemoveSession (uint64_t connID, const std::shared_ptr<SSU2Session> & owner)
 	{
 		auto it = m_Sessions.find (connID);
-		if (it != m_Sessions.end ())
+		if (it != m_Sessions.end () && (!owner || it->second == owner))
 		{
 			if (it->second->GetState () != eSSU2SessionStatePeerTest)
 			{
@@ -635,9 +639,20 @@ namespace transport
 		}
 	}
 
-	void SSU2Server::RequestRemoveSession (uint64_t connID)
+	void SSU2Server::RequestRemoveSession (uint64_t connID, const std::shared_ptr<SSU2Session> & owner)
 	{
-		boost::asio::post (GetService (), [connID, this] () { RemoveSession (connID); });
+		const bool hasOwner = static_cast<bool> (owner);
+		std::weak_ptr<SSU2Session> expected = owner;
+		boost::asio::post (GetService (), [connID, this, expected, hasOwner] ()
+			{
+				if (!hasOwner)
+				{
+					RemoveSession (connID);
+					return;
+				}
+				auto session = expected.lock ();
+				if (session) RemoveSession (connID, session);
+			});
 	}
 
 	void SSU2Server::AddSessionByRouterHash (std::shared_ptr<SSU2Session> session)
@@ -675,7 +690,7 @@ namespace transport
 
 	bool SSU2Server::AddPendingOutgoingSession (std::shared_ptr<SSU2Session> session)
 	{
-		if (!session) return false;
+		if (!session || session->IsTerminated ()) return false;
 		std::lock_guard<std::mutex> l (m_PendingOutgoingSessionsMutex);
 		return m_PendingOutgoingSessions.emplace (session->GetRemoteEndpoint (), session).second;
 	}
@@ -705,10 +720,13 @@ namespace transport
 		return nullptr;
 	}
 
-	void SSU2Server::RemovePendingOutgoingSession (const boost::asio::ip::udp::endpoint & ep)
+	void SSU2Server::RemovePendingOutgoingSession (
+		const boost::asio::ip::udp::endpoint & ep, const std::shared_ptr<SSU2Session> & owner)
 	{
 		std::lock_guard<std::mutex> l (m_PendingOutgoingSessionsMutex);
-		m_PendingOutgoingSessions.erase (ep);
+		auto it = m_PendingOutgoingSessions.find (ep);
+		if (it != m_PendingOutgoingSessions.end () && (!owner || it->second == owner))
+			m_PendingOutgoingSessions.erase (it);
 	}
 
 	std::shared_ptr<SSU2Session> SSU2Server::GetRandomPeerTestSession (
@@ -790,6 +808,24 @@ namespace transport
 			return s;
 		}
 		return nullptr;
+	}
+
+	bool SSU2Server::AllowRelayHolePunch (const boost::asio::ip::udp::endpoint & ep)
+	{
+		constexpr uint64_t window = 5;
+		constexpr size_t maximum = 20;
+		const auto now = i2p::util::GetSecondsSinceEpoch ();
+		std::lock_guard<std::mutex> l (m_RecentHolePunchesMutex);
+		for (auto it = m_RecentHolePunches.begin (); it != m_RecentHolePunches.end ();)
+		{
+			if (now < it->second || now - it->second >= window) it = m_RecentHolePunches.erase (it);
+			else ++it;
+		}
+		auto it = m_RecentHolePunches.find (ep);
+		if (it != m_RecentHolePunches.end ()) return false;
+		if (m_RecentHolePunches.size () >= maximum) return false;
+		m_RecentHolePunches.emplace (ep, now);
+		return true;
 	}
 
 	bool SSU2Server::AddRequestedPeerTest (uint32_t nonce, std::shared_ptr<SSU2PeerTestSession> session, uint64_t ts)
@@ -1213,19 +1249,21 @@ namespace transport
 		{
 			auto ts = i2p::util::GetSecondsSinceEpoch ();
 
+			std::vector<std::shared_ptr<SSU2Session>> expiredPending;
 			{
 				std::lock_guard<std::mutex> l (m_PendingOutgoingSessionsMutex);
 				for (auto it = m_PendingOutgoingSessions.begin (); it != m_PendingOutgoingSessions.end ();)
 				{
 					if (it->second->IsTerminationTimeoutExpired (ts))
 					{
-						//it->second->Terminate ();
+						expiredPending.push_back (it->second);
 						it = m_PendingOutgoingSessions.erase (it);
 					}
 					else
 						it++;
 				}
 			}
+			for (auto & session : expiredPending) session->Terminate ();
 
 			for (auto it : m_Sessions)
 			{
@@ -1732,12 +1770,15 @@ namespace transport
 	void SSU2Server::SetVersion (int version)
 	{
 #if OPENSSL_PQ
-#ifdef LIBRESSL_VERSION_NUMBER
-		// ML-KEM-512 is not available in LibreSSL; do not advertise a
-		// version that a session cannot actually establish.
-		if (version == 3) version = 2;
-#endif
-		m_Version = version;
+		// Version 3/4 selects ML-KEM-512/768. Do not advertise a parameter set
+		// that the active provider cannot create, including a provider-enabled
+		// OpenSSL build where ML-KEM was disabled at runtime. Cascade 4 -> 3
+		// when only the smaller parameter set is usable.
+		const int selected = i2p::crypto::HighestSupportedPQVersion (version, 4);
+		m_Version = selected ? selected : 2;
+#else
+		(void)version;
+		m_Version = 2;
 #endif
 	}
 

@@ -338,6 +338,7 @@ namespace transport
 		eSSU2PeerTestCodeBobNoCharlieAvailable = 2,
 		eSSU2PeerTestCodeBobLimitExceeded = 3,
 		eSSU2PeerTestCodeBobSignatureFailure = 4,
+		eSSU2PeerTestCodeBobAddress = 5,
 		eSSU2PeerTestCodeCharlieReasonUnspecified = 64,
 		eSSU2PeerTestCodeCharlieUnsupportedAddress = 65,
 		eSSU2PeerTestCodeCharlieLimitExceeded = 66,
@@ -357,6 +358,7 @@ namespace transport
 		eSSU2RelayResponseCodeBobRelayTagNotFound = 5,
 		eSSU2RelayResponseCodeBobAliceIsUnknown = 6,
 		eSSU2RelayResponseCodeCharlieUnsupportedAddress = 65,
+		eSSU2RelayResponseCodeCharlieLimit = 66,
 		eSSU2RelayResponseCodeCharlieSignatureFailure = 67,
 		eSSU2RelayResponseCodeCharlieAliceIsUnknown = 70
 	};
@@ -434,6 +436,7 @@ namespace transport
 	class SSU2Server;
 	class SSU2Session : public TransportSession, public std::enable_shared_from_this<SSU2Session>
 	{
+		friend class SSU2Server; // service-thread shutdown/expiry calls Terminate()
 	protected:
 		union Header
 		{
@@ -485,22 +488,7 @@ namespace transport
 		};
 		// Append instead of replacing, so a peer-test or introduction callback
 		// registered while another callback is pending is not lost.
-		void AddOnEstablished (OnEstablished e)
-		{
-			if (!e) return;
-			std::lock_guard<std::mutex> l (m_OnEstablishedMutex);
-			if (!m_OnEstablished)
-			{
-				m_OnEstablished = std::move (e);
-				return;
-			}
-			auto previous = std::move (m_OnEstablished);
-			m_OnEstablished = [previous = std::move (previous), e = std::move (e)] () mutable
-			{
-				previous ();
-				e ();
-			};
-		};
+		void AddOnEstablished (OnEstablished e);
 		OnEstablished GetOnEstablished () const
 		{
 			std::lock_guard<std::mutex> l (m_OnEstablishedMutex);
@@ -523,6 +511,7 @@ namespace transport
 		size_t Resend (uint64_t ts); // return number of resent packets
 		uint64_t GetLastResendTime () const { return m_LastResendTime; };
 		bool IsEstablished () const override { return m_State == eSSU2SessionStateEstablished; };
+		bool IsTerminated () const { return m_Terminated.load (std::memory_order_acquire); }
 		i2p::data::RouterInfo::SupportedTransports GetTransportType () const override;
 		boost::asio::ip::address GetRemoteAddress () const override { return m_RemoteEndpoint.address (); };
 		uint64_t GetConnID () const { return m_SourceConnID; };
@@ -659,6 +648,7 @@ namespace transport
 		int m_RemoteVersion;
 		uint64_t m_DestConnID, m_SourceConnID;
 		std::atomic<SSU2SessionState> m_State;
+		std::atomic<bool> m_Terminated { false };
 		uint8_t m_KeyDataSend[64] = { }, m_KeyDataReceive[64] = { };
 		uint32_t m_SendPacketNum, m_ReceivePacketNum, m_LastDatetimeSentPacketNum;
 		std::set<uint32_t> m_OutOfSequencePackets; // packet nums > receive packet num

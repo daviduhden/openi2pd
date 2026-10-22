@@ -1566,7 +1566,9 @@ int RouterContext::GetCongestionLevel (bool longTerm) const
 
 void RouterContext::HandleI2NPMessage (const uint8_t * buf, size_t len)
 {
-	i2p::HandleI2NPMessage (CreateI2NPMessage (buf, GetI2NPMessageLength (buf, len)));
+	auto msg = CreateI2NPMessage (buf, GetI2NPMessageLength (buf, len));
+	if (msg) msg->fromClove = true;
+	i2p::HandleI2NPMessage (msg);
 }
 
 bool RouterContext::HandleCloveI2NPMessage (I2NPMessageType typeID, const uint8_t * payload, size_t len, uint32_t msgID,
@@ -1587,6 +1589,7 @@ bool RouterContext::HandleCloveI2NPMessage (I2NPMessageType typeID, const uint8_
 	}
 	auto msg = CreateI2NPMessage (typeID, payload, len, msgID);
 	if (!msg) return false;
+	msg->fromClove = true;
 	i2p::HandleI2NPMessage (msg);
 	return true;
 }
@@ -1602,12 +1605,19 @@ void RouterContext::ProcessGarlicMessage (std::shared_ptr<I2NPMessage> msg)
 
 void RouterContext::PostGarlicMessage (std::shared_ptr<I2NPMessage> msg)
 {
-	uint8_t * buf = msg->GetPayload ();
-	uint32_t len = bufbe32toh (buf);
-	if (len > msg->GetLength ())
+	const size_t payloadLength = msg && msg->GetLength () >= I2NP_HEADER_SIZE
+		? msg->GetPayloadLength ()
+		: 0;
+	if (payloadLength < 4)
 	{
-		LogPrint (
-			eLogWarning, "Router: garlic message length ", len, " exceeds I2NP message length ", msg->GetLength ());
+		LogPrint (eLogWarning, "Router: garlic message is shorter than its length prefix");
+		return;
+	}
+	uint8_t * buf = msg->GetPayload ();
+	const uint32_t len = bufbe32toh (buf);
+	if (len < 8 || len > payloadLength - 4)
+	{
+		LogPrint (eLogWarning, "Router: garlic message length ", len, " exceeds payload length ", payloadLength - 4);
 		return;
 	}
 	buf += 4;
@@ -1632,6 +1642,11 @@ void RouterContext::ProcessDeliveryStatusMessage (std::shared_ptr<I2NPMessage> m
 
 void RouterContext::PostDeliveryStatusMessage (std::shared_ptr<I2NPMessage> msg)
 {
+	if (!msg || msg->GetLength () < I2NP_HEADER_SIZE + DELIVERY_STATUS_SIZE)
+	{
+		LogPrint (eLogWarning, "Router: truncated DeliveryStatus message");
+		return;
+	}
 	if (m_PublishReplyToken == bufbe32toh (msg->GetPayload () + DELIVERY_STATUS_MSGID_OFFSET))
 	{
 		LogPrint (eLogInfo, "Router: Publishing confirmed. reply token=", m_PublishReplyToken);
@@ -1673,39 +1688,45 @@ bool RouterContext::Decrypt (
 	return m_Decryptor ? m_Decryptor->Decrypt (encrypted, data) : false;
 }
 
-bool RouterContext::DecryptTunnelBuildRecord (const uint8_t * encrypted, uint8_t * data)
+bool RouterContext::DecryptTunnelBuildRecord (
+	const uint8_t * encrypted, uint8_t * data, i2p::crypto::NoiseSymmetricState & noiseState)
 {
-	return DecryptECIESTunnelBuildRecord (encrypted, data, ECIES_BUILD_REQUEST_RECORD_CLEAR_TEXT_SIZE);
+	return DecryptECIESTunnelBuildRecord (
+		encrypted, data, ECIES_BUILD_REQUEST_RECORD_CLEAR_TEXT_SIZE, noiseState);
 }
 
-bool RouterContext::DecryptECIESTunnelBuildRecord (const uint8_t * encrypted, uint8_t * data, size_t clearTextSize)
+bool RouterContext::DecryptECIESTunnelBuildRecord (const uint8_t * encrypted, uint8_t * data, size_t clearTextSize,
+	i2p::crypto::NoiseSymmetricState & noiseState)
 {
-	// m_InitialNoiseState is h = SHA256(h || hepk)
-	m_CurrentNoiseState = m_InitialNoiseState;
-	m_CurrentNoiseState.MixHash (encrypted, 32); // h = SHA256(h || sepk)
+	// The caller owns this scratch state; never share it between concurrent
+	// build records arriving on different transport threads.
+	noiseState = m_InitialNoiseState;
+	noiseState.MixHash (encrypted, 32); // h = SHA256(h || sepk)
 	uint8_t sharedSecret[32];
 	if (!m_TunnelDecryptor->Decrypt (encrypted, sharedSecret))
 	{
 		LogPrint (eLogWarning, "Router: Incorrect ephemeral public key");
 		return false;
 	}
-	m_CurrentNoiseState.MixKey (sharedSecret);
+	noiseState.MixKey (sharedSecret);
 	encrypted += 32;
 	uint8_t nonce[12];
 	memset (nonce, 0, 12);
-	if (!i2p::crypto::AEADChaCha20Poly1305 (encrypted, clearTextSize, m_CurrentNoiseState.m_H, 32,
-			m_CurrentNoiseState.m_CK + 32, nonce, data, clearTextSize, false)) // decrypt
+	if (!i2p::crypto::AEADChaCha20Poly1305 (encrypted, clearTextSize, noiseState.m_H, 32,
+			noiseState.m_CK + 32, nonce, data, clearTextSize, false)) // decrypt
 	{
 		LogPrint (eLogWarning, "Router: Tunnel record AEAD decryption failed");
 		return false;
 	}
-	m_CurrentNoiseState.MixHash (encrypted, clearTextSize + 16); // h = SHA256(h || ciphertext)
+	noiseState.MixHash (encrypted, clearTextSize + 16); // h = SHA256(h || ciphertext)
 	return true;
 }
 
-bool RouterContext::DecryptTunnelShortRequestRecord (const uint8_t * encrypted, uint8_t * data)
+bool RouterContext::DecryptTunnelShortRequestRecord (
+	const uint8_t * encrypted, uint8_t * data, i2p::crypto::NoiseSymmetricState & noiseState)
 {
-	return DecryptECIESTunnelBuildRecord (encrypted, data, SHORT_REQUEST_RECORD_CLEAR_TEXT_SIZE);
+	return DecryptECIESTunnelBuildRecord (
+		encrypted, data, SHORT_REQUEST_RECORD_CLEAR_TEXT_SIZE, noiseState);
 }
 
 i2p::crypto::X25519Keys & RouterContext::GetNTCP2StaticKeys ()

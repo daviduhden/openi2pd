@@ -101,6 +101,11 @@ namespace tunnel
 
 	void TransitTunnelParticipant::HandleTunnelDataMsg (std::shared_ptr<i2p::I2NPMessage> && tunnelMsg)
 	{
+		if (tunnelMsg->GetPayloadLength () < 4 + 16 || !CheckAndStoreIV (tunnelMsg->GetPayload () + 4))
+		{
+			LogPrint (eLogWarning, "TransitTunnel: Dropped replayed or truncated tunnel message");
+			return;
+		}
 		EncryptTunnelMsg (tunnelMsg, tunnelMsg);
 
 		m_NumTransmittedBytes += tunnelMsg->GetLength ();
@@ -164,6 +169,11 @@ namespace tunnel
 
 	void TransitTunnelEndpoint::HandleTunnelDataMsg (std::shared_ptr<i2p::I2NPMessage> && tunnelMsg)
 	{
+		if (tunnelMsg->GetPayloadLength () < 4 + 16 || !CheckAndStoreIV (tunnelMsg->GetPayload () + 4))
+		{
+			LogPrint (eLogWarning, "TransitTunnel: Dropped replayed or truncated endpoint message");
+			return;
+		}
 		auto newMsg = CreateEmptyTunnelDataMsg (true);
 		EncryptTunnelMsg (tunnelMsg, newMsg);
 
@@ -364,8 +374,9 @@ namespace tunnel
 			{
 				LogPrint (eLogDebug, "TransitTunnel: Short request record ", i, " is ours");
 				uint8_t clearText[SHORT_REQUEST_RECORD_CLEAR_TEXT_SIZE];
+				i2p::crypto::NoiseSymmetricState noiseState;
 				if (!i2p::context.DecryptTunnelShortRequestRecord (
-						record + SHORT_REQUEST_RECORD_ENCRYPTED_OFFSET, clearText))
+						record + SHORT_REQUEST_RECORD_ENCRYPTED_OFFSET, clearText, noiseState))
 				{
 					LogPrint (eLogWarning, "TransitTunnel: Can't decrypt short request record ", i);
 					return;
@@ -379,14 +390,20 @@ namespace tunnel
 					LogPrint (eLogWarning, "TransitTunnel: Short request record is both gateway and endpoint");
 					return;
 				}
-				// Java's OBGW record legitimately has receiveTunnelID = 0
-				// (BuildMessageGenerator.createUnencryptedRecord); do not reject it.
+				// BuildHandler.handleReq() rejects a zero receive or next tunnel
+				// ID before installing a transit tunnel. The creator-side blank
+				// record is never delivered to a hop.
+				if (!bufbe32toh (clearText + SHORT_REQUEST_RECORD_RECEIVE_TUNNEL_OFFSET)
+					|| !bufbe32toh (clearText + SHORT_REQUEST_RECORD_NEXT_TUNNEL_OFFSET))
+				{
+					LogPrint (eLogWarning, "TransitTunnel: Zero tunnel ID in short request record");
+					return;
+				}
 				if (!IsBuildRequestTimeValid (clearText, SHORT_REQUEST_RECORD_REQUEST_TIME_OFFSET, i)) return;
 				bool unsupportedLayerEncryption = clearText[SHORT_REQUEST_RECORD_LAYER_ENCRYPTION_TYPE] != 0;
 				if (unsupportedLayerEncryption) // not AES
 					LogPrint (eLogWarning, "TransitTunnel: Unknown layer encryption type ",
 						clearText[SHORT_REQUEST_RECORD_LAYER_ENCRYPTION_TYPE], " in short request record");
-				auto & noiseState = i2p::context.GetCurrentNoiseState ();
 				uint8_t replyKey[32]; // AEAD/Chacha20/Poly1305
 				i2p::crypto::AESKey layerKey, ivKey; // AES
 				i2p::crypto::HKDF (noiseState.m_CK, nullptr, 0, "SMTunnelReplyKey", noiseState.m_CK);
@@ -583,7 +600,9 @@ namespace tunnel
 					(const uint8_t *)i2p::context.GetRouterInfo ().GetIdentHash (), 16))
 			{
 				LogPrint (eLogDebug, "TransitTunnel: Build request record ", i, " is ours");
-				if (!i2p::context.DecryptTunnelBuildRecord (record + BUILD_REQUEST_RECORD_ENCRYPTED_OFFSET, clearText))
+				i2p::crypto::NoiseSymmetricState noiseState;
+				if (!i2p::context.DecryptTunnelBuildRecord (
+						record + BUILD_REQUEST_RECORD_ENCRYPTED_OFFSET, clearText, noiseState))
 				{
 					LogPrint (eLogWarning, "TransitTunnel: Failed to decrypt tunnel build record");
 					return false;
@@ -597,8 +616,12 @@ namespace tunnel
 					LogPrint (eLogWarning, "TransitTunnel: Tunnel build record is both gateway and endpoint");
 					return false;
 				}
-				// The OBGW's receive tunnel ID is zero in Java; the next tunnel ID
-				// is not a zero-validity test either.
+				if (!bufbe32toh (clearText + ECIES_BUILD_REQUEST_RECORD_RECEIVE_TUNNEL_OFFSET)
+					|| !bufbe32toh (clearText + ECIES_BUILD_REQUEST_RECORD_NEXT_TUNNEL_OFFSET))
+				{
+					LogPrint (eLogWarning, "TransitTunnel: Zero tunnel ID in build request record");
+					return false;
+				}
 				if (!IsBuildRequestTimeValid (clearText, ECIES_BUILD_REQUEST_RECORD_REQUEST_TIME_OFFSET, i))
 					return false;
 				if (!isEndpoint && // if next ident is now ours
@@ -659,7 +682,6 @@ namespace tunnel
 					{
 						uint8_t nonce[12];
 						memset (nonce, 0, 12);
-						auto & noiseState = i2p::context.GetCurrentNoiseState ();
 						if (!i2p::crypto::AEADChaCha20Poly1305 (reply, TUNNEL_BUILD_RECORD_SIZE - 16, noiseState.m_H,
 								32, noiseState.m_CK, nonce, reply, TUNNEL_BUILD_RECORD_SIZE, true)) // encrypt
 						{

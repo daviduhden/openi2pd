@@ -15,6 +15,7 @@
 #include <string.h>
 #include <atomic>
 #include <algorithm>
+#include <limits>
 #include "Base.h"
 #include "Log.h"
 #include "I2PEndian.h"
@@ -460,14 +461,20 @@ std::shared_ptr<I2NPMessage> CreateEmptyTunnelDataMsg (bool endpoint)
 
 std::shared_ptr<I2NPMessage> CreateTunnelGatewayMsg (uint32_t tunnelID, const uint8_t * buf, size_t len)
 {
-	auto msg = NewI2NPMessage (len);
+	// Reserve the six-byte gateway header in addition to the I2NP header. The
+	// previous +0 reservation truncated payloads exactly at buffer-tier edges
+	// while still advertising the full length.
+	auto msg = NewI2NPMessage (len + TUNNEL_GATEWAY_HEADER_SIZE);
+	if (len > std::numeric_limits<uint16_t>::max ()) return nullptr;
 	uint8_t * payload = msg->GetPayload ();
 	htobe32buf (payload + TUNNEL_GATEWAY_HEADER_TUNNELID_OFFSET, tunnelID);
-	// The payload length is bounded by the I2NP message size, which fits the
-	// 16-bit gateway length field.
 	htobe16buf (payload + TUNNEL_GATEWAY_HEADER_LENGTH_OFFSET, static_cast<uint16_t> (len));
 	msg->len += TUNNEL_GATEWAY_HEADER_SIZE;
-	if (msg->Concat (buf, len) < len) LogPrint (eLogError, "I2NP: Tunnel gateway buffer overflow ", msg->maxLen);
+	if (msg->Concat (buf, len) < len)
+	{
+		LogPrint (eLogError, "I2NP: Tunnel gateway buffer overflow ", msg->maxLen);
+		return nullptr;
+	}
 	msg->FillI2NPMessageHeader (eI2NPTunnelGateway);
 	return msg;
 }
@@ -489,6 +496,7 @@ std::shared_ptr<I2NPMessage> CreateTunnelGatewayMsg (uint32_t tunnelID, std::sha
 	else
 	{
 		auto newMsg = CreateTunnelGatewayMsg (tunnelID, msg->GetBuffer (), msg->GetLength ());
+		if (!newMsg) return nullptr;
 		if (msg->onDrop) newMsg->onDrop = msg->onDrop;
 		return newMsg;
 	}
@@ -497,11 +505,16 @@ std::shared_ptr<I2NPMessage> CreateTunnelGatewayMsg (uint32_t tunnelID, std::sha
 std::shared_ptr<I2NPMessage> CreateTunnelGatewayMsg (
 	uint32_t tunnelID, I2NPMessageType msgType, const uint8_t * buf, size_t len, uint32_t replyMsgID)
 {
-	auto msg = NewI2NPMessage (len);
+	if (len > std::numeric_limits<uint16_t>::max ()) return nullptr;
+	auto msg = NewI2NPMessage (len + TUNNEL_GATEWAY_HEADER_SIZE);
 	size_t gatewayMsgOffset = I2NP_HEADER_SIZE + TUNNEL_GATEWAY_HEADER_SIZE;
 	msg->offset += gatewayMsgOffset;
 	msg->len += gatewayMsgOffset;
-	if (msg->Concat (buf, len) < len) LogPrint (eLogError, "I2NP: Tunnel gateway buffer overflow ", msg->maxLen);
+	if (msg->Concat (buf, len) < len)
+	{
+		LogPrint (eLogError, "I2NP: Tunnel gateway buffer overflow ", msg->maxLen);
+		return nullptr;
+	}
 	msg->FillI2NPMessageHeader (msgType, replyMsgID); // create content message
 	len = msg->GetLength ();
 	msg->offset -= gatewayMsgOffset;
@@ -528,11 +541,38 @@ size_t GetI2NPMessageLength (const uint8_t * msg, size_t len)
 	return l;
 }
 
+namespace
+{
+	bool IsAllowedCloveType (uint8_t typeID)
+	{
+		switch (typeID)
+		{
+		case eI2NPDatabaseStore:
+		case eI2NPDatabaseSearchReply:
+		case eI2NPDeliveryStatus:
+		case eI2NPGarlic:
+		case eI2NPData:
+		case eI2NPTunnelBuildReply:
+		case eI2NPVariableTunnelBuildReply:
+		case eI2NPShortTunnelBuildReply: return true;
+		default: return false;
+		}
+	}
+}
+
 void HandleI2NPMessage (std::shared_ptr<I2NPMessage> msg)
 {
 	if (msg)
 	{
 		uint8_t typeID = msg->GetTypeID ();
+		// Java InboundMessageDistributor.handleClove() allows only data and
+		// control replies in a clove. Tunnel/build/request types would inject
+		// directly into the tunnel worker or bypass the build throttle.
+		if (msg->fromClove && !IsAllowedCloveType (typeID))
+		{
+			LogPrint (eLogWarning, "I2NP: Dropped clove-delivered message type ", (int)typeID);
+			return;
+		}
 		LogPrint (eLogDebug, "I2NP: Handling message with type ", (int)typeID);
 		switch (typeID)
 		{
@@ -560,8 +600,9 @@ void HandleI2NPMessage (std::shared_ptr<I2NPMessage> msg)
 				i2p::data::netdb.PostDatabaseSearchReplyMsg (msg);
 			break;
 		case eI2NPDatabaseLookup:
-			// forward to netDb if floodfill and came directly
-			if (!msg->from && i2p::context.IsFloodfill ()) i2p::data::netdb.PostI2NPMsg (msg);
+			// Forward to netDb only for an authenticated direct message. A clove
+			// has no tunnel pointer but still crossed an untrusted garlic path.
+			if (!msg->from && !msg->fromClove && i2p::context.IsFloodfill ()) i2p::data::netdb.PostI2NPMsg (msg);
 			break;
 		case eI2NPDeliveryStatus:
 		{

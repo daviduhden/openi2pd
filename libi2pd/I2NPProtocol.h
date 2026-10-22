@@ -188,6 +188,10 @@ struct I2NPMessage
 	uint8_t * buf;
 	size_t len, offset, maxLen;
 	std::shared_ptr<i2p::tunnel::InboundTunnel> from;
+	// A clove has no InboundTunnel pointer even when the enclosing garlic came
+	// through an exploratory tunnel. Preserve that untrusted origin so netDb
+	// does not treat a clove-delivered DatabaseStore/Lookup as direct.
+	bool fromClove = false;
 	std::function<void ()> onDrop;
 	uint64_t enqueueTime; // monotonic microseconds
 
@@ -254,6 +258,7 @@ struct I2NPMessage
 		memcpy (buf + offset, other.buf + other.offset, other.GetLength ());
 		len = offset + other.GetLength ();
 		from = other.from;
+		fromClove = other.fromClove;
 		return *this;
 	}
 

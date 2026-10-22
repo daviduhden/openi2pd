@@ -297,7 +297,6 @@ namespace garlic
 		void AddECIESx25519Session (const uint8_t * staticKey, ECIESX25519AEADRatchetSessionPtr session);
 		void RemoveECIESx25519Session (const uint8_t * staticKey);
 		void HandleECIESx25519GarlicClove (const uint8_t * buf, size_t len, ECIESX25519AEADRatchetSession * from);
-		uint8_t * GetPayloadBuffer ();
 
 		virtual void ProcessGarlicMessage (std::shared_ptr<I2NPMessage> msg);
 		virtual void ProcessDeliveryStatusMessage (std::shared_ptr<I2NPMessage> msg);
@@ -327,6 +326,11 @@ namespace garlic
 
 	private:
 		bool SupportsRatchets () const { return GetRatchetsHighestCryptoType () > 0; }
+		// Called with m_TagsMutex held. Expired entries are removed first; if
+		// the hard map bound is still reached, arbitrary oldest entries are
+		// evicted so one authenticated peer cannot permanently deny tag
+		// registration to every other session.
+		void MakeRoomForECIESx25519Tag (size_t minSlots);
 		void HandleAESBlock (uint8_t * buf, size_t len, std::shared_ptr<AESDecryption> decryption,
 			std::shared_ptr<i2p::tunnel::InboundTunnel> from);
 		void HandleGarlicPayload (uint8_t * buf, size_t len, std::shared_ptr<i2p::tunnel::InboundTunnel> from);
@@ -349,7 +353,6 @@ namespace garlic
 		// The duplicate check prunes expired entries, so this cache is
 		// mutable even though the query itself is logically const.
 		mutable std::deque<std::pair<i2p::data::Tag<32>, uint64_t>> m_NewSessionKeys; // key, timestamp
-		std::unique_ptr<uint8_t[]> m_PayloadBuffer; // for ECIESX25519AEADRatchet
 		uint64_t m_LastIncomingSessionTimestamp; // in milliseconds
 		// incoming
 		int m_NumRatchetInboundTags;

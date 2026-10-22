@@ -89,6 +89,25 @@ namespace crypto
 		return probe.supported;
 	}
 
+	bool CanPublishPQ (int version)
+	{
+		switch (version)
+		{
+		case 3: return IsMLKEMSupported (i2p::data::CRYPTO_KEY_TYPE_ECIES_MLKEM512_X25519_AEAD);
+		case 4: return IsMLKEMSupported (i2p::data::CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD);
+		case 5: return IsMLKEMSupported (i2p::data::CRYPTO_KEY_TYPE_ECIES_MLKEM1024_X25519_AEAD);
+		default: return false;
+		}
+	}
+
+	int HighestSupportedPQVersion (int requested, int maximum)
+	{
+		const int start = requested < maximum ? requested : maximum;
+		for (int version = start; version >= 3; --version)
+			if (CanPublishPQ (version)) return version;
+		return 0;
+	}
+
 #ifdef LIBRESSL_VERSION_NUMBER
 	// LibreSSL allocates operation outputs. Always wipe and release them,
 	// including when an operation or a subsequent length check fails.

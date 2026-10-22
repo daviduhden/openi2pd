@@ -56,8 +56,10 @@ bool Validate (const Payload & payload)
 
 int main ()
 {
-	static_assert (i2p::transport::NTCP2_SESSION_CONFIRMED_PART2_MAX_SIZE == 6000,
-		"Java 2.13.0 InboundEstablishState.MSG3P2_MAX is 6000");
+	static_assert (i2p::transport::NTCP2_SESSION_CONFIRMED_PART2_MIN_SIZE == 459,
+		"Java 2.14.0 InboundEstablishState.MSG3P2_MIN is 459");
+	static_assert (i2p::transport::NTCP2_SESSION_CONFIRMED_PART2_MAX_SIZE == 4048,
+		"Java 2.14.0 InboundEstablishState.MSG3P2_MAX is 4096 - 48");
 
 	// RouterInfo block only.
 	{

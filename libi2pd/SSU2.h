@@ -122,11 +122,16 @@ namespace transport
 		using SSU2Sessions = std::unordered_map<uint64_t, std::shared_ptr<SSU2Session>>;
 
 		bool AddSession (std::shared_ptr<SSU2Session> session);
-		void RemoveSession (uint64_t connID);
-		void RequestRemoveSession (uint64_t connID);
+		// Removal is identity-checked when an owner is supplied so a losing
+		// duplicate handshake cannot unregister the live session for a shared
+		// connection ID or endpoint. Null owner preserves the legacy internal
+		// calls that already hold the exact map entry.
+		void RemoveSession (uint64_t connID, const std::shared_ptr<SSU2Session> & owner = nullptr);
+		void RequestRemoveSession (uint64_t connID, const std::shared_ptr<SSU2Session> & owner = nullptr);
 		void AddSessionByRouterHash (std::shared_ptr<SSU2Session> session);
 		bool AddPendingOutgoingSession (std::shared_ptr<SSU2Session> session);
-		void RemovePendingOutgoingSession (const boost::asio::ip::udp::endpoint & ep);
+		void RemovePendingOutgoingSession (
+			const boost::asio::ip::udp::endpoint & ep, const std::shared_ptr<SSU2Session> & owner = nullptr);
 		std::shared_ptr<SSU2Session> FindSession (const i2p::data::IdentHash & ident);
 		std::shared_ptr<SSU2Session> FindPendingOutgoingSession (const boost::asio::ip::udp::endpoint & ep) const;
 		std::shared_ptr<SSU2Session> GetRandomPeerTestSession (
@@ -138,6 +143,9 @@ namespace transport
 
 		bool AddPeerTest (uint32_t nonce, std::shared_ptr<SSU2Session> aliceSession, uint64_t ts);
 		std::shared_ptr<SSU2Session> GetPeerTest (uint32_t nonce);
+		// Charlie-side RelayIntro anti-amplification: one HolePunch per target
+		// within a five-second window and a bounded number of targets.
+		bool AllowRelayHolePunch (const boost::asio::ip::udp::endpoint & ep);
 
 		bool AddRequestedPeerTest (uint32_t nonce, std::shared_ptr<SSU2PeerTestSession> session, uint64_t ts);
 		std::shared_ptr<SSU2PeerTestSession> GetRequestedPeerTest (uint32_t nonce);
@@ -253,6 +261,9 @@ namespace transport
 		std::map<boost::asio::ip::udp::endpoint, uint64_t>
 			m_ConnectedRecently; // endpoint -> last activity time in seconds
 		mutable std::mutex m_ConnectedRecentlyMutex;
+		std::map<boost::asio::ip::udp::endpoint, uint64_t>
+			m_RecentHolePunches; // endpoint -> last HolePunch time in seconds
+		mutable std::mutex m_RecentHolePunchesMutex;
 		std::unordered_map<uint32_t, std::pair<std::weak_ptr<SSU2PeerTestSession>, uint64_t>>
 			m_RequestedPeerTests; // nonce->(Alice, timestamp)
 		std::list<Packet *> m_ReceivedPacketsQueue;

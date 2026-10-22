@@ -36,4 +36,30 @@ int main ()
 	i2p::crypto::GOSTR3410_256_Verifier verifier1 (i2p::crypto::eGOSTR3410CryptoProA);
 	verifier1.SetPublicKey (pub);
 	assert (verifier1.Verify (example2, 72, signature));
+
+	// RFC 7091 section 6: e = digest mod q, and e = 1 when the residue is
+	// zero. Both directions must agree on that degenerate digest.
+	{
+		auto & curve = *i2p::crypto::GetGOSTR3410Curve (i2p::crypto::eGOSTR3410CryptoProA);
+		BN_CTX * ctx = BN_CTX_new ();
+		assert (ctx);
+		BIGNUM * q = BN_CTX_get (ctx), *privBN = BN_CTX_get (ctx);
+		BIGNUM * digest = BN_CTX_get (ctx), *r = BN_CTX_get (ctx), *s = BN_CTX_get (ctx);
+		assert (q && privBN && digest && r && s && EC_GROUP_get_order (curve.GetGroup (), q, ctx) == 1);
+		assert (BN_one (privBN) == 1);
+		EC_POINT * pubPoint = curve.MulP (privBN);
+		assert (pubPoint);
+		for (int zero = 0; zero < 2; ++zero)
+		{
+			if (zero)
+				BN_zero (digest);
+			else
+				assert (BN_copy (digest, q) != nullptr);
+			curve.Sign (privBN, digest, r, s);
+			assert (!BN_is_zero (r) && !BN_is_zero (s));
+			assert (curve.Verify (pubPoint, digest, r, s));
+		}
+		EC_POINT_free (pubPoint);
+		BN_CTX_free (ctx);
+	}
 }

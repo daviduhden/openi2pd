@@ -18,6 +18,9 @@
 #include "Identity.h"
 #include "RouterContext.h"
 #include "RouterInfo.h"
+#if OPENSSL_PQ
+#include "PostQuantum.h"
+#endif
 
 namespace
 {
@@ -135,6 +138,16 @@ void ExpectRejected (
 	assert (router->IsUnreachable ());
 	assert (router->GetSSU2V4Address () == nullptr);
 }
+
+bool HasPQ (int version)
+{
+#if OPENSSL_PQ
+	return i2p::crypto::CanPublishPQ (version);
+#else
+	(void)version;
+	return false;
+#endif
+}
 }
 
 int main ()
@@ -153,18 +166,16 @@ int main ()
 	ExpectRejected (keys, "", "4", "");
 	ExpectRejected (keys, "", "2,bogus", "");
 
-	// pq=4,3 with the default MTU selects version 4 and remembers both.
-	ExpectAccepted (keys, "", "2", "4,3", 4, true);
+	// pq=4,3 with the default MTU selects the strongest parameter set that
+	// the active provider actually implements.
+	const int bestDefaultMTU = HasPQ (4) ? 4 : (HasPQ (3) ? 3 : 2);
+	ExpectAccepted (keys, "", "2", "4,3", bestDefaultMTU, true);
 
 	// ML-KEM-768 needs 1318 bytes on IPv4. A lower published MTU must select
-	// the ML-KEM-512 version (3) rather than version 4. LibreSSL does not
-	// provide ML-KEM-512, so its only valid fallback is base version 2.
-#ifdef LIBRESSL_VERSION_NUMBER
-	ExpectAccepted (keys, "1317", "2", "4,3", 2, true);
-#else
-	ExpectAccepted (keys, "1317", "2", "4,3", 3, true);
-#endif
-	ExpectAccepted (keys, "1318", "2", "4,3", 4, true);
+	// the ML-KEM-512 version when available, otherwise base SSU2.
+	const int bestLowMTU = HasPQ (3) ? 3 : 2;
+	ExpectAccepted (keys, "1317", "2", "4,3", bestLowMTU, true);
+	ExpectAccepted (keys, "1318", "2", "4,3", HasPQ (4) ? 4 : bestLowMTU, true);
 
 	// pq=4 without a usable lower version cannot select Q4; the base SSU2
 	// version remains 2, while the option itself is still recorded.

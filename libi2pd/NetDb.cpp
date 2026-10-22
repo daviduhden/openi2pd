@@ -54,7 +54,16 @@ namespace data
 
 		bool IsRouterInfoStoreValid (const RouterInfo & router, uint64_t now)
 		{
-			if (router.IsUnreachable () || !router.HasValidAddresses ()) return false;
+			if (router.IsUnreachable ()) return false;
+			if (!router.HasValidAddresses ())
+			{
+				// KademliaNetworkDatabaseFacade rejects a zero-address RI only
+				// when it is no longer current (54 minutes). A fresh hidden RI
+				// or one with only an unknown address style remains storable,
+				// but selection paths still require valid addresses.
+				constexpr uint64_t JAVA_NO_ADDRESS_GRACE = 54 * 60 * 1000LL;
+				if (now >= router.GetTimestamp () + JAVA_NO_ADDRESS_GRACE) return false;
+			}
 			if (router.IsFloodfill ())
 			{
 				auto profile = router.GetProfile ();
@@ -121,7 +130,7 @@ namespace data
 		if (!encryptReply && !ratchetReply) return true;
 		if (!block) return false;
 		// Proposal 154 / I2NP: bits 4+1 (0x12) select the ECIES derived-key
-		// reply. The KDF is TBD, Java 2.13 does not implement it, and the
+		// reply. The KDF is TBD, Java 2.14.0 does not implement it, and the
 		// block has no tag or count. There is no specified way to encrypt this
 		// reply, so fail closed instead of guessing or replying in cleartext.
 		if (encryptReply && ratchetReply) return false;
@@ -188,8 +197,8 @@ namespace data
 
 		uint16_t threshold;
 		i2p::config::GetOption ("reseed.threshold", threshold);
-		if (m_RouterInfos.size () < threshold
-			|| m_Floodfills.GetSize ()
+		if (GetNumRouters () < threshold
+			|| GetNumFloodfills ()
 				< NETDB_MIN_FLOODFILLS) // reseed if # of router less than threshold or too few floodfiils
 		{
 			Reseed ();
@@ -301,6 +310,28 @@ namespace data
 			std::lock_guard<std::mutex> l (m_ExploratorySelectionMutex);
 			m_ExploratorySelection.clear ();
 			m_LastExploratorySelectionUpdateTime = 0;
+		}
+	}
+
+	void NetDb::ResetRemoteRouterInfos ()
+	{
+		if (!m_AcceptUpdates.load (std::memory_order_relaxed)) return;
+		auto own = i2p::context.GetSharedRouterInfo ();
+		std::lock_guard<std::mutex> l (m_RouterInfosMutex);
+		// Stop() may have flipped the flag while this reseeder waited for the
+		// map lock; never repopulate a stopped netDb.
+		if (!m_AcceptUpdates.load (std::memory_order_relaxed)) return;
+		for (auto it = m_RouterInfos.begin (); it != m_RouterInfos.end ();)
+		{
+			if (own && it->second == own) ++it;
+			else it = m_RouterInfos.erase (it);
+		}
+		{
+			std::lock_guard<std::mutex> lf (m_FloodfillsMutex);
+			m_Floodfills.Clear ();
+			if (own && i2p::context.IsFloodfill ()
+				&& m_RouterInfos.find (own->GetIdentHash ()) != m_RouterInfos.end ())
+				m_Floodfills.Insert (own);
 		}
 	}
 
@@ -813,7 +844,9 @@ namespace data
 	bool NetDb::LoadRouterInfo (const std::string & path, uint64_t ts)
 	{
 		auto r = std::make_shared<RouterInfo> (path);
-		if (r->GetRouterIdentity () && !r->IsUnreachable () && r->HasValidAddresses ()
+		constexpr uint64_t JAVA_NO_ADDRESS_GRACE = 54 * 60 * 1000LL;
+		const bool addressesOk = r->HasValidAddresses () || ts < r->GetTimestamp () + JAVA_NO_ADDRESS_GRACE;
+		if (r->GetRouterIdentity () && !r->IsUnreachable () && addressesOk
 			&& ts < r->GetTimestamp () + 24 * 60 * 60 * NETDB_MAX_OFFLINE_EXPIRATION_TIMEOUT * 1000LL // too old
 			&& ts + NETDB_EXPIRATION_TIMEOUT_THRESHOLD * 1000LL > r->GetTimestamp () // from future
 			&& (r->GetVersion () >= NETDB_MIN_ALLOWED_VERSION || r->IsHighBandwidth ())) // old version
@@ -1043,27 +1076,17 @@ namespace data
 		for (const auto & [ident, r] : routers)
 		{
 			if (!r || r == own) continue; // skip own
-			if (r->IsBufferScheduledToDelete ()) // from previous SaveUpdated, we assume m_PersistingRouters complete
+			std::shared_ptr<RouterInfo::Buffer> buffer;
+			bool deleted = false;
+			const bool updated = r->TakeUpdatedBuffer (buffer, deleted);
+			if (updated)
 			{
-				std::lock_guard<std::mutex> l (
-					m_RouterInfosMutex); // possible collision between DeleteBuffer and Update
-				r->DeleteBuffer ();
-			}
-			if (r->IsUpdated ())
-			{
-				if (r->GetBuffer () && !r->IsUnreachable ())
+				if (buffer && !r->IsUnreachable ())
 				{
 					// we have something to save
-					std::shared_ptr<RouterInfo::Buffer> buffer;
-					{
-						std::lock_guard<std::mutex> l (
-							m_RouterInfosMutex); // possible collision between DeleteBuffer and Update
-						buffer = r->CopyBuffer ();
-					}
 					if (!i2p::transport::transports.IsConnected (ident)) r->ScheduleBufferToDelete ();
-					if (buffer) saveToDisk.emplace_back (ident.ToBase64 (), buffer);
+					saveToDisk.emplace_back (ident.ToBase64 (), buffer);
 				}
-				r->SetUpdated (false);
 				updatedCount++;
 				continue;
 			}
@@ -1169,7 +1192,9 @@ namespace data
 			removals.reserve (remove.size ());
 			for (const auto & it : remove) removals.push_back (it);
 		}
-		for (const auto & it : saves) RouterInfo::SaveToFile (it.first, it.second);
+		for (const auto & it : saves)
+			if (!RouterInfo::SaveToFile (it.first, it.second))
+				LogPrint (eLogError, "NetDb: Failed to persist RouterInfo ", it.first);
 		for (const auto & it : removals)
 		{
 			std::lock_guard<std::mutex> storage (m_StorageMutex);
@@ -1205,6 +1230,11 @@ namespace data
 			return;
 		}
 		uint32_t replyToken = bufbe32toh (buf + DATABASE_STORE_REPLY_TOKEN_OFFSET);
+		if (!IsTunnelDatabaseStoreAccepted (m->from != nullptr || m->fromClove, replyToken))
+		{
+			LogPrint (eLogDebug, "NetDb: Database store with reply token arrived through a tunnel, dropped");
+			return;
+		}
 		size_t offset = DATABASE_STORE_HEADER_SIZE;
 		if (replyToken)
 		{
@@ -1322,7 +1352,11 @@ namespace data
 			}
 		}
 
-		if (replyToken && context.IsFloodfill () && updated)
+		if (replyToken && context.IsFloodfill () && updated && ShouldThrottleFlood (ident))
+		{
+			LogPrint (eLogDebug, "NetDb: DatabaseStore flood throttled for ", ident.ToBase64 ());
+		}
+		else if (replyToken && context.IsFloodfill () && updated)
 		{
 			// flood updated. Size the message for the actual entry: a valid
 			// Meta/LS2 may be close to MAX_LS_BUFFER_SIZE and not fit the
@@ -1346,6 +1380,55 @@ namespace data
 			else
 				LogPrint (eLogError, "NetDb: Database store message is too long ", floodMsg->len);
 		}
+	}
+
+	bool NetDb::ShouldThrottleLookup (const IdentHash & from, uint32_t tunnelID)
+	{
+		constexpr uint64_t window = 120; // seconds
+		constexpr uint32_t limit = 14; // Java floodfill limit
+		constexpr size_t maximum = 4096;
+		const auto now = i2p::util::GetSecondsSinceEpoch ();
+		std::lock_guard<std::mutex> l (m_ThrottleMutex);
+		auto key = std::make_pair (from, tunnelID);
+		auto it = m_LookupThrottle.find (key);
+		if (it == m_LookupThrottle.end ())
+		{
+			if (m_LookupThrottle.size () >= maximum) m_LookupThrottle.erase (m_LookupThrottle.begin ());
+			m_LookupThrottle.emplace (key, std::make_pair (now, 1));
+			return false;
+		}
+		if (it->second.first + window <= now)
+		{
+			it->second = std::make_pair (now, 1);
+			return false;
+		}
+		if (it->second.second >= limit) return true;
+		++it->second.second;
+		return false;
+	}
+
+	bool NetDb::ShouldThrottleFlood (const IdentHash & ident)
+	{
+		constexpr uint64_t window = 90; // seconds
+		constexpr uint32_t limit = 3;
+		constexpr size_t maximum = 4096;
+		const auto now = i2p::util::GetSecondsSinceEpoch ();
+		std::lock_guard<std::mutex> l (m_ThrottleMutex);
+		auto it = m_FloodThrottle.find (ident);
+		if (it == m_FloodThrottle.end ())
+		{
+			if (m_FloodThrottle.size () >= maximum) m_FloodThrottle.erase (m_FloodThrottle.begin ());
+			m_FloodThrottle.emplace (ident, std::make_pair (now, 1));
+			return false;
+		}
+		if (it->second.first + window <= now)
+		{
+			it->second = std::make_pair (now, 1);
+			return false;
+		}
+		if (it->second.second >= limit) return true;
+		++it->second.second;
+		return false;
 	}
 
 	void NetDb::HandleDatabaseLookupMsg (std::shared_ptr<const I2NPMessage> msg)
@@ -1396,6 +1479,26 @@ namespace data
 			LogPrint (eLogWarning, "NetDb: DatabaseLookup has a zero reply hash");
 			return;
 		}
+		// Hidden routers do not answer unsolicited lookups (Java
+		// HandleDatabaseLookupMessageJob.isHidden except for our own key).
+		if (i2p::context.IsHidden () && ident != i2p::context.GetIdentHash ())
+		{
+			LogPrint (eLogDebug, "NetDb: DatabaseLookup ignored in hidden mode");
+			return;
+		}
+		// A known floodfill must not send direct exploratory/normal lookups;
+		// Java drops them before dispatch (FloodfillDatabaseLookupMessageHandler).
+		if (!replyTunnelID && replyIdent != i2p::context.GetIdentHash ()
+			&& (lookupType == DATABASE_LOOKUP_TYPE_EXPLORATORY_LOOKUP
+				|| lookupType == DATABASE_LOOKUP_TYPE_NORMAL_LOOKUP))
+		{
+			auto sender = FindRouter (replyIdent);
+			if (sender && sender->IsFloodfill ())
+			{
+				LogPrint (eLogDebug, "NetDb: Direct lookup from floodfill dropped");
+				return;
+			}
+		}
 		// HandleDatabaseLookupMessageJob: drop a direct reply addressed to us.
 		// Sending it would loop the DSM/DSRM back through the transport layer.
 		if (!replyTunnelID && replyIdent == i2p::context.GetIdentHash ())
@@ -1421,6 +1524,11 @@ namespace data
 				LogPrint (eLogWarning, "NetDb: DatabaseLookup derived-key ratchet reply is not implemented");
 			else
 				LogPrint (eLogWarning, "NetDb: DatabaseLookup reply key block is invalid or truncated");
+			return;
+		}
+		if (ident != i2p::context.GetIdentHash () && ShouldThrottleLookup (replyIdent, replyTunnelID))
+		{
+			LogPrint (eLogDebug, "NetDb: DatabaseLookup throttled for ", replyIdent.ToBase64 ());
 			return;
 		}
 
@@ -1832,7 +1940,7 @@ namespace data
 				std::lock_guard<std::mutex> l (m_RouterInfosMutex);
 				eligible.reserve (m_RouterInfos.size ());
 				for (const auto & it : m_RouterInfos)
-					if (!it.second->IsDeclaredFloodfill ()
+					if (!it.second->IsDeclaredFloodfill () && !it.second->IsUnreachable ()
 						&& (!checkIsReal || (it.second->HasProfile () && it.second->GetProfile ()->IsReal ())))
 						eligible.push_back (it.second);
 			}
@@ -1851,7 +1959,8 @@ namespace data
 		IdentHash destKey = CreateRoutingKey (destination);
 		std::map<XORMetric, std::shared_ptr<const RouterInfo>> sorted;
 		for (const auto & it : m_ExploratorySelection)
-			if (!excluded.count (it->GetIdentHash ())) sorted.emplace (destKey ^ it->GetIdentHash (), it);
+			if (!it->IsUnreachable () && !excluded.count (it->GetIdentHash ()))
+				sorted.emplace (destKey ^ it->GetIdentHash (), it);
 		// return first num closest routers
 		for (const auto & it : sorted)
 		{

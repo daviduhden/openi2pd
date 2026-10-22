@@ -14,6 +14,7 @@
 #include <openssl/evp.h>
 #include <openssl/rand.h>
 #include "Siphash.h"
+#include "Log.h"
 #include "util.h"
 #include "Timestamp.h"
 #include "IdentMetrics.h"
@@ -55,6 +56,7 @@ namespace data
 
 	PeerOrdering::~PeerOrdering ()
 	{
+		m_PeerOrderingKey.Wipe ();
 #if OPENSSL_SIPHASH
 		if (m_MDCtx) EVP_MD_CTX_free (m_MDCtx);
 #endif
@@ -62,27 +64,54 @@ namespace data
 
 	void PeerOrdering::SetKey (const uint8_t * key)
 	{
+		m_IsKeyValid = false;
+		m_PeerOrderingKey.Wipe ();
 		if (key)
 			memcpy (m_PeerOrderingKey, key, 16);
-		else
-			RAND_bytes (m_PeerOrderingKey, 16);
+		else if (RAND_bytes (m_PeerOrderingKey, 16) != 1)
+		{
+			LogPrint (eLogError, "IdentMetrics: CSPRNG unavailable for peer ordering key");
+			m_PeerOrderingKey.Wipe ();
+			return;
+		}
 #if OPENSSL_SIPHASH
-		if (m_MDCtx) EVP_MD_CTX_free (m_MDCtx); // delete previous
+		if (m_MDCtx)
+		{
+			EVP_MD_CTX_free (m_MDCtx);
+			m_MDCtx = nullptr;
+		}
+		EVP_MD_CTX * md = EVP_MD_CTX_new ();
 		EVP_PKEY * sipKey = EVP_PKEY_new_raw_private_key (EVP_PKEY_SIPHASH, nullptr, m_PeerOrderingKey, 16);
-		m_MDCtx = EVP_MD_CTX_new ();
-		EVP_DigestSignInit (m_MDCtx, nullptr, nullptr, nullptr, sipKey);
-		EVP_PKEY_free (sipKey);
+		const bool ok = md && sipKey && EVP_DigestSignInit (md, nullptr, nullptr, nullptr, sipKey) == 1;
+		if (sipKey) EVP_PKEY_free (sipKey);
+		if (!ok)
+		{
+			if (md) EVP_MD_CTX_free (md);
+			LogPrint (eLogError, "IdentMetrics: SipHash peer ordering unavailable");
+			m_PeerOrderingKey.Wipe ();
+			return;
+		}
+		m_MDCtx = md;
 #endif
+		m_IsKeyValid = true;
 	}
 
 	int PeerOrdering::CalculatePeerOrderingGroup (const IdentHash & routerIdent)
 	{
-		uint8_t hash[16];
+		if (!m_IsKeyValid) return 0;
+		uint8_t hash[16] {};
 #if OPENSSL_SIPHASH
-		EVP_DigestSignInit (m_MDCtx, nullptr, nullptr, nullptr, nullptr);
-		EVP_DigestSignUpdate (m_MDCtx, routerIdent, 32);
-		size_t l = 16;
-		EVP_DigestSignFinal (m_MDCtx, hash, &l);
+		size_t l = sizeof (hash);
+		const bool ok = m_MDCtx && EVP_DigestSignInit (m_MDCtx, nullptr, nullptr, nullptr, nullptr) == 1
+			&& EVP_DigestSignUpdate (m_MDCtx, routerIdent, 32) == 1
+			&& EVP_DigestSignFinal (m_MDCtx, hash, &l) == 1 && l == sizeof (hash);
+		if (!ok)
+		{
+			// A provider without SipHash must not turn uninitialised stack
+			// bytes into a peer-ordering decision.
+			LogPrint (eLogError, "IdentMetrics: SipHash peer ordering failed");
+			return 0;
+		}
 #else
 		i2p::crypto::Siphash<16> (hash, routerIdent, 32, m_PeerOrderingKey);
 #endif

@@ -51,7 +51,8 @@ namespace data
 			if (signingKey && identity->GetSigningPublicKeyLen () == m_PublicKey.size ())
 			{
 				memcpy (m_PublicKey.data (), signingKey, m_PublicKey.size ());
-				m_IsValid = true;
+				m_IsValid = i2p::crypto::GetEd25519 ()->IsValidPublicKey (m_PublicKey.data ());
+				if (!m_IsValid) LogPrint (eLogError, "Blinding: signing key is not a valid Ed25519 point");
 			}
 			else
 				LogPrint (eLogError, "Blinding: Signing key of type ", (int)m_SigType, " has the wrong length");
@@ -143,7 +144,8 @@ namespace data
 			&& offset + m_PublicKey.size () == l)
 		{
 			memcpy (m_PublicKey.data (), addr.data () + offset, m_PublicKey.size ());
-			m_IsValid = true;
+			m_IsValid = i2p::crypto::GetEd25519 ()->IsValidPublicKey (m_PublicKey.data ());
+			if (!m_IsValid) LogPrint (eLogError, "Blinding: b33 key is not a valid Ed25519 point");
 		}
 		else
 		{
@@ -242,6 +244,7 @@ namespace data
 			break;
 		default: LogPrint (eLogError, "Blinding: Can't blind signature type ", (int)m_SigType);
 		}
+		OPENSSL_cleanse (seed, sizeof (seed));
 		return publicKeyLength;
 	}
 
@@ -263,11 +266,13 @@ namespace data
 			uint8_t exp[64];
 			i2p::crypto::Ed25519::ExpandPrivateKey (priv, exp);
 			i2p::crypto::GetEd25519 ()->BlindPrivateKey (exp, seed, blindedPriv, blindedPub);
+			OPENSSL_cleanse (exp, sizeof (exp));
 			publicKeyLength = i2p::crypto::EDDSA25519_PUBLIC_KEY_LENGTH;
 			break;
 		}
 		default: LogPrint (eLogError, "Blinding: Can't blind signature type ", (int)m_SigType);
 		}
+		OPENSSL_cleanse (seed, sizeof (seed));
 		return publicKeyLength;
 	}
 

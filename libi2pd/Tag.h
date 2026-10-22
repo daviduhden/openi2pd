@@ -16,6 +16,7 @@
 #include <boost/static_assert.hpp>
 #include <string.h>
 #include <openssl/rand.h>
+#include <openssl/crypto.h>
 #include <string>
 #include <string_view>
 #include <compare>
@@ -59,6 +60,7 @@ namespace data
 		}
 
 		void Fill (uint8_t c) { memset (m_Buf, c, sz); }
+		void Wipe () { OPENSSL_cleanse (m_Buf, sz); }
 
 		bool Randomize ()
 		{

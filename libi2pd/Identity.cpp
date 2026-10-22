@@ -12,9 +12,13 @@
  *
  */
 
+#include <algorithm>
+#include <array>
+#include <optional>
 #include "Crypto.h"
 #include "I2PEndian.h"
 #include "Log.h"
+#include "Modern.h"
 #include "Timestamp.h"
 #include "CryptoKey.h"
 #include "Blinding.h"
@@ -52,28 +56,50 @@ namespace data
 			size_t signature;
 		};
 
+		struct SigningKeySizeEntry
+		{
+			SigningKeyType type;
+			SigningKeySizes sizes;
+		};
+
 		// Wire lengths from the I2P common-structures specification and
 		// SigType.java. They are independent of whether this build has a
 		// verifier for the type: an identity still has a defined layout even
 		// when its signatures cannot be checked locally.
+		constexpr std::array<SigningKeySizeEntry, 12> SIGNING_KEY_SIZES { {
+			{ SIGNING_KEY_TYPE_DSA_SHA1, { 128, 20, 40 } },
+			{ SIGNING_KEY_TYPE_ECDSA_SHA256_P256, { 64, 32, 64 } },
+			{ SIGNING_KEY_TYPE_ECDSA_SHA384_P384, { 96, 48, 96 } },
+			{ SIGNING_KEY_TYPE_ECDSA_SHA512_P521, { 132, 66, 132 } },
+			{ SIGNING_KEY_TYPE_RSA_SHA256_2048, { 256, 512, 256 } },
+			{ SIGNING_KEY_TYPE_RSA_SHA384_3072, { 384, 768, 384 } },
+			{ SIGNING_KEY_TYPE_RSA_SHA512_4096, { 512, 1024, 512 } },
+			{ SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, { 32, 32, 64 } },
+			{ SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519ph, { 32, 32, 64 } },
+			{ SIGNING_KEY_TYPE_GOSTR3410_CRYPTO_PRO_A_GOSTR3411_256, { 64, 32, 64 } },
+			{ SIGNING_KEY_TYPE_GOSTR3410_TC26_A_512_GOSTR3411_512, { 128, 64, 128 } },
+			{ SIGNING_KEY_TYPE_REDDSA_SHA512_ED25519, { 32, 32, 64 } },
+		} };
+
+		constexpr std::optional<SigningKeySizes> LookupSigningKeySizes (SigningKeyType type) noexcept
+		{
+			const auto entry = std::ranges::find_if (SIGNING_KEY_SIZES,
+				[type] (const SigningKeySizeEntry & candidate) { return candidate.type == type; });
+			if (entry == SIGNING_KEY_SIZES.end ()) return std::nullopt;
+			return entry->sizes;
+		}
+
+		static_assert (LookupSigningKeySizes (SIGNING_KEY_TYPE_REDDSA_SHA512_ED25519).has_value ());
+		static_assert (!LookupSigningKeySizes (static_cast<SigningKeyType> (0xffff)).has_value ());
+
+		// Unknown types keep their historical "no layout known" result so the
+		// callers can fall back to their documented defaults.
 		bool GetSigningKeySizes (SigningKeyType type, SigningKeySizes & sizes)
 		{
-			switch (type)
-			{
-			case SIGNING_KEY_TYPE_DSA_SHA1: sizes = { 128, 20, 40 }; return true;
-			case SIGNING_KEY_TYPE_ECDSA_SHA256_P256: sizes = { 64, 32, 64 }; return true;
-			case SIGNING_KEY_TYPE_ECDSA_SHA384_P384: sizes = { 96, 48, 96 }; return true;
-			case SIGNING_KEY_TYPE_ECDSA_SHA512_P521: sizes = { 132, 66, 132 }; return true;
-			case SIGNING_KEY_TYPE_RSA_SHA256_2048: sizes = { 256, 512, 256 }; return true;
-			case SIGNING_KEY_TYPE_RSA_SHA384_3072: sizes = { 384, 768, 384 }; return true;
-			case SIGNING_KEY_TYPE_RSA_SHA512_4096: sizes = { 512, 1024, 512 }; return true;
-			case SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519: sizes = { 32, 32, 64 }; return true;
-			case SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519ph: sizes = { 32, 32, 64 }; return true;
-			case SIGNING_KEY_TYPE_GOSTR3410_CRYPTO_PRO_A_GOSTR3411_256: sizes = { 64, 32, 64 }; return true;
-			case SIGNING_KEY_TYPE_GOSTR3410_TC26_A_512_GOSTR3411_512: sizes = { 128, 64, 128 }; return true;
-			case SIGNING_KEY_TYPE_REDDSA_SHA512_ED25519: sizes = { 32, 32, 64 }; return true;
-			default: return false;
-			}
+			const auto found = LookupSigningKeySizes (type);
+			if (!found) return false;
+			sizes = *found;
+			return true;
 		}
 	} // namespace
 
@@ -781,16 +807,7 @@ namespace data
 
 	size_t PrivateKeys::FromBuffer (const uint8_t * buf, size_t len)
 	{
-		m_Public = nullptr;
-		m_Signer = nullptr;
-		m_OfflineSignature.clear ();
-		m_SigningPrivateKey.clear ();
-		m_TransientSignatureLen = 0;
-		m_TransientSigningPrivateKeyLen = 0;
-		m_B33OfflineKeys = B33OfflineKeys ();
-		memset (m_PrivateKey, 0, sizeof (m_PrivateKey));
-
-		auto fail = [this] ()
+		const auto reset = [this] ()
 		{
 			m_Public = nullptr;
 			m_Signer = nullptr;
@@ -800,8 +817,13 @@ namespace data
 			m_TransientSigningPrivateKeyLen = 0;
 			m_B33OfflineKeys = B33OfflineKeys ();
 			memset (m_PrivateKey, 0, sizeof (m_PrivateKey));
-			return static_cast<size_t> (0);
 		};
+		reset ();
+
+		// A parse that does not reach the final return leaves no partial key
+		// material behind. The guard is dismissed only by the successful
+		// return below.
+		i2p::modern::ScopeExit clearOnFailure (reset);
 
 		if (!buf) return 0;
 		auto pub = std::make_shared<IdentityEx> ();
@@ -814,13 +836,13 @@ namespace data
 		{
 			LogPrint (eLogError, "Identity: Unsupported crypto key type ", (int)m_Public->GetCryptoKeyType (),
 				" in private keys");
-			return fail ();
+			return 0;
 		}
-		if (ret > len || cryptoKeyLen > len - ret) return fail ();
+		if (ret > len || cryptoKeyLen > len - ret) return 0;
 		memcpy (m_PrivateKey, buf + ret, cryptoKeyLen);
 		ret += cryptoKeyLen;
 		size_t signingPrivateKeySize = m_Public->GetSigningPrivateKeyLen ();
-		if (ret > len || signingPrivateKeySize > len - ret) return fail ();
+		if (ret > len || signingPrivateKeySize > len - ret) return 0;
 		m_SigningPrivateKey.resize (signingPrivateKeySize);
 		memcpy (m_SigningPrivateKey.data (), buf + ret, signingPrivateKeySize);
 		ret += signingPrivateKeySize;
@@ -836,29 +858,29 @@ namespace data
 		if (allzeros)
 		{
 			// offline information
-			if (len - ret < OFFLINE_SIGNATURE_HEADER_LENGTH) return fail (); // expires(4) + key type(2)
+			if (len - ret < OFFLINE_SIGNATURE_HEADER_LENGTH) return 0; // expires(4) + key type(2)
 			const uint8_t * offlineInfo = buf + ret;
 			uint32_t expires = bufbe32toh (buf + ret);
 			ret += 4; // expires timestamp
 			if (expires < i2p::util::GetSecondsSinceEpoch ())
 			{
 				LogPrint (eLogError, "Identity: Offline signature expired");
-				return fail ();
+				return 0;
 			}
 			SigningKeyType keyType = bufbe16toh (buf + ret);
 			ret += 2; // key type
 			std::unique_ptr<i2p::crypto::Verifier> transientVerifier (IdentityEx::CreateVerifier (keyType));
-			if (!transientVerifier) return fail ();
+			if (!transientVerifier) return 0;
 			auto keyLen = transientVerifier->GetPublicKeyLen ();
-			if (ret > len || keyLen > len - ret) return fail ();
+			if (ret > len || keyLen > len - ret) return 0;
 			transientVerifier->SetPublicKey (buf + ret);
 			ret += keyLen;
 			auto offlineSignatureLen = m_Public->GetSignatureLen ();
-			if (ret > len || offlineSignatureLen > len - ret) return fail ();
+			if (ret > len || offlineSignatureLen > len - ret) return 0;
 			if (!m_Public->Verify (offlineInfo, keyLen + 6, buf + ret))
 			{
 				LogPrint (eLogError, "Identity: Offline signature verification failed");
-				return fail ();
+				return 0;
 			}
 			ret += offlineSignatureLen;
 			m_TransientSignatureLen = transientVerifier->GetSignatureLen ();
@@ -868,13 +890,13 @@ namespace data
 			memcpy (m_OfflineSignature.data (), offlineInfo, offlineInfoLen);
 			// override signing private key
 			m_TransientSigningPrivateKeyLen = transientVerifier->GetPrivateKeyLen ();
-			if (ret > len || m_TransientSigningPrivateKeyLen > len - ret) return fail ();
+			if (ret > len || m_TransientSigningPrivateKeyLen > len - ret) return 0;
 			if (m_TransientSigningPrivateKeyLen > m_SigningPrivateKey.size ())
 				m_SigningPrivateKey.resize (m_TransientSigningPrivateKeyLen);
 			memcpy (m_SigningPrivateKey.data (), buf + ret, m_TransientSigningPrivateKeyLen);
 			ret += m_TransientSigningPrivateKeyLen;
 			CreateSigner (keyType);
-			if (!m_Signer) return fail ();
+			if (!m_Signer) return 0;
 		}
 		else
 			CreateSigner (m_Public->GetSigningKeyType ());
@@ -883,6 +905,7 @@ namespace data
 			size_t b33Len = m_B33OfflineKeys.FromBuffer (buf + ret, len - ret, m_Public->GetIdentHash ());
 			if (b33Len) ret += b33Len;
 		}
+		clearOnFailure.dismiss ();
 		return ret;
 	}
 
@@ -1209,6 +1232,14 @@ namespace data
 	PrivateKeys PrivateKeys::CreateOfflineKeys (SigningKeyType type, uint32_t expires) const
 	{
 		if (!m_Public) return PrivateKeys ();
+		if (IsOfflineSignature ())
+		{
+			// The outer signature length is the transient length for an
+			// already-offline key. Chaining would size the buffer with the
+			// destination signature but write the transient signature.
+			LogPrint (eLogError, "Identity: Cannot chain an offline signing key");
+			return PrivateKeys (*this);
+		}
 		if (!m_Signer) CreateSigner ();
 		if (!m_Signer)
 		{

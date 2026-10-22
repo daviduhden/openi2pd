@@ -39,6 +39,11 @@ namespace data
 		// would therefore create a session whose 514-byte ElGamal block is
 		// produced by a P256 or unknown encryptor. Keep the sections for
 		// IsEncryptionKey(), but never make one the active encryptor.
+		bool IsRSASigningKeyType (uint16_t keyType)
+		{
+			return keyType >= SIGNING_KEY_TYPE_RSA_SHA256_2048 && keyType <= SIGNING_KEY_TYPE_RSA_SHA512_4096;
+		}
+
 		bool IsSelectableLS2EncryptionKeyType (CryptoKeyType keyType)
 		{
 			switch (keyType)
@@ -257,6 +262,12 @@ namespace data
 				LogPrint (eLogWarning, "LeaseSet: Verification failed");
 				m_IsValid = false;
 			}
+			else
+				// Java re-serializes an LS1 from its parsed structure and never
+				// re-serves bytes outside the signed body. Trim trailing
+				// unauthenticated padding so floodfills store and serve one
+				// canonical representation.
+				SetBufferLen (signedSize + m_Identity->GetSignatureLen ());
 		}
 	}
 
@@ -377,11 +388,11 @@ namespace data
 		return ts > m_ExpirationTime;
 	}
 
-	void LeaseSet::Encrypt (const uint8_t * data, uint8_t * encrypted) const
+	bool LeaseSet::Encrypt (const uint8_t * data, uint8_t * encrypted) const
 	{
-		if (!m_Identity || !m_EncryptionKey || !data || !encrypted) return;
+		if (!m_Identity || !m_EncryptionKey || !data || !encrypted) return false;
 		auto encryptor = m_Identity->CreateEncryptor (m_EncryptionKey.get ());
-		if (encryptor) encryptor->Encrypt (data, encrypted);
+		return encryptor && encryptor->Encrypt (data, encrypted);
 	}
 
 	void LeaseSet::SetBuffer (const uint8_t * buf, size_t len)
@@ -498,7 +509,7 @@ namespace data
 		if (flags & LEASESET2_FLAG_OFFLINE_KEYS)
 		{
 			// transient key
-			m_TransientVerifier = ProcessOfflineSignature (identity, buf, len, offset);
+			m_TransientVerifier = ProcessOfflineSignature (identity, buf, len, offset, false);
 			if (!m_TransientVerifier)
 			{
 				LogPrint (eLogError, "LeaseSet2: Offline signature failed");
@@ -800,8 +811,15 @@ namespace data
 		// so cross-type LS1/Meta replacement must compare this value rather
 		// than the zero sentinel used for encrypted outer layers.
 		SetEarliestLeaseDate (earliestEntry);
-		// revocations (validated for length; revocation processing is not
-		// implemented, as in MetaLeaseSet.java where it is also a TODO)
+		// MetaLeaseSet.addLease() also rewrites _expires to the latest entry,
+		// overriding a longer header expires. Bound the stored/served lifetime
+		// to the last usable child entry.
+		if (latestEntry && latestEntry < GetExpirationTime ()) SetExpirationTime (latestEntry);
+		// Revocations are validated for length but not applied. Java 2.14.0
+		// also leaves them as a TODO, and its verification re-serializes with
+		// count 0, so a Java peer rejects any nonzero revocation list. Keep
+		// accepting the proposal-123 form for future senders but document the
+		// serving-direction difference; no current implementation emits it.
 		if (offset + 1 > len) return 0;
 		uint8_t numRevocations = buf[offset++];
 		if ((size_t)numRevocations * 32 > len - offset) return 0;
@@ -837,6 +855,14 @@ namespace data
 		const uint8_t * stA1 = buf + offset; // stA1 = blinded signature type, 2 bytes big endian
 		uint16_t blindedKeyType = bufbe16toh (stA1);
 		offset += 2;
+		// Java LeaseSet2.verifySignature() rejects an RSA transient/blinded
+		// signature type before any public-key operation. Otherwise every
+		// untrusted type-5 store can force a 4096-bit RSA verify.
+		if (IsRSASigningKeyType (blindedKeyType))
+		{
+			LogPrint (eLogWarning, "LeaseSet2: RSA blinded signature type is not accepted");
+			return;
+		}
 		std::unique_ptr<i2p::crypto::Verifier> blindedVerifier (i2p::data::IdentityEx::CreateVerifier (blindedKeyType));
 		if (!blindedVerifier) return;
 		auto blindedKeyLen = blindedVerifier->GetPublicKeyLen ();
@@ -870,7 +896,7 @@ namespace data
 		if (flags & LEASESET2_FLAG_OFFLINE_KEYS)
 		{
 			// transient key
-			m_TransientVerifier = ProcessOfflineSignature (blindedVerifier, buf, len, offset);
+			m_TransientVerifier = ProcessOfflineSignature (blindedVerifier, buf, len, offset, false);
 			if (!m_TransientVerifier)
 			{
 				LogPrint (eLogError, "LeaseSet2: Offline signature failed");
@@ -1134,11 +1160,11 @@ namespace data
 		return offset - 1;
 	}
 
-	void LeaseSet2::Encrypt (const uint8_t * data, uint8_t * encrypted) const
+	bool LeaseSet2::Encrypt (const uint8_t * data, uint8_t * encrypted) const
 	{
-		if (!encrypted) return;
+		if (!encrypted) return false;
 		auto encryptor = m_Encryptor; // TODO: atomic
-		if (encryptor) encryptor->Encrypt (data, encrypted);
+		return encryptor && encryptor->Encrypt (data, encrypted);
 	}
 
 	bool LeaseSet2::IsEncryptionKey (CryptoKeyType type, const uint8_t * key) const
@@ -1181,6 +1207,7 @@ namespace data
 			size_t offset = 0;
 			uint16_t blindedKeyType = bufbe16toh (buf + offset);
 			offset += 2;
+			if (IsRSASigningKeyType (blindedKeyType)) return 0;
 			std::unique_ptr<i2p::crypto::Verifier> blindedVerifier (
 				i2p::data::IdentityEx::CreateVerifier (blindedKeyType));
 			if (!blindedVerifier) return 0;

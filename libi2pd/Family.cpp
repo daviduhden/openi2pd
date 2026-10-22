@@ -12,8 +12,14 @@
  *
  */
 
-#include <string.h>
+#include <array>
+#include <cstring>
+#include <memory>
+#include <mutex>
+#include <string_view>
 #include <openssl/ssl.h>
+#include <openssl/ecdsa.h>
+#include <openssl/objects.h>
 #include "Crypto.h"
 #include "FS.h"
 #include "Log.h"
@@ -24,79 +30,95 @@ namespace i2p
 {
 namespace data
 {
+	namespace
+	{
+		using SslCtxPtr = std::unique_ptr<SSL_CTX, decltype (&SSL_CTX_free)>;
+		using SslPtr = std::unique_ptr<SSL, decltype (&SSL_free)>;
+		using PkeyPtr = std::unique_ptr<EVP_PKEY, decltype (&EVP_PKEY_free)>;
+		using MdCtxPtr = std::unique_ptr<EVP_MD_CTX, decltype (&EVP_MD_CTX_free)>;
+		using EcdsaSigPtr = std::unique_ptr<ECDSA_SIG, decltype (&ECDSA_SIG_free)>;
+		using BnPtr = std::unique_ptr<BIGNUM, decltype (&BN_free)>;
+
+		std::string GetFamilyName (X509 * cert)
+		{
+			if (!cert) return {};
+			std::array<char, 100> name {};
+			if (!X509_NAME_oneline (X509_get_issuer_name (cert), name.data (), name.size ())) return {};
+			std::string_view view (name.data ());
+			const auto cn = view.find ("CN=");
+			if (cn == std::string_view::npos) return {};
+			const auto start = cn + 3;
+			auto end = view.find (".family", start);
+			if (end == std::string_view::npos) end = view.find ('/', start);
+			if (end == std::string_view::npos) end = view.size ();
+			return std::string (view.substr (start, end - start));
+		}
+	}
+
 	static int GetFamilyKeyCurve (EVP_PKEY * pkey)
 	{
-		if (!pkey || EVP_PKEY_base_id (pkey) != EVP_PKEY_EC) return -1;
-#ifndef LIBRESSL_VERSION_NUMBER // OpenSSL 3.0.2 is the minimum
+#if I2PD_HAVE_EVP_PKEY_IS_A && I2PD_HAVE_EVP_PKEY_GROUP_NAME
+		if (!pkey || EVP_PKEY_is_a (pkey, "EC") != 1) return -1;
 		char groupName[80];
-		if (EVP_PKEY_get_group_name (pkey, groupName, sizeof (groupName), nullptr) != 1) return -1;
+		size_t groupLength = 0;
+		if (EVP_PKEY_get_group_name (pkey, groupName, sizeof (groupName), &groupLength) != 1
+			|| groupLength == 0)
+			return -1;
 		return OBJ_txt2nid (groupName);
 #else
+		if (!pkey) return -1;
 		const EC_KEY * ec = EVP_PKEY_get0_EC_KEY (pkey);
 		const EC_GROUP * group = ec ? EC_KEY_get0_group (ec) : nullptr;
 		return group ? EC_GROUP_get_curve_name (group) : -1;
 #endif
 	}
 
-	Families::Families () { }
-
-	Families::~Families ()
-	{
-		for (auto it : m_SigningKeys)
-			if (it.second.first) EVP_PKEY_free (it.second.first);
-	}
+	Families::Families () = default;
+	Families::~Families () = default;
 
 	void Families::LoadCertificate (const std::string & filename)
 	{
-		SSL_CTX * ctx = SSL_CTX_new (TLS_method ());
-		int ret = SSL_CTX_use_certificate_file (ctx, filename.c_str (), SSL_FILETYPE_PEM);
-		if (ret)
+		SslCtxPtr ctx (SSL_CTX_new (TLS_method ()), SSL_CTX_free);
+		if (!ctx)
 		{
-			SSL * ssl = SSL_new (ctx);
-			X509 * cert = SSL_get_certificate (ssl);
-			if (cert)
-			{
-				std::shared_ptr<i2p::crypto::Verifier> verifier;
-				// extract issuer name
-				char name[100] {};
-				if (!X509_NAME_oneline (X509_get_issuer_name (cert), name, sizeof (name))) name[0] = 0;
-				name[sizeof (name) - 1] = 0;
-				char * cn = strstr (name, "CN=");
-				if (cn)
-				{
-					cn += 3;
-					char * family = strstr (cn, ".family");
-					if (family) family[0] = 0;
-					auto pkey = X509_get_pubkey (cert);
-					if (pkey)
-					{
-						int curve = GetFamilyKeyCurve (pkey);
-						if (curve == NID_X9_62_prime256v1)
-						{
-							if (!m_SigningKeys.emplace (cn, std::make_pair (pkey, (int)m_SigningKeys.size () + 1))
-									.second)
-							{
-								EVP_PKEY_free (pkey);
-								LogPrint (eLogError, "Family: Duplicated family name ", cn);
-							}
-						}
-						else
-						{
-							EVP_PKEY_free (pkey);
-							LogPrint (eLogWarning, "Family: elliptic curve ", curve, " is not supported");
-						}
-					}
-				}
-			}
-			SSL_free (ssl);
+			LogPrint (eLogError, "Family: Can't create SSL context for ", filename);
+			return;
 		}
-		else
+		if (SSL_CTX_use_certificate_file (ctx.get (), filename.c_str (), SSL_FILETYPE_PEM) != 1)
+		{
 			LogPrint (eLogError, "Family: Can't open certificate file ", filename);
-		SSL_CTX_free (ctx);
+			return;
+		}
+
+		SslPtr ssl (SSL_new (ctx.get ()), SSL_free);
+		if (!ssl) return;
+		X509 * cert = SSL_get_certificate (ssl.get ());
+		if (!cert) return;
+
+		const std::string family = GetFamilyName (cert);
+		if (family.empty () || family.find_first_of ("/\\\r\n") != std::string::npos)
+		{
+			LogPrint (eLogWarning, "Family: Invalid family name in ", filename);
+			return;
+		}
+
+		PkeyPtr pkey (X509_get_pubkey (cert), EVP_PKEY_free);
+		if (!pkey) return;
+		const int curve = GetFamilyKeyCurve (pkey.get ());
+		if (curve != NID_X9_62_prime256v1)
+		{
+			LogPrint (eLogWarning, "Family: elliptic curve ", curve, " is not supported");
+			return;
+		}
+
+		FamilySigningKey entry { std::move (pkey), static_cast<FamilyID> (m_SigningKeys.size () + 1) };
+		if (!m_SigningKeys.emplace (family, std::move (entry)).second)
+			LogPrint (eLogError, "Family: Duplicated family name ", family);
 	}
 
 	void Families::LoadCertificates ()
 	{
+		std::unique_lock lock (m_SigningKeysMutex);
 		std::string certDir = i2p::fs::GetCertsDir () + i2p::fs::dirSep + "family";
 
 		std::vector<std::string> files;
@@ -124,91 +146,127 @@ namespace data
 	bool Families::VerifyFamily (
 		const std::string & family, const IdentHash & ident, std::string_view signature, const char * /* key */) const
 	{
-		uint8_t buf[100], signatureBuf[64];
-		size_t len = family.length ();
-		if (len + 32 > 100)
+		std::array<uint8_t, 100> buf {};
+		const size_t familyLength = family.length ();
+		if (familyLength + IdentHash::len > buf.size ())
 		{
 			LogPrint (eLogError, "Family: ", family, " is too long");
 			return false;
 		}
+
+		std::shared_lock lock (m_SigningKeysMutex);
 		auto it = m_SigningKeys.find (family);
-		if (it != m_SigningKeys.end () && it->second.first)
+		if (it == m_SigningKeys.end () || !it->second.pkey)
 		{
-			memcpy (buf, family.c_str (), len);
-			memcpy (buf + len, (const uint8_t *)ident, 32);
-			len += 32;
-			auto signatureBufLen = Base64ToByteStream (signature, signatureBuf, 64);
-			if (signatureBufLen == 64)
-			{
-				ECDSA_SIG * sig = ECDSA_SIG_new ();
-				ECDSA_SIG_set0 (sig, BN_bin2bn (signatureBuf, 32, NULL), BN_bin2bn (signatureBuf + 32, 32, NULL));
-				uint8_t sign[72];
-				uint8_t * s = sign;
-				auto l = i2d_ECDSA_SIG (sig, &s);
-				ECDSA_SIG_free (sig);
-				EVP_MD_CTX * ctx = EVP_MD_CTX_new ();
-				EVP_DigestVerifyInit (ctx, NULL, EVP_sha256 (), NULL, it->second.first);
-				auto ret = EVP_DigestVerify (ctx, sign, l, buf, len) == 1;
-				EVP_MD_CTX_free (ctx);
-				return ret;
-			}
+			// Preserve the existing policy: an unknown family is not a
+			// signature failure here; RouterInfo policy decides whether it is
+			// acceptable. No key material is available to verify.
+			return true;
 		}
-		// TODO: process key
-		return true;
+
+		std::array<uint8_t, 64> signatureBuf {};
+		const auto signatureBufLen = Base64ToByteStream (signature, signatureBuf);
+		if (signatureBufLen != signatureBuf.size ())
+		{
+			// A known family must authenticate with exactly one P-256 r||s
+			// signature. Returning true here would let any peer claim family
+			// membership with malformed base64.
+			LogPrint (eLogWarning, "Family: ", family, " signature is not 64 bytes");
+			return false;
+		}
+
+		std::memcpy (buf.data (), family.data (), familyLength);
+		std::memcpy (buf.data () + familyLength, ident.data (), IdentHash::len);
+		const size_t messageLength = familyLength + IdentHash::len;
+
+		EcdsaSigPtr sig (ECDSA_SIG_new (), ECDSA_SIG_free);
+		BnPtr r (BN_bin2bn (signatureBuf.data (), 32, nullptr), BN_free);
+		BnPtr s (BN_bin2bn (signatureBuf.data () + 32, 32, nullptr), BN_free);
+		if (!sig || !r || !s || ECDSA_SIG_set0 (sig.get (), r.get (), s.get ()) != 1) return false;
+		// ECDSA_SIG_set0() took ownership on success.
+		(void)r.release ();
+		(void)s.release ();
+
+		std::array<uint8_t, 72> der {};
+		uint8_t * derPos = der.data ();
+		const int derLength = i2d_ECDSA_SIG (sig.get (), &derPos);
+		if (derLength <= 0 || static_cast<size_t> (derLength) > der.size ()) return false;
+
+		MdCtxPtr ctx (EVP_MD_CTX_new (), EVP_MD_CTX_free);
+		if (!ctx || EVP_DigestVerifyInit (ctx.get (), nullptr, EVP_sha256 (), nullptr, it->second.pkey.get ()) != 1)
+			return false;
+		return EVP_DigestVerify (ctx.get (), der.data (), static_cast<size_t> (derLength), buf.data (), messageLength)
+			== 1;
 	}
 
 	FamilyID Families::GetFamilyID (const std::string & family) const
 	{
+		std::shared_lock lock (m_SigningKeysMutex);
 		auto it = m_SigningKeys.find (family);
-		if (it != m_SigningKeys.end ()) return it->second.second;
+		if (it != m_SigningKeys.end ()) return it->second.id;
 		return 0;
 	}
 
 	std::string CreateFamilySignature (const std::string & family, const IdentHash & ident)
 	{
-		auto filename = i2p::fs::DataDirPath ("family", (family + ".key"));
-		std::string sig;
-		SSL_CTX * ctx = SSL_CTX_new (TLS_method ());
-		int ret = SSL_CTX_use_PrivateKey_file (ctx, filename.c_str (), SSL_FILETYPE_PEM);
-		if (ret)
+		const auto filename = i2p::fs::DataDirPath ("family", (family + ".key"));
+		if (family.length () + IdentHash::len > 100)
 		{
-			SSL * ssl = SSL_new (ctx);
-			EVP_PKEY * pkey = SSL_get_privatekey (ssl);
-			int curve = GetFamilyKeyCurve (pkey);
-			if ((curve == NID_X9_62_prime256v1) && family.length () + 32 <= 100)
-			{
-				uint8_t buf[100], sign[72], signature[64];
-				size_t len = family.length ();
-				memcpy (buf, family.c_str (), len);
-				memcpy (buf + len, (const uint8_t *)ident, 32);
-				len += 32;
-
-				size_t l = 72;
-				EVP_MD_CTX * mdctx = EVP_MD_CTX_new ();
-				EVP_DigestSignInit (mdctx, NULL, EVP_sha256 (), NULL, pkey);
-				EVP_DigestSign (mdctx, sign, &l, buf, len);
-				EVP_MD_CTX_free (mdctx);
-
-				const uint8_t * s1 = sign;
-				ECDSA_SIG * sig1 = d2i_ECDSA_SIG (NULL, &s1, static_cast<long> (l));
-				const BIGNUM *r, *s;
-				ECDSA_SIG_get0 (sig1, &r, &s);
-				i2p::crypto::bn2buf (r, signature, 32);
-				i2p::crypto::bn2buf (s, signature + 32, 32);
-				ECDSA_SIG_free (sig1);
-				sig = ByteStreamToBase64 (signature, 64);
-			}
-			else if (family.length () + 32 > 100)
-				LogPrint (eLogError, "Family: ", family, " is too long");
-			else
-				LogPrint (eLogWarning, "Family: elliptic curve ", curve, " is not supported");
-
-			SSL_free (ssl);
+			LogPrint (eLogError, "Family: ", family, " is too long");
+			return {};
 		}
-		else
+
+		SslCtxPtr ctx (SSL_CTX_new (TLS_method ()), SSL_CTX_free);
+		if (!ctx)
+		{
+			LogPrint (eLogError, "Family: Can't create SSL context for keys file: ", filename);
+			return {};
+		}
+		if (SSL_CTX_use_PrivateKey_file (ctx.get (), filename.c_str (), SSL_FILETYPE_PEM) != 1)
+		{
 			LogPrint (eLogError, "Family: Can't open keys file: ", filename);
-		SSL_CTX_free (ctx);
-		return sig;
+			return {};
+		}
+
+		SslPtr ssl (SSL_new (ctx.get ()), SSL_free);
+		if (!ssl) return {};
+		EVP_PKEY * pkey = SSL_get_privatekey (ssl.get ());
+		if (!pkey)
+		{
+			LogPrint (eLogError, "Family: No private key in ", filename);
+			return {};
+		}
+		const int curve = GetFamilyKeyCurve (pkey);
+		if (curve != NID_X9_62_prime256v1)
+		{
+			LogPrint (eLogWarning, "Family: elliptic curve ", curve, " is not supported");
+			return {};
+		}
+
+		std::array<uint8_t, 100> buf {};
+		std::memcpy (buf.data (), family.data (), family.size ());
+		std::memcpy (buf.data () + family.size (), ident.data (), IdentHash::len);
+		const size_t messageLength = family.size () + IdentHash::len;
+
+		MdCtxPtr mdCtx (EVP_MD_CTX_new (), EVP_MD_CTX_free);
+		if (!mdCtx || EVP_DigestSignInit (mdCtx.get (), nullptr, EVP_sha256 (), nullptr, pkey) != 1) return {};
+
+		std::array<uint8_t, 72> der {};
+		size_t derLength = der.size ();
+		if (EVP_DigestSign (mdCtx.get (), der.data (), &derLength, buf.data (), messageLength) != 1
+			|| derLength == 0 || derLength > der.size ())
+			return {};
+
+		const uint8_t * derPos = der.data ();
+		EcdsaSigPtr sig (d2i_ECDSA_SIG (nullptr, &derPos, static_cast<long> (derLength)), ECDSA_SIG_free);
+		if (!sig || derPos != der.data () + derLength) return {};
+		const BIGNUM *r = nullptr, *s = nullptr;
+		ECDSA_SIG_get0 (sig.get (), &r, &s);
+		std::array<uint8_t, 64> signature {};
+		if (!r || !s || !i2p::crypto::bn2buf (r, signature.data (), 32)
+			|| !i2p::crypto::bn2buf (s, signature.data () + 32, 32))
+			return {};
+		return ByteStreamToBase64 (signature.data (), signature.size ());
 	}
 }
 }

@@ -97,7 +97,7 @@ namespace data
 		virtual void Update (
 			const uint8_t * buf, size_t len, std::shared_ptr<LocalDestination> dest, bool verifySignature);
 		virtual bool IsNewer (const uint8_t * buf, size_t len) const;
-		void PopulateLeases (); // from buffer
+		virtual void PopulateLeases (); // from buffer
 
 		const uint8_t * GetBuffer () const { return m_Buffer.get (); };
 		size_t GetBufferLen () const { return m_BufferLen; };
@@ -129,7 +129,7 @@ namespace data
 
 		// implements RoutingDestination
 		std::shared_ptr<const IdentityEx> GetIdentity () const { return m_Identity; };
-		void Encrypt (const uint8_t * data, uint8_t * encrypted) const;
+		bool Encrypt (const uint8_t * data, uint8_t * encrypted) const;
 		bool IsDestination () const { return true; };
 
 		// used by administrative views
@@ -191,6 +191,9 @@ namespace data
 		LeaseSet2 (uint8_t storeType, const uint8_t * buf, size_t len, bool storeLeases = true,
 			std::shared_ptr<LocalDestination> dest = nullptr,
 			CryptoKeyType preferredCrypto = CRYPTO_KEY_TYPE_ECIES_X25519_AEAD);
+		// The LS2 constructor already populated its leases; running the LS1
+		// parser on this buffer would clear validity and overwrite the key slot.
+		void PopulateLeases () override { }
 		LeaseSet2 (const uint8_t * buf, size_t len, std::shared_ptr<const BlindedPublicKey> key,
 			std::shared_ptr<LocalDestination> dest = nullptr, const uint8_t * secret = nullptr,
 			CryptoKeyType preferredCrypto
@@ -202,6 +205,11 @@ namespace data
 		const i2p::util::Mapping & GetProperties () const { return m_Properties; };
 		bool IsPublishedEncrypted () const override { return m_IsPublishedEncrypted; };
 		bool IsEncryptionKey (CryptoKeyType type, const uint8_t * key) const override;
+		size_t GetNumEncryptionKeys () const { return m_EncryptionKeys.size (); };
+		CryptoKeyType GetEncryptionKeyType (size_t index) const
+		{
+			return index < m_EncryptionKeys.size () ? m_EncryptionKeys[index].type : CRYPTO_KEY_TYPE_ELGAMAL;
+		};
 		bool IsStoreKey (const IdentHash & key) const;
 		std::shared_ptr<const i2p::crypto::Verifier> GetTransientVerifier () const override
 		{
@@ -212,7 +220,7 @@ namespace data
 		bool IsNewer (const uint8_t * buf, size_t len) const override;
 
 		// implements RoutingDestination
-		void Encrypt (const uint8_t * data, uint8_t * encrypted) const override;
+		bool Encrypt (const uint8_t * data, uint8_t * encrypted) const override;
 		CryptoKeyType GetEncryptionType () const override { return m_EncryptionType; };
 
 	private:
@@ -260,7 +268,7 @@ namespace data
 	// also called from Streaming.cpp
 	template <typename Verifier>
 	std::shared_ptr<i2p::crypto::Verifier> ProcessOfflineSignature (
-		const Verifier & verifier, const uint8_t * buf, size_t len, size_t & offset)
+		const Verifier & verifier, const uint8_t * buf, size_t len, size_t & offset, bool allowRSA)
 	{
 		// The offline section may end exactly at the end of the buffer (the
 		// LeaseSet2 signature is the last field). Use strict greater-than
@@ -272,6 +280,15 @@ namespace data
 		if (expiresTimestamp < i2p::util::GetSecondsSinceEpoch ()) return nullptr;
 		uint16_t keyType = bufbe16toh (buf + offset);
 		offset += 2;
+		// Java LeaseSet2.verifySignature() rejects RSA transient keys so one
+		// untrusted LeaseSet cannot force a 4096-bit public operation. Datagram2
+		// and Streaming keep Java's permissive policy and pass allowRSA=true.
+		if (!allowRSA && keyType >= SIGNING_KEY_TYPE_RSA_SHA256_2048 && keyType <= SIGNING_KEY_TYPE_RSA_SHA512_4096)
+		{
+			LogPrint (eLogWarning, "Offline signature: RSA transient key type ", (int)keyType,
+				" is not allowed in a LeaseSet");
+			return nullptr;
+		}
 		std::shared_ptr<i2p::crypto::Verifier> transientVerifier (i2p::data::IdentityEx::CreateVerifier (keyType));
 		if (!transientVerifier) return nullptr;
 		auto keyLen = transientVerifier->GetPublicKeyLen ();

@@ -163,7 +163,7 @@ int main ()
 	// not encrypt or decrypt with an uninitialised stack key.
 	std::memset (actual, 0xAA, sizeof (actual));
 	assert (!tagset.GetSymmKey (-1, actual));
-	assert (!tagset.GetSymmKey (65535, actual));
+	assert (!tagset.GetSymmKey (0x10000, actual));
 	assert (actual[0] == 0xAA);
 
 	// A fresh tagset starts at index 0.
@@ -180,17 +180,22 @@ int main ()
 		assert (!std::memcmp (got, expected0.data (), 32));
 	}
 
-	// Java's 16-bit tag space accepts indices 0..65534 and then fails closed.
+	// Java's 16-bit tag space accepts indices 0..65535 and then fails closed.
 	// The generator must not be one tag short, and the failure must not advance
 	// the index (which would silently skip a peer tag).
 	{
 		i2p::garlic::RatchetTagSet boundary;
 		boundary.DHInitialize (rootKey.data (), tagsetKey.data ());
 		boundary.NextSessionTagRatchet ();
-		for (int i = 0; i <= 65534; ++i) assert (boundary.GetNextSessionTag (hkdf) != 0);
-		assert (boundary.GetNextIndex () == 65535);
+		for (int i = 0; i <= 0xFFFF; ++i) assert (boundary.GetNextSessionTag (hkdf) != 0);
+		assert (boundary.GetNextIndex () == 0x10000);
 		assert (boundary.GetNextSessionTag (hkdf) == 0);
-		assert (boundary.GetNextIndex () == 65535);
+		assert (boundary.GetNextIndex () == 0x10000);
+		uint8_t lastKey[32] = { };
+		assert (boundary.GetSymmKey (0xFFFF, lastKey));
+		std::memset (lastKey, 0xAA, sizeof (lastKey));
+		assert (!boundary.GetSymmKey (0x10000, lastKey));
+		assert (lastKey[0] == 0xAA);
 	}
 
 	return 0;

@@ -19,6 +19,7 @@
 #include <set>
 #include <vector>
 #include <charconv>
+#include <chrono>
 #include <future>
 #include <boost/algorithm/string.hpp>
 #include "Crypto.h"
@@ -372,8 +373,14 @@ namespace client
 		}
 		I2NPMessageType typeID = (I2NPMessageType)(buf[I2NP_HEADER_TYPEID_OFFSET]);
 		uint32_t msgID = bufbe32toh (buf + I2NP_HEADER_MSGID_OFFSET);
+		const size_t messageLength = GetI2NPMessageLength (buf, len);
+		if (messageLength < I2NP_HEADER_SIZE || messageLength > len)
+		{
+			LogPrint (eLogError, "Destination: Invalid I2NP clove length ", messageLength);
+			return;
+		}
 		LeaseSetDestination::HandleCloveI2NPMessage (
-			typeID, buf + I2NP_HEADER_SIZE, GetI2NPMessageLength (buf, len) - I2NP_HEADER_SIZE, msgID, nullptr);
+			typeID, buf + I2NP_HEADER_SIZE, messageLength - I2NP_HEADER_SIZE, msgID, nullptr);
 	}
 
 	bool LeaseSetDestination::HandleCloveI2NPMessage (I2NPMessageType typeID, const uint8_t * payload, size_t len,
@@ -585,13 +592,29 @@ namespace client
 		if (it != m_LeaseSetRequests.end ())
 		{
 			auto request = it->second;
+			// A DSRM is matched to the queried peer, not merely to the public
+			// destination hash. Accept one reply per peer to bound replays.
+			if (!request->requestedPeers.count (reply.from))
+			{
+				LogPrint (eLogWarning, "Destination: DatabaseSearchReply from a peer that was not queried");
+				return;
+			}
+			if (!request->repliedPeers.insert (reply.from).second)
+			{
+				LogPrint (eLogDebug, "Destination: Duplicate DatabaseSearchReply from ", reply.from.ToBase64 ());
+				return;
+			}
+			size_t followed = 0;
 			for (const auto & peerHash : reply.peers)
 			{
-				if (!request->excluded.count (peerHash) && !i2p::data::netdb.FindRouter (peerHash))
-				{
-					LogPrint (eLogInfo, "Destination: Found new floodfill, request it");
-					i2p::data::netdb.RequestDestination (peerHash, nullptr, false); // through exploratory
-				}
+				if (followed >= i2p::data::NETDB_MAX_NUM_SEARCH_REPLY_PEER_HASHES) break;
+				if (peerHash.IsZero () || peerHash == i2p::context.GetIdentHash ()
+					|| peerHash == reply.from || request->excluded.count (peerHash)
+					|| request->requestedPeers.count (peerHash) || i2p::data::netdb.FindRouter (peerHash))
+					continue;
+				LogPrint (eLogInfo, "Destination: Found new floodfill, request it");
+				i2p::data::netdb.RequestDestination (peerHash, nullptr, false); // through exploratory
+				++followed;
 			}
 			SendNextLeaseSetRequest (reply.key, request);
 		}
@@ -940,6 +963,7 @@ namespace client
 		if (request->replyTunnel && request->outboundTunnel)
 		{
 			request->excluded.insert (nextFloodfill->GetIdentHash ());
+			request->requestedPeers.insert (nextFloodfill->GetIdentHash ());
 			request->requestTimeoutTimer.cancel ();
 
 			uint8_t replyKey[32];
@@ -1071,11 +1095,13 @@ namespace client
 
 		// extract encryption type params for LS2
 		std::set<i2p::data::CryptoKeyType> encryptionKeyTypes;
+		bool encryptionTypesSpecified = false;
 		if (params)
 		{
 			auto encryptionTypesStr = (*params)[I2CP_PARAM_LEASESET_ENCRYPTION_TYPE];
 			if (!encryptionTypesStr.empty ())
 			{
+				encryptionTypesSpecified = true;
 				// comma-separated values
 				std::vector<std::string> values;
 				boost::split (values, encryptionTypesStr, boost::is_any_of (","));
@@ -1104,19 +1130,26 @@ namespace client
 				}
 			}
 		}
-		// if no encryption type specified use 0,4 or 0,4,6 if post quantum
+		// If no encryption type was specified use the provider defaults. An
+		// explicitly configured list that is wholly unsupported must fail
+		// closed instead of silently publishing a weaker set.
 		if (encryptionKeyTypes.empty ())
 		{
-			encryptionKeyTypes.insert ({ GetIdentity ()->GetCryptoKeyType (),
+			if (encryptionTypesSpecified)
+				LogPrint (eLogError, "Destination: no configured leaseSetEncType is supported by this provider");
+			else
+			{
+				encryptionKeyTypes.insert ({ GetIdentity ()->GetCryptoKeyType (),
 #if OPENSSL_PQ
-				i2p::data::CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD,
+					i2p::data::CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD,
 #endif
-				i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD });
+					i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD });
 #if OPENSSL_PQ
-			m_PreferredCryptoType = i2p::data::CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD;
+				m_PreferredCryptoType = i2p::data::CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD;
 #else
-			m_PreferredCryptoType = i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD;
+				m_PreferredCryptoType = i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD;
 #endif
+			}
 		}
 
 		for (auto & it : encryptionKeyTypes)
@@ -1264,6 +1297,37 @@ namespace client
 		LogPrint (eLogDebug, "Destination: -> Stopping done");
 	}
 
+	void ClientDestination::ScheduleSessionResponseTimer (
+		std::shared_ptr<i2p::garlic::ECIESX25519AEADRatchetSession> session)
+	{
+		if (!session || !session->ArmResponseTimer ()) return;
+		auto timer = std::make_shared<boost::asio::steady_timer> (GetService ());
+		timer->expires_after (std::chrono::milliseconds (CLIENT_RATCHETS_RESPONSE_TIMEOUT));
+		timer->async_wait (
+			[session, s = GetSharedFromThis (), timer] (const boost::system::error_code & ecode)
+			{
+				session->DisarmResponseTimer ();
+				if (ecode == boost::asio::error::operation_aborted || session->IsTerminated ()
+					|| !session->IsResponseRequired () || !session->GetDestinationPtr ())
+					return;
+				auto pool = s->GetTunnelPool ();
+				if (!pool) return;
+				auto ls = s->FindLeaseSet (*session->GetDestinationPtr ());
+				if (!ls) return;
+				auto garlic = session->WrapSingleMessage (nullptr);
+				if (!garlic) return;
+				auto leases = ls->GetNonExpiredLeases (false);
+				if (leases.empty ()) return;
+				auto remoteLease = leases[s->GetRng () () % leases.size ()];
+				auto outboundTunnel = pool->GetNextOutboundTunnel ();
+				if (outboundTunnel)
+				{
+					LogPrint (eLogDebug, "Destination: Sending ratchets session response");
+					outboundTunnel->SendTunnelDataMsgTo (remoteLease->tunnelGateway, remoteLease->tunnelID, garlic);
+				}
+			});
+	}
+
 	void ClientDestination::SetPrivateKeys (const i2p::data::PrivateKeys & keys)
 	{
 		if (m_StreamingDestination) m_StreamingDestination->Stop (); // close all streams
@@ -1271,6 +1335,7 @@ namespace client
 		auto pool = GetTunnelPool ();
 		if (pool) pool->DetachTunnels ();
 		m_Keys = keys;
+		if (m_DatagramDestination) m_DatagramDestination->RefreshIdentity ();
 		// update static keys
 		for (auto it : m_EncryptionKeys)
 			if (it.second)
@@ -1299,6 +1364,7 @@ namespace client
 				LogPrint (eLogInfo, "Destination: Refreshing offline signature for ", s->GetIdentHash ().ToBase32 (),
 					", transient expires ", bufbe32toh (next.data ()));
 				s->m_Keys.UpdateOfflineSignature (keys);
+				if (s->m_DatagramDestination) s->m_DatagramDestination->RefreshIdentity ();
 				s->UpdateLeaseSet ();
 			});
 	}
@@ -1448,32 +1514,33 @@ namespace client
 			return nullptr;
 	}
 
-	void ClientDestination::SendPing (const i2p::data::IdentHash & to)
+	void ClientDestination::SendPing (const i2p::data::IdentHash & to, uint16_t fromPort, uint16_t toPort)
 	{
 		if (m_StreamingDestination)
 		{
 			auto leaseSet = FindLeaseSet (to);
 			if (leaseSet)
-				m_StreamingDestination->SendPing (leaseSet);
+				m_StreamingDestination->SendPing (leaseSet, fromPort, toPort);
 			else
 			{
 				auto s = m_StreamingDestination;
 				RequestDestination (to,
-					[s] (std::shared_ptr<const i2p::data::LeaseSet> ls)
+					[s, fromPort, toPort] (std::shared_ptr<const i2p::data::LeaseSet> ls)
 					{
-						if (ls) s->SendPing (ls);
+						if (ls) s->SendPing (ls, fromPort, toPort);
 					});
 			}
 		}
 	}
 
-	void ClientDestination::SendPing (std::shared_ptr<const i2p::data::BlindedPublicKey> to)
+	void ClientDestination::SendPing (
+		std::shared_ptr<const i2p::data::BlindedPublicKey> to, uint16_t fromPort, uint16_t toPort)
 	{
 		auto s = m_StreamingDestination;
 		RequestDestinationWithEncryptedLeaseSet (to,
-			[s] (std::shared_ptr<const i2p::data::LeaseSet> ls)
+			[s, fromPort, toPort] (std::shared_ptr<const i2p::data::LeaseSet> ls)
 			{
-				if (ls) s->SendPing (ls);
+				if (ls) s->SendPing (ls, fromPort, toPort);
 			});
 	}
 
@@ -1494,9 +1561,10 @@ namespace client
 		if (m_StreamingDestination) m_StreamingDestination->SetAcceptor (acceptor);
 	}
 
-	void ClientDestination::StopAcceptingStreams ()
+	void ClientDestination::StopAcceptingStreams (uint16_t port)
 	{
-		if (m_StreamingDestination) m_StreamingDestination->ResetAcceptor ();
+		auto destination = GetStreamingDestination (port);
+		if (destination) destination->ResetAcceptor ();
 	}
 
 	bool ClientDestination::IsAcceptingStreams () const

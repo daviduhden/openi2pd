@@ -95,7 +95,7 @@ namespace client
 {
 	I2PControlService::I2PControlService (const std::string & address, int port)
 		: m_IsRunning (false)
-		, m_SSLContext (boost::asio::ssl::context::sslv23)
+		, m_SSLContext (boost::asio::ssl::context::tls_server)
 		, m_ShutdownTimer (m_Service)
 	{
 		if (port)
@@ -132,7 +132,8 @@ namespace client
 		else
 			LogPrint (eLogDebug, "I2PControl: Using cert from ", i2pcp_crt, " key ", i2pcp_key);
 		m_SSLContext.set_options (boost::asio::ssl::context::default_workarounds | boost::asio::ssl::context::no_sslv2
-			| boost::asio::ssl::context::single_dh_use);
+			| boost::asio::ssl::context::no_sslv3 | boost::asio::ssl::context::no_tlsv1
+			| boost::asio::ssl::context::no_tlsv1_1 | boost::asio::ssl::context::single_dh_use);
 		boost::system::error_code ec;
 		m_SSLContext.use_certificate_file (i2pcp_crt, boost::asio::ssl::context::pem, ec);
 		if (!ec) m_SSLContext.use_private_key_file (i2pcp_key, boost::asio::ssl::context::pem, ec);
@@ -173,19 +174,20 @@ namespace client
 
 	void I2PControlService::Start ()
 	{
-		if (!m_IsRunning)
-		{
-			Accept ();
-			m_IsRunning = true;
-			m_Thread = std::make_unique<std::thread> (std::bind (&I2PControlService::Run, this));
-		}
+		bool expected = false;
+		if (!m_IsRunning.compare_exchange_strong (expected, true, std::memory_order_acq_rel)) return;
+		// Stop() leaves the io_context stopped; a restart must restart it
+		// before registering the accept operation.
+		m_Service.restart ();
+		Accept ();
+		m_Thread = std::make_unique<std::thread> (std::bind (&I2PControlService::Run, this));
 	}
 
 	void I2PControlService::Stop ()
 	{
-		if (m_IsRunning)
+		bool expected = true;
+		if (m_IsRunning.compare_exchange_strong (expected, false, std::memory_order_acq_rel))
 		{
-			m_IsRunning = false;
 			if (m_Acceptor) m_Acceptor->cancel ();
 #if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS)
 			if (m_LocalAcceptor)
@@ -208,7 +210,7 @@ namespace client
 	{
 		i2p::util::SetThreadName ("I2PC");
 
-		while (m_IsRunning)
+		while (m_IsRunning.load (std::memory_order_acquire))
 		{
 			try
 			{
@@ -426,8 +428,12 @@ namespace client
 		InsertParam (results, "API", api);
 		results << ",";
 		uint8_t tokenBytes[32];
-		RAND_bytes (tokenBytes, 32);
-		std::string token = i2p::data::ByteStreamToBase64 (tokenBytes, 32);
+		if (RAND_bytes (tokenBytes, sizeof (tokenBytes)) != 1)
+		{
+			LogPrint (eLogError, "I2PControl: Can't generate authentication token: ", GetOpenSSLError ());
+			return;
+		}
+		std::string token = i2p::data::ByteStreamToBase64 (tokenBytes, sizeof (tokenBytes));
 		m_Tokens[token] = i2p::util::GetSecondsSinceEpoch () + I2P_CONTROL_TOKEN_LIFETIME;
 		InsertParam (results, "Token", token);
 	}
@@ -603,7 +609,7 @@ namespace client
 					LogPrint (eLogError, "I2PControl: Can't set certificate names: ", GetOpenSSLError ());
 					return;
 				}
-				if (X509_sign (x509.get (), pkey.get (), EVP_sha1 ()) == 0) // last param must be NULL for EdDSA
+				if (X509_sign (x509.get (), pkey.get (), EVP_sha256 ()) == 0) // last param must be NULL for EdDSA
 				{
 					LogPrint (eLogError, "I2PControl: Can't sign certificate: ", GetOpenSSLError ());
 					return;

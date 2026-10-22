@@ -251,6 +251,13 @@ namespace transport
 			LogPrint (eLogWarning, "SSU2: PeerTest endpoint is truncated");
 			return;
 		}
+		const int64_t peerTestSkew = static_cast<int64_t> (bufbe32toh (buf + offset + 5))
+			- static_cast<int64_t> (i2p::util::GetSecondsSinceEpoch ());
+		if (peerTestSkew > SSU2_RELAY_MAX_SKEW || peerTestSkew < -SSU2_RELAY_MAX_SKEW)
+		{
+			LogPrint (eLogWarning, "SSU2: PeerTest timestamp skew ", peerTestSkew, " seconds");
+			return;
+		}
 		uint32_t nonce = bufbe32toh (buf + offset + 1); // 1 - ver
 		switch (msg) // msg
 		{
@@ -296,7 +303,7 @@ namespace transport
 			else
 				LogPrint (eLogWarning, "SSU2: Unknown address for peer test 6");
 			GetServer ().AddConnectedRecently (GetRemoteEndpoint (), i2p::util::GetSecondsSinceEpoch ());
-			GetServer ().RequestRemoveSession (GetConnID ());
+			GetServer ().RequestRemoveSession (GetConnID (), shared_from_this ());
 			break;
 		}
 		case 7: // Alice from Charlie 2
@@ -334,7 +341,7 @@ namespace transport
 			}
 			ApplyOurEndpoint ();
 			GetServer ().AddConnectedRecently (GetRemoteEndpoint (), i2p::util::GetSecondsSinceEpoch ());
-			GetServer ().RequestRemoveSession (GetConnID ());
+			GetServer ().RequestRemoveSession (GetConnID (), shared_from_this ());
 			break;
 		}
 		default: LogPrint (eLogWarning, "SSU2: PeerTest unexpected msg num ", msg); return;

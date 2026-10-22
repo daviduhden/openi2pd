@@ -293,7 +293,7 @@ namespace data
 		virtual ~RoutingDestination () { };
 
 		virtual std::shared_ptr<const IdentityEx> GetIdentity () const = 0;
-		virtual void Encrypt (const uint8_t * data, uint8_t * encrypted) const = 0; // encrypt data for
+		virtual bool Encrypt (const uint8_t * data, uint8_t * encrypted) const = 0; // encrypt data for
 		virtual bool IsDestination () const = 0; // for garlic
 
 		const IdentHash & GetIdentHash () const { return GetIdentity ()->GetIdentHash (); };
@@ -314,7 +314,11 @@ namespace data
 		const IdentHash & GetIdentHash () const { return GetIdentity ()->GetIdentHash (); };
 		virtual bool SupportsEncryptionType (CryptoKeyType keyType) const
 		{
-			return GetIdentity ()->GetCryptoKeyType () == keyType;
+			const auto local = GetIdentity ()->GetCryptoKeyType ();
+			if (local == keyType) return true;
+			// An X25519-capable local router can use the X25519 component of a
+			// hybrid router identity even when the advertised type is 5-7.
+			return local >= CRYPTO_KEY_TYPE_ECIES_X25519_AEAD && keyType >= CRYPTO_KEY_TYPE_ECIES_X25519_AEAD;
 		}; // override for LeaseSet
 		virtual const uint8_t * GetEncryptionPublicKey (CryptoKeyType /* keyType */) const
 		{

@@ -117,6 +117,17 @@ namespace crypto
 		EncodePoint (Normalize (publicKey, ctx), buf);
 	}
 
+	bool Ed25519::IsValidPublicKey (const uint8_t * buf) const
+	{
+		if (!buf) return false;
+		BN_CTX * ctx = BN_CTX_new ();
+		if (!ctx) return false;
+		const auto p = DecodePoint (buf, ctx);
+		const bool ok = IsOnCurve (p, ctx);
+		BN_CTX_free (ctx);
+		return ok;
+	}
+
 	bool Ed25519::Verify (const EDDSAPoint & publicKey, const uint8_t * digest, const uint8_t * signature) const
 	{
 		BN_CTX * ctx = BN_CTX_new ();
@@ -173,7 +184,8 @@ namespace crypto
 		EncodeBN (h, signature + EDDSA25519_SIGNATURE_LENGTH / 2, EDDSA25519_SIGNATURE_LENGTH / 2); // S
 		BN_free (r);
 		BN_free (h);
-		BN_free (a);
+		BN_clear_free (a);
+		OPENSSL_cleanse (digest, sizeof (digest));
 		BN_CTX_free (bnCtx);
 	}
 
@@ -228,7 +240,7 @@ namespace crypto
 		OPENSSL_cleanse (digest, sizeof (digest));
 		BN_free (r);
 		BN_free (h);
-		BN_free (a);
+		BN_clear_free (a);
 		BN_CTX_free (bnCtx);
 	}
 
@@ -480,6 +492,7 @@ namespace crypto
 		}
 		BIGNUM * res = BN_new ();
 		BN_bin2bn (buf1, len, res);
+		OPENSSL_cleanse (buf1, len);
 		return res;
 	}
 
@@ -526,7 +539,7 @@ namespace crypto
 		auto A1 = MulB (blindedPriv, ctx);
 		EncodePublicKey (A1, blindedPub, ctx);
 		BN_free (alpha);
-		BN_free (p);
+		BN_clear_free (p);
 		BN_CTX_free (ctx);
 	}
 
@@ -556,7 +569,7 @@ namespace crypto
 		else
 			memset (priv, 0, EDDSA25519_PRIVATE_KEY_LENGTH);
 		if (ctx) BN_CTX_free (ctx);
-		BN_free (p);
+		BN_clear_free (p);
 		OPENSSL_cleanse (seed, sizeof (seed));
 		return ok;
 	}

@@ -71,6 +71,15 @@ namespace crypto
 	// create. Unknown types and providers without the API report false.
 	bool IsMLKEMSupported (i2p::data::CryptoKeyType type);
 
+	// True only when the active provider can perform the ML-KEM parameter set
+	// selected by an NTCP2/SSU2 hybrid version. Callers use this before writing
+	// a "pq" address option or choosing a hybrid session version.
+	bool CanPublishPQ (int version);
+
+	// Highest configured/requested hybrid version at or below maximum that
+	// the active provider supports. Returns 0 when no hybrid version works.
+	int HighestSupportedPQVersion (int requested, int maximum);
+
 	class MLKEMKeys
 	{
 	public:

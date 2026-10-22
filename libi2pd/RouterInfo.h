@@ -395,6 +395,10 @@ namespace data
 			return m_Buffer;
 		};
 		std::shared_ptr<Buffer> CopyBuffer () const;
+		// Atomically consume the updated flag and either return a persisted
+		// snapshot or delete a buffer scheduled by the previous persistence
+		// pass. A concurrent UpdateBuffer cannot be split between the checks.
+		bool TakeUpdatedBuffer (std::shared_ptr<Buffer> & buffer, bool & deleted);
 		void ScheduleBufferToDelete () { m_IsBufferScheduledToDelete.store (true); };
 		void CancelBufferToDelete () { m_IsBufferScheduledToDelete.store (false); };
 		bool IsBufferScheduledToDelete () const { return m_IsBufferScheduledToDelete.load (); };
@@ -421,7 +425,7 @@ namespace data
 
 		// implements RoutingDestination
 		std::shared_ptr<const IdentityEx> GetIdentity () const { return m_RouterIdentity; };
-		void Encrypt (const uint8_t * data, uint8_t * encrypted) const;
+		bool Encrypt (const uint8_t * data, uint8_t * encrypted) const;
 
 		bool IsDestination () const { return false; };
 

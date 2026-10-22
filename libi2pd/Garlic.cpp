@@ -45,6 +45,14 @@ namespace garlic
 	constexpr size_t MAX_INCOMING_ELGAMAL_TAGS = 4096;
 	constexpr size_t MAX_INCOMING_ECIES_TAGS = 8192;
 
+	// Java MessageValidator: reject a clove whose expiration is older than
+	// 90 seconds or more than 240 seconds in the future.
+	bool IsFreshCloveDate (uint64_t dateMs)
+	{
+		const auto now = i2p::util::GetMillisecondsSinceEpoch ();
+		return dateMs + 90 * 1000 >= now && dateMs <= now + 240 * 1000;
+	}
+
 	GarlicRoutingSession::GarlicRoutingSession (GarlicDestination * owner, bool attachLeaseSet)
 		: m_Owner (owner)
 		, m_LeaseSetUpdateStatus (attachLeaseSet ? eLeaseSetUpdated : eLeaseSetDoNotSend)
@@ -245,7 +253,12 @@ namespace garlic
 			memset (elGamal.padding, 0, sizeof (elGamal.padding));
 			uint8_t iv[32]; // IV is first 16 bytes
 			SHA256 (elGamal.preIV, 32, iv);
-			m_Destination->Encrypt ((uint8_t *)&elGamal, buf);
+			if (!m_Destination->Encrypt ((uint8_t *)&elGamal, buf))
+			{
+				OPENSSL_cleanse (&elGamal, sizeof (elGamal));
+				LogPrint (eLogError, "Garlic: Destination has no usable ElGamal encryptor");
+				return nullptr;
+			}
 			m_IV = iv;
 			buf += 514;
 			len += 514;
@@ -659,11 +672,40 @@ namespace garlic
 		}
 	}
 
+	void GarlicDestination::MakeRoomForECIESx25519Tag (size_t minSlots)
+	{
+		if (!minSlots) minSlots = 1;
+		if (m_ECIESx25519Tags.size () + minSlots <= MAX_INCOMING_ECIES_TAGS) return;
+		const auto now = i2p::util::GetSecondsSinceEpoch ();
+		for (auto it = m_ECIESx25519Tags.begin (); it != m_ECIESx25519Tags.end ();)
+		{
+			const auto & entry = it->second;
+			if (!entry.tagset || entry.tagset->IsExpired (now) || entry.tagset->IsIndexExpired (entry.index)
+				|| entry.tagset->IsSessionTerminated ())
+				it = m_ECIESx25519Tags.erase (it);
+			else
+				++it;
+		}
+		// The map has no insertion-order metadata. Evicting arbitrary entries
+		// only affects old tag windows; keeping the hard bound is more important
+		// than preserving one abusive session's tags. A later message fails
+		// authentication/decryption instead of blocking all new handshakes.
+		while (m_ECIESx25519Tags.size () + minSlots > MAX_INCOMING_ECIES_TAGS
+			&& !m_ECIESx25519Tags.empty ())
+			m_ECIESx25519Tags.erase (m_ECIESx25519Tags.begin ());
+	}
+
 	void GarlicDestination::AddECIESx25519Key (const uint8_t * key, uint64_t tag)
 	{
 		if (!key) return;
 		auto tagset = std::make_shared<SymmetricKeyTagSet> (this, key);
 		std::lock_guard<std::mutex> l (m_TagsMutex);
+		MakeRoomForECIESx25519Tag (1);
+		if (m_ECIESx25519Tags.size () >= MAX_INCOMING_ECIES_TAGS)
+		{
+			LogPrint (eLogWarning, "Garlic: Incoming ECIES tag budget exceeded");
+			return;
+		}
 		m_ECIESx25519Tags.emplace (tag, ECIESX25519AEADRatchetIndexTagset { 0, tagset });
 	}
 
@@ -902,20 +944,35 @@ namespace garlic
 			{
 				// TODO: implement
 				LogPrint (eLogWarning, "Garlic: Clove encrypted");
-				buf += 32;
-				if (static_cast<size_t> (buf - buf1) > len)
+				if (static_cast<size_t> (buf - buf1) + 32 > len)
 				{
 					LogPrint (eLogError, "Garlic: Encrypted clove is too short");
 					break;
 				}
+				buf += 32;
 			}
 			ptrdiff_t offset = buf - buf1;
 			GarlicDeliveryType deliveryType = (GarlicDeliveryType)((flag >> 5) & 0x03);
+			if (deliveryType == eGarlicDeliveryTypeLocal || deliveryType == eGarlicDeliveryTypeDestination)
+			{
+				const size_t headerOffset = buf - buf1;
+				const size_t messageLength = GetI2NPMessageLength (buf, len - headerOffset);
+				if (messageLength < I2NP_HEADER_SIZE || messageLength + headerOffset + 15 > len)
+				{
+					LogPrint (eLogError, "Garlic: Invalid local clove length");
+					return;
+				}
+				if (!IsFreshCloveDate (bufbe64toh (buf + messageLength + 4)))
+				{
+					LogPrint (eLogWarning, "Garlic: Dropped stale local clove");
+					return;
+				}
+			}
 			switch (deliveryType)
 			{
 			case eGarlicDeliveryTypeLocal:
 				LogPrint (eLogDebug, "Garlic: Type local");
-				if (offset > (int)len)
+				if (offset > (int)len || len - offset < I2NP_HEADER_SIZE)
 				{
 					LogPrint (eLogError, "Garlic: Message is too short");
 					break;
@@ -924,9 +981,14 @@ namespace garlic
 				break;
 			case eGarlicDeliveryTypeDestination:
 				LogPrint (eLogDebug, "Garlic: Type destination");
+				if (static_cast<size_t> (buf - buf1) + 32 > len)
+				{
+					LogPrint (eLogError, "Garlic: Message is too short");
+					break;
+				}
 				buf += 32; // destination. check it later or for multiple destinations
 				offset = buf - buf1;
-				if (offset > (int)len)
+				if (offset > (int)len || len - offset < I2NP_HEADER_SIZE)
 				{
 					LogPrint (eLogError, "Garlic: Message is too short");
 					break;
@@ -937,18 +999,34 @@ namespace garlic
 			{
 				LogPrint (eLogDebug, "Garlic: Type tunnel");
 				// gwHash and gwTunnel sequence is reverted
-				uint8_t * gwHash = buf;
-				buf += 32;
-				offset = buf - buf1;
-				if (offset + 4 > (int)len)
+				if (static_cast<size_t> (buf - buf1) + 36 > len)
 				{
 					LogPrint (eLogError, "Garlic: Message is too short");
 					break;
 				}
+				uint8_t * gwHash = buf;
+				buf += 32;
+				offset = buf - buf1;
 				uint32_t gwTunnel = bufbe32toh (buf);
 				buf += 4;
 				offset += 4;
-				auto msg = CreateI2NPMessage (buf, GetI2NPMessageLength (buf, len - offset), from);
+				const size_t messageLength = GetI2NPMessageLength (buf, len - offset);
+				if (messageLength < I2NP_HEADER_SIZE || messageLength + offset + 15 > len)
+				{
+					LogPrint (eLogError, "Garlic: Invalid I2NP message length");
+					break;
+				}
+				if (!IsFreshCloveDate (bufbe64toh (buf + messageLength + 4)))
+				{
+					LogPrint (eLogWarning, "Garlic: Dropped stale tunnel clove");
+					return;
+				}
+				auto msg = CreateI2NPMessage (buf, messageLength, from);
+				if (!msg)
+				{
+					LogPrint (eLogError, "Garlic: Can't allocate I2NP message");
+					break;
+				}
 				if (from) // received through an inbound tunnel
 				{
 					std::shared_ptr<i2p::tunnel::OutboundTunnel> tunnel;
@@ -968,18 +1046,34 @@ namespace garlic
 			}
 			case eGarlicDeliveryTypeRouter:
 			{
+				if (static_cast<size_t> (buf - buf1) + 32 > len)
+				{
+					LogPrint (eLogError, "Garlic: Message is too short");
+					break;
+				}
 				uint8_t * ident = buf;
 				buf += 32;
 				offset = buf - buf1;
 				if (!from) // received directly
 				{
-					if (offset > (int)len)
+					const size_t messageLength = GetI2NPMessageLength (buf, len - offset);
+					if (messageLength < I2NP_HEADER_SIZE || messageLength + offset + 15 > len)
 					{
-						LogPrint (eLogError, "Garlic: Message is too short");
+						LogPrint (eLogError, "Garlic: Invalid I2NP message length");
 						break;
 					}
-					i2p::transport::transports.SendMessage (
-						ident, CreateI2NPMessage (buf, GetI2NPMessageLength (buf, len - offset)));
+					if (!IsFreshCloveDate (bufbe64toh (buf + messageLength + 4)))
+					{
+						LogPrint (eLogWarning, "Garlic: Dropped stale router clove");
+						return;
+					}
+					auto msg = CreateI2NPMessage (buf, messageLength);
+					if (!msg)
+					{
+						LogPrint (eLogError, "Garlic: Can't allocate I2NP message");
+						break;
+					}
+					i2p::transport::transports.SendMessage (ident, msg);
 				}
 				else
 					LogPrint (eLogWarning, "Garlic: Type router for inbound tunnels not supported");
@@ -992,16 +1086,22 @@ namespace garlic
 				LogPrint (eLogError, "Garlic: Message is too short");
 				break;
 			}
-			buf += GetI2NPMessageLength (buf, len - offset); // I2NP
+			const size_t messageLength = GetI2NPMessageLength (buf, len - offset);
+			if (messageLength < I2NP_HEADER_SIZE || messageLength > len - offset)
+			{
+				LogPrint (eLogError, "Garlic: Invalid I2NP message length");
+				break;
+			}
+			if (messageLength + static_cast<size_t> (offset) + 15 > len)
+			{
+				LogPrint (eLogError, "Garlic: Clove trailer is truncated");
+				break;
+			}
+			buf += messageLength; // I2NP
 			buf += 4; // CloveID
 			buf += 8; // Date
 			buf += 3; // Certificate
 			offset = buf - buf1;
-			if (offset > (int)len)
-			{
-				LogPrint (eLogError, "Garlic: Clove is too long");
-				break;
-			}
 			len -= offset;
 		}
 	}
@@ -1014,6 +1114,12 @@ namespace garlic
 		else
 		{
 			auto session = GetRoutingSession (router, false);
+			if (!session)
+			{
+				LogPrint (eLogError, "Garlic: No routing session for router encryption type ",
+					(int)router->GetEncryptionType ());
+				return nullptr;
+			}
 			return session->WrapSingleMessage (msg);
 		}
 	}
@@ -1027,8 +1133,13 @@ namespace garlic
 			if (SupportsEncryptionType (destination->GetEncryptionType ()))
 			{
 				ECIESX25519AEADRatchetSessionPtr session;
-				uint8_t staticKey[32];
-				destination->Encrypt (nullptr, staticKey); // we are supposed to get static key
+				uint8_t staticKey[32] { };
+				if (!destination->Encrypt (nullptr, staticKey)) // we are supposed to get static key
+				{
+					LogPrint (eLogError, "Garlic: Destination has no ratchet static key for type ",
+						(int)destination->GetEncryptionType ());
+					return nullptr;
+				}
 				{
 					std::unique_lock<std::mutex> l (m_SessionsMutex);
 					auto it = m_ECIESx25519Sessions.find (staticKey);
@@ -1342,7 +1453,13 @@ namespace garlic
 			buf++; // typeid
 			uint32_t msgID = bufbe32toh (buf);
 			buf += 4; // msgID
+			const uint64_t expiration = static_cast<uint64_t> (bufbe32toh (buf)) * 1000;
 			buf += 4; // expiration
+			if (!IsFreshCloveDate (expiration))
+			{
+				LogPrint (eLogWarning, "Garlic: Dropped stale ECIES clove");
+				return;
+			}
 			ptrdiff_t offset = buf - buf1;
 			if (offset <= (int)len)
 				HandleCloveI2NPMessage (typeID, buf, len - offset, msgID, from);
@@ -1368,7 +1485,13 @@ namespace garlic
 			buf++; // typeid
 			uint32_t msgID = bufbe32toh (buf);
 			buf += 4; // msgID
+			const uint64_t expiration = static_cast<uint64_t> (bufbe32toh (buf)) * 1000;
 			buf += 4; // expiration
+			if (!IsFreshCloveDate (expiration))
+			{
+				LogPrint (eLogWarning, "Garlic: Dropped stale ECIES tunnel clove");
+				return;
+			}
 			offset += 13;
 			if (GetTunnelPool ())
 			{
@@ -1417,6 +1540,7 @@ namespace garlic
 		// full, leaving the index unchanged lets a later cleanup generate the
 		// same tag instead of permanently skipping it.
 		std::lock_guard<std::mutex> l (m_TagsMutex);
+		MakeRoomForECIESx25519Tag (1);
 		if (m_ECIESx25519Tags.size () >= MAX_INCOMING_ECIES_TAGS)
 		{
 			LogPrint (eLogWarning, "Garlic: Incoming ECIES tag budget exceeded");
@@ -1462,12 +1586,6 @@ namespace garlic
 			it->second->Terminate ();
 			m_ECIESx25519Sessions.erase (it);
 		}
-	}
-
-	uint8_t * GarlicDestination::GetPayloadBuffer ()
-	{
-		if (!m_PayloadBuffer) m_PayloadBuffer = std::make_unique<uint8_t[]> (I2NP_MAX_MESSAGE_SIZE);
-		return m_PayloadBuffer.get ();
 	}
 
 	bool GarlicDestination::AEADChaCha20Poly1305Encrypt (const uint8_t * msg, size_t msgLen, const uint8_t * ad,

@@ -63,6 +63,17 @@ namespace datagram
 		m_Sessions.clear ();
 	}
 
+	void DatagramDestination::RefreshIdentity ()
+	{
+		auto identity = m_Owner ? m_Owner->GetIdentity () : nullptr;
+		if (!identity) return;
+		const auto len = identity->GetFullLen ();
+		std::vector<uint8_t> from (len);
+		identity->ToBuffer (from.data (), len);
+		std::lock_guard<std::mutex> l (m_FromMutex);
+		m_From.swap (from);
+	}
+
 	void DatagramDestination::SendDatagramTo (
 		const uint8_t * payload, size_t len, const i2p::data::IdentHash & identity, uint16_t fromPort, uint16_t toPort)
 	{
@@ -89,6 +100,11 @@ namespace datagram
 	{
 		if (session)
 		{
+			std::vector<uint8_t> from;
+			{
+				std::lock_guard<std::mutex> l (m_FromMutex);
+				from = m_From;
+			}
 			std::shared_ptr<I2NPMessage> msg;
 			switch (session->GetVersion ())
 			{
@@ -129,7 +145,7 @@ namespace datagram
 				else
 					m_Owner->Sign (payload, static_cast<int> (len), signature.data ());
 				msg = CreateDataMessage (
-					{ { m_From.data (), m_From.size () }, { signature.data (), signature.size () }, { payload, len } },
+					{ { from.data (), from.size () }, { signature.data (), signature.size () }, { payload, len } },
 					fromPort, toPort, i2p::client::PROTOCOL_TYPE_DATAGRAM, !session->IsRatchets ()); // datagram1
 				break;
 			}
@@ -178,7 +194,7 @@ namespace datagram
 				{
 					m_Owner->Sign (signedData.data (), static_cast<int> (signedData.size ()), signature.data ());
 					msg = CreateDataMessage (
-						{ { m_From.data (), m_From.size () }, { flags, 2 }, { optionsBuf.data (), optionsBuf.size () },
+						{ { from.data (), from.size () }, { flags, 2 }, { optionsBuf.data (), optionsBuf.size () },
 							{ offlineSignature.data (), offlineSignature.size () }, { payload, len },
 							{ signature.data (), signature.size () } },
 						fromPort, toPort, i2p::client::PROTOCOL_TYPE_DATAGRAM2, false); // datagram2
@@ -333,7 +349,7 @@ namespace datagram
 		std::shared_ptr<i2p::crypto::Verifier> transientVerifier;
 		if (flags[1] & DATAGRAM2_FLAG_OFFLINE_SIGNATURE)
 		{
-			transientVerifier = i2p::data::ProcessOfflineSignature (&identity, buf, len, offset);
+			transientVerifier = i2p::data::ProcessOfflineSignature (&identity, buf, len, offset, true);
 			if (!transientVerifier)
 			{
 				LogPrint (eLogWarning, "Datagram: datagram2 offline signature failed");
@@ -430,6 +446,7 @@ namespace datagram
 		// without forcing a lookup; a cached LeaseSet (or a ratchet session)
 		// can still be used for the optional extra checks above.
 		auto session = FindSession (ident);
+		bool acknowledgeSession = false;
 		std::shared_ptr<const i2p::data::LeaseSet> ls;
 		if (session) ls = session->GetRemoteLeaseSet ();
 		if (ls && ls->IsExpired ()) ls = nullptr;
@@ -442,15 +459,27 @@ namespace datagram
 					eLogError, "Datagram: Remote LeaseSet static key mismatch for datagram3 from ", ident.ToBase32 ());
 				return;
 			}
-			if (!session)
+			// Datagram3 itself is unauthenticated. Only a ratchet session whose
+			// destination matches, or whose static key is present in the cached
+			// LeaseSet, may create/refresh a reply session. Hash-only delivery
+			// below remains available without authentication.
+			const bool authenticated = from
+				&& (from->GetDestinationPtr () ? *from->GetDestinationPtr () == ident
+											   : ls->IsEncryptionKey (from->GetRemoteStaticKeyType (),
+													 from->GetRemoteStaticKey ()));
+			if (authenticated)
 			{
-				session = ObtainSession (ident);
-				if (session) session->SetVersion (eDatagramV3);
+				if (!session)
+				{
+					session = ObtainSession (ident);
+					if (session) session->SetVersion (eDatagramV3);
+				}
+				if (session) session->SetRemoteLeaseSet (ls);
+				if (from && !from->GetDestinationPtr ()) from->SetDestination (ident);
+				acknowledgeSession = session != nullptr;
 			}
-			if (session) session->SetRemoteLeaseSet (ls);
-			// When the LeaseSet and the ratchet static key agree, remember the
-			// association so later datagrams use the authenticated identity.
-			if (from && !from->GetDestinationPtr ()) from->SetDestination (ident);
+			else
+				LogPrint (eLogWarning, "Datagram: unauthenticated datagram3 will not create a reply session");
 		}
 
 		auto r = FindHashReceiver (toPort);
@@ -468,14 +497,18 @@ namespace datagram
 			else
 				LogPrint (eLogWarning, "DatagramDestination: no hash receiver or cached identity for port ", toPort);
 		}
-		if (session) session->Ack ();
+		if (acknowledgeSession && session) session->Ack ();
 	}
 
 	void DatagramDestination::SetReceiver (const Receiver & receiver, uint16_t port)
 	{
 		std::lock_guard<std::mutex> lock (m_ReceiversMutex);
-		if (port) m_ReceiversByPorts[port] = receiver;
-		if (!m_DefaultReceiver)
+		if (port)
+			m_ReceiversByPorts[port] = receiver;
+		// Java's demultiplexer replaces a listener for the same (protocol,
+		// port) key. A second wildcard registration must not be silently
+		// ignored.
+		if (!port || !m_DefaultReceiver)
 		{
 			m_DefaultReceiver = receiver;
 			m_DefaultReceiverPort = port;
@@ -497,7 +530,7 @@ namespace datagram
 	{
 		std::lock_guard<std::mutex> lock (m_HashReceiversMutex);
 		if (port) m_HashReceiversByPorts[port] = receiver;
-		if (!m_DefaultHashReceiver)
+		if (!port || !m_DefaultHashReceiver)
 		{
 			m_DefaultHashReceiver = receiver;
 			m_DefaultHashReceiverPort = port;
@@ -519,7 +552,7 @@ namespace datagram
 	{
 		std::lock_guard<std::mutex> lock (m_RawReceiversMutex);
 		if (port) m_RawReceiversByPorts[port] = receiver;
-		if (!m_DefaultRawReceiver)
+		if (!port || !m_DefaultRawReceiver)
 		{
 			m_DefaultRawReceiver = receiver;
 			m_DefaultRawReceiverPort = port;

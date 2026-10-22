@@ -21,6 +21,9 @@
 #include "Identity.h"
 #include "RouterContext.h"
 #include "RouterInfo.h"
+#if OPENSSL_PQ
+#include "PostQuantum.h"
+#endif
 #include "SSU2OutOfSession.h"
 #include "Transports.h"
 
@@ -203,31 +206,25 @@ void TestPQPublicationUsesPerFamilyMTU (const i2p::data::PrivateKeys & keys)
 	auto pv6 = parsed.GetSSU2V6Address ();
 	assert (pv4 && pv6 && pv4 != pv6);
 
-	// IPv4: published "pq=3". On a provider with ML-KEM-512 the local
-	// preference is 3; LibreSSL/no-PQ builds must not select an unavailable
-	// ML-KEM-512 variant and fall back to plain SSU2.
-	assert (pv4->ssu && pv4->ssu->mtu == 1280);
-#if OPENSSL_PQ && !defined(LIBRESSL_VERSION_NUMBER)
-	assert (pv4->v == 3);
-	assert (pv4->SupportsSSU2Version (3));
-	assert (!pv4->SupportsSSU2Version (4));
-#else
-	assert (pv4->v == 2);
-	assert (!pv4->SupportsSSU2Version (3));
+	// The provider decides which advertised parameter sets can be selected.
+	bool has3 = false, has4 = false;
+#if OPENSSL_PQ
+	has3 = i2p::crypto::CanPublishPQ (3);
+	has4 = i2p::crypto::CanPublishPQ (4);
 #endif
 
-	// IPv6: unknown MTU keeps the Java-compatible "4,3" list where ML-KEM-512
-	// is available; otherwise the address stays at the supported default.
+	// IPv4: published "pq=3". A low MTU prevents ML-KEM-768, so use version 3
+	// only when the provider supplies ML-KEM-512.
+	assert (pv4->ssu && pv4->ssu->mtu == 1280);
+	assert (pv4->v == (has3 ? 3 : 2));
+	assert (pv4->SupportsSSU2Version (3) == has3);
+	assert (!pv4->SupportsSSU2Version (4));
+
+	// IPv6: unknown MTU keeps the Java-compatible "4,3" list when available.
 	assert (pv6->ssu && pv6->ssu->mtu == 0);
-#if OPENSSL_PQ
-	assert (pv6->v == 4);
-#if !defined(LIBRESSL_VERSION_NUMBER)
-	assert (pv6->SupportsSSU2Version (3));
-#endif
-	assert (pv6->SupportsSSU2Version (4));
-#else
-	assert (pv6->v == 2);
-#endif
+	assert (pv6->v == (has4 ? 4 : (has3 ? 3 : 2)));
+	assert (pv6->SupportsSSU2Version (4) == has4);
+	assert (pv6->SupportsSSU2Version (3) == has3);
 
 	// "B" survives serialization for non-published addresses.
 	assert (pv4->IsPeerTesting () && pv6->IsPeerTesting ());

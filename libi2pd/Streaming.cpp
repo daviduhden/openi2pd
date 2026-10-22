@@ -700,6 +700,15 @@ namespace stream
 			}
 		}
 
+		// Java ConnectionPacketHandler rejects a SYN that has no FROM identity
+		// unless the stream was already authenticated by a ratchet session.
+		if ((flags & PACKET_FLAG_SYNCHRONIZE) && !(flags & PACKET_FLAG_FROM_INCLUDED)
+			&& !m_RemoteIdentity)
+		{
+			LogPrint (eLogInfo, "Streaming: SYN without authenticated FROM identity, dropped");
+			return false;
+		}
+
 		if (flags & PACKET_FLAG_MAX_PACKET_SIZE_INCLUDED)
 		{
 			if (!hasOption (2))
@@ -769,7 +778,7 @@ namespace stream
 			}
 			size_t offset = 0;
 			m_TransientVerifier = i2p::data::ProcessOfflineSignature (
-				m_RemoteIdentity, optionData, optionSize - (optionData - packet->GetOptionData ()), offset);
+				m_RemoteIdentity, optionData, optionSize - (optionData - packet->GetOptionData ()), offset, true);
 			optionData += offset;
 			if (!m_TransientVerifier)
 			{
@@ -1171,6 +1180,13 @@ namespace stream
 
 	void Stream::SendBuffer ()
 	{
+		if (m_Status == eStreamStatusTerminated)
+		{
+			// A queued send or asynchronous LeaseSet callback can arrive after
+			// the destination was stopped and m_LocalDestination released.
+			m_SendBuffer.CleanUp ();
+			return;
+		}
 		if (m_RemoteLeaseSet) // don't schedule send for first SYN for incoming stream
 			ScheduleSend ();
 		auto ts = i2p::util::GetMillisecondsSinceEpoch ();
@@ -1872,6 +1888,11 @@ namespace stream
 			{
 				auto msg = m_RoutingSession->WrapSingleMessage (m_LocalDestination.CreateDataMessage (
 					it->GetBuffer (), it->GetLength (), m_Port, !m_RoutingSession->IsRatchets (), it->IsSYN ()));
+				if (!msg)
+				{
+					LogPrint (eLogWarning, "Streaming: Failed to wrap outbound packet");
+					continue;
+				}
 				msgs.push_back (i2p::tunnel::TunnelMessageBlock { i2p::tunnel::eDeliveryTypeTunnel,
 					m_CurrentRemoteLease->tunnelGateway, m_CurrentRemoteLease->tunnelID, msg });
 				m_NumSentBytes += it->GetLength ();
@@ -2520,21 +2541,27 @@ namespace stream
 		uint32_t sendStreamID = packet->GetSendStreamID ();
 		if (sendStreamID)
 		{
-			if (!m_LastStream || sendStreamID != m_LastStream->GetRecvStreamID ())
+			std::shared_ptr<Stream> stream;
+			uint16_t lastFromPort = 0, lastToPort = 0;
 			{
-				auto it = m_Streams.find (sendStreamID);
-				if (it != m_Streams.end ())
-					m_LastStream = it->second;
-				else
-					m_LastStream = nullptr;
+				std::lock_guard<std::mutex> l (m_StreamsMutex);
+				if (!m_LastStream || sendStreamID != m_LastStream->GetRecvStreamID ())
+				{
+					auto it = m_Streams.find (sendStreamID);
+					m_LastStream = (it != m_Streams.end ()) ? it->second : nullptr;
+				}
+				stream = m_LastStream;
+				lastFromPort = m_LastFromPort;
+				lastToPort = m_LastToPort;
 			}
-			if (m_LastStream)
-				m_LastStream->HandleNextPacket (packet);
+			if (stream)
+				stream->HandleNextPacket (packet);
 			else if (packet->IsEcho () && m_Owner->IsStreamingAnswerPings ())
 			{
 				// ping
 				LogPrint (eLogInfo, "Streaming: Ping received sSID=", sendStreamID);
 				auto s = std::make_shared<Stream> (m_Owner->GetService (), *this);
+				s->SetPorts (lastFromPort, lastToPort);
 				s->HandlePing (packet);
 			}
 			else
@@ -2567,7 +2594,7 @@ namespace stream
 					return;
 				}
 				if (m_Owner->GetStreamingMaxConcurrentStreams () > 0
-					&& (int)m_Streams.size () > m_Owner->GetStreamingMaxConcurrentStreams ())
+					&& (int)GetNumStreams () > m_Owner->GetStreamingMaxConcurrentStreams ())
 				{
 					LogPrint (eLogInfo, "Streaming: Number of streams exceeds ",
 						m_Owner->GetStreamingMaxConcurrentStreams ());
@@ -2592,6 +2619,11 @@ namespace stream
 				}
 				auto incomingStream = CreateNewIncomingStream (receiveStreamID);
 				incomingStream->HandleNextPacket (packet); // SYN
+				if (incomingStream->GetStatus () != eStreamStatusOpen)
+				{
+					LogPrint (eLogInfo, "Streaming: SYN did not create an open stream, rSID=", receiveStreamID);
+					return;
+				}
 				if (!incomingStream->GetRemoteLeaseSet ())
 				{
 					// The stream will request the peer LeaseSet asynchronously
@@ -2649,9 +2681,23 @@ namespace stream
 				packet->from = nullptr; // session might be invalid when saved packet gets handled
 				auto it = m_SavedPackets.find (receiveStreamID);
 				if (it != m_SavedPackets.end ())
-					it->second.push_back (packet);
+				{
+					if (it->second.size () >= MAX_SAVED_PACKETS_PER_STREAM)
+					{
+						LogPrint (eLogWarning, "Streaming: Saved packet list is full for ", receiveStreamID);
+						DeletePacket (packet);
+					}
+					else
+						it->second.push_back (packet);
+				}
 				else
 				{
+					if (m_SavedPackets.size () >= MAX_SAVED_STREAM_IDS)
+					{
+						LogPrint (eLogWarning, "Streaming: Saved stream table is full");
+						DeletePacket (packet);
+						return;
+					}
 					m_SavedPackets.emplace (receiveStreamID, std::list<Packet *> { packet });
 					auto timer = std::make_shared<boost::asio::steady_timer> (m_Owner->GetService ());
 					timer->expires_after (std::chrono::seconds (PENDING_INCOMING_TIMEOUT));
@@ -2684,9 +2730,11 @@ namespace stream
 		return s;
 	}
 
-	void StreamingDestination::SendPing (std::shared_ptr<const i2p::data::LeaseSet> remote)
+	void StreamingDestination::SendPing (
+		std::shared_ptr<const i2p::data::LeaseSet> remote, uint16_t fromPort, uint16_t toPort)
 	{
-		auto s = std::make_shared<Stream> (m_Owner->GetService (), *this, remote, 0);
+		auto s = std::make_shared<Stream> (m_Owner->GetService (), *this, remote, toPort);
+		s->SetPorts (toPort, fromPort); // remote port, local port
 		s->SendPing ();
 	}
 
@@ -2712,7 +2760,7 @@ namespace stream
 			if (m_LastStream == stream) m_LastStream = nullptr;
 		}
 		auto ts = i2p::util::GetSecondsSinceEpoch ();
-		if (m_Streams.empty () || ts > m_LastCleanupTime + STREAMING_DESTINATION_POOLS_CLEANUP_INTERVAL)
+		if (GetNumStreams () == 0 || ts > m_LastCleanupTime + STREAMING_DESTINATION_POOLS_CLEANUP_INTERVAL)
 		{
 			m_PacketsPool.CleanUp ();
 			m_I2NPMsgsPool.CleanUp ();
@@ -2741,6 +2789,7 @@ namespace stream
 
 	bool StreamingDestination::DeleteStream (uint32_t recvStreamID)
 	{
+		std::lock_guard<std::mutex> lock (m_StreamsMutex);
 		auto it = m_Streams.find (recvStreamID);
 		if (it == m_Streams.end ()) return false;
 		auto s = it->second;
@@ -2759,14 +2808,17 @@ namespace stream
 		m_Acceptor = acceptor; // we must set it immediately for IsAcceptorSet
 		auto s = shared_from_this ();
 		boost::asio::post (m_Owner->GetService (),
-			[s] (void)
+			[s, acceptor] (void)
 			{
-				// take care about incoming queue
-				for (auto & it : s->m_PendingIncomingStreams)
-					if (it->GetStatus () == eStreamStatusOpen) // still open?
-						s->m_Acceptor (it);
+				// Capture the function by value: ResetAcceptor() may run before
+				// this posted handler and would otherwise leave an empty
+				// std::function that throws bad_function_call.
+				auto pending = std::move (s->m_PendingIncomingStreams);
 				s->m_PendingIncomingStreams.clear ();
 				s->m_PendingIncomingTimer.cancel ();
+				if (!acceptor) return;
+				for (auto & it : pending)
+					if (it->GetStatus () == eStreamStatusOpen) acceptor (it);
 			});
 	}
 

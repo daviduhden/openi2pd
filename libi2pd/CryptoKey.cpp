@@ -30,9 +30,11 @@ namespace crypto
 			memset (m_PublicKey, 0, sizeof (m_PublicKey)); // rejected by ElGamalEncrypt
 	}
 
-	void ElGamalEncryptor::Encrypt (const uint8_t * data, uint8_t * encrypted)
+	bool ElGamalEncryptor::Encrypt (const uint8_t * data, uint8_t * encrypted)
 	{
+		if (!data || !encrypted) return false;
 		ElGamalEncrypt (m_PublicKey, data, encrypted);
+		return true;
 	}
 
 	ElGamalDecryptor::ElGamalDecryptor (const uint8_t * priv)
@@ -93,12 +95,15 @@ namespace crypto
 		if (m_Curve) EC_GROUP_free (m_Curve);
 	}
 
-	void ECIESP256Encryptor::Encrypt (const uint8_t * data, uint8_t * encrypted)
+	bool ECIESP256Encryptor::Encrypt (const uint8_t * data, uint8_t * encrypted)
 	{
 		if (m_Curve && m_PublicKey && data && encrypted)
+		{
 			ECIESEncrypt (m_Curve, m_PublicKey, data, encrypted);
-		else
-			ClearECIESOutput (encrypted);
+			return true;
+		}
+		ClearECIESOutput (encrypted);
+		return false;
 	}
 
 	ECIESP256Decryptor::ECIESP256Decryptor (const uint8_t * priv)
@@ -174,13 +179,16 @@ namespace crypto
 		if (m_PublicKey) EC_POINT_free (m_PublicKey);
 	}
 
-	void ECIESGOSTR3410Encryptor::Encrypt (const uint8_t * data, uint8_t * encrypted)
+	bool ECIESGOSTR3410Encryptor::Encrypt (const uint8_t * data, uint8_t * encrypted)
 	{
 		auto & curve = GetGOSTR3410Curve (eGOSTR3410CryptoProA);
 		if (m_PublicKey && data && encrypted && curve && curve->GetGroup ())
+		{
 			ECIESEncrypt (curve->GetGroup (), m_PublicKey, data, encrypted);
-		else
-			ClearECIESOutput (encrypted);
+			return true;
+		}
+		ClearECIESOutput (encrypted);
+		return false;
 	}
 
 	ECIESGOSTR3410Decryptor::ECIESGOSTR3410Decryptor (const uint8_t * priv)
@@ -241,9 +249,11 @@ namespace crypto
 			memset (m_PublicKey, 0, sizeof (m_PublicKey));
 	}
 
-	void ECIESX25519AEADRatchetEncryptor::Encrypt (const uint8_t *, uint8_t * pub)
+	bool ECIESX25519AEADRatchetEncryptor::Encrypt (const uint8_t *, uint8_t * pub)
 	{
-		if (pub) memcpy (pub, m_PublicKey, 32);
+		if (!pub) return false;
+		memcpy (pub, m_PublicKey, 32);
+		return true;
 	}
 
 	ECIESX25519AEADRatchetDecryptor::ECIESX25519AEADRatchetDecryptor (const uint8_t * priv, bool calculatePublic)

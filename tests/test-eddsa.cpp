@@ -13,6 +13,7 @@
 #include <string.h>
 
 #include "Signature.h"
+#include "Ed25519.h"
 
 // TEST 1024 from RFC-8032
 
@@ -71,5 +72,21 @@ int main ()
 	i2p::crypto::EDDSA25519Verifier verifier;
 	verifier.SetPublicKey (pub);
 	assert (verifier.Verify (msg, 1023, s));
+
+	// Blinding must reject a y-encoding whose recovered x is not on the curve.
+	auto & ed25519 = i2p::crypto::GetEd25519 ();
+	assert (ed25519->IsValidPublicKey (pub));
+	uint8_t invalid[32] { };
+	bool foundInvalid = false;
+	for (unsigned i = 0; i < 256 && !foundInvalid; ++i)
+	{
+		invalid[0] = static_cast<uint8_t> (i);
+		foundInvalid = !ed25519->IsValidPublicKey (invalid);
+	}
+	assert (foundInvalid);
+	// Java also accepts the order-4 all-zero encoding; this check must be an
+	// on-curve test, not an accidental low-order rejection.
+	uint8_t allZero[32] { };
+	assert (ed25519->IsValidPublicKey (allZero));
 	BN_free (input);
 }

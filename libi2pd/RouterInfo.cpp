@@ -318,9 +318,11 @@ namespace data
 			LogPrint (eLogError, "RouterInfo: Updated RouterInfo is malformed. Not changed");
 			return false;
 		}
-		m_IsUpdated.store (true);
-		// save buffer; don't delete it until it has been persisted to disk
+		// Install the validated body first; publish the updated flag only after
+		// it is visible. A persistence pass can then never snapshot the old
+		// body while consuming the new update flag.
 		UpdateBuffer (buf, len);
+		m_IsUpdated.store (true);
 		return true;
 	}
 
@@ -645,7 +647,11 @@ namespace data
 							size_t end = value.find (',', start);
 							if (end == std::string_view::npos) end = value.size ();
 							auto token = value.substr (start, end - start);
-							if (token == "3" || token == "4" || token == "5") best = std::max (best, token[0] - '0');
+#if OPENSSL_PQ
+							if ((token == "3" || token == "4" || token == "5")
+								&& i2p::crypto::CanPublishPQ (token[0] - '0'))
+								best = std::max (best, token[0] - '0');
+#endif
 							if (end == value.size ()) break;
 							start = end + 1;
 						}
@@ -736,7 +742,7 @@ namespace data
 				// the published MTU and the local MTU can carry ML-KEM-768.
 				// The local MTU is checked by SSU2Session::SetVersion().
 				int best = 0;
-				if (address->pqVersions & (1u << 4))
+				if ((address->pqVersions & (1u << 4)) && i2p::crypto::CanPublishPQ (4))
 				{
 					bool ipv6 = !address->host.is_unspecified () ? address->host.is_v6 ()
 																 : ((address->caps & AddressCaps::eV6) != 0);
@@ -746,8 +752,7 @@ namespace data
 				}
 				// ML-KEM-512 is not provided by LibreSSL. Never select a
 				// version that the local session cannot establish.
-				if (!best && (address->pqVersions & (1u << 3))
-					&& i2p::crypto::IsMLKEMSupported (CRYPTO_KEY_TYPE_ECIES_MLKEM512_X25519_AEAD))
+				if (!best && (address->pqVersions & (1u << 3)) && i2p::crypto::CanPublishPQ (3))
 					best = 3;
 				address->v = best ? best : 2;
 #else
@@ -963,7 +968,10 @@ namespace data
 			}
 		}
 
-		if (!supportedTransports || !isNetId || !version) valid = false;
+		// Java accepts a fresh signature-valid RouterInfo with no addresses
+		// (or only an address style it does not use) for up to 54 minutes;
+		// the no-address policy is applied by NetDb::IsRouterInfoStoreValid.
+		if (!isNetId || !version) valid = false;
 		if (!valid) return false;
 
 		// Java routers older than the peer-test version must not publish the
@@ -1112,16 +1120,30 @@ namespace data
 	bool RouterInfo::SaveToFile (const std::string & fullPath, std::shared_ptr<Buffer> buf)
 	{
 		if (!buf) return false;
-		std::ofstream f (fullPath, std::ofstream::binary | std::ofstream::out);
-		if (!f.is_open ())
+		// Replace the previous descriptor atomically. A crash or short write
+		// must not truncate the last valid cached RouterInfo.
+		const std::string tempPath = fullPath + ".tmp";
 		{
-			LogPrint (eLogError, "RouterInfo: Can't save to ", fullPath);
-			return false;
+			std::ofstream f (tempPath, std::ofstream::binary | std::ofstream::out | std::ofstream::trunc);
+			if (!f.is_open ())
+			{
+				LogPrint (eLogError, "RouterInfo: Can't save to ", tempPath);
+				return false;
+			}
+			f.write ((char *)buf->data (), buf->GetBufferLen ());
+			f.flush ();
+			if (!f)
+			{
+				LogPrint (eLogError, "RouterInfo: Short write to ", tempPath);
+				f.close ();
+				i2p::fs::Remove (tempPath);
+				return false;
+			}
 		}
-		f.write ((char *)buf->data (), buf->GetBufferLen ());
-		if (!f)
+		if (!i2p::fs::Rename (tempPath, fullPath))
 		{
-			LogPrint (eLogError, "RouterInfo: Short write to ", fullPath);
+			LogPrint (eLogError, "RouterInfo: Can't replace ", fullPath);
+			i2p::fs::Remove (tempPath);
 			return false;
 		}
 		return true;
@@ -1549,12 +1571,12 @@ namespace data
 		return profile;
 	}
 
-	void RouterInfo::Encrypt (const uint8_t * data, uint8_t * encrypted) const
+	bool RouterInfo::Encrypt (const uint8_t * data, uint8_t * encrypted) const
 	{
 		auto identity = m_RouterIdentity;
-		if (!identity) return;
+		if (!identity || !encrypted) return false;
 		auto encryptor = identity->CreateEncryptor (nullptr);
-		if (encryptor) encryptor->Encrypt (data, encrypted);
+		return encryptor && encryptor->Encrypt (data, encrypted);
 	}
 
 	bool RouterInfo::IsEligibleFloodfill () const
@@ -1680,6 +1702,16 @@ namespace data
 		std::lock_guard<std::mutex> l (m_BufferMutex);
 		if (!m_Buffer) return nullptr;
 		return netdb.NewRouterInfoBuffer (*m_Buffer);
+	}
+
+	bool RouterInfo::TakeUpdatedBuffer (std::shared_ptr<Buffer> & buffer, bool & deleted)
+	{
+		std::lock_guard<std::mutex> l (m_BufferMutex);
+		deleted = m_IsBufferScheduledToDelete.exchange (false);
+		if (deleted) m_Buffer = nullptr;
+		const bool updated = m_IsUpdated.exchange (false);
+		if (updated && !deleted && m_Buffer) buffer = netdb.NewRouterInfoBuffer (*m_Buffer);
+		return updated;
 	}
 
 	std::shared_ptr<RouterInfo::Buffer> RouterInfo::NewBuffer () const
@@ -2032,38 +2064,32 @@ namespace data
 				// PQ_VERSION "4,3" when the interface can carry ML-KEM-768 and
 				// PQ_VERSION_LOW_MTU "3" otherwise (addSSU2Options()).
 				// ML-KEM-768 needs 1318 bytes on IPv4 and 1338 on IPv6
-				// (PeerState2.MIN_MLKEM768_IPV4_MTU / _IPV6_MTU). LibreSSL has
-				// no ML-KEM-512, so never publish "3" there.
+				// (PeerState2.MIN_MLKEM768_IPV4_MTU / _IPV6_MTU). Only write a
+				// parameter set that the active provider actually implements.
 				bool ipv6 = address.IsV6 () && !address.IsV4 ();
 				int minMtu = ipv6 ? MIN_SSU2_MLKEM768_MTU_IPV6 : MIN_SSU2_MLKEM768_MTU_IPV4;
 				int mtu = address.ssu ? address.ssu->mtu : 0;
-				bool allow4 = address.v >= 4 && (!mtu || mtu >= minMtu);
-#ifdef LIBRESSL_VERSION_NUMBER
-				if (allow4)
+				const bool allow4 = address.v >= 4 && (!mtu || mtu >= minMtu)
+					&& i2p::crypto::CanPublishPQ (4);
+				const bool allow3 = address.v >= 3 && i2p::crypto::CanPublishPQ (3);
+				if (allow4 || allow3)
 				{
 					WriteString ("pq", properties);
 					properties << '=';
-					WriteString ("4", properties);
+					if (allow4) WriteString ("4", properties);
+					if (allow4 && allow3) properties << ',';
+					if (allow3) WriteString ("3", properties);
 					properties << ';';
 				}
-#else
-				WriteString ("pq", properties);
-				properties << '=';
-				WriteString (allow4 ? "4,3" : "3", properties);
-				properties << ';';
-#endif
 			}
 			else if (address.v >= 3) // NTCP2 post quantum
 			{
-#ifdef LIBRESSL_VERSION_NUMBER
-				if (address.v >= 4 && address.v <= 5) // no ML-KEM-512
-#else
-				if (address.v <= 5)
-#endif
+				const int publishVersion = i2p::crypto::HighestSupportedPQVersion (address.v, 5);
+				if (publishVersion)
 				{
 					WriteString ("pq", properties);
 					properties << '=';
-					WriteString (std::to_string (address.v), properties);
+					WriteString (std::to_string (publishVersion), properties);
 					properties << ';';
 				}
 			}

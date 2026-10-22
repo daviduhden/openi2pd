@@ -137,8 +137,17 @@ namespace crypto
 		BN_CTX_start (ctx);
 		BIGNUM * q = BN_CTX_get (ctx);
 		BIGNUM * k = BN_CTX_get (ctx);
+		BIGNUM * e = BN_CTX_get (ctx);
 		BIGNUM * tmp = BN_CTX_get (ctx);
-		if (!q || !k || !tmp || EC_GROUP_get_order (m_Group, q, ctx) != 1)
+		if (!q || !k || !e || !tmp || EC_GROUP_get_order (m_Group, q, ctx) != 1
+			|| BN_mod (e, digest, q, ctx) != 1)
+		{
+			BN_CTX_end (ctx);
+			BN_CTX_free (ctx);
+			return;
+		}
+		// RFC 7091 section 6: e = alpha mod q, and e = 1 when that is zero.
+		if (BN_is_zero (e) && BN_one (e) != 1)
 		{
 			BN_CTX_end (ctx);
 			BN_CTX_free (ctx);
@@ -156,8 +165,8 @@ namespace crypto
 			BN_mod (r, r, q, ctx); // r = Cx mod q
 			if (BN_is_zero (r)) continue;
 			BN_mod_mul (s, r, priv, q, ctx); // (r*priv)%q
-			BN_mod_mul (tmp, k, digest, q, ctx); // (k*digest)%q
-			BN_mod_add (s, s, tmp, q, ctx); // (r*priv+k*digest)%q
+			BN_mod_mul (tmp, k, e, q, ctx); // (k*e)%q
+			BN_mod_add (s, s, tmp, q, ctx); // (r*priv+k*e)%q
 			if (!BN_is_zero (s)) break;
 		}
 		if (BN_is_zero (r) || BN_is_zero (s))
@@ -178,17 +187,19 @@ namespace crypto
 		if (!ctx) return false;
 		BN_CTX_start (ctx);
 		BIGNUM * q = BN_CTX_get (ctx);
+		BIGNUM * e = BN_CTX_get (ctx);
 		BIGNUM * h = BN_CTX_get (ctx);
 		BIGNUM * z1 = BN_CTX_get (ctx);
 		BIGNUM * z2 = BN_CTX_get (ctx);
 		BIGNUM * x = BN_CTX_get (ctx);
 		EC_POINT * C = EC_POINT_new (m_Group);
-		bool ret = q && h && z1 && z2 && x && C && EC_GROUP_get_order (m_Group, q, ctx) == 1 && !BN_is_zero (r)
-			&& !BN_is_zero (s) && BN_cmp (r, q) < 0 && BN_cmp (s, q) < 0;
+		bool ret = q && e && h && z1 && z2 && x && C && EC_GROUP_get_order (m_Group, q, ctx) == 1
+			&& !BN_is_zero (r) && !BN_is_zero (s) && BN_cmp (r, q) < 0 && BN_cmp (s, q) < 0;
 		if (ret)
 		{
-			BN_mod (h, digest, q, ctx); // h = digest % q
-			ret = !BN_is_zero (h) && BN_mod_inverse (h, h, q, ctx) != nullptr; // 1/h mod q
+			// RFC 7091 section 6: e = digest mod q, with e = 1 when zero.
+			ret = BN_mod (e, digest, q, ctx) == 1 && (BN_is_zero (e) ? BN_one (e) == 1 : true);
+			if (ret) ret = BN_mod_inverse (h, e, q, ctx) != nullptr; // 1/e mod q
 		}
 		if (ret)
 		{

@@ -144,63 +144,204 @@ if(WITH_STATIC)
 endif()
 
 include(CheckAtomic)
+include(CheckCXXSourceCompiles)
 set(I2PD_EXTRA_LIBS ${CMAKE_REQUIRED_LIBRARIES})
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 
-find_package(Boost 1.74 REQUIRED COMPONENTS program_options)
 if(WITH_TORRENTS)
-  find_package(Boost 1.81 REQUIRED COMPONENTS json url)
+  # Boost.JSON and Boost.URL are header-only and have no compiled component
+  # libraries; requesting them as find_package components breaks module-mode
+  # discovery (notably Android vcpkg). Link Boost::headers and verify the
+  # headers explicitly so a missing dependency fails at configure time.
+  find_package(Boost 1.81 REQUIRED COMPONENTS program_options)
+  include(CheckIncludeFileCXX)
+  set(_i2pd_saved_required_includes "${CMAKE_REQUIRED_INCLUDES}")
+  set(_i2pd_saved_try_compile_target_type "${CMAKE_TRY_COMPILE_TARGET_TYPE}")
+  set(CMAKE_REQUIRED_INCLUDES ${Boost_INCLUDE_DIRS})
+  set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
+  check_include_file_cxx("boost/json.hpp" I2PD_HAVE_BOOST_JSON)
+  check_include_file_cxx("boost/url.hpp" I2PD_HAVE_BOOST_URL)
+  set(CMAKE_REQUIRED_INCLUDES "${_i2pd_saved_required_includes}")
+  if(_i2pd_saved_try_compile_target_type)
+    set(CMAKE_TRY_COMPILE_TARGET_TYPE "${_i2pd_saved_try_compile_target_type}")
+  else()
+    unset(CMAKE_TRY_COMPILE_TARGET_TYPE)
+  endif()
+  unset(_i2pd_saved_required_includes)
+  unset(_i2pd_saved_try_compile_target_type)
+  if(NOT I2PD_HAVE_BOOST_JSON OR NOT I2PD_HAVE_BOOST_URL)
+    message(FATAL_ERROR
+      "Boost 1.81+ json.hpp and url.hpp headers are required when WITH_TORRENTS=ON")
+  endif()
+else()
+  find_package(Boost 1.74 REQUIRED COMPONENTS program_options)
 endif()
-find_package(OpenSSL REQUIRED)
+find_package(OpenSSL REQUIRED COMPONENTS Crypto SSL)
 # LibreSSL deliberately keeps OPENSSL_VERSION_NUMBER frozen at 0x20000000
 # for source compatibility, so CMake's FindOpenSSL reports 2.0.0 even for a
-# current LibreSSL. Read the project-specific version text from the selected
-# headers instead of treating that compatibility value as the library version.
+# current LibreSSL. Read the selected headers explicitly and never search a
+# different include prefix: headers and libraries must come from one install.
+set(I2PD_OPENSSL_KIND "")
+set(I2PD_OPENSSL_VERSION "")
 set(I2PD_LIBRESSL_VERSION "")
-set(_i2pd_openssl_include_dir "${OPENSSL_INCLUDE_DIR}")
-if(NOT EXISTS "${_i2pd_openssl_include_dir}/openssl/opensslv.h")
-  find_path(_i2pd_openssl_include_dir openssl/opensslv.h
-    HINTS "${OPENSSL_INCLUDE_DIR}")
+set(_i2pd_opensslv_path "${OPENSSL_INCLUDE_DIR}/openssl/opensslv.h")
+if(NOT EXISTS "${_i2pd_opensslv_path}")
+  message(FATAL_ERROR
+    "OpenSSL headers were not found at OPENSSL_INCLUDE_DIR='${OPENSSL_INCLUDE_DIR}'. "
+    "Refusing to search another prefix; set OPENSSL_ROOT_DIR consistently.")
 endif()
-if(_i2pd_openssl_include_dir AND EXISTS "${_i2pd_openssl_include_dir}/openssl/opensslv.h")
-  file(STRINGS "${_i2pd_openssl_include_dir}/openssl/opensslv.h" _i2pd_libressl_version_line
-    REGEX "LIBRESSL_VERSION_TEXT")
-  if(_i2pd_libressl_version_line)
-    string(REGEX MATCH "LibreSSL ([0-9]+\\.[0-9]+)" _i2pd_libressl_version_match
-      "${_i2pd_libressl_version_line}")
+file(READ "${_i2pd_opensslv_path}" _i2pd_opensslv_text)
+string(REGEX MATCH "LIBRESSL_VERSION_TEXT[ \t]+\"LibreSSL[ \t]+([0-9]+\\.[0-9]+(\\.[0-9]+)?)\""
+  _i2pd_libressl_match "${_i2pd_opensslv_text}")
+if(CMAKE_MATCH_1)
+  set(I2PD_LIBRESSL_VERSION "${CMAKE_MATCH_1}")
+  set(I2PD_OPENSSL_VERSION "${CMAKE_MATCH_1}")
+  set(I2PD_OPENSSL_KIND "LibreSSL")
+else()
+  string(REGEX MATCH "OPENSSL_VERSION_STR[ \t]+\"([0-9]+\\.[0-9]+\\.[0-9]+)\""
+    _i2pd_openssl_str_match "${_i2pd_opensslv_text}")
+  if(CMAKE_MATCH_1)
+    set(I2PD_OPENSSL_VERSION "${CMAKE_MATCH_1}")
+  else()
+    string(REGEX MATCH "OPENSSL_VERSION_TEXT[ \t]+\"OpenSSL[ \t]+([0-9]+\\.[0-9]+\\.[0-9]+)"
+      _i2pd_openssl_text_match "${_i2pd_opensslv_text}")
     if(CMAKE_MATCH_1)
-      set(I2PD_LIBRESSL_VERSION "${CMAKE_MATCH_1}")
+      set(I2PD_OPENSSL_VERSION "${CMAKE_MATCH_1}")
     endif()
-    unset(_i2pd_libressl_version_match)
   endif()
-  unset(_i2pd_libressl_version_line)
+  if(I2PD_OPENSSL_VERSION)
+    set(I2PD_OPENSSL_KIND "OpenSSL")
+  endif()
 endif()
-unset(_i2pd_openssl_include_dir)
-if(I2PD_LIBRESSL_VERSION)
-  if(I2PD_LIBRESSL_VERSION VERSION_LESS 4.0)
-    message(FATAL_ERROR "LibreSSL 4.0 or newer is required (found LibreSSL ${I2PD_LIBRESSL_VERSION})")
-  endif()
-elseif(OPENSSL_VERSION MATCHES "^LibreSSL ([0-9]+\\.[0-9]+)")
-  if(CMAKE_MATCH_1 VERSION_LESS 4.0)
-    message(FATAL_ERROR "LibreSSL 4.0 or newer is required (found ${OPENSSL_VERSION})")
-  endif()
-elseif(OPENSSL_VERSION MATCHES "^OpenSSL ([0-9]+\\.[0-9]+\\.[0-9]+)")
-  if(CMAKE_MATCH_1 VERSION_LESS 3.0.2)
-    message(FATAL_ERROR "OpenSSL 3.0.2 or newer is required (found ${OPENSSL_VERSION})")
-  endif()
-elseif(OPENSSL_VERSION MATCHES "^([0-9]+\\.[0-9]+\\.[0-9]+)")
-  if(CMAKE_MATCH_1 VERSION_LESS 3.0.2)
-    message(FATAL_ERROR "OpenSSL 3.0.2 or newer is required (found ${OPENSSL_VERSION})")
+unset(_i2pd_opensslv_text)
+if(NOT I2PD_OPENSSL_KIND)
+  message(FATAL_ERROR "Unable to determine OpenSSL/LibreSSL version from '${OPENSSL_INCLUDE_DIR}/openssl/opensslv.h'")
+endif()
+if(I2PD_OPENSSL_KIND STREQUAL "LibreSSL")
+  if(I2PD_OPENSSL_VERSION VERSION_LESS 4.0)
+    message(FATAL_ERROR "LibreSSL 4.0 or newer is required (found LibreSSL ${I2PD_OPENSSL_VERSION})")
   endif()
 else()
-  message(FATAL_ERROR "Unable to determine OpenSSL/LibreSSL version from '${OPENSSL_VERSION}'")
+  if(I2PD_OPENSSL_VERSION VERSION_LESS 3.0.2)
+    message(FATAL_ERROR "OpenSSL 3.0.2 or newer is required (found ${I2PD_OPENSSL_VERSION})")
+  endif()
 endif()
-if(I2PD_LIBRESSL_VERSION)
-  message(STATUS "OpenSSL library    : LibreSSL ${I2PD_LIBRESSL_VERSION} (compatibility ${OPENSSL_VERSION})")
+set(I2PD_OPENSSL_EXPECT "" CACHE STRING
+  "Optional CI guard: require OpenSSL or LibreSSL")
+set(I2PD_OPENSSL_EXPECT_VERSION "" CACHE STRING
+  "Optional CI guard: require this exact selected version")
+if(I2PD_OPENSSL_EXPECT AND NOT I2PD_OPENSSL_KIND STREQUAL I2PD_OPENSSL_EXPECT)
+  message(FATAL_ERROR "Expected ${I2PD_OPENSSL_EXPECT}, selected ${I2PD_OPENSSL_KIND}")
+endif()
+if(I2PD_OPENSSL_EXPECT_VERSION AND NOT I2PD_OPENSSL_VERSION VERSION_EQUAL I2PD_OPENSSL_EXPECT_VERSION)
+  message(FATAL_ERROR
+    "Expected ${I2PD_OPENSSL_EXPECT_VERSION}, selected ${I2PD_OPENSSL_KIND} ${I2PD_OPENSSL_VERSION}")
+endif()
+message(STATUS "OpenSSL library    : ${I2PD_OPENSSL_KIND} ${I2PD_OPENSSL_VERSION}")
+message(STATUS "OpenSSL headers    : ${OPENSSL_INCLUDE_DIR}")
+message(STATUS "OpenSSL libs       : ${OPENSSL_CRYPTO_LIBRARY};${OPENSSL_SSL_LIBRARY}")
+
+# Feature probes, not version-number guesses. These are compile-only and do not
+# execute the target platform. LibreSSL keeps the fallback branches in code.
+set(_i2pd_saved_required_includes "${CMAKE_REQUIRED_INCLUDES}")
+set(_i2pd_saved_required_libraries "${CMAKE_REQUIRED_LIBRARIES}")
+set(_i2pd_saved_try_compile_target_type "${CMAKE_TRY_COMPILE_TARGET_TYPE}")
+set(CMAKE_REQUIRED_INCLUDES "${OPENSSL_INCLUDE_DIR}")
+set(CMAKE_REQUIRED_LIBRARIES "${OPENSSL_CRYPTO_LIBRARY};${OPENSSL_SSL_LIBRARY}")
+set(CMAKE_TRY_COMPILE_TARGET_TYPE STATIC_LIBRARY)
+check_cxx_source_compiles("
+#include <openssl/ssl.h>
+int main() { const SSL_METHOD *m = TLS_method(); return m ? 0 : 1; }"
+  I2PD_HAVE_TLS_METHOD)
+check_cxx_source_compiles("
+#include <openssl/asn1.h>
+int main() { ASN1_STRING *s = ASN1_STRING_new(); const unsigned char *d = ASN1_STRING_get0_data(s);
+  int l = ASN1_STRING_length(s); (void)d; (void)l; ASN1_STRING_free(s); return 0; }"
+  I2PD_HAVE_ASN1_STRING_GET0_DATA)
+check_cxx_source_compiles("
+#include <openssl/evp.h>
+int main() { EVP_PKEY *p = nullptr; return p && EVP_PKEY_is_a(p, \"EC\") ? 0 : 0; }"
+  I2PD_HAVE_EVP_PKEY_IS_A)
+check_cxx_source_compiles("
+#include <openssl/evp.h>
+int main() { EVP_PKEY *p = nullptr; char g[80]; size_t n = 0;
+  return p && EVP_PKEY_get_group_name(p, g, sizeof(g), &n) == 1 ? 0 : 0; }"
+  I2PD_HAVE_EVP_PKEY_GROUP_NAME)
+check_cxx_source_compiles("
+#include <openssl/evp.h>
+#include <openssl/bn.h>
+int main() { EVP_PKEY *p = nullptr; BIGNUM *b = nullptr;
+  int r = p ? EVP_PKEY_get_bn_param(p, \"n\", &b) : 0; BN_free(b); return r == 1 ? 0 : 0; }"
+  I2PD_HAVE_EVP_PKEY_BN_PARAM)
+check_cxx_source_compiles("
+#include <openssl/evp.h>
+int main() { EVP_MD *m = EVP_MD_fetch(nullptr, \"SHA256\", nullptr);
+  EVP_MD_free(m); return 0; }"
+  I2PD_HAVE_EVP_MD_FETCH)
+check_cxx_source_compiles("
+#include <openssl/evp.h>
+int main() { EVP_CIPHER *c = EVP_CIPHER_fetch(nullptr, \"AES-256-CBC\", nullptr);
+  EVP_CIPHER_free(c); return 0; }"
+  I2PD_HAVE_EVP_CIPHER_FETCH)
+check_cxx_source_compiles("
+#include <openssl/kdf.h>
+int main() { EVP_KDF *k = EVP_KDF_fetch(nullptr, \"HKDF\", nullptr);
+  EVP_KDF_free(k); return 0; }"
+  I2PD_HAVE_EVP_KDF_FETCH)
+check_cxx_source_compiles("
+#include <openssl/evp.h>
+#ifdef OPENSSL_NO_SIPHASH
+#error SipHash is disabled in this libcrypto
+#endif
+int main() { EVP_PKEY *p = EVP_PKEY_new_raw_private_key(EVP_PKEY_SIPHASH, nullptr,
+  reinterpret_cast<const unsigned char *>(\"0123456789abcdef\"), 16); EVP_PKEY_free(p); return 0; }"
+  I2PD_HAVE_EVP_PKEY_SIPHASH)
+check_cxx_source_compiles("
+#include <openssl/evp.h>
+#include <openssl/ec.h>
+int main() { EVP_PKEY *p = EVP_EC_gen(\"P-256\"); EVP_PKEY_free(p); return 0; }"
+  I2PD_HAVE_EVP_EC_GEN)
+if(_i2pd_saved_try_compile_target_type)
+  set(CMAKE_TRY_COMPILE_TARGET_TYPE "${_i2pd_saved_try_compile_target_type}")
 else()
-  message(STATUS "OpenSSL library    : ${OPENSSL_VERSION}")
+  unset(CMAKE_TRY_COMPILE_TARGET_TYPE)
 endif()
+set(CMAKE_REQUIRED_INCLUDES "${_i2pd_saved_required_includes}")
+set(CMAKE_REQUIRED_LIBRARIES "${_i2pd_saved_required_libraries}")
+unset(_i2pd_saved_try_compile_target_type)
+unset(_i2pd_saved_required_includes)
+unset(_i2pd_saved_required_libraries)
+if(NOT I2PD_HAVE_TLS_METHOD)
+  message(FATAL_ERROR "TLS_method() is required; fixed TLS/DTLS version methods were removed in OpenSSL 4.0")
+endif()
+if(NOT I2PD_HAVE_ASN1_STRING_GET0_DATA)
+  message(FATAL_ERROR "ASN1_STRING_get0_data()/ASN1_STRING_length() are required")
+endif()
+if(I2PD_OPENSSL_KIND STREQUAL "OpenSSL")
+  # OpenSSL 3.0.2+ must provide the provider/API surface used by the modern
+  # branches. A false probe here must not silently fall back to deprecated
+  # low-level APIs or OpenSSL 4 removed compatibility code.
+  foreach(_i2pd_required IN ITEMS I2PD_HAVE_EVP_PKEY_IS_A I2PD_HAVE_EVP_PKEY_GROUP_NAME
+    I2PD_HAVE_EVP_PKEY_BN_PARAM I2PD_HAVE_EVP_MD_FETCH I2PD_HAVE_EVP_CIPHER_FETCH
+    I2PD_HAVE_EVP_KDF_FETCH I2PD_HAVE_EVP_EC_GEN)
+    if(NOT "${${_i2pd_required}}")
+      message(FATAL_ERROR "Required OpenSSL capability ${_i2pd_required} is unavailable")
+    endif()
+  endforeach()
+else()
+  foreach(_i2pd_required IN ITEMS I2PD_HAVE_EVP_PKEY_IS_A I2PD_HAVE_EVP_PKEY_GROUP_NAME
+    I2PD_HAVE_EVP_PKEY_BN_PARAM I2PD_HAVE_EVP_MD_FETCH I2PD_HAVE_EVP_CIPHER_FETCH
+    I2PD_HAVE_EVP_KDF_FETCH I2PD_HAVE_EVP_EC_GEN)
+    if(NOT "${${_i2pd_required}}")
+      message(STATUS "LibreSSL feature probe ${_i2pd_required}: unavailable; compatibility branch enabled")
+    endif()
+  endforeach()
+endif()
+if(NOT I2PD_HAVE_EVP_PKEY_SIPHASH)
+  message(STATUS "Libcrypto SipHash is unavailable; using the portable project fallback")
+endif()
+unset(_i2pd_required)
 find_package(ZLIB 1.2.11 REQUIRED)
 
 if(WITH_UPNP)
@@ -424,6 +565,20 @@ target_include_directories(libi2pd
     ${LANG_DIR}
 )
 target_compile_features(libi2pd PUBLIC cxx_std_23)
+# Feature probes drive the OpenSSL/LibreSSL branches. Numeric versions remain
+# only for the documented source-compatibility floor and ML-KEM API presence.
+target_compile_definitions(libi2pd PUBLIC
+  I2PD_HAVE_TLS_METHOD=$<BOOL:${I2PD_HAVE_TLS_METHOD}>
+  I2PD_HAVE_ASN1_STRING_GET0_DATA=$<BOOL:${I2PD_HAVE_ASN1_STRING_GET0_DATA}>
+  I2PD_HAVE_EVP_PKEY_IS_A=$<BOOL:${I2PD_HAVE_EVP_PKEY_IS_A}>
+  I2PD_HAVE_EVP_PKEY_GROUP_NAME=$<BOOL:${I2PD_HAVE_EVP_PKEY_GROUP_NAME}>
+  I2PD_HAVE_EVP_PKEY_BN_PARAM=$<BOOL:${I2PD_HAVE_EVP_PKEY_BN_PARAM}>
+  I2PD_HAVE_EVP_MD_FETCH=$<BOOL:${I2PD_HAVE_EVP_MD_FETCH}>
+  I2PD_HAVE_EVP_CIPHER_FETCH=$<BOOL:${I2PD_HAVE_EVP_CIPHER_FETCH}>
+  I2PD_HAVE_EVP_KDF_FETCH=$<BOOL:${I2PD_HAVE_EVP_KDF_FETCH}>
+  I2PD_HAVE_EVP_PKEY_SIPHASH=$<BOOL:${I2PD_HAVE_EVP_PKEY_SIPHASH}>
+  I2PD_HAVE_EVP_EC_GEN=$<BOOL:${I2PD_HAVE_EVP_EC_GEN}>
+)
 # Asio selects an unsafe sprintf fallback for IPv6 scope IDs on POSIX unless
 # this upstream-supported macro is preselected. The project formatter avoids
 # Asio's remaining strcat path; the definition is PUBLIC because the inline
@@ -432,7 +587,7 @@ target_compile_definitions(libi2pd PUBLIC BOOST_ASIO_HAS_SNPRINTF=1)
 target_link_libraries(libi2pd
   PUBLIC
     OpenSSL::SSL OpenSSL::Crypto ZLIB::ZLIB
-    Boost::program_options Threads::Threads ${I2PD_EXTRA_LIBS}
+    Boost::headers Boost::program_options Threads::Threads ${I2PD_EXTRA_LIBS}
 )
 if(WIN32)
   # Transports uses AcceptEx/GetAcceptExSockaddrs; static consumers (tools)

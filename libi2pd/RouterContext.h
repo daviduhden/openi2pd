@@ -167,8 +167,10 @@ public:
 	void SetErrorV6 (RouterError error) { m_ErrorV6.store (error, std::memory_order_relaxed); };
 	int GetNetID () const { return m_NetID.load (std::memory_order_relaxed); };
 	void SetNetID (int netID) { m_NetID.store (netID, std::memory_order_relaxed); };
-	bool DecryptTunnelBuildRecord (const uint8_t * encrypted, uint8_t * data);
-	bool DecryptTunnelShortRequestRecord (const uint8_t * encrypted, uint8_t * data);
+	bool DecryptTunnelBuildRecord (
+		const uint8_t * encrypted, uint8_t * data, i2p::crypto::NoiseSymmetricState & noiseState);
+	bool DecryptTunnelShortRequestRecord (
+		const uint8_t * encrypted, uint8_t * data, i2p::crypto::NoiseSymmetricState & noiseState);
 
 	void UpdatePort (int port); // called from Daemon
 	void UpdateAddress (const boost::asio::ip::address & host); // called from SSU2 or Daemon
@@ -212,7 +214,7 @@ public:
 		auto status = m_Status.load (std::memory_order_relaxed);
 		return status == eRouterStatusProxy || status == eRouterStatusStan;
 	};
-	i2p::crypto::NoiseSymmetricState & GetCurrentNoiseState () { return m_CurrentNoiseState; };
+
 
 	void UpdateNTCP2V6Address (const boost::asio::ip::address & host); // called from Daemon. TODO: remove
 	void UpdateStats ();
@@ -264,7 +266,8 @@ private:
 		std::shared_ptr<i2p::data::RouterInfo::Address> address, bool isIntroducer) const;
 	void UpdateSSU2AddressCapsTesting (std::shared_ptr<i2p::data::RouterInfo::Address> address, bool isTesting) const;
 
-	bool DecryptECIESTunnelBuildRecord (const uint8_t * encrypted, uint8_t * data, size_t clearTextSize);
+	bool DecryptECIESTunnelBuildRecord (const uint8_t * encrypted, uint8_t * data, size_t clearTextSize,
+		i2p::crypto::NoiseSymmetricState & noiseState);
 	void PostGarlicMessage (std::shared_ptr<I2NPMessage> msg);
 	void PostDeliveryStatusMessage (std::shared_ptr<I2NPMessage> msg);
 
@@ -303,7 +306,7 @@ private:
 	std::unique_ptr<SSU2PrivateKeys> m_SSU2Keys;
 	std::unique_ptr<i2p::crypto::X25519Keys> m_NTCP2StaticKeys, m_SSU2StaticKeys;
 	// for ECIESx25519
-	i2p::crypto::NoiseSymmetricState m_InitialNoiseState, m_CurrentNoiseState;
+	i2p::crypto::NoiseSymmetricState m_InitialNoiseState;
 	// publish
 	std::mutex m_ServiceLifecycleMutex;
 	// Portable atomic shared_ptr storage with a libc++ fallback.

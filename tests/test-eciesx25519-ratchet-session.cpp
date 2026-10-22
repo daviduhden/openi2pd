@@ -101,9 +101,11 @@ public:
 	}
 
 	std::shared_ptr<const IdentityEx> GetIdentity () const override { return m_Identity; }
-	void Encrypt (const uint8_t *, uint8_t * encrypted) const override
+	bool Encrypt (const uint8_t *, uint8_t * encrypted) const override
 	{
+		if (!encrypted) return false;
 		std::memcpy (encrypted, m_PublicKey, sizeof (m_PublicKey));
+		return true;
 	}
 	bool IsDestination () const override { return true; }
 	CryptoKeyType GetEncryptionType () const override { return m_Type; }
@@ -175,8 +177,8 @@ void CheckHandshakePayloadValidation ()
 			static_cast<uint8_t> (ts >> 8), static_cast<uint8_t> (ts) };
 	};
 
-	// Java requires at least one Garlic clove after DateTime; a DateTime-only
-	// NS must not create a session.
+	// Java accepts an empty NS clove set without creating a session; openi2pd
+	// deliberately requires a non-empty Garlic block, so DateTime-only fails.
 	append (i2p::garlic::eECIESx25519BlkDateTime, dateTime ());
 	assert (!i2p::garlic::ValidateNewSessionPayload (payload.data (), payload.size ()));
 

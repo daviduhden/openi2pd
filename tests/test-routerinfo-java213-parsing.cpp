@@ -22,6 +22,9 @@
 #include "Identity.h"
 #include "RouterContext.h"
 #include "RouterInfo.h"
+#if OPENSSL_PQ
+#include "PostQuantum.h"
+#endif
 
 namespace
 {
@@ -401,33 +404,23 @@ int main ()
 		auto address = ParseWithAddress (keys, { "SSU2", 8, 0, SSU2V4Options ("1317", "4") });
 		assert (address->v == 2);
 	}
+	bool hasPq3 = false, hasPq4 = false;
+#if OPENSSL_PQ
+	hasPq3 = i2p::crypto::CanPublishPQ (3);
+	hasPq4 = i2p::crypto::CanPublishPQ (4);
+#endif
 	{
 		auto address = ParseWithAddress (keys, { "SSU2", 8, 0, SSU2V4Options ("1318", "4,3") });
-#if OPENSSL_PQ
-		assert (address->v == 4);
-#else
-		assert (address->v == 2);
-#endif
+		assert (address->v == (hasPq4 ? 4 : (hasPq3 ? 3 : 2)));
 	}
 	{
 		auto address = ParseWithAddress (keys, { "SSU2", 8, 0, SSU2V6Options ("1337", "4,3") });
-#if OPENSSL_PQ
-#if defined(LIBRESSL_VERSION_NUMBER)
-		assert (address->v == 2); // no ML-KEM-512 fallback
-#else
-		assert (address->v == 3);
-#endif
-#else
-		assert (address->v == 2);
-#endif
+		// ML-KEM-768 needs 1338 bytes on IPv6; only the smaller set remains.
+		assert (address->v == (hasPq3 ? 3 : 2));
 	}
 	{
 		auto address = ParseWithAddress (keys, { "SSU2", 8, 0, SSU2V6Options ("1338", "4,3") });
-#if OPENSSL_PQ
-		assert (address->v == 4);
-#else
-		assert (address->v == 2);
-#endif
+		assert (address->v == (hasPq4 ? 4 : (hasPq3 ? 3 : 2)));
 	}
 
 	// Java RouterInfo.getBandwidthTier() picks the strongest bandwidth cap

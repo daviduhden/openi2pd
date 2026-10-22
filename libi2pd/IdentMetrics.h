@@ -65,6 +65,7 @@ namespace data
 
 	private:
 		Tag<16> m_PeerOrderingKey;
+		bool m_IsKeyValid = false;
 		std::unordered_map<IdentHash, std::pair<int, uint64_t>>
 			m_OrderingGroups; // router ident hash -> (group, last request time)
 #if OPENSSL_SIPHASH

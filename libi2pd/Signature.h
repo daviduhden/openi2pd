@@ -614,7 +614,7 @@ namespace crypto
 		{
 			m_PrivateKey = BN_bin2bn (signingPrivateKey, keyLen, nullptr);
 		}
-		~GOSTR3410Signer () { BN_free (m_PrivateKey); }
+		~GOSTR3410Signer () { BN_clear_free (m_PrivateKey); }
 
 		void Sign (const uint8_t * buf, int len, uint8_t * signature) const
 		{

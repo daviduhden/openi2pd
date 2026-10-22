@@ -58,6 +58,9 @@ namespace client
 	const int MAX_LEASESET_REQUEST_TIMEOUT = 17000; // in milliseconds
 	const int DESTINATION_CLEANUP_TIMEOUT = 44; // in seconds
 	const int DESTINATION_CLEANUP_TIMEOUT_VARIANCE = 30; // in seconds
+	// Java ACKTimer fallback for a received New Session, forward NEXT_KEY or
+	// ACK request when the application has no data to send.
+	const int CLIENT_RATCHETS_RESPONSE_TIMEOUT = 1000; // in milliseconds
 	const unsigned int MAX_NUM_FLOODFILLS_PER_REQUEST = 7;
 
 	// I2CP
@@ -133,6 +136,10 @@ namespace client
 				: requestTime (0)
 				, requestTimeoutTimer (service) { };
 			std::unordered_set<i2p::data::IdentHash> excluded;
+			// Peers this request was actually sent to, and peers that already
+			// returned a DatabaseSearchReply. A destination hash is public, so
+			// an unqueried peer must not be able to redirect or abort a lookup.
+			std::unordered_set<i2p::data::IdentHash> requestedPeers, repliedPeers;
 			uint64_t requestTime;
 			boost::asio::steady_timer requestTimeoutTimer;
 			std::list<RequestComplete> requestComplete;
@@ -293,6 +300,11 @@ namespace client
 		int Release () { return --m_RefCounter; };
 		int GetRefCounter () const { return m_RefCounter; };
 
+		// Java ACKTimer: send an empty ratchet response if the application has
+		// not sent anything after an NS, forward NEXT_KEY or ACK request.
+		void ScheduleSessionResponseTimer (
+			std::shared_ptr<i2p::garlic::ECIESX25519AEADRatchetSession> session) override;
+
 		// streaming
 		std::shared_ptr<i2p::stream::StreamingDestination> CreateStreamingDestination (
 			uint16_t port, bool gzip = true); // additional
@@ -309,10 +321,11 @@ namespace client
 			std::shared_ptr<const i2p::data::BlindedPublicKey> dest, uint16_t port = 0); // sync
 		std::shared_ptr<i2p::stream::Stream> CreateStream (
 			std::shared_ptr<const i2p::data::LeaseSet> remote, uint16_t port = 0);
-		void SendPing (const i2p::data::IdentHash & to);
-		void SendPing (std::shared_ptr<const i2p::data::BlindedPublicKey> to);
+		void SendPing (const i2p::data::IdentHash & to, uint16_t fromPort = 0, uint16_t toPort = 0);
+		void SendPing (std::shared_ptr<const i2p::data::BlindedPublicKey> to,
+			uint16_t fromPort = 0, uint16_t toPort = 0);
 		void AcceptStreams (const i2p::stream::StreamingDestination::Acceptor & acceptor);
-		void StopAcceptingStreams ();
+		void StopAcceptingStreams (uint16_t port = 0);
 		bool IsAcceptingStreams () const;
 		void AcceptOnce (const i2p::stream::StreamingDestination::Acceptor & acceptor);
 		int GetStreamingAckDelay () const { return m_StreamingAckDelay; }

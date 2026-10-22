@@ -51,7 +51,15 @@ int main ()
 	memcpy (buf, text, 114);
 	std::vector<std::pair<uint8_t *, std::size_t>> bufs { std::make_pair (buf, 20), std::make_pair (buf + 20, 10),
 		std::make_pair (buf + 30, 70), std::make_pair (buf + 100, 14) };
-	encryptor.Encrypt (bufs, key, nonce, buf + 114);
+	assert (encryptor.Encrypt (bufs, key, nonce, buf + 114));
 	decryptor.Decrypt (buf, 114, nullptr, 0, key, nonce, buf1, 114);
 	assert (memcmp (buf1, text, 114) == 0);
+
+	// An empty/failed multi-buffer operation must report failure and clear the
+	// MAC instead of producing a frame with a zero tag that a caller could
+	// still transmit.
+	uint8_t failedTag[16];
+	memset (failedTag, 0xAA, sizeof (failedTag));
+	assert (!encryptor.Encrypt ({}, key, nonce, failedTag));
+	for (auto b : failedTag) assert (b == 0);
 }

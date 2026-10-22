@@ -78,8 +78,8 @@ int main ()
 		assert (server.IsHandshakeReplayOutgoing (value));
 	}
 
-	// SessionConfirmed part 2: the largest plaintext accepted by the 6000-byte
-	// frame cap (6000 - 16-byte MAC) must still validate as an ordered
+	// SessionConfirmed part 2: the largest plaintext accepted by the 4048-byte
+	// frame cap (4048 - 16-byte MAC) must still validate as an ordered
 	// RouterInfo + final Padding payload.
 	{
 		Payload payload;

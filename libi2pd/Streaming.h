@@ -78,6 +78,8 @@ namespace stream
 	const int MIN_SEND_ACK_TIMEOUT = 2; // in milliseconds
 	const int SYN_TIMEOUT = 200; // how long we wait for SYN after follow-on, in milliseconds
 	const size_t MAX_PENDING_INCOMING_BACKLOG = 1024;
+	const size_t MAX_SAVED_STREAM_IDS = 512;
+	const size_t MAX_SAVED_PACKETS_PER_STREAM = 64;
 	const int PENDING_INCOMING_TIMEOUT = 10; // in seconds
 	const int MAX_RECEIVE_TIMEOUT = 90; // in seconds
 	const uint16_t DELAY_CHOKING = 60000; // in milliseconds
@@ -373,10 +375,14 @@ namespace stream
 
 		std::shared_ptr<Stream> CreateNewOutgoingStream (
 			std::shared_ptr<const i2p::data::LeaseSet> remote, int port = 0);
-		void SendPing (std::shared_ptr<const i2p::data::LeaseSet> remote);
+		void SendPing (std::shared_ptr<const i2p::data::LeaseSet> remote, uint16_t fromPort = 0, uint16_t toPort = 0);
 		void DeleteStream (std::shared_ptr<Stream> stream);
 		bool DeleteStream (uint32_t recvStreamID);
-		size_t GetNumStreams () const { return m_Streams.size (); };
+		size_t GetNumStreams () const
+		{
+			std::lock_guard<std::mutex> l (m_StreamsMutex);
+			return m_Streams.size ();
+		};
 		void SetAcceptor (const Acceptor & acceptor);
 		void ResetAcceptor ();
 		bool IsAcceptorSet () const { return m_Acceptor != nullptr; };
@@ -417,7 +423,7 @@ namespace stream
 		std::shared_ptr<i2p::client::ClientDestination> m_Owner;
 		uint16_t m_LocalPort;
 		bool m_Gzip; // gzip compression of data messages
-		std::mutex m_StreamsMutex;
+		mutable std::mutex m_StreamsMutex;
 		std::unordered_map<uint32_t, std::shared_ptr<Stream>> m_Streams; // sendStreamID->stream
 		std::unordered_map<uint32_t, std::shared_ptr<Stream>> m_IncomingStreams; // receiveStreamID->stream
 		std::shared_ptr<Stream> m_LastStream;

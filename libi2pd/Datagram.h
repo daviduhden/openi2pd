@@ -215,6 +215,10 @@ namespace datagram
 
 		std::shared_ptr<DatagramSession::Info> GetInfoForRemote (const i2p::data::IdentHash & remote);
 
+		// Rebuild the cached Datagram1/2 sender identity after SetPrivateKeys or
+		// an offline-signature refresh.
+		void RefreshIdentity ();
+
 		// clean up stale sessions
 		void CleanUp ();
 
@@ -262,6 +266,7 @@ namespace datagram
 		i2p::data::GzipInflator m_Inflator;
 		std::unique_ptr<i2p::data::GzipDeflator> m_Deflator;
 		i2p::util::Mapping m_Options;
+		std::mutex m_FromMutex;
 		std::vector<uint8_t> m_From;
 		i2p::util::MemoryPool<I2NPMessageBuffer<I2NP_MAX_MESSAGE_SIZE>> m_I2NPMsgsPool;
 	};

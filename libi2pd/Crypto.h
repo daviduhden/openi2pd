@@ -19,6 +19,7 @@
 #include <string_view>
 #include <vector>
 #include <openssl/bn.h>
+#include <openssl/crypto.h>
 #include <openssl/dh.h>
 #include <openssl/aes.h>
 #include <openssl/dsa.h>
@@ -33,9 +34,42 @@
 #include "Random.h"
 #include "Tag.h"
 
-// recognize openssl version and features
-#ifndef LIBRESSL_VERSION_NUMBER // SipHash is not implemented in LibreSSL
-#define OPENSSL_SIPHASH 1
+// Feature macros come from compile-time capability probes in CMake, not from
+// a guess that every non-LibreSSL build provides the same algorithm set.
+#ifndef I2PD_HAVE_TLS_METHOD
+#define I2PD_HAVE_TLS_METHOD 0
+#endif
+#ifndef I2PD_HAVE_ASN1_STRING_GET0_DATA
+#define I2PD_HAVE_ASN1_STRING_GET0_DATA 0
+#endif
+#ifndef I2PD_HAVE_EVP_PKEY_IS_A
+#define I2PD_HAVE_EVP_PKEY_IS_A 0
+#endif
+#ifndef I2PD_HAVE_EVP_PKEY_GROUP_NAME
+#define I2PD_HAVE_EVP_PKEY_GROUP_NAME 0
+#endif
+#ifndef I2PD_HAVE_EVP_PKEY_BN_PARAM
+#define I2PD_HAVE_EVP_PKEY_BN_PARAM 0
+#endif
+#ifndef I2PD_HAVE_EVP_MD_FETCH
+#define I2PD_HAVE_EVP_MD_FETCH 0
+#endif
+#ifndef I2PD_HAVE_EVP_CIPHER_FETCH
+#define I2PD_HAVE_EVP_CIPHER_FETCH 0
+#endif
+#ifndef I2PD_HAVE_EVP_KDF_FETCH
+#define I2PD_HAVE_EVP_KDF_FETCH 0
+#endif
+#ifndef I2PD_HAVE_EVP_PKEY_SIPHASH
+#define I2PD_HAVE_EVP_PKEY_SIPHASH 0
+#endif
+#ifndef I2PD_HAVE_EVP_EC_GEN
+#define I2PD_HAVE_EVP_EC_GEN 0
+#endif
+#ifndef LIBRESSL_VERSION_NUMBER
+#define OPENSSL_SIPHASH I2PD_HAVE_EVP_PKEY_SIPHASH
+#else
+#define OPENSSL_SIPHASH 0
 #endif
 #if (!defined(LIBRESSL_VERSION_NUMBER) && OPENSSL_VERSION_NUMBER >= 0x030500000)                                       \
 	|| ((defined(LIBRESSL_VERSION_NUMBER)                                                                              \
@@ -203,8 +237,8 @@ namespace crypto
 		bool Encrypt (const uint8_t * msg, size_t msgLen, const uint8_t * ad, size_t adLen, const uint8_t * key,
 			const uint8_t * nonce, uint8_t * buf, size_t len); // msgLen is len without tag
 
-		void Encrypt (const std::vector<std::pair<uint8_t *, size_t>> & bufs, const uint8_t * key,
-			const uint8_t * nonce, uint8_t * mac); // encrypt multiple buffers with zero ad
+		bool Encrypt (const std::vector<std::pair<uint8_t *, size_t>> & bufs, const uint8_t * key,
+			const uint8_t * nonce, uint8_t * mac); // encrypt multiple buffers with zero ad; false = write must abort
 
 	private:
 		EVP_CIPHER_CTX * m_Ctx;
@@ -263,8 +297,10 @@ namespace crypto
 
 	struct NoiseSymmetricState
 	{
-		uint8_t m_H[32] /*h*/, m_CK[64] /*[ck, k]*/;
-		uint64_t m_N;
+		uint8_t m_H[32] /*h*/ {}, m_CK[64] /*[ck, k]*/ {};
+		uint64_t m_N = 0;
+
+		~NoiseSymmetricState () { OPENSSL_cleanse (m_CK, sizeof (m_CK)); }
 
 		void Init (const uint8_t * ck, const uint8_t * hh, const uint8_t * pub);
 
@@ -280,6 +316,25 @@ namespace crypto
 	void InitNoiseXKState (NoiseSymmetricState & state, const uint8_t * pub); // Noise_XK (NTCP2)
 	void InitNoiseXKState1 (NoiseSymmetricState & state, const uint8_t * pub); // Noise_XK (SSU2)
 	void InitNoiseIKState (NoiseSymmetricState & state, const uint8_t * pub); // Noise_IK (ratchets)
+
+	// Provider/algorithm availability as observed by the active libcrypto.
+	// Algorithm names are fetched through the EVP provider API where it exists;
+	// the legacy helpers are only the compatibility branch for LibreSSL.
+	struct CryptoCapabilities
+	{
+		bool sha1;
+		bool sha256;
+		bool sha512;
+		bool aes256Cbc;
+		bool aes256Ecb;
+		bool aes256Ctr;
+		bool chacha20;
+		bool chacha20Poly1305;
+		bool hkdf;
+		bool sipHash;
+	};
+
+	const CryptoCapabilities & GetCryptoCapabilities ();
 
 	// init and terminate
 	void InitCrypto (bool precomputation);
