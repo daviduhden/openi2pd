@@ -152,7 +152,7 @@ void TestPreopenedSocketValidation ()
 	assert (stream >= 0);
 	assert (fcntl (stream, F_SETFD, FD_CLOEXEC) == 0);
 	assert (!ValidatePreopenedSocket (stream, SOCK_STREAM, true).has_value ());
-	struct sockaddr_in address {};
+	struct sockaddr_in address { };
 #ifdef __OpenBSD__
 	address.sin_len = sizeof (address);
 #endif

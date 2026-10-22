@@ -32,8 +32,7 @@ bool PrepareTorrentStorageSupervisor (const std::string & root, std::string & er
 // fd 4. For each worker, only the relative path and fstat identity travel over
 // IPC; the caller's rootFd stays local. OpenBSD sendfd/recvfd explicitly
 // exclude directory descriptors.
-i2p::expected<Channel, std::string> SpawnSupervisedTorrentStorage (
- int rootFd, std::string_view rootPath);
+i2p::expected<Channel, std::string> SpawnSupervisedTorrentStorage (int rootFd, std::string_view rootPath);
 int RunTorrentStorageSupervisor (int fd);
 }
 

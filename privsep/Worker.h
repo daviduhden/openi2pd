@@ -44,7 +44,7 @@ inline void SanitizeInheritedStdio ()
 {
 	for (int fd = 0; fd <= 2; ++fd)
 	{
-		struct stat status {};
+		struct stat status { };
 		if (::fstat (fd, &status) == 0 && S_ISSOCK (status.st_mode)) ::close (fd);
 	}
 }
@@ -170,7 +170,8 @@ i2p::expected<ChildProcess, std::string> SpawnWorker (const char * role, std::st
 i2p::expected<Channel, std::string> SpawnDetachedWorker (const char * role);
 /** Pre-pledge startup only; inherited fd4, channel EOF owns worker lifetime. */
 i2p::expected<Channel, std::string> SpawnDetachedWorkerWithRoot (const char * role, int rootFd);
-i2p::expected<ChildProcess, std::string> SpawnWorkerWithRoot (const char * role, std::string_view executable, int rootFd);
+i2p::expected<ChildProcess, std::string> SpawnWorkerWithRoot (
+	const char * role, std::string_view executable, int rootFd);
 std::string ExecutablePath ();
 }
 

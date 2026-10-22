@@ -129,9 +129,8 @@ namespace util
 		void SetAdminResultMessage (i2p::tui::AdminCommandResult & result, const char * message)
 		{
 			const int written = std::snprintf (result.message, sizeof (result.message), "%s", message ? message : "");
-			result.messageLength = written > 0
-				? std::min<size_t> (static_cast<size_t> (written), sizeof (result.message) - 1)
-				: 0;
+			result.messageLength
+				= written > 0 ? std::min<size_t> (static_cast<size_t> (written), sizeof (result.message) - 1) : 0;
 		}
 
 		/**
@@ -782,14 +781,15 @@ namespace util
 				LogPrint (eLogError, "Daemon: Required router storage failed: ", error);
 				return false;
 			}
-			i2p::data::InstallRouterPersistenceWriter ([worker = d->routerStorage] (auto file, auto bytes)
-				{ return worker->Write (file, bytes); });
+			i2p::data::InstallRouterPersistenceWriter (
+				[worker = d->routerStorage] (auto file, auto bytes) { return worker->Write (file, bytes); });
 #else
 			LogPrint (eLogError, "Daemon: Router storage worker unavailable on this platform");
 			return false;
 #endif
 		}
-		else i2p::data::InstallRouterPersistenceWriter ({});
+		else
+			i2p::data::InstallRouterPersistenceWriter ({ });
 
 		i2p::context.Init ();
 

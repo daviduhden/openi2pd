@@ -101,12 +101,12 @@ namespace
 	};
 	static_assert (sizeof (LandlockRulesetAttributes) == 16);
 	static_assert (offsetof (LandlockRulesetAttributes, handled_access_net) == 8);
-	constexpr uint64_t LandlockFsRefer = uint64_t {1} << 13;
-	constexpr uint64_t LandlockFsTruncate = uint64_t {1} << 14;
-	constexpr uint64_t LandlockNetBindTcp = uint64_t {1} << 0;
-	constexpr uint64_t LandlockNetConnectTcp = uint64_t {1} << 1;
-	static_assert (offsetof (landlock_ruleset_attr, handled_access_fs)
-		== offsetof (LandlockRulesetAttributes, handled_access_fs));
+	constexpr uint64_t LandlockFsRefer = uint64_t { 1 } << 13;
+	constexpr uint64_t LandlockFsTruncate = uint64_t { 1 } << 14;
+	constexpr uint64_t LandlockNetBindTcp = uint64_t { 1 } << 0;
+	constexpr uint64_t LandlockNetConnectTcp = uint64_t { 1 } << 1;
+	static_assert (
+		offsetof (landlock_ruleset_attr, handled_access_fs) == offsetof (LandlockRulesetAttributes, handled_access_fs));
 #ifdef LANDLOCK_ACCESS_FS_REFER
 	static_assert (LandlockFsRefer == LANDLOCK_ACCESS_FS_REFER);
 #endif

@@ -146,8 +146,9 @@ i2p::expected<void, std::string> LogSink::WaitForPong (Channel & channel, uint32
 	auto deadline = std::chrono::steady_clock::now () + std::chrono::milliseconds (timeoutMs);
 	while (std::chrono::steady_clock::now () < deadline)
 	{
-		const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds> (
-			deadline - std::chrono::steady_clock::now ()).count ();
+		const auto remaining
+			= std::chrono::duration_cast<std::chrono::milliseconds> (deadline - std::chrono::steady_clock::now ())
+				  .count ();
 		if (remaining <= 0) break;
 		auto received = channel.Receive (static_cast<int> (std::max<int64_t> (remaining, 1)));
 		if (!received) return i2p::unexpected (received.error ());
@@ -164,7 +165,8 @@ i2p::expected<void, std::string> LogSink::ConfigureChannel (
 	Channel & channel, MessageType type, bool useSyslog, std::string_view path, std::string_view tag, int fd)
 {
 	auto encoded = EncodeLogConfig (useSyslog, path, tag);
-	if (!encoded) return i2p::unexpected (std::string ("invalid log configuration: ") + std::string (encoded.error ().text));
+	if (!encoded)
+		return i2p::unexpected (std::string ("invalid log configuration: ") + std::string (encoded.error ().text));
 	const uint32_t configureId = ++m_NextRequest;
 	Message message { type, configureId, *encoded };
 	auto sent = fd >= 0 ? channel.SendWithFd (message, fd) : channel.Send (message);

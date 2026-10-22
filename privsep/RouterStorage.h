@@ -15,15 +15,16 @@ namespace i2p::privsep
 {
 class RouterStorageClient
 {
- public:
- RouterStorageClient ();
- ~RouterStorageClient ();
- bool Start (const std::filesystem::path & root, std::string & error);
- bool Write (i2p::data::RouterPersistentFile file, std::span<const uint8_t> bytes);
- void Stop ();
- private:
- struct Impl;
- std::unique_ptr<Impl> m_Impl;
+public:
+	RouterStorageClient ();
+	~RouterStorageClient ();
+	bool Start (const std::filesystem::path & root, std::string & error);
+	bool Write (i2p::data::RouterPersistentFile file, std::span<const uint8_t> bytes);
+	void Stop ();
+
+private:
+	struct Impl;
+	std::unique_ptr<Impl> m_Impl;
 };
 int RunRouterStorageWorker (int fd, int inheritedRoot = -1);
 }

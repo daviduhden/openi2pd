@@ -372,7 +372,7 @@ void RouterContext::UpdateRouterInfoLocked ()
 						}
 						if (!buffer) break;
 						if (!i2p::data::WriteRouterPersistentFile (i2p::data::RouterPersistentFile::RouterInfo,
-							std::span<const uint8_t> (buffer->data (), buffer->GetBufferLen ())))
+								std::span<const uint8_t> (buffer->data (), buffer->GetBufferLen ())))
 							LogPrint (eLogError, "Router: isolated router.info persistence failed");
 					}
 					m_IsSaving.clear ();
@@ -413,7 +413,7 @@ void RouterContext::NewNTCP2Keys ()
 	RAND_bytes (keys->iv, 16);
 	// save
 	if (!i2p::data::WriteRouterPersistentFile (i2p::data::RouterPersistentFile::NTCP2Keys,
-		std::span<const uint8_t> (reinterpret_cast<const uint8_t *> (keys.get ()), sizeof (NTCP2PrivateKeys))))
+			std::span<const uint8_t> (reinterpret_cast<const uint8_t *> (keys.get ()), sizeof (NTCP2PrivateKeys))))
 		throw std::runtime_error ("Router: NTCP2 key persistence failed");
 	m_NTCP2StaticKeys = std::move (staticKeys);
 	m_NTCP2Keys = std::move (keys);
@@ -431,7 +431,7 @@ void RouterContext::NewSSU2Keys ()
 	RAND_bytes (keys->intro, 32);
 	// save
 	if (!i2p::data::WriteRouterPersistentFile (i2p::data::RouterPersistentFile::SSU2Keys,
-		std::span<const uint8_t> (reinterpret_cast<const uint8_t *> (keys.get ()), sizeof (SSU2PrivateKeys))))
+			std::span<const uint8_t> (reinterpret_cast<const uint8_t *> (keys.get ()), sizeof (SSU2PrivateKeys))))
 		throw std::runtime_error ("Router: SSU2 key persistence failed");
 	m_SSU2StaticKeys = std::move (staticKeys);
 	m_SSU2Keys = std::move (keys);
@@ -1350,8 +1350,7 @@ void RouterContext::SetMTU (int mtu, bool v4)
 		{
 			addr->ssu->mtu = mtu;
 			LogPrint (eLogDebug, "Router: MTU for ", v4 ? "ipv4" : "ipv6", " address ",
-				i2p::util::net::FormatAddress (addr->host),
-				" is set to ", mtu);
+				i2p::util::net::FormatAddress (addr->host), " is set to ", mtu);
 			updated = true;
 		}
 	}
@@ -1549,8 +1548,7 @@ void RouterContext::SaveKeys ()
 	m_Keys.ToBuffer (buffer.data (), buffer.size ());
 	const bool saved = i2p::data::WriteRouterPersistentFile (i2p::data::RouterPersistentFile::RouterKeys, buffer);
 	OPENSSL_cleanse (buffer.data (), buffer.size ());
-	if (!saved)
-		throw std::runtime_error ("Router: identity key persistence failed");
+	if (!saved) throw std::runtime_error ("Router: identity key persistence failed");
 }
 
 std::shared_ptr<i2p::tunnel::TunnelPool> RouterContext::GetTunnelPool () const
@@ -1605,9 +1603,7 @@ void RouterContext::ProcessGarlicMessage (std::shared_ptr<I2NPMessage> msg)
 
 void RouterContext::PostGarlicMessage (std::shared_ptr<I2NPMessage> msg)
 {
-	const size_t payloadLength = msg && msg->GetLength () >= I2NP_HEADER_SIZE
-		? msg->GetPayloadLength ()
-		: 0;
+	const size_t payloadLength = msg && msg->GetLength () >= I2NP_HEADER_SIZE ? msg->GetPayloadLength () : 0;
 	if (payloadLength < 4)
 	{
 		LogPrint (eLogWarning, "Router: garlic message is shorter than its length prefix");
@@ -1678,8 +1674,7 @@ void RouterContext::SubmitECIESx25519Key (const uint8_t * key, uint64_t tag)
 
 uint32_t RouterContext::GetUptime () const
 {
-	return static_cast<uint32_t> (
-		i2p::util::GetMonotonicSeconds () - m_StartupTime.load (std::memory_order_relaxed));
+	return static_cast<uint32_t> (i2p::util::GetMonotonicSeconds () - m_StartupTime.load (std::memory_order_relaxed));
 }
 
 bool RouterContext::Decrypt (
@@ -1691,12 +1686,11 @@ bool RouterContext::Decrypt (
 bool RouterContext::DecryptTunnelBuildRecord (
 	const uint8_t * encrypted, uint8_t * data, i2p::crypto::NoiseSymmetricState & noiseState)
 {
-	return DecryptECIESTunnelBuildRecord (
-		encrypted, data, ECIES_BUILD_REQUEST_RECORD_CLEAR_TEXT_SIZE, noiseState);
+	return DecryptECIESTunnelBuildRecord (encrypted, data, ECIES_BUILD_REQUEST_RECORD_CLEAR_TEXT_SIZE, noiseState);
 }
 
-bool RouterContext::DecryptECIESTunnelBuildRecord (const uint8_t * encrypted, uint8_t * data, size_t clearTextSize,
-	i2p::crypto::NoiseSymmetricState & noiseState)
+bool RouterContext::DecryptECIESTunnelBuildRecord (
+	const uint8_t * encrypted, uint8_t * data, size_t clearTextSize, i2p::crypto::NoiseSymmetricState & noiseState)
 {
 	// The caller owns this scratch state; never share it between concurrent
 	// build records arriving on different transport threads.
@@ -1712,8 +1706,8 @@ bool RouterContext::DecryptECIESTunnelBuildRecord (const uint8_t * encrypted, ui
 	encrypted += 32;
 	uint8_t nonce[12];
 	memset (nonce, 0, 12);
-	if (!i2p::crypto::AEADChaCha20Poly1305 (encrypted, clearTextSize, noiseState.m_H, 32,
-			noiseState.m_CK + 32, nonce, data, clearTextSize, false)) // decrypt
+	if (!i2p::crypto::AEADChaCha20Poly1305 (encrypted, clearTextSize, noiseState.m_H, 32, noiseState.m_CK + 32, nonce,
+			data, clearTextSize, false)) // decrypt
 	{
 		LogPrint (eLogWarning, "Router: Tunnel record AEAD decryption failed");
 		return false;
@@ -1725,8 +1719,7 @@ bool RouterContext::DecryptECIESTunnelBuildRecord (const uint8_t * encrypted, ui
 bool RouterContext::DecryptTunnelShortRequestRecord (
 	const uint8_t * encrypted, uint8_t * data, i2p::crypto::NoiseSymmetricState & noiseState)
 {
-	return DecryptECIESTunnelBuildRecord (
-		encrypted, data, SHORT_REQUEST_RECORD_CLEAR_TEXT_SIZE, noiseState);
+	return DecryptECIESTunnelBuildRecord (encrypted, data, SHORT_REQUEST_RECORD_CLEAR_TEXT_SIZE, noiseState);
 }
 
 i2p::crypto::X25519Keys & RouterContext::GetNTCP2StaticKeys ()

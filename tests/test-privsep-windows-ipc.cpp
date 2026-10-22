@@ -213,8 +213,8 @@ void TestOversizedMessageIsTerminal ()
 			assert (event != nullptr);
 			OVERLAPPED overlapped { };
 			overlapped.hEvent = event;
-			BOOL result = WriteFile (client->Native (), oversized.data (),
-				static_cast<DWORD> (oversized.size ()), &written, &overlapped);
+			BOOL result = WriteFile (
+				client->Native (), oversized.data (), static_cast<DWORD> (oversized.size ()), &written, &overlapped);
 			if (!result && GetLastError () == ERROR_IO_PENDING)
 				GetOverlappedResult (client->Native (), &overlapped, &written, TRUE);
 			CloseHandle (event);

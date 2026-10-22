@@ -86,9 +86,9 @@ int main ()
 
 	// imsgbuf_read may buffer several complete messages in one read. They must
 	// all be consumed from the user buffer before polling again.
-	assert (left->Send (Message { MessageType::Ping, 20, {} }).has_value ());
-	assert (left->Send (Message { MessageType::Ping, 21, {} }).has_value ());
-	assert (left->Send (Message { MessageType::Ping, 22, {} }).has_value ());
+	assert (left->Send (Message { MessageType::Ping, 20, { } }).has_value ());
+	assert (left->Send (Message { MessageType::Ping, 21, { } }).has_value ());
+	assert (left->Send (Message { MessageType::Ping, 22, { } }).has_value ());
 	for (uint32_t id : { 20u, 21u, 22u })
 	{
 		auto buffered = right->Receive (200);

@@ -268,9 +268,8 @@ int main ()
 			[&path] (Channel & channel)
 			{
 				const int fd = OpenLogDescriptor (path);
-				assert (channel
-						.SendWithFd (
-							Message { MessageType::ConfigureLogFd, 1, LogConfig (false, path, "test") }, fd)
+				assert (
+					channel.SendWithFd (Message { MessageType::ConfigureLogFd, 1, LogConfig (false, path, "test") }, fd)
 						.has_value ());
 				// SCM_RIGHTS duplicates the descriptor; sending does not move
 				// ownership away from the parent.
@@ -362,9 +361,8 @@ int main ()
 			[&path] (Channel & channel)
 			{
 				const int fd = OpenLogDescriptor (path);
-				assert (channel
-						.SendWithFd (
-							Message { MessageType::ConfigureLog, 1, LogConfig (false, path, "test") }, fd)
+				assert (
+					channel.SendWithFd (Message { MessageType::ConfigureLog, 1, LogConfig (false, path, "test") }, fd)
 						.has_value ());
 				close (fd);
 			},
@@ -380,9 +378,8 @@ int main ()
 			{
 				const int fd = open ("/dev/null", O_RDWR | O_CLOEXEC);
 				assert (fd >= 0);
-				assert (channel
-						.SendWithFd (
-							Message { MessageType::ConfigureLogFd, 1, LogConfig (false, path, "test") }, fd)
+				assert (
+					channel.SendWithFd (Message { MessageType::ConfigureLogFd, 1, LogConfig (false, path, "test") }, fd)
 						.has_value ());
 				close (fd);
 			},
@@ -397,8 +394,8 @@ int main ()
 			{
 				const int fd = open ("/dev/null", O_RDWR | O_CLOEXEC);
 				assert (fd >= 0);
-				assert (channel
-						.SendWithFd (Message { MessageType::ConfigureLogFd, 1, LogConfig (true, "", "test") }, fd)
+				assert (
+					channel.SendWithFd (Message { MessageType::ConfigureLogFd, 1, LogConfig (true, "", "test") }, fd)
 						.has_value ());
 				close (fd);
 			},

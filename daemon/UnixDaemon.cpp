@@ -197,8 +197,7 @@ static void HandlePendingSignals ()
 			{
 				i2p::context.SetAcceptsTunnels (false);
 				Daemon.gracefulShutdownInterval.store (GRACEFUL_SHUTDOWN_INTERVAL);
-				LogPrint (eLogInfo, "Graceful shutdown after ",
-					Daemon.gracefulShutdownInterval.load (), " seconds");
+				LogPrint (eLogInfo, "Graceful shutdown after ", Daemon.gracefulShutdownInterval.load (), " seconds");
 			}
 			else
 				Daemon.running = 0;

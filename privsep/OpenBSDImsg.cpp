@@ -149,7 +149,7 @@ i2p::expected<ImsgChannel, std::string> ImsgChannel::AdoptValidated (int fd, uin
 {
 #if defined(__OpenBSD__)
 	if (fd < 0) return i2p::unexpected ("invalid imsg descriptor");
-	struct stat info {};
+	struct stat info { };
 	int socketType = 0;
 	socklen_t socketTypeLength = sizeof (socketType);
 	if (::fstat (fd, &info) != 0 || !S_ISSOCK (info.st_mode)
@@ -186,8 +186,7 @@ i2p::expected<void, std::string> ImsgChannel::Send (const Message & message, int
 	if (!IsOpen () || !m_Buffer) return i2p::unexpected ("imsg channel is closed");
 	auto encoded = Encode (message);
 	if (!encoded) return i2p::unexpected (std::string (encoded.error ().text));
-	if (encoded->size () + IMSG_HEADER_SIZE > MAX_IMSGSIZE)
-		return i2p::unexpected ("frame exceeds MAX_IMSGSIZE");
+	if (encoded->size () + IMSG_HEADER_SIZE > MAX_IMSGSIZE) return i2p::unexpected ("frame exceeds MAX_IMSGSIZE");
 	if (imsg_compose (m_Buffer, 0, message.requestId, getpid (), fd, encoded->data (), encoded->size ()) == -1)
 		return i2p::unexpected (std::string ("imsg_compose: ") + strerror (errno));
 

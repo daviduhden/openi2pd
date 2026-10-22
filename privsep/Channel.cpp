@@ -101,8 +101,7 @@ i2p::expected<Channel, std::string> Channel::AdoptValidated (int fd, uint32_t ex
 	int socketType = 0;
 	socklen_t socketTypeLength = sizeof (socketType);
 	if (::fstat (fd, &info) != 0 || !S_ISSOCK (info.st_mode)
-		|| ::getsockopt (fd, SOL_SOCKET, SO_TYPE, &socketType, &socketTypeLength) != 0
-		|| socketType != SOCK_SEQPACKET)
+		|| ::getsockopt (fd, SOL_SOCKET, SO_TYPE, &socketType, &socketTypeLength) != 0 || socketType != SOCK_SEQPACKET)
 	{
 		::close (fd);
 		return i2p::unexpected ("adopted descriptor is not an AF_UNIX SOCK_SEQPACKET socket");
@@ -334,11 +333,13 @@ i2p::expected<std::optional<ReceivedMessage>, std::string> Channel::ReceiveWithF
 		readyEvents = pfd.revents;
 		// Drain buffered records before reporting a hangup: POLLIN and
 		// POLLHUP may arrive together when the peer has written and closed.
-		if ((readyEvents & (POLLERR | POLLHUP
+		if ((readyEvents
+				& (POLLERR | POLLHUP
 #ifdef POLLRDHUP
-			| POLLRDHUP
+					| POLLRDHUP
 #endif
-			)) && !(readyEvents & POLLIN))
+					))
+			&& !(readyEvents & POLLIN))
 			return i2p::unexpected ("peer closed the channel");
 
 		struct iovec iov { frame.data (), frame.size () };
@@ -434,11 +435,13 @@ i2p::expected<std::optional<ReceivedMessage>, std::string> Channel::ReceiveWithF
 #endif
 		// SOCK_SEQPACKET delivers a zero-length datagram as recvmsg()==0,
 		// exactly like EOF. Only a hangup/error event makes this terminal.
-		if (readyEvents & (POLLERR | POLLHUP
+		if (readyEvents
+			& (POLLERR | POLLHUP
 #ifdef POLLRDHUP
-			| POLLRDHUP
+				| POLLRDHUP
 #endif
-			)) return i2p::unexpected ("peer closed the channel");
+				))
+			return i2p::unexpected ("peer closed the channel");
 		if (++emptyRecords > 8) return i2p::unexpected ("empty-record flood");
 		continue; // consume the empty record and keep the channel usable
 	}

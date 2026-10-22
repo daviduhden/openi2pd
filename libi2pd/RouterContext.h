@@ -215,7 +215,6 @@ public:
 		return status == eRouterStatusProxy || status == eRouterStatusStan;
 	};
 
-
 	void UpdateNTCP2V6Address (const boost::asio::ip::address & host); // called from Daemon. TODO: remove
 	void UpdateStats ();
 	void UpdateTimestamp (uint64_t ts); // in seconds, called from NetDb before publishing
@@ -266,8 +265,8 @@ private:
 		std::shared_ptr<i2p::data::RouterInfo::Address> address, bool isIntroducer) const;
 	void UpdateSSU2AddressCapsTesting (std::shared_ptr<i2p::data::RouterInfo::Address> address, bool isTesting) const;
 
-	bool DecryptECIESTunnelBuildRecord (const uint8_t * encrypted, uint8_t * data, size_t clearTextSize,
-		i2p::crypto::NoiseSymmetricState & noiseState);
+	bool DecryptECIESTunnelBuildRecord (
+		const uint8_t * encrypted, uint8_t * data, size_t clearTextSize, i2p::crypto::NoiseSymmetricState & noiseState);
 	void PostGarlicMessage (std::shared_ptr<I2NPMessage> msg);
 	void PostDeliveryStatusMessage (std::shared_ptr<I2NPMessage> msg);
 

@@ -135,8 +135,7 @@ i2p::expected<void, std::string> ValidatePreopenedDescriptor (int fd, bool direc
  * network/transport worker: close-on-exec, expected SOCK_* type and, for a
  * listening stream socket, SO_ACCEPTCONN.
  */
-i2p::expected<void, std::string> ValidatePreopenedSocket (
-	int fd, int expectedType, bool requireListening);
+i2p::expected<void, std::string> ValidatePreopenedSocket (int fd, int expectedType, bool requireListening);
 
 /**
  * Compile-time/runtime policy checks used by diagnostics and CI. They inspect

@@ -290,16 +290,14 @@ i2p::expected<void, std::string> ValidatePreopenedDescriptor (int fd, bool direc
 
 i2p::expected<void, std::string> ValidatePreopenedSocket (int fd, int expectedType, bool requireListening)
 {
-	struct stat status {};
+	struct stat status { };
 	int socketType = 0;
 	socklen_t socketTypeLength = sizeof (socketType);
 	if (fd < 0 || ::fstat (fd, &status) != 0 || !S_ISSOCK (status.st_mode)
-		|| ::getsockopt (fd, SOL_SOCKET, SO_TYPE, &socketType, &socketTypeLength) != 0
-		|| socketType != expectedType)
+		|| ::getsockopt (fd, SOL_SOCKET, SO_TYPE, &socketType, &socketTypeLength) != 0 || socketType != expectedType)
 		return i2p::unexpected ("pre-opened descriptor is not the expected socket type");
 	const int flags = ::fcntl (fd, F_GETFD);
-	if (flags < 0 || !(flags & FD_CLOEXEC))
-		return i2p::unexpected ("pre-opened socket is not close-on-exec");
+	if (flags < 0 || !(flags & FD_CLOEXEC)) return i2p::unexpected ("pre-opened socket is not close-on-exec");
 	if (requireListening)
 	{
 #ifdef SO_ACCEPTCONN

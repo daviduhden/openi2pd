@@ -192,7 +192,12 @@ public:
 	bool IsOpen () const { return m_Pipe != INVALID_HANDLE_VALUE; }
 	HANDLE Native () const { return m_Pipe; }
 	/** Detach the handle without closing it. */
-	HANDLE Release () { HANDLE h = m_Pipe; m_Pipe = INVALID_HANDLE_VALUE; return h; }
+	HANDLE Release ()
+	{
+		HANDLE h = m_Pipe;
+		m_Pipe = INVALID_HANDLE_VALUE;
+		return h;
+	}
 	void Close ();
 
 	i2p::expected<void, std::string> Send (const Message & message, DWORD timeoutMs = 5000);

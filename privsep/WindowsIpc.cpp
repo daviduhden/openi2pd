@@ -206,8 +206,8 @@ namespace
 		return { };
 	}
 
-	bool WaitOverlapped (HANDLE pipe, OVERLAPPED & overlapped, DWORD timeoutMs, DWORD & transferred,
-		DWORD * errorOut = nullptr)
+	bool WaitOverlapped (
+		HANDLE pipe, OVERLAPPED & overlapped, DWORD timeoutMs, DWORD & transferred, DWORD * errorOut = nullptr)
 	{
 		if (WaitForSingleObject (overlapped.hEvent, timeoutMs) != WAIT_OBJECT_0)
 		{
@@ -336,8 +336,8 @@ i2p::expected<WindowsChannel, std::string> WindowsServer::AcceptBound (
 	{
 		const auto now = std::chrono::steady_clock::now ();
 		if (now >= deadline) return i2p::unexpected ("worker pipe accept timeout");
-		const DWORD remaining = static_cast<DWORD> (std::chrono::duration_cast<std::chrono::milliseconds> (
-			deadline - now).count ());
+		const DWORD remaining
+			= static_cast<DWORD> (std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now).count ());
 		ScopedHandle event (CreateEventW (nullptr, TRUE, FALSE, nullptr));
 		if (!event) return i2p::unexpected ("CreateEvent(pipe accept): " + Win32ErrorText (GetLastError ()));
 
@@ -374,8 +374,7 @@ i2p::expected<WindowsChannel, std::string> WindowsServer::AcceptBound (
 			DisconnectNamedPipe (m_Pipe);
 			return i2p::unexpected (peer.error ());
 		}
-		if (peer->userSid != m_UserSid
-			|| (expectedProcessId != 0 && peer->processId != expectedProcessId)
+		if (peer->userSid != m_UserSid || (expectedProcessId != 0 && peer->processId != expectedProcessId)
 			|| (expectedSessionId != 0 && peer->sessionId != expectedSessionId))
 		{
 			// Reject this connection but keep the listener usable for the
@@ -450,8 +449,8 @@ i2p::expected<WindowsChannel, std::string> WindowsChannel::ConnectBound (
 		if (now >= deadline) break;
 		if (lastError != ERROR_PIPE_BUSY && lastError != ERROR_FILE_NOT_FOUND)
 			return i2p::unexpected ("CreateFile(worker pipe): " + Win32ErrorText (lastError));
-		const DWORD remaining = static_cast<DWORD> (std::chrono::duration_cast<std::chrono::milliseconds> (
-			deadline - now).count ());
+		const DWORD remaining
+			= static_cast<DWORD> (std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now).count ());
 		WaitNamedPipeW (pipeName.c_str (), std::min<DWORD> (remaining, 100));
 		Sleep (10);
 	}
@@ -623,8 +622,7 @@ bool WindowsAllowsOperation (WindowsWorkerRole role, MessageType type)
 		return type == MessageType::ConfigureLog || type == MessageType::LogRecord;
 	case WindowsWorkerRole::Storage:
 		return type == MessageType::ConfigureRouterStorage || type == MessageType::RouterStorageRequest
-			|| type == MessageType::ConfigureTorrentStorage
-			|| type == MessageType::ConfigureTorrentStorageSupervised
+			|| type == MessageType::ConfigureTorrentStorage || type == MessageType::ConfigureTorrentStorageSupervised
 			|| type == MessageType::TorrentStorageRequest;
 	case WindowsWorkerRole::Network:
 	case WindowsWorkerRole::Crypto:
@@ -738,8 +736,8 @@ i2p::expected<WindowsHandle, std::string> CreateWorkerJobObject (const WindowsWo
 	HANDLE job = CreateJobObjectW (nullptr, nullptr);
 	if (!job) return i2p::unexpected ("CreateJobObject: " + Win32ErrorText (GetLastError ()));
 	JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits { };
-	limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
-		| JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION;
+	limits.BasicLimitInformation.LimitFlags
+		= JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION;
 	if (policy.processLimit > 0)
 	{
 		limits.BasicLimitInformation.ActiveProcessLimit = policy.processLimit;
@@ -759,9 +757,8 @@ i2p::expected<WindowsHandle, std::string> CreateWorkerJobObject (const WindowsWo
 	}
 	JOBOBJECT_BASIC_UI_RESTRICTIONS ui { };
 	ui.UIRestrictionsClass = JOB_OBJECT_UILIMIT_DESKTOP | JOB_OBJECT_UILIMIT_DISPLAYSETTINGS
-		| JOB_OBJECT_UILIMIT_EXITWINDOWS | JOB_OBJECT_UILIMIT_GLOBALATOMS
-		| JOB_OBJECT_UILIMIT_HANDLES | JOB_OBJECT_UILIMIT_READCLIPBOARD
-		| JOB_OBJECT_UILIMIT_SYSTEMPARAMETERS | JOB_OBJECT_UILIMIT_WRITECLIPBOARD;
+		| JOB_OBJECT_UILIMIT_EXITWINDOWS | JOB_OBJECT_UILIMIT_GLOBALATOMS | JOB_OBJECT_UILIMIT_HANDLES
+		| JOB_OBJECT_UILIMIT_READCLIPBOARD | JOB_OBJECT_UILIMIT_SYSTEMPARAMETERS | JOB_OBJECT_UILIMIT_WRITECLIPBOARD;
 	if (!SetInformationJobObject (job, JobObjectBasicUIRestrictions, &ui, sizeof (ui)))
 	{
 		const DWORD error = GetLastError ();

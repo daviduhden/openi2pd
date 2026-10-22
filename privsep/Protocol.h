@@ -131,20 +131,16 @@ inline bool AllowsOperation (EndpointRole role, MessageType type)
 	{
 	case EndpointRole::Supervisor:
 		return type == MessageType::ConfigureLog || type == MessageType::ConfigureLogFd
-			|| type == MessageType::LogRecord || type == MessageType::Ping
-			|| type == MessageType::Shutdown;
+			|| type == MessageType::LogRecord || type == MessageType::Ping || type == MessageType::Shutdown;
 	case EndpointRole::Log:
 		return type == MessageType::ConfigureLog || type == MessageType::ConfigureLogFd
-			|| type == MessageType::LogRecord || type == MessageType::Ping
-			|| type == MessageType::Shutdown;
+			|| type == MessageType::LogRecord || type == MessageType::Ping || type == MessageType::Shutdown;
 	case EndpointRole::RouterStorage:
 		return type == MessageType::ConfigureRouterStorage || type == MessageType::RouterStorageRequest
 			|| type == MessageType::Ping || type == MessageType::Shutdown;
 	case EndpointRole::TorrentStorage:
-		return type == MessageType::ConfigureTorrentStorage
-			|| type == MessageType::ConfigureTorrentStorageSupervised
-			|| type == MessageType::TorrentStorageRequest
-			|| type == MessageType::Ping || type == MessageType::Shutdown;
+		return type == MessageType::ConfigureTorrentStorage || type == MessageType::ConfigureTorrentStorageSupervised
+			|| type == MessageType::TorrentStorageRequest || type == MessageType::Ping || type == MessageType::Shutdown;
 	case EndpointRole::StorageBroker:
 		return type == MessageType::ConfigureTorrentStorage || type == MessageType::SpawnTorrentStorage
 			|| type == MessageType::Ping || type == MessageType::Shutdown;
@@ -294,8 +290,7 @@ inline i2p::expected<Message, ProtocolError> Decode (std::string_view frame)
 	if (*magic != PROTOCOL_MAGIC) return i2p::unexpected (ProtocolError { ErrorCode::Malformed, "bad magic" });
 	if (*version < MIN_PROTOCOL_VERSION || *version > PROTOCOL_VERSION)
 		return i2p::unexpected (ProtocolError { ErrorCode::UnsupportedVersion, "bad version" });
-	if (!IsKnownMessageType (*type))
-		return i2p::unexpected (ProtocolError { ErrorCode::UnknownType, "unknown type" });
+	if (!IsKnownMessageType (*type)) return i2p::unexpected (ProtocolError { ErrorCode::UnknownType, "unknown type" });
 	if (*length > MAX_MESSAGE_SIZE - HEADER_SIZE)
 		return i2p::unexpected (ProtocolError { ErrorCode::TooLarge, "payload too large" });
 	// One SOCK_SEQPACKET record is one frame. A short/long frame is a
@@ -333,7 +328,8 @@ inline i2p::expected<std::string, ProtocolError> EncodeLogConfig (
 {
 	PayloadWriter writer;
 	writer.WriteU8 (useSyslog ? 1 : 0);
-	if (!writer.WritePath (path)) return i2p::unexpected (ProtocolError { ErrorCode::BadField, "log path too large or NUL" });
+	if (!writer.WritePath (path))
+		return i2p::unexpected (ProtocolError { ErrorCode::BadField, "log path too large or NUL" });
 	if (tag.find ('\0') != std::string_view::npos || !writer.WriteStringBounded (tag, MAX_TEXT_SIZE))
 		return i2p::unexpected (ProtocolError { ErrorCode::BadField, "log tag too large or NUL" });
 	return writer.Data ();

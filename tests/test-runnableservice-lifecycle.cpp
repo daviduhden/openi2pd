@@ -17,10 +17,13 @@
 
 namespace
 {
-class TestService final: public i2p::util::RunnableService
+class TestService final : public i2p::util::RunnableService
 {
 public:
-	TestService (): RunnableService ("test-service") {}
+	TestService ()
+		: RunnableService ("test-service")
+	{
+	}
 	~TestService () override { StopIOService (); }
 	void Start () { StartIOService (); }
 	void Stop () { StopIOService (); }

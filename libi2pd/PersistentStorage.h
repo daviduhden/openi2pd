@@ -12,7 +12,13 @@
 #include <span>
 namespace i2p::data
 {
-enum class RouterPersistentFile : uint8_t { RouterKeys = 1, RouterInfo, NTCP2Keys, SSU2Keys };
+enum class RouterPersistentFile : uint8_t
+{
+	RouterKeys = 1,
+	RouterInfo,
+	NTCP2Keys,
+	SSU2Keys
+};
 using RouterPersistenceWriter = std::function<bool (RouterPersistentFile, std::span<const uint8_t>)>;
 // Install before router initialization. An installed writer failure never falls
 // back to a filesystem write in the network process. Replacement is synchronized.

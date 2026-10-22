@@ -29,7 +29,10 @@ namespace qt
 
 namespace
 {
-int RunI2PD (int argc, char * argv[]) { return i2p::qt::RunQT (argc, argv); }
+int RunI2PD (int argc, char * argv[])
+{
+	return i2p::qt::RunQT (argc, argv);
+}
 } // namespace
 #else
 namespace

@@ -14,8 +14,24 @@ namespace i2p::privsep
 {
 inline constexpr size_t TorrentStorageBlock = 16 * 1024;
 inline constexpr uint32_t TorrentStorageHandles = 4096;
-inline constexpr uint64_t TorrentStorageFileLimit = uint64_t {1} << 40;
-enum class StorageOperation : uint8_t { Register = 1, Read, Write, Release, Promote, Remove, RemoveDirectory, MetadataBegin, MetadataChunk, MetadataCommit, MetadataAbort, MetadataRemove, MetadataOpen, AuthorizeDHTMetadata };
+inline constexpr uint64_t TorrentStorageFileLimit = uint64_t { 1 } << 40;
+enum class StorageOperation : uint8_t
+{
+	Register = 1,
+	Read,
+	Write,
+	Release,
+	Promote,
+	Remove,
+	RemoveDirectory,
+	MetadataBegin,
+	MetadataChunk,
+	MetadataCommit,
+	MetadataAbort,
+	MetadataRemove,
+	MetadataOpen,
+	AuthorizeDHTMetadata
+};
 bool SafeStoragePath (std::string_view path);
 int RunTorrentStorageWorker (int fd, int inheritedRoot = -1);
 }
