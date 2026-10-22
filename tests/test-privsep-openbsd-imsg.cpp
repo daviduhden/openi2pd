@@ -32,7 +32,7 @@ int main ()
 {
 	int fds[2] = { -1, -1 };
 	assert (socketpair (AF_UNIX, SOCK_STREAM, 0, fds) == 0);
-	auto left = ImsgChannel::Adopt (fds[0]);
+	auto left = ImsgChannel::AdoptValidated (fds[0], geteuid ());
 	auto right = ImsgChannel::Adopt (fds[1]);
 	assert (left.has_value ());
 	assert (right.has_value ());
@@ -40,6 +40,35 @@ int main ()
 	auto uid = left->PeerUid ();
 	assert (uid.has_value ());
 	assert (*uid == geteuid ());
+
+	// A validated adoption rejects a wrong peer uid and a non-socket.
+	{
+		int wrong[2] = { -1, -1 };
+		assert (socketpair (AF_UNIX, SOCK_STREAM, 0, wrong) == 0);
+		assert (!ImsgChannel::AdoptValidated (wrong[0], geteuid () + 1).has_value ());
+		close (wrong[1]);
+		const int regular = open ("/dev/null", O_RDONLY | O_CLOEXEC);
+		assert (regular >= 0);
+		assert (!ImsgChannel::AdoptValidated (regular, geteuid ()).has_value ());
+	}
+
+	// A failed oversized compose keeps caller descriptor ownership; storage
+	// callers must be able to close their own descriptor exactly once.
+	{
+		int local[2] = { -1, -1 };
+		assert (socketpair (AF_UNIX, SOCK_STREAM, 0, local) == 0);
+		auto channel = ImsgChannel::AdoptValidated (local[0], geteuid ());
+		assert (channel.has_value ());
+		const int fd = open ("/dev/null", O_RDONLY | O_CLOEXEC);
+		assert (fd >= 0);
+		std::string payload (MAX_IMSGSIZE + 1, 'x');
+		auto sent = channel->Send (Message { MessageType::LogRecord, 7, payload }, fd);
+		assert (!sent.has_value ());
+		assert (fcntl (fd, F_GETFD) >= 0);
+		close (fd);
+		close (local[1]);
+		channel->Close ();
+	}
 
 	assert (left->Send (Message { MessageType::Ping, 7, "hello" }).has_value ());
 	auto received = right->Receive (1000);
@@ -54,6 +83,20 @@ int main ()
 	assert (left->Send (Message { static_cast<MessageType> (0xffff), 9, { } }).has_value ());
 	auto malformed = right->Receive (1000);
 	assert (!malformed.has_value ());
+
+	// imsgbuf_read may buffer several complete messages in one read. They must
+	// all be consumed from the user buffer before polling again.
+	assert (left->Send (Message { MessageType::Ping, 20, {} }).has_value ());
+	assert (left->Send (Message { MessageType::Ping, 21, {} }).has_value ());
+	assert (left->Send (Message { MessageType::Ping, 22, {} }).has_value ());
+	for (uint32_t id : { 20u, 21u, 22u })
+	{
+		auto buffered = right->Receive (200);
+		assert (buffered.has_value ());
+		assert (buffered->has_value ());
+		assert ((*buffered)->message.type == MessageType::Ping);
+		assert ((*buffered)->message.requestId == id);
+	}
 
 	const int fd = open ("/dev/null", O_RDONLY | O_CLOEXEC);
 	assert (fd >= 0);

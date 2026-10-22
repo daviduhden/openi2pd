@@ -6,8 +6,10 @@
  *
  * Implements the privilege-separated supervisor: verifies the control peer's
  * UID, applies its platform sandbox and starts or restarts a log worker while
- * forwarding decoded records. It proxies log configuration without opening
- * the file, answers pings and exits on shutdown or malformed frames.
+ * forwarding decoded records. It also implements the pre-pledge OpenBSD
+ * torrent-storage broker that inherits the data root as fd4 and delegates
+ * bounded storage workers. The log path is never opened here; shutdown or a
+ * malformed frame exits fail-closed.
  *
  */
 
@@ -15,6 +17,7 @@
 
 #ifndef _WIN32
 
+#include <algorithm>
 #include <chrono>
 #include <iostream>
 #include <memory>
@@ -54,6 +57,11 @@ namespace
 			if ((*received)->fd >= 0) close ((*received)->fd);
 			if (message.type == MessageType::Ping)
 			{
+				if ((*received)->fd >= 0 || !message.payload.empty ())
+				{
+					std::cerr << "privsep supervisor: invalid ping" << std::endl;
+					return false;
+				}
 				(void)channel.Send (Message { MessageType::Pong, message.requestId, { } }, 500);
 				continue;
 			}
@@ -99,9 +107,24 @@ bool PrepareTorrentStorageSupervisor (const std::string & root, std::string & er
  std::error_code ec;
  const auto absolute = std::filesystem::canonical (root, ec);
  if (ec) { error = "invalid storage supervisor root"; return false; }
- auto spawned = SpawnDetachedWorker ("torrent-storage-supervisor");
+ // Open and validate the immutable root before spawning. The broker receives
+ // it as inherited fd4, so it never re-resolves a path after the startup
+ // sandbox and cannot be redirected by a path replacement/rename.
+ int rootFd = ::open (absolute.c_str (), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+ if (rootFd < 0) { error = "cannot open storage supervisor root"; return false; }
+ struct RootGuard { int fd; ~RootGuard () { if (fd >= 0) ::close (fd); } } guard {rootFd};
+ struct stat rootStatus {};
+ if (::fstat (rootFd, &rootStatus) || !S_ISDIR (rootStatus.st_mode)
+   || rootStatus.st_uid != ::geteuid () || (rootStatus.st_mode & 0022))
+ { error = "unsafe storage supervisor root"; return false; }
+ auto spawned = SpawnDetachedWorkerWithRoot ("torrent-storage-supervisor", rootFd);
  if (!spawned) { error = spawned.error (); return false; }
- PayloadWriter config; config.WriteString (absolute.string ()); config.WriteString (ExecutablePath ());
+ const std::string executable = ExecutablePath ();
+ if (executable.empty ())
+ { error = "cannot resolve the storage supervisor executable"; return false; }
+ PayloadWriter config;
+ if (!config.WritePath (absolute.string ()) || !config.WritePath (executable))
+ { error = "storage supervisor paths exceed the IPC bound"; return false; }
  auto sent = spawned->Send ({ MessageType::ConfigureTorrentStorage, 1, config.Data () }, 5000);
  if (!sent) { error = sent.error (); return false; }
  auto reply = spawned->Receive (5000);
@@ -124,16 +147,46 @@ i2p::expected<Channel, std::string> SpawnSupervisedTorrentStorage (int rootFd, s
  if (rootFd < 0 || ::fstat (rootFd, &expected) || !S_ISDIR (expected.st_mode))
   return i2p::unexpected (std::string ("invalid local root identity"));
  const auto relative = std::filesystem::path (rootPath).lexically_relative (storageSupervisorRoot).generic_string ();
- PayloadWriter request; request.WriteString (relative);
+ PayloadWriter request;
+ if (!request.WriteStringBounded (relative, MAX_PATH_SIZE))
+  return i2p::unexpected (std::string ("storage root path is too long"));
  request.WriteU64BE (static_cast<uint64_t> (expected.st_dev));
  request.WriteU64BE (static_cast<uint64_t> (expected.st_ino));
  auto & channel = *storageSupervisor;
  auto sent = channel.Send ({ MessageType::SpawnTorrentStorage, id, request.Data () }, 5000);
  if (!sent) { storageSupervisor.reset (); return i2p::unexpected (sent.error ()); }
- auto received = channel.ReceiveWithFd (5000);
- if (!received || !*received)
- { storageSupervisor.reset (); return i2p::unexpected (std::string ("storage supervisor disconnected")); }
- auto & reply = **received;
+ std::optional<ReceivedMessage> selected;
+ while (true)
+ {
+  auto received = channel.ReceiveWithFd (5000);
+  if (!received)
+  {
+   storageSupervisor.reset ();
+   return i2p::unexpected (std::string ("storage supervisor disconnected"));
+  }
+  if (!*received)
+  {
+   // A slow broker is not a dead broker. Keep the channel; the next request
+   // drains a late reply by request id before matching.
+   return i2p::unexpected (std::string ("storage supervisor busy"));
+  }
+  auto & candidate = **received;
+  if (candidate.message.requestId < id)
+  {
+   if (candidate.fd >= 0) ::close (candidate.fd);
+   continue;
+  }
+  selected = std::move (*received);
+  break;
+ }
+ auto & reply = *selected;
+ if (reply.message.type == MessageType::Error && reply.message.requestId == id && reply.fd < 0)
+ {
+  auto decoded = DecodeError (reply.message.payload);
+  if (!decoded) { storageSupervisor.reset (); return i2p::unexpected (std::string ("storage supervisor sent a malformed error")); }
+  // A per-request rejection must not destroy the broker or other workers.
+  return i2p::unexpected (std::string ("storage supervisor rejected request: ") + std::get<2> (*decoded));
+ }
  if (reply.message.type != MessageType::TorrentStorageSupervisorReply || reply.message.requestId != id
    || !reply.message.payload.empty () || reply.fd < 0)
  {
@@ -141,7 +194,9 @@ i2p::expected<Channel, std::string> SpawnSupervisedTorrentStorage (int rootFd, s
   storageSupervisor.reset ();
   return i2p::unexpected (std::string ("storage supervisor rejected worker capability"));
  }
- return Channel::Adopt (reply.fd);
+ auto adopted = Channel::AdoptValidated (reply.fd, static_cast<uint32_t> (::geteuid ()));
+ if (!adopted) return i2p::unexpected (adopted.error ());
+ return std::move (*adopted);
 }
 
 int RunTorrentStorageSupervisor (int fd)
@@ -154,93 +209,176 @@ int RunTorrentStorageSupervisor (int fd)
  if (!uid || *uid != ::geteuid () || ::geteuid () == 0) return 1;
  // An inherited terminal/log descriptor might itself be network-capable.
  ::close (0); ::close (1); ::close (2);
+ struct RootOwner { int fd; ~RootOwner () { if (fd >= 0) ::close (fd); } } root { 4 };
+ struct stat rootInfo {};
+ if (::fstat (root.fd, &rootInfo) || !S_ISDIR (rootInfo.st_mode)
+   || rootInfo.st_uid != ::geteuid () || (rootInfo.st_mode & 0022)) return 1;
  auto received = control.ReceiveWithFd (5000);
  if (!received || !*received) return 1;
  auto & initial = **received;
- struct RootOwner { int fd; ~RootOwner () { if (fd >= 0) ::close (fd); } } unexpected { initial.fd };
- struct stat rootInfo {};
+ struct RootOwner unexpected { initial.fd };
  PayloadReader setup (initial.message.payload);
  auto configuredRoot = setup.ReadString ();
+ // Kept for wire compatibility only. It is never executed: the broker resolves
+ // its own executable below and freezes that path before pledge.
  auto configuredExecutable = setup.ReadString ();
  if (initial.message.type != MessageType::ConfigureTorrentStorage || initial.message.requestId != 1
    || initial.fd >= 0
    || !configuredRoot || !configuredExecutable || !setup.Done () || configuredRoot->empty () || configuredRoot->front () != '/'
-   || configuredRoot->find ('\0') != std::string_view::npos) return 1;
+   || configuredRoot->size () > MAX_PATH_SIZE || configuredRoot->find ('\0') != std::string_view::npos) return 1;
  const std::string rootPath (*configuredRoot);
- // Trusted bootstrap only: open before confinement, and never accept another
- // absolute authority once this immutable root capability has been installed.
- RootOwner root { ::open (rootPath.c_str (), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC) };
- if (root.fd < 0 || ::fstat (root.fd, &rootInfo) || !S_ISDIR (rootInfo.st_mode)
-   || rootInfo.st_uid != ::geteuid () || (rootInfo.st_mode & 0022)) return 1;
- const std::string executable (*configuredExecutable); // Frozen by trusted pre-pledge startup.
+ // Never exec a path nominated by the peer. Resolve the broker's own
+ // executable before pledge/unveil and freeze it for every replacement.
+ const std::string executable = ExecutablePath ();
  if (executable.empty () || executable.front () != '/' || executable.find ('\0') != std::string::npos
    || ::access (executable.c_str (), X_OK)) return 1;
- // No inet/dns/wpath/cpath/fattr. rpath is needed only to compare delegated
- // directory identities through the immutable root FD. Each exec-ed child
- // installs its own storage-only policy before processing file requests.
- if (::unveil (rootPath.c_str (), "r") || ::unveil (executable.c_str (), "x")
-   || ::unveil (nullptr, nullptr)
-   || ::pledge ("stdio rpath unix proc exec sendfd recvfd", nullptr)) return 1;
+ // fd4 is the only directory authority. The configured path is used solely
+ // to construct each child's storage policy; it cannot widen that authority.
+ // No inet/dns/wpath/cpath/fattr/rpath is needed: the broker never resolves
+ // the root path again, and each exec-ed child installs its own policy.
+ if (::unveil (executable.c_str (), "x") || ::unveil (nullptr, nullptr)
+   || ::pledge ("stdio unix proc exec sendfd recvfd", nullptr)) return 1;
  if (!control.Send ({ MessageType::TorrentStorageSupervisorReply, 1, {} }, 5000)) return 1;
- std::vector<ChildProcess> children;
- uint32_t launches = 0, lastRequest = 1;
+ uint32_t lastRequest = 1, violations = 0;
+ std::vector<pid_t> detachedWorkers;
+ // Forwarded workers are owned by the core after handoff, so the broker
+ // cannot observe their liveness. Bound churn with a replenished one-minute
+ // launch window rather than a permanent lifetime counter.
+ constexpr uint32_t MAX_LAUNCHES_PER_WINDOW = 32;
+ uint32_t launches = 0;
+ auto launchWindow = std::chrono::steady_clock::now ();
+ auto sendError = [&control] (uint32_t requestId, MessageType offending, ErrorCode code, std::string_view detail)
+ {
+  return control.Send ({ MessageType::Error, requestId, EncodeError (offending, code, detail) }, 5000);
+ };
  while (true)
  {
-  for (auto it = children.begin (); it != children.end ();)
-   if (!it->IsRunning ()) it = children.erase (it); else ++it;
+  for (auto it = detachedWorkers.begin (); it != detachedWorkers.end ();)
+  {
+   int childStatus = 0;
+   const pid_t reaped = ::waitpid (*it, &childStatus, WNOHANG);
+   if (reaped == *it || (reaped < 0 && errno == ECHILD)) it = detachedWorkers.erase (it);
+   else ++it;
+  }
+  const auto now = std::chrono::steady_clock::now ();
+  if (now - launchWindow >= std::chrono::minutes (1))
+  {
+   launchWindow = now;
+   launches = 0;
+  }
   auto next = control.ReceiveWithFd (500);
   if (!next) return 1; // RAII stops/reaps every owned worker.
   if (!*next) continue;
   auto & request = **next;
   RootOwner unexpectedRequestFd { request.fd };
-  if (request.message.type == MessageType::Shutdown && request.fd < 0) return 0;
-  if (request.message.type != MessageType::SpawnTorrentStorage || request.message.requestId <= lastRequest
-    || request.fd >= 0 || children.size () >= 16 || launches >= 128) return 1;
-  lastRequest = request.message.requestId;
+  auto rejectRequest = [&] (std::string_view detail)
+  {
+   if (++violations > 16) return false;
+   return sendError (request.message.requestId, request.message.type, ErrorCode::BadField, detail).has_value ();
+  };
+  if (!AllowsOperation (EndpointRole::StorageBroker, request.message.type))
+  {
+   if (!rejectRequest ("operation is not allowed on the storage broker")) return 1;
+   continue;
+  }
+  if (request.message.type == MessageType::Ping)
+  {
+   if (request.fd >= 0 || !request.message.payload.empty ())
+   {
+    if (!rejectRequest ("invalid storage broker ping")) return 1;
+    continue;
+   }
+   if (!control.Send ({ MessageType::Pong, request.message.requestId, {} }, 5000)) return 1;
+   continue;
+  }
+  if (request.message.type == MessageType::Shutdown)
+  {
+   if (request.fd >= 0 || !request.message.payload.empty ())
+   {
+    if (!rejectRequest ("invalid storage broker shutdown")) return 1;
+    continue;
+   }
+   return 0;
+  }
+  if (request.message.type != MessageType::SpawnTorrentStorage || request.fd >= 0)
+  {
+   if (!rejectRequest ("invalid storage broker operation")) return 1;
+   continue;
+  }
+  if (request.message.requestId <= lastRequest)
+  {
+   // Dropping a replay/duplicate avoids executing it and avoids confusing a
+   // live client with a second reply for the same ID.
+   if (++violations > 16) return 1;
+   continue;
+  }
+  const uint32_t id = request.message.requestId;
+  lastRequest = id;
+  if (launches >= MAX_LAUNCHES_PER_WINDOW)
+  {
+   if (!sendError (id, MessageType::SpawnTorrentStorage, ErrorCode::Busy, "storage worker launch window exhausted")) return 1;
+   continue;
+  }
   PayloadReader payload (request.message.payload);
   auto path = payload.ReadString ();
   auto expectedDevice = payload.ReadU64BE (); auto expectedInode = payload.ReadU64BE ();
-  if (!path || !expectedDevice || !expectedInode || !payload.Done ()) return 1;
-  const std::string relative (*path);
-  if (relative != "." && !SafeStoragePath (relative)) return 1;
-  // Walk beneath the pre-authorized root without following symlinks. Expected
-  // device/inode values detect replacement between the client's open and ours;
-  // they never grant authority outside this root.
-  RootOwner checked { ::dup (root.fd) };
-  size_t start = 0;
-  while (relative != "." && start < relative.size ())
+  if (!path || !expectedDevice || !expectedInode || !payload.Done ())
   {
-   auto slash = relative.find ('/', start);
-   auto part = relative.substr (start, slash == std::string::npos ? relative.size () - start : slash - start);
-   int child = ::openat (checked.fd, part.c_str (), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
-   if (child < 0) return 1;
-   ::close (checked.fd); checked.fd = child;
-   if (slash == std::string::npos) break;
-   start = slash + 1;
+   if (!sendError (id, MessageType::SpawnTorrentStorage, ErrorCode::BadField, "malformed storage request")) return 1;
+   continue;
   }
-  struct stat actual {};
-  if (::fstat (checked.fd, &actual) || static_cast<uint64_t> (actual.st_dev) != *expectedDevice
-    || static_cast<uint64_t> (actual.st_ino) != *expectedInode
-    || actual.st_uid != ::geteuid () || !S_ISDIR (actual.st_mode) || (actual.st_mode & 0022)) return 1;
-  auto child = SpawnWorkerWithRoot ("torrent-storage-inherited", executable, checked.fd);
-  if (!child) return 1;
+  const std::string relative (*path);
+  if (relative != "." && !SafeStoragePath (relative))
+  {
+   if (!sendError (id, MessageType::SpawnTorrentStorage, ErrorCode::BadField, "unsafe storage path")) return 1;
+   continue;
+  }
+  // The worker inherits the immutable broker root at fd4 and performs the
+  // relative walk itself before applying its own policy. The broker must not
+  // use openat() here: it has no rpath promise and its unveil list is locked.
+  PayloadWriter workerSetup;
+  const std::string delegatedRoot = relative == "." ? rootPath : rootPath + "/" + relative;
+  if (!workerSetup.WritePath (delegatedRoot) || !workerSetup.WriteStringBounded (relative, MAX_PATH_SIZE))
+  {
+   if (!sendError (id, MessageType::SpawnTorrentStorage, ErrorCode::BadField, "storage worker path is too long")) return 1;
+   continue;
+  }
+  workerSetup.WriteU64BE (*expectedDevice);
+  workerSetup.WriteU64BE (*expectedInode);
+  auto child = SpawnWorkerWithRoot ("torrent-storage-inherited", executable, root.fd);
+  if (!child)
+  {
+   if (!sendError (id, MessageType::SpawnTorrentStorage, ErrorCode::Internal, "cannot spawn storage worker")) return 1;
+   continue;
+  }
   ++launches;
-  // Bind the worker to the checked capability here, before releasing its
-  // channel. The client cannot substitute another root after authorization.
-  PayloadWriter workerSetup; workerSetup.WriteString (relative == "." ? rootPath : rootPath + "/" + relative);
-  if (!child->ChannelFd ().Send ({ MessageType::ConfigureTorrentStorage, 1, workerSetup.Data () }, 5000)) return 1;
+  if (!child->ChannelFd ().Send ({ MessageType::ConfigureTorrentStorageSupervised, 1, workerSetup.Data () }, 5000))
+  {
+   (void)sendError (id, MessageType::SpawnTorrentStorage, ErrorCode::Internal, "storage worker configure failed");
+   continue;
+  }
   auto ready = child->ChannelFd ().Receive (5000);
   if (!ready || !*ready || (**ready).type != MessageType::TorrentStorageReply
-    || (**ready).requestId != 1 || (**ready).payload != std::string (1, '\0')) return 1;
-  if (!control.SendWithFd ({ MessageType::TorrentStorageSupervisorReply, lastRequest, {} }, child->ChannelFd ().Fd (), 5000)) return 1;
+    || (**ready).requestId != 1 || (**ready).payload != std::string (1, '\0'))
+  {
+   (void)sendError (id, MessageType::SpawnTorrentStorage, ErrorCode::Internal, "storage worker did not become ready");
+   continue;
+  }
+  if (!control.SendWithFd ({ MessageType::TorrentStorageSupervisorReply, id, {} }, child->ChannelFd ().Fd (), 5000)) return 1;
   child->ChannelFd ().Close (); // Do not keep the client endpoint alive.
-  children.emplace_back (std::move (*child));
+  // The core now owns the worker channel. Do not SIGTERM/SIGKILL it when the
+  // broker exits: a broker shutdown must not corrupt an in-flight fsync. Keep
+  // the PID only for non-blocking reaping.
+  const pid_t workerPid = child->Pid ();
+  child->Disown ();
+  if (workerPid > 0) detachedWorkers.push_back (workerPid);
  }
 #endif
 }
 
 int RunSupervisor (int fd)
 {
+	SanitizeInheritedStdio ();
 	Channel control = Channel::Adopt (fd);
 	auto peer = control.PeerUid ();
 	if (!peer || *peer != geteuid ())
@@ -285,13 +423,12 @@ int RunSupervisor (int fd)
 #endif
 
 #if defined(__linux__)
-	// The supervisor may fork/exec a replacement log worker later; the filter
-	// therefore permits process creation and AF_UNIX socketpairs. It denies
-	// AF_INET/AF_INET6, drops capabilities and (where available) restricts
-	// pathname writes without blocking exec of the child.
-	auto sandboxProfile = GetLinuxSandboxProfile (WorkerClass::Supervisor);
-	sandboxProfile.requireLandlock = false;
-	auto sandbox = ApplyLinuxSandbox (sandboxProfile);
+	// Landlock/seccomp/network namespaces are inherited across fork+exec and a
+	// child can only become stricter. Installing the supervisor's write-deny
+	// or AF_INET-deny domain here would permanently prevent storage/network
+	// children from using their delegated capability. Drop capabilities and
+	// set no_new_privs; each exec'ed worker applies its own role policy.
+	auto sandbox = ApplyLinuxSupervisorSandbox ();
 	if (!sandbox)
 	{
 		std::cerr << "privsep supervisor: Linux sandbox: " << sandbox.error () << std::endl;
@@ -325,15 +462,34 @@ int RunSupervisor (int fd)
 	};
 
 	if (!startWorker ()) return 1;
+	constexpr unsigned MAX_RESTARTS = 8;
+	constexpr auto STABLE_PERIOD = std::chrono::seconds (60);
+	unsigned restartAttempts = 0;
+	std::chrono::milliseconds restartBackoff (250);
+	auto workerStarted = std::chrono::steady_clock::now ();
 
+	bool protocolFailed = false;
 	while (true)
 	{
 		if (!worker || !worker->IsRunning () || !sink || !sink->IsOpen ())
 		{
+			if (std::chrono::steady_clock::now () - workerStarted >= STABLE_PERIOD)
+			{
+				restartAttempts = 0;
+				restartBackoff = std::chrono::milliseconds (250);
+			}
+			if (restartAttempts >= MAX_RESTARTS)
+			{
+				std::cerr << "privsep supervisor: log worker restart limit reached" << std::endl;
+				return 1;
+			}
 			if (worker) worker->Stop (500);
 			sink.reset ();
-			std::this_thread::sleep_for (std::chrono::milliseconds (250));
+			std::this_thread::sleep_for (restartBackoff);
+			restartBackoff = std::min (restartBackoff * 2, std::chrono::milliseconds (30000));
+			++restartAttempts;
 			if (!startWorker ()) return 1;
+			workerStarted = std::chrono::steady_clock::now ();
 			continue;
 		}
 
@@ -345,21 +501,43 @@ int RunSupervisor (int fd)
 		}
 		if (!received->has_value ()) continue;
 		const auto & message = **received;
-		if (message.type == MessageType::Shutdown) break;
+		if (!AllowsOperation (EndpointRole::Supervisor, message.type))
+		{
+			std::cerr << "privsep supervisor: operation is not allowed on this endpoint" << std::endl;
+			protocolFailed = true;
+			break;
+		}
+		if (message.type == MessageType::Shutdown)
+		{
+			if (!message.payload.empty ())
+			{
+				std::cerr << "privsep supervisor: invalid shutdown" << std::endl;
+				protocolFailed = true;
+			}
+			break;
+		}
 		if (message.type == MessageType::Ping)
 		{
+			if (!message.payload.empty ())
+			{
+				std::cerr << "privsep supervisor: invalid ping" << std::endl;
+				protocolFailed = true;
+				break;
+			}
 			(void)control.Send (Message { MessageType::Pong, message.requestId, { } }, 500);
 			continue;
 		}
 		if (message.type != MessageType::LogRecord)
 		{
 			std::cerr << "privsep supervisor: unsupported message type" << std::endl;
+			protocolFailed = true;
 			break;
 		}
 		auto record = DecodeLogRecord (message.payload);
 		if (!record)
 		{
 			std::cerr << "privsep supervisor: malformed log record" << std::endl;
+			protocolFailed = true;
 			break;
 		}
 		sink->Write (std::get<0> (*record), static_cast<std::time_t> (std::get<1> (*record)), std::get<2> (*record));
@@ -372,7 +550,7 @@ int RunSupervisor (int fd)
 
 	if (sink) (void)sink->Shutdown ();
 	if (worker) worker->Stop (500);
-	return 0;
+	return protocolFailed ? 1 : 0;
 }
 }
 

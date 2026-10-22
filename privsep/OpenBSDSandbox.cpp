@@ -18,6 +18,7 @@
 #include <cerrno>
 #include <cstring>
 #include <fcntl.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -175,14 +176,17 @@ i2p::expected<OpenBSDPolicy, std::string> BuildOpenBSDPolicy (
 		AppendPromise (policy.pledge, "rpath");
 		AppendPromise (policy.pledge, "wpath");
 		AppendPromise (policy.pledge, "cpath");
-		AppendPromise (policy.pledge, "fattr");
-		AppendPromise (policy.pledge, "flock");
+		// Storage code never chmods/chflags or takes a lock; do not grant
+		// fattr/flock to the untrusted-input parsing process.
 		// Storage roots and other bounded objects may be delivered as one
 		// pre-opened descriptor. recvfd is local descriptor reception only;
 		// it does not grant external network or pathname write access.
 		if (!config.preopenedStorageIpc) AppendPromise (policy.pledge, "recvfd");
 		if (config.useUnveil)
 		{
+			if (config.dataDir.empty () || config.dataDir.front () != '/'
+				|| config.dataDir.find ('\0') != std::string::npos)
+				return PolicyError ("invalid storage data-directory unveil rule");
 			if (!AddUnveil (policy, config.dataDir, "rwc"))
 				return PolicyError ("invalid storage data-directory unveil rule");
 			if (!AddUnveil (policy, config.certsDir, "r"))
@@ -200,7 +204,9 @@ i2p::expected<OpenBSDPolicy, std::string> BuildOpenBSDPolicy (
 		AppendPromise (policy.pledge, "stdio");
 		AppendPromise (policy.pledge, "unix");
 		AppendPromise (policy.pledge, "inet");
-		AppendPromise (policy.pledge, "dns");
+		if (config.dnsLookup) AppendPromise (policy.pledge, "dns");
+		if (config.socketHandoff) AppendPromise (policy.pledge, "recvfd");
+		if (config.routeInfo) AppendPromise (policy.pledge, "route");
 		if (config.upnp) AppendPromise (policy.pledge, "mcast");
 		break;
 
@@ -279,6 +285,32 @@ i2p::expected<void, std::string> ValidatePreopenedDescriptor (int fd, bool direc
 		return i2p::unexpected ("fstat pre-opened descriptor: " + std::string (strerror (errno)));
 	if (directory && !S_ISDIR (info.st_mode)) return i2p::unexpected ("pre-opened descriptor is not a directory");
 	if (!directory && !S_ISREG (info.st_mode)) return i2p::unexpected ("pre-opened descriptor is not a regular file");
+	return { };
+}
+
+i2p::expected<void, std::string> ValidatePreopenedSocket (int fd, int expectedType, bool requireListening)
+{
+	struct stat status {};
+	int socketType = 0;
+	socklen_t socketTypeLength = sizeof (socketType);
+	if (fd < 0 || ::fstat (fd, &status) != 0 || !S_ISSOCK (status.st_mode)
+		|| ::getsockopt (fd, SOL_SOCKET, SO_TYPE, &socketType, &socketTypeLength) != 0
+		|| socketType != expectedType)
+		return i2p::unexpected ("pre-opened descriptor is not the expected socket type");
+	const int flags = ::fcntl (fd, F_GETFD);
+	if (flags < 0 || !(flags & FD_CLOEXEC))
+		return i2p::unexpected ("pre-opened socket is not close-on-exec");
+	if (requireListening)
+	{
+#ifdef SO_ACCEPTCONN
+		int accepting = 0;
+		socklen_t acceptingLength = sizeof (accepting);
+		if (::getsockopt (fd, SOL_SOCKET, SO_ACCEPTCONN, &accepting, &acceptingLength) != 0 || !accepting)
+			return i2p::unexpected ("pre-opened stream socket is not listening");
+#else
+		return i2p::unexpected ("SO_ACCEPTCONN is unavailable");
+#endif
+	}
 	return { };
 }
 

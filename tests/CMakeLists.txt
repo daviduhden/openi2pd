@@ -51,7 +51,7 @@ function(i2pd_add_test name)
     target_sources(${name} PRIVATE "${PROJECT_ROOT}/privsep/WindowsIpc.cpp")
     target_compile_definitions(${name} PRIVATE
       WIN32_LEAN_AND_MEAN NOMINMAX WINVER=0x0A00 _WIN32_WINNT=0x0A00)
-    target_link_libraries(${name} PRIVATE advapi32)
+    target_link_libraries(${name} PRIVATE advapi32 bcrypt)
   elseif(name STREQUAL "test-tui-ipc-regression")
     # The real local transport and shared dispatch are not part of libi2pd.
     target_sources(${name} PRIVATE

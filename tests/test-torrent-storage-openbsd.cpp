@@ -75,13 +75,23 @@ int main (int argc, char ** argv)
  worker.Stop ();
  // An outside-root request becomes a forbidden relative traversal. Only
  // identity integers are transmitted; directories never travel in SCM_RIGHTS.
- // Rejection poisons the broker channel instead of retrying ambiguous setup.
+ // A per-request rejection must leave the broker and existing workers alive.
  int outsideFd = ::open (outside.c_str (), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
  assert (outsideFd >= 0);
  auto rejected = i2p::privsep::SpawnSupervisedTorrentStorage (outsideFd, outside.string ());
  ::close (outsideFd);
  assert (!rejected);
- assert (!worker.Start (root / "swarm", error));
+ // A path that resolves through a symlink must not become a delegated root.
+ // The worker walks the broker root with O_NOFOLLOW before applying policy;
+ // the broker reports a typed failure and stays alive.
+ int swarmFd = ::open ((root / "swarm").c_str (), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+ assert (swarmFd >= 0);
+ auto mismatched = i2p::privsep::SpawnSupervisedTorrentStorage (swarmFd, (root / "redirect").string ());
+ ::close (swarmFd);
+ assert (!mismatched);
+ // The broker is still usable and a legitimate root can be delegated again.
+ assert (worker.Start (root / "swarm", error));
+ worker.Stop ();
  return 0;
 #else
  return 77;

@@ -55,6 +55,12 @@ public:
 	ImsgChannel & operator= (const ImsgChannel &) = delete;
 
 	static i2p::expected<ImsgChannel, std::string> Adopt (int fd);
+	/**
+	 * Validate an inherited stream socket and peer UID before enabling imsg
+	 * fd passing. The imsg adapter is not production-wired yet; this is the
+	 * mandatory gate for any future supervisor/network control channel.
+	 */
+	static i2p::expected<ImsgChannel, std::string> AdoptValidated (int fd, uint32_t expectedUid);
 
 	bool IsOpen () const { return m_Fd >= 0; }
 	int Fd () const { return m_Fd; }

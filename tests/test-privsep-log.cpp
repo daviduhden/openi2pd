@@ -38,6 +38,12 @@ using namespace i2p::privsep;
 
 namespace
 {
+std::string LogConfig (bool useSyslog, std::string_view path, std::string_view tag)
+{
+	auto encoded = EncodeLogConfig (useSyslog, path, tag);
+	assert (encoded.has_value ());
+	return *encoded;
+}
 bool WaitForExit (pid_t pid, int & status, int timeoutMs)
 {
 	const auto deadline = std::chrono::steady_clock::now () + std::chrono::milliseconds (timeoutMs);
@@ -235,7 +241,7 @@ int main ()
 		RunScenario (
 			[&path] (Channel & channel)
 			{
-				assert (channel.Send (Message { MessageType::ConfigureLog, 1, EncodeLogConfig (false, path, "test") })
+				assert (channel.Send (Message { MessageType::ConfigureLog, 1, LogConfig (false, path, "test") })
 						.has_value ());
 				assert (channel
 						.Send (Message { MessageType::LogRecord, 2, EncodeLogRecord (4, 12345, "hello from worker") })
@@ -264,7 +270,7 @@ int main ()
 				const int fd = OpenLogDescriptor (path);
 				assert (channel
 						.SendWithFd (
-							Message { MessageType::ConfigureLogFd, 1, EncodeLogConfig (false, path, "test") }, fd)
+							Message { MessageType::ConfigureLogFd, 1, LogConfig (false, path, "test") }, fd)
 						.has_value ());
 				// SCM_RIGHTS duplicates the descriptor; sending does not move
 				// ownership away from the parent.
@@ -303,7 +309,7 @@ int main ()
 		RunScenario (
 			[&path] (Channel & channel)
 			{
-				const Message configure { MessageType::ConfigureLog, 1, EncodeLogConfig (false, path, "test") };
+				const Message configure { MessageType::ConfigureLog, 1, LogConfig (false, path, "test") };
 				assert (channel.Send (configure).has_value ());
 				// Wait until the worker has opened the file, which proves the
 				// first configuration was processed before the duplicate is sent.
@@ -320,7 +326,7 @@ int main ()
 		RunScenario (
 			[&path] (Channel & channel)
 			{
-				assert (channel.Send (Message { MessageType::ConfigureLog, 1, EncodeLogConfig (false, path, "test") })
+				assert (channel.Send (Message { MessageType::ConfigureLog, 1, LogConfig (false, path, "test") })
 						.has_value ());
 				PayloadWriter writer;
 				writer.WriteU8 (4); // level only: missing timestamp and text
@@ -343,7 +349,7 @@ int main ()
 		RunScenario (
 			[&path] (Channel & channel)
 			{
-				assert (channel.Send (Message { MessageType::ConfigureLogFd, 1, EncodeLogConfig (false, path, "test") })
+				assert (channel.Send (Message { MessageType::ConfigureLogFd, 1, LogConfig (false, path, "test") })
 						.has_value ());
 			},
 			1);
@@ -358,7 +364,7 @@ int main ()
 				const int fd = OpenLogDescriptor (path);
 				assert (channel
 						.SendWithFd (
-							Message { MessageType::ConfigureLog, 1, EncodeLogConfig (false, path, "test") }, fd)
+							Message { MessageType::ConfigureLog, 1, LogConfig (false, path, "test") }, fd)
 						.has_value ());
 				close (fd);
 			},
@@ -376,7 +382,7 @@ int main ()
 				assert (fd >= 0);
 				assert (channel
 						.SendWithFd (
-							Message { MessageType::ConfigureLogFd, 1, EncodeLogConfig (false, path, "test") }, fd)
+							Message { MessageType::ConfigureLogFd, 1, LogConfig (false, path, "test") }, fd)
 						.has_value ());
 				close (fd);
 			},
@@ -392,7 +398,7 @@ int main ()
 				const int fd = open ("/dev/null", O_RDWR | O_CLOEXEC);
 				assert (fd >= 0);
 				assert (channel
-						.SendWithFd (Message { MessageType::ConfigureLogFd, 1, EncodeLogConfig (true, "", "test") }, fd)
+						.SendWithFd (Message { MessageType::ConfigureLogFd, 1, LogConfig (true, "", "test") }, fd)
 						.has_value ());
 				close (fd);
 			},
@@ -405,7 +411,7 @@ int main ()
 		RunScenario (
 			[&path] (Channel & channel)
 			{
-				assert (channel.Send (Message { MessageType::ConfigureLog, 1, EncodeLogConfig (false, path, "test") })
+				assert (channel.Send (Message { MessageType::ConfigureLog, 1, LogConfig (false, path, "test") })
 						.has_value ());
 				PayloadWriter writer;
 				writer.WriteU8 (6);
@@ -424,7 +430,7 @@ int main ()
 		RunScenario (
 			[&path] (Channel & channel)
 			{
-				assert (channel.Send (Message { MessageType::ConfigureLog, 1, EncodeLogConfig (false, path, "test") })
+				assert (channel.Send (Message { MessageType::ConfigureLog, 1, LogConfig (false, path, "test") })
 						.has_value ());
 				assert (WaitForFile (path, 1000));
 				const int fd = open ("/dev/null", O_RDONLY | O_CLOEXEC);
@@ -447,7 +453,7 @@ int main ()
 		RunScenario (
 			[&path] (Channel & channel)
 			{
-				assert (channel.Send (Message { MessageType::ConfigureLog, 1, EncodeLogConfig (false, path, "test") })
+				assert (channel.Send (Message { MessageType::ConfigureLog, 1, LogConfig (false, path, "test") })
 						.has_value ());
 				std::string text (MAX_TEXT_SIZE * 2, 'a');
 				text[10] = '\n';
@@ -499,8 +505,31 @@ int main ()
 			0);
 	}
 
-	// A control message that arrives with an unexpected descriptor must still
-	// consume and close it, answer the probe and keep the channel usable.
+	// Configuration is not successful merely because the frame was queued.
+	// A peer that exits before acknowledging the readiness Ping must make
+	// Configure fail and close the sink.
+	{
+		const std::string path = std::string (dir) + "/handshake-failure.log";
+		auto pair = Channel::CreatePair ();
+		assert (pair.has_value ());
+		pid_t pid = fork ();
+		assert (pid >= 0);
+		if (pid == 0)
+		{
+			pair->first.Close ();
+			_exit (1);
+		}
+		pair->second.Close ();
+		LogSink sink (std::move (pair->first));
+		assert (!sink.Configure (false, path, "test").has_value ());
+		assert (!sink.IsOpen ());
+		int status = 0;
+		assert (WaitForExit (pid, status, 5000));
+		unlink (path.c_str ());
+	}
+
+	// A descriptor on a control probe is not part of any defined operation:
+	// it is closed and the worker fails closed instead of answering Pong.
 	{
 		RunScenario (
 			[] (Channel & channel)
@@ -509,14 +538,8 @@ int main ()
 				assert (fd >= 0);
 				assert (channel.SendWithFd (Message { MessageType::Ping, 201, { } }, fd).has_value ());
 				close (fd);
-				auto pong = channel.Receive (1000);
-				assert (pong.has_value ());
-				assert (pong->has_value ());
-				assert ((*pong)->type == MessageType::Pong);
-				assert ((*pong)->requestId == 201);
-				assert (channel.Send (Message { MessageType::Shutdown, 202, { } }).has_value ());
 			},
-			0);
+			1);
 	}
 
 	// Reattach: the sink keeps its configuration and can replace a dead
@@ -557,6 +580,7 @@ int main ()
 			assert (WaitForExit (firstPid, firstStatus, 5000));
 			sink.Write (4, 2, "lost record");
 			assert (!sink.IsOpen ());
+			assert (sink.DroppedCount () >= 1);
 
 			auto second = Channel::CreatePair ();
 			assert (second.has_value ());

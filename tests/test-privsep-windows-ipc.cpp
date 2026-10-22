@@ -107,6 +107,9 @@ void TestPolicyAndPolicyPrimitives ()
 	assert (WindowsAllowsOperation (WindowsWorkerRole::Log, MessageType::LogRecord));
 	assert (WindowsAllowsOperation (WindowsWorkerRole::Log, MessageType::Ping));
 	assert (!WindowsAllowsOperation (WindowsWorkerRole::Storage, MessageType::LogRecord));
+	assert (WindowsAllowsOperation (WindowsWorkerRole::Storage, MessageType::TorrentStorageRequest));
+	assert (!WindowsAllowsOperation (WindowsWorkerRole::Log, MessageType::ConfigureLogFd));
+	assert (!WindowsAllowsOperation (WindowsWorkerRole::Log, MessageType::Pong));
 
 	const auto support = ProbeWindowsIsolation ();
 	assert (support.messageModePipes);
@@ -130,6 +133,11 @@ void TestPrivatePipeName ()
 	assert (name->rfind (L"\\\\.\\pipe\\openi2pd-worker-", 0) == 0);
 	auto remote = WindowsServer::Create (L"\\\\remote\\pipe\\openi2pd");
 	assert (!remote.has_value ());
+	auto randomOne = MakeRandomPipeName ();
+	auto randomTwo = MakeRandomPipeName ();
+	assert (randomOne.has_value () && randomTwo.has_value ());
+	assert (*randomOne != *randomTwo);
+	assert (randomOne->rfind (L"\\\\.\\pipe\\openi2pd-worker-", 0) == 0);
 }
 
 void TestRoundTripAndPeer ()
@@ -143,10 +151,10 @@ void TestRoundTripAndPeer ()
 	std::thread connector (
 		[&name, &client]
 		{
-			auto connected = WindowsChannel::Connect (name, 5000);
+			auto connected = WindowsChannel::ConnectBound (name, GetCurrentProcessId (), 0, 5000);
 			if (connected) client = std::make_unique<WindowsChannel> (std::move (*connected));
 		});
-	auto accepted = server->Accept (5000);
+	auto accepted = server->AcceptBound (5000, GetCurrentProcessId (), 0);
 	connector.join ();
 	assert (accepted.has_value ());
 	assert (client);
@@ -171,6 +179,52 @@ void TestRoundTripAndPeer ()
 	assert (!malformed.has_value ());
 
 	channel.Close ();
+	client->Close ();
+}
+
+void TestOversizedMessageIsTerminal ()
+{
+	const std::wstring name = MakeTestPipeName (L"oversized");
+	auto server = WindowsServer::Create (name);
+	assert (server.has_value ());
+	std::unique_ptr<WindowsChannel> client;
+	std::thread connector (
+		[&name, &client]
+		{
+			auto connected = WindowsChannel::Connect (name, 5000);
+			if (connected) client = std::make_unique<WindowsChannel> (std::move (*connected));
+		});
+	auto accepted = server->Accept (5000);
+	connector.join ();
+	assert (accepted.has_value ());
+	assert (client);
+
+	// One record larger than any legal frame must never be delivered as two
+	// frames (a valid prefix followed by the unread tail).
+	std::vector<char> oversized (HEADER_SIZE + MAX_MESSAGE_SIZE + 64, 'x');
+	DWORD written = 0;
+	// A message-mode pipe write can block until the reader drains it. Use a
+	// writer thread so the receiver can observe and terminate the oversized
+	// record without deadlocking the test itself.
+	std::thread writer (
+		[&]
+		{
+			HANDLE event = CreateEventW (nullptr, TRUE, FALSE, nullptr);
+			assert (event != nullptr);
+			OVERLAPPED overlapped { };
+			overlapped.hEvent = event;
+			BOOL result = WriteFile (client->Native (), oversized.data (),
+				static_cast<DWORD> (oversized.size ()), &written, &overlapped);
+			if (!result && GetLastError () == ERROR_IO_PENDING)
+				GetOverlappedResult (client->Native (), &overlapped, &written, TRUE);
+			CloseHandle (event);
+		});
+	auto tooLarge = accepted->Receive (1000);
+	assert (!tooLarge.has_value ());
+	assert (!accepted->IsOpen ());
+	auto afterClose = accepted->Receive (1000);
+	assert (!afterClose.has_value ());
+	writer.join ();
 	client->Close ();
 }
 
@@ -210,6 +264,7 @@ int main ()
 	TestPolicyAndPolicyPrimitives ();
 	TestPrivatePipeName ();
 	TestRoundTripAndPeer ();
+	TestOversizedMessageIsTerminal ();
 	TestRecoveryAfterClose ();
 	return 0;
 }

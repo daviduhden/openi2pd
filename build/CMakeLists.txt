@@ -550,7 +550,7 @@ if(PRIVSEP_SOURCES AND NOT ANDROID)
     # CreateRestrictedToken/CreateProcessAsUser and pipe security APIs.
     target_compile_definitions(i2pd_privsep PRIVATE
       WIN32_LEAN_AND_MEAN NOMINMAX WINVER=0x0A00 _WIN32_WINNT=0x0A00)
-    target_link_libraries(i2pd_privsep PUBLIC advapi32)
+    target_link_libraries(i2pd_privsep PUBLIC advapi32 bcrypt)
   endif()
   i2pd_enable_sanitizers(i2pd_privsep)
 endif()

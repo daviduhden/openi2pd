@@ -28,8 +28,10 @@ int RunSupervisor (int fd);
 // Prepared by the daemon before runtime pledge. The immutable root bounds all
 // later worker delegation; this supervisor never has persistent-write access.
 bool PrepareTorrentStorageSupervisor (const std::string & root, std::string & error);
-// rootFd stays local: only relative path and fstat identity travel to broker.
-// OpenBSD pledge sendfd/recvfd explicitly exclude directory descriptors.
+// The broker's immutable data root is installed before spawn and inherited as
+// fd 4. For each worker, only the relative path and fstat identity travel over
+// IPC; the caller's rootFd stays local. OpenBSD sendfd/recvfd explicitly
+// exclude directory descriptors.
 i2p::expected<Channel, std::string> SpawnSupervisedTorrentStorage (
  int rootFd, std::string_view rootPath);
 int RunTorrentStorageSupervisor (int fd);

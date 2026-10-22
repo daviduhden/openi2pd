@@ -62,6 +62,12 @@ struct LinuxSandboxProfile
 
 LinuxSandboxProfile GetLinuxSandboxProfile (WorkerClass workerClass);
 i2p::expected<void, std::string> ApplyLinuxSandbox (const LinuxSandboxProfile & profile);
+// The supervisor must not install Landlock/seccomp/network namespaces: those
+// domains are inherited across fork+exec and would prevent every child from
+// using its own delegated capability (storage writes, network sockets).
+// It still drops capabilities and sets no_new_privs; each exec'ed worker
+// applies its own role policy before handling requests.
+i2p::expected<void, std::string> ApplyLinuxSupervisorSandbox ();
 
 /**
  * Optional cgroup v2 limits. The path must name a delegated cgroup directory

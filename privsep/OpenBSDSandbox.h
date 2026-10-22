@@ -63,6 +63,12 @@ struct OpenBSDPolicyConfig
 
 	/** Network worker may request mcast only for the explicit UPnP feature. */
 	bool upnp = false;
+	/** Future transport worker receives sockets over SCM_RIGHTS. */
+	bool socketHandoff = false;
+	/** Worker needs route/interface information for MTU/address probing. */
+	bool routeInfo = false;
+	/** Proxy-less deployments may disable DNS; default preserves current policy. */
+	bool dnsLookup = true;
 
 	/**
 	 * Extra paths are explicit configuration, never an implicit current
@@ -123,6 +129,14 @@ i2p::expected<int, std::string> OpenPreopenedDirectory (std::string_view path);
  * be close-on-exec and either a regular file or a directory.
  */
 i2p::expected<void, std::string> ValidatePreopenedDescriptor (int fd, bool directory);
+
+/**
+ * Validate a socket received through SCM_RIGHTS before it is used by a
+ * network/transport worker: close-on-exec, expected SOCK_* type and, for a
+ * listening stream socket, SO_ACCEPTCONN.
+ */
+i2p::expected<void, std::string> ValidatePreopenedSocket (
+	int fd, int expectedType, bool requireListening);
 
 /**
  * Compile-time/runtime policy checks used by diagnostics and CI. They inspect

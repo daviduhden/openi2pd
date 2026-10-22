@@ -22,6 +22,12 @@ using namespace i2p::privsep;
 
 namespace
 {
+std::string LogConfig (bool useSyslog, std::string_view path, std::string_view tag)
+{
+	auto encoded = EncodeLogConfig (useSyslog, path, tag);
+	assert (encoded.has_value ());
+	return *encoded;
+}
 std::string Header (uint32_t magic, uint16_t version, uint16_t type, uint32_t requestId, uint32_t length)
 {
 	PayloadWriter writer;
@@ -62,8 +68,14 @@ int main ()
 	// the payload is dispatched.
 	ExpectDecodeError (Header (0, PROTOCOL_VERSION, 2, 0, 0), ErrorCode::Malformed);
 	ExpectDecodeError (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION + 1, 2, 0, 0), ErrorCode::UnsupportedVersion);
+	ExpectDecodeError (Header (PROTOCOL_MAGIC, MIN_PROTOCOL_VERSION - 1, 2, 0, 0), ErrorCode::UnsupportedVersion);
+	// Version 1 frames remain readable; new senders emit version 2.
+	assert (Decode (Header (PROTOCOL_MAGIC, MIN_PROTOCOL_VERSION, 2, 0, 0)).has_value ());
 	ExpectDecodeError (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 0, 0, 0), ErrorCode::UnknownType);
-	ExpectDecodeError (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 15, 0, 0), ErrorCode::UnknownType);
+	// Error is the last known type; one past it and 0xffff are unknown.
+	assert (Decode (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 15, 0, 0)).has_value ());
+	assert (Decode (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 16, 0, 0)).has_value ());
+	ExpectDecodeError (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 17, 0, 0), ErrorCode::UnknownType);
 	ExpectDecodeError (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 0xffff, 0, 0), ErrorCode::UnknownType);
 
 	// Configuration and supervisor types are accepted by framing; role-specific
@@ -71,14 +83,14 @@ int main ()
 	// control messages, so the boundary is accepted before dispatch.
 	{
 		auto fdConfig
-			= Encode (Message { MessageType::ConfigureLogFd, 8, EncodeLogConfig (false, "/tmp/router.log", "test") });
+			= Encode (Message { MessageType::ConfigureLogFd, 8, LogConfig (false, "/tmp/router.log", "test") });
 		assert (fdConfig.has_value ());
 		auto decodedConfig = Decode (*fdConfig);
 		assert (decodedConfig.has_value ());
 		assert (decodedConfig->type == MessageType::ConfigureLogFd);
 		assert (decodedConfig->requestId == 8);
 		assert (Decode (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 6, 0, 0)).has_value ());
-		for (uint16_t type = 7; type <= 14; ++type)
+		for (uint16_t type = 7; type <= MAX_MESSAGE_TYPE; ++type)
 			assert (Decode (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, type, 1, 0)).has_value ());
 		assert (Decode (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 3, 0, 0)).has_value ());
 	}
@@ -192,7 +204,7 @@ int main ()
 	}
 
 	// Log configuration validation.
-	auto goodConfig = EncodeLogConfig (false, "/tmp/router.log", "open-i2pd");
+	auto goodConfig = LogConfig (false, "/tmp/router.log", "open-i2pd");
 	auto parsedConfig = DecodeLogConfig (goodConfig);
 	assert (parsedConfig.has_value ());
 	assert (!std::get<0> (*parsedConfig));
@@ -235,6 +247,40 @@ int main ()
 		assert (!invalid.has_value ());
 		assert (invalid.error ().code == ErrorCode::BadField);
 	}
+
+	// Encoders reject an over-long path instead of truncating it to a
+	// different filesystem object. The maximum is inclusive.
+	assert (EncodeLogConfig (false, std::string (MAX_PATH_SIZE + 1, 'a'), "tag").error ().code == ErrorCode::BadField);
+	assert (EncodeLogConfig (false, std::string ("/tmp/\0hidden", 12), "tag").error ().code == ErrorCode::BadField);
+	assert (EncodeLogConfig (false, std::string (MAX_PATH_SIZE, 'a'), std::string (MAX_TEXT_SIZE, 't')).has_value ());
+
+	// Typed Error replies round-trip and reject unknown/oversized fields.
+	{
+		const std::string payload = EncodeError (MessageType::TorrentStorageRequest, ErrorCode::Busy, "capacity");
+		auto decodedError = DecodeError (payload);
+		assert (decodedError.has_value ());
+		assert (std::get<0> (*decodedError) == MessageType::TorrentStorageRequest);
+		assert (std::get<1> (*decodedError) == ErrorCode::Busy);
+		assert (std::get<2> (*decodedError) == "capacity");
+		PayloadWriter badType;
+		badType.WriteU16 (0xffff);
+		badType.WriteU8 (static_cast<uint8_t> (ErrorCode::BadField));
+		badType.WriteString ("x");
+		assert (!DecodeError (badType.Data ()).has_value ());
+		PayloadWriter badCode;
+		badCode.WriteU16 (static_cast<uint16_t> (MessageType::Ping));
+		badCode.WriteU8 (0xff);
+		badCode.WriteString ("x");
+		assert (!DecodeError (badCode.Data ()).has_value ());
+	}
+
+	// The operation matrix is shared by every transport and endpoint.
+	assert (AllowsOperation (EndpointRole::Log, MessageType::LogRecord));
+	assert (AllowsOperation (EndpointRole::Supervisor, MessageType::ConfigureLog));
+	assert (AllowsOperation (EndpointRole::TorrentStorage, MessageType::TorrentStorageRequest));
+	assert (!AllowsOperation (EndpointRole::TorrentStorage, MessageType::ConfigureRouterStorage));
+	assert (!AllowsOperation (EndpointRole::RouterStorage, MessageType::LogRecord));
+	assert (!AllowsOperation (EndpointRole::StorageBroker, MessageType::LogRecord));
 
 	// Channel behavior: SOCK_SEQPACKET only, peer credentials, timeout versus
 	// peer close, and use after close.

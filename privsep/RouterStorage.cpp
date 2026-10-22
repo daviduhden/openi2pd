@@ -81,11 +81,15 @@ struct RouterStorageClient::Impl
   auto result = channel.ReceiveWithFd (5000);
   if (!result || !*result) { ready = false; channel.Close (); return false; }
   auto & reply = **result;
-  bool valid = reply.fd < 0 && reply.message.type == MessageType::RouterStorageReply
-   && reply.message.requestId == id && reply.message.payload == std::string (1, '\0');
+  // A worker-level write rejection (status '\1', for example ENOSPC or a
+  // symlink/ownership check) is a failed operation, not a broken channel.
+  // Only a malformed frame/request ID poisons the client permanently.
+  const bool valid = reply.fd < 0 && reply.message.type == MessageType::RouterStorageReply
+   && reply.message.requestId == id && (reply.message.payload == std::string (1, '\0')
+     || reply.message.payload == std::string (1, '\1'));
   if (reply.fd >= 0) ::close (reply.fd);
-  if (!valid) { ready = false; channel.Close (); }
-  return valid;
+  if (!valid) { ready = false; channel.Close (); return false; }
+  return reply.message.payload == std::string (1, '\0');
  }
 };
 RouterStorageClient::RouterStorageClient () : m_Impl (std::make_unique<Impl> ()) {}
@@ -109,6 +113,8 @@ bool RouterStorageClient::Start (const std::filesystem::path & root, std::string
  std::error_code ec;
  auto absolute = std::filesystem::canonical (root, ec);
  if (ec || absolute.string ().size () > 4096) { error = "invalid router storage root"; return false; }
+ // Keep O_RDONLY rather than O_PATH: AtomicWrite performs fsync() on the
+ // directory descriptor, which an O_PATH descriptor cannot satisfy.
  Fd directory { ::open (absolute.c_str (), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC) };
  struct stat status {};
  if (directory.value < 0 || ::fstat (directory.value, &status) || status.st_uid != ::geteuid () || (status.st_mode & 0022))
@@ -124,7 +130,10 @@ bool RouterStorageClient::Start (const std::filesystem::path & root, std::string
  m_Impl->child = std::move (*worker);
  const int passed = directory.value;
 #endif
- PayloadWriter setup; setup.WriteString (absolute.string ());
+ PayloadWriter setup;
+ if (!setup.WritePath (absolute.string ())) { error = "router storage root path exceeds the IPC bound"; return false; }
+ setup.WriteU64BE (static_cast<uint64_t> (status.st_dev));
+ setup.WriteU64BE (static_cast<uint64_t> (status.st_ino));
  m_Impl->ready = m_Impl->Exchange (MessageType::ConfigureRouterStorage, setup.Data (), passed);
  if (!m_Impl->ready) error = "router storage sandbox/setup failed";
  return m_Impl->ready;
@@ -156,7 +165,12 @@ int RunRouterStorageWorker (int fd, int inheritedRoot)
    || status.st_uid != ::geteuid () || (status.st_mode & 0022)) return 1;
  PayloadReader setup (config.message.payload);
  auto path = setup.ReadString ();
- if (!path || !setup.Done () || path->empty () || path->front () != '/' || path->find ('\0') != std::string_view::npos) return 1;
+ auto expectedDevice = setup.ReadU64BE ();
+ auto expectedInode = setup.ReadU64BE ();
+ if (!path || !expectedDevice || !expectedInode || !setup.Done () || path->empty () || path->front () != '/'
+   || path->size () > MAX_PATH_SIZE || path->find ('\0') != std::string_view::npos
+   || static_cast<uint64_t> (status.st_dev) != *expectedDevice
+   || static_cast<uint64_t> (status.st_ino) != *expectedInode) return 1;
  if (root.value <= 3)
  {
   int replacement = ::fcntl (root.value, F_DUPFD_CLOEXEC, 4);
@@ -178,6 +192,7 @@ int RunRouterStorageWorker (int fd, int inheritedRoot)
  return 1;
 #endif
  if (!channel.Send ({MessageType::RouterStorageReply, config.message.requestId, std::string (1, '\0')}, 5000)) return 1;
+ uint32_t lastRequest = 0;
  while (true)
  {
   auto incoming = channel.ReceiveWithFd (30000);
@@ -186,8 +201,25 @@ int RunRouterStorageWorker (int fd, int inheritedRoot)
   auto & frame = **incoming;
   if (frame.fd >= 0) { ::close (frame.fd); return 1; }
   const auto & request = frame.message;
-  if (request.type == MessageType::Shutdown && request.payload.empty ()) return 0;
+  if (!AllowsOperation (EndpointRole::RouterStorage, request.type)) return 1;
+  if (request.type == MessageType::Ping)
+  {
+   if (!request.payload.empty ()) return 1;
+   if (!channel.Send ({MessageType::Pong, request.requestId, {}}, 5000)) return 1;
+   continue;
+  }
+  if (request.type == MessageType::Shutdown)
+  {
+   if (!request.payload.empty ()) return 1;
+   return 0;
+  }
   if (request.type != MessageType::RouterStorageRequest || !request.requestId || request.payload.size () < 2 || request.payload.size () > 32769) return 1;
+  if (request.requestId <= lastRequest)
+  {
+   if (!channel.Send ({MessageType::RouterStorageReply, request.requestId, std::string (1, '\1')}, 5000)) return 1;
+   continue;
+  }
+  lastRequest = request.requestId;
   bool success = AtomicWrite (root.value, static_cast<uint8_t> (request.payload.front ()), std::string_view (request.payload).substr (1));
   if (!channel.Send ({MessageType::RouterStorageReply, request.requestId, std::string (1, success ? '\0' : '\1')}, 5000)) return 1;
  }

@@ -38,6 +38,7 @@
 #endif
 
 #if defined(__linux__)
+#include <sys/prctl.h>
 #include <sys/syscall.h>
 #endif
 
@@ -62,9 +63,14 @@ namespace
 		// close_range and a router with a raised limits.openfiles can hold
 		// descriptors above 1023; use the actual soft limit so they cannot
 		// leak into the exec'ed worker.
+		// A 1024 ceiling was unsafe under RLIMIT_NOFILE=infinity: accepted
+		// sockets/DB handles above it survived into the worker. Use the
+		// derived soft limit; for infinity use the kernel's usual nr_open
+		// order of magnitude and document the residual on pre-5.9 kernels.
 		rlim_t ceiling = 1024;
 		struct rlimit limit { };
-		if (getrlimit (RLIMIT_NOFILE, &limit) == 0 && limit.rlim_cur != RLIM_INFINITY) ceiling = limit.rlim_cur;
+		if (getrlimit (RLIMIT_NOFILE, &limit) == 0)
+			ceiling = limit.rlim_cur == RLIM_INFINITY ? (static_cast<rlim_t> (1) << 20) : limit.rlim_cur;
 		for (rlim_t fd = static_cast<rlim_t> (lowfd); fd < ceiling; ++fd) close (static_cast<int> (fd));
 #endif
 	}
@@ -167,10 +173,12 @@ ChildProcess ChildProcess::Adopt (pid_t pid, Channel channel)
 
 bool ChildProcess::WaitForExit (int timeoutMs)
 {
-	// WaitForChildExitBounded() reaps the child. ReapNoHang() then observes
-	// ECHILD, clears m_Pid and closes the pidfd without a second blocking wait.
+	// WaitForChildExitBounded() already reaps the child. A second waitpid()
+	// here could consume a newly forked child that reused the PID, so only
+	// clear the local handle.
 	if (!WaitForChildExitBounded (m_Pid, m_PidFd, timeoutMs)) return false;
-	if (m_Pid > 0) ReapNoHang ();
+	m_Pid = -1;
+	ClosePidFd ();
 	return true;
 }
 
@@ -291,6 +299,11 @@ static i2p::expected<ChildProcess, std::string> SpawnWorkerInternal (const char 
 		sigset_t empty;
 		sigemptyset (&empty);
 		sigprocmask (SIG_SETMASK, &empty, nullptr);
+#if defined(__linux__)
+		// Do not let a setuid/file-capability executable raise privileges
+		// before the worker installs its own seccomp/capability policy.
+		if (prctl (PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0) _exit (127);
+#endif
 		int fd = child.Fd ();
 		// The socketpair may have been allocated below descriptor 3 if the
 		// caller inherited closed standard descriptors. Close the parent
@@ -355,6 +368,9 @@ static i2p::expected<Channel, std::string> SpawnDetachedWorkerInternal (const ch
   if (broker > 0) _exit (0);
   sigset_t empty;
   sigemptyset (&empty); sigprocmask (SIG_SETMASK, &empty, nullptr);
+#if defined(__linux__)
+  if (prctl (PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0) _exit (127);
+#endif
   const int fd = pair->second.Fd ();
   const int parent = pair->first.Fd ();
   if (parent >= 0 && parent != fd) ::close (parent);

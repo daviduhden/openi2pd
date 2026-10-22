@@ -43,6 +43,14 @@ struct TorrentStorageWorker::Impl
   { ready = false; process.Stop (100); error = "storage worker disconnected or timed out"; return false; }
   auto & reply = **received;
   if (reply.fd >= 0) ::close (reply.fd);
+  if (reply.message.type == MessageType::Error && reply.message.requestId == id && reply.fd < 0)
+  {
+   auto decoded = DecodeError (reply.message.payload);
+   if (!decoded) { ready = false; process.Stop (100); error = "invalid storage error response"; return false; }
+   // A typed operation rejection is not a broken channel.
+   error = std::get<2> (*decoded);
+   return false;
+  }
   if (reply.fd >= 0 || reply.message.type != MessageType::TorrentStorageReply || reply.message.requestId != id
     || reply.message.payload.empty () || (reply.message.payload.front () != 0 && reply.message.payload.front () != 1))
   { ready = false; process.Stop (100); error = "invalid storage response"; return false; }
@@ -71,8 +79,14 @@ bool TorrentStorageWorker::Start (const std::filesystem::path & root, std::strin
  std::error_code ec;
  auto absolute = std::filesystem::canonical (root, ec);
  if (ec || absolute.native ().size () > 4096) { error = "invalid authorized storage root"; return false; }
+ // O_RDONLY rather than O_PATH: the worker fsyncs parent directories after
+ // metadata/promote operations, which an O_PATH descriptor cannot satisfy.
  int fd = ::open (absolute.c_str (), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
  if (fd < 0) { error = "cannot open authorized storage root"; return false; }
+ struct stat rootStatus {};
+ if (::fstat (fd, &rootStatus) || !S_ISDIR (rootStatus.st_mode)
+   || rootStatus.st_uid != ::geteuid () || (rootStatus.st_mode & 0022))
+ { ::close (fd); error = "unsafe authorized storage root"; return false; }
 #if defined(__OpenBSD__)
  // No fork/exec in the pledged core. The pre-started supervisor validates the
  // directory capability and configures the child before handing over its IPC.
@@ -86,7 +100,10 @@ bool TorrentStorageWorker::Start (const std::filesystem::path & root, std::strin
  auto child = SpawnWorker ("torrent-storage", {});
  if (!child) { ::close (fd); error = child.error (); return false; }
  m_Impl->process = std::move (*child);
- PayloadWriter setup; setup.WriteString (absolute.string ());
+ PayloadWriter setup;
+ if (!setup.WritePath (absolute.string ())) { ::close (fd); error = "storage root path exceeds the IPC bound"; return false; }
+ setup.WriteU64BE (static_cast<uint64_t> (rootStatus.st_dev));
+ setup.WriteU64BE (static_cast<uint64_t> (rootStatus.st_ino));
  std::string result;
  const bool ok = m_Impl->Exchange (MessageType::ConfigureTorrentStorage, setup.Data (), fd, result, error);
  ::close (fd);
@@ -107,7 +124,7 @@ uint32_t TorrentStorageWorker::Register (const std::filesystem::path & relative,
  if (!m_Impl->ready || !SafeStoragePath (path) || length > TorrentStorageFileLimit)
  { error = "invalid storage registration or worker unavailable"; return 0; }
  PayloadWriter request; request.WriteU8 (static_cast<uint8_t> (StorageOperation::Register));
- request.WriteString (path); request.WriteU64BE (length); request.WriteU8 (create ? 1 : 0);
+ if (!request.WritePath (path)) { error = "storage path exceeds the IPC bound"; return 0; } request.WriteU64BE (length); request.WriteU8 (create ? 1 : 0);
  std::string reply;
  if (!m_Impl->Exchange (MessageType::TorrentStorageRequest, request.Data (), -1, reply, error)) return 0;
  PayloadReader reader (reply); auto id = reader.ReadU32 ();
@@ -175,7 +192,7 @@ bool TorrentStorageWorker::Promote (const std::filesystem::path & source, const 
  if (!m_Impl->ready || !SafeStoragePath (from) || !SafeStoragePath (to) || length > TorrentStorageFileLimit)
  { error = "invalid storage promotion"; return false; }
  PayloadWriter request; request.WriteU8 (static_cast<uint8_t> (StorageOperation::Promote));
- request.WriteString (from); request.WriteString (to); request.WriteU64BE (length);
+ if (!request.WritePath (from) || !request.WritePath (to)) { error = "storage path exceeds the IPC bound"; return false; } request.WriteU64BE (length);
  std::string reply;
  return m_Impl->Exchange (MessageType::TorrentStorageRequest, request.Data (), -1, reply, error) && reply.empty ();
 #else
@@ -191,7 +208,7 @@ bool TorrentStorageWorker::Remove (const std::filesystem::path & relative, uint6
  if (!m_Impl->ready || !SafeStoragePath (path) || length > TorrentStorageFileLimit)
  { error = "invalid storage removal"; return false; }
  PayloadWriter request; request.WriteU8 (static_cast<uint8_t> (StorageOperation::Remove));
- request.WriteString (path); request.WriteU64BE (length); std::string reply;
+ if (!request.WritePath (path)) { error = "storage path exceeds the IPC bound"; return false; } request.WriteU64BE (length); std::string reply;
  return m_Impl->Exchange (MessageType::TorrentStorageRequest, request.Data (), -1, reply, error) && reply.empty ();
 #else
  (void)relative; (void)length; error = "isolated torrent storage unavailable"; return false;
@@ -205,7 +222,7 @@ bool TorrentStorageWorker::RemoveEmptyDirectory (const std::filesystem::path & r
  auto path = relative.generic_string ();
  if (!m_Impl->ready || !SafeStoragePath (path)) { error = "invalid storage directory removal"; return false; }
  PayloadWriter request; request.WriteU8 (static_cast<uint8_t> (StorageOperation::RemoveDirectory));
- request.WriteString (path); std::string reply;
+ if (!request.WritePath (path)) { error = "storage path exceeds the IPC bound"; return false; } std::string reply;
  return m_Impl->Exchange (MessageType::TorrentStorageRequest, request.Data (), -1, reply, error) && reply.empty ();
 #else
  (void)relative; error = "isolated torrent storage unavailable"; return false;
@@ -221,7 +238,7 @@ bool TorrentStorageWorker::AuthorizeDHTMetadata (const std::filesystem::path & r
  if (!m_Impl->ready || !SafeStoragePath (path) || path.find ('/') != std::string::npos
    || path.starts_with (".openi2pd") || path.starts_with (".i2pd"))
  { error = "invalid DHT metadata authority"; return false; }
- PayloadWriter request; request.WriteU8 (static_cast<uint8_t> (StorageOperation::AuthorizeDHTMetadata)); request.WriteString (path);
+ PayloadWriter request; request.WriteU8 (static_cast<uint8_t> (StorageOperation::AuthorizeDHTMetadata)); if (!request.WritePath (path)) { error = "storage path exceeds the IPC bound"; return false; }
  std::string reply;
  return m_Impl->Exchange (MessageType::TorrentStorageRequest, request.Data (), -1, reply, error) && reply.empty ();
 #else
@@ -235,7 +252,7 @@ bool TorrentStorageWorker::ReadMetadata (const std::filesystem::path & relative,
  using namespace i2p::privsep;
  const auto path = relative.generic_string ();
  if (!m_Impl->ready || !SafeStoragePath (path)) { error = "invalid metadata read"; return false; }
- PayloadWriter request; request.WriteU8 (static_cast<uint8_t> (StorageOperation::MetadataOpen)); request.WriteString (path);
+ PayloadWriter request; request.WriteU8 (static_cast<uint8_t> (StorageOperation::MetadataOpen)); if (!request.WritePath (path)) { error = "storage path exceeds the IPC bound"; return false; }
  std::string reply;
  if (!m_Impl->Exchange (MessageType::TorrentStorageRequest, request.Data (), -1, reply, error)) return false;
  PayloadReader reader (reply); const auto handle = reader.ReadU32 (); const auto size = reader.ReadU64BE ();
@@ -279,7 +296,7 @@ bool TorrentStorageWorker::ReplaceMetadata (const std::filesystem::path & relati
  { error = "invalid metadata replacement"; return false; }
  std::string reply;
  auto exchange = [&] (std::string payload) { return m_Impl->Exchange (MessageType::TorrentStorageRequest, std::move (payload), -1, reply, error) && reply.empty (); };
- PayloadWriter begin; begin.WriteU8 (static_cast<uint8_t> (StorageOperation::MetadataBegin)); begin.WriteString (path); begin.WriteU64BE (bytes.size ());
+ PayloadWriter begin; begin.WriteU8 (static_cast<uint8_t> (StorageOperation::MetadataBegin)); if (!begin.WritePath (path)) { error = "metadata path exceeds the IPC bound"; return false; } begin.WriteU64BE (bytes.size ());
  if (!exchange (begin.Data ())) return false;
  const auto deadline = std::chrono::steady_clock::now () + std::chrono::seconds (30);
  bool ok = true;
@@ -312,7 +329,7 @@ bool TorrentStorageWorker::RemoveMetadata (const std::filesystem::path & relativ
  using namespace i2p::privsep;
  auto path = relative.generic_string ();
  if (!m_Impl->ready || !SafeStoragePath (path)) { error = "invalid metadata removal"; return false; }
- PayloadWriter request; request.WriteU8 (static_cast<uint8_t> (StorageOperation::MetadataRemove)); request.WriteString (path);
+ PayloadWriter request; request.WriteU8 (static_cast<uint8_t> (StorageOperation::MetadataRemove)); if (!request.WritePath (path)) { error = "metadata path exceeds the IPC bound"; return false; }
  std::string reply;
  return m_Impl->Exchange (MessageType::TorrentStorageRequest, request.Data (), -1, reply, error) && reply.empty ();
 #else

@@ -13,6 +13,7 @@
  */
 
 #include "LogWorker.h"
+#include "Worker.h"
 #include "LinuxSandbox.h"
 #include "OpenBSDSandbox.h"
 
@@ -20,6 +21,7 @@
 
 #include <cerrno>
 #include <algorithm>
+#include <chrono>
 #include <cstdio>
 #include <cstring>
 #include <fcntl.h>
@@ -139,28 +141,62 @@ namespace
 	}
 }
 
+i2p::expected<void, std::string> LogSink::WaitForPong (Channel & channel, uint32_t expected, int timeoutMs)
+{
+	auto deadline = std::chrono::steady_clock::now () + std::chrono::milliseconds (timeoutMs);
+	while (std::chrono::steady_clock::now () < deadline)
+	{
+		const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds> (
+			deadline - std::chrono::steady_clock::now ()).count ();
+		if (remaining <= 0) break;
+		auto received = channel.Receive (static_cast<int> (std::max<int64_t> (remaining, 1)));
+		if (!received) return i2p::unexpected (received.error ());
+		if (!*received) continue;
+		const auto & message = **received;
+		if (message.type == MessageType::Pong && message.requestId == expected) return { };
+		if (message.type == MessageType::Pong) continue;
+		return i2p::unexpected ("unexpected response while waiting for log worker readiness");
+	}
+	return i2p::unexpected ("log worker did not acknowledge configuration");
+}
+
+i2p::expected<void, std::string> LogSink::ConfigureChannel (
+	Channel & channel, MessageType type, bool useSyslog, std::string_view path, std::string_view tag, int fd)
+{
+	auto encoded = EncodeLogConfig (useSyslog, path, tag);
+	if (!encoded) return i2p::unexpected (std::string ("invalid log configuration: ") + std::string (encoded.error ().text));
+	const uint32_t configureId = ++m_NextRequest;
+	Message message { type, configureId, *encoded };
+	auto sent = fd >= 0 ? channel.SendWithFd (message, fd) : channel.Send (message);
+	if (!sent) return sent;
+	// Configure is ordered before Ping on SOCK_SEQPACKET/message pipes. The
+	// matching Pong therefore proves that the worker decoded and attached the
+	// configuration before startup reports success.
+	const uint32_t pingId = ++m_NextRequest;
+	if (!channel.Send (Message { MessageType::Ping, pingId, { } }, 5000))
+		return i2p::unexpected ("cannot probe configured log worker");
+	return WaitForPong (channel, pingId, 5000);
+}
+
 i2p::expected<void, std::string> LogSink::Configure (bool useSyslog, std::string_view path, std::string_view tag)
 {
 	std::lock_guard<std::mutex> lock (m_Mutex);
 	if (m_Configured) return i2p::unexpected ("log sink already configured");
-	if (path.find ('\0') != std::string_view::npos || tag.find ('\0') != std::string_view::npos)
-		return i2p::unexpected ("NUL in log configuration");
 	int logFd = -1;
 	if (!useSyslog && !path.empty ())
 	{
 		logFd = OpenLogFile (path);
 		if (logFd < 0) return i2p::unexpected (std::string ("open log file: ") + strerror (errno));
 	}
-	Message message { MessageType::ConfigureLogFd, 0, EncodeLogConfig (useSyslog, path, tag) };
-	auto sent = m_Channel.SendWithFd (message, logFd);
+	auto configured = ConfigureChannel (m_Channel, MessageType::ConfigureLogFd, useSyslog, path, tag, logFd);
 	if (logFd >= 0) close (logFd);
-	if (!sent)
+	if (!configured)
 	{
 		m_Channel.Close ();
-		return sent;
+		return configured;
 	}
 	m_Syslog = useSyslog;
-	m_Path.assign (path.substr (0, MAX_TEXT_SIZE));
+	m_Path.assign (path);
 	m_Tag.assign (tag.substr (0, MAX_TEXT_SIZE));
 	m_Configured = true;
 	return { };
@@ -170,17 +206,14 @@ i2p::expected<void, std::string> LogSink::ConfigureProxy (bool useSyslog, std::s
 {
 	std::lock_guard<std::mutex> lock (m_Mutex);
 	if (m_Configured) return i2p::unexpected ("log sink already configured");
-	if (path.find ('\0') != std::string_view::npos || tag.find ('\0') != std::string_view::npos)
-		return i2p::unexpected ("NUL in log configuration");
-	Message message { MessageType::ConfigureLog, 0, EncodeLogConfig (useSyslog, path, tag) };
-	auto sent = m_Channel.Send (message);
-	if (!sent)
+	auto configured = ConfigureChannel (m_Channel, MessageType::ConfigureLog, useSyslog, path, tag, -1);
+	if (!configured)
 	{
 		m_Channel.Close ();
-		return sent;
+		return configured;
 	}
 	m_Syslog = useSyslog;
-	m_Path.assign (path.substr (0, MAX_TEXT_SIZE));
+	m_Path.assign (path);
 	m_Tag.assign (tag.substr (0, MAX_TEXT_SIZE));
 	m_Configured = true;
 	return { };
@@ -197,20 +230,19 @@ i2p::expected<void, std::string> LogSink::Reattach (Channel channel)
 		logFd = OpenLogFile (m_Path);
 		if (logFd < 0) return i2p::unexpected (std::string ("open log file: ") + strerror (errno));
 	}
-	m_Channel.Close ();
 	if (!channel.IsOpen ())
 	{
 		if (logFd >= 0) close (logFd);
 		return i2p::unexpected ("invalid replacement channel");
 	}
-	Message message { MessageType::ConfigureLogFd, 0, EncodeLogConfig (m_Syslog, m_Path, m_Tag) };
-	auto sent = channel.SendWithFd (message, logFd);
+	auto configured = ConfigureChannel (channel, MessageType::ConfigureLogFd, m_Syslog, m_Path, m_Tag, logFd);
 	if (logFd >= 0) close (logFd);
-	if (!sent)
+	if (!configured)
 	{
 		channel.Close ();
-		return sent;
+		return configured;
 	}
+	m_Channel.Close ();
 	m_Channel = std::move (channel);
 	return { };
 }
@@ -220,15 +252,14 @@ i2p::expected<void, std::string> LogSink::ReattachProxy (Channel channel)
 	std::lock_guard<std::mutex> lock (m_Mutex);
 	if (!m_Configured) return i2p::unexpected ("log sink is not configured");
 	if (m_Shutdown) return i2p::unexpected ("log sink is shut down");
-	m_Channel.Close ();
 	if (!channel.IsOpen ()) return i2p::unexpected ("invalid replacement channel");
-	Message message { MessageType::ConfigureLog, 0, EncodeLogConfig (m_Syslog, m_Path, m_Tag) };
-	auto sent = channel.Send (message);
-	if (!sent)
+	auto configured = ConfigureChannel (channel, MessageType::ConfigureLog, m_Syslog, m_Path, m_Tag, -1);
+	if (!configured)
 	{
 		channel.Close ();
-		return sent;
+		return configured;
 	}
+	m_Channel.Close ();
 	m_Channel = std::move (channel);
 	return { };
 }
@@ -236,12 +267,27 @@ i2p::expected<void, std::string> LogSink::ReattachProxy (Channel channel)
 void LogSink::Write (uint8_t level, std::time_t timestamp, std::string_view text)
 {
 	std::lock_guard<std::mutex> lock (m_Mutex);
-	if (m_Shutdown || !IsLevel (level) || !m_Channel.IsOpen ()) return;
+	if (m_Shutdown || !IsLevel (level)) return;
+	if (!m_Channel.IsOpen ())
+	{
+		++m_Dropped;
+		return;
+	}
 	Message message { MessageType::LogRecord, 0, EncodeLogRecord (level, static_cast<int64_t> (timestamp), text) };
 	// A bounded send keeps a wedged worker from stalling the logger
 	// thread for the full default timeout on every record.
 	auto result = m_Channel.Send (message, 1000);
-	if (!result) m_Channel.Close (); // drop logs; never fall back to a local file
+	if (!result)
+	{
+		++m_Dropped;
+		m_Channel.Close (); // drop logs; never fall back to a local file
+	}
+}
+
+uint64_t LogSink::DroppedCount () const
+{
+	std::lock_guard<std::mutex> lock (m_Mutex);
+	return m_Dropped;
 }
 
 i2p::expected<void, std::string> LogSink::Shutdown ()
@@ -269,6 +315,7 @@ bool LogSink::IsShutdown () const
 
 int RunLogWorker (int fd)
 {
+	SanitizeInheritedStdio ();
 	Channel channel = Channel::Adopt (fd);
 	auto peer = channel.PeerUid ();
 	if (!peer || *peer != geteuid ())
@@ -302,6 +349,12 @@ int RunLogWorker (int fd)
 			}
 		};
 
+		if (!AllowsOperation (EndpointRole::Log, message.type))
+		{
+			closeMessageFd ();
+			std::cerr << "privsep log: operation is not allowed on this endpoint" << std::endl;
+			return 1;
+		}
 		switch (message.type)
 		{
 		case MessageType::ConfigureLog:
@@ -486,14 +539,25 @@ int RunLogWorker (int fd)
 		}
 		case MessageType::Ping:
 		{
-			closeMessageFd ();
+			if (messageFd >= 0 || !message.payload.empty ())
+			{
+				closeMessageFd ();
+				std::cerr << "privsep log: invalid ping" << std::endl;
+				return 1;
+			}
 			// Control messages are safe before configuration; this lets
-			// a supervisor probe a freshly spawned worker.
+			// a supervisor prove that a freshly configured worker is live.
 			Message pong { MessageType::Pong, message.requestId, { } };
 			if (!channel.Send (pong)) return 1;
 			break;
 		}
 		case MessageType::Shutdown:
+			if (messageFd >= 0 || !message.payload.empty ())
+			{
+				closeMessageFd ();
+				std::cerr << "privsep log: invalid shutdown" << std::endl;
+				return 1;
+			}
 			closeMessageFd ();
 			if (config.syslog)
 				closelog ();

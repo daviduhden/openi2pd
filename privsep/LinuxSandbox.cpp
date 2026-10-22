@@ -31,6 +31,11 @@ i2p::expected<void, std::string> ApplyLinuxSandbox (const LinuxSandboxProfile &)
 	return i2p::unexpected ("Linux sandbox is not available on this platform");
 }
 
+i2p::expected<void, std::string> ApplyLinuxSupervisorSandbox ()
+{
+	return i2p::unexpected ("Linux sandbox is not available on this platform");
+}
+
 i2p::expected<void, std::string> ApplyLinuxCgroupV2Limits (const LinuxCgroupV2Limits &)
 {
 	return i2p::unexpected ("cgroup v2 is not available on this platform");
@@ -216,6 +221,43 @@ namespace
 		filter.push_back (BPF_JUMP (BPF_JMP | BPF_JEQ | BPF_K, SYS_ptrace, 0, 1));
 		filter.push_back (BPF_STMT (BPF_RET | BPF_K, deny));
 #endif
+		auto denySyscall = [&filter, deny] (int syscallNumber)
+		{
+			filter.push_back (BPF_JUMP (BPF_JMP | BPF_JEQ | BPF_K, static_cast<uint32_t> (syscallNumber), 0, 1));
+			filter.push_back (BPF_STMT (BPF_RET | BPF_K, deny));
+		};
+		// Block the descriptor/process-memory side channels that could undo
+		// a storage worker's filesystem/network split against a same-UID core.
+#ifdef SYS_process_vm_readv
+		denySyscall (SYS_process_vm_readv);
+#endif
+#ifdef SYS_process_vm_writev
+		denySyscall (SYS_process_vm_writev);
+#endif
+#ifdef SYS_kcmp
+		denySyscall (SYS_kcmp);
+#endif
+#ifdef SYS_pidfd_open
+		denySyscall (SYS_pidfd_open);
+#endif
+#ifdef SYS_pidfd_send_signal
+		denySyscall (SYS_pidfd_send_signal);
+#endif
+#ifdef SYS_open_by_handle_at
+		denySyscall (SYS_open_by_handle_at);
+#endif
+#ifdef SYS_name_to_handle_at
+		denySyscall (SYS_name_to_handle_at);
+#endif
+#ifdef SYS_userfaultfd
+		denySyscall (SYS_userfaultfd);
+#endif
+#ifdef SYS_bpf
+		denySyscall (SYS_bpf);
+#endif
+#ifdef SYS_perf_event_open
+		denySyscall (SYS_perf_event_open);
+#endif
 		if (denyAll)
 		{
 			filter.push_back (BPF_JUMP (BPF_JMP | BPF_JEQ | BPF_K, SYS_socket, 0, 1));
@@ -387,6 +429,13 @@ i2p::expected<void, std::string> ApplyLinuxSandbox (const LinuxSandboxProfile & 
 		if (!seccomp) return seccomp;
 	}
 	return { };
+}
+
+i2p::expected<void, std::string> ApplyLinuxSupervisorSandbox ()
+{
+	if (prctl (PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0) != 0)
+		return i2p::unexpected (std::string ("PR_SET_NO_NEW_PRIVS: ") + strerror (errno));
+	return DropCapabilities ();
 }
 
 i2p::expected<void, std::string> ApplyLinuxCgroupV2Limits (const LinuxCgroupV2Limits & limits)

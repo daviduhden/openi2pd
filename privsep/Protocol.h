@@ -4,10 +4,12 @@
  *
  * openi2pd: Protocol.
  *
- * Defines the versioned worker frame, bounded payload and text codecs, and
- * the typed log-record and log-configuration encodings shared by every
- * transport. Decoders reject bad magic, versions, types, oversized lengths,
- * truncation, trailing bytes and embedded NULs in path fields.
+ * Defines the versioned worker frame, bounded payload and text codecs, the
+ * typed log/storage/status encodings shared by every transport and the
+ * per-endpoint operation allowlist. Decoders reject bad magic, versions,
+ * types, oversized lengths, truncation, trailing bytes and embedded NULs in
+ * path fields. Encoders are fallible for path fields so a value is never
+ * silently truncated to a different filesystem object.
  *
  */
 
@@ -29,10 +31,15 @@
 namespace i2p::privsep
 {
 inline constexpr uint32_t PROTOCOL_MAGIC = 0x49503250; // "IP2P"
-inline constexpr uint16_t PROTOCOL_VERSION = 1;
+// Version 2 adds the typed Error message and the shared role allowlist while
+// still accepting version-1 frames for the existing worker set.
+inline constexpr uint16_t MIN_PROTOCOL_VERSION = 1;
+inline constexpr uint16_t PROTOCOL_VERSION = 2;
 inline constexpr size_t HEADER_SIZE = 16;
 inline constexpr size_t MAX_MESSAGE_SIZE = 64 * 1024;
 inline constexpr size_t MAX_TEXT_SIZE = 8 * 1024;
+inline constexpr size_t MAX_PATH_SIZE = 4096;
+inline constexpr size_t MAX_ERROR_DETAIL = 256;
 
 enum class MessageType : uint16_t
 {
@@ -54,8 +61,28 @@ enum class MessageType : uint16_t
 	TorrentStorageSupervisorReply = 11,
 	ConfigureRouterStorage = 12,
 	RouterStorageRequest = 13,
-	RouterStorageReply = 14
+	RouterStorageReply = 14,
+	/**
+	 * Typed rejection/status reply. The frame requestId identifies the
+	 * rejected request; the payload is u16 offending-type, u8 ErrorCode and
+	 * one bounded UTF-8/byte detail string. It never carries a descriptor.
+	 */
+	Error = 15,
+	/**
+	 * OpenBSD broker configuration for a delegated storage subdirectory. The
+	 * worker inherits the broker data root at fd 4 and walks the relative
+	 * path itself before applying its policy. Payload: absolute delegated
+	 * root path, relative path, expected dev, expected ino.
+	 */
+	ConfigureTorrentStorageSupervised = 16
 };
+
+inline constexpr uint16_t MAX_MESSAGE_TYPE = static_cast<uint16_t> (MessageType::ConfigureTorrentStorageSupervised);
+
+inline bool IsKnownMessageType (uint16_t type)
+{
+	return type >= static_cast<uint16_t> (MessageType::ConfigureLog) && type <= MAX_MESSAGE_TYPE;
+}
 
 struct Message
 {
@@ -72,8 +99,58 @@ enum class ErrorCode : uint8_t
 	UnsupportedVersion = 3,
 	UnknownType = 4,
 	BadField = 5,
-	NotAuthorized = 6
+	NotAuthorized = 6,
+	/** A transient worker-side failure (allocation/IO/child spawn). */
+	Internal = 7,
+	/** A bounded resource or concurrency limit was reached. */
+	Busy = 8
 };
+
+inline bool IsKnownErrorCode (uint8_t code)
+{
+	return code <= static_cast<uint8_t> (ErrorCode::Busy);
+}
+
+/**
+ * Per-endpoint operation allowlist. It is deliberately defined next to the
+ * frame type so a role cannot silently gain an operation because a dispatch
+ * switch changed. Clients use their own reply checks.
+ */
+enum class EndpointRole : uint8_t
+{
+	Supervisor,
+	Log,
+	RouterStorage,
+	TorrentStorage,
+	StorageBroker
+};
+
+inline bool AllowsOperation (EndpointRole role, MessageType type)
+{
+	switch (role)
+	{
+	case EndpointRole::Supervisor:
+		return type == MessageType::ConfigureLog || type == MessageType::ConfigureLogFd
+			|| type == MessageType::LogRecord || type == MessageType::Ping
+			|| type == MessageType::Shutdown;
+	case EndpointRole::Log:
+		return type == MessageType::ConfigureLog || type == MessageType::ConfigureLogFd
+			|| type == MessageType::LogRecord || type == MessageType::Ping
+			|| type == MessageType::Shutdown;
+	case EndpointRole::RouterStorage:
+		return type == MessageType::ConfigureRouterStorage || type == MessageType::RouterStorageRequest
+			|| type == MessageType::Ping || type == MessageType::Shutdown;
+	case EndpointRole::TorrentStorage:
+		return type == MessageType::ConfigureTorrentStorage
+			|| type == MessageType::ConfigureTorrentStorageSupervised
+			|| type == MessageType::TorrentStorageRequest
+			|| type == MessageType::Ping || type == MessageType::Shutdown;
+	case EndpointRole::StorageBroker:
+		return type == MessageType::ConfigureTorrentStorage || type == MessageType::SpawnTorrentStorage
+			|| type == MessageType::Ping || type == MessageType::Shutdown;
+	}
+	return false;
+}
 
 struct ProtocolError
 {
@@ -107,6 +184,19 @@ public:
 		const auto size = std::min (value.size (), MAX_TEXT_SIZE);
 		WriteU32 (static_cast<uint32_t> (size));
 		m_Data.append (value.substr (0, size));
+	}
+	/** Fallible bounded string; returns false instead of truncating. */
+	bool WriteStringBounded (std::string_view value, size_t limit)
+	{
+		if (value.size () > limit) return false;
+		WriteU32 (static_cast<uint32_t> (value.size ()));
+		m_Data.append (value);
+		return true;
+	}
+	/** Path fields carry no embedded NUL and are bounded before framing. */
+	bool WritePath (std::string_view value)
+	{
+		return value.find ('\0') == std::string_view::npos && WriteStringBounded (value, MAX_PATH_SIZE);
 	}
 	const std::string & Data () const { return m_Data; }
 
@@ -202,10 +292,9 @@ inline i2p::expected<Message, ProtocolError> Decode (std::string_view frame)
 	auto length = reader.ReadU32 ();
 	if (!length) return i2p::unexpected (length.error ());
 	if (*magic != PROTOCOL_MAGIC) return i2p::unexpected (ProtocolError { ErrorCode::Malformed, "bad magic" });
-	if (*version != PROTOCOL_VERSION)
+	if (*version < MIN_PROTOCOL_VERSION || *version > PROTOCOL_VERSION)
 		return i2p::unexpected (ProtocolError { ErrorCode::UnsupportedVersion, "bad version" });
-	if (*type < static_cast<uint16_t> (MessageType::ConfigureLog)
-		|| *type > static_cast<uint16_t> (MessageType::RouterStorageReply))
+	if (!IsKnownMessageType (*type))
 		return i2p::unexpected (ProtocolError { ErrorCode::UnknownType, "unknown type" });
 	if (*length > MAX_MESSAGE_SIZE - HEADER_SIZE)
 		return i2p::unexpected (ProtocolError { ErrorCode::TooLarge, "payload too large" });
@@ -239,12 +328,14 @@ inline i2p::expected<std::tuple<uint8_t, int64_t, std::string>, ProtocolError> D
 	return std::tuple { *level, static_cast<int64_t> (*timestamp), std::string (*text) };
 }
 
-inline std::string EncodeLogConfig (bool useSyslog, std::string_view path, std::string_view tag)
+inline i2p::expected<std::string, ProtocolError> EncodeLogConfig (
+	bool useSyslog, std::string_view path, std::string_view tag)
 {
 	PayloadWriter writer;
 	writer.WriteU8 (useSyslog ? 1 : 0);
-	writer.WriteString (path);
-	writer.WriteString (tag);
+	if (!writer.WritePath (path)) return i2p::unexpected (ProtocolError { ErrorCode::BadField, "log path too large or NUL" });
+	if (tag.find ('\0') != std::string_view::npos || !writer.WriteStringBounded (tag, MAX_TEXT_SIZE))
+		return i2p::unexpected (ProtocolError { ErrorCode::BadField, "log tag too large or NUL" });
 	return writer.Data ();
 }
 
@@ -262,10 +353,37 @@ inline i2p::expected<std::tuple<bool, std::string, std::string>, ProtocolError> 
 		return i2p::unexpected (ProtocolError { ErrorCode::BadField, "invalid log config" });
 	// These become null-terminated path/ident arguments. An embedded NUL
 	// would make the worker act on a different path than the parent meant.
-	if (path->find ('\0') != std::string_view::npos || tag->find ('\0') != std::string_view::npos)
-		return i2p::unexpected (ProtocolError { ErrorCode::BadField, "NUL in log config" });
+	if (path->size () > MAX_PATH_SIZE || tag->find ('\0') != std::string_view::npos
+		|| path->find ('\0') != std::string_view::npos)
+		return i2p::unexpected (ProtocolError { ErrorCode::BadField, "invalid log path/tag" });
 	return std::tuple { *syslog != 0, std::string (*path), std::string (*tag) };
 }
+inline std::string EncodeError (MessageType offendingType, ErrorCode code, std::string_view detail)
+{
+	PayloadWriter writer;
+	writer.WriteU16 (static_cast<uint16_t> (offendingType));
+	writer.WriteU8 (static_cast<uint8_t> (code));
+	writer.WriteStringBounded (detail.substr (0, MAX_ERROR_DETAIL), MAX_ERROR_DETAIL);
+	return writer.Data ();
+}
+
+inline i2p::expected<std::tuple<MessageType, ErrorCode, std::string>, ProtocolError> DecodeError (
+	std::string_view payload)
+{
+	if (payload.size () < 3) return i2p::unexpected (ProtocolError { ErrorCode::Malformed, "short error payload" });
+	PayloadReader reader (payload);
+	auto type = reader.ReadU16 ();
+	if (!type) return i2p::unexpected (type.error ());
+	auto code = reader.ReadU8 ();
+	if (!code) return i2p::unexpected (code.error ());
+	auto detail = reader.ReadString ();
+	if (!detail) return i2p::unexpected (detail.error ());
+	if (!reader.Done () || !IsKnownMessageType (*type) || !IsKnownErrorCode (*code)
+		|| detail->size () > MAX_ERROR_DETAIL)
+		return i2p::unexpected (ProtocolError { ErrorCode::BadField, "invalid error payload" });
+	return std::tuple { static_cast<MessageType> (*type), static_cast<ErrorCode> (*code), std::string (*detail) };
+}
+
 }
 
 #endif

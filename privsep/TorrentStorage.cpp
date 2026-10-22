@@ -239,17 +239,23 @@ int RunTorrentStorageWorker (int fd, int inheritedRoot)
  auto first = channel.ReceiveWithFd (5000);
  if (!first || !*first) return 1;
  auto & config = **first;
+ const bool supervised = config.message.type == MessageType::ConfigureTorrentStorageSupervised;
 #if defined(__OpenBSD__)
- // The supervisor inherited this directory through exec, not sendfd (which
- // permits only sockets, pipes and regular files under pledge).
- if (inheritedRoot != 4 || config.fd >= 0)
+ // The supervisor inherited the broker data root through exec, not sendfd
+ // (which permits only sockets, pipes and regular files under pledge).
+ if (!supervised || inheritedRoot != 4 || config.fd >= 0)
  { if (config.fd >= 0) ::close (config.fd); return 1; }
+#elif defined(__linux__) && !defined(__ANDROID__)
+ // Linux delivers the already-opened delegated directory as one SCM_RIGHTS
+ // descriptor and must not use the OpenBSD broker configuration.
+ if (supervised || inheritedRoot >= 0 || config.fd < 0) return 1;
 #endif
  Fd root { inheritedRoot >= 0 ? inheritedRoot : config.fd };
  if (inheritedRoot >= 0 && config.fd >= 0) { ::close (config.fd); return 1; }
+ if (config.message.requestId == 0 || root.fd < 0
+   || (!supervised && config.message.type != MessageType::ConfigureTorrentStorage)) return 1;
  struct stat status {};
- if (config.message.type != MessageType::ConfigureTorrentStorage || !config.message.requestId
-   || root.fd < 0 || ::fstat (root.fd, &status) || !S_ISDIR (status.st_mode) || ::geteuid () == 0
+ if (::fstat (root.fd, &status) || !S_ISDIR (status.st_mode) || ::geteuid () == 0
    || status.st_uid != ::geteuid () || (status.st_mode & 0022)) return 1;
  auto peer = channel.PeerUid ();
  if (!peer || *peer != ::geteuid ()) return 1;
@@ -259,12 +265,67 @@ int RunTorrentStorageWorker (int fd, int inheritedRoot)
   if (relocated < 0) return 1;
   ::close (root.fd); root.fd = relocated;
  }
- // Never retain inherited terminal/log descriptors: they could be sockets.
- ::close (0); ::close (1); ::close (2);
  PayloadReader setup (config.message.payload);
  auto rootPath = setup.ReadString ();
- if (!rootPath || !setup.Done () || rootPath->empty () || rootPath->front () != '/'
-   || rootPath->find ('\0') != std::string_view::npos) return 1;
+ if (!rootPath || rootPath->empty () || rootPath->front () != '/'
+   || rootPath->size () > MAX_PATH_SIZE || rootPath->find ('\0') != std::string_view::npos) return 1;
+ if (supervised)
+ {
+  // The broker passed its immutable data root at fd4. Walk the delegated
+  // relative path here, before applying the policy, and replace fd4 with the
+  // validated subdirectory. The broker itself must not openat() after pledge.
+  auto relative = setup.ReadString ();
+  auto expectedDevice = setup.ReadU64BE ();
+  auto expectedInode = setup.ReadU64BE ();
+  if (!relative || !expectedDevice || !expectedInode || !setup.Done ()) return 1;
+  if (*relative != "." && !SafeStoragePath (*relative)) return 1;
+  Fd checked { ::dup (root.fd) };
+  if (checked.fd < 0) return 1;
+  if (*relative != ".")
+  {
+   std::string leaf;
+   Fd parent { OpenParent (checked.fd, *relative, leaf) };
+   if (parent.fd < 0) return 1;
+   int child = ::openat (parent.fd, leaf.c_str (), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+   if (child < 0) return 1;
+   ::close (checked.fd);
+   checked.fd = child;
+  }
+  struct stat delegated {};
+  if (::fstat (checked.fd, &delegated) || !S_ISDIR (delegated.st_mode)
+    || delegated.st_uid != ::geteuid () || (delegated.st_mode & 0022)
+    || static_cast<uint64_t> (delegated.st_dev) != *expectedDevice
+    || static_cast<uint64_t> (delegated.st_ino) != *expectedInode) return 1;
+  // The pathname passed to unveil must still resolve to the capability we
+  // just walked. Any replacement between the broker and this check fails
+  // closed before the worker exposes a path-based policy.
+  Fd named { ::open (std::string (*rootPath).c_str (), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC) };
+  struct stat namedStatus {};
+  if (named.fd < 0 || ::fstat (named.fd, &namedStatus)
+    || namedStatus.st_dev != delegated.st_dev || namedStatus.st_ino != delegated.st_ino
+    || namedStatus.st_uid != delegated.st_uid || (namedStatus.st_mode & 0022)) return 1;
+  ::close (root.fd);
+  root.fd = checked.fd;
+  checked.fd = -1;
+ }
+ else
+ {
+  auto expectedDevice = setup.ReadU64BE ();
+  auto expectedInode = setup.ReadU64BE ();
+  if (!expectedDevice || !expectedInode || !setup.Done ()
+    || static_cast<uint64_t> (status.st_dev) != *expectedDevice
+    || static_cast<uint64_t> (status.st_ino) != *expectedInode) return 1;
+ }
+ // Ensure the validated root survives the stdio cleanup below even when
+ // dup()/openat() reused descriptors 0..3 during the pre-policy walk.
+ if (root.fd <= 3)
+ {
+  int relocated = ::fcntl (root.fd, F_DUPFD_CLOEXEC, 4);
+  if (relocated < 0) return 1;
+  ::close (root.fd); root.fd = relocated;
+ }
+ // Never retain inherited terminal/log descriptors: they could be sockets.
+ ::close (0); ::close (1); ::close (2);
 #if defined(__linux__) && !defined(__ANDROID__)
  auto profile = GetLinuxSandboxProfile (WorkerClass::Storage);
  profile.restrictFilesystemReads = true;
@@ -286,6 +347,7 @@ int RunTorrentStorageWorker (int fd, int inheritedRoot)
  std::set<std::string, std::less<>> authorizedDHT;
  std::map<uint32_t, File> files;
  uint32_t next = 0;
+ uint32_t lastRequest = 0;
  struct Cleanup { std::map<uint32_t, File> & files; ~Cleanup () { for (auto & [id, file] : files) ::close (file.fd); } } cleanup { files };
  while (true)
  {
@@ -295,8 +357,29 @@ int RunTorrentStorageWorker (int fd, int inheritedRoot)
   auto & frame = **received;
   if (frame.fd >= 0) { ::close (frame.fd); return 1; }
   const auto & request = frame.message;
-  if (request.type == MessageType::Shutdown && request.payload.empty ()) return 0;
+  if (!AllowsOperation (EndpointRole::TorrentStorage, request.type)) return 1;
+  if (request.type == MessageType::Ping)
+  {
+   if (!request.payload.empty ()) return 1;
+   if (!channel.Send ({ MessageType::Pong, request.requestId, {} }, 5000)) return 1;
+   continue;
+  }
+  if (request.type == MessageType::Shutdown)
+  {
+   if (!request.payload.empty ()) return 1;
+   return 0;
+  }
   if (request.type != MessageType::TorrentStorageRequest || !request.requestId) return 1;
+  // The worker is the security boundary: a duplicate or replayed request
+  // must not re-execute a mutation. The reply is an operation failure so the
+  // channel remains usable for a later legitimate request.
+  if (request.requestId <= lastRequest)
+  {
+   if (!channel.Send ({ MessageType::Error, request.requestId,
+     EncodeError (MessageType::TorrentStorageRequest, ErrorCode::BadField, "stale or replayed request id") }, 5000)) return 1;
+   continue;
+  }
+  lastRequest = request.requestId;
   PayloadReader reader (request.payload);
   auto operation = reader.ReadU8 ();
   bool success = false;
@@ -424,8 +507,13 @@ int RunTorrentStorageWorker (int fd, int inheritedRoot)
     }
    }
   }
-  if (!success) result = "storage operation rejected or failed";
-  result.insert (result.begin (), success ? '\0' : '\1');
+  if (!success)
+  {
+   if (!channel.Send ({ MessageType::Error, request.requestId,
+     EncodeError (MessageType::TorrentStorageRequest, ErrorCode::Internal, "storage operation rejected or failed") }, 5000)) return 1;
+   continue;
+  }
+  result.insert (result.begin (), '\0');
   if (!channel.Send ({ MessageType::TorrentStorageReply, request.requestId, std::move (result) }, 5000)) return 1;
  }
 }

@@ -18,6 +18,7 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/syscall.h>
+#include <sys/uio.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
@@ -119,6 +120,36 @@ int ExpectNetworkCanCreateSocket ()
 	return 0;
 }
 
+int ExpectStorageDeniesProcessMemory ()
+{
+#if defined(SYS_process_vm_readv)
+	struct iovec local { };
+	struct iovec remote { };
+	errno = 0;
+	const long result = syscall (SYS_process_vm_readv, getppid (), &local, 1, &remote, 1, 0);
+	if (result >= 0) return 2;
+	return (errno == EACCES || errno == EPERM) ? 0 : 3;
+#else
+	return 0;
+#endif
+}
+
+int ExpectStorageDeniesPidfdOpen ()
+{
+#if defined(SYS_pidfd_open)
+	errno = 0;
+	const long result = syscall (SYS_pidfd_open, getpid (), 0);
+	if (result >= 0)
+	{
+		close (static_cast<int> (result));
+		return 2;
+	}
+	return (errno == EACCES || errno == EPERM) ? 0 : 3;
+#else
+	return 0;
+#endif
+}
+
 int ExpectStorageDeniesSocketpair ()
 {
 	errno = 0;
@@ -157,9 +188,46 @@ int ExpectSupervisorAllowsUnixSocketpair ()
 	return 0;
 }
 
+int ExpectSupervisorBootstrapPreservesDelegation ()
+{
+	// The supervisor must drop capabilities without installing an inherited
+	// Landlock/seccomp/netns domain: exec'ed storage and network workers can
+	// only become stricter, so a supervisor restriction here would silently
+	// break their delegated capability.
+	if (ExpectNoEffectiveCapabilities () != 0) return 2;
+	if (ExpectSupervisorAllowsUnixSocketpair () != 0) return 3;
+	if (ExpectNetworkCanCreateSocket () != 0) return 4;
+	// A write-deny Landlock domain would also be inherited; verify a new
+	// temporary file can still be created for a delegated child.
+	char path[] = "/tmp/openi2pd-supervisor-bootstrap-XXXXXX";
+	const int fd = mkstemp (path);
+	if (fd < 0) return 5;
+	close (fd);
+	unlink (path);
+	return 0;
+}
+
+ChildResult RunSupervisorBootstrapChild ()
+{
+	pid_t pid = fork ();
+	assert (pid >= 0);
+	if (pid == 0)
+	{
+		auto applied = ApplyLinuxSupervisorSandbox ();
+		if (!applied) _exit (77);
+		_exit (ExpectSupervisorBootstrapPreservesDelegation ());
+	}
+	int status = 0;
+	assert (waitpid (pid, &status, 0) == pid);
+	return ChildResult { status };
+}
+
 void RequireExitZero (ChildResult result, const char * name)
 {
-	if (WIFEXITED (result.status) && WEXITSTATUS (result.status) == 77) return; // unsupported kernel
+	// A 77 from the supervisor-bootstrap child is an unsupported-kernel
+	// failure, not a skip: the parent already made the explicit filesystem
+	// capability probe and this helper is only used for the negative policy
+	// checks that must run when the kernel supports them.
 	assert (WIFEXITED (result.status));
 	assert (WEXITSTATUS (result.status) == 0);
 	(void)name;
@@ -196,12 +264,17 @@ int main ()
 	auto rejected = ApplyLinuxSandbox (contradictory);
 	assert (!rejected.has_value ());
 
+	// The supervisor bootstrap is capability-only. Its exec'ed children apply
+	// their own role policy, so it must not install an inherited domain.
+	RequireExitZero (RunSupervisorBootstrapChild (), "supervisor bootstrap");
+
 	const auto support = ProbeLinuxIsolation ();
 	if (!support.filesystem)
 	{
-		// The CI kernel may be older than Landlock. Report skip by exiting
-		// successfully: the static policy assertions above still ran.
-		return 0;
+		// The static policy assertions above ran, but the negative Landlock
+		// enforcement body cannot. Report SKIP so CI does not mistake this for
+		// a completed sandbox test.
+		return 77;
 	}
 
 	char directory[] = "/tmp/openi2pd-linux-sandbox-XXXXXX";
@@ -219,6 +292,8 @@ int main ()
 	// Landlock restriction cannot be undone in the same process.
 	RequireExitZero (RunChild (storageProfile, &ExpectStorageDeniesNetwork), "storage network");
 	RequireExitZero (RunChild (storageProfile, &ExpectStorageDeniesSocketpair), "storage socketpair");
+	RequireExitZero (RunChild (storageProfile, &ExpectStorageDeniesProcessMemory), "storage process memory");
+	RequireExitZero (RunChild (storageProfile, &ExpectStorageDeniesPidfdOpen), "storage pidfd open");
 	RequireExitZero (RunChild (storageProfile, &ExpectNoEffectiveCapabilities), "storage capabilities");
 	RequireExitZero (RunChild (storageProfile, [] () { return 0; }), "storage start");
 

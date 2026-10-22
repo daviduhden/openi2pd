@@ -27,23 +27,27 @@ These guarantees still require the prepared negative CI tests.
 
 The daemon prepares a dedicated storage supervisor before runtime pledge. Its
 trusted bootstrap specifies the canonical datadir and executable; the supervisor
-opens the root itself before installing a read-only unveil and pledge policy.
+opens the data root itself and installs an executable-only unveil before its
+pledge policy.
 No execpromises mechanism or inherited sandbox assumption is used. The core
 needs only the additional `recvfd` promise for a returned UNIX socket, retaining
 its existing runtime restrictions on process creation.
 
 A launch request carries a validated relative directory and expected device/inode
-identity. The supervisor walks its immutable root with `openat/O_NOFOLLOW`, checks
-ownership and identity, and forks/execs a worker with the channel at fd3 and root
-at fd4. The worker validates the inherited root and applies its own storage-only
-pledge/unveil before acknowledging initialization. Only after that ACK does the
-supervisor return the socket channel to the daemon. Directory descriptors are
-never passed with SCM_RIGHTS: [pledge(2)](https://man.openbsd.org/pledge.2) explicitly
-excludes them from sendfd/recvfd.
+identity. The supervisor forks/execs a worker with the channel at fd3 and the
+immutable broker root at fd4. The worker walks the relative path with
+`openat/O_NOFOLLOW` **before** applying its policy, verifies ownership and the
+expected device/inode, checks that the configured absolute path still resolves
+to that capability, then replaces fd4 with the delegated subdirectory and
+applies its storage-only pledge/unveil. Only after that ACK does the supervisor
+return the socket channel to the daemon. The broker itself does not call
+`openat()` after pledge and does not need `rpath`.
 
-The supervisor has no Internet or persistent-write authority. It owns/reaps
-workers, limits active children to 16 and total launches to 128, and terminates
-them on shutdown or control-channel loss. Worker replacement is an explicit
+The supervisor has no Internet or persistent-write authority. It enforces a
+replenished one-minute launch window (32 launches); live workers belong to the
+core/channel lifetime after handoff. It disowns a worker after handing its
+channel to the core, so a broker exit cannot SIGTERM/SIGKILL an in-flight
+`fsync`; worker replacement is an explicit
 Start after Stop/failure, without replaying writes. Broker failure requires a
 daemon restart. Roots outside the initially authorized datadir are rejected;
 malformed or unauthorized requests terminate the broker and its children. The
@@ -51,14 +55,17 @@ existing imsg adapter remains separate; this path uses typed UNIX seqpacket IPC.
 
 ## Typed operations
 
-The existing `IP2P` version-1 envelope gains additive local message types:
-`ConfigureTorrentStorage=7`, `TorrentStorageRequest=8`,
-`TorrentStorageReply=9`, `SpawnTorrentStorage=10`,
-`TorrentStorageSupervisorReply=11`. These are not I2P wire messages. Linux configuration carries
+The `IP2P` envelope is version 2 (version-1 frames remain readable) and uses
+typed local message types: `ConfigureTorrentStorage=7`,
+`TorrentStorageRequest=8`, `TorrentStorageReply=9`,
+`SpawnTorrentStorage=10`, `TorrentStorageSupervisorReply=11`,
+`ConfigureTorrentStorageSupervised=16` and the shared typed `Error=15`. These are not I2P wire messages. Linux configuration carries
 one root descriptor and its bounded administrative path; OpenBSD inherits the
 root at exec and uses descriptor-free configuration. Later messages must
-not carry descriptors. Request IDs are monotonically increasing and responses
-must match the expected type and ID.
+not carry descriptors. Request IDs are monotonically increasing; the worker
+rejects a duplicate/out-of-order request without executing it, and responses
+must match the expected type and ID. Operation failures use a typed `Error`
+reply with a bounded detail string; success uses the operation-specific reply.
 
 | Operation | Authority and bounds |
 |---|---|
@@ -70,7 +77,7 @@ must match the expected type and ID.
 | Remove | Exact-length owned regular file, or an empty directory; no recursive deletion. |
 | Metadata begin/chunk/commit/abort | At most 8 MiB; sequential <=16 KiB chunks, fsync/atomic replace/parent sync. Only root `.torrent`/`.resume` or `.openi2pd-state/<40-lowercase-hex>.state`. |
 | Metadata remove | Same narrow administrative namespace, missing files are idempotent success. |
-| Shutdown | Bounded child stop and descriptor cleanup. |
+| Ping / Shutdown | Empty payload only. Ping proves liveness; Shutdown is the bounded stop request. `MetadataAbort` is the explicit cancellation verb for an in-progress metadata transaction. |
 
 Registration walks components without following symlinks and rejects special
 files, hardlinks and ownership violations. A read-only registration requires

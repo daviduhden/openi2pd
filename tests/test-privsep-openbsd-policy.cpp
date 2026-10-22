@@ -14,6 +14,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fcntl.h>
+#include <netinet/in.h>
 #include <stdlib.h>
 #include <string>
 #include <sys/socket.h>
@@ -70,6 +71,10 @@ void TestPolicySeparation ()
 	assert (storage->HasPersistentWrite ());
 	assert (!storage->HasProcessCreation ());
 	assert (storage->HasLocalIpc ());
+	auto missingRoot = BaseConfig ();
+	missingRoot.useUnveil = true;
+	missingRoot.dataDir.clear ();
+	assert (!BuildOpenBSDPolicy (OpenBSDWorkerRole::Storage, missingRoot).has_value ());
 	auto inheritedConfig = BaseConfig ();
 	inheritedConfig.preopenedStorageIpc = true;
 	auto inheritedStorage = BuildOpenBSDPolicy (OpenBSDWorkerRole::Storage, inheritedConfig);
@@ -83,6 +88,16 @@ void TestPolicySeparation ()
 	assert (!network->HasPersistentWrite ());
 	assert (!network->HasProcessCreation ());
 	assert (network->HasLocalIpc ());
+	assert (network->pledge.find ("recvfd") == std::string::npos);
+	OpenBSDPolicyConfig handoff = BaseConfig ();
+	handoff.socketHandoff = true;
+	handoff.dnsLookup = false;
+	handoff.routeInfo = true;
+	auto networkHandoff = BuildOpenBSDPolicy (OpenBSDWorkerRole::Network, handoff);
+	assert (networkHandoff.has_value ());
+	assert (networkHandoff->pledge.find ("recvfd") != std::string::npos);
+	assert (networkHandoff->pledge.find ("route") != std::string::npos);
+	assert (networkHandoff->pledge.find ("dns") == std::string::npos);
 
 	auto supervisor = BuildOpenBSDPolicy (OpenBSDWorkerRole::Supervisor, BaseConfig ());
 	assert (supervisor.has_value ());
@@ -122,6 +137,32 @@ void TestPolicySeparation ()
 	assert (!fdPolicy->HasPersistentWrite ());
 	assert (fdPolicy->unveil.size () == 1);
 	assert (fdPolicy->unveil[0].path == "/etc/localtime");
+}
+
+void TestPreopenedSocketValidation ()
+{
+	const int datagram = socket (AF_INET, SOCK_DGRAM, 0);
+	assert (datagram >= 0);
+	assert (fcntl (datagram, F_SETFD, FD_CLOEXEC) == 0);
+	assert (ValidatePreopenedSocket (datagram, SOCK_DGRAM, false).has_value ());
+	assert (!ValidatePreopenedSocket (datagram, SOCK_STREAM, false).has_value ());
+	close (datagram);
+
+	const int stream = socket (AF_INET, SOCK_STREAM, 0);
+	assert (stream >= 0);
+	assert (fcntl (stream, F_SETFD, FD_CLOEXEC) == 0);
+	assert (!ValidatePreopenedSocket (stream, SOCK_STREAM, true).has_value ());
+	struct sockaddr_in address {};
+#ifdef __OpenBSD__
+	address.sin_len = sizeof (address);
+#endif
+	address.sin_family = AF_INET;
+	address.sin_addr.s_addr = htonl (INADDR_LOOPBACK);
+	address.sin_port = 0;
+	assert (bind (stream, reinterpret_cast<struct sockaddr *> (&address), sizeof (address)) == 0);
+	assert (listen (stream, 1) == 0);
+	assert (ValidatePreopenedSocket (stream, SOCK_STREAM, true).has_value ());
+	close (stream);
 }
 
 void TestPreopenedDescriptorValidation ()
@@ -171,6 +212,7 @@ int main ()
 {
 	TestPolicySeparation ();
 	TestPreopenedDescriptorValidation ();
+	TestPreopenedSocketValidation ();
 	TestStorageCannotUseExternalNetwork ();
 	TestNetworkCannotWritePersistentFile ();
 	return 0;

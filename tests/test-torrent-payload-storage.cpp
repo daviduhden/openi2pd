@@ -109,6 +109,14 @@ int main ()
  assert (backend->opens > before); // A failed capability is reopened on retry.
  assert (!first->Save (19999, piece.data (), 2));
  assert (!first->Load (SIZE_MAX, piece.data (), 1));
+ // Zero-length files must not produce a fragment/open, otherwise a SAF
+ // restart would try to acquire a document that was never created.
+ auto zeroLayout = Torrent::CreateV1 (
+  "zero-length-layout", { { "a.bin", 8192 }, { "empty.bin", 0 }, { "b.bin", 8192 } }, 16384, { digest });
+ assert (zeroLayout && zeroLayout->GetNumPieces () == 1);
+ auto zeroFragments = zeroLayout->GetPieceFileFragments (0);
+ assert (zeroFragments.size () == 2);
+ for (const auto & fragment : zeroFragments) assert (fragment.fragmentSize > 0);
  first->Close (); second->Close ();
  assert (backend->handles.empty ());
 }

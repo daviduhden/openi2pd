@@ -24,6 +24,7 @@
 #include <new>
 #include <poll.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <unistd.h>
 
 namespace i2p::privsep
@@ -116,7 +117,11 @@ i2p::expected<ImsgChannel, std::string> ImsgChannel::Adopt (int fd)
 	ImsgChannel channel;
 	channel.m_Fd = fd;
 	channel.m_Buffer = new (std::nothrow)::imsgbuf ();
-	if (!channel.m_Buffer) return i2p::unexpected ("cannot allocate imsgbuf");
+	if (!channel.m_Buffer)
+	{
+		channel.Close ();
+		return i2p::unexpected ("cannot allocate imsgbuf");
+	}
 	if (imsgbuf_init (channel.m_Buffer, fd) != 0)
 	{
 		const int error = errno;
@@ -140,6 +145,41 @@ i2p::expected<ImsgChannel, std::string> ImsgChannel::Adopt (int fd)
 #endif
 }
 
+i2p::expected<ImsgChannel, std::string> ImsgChannel::AdoptValidated (int fd, uint32_t expectedUid)
+{
+#if defined(__OpenBSD__)
+	if (fd < 0) return i2p::unexpected ("invalid imsg descriptor");
+	struct stat info {};
+	int socketType = 0;
+	socklen_t socketTypeLength = sizeof (socketType);
+	if (::fstat (fd, &info) != 0 || !S_ISSOCK (info.st_mode)
+		|| ::getsockopt (fd, SOL_SOCKET, SO_TYPE, &socketType, &socketTypeLength) != 0
+		|| (socketType != SOCK_STREAM && socketType != SOCK_SEQPACKET))
+	{
+		::close (fd);
+		return i2p::unexpected ("imsg descriptor is not a validated stream socket");
+	}
+	const int flags = ::fcntl (fd, F_GETFD);
+	if (flags < 0 || ::fcntl (fd, F_SETFD, flags | FD_CLOEXEC) < 0)
+	{
+		::close (fd);
+		return i2p::unexpected (std::string ("fcntl(FD_CLOEXEC): ") + strerror (errno));
+	}
+	uid_t uid = 0;
+	gid_t gid = 0;
+	if (::getpeereid (fd, &uid, &gid) != 0 || static_cast<uint32_t> (uid) != expectedUid)
+	{
+		::close (fd);
+		return i2p::unexpected ("imsg peer uid is not authorized");
+	}
+	return Adopt (fd); // imsgbuf_init enables fd passing; fd ownership passes here.
+#else
+	(void)fd;
+	(void)expectedUid;
+	return i2p::unexpected ("imsg is available only on OpenBSD");
+#endif
+}
+
 i2p::expected<void, std::string> ImsgChannel::Send (const Message & message, int fd, int timeoutMs)
 {
 #if defined(__OpenBSD__)
@@ -147,16 +187,9 @@ i2p::expected<void, std::string> ImsgChannel::Send (const Message & message, int
 	auto encoded = Encode (message);
 	if (!encoded) return i2p::unexpected (std::string (encoded.error ().text));
 	if (encoded->size () + IMSG_HEADER_SIZE > MAX_IMSGSIZE)
-	{
-		if (fd >= 0) ::close (fd);
 		return i2p::unexpected ("frame exceeds MAX_IMSGSIZE");
-	}
 	if (imsg_compose (m_Buffer, 0, message.requestId, getpid (), fd, encoded->data (), encoded->size ()) == -1)
-	{
-		const int error = errno;
-		if (fd >= 0) ::close (fd);
-		return i2p::unexpected (std::string ("imsg_compose: ") + strerror (error));
-	}
+		return i2p::unexpected (std::string ("imsg_compose: ") + strerror (errno));
 
 	const bool infinite = IsInfiniteTimeout (timeoutMs);
 	const auto deadline = MakeDeadline (timeoutMs);
@@ -167,14 +200,22 @@ i2p::expected<void, std::string> ImsgChannel::Send (const Message & message, int
 		do polled = ::poll (&pfd, 1, PollTimeout (infinite, deadline));
 		while (polled < 0 && errno == EINTR && (infinite || !DeadlineExpired (deadline)));
 		if (polled < 0) return i2p::unexpected (std::string ("imsg poll: ") + strerror (errno));
-		if (polled == 0) return i2p::unexpected ("imsg send timeout");
+		if (polled == 0)
+		{
+			Close (); // a queued frame must not be retried as a second mutation
+			return i2p::unexpected ("imsg send timeout");
+		}
 		if (pfd.revents & POLLNVAL) return i2p::unexpected ("imsg poll: invalid descriptor");
 		if (pfd.revents & (POLLERR | POLLHUP)) return i2p::unexpected ("imsg poll: peer closed the channel");
 		if (imsgbuf_write (m_Buffer) == -1)
 		{
 			if (errno == EAGAIN || errno == EWOULDBLOCK || errno == ENOBUFS)
 			{
-				if (!infinite && DeadlineExpired (deadline)) return i2p::unexpected ("imsg send timeout");
+				if (!infinite && DeadlineExpired (deadline))
+				{
+					Close ();
+					return i2p::unexpected ("imsg send timeout");
+				}
 				continue;
 			}
 			return i2p::unexpected (std::string ("imsgbuf_write: ") + strerror (errno));
@@ -197,34 +238,35 @@ i2p::expected<std::optional<ReceivedMessage>, std::string> ImsgChannel::Receive 
 	const auto deadline = MakeDeadline (timeoutMs);
 	while (true)
 	{
-		pollfd pfd { m_Fd, POLLIN, 0 };
-		int polled;
-		do polled = ::poll (&pfd, 1, PollTimeout (infinite, deadline));
-		while (polled < 0 && errno == EINTR && (infinite || !DeadlineExpired (deadline)));
-		if (polled < 0) return i2p::unexpected (std::string ("imsg poll: ") + strerror (errno));
-		if (polled == 0) return std::optional<ReceivedMessage> { };
-		if (pfd.revents & POLLNVAL) return i2p::unexpected ("imsg poll: invalid descriptor");
-		if ((pfd.revents & (POLLERR | POLLHUP)) && !(pfd.revents & POLLIN))
-			return i2p::unexpected ("peer closed the imsg channel");
-
-		const int readResult = imsgbuf_read (m_Buffer);
-		if (readResult == 0) return i2p::unexpected ("peer closed the imsg channel");
-		if (readResult < 0)
-		{
-			if (errno == EAGAIN || errno == EWOULDBLOCK)
-			{
-				if (!infinite && DeadlineExpired (deadline)) return std::optional<ReceivedMessage> { };
-				continue;
-			}
-			return i2p::unexpected (std::string ("imsgbuf_read: ") + strerror (errno));
-		}
-
+		// imsgbuf_read() drains the socket and may append several complete
+		// messages to the user buffer. Always consume that buffer first;
+		// otherwise a second frame is stranded until new bytes arrive.
 		struct imsg message { };
-		const int got = imsgbuf_get (m_Buffer, &message);
+		int got = imsgbuf_get (m_Buffer, &message);
 		if (got == 0)
 		{
-			if (!infinite && DeadlineExpired (deadline)) return std::optional<ReceivedMessage> { };
-			continue;
+			pollfd pfd { m_Fd, POLLIN, 0 };
+			int polled;
+			do polled = ::poll (&pfd, 1, PollTimeout (infinite, deadline));
+			while (polled < 0 && errno == EINTR && (infinite || !DeadlineExpired (deadline)));
+			if (polled < 0) return i2p::unexpected (std::string ("imsg poll: ") + strerror (errno));
+			if (polled == 0) return std::optional<ReceivedMessage> { };
+			if (pfd.revents & POLLNVAL) return i2p::unexpected ("imsg poll: invalid descriptor");
+			if ((pfd.revents & (POLLERR | POLLHUP)) && !(pfd.revents & POLLIN))
+				return i2p::unexpected ("peer closed the imsg channel");
+
+			const int readResult = imsgbuf_read (m_Buffer);
+			if (readResult == 0) return i2p::unexpected ("peer closed the imsg channel");
+			if (readResult < 0)
+			{
+				if (errno == EAGAIN || errno == EWOULDBLOCK)
+				{
+					if (!infinite && DeadlineExpired (deadline)) return std::optional<ReceivedMessage> { };
+					continue;
+				}
+				return i2p::unexpected (std::string ("imsgbuf_read: ") + strerror (errno));
+			}
+			continue; // re-check the user buffer before polling again
 		}
 		if (got < 0) return i2p::unexpected (std::string ("imsgbuf_get: ") + strerror (errno));
 

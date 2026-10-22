@@ -111,6 +111,12 @@ struct WindowsWorkerProcess
 	WindowsHandle thread;
 	WindowsHandle job;
 	DWORD processId = 0;
+
+	/** Bounded wait for the worker; false on timeout or an invalid handle. */
+	bool Wait (DWORD timeoutMs) const;
+	DWORD ExitCode () const;
+	/** Terminate and wait for the process to leave before returning. */
+	bool TerminateAndWait (DWORD timeoutMs, UINT exitCode = ERROR_PROCESS_ABORTED);
 };
 
 /**
@@ -142,6 +148,14 @@ public:
 
 	static i2p::expected<WindowsServer, std::string> Create (const std::wstring & pipeName);
 	i2p::expected<class WindowsChannel, std::string> Accept (DWORD timeoutMs);
+	/**
+	 * Accept only the expected spawned worker. A zero expected value keeps
+	 * the legacy check (same user SID) for tests and early bootstrap; callers
+	 * must pass the PID/session returned by SpawnWindowsWorker when binding a
+	 * production child.
+	 */
+	i2p::expected<class WindowsChannel, std::string> AcceptBound (
+		DWORD timeoutMs, DWORD expectedProcessId, DWORD expectedSessionId);
 	HANDLE Native () const { return m_Pipe; }
 	const std::wstring & Name () const { return m_Name; }
 
@@ -171,9 +185,14 @@ public:
 	WindowsChannel & operator= (const WindowsChannel &) = delete;
 
 	static i2p::expected<WindowsChannel, std::string> Connect (const std::wstring & pipeName, DWORD timeoutMs);
+	/** Connect and authenticate the expected server process/session. */
+	static i2p::expected<WindowsChannel, std::string> ConnectBound (
+		const std::wstring & pipeName, DWORD expectedServerProcessId, DWORD expectedSessionId, DWORD timeoutMs);
 
 	bool IsOpen () const { return m_Pipe != INVALID_HANDLE_VALUE; }
 	HANDLE Native () const { return m_Pipe; }
+	/** Detach the handle without closing it. */
+	HANDLE Release () { HANDLE h = m_Pipe; m_Pipe = INVALID_HANDLE_VALUE; return h; }
 	void Close ();
 
 	i2p::expected<void, std::string> Send (const Message & message, DWORD timeoutMs = 5000);
@@ -192,8 +211,10 @@ private:
 	bool m_ServerSide = false;
 };
 
-/** Build a local pipe name from an operator-configured endpoint. */
+/** Build a deterministic local pipe name from an operator-configured endpoint (tests). */
 i2p::expected<std::wstring, std::string> MakePrivatePipeName (std::string_view endpoint);
+/** Build a per-spawn, CSPRNG-scoped local pipe name. */
+i2p::expected<std::wstring, std::string> MakeRandomPipeName ();
 }
 
 #endif // _WIN32

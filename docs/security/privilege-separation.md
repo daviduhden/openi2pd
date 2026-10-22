@@ -24,26 +24,40 @@ The first production-shaped separation is **logging**:
 - The router never opens the configured log file. It sends structured records
   over IPC; the worker opens/writes the file or syslog.
 - A separate supervisor process owns and restarts the log worker with a
-  bounded monitor. Outside the OpenBSD runtime sandbox the core can replace a
-  dead supervisor; under that sandbox it has no `exec` and does not. The
-  supervisor owns the log child and forwards structured records. It is a real
-  process boundary; network/storage/crypto workers are not yet under it.
-- If restart attempts are exhausted, log records are dropped. The core never
-  reopens the log file and never falls back to a weaker transport.
+  bounded monitor: 250 ms exponential backoff capped at 30 s, at most eight
+  consecutive attempts, and a reset after 60 s of stable operation. Outside the
+  OpenBSD runtime sandbox the core can replace a dead supervisor; under that
+  sandbox it has no `exec` and does not. The supervisor owns the log child and
+  forwards structured records. It is a real process boundary; network and
+  crypto workers are not yet under it.
+- If restart attempts are exhausted, the supervisor exits. The core keeps a
+  bounded logger queue (8192 records, 8192 bytes per record) and counts drops;
+  it never reopens the log file and never falls back to a weaker transport.
 - Linux evidence from a live run: the core process had no `router.log`
   descriptor; the worker had the only write descriptor.
-- On OpenBSD the supervisor/log pair is spawned while the startup pledge still
-  has `proc`/`exec`. The parent then installs its runtime policy without `exec`;
-  `proc` is retained only for bounded supervisor reaping/signalling. The
-  supervisor applies `pledge("stdio unix proc exec")` after
-  receiving configuration and pre-resolving the executable; the log worker
-  applies its own policy after `execve` (`unveil` + `pledge`, with no
-  dependency on inherited sandbox state). Failure is fatal.
-- On Linux the log worker and supervisor apply `LinuxSandbox`: no-new-privs,
-  capability/bounding-set drop, Landlock write restrictions, seccomp socket
-  filters and optional empty network namespace. Storage/network worker
-  backends are still pending. Parent death is detected through EOF on the
-  channel rather than `PR_SET_PDEATHSIG`.
+- On OpenBSD all startup workers (supervisor/log, router storage and the
+  torrent-storage broker) are spawned while the startup pledge still has
+  `proc`/`exec`. The startup pledge now always carries `exec` for this window,
+  even when `privsep.log` is disabled; otherwise the default build could not
+  exec the storage broker. The parent then installs its runtime policy without
+  `exec`; `proc` is retained only for bounded supervisor reaping/signalling.
+  The log supervisor applies `pledge("stdio unix proc exec")` after receiving
+  configuration and pre-resolving the executable. The torrent-storage broker
+  receives a validated data root as inherited fd 4 and applies
+  `pledge("stdio unix proc exec sendfd recvfd")` without `rpath`; it never
+  re-resolves the root path. The log/storage workers apply their own policy
+  after `execve` (`unveil` + `pledge`, with no dependency on inherited sandbox
+  state). Failure is fatal.
+- On Linux the log worker applies the full `LinuxSandbox` role policy:
+  no-new-privs, capability/bounding-set drop, Landlock write restriction,
+  AF_INET/AF_INET6-deny seccomp filter and optional empty network namespace.
+  The supervisor only applies `ApplyLinuxSupervisorSandbox` (no-new-privs and
+  capability/bounding-set drop). Landlock, seccomp and network namespaces are
+  inherited across `fork`+`exec` and can only become stricter, so installing
+  the supervisor's write-deny or AF_INET-deny domain there would permanently
+  break its storage/network children. Each exec'ed child installs its own role
+  policy. Parent death is detected through EOF on the channel rather than
+  `PR_SET_PDEATHSIG`.
 - The worker descriptor is passed as `--privsep-worker log <fd>` and the worker
   verifies that the descriptor is an inherited socket with a matching peer UID.
   The post-fork child uses only async-signal-safe calls before `execv`.
@@ -88,16 +102,19 @@ The target invariants are:
 | Supervisor process | No | No | No | Worker lifecycle + log records | **Implemented / static; fork/restart tests pending** |
 | TUI client | No (local socket) | No | No | IPC responses | Implemented |
 | TUI server thread | No | No | No | Local IPC | In daemon process |
-| Storage worker | — | — | — | — | **Protocol/capability pending; core still persists directly** |
-| Network worker | — | — | — | — | **Protocol/capability pending; core still owns sockets** |
-| Crypto worker | — | — | — | — | **Protocol/capability pending; core still owns keys** |
-| Supervisor | No | No | No | Worker exit status/channel state | **Separate process for the log worker; other workers pending** |
+| Router storage worker | No | Four fixed router files | No | Typed fixed-name requests | **Implemented / static; optional `privsep.routerstorage`** |
+| Torrent storage worker | No | Delegated payload/state root | No | Typed payload/metadata requests | **Implemented / static; opt-in `isolatedstorage`** |
+| Network worker | — | — | — | — | **Policy builder only; core still owns sockets** |
+| Crypto worker | — | — | — | — | **Policy builder only; core still owns keys** |
+| Supervisor | No | No | No | Worker exit status/channel state | **Separate process for the log worker; storage broker separate on OpenBSD** |
 
 This is an **intermediate** stage, not the target architecture. The monolithic
-core still performs network I/O, persistence and key operations; only logging
-is split. The supervisor process now satisfies the process boundary for the log worker,
-but the core still combines network, persistence and key operations. It does
-not protect against a core compromise and is not full privilege separation. See `TODO.md` `PRIVSEP-005` and `PRIVSEP-006`/`007`.
+core still performs network I/O and most persistence, and it holds long-term
+keys. Logging, opt-in router persistence and opt-in torrent payload storage are
+split into separate processes. The core still combines network access with
+persistent writes, so it does not satisfy the target invariant and does not
+protect against a core compromise. See `TODO.md` `PRIVSEP-005`, `PRIVSEP-006`
+and `PRIVSEP-007`.
 
 ## Why not split everything at once
 
@@ -155,9 +172,9 @@ account and keep the data, runtime and local-socket paths available. That is a
 useful process identity and access boundary, but it is **not** the
 multiprocess architecture above and not a claim of full sandboxing.
 
-- Only the log worker is isolated. The core still performs network I/O,
-  persistence and key operations; storage, network and crypto workers remain
-  pending.
+- Logging and opt-in router/torrent storage are isolated. The core still
+  performs network I/O, most persistence and key operations; network and crypto
+  workers remain pending, and the core still combines network with writes.
 - systemd hardening (`ProtectSystem`, `ReadWritePaths`, `NoNewPrivileges`,
   namespace restrictions) must remain compatible with local `AF_UNIX`
   sockets, the TUI/IPC endpoint and persistence. It does not replace worker
@@ -243,16 +260,19 @@ tested in the manual OpenBSD job; production worker channels remain
 2. Network worker owning transport sockets; core receives normalized session
    events; no private keys in the network process.
 3. Dedicated supervisor process with pidfd/`waitpid`, restart policy and
-   channel ownership. The log worker is under it; the OpenBSD supervisor has
-   its own policy and pre-resolved executable. Network/storage/crypto workers
-   and core replacement on supervisor failure remain pending.
+   channel ownership. The log worker is under it; the OpenBSD torrent-storage
+   broker is a separate pre-pledge process with an inherited root fd. Router
+   storage and network/crypto workers are not yet under a single supervisor,
+   and core replacement on supervisor failure remains pending.
 4. Crypto worker for long-term signatures/key agreement if measurements show
    viable latency; otherwise document the boundary.
-5. Linux seccomp/Landlock is implemented for log/supervisor and policy-ready
-   for storage/network; the worker backends and cgroup/namespace deployment
-   remain pending. Windows Named Pipe/token/Job primitives are implemented and
-   tested statically; AppContainer/LPAC, the worker backends and daemon
-   integration remain pending. Android process constraints also remain pending.
+5. Linux seccomp/Landlock is implemented for the log worker and policy-ready
+   for storage/network; the supervisor uses capability-only bootstrap so
+   children can apply their own domains. Backends and cgroup/namespace
+   deployment remain pending. Windows Named Pipe/token/Job primitives are
+   implemented and tested statically; AppContainer/LPAC, the worker backends
+   and daemon integration remain pending. Android process constraints also
+   remain pending.
 6. Negative capability tests and OpenBSD dynamic validation.
 
 See `docs/security/process-capabilities.md`,

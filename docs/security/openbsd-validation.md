@@ -23,21 +23,18 @@ disposable host or VM with no production router identity.
 ## 1. Package and rc.d identity
 
 ```sh
-cmp /etc/rc.d/i2pd /path/to/wip-openbsd-ports/net/i2pd/pkg/i2pd.rc
 getcap -f /etc/login.conf.d/i2pd i2pd
-id -c _i2pd
 rcctl getdef i2pd
 rcctl get i2pd
-ls -ld /etc/i2pd /var/i2pd /var/i2pd/certificates
+ls -ld /etc/i2pd /var/i2pd /usr/local/share/i2pd/certificates
 ls -l /var/i2pd/i2pd.pid /var/i2pd/i2pd-tui.sock
 ```
 
-- Confirm `i2pd.rc` is byte-identical to
-  `wip-openbsd-ports/net/i2pd/pkg/i2pd.rc` (SHA-256
-  `a979840440e7d70ebd7efa0d81e347f9489f8b80145218e06e9df5d0fbb71e54` at the
-  time of writing).
-- Confirm `getcap` reports `i2pd`, not the fallback `daemon` class, and that
-  `_i2pd` uses it. If `/etc/login.conf.db` exists, confirm it was rebuilt
+- Confirm the rendered `/etc/rc.d/i2pd` matches the canonical template after
+  the ports framework has substituted `TRUEPREFIX`, `LOCALSTATEDIR` and
+  `SYSCONFDIR`; the installed file is not byte-identical to the template.
+- Confirm `getcap -f /etc/login.conf.d/i2pd i2pd` reports `i2pd`, not the
+  fallback `daemon` class, and that `_i2pd` uses it. If `/etc/login.conf.db` exists, confirm it was rebuilt
   after installing `login.conf.d/i2pd`.
 - Confirm `/etc/i2pd` is root-owned/not writable by `_i2pd` and `/var/i2pd`
   is owned by `_i2pd` with no group/world write access.
@@ -53,10 +50,12 @@ fstat -p "$(cat /var/i2pd/i2pd.pid)"
 tail -n 50 /var/log/daemon
 ```
 
-- `rcctl start` waits for the self-daemonizing parent, which waits (bounded
-  to 60 s) for the child to report readiness through a close-on-exec pipe.
-  Success therefore means the pidfile was locked, pledge/unveil were applied,
-  the logger started and `Daemon_Singleton::start()` returned true. Confirm
+- The packaged rc.d script runs `--foreground` under `rc_bg=YES`; `rcctl start`
+  therefore confirms that rc.subr started the supervised process, not that the
+  router finished initializing. For a manual `--daemon` start, the parent waits
+  up to 5 minutes for the child readiness byte. In daemon mode success means the
+  pidfile was locked, pledge/unveil were applied, the logger started and
+  `Daemon_Singleton::start()` returned true. Confirm
   the pidfile and TUI socket are present immediately after `rcctl check i2pd`.
 - If the child fails or times out, `rcctl start` must return a nonzero status
   and the parent must print the readiness error. A timed-out child is killed
@@ -140,7 +139,7 @@ Run each case from a fresh configuration copy and record `lastcomm` flags
 - `openbsd.pledge_file` is additive, not an override. Each line is tokenized
   on spaces/tabs/CR, `#` starts a comment, duplicate tokens are ignored and
   unknown tokens abort startup. The runtime policy always contains the fixed
-  baseline `stdio rpath wpath cpath fattr inet dns unix flock`, plus `mcast`
+  baseline `stdio rpath wpath cpath fattr inet dns unix flock recvfd`, plus `mcast`
   when `upnp.enabled` is true and `proc` when `privsep.log` is active;
   accepted custom tokens are appended in file order. An empty custom file therefore keeps the baseline unchanged. The
   runtime parser rejects `proc` and `exec`; adding them to the core would
@@ -155,8 +154,8 @@ Run each case from a fresh configuration copy and record `lastcomm` flags
     on several lines must not duplicate it in the `pledge` column. A runtime
     file adding `proc` or `exec` must fail with the explicit refusal.
 - The separate startup-phase pledge in `Daemon.cpp` is also additive: it
-  always includes `proc`, `unveil` when enabled, and the filesystem/network
-  baseline, then appends custom tokens. A custom file therefore cannot remove
+  includes `proc`, `exec` for worker spawning, `unveil` when enabled, and the
+  filesystem/network baseline, then appends custom tokens. A custom file therefore cannot remove
   startup-only promises either.
 
 ## 5. TUI and log worker
@@ -173,8 +172,16 @@ Run each case from a fresh configuration copy and record `lastcomm` flags
 - Run `test-privsep-openbsd-policy` and `test-privsep-openbsd-imsg` from
   CTest. The policy test forks children and requires a pledge violation when
   the storage policy attempts an AF_INET socket and when the network policy
-  attempts to create a persistent file. The imsg test checks a versioned frame,
-  rejected unknown type, `getpeereid` UID and one `SCM_RIGHTS` descriptor.
+  attempts to create a persistent file; it also checks pre-opened stream/
+  datagram validation and rejects an empty storage unveil root. The imsg test
+  checks validated adoption (`getpeereid`, socket type, CLOEXEC), a versioned
+  frame, buffered back-to-back frames, rejected unknown type and descriptor
+  ownership on a failed oversized compose.
+- With `isolatedstorage=true`, run `test-torrent-storage-openbsd`. It must
+  delegate a nested subdirectory through the pre-pledge broker, reject a
+  symlinked/replaced delegated path without killing the broker, and allow a
+  later legitimate delegation. Verify the broker has no `rpath`/`wpath` in its
+  runtime pledge and that an existing worker survives broker exit.
 - Start `i2pd` as root with `privsep.enabled = true`: the worker entrypoint must
   refuse to run with euid 0 and startup must fail. The packaged service must be
   run as `_i2pd`; do not add a root fallback.

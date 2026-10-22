@@ -24,7 +24,15 @@
 
 #include <windows.h>
 #include <aclapi.h>
+#include <bcrypt.h>
 #include <sddl.h>
+
+#ifndef LUA_TOKEN
+#define LUA_TOKEN 0x00000004
+#endif
+#ifndef JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION
+#define JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION 0x00000400
+#endif
 
 #include <algorithm>
 #include <chrono>
@@ -198,14 +206,25 @@ namespace
 		return { };
 	}
 
-	bool WaitOverlapped (HANDLE pipe, OVERLAPPED & overlapped, DWORD timeoutMs, DWORD & transferred)
+	bool WaitOverlapped (HANDLE pipe, OVERLAPPED & overlapped, DWORD timeoutMs, DWORD & transferred,
+		DWORD * errorOut = nullptr)
 	{
 		if (WaitForSingleObject (overlapped.hEvent, timeoutMs) != WAIT_OBJECT_0)
 		{
+			// CancelIoEx is asynchronous: the OVERLAPPED and its buffers must
+			// remain alive until the cancelled operation is reaped.
 			CancelIoEx (pipe, &overlapped);
+			DWORD discarded = 0;
+			GetOverlappedResult (pipe, &overlapped, &discarded, TRUE);
+			if (errorOut) *errorOut = ERROR_TIMEOUT;
 			return false;
 		}
-		return GetOverlappedResult (pipe, &overlapped, &transferred, FALSE) != 0;
+		if (!GetOverlappedResult (pipe, &overlapped, &transferred, FALSE))
+		{
+			if (errorOut) *errorOut = GetLastError ();
+			return false;
+		}
+		return true;
 	}
 }
 
@@ -305,47 +324,69 @@ i2p::expected<WindowsServer, std::string> WindowsServer::Create (const std::wstr
 
 i2p::expected<WindowsChannel, std::string> WindowsServer::Accept (DWORD timeoutMs)
 {
+	return AcceptBound (timeoutMs, 0, 0);
+}
+
+i2p::expected<WindowsChannel, std::string> WindowsServer::AcceptBound (
+	DWORD timeoutMs, DWORD expectedProcessId, DWORD expectedSessionId)
+{
 	if (m_Pipe == INVALID_HANDLE_VALUE) return i2p::unexpected ("worker pipe is closed");
-	ScopedHandle event (CreateEventW (nullptr, TRUE, FALSE, nullptr));
-	if (!event) return i2p::unexpected ("CreateEvent(pipe accept): " + Win32ErrorText (GetLastError ()));
-
-	OVERLAPPED overlapped { };
-	overlapped.hEvent = event.get ();
-	DWORD transferred = 0;
-	BOOL connected = ConnectNamedPipe (m_Pipe, &overlapped);
-	if (!connected)
+	const auto deadline = std::chrono::steady_clock::now () + std::chrono::milliseconds (timeoutMs);
+	while (true)
 	{
-		const DWORD error = GetLastError ();
-		if (error == ERROR_PIPE_CONNECTED)
-			connected = TRUE;
-		else if (error == ERROR_IO_PENDING)
+		const auto now = std::chrono::steady_clock::now ();
+		if (now >= deadline) return i2p::unexpected ("worker pipe accept timeout");
+		const DWORD remaining = static_cast<DWORD> (std::chrono::duration_cast<std::chrono::milliseconds> (
+			deadline - now).count ());
+		ScopedHandle event (CreateEventW (nullptr, TRUE, FALSE, nullptr));
+		if (!event) return i2p::unexpected ("CreateEvent(pipe accept): " + Win32ErrorText (GetLastError ()));
+
+		OVERLAPPED overlapped { };
+		overlapped.hEvent = event.get ();
+		DWORD transferred = 0;
+		BOOL connected = ConnectNamedPipe (m_Pipe, &overlapped);
+		if (!connected)
 		{
-			if (WaitForSingleObject (event.get (), timeoutMs) != WAIT_OBJECT_0)
+			const DWORD error = GetLastError ();
+			if (error == ERROR_PIPE_CONNECTED)
+				connected = TRUE;
+			else if (error == ERROR_IO_PENDING)
 			{
-				CancelIoEx (m_Pipe, &overlapped);
-				return i2p::unexpected ("worker pipe accept timeout");
+				DWORD operationError = 0;
+				if (!WaitOverlapped (m_Pipe, overlapped, remaining, transferred, &operationError))
+				{
+					DisconnectNamedPipe (m_Pipe);
+					if (operationError == ERROR_TIMEOUT) return i2p::unexpected ("worker pipe accept timeout");
+					return i2p::unexpected ("worker pipe accept: " + Win32ErrorText (operationError));
+				}
+				connected = TRUE;
 			}
-			connected = GetOverlappedResult (m_Pipe, &overlapped, &transferred, FALSE);
+			else
+				return i2p::unexpected ("ConnectNamedPipe: " + Win32ErrorText (error));
 		}
-		else
-			return i2p::unexpected ("ConnectNamedPipe: " + Win32ErrorText (error));
-	}
-	if (!connected) return i2p::unexpected ("worker pipe accept failed");
+		if (!connected) return i2p::unexpected ("worker pipe accept failed");
 
-	WindowsChannel channel (m_Pipe, true);
-	m_Pipe = INVALID_HANDLE_VALUE;
-	auto peer = channel.Peer ();
-	if (!peer)
-	{
-		channel.Close ();
-		return i2p::unexpected (peer.error ());
+		WindowsChannel candidate (m_Pipe, true);
+		auto peer = candidate.Peer ();
+		if (!peer)
+		{
+			candidate.Release ();
+			DisconnectNamedPipe (m_Pipe);
+			return i2p::unexpected (peer.error ());
+		}
+		if (peer->userSid != m_UserSid
+			|| (expectedProcessId != 0 && peer->processId != expectedProcessId)
+			|| (expectedSessionId != 0 && peer->sessionId != expectedSessionId))
+		{
+			// Reject this connection but keep the listener usable for the
+			// real worker; a hostile same-user connect must not be a DoS.
+			candidate.Release ();
+			DisconnectNamedPipe (m_Pipe);
+			continue;
+		}
+		m_Pipe = INVALID_HANDLE_VALUE;
+		return candidate;
 	}
-	if (peer->userSid != m_UserSid)
-	{
-		channel.Close ();
-		return i2p::unexpected ("worker pipe peer has an unexpected user SID");
-	}
-	return channel;
 }
 
 WindowsChannel::~WindowsChannel ()
@@ -389,19 +430,54 @@ void WindowsChannel::Close ()
 
 i2p::expected<WindowsChannel, std::string> WindowsChannel::Connect (const std::wstring & pipeName, DWORD timeoutMs)
 {
+	return ConnectBound (pipeName, 0, 0, timeoutMs);
+}
+
+i2p::expected<WindowsChannel, std::string> WindowsChannel::ConnectBound (
+	const std::wstring & pipeName, DWORD expectedServerProcessId, DWORD expectedSessionId, DWORD timeoutMs)
+{
 	if (!IsLocalPipeName (pipeName)) return i2p::unexpected ("worker pipe name is not local");
-	if (!WaitNamedPipeW (pipeName.c_str (), timeoutMs))
-		return i2p::unexpected ("WaitNamedPipe: " + Win32ErrorText (GetLastError ()));
-	const HANDLE pipe = CreateFileW (pipeName.c_str (), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING,
-		FILE_FLAG_OVERLAPPED | SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION, nullptr);
+	const auto deadline = std::chrono::steady_clock::now () + std::chrono::milliseconds (timeoutMs);
+	HANDLE pipe = INVALID_HANDLE_VALUE;
+	DWORD lastError = ERROR_FILE_NOT_FOUND;
+	while (true)
+	{
+		pipe = CreateFileW (pipeName.c_str (), GENERIC_READ | GENERIC_WRITE, 0, nullptr, OPEN_EXISTING,
+			FILE_FLAG_OVERLAPPED | SECURITY_SQOS_PRESENT | SECURITY_IDENTIFICATION, nullptr);
+		if (pipe != INVALID_HANDLE_VALUE) break;
+		lastError = GetLastError ();
+		const auto now = std::chrono::steady_clock::now ();
+		if (now >= deadline) break;
+		if (lastError != ERROR_PIPE_BUSY && lastError != ERROR_FILE_NOT_FOUND)
+			return i2p::unexpected ("CreateFile(worker pipe): " + Win32ErrorText (lastError));
+		const DWORD remaining = static_cast<DWORD> (std::chrono::duration_cast<std::chrono::milliseconds> (
+			deadline - now).count ());
+		WaitNamedPipeW (pipeName.c_str (), std::min<DWORD> (remaining, 100));
+		Sleep (10);
+	}
 	if (pipe == INVALID_HANDLE_VALUE)
-		return i2p::unexpected ("CreateFile(worker pipe): " + Win32ErrorText (GetLastError ()));
+		return i2p::unexpected ("WaitNamedPipe/CreateFile: " + Win32ErrorText (lastError));
 	WindowsChannel channel (pipe);
 	auto mode = SetPipeMessageMode (pipe);
 	if (!mode)
 	{
 		channel.Close ();
 		return i2p::unexpected (mode.error ());
+	}
+	if (expectedServerProcessId != 0 || expectedSessionId != 0)
+	{
+		auto peer = channel.Peer ();
+		if (!peer)
+		{
+			channel.Close ();
+			return i2p::unexpected (peer.error ());
+		}
+		if ((expectedServerProcessId != 0 && peer->processId != expectedServerProcessId)
+			|| (expectedSessionId != 0 && peer->sessionId != expectedSessionId))
+		{
+			channel.Close ();
+			return i2p::unexpected ("worker pipe server PID/session does not match the expected supervisor");
+		}
 	}
 	return channel;
 }
@@ -421,10 +497,19 @@ i2p::expected<void, std::string> WindowsChannel::Send (const Message & message, 
 	{
 		const DWORD error = GetLastError ();
 		if (error != ERROR_IO_PENDING) return i2p::unexpected ("WriteFile(worker pipe): " + Win32ErrorText (error));
-		if (!WaitOverlapped (m_Pipe, overlapped, timeoutMs, written))
-			return i2p::unexpected ("worker pipe send timeout");
+		DWORD operationError = 0;
+		if (!WaitOverlapped (m_Pipe, overlapped, timeoutMs, written, &operationError))
+		{
+			Close ();
+			if (operationError == ERROR_TIMEOUT) return i2p::unexpected ("worker pipe send timeout");
+			return i2p::unexpected ("worker pipe send: " + Win32ErrorText (operationError));
+		}
 	}
-	if (static_cast<size_t> (written) != encoded->size ()) return i2p::unexpected ("worker pipe short message write");
+	if (static_cast<size_t> (written) != encoded->size ())
+	{
+		Close ();
+		return i2p::unexpected ("worker pipe short message write");
+	}
 	return { };
 }
 
@@ -433,7 +518,9 @@ i2p::expected<std::optional<Message>, std::string> WindowsChannel::Receive (DWOR
 	if (!IsOpen ()) return i2p::unexpected ("worker pipe is closed");
 	ScopedHandle event (CreateEventW (nullptr, TRUE, FALSE, nullptr));
 	if (!event) return i2p::unexpected ("CreateEvent(receive): " + Win32ErrorText (GetLastError ()));
-	std::vector<char> buffer (MAX_MESSAGE_SIZE);
+	// One byte over the maximum legal frame: every larger message-mode record
+	// raises ERROR_MORE_DATA and is terminal, with no 16-byte dead zone.
+	std::vector<char> buffer (MAX_MESSAGE_SIZE + 1);
 	OVERLAPPED overlapped { };
 	overlapped.hEvent = event.get ();
 	DWORD read = 0;
@@ -441,16 +528,47 @@ i2p::expected<std::optional<Message>, std::string> WindowsChannel::Receive (DWOR
 	if (!result)
 	{
 		const DWORD error = GetLastError ();
-		if (error == ERROR_MORE_DATA) return i2p::unexpected ("worker pipe message is too large");
+		if (error == ERROR_MORE_DATA)
+		{
+			Close ();
+			return i2p::unexpected ("worker pipe message is too large");
+		}
 		if (error == ERROR_BROKEN_PIPE || error == ERROR_PIPE_NOT_CONNECTED)
+		{
+			Close ();
 			return i2p::unexpected ("worker pipe closed");
+		}
 		if (error != ERROR_IO_PENDING) return i2p::unexpected ("ReadFile(worker pipe): " + Win32ErrorText (error));
-		if (!WaitOverlapped (m_Pipe, overlapped, timeoutMs, read))
+		DWORD operationError = 0;
+		if (!WaitOverlapped (m_Pipe, overlapped, timeoutMs, read, &operationError))
+		{
+			if (operationError == ERROR_MORE_DATA)
+			{
+				Close ();
+				return i2p::unexpected ("worker pipe message is too large");
+			}
+			if (operationError == ERROR_BROKEN_PIPE || operationError == ERROR_PIPE_NOT_CONNECTED)
+			{
+				Close ();
+				return i2p::unexpected ("worker pipe closed");
+			}
+			Close ();
+			if (operationError != ERROR_TIMEOUT)
+				return i2p::unexpected ("worker pipe receive: " + Win32ErrorText (operationError));
 			return i2p::unexpected ("worker pipe receive timeout");
+		}
 	}
-	if (read == 0) return i2p::unexpected ("worker pipe closed");
+	if (read == 0)
+	{
+		Close ();
+		return i2p::unexpected ("worker pipe closed");
+	}
 	auto decoded = Decode (std::string_view (buffer.data (), read));
-	if (!decoded) return i2p::unexpected ("protocol: " + std::string (decoded.error ().text));
+	if (!decoded)
+	{
+		Close ();
+		return i2p::unexpected ("protocol: " + std::string (decoded.error ().text));
+	}
 	return std::optional<Message> (std::move (*decoded));
 }
 
@@ -494,16 +612,27 @@ i2p::expected<WindowsPeer, std::string> WindowsChannel::Peer () const
 
 bool WindowsAllowsOperation (WindowsWorkerRole role, MessageType type)
 {
-	switch (type)
+	if (type == MessageType::Ping || type == MessageType::Shutdown) return true;
+	switch (role)
 	{
-	case MessageType::Ping:
-	case MessageType::Pong:
-	case MessageType::Shutdown: return true;
-	case MessageType::ConfigureLog:
-	case MessageType::ConfigureLogFd:
-	case MessageType::LogRecord: return role == WindowsWorkerRole::Log || role == WindowsWorkerRole::Supervisor;
-	default: return false;
+	case WindowsWorkerRole::Supervisor:
+	case WindowsWorkerRole::Log:
+		// ConfigureLogFd promises one SCM_RIGHTS descriptor. The Windows pipe
+		// transport has no descriptor channel, so accepting it would silently
+		// drop the capability; only path configuration is valid here.
+		return type == MessageType::ConfigureLog || type == MessageType::LogRecord;
+	case WindowsWorkerRole::Storage:
+		return type == MessageType::ConfigureRouterStorage || type == MessageType::RouterStorageRequest
+			|| type == MessageType::ConfigureTorrentStorage
+			|| type == MessageType::ConfigureTorrentStorageSupervised
+			|| type == MessageType::TorrentStorageRequest;
+	case WindowsWorkerRole::Network:
+	case WindowsWorkerRole::Crypto:
+	case WindowsWorkerRole::Admin:
+		// No typed Windows backend exists yet; control-plane messages only.
+		return false;
 	}
+	return false;
 }
 
 WindowsWorkerPolicy GetWindowsWorkerPolicy (WindowsWorkerRole role)
@@ -577,8 +706,28 @@ i2p::expected<WindowsHandle, std::string> CreateRestrictedWorkerToken (const Win
 	if (!OpenProcessToken (GetCurrentProcess (), TOKEN_DUPLICATE | TOKEN_ASSIGN_PRIMARY | TOKEN_QUERY, &token))
 		return i2p::unexpected ("OpenProcessToken: " + Win32ErrorText (GetLastError ()));
 	ScopedHandle original (token);
+	// DISABLE_MAX_PRIVILEGE only disables privileges that were already
+	// enabled. Delete every privilege so the worker cannot re-enable one.
+	DWORD privilegeBytes = 0;
+	GetTokenInformation (token, TokenPrivileges, nullptr, 0, &privilegeBytes);
+	std::vector<LUID_AND_ATTRIBUTES> privileges;
+	if (privilegeBytes >= sizeof (TOKEN_PRIVILEGES))
+	{
+		std::vector<unsigned char> buffer (privilegeBytes);
+		if (!GetTokenInformation (token, TokenPrivileges, buffer.data (), privilegeBytes, &privilegeBytes))
+			return i2p::unexpected ("GetTokenInformation(TokenPrivileges): " + Win32ErrorText (GetLastError ()));
+		auto * tokenPrivileges = reinterpret_cast<TOKEN_PRIVILEGES *> (buffer.data ());
+		privileges.assign (tokenPrivileges->Privileges, tokenPrivileges->Privileges + tokenPrivileges->PrivilegeCount);
+	}
+	DWORD flags = DISABLE_MAX_PRIVILEGE;
+	TOKEN_ELEVATION elevation { };
+	DWORD elevationLength = sizeof (elevation);
+	if (GetTokenInformation (token, TokenElevation, &elevation, elevationLength, &elevationLength)
+		&& elevation.TokenIsElevated)
+		flags |= LUA_TOKEN;
 	HANDLE restricted = nullptr;
-	if (!CreateRestrictedToken (token, DISABLE_MAX_PRIVILEGE, 0, nullptr, 0, nullptr, 0, nullptr, &restricted))
+	if (!CreateRestrictedToken (token, flags, 0, nullptr, static_cast<DWORD> (privileges.size ()),
+			privileges.empty () ? nullptr : privileges.data (), 0, nullptr, &restricted))
 		return i2p::unexpected ("CreateRestrictedToken: " + Win32ErrorText (GetLastError ()));
 	if (!restricted) return i2p::unexpected ("CreateRestrictedToken returned no token");
 	return WindowsHandle (restricted);
@@ -589,7 +738,8 @@ i2p::expected<WindowsHandle, std::string> CreateWorkerJobObject (const WindowsWo
 	HANDLE job = CreateJobObjectW (nullptr, nullptr);
 	if (!job) return i2p::unexpected ("CreateJobObject: " + Win32ErrorText (GetLastError ()));
 	JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits { };
-	limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+	limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+		| JOB_OBJECT_LIMIT_DIE_ON_UNHANDLED_EXCEPTION;
 	if (policy.processLimit > 0)
 	{
 		limits.BasicLimitInformation.ActiveProcessLimit = policy.processLimit;
@@ -598,13 +748,25 @@ i2p::expected<WindowsHandle, std::string> CreateWorkerJobObject (const WindowsWo
 	if (policy.memoryLimit > 0)
 	{
 		limits.ProcessMemoryLimit = static_cast<SIZE_T> (policy.memoryLimit);
-		limits.BasicLimitInformation.LimitFlags |= JOB_OBJECT_LIMIT_PROCESS_MEMORY;
+		limits.JobMemoryLimit = static_cast<SIZE_T> (policy.memoryLimit);
+		limits.BasicLimitInformation.LimitFlags |= JOB_OBJECT_LIMIT_PROCESS_MEMORY | JOB_OBJECT_LIMIT_JOB_MEMORY;
 	}
 	if (!SetInformationJobObject (job, JobObjectExtendedLimitInformation, &limits, sizeof (limits)))
 	{
 		const DWORD error = GetLastError ();
 		CloseHandle (job);
 		return i2p::unexpected ("SetInformationJobObject: " + Win32ErrorText (error));
+	}
+	JOBOBJECT_BASIC_UI_RESTRICTIONS ui { };
+	ui.UIRestrictionsClass = JOB_OBJECT_UILIMIT_DESKTOP | JOB_OBJECT_UILIMIT_DISPLAYSETTINGS
+		| JOB_OBJECT_UILIMIT_EXITWINDOWS | JOB_OBJECT_UILIMIT_GLOBALATOMS
+		| JOB_OBJECT_UILIMIT_HANDLES | JOB_OBJECT_UILIMIT_READCLIPBOARD
+		| JOB_OBJECT_UILIMIT_SYSTEMPARAMETERS | JOB_OBJECT_UILIMIT_WRITECLIPBOARD;
+	if (!SetInformationJobObject (job, JobObjectBasicUIRestrictions, &ui, sizeof (ui)))
+	{
+		const DWORD error = GetLastError ();
+		CloseHandle (job);
+		return i2p::unexpected ("SetInformationJobObject(UI): " + Win32ErrorText (error));
 	}
 	return WindowsHandle (job);
 }
@@ -685,6 +847,25 @@ i2p::expected<WindowsWorkerProcess, std::string> SpawnWindowsWorker (const std::
 	return worker;
 }
 
+bool WindowsWorkerProcess::Wait (DWORD timeoutMs) const
+{
+	return process.IsValid () && WaitForSingleObject (process.Native (), timeoutMs) == WAIT_OBJECT_0;
+}
+
+DWORD WindowsWorkerProcess::ExitCode () const
+{
+	DWORD code = 0;
+	if (!process.IsValid () || !GetExitCodeProcess (process.Native (), &code)) return ERROR_PROCESS_ABORTED;
+	return code;
+}
+
+bool WindowsWorkerProcess::TerminateAndWait (DWORD timeoutMs, UINT exitCode)
+{
+	if (!process.IsValid ()) return true;
+	if (!TerminateProcess (process.Native (), exitCode)) return false;
+	return Wait (timeoutMs);
+}
+
 i2p::expected<std::wstring, std::string> MakePrivatePipeName (std::string_view endpoint)
 {
 	const std::wstring normalized = NormalizeEndpoint (endpoint);
@@ -700,6 +881,18 @@ i2p::expected<std::wstring, std::string> MakePrivatePipeName (std::string_view e
 		 << hash;
 	return name.str ();
 }
+
+i2p::expected<std::wstring, std::string> MakeRandomPipeName ()
+{
+	unsigned char random[16] { };
+	const NTSTATUS status = BCryptGenRandom (nullptr, random, sizeof (random), BCRYPT_USE_SYSTEM_PREFERRED_RNG);
+	if (status < 0) return i2p::unexpected ("BCryptGenRandom failed");
+	std::wostringstream name;
+	name << L"\\\\.\\pipe\\openi2pd-worker-" << std::hex << std::nouppercase << std::setfill (L'0');
+	for (unsigned char byte : random) name << std::setw (2) << static_cast<unsigned int> (byte);
+	return name.str ();
+}
+
 }
 
 #endif

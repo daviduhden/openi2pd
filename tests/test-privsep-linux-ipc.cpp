@@ -146,6 +146,84 @@ void TestPeerCredentials ()
 	assert (!pair->first.PeerUid ().has_value ());
 }
 
+void TestEmptyRecordIsNotEof ()
+{
+	auto pair = Channel::CreatePair ();
+	assert (pair.has_value ());
+
+	// A zero-length SOCK_SEQPACKET record is not EOF. It must be consumed
+	// without tearing down the channel or leaking an attached descriptor.
+	const int before = CountOpenFds ();
+	assert (SendRaw (pair->first.Fd (), ""));
+	auto empty = pair->second.ReceiveWithFd (50);
+	assert (empty.has_value ());
+	assert (!empty->has_value ());
+	ExpectReusable (pair->first, pair->second, 201);
+
+	const int fd = OpenDescriptor ("/dev/null", O_RDONLY);
+	assert (SendRawWithFds (pair->first.Fd (), "", &fd, 1));
+	close (fd);
+	auto emptyWithFd = pair->second.ReceiveWithFd (50);
+	assert (emptyWithFd.has_value ());
+	assert (!emptyWithFd.has_value ());
+	if (before >= 0) assert (CountOpenFds () == before);
+	ExpectReusable (pair->first, pair->second, 202);
+
+	// A peer that floods empty records must be bounded, not allowed to spin
+	// the receive loop for the caller's whole timeout.
+	for (int i = 0; i < 9; ++i) assert (SendRaw (pair->first.Fd (), ""));
+	auto flood = pair->second.ReceiveWithFd (500);
+	assert (!flood.has_value ());
+	assert (flood.error ().find ("empty-record flood") != std::string::npos);
+}
+
+void TestAdoptValidatedRejectsNonChannels ()
+{
+	auto pair = Channel::CreatePair ();
+	assert (pair.has_value ());
+	const uint32_t uid = geteuid ();
+
+	// A regular file, a pipe and a stream socket are never an IPC channel.
+	const int regular = OpenDescriptor ("/dev/null", O_RDONLY);
+	assert (!Channel::AdoptValidated (regular, uid).has_value ());
+
+	int pipeFds[2] = { -1, -1 };
+	assert (::pipe (pipeFds) == 0);
+	const int before = CountOpenFds ();
+	assert (!Channel::AdoptValidated (pipeFds[0], uid).has_value ());
+	if (before >= 0) assert (CountOpenFds () == before - 1); // rejected fd was closed
+	::close (pipeFds[1]);
+
+	int streamFds[2] = { -1, -1 };
+	assert (::socketpair (AF_UNIX, SOCK_STREAM, 0, streamFds) == 0);
+	assert (!Channel::AdoptValidated (streamFds[0], uid).has_value ());
+	::close (streamFds[1]);
+
+	// A valid endpoint is adopted with CLOEXEC and the expected peer UID.
+	auto validated = Channel::AdoptValidated (pair->first.Release (), uid);
+	assert (validated.has_value ());
+	assert (fcntl (validated->Fd (), F_GETFD) >= 0);
+	assert ((fcntl (validated->Fd (), F_GETFD) & FD_CLOEXEC) != 0);
+}
+
+void TestAdoptValidatedEnablesPasscred ()
+{
+	int fds[2] = { -1, -1 };
+	assert (::socketpair (AF_UNIX, SOCK_SEQPACKET, 0, fds) == 0);
+	auto receiver = Channel::AdoptValidated (fds[1], geteuid ());
+	assert (receiver.has_value ());
+	fds[1] = -1;
+	Channel sender = Channel::Adopt (fds[0]);
+	fds[0] = -1;
+	assert (sender.Send (Message { MessageType::Ping, 301, { } }).has_value ());
+	auto received = receiver->ReceiveWithFd (1000);
+	assert (received.has_value ());
+	assert (received->has_value ());
+	assert ((*received)->message.requestId == 301);
+	sender.Close ();
+	receiver->Close ();
+}
+
 void TestMissingCredentialsRejected ()
 {
 	// SO_PASSCRED is what makes SCM_CREDENTIALS mandatory. A socketpair that
@@ -613,6 +691,9 @@ void TestSendQueueSaturation ()
 int main ()
 {
 	TestPeerCredentials ();
+	TestEmptyRecordIsNotEof ();
+	TestAdoptValidatedRejectsNonChannels ();
+	TestAdoptValidatedEnablesPasscred ();
 	TestMissingCredentialsRejected ();
 	TestDescriptorTransfer ();
 	TestMultipleDescriptorRejection ();

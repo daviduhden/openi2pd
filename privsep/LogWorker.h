@@ -56,10 +56,18 @@ public:
 	i2p::expected<void, std::string> Shutdown ();
 	bool IsOpen () const;
 	bool IsShutdown () const;
+	/** Records dropped because the sink was closed or a send failed. */
+	uint64_t DroppedCount () const;
 
 private:
+	/** Send one configuration frame and prove the worker is live/configured. */
+	i2p::expected<void, std::string> ConfigureChannel (
+		Channel & channel, MessageType type, bool useSyslog, std::string_view path, std::string_view tag, int fd);
+	i2p::expected<void, std::string> WaitForPong (Channel & channel, uint32_t expected, int timeoutMs);
 	mutable std::mutex m_Mutex;
 	Channel m_Channel;
+	uint32_t m_NextRequest = 0;
+	uint64_t m_Dropped = 0;
 	bool m_Configured = false;
 	bool m_Shutdown = false;
 	bool m_Syslog = false;

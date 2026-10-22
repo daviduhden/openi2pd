@@ -22,17 +22,33 @@
 
 #ifndef _WIN32
 #include <algorithm>
+#include <sys/stat.h>
 #include <cerrno>
 #include <chrono>
 #include <limits>
 #include <poll.h>
 #include <sys/wait.h>
 #include <thread>
+#include <unistd.h>
 #endif
 
 namespace i2p::privsep
 {
 #ifndef _WIN32
+/**
+ * Close inherited standard descriptors that are sockets. A foreground
+ * service or socket-activated wrapper can otherwise hand the log/supervisor
+ * worker a live network descriptor that seccomp/Landlock will not revoke.
+ */
+inline void SanitizeInheritedStdio ()
+{
+	for (int fd = 0; fd <= 2; ++fd)
+	{
+		struct stat status {};
+		if (::fstat (fd, &status) == 0 && S_ISSOCK (status.st_mode)) ::close (fd);
+	}
+}
+
 /**
  * Wait for a child until an absolute deadline without ever blocking past it.
  *
@@ -115,6 +131,17 @@ public:
 	 * the child stays a zombie until then or until the router exits.
 	 */
 	void Stop (int timeoutMs = 2000);
+	/**
+	 * Release ownership without signalling. Used by the OpenBSD storage
+	 * broker after it hands the worker channel to the core: the broker must
+	 * not kill a worker that another process now owns.
+	 */
+	void Disown ()
+	{
+		ClosePidFd ();
+		m_Pid = -1;
+		m_Channel.Close ();
+	}
 	pid_t Pid () const { return m_Pid; }
 	Channel & ChannelFd () { return m_Channel; }
 

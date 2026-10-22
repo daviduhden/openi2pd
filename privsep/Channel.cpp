@@ -23,6 +23,7 @@
 #include <limits>
 #include <poll.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/uio.h>
 #include <unistd.h>
 
@@ -91,6 +92,71 @@ void Channel::Close ()
 		::close (m_Fd);
 		m_Fd = -1;
 	}
+}
+
+i2p::expected<Channel, std::string> Channel::AdoptValidated (int fd, uint32_t expectedUid)
+{
+	if (fd < 0) return i2p::unexpected ("invalid channel descriptor");
+	struct stat info { };
+	int socketType = 0;
+	socklen_t socketTypeLength = sizeof (socketType);
+	if (::fstat (fd, &info) != 0 || !S_ISSOCK (info.st_mode)
+		|| ::getsockopt (fd, SOL_SOCKET, SO_TYPE, &socketType, &socketTypeLength) != 0
+		|| socketType != SOCK_SEQPACKET)
+	{
+		::close (fd);
+		return i2p::unexpected ("adopted descriptor is not an AF_UNIX SOCK_SEQPACKET socket");
+	}
+#ifdef SO_DOMAIN
+	int domain = 0;
+	socklen_t domainLength = sizeof (domain);
+	if (::getsockopt (fd, SOL_SOCKET, SO_DOMAIN, &domain, &domainLength) != 0 || domain != AF_UNIX)
+	{
+		::close (fd);
+		return i2p::unexpected ("adopted descriptor is not AF_UNIX");
+	}
+#endif
+#ifdef SO_ACCEPTCONN
+	int accepting = 0;
+	socklen_t acceptingLength = sizeof (accepting);
+	if (::getsockopt (fd, SOL_SOCKET, SO_ACCEPTCONN, &accepting, &acceptingLength) == 0 && accepting)
+	{
+		::close (fd);
+		return i2p::unexpected ("adopted descriptor is a listening socket");
+	}
+#endif
+#if defined(__linux__)
+	int passcred = 0;
+	socklen_t passcredLength = sizeof (passcred);
+	if (::getsockopt (fd, SOL_SOCKET, SO_PASSCRED, &passcred, &passcredLength) != 0)
+	{
+		::close (fd);
+		return i2p::unexpected (std::string ("getsockopt(SO_PASSCRED): ") + strerror (errno));
+	}
+	if (!passcred)
+	{
+		const int enable = 1;
+		if (::setsockopt (fd, SOL_SOCKET, SO_PASSCRED, &enable, sizeof (enable)) != 0)
+		{
+			::close (fd);
+			return i2p::unexpected (std::string ("setsockopt(SO_PASSCRED): ") + strerror (errno));
+		}
+	}
+#endif
+	const int flags = ::fcntl (fd, F_GETFD);
+	if (flags < 0 || ::fcntl (fd, F_SETFD, flags | FD_CLOEXEC) < 0)
+	{
+		::close (fd);
+		return i2p::unexpected (std::string ("fcntl(FD_CLOEXEC): ") + strerror (errno));
+	}
+	Channel channel (fd);
+	auto uid = channel.PeerUid ();
+	if (!uid || *uid != expectedUid)
+	{
+		channel.Close ();
+		return i2p::unexpected ("adopted channel peer has an unexpected uid");
+	}
+	return channel;
 }
 
 i2p::expected<std::pair<Channel, Channel>, std::string> Channel::CreatePair ()
@@ -245,9 +311,15 @@ i2p::expected<std::optional<ReceivedMessage>, std::string> Channel::ReceiveWithF
 #endif
 	struct msghdr header { };
 	ssize_t received = -1;
+	short readyEvents = 0;
+	unsigned emptyRecords = 0;
 	while (true)
 	{
-		pollfd pfd { m_Fd, POLLIN, 0 };
+		short events = POLLIN;
+#ifdef POLLRDHUP
+		events |= POLLRDHUP;
+#endif
+		pollfd pfd { m_Fd, events, 0 };
 		int result;
 		do result = ::poll (&pfd, 1, PollTimeout (infinite, deadline));
 		while (result < 0 && errno == EINTR && (infinite || !DeadlineExpired (deadline)));
@@ -259,9 +331,14 @@ i2p::expected<std::optional<ReceivedMessage>, std::string> Channel::ReceiveWithF
 		}
 		if (result == 0) return std::optional<ReceivedMessage> { };
 		if (pfd.revents & POLLNVAL) return i2p::unexpected ("poll: invalid descriptor");
+		readyEvents = pfd.revents;
 		// Drain buffered records before reporting a hangup: POLLIN and
 		// POLLHUP may arrive together when the peer has written and closed.
-		if ((pfd.revents & (POLLERR | POLLHUP)) && !(pfd.revents & POLLIN))
+		if ((readyEvents & (POLLERR | POLLHUP
+#ifdef POLLRDHUP
+			| POLLRDHUP
+#endif
+			)) && !(readyEvents & POLLIN))
 			return i2p::unexpected ("peer closed the channel");
 
 		struct iovec iov { frame.data (), frame.size () };
@@ -334,15 +411,36 @@ i2p::expected<std::optional<ReceivedMessage>, std::string> Channel::ReceiveWithF
 		}
 #endif
 	}
-	if (received == 0)
-	{
-		if (receivedFd >= 0) ::close (receivedFd);
-		return i2p::unexpected ("peer closed the channel");
-	}
 	if (ancillaryError)
 	{
 		if (receivedFd >= 0) ::close (receivedFd);
 		return i2p::unexpected ("invalid ancillary data");
+	}
+	if (received == 0)
+	{
+		if (receivedFd >= 0)
+		{
+			::close (receivedFd);
+			return i2p::unexpected ("descriptor on an empty record");
+		}
+		// A zero-length record is still a peer send and must satisfy the same
+		// per-record credential rule as a data frame.
+#if defined(__linux__)
+		if (!receivedCredentials) return i2p::unexpected ("missing SCM_CREDENTIALS on an empty record");
+		auto emptyPeer = Credentials ();
+		if (!emptyPeer) return i2p::unexpected (emptyPeer.error ());
+		if (messageCredentials.uid != emptyPeer->uid || messageCredentials.gid != emptyPeer->gid)
+			return i2p::unexpected ("empty record failed SCM_CREDENTIALS");
+#endif
+		// SOCK_SEQPACKET delivers a zero-length datagram as recvmsg()==0,
+		// exactly like EOF. Only a hangup/error event makes this terminal.
+		if (readyEvents & (POLLERR | POLLHUP
+#ifdef POLLRDHUP
+			| POLLRDHUP
+#endif
+			)) return i2p::unexpected ("peer closed the channel");
+		if (++emptyRecords > 8) return i2p::unexpected ("empty-record flood");
+		continue; // consume the empty record and keep the channel usable
 	}
 	if (receivedFd >= 0)
 	{

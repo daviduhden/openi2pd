@@ -651,10 +651,13 @@ namespace util
 		if (usePledge)
 		{
 			std::string promises = "stdio rpath wpath cpath fattr inet dns unix flock proc";
-			// The supervisor/log-worker pair is spawned before the runtime
-			// sandbox. Keep exec only for that startup window; the runtime
-			// policy in UnixDaemon::start() deliberately omits proc and exec.
-			if (privsepEnabled && privsepLogEnabled) promises += " exec";
+			// Every startup worker (log supervisor, router storage and the
+			// torrent storage supervisor) is forked/exec'ed before the runtime
+			// sandbox. Keep exec only in this startup window; the runtime policy
+			// in UnixDaemon::start() omits proc/exec. Previously the promise was
+			// conditional on privsep.log, so the default OpenBSD build failed to
+			// exec the storage supervisor.
+			promises += " exec";
 			bool useUnveil;
 			i2p::config::GetOption ("openbsd.unveil_enabled", useUnveil);
 			if (useUnveil) promises += " unveil";

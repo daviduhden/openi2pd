@@ -57,9 +57,23 @@ public:
 
 	static i2p::expected<std::pair<Channel, Channel>, std::string> CreatePair ();
 	static Channel Adopt (int fd) { return Channel (fd); }
+	/**
+	 * Adopt a descriptor received from another process after validating that
+	 * it is an AF_UNIX SOCK_SEQPACKET socket with the expected peer UID. On
+	 * failure the descriptor is closed and the caller receives an error; it
+	 * is never returned half-validated.
+	 */
+	static i2p::expected<Channel, std::string> AdoptValidated (int fd, uint32_t expectedUid);
 
 	bool IsOpen () const { return m_Fd >= 0; }
 	int Fd () const { return m_Fd; }
+	/** Detach the descriptor without closing it; ownership passes to the caller. */
+	int Release ()
+	{
+		const int fd = m_Fd;
+		m_Fd = -1;
+		return fd;
+	}
 	void Close ();
 
 	i2p::expected<void, std::string> Send (const Message & message, int timeoutMs = 5000);

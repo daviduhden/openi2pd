@@ -41,9 +41,13 @@ int RunWorker (std::string_view role, std::string_view fdArgument)
 	const char * begin = fdArgument.data ();
 	const char * end = begin + fdArgument.size ();
 	auto parsed = std::from_chars (begin, end, fd);
-	if (parsed.ec != std::errc () || parsed.ptr != end || fd < 3 || fd > 1024)
+	// SpawnWorkerInternal always moves the channel to descriptor 3 and uses
+	// descriptor 4 for an inherited storage root. Rejecting any other number
+	// prevents a manually invoked worker from aliasing the control channel and
+	// its root authority or landing on an unrelated inherited descriptor.
+	if (parsed.ec != std::errc () || parsed.ptr != end || fd != 3)
 	{
-		std::fprintf (stderr, "privsep worker: invalid channel fd\n");
+		std::fprintf (stderr, "privsep worker: channel fd must be 3\n");
 		return 1;
 	}
 	// The descriptor must already be an inherited socket. This prevents a
@@ -66,9 +70,16 @@ int RunWorker (std::string_view role, std::string_view fdArgument)
 		return 1;
 	}
 	if (role == "torrent-storage-supervisor") return RunTorrentStorageSupervisor (fd);
+#if defined(__OpenBSD__)
+	// Directory descriptors only arrive as fd4 on OpenBSD, where pledge
+	// forbids directory SCM_RIGHTS. On Linux these roles would interpret any
+	// inherited fd4 as the write root, so they must not be dispatchable.
 	if (role == "torrent-storage-inherited") return RunTorrentStorageWorker (fd, 4);
-	if (role == "torrent-storage") return RunTorrentStorageWorker (fd);
 	if (role == "router-storage-inherited") return RunRouterStorageWorker (fd, 4);
+#else
+	if (role == "torrent-storage-inherited" || role == "router-storage-inherited") return 1;
+#endif
+	if (role == "torrent-storage") return RunTorrentStorageWorker (fd);
 	if (role == "router-storage") return RunRouterStorageWorker (fd);
 	if (role == "log") return RunLogWorker (fd);
 	if (role == "supervisor") return RunSupervisor (fd);
