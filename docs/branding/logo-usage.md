@@ -18,8 +18,10 @@ Documents project documentation.
   headers, desktop packaging and documentation headers.
 - **Symbol** — use at small sizes, Android launcher/adaptive icons and
   favicons. Do not add extra text inside the symbol.
-- **Monochrome** — one-color reproduction for stamps, embroidery, fax or
-  constrained print. Preserve the transparent/white node openings.
+- **Monochrome** — single-ink reproduction on white stock for stamps,
+  embroidery, fax or constrained print. The node openings are white knockouts;
+  do not place this master on dark or tinted stock without redrawing them as
+  transparent cut-outs.
 - **Light** — white/light wordmark and navy replacement for dark backgrounds.
 - **Dark** — the normal navy wordmark for light backgrounds.
 

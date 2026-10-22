@@ -37,8 +37,9 @@ sub first_line {
     # A shebang is far shorter than this; do not pull a large binary asset
     # into memory merely because the inventory scan visits it.
     my $line = '';
-    read($fh, $line, 256);
+    read($fh, $line, 512);
     close $fh;
+    $line =~ s/^\x{FEFF}//;
     return $line;
 }
 
@@ -58,11 +59,19 @@ find(
             my $path = $File::Find::name;
             return if -d $path;
             my $name = basename($path);
-            push @python_files, $path if $name =~ /\.(?:py|pyw|pyi)\z/i;
+            push @python_files, $path
+                if $name =~ /\.(?:py|pyw|pyi|pyx|pxd|ipynb)\z/i
+                || $name =~ /\.py\.in\z/i
+                || $name =~ /\A(?:SConstruct|SConscript|wscript|pyproject\.toml|setup\.cfg|requirements[^\/]*\.txt)\z/i;
 
-            my $line = first_line($path);
-            if (defined $line && $line =~ /^#!.*\b(?:python|pypy)[0-9.]*\b/i) {
-                push @python_shebang, $path;
+            my $prefix = first_line($path);
+            if (defined $prefix) {
+                my @head = split /\n/, $prefix;
+                my $shebang = join "\n", @head[0 .. ($#head < 2 ? $#head : 2)];
+                if ($shebang =~ /^#!.*\b(?:python|pypy)[0-9.]*\b/im
+                    || $shebang =~ /^#!.*\b(?:python|pypy)[0-9.]*\b/i) {
+                    push @python_shebang, $path;
+                }
             }
         },
     },
@@ -75,13 +84,23 @@ is_deeply(\@python_shebang, [], 'no Python shebang in maintained files');
 my @scripts = (
     'tools/scripts/i2pdctl',
     'tools/scripts/check-doc-links.pl',
+    'tools/scripts/check-doc-nav.pl',
     'tools/scripts/validate-branding.pl',
     'tools/tests/i2pdctl.t',
     'tools/tests/validate-branding.t',
     'tools/tests/perl-portability.t',
     'tests/interop/check-vectors.pl',
-    'android/tools/check-english-only.pl',
+    'android/tools/check-android-locales.pl',
 );
+
+my @discovered = map { File::Spec->abs2rel($_, $root) }
+    grep { -f $_ }
+    (glob(File::Spec->catfile($root, 'tools', 'scripts', '*')),
+     glob(File::Spec->catfile($root, 'tools', 'tests', '*.t')),
+     glob(File::Spec->catfile($root, 'tests', 'interop', '*.pl')),
+     glob(File::Spec->catfile($root, 'android', 'tools', '*.pl')));
+is_deeply([ sort @discovered ], [ sort @scripts ],
+    'maintained Perl inventory matches discovered scripts');
 
 # Modules shipped with the Perl core on OpenBSD/Linux. This also rejects
 # accidental CPAN or runtime downloads.
@@ -99,6 +118,8 @@ my @dangerous = (
     [qr/(?<![\w:])eval\s+["'\$]/, 'string eval'],
     [qr/(?<![\w:])(?:tempnam|tmpnam)\s*\(/, 'insecure temporary-name helper'],
     [qr/(?<![\w:])chmod\s+0?777\b/, 'world-writable chmod'],
+    [qr/(?<![\w:])chmod\s+0?666\b/, 'world-writable chmod'],
+    [qr/\bopen\s*\(?\s*[^,\n]+,\s*["'][^"']*[^"'\-]\|["']/, 'single-scalar pipe open'],
 );
 
 for my $relative (@scripts) {
@@ -112,6 +133,8 @@ for my $relative (@scripts) {
         "$relative uses a portable Perl shebang") if defined $line;
     like($text, qr/^\s*use\s+strict\s*;/m, "$relative enables strict");
     like($text, qr/^\s*use\s+warnings\s*;/m, "$relative enables warnings");
+    unlike($text, qr/^\s*no\s+(?:strict|warnings)\b/m,
+        "$relative never disables strict or warnings");
     unlike($text, qr/^#!.*\b(?:python|pypy)[0-9.]*\b/im,
         "$relative has no Python shebang");
 
@@ -121,7 +144,7 @@ for my $relative (@scripts) {
         ok(-x $path, "$relative is executable");
     }
 
-    while ($text =~ /^\s*use\s+([A-Za-z_][A-Za-z0-9_:]*)/mg) {
+    while ($text =~ /^\s*(?:use|require)\s+([A-Za-z_][A-Za-z0-9_:]*)/mg) {
         my $module = $1;
         ok($allowed_module{$module}, "$relative uses core module $module");
     }
@@ -151,12 +174,30 @@ my @consumers = (
     '.github/workflows/build.yml',
     '.github/workflows/build-windows.yml',
     '.github/workflows/build-openbsd.yml',
+    '.github/workflows/fuzz.yml',
+    '.github/workflows/packaging.yml',
+    'debian/rules',
+    'debian/control',
+    'contrib/rpm/i2pd.spec',
+    'contrib/rpm/i2pd-git.spec',
+    'contrib/static/i2pd.spec',
+    'contrib/static/package.sh',
+    'contrib/docker/Dockerfile',
+    'build/build_mingw.cmd',
+    'build/win_installer.iss',
+    'android/app/build.gradle',
+    'android/build.gradle',
+    'android/settings.gradle',
+    'tests/check-build-system.cmake',
 );
 for my $relative (@consumers) {
     my $path = File::Spec->catfile($root, split m{/}, $relative);
     my $text = read_file($path);
+    ok(-f $path, "$relative exists");
     next unless defined $text;
-    unlike($text, qr/\bpython\b/i, "$relative has no Python invocation");
+    unlike($text,
+        qr/(?:\bpython[0-9.]*\b|\bpip[0-9.]*\b|\bpy\s+-3\b|\bPYTHON(?:PATH|HOME)\b|\b(?:virtualenv|venv|tox|poetry)\b)/i,
+        "$relative has no Python invocation");
 }
 
 done_testing();

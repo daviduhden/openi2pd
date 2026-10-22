@@ -22,7 +22,7 @@ provenance.
 
 | Category | Examples | Decision |
 |---|---|---|
-| Copyright / license | `Copyright ... The PurpleI2P Project` on upstream/derived files, `LICENSE`, BSD text, docs CC-BY-SA | **Preserved** for derived material; new fork-only files use the fork copyright |
+| Copyright / license | `Copyright ... The PurpleI2P Project` on upstream/derived files, `LICENSE`, BSD text, imported docs BSD-3-Clause, marked first-party docs CC-BY-SA | **Preserved** for derived material; new fork-only files use the fork copyright |
 | Upstream provenance | GitHub URLs, i2pd-docs/tools commit pins, upstream manual links | **Preserved** (traceability/sync) |
 | I2P protocol identifiers | `i2p`, NTCP2, SSU2, netDb, LeaseSet, router hashes, crypto type names | **Unchanged** (wire compatibility) |
 | C++/ABI identifiers | `libi2pd`, `libi2pdclient`, `i2p::...` namespaces, installed headers | **Retained** for ABI/source compatibility |
@@ -31,7 +31,7 @@ provenance.
 | Android application identity | `org.purplei2p.i2pd`, PurpleI2P package/namespace | **Renamed** to `org.openi2pd.router` |
 | Android visible name | `i2pd` | **Renamed** to `openi2pd` |
 | Visual identity | i2pd/PurpleI2P app icon, docs logo, favicon, screenshots | **Replaced with the supplied openi2pd mark** |
-| Service description | `C++ daemon ...` | **Renamed** to `openi2pd router`; new systemd alias `open-i2pd.service` |
+| Service description | `C++ daemon ...` | **Renamed** to `openi2pd router`; the temporary `open-i2pd.service` alias was removed because no packaged upgrade path owned it |
 | Marketing/support links | Personal PPA/COPR/F-Droid/donation links | **Removed**; distribution/source links retained |
 | Upstream release links | Release artifacts of PurpleI2P | **Replaced** by fork/source guidance where user-facing |
 
@@ -44,7 +44,7 @@ provenance.
 - Java package directory and all imports/manifest entries updated.
 - JNI header and exported function symbols updated to
   `Java_org_openi2pd_router_I2PD_1JNI_*`.
-- App label and visible identity use `openi2pd`; the Fastlane listing is English-only (`en-US`).
+- App label and visible identity use `openi2pd`; the in-app UI ships en/es/ru/zh-CN. Fastlane metadata may be localized separately.
 - App-specific data directory `i2pd` → `open-i2pd`.
 - WebView console, `[http]` preferences, permission gates and broad storage
   permissions removed (previous work).
@@ -63,8 +63,9 @@ app-specific directory and copy it into the new one.
 - Visible TUI, Windows metadata, `--version` output, Windows error titles, the
   UPnP forwarding display name and the HTTP proxy information page use
   `openi2pd`; the `i2pd` executable and technical identifiers remain unchanged.
-- Systemd unit description updated; `Alias=open-i2pd.service` added while the
-  historical `i2pd.service` filename remains for package upgrades.
+- Systemd unit description updated while the historical `i2pd.service`
+  filename remains for package upgrades. A temporary `open-i2pd.service`
+  alias was later removed because no package installed or migrated it.
 - AppArmor/OpenRC/Upstart/Dinit descriptions updated where they contained
   product branding; paths to the `i2pd` binary remain technical.
 - Official symbol/icon resources are generated from `assets/branding/`; Windows

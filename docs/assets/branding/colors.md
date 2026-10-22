@@ -143,8 +143,9 @@ implement the semantic roles and must not introduce independent hex codes:
 | Documentation header/favicon | `docs/img/logo.png`, `docs/img/favicon.ico` |
 | Windows executable/installer icon | `Win32/openi2pd.ico` |
 | Desktop/packaging icons | `contrib/artwork/open-i2pd-icon.svg`, `openi2pd-256.png` |
-| HTTP proxy error page | `libi2pd_client/HTTPProxy.cpp` |
+| HTTP proxy information page | `libi2pd_client/HTTPProxy.cpp` |
 
-`tools/scripts/validate-branding.pl` rejects any hex value in those files that
-is not listed in this document. The terminal theme approximates these values
+`tools/scripts/validate-branding.pl` rejects any hex value in those source
+files that is not listed in this document. Binary icons are checked for
+existence/dimensions, not for per-pixel colours. The terminal theme approximates these values
 for 8-, 16- and 256-colour terminals and provides a monochrome fallback.

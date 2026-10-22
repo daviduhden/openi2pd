@@ -17,6 +17,10 @@ docs_dir: .
 site_dir: ../build-output/docs
 exclude_docs: |
   /README.md
+  /UPSTREAM-README.md
+  /devs/building/ios.md
+  /devs/building/qt-desktop-gui.md
+  /devs/building/haikuos.md
 extra_css:
   - stylesheets/brand.css
 
@@ -108,13 +112,10 @@ nav:
   - Developer:
       - Guide: developer-guide/README.md
       - Requirements: devs/building/requirements.md
-      - Unix: devs/building/unix.md
+      - Linux and OpenBSD: devs/building/unix.md
       - Windows: devs/building/windows.md
       - Android app: devs/building/android.md
       - Cross compilation: devs/building/cross.md
-      - iOS: devs/building/ios.md
-      - Qt GUI: devs/building/qt-desktop-gui.md
-      - HaikuOS: devs/building/haikuos.md
       - API selection: devs/api/index.md
       - SAM: devs/api/SAM.md
       - BOB: devs/api/BOB.md
@@ -122,6 +123,7 @@ nav:
       - I2PControl: devs/api/I2PControl.md
       - libi2pd: devs/api/libi2pd.md
       - Hacking: devs/hacking.md
+      - File headers: file-headers.md
       - i2pd-specific changes: devs/i2pd-specifics.md
   - Protocols: protocols/README.md
   - Security:
@@ -138,7 +140,7 @@ nav:
       - License: about/license.md
       - Contributing: about/contributing.md
 
-copyright: CC-BY-SA 4.0 for upstream documentation; BSD-3-Clause for the router code.
+copyright: BSD-3-Clause for router/tools and imported i2pd-docs; CC-BY-SA-4.0 for first-party documentation where marked.
 
 theme:
   name: readthedocs

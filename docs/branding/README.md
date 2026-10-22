@@ -11,7 +11,7 @@ Documents project documentation.
 # openi2pd visual identity
 
 openi2pd uses a geometric node/tunnel emblem and a lowercase wordmark. The
-three entrelaced chevrons represent the three layers of the I2P network path;
+three interlaced chevrons represent the three layers of the I2P network path;
 the white nodes mark participating routers and the central arch represents an
 encrypted tunnel endpoint. The mark is abstract: it does not depict a
 particular transport or protocol.
@@ -23,6 +23,7 @@ particular transport or protocol.
 | Full lockup (transparent) | [`assets/branding/logo.svg`](../assets/branding/logo.svg) |
 | Rasterized lockup | [`assets/branding/logo.png`](../assets/branding/logo.png) |
 | Standalone symbol | [`assets/branding/symbol.svg`](../assets/branding/symbol.svg) |
+| Small raster symbol | [`assets/branding/symbol.png`](../assets/branding/symbol.png) |
 | Horizontal lockup | [`assets/branding/logo-horizontal.svg`](../assets/branding/logo-horizontal.svg) |
 | Monochrome | [`assets/branding/logo-monochrome.svg`](../assets/branding/logo-monochrome.svg) |
 | For dark backgrounds | [`assets/branding/logo-light.svg`](../assets/branding/logo-light.svg) |

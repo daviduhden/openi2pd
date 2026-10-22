@@ -14,8 +14,13 @@ use warnings;
 use File::Spec;
 use Cwd qw(abs_path);
 use Digest::SHA qw(sha256_hex);
+use FindBin qw($Bin);
 
-my $root = abs_path(File::Spec->curdir());
+my $default_root = File::Spec->catdir($Bin, File::Spec->updir, File::Spec->updir);
+my $root = abs_path(defined $ARGV[0] ? $ARGV[0] : $default_root);
+die "branding validation: cannot resolve repository root\n" unless defined $root;
+die "branding validation: $root is not the repository root\n"
+    unless -d File::Spec->catdir($root, 'assets', 'branding');
 my @required = qw(
     assets/branding/logo.svg
     assets/branding/logo.png
@@ -39,6 +44,15 @@ my @required = qw(
     docs/branding/logo-usage.md
     docs/branding/assets.md
     docs/assets/branding/colors.md
+    docs/assets/branding/logo.svg
+    docs/assets/branding/symbol.svg
+    docs/assets/branding/logo-horizontal.svg
+    docs/assets/branding/logo-monochrome.svg
+    docs/assets/branding/logo-light.svg
+    docs/assets/branding/logo-dark.svg
+    docs/assets/branding/logo.png
+    docs/assets/branding/symbol.png
+    docs/assets/branding/logo-original.png
 );
 
 my $failed = 0;
@@ -297,12 +311,17 @@ for my $rel (qw(
 }
 
 # The MkDocs mirror must not silently drift from the canonical SVG masters.
-for my $name (qw(logo.svg symbol.svg logo-horizontal.svg logo-monochrome.svg logo-light.svg logo-dark.svg)) {
-    my $canonical_svg = File::Spec->catfile($root, 'assets', 'branding', $name);
-    my $mirror_svg = File::Spec->catfile($root, 'docs', 'assets', 'branding', $name);
-    next unless -f $canonical_svg && -f $mirror_svg;
-    my $canonical_hash = sha256_hex(do { open my $fh, '<:raw', $canonical_svg or die $!; local $/; <$fh> });
-    my $mirror_hash = sha256_hex(do { open my $fh, '<:raw', $mirror_svg or die $!; local $/; <$fh> });
+for my $name (qw(logo.svg symbol.svg logo-horizontal.svg logo-monochrome.svg logo-light.svg logo-dark.svg
+    logo.png symbol.png logo-original.png)) {
+    my $canonical = File::Spec->catfile($root, 'assets', 'branding', $name);
+    my $mirror = File::Spec->catfile($root, 'docs', 'assets', 'branding', $name);
+    if (!-f $canonical || !-f $mirror) {
+        print STDERR "docs/assets/branding/$name is missing\n";
+        $failed++;
+        next;
+    }
+    my $canonical_hash = sha256_hex(do { open my $fh, '<:raw', $canonical or die $!; local $/; <$fh> });
+    my $mirror_hash = sha256_hex(do { open my $fh, '<:raw', $mirror or die $!; local $/; <$fh> });
     if ($canonical_hash ne $mirror_hash) {
         print STDERR "docs/assets/branding/$name differs from assets/branding/$name\n";
         $failed++;

@@ -11,5 +11,9 @@ Documents project documentation.
 License
 =======
 
-This project is licensed under the BSD 3-clause license, which can be found in
-the file LICENSE in the root of the project source code.
+Router and tool code is distributed under the BSD 3-clause license in the root
+[LICENSE](../../LICENSE). Imported i2pd-docs material is covered by the upstream
+BSD-3-Clause notice in
+[docs/LICENSE.i2pd-docs-en](../LICENSE.i2pd-docs-en). First-party documentation
+files that declare `SPDX-License-Identifier: CC-BY-SA-4.0` retain that license;
+third-party components retain their own notices and attribution.

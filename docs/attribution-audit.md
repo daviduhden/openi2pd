@@ -45,12 +45,14 @@ history and build output. No commit, tag or push was created.
 | `android/README.md` | Team list, donation/XMR address, upstream release badge and signing fingerprint | Not required to build/use the app; current fork metadata replaces the upstream team list |
 | `android/app/src/main/java/.../WebConsoleActivity.java` | Removed with the WebView console | Feature removed by project requirement |
 
-No upstream-derived source file lost its copyright header. New files that were
-written for openi2pd and were not copied from an i2pd repository carry only the
-fork copyright (`David Uhden Collado`) and `SPDX-License-Identifier:
-BSD-3-Clause`; the `The PurpleI2P Project` line is reserved for imported or
-derived upstream material. The TUI, IPC, test and tooling files created for the
-fork follow this rule.
+The imported `tools/` sources were substantially rewritten for C++23 and the
+fork architecture and now carry the short repository `LICENSE` reference rather
+than per-file upstream copyright blocks. Their attribution is preserved by
+`tools/LICENSE`, `contrib/upstream/tools-files.txt`, `docs/tools/provenance.md`
+and repository history; this is an explicit consolidation, not an assertion
+that every rewritten tool still has an in-file PurpleI2P header. Other
+upstream-derived sources retain their original notices. New fork-only files use
+the short `LICENSE` reference.
 
 ## Preserved by legal obligation
 
@@ -59,11 +61,9 @@ fork follow this rule.
 | `LICENSE` | BSD-3-Clause copyright and text |
 | Upstream-derived C/C++ header/source | `Copyright (c) ... The PurpleI2P Project` preserved; fork-only files use the fork copyright |
 | `debian/copyright` | All upstream and packaging copyright holders, including Kill Your TV, hagen, R4SAS and Yangfl |
-| `docs/LICENSE.i2pd-docs-en` | CC-BY-SA 4.0 copyright for imported documentation |
+| `docs/LICENSE.i2pd-docs-en` | BSD-3-Clause copyright for imported i2pd-docs material; first-party docs marked CC-BY-SA-4.0 retain that notice |
 | `docs/about/license.md` | Documentation license text |
 | `tools/LICENSE` | BSD license for imported tools (as published upstream) |
-| `build/cmake_modules/FindCheck.cmake` | Copyright and license of the CMake module authors |
-| `build/cmake_modules/GetGitRevisionDescription.cmake(.in)` | Copyright and license of Ryan Pavlik |
 | `Win32/Resource.rc2`, `build/win_installer.iss`, `build/build_mingw.cmd` | `LegalCopyright` / copyright notices |
 | `debian/control`, current `debian/changelog` entry and `contrib/rpm/*.spec` `%changelog` entries | Required package maintainer contact, expressed as the openi2pd maintainers role; historical entries remain provenance |
 | Historical `debian/changelog` and `contrib/rpm/*.spec` `%changelog` entries | Historical attribution and packaging provenance |

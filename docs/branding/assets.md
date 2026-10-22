@@ -45,9 +45,9 @@ any `<image>`, `data:image`, or embedded raster payload.
 `rsvg-convert` (or an equivalent renderer). Do not hand-edit PNGs. The original
 reference is never overwritten.
 
-The MkDocs tree carries an exact copy of the canonical palette at
-`docs/assets/branding/colors.md`. Update both files together; the branding
-validator rejects any difference between them.
+The MkDocs tree carries an exact copy of the canonical branding tree at
+`docs/assets/branding/` (SVGs, PNGs and `colors.md`). Update all mirrored files
+together; the branding validator compares every file and rejects drift.
 
 ## Provenance
 
