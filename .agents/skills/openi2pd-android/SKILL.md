@@ -108,6 +108,30 @@ run Gradle, install an APK or run a device test.
 
 ## Known issues and decisions
 
+- ANDROID-019 uses ownerExecutor views over one process FIFO for all service
+  worker submissions. Retire and append mandatory stop atomically; drain
+  previously accepted work before stop and new-owner work. Reject stale submit
+  and stale retirement. Never hold the epoch monitor during JNI or shut down
+  the process FIFO from onDestroy. ServiceOwnerEpochTest is JVM seam coverage
+  only; platform service recreation/JNI evidence remains pending.
+
+
+- ANDROID-018 uses `daemon/DaemonInit.h` to unwind acquired logging/crypto/
+  storage/context phases on failed init. Context persistence drains before
+  storage revocation; stopped logging resets to stdout. Preserve durable keys
+  and irreversible sandbox effects. `test-daemon-init-rollback` exercises the
+  ledger only; production cleanup and JNI/device evidence remain pending.
+
+
+- `DaemonLifecycle.h` owns the native start transition under `NativeCallGuard`.
+  The inner `DaemonAndroidImpl::start()` must invoke `Daemon.start()` even
+  while the owner has published `Starting`; treating that state as a duplicate
+  skips the real start. `test-android-daemon-lifecycle` covers the portable
+  owner contract; JNI linking and actual device restart remain pending CI.
+  Failed start after successful init still invokes teardown to release
+  crypto/logger initialization state; the common transport-failure cleanup
+  alone is incomplete for retries. Phase-aware failed-init unwind is implemented separately in
+  ANDROID-018; do not infer production cleanup from the helper's state reset.
 - Pinned Material 1.14.0 `TextInputLayout` supports both `setHint(CharSequence)`
   and `setHint(@StringRes int)`. Check the pinned dependency source before
   classifying a resource-ID call as invalid; older API recollection is not

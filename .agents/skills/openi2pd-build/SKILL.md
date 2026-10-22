@@ -92,6 +92,23 @@ build.
 
 ## Known issues and decisions
 
+- `test-datagram-receiver-lifecycle` and `test-netdb-stop-admission` join the
+  full manual CTest/sanitizer inventory with i2p/security/memory labels. The
+  NetDb fixture opens admission with no worker, avoiding reseed/network startup;
+  it does not establish full daemon restart correctness.
+
+
+- CONC-010 uses immutable process-local profile-root authority and flushed
+  same-directory replacement; storage IO/cleanup is serialized and shutdown
+  drains postponed updates after producers stop. Cross-process ownership,
+  abandoned staging cleanup and retained external mutators remain open.
+  `test-router-profile-storage` is prepared, not executed.
+
+
+- `routerinfo-fixture` is a BUILD_TESTING-only helper outside the installed
+  tools inventory. Its production serializer signs only public test data in
+  the CI work directory. Pass its exact target path to `tools-smoke`; keep
+  `test-router-profile-race` and `test-android-daemon-lifecycle` in host CTest.
 - Boost.JSON and Boost.URL require compiled implementations: torrent builds
   link `Boost::json`/`Boost::url`, and the installed config re-finds the same
   enabled components. Header discovery alone cannot establish link closure.

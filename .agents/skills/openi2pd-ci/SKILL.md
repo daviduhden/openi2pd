@@ -106,6 +106,22 @@ workflow, run `gh`, build or test.
 
 ## Known issues and decisions
 
+- The manual packaging service-contract job ShellChecks maintenance scripts
+  as well as init scripts. Its fake-`nc` SAM regression checks mismatch exit
+  status without a live bridge; it establishes no live SAM compatibility.
+
+
+- CONC-010 uses immutable process-local profile-root authority and flushed
+  same-directory replacement; storage IO/cleanup is serialized and shutdown
+  drains postponed updates after producers stop. Cross-process ownership,
+  abandoned staging cleanup and retained external mutators remain open.
+  `test-router-profile-storage` is prepared, not executed.
+
+
+- The Linux focused profile/Android-lifecycle/firewall step runs the same
+  registered host targets as full CTest. The full sanitizer matrix includes
+  profile concurrency. Host Android transition results do not substitute for
+  JNI linking or actual device startup/restart evidence.
 - The installed-consumer lane links `i2pd::libi2pdclient` and calls compiled
   Boost.JSON/URL APIs; merely including a core header misses dependency
   closure failures. MSYS2 also enables `WITH_HARDENING` to exercise PE flags.

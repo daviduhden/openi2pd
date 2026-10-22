@@ -15,6 +15,7 @@ row is currently safe or dynamically validated.
 | SSU2 | `libi2pd/SSU2*`, `SSU2Session.h` | token/PeerTest parsing, fragment reassembly, ACK/retry state, MTU/address limits, PathChallenge state | `test-ssu2-*`, `test-protocol-bounds`; `memory`, `security` |
 | I2NP/netDb | `I2NPProtocol.*`, `NetDb.*`, `NetDbRequests.*` | length-prefixed messages, DatabaseLookup/SearchReply correlation, pending caps, store replacement | `test-netdb-*`, `test-protocol-bounds`; `memory`, `security` |
 | RouterInfo/LeaseSet | `RouterInfo.*`, `LeaseSet.*`, `LeaseSet.h` | 4096-byte RI limit, option/address sections, signature scope, lease freshness, Meta/Encrypted outer layers | `test-routerinfo-*`, `test-leaseset*`; `memory`, `security` |
+| Router profiles | `Profiling.h/.cpp` | per-instance state lock, canonical publication, endpoint copies, map-only eviction, dirty persistence claims, IO/state lock order; immutable root, process-local IO/cleanup serialization, atomic replacement; cross-process ownership remains open | `test-router-profile-race`, `test-router-profile-storage`; `memory`, `security`, manual TSan |
 | Ratchet/Garlic | `ECIESX25519AEADRatchetSession.*`, `Garlic.*`, `Tag.h` | tag/replay budgets, NS/NSR pre-validation, clove requirements, no key/nonce reuse | `test-eciesx25519-*`, `test-crypto-audit-bounds`; `memory`, `security` |
 | Signatures/PQ | `Signature.*`, `PostQuantum.*`, `Identity.*` | exact key/certificate lengths, algorithm gating, fail-closed unsupported keys, constant-time verification | `test-signature-*`, `test-crypto-*`; `security` |
 | Reseed | `Reseed.*` | SU3/RSA verification default, zip bounds, no unauthenticated install | `test-reseed-zip-bounds`; `security` |
@@ -56,3 +57,11 @@ Record:
 - Fuzz smoke is not proof of memory safety; the workflow runs bounded inputs.
 - A compile-only result is not a security validation. Keep the task at
   `Pending CI tests` until the relevant lane passes.
+
+CONC-011 uses `test-datagram-receiver-lifecycle` for registration identity,
+external drain and reentrant/cross-slot reset. Callback-context reset returns
+false and is not a destruction barrier. CONC-012 uses `test-tunnels-restart`
+and `test-netdb-stop-admission` for queue closure/drain; the latter fixture
+opens admission with a paused worker, without network/storage startup.
+ANDROID-019 uses `ServiceOwnerEpochTest` for stale callbacks/submissions,
+retirement and accepted-work/stop/new-owner FIFO order. All require manual CI.

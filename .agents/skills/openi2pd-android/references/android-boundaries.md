@@ -31,6 +31,9 @@ Use with `SKILL.md`. This is a static boundary map.
 - Foreground service type: `specialUse` on API 34+, `dataSync` only on API
   29–33; no continuous `dataSync` misuse.
 - Register network callbacks only while running; remove legacy broadcast paths.
+- `DaemonLifecycle.h` claims `Stopped -> Starting` once; the daemon adapter
+  invokes the actual start operation without claiming the state again. Failed
+  start after initialization attempts teardown before publishing `Stopped`.
 
 ## SAF rules
 
@@ -59,6 +62,9 @@ Use with `SKILL.md`. This is a static boundary map.
 | `TorrentSafStorageTest`, `TorrentSafCancellationWireTest`, `TorrentSafProviderCancellationTest`, `TorrentSafFixtureProvider` | instrumentation/provider |
 | `LocaleResourceTest`, `check-android-locales.pl` | static/device |
 | Java 25 guard / JNI link / APK | Android CI job |
+| `ServiceOwnerEpochTest` | JVM owner gate/FIFO seam; platform lifecycle/device pending |
+| `test-daemon-init-rollback`, `test-log-lifecycle` | host ledger/destination reset only; production cleanup/device pending |
+| `test-android-daemon-lifecycle` | host CTest owner/rollback contract; not device evidence |
 
 ## CI expectations
 

@@ -103,6 +103,12 @@ a TUI client.
 
 ## Known issues and decisions
 
+- Maintenance scripts that capture a directory must clear `CDPATH` before
+  `cd`; diagnostic output must not contaminate the path. SAM version mismatches
+  must fail the script, not only print a diagnostic. The manual packaging CI
+  fake-`nc` lane checks failure propagation; live bridge tests remain pending.
+
+
 - Signature-name normalization in `tools/common/key.hpp` uses a local ranges
   transform with unsigned-character input to `std::toupper`; keep mixed-case
   and underscore aliases covered by `tools-regressions` when editing the table.
@@ -111,6 +117,10 @@ a TUI client.
   downloads or hidden installs.
 - Firewall tools render text only (`iptables`, `nftables`, `pf`, Windows) and
   never execute rules. Preserve address/port validation and quoting.
+- Legacy `routerinfo -f` preserves IPv4 fragments but prefixes IPv6 rules with
+  `ip6tables` to make family selection explicit (TOOL-012). The non-installed
+  `routerinfo-fixture` helper creates a signed public RouterInfo only in CI;
+  `tools-smoke` exercises the production CLI without checked-in private keys.
 - `references/perl-inventory.md` maps scripts, tests, labels and consumers;
   update it when a script, interpreter requirement or CI consumer changes.
 - Perl/tool install, portability and live firewall tests remain pending manual

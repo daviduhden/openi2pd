@@ -98,6 +98,27 @@ compile, run tests or run project scripts.
 
 ## Known issues and decisions
 
+- Datagram receiver lifetime uses shared invocation slots and weak owner tokens
+  (CONC-011). Drop replaced callbacks outside registry locks: releasing a
+  captured owner can reenter registration from its destructor. Preserve a
+  per-dispatch callback copy so mutable value captures do not become shared
+  across concurrent invocations. Copy before claiming the in-flight count. Reset from a
+  receiver callback cannot supply a full drain barrier; inspect its result.
+
+
+- CONC-010 uses immutable process-local profile-root authority and flushed
+  same-directory replacement; storage IO/cleanup is serialized and shutdown
+  drains postponed updates after producers stop. Cross-process ownership,
+  abandoned staging cleanup and retained external mutators remain open.
+  `test-router-profile-storage` is prepared, not executed.
+
+
+- `RouterProfile` state is guarded per instance; `GetLastEndpoint()` returns
+  a value, never a reference escaping its lock. Profile-map eviction requires
+  map-only shared ownership. Save/Load take the IO mutex before briefly taking
+  the state mutex; no filesystem operation holds the state mutex. Global
+  process-local profile storage/delete coordination is CONC-010; external
+  producer quiescence remains a caller contract.
 - `libi2pd/Modern.h` is shared vocabulary, but adoption is deliberately narrow
   (`Identity.cpp`, `test-modern`). `ScopeExit` cleanup must not throw;
   `AsByteSpan` rejects temporaries and must not be replaced by

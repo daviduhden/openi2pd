@@ -91,6 +91,12 @@ limitation; do not substitute local execution. Ask for:
 
 ## Known issues and decisions
 
+- Profile staging cleanup must not probe arbitrary PIDs after runtime pledge
+  drops `proc`. Process-local mutexes do not prove cross-process data-directory
+  ownership; preserve unknown staging files instead of deleting a live writer's
+  temporary file. CONC-010 leaves crash leftovers pending. See
+  [pledge(2)](https://man.openbsd.org/pledge.2).
+
 - `contrib/openbsd/port/` is an external merge template, not selected by CMake
   and not a validated package. `pkg_create`, `pkg_add` and `rcctl` runs remain
   pending.

@@ -91,6 +91,34 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
 
 ## Known issues and decisions
 
+- CONC-011 registration tokens prevent stale teardown from removing another
+  Datagram owner. External reset drains outside registry locks; callback reset
+  returns false without waiting to avoid callback cycles. Do not destroy raw
+  callback targets on that result. Per-caller ASan/TSan coverage remains pending.
+
+
+- Queue admission checks must share a lock with enqueue and shutdown close;
+  checking an atomic flag before `Put` alone leaves a post-after-drain race.
+  Tunnel/netDb lifecycle locks remain separate from the short admission locks.
+  Producers must stop across restart; no generation is carried in wire queues.
+- Profile expiry only owns canonical encoded-hash filenames at their expected
+  shard and regular non-symlink leaves. Preserve unknown/temp/backup leaves;
+  process-local locking does not protect a hostile concurrent filesystem owner.
+
+
+- CONC-010 uses immutable process-local profile-root authority and flushed
+  same-directory replacement; storage IO/cleanup is serialized and shutdown
+  drains postponed updates after producers stop. Cross-process ownership,
+  abandoned staging cleanup and retained external mutators remain open.
+  `test-router-profile-storage` is prepared, not executed.
+
+
+- Profile lock order is map -> instance state, or instance IO -> state;
+  instance methods never acquire the map mutex. The RNG mutex is released
+  before taking profile state. Cache eviction requires sole map ownership;
+  failed persistence must restore dirty state. `test-router-profile-race`
+  covers object/publication/queue contracts; storage races use
+  `test-router-profile-storage`.
 - `Transports::Stop()` ordering is load-bearing: join the worker, cancel
   timers, stop servers, clear peers while both server `io_context`s are alive,
   then reset servers. Cross-thread `IsBound*` reads must use the `m_Has*`
@@ -100,8 +128,8 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
   be bounded; the Windows TUI still uses its own thread/stop event.
 - Log text, writer queue and recent ring are independently bounded. Queue drops
   are counted, and the recent ring may contain a record the writer dropped.
-- Cooperative cancellation, Android owner epochs, datagram receiver lifetime
-  and the `Transports` detach fallback remain residual audit areas; see
+- Cooperative cancellation, complete Android/Datagram caller lifecycle
+  verification and the `Transports` detach fallback remain residual areas; see
   [`references/audit-matrix.md`](references/audit-matrix.md).
 - Prepared seam regressions are `unit`-labelled; do not claim ASan/TSan or
   runtime coverage from them.
