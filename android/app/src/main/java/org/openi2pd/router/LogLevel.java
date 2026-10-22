@@ -101,8 +101,8 @@ public enum LogLevel {
      * lower severity while reporting a failure.
      */
     private static Optional<LogLevel> matched(String value) {
-        if (value.contains("error") || value.contains("fatal")
-                || value.contains("crit") || value.contains("fail")) {
+        if (value.contains("error") || value.contains("fatal") || value.contains("crit")
+                || value.contains("fail")) {
             return ERROR_MATCH;
         }
         if (value.contains("warn")) {

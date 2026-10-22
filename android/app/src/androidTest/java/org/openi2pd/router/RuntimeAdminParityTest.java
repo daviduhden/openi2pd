@@ -47,12 +47,11 @@ public final class RuntimeAdminParityTest {
 
     @Test
     public void runtimeLogLevelSetIsClosedAndExact() {
-        for (String level : new String[] {
-                "none", "critical", "error", "warn", "info", "debug"}) {
+        for (String level : new String[] {"none", "critical", "error", "warn", "info", "debug"}) {
             assertTrue(level, DaemonWrapper.isRuntimeLogLevel(level));
         }
         for (String level : new String[] {
-                "", " ", "INFO", "Warning", "warn ", " verbose", "critical2", "off"}) {
+                     "", " ", "INFO", "Warning", "warn ", " verbose", "critical2", "off"}) {
             assertFalse(level, DaemonWrapper.isRuntimeLogLevel(level));
         }
         assertFalse(DaemonWrapper.isRuntimeLogLevel(null));

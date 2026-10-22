@@ -30,12 +30,10 @@ public class RouterCommandTest {
     private static final String ACTION_START = "org.openi2pd.router.action.START";
     private static final String ACTION_STOP = "org.openi2pd.router.action.STOP";
     private static final String ACTION_RESTART = "org.openi2pd.router.action.RESTART";
-    private static final String ACTION_GRACEFUL_STOP =
-            "org.openi2pd.router.action.GRACEFUL_STOP";
+    private static final String ACTION_GRACEFUL_STOP = "org.openi2pd.router.action.GRACEFUL_STOP";
     private static final String ACTION_CANCEL_GRACEFUL_STOP =
             "org.openi2pd.router.action.CANCEL_GRACEFUL_STOP";
-    private static final String ACTION_RELOAD_TUNNELS =
-            "org.openi2pd.router.action.RELOAD_TUNNELS";
+    private static final String ACTION_RELOAD_TUNNELS = "org.openi2pd.router.action.RELOAD_TUNNELS";
     private static final String ACTION_RESEED = "org.openi2pd.router.action.RESEED";
     private static final String ACTION_SET_RUNTIME_LOG_LEVEL =
             "org.openi2pd.router.action.SET_RUNTIME_LOG_LEVEL";
@@ -45,12 +43,12 @@ public class RouterCommandTest {
         assertEquals(new RouterCommand.Start(), RouterCommand.fromAction(ACTION_START));
         assertEquals(new RouterCommand.Stop(), RouterCommand.fromAction(ACTION_STOP));
         assertEquals(new RouterCommand.Restart(), RouterCommand.fromAction(ACTION_RESTART));
-        assertEquals(new RouterCommand.GracefulStop(),
-                RouterCommand.fromAction(ACTION_GRACEFUL_STOP));
+        assertEquals(
+                new RouterCommand.GracefulStop(), RouterCommand.fromAction(ACTION_GRACEFUL_STOP));
         assertEquals(new RouterCommand.CancelGracefulStop(),
                 RouterCommand.fromAction(ACTION_CANCEL_GRACEFUL_STOP));
-        assertEquals(new RouterCommand.ReloadTunnels(),
-                RouterCommand.fromAction(ACTION_RELOAD_TUNNELS));
+        assertEquals(
+                new RouterCommand.ReloadTunnels(), RouterCommand.fromAction(ACTION_RELOAD_TUNNELS));
         assertEquals(new RouterCommand.Reseed(), RouterCommand.fromAction(ACTION_RESEED));
         assertEquals(new RouterCommand.SetRuntimeLogLevel(null),
                 RouterCommand.fromAction(ACTION_SET_RUNTIME_LOG_LEVEL));
@@ -68,8 +66,7 @@ public class RouterCommandTest {
         assertEquals(new RouterCommand.Unknown("org.openi2pd.router.action.STARTED"),
                 RouterCommand.fromAction("org.openi2pd.router.action.STARTED"));
         String lowerCase = ACTION_START.toLowerCase(Locale.ROOT);
-        assertEquals(new RouterCommand.Unknown(lowerCase),
-                RouterCommand.fromAction(lowerCase));
+        assertEquals(new RouterCommand.Unknown(lowerCase), RouterCommand.fromAction(lowerCase));
         assertEquals(new RouterCommand.Unknown(ACTION_START + " "),
                 RouterCommand.fromAction(ACTION_START + " "));
         // A level extra must not turn an unknown action into a log-level command.
@@ -79,8 +76,9 @@ public class RouterCommandTest {
 
     @Test
     public void runtimeLogLevelCarriesTheExtraAndMayBeNull() {
-        RouterCommand.SetRuntimeLogLevel bare = (RouterCommand.SetRuntimeLogLevel)
-                RouterCommand.fromAction(ACTION_SET_RUNTIME_LOG_LEVEL);
+        RouterCommand.SetRuntimeLogLevel bare =
+                (RouterCommand.SetRuntimeLogLevel) RouterCommand.fromAction(
+                        ACTION_SET_RUNTIME_LOG_LEVEL);
         assertNull(bare.level());
         assertEquals(new RouterCommand.SetRuntimeLogLevel("debug"),
                 RouterCommand.fromAction(ACTION_SET_RUNTIME_LOG_LEVEL, "debug"));
@@ -94,8 +92,7 @@ public class RouterCommandTest {
 
     @Test
     public void recordsExposeTheirDiagnosticComponents() {
-        assertEquals(ACTION_START + "?",
-                new RouterCommand.Unknown(ACTION_START + "?").action());
+        assertEquals(ACTION_START + "?", new RouterCommand.Unknown(ACTION_START + "?").action());
         assertEquals("debug", new RouterCommand.SetRuntimeLogLevel("debug").level());
     }
 
@@ -110,7 +107,6 @@ public class RouterCommandTest {
         assertEquals(RouterService.ACTION_CANCEL_GRACEFUL_STOP, ACTION_CANCEL_GRACEFUL_STOP);
         assertEquals(RouterService.ACTION_RELOAD_TUNNELS, ACTION_RELOAD_TUNNELS);
         assertEquals(RouterService.ACTION_RESEED, ACTION_RESEED);
-        assertEquals(RouterService.ACTION_SET_RUNTIME_LOG_LEVEL,
-                ACTION_SET_RUNTIME_LOG_LEVEL);
+        assertEquals(RouterService.ACTION_SET_RUNTIME_LOG_LEVEL, ACTION_SET_RUNTIME_LOG_LEVEL);
     }
 }

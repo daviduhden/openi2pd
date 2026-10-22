@@ -12,8 +12,10 @@ import org.junit.runner.RunWith;
 
 @RunWith(AndroidJUnit4.class)
 public final class TorrentSafStorageTest {
-    @Test public void rejectsTraversalAndAmbiguousNames() {
-        for (String path : new String[]{"", "/file", "a/../file", "a//file", "a/./b", "a\u0000b", "a/"})
+    @Test
+    public void rejectsTraversalAndAmbiguousNames() {
+        for (String path :
+                new String[] {"", "/file", "a/../file", "a//file", "a/./b", "a\u0000b", "a/"})
             assertFalse(path, TorrentSafStorageService.validPath(path));
         assertTrue(TorrentSafStorageService.validPath("torrent/subdirectory/file.bin"));
         assertTrue(TorrentSafStorageService.validPath("日本語/part.bin"));
@@ -21,7 +23,8 @@ public final class TorrentSafStorageTest {
         assertTrue(TorrentSafStorageService.validPath("Album/Track 1: Intro.flac"));
         assertTrue(TorrentSafStorageService.validPath("weird\\name.bin"));
     }
-    @Test public void rejectsOverflowAndOversizeTransfers() {
+    @Test
+    public void rejectsOverflowAndOversizeTransfers() {
         assertTrue(TorrentSafStorageService.validRange(32768, 16384, 16384));
         assertTrue(TorrentSafStorageService.validRange(0, 0, 0));
         assertFalse(TorrentSafStorageService.validRange(32768, 16384, 16385));
@@ -30,34 +33,48 @@ public final class TorrentSafStorageTest {
         assertFalse(TorrentSafStorageService.validRange(1, 0, -1));
         assertFalse(TorrentSafStorageService.validRange(10, 11, 0));
     }
-    @Test public void deletionRejectsReplacedDocumentWithSameLength() throws Exception {
-        java.io.File directory = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
-                .getTargetContext().getCacheDir();
+    @Test
+    public void deletionRejectsReplacedDocumentWithSameLength() throws Exception {
+        java.io.File directory =
+                androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
+                        .getTargetContext()
+                        .getCacheDir();
         java.io.File source = java.io.File.createTempFile("saf-delete", ".bin", directory);
         java.io.File replacement = java.io.File.createTempFile("saf-replaced", ".bin", directory);
         try {
-            try (var data = new java.io.RandomAccessFile(source, "rw")) { data.setLength(16); }
-            try (var data = new java.io.RandomAccessFile(replacement, "rw")) { data.setLength(16); }
-            try (var opened = android.os.ParcelFileDescriptor.open(source, android.os.ParcelFileDescriptor.MODE_READ_ONLY)) {
+            try (var data = new java.io.RandomAccessFile(source, "rw")) {
+                data.setLength(16);
+            }
+            try (var data = new java.io.RandomAccessFile(replacement, "rw")) {
+                data.setLength(16);
+            }
+            try (var opened = android.os.ParcelFileDescriptor.open(
+                         source, android.os.ParcelFileDescriptor.MODE_READ_ONLY)) {
                 var original = android.system.Os.fstat(opened.getFileDescriptor());
                 assertTrue(TorrentSafStorageService.sameDocument(original, original, 16));
                 assertFalse(TorrentSafStorageService.sameDocument(original, original, 17));
                 android.system.Os.rename(replacement.getAbsolutePath(), source.getAbsolutePath());
-                try (var fresh = android.os.ParcelFileDescriptor.open(source, android.os.ParcelFileDescriptor.MODE_READ_ONLY)) {
-                    assertFalse(TorrentSafStorageService.sameDocument(original,
-                            android.system.Os.fstat(fresh.getFileDescriptor()), 16));
+                try (var fresh = android.os.ParcelFileDescriptor.open(
+                             source, android.os.ParcelFileDescriptor.MODE_READ_ONLY)) {
+                    assertFalse(TorrentSafStorageService.sameDocument(
+                            original, android.system.Os.fstat(fresh.getFileDescriptor()), 16));
                 }
             }
-        } finally { source.delete(); replacement.delete(); }
+        } finally {
+            source.delete();
+            replacement.delete();
+        }
     }
-    @Test public void rejectsUnboundedPaths() {
+    @Test
+    public void rejectsUnboundedPaths() {
         assertFalse(TorrentSafStorageService.validPath(repeat("x", 256)));
         assertFalse(TorrentSafStorageService.validPath(repeat("a/", 33) + "file"));
     }
     // String.repeat is API 33; instrumentation must still run on API 29.
     private static String repeat(String value, int count) {
         StringBuilder result = new StringBuilder(value.length() * count);
-        for (int i = 0; i < count; ++i) result.append(value);
+        for (int i = 0; i < count; ++i)
+            result.append(value);
         return result.toString();
     }
 }

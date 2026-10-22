@@ -218,10 +218,14 @@ public class LogsFragment extends Fragment {
     }
 
     private static LogLevel levelForFilter(int id) {
-        if (id == R.id.filter_error) return LogLevel.ERROR;
-        if (id == R.id.filter_warn) return LogLevel.WARN;
-        if (id == R.id.filter_info) return LogLevel.INFO;
-        if (id == R.id.filter_debug) return LogLevel.DEBUG;
+        if (id == R.id.filter_error)
+            return LogLevel.ERROR;
+        if (id == R.id.filter_warn)
+            return LogLevel.WARN;
+        if (id == R.id.filter_info)
+            return LogLevel.INFO;
+        if (id == R.id.filter_debug)
+            return LogLevel.DEBUG;
         return LogLevel.ALL;
     }
 

@@ -11,18 +11,18 @@
 
 set -eu
 
-script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+script_dir=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 source_file="$script_dir/src/org/openi2pd/java25probe/Java25Probe.java"
 keep_file="$script_dir/keep.pro"
 
 if [ -n "${JAVA_HOME:-}" ] && [ -x "$JAVA_HOME/bin/javac" ]; then
-    javac_bin="${JAVAC:-$JAVA_HOME/bin/javac}"
-    java_bin="${JAVA:-$JAVA_HOME/bin/java}"
-    javap_bin="${JAVAP:-$JAVA_HOME/bin/javap}"
+	javac_bin="${JAVAC:-$JAVA_HOME/bin/javac}"
+	java_bin="${JAVA:-$JAVA_HOME/bin/java}"
+	javap_bin="${JAVAP:-$JAVA_HOME/bin/javap}"
 else
-    javac_bin="${JAVAC:-javac}"
-    java_bin="${JAVA:-java}"
-    javap_bin="${JAVAP:-javap}"
+	javac_bin="${JAVAC:-javac}"
+	java_bin="${JAVA:-java}"
+	javap_bin="${JAVAP:-javap}"
 fi
 
 echo "javac: $("$javac_bin" -version 2>&1)"
@@ -40,12 +40,12 @@ echo
 echo "== javac --release 25 =="
 "$javac_bin" --release 25 -d "$classes_dir" "$source_file"
 
-major=$("$javap_bin" -verbose "$classes_dir/org/openi2pd/java25probe/Java25Probe.class" \
-    | awk '/major version/ { print $3; exit }')
+major=$("$javap_bin" -verbose "$classes_dir/org/openi2pd/java25probe/Java25Probe.class" |
+	awk '/major version/ { print $3; exit }')
 echo "Java25Probe.class major version: $major"
 if [ "$major" != "69" ]; then
-    echo "ERROR: expected class-file major version 69 (Java 25), got '$major'" >&2
-    exit 1
+	echo "ERROR: expected class-file major version 69 (Java 25), got '$major'" >&2
+	exit 1
 fi
 
 echo
@@ -53,51 +53,49 @@ echo "== run on the build JDK (not ART) =="
 "$java_bin" -cp "$classes_dir" org.openi2pd.java25probe.Java25Probe
 
 if [ -n "${R8_JAR:-}" ] || [ -n "${ANDROID_JAR:-}" ]; then
-    if [ -z "${R8_JAR:-}" ] || [ -z "${ANDROID_JAR:-}" ]; then
-        echo "ERROR: set both R8_JAR and ANDROID_JAR, or neither" >&2
-        exit 1
-    fi
-    if [ ! -f "$R8_JAR" ]; then
-        echo "ERROR: R8_JAR not found: $R8_JAR" >&2
-        exit 1
-    fi
-    if [ ! -f "$ANDROID_JAR" ]; then
-        echo "ERROR: ANDROID_JAR not found: $ANDROID_JAR" >&2
-        exit 1
-    fi
+	if [ -z "${R8_JAR:-}" ] || [ -z "${ANDROID_JAR:-}" ]; then
+		echo "ERROR: set both R8_JAR and ANDROID_JAR, or neither" >&2
+		exit 1
+	fi
+	if [ ! -f "$R8_JAR" ]; then
+		echo "ERROR: R8_JAR not found: $R8_JAR" >&2
+		exit 1
+	fi
+	if [ ! -f "$ANDROID_JAR" ]; then
+		echo "ERROR: ANDROID_JAR not found: $ANDROID_JAR" >&2
+		exit 1
+	fi
 
-    class_files=$(find "$classes_dir" -name '*.class' -print)
+	class_file="$classes_dir/org/openi2pd/java25probe/Java25Probe.class"
 
-    echo
-    echo "== D8 --min-api 29 =="
-    # shellcheck disable=SC2086 # class_files is a newline-free file list here.
-    "$java_bin" -cp "$R8_JAR" com.android.tools.r8.D8 \
-        --min-api 29 \
-        --lib "$ANDROID_JAR" \
-        --output "$dex_dir" \
-        $class_files
-    ls -l "$dex_dir/classes.dex"
+	echo
+	echo "== D8 --min-api 29 =="
+	"$java_bin" -cp "$R8_JAR" com.android.tools.r8.D8 \
+		--min-api 29 \
+		--lib "$ANDROID_JAR" \
+		--output "$dex_dir" \
+		"$class_file"
+	ls -l "$dex_dir/classes.dex"
 
-    echo
-    echo "== R8 --min-api 29 =="
-    # shellcheck disable=SC2086
-    "$java_bin" -cp "$R8_JAR" com.android.tools.r8.R8 \
-        --min-api 29 \
-        --lib "$ANDROID_JAR" \
-        --pg-conf "$keep_file" \
-        --output "$r8_dir" \
-        $class_files
-    ls -l "$r8_dir/classes.dex"
+	echo
+	echo "== R8 --min-api 29 =="
+	"$java_bin" -cp "$R8_JAR" com.android.tools.r8.R8 \
+		--min-api 29 \
+		--lib "$ANDROID_JAR" \
+		--pg-conf "$keep_file" \
+		--output "$r8_dir" \
+		"$class_file"
+	ls -l "$r8_dir/classes.dex"
 
-    echo
-    echo "== DEX magic =="
-    if command -v od >/dev/null 2>&1; then
-        od -An -c -N8 "$dex_dir/classes.dex"
-        od -An -c -N8 "$r8_dir/classes.dex"
-    fi
+	echo
+	echo "== DEX magic =="
+	if command -v od >/dev/null 2>&1; then
+		od -An -c -N8 "$dex_dir/classes.dex"
+		od -An -c -N8 "$r8_dir/classes.dex"
+	fi
 else
-    echo
-    echo "D8/R8: skipped (set R8_JAR and ANDROID_JAR to run the --min-api 29 checks)"
+	echo
+	echo "D8/R8: skipped (set R8_JAR and ANDROID_JAR to run the --min-api 29 checks)"
 fi
 
 echo

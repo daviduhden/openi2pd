@@ -188,16 +188,22 @@ public class SettingsFragment extends PreferenceFragmentCompat {
 
     private void bindNotificationSettings() {
         Preference preference = findPreference("notificationSettings");
-        if (preference == null) return;
-        boolean enabled = NotificationManagerCompat.from(requireContext()).areNotificationsEnabled();
+        if (preference == null)
+            return;
+        boolean enabled =
+                NotificationManagerCompat.from(requireContext()).areNotificationsEnabled();
         preference.setSummary(enabled ? R.string.pref_notifications_enabled
                                       : R.string.pref_notifications_disabled);
         preference.setOnPreferenceClickListener(ignored -> {
             Intent intent = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-                    .putExtra(Settings.EXTRA_APP_PACKAGE, requireContext().getPackageName());
-            try { startActivity(intent); } catch (RuntimeException unavailable) {
+                                    .putExtra(Settings.EXTRA_APP_PACKAGE,
+                                            requireContext().getPackageName());
+            try {
+                startActivity(intent);
+            } catch (RuntimeException unavailable) {
                 Toast.makeText(requireContext(), R.string.pref_notifications_unavailable,
-                        Toast.LENGTH_SHORT).show();
+                             Toast.LENGTH_SHORT)
+                        .show();
             }
             return true;
         });
@@ -414,8 +420,8 @@ public class SettingsFragment extends PreferenceFragmentCompat {
                 return;
             }
             if (Boolean.TRUE.equals(applied)) {
-                Toast.makeText(requireContext(), R.string.pref_log_level_applied,
-                             Toast.LENGTH_SHORT)
+                Toast.makeText(
+                             requireContext(), R.string.pref_log_level_applied, Toast.LENGTH_SHORT)
                         .show();
                 return;
             }

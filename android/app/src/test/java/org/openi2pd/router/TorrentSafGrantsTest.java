@@ -22,11 +22,11 @@ public class TorrentSafGrantsTest {
         grants.put("0:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "content://tree/shared");
         grants.put("0:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "content://tree/shared");
         assertTrue(TorrentSafGrants.referenced(grants, "content://tree/shared", null));
-        assertTrue(TorrentSafGrants.referenced(grants, "content://tree/shared",
-                "0:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"));
+        assertTrue(TorrentSafGrants.referenced(
+                grants, "content://tree/shared", "0:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"));
         grants.remove("0:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
-        assertFalse(TorrentSafGrants.referenced(grants, "content://tree/shared",
-                "0:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"));
+        assertFalse(TorrentSafGrants.referenced(
+                grants, "content://tree/shared", "0:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"));
     }
 
     @Test

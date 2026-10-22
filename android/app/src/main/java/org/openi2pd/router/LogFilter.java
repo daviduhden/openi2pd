@@ -12,7 +12,8 @@ package org.openi2pd.router;
 import java.util.Locale;
 
 final class LogFilter {
-    private LogFilter() {}
+    private LogFilter() {
+    }
 
     static boolean passes(LogLevel minimum, String level) {
         // All/Debug are the unfiltered views; the other chips are minimum

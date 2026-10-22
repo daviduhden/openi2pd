@@ -227,20 +227,29 @@ public final class RouterRepository implements RouterService.Listener {
         local.removeAddress(name, callback);
     }
 
-    public void createSafTorrent(android.net.Uri source, boolean tree, int pieceLength, String[] trackers, boolean privateTorrent,
-            java.util.function.LongConsumer progress, java.util.function.Consumer<byte[]> callback) {
+    public void createSafTorrent(android.net.Uri source, boolean tree, int pieceLength,
+            String[] trackers, boolean privateTorrent, java.util.function.LongConsumer progress,
+            java.util.function.Consumer<byte[]> callback) {
         RouterService local = service;
-        if (closed || local == null) { callback.accept(null); return; }
-        local.createSafTorrent(source, tree, pieceLength, trackers, privateTorrent, progress, callback);
+        if (closed || local == null) {
+            callback.accept(null);
+            return;
+        }
+        local.createSafTorrent(
+                source, tree, pieceLength, trackers, privateTorrent, progress, callback);
     }
     public void cancelSafCreation() {
         RouterService local = service;
-        if (local != null) local.cancelSafCreation();
+        if (local != null)
+            local.cancelSafCreation();
     }
     public void exportTorrent(android.net.Uri target, byte[] metadata,
             java.util.function.Consumer<Boolean> callback) {
         RouterService local = service;
-        if (closed || local == null) { callback.accept(false); return; }
+        if (closed || local == null) {
+            callback.accept(false);
+            return;
+        }
         local.exportTorrent(target, metadata, callback);
     }
 
@@ -320,8 +329,7 @@ public final class RouterRepository implements RouterService.Listener {
      * Apply one runtime log level to the running logger. Persisting the value
      * is the caller's explicit, separate step.
      */
-    public void applyRuntimeLogLevel(
-            String level, java.util.function.Consumer<Boolean> callback) {
+    public void applyRuntimeLogLevel(String level, java.util.function.Consumer<Boolean> callback) {
         RouterService local = service;
         if (closed || local == null) {
             mainHandler.post(() -> callback.accept(false));

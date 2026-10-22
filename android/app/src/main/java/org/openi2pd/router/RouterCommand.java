@@ -91,12 +91,11 @@ sealed interface RouterCommand {
             case "org.openi2pd.router.action.STOP" -> new Stop();
             case "org.openi2pd.router.action.RESTART" -> new Restart();
             case "org.openi2pd.router.action.GRACEFUL_STOP" -> new GracefulStop();
-            case "org.openi2pd.router.action.CANCEL_GRACEFUL_STOP" ->
-                    new CancelGracefulStop();
+            case "org.openi2pd.router.action.CANCEL_GRACEFUL_STOP" -> new CancelGracefulStop();
             case "org.openi2pd.router.action.RELOAD_TUNNELS" -> new ReloadTunnels();
             case "org.openi2pd.router.action.RESEED" -> new Reseed();
             case "org.openi2pd.router.action.SET_RUNTIME_LOG_LEVEL" ->
-                    new SetRuntimeLogLevel(runtimeLogLevel);
+                new SetRuntimeLogLevel(runtimeLogLevel);
             default -> new Unknown(action);
         };
     }

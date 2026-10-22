@@ -13,13 +13,17 @@ package org.openi2pd.router;
 import java.util.Map;
 
 final class TorrentSafGrants {
-    private TorrentSafGrants() {}
+    private TorrentSafGrants() {
+    }
 
     static boolean referenced(Map<String, ?> grants, String uri, String exceptKey) {
-        if (uri == null || grants == null) return false;
+        if (uri == null || grants == null)
+            return false;
         for (Map.Entry<String, ?> entry : grants.entrySet()) {
-            if (exceptKey != null && exceptKey.equals(entry.getKey())) continue;
-            if (uri.equals(entry.getValue())) return true;
+            if (exceptKey != null && exceptKey.equals(entry.getKey()))
+                continue;
+            if (uri.equals(entry.getValue()))
+                return true;
         }
         return false;
     }

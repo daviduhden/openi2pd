@@ -379,14 +379,14 @@ public class RouterService extends Service {
             mainHandler.removeCallbacks(gracefulStopExpired);
             enqueueControl(daemon::cancelGracefulShutdown);
         }
-        case RouterCommand.ReloadTunnels ignored ->
-                enqueueControl(daemon::reloadTunnelsConfigs);
-        case RouterCommand.Reseed ignored -> enqueueControl(() -> {
-            DaemonWrapper local = daemon;
-            if (local != null) {
-                local.requestReseed();
-            }
-        });
+        case RouterCommand.ReloadTunnels ignored -> enqueueControl(daemon::reloadTunnelsConfigs);
+        case RouterCommand.Reseed ignored ->
+            enqueueControl(() -> {
+                DaemonWrapper local = daemon;
+                if (local != null) {
+                    local.requestReseed();
+                }
+            });
         case RouterCommand.SetRuntimeLogLevel(var level) -> handleRuntimeLogLevel(level, startId);
         case RouterCommand.Unknown ignored -> {
             handleUnknownAction(startId);
@@ -716,8 +716,7 @@ public class RouterService extends Service {
      * The caller persists any preference separately; this path only changes
      * the live logger and never writes {@code i2pd.conf}.
      */
-    public void applyRuntimeLogLevel(
-            String level, java.util.function.Consumer<Boolean> callback) {
+    public void applyRuntimeLogLevel(String level, java.util.function.Consumer<Boolean> callback) {
         if (destroyed || !DaemonWrapper.isRuntimeLogLevel(level)) {
             mainHandler.post(() -> callback.accept(false));
             return;
@@ -779,9 +778,11 @@ public class RouterService extends Service {
      * not silently restart a deliberately stopped daemon.
      */
     public static boolean isStartRequested(Context context) {
-        if (context == null) return false;
+        if (context == null)
+            return false;
         Context appContext = context.getApplicationContext();
-        if (appContext == null) appContext = context;
+        if (appContext == null)
+            appContext = context;
         return appContext.getSharedPreferences(PREFERENCES, MODE_PRIVATE)
                 .getBoolean(PREF_SHOULD_RUN, false);
     }
@@ -826,8 +827,8 @@ public class RouterService extends Service {
     // Polling and publication
     // ---------------------------------------------------------------------
 
-    private record PollResult(RouterSnapshot snapshot, List<LogEntry> logs, boolean logsChanged,
-            long logsEpoch) {}
+    private record PollResult(
+            RouterSnapshot snapshot, List<LogEntry> logs, boolean logsChanged, long logsEpoch) {}
 
     private void pollNow() {
         if (destroyed || listeners.isEmpty()) {
@@ -1057,7 +1058,8 @@ public class RouterService extends Service {
                         .setContentText(text)
                         .addAction(R.drawable.ic_stop, getText(R.string.action_stop),
                                 PendingIntent.getService(this, 1,
-                                        new Intent(this, RouterService.class).setAction(ACTION_STOP),
+                                        new Intent(this, RouterService.class)
+                                                .setAction(ACTION_STOP),
                                         FLAG_IMMUTABLE | FLAG_UPDATE_CURRENT));
 
         Intent launch = getPackageManager().getLaunchIntentForPackage(getPackageName());
@@ -1139,7 +1141,8 @@ public class RouterService extends Service {
     public void readAddressBook(java.util.function.Consumer<String> callback) {
         ExecutorService executor = worker;
         try {
-            if (destroyed || executor == null) throw new RejectedExecutionException();
+            if (destroyed || executor == null)
+                throw new RejectedExecutionException();
             executor.execute(() -> {
                 String result = "";
                 try {
@@ -1161,7 +1164,8 @@ public class RouterService extends Service {
             String name, String destination, java.util.function.Consumer<Boolean> callback) {
         ExecutorService executor = worker;
         try {
-            if (destroyed || executor == null) throw new RejectedExecutionException();
+            if (destroyed || executor == null)
+                throw new RejectedExecutionException();
             executor.execute(() -> {
                 boolean result = false;
                 try {
@@ -1182,7 +1186,8 @@ public class RouterService extends Service {
     public void readBlockedAddresses(java.util.function.Consumer<String> callback) {
         ExecutorService executor = worker;
         try {
-            if (destroyed || executor == null) throw new RejectedExecutionException();
+            if (destroyed || executor == null)
+                throw new RejectedExecutionException();
             executor.execute(() -> {
                 String result = "";
                 try {
@@ -1203,7 +1208,8 @@ public class RouterService extends Service {
     public void blockAddress(String name, java.util.function.Consumer<Boolean> callback) {
         ExecutorService executor = worker;
         try {
-            if (destroyed || executor == null) throw new RejectedExecutionException();
+            if (destroyed || executor == null)
+                throw new RejectedExecutionException();
             executor.execute(() -> {
                 boolean result = false;
                 try {
@@ -1224,7 +1230,8 @@ public class RouterService extends Service {
     public void unblockAddress(String name, java.util.function.Consumer<Boolean> callback) {
         ExecutorService executor = worker;
         try {
-            if (destroyed || executor == null) throw new RejectedExecutionException();
+            if (destroyed || executor == null)
+                throw new RejectedExecutionException();
             executor.execute(() -> {
                 boolean result = false;
                 try {
@@ -1245,7 +1252,8 @@ public class RouterService extends Service {
     public void removeAddress(String name, java.util.function.Consumer<Boolean> callback) {
         ExecutorService executor = worker;
         try {
-            if (destroyed || executor == null) throw new RejectedExecutionException();
+            if (destroyed || executor == null)
+                throw new RejectedExecutionException();
             executor.execute(() -> {
                 boolean result = false;
                 try {
@@ -1344,8 +1352,8 @@ public class RouterService extends Service {
     }
 
     /** SAF creation exports metadata only; it does not claim the sources are seedable. */
-    public void createSafTorrent(android.net.Uri source, boolean tree, int pieceLength, String[] trackers, boolean privateTorrent,
-            java.util.function.LongConsumer progress,
+    public void createSafTorrent(android.net.Uri source, boolean tree, int pieceLength,
+            String[] trackers, boolean privateTorrent, java.util.function.LongConsumer progress,
             java.util.function.Consumer<byte[]> callback) {
         if (destroyed || !torrentInFlight.compareAndSet(false, true)) {
             mainHandler.post(() -> callback.accept(null));
@@ -1356,7 +1364,8 @@ public class RouterService extends Service {
         Runnable deadline = cancel::cancel;
         mainHandler.postDelayed(deadline, 30 * 60 * 1000L);
         try {
-            if (destroyed) throw new RejectedExecutionException();
+            if (destroyed)
+                throw new RejectedExecutionException();
             safWorker.execute(() -> {
                 byte[] metadata = null;
                 boolean release = false;
@@ -1367,18 +1376,23 @@ public class RouterService extends Service {
                         if (source.equals(permission.getUri()) && permission.isReadPermission())
                             granted = true;
                     if (!granted) {
-                        resolver.takePersistableUriPermission(source, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                        resolver.takePersistableUriPermission(
+                                source, Intent.FLAG_GRANT_READ_URI_PERMISSION);
                         release = true;
                     }
                     metadata = TorrentSafCreator.create(resolver, source, tree, cancel,
-                            value -> mainHandler.post(() -> progress.accept(value)), pieceLength, trackers, privateTorrent);
+                            value
+                            -> mainHandler.post(() -> progress.accept(value)),
+                            pieceLength, trackers, privateTorrent);
                 } catch (Throwable ignored) {
                     // Provider diagnostics may disclose document names or account identifiers.
                 } finally {
-                    if (release) try {
-                        getContentResolver().releasePersistableUriPermission(source,
-                                Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                    } catch (RuntimeException ignored) {}
+                    if (release)
+                        try {
+                            getContentResolver().releasePersistableUriPermission(
+                                    source, Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                        } catch (RuntimeException ignored) {
+                        }
                     mainHandler.removeCallbacks(deadline);
                     cancelTorrentImport = null;
                     torrentInFlight.set(false);
@@ -1396,23 +1410,28 @@ public class RouterService extends Service {
 
     public void cancelSafCreation() {
         Runnable cancel = cancelTorrentImport;
-        if (cancel != null) cancel.run();
+        if (cancel != null)
+            cancel.run();
     }
 
     public void exportTorrent(android.net.Uri target, byte[] metadata,
             java.util.function.Consumer<Boolean> callback) {
         if (target == null || !"content".equals(target.getScheme()) || metadata == null
-                || metadata.length > TorrentControl.MAX_IMPORT_BYTES
-                || destroyed || !torrentInFlight.compareAndSet(false, true)) {
+                || metadata.length > TorrentControl.MAX_IMPORT_BYTES || destroyed
+                || !torrentInFlight.compareAndSet(false, true)) {
             mainHandler.post(() -> callback.accept(false));
             return;
         }
         var canceled = new java.util.concurrent.atomic.AtomicBoolean();
-        Runnable cancel = () -> { canceled.set(true); TorrentSafStorage.cancelPending(); };
+        Runnable cancel = () -> {
+            canceled.set(true);
+            TorrentSafStorage.cancelPending();
+        };
         cancelTorrentImport = cancel;
         mainHandler.postDelayed(cancel, 20_000L);
         try {
-            if (destroyed) throw new RejectedExecutionException();
+            if (destroyed)
+                throw new RejectedExecutionException();
             safWorker.execute(() -> {
                 boolean success = false;
                 boolean releaseGrant = false;
@@ -1420,19 +1439,25 @@ public class RouterService extends Service {
                     boolean granted = false;
                     var resolver = getContentResolver();
                     for (var permission : resolver.getPersistedUriPermissions())
-                        if (target.equals(permission.getUri()) && permission.isWritePermission()) granted = true;
+                        if (target.equals(permission.getUri()) && permission.isWritePermission())
+                            granted = true;
                     if (!granted) {
                         resolver.takePersistableUriPermission(target,
-                                Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                                Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                        | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
                         releaseGrant = true;
                     }
-                    success = TorrentSafStorage.export(target, metadata, canceled) && !canceled.get();
+                    success =
+                            TorrentSafStorage.export(target, metadata, canceled) && !canceled.get();
                 } catch (Throwable ignored) {
                 } finally {
-                    if (releaseGrant) try {
-                        getContentResolver().releasePersistableUriPermission(target,
-                                Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
-                    } catch (RuntimeException ignored) {}
+                    if (releaseGrant)
+                        try {
+                            getContentResolver().releasePersistableUriPermission(target,
+                                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                                            | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                        } catch (RuntimeException ignored) {
+                        }
                     mainHandler.removeCallbacks(cancel);
                     cancelTorrentImport = null;
                     torrentInFlight.set(false);

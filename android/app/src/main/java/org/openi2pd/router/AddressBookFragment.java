@@ -82,25 +82,30 @@ public final class AddressBookFragment extends Fragment {
     }
 
     private void refresh() {
-        if (busy || status == null) return;
+        if (busy || status == null)
+            return;
         busy = true;
         status.setText(R.string.address_book_loading);
         int expected = generation;
         model.readAddressBook(response -> {
-            if (expected != generation || status == null || !isAdded()) return;
+            if (expected != generation || status == null || !isAdded())
+                return;
             busy = false;
             rows.removeAllViews();
             int count = 0;
             for (String line : response.split("\\n")) {
                 String[] fields = line.split("\\|", -1);
-                if (fields.length != 3 || fields[0].isEmpty() || fields[1].isEmpty()) continue;
+                if (fields.length != 3 || fields[0].isEmpty() || fields[1].isEmpty())
+                    continue;
                 String name = fields[0];
                 String destination = fields[1];
                 MaterialButton row = new MaterialButton(requireContext());
-                row.setText(name + "\n" + destination + ("1".equals(fields[2]) ? " (blinded)" : ""));
+                row.setText(
+                        name + "\n" + destination + ("1".equals(fields[2]) ? " (blinded)" : ""));
                 row.setOnClickListener(ignored -> removeDialog(name));
                 rows.addView(row);
-                if (++count >= 200) break;
+                if (++count >= 200)
+                    break;
             }
             if (count == 0)
                 status.setText(R.string.address_book_empty);
@@ -130,13 +135,15 @@ public final class AddressBookFragment extends Fragment {
                 .setView(form)
                 .setNegativeButton(R.string.action_cancel, null)
                 .setPositiveButton(R.string.address_book_save,
-                        (dialog, which) -> submitAdd(name.getText().toString(),
-                                destination.getText().toString()))
+                        (dialog, which)
+                                -> submitAdd(name.getText().toString(),
+                                        destination.getText().toString()))
                 .show();
     }
 
     private void submitAdd(String name, String destination) {
-        if (busy || status == null) return;
+        if (busy || status == null)
+            return;
         String cleanName = name == null ? "" : name.trim();
         String cleanDestination = destination == null ? "" : destination.trim();
         if (cleanName.isEmpty() || cleanDestination.isEmpty()) {
@@ -147,10 +154,12 @@ public final class AddressBookFragment extends Fragment {
         status.setText(R.string.address_book_saving);
         int expected = generation;
         model.addAddress(cleanName, cleanDestination, added -> {
-            if (expected != generation || status == null || !isAdded()) return;
+            if (expected != generation || status == null || !isAdded())
+                return;
             busy = false;
             status.setText(added ? R.string.address_book_added : R.string.address_book_failed);
-            if (added) refresh();
+            if (added)
+                refresh();
         });
     }
 
@@ -158,34 +167,43 @@ public final class AddressBookFragment extends Fragment {
         TextInputLayout layout = new TextInputLayout(requireContext());
         layout.setHint(R.string.address_book_block_hint);
         TextInputEditText input = new TextInputEditText(requireContext());
-        input.setFilters(new android.text.InputFilter[] {new android.text.InputFilter.LengthFilter(255)});
+        input.setFilters(
+                new android.text.InputFilter[] {new android.text.InputFilter.LengthFilter(255)});
         layout.addView(input);
         new MaterialAlertDialogBuilder(requireContext())
                 .setTitle(R.string.address_book_block)
                 .setView(layout)
                 .setNegativeButton(R.string.action_cancel, null)
-                .setPositiveButton(R.string.address_book_save, (dialog, which) -> {
-                    String pattern = input.getText() == null ? "" : input.getText().toString().trim();
-                    if (pattern.isEmpty() || busy || status == null) return;
-                    busy = true;
-                    int expected = generation;
-                    model.blockAddress(pattern, blocked -> {
-                        if (expected != generation || status == null || !isAdded()) return;
-                        busy = false;
-                        status.setText(blocked ? R.string.address_book_blocked
-                                               : R.string.address_book_block_failed);
-                        if (blocked) refresh();
-                    });
-                })
+                .setPositiveButton(R.string.address_book_save,
+                        (dialog, which) -> {
+                            String pattern = input.getText() == null
+                                    ? ""
+                                    : input.getText().toString().trim();
+                            if (pattern.isEmpty() || busy || status == null)
+                                return;
+                            busy = true;
+                            int expected = generation;
+                            model.blockAddress(pattern, blocked -> {
+                                if (expected != generation || status == null || !isAdded())
+                                    return;
+                                busy = false;
+                                status.setText(blocked ? R.string.address_book_blocked
+                                                       : R.string.address_book_block_failed);
+                                if (blocked)
+                                    refresh();
+                            });
+                        })
                 .show();
     }
 
     private void blockedDialog() {
         model.readBlockedAddresses(response -> {
-            if (status == null || !isAdded()) return;
+            if (status == null || !isAdded())
+                return;
             java.util.ArrayList<String> patterns = new java.util.ArrayList<>();
             for (String line : response.split("\\n")) {
-                if (!line.isEmpty() && patterns.size() < 200) patterns.add(line);
+                if (!line.isEmpty() && patterns.size() < 200)
+                    patterns.add(line);
             }
             if (patterns.isEmpty()) {
                 status.setText(R.string.address_book_blocked_empty);
@@ -193,19 +211,23 @@ public final class AddressBookFragment extends Fragment {
             }
             new MaterialAlertDialogBuilder(requireContext())
                     .setTitle(R.string.address_book_blocked_list)
-                    .setItems(patterns.toArray(new String[0]), (dialog, which) -> {
-                        String pattern = patterns.get(which);
-                        if (busy) return;
-                        busy = true;
-                        int expected = generation;
-                        model.unblockAddress(pattern, unblocked -> {
-                            if (expected != generation || status == null || !isAdded()) return;
-                            busy = false;
-                            status.setText(unblocked ? R.string.address_book_unblocked
-                                                     : R.string.address_book_block_failed);
-                            if (unblocked) refresh();
-                        });
-                    })
+                    .setItems(patterns.toArray(new String[0]),
+                            (dialog, which) -> {
+                                String pattern = patterns.get(which);
+                                if (busy)
+                                    return;
+                                busy = true;
+                                int expected = generation;
+                                model.unblockAddress(pattern, unblocked -> {
+                                    if (expected != generation || status == null || !isAdded())
+                                        return;
+                                    busy = false;
+                                    status.setText(unblocked ? R.string.address_book_unblocked
+                                                             : R.string.address_book_block_failed);
+                                    if (unblocked)
+                                        refresh();
+                                });
+                            })
                     .setNegativeButton(R.string.action_cancel, null)
                     .show();
         });
@@ -217,15 +239,18 @@ public final class AddressBookFragment extends Fragment {
                 .setNegativeButton(R.string.action_cancel, null)
                 .setPositiveButton(R.string.address_book_remove,
                         (dialog, which) -> {
-                            if (busy || status == null) return;
+                            if (busy || status == null)
+                                return;
                             busy = true;
                             int expected = generation;
                             model.removeAddress(name, removed -> {
-                                if (expected != generation || status == null || !isAdded()) return;
+                                if (expected != generation || status == null || !isAdded())
+                                    return;
                                 busy = false;
                                 status.setText(removed ? R.string.address_book_removed
                                                        : R.string.address_book_failed);
-                                if (removed) refresh();
+                                if (removed)
+                                    refresh();
                             });
                         })
                 .show();

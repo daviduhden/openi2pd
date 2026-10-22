@@ -76,16 +76,16 @@ public class TorrentControlTest {
         assertEquals("TORRENT-REMOVE 0 7 files", TorrentControl.remove(0, "7", true));
         assertThrows(IllegalArgumentException.class, () -> TorrentControl.remove(0, "0", true));
         assertThrows(IllegalArgumentException.class, () -> TorrentControl.remove(-1, "7", true));
-        assertEquals("TORRENT-META-COMMENT 0 7 Useful",
-                TorrentControl.metaComment(0, "7", "Useful"));
+        assertEquals(
+                "TORRENT-META-COMMENT 0 7 Useful", TorrentControl.metaComment(0, "7", "Useful"));
         assertEquals("TORRENT-META-CREATED-BY 0 7 openi2pd",
                 TorrentControl.metaCreatedBy(0, "7", "openi2pd"));
         assertThrows(IllegalArgumentException.class,
                 () -> TorrentControl.metaComment(0, "7", "bad\ncontrol"));
         assertThrows(IllegalArgumentException.class,
                 () -> TorrentControl.metaCreatedBy(0, "7", "x".repeat(256)));
-        assertThrows(IllegalArgumentException.class,
-                () -> TorrentControl.metaComment(0, "0", "text"));
+        assertThrows(
+                IllegalArgumentException.class, () -> TorrentControl.metaComment(0, "0", "text"));
     }
 
     @Test
@@ -126,8 +126,8 @@ public class TorrentControlTest {
                 TorrentControl.comment(0, "7", 0, "pseudonym", "Text"));
         assertThrows(
                 IllegalArgumentException.class, () -> TorrentControl.comment(0, "7", 0, "", ""));
-        assertThrows(
-                IllegalArgumentException.class, () -> TorrentControl.comment(0, "0", 5, "", "Text"));
+        assertThrows(IllegalArgumentException.class,
+                () -> TorrentControl.comment(0, "0", 5, "", "Text"));
         assertThrows(IllegalArgumentException.class,
                 () -> TorrentControl.comment(0, "7", 6, "", "Text"));
         assertThrows(IllegalArgumentException.class,
@@ -144,10 +144,10 @@ public class TorrentControlTest {
 
     @Test
     public void commentIdCommands() {
-        org.junit.Assert.assertEquals("TORRENT-COMMENT-HIDE 2 7 42",
-                TorrentControl.commentId(2, "7", "42", true));
-        org.junit.Assert.assertEquals("TORRENT-COMMENT-UNHIDE 2 7 42",
-                TorrentControl.commentId(2, "7", "42", false));
+        org.junit.Assert.assertEquals(
+                "TORRENT-COMMENT-HIDE 2 7 42", TorrentControl.commentId(2, "7", "42", true));
+        org.junit.Assert.assertEquals(
+                "TORRENT-COMMENT-UNHIDE 2 7 42", TorrentControl.commentId(2, "7", "42", false));
         try {
             TorrentControl.commentId(2, "0", "42", true);
             throw new AssertionError("accepted torrent id 0");
@@ -162,10 +162,10 @@ public class TorrentControlTest {
 
     @Test
     public void bulkCommandsAreFixedAndRejectNegativeSessions() {
-        org.junit.Assert.assertEquals("TORRENT-START-ALL 0",
-                TorrentControl.bulk(0, TorrentControl.Bulk.START_ALL));
-        org.junit.Assert.assertEquals("TORRENT-STOP-ALL 2",
-                TorrentControl.bulk(2, TorrentControl.Bulk.STOP_ALL));
+        org.junit.Assert.assertEquals(
+                "TORRENT-START-ALL 0", TorrentControl.bulk(0, TorrentControl.Bulk.START_ALL));
+        org.junit.Assert.assertEquals(
+                "TORRENT-STOP-ALL 2", TorrentControl.bulk(2, TorrentControl.Bulk.STOP_ALL));
         org.junit.Assert.assertEquals("TORRENT-REANNOUNCE-ALL 3",
                 TorrentControl.bulk(3, TorrentControl.Bulk.REANNOUNCE_ALL));
         assertThrows(IllegalArgumentException.class,

@@ -12,11 +12,12 @@ package org.openi2pd.router;
 final class TorrentSafPolicy {
     static final int MAX_TRANSFER = 16384;
 
-    private TorrentSafPolicy() {}
+    private TorrentSafPolicy() {
+    }
 
     static boolean validRange(long length, long offset, int count) {
-        return length >= 0 && offset >= 0 && count >= 0 && count <= MAX_TRANSFER
-                && offset <= length && count <= length - offset;
+        return length >= 0 && offset >= 0 && count >= 0 && count <= MAX_TRANSFER && offset <= length
+                && count <= length - offset;
     }
 
     // Exports grow from zero to the declared maximum; only the final commit

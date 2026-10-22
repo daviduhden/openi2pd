@@ -171,7 +171,8 @@ public class DashboardFragment extends Fragment {
         UiFormat.setTextIfChanged(statusSubtitle, UiFormat.statusSubtitle(context, snapshot));
         String detail = UiFormat.routerDetail(snapshot);
         statusDetail.setVisibility(detail.isEmpty() ? View.GONE : View.VISIBLE);
-        if (!detail.isEmpty()) UiFormat.setTextIfChanged(statusDetail, detail);
+        if (!detail.isEmpty())
+            UiFormat.setTextIfChanged(statusDetail, detail);
         UiFormat.setTextIfChanged(chipConnectivity, UiFormat.connectivity(context, snapshot));
         UiFormat.setTextIfChanged(chipTransports, UiFormat.transports(context, snapshot));
 

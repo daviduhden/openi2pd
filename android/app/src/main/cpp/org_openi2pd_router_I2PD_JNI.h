@@ -46,8 +46,7 @@ extern "C"
 
 	JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_requestReseed (JNIEnv *, jclass);
 
-	JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_setRuntimeLogLevel (
-		JNIEnv *, jclass, jstring);
+	JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_setRuntimeLogLevel (JNIEnv *, jclass, jstring);
 
 	JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_setDataDir (JNIEnv * env, jclass clazz, jstring jdataDir);
 
@@ -84,7 +83,7 @@ extern "C"
 	JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_torrentCommand (JNIEnv *, jclass, jbyteArray);
 
 	JNIEXPORT jbyteArray JNICALL Java_org_openi2pd_router_I2PD_1JNI_buildTorrentMetadata (
-        JNIEnv *, jclass, jbyteArray, jobjectArray, jlongArray, jint, jbyteArray, jobjectArray, jboolean);
+		JNIEnv *, jclass, jbyteArray, jobjectArray, jlongArray, jint, jbyteArray, jobjectArray, jboolean);
 
 	JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_importTorrent (JNIEnv *, jclass, jint, jbyteArray);
 

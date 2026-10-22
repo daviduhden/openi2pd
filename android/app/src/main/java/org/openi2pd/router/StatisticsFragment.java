@@ -99,10 +99,10 @@ public class StatisticsFragment extends Fragment {
                                          : getString(R.string.value_unknown);
         String uploadCurrent = hasData ? UiFormat.rate(requireContext(), snapshot.outRate())
                                        : getString(R.string.value_unknown);
-        UiFormat.setTextIfChanged(downloadNow,
-                getString(R.string.statistics_now_format, downloadCurrent));
-        UiFormat.setTextIfChanged(uploadNow,
-                getString(R.string.statistics_now_format, uploadCurrent));
+        UiFormat.setTextIfChanged(
+                downloadNow, getString(R.string.statistics_now_format, downloadCurrent));
+        UiFormat.setTextIfChanged(
+                uploadNow, getString(R.string.statistics_now_format, uploadCurrent));
         CharSequence chartDescription =
                 getString(R.string.statistics_chart_description, download, upload);
         if (!TextUtils.equals(trafficChart.getContentDescription(), chartDescription)) {
@@ -123,8 +123,9 @@ public class StatisticsFragment extends Fragment {
         }
 
         if (hasData) {
-            UiFormat.setTextIfChanged(chartPeak, getString(R.string.statistics_chart_peak_format,
-                    UiFormat.rate(requireContext(), trafficChart.getPeakBytesPerSecond())));
+            UiFormat.setTextIfChanged(chartPeak,
+                    getString(R.string.statistics_chart_peak_format,
+                            UiFormat.rate(requireContext(), trafficChart.getPeakBytesPerSecond())));
             UiFormat.setTextIfChanged(
                     totalReceived, UiFormat.bytes(requireContext(), snapshot.totalReceived()));
             UiFormat.setTextIfChanged(

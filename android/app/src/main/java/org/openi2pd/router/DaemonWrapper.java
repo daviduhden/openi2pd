@@ -61,8 +61,7 @@ public class DaemonWrapper {
      * exact, case-sensitive closed set before it changes any state.
      */
     private static final String[] RUNTIME_LOG_LEVELS = {
-        "none", "critical", "error", "warn", "info", "debug"
-    };
+            "none", "critical", "error", "warn", "info", "debug"};
 
     /**
      * Time transit tunnels are given to drain during a graceful shutdown.
@@ -519,7 +518,8 @@ public class DaemonWrapper {
     /** Bounded address-book rows; empty when the daemon is not running. */
     public String getAddressBook() {
         synchronized (lock) {
-            if (!state.isStartedOkay()) return "";
+            if (!state.isStartedOkay())
+                return "";
         }
         try {
             return I2PD_JNI.getAddressBook();
@@ -532,7 +532,8 @@ public class DaemonWrapper {
     /** Add or replace one validated name; false on any validation failure. */
     public boolean addAddress(String name, String destination) {
         synchronized (lock) {
-            if (!state.isStartedOkay()) return false;
+            if (!state.isStartedOkay())
+                return false;
         }
         try {
             return I2PD_JNI.addAddress(name, destination);
@@ -545,7 +546,8 @@ public class DaemonWrapper {
     /** Remove one name; false when absent or invalid. */
     public boolean removeAddress(String name) {
         synchronized (lock) {
-            if (!state.isStartedOkay()) return false;
+            if (!state.isStartedOkay())
+                return false;
         }
         try {
             return I2PD_JNI.removeAddress(name);
@@ -558,7 +560,8 @@ public class DaemonWrapper {
     /** Block a subscription name or wildcard pattern. */
     public boolean blockAddress(String name) {
         synchronized (lock) {
-            if (!state.isStartedOkay()) return false;
+            if (!state.isStartedOkay())
+                return false;
         }
         try {
             return I2PD_JNI.blockAddress(name);
@@ -571,7 +574,8 @@ public class DaemonWrapper {
     /** Remove one blocked subscription pattern. */
     public boolean unblockAddress(String name) {
         synchronized (lock) {
-            if (!state.isStartedOkay()) return false;
+            if (!state.isStartedOkay())
+                return false;
         }
         try {
             return I2PD_JNI.unblockAddress(name);
@@ -584,7 +588,8 @@ public class DaemonWrapper {
     /** Bounded deleted-host patterns, one per line. */
     public String getBlockedAddresses() {
         synchronized (lock) {
-            if (!state.isStartedOkay()) return "";
+            if (!state.isStartedOkay())
+                return "";
         }
         try {
             return I2PD_JNI.getBlockedAddresses();
@@ -854,12 +859,11 @@ public class DaemonWrapper {
                     + "torrentsdir = " + downloads.getAbsolutePath() + "\ndht = true\n";
             try {
                 int openFlags = android.system.OsConstants.O_CREAT
-                        | android.system.OsConstants.O_EXCL
-                        | android.system.OsConstants.O_WRONLY
+                        | android.system.OsConstants.O_EXCL | android.system.OsConstants.O_WRONLY
                         | android.system.OsConstants.O_NOFOLLOW
                         | android.system.OsConstants.O_CLOEXEC;
-                java.io.FileDescriptor descriptor = android.system.Os.open(
-                        config.getAbsolutePath(), openFlags, 0600);
+                java.io.FileDescriptor descriptor =
+                        android.system.Os.open(config.getAbsolutePath(), openFlags, 0600);
                 try (FileOutputStream output = new FileOutputStream(descriptor)) {
                     output.write(content.getBytes(java.nio.charset.StandardCharsets.UTF_8));
                     output.getFD().sync();

@@ -77,10 +77,12 @@ public final class UiFormat {
     /** Native status name plus the router error, or empty when not parsed. */
     @NonNull
     public static String routerDetail(@Nullable RouterSnapshot snapshot) {
-        if (snapshot == null || !snapshot.hasStatus()) return "";
+        if (snapshot == null || !snapshot.hasStatus())
+            return "";
         String status = snapshot.routerStatus() == null ? "" : snapshot.routerStatus().trim();
         String error = snapshot.routerError() == null ? "" : snapshot.routerError().trim();
-        if (status.isEmpty()) return "";
+        if (status.isEmpty())
+            return "";
         return error.isEmpty() ? status : status + " · " + error;
     }
 
@@ -451,8 +453,7 @@ public final class UiFormat {
         // Use the active per-app UI locale, not the device default. Token
         // classification elsewhere still uses Locale.ROOT because protocol
         // names and log levels are not user text.
-        android.content.res.Configuration configuration =
-                context.getResources().getConfiguration();
+        android.content.res.Configuration configuration = context.getResources().getConfiguration();
         if (configuration.getLocales().isEmpty()) {
             return Locale.ENGLISH;
         }

@@ -132,7 +132,7 @@ public class MainActivity extends AppCompatActivity {
 
         viewModel = new ViewModelProvider(this).get(RouterViewModel.class);
         pendingAutostart = getSharedPreferences("router_state", MODE_PRIVATE)
-                .getBoolean(PREF_PENDING_AUTOSTART, false);
+                                   .getBoolean(PREF_PENDING_AUTOSTART, false);
         if (savedInstanceState != null) {
             startAfterPermissionResult =
                     savedInstanceState.getBoolean(STATE_START_AFTER_PERMISSION, false);
@@ -147,12 +147,16 @@ public class MainActivity extends AppCompatActivity {
             startAfterPermissionResult = requestStartupPermissions();
             if (startAfterPermissionResult) {
                 pendingAutostart = true;
-                getSharedPreferences("router_state", MODE_PRIVATE).edit()
-                        .putBoolean(PREF_PENDING_AUTOSTART, true).apply();
+                getSharedPreferences("router_state", MODE_PRIVATE)
+                        .edit()
+                        .putBoolean(PREF_PENDING_AUTOSTART, true)
+                        .apply();
             } else {
                 pendingAutostart = false;
-                getSharedPreferences("router_state", MODE_PRIVATE).edit()
-                        .remove(PREF_PENDING_AUTOSTART).apply();
+                getSharedPreferences("router_state", MODE_PRIVATE)
+                        .edit()
+                        .remove(PREF_PENDING_AUTOSTART)
+                        .apply();
                 viewModel.startOnFirstLaunchIfNeeded();
             }
         } else {
@@ -543,11 +547,13 @@ public class MainActivity extends AppCompatActivity {
                 R.string.action_reseed, () -> {
                     Toast.makeText(appContext, R.string.toast_reseed_started, Toast.LENGTH_SHORT)
                             .show();
-                    viewModel.requestReseed(issued -> Toast.makeText(appContext,
-                            Boolean.TRUE.equals(issued) ? R.string.toast_reseed_finished
-                                                        : R.string.toast_reseed_failed,
-                            Toast.LENGTH_SHORT)
-                            .show());
+                    viewModel.requestReseed(issued
+                            -> Toast.makeText(appContext,
+                                            Boolean.TRUE.equals(issued)
+                                                    ? R.string.toast_reseed_finished
+                                                    : R.string.toast_reseed_failed,
+                                            Toast.LENGTH_SHORT)
+                                    .show());
                 });
     }
 
@@ -660,8 +666,10 @@ public class MainActivity extends AppCompatActivity {
         if (startAfterPermissionResult) {
             startAfterPermissionResult = false;
             pendingAutostart = false;
-            getSharedPreferences("router_state", MODE_PRIVATE).edit()
-                    .remove(PREF_PENDING_AUTOSTART).apply();
+            getSharedPreferences("router_state", MODE_PRIVATE)
+                    .edit()
+                    .remove(PREF_PENDING_AUTOSTART)
+                    .apply();
             viewModel.startOnFirstLaunchIfNeeded();
         }
     }
@@ -673,8 +681,10 @@ public class MainActivity extends AppCompatActivity {
             viewModel.setUiVisible(true);
             if (pendingAutostart && !startAfterPermissionResult) {
                 pendingAutostart = false;
-                getSharedPreferences("router_state", MODE_PRIVATE).edit()
-                        .remove(PREF_PENDING_AUTOSTART).apply();
+                getSharedPreferences("router_state", MODE_PRIVATE)
+                        .edit()
+                        .remove(PREF_PENDING_AUTOSTART)
+                        .apply();
                 viewModel.startOnFirstLaunchIfNeeded();
             }
         }

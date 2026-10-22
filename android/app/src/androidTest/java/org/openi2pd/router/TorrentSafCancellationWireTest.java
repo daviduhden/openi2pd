@@ -15,15 +15,18 @@ import org.junit.runner.RunWith;
 
 @RunWith(AndroidJUnit4.class)
 public final class TorrentSafCancellationWireTest {
-    @Test public void cancellationNeverWaitsForReplyParcel() throws Exception {
+    @Test
+    public void cancellationNeverWaitsForReplyParcel() throws Exception {
         final long[] received = new long[1];
         final int[] calls = new int[1];
         Binder endpoint = new Binder() {
-            @Override protected boolean onTransact(int code, Parcel data, Parcel reply, int flags) {
+            @Override
+            protected boolean onTransact(int code, Parcel data, Parcel reply, int flags) {
                 data.enforceInterface("org.openi2pd.router.ITorrentSafStorage");
                 assertEquals(IBinder.FLAG_ONEWAY, flags & IBinder.FLAG_ONEWAY);
                 assertNull(reply);
-                if (calls[0]++ == 0) received[0] = data.readLong();
+                if (calls[0]++ == 0)
+                    received[0] = data.readLong();
                 return true;
             }
         };

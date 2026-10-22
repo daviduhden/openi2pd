@@ -58,8 +58,7 @@ public final class UiContractTest {
         assertNotNull(filters);
         assertTrue(!(filters.getParent() instanceof android.widget.HorizontalScrollView));
         TextView summary = view.findViewById(R.id.logs_summary);
-        assertEquals(View.ACCESSIBILITY_LIVE_REGION_POLITE,
-                summary.getAccessibilityLiveRegion());
+        assertEquals(View.ACCESSIBILITY_LIVE_REGION_POLITE, summary.getAccessibilityLiveRegion());
     }
 
     @Test
