@@ -165,7 +165,7 @@ void TestEmptyRecordIsNotEof ()
 	close (fd);
 	auto emptyWithFd = pair->second.ReceiveWithFd (50);
 	assert (emptyWithFd.has_value ());
-	assert (!emptyWithFd.has_value ());
+	assert (!emptyWithFd->has_value ());
 	if (before >= 0) assert (CountOpenFds () == before);
 	ExpectReusable (pair->first, pair->second, 202);
 
