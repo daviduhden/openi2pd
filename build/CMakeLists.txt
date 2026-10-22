@@ -627,9 +627,13 @@ if(WITH_UPNP)
   target_compile_definitions(libi2pd PRIVATE USE_UPNP)
 endif()
 if(WIN32)
-  target_compile_definitions(libi2pd PRIVATE
-    WIN32_APP WIN32_LEAN_AND_MEAN NOMINMAX WINVER=0x0A00 _WIN32_WINNT=0x0A00)
-  target_link_libraries(libi2pd PUBLIC ws2_32 iphlpapi)
+  target_compile_definitions(libi2pd PRIVATE WIN32_APP)
+  # Public headers contain Boost.Asio/Windows inline code. Keep its SDK and
+  # macro contract identical in the client library, tools and package users.
+  target_compile_definitions(libi2pd PUBLIC
+    WIN32_LEAN_AND_MEAN NOMINMAX WINVER=0x0A00 _WIN32_WINNT=0x0A00)
+  # FS.cpp uses SHGetFolderPathW; static consumers need its import library.
+  target_link_libraries(libi2pd PUBLIC ws2_32 iphlpapi shell32)
 endif()
 if(ANDROID)
   target_compile_definitions(libi2pd PUBLIC ANDROID)

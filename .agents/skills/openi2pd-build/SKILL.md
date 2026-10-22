@@ -96,6 +96,8 @@ build.
   link `Boost::json`/`Boost::url`, and the installed config re-finds the same
   enabled components. Header discovery alone cannot establish link closure.
   `test-boost-linkage` and the manual installed-consumer lane cover both paths.
+- Windows SDK macros are PUBLIC core usage requirements; `WIN32_APP` remains
+  PRIVATE.
 - `language-modernization-static` is a compile-free but literal contract: it
   pins C++23/Java 25 levels, `minSdk 29`, the availability matrix and named
   seams (`Modern.h`, `ITransportConnector`, `jthread`/`stop_token`,

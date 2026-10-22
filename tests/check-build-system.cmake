@@ -175,6 +175,8 @@ assert_present("${top_cmake_text}" "CMAKE_GENERATOR MATCHES \"Makefiles"
   "OpenBSD must reject the Unix Makefiles generator")
 assert_present("${top_cmake_text}" "BOOST_ASIO_HAS_SNPRINTF=1"
   "Boost.Asio scope-ID formatting must select the bounded snprintf path")
+assert_present("${top_cmake_text}" "target_link_libraries(libi2pd PUBLIC ws2_32 iphlpapi shell32)"
+  "Windows static consumers need the SHGetFolderPathW import library")
 assert_present("${tests_cmake_text}" "test-boost-linkage"
   "compiled Boost.JSON/URL dependencies need a link regression")
 assert_absent("${top_cmake_text}" "OPENSSL_SUPPRESS_DEPRECATED"
