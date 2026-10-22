@@ -1,0 +1,69 @@
+@comment openi2pd OpenBSD PLIST template; merge into the external port.
+@newgroup _i2pd:838
+@newuser _i2pd:838:838::i2pd account:/var/i2pd:/sbin/nologin
+@rcscript ${RCDIR}/i2pd
+@mode 0750
+@owner _i2pd
+@group _i2pd
+@sample ${LOCALSTATEDIR}/i2pd/
+@sample ${LOCALSTATEDIR}/i2pd/certificates/
+@sample ${LOCALSTATEDIR}/i2pd/certificates/family/
+@sample ${LOCALSTATEDIR}/i2pd/certificates/reseed/
+@mode
+@owner
+@group
+bin/i2pd
+bin/i2pd-tui
+share/examples/i2pd/i2pd.conf
+@mode 0640
+@owner _i2pd
+@group _i2pd
+@sample ${SYSCONFDIR}/i2pd/i2pd.conf
+@mode
+@owner
+@group
+share/examples/i2pd/tunnels.conf
+@mode 0640
+@owner _i2pd
+@group _i2pd
+@sample ${SYSCONFDIR}/i2pd/tunnels.conf
+@mode
+@owner
+@group
+share/examples/i2pd/tunnels.conf.d/README
+@mode 0640
+@owner _i2pd
+@group _i2pd
+@sample ${SYSCONFDIR}/i2pd/tunnels.conf.d/README
+@mode
+@owner
+@group
+share/examples/i2pd/login.conf.d/i2pd
+@sample ${SYSCONFDIR}/login.conf.d/i2pd
+man/man1/i2pd.1
+man/man1/i2pd-tui.1
+share/i2pd/certificates/family/gostcoin.crt
+share/i2pd/certificates/family/i2pd-dev.crt
+share/i2pd/certificates/family/i2p-dev.crt
+share/i2pd/certificates/family/mca2-i2p.crt
+share/i2pd/certificates/family/stormycloud.crt
+share/i2pd/certificates/family/volatile.crt
+share/i2pd/certificates/reseed/acetone_at_mail.i2p.crt
+share/i2pd/certificates/reseed/admin_at_likogan.dev.crt
+share/i2pd/certificates/reseed/admin_at_stormycloud.org.crt
+share/i2pd/certificates/reseed/creativecowpat_at_mail.i2p.crt
+share/i2pd/certificates/reseed/damian.buho_at_proton.me.crt
+share/i2pd/certificates/reseed/diyarciftci_at_protonmail.com.crt
+share/i2pd/certificates/reseed/echelon3_at_mail.i2p.crt
+share/i2pd/certificates/reseed/freedompeer_at_skhron.eu.crt
+share/i2pd/certificates/reseed/i2p-reseed_at_mk16.de.crt
+share/i2pd/certificates/reseed/idk_at_stormycloud.org.crt
+share/i2pd/certificates/reseed/igor_at_novg.net.crt
+share/i2pd/certificates/reseed/lazygravy_at_mail.i2p.crt
+share/i2pd/certificates/reseed/orignal_at_mail.i2p.crt
+share/i2pd/certificates/reseed/r4sas-reseed_at_mail.i2p.crt
+share/i2pd/certificates/reseed/rambler_at_mail.i2p.crt
+share/i2pd/certificates/reseed/reseed_at_diva.exchange.crt
+share/i2pd/certificates/reseed/reseedserver_at_mail.i2p.crt
+share/i2pd/certificates/reseed/sahil_at_mail.i2p.crt
+share/i2pd/certificates/reseed/vserod1488_at_proton.me.crt

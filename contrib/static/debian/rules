@@ -23,15 +23,19 @@ override_dh_auto_install:
 	install -D -m 0644 src/contrib/tunnels.conf $(PKG)/etc/i2pd/tunnels.conf
 	install -D -m 0644 src/contrib/subscriptions.txt $(PKG)/etc/i2pd/subscriptions.txt
 	install -D -m 0644 src/contrib/tunnels.d/README $(PKG)/etc/i2pd/tunnels.conf.d/README
+	install -D -m 0644 debian/CC-BY-SA-4.0 \
+		$(PKG)/usr/share/doc/i2pd/CC-BY-SA-4.0
 	install -d $(PKG)/usr/share/i2pd
 	cp -r src/contrib/certificates $(PKG)/usr/share/i2pd/
+
+override_dh_installsystemd:
+	dh_installsystemd --no-start
 
 override_dh_strip override_dh_dwz override_dh_shlibdeps override_dh_makeshlibs:
 
 override_dh_builddeb:
 	dh_builddeb -- -Zxz
 
-# generated invoke-rc.d --skip-systemd-native needs init-system-helpers >= 1.54,
-# which Ubuntu 18.04 lacks; the maintainer scripts handle sysvinit themselves
-override_dh_installinit:
-	dh_installinit --no-scripts
+# dh_installinit owns the single enable/start/stop action through invoke-rc.d,
+# which reaches i2pd.service on a systemd host and /etc/init.d/i2pd otherwise.
+# dh_installsystemd remains at its default --no-start to avoid a second action.

@@ -51,6 +51,7 @@ Source: ..\i2pd-tui_x32.exe; DestDir: {app}; DestName: i2pd-tui.exe; Flags: igno
 Source: ..\i2pd-tui_x64.exe; DestDir: {app}; DestName: i2pd-tui.exe; Flags: ignoreversion; Check: IsWin64; MinVersion: 10.0
 Source: ..\tools_x32\*.exe; DestDir: {app}; Flags: ignoreversion; Check: not IsWin64; MinVersion: 10.0
 Source: ..\tools_x64\*.exe; DestDir: {app}; Flags: ignoreversion; Check: IsWin64; MinVersion: 10.0
+Source: ..\tools\LICENSE; DestDir: {app}\tools; DestName: LICENSE.i2pd-tools; Flags: ignoreversion
 Source: ..\README.md; DestDir: {app}; DestName: Readme.txt; Flags: onlyifdoesntexist
 Source: ..\contrib\i2pd.conf; DestDir: {userappdata}\i2pd; Flags: onlyifdoesntexist
 Source: ..\contrib\subscriptions.txt; DestDir: {userappdata}\i2pd; Flags: onlyifdoesntexist

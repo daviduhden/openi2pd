@@ -14,7 +14,7 @@ Use `i2pd.conf` as the packaged configuration in `/etc/i2pd`, with
 `--service --conf=/etc/i2pd/i2pd.conf`. Tunnel configuration lives below
 `/etc/i2pd` (root-managed); service data, including the router keys and
 `i2pd.pid`, lives in `/var/i2pd`. The rc.d script also selects
-`/var/i2pd/certificates` as `certsdir`; the sample configuration in this tree
+`/usr/local/share/i2pd/certificates` as `certsdir`; the sample configuration in this tree
 uses the same path so foreground and service starts agree (keep the packaged
 configuration in sync with the rc.d flags). The example logs to syslog. The
 former HTTP console no longer exists; use the read-only `i2pd-tui` client over
@@ -37,16 +37,17 @@ configured path.
 The default runtime policy is:
 
 ```text
-stdio rpath wpath cpath fattr inet dns unix flock
+stdio rpath wpath cpath fattr inet dns unix flock recvfd
 ```
 
-plus `mcast` when UPnP is enabled. There is no `exec`, `id`, `chown`, `route`,
-`settime` or descriptor-passing promise. When `privsep.log` is active, the
+plus `mcast` when UPnP is enabled. `recvfd` is the bounded worker-channel
+receive promise; there is no `exec`, `id`, `chown`, `route`, `settime` or
+arbitrary descriptor-passing API. When `privsep.log` is active, the
 runtime core retains `proc` only for bounded supervisor reaping/signalling;
-`exec` is never retained. Startup uses a temporary superset (`proc`, `exec`
-when private workers are enabled, and `unveil` when enabled) for `fork`,
-`setsid`, `setrlimit`, PID locking and worker spawning; `exec` is dropped before
-any service thread or network socket exists.
+`exec` is never retained at runtime. Startup uses a temporary superset
+(`proc`, `exec`, and `unveil` when enabled) for `fork`, `setsid`, `setrlimit`,
+PID locking and worker spawning; `exec` is dropped before any service thread or
+network socket exists.
 
 Additional notes:
 
@@ -100,9 +101,12 @@ upstream: that timer has been removed from ClientContext.
 
 ## rc.d service
 
-`i2pd.rc` is the OpenBSD rc.d script used by the `net/i2pd` port and is kept
-byte-identical to `wip-openbsd-ports/net/i2pd/pkg/i2pd.rc`. Install it as
-`/etc/rc.d/i2pd` (or let the port's PLIST `@rcscript` do so). Install
+`i2pd.rc` is the canonical OpenBSD rc.d template for the `net/i2pd` port.
+`port/` contains a merge template (`Makefile`, `PLIST` and `pkg/README`) for
+the external ports tree; it is not installed or built by CMake.
+Install it as `/etc/rc.d/i2pd` (or let the port's PLIST `@rcscript` do so).
+The ports framework may substitute `TRUEPREFIX`, `LOCALSTATEDIR` and
+`SYSCONFDIR`, so compare the rendered file rather than the template. Install
 `i2pd.login` as `/etc/login.conf.d/i2pd`; `rc.subr` selects the `i2pd` login
 class automatically when that file exists:
 
@@ -114,16 +118,19 @@ rcctl enable i2pd
 rcctl start i2pd
 ```
 
-The port creates `_i2pd` with `i2pd` as its login class and `/var/i2pd` as its
-home directory. If the class is missing, `rc.subr` falls back to the `daemon`
-class and the 4096-descriptor limit is not applied.
+The port must create `_i2pd` and install `login.conf.d/i2pd`; `rc.subr`
+selects that class by the script name. If the class is missing, `rc.subr` falls
+back to the `daemon` class and the 8192-descriptor/umask policy is not applied.
+Verify it with `getcap -f /etc/login.conf.d/i2pd i2pd`, not `id -c` (the
+password database has no login-class field).
 
-The script runs `i2pd --daemon --service` as `_i2pd`, with `/var/i2pd` as the
-data directory, `/etc/i2pd` for configuration and `/var/i2pd/certificates` for
-certificates. Because the daemon backgrounds itself, a successful `rcctl
-start` means the parent fork succeeded, not that the router finished
-initializing; use `rcctl check i2pd` and inspect the log or pidfile for startup
-errors. `rcctl stop` sends `SIGTERM` (ordered shutdown, no grace period), while
+The script runs `i2pd --foreground --service` as `_i2pd` with an explicit
+pidfile, `/var/i2pd` as the data directory, `/etc/i2pd` for configuration and
+`/usr/local/share/i2pd/certificates` for certificates; `rc_bg=YES` lets rc.subr background
+the foreground process. A successful `rcctl start` means rc.subr supervised the
+process, not that the router finished initializing; use `rcctl check i2pd` and
+inspect the log or pidfile for startup errors. `rcctl stop` sends `SIGTERM`
+(ordered shutdown, no grace period), while
 `rcctl reload` sends `SIGHUP` (tunnel configuration reload). A graceful
 shutdown that waits for transit tunnels is requested explicitly:
 

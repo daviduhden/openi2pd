@@ -29,17 +29,21 @@ case "$1" in
         --shell /usr/sbin/nologin "$I2PDUSER"
     fi
 
-    install -d -o "$I2PDUSER" -g "$I2PDUSER" -m 0700 "$I2PDHOME"
-    install -d -o "$I2PDUSER" -g "$I2PDUSER" -m 0700 "$LOGDIR"
-    install -d -o "$I2PDUSER" -g "$I2PDUSER" -m 0700 "$RUNDIR"
-    chown "$I2PDUSER":"$I2PDUSER" "$I2PDHOME" "$LOGDIR" "$RUNDIR"
-    chmod 0700 "$I2PDHOME" "$LOGDIR" "$RUNDIR"
-
+    # Create new paths with the packaged policy, but never reset an existing
+    # administrator's ownership or mode on an upgrade. In particular a local
+    # backup group or a deliberately group-readable log directory must survive
+    # package upgrades.
+    if [ ! -d "$I2PDHOME" ]; then
+      install -d -o "$I2PDUSER" -g "$I2PDUSER" -m 0700 "$I2PDHOME"
+    fi
+    if [ ! -d "$LOGDIR" ]; then
+      install -d -o "$I2PDUSER" -g "$I2PDUSER" -m 0700 "$LOGDIR"
+    fi
+    if [ ! -d "$RUNDIR" ]; then
+      install -d -o "$I2PDUSER" -g "$I2PDUSER" -m 0700 "$RUNDIR"
+    fi
     if [ ! -e "$LOGFILE" ]; then
       install -o "$I2PDUSER" -g "$I2PDUSER" -m 0600 /dev/null "$LOGFILE"
-    else
-      chown "$I2PDUSER":"$I2PDUSER" "$LOGFILE"
-      chmod 0600 "$LOGFILE"
     fi
     ;;
   abort-upgrade|abort-remove|abort-deconfigure|triggered)

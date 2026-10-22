@@ -1,0 +1,21 @@
+openi2pd OpenBSD port template
+==============================
+
+This directory is a template for the external OpenBSD `net/i2pd` ports
+tree. It is not installed by CMake and is not built by this repository's CI.
+
+Merge the files into the ports tree rather than copying them blindly:
+
+  * `Makefile` selects CMake/Ninja, the native TUI and the packaged paths.
+  * `PLIST` records `_i2pd`, `@rcscript`, `@sample` configuration and the
+    read-only certificate tree.
+  * `pkg/README` documents resource limits, syslog, graceful shutdown and the
+    TUI socket. `pkg/DESCR` is intentionally not duplicated here.
+
+The rc.d and login-class sources remain `../i2pd.rc` and `../i2pd.login`; the
+port's `SUBST_VARS` must substitute `TRUEPREFIX`, `SYSCONFDIR` and
+`LOCALSTATEDIR` before installing the rendered files. The installed file is
+therefore not byte-identical to the template.
+
+No port build, `pkg_create`, `pkg_add`, `rcctl` or OpenBSD runtime validation
+has been performed by this repository.

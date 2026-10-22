@@ -12,7 +12,7 @@ Section: net
 Priority: optional
 Maintainer: openi2pd maintainers <daviduhden@users.noreply.github.com>
 Build-Depends: debhelper-compat (= 13),
-               cmake (>= 3.22),
+               cmake (>= 3.24),
                ninja-build,
                g++ (>= 13) | clang (>= 17),
                libboost-program-options-dev (>= 1.74),
@@ -31,9 +31,9 @@ Vcs-Browser: https://github.com/daviduhden/openi2pd
 
 Package: i2pd
 Architecture: any
-Pre-Depends: ${misc:Pre-Depends}, adduser
-Depends: ${shlibs:Depends}, ${misc:Depends}, perl, openssl
-Recommends: ca-certificates, logrotate
+Pre-Depends: ${misc:Pre-Depends}
+Depends: ${shlibs:Depends}, ${misc:Depends}, ${perl:Depends}, adduser
+Recommends: ca-certificates, logrotate, openssl
 Suggests: apparmor, i2pd-tui, libio-socket-ssl-perl
 Description: C++ I2P router (openi2pd)
  openi2pd is an independent fork of i2pd, a full-featured C++ implementation of

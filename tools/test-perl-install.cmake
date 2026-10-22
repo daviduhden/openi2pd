@@ -8,7 +8,7 @@
 # mode. The private prefix is deleted and no system prefix is touched.
 #
 
-foreach(required BUILD_DIR WORK_DIR PERL_EXECUTABLE INSTALL_BINDIR)
+foreach(required BUILD_DIR WORK_DIR PERL_EXECUTABLE INSTALL_BINDIR INSTALL_DOCDIR TOOLS)
   if(NOT ${required})
     message(FATAL_ERROR "${required} is required")
   endif()
@@ -45,6 +45,27 @@ set(installed "${WORK_DIR}/${INSTALL_BINDIR}/i2pdctl")
 
 if(NOT EXISTS "${installed}")
   message(FATAL_ERROR "i2pdctl was not installed at ${installed}")
+endif()
+
+string(REPLACE "," ";" TOOL_NAMES "${TOOLS}")
+foreach(tool IN LISTS TOOL_NAMES)
+  set(tool_path "${WORK_DIR}/${INSTALL_BINDIR}/${tool}${EXE_SUFFIX}")
+  if(NOT EXISTS "${tool_path}")
+    message(FATAL_ERROR "native tool was not installed: ${tool_path}")
+  endif()
+  if(UNIX)
+    execute_process(
+      COMMAND "${PERL_EXECUTABLE}" -e "exit((-x $ARGV[0]) ? 0 : 1)" "${tool_path}"
+      RESULT_VARIABLE executable_result)
+    if(NOT executable_result EQUAL 0)
+      message(FATAL_ERROR "installed tool is not executable: ${tool_path}")
+    endif()
+  endif()
+endforeach()
+
+set(installed_license "${WORK_DIR}/${INSTALL_DOCDIR}/LICENSE.i2pd-tools")
+if(NOT EXISTS "${installed_license}")
+  message(FATAL_ERROR "tools attribution was not installed: ${installed_license}")
 endif()
 
 file(STRINGS "${installed}" shebang LIMIT_COUNT 1)

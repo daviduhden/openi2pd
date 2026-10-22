@@ -11,6 +11,8 @@
 Name:          i2pd
 Version:       2.61.0
 Release:       2%{?dist}
+%global _cmake_generator Ninja
+
 Summary:       C++ daemon for accessing the I2P network
 Conflicts:     i2pd-git
 
@@ -21,7 +23,8 @@ Source0:       https://github.com/daviduhden/openi2pd/archive/%{version}/%name-%
 Provides: group(i2pd) = %{version}-%{release}
 Provides:  user(i2pd) = %{version}-%{release}
 
-BuildRequires: cmake
+BuildRequires: cmake >= 3.24
+BuildRequires: ninja-build
 
 BuildRequires: chrpath
 BuildRequires: gcc-c++
@@ -31,10 +34,6 @@ BuildRequires: openssl-devel
 BuildRequires: miniupnpc-devel
 BuildRequires: systemd-units
 BuildRequires: ncurses-devel
-
-%if 0%{?fedora} == 41
-BuildRequires: openssl-devel-engine
-%endif
 
 # Fedora in this range packages Boost.JSON/URL separately. The default
 # torrent client requires both at build time (see build/CMakeLists.txt).
@@ -65,47 +64,13 @@ cd build
   -DWITH_HARDENING=ON \
   -DI2PD_BUILD_TUI=ON \
   -DI2PD_BUILD_TOOLS=ON \
-%if 0%{?fedora} > 29
   -DBUILD_SHARED_LIBS:BOOL=OFF \
   .
-%else
-  -DBUILD_SHARED_LIBS:BOOL=OFF
-%endif
-
-%if 0%{?rhel} >= 9 || 0%{?fedora} >= 35 || 0%{?eln}
-  pushd redhat-linux-build
-%else
-  %if 0%{?fedora} >= 33
-    pushd %{_target_platform}
-  %endif
-
-  %if 0%{?mageia} > 7
-    pushd build
-  %endif
-%endif
-
-  cmake --build . --parallel
-
-%if 0%{?rhel} >= 9 || 0%{?fedora} >= 33 || 0%{?mageia} > 7
-  popd
-%endif
+cmake --build %{_vpath_builddir} --parallel
 
 
 %install
-pushd build
-
-%if 0%{?rhel} >= 9 || 0%{?fedora} >= 35 || 0%{?eln}
-  pushd redhat-linux-build
-%else
-  %if 0%{?fedora} >= 33
-    pushd %{_target_platform}
-  %endif
-
-  %if 0%{?mageia}
-    pushd build
-  %endif
-%endif
-
+pushd build/%{_vpath_builddir}
 chrpath -d i2pd
 %{__install} -D -m 755 i2pd %{buildroot}%{_bindir}/i2pd
 %{__install} -D -m 755 i2pd-tui %{buildroot}%{_bindir}/i2pd-tui

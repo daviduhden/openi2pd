@@ -12,12 +12,13 @@ Section: net
 Priority: optional
 Maintainer: openi2pd maintainers <daviduhden@users.noreply.github.com>
 Build-Depends: debhelper-compat (= 13)
-Standards-Version: 4.5.1
+Standards-Version: 4.7.0
 Homepage: https://github.com/daviduhden/openi2pd
-Rules-Requires-Root: binary-targets
+Rules-Requires-Root: no
 
 Package: i2pd
 Architecture: amd64 arm64 armhf i386 s390x
+Pre-Depends: ${misc:Pre-Depends}
 Depends: adduser, ${misc:Depends}
 Description: Full-featured C++ implementation of I2P client (static build)
  I2P (Invisible Internet Protocol) is a universal anonymous network layer.

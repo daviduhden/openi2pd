@@ -3,20 +3,20 @@
 #
 # openi2pd: openi2pd.desktop.
 #
-# Desktop launcher for the openi2pd router. It starts the i2pd executable as a
-# graphical application and exposes the installed icon, category and search
-# keywords to the desktop environment.
+# Desktop launcher for the openi2pd terminal user interface. The launcher must
+# not start a second unmanaged router; it opens the TUI client in a terminal
+# and the packaged service remains the only router process.
 #
 
 [Desktop Entry]
 Type=Application
 Version=1.0
-Name=openi2pd
-GenericName=I2P Router
-Comment=Anonymous I2P network router
-Exec=i2pd
+Name=openi2pd TUI
+GenericName=I2P Router Console
+Comment=Monitor and control the openi2pd router
+Exec=i2pd-tui
 Icon=openi2pd
-Terminal=false
+Terminal=true
 Categories=Network;P2P;
-Keywords=I2P;anonymous;privacy;router;
+Keywords=I2P;anonymous;privacy;router;console;
 StartupNotify=false

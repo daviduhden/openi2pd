@@ -32,6 +32,7 @@ set(REQUIRED_SOURCES
   common/getopt.cpp
   common/getopt.h
   common/key.hpp
+  common/crypto.hpp
   firewall.hpp
   LICENSE
 )
@@ -41,19 +42,29 @@ foreach(source IN LISTS REQUIRED_SOURCES)
   endif()
 endforeach()
 
-# Verify the pinned upstream manifest describes real local files. The manifest
-# lists sources, not generated/downloaded files, and is used by the manual sync
-# helper.
-if(DEFINED TOOLS_UPSTREAM_MANIFEST AND EXISTS "${TOOLS_UPSTREAM_MANIFEST}")
-  file(STRINGS "${TOOLS_UPSTREAM_MANIFEST}" UPSTREAM_FILES)
-  foreach(source IN LISTS UPSTREAM_FILES)
-    if(source STREQUAL "")
-      continue()
-    endif()
-    if(NOT EXISTS "${TOOLS_SOURCE_DIR}/${source}")
-      message(FATAL_ERROR "Upstream manifest references missing file: ${source}")
-    endif()
-  endforeach()
+# Verify the pinned upstream manifest describes real local files. A missing
+# manifest is a provenance failure, not a skipped check.
+if(NOT DEFINED TOOLS_UPSTREAM_MANIFEST OR NOT EXISTS "${TOOLS_UPSTREAM_MANIFEST}")
+  message(FATAL_ERROR "Upstream tools manifest is missing: ${TOOLS_UPSTREAM_MANIFEST}")
 endif()
+file(STRINGS "${TOOLS_UPSTREAM_MANIFEST}" UPSTREAM_FILES)
+foreach(source IN LISTS UPSTREAM_FILES)
+  if(source STREQUAL "")
+    continue()
+  endif()
+  if(NOT EXISTS "${TOOLS_SOURCE_DIR}/${source}")
+    message(FATAL_ERROR "Upstream manifest references missing file: ${source}")
+  endif()
+endforeach()
+
+# Every top-level tool source must be declared as an executable. A new .cpp
+# that is not wired into CMake is a build/inventory drift error.
+file(GLOB TOOL_SOURCES "${TOOLS_SOURCE_DIR}/*.cpp")
+foreach(source IN LISTS TOOL_SOURCES)
+  get_filename_component(name "${source}" NAME_WE)
+  if(NOT "${name}" IN_LIST TOOLS)
+    message(FATAL_ERROR "Unregistered tool source: ${source}")
+  endif()
+endforeach()
 
 message(STATUS "tools-inventory: ${TOOLS} present, sources and provenance checked")

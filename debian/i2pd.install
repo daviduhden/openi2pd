@@ -3,9 +3,9 @@
 #
 # openi2pd: i2pd.install.
 #
-# Explicit daemon, tool, configuration, certificate, desktop and AppArmor
-# payload. The ncurses binary belongs to i2pd-tui; logrotate is installed by
-# dh_installlogrotate from debian/i2pd.logrotate.
+# Explicit daemon, tool, configuration, certificate and AppArmor payload.
+# The ncurses binary and desktop assets belong to i2pd-tui; logrotate is
+# installed by dh_installlogrotate from debian/i2pd.logrotate.
 #
 
 usr/bin/i2pd
@@ -32,9 +32,8 @@ etc/i2pd/tunnels.conf.d/README
 etc/i2pd/tunnels.conf.d/IRC-Ilita.conf
 etc/i2pd/tunnels.conf.d/IRC-Irc2P.conf
 usr/share/i2pd/certificates usr/share/i2pd
-usr/share/applications/openi2pd.desktop
-usr/share/icons/hicolor/scalable/apps/openi2pd.svg
-usr/share/icons/hicolor/256x256/apps/openi2pd.png
+usr/share/doc/i2pd/LICENSE.i2pd-tools
+usr/share/doc/i2pd/CC-BY-SA-4.0
 contrib/apparmor/usr.bin.i2pd etc/apparmor.d
 docs usr/share/doc/i2pd
 assets/branding usr/share/doc/i2pd/assets

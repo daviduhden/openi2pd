@@ -31,21 +31,24 @@ if [ "$FORMAT" = deb ]; then
 	cat "$SRC/debian/copyright" $PKG/debian/copyright-bundled > $PKG/debian/copyright
 	rm $PKG/debian/copyright-bundled
 	cp "$SRC/contrib/i2pd.service" $PKG/debian/i2pd.service
-	cp "$SRC/contrib/debian/i2pd.tmpfile" $PKG/debian/i2pd.tmpfiles
+	cp "$SRC/debian/CC-BY-SA-4.0" $PKG/debian/CC-BY-SA-4.0
+	cp "$SRC/debian/i2pd.tmpfiles" $PKG/debian/i2pd.tmpfiles
 	cp "$SRC/contrib/i2pd.logrotate" $PKG/debian/i2pd.logrotate
 	cp "$SRC/debian/i2pd.init" $PKG/debian/i2pd.init
 	cp "$SRC/debian/i2pd.default" $PKG/debian/i2pd.default
 	ln -s "$SRC" $PKG/src
-	printf 'i2pd (%s-1) stable; urgency=medium\n\n  * Static build.\n\n -- %s  %s\n' \
+	printf 'i2pd (%s) stable; urgency=medium\n\n  * Static build.\n\n -- %s  %s\n' \
 		"$VERSION" "$(sed -n 's/^Maintainer: //p' $PKG/debian/control)" "$(date -R)" > $PKG/debian/changelog
 	for a in $ARCHS; do
 		alpine=${a%%:*}; rest=${a#*:}; deb=${rest%%:*}
 		[ -f "$BIN/i2pd-static-$alpine/i2pd" ] || continue
 		install -m 755 "$BIN/i2pd-static-$alpine/i2pd" $PKG/bin/i2pd-$deb
 		(cd $PKG && dpkg-buildpackage -b -us -uc -a$deb -d)
-		mv $WORK/i2pd_$VERSION-1_$deb.deb "$OUT/i2pd_${VERSION}_linux-all_$deb.deb"
+		mv $WORK/i2pd_$VERSION\_$deb.deb "$OUT/i2pd_${VERSION}_linux-all_$deb.deb"
 	done
-	lintian --fail-on error "$OUT/i2pd_${VERSION}_linux-all_amd64.deb"
+	if [ -f "$OUT/i2pd_${VERSION}_linux-all_amd64.deb" ]; then
+		lintian --fail-on error "$OUT/i2pd_${VERSION}_linux-all_amd64.deb"
+	fi
 elif [ "$FORMAT" = rpm ]; then
 	dnf -q -y install rpm-build >/dev/null
 	mkdir -p $WORK/sources

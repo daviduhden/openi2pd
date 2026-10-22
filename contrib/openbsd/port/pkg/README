@@ -1,0 +1,47 @@
++-----------------------------------------------------------------------
+| Running ${PKGSTEM} on OpenBSD
++-----------------------------------------------------------------------
+
+Resource limits
+===============
+The rc.d script uses the `i2pd` login class from
+`/etc/login.conf.d/i2pd`. Rebuild the login database only when
+`/etc/login.conf.db` exists:
+
+  # cap_mkdb /etc/login.conf
+
+The class raises the soft and hard file-descriptor limits to 8192 and sets a
+private creation mask. Ensure `kern.maxfiles` and `kern.maxfilesperproc` can
+support that limit for the service account.
+
+Configuration and data
+======================
+Router configuration is in `/etc/i2pd`; persistent keys, netDb and profiles
+are in `/var/i2pd`. The packaged certificate tree is read-only under
+`/usr/local/share/i2pd/certificates` by default. Keep local configuration in
+`/etc/i2pd`; do not edit files under `/var/i2pd` that are managed by the
+package.
+
+Logging
+=======
+The rc.d service sends output to syslog and early start diagnostics through
+`daemon_logger`. Use the system log and `/var/i2pd` state for diagnostics.
+If you enable file logging, rotate it with `newsyslog` or send `SIGUSR1` to
+the daemon after moving the file.
+
+Graceful shutdown
+=================
+`rcctl stop i2pd` uses SIGTERM (prompt ordered shutdown). For the graceful
+transit-tunnel drain, send SIGINT to the pidfile process:
+
+  # kill -INT "$(cat /var/i2pd/i2pd.pid)"
+
+The rc.subr timeout is 660 seconds so a deliberate SIGINT stop can complete
+after the daemon's ten-minute drain window. A second SIGINT stops immediately.
+
+TUI
+===
+The optional `i2pd-tui` client connects to the local UNIX socket
+`/var/i2pd/i2pd-tui.sock` with mode 0600. Run it as the `_i2pd` account (or
+use an explicitly configured socket with matching ownership); do not add a
+second service or start a second router.

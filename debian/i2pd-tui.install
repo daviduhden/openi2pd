@@ -3,8 +3,12 @@
 #
 # openi2pd: i2pd-tui.install.
 #
-# The TUI is intentionally a separate binary package. It contains only the
-# ncurses client; configuration, tools and service files remain in i2pd.
+# The TUI is intentionally a separate binary package. It contains the ncurses
+# client and its desktop launcher/icons; configuration, tools and service files
+# remain in i2pd.
 #
 
 usr/bin/i2pd-tui
+usr/share/applications/openi2pd.desktop
+usr/share/icons/hicolor/scalable/apps/openi2pd.svg
+usr/share/icons/hicolor/256x256/apps/openi2pd.png

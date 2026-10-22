@@ -1,3 +1,21 @@
+i2pd (2.61.0-4) unstable; urgency=medium
+
+  * Packaging hardening and dependency cleanup: pass dpkg-buildflags to the
+    direct CMake configure, enable the project hardening flags, use
+    ${perl:Depends}, and move the optional openssl fallback to Recommends.
+  * Keep TUI assets in i2pd-tui: the desktop launcher now opens i2pd-tui and
+    never starts a second unmanaged router. Package the daemon and TUI
+    install components separately.
+  * Install the i2pd-tools licence notice and the CC-BY-SA documentation
+    notice; correct the DEP-5 file/licence split and lintian override name.
+  * Preserve administrator ownership and modes for existing state/log
+    directories on upgrade. Create only missing paths; purge remains the only
+    data-removal path.
+  * Fix the uscan GitHub archive pattern and the static package native
+    version/service-script integration.
+
+ -- openi2pd maintainers <daviduhden@users.noreply.github.com>  Thu, 22 Oct 2026 12:00:00 +0000
+
 i2pd (2.61.0-3) unstable; urgency=medium
 
   * Modernize the Debian packaging for the C++23/CMake tree: debhelper compat

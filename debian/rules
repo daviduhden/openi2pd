@@ -10,18 +10,15 @@
 #
 
 # CMake is the only supported build system. This file is executed by
-# debhelper, not by the project's POSIX make front-end.
+# debhelper, not by the project's POSIX make front-end. The direct CMake
+# invocation bypasses dh_auto_configure, so pass the dpkg-buildflags values
+# explicitly (including PIE/FORTIFY/RELRO/NOW) and enable the project's own
+# hardening diagnostics.
 export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 export DEB_CXXFLAGS_MAINT_APPEND = -Wall -pedantic
-export DEB_LDFLAGS_MAINT_APPEND =
 
 %:
 	dh $@
-
-# perl is declared explicitly in debian/control; do not generate an unused
-# ${perl:Depends} substvar for the installed i2pdctl script.
-override_dh_perl:
-	@true
 
 override_dh_auto_configure:
 	cmake -S build -B build-debian -G Ninja \
@@ -33,6 +30,11 @@ override_dh_auto_configure:
 		-DI2PD_BUILD_TUI=ON \
 		-DI2PD_BUILD_TOOLS=ON \
 		-DWITH_LIBRARY=OFF \
+		-DCMAKE_C_FLAGS="$(shell dpkg-buildflags --get CFLAGS) $(shell dpkg-buildflags --get CPPFLAGS)" \
+		-DCMAKE_CXX_FLAGS="$(shell dpkg-buildflags --get CXXFLAGS) $(shell dpkg-buildflags --get CPPFLAGS)" \
+		-DCMAKE_EXE_LINKER_FLAGS="$(shell dpkg-buildflags --get LDFLAGS)" \
+		-DCMAKE_SHARED_LINKER_FLAGS="$(shell dpkg-buildflags --get LDFLAGS)" \
+		-DCMAKE_MODULE_LINKER_FLAGS="$(shell dpkg-buildflags --get LDFLAGS)" \
 		-DBUILD_TESTING=OFF \
 		-DI2PD_INSTALL_DOCS=OFF \
 		-DI2PD_SERVICE_MANAGER=none
@@ -50,9 +52,11 @@ override_dh_auto_clean:
 
 override_dh_auto_install:
 	DESTDIR=$(CURDIR)/debian/tmp cmake --install build-debian
+	install -D -m 0644 debian/CC-BY-SA-4.0 \
+		debian/tmp/usr/share/doc/i2pd/CC-BY-SA-4.0
 
-# Keep the SysV script for non-systemd systems. dh_installinit performs the
-# single start/stop action through invoke-rc.d, which reaches the native unit
+# Keep the SysV script for non-systemd systems. dh_installinit owns the single
+# enable/start/stop action through invoke-rc.d, which reaches the native unit
 # on a systemd host and the SysV script elsewhere. dh_installsystemd installs
 # and enables the unit but must not add a second start/stop action.
 override_dh_installinit:

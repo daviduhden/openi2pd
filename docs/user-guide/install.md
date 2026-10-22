@@ -48,7 +48,8 @@ and `Service` installation components are selected independently; see
 [Service management](../service-management.md#cmake-install-selection).
 
 ```sh
-cmake -S build -B build-output -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake -S build -B build-output -G Ninja -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_INSTALL_SYSCONFDIR=/etc
 cmake --build build-output --parallel
 sudo cmake --install build-output --prefix /usr
 ```
@@ -90,7 +91,8 @@ not a service.
 
 The maintained `debian/` package set provides `i2pd` (router, configuration,
 service definitions, man pages and native tools) and `i2pd-tui` (interactive
-ncurses client). It builds with debhelper, CMake and Ninja:
+ncurses client plus its desktop launcher/icons). It builds with debhelper,
+CMake and Ninja:
 
 ```sh
 sudo apt install i2pd i2pd-tui
@@ -100,7 +102,10 @@ systemctl status i2pd
 service i2pd status
 ```
 
-The package installs both a systemd unit and a SysV init script. On a systemd
+The TUI socket is mode 0600 and peer-checked against the daemon account, so run
+`i2pd-tui --service` as the `i2pd` service account (for example with
+`sudo -u i2pd i2pd-tui --service`) or configure a socket with matching
+ownership. The package installs both a systemd unit and a SysV init script. On a systemd
 host the `service` command reaches the same unit; on a SysV-only host it runs
 the init script. Do not enable both independently. Configuration files such as
 `/etc/i2pd/i2pd.conf`, `/etc/i2pd/tunnels.conf` and `/etc/default/i2pd` are

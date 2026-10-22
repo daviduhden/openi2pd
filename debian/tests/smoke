@@ -37,15 +37,31 @@ for binary in i2pd i2pdctl autoconf_i2pd b33address b33offlinekeys famtool \
               regaddralias routerinfo vain verifyhost x25519; do
     require_exec "/usr/bin/$binary"
 done
+timeout 30 /usr/bin/i2pd --version >/dev/null 2>&1 \
+    || fail "i2pd --version failed"
 
-# The TUI is a separate package and must not duplicate daemon files.
+# The TUI is a separate package and must not duplicate daemon files. The
+# desktop launcher is a TUI client, never a second router start.
 require_exec /usr/bin/i2pd-tui
+timeout 30 /usr/bin/i2pd-tui --version >/dev/null 2>&1 \
+    || fail "i2pd-tui --version failed"
+require_file /usr/share/applications/openi2pd.desktop
+require_file /usr/share/icons/hicolor/scalable/apps/openi2pd.svg
+require_file /usr/share/icons/hicolor/256x256/apps/openi2pd.png
 if dpkg-query -L i2pd | grep -qx '/usr/bin/i2pd-tui'; then
     fail "i2pd contains /usr/bin/i2pd-tui"
+fi
+if dpkg-query -L i2pd | grep -qE '/usr/share/applications/openi2pd\.desktop|/icons/hicolor/'; then
+    fail "i2pd contains TUI desktop assets"
 fi
 if dpkg-query -L i2pd-tui | grep -qE '^/etc/|/systemd/|/init\.d/'; then
     fail "i2pd-tui contains daemon configuration or service files"
 fi
+if grep -q '^Exec=i2pd$' /usr/share/applications/openi2pd.desktop; then
+    fail "desktop entry starts an unmanaged router"
+fi
+grep -q '^Exec=i2pd-tui$' /usr/share/applications/openi2pd.desktop \
+    || fail "desktop entry does not launch i2pd-tui"
 
 # Exact-version pairing between the TUI and the daemon.
 i2pd_version=$(dpkg-query -W -f='${Version}' i2pd)
@@ -114,9 +130,9 @@ sh -n "$postrm" || fail "postrm has invalid shell syntax"
 if grep -qE '(^|[;&|[:space:]])systemctl[[:space:]]+start' "$postinst"; then
     fail "postinst issues a manual systemctl start"
 fi
-if grep -qE 'invoke-rc\.d[[:space:]]+i2pd[[:space:]]+start' "$postinst"; then
-    fail "postinst issues a manual invoke-rc.d start"
-fi
+# debhelper may emit one invoke-rc.d start; it must not emit a second action.
+start_count=$(grep -cE 'invoke-rc\.d[[:space:]]+i2pd[[:space:]]+start' "$postinst" || true)
+[ "$start_count" -le 1 ] || fail "postinst starts i2pd more than once"
 
 # Data may only be removed by purge, never by remove or upgrade.
 if grep -qE 'rm -rf /(etc/i2pd|var/lib/i2pd|var/log/i2pd)' "$postrm"; then
@@ -131,18 +147,13 @@ fi
 if command -v systemd-analyze >/dev/null 2>&1; then
     verify_status=0
     if command -v timeout >/dev/null 2>&1; then
-        verify_output=$(timeout 60 systemd-analyze verify "$unit" 2>&1) || verify_status=$?
+        verify_output=$(timeout 60 systemd-analyze verify --man=no "$unit" 2>&1) || verify_status=$?
     else
-        verify_output=$(systemd-analyze verify "$unit" 2>&1) || verify_status=$?
+        verify_output=$(systemd-analyze verify --man=no "$unit" 2>&1) || verify_status=$?
     fi
     if [ "$verify_status" -ne 0 ]; then
         printf '%s\n' "$verify_output" >&2
-        if [ "$verify_status" -eq 124 ]; then
-            fail "systemd-analyze verify timed out"
-        fi
-        if printf '%s\n' "$verify_output" | grep -q 'i2pd\.service:'; then
-            fail "systemd-analyze verify reported an i2pd.service error"
-        fi
+        fail "systemd-analyze verify failed (status $verify_status)"
     fi
 fi
 
@@ -165,17 +176,13 @@ dpkg-query -L i2pd | grep -qx '/var/lib/i2pd/certificates' \
 [ "$(stat -c '%U' /var/lib/i2pd)" = i2pd ] || fail "/var/lib/i2pd owner"
 [ "$(stat -c '%a' /var/lib/i2pd)" = 700 ] || fail "/var/lib/i2pd mode"
 [ "$(stat -c '%U' /var/log/i2pd)" = i2pd ] || fail "/var/log/i2pd owner"
-case "$(stat -c '%a' /var/log/i2pd)" in
-    700|750) ;;
-    *) fail "/var/log/i2pd mode" ;;
-esac
+[ "$(stat -c '%a' /var/log/i2pd)" = 700 ] || fail "/var/log/i2pd mode"
 
 # Auxiliary payload shipped by the daemon package.
 require_file /etc/apparmor.d/usr.bin.i2pd
 require_file /etc/logrotate.d/i2pd
-require_file /usr/share/applications/openi2pd.desktop
-require_file /usr/share/icons/hicolor/scalable/apps/openi2pd.svg
-require_file /usr/share/icons/hicolor/256x256/apps/openi2pd.png
+require_file /usr/share/doc/i2pd/LICENSE.i2pd-tools
+require_file /usr/share/doc/i2pd/CC-BY-SA-4.0
 
 # Manpages follow the package split.
 require_manpage i2pd.1
