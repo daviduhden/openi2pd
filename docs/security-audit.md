@@ -403,10 +403,26 @@ BitTorrent, IPC workers and Android JNI.
 
 - Raw `this` captures in `TorrentsTunnel` timers/posts, datagram receiver
   first-wins/teardown, `RouterInfo` address/buffer copy-on-write,
-  `RouterProfile` and profile-storage synchronization, `Piece`/`TorrentFile`
+  global profile-storage cleanup synchronization, `Piece`/`TorrentFile`
   disk-domain ownership, SSU2 `m_Address`/`m_RemoteEndpoint` publication,
   fragment byte budgets, IPC worker cancellation and Android service-owner
   epochs remain open (`CONC-005`). No dynamic validation exists.
+
+The subsequent CONC-009 static correction adds per-instance RouterProfile
+locking, canonical cache publication and endpoint copies. Save/Load serialize
+their IO and copy state under a short lock; persistence claims do not clear
+later updates, failed writes restore dirty state, and failed loads retain the
+previous state. Eviction requires sole map ownership so active shared holders
+remain canonical. The postponed queue is inspected only under its mutex.
+`test-router-profile-race` prepares concurrent access/publication/flushing and
+dirty-claim coverage for manual TSan/CTest. CONC-010 adds immutable initialized
+root authority, storage IO/cleanup serialization, flushed atomic replacement
+and final postponed-update draining after producers stop. Cross-process
+exclusivity, abandoned staging cleanup, hostile ancestor/reparse changes and
+arbitrary retained mutators remain open. A directory-fsync error after rename
+is ambiguous: the replacement may exist while the profile stays dirty.
+`test-router-profile-storage` prepares isolated-root, format, cleanup-race and
+failure-path coverage. No dynamic validation is claimed.
 
 ## 2026-10-21 cryptography continuation (static)
 
@@ -487,7 +503,7 @@ Reply-key `0x12` remains intentionally fail-closed: Java 2.14.0 still has no
 sender and proposal 154's derived-key KDF is TBD. Meta revocations are accepted
 for length but not applied; Java peers currently verify only the zero-revocation
 form, recorded as an intentional spec/implementation difference. Deep residual:
-RouterInfo copy-on-write, RouterProfile synchronization, shared profile storage
+RouterInfo copy-on-write, shared profile-storage cleanup
 and NetDbRequests raw-`this` lifetime. No dynamic evidence exists.
 
 ## 2026-10-21 tunnel-build/I2NP/Garlic continuation (static)
@@ -699,3 +715,43 @@ exists.
   isolation, `isolatedProcess` cannot keep persisted SAF grants, and INTERNET is
   per-UID. No router AIDL split, session-scoped SAF capability, document-read
   confinement, minimal SAF seccomp library or device evidence is claimed.
+
+CONC-010 requires a single process owning the profile data directory. Unix
+daemon PID locking enforces this for its normal entry point; equivalent
+Windows/Android enforcement is not established. Concurrent instances sharing
+a root are unsupported: process-local locks cannot prevent another process
+from replacing a profile between expiry stat and deletion. Unknown staging
+files are preserved, since startup cannot assume exclusive authority. Normal
+failed writes clean their own staging file; crash leftovers remain pending.
+
+## 2026-10-22 receiver, queue and service-owner continuation (static)
+
+- CONC-011 replaces reset-by-port with weak registration identities and shared
+  callback invocation slots throughout Datagram/UDP/SAM/address-book/torrent
+  callers. External reset deactivates then waits outside the registry lock;
+  retired callbacks are also destroyed outside that lock. Reset inside any
+  receiver callback returns false after deactivation, avoiding same/cross-slot
+  wait cycles; destruction must be deferred until an external drain. In-tree
+  raw-owner reset paths were inspected as external lifecycle operations, not
+  dynamically proven. Historical wildcard fallback and protocol bytes stay.
+- CONC-012 closes tunnel/netDb admission atomically with enqueue, checks stop
+  after worker wake, joins and drains, and resets netDb throttle maps. Producers
+  must still be quiesced across restart; queue messages do not carry epochs.
+- ANDROID-019 fences stale listener snapshots and all service worker submissions
+  through an owner executor over a process FIFO. Retirement appends native
+  teardown before new-owner work; accepted work drains ahead of that barrier.
+  No JNI runs under the epoch monitor. NativeCallGuard remains authoritative.
+- CONC-010 cleanup now owns only canonical profile leaves at their exact shard,
+  excludes symlinks/unknown/staging names, and preserves unrelated old data.
+  Concurrent hostile filesystem owners remain outside the process-local gate.
+
+Prepared receiver/queue/JVM regressions and manual workflow coverage are not
+compilation or runtime evidence. Raw torrent disk/timer captures, RouterInfo
+copy-on-write, SSU2 publication, IPC cancellation, full platform lifecycle and
+global process separation remain open. No local build/test/validator ran.
+
+Publication review preserves the previous per-dispatch std::function snapshot
+for Datagram callbacks. The slot mutex protects copying before the in-flight
+claim, and invocation uses the local copy outside locks; mutable value captures
+therefore do not become shared callback state. A snapshot regression is
+prepared alongside the lifecycle tests, pending manual CI.

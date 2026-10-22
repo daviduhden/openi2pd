@@ -978,5 +978,83 @@ classifying an API call from memory.
 
 These are static corrections only. No compiler, configurator, test, project
 validator, workflow dispatch, commit or push occurred for this increment.
-ANDROID-017 separately tracks a native startup lifecycle concern; neither this
-audit nor source/fixture fixes establish runtime or global privilege separation.
+ANDROID-017 subsequently corrects native startup ownership by static analysis;
+ANDROID-018 tracks partial-init cleanup. Neither this audit nor source/fixture
+fixes establish runtime or global privilege separation.
+
+## Independent development continuation (2026-10-22)
+
+CONC-009 synchronizes individual `RouterProfile` state, returns canonical cache
+instances and endpoint copies, serializes per-profile Save/Load and retains
+dirty updates on write failure. Map eviction requires sole shared ownership;
+callers must retain shared_ptr ownership while accessing a profile. Global
+profile-root initialization and delete-versus-save coordination are addressed
+by CONC-010 below; do not claim complete persistence isolation.
+
+ANDROID-017 uses `DaemonLifecycle.h` as the sole native start-transition owner
+under `NativeCallGuard`; the adapter must invoke `Daemon.start()` while the
+owner has published Starting. The helper does not solve generic partial-init
+cleanup (ANDROID-018). TOOL-012 keeps IPv4 legacy firewall fragments unchanged
+and explicitly prefixes IPv6 with `ip6tables`; positive CLI fixtures are signed
+at CI runtime by a non-installed helper, with no checked-in private keys.
+
+All three slices are Implemented / static, Pending CI compilation and Pending
+CI tests. Host lifecycle tests do not establish JNI/device behavior. No local
+build, test, project validator, workflow dispatch, commit or push was performed.
+
+## Profile storage and failed-init continuation (2026-10-22)
+
+CONC-010 fixes the profile root for the process lifetime and serializes storage
+IO/expiry cleanup. Save uses flushed same-directory atomic replacement; POSIX
+rename followed by failed directory fsync is an ambiguous durability result and
+retains dirty state. NetDb shutdown drains postponed updates after its producers
+stop. Embedders must stop their producers and provide exclusive data-directory
+ownership. Cross-process enforcement, crash-left staging cleanup, hostile
+ancestor/reparse changes and arbitrary retained mutators remain open. Never use
+arbitrary-PID liveness probes after OpenBSD drops `proc`, or widen pledge for
+staging cleanup. Unknown staging files must not be deleted on an assumption
+of exclusivity that the caller has not enforced.
+
+ANDROID-018 adds a common `DaemonInitTransaction` for logging, crypto, router
+storage and router context. Register phases before acquisition; unwind context
+persistence before revoking storage authority, retain the failing writer on
+isolation failure, and reset the stopped logger destination for retry. This
+only releases owned resources: durable identity/configuration and irreversible
+pledge/unveil effects remain. Synthetic ledger tests do not execute production
+rollback or establish cross-configuration retry safety.
+
+Both slices are Implemented / static; Pending CI compilation; Pending CI tests.
+No local build, test, project validator, workflow dispatch, commit or push ran.
+
+## Receiver, queue and service-owner continuation (2026-10-22)
+
+CONC-011 replaces Datagram port-only resets with identity-bearing registration
+tokens. Keep tokens in their actual receiver owner and reset before releasing
+raw callback targets. Registration requires a shared-owned DatagramDestination.
+Reset outside receiver callbacks deactivates and drains after registry unlock;
+reset from any receiver callback returns false without waiting to avoid
+same-slot/cross-slot cycles. Such reset is not a destruction barrier. Preserve
+historical port-specific wildcard fallback and release replaced callback
+objects outside registry locks. Internal callers are migrated; no wire change.
+
+CONC-012 coordinates tunnel/netDb admission with enqueue and shutdown close,
+checks worker stop after waking, and drains stopped-generation messages after
+join. NetDb clears both throttle maps under their mutex. Producers must be
+quiesced across restart because posts have no generation token. CONC-010 expiry
+now recognizes only canonical profile hashes at their exact shard and excludes
+symlink leaves, staging, backups and unrelated files. Trusted hierarchy and
+exclusive process ownership remain requirements.
+
+ANDROID-019 uses owner-gated Executor views over one process FIFO. Submission
+and retirement/barrier insertion share a short monitor. Accepted work drains
+ahead of the old owner's mandatory stop, then new-owner work runs; old-owner
+submissions reject and duplicate stale retirement cannot stop a newer owner.
+Callbacks are epoch-fenced. Never run JNI/commands under the owner monitor,
+shut down the process FIFO from a Service, or bypass NativeCallGuard.
+
+TOOL-013 clears CDPATH during static-package root capture and makes SAM reply
+mismatches exit nonzero. Manual packaging CI ShellChecks maintenance scripts
+and uses a fake nc for error propagation; this does not establish live SAM
+interoperability. All slices are Implemented / static; Pending CI compilation
+and/or Pending CI tests. No local compiler, test, project validator, workflow
+dispatch, commit or push ran.

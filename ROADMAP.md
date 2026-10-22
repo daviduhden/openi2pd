@@ -24,7 +24,9 @@ The Material resource-ID hypothesis was disproved against pinned 1.14.0;
 Android source remains unchanged by this audit.
 See [the audit matrix](docs/static-build-audit.md) for reviewed scope and
 remaining configurations. All compilation/tests remain pending manual CI;
-`ANDROID-017` separately tracks the native startup lifecycle concern.
+`ANDROID-017` now has a separate static native-start ownership correction and
+host regression; JNI/device evidence is pending. `ANDROID-018` adds phase-aware initialization unwind by static analysis;
+production rollback, JNI/device and restart evidence remain pending manual CI.
 
 Permanent policy: no agent compiles, configures a build or executes tests
 locally. Builds and dynamic validation are CI-only through manual
@@ -105,7 +107,11 @@ earlier revisions, not validation of current uncommitted changes.
   ordering, `I2PControl` restart, atomic daemon shutdown flags, shared tunnel
   build scratch and SSU2 terminal resurrection; the remaining callback,
   datagram, profile, disk-domain, SSU2 publication and JNI owner-epoch work
-  is `CONC-005`. The POSIX make front-end, install component split, Ninja
+  is `CONC-005`. CONC-009 now synchronizes individual RouterProfiles and
+  canonical publication; CONC-010 coordinates process-local storage and final
+  postponed-update draining. Cross-process authority, abandoned staging cleanup
+  and external producer quiescence remain open.
+  The POSIX make front-end, install component split, Ninja
   presets, OpenBSD generator guard, RPM/Docker packaging and exported
   package-config paths are consolidated under `BUILD-014..BUILD-017`. No
   compiler, CTest,
@@ -671,3 +677,10 @@ criteria: four complete catalogs, locale/fallback selection, per-app Android
 language, placeholder/plural parity checks, UTF-8/column-width tests and
 manual Linux/OpenBSD/Windows/Android evidence. Full TUI help/tool translation
 coverage and dynamic validation remain pending; see `I18N-001..I18N-003`.
+
+The static lifecycle increment implements Datagram receiver registration
+identity and draining (CONC-011), stopped tunnel/netDb queue admission and
+throttle reset (CONC-012), and RouterService owner fencing (ANDROID-019).
+TOOL-013 adds maintenance-shell coverage to manual packaging CI and fails SAM
+version checks on mismatches. Compilation/tests, real owner teardown and
+platform restarts remain pending; no local execution or publication occurred.

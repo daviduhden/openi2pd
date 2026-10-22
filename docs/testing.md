@@ -164,6 +164,18 @@ OpenBSD CTest suite.
 None of these workflow results may be attributed to uncommitted local work.
 The current tree is still pending compilation and dynamic execution.
 
+The 2026-10-22 continuation prepares `test-router-profile-race` for concurrent
+profile reads/writes, canonical cache publication, postponed queue flushing
+and dirty persistence claims. `test-android-daemon-lifecycle` uses the same
+owner transition as Android JNI with injected operations to cover real start
+invocation, nested-start rejection and failure/exception rollback. It is a
+host seam test; JNI linking and device restart remain separate obligations.
+Both are registered in CTest and the manual Linux focused step; the full
+sanitizer matrix includes them. `tools-smoke` creates a signed public
+RouterInfo via the non-installed `routerinfo-fixture` helper for positive
+IPv4/IPv6 CLI checks. No helper, test, build or workflow was executed for
+these local changes.
+
 ### TUI protocol tests
 
 `tests/test-protocol-bounds.cpp` covers IdentityEx/LeaseSet truncation, the
@@ -814,3 +826,30 @@ fixtures/assertions. The MSYS2 job exercises `WITH_HARDENING=ON` PE flags.
 These tests were prepared without execution; see
 [the audit report](static-build-audit.md) for outstanding platform, UAPI and
 Android toolchain validation.
+
+The CONC-010/ANDROID-018 continuation prepares `test-router-profile-storage`
+(isolated immutable root, unknown staging preservation, INI round trip, expiry/save serialization, failed load
+and POSIX shard-symlink refusal) and `test-daemon-init-rollback` (reverse phase
+unwind, unsupported storage before context, cleanup exception and committed
+retry). `test-log-lifecycle` additionally covers stopped destination reset.
+These targets are registered in host CTest and the manual Linux focused lane;
+full suites/sanitizers consume their labels. Synthetic rollback does not invoke
+production daemon cleanup. No compilation or test execution has occurred.
+
+The static lifecycle continuation prepares `test-netdb-stop-admission` with a
+paused-worker admission fixture: accepted messages must drain, concurrent
+posts cannot repopulate a stopped queue, and lookup/flood throttles reset.
+`test-tunnels-restart` adds successful admission, stopped rejection and list
+consumption under a Post/Stop race. Neither proves producer generation fencing.
+The profile-storage test now preserves expired unknown/staging/wrong-shard
+leaves and symlinks while removing an expired canonical profile. Manual
+packaging CI adds maintenance ShellCheck and a fake-`nc` mismatch-status check;
+the latter is not a live SAM test. All new coverage remains unexecuted.
+
+`test-datagram-receiver-lifecycle` prepares stale registration, wildcard/port
+dispatch, external callback drain, same/cross-slot reset and callback-destructor
+reentry cases. Its threaded drain/race checks are stress coverage, not proof of
+all schedules or caller teardown paths. `ServiceOwnerEpochTest` uses a blocked
+process FIFO to check accepted old work, stop barrier, new-owner work and stale
+submission/retirement behavior; normal Android JVM CI discovers it. JNI, actual
+Service callbacks and per-caller sanitizer runs remain pending.

@@ -3072,3 +3072,138 @@ OpenBSD or Java/C++ dynamic test was run.
 - No compiler, CMake configure, Make/Ninja, Gradle, CTest, test executable,
   project validator, linter, dependency install or manual CI dispatch ran.
   Static source/diff and text parsing checks do not establish compilation.
+
+## 2026-10-22 — Independent profile, Android lifecycle and firewall continuation
+
+- Baseline: clean published `91ce7075`. Three read-only reconnaissance owners
+  reviewed AGENTS, the skills index and owning skills, TODO/ROADMAP/PROGRESS,
+  production callers, prepared tests and manual CI consumers before receiving
+  independent implementation scopes. Coordinator owns CMake, CI, instructions
+  and shared tracking; cross-review does not authorize overlapping edits.
+- CONC-009 (slice of CONC-005): synchronized RouterProfile state/RNG and
+  canonical first publication, returned endpoint copies, serialized per-profile
+  Save/Load, claimed persistence atomically and retained dirty state after
+  failed writes/loads. Cache eviction requires map-only shared ownership;
+  postponed queue inspection is locked. Cross-review caught the expiry-to-erase
+  owner gap and failed-load dirty clearing; both were corrected statically.
+- ANDROID-017: moved native start-transition ownership to the portable
+  `DaemonLifecycle.h` seam; the adapter invokes the actual daemon start while
+  Starting is published. JNI NativeCallGuard serialization remains required.
+  Returned/thrown start failure after successful init retains teardown for
+  crypto/logger resources. Read-only inspection found the common subsystem
+  stop methods guard/reset state; the transport-start failure comment alone
+  does not prove repeated stop unsafe. Failed partial initialization is still
+  a separate concrete gap, recorded as ANDROID-018 rather than claimed fixed.
+- TOOL-012: preserved exact IPv4 legacy firewall fragments and selected
+  `ip6tables` explicitly for IPv6. A BUILD_TESTING-only, non-installed helper
+  creates a signed public RouterInfo through production APIs in the CI work
+  directory, with ephemeral signing keys kept in memory. No binary fixture,
+  private key or generated output was added to the repository.
+- Prepared `test-router-profile-race`, `test-android-daemon-lifecycle`, expanded
+  `test-routerinfo-firewall` and positive `tools-smoke` CLI cases. Registered
+  native targets/labels and added a focused manual Linux workflow step; full
+  CTest and sanitizer jobs also consume them. Triggers and action pins remain
+  unchanged. Actual JNI/device restart and native firewall syntax are pending.
+- Updated owning skills/references, security/Android/testing/tool docs, AGENTS,
+  TODO and ROADMAP. Global profile storage/delete coordination, crash-safe INI
+  replacement, SSU2/RouterInfo/torrent callback lifetimes, Java owner epochs and
+  global process separation remain implementation work, not test-only tasks.
+- Status: Implemented / static; Pending CI compilation; Pending CI tests.
+  Only source/interface review and `git diff --check` were performed. No local
+  build, test, project validator, fixture generation, workflow dispatch, commit
+  or push occurred. Local uncommitted changes cannot be validated by a workflow
+  running a previously published revision.
+
+## 2026-10-22 — Profile storage and failed-init continuation
+
+- Reactivated three reconnaissance/review owners; independent profile and
+  daemon implementations shared no files. Coordinator reviewed CMake/CI and
+  maintained shared instructions, skills and tracking. Preserved all prior work.
+- CONC-010: immutable initialized canonical profile root, process-local
+  Save/Load/expiry serialization and flushed same-directory replacement. POSIX
+  temp creation/rename use an opened immediate-parent dirfd; Windows flushes
+  the file before replace-existing MoveFileExW. Shutdown drains owned futures
+  and postponed updates before final save after profile producers stop.
+- Review corrected Boost stream serialization, a path declaration ambiguity,
+  Windows test descriptor lifetime and startup temporary-file deletion that
+  incorrectly assumed cross-platform exclusive ownership. No arbitrary PID
+  probe or wider OpenBSD pledge is introduced. Crash-left staging cleanup,
+  cross-process enforcement, hostile ancestors/reparse changes and arbitrary
+  retained mutators remain open. Directory fsync failure after rename is
+  explicitly ambiguous and retains dirty state.
+- ANDROID-018: typed fixed-capacity daemon initialization ledger registers
+  logging/crypto/storage/context before acquisition and unwinds false/throw
+  paths in reverse. Context persistence drains before storage revocation;
+  isolation failure retains a failing writer. Stopped logger destination reset
+  releases stream/sink resources and restores stdout. Durable keys and
+  irreversible configuration/filesystem/pledge effects are not reverted.
+- Prepared storage and rollback regressions plus log-lifecycle extensions;
+  registered both targets/labels and the manual Linux focused lane. Synthetic
+  ledger tests do not invoke production callbacks. Full CI compilation,
+  platform durability/sanitizer tests and Android JNI/device evidence remain
+  pending. Reviewed language matrices: existing RAII/generic facilities suffice;
+  no new language/runtime availability claim was introduced.
+- Status: Implemented / static; Pending CI compilation; Pending CI tests.
+  Source/interface review and `git diff --check` only. No local build, test,
+  project validator, workflow dispatch, commit or push occurred.
+
+## 2026-10-22 — Static receiver, restart and maintenance hardening
+
+- Preserved all previous local work. Three owners recognized tooling, Datagram
+  teardown and Android callbacks from instructions/skills/tracking and code.
+  Separate read-only passes reviewed profile cleanup, Queue callers, NetDb
+  admission and final interfaces. Agent capacity prevented nested reconnaissance
+  while all slots were occupied; coordinator/subagent cross-review supplied
+  independent inspection, without replacing it with execution.
+- CONC-011: registration identity tokens, in-flight slots and external drain
+  replace Datagram port-only reset; migrated UDP tunnels, address-book/resolver,
+  SAM and torrent DHT/raw receiver owners. Shared-owned destination registration
+  is enforced. Review corrected SAM member ownership, header closure, callback
+  destruction under registry locks and same/cross-slot reset wait cycles.
+  Callback-context reset deactivates but returns false without a lifetime
+  barrier. No wire or persisted format changed.
+- CONC-012/DEF-026: tunnel/netDb Post admission shares a short mutex with stop
+  close, lifecycle transitions serialize separately, workers check stop after
+  wake, and joins precede queue drain. NetDb clears lookup/flood throttles under
+  their mutex; thread-construction failure keeps admission closed. NetDb's
+  regression fixture opens admission with a paused worker, avoiding network,
+  storage or reseed startup. Producer quiescence across restart is still needed.
+- CONC-010 follow-up: expiry checks canonical hash encoding and expected shard
+  path, then non-symlink regular leaf status. Unknown/staging/backup/mis-sharded
+  old files remain; hostile concurrent filesystem changes remain unsupported.
+- ANDROID-019: stale listener snapshots no longer update retired service state.
+  Every service worker submission uses an owner executor on a process FIFO;
+  retirement inserts mandatory native stop before new-owner work. Accepted
+  work drains before stop; stale submissions/retirement cannot affect a newer
+  owner. JNI/commands run outside the owner monitor. No NativeCallGuard bypass.
+- TOOL-013: reported Perl/ShellCheck corrections were already in HEAD. Fixed
+  remaining CDPATH root capture and SAM mismatch exit status. Manual packaging
+  CI now ShellChecks the six maintenance scripts and checks failure with a fake
+  nc, without a live router. Triggers/action pins/credentials remain unchanged.
+- Prepared receiver, NetDb, expanded tunnel/profile and JVM owner regressions;
+  registered host targets/labels and the manual focused Linux selection.
+  Updated skills/references, AGENTS, technical docs and shared tracking.
+- Status: Implemented / static; Pending CI compilation; Pending CI tests.
+  Static source/interface review and git diff --check only. No build, test,
+  project validator, ShellCheck/Perl invocation, workflow dispatch, commit or
+  push ran. Full platform/JNI/service teardown and sanitizer evidence is pending.
+
+## 2026-10-22 — Publication review
+
+- Explicit user authorization supersedes the earlier no-commit/no-push task
+  boundary for this publication. Existing Git identity and signing settings
+  remain unchanged; dynamic validation remains manual-CI-only.
+- Independent native, Android/daemon and tooling/integration reviews inspected
+  all pending source, tests, workflows, instructions, tracking and new files.
+  Datagram review identified shared mutable callback-target invocation as a
+  regression from the previous per-dispatch std::function copy. Restored the
+  callback snapshot before incrementing the in-flight count and prepared a
+  mutable-value-capture regression; no tests were executed.
+- Corrected the SAM mock diagnostic matcher to include the existing same-line
+  HELLO prompt prefix; the manual CI fixture must not expect the diagnostic at
+  the beginning of the output line.
+- Changes are grouped into dependency-ordered subsystem commits, including
+  selective test-registration and NetDb profile-shutdown hunks. Shared status
+  documentation records static implementation, not compilation/test evidence.
+- Source/diff review, artifact inspection and git diff --check only; no build,
+  test, project validator or workflow dispatch ran during publication review.
