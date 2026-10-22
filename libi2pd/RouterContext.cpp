@@ -90,6 +90,41 @@ void RouterContext::Init ()
 	m_ECIESSession = std::make_shared<i2p::garlic::RouterIncomingRatchetSession> (m_InitialNoiseState);
 }
 
+void RouterContext::ResetAfterFailedInit ()
+{
+	// Init() may have submitted an asynchronous router.info write before a
+	// later phase failed. Join it before Daemon rollback changes or stops the
+	// persistence writer and its storage authority.
+	if (m_SavingRouterInfo.valid ())
+	{
+		try
+		{
+			m_SavingRouterInfo.get ();
+		}
+		catch (const std::exception & ex)
+		{
+			LogPrint (eLogError, "Router: failed-init router.info save failed: ", ex.what ());
+		}
+		catch (...)
+		{
+			LogPrint (eLogError, "Router: failed-init router.info save failed with an unknown exception");
+		}
+	}
+	{
+		std::lock_guard<std::mutex> l (m_SaveBufferMutex);
+		m_SaveBuffer.reset ();
+	}
+	m_IsSaving.clear ();
+	Stop ();
+	m_ECIESSession.reset ();
+	m_Decryptor.reset ();
+	m_TunnelDecryptor.reset ();
+	m_InitialNoiseState = i2p::crypto::NoiseSymmetricState { };
+	// Do not discard persisted identity or transport keys. Init may have
+	// generated them successfully before a later phase failed; these durable
+	// files remain authoritative for a retry against the same data directory.
+}
+
 void RouterContext::Start ()
 {
 	std::lock_guard<std::mutex> lifecycle (m_ServiceLifecycleMutex);

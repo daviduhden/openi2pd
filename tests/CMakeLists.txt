@@ -129,6 +129,7 @@ set(I2PD_TESTS
   test-routercontext-port-range
   test-router-profile-race
   test-router-profile-storage
+  test-daemon-init-rollback
   test-tunnel-dsm-policy
   test-tunnelconfig-ownership
   test-transport-connector
@@ -228,6 +229,9 @@ foreach(test IN LISTS I2PD_TESTS)
     set_tests_properties(${test} PROPERTIES SKIP_RETURN_CODE 77)
   endif()
   set_property(TEST ${test} APPEND PROPERTY LABELS unit)
+  if(test STREQUAL "test-daemon-init-rollback")
+    set_property(TEST ${test} APPEND PROPERTY LABELS "android;security;memory")
+  endif()
   if(test STREQUAL "test-router-profile-race")
     set_property(TEST ${test} APPEND PROPERTY LABELS i2p)
   endif()

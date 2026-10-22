@@ -41,6 +41,7 @@
 #endif
 
 #include "Daemon.h"
+#include "DaemonInit.h"
 
 #include "Config.h"
 #include "Log.h"
@@ -540,6 +541,38 @@ namespace util
 
 	bool Daemon_Singleton::init (int argc, char * argv[], std::shared_ptr<std::ostream> logstream)
 	{
+		auto rollbackPhase = [this] (DaemonInitPhase phase)
+		{
+			switch (phase)
+			{
+				case DaemonInitPhase::Logging:
+					// init() owns the destination setup; the logger worker starts
+					// later in start(). Reset only this component, not the daemon.
+					i2p::log::Logger ().Stop ();
+					(void)i2p::log::Logger ().ResetDestination ();
+					break;
+				case DaemonInitPhase::RouterContext:
+					i2p::context.ResetAfterFailedInit ();
+					break;
+				case DaemonInitPhase::RouterStorage:
+					// Replace the callback before stopping its authority. A failed
+					// isolated initialization must never fall back to core writes.
+					i2p::data::InstallRouterPersistenceWriter ([] (auto, auto) { return false; });
+#if !defined(_WIN32) && !defined(__ANDROID__) && !defined(I2PD_NO_PRIVSEP)
+					if (d->routerStorage)
+					{
+						d->routerStorage->Stop ();
+						d->routerStorage.reset ();
+					}
+#endif
+					break;
+				case DaemonInitPhase::Crypto:
+					i2p::crypto::TerminateCrypto ();
+					break;
+			}
+		};
+		DaemonInitTransaction initTransaction (rollbackPhase);
+
 		i2p::config::Init ();
 		i2p::config::ParseCmdline (argc, argv);
 
@@ -620,7 +653,8 @@ namespace util
 		i2p::config::GetOption ("logclftime", logclftime);
 
 		/* setup logging */
-		if (logclftime) i2p::log::Logger ().SetTimeFormat ("[%d/%b/%Y:%H:%M:%S %z]");
+		initTransaction.Run (DaemonInitPhase::Logging, [] { });
+		i2p::log::Logger ().SetTimeFormat (logclftime ? "[%d/%b/%Y:%H:%M:%S %z]" : "%H:%M:%S");
 
 #if defined(WIN32_APP)
 		// The Windows GUI logs to a file
@@ -663,7 +697,9 @@ namespace util
 				d->privsepLogPath = logfile;
 			else
 #endif
+			{
 				i2p::log::Logger ().SendTo (logfile);
+			}
 #if !defined(_WIN32) && !defined(I2PD_NO_PRIVSEP)
 		}
 		else if (logs == "syslog")
@@ -672,7 +708,9 @@ namespace util
 			if (d->privsepLog)
 				d->privsepSyslog = true;
 			else
+			{
 				i2p::log::Logger ().SendTo ("open-i2pd", LOG_DAEMON);
+			}
 #elif !defined(_WIN32)
 		}
 		else if (logs == "syslog")
@@ -756,7 +794,7 @@ namespace util
 			}
 		}
 #endif
-		i2p::crypto::InitCrypto (precomputation);
+		initTransaction.Run (DaemonInitPhase::Crypto, [&] { i2p::crypto::InitCrypto (precomputation); });
 
 		i2p::transport::InitAddressFromIface (); // get address4/6 from interfaces
 
@@ -772,26 +810,31 @@ namespace util
 		i2p::config::GetOption ("privsep.routerstorage", routerStorage);
 		if (routerStorage)
 		{
-			i2p::data::InstallRouterPersistenceWriter ([] (auto, auto) { return false; });
+			const bool storageReady = initTransaction.Run (DaemonInitPhase::RouterStorage, [&] ()
+				{
+					i2p::data::InstallRouterPersistenceWriter ([] (auto, auto) { return false; });
 #if !defined(_WIN32) && !defined(__ANDROID__) && !defined(I2PD_NO_PRIVSEP)
-			std::string error;
-			d->routerStorage = std::make_shared<i2p::privsep::RouterStorageClient> ();
-			if (!d->routerStorage->Start (i2p::fs::GetDataDir (), error))
-			{
-				LogPrint (eLogError, "Daemon: Required router storage failed: ", error);
-				return false;
-			}
-			i2p::data::InstallRouterPersistenceWriter (
-				[worker = d->routerStorage] (auto file, auto bytes) { return worker->Write (file, bytes); });
+					std::string error;
+					d->routerStorage = std::make_shared<i2p::privsep::RouterStorageClient> ();
+					if (!d->routerStorage->Start (i2p::fs::GetDataDir (), error))
+					{
+						LogPrint (eLogError, "Daemon: Required router storage failed: ", error);
+						return false;
+					}
+					i2p::data::InstallRouterPersistenceWriter (
+						[worker = d->routerStorage] (auto file, auto bytes) { return worker->Write (file, bytes); });
+					return true;
 #else
-			LogPrint (eLogError, "Daemon: Router storage worker unavailable on this platform");
-			return false;
+					LogPrint (eLogError, "Daemon: Router storage worker unavailable on this platform");
+					return false;
 #endif
+				});
+			if (!storageReady) return false;
 		}
 		else
 			i2p::data::InstallRouterPersistenceWriter ({ });
 
-		i2p::context.Init ();
+		initTransaction.Run (DaemonInitPhase::RouterContext, [] { i2p::context.Init (); });
 
 		i2p::transport::InitTransports ();
 
@@ -951,6 +994,7 @@ namespace util
 		i2p::config::GetOption ("lang", language);
 		i2p::i18n::SetLanguage (language);
 
+		initTransaction.Commit ();
 		return true;
 	}
 
