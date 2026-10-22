@@ -18,7 +18,6 @@
 
 #include <algorithm>
 #include <array>
-#include <atomic>
 #include <cerrno>
 #include <chrono>
 #include <cstring>
@@ -28,6 +27,7 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <sys/un.h>
+#include <stop_token>
 #include <thread>
 #include <unistd.h>
 #include <utility>
@@ -79,9 +79,9 @@ namespace tui
 		void Stop ();
 
 	private:
-		void Run ();
-		void HandleClient (int clientFd);
-		bool SendAll (int fd, std::string_view data, SteadyClock::time_point deadline);
+		void Run (std::stop_token token);
+		void HandleClient (int clientFd, std::stop_token token);
+		bool SendAll (int fd, std::string_view data, SteadyClock::time_point deadline, std::stop_token token);
 		bool IsTrustedPeer (int clientFd) const;
 
 		std::string m_Path;
@@ -89,8 +89,7 @@ namespace tui
 		dev_t m_Device { 0 };
 		ino_t m_Inode { 0 };
 		bool m_HasIdentity { false };
-		std::thread m_Thread;
-		std::atomic<bool> m_Stop { false };
+		std::jthread m_Thread;
 	};
 
 	bool Server::Impl::Start ()
@@ -184,15 +183,14 @@ namespace tui
 		}
 
 		m_ListenFd = fd;
-		m_Stop.store (false, std::memory_order_relaxed);
-		m_Thread = std::thread ([this] { Run (); });
+		m_Thread = std::jthread ([this] (std::stop_token token) { Run (token); });
 		LogPrint (eLogInfo, "TUI: Listening on ", m_Path);
 		return true;
 	}
 
 	void Server::Impl::Stop ()
 	{
-		m_Stop.store (true, std::memory_order_relaxed);
+		if (m_Thread.joinable ()) m_Thread.request_stop ();
 		if (m_Thread.joinable ()) m_Thread.join ();
 		if (m_ListenFd >= 0)
 		{
@@ -210,10 +208,10 @@ namespace tui
 		}
 	}
 
-	void Server::Impl::Run ()
+	void Server::Impl::Run (std::stop_token token)
 	{
 		i2p::util::SetThreadName ("i2pd-tui-ipc");
-		while (!m_Stop.load (std::memory_order_relaxed))
+		while (!token.stop_requested ())
 		{
 			pollfd pfd { m_ListenFd, POLLIN, 0 };
 			int result = poll (&pfd, 1, 200);
@@ -233,7 +231,7 @@ namespace tui
 			}
 			int clientFlags = fcntl (client, F_GETFD);
 			if (clientFlags >= 0) fcntl (client, F_SETFD, clientFlags | FD_CLOEXEC);
-			HandleClient (client);
+			HandleClient (client, token);
 			close (client);
 		}
 	}
@@ -259,11 +257,12 @@ namespace tui
 #endif
 	}
 
-	bool Server::Impl::SendAll (int fd, std::string_view data, SteadyClock::time_point deadline)
+	bool Server::Impl::SendAll (
+		int fd, std::string_view data, SteadyClock::time_point deadline, std::stop_token token)
 	{
 		while (!data.empty ())
 		{
-			if (m_Stop.load (std::memory_order_relaxed)) return false;
+			if (token.stop_requested ()) return false;
 			const auto now = SteadyClock::now ();
 			if (now >= deadline) return false;
 			const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds> (deadline - now).count ();
@@ -291,7 +290,7 @@ namespace tui
 		return true;
 	}
 
-	void Server::Impl::HandleClient (int clientFd)
+	void Server::Impl::HandleClient (int clientFd, std::stop_token token)
 	{
 		// A per-client allocation failure (bad_alloc from the request
 		// accumulator or a snapshot) must not unwind into std::thread and
@@ -316,7 +315,7 @@ namespace tui
 			std::string pending;
 			pending.reserve (MAX_REQUEST_LINE);
 			std::array<char, 1024> buffer { };
-			while (!m_Stop.load (std::memory_order_relaxed))
+			while (!token.stop_requested ())
 			{
 				const auto now = SteadyClock::now ();
 				if (now >= connectionDeadline) return;
@@ -353,25 +352,25 @@ namespace tui
 				if (pending.size () > MAX_REQUEST_LINE + 1)
 				{
 					SendAll (clientFd, MakeErrorResponse (ErrorCode::MalformedRequest, "request too long"),
-						connectionDeadline);
+						connectionDeadline, token);
 					return;
 				}
 
 				size_t newline = 0;
 				while ((newline = pending.find ('\n')) != std::string::npos)
 				{
-					if (m_Stop.load (std::memory_order_relaxed)) return;
+					if (token.stop_requested ()) return;
 					if (SteadyClock::now () >= connectionDeadline) return;
 					if (++requests > MAX_REQUESTS_PER_CONNECTION)
 					{
 						SendAll (clientFd, MakeErrorResponse (ErrorCode::Internal, "connection request limit reached"),
-							connectionDeadline);
+							connectionDeadline, token);
 						return;
 					}
 					std::string_view line (pending.data (), newline);
 					if (!line.empty () && line.back () == '\r') line.remove_suffix (1);
 					auto result = Dispatch (line);
-					if (!SendAll (clientFd, result.response, connectionDeadline)) return;
+					if (!SendAll (clientFd, result.response, connectionDeadline, token)) return;
 					pending.erase (0, newline + 1);
 					if (result.closeConnection) return;
 				}
