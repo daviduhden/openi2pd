@@ -478,9 +478,12 @@ namespace torrents
 		{
 			auto dgramDest = dest->GetDatagramDestination ();
 			if (dgramDest)
-				dgramDest->SetReceiver ([this] (const i2p::data::IdentityEx & from, uint16_t fromPort, uint16_t toPort,
+			{
+				m_DatagramReceiver.Reset ();
+				m_DatagramReceiver = dgramDest->SetReceiver ([this] (const i2p::data::IdentityEx & from, uint16_t fromPort, uint16_t toPort,
 											const uint8_t * buf, size_t len, const i2p::util::Mapping * options)
 					{ HandleDatagram (from, fromPort, toPort, buf, len, options); });
+			}
 		}
 		ScheduleDHTUpdateCheck ();
 		ScheduleDHTExpirationCheck ();
@@ -494,15 +497,9 @@ namespace torrents
 		m_DHTExpirationCheckTimer.cancel ();
 		m_DHTSendPingCheckTimer.cancel ();
 		m_DHTQueryExpirationCheckTimer.cancel ();
-		// DHT installs the default hash receiver on the shared datagram
-		// destination. Clear it before this object can be destroyed, otherwise
-		// a late datagram would call back into freed state.
-		auto dest = m_Tunnel.GetLocalDestination ();
-		if (dest)
-		{
-			auto dgramDest = dest->GetDatagramDestination ();
-			if (dgramDest) dgramDest->ResetReceiver ();
-		}
+		// Reset waits for any callback already dispatched before this owner
+		// can be destroyed, and its token cannot remove a newer registration.
+		m_DatagramReceiver.Reset ();
 		if (!m_DHTFileName.empty () && m_DHTFileName[0] && IsValidStateFileName (m_DHTFileName))
 			Save (GetDHTFilePath (m_DHTFileName));
 	}

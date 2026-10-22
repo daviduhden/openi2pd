@@ -15,9 +15,12 @@
 #define DATAGRAM_H__
 
 #include <inttypes.h>
+#include <condition_variable>
 #include <memory>
 #include <functional>
+#include <mutex>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 #include "Base.h"
 #include "Gzip.h"
@@ -36,6 +39,79 @@ namespace client
 }
 namespace datagram
 {
+	namespace detail
+	{
+		struct ReceiverInvocationFrame
+		{
+			const void * slot;
+			ReceiverInvocationFrame * previous;
+		};
+
+		inline thread_local ReceiverInvocationFrame * g_ReceiverInvocationFrame = nullptr;
+
+		inline bool IsInReceiverCallback () { return g_ReceiverInvocationFrame != nullptr; }
+
+		template <typename Callback> class ReceiverSlot
+		{
+		public:
+			explicit ReceiverSlot (Callback callback) : m_Callback (std::move (callback)) { }
+			bool HasCallback () const { return static_cast<bool> (m_Callback); }
+
+			template <typename... Args> bool Invoke (Args &&... args)
+			{
+				Callback callback;
+				{
+					std::lock_guard<std::mutex> lock (m_Mutex);
+					if (!m_Active || !m_Callback) return false;
+					// Preserve the previous dispatcher semantics: every dispatch gets
+					// its own function-target snapshot. Copy before incrementing so an
+					// exception from a target copy cannot leak the in-flight count.
+					callback = m_Callback;
+					++m_InFlight;
+				}
+				struct Invocation
+				{
+					ReceiverSlot & slot;
+					ReceiverInvocationFrame frame;
+					Invocation (ReceiverSlot & s)
+						: slot (s), frame { &s, g_ReceiverInvocationFrame }
+					{
+						g_ReceiverInvocationFrame = &frame;
+					}
+					~Invocation ()
+					{
+						g_ReceiverInvocationFrame = frame.previous;
+						std::lock_guard<std::mutex> lock (slot.m_Mutex);
+						--slot.m_InFlight;
+						slot.m_Drained.notify_all ();
+					}
+				} invocation (*this);
+				callback (std::forward<Args> (args)...);
+				return true;
+			}
+
+			// Returns false when called from any receiver callback. In that
+			// context waiting could deadlock through same-slot or cross-slot
+			// callback cycles; deactivation still prevents future dispatch.
+			// Owners that need a lifetime barrier must reset from outside callbacks.
+			bool DeactivateAndWait ()
+			{
+				std::unique_lock<std::mutex> lock (m_Mutex);
+				m_Active = false;
+				if (IsInReceiverCallback ()) return false;
+				m_Drained.wait (lock, [this] { return m_InFlight == 0; });
+				return true;
+			}
+
+		private:
+			Callback m_Callback;
+			std::mutex m_Mutex;
+			std::condition_variable m_Drained;
+			size_t m_InFlight = 0;
+			bool m_Active = true;
+		};
+	}
+
 	// milliseconds for max session idle time
 	const uint64_t DATAGRAM_SESSION_MAX_IDLE = 10 * 60 * 1000;
 	// milliseconds interval a routing path is used before switching
@@ -169,7 +245,7 @@ namespace datagram
 	// Mapping). A zero-length Mapping is valid. Exposed for regression tests.
 	bool ParseDatagramOptions (i2p::util::Mapping & options, const uint8_t * buf, size_t len, size_t & offset);
 
-	class DatagramDestination
+	class DatagramDestination : public std::enable_shared_from_this<DatagramDestination>
 	{
 		typedef std::function<void (const i2p::data::IdentityEx & from, uint16_t fromPort, uint16_t toPort,
 			const uint8_t * buf, size_t len, const i2p::util::Mapping * options)>
@@ -183,8 +259,36 @@ namespace datagram
 		typedef std::function<void (
 			uint8_t protocol, uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len)>
 			RawReceiver;
+		typedef std::shared_ptr<detail::ReceiverSlot<Receiver>> ReceiverSlotPtr;
+		typedef std::shared_ptr<detail::ReceiverSlot<HashReceiver>> HashReceiverSlotPtr;
+		typedef std::shared_ptr<detail::ReceiverSlot<RawReceiver>> RawReceiverSlotPtr;
 
 	public:
+		class ReceiverRegistration
+		{
+		public:
+			ReceiverRegistration () = default;
+			// true means all invocations have drained. Reset from any receiver
+			// callback only deactivates; it returns false to avoid callback cycles.
+			// Such a reset cannot safely release callback-captured owner state until
+			// the callback has returned.
+			bool Reset () const;
+			explicit operator bool () const { return !m_Slot.expired () && !m_Destination.expired (); }
+
+		private:
+			enum class Kind : uint8_t { Identity, Hash, Raw };
+			friend class DatagramDestination;
+			ReceiverRegistration (std::weak_ptr<DatagramDestination> destination, std::weak_ptr<void> slot,
+				uint16_t port, Kind kind)
+				: m_Destination (std::move (destination)), m_Slot (std::move (slot)), m_Port (port), m_Kind (kind)
+			{
+			}
+			std::weak_ptr<DatagramDestination> m_Destination;
+			std::weak_ptr<void> m_Slot;
+			uint16_t m_Port = 0;
+			Kind m_Kind = Kind::Identity;
+		};
+
 		DatagramDestination (std::shared_ptr<i2p::client::ClientDestination> owner, bool gzip, DatagramVersion version);
 		~DatagramDestination ();
 
@@ -204,14 +308,11 @@ namespace datagram
 		void HandleDataMessagePayload (uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len,
 			uint8_t protocolType, i2p::garlic::ECIESX25519AEADRatchetSession * from);
 
-		void SetReceiver (const Receiver & receiver, uint16_t port = 0);
-		void ResetReceiver (uint16_t port = 0);
+		ReceiverRegistration SetReceiver (const Receiver & receiver, uint16_t port = 0);
 
-		void SetHashReceiver (const HashReceiver & receiver, uint16_t port = 0);
-		void ResetHashReceiver (uint16_t port = 0);
+		ReceiverRegistration SetHashReceiver (const HashReceiver & receiver, uint16_t port = 0);
 
-		void SetRawReceiver (const RawReceiver & receiver, uint16_t port = 0);
-		void ResetRawReceiver (uint16_t port = 0);
+		ReceiverRegistration SetRawReceiver (const RawReceiver & receiver, uint16_t port = 0);
 
 		std::shared_ptr<DatagramSession::Info> GetInfoForRemote (const i2p::data::IdentHash & remote);
 
@@ -238,9 +339,10 @@ namespace datagram
 		void HandleDatagram3 (uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len,
 			i2p::garlic::ECIESX25519AEADRatchetSession * from);
 
-		Receiver FindReceiver (uint16_t port);
-		HashReceiver FindHashReceiver (uint16_t port);
-		RawReceiver FindRawReceiver (uint16_t port);
+		ReceiverSlotPtr FindReceiver (uint16_t port);
+		HashReceiverSlotPtr FindHashReceiver (uint16_t port);
+		RawReceiverSlotPtr FindRawReceiver (uint16_t port);
+		bool ResetRegistration (const ReceiverRegistration & registration);
 
 	private:
 		std::shared_ptr<i2p::client::ClientDestination> m_Owner;
@@ -248,18 +350,15 @@ namespace datagram
 		mutable std::mutex m_SessionsMutex;
 		std::unordered_map<i2p::data::IdentHash, DatagramSession_ptr> m_Sessions;
 
-		Receiver m_DefaultReceiver;
-		HashReceiver m_DefaultHashReceiver;
-		RawReceiver m_DefaultRawReceiver;
-		uint16_t m_DefaultReceiverPort;
-		uint16_t m_DefaultHashReceiverPort;
-		uint16_t m_DefaultRawReceiverPort;
+		ReceiverSlotPtr m_DefaultReceiver;
+		HashReceiverSlotPtr m_DefaultHashReceiver;
+		RawReceiverSlotPtr m_DefaultRawReceiver;
 		std::mutex m_ReceiversMutex;
 		std::mutex m_HashReceiversMutex;
 		std::mutex m_RawReceiversMutex;
-		std::unordered_map<uint16_t, Receiver> m_ReceiversByPorts;
-		std::unordered_map<uint16_t, HashReceiver> m_HashReceiversByPorts;
-		std::unordered_map<uint16_t, RawReceiver> m_RawReceiversByPorts;
+		std::unordered_map<uint16_t, ReceiverSlotPtr> m_ReceiversByPorts;
+		std::unordered_map<uint16_t, HashReceiverSlotPtr> m_HashReceiversByPorts;
+		std::unordered_map<uint16_t, RawReceiverSlotPtr> m_RawReceiversByPorts;
 
 		bool m_Gzip; // gzip compression of data messages
 		DatagramVersion m_Version; // default for destination

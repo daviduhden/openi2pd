@@ -1437,12 +1437,13 @@ namespace client
 
 	void AddressBook::StartLookups ()
 	{
+		m_LookupReceiver.Reset ();
 		auto dest = i2p::client::context.GetSharedLocalDestination ();
 		if (dest)
 		{
 			auto datagram = dest->GetDatagramDestination ();
 			if (!datagram) datagram = dest->CreateDatagramDestination ();
-			datagram->SetReceiver (
+			m_LookupReceiver = datagram->SetReceiver (
 				std::bind (&AddressBook::HandleLookupResponse, this, std::placeholders::_1, std::placeholders::_2,
 					std::placeholders::_3, std::placeholders::_4, std::placeholders::_5),
 				ADDRESS_RESPONSE_DATAGRAM_PORT);
@@ -1451,13 +1452,8 @@ namespace client
 
 	void AddressBook::StopLookups ()
 	{
+		m_LookupReceiver.Reset ();
 		m_Lookups.Clear ();
-		auto dest = i2p::client::context.GetSharedLocalDestination ();
-		if (dest)
-		{
-			auto datagram = dest->GetDatagramDestination ();
-			if (datagram) datagram->ResetReceiver (ADDRESS_RESPONSE_DATAGRAM_PORT);
-		}
 	}
 
 	void AddressBook::LookupAddress (std::string_view address)
@@ -1701,7 +1697,7 @@ namespace client
 		{
 			auto datagram = m_LocalDestination->GetDatagramDestination ();
 			if (!datagram) datagram = m_LocalDestination->CreateDatagramDestination ();
-			datagram->SetReceiver (
+			m_RequestReceiver = datagram->SetReceiver (
 				std::bind (&AddressResolver::HandleRequest, this, std::placeholders::_1, std::placeholders::_2,
 					std::placeholders::_3, std::placeholders::_4, std::placeholders::_5),
 				ADDRESS_RESOLVER_DATAGRAM_PORT);
@@ -1710,11 +1706,7 @@ namespace client
 
 	AddressResolver::~AddressResolver ()
 	{
-		if (m_LocalDestination)
-		{
-			auto datagram = m_LocalDestination->GetDatagramDestination ();
-			if (datagram) datagram->ResetReceiver (ADDRESS_RESOLVER_DATAGRAM_PORT);
-		}
+		m_RequestReceiver.Reset ();
 	}
 
 	void AddressResolver::HandleRequest (

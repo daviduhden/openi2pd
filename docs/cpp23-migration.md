@@ -89,6 +89,13 @@ dynamic availability remains a manual-CI claim, never a local inference.
 | Scoped descriptors / `FILE*` / OpenSSL | `UnixDaemon`, `I2PControl`, `Signature`, `Gost` | Readiness pipes, pidfile guards, certificate objects and EVP handles are released exactly once |
 | Endian conversion | `libi2pd/I2PEndian.h` | Windows uses `std::endian`/`std::byteswap`; Unix/Android use the platform `endian(3)` header, removing the legacy fallback and compiler intrinsics |
 
+The CONC-011 continuation applies shared/weak ownership and a templated RAII
+invocation guard to Datagram callback slots. Registration tokens identify the
+owner independently of ports; callbacks are released outside registry locks.
+Callback-context reset only deactivates and cannot authorize destruction.
+This adopts existing supported ownership/generic facilities, without a new
+standard-library floor. Compilation/sanitizer evidence remains pending CI.
+
 ## Deliberate limits
 
 - **Ownership was not mass-converted to smart pointers.** Router globals,

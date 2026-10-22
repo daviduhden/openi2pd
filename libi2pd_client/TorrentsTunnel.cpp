@@ -248,9 +248,12 @@ namespace torrents
 		if (!localDestination) return;
 		auto dgramDest = localDestination->CreateDatagramDestination (true, i2p::datagram::eDatagramV1); // V1 for DHT
 		if (dgramDest)
-			dgramDest->SetRawReceiver (std::bind (&TorrentsTunnel::HandleRecvFromI2PRaw,
+		{
+			m_RawDatagramReceiver.Reset ();
+			m_RawDatagramReceiver = dgramDest->SetRawReceiver (std::bind (&TorrentsTunnel::HandleRecvFromI2PRaw,
 				std::static_pointer_cast<TorrentsTunnel> (shared_from_this ()), std::placeholders::_1,
 				std::placeholders::_2, std::placeholders::_3, std::placeholders::_4, std::placeholders::_5));
+		}
 		if (m_DHT) m_DHT->Start ();
 
 		Accept ();
@@ -272,6 +275,7 @@ namespace torrents
 			// (already released) destination, so only the owned worker and
 			// handlers can be torn down.
 			m_Stopping.store (true, std::memory_order_release);
+			m_RawDatagramReceiver.Reset ();
 			m_DiskIOService.Stop ();
 			i2p::client::I2PService::ClearHandlers ();
 			i2p::client::I2PService::Stop ();
@@ -344,9 +348,8 @@ namespace torrents
 		if (localDestination)
 		{
 			localDestination->StopAcceptingStreams ();
-			auto dgramDest = localDestination->GetDatagramDestination ();
-			if (dgramDest) dgramDest->ResetRawReceiver ();
 		}
+		m_RawDatagramReceiver.Reset ();
 		m_TrackerRequestsCheckTimer.cancel ();
 		m_KeepAliveCheckTimer.cancel ();
 		m_ReconnectCheckTimer.cancel ();

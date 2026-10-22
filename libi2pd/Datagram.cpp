@@ -20,6 +20,7 @@
 #include "RouterContext.h"
 #include "Destination.h"
 #include "Datagram.h"
+#include <stdexcept>
 
 namespace i2p
 {
@@ -42,12 +43,6 @@ namespace datagram
 	DatagramDestination::DatagramDestination (
 		std::shared_ptr<i2p::client::ClientDestination> owner, bool gzip, DatagramVersion version)
 		: m_Owner (owner)
-		, m_DefaultReceiver (nullptr)
-		, m_DefaultHashReceiver (nullptr)
-		, m_DefaultRawReceiver (nullptr)
-		, m_DefaultReceiverPort (0)
-		, m_DefaultHashReceiverPort (0)
-		, m_DefaultRawReceiverPort (0)
 		, m_Gzip (gzip)
 		, m_Version (version)
 	{
@@ -276,7 +271,7 @@ namespace datagram
 			session->Ack ();
 			auto r = FindReceiver (toPort);
 			if (r)
-				r (identity, fromPort, toPort, buf + headerLen, len - headerLen, nullptr);
+				r->Invoke (identity, fromPort, toPort, buf + headerLen, len - headerLen, nullptr);
 			else
 				LogPrint (eLogWarning, "DatagramDestination: no receiver for port ", toPort);
 		}
@@ -289,7 +284,7 @@ namespace datagram
 	{
 		auto r = FindRawReceiver (toPort);
 		if (r)
-			r (protocol, fromPort, toPort, buf, len);
+			r->Invoke (protocol, fromPort, toPort, buf, len);
 		else
 			LogPrint (eLogWarning, "DatagramDestination: no receiver for raw datagram");
 	}
@@ -391,7 +386,8 @@ namespace datagram
 		}
 		auto r = FindReceiver (toPort);
 		if (r)
-			r (identity, fromPort, toPort, buf + offset, len - offset - signatureLen, isOptions ? &m_Options : nullptr);
+			r->Invoke (identity, fromPort, toPort, buf + offset, len - offset - signatureLen,
+				isOptions ? &m_Options : nullptr);
 		else
 			LogPrint (eLogWarning, "DatagramDestination: no receiver for port ", toPort);
 	}
@@ -484,7 +480,7 @@ namespace datagram
 
 		auto r = FindHashReceiver (toPort);
 		if (r)
-			r (ident, fromPort, toPort, buf + offset, len - offset, isOptions ? &m_Options : nullptr);
+			r->Invoke (ident, fromPort, toPort, buf + offset, len - offset, isOptions ? &m_Options : nullptr);
 		else
 		{
 			// Internal consumers such as the torrent tracker still use the
@@ -492,7 +488,7 @@ namespace datagram
 			// LeaseSet is available; a Datagram3 hash alone is never trusted.
 			auto receiver = FindReceiver (toPort);
 			if (receiver && ls)
-				receiver (*ls->GetIdentity (), fromPort, toPort, buf + offset, len - offset,
+				receiver->Invoke (*ls->GetIdentity (), fromPort, toPort, buf + offset, len - offset,
 					isOptions ? &m_Options : nullptr);
 			else
 				LogPrint (eLogWarning, "DatagramDestination: no hash receiver or cached identity for port ", toPort);
@@ -500,113 +496,170 @@ namespace datagram
 		if (acknowledgeSession && session) session->Ack ();
 	}
 
-	void DatagramDestination::SetReceiver (const Receiver & receiver, uint16_t port)
+	DatagramDestination::ReceiverRegistration DatagramDestination::SetReceiver (const Receiver & receiver, uint16_t port)
+	{
+		auto owner = weak_from_this ();
+		if (owner.expired ()) throw std::logic_error ("DatagramDestination receiver requires shared ownership");
+		auto slot = std::make_shared<detail::ReceiverSlot<Receiver>> (receiver);
+		std::vector<ReceiverSlotPtr> retired;
+		{
+			std::lock_guard<std::mutex> lock (m_ReceiversMutex);
+			if (port)
+			{
+				auto it = m_ReceiversByPorts.find (port);
+				if (it != m_ReceiversByPorts.end ()) retired.push_back (std::move (it->second));
+				m_ReceiversByPorts[port] = slot;
+			}
+			// Keep the historical fallback rule: the first port-specific
+			// registration supplies the wildcard until an explicit wildcard
+			// registration replaces it. Port keys themselves remain last-wins.
+			if (!port || !m_DefaultReceiver || !m_DefaultReceiver->HasCallback ())
+			{
+				if (m_DefaultReceiver) retired.push_back (std::move (m_DefaultReceiver));
+				m_DefaultReceiver = slot;
+			}
+		}
+		return ReceiverRegistration (std::move (owner), slot, port, ReceiverRegistration::Kind::Identity);
+	}
+
+	DatagramDestination::ReceiverRegistration DatagramDestination::SetHashReceiver (
+		const HashReceiver & receiver, uint16_t port)
+	{
+		auto owner = weak_from_this ();
+		if (owner.expired ()) throw std::logic_error ("DatagramDestination receiver requires shared ownership");
+		auto slot = std::make_shared<detail::ReceiverSlot<HashReceiver>> (receiver);
+		std::vector<HashReceiverSlotPtr> retired;
+		{
+			std::lock_guard<std::mutex> lock (m_HashReceiversMutex);
+			if (port)
+			{
+				auto it = m_HashReceiversByPorts.find (port);
+				if (it != m_HashReceiversByPorts.end ()) retired.push_back (std::move (it->second));
+				m_HashReceiversByPorts[port] = slot;
+			}
+			if (!port || !m_DefaultHashReceiver || !m_DefaultHashReceiver->HasCallback ())
+			{
+				if (m_DefaultHashReceiver) retired.push_back (std::move (m_DefaultHashReceiver));
+				m_DefaultHashReceiver = slot;
+			}
+		}
+		return ReceiverRegistration (std::move (owner), slot, port, ReceiverRegistration::Kind::Hash);
+	}
+
+	DatagramDestination::ReceiverRegistration DatagramDestination::SetRawReceiver (
+		const RawReceiver & receiver, uint16_t port)
+	{
+		auto owner = weak_from_this ();
+		if (owner.expired ()) throw std::logic_error ("DatagramDestination receiver requires shared ownership");
+		auto slot = std::make_shared<detail::ReceiverSlot<RawReceiver>> (receiver);
+		std::vector<RawReceiverSlotPtr> retired;
+		{
+			std::lock_guard<std::mutex> lock (m_RawReceiversMutex);
+			if (port)
+			{
+				auto it = m_RawReceiversByPorts.find (port);
+				if (it != m_RawReceiversByPorts.end ()) retired.push_back (std::move (it->second));
+				m_RawReceiversByPorts[port] = slot;
+			}
+			if (!port || !m_DefaultRawReceiver || !m_DefaultRawReceiver->HasCallback ())
+			{
+				if (m_DefaultRawReceiver) retired.push_back (std::move (m_DefaultRawReceiver));
+				m_DefaultRawReceiver = slot;
+			}
+		}
+		return ReceiverRegistration (std::move (owner), slot, port, ReceiverRegistration::Kind::Raw);
+	}
+
+	bool DatagramDestination::ReceiverRegistration::Reset () const
+	{
+		if (auto destination = m_Destination.lock ()) return destination->ResetRegistration (*this);
+		return true;
+	}
+
+	bool DatagramDestination::ResetRegistration (const ReceiverRegistration & registration)
+	{
+		auto identity = registration.m_Slot.lock ();
+		if (!identity) return true;
+		bool drained = false;
+		switch (registration.m_Kind)
+		{
+			case ReceiverRegistration::Kind::Identity:
+			{
+				auto slot = std::static_pointer_cast<detail::ReceiverSlot<Receiver>> (identity);
+				{
+					std::lock_guard<std::mutex> lock (m_ReceiversMutex);
+					auto it = m_ReceiversByPorts.find (registration.m_Port);
+					if (registration.m_Port && it != m_ReceiversByPorts.end () && it->second.get () == identity.get ())
+					{
+						m_ReceiversByPorts.erase (it);
+					}
+					if (m_DefaultReceiver.get () == identity.get ())
+					{
+						m_DefaultReceiver.reset ();
+					}
+				}
+				if (slot) drained = slot->DeactivateAndWait ();
+				break;
+			}
+			case ReceiverRegistration::Kind::Hash:
+			{
+				auto slot = std::static_pointer_cast<detail::ReceiverSlot<HashReceiver>> (identity);
+				{
+					std::lock_guard<std::mutex> lock (m_HashReceiversMutex);
+					auto it = m_HashReceiversByPorts.find (registration.m_Port);
+					if (registration.m_Port && it != m_HashReceiversByPorts.end () && it->second.get () == identity.get ())
+					{
+						m_HashReceiversByPorts.erase (it);
+					}
+					if (m_DefaultHashReceiver.get () == identity.get ())
+					{
+						m_DefaultHashReceiver.reset ();
+					}
+				}
+				if (slot) drained = slot->DeactivateAndWait ();
+				break;
+			}
+			case ReceiverRegistration::Kind::Raw:
+			{
+				auto slot = std::static_pointer_cast<detail::ReceiverSlot<RawReceiver>> (identity);
+				{
+					std::lock_guard<std::mutex> lock (m_RawReceiversMutex);
+					auto it = m_RawReceiversByPorts.find (registration.m_Port);
+					if (registration.m_Port && it != m_RawReceiversByPorts.end () && it->second.get () == identity.get ())
+					{
+						m_RawReceiversByPorts.erase (it);
+					}
+					if (m_DefaultRawReceiver.get () == identity.get ())
+					{
+						m_DefaultRawReceiver.reset ();
+					}
+				}
+				if (slot) drained = slot->DeactivateAndWait ();
+				break;
+			}
+		}
+		return drained;
+	}
+
+	DatagramDestination::ReceiverSlotPtr DatagramDestination::FindReceiver (uint16_t port)
 	{
 		std::lock_guard<std::mutex> lock (m_ReceiversMutex);
-		if (port) m_ReceiversByPorts[port] = receiver;
-		// Java's demultiplexer replaces a listener for the same (protocol,
-		// port) key. A second wildcard registration must not be silently
-		// ignored.
-		if (!port || !m_DefaultReceiver)
-		{
-			m_DefaultReceiver = receiver;
-			m_DefaultReceiverPort = port;
-		}
+		auto it = m_ReceiversByPorts.find (port);
+		return it != m_ReceiversByPorts.end () ? it->second : m_DefaultReceiver;
 	}
 
-	void DatagramDestination::ResetReceiver (uint16_t port)
-	{
-		std::lock_guard<std::mutex> lock (m_ReceiversMutex);
-		if (port) m_ReceiversByPorts.erase (port);
-		if (!port || m_DefaultReceiverPort == port)
-		{
-			m_DefaultReceiver = nullptr;
-			m_DefaultReceiverPort = 0;
-		}
-	}
-
-	void DatagramDestination::SetHashReceiver (const HashReceiver & receiver, uint16_t port)
+	DatagramDestination::HashReceiverSlotPtr DatagramDestination::FindHashReceiver (uint16_t port)
 	{
 		std::lock_guard<std::mutex> lock (m_HashReceiversMutex);
-		if (port) m_HashReceiversByPorts[port] = receiver;
-		if (!port || !m_DefaultHashReceiver)
-		{
-			m_DefaultHashReceiver = receiver;
-			m_DefaultHashReceiverPort = port;
-		}
+		auto it = m_HashReceiversByPorts.find (port);
+		return it != m_HashReceiversByPorts.end () ? it->second : m_DefaultHashReceiver;
 	}
 
-	void DatagramDestination::ResetHashReceiver (uint16_t port)
-	{
-		std::lock_guard<std::mutex> lock (m_HashReceiversMutex);
-		if (port) m_HashReceiversByPorts.erase (port);
-		if (!port || m_DefaultHashReceiverPort == port)
-		{
-			m_DefaultHashReceiver = nullptr;
-			m_DefaultHashReceiverPort = 0;
-		}
-	}
-
-	void DatagramDestination::SetRawReceiver (const RawReceiver & receiver, uint16_t port)
+	DatagramDestination::RawReceiverSlotPtr DatagramDestination::FindRawReceiver (uint16_t port)
 	{
 		std::lock_guard<std::mutex> lock (m_RawReceiversMutex);
-		if (port) m_RawReceiversByPorts[port] = receiver;
-		if (!port || !m_DefaultRawReceiver)
-		{
-			m_DefaultRawReceiver = receiver;
-			m_DefaultRawReceiverPort = port;
-		}
-	}
-
-	void DatagramDestination::ResetRawReceiver (uint16_t port)
-	{
-		std::lock_guard<std::mutex> lock (m_RawReceiversMutex);
-		if (port) m_RawReceiversByPorts.erase (port);
-		if (!port || m_DefaultRawReceiverPort == port)
-		{
-			m_DefaultRawReceiver = nullptr;
-			m_DefaultRawReceiverPort = 0;
-		}
-	}
-
-	DatagramDestination::Receiver DatagramDestination::FindReceiver (uint16_t port)
-	{
-		std::lock_guard<std::mutex> lock (m_ReceiversMutex);
-		Receiver r = nullptr;
-		auto itr = m_ReceiversByPorts.find (port);
-		if (itr != m_ReceiversByPorts.end ())
-			r = itr->second;
-		else
-		{
-			r = m_DefaultReceiver;
-		}
-		return r;
-	}
-
-	DatagramDestination::HashReceiver DatagramDestination::FindHashReceiver (uint16_t port)
-	{
-		std::lock_guard<std::mutex> lock (m_HashReceiversMutex);
-		HashReceiver r = nullptr;
-		auto itr = m_HashReceiversByPorts.find (port);
-		if (itr != m_HashReceiversByPorts.end ())
-			r = itr->second;
-		else
-			r = m_DefaultHashReceiver;
-		return r;
-	}
-
-	DatagramDestination::RawReceiver DatagramDestination::FindRawReceiver (uint16_t port)
-	{
-		std::lock_guard<std::mutex> lock (m_RawReceiversMutex);
-		RawReceiver r = nullptr;
-		auto itr = m_RawReceiversByPorts.find (port);
-		if (itr != m_RawReceiversByPorts.end ())
-			r = itr->second;
-		else
-		{
-			r = m_DefaultRawReceiver;
-		}
-		return r;
+		auto it = m_RawReceiversByPorts.find (port);
+		return it != m_RawReceiversByPorts.end () ? it->second : m_DefaultRawReceiver;
 	}
 
 	void DatagramDestination::HandleDataMessagePayload (uint16_t fromPort, uint16_t toPort, const uint8_t * buf,

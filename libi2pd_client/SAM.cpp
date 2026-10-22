@@ -65,6 +65,7 @@ namespace client
 		auto previousType = m_SocketType;
 		if (previousType == SAMSocketType::eSAMSocketTypeTerminated) return;
 		m_SocketType = SAMSocketType::eSAMSocketTypeTerminated;
+		ResetAllDatagramReceivers ();
 
 		if (m_Stream)
 		{
@@ -102,6 +103,29 @@ namespace client
 			m_Socket.close (ec);
 		}
 		m_Owner.RemoveSocket (shared_from_this ());
+	}
+
+	void SAMSocket::TrackDatagramReceiver (
+		std::string_view sessionID, i2p::datagram::DatagramDestination::ReceiverRegistration registration)
+	{
+		m_DatagramReceivers[std::string (sessionID)].push_back (std::move (registration));
+	}
+
+	void SAMSocket::ResetDatagramReceivers (std::string_view sessionID)
+	{
+		auto it = m_DatagramReceivers.find (sessionID);
+		if (it == m_DatagramReceivers.end ()) return;
+		auto registrations = std::move (it->second);
+		m_DatagramReceivers.erase (it);
+		for (const auto & registration : registrations) registration.Reset ();
+	}
+
+	void SAMSocket::ResetAllDatagramReceivers ()
+	{
+		auto registrations = std::move (m_DatagramReceivers);
+		m_DatagramReceivers.clear ();
+		for (const auto & entry : registrations)
+			for (const auto & registration : entry.second) registration.Reset ();
 	}
 
 	void SAMSocket::ReceiveHandshake ()
@@ -786,22 +810,22 @@ namespace client
 				if (type == SAMSessionType::eSAMSessionTypeDatagram)
 				{
 					if (datagramVersion == i2p::datagram::eDatagramV3)
-						dest->SetHashReceiver (
+						TrackDatagramReceiver (m_ID, dest->SetHashReceiver (
 							std::bind (&SAMSocket::HandleI2PDatagram3Receive, shared_from_this (), m_ID,
 								std::placeholders::_1, std::placeholders::_2, std::placeholders::_3,
 								std::placeholders::_4, std::placeholders::_5, std::placeholders::_6),
-							port);
+							port));
 					else
-						dest->SetReceiver (std::bind (&SAMSocket::HandleI2PDatagramReceive, shared_from_this (), m_ID,
+						TrackDatagramReceiver (m_ID, dest->SetReceiver (std::bind (&SAMSocket::HandleI2PDatagramReceive, shared_from_this (), m_ID,
 											   std::placeholders::_1, std::placeholders::_2, std::placeholders::_3,
 											   std::placeholders::_4, std::placeholders::_5, std::placeholders::_6),
-							port);
+							port));
 				}
 				else // raw
-					dest->SetRawReceiver (std::bind (&SAMSocket::HandleI2PRawDatagramReceive, shared_from_this (), m_ID,
+					TrackDatagramReceiver (m_ID, dest->SetRawReceiver (std::bind (&SAMSocket::HandleI2PRawDatagramReceive, shared_from_this (), m_ID,
 											  std::placeholders::_1, std::placeholders::_2, std::placeholders::_3,
 											  std::placeholders::_4, std::placeholders::_5),
-						port);
+						port));
 			}
 
 			if (session->GetLocalDestination ()->IsReady ())
@@ -1465,23 +1489,23 @@ namespace client
 					if (type == SAMSessionType::eSAMSessionTypeDatagram)
 					{
 						if (datagramVersion == i2p::datagram::eDatagramV3)
-							dest->SetHashReceiver (
+							TrackDatagramReceiver (id, dest->SetHashReceiver (
 								std::bind (&SAMSocket::HandleI2PDatagram3Receive, shared_from_this (), std::string (id),
 									std::placeholders::_1, std::placeholders::_2, std::placeholders::_3,
 									std::placeholders::_4, std::placeholders::_5, std::placeholders::_6),
-								listenPort);
+								listenPort));
 						else
-							dest->SetReceiver (
+							TrackDatagramReceiver (id, dest->SetReceiver (
 								std::bind (&SAMSocket::HandleI2PDatagramReceive, shared_from_this (), std::string (id),
 									std::placeholders::_1, std::placeholders::_2, std::placeholders::_3,
 									std::placeholders::_4, std::placeholders::_5, std::placeholders::_6),
-								listenPort);
+								listenPort));
 					}
 					else
-						dest->SetRawReceiver (std::bind (&SAMSocket::HandleI2PRawDatagramReceive, shared_from_this (),
+						TrackDatagramReceiver (id, dest->SetRawReceiver (std::bind (&SAMSocket::HandleI2PRawDatagramReceive, shared_from_this (),
 												  std::string (id), std::placeholders::_1, std::placeholders::_2,
 												  std::placeholders::_3, std::placeholders::_4, std::placeholders::_5),
-							listenPort);
+							listenPort));
 				}
 				masterSession->subsessions.insert (std::string (id));
 				SendSubsessionStatusOk (id);
@@ -1512,6 +1536,7 @@ namespace client
 				SendSubsessionError (id, "ID " + id + " not found");
 				return;
 			}
+			ResetDatagramReceivers (id);
 			m_Owner.CloseSession (id);
 			SendSubsessionStatusOk (id);
 		}

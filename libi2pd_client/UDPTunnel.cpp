@@ -506,11 +506,13 @@ namespace client
 		m_LocalDest->Start ();
 
 		auto dgram = m_LocalDest->CreateDatagramDestination (m_Gzip);
-		dgram->SetReceiver (
+		m_DatagramReceiver.Reset ();
+		m_RawReceiver.Reset ();
+		m_DatagramReceiver = dgram->SetReceiver (
 			std::bind (&I2PUDPServerTunnel::HandleRecvFromI2P, this, std::placeholders::_1, std::placeholders::_2,
 				std::placeholders::_3, std::placeholders::_4, std::placeholders::_5, std::placeholders::_6),
 			m_inPort);
-		dgram->SetRawReceiver (
+		m_RawReceiver = dgram->SetRawReceiver (
 			std::bind (&I2PUDPServerTunnel::HandleRecvFromI2PRaw, this, std::placeholders::_1, std::placeholders::_2,
 				std::placeholders::_3, std::placeholders::_4, std::placeholders::_5),
 			m_inPort);
@@ -578,12 +580,8 @@ namespace client
 		m_IsStarted = false;
 		if (m_StatsTimer) m_StatsTimer->cancel ();
 		if (m_CleanupTimer) m_CleanupTimer->cancel ();
-		auto dgram = m_LocalDest->GetDatagramDestination ();
-		if (dgram)
-		{
-			dgram->ResetReceiver (m_inPort);
-			dgram->ResetRawReceiver (m_inPort);
-		}
+		m_DatagramReceiver.Reset ();
+		m_RawReceiver.Reset ();
 		{
 			std::lock_guard<std::mutex> lock (m_SessionsMutex);
 			m_Sessions.clear ();
@@ -655,11 +653,13 @@ namespace client
 
 		auto dgram = m_LocalDest->CreateDatagramDestination (m_Gzip, m_DatagramVersion);
 		m_Destination = dgram;
-		dgram->SetReceiver (
+		m_DatagramReceiver.Reset ();
+		m_RawReceiver.Reset ();
+		m_DatagramReceiver = dgram->SetReceiver (
 			std::bind (&I2PUDPClientTunnel::HandleRecvFromI2P, this, std::placeholders::_1, std::placeholders::_2,
 				std::placeholders::_3, std::placeholders::_4, std::placeholders::_5, std::placeholders::_6));
 
-		dgram->SetRawReceiver (std::bind (&I2PUDPClientTunnel::HandleRecvFromI2PRaw, this, std::placeholders::_1,
+		m_RawReceiver = dgram->SetRawReceiver (std::bind (&I2PUDPClientTunnel::HandleRecvFromI2PRaw, this, std::placeholders::_1,
 			std::placeholders::_2, std::placeholders::_3, std::placeholders::_4, std::placeholders::_5));
 
 		m_LocalDest->Start ();
@@ -679,12 +679,8 @@ namespace client
 		if (m_KeepAliveTimer) m_KeepAliveTimer->cancel ();
 		if (m_StatsTimer) m_StatsTimer->cancel ();
 
-		auto dgram = m_LocalDest->GetDatagramDestination ();
-		if (dgram)
-		{
-			dgram->ResetReceiver ();
-			dgram->ResetRawReceiver ();
-		}
+		m_DatagramReceiver.Reset ();
+		m_RawReceiver.Reset ();
 		m_cancel_resolve.store (true);
 
 		{

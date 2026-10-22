@@ -208,6 +208,8 @@ namespace client
 		uint16_t m_inPort;
 		bool m_Gzip;
 		bool m_IsStarted = false; // a tunnel that never started shares nothing to tear down
+		i2p::datagram::DatagramDestination::ReceiverRegistration m_DatagramReceiver;
+		i2p::datagram::DatagramDestination::ReceiverRegistration m_RawReceiver;
 		uint32_t m_NumRawNoSession = 0;
 		size_t m_MaxWindow = I2P_UDP_MIN_MAX_NUM_UNACKED_DATAGRAMS;
 		std::unique_ptr<boost::asio::steady_timer> m_StatsTimer;
@@ -281,6 +283,8 @@ namespace client
 		bool m_Gzip;
 		bool m_IsStarted = false; // see the comment in I2PUDPServerTunnel
 		i2p::datagram::DatagramVersion m_DatagramVersion;
+		i2p::datagram::DatagramDestination::ReceiverRegistration m_DatagramReceiver;
+		i2p::datagram::DatagramDestination::ReceiverRegistration m_RawReceiver;
 		std::shared_ptr<UDPConvo> m_LastSession;
 		uint32_t m_KeepAliveInterval = 0;
 		std::unique_ptr<boost::asio::steady_timer> m_KeepAliveTimer;

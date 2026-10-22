@@ -244,6 +244,7 @@ namespace client
 		AddressBookStorage::Addresses m_Addresses;
 		std::vector<std::string> m_DeletedHosts;
 		std::map<i2p::data::IdentHash, std::shared_ptr<AddressResolver>> m_Resolvers; // local destination->resolver
+		i2p::datagram::DatagramDestination::ReceiverRegistration m_LookupReceiver;
 		detail::AddressLookupRequests m_Lookups;
 		std::unique_ptr<AddressBookStorage> m_Storage;
 		volatile bool m_IsLoaded;
@@ -284,6 +285,7 @@ namespace client
 
 	private:
 		std::shared_ptr<ClientDestination> m_LocalDestination;
+		i2p::datagram::DatagramDestination::ReceiverRegistration m_RequestReceiver;
 		std::map<std::string, i2p::data::IdentHash> m_LocalAddresses;
 	};
 }

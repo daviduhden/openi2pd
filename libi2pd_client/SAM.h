@@ -421,6 +421,10 @@ namespace client
 		void ProcessNamingLookup (std::string_view buf);
 		void ProcessSessionAdd (std::string_view buf);
 		void ProcessSessionRemove (std::string_view buf);
+		void TrackDatagramReceiver (std::string_view sessionID,
+			i2p::datagram::DatagramDestination::ReceiverRegistration registration);
+		void ResetDatagramReceivers (std::string_view sessionID);
+		void ResetAllDatagramReceivers ();
 		void ProcessPing (std::string_view text);
 		void SendReplyWithMessage (const char * reply, const std::string & msg, bool close);
 		void SendSubsessionStatusOk (std::string_view id);
@@ -495,6 +499,8 @@ namespace client
 		bool m_IsContinueRequested = false;
 		bool m_IsReplyQueued = false; // a control reply is being written
 		bool m_IsCommandPending = false; // a command with a deferred reply is in flight
+		std::map<std::string, std::vector<i2p::datagram::DatagramDestination::ReceiverRegistration>, std::less<>>
+			m_DatagramReceivers;
 		std::shared_ptr<i2p::stream::Stream> m_Stream;
 		int m_Version;
 		int m_ConnectAttempts;

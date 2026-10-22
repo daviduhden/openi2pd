@@ -36,6 +36,7 @@
 #include <boost/asio.hpp>
 #include <boost/beast.hpp>
 #include "HTTP.h"
+#include "Datagram.h"
 #include "I2PService.h"
 #include "util.h"
 #include "BoostStream.h"
@@ -268,6 +269,7 @@ namespace torrents
 		bool m_UseIsolatedStorage = false;
 		std::shared_ptr<TorrentStorageWorker> m_StorageWorker;
 		std::shared_ptr<TorrentStorageWorker> m_DHTStorageWorker;
+		i2p::datagram::DatagramDestination::ReceiverRegistration m_RawDatagramReceiver;
 		std::unordered_map<uint32_t, std::tuple<size_t, uint16_t, std::weak_ptr<Torrent>, uint64_t>>
 			m_DatragramTrackerTransactions;
 		// transactionID->(trackerID, from_port, torrent, timestamp monotonic milliseconds)

@@ -36,6 +36,7 @@
 #include <span>
 #include <boost/asio.hpp>
 #include "Base.h"
+#include "Datagram.h"
 #include "Identity.h"
 #include "I2PService.h"
 #include "util.h"
@@ -429,6 +430,7 @@ namespace torrents
 			m_Queries;
 		std::map<Torrent::InfoHash, std::shared_ptr<DHTTorrent>> m_Torrents;
 		DHTQueryLimiter m_QueryLimiter;
+		i2p::datagram::DatagramDestination::ReceiverRegistration m_DatagramReceiver;
 		uint64_t m_NextDHTExploratoryTime; // monotonic seconds
 	};
 }
