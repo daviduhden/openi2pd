@@ -11,6 +11,7 @@ import android.content.Intent;
 import android.content.ServiceConnection;
 import android.net.Uri;
 import android.os.IBinder;
+import android.provider.DocumentsContract;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
@@ -21,9 +22,12 @@ final class TorrentSafStorage {
     private static volatile Context context;
     private static ITorrentSafStorage remote;
     private static long generation, nextId = 1, nextOperation = 1;
-    private static IBinder retiringBinder;
+    private static volatile long activeOperation;
+    private static volatile IBinder retiringBinder;
+    private static final int MAX_BIND_ATTEMPTS = 6;
     private static int retries;
     private static boolean bound, retryScheduled;
+    private static volatile boolean bindUnavailable;
     private static final java.util.Map<String, Long> authorized = new java.util.HashMap<>();
     private static final java.util.Map<Long, Root> roots = new java.util.HashMap<>();
     private static final java.util.Map<Long, File> files = new java.util.HashMap<>();
@@ -104,7 +108,13 @@ final class TorrentSafStorage {
         }
     }
     private static void scheduleBind() {
-        if (context == null || retryScheduled || retiringBinder != null) return;
+        if (context == null || retryScheduled || retiringBinder != null || bindUnavailable) return;
+        if (retries >= MAX_BIND_ATTEMPTS) {
+            // A permanently failing policy/service must not spawn and kill the
+            // broker process every few seconds forever.
+            bindUnavailable = true;
+            return;
+        }
         retryScheduled = true;
         long delay = Math.min(10000L, 250L << Math.min(retries++, 5));
         main.postDelayed(() -> {
@@ -120,27 +130,97 @@ final class TorrentSafStorage {
     }
     static void initialize(Context app) {
         synchronized (lock) {
-            if (context == null) { context = app.getApplicationContext(); scheduleBind(); }
+            if (context == null) {
+                context = app.getApplicationContext();
+                bindUnavailable = false;
+                retries = 0;
+                scheduleBind();
+            }
         }
-        if (I2PD_JNI.tryLoadLibraries()) I2PD_JNI.installSafStorageBridge(TorrentSafStorage.class);
+        // Library load and bridge installation run on the daemon start worker,
+        // not on the service main thread. Binding alone only starts the broker.
     }
     static boolean select(Context app, String tunnel, String hash, Uri tree) {
-        if (tunnel == null || tunnel.isEmpty() || tunnel.length() > 1024 || hash == null || !hash.matches("[0-9a-fA-F]{40}")) return false;
+        if (tunnel == null || tunnel.isEmpty() || tunnel.length() > 1024 || hash == null
+                || !hash.matches("[0-9a-fA-F]{40}") || tree == null
+                || !"content".equals(tree.getScheme()) || !DocumentsContract.isTreeUri(tree)) return false;
         try {
-            app.getContentResolver().takePersistableUriPermission(tree,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+            int flags = Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION;
+            app.getContentResolver().takePersistableUriPermission(tree, flags);
+            boolean read = false, write = false;
+            for (android.content.UriPermission grant : app.getContentResolver().getPersistedUriPermissions()) {
+                if (!grant.getUri().equals(tree)) continue;
+                read |= grant.isReadPermission();
+                write |= grant.isWritePermission();
+            }
+            if (!read || !write) {
+                releaseUnmapped(app, tree, flags);
+                return false;
+            }
             String key = tunnel + ":" + hash.toLowerCase(java.util.Locale.ROOT);
-            boolean saved = app.getSharedPreferences("torrent-saf-grants", Context.MODE_PRIVATE).edit()
-                    .putString(key, tree.toString()).commit();
-            if (saved) synchronized (lock) { authorized.remove(key); } // existing roots retain their frozen URI
-            return saved;
+            var prefs = app.getSharedPreferences("torrent-saf-grants", Context.MODE_PRIVATE);
+            String previous = prefs.getString(key, null);
+            boolean saved = prefs.edit().putString(key, tree.toString()).commit();
+            if (!saved) {
+                releaseUnmapped(app, tree, flags);
+                return false;
+            }
+            if (previous != null && !previous.equals(tree.toString())
+                    && !TorrentSafGrants.referenced(prefs.getAll(), previous, key)) {
+                try { app.getContentResolver().releasePersistableUriPermission(Uri.parse(previous), flags); }
+                catch (SecurityException ignored) {}
+            }
+            synchronized (lock) {
+                authorized.remove(key);
+                bindUnavailable = false;
+                retries = 0;
+                if (remote == null && retiringBinder == null) scheduleBind();
+            }
+            return true;
         } catch (Exception failure) { return false; }
+    }
+
+    private static void releaseUnmapped(Context app, Uri tree, int flags) {
+        String uri = tree.toString();
+        for (Object value : app.getSharedPreferences("torrent-saf-grants", Context.MODE_PRIVATE)
+                .getAll().values())
+            if (uri.equals(value)) return;
+        try { app.getContentResolver().releasePersistableUriPermission(tree, flags); }
+        catch (RuntimeException ignored) {}
+    }
+
+    static boolean detach(Context app, String tunnel, String hash) {
+        if (app == null || tunnel == null || hash == null || !hash.matches("[0-9a-fA-F]{40}")) return false;
+        String key = tunnel + ":" + hash.toLowerCase(java.util.Locale.ROOT);
+        var prefs = app.getSharedPreferences("torrent-saf-grants", Context.MODE_PRIVATE);
+        String previous = prefs.getString(key, null);
+        boolean saved = prefs.edit().remove(key).commit();
+        // A failed commit means the key still points at this tree; never
+        // revoke the permission underneath it.
+        if (!saved) return false;
+        if (previous != null && !TorrentSafGrants.referenced(prefs.getAll(), previous, key)) {
+            try {
+                app.getContentResolver().releasePersistableUriPermission(Uri.parse(previous),
+                        Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+            } catch (Exception ignored) {}
+        }
+        synchronized (lock) { authorized.remove(key); }
+        return saved;
     }
     // Called only from native disk workers, never the main thread. A selected but
     // revoked/unavailable mapping remains selected and fails closed.
+    static boolean hasAnyGrant() {
+        return context != null && !context.getSharedPreferences("torrent-saf-grants", Context.MODE_PRIVATE)
+                .getAll().isEmpty();
+    }
     public static boolean configured(String tunnel, String hash) {
-        return context == null || context.getSharedPreferences("torrent-saf-grants", Context.MODE_PRIVATE)
-                .contains(tunnel + ":" + hash.toLowerCase(java.util.Locale.ROOT));
+        // A missing context must fail closed for the native backend: claiming
+        // "not configured" would let a selected torrent fall back to an
+        // ordinary filesystem path. SafPayload.root() then returns zero.
+        if (context == null) return true;
+        return tunnel != null && hash != null
+                && context.getSharedPreferences("torrent-saf-grants", Context.MODE_PRIVATE)
+                    .contains(tunnel + ":" + hash.toLowerCase(java.util.Locale.ROOT));
     }
     public static long root(String tunnel, String hash) {
         synchronized (lock) {
@@ -212,24 +292,39 @@ final class TorrentSafStorage {
         if (target == null || !"content".equals(target.getScheme()) || metadata == null
                 || metadata.length == 0 || metadata.length > 8 * 1024 * 1024) return false;
         byte[] owned = metadata.clone();
-        return call(session -> {
-            if (canceled.get()) return false;
-            long handle = session.remote.openExport(target.toString(), owned.length, session.operation);
-            if (handle == 0) return false;
-            try {
-                for (int offset = 0; offset < owned.length; offset += 16384) {
-                    if (canceled.get()) return false;
-                    byte[] chunk = java.util.Arrays.copyOfRange(owned, offset, Math.min(owned.length, offset + 16384));
-                    if (!session.remote.write(handle, offset, chunk, session.operation)) return false;
-                }
-                return true;
-            } finally { session.remote.closeFile(handle); }
-        }, false);
+        // Each chunk is its own bounded Binder operation. A multi-megabyte
+        // export must not consume one five-second broker deadline and then
+        // destroy every unrelated torrent handle.
+        long handle = call(session -> session.remote.openExport(target.toString(), owned.length,
+                session.operation), 0L);
+        if (handle == 0) return false;
+        boolean committed = false;
+        try {
+            for (int offset = 0; offset < owned.length; offset += 16384) {
+                if (canceled.get()) return false;
+                final int at = offset;
+                byte[] chunk = java.util.Arrays.copyOfRange(owned, at, Math.min(owned.length, at + 16384));
+                if (!call(session -> session.remote.write(handle, at, chunk, session.operation), false))
+                    return false;
+            }
+            committed = call(session -> session.remote.finishExport(handle, true, session.operation), false);
+            return committed;
+        } finally {
+            if (!committed) {
+                try { call(session -> session.remote.finishExport(handle, false, session.operation), false); }
+                catch (RuntimeException ignored) {}
+            }
+        }
     }
     static void cancelPending() {
         Session session;
-        synchronized (lock) { session = remote == null ? null : new Session(remote, generation, 0); }
-        if (session != null) retire(session);
+        long operation;
+        synchronized (lock) { session = remote == null ? null : new Session(remote, generation, activeOperation); operation = activeOperation; }
+        if (session == null) return;
+        try { session.remote.cancel(operation); }
+        catch (android.os.RemoteException | RuntimeException failure) {
+            if (!session.remote.asBinder().isBinderAlive()) brokerDied(session.generation, session.remote.asBinder());
+        }
     }
     public static boolean remove(long root, String path, long length) {
         if (!TorrentSafStorageService.validPath(path) || length < 0) return false;
@@ -254,6 +349,7 @@ final class TorrentSafStorage {
             for (android.content.UriPermission grant : context.getContentResolver().getPersistedUriPermissions())
                 if (grant.getUri().toString().equals(uri) && grant.isReadPermission() && grant.isWritePermission()) permitted = true;
             if (!permitted) return "Document permission revoked. Select the directory again.";
+            if (bindUnavailable) return "Storage broker unavailable; reselect the directory or restart the app.";
             if (retiringBinder != null) return "Storage provider cancellation pending; waiting for broker termination";
             if (remote == null) return "Storage broker reconnecting. Failed pieces will be verified before reuse.";
             return "SAF storage connected; random-access provider required";
@@ -262,10 +358,8 @@ final class TorrentSafStorage {
     private static void invalidateFile(Session session, long handle) throws Exception {
         long remoteId = 0;
         synchronized (lock) {
-            File file = files.get(handle);
-            if (file != null && file.generation == session.generation) {
-                remoteId = file.remoteId; file.remoteId = 0;
-            }
+            File file = files.remove(handle);
+            if (file != null && file.generation == session.generation) remoteId = file.remoteId;
         }
         if (remoteId != 0) session.remote.closeFile(remoteId);
     }
@@ -279,7 +373,7 @@ final class TorrentSafStorage {
             session = sessionLocked();
         }
         if (session != null) execute(session, current -> { current.remote.closeFile(file.remoteId); return true; },
-                false, android.os.SystemClock.elapsedRealtime() + 5000);
+                false, android.os.SystemClock.elapsedRealtime() + 5000, false);
     }
     public static void release(long root) {
         Root entry; Session session;
@@ -290,11 +384,13 @@ final class TorrentSafStorage {
             session = sessionLocked();
         }
         if (session != null) execute(session, current -> { current.remote.revokeTree(entry.remoteId); return true; },
-                false, android.os.SystemClock.elapsedRealtime() + 5000);
+                false, android.os.SystemClock.elapsedRealtime() + 5000, false);
     }
     // Caller holds lock. Tokens are never reused, including across generations.
     private static Session sessionLocked() {
-        return nextOperation == Long.MAX_VALUE ? null : new Session(remote, generation, nextOperation++);
+        if (nextOperation == Long.MAX_VALUE) return null;
+        activeOperation = nextOperation;
+        return new Session(remote, generation, nextOperation++);
     }
     private static <T> T call(Operation<T> action, T fallback) {
         Session session;
@@ -307,9 +403,9 @@ final class TorrentSafStorage {
             }
             session = sessionLocked();
         }
-        return session == null ? fallback : execute(session, action, fallback, deadline);
+        return session == null ? fallback : execute(session, action, fallback, deadline, true);
     }
-    private static <T> T execute(Session session, Operation<T> action, T fallback, long deadline) {
+    private static <T> T execute(Session session, Operation<T> action, T fallback, long deadline, boolean retireOnFailure) {
         java.util.concurrent.Future<T> future = null;
         try {
             long remaining = deadline - android.os.SystemClock.elapsedRealtime();
@@ -331,7 +427,7 @@ final class TorrentSafStorage {
         catch (Exception failure) {
             if (future != null) future.cancel(true);
             if (failure instanceof InterruptedException) Thread.currentThread().interrupt();
-            retire(session);
+            if (retireOnFailure) retire(session);
             return fallback;
         }
     }

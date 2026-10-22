@@ -17,6 +17,9 @@
 #include <cstdint>
 #include <exception>
 #include <cstring>
+#include <filesystem>
+#include <span>
+#include <set>
 #include <stdexcept>
 #include <limits>
 #include <string>
@@ -28,6 +31,7 @@
 #include "Config.h"
 #include "RouterContext.h"
 #include "ClientContext.h"
+#include "AddressBook.h"
 #include "Transports.h"
 #include <sstream>
 #include "Tunnel.h"
@@ -41,29 +45,67 @@
 
 namespace
 {
-/** RAII wrapper for GetStringUTFChars/ReleaseStringUTFChars. */
+/** Decode Java UTF-16 into ordinary UTF-8, rejecting NUL and unpaired surrogates. */
+bool Utf8FromJavaString (JNIEnv * env, jstring text, std::string & output)
+{
+	if (!text) return false;
+	const jsize length = env->GetStringLength (text);
+	const jchar * chars = env->GetStringChars (text, nullptr);
+	if (!chars) return false;
+	output.clear ();
+	bool valid = true;
+	for (jsize i = 0; i < length; ++i)
+	{
+		uint32_t code = chars[i];
+		if (code == 0) { valid = false; break; }
+		if (code >= 0xd800 && code <= 0xdbff)
+		{
+			if (i + 1 >= length) { valid = false; break; }
+			const uint32_t low = chars[++i];
+			if (low < 0xdc00 || low > 0xdfff) { valid = false; break; }
+			code = 0x10000 + ((code - 0xd800) << 10) + (low - 0xdc00);
+		}
+		else if (code >= 0xdc00 && code <= 0xdfff) { valid = false; break; }
+		if (code < 0x80) output.push_back (static_cast<char> (code));
+		else if (code < 0x800)
+		{
+			output.push_back (static_cast<char> (0xc0 | (code >> 6)));
+			output.push_back (static_cast<char> (0x80 | (code & 0x3f)));
+		}
+		else if (code < 0x10000)
+		{
+			output.push_back (static_cast<char> (0xe0 | (code >> 12)));
+			output.push_back (static_cast<char> (0x80 | ((code >> 6) & 0x3f)));
+			output.push_back (static_cast<char> (0x80 | (code & 0x3f)));
+		}
+		else
+		{
+			output.push_back (static_cast<char> (0xf0 | (code >> 18)));
+			output.push_back (static_cast<char> (0x80 | ((code >> 12) & 0x3f)));
+			output.push_back (static_cast<char> (0x80 | ((code >> 6) & 0x3f)));
+			output.push_back (static_cast<char> (0x80 | (code & 0x3f)));
+		}
+	}
+	env->ReleaseStringChars (text, chars);
+	if (!valid) output.clear ();
+	return valid;
+}
+
+/** RAII wrapper for a bounded, NUL-safe UTF-8 copy of a Java string. */
 class ScopedUtfChars
 {
 public:
 	ScopedUtfChars (JNIEnv * env, jstring text)
-		: m_Env (env)
-		, m_Text (text)
+		: m_Valid (Utf8FromJavaString (env, text, m_Value))
 	{
-		if (m_Text) m_Chars = m_Env->GetStringUTFChars (m_Text, nullptr);
 	}
-	~ScopedUtfChars ()
-	{
-		if (m_Chars) m_Env->ReleaseStringUTFChars (m_Text, m_Chars);
-	}
-	ScopedUtfChars (const ScopedUtfChars &) = delete;
-	ScopedUtfChars & operator= (const ScopedUtfChars &) = delete;
-	const char * c_str () const { return m_Chars; }
-	explicit operator bool () const { return m_Chars != nullptr; }
+	const char * c_str () const { return m_Valid ? m_Value.c_str () : nullptr; }
+	std::string_view view () const { return m_Valid ? std::string_view (m_Value) : std::string_view (); }
+	explicit operator bool () const { return m_Valid; }
 
 private:
-	JNIEnv * m_Env;
-	jstring m_Text;
-	const char * m_Chars = nullptr;
+	bool m_Valid = false;
+	std::string m_Value;
 };
 
 /**
@@ -211,7 +253,13 @@ template <typename T, typename Callback> T JniScalarCall (JNIEnv * env, Callback
 {
 	try
 	{
-		return callback ();
+		const T result = callback ();
+		if (env->ExceptionCheck ())
+		{
+			ClearJniException (env);
+			return fallback;
+		}
+		return result;
 	}
 	catch (...)
 	{
@@ -326,10 +374,37 @@ constexpr const char * STOPPING_SNAPSHOT = "status=Stopping\n"
 										   "ipv4=\n"
 										   "ipv6=";
 
+constexpr const char * STARTING_SNAPSHOT = "status=Starting\n"
+										   "statusCode=-1\n"
+										   "error=None\n"
+										   "errorCode=0\n"
+										   "uptime=0\n"
+										   "online=0\n"
+										   "ntcp2=0\n"
+										   "ssu2=0\n"
+										   "peers=0\n"
+										   "routers=0\n"
+										   "inbound=0\n"
+										   "outbound=0\n"
+										   "transit=0\n"
+										   "reseeding=0\n"
+										   "inRate=0\n"
+										   "outRate=0\n"
+										   "inRate15=0\n"
+										   "outRate15=0\n"
+										   "totalIn=0\n"
+										   "totalOut=0\n"
+										   "totalTransit=0\n"
+										   "ipv4=\n"
+										   "ipv6=";
+
 constexpr const char * STOPPED_SUMMARY = "Status: Stopped | Uptime: 0 s | Peers: 0 | Routers: 0 | "
 										 "Tunnels in/out/transit: 0/0/0 | Reseeding: no";
 
 constexpr const char * STOPPING_SUMMARY = "Status: Stopping | Uptime: 0 s | Peers: 0 | Routers: 0 | "
+										  "Tunnels in/out/transit: 0/0/0 | Reseeding: no";
+
+constexpr const char * STARTING_SUMMARY = "Status: Starting | Uptime: 0 s | Peers: 0 | Routers: 0 | "
 										  "Tunnels in/out/transit: 0/0/0 | Reseeding: no";
 
 const char * StatusName (i2p::RouterStatus status)
@@ -777,8 +852,11 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getStatusSummary (J
 			// Do not wait behind a stop that already published Stopping: the
 			// status must be observable even though the native-call lock is
 			// held by the teardown.
-			if (i2p::android::GetDaemonLifecycle () == i2p::android::DaemonLifecycle::Stopping)
+			const auto lifecycle = i2p::android::GetDaemonLifecycle ();
+			if (lifecycle == i2p::android::DaemonLifecycle::Stopping)
 				return NewStringChecked (env, STOPPING_SUMMARY);
+			if (lifecycle == i2p::android::DaemonLifecycle::Starting)
+				return NewStringChecked (env, STARTING_SUMMARY);
 
 			i2p::android::NativeCallGuard call;
 			if (!call.IsRunning ()) return NewStringChecked (env, STOPPED_SUMMARY);
@@ -812,8 +890,11 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getStatusSnapshot (
 		env,
 		[&] () -> jstring
 		{
-			if (i2p::android::GetDaemonLifecycle () == i2p::android::DaemonLifecycle::Stopping)
+			const auto lifecycle = i2p::android::GetDaemonLifecycle ();
+			if (lifecycle == i2p::android::DaemonLifecycle::Stopping)
 				return NewStringChecked (env, STOPPING_SNAPSHOT);
+			if (lifecycle == i2p::android::DaemonLifecycle::Starting)
+				return NewStringChecked (env, STARTING_SNAPSHOT);
 
 			i2p::android::NativeCallGuard call;
 			if (!call.IsRunning ()) return NewStringChecked (env, STOPPED_SNAPSHOT);
@@ -849,6 +930,130 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getRecentLogs (
 		"");
 }
 
+JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getAddressBook (JNIEnv * env, jclass)
+{
+	return JniStringCall (
+		env,
+		[&] ()
+		{
+			i2p::android::NativeCallGuard call;
+			if (!call.IsRunning ()) return NewStringChecked (env, "");
+			std::string result;
+			const auto entries = i2p::client::context.GetAddressBook ().GetEntries (200);
+			for (const auto & entry : entries)
+			{
+				if (result.size () + entry.name.size () + entry.destination.size () + 4 > 64 * 1024) break;
+				result.append (entry.name);
+				result.push_back ('|');
+				result.append (entry.destination);
+				result.push_back ('|');
+				result.push_back (entry.blinded ? '1' : '0');
+				result.push_back ('\n');
+			}
+			return NewStringChecked (env, result);
+		},
+		"");
+}
+
+JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_addAddress (
+	JNIEnv * env, jclass, jstring name, jstring destination)
+{
+	return JniScalarCall<jboolean> (
+		env,
+		[&] ()
+		{
+			ScopedUtfChars nameUtf8 (env, name);
+			ScopedUtfChars destinationUtf8 (env, destination);
+			if (!nameUtf8 || !destinationUtf8) return JNI_FALSE;
+			i2p::android::NativeCallGuard call;
+			if (!call.IsRunning ()) return JNI_FALSE;
+			return i2p::client::context.GetAddressBook ()
+						.AddAddress (nameUtf8.c_str (), destinationUtf8.c_str (), true)
+					== i2p::client::AddressBookMutationResult::Ok
+				? JNI_TRUE
+				: JNI_FALSE;
+		},
+		JNI_FALSE);
+}
+
+JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_removeAddress (
+	JNIEnv * env, jclass, jstring name)
+{
+	return JniScalarCall<jboolean> (
+		env,
+		[&] ()
+		{
+			ScopedUtfChars nameUtf8 (env, name);
+			if (!nameUtf8) return JNI_FALSE;
+			i2p::android::NativeCallGuard call;
+			if (!call.IsRunning ()) return JNI_FALSE;
+			return i2p::client::context.GetAddressBook ().RemoveAddress (nameUtf8.c_str ())
+					== i2p::client::AddressBookMutationResult::Ok
+				? JNI_TRUE
+				: JNI_FALSE;
+		},
+		JNI_FALSE);
+}
+
+JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_blockAddress (
+	JNIEnv * env, jclass, jstring name)
+{
+	return JniScalarCall<jboolean> (
+		env,
+		[&] ()
+		{
+			ScopedUtfChars nameUtf8 (env, name);
+			if (!nameUtf8) return JNI_FALSE;
+			i2p::android::NativeCallGuard call;
+			if (!call.IsRunning ()) return JNI_FALSE;
+			return i2p::client::context.GetAddressBook ().BlockAddress (nameUtf8.c_str ())
+					== i2p::client::AddressBookMutationResult::Ok
+				? JNI_TRUE
+				: JNI_FALSE;
+		},
+		JNI_FALSE);
+}
+
+JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_unblockAddress (
+	JNIEnv * env, jclass, jstring name)
+{
+	return JniScalarCall<jboolean> (
+		env,
+		[&] ()
+		{
+			ScopedUtfChars nameUtf8 (env, name);
+			if (!nameUtf8) return JNI_FALSE;
+			i2p::android::NativeCallGuard call;
+			if (!call.IsRunning ()) return JNI_FALSE;
+			return i2p::client::context.GetAddressBook ().UnblockAddress (nameUtf8.c_str ())
+					== i2p::client::AddressBookMutationResult::Ok
+				? JNI_TRUE
+				: JNI_FALSE;
+		},
+		JNI_FALSE);
+}
+
+JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getBlockedAddresses (JNIEnv * env, jclass)
+{
+	return JniStringCall (
+		env,
+		[&] ()
+		{
+			i2p::android::NativeCallGuard call;
+			if (!call.IsRunning ()) return NewStringChecked (env, "");
+			std::string result;
+			const auto patterns = i2p::client::context.GetAddressBook ().GetDeletedHosts (200);
+			for (const auto & pattern : patterns)
+			{
+				if (result.size () + pattern.size () + 1 > 64 * 1024) break;
+				result.append (pattern);
+				result.push_back ('\n');
+			}
+			return NewStringChecked (env, result);
+		},
+		"");
+}
+
 JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_torrentCommand (JNIEnv * env, jclass, jbyteArray request)
 {
 	return JniStringCall (
@@ -876,6 +1081,7 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_torrentCommand (JNI
 			case i2p::tui::RequestType::TorrentSession:
 			case i2p::tui::RequestType::TorrentPause:
 			case i2p::tui::RequestType::TorrentResume:
+			case i2p::tui::RequestType::TorrentRecheck:
 			case i2p::tui::RequestType::TorrentRemove:
 			case i2p::tui::RequestType::TorrentAddMagnet:
 			case i2p::tui::RequestType::TorrentAddTracker:
@@ -886,7 +1092,10 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_torrentCommand (JNI
 			case i2p::tui::RequestType::TorrentCommentsEnable:
 			case i2p::tui::RequestType::TorrentCommentAdd:
 			case i2p::tui::RequestType::TorrentCommentHide:
-			case i2p::tui::RequestType::TorrentFilePriority: break;
+			case i2p::tui::RequestType::TorrentCommentUnhide:
+			case i2p::tui::RequestType::TorrentFilePriority:
+			case i2p::tui::RequestType::TorrentSetComment:
+			case i2p::tui::RequestType::TorrentSetCreatedBy: break;
 			default: return NewStringChecked (env, "I2PDTUI/1 ERR 4 15\ninvalid request");
 			}
 			i2p::android::NativeCallGuard call;
@@ -1048,8 +1257,16 @@ extern "C" JNIEXPORT jbyteArray JNICALL Java_org_openi2pd_router_I2PD_1JNI_build
         auto metadata = torrent->CreateTorrentFileContent ();
         if (metadata.size () > 8 * 1024 * 1024) return nullptr;
         auto result = env->NewByteArray (static_cast<jsize> (metadata.size ()));
-        if (result) env->SetByteArrayRegion (result, 0, static_cast<jsize> (metadata.size ()),
-            reinterpret_cast<const jbyte *> (metadata.data ()));
+        if (result)
+        {
+            env->SetByteArrayRegion (result, 0, static_cast<jsize> (metadata.size ()),
+                reinterpret_cast<const jbyte *> (metadata.data ()));
+            if (env->ExceptionCheck ())
+            {
+                env->DeleteLocalRef (result);
+                return nullptr;
+            }
+        }
         return result;
     }
     catch (...) { return nullptr; }
@@ -1062,15 +1279,25 @@ extern "C" JNIEXPORT jbyteArray JNICALL Java_org_openi2pd_router_I2PD_1JNI_build
 #include "TorrentsTunnel.h"
 #include "TorrentPayloadStorage.h"
 #include <mutex>
+#include <set>
 namespace {
 struct SafEnv {
-    JavaVM * vm; JNIEnv * env = nullptr; bool attached = false;
+    JavaVM * vm; JNIEnv * env = nullptr; bool attached = false, frame = false;
     explicit SafEnv (JavaVM * value): vm(value) {
         if (!vm) return;
         if (vm->GetEnv(reinterpret_cast<void **>(&env), JNI_VERSION_1_6) == JNI_EDETACHED)
             attached = vm->AttachCurrentThread(&env, nullptr) == JNI_OK;
+        // Each bridge call is one local-reference scope. PopLocalFrame also
+        // releases a reference that a throwing provider made hard to inspect.
+        if (env) frame = env->PushLocalFrame(32) == 0;
     }
-    ~SafEnv () { if (attached) vm->DetachCurrentThread(); }
+    ~SafEnv () {
+        if (env && frame) {
+            if (env->ExceptionCheck()) env->ExceptionClear();
+            env->PopLocalFrame(nullptr);
+        }
+        if (attached) vm->DetachCurrentThread();
+    }
     bool Good () { if (!env) return false; if (env->ExceptionCheck()) { env->ExceptionClear(); return false; } return true; }
 };
 struct SafBridge {
@@ -1088,34 +1315,72 @@ public:
 };
 class SafPayload final: public i2p::torrents::TorrentPayloadStorage {
     std::shared_ptr<SafBridge> bridge; std::string tunnel, hash; jlong rootId = 0; std::mutex lock;
+    std::set<uint64_t> handles;
+    void DropHandleLocked(SafEnv& e, uint64_t handle) {
+        if (e.env && handle && handle <= static_cast<uint64_t>(INT64_MAX))
+            e.env->CallStaticVoidMethod(bridge->type, bridge->close, static_cast<jlong>(handle));
+        handles.erase(handle);
+        e.Good();
+    }
+    void CloseHandlesLocked(SafEnv& e) {
+        while (!handles.empty ()) DropHandleLocked (e, *handles.begin ());
+    }
+    bool ResolveRootLocked(SafEnv& e, std::string& error) {
+        if (!e.env) { error = "SAF VM unavailable"; return false; }
+        auto t = NewStringChecked(e.env, tunnel), h = NewStringChecked(e.env, hash);
+        jlong resolved = 0;
+        if (t && h) resolved = e.env->CallStaticLongMethod(bridge->type, bridge->root, t, h);
+        const bool ok = e.Good();
+        if (t) e.env->DeleteLocalRef(t);
+        if (h) e.env->DeleteLocalRef(h);
+        if (!ok || resolved <= 0) { error = "SAF root unavailable or permission revoked"; return false; }
+        if (resolved != rootId) {
+            // A new selection/generation must not reuse documents from the
+            // released tree. Close every cached capability before switching.
+            CloseHandlesLocked(e);
+            if (rootId) e.env->CallStaticVoidMethod(bridge->type, bridge->release, rootId);
+            e.Good();
+            rootId = resolved;
+        }
+        return true;
+    }
 public:
     SafPayload(std::shared_ptr<SafBridge> b, std::string t, std::string h): bridge(std::move(b)), tunnel(std::move(t)), hash(std::move(h)) {}
-    ~SafPayload() override { SafEnv e(bridge->vm); if(e.env && rootId) { e.env->CallStaticVoidMethod(bridge->type,bridge->release,rootId); e.Good(); } }
+    ~SafPayload() override {
+        std::lock_guard guard(lock); SafEnv e(bridge->vm);
+        if(!e.env) return;
+        CloseHandlesLocked(e);
+        if(rootId) { e.env->CallStaticVoidMethod(bridge->type,bridge->release,rootId); e.Good(); }
+    }
     bool UsesFinalNames() const override { return true; }
     uint64_t Open(const std::filesystem::path& path,uint64_t length,bool create,std::string& error) override {
         std::lock_guard guard(lock); SafEnv e(bridge->vm);
         if (!e.env || length > INT64_MAX) { error="SAF VM unavailable or length overflow"; return 0; }
-        if (!rootId) {
-            // Freeze tree authority for this torrent backend. Administrative
-            // selection changes take effect only for a new engine binding.
-            auto t=NewStringChecked(e.env,tunnel), h=NewStringChecked(e.env,hash);
-            if(t&&h) rootId=e.env->CallStaticLongMethod(bridge->type,bridge->root,t,h);
-            if(t)e.env->DeleteLocalRef(t); if(h)e.env->DeleteLocalRef(h);
-        }
+        if (!ResolveRootLocked(e, error)) return 0;
         auto p=NewStringChecked(e.env,path.generic_string()); jlong id=0;
         if(e.Good() && rootId && p) id=e.env->CallStaticLongMethod(bridge->type,bridge->open,rootId,p,static_cast<jlong>(length),create?JNI_TRUE:JNI_FALSE);
         if(p)e.env->DeleteLocalRef(p);
         if(!e.Good()||id<=0) { error="SAF document unavailable, permission revoked or seek unsupported"; return 0; }
+        handles.insert(static_cast<uint64_t>(id));
         return static_cast<uint64_t>(id);
     }
     bool Read(uint64_t handle,uint64_t offset,std::span<uint8_t> bytes,std::string& error) override {
         std::lock_guard guard(lock); SafEnv e(bridge->vm);
         if(!e.env || !Valid(handle,offset,bytes.size())) {error="Invalid SAF read";return false;}
         auto result=static_cast<jbyteArray>(e.env->CallStaticObjectMethod(bridge->type,bridge->read,static_cast<jlong>(handle),static_cast<jlong>(offset),static_cast<jint>(bytes.size())));
-        bool ok=e.Good()&&result&&e.env->GetArrayLength(result)==static_cast<jsize>(bytes.size());
+        if (!e.Good ())
+        {
+            // The return value is undefined when the callee threw; do not call
+            // GetArrayLength/DeleteLocalRef with a pending exception.
+            error="SAF read failed or document changed";
+            DropHandleLocked(e, handle);
+            return false;
+        }
+        bool ok=result&&e.env->GetArrayLength(result)==static_cast<jsize>(bytes.size());
         if(ok)e.env->GetByteArrayRegion(result,0,static_cast<jsize>(bytes.size()),reinterpret_cast<jbyte*>(bytes.data()));
         if(result)e.env->DeleteLocalRef(result); ok=e.Good()&&ok;
-        if(!ok)error="SAF read failed or document changed"; return ok;
+        if(!ok) { error="SAF read failed or document changed"; DropHandleLocked(e, handle); }
+        return ok;
     }
     bool Write(uint64_t handle,uint64_t offset,std::span<const uint8_t> bytes,std::string& error) override {
         std::lock_guard guard(lock); SafEnv e(bridge->vm);
@@ -1124,17 +1389,14 @@ public:
         if(data) {e.env->SetByteArrayRegion(data,0,static_cast<jsize>(bytes.size()),reinterpret_cast<const jbyte*>(bytes.data()));
             if(e.Good())ok=e.env->CallStaticBooleanMethod(bridge->type,bridge->write,static_cast<jlong>(handle),static_cast<jlong>(offset),data)==JNI_TRUE;
             e.env->DeleteLocalRef(data);}
-        ok=e.Good()&&ok; if(!ok)error="SAF write failed, permission revoked or storage full"; return ok;
+        ok=e.Good()&&ok;
+        if(!ok) { error="SAF write failed, permission revoked or storage full"; DropHandleLocked(e, handle); }
+        return ok;
     }
     bool Remove(const std::filesystem::path& path,uint64_t length,std::string& error) override {
         std::lock_guard guard(lock); SafEnv e(bridge->vm);
         if(!e.env || length>INT64_MAX) {error="SAF deletion capability unavailable";return false;}
-        if (!rootId) {
-            auto t=NewStringChecked(e.env,tunnel), h=NewStringChecked(e.env,hash);
-            if(t&&h)rootId=e.env->CallStaticLongMethod(bridge->type,bridge->root,t,h);
-            if(t)e.env->DeleteLocalRef(t); if(h)e.env->DeleteLocalRef(h);
-        }
-        if (!e.Good() || !rootId) {error="SAF deletion capability unavailable";return false;}
+        if (!ResolveRootLocked(e, error)) return false;
         auto p=NewStringChecked(e.env,path.generic_string()); bool ok=false;
         if(p && e.Good()) ok=e.env->CallStaticBooleanMethod(bridge->type,bridge->remove,rootId,p,static_cast<jlong>(length))==JNI_TRUE;
         if(p)e.env->DeleteLocalRef(p); ok=e.Good()&&ok;
@@ -1143,6 +1405,7 @@ public:
     bool Close(uint64_t handle,std::string& error) override {
         std::lock_guard guard(lock); SafEnv e(bridge->vm); if(!e.env || !handle || handle>INT64_MAX)return false;
         e.env->CallStaticVoidMethod(bridge->type,bridge->close,static_cast<jlong>(handle));
+        handles.erase(handle);
         bool ok=e.Good();if(!ok)error="SAF close failed";return ok;
     }
 private:
@@ -1156,8 +1419,15 @@ extern "C" JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_install
         // Install denial before any JNI allocation/lookup. Failed setup cannot
         // leave a selected document torrent on the native filesystem backend.
         i2p::torrents::SetTorrentPayloadStorageFactory([](const std::string&,const std::string&) { return std::make_shared<SafUnavailable>(); });
-        auto bridge=std::make_shared<SafBridge>(); if (env->GetJavaVM(&bridge->vm) != JNI_OK || !type) return JNI_FALSE;
-        bridge->type=static_cast<jclass>(env->NewGlobalRef(type)); if(!bridge->type) { if(env->ExceptionCheck())env->ExceptionClear(); return JNI_FALSE; }
+        auto fail = [] () -> jboolean
+        {
+            // No bridge means no SAF authority. Restore the ordinary native
+            // backend; DaemonWrapper refuses startup if a SAF grant exists.
+            i2p::torrents::SetTorrentPayloadStorageFactory ({});
+            return JNI_FALSE;
+        };
+        auto bridge=std::make_shared<SafBridge>(); if (env->GetJavaVM(&bridge->vm) != JNI_OK || !type) return fail ();
+        bridge->type=static_cast<jclass>(env->NewGlobalRef(type)); if(!bridge->type) { if(env->ExceptionCheck())env->ExceptionClear(); return fail (); }
         auto method = [&](const char * name,const char * signature)->jmethodID {
             return env->ExceptionCheck() ? nullptr : env->GetStaticMethodID(type,name,signature);
         };
@@ -1167,7 +1437,7 @@ extern "C" JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_install
         bridge->read=method("read","(JJI)[B"); bridge->write=method("write","(JJ[B)Z");
         bridge->remove=method("remove","(JLjava/lang/String;J)Z");
         bridge->close=method("close","(J)V");bridge->release=method("release","(J)V");
-        if(env->ExceptionCheck()||!bridge->configured||!bridge->root||!bridge->open||!bridge->read||!bridge->write||!bridge->close||!bridge->release||!bridge->remove) {env->ExceptionClear();return JNI_FALSE;}
+        if(env->ExceptionCheck()||!bridge->configured||!bridge->root||!bridge->open||!bridge->read||!bridge->write||!bridge->close||!bridge->release||!bridge->remove) {env->ExceptionClear();return fail ();}
         i2p::torrents::SetTorrentPayloadStorageFactory([bridge](const std::string& tunnel,const std::string& hash)->std::shared_ptr<i2p::torrents::TorrentPayloadStorage> {
             SafEnv e(bridge->vm);if(!e.env)return std::make_shared<SafPayload>(bridge,tunnel,hash);
             auto t=NewStringChecked(e.env,tunnel),h=NewStringChecked(e.env,hash); bool configured=true;
@@ -1177,9 +1447,11 @@ extern "C" JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_install
             return std::make_shared<SafPayload>(bridge,tunnel,hash);
         });
         return JNI_TRUE;
-    }catch(...){if(env->ExceptionCheck())env->ExceptionClear();return JNI_FALSE;}
+    }catch(...){if(env->ExceptionCheck())env->ExceptionClear();i2p::torrents::SetTorrentPayloadStorageFactory ({});return JNI_FALSE;}
 #else
-    return JNI_TRUE;
+    // The torrent engine is absent; claiming a usable SAF bridge would make
+    // Java believe payload storage exists. Report failure instead.
+    return JNI_FALSE;
 #endif
 }
 
@@ -1244,6 +1516,33 @@ extern "C" JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_restric
 #endif
 #ifdef __NR_io_uring_setup
         SAF_DENY(__NR_io_uring_setup),
+#endif
+#ifdef __NR_io_uring_enter
+        SAF_DENY(__NR_io_uring_enter),
+#endif
+#ifdef __NR_io_uring_register
+        SAF_DENY(__NR_io_uring_register),
+#endif
+#ifdef __NR_open_by_handle_at
+        SAF_DENY(__NR_open_by_handle_at),
+#endif
+#ifdef __NR_process_vm_readv
+        SAF_DENY(__NR_process_vm_readv),
+#endif
+#ifdef __NR_process_vm_writev
+        SAF_DENY(__NR_process_vm_writev),
+#endif
+#ifdef __NR_bpf
+        SAF_DENY(__NR_bpf),
+#endif
+#ifdef __NR_perf_event_open
+        SAF_DENY(__NR_perf_event_open),
+#endif
+#ifdef __NR_userfaultfd
+        SAF_DENY(__NR_userfaultfd),
+#endif
+#ifdef __NR_kcmp
+        SAF_DENY(__NR_kcmp),
 #endif
 #ifdef __NR_pidfd_getfd
         SAF_DENY(__NR_pidfd_getfd),

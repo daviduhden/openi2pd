@@ -4,6 +4,8 @@
 package org.openi2pd.router;
 interface ITorrentSafStorage {
     long openExport(String uri, long length, long operation);
+    // Commits a successful export or truncates a failed one to zero bytes.
+    boolean finishExport(long handle, boolean success, long operation);
     long authorizeTree(String uri, long operation);
     long openFile(long root, String relative, long length, boolean create, long operation);
     byte[] read(long handle, long offset, int count, long operation);

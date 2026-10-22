@@ -13,10 +13,13 @@ import org.junit.runner.RunWith;
 @RunWith(AndroidJUnit4.class)
 public final class TorrentSafStorageTest {
     @Test public void rejectsTraversalAndAmbiguousNames() {
-        for (String path : new String[]{"", "/file", "a/../file", "a//file", "a/./b", "a\\b", "a:b", "a\u0000b", "a/"})
+        for (String path : new String[]{"", "/file", "a/../file", "a//file", "a/./b", "a\u0000b", "a/"})
             assertFalse(path, TorrentSafStorageService.validPath(path));
         assertTrue(TorrentSafStorageService.validPath("torrent/subdirectory/file.bin"));
         assertTrue(TorrentSafStorageService.validPath("日本語/part.bin"));
+        // Android display names may legally contain these; they are not POSIX separators here.
+        assertTrue(TorrentSafStorageService.validPath("Album/Track 1: Intro.flac"));
+        assertTrue(TorrentSafStorageService.validPath("weird\\name.bin"));
     }
     @Test public void rejectsOverflowAndOversizeTransfers() {
         assertTrue(TorrentSafStorageService.validRange(32768, 16384, 16384));
@@ -48,7 +51,13 @@ public final class TorrentSafStorageTest {
         } finally { source.delete(); replacement.delete(); }
     }
     @Test public void rejectsUnboundedPaths() {
-        assertFalse(TorrentSafStorageService.validPath("x".repeat(256)));
-        assertFalse(TorrentSafStorageService.validPath("a/".repeat(33) + "file"));
+        assertFalse(TorrentSafStorageService.validPath(repeat("x", 256)));
+        assertFalse(TorrentSafStorageService.validPath(repeat("a/", 33) + "file"));
+    }
+    // String.repeat is API 33; instrumentation must still run on API 29.
+    private static String repeat(String value, int count) {
+        StringBuilder result = new StringBuilder(value.length() * count);
+        for (int i = 0; i < count; ++i) result.append(value);
+        return result.toString();
     }
 }

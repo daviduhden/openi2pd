@@ -12,11 +12,13 @@
  *
  */
 
+#include <algorithm>
 #include <atomic>
 #include <iostream>
 #include <chrono>
 #include <mutex>
 #include <sstream>
+#include <string_view>
 #include <thread>
 #include <utility>
 #include <exception>
@@ -35,6 +37,20 @@ namespace android
 	{
 		std::mutex stateMutex;
 		std::string dataDir;
+
+		std::string BoundedDiagnostic (std::string_view text, size_t limit = 512)
+		{
+			std::string out;
+			out.reserve (std::min (text.size (), limit));
+			for (char ch : text)
+			{
+				if (out.size () >= limit) break;
+				const unsigned char value = static_cast<unsigned char> (ch);
+				out.push_back (value < 0x20 || value == 0x7f ? ' ' : ch);
+			}
+			if (text.size () > limit) out += "...";
+			return out;
+		}
 
 		/** Serialises all JNI-visible control and status calls. */
 		std::mutex nativeCallMutex;
@@ -69,6 +85,9 @@ namespace android
 
 	bool DaemonAndroidImpl::start ()
 	{
+		const auto previous = lifecycle.load (std::memory_order_acquire);
+		if (previous == DaemonLifecycle::Running || previous == DaemonLifecycle::Starting) return true;
+		if (previous == DaemonLifecycle::Stopping) return false;
 		lifecycle.store (DaemonLifecycle::Starting, std::memory_order_release);
 		const bool started = Daemon.start ();
 		lifecycle.store (started ? DaemonLifecycle::Running : DaemonLifecycle::Stopped, std::memory_order_release);
@@ -130,6 +149,10 @@ namespace android
 	 */
 	std::string start (/*int argc, char* argv[]*/)
 	{
+		const auto previous = lifecycle.load (std::memory_order_acquire);
+		if (previous == DaemonLifecycle::Running || previous == DaemonLifecycle::Starting)
+			return "Daemon already running";
+		if (previous == DaemonLifecycle::Stopping) return "Daemon stopping";
 		lifecycle.store (DaemonLifecycle::Starting, std::memory_order_release);
 		bool initialized = false;
 		bool started = false;
@@ -185,16 +208,12 @@ namespace android
 		catch (boost::exception & ex)
 		{
 			if (!started) StopAfterFailedStart (initialized);
-			std::stringstream ss;
-			ss << boost::diagnostic_information (ex);
-			return ss.str ();
+			return BoundedDiagnostic (boost::diagnostic_information (ex));
 		}
 		catch (std::exception & ex)
 		{
 			if (!started) StopAfterFailedStart (initialized);
-			std::stringstream ss;
-			ss << ex.what ();
-			return ss.str ();
+			return BoundedDiagnostic (ex.what ());
 		}
 		catch (...)
 		{

@@ -74,6 +74,13 @@ extern "C"
 
 	JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getRecentLogs (JNIEnv *, jclass, jlong, jint);
 
+	JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getAddressBook (JNIEnv *, jclass);
+	JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_addAddress (JNIEnv *, jclass, jstring, jstring);
+	JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_removeAddress (JNIEnv *, jclass, jstring);
+	JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_blockAddress (JNIEnv *, jclass, jstring);
+	JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_unblockAddress (JNIEnv *, jclass, jstring);
+	JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getBlockedAddresses (JNIEnv *, jclass);
+
 	JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_torrentCommand (JNIEnv *, jclass, jbyteArray);
 
 	JNIEXPORT jbyteArray JNICALL Java_org_openi2pd_router_I2PD_1JNI_buildTorrentMetadata (

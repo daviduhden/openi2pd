@@ -23,18 +23,21 @@ import android.system.OsConstants;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public final class TorrentSafStorageService extends Service {
-    private static final int MAX_TRANSFER = 16384, MAX_HANDLES = 4096;
+    private static final int MAX_HANDLES = 4096;
     private static final long MAX_FILE = 1L << 40;
     private record Root(Uri uri, boolean writable) {}
-    private record File(long root, Uri uri, ParcelFileDescriptor fd, long length, boolean writable) {}
+    private record File(long root, Uri uri, ParcelFileDescriptor fd, long length, boolean writable,
+            String documentId) {}
     // Data work may block in a remote provider. Control transactions never take ioLock.
     private final Object ioLock = new Object(), operationLock = new Object();
     private final Map<Long, CancellationSignal> operations = new HashMap<>();
     private final java.util.concurrent.ScheduledThreadPoolExecutor watchdog = new java.util.concurrent.ScheduledThreadPoolExecutor(1);
     private final Map<Long, java.util.concurrent.ScheduledFuture<?>> deadlines = new HashMap<>();
-    private final java.util.concurrent.atomic.AtomicBoolean cancellationStarted = new java.util.concurrent.atomic.AtomicBoolean();
     private volatile boolean retiring;
     private CancellationSignal begin(long token) {
         synchronized (operationLock) {
@@ -65,7 +68,12 @@ public final class TorrentSafStorageService extends Service {
         android.os.Process.killProcess(android.os.Process.myPid());
     }
     private final Map<Long, Root> roots = new HashMap<>();
-    private final Map<Long, File> files = new HashMap<>();
+    private final Map<Long, File> files = new ConcurrentHashMap<>();
+    private final ExecutorService reaper = Executors.newSingleThreadExecutor(runnable -> {
+        Thread thread = new Thread(runnable, "saf-close-reaper");
+        thread.setDaemon(true);
+        return thread;
+    });
     private final java.security.SecureRandom random = new java.security.SecureRandom();
     private void caller() {
         if (Binder.getCallingUid() != android.os.Process.myUid())
@@ -89,11 +97,39 @@ public final class TorrentSafStorageService extends Service {
                     fd = getContentResolver().openFileDescriptor(uri, "rw", signal);
                     if (fd == null || !OsConstants.S_ISREG(Os.fstat(fd.getFileDescriptor()).st_mode)) return 0;
                     Os.lseek(fd.getFileDescriptor(), 0, OsConstants.SEEK_SET);
-                    Os.ftruncate(fd.getFileDescriptor(), length);
+                    // Start empty rather than pre-sizing: a failed first
+                    // write must not leave a full-length zero-filled file.
+                    Os.ftruncate(fd.getFileDescriptor(), 0);
                     signal.throwIfCanceled();
-                    long key = id(); files.put(key, new File(0, uri, fd, length, true)); fd = null; return key;
+                    String documentId = currentDocumentId(uri, signal);
+                    long key = id(); files.put(key, new File(0, uri, fd, length, true, documentId)); fd = null; return key;
                 } catch (Exception failure) { return 0; }
                 finally { if (fd != null) try { fd.close(); } catch (IOException ignored) {} }
+            } } finally { end(operation); }
+        }
+        @Override public boolean finishExport(long handle, boolean success, long operation) {
+            caller(); CancellationSignal signal = begin(operation);
+            try { synchronized (ioLock) {
+                File file = files.get(handle);
+                if (file == null || file.root != 0) return false;
+                boolean ok = false;
+                try {
+                    signal.throwIfCanceled();
+                    if (success) {
+                        if (!authorized(file, true, signal)) throw new IOException("Export target changed");
+                        ok = Os.fstat(file.fd.getFileDescriptor()).st_size == file.length;
+                        if (!ok) Os.ftruncate(file.fd.getFileDescriptor(), 0);
+                    } else {
+                        Os.ftruncate(file.fd.getFileDescriptor(), 0);
+                        ok = true;
+                    }
+                } catch (Exception failure) {
+                    try { Os.ftruncate(file.fd.getFileDescriptor(), 0); } catch (Exception ignored) {}
+                } finally {
+                    files.remove(handle);
+                    try { file.fd.close(); } catch (IOException ignored) {}
+                }
+                return ok;
             } } finally { end(operation); }
         }
         @Override public long authorizeTree(String text, long operation) {
@@ -128,8 +164,27 @@ public final class TorrentSafStorageService extends Service {
                         boolean directory = i + 1 < parts.length;
                         Uri child = find(root.uri, doc, parts[i], directory, signal);
                         signal.throwIfCanceled();
-                        if (child == null && create) child = DocumentsContract.createDocument(getContentResolver(), doc,
-                                directory ? DocumentsContract.Document.MIME_TYPE_DIR : "application/octet-stream", parts[i]);
+                        if (child == null && create) {
+                            child = DocumentsContract.createDocument(getContentResolver(), doc,
+                                    directory ? DocumentsContract.Document.MIME_TYPE_DIR : "application/octet-stream", parts[i]);
+                            if (child != null) {
+                                // Providers can return a different name or
+                                // type than requested. Validate every created
+                                // component before using it as a parent.
+                                try (Cursor cursor = getContentResolver().query(child,
+                                        new String[]{DocumentsContract.Document.COLUMN_DISPLAY_NAME,
+                                                DocumentsContract.Document.COLUMN_MIME_TYPE}, null, null, null, signal)) {
+                                    boolean matches = cursor != null && cursor.moveToFirst()
+                                            && parts[i].equals(cursor.getString(0))
+                                            && (directory == DocumentsContract.Document.MIME_TYPE_DIR.equals(cursor.getString(1)));
+                                    if (!matches) {
+                                        try { DocumentsContract.deleteDocument(getContentResolver(), child); }
+                                        catch (Exception ignored) {}
+                                        return 0;
+                                    }
+                                }
+                            }
+                        }
                         if (child == null) return 0;
                         doc = child;
                     }
@@ -142,9 +197,16 @@ public final class TorrentSafStorageService extends Service {
                     long actual = stat.st_size;
                     if (!create && actual != length) throw new IOException("Document size changed");
                     if (create && actual > length) throw new IOException("Document exceeds declared length");
-                    if (create && actual < length) Os.ftruncate(fd.getFileDescriptor(), length);
+                    if (TorrentSafPolicy.canExtendExisting(create, actual, length)) {
+                        // A write-mode open may extend an existing shorter
+                        // document. Existing bytes remain unverified and are
+                        // rehashed before availability is published.
+                        Os.ftruncate(fd.getFileDescriptor(), length);
+                    }
                     signal.throwIfCanceled();
-                    long key = id(); files.put(key, new File(rootId, doc, fd, length, create)); fd = null; return key;
+                    long key = id();
+                    files.put(key, new File(rootId, doc, fd, length, create, currentDocumentId(doc, signal)));
+                    fd = null; return key;
                 } catch (Exception failure) { return 0; }
                 finally { if (fd != null) try { fd.close(); } catch (IOException ignored) {} }
 
@@ -217,30 +279,39 @@ public final class TorrentSafStorageService extends Service {
                     if (removed) {
                         // Invalidate aliases to the same document before later IO.
                         for (long key : new java.util.ArrayList<>(files.keySet()))
-                            if (files.get(key).uri.equals(file.uri)) closeFile(key);
+                        {
+                            File alias = files.get(key);
+                            if (alias != null && alias.uri.equals(file.uri)) closeFile(key);
+                        }
                     }
                     return removed;
                 } catch (Exception failure) { return false; }
             } } finally { end(operation); }
         }
         @Override public void closeFile(long handle) {
-            caller(); synchronized (ioLock) {
-                File file = files.remove(handle);
-                if (file != null) try { file.fd.close(); } catch (IOException ignored) {}
-            }
+            caller();
+            File file = files.remove(handle);
+            if (file == null) return;
+            // Return promptly to the client; close after any in-flight data
+            // operation releases ioLock. Closing one handle must not block the
+            // broker's control plane or trigger a process-wide retirement.
+            reaper.execute(() -> {
+                synchronized (ioLock) { try { file.fd.close(); } catch (IOException ignored) {} }
+            });
         }
         @Override public void revokeTree(long root) {
             caller(); synchronized (ioLock) {
                 roots.remove(root);
-                for (long key : new java.util.ArrayList<>(files.keySet())) if (files.get(key).root == root) closeFile(key);
+                for (long key : new java.util.ArrayList<>(files.keySet())) {
+                    File file = files.get(key);
+                    if (file != null && file.root == root) closeFile(key);
+                }
             }
         }
         @Override public void cancel(long operation) {
             caller();
-            if (!cancellationStarted.compareAndSet(false, true)) return;
-            retiring = true;
-            // Schedule the fence before invoking provider cancellation: cancel itself may block.
-            watchdog.schedule(() -> retireProcess(), 100, TimeUnit.MILLISECONDS);
+            // Cancellation is scoped to the operation, not the broker process.
+            // A slow export or close must not kill every torrent's descriptors.
             CancellationSignal signal;
             synchronized (operationLock) { signal = operations.get(operation); }
             if (signal != null) {
@@ -251,7 +322,9 @@ public final class TorrentSafStorageService extends Service {
         @Override public void retire() { caller(); retireProcess(); }
     };
     static boolean validPath(String path) {
-        if (path == null || path.isEmpty() || path.length() > 8192 || path.indexOf('\\') >= 0 || path.indexOf(':') >= 0) return false;
+        // Display names may legally contain ':' and '\\' on Android; they are
+        // not POSIX path separators here and must not be treated as traversal.
+        if (path == null || path.isEmpty() || path.length() > 8192) return false;
         String[] parts = path.split("/", -1);
         if (parts.length > 32) return false;
         for (String part : parts) {
@@ -264,26 +337,43 @@ public final class TorrentSafStorageService extends Service {
         return file != null && validRange(file.length, offset, count);
     }
     static boolean validRange(long length, long offset, int count) {
-        return length >= 0 && offset >= 0 && count >= 0 && count <= MAX_TRANSFER
-                && offset <= length && count <= length - offset;
+        return TorrentSafPolicy.validRange(length, offset, count);
     }
     private boolean authorized(File file, boolean write, CancellationSignal signal) {
         Root root = roots.get(file.root);
         if (file.root == 0) {
-            try { return documentGrant(file.uri, write)
-                    && Os.fstat(file.fd.getFileDescriptor()).st_size == file.length; }
-            catch (Exception failure) { return false; }
+            try {
+                return documentGrant(file.uri, true)
+                        && ((file.documentId == null || file.documentId.isEmpty())
+                                || documentIdentity(file, signal))
+                        && TorrentSafPolicy.exportSizeAllowed(file.length,
+                                Os.fstat(file.fd.getFileDescriptor()).st_size);
+            } catch (Exception failure) { return false; }
         }
         if (root == null) return false;
         boolean granted = false;
         for (UriPermission grant : getContentResolver().getPersistedUriPermissions())
             if (grant.getUri().equals(root.uri) && grant.isReadPermission() && (!write || grant.isWritePermission())) granted = true;
         if (!granted) return false;
+        try {
+            return documentIdentity(file, signal)
+                    && Os.fstat(file.fd.getFileDescriptor()).st_size == file.length;
+        } catch (Exception failure) { return false; }
+    }
+    private boolean documentIdentity(File file, CancellationSignal signal) {
         try (Cursor cursor = getContentResolver().query(file.uri,
                 new String[]{DocumentsContract.Document.COLUMN_DOCUMENT_ID}, null, null, null, signal)) {
             return cursor != null && cursor.moveToFirst()
-                    && Os.fstat(file.fd.getFileDescriptor()).st_size == file.length;
+                    && TorrentSafPolicy.documentIdentityMatches(file.documentId, cursor.getString(0));
         } catch (Exception failure) { return false; }
+    }
+    private String currentDocumentId(Uri uri, CancellationSignal signal) {
+        try (Cursor cursor = getContentResolver().query(uri,
+                new String[]{DocumentsContract.Document.COLUMN_DOCUMENT_ID}, null, null, null, signal)) {
+            if (cursor != null && cursor.moveToFirst()) return cursor.getString(0);
+        } catch (Exception ignored) {}
+        try { return DocumentsContract.getDocumentId(uri); }
+        catch (Exception ignored) { return ""; }
     }
     private Uri find(Uri tree, Uri parent, String name, boolean directory, CancellationSignal signal) throws IOException {
         Uri children = DocumentsContract.buildChildDocumentsUriUsingTree(tree, DocumentsContract.getDocumentId(parent));
@@ -325,5 +415,9 @@ public final class TorrentSafStorageService extends Service {
         retireProcess();
         return false;
     }
-    @Override public void onDestroy() { retireProcess(); super.onDestroy(); }
+    @Override public void onDestroy() {
+        reaper.shutdownNow();
+        retireProcess();
+        super.onDestroy();
+    }
 }
