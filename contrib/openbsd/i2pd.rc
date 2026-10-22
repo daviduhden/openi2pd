@@ -9,14 +9,20 @@
 # /etc/rc.d/rc.subr.
 #
 
-daemon="${TRUEPREFIX}/bin/i2pd --daemon"
+daemon="${TRUEPREFIX}/bin/i2pd"
 daemon_user="_i2pd"
-daemon_flags="--service \
+pidfile="${LOCALSTATEDIR}/i2pd/i2pd.pid"
+rc_bg=YES
+daemon_logger="daemon.info"
+daemon_timeout=660
+daemon_flags="--foreground --service \
 	--datadir=${LOCALSTATEDIR}/i2pd \
 	--conf=${SYSCONFDIR}/i2pd/i2pd.conf \
 	--tunconf=${SYSCONFDIR}/i2pd/tunnels.conf \
-	--tunnelsdir=${SYSCONFDIR}/i2pd/tunnels.d \
-	--certsdir=${LOCALSTATEDIR}/i2pd/certificates"
+	--tunnelsdir=${SYSCONFDIR}/i2pd/tunnels.conf.d \
+	--certsdir=${TRUEPREFIX}/share/i2pd/certificates \
+	--pidfile=${LOCALSTATEDIR}/i2pd/i2pd.pid \
+	--log=syslog"
 
 . /etc/rc.d/rc.subr
 

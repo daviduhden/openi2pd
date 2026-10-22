@@ -79,13 +79,11 @@ warning from s6-rc about the missing notification is expected.
 
 ## Stopping and graceful shutdown
 
-By default s6 sends `SIGTERM` for a down or restart transition. For this
-daemon `SIGTERM` means an immediate stop; `SIGINT` requests the graceful
-shutdown that waits for transit tunnels (up to ten minutes). To make the
-normal down transition graceful, add a site-specific `down-signal` file
-containing `INT` to the live service directory. This recipe does not ship one
-because it changes the stop policy and is best chosen together with the
-supervision timeouts.
+The service ships a `down-signal` file containing `INT`, so a normal down
+transition requests the graceful shutdown that waits for transit tunnels (up
+to ten minutes). `timeout-kill` is set to 660000 ms, matching that drain plus a
+shutdown margin. s6 escalates to `SIGKILL` only after the window; use
+`s6-svc -x` only for an intentional immediate teardown.
 
 No `finish` script is installed. The daemon removes its PID file on an orderly
 shutdown; after a forced `SIGKILL` the stale file is harmless because the next

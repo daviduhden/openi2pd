@@ -290,34 +290,33 @@ do_stop()
 	# Return 0 when stopped or already stopped, 1 on failure.
 	if [ "$HAVE_START_STOP_DAEMON" -eq 1 ]; then
 		start-stop-daemon --stop --quiet --oknodo \
-			--retry=INT/620/KILL/5 \
+			--retry=INT/660/KILL/5 \
 			--pidfile "$I2PD_PIDFILE" \
 			--exec "$DAEMON"
 		_rc=$?
 		if [ "$_rc" -eq 2 ]; then
 			return 1
 		fi
-		rm -f "$I2PD_PIDFILE"
+		# The daemon removes the identity-checked pidfile itself; deleting it
+		# here could let a surviving process be started a second time.
 		return 0
 	fi
 
 	_pid=$(read_pid) || _pid=
 	if [ -z "$_pid" ] || ! kill -0 "$_pid" 2>/dev/null; then
-		rm -f "$I2PD_PIDFILE"
 		return 0
 	fi
 
 	# SIGINT gives the router the same ten-minute tunnel grace period as the
 	# systemd unit; SIGKILL follows only if it does not exit.
 	kill -INT "$_pid" 2>/dev/null
-	if ! wait_for_stop "$_pid" 620; then
+	if ! wait_for_stop "$_pid" 660; then
 		kill -KILL "$_pid" 2>/dev/null
 		if ! wait_for_stop "$_pid" 5; then
 			log_failure_msg "$NAME did not stop"
 			return 1
 		fi
 	fi
-	rm -f "$I2PD_PIDFILE"
 	return 0
 }
 

@@ -40,14 +40,10 @@ int RunI2PD (int argc, char * argv[])
 	if (argc == 4 && std::string_view (argv[1]) == "--privsep-worker")
 		return i2p::privsep::RunWorker (argv[2], argv[3]);
 #endif
-	if (Daemon.init (argc, argv))
-	{
-		if (Daemon.start ())
-			Daemon.run ();
-		else
-			return EXIT_FAILURE;
-		Daemon.stop ();
-	}
+	if (!Daemon.init (argc, argv)) return EXIT_FAILURE;
+	if (!Daemon.start ()) return EXIT_FAILURE;
+	Daemon.run ();
+	Daemon.stop ();
 	return EXIT_SUCCESS;
 }
 } // namespace

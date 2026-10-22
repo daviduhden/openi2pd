@@ -15,8 +15,8 @@ command = /usr/bin/i2pd --conf=/etc/i2pd/i2pd.conf --tunconf=/etc/i2pd/tunnels.c
 
 # dinit captures the daemon's stdout/stderr; the service passes --foreground,
 # not the self-daemonizing mode. No pidfile is used for supervision and no
-# sd_notify readiness protocol is involved. The router still writes its default
-# pidfile inside the data directory for administrative tools.
+# notification readiness protocol is involved. The router still writes its
+# default pidfile inside the data directory for administrative tools.
 log-type = file
 logfile = /var/log/i2pd/i2pd.log
 logfile-uid = i2pd
@@ -30,9 +30,10 @@ restart-limit-count = 5
 restart-limit-interval = 300
 
 # SIGINT is the graceful shutdown signal; allow the same ten-minute tunnel
-# expiry period as the systemd unit before dinit escalates to SIGKILL.
+# expiry period as the systemd unit, plus a shutdown margin, before dinit
+# escalates to SIGKILL.
 term-signal = INT
-stop-timeout = 620
+stop-timeout = 660
 
 rlimit-nofile = 8192
 

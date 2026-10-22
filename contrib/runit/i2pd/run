@@ -11,6 +11,7 @@
 #
 
 set -eu
+umask 077
 
 install -d -m 0700 -o i2pd -g i2pd /run/i2pd
 install -d -m 0700 -o i2pd -g i2pd /var/lib/i2pd

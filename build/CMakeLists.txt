@@ -76,8 +76,8 @@ set_property(CACHE I2PD_SERVICE_MANAGER PROPERTY STRINGS
 
 set(I2PD_SERVICE_DIR "" CACHE PATH
   "Override the selected service-manager installation directory (empty uses the manager default)")
-set(I2PD_SERVICE_CONFDIR "${CMAKE_INSTALL_SYSCONFDIR}/conf.d" CACHE PATH
-  "OpenRC conf.d installation directory")
+set(I2PD_SERVICE_CONFDIR "" CACHE PATH
+  "OpenRC conf.d installation directory (empty uses ${CMAKE_INSTALL_SYSCONFDIR}/conf.d)")
 
 set(_i2pd_service_managers
   none systemd openrc runit s6 s6-rc shepherd sysvinit)
@@ -93,13 +93,20 @@ if(NOT I2PD_SERVICE_MANAGER STREQUAL "none"
     "Unix-like systems; Windows and Android are managed by their native "
     "service facilities. Use -DI2PD_SERVICE_MANAGER=none.")
 endif()
+if(NOT I2PD_SERVICE_MANAGER STREQUAL "none" AND NOT WITH_BINARY)
+  message(FATAL_ERROR
+    "I2PD_SERVICE_MANAGER=${I2PD_SERVICE_MANAGER} requires WITH_BINARY=ON; "
+    "a service definition must not be installed without the router it starts.")
+endif()
 
 # The destination is relative by default, so DESTINATION is interpreted
 # against CMAKE_INSTALL_PREFIX. An absolute user override is passed through.
 if(I2PD_SERVICE_DIR)
   set(_i2pd_service_dir "${I2PD_SERVICE_DIR}")
 elseif(I2PD_SERVICE_MANAGER STREQUAL "systemd")
-  set(_i2pd_service_dir "${CMAKE_INSTALL_LIBDIR}/systemd/system")
+  # Units are architecture-independent and systemd does not search the
+  # multiarch lib/<triplet> tree.
+  set(_i2pd_service_dir "lib/systemd/system")
 elseif(I2PD_SERVICE_MANAGER STREQUAL "openrc"
     OR I2PD_SERVICE_MANAGER STREQUAL "sysvinit")
   set(_i2pd_service_dir "${CMAKE_INSTALL_SYSCONFDIR}/init.d")
@@ -848,6 +855,14 @@ if(I2PD_SERVICE_MANAGER STREQUAL "systemd")
     DESTINATION "${_i2pd_service_dir}"
     RENAME i2pd.service
     COMPONENT Service)
+  install(FILES "${PROJECT_ROOT}/contrib/sysusers.d/i2pd.conf"
+    DESTINATION "lib/sysusers.d"
+    RENAME openi2pd.conf
+    COMPONENT Service)
+  install(FILES "${PROJECT_ROOT}/contrib/tmpfiles.d/i2pd.conf"
+    DESTINATION "lib/tmpfiles.d"
+    RENAME openi2pd.conf
+    COMPONENT Service)
 elseif(I2PD_SERVICE_MANAGER STREQUAL "sysvinit")
   install(PROGRAMS "${PROJECT_ROOT}/contrib/sysvinit/i2pd"
     DESTINATION "${_i2pd_service_dir}"
@@ -862,23 +877,32 @@ elseif(I2PD_SERVICE_MANAGER STREQUAL "openrc")
     DESTINATION "${_i2pd_service_confdir}"
     COMPONENT Service)
 elseif(I2PD_SERVICE_MANAGER STREQUAL "runit")
-  # The supervised service tree keeps the executable bits of run and log/run.
-  install(DIRECTORY "${PROJECT_ROOT}/contrib/runit/i2pd/"
+  install(PROGRAMS "${PROJECT_ROOT}/contrib/runit/i2pd/run"
     DESTINATION "${_i2pd_service_dir}/i2pd"
-    COMPONENT Service
-    USE_SOURCE_PERMISSIONS)
+    COMPONENT Service)
+  install(PROGRAMS "${PROJECT_ROOT}/contrib/runit/i2pd/log/run"
+    DESTINATION "${_i2pd_service_dir}/i2pd/log"
+    COMPONENT Service)
 elseif(I2PD_SERVICE_MANAGER STREQUAL "s6")
-  install(DIRECTORY "${PROJECT_ROOT}/contrib/s6/i2pd/"
+  install(PROGRAMS "${PROJECT_ROOT}/contrib/s6/i2pd/run"
     DESTINATION "${_i2pd_service_dir}/i2pd"
-    COMPONENT Service
-    USE_SOURCE_PERMISSIONS)
+    COMPONENT Service)
+  install(FILES "${PROJECT_ROOT}/contrib/s6/i2pd/down-signal"
+    "${PROJECT_ROOT}/contrib/s6/i2pd/timeout-kill"
+    DESTINATION "${_i2pd_service_dir}/i2pd"
+    COMPONENT Service)
 elseif(I2PD_SERVICE_MANAGER STREQUAL "s6-rc")
-  # s6-rc-compile consumes the source tree directly; keep its longrun
-  # directories and dependency declarations intact.
-  install(DIRECTORY "${PROJECT_ROOT}/contrib/s6-rc/source/"
-    DESTINATION "${_i2pd_service_dir}"
-    COMPONENT Service
-    USE_SOURCE_PERMISSIONS)
+  install(PROGRAMS "${PROJECT_ROOT}/contrib/s6-rc/source/i2pd/run"
+    DESTINATION "${_i2pd_service_dir}/i2pd"
+    COMPONENT Service)
+  install(FILES "${PROJECT_ROOT}/contrib/s6-rc/source/i2pd/type"
+    "${PROJECT_ROOT}/contrib/s6-rc/source/i2pd/down-signal"
+    "${PROJECT_ROOT}/contrib/s6-rc/source/i2pd/timeout-kill"
+    DESTINATION "${_i2pd_service_dir}/i2pd"
+    COMPONENT Service)
+  install(FILES "${PROJECT_ROOT}/contrib/s6-rc/source/i2pd/dependencies.d/base"
+    DESTINATION "${_i2pd_service_dir}/i2pd/dependencies.d"
+    COMPONENT Service)
 elseif(I2PD_SERVICE_MANAGER STREQUAL "shepherd")
   install(FILES "${PROJECT_ROOT}/contrib/shepherd/i2pd.scm"
     DESTINATION "${_i2pd_service_dir}"

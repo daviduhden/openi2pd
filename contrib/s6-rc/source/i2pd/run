@@ -16,6 +16,9 @@
 foreground { /usr/bin/install -d -m 0700 -o i2pd -g i2pd /run/i2pd }
 foreground { /usr/bin/install -d -m 0700 -o i2pd -g i2pd /var/lib/i2pd }
 
+# Apply the same private creation mask as the packaged systemd/SysV services.
+umask 0077
+
 # setgid and setuid are performed before exec. i2pd must stay in the
 # foreground; --service selects the system paths and implies no daemonization.
 s6-setuidgid i2pd

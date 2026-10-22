@@ -14,7 +14,8 @@ the runtime paths, signals and logging used by the router service.
 This page describes the native service definitions that the CMake `Service`
 component can install and the Debian package integration. The supported Linux
 managers are systemd, GNU Shepherd, OpenRC, runit, s6/s6-rc and SysVinit; a
-package selects one manager. The router is the only managed service: **there is
+package selects one manager. Legacy Upstart and dinit samples are retained in
+`contrib/` in foreground form but are not installed by `I2PD_SERVICE_MANAGER`. The router is the only managed service: **there is
 no TUI service**. `i2pd-tui` is an interactive client that connects to the
 running router over its local IPC socket. It does not start, stop or supervise
 the daemon and must not be placed in a service unit.
@@ -42,13 +43,12 @@ The native definitions pass `--foreground`, which overrides a local
 that detaches itself.
 
 systemd, runit, s6 and the foreground OpenRC/Shepherd modes keep the process
-attached. SysVinit cannot supervise a foreground child in the same way, and the
-OpenBSD rc.d path is a legacy self-backgrounding recipe. Those two paths use
-their own helper (`start-stop-daemon`, the init script, or the daemon's
-`--daemon`) to background the process; the service manager or its helper owns
-backgrounding in those paths. That is an explicit compatibility exception, not
-the model for the native Linux definitions. See [SysVinit](#sysvinit) and
-[OpenBSD legacy path](#openbsd-legacy-path).
+attached. SysVinit cannot supervise a foreground child in the same way; its
+native script uses `start-stop-daemon --background` (or a narrow `su` fallback)
+and a pidfile. The OpenBSD rc.d definition runs the daemon in the foreground
+with `rc_bg=YES`, so rc.subr owns the backgrounding. In those two paths the
+helper or rc.subr owns the process, and `start` does not prove router
+readiness. See [SysVinit](#sysvinit) and [OpenBSD path](#openbsd-path).
 
 ### Identity and paths
 
@@ -84,10 +84,11 @@ path.
 
 ## systemd
 
-The packaged unit is `i2pd.service`; `open-i2pd.service` is installed as a
-compatibility alias where the package provides it. The unit runs the router as
-`i2pd` in the foreground with `Type=exec`. It has no `sd_notify` readiness
-handshake.
+The packaged unit is `i2pd.service`; no second alias is installed. The unit
+runs the router as `i2pd` in the foreground with `Type=exec`. It has no
+`sd_notify` readiness handshake. The packaged sysusers/tmpfiles files let
+`systemd-sysusers`/`systemd-tmpfiles` create the account and persistent/runtime
+directories on package installation or boot.
 
 ```sh
 sudo systemctl start i2pd.service
@@ -106,7 +107,7 @@ new filesystem path to the sandbox; restart after changing a configured path.
 bounded start rate.
 
 The packaged unit uses `KillSignal=SIGINT`, `KillMode=mixed` and
-`TimeoutStopSec=600`: `systemctl stop` requests the graceful path, stops
+`TimeoutStopSec=660`: `systemctl stop` requests the graceful path, stops
 accepting transit tunnels and may wait up to 10 minutes for existing tunnels to
 drain. `SendSIGKILL=yes` escalates after that timeout. Passing `--no-block` to
 `systemctl stop` returns immediately but does not abort the drain. `SIGTERM` is
@@ -175,8 +176,9 @@ namespace that is required or keep that worker feature disabled. Do not weaken
 unrelated restrictions.
 
 These unit restrictions are defence in depth, **not full privilege
-separation** and not a promise of full sandboxing. Only the log worker is
-isolated today; network, storage and crypto workers remain pending. See
+separation** and not a promise of full sandboxing. The log worker and the
+opt-in torrent/router storage workers use separate processes; networking,
+crypto and the router core remain pending. See
 [Privilege separation](security/privilege-separation.md#service-manager-implications).
 
 ## GNU Shepherd
@@ -205,12 +207,15 @@ Shepherd does not guarantee a generic `reload` action. Use
 full restart is not wanted:
 
 ```sh
-sudo kill -HUP "$(cat /run/i2pd/i2pd.pid)"
+sudo kill -HUP "$(cat /var/lib/i2pd/i2pd.pid)"
 ```
 
-The contributed definition runs with `--log=syslog` and stops with `SIGINT`
-plus a 660-second grace period, so `herd stop` and `herd restart` can wait for
-the router's tunnel drain rather than stopping promptly. Redirect
+The contributed definition runs with `--log=syslog`, uses a pidfile under the
+data directory, and stops with `SIGINT` plus a 700-second grace period, so
+`herd stop` and `herd restart` can wait for the router's tunnel drain rather
+than stopping promptly. Shepherd's process-group kill can also signal child
+workers; use the systemd/OpenRC definitions when strict main-process-only
+signalling is required. Redirect
 stdout/stderr in a custom definition to syslog, a supervised log service or a
 file with permissions for `i2pd`; do not rely on the invoking terminal.
 
@@ -246,8 +251,8 @@ OpenRC's `output_log` and `error_log` in `/etc/conf.d/i2pd`, or use syslog, so
 foreground output is not lost.
 
 OpenRC's default stop signal is `SIGTERM`, so `rc-service i2pd stop` is prompt.
-The packaged `/etc/conf.d/i2pd` documents `stopsig="SIGINT"` and
-`retry="SIGINT/600"` for a graceful transit-tunnel drain instead.
+Set `stopsig="SIGINT"` in `/etc/conf.d/i2pd` for a graceful transit-tunnel
+drain; the runscript derives its retry budget from the selected stop signal.
 
 ## runit
 
@@ -266,9 +271,12 @@ sudo ln -s /etc/sv/i2pd /var/service/i2pd
 sudo rm /var/service/i2pd
 ```
 
-`sv reload` sends `SIGHUP` (tunnel configuration reload). `sv down` stops the
-service; `sv restart` performs a stop/start cycle. Adjust the symlink path to
-the distribution's `runsvdir` if it is not `/var/service`.
+`sv reload` sends `SIGHUP` (tunnel configuration reload). `sv down` sends
+`SIGTERM` and is prompt; `sv interrupt` sends `SIGINT` but runsv restarts the
+service unless it is also marked down. `sv restart` performs a stop/start
+cycle. Adjust the symlink path to the distribution's `runsvdir` if it is not
+`/var/service`. The definition deliberately does not claim the ten-minute
+graceful drain; use a custom `down` workflow when that policy is required.
 
 The `run` script must execute the daemon in the foreground without `--daemon`.
 The contributed service tree includes a companion `log/run` that runs `svlogd`
@@ -296,10 +304,10 @@ sudo s6-svstat /run/service/i2pd
 `-u` brings the service up, `-d` brings it down, `-r` restarts it, `-l`
 requests a reload (`SIGHUP` by default; `-h` sends `SIGHUP` directly), `-1`
 sends `SIGUSR1` to reopen a file log, and `s6-svstat` reports state.
-`s6-svc -d` uses the service's down signal, normally `SIGTERM`, so it is
-prompt; `s6-svc -i` sends `SIGINT` for the graceful drain, but s6-supervise
-restarts the service unless it is also marked down. Do not use `s6-svc -x` or
-other teardown modes for an ordinary stop.
+The contributed service ships `down-signal` (`INT`) and `timeout-kill`
+(660000 ms), so `s6-svc -d` requests the daemon's graceful drain and s6
+escalates only after the shutdown window. Do not use `s6-svc -x` or other
+teardown modes for an ordinary stop. The s6-rc source carries the same files.
 
 When the installation uses a compiled s6-rc database, manage the service
 through s6-rc instead:
@@ -346,8 +354,8 @@ and allows the documented graceful drain; `reload` only reloads tunnels.
 
 SysVinit does not supervise a foreground process. The native SysV script starts
 it with `start-stop-daemon --background` (or a narrow `su` fallback) as the
-`i2pd` account and never passes `--daemon`; the OpenBSD legacy recipe instead
-uses the daemon's `--daemon`. In both cases the service manager or its helper
+`i2pd` account and never passes `--daemon`; the OpenBSD rc.d recipe runs
+`--foreground` with `rc_bg=YES`. In both cases the service manager or its helper
 owns backgrounding. That makes `start` return before the router has initialised
 and prevents the same process supervision as `Type=exec`; neither model proves
 router readiness. Redirect stdout/stderr in the script or use syslog; there is
@@ -355,11 +363,12 @@ no journald integration. The installed SysV script is the authority for its
 exact paths and flags. On a systemd host, do not enable both the init script and
 the unit; see [Debian and Ubuntu](#debian-and-ubuntu).
 
-## OpenBSD legacy path
+## OpenBSD path
 
-OpenBSD keeps its existing rc.d recipe and `/var/i2pd` data layout; it is not
-selected by `I2PD_SERVICE_MANAGER`. The script runs the daemon with `--daemon`
-and `--service`, and `/etc/rc.d/rc.subr` handles start/stop/status:
+OpenBSD keeps its rc.d recipe and `/var/i2pd` data layout; it is not selected by
+`I2PD_SERVICE_MANAGER`. The script runs the daemon in the foreground with
+`--foreground --service --pidfile=...`, sets `rc_bg=YES`, and lets
+`/etc/rc.d/rc.subr` handle start/stop/status:
 
 ```sh
 doas rcctl enable i2pd
@@ -369,11 +378,10 @@ doas rcctl reload i2pd
 doas rcctl stop i2pd
 ```
 
-Because the daemon backgrounds itself, a successful start means the fork
-succeeded, not that the router finished initialising. `reload` sends `SIGHUP`;
-`stop` sends `SIGTERM`, which is prompt, not the 10-minute graceful path. Use
-`kill -INT "$(cat /var/i2pd/i2pd.pid)"` when transit-tunnel draining is
-required. See [OpenBSD configuration](../contrib/openbsd/README.md) and the
+`reload` sends `SIGHUP`; `stop` uses rc.subr's `SIGTERM` path, which is prompt,
+not the 10-minute graceful path. Send `SIGINT` to the pidfile process when
+transit-tunnel draining is required. The foreground definition avoids the
+legacy self-daemonizing readiness ambiguity. See [OpenBSD configuration](../contrib/openbsd/README.md) and the
 [OpenBSD validation checklist](security/openbsd-validation.md) for the
 pledge/unveil and runtime evidence that is still pending.
 
@@ -385,9 +393,9 @@ conffiles and runs the maintainer scripts. The packaging sets
 `I2PD_SERVICE_MANAGER=none` and installs the systemd unit and SysV compatibility
 script explicitly, avoiding a duplicate service file. The `i2pd` package
 contains the router, configuration, service definitions, man pages and native
-tools. The optional `i2pd-tui` package contains the interactive ncurses client
-and **no service**. Install both only when an interactive local client is
-wanted:
+tools. The optional `i2pd-tui` package contains the interactive ncurses client, its
+desktop launcher/icons and **no service**. Install both only when an interactive
+local client is wanted:
 
 ```sh
 sudo apt update
@@ -403,6 +411,10 @@ dpkg-query -W -f='${Conffiles}\n' i2pd
 dpkg -s i2pd
 apt policy i2pd
 ```
+
+The TUI socket is mode 0600 and peer-checked against the daemon account. Run
+`sudo -u i2pd i2pd-tui --service` (or use a socket with matching ownership)
+rather than starting the router from the desktop launcher.
 
 The package installs both a systemd unit and a SysV init script for
 compatibility. On a systemd host, use `systemctl`; the `service` command is a
@@ -465,16 +477,18 @@ service host or JNI wrapper instead.
 | `I2PD_SERVICE_DIR` | Destination directory for the unit, init script or service directory. Manager-specific conventional locations are used when it is not set. |
 | `I2PD_SERVICE_CONFDIR` | OpenRC `/etc/conf.d` installation directory (default `${CMAKE_INSTALL_SYSCONFDIR}/conf.d`). It is not the router configuration directory. |
 
-Default destinations follow `GNUInstallDirs`; with the usual `/usr` prefix,
-`CMAKE_INSTALL_SYSCONFDIR` is `/etc`:
+Default destinations follow `GNUInstallDirs`. `CMAKE_INSTALL_SYSCONFDIR` is
+prefix-relative (normally `etc`); `CMAKE_INSTALL_FULL_SYSCONFDIR` resolves to
+`/etc` only for the `/usr` prefix. System packages that expect `/etc` must pass
+`-DCMAKE_INSTALL_SYSCONFDIR=/etc` explicitly:
 
 | Manager | Default destination |
 |---|---|
-| `systemd` | `${CMAKE_INSTALL_LIBDIR}/systemd/system/i2pd.service` |
+| `systemd` | `${CMAKE_INSTALL_PREFIX}/lib/systemd/system/i2pd.service` plus `lib/sysusers.d/openi2pd.conf` and `lib/tmpfiles.d/openi2pd.conf` (architecture-independent) |
 | `openrc` | `${CMAKE_INSTALL_SYSCONFDIR}/init.d/i2pd` plus `${CMAKE_INSTALL_SYSCONFDIR}/conf.d/i2pd` |
 | `runit` | `${CMAKE_INSTALL_SYSCONFDIR}/sv/i2pd/` (the `run` and `log/run` tree) |
 | `s6` | `${CMAKE_INSTALL_SYSCONFDIR}/s6/service/i2pd/` |
-| `s6-rc` | the s6-rc source tree under `${CMAKE_INSTALL_SYSCONFDIR}/s6-rc/source/` |
+| `s6-rc` | the s6-rc source tree under `${CMAKE_INSTALL_SYSCONFDIR}/s6-rc/source/i2pd/` plus its `down-signal`/`timeout-kill`/dependencies |
 | `shepherd` | `${CMAKE_INSTALL_SYSCONFDIR}/shepherd/i2pd.scm` |
 | `sysvinit` | `${CMAKE_INSTALL_SYSCONFDIR}/init.d/i2pd` |
 
@@ -489,6 +503,7 @@ Example for a systemd package staging tree:
 cmake -S build -B build-output -G Ninja \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_INSTALL_PREFIX=/usr \
+  -DCMAKE_INSTALL_SYSCONFDIR=/etc \
   -DI2PD_SERVICE_MANAGER=systemd \
   -DI2PD_SERVICE_DIR=/usr/lib/systemd/system
 cmake --build build-output --parallel
@@ -528,5 +543,6 @@ package was run locally. The following checks remain **pending manual CI**:
   and logging work under each manager's sandbox.
 
 No readiness guarantee (`sd_notify` or equivalent) and no full privilege
-separation or full sandboxing is claimed by any service definition. Only the
-log worker is isolated; network, storage and crypto workers are pending.
+separation or full sandboxing is claimed by any service definition. The log
+worker and opt-in storage workers are separate processes; networking, crypto
+and the core are pending.

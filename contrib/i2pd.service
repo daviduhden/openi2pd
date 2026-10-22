@@ -21,8 +21,8 @@ StartLimitBurst=5
 Type=exec
 User=i2pd
 Group=i2pd
-# The daemon keeps its router keys and netDb in StateDirectory and its pidfile
-# and local IPC endpoint under RuntimeDirectory.
+# The daemon keeps its router keys, netDb and default TUI/torrent IPC socket
+# under StateDirectory; the pidfile lives in RuntimeDirectory.
 StateDirectory=i2pd
 StateDirectoryMode=0700
 RuntimeDirectory=i2pd
@@ -39,7 +39,7 @@ ExecReload=/bin/kill -HUP $MAINPID
 # last resort after that grace period.
 KillSignal=SIGINT
 KillMode=mixed
-TimeoutStopSec=600
+TimeoutStopSec=660
 SendSIGKILL=yes
 Restart=on-failure
 RestartSec=5s
@@ -47,7 +47,7 @@ LimitNOFILE=8192
 
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=openi2pd
+SyslogIdentifier=open-i2pd
 
 # Hardening. The local TUI/torrent IPC socket lives in the data directory and
 # must remain usable, so no PrivateNetwork and no filesystem filtering of
@@ -80,5 +80,3 @@ CapabilityBoundingSet=
 
 [Install]
 WantedBy=multi-user.target
-# New canonical alias; the historical unit name remains for upgrades.
-Alias=open-i2pd.service

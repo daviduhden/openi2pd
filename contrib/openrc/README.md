@@ -71,9 +71,10 @@ rc-service i2pd reopenlogs    # SIGUSR1: reopen log files after rotation
 The default stop signal is `SIGTERM`, which stops the router without the
 ten-minute transit-tunnel grace period; OpenRC allows 30 seconds for the
 ordered shutdown to save state before escalating. To make
-`rc-service i2pd stop` request the graceful `SIGINT` path instead, uncomment
-the native `stopsig` and `retry` settings in `/etc/conf.d/i2pd`; the daemon
-then has up to ten minutes to drain before OpenRC escalates.
+`rc-service i2pd stop` request the graceful `SIGINT` path instead, set
+`stopsig="SIGINT"` in `/etc/conf.d/i2pd`; the runscript derives
+`retry="SIGINT/660"` and the daemon then has up to ten minutes to drain before
+OpenRC escalates.
 
 ## Configuration variables
 

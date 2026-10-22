@@ -24,7 +24,7 @@
           "--tunnelsdir=/etc/i2pd/tunnels.conf.d"
           "--datadir=/var/lib/i2pd"
           "--certsdir=/usr/share/i2pd/certificates"
-          "--pidfile=/run/i2pd/i2pd.pid"
+          "--pidfile=/var/lib/i2pd/i2pd.pid"
           "--log=syslog")
     #:user "i2pd"
     #:group "i2pd"
@@ -36,8 +36,9 @@
    ;; make-kill-destructor sends SIGINT to the service process group and
    ;; escalates to SIGKILL after the grace period. The default five seconds is
    ;; far shorter than the router's ten-minute graceful drain, so allow the
-   ;; documented drain plus a margin.
-   #:stop (make-kill-destructor SIGINT #:grace-period 660)
+   ;; documented drain plus a shutdown margin. The pidfile is under the data
+   ;; directory because Shepherd has no pre-start tmpfiles hook.
+   #:stop (make-kill-destructor SIGINT #:grace-period 700)
    #:respawn? #t
    #:respawn-delay 5
    ;; No dependency is declared. The native keyword is #:requirement;

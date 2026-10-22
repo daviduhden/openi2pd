@@ -9,6 +9,11 @@
 # private runtime directory. The daemon creates, locks and removes its own
 # pidfile; OpenRC keeps its supervisor state separately.
 #
+# shellcheck disable=SC2034
+# The command_*, supervisor, respawn_*, stopsig, retry, umask and description
+# assignments below are consumed by the OpenRC runscript framework, not by
+# this shell fragment directly.
+#
 
 : "${I2PD_USER:=i2pd}"
 : "${I2PD_GROUP:=i2pd}"
@@ -33,8 +38,14 @@ supervisor="supervise-daemon"
 respawn_delay=5
 respawn_max=5
 respawn_period=60
-# Allow an ordered SIGTERM shutdown to save router state before escalation.
-: "${retry:=SIGTERM/30}"
+# Keep the stop signal and its retry budget in one knob. Setting stopsig to
+# SIGINT requests the daemon's graceful tunnel drain; retry follows it.
+: "${stopsig:=SIGTERM}"
+case "${stopsig}" in
+	SIGINT|INT) : "${retry:=SIGINT/660}" ;;
+	*) : "${retry:=${stopsig}/30}" ;;
+esac
+umask=0077
 required_files="${I2PD_CONF}"
 
 command_args="--service --foreground --conf=${I2PD_CONF} --tunconf=${I2PD_TUNCONF} --tunnelsdir=${I2PD_TUNNELSDIR} --certsdir=${I2PD_CERTSDIR} --datadir=${I2PD_DATADIR} --pidfile=${I2PD_PIDFILE} --log=${I2PD_LOG}"
@@ -73,7 +84,7 @@ start_pre() {
 			;;
 	esac
 
-	checkpath -d -m 0700 -o "${I2PD_USER}:${I2PD_GROUP}" "${I2PD_RUNDIR}"
+	checkpath -d -m 0700 -o "${I2PD_USER}:${I2PD_GROUP}" "$(dirname "${I2PD_PIDFILE}")"
 	checkpath -d -m 0700 -o "${I2PD_USER}:${I2PD_GROUP}" "${I2PD_DATADIR}"
 
 	case "${I2PD_LOG}" in

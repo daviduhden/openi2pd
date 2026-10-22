@@ -25,18 +25,11 @@ PID supervision and no readiness protocol.
   fatal startup error. Do not set `daemon = true` in the configuration:
   Shepherd needs the router to remain in the foreground, and the packaged file
   leaves that option disabled.
-- `/var/lib/i2pd` and `/run/i2pd`. The data directory can be created by the
-  package; the runtime directory is on a tmpfs and must be recreated at boot,
-  for example with a tmpfiles rule:
-
-  ```text
-  d /run/i2pd 0700 i2pd i2pd -
-  ```
-
-  Or create both before starting the service:
+- `/var/lib/i2pd`. The service keeps its pidfile there because Shepherd has no
+  pre-start tmpfiles hook; create the directory before starting the service:
 
   ```sh
-  install -d -m 0700 -o i2pd -g i2pd /run/i2pd /var/lib/i2pd
+  install -d -m 0700 -o i2pd -g i2pd /var/lib/i2pd
   ```
 
 - A syslog daemon reachable through `/dev/log`.
@@ -83,7 +76,9 @@ herd disable i2pd
 ```
 
 `herd stop` sends `SIGINT`, the router's graceful shutdown, and Shepherd waits
-up to the configured 660-second grace period before escalating to `SIGKILL`.
+up to the configured 700-second grace period before escalating to `SIGKILL`.
+Shepherd signals the process group, so child workers may also receive the
+signal; use systemd or OpenRC when main-process-only signalling is required.
 `herd restart` performs a full stop and start.
 
 Shepherd has no built-in reload action for this service. To reload tunnel
@@ -91,7 +86,7 @@ configuration without a restart, send `SIGHUP` to the main PID shown by
 `herd status i2pd`, or use the daemon's PID file:
 
 ```sh
-kill -HUP "$(cat /run/i2pd/i2pd.pid)"
+kill -HUP "$(cat /var/lib/i2pd/i2pd.pid)"
 ```
 
 ## Service behavior and scope
@@ -112,6 +107,7 @@ provide a real prerequisite, add its actual provision name, for example
 `#:requirement '(network)`, after verifying it is registered.
 
 The TUI is not a service. `i2pd-tui` is an optional client over the local
-socket; the router does not depend on it. Only the isolated log worker exists
-behind `[privsep]`, and this definition makes no claim of full privilege
-separation.
+socket; the router does not depend on it. The isolated log worker and the
+opt-in torrent/router storage workers use separate processes; networking,
+crypto and the router core are not separated. This definition makes no claim
+of full privilege separation.

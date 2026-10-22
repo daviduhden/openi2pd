@@ -133,11 +133,11 @@ expected. Do not invent a notification file.
 ## Signals and shutdown
 
 `SIGINT` is the graceful stop (up to ten minutes for transit tunnels),
-`SIGHUP` reloads tunnels, and `SIGUSR1` reopens a file log destination. s6's
-normal down transition sends `SIGTERM`, which stops this daemon immediately.
-To change that policy, add a site-specific `down-signal` file containing
-`INT` to the definition directory and recompile. This recipe does not ship one
-because the appropriate supervision timeout depends on the site.
+`SIGHUP` reloads tunnels, and `SIGUSR1` reopens a file log destination. The
+source ships `down-signal` (`INT`) and `timeout-kill` (660000 ms), so the normal
+s6-rc down transition requests the graceful path and s6 escalates to `SIGKILL`
+only after that window. Recompile the source database after changing either
+file.
 
 No `finish` script is installed. The daemon removes the PID file on an orderly
 shutdown; after `SIGKILL` the stale file is harmless because the next start

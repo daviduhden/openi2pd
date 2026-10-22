@@ -43,8 +43,7 @@ I2PD_LOGFILE="/var/log/i2pd/i2pd.log"
 # visible in the process list, so never put secrets here.
 I2PD_OPTS=""
 
-# OpenRC stops the service with SIGTERM so that stop is prompt. To let
-# `rc-service i2pd stop` request the daemon's ten-minute graceful drain
-# instead, uncomment the following native OpenRC supervision settings:
+# OpenRC stops the service with SIGTERM so that stop is prompt. To request the
+# daemon's ten-minute graceful tunnel drain, set stopsig to SIGINT; the
+# runscript derives retry from it. Use SIGTERM when prompt shutdown is desired.
 #stopsig="SIGINT"
-#retry="SIGINT/600"
