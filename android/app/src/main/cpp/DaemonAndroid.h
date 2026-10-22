@@ -14,6 +14,8 @@
 #ifndef DAEMON_ANDROID_H
 #define DAEMON_ANDROID_H
 
+#include "DaemonLifecycle.h"
+
 #include <mutex>
 #include <string>
 
@@ -42,14 +44,6 @@ namespace android
 	 * bypasses that path (for example service destruction); it is not a
 	 * substitute for the Java lifecycle contract.
 	 */
-	enum class DaemonLifecycle
-	{
-		Stopped,
-		Starting,
-		Running,
-		Stopping
-	};
-
 	/**
 	 * Serialises every JNI-visible control/status call (start, stop, reload,
 	 * status, snapshots, network state and proxy probes) against each other.
@@ -93,6 +87,7 @@ namespace android
 		 * @return success
 		 */
 		bool init (int argc, char * argv[]);
+		/** Invoke Daemon.start(); the enclosing lifecycle owner changes state. */
 		bool start ();
 		void stop ();
 		void restart ();

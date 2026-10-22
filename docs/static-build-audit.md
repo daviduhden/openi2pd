@@ -112,8 +112,10 @@ branches still require the actual configured dependency/toolchain CI lanes.
   No toolchain limitation was converted into a Java source downgrade.
 - A separate Android runtime lifecycle concern was observed: the outer native
   `start()` publishes `Starting` before calling `DaemonAndroidImpl::start()`,
-  which returns early for that state. This is not a compile/link error and is
-  tracked separately for lifecycle correction and device regression.
+  which returned early for that state. ANDROID-017 now has a separate static
+  correction: the owner transition is shared with a deterministic host
+  regression, and the adapter invokes the real daemon start. This is not
+  compile/link or device evidence; those manual CI checks remain pending.
 
 See `BUILD-018`, `TEST-023` and `ANDROID-017` in `TODO.md`. No task is marked
 validated by CI on the basis of this audit.

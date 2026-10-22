@@ -85,13 +85,7 @@ namespace android
 
 	bool DaemonAndroidImpl::start ()
 	{
-		const auto previous = lifecycle.load (std::memory_order_acquire);
-		if (previous == DaemonLifecycle::Running || previous == DaemonLifecycle::Starting) return true;
-		if (previous == DaemonLifecycle::Stopping) return false;
-		lifecycle.store (DaemonLifecycle::Starting, std::memory_order_release);
-		const bool started = Daemon.start ();
-		lifecycle.store (started ? DaemonLifecycle::Running : DaemonLifecycle::Stopped, std::memory_order_release);
-		return started;
+		return Daemon.start ();
 	}
 
 	void DaemonAndroidImpl::stop ()
@@ -105,7 +99,8 @@ namespace android
 	void DaemonAndroidImpl::restart ()
 	{
 		stop ();
-		if (!start ()) stop ();
+		StartDaemonLifecycle (
+			lifecycle, [] () { return true; }, [this] () { return start (); }, [this] () { stop (); });
 	}
 
 	void DaemonAndroidImpl::setDataDir (std::string path)
@@ -117,110 +112,81 @@ namespace android
 	static char programName[] = "i2pd";
 	static char * argv[] = { programName, nullptr };
 
-	namespace
-	{
-		/**
-		 * Tear down a partially started daemon after an exception. The
-		 * lifecycle is published as Stopping before Daemon.stop(), exactly
-		 * like the regular shutdown path.
-		 */
-		void StopAfterFailedStart (bool initialized) noexcept
-		{
-			if (initialized)
-			{
-				lifecycle.store (DaemonLifecycle::Stopping, std::memory_order_release);
-				try
-				{
-					daemon.stop ();
-				}
-				catch (...)
-				{
-					// Preserve the original start error; the JNI boundary
-					// still must not see a second exception.
-				}
-			}
-			lifecycle.store (DaemonLifecycle::Stopped, std::memory_order_release);
-		}
-	}
-
 	/**
 	 * returns error details if failed
 	 * returns "ok" if daemon initialized and started okay
 	 */
 	std::string start (/*int argc, char* argv[]*/)
 	{
-		const auto previous = lifecycle.load (std::memory_order_acquire);
-		if (previous == DaemonLifecycle::Running || previous == DaemonLifecycle::Starting)
-			return "Daemon already running";
-		if (previous == DaemonLifecycle::Stopping) return "Daemon stopping";
-		lifecycle.store (DaemonLifecycle::Starting, std::memory_order_release);
-		bool initialized = false;
-		bool started = false;
+		std::string setupFailure;
 		try
 		{
-			{
-				std::string dataDirCopy;
+			const auto result = StartDaemonLifecycle (
+				lifecycle,
+				[&] ()
 				{
-					std::lock_guard<std::mutex> lock (stateMutex);
-					dataDirCopy = dataDir;
-				}
-				// make sure assets are ready before proceed
-				i2p::fs::DetectDataDir (dataDirCopy, false);
-				bool assetsReady = false;
-				int numAttempts = 0;
-				do
-				{
-					if (i2p::fs::Exists (i2p::fs::DataDirPath ("assets.ready")))
+					std::string dataDirCopy;
 					{
-						assetsReady = true;
-						break;
+						std::lock_guard<std::mutex> lock (stateMutex);
+						dataDirCopy = dataDir;
 					}
-					numAttempts++;
-					std::this_thread::sleep_for (std::chrono::seconds (1)); // otherwise wait for 1 more second
-				} while (numAttempts <= 10); // 10 seconds max
-				if (!assetsReady)
-				{
-					lifecycle.store (DaemonLifecycle::Stopped, std::memory_order_release);
-					return "Assets not ready";
-				}
+					// make sure assets are ready before proceed
+					i2p::fs::DetectDataDir (dataDirCopy, false);
+					bool assetsReady = false;
+					int numAttempts = 0;
+					do
+					{
+						if (i2p::fs::Exists (i2p::fs::DataDirPath ("assets.ready")))
+						{
+							assetsReady = true;
+							break;
+						}
+						numAttempts++;
+						std::this_thread::sleep_for (std::chrono::seconds (1)); // otherwise wait for 1 more second
+					} while (numAttempts <= 10); // 10 seconds max
 
-				// Set application directory
-				daemon.setDataDir (dataDirCopy);
+					if (!assetsReady)
+					{
+						setupFailure = "Assets not ready";
+						return false;
+					}
 
-				initialized = daemon.init (1, argv);
-				if (!initialized)
-				{
-					lifecycle.store (DaemonLifecycle::Stopped, std::memory_order_release);
-					return "Daemon init failed";
-				}
+					// Set application directory
+					daemon.setDataDir (dataDirCopy);
+					if (!daemon.init (1, argv))
+					{
+						setupFailure = "Daemon init failed";
+						return false;
+					}
+					return true;
+				},
+				[] () { return daemon.start (); },
+				[] () { daemon.stop (); });
 
-				started = daemon.start ();
-				if (!started)
-				{
-					// A failed start must not leave transport/netDb threads
-					// behind for the next Android start attempt.
-					StopAfterFailedStart (initialized);
-					return "Daemon start failed";
-				}
-				lifecycle.store (DaemonLifecycle::Running, std::memory_order_release);
+			switch (result)
+			{
+				case DaemonStartResult::Started: return "ok";
+				case DaemonStartResult::InitializationFailed:
+				case DaemonStartResult::StartFailed:
+					return setupFailure.empty () ? "Daemon start failed" : setupFailure;
+				case DaemonStartResult::AlreadyRunning: return "Daemon already running";
+				case DaemonStartResult::AlreadyStarting: return "Daemon start already in progress";
+				case DaemonStartResult::Stopping: return "Daemon stopping";
 			}
+			return "unknown daemon lifecycle state";
 		}
 		catch (boost::exception & ex)
 		{
-			if (!started) StopAfterFailedStart (initialized);
 			return BoundedDiagnostic (boost::diagnostic_information (ex));
 		}
 		catch (std::exception & ex)
 		{
-			if (!started) StopAfterFailedStart (initialized);
 			return BoundedDiagnostic (ex.what ());
 		}
 		catch (...)
 		{
-			if (!started) StopAfterFailedStart (initialized);
 			return "unknown exception";
 		}
-		return "ok";
 	}
 
 	void stop ()
