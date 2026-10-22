@@ -122,8 +122,7 @@ int main ()
 	// the queue and records beyond the fixed quota are counted and dropped.
 	{
 		i2p::log::Log log;
-		for (size_t i = 0; i < i2p::log::LOG_QUEUE_MAX_RECORDS; ++i)
-			Append (log, "queued-" + std::to_string (i));
+		for (size_t i = 0; i < i2p::log::LOG_QUEUE_MAX_RECORDS; ++i) Append (log, "queued-" + std::to_string (i));
 		assert (log.GetDroppedCount () == 0);
 		for (int i = 0; i < 5; ++i) Append (log, "dropped-" + std::to_string (i));
 		assert (log.GetDroppedCount () == 5);

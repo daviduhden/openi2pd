@@ -39,9 +39,8 @@ namespace modern
 	 * signed char, so they are covered without separate alternatives.
 	 */
 	template <typename T>
-	concept ByteLike = std::same_as<std::remove_cvref_t<T>, std::byte>
-		|| std::same_as<std::remove_cvref_t<T>, char> || std::same_as<std::remove_cvref_t<T>, signed char>
-		|| std::same_as<std::remove_cvref_t<T>, unsigned char>;
+	concept ByteLike = std::same_as<std::remove_cvref_t<T>, std::byte> || std::same_as<std::remove_cvref_t<T>, char>
+		|| std::same_as<std::remove_cvref_t<T>, signed char> || std::same_as<std::remove_cvref_t<T>, unsigned char>;
 
 	/** A contiguous range whose element type is byte-like. */
 	template <typename T>

@@ -65,12 +65,11 @@ namespace fs
 	const std::string GetUTF8DataDir ()
 	{
 #ifdef _WIN32
-		int size = MultiByteToWideChar (
-			CP_ACP, 0, dataDir.c_str (), static_cast<int> (dataDir.size ()), nullptr, 0);
+		int size = MultiByteToWideChar (CP_ACP, 0, dataDir.c_str (), static_cast<int> (dataDir.size ()), nullptr, 0);
 		std::wstring utf16Str (size, L'\0');
 		MultiByteToWideChar (CP_ACP, 0, dataDir.c_str (), static_cast<int> (dataDir.size ()), &utf16Str[0], size);
-		int utf8Size = WideCharToMultiByte (CP_UTF8, 0, utf16Str.c_str (), static_cast<int> (utf16Str.size ()), nullptr, 0,
-			nullptr, nullptr);
+		int utf8Size = WideCharToMultiByte (
+			CP_UTF8, 0, utf16Str.c_str (), static_cast<int> (utf16Str.size ()), nullptr, 0, nullptr, nullptr);
 		std::string utf8Str (utf8Size, '\0');
 		WideCharToMultiByte (CP_UTF8, 0, utf16Str.c_str (), static_cast<int> (utf16Str.size ()), &utf8Str[0], utf8Size,
 			nullptr, nullptr);

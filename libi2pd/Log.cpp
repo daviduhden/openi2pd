@@ -169,8 +169,8 @@ namespace log
 			{ "debug", eLogDebug },
 		} };
 		const std::string level = str_tolower (level_);
-		const auto found = std::ranges::find_if (levels,
-			[&level] (const auto & entry) { return entry.first == std::string_view (level); });
+		const auto found = std::ranges::find_if (
+			levels, [&level] (const auto & entry) { return entry.first == std::string_view (level); });
 		if (found == levels.end ())
 		{
 			LogPrint (eLogCritical, "Log: Unknown loglevel: ", level);
@@ -194,11 +194,9 @@ namespace log
 		localtime_r (&t, &caltime);
 #endif
 		m_LastDateTime[0] = 0;
-		if (!format.empty ()
-			&& !strftime (m_LastDateTime, sizeof (m_LastDateTime), format.c_str (), &caltime))
+		if (!format.empty () && !strftime (m_LastDateTime, sizeof (m_LastDateTime), format.c_str (), &caltime))
 		{
-			std::snprintf (
-				m_LastDateTime, sizeof (m_LastDateTime), "%lld", static_cast<long long> (t));
+			std::snprintf (m_LastDateTime, sizeof (m_LastDateTime), "%lld", static_cast<long long> (t));
 		}
 		m_LastDateTime[sizeof (m_LastDateTime) - 1] = 0;
 		m_LastTimestamp = t;
@@ -312,8 +310,7 @@ namespace log
 				while (m_Recent.size () > LOG_RECENT_CAPACITY) m_Recent.pop_front ();
 			}
 		}
-		if (!m_Queue.PutIfBelow (msg, LOG_QUEUE_MAX_RECORDS))
-			m_QueuedDropped.fetch_add (1, std::memory_order_relaxed);
+		if (!m_Queue.PutIfBelow (msg, LOG_QUEUE_MAX_RECORDS)) m_QueuedDropped.fetch_add (1, std::memory_order_relaxed);
 	}
 
 	std::vector<LogRecord> Log::GetRecent (uint64_t after, size_t max) const
