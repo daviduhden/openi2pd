@@ -616,8 +616,7 @@ namespace torrents
 			{ "status", [] (std::shared_ptr<Torrent> torrent) { return boost::json::value (torrent->GetStatus ()); } },
 			{ "isFinished",
 				[] (std::shared_ptr<Torrent> torrent) { return boost::json::value (torrent->IsComplete ()); } },
-			{ "sizeWhenDone",
-				[] (std::shared_ptr<Torrent> torrent)
+			{ "sizeWhenDone", [] (std::shared_ptr<Torrent> torrent)
 				{ return boost::json::value (torrent->GetSelectedWantedBytes ()); } },
 			{ "leftUntilDone",
 				[] (std::shared_ptr<Torrent> torrent) { return boost::json::value (torrent->GetLeft ()); } },
@@ -640,8 +639,7 @@ namespace torrents
 				{
 					const auto wanted = torrent->GetSelectedWantedBytes ();
 					if (!wanted) return boost::json::value (0.0);
-					return boost::json::value (
-						(float)torrent->GetSelectedVerifiedBytes () / (float)wanted);
+					return boost::json::value ((float)torrent->GetSelectedVerifiedBytes () / (float)wanted);
 				} },
 			{ "hashString",
 				[] (std::shared_ptr<Torrent> torrent)

@@ -122,8 +122,7 @@ std::optional<TorrentCommentMessage> DecodeTorrentComments (std::string_view enc
 			if (message.comments.size () >= MAX_COMMENT_COUNT) return size;
 			TorrentComment comment;
 			int64_t rating = -1, age = -1;
-			if (!Integer (values, "like", rating) || !Integer (values, "timestamp", age))
-				return size;
+			if (!Integer (values, "like", rating) || !Integer (values, "timestamp", age)) return size;
 			for (auto key : { "owner", "text" })
 			{
 				auto it = values.find (key);
@@ -160,11 +159,12 @@ std::string EncodeTorrentComments (const std::vector<TorrentComment> & comments,
 	for (const auto & comment : comments)
 		if (!comment.hidden && ValidComment (comment)) selected.push_back (&comment);
 	// Java publishes the newest N, not the first N inserted.
-	std::sort (selected.begin (), selected.end (), [] (const TorrentComment * left, const TorrentComment * right)
-	{
-		if (left->time != right->time) return left->time > right->time;
-		return left->localId > right->localId;
-	});
+	std::sort (selected.begin (), selected.end (),
+		[] (const TorrentComment * left, const TorrentComment * right)
+		{
+			if (left->time != right->time) return left->time > right->time;
+			return left->localId > right->localId;
+		});
 	count = std::min (count, MAX_COMMENT_COUNT);
 	if (selected.size () > count) selected.resize (count);
 	std::vector<std::string> entries;
@@ -199,8 +199,7 @@ bool TorrentCommentStore::Add (TorrentComment comment)
 	// Content deduplication is independent of the rating. Otherwise the same
 	// pseudonymous text could be replayed six times with ratings 0..5.
 	for (const auto & existing : m_Comments)
-		if (existing.owner == comment.owner && existing.text == comment.text)
-			return false;
+		if (existing.owner == comment.owner && existing.text == comment.text) return false;
 	const auto textUnits = TextUnits (comment.text);
 	if (textUnits == static_cast<size_t> (-1)) return false;
 	// Bound one pseudonym's share of the visible store. Hidden entries remain
@@ -211,8 +210,8 @@ bool TorrentCommentStore::Add (TorrentComment comment)
 			&& ++ownerEntries >= MAX_COMMENT_PER_OWNER)
 			return false;
 	// Evict the oldest foreign entry rather than becoming permanently full.
-	while (m_Comments.size () >= MAX_COMMENT_COUNT
-		|| m_TextUnits > MAX_COMMENT_TEXT_TOTAL_UNITS || textUnits > MAX_COMMENT_TEXT_TOTAL_UNITS - m_TextUnits)
+	while (m_Comments.size () >= MAX_COMMENT_COUNT || m_TextUnits > MAX_COMMENT_TEXT_TOTAL_UNITS
+		|| textUnits > MAX_COMMENT_TEXT_TOTAL_UNITS - m_TextUnits)
 	{
 		auto victim = m_Comments.end ();
 		for (auto it = m_Comments.begin (); it != m_Comments.end (); ++it)
@@ -240,8 +239,7 @@ bool TorrentCommentStore::Hide (size_t localIndex)
 	if (!m_Comments[localIndex].hidden)
 	{
 		const auto units = TextUnits (m_Comments[localIndex].text);
-		if (units != static_cast<size_t> (-1))
-			m_TextUnits -= std::min (m_TextUnits, units);
+		if (units != static_cast<size_t> (-1)) m_TextUnits -= std::min (m_TextUnits, units);
 		++m_Revision;
 	}
 	m_Comments[localIndex].hidden = true;
@@ -257,8 +255,7 @@ bool TorrentCommentStore::HideId (uint64_t id)
 			if (!comment.hidden)
 			{
 				const auto units = TextUnits (comment.text);
-				if (units != static_cast<size_t> (-1))
-					m_TextUnits -= std::min (m_TextUnits, units);
+				if (units != static_cast<size_t> (-1)) m_TextUnits -= std::min (m_TextUnits, units);
 				++m_Revision;
 			}
 			comment.hidden = true;
@@ -303,8 +300,7 @@ bool TorrentCommentStore::Restore (bool enabled, const std::vector<TorrentCommen
 		if (!ValidComment (comment)
 			|| (!comment.hidden
 				&& (units > MAX_COMMENT_TEXT_TOTAL_UNITS || textUnits > MAX_COMMENT_TEXT_TOTAL_UNITS - units))
-			|| !comment.localId
-			|| comment.localId >= static_cast<uint64_t> (std::numeric_limits<int64_t>::max ())
+			|| !comment.localId || comment.localId >= static_cast<uint64_t> (std::numeric_limits<int64_t>::max ())
 			|| !ids.insert (comment.localId).second)
 			return false;
 		if (!comment.hidden) units += textUnits;

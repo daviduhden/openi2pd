@@ -50,8 +50,8 @@ namespace torrents
 {
 	// Administrative registration before service startup. A selected but unavailable
 	// backend must return an erroring capability, never nullptr/native fallback.
-	using TorrentPayloadStorageFactory = std::function<std::shared_ptr<TorrentPayloadStorage>
-		(const std::string & tunnelName, const std::string & infoHash)>;
+	using TorrentPayloadStorageFactory = std::function<std::shared_ptr<TorrentPayloadStorage> (
+		const std::string & tunnelName, const std::string & infoHash)>;
 	void SetTorrentPayloadStorageFactory (TorrentPayloadStorageFactory factory);
 
 	constexpr int TRACKER_RESPONSE_TIMEOUT = 8; // in seconds

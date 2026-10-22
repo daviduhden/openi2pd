@@ -200,8 +200,7 @@ int main ()
 	assert (hiddenRoundTrip.UnhideId (persistedId) && hiddenRoundTrip.Visible ().size () == 1);
 	TorrentCommentStore visibleRoundTrip;
 	assert (DecodeTorrentCommentState (EncodeTorrentCommentState (hiddenRoundTrip), now, visibleRoundTrip));
-	assert (visibleRoundTrip.Visible ().size () == 1
-		&& visibleRoundTrip.Snapshot ().front ().localId == persistedId);
+	assert (visibleRoundTrip.Visible ().size () == 1 && visibleRoundTrip.Snapshot ().front ().localId == persistedId);
 	store.SetEnabled (false);
 	assert (store.Visible ().empty ());
 	TorrentCommentStore disabled;

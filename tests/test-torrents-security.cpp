@@ -650,7 +650,12 @@ void TestRemovedTorrentPersistence ()
 	torrent.SetFullPath (dir.path / "removed");
 	torrent.GetPiece (0).Complete ();
 	unsigned writes = 0;
-	torrent.SetResumePersistence ([&writes] (std::span<const uint8_t>, bool) { ++writes; return true; });
+	torrent.SetResumePersistence (
+		[&writes] (std::span<const uint8_t>, bool)
+		{
+			++writes;
+			return true;
+		});
 	torrent.SaveTorrentResumeFile ();
 	assert (writes == 1);
 	torrent.MarkRemoved ();
@@ -677,9 +682,15 @@ void TestRemovalQueueAndReadd ()
 	assert (torrent && id > 0);
 	const auto state = std::filesystem::path (".openi2pd-state") / (ToHexString (torrent->GetInfoHash ()) + ".state");
 	std::filesystem::create_directories (dir.path / state.parent_path ());
-	{ std::ofstream file (dir.path / state); file << "old settings"; }
+	{
+		std::ofstream file (dir.path / state);
+		file << "old settings";
+	}
 	std::filesystem::create_directories (dir.path / "queued");
-	{ std::ofstream file (dir.path / "queued" / "file.bin"); file << "retained"; }
+	{
+		std::ofstream file (dir.path / "queued" / "file.bin");
+		file << "retained";
+	}
 	assert (tunnel->RemoveTorrent (id, false));
 	assert (torrent->IsRemoved ());
 	assert (!tunnel->AddTorrent (content).first); // cleanup not dispatched yet
@@ -688,8 +699,10 @@ void TestRemovalQueueAndReadd ()
 	{
 		for (unsigned pass = 0; pass < 8; ++pass)
 		{
-			service.restart (); service.poll ();
-			tunnel->GetDiskIOService ().restart (); tunnel->GetDiskIOService ().poll ();
+			service.restart ();
+			service.poll ();
+			tunnel->GetDiskIOService ().restart ();
+			tunnel->GetDiskIOService ().poll ();
 		}
 	};
 	pump ();
@@ -701,11 +714,13 @@ void TestRemovalQueueAndReadd ()
 	// Simulate a disk transaction that passed authorization before removal.
 	// Revocation must not wait for this running transaction, and its late
 	// write must still precede the serialized cleanup, never resurrect state.
-	boost::asio::post (tunnel->GetDiskIOService (), [&]
+	boost::asio::post (tunnel->GetDiskIOService (),
+		[&]
 		{
 			assert (tunnel->RemoveTorrent (replacementID, false));
 			assert (!tunnel->AddTorrent (content).first);
-			std::ofstream file (dir.path / state); file << "late old transaction";
+			std::ofstream file (dir.path / state);
+			file << "late old transaction";
 		});
 	pump ();
 	assert (!std::filesystem::exists (dir.path / state));
@@ -715,7 +730,10 @@ void TestRemovalQueueAndReadd ()
 	// A nonempty directory at the exact metadata filename must fail closed;
 	// cleanup must never recurse into it or permit a replacement afterward.
 	std::filesystem::create_directory (dir.path / state);
-	{ std::ofstream file (dir.path / state / "keep"); file << "keep"; }
+	{
+		std::ofstream file (dir.path / state / "keep");
+		file << "keep";
+	}
 	pump ();
 	assert (std::filesystem::exists (dir.path / state / "keep"));
 	assert (!tunnel->AddTorrent (content).first);
@@ -730,11 +748,17 @@ void TestMetadataRemovalNoFollow ()
 	assert (!RemoveFileNoFollow (dir.path, "../escape.state", error));
 	std::filesystem::create_directory (dir.path / "directory.state");
 	assert (!RemoveFileNoFollow (dir.path, "directory.state", error));
-	{ std::ofstream file (dir.path / "regular.state"); file << "state"; }
+	{
+		std::ofstream file (dir.path / "regular.state");
+		file << "state";
+	}
 	assert (RemoveFileNoFollow (dir.path, "regular.state", error));
 	assert (!std::filesystem::exists (dir.path / "regular.state"));
 #ifndef _WIN32
-	{ std::ofstream file (outside.path / "keep.state"); file << "keep"; }
+	{
+		std::ofstream file (outside.path / "keep.state");
+		file << "keep";
+	}
 	std::filesystem::create_directory_symlink (outside.path, dir.path / "linked");
 	assert (!RemoveFileNoFollow (dir.path, "linked/keep.state", error));
 	assert (std::filesystem::exists (outside.path / "keep.state"));

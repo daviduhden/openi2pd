@@ -47,7 +47,10 @@ using namespace i2p::torrents;
 class MemoryStorage final : public TorrentPayloadStorage
 {
 public:
-	explicit MemoryStorage (bool finalNames) : m_FinalNames (finalNames) {}
+	explicit MemoryStorage (bool finalNames)
+		: m_FinalNames (finalNames)
+	{
+	}
 	bool UsesFinalNames () const override { return m_FinalNames; }
 
 	std::map<std::string, std::vector<uint8_t>> files;

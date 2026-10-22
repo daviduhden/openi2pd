@@ -355,8 +355,7 @@ namespace torrents
 				candidates.emplace_back (state.first, peer);
 		std::sort (candidates.begin (), candidates.end (),
 			[] (const auto & left, const auto & right) { return left.first > right.first; });
-		if (candidates.size () > MAX_DHT_VALUES_PER_RESPONSE)
-			candidates.resize (MAX_DHT_VALUES_PER_RESPONSE);
+		if (candidates.size () > MAX_DHT_VALUES_PER_RESPONSE) candidates.resize (MAX_DHT_VALUES_PER_RESPONSE);
 		std::vector<std::string> peers;
 		peers.reserve (candidates.size ());
 		for (const auto & [time, peer] : candidates)
@@ -367,8 +366,7 @@ namespace torrents
 	bool DHTTorrent::HasPeers (bool noSeeds) const
 	{
 		const auto now = i2p::util::GetMonotonicSeconds ();
-		return std::any_of (m_Peers.begin (), m_Peers.end (),
-			[this, now, noSeeds] (const auto & entry)
+		return std::any_of (m_Peers.begin (), m_Peers.end (), [this, now, noSeeds] (const auto & entry)
 			{ return IsFresh (now, entry.second.first, entry.second.second, noSeeds); });
 	}
 
@@ -522,7 +520,8 @@ namespace torrents
 		if (!IsValidStateFileName (filename)) return { };
 		std::filesystem::path dhtFilePath (i2p::fs::GetDataDir ());
 		dhtFilePath /= "torrents";
-		if (!m_DelegatedPersistence && !std::filesystem::exists (dhtFilePath)) std::filesystem::create_directories (dhtFilePath);
+		if (!m_DelegatedPersistence && !std::filesystem::exists (dhtFilePath))
+			std::filesystem::create_directories (dhtFilePath);
 		dhtFilePath /= filename;
 		return dhtFilePath;
 	}
@@ -582,7 +581,7 @@ namespace torrents
 		}
 		// Keep the existing flat 54-byte NodeInfo format; reject partial files
 		// before changing identity or routing state.
-		if (bytes.empty () || bytes.size () > MaxStateBytes || bytes.size () % NodeInfo {}.size ()) return;
+		if (bytes.empty () || bytes.size () > MaxStateBytes || bytes.size () % NodeInfo { }.size ()) return;
 		size_t offset = 0;
 		NodeInfo first;
 		std::copy_n (bytes.data (), first.size (), first.data ());
@@ -963,7 +962,7 @@ namespace torrents
 			}
 
 			SendGetPeersResponse (transactionID,
-				nodes.empty () ? std::string_view {} : std::string_view ((const char *) nodes.data (), nodes.size ()),
+				nodes.empty () ? std::string_view { } : std::string_view ((const char *)nodes.data (), nodes.size ()),
 				token, from->peer, from->port + 1); // to rport
 		}
 	}
@@ -983,7 +982,7 @@ namespace torrents
 				if (node->id == target) break; // exact known target needs no further referrals
 			}
 			SendFindNodeResponse (transactionID,
-				nodes.empty () ? std::string_view {} : std::string_view ((const char *) nodes.data (), nodes.size ()),
+				nodes.empty () ? std::string_view { } : std::string_view ((const char *)nodes.data (), nodes.size ()),
 				fromIdent, fromPort + 1); // empty table still receives a valid reply
 		}
 	}
@@ -1622,8 +1621,7 @@ namespace torrents
 
 	void TorrentsDHT::GetPeersAndAnnounce (std::shared_ptr<Torrent> torrent)
 	{
-		if (!torrent || torrent->IsPrivate () || torrent->IsStopped () || torrent->IsRemoved ()
-			|| !m_RoutingTable)
+		if (!torrent || torrent->IsPrivate () || torrent->IsStopped () || torrent->IsRemoved () || !m_RoutingTable)
 			return;
 
 		// If this torrent's hash is in our own k-bucket, we are one of the

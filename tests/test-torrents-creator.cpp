@@ -48,12 +48,14 @@ int main ()
 	options.progress = [&] (uint64_t done, uint64_t total, size_t files, size_t all)
 	{
 		assert (done >= observedBytes && done <= total && files <= all);
-		observedBytes = done; observedTotal = total; observedFiles = files;
+		observedBytes = done;
+		observedTotal = total;
+		observedFiles = files;
 	};
 	std::string error;
 	auto torrent = CreateTorrentFromPath (root, "payload", options, error);
 	assert (observedBytes == first.size () + second.size () && observedTotal == observedBytes && observedFiles == 3);
-	options.progress = {};
+	options.progress = { };
 	assert (torrent && error.empty () && torrent->GetNumPieces () == 2 && torrent->GetFiles ().size () == 3);
 	std::string bytes = first + second;
 	Torrent::InfoHash hash;
@@ -69,7 +71,7 @@ int main ()
 	assert (expected && torrent->GetInfoHash () == expected->GetInfoHash ());
 	assert (!torrent->IsComplete ());
 	options.privateTorrent = true;
-	options.trackers = {{ "http://first.i2p/a", "http://backup.i2p/a" }, { "udp://second.i2p/a" }};
+	options.trackers = { { "http://first.i2p/a", "http://backup.i2p/a" }, { "udp://second.i2p/a" } };
 	auto privateTorrent = CreateTorrentFromPath (root, "payload", options, error);
 	assert (privateTorrent && privateTorrent->IsPrivate () && privateTorrent->GetTrackerTiers () == options.trackers);
 	assert (privateTorrent->GetInfoHash () != torrent->GetInfoHash ());

@@ -231,8 +231,8 @@ namespace torrents
 		const void * data, size_t len, std::string & error);
 	// Missing files are success; POSIX anchors parents without following links.
 	// Windows retains the existing path-check/delete reparse-point race.
-	bool RemoveFileNoFollow (const std::filesystem::path & root,
-		const std::filesystem::path & relativePath, std::string & error);
+	bool RemoveFileNoFollow (
+		const std::filesystem::path & root, const std::filesystem::path & relativePath, std::string & error);
 	// Creates path exclusively (O_EXCL) and reserves exactly `size` bytes.
 	bool CreateFileWithSizeNoFollow (const std::filesystem::path & path, size_t size);
 	// Anchored variants: `relativePath` is traversed from `root` one component
@@ -276,18 +276,32 @@ namespace torrents
 		// O_NOFOLLOW. Must contain m_FullFilePath.
 		void SetRootDir (const std::filesystem::path & root) { m_RootDir = root; }
 		void SetStorageWorker (const std::shared_ptr<TorrentStorageWorker> & worker, const std::filesystem::path & root)
-		{ SetPayloadStorage (worker ? std::make_shared<WorkerPayloadStorage> (worker) : nullptr, root); }
+		{
+			SetPayloadStorage (worker ? std::make_shared<WorkerPayloadStorage> (worker) : nullptr, root);
+		}
 		// Administrative capability injection; never derives authority from peer paths.
 		void SetPayloadStorage (std::shared_ptr<TorrentPayloadStorage> storage, const std::filesystem::path & root)
-		{ Close (); m_PayloadStorage = std::move (storage); m_StorageRootDir = root; }
+		{
+			Close ();
+			m_PayloadStorage = std::move (storage);
+			m_StorageRootDir = root;
+		}
 		bool HasPayloadStorage () const { return static_cast<bool> (m_PayloadStorage); }
 		bool HasFinalNameStorage () const { return m_PayloadStorage && m_PayloadStorage->UsesFinalNames (); }
 		bool RemovePayload (std::string & error)
 		{
-			if (!HasFinalNameStorage ()) { error = "document storage unavailable"; return false; }
+			if (!HasFinalNameStorage ())
+			{
+				error = "document storage unavailable";
+				return false;
+			}
 			Close ();
 			auto relative = m_FullFilePath.lexically_relative (m_StorageRootDir);
-			if (!IsSafeRelativePath (relative)) { error = "unsafe document path"; return false; }
+			if (!IsSafeRelativePath (relative))
+			{
+				error = "unsafe document path";
+				return false;
+			}
 			return m_PayloadStorage->Remove (relative, m_FileLength, error);
 		}
 		size_t GetFileLength () const { return m_FileLength; }

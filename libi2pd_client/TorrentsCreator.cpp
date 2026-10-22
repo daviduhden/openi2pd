@@ -173,8 +173,8 @@ namespace
 size_t SelectTorrentPieceLength (uint64_t totalBytes, size_t requested)
 {
 	if (!totalBytes || totalBytes > MAX_TORRENT_LENGTH) return 0;
-	if (requested && (requested < MIN_PIECE_LENGTH || requested > MAX_PIECE_LENGTH
-		|| (requested & (requested - 1)))) return 0;
+	if (requested && (requested < MIN_PIECE_LENGTH || requested > MAX_PIECE_LENGTH || (requested & (requested - 1))))
+		return 0;
 	size_t selected = requested ? requested : 256 * 1024;
 	if (!requested)
 		while (selected < MAX_PIECE_LENGTH && totalBytes / selected + (totalBytes % selected != 0) > 2048)
@@ -197,8 +197,9 @@ try
 	};
 	if (root.empty () || !IsSafeRelativePath (relativePath))
 		return fail ("source must be relative to the authorized root");
-	if (options.pieceLength && (options.pieceLength < MIN_PIECE_LENGTH || options.pieceLength > MAX_PIECE_LENGTH
-		|| (options.pieceLength & (options.pieceLength - 1)) ))
+	if (options.pieceLength
+		&& (options.pieceLength < MIN_PIECE_LENGTH || options.pieceLength > MAX_PIECE_LENGTH
+			|| (options.pieceLength & (options.pieceLength - 1))))
 		return fail ("invalid piece length");
 	std::vector<File> files;
 	size_t entries = 0;
@@ -210,7 +211,9 @@ try
 #else
 	if (!Collect (root, relativePath, 0, files, entries, total, options.cancelled))
 #endif
-		return fail (options.cancelled && options.cancelled () ? "creation cancelled" : "source contains inaccessible, unsafe or excessive entries");
+		return fail (options.cancelled && options.cancelled ()
+				? "creation cancelled"
+				: "source contains inaccessible, unsafe or excessive entries");
 	if (files.empty () || !total || total > std::numeric_limits<size_t>::max ())
 		return fail ("empty or excessive source size");
 	const auto pieceLength = SelectTorrentPieceLength (total, options.pieceLength);
@@ -293,8 +296,8 @@ try
 		if (options.progress) options.progress (bytesDone, total, filesDone, files.size ());
 	}
 	if (pieceBytes && !finish ()) return fail ("last piece digest failed");
-	auto torrent = Torrent::CreateV1 (relativePath.filename ().string (), layout, pieceLength, hashes,
-		options.trackers, options.privateTorrent);
+	auto torrent = Torrent::CreateV1 (
+		relativePath.filename ().string (), layout, pieceLength, hashes, options.trackers, options.privateTorrent);
 	if (!torrent) return fail ("source names, tracker list or metadata are invalid");
 	return torrent;
 }

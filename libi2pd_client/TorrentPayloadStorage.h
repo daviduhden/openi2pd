@@ -26,48 +26,59 @@ namespace i2p::torrents
 class TorrentPayloadStorage
 {
 public:
- static constexpr size_t MaxTransfer = 16 * 1024;
- virtual ~TorrentPayloadStorage () = default;
- // Document providers use stable names; filesystem backends retain .part staging.
- virtual bool UsesFinalNames () const { return false; }
- virtual uint64_t Open (const std::filesystem::path & relative, uint64_t length,
-  bool create, std::string & error) = 0;
- virtual bool Read (uint64_t handle, uint64_t offset, std::span<uint8_t> bytes,
-  std::string & error) = 0;
- virtual bool Write (uint64_t handle, uint64_t offset, std::span<const uint8_t> bytes,
-  std::string & error) = 0;
- virtual bool Close (uint64_t handle, std::string & error) = 0;
- // Exact registered payload only; unsupported backends must never fall back
- // to filesystem paths for document-provider storage.
- virtual bool Remove (const std::filesystem::path &, uint64_t, std::string & error)
- { error = "Payload deletion is not supported by this backend"; return false; }
+	static constexpr size_t MaxTransfer = 16 * 1024;
+	virtual ~TorrentPayloadStorage () = default;
+	// Document providers use stable names; filesystem backends retain .part staging.
+	virtual bool UsesFinalNames () const { return false; }
+	virtual uint64_t Open (const std::filesystem::path & relative, uint64_t length, bool create, std::string & error)
+		= 0;
+	virtual bool Read (uint64_t handle, uint64_t offset, std::span<uint8_t> bytes, std::string & error) = 0;
+	virtual bool Write (uint64_t handle, uint64_t offset, std::span<const uint8_t> bytes, std::string & error) = 0;
+	virtual bool Close (uint64_t handle, std::string & error) = 0;
+	// Exact registered payload only; unsupported backends must never fall back
+	// to filesystem paths for document-provider storage.
+	virtual bool Remove (const std::filesystem::path &, uint64_t, std::string & error)
+	{
+		error = "Payload deletion is not supported by this backend";
+		return false;
+	}
 };
 
 // Reuses the real isolated worker rather than introducing another IO engine.
 class WorkerPayloadStorage final : public TorrentPayloadStorage
 {
 public:
- explicit WorkerPayloadStorage (std::shared_ptr<TorrentStorageWorker> worker)
-  : m_Worker (std::move (worker)) {}
- uint64_t Open (const std::filesystem::path & relative, uint64_t length,
-  bool create, std::string & error) override
- { return m_Worker ? m_Worker->Register (relative, length, error, create) : 0; }
- bool Read (uint64_t handle, uint64_t offset, std::span<uint8_t> bytes,
-  std::string & error) override
- { return Valid (handle, bytes.size (), error) && m_Worker->Read (static_cast<uint32_t> (handle), offset, bytes, error); }
- bool Write (uint64_t handle, uint64_t offset, std::span<const uint8_t> bytes,
-  std::string & error) override
- { return Valid (handle, bytes.size (), error) && m_Worker->Write (static_cast<uint32_t> (handle), offset, bytes, error); }
- bool Close (uint64_t handle, std::string & error) override
- { return Valid (handle, 0, error) && m_Worker->Release (static_cast<uint32_t> (handle), error); }
+	explicit WorkerPayloadStorage (std::shared_ptr<TorrentStorageWorker> worker)
+		: m_Worker (std::move (worker))
+	{
+	}
+	uint64_t Open (const std::filesystem::path & relative, uint64_t length, bool create, std::string & error) override
+	{
+		return m_Worker ? m_Worker->Register (relative, length, error, create) : 0;
+	}
+	bool Read (uint64_t handle, uint64_t offset, std::span<uint8_t> bytes, std::string & error) override
+	{
+		return Valid (handle, bytes.size (), error)
+			&& m_Worker->Read (static_cast<uint32_t> (handle), offset, bytes, error);
+	}
+	bool Write (uint64_t handle, uint64_t offset, std::span<const uint8_t> bytes, std::string & error) override
+	{
+		return Valid (handle, bytes.size (), error)
+			&& m_Worker->Write (static_cast<uint32_t> (handle), offset, bytes, error);
+	}
+	bool Close (uint64_t handle, std::string & error) override
+	{
+		return Valid (handle, 0, error) && m_Worker->Release (static_cast<uint32_t> (handle), error);
+	}
+
 private:
- bool Valid (uint64_t handle, size_t length, std::string & error) const
- {
-  if (m_Worker && handle && handle <= std::numeric_limits<uint32_t>::max () && length <= MaxTransfer) return true;
-  error = "Invalid storage capability or transfer size";
-  return false;
- }
- std::shared_ptr<TorrentStorageWorker> m_Worker;
+	bool Valid (uint64_t handle, size_t length, std::string & error) const
+	{
+		if (m_Worker && handle && handle <= std::numeric_limits<uint32_t>::max () && length <= MaxTransfer) return true;
+		error = "Invalid storage capability or transfer size";
+		return false;
+	}
+	std::shared_ptr<TorrentStorageWorker> m_Worker;
 };
 }
 #endif

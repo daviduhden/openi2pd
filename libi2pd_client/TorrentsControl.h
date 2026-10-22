@@ -188,9 +188,12 @@ namespace torrents
 		// The explicit constructor keeps the common four-field control command
 		// free of -Wmissing-field-initializers diagnostics while leaving the
 		// creation-only fields at their safe defaults.
-		TorrentCommand (TorrentCommandKind kind_, int torrentId_ = 0, bool deleteFiles_ = false,
-			std::string argument_ = { })
-			: kind (kind_), torrentId (torrentId_), deleteFiles (deleteFiles_), argument (std::move (argument_))
+		TorrentCommand (
+			TorrentCommandKind kind_, int torrentId_ = 0, bool deleteFiles_ = false, std::string argument_ = { })
+			: kind (kind_)
+			, torrentId (torrentId_)
+			, deleteFiles (deleteFiles_)
+			, argument (std::move (argument_))
 		{
 		}
 

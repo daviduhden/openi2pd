@@ -183,8 +183,10 @@ namespace torrents
 			// useful rendezvous signal, but a populated successor can be.
 			if (bucket->IsEmpty ())
 			{
-				if (bucket->next && !bucket->next->IsEmpty ()) bucket = bucket->next.get ();
-				else return false;
+				if (bucket->next && !bucket->next->IsEmpty ())
+					bucket = bucket->next.get ();
+				else
+					return false;
 			}
 			return bucket->IsInBucket (m_OurNode);
 		}
@@ -236,8 +238,7 @@ namespace torrents
 		bool HasPeers (bool noSeeds = false) const;
 		bool IsFresh (uint64_t now, uint64_t lastUpdate, bool seed, bool noSeeds) const
 		{
-			return (!noSeeds || !seed)
-				&& (now < lastUpdate || now - lastUpdate < DHT_TORRENT_PEER_EXPIRATION_TIME);
+			return (!noSeeds || !seed) && (now < lastUpdate || now - lastUpdate < DHT_TORRENT_PEER_EXPIRATION_TIME);
 		}
 		// Non-expired peers for a rendezvous reuse; copied so callers can
 		// erase/modify the set without touching the DHT map under iteration.
@@ -313,7 +314,11 @@ namespace torrents
 		using LoadState = std::function<bool (const std::filesystem::path &, std::vector<uint8_t> &, std::string &)>;
 		using SaveState = std::function<bool (const std::filesystem::path &, std::span<const uint8_t>, std::string &)>;
 		void SetPersistence (LoadState load, SaveState save)
-		{ m_LoadState = std::move (load); m_SaveState = std::move (save); m_DelegatedPersistence = true; }
+		{
+			m_LoadState = std::move (load);
+			m_SaveState = std::move (save);
+			m_DelegatedPersistence = true;
+		}
 		static constexpr size_t MaxStateBytes = 8 * 1024 * 1024;
 		// Legacy flat DHT filename: one component beneath <datadir>/torrents,
 		// no traversal, separators, reserved prefixes or control bytes.
