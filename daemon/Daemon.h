@@ -14,6 +14,7 @@
 #ifndef DAEMON_H__
 #define DAEMON_H__
 
+#include <atomic>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -46,12 +47,12 @@ namespace util
 		 */
 		bool BeginGracefulShutdown ();
 		bool CancelGracefulShutdown ();
-		void RequestImmediateShutdown () { running = false; };
+		void RequestImmediateShutdown () { running.store (false, std::memory_order_release); };
 		void setDataDir (std::string_view path);
 
 	public:
 		bool isDaemon;
-		bool running;
+		std::atomic<bool> running;
 
 	protected:
 		Daemon_Singleton ();
@@ -83,7 +84,7 @@ namespace util
 
 		// Transit acceptance observed when a graceful drain started, so a
 		// cancellation restores the configured policy instead of forcing ON.
-		bool m_GracefulTransitRestore = false;
+		std::atomic<bool> m_GracefulTransitRestore { false };
 
 		std::string DaemonDataDir;
 	};
@@ -157,15 +158,21 @@ namespace util
 		void run () override;
 
 		bool SupportsGracefulShutdown () const override { return true; }
-		void SetGracefulShutdownInterval (int seconds) override { gracefulShutdownInterval = seconds; }
-		int GetGracefulShutdownInterval () const override { return gracefulShutdownInterval; };
+		void SetGracefulShutdownInterval (int seconds) override
+		{
+			gracefulShutdownInterval.store (seconds, std::memory_order_release);
+		}
+		int GetGracefulShutdownInterval () const override
+		{
+			return gracefulShutdownInterval.load (std::memory_order_acquire);
+		};
 
 	private:
 		std::string pidfile;
 		int pidFH = -1;
 
 	public:
-		int gracefulShutdownInterval = 0; // in seconds
+		std::atomic<int> gracefulShutdownInterval { 0 }; // in seconds
 	};
 #define Daemon i2p::util::DaemonUnix::Instance ()
 

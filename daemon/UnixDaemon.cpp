@@ -193,11 +193,12 @@ static void HandlePendingSignals ()
 			i2p::log::Logger ().Reopen ();
 			break;
 		case SIGINT:
-			if (i2p::context.AcceptsTunnels () && !Daemon.gracefulShutdownInterval)
+			if (i2p::context.AcceptsTunnels () && Daemon.gracefulShutdownInterval.load () == 0)
 			{
 				i2p::context.SetAcceptsTunnels (false);
-				Daemon.gracefulShutdownInterval = GRACEFUL_SHUTDOWN_INTERVAL;
-				LogPrint (eLogInfo, "Graceful shutdown after ", Daemon.gracefulShutdownInterval, " seconds");
+				Daemon.gracefulShutdownInterval.store (GRACEFUL_SHUTDOWN_INTERVAL);
+				LogPrint (eLogInfo, "Graceful shutdown after ",
+					Daemon.gracefulShutdownInterval.load (), " seconds");
 			}
 			else
 				Daemon.running = 0;
