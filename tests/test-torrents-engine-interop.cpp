@@ -42,6 +42,8 @@ int main ()
 	Torrent trackerless (edited.CreateTorrentFileContent ());
 	assert (trackerless.HasExplicitTrackers () && trackerless.GetTrackerTiers ().empty ());
 	assert (trackerless.GetAnnounce ().empty () && trackerless.GetInfoHash () == torrent->GetInfoHash ());
+	const auto info = std::string (
+		reinterpret_cast<const char *> (torrent->GetInfo ().data ()), torrent->GetInfo ().size ());
 
 	// A primary announce outside a non-empty announce-list remains part of the
 	// policy and is normalized into tier 0 without changing the info hash.
@@ -77,7 +79,6 @@ int main ()
 	Torrent::TrackerTiers excessive (MAX_NUM_TRACKERS + 1);
 	assert (!restored.SetTrackerTiers (excessive));
 	// A typed field with a syntactically valid but wrong bencode type is rejected.
-	auto info = std::string (reinterpret_cast<const char *> (torrent->GetInfo ().data ()), torrent->GetInfo ().size ());
 	Torrent malformed (CreateDictionary ({ { "announce-list", "li1ee" }, { "info", info } }));
 	assert (malformed.GetError () == eTorrentErrorMalformedMetaInfo);
 
