@@ -17,7 +17,7 @@ FORMAT=$1
 BIN=$(realpath "$2")
 mkdir -p "$3"
 OUT=$(realpath "$3")
-SRC=$(cd "$(dirname "$0")/../.." && pwd)
+SRC=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd)
 # alpine:deb:rpm architecture names
 ARCHS='x86_64:amd64:x86_64
 aarch64:arm64:aarch64
