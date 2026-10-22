@@ -10,6 +10,22 @@ Defines native Android application resources.
 -->
 
 <resources>
+    <string-array name="pref_language_labels">
+        <item>@string/pref_language_system</item>
+        <item>@string/pref_language_english</item>
+        <item>@string/pref_language_spanish</item>
+        <item>@string/pref_language_russian</item>
+        <item>@string/pref_language_chinese_simplified</item>
+    </string-array>
+
+    <string-array name="pref_language_values" translatable="false">
+        <item>system</item>
+        <item>en</item>
+        <item>es</item>
+        <item>ru</item>
+        <item>zh-CN</item>
+    </string-array>
+
     <string-array name="pref_bandwidth_labels">
         <item>@string/pref_bandwidth_low</item>
         <item>@string/pref_bandwidth_medium</item>
@@ -17,14 +33,14 @@ Defines native Android application resources.
         <item>@string/pref_bandwidth_unlimited</item>
     </string-array>
 
-    <string-array name="pref_bandwidth_values">
+    <string-array name="pref_bandwidth_values" translatable="false">
         <item>L</item>
         <item>O</item>
         <item>P</item>
         <item>X</item>
     </string-array>
 
-    <string-array name="pref_loglevel_values">
+    <string-array name="pref_loglevel_values" translatable="false">
         <item>none</item>
         <item>critical</item>
         <item>error</item>

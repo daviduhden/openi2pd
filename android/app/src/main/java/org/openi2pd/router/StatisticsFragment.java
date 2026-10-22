@@ -38,6 +38,9 @@ public class StatisticsFragment extends Fragment {
     private TrafficChartView trafficChart;
     private TextView downloadRate;
     private TextView uploadRate;
+    private TextView downloadNow;
+    private TextView uploadNow;
+    private TextView chartPeak;
     private TextView totalReceived;
     private TextView totalSent;
     private TextView totalTransit;
@@ -62,6 +65,9 @@ public class StatisticsFragment extends Fragment {
         trafficChart = view.findViewById(R.id.traffic_chart);
         downloadRate = view.findViewById(R.id.stat_download_rate);
         uploadRate = view.findViewById(R.id.stat_upload_rate);
+        downloadNow = view.findViewById(R.id.stat_download_now);
+        uploadNow = view.findViewById(R.id.stat_upload_now);
+        chartPeak = view.findViewById(R.id.stat_chart_peak);
         totalReceived = view.findViewById(R.id.stat_total_received);
         totalSent = view.findViewById(R.id.stat_total_sent);
         totalTransit = view.findViewById(R.id.stat_total_transit);
@@ -89,6 +95,14 @@ public class StatisticsFragment extends Fragment {
 
         UiFormat.setTextIfChanged(downloadRate, download);
         UiFormat.setTextIfChanged(uploadRate, upload);
+        String downloadCurrent = hasData ? UiFormat.rate(requireContext(), snapshot.inRate())
+                                         : getString(R.string.value_unknown);
+        String uploadCurrent = hasData ? UiFormat.rate(requireContext(), snapshot.outRate())
+                                       : getString(R.string.value_unknown);
+        UiFormat.setTextIfChanged(downloadNow,
+                getString(R.string.statistics_now_format, downloadCurrent));
+        UiFormat.setTextIfChanged(uploadNow,
+                getString(R.string.statistics_now_format, uploadCurrent));
         CharSequence chartDescription =
                 getString(R.string.statistics_chart_description, download, upload);
         if (!TextUtils.equals(trafficChart.getContentDescription(), chartDescription)) {
@@ -109,6 +123,8 @@ public class StatisticsFragment extends Fragment {
         }
 
         if (hasData) {
+            UiFormat.setTextIfChanged(chartPeak, getString(R.string.statistics_chart_peak_format,
+                    UiFormat.rate(requireContext(), trafficChart.getPeakBytesPerSecond())));
             UiFormat.setTextIfChanged(
                     totalReceived, UiFormat.bytes(requireContext(), snapshot.totalReceived()));
             UiFormat.setTextIfChanged(
@@ -124,6 +140,7 @@ public class StatisticsFragment extends Fragment {
                     + snapshot.transitTunnels();
             UiFormat.setTextIfChanged(tunnels, UiFormat.count(requireContext(), totalTunnels));
         } else {
+            UiFormat.setTextIfChanged(chartPeak, getString(R.string.statistics_chart_peak_unknown));
             UiFormat.setTextIfChanged(totalReceived, getString(R.string.value_unknown));
             UiFormat.setTextIfChanged(totalSent, getString(R.string.value_unknown));
             UiFormat.setTextIfChanged(totalTransit, getString(R.string.value_unknown));

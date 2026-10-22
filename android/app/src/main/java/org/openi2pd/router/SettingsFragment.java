@@ -15,7 +15,9 @@
 package org.openi2pd.router;
 
 import android.content.Context;
+import android.content.Intent;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.View;
@@ -24,14 +26,19 @@ import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.StringRes;
+import androidx.appcompat.app.AppCompatDelegate;
+import androidx.core.app.NotificationManagerCompat;
+import androidx.core.os.LocaleListCompat;
 import androidx.lifecycle.ViewModelProvider;
 import androidx.preference.EditTextPreference;
+import androidx.preference.Preference;
 import androidx.preference.ListPreference;
 import androidx.preference.PreferenceFragmentCompat;
 import androidx.preference.SwitchPreferenceCompat;
 
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
@@ -93,6 +100,7 @@ public class SettingsFragment extends PreferenceFragmentCompat {
     public void onResume() {
         super.onResume();
         refreshAutostart();
+        bindNotificationSettings();
     }
 
     private void loadPreferences() {
@@ -145,13 +153,15 @@ public class SettingsFragment extends PreferenceFragmentCompat {
 
     private void bindPreferences(boolean autostart) {
         bindAutostart(autostart);
+        bindNotificationSettings();
+        bindLanguagePreference();
 
         bindSwitch("ipv4EnablePreference", "ipv4", true);
         bindSwitch("ipv6EnablePreference", "ipv6", false);
         bindSwitch("ntcp2EnablePreference", "ntcp2.enabled", true);
         bindSwitch("ntcp2PublishPreference", "ntcp2.published", true);
         bindSwitch("ssuEnablePreference", "ssu2.enabled", true);
-        bindDisabledPort();
+        bindText("portPreference", "port", "auto", Kind.PORT);
 
         bindSwitch("noTransitPreference", "notransit", false);
         bindSwitch("floodfillPreference", "floodfill", false);
@@ -174,6 +184,23 @@ public class SettingsFragment extends PreferenceFragmentCompat {
 
         bindSwitch("upnpEnablePreference", "upnp.enabled", true);
         bindText("upnpForwardNamePreference", "upnp.name", "openi2pd", Kind.TEXT);
+    }
+
+    private void bindNotificationSettings() {
+        Preference preference = findPreference("notificationSettings");
+        if (preference == null) return;
+        boolean enabled = NotificationManagerCompat.from(requireContext()).areNotificationsEnabled();
+        preference.setSummary(enabled ? R.string.pref_notifications_enabled
+                                      : R.string.pref_notifications_disabled);
+        preference.setOnPreferenceClickListener(ignored -> {
+            Intent intent = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                    .putExtra(Settings.EXTRA_APP_PACKAGE, requireContext().getPackageName());
+            try { startActivity(intent); } catch (RuntimeException unavailable) {
+                Toast.makeText(requireContext(), R.string.pref_notifications_unavailable,
+                        Toast.LENGTH_SHORT).show();
+            }
+            return true;
+        });
     }
 
     private void bindAutostart(boolean enabled) {
@@ -289,6 +316,48 @@ public class SettingsFragment extends PreferenceFragmentCompat {
      * same {@code pref_loglevel_values} array used by the list, which mirrors
      * the exact closed set the native logger accepts.</p>
      */
+    /**
+     * Per-app language selection. AppCompat stores the choice without touching
+     * the device locale; an empty locale list follows the system. This is the
+     * only runtime locale override allowed in the app.
+     */
+    private void bindLanguagePreference() {
+        ListPreference preference = findPreference("uiLanguagePreference");
+        if (preference == null) {
+            return;
+        }
+        LocaleListCompat locales = AppCompatDelegate.getApplicationLocales();
+        String tag = locales.isEmpty() ? "system" : locales.toLanguageTags();
+        if (!Arrays.asList(preference.getEntryValues()).contains(tag)) {
+            tag = "system";
+        }
+        preference.setValue(tag);
+        updateLanguageSummary(preference, tag);
+        preference.setOnPreferenceChangeListener((changed, newValue) -> {
+            if (!(newValue instanceof String value)) {
+                return false;
+            }
+            if ("system".equals(value)) {
+                AppCompatDelegate.setApplicationLocales(LocaleListCompat.getEmptyLocaleList());
+            } else {
+                AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags(value));
+            }
+            updateLanguageSummary(preference, value);
+            return true;
+        });
+    }
+
+    private static void updateLanguageSummary(ListPreference preference, String value) {
+        CharSequence[] values = preference.getEntryValues();
+        CharSequence[] labels = preference.getEntries();
+        for (int i = 0; i < values.length && i < labels.length; i++) {
+            if (value.contentEquals(values[i])) {
+                preference.setSummary(labels[i]);
+                return;
+            }
+        }
+    }
+
     private void bindLogLevel() {
         ListPreference preference = findPreference("logLevelPreference");
         if (preference == null) {
@@ -379,17 +448,6 @@ public class SettingsFragment extends PreferenceFragmentCompat {
                     () -> showApplyMode(configKey), () -> preference.setText(previous));
             return true;
         });
-    }
-
-    private void bindDisabledPort() {
-        EditTextPreference preference = findPreference("portPreference");
-        if (preference == null) {
-            return;
-        }
-        String port = configValues.get("port");
-        preference.setText(port == null ? "auto" : port);
-        preference.setEnabled(false);
-        preference.setSummary(R.string.pref_port_summary);
     }
 
     private void persist(@NonNull String key, @NonNull String value, @NonNull Runnable onSuccess,

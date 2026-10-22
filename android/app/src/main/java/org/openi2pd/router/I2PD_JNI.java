@@ -173,6 +173,27 @@ public final class I2PD_JNI {
      */
     public static native String getRecentLogs(long afterSequence, int limit);
 
+    /**
+     * Bounded address-book rows as {@code name|b32-or-b33|blinded\n}.
+     * The call is made only from the service worker while the daemon runs.
+     */
+    static native String getAddressBook();
+
+    /** Add or replace a validated name with a full base64 destination. */
+    static native boolean addAddress(String name, String destination);
+
+    /** Remove one name without deleting destination key material. */
+    static native boolean removeAddress(String name);
+
+    /** Block a deleted-host subscription pattern; returns false on invalid input. */
+    static native boolean blockAddress(String name);
+
+    /** Remove one exact deleted-host pattern. */
+    static native boolean unblockAddress(String name);
+
+    /** Bounded deleted-host patterns, one per line. */
+    static native String getBlockedAddresses();
+
     /** Torrent-only bounded control protocol; called exclusively by RouterService. */
     static native String torrentCommand(byte[] utf8Request);
 

@@ -43,6 +43,22 @@ but disables UPnP port mapping. Android 17 edge-to-edge, local-network and
 foreground-service behavior still requires the manual device/Play review listed
 below. No target-37 compatibility claim is made from static files alone.
 
+## Modern Java/OOP usage
+
+Java 25 is a source/class-file level, not a claim that every JDK 25 library API
+exists on Android API 29. The application deliberately uses records for
+immutable snapshots and typed results, sealed interfaces with exhaustive
+pattern switches for service commands, switch expressions, lambdas/method
+references, generics, streams/collectors and `Optional` where they clarify a
+boundary. `RouterCommand` and `LogLevel` are the current examples; the service
+still performs the same foreground checks, worker ordering and native calls.
+
+Virtual threads, scoped values and structured concurrency are not adopted
+because they are guarded library APIs on the supported Android levels and core
+library desugaring is disabled. Material 3/Views remain the UI stack; no
+Kotlin/Compose migration is implied. Dynamic Gradle/device evidence remains
+pending manual CI.
+
 ## Presentation architecture
 
 ```
@@ -199,20 +215,27 @@ RouterService (started + bound, non-exported, same process)
 
 ## Interface language
 
-- The Android UI is English-only, matching the desktop policy. All 16
-  `values-<language>` resource directories and non-English Fastlane listings
-  were removed; `values/` is the sole string catalog.
-- `res/xml/locales_config.xml` declares only `en`, `AndroidManifest.xml`
-  references it, and `androidResources { localeFilters += ["en"] }` keeps
-  non-English resource splits out of packaged APKs.
-- The Java `appLocale`/`JNI setLanguage` path and the inert Android native
-  language plumbing were removed. `UiFormat` uses English number formatting;
-  log case-folding uses `Locale.ROOT`.
-- Unicode input and persisted data are unchanged. The English-only policy
-  applies to UI resources, not to file, torrent, destination or user text.
-- `perl android/tools/check-english-only.pl` is a compile-free CI guard for
-  language directories, locale metadata, Fastlane listings and locale
-  overrides. It is run before Gradle in the manual Android job.
+- The Android UI ships English (`values/`), Spanish (`values-es/`), Russian
+  (`values-ru/`) and Simplified Chinese (`values-zh-rCN/`); English is the
+  source/fallback. Traditional Chinese is optional only with verified
+  `zh-Hant` translations and must not reuse Simplified text.
+- `res/xml/locales_config.xml` declares `en, es, ru, zh-CN`;
+  `AndroidManifest.xml` references it, and
+  `androidResources { localeFilters += ["en", "es", "ru", "zh"] }` keeps the
+  resource split aligned. `values-zh` is intentionally not used because it
+  would also match Traditional Chinese.
+- Settings uses `AppCompatDelegate.setApplicationLocales` for per-app language;
+  an empty locale list follows the system. It never calls
+  `Locale.setDefault`, changes `Resources` configuration process-wide or
+  mutates the device locale. `UiFormat` uses the active UI locale for
+  user-visible numbers; log/token classification keeps `Locale.ROOT`.
+- User data (file, torrent, destination and log text) is never translated.
+  Native protocol/status tokens remain English, including inside translated
+  wrapper sentences.
+- `perl android/tools/check-android-locales.pl` is a compile-free guard for
+  catalog key/placeholder parity, `locales_config`, locale filters, Fastlane
+  allowlist and the override boundary. The manual Android job runs it before
+  Gradle.
 
 ## Configuration and storage
 
@@ -236,7 +259,9 @@ RouterService (started + bound, non-exported, same process)
   linking or APK packaging. The lifecycle/FGS/settings review edits made after
   that run have only been inspected statically; they need a fresh compile in
   CI.
-- The Java 25 probe passed javac/D8/R8 checks; see `docs/android-java25.md`.
+- A historical standalone Java 25 probe passed javac/D8/R8 checks; the
+  AGP-resolved D8/R8 path for the current app is still a CI obligation. See
+  `docs/android-java25.md`.
 - All Android XML resources parse with `xmllint`; no Python or ElementTree runtime check is required.
 - The visual-identity pass added the brand icon, splash, palette and About
   logo. All `android/app/src/main/res/**/*.xml` files parse with `xmllint`
@@ -286,3 +311,81 @@ RouterService (started + bound, non-exported, same process)
 - Confirm Java 25/D8/R8 behavior for the final APK and any AGP/Kotlin toolchain
   migration beyond AGP 10.
 - Decide isolated-process/AIDL migration after the native worker separation.
+
+## Multiprocess and SAF lifecycle continuation (static)
+
+The router remains embedded and same-process with the Activity/UI. This preserves
+`stopWithTask="false"` and the persisted `should_run` intent, so destroying an
+Activity or rotating the screen does not stop router or torrent transfers.
+`android:process` only provides crash/lifetime containment, not a new UID:
+`INTERNET` remains per-UID and `isolatedProcess` cannot retain persisted SAF
+grants. A true router/UI separation therefore needs a typed Binder/AIDL boundary
+and later a companion-UID design; it is not claimed here.
+
+SAF hardening in this increment: tree selection validates `isTreeUri` and real
+read/write grants, releases a replaced persisted grant, exposes detach, and
+persists/releases the export target grant. Close/release calls no longer retire
+the broker on a client-side timeout; the broker queues descriptor close through a
+reaper, cancels one operation without killing the process, verifies created
+document names and truncates exports to zero before writing. JNI inbound strings
+use UTF-16→UTF-8 decoding with NUL/surrogate rejection; start diagnostics are
+bounded. The SAF broker still maps the full native library before applying its
+seccomp filter; moving that helper to a minimal library and adding a session-scoped
+AIDL contract remain pending.
+
+## Manual Android CI matrix (prepared)
+
+The only currently dispatched Android job builds `arm64-v8a` debug, runs JVM
+unit tests and `lintDebug`, links the arm64 JNI target and assembles the debug
+and instrumentation APKs. The following matrix is the manual target; cells are
+not validated until the workflow or a device run passes.
+
+| Axis | Values | Current coverage |
+|---|---|---|
+| Build type | debug, release (unsigned), AAB | debug was the only prepared build; release APK/lint release added to the manual job; AAB remains deferred because ABI splits and bundle packaging need an explicit policy |
+| ABI | arm64-v8a, armeabi-v7a, x86_64, x86, universal | arm64-v8a only; universal version-code ordering is fixed statically but not inspected |
+| API device | 29, 33, 36/37 | none executed; instrumentation APK is compile-only |
+| Java/D8/R8 | JDK 25 compiler, class-file 69, AGP-selected D8/R8, release R8 | class-file assertion added; AGP D8/R8 version remains unpinned and unproven |
+| NDK/CMake | r30 `30.0.16248370`, CMake 3.31.6, C++23 JNI | arm64 configure/link only; 32-bit and x86 branches compile only in a future ABI lane |
+| Resources | API 29 baseline, API 35+ edge-to-edge, API 37 target | unit/Lint only; no AAPT2/APK content assertion beyond the packaged `libi2pd.so` check |
+
+Required manual lanes:
+
+1. Toolchain: `./gradlew --version`, `javaToolchains`, `check-config.sh`,
+   `check-android-locales.pl`; assert the exact JDK 25 compiler and class-file 69.
+2. JVM/Lint: `testDebugUnitTest`, `lintDebug`, `lintRelease`; publish text/XML
+   reports rather than relying on an intermediates path.
+3. Native/package: arm64 JNI link, debug APK, release APK, packaged-library and
+   symbol assertions; then each declared ABI in a bounded compile lane.
+4. Device: `connectedDebugAndroidTest` on API 29 and a current API, including
+   SAF provider faults, service lifecycle, broker death/rebind and negative
+   seccomp checks. No such lane exists yet.
+
+Known tool limitations must remain explicit: Java 25 source/class-file support
+by the AGP-resolved D8/R8 is assumed until the CI class-file/DEX checks pass;
+core-library desugaring is disabled, so JDK library APIs newer than the API 29
+bootclasspath are unavailable; virtual threads, `ScopedValue`,
+`StructuredTaskScope`, `SequencedCollection` and similar APIs are not available
+on ART; R8 shrinking is disabled, so release R8 rules are not exercised; and
+Lint warnings such as `UnusedResources`/`SetTextI18n` are not errors unless the
+Lint policy is tightened.
+
+## Native GUI continuation (2026-10-21, static)
+
+The dashboard now exposes the native router status/error detail and a Reseed
+action gated by connected/not-reseeding state. Settings can edit the listening
+port through the existing validator and restart apply mode, and links to the app
+notification settings with an enabled/disabled summary. Statistics shows both
+instantaneous and 15 s rates plus the retained chart peak. Logs apply
+minimum-severity filtering (Warn includes errors), wrap filter chips, announce
+the summary and group each row into one screen-reader stop. I2PSnark has
+validated Start all/Stop all/Reannounce all controls and shows the selected
+session name; SAF selection/export labels use the active UI resource catalogue.
+The address-book title survives recreation and the fragment container receives
+an accessibility pane title.
+
+Still open: per-tunnel inventory and live accept-transit control, SAF source
+seeding/import-after-create, queue/bandwidth policy, notification live counters,
+ViewModel-owned traffic history, process-wide daemon ownership, rotated
+restart/apply banners, and the device/API instrumentation lane. `UiContractTest`
+and the pure JVM filter/format/command tests are prepared but not executed.

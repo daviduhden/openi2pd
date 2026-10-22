@@ -31,10 +31,11 @@ grep -Fq 'targetCompatibility = JavaVersion.VERSION_25' "$app_gradle" \
 grep -Fq 'languageVersion = JavaLanguageVersion.of(25)' "$app_gradle" \
     || fail 'Java toolchain is not exact JDK 25'
 grep -Fq 'compileSdk 37' "$app_gradle" || fail 'compileSdk is not 37'
-grep -Fq "buildToolsVersion '36.0.0'" "$app_gradle" || fail 'Build Tools pin is not 36.0.0'
+grep -Fq "buildToolsVersion = '36.0.0'" "$app_gradle" || fail 'Build Tools pin is not 36.0.0'
 grep -Fq 'targetSdk 37' "$app_gradle" || fail 'targetSdk is not 37'
 grep -Fq 'minSdk 29' "$app_gradle" || fail 'minSdk is not 29'
 grep -Fq '30.0.16248370' "$app_gradle" || fail 'NDK r30 LTS pin is missing'
+grep -Fq 'ndkVersion = ' "$app_gradle" || fail 'ndkVersion is not declared on the Android extension'
 grep -Fq "classpath 'com.android.tools.build:gradle:9.4.1'" "$root_gradle" \
     || fail 'AGP pin is not 9.4.1'
 grep -Fq 'gradle-9.8.1-bin.zip' "$wrapper" || fail 'Gradle wrapper is not 9.8.1'
@@ -62,10 +63,12 @@ grep -Fq 'gracefulStopExpired' "$root/android/app/src/main/java/org/openi2pd/rou
     || fail 'RouterService does not schedule the graceful-stop deadline'
 
 # These JDK APIs are not provided by Android's java.* bootclasspath. Keep them
-# out of app source; the Java 25 probe is intentionally outside this scan.
-if grep -RInE 'java\.lang\.foreign|java\.lang\.invoke|java\.lang\.classfile|java\.lang\.ScopedValue|java\.lang\.StableValue|java\.util\.Sequenced|javax\.crypto\.KDF|java\.security\.PEMEncoder|java\.security\.PEMDecoder|Thread\.ofVirtual|StructuredTaskScope|jdk\.incubator\.vector' \
-    "$root/android/app/src/main/java"; then
-    fail 'app source references a JDK-only API that is unavailable on ART'
-fi
+# out of app and instrumentation source; the Java 25 probe is outside this scan.
+for source_dir in "$root/android/app/src/main/java" "$root/android/app/src/androidTest/java"; do
+    if grep -RInE 'java\.lang\.foreign|java\.lang\.invoke|java\.lang\.classfile|java\.lang\.ScopedValue|java\.lang\.StableValue|java\.util\.Sequenced|javax\.crypto\.KDF|java\.security\.PEMEncoder|java\.security\.PEMDecoder|Thread\.ofVirtual|StructuredTaskScope|jdk\.incubator\.vector' \
+        "$source_dir"; then
+        fail 'app or instrumentation source references a JDK-only API that is unavailable on ART'
+    fi
+done
 
 echo "Android Java 25 config check passed"

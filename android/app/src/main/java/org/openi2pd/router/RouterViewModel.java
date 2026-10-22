@@ -67,6 +67,31 @@ public class RouterViewModel extends AndroidViewModel {
         repository.torrentCommand(request, callback);
     }
 
+    public void readAddressBook(java.util.function.Consumer<String> callback) {
+        repository.readAddressBook(callback);
+    }
+
+    public void readBlockedAddresses(java.util.function.Consumer<String> callback) {
+        repository.readBlockedAddresses(callback);
+    }
+
+    public void blockAddress(String name, java.util.function.Consumer<Boolean> callback) {
+        repository.blockAddress(name, callback);
+    }
+
+    public void unblockAddress(String name, java.util.function.Consumer<Boolean> callback) {
+        repository.unblockAddress(name, callback);
+    }
+
+    public void addAddress(
+            String name, String destination, java.util.function.Consumer<Boolean> callback) {
+        repository.addAddress(name, destination, callback);
+    }
+
+    public void removeAddress(String name, java.util.function.Consumer<Boolean> callback) {
+        repository.removeAddress(name, callback);
+    }
+
     public LiveData<TorrentImportResult> getTorrentImportResult() {
         return torrentImportResult;
     }

@@ -110,6 +110,15 @@ Defines native Android application resources.
                     android:textAppearance="@style/TextAppearance.OpenI2Pd.Body"
                     android:textColor="?attr/colorOnSurfaceVariant" />
 
+                <TextView
+                    android:id="@+id/status_detail"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/margin_tiny"
+                    android:textAppearance="@style/TextAppearance.OpenI2Pd.Label"
+                    android:textColor="?attr/colorOnSurfaceVariant"
+                    android:visibility="gone" />
+
                 <com.google.android.material.chip.ChipGroup
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -232,6 +241,15 @@ Defines native Android application resources.
                 android:minHeight="@dimen/touch_target"
                 android:text="@string/nav_settings" />
         </LinearLayout>
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/button_dashboard_reseed"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="@dimen/margin_small"
+            android:minHeight="@dimen/touch_target"
+            android:text="@string/action_reseed" />
 
         <TextView
             android:layout_width="match_parent"

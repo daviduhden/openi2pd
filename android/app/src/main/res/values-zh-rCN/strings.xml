@@ -1,0 +1,423 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: strings.
+
+Defines native Android application resources.
+
+-->
+
+<resources>
+    <string name="action_start">启动</string>
+    <string name="action_stop">停止</string>
+    <string name="action_exit">退出</string>
+    <string name="action_graceful_stop">优雅停止</string>
+    <string name="action_cancel_graceful_stop">取消优雅停止</string>
+    <string name="action_reload_tunnels_config">重新加载隧道</string>
+    <string name="action_reseed">重新播种 NetDb</string>
+
+    <string name="gracefulShutdownInProgress">正在优雅关闭</string>
+
+    <string name="uninitialized">应用正在初始化…</string>
+    <string name="starting">应用正在启动…</string>
+    <string name="startedOkay">应用已启动</string>
+    <string name="startFailed">启动失败</string>
+    <string name="stopped">应用已停止</string>
+
+    <string name="services_http_proxy">HTTP 代理</string>
+    <string name="services_socks_proxy">SOCKS5 代理</string>
+
+    <string name="menu_item_battery_optimizations_str">电池优化</string>
+    <string name="battery_optimizations_enabled">已启用电池优化</string>
+    <string name="battery_optimizations_enabled_dialog">你的 Android 系统正在对 openi2pd 施加严格的电池优化，这可能导致守护进程无故关闭。\n\n接下来系统会询问你是否允许关闭这些优化。</string>
+    <string name="os_version_does_not_support_battery_optimizations_show_os_dialog_api">你的 Android 系统版本不支持为应用显示电池优化对话框。</string>
+
+    <string name="tunnels_reloading">正在重新加载隧道配置…</string>
+
+    <string name="autostart_enabled">开机启动</string>
+
+    <!-- Navigation and toolbar -->
+    <string name="nav_home">概览</string>
+    <string name="nav_network">连接</string>
+    <string name="nav_tunnels">隧道</string>
+    <string name="nav_stats">统计</string>
+    <string name="nav_settings">设置</string>
+    <string name="action_logs">日志</string>
+    <string name="action_about">关于</string>
+    <string name="action_restart">重启</string>
+    <string name="action_cancel">取消</string>
+    <string name="action_refresh">刷新</string>
+    <string name="action_clear_logs">清除日志</string>
+    <string name="action_open_repository">打开仓库</string>
+    <string name="action_open_license">查看许可证</string>
+    <string name="action_continue">继续</string>
+
+    <!-- Router states and dashboard -->
+    <string name="state_connected">已连接</string>
+    <string name="state_degraded">降级</string>
+    <string name="state_starting">正在启动</string>
+    <string name="state_stopping">正在停止</string>
+    <string name="state_stopped">已停止</string>
+    <string name="state_error">错误</string>
+    <string name="state_unknown">未知</string>
+    <string name="status_online">在线</string>
+    <string name="status_offline">离线</string>
+    <string name="status_unknown">未知</string>
+    <string name="status_service_connecting">正在连接路由器服务…</string>
+    <string name="status_router_online">已连接到 I2P 网络</string>
+    <string name="status_router_degraded">路由器正在运行，但尚未连接</string>
+    <string name="status_router_reseeding">正在重新播种；对等节点发现进行中</string>
+    <string name="status_router_starting">正在启动路由器…</string>
+    <string name="status_router_stopped">路由器未运行</string>
+    <string name="status_router_graceful">正在排空中转隧道：剩余 %1$s</string>
+    <string name="status_start_failed_format">启动失败：%1$s</string>
+    <string name="status_status_unavailable">路由器正在运行，但无法获取其状态</string>
+    <string name="status_status_unavailable_format">路由器正在运行，但无法获取其状态：%1$s</string>
+    <string name="dashboard_transports_format">%1$s · %2$s</string>
+    <string name="dashboard_quick_actions">快捷操作</string>
+    <string name="dashboard_live_metrics">实时指标</string>
+    <string name="metric_uptime">运行时间</string>
+    <string name="metric_peers">对等节点</string>
+    <string name="metric_routers">已知路由器</string>
+    <string name="metric_tunnels_label">隧道（入站 / 出站 / 中转）</string>
+    <string name="metric_tunnels_value">%1$d 入站 / %2$d 出站 / %3$d 中转</string>
+    <string name="metric_reseed">重新播种</string>
+    <string name="metric_download">下载</string>
+    <string name="metric_upload">上传</string>
+    <string name="value_unknown_long">未知</string>
+    <string name="value_yes">是</string>
+    <string name="value_no">否</string>
+    <string name="value_enabled">已启用</string>
+    <string name="value_disabled">已禁用</string>
+    <string name="value_published">已发布</string>
+    <string name="value_not_published">未发布</string>
+    <string name="value_running">运行中</string>
+    <string name="value_stopped">已停止</string>
+    <string name="warning_title">注意</string>
+    <string name="warning_offline">路由器正在运行，但没有可用的网络连接。请检查 Wi-Fi 或移动数据。</string>
+    <string name="warning_error_format">路由器报告了一个问题：%1$s</string>
+    <string name="warning_start_failed_format">路由器启动失败：%1$s</string>
+    <string name="warning_router_error">路由器报告了一个错误。</string>
+    <string name="warning_status_unavailable">路由器正在运行，但无法获取其状态快照。在新的快照到达之前，计数器将保持隐藏。</string>
+    <string name="warning_status_unavailable_format">无法获取路由器状态快照：%1$s</string>
+    <string name="service_disconnected_banner">路由器服务已断开连接。状态可能已过期。</string>
+    <string name="action_retry">重试</string>
+
+    <!-- Confirmations and notices -->
+    <string name="confirm_stop_title">停止路由器？</string>
+    <string name="confirm_stop_message">停止路由器将断开所有 I2P 服务和隧道。是否继续？</string>
+    <string name="confirm_restart_title">重启路由器？</string>
+    <string name="confirm_restart_message">路由器将停止后重新启动。现有的 I2P 连接将被中断。</string>
+    <string name="confirm_graceful_title">开始优雅停止？</string>
+    <string name="confirm_graceful_message">路由器停止前会留出时间让中转隧道排空。倒计时期间可以取消优雅停止。</string>
+    <string name="confirm_exit_title">停止路由器并退出？</string>
+    <string name="confirm_exit_message">路由器将停止，应用也将关闭。I2P 服务和隧道将被断开。</string>
+    <string name="confirm_clear_logs_title">清除日志？</string>
+    <string name="confirm_clear_logs_message">这会移除应用当前显示的日志条目，但不会更改磁盘上的文件。</string>
+    <string name="confirm_reseed_title">重新播种网络数据库？</string>
+    <string name="confirm_reseed_message">路由器将通过 HTTPS 联系已配置的重新播种服务器以刷新路由器信息。此操作会消耗网络流量，在连接较差时可能需要几分钟；在完成之前，状态和停止请求可能会被延迟。</string>
+    <string name="toast_reseed_started">正在请求 NetDb 重新播种…</string>
+    <string name="toast_reseed_finished">NetDb 重新播种已完成。</string>
+    <string name="toast_reseed_failed">未启动重新播种。路由器可能已停止，或者已有另一个重新播种正在进行。</string>
+    <string name="toast_starting">正在启动路由器…</string>
+    <string name="toast_stopping">正在停止路由器…</string>
+    <string name="toast_restarting">正在重启路由器…</string>
+    <string name="toast_graceful_started">正在优雅停止。</string>
+    <string name="toast_graceful_cancelled">已取消优雅停止。</string>
+    <string name="battery_optimizations_already_disabled">此应用已禁用电池优化。</string>
+    <string name="no_browser_available">没有可用于打开此链接的浏览器。</string>
+
+    <!-- Network -->
+    <string name="network_connectivity">连接状态</string>
+    <string name="network_addresses_title">地址</string>
+    <string name="network_no_addresses">未报告任何地址</string>
+    <string name="network_transports_title">传输协议</string>
+    <string name="network_services_title">客户端服务</string>
+    <string name="network_ipv4">IPv4</string>
+    <string name="network_ipv6">IPv6</string>
+    <string name="network_ipv4_available">IPv4 可用</string>
+    <string name="network_ipv4_unavailable">IPv4 不可用</string>
+    <string name="network_ipv6_available">IPv6 可用</string>
+    <string name="network_ipv6_unavailable">IPv6 不可用</string>
+    <string name="network_ntcp2">NTCP2</string>
+    <string name="network_ssu2">SSU2</string>
+    <string name="network_transport_format">%1$s：%2$s</string>
+    <string name="network_service_format">%1$s：%2$s</string>
+    <string name="address_format">%1$s %2$s:%3$d（%4$s）</string>
+
+    <!-- Tunnels -->
+    <string name="tunnels_inbound">入站隧道</string>
+    <string name="tunnels_outbound">出站隧道</string>
+    <string name="tunnels_transit">中转隧道</string>
+    <string name="tunnels_total">隧道总数</string>
+    <string name="tunnels_grace_remaining">优雅停止：剩余 %1$s</string>
+    <string name="tunnels_grace_active">正在优雅停止</string>
+
+    <!-- Statistics -->
+    <string name="statistics_chart_title">流量</string>
+    <string name="statistics_chart_description">流量图表。下载 %1$s，上传 %2$s。</string>
+    <string name="statistics_download_rate">下载速率</string>
+    <string name="statistics_upload_rate">上传速率</string>
+    <string name="statistics_total_received">累计接收</string>
+    <string name="statistics_total_sent">累计发送</string>
+    <string name="statistics_total_transit">中转流量</string>
+    <string name="statistics_uptime">运行时间</string>
+    <string name="statistics_peers">对等节点</string>
+    <string name="statistics_routers">已知路由器</string>
+    <string name="statistics_tunnels">隧道</string>
+    <string name="statistics_chart_download">下载</string>
+    <string name="statistics_chart_upload">上传</string>
+    <string name="statistics_chart_window">最近 2 分钟 · 1 秒采样</string>
+    <string name="statistics_now_format">当前：%1$s</string>
+    <string name="statistics_now_unknown">当前：—</string>
+    <string name="statistics_chart_peak_format">窗口内峰值：%1$s</string>
+    <string name="statistics_chart_peak_unknown">窗口内峰值：—</string>
+
+    <!-- Logs -->
+    <string name="logs_title">日志</string>
+    <string name="logs_intro">搜索并筛选有容量上限的原生日志流。</string>
+    <string name="logs_search_hint">搜索日志</string>
+    <string name="logs_filter_all">全部</string>
+    <string name="logs_filter_error">错误</string>
+    <string name="logs_filter_warn">警告</string>
+    <string name="logs_filter_info">信息</string>
+    <string name="logs_filter_debug">调试</string>
+    <string name="logs_empty">暂无日志条目</string>
+    <string name="logs_empty_filtered">没有条目匹配当前筛选条件</string>
+    <string name="logs_loading">正在等待路由器服务…</string>
+    <string name="logs_summary_format">已显示 %1$d 条，共保留 %2$d 条</string>
+    <string name="logs_cleared">日志条目已清除。</string>
+    <string name="tile_state_format">%1$s：%2$s</string>
+    <string name="notification_permission_denied">通知已禁用。路由器仍可运行，但它的前台状态将不可见。</string>
+    <string name="local_network_permission_denied">本地网络访问被拒绝。UPnP 端口映射不可用；I2P 连接仍可正常工作。</string>
+
+    <!-- Units -->
+    <string name="rate_bps">%1$s B/s</string>
+    <string name="rate_kib_s">%1$s KiB/s</string>
+    <string name="rate_mib_s">%1$s MiB/s</string>
+    <string name="rate_gib_s">%1$s GiB/s</string>
+    <string name="size_b">%1$s B</string>
+    <string name="size_kib">%1$s KiB</string>
+    <string name="size_mib">%1$s MiB</string>
+    <string name="size_gib">%1$s GiB</string>
+    <string name="duration_days_hours">%1$d天 %2$d小时</string>
+    <string name="duration_hours_minutes">%1$d小时 %2$d分</string>
+    <string name="duration_minutes_seconds">%1$d分 %2$d秒</string>
+    <string name="duration_seconds">%1$d秒</string>
+    <string name="duration_mm_ss">%1$02d:%2$02d</string>
+
+    <!-- About -->
+    <string name="about_title">关于</string>
+    <string name="about_intro">一款原生 Android I2P 路由器，采用 openi2pd 视觉标识构建。</string>
+    <string name="about_version_label">版本</string>
+    <string name="about_version_format">%1$s（构建 %2$d）</string>
+    <string name="about_abi_label">设备 ABI</string>
+    <string name="about_build_label">构建类型</string>
+    <string name="about_build_debug">调试构建</string>
+    <string name="about_build_release">发布构建</string>
+    <string name="about_data_directory_label">数据目录</string>
+    <string name="about_license_label">许可证</string>
+    <string name="about_license_summary">openi2pd 以 BSD 3-Clause 许可证分发。上游 i2pd-android 项目的版权与署名声明保留在源代码和许可证文件中。</string>
+    <string name="about_repository_label">源代码仓库</string>
+    <string name="about_data_unavailable">不可用</string>
+
+    <!-- Settings -->
+    <string name="pref_category_general">常规</string>
+    <string name="pref_category_language">语言</string>
+    <string name="pref_language_title">界面语言</string>
+    <string name="pref_language_summary">跟随系统语言，或选择英语、西班牙语、俄语或简体中文。</string>
+    <string name="pref_language_system">系统语言</string>
+    <string name="pref_language_english">英语</string>
+    <string name="pref_language_spanish">西班牙语</string>
+    <string name="pref_language_russian">俄语</string>
+    <string name="pref_language_chinese_simplified">简体中文</string>
+    <string name="pref_category_network">网络</string>
+    <string name="pref_category_tunnels">隧道与隐私</string>
+    <string name="pref_category_resources">资源</string>
+    <string name="pref_category_logging">日志记录</string>
+    <string name="pref_category_clients">客户端服务</string>
+    <string name="pref_autostart_summary">设备开机时启动路由器。部分设备厂商还需要额外的自启动权限。</string>
+    <string name="pref_notifications_title">通知</string>
+    <string name="pref_notifications_summary">打开 Android 通知设置。</string>
+    <string name="pref_notifications_enabled">通知已启用。点按可管理。</string>
+    <string name="pref_notifications_disabled">通知已禁用。点按可授予权限。</string>
+    <string name="pref_notifications_unavailable">通知设置不可用。</string>
+    <string name="pref_autostart_failed">无法更改开机启动设置。</string>
+    <string name="pref_ipv4_title">启用 IPv4</string>
+    <string name="pref_ipv6_title">启用 IPv6</string>
+    <string name="pref_ntcp2_title">启用 NTCP2</string>
+    <string name="pref_ntcp2_publish_title">发布 NTCP2 地址</string>
+    <string name="pref_ntcp2_publish_summary">禁用以阻止其他路由器通过 NTCP2 连接到此设备。</string>
+    <string name="pref_ssu_title">启用 SSU2</string>
+    <string name="pref_port_title">监听端口</string>
+    <string name="pref_port_summary">使用自动或指定的 TCP/UDP 端口（0–65535）。</string>
+    <string name="pref_upnp_enable_title">启用 UPnP</string>
+    <string name="pref_upnp_enable_summary">请求本地网关自动转发 NTCP2 和 SSU2 端口。</string>
+    <string name="pref_upnp_name_title">UPnP 转发名称</string>
+    <string name="pref_upnp_name_summary">在网关转发列表中显示此路由器所用的名称。</string>
+    <string name="pref_no_transit_title">禁用中转隧道</string>
+    <string name="pref_no_transit_summary">阻止其他路由器通过此设备中转流量。</string>
+    <string name="pref_floodfill_title">作为 Floodfill 运行</string>
+    <string name="pref_floodfill_summary">会消耗更多电量和带宽。仅在能够保持路由器在线时启用。</string>
+    <string name="pref_transit_limit_title">中转隧道上限</string>
+    <string name="pref_transit_limit_summary">此路由器可建立的中转隧道数量上限。</string>
+    <string name="pref_bandwidth_title">带宽限制</string>
+    <string name="pref_bandwidth_summary">中转流量的限制。更高的限制会消耗更多电量和数据。</string>
+    <string name="pref_log_level_title">日志级别</string>
+    <string name="pref_log_level_summary">原生日志级别。路由器运行时会立即应用新的级别。</string>
+    <string name="pref_http_enable_title">启用 HTTP 代理</string>
+    <string name="pref_http_address_title">HTTP 代理地址</string>
+    <string name="pref_http_port_title">HTTP 代理端口</string>
+    <string name="pref_socks_enable_title">启用 SOCKS5 代理</string>
+    <string name="pref_socks_address_title">SOCKS5 代理地址</string>
+    <string name="pref_socks_port_title">SOCKS5 代理端口</string>
+    <string name="pref_sam_enable_title">启用 SAM</string>
+    <string name="pref_sam_address_title">SAM 地址</string>
+    <string name="pref_sam_port_title">SAM 端口</string>
+    <string name="pref_invalid_port">请输入 0 到 65535 之间的端口。</string>
+    <string name="pref_invalid_address">请输入有效的地址或主机名。</string>
+    <string name="pref_invalid_positive">请输入正整数。</string>
+    <string name="pref_invalid_value">请输入不含换行符或保留字符的值。</string>
+    <string name="pref_save_failed">该值未保存。</string>
+    <string name="pref_apply_hot">已应用，无需重启路由器。</string>
+    <string name="pref_apply_restart">已保存。重启路由器后生效。</string>
+    <string name="pref_apply_reload">已保存。重新加载隧道后生效。</string>
+    <string name="pref_restart_required_title">需要重启</string>
+    <string name="pref_restart_required_message">此更改将在路由器重启后生效。现在重启吗？</string>
+    <string name="pref_restart_now">立即重启</string>
+    <string name="pref_later">稍后</string>
+    <string name="pref_bandwidth_low">低</string>
+    <string name="pref_bandwidth_medium">中</string>
+    <string name="pref_bandwidth_high">高</string>
+    <string name="pref_bandwidth_unlimited">无限制</string>
+    <string name="pref_loglevel_none">无</string>
+    <string name="pref_loglevel_critical">严重</string>
+    <string name="pref_loglevel_error">错误</string>
+    <string name="pref_loglevel_warn">警告</string>
+    <string name="pref_loglevel_info">信息</string>
+    <string name="pref_loglevel_debug">调试</string>
+    <string name="pref_log_level_applied">日志级别已应用到正在运行的路由器。</string>
+    <string name="pref_log_level_failed">日志级别已保存，但正在运行的路由器未接受该设置。请重启路由器以应用。</string>
+
+    <string name="torrent_title">种子任务</string>
+    <string name="torrent_priorities">文件与优先级</string>
+    <string name="torrent_priority_skip">跳过</string>
+    <string name="torrent_priority_normal">普通</string>
+    <string name="torrent_priority_high">高</string>
+    <string name="torrent_comments">评论与评分</string>
+    <string name="torrent_comments_privacy">评论使用未验证的昵称，启用后会与 I2P 对等节点交换。请将可选的昵称留空以避免共享名称。请勿包含个人信息。</string>
+    <string name="torrent_comments_summary">评论：%1$s · 平均：%2$s/5 · 评分数：%3$s</string>
+    <string name="torrent_comments_enable">启用评论与评分</string>
+    <string name="torrent_comments_disable">禁用评论与评分</string>
+    <string name="torrent_comment_add">添加评论或评分</string>
+    <string name="torrent_comment_owner">昵称（可选，未验证）</string>
+    <string name="torrent_comment_text">评论（提供评分时可选）</string>
+    <string name="torrent_comment_no_rating">不评分</string>
+    <string name="torrent_comment_rating">选择评分</string>
+    <string name="torrent_comment_publish">在本地添加（对等节点请求时共享）</string>
+    <string name="torrent_comments_private">私有种子任务已禁用评论与评分。</string>
+    <string name="torrent_comment_anonymous">匿名昵称</string>
+    <string name="torrent_comment_hide">在本地隐藏</string>
+    <string name="torrent_comment_hidden">已在本地隐藏</string>
+    <string name="torrent_comment_unhide">在本地取消隐藏</string>
+    <string name="torrent_comment_unhide_confirm">要再次在本地显示此评论吗？</string>
+    <string name="torrent_comment_hide_confirm">要在本地隐藏此评论吗？其他对等节点可能保留各自的副本。</string>
+    <string name="torrent_create">创建种子任务</string>
+    <string name="torrent_create_source">现有文件或文件夹名称</string>
+    <string name="torrent_create_help">请使用此会话应用私有种子存储中的直接文件或文件夹。目前尚不支持选择外部文件夹。哈希完成后请刷新创建状态。</string>
+    <string name="torrent_creation_status">创建状态</string>
+    <string name="torrent_creation_pending">正在计算内容哈希…</string>
+    <string name="torrent_creation_finished">没有正在运行的创建任务。</string>
+    <string name="torrent_import">导入种子文件</string>
+    <string name="torrent_importing">正在导入种子元信息…</string>
+    <string name="torrent_import_failed">无法导入此种子。请选择不超过 8 MiB 且可读取的种子文档，确认路由器正在运行，然后重试。</string>
+    <string name="torrent_busy">已有种子操作正在进行。请重试。</string>
+    <string name="torrent_tracker_add">添加 Tracker</string>
+    <string name="torrent_tracker_edit">编辑 Tracker</string>
+    <string name="torrent_tracker_remove">移除 Tracker</string>
+    <string name="torrent_tracker_hint">http://tracker.example.i2p/announce</string>
+    <string name="torrent_tracker_paused">更改 Tracker 前，请先暂停种子任务并等待元信息完整。</string>
+    <string name="torrent_files">文件</string>
+    <string name="torrent_peers">对等节点</string>
+    <string name="torrent_trackers">Tracker</string>
+    <string name="torrent_transfer_summary">已完成：%1$s / %2$s B\n下载：%3$s B/s · 上传：%4$s B/s</string>
+    <string name="torrent_dht_summary">节点：%1$s\n存储桶：%2$s\n种子任务：%3$s\n失败的对等节点：%4$s</string>
+    <string name="torrent_refresh">刷新种子任务</string>
+    <string name="torrent_storage_selected">已选择存储位置。重新打开文档时将校验现有分片。</string>
+    <string name="torrent_storage_permission_required">需要持久的文档读写权限</string>
+    <string name="torrent_exported">种子已导出</string>
+    <string name="torrent_export_failed">导出失败</string>
+    <string name="torrent_create_private_file">私有存储中的文件</string>
+    <string name="torrent_create_saf_document">SAF 文档</string>
+    <string name="torrent_create_saf_folder">SAF 文件夹</string>
+    <string name="torrent_export_generated">导出生成的种子</string>
+    <string name="torrent_cancel_saf_creation">取消 SAF 创建</string>
+    <string name="torrent_creation_progress">正在创建种子：已计算 %1$d 字节哈希</string>
+    <string name="torrent_metadata_ready">元信息已就绪。请选择“导出生成的种子”。暂不支持从 SAF 来源做种。</string>
+    <string name="torrent_payload_action">下载 / 为数据树做种</string>
+    <string name="torrent_payload_message">%1$s\n\n请选择现有的数据树或空的下载目录。将校验现有分片；访问失败后，使用中的句柄会被替换。</string>
+    <string name="torrent_select_directory">选择目录</string>
+    <string name="torrent_trackers_hint">I2P Tracker（每行一个，各自作为一层故障转移）</string>
+    <string name="torrent_private_hint">私有种子任务（需要 Tracker；禁用 DHT/PEX）</string>
+    <string name="torrent_piece_size_title">分片大小</string>
+    <string name="torrent_piece_size_value">分片大小：%1$d KiB</string>
+    <string name="torrent_create_saf_title">从 SAF 来源创建</string>
+    <string name="torrent_create_saf_message">仅导出元信息。暂不支持从 SAF 来源做种。</string>
+    <string name="torrent_private_tracker_required">私有种子任务需要 I2P Tracker（最多 32 个）</string>
+    <string name="torrent_start_all">启动全部种子任务</string>
+    <string name="torrent_stop_all">停止全部种子任务</string>
+    <string name="torrent_reannounce_all">重新通告全部种子任务</string>
+    <string name="torrent_add_magnet">添加磁力链接</string>
+    <string name="torrent_magnet_hint">magnet:?xt=urn:btih:…</string>
+    <string name="torrent_dht">DHT 状态</string>
+    <string name="torrent_loading">正在加载…</string>
+    <string name="torrent_error">种子操作失败：%1$s</string>
+    <string name="torrent_no_session">未配置种子会话。请在 tunnels.conf 中添加 torrents 段，然后重启路由器。</string>
+    <string name="torrent_session">选择种子会话</string>
+    <string name="torrent_count">种子任务：%1$d</string>
+    <string name="torrent_session_count">会话 %1$s · %2$d 个种子任务</string>
+    <string name="torrent_private_badge">私有</string>
+    <string name="torrent_private_summary_yes">私有种子群（已禁用 DHT、PEX 和评论）</string>
+    <string name="torrent_private_summary_no">公开种子群</string>
+    <string name="torrent_private_trackers_fixed">私有种子任务使用固定的 Tracker 列表；请在添加前暂停并编辑 .torrent 文件。</string>
+    <string name="torrent_details">种子详情</string>
+    <string name="torrent_pause">暂停</string>
+    <string name="torrent_resume">继续</string>
+    <string name="torrent_share">分享磁力链接</string>
+    <string name="torrent_remove">移除种子任务</string>
+    <string name="torrent_remove_confirm">要从会话中移除此种子任务吗？已下载的文件将被保留。</string>
+    <string name="torrent_recheck">强制重新校验（暂停的种子任务）</string>
+    <string name="torrent_meta">编辑种子元信息</string>
+    <string name="torrent_meta_comment">元信息注释</string>
+    <string name="torrent_meta_created_by">创建者</string>
+    <string name="torrent_meta_hint">请先暂停种子任务。未更改的字段将保持原样；空更改会被拒绝。</string>
+    <string name="torrent_meta_failed">种子元信息编辑被拒绝。请暂停种子任务，并使用在限制范围内的 UTF-8 文本。</string>
+    <string name="torrent_remove_files">移除种子任务并删除数据</string>
+    <string name="torrent_remove_files_confirm">要移除 %1$s 并永久删除其已下载的数据吗？此操作无法撤销。</string>
+    <string name="torrent_removed_files">已排队执行移除种子任务并删除本地数据。</string>
+    <string name="address_book_title">地址簿</string>
+    <string name="address_book_refresh">刷新地址簿</string>
+    <string name="address_book_add">添加或替换地址</string>
+    <string name="address_book_name">以 .i2p 结尾的名称</string>
+    <string name="address_book_destination">完整的 base64 目标地址</string>
+    <string name="address_book_save">保存</string>
+    <string name="address_book_remove">移除地址</string>
+    <string name="address_book_remove_confirm">要从本地地址簿中移除 %1$s 吗？目标地址密钥文件不会被删除。</string>
+    <string name="address_book_empty">本地地址簿中没有条目。</string>
+    <string name="address_book_loading">正在加载地址簿…</string>
+    <string name="address_book_saving">正在保存地址…</string>
+    <string name="address_book_added">地址已保存。</string>
+    <string name="address_book_removed">地址已移除。</string>
+    <string name="address_book_invalid">请输入 .i2p 名称和完整的 base64 目标地址。</string>
+    <string name="address_book_failed">地址簿拒绝了此操作。请检查名称和目标地址。</string>
+    <string name="address_book_block">屏蔽订阅名称</string>
+    <string name="address_book_blocked_list">已屏蔽的订阅名称</string>
+    <string name="address_book_block_hint">以 .i2p 结尾的名称或通配符</string>
+    <string name="address_book_block_confirm">要在订阅刷新中屏蔽 %1$s 吗？移除地址时已经会添加精确屏蔽。</string>
+    <string name="address_book_blocked">订阅名称已屏蔽。</string>
+    <string name="address_book_unblocked">订阅屏蔽已移除。</string>
+    <string name="address_book_blocked_empty">没有已屏蔽的订阅名称。</string>
+    <string name="address_book_block_failed">地址簿拒绝了此屏蔽操作。请使用小写的 .i2p 名称或通配符。</string>
+</resources>

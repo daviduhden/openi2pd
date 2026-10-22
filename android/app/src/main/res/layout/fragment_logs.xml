@@ -47,20 +47,15 @@ Defines native Android application resources.
             android:singleLine="true" />
     </com.google.android.material.textfield.TextInputLayout>
 
-    <HorizontalScrollView
+    <com.google.android.material.chip.ChipGroup
+        android:id="@+id/logs_filter_group"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="@dimen/margin_small"
-        android:scrollbars="none">
-
-        <com.google.android.material.chip.ChipGroup
-            android:id="@+id/logs_filter_group"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            app:chipSpacingHorizontal="@dimen/margin_small"
-            app:selectionRequired="true"
-            app:singleLine="true"
-            app:singleSelection="true">
+        app:chipSpacingHorizontal="@dimen/margin_small"
+        app:selectionRequired="true"
+        app:singleLine="false"
+        app:singleSelection="true">
 
             <com.google.android.material.chip.Chip
                 android:id="@+id/filter_all"
@@ -97,11 +92,11 @@ Defines native Android application resources.
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="@string/logs_filter_debug" />
-        </com.google.android.material.chip.ChipGroup>
-    </HorizontalScrollView>
+    </com.google.android.material.chip.ChipGroup>
 
     <TextView
         android:id="@+id/logs_summary"
+        android:accessibilityLiveRegion="polite"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="@dimen/margin_small"

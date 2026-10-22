@@ -20,6 +20,25 @@ Defines native Android application resources.
             android:summary="@string/pref_autostart_summary"
             android:title="@string/autostart_enabled"
             app:iconSpaceReserved="false" />
+
+        <androidx.preference.Preference
+            android:key="notificationSettings"
+            android:persistent="false"
+            android:summary="@string/pref_notifications_summary"
+            android:title="@string/pref_notifications_title"
+            app:iconSpaceReserved="false" />
+    </PreferenceCategory>
+
+    <PreferenceCategory android:title="@string/pref_category_language">
+        <androidx.preference.ListPreference
+            android:defaultValue="system"
+            android:entries="@array/pref_language_labels"
+            android:entryValues="@array/pref_language_values"
+            android:key="uiLanguagePreference"
+            android:persistent="false"
+            android:summary="@string/pref_language_summary"
+            android:title="@string/pref_language_title"
+            app:iconSpaceReserved="false" />
     </PreferenceCategory>
 
     <PreferenceCategory android:title="@string/pref_category_network">
@@ -62,7 +81,6 @@ Defines native Android application resources.
         <androidx.preference.EditTextPreference
             android:defaultValue="auto"
             android:dialogTitle="@string/pref_port_title"
-            android:enabled="false"
             android:key="portPreference"
             android:persistent="false"
             android:singleLine="true"

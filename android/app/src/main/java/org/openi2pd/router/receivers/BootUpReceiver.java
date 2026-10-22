@@ -37,16 +37,22 @@ public class BootUpReceiver extends BroadcastReceiver {
 
     @Override
     public void onReceive(Context context, Intent intent) {
-        if (intent == null || !Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction())) {
-            return;
-        }
-        if (context == null || !AutoStartController.isEnabled(context)) {
-            return;
-        }
+        if (intent == null) return;
+        String action = intent.getAction ();
+        boolean packageReplaced = Intent.ACTION_MY_PACKAGE_REPLACED.equals (action);
+        boolean bootCompleted = Intent.ACTION_BOOT_COMPLETED.equals (action);
+        if (!packageReplaced && !bootCompleted) return;
+        if (context == null) return;
+        // A package update kills the process. Resume only a router that was
+        // explicitly running before the update; boot still requires the
+        // user's autostart preference.
+        if (!packageReplaced && !AutoStartController.isEnabled(context)) return;
+        if (packageReplaced && !RouterService.isStartRequested(context)) return;
         if (!RouterService.requestStart(context)) {
             Log.w(TAG,
-                    "unable to start router service after boot; "
-                            + "Android may require a user-initiated start");
+                    "unable to start router service after "
+                            + (packageReplaced ? "package replacement" : "boot")
+                            + "; Android may require a user-initiated start");
         }
     }
 }

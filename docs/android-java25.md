@@ -10,7 +10,7 @@ Documents project documentation.
 
 # Java 25 on Android (openi2pd)
 
-Status: toolchain verification, 2026-10-19. This document covers the Android
+Status: toolchain verification and static audit, 2026-10-21. This document covers the Android
 build toolchain and Java 25 language/class-file compatibility only. It does
 **not** claim that the application APK builds, that Lint passes, or that any
 device/emulator test ran.
@@ -18,6 +18,50 @@ device/emulator test ran.
 The Android app is Java source compiled by JDK 25 into class-file version 69,
 then converted by D8/R8 into DEX for Android's ART runtime. No OpenJDK is
 packaged in the APK and Android does not execute OpenJDK bytecode.
+
+## Modernization policy
+
+Modern Java is an explicit project objective. Prefer records, sealed
+interfaces/classes, exhaustive pattern switches, switch expressions, text
+blocks, lambdas/method references, functional interfaces, generics,
+streams/collectors, `Optional` and modern collection APIs when they make the
+model or ownership clearer. This is not a requirement to replace every
+procedural helper with a class; abstractions still need a contract and a
+testable boundary.
+
+The distinction below is mandatory:
+
+- **Source-language features** are compiled by JDK 25 and transformed by
+  D8/R8 into DEX. Records, sealed types, pattern matching, switch expressions,
+  text blocks and similar constructs are source-level and do not require a new
+  Android bootclasspath API.
+- **Library APIs** come from the API 37 `android.jar` and the device runtime.
+  `java.util.concurrent` virtual threads, scoped values and structured
+  concurrency are not automatically available merely because the source level
+  is 25. They remain guarded until a compile probe and device/emulator evidence
+  prove the exact API on all supported levels.
+
+No JDK is bundled in the APK and core-library desugaring is not enabled. Do not
+lower `sourceCompatibility`/`targetCompatibility` or claim a Java 25 library
+feature from a source-language compile alone. Current source-level adopters are
+the sealed `RouterCommand` records with exhaustive service dispatch and the
+typed `LogLevel` enum used by log filtering. Static and dynamic status is
+recorded in `docs/android-modernization.md` and the manual Android CI lane.
+
+## Java command and filter invariants
+
+- `RouterCommand` is a sealed interface whose records stay nested in the same
+  file. `RouterService.onStartCommand` uses an exhaustive pattern switch with
+  no `default`; a new action requires a record, a `fromAction` mapping, a
+  service case and a `RouterCommandTest` update. Null/absent action is
+  `Restore`, and unknown actions return `START_NOT_STICKY`.
+- `LogLevel` is a typed enum used by `LogFilter`/`LogsFragment`. `ALL` and
+  `DEBUG` are unfiltered, while `INFO`/`WARN`/`ERROR` are minimum thresholds,
+  so `WARN` includes errors. Native tokens are classified with `Locale.ROOT`;
+  the supported set remains `none/critical/error/warn/info/debug`.
+- `RouterCommandTest` and `LogFilterTest` are plain JVM tests because the
+  command decoder does not import Android classes. They are prepared but not
+  wired to a workflow/device run.
 
 ## Toolchain matrix
 
@@ -29,8 +73,8 @@ packaged in the APK and Android does not execute OpenJDK bytecode.
 | Java source level | **25** | `compileDebugJavaWithJavac` task: `source=25` |
 | Java target / class-file | **25 / major 69** | task: `target=25`; `javap` reports major 69 |
 | Android Gradle Plugin | **9.4.1** | `android/build.gradle` |
-| D8/R8 (verification) | **9.4.28** | `R8 9.4.28` from the supplied `r8.jar` |
-| Kotlin | **disabled** (AGP bundles Kotlin 2.4.10) | `android.builtInKotlin=false`; see the AGP investigation below |
+| D8/R8 (verification) | AGP 9.4.1-selected; **no repository pin** | historical standalone probe used R8 9.4.28, but that jar is not the artifact AGP resolves and is not covered by CI |
+| Kotlin | **disabled** (AGP 9.4.1 resolves Kotlin 2.2.10) | `android.builtInKotlin=false`; the version claim is a resolved-metadata observation, not a bundled JDK/ART fact |
 | compileSdk / targetSdk | **37** | unchanged in `android/app/build.gradle` |
 | SDK Build Tools | **36.0.0** | AGP 9.4 default; CI installs it explicitly |
 | minSdk | **29** | Android 10 minimum; raised from 24 |
@@ -63,9 +107,11 @@ re-run the actual app compile, resource link, D8/R8, Lint and device tests.
 - `targetCompatibility = JavaVersion.VERSION_25` makes `javac` emit class-file
   major version 69.
 - The Java toolchain compiles with an exact JDK 25 compiler.
-- D8/R8 reads class-file 69 and emits DEX. The recorded DEX version from the
-  earlier `--min-api 24` probe was **037**; rerun at the current `--min-api 29`
-  is pending.
+- D8/R8 is expected to read class-file 69 and emit DEX, but the
+  AGP-selected D8/R8 version is not pinned in this repository and the current
+  app has not been dexed. The only recorded standalone probe used
+  `--min-api 24` and produced DEX **037**; it is historical evidence, not
+  evidence for the current `--min-api 29`/class-file 69 APK path.
 - ART executes DEX, not class files. Source/target 25 neither raises `minSdk`
   nor puts a JDK into the APK.
 - Language features are a compile-time property. D8/R8 desugars records,
@@ -79,7 +125,7 @@ re-run the actual app compile, resource link, D8/R8, Lint and device tests.
 | Layer | Checked fact | Not claimed |
 |---|---|---|
 | `javac` | The standalone Java 25 probe builds with `--release 25` and reports class-file major 69. AGP is configured for source/target 25 with an exact JDK 25 toolchain. | The current app source has not been recompiled after the latest lifecycle edits in this environment. |
-| D8/R8 | The probe's class-file 69 output was accepted by D8/R8 9.4.28 at the historical `--min-api 24`, producing DEX 037. | The real app's debug/release DEX, R8 shrinking, resource linking and APK packaging are not validated; rerun at 29 is pending. |
+| D8/R8 | A standalone probe's class-file 69 output was accepted by R8 9.4.28 at historical `--min-api 24`, producing DEX 037. | The AGP-resolved D8/R8 version is not pinned; real debug/release DEX, release R8, resource linking and APK packaging are not validated. Class-file 69 support by the current AGP D8 is an explicit assumption pending CI. |
 | ART | ART executes DEX; records/pattern switches are desugared for the configured minSdk (29 in the current build). Java 25-only library APIs are absent from API 37 `android.jar`. | No emulator/device run proves every Java 25 construct or API on API 29 or current Android. |
 
 These are separate claims. A successful `javac` or synthetic D8/R8 probe does
@@ -89,6 +135,12 @@ not imply that the openi2pd APK, minified release or ART runtime is validated.
 
 `android/app/build.gradle`:
 
+- `ndkVersion` is declared on the Android extension (the previous
+  `defaultConfig` placement is not a valid AGP 9.4 DSL member), and
+  `buildToolsVersion` uses assignment form. Both are asserted by
+  `check-config.sh`.
+- Release builds request `debugSymbolLevel 'FULL'`; Lint emits text and XML
+  reports. The release APK remains unsigned and minification remains disabled.
 - `compileOptions` now sets **both** `sourceCompatibility` and
   `targetCompatibility` to `JavaVersion.VERSION_25`. The earlier 17 setting was
   removed.
@@ -215,8 +267,10 @@ validated=25
 
 The same verifier was run with the host JDK 27 as the build JDK (`javac 27`,
 `--release 25`). It also produced major 69, D8/R8 `classes.dex` files of 7528
-and 6880 bytes, and DEX magic `dex\n037\0`. This shows D8/R8 9.4.28 accepts
-class-file 69 and desugars these features at `--min-api 24`.
+and 6880 bytes, and DEX magic `dex\n037\0`. This is historical evidence that
+one standalone R8 9.4.28 invocation accepted class-file 69 at `--min-api 24`.
+It does not identify the D8/R8 artifact AGP 9.4.1 uses for the app, nor prove
+current `minSdk 29` DEX generation.
 
 The probe was also used in a **synthetic** Android project outside the
 repository (application id `org.openi2pd.java25probe`, no native code, no
@@ -230,9 +284,10 @@ ANDROID_HOME=/path/to/android-sdk \
 
 That synthetic build was `BUILD SUCCESSFUL`. The APK reports
 `minSdkVersion:'24'`, `targetSdkVersion:'37'`, `compileSdkVersion='37'`; its
-class files are major 69; its DEX files are version 037; and dexdump shows
-D8-generated synthetic record and type-switch classes. This is evidence for
-the toolchain, **not** for the openi2pd app APK.
+class files are major 69; its historical probe DEX files were version 037;
+and dexdump showed D8-generated synthetic record and type-switch classes. This
+is evidence for that external synthetic probe, **not** for the openi2pd app
+APK or the current AGP-resolved D8/R8.
 
 ## AGP 9.4.1 / Gradle 9.8.1 / JDK 25 investigation
 
@@ -246,7 +301,7 @@ Execution failed for task ':i2pd:tasks' (registered by plugin 'org.gradle.help-t
      available targets are 1.8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24
 ```
 
-AGP 9.4.1 bundles Kotlin 2.4.10, whose highest JVM target is 24. It creates a
+AGP 9.4.1 resolves Kotlin 2.2.10, whose highest JVM target is 24. It creates a
 Kotlin compile task even for a Java-only app and derives its target from the
 Java target. Setting `android.builtInKotlin=false` makes the same task graph
 succeed:
@@ -343,3 +398,16 @@ Android Lint alone is not a complete check for JDK-only APIs.
 - Re-check AGP 10, where `android.builtInKotlin=false` is scheduled for
   removal, and the Kotlin toolchain's JVM target support.
 - Scan the app bytecode for references to the unavailable JDK APIs above.
+
+## IPC/JNI boundary status (static)
+
+JNI inbound strings are no longer read through modified UTF-8 `c_str()`: they are
+decoded from Java UTF-16 to ordinary UTF-8, and embedded NUL/unpaired surrogates
+are rejected before address-book or data-directory use. Native start diagnostics
+are bounded to 512 bytes with control bytes flattened. The SAF Binder broker and
+router/UI still share the application UID; no UID/process isolation claim is made.
+The manual Android CI lane is being extended to run `assembleDebug`,
+`assembleRelease`, Lint for both build types, the JNI/NDK link, the JVM tests,
+a class-file-69 assertion and the prepared instrumentation tests. Until that
+lane is dispatched successfully, no build or device result exists for this
+tree. Instrumentation remains compile-only where no emulator/device lane exists.

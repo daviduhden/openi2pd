@@ -74,6 +74,16 @@ public final class UiFormat {
         };
     }
 
+    /** Native status name plus the router error, or empty when not parsed. */
+    @NonNull
+    public static String routerDetail(@Nullable RouterSnapshot snapshot) {
+        if (snapshot == null || !snapshot.hasStatus()) return "";
+        String status = snapshot.routerStatus() == null ? "" : snapshot.routerStatus().trim();
+        String error = snapshot.routerError() == null ? "" : snapshot.routerError().trim();
+        if (status.isEmpty()) return "";
+        return error.isEmpty() ? status : status + " · " + error;
+    }
+
     /** True only when live counters from a parsed native status are available. */
     public static boolean hasLiveMetrics(@Nullable RouterSnapshot snapshot) {
         return snapshot != null && snapshot.hasLiveMetrics();
@@ -105,6 +115,10 @@ public final class UiFormat {
     public static boolean isConnected(@Nullable RouterSnapshot snapshot) {
         RouterState state = stateOf(snapshot);
         return state == RouterState.CONNECTED || state == RouterState.DEGRADED;
+    }
+
+    public static boolean canReseed(@Nullable RouterSnapshot snapshot) {
+        return isConnected(snapshot) && snapshot != null && !snapshot.reseeding();
     }
 
     public static boolean canStart(@Nullable RouterSnapshot snapshot) {
@@ -434,10 +448,16 @@ public final class UiFormat {
 
     @NonNull
     private static Locale locale(@NonNull Context context) {
-        // The interface is English-only. Keep formatting deterministic and
-        // independent of the device locale; this is not a Locale.setDefault()
-        // change and does not affect Unicode input or data.
-        return Locale.ENGLISH;
+        // Use the active per-app UI locale, not the device default. Token
+        // classification elsewhere still uses Locale.ROOT because protocol
+        // names and log levels are not user text.
+        android.content.res.Configuration configuration =
+                context.getResources().getConfiguration();
+        if (configuration.getLocales().isEmpty()) {
+            return Locale.ENGLISH;
+        }
+        Locale active = configuration.getLocales().get(0);
+        return active == null ? Locale.ENGLISH : active;
     }
 
     @NonNull

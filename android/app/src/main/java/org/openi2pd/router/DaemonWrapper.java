@@ -457,7 +457,8 @@ public class DaemonWrapper {
             processAssets();
             prepareTorrentSession();
             I2PD_JNI.loadLibraries();
-            if (!I2PD_JNI.installSafStorageBridge(TorrentSafStorage.class))
+            if (!I2PD_JNI.installSafStorageBridge(TorrentSafStorage.class)
+                    && TorrentSafStorage.hasAnyGrant())
                 throw new IllegalStateException("SAF storage bridge initialization failed");
         } catch (Throwable tr) {
             lastThrowable = tr;
@@ -512,6 +513,84 @@ public class DaemonWrapper {
     public void reloadTunnelsConfigs() {
         if (state.isStartedOkay()) {
             I2PD_JNI.reloadTunnelsConfigs();
+        }
+    }
+
+    /** Bounded address-book rows; empty when the daemon is not running. */
+    public String getAddressBook() {
+        synchronized (lock) {
+            if (!state.isStartedOkay()) return "";
+        }
+        try {
+            return I2PD_JNI.getAddressBook();
+        } catch (RuntimeException | LinkageError e) {
+            Log.e(TAG, "native address-book read failed", e);
+            return "";
+        }
+    }
+
+    /** Add or replace one validated name; false on any validation failure. */
+    public boolean addAddress(String name, String destination) {
+        synchronized (lock) {
+            if (!state.isStartedOkay()) return false;
+        }
+        try {
+            return I2PD_JNI.addAddress(name, destination);
+        } catch (RuntimeException | LinkageError e) {
+            Log.e(TAG, "native address-book add failed", e);
+            return false;
+        }
+    }
+
+    /** Remove one name; false when absent or invalid. */
+    public boolean removeAddress(String name) {
+        synchronized (lock) {
+            if (!state.isStartedOkay()) return false;
+        }
+        try {
+            return I2PD_JNI.removeAddress(name);
+        } catch (RuntimeException | LinkageError e) {
+            Log.e(TAG, "native address-book remove failed", e);
+            return false;
+        }
+    }
+
+    /** Block a subscription name or wildcard pattern. */
+    public boolean blockAddress(String name) {
+        synchronized (lock) {
+            if (!state.isStartedOkay()) return false;
+        }
+        try {
+            return I2PD_JNI.blockAddress(name);
+        } catch (RuntimeException | LinkageError e) {
+            Log.e(TAG, "native address-block failed", e);
+            return false;
+        }
+    }
+
+    /** Remove one blocked subscription pattern. */
+    public boolean unblockAddress(String name) {
+        synchronized (lock) {
+            if (!state.isStartedOkay()) return false;
+        }
+        try {
+            return I2PD_JNI.unblockAddress(name);
+        } catch (RuntimeException | LinkageError e) {
+            Log.e(TAG, "native address-unblock failed", e);
+            return false;
+        }
+    }
+
+    /** Bounded deleted-host patterns, one per line. */
+    public String getBlockedAddresses() {
+        synchronized (lock) {
+            if (!state.isStartedOkay()) return "";
+        }
+        try {
+            return I2PD_JNI.getBlockedAddresses();
+        } catch (RuntimeException | LinkageError e) {
+            Log.e(TAG, "native blocked-address read failed", e);
+            return "";
         }
     }
 

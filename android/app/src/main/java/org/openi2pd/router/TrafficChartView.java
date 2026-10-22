@@ -120,6 +120,16 @@ public class TrafficChartView extends View {
         invalidate();
     }
 
+    /** Actual peak across the retained download/upload samples, or zero. */
+    public long getPeakBytesPerSecond() {
+        long peak = 0L;
+        for (int i = 0; i < sampleCount; i++) {
+            peak = Math.max(peak, downloadHistory[indexAt(i)]);
+            peak = Math.max(peak, uploadHistory[indexAt(i)]);
+        }
+        return peak;
+    }
+
     public int getSampleCount() {
         return sampleCount;
     }
@@ -225,13 +235,7 @@ public class TrafficChartView extends View {
     @NonNull
     @Override
     public CharSequence getAccessibilityClassName() {
-        return TrafficChartView.class.getName();
-    }
-
-    @Override
-    protected void onDetachedFromWindow() {
-        clear();
-        super.onDetachedFromWindow();
+        return android.widget.ImageView.class.getName();
     }
 
     private float dp(float value) {

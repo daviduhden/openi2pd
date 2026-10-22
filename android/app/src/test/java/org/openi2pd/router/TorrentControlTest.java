@@ -62,6 +62,33 @@ public class TorrentControlTest {
     }
 
     @Test
+    public void recheckBuildsBoundedCommand() {
+        assertEquals("TORRENT-RECHECK 0 7", TorrentControl.recheck(0, "7"));
+        assertThrows(IllegalArgumentException.class, () -> TorrentControl.recheck(-1, "7"));
+        assertThrows(IllegalArgumentException.class, () -> TorrentControl.recheck(0, "0"));
+        assertThrows(IllegalArgumentException.class, () -> TorrentControl.recheck(0, "abc"));
+        assertThrows(IllegalArgumentException.class, () -> TorrentControl.recheck(0, "2147483648"));
+    }
+
+    @Test
+    public void removeAndMetainfoCommandsRejectInjection() {
+        assertEquals("TORRENT-REMOVE 0 7", TorrentControl.remove(0, "7", false));
+        assertEquals("TORRENT-REMOVE 0 7 files", TorrentControl.remove(0, "7", true));
+        assertThrows(IllegalArgumentException.class, () -> TorrentControl.remove(0, "0", true));
+        assertThrows(IllegalArgumentException.class, () -> TorrentControl.remove(-1, "7", true));
+        assertEquals("TORRENT-META-COMMENT 0 7 Useful",
+                TorrentControl.metaComment(0, "7", "Useful"));
+        assertEquals("TORRENT-META-CREATED-BY 0 7 openi2pd",
+                TorrentControl.metaCreatedBy(0, "7", "openi2pd"));
+        assertThrows(IllegalArgumentException.class,
+                () -> TorrentControl.metaComment(0, "7", "bad\ncontrol"));
+        assertThrows(IllegalArgumentException.class,
+                () -> TorrentControl.metaCreatedBy(0, "7", "x".repeat(256)));
+        assertThrows(IllegalArgumentException.class,
+                () -> TorrentControl.metaComment(0, "0", "text"));
+    }
+
+    @Test
     public void trackerCommandsRemainI2pOnlyAndRejectControlInjection() {
         String tracker = "http://tracker.example.i2p/announce";
         assertEquals("TORRENT-TRACKER-ADD 0 7 " + tracker,
@@ -99,6 +126,8 @@ public class TorrentControlTest {
                 TorrentControl.comment(0, "7", 0, "pseudonym", "Text"));
         assertThrows(
                 IllegalArgumentException.class, () -> TorrentControl.comment(0, "7", 0, "", ""));
+        assertThrows(
+                IllegalArgumentException.class, () -> TorrentControl.comment(0, "0", 5, "", "Text"));
         assertThrows(IllegalArgumentException.class,
                 () -> TorrentControl.comment(0, "7", 6, "", "Text"));
         assertThrows(IllegalArgumentException.class,
@@ -111,5 +140,36 @@ public class TorrentControlTest {
                 () -> TorrentControl.comment(0, "7", 0, "x".repeat(33), "Text"));
         assertThrows(IllegalArgumentException.class,
                 () -> TorrentControl.comment(0, "7", 0, "", "x".repeat(513)));
+    }
+
+    @Test
+    public void commentIdCommands() {
+        org.junit.Assert.assertEquals("TORRENT-COMMENT-HIDE 2 7 42",
+                TorrentControl.commentId(2, "7", "42", true));
+        org.junit.Assert.assertEquals("TORRENT-COMMENT-UNHIDE 2 7 42",
+                TorrentControl.commentId(2, "7", "42", false));
+        try {
+            TorrentControl.commentId(2, "0", "42", true);
+            throw new AssertionError("accepted torrent id 0");
+        } catch (IllegalArgumentException expected) {
+        }
+        try {
+            TorrentControl.commentId(2, "7", "0", false);
+            throw new AssertionError("accepted comment id 0");
+        } catch (IllegalArgumentException expected) {
+        }
+    }
+
+    @Test
+    public void bulkCommandsAreFixedAndRejectNegativeSessions() {
+        org.junit.Assert.assertEquals("TORRENT-START-ALL 0",
+                TorrentControl.bulk(0, TorrentControl.Bulk.START_ALL));
+        org.junit.Assert.assertEquals("TORRENT-STOP-ALL 2",
+                TorrentControl.bulk(2, TorrentControl.Bulk.STOP_ALL));
+        org.junit.Assert.assertEquals("TORRENT-REANNOUNCE-ALL 3",
+                TorrentControl.bulk(3, TorrentControl.Bulk.REANNOUNCE_ALL));
+        assertThrows(IllegalArgumentException.class,
+                () -> TorrentControl.bulk(-1, TorrentControl.Bulk.START_ALL));
+        assertThrows(IllegalArgumentException.class, () -> TorrentControl.bulk(0, null));
     }
 }

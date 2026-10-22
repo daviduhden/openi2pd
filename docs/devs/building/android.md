@@ -17,8 +17,8 @@ use a Git submodule and it does not contain a second copy of the router.
 
 - OpenJDK 25 (Gradle JVM may be newer; the Java toolchain is exact 25)
 - Gradle 9.8.1 and AGP 9.4.1 (the wrapper is pinned)
-- Android SDK platform 37, Build Tools 36.0.0 (AGP 9.4 default), CMake and
-  NDK r30 LTS (`30.0.16248370` or newer)
+- Android SDK platform 37, Build Tools 36.0.0 (AGP 9.4 default), CMake 3.31.6
+  (pinned in Gradle) and NDK r30 LTS (`30.0.16248370` or newer)
 - Boost, OpenSSL/LibreSSL, zlib and MiniUPnPc 2.2.6+ built for the target
   Android ABI, findable by CMake (for example a vcpkg prefix). MiniUPnPc backs
   the default-on UPnP client and is listed in
@@ -45,7 +45,7 @@ cd android
 
 APKs are produced in `android/app/build/outputs/apk/`. The Gradle build invokes
 CMake through `app/src/main/cpp/CMakeLists.txt`, which enables
-`I2PD_BUILD_JNI` and disables the host daemon, tools, TUI and torrents. Java
+`I2PD_BUILD_JNI`, enables torrents and UPnP, and disables the host daemon, tools, TUI, tests and standalone libraries. Java
 source/target 25 is intentional: it compiles to class-file major 69, which
 D8/R8 converts to DEX for ART. It does not bundle a JDK and does not make
 JDK-only APIs available on Android; see

@@ -1,0 +1,423 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: strings.
+
+Defines native Android application resources.
+
+-->
+
+<resources>
+    <string name="action_start">Iniciar</string>
+    <string name="action_stop">Detener</string>
+    <string name="action_exit">Salir</string>
+    <string name="action_graceful_stop">Detención gradual</string>
+    <string name="action_cancel_graceful_stop">Cancelar detención gradual</string>
+    <string name="action_reload_tunnels_config">Recargar túneles</string>
+    <string name="action_reseed">Reseed de NetDb</string>
+
+    <string name="gracefulShutdownInProgress">Detención gradual en curso</string>
+
+    <string name="uninitialized">Inicializando la aplicación...</string>
+    <string name="starting">Iniciando la aplicación...</string>
+    <string name="startedOkay">Aplicación iniciada</string>
+    <string name="startFailed">Error al iniciar</string>
+    <string name="stopped">Aplicación detenida</string>
+
+    <string name="services_http_proxy">Proxy HTTP</string>
+    <string name="services_socks_proxy">Proxy SOCKS5</string>
+
+    <string name="menu_item_battery_optimizations_str">Optimización de batería</string>
+    <string name="battery_optimizations_enabled">Optimización de batería activada</string>
+    <string name="battery_optimizations_enabled_dialog">Tu Android está aplicando optimizaciones de batería agresivas a openi2pd, lo que puede provocar que el daemon se cierre sin ninguna otra causa.\n\nAhora se te pedirá permiso para desactivarlas.</string>
+    <string name="os_version_does_not_support_battery_optimizations_show_os_dialog_api">La versión de Android de este dispositivo no permite mostrar el diálogo de optimización de batería para aplicaciones.</string>
+
+    <string name="tunnels_reloading">Recargando la configuración de túneles...</string>
+
+    <string name="autostart_enabled">Iniciar al arrancar</string>
+
+    <!-- Navegación y barra de herramientas -->
+    <string name="nav_home">Panel</string>
+    <string name="nav_network">Conexiones</string>
+    <string name="nav_tunnels">Túneles</string>
+    <string name="nav_stats">Estadísticas</string>
+    <string name="nav_settings">Ajustes</string>
+    <string name="action_logs">Registros</string>
+    <string name="action_about">Acerca de</string>
+    <string name="action_restart">Reiniciar</string>
+    <string name="action_cancel">Cancelar</string>
+    <string name="action_refresh">Actualizar</string>
+    <string name="action_clear_logs">Borrar registros</string>
+    <string name="action_open_repository">Abrir repositorio</string>
+    <string name="action_open_license">Ver licencia</string>
+    <string name="action_continue">Continuar</string>
+
+    <!-- Estados del router y panel -->
+    <string name="state_connected">Conectado</string>
+    <string name="state_degraded">Degradado</string>
+    <string name="state_starting">Iniciando</string>
+    <string name="state_stopping">Deteniendo</string>
+    <string name="state_stopped">Detenido</string>
+    <string name="state_error">Error</string>
+    <string name="state_unknown">Desconocido</string>
+    <string name="status_online">En línea</string>
+    <string name="status_offline">Sin conexión</string>
+    <string name="status_unknown">Desconocido</string>
+    <string name="status_service_connecting">Conectando con el servicio del router…</string>
+    <string name="status_router_online">Conectado a la red I2P</string>
+    <string name="status_router_degraded">El router está en ejecución pero aún no se ha conectado</string>
+    <string name="status_router_reseeding">Reseed en curso; se están descubriendo pares</string>
+    <string name="status_router_starting">Iniciando el router…</string>
+    <string name="status_router_stopped">El router no está en ejecución</string>
+    <string name="status_router_graceful">Vaciando túneles de tránsito: quedan %1$s</string>
+    <string name="status_start_failed_format">Error al iniciar: %1$s</string>
+    <string name="status_status_unavailable">El router está en ejecución, pero su estado no está disponible</string>
+    <string name="status_status_unavailable_format">El router está en ejecución, pero su estado no está disponible: %1$s</string>
+    <string name="dashboard_transports_format">%1$s · %2$s</string>
+    <string name="dashboard_quick_actions">Acciones rápidas</string>
+    <string name="dashboard_live_metrics">Métricas en directo</string>
+    <string name="metric_uptime">Tiempo activo</string>
+    <string name="metric_peers">Pares</string>
+    <string name="metric_routers">Routers conocidos</string>
+    <string name="metric_tunnels_label">Túneles (entrada / salida / tránsito)</string>
+    <string name="metric_tunnels_value">%1$d entrada / %2$d salida / %3$d tránsito</string>
+    <string name="metric_reseed">Reseed</string>
+    <string name="metric_download">Descarga</string>
+    <string name="metric_upload">Subida</string>
+    <string name="value_unknown_long">Desconocido</string>
+    <string name="value_yes">Sí</string>
+    <string name="value_no">No</string>
+    <string name="value_enabled">Activado</string>
+    <string name="value_disabled">Desactivado</string>
+    <string name="value_published">Publicado</string>
+    <string name="value_not_published">No publicado</string>
+    <string name="value_running">En ejecución</string>
+    <string name="value_stopped">Detenido</string>
+    <string name="warning_title">Atención</string>
+    <string name="warning_offline">El router está en ejecución, pero no hay conexión de red disponible. Comprueba la conexión Wi-Fi o los datos móviles.</string>
+    <string name="warning_error_format">El router informó de un problema: %1$s</string>
+    <string name="warning_start_failed_format">El router no pudo iniciarse: %1$s</string>
+    <string name="warning_router_error">El router informó de un error.</string>
+    <string name="warning_status_unavailable">El router está en ejecución, pero su instantánea de estado no está disponible. Los contadores permanecen ocultos hasta que llegue una instantánea nueva.</string>
+    <string name="warning_status_unavailable_format">La instantánea de estado del router no está disponible: %1$s</string>
+    <string name="service_disconnected_banner">El servicio del router está desconectado. Es posible que el estado esté desactualizado.</string>
+    <string name="action_retry">Reintentar</string>
+
+    <!-- Confirmaciones y avisos -->
+    <string name="confirm_stop_title">¿Detener el router?</string>
+    <string name="confirm_stop_message">Detener el router desconecta todos los servicios y túneles de I2P. ¿Continuar?</string>
+    <string name="confirm_restart_title">¿Reiniciar el router?</string>
+    <string name="confirm_restart_message">El router se detendrá y volverá a iniciarse. Las conexiones de I2P existentes se interrumpirán.</string>
+    <string name="confirm_graceful_title">¿Iniciar una detención gradual?</string>
+    <string name="confirm_graceful_message">Los túneles de tránsito disponen de tiempo para vaciarse antes de que el router se detenga. Puedes cancelar la detención gradual mientras se ejecuta la cuenta atrás.</string>
+    <string name="confirm_exit_title">¿Detener el router y salir?</string>
+    <string name="confirm_exit_message">El router se detendrá y la aplicación se cerrará. Los servicios y túneles de I2P se desconectarán.</string>
+    <string name="confirm_clear_logs_title">¿Borrar los registros?</string>
+    <string name="confirm_clear_logs_message">Esto elimina las entradas de registro que muestra la aplicación. No modifica los archivos del disco.</string>
+    <string name="confirm_reseed_title">¿Hacer un reseed de la base de datos de red?</string>
+    <string name="confirm_reseed_message">El router contactará por HTTPS con los servidores de reseed configurados para actualizar la información de los routers. Esto consume tráfico de red y puede tardar unos minutos con una conexión deficiente; las solicitudes de estado y de detención pueden retrasarse hasta que termine.</string>
+    <string name="toast_reseed_started">Solicitando un reseed de NetDb…</string>
+    <string name="toast_reseed_finished">El reseed de NetDb ha finalizado.</string>
+    <string name="toast_reseed_failed">No se inició el reseed. Es posible que el router esté detenido o que ya haya otro reseed en curso.</string>
+    <string name="toast_starting">Iniciando el router…</string>
+    <string name="toast_stopping">Deteniendo el router…</string>
+    <string name="toast_restarting">Reiniciando el router…</string>
+    <string name="toast_graceful_started">Detención gradual en curso.</string>
+    <string name="toast_graceful_cancelled">Detención gradual cancelada.</string>
+    <string name="battery_optimizations_already_disabled">Las optimizaciones de batería ya están desactivadas para esta aplicación.</string>
+    <string name="no_browser_available">No hay ningún navegador disponible para abrir este enlace.</string>
+
+    <!-- Red -->
+    <string name="network_connectivity">Conectividad</string>
+    <string name="network_addresses_title">Direcciones</string>
+    <string name="network_no_addresses">No se ha notificado ninguna dirección</string>
+    <string name="network_transports_title">Transportes</string>
+    <string name="network_services_title">Servicios cliente</string>
+    <string name="network_ipv4">IPv4</string>
+    <string name="network_ipv6">IPv6</string>
+    <string name="network_ipv4_available">IPv4 disponible</string>
+    <string name="network_ipv4_unavailable">IPv4 no disponible</string>
+    <string name="network_ipv6_available">IPv6 disponible</string>
+    <string name="network_ipv6_unavailable">IPv6 no disponible</string>
+    <string name="network_ntcp2">NTCP2</string>
+    <string name="network_ssu2">SSU2</string>
+    <string name="network_transport_format">%1$s: %2$s</string>
+    <string name="network_service_format">%1$s: %2$s</string>
+    <string name="address_format">%1$s %2$s:%3$d (%4$s)</string>
+
+    <!-- Túneles -->
+    <string name="tunnels_inbound">Túneles de entrada</string>
+    <string name="tunnels_outbound">Túneles de salida</string>
+    <string name="tunnels_transit">Túneles de tránsito</string>
+    <string name="tunnels_total">Túneles totales</string>
+    <string name="tunnels_grace_remaining">Detención gradual: quedan %1$s</string>
+    <string name="tunnels_grace_active">Detención gradual en curso</string>
+
+    <!-- Estadísticas -->
+    <string name="statistics_chart_title">Tráfico</string>
+    <string name="statistics_chart_description">Gráfico de tráfico. Descarga %1$s, subida %2$s.</string>
+    <string name="statistics_download_rate">Velocidad de descarga</string>
+    <string name="statistics_upload_rate">Velocidad de subida</string>
+    <string name="statistics_total_received">Total recibido</string>
+    <string name="statistics_total_sent">Total enviado</string>
+    <string name="statistics_total_transit">Tráfico de tránsito</string>
+    <string name="statistics_uptime">Tiempo activo</string>
+    <string name="statistics_peers">Pares</string>
+    <string name="statistics_routers">Routers conocidos</string>
+    <string name="statistics_tunnels">Túneles</string>
+    <string name="statistics_chart_download">Descarga</string>
+    <string name="statistics_chart_upload">Subida</string>
+    <string name="statistics_chart_window">Últimos 2 minutos · muestras de 1 s</string>
+    <string name="statistics_now_format">Ahora: %1$s</string>
+    <string name="statistics_now_unknown">Ahora: —</string>
+    <string name="statistics_chart_peak_format">Máximo en la ventana: %1$s</string>
+    <string name="statistics_chart_peak_unknown">Máximo en la ventana: —</string>
+
+    <!-- Registros -->
+    <string name="logs_title">Registros</string>
+    <string name="logs_intro">Busca y filtra el flujo de registros nativo acotado.</string>
+    <string name="logs_search_hint">Buscar en los registros</string>
+    <string name="logs_filter_all">Todos</string>
+    <string name="logs_filter_error">Error</string>
+    <string name="logs_filter_warn">Advertencia</string>
+    <string name="logs_filter_info">Información</string>
+    <string name="logs_filter_debug">Depuración</string>
+    <string name="logs_empty">Aún no hay entradas de registro</string>
+    <string name="logs_empty_filtered">Ninguna entrada coincide con los filtros actuales</string>
+    <string name="logs_loading">Esperando al servicio del router…</string>
+    <string name="logs_summary_format">%1$d mostrados de %2$d conservados</string>
+    <string name="logs_cleared">Entradas de registro borradas.</string>
+    <string name="tile_state_format">%1$s: %2$s</string>
+    <string name="notification_permission_denied">Las notificaciones están desactivadas. El router puede ejecutarse, pero su estado en primer plano no será visible.</string>
+    <string name="local_network_permission_denied">El acceso a la red local está denegado. La asignación de puertos UPnP no está disponible; la conectividad de I2P puede seguir funcionando.</string>
+
+    <!-- Unidades -->
+    <string name="rate_bps">%1$s B/s</string>
+    <string name="rate_kib_s">%1$s KiB/s</string>
+    <string name="rate_mib_s">%1$s MiB/s</string>
+    <string name="rate_gib_s">%1$s GiB/s</string>
+    <string name="size_b">%1$s B</string>
+    <string name="size_kib">%1$s KiB</string>
+    <string name="size_mib">%1$s MiB</string>
+    <string name="size_gib">%1$s GiB</string>
+    <string name="duration_days_hours">%1$dd %2$dh</string>
+    <string name="duration_hours_minutes">%1$dh %2$dm</string>
+    <string name="duration_minutes_seconds">%1$dm %2$ds</string>
+    <string name="duration_seconds">%1$ds</string>
+    <string name="duration_mm_ss">%1$02d:%2$02d</string>
+
+    <!-- Acerca de -->
+    <string name="about_title">Acerca de</string>
+    <string name="about_intro">Un router I2P nativo para Android, creado con la identidad visual de openi2pd.</string>
+    <string name="about_version_label">Versión</string>
+    <string name="about_version_format">%1$s (compilación %2$d)</string>
+    <string name="about_abi_label">ABI del dispositivo</string>
+    <string name="about_build_label">Tipo de compilación</string>
+    <string name="about_build_debug">Compilación de depuración</string>
+    <string name="about_build_release">Compilación de versión</string>
+    <string name="about_data_directory_label">Directorio de datos</string>
+    <string name="about_license_label">Licencia</string>
+    <string name="about_license_summary">openi2pd se distribuye bajo la licencia BSD 3-Clause. Los avisos de copyright y atribución del proyecto upstream i2pd-android se conservan en el código fuente y en los archivos de licencia.</string>
+    <string name="about_repository_label">Repositorio de código fuente</string>
+    <string name="about_data_unavailable">No disponible</string>
+
+    <!-- Ajustes -->
+    <string name="pref_category_general">General</string>
+    <string name="pref_category_network">Red</string>
+    <string name="pref_category_tunnels">Túneles y privacidad</string>
+    <string name="pref_category_resources">Recursos</string>
+    <string name="pref_category_logging">Registro</string>
+    <string name="pref_category_clients">Servicios cliente</string>
+    <string name="pref_autostart_summary">Inicia el router cuando el dispositivo arranca. Algunos fabricantes requieren un permiso de inicio automático adicional.</string>
+    <string name="pref_notifications_title">Notificaciones</string>
+    <string name="pref_notifications_summary">Abrir los ajustes de notificaciones de Android.</string>
+    <string name="pref_notifications_enabled">Las notificaciones están activadas. Toca para gestionarlas.</string>
+    <string name="pref_notifications_disabled">Las notificaciones están desactivadas. Toca para conceder el acceso.</string>
+    <string name="pref_notifications_unavailable">Los ajustes de notificaciones no están disponibles.</string>
+    <string name="pref_autostart_failed">No se pudo cambiar el ajuste de inicio al arrancar.</string>
+    <string name="pref_ipv4_title">Activar IPv4</string>
+    <string name="pref_ipv6_title">Activar IPv6</string>
+    <string name="pref_ntcp2_title">Activar NTCP2</string>
+    <string name="pref_ntcp2_publish_title">Publicar dirección NTCP2</string>
+    <string name="pref_ntcp2_publish_summary">Desactívalo para impedir que los routers se conecten a este dispositivo mediante NTCP2.</string>
+    <string name="pref_ssu_title">Activar SSU2</string>
+    <string name="pref_port_title">Puerto de escucha</string>
+    <string name="pref_port_summary">Usa auto o un puerto TCP/UDP concreto (0–65535).</string>
+    <string name="pref_upnp_enable_title">Activar UPnP</string>
+    <string name="pref_upnp_enable_summary">Solicita a la pasarela local que redirija automáticamente los puertos NTCP2 y SSU2.</string>
+    <string name="pref_upnp_name_title">Nombre de redirección UPnP</string>
+    <string name="pref_upnp_name_summary">Nombre que se muestra para este router en la lista de redirecciones de la pasarela.</string>
+    <string name="pref_no_transit_title">Desactivar túneles de tránsito</string>
+    <string name="pref_no_transit_summary">Impide que otros routers enruten tráfico a través de este dispositivo.</string>
+    <string name="pref_floodfill_title">Ejecutar como floodfill</string>
+    <string name="pref_floodfill_summary">Consume más batería y ancho de banda. Actívalo solo si puedes mantener el router en línea.</string>
+    <string name="pref_transit_limit_title">Límite de túneles de tránsito</string>
+    <string name="pref_transit_limit_summary">Número máximo de túneles de tránsito que este router puede construir.</string>
+    <string name="pref_bandwidth_title">Límite de ancho de banda</string>
+    <string name="pref_bandwidth_summary">Límite para el tráfico de tránsito. Los límites más altos consumen más batería y datos.</string>
+    <string name="pref_log_level_title">Nivel de registro</string>
+    <string name="pref_log_level_summary">Nivel de registro nativo. Si el router está en ejecución, aplica el nuevo nivel de inmediato.</string>
+    <string name="pref_http_enable_title">Activar proxy HTTP</string>
+    <string name="pref_http_address_title">Dirección del proxy HTTP</string>
+    <string name="pref_http_port_title">Puerto del proxy HTTP</string>
+    <string name="pref_socks_enable_title">Activar proxy SOCKS5</string>
+    <string name="pref_socks_address_title">Dirección del proxy SOCKS5</string>
+    <string name="pref_socks_port_title">Puerto del proxy SOCKS5</string>
+    <string name="pref_sam_enable_title">Activar SAM</string>
+    <string name="pref_sam_address_title">Dirección SAM</string>
+    <string name="pref_sam_port_title">Puerto SAM</string>
+    <string name="pref_invalid_port">Introduce un puerto entre 0 y 65535.</string>
+    <string name="pref_invalid_address">Introduce una dirección o un nombre de host válidos.</string>
+    <string name="pref_invalid_positive">Introduce un número entero positivo.</string>
+    <string name="pref_invalid_value">Introduce un valor sin saltos de línea ni caracteres reservados.</string>
+    <string name="pref_save_failed">No se guardó el valor.</string>
+    <string name="pref_apply_hot">Aplicado sin reiniciar el router.</string>
+    <string name="pref_apply_restart">Guardado. Reinicia el router para aplicarlo.</string>
+    <string name="pref_apply_reload">Guardado. Recarga los túneles para aplicarlo.</string>
+    <string name="pref_restart_required_title">Es necesario reiniciar</string>
+    <string name="pref_restart_required_message">Este cambio surtirá efecto cuando se reinicie el router. ¿Reiniciar ahora?</string>
+    <string name="pref_restart_now">Reiniciar ahora</string>
+    <string name="pref_later">Más tarde</string>
+    <string name="pref_bandwidth_low">Bajo</string>
+    <string name="pref_bandwidth_medium">Medio</string>
+    <string name="pref_bandwidth_high">Alto</string>
+    <string name="pref_bandwidth_unlimited">Ilimitado</string>
+    <string name="pref_loglevel_none">Ninguno</string>
+    <string name="pref_loglevel_critical">Crítico</string>
+    <string name="pref_loglevel_error">Error</string>
+    <string name="pref_loglevel_warn">Advertencia</string>
+    <string name="pref_loglevel_info">Información</string>
+    <string name="pref_loglevel_debug">Depuración</string>
+    <string name="pref_log_level_applied">Nivel de registro aplicado al router en ejecución.</string>
+    <string name="pref_log_level_failed">El nivel de registro se guardó, pero el router en ejecución no lo aceptó. Reinicia el router para aplicarlo.</string>
+
+    <string name="torrent_title">Torrents</string>
+    <string name="torrent_priorities">Archivos y prioridades</string>
+    <string name="torrent_priority_skip">Omitir</string>
+    <string name="torrent_priority_normal">Normal</string>
+    <string name="torrent_priority_high">Alta</string>
+    <string name="torrent_comments">Comentarios y valoraciones</string>
+    <string name="torrent_comments_privacy">Los comentarios usan seudónimos no verificados y se intercambian con pares de I2P cuando están activados. Deja el seudónimo opcional en blanco para no compartir ningún nombre. No incluyas información personal.</string>
+    <string name="torrent_comments_summary">Comentarios: %1$s · Media: %2$s/5 · Valoraciones: %3$s</string>
+    <string name="torrent_comments_enable">Activar comentarios y valoraciones</string>
+    <string name="torrent_comments_disable">Desactivar comentarios y valoraciones</string>
+    <string name="torrent_comment_add">Añadir comentario o valoración</string>
+    <string name="torrent_comment_owner">Seudónimo (opcional, no verificado)</string>
+    <string name="torrent_comment_text">Comentario (opcional con una valoración)</string>
+    <string name="torrent_comment_no_rating">Sin valoración</string>
+    <string name="torrent_comment_rating">Elegir valoración</string>
+    <string name="torrent_comment_publish">Añadir localmente (se comparte cuando los pares lo solicitan)</string>
+    <string name="torrent_comments_private">Los comentarios y las valoraciones están desactivados para los torrents privados.</string>
+    <string name="torrent_comment_anonymous">Seudónimo anónimo</string>
+    <string name="torrent_comment_hide">Ocultar localmente</string>
+    <string name="torrent_comment_hidden">Oculto localmente</string>
+    <string name="torrent_comment_unhide">Mostrar localmente</string>
+    <string name="torrent_comment_unhide_confirm">¿Mostrar de nuevo este comentario localmente?</string>
+    <string name="torrent_comment_hide_confirm">¿Ocultar este comentario localmente? Otros pares pueden conservar sus propias copias.</string>
+    <string name="torrent_create">Crear torrent</string>
+    <string name="torrent_create_source">Nombre de archivo o carpeta existente</string>
+    <string name="torrent_create_help">Usa un archivo o una carpeta inmediatos en el almacenamiento de torrents privado de la aplicación de esta sesión. La selección de carpetas externas aún no está disponible. Actualiza el estado de creación cuando termine el cálculo de hashes.</string>
+    <string name="torrent_creation_status">Estado de creación</string>
+    <string name="torrent_creation_pending">Calculando hashes del contenido…</string>
+    <string name="torrent_creation_finished">No hay ningún trabajo de creación en curso.</string>
+    <string name="torrent_import">Importar archivo torrent</string>
+    <string name="torrent_importing">Importando metadatos del torrent…</string>
+    <string name="torrent_import_failed">No se pudo importar este torrent. Elige un documento torrent legible de como máximo 8 MiB, comprueba que el router esté en ejecución y vuelve a intentarlo.</string>
+    <string name="torrent_busy">Ya hay una operación de torrent en curso. Vuelve a intentarlo.</string>
+    <string name="torrent_tracker_add">Añadir tracker</string>
+    <string name="torrent_tracker_edit">Editar tracker</string>
+    <string name="torrent_tracker_remove">Eliminar tracker</string>
+    <string name="torrent_tracker_hint">http://tracker.example.i2p/announce</string>
+    <string name="torrent_tracker_paused">Pausa el torrent y espera a que los metadatos estén completos antes de cambiar los trackers.</string>
+    <string name="torrent_files">Archivos</string>
+    <string name="torrent_peers">Pares</string>
+    <string name="torrent_trackers">Trackers</string>
+    <string name="torrent_transfer_summary">Completado: %1$s / %2$s B\nDescarga: %3$s B/s · Subida: %4$s B/s</string>
+    <string name="torrent_dht_summary">Nodos: %1$s\nCubos: %2$s\nTorrents: %3$s\nPares fallidos: %4$s</string>
+    <string name="torrent_refresh">Actualizar torrents</string>
+    <string name="torrent_storage_selected">Almacenamiento seleccionado. Las piezas existentes se verificarán a medida que se vuelvan a abrir los documentos.</string>
+    <string name="torrent_storage_permission_required">Se requiere permiso persistente de lectura y escritura de documentos</string>
+    <string name="torrent_exported">Torrent exportado</string>
+    <string name="torrent_export_failed">Error al exportar</string>
+    <string name="torrent_create_private_file">Archivo en almacenamiento privado</string>
+    <string name="torrent_create_saf_document">Documento SAF</string>
+    <string name="torrent_create_saf_folder">Carpeta SAF</string>
+    <string name="torrent_export_generated">Exportar torrent generado</string>
+    <string name="torrent_cancel_saf_creation">Cancelar creación SAF</string>
+    <string name="torrent_creation_progress">Creando torrent: %1$d bytes procesados</string>
+    <string name="torrent_metadata_ready">Metadatos listos. Elige Exportar torrent generado. La siembra desde orígenes SAF no está disponible.</string>
+    <string name="torrent_payload_action">Descargar / sembrar árbol de documentos</string>
+    <string name="torrent_payload_message">%1$s\n\nSelecciona un árbol de carga útil existente o un directorio de descarga vacío. Las piezas existentes se verificarán; los manejadores en ejecución se sustituyen tras un fallo de acceso.</string>
+    <string name="torrent_select_directory">Seleccionar directorio</string>
+    <string name="torrent_trackers_hint">Trackers de I2P (uno por línea, cada uno como nivel de conmutación por error)</string>
+    <string name="torrent_private_hint">Torrent privado (requiere tracker; desactiva DHT/PEX)</string>
+    <string name="torrent_piece_size_title">Tamaño de pieza</string>
+    <string name="torrent_piece_size_value">Tamaño de pieza: %1$d KiB</string>
+    <string name="torrent_create_saf_title">Crear desde origen SAF</string>
+    <string name="torrent_create_saf_message">Solo exporta metadatos. La siembra desde orígenes SAF no está disponible.</string>
+    <string name="torrent_private_tracker_required">Los torrents privados requieren un tracker de I2P (máximo 32)</string>
+    <string name="torrent_start_all">Iniciar todos los torrents</string>
+    <string name="torrent_stop_all">Detener todos los torrents</string>
+    <string name="torrent_reannounce_all">Reanunciar todos los torrents</string>
+    <string name="torrent_add_magnet">Añadir magnet</string>
+    <string name="torrent_magnet_hint">magnet:?xt=urn:btih:…</string>
+    <string name="torrent_dht">Estado de DHT</string>
+    <string name="torrent_loading">Cargando…</string>
+    <string name="torrent_error">Error en la operación de torrent: %1$s</string>
+    <string name="torrent_no_session">No hay ninguna sesión de torrents configurada. Añade una sección torrents a tunnels.conf y reinicia el router.</string>
+    <string name="torrent_session">Elegir sesión de torrents</string>
+    <string name="torrent_count">Torrents: %1$d</string>
+    <string name="torrent_session_count">Sesión %1$s · %2$d torrents</string>
+    <string name="torrent_private_badge">privado</string>
+    <string name="torrent_private_summary_yes">Enjambre privado (DHT, PEX y comentarios desactivados)</string>
+    <string name="torrent_private_summary_no">Enjambre público</string>
+    <string name="torrent_private_trackers_fixed">Los torrents privados usan una lista de trackers fija; pausa y edita el archivo .torrent antes de añadirlo.</string>
+    <string name="torrent_details">Detalles del torrent</string>
+    <string name="torrent_pause">Pausar</string>
+    <string name="torrent_resume">Reanudar</string>
+    <string name="torrent_share">Compartir enlace magnet</string>
+    <string name="torrent_remove">Eliminar torrent</string>
+    <string name="torrent_remove_confirm">¿Eliminar este torrent de la sesión? Los archivos descargados se conservarán.</string>
+    <string name="torrent_recheck">Forzar reverificación (torrent en pausa)</string>
+    <string name="torrent_meta">Editar metadatos del torrent</string>
+    <string name="torrent_meta_comment">Comentario de metainfo</string>
+    <string name="torrent_meta_created_by">Creado por</string>
+    <string name="torrent_meta_hint">Pausa primero el torrent. Los campos sin cambios se dejan como están; los cambios vacíos se rechazan.</string>
+    <string name="torrent_meta_failed">Se rechazó la edición de los metadatos del torrent. Pausa el torrent y usa texto UTF-8 dentro de los límites.</string>
+    <string name="torrent_remove_files">Eliminar torrent y borrar datos</string>
+    <string name="torrent_remove_files_confirm">¿Eliminar %1$s y borrar permanentemente su carga útil descargada? Esta acción no se puede deshacer.</string>
+    <string name="torrent_removed_files">Se ha encolado la eliminación del torrent con sus datos locales.</string>
+    <string name="address_book_title">Libreta de direcciones</string>
+    <string name="address_book_refresh">Actualizar libreta de direcciones</string>
+    <string name="address_book_add">Añadir o sustituir dirección</string>
+    <string name="address_book_name">Nombre terminado en .i2p</string>
+    <string name="address_book_destination">Destino base64 completo</string>
+    <string name="address_book_save">Guardar</string>
+    <string name="address_book_remove">Eliminar dirección</string>
+    <string name="address_book_remove_confirm">¿Eliminar %1$s de la libreta de direcciones local? Los archivos de claves de destino no se borran.</string>
+    <string name="address_book_empty">No hay entradas en la libreta de direcciones local.</string>
+    <string name="address_book_loading">Cargando la libreta de direcciones…</string>
+    <string name="address_book_saving">Guardando la dirección…</string>
+    <string name="address_book_added">Dirección guardada.</string>
+    <string name="address_book_removed">Dirección eliminada.</string>
+    <string name="address_book_invalid">Introduce un nombre .i2p y un destino base64 completo.</string>
+    <string name="address_book_failed">La libreta de direcciones rechazó esta operación. Comprueba el nombre y el destino.</string>
+    <string name="address_book_block">Bloquear nombre de suscripción</string>
+    <string name="address_book_blocked_list">Nombres de suscripción bloqueados</string>
+    <string name="address_book_block_hint">Nombre o comodín terminado en .i2p</string>
+    <string name="address_book_block_confirm">¿Bloquear %1$s en las actualizaciones de suscripciones? Eliminar una dirección ya añade un bloqueo exacto.</string>
+    <string name="address_book_blocked">Nombre de suscripción bloqueado.</string>
+    <string name="address_book_unblocked">Bloqueo de suscripción eliminado.</string>
+    <string name="address_book_blocked_empty">No hay nombres de suscripción bloqueados.</string>
+    <string name="address_book_block_failed">La libreta de direcciones rechazó este bloqueo. Usa un nombre .i2p o un comodín en minúsculas.</string>
+    <string name="pref_category_language">Idioma</string>
+    <string name="pref_language_title">Idioma de la interfaz</string>
+    <string name="pref_language_summary">Seguir el idioma del sistema o elegir inglés, español, ruso o chino simplificado.</string>
+    <string name="pref_language_system">Idioma del sistema</string>
+    <string name="pref_language_english">Inglés</string>
+    <string name="pref_language_spanish">Español</string>
+    <string name="pref_language_russian">Ruso</string>
+    <string name="pref_language_chinese_simplified">Chino simplificado</string>
+</resources>

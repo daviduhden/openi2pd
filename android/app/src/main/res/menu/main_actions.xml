@@ -16,6 +16,10 @@ Defines native Android application resources.
         android:title="@string/torrent_title"
         app:showAsAction="never" />
     <item
+        android:id="@+id/action_address_book"
+        android:title="@string/address_book_title"
+        app:showAsAction="never" />
+    <item
         android:id="@+id/action_logs"
         android:icon="@drawable/ic_logs"
         android:title="@string/action_logs"

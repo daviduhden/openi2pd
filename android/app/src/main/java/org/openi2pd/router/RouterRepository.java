@@ -172,6 +172,61 @@ public final class RouterRepository implements RouterService.Listener {
         local.torrentCommand(request, callback);
     }
 
+    public void readAddressBook(java.util.function.Consumer<String> callback) {
+        RouterService local = service;
+        if (closed || local == null) {
+            mainHandler.post(() -> callback.accept(""));
+            return;
+        }
+        local.readAddressBook(callback);
+    }
+
+    public void readBlockedAddresses(java.util.function.Consumer<String> callback) {
+        RouterService local = service;
+        if (closed || local == null) {
+            mainHandler.post(() -> callback.accept(""));
+            return;
+        }
+        local.readBlockedAddresses(callback);
+    }
+
+    public void blockAddress(String name, java.util.function.Consumer<Boolean> callback) {
+        RouterService local = service;
+        if (closed || local == null) {
+            mainHandler.post(() -> callback.accept(false));
+            return;
+        }
+        local.blockAddress(name, callback);
+    }
+
+    public void unblockAddress(String name, java.util.function.Consumer<Boolean> callback) {
+        RouterService local = service;
+        if (closed || local == null) {
+            mainHandler.post(() -> callback.accept(false));
+            return;
+        }
+        local.unblockAddress(name, callback);
+    }
+
+    public void addAddress(
+            String name, String destination, java.util.function.Consumer<Boolean> callback) {
+        RouterService local = service;
+        if (closed || local == null) {
+            mainHandler.post(() -> callback.accept(false));
+            return;
+        }
+        local.addAddress(name, destination, callback);
+    }
+
+    public void removeAddress(String name, java.util.function.Consumer<Boolean> callback) {
+        RouterService local = service;
+        if (closed || local == null) {
+            mainHandler.post(() -> callback.accept(false));
+            return;
+        }
+        local.removeAddress(name, callback);
+    }
+
     public void createSafTorrent(android.net.Uri source, boolean tree, int pieceLength, String[] trackers, boolean privateTorrent,
             java.util.function.LongConsumer progress, java.util.function.Consumer<byte[]> callback) {
         RouterService local = service;

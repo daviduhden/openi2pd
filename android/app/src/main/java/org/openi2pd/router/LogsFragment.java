@@ -68,6 +68,7 @@ public class LogsFragment extends Fragment {
     private final Runnable applySearchFilter = () -> applyFilters(false);
     private String query = "";
     private int filterId = R.id.filter_all;
+    private LogLevel levelFilter = LogLevel.ALL;
     private boolean serviceConnected;
 
     @Nullable
@@ -133,12 +134,14 @@ public class LogsFragment extends Fragment {
         if (selected != null) {
             selected.setChecked(true);
         }
+        levelFilter = levelForFilter(filterId);
         filterGroup.setOnCheckedStateChangeListener((group, checkedIds) -> {
             if (checkedIds.isEmpty()) {
                 filterId = R.id.filter_all;
             } else {
                 filterId = checkedIds.get(0);
             }
+            levelFilter = levelForFilter(filterId);
             if (searchHandler != null) {
                 searchHandler.removeCallbacks(applySearchFilter);
             }
@@ -214,35 +217,20 @@ public class LogsFragment extends Fragment {
         });
     }
 
+    private static LogLevel levelForFilter(int id) {
+        if (id == R.id.filter_error) return LogLevel.ERROR;
+        if (id == R.id.filter_warn) return LogLevel.WARN;
+        if (id == R.id.filter_info) return LogLevel.INFO;
+        if (id == R.id.filter_debug) return LogLevel.DEBUG;
+        return LogLevel.ALL;
+    }
+
     private boolean matchesLevel(@NonNull LogEntry entry) {
-        if (filterId == R.id.filter_all) {
-            return true;
-        }
-        String level = entry.level() == null ? "" : entry.level().toLowerCase(Locale.ROOT);
-        if (filterId == R.id.filter_error) {
-            return level.contains("error") || level.contains("fatal") || level.contains("crit")
-                    || level.contains("fail");
-        }
-        if (filterId == R.id.filter_warn) {
-            return level.contains("warn");
-        }
-        if (filterId == R.id.filter_info) {
-            return level.contains("info") || level.contains("notice");
-        }
-        if (filterId == R.id.filter_debug) {
-            return level.contains("debug") || level.contains("trace");
-        }
-        return true;
+        return LogFilter.passes(levelFilter, entry.level());
     }
 
     private boolean matchesQuery(@NonNull LogEntry entry, @NonNull String normalizedQuery) {
-        if (normalizedQuery.isEmpty()) {
-            return true;
-        }
-        return (entry.message() != null
-                       && entry.message().toLowerCase(Locale.ROOT).contains(normalizedQuery))
-                || (entry.level() != null
-                        && entry.level().toLowerCase(Locale.ROOT).contains(normalizedQuery));
+        return LogFilter.matchesQuery(entry, normalizedQuery);
     }
 
     private boolean isAtBottom() {

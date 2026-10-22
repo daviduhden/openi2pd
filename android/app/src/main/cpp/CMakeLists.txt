@@ -9,7 +9,7 @@
 
 # Android app entry point. The router itself is built by the main CMake graph;
 # this wrapper only enables the JNI target and disables host-only components.
-cmake_minimum_required(VERSION 3.22)
+cmake_minimum_required(VERSION 3.24)
 
 # Android intentionally builds only the in-process JNI library. i2pd_privsep
 # is not linked here: the current Android service is same-process and the

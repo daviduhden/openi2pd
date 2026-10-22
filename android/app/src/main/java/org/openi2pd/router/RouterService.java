@@ -165,6 +165,8 @@ public class RouterService extends Service {
     private volatile List<LogEntry> lastLogs = Collections.emptyList();
     /** Only the worker thread writes this; volatile for main-thread snapshots. */
     private volatile long lastLogSequence;
+    /** Bumped by clearLogs(); an older poll must not republish the cleared list. */
+    private volatile long logsEpoch;
     private volatile DaemonWrapper.State lastNotificationState;
 
     private final Runnable pollTick = new Runnable() {
@@ -183,7 +185,7 @@ public class RouterService extends Service {
                         result = pollBlocking();
                     } catch (Throwable tr) {
                         result = new PollResult(
-                                localSnapshotWithError(describe(tr)), lastLogs, false);
+                                localSnapshotWithError(describe(tr)), lastLogs, false, logsEpoch);
                     }
                     final PollResult published = result;
                     mainHandler.post(() -> {
@@ -308,40 +310,45 @@ public class RouterService extends Service {
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         String action = intent == null ? null : intent.getAction();
+        // The extra is read only for its own action, exactly as before: an
+        // unrelated intent must never observe a wrong-typed extra that this
+        // service does not consume.
+        String runtimeLogLevel = intent != null && ACTION_SET_RUNTIME_LOG_LEVEL.equals(action)
+                ? intent.getStringExtra(EXTRA_RUNTIME_LOG_LEVEL)
+                : null;
+        RouterCommand command = RouterCommand.fromAction(action, runtimeLogLevel);
 
-        if (action == null) {
+        // Exhaustive over the sealed hierarchy: a new RouterCommand record
+        // fails compilation here instead of being silently ignored.
+        switch (command) {
+        case RouterCommand.Restore ignored -> {
             // START_STICKY restart. Without a persisted "should run" flag
             // there is nothing to restore.
             if (!readShouldRun()) {
                 stopSelfResult(startId);
                 return START_NOT_STICKY;
             }
-            if (!ensureForeground()) {
-                stopSelfResult(startId);
+            if (!ensureForegroundOrFail(startId)) {
                 return START_NOT_STICKY;
             }
             enqueueControl(this::startDaemonWithMulticast);
             return START_STICKY;
         }
-
-        switch (action) {
-        case ACTION_START -> {
-            if (!ensureForeground()) {
-                stopSelfResult(startId);
+        case RouterCommand.Start ignored -> {
+            if (!ensureForegroundOrFail(startId)) {
                 return START_NOT_STICKY;
             }
             setShouldRun(true);
             enqueueControl(this::startDaemonWithMulticast);
         }
-        case ACTION_STOP -> {
+        case RouterCommand.Stop ignored -> {
             setShouldRun(false);
             mainHandler.removeCallbacks(gracefulStopExpired);
             // A startForegroundService() caller expects startForeground()
             // or stopSelf() within five seconds. If the notification cannot
             // be installed, fail the command instead of leaving the service
             // in an invalid started state.
-            if (!ensureForeground()) {
-                stopSelfResult(startId);
+            if (!ensureForegroundOrFail(startId)) {
                 return START_NOT_STICKY;
             }
             enqueueControl(daemon::stopDaemon);
@@ -350,9 +357,8 @@ public class RouterService extends Service {
             // start a clean service rather than resurrecting a stopping one.
             return START_NOT_STICKY;
         }
-        case ACTION_RESTART -> {
-            if (!ensureForeground()) {
-                stopSelfResult(startId);
+        case RouterCommand.Restart ignored -> {
+            if (!ensureForegroundOrFail(startId)) {
                 return START_NOT_STICKY;
             }
             // Persist intent before the worker starts the two-phase restart,
@@ -362,53 +368,90 @@ public class RouterService extends Service {
             mainHandler.removeCallbacks(gracefulStopExpired);
             enqueueControl(this::performRestart);
         }
-        case ACTION_GRACEFUL_STOP -> {
-            if (!ensureForeground()) {
-                stopSelfResult(startId);
+        case RouterCommand.GracefulStop ignored -> {
+            if (!ensureForegroundOrFail(startId)) {
                 return START_NOT_STICKY;
             }
             setShouldRun(true);
             beginGracefulStopCommand();
         }
-        case ACTION_CANCEL_GRACEFUL_STOP -> {
+        case RouterCommand.CancelGracefulStop ignored -> {
             mainHandler.removeCallbacks(gracefulStopExpired);
             enqueueControl(daemon::cancelGracefulShutdown);
         }
-        case ACTION_RELOAD_TUNNELS -> enqueueControl(daemon::reloadTunnelsConfigs);
-        case ACTION_RESEED -> enqueueControl(() -> {
+        case RouterCommand.ReloadTunnels ignored ->
+                enqueueControl(daemon::reloadTunnelsConfigs);
+        case RouterCommand.Reseed ignored -> enqueueControl(() -> {
             DaemonWrapper local = daemon;
             if (local != null) {
                 local.requestReseed();
             }
         });
-        case ACTION_SET_RUNTIME_LOG_LEVEL -> {
-            String level = intent.getStringExtra(EXTRA_RUNTIME_LOG_LEVEL);
-            if (DaemonWrapper.isRuntimeLogLevel(level)) {
-                enqueueControl(() -> {
-                    DaemonWrapper local = daemon;
-                    if (local != null) {
-                        local.applyRuntimeLogLevel(level);
-                    }
-                });
-            } else {
-                // Reject without touching native state. The shared return below
-                // keeps the service's current stickiness for a malformed extra.
-                Log.w(TAG, "ignoring runtime log level request with an invalid value");
-                if (!readShouldRun() && !daemon.isStartedOkay()) {
-                    stopSelfResult(startId);
-                }
-            }
-        }
-        default -> {
-            Log.w(TAG, "ignoring unknown service action");
-            if (!readShouldRun() && !daemon.isStartedOkay()) {
-                stopSelfResult(startId);
-            }
+        case RouterCommand.SetRuntimeLogLevel(var level) -> handleRuntimeLogLevel(level, startId);
+        case RouterCommand.Unknown ignored -> {
+            handleUnknownAction(startId);
+            // An unrecognised action never makes the service sticky, even if
+            // the running daemon would otherwise keep it alive.
             return START_NOT_STICKY;
         }
         }
 
         return readShouldRun() || daemon.isStartedOkay() ? START_STICKY : START_NOT_STICKY;
+    }
+
+    /**
+     * Enter the foreground for the current command or fail the command.
+     *
+     * <p>A {@code startForegroundService()} caller expects
+     * {@code startForeground()} or {@code stopSelf()} within five seconds, so
+     * a missing notification fails only this start id; the caller then returns
+     * {@link #START_NOT_STICKY}. The daemon never runs without its
+     * notification.</p>
+     */
+    private boolean ensureForegroundOrFail(int startId) {
+        if (ensureForeground()) {
+            return true;
+        }
+        stopSelfResult(startId);
+        return false;
+    }
+
+    /**
+     * Forward one runtime log level to the control worker. A null or unknown
+     * value is rejected before any native state is touched; the command then
+     * keeps the service's current stickiness, like the shared return used by
+     * the other non-terminal actions.
+     */
+    private void handleRuntimeLogLevel(String level, int startId) {
+        if (DaemonWrapper.isRuntimeLogLevel(level)) {
+            enqueueControl(() -> {
+                DaemonWrapper local = daemon;
+                if (local != null) {
+                    local.applyRuntimeLogLevel(level);
+                }
+            });
+            return;
+        }
+        Log.w(TAG, "ignoring runtime log level request with an invalid value");
+        stopSelfIfIdle(startId);
+    }
+
+    /** Ignore an unrecognised action and release the service when it is idle. */
+    private void handleUnknownAction(int startId) {
+        Log.w(TAG, "ignoring unknown service action");
+        stopSelfIfIdle(startId);
+    }
+
+    /**
+     * Stop only this start id when neither the persisted run flag nor a
+     * started daemon still needs the service. This is the command-scoped
+     * counterpart of {@link #stopIfIdle()} and must not tear down a restart
+     * that is still between its two phases.
+     */
+    private void stopSelfIfIdle(int startId) {
+        if (!readShouldRun() && !daemon.isStartedOkay()) {
+            stopSelfResult(startId);
+        }
     }
 
     @Override
@@ -433,7 +476,8 @@ public class RouterService extends Service {
             cancelImport.run();
         safWorker.shutdownNow();
         routerRunning = false;
-        mainHandler.removeCallbacksAndMessages(null);
+        mainHandler.removeCallbacks(pollTick);
+        mainHandler.removeCallbacks(gracefulStopExpired);
         if (daemon != null) {
             daemon.removeStateChangeListener(daemonStateListener);
         }
@@ -701,8 +745,11 @@ public class RouterService extends Service {
 
     public void clearLogs() {
         runOnMain(() -> enqueueControl(() -> {
+            ++logsEpoch;
+            // Keep the sequence cursor: resetting it would replay every
+            // retained native record on the next poll and undo the clear.
             lastLogs = Collections.emptyList();
-            mainHandler.post(() -> publishLogs(lastLogs));
+            mainHandler.post(() -> publishLogs(Collections.emptyList()));
         }));
     }
 
@@ -719,9 +766,9 @@ public class RouterService extends Service {
     }
 
     public static boolean requestStop(Context context) {
-        if (!routerRunning) {
-            return false;
-        }
+        // ACTION_STOP is idempotent. It must also be deliverable while the
+        // router is starting or stuck in startFailed; gating on startedOkay
+        // left Quick Settings unable to cancel that state.
         return sendCommand(context, ACTION_STOP, false);
     }
 
@@ -731,6 +778,14 @@ public class RouterService extends Service {
      * service has started at boot/from the tile, a later Activity launch must
      * not silently restart a deliberately stopped daemon.
      */
+    public static boolean isStartRequested(Context context) {
+        if (context == null) return false;
+        Context appContext = context.getApplicationContext();
+        if (appContext == null) appContext = context;
+        return appContext.getSharedPreferences(PREFERENCES, MODE_PRIVATE)
+                .getBoolean(PREF_SHOULD_RUN, false);
+    }
+
     static boolean hasPersistedRunState(Context context) {
         if (context == null) {
             return false;
@@ -771,7 +826,8 @@ public class RouterService extends Service {
     // Polling and publication
     // ---------------------------------------------------------------------
 
-    private record PollResult(RouterSnapshot snapshot, List<LogEntry> logs, boolean logsChanged) {}
+    private record PollResult(RouterSnapshot snapshot, List<LogEntry> logs, boolean logsChanged,
+            long logsEpoch) {}
 
     private void pollNow() {
         if (destroyed || listeners.isEmpty()) {
@@ -782,11 +838,12 @@ public class RouterService extends Service {
     }
 
     private PollResult pollBlocking() {
+        final long epoch = logsEpoch;
         DaemonWrapper local = daemon;
         if (local == null) {
             return new PollResult(
                     RouterSnapshot.empty(DaemonWrapper.State.uninitialized, "", "", 0L), lastLogs,
-                    false);
+                    false, logsEpoch);
         }
 
         DaemonWrapper.State state = local.getState();
@@ -853,7 +910,7 @@ public class RouterService extends Service {
             }
         }
 
-        return new PollResult(snapshot, logs, logsChanged);
+        return new PollResult(snapshot, logs, logsChanged, epoch);
     }
 
     private List<LogEntry> mergeLogs(List<LogEntry> parsed) {
@@ -884,9 +941,9 @@ public class RouterService extends Service {
 
     private void applyPoll(PollResult result) {
         lastSnapshot = result.snapshot();
-        if (result.logsChanged()) {
+        if (result.logsChanged() && result.logsEpoch() == logsEpoch) {
             lastLogs = result.logs();
-            publishLogs(lastLogs);
+            publishLogs(result.logs());
         }
         for (Listener listener : listeners) {
             try {
@@ -997,7 +1054,11 @@ public class RouterService extends Service {
                         .setTicker(text)
                         .setWhen(System.currentTimeMillis())
                         .setContentTitle(getText(R.string.app_name))
-                        .setContentText(text);
+                        .setContentText(text)
+                        .addAction(R.drawable.ic_stop, getText(R.string.action_stop),
+                                PendingIntent.getService(this, 1,
+                                        new Intent(this, RouterService.class).setAction(ACTION_STOP),
+                                        FLAG_IMMUTABLE | FLAG_UPDATE_CURRENT));
 
         Intent launch = getPackageManager().getLaunchIntentForPackage(getPackageName());
         if (launch != null) {
@@ -1074,6 +1135,133 @@ public class RouterService extends Service {
         }
     }
 
+    /** Bounded address-book rows on the control worker. */
+    public void readAddressBook(java.util.function.Consumer<String> callback) {
+        ExecutorService executor = worker;
+        try {
+            if (destroyed || executor == null) throw new RejectedExecutionException();
+            executor.execute(() -> {
+                String result = "";
+                try {
+                    DaemonWrapper local = daemon;
+                    result = local == null ? "" : local.getAddressBook();
+                } catch (RuntimeException | LinkageError error) {
+                    result = "";
+                }
+                String response = result;
+                mainHandler.post(() -> callback.accept(response));
+            });
+        } catch (RejectedExecutionException error) {
+            mainHandler.post(() -> callback.accept(""));
+        }
+    }
+
+    /** Add/replace one validated address-book name on the control worker. */
+    public void addAddress(
+            String name, String destination, java.util.function.Consumer<Boolean> callback) {
+        ExecutorService executor = worker;
+        try {
+            if (destroyed || executor == null) throw new RejectedExecutionException();
+            executor.execute(() -> {
+                boolean result = false;
+                try {
+                    DaemonWrapper local = daemon;
+                    result = local != null && local.addAddress(name, destination);
+                } catch (RuntimeException | LinkageError error) {
+                    result = false;
+                }
+                boolean added = result;
+                mainHandler.post(() -> callback.accept(added));
+            });
+        } catch (RejectedExecutionException error) {
+            mainHandler.post(() -> callback.accept(false));
+        }
+    }
+
+    /** Read deleted-host patterns on the control worker. */
+    public void readBlockedAddresses(java.util.function.Consumer<String> callback) {
+        ExecutorService executor = worker;
+        try {
+            if (destroyed || executor == null) throw new RejectedExecutionException();
+            executor.execute(() -> {
+                String result = "";
+                try {
+                    DaemonWrapper local = daemon;
+                    result = local == null ? "" : local.getBlockedAddresses();
+                } catch (RuntimeException | LinkageError error) {
+                    result = "";
+                }
+                String response = result;
+                mainHandler.post(() -> callback.accept(response));
+            });
+        } catch (RejectedExecutionException error) {
+            mainHandler.post(() -> callback.accept(""));
+        }
+    }
+
+    /** Block a validated subscription name or wildcard on the control worker. */
+    public void blockAddress(String name, java.util.function.Consumer<Boolean> callback) {
+        ExecutorService executor = worker;
+        try {
+            if (destroyed || executor == null) throw new RejectedExecutionException();
+            executor.execute(() -> {
+                boolean result = false;
+                try {
+                    DaemonWrapper local = daemon;
+                    result = local != null && local.blockAddress(name);
+                } catch (RuntimeException | LinkageError error) {
+                    result = false;
+                }
+                boolean blocked = result;
+                mainHandler.post(() -> callback.accept(blocked));
+            });
+        } catch (RejectedExecutionException error) {
+            mainHandler.post(() -> callback.accept(false));
+        }
+    }
+
+    /** Remove one exact deleted-host pattern on the control worker. */
+    public void unblockAddress(String name, java.util.function.Consumer<Boolean> callback) {
+        ExecutorService executor = worker;
+        try {
+            if (destroyed || executor == null) throw new RejectedExecutionException();
+            executor.execute(() -> {
+                boolean result = false;
+                try {
+                    DaemonWrapper local = daemon;
+                    result = local != null && local.unblockAddress(name);
+                } catch (RuntimeException | LinkageError error) {
+                    result = false;
+                }
+                boolean unblocked = result;
+                mainHandler.post(() -> callback.accept(unblocked));
+            });
+        } catch (RejectedExecutionException error) {
+            mainHandler.post(() -> callback.accept(false));
+        }
+    }
+
+    /** Remove one validated address-book name on the control worker. */
+    public void removeAddress(String name, java.util.function.Consumer<Boolean> callback) {
+        ExecutorService executor = worker;
+        try {
+            if (destroyed || executor == null) throw new RejectedExecutionException();
+            executor.execute(() -> {
+                boolean result = false;
+                try {
+                    DaemonWrapper local = daemon;
+                    result = local != null && local.removeAddress(name);
+                } catch (RuntimeException | LinkageError error) {
+                    result = false;
+                }
+                boolean removed = result;
+                mainHandler.post(() -> callback.accept(removed));
+            });
+        } catch (RejectedExecutionException error) {
+            mainHandler.post(() -> callback.accept(false));
+        }
+    }
+
     /** Reads only a user-granted content URI; JNI receives bytes, never its path. */
     public void importTorrent(
             int tunnel, android.net.Uri document, java.util.function.Consumer<String> callback) {
@@ -1083,18 +1271,10 @@ public class RouterService extends Service {
             return;
         }
         var cancellation = new android.os.CancellationSignal();
-        var descriptor = new java.util.concurrent.atomic
-                                 .AtomicReference<android.content.res.AssetFileDescriptor>();
-        Runnable cancel = () -> {
-            cancellation.cancel();
-            android.content.res.AssetFileDescriptor opened = descriptor.getAndSet(null);
-            if (opened != null) {
-                try {
-                    opened.close();
-                } catch (java.io.IOException ignored) {
-                }
-            }
-        };
+        // The worker owns the descriptor through try-with-resources. The
+        // canceller must never close a descriptor another thread is reading:
+        // the released fd number can be reused and return unrelated bytes.
+        Runnable cancel = cancellation::cancel;
         cancelTorrentImport = cancel;
         mainHandler.postDelayed(cancel, 20_000L);
         ExecutorService executor = worker;
@@ -1125,7 +1305,6 @@ public class RouterService extends Service {
                                     resolver.openAssetFileDescriptor(document, "r", cancellation)) {
                         if (opened == null)
                             throw new java.io.IOException("Document unavailable");
-                        descriptor.set(opened);
                         cancellation.throwIfCanceled();
                         if (opened.getLength() > TorrentControl.MAX_IMPORT_BYTES) {
                             throw new java.io.IOException("Torrent too large");
@@ -1137,12 +1316,11 @@ public class RouterService extends Service {
                         cancellation.throwIfCanceled();
                         response = I2PD_JNI.importTorrent(tunnel, metadata);
                     }
-                } catch (java.io.IOException | RuntimeException | LinkageError error) {
+                } catch (Throwable error) {
                     // Provider exception text may contain document names and
                     // credentials; do not log or propagate it to peers/UI.
                     response = "I2PDTUI/1 ERR 4 13\nimport failed";
                 } finally {
-                    descriptor.set(null);
                     mainHandler.removeCallbacks(cancel);
                     cancelTorrentImport = null;
                     if (releaseGrant) {
@@ -1194,7 +1372,7 @@ public class RouterService extends Service {
                     }
                     metadata = TorrentSafCreator.create(resolver, source, tree, cancel,
                             value -> mainHandler.post(() -> progress.accept(value)), pieceLength, trackers, privateTorrent);
-                } catch (Exception | LinkageError ignored) {
+                } catch (Throwable ignored) {
                     // Provider diagnostics may disclose document names or account identifiers.
                 } finally {
                     if (release) try {
@@ -1237,8 +1415,24 @@ public class RouterService extends Service {
             if (destroyed) throw new RejectedExecutionException();
             safWorker.execute(() -> {
                 boolean success = false;
-                try { success = TorrentSafStorage.export(target, metadata, canceled) && !canceled.get(); }
-                finally {
+                boolean releaseGrant = false;
+                try {
+                    boolean granted = false;
+                    var resolver = getContentResolver();
+                    for (var permission : resolver.getPersistedUriPermissions())
+                        if (target.equals(permission.getUri()) && permission.isWritePermission()) granted = true;
+                    if (!granted) {
+                        resolver.takePersistableUriPermission(target,
+                                Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                        releaseGrant = true;
+                    }
+                    success = TorrentSafStorage.export(target, metadata, canceled) && !canceled.get();
+                } catch (Throwable ignored) {
+                } finally {
+                    if (releaseGrant) try {
+                        getContentResolver().releasePersistableUriPermission(target,
+                                Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                    } catch (RuntimeException ignored) {}
                     mainHandler.removeCallbacks(cancel);
                     cancelTorrentImport = null;
                     torrentInFlight.set(false);

@@ -44,15 +44,20 @@ dependencies {
 android {
     namespace 'org.openi2pd.router'
     compileSdk 37
+    // NDK r30 LTS provides the current Clang/C++23 toolchain and getifaddrs
+    // at the API 29 baseline. ndkVersion belongs to the Android extension,
+    // not DefaultConfig.
+    ndkVersion = project.findProperty("i2pd.ndkVersion") ?: "30.0.16248370"
     // AGP 9.4's supported default; CI installs this exact package rather than
     // relying on an SDK-manager side effect.
-    buildToolsVersion '36.0.0'
+    buildToolsVersion = '36.0.0'
 
-    // The product has one interface language. Keep packaging and Android's
-    // per-app locale metadata limited to English; non-language qualifiers
-    // such as values-night, values-sw600dp and values-v31 remain in use.
+    // Official UI locales. Keep per-app locale metadata and resource splits
+    // aligned with values/, values-es/, values-ru/ and values-zh-rCN/. The
+    // language-level "zh" filter leaves Traditional Chinese to fall back to
+    // English until a verified values-zh-rTW catalog exists.
     androidResources {
-        localeFilters += ["en"]
+        localeFilters += ["en", "es", "ru", "zh"]
     }
 
     defaultConfig {
@@ -66,11 +71,6 @@ android {
 
         // Instrumentation tests are prepared but only run when invoked.
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-
-        // NDK r30 LTS provides the current Clang/C++23 toolchain and
-        // getifaddrs at the API 29 baseline. The property keeps the CI pin
-        // explicit without hard-coding a runner installation path.
-        ndkVersion project.findProperty("i2pd.ndkVersion") ?: "30.0.16248370"
 
         ndk {
             abiFilters "arm64-v8a", "armeabi-v7a", "x86_64", "x86"
@@ -100,6 +100,11 @@ android {
             // No keystore or password is stored in the repository.
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-project.txt'
+            ndk {
+                // Keep a symbol artifact for native crash triage even though
+                // release packaging remains unsigned and unminified.
+                debugSymbolLevel 'FULL'
+            }
         }
         debug {
             jniDebuggable = true
@@ -108,6 +113,9 @@ android {
 
     externalNativeBuild {
         cmake {
+            // The SDK CMake package is explicit: the project requires 3.24+
+            // and must not silently fall back to the older bundled default.
+            version "3.31.6"
             path "src/main/cpp/CMakeLists.txt"
         }
     }
@@ -132,6 +140,8 @@ android {
     lint {
         abortOnError true
         checkReleaseBuilds true
+        textReport true
+        xmlReport true
     }
 }
 
@@ -156,6 +166,11 @@ androidComponents {
             def baseAbiVersionCode = project.ext.abiCodes.get(abi)
             if (baseAbiVersionCode != null) {
                 output.versionCode.set(project.ext.baseVersionCode + baseAbiVersionCode)
+            } else {
+                // The universal APK must be installable over any split. Give
+                // it the highest version code so it is never a downgrade.
+                output.versionCode.set(project.ext.baseVersionCode
+                        + project.ext.abiCodes.values().max() + 1)
             }
         }
     }

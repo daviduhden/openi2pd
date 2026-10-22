@@ -39,6 +39,7 @@ import androidx.appcompat.app.ActionBar;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.content.res.AppCompatResources;
 import androidx.core.graphics.drawable.DrawableCompat;
+import androidx.core.view.ViewCompat;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentManager;
 import androidx.fragment.app.FragmentTransaction;
@@ -64,6 +65,7 @@ import java.util.List;
 public class MainActivity extends AppCompatActivity {
     private static final String STATE_SELECTED_NAV = "selected_nav";
     private static final String STATE_START_AFTER_PERMISSION = "start_after_permission";
+    private static final String PREF_PENDING_AUTOSTART = "pending_autostart";
     private static final int REQUEST_STARTUP_PERMISSIONS = 3;
     private static final String PERMISSION_ACCESS_LOCAL_NETWORK =
             "android.permission.ACCESS_LOCAL_NETWORK";
@@ -76,6 +78,7 @@ public class MainActivity extends AppCompatActivity {
     private static final String TAG_LOGS = "logs";
     private static final String TAG_ABOUT = "about";
     private static final String TAG_TORRENTS = "torrents";
+    private static final String TAG_ADDRESS_BOOK = "address_book";
 
     private RouterViewModel viewModel;
     private MaterialToolbar toolbar;
@@ -91,6 +94,7 @@ public class MainActivity extends AppCompatActivity {
     private boolean serviceBannerTimedOut;
     /** Defer the very first auto-start until the permission dialog resolves. */
     private boolean startAfterPermissionResult;
+    private boolean pendingAutostart;
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
@@ -127,6 +131,8 @@ public class MainActivity extends AppCompatActivity {
         }
 
         viewModel = new ViewModelProvider(this).get(RouterViewModel.class);
+        pendingAutostart = getSharedPreferences("router_state", MODE_PRIVATE)
+                .getBoolean(PREF_PENDING_AUTOSTART, false);
         if (savedInstanceState != null) {
             startAfterPermissionResult =
                     savedInstanceState.getBoolean(STATE_START_AFTER_PERMISSION, false);
@@ -139,7 +145,14 @@ public class MainActivity extends AppCompatActivity {
             // Android 17 would otherwise reject SSDP before the user grants
             // local-network access, leaving UPnP disabled for the session.
             startAfterPermissionResult = requestStartupPermissions();
-            if (!startAfterPermissionResult) {
+            if (startAfterPermissionResult) {
+                pendingAutostart = true;
+                getSharedPreferences("router_state", MODE_PRIVATE).edit()
+                        .putBoolean(PREF_PENDING_AUTOSTART, true).apply();
+            } else {
+                pendingAutostart = false;
+                getSharedPreferences("router_state", MODE_PRIVATE).edit()
+                        .remove(PREF_PENDING_AUTOSTART).apply();
                 viewModel.startOnFirstLaunchIfNeeded();
             }
         } else {
@@ -228,12 +241,17 @@ public class MainActivity extends AppCompatActivity {
                 toolbar.setTitle(R.string.about_title);
             } else if (TAG_TORRENTS.equals(name)) {
                 toolbar.setTitle(R.string.torrent_title);
+            } else if (TAG_ADDRESS_BOOK.equals(name)) {
+                toolbar.setTitle(R.string.address_book_title);
             } else {
                 toolbar.setTitle(R.string.app_name);
             }
         } else {
             toolbar.setTitle(titleFor(selectedItemId));
         }
+        View container = findViewById(R.id.fragment_container);
+        if (container != null && toolbar.getTitle() != null)
+            ViewCompat.setAccessibilityPaneTitle(container, toolbar.getTitle());
         updateToolbarSubtitle();
         invalidateOptionsMenu();
     }
@@ -479,6 +497,10 @@ public class MainActivity extends AppCompatActivity {
             openDetail(new TorrentsFragment(), TAG_TORRENTS, R.string.torrent_title);
             return true;
         }
+        if (id == R.id.action_address_book) {
+            openDetail(new AddressBookFragment(), TAG_ADDRESS_BOOK, R.string.address_book_title);
+            return true;
+        }
         if (id == R.id.action_battery_optimizations) {
             showBatteryOptimizationOptions();
             return true;
@@ -515,7 +537,7 @@ public class MainActivity extends AppCompatActivity {
      * arrives later from the service worker. Both Toasts use the application
      * context, so a rotation during the bootstrap cannot retain the Activity.
      */
-    private void confirmReseed() {
+    void confirmReseed() {
         final Context appContext = getApplicationContext();
         confirm(R.string.confirm_reseed_title, R.string.confirm_reseed_message,
                 R.string.action_reseed, () -> {
@@ -637,6 +659,9 @@ public class MainActivity extends AppCompatActivity {
         }
         if (startAfterPermissionResult) {
             startAfterPermissionResult = false;
+            pendingAutostart = false;
+            getSharedPreferences("router_state", MODE_PRIVATE).edit()
+                    .remove(PREF_PENDING_AUTOSTART).apply();
             viewModel.startOnFirstLaunchIfNeeded();
         }
     }
@@ -646,6 +671,12 @@ public class MainActivity extends AppCompatActivity {
         super.onStart();
         if (viewModel != null) {
             viewModel.setUiVisible(true);
+            if (pendingAutostart && !startAfterPermissionResult) {
+                pendingAutostart = false;
+                getSharedPreferences("router_state", MODE_PRIVATE).edit()
+                        .remove(PREF_PENDING_AUTOSTART).apply();
+                viewModel.startOnFirstLaunchIfNeeded();
+            }
         }
     }
 

@@ -73,4 +73,7 @@ Defines native Android application resources.
     <color name="chart_download">#59D8D4</color>
     <color name="chart_upload">#7CC7FF</color>
     <color name="chart_grid">#273746</color>
+
+    <!-- Launcher/splash plate. The master mark uses white negative space. -->
+    <color name="ic_launcher_background">#FFFFFF</color>
 </resources>

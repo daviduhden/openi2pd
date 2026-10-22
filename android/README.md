@@ -24,7 +24,7 @@ state and local control actions natively.
 - OpenJDK 25 (build/runtime for Gradle; Android still runs ART)
 - Gradle 9.8.1 and AGP 9.4.1 (wrapper pinned)
 - Android SDK: platform 37, Build Tools 36.0.0, minSdk 29 (Android 10),
-  CMake, NDK r30 LTS (`30.0.16248370`) or newer
+  CMake 3.31.6 (pinned by Gradle), NDK r30 LTS (`30.0.16248370`) or newer
 - NDK path in `ANDROID_NDK_HOME` or `local.properties`
 - Boost, OpenSSL/LibreSSL, zlib and MiniUPnPc 2.2.6+ for the Android ABI,
   discoverable by CMake (for example through a vcpkg installation). No
@@ -71,18 +71,21 @@ storage permission.
 
 ## Interface language
 
-The Android application is English-only. `res/values/strings.xml` is the
-single UI catalog, `res/xml/locales_config.xml` declares only `en`, and the
-Gradle `androidResources.localeFilters` packaging filter keeps non-English
-resource splits out of the APK. Non-language qualifiers such as
-`values-night`, `values-sw600dp` and `values-v31` remain in use. User data
-(torrent and file names, destinations, logs and other Unicode input) is
-unaffected.
+The Android UI ships in English (`values/`), Spanish (`values-es/`), Russian
+(`values-ru/`) and Simplified Chinese (`values-zh-rCN/`); English is the source
+catalog and fallback. `values-zh` alone is not used because it would also match
+Traditional Chinese, which remains an optional verified `zh-Hant` catalog.
+`res/xml/locales_config.xml` and Gradle `androidResources.localeFilters` list
+the same languages. Non-language qualifiers such as `values-night`,
+`values-sw600dp` and `values-v31` remain in use. User data (torrent and file
+names, destinations, logs and other Unicode input) is never translated.
 
-The compile-free check `perl android/tools/check-english-only.pl` fails if a
-language-qualified resource directory, non-English locale configuration,
-localized Fastlane listing or runtime locale override reappears. The manual
-Android CI job runs it before Gradle.
+The Settings screen uses AndroidX per-app locales (`AppCompatDelegate`), not the
+device locale; “System language” is represented by an empty locale list. The
+compile-free check `perl android/tools/check-android-locales.pl` verifies
+catalog key parity, positional placeholders, locale metadata, arrays that hold
+configuration tokens and the locale-override boundary. The manual Android CI
+job runs it before Gradle.
 
 ## Tests
 

@@ -1,0 +1,423 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: strings.
+
+Defines native Android application resources.
+
+-->
+
+<resources>
+    <string name="action_start">Запустить</string>
+    <string name="action_stop">Остановить</string>
+    <string name="action_exit">Выйти</string>
+    <string name="action_graceful_stop">Плавная остановка</string>
+    <string name="action_cancel_graceful_stop">Отменить плавную остановку</string>
+    <string name="action_reload_tunnels_config">Перезагрузить туннели</string>
+    <string name="action_reseed">Обновить NetDb</string>
+
+    <string name="gracefulShutdownInProgress">Выполняется плавная остановка</string>
+
+    <string name="uninitialized">Приложение инициализируется…</string>
+    <string name="starting">Приложение запускается…</string>
+    <string name="startedOkay">Приложение запущено</string>
+    <string name="startFailed">Не удалось запустить</string>
+    <string name="stopped">Приложение остановлено</string>
+
+    <string name="services_http_proxy">Прокси HTTP</string>
+    <string name="services_socks_proxy">Прокси SOCKS5</string>
+
+    <string name="menu_item_battery_optimizations_str">Оптимизация батареи</string>
+    <string name="battery_optimizations_enabled">Оптимизация батареи включена</string>
+    <string name="battery_optimizations_enabled_dialog">Android применяет к openi2pd агрессивную оптимизацию батареи, из-за которой демон может закрываться без иных причин.\n\nСейчас вам будет предложено разрешить её отключить.</string>
+    <string name="os_version_does_not_support_battery_optimizations_show_os_dialog_api">Ваша версия Android не поддерживает показ диалога оптимизации батареи для приложений.</string>
+
+    <string name="tunnels_reloading">Перезагрузка конфигурации туннелей…</string>
+
+    <string name="autostart_enabled">Запускать при загрузке</string>
+
+    <!-- Navigation and toolbar -->
+    <string name="nav_home">Обзор</string>
+    <string name="nav_network">Подключения</string>
+    <string name="nav_tunnels">Туннели</string>
+    <string name="nav_stats">Статистика</string>
+    <string name="nav_settings">Настройки</string>
+    <string name="action_logs">Журналы</string>
+    <string name="action_about">О программе</string>
+    <string name="action_restart">Перезапустить</string>
+    <string name="action_cancel">Отмена</string>
+    <string name="action_refresh">Обновить</string>
+    <string name="action_clear_logs">Очистить журналы</string>
+    <string name="action_open_repository">Открыть репозиторий</string>
+    <string name="action_open_license">Просмотреть лицензию</string>
+    <string name="action_continue">Продолжить</string>
+
+    <!-- Router states and dashboard -->
+    <string name="state_connected">Подключено</string>
+    <string name="state_degraded">Ограниченная работа</string>
+    <string name="state_starting">Запуск</string>
+    <string name="state_stopping">Остановка</string>
+    <string name="state_stopped">Остановлено</string>
+    <string name="state_error">Ошибка</string>
+    <string name="state_unknown">Неизвестно</string>
+    <string name="status_online">В сети</string>
+    <string name="status_offline">Не в сети</string>
+    <string name="status_unknown">Неизвестно</string>
+    <string name="status_service_connecting">Подключение к службе маршрутизатора…</string>
+    <string name="status_router_online">Подключено к сети I2P</string>
+    <string name="status_router_degraded">Маршрутизатор работает, но ещё не подключён</string>
+    <string name="status_router_reseeding">Обновление NetDb; идёт поиск пиров</string>
+    <string name="status_router_starting">Запуск маршрутизатора…</string>
+    <string name="status_router_stopped">Маршрутизатор не работает</string>
+    <string name="status_router_graceful">Завершение транзитных туннелей: осталось %1$s</string>
+    <string name="status_start_failed_format">Не удалось запустить: %1$s</string>
+    <string name="status_status_unavailable">Маршрутизатор работает, но его состояние недоступно</string>
+    <string name="status_status_unavailable_format">Маршрутизатор работает, но его состояние недоступно: %1$s</string>
+    <string name="dashboard_transports_format">%1$s · %2$s</string>
+    <string name="dashboard_quick_actions">Быстрые действия</string>
+    <string name="dashboard_live_metrics">Текущие показатели</string>
+    <string name="metric_uptime">Время работы</string>
+    <string name="metric_peers">Пиры</string>
+    <string name="metric_routers">Известные маршрутизаторы</string>
+    <string name="metric_tunnels_label">Туннели (вход. / исх. / транзит)</string>
+    <string name="metric_tunnels_value">%1$d вход. / %2$d исх. / %3$d транзит</string>
+    <string name="metric_reseed">Обновление NetDb</string>
+    <string name="metric_download">Загрузка</string>
+    <string name="metric_upload">Отдача</string>
+    <string name="value_unknown_long">Неизвестно</string>
+    <string name="value_yes">Да</string>
+    <string name="value_no">Нет</string>
+    <string name="value_enabled">Включено</string>
+    <string name="value_disabled">Отключено</string>
+    <string name="value_published">Опубликовано</string>
+    <string name="value_not_published">Не опубликовано</string>
+    <string name="value_running">Работает</string>
+    <string name="value_stopped">Остановлено</string>
+    <string name="warning_title">Внимание</string>
+    <string name="warning_offline">Маршрутизатор работает, но сетевое подключение отсутствует. Проверьте Wi-Fi или мобильные данные.</string>
+    <string name="warning_error_format">Маршрутизатор сообщил о проблеме: %1$s</string>
+    <string name="warning_start_failed_format">Маршрутизатору не удалось запуститься: %1$s</string>
+    <string name="warning_router_error">Маршрутизатор сообщил об ошибке.</string>
+    <string name="warning_status_unavailable">Маршрутизатор работает, но снимок состояния недоступен. Счётчики скрыты до получения нового снимка.</string>
+    <string name="warning_status_unavailable_format">Снимок состояния маршрутизатора недоступен: %1$s</string>
+    <string name="service_disconnected_banner">Соединение со службой маршрутизатора потеряно. Состояние может быть устаревшим.</string>
+    <string name="action_retry">Повторить</string>
+
+    <!-- Confirmations and notices -->
+    <string name="confirm_stop_title">Остановить маршрутизатор?</string>
+    <string name="confirm_stop_message">При остановке маршрутизатора все службы и туннели I2P будут отключены. Продолжить?</string>
+    <string name="confirm_restart_title">Перезапустить маршрутизатор?</string>
+    <string name="confirm_restart_message">Маршрутизатор остановится и запустится снова. Существующие подключения I2P будут прерваны.</string>
+    <string name="confirm_graceful_title">Начать плавную остановку?</string>
+    <string name="confirm_graceful_message">Транзитным туннелям даётся время завершиться до остановки маршрутизатора. Плавную остановку можно отменить, пока идёт обратный отсчёт.</string>
+    <string name="confirm_exit_title">Остановить маршрутизатор и выйти?</string>
+    <string name="confirm_exit_message">Маршрутизатор остановится, а приложение закроется. Службы и туннели I2P будут отключены.</string>
+    <string name="confirm_clear_logs_title">Очистить журналы?</string>
+    <string name="confirm_clear_logs_message">Будут удалены записи журнала, отображаемые в приложении. Файлы на диске не изменятся.</string>
+    <string name="confirm_reseed_title">Обновить сетевую базу данных?</string>
+    <string name="confirm_reseed_message">Маршрутизатор обратится к настроенным серверам ресида по HTTPS, чтобы обновить сведения о маршрутизаторах. Это расходует трафик и может занять несколько минут при слабом соединении; запросы состояния и остановки могут задерживаться до завершения.</string>
+    <string name="toast_reseed_started">Запрашивается обновление NetDb…</string>
+    <string name="toast_reseed_finished">Обновление NetDb завершено.</string>
+    <string name="toast_reseed_failed">Обновление NetDb не запущено. Возможно, маршрутизатор остановлен или уже выполняется другое обновление.</string>
+    <string name="toast_starting">Запуск маршрутизатора…</string>
+    <string name="toast_stopping">Остановка маршрутизатора…</string>
+    <string name="toast_restarting">Перезапуск маршрутизатора…</string>
+    <string name="toast_graceful_started">Выполняется плавная остановка.</string>
+    <string name="toast_graceful_cancelled">Плавная остановка отменена.</string>
+    <string name="battery_optimizations_already_disabled">Оптимизация батареи для этого приложения уже отключена.</string>
+    <string name="no_browser_available">Нет браузера, чтобы открыть эту ссылку.</string>
+
+    <!-- Network -->
+    <string name="network_connectivity">Подключение</string>
+    <string name="network_addresses_title">Адреса</string>
+    <string name="network_no_addresses">Адреса не сообщены</string>
+    <string name="network_transports_title">Транспорты</string>
+    <string name="network_services_title">Клиентские службы</string>
+    <string name="network_ipv4">IPv4</string>
+    <string name="network_ipv6">IPv6</string>
+    <string name="network_ipv4_available">IPv4 доступен</string>
+    <string name="network_ipv4_unavailable">IPv4 недоступен</string>
+    <string name="network_ipv6_available">IPv6 доступен</string>
+    <string name="network_ipv6_unavailable">IPv6 недоступен</string>
+    <string name="network_ntcp2">NTCP2</string>
+    <string name="network_ssu2">SSU2</string>
+    <string name="network_transport_format">%1$s: %2$s</string>
+    <string name="network_service_format">%1$s: %2$s</string>
+    <string name="address_format">%1$s %2$s:%3$d (%4$s)</string>
+
+    <!-- Tunnels -->
+    <string name="tunnels_inbound">Входящие туннели</string>
+    <string name="tunnels_outbound">Исходящие туннели</string>
+    <string name="tunnels_transit">Транзитные туннели</string>
+    <string name="tunnels_total">Всего туннелей</string>
+    <string name="tunnels_grace_remaining">Плавная остановка: осталось %1$s</string>
+    <string name="tunnels_grace_active">Выполняется плавная остановка</string>
+
+    <!-- Statistics -->
+    <string name="statistics_chart_title">Трафик</string>
+    <string name="statistics_chart_description">График трафика. Загрузка %1$s, отдача %2$s.</string>
+    <string name="statistics_download_rate">Скорость загрузки</string>
+    <string name="statistics_upload_rate">Скорость отдачи</string>
+    <string name="statistics_total_received">Всего получено</string>
+    <string name="statistics_total_sent">Всего отправлено</string>
+    <string name="statistics_total_transit">Транзитный трафик</string>
+    <string name="statistics_uptime">Время работы</string>
+    <string name="statistics_peers">Пиры</string>
+    <string name="statistics_routers">Известные маршрутизаторы</string>
+    <string name="statistics_tunnels">Туннели</string>
+    <string name="statistics_chart_download">Загрузка</string>
+    <string name="statistics_chart_upload">Отдача</string>
+    <string name="statistics_chart_window">Последние 2 минуты · выборка 1 с</string>
+    <string name="statistics_now_format">Сейчас: %1$s</string>
+    <string name="statistics_now_unknown">Сейчас: —</string>
+    <string name="statistics_chart_peak_format">Пик за период: %1$s</string>
+    <string name="statistics_chart_peak_unknown">Пик за период: —</string>
+
+    <!-- Logs -->
+    <string name="logs_title">Журналы</string>
+    <string name="logs_intro">Поиск и фильтрация ограниченного потока журналов.</string>
+    <string name="logs_search_hint">Поиск по журналам</string>
+    <string name="logs_filter_all">Все</string>
+    <string name="logs_filter_error">Ошибка</string>
+    <string name="logs_filter_warn">Предупреждение</string>
+    <string name="logs_filter_info">Информация</string>
+    <string name="logs_filter_debug">Отладка</string>
+    <string name="logs_empty">Записей в журнале пока нет</string>
+    <string name="logs_empty_filtered">Нет записей, соответствующих текущим фильтрам</string>
+    <string name="logs_loading">Ожидание службы маршрутизатора…</string>
+    <string name="logs_summary_format">Показано %1$d из %2$d сохранённых</string>
+    <string name="logs_cleared">Записи журнала очищены.</string>
+    <string name="tile_state_format">%1$s: %2$s</string>
+    <string name="notification_permission_denied">Уведомления отключены. Маршрутизатор может работать, но его состояние в фоновом режиме не будет видно.</string>
+    <string name="local_network_permission_denied">Доступ к локальной сети запрещён. Проброс портов UPnP недоступен; подключение к I2P всё равно может работать.</string>
+
+    <!-- Units -->
+    <string name="rate_bps">%1$s Б/с</string>
+    <string name="rate_kib_s">%1$s KiB/s</string>
+    <string name="rate_mib_s">%1$s MiB/s</string>
+    <string name="rate_gib_s">%1$s GiB/s</string>
+    <string name="size_b">%1$s Б</string>
+    <string name="size_kib">%1$s KiB</string>
+    <string name="size_mib">%1$s MiB</string>
+    <string name="size_gib">%1$s GiB</string>
+    <string name="duration_days_hours">%1$d д %2$d ч</string>
+    <string name="duration_hours_minutes">%1$d ч %2$d мин</string>
+    <string name="duration_minutes_seconds">%1$d мин %2$d с</string>
+    <string name="duration_seconds">%1$d с</string>
+    <string name="duration_mm_ss">%1$02d:%2$02d</string>
+
+    <!-- About -->
+    <string name="about_title">О программе</string>
+    <string name="about_intro">Нативный маршрутизатор I2P для Android, оформленный в фирменном стиле openi2pd.</string>
+    <string name="about_version_label">Версия</string>
+    <string name="about_version_format">%1$s (сборка %2$d)</string>
+    <string name="about_abi_label">ABI устройства</string>
+    <string name="about_build_label">Тип сборки</string>
+    <string name="about_build_debug">Отладочная сборка</string>
+    <string name="about_build_release">Релизная сборка</string>
+    <string name="about_data_directory_label">Каталог данных</string>
+    <string name="about_license_label">Лицензия</string>
+    <string name="about_license_summary">openi2pd распространяется по лицензии BSD 3-Clause. Уведомления об авторских правах и атрибуции из проекта i2pd-android сохранены в исходных файлах и файлах лицензии.</string>
+    <string name="about_repository_label">Репозиторий исходного кода</string>
+    <string name="about_data_unavailable">Недоступно</string>
+
+    <!-- Settings -->
+    <string name="pref_category_general">Общие</string>
+    <string name="pref_category_network">Сеть</string>
+    <string name="pref_category_tunnels">Туннели и конфиденциальность</string>
+    <string name="pref_category_resources">Ресурсы</string>
+    <string name="pref_category_logging">Журналирование</string>
+    <string name="pref_category_clients">Клиентские службы</string>
+    <string name="pref_autostart_summary">Запускать маршрутизатор при загрузке устройства. Некоторые производители требуют дополнительного разрешения на автозапуск.</string>
+    <string name="pref_notifications_title">Уведомления</string>
+    <string name="pref_notifications_summary">Открыть настройки уведомлений Android.</string>
+    <string name="pref_notifications_enabled">Уведомления включены. Нажмите, чтобы управлять.</string>
+    <string name="pref_notifications_disabled">Уведомления отключены. Нажмите, чтобы предоставить доступ.</string>
+    <string name="pref_notifications_unavailable">Настройки уведомлений недоступны.</string>
+    <string name="pref_autostart_failed">Не удалось изменить настройку запуска при загрузке.</string>
+    <string name="pref_ipv4_title">Включить IPv4</string>
+    <string name="pref_ipv6_title">Включить IPv6</string>
+    <string name="pref_ntcp2_title">Включить NTCP2</string>
+    <string name="pref_ntcp2_publish_title">Публиковать адрес NTCP2</string>
+    <string name="pref_ntcp2_publish_summary">Отключите, чтобы маршрутизаторы не могли подключаться к этому устройству по NTCP2.</string>
+    <string name="pref_ssu_title">Включить SSU2</string>
+    <string name="pref_port_title">Порт прослушивания</string>
+    <string name="pref_port_summary">Автоматически или конкретный порт TCP/UDP (0–65535).</string>
+    <string name="pref_upnp_enable_title">Включить UPnP</string>
+    <string name="pref_upnp_enable_summary">Автоматически запрашивать у локального шлюза проброс портов NTCP2 и SSU2.</string>
+    <string name="pref_upnp_name_title">Имя проброса UPnP</string>
+    <string name="pref_upnp_name_summary">Имя, отображаемое для этого маршрутизатора в списке пробросов шлюза.</string>
+    <string name="pref_no_transit_title">Отключить транзитные туннели</string>
+    <string name="pref_no_transit_summary">Запретить другим маршрутизаторам передавать трафик через это устройство.</string>
+    <string name="pref_floodfill_title">Работать как floodfill</string>
+    <string name="pref_floodfill_summary">Расходует больше заряда и трафика. Включайте, только если маршрутизатор может оставаться в сети постоянно.</string>
+    <string name="pref_transit_limit_title">Предел транзитных туннелей</string>
+    <string name="pref_transit_limit_summary">Максимальное число транзитных туннелей, которое может построить этот маршрутизатор.</string>
+    <string name="pref_bandwidth_title">Ограничение полосы пропускания</string>
+    <string name="pref_bandwidth_summary">Ограничение для транзитного трафика. Более высокие значения расходуют больше заряда и данных.</string>
+    <string name="pref_log_level_title">Уровень журналирования</string>
+    <string name="pref_log_level_summary">Уровень журналирования ядра. Работающий маршрутизатор применяет новый уровень сразу.</string>
+    <string name="pref_http_enable_title">Включить прокси HTTP</string>
+    <string name="pref_http_address_title">Адрес прокси HTTP</string>
+    <string name="pref_http_port_title">Порт прокси HTTP</string>
+    <string name="pref_socks_enable_title">Включить прокси SOCKS5</string>
+    <string name="pref_socks_address_title">Адрес прокси SOCKS5</string>
+    <string name="pref_socks_port_title">Порт прокси SOCKS5</string>
+    <string name="pref_sam_enable_title">Включить SAM</string>
+    <string name="pref_sam_address_title">Адрес SAM</string>
+    <string name="pref_sam_port_title">Порт SAM</string>
+    <string name="pref_invalid_port">Введите порт от 0 до 65535.</string>
+    <string name="pref_invalid_address">Введите корректный адрес или имя хоста.</string>
+    <string name="pref_invalid_positive">Введите положительное целое число.</string>
+    <string name="pref_invalid_value">Введите значение без переносов строк и зарезервированных символов.</string>
+    <string name="pref_save_failed">Значение не сохранено.</string>
+    <string name="pref_apply_hot">Применено без перезапуска маршрутизатора.</string>
+    <string name="pref_apply_restart">Сохранено. Перезапустите маршрутизатор для применения.</string>
+    <string name="pref_apply_reload">Сохранено. Перезагрузите туннели для применения.</string>
+    <string name="pref_restart_required_title">Требуется перезапуск</string>
+    <string name="pref_restart_required_message">Это изменение вступит в силу после перезапуска маршрутизатора. Перезапустить сейчас?</string>
+    <string name="pref_restart_now">Перезапустить сейчас</string>
+    <string name="pref_later">Позже</string>
+    <string name="pref_bandwidth_low">Низкое</string>
+    <string name="pref_bandwidth_medium">Среднее</string>
+    <string name="pref_bandwidth_high">Высокое</string>
+    <string name="pref_bandwidth_unlimited">Без ограничений</string>
+    <string name="pref_loglevel_none">Нет</string>
+    <string name="pref_loglevel_critical">Критические</string>
+    <string name="pref_loglevel_error">Ошибки</string>
+    <string name="pref_loglevel_warn">Предупреждения</string>
+    <string name="pref_loglevel_info">Информация</string>
+    <string name="pref_loglevel_debug">Отладка</string>
+    <string name="pref_log_level_applied">Уровень журналирования применён к работающему маршрутизатору.</string>
+    <string name="pref_log_level_failed">Уровень журналирования сохранён, но работающий маршрутизатор его не принял. Перезапустите маршрутизатор для применения.</string>
+
+    <string name="torrent_title">Торренты</string>
+    <string name="torrent_priorities">Файлы и приоритеты</string>
+    <string name="torrent_priority_skip">Пропустить</string>
+    <string name="torrent_priority_normal">Обычный</string>
+    <string name="torrent_priority_high">Высокий</string>
+    <string name="torrent_comments">Комментарии и оценки</string>
+    <string name="torrent_comments_privacy">Комментарии используют неподтверждённые псевдонимы и, когда включены, передаются пирам I2P. Оставьте необязательный псевдоним пустым, чтобы не раскрывать имя. Не указывайте личные сведения.</string>
+    <string name="torrent_comments_summary">Комментарии: %1$s · Средняя оценка: %2$s/5 · Оценок: %3$s</string>
+    <string name="torrent_comments_enable">Включить комментарии и оценки</string>
+    <string name="torrent_comments_disable">Отключить комментарии и оценки</string>
+    <string name="torrent_comment_add">Добавить комментарий или оценку</string>
+    <string name="torrent_comment_owner">Псевдоним (необязательно, не подтверждён)</string>
+    <string name="torrent_comment_text">Комментарий (необязательно при наличии оценки)</string>
+    <string name="torrent_comment_no_rating">Без оценки</string>
+    <string name="torrent_comment_rating">Выберите оценку</string>
+    <string name="torrent_comment_publish">Добавить локально (передаётся по запросу пиров)</string>
+    <string name="torrent_comments_private">Комментарии и оценки отключены для приватных торрентов.</string>
+    <string name="torrent_comment_anonymous">Анонимный псевдоним</string>
+    <string name="torrent_comment_hide">Скрыть локально</string>
+    <string name="torrent_comment_hidden">Скрыто локально</string>
+    <string name="torrent_comment_unhide">Показать локально</string>
+    <string name="torrent_comment_unhide_confirm">Снова показать этот комментарий локально?</string>
+    <string name="torrent_comment_hide_confirm">Скрыть этот комментарий локально? У других пиров могут остаться свои копии.</string>
+    <string name="torrent_create">Создать торрент</string>
+    <string name="torrent_create_source">Имя существующего файла или папки</string>
+    <string name="torrent_create_help">Используйте файл или папку верхнего уровня в приватном хранилище торрентов приложения. Выбор внешних папок пока недоступен. Обновите состояние создания после завершения хеширования.</string>
+    <string name="torrent_creation_status">Состояние создания</string>
+    <string name="torrent_creation_pending">Хеширование содержимого…</string>
+    <string name="torrent_creation_finished">Задание создания не выполняется.</string>
+    <string name="torrent_import">Импортировать файл торрента</string>
+    <string name="torrent_importing">Импорт метаданных торрента…</string>
+    <string name="torrent_import_failed">Не удалось импортировать этот торрент. Выберите читаемый документ торрента размером не более 8 MiB, убедитесь, что маршрутизатор работает, и повторите попытку.</string>
+    <string name="torrent_busy">Операция с торрентом уже выполняется. Повторите попытку.</string>
+    <string name="torrent_tracker_add">Добавить трекер</string>
+    <string name="torrent_tracker_edit">Изменить трекер</string>
+    <string name="torrent_tracker_remove">Удалить трекер</string>
+    <string name="torrent_tracker_hint">http://tracker.example.i2p/announce</string>
+    <string name="torrent_tracker_paused">Приостановите торрент и дождитесь полных метаданных, прежде чем менять трекеры.</string>
+    <string name="torrent_files">Файлы</string>
+    <string name="torrent_peers">Пиры</string>
+    <string name="torrent_trackers">Трекеры</string>
+    <string name="torrent_transfer_summary">Завершено: %1$s / %2$s Б\nЗагрузка: %3$s Б/с · Отдача: %4$s Б/с</string>
+    <string name="torrent_dht_summary">Узлы: %1$s\nСегменты: %2$s\nТорренты: %3$s\nНедоступные пиры: %4$s</string>
+    <string name="torrent_refresh">Обновить торренты</string>
+    <string name="torrent_storage_selected">Хранилище выбрано. Существующие части будут проверены при повторном открытии документов.</string>
+    <string name="torrent_storage_permission_required">Требуется постоянное разрешение на чтение и запись документов</string>
+    <string name="torrent_exported">Торрент экспортирован</string>
+    <string name="torrent_export_failed">Не удалось экспортировать</string>
+    <string name="torrent_create_private_file">Файл в приватном хранилище</string>
+    <string name="torrent_create_saf_document">Документ SAF</string>
+    <string name="torrent_create_saf_folder">Папка SAF</string>
+    <string name="torrent_export_generated">Экспортировать созданный торрент</string>
+    <string name="torrent_cancel_saf_creation">Отменить создание через SAF</string>
+    <string name="torrent_creation_progress">Создание торрента: хешировано %1$d байт</string>
+    <string name="torrent_metadata_ready">Метаданные готовы. Выберите «Экспортировать созданный торрент». Раздача из источников SAF недоступна.</string>
+    <string name="torrent_payload_action">Дерево документов для загрузки и раздачи</string>
+    <string name="torrent_payload_message">%1$s\n\nВыберите существующее дерево данных или пустой каталог загрузки. Существующие части будут проверены; активные дескрипторы заменяются после неудачного доступа.</string>
+    <string name="torrent_select_directory">Выбрать каталог</string>
+    <string name="torrent_trackers_hint">Трекеры I2P (по одному в строке, каждый как уровень отработки отказа)</string>
+    <string name="torrent_private_hint">Приватный торрент (требуется трекер; отключает DHT/PEX)</string>
+    <string name="torrent_piece_size_title">Размер части</string>
+    <string name="torrent_piece_size_value">Размер части: %1$d KiB</string>
+    <string name="torrent_create_saf_title">Создать из источника SAF</string>
+    <string name="torrent_create_saf_message">Экспортируются только метаданные. Раздача из источников SAF недоступна.</string>
+    <string name="torrent_private_tracker_required">Для приватных торрентов требуется трекер I2P (не более 32)</string>
+    <string name="torrent_start_all">Запустить все торренты</string>
+    <string name="torrent_stop_all">Остановить все торренты</string>
+    <string name="torrent_reannounce_all">Повторно объявить все торренты</string>
+    <string name="torrent_add_magnet">Добавить magnet</string>
+    <string name="torrent_magnet_hint">magnet:?xt=urn:btih:…</string>
+    <string name="torrent_dht">Состояние DHT</string>
+    <string name="torrent_loading">Загрузка…</string>
+    <string name="torrent_error">Операция с торрентом не удалась: %1$s</string>
+    <string name="torrent_no_session">Сеанс торрентов не настроен. Добавьте раздел торрентов в tunnels.conf и перезапустите маршрутизатор.</string>
+    <string name="torrent_session">Выберите сеанс торрентов</string>
+    <string name="torrent_count">Торренты: %1$d</string>
+    <string name="torrent_session_count">Сеанс %1$s · торрентов: %2$d</string>
+    <string name="torrent_private_badge">приватный</string>
+    <string name="torrent_private_summary_yes">Приватный рой (DHT, PEX и комментарии отключены)</string>
+    <string name="torrent_private_summary_no">Публичный рой</string>
+    <string name="torrent_private_trackers_fixed">Для приватных торрентов используется фиксированный список трекеров; приостановите торрент и измените .torrent перед добавлением.</string>
+    <string name="torrent_details">Сведения о торренте</string>
+    <string name="torrent_pause">Приостановить</string>
+    <string name="torrent_resume">Возобновить</string>
+    <string name="torrent_share">Поделиться magnet-ссылкой</string>
+    <string name="torrent_remove">Удалить торрент</string>
+    <string name="torrent_remove_confirm">Удалить этот торрент из сеанса? Загруженные файлы будут сохранены.</string>
+    <string name="torrent_recheck">Принудительная проверка (приостановленный торрент)</string>
+    <string name="torrent_meta">Изменить метаданные торрента</string>
+    <string name="torrent_meta_comment">Комментарий в метаинформации</string>
+    <string name="torrent_meta_created_by">Создатель</string>
+    <string name="torrent_meta_hint">Сначала приостановите торрент. Неизменённые поля остаются как есть; пустые изменения отклоняются.</string>
+    <string name="torrent_meta_failed">Изменение метаданных торрента отклонено. Приостановите торрент и используйте текст UTF-8 в пределах ограничений.</string>
+    <string name="torrent_remove_files">Удалить торрент и его данные</string>
+    <string name="torrent_remove_files_confirm">Удалить %1$s и окончательно стереть загруженные данные? Это действие необратимо.</string>
+    <string name="torrent_removed_files">Удаление торрента с локальными данными поставлено в очередь.</string>
+    <string name="address_book_title">Адресная книга</string>
+    <string name="address_book_refresh">Обновить адресную книгу</string>
+    <string name="address_book_add">Добавить или заменить адрес</string>
+    <string name="address_book_name">Имя, оканчивающееся на .i2p</string>
+    <string name="address_book_destination">Полный адрес назначения в base64</string>
+    <string name="address_book_save">Сохранить</string>
+    <string name="address_book_remove">Удалить адрес</string>
+    <string name="address_book_remove_confirm">Удалить %1$s из локальной адресной книги? Файлы ключей адресата не будут удалены.</string>
+    <string name="address_book_empty">В локальной адресной книге нет записей.</string>
+    <string name="address_book_loading">Загрузка адресной книги…</string>
+    <string name="address_book_saving">Сохранение адреса…</string>
+    <string name="address_book_added">Адрес сохранён.</string>
+    <string name="address_book_removed">Адрес удалён.</string>
+    <string name="address_book_invalid">Введите имя .i2p и полный адрес назначения в base64.</string>
+    <string name="address_book_failed">Адресная книга отклонила эту операцию. Проверьте имя и адрес назначения.</string>
+    <string name="address_book_block">Заблокировать имя подписки</string>
+    <string name="address_book_blocked_list">Заблокированные имена подписок</string>
+    <string name="address_book_block_hint">Имя или шаблон с подстановкой, оканчивающийся на .i2p</string>
+    <string name="address_book_block_confirm">Заблокировать %1$s для обновлений подписки? Удаление адреса уже добавляет точную блокировку.</string>
+    <string name="address_book_blocked">Имя подписки заблокировано.</string>
+    <string name="address_book_unblocked">Блокировка подписки снята.</string>
+    <string name="address_book_blocked_empty">Нет заблокированных имён подписок.</string>
+    <string name="address_book_block_failed">Адресная книга отклонила эту блокировку. Используйте имя .i2p в нижнем регистре или шаблон.</string>
+    <string name="pref_category_language">Язык</string>
+    <string name="pref_language_title">Язык интерфейса</string>
+    <string name="pref_language_summary">Следовать языку системы или выбрать английский, испанский, русский или упрощённый китайский.</string>
+    <string name="pref_language_system">Системный язык</string>
+    <string name="pref_language_english">Английский</string>
+    <string name="pref_language_spanish">Испанский</string>
+    <string name="pref_language_russian">Русский</string>
+    <string name="pref_language_chinese_simplified">Упрощённый китайский</string>
+</resources>

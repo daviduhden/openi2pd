@@ -81,6 +81,15 @@ Defines native Android application resources.
                     android:layout_marginTop="@dimen/margin_tiny"
                     android:text="@string/statistics_chart_window"
                     android:textAppearance="@style/TextAppearance.OpenI2Pd.Label" />
+
+                <TextView
+                    android:id="@+id/stat_chart_peak"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/margin_tiny"
+                    android:text="@string/statistics_chart_peak_unknown"
+                    android:textAppearance="@style/TextAppearance.OpenI2Pd.Label"
+                    android:textColor="?attr/colorOnSurfaceVariant" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
@@ -116,6 +125,15 @@ Defines native Android application resources.
                         android:layout_marginTop="@dimen/margin_tiny"
                         android:text="@string/value_unknown"
                         android:textAppearance="@style/TextAppearance.OpenI2Pd.MetricValue" />
+
+                    <TextView
+                        android:id="@+id/stat_download_now"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/margin_tiny"
+                        android:text="@string/statistics_now_unknown"
+                        android:textAppearance="@style/TextAppearance.OpenI2Pd.Label"
+                        android:textColor="?attr/colorOnSurfaceVariant" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
@@ -144,6 +162,15 @@ Defines native Android application resources.
                         android:layout_marginTop="@dimen/margin_tiny"
                         android:text="@string/value_unknown"
                         android:textAppearance="@style/TextAppearance.OpenI2Pd.MetricValue" />
+
+                    <TextView
+                        android:id="@+id/stat_upload_now"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/margin_tiny"
+                        android:text="@string/statistics_now_unknown"
+                        android:textAppearance="@style/TextAppearance.OpenI2Pd.Label"
+                        android:textColor="?attr/colorOnSurfaceVariant" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
         </LinearLayout>

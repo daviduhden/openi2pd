@@ -95,12 +95,63 @@ final class TorrentControl {
         return text.toString();
     }
 
+    static String recheck(int tunnel, String torrentId) {
+        if (tunnel < 0 || torrentId == null || !torrentId.matches("[0-9]{1,10}"))
+            throw new IllegalArgumentException("Invalid torrent selection");
+        try {
+            // Torrent ids start at 1 in the native engine; 0 is the "not
+            // found" sentinel and must never be sent as a command target.
+            if (Integer.parseInt(torrentId) <= 0)
+                throw new IllegalArgumentException("Invalid torrent selection");
+        } catch (NumberFormatException error) {
+            throw new IllegalArgumentException("Invalid torrent selection");
+        }
+        return "TORRENT-RECHECK " + tunnel + " " + torrentId;
+    }
+
+    static String remove(int tunnel, String torrentId, boolean deleteFiles) {
+        if (tunnel < 0 || torrentId == null || !torrentId.matches("[0-9]{1,10}"))
+            throw new IllegalArgumentException("Invalid torrent selection");
+        try {
+            if (Integer.parseInt(torrentId) <= 0)
+                throw new IllegalArgumentException("Invalid torrent selection");
+        } catch (NumberFormatException error) {
+            throw new IllegalArgumentException("Invalid torrent selection");
+        }
+        return "TORRENT-REMOVE " + tunnel + " " + torrentId + (deleteFiles ? " files" : "");
+    }
+
+    static String metaComment(int tunnel, String torrentId, String text) {
+        return meta(tunnel, torrentId, text, false);
+    }
+
+    static String metaCreatedBy(int tunnel, String torrentId, String text) {
+        return meta(tunnel, torrentId, text, true);
+    }
+
+    private static String meta(int tunnel, String torrentId, String text, boolean createdBy) {
+        int max = createdBy ? 255 : 1024;
+        if (tunnel < 0 || torrentId == null || !torrentId.matches("[0-9]{1,10}") || text == null
+                || text.isEmpty() || text.getBytes(StandardCharsets.UTF_8).length > max
+                || !safeCommentText(text)) {
+            throw new IllegalArgumentException("Invalid metainfo text");
+        }
+        try {
+            if (Integer.parseInt(torrentId) <= 0)
+                throw new IllegalArgumentException("Invalid torrent selection");
+        } catch (NumberFormatException error) {
+            throw new IllegalArgumentException("Invalid torrent selection");
+        }
+        return (createdBy ? "TORRENT-META-CREATED-BY " : "TORRENT-META-COMMENT ") + tunnel + " "
+                + torrentId + " " + text;
+    }
+
     static String tracker(boolean add, int tunnel, String torrentId, String tracker) {
         if (tunnel < 0 || torrentId == null || !torrentId.matches("[0-9]{1,10}")) {
             throw new IllegalArgumentException("Invalid torrent selection");
         }
         try {
-            if (Integer.parseInt(torrentId) < 0)
+            if (Integer.parseInt(torrentId) <= 0)
                 throw new IllegalArgumentException("Invalid torrent selection");
         } catch (NumberFormatException error) {
             throw new IllegalArgumentException("Invalid torrent selection");
@@ -138,6 +189,21 @@ final class TorrentControl {
         return "TORRENT-CREATE " + tunnel + " " + source;
     }
 
+    static String commentId(int tunnel, String torrentId, String commentId, boolean hide) {
+        if (tunnel < 0 || torrentId == null || !torrentId.matches("[0-9]{1,10}")
+                || commentId == null || !commentId.matches("[0-9]{1,19}")) {
+            throw new IllegalArgumentException("Invalid comment selection");
+        }
+        try {
+            if (Integer.parseInt(torrentId) <= 0 || Long.parseLong(commentId) <= 0)
+                throw new IllegalArgumentException("Invalid comment selection");
+        } catch (NumberFormatException error) {
+            throw new IllegalArgumentException("Invalid comment selection");
+        }
+        return (hide ? "TORRENT-COMMENT-HIDE " : "TORRENT-COMMENT-UNHIDE ") + tunnel + " "
+                + torrentId + " " + commentId;
+    }
+
     static String comment(int tunnel, String torrentId, int rating, String owner, String text) {
         if (tunnel < 0 || torrentId == null || !torrentId.matches("[0-9]{1,10}") || rating < 0
                 || rating > 5 || owner == null || text == null || owner.length() > 32
@@ -147,7 +213,8 @@ final class TorrentControl {
             throw new IllegalArgumentException("Invalid comment or rating");
         }
         try {
-            Integer.parseInt(torrentId);
+            if (Integer.parseInt(torrentId) == 0)
+                throw new IllegalArgumentException("Invalid torrent selection");
         } catch (NumberFormatException error) {
             throw new IllegalArgumentException("Invalid torrent selection");
         }
@@ -158,5 +225,17 @@ final class TorrentControl {
     private static boolean safeCommentText(String text) {
         return text.codePoints().noneMatch(
                 value -> Character.isISOControl(value) || (value >= 0xD800 && value <= 0xDFFF));
+    }
+
+    enum Bulk { START_ALL, STOP_ALL, REANNOUNCE_ALL }
+
+    static String bulk(int tunnel, Bulk action) {
+        if (tunnel < 0 || action == null)
+            throw new IllegalArgumentException("Invalid torrent session");
+        return switch (action) {
+            case START_ALL -> "TORRENT-START-ALL " + tunnel;
+            case STOP_ALL -> "TORRENT-STOP-ALL " + tunnel;
+            case REANNOUNCE_ALL -> "TORRENT-REANNOUNCE-ALL " + tunnel;
+        };
     }
 }

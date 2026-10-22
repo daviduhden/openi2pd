@@ -43,6 +43,7 @@ public class DashboardFragment extends Fragment {
 
     private TextView statusTitle;
     private TextView statusSubtitle;
+    private TextView statusDetail;
     private Chip chipConnectivity;
     private Chip chipTransports;
     private LinearProgressIndicator statusProgress;
@@ -52,6 +53,7 @@ public class DashboardFragment extends Fragment {
     private MaterialButton buttonGraceful;
     private MaterialButton buttonLogs;
     private MaterialButton buttonSettings;
+    private MaterialButton buttonReseed;
     private MaterialCardView warningCard;
     private TextView textWarning;
     private TextView metricUptime;
@@ -76,6 +78,7 @@ public class DashboardFragment extends Fragment {
 
         statusTitle = view.findViewById(R.id.status_title);
         statusSubtitle = view.findViewById(R.id.status_subtitle);
+        statusDetail = view.findViewById(R.id.status_detail);
         chipConnectivity = view.findViewById(R.id.chip_connectivity);
         chipTransports = view.findViewById(R.id.chip_transports);
         statusProgress = view.findViewById(R.id.status_progress);
@@ -85,6 +88,7 @@ public class DashboardFragment extends Fragment {
         buttonGraceful = view.findViewById(R.id.button_graceful);
         buttonLogs = view.findViewById(R.id.button_dashboard_logs);
         buttonSettings = view.findViewById(R.id.button_dashboard_settings);
+        buttonReseed = view.findViewById(R.id.button_dashboard_reseed);
         warningCard = view.findViewById(R.id.warning_card);
         textWarning = view.findViewById(R.id.text_warning);
         metricUptime = view.findViewById(R.id.metric_uptime);
@@ -125,6 +129,11 @@ public class DashboardFragment extends Fragment {
                 main.openSettings();
             }
         });
+        buttonReseed.setOnClickListener(ignored -> {
+            if (requireActivity() instanceof MainActivity main) {
+                main.confirmReseed();
+            }
+        });
         buttonGraceful.setOnClickListener(ignored -> {
             if (UiFormat.gracefulActive(lastSnapshot)) {
                 viewModel.cancelGracefulStop();
@@ -160,6 +169,9 @@ public class DashboardFragment extends Fragment {
         UiFormat.setTextIfChanged(statusTitle, getString(UiFormat.stateLabelRes(state)));
         statusTitle.setTextColor(ContextCompat.getColor(context, UiFormat.stateColorRes(state)));
         UiFormat.setTextIfChanged(statusSubtitle, UiFormat.statusSubtitle(context, snapshot));
+        String detail = UiFormat.routerDetail(snapshot);
+        statusDetail.setVisibility(detail.isEmpty() ? View.GONE : View.VISIBLE);
+        if (!detail.isEmpty()) UiFormat.setTextIfChanged(statusDetail, detail);
         UiFormat.setTextIfChanged(chipConnectivity, UiFormat.connectivity(context, snapshot));
         UiFormat.setTextIfChanged(chipTransports, UiFormat.transports(context, snapshot));
 
@@ -202,6 +214,7 @@ public class DashboardFragment extends Fragment {
         buttonStart.setEnabled(UiFormat.canStart(snapshot));
         buttonStop.setEnabled(UiFormat.canStop(snapshot));
         buttonRestart.setEnabled(UiFormat.canRestart(snapshot));
+        buttonReseed.setEnabled(UiFormat.canReseed(snapshot));
 
         boolean gracefulActive = UiFormat.gracefulActive(snapshot);
         buttonGraceful.setText(gracefulActive ? R.string.action_cancel_graceful_stop

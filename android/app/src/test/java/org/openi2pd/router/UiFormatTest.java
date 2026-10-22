@@ -64,6 +64,16 @@ public class UiFormatTest {
     }
 
     @Test
+    public void routerDetailIncludesStatusAndError() {
+        assertEquals("", UiFormat.routerDetail(null));
+        assertEquals("", UiFormat.routerDetail(snapshot(DaemonWrapper.State.startedOkay, true)));
+        assertEquals("Firewalled", UiFormat.routerDetail(
+                snapshotWithStatus(DaemonWrapper.State.startedOkay, true, 1, "Firewalled", "")));
+        assertEquals("Firewalled · Symmetric NAT", UiFormat.routerDetail(
+                snapshotWithStatus(DaemonWrapper.State.startedOkay, true, 1, "Firewalled", "Symmetric NAT")));
+    }
+
+    @Test
     public void enablementFollowsThePublishedState() {
         RouterSnapshot stopped = snapshot(DaemonWrapper.State.stopped, false);
         RouterSnapshot connected = snapshot(DaemonWrapper.State.startedOkay, true);
@@ -72,6 +82,8 @@ public class UiFormatTest {
         RouterSnapshot stopping = snapshot(DaemonWrapper.State.stopping, false);
         RouterSnapshot failed = snapshot(DaemonWrapper.State.startFailed, false);
 
+        assertTrue(UiFormat.canReseed(connected));
+        assertFalse(UiFormat.canReseed(stopped));
         assertTrue(UiFormat.canStart(stopped));
         assertTrue(UiFormat.canStart(failed));
         assertFalse(UiFormat.canStart(connected));
