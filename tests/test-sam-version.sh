@@ -49,20 +49,17 @@ EXP+=("NOVERSION")
 IN+=("MIN=31 MAX=31")
 EXP+=("OK VERSION=3.1")
 
-
 i=0
 while [ "$i" -lt "${#IN[@]}" ]; do
-	printf "HELLO VERSION ${IN[$i]} - "
+	printf 'HELLO VERSION %s - ' "${IN[$i]}"
 
 	# Observed output
-	OBS=$(printf "HELLO VERSION ${IN[$i]}\n" | nc -q 0 127.0.0.1 7656)
+	OBS=$(printf 'HELLO VERSION %s\n' "${IN[$i]}" | nc -q 0 127.0.0.1 7656)
 
 	if [ "$OBS" = "HELLO REPLY RESULT=${EXP[$i]}" ]; then
 		printf "OK\n"
 	else
-		printf "received $OBS\n"
+		printf 'received %s\n' "$OBS"
 	fi
 	i=$((i + 1))
 done
-
-

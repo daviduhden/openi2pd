@@ -14,10 +14,12 @@ COMMAND=/usr/local/bin/i2pd
 # Note: $DATA_DIR is defined in /etc/profile
 
 if [ "$1" = "--help" ]; then
-    set -- $COMMAND --help
+	set -- "$COMMAND" --help
 else
-    ln -s /i2pd_certificates "$DATA_DIR"/certificates
-    set -- $COMMAND $DEFAULT_ARGS $@
+	ln -s /i2pd_certificates "$DATA_DIR"/certificates
+	# DEFAULT_ARGS is intentionally a shell word list supplied by the image environment.
+	# shellcheck disable=SC2086
+	set -- "$COMMAND" $DEFAULT_ARGS "$@"
 fi
 
 exec "$@"

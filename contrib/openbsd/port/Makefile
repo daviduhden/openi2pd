@@ -7,34 +7,34 @@
 # consumed by the repository CMake build, and no port/package validation is
 # implied by its presence.
 
-COMMENT =	client for the I2P anonymous network
+COMMENT = client for the I2P anonymous network
 
-GH_ACCOUNT =	daviduhden
-GH_PROJECT =	openi2pd
-GH_TAGNAME =	2.61.0
-DISTNAME =	openi2pd-${GH_TAGNAME}
-PKGNAME =	i2pd-${GH_TAGNAME}
+GH_ACCOUNT = daviduhden
+GH_PROJECT = openi2pd
+GH_TAGNAME = 2.61.0
+DISTNAME = openi2pd-${GH_TAGNAME}
+PKGNAME = i2pd-${GH_TAGNAME}
 
-CATEGORIES =	net
-HOMEPAGE =	https://github.com/daviduhden/openi2pd
-MAINTAINER =	openi2pd maintainers <daviduhden@users.noreply.github.com>
+CATEGORIES = net
+HOMEPAGE = https://github.com/daviduhden/openi2pd
+MAINTAINER = openi2pd maintainers <daviduhden@users.noreply.github.com>
 
 # BSD-3-Clause
-PERMIT_PACKAGE =	Yes
+PERMIT_PACKAGE = Yes
 
-WANTLIB +=	${COMPILER_LIBCXX} boost_atomic-mt boost_container-mt
-WANTLIB +=	boost_filesystem-mt boost_program_options-mt c crypto m
-WANTLIB +=	miniupnpc ncursesw ssl z
+WANTLIB += ${COMPILER_LIBCXX} boost_atomic-mt boost_container-mt
+WANTLIB += boost_filesystem-mt boost_program_options-mt c crypto m
+WANTLIB += miniupnpc ncursesw ssl z
 
-COMPILER =	base-clang ports-gcc
-MODULES =	devel/cmake
-BUILD_DEPENDS =	devel/boost
-LIB_DEPENDS =	devel/boost \
+COMPILER = base-clang ports-gcc
+MODULES = devel/cmake
+BUILD_DEPENDS = devel/boost
+LIB_DEPENDS = devel/boost \
 		devel/ncurses \
 		net/miniupnp/miniupnpc
 
-CONFIGURE_STYLE =	cmake
-CONFIGURE_ARGS =	-DI2PD_BUILD_TUI=ON \
+CONFIGURE_STYLE = cmake
+CONFIGURE_ARGS = -DI2PD_BUILD_TUI=ON \
 			-DI2PD_BUILD_TOOLS=OFF \
 			-DI2PD_TUI_REQUIRED=ON \
 			-DWITH_LIBRARY=OFF \
@@ -45,14 +45,14 @@ CONFIGURE_ARGS =	-DI2PD_BUILD_TUI=ON \
 
 # The CTest suite needs a full second build of the test tree and is not a
 # package-build requirement. The manual OpenBSD workflow owns it.
-NO_TEST =	Yes
+NO_TEST = Yes
 
 # The canonical rc.d template uses ports-substitution variables.
-SUBST_VARS =	TRUEPREFIX SYSCONFDIR LOCALSTATEDIR
-SUBST_FILES =	../contrib/openbsd/i2pd.rc
+SUBST_VARS = TRUEPREFIX SYSCONFDIR LOCALSTATEDIR
+SUBST_FILES = ../contrib/openbsd/i2pd.rc
 
-WRKDIST =	${WRKDIR}/${DISTNAME}
-WRKSRC =	${WRKDIST}/build
+WRKDIST = ${WRKDIR}/${DISTNAME}
+WRKSRC = ${WRKDIST}/build
 
 post-install:
 	${INSTALL_DATA_DIR} ${PREFIX}/share/examples/i2pd \

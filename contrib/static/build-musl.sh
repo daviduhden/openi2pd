@@ -16,15 +16,15 @@ set -eu
 
 JOBS=${JOBS:-4}
 apk add --no-cache build-base cmake ninja perl linux-headers \
-  boost-dev boost-static zlib-dev zlib-static openssl-dev openssl-libs-static \
-  miniupnpc-dev miniupnpc-static
+	boost-dev boost-static zlib-dev zlib-static openssl-dev openssl-libs-static \
+	miniupnpc-dev miniupnpc-static
 
 cmake -S build -B build-output -G Ninja \
-  -DCMAKE_BUILD_TYPE=Release \
-  -DWITH_STATIC=ON \
-  -DWITH_UPNP=ON \
-  -DWITH_LIBRARY=OFF \
-  -DI2PD_BUILD_TOOLS=OFF \
-  -DI2PD_BUILD_TUI=OFF
+	-DCMAKE_BUILD_TYPE=Release \
+	-DWITH_STATIC=ON \
+	-DWITH_UPNP=ON \
+	-DWITH_LIBRARY=OFF \
+	-DI2PD_BUILD_TOOLS=OFF \
+	-DI2PD_BUILD_TUI=OFF
 cmake --build build-output --parallel "$JOBS" --target i2pd
 strip build-output/i2pd
