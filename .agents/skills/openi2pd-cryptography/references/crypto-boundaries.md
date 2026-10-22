@@ -12,12 +12,13 @@ Use with `SKILL.md`. This is a static trust map, not an audit conclusion.
 |---|---|---|---|
 | Randomness | `libi2pd/Random.*` | CSPRNG only; no fallback to time/rand | crypto tests |
 | Hashing/MAC | `Crypto.*`, `Siphash.h` | exact lengths, no truncated acceptance | `test-crypto-*`, `test-siphash` |
-| Signatures | `Signature.*`, `Identity.*`, `Ed25519.*` | algorithm/key-length binding, exact transcript, constant-time verify | `test-signature-*`, `test-crypto-wire-validation` |
+| Signatures | `Signature.*`, `Identity.*`, `Ed25519.*` | algorithm/key-length binding from the `constexpr` size registry, unknown type fails closed, exact transcript, constant-time verify, no offline-key chaining | `test-signature-*`, `test-crypto-wire-validation` |
 | RSA/SU3 reseed | `Reseed.*`, `Identity.*` | verify by default, bounded certificate/key parsing, no unsigned install | `test-reseed-zip-bounds` |
 | Blinding | `Blinding.*`, `Destination.*`, `LeaseSet.*` | b33 strictness, derivation binding, expiry/identity checks | `test-blinding-*` |
 | Elligator/GOST | `Elligator.*`, `Gost.*` | exact encodings, no unsupported fallback | `test-elligator`, `test-gost-*` |
 | ECIES ratchet | `ECIESX25519AEADRatchetSession.*`, `Tag.h` | replay/tag budgets, NS/NSR validation before state change, key wiping | `test-eciesx25519-*` |
 | PQ | `PostQuantum.*`, `Identity.*`, transport negotiation | runtime provider probe, supported type only, fail closed | ML-KEM/PQ tests, provider matrix |
+| Provider floors | `build/CMakeLists.txt`, `Crypto.*` | OpenSSL 3.0.2–4.0.x and LibreSSL 4.0+; `TLS_method()`; no removed pre-4.0 APIs | OpenSSL/LibreSSL manual lanes |
 | Torrent comments/identity | `TorrentsComments.*` | labels are pseudonyms; do not claim authentication | `test-torrents-comments` |
 
 ## Fail-closed rules

@@ -48,6 +48,10 @@ clearnet fallback paths.
   — isolated payload/state operations and capability limits.
 - [`../../../docs/torrent/saf-storage.md`](../../../docs/torrent/saf-storage.md)
   — Android SAF authority and recovery.
+- [`../../../docs/torrent/ipc.md`](../../../docs/torrent/ipc.md) — typed TUI
+  commands, response fields, queue/backpressure and engine-thread boundary.
+- [`../../../docs/torrent/router-storage.md`](../../../docs/torrent/router-storage.md)
+  — opt-in router persistence worker and its four fixed files.
 - [`../../../docs/torrent/security.md`](../../../docs/torrent/security.md) and
   [`../../../docs/torrent/testing.md`](../../../docs/torrent/testing.md).
 - [`references/engine-checklist.md`](references/engine-checklist.md) — engine,
@@ -55,7 +59,9 @@ clearnet fallback paths.
 
 ## Reconnaissance
 
-Launch read-only `explore` subagents for:
+Launch at least one read-only `explore` subagent before editing, split across
+independent areas when useful. If subagents are unavailable, report that
+limitation; do not substitute local execution. Ask for:
 
 1. engine/control ownership, service-thread snapshots and command queueing;
 2. parsing, path containment, piece verification and persistence;
@@ -99,6 +105,18 @@ Do not let them edit, build or run tests.
 - Keep native control typed and bounded; no raw engine pointers or arbitrary
   filesystem paths cross IPC.
 
+## Known issues and decisions
+
+- `TorrentPayloadStorage` is a header-only interface implemented by
+  `Torrents.cpp`; do not look for a separate implementation unit.
+- Original info bytes, consent for `ut_comment`, private-swarm suppression and
+  stopped/removed persistence guards are load-bearing. Pending writes are
+  withheld from HAVE/bitfield/serving/promotion.
+- SAF cancellation must not close another thread's descriptor; the worker owns
+  the `AssetFileDescriptor`. Broker/process recovery stays generation-fenced.
+- Isolated payload/router persistence is opt-in and not global separation.
+  `SNARK-001..SNARK-010`, live tracker/DHT/peer and device tests remain pending.
+
 ## Do not
 
 - Do not compile, run CTest, sanitizers, fuzzers, Gradle or validators locally.
@@ -108,7 +126,8 @@ Do not let them edit, build or run tests.
 - Do not claim complete I2PSnark or OS-level privilege separation.
 - Do not change Java-compatible wire formats without a specification and
   compatibility test.
-- Do not commit, push, tag or release.
+- Do not create commits, tags, releases, worktrees or temporary commits, and do not push; inspect `git status`/`git diff` before editing.
+- Do not install dependencies, fetch/vendor code or perform hidden downloads to enable a local build or test. Preserve LICENSE/NOTICE/provenance and technical identifiers/paths unless an approved migration exists (AGENTS.md).
 
 ## Prepare for CI
 
@@ -127,8 +146,10 @@ Do not let them edit, build or run tests.
 Use `TORRENT`/N, `SNARK-*` and `PARITY-*`. Record engine vs storage vs SAF
 scope, protocol/compatibility impact, tests, and the exact native/Android CI
 lane. Update `docs/torrent/snark-compatibility.md` or the relevant design doc
-when coverage changes. Append a dated `PROGRESS.md` entry; subagents report
+when coverage changes. Propose a dated `PROGRESS.md` entry and any `TODO.md`/`ROADMAP.md` changes to the coordinator; append them only when explicitly assigned; subagents report
 proposed rows to the coordinator.
+
+Record the exact AGENTS.md `Tracking states` value and state which validations were not run; do not collapse them into “pending”.
 
 ## References
 

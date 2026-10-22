@@ -20,15 +20,18 @@ file maps, not a second policy layer.
 Load the smallest set that covers the change:
 
 1. Start with the subsystem skill (`openi2pd-torrent`, `openi2pd-tui`,
-   `openi2pd-android`, and so on).
+   `openi2pd-android`, `openi2pd-tooling` for `tools/**`/Perl and
+   `openi2pd-privsep` for supervisor/worker framing, plus
+   `openi2pd-openbsd`/`openi2pd-linux-windows` for the platform adapter).
 2. Add `openi2pd-cpp23` for native ownership/API changes.
 3. Add `openi2pd-memory-security` when the change parses untrusted input,
    changes concurrency/lifetime, or needs a security review.
 4. Add `openi2pd-i2p-interop` and/or `openi2pd-cryptography` when a wire
    format, identity, signature, ratchet, transport or Java parity claim is
    involved.
-5. Add `openi2pd-build`, `openi2pd-packaging`, `openi2pd-ci` or
-   `openi2pd-documentation` only when the change crosses those boundaries.
+5. Add `openi2pd-build`, `openi2pd-packaging`, `openi2pd-ci`,
+   `openi2pd-documentation` or `openi2pd-i18n` only when the change crosses
+   those boundaries. UI strings always use `openi2pd-i18n`.
 6. Use `openi2pd-upstream` for selective synchronization, not for ordinary
    development.
 
@@ -38,13 +41,16 @@ subsystems, but keep one owner per file. Shared interfaces (`Log.h`,
 `privsep/Protocol.h`, `privsep/TorrentStorage.*`, `daemon/Daemon.*`,
 `daemon/UnixDaemon.cpp`, the Android JNI CMake graph and SAF AIDL) require
 coordinator review. `openi2pd-build` owns CMake-side test registration;
-`openi2pd-ci` owns workflow wiring and label-gate verification.
+`openi2pd-ci` owns workflow wiring and label-gate verification. For
+`docs/security/ipc-protocol.md` version/type changes, `openi2pd-privsep` drafts
+and TUI/OpenBSD/Linux/Windows owners review; `TuiProtocol.h` changes are drafted
+by `openi2pd-tui`.
 
 ## Inventory
 
 | Skill | Use for | Primary scope |
 |---|---|---|
-| `openi2pd-cpp23` | C++23 refactors, RAII, spans, expected, owned lifetimes | `libi2pd/`, `libi2pd_client/` |
+| `openi2pd-cpp23` | C++23 refactors, OOP, Modern.h, RAII, spans, expected, owned lifetimes | `libi2pd/`, `libi2pd_client/` |
 | `openi2pd-memory-security` | Parser bounds, concurrency, lifetime and security audits | Protocol/crypto/client parsers |
 | `openi2pd-i2p-interop` | Java 2.14.0 comparison target; historical 2.13.0 evidence | Transports, netDb, client protocols |
 | `openi2pd-cryptography` | Primitives, signatures, ratchets, PQ and reseed trust | Crypto/identity/reseed |
@@ -56,10 +62,11 @@ coordinator review. `openi2pd-build` owns CMake-side test registration;
 | `openi2pd-android` | Java 25, Material Views, JNI, service and SAF | `android/` |
 | `openi2pd-build` | CMake, POSIX Make, dependencies and test registration | Build graph |
 | `openi2pd-packaging` | Debian/RPM/static, init systems and install layout | `debian/`, `contrib/`, `man/` |
-| `openi2pd-tooling` | i2pd-tools, firewall generator and Perl utilities | `tools/` |
+| `openi2pd-tooling` | i2pd-tools, firewall generator and Perl utilities | `tools/`, Android/Perl helpers, interop checks |
 | `openi2pd-upstream` | Selective upstream/i2pd-docs/i2pd-tools sync | Provenance and sync docs |
 | `openi2pd-ci` | Manual workflows, CTest labels, sanitizers and `gh` triage | `.github/workflows/` |
 | `openi2pd-documentation` | Docs, licensing, branding and tracking coherence | `docs/`, metadata |
+| `openi2pd-i18n` | UI translations, locale selection, native/Android catalogs and parity tests | `i18n/`, `values-*`, TUI text |
 
 ## Working contract
 
@@ -70,18 +77,36 @@ coordinator review. `openi2pd-build` owns CMake-side test registration;
   two agents edit the same file.
 - Do not compile, configure a build, run CTest, Gradle, sanitizers, fuzzers or
   project validators locally. Dynamic validation is dispatched manually in CI.
-- Do not commit, push, tag or release. Preserve existing worktree changes.
+- Do not create commits, tags, releases, worktrees or temporary commits, and do not push. Inspect `git status`/`git diff` and preserve existing worktree changes.
+- Do not install dependencies or fetch/vendor code locally to enable a build, test or inspection; no hidden downloads.
 - Record code as implemented by static analysis separately from pending CI
   compilation, pending CI tests and validated-by-CI states.
 - Keep `TODO.md`, `ROADMAP.md` and `PROGRESS.md` coherent. Subagents report
   proposed tracking rows to the coordinator; the coordinator owns shared
   tracking-file edits.
+- Perform the permanent `Agent Knowledge Maintenance` review after every
+  significant change: update the owning skill/reference when it gains reusable
+  decisions, pitfalls, paths, limitations or pending validation. Cosmetic
+  rewrites are not required when the existing knowledge is still correct.
 
 ## Skill maintenance
 
-Before considering a skill change complete, inspect that its `name` matches the
-directory, its `description` states activation conditions, every relative link
-resolves, every `references/` file exists, and no instruction contradicts
-`AGENTS.md`. Update the owning skill when paths, shared interfaces, tests or
-workflow ownership change. Documentation-link and branding checks remain
-manual CI checks; do not run local validators to claim them.
+Before considering a skill change complete:
+
+1. Keep the directory name, `name` frontmatter, this inventory row and
+   `tests/check-agent-skills.cmake` `expected_skills` in lockstep.
+2. Use a single-line `description: Use when ...`; state the subsystem and its
+   exclusion boundary.
+3. Resolve every relative Markdown link from the containing file during
+   review; `agent-skills-static` enforces `references/` link/orphan closure and
+   the LICENSE header. Preserve the LICENSE reference.
+4. Keep `## Reconnaissance`, `## Known issues and decisions`, `## Do not` and
+   `## Tracking`; require read-only subagents, AGENTS.md limits, reusable
+   decisions/pitfalls, and coordinator-owned tracking edits.
+5. Run only static source checks locally. `agent-skills-static` and
+   `language-modernization-static` are compile-free maintenance gates;
+   docs-link/branding checks and all validators remain manual CI checks. Do not
+   run them locally or claim them passed.
+6. If a pinned policy phrase, seam name or required section changes, update
+   `AGENTS.md`, the owning skill/reference, the technical doc and the checker in
+   the same increment.

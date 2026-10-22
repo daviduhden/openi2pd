@@ -47,7 +47,8 @@ upstream synchronization is selective.
 ## Reconnaissance
 
 Launch at least one read-only `explore` subagent for upstream and one for the
-local implementation. Ask for:
+local implementation. If subagents are unavailable, report that limitation; do
+not substitute local execution. Ask for:
 
 1. exact upstream commit/date/files and the behavior change;
 2. whether the local tree already implements or rejects it;
@@ -85,6 +86,19 @@ run tests.
 - Preserve upstream notices and first-party license headers; do not relicense
   imported files.
 
+## Known issues and decisions
+
+- The current Java comparison target is 2.14.0; earlier 2.13.0 work is
+  historical evidence. Upstream OpenSSL review windows use UTC timestamps,
+  `%aI %cI`, and merge commits do not carry independent tree changes.
+- Never use a moving `--since`/`--until` window that hides the pinned tip.
+  Record removed/obsolete upstream changes explicitly instead of silently
+  dropping them.
+- Browser-console, obsolete GNU make and incompatible packaging changes remain
+  intentionally omitted.
+- No upstream change is validated until the corresponding manual CI lane and
+  provenance/vectors are updated.
+
 ## Do not
 
 - Do not run `sync.sh`, clone/fetch into the tree, build, test, fuzz or run
@@ -95,7 +109,8 @@ run tests.
   hidden downloads.
 - Do not adopt upstream release/version metadata that conflicts with openi2pd
   identity.
-- Do not commit, push, tag or release.
+- Do not create commits, tags, releases, worktrees or temporary commits, and do not push; inspect `git status`/`git diff` before editing.
+- Do not install dependencies, fetch/vendor code or perform hidden downloads to enable a local build or test. Preserve LICENSE/NOTICE/provenance and technical identifiers/paths unless an approved migration exists (AGENTS.md).
 
 ## Prepare for CI
 
@@ -111,8 +126,10 @@ run tests.
 
 Use `UPSTREAM-*` in `TODO.md` and the upstream sync document. Record the exact
 commit range, disposition per commit, local files, tests and omitted changes.
-Append a dated `PROGRESS.md` entry; subagents report proposed rows to the
+Propose a dated `PROGRESS.md` entry and any `TODO.md`/`ROADMAP.md` changes to the coordinator; append them only when explicitly assigned; subagents report proposed rows to the
 coordinator.
+
+Record the exact AGENTS.md `Tracking states` value and state which validations were not run; do not collapse them into “pending”.
 
 ## References
 

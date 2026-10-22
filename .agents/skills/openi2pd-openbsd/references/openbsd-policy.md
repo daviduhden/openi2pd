@@ -30,6 +30,14 @@ manual CI work.
 - No new unveiled path without a matching configured capability.
 - No LibreSSL build that advertises an unavailable PQ type.
 
+## Port template
+
+`contrib/openbsd/port/` carries the external `net/i2pd` merge template:
+`Makefile` (CMake/Ninja, `I2PD_SERVICE_MANAGER=none`, hardening), `PLIST`
+(`@newgroup`/`@newuser`/`@rcscript`/`@sample`/certificates) and `pkg/README`.
+It is not installed by CMake. A port build, `pkg_create`, `pkg_add`, `rcctl`
+and LibreSSL runtime checks remain separate manual evidence.
+
 ## Validation checklist
 
 1. Build with the CMake/Ninja graph on OpenBSD and run full CTest.

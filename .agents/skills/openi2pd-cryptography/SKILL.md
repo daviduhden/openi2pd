@@ -45,8 +45,9 @@ is never an acceptable workaround.
 
 ## Reconnaissance
 
-Launch a read-only `explore` subagent for the primitive and another for trust
-decisions/callers. Ask for:
+Launch at least one read-only `explore` subagent before editing for the primitive
+and another for trust decisions/callers. If subagents are unavailable, report
+that limitation; do not substitute local execution. Ask for:
 
 1. key/certificate parsing and length assumptions;
 2. every verify/decrypt success path and its fallback behavior;
@@ -83,6 +84,18 @@ executing project code, or inspect a real private key.
 - Wipe secrets with existing helpers and never log key material or plaintext.
 - Document a deliberate incompatibility; do not silently normalize it.
 
+## Known issues and decisions
+
+- Signing-key wire sizes are one compile-time table in `Identity.cpp`
+  (`public/private/signature`); unknown types return `false`, and callers keep
+  their documented fallback. RSA-4096 excess signing data is bounded.
+- `PrivateKeys::FromBuffer` uses a `ScopeExit` reset guard and dismisses it only
+  on final success. Do not chain an already-offline signing key.
+- Supported crypto floors are OpenSSL 3.0.2–4.0.x and LibreSSL 4.0+ with
+  `TLS_method()`; PQ publication/selection stays runtime-gated.
+- NSR timer lifecycle, provider PQ transcripts, LibreSSL/OpenSSL 4 builds and
+  ASan/TSan crypto runs remain pending manual CI.
+
 ## Do not
 
 - Do not compile, run CTest, sanitizers, fuzzers, Java peers or validators
@@ -92,7 +105,8 @@ executing project code, or inspect a real private key.
 - Do not add a new cryptographic dependency or runtime download without an
   approved task, license review and CI build lane.
 - Do not copy Java/GPL implementation text; implement from the specification.
-- Do not commit, push, tag or release.
+- Do not create commits, tags, releases, worktrees or temporary commits, and do not push; inspect `git status`/`git diff` before editing.
+- Do not install dependencies, fetch/vendor code or perform hidden downloads to enable a local build or test. Preserve LICENSE/NOTICE/provenance and technical identifiers/paths unless an approved migration exists (AGENTS.md).
 
 ## Prepare for CI
 
@@ -109,8 +123,10 @@ executing project code, or inspect a real private key.
 
 Use `CRY`/C or the owning transport/client area. Record the primitive, trust
 decision, test vectors, provider matrix and residual risk. Keep `PARITY-*` and
-`NET-*` rows consistent. Append a dated `PROGRESS.md` entry; subagents propose
+`NET-*` rows consistent. Propose a dated `PROGRESS.md` entry and any `TODO.md`/`ROADMAP.md` changes to the coordinator; append them only when explicitly assigned; subagents propose
 tracking changes to the coordinator.
+
+Record the exact AGENTS.md `Tracking states` value and state which validations were not run; do not collapse them into “pending”.
 
 ## References
 

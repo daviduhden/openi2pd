@@ -29,11 +29,9 @@ earlier revisions, not validation of current uncommitted changes.
   adds Connections, router/LeaseSet directories, log search, bandwidth
   history, transit toggle and daemon log-level control; none has been compiled
   or run.
-- Tools: all 15 built; keygen/keyinfo/offlinekeys/i2pbase64/regaddr/verifyhost/
-  x25519 smoke-tested.
-- Android: Java 25 source/target compiles with JDK 25/AGP 9.4.1; Material 3
-  UI/architecture source is present. APK/JNI/Lint/device tests are deferred to
-  CI by user instruction.
+- Android: Java 25 source/target is configured with JDK 25/AGP 9.4.1 and the
+  Material 3 UI/architecture is present. No current compile/APK evidence is
+  claimed; APK/JNI/Lint/device tests are deferred to manual CI.
 - Tools: all 15 native i2pd-tools executables and the Perl I2PControl client
   are in the CMake graph with CTest inventory/smoke/regression, Perl
   portability and install-layout coverage. CMake, Debian, RPM and the Windows
@@ -52,8 +50,9 @@ earlier revisions, not validation of current uncommitted changes.
   five-subsystem static pass and matrices were based on 2.13.0; they require
   a new delta review under NET-026. Historical fixtures keep their 2.13.0
   provenance. No Java peer/handshake/network interoperability is claimed.
-- Java I2P remaining work is tracked as `NET-016..NET-020` and the older
-  I2P-001..I2P-013 evidence rows in `TODO.md`; dynamic tests remain blocked.
+- Java I2P remaining work is tracked by `NET-026` (2.14.0 delta review),
+  `NET-162..NET-167`, `PARITY-015` and the older I2P-001..I2P-013 evidence
+  rows in `TODO.md`; dynamic tests remain blocked.
 - Windows TUI/IPC: shared terminal abstraction, native Win32/VT backend,
   secure local Named Pipes, CMake selection, tests and manual CI/documentation
   are implemented statically at baseline `800c8627`. No Windows console,
@@ -62,24 +61,45 @@ earlier revisions, not validation of current uncommitted changes.
   NTCP2/Transports, client temporaries, TorrentsDHT and daemon/library thread
   owners have explicit RAII; Kademlia, Garlic tags/payloads, Reseed buffers,
   Signature/OpenSSL, daemon descriptors and client server owners are now
-  scoped too. Remaining raw packet/crypto buffers are tracked.
+  scoped too. The current continuation converts the tunnel-hop chain, removes
+  the Garlic shared payload scratch buffer, moves `Piece` storage and the UDP
+  resolver thread to RAII/atomics, and bounds address-book persistence writes.
+  Remaining raw packet/crypto buffers are tracked.
 - A static memory/concurrency audit now covers SSU2/RouterInfo, crypto/reseed,
   BitTorrent, TUI/privsep/JNI and daemon lifecycle. Confirmed structural fixes
   and regression/fuzz sources are present; ASan/UBSan/TSan and fuzz execution
   remain mandatory before claiming the audit complete.
-- Dependency floors are now explicit: OpenSSL 3.0.2 / LibreSSL 4.0,
-  zlib 1.2.11, Boost 1.74 core / 1.81 JSON+URL, MiniUPnPc 2.2.6/API 17,
-  C++23; Boost.Atomic, Boost.Filesystem, XP/MSVC-only and old-API fallbacks
-  are gone. OpenBSD libc++ gaps remain isolated and documented. No
-  dependency-matrix build has been executed.
+- Dependency floors are now explicit: OpenSSL 3.0.2 through OpenSSL 4.0.x /
+  LibreSSL 4.0, zlib 1.2.11, Boost 1.74 core / 1.81 JSON+URL, MiniUPnPc
+  2.2.6/API 17, C++23; Boost.Atomic, Boost.Filesystem, XP/MSVC-only and
+  old-API fallbacks are gone. CMake reads the selected `opensslv.h` and runs
+  compile-only feature probes; `I2PD_OPENSSL_EXPECT*` guards the manual CI
+  lanes. OpenSSL 4 removed TLS/custom-method/ASN.1 APIs are avoided, and
+  runtime ML-KEM capability gates publication. OpenBSD libc++ gaps remain
+  isolated and documented. No dependency-matrix build has been executed.
 - CMake owns the build graph and now exposes `i2pd_privsep` as a separate
   component; POSIX Make targets cover configure/build/router/TUI/tools/tests/
   install, default to Ninja, and no maintained front-end uses GNU-only syntax.
-  The static CMake/Make audit (`build-system-static`) passed; configure, build,
-  install and CTest remain pending manual CI.
+  The manual Linux workflow has OpenSSL 3.x, OpenSSL 4.0.0/4.0.3 pinned and
+  Homebrew-latest lanes; the OpenBSD job asserts LibreSSL. The static
+  CMake/Make audit (`build-system-static`) passed; configure, build, install
+  and CTest remain pending manual CI.
 - Static-review passes for Torrent/TUI, I2P, Perl, tools/firewall, IPC,
-  OpenBSD and Android are integrated. No compiler, CTest, APK/Lint, sanitizer,
-  fuzz, OpenBSD or device test was run in this environment.
+  OpenBSD and Android are integrated. A new independent memory-safety pass
+  covers SSU2/NTCP2, ratchet/Garlic, netDb, torrent, IPC and JNI; it fixed
+  peer-controlled family/garlic/clove/NTCP2/torrent/JNI bounds and records
+  SSU2 pool/address races, fragment budgets, RouterInfo copy-on-write and
+  ratchet/destination context sharing as `SEC-025`. A concurrent lifecycle
+  pass fixed `RunnableService` self-stop, `Transports` shutdown/start
+  ordering, `I2PControl` restart, atomic daemon shutdown flags, shared tunnel
+  build scratch and SSU2 terminal resurrection; the remaining callback,
+  datagram, profile, disk-domain, SSU2 publication and JNI owner-epoch work
+  is `CONC-005`. The POSIX make front-end, install component split, Ninja
+  presets, OpenBSD generator guard, RPM/Docker packaging and exported
+  package-config paths are consolidated under `BUILD-014..BUILD-017`. No
+  compiler, CTest,
+  APK/Lint, sanitizer, fuzz, OpenBSD or device test was run in this
+  environment.
 
 ## Workstreams
 
@@ -87,8 +107,9 @@ earlier revisions, not validation of current uncommitted changes.
 
 Order:
 
-1. Finish builds/tests after current edits (C++ CMake, tools, firewall test).
-2. Run sanitizers and fuzz targets; fix findings.
+1. Prepare and manually dispatch CI on the first publishable revision (C++
+   CMake, tools, firewall test); do not build locally.
+2. Dispatch sanitizer and fuzz jobs; fix findings from CI.
 3. Audit untrusted parsers (NTCP2/SSU2/I2NP/RouterInfo/LeaseSet/SU3).
 4. Resolve TUI status data races, torrent control snapshots and Android JNI
    lifetime issues.
@@ -98,8 +119,9 @@ memory-safety defect left unfixed.
 
 ### 2. I2P Java interoperability (independent after clone)
 
-1. [done/static] Pin I2P Java 2.13.0 at commit
-   `9134f808337b401e8e53c73734c81fab04280c9d` in a read-only external tree.
+1. [done/static] Pin I2P Java 2.14.0 at peeled commit
+   `3c98503c5f14efe7bdd783528ba7f621f12d8081` in a read-only external tree;
+   preserve 2.13.0 fixtures as historical evidence.
 2. [static recheck complete 2026-10-19] Maintain the `INTEROPERABILITY.md` matrix with Java and C++
    file/function references, differences, priorities and validation status.
 3. [static implementation complete] I2P-001..I2P-012 have static C++
@@ -110,9 +132,9 @@ memory-safety defect left unfixed.
    architecture or accidental behavior.
 4. [static fixtures expanded] Expand `tests/interop/` with deterministic valid/malformed
    vectors and controlled loopback procedures.
-5. [pending] Run controlled Java/C++ integration tests, sanitizers and fuzzers;
-   the local Linux/GCC 16 build and 48/48 unit CTest are executed, but no Java
-   peer, ASan/UBSan/TSan or libFuzzer run exists.
+5. [pending] Dispatch controlled Java/C++ integration tests, sanitizers and
+   fuzzers. Historical Linux/GCC 16 build and 48/48 unit CTest results predate
+   the static-only policy and do not validate the current tree.
 
 Exit criteria: every announced protocol row has a Java reference, a C++
 reference, a difference verdict and validation status; dynamic evidence is
@@ -121,8 +143,8 @@ recorded separately from static review. No "compatible" claim without evidence.
 ### 3. Android/Java 25 (CI build and device validation pending)
 
 1. Use CI JDK 25, Android SDK 37 and NDK r30 LTS+ (local builds are frozen). The
-   Android UI is English-only: language resource catalogs are removed and
-   `locales_config.xml`/`localeFilters` declare only `en`.
+   Android UI ships en/es/ru/zh-CN; `locales_config.xml`/`localeFilters` and the
+   four resource catalogs must stay synchronized.
 2. Validate Gradle 9.8.1/AGP 9.4.1 and toolchain 25 in CI.
 3. Build APK/DEX; run Android Lint, unit tests and JNI/device tests.
 4. Continue Java 25 source refactor (records, sealed types, pattern matching,
@@ -299,9 +321,9 @@ run.
 
 ## Milestones
 
-- **M1:** Current Linux/GCC 16 build and 48/48 unit tests green; sanitizer/fuzz/Windows/OpenBSD/Java runs remain separate.
+- **M1:** The first manual CI run on the current revision compiles and passes CTest; sanitizer/fuzz/Windows/OpenBSD/Java runs remain separate.
 - **M2:** Security sanitizer baseline clean or triaged.
-- **M3:** Java 2.13.0 static matrix complete with confirmed fixes; dynamic Java/peer evidence remains pending.
+- **M3:** Java 2.14.0 delta review (NET-026) complete; 2.13.0 matrices stay historical, and dynamic Java/peer evidence remains pending.
 - **M4:** Android APK builds with JDK 25, Java 25 source/target and passes lint/JNI tests.
 - **M7:** Torrent TUI parity and Perl migration complete without web/JS/Python;
   CI validates the deferred builds/tests.
@@ -320,7 +342,14 @@ reference and a regression test before it is considered complete.
 Status: implemented by static analysis; pending manual CI compilation, package
 build and service validation. Native definitions cover systemd, GNU Shepherd,
 OpenRC, runit, s6/s6-rc and SysVinit, with exactly one manager selectable at
-CMake install time. Debian packages split the router/tools (`i2pd`) from the
+CMake install time. The 2026-10-22 continuation adds daemon-init failure exit
+status, stop budgets aligned with the graceful drain, s6 down-signal/timeout
+control files, systemd sysusers/tmpfiles policy, foreground OpenBSD rc.subr
+supervision and exact service install modes; these remain static-only. The
+latest packaging pass also separates TUI desktop assets, applies
+dpkg-buildflags hardening, preserves administrator modes on upgrade, corrects
+DEP-5/lintian/uscan metadata and adds an OpenBSD port/PLIST template. Debian
+packages split the router/tools (`i2pd`) from the
 interactive ncurses client (`i2pd-tui`), use debhelper-managed systemd/SysV/
 tmpfiles integration and provide DEP-8 smoke tests.
 
@@ -393,22 +422,35 @@ validates this local increment.
 ## Selective upstream openssl synchronization (static, 2026-10-19/20)
 
 Reviewed `PurpleI2P/i2pd:openssl` through
-`de32c8c3f580c2c43ca09154ecfe6a20db80d19f` for commits dated 2026-10-18,
-2026-10-19 and 2026-10-20 UTC. The workstream applies the compatible SSU2,
+`9725b8b227293a796c069ac270fa6b5b47cf9a13` for commits dated 2026-10-18,
+2026-10-19 and 2026-10-20 UTC (first-pass mark `de32c8c3`). The workstream applies the compatible SSU2,
 I2PTunnel/HTTP, NetDb peer-policy, torrent-persistence and Intel AMT
 reserved-port corrections, adapts the reseed sample wording without weakening
 verification, and carries the applicable RPM Boost guards while preserving
 C++23, privilege separation, native TUI/Android architecture and fork release
 identity.
 
+The follow-up continuation reviews `de32c8c3..9725b8b2` (six commits) and
+re-verified on 2026-10-21 that `9725b8b2` is still the branch tip with no
+later commits. It adapts the proxy error status classification with the
+fork-only 431 header path and moves its mapping into a test-visible header;
+ports the DHT rendezvous self-announce with a reserved local peer slot,
+unannounce-on-stop, empty-bucket fallback and fork peer/seed/private guards;
+and pins mixed-case/obs-fold HTTP tunnel header handling. The RPM release-spec
+change is partially integrated/obsolete, the merge commit is merge-only, and
+the Windows web-console packaging change is incompatible with the removed
+browser UI.
+
 Exit criteria: manual CI compiles the changed paths, `test-ssu2-preauth`,
 `test-routercontext-port-range`, `test-netdb-store-lookup-hardening`,
-`test-torrents-security` and `build-system-static` pass, and the I2PTunnel
-response/IRC lifetime and torrent removal barriers receive dynamic coverage.
-An RPM lane must be added and validate the Fedora guards on a disposable host;
-no RPM lane exists yet. Upstream 3.0.0 release metadata, browser-console
-changes, obsolete GNU-make/Jammy packaging and the unvalidated RHEL 9 toolset
-path remain deliberately excluded. Until then this is static-only work.
+`test-torrents-security`, `test-http-res`, `test-torrents-dht-interop`,
+`test-i2ptunnel-http` and `build-system-static` pass, and the I2PTunnel
+response/IRC lifetime, proxy status and torrent DHT rendezvous receive dynamic
+coverage. An RPM lane must be added and validate the Fedora guards on a
+disposable host; no RPM lane exists yet. Upstream 3.0.0 release metadata,
+browser-console changes, obsolete GNU-make/Jammy packaging and the unvalidated
+RHEL 9 toolset path remain deliberately excluded. Until then this is static-only
+work.
 
 ## Intensive native torrent continuation (2026-10-19)
 
@@ -555,3 +597,66 @@ family and requires the Asio definition.
 Exit criteria: manual CI compilation on Linux/OpenBSD/Windows/Android, full
 CTest, ASan+UBSan/TSan, fuzzing and the new regressions pass. Until then this
 is static-only work; no diagnostic removal or validation is claimed.
+
+## Functional parity continuation (static, 2026-10-21)
+
+A scoped 2.14.0 read-only review covered router/tunnel policy, address book,
+client services, administration, proxies and I2PSnark. The implemented native
+surface now includes:
+
+- address-book list/add/replace/remove/block/unblock through the bounded TUI
+  IPC and an app-internal Android screen, with deleted-host tombstones and
+  full base64 identities only;
+- I2PSnark force recheck, metainfo comment/created-by editing, tracker/metadata
+  preservation and Android remove-with-data through the bounded control path;
+- Java-compatible rejection of token-bearing DatabaseStore messages that arrive
+  through an exploratory tunnel, before any DeliveryStatus reply is built.
+
+Prepared regressions: `test-addressbook-admin` (tombstones),
+`test-torrents-engine-interop` (metainfo preservation/edit),
+`test-tunnel-dsm-policy`, `TORRENT-RECHECK`/`TORRENT-META-*` protocol parsing
+and Android `TorrentControl` command tests. Tunnel creation/editing,
+subscription editing, selected-file promotion, uploader/bandwidth scheduling,
+the §10 router/client/proxy candidates, live Java lookup and
+device/instrumentation execution remain implementation or validation work.
+
+Exit criteria: manual CI compilation/tests on Linux/OpenBSD/Windows/Android,
+live Java 2.14.0 lookup/tracker/tunnel checks and device tests pass. No parity
+or dynamic interoperability is claimed before then.
+
+
+## Agent Skills system (static)
+
+Status: implemented by static analysis. The 2026-10-22 continuation tightened
+activation/exclusion boundaries, subagent reconnaissance requirements,
+coordinator-owned tracking language, Perl/tooling references, package/CI/OpenBSD
+references and the exact inventory/README/license/reference checker. Manual CI
+and documentation/branding validators remain pending.
+
+## Modern language utilization policy (2026-10-22, static)
+
+Status: implemented by static analysis. Modern C++23/Java 25 facilities and
+well-scoped OOP/generic abstractions are now a permanent project objective in
+`AGENTS.md`, with availability limits for GCC 13/Clang 17/OpenBSD libc++ and
+Android minSdk 29. Current increments are a compile-time Identity registry,
+`std::jthread`/stop-token X25519 ownership, an outbound transport Strategy
+interface, Java sealed router commands/pattern switches and a typed log level.
+Compilation, CTest, Gradle, sanitizer, OpenBSD/Windows and device validation
+remain pending manual CI.
+
+## Agent knowledge maintenance (static)
+
+AGENTS.md now requires every significant change to review and, when needed,
+update the owning Agent Skills and technical/tracking documents. `GOV-008`
+owns the policy/checker/doc coupling; `agent-skills-static` enforces the
+`Known issues and decisions` section, and `language-modernization-static`
+pins the policy, language levels and modernization seams. Dynamic validation
+remains pending manual CI.
+
+## UI localization (en/es/ru/zh-Hans, 2026-10-22, static)
+
+Native and Android UI catalogs are implemented by static analysis. Exit
+criteria: four complete catalogs, locale/fallback selection, per-app Android
+language, placeholder/plural parity checks, UTF-8/column-width tests and
+manual Linux/OpenBSD/Windows/Android evidence. Full TUI help/tool translation
+coverage and dynamic validation remain pending; see `I18N-001..I18N-003`.

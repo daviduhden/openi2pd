@@ -17,7 +17,7 @@ Use with `SKILL.md`. This is a source map, not a parity or isolation claim.
 | Creator | `TorrentsCreator.*` | bounded traversal, streaming SHA-1, canonical v1 info |
 | Comments | `TorrentsComments.*` | negotiated, bounded, pseudonymous, private suppression |
 | State | `TorrentsState.*` | version 1, atomic no-follow replacement |
-| Storage | `TorrentPayloadStorage.*` | no-follow containment, storage-domain I/O |
+| Storage | `TorrentPayloadStorage.h` (implementation in `Torrents.cpp`) | no-follow containment, storage-domain I/O |
 | Isolated storage | `TorrentStorageWorker.*`, `privsep/TorrentStorage.*` | numeric handles, bounded IPC, fail closed |
 | SAF | `android/app/src/main/java/org/openi2pd/router/TorrentSaf*`, AIDL, JNI | URI authority, exact documents/tree, generation fencing |
 | RPC | `TorrentsRPC.*` | optional, separate from TUI; no browser surface |
@@ -42,7 +42,7 @@ Use with `SKILL.md`. This is a source map, not a parity or isolation claim.
     until serialized disk cleanup succeeds; stale jobs must not mutate a
     replacement. Delete native settings even when retaining payload. Cleanup
     failures retain the reservation until daemon restart; see
-    `docs/torrent/local-state.md` for backend limits.
+    [`local state`](../../../docs/torrent/local-state.md) for backend limits.
 
 ## Test map
 

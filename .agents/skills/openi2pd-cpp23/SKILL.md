@@ -19,10 +19,21 @@ interfaces or resource management. It is the default implementation skill for
 Read [`../../../AGENTS.md`](../../../AGENTS.md) first. It is the authoritative
 policy. This skill adds a procedure, not an exception to the static-only rule.
 
+The permanent `Modern language utilization policy` makes broad use of C++23 and
+well-scoped OOP/generic abstractions an explicit objective. Prefer concepts,
+ranges, `std::expected`, smart ownership, `jthread`/stop tokens and other
+supported facilities even when no measurable performance gain is available.
+Do not mass-convert every function into a class; abstractions need a contract,
+ownership and a regression path. The availability matrix and deliberate
+limits live in
+[`../../../docs/cpp23-migration.md`](../../../docs/cpp23-migration.md).
+
 ## Inspect first
 
 - The real call sites and headers: `libi2pd/`, `libi2pd_client/`, `daemon/`,
   `tui/`, `privsep/`, `tests/`.
+- Reusable vocabulary: `libi2pd/Modern.h` (concepts, `ScopeExit`, overload
+  composition and byte-span helpers).
 - Shared interfaces: `libi2pd/Log.h`, `libi2pd/RouterContext.h`,
   `libi2pd/Expected.h`, `libi2pd/AtomicSharedPtr.h`,
   `libi2pd/TuiProtocol.h` and `privsep/Protocol.h`.
@@ -47,7 +58,8 @@ policy. This skill adds a procedure, not an exception to the static-only rule.
 ## Reconnaissance
 
 Launch at least one read-only `explore` subagent. For a broad refactor, launch
-two in parallel:
+two in parallel. If subagents are unavailable, report that limitation; do not
+substitute local execution.
 
 1. Inventory current ownership, raw buffers, callbacks, thread affinity and
    call sites for the target files.
@@ -84,6 +96,23 @@ compile, run tests or run project scripts.
 - Do not change I2P wire formats, persisted formats, binary names,
   configuration paths or security checks as part of a mechanical cleanup.
 
+## Known issues and decisions
+
+- `libi2pd/Modern.h` is shared vocabulary, but adoption is deliberately narrow
+  (`Identity.cpp`, `test-modern`). `ScopeExit` cleanup must not throw;
+  `AsByteSpan` rejects temporaries and must not be replaced by
+  `reinterpret_cast` helpers.
+- Signing-key sizes use one `constexpr` registry; unknown types return `false`
+  and callers keep documented defaults. Offline signing keys are not chained.
+- `ITransportConnector` is a stateless Strategy. `false` means "not
+  applicable, try the next priority"; a pending SSU2 endpoint must return
+  `true` and must not fall through to NTCP2.
+- `jthread` adoption is partial: `TuiServer` and the X25519 supplier use stop
+  tokens; `Transports::m_Thread` still has an explicit self-join/detach path.
+  `LogLevel` remains a plain enum with `eNumLogLevels`/`g_LogLevelStr`.
+- `test-modern` and `test-transport-connector` are registered but unexecuted;
+  `language-modernization-static` pins seam names and exact AGENTS/doc phrases.
+
 ## Do not
 
 - Do not compile, configure, run CTest, sanitizers, fuzzers or project scripts
@@ -92,7 +121,10 @@ compile, run tests or run project scripts.
 - Do not weaken bounds checks, signature/AEAD verification, `pledge`/`unveil`,
   sandbox policy or untrusted-input limits.
 - Do not perform repository-wide formatting or unrelated renames.
-- Do not commit, push, tag or release.
+- Keep OpenBSD and LibreSSL viable; do not introduce OpenSSL-only APIs
+  without the existing feature-selected LibreSSL fallback.
+- Do not create commits, tags, releases, worktrees or temporary commits, and do not push; inspect `git status`/`git diff` before editing.
+- Do not install dependencies, fetch/vendor code or perform hidden downloads to enable a local build or test. Preserve LICENSE/NOTICE/provenance and technical identifiers/paths unless an approved migration exists (AGENTS.md).
 
 ## Prepare for CI
 
@@ -110,9 +142,24 @@ compile, run tests or run project scripts.
 
 Use the owning area in `TODO.md` (normally `CPP`/B) and the status vocabulary
 from `AGENTS.md`. Record files, decisions, static review, tests prepared and
-the exact CI lanes still required. Append a dated `PROGRESS.md` entry. As a
+the exact CI lanes still required. Propose a dated `PROGRESS.md` entry and any `TODO.md`/`ROADMAP.md` changes to the coordinator; append them only when explicitly assigned. As a
 subagent, report proposed rows to the coordinator instead of editing shared
 tracking files concurrently.
+
+Record the exact AGENTS.md `Tracking states` value and state which validations were not run; do not collapse them into “pending”.
+
+## Modernization matrix
+
+Use a feature only when its target is understood:
+
+| Facility | Use / guard |
+|---|---|
+| concepts, folds, structured bindings, `span`/`string_view` | preferred in new interfaces and bounded parsers |
+| `constexpr`/`consteval`/`constinit` | static tables and compile-time invariants |
+| `std::optional`/`variant`/`any`/`i2p::expected` | recoverable absence/errors; do not replace protocol exceptions blindly |
+| ranges/views, generic lambdas, `<=>` | local algorithms and comparisons with explicit lifetimes |
+| `chrono`, `jthread`, stop tokens | new timers/workers; audit join and self-stop paths |
+| `format`/`print`, `mdspan`, modules, coroutines, executors | not assumed until a compile probe and manual CI prove them |
 
 ## References
 

@@ -1,6 +1,6 @@
 ---
 name: openi2pd-tooling
-description: Use when changing openi2pd native tools, the firewall rule generator, Perl maintenance scripts, i2pdctl or tool install/inventory tests.
+description: Use when changing openi2pd native tools, the firewall rule generator, Perl maintenance scripts, i2pdctl, or tool install/inventory/provenance tests.
 ---
 <!--
 See the LICENSE file at the top of the project tree for copyright
@@ -23,7 +23,8 @@ Python is replaced by Perl; do not add Python, CPAN or runtime downloads.
 - `tools/CMakeLists.txt`, `tools/*.cpp`, `tools/common/`,
   `tools/firewall.hpp`, `tools/routerinfo.cpp`.
 - `tools/scripts/` (`i2pdctl`, `validate-branding.pl`,
-  `check-doc-links.pl`) and `tools/tests/`. Tooling owns these scripts;
+  `check-doc-links.pl`, `check-doc-nav.pl`) and `tools/tests/`. Tooling owns
+  these scripts;
   documentation consumes the link/branding results and owns docs content.
 - `tests/test-routerinfo-firewall.cpp`, tool inventory/smoke/regression CMake
   checks and `tools/README.md`.
@@ -44,10 +45,14 @@ Python is replaced by Perl; do not add Python, CPAN or runtime downloads.
   torrent-related CLI/control boundaries.
 - [`references/tooling-checklist.md`](references/tooling-checklist.md) — tool,
   firewall and Perl map.
+- [`references/perl-inventory.md`](references/perl-inventory.md) — script,
+  test-name, label and CI-consumer matrix.
 
 ## Reconnaissance
 
-Launch read-only `explore` subagents for:
+Launch at least one read-only `explore` subagent before editing, split across
+independent areas when useful. If subagents are unavailable, report that
+limitation; do not substitute local execution. Ask for:
 
 1. CLI parsing, input validation and output formats;
 2. firewall endpoint/rule generation and platform backends;
@@ -61,12 +66,22 @@ Perl test, shell test or network command.
 ## Parallel implementation
 
 - Split native tools, firewall renderers and Perl scripts by independent files.
-  Do not edit `tools/CMakeLists.txt` or shared `tools/common/` concurrently.
+  `tools/CMakeLists.txt` and `tools/common/` are shared interfaces; obtain
+  coordinator review before changing them and do not edit them concurrently.
 - The firewall endpoint model is shared by `firewall.hpp` and `routerinfo.cpp`;
   coordinate changes.
 - Packaging manifests are owned by `openi2pd-packaging`.
 - Keep docs/provenance with the tool change; do not copy upstream code without
   a license review.
+
+## Perl
+
+Read [`references/perl-inventory.md`](references/perl-inventory.md) before
+changing a `tools/scripts/*.pl`, `tools/tests/*.t`, `android/tools/*.pl` or
+`tests/interop/check-vectors.pl` path. Keep core modules unless the dependency
+is already approved, use the same interpreter as CMake/CI, and keep failures
+non-zero and visible. `i2pdctl` remains an I2PControl JSON-RPC client; it is not
+a TUI client.
 
 ## Conventions
 
@@ -80,11 +95,26 @@ Perl test, shell test or network command.
   additive.
 - Perl uses core modules only unless an approved dependency already exists;
   no CPAN, Python, network install or hidden download.
-- `i2pdctl` remains a bounded local client; do not add a cleartext remote admin
-  path.
+- `i2pdctl` remains an HTTPS-only I2PControl JSON-RPC client with a loopback
+  default; do not add cleartext or a browser console.
 - Preserve upstream provenance/license notices for imported tools.
 - Keep tool names, CLI behavior and install paths unless a migration is
   approved.
+
+## Known issues and decisions
+
+- Signature-name normalization in `tools/common/key.hpp` uses a local ranges
+  transform with unsigned-character input to `std::toupper`; keep mixed-case
+  and underscore aliases covered by `tools-regressions` when editing the table.
+- `i2pdctl` is an I2PControl JSON-RPC client, not a TUI client. Perl scripts
+  use core modules or already-approved runtime modules; no CPAN/Python/Node
+  downloads or hidden installs.
+- Firewall tools render text only (`iptables`, `nftables`, `pf`, Windows) and
+  never execute rules. Preserve address/port validation and quoting.
+- `references/perl-inventory.md` maps scripts, tests, labels and consumers;
+  update it when a script, interpreter requirement or CI consumer changes.
+- Perl/tool install, portability and live firewall tests remain pending manual
+  CI.
 
 ## Do not
 
@@ -93,7 +123,8 @@ Perl test, shell test or network command.
 - Do not add Python, CPAN, Node, a runtime download or a hidden checkout.
 - Do not add an HTTP/web admin console or cleartext torrent/RPC path.
 - Do not execute generated firewall rules or require root in a test.
-- Do not commit, push, tag or release.
+- Do not create commits, tags, releases, worktrees or temporary commits, and do not push; inspect `git status`/`git diff` before editing.
+- Do not install dependencies, fetch/vendor code or perform hidden downloads to enable a local build or test. Preserve LICENSE/NOTICE/provenance and technical identifiers/paths unless an approved migration exists (AGENTS.md).
 
 ## Prepare for CI
 
@@ -109,12 +140,15 @@ Perl test, shell test or network command.
 ## Tracking
 
 Use `TOOLS`/`FW`/F and `PERL`/Perl. Record command/tool, input boundary, output
-format, tests and install consumers. Append a dated `PROGRESS.md` entry;
+format, tests and install consumers. Propose a dated `PROGRESS.md` entry and any `TODO.md`/`ROADMAP.md` changes to the coordinator; append them only when explicitly assigned;
 subagents report proposed rows to the coordinator.
+
+Record the exact AGENTS.md `Tracking states` value and state which validations were not run; do not collapse them into “pending”.
 
 ## References
 
 - [Tooling and firewall checklist](references/tooling-checklist.md)
+- [Perl inventory](references/perl-inventory.md)
 - [Tools documentation](../../../docs/tools/README.md)
 - [Perl migration](../../../docs/development/perl-migration.md)
 - [Global policy](../../../AGENTS.md)

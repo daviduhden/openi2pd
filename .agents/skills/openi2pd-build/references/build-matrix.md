@@ -28,7 +28,8 @@ Use with `SKILL.md`. This is a static inventory; no configure/build is implied.
 `I2PD_BUILD_TOOLS=ON`, `I2PD_BUILD_JNI=OFF`, `I2PD_INSTALL_DOCS=ON`,
 `WITH_UPNP=ON`, `WITH_TORRENTS=ON`, `WITH_STATIC=OFF`, `WITH_HARDENING=OFF`,
 `BUILD_TESTING=OFF`, `WITH_ADDRSANITIZER=OFF`, `WITH_THREADSANITIZER=OFF`,
-`WITH_UNDEFSANITIZER=OFF`, `WITH_FUZZERS=OFF`, `I2PD_PERL_CRITIC=OFF`.
+`WITH_UNDEFSANITIZER=OFF`, `WITH_FUZZERS=OFF`, `I2PD_PERL_CRITIC=OFF`,
+`I2PD_OPENSSL_EXPECT`, `I2PD_OPENSSL_EXPECT_VERSION`.
 
 Disabling torrents must still configure a coherent core/client/TUI/tools graph
 on Linux, OpenBSD and Windows. Do not make the Android graph depend on a
@@ -39,6 +40,9 @@ desktop supervisor.
 | Lane | Configure/build consumer | Tests |
 |---|---|---|
 | Linux Clang/GCC | full graph, `BUILD_TESTING=ON`, TUI | full CTest + labels |
+| Linux OpenSSL 3.x | distribution OpenSSL 3 | full CTest |
+| Linux pinned OpenSSL | `I2PD_OPENSSL_EXPECT`/version pin | build + full CTest |
+| Install components | Runtime/Tui/Libraries/Development/Tools/Documentation | staged tree + consumer package |
 | Linux ASan+UBSan | full graph, sanitizer option | full CTest |
 | Linux TSan | full graph, sanitizer option | full CTest |
 | Fuzzing | `WITH_FUZZERS=ON`, Clang | eight bounded smoke targets |
@@ -57,6 +61,13 @@ desktop supervisor.
 - Explicit source lists and target-scoped dependencies.
 - `I2PD_SERVICE_MANAGER` accepts `none`, `systemd`, `openrc`, `runit`, `s6`,
   `s6-rc`, `shepherd`, `sysvinit`; only one may be installed.
+
+## Install components
+
+`Runtime` (daemon/config/certificates), `Tui` (client/desktop/icons), `Libraries`,
+`Development`, `Tools`, `Documentation` and `Service`. `Service` requires
+`WITH_BINARY=ON`; exactly one manager is installed. Consumers require both
+`Libraries` and `Development` for `find_package(i2pd CONFIG)`.
 
 ## Static checks
 

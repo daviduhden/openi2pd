@@ -33,6 +33,7 @@ set(expected_skills
   openi2pd-cpp23
   openi2pd-cryptography
   openi2pd-documentation
+  openi2pd-i18n
   openi2pd-i2p-interop
   openi2pd-linux-windows
   openi2pd-memory-security
@@ -73,12 +74,64 @@ set(required_sections
   "Reconnaissance"
   "Parallel implementation"
   "Conventions"
+  "Known issues and decisions"
+  "Do not"
   "Prepare for CI"
   "Tracking"
+  "References"
 )
 
+set(readme_file "${skills_root}/README.md")
+if(NOT EXISTS "${readme_file}")
+  message(FATAL_ERROR "Missing Agent Skills discovery index: ${readme_file}")
+endif()
+file(READ "${readme_file}" readme_text)
+file(STRINGS "${readme_file}" readme_header LIMIT_COUNT 3)
+list(JOIN readme_header "\n" readme_header_text)
+string(FIND "${readme_header_text}" "See the LICENSE file" readme_license)
+if(readme_license EQUAL -1)
+  message(FATAL_ERROR "Agent Skills README lacks the LICENSE header")
+endif()
+foreach(expected IN LISTS expected_skills)
+  string(FIND "${readme_text}" "`${expected}`" readme_position)
+  if(readme_position EQUAL -1)
+    message(FATAL_ERROR "README inventory does not list ${expected}")
+  endif()
+endforeach()
+foreach(line IN LISTS readme_text)
+  if(line MATCHES "`(openi2pd-[a-z0-9-]+)`")
+    set(_listed "${CMAKE_MATCH_1}")
+    if(NOT _listed IN_LIST expected_skills)
+      message(FATAL_ERROR "README lists unknown skill ${_listed}")
+    endif()
+  endif()
+endforeach()
+
+# The inventory is bidirectional: no unlisted openi2pd-* directory may hide.
+file(GLOB skill_entries LIST_DIRECTORIES true "${skills_root}/*")
+set(actual_skills)
+foreach(entry IN LISTS skill_entries)
+  if(IS_DIRECTORY "${entry}")
+    get_filename_component(entry_name "${entry}" NAME)
+    if(entry_name MATCHES "^openi2pd-")
+      list(APPEND actual_skills "${entry_name}")
+    else()
+      message(FATAL_ERROR "Unexpected directory in .agents/skills: ${entry_name}")
+    endif()
+  endif()
+endforeach()
+list(SORT actual_skills)
+set(sorted_expected ${expected_skills})
+list(SORT sorted_expected)
+if(NOT actual_skills STREQUAL sorted_expected)
+  message(FATAL_ERROR
+    "Agent Skill inventory drift. Expected ${sorted_expected}; found ${actual_skills}")
+endif()
+
+set(descriptions)
 foreach(skill_file IN LISTS skill_files)
   file(READ "${skill_file}" content)
+  string(REPLACE "\r" "" content "${content}")
 
   file(STRINGS "${skill_file}" frontmatter LIMIT_COUNT 4)
   list(LENGTH frontmatter frontmatter_lines)
@@ -89,6 +142,10 @@ foreach(skill_file IN LISTS skill_files)
   list(GET frontmatter 1 name_line)
   list(GET frontmatter 2 description_line)
   list(GET frontmatter 3 frontmatter_close)
+  string(REPLACE "\r" "" frontmatter_open "${frontmatter_open}")
+  string(REPLACE "\r" "" name_line "${name_line}")
+  string(REPLACE "\r" "" description_line "${description_line}")
+  string(REPLACE "\r" "" frontmatter_close "${frontmatter_close}")
   if(NOT frontmatter_open STREQUAL "---")
     message(FATAL_ERROR "Malformed opening frontmatter delimiter: ${skill_file}")
   endif()
@@ -113,6 +170,19 @@ foreach(skill_file IN LISTS skill_files)
   if(NOT description_match)
     message(FATAL_ERROR "description must start with 'Use when': ${skill_file}")
   endif()
+  string(REGEX REPLACE "^description: " "" description_text "${description_line}")
+  if(description_text MATCHES ": | #")
+    message(FATAL_ERROR "description must be a plain single-line YAML scalar: ${skill_file}")
+  endif()
+  string(LENGTH "${description_line}" description_length)
+  if(description_length GREATER 300)
+    message(FATAL_ERROR "description is longer than 300 characters: ${skill_file}")
+  endif()
+  list(FIND descriptions "${description_text}" duplicate_description)
+  if(NOT duplicate_description EQUAL -1)
+    message(FATAL_ERROR "duplicate skill description in ${skill_file}")
+  endif()
+  list(APPEND descriptions "${description_text}")
 
   string(FIND "${content}" "AGENTS.md" agents_position)
   if(agents_position EQUAL -1)
@@ -130,6 +200,19 @@ foreach(skill_file IN LISTS skill_files)
   if(NOT reference_files)
     message(FATAL_ERROR "Skill has no references/*.md: ${skill_file}")
   endif()
+  foreach(reference_file IN LISTS reference_files)
+    get_filename_component(reference_name "${reference_file}" NAME)
+    string(FIND "${content}" "${reference_name}" reference_used)
+    if(reference_used EQUAL -1)
+      message(FATAL_ERROR "Unlinked reference ${reference_name} in ${skill_file}")
+    endif()
+    file(STRINGS "${reference_file}" reference_header LIMIT_COUNT 3)
+    list(JOIN reference_header "\n" reference_header_text)
+    string(FIND "${reference_header_text}" "See the LICENSE file" reference_license)
+    if(reference_license EQUAL -1)
+      message(FATAL_ERROR "Reference lacks the LICENSE header: ${reference_file}")
+    endif()
+  endforeach()
 
   string(REGEX MATCHALL "references/[A-Za-z0-9_.-]+[.]md" reference_links "${content}")
   foreach(reference_link IN LISTS reference_links)

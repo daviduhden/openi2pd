@@ -72,7 +72,9 @@ the current state look better.
 
 ## Static checks prepared for CI
 
-- `perl tools/scripts/check-doc-links.pl docs`
-- branding validator and palette/docs copy check
+- `perl-doc-links`: `tools/scripts/check-doc-links.pl docs`
+- `docs-nav-static`: `tools/scripts/check-doc-nav.pl`
+- `android-locale-policy`, branding validator and palette/docs copy checks
+- `agent-skills-static` when `.agents/skills/` is touched
 - Markdown/XML/YAML inspection where applicable
 - no local execution by the writing agent

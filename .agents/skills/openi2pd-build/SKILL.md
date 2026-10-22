@@ -45,7 +45,9 @@ source of build rules; the root Makefile is a POSIX front-end using Ninja.
 
 ## Reconnaissance
 
-Launch read-only `explore` subagents for:
+Launch at least one read-only `explore` subagent before editing, split across
+independent areas when useful. If subagents are unavailable, report that
+limitation; do not substitute local execution. Ask for:
 
 1. target/component membership and explicit source lists;
 2. option defaults, dependency checks and platform conditionals;
@@ -88,6 +90,23 @@ build.
 - Install exactly one service manager through the `Service` component; do not
   let packaging install competing definitions.
 
+## Known issues and decisions
+
+- `language-modernization-static` is a compile-free but literal contract: it
+  pins C++23/Java 25 levels, `minSdk 29`, the availability matrix and named
+  seams (`Modern.h`, `ITransportConnector`, `jthread`/`stop_token`,
+  `GetSigningKeySizes`, `RouterCommand`, `LogLevel`, `switch (command)`).
+  Renaming or moving a seam requires updating the check in the same change.
+- Keep the `Tui`/`Runtime`/`Libraries`/`Development`/`Tools`/`Documentation`
+  components and exclusive `Service` selection coherent with packaging.
+- CMake is primary and Ninja is the default; the root Makefile remains a POSIX
+  front-end. Do not reintroduce GNU make or hidden source globs/downloads.
+- `i18n-static` pins native catalog registration, TUI `libi2pdlang` linkage and
+  Android locale metadata; a new language/catalog must update it and its CTest
+  registration in the same change.
+- Configure/build/CTest, component consumers and OpenSSL/LibreSSL lanes remain
+  pending manual CI.
+
 ## Do not
 
 - Do not configure, build, run CTest, `make`, Ninja, Gradle, sanitizers,
@@ -98,12 +117,17 @@ build.
   build.
 - Do not make an option silently change a wire/persisted format or a security
   boundary.
-- Do not commit, push, tag or release.
+- Keep every workflow `workflow_dispatch`-only; do not add `push`, `pull_request`, `schedule` or automatic `workflow_call` triggers.
+- Do not create commits, tags, releases, worktrees or temporary commits, and do not push; inspect `git status`/`git diff` before editing.
+- Do not install dependencies, fetch/vendor code or perform hidden downloads to enable a local build or test. Preserve LICENSE/NOTICE/provenance and technical identifiers/paths unless an approved migration exists (AGENTS.md).
 
 ## Prepare for CI
 
 - Keep `build-system-static` assertions coherent for source lists, dependency
-  floors, removed fallbacks, test inventory and options.
+  floors, removed fallbacks, test inventory, install components and options.
+  Keep `agent-skills-static` coherent when a test or workflow path is referenced
+  by a skill, and `language-modernization-static` coherent when a modernization
+  seam/path is renamed or moved.
 - Register tests with the correct labels and platform conditions.
 - Verify configure lines by inspection for Linux/Clang, Linux/GCC, OpenBSD,
   Windows/MSYS2, MSVC, Android and sanitizer jobs.
@@ -114,8 +138,9 @@ build.
 ## Tracking
 
 Use `BUILD`/`DEPS`/D or the architecture area. Record target/option changes,
-consumers, test registration and platform lanes. Append a dated `PROGRESS.md`
-entry; subagents report proposed rows to the coordinator.
+consumers, test registration and platform lanes. Propose a dated `PROGRESS.md` entry and any `TODO.md`/`ROADMAP.md` changes to the coordinator; append them only when explicitly assigned; subagents report proposed rows to the coordinator.
+
+Record the exact AGENTS.md `Tracking states` value and state which validations were not run; do not collapse them into “pending”.
 
 ## References
 

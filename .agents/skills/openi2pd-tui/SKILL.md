@@ -24,8 +24,9 @@ bridge.
 
 - `tui/main.cpp`, `TuiClient.*`, `Terminal.*`, `TerminalUnix.cpp`,
   `TerminalWin32.cpp`, `TuiWin32Ipc.*`, `Theme.h`.
-- `libi2pd/TuiProtocol.h`, `daemon/TuiServer.*`, `TuiServerCommon.*`,
-  `TuiServerWin32.cpp`, `daemon/Daemon.*`.
+- `libi2pd/TuiProtocol.h`, `daemon/TuiServer.*` (including `TuiServer.h`),
+  `TuiServerCommon.*`, `TuiServerWin32.cpp`, `tui/TuiClientWin32.cpp`,
+  `daemon/Daemon.*`.
 - Torrent control types in `libi2pd_client/TorrentsControl.h` and the tunnel
   facade, but do not read engine internals from the IPC thread.
 - [`../../../docs/tui-ipc.md`](../../../docs/tui-ipc.md),
@@ -48,7 +49,9 @@ bridge.
 
 ## Reconnaissance
 
-Launch read-only `explore` subagents for:
+Launch at least one read-only `explore` subagent before editing, split across
+independent areas when useful. If subagents are unavailable, report that
+limitation; do not substitute local execution. Ask for:
 
 1. the presentation model and terminal/backend split;
 2. every TUI request/response type, bound and authorization rule;
@@ -88,6 +91,21 @@ the console.
 - Preserve keyboard/mouse accessibility, resize behavior and clean terminal
   restoration on quit/error.
 
+## Known issues and decisions
+
+- `TuiServer` owns a `std::jthread` and stop token. `Stop()` = `request_stop()`
+  + `join()`, then close the listener and unlink only after device/inode
+  verification. Client close must not unwind into the thread.
+- All client waits are bounded; `stop_requested()` must be checked in `Run`,
+  `HandleClient` and `SendAll`. The Windows TUI uses a separate thread/stop
+  event and is not a process boundary.
+- The TUI is a local administrative client, not the router. Torrent control
+  uses bounded IPC and must not read engine internals or download files.
+- UI text is selected through `openi2pd-i18n`; `terminal::Put` takes a column
+  budget, tab layout uses `DisplayWidth`, and translated/wide text must not be
+  advanced or truncated by byte length.
+- TUI IPC regressions are prepared but no manual CI/live console run exists.
+
 ## Do not
 
 - Do not compile, run CTest, the console, sanitizers, fuzzers or validators
@@ -98,7 +116,8 @@ the console.
   open files/peer connections directly.
 - Do not leak keys, private identities, raw paths or file descriptors through
   status/log responses.
-- Do not commit, push, tag or release.
+- Do not create commits, tags, releases, worktrees or temporary commits, and do not push; inspect `git status`/`git diff` before editing.
+- Do not install dependencies, fetch/vendor code or perform hidden downloads to enable a local build or test. Preserve LICENSE/NOTICE/provenance and technical identifiers/paths unless an approved migration exists (AGENTS.md).
 
 ## Prepare for CI
 
@@ -116,8 +135,9 @@ the console.
 
 Use `TUI`/E, `TORRENT`/N and `PARITY-005`. Record protocol version, request
 types, bounds, authorization, tests and the terminal/platform CI lane. Update
-the TUI protocol document for any wire change. Append a dated `PROGRESS.md`
-entry; subagents report proposed rows to the coordinator.
+the TUI protocol document for any wire change. Propose a dated `PROGRESS.md` entry and any `TODO.md`/`ROADMAP.md` changes to the coordinator; append them only when explicitly assigned; subagents report proposed rows to the coordinator.
+
+Record the exact AGENTS.md `Tracking states` value and state which validations were not run; do not collapse them into “pending”.
 
 ## References
 

@@ -31,7 +31,9 @@ Use with `SKILL.md`. The protocol document remains authoritative.
 - Authentication is local peer UID (Unix) or SID/session (Windows); failure
   closes the connection.
 - Administrative operations are allowlisted and daemon-owned; the client
-  cannot name arbitrary config keys or filesystem paths.
+  cannot name arbitrary config keys or filesystem paths. Read
+  `docs/tui-ipc.md` for the normative limits and closed administrative set, and
+  `docs/torrent/ipc.md` for torrent command/response/queue bounds.
 - Slow/abusive clients cannot block the service thread; queues are bounded and
   backpressure is explicit.
 - Shutdown/restart closes the transport, removes the Unix socket and does not

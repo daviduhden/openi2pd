@@ -20,6 +20,7 @@ or test procedure.
 | Client protocols | `libi2pd_client/SAM.*`, `I2CP.*`, `Streaming.*`, `Datagram.*`, `HTTPProxy.*`, `SOCKS.*` | Async owners and connection lifetimes |
 | Torrent | `libi2pd_client/Torrents*`, `TorrentPayloadStorage.*`, `TorrentStorageWorker.*` | Service/storage/network domains |
 | Daemon/TUI/IPC | `daemon/*`, `tui/*`, `privsep/*` | Shared protocol and shutdown ordering |
+| Modernization seams | `Modern.h`, `TransportConnector.h`, `Log.*` | `language-modernization-static` pins named symbols/paths |
 
 ## Review questions
 

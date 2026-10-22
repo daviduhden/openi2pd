@@ -26,7 +26,9 @@ pass.
 - `privsep/OpenBSDSandbox.*`, `OpenBSDImsg.*`, `Supervisor.*`, `Worker.*`,
   `RunWorker.*`, `RouterStorage.*`, `TorrentStorage.*`.
 - `libi2pd/SSU2*`, `Transports.*`, `RouterInfo.*` for MTU/IPv6/reachability.
-- `contrib/openbsd/i2pd.rc`, `i2pd.login`, `i2pd.conf`, `README.md`.
+- `contrib/openbsd/i2pd.rc`, `i2pd.login`, `i2pd.conf`, `README.md` and the
+  `port/` merge template (`Makefile`, `PLIST`, `pkg/README`). The template is
+  not selected by CMake and is built only in an external ports tree.
 - [`../../../docs/security/openbsd-validation.md`](../../../docs/security/openbsd-validation.md)
   and [`../../../docs/security/privilege-separation.md`](../../../docs/security/privilege-separation.md).
 
@@ -48,7 +50,8 @@ pass.
 ## Reconnaissance
 
 Launch at least one read-only `explore` subagent for the startup/sandbox order
-and one for tests/service files. Ask for:
+and one for tests/service files. If subagents are unavailable, report that
+limitation; do not substitute local execution. Ask for:
 
 1. when `pledge`/`unveil` is installed relative to worker spawn and config;
 2. every inherited fd and descriptor handoff;
@@ -86,6 +89,17 @@ and one for tests/service files. Ask for:
 - Gate post-quantum advertisement on LibreSSL capability; do not advertise an
   unsupported type.
 
+## Known issues and decisions
+
+- `contrib/openbsd/port/` is an external merge template, not selected by CMake
+  and not a validated package. `pkg_create`, `pkg_add` and `rcctl` runs remain
+  pending.
+- Preserve pledge/unveil ordering, fd4 root handoff, post-pledge `sendfd`/
+  `recvfd` restrictions and LibreSSL 4.0+/OpenSSL 4.x compatibility.
+- Unsupported sandbox paths must return CTest SKIP (77), never a false pass.
+- OpenBSD compilation, service lifecycle, TUI and storage-broker runtime
+  evidence remain pending manual CI.
+
 ## Do not
 
 - Do not compile, run CTest, `systemd-analyze`, rc.d, package or validators
@@ -93,7 +107,8 @@ and one for tests/service files. Ask for:
 - Do not add promises or unveiled paths merely to silence a failure.
 - Do not replace a failed sandbox with an unsandboxed fallback.
 - Do not claim OpenBSD runtime validation without the manual VM/CI evidence.
-- Do not commit, push, tag or release.
+- Do not create commits, tags, releases, worktrees or temporary commits, and do not push; inspect `git status`/`git diff` before editing.
+- Do not install dependencies, fetch/vendor code or perform hidden downloads to enable a local build or test. Preserve LICENSE/NOTICE/provenance and technical identifiers/paths unless an approved migration exists (AGENTS.md).
 
 ## Prepare for CI
 
@@ -110,8 +125,9 @@ and one for tests/service files. Ask for:
 ## Tracking
 
 Use `OBSD`/I and `OPENBSD-SBX-*`/`PRIVSEP-*`. Record policy before/after,
-unveiled paths, inherited fds, tests and the OpenBSD CI/VM lane. Append a dated
-`PROGRESS.md` entry; subagents report proposed rows to the coordinator.
+unveiled paths, inherited fds, tests and the OpenBSD CI/VM lane. Propose a dated `PROGRESS.md` entry and any `TODO.md`/`ROADMAP.md` changes to the coordinator; append them only when explicitly assigned; subagents report proposed rows to the coordinator.
+
+Record the exact AGENTS.md `Tracking states` value and state which validations were not run; do not collapse them into “pending”.
 
 ## References
 

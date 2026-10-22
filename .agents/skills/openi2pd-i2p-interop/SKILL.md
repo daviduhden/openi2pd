@@ -53,7 +53,8 @@ relabel old findings, fixtures or runs as 2.14.0 evidence.
 ## Reconnaissance
 
 Launch at least one read-only `explore` subagent for the C++ path and one for
-the matching Java reference and existing fixtures. Ask for:
+the matching Java reference and existing fixtures. If subagents are unavailable,
+report that limitation; do not substitute local execution. Ask for:
 
 1. the Java source path, tag/commit and relevant method;
 2. the C++ parser/serializer, error behavior and callers;
@@ -68,7 +69,8 @@ peer or add a hidden external checkout. The reference is for reading only.
 - Split by independent protocol/message family. Do not edit the same parser,
   serializer or shared header from two workstreams.
 - One owner updates the compatibility matrix per finding; do not let multiple
-  agents append conflicting rows.
+  agents append conflicting rows. Shared parser/serializer headers,
+  `tests/interop/` fixtures and matrix rows require coordinator review.
 - Keep the C++ implementation independent. Do not translate Java source
   wholesale; implement from the specification and observed behavior.
 - Protocol changes that alter a wire format require a specification reference,
@@ -87,6 +89,19 @@ peer or add a hidden external checkout. The reference is for reading only.
 - Do not copy Java architecture, threading or accidental behavior unless a
   protocol requirement justifies it.
 
+## Known issues and decisions
+
+- The comparison target is I2P Java 2.14.0
+  (`3c98503c5f14efe7bdd783528ba7f621f12d8081`); 2.13.0 citations and fixtures
+  are historical and must keep that provenance.
+- Outbound transport priority is a Strategy in `TransportConnector.h`:
+  `false` advances to the next transport, but a pending SSU2 endpoint reports
+  `true` to preserve Java's one-establishment-state behavior.
+- Direct-only DatabaseStore/DatabaseLookup policy depends on preserved clove
+  origin; never relabel tunnel-delivered messages as direct.
+- `test-transport-connector` checks only static mapping/short-circuit behavior;
+  live NTCP2/SSU2, PeerTest, tunnel and Java-peer evidence remain pending.
+
 ## Do not
 
 - Do not compile, run CTest, interop scripts, Java peers or project validators
@@ -95,7 +110,8 @@ peer or add a hidden external checkout. The reference is for reading only.
 - Do not change I2P wire/persisted formats without a specification reference
   and migration/compatibility test.
 - Do not claim “fully compatible” from a fixture pass or a source comparison.
-- Do not commit, push, tag or release.
+- Do not create commits, tags, releases, worktrees or temporary commits, and do not push; inspect `git status`/`git diff` before editing.
+- Do not install dependencies, fetch/vendor code or perform hidden downloads to enable a local build or test. Preserve LICENSE/NOTICE/provenance and technical identifiers/paths unless an approved migration exists (AGENTS.md).
 
 ## Prepare for CI
 
@@ -112,8 +128,10 @@ peer or add a hidden external checkout. The reference is for reading only.
 
 Use the `NET`/A or client area, plus `PARITY-*` rows where applicable. Record
 Java reference, C++ files, difference verdict, fix, fixtures and pending
-dynamic validation. Append a dated `PROGRESS.md` entry. Subagents report
+dynamic validation. Propose a dated `PROGRESS.md` entry and any `TODO.md`/`ROADMAP.md` changes to the coordinator; append them only when explicitly assigned. Subagents report
 proposed tracking rows to the coordinator.
+
+Record the exact AGENTS.md `Tracking states` value and state which validations were not run; do not collapse them into “pending”.
 
 ## References
 

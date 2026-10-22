@@ -1,6 +1,6 @@
 ---
 name: openi2pd-linux-windows
-description: Use when changing openi2pd Linux sandboxing or Windows local IPC and process policy, including seccomp, Landlock, capabilities, named pipes, DACLs, tokens, Jobs and Win32 console/service adapters.
+description: Use when changing openi2pd Linux sandboxing or Windows local IPC, including seccomp, Landlock, capabilities, named pipes, DACLs, tokens, Jobs and Win32 console/service adapters, excluding the transport-neutral worker protocol and TUI presentation.
 ---
 <!--
 See the LICENSE file at the top of the project tree for copyright
@@ -46,7 +46,9 @@ DACL or credential check to make a cross-platform build pass.
 
 ## Reconnaissance
 
-Launch one read-only `explore` subagent per platform. Ask for:
+Launch at least one read-only `explore` subagent per platform before editing.
+If subagents are unavailable, report that limitation; do not substitute local
+execution. Ask for:
 
 1. the exact kernel/API mechanism and its failure path;
 2. credential/peer identity checks and what happens on lookup failure;
@@ -89,6 +91,19 @@ Launch one read-only `explore` subagent per platform. Ask for:
   interactive exit.
 - Avoid `RemoveDirectoryA` macro collisions; use unambiguous names/APIs.
 
+## Known issues and decisions
+
+- Windows has a named-pipe worker transport and restricted-token/Job policy, but
+  no `--privsep-worker` daemon wiring, AppContainer/LPAC token construction or
+  per-role WFP/ACL enforcement. Do not claim Windows separation.
+- Linux storage/log boundaries exist; network/router/verifier workers and
+  complete storage authority remain pending. OpenBSD-only inherited-root roles
+  are rejected on Linux.
+- The Unix TUI now uses `std::jthread`; the Windows TUI still uses its own
+  thread and stop event. Keep both backends behaviorally aligned.
+- Cross-user, AppContainer, WFP and Windows service runtime tests remain
+  pending.
+
 ## Do not
 
 - Do not compile, run CTest, sanitizers, console/pipe tests or validators
@@ -99,7 +114,8 @@ Launch one read-only `explore` subagent per platform. Ask for:
   auto-start trigger.
 - Do not claim Windows/Linux runtime validation from a cross-compile or static
   review.
-- Do not commit, push, tag or release.
+- Do not create commits, tags, releases, worktrees or temporary commits, and do not push; inspect `git status`/`git diff` before editing.
+- Do not install dependencies, fetch/vendor code or perform hidden downloads to enable a local build or test. Preserve LICENSE/NOTICE/provenance and technical identifiers/paths unless an approved migration exists (AGENTS.md).
 
 ## Prepare for CI
 
@@ -118,8 +134,10 @@ Launch one read-only `explore` subagent per platform. Ask for:
 Use `PRIVSEP`/M plus platform IDs. Record mechanism, sandbox order, credential
 checks, fallback behavior, tests and the exact CI lane. Update
 `docs/security/windows-worker-ipc.md` or the Linux/IPC document when behavior
-changes. Append a dated `PROGRESS.md` entry; subagents report proposed rows to
+changes. Propose a dated `PROGRESS.md` entry and any `TODO.md`/`ROADMAP.md` changes to the coordinator; append them only when explicitly assigned; subagents report proposed rows to
 the coordinator.
+
+Record the exact AGENTS.md `Tracking states` value and state which validations were not run; do not collapse them into “pending”.
 
 ## References
 

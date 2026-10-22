@@ -1,6 +1,6 @@
 ---
 name: openi2pd-documentation
-description: Use when changing openi2pd documentation, licensing and attribution, branding metadata, manual pages, documentation links or TODO/ROADMAP/PROGRESS tracking.
+description: Use when changing openi2pd documentation, licensing and attribution, branding metadata, manual pages or navigation, excluding coordinator-owned TODO/ROADMAP/PROGRESS edits unless explicitly assigned.
 ---
 <!--
 See the LICENSE file at the top of the project tree for copyright
@@ -39,14 +39,16 @@ permanent policy; do not copy it wholesale into docs or skills.
 - [`../../../docs/REBRANDING.md`](../../../docs/REBRANDING.md) and
   [`../../../docs/branding/assets.md`](../../../docs/branding/assets.md) —
   identity and asset sources.
-- [`../../../docs/testing.md`](../../../docs/testing.md) — docs-links/branding
-  static checks.
+- [`../../../docs/testing.md`](../../../docs/testing.md) — `perl-doc-links`,
+  `docs-nav-static`, `android-locale-policy` and branding static checks.
 - [`references/docs-tracking.md`](references/docs-tracking.md) — writing,
   licensing and tracking checklist.
 
 ## Reconnaissance
 
-Launch read-only `explore` subagents for:
+Launch at least one read-only `explore` subagent before editing, split across
+independent areas when useful. If subagents are unavailable, report that
+limitation; do not substitute local execution. Ask for:
 
 1. authoritative code/docs for every factual claim;
 2. inbound links, anchors and duplicated instructions;
@@ -96,6 +98,19 @@ branding validators or a build.
 - Keep historical entries append-only; correct current-state statements rather
   than rewriting history without cause.
 
+## Known issues and decisions
+
+- Claims must distinguish static implementation, pending CI compilation,
+  pending CI tests and validated-by-CI. Historical local-run rows in
+  `docs/testing.md` are not current evidence.
+- Documentation is Markdown/MkDocs-compatible, English and CC-BY-SA-4.0;
+  UI localization is owned by `openi2pd-i18n` and does not translate docs.
+  do not add HTML/JS/web assets or duplicate AGENTS policy.
+- `check-doc-links.pl`, `check-doc-nav.pl`, `agent-skills-static` and
+  `language-modernization-static` are the relevant compile-free checks; the
+  latter two pin exact phrases and can break on cosmetic rewording.
+- Link/nav/branding and CI validation remain pending manual Linux runs.
+
 ## Do not
 
 - Do not compile, run CTest, link/branding validators, `mkdocs`, man-page
@@ -106,7 +121,9 @@ branding validators or a build.
   formats in docs without a migration.
 - Do not add personal credits, donation links or outdated upstream install
   instructions.
-- Do not commit, push, tag or release.
+- Keep every workflow `workflow_dispatch`-only; do not add `push`, `pull_request`, `schedule` or automatic `workflow_call` triggers.
+- Do not create commits, tags, releases, worktrees or temporary commits, and do not push; inspect `git status`/`git diff` before editing.
+- Do not install dependencies, fetch/vendor code or perform hidden downloads to enable a local build or test. Preserve LICENSE/NOTICE/provenance and technical identifiers/paths unless an approved migration exists (AGENTS.md).
 
 ## Prepare for CI
 
@@ -116,16 +133,20 @@ branding validators or a build.
   inspection.
 - Keep `docs/file-headers.md` exceptions current for new binary/generated
   files.
-- Update `TODO.md` (stable ID/status/files/validation), `ROADMAP.md` (workstream
-  or exit criteria) and `PROGRESS.md` (dated, append-only) together.
-- Record documentation/link checks as pending until the manual Linux job runs.
+- Propose the `TODO.md` (stable ID/status/files/validation), `ROADMAP.md`
+  (workstream/exit criteria) and `PROGRESS.md` (dated, append-only) rows to the
+  coordinator; write them only when explicitly assigned.
+- Keep `agent-skills-static` coherent and record the exact AGENTS.md tracking
+  state; documentation/link checks remain pending until the manual Linux job
+  runs.
 
 ## Tracking
 
 Use `DOCS`/G, `BRAND`/`LEGAL`/J/K or the owning area. Record the document,
-claim/source, links, license/branding impact and pending checks. Append a dated
-`PROGRESS.md` entry. The coordinator integrates tracking changes; subagents
+claim/source, links, license/branding impact and pending checks. Propose a dated `PROGRESS.md` entry and any `TODO.md`/`ROADMAP.md` changes to the coordinator; append them only when explicitly assigned. The coordinator integrates tracking changes; subagents
 report proposed rows instead of concurrent edits.
+
+Record the exact AGENTS.md `Tracking states` value and state which validations were not run; do not collapse them into “pending”.
 
 ## References
 

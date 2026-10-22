@@ -57,7 +57,7 @@ Use with `SKILL.md`. This is a static boundary map.
 | `TorrentMetadataJniTest`, `RuntimeAdminParityTest` | instrumentation |
 | `MainActivityNavigationTest`, `RouterServiceLifecycleTest` | instrumentation |
 | `TorrentSafStorageTest`, `TorrentSafCancellationWireTest`, `TorrentSafProviderCancellationTest`, `TorrentSafFixtureProvider` | instrumentation/provider |
-| `EnglishOnlyResourceTest`, `check-english-only.pl` | static |
+| `LocaleResourceTest`, `check-android-locales.pl` | static/device |
 | Java 25 guard / JNI link / APK | Android CI job |
 
 ## CI expectations

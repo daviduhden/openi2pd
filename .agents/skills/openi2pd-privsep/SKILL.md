@@ -55,7 +55,8 @@ separated.
 ## Reconnaissance
 
 Launch at least one read-only `explore` subagent for the supervisor/worker
-lifecycle and one for the protocol and callers. Ask for:
+lifecycle and one for the protocol and callers. If subagents are unavailable,
+report that limitation; do not substitute local execution. Ask for:
 
 1. who creates, authorizes, descriptors and reaps each child;
 2. every message type, direction, request-id rule and bound;
@@ -95,6 +96,20 @@ lifecycle and one for the protocol and callers. Ask for:
 - Document the current capability matrix honestly; implementation of one
   worker is not global separation.
 
+## Known issues and decisions
+
+- Do not claim global privilege separation. The log worker has historical Linux
+  evidence; payload storage, router storage and the Android SAF broker are
+  static boundaries pending CI/device validation. Network, router and verifier
+  workers do not exist.
+- Worker channels are descriptor 3; OpenBSD storage inherits the authorized root
+  at fd4 and installs its own sandbox. Never send a directory FD after pledge.
+- IPC bounds and typed errors are normative in
+  `docs/security/ipc-protocol.md`; raising frame/text limits requires a threat
+  model and migration review.
+- Negative capability, storage failure, broker restart and sanitizer tests
+  remain pending; see [`references/worker-checklist.md`](references/worker-checklist.md).
+
 ## Do not
 
 - Do not compile, run CTest, sanitizers, process tests or project validators
@@ -105,7 +120,8 @@ lifecycle and one for the protocol and callers. Ask for:
   sandboxing or an unauthenticated restart path.
 - Do not claim network/storage/crypto separation until those workers and
   negative tests exist.
-- Do not commit, push, tag or release.
+- Do not create commits, tags, releases, worktrees or temporary commits, and do not push; inspect `git status`/`git diff` before editing.
+- Do not install dependencies, fetch/vendor code or perform hidden downloads to enable a local build or test. Preserve LICENSE/NOTICE/provenance and technical identifiers/paths unless an approved migration exists (AGENTS.md).
 
 ## Prepare for CI
 
@@ -123,8 +139,9 @@ lifecycle and one for the protocol and callers. Ask for:
 Use `PRIVSEP`/M and the relevant platform IDs. Record the capability before and
 after, protocol version, failure behavior, tests prepared and the exact
 platform/CI lane still required. Update
-`docs/security/privilege-separation.md` when the matrix changes. Append a dated
-`PROGRESS.md` entry; subagents report proposed rows to the coordinator.
+`docs/security/privilege-separation.md` when the matrix changes. Propose a dated `PROGRESS.md` entry and any `TODO.md`/`ROADMAP.md` changes to the coordinator; append them only when explicitly assigned; subagents report proposed rows to the coordinator.
+
+Record the exact AGENTS.md `Tracking states` value and state which validations were not run; do not collapse them into “pending”.
 
 ## References
 

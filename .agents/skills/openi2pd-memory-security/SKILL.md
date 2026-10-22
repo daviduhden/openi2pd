@@ -1,6 +1,6 @@
 ---
 name: openi2pd-memory-security
-description: Use when auditing or changing untrusted-input parsers, concurrency, object lifetime, resource bounds or security-sensitive behavior in openi2pd, and when preparing sanitizer or fuzz regressions.
+description: Use when auditing untrusted-input parsers, concurrency, object lifetime, resource bounds or security-sensitive behavior in openi2pd, excluding general C++23 ownership refactors and cryptographic primitive selection.
 ---
 <!--
 See the LICENSE file at the top of the project tree for copyright
@@ -48,7 +48,8 @@ control to make a test or build pass.
 ## Reconnaissance
 
 Launch at least one read-only `explore` subagent for the target surface and a
-second for tests and callers. Ask for:
+second for tests and callers. If subagents are unavailable, report that
+limitation; do not substitute local execution. Ask for:
 
 1. Every path from untrusted bytes, a remote peer, a local IPC peer or a
    provider document to allocation, indexing, arithmetic and persistence.
@@ -88,6 +89,23 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
 - Document a residual risk when a complete fix is not justified; do not claim
   the audit is complete.
 
+## Known issues and decisions
+
+- `Transports::Stop()` ordering is load-bearing: join the worker, cancel
+  timers, stop servers, clear peers while both server `io_context`s are alive,
+  then reset servers. Cross-thread `IsBound*` reads must use the `m_Has*`
+  atomics, never `unique_ptr != nullptr`.
+- `jthread` RAII does not close descriptors or unlink paths. `TuiServer` must
+  `request_stop()` then `join()` before closing/unlinking, and all waits must
+  be bounded; the Windows TUI still uses its own thread/stop event.
+- Log text, writer queue and recent ring are independently bounded. Queue drops
+  are counted, and the recent ring may contain a record the writer dropped.
+- Cooperative cancellation, Android owner epochs, datagram receiver lifetime
+  and the `Transports` detach fallback remain residual audit areas; see
+  [`references/audit-matrix.md`](references/audit-matrix.md).
+- Prepared seam regressions are `unit`-labelled; do not claim ASan/TSan or
+  runtime coverage from them.
+
 ## Do not
 
 - Do not compile, run CTest, sanitizers, fuzzers, Gradle or project validators
@@ -98,7 +116,8 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
   to obtain a green result.
 - Do not ship a new wire or persisted format without a specification,
   migration and compatibility test.
-- Do not commit, push, tag or release.
+- Do not create commits, tags, releases, worktrees or temporary commits, and do not push; inspect `git status`/`git diff` before editing.
+- Do not install dependencies, fetch/vendor code or perform hidden downloads to enable a local build or test. Preserve LICENSE/NOTICE/provenance and technical identifiers/paths unless an approved migration exists (AGENTS.md).
 
 ## Prepare for CI
 
@@ -116,8 +135,9 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
 
 Use the security area (`SEC`/C) and the existing `MEM-*`, `NET-*`, `CRY-*`,
 `PRIVSEP-*` or subsystem IDs. Record the exact finding, affected files,
-regression, sanitizer/fuzz lane and residual risk. Append a dated
-`PROGRESS.md` entry. Subagents report proposed tracking rows to the coordinator.
+regression, sanitizer/fuzz lane and residual risk. Propose a dated `PROGRESS.md` entry and any `TODO.md`/`ROADMAP.md` changes to the coordinator; append them only when explicitly assigned. Subagents report proposed tracking rows to the coordinator.
+
+Record the exact AGENTS.md `Tracking states` value and state which validations were not run; do not collapse them into “pending”.
 
 ## References
 

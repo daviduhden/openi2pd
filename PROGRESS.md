@@ -13,7 +13,7 @@ Documents project documentation.
 Chronological, append-only record. New sessions should read this file first,
 then `TODO.md` and `ROADMAP.md`, then verify the code state.
 
-## Session 1 — initial audit and refactoring (this conversation)
+## Session 1 — initial audit and refactoring (historical)
 
 - Audited repository: `libi2pd`, `libi2pd_client`, `daemon`, `i18n`, builds,
   tests, packaging, CI, OpenBSD sandbox.
@@ -49,30 +49,34 @@ then `TODO.md` and `ROADMAP.md`, then verify the code state.
 - Verified `routerinfo` and the firewall unit test compile on Linux/GCC 16.
   Test execution pending (see below).
 - Android Gradle upgraded to wrapper 9.8.1 (checksum pinned) and AGP 9.4.1.
-- JDK minimum 25 enforced at Gradle evaluation; Java toolchain 25; source
-  language remains 17 because that is the supported D8/R8 level.
+- JDK minimum 25 enforced at Gradle evaluation; Java toolchain 25. The
+  historical source level 17 was later superseded by Java 25 source/target;
+  see `docs/android-java25.md`.
 - Removed old WebView preferences, permission gate activities, hard-coded
   signing credentials and cleartext WebView flag.
 - Gradle configuration now reaches the expected missing-SDK check; no APK was
   built.
 
-## Current known incomplete/blocked items
+## Session 2 historical blockers (superseded)
 
-- `test-routerinfo-firewall` compiled but was not yet run.
-- Final full build/test after all recent edits not yet repeated.
-- No I2P Java stable reference cloned/audited yet.
-- Android SDK/NDK absent; no APK/JNI build/lint.
-- ASan/UBSan/TSan/fuzzers not run.
-- OpenBSD, Windows, Android, live Java interop not validated.
+This block records the Session-2 state only. Local build/test instructions in it
+are superseded by the permanent static-only policy; use `TODO.md` and manual CI
+for current work.
+
+- `test-routerinfo-firewall` compiled but was not run at that time.
+- The subsequent full build/test was not performed under the current policy.
+- The Java reference was later pinned at 2.14.0; see `docs/INTEROPERABILITY.md`.
+- Android SDK/NDK, APK/JNI/Lint, sanitizers, fuzzing and OpenBSD/Windows/device
+  validation remain separate manual-CI items.
 - `TODO.md` contains the full unresolved inventory.
 
-## Immediate next steps
+## Session 2 historical next steps (do not execute locally)
 
-1. Run full CMake build + CTest, including firewall test and tools smoke.
-2. Run `bmake` front-end after changes.
-3. Clone latest stable I2P Java in `/tmp` and start `docs/INTEROPERABILITY.md`.
-4. Finish Java refactor and validate Gradle when SDK is available.
-5. Continue tool security audit and docs link check.
+1. Dispatch manual CI for CMake/CTest, tools smoke and the firewall test.
+2. Validate the POSIX Make front-end in manual CI.
+3. Use the pinned 2.14.0 Java reference in a read-only external checkout.
+4. Validate Gradle in the manual Android job when the SDK is available.
+5. Continue the tool security audit and documentation-link checks.
 
 ## Session 3 — Java reference, firewall validation, Android toolchain
 
@@ -104,8 +108,10 @@ then `TODO.md` and `ROADMAP.md`, then verify the code state.
   screenshots and WebView visuals.
 - Removed personal/upstream install/donation/team references from Android and
   install docs; kept provenance and legal notices.
-- Added systemd `Alias=open-i2pd.service` and updated service descriptions;
-  binary/config/persistence paths intentionally retained pending migration.
+- Added a temporary systemd `Alias=open-i2pd.service` and updated service
+  descriptions; the alias was later removed because no packaged upgrade path
+  owned it. Binary/config/persistence paths are intentionally retained pending
+  migration.
 - Updated Dockerfile to CMake/Ninja (no GNU make).
 - `bmake` full build and `bmake test` passed (17/17) after the firewall,
   Android and rebranding changes.
@@ -1145,7 +1151,7 @@ OpenBSD or Java/C++ dynamic test was run.
   architecture documents. Storage, network and crypto workers, router-core
   confinement and full negative OS-capability validation remain pending.
 
-### Session 35 — Android English-only interface
+### Session 35 — Android English-only interface (historical; superseded by I18N-001/002)
 
 - Removed all 16 language-qualified Android resource directories
   (`values-cs` … `values-zh-rCN`) and the non-English Fastlane listings.
@@ -1988,3 +1994,1044 @@ OpenBSD or Java/C++ dynamic test was run.
 - No compiler, CMake configure/build, CTest, sanitizer, fuzzer, package,
   Android/Gradle or live run was performed. All fixes and tests are static-only,
   pending manual CI compilation and tests.
+
+## 2026-10-21 — functional parity continuation (static-only)
+
+- Used read-only reconnaissance for router/protocol, client-service/proxy,
+  administration/TUI/Android and I2PSnark gaps against the pinned I2P Java
+  2.14.0 sources. No Java tree is vendored or built.
+- Added bounded native address-book list/add/replace/remove APIs with
+  Java-compatible `.i2p` validation, shared-identity reference safety and an
+  empty-index persistence path. TUI Destinations and a native Android Material
+  screen use local IPC/app-internal JNI; only full base64 destinations are
+  accepted.
+- Exposed I2PSnark force recheck through `TORRENT-RECHECK`, TUI `V` and Android;
+  the torrent must be paused with complete metadata.
+- Added Java-compatible rejection of token-bearing DatabaseStore messages that
+  arrive through a router tunnel, before DeliveryStatus construction.
+- Prepared `test-addressbook-admin`, `test-tunnel-dsm-policy`, protocol parsing
+  and Android recheck regressions; updated the parity matrix, TUI/torrent docs,
+  TODO, ROADMAP, AGENTS and testing/files-changed records.
+- No compiler, CTest, Gradle/device, sanitizer, fuzzer, validator, live
+  lookup/tracker/peer or workflow dispatch was performed. Tunnel creation/
+  editing, selected-file promotion, queue/bandwidth policy, deleted-host
+  tombstones and subscription editing remain open implementation work.
+
+## 2026-10-21 — upstream openssl continuation (static-only)
+
+- Fetched `PurpleI2P/i2pd:openssl` without worktree writes. The branch tip is
+  now `9725b8b227293a796c069ac270fa6b5b47cf9a13`; six commits follow the
+  previous `de32c8c3` review, including the merge-only `8710fd89`.
+- Adapted `35e25db2`: proxy-generated errors now use typed 400/431/500/502/504
+  statuses, including the fork-only request-header limit path. The existing
+  nil-socket and bounded-buffer guards remain; `HTTPCodeToStatus(431)` and
+  status-line regressions were added.
+- Adapted `9725b8b2`: a torrent whose hash is in our own DHT bucket reuses
+  local rendezvous peers and publishes our destination with the correct seed
+  bit, while preserving private/stopped suppression, `MAX_DHT_TORRENTS` and
+  peer caps.
+- `032b8a61` was already superseded by `I2PTunnelHTTP.h`; mixed-case HTTP
+  tunnel header regressions were added. `137dde2f` is partially
+  integrated/obsolete, `8710fd89` is merge-only, and `c5e8e10a` is incompatible
+  because it packages the deliberately removed web console.
+- Prepared `test-http-res`, `test-torrents-dht-interop` and `test-i2ptunnel-http`
+  extensions; updated `docs/upstream-sync.md`, TODO, ROADMAP, AGENTS and the
+  torrent/proxy documentation. No local build, CTest, sanitizer, fuzzer,
+  package, proxy/DHT/peer run, commit or push was performed.
+
+## 2026-10-21 — OpenSSL 4 and C++23 ownership continuation (static-only)
+
+- Modernized OpenSSL/LibreSSL discovery: CMake now reads the selected
+  `opensslv.h`, rejects mixed prefixes, enforces OpenSSL 3.0.2+/LibreSSL 4.0+,
+  exposes `I2PD_OPENSSL_EXPECT*` CI guards and runs compile-only probes for
+  `EVP_PKEY_is_a`, group/BN params, `EVP_MD/CIPHER/KDF_fetch`, `EVP_EC_gen`,
+  `ASN1_STRING` accessors and `TLS_method`. OpenSSL must provide the modern
+  surface; LibreSSL retains small feature-selected fallbacks.
+- Added a runtime EVP capability probe in `Crypto` and switched family/reseed
+  key inspection to provider APIs where available. Ported `famtool` to checked
+  EVP signing, `EVP_EC_gen`/PKCS#8 output and strict DER parsing; no deprecation
+  suppression remains. TLS contexts now use explicit client/server roles and
+  I2PControl signs new certificates with SHA-256. PQ publication and session
+  selection use `CanPublishPQ`/`HighestSupportedPQVersion`, so a provider that
+  lacks a parameter set cannot be advertised.
+- Continued C++23 ownership work: `TunnelConfig` uses an owned
+  `vector<unique_ptr<TunnelHopConfig>>`; `GarlicDestination` no longer shares a
+  mutable payload buffer; `Piece::m_Data` is `unique_ptr`; `UDPTunnel` uses
+  `optional<thread>` and `atomic<bool>`; `Families` owns `EVP_PKEY` and checks
+  signing/verification results. Address-book index writes use a same-directory
+  temporary and rename, empty indexes are not created on clean shutdown, and
+  the Android recheck/tracker parsers reject the engine's `0` sentinel.
+- Prepared `test-openssl-capabilities`, `test-tunnelconfig-ownership`, address
+  book save-count checks and the Android recheck expectation; updated
+  dependencies/famtool/testing documentation and TODO/ROADMAP/AGENTS. No
+  compiler, CMake configure/build, CTest, sanitizer, fuzzer, package,
+  Android/Gradle/device, live TLS/PQ or workflow dispatch was performed. All
+  changes are implemented by static analysis, pending manual CI compilation
+  and tests; no commit or push was authorized.
+
+## 2026-10-21 — memory-safety audit continuation (static-only)
+
+- Ran independent static audits for SSU2/NTCP2, ratchet/Garlic, netDb/
+  RouterInfo/LeaseSet, BitTorrent, IPC/privsep and Android JNI. Findings were
+  correlated against the current uncommitted diff; no source was compiled or
+  executed.
+- Fixed the family-signature fail-open, router garlic/DeliveryStatus length
+  checks, Garlic clove pointer bounds, NTCP2 SipHash setup failure handling,
+  torrent piece/DHT empty-vector bounds, offline-key chaining, truncated SU3
+  file names, HTTP control-character headers, SAF/JNI pending-exception
+  ordering, native Android start re-entry, and TUI/admin/comment bounds.
+- Prepared/extended `test-http-res` and `test-tui-protocol` malformed-input
+  cases. Added tracking for the remaining SSU2 pool/address/fragment races,
+  RouterInfo container mutation, ratchet/destination crypto-context sharing,
+  datagram receiver lifetime and residual JNI/IPC contracts (`SEC-025`).
+- No compiler, CMake configure/build, CTest, ASan/UBSan/TSan, fuzzer, Gradle/
+  device, Java peer or workflow dispatch was performed. All changes are static
+  analysis only, pending manual CI compilation/tests; no commit or push.
+
+## 2026-10-21 — concurrency and lifecycle continuation (static-only)
+
+- Six read-only audits covered callbacks/timers, SSU2/NTCP2 sessions, netDb,
+  BitTorrent, IPC/storage workers and Android JNI.
+- Fixed the `RunnableService` self-stop/join path, made `Transports` lifecycle
+  and shutdown ordering atomic/idempotent, restarted `I2PControl` correctly,
+  made daemon shutdown flags atomic, and removed the shared
+  `RouterContext::m_CurrentNoiseState` scratch by returning caller-owned Noise
+  state. `Families` now protects its key map with a shared mutex.
+- Added a terminated latch to SSU2 sessions so late handshake packets cannot
+  resurrect a terminated session, and terminated expired pending sessions
+  instead of silently erasing them.
+- Prepared `test-runnableservice-lifecycle`; documented remaining raw
+  `this`/receiver/RouterInfo/Profile/BitTorrent/IPC/JNI lifetime work as
+  `CONC-005`.
+- No compiler, CTest, ASan/UBSan/TSan, fuzzer, Android/device, OpenBSD or live
+  peer run was performed; no commit or push.
+
+## 2026-10-21 — build/dependency consolidation (static-only)
+
+- Made the POSIX make front-end real: `.PHONY`, `all` default, build-before-install,
+  `DESTDIR`/`PREFIX` forwarding, safe clean guards, working `tui`/`tools`.
+- Added `build/CMakePresets.json` (Ninja), rejected `Unix Makefiles` on OpenBSD, set
+  CMake 3.24, fixed install components (`Development`), made the exported
+  package relocatable with `configure_package_config_file`/`@PACKAGE_INIT@`,
+  moved systemd units to an architecture-independent path, installed docs
+  outside `WITH_BINARY`, required ncursesw explicitly by default
+  (`I2PD_TUI_REQUIRED`), and modelled Boost.JSON/URL as header-only.
+- Removed unused CMake modules, fixed MSVC static suffixes, consolidated Boost
+  discovery, moved `WITH_FUZZERS` to the top level, pinned RPM CMake/Ninja/Boost
+  requirements, replaced old Fedora/Mageia build-directory branches with
+  `%{_vpath_builddir}`, removed the obsolete ENGINE requirement and dangling
+  i2pd-git certificate link, corrected the static package tmpfiles path, and
+  updated Docker to install zlib without header-only Boost packages.
+- Added `packaging-static` and manual install-component/POSIX-make CI paths;
+  OpenBSD now installs ncurses and asserts `i2pd-tui`; the fuzz workflow
+  instruments linked libraries.
+- No configure, build, test, package, workflow dispatch, commit or push was
+  performed.
+
+## 2026-10-21 — functional parity continuation (static-only)
+
+- Read-only subagents compared router/netDb/reseed, client services/proxies,
+  administration/TUI/Android, address book and I2PSnark against the pinned I2P
+  Java 2.14.0 tree (`3c98503c5f14efe7bdd783528ba7f621f12d8081`).
+- Implemented native deleted-host tombstones: bounded normalized patterns,
+  anchored wildcard matching, atomic `deleted.txt` persistence, subscription
+  merge skip and explicit-add clearing. TUI exposes `ADDRESSBOOK-BLOCKED`,
+  `ADMIN ADDRESS-BLOCK/UNBLOCK`, Destinations `b`/`u`; Android exposes block,
+  unblock and blocked-list dialogs through the service worker/JNI.
+- Implemented I2PSnark metainfo fidelity and editing: unknown top-level bencode
+  keys and creation date/url-list/encoding survive tracker/metadata rewrites;
+  comment and created-by editing require a paused torrent and use bounded TUI
+  IPC/Android controls. Android now supports remove-with-data through the
+  existing `TORRENT-REMOVE ... files` path.
+- Recorded remaining 2.14.0 gaps in `docs/FEATURE-PARITY.md` §10 and
+  `PARITY-014`: tunnel filters, Streaming limits/actions, SAM protocol subsessions,
+  proxy authentication, NetDb admission/refresh, reseed netid multi-source,
+  operator blocklist, admin inventory/per-tunnel control and selected-file
+  promotion/bandwidth scheduling.
+- Prepared/extended regressions: `test-addressbook-admin` (tombstones),
+  `test-torrents-engine-interop` (metainfo preservation/edit), TUI protocol
+  vectors and Android `TorrentControlTest`.
+- No compiler, CTest, sanitizer, fuzzer, Gradle/device, Java peer or workflow
+  run was performed; no commit or push.
+
+## 2026-10-21 — upstream openssl re-verification and integration gap closure (static)
+
+- Re-verified `PurpleI2P/i2pd:openssl` with read-only `git ls-remote` and a fresh
+  clone. The branch tip remains `9725b8b227293a796c069ac270fa6b5b47cf9a13`;
+  `git rev-list --all --not 9725b8b2` is empty, so there is no later commit to
+  classify. The six-commit `de32c8c3..9725b8b2` continuation is fully recorded.
+- Closed integration gaps exposed by the already-audited commits:
+  - DHT rendezvous now unannounces our identity on stop/remove, reserves one
+    local slot when remote announcers fill the per-torrent cap, rejects removed
+    torrents and matches upstream's empty-bucket predicate fallback.
+  - Proxy error status constants moved to `HTTPProxy.h` with a constexpr
+    failure mapping; regression tests pin 400/431/500/502/504.
+  - `I2PTunnelHTTP` rejects obs-fold leading SP/HTAB header continuations;
+    mixed-case `Proxy-Connection` is pinned.
+- Corrected upstream-sync packaging wording: `137dde2f` contributes no
+  applicable hunk; its `0%{?rhel} <= 9` condition would be true on non-RHEL.
+- Updated `docs/upstream-sync.md`, `TODO.md` (`UPSTREAM-006/007`), `ROADMAP.md`,
+  `docs/testing.md`, `docs/files-changed.md` and `AGENTS.md`.
+- No compiler, CTest, sanitizer, fuzzer, live proxy/DHT/peer or workflow run was
+  performed; no commit or push.
+
+## 2026-10-21 — SSU2/NTCP2 handshake and control-plane continuation (static)
+
+- Four read-only audits compared SSU2 handshake/ACK/retransmission, fragmentation,
+  NAT/introducers/PeerTest/relay/MTU/IPv6 and NTCP2 framing/options with the
+  pinned Java 2.14.0 tree.
+- SSU2: late packet 0 no longer rewinds the receive point or ACK; wrong-type
+  short packets no longer trigger unbounded SessionConfirmed retransmission;
+  session removal is owner-checked; failed SessionCreated resets Noise state;
+  the resend throttle predicate was corrected; late `Established` callbacks are
+  posted to the service thread; PeerTest msg 1 checks authenticated source
+  family/address/target; PeerTest/RelayIntro private/reserved targets are
+  rejected; PeerTest timestamps are bounded to ±120 s; RelayIntro HolePunches
+  have per-target/rate admission; banned NTCP2 termination marks the peer
+  unreachable.
+- NTCP2: msg3p2 bounds aligned to Java 2.14.0 (`459..4048`) in both directions;
+  static assertions and handshake-bound tests updated.
+- Prepared/updated regressions cover malformed, reordered and loss cases in
+  `test-ssu2-*`, `test-ntcp2-*`, proxy status and address-book/torrent work.
+- No compiler, CTest, sanitizer, fuzzer, live relay/PeerTest/MTU/IPv6 or
+  workflow run was performed; no commit or push.
+
+## 2026-10-21 — cryptography audit continuation (static)
+
+- Independent audits covered Ratchet/ECIES NS/NSR, DateTime/replay, AEAD and key
+  lifetime, signatures/Elligator2/blinding, and ML-KEM/OpenSSL-LibreSSL
+  capability handling.
+- Implemented CSPRNG seeds and fail-closed peer ordering, fail-closed
+  multi-buffer AEAD, zeroization, ratchet tag boundary/eviction/NEXT_KEY
+  amplification limits, an NSR/ACK fallback for all client destinations, LS2
+  RSA transient policy, Ed25519 point validation, GOST RFC 7091 normalization,
+  SSU2 KEM/version fallback, fail-closed leaseSetEncType and I2CP key-length
+  validation.
+- Added `test-rng-seed`, extended AEAD/GOST/Ratchet regressions and updated
+  `docs/INTEROPERABILITY.md`, `docs/security-audit.md`, `TODO.md` (`NET-164`)
+  and test/file tracking.
+- Residual: NS empty-clove policy is deliberately stricter than Java; tag
+  eviction can still churn under sustained abuse; provider PQ transcripts,
+  type-5/7 NSR vectors, multi-key 7/4 sessions and all dynamic validation
+  remain pending. No compile, CTest, sanitizer, fuzzer, Java peer or workflow
+  run; no commit or push.
+
+## 2026-10-21 — netDb/RouterInfo/LeaseSet continuation (static)
+
+- Clove-delivered I2NP now preserves its untrusted origin; token DSM/DLM cannot
+  masquerade as direct messages.
+- Client LeaseSet DSRMs are bound to queried peers, deduplicated and capped.
+- Per-sender lookup and per-key flood throttles bound amplification while still
+  storing and acknowledging entries.
+- Fresh zero-address RouterInfos are storable but not selectable; persistence
+  uses an atomic updated snapshot and temp+rename file replacement.
+- Reseed preserves the local RouterInfo/floodfill entry and is fenced by Stop;
+  Start uses locked container counts.
+- Encrypted LS2 rejects RSA blinded types; LS2 PopulateLeases is a no-op; Meta
+  lifetime is bounded by its latest entry; LS1 buffers are canonicalized.
+- Reply-key 0x12 remains fail-closed because Java 2.14.0 has no normative sender
+  or KDF.
+- Added/updated DSMPolicy, LS1 canonical, LS2 PopulateLeases, Meta expiry and
+  encrypted-RSA header regressions; no compile/CTest/TSan/live run exists.
+
+## 2026-10-21 — tunnel-build/I2NP/Garlic continuation (static)
+
+- Duplicate tunnel peers are rejected and zero transit tunnel IDs are dropped.
+- Zero-hop creation follows the selected path; replacement outbound tunnels are
+  published correctly; varied-length pools retain pre-expiry recreation.
+- Build-record shuffles advance the shared RNG.
+- OBEP LOCAL delivery and non-whitelisted clove types are dropped.
+- TunnelGateway reserves its header, rejects oversized bodies and checks inner
+  I2NP expiration.
+- Per-tunnel IV replay filtering and bounded reassembly tables were added.
+- Clove lengths/freshness are validated, encryption is fallible and router
+  garlic wrapping null-checks its session.
+- Custom peer selectors are owner-bound/unregistered and peer configuration is
+  copied under a mutex.
+- No compiler, CTest, sanitizer, fuzzer, live tunnel or Java peer was run; no
+  commit or push.
+
+## 2026-10-21 — SAM/I2CP/Streaming/Datagram continuation (static)
+
+- SAM per-port acceptors are disarmed and dequeued; closed sockets cannot adopt
+  streams; subsession PORT/duplicate checks, SESSION STATUS errors, HELLO
+  whitespace parity and balanced shutdown were added.
+- I2CP b33 replies validate the blinded store key, terminal MessageStatus is
+  single-owner, and CreateLeaseSet2 validates/stages keys before publishing.
+- Streaming saved-packet/reassembly tables are bounded, stream lookup is locked,
+  ping/pong ports are preserved, invalid SYNs are rejected and terminated sends
+  cancel queued handlers.
+- Datagram3 hash-only delivery no longer creates/acks a session without
+  authentication; wildcard receivers replace; Datagram1/2 refresh sender identity.
+- No compiler, CTest, sanitizer, fuzzer, Java peer or client run; no commit/push.
+
+## 2026-10-21 — user-services continuation (static)
+
+- HTTP/SOCKS now classify `.i2p` case-insensitively, accept `.i2p.alt`, reject
+  loopback/private clearnet outproxy targets, and SOCKS accepts IPv4/IPv6
+  literals with port-0/private rules.
+- Address book adds `.i2p.alt` lookup aliases, `www.` fallback, bounded
+  subscription bodies/entries and tombstone enforcement on lookup/jump inserts.
+- Reseed now verifies TLS chain/hostname, bounds SU3/HTTP/ZIP/entry/inflated
+  sizes, rejects stale network bundles and normalizes default hosts.
+- Remaining user-service work: HTTP/SOCKS authentication, full response-header
+  limits, server-tunnel TLS configuration, reload of changed tunnel sections,
+  tunnel inventory/per-tunnel admin and Android replace UI.
+- No compiler, CTest, sanitizer, fuzzer, Java peer, live proxy/reseed or device
+  run; no commit or push.
+
+## 2026-10-21 — multiprocess trust-boundary continuation (static)
+
+- Six read-only reconnaissance passes covered supervisor lifecycle, Linux
+  worker bootstrap, storage roots, router-core capabilities, network/socket
+  ownership, crypto/key custody and log-worker recovery.
+- The Linux supervisor no longer installs the write-deny Landlock and
+  AF_INET-deny seccomp domains it inherited into child workers. It now applies
+  `ApplyLinuxSupervisorSandbox` (no-new-privs plus capability/bounding-set drop)
+  and each exec'ed worker installs its own role profile. This corrects the
+  default path that would otherwise prevent storage writes and network sockets
+  in every child.
+- Log-worker restart is bounded by 250 ms exponential backoff capped at 30 s,
+  eight consecutive attempts and a 60 s stable-period reset; exhaustion exits
+  the supervisor. The logger queue is capped at 8192 records with 8192-byte
+  record truncation and a dropped-record counter.
+- The OpenBSD torrent-storage broker now receives its validated data root as
+  inherited fd 4 opened before spawn instead of resolving the path after
+  pledge. It uses `pledge("stdio unix proc exec sendfd recvfd")` without
+  `rpath`; the immutable fd, not the configured path string, is the authority.
+- The OpenBSD startup pledge always carries `exec` for the startup worker
+  window, including storage brokers when `privsep.log` is disabled; the runtime
+  policy still drops `exec`.
+- Router storage distinguishes a worker-level write rejection from a broken
+  channel, so one failed atomic replacement no longer poisons later requests.
+- `RunWorker` now requires its channel at descriptor 3, matching every spawn
+  path and preventing a manually invoked worker from aliasing inherited root
+  descriptor 4.
+- Prepared tests: supervisor-bootstrap delegation in
+  `test-privsep-linux-sandbox`, bounded-queue/drop accounting in
+  `test-log-lifecycle`, and transient-rejection recovery in
+  `test-router-storage`.
+- Residual: the core still owns transport sockets, most netDb/profile/
+  address-book/destination-key writes and long-term keys. Network and crypto
+  workers remain policy-builder-only; no single supervisor owns all workers.
+  No compiler, CTest, sanitizer, fuzzer, OpenBSD/Linux/Windows runtime,
+  Android device, package, live-peer or workflow run exists. No commit or push.
+
+## 2026-10-21 — IPC protocol consolidation (static)
+
+- Five read-only audits covered serialization, worker contracts, authorization,
+  buffers/backpressure and error/recovery. No compiler, CTest, sanitizer,
+  fuzzer, OpenBSD/Linux/Windows runtime or workflow run was performed.
+- Protocol v2 adds the typed `Error` reply (offending type, bounded
+  `ErrorCode`, bounded detail) and the shared `EndpointRole`/`AllowsOperation`
+  matrix; v1 frames remain readable and new senders emit v2.
+- Path/error encoding is fallible (`WritePath`, `WriteStringBounded`,
+  `MAX_PATH_SIZE=4096`), so an over-long or NUL-bearing path can no longer be
+  silently truncated to a different filesystem object.
+- Log configuration now performs a bounded configure/readiness `Ping`/`Pong`
+  handshake in both direct and supervisor paths. Startup fails if the worker
+  did not apply the configuration; the supervisor distinguishes protocol
+  violations (exit 1) from clean shutdown (exit 0). The sink counts dropped
+  records after close/send failure.
+- All POSIX workers enforce the shared operation allowlist; Ping/Shutdown must
+  have empty payloads; storage request IDs must be strictly increasing, so a
+  replay cannot re-execute Register/Metadata/Promote/Remove mutations.
+- The OpenBSD storage broker sends typed `Error` replies for capacity, unsafe
+  path and replaced-root failures and keeps existing children alive; adopted
+  worker channels are revalidated as seqpacket sockets with the expected peer
+  UID and CLOEXEC.
+- `SOCK_SEQPACKET` zero-length records are consumed as records, not EOF.
+  `imsgbuf_read` buffered messages are drained before polling again. Windows
+  oversized records close the pipe, and `AcceptBound` binds the peer PID/session
+  to the spawned worker.
+- Tests prepared: protocol v2/v1 and Error/allowlist/path cases, empty-record
+  and adopted-fd rejection, configure handshake/drop counting, buffered imsg
+  frames, oversized Windows pipes and broker-rejection recovery.
+- Residual: no automatic storage-client reconnect/generation fencing, explicit
+  transactional cancellation IDs, full typed cross-process error taxonomy,
+  Windows daemon wiring or dynamic validation. No commit or push.
+
+## 2026-10-21 — OpenBSD supervisor/storage continuation (static)
+
+- Four read-only audits covered Linux storage parity, OpenBSD pledge/unveil
+  semantics, IPC channels and per-process/network policies. No OpenBSD run,
+  compiler, CTest, sanitizer, fuzzer or workflow was executed.
+- Fixed the critical broker start path: the pre-pledge storage broker no longer
+  calls `openat()` after pledge and no longer needs `rpath`. It passes its
+  immutable data root at fd4; the worker walks the delegated relative path,
+  verifies ownership/dev/inode and the configured pathname, then replaces fd4
+  with the validated subdirectory before applying pledge/unveil.
+- Forwarded storage workers are disowned after the broker hands their channel
+  to the core, so broker shutdown cannot SIGTERM/SIGKILL an in-flight `fsync`.
+  The broker reaps detached children non-blockingly and uses a replenished
+  one-minute launch window instead of a permanent launch counter.
+- A broker timeout is no longer treated as a dead broker; late replies are
+  drained by request id before a new reply is matched.
+- Storage policy requires a non-empty absolute unveil root and no longer grants
+  unused `fattr`/`flock`.
+- `ImsgChannel::AdoptValidated` checks socket type, CLOEXEC and `getpeereid`
+  before `imsgbuf_allow_fdpass`; oversized sends retain caller descriptor
+  ownership and a send timeout poisons the channel.
+- Network policy gains explicit `socketHandoff` (`recvfd`), `routeInfo`
+  (`route`) and optional `dns` flags; `ValidatePreopenedSocket` checks type,
+  CLOEXEC and `SO_ACCEPTCONN`. No transport backend is claimed.
+- Prepared tests cover empty storage roots, pre-opened socket validation,
+  imsg validated adoption/descriptor ownership, supervised storage path
+  replacement and broker-survives-rejection.
+- Residual: networking/crypto backends and core `inet` removal remain
+  unimplemented; router storage is not yet under the storage broker; log-worker
+  pathname privileges and full cross-process recovery remain open. No commit or
+  push.
+
+## 2026-10-21 — Linux multiprocess hardening continuation (static)
+
+- Five read-only audits covered AF_UNIX/SOCK_SEQPACKET, credentials, pidfd,
+  descriptor transfer and the BitTorrent-connected storage worker. No Linux
+  runtime, compiler, CTest, sanitizer, fuzzer or workflow was executed.
+- Channel hardening: adopted channels now require AF_UNIX/seqpacket where
+  `SO_DOMAIN` exists, reject listening sockets, and enable `SO_PASSCRED` on
+  Linux. Empty records must pass the same `SCM_CREDENTIALS` check and are
+  bounded to eight per receive call.
+- Worker spawn sets `PR_SET_NO_NEW_PRIVS` before exec, so setuid/file-capability
+  executables cannot raise privilege before the worker policy is installed.
+- Seccomp now denies `process_vm_readv/writev`, `kcmp`, `pidfd_open`,
+  `pidfd_send_signal`, `open_by_handle_at`, `name_to_handle_at`,
+  `userfaultfd`, `bpf` and `perf_event_open` in addition to the existing
+  ptrace/io_uring/socket rules.
+- Descriptor hygiene: the pre-5.9 `close()` fallback uses the actual soft
+  `RLIMIT_NOFILE` and a documented 1,048,576 cap instead of 1024; supervisor
+  and log worker close inherited stdio descriptors that are sockets.
+- Linux storage roots carry dev/inode identity and the worker compares it
+  before applying Landlock. Both storage clients keep `O_RDONLY` directory
+  descriptors because the worker fsyncs parent directories.
+  The OpenBSD-only `*-inherited` roles are rejected on Linux.
+- Kernel floors and fallbacks are documented in
+  `docs/security/process-capabilities.md`.
+- Residual: pidfd deferred-reap registry, total stop budget, cgroup v2/kill,
+  kill/tgkill self-filtering, full descriptor classification and actual
+  network-worker separation remain pending. No commit or push.
+
+## 2026-10-21 — Windows multiprocess hardening continuation (static)
+
+- Five read-only audits covered Named Pipes, ncalrpc/RPC, restricted
+  tokens/AppContainer/LPAC, Job Objects/mitigations and shared-protocol parity.
+  Decision: keep documented message-mode Named Pipes as the Windows worker
+  transport; ncalrpc/MIDL is not migrated now.
+- Overlapped I/O: `CancelIoEx` is followed by `GetOverlappedResult(..., TRUE)`
+  so buffers/OVERLAPPED are not released while the kernel still owns them.
+  Send/receive timeouts and malformed frames close the channel; short writes
+  are terminal.
+- Accept/connect: rejected peer identities re-arm the one-instance listener
+  instead of destroying it; `ConnectBound` authenticates the expected server
+  PID/session; `MakeRandomPipeName` uses BCryptGenRandom for per-spawn names;
+  `bcrypt` is linked by the Windows privsep target.
+- Token/Job: every parent privilege is deleted from the restricted token and
+  `LUA_TOKEN` is used for elevated parents; Job Objects now include
+  `DIE_ON_UNHANDLED_EXCEPTION`, process/job memory flags and basic UI
+  restrictions.
+- Windows operation matrix now rejects `ConfigureLogFd` (no descriptor channel)
+  and exposes the typed storage request types.
+- Documentation records the remaining hard gap: no Windows `--privsep-worker`
+  entry/supervisor/daemon wiring, no AppContainer/LPAC token construction,
+  no role ACL/WFP enforcement or Windows runtime tests.
+- No Windows compiler, CTest, service/cross-user test, AppContainer/LPAC run,
+  workflow dispatch, commit or push.
+
+## 2026-10-21 — Android multiprocess/SAF continuation (static)
+
+- Five read-only audits covered services/lifecycle, JNI, Binder/AIDL, SAF and the
+  native C++23 engine. No Gradle, NDK, Lint, emulator/device, workflow, commit or
+  push was executed.
+- The embedded router remains running when the Activity is destroyed
+  (`stopWithTask=false`, persisted `should_run`); this is preserved. Android
+  process separation is documented honestly: a second `android:process` shares
+  the UID, `isolatedProcess` loses persisted SAF grants, and INTERNET is per-UID.
+- Android SAF: tree selection validates tree/read-write grants, releases a
+  replaced grant and supports detach; export persists/releases its target grant;
+  close/release no longer retire the broker on a client timeout; broker descriptor
+  close is queued through a reaper; cancellation is operation-scoped instead of
+  process-wide; created document names are checked; export starts empty.
+- `validPath` now allows legal Android display-name characters `:` and `\`.
+- JNI inbound Java strings are decoded from UTF-16 to UTF-8, rejecting NUL and
+  unpaired surrogates; native start diagnostics are bounded.
+- First-launch pending autostart is now persisted across process/Activity death;
+  `MY_PACKAGE_REPLACED` resumes only a router whose start was already requested.
+- `TorrentControl.comment` rejects torrent id 0.
+- Residual: no router AIDL/process split, no SAF session-scoped AIDL capability,
+  no moving import/create document reads into the broker, no minimal SAF seccomp
+  library, and no Android device/CI evidence.
+
+## 2026-10-21 — ncursesw TUI panel/error continuation (static)
+
+- Read-only audits covered the existing TUI administrative surface, the pinned
+  I2P Java 2.14.0 console/CLI and the local `I2PDTUI/1` operations. No compiler,
+  CTest, terminal session, sanitizer, fuzzer, Java peer or workflow was run.
+- Added the bounded read-only `SERVICES` request and an eleventh `Services`
+  view (`v`). It lists client/server TCP and UDP tunnels, HTTP/SOCKS proxies and
+  the SAM/BOB/I2CP servers from thread-safe `ClientContext` snapshots; only
+  public b32 destinations are exposed, never keys, listener objects or paths.
+- Improved NetDb: LeaseSet encryption type, aged timestamps and an explicit raw
+  caps mask; Status now shows net ID and transit bandwidth/bytes; Peers shows
+  its bounded snapshot size. The router remains headless and independent of the
+  TUI, and no web administration surface was reintroduced.
+- Fixed the admin queue contract: a command whose IPC waiter timed out is still
+  executed exactly once and only its result is discarded. The client preserves
+  the typed remote `ErrorCode`; the TUI shows both code and text. Destructive
+  prompts are suspended below the minimum terminal size instead of committing
+  invisibly, and a daemon restart resets the log cursor.
+- Bounded the destination/address-book client view, matched the new LeaseSet
+  field count and added protocol/service/queue/error-code regressions.
+- Validation remains pending: no ncurses session, CTest, ASan/UBSan/TSan, fuzz,
+  Windows console, live daemon/socket or service-inventory run exists.
+
+## 2026-10-21 — I2PSnark piece/resume/selection continuation (static)
+
+- Five read-only audits covered the native engine/control core, disk creator,
+  magnet/tracker/priority paths, peer download/upload/storage and the pinned
+  I2P Java 2.14.0 I2PSnark sources. No compiler, CTest, sanitizer, fuzzer,
+  Java peer, Android device, live tracker/peer or workflow run was executed.
+- Resume/integrity: `ApplyBitfield` now requires exactly
+  `ceil(pieces/8)` bytes with zero spare bits and rejects without mutating
+  pieces. Native resume replacement uses the atomic no-follow helper; a stale
+  resume file is removed when no piece or every piece is complete. Startup
+  verifies every piece fully backed by an existing final or `.part` file, so a
+  mixed final/missing restart does not discard intact data. Explicit recheck
+  hashes all pieces, including an incomplete `.part` with a lost bitmap.
+  `GetPieceFileFragments` no longer derives staging from torrent completion,
+  fixing recheck of a promoted torrent reading nonexistent `.part` names.
+- Download/selection: accepted blocks refresh piece activity, preventing the
+  22-second inactivity reset during a slow piece. Completion, tracker `left`
+  and promotion are selected-file based; selected `.part` files are promoted
+  individually, skipped files are left untouched, and `GetFullLeft()` keeps
+  whole-torrent diagnostics. `TorrentInfo`/IPC expose `wanted` and `private`;
+  the TUI and Android detail/list show selected size/privacy.
+- Trackers/creation: a primary `announce` outside a non-empty `announce-list`
+  is normalized into tier 0 without changing the info hash. Tracker snapshots
+  expose tiers; private torrents reject tracker administration. Public creation
+  with no trackers inherits tunnel common endpoints; private creation without
+  a tracker fails before hashing. TUI blocks private tracker prompts and
+  Android shows the fixed-list policy.
+- Prepared tests: exact resume padding/short/oversized rejection, mixed
+  final/`.part` verification, selected completion and full-left accounting,
+  primary-plus-list normalization, public tracker inheritance and
+  private-without-tracker rejection. All remain unexecuted.
+- Remaining: endgame, corrupt-peer accounting, request-ledger/choke policy,
+  BEP 12 tier failover, tracker registry reclamation, durable unresolved
+  magnets, nested-root creation, creation metadata/source and Java/live
+  interoperability. Do not claim dynamic validation.
+
+## 2026-10-21 — decentralized peer discovery continuation (static)
+
+- Five read-only audits covered native i2p_dht, i2p_pex, tracker discovery,
+  DHT persistence/bounds and the pinned I2P Java 2.14.0 Snark classes. No
+  compiler, CTest, sanitizer, fuzzer, Java peer, live DHT/tracker/peer or
+  workflow run was executed.
+- DHT: valid queries from nodes the routing table cannot store now receive
+  replies; response ingestion is capped at k=8 nodes and 64 fresh peer values;
+  query lifetime is 60 s; authenticated responses clear prior failure state;
+  incoming announce tokens are bound to the queried infohash, refreshed on
+  legitimate re-announce and evicted instead of causing a silent non-reply.
+  DHT state names are validated as a single safe leaf, loads are record-capped,
+  state is loaded before the receiver is published and non-delegated saves use
+  atomic no-follow replacement.
+- PEX/messages: receive budget is two messages/100 candidates per 60 s, zero
+  destinations are dropped, outgoing PEX advertises only established non-seed
+  peers, extension IDs must be positive and are write-once, private torrents
+  with metadata neither advertise nor serve ut_metadata, and i2p_dht hints are
+  port-checked, write-once and limited to one per minute per connection.
+- Trackers: malformed bodies and peer-list errors are failures with bounded
+  text; transport errors and non-200 responses double the interval; success
+  without an interval re-bases it; advertised minimum intervals are honored;
+  tracker peer lists expire; datagram transaction IDs avoid collisions and
+  responses validate the local reply port. Datagram tracker errors also update
+  backoff state.
+- Prepared regressions cover bounded DHT peer values, safe state filenames,
+  malformed tracker bodies, exponential failure backoff, success reset and
+  tracker peer expiry. All remain unexecuted and no network/interoperability
+  claim is made.
+- Remaining: live adversarial churn, per-node blacklist/trim admission,
+  global/adaptive DHT peer capacity, token-refresh get_peers, tracker tier
+  failover/registry reclamation, single-flight tracker deadlines, complete DHT
+  persistence retry/worker-role isolation and differential Java runs.
+
+## 2026-10-21 — I2PSnark comments/ratings continuation (static)
+
+- Four read-only audits covered the Java 2.14.0 ut_comment protocol/codec,
+  native codec/store/persistence, TUI/Android surfaces and test/fuzz coverage.
+  No compiler, CTest, sanitizer, fuzzer, Java peer, live swarm or workflow run
+  was executed.
+- Wire interoperability: `ut_comment` is omitted when disabled/private instead
+  of advertising ID 0; incoming replies accept Java's up-to-256 entries;
+  malformed entries are skipped without discarding valid ones; CR/LF normalize
+  to spaces; ratings/negative ages clamp Java-style; encoder publishes
+  newest-first and trims entries until the 16482-byte Java extension limit is
+  met. A local add triggers an immediate bounded handshake/request.
+- Store/spam/privacy: content dedupe ignores rating, per-pseudonym visible
+  entries are capped, capacity pressure evicts old foreign entries instead of
+  becoming permanently full, aggregate text accounting uses UTF-16 units,
+  local hide/unhide is supported, and private torrents remain fully suppressed.
+- UI: TUI comments render numeric order, show unrated state and shown/total/
+  rating summary, use UTF-16 unit limits, expose hide/unhide, and refuse
+  enable/add on private or disabled torrents. Android labels the add action as
+  local, shows private policy, renders unrated comments without `0/5`, lists
+  locally hidden rows and offers a bounded unhide action. The JNI request
+  allowlist and command builder include COMMENT-UNHIDE.
+- Prepared regressions cover malformed-entry isolation, newest-first replies,
+  rating dedupe, per-owner limits, capacity eviction, unhide, state round-trip
+  and comment command grammar. No dynamic or Java differential validation is
+  claimed.
+
+
+## 2026-10-21 — Android SAF payload continuation (static)
+
+- Read-only audits covered the C++23 payload abstraction/piece mapping, the
+  Linux isolated storage worker contract, the SAF/JNI creation/export path and
+  the SAF test/CI registration. No compiler, Gradle/NDK, CTest, provider,
+  emulator/device or workflow run was executed.
+- Export: the broker now authorizes progressive growth up to the declared
+  metadata length and requires exact final size on `finishExport`; failed or
+  cancelled exports truncate to zero through the same operation. This fixes the
+  previous strict-size authorization that rejected the first 16 KiB chunk.
+- Document safety/recovery: read/write revalidate the persisted grant, regular
+  size and document ID captured at open, so truncation and same-length
+  replacement fail closed. Write mode may extend a shorter existing document;
+  existing bytes remain unverified. Shorter-document resume no longer becomes
+  permanently unwritable.
+- Tree authority: persisted grants are reference-counted; replacing or detaching
+  one torrent releases the Android permission only when no other key uses it.
+  `SafPayload` re-resolves the selected root on each open, closes cached logical
+  handles when the tree generation changes, and drops failed handles. A plain
+  torrent removal detaches after the engine no longer needs payload authority.
+- Startup/seeding: SAF initialization no longer blocks the single disk worker on
+  a whole-tree inline rehash. It uses the shared one-piece-per-disk-job
+  verification chain and reads the private resume bitfield; every restored piece
+  is still hashed before publication. Zero-length files produce no fragment open.
+- Presentation: Android now reads the actual `torrent.tunnel.N.name` and
+  `torrent.tunnel.name` snapshot fields, so the storage action no longer aborts
+  with an empty tunnel name.
+- Prepared tests: JVM `TorrentSafPolicyTest` and `TorrentSafGrantsTest` execute in
+  `testDebugUnitTest`; C++ payload coverage adds zero-length multi-file planning.
+  Provider/broker/device fault tests remain pending. No dynamic validation is
+  claimed.
+
+## 2026-10-21 — Android Java 25/toolchain and lifecycle continuation (static)
+
+- Four read-only audits covered Java/Gradle/AGP/D8/R8, ART lifecycle and
+  concurrency, NDK/JNI/CMake, and Android resources/manual CI. No Gradle,
+  javac, D8/R8, Lint, NDK/CMake, emulator/device or workflow run was executed.
+- Toolchain: moved `ndkVersion` to the Android extension (its previous
+  `defaultConfig` placement is not a valid DSL member), switched
+  `buildToolsVersion` to assignment form, corrected the AGP-resolved Kotlin
+  version to 2.2.10, added release `debugSymbolLevel FULL`, and enabled Lint
+  text/XML reports.
+- Java/D8 evidence: retained Java 25 source/target and exact JDK 25 toolchain.
+  Corrected documentation so the historical standalone R8 9.4.28/`--min-api 24`
+  transcript is not presented as current APG D8/R8 or `minSdk 29` proof. The
+  AGP-resolved D8/R8 version remains unpinned and class-file 69 → DEX support
+  remains a manual-CI obligation.
+- Packaging: the universal APK now receives the highest version code instead of
+  being a downgrade over every ABI split. Release APK/Lint are added to the
+  manual Android job; AAB packaging is deferred because ABI splits require an
+  explicit policy.
+- JNI/native: `i2pd_jni` now links project warnings/hardening, hides non-JNI
+  symbols, keeps static-library internals out of the dynamic table, and includes
+  its own filesystem/span/set headers. The SAF bridge fails closed under
+  `NO_TORRENTS`; a failed install restores the ordinary backend while Java
+  refuses startup when grants exist. SAF JNI calls use a local-reference frame,
+  metadata output checks `SetByteArrayRegion`, and status polls return a
+  `Starting` snapshot instead of blocking behind start.
+- Lifecycle/concurrency: `RouterService.onDestroy` preserves queued command
+  completions; a log epoch prevents an in-flight poll from undoing `clearLogs`;
+  `requestStop` no longer refuses starting/startFailed states; SAF broker bind
+  retries are capped with a terminal status. SAF grants are now reference-counted
+  and detached on plain removal.
+- Resources/API floor: the API-29 instrumentation test no longer uses
+  `String.repeat` (API 33). Hardcoded Java strings, edge-to-edge insets,
+  release R8, baseline profiles, ABI/API device matrices and a process-wide
+  daemon owner remain open and are recorded in TODO.
+- Manual CI: the Android job now asserts class-file major 69, builds unsigned
+  release/lintRelease, checks packaged `lib/arm64-v8a/libi2pd.so`, and prints
+  Lint reports from their report paths. The ABI/API/device matrix remains
+  documented but not executed.
+
+## 2026-10-21 — Android native GUI continuation (static)
+
+- Four read-only audits covered screens/navigation, state architecture,
+  accessibility/Material 3 and UI/resource/CI coverage. No Gradle/Lint,
+  instrumentation, emulator/device or workflow run was executed.
+- Dashboard: native status name and error are shown as a bounded detail line;
+  Reseed is available as a connected/not-reseeding-gated action.
+- Settings: the listening port is editable with the existing port validator and
+  restart apply mode; a Notifications row opens Android app notification settings
+  and reports enabled/disabled state.
+- Statistics: instantaneous download/upload rates are shown alongside the 15 s
+  averages and the chart exposes its retained-window peak.
+- Logs: chips now apply minimum-severity semantics (Warn includes errors),
+  filtering is a pure JVM helper, filters wrap instead of hiding behind a
+  horizontal scroll, the summary is a polite live region and each log row is one
+  screen-reader stop.
+- I2PSnark: validated Start all/Stop all/Reannounce all commands were added to
+  the rich per-torrent panel, and the selected session name is shown in the list
+  status. SAF selection/export strings were moved into the English catalogue.
+- Accessibility/Material: address-book toolbar title survives recreation, the
+  fragment container gets an accessibility pane title, the graceful-stop
+  one-second text is no longer a live region, and the chart reports an ImageView
+  accessibility role.
+- Prepared `UiContractTest` layout/accessibility checks and JVM tests for router
+  detail, reseed gating, log severity/query and bulk commands. Device execution,
+  per-tunnel inventory/live transit control, SAF source seeding, queue/bandwidth
+  policy and the full ABI/API device matrix remain pending.
+
+## 2026-10-21 — i2pd-tools modernization continuation (static)
+
+- Four read-only audits covered the 15 native tools/Perl scripts, upstream
+  provenance/submodules/dependencies, CLI/key-format/firewall behavior and
+  CMake/CTest/install/docs. No compiler, CMake, CTest, Perl/prove, tool,
+  network or workflow run was executed.
+- Configuration: `autoconf_i2pd` no longer emits the removed `[http] lang`
+  section and the transcript now asserts its absence. Key-type names use one
+  table with P521/EdDSA/GOST aliases; keygen refuses unavailable/fallback
+  generators instead of writing a mislabelled key. Offline-key tools reject
+  non-offline fallback output.
+- Shared C++: added an RAII crypto guard and exact-consumption
+  `LoadPrivateKeys`; keygen/offline-key tools use them. `routerinfo` now reads
+  through the bounded common reader. `x25519`, `b33address` and `verifyhost`
+  reject unknown/extra CLI input; `b33address` reports failures non-zero.
+- CMake/install: the `Tools` component installs `LICENSE.i2pd-tools`;
+  `perl-install-layout` checks every declared binary plus the notice; the
+  inventory test fails on a missing upstream manifest or an unregistered
+  top-level tool source. Windows ZIP/installer payloads include the tool
+  licence.
+- Prepared regressions: keygen `--help`/unsupported RSA, x25519/b33address
+  option surfaces and autoconf absence checks. Dynamic CTest, Windows CLI,
+  firewall syntax validation, fuzzing and packaging runs remain pending.
+
+## 2026-10-21 — Python-free Perl hardening continuation (static)
+
+- Four read-only audits covered Python/shebang/consumer inventory, `i2pdctl`
+  quality, Test::More/CMake/CI integration and portable-Perl security. No Perl,
+  prove, CMake, CTest, network, tool or workflow run was executed.
+- Inventory: confirmed no maintained Python source or shebang remains; removed
+  the obsolete Python block from `.gitignore`. The portability guard now covers
+  versioned `python3`/`pip`/`PYTHONPATH`, Cython/notebook/template forms, BOM
+  and line-2 shebangs, `require` imports, pipe/temp/chmod hazards, Gradle,
+  Debian/RPM/static/Docker/Windows consumers, missing consumer files and
+  inventory drift.
+- `i2pdctl`: only absolute `PATH` entries are accepted for `openssl`, which is
+  resolved with `Config`/`File::Spec`; proxy variables are deleted in a
+  localized `%ENV`; UTF-8 URL/password values are decoded at the environment
+  boundary; non-ASCII/format/control server and CLI values are escaped; duplicate
+  `raw_info` methods collapse to one JSON key.
+- Tests: added authentication-failure, UTF-8-password and duplicate-`raw_info`
+  cases; hardened branding/vector scripts (NUL/`..` link rejection, script-
+  relative branding root, absolute/PATH-checked git and validated provenance
+  paths/lines). Added component-install assertions for all tools, `i2pdctl` and
+  `LICENSE.i2pd-tools`, and an optional Perl::Critic lane that skips cleanly
+  when unavailable.
+- Docs/TODO: updated the Perl migration, CI/testing/provenance notes and
+  PERL-007/008. Dynamic `prove`, CTest, OpenBSD/Windows, live TLS and package
+  runs remain pending.
+
+## 2026-10-21 — routerinfo firewall generator continuation (static)
+
+- Four read-only audits covered legacy iptables/ip6tables, nftables, Windows
+  Defender Firewall and OpenBSD PF plus the shared endpoint model. No compiler,
+  CTest, routerinfo, iptables/nft/pf/PowerShell or workflow run was executed.
+- Common validation is locale-independent ASCII; nft refusals are diagnosed
+  instead of silently dropped; duplicate endpoints are deduplicated before the
+  4096 budget and overflow is terminal. nft `ip6` and Yggdrasil firewall modes
+  now require `-6`, and `-f` conflicts are checked before file operands.
+- nft rules carry a validated `comment "openi2pd <transport> <tag>"`; PF rules
+  carry the equivalent validated `label`; Windows rules use a stable `-Name`,
+  `-Group openi2pd`, an address-family token and `-ErrorAction Stop` while
+  preserving the existing remote outbound rule. Legacy `-f` fragment text is
+  unchanged.
+- Rule headers are emitted lazily only when a file contributes at least one
+  rule. Updated C++ goldens and CLI negative cases for the new behavior.
+- Docs/TODO: routerinfo backend examples, provenance/testing notes and
+  FIREWALL-006/010 plus TOOL-012 tracking. Manual syntax validation
+  (`iptables-restore --test`, `nft -c`, `pfctl -nf`, PowerShell `-WhatIf`)
+  remains pending; no firewall was modified.
+
+## 2026-10-21 — Documentation, identity and resource consolidation (static)
+
+- Four read-only audits covered Markdown/navigation, inherited i2pd-docs,
+  branding/light-dark identity and documentation/branding CI checks. No
+  MkDocs, link/branding validator, CMake/CTest, Android/Gradle, TUI or workflow
+  run was executed.
+- Documentation facts corrected for CMake 3.24, Android torrent/UPnP support,
+  I2CP default, Yggdrasil SSU removal, AppArmor/IRC paths, FAQ torrent support,
+  family certificate path, `io_context`, Windows/proxy branding, and the
+  documented BSD-3-Clause imported-doc license. Added substantive history/API
+  index pages and reduced the duplicate docs README to a pointer.
+- Navigation: removed unsupported upstream iOS/Qt/Haiku pages from the
+  published nav while retaining source/license files as excluded provenance;
+  added file-header policy and Linux/OpenBSD build labels; added
+  `docs-nav-static` for nav targets, theme assets, unlisted Markdown and HTML.
+- Branding: proxy information page now has dark/error tokens, night Android
+  resources include the launcher plate, palette labels and binary-validation
+  wording are corrected, and validator mirror checks now cover SVGs, PNGs and
+  `colors.md` fail-closed.
+- Link checker now accepts repository-contained parent links, handles setext and
+  duplicate headings, rejects NUL/escape targets and fails on empty input.
+- Prepared/updated `DOCS-011`, `BRAND-012`, docs/testing/CI notes and the manual
+  check list. Dynamic documentation, MkDocs, branding, Android/device and TUI
+  validation remains pending.
+
+## 2026-10-22 — native service supervision continuation (static)
+
+- Four read-only audits covered the daemon CLI/signal/path contract, the
+  supervisor and worker process tree, every `contrib/` service definition and
+  the CMake/service/CI install graph. No compiler, CMake configure/build,
+  CTest, service manager, package tool, `systemd-analyze`, daemon, device or
+  workflow was run; shellcheck and YAML parsing were used as static checks
+  only.
+- `Daemon.init()` failure now exits nonzero instead of falling through to
+  `EXIT_SUCCESS`; this lets `Restart=on-failure`, OpenRC respawn, s6/runit and
+  Shepherd react to a refused storage worker or other initialisation failure.
+- systemd: `TimeoutStopSec=660` covers the daemon's 600-second drain plus
+  shutdown margin, `SyslogIdentifier=open-i2pd` matches the supervisor prefix,
+  the unowned `open-i2pd.service` alias was removed, and `sysusers`/`tmpfiles`
+  sources let package managers create the account, state, runtime and log
+  paths. The unit still uses `Type=exec`, `KillMode=mixed`, no readiness claim
+  and no privilege-separation claim.
+- OpenRC: `stopsig` now selects the stop signal and a matching retry budget
+  (`SIGINT/660` for graceful stop, `SIGTERM/30` otherwise); the private umask
+  is applied; the pidfile parent is derived from `I2PD_PIDFILE` instead of
+  assuming `I2PD_RUNDIR`.
+- runit adds a private creation mask to the foreground run script. s6 and
+  s6-rc gain native `down-signal=INT` and `timeout-kill=660000`, so
+  `s6-svc -d` requests the daemon's graceful path rather than an immediate
+  `SIGTERM` escalation. SysVinit keeps the daemon-owned, identity-checked
+  pidfile instead of unlinking it after stop, and uses a 660-second stop
+  budget. Shepherd uses a pidfile under the data directory and a 700-second
+  stop grace period; its process-group signalling caveat is documented.
+- OpenBSD rc.d now runs `--foreground --service --pidfile=...` under
+  `rc_bg=YES`, raises the login-class descriptor limit to 8192 and applies a
+  private umask. Documentation no longer describes the path as a
+  self-daemonising legacy exception. The unselected legacy Upstart sample was
+  changed to foreground supervision with a 660-second SIGINT stop, and the
+  dinit sample received the same stop budget.
+- CMake installs exact `PROGRAMS`/`FILES` entries instead of
+  `USE_SOURCE_PERMISSIONS` directory copies for runit, s6 and s6-rc, and
+  installs the systemd sysusers/tmpfiles files. `I2PD_SERVICE_CONFDIR` defaults
+  to the manager path only after an explicit override is checked.
+- `tests/check-services.cmake` now pins the stop budgets, sysusers/tmpfiles,
+  s6 down-signal/timeout files, s6/s6-rc run-script identity and OpenRC
+  signal/umask/pidfile-parent rules. `tests/check-build-system.cmake` counts
+  each explicit install source. The manual packaging workflow additionally
+  syntax-checks the OpenRC and runit shell scripts and installs the static
+  validators; native start/stop/reload, `s6-rc-compile`, Shepherd load,
+  `systemd-sysusers`/`systemd-tmpfiles`, package lifecycle and sandbox checks
+  remain pending CI.
+- Static validation only: source inspection, `git diff --check`, YAML parsing
+  and shellcheck on the shell service scripts. No service was started, no
+  package built and no workflow dispatched.
+
+## 2026-10-22 — Debian and OpenBSD packaging hardening (static)
+
+- Read-only audits covered Debian manifests/metadata/maintainer scripts, the
+  CMake daemon/TUI/tools/worker install graph, OpenBSD service/port material
+  and the manual packaging workflow. No CMake configure/build, package build,
+  lintian, autopkgtest, `dpkg-deb`, `pkg_create`/`pkg_add`, `rcctl`, service
+  manager or workflow was run.
+- Debian hardening now uses the dpkg-buildflags values despite the direct
+  CMake invocation; `perl` is obtained through
+  `${perl:Depends}` and optional OpenSSL moved to Recommends. The daemon
+  package claims `LICENSE.i2pd-tools` and a CC-BY-SA notice, while the
+  `i2pd-tui` package owns the desktop launcher and icons. The launcher opens
+  `i2pd-tui`, never a second router.
+- `debian/postinst` creates only missing state/log/runtime paths and no longer
+  resets administrator ownership/modes on upgrade. Logs use the private
+  0700/0600 policy across the main, static and tmpfiles definitions.
+- DEP-5 now separates BSD-3-Clause, GPL-2+ historical packaging files,
+  CC-BY-SA first-party documentation and Apache-2.0 Android wrapper files.
+  The lintian override now uses the binary-package filename; uscan accepts
+  GitHub `archive/refs/tags` URLs.
+- CMake adds a `Tui` component for `i2pd-tui` and its desktop assets, installs
+  only man pages belonging to enabled targets, includes the documentation
+  licence in `Documentation`, and rejects `Service` selection without
+  `WITH_BINARY=ON`.
+- Static Debian packaging uses a native version without `-1`, current control
+  fields, one debhelper service action and the documentation notice. The
+  manual packaging workflow now runs `check-packaging`, installed-unit
+  verification, manifest/split checks, conffile reinstall preservation,
+  `autopkgtest`, and remove/purge checks.
+- OpenBSD canonical files now use `tunnels.conf.d`, the read-only
+  `${TRUEPREFIX}/share/i2pd/certificates`, `--log=syslog`, `daemon_logger`,
+  `daemon_timeout=660`, the 8192/umask login class and executable rc.d mode.
+  `contrib/openbsd/port/` adds a merge template with Makefile, PLIST
+  (`@newgroup`/`@newuser`/`@rcscript`/`@sample`), package README and man pages.
+  It is not selected by CMake and is not validated by a live port build.
+- No dynamic validation: Debian binary packages, lintian, autopkgtest,
+  upgrade/remove/purge, CMake component installs, RPM/static bundles, OpenBSD
+  ports/PLIST/pkg_add, rcctl and service lifecycle remain pending CI.
+  Statically checked only: the `services-static`, `packaging-static` and
+  `build-system-static` CMake source contracts, shell syntax, shellcheck on
+  maintained scripts, YAML parsing and `git diff --check`.
+  The project-wide privilege-separation boundary is unchanged; network,
+  crypto and core workers are not separated by these service definitions.
+
+
+## 2026-10-21/22 — validation infrastructure and remote dispatch (static + partial remote)
+
+- Read-only audits covered CTest registration/labels, all manual workflows,
+  interoperability/IPC/torrent/Android distribution, sanitizer/fuzzer wiring
+  and packaging CI. No local compile, CTest, sanitizer, fuzzer, Gradle,
+  package or validator was run.
+- CTest: added per-test timeouts, fixed Windows `bcrypt` linkage, disabled
+  torrent targets when `WITH_TORRENTS=OFF`, corrected security/memory/i2p/
+  interop labels, made the Landlock test report SKIP (77) instead of a false
+  pass, and made `i2pd-version` assert its output.
+- CMake: `WITH_FUZZERS` now requires ASan+UBSan instrumentation, UBSan recovery
+  is disabled, unsupported Windows sanitizer requests fail closed, and the
+  fuzzer workflow inventory is part of `build-system-static`.
+- Workflows: added pinned `upload-artifact` evidence for Linux CTest,
+  install-component trees, Android reports/APKs, sanitizer logs, Windows
+  CTest/package lists, OpenBSD logs, Debian packages/lintian logs and fuzz
+  corpora; manual concurrency no longer cancels an earlier validation.
+- Fuzzing now runs `ctest -L fuzz`, continues through all targets after a
+  crash, and uploads corpora/crash inputs. Sanitizers use `Debug` and
+  `-fno-sanitize-recover=all`. MSYS2 is pinned to `windows-2022` and asserts
+  `i2pd-tui`; Android sets `WITH_HARDENING` in the Gradle CMake arguments and
+  checks JVM test results.
+- Dispatched the published `main@284544a5256043755b197f61e42aee56dbf65032`
+  with `gh`; these runs do not include the local uncommitted tree:
+  Linux/Android `39688898520`, Windows `39688906891`, OpenBSD `39688913964`,
+  Fuzzing `39688921868`, Packaging `39688929467`. The interop job and service
+  contracts passed; Linux GCC/Clang, Android, ASan/UBSan, TSan, OpenBSD,
+  Windows MSYS2, Fuzzing and the Debian package build failed at the published
+  `libi2pd/Transports.cpp:693` parse error. The local worktree has a different
+  uncommitted `ConnectToPeer` implementation, so these failures are not
+  attributed to local fixes. Windows MSVC later failed with the same published
+  `Transports.cpp` parse error.
+- No commit, push, tag or release was created.
+
+## 2026-10-22 — Agent Skills coherence continuation (static)
+
+- Four read-only audits covered every `SKILL.md`/reference, AGENTS.md policy
+  mapping, reusable documentation/procedures and the Agent Skills checker/CI
+  wiring. No skill was executed and no compiler, CTest, Gradle, workflow,
+  `gh` call or commit/push was performed.
+- All 16 skills now require at least one read-only reconnaissance subagent
+  before editing and state the no-local-execution fallback. Their `## Do not`
+  sections link the AGENTS.md static-only, no-download, license/provenance,
+  worktree/commit and manual-workflow rules; tracking language now proposes
+  rows to the coordinator and records the exact AGENTS.md state.
+- Descriptions were tightened for memory/C++23, Linux/Windows vs
+  privsep/TUI, documentation vs tracking and tooling/Perl boundaries.
+  `openi2pd-tooling` gained `references/perl-inventory.md` and a Perl section;
+  no separate Perl or IPC skill was added because it would duplicate existing
+  tooling/privsep/platform ownership.
+- Updated the discovery README selection path, IPC protocol ownership
+  arbitration, maintenance checklist and references. Packaging/build/CI/
+  documentation/OpenBSD/torrent/tooling references now reflect the `Tui`
+  component, systemd sysusers/tmpfiles, the OpenBSD `port/` template, current
+  CTest labels, `check-doc-nav.pl`, OpenSSL expectations and torrent/TUI IPC
+  documents.
+- `tests/check-agent-skills.cmake` now enforces exact directory/README
+  inventory, LICENSE headers, unique bounded single-line descriptions, required
+  sections including `Do not`/`References`, linked and licensed references and
+  no unexpected skill directory. It passed locally as a compile-free source
+  check; manual CI and docs-link/branding validation remain pending.
+- `TODO.md` GOV-007, `AGENTS.md`, `docs/testing.md` and the skills index were
+  updated. No commit or push was created.
+
+## 2026-10-22 — Modern C++23 / Java 25 utilization continuation (static)
+
+- AGENTS.md now contains a permanent `Modern language utilization policy`:
+  modern facilities and OOP/generic abstractions are a goal even without a
+  measurable performance gain, bounded by explicit compiler/library/API
+  availability and the existing protocol/security constraints.
+- C++: the X25519 key-supplier worker now uses `std::jthread`, a stop token and
+  `condition_variable_any`; the TUI IPC server also uses `std::jthread` and
+  stop-token cancellation; outbound NTCP2/SSU2/Yggdrasil selection moved behind
+  `ITransportConnector` strategy classes; Identity's signing-key wire-size
+  switch was replaced by a `constexpr` registry (with `Modern.h` utilities), the
+  logger level parser uses a static range table, and transport/Modern
+  regressions were prepared.
+- Android: Java 25 source features are exercised through sealed
+  `RouterCommand` records with exhaustive pattern matching and a typed
+  `LogLevel` enum; the service dispatcher and log filtering consumers were
+  updated. No unsupported Java library API (virtual threads/scoped values) was
+  introduced. Prepared regressions are `test-modern`,
+  `test-transport-connector`, `RouterCommandTest` and `LogFilterTest`.
+- Updated `docs/cpp23-migration.md`, `docs/android-java25.md`, the C++23 and
+  Android Agent Skills, `TODO.md` (CPP-015/ANDROID-016) and `ROADMAP.md`.
+- No compiler, CTest, Gradle/JNI, sanitizer, fuzzer, OpenBSD/Windows, device or
+  live-peer validation exists for this increment. No commit or push was made.
+
+## 2026-10-22 — Agent knowledge maintenance continuation (static)
+
+- Added the permanent `Agent Knowledge Maintenance` section to `AGENTS.md`.
+  Every significant change must now review AGENTS, the owning skill/references,
+  TODO/ROADMAP/PROGRESS and the related technical documentation; the review is
+  mandatory, cosmetic edits are not, and the coordinator owns shared files.
+- Corrected stale policy statements: manual workflows are dispatch-only with
+  no `workflow_call`, the TODO status vocabulary is referenced, shared
+  interfaces include Modern.h/TransportConnector.h and the Android/tests
+  boundaries, OpenSSL 3.0.2–4.0.x/LibreSSL 4.0+, Windows TUI, the four
+  official UI languages, Markdown-only docs and Perl scope are explicit, and the current Java target is
+  2.14.0 (2.13.0 remains historical).
+- Added `Known issues and decisions` to all 16 skills with subsystem-specific
+  pitfalls: Modern.h/Strategy contracts, Transports shutdown ordering,
+  jthread/TUI cleanup, Android RouterCommand/LogLevel invariants, SAF
+  cancellation, torrent storage/SNARK state, OpenBSD/privsep limits, packaging
+  and CI evidence rules. Updated the agent-skills checker and README
+  maintenance contract to require the section.
+- Added `GOV-008`, updated `CPP-015`/`ANDROID-016`, and corrected ROADMAP/PROGRESS
+  historical local-build claims and 2.13.0 target drift. TUI/transport
+  lifecycle and seam regressions remain prepared, and the compile-free CMake
+  contracts are the only executed checks; no compiler, CTest, Gradle, device or
+  workflow was run.
+
+## 2026-10-22 — UI internationalization continuation (static)
+
+- Official UI languages are now English (source/fallback), Spanish, Russian
+  and Simplified Chinese, with Traditional Chinese allowed only after verified
+  translation. The previous English-only Android constraint is superseded.
+- Native catalogs are selected by a process-local registry (`--lang`,
+  `[tui] language`/`lang`, then `LC_ALL`/`LC_MESSAGES`/`LANG`) independent of
+  the router client. The TUI links `libi2pdlang`, translates exact render lines,
+  preserves leading layout spaces, pins `LC_NUMERIC=C` and treats `Put` as a
+  column budget. HTTP proxy messages use the same en/es/ru/zh-Hans catalogs.
+- Android has complete `values-es`, `values-ru` and `values-zh-rCN` catalogs,
+  synchronized locale metadata/filters, a Settings per-app language selector,
+  active-UI-locale number formatting and a replacement locale-parity guard.
+  `LocaleResourceTest` is prepared for the manual device lane.
+- Added the 17th skill `openi2pd-i18n`, `test-i18n-locale`, `i18n-static`,
+  `android-locale-policy` and `check-android-locales.pl`; updated AGENTS,
+  README/docs, TODO (I18N-001..003), ROADMAP and the compile-free workflow.
+- No compiler, CTest, Gradle, AAPT2, Lint, terminal, device or workflow run was
+  performed. The detailed TUI help/tool catalog expansion remains tracked as
+  I18N-003.
+
+## 2026-10-22 — Signature-name normalization correction (static)
+
+- Status: Implemented / static; Pending CI compilation; Pending CI tests.
+- Replaced the dangling `ToUpper` call in `tools/common/key.hpp` with a local
+  `std::ranges::transform`, preserving case-insensitive signature aliases and
+  unsigned-character conversion before `std::toupper`.
+- Prepared a `tools-regressions` mixed-case/underscore keygen case and updated
+  the tooling skill decision. Existing AGENTS, TODO/ROADMAP and tool CI wiring
+  remain applicable. No compiler, tool executable or test was run locally.
+
+## 2026-10-22 — Publication review and commit organization (static)
+
+- Reviewed modified, deleted and untracked paths with independent read-only
+  native, platform and support reviews. Grouped source changes, paired
+  regressions, packaging, build/CI integration and knowledge tracking into
+  sequential subsystem commits under explicit user authorization.
+- Preserved existing work and the configured Git author, committer and signing
+  requirements. Ignored `audit/` content remains outside the commit series;
+  inspected untracked files are maintained source, configuration or licenses.
+- Static checks: per-commit `git diff --cached --check`, XML/JSON parsing and
+  credential/artifact inspection. The OpenBSD port README's seven-character
+  Setext underline under "Logging" triggers a reviewed conflict-marker false
+  positive; its surrounding prose has no merge conflict and is preserved.
+  Existing documentation key examples retain
+  their historical provenance. No local build, test, project validator or
+  manual workflow was executed; compilation and dynamic tests remain pending CI.
+- Updated AGENTS to distinguish the pre-publication work inventory from the
+  resulting history. TODO/ROADMAP validation states remain unchanged. Final
+  push and remote synchronization results are reported in the user handoff.

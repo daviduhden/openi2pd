@@ -16,7 +16,7 @@ Use with `SKILL.md`. This is a static map.
 | `i2pbase64`, `x25519`, `verifyhost`, `famtool` | `tools/*.cpp` | encoding, length checks, output stability |
 | `regaddr`, `regaddr_3ld`, `regaddralias` | `tools/*.cpp` | URL/address validation, path handling |
 | `routerinfo`, `vain`, `autoconf_i2pd` | `tools/*.cpp` | untrusted RouterInfo, firewall output, option parsing |
-| `i2pdctl` | `tools/scripts/i2pdctl` | bounded local TUI/I2PControl client |
+
 
 Shared helpers: `tools/common/getopt.*`, `file.hpp`, `key.hpp`. Do not
 duplicate ad-hoc parsers.
@@ -35,14 +35,15 @@ duplicate ad-hoc parsers.
 
 | Script | Purpose | Dependency rule |
 |---|---|---|
-| `tools/scripts/i2pdctl` | local admin client | core Perl + documented runtime modules |
+| `tools/scripts/i2pdctl` | I2PControl JSON-RPC client (HTTPS-only, loopback default; no TUI path) | core Perl + documented runtime modules |
 | `tools/scripts/validate-branding.pl` | asset/palette checks | core modules; reads only |
 | `tools/scripts/check-doc-links.pl` | docs link/reference check | core modules; reads only |
-| `android/tools/check-english-only.pl` | Android resource policy | core modules; reads only |
+| `tools/scripts/check-doc-nav.pl` | MkDocs navigation/theme/unlisted-page check | core modules; reads only |
+| `android/tools/check-android-locales.pl` | en/es/ru/zh-CN resource parity policy | core modules; reads only |
 
 No CPAN install, Python fallback, network fetch or hidden download. CMake
 `find_package(Perl)` and CI must use the same interpreter for syntax/install
-checks.
+checks. See [`perl-inventory.md`](perl-inventory.md) for the script/test/CI map.
 
 ## Test map
 
@@ -52,7 +53,9 @@ checks.
 - `tests/test-routerinfo-firewall.cpp`: endpoint/firewall renderers.
 - `tools/tests/*.t`: Perl syntax/portability/client/branding/install.
 - `tools/test-perl-install.cmake`: installed layout.
-- Labels `tools`, `perl`, `security`.
+- `docs-nav-static`, `perl-doc-links`, `android-locale-policy`,
+  `perl-portability`, `perl-i2pdctl`, `perl-validate-branding`.
+- Labels `tools`, `perl`, `security`, `docs`, `android`, `static`.
 
 ## CI notes
 

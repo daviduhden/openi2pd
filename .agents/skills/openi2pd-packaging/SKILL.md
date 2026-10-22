@@ -26,10 +26,10 @@ migration exists.
   they share manifests.
 - `debian/rules`, `debian/control`, install/man/tmpfiles/lintian/autopkgtest
   files, `debian/NEWS`, `debian/changelog`.
-- `contrib/i2pd.service` and
+- `contrib/i2pd.service`, `contrib/sysusers.d/`, `contrib/tmpfiles.d/` and
   `contrib/{openrc,runit,s6,s6-rc,shepherd,sysvinit,upstart,dinit}/`,
-  `contrib/openbsd/`, `contrib/apparmor/`, `contrib/i2pd.logrotate`,
-  `contrib/openi2pd.desktop`, `man/`.
+  `contrib/openbsd/` (including `port/`), `contrib/apparmor/`,
+  `contrib/i2pd.logrotate`, `contrib/openi2pd.desktop`, `man/`.
 - `build/CMakeLists.txt` install components and `I2PD_SERVICE_MANAGER`.
 - [`../../../docs/service-management.md`](../../../docs/service-management.md),
   [`../../../docs/user-guide/install.md`](../../../docs/user-guide/install.md) and
@@ -49,7 +49,9 @@ migration exists.
 
 ## Reconnaissance
 
-Launch read-only `explore` subagents for:
+Launch at least one read-only `explore` subagent before editing, split across
+independent areas when useful. If subagents are unavailable, report that
+limitation; do not substitute local execution. Ask for:
 
 1. package manifests and installed file ownership;
 2. each init script's start/stop/reload/user/path semantics;
@@ -62,9 +64,10 @@ Ask for exact paths and package names. Do not let them run `dpkg-buildpackage`,
 
 ## Parallel implementation
 
-- Split Debian, RPM/static, and init definitions by independent files. Do not
-  edit `build/CMakeLists.txt` service selection or `debian/rules` concurrently
-  with another package workstream.
+- Split Debian, RPM/static, and init definitions by independent files.
+  `build/CMakeLists.txt` service selection is coordinator-owned; obtain review
+  before integration. Do not edit `debian/rules` concurrently with another
+  package workstream (AGENTS.md `Coordinator / ownership`).
 - One owner per service name; do not create competing definitions.
 - Keep TUI packaging separate: the interactive client is not a service.
 - Packaging owns install manifests/units and man-page *installation*.
@@ -92,6 +95,20 @@ Ask for exact paths and package names. Do not let them run `dpkg-buildpackage`,
 - Do not add a TUI service, duplicate router instance, automatic start on
   install or a hidden download.
 
+## Known issues and decisions
+
+- Debian `i2pd`/`i2pd-tui` ownership, TUI desktop assets, systemd
+  sysusers/tmpfiles and OpenBSD `/var/i2pd` vs Linux `/var/lib/i2pd` paths are
+  deliberate. Preserve administrator modes/ownership on upgrade.
+- `contrib/openbsd/port/` is a merge template only; RPM/static/OpenBSD package
+  builds, `lintian`, `autopkgtest`, `pkg_add` and service starts are unrun.
+- Upstream HTML/web assets and browser consoles are not package dependencies;
+  documentation remains Markdown/CC-BY-SA English; shipped UI locales are
+  en/es/ru/zh-Hans, while package names, descriptions, man pages and paths stay
+  English.
+- Package validation claims require the manual packaging workflow; static file
+  inspection is not package validation.
+
 ## Do not
 
 - Do not compile, build a package, run `lintian`, `autopkgtest`, `systemctl`,
@@ -101,25 +118,31 @@ Ask for exact paths and package names. Do not let them run `dpkg-buildpackage`,
 - Do not weaken service hardening, sandbox paths, user separation or file
   permissions.
 - Do not claim package/service validation from a manifest inspection.
-- Do not commit, push, tag or release.
+- Keep every workflow `workflow_dispatch`-only; do not add `push`, `pull_request`, `schedule` or automatic `workflow_call` triggers.
+- Do not create commits, tags, releases, worktrees or temporary commits, and do not push; inspect `git status`/`git diff` before editing.
+- Do not install dependencies, fetch/vendor code or perform hidden downloads to enable a local build or test. Preserve LICENSE/NOTICE/provenance and technical identifiers/paths unless an approved migration exists (AGENTS.md).
 
 ## Prepare for CI
 
-- Keep `services-static` and `tests/check-services.cmake` coherent.
+- Keep `services-static`, `packaging-static`, `tests/check-services.cmake` and
+  `tests/check-packaging.cmake` coherent.
 - Prepare/retain the packaging workflow: Debian binary packages, lintian,
   autopkgtest, RPM/static checks and each service-manager smoke where runnable.
 - Check `systemd-analyze verify`, start/stop/restart/status/reload, pidfile,
   tmpfiles, user/group and no-duplicate-daemon behavior.
 - Verify package contents with `dpkg -L`/manifest inspection and that
   `i2pd-tui` installs no service or `/etc` policy.
-- Record package/service results as pending until the manual job passes.
+- Record the exact AGENTS.md tracking state and state which validations were
+  not run; package/service results remain pending until the manual job passes.
 
 ## Tracking
 
 Use `BUILD`/`DEPS` or packaging-specific IDs and the native-service/packaging
 increment rows. Record package names, service manager, paths, tests and the
-exact CI/host lane. Append a dated `PROGRESS.md` entry; subagents report
+exact CI/host lane. Propose a dated `PROGRESS.md` entry and any `TODO.md`/`ROADMAP.md` changes to the coordinator; append them only when explicitly assigned; subagents report
 proposed rows to the coordinator.
+
+Record the exact AGENTS.md `Tracking states` value and state which validations were not run; do not collapse them into “pending”.
 
 ## References
 

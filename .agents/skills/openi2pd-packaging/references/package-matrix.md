@@ -18,7 +18,7 @@ manual CI or disposable-host work.
 | RPM | `contrib/rpm/i2pd.spec`, `i2pd-git.spec` | systemd integration |
 | Static build | `contrib/static/package.sh`, `contrib/static/build-musl.sh` | no runtime downloads |
 | Docker | `contrib/docker/` | non-root/runtime policy; no HTTP console |
-| OpenBSD | `contrib/openbsd/` | rc.d, login class, config |
+| OpenBSD | `contrib/openbsd/`, `contrib/openbsd/port/` | rc.d, login class, config, port/PLIST merge template |
 | Man pages | `man/i2pd.1`, `i2pdctl.1`, `i2pd-tui.1` | installed by manifests |
 | Desktop/metadata | `contrib/openi2pd.desktop`, `Win32/Resource.*` | identity only |
 
@@ -26,7 +26,7 @@ manual CI or disposable-host work.
 
 | Manager | Files | Install selection |
 |---|---|---|
-| systemd | `contrib/i2pd.service`, `debian/i2pd.tmpfiles` | `systemd` |
+| systemd | `contrib/i2pd.service`, `contrib/sysusers.d/i2pd.conf`, `contrib/tmpfiles.d/i2pd.conf`, `debian/i2pd.tmpfiles` | `systemd`; Debian installs its own tmpfiles |
 | OpenRC | `contrib/openrc/i2pd.openrc`, `contrib/openrc/conf.d/i2pd` | `openrc` |
 | runit | `contrib/runit/i2pd/` | `runit` |
 | s6 | `contrib/s6/i2pd/` | `s6` |
@@ -45,7 +45,7 @@ Preserve:
 
 - binary: `i2pd`, `i2pd-tui`, `i2pd-tools` names;
 - config: `/etc/i2pd/i2pd.conf`, `/etc/i2pd/tunnels.conf`;
-- data: `/var/i2pd`;
+- data: `/var/lib/i2pd` on Linux, `/var/i2pd` on OpenBSD;
 - runtime/pid/log paths documented by the service manager;
 - unprivileged `i2pd` user/group where packaging creates one.
 
@@ -58,9 +58,10 @@ A path change requires migration, compatibility symlinks/dual-read and tests.
 - systemd: `systemd-analyze verify`; start/stop/restart/status/reload.
 - OpenRC/runit/s6/s6-rc/Shepherd/SysV: start/stop/restart/status/reload on a
   disposable host; signal/shutdown ordering.
-- OpenBSD: rc.d lifecycle, pidfile, sandbox paths, TUI/log worker.
+- OpenBSD: rc.d lifecycle, pidfile, sandbox paths, TUI/log worker, and the
+  external `port/` merge template (`PLIST`, `@rcscript`, `@sample`).
 - No TUI unit/init script; no duplicate daemon; no service auto-start on
-  install unless packaging policy explicitly requires it.
+  install; helpers may enable it without creating a second action.
 - Keep license/copyright/NEWS/changelog provenance.
 
 All dynamic checks are pending unless the packaging/manual CI run actually

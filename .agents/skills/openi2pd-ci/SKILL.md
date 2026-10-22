@@ -28,7 +28,8 @@ not dispatch, compile, run CTest, invoke sanitizers/fuzzers or call
   `.github/actions/`.
 - `tests/CMakeLists.txt` as a read-only input for registration/labels;
   `openi2pd-build` owns CMake-side edits. Also inspect `tests/fuzz/`,
-  `tools/*test*.cmake`, `tools/tests/` and `android/tools/`.
+  `tests/check-*.cmake`, `.agents/skills/README.md`, `tools/*test*.cmake`,
+  `tools/tests/` and `android/tools/`.
 - [`../../../docs/ci.md`](../../../docs/ci.md),
   [`../../../docs/testing.md`](../../../docs/testing.md) and
   [`../../../docs/build-system.md`](../../../docs/build-system.md).
@@ -45,7 +46,9 @@ not dispatch, compile, run CTest, invoke sanitizers/fuzzers or call
 
 ## Reconnaissance
 
-Launch read-only `explore` subagents for:
+Launch at least one read-only `explore` subagent before editing, split across
+independent areas when useful. If subagents are unavailable, report that
+limitation; do not substitute local execution. Ask for:
 
 1. every workflow trigger, permission, action pin and checkout credential;
 2. the configure/build/test commands and platform/toolchain assumptions;
@@ -83,6 +86,11 @@ workflow, run `gh`, build or test.
 - Add negative/failure-path tests, not only smoke checks.
 - Keep `Fuzzing` and sanitizer jobs manual and separate; do not fold them into a
   push-triggered job.
+- Keep `agent-skills-static` (frontmatter, required sections, links, reference
+  closure and policy pointers), `language-modernization-static` (AGENTS.md
+  policy, C++23/Java 25 levels, availability matrix and seam inventory) and
+  `i18n-static` (native/Android catalog wiring) in the compile-free
+  `ci;docs;static` gate; do not execute a skill or compile to validate them.
 
 ## Authorization and triage
 
@@ -96,6 +104,19 @@ workflow, run `gh`, build or test.
 - Use `gh` for reading runs/logs only after authorization; never for commits,
   releases or secrets.
 
+## Known issues and decisions
+
+- Manual dispatch must target the published revision. Remote results never
+  validate the local uncommitted worktree; record revision, run ID and outcome.
+- `skills-static` runs the Agent Skills and language-modernization checks
+  without a compiler, has no `needs:` relationship to builds, and manual runs
+  use `cancel-in-progress: false` so older evidence is preserved.
+- `language-modernization-static` pins literal policy phrases and seam names;
+  a wording or file move can fail the job even when code is unchanged. Update
+  the checker and the owning skill/docs together.
+- No `continue-on-error`, deleted tests or suppressed failures. Dynamic
+  validation remains pending until the relevant manual job passes.
+
 ## Do not
 
 - Do not compile, configure, run CTest, sanitizers, fuzzers, Gradle or project
@@ -106,7 +127,8 @@ workflow, run `gh`, build or test.
   persisted checkout credentials or `continue-on-error`.
 - Do not hide a failure by deleting a test, weakening an assertion or
   suppressing warnings.
-- Do not commit, push, tag or release.
+- Do not create commits, tags, releases, worktrees or temporary commits, and do not push; inspect `git status`/`git diff` before editing.
+- Do not install dependencies, fetch/vendor code or perform hidden downloads to enable a local build or test. Preserve LICENSE/NOTICE/provenance and technical identifiers/paths unless an approved migration exists (AGENTS.md).
 
 ## Prepare for CI
 
@@ -123,8 +145,10 @@ workflow, run `gh`, build or test.
 
 Use `CI`/J and `GOV-*`. Record workflow/job, revision, run id, result, first
 failure and correction. Keep historical runs clearly separated from current
-changes. Append a dated `PROGRESS.md` entry; subagents report proposed rows to
+changes. Propose a dated `PROGRESS.md` entry and any `TODO.md`/`ROADMAP.md` changes to the coordinator; append them only when explicitly assigned; subagents report proposed rows to
 the coordinator.
+
+Record the exact AGENTS.md `Tracking states` value and state which validations were not run; do not collapse them into “pending”.
 
 ## References
 

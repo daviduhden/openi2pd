@@ -19,12 +19,21 @@ semantics and `openi2pd-build` for the shared native graph.
 Read [`../../../AGENTS.md`](../../../AGENTS.md) first. Android is a Java 25
 application on ART with `minSdk 29`; no JDK is bundled in the APK.
 
+The permanent `Modern language utilization policy` applies here as well. Use
+records, sealed types, exhaustive pattern switches, text blocks, functional
+interfaces, generics, streams/collectors and `Optional` where they clarify the
+model. Java 25 source features are not proof that a library API exists on
+API 29+; virtual threads, scoped values and structured concurrency remain
+guarded. Read [`../../../docs/android-java25.md`](../../../docs/android-java25.md)
+for the source/class-file/runtime distinction.
+
 ## Inspect first
 
 - `android/app/build.gradle`, `android/build.gradle`,
   `android/gradle.properties`, wrapper properties and
   `android/tools/java25-probe/check-config.sh`.
-- `android/app/src/main/java/org/openi2pd/router/` — `RouterService`,
+- `android/app/src/main/java/org/openi2pd/router/` — `RouterCommand`,
+  `RouterService`,
   `RouterRepository`, `RouterViewModel`, `DaemonWrapper`, `I2PD_JNI`,
   `RouterConfigStore`, `TorrentControl`, `TorrentSaf*`, fragments/activities.
 - `android/app/src/main/cpp/` — `i2pd_android.cpp`, `DaemonAndroid.*`, JNI
@@ -49,7 +58,9 @@ application on ART with `minSdk 29`; no JDK is bundled in the APK.
 
 ## Reconnaissance
 
-Launch read-only `explore` subagents for:
+Launch at least one read-only `explore` subagent before editing, split across
+independent areas when useful. If subagents are unavailable, report that
+limitation; do not substitute local execution. Ask for:
 
 1. Activity/Fragment/ViewModel/service ownership and lifecycle;
 2. JNI calls, worker threads, lifetimes and error paths;
@@ -95,6 +106,28 @@ run Gradle, install an APK or run a device test.
 - Remove pre-API-29 compatibility branches and legacy launcher fallbacks when
   touching resources.
 
+## Known issues and decisions
+
+- `RouterCommand` is a sealed interface of nested records decoded by
+  `fromAction`; `RouterService.onStartCommand` must keep an exhaustive switch
+  with no `default`. Adding an action requires a record, mapping, service case
+  and `RouterCommandTest` update.
+- `LogLevel`/`LogFilter` use minimum-severity views (`WARN` includes errors;
+  `ALL`/`DEBUG` are unfiltered). Classify native tokens with `Locale.ROOT`.
+  Keep native `none/critical/error/warn/info/debug` synchronized with
+  `DaemonWrapper`.
+- Service commands use `stopSelfResult(startId)` through
+  `ensureForegroundOrFail`/`stopSelfIfIdle`; clear-logs bumps `logsEpoch` but
+  keeps the sequence cursor. Do not close a SAF descriptor from the canceller.
+- UI locale catalogs are `values` (English source/fallback),
+  `values-es`, `values-ru` and `values-zh-rCN`; `locales_config` and
+  `localeFilters` list en/es/ru/zh-CN. Use `openi2pd-i18n` for new visible
+  strings. Per-app selection uses `AppCompatDelegate`, never the device locale.
+  Do not translate protocol/status tokens, config values or user data.
+- Java 25 source features are not Android library APIs. Virtual threads,
+  scoped values and structured concurrency remain guarded; D8/R8, Lint,
+  APK and device evidence are pending.
+
 ## Do not
 
 - Do not compile, run Gradle, unit/instrumentation tests, Lint, an emulator or
@@ -104,14 +137,15 @@ run Gradle, install an APK or run a device test.
 - Do not add main-thread JNI, unbounded snapshots, raw native pointers, raw
   file paths, URI-to-path conversion or recursive SAF deletion.
 - Do not weaken the SAF/AIDL authority checks or Binder recovery fencing.
-- Do not commit, push, tag or release.
+- Do not create commits, tags, releases, worktrees or temporary commits, and do not push; inspect `git status`/`git diff` before editing.
+- Do not install dependencies, fetch/vendor code or perform hidden downloads to enable a local build or test. Preserve LICENSE/NOTICE/provenance and technical identifiers/paths unless an approved migration exists (AGENTS.md).
 
 ## Prepare for CI
 
 - JVM tests under `android/app/src/test/` for parsers/state/config; register
   in the Gradle test task.
 - Instrumentation under `android/app/src/androidTest/` for navigation,
-  lifecycle, SAF provider/cancellation, English-only resources and JNI
+  lifecycle, SAF provider/cancellation, en/es/ru/zh-CN resources and JNI
   consistency; device execution stays a separate lane.
 - Android CI: Java 25 guard, `:i2pd:testDebugUnitTest`, `lintDebug`, arm64
   native JNI link and debug APK build; vcpkg/NDK prefix must be current.
@@ -123,8 +157,9 @@ run Gradle, install an APK or run a device test.
 
 Use `ANDROID`/H, `PARITY-006`, `PRIVSEP-012` and SAF/state IDs. Record the
 toolchain, minSdk, Java/native/JNI changes, tests and exact Gradle/device lane.
-Update the Android design/Java 25 documents when behavior changes. Append a
-dated `PROGRESS.md` entry; subagents report proposed rows to the coordinator.
+Update the Android design/Java 25 documents when behavior changes. Propose a dated `PROGRESS.md` entry and any `TODO.md`/`ROADMAP.md` changes to the coordinator; append them only when explicitly assigned; subagents report proposed rows to the coordinator.
+
+Record the exact AGENTS.md `Tracking states` value and state which validations were not run; do not collapse them into “pending”.
 
 ## References
 
