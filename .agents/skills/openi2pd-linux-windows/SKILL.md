@@ -97,6 +97,8 @@ execution. Ask for:
   uses the stable extensible two-u64 ruleset layout and runtime-gated rights,
   with compile-time checks against available UAPI declarations. Absent base
   Landlock headers reject sandbox installation rather than bypass it.
+- Storage sources include `<stdio.h>` for POSIX `renameat`; do not depend on
+  `<filesystem>` or string headers to declare it on another libc.
 - Windows has a named-pipe worker transport and restricted-token/Job policy, but
   no `--privsep-worker` daemon wiring, AppContainer/LPAC token construction or
   per-role WFP/ACL enforcement. Do not claim Windows separation.
