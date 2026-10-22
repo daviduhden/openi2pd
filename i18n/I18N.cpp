@@ -52,7 +52,7 @@ namespace i18n
 				const char * value = std::getenv (name);
 				if (value && *value) return value;
 			}
-			return {};
+			return { };
 		}
 
 		const Locale & ActiveLocale ()

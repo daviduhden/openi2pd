@@ -93,73 +93,71 @@ namespace i18n
 
 	namespace detail
 	{
-		template <typename... TArgs>
-		std::string FormatPrintf (std::string_view format, TArgs &&... args)
+		template <typename... TArgs> std::string FormatPrintf (std::string_view format, TArgs &&... args)
 		{
-			if constexpr (sizeof... (TArgs) == 0) return std::string (format);
+			if constexpr (sizeof...(TArgs) == 0) return std::string (format);
 			const std::string formatString (format);
-			const int required
-				= std::snprintf (nullptr, 0, formatString.c_str (), std::forward<TArgs> (args)...);
-			if (required < 0) return {};
+			const int required = std::snprintf (nullptr, 0, formatString.c_str (), std::forward<TArgs> (args)...);
+			if (required < 0) return { };
 			std::vector<char> buffer (static_cast<std::size_t> (required) + 1);
-			const int written = std::snprintf (
-				buffer.data (), buffer.size (), formatString.c_str (), std::forward<TArgs> (args)...);
-			if (written < 0 || written > required) return {};
+			const int written
+				= std::snprintf (buffer.data (), buffer.size (), formatString.c_str (), std::forward<TArgs> (args)...);
+			if (written < 0 || written > required) return { };
 			return std::string (buffer.data (), static_cast<std::size_t> (written));
 		}
 	} // detail
 
-/**
+	/**
  * @brief Get translation of string
  * @param arg String with message
  */
-template <typename TValue> std::string_view tr (TValue && arg)
-{
-	return i2p::i18n::translate (std::forward<TValue> (arg));
-}
+	template <typename TValue> std::string_view tr (TValue && arg)
+	{
+		return i2p::i18n::translate (std::forward<TValue> (arg));
+	}
 
-/**
+	/**
  * @brief Get translation of string and format it
  * @param arg String with message
  * @param args Array of arguments for string formatting
 */
-template <typename TValue, typename... TArgs> std::string tr (TValue && arg, TArgs &&... args)
-{
-	return i2p::i18n::detail::FormatPrintf (
-		i2p::i18n::translate (std::forward<TValue> (arg)), std::forward<TArgs> (args)...);
-}
+	template <typename TValue, typename... TArgs> std::string tr (TValue && arg, TArgs &&... args)
+	{
+		return i2p::i18n::detail::FormatPrintf (
+			i2p::i18n::translate (std::forward<TValue> (arg)), std::forward<TArgs> (args)...);
+	}
 
-/**
+	/**
  * @brief Get translation of string with plural forms
  * @param arg String with message in singular form
  * @param arg2 String with message in plural form
  * @param n Integer, used for selection of form
  */
-template <typename TValue, typename TValue2> std::string ntr (TValue && arg, TValue2 && arg2, int n)
-{
-	return i2p::i18n::translate (std::forward<TValue> (arg), std::forward<TValue2> (arg2), std::forward<int> (n));
-}
+	template <typename TValue, typename TValue2> std::string ntr (TValue && arg, TValue2 && arg2, int n)
+	{
+		return i2p::i18n::translate (std::forward<TValue> (arg), std::forward<TValue2> (arg2), std::forward<int> (n));
+	}
 
-/**
+	/**
  * @brief Get translation of string with plural forms and format it
  * @param arg String with message in singular form
  * @param arg2 String with message in plural form
  * @param n Integer, used for selection of form
  * @param args Array of arguments for string formatting
  */
-template <typename TValue, typename TValue2, typename... TArgs>
-std::string ntr (TValue && arg, TValue2 && arg2, int n, TArgs &&... args)
-{
-	return i2p::i18n::detail::FormatPrintf (
-		i2p::i18n::translate (std::forward<TValue> (arg), std::forward<TValue2> (arg2), std::forward<int> (n)),
-		std::forward<TArgs> (args)...);
-}
+	template <typename TValue, typename TValue2, typename... TArgs>
+	std::string ntr (TValue && arg, TValue2 && arg2, int n, TArgs &&... args)
+	{
+		return i2p::i18n::detail::FormatPrintf (
+			i2p::i18n::translate (std::forward<TValue> (arg), std::forward<TValue2> (arg2), std::forward<int> (n)),
+			std::forward<TArgs> (args)...);
+	}
 } // i18n
 } // i2p
 
 // Preserve the historical unqualified helpers while exposing the namespace
 // used by standalone UI consumers. These are the same overload sets.
-using i2p::i18n::tr;
 using i2p::i18n::ntr;
+using i2p::i18n::tr;
 
 #endif // __I18N_H__

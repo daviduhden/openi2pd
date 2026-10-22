@@ -70,8 +70,8 @@ namespace config
 			value<std::string> ()->default_value (""), "Path to logfile (stdout if not set, autodetect if daemon)") (
 			"loglevel", value<std::string> ()->default_value ("warn"),
 			"Set the minimal level of log messages (debug, info, warn, error, none)") ("lang",
-			value<std::string> ()->default_value (""), "UI language: en, es, ru, zh-Hans (empty follows locale)") ("logclftime",
-			bool_switch ()->default_value (false),
+			value<std::string> ()->default_value (""), "UI language: en, es, ru, zh-Hans (empty follows locale)") (
+			"logclftime", bool_switch ()->default_value (false),
 			"Write full CLF-formatted date and time to log (default: disabled, write only time)") (
 			"family", value<std::string> ()->default_value (""), "Specify a family, router belongs to") ("datadir",
 			value<std::string> ()->default_value (""), "Path to storage of i2pd data (RI, keys, peer profiles, ...)") (
@@ -90,8 +90,8 @@ namespace config
 			"netid", value<int> ()->default_value (I2PD_NET_ID), "Specify NetID. Main I2P is 2") ("daemon",
 			bool_switch ()->default_value (false), "Router will go to background after start (default: disabled)") (
 			"foreground", bool_switch ()->default_value (false),
-			"Stay in the foreground even if the configuration enables daemon mode") (
-			"service", bool_switch ()->default_value (false),
+			"Stay in the foreground even if the configuration enables daemon mode") ("service",
+			bool_switch ()->default_value (false),
 			"Router will use system folders like '/var/lib/i2pd' (default: disabled)") ("notransit",
 			bool_switch ()->default_value (false),
 			"Router will not accept transit tunnels at startup (default: disabled)") ("floodfill",
@@ -123,9 +123,9 @@ namespace config
 
 		options_description privsep ("Privilege-separation options (Unix only)");
 		privsep.add_options () ("privsep.enabled", value<bool> ()->default_value (false),
-			"Enable the isolated log worker (default: false)") (
-			"privsep.log", value<bool> ()->default_value (true), "Isolate log writing in a worker process") (
-			"privsep.routerstorage", value<bool> ()->default_value (false), "Delegate fixed router state writes to a storage worker");
+			"Enable the isolated log worker (default: false)") ("privsep.log", value<bool> ()->default_value (true),
+			"Isolate log writing in a worker process") ("privsep.routerstorage", value<bool> ()->default_value (false),
+			"Delegate fixed router state writes to a storage worker");
 
 		options_description tui ("Local TUI options");
 #if defined(ANDROID)
