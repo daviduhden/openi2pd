@@ -19,7 +19,7 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   fuzz-smoke:
@@ -36,18 +36,23 @@ jobs:
           cmake -S build -B build-fuzz -G Ninja \
             -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-            -DBUILD_TESTING=ON -DWITH_FUZZERS=ON \
+            -DBUILD_TESTING=ON -DWITH_FUZZERS=ON -DWITH_ADDRSANITIZER=ON -DWITH_UNDEFSANITIZER=ON \
             -DWITH_UPNP=OFF -DI2PD_BUILD_TUI=OFF
           cmake --build build-fuzz --parallel 2 --target \
             fuzz-tui-protocol fuzz-http-parser fuzz-protocol-bounds \
             fuzz-log-record fuzz-privsep-protocol fuzz-torrents-parsers \
             fuzz-base-blinding fuzz-signature-der
+      - name: Run one-input CTest fuzz smoke entries
+        run: |
+          ctest --test-dir build-fuzz --output-on-failure \
+            -L fuzz --no-tests=error --timeout 60
       - name: Run bounded fuzz smoke checks
         env:
           ASAN_OPTIONS: "detect_leaks=0:halt_on_error=1:abort_on_error=1:quarantine_size_mb=64:thread_local_quarantine_size_kb=256"
           UBSAN_OPTIONS: "halt_on_error=1:print_stacktrace=1"
         run: |
           mkdir -p "$RUNNER_TEMP/fuzz-artifacts"
+          rc=0
           for fuzzer in \
             fuzz-tui-protocol fuzz-http-parser fuzz-protocol-bounds \
             fuzz-log-record fuzz-privsep-protocol fuzz-torrents-parsers \
@@ -55,12 +60,29 @@ jobs:
           do
             corpus="$RUNNER_TEMP/corpus/$fuzzer"
             mkdir -p "$corpus"
-            "build-fuzz/tests/$fuzzer" \
+            if ! "build-fuzz/tests/$fuzzer" \
               -max_total_time=30 \
               -timeout=10 \
               -rss_limit_mb=6144 \
               -malloc_limit_mb=6144 \
               -print_final_stats=1 \
               -artifact_prefix="$RUNNER_TEMP/fuzz-artifacts/" \
-              "$corpus"
+              "$corpus"; then
+              rc=1
+            fi
           done
+          exit "$rc"
+      - name: Stage fuzz corpora and crash artifacts
+        if: always()
+        run: |
+          mkdir -p fuzz-output
+          cp -a "$RUNNER_TEMP/fuzz-artifacts" "$RUNNER_TEMP/corpus" fuzz-output/ 2>/dev/null || true
+          find fuzz-output -type f -print | sort | sed -n '1,80p'
+      - name: Upload fuzz corpora and crash artifacts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: fuzz-corpus-and-artifacts
+          path: fuzz-output
+          if-no-files-found: warn
+          retention-days: 7

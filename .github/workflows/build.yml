@@ -20,9 +20,24 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
+  skills-static:
+    name: Agent Skills static contract
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          persist-credentials: false
+      - name: Validate Agent Skills without compiling
+        run: cmake -DPROJECT_ROOT="$PWD" -P tests/check-agent-skills.cmake
+      - name: Validate modern-language policy without compiling
+        run: cmake -DPROJECT_ROOT="$PWD" -P tests/check-language-modernization.cmake
+      - name: Validate translation catalogs without compiling
+        run: cmake -DPROJECT_ROOT="$PWD" -P tests/check-i18n.cmake
+
   linux:
     name: Linux (${{ matrix.name }})
     runs-on: ubuntu-24.04
@@ -49,7 +64,7 @@ jobs:
             -DCMAKE_C_COMPILER=${{ matrix.cc }} \
             -DCMAKE_CXX_COMPILER=${{ matrix.cxx }} \
             -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
-            -DI2PD_BUILD_TUI=ON
+            -DI2PD_BUILD_TUI=ON -DI2PD_OPENSSL_EXPECT=OpenSSL
           cmake --build build-output --parallel 2
           ctest --test-dir build-output --output-on-failure --timeout 120
           ./build-output/i2pd --version
@@ -63,7 +78,7 @@ jobs:
             -R '^test-(i2ptunnel-http|addressbook-case|torrents-security)$' --no-tests=error
       - name: Verify CTest subsystem labels
         run: |
-          for label in i2p security memory ipc tui torrent tools perl interop platform android ci static smoke; do
+          for label in i2p security memory ipc tui torrent tools perl docs interop platform android ci static packaging services unit install smoke; do
             ctest --test-dir build-output -N -L "$label" --no-tests=error
           done
       - name: Validate Perl and static interoperability fixtures
@@ -71,18 +86,200 @@ jobs:
           perl -c tools/scripts/i2pdctl
           perl -c tools/scripts/validate-branding.pl
           perl -c tools/scripts/check-doc-links.pl
+          perl -c tools/scripts/check-doc-nav.pl
           perl -c tests/interop/check-vectors.pl
-          perl -c android/tools/check-english-only.pl
+          perl -c android/tools/check-android-locales.pl
           perl tools/scripts/validate-branding.pl
           perl tools/scripts/check-doc-links.pl docs
+          perl tools/scripts/check-doc-nav.pl .
           perl tests/interop/check-vectors.pl
-          prove -v tools/tests/i2pdctl.t
-          prove -v tools/tests/validate-branding.t
-          prove -v tools/tests/perl-portability.t
+          if command -v prove >/dev/null 2>&1; then
+            prove -v tools/tests/i2pdctl.t
+            prove -v tools/tests/validate-branding.t
+            prove -v tools/tests/perl-portability.t
+          else
+            perl tools/tests/i2pdctl.t
+            perl tools/tests/validate-branding.t
+            perl tools/tests/perl-portability.t
+          fi
+          if command -v perlcritic >/dev/null 2>&1; then
+            perlcritic --profile .perlcriticrc \
+              tools/scripts/i2pdctl tools/scripts/check-doc-links.pl \
+              tools/scripts/check-doc-nav.pl tools/scripts/validate-branding.pl tools/tests/i2pdctl.t \
+              tools/tests/validate-branding.t tools/tests/perl-portability.t \
+              tests/interop/check-vectors.pl android/tools/check-android-locales.pl
+          else
+            echo "perlcritic not installed; optional style lane skipped"
+          fi
+      - name: Upload Linux CTest evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: linux-${{ matrix.name }}-ctest
+          path: |
+            build-output/Testing
+          if-no-files-found: warn
+          retention-days: 7
+
+  linux-openssl-3:
+    name: Linux OpenSSL 3.x
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          persist-credentials: false
+      - name: Install distribution toolchain
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            cmake ninja-build g++ libssl-dev zlib1g-dev libncurses-dev \
+            libminiupnpc-dev libboost-dev libboost-program-options-dev \
+            libboost-json-dev libboost-url-dev pkg-config perl
+      - name: Build and run all CTest targets with OpenSSL 3.x
+        run: |
+          cmake -S build -B build-openssl3 -G Ninja \
+            -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
+            -DI2PD_BUILD_TUI=ON -DI2PD_OPENSSL_EXPECT=OpenSSL
+          cmake --build build-openssl3 --parallel 2
+          ctest --test-dir build-openssl3 --output-on-failure --timeout 120
+          ./build-openssl3/i2pd --version
+
+  openssl-pinned:
+    name: Linux OpenSSL ${{ matrix.openssl }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - openssl: '4.0.0'
+            sha256: c32cf49a959c4f345f9606982dd36e7d28f7c58b19c2e25d75624d2b3d2f79ac
+          - openssl: '4.0.3'
+            sha256: 325b5c806167c13b40b1ffeadfe0248197c00eccc4cf123ec1e28d2d2fd216d9
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          persist-credentials: false
+      - name: Install latest build tools from Homebrew
+        uses: ./.github/actions/brew-toolchain
+      - name: Build pinned OpenSSL (manual CI only)
+        env:
+          OPENSSL_PIN: ${{ matrix.openssl }}
+          OPENSSL_SHA256: ${{ matrix.sha256 }}
+        run: |
+          set -euo pipefail
+          archive="openssl-${OPENSSL_PIN}.tar.gz"
+          curl -fsSLO "https://www.openssl.org/source/${archive}"
+          printf '%s  %s\n' "$OPENSSL_SHA256" "$archive" | sha256sum -c -
+          tar -xzf "$archive"
+          prefix="$RUNNER_TEMP/openssl-${OPENSSL_PIN}"
+          cd "openssl-${OPENSSL_PIN}"
+          ./Configure --prefix="$prefix" --libdir=lib no-tests no-docs shared
+          make -j2
+          make install_sw
+          {
+            echo "OPENSSL_ROOT_DIR=$prefix"
+            echo "CMAKE_PREFIX_PATH=$prefix:${CMAKE_PREFIX_PATH:-}"
+            echo "LD_LIBRARY_PATH=$prefix/lib:${LD_LIBRARY_PATH:-}"
+          } >> "$GITHUB_ENV"
+      - name: Build and run all CTest targets with pinned OpenSSL
+        run: |
+          cmake -S build -B build-pinned -G Ninja \
+            -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON \
+            -DI2PD_BUILD_TUI=ON -DI2PD_OPENSSL_EXPECT=OpenSSL \
+            -DI2PD_OPENSSL_EXPECT_VERSION=${{ matrix.openssl }}
+          cmake --build build-pinned --parallel 2
+          ctest --test-dir build-pinned --output-on-failure --timeout 120
+          ./build-pinned/i2pd --version
+
+  install-components:
+    name: Install components and consumer package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          persist-credentials: false
+      - name: Install latest build tools from Homebrew
+        uses: ./.github/actions/brew-toolchain
+      - name: Build, install components and consume package
+        run: |
+          set -euo pipefail
+          cmake -S build -B build-install -G Ninja \
+            -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF \
+            -DWITH_LIBRARY=ON -DWITH_BINARY=ON \
+            -DI2PD_BUILD_TUI=ON -DI2PD_BUILD_TOOLS=ON \
+            -DI2PD_OPENSSL_EXPECT=OpenSSL
+          cmake --build build-install --parallel 2
+          prefix="$RUNNER_TEMP/openi2pd-install"
+          for component in Runtime Tui Libraries Development Tools Documentation; do
+            cmake --install build-install --prefix "$prefix" --component "$component"
+          done
+          test -x "$prefix/bin/i2pd"
+          test -x "$prefix/bin/i2pd-tui"
+          test -f "$prefix/include/libi2pd/Log.h"
+          test -f "$prefix/lib/cmake/i2pd/i2pdConfig.cmake"
+          test -f "$prefix/share/doc/i2pd/LICENSE"
+          test -f "$prefix/share/doc/i2pd/docs/LICENSE.i2pd-docs-en"
+          test -x "$prefix/bin/i2pdctl"
+          perl -c "$prefix/bin/i2pdctl"
+          test -f "$prefix/share/doc/i2pd/LICENSE.i2pd-tools"
+          test -f "$prefix/share/applications/openi2pd.desktop"
+          grep -q '^Exec=i2pd-tui$' "$prefix/share/applications/openi2pd.desktop"
+          test -f "$prefix/share/icons/hicolor/scalable/apps/openi2pd.svg"
+          test -f "$prefix/share/icons/hicolor/256x256/apps/openi2pd.png"
+          for tool in autoconf_i2pd b33address b33offlinekeys famtool i2pbase64 keygen keyinfo offlinekeys regaddr regaddr_3ld regaddralias routerinfo vain verifyhost x25519; do
+            test -x "$prefix/bin/$tool"
+          done
+          consumer="$RUNNER_TEMP/openi2pd-consumer"
+          mkdir -p "$consumer"
+          cat > "$consumer/CMakeLists.txt" <<'EOF'
+          cmake_minimum_required(VERSION 3.24)
+          project(openi2pd_consumer CXX)
+          set(CMAKE_CXX_STANDARD 23)
+          find_package(i2pd CONFIG REQUIRED)
+          add_executable(consumer main.cpp)
+          target_link_libraries(consumer PRIVATE i2pd::libi2pd)
+          EOF
+          printf '#include "Log.h"\nint main(){ return 0; }\n' > "$consumer/main.cpp"
+          cmake -S "$consumer" -B "$consumer/build" -G Ninja \
+            -DCMAKE_PREFIX_PATH="$prefix" -DCMAKE_BUILD_TYPE=Release
+          cmake --build "$consumer/build" --parallel 2
+      - name: Stage installed component tree
+        if: always()
+        run: |
+          rm -rf install-output
+          cp -a "$RUNNER_TEMP/openi2pd-install" install-output 2>/dev/null || true
+          find install-output -maxdepth 3 -type f | sort | sed -n '1,120p'
+      - name: Upload installed component tree
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: install-components
+          path: install-output
+          if-no-files-found: warn
+          retention-days: 7
 
   android:
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    env:
+      I2PD_ANDROID_CMAKE_ARGS: >-
+        -DWITH_HARDENING=ON
+        -DCMAKE_PREFIX_PATH=${{ github.workspace }}/build-android/vcpkg_installed/arm64-android
+        -DBOOST_ROOT=${{ github.workspace }}/build-android/vcpkg_installed/arm64-android
+        -DBOOST_INCLUDEDIR=${{ github.workspace }}/build-android/vcpkg_installed/arm64-android/include
+        -DBOOST_LIBRARYDIR=${{ github.workspace }}/build-android/vcpkg_installed/arm64-android/lib
+        -DBoost_INCLUDE_DIR=${{ github.workspace }}/build-android/vcpkg_installed/arm64-android/include
+        -DBoost_LIBRARY_DIR_RELEASE=${{ github.workspace }}/build-android/vcpkg_installed/arm64-android/lib
+        -DBoost_LIBRARY_DIR_DEBUG=${{ github.workspace }}/build-android/vcpkg_installed/arm64-android/lib
+        -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=BOTH
+        -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=BOTH
+        -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
@@ -95,7 +292,7 @@ jobs:
       - name: Validate Android Gradle toolchain
         run: |
           sh android/tools/java25-probe/check-config.sh
-          perl android/tools/check-english-only.pl
+          perl android/tools/check-android-locales.pl
           cd android
           ./gradlew --version --no-daemon
       - name: Install Android platform used by the app
@@ -109,10 +306,16 @@ jobs:
             SDKMANAGER="$(command -v sdkmanager)"
           fi
           test -x "$SDKMANAGER"
+          # `yes` receives SIGPIPE when sdkmanager closes stdin; disable
+          # pipefail only for this pipeline so the sdkmanager status stays
+          # authoritative instead of masking a real license failure.
+          set +o pipefail
           yes | "$SDKMANAGER" --licenses >/dev/null
+          set -o pipefail
           "$SDKMANAGER" --install \
             "platforms;android-37.0" \
             "build-tools;36.0.0" \
+            "cmake;3.31.6" \
             "ndk;30.0.16248370"
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/30.0.16248370" >> "$GITHUB_ENV"
       - name: Checkout vcpkg
@@ -145,7 +348,7 @@ jobs:
             -DVCPKG_TARGET_TRIPLET=arm64-android \
             -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-29 \
             -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF \
-            -DI2PD_BUILD_JNI=ON -DWITH_BINARY=OFF
+            -DI2PD_BUILD_JNI=ON -DWITH_BINARY=OFF -DWITH_HARDENING=ON
           cmake --build build-android --parallel 2 --target i2pd_jni
           file build-android/libi2pd.so | grep 'ARM aarch64'
       - name: Android unit tests and Lint
@@ -154,19 +357,47 @@ jobs:
           ./gradlew :i2pd:testDebugUnitTest :i2pd:lintDebug --no-daemon \
             -Pi2pd.ndkVersion="$NDK_VERSION" \
             -Pandroid.injected.build.abi=arm64-v8a \
-            -Pi2pd.cmakeArgs="-DCMAKE_PREFIX_PATH=$GITHUB_WORKSPACE/build-android/vcpkg_installed/arm64-android -DBOOST_ROOT=$GITHUB_WORKSPACE/build-android/vcpkg_installed/arm64-android -DBOOST_INCLUDEDIR=$GITHUB_WORKSPACE/build-android/vcpkg_installed/arm64-android/include -DBOOST_LIBRARYDIR=$GITHUB_WORKSPACE/build-android/vcpkg_installed/arm64-android/lib -DBoost_INCLUDE_DIR=$GITHUB_WORKSPACE/build-android/vcpkg_installed/arm64-android/include -DBoost_NO_BOOST_CMAKE=ON -DBoost_NO_SYSTEM_PATHS=ON -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=BOTH -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=BOTH -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH -DBoost_LIBRARY_DIR_RELEASE=$GITHUB_WORKSPACE/build-android/vcpkg_installed/arm64-android/lib -DBoost_LIBRARY_DIR_DEBUG=$GITHUB_WORKSPACE/build-android/vcpkg_installed/arm64-android/lib"
+            -Pi2pd.cmakeArgs="$I2PD_ANDROID_CMAKE_ARGS"
+      - name: Assert Android JVM tests actually ran
+        run: |
+          test -n "$(find android/app/build/test-results/testDebugUnitTest -name '*.xml' -print -quit)"
+          ! grep -R -E '<(failure|error)' android/app/build/test-results/testDebugUnitTest
+      - name: Assert Java 25 class-file output
+        run: |
+          class_file=$(find android/app/build/intermediates/javac/debug -name RouterService.class -print -quit)
+          test -n "$class_file"
+          javap -verbose "$class_file" | grep -q 'major version: 69' \
+            || { echo "RouterService.class is not class-file major 69" >&2; exit 1; }
       - name: Show Android lint report on failure
         if: failure()
         run: |
-          report=android/app/build/intermediates/lint_intermediate_text_report/debug/lintReportDebug/lint-results-debug.txt
-          if [ -f "$report" ]; then cat "$report"; fi
+          for report in android/app/build/reports/lint-results-debug.txt android/app/build/reports/lint-results-release.txt; do
+            if [ -f "$report" ]; then cat "$report"; fi
+          done
       - name: Build debug APK for arm64
         run: |
           cd android
-          ./gradlew :i2pd:assembleDebug :i2pd:assembleDebugAndroidTest --no-daemon \
+          ./gradlew :i2pd:assembleDebug :i2pd:assembleDebugAndroidTest \
+            :i2pd:assembleRelease :i2pd:lintRelease --no-daemon \
             -Pi2pd.ndkVersion="$NDK_VERSION" \
             -Pandroid.injected.build.abi=arm64-v8a \
-            -Pi2pd.cmakeArgs="-DCMAKE_PREFIX_PATH=$GITHUB_WORKSPACE/build-android/vcpkg_installed/arm64-android -DBOOST_ROOT=$GITHUB_WORKSPACE/build-android/vcpkg_installed/arm64-android -DBOOST_INCLUDEDIR=$GITHUB_WORKSPACE/build-android/vcpkg_installed/arm64-android/include -DBOOST_LIBRARYDIR=$GITHUB_WORKSPACE/build-android/vcpkg_installed/arm64-android/lib -DBoost_INCLUDE_DIR=$GITHUB_WORKSPACE/build-android/vcpkg_installed/arm64-android/include -DBoost_NO_BOOST_CMAKE=ON -DBoost_NO_SYSTEM_PATHS=ON -DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=BOTH -DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=BOTH -DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=BOTH -DBoost_LIBRARY_DIR_RELEASE=$GITHUB_WORKSPACE/build-android/vcpkg_installed/arm64-android/lib -DBoost_LIBRARY_DIR_DEBUG=$GITHUB_WORKSPACE/build-android/vcpkg_installed/arm64-android/lib"
+            -Pi2pd.cmakeArgs="$I2PD_ANDROID_CMAKE_ARGS"
+          apk=$(find app/build/outputs/apk/debug -name '*.apk' -print -quit)
+          test -n "$apk"
+          unzip -l "$apk" | grep -q 'lib/arm64-v8a/libi2pd.so' \
+            || { echo "debug APK does not package lib/arm64-v8a/libi2pd.so" >&2; exit 1; }
+          test -n "$(find app/build/outputs/apk/release -name '*.apk' -print -quit)"
+      - name: Upload Android reports and APKs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: android-arm64-reports
+          path: |
+            android/app/build/reports
+            android/app/build/test-results
+            android/app/build/outputs/apk
+          if-no-files-found: warn
+          retention-days: 7
 
   interop:
     runs-on: ubuntu-24.04
@@ -236,9 +467,17 @@ jobs:
         run: |
           cmake -S build -B build-sanitizers -G Ninja \
             -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
-            -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+            -DCMAKE_BUILD_TYPE=Debug \
             -DBUILD_TESTING=ON -DWITH_UPNP=OFF \
-            -DI2PD_BUILD_TUI=ON \
+            -DI2PD_BUILD_TUI=ON -DI2PD_OPENSSL_EXPECT=OpenSSL \
             ${{ matrix.flags }}
           cmake --build build-sanitizers --parallel 2
           ctest --test-dir build-sanitizers --output-on-failure --timeout 180
+      - name: Upload sanitizer test logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: sanitizer-${{ matrix.name }}-logs
+          path: build-sanitizers/Testing
+          if-no-files-found: warn
+          retention-days: 7

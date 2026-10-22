@@ -19,7 +19,7 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   service-contracts:
@@ -30,46 +30,31 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
         with:
           persist-credentials: false
-      - name: Install latest build tools from Homebrew
-        uses: ./.github/actions/brew-toolchain
-        with:
-          compilers: 'false'
-          libraries: 'false'
       - name: Install static validators
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends \
-            shellcheck systemd
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            --no-install-recommends openrc runit shellcheck
       - name: Validate service contracts and shell syntax
         run: |
           cmake -DPROJECT_ROOT="$PWD" -P tests/check-services.cmake
           cmake -DPROJECT_ROOT="$PWD" -P tests/check-build-system.cmake
-          # The unit is static, but systemd-analyze verifies that ExecStart
-          # exists. Provide a disposable executable for this source-only job;
-          # the Debian job verifies the real installed binary and man page.
-          sudo install -m 0755 /bin/true /usr/bin/i2pd
-          trap 'sudo rm -f /usr/bin/i2pd' EXIT
-          verify_status=0
-          verify_output=$(systemd-analyze verify --man=no \
-            contrib/i2pd.service 2>&1) || verify_status=$?
-          if [ "$verify_status" -ne 0 ]; then
-            printf '%s\n' "$verify_output" >&2
-            if printf '%s\n' "$verify_output" | grep -q '^i2pd\.service:'; then
-              exit "$verify_status"
-            fi
-          fi
+          cmake -DPROJECT_ROOT="$PWD" -P tests/check-packaging.cmake
           sh -n contrib/sysvinit/i2pd
+          sh -n contrib/openrc/i2pd.openrc
           sh -n contrib/runit/i2pd/run
           sh -n contrib/runit/i2pd/log/run
           shellcheck -s sh \
+            contrib/openrc/i2pd.openrc \
             contrib/sysvinit/i2pd \
             contrib/runit/i2pd/run \
             contrib/runit/i2pd/log/run \
             debian/postinst debian/postrm debian/tests/smoke
       - name: Validate DEP-8 control metadata
         run: |
-          sudo apt-get install -y --no-install-recommends autopkgtest
-          dpkg-query -W -f='autopkgtest ${Version}\n' autopkgtest
+          grep -q '^Tests: smoke' debian/tests/control
+          grep -q '^Depends: .*i2pd-tui' debian/tests/control
+          sh -n debian/tests/smoke
 
   debian:
     name: Debian packages
@@ -82,7 +67,8 @@ jobs:
       - name: Install Debian build dependencies
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends \
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            --no-install-recommends \
             build-essential debhelper cmake ninja-build fakeroot lintian \
             autopkgtest systemd shellcheck \
             libboost-program-options-dev libboost-json-dev libboost-url-dev \
@@ -93,8 +79,67 @@ jobs:
           dpkg-buildpackage -us -uc -b
       - name: Lintian
         run: |
-          lintian --profile debian --fail-on error ../i2pd_*.changes
+          set -o pipefail
+          lintian --profile debian --fail-on error ../i2pd_*.changes \
+            | tee ../lintian.log
       - name: Install packages and run DEP-8 smoke test
         run: |
-          sudo apt-get install -y ../i2pd_*.deb ../i2pd-tui_*.deb
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y \
+            ../i2pd_*.deb ../i2pd-tui_*.deb
+          sudo systemd-analyze verify --man=no /lib/systemd/system/i2pd.service
           sudo sh debian/tests/smoke
+      - name: Check package manifests and split
+        run: |
+          set -euo pipefail
+          dpkg -L i2pd > /tmp/i2pd-files
+          dpkg -L i2pd-tui > /tmp/i2pd-tui-files
+          grep -qx /usr/bin/i2pd /tmp/i2pd-files
+          grep -qx /usr/bin/i2pd-tui /tmp/i2pd-tui-files
+          if grep -qx /usr/bin/i2pd-tui /tmp/i2pd-files; then
+            echo "i2pd owns /usr/bin/i2pd-tui" >&2
+            exit 1
+          fi
+          grep -q '/usr/share/applications/openi2pd.desktop' /tmp/i2pd-tui-files
+          if grep -qE '^/etc/|/systemd/|/init\.d/' /tmp/i2pd-tui-files; then
+            echo "i2pd-tui owns daemon configuration/service files" >&2
+            exit 1
+          fi
+          grep -q /usr/share/doc/i2pd/LICENSE.i2pd-tools /tmp/i2pd-files
+          grep -q /usr/share/doc/i2pd/CC-BY-SA-4.0 /tmp/i2pd-files
+      - name: Preserve conffiles across reinstall
+        run: |
+          set -euo pipefail
+          printf '\n# local upgrade marker\n' | sudo tee -a /etc/i2pd/i2pd.conf >/dev/null
+          sudo env DEBIAN_FRONTEND=noninteractive dpkg --force-confold -i \
+            ../i2pd_*.deb ../i2pd-tui_*.deb
+          sudo sh debian/tests/smoke
+          grep -q '# local upgrade marker' /etc/i2pd/i2pd.conf
+      - name: Run DEP-8 tests
+        run: |
+          sudo autopkgtest --timeout=600 ../i2pd_*.changes -- null
+      - name: Remove and preserve, then purge
+        run: |
+          set -euo pipefail
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get remove -y i2pd i2pd-tui
+          test -f /etc/i2pd/i2pd.conf
+          test -d /var/lib/i2pd
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get purge -y i2pd i2pd-tui
+          test ! -e /etc/i2pd/i2pd.conf
+          test ! -d /var/lib/i2pd
+          dpkg --audit
+      - name: Stage Debian evidence
+        if: always()
+        run: |
+          set -eu
+          mkdir -p package-output
+          cp ../i2pd_*.deb ../i2pd-tui_*.deb ../i2pd_*.changes \
+            ../i2pd_*.buildinfo ../lintian.log package-output/ 2>/dev/null || true
+          ls -l package-output
+      - name: Upload Debian package evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: debian-packages-and-logs
+          path: package-output
+          if-no-files-found: warn
+          retention-days: 7
