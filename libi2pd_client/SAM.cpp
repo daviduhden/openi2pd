@@ -279,8 +279,8 @@ namespace client
 		// same way instead of requiring exactly one literal space.
 		std::string_view rest = line;
 		std::string_view hello, version;
-		if (!NextToken (rest, hello) || !NextToken (rest, version)
-			|| !SAMCommandEquals (hello, "HELLO") || !SAMCommandEquals (version, "VERSION"))
+		if (!NextToken (rest, hello) || !NextToken (rest, version) || !SAMCommandEquals (hello, "HELLO")
+			|| !SAMCommandEquals (version, "VERSION"))
 		{
 			LogPrint (eLogError, "SAM: Handshake mismatch");
 			Terminate ("SAM: handshake mismatch");
@@ -439,9 +439,8 @@ namespace client
 			size_t secondStart = firstSpace + 1;
 			while (secondStart < line.size () && line[secondStart] == ' ') ++secondStart;
 			auto secondSpace = secondStart < line.size () ? line.find (' ', secondStart) : std::string_view::npos;
-			commandStorage.reserve (
-				firstSpace + 1 + (secondSpace == std::string_view::npos ? line.size () - secondStart
-																	   : secondSpace - secondStart));
+			commandStorage.reserve (firstSpace + 1
+				+ (secondSpace == std::string_view::npos ? line.size () - secondStart : secondSpace - secondStart));
 			commandStorage.append (line.substr (0, firstSpace));
 			commandStorage.push_back (' ');
 			if (secondStart < line.size ())
@@ -543,8 +542,7 @@ namespace client
 		}
 	}
 
-	void SAMSocket::HandleMessageReplySent (
-		const boost::system::error_code & ecode, std::size_t, bool close)
+	void SAMSocket::HandleMessageReplySent (const boost::system::error_code & ecode, std::size_t, bool close)
 	{
 		m_IsReplyQueued = false;
 		if (ecode)
@@ -585,8 +583,7 @@ namespace client
 				Terminate ("No Stream Remaining");
 				return;
 			}
-			m_Stream->AsyncSend (reinterpret_cast<uint8_t *> (m_InputBuffer + m_ControlReadOffset),
-				bytes_transferred,
+			m_Stream->AsyncSend (reinterpret_cast<uint8_t *> (m_InputBuffer + m_ControlReadOffset), bytes_transferred,
 				std::bind (&SAMSocket::HandleStreamSend, shared_from_this (), std::placeholders::_1));
 		}
 		else
@@ -645,7 +642,8 @@ namespace client
 		i2p::datagram::DatagramVersion datagramVersion = i2p::datagram::eDatagramV1;
 		if (SAMCommandEquals (style, SAM_VALUE_STREAM))
 			type = SAMSessionType::eSAMSessionTypeStream;
-		else if (SAMCommandEquals (style, SAM_VALUE_DATAGRAM) || SAMCommandEquals (style, SAM_VALUE_DATAGRAM2) || SAMCommandEquals (style, SAM_VALUE_DATAGRAM3))
+		else if (SAMCommandEquals (style, SAM_VALUE_DATAGRAM) || SAMCommandEquals (style, SAM_VALUE_DATAGRAM2)
+			|| SAMCommandEquals (style, SAM_VALUE_DATAGRAM3))
 		{
 			type = SAMSessionType::eSAMSessionTypeDatagram;
 			if (SAMCommandEquals (style, SAM_VALUE_DATAGRAM2))
@@ -764,7 +762,8 @@ namespace client
 		}
 
 		// create destination
-		auto session = m_Owner.CreateSession (id, type, SAMCommandEquals (destination, SAM_VALUE_TRANSIENT) ? "" : destination, params);
+		auto session = m_Owner.CreateSession (
+			id, type, SAMCommandEquals (destination, SAM_VALUE_TRANSIENT) ? "" : destination, params);
 		if (session)
 		{
 			m_SocketType = SAMSocketType::eSAMSocketTypeSession;
@@ -1349,7 +1348,8 @@ namespace client
 			i2p::datagram::DatagramVersion datagramVersion = i2p::datagram::eDatagramV1;
 			if (SAMCommandEquals (style, SAM_VALUE_STREAM))
 				type = SAMSessionType::eSAMSessionTypeStream;
-			else if (SAMCommandEquals (style, SAM_VALUE_DATAGRAM) || SAMCommandEquals (style, SAM_VALUE_DATAGRAM2) || SAMCommandEquals (style, SAM_VALUE_DATAGRAM3))
+			else if (SAMCommandEquals (style, SAM_VALUE_DATAGRAM) || SAMCommandEquals (style, SAM_VALUE_DATAGRAM2)
+				|| SAMCommandEquals (style, SAM_VALUE_DATAGRAM3))
 			{
 				type = SAMSessionType::eSAMSessionTypeDatagram;
 				if (SAMCommandEquals (style, SAM_VALUE_DATAGRAM2))

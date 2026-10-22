@@ -112,8 +112,7 @@ namespace proxy
 			std::string value (host);
 			if (value.size () >= 2 && value.front () == '[' && value.back () == ']')
 				value = value.substr (1, value.size () - 2);
-			if (boost::iequals (value, "localhost")
-				|| i2p::client::HasSuffixIgnoreCase (value, ".localhost"))
+			if (boost::iequals (value, "localhost") || i2p::client::HasSuffixIgnoreCase (value, ".localhost"))
 				return true;
 			boost::system::error_code ec;
 			auto address = boost::asio::ip::make_address (value, ec);
@@ -127,8 +126,7 @@ namespace proxy
 			}
 			auto b = address.to_v6 ().to_bytes ();
 			return address.to_v6 ().is_loopback () || address.to_v6 ().is_unspecified ()
-				|| address.to_v6 ().is_multicast () || (b[0] == 0xfe && (b[1] & 0xc0) == 0x80)
-				|| (b[0] & 0xfe) == 0xfc;
+				|| address.to_v6 ().is_multicast () || (b[0] == 0xfe && (b[1] & 0xc0) == 0x80) || (b[0] & 0xfe) == 0xfc;
 		}
 
 		union address
@@ -176,7 +174,7 @@ namespace proxy
 		uint8_t * m_remaining_data; //Data left to be sent
 		uint8_t * m_remaining_upstream_data; //upstream data left to be forwarded
 		uint8_t m_response[7 + SOCKS_MAX_HOSTNAME_SIZE];
-		address m_address {}; //Address
+		address m_address { }; //Address
 		std::size_t m_remaining_data_len; //Size of the data left to be sent
 		uint32_t m_4aip; //Used in 4a requests
 		uint16_t m_port;

@@ -25,28 +25,22 @@ bool Check (bool condition, const char * message)
 
 int main ()
 {
-	i2p::proxy::SOCKSDnsAddress address {};
+	i2p::proxy::SOCKSDnsAddress address { };
 
-	if (!Check (address.GetString ().empty (), "zero-initialized address is empty"))
-		return 1;
-	if (!Check (address.push_back ('a'), "single byte append"))
-		return 1;
-	if (!Check (address.GetString () == "a", "single byte length"))
-		return 1;
+	if (!Check (address.GetString ().empty (), "zero-initialized address is empty")) return 1;
+	if (!Check (address.push_back ('a'), "single byte append")) return 1;
+	if (!Check (address.GetString () == "a", "single byte length")) return 1;
 
-	i2p::proxy::SOCKSDnsAddress maximum {};
+	i2p::proxy::SOCKSDnsAddress maximum { };
 	const std::string maximumText (i2p::proxy::SOCKS_MAX_HOSTNAME_SIZE, 'x');
-	if (!Check (maximum.SetString (maximumText), "maximum-length name accepted"))
-		return 1;
+	if (!Check (maximum.SetString (maximumText), "maximum-length name accepted")) return 1;
 	if (!Check (maximum.GetString ().size () == i2p::proxy::SOCKS_MAX_HOSTNAME_SIZE, "maximum length retained"))
 		return 1;
-	if (!Check (!maximum.push_back ('x'), "append beyond capacity rejected"))
-		return 1;
+	if (!Check (!maximum.push_back ('x'), "append beyond capacity rejected")) return 1;
 
 	const std::string tooLong (i2p::proxy::SOCKS_MAX_HOSTNAME_SIZE + 1, 'x');
-	i2p::proxy::SOCKSDnsAddress overflow {};
-	if (!Check (!overflow.SetString (tooLong), "oversized name rejected"))
-		return 1;
+	i2p::proxy::SOCKSDnsAddress overflow { };
+	if (!Check (!overflow.SetString (tooLong), "oversized name rejected")) return 1;
 
 	return 0;
 }

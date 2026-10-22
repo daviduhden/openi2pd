@@ -663,8 +663,7 @@ namespace client
 			std::placeholders::_2, std::placeholders::_3, std::placeholders::_4, std::placeholders::_5));
 
 		m_LocalDest->Start ();
-		if (!m_ResolveThread)
-			m_ResolveThread.emplace ([this] () { TryResolving (); });
+		if (!m_ResolveThread) m_ResolveThread.emplace ([this] () { TryResolving (); });
 		RecvFromLocal ();
 
 		if (m_KeepAliveInterval) ScheduleKeepAliveTimer ();

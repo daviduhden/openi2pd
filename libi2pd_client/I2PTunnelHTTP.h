@@ -25,17 +25,31 @@ inline constexpr size_t I2P_TUNNEL_MAX_NUM_HTTP_HEADERS = 100;
 class I2PTunnelHTTPHeader
 {
 public:
-	enum class Mode { ClientRequest, ServerRequest, ServerResponse };
-	enum class Result { Incomplete, Complete, Rejected };
+	enum class Mode
+	{
+		ClientRequest,
+		ServerRequest,
+		ServerResponse
+	};
+	enum class Result
+	{
+		Incomplete,
+		Complete,
+		Rejected
+	};
 
-	explicit I2PTunnelHTTPHeader (Mode mode, std::string host = {}, std::string identity = {})
-		: m_Mode (mode), m_Host (std::move (host)), m_Identity (std::move (identity)) { }
+	explicit I2PTunnelHTTPHeader (Mode mode, std::string host = { }, std::string identity = { })
+		: m_Mode (mode)
+		, m_Host (std::move (host))
+		, m_Identity (std::move (identity))
+	{
+	}
 
 	Result Feed (std::string_view input)
 	{
 		if (m_Result != Result::Incomplete) return m_Result;
-		if (m_Host.size () > I2P_TUNNEL_HTTP_MAX_HEADER_SIZE
-			|| m_Identity.size () > I2P_TUNNEL_HTTP_MAX_HEADER_SIZE) return Reject ();
+		if (m_Host.size () > I2P_TUNNEL_HTTP_MAX_HEADER_SIZE || m_Identity.size () > I2P_TUNNEL_HTTP_MAX_HEADER_SIZE)
+			return Reject ();
 		for (size_t i = 0; i < input.size (); ++i)
 		{
 			if (++m_Bytes > I2P_TUNNEL_HTTP_MAX_HEADER_SIZE) return Reject ();
@@ -48,16 +62,14 @@ public:
 			if (m_Line == "\r")
 			{
 				// The client historically counts the terminating empty line.
-				if (m_Mode == Mode::ClientRequest
-					&& m_Lines >= I2P_TUNNEL_MAX_NUM_HTTP_HEADERS) return Reject ();
-				if (m_Mode != Mode::ServerResponse && !m_Connection)
-					m_Output += "Connection: close\r\n";
-				if (m_Mode == Mode::ClientRequest && !m_ProxyConnection)
-					m_Output += "Proxy-Connection: close\r\n";
+				if (m_Mode == Mode::ClientRequest && m_Lines >= I2P_TUNNEL_MAX_NUM_HTTP_HEADERS) return Reject ();
+				if (m_Mode != Mode::ServerResponse && !m_Connection) m_Output += "Connection: close\r\n";
+				if (m_Mode == Mode::ClientRequest && !m_ProxyConnection) m_Output += "Proxy-Connection: close\r\n";
 				if (m_Mode == Mode::ServerRequest)
 				{
 					if (m_Output.size () > I2P_TUNNEL_HTTP_MAX_HEADER_SIZE
-						|| m_Identity.size () > I2P_TUNNEL_HTTP_MAX_HEADER_SIZE - m_Output.size ()) return Reject ();
+						|| m_Identity.size () > I2P_TUNNEL_HTTP_MAX_HEADER_SIZE - m_Output.size ())
+						return Reject ();
 					m_Output += m_Identity;
 				}
 				m_Output += "\r\n";
@@ -95,7 +107,8 @@ private:
 		if (m_Mode == Mode::ServerResponse)
 		{
 			// Preserve the existing response exclusion policy.
-			for (auto prefix : std::array<std::string_view, 5> { "Server:", "Date:", "X-Runtime:", "X-Powered-By:", "Proxy" })
+			for (auto prefix :
+				std::array<std::string_view, 5> { "Server:", "Date:", "X-Runtime:", "X-Powered-By:", "Proxy" })
 				if (std::string_view (m_Line).starts_with (prefix)) return;
 		}
 		else
@@ -116,7 +129,8 @@ private:
 				const auto pos = m_Line.find ("pgrade");
 				if (pos != std::string::npos && pos && Lower (m_Line[pos - 1]) == 'u')
 					m_Output += m_Line + '\n';
-				else m_Output += "Connection: close\r\n";
+				else
+					m_Output += "Connection: close\r\n";
 				return;
 			}
 			if (m_Mode == Mode::ClientRequest && StartsWith (m_Line, "Proxy-Connection:"))

@@ -68,7 +68,8 @@ namespace proxy
 		  "    h1 { font-size: 1.7em; color: #007C7A; }\r\n"
 		  "    .warning { color: #B3261E; font-weight: bold; }\r\n"
 		  "    @media screen and (max-width: 980px) { h1 { font-size: 1.7em; text-align: center; color: #007C7A; }}\r\n"
-		  "    @media (prefers-color-scheme: dark) { body { background: #0B141C; color: #E4EDF4; } h1 { color: #59D8D4; } .warning { color: #FFB4AB; } }\r\n"
+		  "    @media (prefers-color-scheme: dark) { body { background: #0B141C; color: #E4EDF4; } h1 { color: "
+		  "#59D8D4; } .warning { color: #FFB4AB; } }\r\n"
 		  "  </style>\r\n"
 		  "</head>\r\n";
 
@@ -77,27 +78,23 @@ namespace proxy
 		std::string value (host);
 		if (value.size () >= 2 && value.front () == '[' && value.back () == ']')
 			value = value.substr (1, value.size () - 2);
-		if (boost::iequals (value, "localhost")
-			|| i2p::client::HasSuffixIgnoreCase (value, ".localhost"))
-			return true;
+		if (boost::iequals (value, "localhost") || i2p::client::HasSuffixIgnoreCase (value, ".localhost")) return true;
 		boost::system::error_code ec;
 		auto address = boost::asio::ip::make_address (value, ec);
 		if (ec) return false;
 		if (address.is_v4 ())
 		{
 			auto b = address.to_v4 ().to_bytes ();
-			if (b[0] == 0 || b[0] == 10 || b[0] == 127
-				|| (b[0] == 169 && b[1] == 254)
-				|| (b[0] == 172 && b[1] >= 16 && b[1] <= 31)
-				|| (b[0] == 192 && b[1] == 168) || address.to_v4 ().is_multicast ())
+			if (b[0] == 0 || b[0] == 10 || b[0] == 127 || (b[0] == 169 && b[1] == 254)
+				|| (b[0] == 172 && b[1] >= 16 && b[1] <= 31) || (b[0] == 192 && b[1] == 168)
+				|| address.to_v4 ().is_multicast ())
 				return true;
 		}
 		else
 		{
 			auto b = address.to_v6 ().to_bytes ();
 			if (address.to_v6 ().is_loopback () || address.to_v6 ().is_unspecified ()
-				|| address.to_v6 ().is_multicast () || (b[0] == 0xfe && (b[1] & 0xc0) == 0x80)
-				|| (b[0] & 0xfe) == 0xfc)
+				|| address.to_v6 ().is_multicast () || (b[0] == 0xfe && (b[1] & 0xc0) == 0x80) || (b[0] & 0xfe) == 0xfc)
 				return true;
 		}
 		return false;
@@ -233,8 +230,7 @@ namespace proxy
 		if (!alreadyDead) Done (shared_from_this ());
 	}
 
-	void HTTPReqHandler::GenericProxyError (
-		std::string_view title, std::string_view description, int code)
+	void HTTPReqHandler::GenericProxyError (std::string_view title, std::string_view description, int code)
 	{
 		std::stringstream ss;
 		ss << "<h1>" << tr ("Proxy error") << ": " << title << "</h1>\r\n";
@@ -460,8 +456,8 @@ namespace proxy
 		{
 			LogPrint (eLogWarning, "HTTPProxy: Request header exceeds ", HTTP_PROXY_MAX_HEADER_SIZE, " bytes");
 			m_recv_buf.clear ();
-			GenericProxyError (tr ("Request too large"), tr ("HTTP request header is too large"),
-				HTTP_PROXY_STATUS_HEADER_TOO_LARGE);
+			GenericProxyError (
+				tr ("Request too large"), tr ("HTTP request header is too large"), HTTP_PROXY_STATUS_HEADER_TOO_LARGE);
 			return true;
 		}
 
@@ -503,9 +499,10 @@ namespace proxy
 							m_RequestURL.host, " (referer is ", m_RequestURL.host.empty () ? "empty" : "harmful", ")");
 						std::string full_url = m_RequestURL.to_string ();
 						std::stringstream ss;
-						ss << tr ("Host %s is <span class=\"warning\">already in router's addressbook</span>. <b>Be careful: "
-								  "source of this URL may be harmful!</b> Click here to update record: <a "
-								  "href=\"%s%s%s&update=true\">Continue</a>.",
+						ss << tr (
+							"Host %s is <span class=\"warning\">already in router's addressbook</span>. <b>Be careful: "
+							"source of this URL may be harmful!</b> Click here to update record: <a "
+							"href=\"%s%s%s&update=true\">Continue</a>.",
 							m_RequestURL.host.c_str (), full_url.c_str (),
 							(full_url.find ('?') != std::string::npos ? "&i2paddresshelper=" : "?i2paddresshelper="),
 							jump.c_str ());
@@ -541,8 +538,9 @@ namespace proxy
 			{
 				std::string full_url = m_RequestURL.to_string ();
 				std::stringstream ss;
-				ss << tr ("Host %s is <span class=\"warning\">already in router's addressbook</span>. Click here to update "
-						  "record: <a href=\"%s%s%s&update=true\">Continue</a>.",
+				ss << tr (
+					"Host %s is <span class=\"warning\">already in router's addressbook</span>. Click here to update "
+					"record: <a href=\"%s%s%s&update=true\">Continue</a>.",
 					m_RequestURL.host.c_str (), full_url.c_str (),
 					(full_url.find ('?') != std::string::npos ? "&i2paddresshelper=" : "?i2paddresshelper="),
 					jump.c_str ());
@@ -570,7 +568,8 @@ namespace proxy
 				auto res = std::from_chars (portStr.data (), portStr.data () + portStr.size (), dest_port);
 				if (res.ec != std::errc () || res.ptr != portStr.data () + portStr.size ())
 				{
-					GenericProxyError (tr ("Invalid request"), tr ("Invalid request URI"), HTTP_PROXY_STATUS_BAD_REQUEST);
+					GenericProxyError (
+						tr ("Invalid request"), tr ("Invalid request URI"), HTTP_PROXY_STATUS_BAD_REQUEST);
 					return true;
 				}
 				dest_host = uri.substr (0, pos);
@@ -657,7 +656,8 @@ namespace proxy
 				if (m_ProxyURL.parse (m_OutproxyUrl))
 					ForwardToUpstreamProxy ();
 				else
-					GenericProxyError (tr ("Outproxy failure"), tr ("Bad outproxy settings"), HTTP_PROXY_STATUS_BAD_GATEWAY);
+					GenericProxyError (
+						tr ("Outproxy failure"), tr ("Bad outproxy settings"), HTTP_PROXY_STATUS_BAD_GATEWAY);
 			}
 			else
 			{
@@ -978,8 +978,8 @@ namespace proxy
 			LogPrint (eLogWarning, "HTTPProxy: Request header exceeds ", HTTP_PROXY_MAX_HEADER_SIZE,
 				" bytes, dropping connection");
 			m_recv_buf.clear ();
-			GenericProxyError (tr ("Request too large"), tr ("HTTP request header is too large"),
-				HTTP_PROXY_STATUS_HEADER_TOO_LARGE);
+			GenericProxyError (
+				tr ("Request too large"), tr ("HTTP request header is too large"), HTTP_PROXY_STATUS_HEADER_TOO_LARGE);
 			return;
 		}
 

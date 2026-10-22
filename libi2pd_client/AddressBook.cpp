@@ -88,7 +88,8 @@ namespace client
 		if (!explicitB33) explicitB33 = HasSuffixIgnoreCase (name, b33Suffix) && name.size () > b33Suffix.size ();
 		size_t labelEnd = name.size ();
 		if (explicitB33)
-			labelEnd = name.size () - (HasSuffixIgnoreCase (name, b33AltSuffix) ? b33AltSuffix.size () : b33Suffix.size ());
+			labelEnd
+				= name.size () - (HasSuffixIgnoreCase (name, b33AltSuffix) ? b33AltSuffix.size () : b33Suffix.size ());
 		else if (HasSuffixIgnoreCase (name, ".i2p.alt"))
 			labelEnd = name.size () - 8;
 		else if (HasSuffixIgnoreCase (name, ".i2p"))
@@ -140,8 +141,8 @@ namespace client
 			return false;
 		for (char ch : pattern)
 		{
-			if ((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '.' || ch == '-'
-				|| ch == '*' || ch == '_' || ch == '~' || (ch >= 'A' && ch <= 'Z'))
+			if ((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '.' || ch == '-' || ch == '*' || ch == '_'
+				|| ch == '~' || (ch >= 'A' && ch <= 'Z'))
 				continue;
 			return false;
 		}
@@ -187,8 +188,8 @@ namespace client
 	bool AddressBook::RemoveDeletedMatchesLocked (std::string_view name)
 	{
 		const auto before = m_DeletedHosts.size ();
-		std::erase_if (m_DeletedHosts, [name] (const std::string & pattern)
-			{ return MatchesDeletedPattern (pattern, name); });
+		std::erase_if (
+			m_DeletedHosts, [name] (const std::string & pattern) { return MatchesDeletedPattern (pattern, name); });
 		return before != m_DeletedHosts.size ();
 	}
 
@@ -218,7 +219,8 @@ namespace client
 
 	void detail::AddressLookupRequests::Prune (uint64_t now)
 	{
-		std::erase_if (m_Requests, [now] (const auto & entry)
+		std::erase_if (m_Requests,
+			[now] (const auto & entry)
 			{
 				auto created = entry.second.Created;
 				return now < created || now - created >= TIMEOUT_SECONDS;
@@ -610,8 +612,7 @@ namespace client
 			auto last = line.find_last_not_of (" \t");
 			line = line.substr (first, last - first + 1);
 			if (line.empty () || line.size () > 255) continue;
-			if (std::find (patterns.begin (), patterns.end (), line) == patterns.end ())
-				patterns.push_back (line);
+			if (std::find (patterns.begin (), patterns.end (), line) == patterns.end ()) patterns.push_back (line);
 			if (patterns.size () >= 256) break;
 		}
 		if (f.bad ())
@@ -1002,11 +1003,9 @@ namespace client
 		std::string_view name, std::string_view destination, bool replace)
 	{
 		if (!IsValidHostName (name)) return AddressBookMutationResult::InvalidName;
-		if (destination.empty () || destination.size () > 1024)
-			return AddressBookMutationResult::InvalidDestination;
+		if (destination.empty () || destination.size () > 1024) return AddressBookMutationResult::InvalidDestination;
 		auto identity = std::make_shared<i2p::data::IdentityEx> ();
-		if (!identity->FromBase64 (std::string (destination)))
-			return AddressBookMutationResult::InvalidDestination;
+		if (!identity->FromBase64 (std::string (destination))) return AddressBookMutationResult::InvalidDestination;
 		const auto key = NormalizeHostName (name);
 		const auto hash = identity->GetIdentHash ();
 
@@ -1681,8 +1680,8 @@ namespace client
 			std::vector<uint8_t> unzipped (MAX_SUBSCRIPTION_BODY);
 			i2p::data::GzipInflator inflator;
 			size_t unzippedLen = 0;
-			if (!inflator.InflateChecked ((const uint8_t *)res.body ().data (), res.body ().size (),
-					unzipped.data (), unzipped.size (), unzippedLen))
+			if (!inflator.InflateChecked ((const uint8_t *)res.body ().data (), res.body ().size (), unzipped.data (),
+					unzipped.size (), unzippedLen))
 			{
 				LogPrint (eLogError, "Addressbook: Can't gunzip http response");
 				return false;

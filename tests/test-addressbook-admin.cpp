@@ -40,7 +40,11 @@ public:
 	bool Init () override { return true; }
 	int Load (Addresses &) override { return 0; }
 	int LoadLocal (Addresses &) override { return 0; }
-	int Save (const Addresses & addresses) override { saveCount++; return static_cast<int> (addresses.size ()); }
+	int Save (const Addresses & addresses) override
+	{
+		saveCount++;
+		return static_cast<int> (addresses.size ());
+	}
 	void SaveEtag (const i2p::data::IdentHash &, const std::string &, const std::string &) override { }
 	bool GetEtag (const i2p::data::IdentHash &, std::string &, std::string &) override { return false; }
 	void ResetEtags () override { }

@@ -140,8 +140,8 @@ int main ()
 		proxyError.code = code;
 		proxyError.body = "proxy error";
 		const std::string proxyErrorText = proxyError.to_string ();
-		assert (proxyErrorText.starts_with ("HTTP/1.1 " + std::to_string (code) + " "
-			+ std::string (HTTPCodeToStatus (code)) + "\r\n"));
+		assert (proxyErrorText.starts_with (
+			"HTTP/1.1 " + std::to_string (code) + " " + std::string (HTTPCodeToStatus (code)) + "\r\n"));
 		assert (proxyErrorText.find ("Content-Length: 11\r\n") != std::string::npos);
 	}
 

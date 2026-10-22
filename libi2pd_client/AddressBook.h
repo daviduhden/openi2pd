@@ -157,10 +157,14 @@ namespace client
 		// Deleted-host tombstones are a small, read-only-at-startup policy
 		// list. The default implementation keeps custom storages usable; the
 		// filesystem backend persists them in deleted.txt.
-		virtual bool LoadDeletedHosts (std::vector<std::string> & patterns) { (void) patterns; return false; }
+		virtual bool LoadDeletedHosts (std::vector<std::string> & patterns)
+		{
+			(void)patterns;
+			return false;
+		}
 		virtual bool SaveDeletedHosts (const std::vector<std::string> & patterns)
 		{
-			(void) patterns;
+			(void)patterns;
 			return true;
 		}
 	};
@@ -189,8 +193,7 @@ namespace client
 		// public labels; identity files and storage paths never cross the
 		// local administration boundary.
 		std::vector<AddressBookEntry> GetEntries (size_t limit);
-		AddressBookMutationResult AddAddress (
-			std::string_view name, std::string_view destination, bool replace);
+		AddressBookMutationResult AddAddress (std::string_view name, std::string_view destination, bool replace);
 		AddressBookMutationResult RemoveAddress (std::string_view name);
 		// Deleted-host tombstones: subscription merges must not resurrect a
 		// name the user removed. Patterns are bounded, ASCII-only names with

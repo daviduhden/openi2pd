@@ -164,8 +164,7 @@ namespace client
 			auto ch = word[i];
 			auto expectedCh = expected[i];
 			if (ch >= 'a' && ch <= 'z') ch = static_cast<char> (ch - 'a' + 'A');
-			if (expectedCh >= 'a' && expectedCh <= 'z')
-				expectedCh = static_cast<char> (expectedCh - 'a' + 'A');
+			if (expectedCh >= 'a' && expectedCh <= 'z') expectedCh = static_cast<char> (expectedCh - 'a' + 'A');
 			if (ch != expectedCh) return false;
 		}
 		return true;
@@ -255,8 +254,8 @@ namespace client
 		size_t secondStart = firstSpace + 1;
 		while (secondStart < line.size () && line[secondStart] == ' ') ++secondStart;
 		auto secondSpace = secondStart < line.size () ? line.find (' ', secondStart) : std::string_view::npos;
-		auto second = line.substr (secondStart,
-			secondSpace == std::string_view::npos ? std::string_view::npos : secondSpace - secondStart);
+		auto second = line.substr (
+			secondStart, secondSpace == std::string_view::npos ? std::string_view::npos : secondSpace - secondStart);
 		return (SAMCommandEquals (line.substr (0, firstSpace), "DATAGRAM")
 				   || SAMCommandEquals (line.substr (0, firstSpace), "RAW"))
 			&& SAMCommandEquals (second, "SEND");

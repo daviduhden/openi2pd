@@ -148,8 +148,7 @@ namespace client
 		m_Owner = nullptr;
 	}
 
-	void I2CPDestination::SetEncryptionPrivateKey (i2p::data::CryptoKeyType keyType, const uint8_t * key,
-		size_t keyLen)
+	void I2CPDestination::SetEncryptionPrivateKey (i2p::data::CryptoKeyType keyType, const uint8_t * key, size_t keyLen)
 	{
 		if (!key) return;
 		auto encryptionKey = std::make_shared<i2p::crypto::LocalEncryptionKey> (keyType);
@@ -176,8 +175,8 @@ namespace client
 		m_EncryptionKeys.insert_or_assign (keyType, encryptionKey);
 	}
 
-	void I2CPDestination::SetECIESx25519EncryptionPrivateKey (i2p::data::CryptoKeyType keyType, const uint8_t * key,
-		size_t keyLen)
+	void I2CPDestination::SetECIESx25519EncryptionPrivateKey (
+		i2p::data::CryptoKeyType keyType, const uint8_t * key, size_t keyLen)
 	{
 		if (!key) return;
 		const size_t expected = keyLen ? keyLen : 32;
@@ -523,8 +522,8 @@ namespace client
 		}
 	}
 
-	bool I2CPDestination::SendMsg (const uint8_t * payload, size_t len,
-		std::shared_ptr<i2p::garlic::GarlicRoutingSession> remoteSession)
+	bool I2CPDestination::SendMsg (
+		const uint8_t * payload, size_t len, std::shared_ptr<i2p::garlic::GarlicRoutingSession> remoteSession)
 	{
 		if (!remoteSession) return false;
 		auto path = remoteSession->GetSharedRoutingPath ();
@@ -1359,8 +1358,7 @@ namespace client
 						m_Destination->SetECIESx25519EncryptionPrivateKey (
 							key.first, key.second.data (), key.second.size ());
 					else
-						m_Destination->SetEncryptionPrivateKey (
-							key.first, key.second.data (), key.second.size ());
+						m_Destination->SetEncryptionPrivateKey (key.first, key.second.data (), key.second.size ());
 				}
 
 				m_Destination->LeaseSet2Created (storeType, ls.GetBuffer (), ls.GetBufferLen ());
@@ -1415,8 +1413,8 @@ namespace client
 										m_RoutingSessions.erase (it);
 								}
 							}
-							const bool sent = remoteSession
-								&& m_Destination->SendMsg (buf + offset, payloadLen, remoteSession);
+							const bool sent
+								= remoteSession && m_Destination->SendMsg (buf + offset, payloadLen, remoteSession);
 							if (sent)
 								SendMessageStatusMessage (nonce, eI2CPMessageStatusGuaranteedSuccess);
 							else

@@ -139,8 +139,7 @@ namespace client
 			boost::system::error_code ec;
 			sock->bind (boost::asio::ip::tcp::endpoint (ourIP, 0), ec);
 			if (ec)
-				LogPrint (
-					eLogError, "I2PTunnel: Can't bind ourIP to ", i2p::util::net::FormatAddress (ourIP), ": ",
+				LogPrint (eLogError, "I2PTunnel: Can't bind ourIP to ", i2p::util::net::FormatAddress (ourIP), ": ",
 					ec.message ());
 		}
 	}
@@ -186,8 +185,7 @@ namespace client
 			boost::system::error_code ec;
 			m_Socket->bind (boost::asio::ip::tcp::endpoint (localAddress, 0), ec);
 			if (ec)
-				LogPrint (
-					eLogError, "I2PTunnel: Can't bind to ", i2p::util::net::FormatAddress (localAddress), ": ",
+				LogPrint (eLogError, "I2PTunnel: Can't bind to ", i2p::util::net::FormatAddress (localAddress), ": ",
 					ec.message ());
 		}
 		Connect (false);
@@ -413,21 +411,21 @@ namespace client
 			I2PTunnelConnection::Write (buf, len);
 			return;
 		}
-		switch (m_RequestHeader.Feed ({reinterpret_cast<const char *> (buf), len}))
+		switch (m_RequestHeader.Feed ({ reinterpret_cast<const char *> (buf), len }))
 		{
-			case I2PTunnelHTTPHeader::Result::Complete:
-			{
-				const auto & output = m_RequestHeader.Output ();
-				// The parser owns this output until connection destruction. It is
-				// never mutated after completion, including by response parsing.
-				I2PTunnelConnection::Write (reinterpret_cast<const uint8_t *> (output.data ()), output.size ());
-				break;
-			}
-			case I2PTunnelHTTPHeader::Result::Incomplete: StreamReceive (); break;
-			case I2PTunnelHTTPHeader::Result::Rejected:
-				LogPrint (eLogError, "I2PTunnel: HTTP request header exceeds bounds");
-				Terminate ();
-				break;
+		case I2PTunnelHTTPHeader::Result::Complete:
+		{
+			const auto & output = m_RequestHeader.Output ();
+			// The parser owns this output until connection destruction. It is
+			// never mutated after completion, including by response parsing.
+			I2PTunnelConnection::Write (reinterpret_cast<const uint8_t *> (output.data ()), output.size ());
+			break;
+		}
+		case I2PTunnelHTTPHeader::Result::Incomplete: StreamReceive (); break;
+		case I2PTunnelHTTPHeader::Result::Rejected:
+			LogPrint (eLogError, "I2PTunnel: HTTP request header exceeds bounds");
+			Terminate ();
+			break;
 		}
 	}
 
@@ -448,21 +446,21 @@ namespace client
 			I2PTunnelConnection::Write (buf, len);
 			return;
 		}
-		switch (m_RequestHeader.Feed ({reinterpret_cast<const char *> (buf), len}))
+		switch (m_RequestHeader.Feed ({ reinterpret_cast<const char *> (buf), len }))
 		{
-			case I2PTunnelHTTPHeader::Result::Complete:
-			{
-				const auto & output = m_RequestHeader.Output ();
-				// The parser owns this output until connection destruction. It is
-				// never mutated after completion, including by response parsing.
-				I2PTunnelConnection::Write (reinterpret_cast<const uint8_t *> (output.data ()), output.size ());
-				break;
-			}
-			case I2PTunnelHTTPHeader::Result::Incomplete: StreamReceive (); break;
-			case I2PTunnelHTTPHeader::Result::Rejected:
-				LogPrint (eLogError, "I2PTunnel: HTTP request header exceeds bounds");
-				Terminate ();
-				break;
+		case I2PTunnelHTTPHeader::Result::Complete:
+		{
+			const auto & output = m_RequestHeader.Output ();
+			// The parser owns this output until connection destruction. It is
+			// never mutated after completion, including by response parsing.
+			I2PTunnelConnection::Write (reinterpret_cast<const uint8_t *> (output.data ()), output.size ());
+			break;
+		}
+		case I2PTunnelHTTPHeader::Result::Incomplete: StreamReceive (); break;
+		case I2PTunnelHTTPHeader::Result::Rejected:
+			LogPrint (eLogError, "I2PTunnel: HTTP request header exceeds bounds");
+			Terminate ();
+			break;
 		}
 	}
 
@@ -473,20 +471,19 @@ namespace client
 			I2PTunnelConnection::WriteToStream (buf, len);
 			return;
 		}
-		switch (m_ResponseHeader.Feed ({reinterpret_cast<const char *> (buf), len}))
+		switch (m_ResponseHeader.Feed ({ reinterpret_cast<const char *> (buf), len }))
 		{
-			case I2PTunnelHTTPHeader::Result::Complete:
-			{
-				const auto & output = m_ResponseHeader.Output ();
-				I2PTunnelConnection::WriteToStream (
-					reinterpret_cast<const uint8_t *> (output.data ()), output.size ());
-				break;
-			}
-			case I2PTunnelHTTPHeader::Result::Incomplete: Receive (); break;
-			case I2PTunnelHTTPHeader::Result::Rejected:
-				LogPrint (eLogError, "I2PTunnel: HTTP response header exceeds bounds");
-				Terminate ();
-				break;
+		case I2PTunnelHTTPHeader::Result::Complete:
+		{
+			const auto & output = m_ResponseHeader.Output ();
+			I2PTunnelConnection::WriteToStream (reinterpret_cast<const uint8_t *> (output.data ()), output.size ());
+			break;
+		}
+		case I2PTunnelHTTPHeader::Result::Incomplete: Receive (); break;
+		case I2PTunnelHTTPHeader::Result::Rejected:
+			LogPrint (eLogError, "I2PTunnel: HTTP response header exceeds bounds");
+			Terminate ();
+			break;
 		}
 	}
 
