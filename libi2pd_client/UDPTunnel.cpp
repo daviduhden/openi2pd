@@ -622,7 +622,7 @@ namespace client
 		, m_RemoteDest (remoteDest)
 		, m_LocalDest (localDestination)
 		, m_LocalEndpoint (localEndpoint)
-		, m_ResolveThread (nullptr)
+		, m_ResolveThread (std::nullopt)
 		, m_LocalSocket (nullptr)
 		, RemotePort (remotePort)
 		, m_LastPort (0)
@@ -645,7 +645,7 @@ namespace client
 		m_IsStarted = true;
 		UDPConnection::Start ();
 		// Reset flag in case of tunnel reload
-		if (m_cancel_resolve) m_cancel_resolve = false;
+		if (m_cancel_resolve.load ()) m_cancel_resolve.store (false);
 
 		m_LocalSocket.reset (new boost::asio::ip::udp::socket (m_LocalDest->GetService (), m_LocalEndpoint));
 		m_LocalSocket->set_option (boost::asio::socket_base::receive_buffer_size (I2P_UDP_SOCKET_BUFFER_SIZE));
@@ -663,8 +663,8 @@ namespace client
 			std::placeholders::_2, std::placeholders::_3, std::placeholders::_4, std::placeholders::_5));
 
 		m_LocalDest->Start ();
-		if (m_ResolveThread == nullptr)
-			m_ResolveThread = new std::thread (std::bind (&I2PUDPClientTunnel::TryResolving, this));
+		if (!m_ResolveThread)
+			m_ResolveThread.emplace ([this] () { TryResolving (); });
 		RecvFromLocal ();
 
 		if (m_KeepAliveInterval) ScheduleKeepAliveTimer ();
@@ -686,7 +686,7 @@ namespace client
 			dgram->ResetReceiver ();
 			dgram->ResetRawReceiver ();
 		}
-		m_cancel_resolve = true;
+		m_cancel_resolve.store (true);
 
 		{
 			std::lock_guard<std::mutex> lock (m_SessionsMutex);
@@ -697,9 +697,8 @@ namespace client
 
 		if (m_ResolveThread)
 		{
-			m_ResolveThread->join ();
-			delete m_ResolveThread;
-			m_ResolveThread = nullptr;
+			if (m_ResolveThread->joinable ()) m_ResolveThread->join ();
+			m_ResolveThread.reset ();
 		}
 		UDPConnection::Stop ();
 	}
@@ -851,12 +850,12 @@ namespace client
 		LogPrint (eLogInfo, "UDP Tunnel: Trying to resolve ", m_RemoteDest);
 
 		std::shared_ptr<const Address> remoteAddr;
-		while (!(remoteAddr = context.GetAddressBook ().GetAddress (m_RemoteDest)) && !m_cancel_resolve)
+		while (!(remoteAddr = context.GetAddressBook ().GetAddress (m_RemoteDest)) && !m_cancel_resolve.load ())
 		{
 			LogPrint (eLogWarning, "UDP Tunnel: Failed to lookup ", m_RemoteDest);
 			std::this_thread::sleep_for (std::chrono::seconds (1));
 		}
-		if (m_cancel_resolve)
+		if (m_cancel_resolve.load ())
 		{
 			LogPrint (eLogError, "UDP Tunnel: Lookup of ", m_RemoteDest, " was cancelled");
 			return;

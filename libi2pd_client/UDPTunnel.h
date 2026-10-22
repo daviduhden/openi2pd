@@ -14,6 +14,8 @@
 #define UDPTUNNEL_H__
 
 #include <inttypes.h>
+#include <atomic>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <memory>
@@ -270,12 +272,12 @@ namespace client
 		const std::string m_RemoteDest;
 		std::shared_ptr<i2p::client::ClientDestination> m_LocalDest;
 		const boost::asio::ip::udp::endpoint m_LocalEndpoint;
-		std::thread * m_ResolveThread;
+		std::optional<std::thread> m_ResolveThread;
 		std::unique_ptr<boost::asio::ip::udp::socket> m_LocalSocket;
 		boost::asio::ip::udp::endpoint m_RecvEndpoint;
 		uint8_t m_RecvBuff[I2P_UDP_MAX_MTU];
 		uint16_t RemotePort, m_LastPort;
-		bool m_cancel_resolve;
+		std::atomic<bool> m_cancel_resolve;
 		bool m_Gzip;
 		bool m_IsStarted = false; // see the comment in I2PUDPServerTunnel
 		i2p::datagram::DatagramVersion m_DatagramVersion;
