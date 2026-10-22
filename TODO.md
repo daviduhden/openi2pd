@@ -833,17 +833,29 @@ when there is no older ID.
   - Files: `Makefile`, `tests/Makefile`, `tests/check-packaging.cmake`, `tests/check-build-system.cmake`.
   - Validation: Linux `make`/`bmake` and OpenBSD front-end runs pending.
 - [ ] **[BUILD-015]** Modernize install components and exported package configuration.
-  - Priority P1; Status implemented by static analysis; pending CI. Headers, `install(EXPORT)` and `i2pdConfig*.cmake` use the `Development` component; systemd units use an architecture-independent path; docs/man install independently of `WITH_BINARY`; `configure_package_config_file`/`@PACKAGE_INIT@` make the exported include paths relocatable and multiarch-safe; Boost.JSON/URL are no longer treated as compiled link dependencies.
+  - Priority P1; Status Implemented / static; Pending CI compilation; Pending CI tests. Headers, `install(EXPORT)` and `i2pdConfig*.cmake` use the `Development` component; systemd units use an architecture-independent path; docs/man install independently of `WITH_BINARY`; `configure_package_config_file`/`@PACKAGE_INIT@` make the exported include paths relocatable and multiarch-safe. BUILD-018 corrects the earlier Boost.JSON/URL model: their compiled libraries are required, and the installed config re-finds enabled components.
   - Files: `build/CMakeLists.txt`, `build/cmake/i2pdConfig.cmake`, `build/CMakePresets.json`, `docs/build-system.md`, `docs/dependencies.md`.
   - Validation: per-component staging, consumer `find_package`, multiarch/OpenBSD install tests pending.
 - [ ] **[BUILD-016]** Remove obsolete build/dependency workarounds and pin packaging generators.
-  - Priority P1; Status implemented by static analysis; pending CI. CMake minimum is 3.24, OpenBSD rejects Unix Makefiles, Unix TUI dependency failure is explicit unless `I2PD_TUI_REQUIRED=OFF`, static discovery handles `.lib`, unused CMake modules were removed, RPM requires Ninja/Boost.JSON/URL, uses `%{_vpath_builddir}` instead of old Fedora/Mageia branches and no longer requires ENGINE, i2pd-git certificate links are fixed, static package tmpfiles path is corrected, and the Docker runtime installs zlib without header-only Boost packages.
+  - Priority P1; Status Implemented / static; Pending CI compilation; Pending CI tests. CMake minimum is 3.24, OpenBSD rejects Unix Makefiles, Unix TUI dependency failure is explicit unless `I2PD_TUI_REQUIRED=OFF`, static discovery handles `.lib`, unused CMake modules were removed, RPM requires Ninja/Boost.JSON/URL, uses `%{_vpath_builddir}` instead of old Fedora/Mageia branches and no longer requires ENGINE, i2pd-git certificate links are fixed, static package tmpfiles path is corrected, and the Docker runtime installs zlib plus compiled Boost.JSON/URL libraries (BUILD-018 correction).
   - Files: `build/CMakeLists.txt`, `build/build_mingw.cmd`, `contrib/rpm/*.spec`, `contrib/static/package.sh`, `contrib/docker/Dockerfile`, `.dockerignore`, `debian/control`.
   - Validation: Fedora 43/44, static bundle, Docker, MSVC/MinGW and packaging checks pending.
 - [ ] **[BUILD-017]** Add manual CI for install components, POSIX make and package consumption.
   - Priority P1; Status implemented in workflow definitions; pending dispatch. A manual Linux job stages each component and compiles an external consumer against the exported package; the OpenBSD job installs ncurses and asserts the TUI; the fuzz job instruments the linked libraries.
   - Files: `.github/workflows/build.yml`, `build-openbsd.yml`, `fuzz.yml`, `tests/check-packaging.cmake`.
   - Validation: no workflow was dispatched.
+- [ ] **[BUILD-018]** Audit and correct static compilation/linkage integration after the publication series.
+  - Priority P0; Status Implemented / static; Pending CI compilation; Pending CI tests.
+  - Corrections: compiled Boost.JSON/URL linkage and exported discovery/Docker runtime; native translation helper namespace; torrent fixture declaration order; Linux Landlock UAPI portability; MinGW PE hardening. Direct POSIX/memory includes and explicit Windows import/macro contracts remove transitive assumptions. SB-004 is Dropped (pinned API supports overload): Material 1.14.0 accepts resource IDs; no Android source fix was needed.
+  - Files/evidence: `docs/static-build-audit.md` (scope, SB-001..006, integration improvements and residuals), `build/CMakeLists.txt`, native/Android sources and paired regressions.
+  - Validation: all six subsystem reviews are static; Linux/OpenBSD/Windows/Android, OpenSSL/LibreSSL, no-torrents, 32-/64-bit, old/new UAPI and installed-consumer compilation remain pending manual CI. No local build or test, workflow dispatch, commit or push.
+- [ ] **[TEST-023]** Run the static-build audit regressions on the corrected revision.
+  - Priority P0; Status Pending CI compilation; Pending CI tests.
+  - Prepared: `test-boost-linkage` (torrent-enabled), qualified/global locale helper coverage, corrected torrent engine and Linux IPC assertions; installed consumer calls both compiled Boost APIs; MSYS2 enables hardening. Android toolchain/JNI validation remains pending without a source correction in this pass.
+  - No tests executed; old/no-Landlock-header matrix coverage and kernel enforcement evidence remain outstanding.
+- [ ] **[ANDROID-017]** Review the separate native Starting-state lifecycle concern.
+  - Priority P0; Status Pending.
+  - Files: `android/app/src/main/cpp/DaemonAndroid.cpp`; outer `start()` publishes Starting before `DaemonAndroidImpl::start()` checks the same state and returns early. This runtime finding is separate from BUILD-018 compilation corrections; prepare an owner-consistent transition and device regression without bypassing JNI serialization.
 - [ ] **[TEST-011]** Add torrent control/protocol/TUI unit and integration tests to CTest.
   - Priority P0; Status Protocol/bencode tests implemented; control/TUI integration pending.
 - [ ] **[TEST-012]** Add malformed/truncated/oversized torrent and path/symlink tests, plus RPC limit/auth tests.

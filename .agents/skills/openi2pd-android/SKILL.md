@@ -108,6 +108,10 @@ run Gradle, install an APK or run a device test.
 
 ## Known issues and decisions
 
+- Pinned Material 1.14.0 `TextInputLayout` supports both `setHint(CharSequence)`
+  and `setHint(@StringRes int)`. Check the pinned dependency source before
+  classifying a resource-ID call as invalid; older API recollection is not
+  evidence of a current source defect.
 - `RouterCommand` is a sealed interface of nested records decoded by
   `fromAction`; `RouterService.onStartCommand` must keep an exhaustive switch
   with no `default`. Adding an action requires a record, mapping, service case

@@ -293,3 +293,12 @@ Service definition installation, `systemd-analyze verify`, manager start/stop
 smoke tests, Debian `lintian`, `autopkgtest` and package purge checks are also
 pending manual CI. See `testing.md`, `AGENTS.md` and
 [Service management](service-management.md#validation-status).
+
+## Static integration audit
+
+The [static compilation and linkage audit](static-build-audit.md) records
+corrections to compiled Boost.JSON/URL dependency discovery and installed
+exports, Windows SDK usage requirements and PE hardening, plus native source
+errors and Android API review. `test-boost-linkage` and the installed-consumer manual job
+exercise both Boost implementations. All compilation and tests for these
+changes remain pending manual CI.

@@ -41,6 +41,7 @@ nav:
       - Dependencies: dependencies.md
       - C++23: cpp23-migration.md
       - Build system: build-system.md
+      - Static build audit: static-build-audit.md
       - TUI and IPC: tui-ipc.md
       - TUI on Windows: TUI-WINDOWS.md
       - Native torrent console:

@@ -3035,3 +3035,40 @@ OpenBSD or Java/C++ dynamic test was run.
 - Updated AGENTS to distinguish the pre-publication work inventory from the
   resulting history. TODO/ROADMAP validation states remain unchanged. Final
   push and remote synchronization results are reported in the user handoff.
+
+## 2026-10-22 — Static compilation and linkage audit
+
+- Baseline: clean published `e669765d`. Status: Implemented / static;
+  Pending CI compilation; Pending CI tests. Tasks BUILD-018/TEST-023; separate
+  runtime follow-up ANDROID-017. No commits or push made.
+- Six specialized subagents reviewed C++23 core/header seams; transport,
+  cryptography/netDb/client protocols; IPC/supervisor/platforms; native
+  torrent/TUI/tools; Android Java/JNI/resources; and CMake/dependency/export
+  integration. A second pass inspected recently modified native test sources.
+- Corrected demonstrated blockers: missing compiled Boost.JSON/URL linkage and
+  exported discovery; qualified translation helpers defined only globally;
+  torrent fixture `info` used before declaration; newer Landlock UAPI
+  fields/constants assumed in older headers; ELF hardening flags applied to
+  MinGW PE links.
+- SB-004 is Dropped (pinned API supports overload): final primary-source
+  verification showed Material 1.14.0 accepts `setHint(@StringRes int)`.
+  Removed the audit's four unnecessary edits; Android source stays unchanged.
+- Removed transitive declaration/usage assumptions with direct POSIX `renameat`
+  and `shared_ptr` includes, PUBLIC Windows SDK macros and explicit shell32
+  import linkage. Corrected a contradictory outer-expected assertion to check
+  the intended empty inner optional in the Linux IPC regression.
+- Prepared `test-boost-linkage`, extended locale helper/header coverage and
+  existing fixture regressions; the manual installed consumer links client
+  exports and calls JSON/URL implementations. MSYS2 enables hardening. Updated
+  build/packaging contracts, Docker runtime dependencies, technical docs,
+  AGENTS and owning skills. No workflow triggers changed.
+- Source/interface reviews found no further demonstrated symbol mismatch in
+  the inspected encryption/offline signature, Noise-state, tunnel ownership,
+  transport connector, JNI or SAF contracts. OpenSSL legacy EC code is guarded
+  for LibreSSL, not an unconditional OpenSSL 4 API dependency.
+- `docs/static-build-audit.md` records findings, proof, reviewed boundaries and
+  residuals. Android native Starting-state re-entry is a separate runtime
+  concern, left open for an owner-consistent lifecycle fix and device test.
+- No compiler, CMake configure, Make/Ninja, Gradle, CTest, test executable,
+  project validator, linter, dependency install or manual CI dispatch ran.
+  Static source/diff and text parsing checks do not establish compilation.

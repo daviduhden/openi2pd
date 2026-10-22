@@ -15,6 +15,17 @@ requirements and current code; `TODO.md` is the authoritative task list.
 
 ## Current baseline
 
+The static compilation/linkage audit of published `e669765d` is tracked by
+`BUILD-018` and `TEST-023`: Boost implementation linkage, translation helper
+namespaces, fixture ordering, Landlock UAPI
+portability and MinGW linker flags are corrected by source inspection only.
+Windows usage requirements and direct header declarations are explicit.
+The Material resource-ID hypothesis was disproved against pinned 1.14.0;
+Android source remains unchanged by this audit.
+See [the audit matrix](docs/static-build-audit.md) for reviewed scope and
+remaining configurations. All compilation/tests remain pending manual CI;
+`ANDROID-017` separately tracks the native startup lifecycle concern.
+
 Permanent policy: no agent compiles, configures a build or executes tests
 locally. Builds and dynamic validation are CI-only through manual
 `workflow_dispatch` workflows. The results below are historical evidence from

@@ -801,3 +801,16 @@ and zero-length failure state; close/release not retiring the broker; created
 document name verification; display-name `:`/`\`; pending autostart across
 Activity death; `MY_PACKAGE_REPLACED` resume; torrent id 0 rejection. No Gradle,
 Lint, JNI link, emulator or device run exists.
+
+## Static build audit regressions
+
+`test-boost-linkage` is registered only with torrents enabled and carries
+`unit;ci;torrent` labels. It calls out-of-line JSON/URL APIs through the client
+archive's link interface. The installed-consumer manual job checks the same
+closure after `find_package(i2pd)`. `test-i18n-locale` includes the locale
+accessor header first and covers qualified/global translation helpers;
+`test-torrents-engine-interop` and `test-privsep-linux-ipc` retain corrected
+fixtures/assertions. The MSYS2 job exercises `WITH_HARDENING=ON` PE flags.
+These tests were prepared without execution; see
+[the audit report](static-build-audit.md) for outstanding platform, UAPI and
+Android toolchain validation.

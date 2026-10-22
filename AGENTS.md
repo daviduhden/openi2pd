@@ -957,3 +957,26 @@ per-UID. Router AIDL, session-scoped SAF authorization, moving document import/
 creation into the broker, a minimal SAF seccomp library and device/CI evidence
 remain pending. No Gradle/NDK/Lint/device run exists; do not describe it as
 validated.
+
+## Static compilation/linkage audit continuation (2026-10-22)
+
+The audit starts from published `e669765d`; BUILD-018 and TEST-023 remain
+Implemented / static, Pending CI compilation and Pending CI tests. Six
+specialized reconnaissance areas and a second test review cover the recent
+C++23/protocol/IPC/torrent/TUI/tools/Android/build seams. The detailed evidence
+and configuration limits live in `docs/static-build-audit.md`.
+
+Boost.JSON/URL require compiled targets and matching installed dependency
+discovery; they are not supplied by public headers alone. Translation helpers
+are canonical `i2p::i18n::tr`/`ntr` with global compatibility aliases. Keep the
+Landlock stable UAPI layout/runtime rights and absent-header fail-closed path;
+old build headers must not silently remove kernel-supported restrictions.
+Windows header SDK/macros are shared target requirements; PE hardening flags
+must not be replaced by ELF linker options. Pinned Material 1.14.0 supports
+both text and resource-ID hint overloads; verify dependency source before
+classifying an API call from memory.
+
+These are static corrections only. No compiler, configurator, test, project
+validator, workflow dispatch, commit or push occurred for this increment.
+ANDROID-017 separately tracks a native startup lifecycle concern; neither this
+audit nor source/fixture fixes establish runtime or global privilege separation.

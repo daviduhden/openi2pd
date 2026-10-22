@@ -54,6 +54,7 @@ Fork guides
 * [Configuration](user-guide/configuration.md) and [I2P tunnels](user-guide/tunnels.md)
 * [C++23 migration](cpp23-migration.md)
 * [CMake and POSIX Make](build-system.md)
+* [Static compilation and linkage audit](static-build-audit.md)
 * [Multiprocess IPC and privilege separation](security/privilege-separation.md)
 * [TUI and IPC](tui-ipc.md) and [TUI on Windows](TUI-WINDOWS.md)
 * [Native BitTorrent console](torrent/architecture.md)
