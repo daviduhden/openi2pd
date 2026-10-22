@@ -157,6 +157,11 @@ namespace log
 
 		void Start ();
 		void Stop ();
+		/**
+		 * Restore stdout as the destination after a stopped logger's failed
+		 * initialization attempt. Returns false while the writer is active.
+		 */
+		bool ResetDestination ();
 
 		/**
 			 * @brief Sets minimal allowed level for log messages

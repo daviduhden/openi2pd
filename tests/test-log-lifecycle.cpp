@@ -73,6 +73,42 @@ int main ()
 		assert (contents.find ("round-2") != std::string::npos);
 	}
 
+	// Failed initialization resets a stopped logger to stdout and releases the
+	// configured stream. The operation must refuse to replace a live destination.
+	{
+		i2p::log::Log log;
+		auto out = std::make_shared<std::ostringstream> ();
+		std::weak_ptr<std::ostringstream> weakOut = out;
+		log.SendTo (out);
+		out.reset ();
+		assert (!weakOut.expired ());
+		log.Start ();
+		const bool resetWhileRunning = log.ResetDestination ();
+		assert (!resetWhileRunning);
+		log.Stop ();
+		const bool resetStopped = log.ResetDestination ();
+		assert (resetStopped);
+		assert (log.GetLogType () == eLogStdout);
+		assert (weakOut.expired ());
+	}
+
+	// Reset also closes a file destination before the logger object is destroyed.
+	{
+		const auto unique = std::chrono::steady_clock::now ().time_since_epoch ().count ()
+			^ static_cast<long long> (std::random_device { }());
+		const auto path
+			= std::filesystem::temp_directory_path () / ("openi2pd-log-reset-" + std::to_string (unique) + ".log");
+		i2p::log::Log log;
+		log.SendTo (path.string ());
+		assert (log.GetLogType () == eLogFile);
+		const bool reset = log.ResetDestination ();
+		assert (reset);
+		assert (log.GetLogType () == eLogStdout);
+		std::error_code error;
+		const bool removed = std::filesystem::remove (path, error);
+		assert (removed && !error);
+	}
+
 	// Sink installation and replacement are observed by the writer thread
 	// without leaving a callback pointing at a replaced object.
 	{

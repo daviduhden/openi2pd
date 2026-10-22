@@ -147,6 +147,37 @@ namespace log
 		}
 	}
 
+	bool Log::ResetDestination ()
+	{
+		// Keep the same lifecycle -> destination lock order as Start()/Stop().
+		// The sink and stream may own external resources, so release their last
+		// references after dropping m_LogMutex.
+		std::lock_guard<std::mutex> lifecycle (m_LifecycleMutex);
+		if (m_Thread || m_IsRunning.load (std::memory_order_acquire)) return false;
+
+		std::shared_ptr<std::ostream> previousStream;
+		SinkFunction previousSink;
+		bool closeSyslog = false;
+		{
+			std::lock_guard<std::mutex> destination (m_LogMutex);
+#ifndef _WIN32
+			closeSyslog = m_Destination == eLogSyslog;
+#endif
+			previousStream = std::move (m_LogStream);
+			previousSink = std::move (m_Sink);
+			m_Destination = eLogStdout;
+			m_Logfile.clear ();
+			m_HasColors = true;
+			m_TimeFormat = "%H:%M:%S";
+		}
+#ifndef _WIN32
+		if (closeSyslog) closelog ();
+#endif
+		(void)previousStream;
+		(void)previousSink;
+		return true;
+	}
+
 	std::string str_tolower (std::string s)
 	{
 		std::transform (s.begin (), s.end (), s.begin (),
