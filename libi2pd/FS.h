@@ -20,6 +20,7 @@
 #include <sstream>
 #include <functional>
 #include <filesystem>
+#include <string_view>
 #include <inttypes.h>
 
 namespace i2p
@@ -137,6 +138,17 @@ namespace fs
 	bool Remove (const std::string & path);
 
 	bool Rename (std::string_view from, std::string_view to);
+
+	/**
+	 * Write bytes to a same-directory temporary file and durably replace path.
+	 * A false result after POSIX rename can mean the new file is visible but
+	 * parent-directory durability could not be confirmed.
+	 * The parent hierarchy must be trusted by the caller. POSIX opens the final
+	 * parent directory without following it and uses leaf-relative operations;
+	 * Windows uses same-volume write-through replacement and relies on the
+	 * configured data directory's ownership against concurrent reparse changes.
+	 */
+	bool AtomicWrite (std::string_view path, std::string_view contents);
 
 	/**
 	 * @brief Check existence of file

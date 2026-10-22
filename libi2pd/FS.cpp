@@ -13,18 +13,29 @@
  */
 
 #include <algorithm>
+#include <atomic>
+#include <cerrno>
+#include <charconv>
+#include <cstring>
 #include <fstream>
+#include <mutex>
+#include <system_error>
+#include <sys/stat.h>
 
 #ifdef _WIN32
 #include <shlobj.h>
 #include <windows.h>
 #include <codecvt>
+#else
+#include <fcntl.h>
+#include <unistd.h>
 #endif
 
 #include "Base.h"
 #include "FS.h"
 #include "Log.h"
 #include "Garlic.h"
+#include "Modern.h"
 
 #include <filesystem>
 namespace fs_lib = std::filesystem;
@@ -33,6 +44,7 @@ namespace i2p
 {
 namespace fs
 {
+	static std::mutex g_AtomicWriteMutex;
 	std::string appName = "i2pd";
 	std::string dataDir = "";
 	std::string certsDir = "";
@@ -262,6 +274,151 @@ namespace fs
 			return false;
 		}
 		return true;
+	}
+
+	bool AtomicWrite (std::string_view path, std::string_view contents)
+	{
+		std::lock_guard writerLock (g_AtomicWriteMutex);
+		static std::atomic<uint64_t> sequence { 0 };
+		const fs_lib::path target { std::string (path) };
+		const auto parent = target.parent_path ();
+		if (target.empty () || target.filename ().empty ()) return false;
+		bool written = false;
+		for (unsigned attempt = 0; attempt < 16 && !written; ++attempt)
+		{
+			auto temporary = target;
+		#ifdef _WIN32
+			const auto process = GetCurrentProcessId ();
+		#else
+			const auto process = static_cast<uint64_t> (getpid ());
+		#endif
+			temporary += ".tmp-" + std::to_string (process) + "-" + std::to_string (++sequence);
+#ifdef _WIN32
+			HANDLE file = CreateFileW (temporary.c_str (), GENERIC_WRITE, 0, nullptr, CREATE_NEW,
+				FILE_ATTRIBUTE_TEMPORARY, nullptr);
+			if (file == INVALID_HANDLE_VALUE)
+			{
+				if (GetLastError () == ERROR_FILE_EXISTS) continue;
+				LogPrint (eLogError, "FS: Can't create temporary file ", temporary.string ());
+				return false;
+			}
+			bool tempCommitted = false;
+			auto cleanupTemp = i2p::modern::ScopeExit ([&]
+				{
+					if (!tempCommitted) DeleteFileW (temporary.c_str ());
+				});
+			auto closeFile = i2p::modern::ScopeExit ([&]
+				{
+					if (file != INVALID_HANDLE_VALUE) CloseHandle (file);
+				});
+			written = true;
+			size_t offset = 0;
+			while (offset < contents.size ())
+			{
+				const auto count = static_cast<DWORD> (std::min<size_t> (contents.size () - offset, MAXDWORD));
+				DWORD actual = 0;
+				if (!WriteFile (file, contents.data () + offset, count, &actual, nullptr) || !actual)
+				{
+					written = false;
+					break;
+				}
+				offset += actual;
+			}
+			if (written && !FlushFileBuffers (file)) written = false;
+			if (!CloseHandle (file)) written = false;
+			else file = INVALID_HANDLE_VALUE;
+			if (written && !MoveFileExW (temporary.c_str (), target.c_str (),
+				MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) written = false;
+			else if (written) tempCommitted = true;
+#else
+			int flags = O_WRONLY | O_CREAT | O_EXCL;
+			#ifdef O_NOFOLLOW
+			flags |= O_NOFOLLOW;
+			#endif
+			#ifdef O_CLOEXEC
+			flags |= O_CLOEXEC;
+			#endif
+			int directoryFlags = O_RDONLY;
+			#ifdef O_DIRECTORY
+			directoryFlags |= O_DIRECTORY;
+			#endif
+			#ifdef O_NOFOLLOW
+			directoryFlags |= O_NOFOLLOW;
+			#endif
+			#ifdef O_CLOEXEC
+			directoryFlags |= O_CLOEXEC;
+			#endif
+			const auto directory = parent.empty () ? fs_lib::path (".") : parent;
+			const int dirfd = ::open (directory.c_str (), directoryFlags);
+			if (dirfd < 0)
+			{
+				LogPrint (eLogError, "FS: Can't securely open destination directory ", directory.string (), ": ", strerror (errno));
+				return false;
+			}
+			auto closeDirectory = i2p::modern::ScopeExit ([&] { ::close (dirfd); });
+			struct stat directoryStatus;
+			if (::fstat (dirfd, &directoryStatus) != 0 || !S_ISDIR (directoryStatus.st_mode))
+			{
+				LogPrint (eLogError, "FS: Destination parent is not a directory: ", directory.string ());
+				return false;
+			}
+			const auto temporaryName = temporary.filename ().string ();
+			const auto targetName = target.filename ().string ();
+			bool tempCreated = false;
+			bool tempCommitted = false;
+			auto cleanupTemp = i2p::modern::ScopeExit ([&]
+				{
+					if (tempCreated && !tempCommitted) ::unlinkat (dirfd, temporaryName.c_str (), 0);
+				});
+			const int fd = ::openat (dirfd, temporaryName.c_str (), flags, S_IRUSR | S_IWUSR);
+			if (fd < 0)
+			{
+				const int error = errno;
+				if (error == EEXIST) continue;
+				LogPrint (eLogError, "FS: Can't create temporary file ", temporary.string (), ": ", strerror (error));
+				return false;
+			}
+			tempCreated = true;
+			bool fileOpen = true;
+			auto closeFile = i2p::modern::ScopeExit ([&]
+				{
+					if (fileOpen) ::close (fd);
+				});
+			written = true;
+			size_t offset = 0;
+			while (offset < contents.size ())
+			{
+				const auto count = ::write (fd, contents.data () + offset, contents.size () - offset);
+				if (count < 0 && errno == EINTR) continue;
+				if (count <= 0)
+				{
+					written = false;
+					break;
+				}
+				offset += static_cast<size_t> (count);
+			}
+			if (written && ::fsync (fd) != 0) written = false;
+			if (::close (fd) != 0) written = false;
+			fileOpen = false;
+			if (written && ::renameat (dirfd, temporaryName.c_str (), dirfd, targetName.c_str ()) != 0) written = false;
+			else if (written) tempCommitted = true;
+			if (written)
+			{
+				if (::fsync (dirfd) != 0)
+				{
+					written = false;
+					LogPrint (eLogError, "FS: Replacement committed but directory durability is uncertain for ", target.string ());
+				}
+			}
+#endif
+			if (!written)
+			{
+				LogPrint (eLogError, "FS: Durable atomic replacement failed for ", target.string ());
+				return false;
+			}
+		}
+		if (!written) LogPrint (eLogError, "FS: Unable to allocate temporary file for ", target.string ());
+		return written;
 	}
 
 	bool CreateDirectory (const std::string & path)
