@@ -166,6 +166,17 @@ private:
 	unsigned int m_CloseCount = 0;
 };
 
+void TestProxyStatusMapping ()
+{
+	using i2p::proxy::HTTPProxyFailure;
+	using i2p::proxy::HTTPProxyFailureStatus;
+	assert (HTTPProxyFailureStatus (HTTPProxyFailure::BadRequest) == 400);
+	assert (HTTPProxyFailureStatus (HTTPProxyFailure::HeaderTooLarge) == 431);
+	assert (HTTPProxyFailureStatus (HTTPProxyFailure::Internal) == 500);
+	assert (HTTPProxyFailureStatus (HTTPProxyFailure::BadGateway) == 502);
+	assert (HTTPProxyFailureStatus (HTTPProxyFailure::GatewayTimeout) == 504);
+}
+
 void TestNullStreamHandlerAccounting ()
 {
 	// I2PService allocates a transient local destination (no network I/O and
@@ -194,6 +205,7 @@ int main ()
 	TestHeaderLimitBoundary ();
 	TestIncrementalParserAtHeaderLimit ();
 	TestOversizedHeaderRejected ();
+	TestProxyStatusMapping ();
 	TestNullStreamHandlerAccounting ();
 	return 0;
 }

@@ -9,6 +9,7 @@
  */
 
 #include <cassert>
+#include <cstring>
 #include "HTTP.h"
 
 using namespace i2p::http;
@@ -120,6 +121,29 @@ int main ()
 	assert (res->get_header ("location") == "https://example.com/new");
 	assert (res->get_header ("LOCATION") == "https://example.com/new");
 	delete res;
+
+	/* header values must not smuggle control characters or bare LF */
+	const char * injected = "HTTP/1.1 200 OK\r\nX-Test: value\nInjected: yes\r\n\r\n";
+	HTTPRes injectedResponse;
+	assert (injectedResponse.parse (injected, strlen (injected)) == -1);
+
+	/* proxy error statuses must have stable reason phrases */
+	assert (HTTPCodeToStatus (400) == "Bad Request");
+	assert (HTTPCodeToStatus (431) == "Request Header Fields Too Large");
+	assert (HTTPCodeToStatus (500) == "Internal Server Error");
+	assert (HTTPCodeToStatus (502) == "Bad Gateway");
+	assert (HTTPCodeToStatus (504) == "Gateway Timeout");
+	for (int code : { 400, 431, 500, 502, 504 })
+	{
+		HTTPRes proxyError;
+		proxyError.version = "HTTP/1.1";
+		proxyError.code = code;
+		proxyError.body = "proxy error";
+		const std::string proxyErrorText = proxyError.to_string ();
+		assert (proxyErrorText.starts_with ("HTTP/1.1 " + std::to_string (code) + " "
+			+ std::string (HTTPCodeToStatus (code)) + "\r\n"));
+		assert (proxyErrorText.find ("Content-Length: 11\r\n") != std::string::npos);
+	}
 
 	return 0;
 }

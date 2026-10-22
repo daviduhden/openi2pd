@@ -15,6 +15,7 @@
 #include <cassert>
 #include <string>
 #include <atomic>
+#include <boost/algorithm/string/predicate.hpp>
 #include "SOCKS.h"
 #include "SOCKSAddress.h"
 #include "Identity.h"
@@ -105,6 +106,31 @@ namespace proxy
 			SOCKS4 = 4, // SOCKS4
 			SOCKS5 = 5 // SOCKS5
 		};
+		bool IsDeniedSocksTarget (std::string_view host, uint16_t port)
+		{
+			if (!port) return true;
+			std::string value (host);
+			if (value.size () >= 2 && value.front () == '[' && value.back () == ']')
+				value = value.substr (1, value.size () - 2);
+			if (boost::iequals (value, "localhost")
+				|| i2p::client::HasSuffixIgnoreCase (value, ".localhost"))
+				return true;
+			boost::system::error_code ec;
+			auto address = boost::asio::ip::make_address (value, ec);
+			if (ec) return false;
+			if (address.is_v4 ())
+			{
+				auto b = address.to_v4 ().to_bytes ();
+				return b[0] == 0 || b[0] == 10 || b[0] == 127 || (b[0] == 169 && b[1] == 254)
+					|| (b[0] == 172 && b[1] >= 16 && b[1] <= 31) || (b[0] == 192 && b[1] == 168)
+					|| address.to_v4 ().is_multicast ();
+			}
+			auto b = address.to_v6 ().to_bytes ();
+			return address.to_v6 ().is_loopback () || address.to_v6 ().is_unspecified ()
+				|| address.to_v6 ().is_multicast () || (b[0] == 0xfe && (b[1] & 0xc0) == 0x80)
+				|| (b[0] & 0xfe) == 0xfc;
+		}
+
 		union address
 		{
 			uint32_t ip;
@@ -421,20 +447,45 @@ namespace proxy
 	{
 		if (m_cmd != CMD_CONNECT && m_cmd != CMD_UDP && m_cmd != CMD_RESOLVE)
 		{
-			// TODO: we need to support binds and other shit!
 			LogPrint (eLogError, "SOCKS: Unsupported command: ", m_cmd);
 			SocksRequestFailed (SOCKS5_CMD_UNSUP);
 			return false;
 		}
-		// TODO: we may want to support other address types!
+		// Convert IP literals to their textual form. The request path already
+		// supports name-based upstream forwarding, and this matches Java's
+		// SOCKS4/5 IP-literal handling.
+		if (m_addrtype == ADDR_IPV4)
+		{
+			auto value = boost::asio::ip::address_v4 (m_address.ip).to_string ();
+			if (!m_address.dns.SetString (value))
+			{
+				SocksRequestFailed (SOCKS5_ADDR_UNSUP);
+				return false;
+			}
+			m_addrtype = ADDR_DNS;
+		}
+		else if (m_addrtype == ADDR_IPV6)
+		{
+			boost::asio::ip::address_v6::bytes_type bytes;
+			memcpy (bytes.data (), m_address.ipv6, bytes.size ());
+			auto value = boost::asio::ip::address_v6 (bytes).to_string ();
+			if (!m_address.dns.SetString (value))
+			{
+				SocksRequestFailed (SOCKS5_ADDR_UNSUP);
+				return false;
+			}
+			m_addrtype = ADDR_DNS;
+		}
 		if (m_addrtype != ADDR_DNS)
 		{
-			switch (m_socksv)
-			{
-			case SOCKS5: LogPrint (eLogError, "SOCKS: v5 unsupported address type: ", m_addrtype); break;
-			case SOCKS4: LogPrint (eLogError, "SOCKS: Request with v4a rejected because it's actually SOCKS4"); break;
-			}
 			SocksRequestFailed (SOCKS5_ADDR_UNSUP);
+			return false;
+		}
+		const auto host = m_address.dns.GetString ();
+		if (m_cmd != CMD_RESOLVE && !i2p::client::IsI2PHost (host) && IsDeniedSocksTarget (host, m_port))
+		{
+			LogPrint (eLogWarning, "SOCKS: Denied loopback/private target ", host, ":", m_port);
+			SocksRequestFailed (SOCKS5_RULE_DENIED);
 			return false;
 		}
 		return true;
@@ -745,9 +796,9 @@ namespace proxy
 				}
 
 				LogPrint (eLogInfo, "SOCKS: Requested ", addr, ":", m_port);
-				const size_t addrlen = addr.size ();
-				// does it end with .i2p?
-				if (addr.rfind (".i2p") == addrlen - 4)
+				// Case-insensitive suffix check; an address shorter than the
+				// suffix must not underflow into npos and be treated as I2P.
+				if (i2p::client::IsI2PHost (addr))
 				{
 					// yes it does
 					switch (m_cmd)

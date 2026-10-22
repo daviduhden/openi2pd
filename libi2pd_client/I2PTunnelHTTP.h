@@ -66,6 +66,9 @@ public:
 				m_Line.clear ();
 				return m_Result = Result::Complete;
 			}
+			// Obsolete obs-fold continuation lines can smuggle a header-name
+			// lookalike past the prefix filters. Reject leading SP/HTAB.
+			if (!m_Line.empty () && (m_Line.front () == ' ' || m_Line.front () == '\t')) return Reject ();
 			if (++m_Lines > I2P_TUNNEL_MAX_NUM_HTTP_HEADERS) return Reject ();
 			TransformLine ();
 			m_Line.clear ();

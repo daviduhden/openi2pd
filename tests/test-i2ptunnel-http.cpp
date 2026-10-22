@@ -44,6 +44,9 @@ int main ()
 	EverySplit (Parser::Mode::ClientRequest,
 		"GET / HTTP/1.1\r\nConnection: keep-alive\r\nProxy-Connection: keep-alive\r\n\r\n",
 		"GET / HTTP/1.1\r\nConnection: close\r\nProxy-Connection: close\r\n\r\n");
+	EverySplit (Parser::Mode::ClientRequest,
+		"GET / HTTP/1.1\r\npRoXy-CoNnEcTiOn: keep-alive\r\n\r\n",
+		"GET / HTTP/1.1\r\nProxy-Connection: close\r\n\r\n");
 	EverySplit (Parser::Mode::ServerRequest,
 		"GET / HTTP/1.1\r\nHost: peer\r\nConnection: Upgrade\r\nKeep-Alive: 10\r\nX-I2P-DestHash: forged\r\n\r\n" + body,
 		"GET / HTTP/1.1\r\nHost: local\r\nConnection: Upgrade\r\nX-I2P-DestHash: trusted\r\n\r\n" + body,
@@ -51,6 +54,16 @@ int main ()
 	EverySplit (Parser::Mode::ServerResponse,
 		"HTTP/1.1 200 OK\r\nServer: private\r\nDate: now\r\nX-Runtime: 10\r\nX-Powered-By: private\r\nProxy-Foo: private\r\nContent-Length: 6\r\n\r\n" + body,
 		"HTTP/1.1 200 OK\r\nContent-Length: 6\r\n\r\n" + body);
+	// Header-name matching is ASCII case-insensitive. The trusted identity
+	// header is re-injected after the request headers, never accepted from the
+	// untrusted client spelling.
+	EverySplit (Parser::Mode::ServerRequest,
+		"GET / HTTP/1.1\r\nhOsT: peer\r\nkEeP-aLiVe: 1\r\nx-i2p-desthash: forged\r\ncOnNeCtIoN: uPgRaDe\r\n\r\n" + body,
+		"GET / HTTP/1.1\r\nHost: local\r\ncOnNeCtIoN: uPgRaDe\r\nX-I2P-DestHash: trusted\r\n\r\n" + body,
+		"local", "X-I2P-DestHash: trusted\r\n");
+	EverySplit (Parser::Mode::ServerRequest,
+		"GET / HTTP/1.1\r\nconnection: upgrade\r\n\r\n",
+		"GET / HTTP/1.1\r\nconnection: upgrade\r\n\r\n");
 
 	// Request output is borrowed by async_write while independent TCP response
 	// fragments arrive. Response state must never overwrite request storage.
@@ -94,5 +107,9 @@ int main ()
 	assert (unterminated.Feed ("a") == Result::Rejected);
 	Parser expansion (Parser::Mode::ServerRequest, {}, std::string (8193, 'a'));
 	assert (expansion.Feed ("GET / HTTP/1.1\r\n\r\n") == Result::Rejected);
+	Parser folded (Parser::Mode::ServerRequest);
+	assert (folded.Feed ("GET / HTTP/1.1\r\n X-I2P-DestHash: forged\r\n\r\n") == Result::Rejected);
+	Parser tabbed (Parser::Mode::ClientRequest);
+	assert (tabbed.Feed ("GET / HTTP/1.1\r\n\tProxy-Connection: keep-alive\r\n\r\n") == Result::Rejected);
 	return 0;
 }

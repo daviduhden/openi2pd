@@ -846,7 +846,13 @@ namespace client
 	{
 		if (ssl)
 		{
-			m_SSLCtx = std::make_shared<boost::asio::ssl::context> (boost::asio::ssl::context::sslv23);
+			// This context is used for the client handshake to the local SSL
+			// upstream server (I2PTunnelConnection::HandleConnect uses
+			// stream_base::client), not for accepting TLS.
+			m_SSLCtx = std::make_shared<boost::asio::ssl::context> (boost::asio::ssl::context::tls_client);
+			m_SSLCtx->set_options (boost::asio::ssl::context::default_workarounds | boost::asio::ssl::context::no_sslv2
+				| boost::asio::ssl::context::no_sslv3 | boost::asio::ssl::context::no_tlsv1
+				| boost::asio::ssl::context::no_tlsv1_1);
 			m_SSLCtx->set_verify_mode (boost::asio::ssl::context::verify_none);
 		}
 		else

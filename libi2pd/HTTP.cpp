@@ -94,6 +94,8 @@ namespace http
 		auto value = line.substr (pos + 1);
 		while (!value.empty () && (value.front () == ' ' || value.front () == '\t')) value.remove_prefix (1);
 		while (!value.empty () && (value.back () == ' ' || value.back () == '\t')) value.remove_suffix (1);
+		for (const unsigned char ch : value)
+			if ((ch < 0x20 && ch != '\t') || ch == 0x7f) return std::nullopt;
 		return std::pair { std::string (name), std::string (value) };
 	}
 
@@ -608,6 +610,7 @@ namespace http
 		case 404: ptr = "Not Found"; break;
 		case 407: ptr = "Proxy Authentication Required"; break;
 		case 408: ptr = "Request Timeout"; break;
+		case 431: ptr = "Request Header Fields Too Large"; break;
 		/* server error */
 		case 500: ptr = "Internal Server Error"; break;
 		case 502: ptr = "Bad Gateway"; break;
