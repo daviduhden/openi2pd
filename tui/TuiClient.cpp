@@ -48,13 +48,19 @@ namespace tui
 			return std::string (value);
 		}
 
-		i2p::expected<std::pair<std::string, std::string>, std::string> ReadConfigValues (const std::string & path)
+		struct ConfigValues
+		{
+			std::string datadir;
+			std::string socket;
+			std::string language;
+		};
+
+		i2p::expected<ConfigValues, std::string> ReadConfigValues (const std::string & path)
 		{
 			std::ifstream config (path);
 			if (!config) return i2p::unexpected ("can't open " + path);
 
-			std::string datadir;
-			std::string socket;
+			ConfigValues values;
 			bool inTui = false;
 			std::string line;
 			while (std::getline (config, line))
@@ -72,13 +78,15 @@ namespace tui
 				if (equals == std::string::npos) continue;
 				auto key = Trim (std::string_view (line).substr (0, equals));
 				auto value = Trim (std::string_view (line).substr (equals + 1));
-				if (key == "datadir" && datadir.empty ())
-					datadir = value;
+				if (key == "datadir" && values.datadir.empty ())
+					values.datadir = value;
 				else if (inTui && key == "socket")
-					socket = value;
+					values.socket = value;
+				else if (inTui && (key == "language" || key == "lang"))
+					values.language = value;
 			}
 			if (config.bad ()) return i2p::unexpected ("can't read " + path);
-			return std::pair { datadir, socket };
+			return values;
 		}
 
 		std::string DefaultDataDir (bool service)
@@ -124,6 +132,12 @@ namespace tui
 				options.showVersion = true;
 			else if (arg == "--service")
 				service = true;
+			else if (arg == "--lang")
+			{
+				if (!takeValue (options.language)) return i2p::unexpected ("--lang requires a language");
+			}
+			else if (arg.starts_with ("--lang="))
+				options.language = std::string (arg.substr (7));
 			else if (arg == "--socket")
 			{
 				if (!takeValue (options.socketPath)) return i2p::unexpected ("--socket requires a path");
@@ -155,6 +169,17 @@ namespace tui
 		if (!options.socketPath.empty ())
 		{
 			options.socketPath = AbsolutePath (options.socketPath);
+			if (options.language.empty ())
+			{
+				auto configPath = options.configPath.empty () ? options.dataDir + "/i2pd.conf"
+															 : AbsolutePath (options.configPath);
+				struct stat st { };
+				if (stat (configPath.c_str (), &st) == 0)
+				{
+					auto values = ReadConfigValues (configPath);
+					if (values) options.language = values->language;
+				}
+			}
 			return options;
 		}
 
@@ -169,8 +194,9 @@ namespace tui
 		{
 			auto values = ReadConfigValues (options.configPath);
 			if (!values) return i2p::unexpected (values.error ());
-			if (!values->first.empty ()) options.dataDir = AbsolutePath (values->first);
-			configSocket = values->second;
+			if (!values->datadir.empty ()) options.dataDir = AbsolutePath (values->datadir);
+			configSocket = values->socket;
+			if (options.language.empty ()) options.language = values->language;
 		}
 
 		if (!configSocket.empty ())
@@ -339,7 +365,7 @@ namespace tui
 			return i2p::unexpected (RequestError { RequestErrorKind::Transport, payload.error () });
 		}
 		if (header->status == ResponseStatus::Error)
-			return i2p::unexpected (RequestError { RequestErrorKind::Remote, std::move (*payload) });
+			return i2p::unexpected (RequestError { RequestErrorKind::Remote, std::move (*payload), header->errorCode });
 		return std::move (*payload);
 	}
 

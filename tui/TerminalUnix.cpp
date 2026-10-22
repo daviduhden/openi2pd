@@ -17,6 +17,7 @@
 #include "Terminal.h"
 
 #include <algorithm>
+#include <cwchar>
 #include <string>
 
 #include <ncurses.h>
@@ -185,11 +186,33 @@ namespace tui
 		void Put (std::string_view text, int limit)
 		{
 			if (!g_Initialized || text.empty ()) return;
-			const std::size_t count
-				= limit < 0 ? text.size () : std::min (text.size (), static_cast<std::size_t> (limit));
-			if (count == 0) return;
-			std::string copy (text.substr (0, count));
-			addnstr (copy.c_str (), static_cast<int> (copy.size ()));
+			// limit is a terminal-column budget, not a byte count. Decode each
+			// UTF-8 sequence so a wide CJK glyph or a combining mark cannot be
+			// split or consume the wrong number of cells.
+			std::string copy;
+			int columns = 0;
+			size_t offset = 0;
+			while (offset < text.size () && (limit < 0 || columns < limit))
+			{
+				std::mbstate_t state { };
+				wchar_t character = 0;
+				const size_t consumed
+					= std::mbrtowc (&character, text.data () + offset, text.size () - offset, &state);
+				size_t bytes = consumed;
+				int width = 1;
+				if (consumed == static_cast<size_t> (-1) || consumed == static_cast<size_t> (-2) || consumed == 0)
+					bytes = 1;
+				else
+				{
+					width = ::wcwidth (character);
+					if (width < 0) width = 1;
+				}
+				if (limit >= 0 && columns + width > limit) break;
+				copy.append (text.substr (offset, bytes));
+				columns += width;
+				offset += bytes;
+			}
+			if (!copy.empty ()) addnstr (copy.c_str (), static_cast<int> (copy.size ()));
 		}
 
 		void ClearToEol ()

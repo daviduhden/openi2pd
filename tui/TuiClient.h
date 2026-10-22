@@ -15,6 +15,7 @@
 #define I2PD_TUI_CLIENT_H__
 
 #include "Expected.h"
+#include "TuiProtocol.h"
 #include <memory>
 #include <string>
 #include <string_view>
@@ -28,6 +29,7 @@ namespace tui
 		std::string socketPath;
 		std::string dataDir;
 		std::string configPath;
+		std::string language;
 		bool showHelp = false;
 		bool showVersion = false;
 	};
@@ -50,6 +52,7 @@ namespace tui
 	{
 		RequestErrorKind kind;
 		std::string message;
+		ErrorCode code = ErrorCode::None;
 	};
 
 	class Client
