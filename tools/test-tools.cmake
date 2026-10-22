@@ -104,6 +104,30 @@ if(conflicting EQUAL 0)
   message(FATAL_ERROR "routerinfo accepted conflicting firewall options")
 endif()
 
+execute_process(COMMAND "${TOOLS_DIR}/routerinfo${EXE}" -f --firewall=pf
+  RESULT_VARIABLE conflicting_no_operand)
+if(conflicting_no_operand EQUAL 0)
+  message(FATAL_ERROR "routerinfo reported usage before the -f/--firewall conflict")
+endif()
+
+execute_process(COMMAND "${TOOLS_DIR}/routerinfo${EXE}" -f --nft-family=ip keys.dat
+  RESULT_VARIABLE legacy_nft)
+if(legacy_nft EQUAL 0)
+  message(FATAL_ERROR "routerinfo accepted -f with nftables options")
+endif()
+
+execute_process(COMMAND "${TOOLS_DIR}/routerinfo${EXE}" --firewall=nftables --nft-family=ip6 keys.dat
+  RESULT_VARIABLE nft_ip6_without_v6)
+if(nft_ip6_without_v6 EQUAL 0)
+  message(FATAL_ERROR "routerinfo accepted --nft-family=ip6 without -6")
+endif()
+
+execute_process(COMMAND "${TOOLS_DIR}/routerinfo${EXE}" -y --firewall=pf keys.dat
+  RESULT_VARIABLE yggdrasil_without_v6)
+if(yggdrasil_without_v6 EQUAL 0)
+  message(FATAL_ERROR "routerinfo accepted -y firewall output without -6")
+endif()
+
 execute_process(COMMAND "${TOOLS_DIR}/routerinfo${EXE}" "--nft-family=ip" keys.dat
   RESULT_VARIABLE nft_without_backend)
 if(nft_without_backend EQUAL 0)

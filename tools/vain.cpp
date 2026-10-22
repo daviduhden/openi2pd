@@ -404,9 +404,9 @@ Outcome RunSearch (Options & options, std::string_view prefix, const std::regex 
 
 	std::cout << "Start vanity generator in " << options.threads << " threads" << std::endl;
 
-	// Keep joins explicit for libc++ implementations that lack std::jthread.
-	// If a thread cannot be created, join the workers that did start before
-	// returning so no joinable std::thread is destroyed.
+	// Keep joins explicit for this worker fan-out. If a thread cannot be
+	// created, join the workers that did start before returning so no joinable
+	// std::thread is destroyed.
 	std::vector<std::thread> workers;
 	workers.reserve (static_cast<size_t> (options.threads));
 	try

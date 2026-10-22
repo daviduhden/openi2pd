@@ -140,7 +140,7 @@ int main (int argc, char * argv[])
 {
 	if (argc == 1)
 	{
-		return printHelp (argv[0], -1);
+		return printHelp (argv[0], 2);
 	}
 
 	int opt;
@@ -157,7 +157,7 @@ int main (int argc, char * argv[])
 		case 'd': print_dest = true; break;
 		case 'p': print_private = true; break;
 		case 'b': print_blinded = true; break;
-		default: return printHelp (argv[0], -1);
+		default: return printHelp (argv[0], 2);
 		}
 	}
 

@@ -24,8 +24,6 @@
 #include <iomanip>
 #include <cstddef>
 
-#define HTTP_SUPPORTS_LANGUAGE                                                                                         \
-	"german, italian, polish, portuguese, russian, spanish, turkish, turkmen, ukrainian, uzbek"
 namespace AutoConf
 {
 constexpr std::size_t MAX_INPUT_LENGTH = 4096;
@@ -108,9 +106,7 @@ const std::map<std::string, AsksT> Texts = // maybe vector better
 			  { "NTCPPPort", "NTCP Порт. Либо - для пропуска" },
 			  { "NTCPPProxy", "NTCP Proxy, пример (socks://localhost:4545)  или - для по умолчанию (неиспользуется)" },
 			  { "SSUEnabledYN", "Использовать SSU?" }, { "SSUPPort", "SSU Порт. Либо - для пропуска" },
-			  { "SSUProxy", "SSU Proxy, пример (socks://localhost:4545)  или - для по умолчанию (неиспользуется)" },
-			  { "HTTPLang",
-				  "Выбрите язык веб-интерфейса, либо - для опции по умолчанию (" HTTP_SUPPORTS_LANGUAGE ")" } } },
+			  { "SSUProxy", "SSU Proxy, пример (socks://localhost:4545)  или - для по умолчанию (неиспользуется)" } } },
 		{ "en",
 			{ { "WelcomeText", "Hello. Select type of config\r\n1 - clearnet\r\n2 - only yggdrasil" },
 				{ "TunConfYN", "Use a different path for tunnels?" }, { "TunConf", "Enter path for tunnels" },
@@ -130,7 +126,6 @@ const std::map<std::string, AsksT> Texts = // maybe vector better
 				{ "NoTransitYN", "Disable transit? (this will reduce anonymity)" },
 				{ "Bandwidth", "Write bandwidth (- for default) [L-32kbs,O-256kbs,P-2048kbs,X-unlimited]" },
 				{ "Share", "Share percents (- for default) [0-100]" },
-				{ "HTTPLang", "Select Web-interface language or - for default (" HTTP_SUPPORTS_LANGUAGE ")" },
 				//
 				{ "NTCPEnabledYN", "Use NTCP?" }, { "NTCPPublishedYN", "Publish IP in NTCP?" },
 				{ "NTCPPPort", "NTCP Port or - for auto port (random)" },
@@ -297,8 +292,6 @@ int main (void)
 			ASK_BOOL ("SSUEnabledYN", "enabled");
 			ASK_TEXT ("SSUPPort", "port");
 			ASK_TEXT ("SSUProxy", "proxy");
-			conf << "[http]\r\n";
-			ASK_TEXT ("HTTPLang", "lang");
 #undef ASK_TEXT
 #undef ASK_BOOL
 #undef ASKYN_MACRO

@@ -75,6 +75,11 @@ std::optional<BoxKeys> getKeyPair ()
 
 int main (int argc, char * argv[])
 {
+	if (argc > 2)
+	{
+		std::cerr << "Usage: x25519 [--help|--usage|-h]" << std::endl;
+		return 1;
+	}
 	if (argc > 1)
 	{
 		std::string arg (argv[1]);
@@ -93,6 +98,8 @@ int main (int argc, char * argv[])
 
 			return 0;
 		}
+		std::cerr << "Unknown option: " << arg << "\nUsage: x25519 [--help|--usage|-h]" << std::endl;
+		return 1;
 	}
 
 	auto newKeys = getKeyPair ();

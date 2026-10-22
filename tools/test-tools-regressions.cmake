@@ -167,6 +167,17 @@ function(assert_file_contains_literal path needle description)
   endif()
 endfunction()
 
+function(assert_file_lacks_literal path needle description)
+  if(NOT EXISTS "${path}")
+    fail("${description}: missing ${path}")
+  endif()
+  file(READ "${path}" content)
+  string(FIND "${content}" "${needle}" position)
+  if(NOT position EQUAL -1)
+    fail("${description}: ${path} unexpectedly contains '${needle}'")
+  endif()
+endfunction()
+
 function(assert_file_hex path expected description)
   file(READ "${path}" actual HEX)
   if(NOT "${actual}" STREQUAL "${expected}")
@@ -180,6 +191,22 @@ endfunction()
 run_tool(keygen TRUE ed25519.keys EDDSA-SHA512-ED25519)
 assert_output_contains("Signature type: ED25519-SHA512" "keygen ED25519")
 restrict_secret("${WORK}/ed25519.keys")
+
+run_tool(keygen TRUE mixed-case.keys eDdSa_sHa512_eD25519)
+assert_output_contains("Signature type: ED25519-SHA512" "keygen normalizes case and underscores")
+restrict_secret("${WORK}/mixed-case.keys")
+
+run_tool(keygen FALSE --help)
+assert_output_contains("Usage: keygen" "keygen --help")
+if(EXISTS "${WORK}/--help")
+  fail("keygen --help created a file named --help")
+endif()
+
+run_tool(keygen FALSE rsa-fallback.keys RSA-2048-SHA256)
+assert_output_contains("unsupported signature type" "keygen rejects unsupported RSA generation")
+if(EXISTS "${WORK}/rsa-fallback.keys")
+  fail("keygen wrote a fallback key for an unsupported signature type")
+endif()
 
 run_tool(keygen TRUE reddsa.keys RED25519-SHA512)
 assert_output_contains("Signature type: RED25519-SHA512" "keygen RedDSA")
@@ -278,13 +305,13 @@ assert_output_matches("b33 address: [a-z2-7]+\\.b32\\.i2p" "b33address RedDSA ad
 
 file(WRITE "${WORK}/invalid.dest" "this is not base64 !!!\n")
 set(TOOL_STDIN "${WORK}/invalid.dest")
-run_tool(b33address TRUE)
+run_tool(b33address FALSE)
 unset(TOOL_STDIN)
 assert_output_contains("Invalid base64 address" "b33address invalid base64")
 
 file(WRITE "${WORK}/empty.dest" "")
 set(TOOL_STDIN "${WORK}/empty.dest")
-run_tool(b33address TRUE)
+run_tool(b33address FALSE)
 unset(TOOL_STDIN)
 assert_output_contains("Invalid base64 address" "b33address empty input")
 
@@ -292,14 +319,14 @@ run_tool(keyinfo TRUE -d p256.keys)
 string(STRIP "${LAST_TOOL_OUTPUT}" P256_DEST)
 file(WRITE "${WORK}/p256.dest" "${P256_DEST}\n")
 set(TOOL_STDIN "${WORK}/p256.dest")
-run_tool(b33address TRUE)
+run_tool(b33address FALSE)
 unset(TOOL_STDIN)
 assert_output_contains("Invalid signature type ECDSA-P256" "b33address rejects non-blindable P-256")
 
 string(REPEAT "A" 5000 LONG_B64)
 file(WRITE "${WORK}/long.dest" "${LONG_B64}\n")
 set(TOOL_STDIN "${WORK}/long.dest")
-run_tool(b33address TRUE)
+run_tool(b33address FALSE)
 unset(TOOL_STDIN)
 assert_output_contains("input too long" "b33address rejects oversized stdin")
 
@@ -706,6 +733,14 @@ assert_output_contains("Undefined argument" "vain missing -o argument")
 run_tool(vain FALSE --bogus example)
 
 # ---------------------------------------------------------------------------
+# x25519 / b33address: strict option surfaces.
+# ---------------------------------------------------------------------------
+run_tool(x25519 FALSE --bogus)
+assert_output_contains("Unknown option" "x25519 rejects unknown option")
+run_tool(b33address TRUE --help)
+assert_output_contains("Usage: b33address" "b33address help does not read stdin")
+
+# ---------------------------------------------------------------------------
 # autoconf_i2pd: deterministic non-interactive transcript. It writes a
 # configuration file below WORK and never touches the real data directory.
 # ---------------------------------------------------------------------------
@@ -727,7 +762,8 @@ unset(TOOL_STDIN)
 assert_file_nonempty("${WORK}/autoconf.conf" "autoconf output")
 assert_file_contains_literal("${WORK}/autoconf.conf" "[ntcp2]" "autoconf ntcp2 section")
 assert_file_contains_literal("${WORK}/autoconf.conf" "[ssu2]" "autoconf ssu2 section")
-assert_file_contains_literal("${WORK}/autoconf.conf" "[http]" "autoconf http section")
+assert_file_lacks_literal("${WORK}/autoconf.conf" "[http]" "autoconf removed http section")
+assert_file_lacks_literal("${WORK}/autoconf.conf" "lang=" "autoconf removed web language")
 assert_file_contains_literal("${WORK}/autoconf.conf" "ipv4=true" "autoconf ipv4 answer")
 
 file(REMOVE_RECURSE "${WORK}")

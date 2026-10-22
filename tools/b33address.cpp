@@ -21,8 +21,17 @@
 
 int main (int argc, char * argv[])
 {
-	(void)argc;
-	(void)argv;
+	if (argc > 1)
+	{
+		const std::string_view option (argv[1]);
+		if (option == "-h" || option == "--help")
+		{
+			std::cout << "Usage: b33address < base64-destination" << std::endl;
+			return 0;
+		}
+		std::cerr << "Usage: b33address < base64-destination" << std::endl;
+		return 1;
+	}
 	// base64 input, b33 and store key output, 11->11 only. Bound the line
 	// before allocation: a terminal or pipe must not be able to make this
 	// diagnostic tool buffer arbitrary input.
@@ -32,15 +41,15 @@ int main (int argc, char * argv[])
 	std::cin.getline (input.data (), input.size ());
 	if (std::cin.fail () && !std::cin.eof ())
 	{
-		std::cout << "Invalid base64 address (input too long)" << std::endl;
-		return 0;
+		std::cerr << "Invalid base64 address (input too long)" << std::endl;
+		return 1;
 	}
 	std::string_view base64 (input.data ());
 	while (!base64.empty () && (base64.back () == '\r' || base64.back () == '\n')) base64.remove_suffix (1);
 	if (base64.empty () || base64.size () > MAX_BASE64_INPUT)
 	{
-		std::cout << "Invalid base64 address" << std::endl;
-		return 0;
+		std::cerr << "Invalid base64 address" << std::endl;
+		return 1;
 	}
 	auto ident = std::make_shared<i2p::data::IdentityEx> ();
 	if (ident->FromBase64 (base64))
@@ -53,10 +62,16 @@ int main (int argc, char * argv[])
 			std::cout << "Today's store hash: " << blindedKey.GetStoreHash ().ToBase64 () << std::endl;
 		}
 		else
-			std::cout << "Invalid signature type " << SigTypeToName (ident->GetSigningKeyType ()) << std::endl;
+		{
+			std::cerr << "Invalid signature type " << SigTypeToName (ident->GetSigningKeyType ()) << std::endl;
+			return 1;
+		}
 	}
 	else
-		std::cout << "Invalid base64 address" << std::endl;
+	{
+		std::cerr << "Invalid base64 address" << std::endl;
+		return 1;
+	}
 
 	return 0;
 }

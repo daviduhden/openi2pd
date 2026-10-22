@@ -27,6 +27,7 @@
 #include "Timestamp.h"
 #include "common/file.hpp"
 #include "common/key.hpp"
+#include "common/crypto.hpp"
 
 const int kMaxDays = 0xFFFF; // the number of keys in the batch is two bytes
 
@@ -104,27 +105,17 @@ int main (int argc, char * argv[])
 {
 	if (argc < 3)
 	{
-		std::cout << "Usage: b33offlinekeys <router keys file> <destination keys file> <days>" << std::endl;
-		return -1;
+		std::cerr << "Usage: b33offlinekeys <router keys file> <destination keys file> <days>" << std::endl;
+		return 1;
 	}
-	i2p::crypto::InitCrypto (false);
+	i2p::tools::CryptoGuard cryptoGuard;
 
 	std::string fname (argv[2]);
 	i2p::data::PrivateKeys keys;
+	if (auto loaded = LoadPrivateKeys (fname, keys); !loaded)
 	{
-		auto input = i2p::tools::ReadFile (fname);
-		if (!input)
-		{
-			std::cout << input.error () << std::endl;
-			return 2;
-		}
-		if (!keys.FromBuffer (input->data (), input->size ()))
-		{
-			i2p::tools::Wipe (*input);
-			std::cout << "bad keys file format" << std::endl;
-			return 3;
-		}
-		i2p::tools::Wipe (*input);
+		std::cerr << loaded.error () << std::endl;
+		return loaded.error () == "bad keys file format" ? 3 : 2;
 	}
 	if (keys.IsOfflineSignature ())
 	{
@@ -162,13 +153,18 @@ int main (int argc, char * argv[])
 	if (b33Keys.empty ())
 	{
 		std::cout << "Can't create b33 offline keys" << std::endl;
-		i2p::crypto::TerminateCrypto ();
 		return 7;
 	}
 	// the transient of the inner LeaseSet lasts exactly as long as the batch
 	const uint32_t expires
 		= (i2p::util::GetSecondsSinceEpoch () / i2p::data::SECONDS_PER_DAY + days) * i2p::data::SECONDS_PER_DAY;
 	auto onlineKeys = keys.CreateOfflineKeys (i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, expires);
+	if (!onlineKeys.IsOfflineSignature ())
+	{
+		i2p::tools::Wipe (b33Keys);
+		std::cerr << "cannot create the b33 online offline-signature block" << std::endl;
+		return 8;
+	}
 	std::vector<uint8_t> out (onlineKeys.GetFullLen () + b33Keys.size ());
 	size_t l = onlineKeys.ToBuffer (out.data (), out.size ());
 	if (!l)
@@ -176,7 +172,6 @@ int main (int argc, char * argv[])
 		i2p::tools::Wipe (out);
 		i2p::tools::Wipe (b33Keys);
 		std::cout << "Can't serialize online keys" << std::endl;
-		i2p::crypto::TerminateCrypto ();
 		return 8;
 	}
 	memcpy (out.data () + l, b33Keys.data (), b33Keys.size ());
@@ -187,7 +182,6 @@ int main (int argc, char * argv[])
 	if (!written)
 	{
 		std::cout << "Can't create file " << argv[1] << std::endl;
-		i2p::crypto::TerminateCrypto ();
 		return 9;
 	}
 
@@ -197,7 +191,6 @@ int main (int argc, char * argv[])
 			  << "  keys = " << argv[1] << std::endl
 			  << "  i2cp.leaseSetType = 5" << std::endl;
 
-	i2p::crypto::TerminateCrypto ();
 
 	return 0;
 }

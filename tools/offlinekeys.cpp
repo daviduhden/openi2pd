@@ -21,6 +21,7 @@
 #include "Timestamp.h"
 #include "common/file.hpp"
 #include "common/key.hpp"
+#include "common/crypto.hpp"
 
 namespace
 {
@@ -44,25 +45,14 @@ int main (int argc, char * argv[])
 		return 1;
 	}
 
-	i2p::crypto::InitCrypto (false);
-
-	auto input = i2p::tools::ReadFile (argv[2]);
-	if (!input)
-	{
-		std::cerr << input.error () << std::endl;
-		i2p::crypto::TerminateCrypto ();
-		return 2;
-	}
+	i2p::tools::CryptoGuard cryptoGuard;
 
 	i2p::data::PrivateKeys keys;
-	if (!keys.FromBuffer (input->data (), input->size ()))
+	if (auto loaded = LoadPrivateKeys (argv[2], keys); !loaded)
 	{
-		i2p::tools::Wipe (*input);
-		std::cout << "bad keys file format" << std::endl;
-		i2p::crypto::TerminateCrypto ();
-		return 3;
+		std::cerr << loaded.error () << std::endl;
+		return loaded.error () == "bad keys file format" ? 3 : 2;
 	}
-	i2p::tools::Wipe (*input);
 
 	i2p::data::SigningKeyType type = i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519;
 	if (argc > 3)
@@ -71,8 +61,7 @@ int main (int argc, char * argv[])
 		if (!requested)
 		{
 			std::cerr << "Incorrect signature type" << std::endl;
-			i2p::crypto::TerminateCrypto ();
-			return 2;
+				return 2;
 		}
 		type = static_cast<i2p::data::SigningKeyType> (*requested);
 	}
@@ -81,12 +70,16 @@ int main (int argc, char * argv[])
 	if (argc > 4 && !ParseDays (argv[4], days))
 	{
 		std::cerr << "Days must be 1..3650" << std::endl;
-		i2p::crypto::TerminateCrypto ();
 		return 2;
 	}
 
 	const uint32_t expires = i2p::util::GetSecondsSinceEpoch () + static_cast<uint32_t> (days) * 24u * 60u * 60u;
 	auto offlineKeys = keys.CreateOfflineKeys (type, expires);
+	if (!offlineKeys.IsOfflineSignature ())
+	{
+		std::cerr << "cannot create offline signature keys for " << SigTypeToName (type) << std::endl;
+		return 4;
+	}
 	std::vector<uint8_t> buffer (offlineKeys.GetFullLen ());
 	const size_t len = offlineKeys.ToBuffer (buffer.data (), buffer.size ());
 	const bool written = len && i2p::tools::WriteFile (argv[1], buffer.data (), len);
@@ -94,7 +87,6 @@ int main (int argc, char * argv[])
 	if (!written)
 	{
 		std::cout << "Can't create file " << argv[1] << std::endl;
-		i2p::crypto::TerminateCrypto ();
 		return 3;
 	}
 
@@ -102,6 +94,5 @@ int main (int argc, char * argv[])
 			  << std::endl
 			  << "Signature type: " << SigTypeToName (type) << " (" << type << ")" << std::endl
 			  << "Days: " << days << std::endl;
-	i2p::crypto::TerminateCrypto ();
 	return 0;
 }
