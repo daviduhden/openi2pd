@@ -42,6 +42,23 @@ namespace client
 		// the client.
 		const size_t I2CP_MAX_BLINDING_INFOS = 64;
 
+		// CreateLeaseSet2Message private-key lengths from Java EncType. The
+		// local storage for type 1 is 256 bytes for legacy file compatibility,
+		// but the I2CP wire scalar is 32 bytes.
+		size_t GetI2CPPrivateKeyLen (uint16_t type)
+		{
+			switch (type)
+			{
+			case i2p::data::CRYPTO_KEY_TYPE_ELGAMAL: return 256;
+			case i2p::data::CRYPTO_KEY_TYPE_ECIES_P256_SHA256_AES256CBC: return 32;
+			case i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD:
+			case i2p::data::CRYPTO_KEY_TYPE_ECIES_MLKEM512_X25519_AEAD:
+			case i2p::data::CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD:
+			case i2p::data::CRYPTO_KEY_TYPE_ECIES_MLKEM1024_X25519_AEAD: return 32;
+			default: return 0;
+			}
+		}
+
 		struct BlindingInfo
 		{
 			std::shared_ptr<const i2p::data::IdentityEx> identity; // TYPE_DEST only
@@ -108,23 +125,6 @@ namespace client
 			g_BlindingInfos.insert_or_assign (std::move (key), std::move (info));
 		}
 
-		std::shared_ptr<const i2p::data::IdentityEx> FindBlindedDestination (
-			const i2p::data::BlindedPublicKey & blinded)
-		{
-			auto keyLen = blinded.GetPublicKeyLen ();
-			if (!keyLen) return nullptr;
-			std::lock_guard<std::mutex> l (g_BlindingInfosMutex);
-			auto now = i2p::util::GetMillisecondsSinceEpoch ();
-			// A b33 carries the unblinded signing public key. TYPE_DEST and
-			// TYPE_KEY are stored under exactly that key; deriving today's
-			// blinded key and comparing it with the stored unblinded key can
-			// never match.
-			auto it
-				= g_BlindingInfos.find (MakeBlindingInfoKey (blinded.GetSigType (), blinded.GetPublicKey (), keyLen));
-			if (it == g_BlindingInfos.end ()) return nullptr;
-			if (it->second.expiration && now > it->second.expiration) return nullptr;
-			return it->second.identity;
-		}
 	} // namespace
 
 	I2CPDestination::I2CPDestination (boost::asio::io_context & service, std::shared_ptr<I2CPSession> owner,
@@ -148,42 +148,61 @@ namespace client
 		m_Owner = nullptr;
 	}
 
-	void I2CPDestination::SetEncryptionPrivateKey (i2p::data::CryptoKeyType keyType, const uint8_t * key)
+	void I2CPDestination::SetEncryptionPrivateKey (i2p::data::CryptoKeyType keyType, const uint8_t * key,
+		size_t keyLen)
 	{
-		bool exist = false;
-		auto it = m_EncryptionKeys.find (keyType);
-		if (it != m_EncryptionKeys.end ()
-			&& !memcmp (it->second->priv.data (), key, it->second->priv.size ())) // new key?
-			exist = true;
-		if (!exist)
+		if (!key) return;
+		auto encryptionKey = std::make_shared<i2p::crypto::LocalEncryptionKey> (keyType);
+		const size_t expected = keyLen ? keyLen : encryptionKey->priv.size ();
+		if (!expected || expected > encryptionKey->priv.size ())
 		{
-			auto encryptionKey = std::make_shared<i2p::crypto::LocalEncryptionKey> (keyType);
-			memcpy (encryptionKey->priv.data (), key, encryptionKey->priv.size ());
-			encryptionKey->CreateDecryptor (); // from private key
-			m_EncryptionKeys.insert_or_assign (keyType, encryptionKey);
+			LogPrint (eLogError, "I2CP: invalid private key length ", expected, " for type ", (int)keyType);
+			return;
 		}
+		auto it = m_EncryptionKeys.find (keyType);
+		if (it != m_EncryptionKeys.end () && it->second->priv.size () == encryptionKey->priv.size ()
+			&& !memcmp (it->second->priv.data (), key, expected)) // same key
+			return;
+		// Legacy type-1 storage is 256 bytes while the I2CP scalar is 32 bytes.
+		// Zero the remainder so no stale key material is read by a decryptor.
+		memset (encryptionKey->priv.data (), 0, encryptionKey->priv.size ());
+		memcpy (encryptionKey->priv.data (), key, expected);
+		encryptionKey->CreateDecryptor (); // from private key
+		if (!encryptionKey->decryptor)
+		{
+			LogPrint (eLogError, "I2CP: unsupported encryption key type ", (int)keyType);
+			return;
+		}
+		m_EncryptionKeys.insert_or_assign (keyType, encryptionKey);
 	}
 
-	void I2CPDestination::SetECIESx25519EncryptionPrivateKey (i2p::data::CryptoKeyType keyType, const uint8_t * key)
+	void I2CPDestination::SetECIESx25519EncryptionPrivateKey (i2p::data::CryptoKeyType keyType, const uint8_t * key,
+		size_t keyLen)
 	{
-		bool exist = false;
-		auto it = m_EncryptionKeys.find (keyType);
-		if (it != m_EncryptionKeys.end ()
-			&& !memcmp (it->second->priv.data (), key, it->second->priv.size ())) // new key?
-			exist = true;
-		if (!exist)
+		if (!key) return;
+		const size_t expected = keyLen ? keyLen : 32;
+		if (expected != 32)
 		{
-			auto encryptionKey = std::make_shared<i2p::crypto::LocalEncryptionKey> (keyType);
-			memcpy (encryptionKey->priv.data (), key, encryptionKey->priv.size ());
-			// create decryptor manually
-			auto decryptor
-				= std::make_shared<i2p::crypto::ECIESX25519AEADRatchetDecryptor> (key, true); // calculate publicKey
-			encryptionKey->decryptor = decryptor;
-			// assign public key from decryptor
-			memcpy (encryptionKey->pub.data (), decryptor->GetPubicKey (), encryptionKey->pub.size ());
-			// insert or replace new
-			m_EncryptionKeys.insert_or_assign (keyType, encryptionKey);
+			LogPrint (eLogError, "I2CP: invalid X25519 private key length ", expected);
+			return;
 		}
+		auto it = m_EncryptionKeys.find (keyType);
+		if (it != m_EncryptionKeys.end () && it->second->priv.size () == 32
+			&& !memcmp (it->second->priv.data (), key, 32)) // same key
+			return;
+		auto encryptionKey = std::make_shared<i2p::crypto::LocalEncryptionKey> (keyType);
+		if (encryptionKey->priv.size () != 32)
+		{
+			LogPrint (eLogError, "I2CP: unsupported ratchet encryption key type ", (int)keyType);
+			return;
+		}
+		memcpy (encryptionKey->priv.data (), key, 32);
+		// create decryptor manually
+		auto decryptor = std::make_shared<i2p::crypto::ECIESX25519AEADRatchetDecryptor> (key, true);
+		encryptionKey->decryptor = decryptor;
+		// assign public key from decryptor
+		memcpy (encryptionKey->pub.data (), decryptor->GetPubicKey (), encryptionKey->pub.size ());
+		m_EncryptionKeys.insert_or_assign (keyType, encryptionKey);
 	}
 
 	bool I2CPDestination::Decrypt (
@@ -235,12 +254,13 @@ namespace client
 	void I2CPDestination::ScheduleSessionResponseTimer (
 		std::shared_ptr<i2p::garlic::ECIESX25519AEADRatchetSession> session)
 	{
-		if (!session) return;
+		if (!session || !session->ArmResponseTimer ()) return;
 		auto timer = std::make_shared<boost::asio::steady_timer> (GetService ());
 		timer->expires_after (std::chrono::milliseconds (I2CP_RATCHETS_RESPONSE_TIMEOUT));
 		timer->async_wait (
 			[session, s = GetSharedFromThis (), timer] (const boost::system::error_code & ecode)
 			{
+				session->DisarmResponseTimer ();
 				if (ecode != boost::asio::error::operation_aborted && !session->IsTerminated ()
 					&& session->IsResponseRequired () && // response still required
 					session->GetDestinationPtr ()) // we know ident hash
@@ -370,7 +390,11 @@ namespace client
 			return;
 		}
 		auto msg = m_I2NPMsgsPool.AcquireSharedMt ();
-		if (!msg) return;
+		if (!msg)
+		{
+			if (m_Owner) m_Owner->SendMessageStatusMessage (nonce, eI2CPMessageStatusGuaranteedFailure);
+			return;
+		}
 		uint8_t * buf = msg->GetPayload ();
 		htobe32buf (buf, static_cast<uint32_t> (len));
 		if (len) memcpy (buf + 4, payload, len);
@@ -429,6 +453,11 @@ namespace client
 			return false;
 		}
 		auto garlic = remoteSession->WrapSingleMessage (msg); // shared routing path mitgh be dropped here
+		if (!garlic)
+		{
+			LogPrint (eLogError, "I2CP: Failed to wrap message");
+			return false;
+		}
 		auto path = remoteSession->GetSharedRoutingPath ();
 		std::shared_ptr<i2p::tunnel::OutboundTunnel> outboundTunnel;
 		std::shared_ptr<const i2p::data::Lease> remoteLease;
@@ -495,7 +524,7 @@ namespace client
 	}
 
 	bool I2CPDestination::SendMsg (const uint8_t * payload, size_t len,
-		std::shared_ptr<i2p::garlic::GarlicRoutingSession> remoteSession, uint32_t nonce)
+		std::shared_ptr<i2p::garlic::GarlicRoutingSession> remoteSession)
 	{
 		if (!remoteSession) return false;
 		auto path = remoteSession->GetSharedRoutingPath ();
@@ -517,15 +546,10 @@ namespace client
 		if (!payload || len > I2NP_MAX_MESSAGE_SIZE - 4)
 		{
 			LogPrint (eLogError, "I2CP: I2NP Data payload is too large ", len);
-			if (m_Owner) m_Owner->SendMessageStatusMessage (nonce, eI2CPMessageStatusGuaranteedFailure);
 			return false;
 		}
 		auto msg = m_I2NPMsgsPool.AcquireSharedMt ();
-		if (!msg)
-		{
-			if (m_Owner) m_Owner->SendMessageStatusMessage (nonce, eI2CPMessageStatusGuaranteedFailure);
-			return false;
-		}
+		if (!msg) return false;
 		uint8_t * buf = msg->GetPayload ();
 		htobe32buf (buf, static_cast<uint32_t> (len));
 		if (len) memcpy (buf + 4, payload, len);
@@ -535,15 +559,11 @@ namespace client
 		auto garlic = remoteSession->WrapSingleMessage (msg);
 		if (!garlic)
 		{
-			if (m_Owner) m_Owner->SendMessageStatusMessage (nonce, eI2CPMessageStatusGuaranteedFailure);
 			remoteSession->SetSharedRoutingPath (nullptr);
 			return false;
 		}
 		// send
-		bool sent = SendMsg (garlic, outboundTunnel, remoteLease);
-		if (m_Owner)
-			m_Owner->SendMessageStatusMessage (
-				nonce, sent ? eI2CPMessageStatusGuaranteedSuccess : eI2CPMessageStatusGuaranteedFailure);
+		const bool sent = SendMsg (garlic, outboundTunnel, remoteLease);
 		if (!sent) remoteSession->SetSharedRoutingPath (nullptr);
 		return sent;
 	}
@@ -1290,6 +1310,8 @@ namespace client
 				}
 				int numPrivateKeys = buf[offset];
 				offset++;
+				std::vector<std::pair<i2p::data::CryptoKeyType, std::vector<uint8_t>>> stagedKeys;
+				stagedKeys.reserve (numPrivateKeys > 0 ? numPrivateKeys : 0);
 				for (int i = 0; i < numPrivateKeys; i++)
 				{
 					if (offset + 4 > len) return;
@@ -1297,12 +1319,48 @@ namespace client
 					offset += 2; // encryption type
 					uint16_t keyLen = bufbe16toh (buf + offset);
 					offset += 2; // private key length
-					if (offset + keyLen > len) return;
-					if (keyType >= i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD)
-						m_Destination->SetECIESx25519EncryptionPrivateKey (keyType, buf + offset);
-					else
-						m_Destination->SetEncryptionPrivateKey (keyType, buf + offset); // from identity
+					const size_t expected = GetI2CPPrivateKeyLen (keyType);
+					if (!expected || keyLen != expected || offset + keyLen > len)
+					{
+						LogPrint (eLogError, "I2CP: bad private key length ", keyLen, " for type ", keyType);
+						return;
+					}
+					stagedKeys.emplace_back (static_cast<i2p::data::CryptoKeyType> (keyType),
+						std::vector<uint8_t> (buf + offset, buf + offset + keyLen));
 					offset += keyLen;
+				}
+				if (offset != len)
+				{
+					LogPrint (eLogError, "I2CP: CreateLeaseSet2Message has trailing bytes");
+					return;
+				}
+				// Java CreateLeaseSet2Message requires the private-key list to
+				// match the standard LS2 key sections exactly before installing
+				// any key or publishing the set.
+				if (storeType == i2p::data::NETDB_STORE_TYPE_STANDARD_LEASESET2)
+				{
+					if (stagedKeys.size () != ls.GetNumEncryptionKeys ())
+					{
+						LogPrint (eLogError, "I2CP: LeaseSet2 key count does not match private keys");
+						return;
+					}
+					for (size_t i = 0; i < stagedKeys.size (); ++i)
+					{
+						if (stagedKeys[i].first != ls.GetEncryptionKeyType (i))
+						{
+							LogPrint (eLogError, "I2CP: LeaseSet2 key type does not match private key ", i);
+							return;
+						}
+					}
+				}
+				for (const auto & key : stagedKeys)
+				{
+					if (key.first >= i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD)
+						m_Destination->SetECIESx25519EncryptionPrivateKey (
+							key.first, key.second.data (), key.second.size ());
+					else
+						m_Destination->SetEncryptionPrivateKey (
+							key.first, key.second.data (), key.second.size ());
 				}
 
 				m_Destination->LeaseSet2Created (storeType, ls.GetBuffer (), ls.GetBufferLen ());
@@ -1357,10 +1415,14 @@ namespace client
 										m_RoutingSessions.erase (it);
 								}
 							}
-							if (!remoteSession
-								|| !m_Destination->SendMsg (buf + offset, payloadLen, remoteSession, nonce))
+							const bool sent = remoteSession
+								&& m_Destination->SendMsg (buf + offset, payloadLen, remoteSession);
+							if (sent)
+								SendMessageStatusMessage (nonce, eI2CPMessageStatusGuaranteedSuccess);
+							else
 							{
-								// calculate ident hash, because we don't need full identity
+								// SendMsgTo owns the single terminal status for the
+								// fallback path; SendMsg must not emit one itself.
 								m_Destination->SendMsgTo (buf + offset, payloadLen, remoteIdentHash, nonce);
 							}
 						}
@@ -1405,7 +1467,6 @@ namespace client
 			//uint32_t timeout = bufbe32toh (buf + 6);
 			i2p::data::IdentHash ident;
 			std::shared_ptr<const i2p::data::BlindedPublicKey> blinded;
-			std::shared_ptr<const i2p::data::IdentityEx> associated;
 			uint8_t lookupType = buf[10];
 			// Proposal 167: types 2-4 request the LeaseSet options mapping.
 			bool requestOptions = lookupType == 2 || lookupType == 3 || lookupType == 4;
@@ -1450,12 +1511,7 @@ namespace client
 				if (addr->IsIdentHash ())
 					ident = addr->identHash;
 				else if (addr->blindedPublicKey)
-				{
 					blinded = addr->blindedPublicKey;
-					// A matching BlindingInfo associates the b33 with its
-					// unblinded destination; use it to validate the reply.
-					associated = FindBlindedDestination (*blinded);
-				}
 				else
 				{
 					LogPrint (eLogError, "I2CP: Address ", name, " has no destination");
@@ -1493,15 +1549,21 @@ namespace client
 				else
 				{
 					auto s = shared_from_this ();
-					auto complete = [s, requestID, sessionID, associated, requestOptions] (
+					auto complete = [s, requestID, sessionID, blinded, requestOptions] (
 										std::shared_ptr<i2p::data::LeaseSet> leaseSet)
 					{
-						if (leaseSet && associated
-							&& leaseSet->GetIdentity ()->GetIdentHash () != associated->GetIdentHash ())
+						// A b33 LeaseSet is stored under the blinded store key.
+						// Its inner identity is necessarily different from the
+						// unblinded BlindingInfo destination, so compare the
+						// store key that was actually requested.
+						if (leaseSet && blinded)
 						{
-							LogPrint (eLogError, "I2CP: Blinded LeaseSet identity does not match BlindingInfo for ",
-								associated->GetIdentHash ().ToBase32 ());
-							leaseSet = nullptr;
+							auto ls2 = dynamic_cast<const i2p::data::LeaseSet2 *> (leaseSet.get ());
+							if (!ls2 || !ls2->IsStoreKey (blinded->GetStoreHash ()))
+							{
+								LogPrint (eLogError, "I2CP: Blinded LeaseSet store key does not match request");
+								leaseSet = nullptr;
+							}
 						}
 						s->SendHostReplyMessage (requestID, sessionID, leaseSet ? leaseSet->GetIdentity () : nullptr,
 							requestOptions, std::move (leaseSet));

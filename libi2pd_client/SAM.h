@@ -565,6 +565,7 @@ namespace client
 		// Accept-queue transfer API. All methods are safe to call from the SAM
 		// service thread and from destination callbacks.
 		bool EnqueueAccept (const std::shared_ptr<SAMSocket> & socket, uint64_t now);
+		void RemoveAccept (const std::shared_ptr<SAMSocket> & socket);
 		// Returns the oldest queued acceptor (or nullptr). Acceptors do not
 		// expire with age, matching Java; the arguments are retained for
 		// source compatibility with the former expiry implementation.

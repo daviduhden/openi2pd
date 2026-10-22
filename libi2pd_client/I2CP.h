@@ -105,14 +105,15 @@ namespace client
 
 		void Stop () override;
 
-		void SetEncryptionPrivateKey (i2p::data::CryptoKeyType keyType, const uint8_t * key);
-		void SetECIESx25519EncryptionPrivateKey (i2p::data::CryptoKeyType keyType, const uint8_t * key);
+		void SetEncryptionPrivateKey (i2p::data::CryptoKeyType keyType, const uint8_t * key, size_t keyLen = 0);
+		void SetECIESx25519EncryptionPrivateKey (i2p::data::CryptoKeyType keyType, const uint8_t * key,
+			size_t keyLen = 0);
 		void LeaseSetCreated (const uint8_t * buf, size_t len); // called from I2CPSession
 		void LeaseSet2Created (uint8_t storeType, const uint8_t * buf, size_t len); // called from I2CPSession
 		void SendMsgTo (const uint8_t * payload, size_t len, const i2p::data::IdentHash & ident,
 			uint32_t nonce); // called from I2CPSession
 		bool SendMsg (const uint8_t * payload, size_t len,
-			std::shared_ptr<i2p::garlic::GarlicRoutingSession> remoteSession, uint32_t nonce);
+			std::shared_ptr<i2p::garlic::GarlicRoutingSession> remoteSession);
 
 		// implements LocalDestination
 		bool Decrypt (

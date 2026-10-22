@@ -81,8 +81,13 @@ namespace client
 			auto session = m_Owner.FindSession (m_ID);
 			if (session)
 			{
+				session->RemoveAccept (shared_from_this ());
 				if (m_IsAccepting && session->GetLocalDestination ())
-					session->GetLocalDestination ()->StopAcceptingStreams ();
+				{
+					uint16_t listenPort = 0;
+					if (auto sub = std::dynamic_pointer_cast<SAMSubSession> (session)) listenPort = sub->inPort;
+					session->GetLocalDestination ()->StopAcceptingStreams (listenPort);
+				}
 			}
 			break;
 		}
@@ -269,18 +274,13 @@ namespace client
 			Terminate ("SAM: handshake line too long");
 			return;
 		}
-		// Work on a bounded copy: m_InputBuffer retains the pipelined commands
-		// that may follow the HELLO line, and the reply reuses m_Buffer.
-		memcpy (m_Buffer, line.data (), line.size ());
-		m_Buffer[line.size ()] = 0;
-		char * separator = strchr (m_Buffer, ' ');
-		if (separator)
-		{
-			separator = strchr (separator + 1, ' ');
-			if (separator) *separator = 0;
-		}
-
-		if (strcmp (m_Buffer, SAM_HANDSHAKE))
+		// SAMUtils.parseParams treats spaces, tabs and form feeds as
+		// separators and normalises command case. Tokenise the handshake the
+		// same way instead of requiring exactly one literal space.
+		std::string_view rest = line;
+		std::string_view hello, version;
+		if (!NextToken (rest, hello) || !NextToken (rest, version)
+			|| !SAMCommandEquals (hello, "HELLO") || !SAMCommandEquals (version, "VERSION"))
 		{
 			LogPrint (eLogError, "SAM: Handshake mismatch");
 			Terminate ("SAM: handshake mismatch");
@@ -289,10 +289,8 @@ namespace client
 
 		bool hasMin = false, hasMax = false, verErr = false;
 		std::vector<uint64_t> minVer, maxVer;
-		if (separator)
 		{
-			separator++;
-			auto params = ExtractParams (separator);
+			auto params = ExtractParams (rest);
 			auto maxVerStr = params[SAM_PARAM_MAX];
 			if (!maxVerStr.empty ())
 			{
@@ -706,7 +704,7 @@ namespace client
 			uint16_t port = 0;
 			if (!ParseSAMPort (params, SAM_PARAM_PORT, port))
 			{
-				SendStreamI2PError ("Invalid port");
+				SendSessionI2PError ("Invalid port");
 				return;
 			}
 			boost::system::error_code e;
@@ -718,7 +716,7 @@ namespace client
 				if (e)
 				{
 					// not an ip address
-					SendStreamI2PError ("Invalid IP Address in HOST");
+					SendSessionI2PError ("Invalid IP Address in HOST");
 					return;
 				}
 			}
@@ -727,7 +725,7 @@ namespace client
 				auto ep = m_Socket.remote_endpoint (e);
 				if (e)
 				{
-					SendStreamI2PError ("Socket error: cannot get remote endpoint");
+					SendSessionI2PError ("Socket error: cannot get remote endpoint");
 					return;
 				}
 				addr = ep.address ();
@@ -1430,6 +1428,24 @@ namespace client
 				SendSubsessionError (id, "Invalid LISTEN_PORT");
 				return;
 			}
+			// Java PrimarySession requires PORT for RAW/DATAGRAM subsessions and
+			// rejects a duplicate (protocol, port) pair.
+			if ((type == SAMSessionType::eSAMSessionTypeDatagram || type == SAMSessionType::eSAMSessionTypeRaw)
+				&& !params.Contains (SAM_PARAM_PORT))
+			{
+				SendSubsessionError (id, "DATAGRAM/RAW subsession must specify PORT");
+				return;
+			}
+			for (const auto & existingId : masterSession->subsessions)
+			{
+				auto existing = m_Owner.FindSession (existingId);
+				auto sub = std::dynamic_pointer_cast<SAMSubSession> (existing);
+				if (sub && sub->Type == type && sub->inPort == listenPort)
+				{
+					SendSubsessionError (id, "Duplicate protocol and port");
+					return;
+				}
+			}
 
 			// STREAM subsessions route incoming connections by LISTEN_PORT;
 			// FROM_PORT remains the outgoing source port.
@@ -1866,6 +1882,12 @@ namespace client
 
 	void SAMSocket::HandleI2PAcceptOnService (std::shared_ptr<i2p::stream::Stream> stream)
 	{
+		if (stream && (m_SocketType == SAMSocketType::eSAMSocketTypeTerminated || !m_Socket.is_open ()))
+		{
+			LogPrint (eLogWarning, "SAM: Incoming stream arrived for a closed acceptor");
+			stream->Close ();
+			stream.reset ();
+		}
 		if (stream)
 		{
 			LogPrint (eLogDebug, "SAM: Incoming I2P connection for session ", m_ID);
@@ -2222,6 +2244,13 @@ namespace client
 		return true;
 	}
 
+	void SAMSession::RemoveAccept (const std::shared_ptr<SAMSocket> & socket)
+	{
+		if (!socket) return;
+		std::lock_guard<std::mutex> l (acceptQueueMutex);
+		acceptQueue.remove_if ([&socket] (const auto & item) { return item.first == socket; });
+	}
+
 	std::shared_ptr<SAMSocket> SAMSession::TakeNextAccept (
 		uint64_t /*now*/, std::list<std::shared_ptr<SAMSocket>> & /*expired*/)
 	{
@@ -2415,7 +2444,14 @@ namespace client
 			std::unique_lock<std::mutex> l (m_SessionsMutex);
 			m_Sessions.swap (sessions);
 		}
-		for (auto & it : sessions) it.second->Close ();
+		for (auto & it : sessions)
+		{
+			// Close() alone never releases the Acquire() taken by CreateSession;
+			// the map was already cleared, so the normal Terminate path cannot
+			// find the session and would leave the reference unbalanced.
+			if (it.second) it.second->StopLocalDestination ();
+			if (it.second) it.second->Close ();
+		}
 	}
 
 	void SAMBridge::Stop ()
