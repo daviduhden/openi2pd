@@ -43,9 +43,10 @@
  * a server-side allowlist; version 1 has no configuration writer. Router-wide
  * writes are restricted to a closed set of explicitly typed ADMIN operations:
  * reseed, shutdown/cancel, tunnel reload, bandwidth class, share percentage,
- * transit acceptance and daemon log level. The dispatcher converts each into a
- * bounded daemon command; no request carries a generic option name, path, URL
- * or shell string. ADMIN replies carry typed fields: admin=<action>,
+ * transit acceptance, daemon log level and bounded address-book add/remove.
+ * The dispatcher converts each into a bounded daemon command; no request
+ * carries a generic option name, path, URL or shell string. ADMIN replies
+ * carry typed fields: admin=<action>,
  * result=ok|accepted|error, code=<reason>, value=<integer>, message=<text>.
  */
 namespace i2p
@@ -64,11 +65,14 @@ namespace tui
 	inline constexpr size_t MAX_PEER_RECORDS_PER_REQUEST = 200;
 	inline constexpr size_t MAX_CONNECTION_RECORDS_PER_REQUEST = 200;
 	inline constexpr size_t MAX_NETDB_RECORDS_PER_REQUEST = 200;
+	inline constexpr size_t MAX_ADDRESS_BOOK_RECORDS_PER_REQUEST = 200;
 	inline constexpr size_t MAX_TUNNEL_RECORDS_PER_REQUEST = 200;
+	inline constexpr size_t MAX_SERVICE_RECORDS_PER_REQUEST = 200;
 	inline constexpr size_t MAX_TORRENT_RECORDS_PER_REQUEST = 200;
 	inline constexpr size_t MAX_TORRENT_FILE_RECORDS_PER_REQUEST = 1000;
 	inline constexpr size_t MAX_TORRENT_PEER_RECORDS_PER_REQUEST = 200;
 	inline constexpr size_t MAX_TORRENT_TRACKER_RECORDS_PER_REQUEST = 100;
+	inline constexpr size_t MAX_TORRENT_COMMENT_RECORDS_PER_REQUEST = 16;
 	inline constexpr size_t MAX_TORRENT_ARGUMENT_LENGTH = 2048;
 	// CONFIG returns an allowlisted, typed snapshot. Both the number of
 	// options and each string value are bounded so a misconfigured router
@@ -95,6 +99,7 @@ namespace tui
 		NetDbRouters,
 		NetDbLeaseSets,
 		Destinations,
+		Services,
 		Logs,
 		Config, // bounded, typed snapshot of allowlisted options; no writer
 		AdminTransit,
@@ -104,6 +109,12 @@ namespace tui
 		AdminReloadTunnels,
 		AdminBandwidth,
 		AdminShare,
+		AdminAddressAdd,
+		AdminAddressRemove,
+		AdminAddressBlock,
+		AdminAddressUnblock,
+		AddressBook,
+		AddressBookBlocked,
 		Ping,
 		Quit,
 		Torrents,
@@ -113,6 +124,7 @@ namespace tui
 		TorrentPause,
 		TorrentResume,
 		TorrentReannounce,
+		TorrentRecheck,
 		TorrentRemove,
 		TorrentStartAll,
 		TorrentStopAll,
@@ -125,7 +137,10 @@ namespace tui
 		TorrentCommentsEnable,
 		TorrentCommentAdd,
 		TorrentCommentHide,
+		TorrentCommentUnhide,
 		TorrentFilePriority,
+		TorrentSetComment,
+		TorrentSetCreatedBy,
 		TorrentAddMagnet,
 		TorrentAddFile,
 		TorrentSession,
@@ -137,7 +152,7 @@ namespace tui
 	{
 		RequestType type;
 		uint64_t after = 0; // LOGS: last sequence seen by the client
-		uint32_t limit = 0; // LOGS/PEERS/CONNECTIONS/NETDB-*/TORRENTS: record count
+		uint32_t limit = 0; // LOGS/PEERS/CONNECTIONS/NETDB-*/ADDRESSBOOK/TORRENTS: record count
 		uint32_t tunnelIndex = 0; // TORRENT-*: index into the sorted tunnel snapshot
 		int torrentId = 0; // TORRENT-*: engine-assigned torrent id
 		bool deleteFiles = false; // TORRENT-REMOVE: explicit files flag
@@ -146,7 +161,8 @@ namespace tui
 		// ADMIN BANDWIDTH: ASCII class; ADMIN SHARE: percent;
 		// ADMIN LOGLEVEL: zero-based index into the fixed level table.
 		uint32_t adminValue = 0;
-		std::string argument; // TORRENT-ADD-*/ADMIN LOGLEVEL: bounded argument
+		std::string argument; // TORRENT-ADD-*/ADMIN LOGLEVEL/ADDRESS-*: bounded argument
+		std::string argument2; // ADMIN ADDRESS-ADD: full base64 identity
 		uint32_t createPieceLength = 0;
 		bool createPrivate = false;
 		std::vector<std::vector<std::string>> createTrackers;
@@ -162,6 +178,21 @@ namespace tui
 		ResponseTooLarge = 5,
 		Internal = 6
 	};
+
+	inline std::string_view ErrorCodeName (ErrorCode code)
+	{
+		switch (code)
+		{
+		case ErrorCode::None: return "none";
+		case ErrorCode::MalformedRequest: return "malformed-request";
+		case ErrorCode::UnsupportedVersion: return "unsupported-version";
+		case ErrorCode::UnknownCommand: return "unknown-command";
+		case ErrorCode::BadArgument: return "bad-argument";
+		case ErrorCode::ResponseTooLarge: return "response-too-large";
+		case ErrorCode::Internal: return "internal";
+		default: return "unknown";
+		}
+	}
 
 	struct ProtocolError
 	{
@@ -262,6 +293,9 @@ namespace tui
 			if (rest.find ('\0') != std::string_view::npos || rest.find ('\r') != std::string_view::npos
 				|| rest.find ('\n') != std::string_view::npos)
 				return i2p::unexpected (ProtocolError { ErrorCode::BadArgument, "invalid argument character" });
+			for (const unsigned char c : rest)
+				if (c < 0x20 || c == 0x7f)
+					return i2p::unexpected (ProtocolError { ErrorCode::BadArgument, "invalid argument character" });
 			return std::string (rest);
 		}
 
@@ -314,6 +348,14 @@ namespace tui
 			if (value == "IMMEDIATE") return AdminShutdownMode::Immediate;
 			if (value == "CANCEL") return AdminShutdownMode::Cancel;
 			return std::nullopt;
+		}
+
+		inline bool IsSafeAdminText (std::string_view value, size_t maximum)
+		{
+			if (value.empty () || value.size () > maximum) return false;
+			return std::all_of (value.begin (), value.end (), [] (unsigned char ch) {
+				return ch > 32 && ch != 127;
+			});
 		}
 	}
 
@@ -390,6 +432,17 @@ namespace tui
 		{
 			request.type = RequestType::Destinations;
 		}
+		else if (command == "SERVICES")
+		{
+			request.type = RequestType::Services;
+			request.limit = MAX_SERVICE_RECORDS_PER_REQUEST;
+			if (!rest.empty ())
+			{
+				auto limit = detail::ParseLimit (detail::NextToken (rest), MAX_SERVICE_RECORDS_PER_REQUEST);
+				if (!limit) return i2p::unexpected (limit.error ());
+				request.limit = *limit;
+			}
+		}
 		else if (command == "LOGS")
 		{
 			request.type = RequestType::Logs;
@@ -415,6 +468,17 @@ namespace tui
 			auto trailing = detail::RejectTrailing (rest);
 			if (trailing) return i2p::unexpected (*trailing);
 			request.type = RequestType::Config;
+		}
+		else if (command == "ADDRESSBOOK" || command == "ADDRESSBOOK-BLOCKED")
+		{
+			request.type = command == "ADDRESSBOOK" ? RequestType::AddressBook : RequestType::AddressBookBlocked;
+			request.limit = MAX_ADDRESS_BOOK_RECORDS_PER_REQUEST;
+			if (!rest.empty ())
+			{
+				auto limit = detail::ParseLimit (detail::NextToken (rest), MAX_ADDRESS_BOOK_RECORDS_PER_REQUEST);
+				if (!limit) return i2p::unexpected (limit.error ());
+				request.limit = *limit;
+			}
 		}
 		else if (command == "ADMIN")
 		{
@@ -479,6 +543,29 @@ namespace tui
 				request.adminValue = static_cast<uint32_t> (*percent);
 				request.type = RequestType::AdminShare;
 			}
+			else if (action == "ADDRESS-ADD" || action == "ADDRESS-REMOVE"
+				|| action == "ADDRESS-BLOCK" || action == "ADDRESS-UNBLOCK")
+			{
+				const auto name = detail::NextToken (rest);
+				if (!detail::IsSafeAdminText (name, action == "ADDRESS-ADD" ? 67 : 255))
+					return i2p::unexpected (ProtocolError { ErrorCode::BadArgument, "invalid address name" });
+				request.argument = std::string (name);
+				if (action == "ADDRESS-ADD")
+				{
+					const auto destination = detail::NextToken (rest);
+					if (!detail::IsSafeAdminText (destination, 1024))
+						return i2p::unexpected (
+							ProtocolError { ErrorCode::BadArgument, "invalid base64 destination" });
+					request.argument2 = std::string (destination);
+					request.type = RequestType::AdminAddressAdd;
+				}
+				else if (action == "ADDRESS-REMOVE")
+					request.type = RequestType::AdminAddressRemove;
+				else if (action == "ADDRESS-BLOCK")
+					request.type = RequestType::AdminAddressBlock;
+				else
+					request.type = RequestType::AdminAddressUnblock;
+			}
 			else
 			{
 				return i2p::unexpected (ProtocolError { ErrorCode::BadArgument, "unknown admin action" });
@@ -514,11 +601,14 @@ namespace tui
 		}
 		else if (command == "TORRENT-DETAIL" || command == "TORRENT-START" || command == "TORRENT-STOP"
 			|| command == "TORRENT-PAUSE" || command == "TORRENT-RESUME" || command == "TORRENT-REANNOUNCE"
-			|| command == "TORRENT-REMOVE" || command == "TORRENT-START-ALL" || command == "TORRENT-STOP-ALL"
+			|| command == "TORRENT-RECHECK" || command == "TORRENT-REMOVE" || command == "TORRENT-START-ALL"
+			|| command == "TORRENT-STOP-ALL"
 			|| command == "TORRENT-REANNOUNCE-ALL" || command == "TORRENT-ADD-MAGNET"
 			|| command == "TORRENT-TRACKER-ADD" || command == "TORRENT-TRACKER-REMOVE" || command == "TORRENT-COMMENTS"
 			|| command == "TORRENT-COMMENT-ADD" || command == "TORRENT-COMMENT-HIDE"
-			|| command == "TORRENT-FILE-PRIORITY" || command == "TORRENT-CREATE-V1"
+			|| command == "TORRENT-COMMENT-UNHIDE"
+			|| command == "TORRENT-FILE-PRIORITY" || command == "TORRENT-META-COMMENT"
+			|| command == "TORRENT-META-CREATED-BY" || command == "TORRENT-CREATE-V1"
 			|| command == "TORRENT-CREATE-CANCEL" || command == "TORRENT-CREATE" || command == "TORRENT-ADD-FILE"
 			|| command == "TORRENT-SESSION" || command == "TORRENT-DHT")
 		{
@@ -540,6 +630,8 @@ namespace tui
 				request.type = RequestType::TorrentResume;
 			else if (command == "TORRENT-REANNOUNCE")
 				request.type = RequestType::TorrentReannounce;
+			else if (command == "TORRENT-RECHECK")
+				request.type = RequestType::TorrentRecheck;
 			else if (command == "TORRENT-REMOVE")
 				request.type = RequestType::TorrentRemove;
 			else if (command == "TORRENT-START-ALL")
@@ -558,8 +650,14 @@ namespace tui
 				request.type = RequestType::TorrentCommentAdd;
 			else if (command == "TORRENT-COMMENT-HIDE")
 				request.type = RequestType::TorrentCommentHide;
+			else if (command == "TORRENT-COMMENT-UNHIDE")
+				request.type = RequestType::TorrentCommentUnhide;
 			else if (command == "TORRENT-FILE-PRIORITY")
 				request.type = RequestType::TorrentFilePriority;
+			else if (command == "TORRENT-META-COMMENT")
+				request.type = RequestType::TorrentSetComment;
+			else if (command == "TORRENT-META-CREATED-BY")
+				request.type = RequestType::TorrentSetCreatedBy;
 			else if (command == "TORRENT-CREATE-V1")
 				request.type = RequestType::TorrentCreateV1;
 			else if (command == "TORRENT-CREATE-CANCEL")
@@ -612,10 +710,13 @@ namespace tui
 			else if (request.type == RequestType::TorrentDetail || request.type == RequestType::TorrentStart
 				|| request.type == RequestType::TorrentStop || request.type == RequestType::TorrentPause
 				|| request.type == RequestType::TorrentResume || request.type == RequestType::TorrentReannounce
-				|| request.type == RequestType::TorrentRemove || request.type == RequestType::TorrentAddTracker
+				|| request.type == RequestType::TorrentRecheck || request.type == RequestType::TorrentRemove
+				|| request.type == RequestType::TorrentAddTracker
 				|| request.type == RequestType::TorrentRemoveTracker
 				|| request.type == RequestType::TorrentCommentsEnable || request.type == RequestType::TorrentCommentAdd
-				|| request.type == RequestType::TorrentCommentHide || request.type == RequestType::TorrentFilePriority)
+				|| request.type == RequestType::TorrentCommentHide || request.type == RequestType::TorrentFilePriority
+				|| request.type == RequestType::TorrentSetComment
+				|| request.type == RequestType::TorrentSetCreatedBy)
 			{
 				if (rest.empty ())
 					return i2p::unexpected (ProtocolError { ErrorCode::BadArgument, "missing torrent id" });
@@ -626,7 +727,10 @@ namespace tui
 				if (request.type == RequestType::TorrentAddTracker || request.type == RequestType::TorrentRemoveTracker
 					|| request.type == RequestType::TorrentCommentsEnable
 					|| request.type == RequestType::TorrentCommentAdd || request.type == RequestType::TorrentCommentHide
-					|| request.type == RequestType::TorrentFilePriority)
+					|| request.type == RequestType::TorrentCommentUnhide
+					|| request.type == RequestType::TorrentFilePriority
+					|| request.type == RequestType::TorrentSetComment
+					|| request.type == RequestType::TorrentSetCreatedBy)
 				{
 					auto argument = detail::ParseRestOfLine (rest);
 					if (!argument) return i2p::unexpected (argument.error ());

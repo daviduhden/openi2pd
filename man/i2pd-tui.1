@@ -51,9 +51,13 @@ Resolve the default socket below
 .It Fl -conf Ar file
 Read the
 .Ql [tui]
-socket setting from this
+socket and language settings from this
 .Xr i2pd 1
 configuration file.
+.It Fl -lang Ar language
+Select the UI language: en, es, ru or zh-Hans. Overrides the
+.Ql [tui]
+language setting and the process locale; unsupported tags fall back to English.
 .It Fl -service
 Use the system service data directory.
 .It Fl h , Fl -help

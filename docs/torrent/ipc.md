@@ -50,6 +50,9 @@ TORRENT-STOP <tunnel-index> <torrent-id>
 TORRENT-PAUSE <tunnel-index> <torrent-id>
 TORRENT-RESUME <tunnel-index> <torrent-id>
 TORRENT-REANNOUNCE <tunnel-index> <torrent-id>
+TORRENT-RECHECK <tunnel-index> <torrent-id>
+TORRENT-META-COMMENT <tunnel-index> <torrent-id> <text>
+TORRENT-META-CREATED-BY <tunnel-index> <torrent-id> <text>
 TORRENT-REMOVE <tunnel-index> <torrent-id> [files]
 TORRENT-START-ALL <tunnel-index>
 TORRENT-STOP-ALL <tunnel-index>
@@ -72,9 +75,23 @@ unknown values return an error rather than creating state.
 
 - Tunnel list: `torrent.tunnels` (count) and
   `torrent.tunnel.<n>.name/torrents/index`.
-- Torrent list: `torrent.<n>.id/name/status/error/hash/magnet/total/have/
-  downloaded/uploaded/downRate/upRate/peers/seeders/leechers/percent/eta`.
-- Details: `detail.*`, `file.<n>.*`, `peer.<n>.*`, `tracker.<n>.*`.
+- Torrent list: `torrent.<n>.id/name/status/error/hash/magnet/total/wanted/
+  have/private/downloaded/uploaded/downRate/upRate/peers/seeders/leechers/
+  percent/eta`. `wanted` is the selected-file size; `percent` compares
+  selected verified bytes with `wanted`; `private` disables DHT/PEX/comments.
+- Details: `detail.*`, `file.<n>.*`, `peer.<n>.*`,
+  `tracker.<n>.announce/tier/peers/seeders/leechers/lastResult/lastAnnounce/
+  nextAnnounce` (`tier=-1` is a common tunnel endpoint).
+- Comments: `comments.enabled/total/count/ratingCount/average/
+  persistenceError/truncated` and `comment.<n>.id/owner/text/rating/time/
+  hidden/local`; `count` is the bounded emitted set, newest first including
+  hidden entries (clients must inspect `hidden`), `total` is retained state,
+  and `0` rating means unrated.
+- Comment commands: `TORRENT-COMMENTS <tunnel> <id> ON|OFF`,
+  `TORRENT-COMMENT-ADD <tunnel> <id> <rating> <owner|text>`,
+  `TORRENT-COMMENT-HIDE <tunnel> <id> <localId>` and
+  `TORRENT-COMMENT-UNHIDE <tunnel> <id> <localId>`. Private torrents refuse
+  enable/add; authors are unauthenticated pseudonyms.
 - Session: `session.downloaded/uploaded/active/paused`.
 - DHT: `dht.supported/numNodes/numBuckets/numTorrents/numHeardFrom/
   numFailedPeers`.
@@ -119,7 +136,27 @@ URLs, complete metadata, paused state and quotas. Explicit tracker membership
 replaces fallback to common trackers. An empty explicit list remains empty on
 reload. Success means the update and immutable persistence job were queued;
 it is not a durability acknowledgement. These commands do not create a new
-wire or persisted torrent format (outer BEP 12 dictionary only).
+wire or persisted torrent format (outer BEP 12 dictionary only). Rewrites
+preserve comment, created-by, creation date, url-list, encoding and unknown
+top-level extension keys within a bounded retention budget; exceeding it fails
+the rewrite instead of dropping data.
+
+### Force recheck
+
+`TORRENT-RECHECK <tunnel> <id>` requests a full local re-hash through the
+queued torrent control path. The torrent must be paused and have complete
+metadata; a running torrent is rejected instead of reading a moving data set.
+The operation does not publish availability for a piece until the storage
+service has verified it.
+
+### Metainfo editing
+
+`TORRENT-META-COMMENT <tunnel> <id> <text>` and
+`TORRENT-META-CREATED-BY <tunnel> <id> <text>` edit the outer metainfo fields
+of a paused, complete torrent. The service validates UTF-8, control characters
+and a 1024/255-byte bound, preserves the original info bytes and infohash, and
+queues the atomic `.torrent` replacement. Empty text is rejected by the
+version-1 parser; use the normal tracker edit path for tracker changes.
 
 ### Creation options, progress and cancellation
 
@@ -134,7 +171,8 @@ requests cooperative cancellation of the one outstanding job. Session fields
 
 File-priority and comment operations are `TORRENT-FILE-PRIORITY tunnel id
 index priority`, `TORRENT-COMMENTS tunnel id ON|OFF`, `TORRENT-COMMENT-ADD
-tunnel id rating owner|text` and `TORRENT-COMMENT-HIDE tunnel id localId`.
+tunnel id rating owner|text`, `TORRENT-COMMENT-HIDE tunnel id localId` and
+`TORRENT-COMMENT-UNHIDE tunnel id localId`.
 Administrative success queues immutable persistence; it is not a durability
 acknowledgement. The [worker protocol](storage-worker.md) is a separate private
 capability channel, never exposed directly to the terminal or peers.

@@ -40,6 +40,7 @@ namespace
 std::atomic<bool> g_BlockAdminExecutor { false };
 std::atomic<bool> g_AdminExecutorStarted { false };
 std::atomic<bool> g_ReleaseAdminExecutor { false };
+std::atomic<unsigned> g_AdminExecutorCount { 0 };
 
 void FakeAdminExecutor (const i2p::tui::AdminCommand & command, i2p::tui::AdminCommandResult & result)
 {
@@ -53,6 +54,8 @@ void FakeAdminExecutor (const i2p::tui::AdminCommand & command, i2p::tui::AdminC
 	result.value = command.value;
 	result.enabled = command.enabled;
 	std::snprintf (result.message, sizeof (result.message), "fake admin command executed");
+	result.messageLength = std::strlen (result.message);
+	g_AdminExecutorCount.fetch_add (1, std::memory_order_relaxed);
 }
 
 bool SendAll (int fd, std::string_view data)
@@ -158,6 +161,9 @@ void TestClientRoundTrip (const std::string & path)
 	auto leaseSets = client.Request ("NETDB-LEASESETS 5");
 	assert (leaseSets.has_value ());
 	assert (leaseSets->find ("netdb.leasesets.listed=") != std::string::npos);
+	auto services = client.Request ("SERVICES 5");
+	assert (services.has_value ());
+	assert (services->find ("service.count=") != std::string::npos);
 
 	// The only writable administrative command used here updates an atomic
 	// logger level; it does not touch router state or the filesystem.
@@ -186,6 +192,7 @@ void TestClientRoundTrip (const std::string & path)
 	auto unknown = client.Request ("BOGUS");
 	assert (!unknown.has_value ());
 	assert (unknown.error ().kind == i2p::tui::RequestErrorKind::Remote);
+	assert (unknown.error ().code == i2p::tui::ErrorCode::UnknownCommand);
 	assert (client.IsConnected ());
 
 	auto second = client.Request ("PING");
@@ -301,6 +308,7 @@ void TestAbortedClient (const std::string & path)
 
 void TestAdminQueueBounds ()
 {
+	g_AdminExecutorCount.store (0, std::memory_order_relaxed);
 	// Running the queue without a daemon proves its fixed capacity and
 	// bounded wait: a blocked executor occupies one slot, the remaining
 	// slots accept commands that time out as Accepted, and the next submit
@@ -329,6 +337,13 @@ void TestAdminQueueBounds ()
 	assert (std::string_view (full.message).find ("full") != std::string_view::npos);
 
 	g_ReleaseAdminExecutor.store (true, std::memory_order_relaxed);
+	// A timed-out IPC waiter must not discard the command itself. The single
+	// executor has to run every accepted slot exactly once before shutdown.
+	for (int i = 0; i < 2000
+		&& g_AdminExecutorCount.load (std::memory_order_relaxed) < i2p::tui::ADMIN_COMMAND_QUEUE_CAPACITY;
+		++i)
+		std::this_thread::sleep_for (std::chrono::milliseconds (1));
+	assert (g_AdminExecutorCount.load (std::memory_order_relaxed) == i2p::tui::ADMIN_COMMAND_QUEUE_CAPACITY);
 	i2p::tui::StopAdminCommandQueue ();
 	g_BlockAdminExecutor.store (false, std::memory_order_relaxed);
 

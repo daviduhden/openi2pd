@@ -33,17 +33,19 @@ it.
 | Resume | start button | `Resume` command → `StartTorrent` | `p` resume with status | Implemented / validation pending |
 | Reannounce | Button, RPC | `ReannounceTorrent` | Key per selection/all | Implemented / validation pending |
 | Remove torrent | Confirm, RPC | `RemoveTorrent(id,false)` | Explicit key/confirmation | Implemented / validation pending |
-| Remove + data | Confirm, RPC | `RemoveTorrent(id,true)` | Separate key + second confirmation | Implemented / validation pending |
+| Remove + data | Confirm, RPC | `RemoveTorrent(id,true)` | TUI separate key + second confirmation; Android menu action with destructive dialog | Implemented / validation pending |
 | Start/stop/reannounce all | Bottom row buttons | `*AllTorrents` | Keys | Implemented / validation pending |
 | General details | Modal/fieldset | public getters | Details general | Implemented / validation pending |
 | Files details | Table | files/completed | Details files | Implemented / validation pending |
 | Peers details | Table | connections/accessors | Details peers | Implemented / validation pending |
-| Trackers details | Table | tracker stats | Details trackers | Implemented / validation pending |
+| Trackers details / edit | Table | tracker stats + `SetTrackerTiers` | Details trackers; metadata survives rewrite | Implemented / validation pending |
+| Metainfo edit | Edit form | `SetMetaComment`, `SetCreatedBy` | TUI e/E and Android dialog; paused torrent | Implemented / validation pending |
 | Sort/filter/search | None | client-side data | Native sort/search | Implemented / validation pending |
 | Keyboard-only | Browser focus | n/a | ncurses keys | Implemented / validation pending |
 | Multi-tunnel | One mount/path per tunnel | map of tunnels | Tunnel index selector/list | Implemented / validation pending |
-| File selection/priorities | None | No confirmed API | Not advertised | Unsupported |
-| Queue/bandwidth limits | None in console | Partial session RPC fields | Not advertised in TUI | Unsupported / needs engine work |
+| File selection/priorities | None | `SetFilePriority`, persisted priorities | Details tab + `f`; Android priority dialog | Implemented / validation pending |
+| Force recheck | Button (stopped torrent) | `RequestLocalVerification(true)` | `V` for a paused torrent; Android menu action | Implemented / validation pending |
+| Queue/bandwidth limits | None in console | No queue or token bucket | Not advertised in TUI | Fork-specific resource policy; Java has no queue or per-torrent rate limit |
 | Browser HTML/CSS/JS | Required | n/a | Removed | Target: no web assets |
 | JSON-RPC compatibility | `rpc.js` consumer | `TorrentsRPC` | Separate optional API | Retained only if audited; not used by TUI |
 

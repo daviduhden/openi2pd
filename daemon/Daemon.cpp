@@ -128,7 +128,10 @@ namespace util
 
 		void SetAdminResultMessage (i2p::tui::AdminCommandResult & result, const char * message)
 		{
-			std::snprintf (result.message, sizeof (result.message), "%s", message ? message : "");
+			const int written = std::snprintf (result.message, sizeof (result.message), "%s", message ? message : "");
+			result.messageLength = written > 0
+				? std::min<size_t> (static_cast<size_t> (written), sizeof (result.message) - 1)
+				: 0;
 		}
 
 		/**
@@ -230,6 +233,62 @@ namespace util
 				result.value = command.value;
 				SetAdminResultMessage (result, "daemon log level applied");
 				break;
+			case AdminCommandKind::AddressAdd:
+			case AdminCommandKind::AddressRemove:
+			case AdminCommandKind::AddressBlock:
+			case AdminCommandKind::AddressUnblock:
+			{
+				auto & book = i2p::client::context.GetAddressBook ();
+				i2p::client::AddressBookMutationResult outcome;
+				const char * success = "address updated";
+				switch (command.kind)
+				{
+				case AdminCommandKind::AddressAdd:
+					outcome = book.AddAddress (command.name, command.destination, true);
+					success = "address added";
+					break;
+				case AdminCommandKind::AddressRemove:
+					outcome = book.RemoveAddress (command.name);
+					success = "address removed";
+					break;
+				case AdminCommandKind::AddressBlock:
+					outcome = book.BlockAddress (command.name);
+					success = "address blocked";
+					break;
+				default:
+					outcome = book.UnblockAddress (command.name);
+					success = "address unblocked";
+					break;
+				}
+				switch (outcome)
+				{
+				case i2p::client::AddressBookMutationResult::Ok:
+					result.code = AdminResultCode::Ok;
+					SetAdminResultMessage (result, success);
+					break;
+				case i2p::client::AddressBookMutationResult::InvalidName:
+					result.code = AdminResultCode::Invalid;
+					SetAdminResultMessage (result, "invalid address name");
+					break;
+				case i2p::client::AddressBookMutationResult::InvalidDestination:
+					result.code = AdminResultCode::Invalid;
+					SetAdminResultMessage (result, "invalid base64 destination");
+					break;
+				case i2p::client::AddressBookMutationResult::Exists:
+					result.code = AdminResultCode::Failed;
+					SetAdminResultMessage (result, "address already exists with another destination");
+					break;
+				case i2p::client::AddressBookMutationResult::NotFound:
+					result.code = AdminResultCode::Failed;
+					SetAdminResultMessage (result, "address not found");
+					break;
+				case i2p::client::AddressBookMutationResult::Unavailable:
+					result.code = AdminResultCode::Unavailable;
+					SetAdminResultMessage (result, "address book storage is unavailable");
+					break;
+				}
+				break;
+			}
 			default:
 				result.code = AdminResultCode::Invalid;
 				SetAdminResultMessage (result, "unknown admin command");
@@ -888,7 +947,9 @@ namespace util
 			}
 		}
 
-		i2p::i18n::SetLanguage ("english");
+		std::string language;
+		i2p::config::GetOption ("lang", language);
+		i2p::i18n::SetLanguage (language);
 
 		return true;
 	}

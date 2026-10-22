@@ -41,7 +41,11 @@ namespace tui
 		Bandwidth,
 		Share,
 		Transit,
-		LogLevel
+		LogLevel,
+		AddressAdd,
+		AddressRemove,
+		AddressBlock,
+		AddressUnblock
 	};
 
 	struct AdminCommand
@@ -51,6 +55,10 @@ namespace tui
 		// LogLevel: zero-based index into the fixed level table.
 		int32_t value = 0;
 		bool enabled = false; // Transit only
+		// Address add/remove: validated, NUL-terminated fixed storage. The
+		// queue copies this struct and never allocates for a submission.
+		char name[256] = { };
+		char destination[1025] = { };
 	};
 
 	enum class AdminResultCode : uint8_t
@@ -69,7 +77,10 @@ namespace tui
 		int32_t value = 0;
 		bool enabled = false;
 		// Fixed storage: the IPC thread only copies, never allocates, this.
+		// messageLength makes the valid prefix explicit so serialization never
+		// performs an unbounded strlen on the fixed array.
 		char message[96] = { };
+		size_t messageLength = 0;
 	};
 
 	/**

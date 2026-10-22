@@ -32,6 +32,8 @@ static void TestRequests ()
 	auto create = ParseRequest ("I2PDTUI/1 TORRENT-CREATE 0 payload");
 	assert (create && create->type == RequestType::TorrentCreate && create->argument == "payload");
 	assert (!ParseRequest ("I2PDTUI/1 TORRENT-CREATE 0"));
+	assert (!ParseRequest ("I2PDTUI/1 TORRENT-CREATE 0 bad\x01path"));
+	assert (!ParseRequest ("I2PDTUI/1 TORRENT-CREATE 0 bad\x7fpath"));
 
 	auto tracker = ParseRequest ("I2PDTUI/1 TORRENT-TRACKER-ADD 0 12 http://tracker.i2p/a");
 	assert (tracker && tracker->type == RequestType::TorrentAddTracker && tracker->torrentId == 12);
@@ -107,6 +109,17 @@ static void TestRequests ()
 	assert (destinations.has_value ());
 	assert (destinations->type == RequestType::Destinations);
 
+	auto services = ParseRequest ("I2PDTUI/1 SERVICES");
+	assert (services.has_value ());
+	assert (services->type == RequestType::Services);
+	assert (services->limit == MAX_SERVICE_RECORDS_PER_REQUEST);
+	auto limitedServices = ParseRequest ("I2PDTUI/1 SERVICES 25");
+	assert (limitedServices.has_value () && limitedServices->limit == 25);
+	assert (!ParseRequest ("I2PDTUI/1 SERVICES 0").has_value ());
+	auto clampedServices = ParseRequest ("I2PDTUI/1 SERVICES 201");
+	assert (clampedServices.has_value () && clampedServices->limit == MAX_SERVICE_RECORDS_PER_REQUEST);
+	assert (!ParseRequest ("I2PDTUI/1 SERVICES 1 extra").has_value ());
+
 	// Bounds, versions and surface syntax are validated before dispatch.
 	assert (!ParseRequest ("I2PDTUI/2 STATE").has_value ());
 	assert (!ParseRequest ("I2PDTUI/1").has_value ());
@@ -133,6 +146,8 @@ static void TestResponseHeader ()
 	assert (error->status == ResponseStatus::Error);
 	assert (error->errorCode == ErrorCode::UnknownCommand);
 	assert (error->payloadSize == 7);
+	assert (ErrorCodeName (error->errorCode) == "unknown-command");
+	assert (ErrorCodeName (ErrorCode::BadArgument) == "bad-argument");
 
 	// Every declared error code is accepted; anything above Internal is not.
 	for (uint32_t code = 0; code <= static_cast<uint32_t> (ErrorCode::Internal); ++code)
@@ -270,6 +285,51 @@ static void TestAdminCommands ()
 	assert (!ParseRequest ("I2PDTUI/1 ADMIN SHARE").has_value ());
 	assert (!ParseRequest ("I2PDTUI/1 ADMIN SHARE 10 extra").has_value ());
 
+	auto addressBook = ParseRequest ("I2PDTUI/1 ADDRESSBOOK 20");
+	assert (addressBook.has_value () && addressBook->type == RequestType::AddressBook);
+	assert (addressBook->limit == 20);
+	assert (!ParseRequest ("I2PDTUI/1 ADDRESSBOOK 0").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 ADDRESSBOOK 20 extra").has_value ());
+
+	auto addressAdd = ParseRequest ("I2PDTUI/1 ADMIN ADDRESS-ADD site.i2p AAAA");
+	assert (addressAdd.has_value () && addressAdd->type == RequestType::AdminAddressAdd);
+	assert (addressAdd->argument == "site.i2p" && addressAdd->argument2 == "AAAA");
+	auto addressRemove = ParseRequest ("I2PDTUI/1 ADMIN ADDRESS-REMOVE site.i2p");
+	assert (addressRemove.has_value () && addressRemove->type == RequestType::AdminAddressRemove);
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN ADDRESS-ADD site.i2p").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN ADDRESS-ADD site.i2p AAAA extra").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN ADDRESS-ADD site.i2p AAAA\nQUIT").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN ADDRESS-REMOVE site.i2p extra").has_value ());
+	auto addressBlock = ParseRequest ("I2PDTUI/1 ADMIN ADDRESS-BLOCK *spam*.i2p");
+	assert (addressBlock.has_value () && addressBlock->type == RequestType::AdminAddressBlock);
+	assert (addressBlock->argument == "*spam*.i2p");
+	auto addressUnblock = ParseRequest ("I2PDTUI/1 ADMIN ADDRESS-UNBLOCK *spam*.i2p");
+	assert (addressUnblock.has_value () && addressUnblock->type == RequestType::AdminAddressUnblock);
+	auto blocked = ParseRequest ("I2PDTUI/1 ADDRESSBOOK-BLOCKED 12");
+	assert (blocked.has_value () && blocked->type == RequestType::AddressBookBlocked);
+	assert (blocked->limit == 12);
+
+	auto commentsEnable = ParseRequest ("I2PDTUI/1 TORRENT-COMMENTS 0 3 ON");
+	assert (commentsEnable && commentsEnable->type == RequestType::TorrentCommentsEnable);
+	assert (commentsEnable->argument == "ON");
+	auto commentAdd = ParseRequest ("I2PDTUI/1 TORRENT-COMMENT-ADD 0 3 4 author|text");
+	assert (commentAdd && commentAdd->type == RequestType::TorrentCommentAdd);
+	assert (commentAdd->argument == "4 author|text");
+	auto commentHide = ParseRequest ("I2PDTUI/1 TORRENT-COMMENT-HIDE 0 3 42");
+	assert (commentHide && commentHide->type == RequestType::TorrentCommentHide);
+	assert (commentHide->argument == "42");
+	auto commentUnhide = ParseRequest ("I2PDTUI/1 TORRENT-COMMENT-UNHIDE 0 3 42");
+	assert (commentUnhide && commentUnhide->type == RequestType::TorrentCommentUnhide);
+	assert (commentUnhide->argument == "42");
+	assert (!ParseRequest ("I2PDTUI/1 TORRENT-COMMENT-ADD 0 3").has_value ());
+	auto metaComment = ParseRequest ("I2PDTUI/1 TORRENT-META-COMMENT 0 3 hello world");
+	assert (metaComment.has_value () && metaComment->type == RequestType::TorrentSetComment);
+	assert (metaComment->torrentId == 3 && metaComment->argument == "hello world");
+	auto metaCreated = ParseRequest ("I2PDTUI/1 TORRENT-META-CREATED-BY 0 3 openi2pd");
+	assert (metaCreated.has_value () && metaCreated->type == RequestType::TorrentSetCreatedBy);
+	assert (!ParseRequest ("I2PDTUI/1 TORRENT-META-COMMENT 0 0 text").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 TORRENT-META-CREATED-BY 0 3 bad\nvalue").has_value ());
+
 	// Existing typed admin operations now carry a canonical level index.
 	auto logLevel = ParseRequest ("I2PDTUI/1 ADMIN LOGLEVEL warn");
 	assert (logLevel.has_value () && logLevel->type == RequestType::AdminLogLevel);
@@ -349,6 +409,12 @@ static void TestTorrentRequests ()
 	assert (resume.has_value () && resume->type == RequestType::TorrentResume);
 	assert (!ParseRequest ("I2PDTUI/1 TORRENT-PAUSE 0").has_value ());
 	assert (!ParseRequest ("I2PDTUI/1 TORRENT-RESUME 0 3 extra").has_value ());
+
+	auto recheck = ParseRequest ("I2PDTUI/1 TORRENT-RECHECK 0 3");
+	assert (recheck.has_value () && recheck->type == RequestType::TorrentRecheck);
+	assert (recheck->tunnelIndex == 0 && recheck->torrentId == 3);
+	assert (!ParseRequest ("I2PDTUI/1 TORRENT-RECHECK 0").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 TORRENT-RECHECK 0 3 extra").has_value ());
 
 	auto remove = ParseRequest ("I2PDTUI/1 TORRENT-REMOVE 0 3 files");
 	assert (remove.has_value () && remove->type == RequestType::TorrentRemove);

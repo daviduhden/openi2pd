@@ -17,12 +17,13 @@ browser dependency.
 ## Navigation
 
 The main TUI retains Status, Peers, Tunnels, NetDb, Destinations, Logs,
-Config, Connections and Help and adds a Torrents section. Key assignments are
-implemented in `tui/main.cpp` and mirrored in the help screen; the model is:
+Services, Config, Connections and Help and adds a Torrents section. Key
+assignments are implemented in `tui/main.cpp` and mirrored in the help screen;
+the model is:
 
 | Key | Action |
 |---|---|
-| `1`..`9`, `0` | switch main view (Torrents is `4`, Connections is `0`) |
+| `1`..`9`, `v`, `0` | switch main view (Torrents is `4`, Services is `v`, Connections is `0`) |
 | `Tab` / arrows | move between views/fields |
 | `Up`/`Down`, PgUp/PgDn, Home/End | select/scroll |
 | `Enter` | open details / confirm |
@@ -34,7 +35,7 @@ implemented in `tui/main.cpp` and mirrored in the help screen; the model is:
 | `D` | remove torrent and local data (explicit confirmation) |
 | `x` / `z` | start all / stop all |
 | `/` | search/filter by name or info hash |
-| `s` | cycle sort column/direction |
+| `s` / `S` | cycle sort column / reverse direction |
 | `Esc` | close details/dialog |
 | `q` | quit TUI (router keeps running) |
 
@@ -42,8 +43,10 @@ implemented in `tui/main.cpp` and mirrored in the help screen; the model is:
 
 The table shows name, state, total size, progress, downloaded/uploaded,
 download/upload rate, peers (seeders/leechers), ratio/ETA and the relevant
-error. Long names are truncated by display width without splitting UTF-8
-sequences. States are distinguishable by text/symbol as well as color.
+error. A status line summarizes the filtered rows (shown/total, active count,
+have/total size and aggregate rates). Long names are truncated by display
+width without splitting UTF-8 sequences. States are distinguishable by
+text/symbol as well as color.
 
 Empty states:
 
@@ -56,7 +59,8 @@ Empty states:
 
 The details view is tabbed or sectioned by:
 
-- general: id, name, info hash, magnet, status, error, size, pieces;
+- general: id, name, info hash, magnet, metainfo comment/created-by, status,
+  error, size, pieces;
 - files: path, length, completed, remaining;
 - peers: identity, client, flags, progress, rates;
 - trackers: announce URL, peers/seeders/leechers, last result/times;
@@ -98,7 +102,13 @@ Tracker editing: select a torrent, pause it, then press `t` to add an I2P
 tracker URL or `T` to remove one. Complete metadata is required. Resume after
 editing. Changes queue persistence; errors are reported through the bounded
 local IPC. Editing an endpoint means removing its old URL and adding its new
-URL. The infohash stays unchanged.
+URL. The infohash stays unchanged and top-level metainfo (comment, created-by,
+creation date, url-list, encoding and extension keys) is preserved.
+
+Pause a torrent and use `e`/`E` in the details view to edit the metainfo comment
+or created-by. Empty prompts are rejected; the daemon applies the same pause
+and UTF-8/size validation. Rewrites that would exceed the bounded unknown-key
+retention fail closed instead of silently dropping metadata.
 
 ## Complete native controls in this increment
 
@@ -108,6 +118,10 @@ tier:URL... source`. Zero selects automatic piece size; tiers start at zero
 and are contiguous. `K` requests cancellation. Session details show hashed
 bytes and file counts. Example: `0 private 2 0:http://first.i2p/a
 1:http://second.i2p/a payload`.
+
+Pause a complete torrent and press `V` to force a local recheck. The torrent
+service re-hashes local data through the storage path and keeps availability
+conservative until each piece is verified.
 
 The Files detail tab shows file indices and priorities. `f` accepts `index
 priority`, with 0 skipped, 1 normal and 2 high. Shared pieces use the highest

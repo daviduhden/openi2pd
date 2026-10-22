@@ -6,7 +6,7 @@
  *
  * Implements the i2pd-tui application: a tabbed terminal interface that polls
  * the router over local IPC and renders status, peers, tunnels, torrents,
- * netDb, logs, destinations, configuration and connections. It handles resize
+ * netDb, logs, services, destinations, configuration and connections. It handles resize
  * and key events, editable prompts, UTF-8-aware truncation and periodic
  * background refreshes while retaining the last complete snapshot.
  *
@@ -41,6 +41,7 @@
 #include <signal.h>
 #endif
 
+#include "I18N.h"
 #include "Log.h"
 #include "Terminal.h"
 #include "Theme.h"
@@ -76,18 +77,22 @@ enum class Tab
 	Torrents,
 	NetDb,
 	Logs,
+	Services,
 	Help,
 	Destinations,
 	Config,
 	Connections
 };
 
-// The original 1..9 bindings are preserved; Connections is appended as 0.
-// Tab/arrow navigation visits all ten views in this order.
-constexpr std::array<std::string_view, 10> TAB_NAMES
-	= { "Status", "Peers", "Tunnels", "Torrents", "NetDb", "Logs", "Help", "Destinations", "Config", "Connections" };
-constexpr std::array<std::string_view, 10> TAB_SHORT_NAMES
-	= { "Status", "Peers", "Tunnels", "Torrents", "NetDb", "Logs", "Help", "Dest", "Config", "Conn" };
+// The original 1..9 bindings are preserved; Connections is appended as 0 and
+// Services uses v so existing muscle memory/help text keeps working.
+// Tab/arrow navigation visits all eleven views in this order.
+constexpr std::array<std::string_view, 11> TAB_NAMES = { "Status", "Peers", "Tunnels", "Torrents", "NetDb",
+	"Logs", "Services", "Help", "Destinations", "Config", "Connections" };
+constexpr std::array<std::string_view, 11> TAB_SHORT_NAMES = { "Status", "Peers", "Tunnels", "Torrents", "NetDb",
+	"Logs", "Svcs", "Help", "Dest", "Config", "Conn" };
+constexpr std::array<std::string_view, 11> TAB_KEYS
+	= { "1", "2", "3", "4", "5", "6", "v", "7", "8", "9", "0" };
 
 enum class NetDbView
 {
@@ -129,6 +134,9 @@ enum class PromptKind
 	CommentsToggle,
 	CommentAdd,
 	CommentHide,
+	CommentUnhide,
+	TorrentMetaComment,
+	TorrentMetaCreatedBy,
 	ConfirmRemove,
 	ConfirmRemoveFiles,
 	ConfirmTransit,
@@ -137,7 +145,11 @@ enum class PromptKind
 	ConfirmShutdownGraceful,
 	ConfirmShutdownImmediate,
 	Bandwidth,
-	Share
+	Share,
+	AddressAdd,
+	AddressRemove,
+	AddressBlock,
+	AddressUnblock
 };
 
 struct PeerRow
@@ -162,10 +174,20 @@ struct NetDbRouterRow
 	uint64_t timestamp = 0;
 };
 
+struct ServiceRow
+{
+	std::string kind;
+	std::string name;
+	std::string endpoint;
+	std::string address;
+	bool enabled = false;
+};
+
 struct NetDbLeaseSetRow
 {
 	std::string hash;
 	long storeType = 0;
+	long encryptionType = 0;
 	uint64_t expiration = 0;
 	uint64_t earliestLease = 0;
 	bool valid = false;
@@ -197,7 +219,10 @@ struct TorrentRow
 	std::string error;
 	std::string hash;
 	std::string magnet;
+	std::string metaComment;
+	std::string createdBy;
 	uint64_t total = 0;
+	uint64_t wanted = 0;
 	uint64_t have = 0;
 	uint64_t downloaded = 0;
 	uint64_t uploaded = 0;
@@ -207,6 +232,7 @@ struct TorrentRow
 	int seeders = 0;
 	int leechers = 0;
 	double percent = -1.0;
+	bool privateTorrent = false;
 	std::optional<uint64_t> eta;
 };
 
@@ -232,6 +258,7 @@ struct TorrentPeerRow
 struct TorrentTrackerRow
 {
 	std::string announce;
+	int tier = -1;
 	int peers = 0;
 	int seeders = 0;
 	int leechers = 0;
@@ -335,6 +362,39 @@ std::string Trim (std::string_view value)
 	while (!value.empty () && (value.back () == ' ' || value.back () == '\t' || value.back () == '\r'))
 		value.remove_suffix (1);
 	return std::string (value);
+}
+
+// Count Java-style UTF-16 units for the shared ut_comment field limits.
+// Invalid UTF-8 (overlong, surrogate, truncated or above U+10FFFF) fails closed.
+size_t Utf16Units (std::string_view text)
+{
+	size_t units = 0;
+	for (size_t i = 0; i < text.size ();)
+	{
+		auto ch = static_cast<unsigned char> (text[i++]);
+		uint32_t cp = ch;
+		size_t extra = 0;
+		if (ch < 0x80)
+		{
+			if (ch < 0x20 || ch == 0x7f) return static_cast<size_t> (-1);
+		}
+		else if (ch >= 0xC2 && ch <= 0xDF) { cp = ch & 0x1F; extra = 1; }
+		else if (ch >= 0xE0 && ch <= 0xEF) { cp = ch & 0x0F; extra = 2; }
+		else if (ch >= 0xF0 && ch <= 0xF4) { cp = ch & 0x07; extra = 3; }
+		else return static_cast<size_t> (-1);
+		if (extra > text.size () - i) return static_cast<size_t> (-1);
+		for (size_t n = 0; n < extra; ++n)
+		{
+			auto next = static_cast<unsigned char> (text[i++]);
+			if ((next & 0xC0) != 0x80) return static_cast<size_t> (-1);
+			cp = (cp << 6) | (next & 0x3F);
+		}
+		if ((extra == 1 && cp < 0x80) || (extra == 2 && cp < 0x800) || (extra == 3 && cp < 0x10000)
+			|| cp > 0x10FFFF || (cp >= 0xD800 && cp <= 0xDFFF) || cp < 0x20 || (cp >= 0x7F && cp <= 0x9F))
+			return static_cast<size_t> (-1);
+		units += cp >= 0x10000 ? 2 : 1;
+	}
+	return units;
 }
 
 long ToLong (std::string_view value)
@@ -722,6 +782,26 @@ std::string Timestamp64 (uint64_t epoch)
 	return Timestamp (static_cast<long> (epoch));
 }
 
+std::string TimestampAged (uint64_t epoch)
+{
+	if (!epoch || epoch > static_cast<uint64_t> (LONG_MAX)) return "--";
+	const std::time_t value = static_cast<std::time_t> (epoch);
+	std::tm when { }, now { };
+#ifdef _WIN32
+	if (localtime_s (&when, &value) != 0) return "--";
+	const std::time_t current = std::time (nullptr);
+	if (localtime_s (&now, &current) != 0) return "--";
+#else
+	if (!localtime_r (&value, &when)) return "--";
+	const std::time_t current = std::time (nullptr);
+	if (!localtime_r (&current, &now)) return "--";
+#endif
+	char buffer[24];
+	const char * format = when.tm_year == now.tm_year && when.tm_yday == now.tm_yday ? "%H:%M:%S" : "%m-%d %H:%M";
+	if (!strftime (buffer, sizeof (buffer), format, &when)) return "--";
+	return buffer;
+}
+
 std::string_view LevelName (int level)
 {
 	switch (level)
@@ -820,10 +900,18 @@ void AssignTorrentField (TorrentRow & row, std::string_view field, const std::st
 		row.hash = BoundUtf8 (value, 256);
 	else if (field == "magnet")
 		row.magnet = BoundUtf8 (value, 2048);
+	else if (field == "comment")
+		row.metaComment = BoundUtf8 (value, 4096);
+	else if (field == "createdBy")
+		row.createdBy = BoundUtf8 (value, 1024);
 	else if (field == "total")
 		row.total = ToU64 (value);
+	else if (field == "wanted")
+		row.wanted = ToU64 (value);
 	else if (field == "have")
 		row.have = ToU64 (value);
+	else if (field == "private")
+		row.privateTorrent = value == "1";
 	else if (field == "downloaded")
 		row.downloaded = ToU64 (value);
 	else if (field == "uploaded")
@@ -856,8 +944,9 @@ void FinalizeTorrent (TorrentRow & row)
 	if (row.status.empty ()) row.status = "unknown";
 	if (row.percent < 0.0)
 	{
-		if (row.total)
-			row.percent = 100.0 * static_cast<double> (row.have) / static_cast<double> (row.total);
+		const auto basis = row.wanted ? row.wanted : row.total;
+		if (basis)
+			row.percent = 100.0 * static_cast<double> (row.have) / static_cast<double> (basis);
 		else
 			row.percent = 0.0;
 	}
@@ -974,6 +1063,8 @@ TorrentDetail BuildTorrentDetail (const std::map<std::string, std::string> & fie
 			auto & tracker = it->second;
 			if (field == "announce")
 				tracker.announce = BoundUtf8 (value, 2048);
+			else if (field == "tier")
+				tracker.tier = ToInt (value);
 			else if (field == "peers")
 				tracker.peers = ToInt (value);
 			else if (field == "seeders")
@@ -1131,7 +1222,7 @@ public:
 private:
 	void ConnectIfNeeded ();
 	void Refresh ();
-	bool Request (std::string_view command, std::string & payload);
+	bool Request (std::string_view command, std::string & payload, bool reportRemoteError = true);
 	void ParseState (const std::string & payload);
 	void ParseNetDb (const std::string & payload);
 	void ParseNetDbRouters (const std::string & payload);
@@ -1141,6 +1232,9 @@ private:
 	void ParseConnections (const std::string & payload);
 	void ParseTunnels (const std::string & payload);
 	void ParseDestinations (const std::string & payload);
+	void ParseServices (const std::string & payload);
+	void ParseAddressBook (const std::string & payload);
+	void ParseBlockedAddresses (const std::string & payload);
 	void ParseLogs (const std::string & payload);
 	const std::string & Field (std::string_view name) const;
 
@@ -1170,6 +1264,7 @@ private:
 	void SetStatus (std::string message, bool error);
 	void EnterTorrentDetails ();
 	void LeaveTorrentDetails ();
+	bool TerminalTooSmall () const;
 	void BeginPrompt (PromptKind kind, std::string label, std::string initial = { });
 	bool HandlePromptKey (int key);
 	void CommitPrompt ();
@@ -1194,6 +1289,7 @@ private:
 	void DrawNetDb (int top, int height, int width);
 	void DrawConfig (int top, int height, int width);
 	void DrawDestinations (int top, int height, int width);
+	void DrawServices (int top, int height, int width);
 	void DrawLogs (int top, int height, int width);
 	void DrawHelp (int top, int height, int width);
 	void DrawTorrentContext (int width);
@@ -1235,9 +1331,11 @@ private:
 	std::vector<PeerRow> m_Connections;
 	std::vector<TunnelRow> m_Tunnels;
 	std::vector<std::string> m_Destinations;
+	std::vector<ServiceRow> m_Services;
 	std::deque<LogRow> m_Logs;
 	std::string m_LogFilter;
 	uint64_t m_LastLogSequence = 0;
+	uint64_t m_LastUptime = 0;
 	int m_LogLevel = eLogDebug;
 	std::string m_DaemonLogLevel = "info";
 	std::deque<uint32_t> m_InHistory;
@@ -1342,7 +1440,7 @@ void App::ConnectIfNeeded ()
 	m_Dirty = true;
 }
 
-bool App::Request (std::string_view command, std::string & payload)
+bool App::Request (std::string_view command, std::string & payload, bool reportRemoteError)
 {
 	auto response = m_Client.Request (command);
 	if (!response)
@@ -1350,9 +1448,12 @@ bool App::Request (std::string_view command, std::string & payload)
 		const auto & error = response.error ();
 		if (error.kind == i2p::tui::RequestErrorKind::Remote)
 		{
-			// A valid remote error leaves the socket usable; show it in the
-			// status line instead of dropping the connection.
-			SetStatus (error.message, true);
+			// A valid remote error leaves the socket usable; show both the
+			// server code and its bounded text instead of hiding the cause.
+			// Optional companion snapshots pass false so an older daemon
+			// does not leave a permanent error in the status bar.
+			if (reportRemoteError)
+				SetStatus (std::string (i2p::tui::ErrorCodeName (error.code)) + ": " + error.message, true);
 			return false;
 		}
 		m_Error = error.message;
@@ -1401,8 +1502,15 @@ void App::Refresh ()
 		}
 		else if (m_Tab == Tab::Config && Request ("CONFIG", payload))
 			ParseConfig (payload);
-		else if (m_Tab == Tab::Destinations && Request ("DESTINATIONS", payload))
-			ParseDestinations (payload);
+		else if (m_Tab == Tab::Services && Request ("SERVICES 200", payload))
+			ParseServices (payload);
+		else if (m_Tab == Tab::Destinations)
+		{
+			if (Request ("DESTINATIONS", payload)) ParseDestinations (payload);
+			else m_Destinations.clear ();
+			if (Request ("ADDRESSBOOK 200", payload, false)) ParseAddressBook (payload);
+			if (Request ("ADDRESSBOOK-BLOCKED 200", payload, false)) ParseBlockedAddresses (payload);
+		}
 
 		if (m_Tab == Tab::Logs && now >= m_NextLogs)
 		{
@@ -1485,6 +1593,18 @@ void App::ParseState (const std::string & payload)
 	}
 	if (m_State.contains ("log.level"))
 		m_DaemonLogLevel = std::string (DaemonLogLevelName (ToInt (m_State["log.level"])));
+	if (m_State.contains ("router.uptime"))
+	{
+		const uint64_t uptime = ToU64 (m_State["router.uptime"]);
+		// A new daemon instance restarts its log sequence at 1. Without this
+		// reset the Logs view remains frozen forever after a router restart.
+		if (m_LastUptime != 0 && uptime < m_LastUptime)
+		{
+			m_Logs.clear ();
+			m_LastLogSequence = 0;
+		}
+		m_LastUptime = uptime;
+	}
 	m_Dirty = true;
 }
 
@@ -1537,14 +1657,15 @@ void App::ParseNetDbLeaseSets (const std::string & payload)
 		if (!line.starts_with ("netdb.leaseset=")) continue;
 		auto value = i2p::tui::UnescapeValue (line.substr (15));
 		auto parts = Split (value, '|');
-		if (parts.size () != 6) continue;
+		if (parts.size () != 7) continue;
 		NetDbLeaseSetRow row;
 		row.hash = std::string (parts[0]);
 		row.storeType = ToLong (parts[1]);
-		row.expiration = ToU64 (parts[2]);
-		row.earliestLease = ToU64 (parts[3]);
-		row.valid = parts[4] == "1";
-		row.expired = parts[5] == "1";
+		row.encryptionType = ToLong (parts[2]);
+		row.expiration = ToU64 (parts[3]);
+		row.earliestLease = ToU64 (parts[4]);
+		row.valid = parts[5] == "1";
+		row.expired = parts[6] == "1";
 		m_NetDbLeaseSets.push_back (std::move (row));
 		if (m_NetDbLeaseSets.size () >= i2p::tui::MAX_NETDB_RECORDS_PER_REQUEST) break;
 	}
@@ -1674,8 +1795,58 @@ void App::ParseDestinations (const std::string & payload)
 		auto value = i2p::tui::UnescapeValue (line.substr (12));
 		auto separator = value.find ('|');
 		if (separator != std::string::npos) value.resize (separator);
-		m_Destinations.push_back (std::move (value));
+		if (m_Destinations.size () < 600) m_Destinations.push_back (std::move (value));
 	}
+}
+
+void App::ParseServices (const std::string & payload)
+{
+	m_Services.clear ();
+	for (auto line : Split (payload, '\n'))
+	{
+		if (!line.starts_with ("service=")) continue;
+		auto value = i2p::tui::UnescapeValue (line.substr (8));
+		auto parts = Split (value, '|');
+		if (parts.size () != 5) continue;
+		ServiceRow row;
+		row.kind = std::string (parts[0]);
+		row.name = std::string (parts[1]);
+		row.endpoint = std::string (parts[2]);
+		row.address = std::string (parts[3]);
+		row.enabled = parts[4] == "1";
+		if (m_Services.size () < i2p::tui::MAX_SERVICE_RECORDS_PER_REQUEST)
+			m_Services.push_back (std::move (row));
+	}
+	m_Dirty = true;
+}
+
+void App::ParseAddressBook (const std::string & payload)
+{
+	for (auto line : Split (payload, '\n'))
+	{
+		if (!line.starts_with ("address=")) continue;
+		auto value = i2p::tui::UnescapeValue (line.substr (8));
+		auto parts = Split (value, '|');
+		if (parts.size () != 3) continue;
+		std::string row = "book " + std::string (parts[0]) + " -> " + std::string (parts[1]);
+		if (parts[2] == "1") row.append (" (blinded)");
+		// The server already bounds ADDRESSBOOK to 200 rows. Do not hide them
+		// behind the local-destination rows when both lists are populated.
+		if (m_Destinations.size () < 600) m_Destinations.push_back (std::move (row));
+	}
+	m_Dirty = true;
+}
+
+void App::ParseBlockedAddresses (const std::string & payload)
+{
+	for (auto line : Split (payload, '\n'))
+	{
+		if (!line.starts_with ("blocked=")) continue;
+		auto value = i2p::tui::UnescapeValue (line.substr (8));
+		if (value.empty ()) continue;
+		if (m_Destinations.size () < 600) m_Destinations.push_back ("blocked " + std::string (value));
+	}
+	m_Dirty = true;
 }
 
 void App::ParseLogs (const std::string & payload)
@@ -2176,8 +2347,20 @@ void App::LeaveTorrentDetails ()
 	m_Dirty = true;
 }
 
+bool App::TerminalTooSmall () const
+{
+	int height = 0, width = 0;
+	terminal::Dimensions (height, width);
+	return height < 6 || width < 40;
+}
+
 void App::BeginPrompt (PromptKind kind, std::string label, std::string initial)
 {
+	if (TerminalTooSmall ())
+	{
+		SetStatus ("Terminal is too small for an input prompt", true);
+		return;
+	}
 	m_Prompt = kind;
 	m_PendingTunnelName = m_TorrentTunnelName;
 	m_PromptLabel = std::move (label);
@@ -2188,6 +2371,12 @@ void App::BeginPrompt (PromptKind kind, std::string label, std::string initial)
 
 bool App::HandlePromptKey (int key)
 {
+	if (TerminalTooSmall ())
+	{
+		// Never commit a destructive prompt that cannot be displayed.
+		if (key == 27) CancelPrompt ();
+		return true;
+	}
 	if (key == 27)
 	{
 		CancelPrompt ();
@@ -2339,6 +2528,51 @@ void App::CommitPrompt ()
 		return;
 	}
 
+	if (kind == PromptKind::AddressAdd)
+	{
+		auto value = Trim (input);
+		auto separator = value.find (' ');
+		if (separator == std::string::npos)
+		{
+			SetStatus ("address input must be: name.i2p base64-destination", true);
+			return;
+		}
+		auto name = Trim (value.substr (0, separator));
+		auto destination = Trim (value.substr (separator + 1));
+		if (name.empty () || destination.empty () || destination.find (' ') != std::string::npos)
+		{
+			SetStatus ("address input must be: name.i2p base64-destination", true);
+			return;
+		}
+		SendAdminCommand ("ADMIN ADDRESS-ADD " + name + " " + destination);
+		return;
+	}
+
+	if (kind == PromptKind::AddressRemove)
+	{
+		auto name = Trim (input);
+		if (name.empty () || name.find (' ') != std::string::npos)
+		{
+			SetStatus ("address name must not be empty or contain spaces", true);
+			return;
+		}
+		SendAdminCommand ("ADMIN ADDRESS-REMOVE " + name);
+		return;
+	}
+
+	if (kind == PromptKind::AddressBlock || kind == PromptKind::AddressUnblock)
+	{
+		auto name = Trim (input);
+		if (name.empty () || name.find (' ') != std::string::npos)
+		{
+			SetStatus ("address pattern must not be empty or contain spaces", true);
+			return;
+		}
+		SendAdminCommand ((kind == PromptKind::AddressBlock ? "ADMIN ADDRESS-BLOCK " : "ADMIN ADDRESS-UNBLOCK ")
+			+ name);
+		return;
+	}
+
 	if (kind == PromptKind::AddMagnet)
 	{
 		auto magnet = Trim (input);
@@ -2408,7 +2642,9 @@ void App::CommitPrompt ()
 	}
 
 	if (kind == PromptKind::FilePriority || kind == PromptKind::CommentsToggle
-		|| kind == PromptKind::CommentAdd || kind == PromptKind::CommentHide)
+		|| kind == PromptKind::CommentAdd || kind == PromptKind::CommentHide
+		|| kind == PromptKind::CommentUnhide || kind == PromptKind::TorrentMetaComment
+		|| kind == PromptKind::TorrentMetaCreatedBy)
 	{
 		const auto id = m_PendingTorrentId;
 		const auto tunnel = m_PendingTorrentTunnel;
@@ -2445,17 +2681,23 @@ void App::CommitPrompt ()
 			valid = valid && (value == "ON" || value == "OFF");
 			command = "TORRENT-COMMENTS ";
 		}
-		else if (kind == PromptKind::CommentHide)
+		else if (kind == PromptKind::CommentHide || kind == PromptKind::CommentUnhide)
 		{
 			valid = valid && digits (value);
-			command = "TORRENT-COMMENT-HIDE ";
+			command = kind == PromptKind::CommentHide ? "TORRENT-COMMENT-HIDE " : "TORRENT-COMMENT-UNHIDE ";
+		}
+		else if (kind == PromptKind::TorrentMetaComment || kind == PromptKind::TorrentMetaCreatedBy)
+		{
+			valid = valid && value.size () <= (kind == PromptKind::TorrentMetaComment ? 1024u : 255u);
+			command = kind == PromptKind::TorrentMetaComment ? "TORRENT-META-COMMENT " : "TORRENT-META-CREATED-BY ";
 		}
 		else
 		{
 			auto separator = value.find ('|');
 			valid = valid && value.size () >= 4 && value[0] >= '0' && value[0] <= '5'
 				&& value[1] == ' ' && separator != std::string::npos && separator >= 2
-				&& separator - 2 <= 32 && value.size () - separator - 1 <= 512;
+				&& Utf16Units (value.substr (2, separator - 2)) <= 32
+				&& Utf16Units (value.substr (separator + 1)) <= 512;
 			command = "TORRENT-COMMENT-ADD ";
 		}
 		if (!valid)
@@ -2706,7 +2948,23 @@ void App::PutLine (int row, const std::string & text, int width, int attributes)
 	terminal::Move (row, 0);
 	terminal::ClearToEol ();
 	if (attributes) terminal::SetAttribute (attributes);
-	auto safe = TruncateUtf8 (SanitizeText (text), width, true);
+	// Translate exact catalog entries at the rendering boundary. Lines with
+	// leading layout spaces keep the prefix while the visible text is looked
+	// up without it; composed strings remain unchanged unless their full text
+	// has a catalog entry.
+	std::string translated (i2p::i18n::tr (text));
+	if (translated == text)
+	{
+		const auto first = text.find_first_not_of (' ');
+		if (first != std::string::npos && first > 0)
+		{
+			const std::string_view core (text.data () + first, text.size () - first);
+			const auto localized = i2p::i18n::tr (core);
+			if (localized != core)
+				translated = std::string (text.data (), first) + std::string (localized);
+		}
+	}
+	auto safe = TruncateUtf8 (SanitizeText (translated), width, true);
 	if (!safe.empty ()) terminal::Put (safe);
 	if (attributes) terminal::SetAttribute (terminal::ATTR_NORMAL);
 }
@@ -2715,8 +2973,7 @@ void App::DrawHeader (int width)
 {
 	PutLine (0, " openi2pd TUI ", width, m_Theme.Attributes (ThemeRole::Title));
 
-	auto keyFor
-		= [] (size_t index) { return index == TAB_NAMES.size () - 1 ? std::string ("0") : std::to_string (index + 1); };
+	auto keyFor = [] (size_t index) { return std::string (TAB_KEYS[std::min (index, TAB_KEYS.size () - 1)]); };
 	auto active = static_cast<size_t> (m_Tab);
 	const int column = 18;
 	if (column >= width) return;
@@ -2725,7 +2982,7 @@ void App::DrawHeader (int width)
 	// unreachable tab labels. Tab/Left/Right still cycle every view.
 	if (width < 112)
 	{
-		std::string label = " " + keyFor (active) + ":" + std::string (TAB_NAMES[active]) + " ("
+		std::string label = " " + keyFor (active) + ":" + std::string (i2p::i18n::tr (TAB_NAMES[active])) + " ("
 			+ std::to_string (active + 1) + "/" + std::to_string (TAB_NAMES.size ()) + ") ";
 		terminal::SetAttribute (m_Theme.Attributes (ThemeRole::SelectedTab));
 		terminal::Move (0, column);
@@ -2740,11 +2997,11 @@ void App::DrawHeader (int width)
 	{
 		if (position >= width) break;
 		const auto name = compact ? TAB_SHORT_NAMES[i] : TAB_NAMES[i];
-		std::string label = " " + keyFor (i) + ":" + std::string (name) + " ";
+		std::string label = " " + keyFor (i) + ":" + std::string (i2p::i18n::tr (name)) + " ";
 		terminal::SetAttribute (m_Theme.Attributes (i == active ? ThemeRole::SelectedTab : ThemeRole::HeaderBar));
 		terminal::Move (0, position);
 		terminal::Put (label, width - position);
-		position += static_cast<int> (label.size ());
+		position += DisplayWidth (label);
 	}
 	terminal::SetAttribute (terminal::ATTR_NORMAL);
 }
@@ -2758,7 +3015,9 @@ void App::DrawFooter (int height, int width)
 	if (m_Tab == Tab::Torrents)
 		line += " | a/A add t/T trackers p pause/resume R reannounce d/D remove x/z all / search s sort ? help";
 	else if (m_Tab == Tab::Config)
-		line += " | read-only | Up/Down scroll | q quit, Tab/0-9 switch, r refresh, ? help";
+		line += " | read-only | Up/Down scroll | q quit, Tab/0-9/v switch, r refresh, ? help";
+	else if (m_Tab == Tab::Services)
+		line += " | v services, Up/Down scroll | q quit, Tab/0-9/v switch, r refresh, ? help";
 	else if (m_Tab == Tab::Status)
 		line += " | e reseed H reload s/S shutdown c cancel b bandwidth % share t transit | q quit, Tab/0-9 switch, r "
 				"refresh, ? help";
@@ -2821,7 +3080,7 @@ void App::DrawStatus (int top, int height, int width)
 		if (row >= top + height) return;
 		terminal::Move (row, 1);
 		terminal::SetAttribute (m_Theme.Attributes (ThemeRole::Primary));
-		terminal::Put (label, 24);
+		terminal::Put (FitUtf8 (i2p::i18n::tr (label), 24), 24);
 		terminal::SetAttribute (terminal::ATTR_NORMAL);
 		auto text = TruncateUtf8 (SanitizeText (value), width > 26 ? width - 26 : 0);
 		if (!text.empty ()) terminal::Put (text);
@@ -2829,7 +3088,7 @@ void App::DrawStatus (int top, int height, int width)
 	};
 
 	show ("Router identity", Field ("router.hash"));
-	show ("Version", Field ("router.version"));
+	show ("Version / net ID", Field ("router.version") + " / " + Field ("router.netid"));
 	show ("Uptime", HumanUptime (ToLong (Field ("router.uptime"))));
 	show ("Network status (IPv4)", Field ("network.status4") + " " + Field ("network.error4"));
 	show ("Network status (IPv6)", Field ("network.status6") + " " + Field ("network.error6"));
@@ -2849,6 +3108,8 @@ void App::DrawStatus (int top, int height, int width)
 	show ("Transferred",
 		HumanBytes (ToU64 (Field ("traffic.received"))) + " received, " + HumanBytes (ToU64 (Field ("traffic.sent")))
 			+ " sent");
+	show ("Transit bandwidth", HumanRate (ToU64 (Field ("bandwidth.transit"))));
+	show ("Transit transferred", HumanBytes (ToU64 (Field ("traffic.transit"))));
 	show ("Peers / connections", Field ("peers.count") + " / " + Field ("connections.count"));
 	show ("Routers / floodfills", Field ("netdb.routers") + " / " + Field ("netdb.floodfills"));
 	show ("LeaseSets", Field ("netdb.leasesets"));
@@ -2895,12 +3156,15 @@ void App::DrawRateHistory (int & row, int top, int height, int width)
 void App::DrawPeers (int top, int height, int width)
 {
 	int row = top;
+	std::string title = "  Known peers: " + std::to_string (m_Peers.size ()) + " (bounded snapshot, Up/Down scroll)";
+	PutLine (row++, title, width, m_Theme.Attributes (ThemeRole::Primary));
 	std::string header = "  Peer hash                                      Sess Attempts Transports            High";
 	PutLine (row++, header, width, m_Theme.Attributes (ThemeRole::Primary));
 	if (m_Peers.empty ()) PutLine (row, "  no known peers", width);
-	int visible = std::max (0, height - 1);
-	int start = std::max (0, static_cast<int> (m_Peers.size ()) - visible - m_Scroll);
-	if (start < 0) start = 0;
+	const int visible = std::max (0, height - 2);
+	const int maximum = std::max (0, static_cast<int> (m_Peers.size ()) - visible);
+	m_Scroll = std::clamp (m_Scroll, 0, maximum);
+	const int start = maximum - m_Scroll;
 	for (int i = start; i < static_cast<int> (m_Peers.size ()) && row < top + height; ++i)
 	{
 		const auto & peer = m_Peers[i];
@@ -2947,9 +3211,10 @@ void App::DrawTunnels (int top, int height, int width)
 	PutLine (
 		row++, "  Tunnel ID   Dir      State         Hops  Created", width, m_Theme.Attributes (ThemeRole::Primary));
 	if (m_Tunnels.empty ()) PutLine (row, "  no tunnels", width);
-	int visible = std::max (0, height - 2);
-	int start = std::max (0, static_cast<int> (m_Tunnels.size ()) - visible - m_Scroll);
-	if (start < 0) start = 0;
+	const int visible = std::max (0, height - 2);
+	const int maximum = std::max (0, static_cast<int> (m_Tunnels.size ()) - visible);
+	m_Scroll = std::clamp (m_Scroll, 0, maximum);
+	const int start = maximum - m_Scroll;
 	for (int i = start; i < static_cast<int> (m_Tunnels.size ()) && row < top + height; ++i)
 	{
 		const auto & tunnel = m_Tunnels[i];
@@ -3017,7 +3282,7 @@ void App::DrawNetDb (int top, int height, int width)
 	m_Scroll = std::clamp (m_Scroll, 0, maximum);
 	if (routers)
 	{
-		PutLine (row++, "  Hash                                      Ver  Caps F  V4 V6 Updated   Reach", width,
+		PutLine (row++, "  Hash                                      Ver  Caps# F  V4 V6 Updated     Reach", width,
 			m_Theme.Attributes (ThemeRole::Primary));
 		for (int i = m_Scroll; i < static_cast<int> (m_NetDbRouters.size ()) && row < top + height; ++i)
 		{
@@ -3025,14 +3290,14 @@ void App::DrawNetDb (int top, int height, int width)
 			std::string line = "  " + FitUtf8 (router.hash, 42) + FitUtf8 (std::to_string (router.version), 5, true)
 				+ FitUtf8 (std::to_string (router.caps), 5, true) + FitUtf8 (router.floodfill ? "F" : "-", 2);
 			line += FitUtf8 (router.v4 ? "Y" : "-", 3) + FitUtf8 (router.v6 ? "Y" : "-", 3)
-				+ FitUtf8 (Timestamp64 (router.timestamp), 9) + FitUtf8 (router.reachable ? "yes" : "no", 6);
+				+ FitUtf8 (TimestampAged (router.timestamp), 12) + FitUtf8 (router.reachable ? "yes" : "no", 6);
 			PutLine (row++, line, width);
 		}
 	}
 	else
 	{
 		PutLine (row++,
-			"  Hash                                      Type   Expires            Earliest           State", width,
+			"  Hash                                      Store Enc    Expires     Earliest    State", width,
 			m_Theme.Attributes (ThemeRole::Primary));
 		for (int i = m_Scroll; i < static_cast<int> (m_NetDbLeaseSets.size ()) && row < top + height; ++i)
 		{
@@ -3040,8 +3305,9 @@ void App::DrawNetDb (int top, int height, int width)
 			std::string state = leaseSet.expired ? "expired" : (leaseSet.valid ? "valid" : "invalid");
 			std::string line = "  " + FitUtf8 (leaseSet.hash, 42)
 				+ FitUtf8 (std::to_string (leaseSet.storeType), 6, true)
-				+ FitUtf8 (Timestamp64 (leaseSet.expiration / 1000), 18) + " "
-				+ FitUtf8 (Timestamp64 (leaseSet.earliestLease / 1000), 18) + " " + FitUtf8 (state, 8);
+				+ FitUtf8 (std::to_string (leaseSet.encryptionType), 5, true)
+				+ FitUtf8 (TimestampAged (leaseSet.expiration / 1000), 12) + " "
+				+ FitUtf8 (TimestampAged (leaseSet.earliestLease / 1000), 12) + " " + FitUtf8 (state, 8);
 			PutLine (row++, line, width);
 		}
 	}
@@ -3097,18 +3363,48 @@ void App::DrawDestinations (int top, int height, int width)
 {
 	if (m_Destinations.empty ())
 	{
-		PutLine (top, "  No local client destinations are running.", width, m_Theme.Attributes (ThemeRole::Muted));
-		PutLine (top + 1, "  Configure a client tunnel or SAM/I2CP destination, then press r.", width,
+		PutLine (top, "  No local client destinations or address-book entries.", width,
+			m_Theme.Attributes (ThemeRole::Muted));
+		PutLine (top + 1, "  Configure a client tunnel or press a to add an address-book entry.", width,
 			m_Theme.Attributes (ThemeRole::Muted));
 		return;
 	}
-	PutLine (top, "  Local destinations (current b32 address)", width, m_Theme.Attributes (ThemeRole::Primary));
+	PutLine (top, "  Local destinations and address book (a add, d remove, b/u block/unblock)", width,
+		m_Theme.Attributes (ThemeRole::Primary));
 	const int visible = std::max (0, height - 1);
 	const int maximum = std::max (0, static_cast<int> (m_Destinations.size ()) - visible);
 	m_Scroll = std::clamp (m_Scroll, 0, maximum);
 	for (int i = m_Scroll; i < static_cast<int> (m_Destinations.size ()) && top + 1 + (i - m_Scroll) < top + height;
 		++i)
 		PutLine (top + 1 + (i - m_Scroll), "  " + m_Destinations[i], width);
+}
+
+void App::DrawServices (int top, int height, int width)
+{
+	int row = top;
+	std::string title = "  Client services and protocol servers: " + std::to_string (m_Services.size ())
+		+ " (bounded local snapshot; no keys or filesystem paths)";
+	PutLine (row++, title, width, m_Theme.Attributes (ThemeRole::Primary));
+	PutLine (row++, "  Type         Name                      Endpoint                   Destination", width,
+		m_Theme.Attributes (ThemeRole::Primary));
+	if (m_Services.empty ())
+	{
+		PutLine (row, m_Connected ? "  no client tunnels, proxies or protocol servers configured" : "  waiting for daemon",
+			width, m_Theme.Attributes (ThemeRole::Muted));
+		return;
+	}
+	const int visible = std::max (0, height - 2);
+	const int maximum = std::max (0, static_cast<int> (m_Services.size ()) - visible);
+	m_Scroll = std::clamp (m_Scroll, 0, maximum);
+	for (int i = m_Scroll; i < static_cast<int> (m_Services.size ()) && row < top + height; ++i)
+	{
+		const auto & service = m_Services[i];
+		std::string line = "  " + FitUtf8 (service.kind, 12) + FitUtf8 (service.name, 25)
+			+ FitUtf8 (service.endpoint, 26) + FitUtf8 (service.address, 24);
+		line += service.enabled ? " up" : " off";
+		PutLine (row++, line, width,
+			m_Theme.Attributes (service.enabled ? ThemeRole::Success : ThemeRole::Muted));
+	}
 }
 
 void App::DrawLogs (int top, int height, int width)
@@ -3121,8 +3417,10 @@ void App::DrawLogs (int top, int height, int width)
 		if (!filter.empty () && ToLowerAscii (record.text).find (filter) == std::string::npos) continue;
 		visible.push_back (&record);
 	}
-	int lines = std::max (0, height - 1);
-	int start = std::max (0, static_cast<int> (visible.size ()) - lines - m_Scroll);
+	const int lines = std::max (0, height - 1);
+	const int maximum = std::max (0, static_cast<int> (visible.size ()) - lines);
+	m_Scroll = std::clamp (m_Scroll, 0, maximum);
+	const int start = maximum - m_Scroll;
 	int row = top;
 	std::string header = "  Time      Level  Message (l local level, / filter";
 	if (!m_LogFilter.empty ()) header += ": " + TruncateUtf8 (m_LogFilter, 32);
@@ -3154,11 +3452,13 @@ void App::DrawLogs (int top, int height, int width)
 void App::DrawHelp (int top, int height, int width)
 {
 	static constexpr std::string_view lines[] = { "  Keys - global",
-		"  1..9, 0, Tab, Left/Right switch view (0 is Connections)",
+		"  1..9, v, 0, Tab, Left/Right switch view (0 is Connections, v Services)",
 		"  q                       quit the TUI (router keeps running)",
 		"  r                       refresh immediately", "  ?                       this help", "",
-		"  Status (1), Peers (2), Tunnels (3), Torrents (4), NetDb (5), Logs (6), Help (7)",
-		"  Destinations (8) lists the currently configured local b32 addresses.",
+		"  Status (1), Peers (2), Tunnels (3), Torrents (4), NetDb (5), Logs (6), Services (v), Help (7)",
+		"  Destinations (8) lists local b32 addresses and address-book names.",
+		"  a / d                   add/replace name.i2p + base64 destination / remove address",
+		"  b / u                   block/unblock subscription name or wildcard (e.g. *spam*.i2p)",
 		"  Config (9) is a read-only allowlisted snapshot. Connections (0) lists live peers.", "", "  Status (1)",
 		"  e                       request a NetDb reseed from the network (confirmed)",
 		"  H                       reload tunnel configuration (confirmed)",
@@ -3174,6 +3474,9 @@ void App::DrawHelp (int top, int height, int width)
 		"  l                       cycle the local display threshold",
 		"  L                       cycle the daemon log level through secure IPC",
 		"  /                       filter records by text", "  c                       clear the log filter", "",
+		"  Services (v)",
+		"  Up/Down, PgUp/PgDn      scroll configured client tunnels, proxies and servers",
+		"  The panel is a bounded snapshot: no private keys, files or listener files are read.", "",
 		"  Torrents (4)", "  Up/Down, PgUp/PgDn      select a torrent", "  Home/End                first/last torrent",
 		"  Enter                   open torrent details", "  Esc                     back, or cancel a prompt",
 		"  a / A                   add magnet / add .torrent file path",
@@ -3184,6 +3487,7 @@ void App::DrawHelp (int top, int height, int width)
 		"  t / T                   add / remove tracker URL for selected torrent",
 		"  p                       pause or resume the selected torrent",
 		"  R                       reannounce the selected torrent",
+		"  V                       force recheck a paused, complete torrent",
 		"  Ctrl-R                  reannounce all torrents",
 		"  d / D                   remove / remove with local data", "  D                       requires typing YES",
 		"  x / z                   start all / stop all",
@@ -3192,7 +3496,8 @@ void App::DrawHelp (int top, int height, int width)
 		"  [ / ]                   previous/next torrent tunnel", "", "  Torrent details",
 		"  Left/Right, Tab         general/files/peers/trackers/comments",
 		"  f                       set file priority (index 0|1|2)",
-		"  c / C / H               enable comments / publish / hide local comment",
+		"  c / C / H / U           enable comments / add local comment / hide/unhide local ID",
+		"  e / E                   edit metainfo comment / created-by (paused torrent)",
 		"  Up/Down, PgUp/PgDn      scroll detail lines",
 		"  Home/End                first/last detail line", "  Esc                     return to the torrent table", "",
 		"  Notes", "  Actions are sent to the daemon over the local IPC endpoint.",
@@ -3366,11 +3671,16 @@ void App::BuildDetailGeneral (std::vector<std::string> & lines, const TorrentRow
 	add ("Name", info.name);
 	add ("ID", std::to_string (info.id));
 	add ("Status", info.status);
+	add ("Privacy", info.privateTorrent ? "private swarm (DHT/PEX/comments disabled)" : "public");
 	add ("Hash", info.hash.empty () ? "unknown" : info.hash);
 	add ("Magnet", info.magnet.empty () ? "not reported" : info.magnet);
+	if (!info.metaComment.empty ()) add ("Comment", info.metaComment);
+	if (!info.createdBy.empty ()) add ("Created by", info.createdBy);
 	char percent[32];
 	snprintf (percent, sizeof (percent), "%.1f%%", info.percent);
 	add ("Size", HumanBytes (info.total) + " (" + percent + " complete)");
+	if (info.wanted && info.wanted != info.total)
+		add ("Selected size", HumanBytes (info.wanted) + " (skipped bytes are not requested)");
 	add ("Have", HumanBytes (info.have));
 	add ("Downloaded / uploaded", HumanBytes (info.downloaded) + " / " + HumanBytes (info.uploaded));
 	add ("Rate down / up", HumanRate (info.downRate) + " / " + HumanRate (info.upRate));
@@ -3492,7 +3802,8 @@ void App::BuildDetailTrackers (std::vector<std::string> & lines, const TorrentDe
 	for (const auto & tracker : detail.trackers)
 	{
 		lines.push_back ("  " + TruncateUtf8 (SanitizeText (tracker.announce), std::max (8, width - 2), true));
-		lines.push_back ("    peers " + std::to_string (tracker.peers) + " (seeders " + std::to_string (tracker.seeders)
+		lines.push_back ("    tier " + (tracker.tier >= 0 ? std::to_string (tracker.tier) : std::string ("common"))
+			+ " | peers " + std::to_string (tracker.peers) + " (seeders " + std::to_string (tracker.seeders)
 			+ ", leechers " + std::to_string (tracker.leechers) + ")" + " | result: "
 			+ TruncateUtf8 (SanitizeText (tracker.lastResult.empty () ? "none" : tracker.lastResult),
 				std::max (8, width - 48), true));
@@ -3537,27 +3848,40 @@ void App::DrawTorrentDetails (int top, int height, int width)
 	case TorrentDetailTab::Trackers: BuildDetailTrackers (lines, m_TorrentDetail, width); break;
 	case TorrentDetailTab::Comments:
 	{
-		lines.push_back ("  c enable/disable | C publish | H hide local comment ID");
-		lines.push_back ("  Author is optional; avoid identifying information.");
-		for (const auto & [key, value] : m_TorrentDetail.comments)
+		lines.push_back ("  c enable/disable | C add local comment | H/U hide/unhide local ID");
+		lines.push_back ("  Author is an unauthenticated pseudonym; avoid identifying information.");
+		auto summary = [&] (const char * key) {
+			auto it = m_TorrentDetail.comments.find (std::string ("comments.") + key);
+			return it == m_TorrentDetail.comments.end () ? std::string () : SanitizeText (it->second);
+		};
+		if (!m_TorrentDetail.comments.empty ())
 		{
-			if (key.starts_with ("comments."))
-				lines.push_back ("  " + key.substr (9) + ": " + SanitizeText (value));
-			if (!key.starts_with ("comment.") || !key.ends_with (".id")) continue;
-			auto prefix = key.substr (0, key.size () - 2);
+			std::string state = "  enabled: " + summary ("enabled") + " | shown: " + summary ("count")
+				+ " / " + summary ("total") + " | ratings: " + summary ("ratingCount") + " avg " + summary ("average");
+			if (summary ("truncated") == "1") state += " (truncated)";
+			lines.push_back (state);
+		}
+		const auto count = std::min<size_t> (
+			ToU64 (summary ("count")), i2p::tui::MAX_TORRENT_COMMENT_RECORDS_PER_REQUEST);
+		for (size_t i = 0; i < count; ++i)
+		{
+			auto prefix = "comment." + std::to_string (i);
 			auto get = [&] (const char * field) {
 				auto it = m_TorrentDetail.comments.find (prefix + field);
 				return it == m_TorrentDetail.comments.end () ? std::string () : SanitizeText (it->second);
 			};
-			if (get ("hidden") == "1" || get ("hidden") == "true")
+			const auto id = get (".id");
+			if (id.empty ()) continue;
+			if (get (".hidden") == "1" || get (".hidden") == "true")
 			{
-				lines.push_back ("  [" + SanitizeText (value) + "] hidden locally");
+				lines.push_back ("  [" + id + "] hidden locally");
 				continue;
 			}
-			lines.push_back ("  [" + SanitizeText (value) + "] rating " + get ("rating")
-				+ " | " + (get ("owner").empty () ? "anonymous" : get ("owner"))
-				+ " | " + Timestamp64 (ToU64 (get ("time"))) + " | local=" + get ("local"));
-			lines.push_back ("    " + get ("text"));
+			const auto rating = get (".rating");
+			lines.push_back ("  [" + id + "] rating " + (rating == "0" ? "unrated" : rating + "/5")
+				+ " | " + (get (".owner").empty () ? "anonymous" : get (".owner"))
+				+ " | " + Timestamp64 (ToU64 (get (".time"))) + " | local=" + get (".local"));
+			lines.push_back ("    " + get (".text"));
 		}
 		if (m_TorrentDetail.comments.empty ()) lines.push_back ("  no comment snapshot reported");
 		break;
@@ -3602,6 +3926,27 @@ void App::DrawTorrentStatusLine (int height, int width)
 		}
 		std::string line = " " + std::string (m_StatusError ? "! " : "> ") + m_StatusMessage;
 		PutLine (row, line, width, m_Theme.Attributes (m_StatusError ? ThemeRole::Error : ThemeRole::Success));
+		return;
+	}
+
+	if (m_Tab == Tab::Torrents && m_TorrentsLoaded)
+	{
+		uint64_t total = 0, have = 0, down = 0, up = 0;
+		int active = 0;
+		for (auto index : m_TorrentView)
+		{
+			if (index >= m_Torrents.size ()) continue;
+			const auto & torrent = m_Torrents[index];
+			total += torrent.total;
+			have += torrent.have;
+			down += torrent.downRate;
+			up += torrent.upRate;
+			if (IsActiveStatus (torrent.status)) ++active;
+		}
+		std::string line = "  " + std::to_string (m_TorrentView.size ()) + "/" + std::to_string (m_Torrents.size ())
+			+ " shown, " + std::to_string (active) + " active | " + HumanBytes (have) + " / " + HumanBytes (total)
+			+ " | " + HumanRateShort (down) + " down " + HumanRateShort (up) + " up";
+		PutLine (row, line, width, m_Theme.Attributes (ThemeRole::Muted));
 	}
 }
 
@@ -3615,7 +3960,12 @@ void App::Draw ()
 		terminal::ShowCursor (false);
 		terminal::SetAttribute (m_Theme.Attributes (ThemeRole::Error));
 		terminal::Move (0, 0);
-		terminal::Put ("Terminal too small", std::max (0, width));
+		terminal::Put (i2p::i18n::tr ("Terminal too small"), std::max (0, width));
+		if (m_Prompt != PromptKind::None && height > 1)
+		{
+			terminal::Move (1, 0);
+			terminal::Put (i2p::i18n::tr ("Prompt suspended; Esc cancels"), std::max (0, width));
+		}
 		terminal::SetAttribute (terminal::ATTR_NORMAL);
 		terminal::Refresh ();
 		m_Dirty = false;
@@ -3643,6 +3993,7 @@ void App::Draw ()
 			DrawTorrents (top, contentHeight, width);
 		break;
 	case Tab::Logs: DrawLogs (top, contentHeight, width); break;
+	case Tab::Services: DrawServices (top, contentHeight, width); break;
 	case Tab::Help: DrawHelp (top, contentHeight, width); break;
 	case Tab::Config: DrawConfig (top, contentHeight, width); break;
 	}
@@ -3676,15 +4027,35 @@ void App::HandleKey (int key)
 			case 'c':
 			case 'C':
 			case 'H':
+			case 'U':
+			case 'e':
+			case 'E':
 			{
 				const auto * torrent = SelectedTorrent ();
 				if (!RequireTorrentTunnel () || !torrent || torrent->hash.empty ()) return;
+				if ((key == 'c' || key == 'C') && m_TorrentDetail.info.privateTorrent)
+				{
+					SetStatus ("comments are disabled for private torrents", true);
+					return;
+				}
+				if (key == 'C')
+				{
+					auto enabled = m_TorrentDetail.comments.find ("comments.enabled");
+					if (enabled == m_TorrentDetail.comments.end () || enabled->second != "1")
+					{
+						SetStatus ("enable comments before adding a local comment", true);
+						return;
+					}
+				}
 				m_PendingTorrentId = torrent->id;
 				m_PendingTorrentTunnel = m_TorrentTunnel;
 				m_PendingTrackerHash = torrent->hash;
 				if (key == 'f') BeginPrompt (PromptKind::FilePriority, "file index and priority (0 skip, 1 normal, 2 high): ");
 				else if (key == 'c') BeginPrompt (PromptKind::CommentsToggle, "comments ON or OFF: ");
 				else if (key == 'C') BeginPrompt (PromptKind::CommentAdd, "rating (0-5) author|text (author optional): ");
+				else if (key == 'e') BeginPrompt (PromptKind::TorrentMetaComment, "metainfo comment (paused torrent): ");
+				else if (key == 'E') BeginPrompt (PromptKind::TorrentMetaCreatedBy, "metainfo created-by (paused torrent): ");
+				else if (key == 'U') BeginPrompt (PromptKind::CommentUnhide, "unhide local comment ID: ");
 				else BeginPrompt (PromptKind::CommentHide, "hide local comment ID: ");
 				return;
 			}
@@ -3803,6 +4174,11 @@ void App::HandleKey (int key)
 					SetStatus ("select a torrent first", true);
 					return;
 				}
+				if (torrent->privateTorrent)
+				{
+					SetStatus ("private torrent tracker list is fixed", true);
+					return;
+				}
 				m_PendingTorrentId = CurrentSelectedId ();
 				m_PendingTorrentTunnel = m_TorrentTunnel;
 				m_PendingTrackerHash = torrent->hash;
@@ -3813,6 +4189,19 @@ void App::HandleKey (int key)
 			case 'p':
 			case 'P': ToggleSelected (); return;
 			case 'R': ReannounceSelected (); return;
+			case 'V':
+			{
+				if (!RequireTorrentTunnel ()) return;
+				auto id = CurrentSelectedId ();
+				if (id < 0)
+				{
+					SetStatus ("select a torrent first", true);
+					return;
+				}
+				SendTorrentCommand ("TORRENT-RECHECK " + std::to_string (m_TorrentTunnel) + " "
+					+ std::to_string (id));
+				return;
+			}
 			case 'd': RemoveSelected (false); return;
 			case 'D': RemoveSelected (true); return;
 			case 'x':
@@ -3870,6 +4259,27 @@ void App::HandleKey (int key)
 		return;
 	}
 
+	if (m_Tab == Tab::Destinations && (key == 'a' || key == 'A'))
+	{
+		BeginPrompt (PromptKind::AddressAdd, "address name.i2p and full base64 destination (replaces existing): ");
+		return;
+	}
+	if (m_Tab == Tab::Destinations && (key == 'd' || key == 'D'))
+	{
+		BeginPrompt (PromptKind::AddressRemove, "address name.i2p to remove: ");
+		return;
+	}
+	if (m_Tab == Tab::Destinations && (key == 'b' || key == 'B'))
+	{
+		BeginPrompt (PromptKind::AddressBlock, "address name/wildcard.i2p to block from subscriptions: ");
+		return;
+	}
+	if (m_Tab == Tab::Destinations && (key == 'u' || key == 'U'))
+	{
+		BeginPrompt (PromptKind::AddressUnblock, "address name/wildcard.i2p to unblock: ");
+		return;
+	}
+
 	if (m_Tab == Tab::Status)
 	{
 		switch (key)
@@ -3917,6 +4327,12 @@ void App::HandleKey (int key)
 	case '6':
 		m_Tab = Tab::Logs;
 		m_Scroll = 0;
+		break;
+	case 'v':
+	case 'V':
+		m_Tab = Tab::Services;
+		m_Scroll = 0;
+		m_NextRefresh = std::chrono::steady_clock::now ();
 		break;
 	case '7':
 	case '?':
@@ -3984,7 +4400,8 @@ void App::HandleKey (int key)
 		{
 			if (m_HelpScroll > 0) --m_HelpScroll;
 		}
-		else if (m_Tab == Tab::Config || m_Tab == Tab::Destinations || m_Tab == Tab::Connections || m_Tab == Tab::NetDb)
+		else if (m_Tab == Tab::Config || m_Tab == Tab::Destinations || m_Tab == Tab::Connections
+			|| m_Tab == Tab::NetDb || m_Tab == Tab::Services)
 		{
 			if (m_Scroll > 0) --m_Scroll;
 		}
@@ -3995,7 +4412,8 @@ void App::HandleKey (int key)
 	case terminal::KEY_DOWN:
 		if (m_Tab == Tab::Help)
 			++m_HelpScroll;
-		else if (m_Tab == Tab::Config || m_Tab == Tab::Destinations || m_Tab == Tab::Connections || m_Tab == Tab::NetDb)
+		else if (m_Tab == Tab::Config || m_Tab == Tab::Destinations || m_Tab == Tab::Connections
+			|| m_Tab == Tab::NetDb || m_Tab == Tab::Services)
 			++m_Scroll;
 		else if (m_Scroll > 0)
 			--m_Scroll;
@@ -4004,7 +4422,8 @@ void App::HandleKey (int key)
 	case terminal::KEY_PPAGE:
 		if (m_Tab == Tab::Help)
 			m_HelpScroll = std::max (0, m_HelpScroll - 10);
-		else if (m_Tab == Tab::Config || m_Tab == Tab::Destinations || m_Tab == Tab::Connections || m_Tab == Tab::NetDb)
+		else if (m_Tab == Tab::Config || m_Tab == Tab::Destinations || m_Tab == Tab::Connections
+			|| m_Tab == Tab::NetDb || m_Tab == Tab::Services)
 			m_Scroll = std::max (0, m_Scroll - 10);
 		else
 			m_Scroll += 10;
@@ -4013,7 +4432,8 @@ void App::HandleKey (int key)
 	case terminal::KEY_NPAGE:
 		if (m_Tab == Tab::Help)
 			m_HelpScroll += 10;
-		else if (m_Tab == Tab::Config || m_Tab == Tab::Destinations || m_Tab == Tab::Connections || m_Tab == Tab::NetDb)
+		else if (m_Tab == Tab::Config || m_Tab == Tab::Destinations || m_Tab == Tab::Connections
+			|| m_Tab == Tab::NetDb || m_Tab == Tab::Services)
 			m_Scroll += 10;
 		else if (m_Scroll > 10)
 			m_Scroll -= 10;
@@ -4024,6 +4444,10 @@ void App::HandleKey (int key)
 	case terminal::KEY_HOME:
 		if (m_Tab == Tab::Help)
 			m_HelpScroll = 0;
+		else if (m_Tab == Tab::Peers || m_Tab == Tab::Tunnels || m_Tab == Tab::Logs)
+			// These views anchor at the newest/bottom row; a large offset
+			// clamps to the first row when drawn.
+			m_Scroll = INT_MAX;
 		else
 			m_Scroll = 0;
 		m_Dirty = true;
@@ -4031,7 +4455,10 @@ void App::HandleKey (int key)
 	case terminal::KEY_END:
 		if (m_Tab == Tab::Help)
 			m_HelpScroll = INT_MAX;
-		else if (m_Tab == Tab::Config || m_Tab == Tab::Destinations || m_Tab == Tab::Connections || m_Tab == Tab::NetDb)
+		else if (m_Tab == Tab::Peers || m_Tab == Tab::Tunnels || m_Tab == Tab::Logs)
+			m_Scroll = 0;
+		else if (m_Tab == Tab::Config || m_Tab == Tab::Destinations || m_Tab == Tab::Connections
+			|| m_Tab == Tab::NetDb || m_Tab == Tab::Services)
 			m_Scroll = INT_MAX;
 		m_Dirty = true;
 		return;
@@ -4059,6 +4486,7 @@ int main (int argc, char * argv[])
 					 "  --datadir PATH  data directory (default: user data directory)\n"
 					 "  --conf PATH     i2pd.conf used to read [tui] socket\n"
 					 "  --service       use the system service data directory\n"
+					 "  --lang LANG     UI language: en, es, ru, zh-Hans\n"
 					 "  --help          show this help\n"
 					 "  --version       show the version\n");
 		return EXIT_SUCCESS;
@@ -4093,6 +4521,11 @@ int main (int argc, char * argv[])
 	sigaction (SIGINT, &stopAction, nullptr);
 	sigaction (SIGTERM, &stopAction, nullptr);
 #endif
+
+	// Select the UI catalog after the platform locale is established. An
+	// explicit --lang/[tui] language wins; otherwise LC_ALL/LC_MESSAGES/LANG
+	// is consulted and unsupported locales fall back to English.
+	i2p::i18n::SetLanguage (options->language);
 
 	if (!i2p::tui::terminal::Init ())
 	{

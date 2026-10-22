@@ -23,9 +23,10 @@ shared.
   `libi2pdclient`.
 - The channel is local, versioned and bounded. Router state snapshots are
   read-only. Administrative writes are a closed typed set (transit, log level,
-  reseed, shutdown/cancel, tunnel reload, bandwidth and share) executed by a
-  fixed daemon-owned queue; torrent actions are explicit, allowlisted
-  commands.
+  reseed, shutdown/cancel, tunnel reload, bandwidth, share and bounded
+  address-book add/remove/block/unblock) executed by a fixed daemon-owned
+  queue; torrent
+  actions are explicit, allowlisted commands.
 - A broken or malicious TUI cannot crash, block indefinitely or exhaust the
   router.
 
@@ -101,6 +102,9 @@ I2PDTUI/1 NETDB
 I2PDTUI/1 NETDB-ROUTERS [limit]
 I2PDTUI/1 NETDB-LEASESETS [limit]
 I2PDTUI/1 DESTINATIONS
+I2PDTUI/1 SERVICES [limit]
+I2PDTUI/1 ADDRESSBOOK [limit]
+I2PDTUI/1 ADDRESSBOOK-BLOCKED [limit]
 I2PDTUI/1 CONFIG
 I2PDTUI/1 LOGS <after-sequence> [limit]
 I2PDTUI/1 ADMIN TRANSIT ON|OFF
@@ -110,6 +114,13 @@ I2PDTUI/1 ADMIN SHUTDOWN GRACEFUL|IMMEDIATE|CANCEL
 I2PDTUI/1 ADMIN RELOAD TUNNELS
 I2PDTUI/1 ADMIN BANDWIDTH K|L|M|N|O|P|X
 I2PDTUI/1 ADMIN SHARE 0..100
+I2PDTUI/1 ADMIN ADDRESS-ADD <name.i2p> <full-base64-destination>
+I2PDTUI/1 ADMIN ADDRESS-REMOVE <name.i2p>
+I2PDTUI/1 ADMIN ADDRESS-BLOCK <name-or-wildcard.i2p>
+I2PDTUI/1 ADMIN ADDRESS-UNBLOCK <name-or-wildcard.i2p>
+I2PDTUI/1 TORRENT-RECHECK <tunnel-index> <torrent-id>
+I2PDTUI/1 TORRENT-META-COMMENT <tunnel-index> <torrent-id> <text>
+I2PDTUI/1 TORRENT-META-CREATED-BY <tunnel-index> <torrent-id> <text>
 I2PDTUI/1 PING
 I2PDTUI/1 QUIT
 ```
@@ -137,6 +148,8 @@ Limits:
 | Peer records/request | 200 |
 | Connection records/request | 200 |
 | netDb directory records/request | 200 |
+| Service records/request | 200 |
+| Address-book records/request | 200 |
 | Tunnel records/request | 200 |
 | Administrative argument | 16 bytes |
 | Torrent records/request | 200 |
@@ -190,7 +203,9 @@ Any argument after `CONFIG` is rejected with error code 4 (`BadArgument`).
 rejected as an unknown command (error code 3), exactly like any other
 unrecognised command. A safe writer requires validating a named allowlisted
 option and applying it on the daemon main-loop command queue, outside the IPC
-thread; that queue does not exist yet. Until it does, configuration changes are
+thread. The fixed daemon-owned admin queue exists for the explicitly typed
+operations; there is still no generic configuration writer. Until a typed
+operation exists, configuration changes are
 made in the daemon configuration and require a restart.
 
 The server accepts one client at a time (backlog 4). This is sufficient for a
@@ -207,10 +222,18 @@ the number returned. The snapshot is taken under the transport peer mutex and
 contains no session objects.
 
 `NETDB-ROUTERS [limit]` returns up to 200 bounded router records:
-base64 hash, version, caps, floodfill flag, v4/v6 reachability, timestamp and
-reachable flag. `NETDB-LEASESETS [limit]` returns the hash, store type,
-expiration, earliest lease date, validity and expiry flags. Both use bounded
-container snapshots and never expose private keys, addresses or raw records.
+base64 hash, version, raw caps mask, floodfill flag, v4/v6 reachability,
+timestamp and reachable flag. `NETDB-LEASESETS [limit]` returns the hash,
+store type, encryption type, expiration, earliest lease date, validity and
+expiry flags. Both use bounded container snapshots and never expose private
+keys, addresses or raw records.
+
+`SERVICES [limit]` returns a bounded, read-only inventory of configured client
+and server TCP/UDP tunnels, HTTP/SOCKS proxies and the SAM, BOB and I2CP
+servers. Each `service` record is `kind|name|endpoint|destination|enabled`;
+only public b32 destinations are included. The snapshot is copied under the
+client-context locks and never exposes private keys, listener objects or
+filesystem paths.
 
 ### Administrative operations
 
@@ -227,7 +250,20 @@ I2PDTUI/1 ADMIN SHUTDOWN CANCEL
 I2PDTUI/1 ADMIN RELOAD TUNNELS
 I2PDTUI/1 ADMIN BANDWIDTH L
 I2PDTUI/1 ADMIN SHARE 50
+I2PDTUI/1 ADMIN ADDRESS-ADD site.i2p <full-base64-destination>
+I2PDTUI/1 ADMIN ADDRESS-REMOVE site.i2p
+I2PDTUI/1 ADMIN ADDRESS-BLOCK *spam*.i2p
+I2PDTUI/1 ADMIN ADDRESS-UNBLOCK *spam*.i2p
 ```
+
+`ADDRESSBOOK [limit]` returns bounded `address.count` and
+`address=name|b32-or-b33|blinded` rows. `ADDRESSBOOK-BLOCKED [limit]` returns
+`blocked.count` and `blocked=<name-or-pattern>` rows from the deleted-host
+tombstone file. Address mutations accept only a Java-compatible `.i2p` label
+and a full base64 identity; block/unblock accept a bounded `.i2p` name or
+`*` wildcard. They never accept a path, URL, key filename or subscription URL.
+Removing an address persists an exact tombstone and subscription merges skip
+matching names; an explicit add clears matching patterns.
 
 The fixed command queue is owned by the daemon, not the IPC thread. A request
 is validated and copied into a fixed-capacity slot (eight slots); the daemon
@@ -258,6 +294,7 @@ are validated before dispatch and trailing tokens are rejected.
 - Peer count, connected-peer count and a bounded peer snapshot (hash,
   sessions, attempts, active transport names, high bandwidth).
 - A bounded connected-peer snapshot for the Connections view.
+- A bounded client-service inventory (`SERVICES`) without keys or paths.
 - Tunnel IDs, direction, state, hop count and creation time (bounded).
 - netDb router/floodfill/LeaseSet counts, reseed activity, bounded router and
   LeaseSet directories, and a separate local-destination (b32) snapshot.
@@ -308,13 +345,14 @@ code, but its ACLs and cross-user rejection are pending runtime validation.
 
 ## UI behavior
 
-- Views: Status, Peers, Tunnels, Torrents, NetDb, Logs, Help, Destinations,
-  Config, Connections; `0` selects Connections and `1`-`9` keep the original
-  order.
-- Keys: `1`-`9`, `0` (Connections), `Tab`, arrows, `?`, `r`, `q`. The original
-  `1`-`9` mappings are unchanged; Connections is `0`. All ten views are
-  reachable by cycling with `Tab` or the arrow keys. Narrow terminals show the
-  active view in the header instead of truncated tab labels.
+- Views: Status, Peers, Tunnels, Torrents, NetDb, Logs, Services, Help,
+  Destinations, Config, Connections; `0` selects Connections, `v` selects
+  Services and `1`-`9` keep the original order.
+- Keys: `1`-`9`, `v`, `0` (Connections), `Tab`, arrows, `?`, `r`, `q`. The
+  original `1`-`9` mappings are unchanged; Connections is `0` and Services is
+  `v`. All eleven views are reachable by cycling with `Tab` or the arrow keys.
+  Narrow terminals show the active view in the header instead of truncated tab
+  labels.
 - Status: `t` opens a typed confirmation and toggles transit acceptance;
   `e` confirms a NetDb reseed, `H` reloads tunnels, `s`/`S` begin graceful or
   immediate shutdown, `c` cancels a pending graceful drain, and `b`/`%` set the
@@ -327,15 +365,24 @@ code, but its ACLs and cross-user rejection are pending runtime validation.
   Up/Down/PgUp/PgDn/Home/End scroll the selected directory.
 - Logs: `/` filters records by text, `c` clears the filter, `l` cycles the
   local display threshold and `L` cycles the daemon log level over secure IPC.
+  A daemon uptime decrease (router restart) clears the local log cursors so the
+  view resumes streaming instead of waiting forever for a reset sequence.
 - Refresh: state every 2 s; active peer/connection/tunnel/netDb/destination/
-  config view every 2 s; netDb directories every 5 s; logs every 1 s while
-  visible. `getch` uses a 200 ms timeout, so the UI never blocks on the socket
+  service/config view every 2 s; netDb directories every 5 s; logs every 1 s
+  while visible. `getch` uses a 200 ms timeout, so the UI never blocks on the socket
   or terminal.
-- Destinations is a dedicated bounded view of the local client b32 addresses;
-  it does not share the NetDb panel.
+- Destinations is a dedicated bounded view of the local client b32 addresses,
+  address-book entries and blocked patterns; it does not share the NetDb panel.
+  `a`/`d` add/replace or remove an address; `b`/`u` block or unblock a
+  subscription name or wildcard.
+- Services is a bounded list of configured client/server tunnels, proxies and
+  local protocol servers; `v` opens it and Up/Down/PgUp/PgDn scroll it.
 - Config is a read-only table of the allowlisted snapshot, with the option
   name, declared type and value. Up/Down and PgUp/PgDn scroll it. There is no
   edit key in version 1.
+- If the terminal is below the minimum drawable size, input prompts are
+  suspended rather than committed invisibly; Esc cancels and resizing restores
+  the normal view.
 - Connection failure is shown in the footer; reconnect is retried every 2 s.
 - `SIGWINCH` sets a flag and redraws; `SIGINT`/`SIGTERM` exit cleanly. The
   router is not signalled when the TUI exits.
@@ -472,10 +519,11 @@ No live TUI session or visual comparison has been executed for this change.
   writing, paths, URLs and generic command execution remain intentionally
   unavailable. Toggling transit does not modify existing tunnels.
 - `CONFIG` is a read-only snapshot. Editing is pending: it needs (a) a named
-  allowlist with per-option type/range validation, (b) a daemon main-loop
-  command queue so `SetOption()`/subsystem updates never run on the IPC
-  thread, and (c) an explicit policy for which settings take effect without a
-  restart. `CONFIG-SET` is intentionally not accepted before those exist.
+  allowlist with per-option type/range validation, (b) reuse of the existing
+  daemon main-loop command queue so `SetOption()`/subsystem updates never run
+  on the IPC thread, and (c) an explicit policy for which settings take effect
+  without a restart. `CONFIG-SET` is intentionally not accepted before those
+  exist.
 - No authentication beyond same-UID filesystem access. A same-UID process can
   already read the router's private keys, so a stronger local secret would not
   add a meaningful boundary.
@@ -486,12 +534,14 @@ No live TUI session or visual comparison has been executed for this change.
 rejection, numeric bounds, field escaping, framing, inclusive size limits,
 payload round-tripping, the `CONFIG` request/allowlist bounds, the
 `CONNECTIONS`/`NETDB-*` limits and strict `ADMIN` validation for transit,
-loglevel, reseed, shutdown, tunnel reload, bandwidth and share. It also checks
-that `CONFIG-SET` remains an unknown command and that the largest
+loglevel, reseed, shutdown, tunnel reload, bandwidth, share and bounded
+address-book mutations. It also checks that `CONFIG-SET` remains an unknown
+command and that the largest
 `config.option.N` field name fits the wire field-name limit.
-`tests/test-tui-ipc-regression.cpp` dispatches the bounded directory views,
-the typed admin queue and an atomic daemon log-level update over the real local
-socket.
+`tests/test-tui-ipc-regression.cpp` dispatches the bounded directory and
+service views, the typed admin queue and an atomic daemon log-level update over
+the real local socket; it also checks that an accepted-but-timed-out command is
+still executed and that a remote error code is preserved.
 `tests/test-tui-win32-pipe.cpp` (Windows only) covers
 the named-pipe/DACL primitives, not console rendering. Both are registered with
 CTest; no live Windows TUI session or cross-user ACL test has been executed in

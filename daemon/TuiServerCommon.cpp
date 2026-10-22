@@ -30,9 +30,13 @@
 #include <utility>
 #include <vector>
 
+#include "AddressBook.h"
+#include "AddressFormat.h"
 #include "ClientContext.h"
 #include "Config.h"
 #include "Expected.h"
+#include "I2PService.h"
+#include "I2PTunnel.h"
 #include "Log.h"
 #include "NetDb.hpp"
 #include "RouterContext.h"
@@ -41,6 +45,7 @@
 #include "TorrentsControl.h"
 #include "Transports.h"
 #include "Tunnel.h"
+#include "UDPTunnel.h"
 #include "TuiProtocol.h"
 #include "version.h"
 
@@ -109,7 +114,11 @@ namespace tui
 
 		void SetAdminMessage (AdminCommandResult & result, const char * message)
 		{
-			std::snprintf (result.message, sizeof (result.message), "%s", message ? message : "");
+			const int written
+				= std::snprintf (result.message, sizeof (result.message), "%s", message ? message : "");
+			result.messageLength = written > 0
+				? std::min<size_t> (static_cast<size_t> (written), sizeof (result.message) - 1)
+				: 0;
 		}
 
 		void RunAdminQueue (AdminQueue * queue)
@@ -140,12 +149,9 @@ namespace tui
 					if (index == queue->slots.size ()) continue;
 
 					auto & slot = queue->slots[index];
-					if (slot.discard)
-					{
-						slot.state = QueueSlotState::Free;
-						slot.discard = false;
-						continue;
-					}
+					// "discard" means the waiter no longer wants the result;
+					// it must never mean "do not execute". The command still
+					// runs exactly once and its result is dropped at completion.
 					slot.state = QueueSlotState::Running;
 					command = slot.command;
 					executor = queue->executor;
@@ -424,6 +430,8 @@ namespace tui
 				value.push_back ('|');
 				value.append (std::to_string (leaseSet->GetStoreType ()));
 				value.push_back ('|');
+				value.append (std::to_string (leaseSet->GetEncryptionType ()));
+				value.push_back ('|');
 				value.append (std::to_string (leaseSet->GetExpirationTime ()));
 				value.push_back ('|');
 				value.append (std::to_string (leaseSet->GetEarliestLeaseDate ()));
@@ -466,7 +474,9 @@ namespace tui
 			AppendField (payload, "code", AdminResultCodeName (result.code));
 			AppendField (payload, "value", result.value);
 			if (action == "transit") AppendField (payload, "transit", result.enabled);
-			AppendField (payload, "message", std::string_view (result.message));
+			AppendField (payload, "message",
+				std::string_view (result.message,
+					std::min (result.messageLength, sizeof (result.message) - 1)));
 			return payload;
 		}
 
@@ -483,6 +493,103 @@ namespace tui
 				value.append (hash.ToBase64 ());
 				AppendField (payload, "destination", value);
 			}
+			return payload;
+		}
+
+		std::string BuildServices (uint32_t limit)
+		{
+			std::string payload;
+			size_t count = 0;
+			auto clean = [] (std::string text)
+			{
+				for (auto & ch : text)
+					if (ch == '|' || static_cast<unsigned char> (ch) < 0x20 || ch == 0x7f) ch = ' ';
+				return text;
+			};
+			auto add = [&] (std::string_view kind, std::string_view name, std::string endpoint, std::string address,
+							bool enabled)
+			{
+				if (count >= limit) return;
+				std::string value (kind);
+				value.push_back ('|');
+				value.append (clean (std::string (name)));
+				value.push_back ('|');
+				value.append (clean (std::move (endpoint)));
+				value.push_back ('|');
+				value.append (clean (std::move (address)));
+				value.push_back ('|');
+				value.push_back (enabled ? '1' : '0');
+				AppendField (payload, "service", value);
+				++count;
+			};
+			auto addressOf = [] (const std::shared_ptr<const i2p::client::ClientDestination> & destination)
+			{
+				return destination ? destination->GetIdentHash ().ToBase32 () + ".b32.i2p" : std::string ();
+			};
+
+			for (const auto & [endpoint, service] : i2p::client::context.GetClientTunnelsSnapshot ())
+			{
+				if (!service) continue;
+				add ("tcp-client", service->GetName (), i2p::util::net::FormatEndpoint (endpoint),
+					addressOf (service->GetLocalDestination ()), true);
+			}
+			for (const auto & entry : i2p::client::context.GetServerTunnelsSnapshot ())
+			{
+				const auto & service = entry.second;
+				if (!service) continue;
+				add ("tcp-server", service->GetName (),
+					service->GetAddress () + ":" + std::to_string (service->GetPort ()),
+					addressOf (service->GetLocalDestination ()), true);
+			}
+			for (const auto & [endpoint, service] : i2p::client::context.GetClientForwardsSnapshot ())
+			{
+				if (!service) continue;
+				add ("udp-client", service->GetName (), i2p::util::net::FormatEndpoint (endpoint),
+					addressOf (service->GetLocalDestination ()), true);
+			}
+			for (const auto & [key, service] : i2p::client::context.GetServerForwardsSnapshot ())
+			{
+				if (!service) continue;
+				add ("udp-server", service->GetName (), "i2p port " + std::to_string (key.second),
+					addressOf (service->GetLocalDestination ()), true);
+			}
+			if (auto proxy = i2p::client::context.GetHttpProxy ())
+				add ("http-proxy", proxy->GetName (), "local proxy", addressOf (proxy->GetLocalDestination ()), true);
+			if (auto proxy = i2p::client::context.GetSocksProxy ())
+				add ("socks-proxy", proxy->GetName (), "local proxy", addressOf (proxy->GetLocalDestination ()), true);
+			const auto sam = i2p::client::context.GetSAMBridge ();
+			add ("sam", "SAM bridge", "local control", {}, sam != nullptr);
+			const auto bob = i2p::client::context.GetBOBCommandChannel ();
+			add ("bob", "BOB command channel", "local control", {}, bob != nullptr);
+			const auto i2cp = i2p::client::context.GetI2CPServer ();
+			add ("i2cp", "I2CP server", "local control", {}, i2cp != nullptr);
+			AppendField (payload, "service.count", count);
+			return payload;
+		}
+
+		std::string BuildAddressBook (uint32_t limit)
+		{
+			std::string payload;
+			const auto entries = i2p::client::context.GetAddressBook ().GetEntries (limit);
+			AppendField (payload, "address.count", entries.size ());
+			for (const auto & entry : entries)
+			{
+				std::string value = entry.name;
+				value.push_back ('|');
+				value.append (entry.destination);
+				value.push_back ('|');
+				value.push_back (entry.blinded ? '1' : '0');
+				AppendField (payload, "address", value);
+			}
+			return payload;
+		}
+
+		std::string BuildBlockedAddresses (uint32_t limit)
+		{
+			std::string payload;
+			const auto patterns = i2p::client::context.GetAddressBook ().GetDeletedHosts (limit);
+			AppendField (payload, "blocked.count", patterns.size ());
+			for (const auto & pattern : patterns) AppendField (payload, "blocked", pattern);
 			return payload;
 		}
 
@@ -686,7 +793,9 @@ namespace tui
 			AppendField (payload, field ("hash"), torrent.hash);
 			AppendField (payload, field ("magnet"), torrent.magnet);
 			AppendField (payload, field ("total"), torrent.totalSize);
+			AppendField (payload, field ("wanted"), torrent.wantedSize);
 			AppendField (payload, field ("have"), torrent.have);
+			AppendField (payload, field ("private"), torrent.privateTorrent);
 			AppendField (payload, field ("downloaded"), torrent.downloaded);
 			AppendField (payload, field ("uploaded"), torrent.uploaded);
 			AppendField (payload, field ("downRate"), torrent.downRate);
@@ -702,13 +811,24 @@ namespace tui
 		void AppendTorrentDetail (std::string & payload, const i2p::torrents::TorrentInfo & torrent)
 		{
 			AppendTorrentSummary (payload, "detail", torrent);
+			AppendField (payload, "detail.comment", torrent.metaComment);
+			AppendField (payload, "detail.createdBy", torrent.createdBy);
 			AppendField (payload, "comments.enabled", torrent.commentsEnabled);
 			AppendField (payload, "comments.total", torrent.commentCount);
-			AppendField (payload, "comments.count", torrent.comments.size ());
+			const size_t shownComments
+				= std::min (torrent.comments.size (), MAX_TORRENT_COMMENT_RECORDS_PER_REQUEST);
+			// comments.count is the number of records actually emitted; the
+			// total retained count remains in comments.total. Clients must not
+			// iterate count against a truncated comments array.
+			AppendField (payload, "comments.count", shownComments);
 			AppendField (payload, "comments.ratingCount", torrent.ratingCount);
-			AppendField (payload, "comments.average", std::to_string (torrent.averageRating));
+			{
+				char average[16];
+				std::snprintf (average, sizeof (average), "%.1f", torrent.averageRating);
+				AppendField (payload, "comments.average", average);
+			}
 			AppendField (payload, "comments.persistenceError", torrent.commentPersistenceError);
-			for (size_t i = 0; i < torrent.comments.size (); ++i)
+			for (size_t i = 0; i < shownComments; ++i)
 			{
 				const auto & comment = torrent.comments[i];
 				auto prefix = "comment." + std::to_string (i);
@@ -720,6 +840,7 @@ namespace tui
 				AppendField (payload, prefix + ".hidden", comment.hidden);
 				AppendField (payload, prefix + ".local", comment.local);
 			}
+			AppendField (payload, "comments.truncated", torrent.comments.size () > shownComments);
 
 			size_t count = 0;
 			for (const auto & file : torrent.files)
@@ -749,6 +870,7 @@ namespace tui
 				if (count++ >= MAX_TORRENT_TRACKER_RECORDS_PER_REQUEST) break;
 				auto prefix = "tracker." + std::to_string (count - 1);
 				AppendField (payload, prefix + ".announce", tracker.announce);
+				AppendField (payload, prefix + ".tier", tracker.tier);
 				AppendField (payload, prefix + ".peers", tracker.peers);
 				AppendField (payload, prefix + ".seeders", tracker.seeders);
 				AppendField (payload, prefix + ".leechers", tracker.leechers);
@@ -1019,6 +1141,9 @@ namespace tui
 			case RequestType::NetDbRouters: return makeOk (BuildNetDbRouters (request->limit));
 			case RequestType::NetDbLeaseSets: return makeOk (BuildNetDbLeaseSets (request->limit));
 			case RequestType::Destinations: return makeOk (BuildDestinations ());
+			case RequestType::Services: return makeOk (BuildServices (request->limit));
+			case RequestType::AddressBook: return makeOk (BuildAddressBook (request->limit));
+			case RequestType::AddressBookBlocked: return makeOk (BuildBlockedAddresses (request->limit));
 			case RequestType::Logs: return makeOk (BuildLogs (request->after, request->limit));
 			case RequestType::Config: return makeOk (BuildConfig ());
 			case RequestType::AdminTransit:
@@ -1035,6 +1160,38 @@ namespace tui
 			case RequestType::AdminShare:
 				return runAdmin (
 					"share", { AdminCommandKind::Share, static_cast<int32_t> (request->adminValue), false });
+			case RequestType::AdminAddressAdd:
+			case RequestType::AdminAddressRemove:
+			case RequestType::AdminAddressBlock:
+			case RequestType::AdminAddressUnblock:
+			{
+				AdminCommand command;
+				std::string_view action;
+				if (request->type == RequestType::AdminAddressAdd)
+				{
+					command.kind = AdminCommandKind::AddressAdd;
+					action = "address-add";
+				}
+				else if (request->type == RequestType::AdminAddressRemove)
+				{
+					command.kind = AdminCommandKind::AddressRemove;
+					action = "address-remove";
+				}
+				else if (request->type == RequestType::AdminAddressBlock)
+				{
+					command.kind = AdminCommandKind::AddressBlock;
+					action = "address-block";
+				}
+				else
+				{
+					command.kind = AdminCommandKind::AddressUnblock;
+					action = "address-unblock";
+				}
+				std::snprintf (command.name, sizeof (command.name), "%s", request->argument.c_str ());
+				std::snprintf (
+					command.destination, sizeof (command.destination), "%s", request->argument2.c_str ());
+				return runAdmin (action, command);
+			}
 			case RequestType::AdminShutdown:
 			{
 				switch (request->shutdownMode)
@@ -1077,6 +1234,9 @@ namespace tui
 			case RequestType::TorrentReannounce:
 				return makeOk (BuildTorrentCommandResult (request->tunnelIndex,
 					{ i2p::torrents::TorrentCommandKind::Reannounce, request->torrentId, false, { } }));
+			case RequestType::TorrentRecheck:
+				return makeOk (BuildTorrentCommandResult (request->tunnelIndex,
+					{ i2p::torrents::TorrentCommandKind::Recheck, request->torrentId, false, { } }));
 			case RequestType::TorrentRemove:
 				return makeOk (BuildTorrentCommandResult (request->tunnelIndex,
 					{ i2p::torrents::TorrentCommandKind::Remove, request->torrentId, request->deleteFiles, { } }));
@@ -1104,11 +1264,22 @@ namespace tui
 				return makeOk (BuildTorrentCommandResult (request->tunnelIndex,
 					{ i2p::torrents::TorrentCommandKind::CommentAdd, request->torrentId, false, request->argument }));
 			case RequestType::TorrentCommentHide:
+			case RequestType::TorrentCommentUnhide:
 				return makeOk (BuildTorrentCommandResult (request->tunnelIndex,
-					{ i2p::torrents::TorrentCommandKind::CommentHide, request->torrentId, false, request->argument }));
+					{ request->type == RequestType::TorrentCommentHide ? i2p::torrents::TorrentCommandKind::CommentHide
+																		   : i2p::torrents::TorrentCommandKind::CommentUnhide,
+						request->torrentId, false, request->argument }));
 			case RequestType::TorrentFilePriority:
 				return makeOk (BuildTorrentCommandResult (request->tunnelIndex,
 					{ i2p::torrents::TorrentCommandKind::FilePriority, request->torrentId, false, request->argument }));
+			case RequestType::TorrentSetComment:
+				return makeOk (BuildTorrentCommandResult (request->tunnelIndex,
+					{ i2p::torrents::TorrentCommandKind::SetMetaComment, request->torrentId, false,
+						request->argument }));
+			case RequestType::TorrentSetCreatedBy:
+				return makeOk (BuildTorrentCommandResult (request->tunnelIndex,
+					{ i2p::torrents::TorrentCommandKind::SetCreatedBy, request->torrentId, false,
+						request->argument }));
 			case RequestType::TorrentCreateV1:
 			{
 				i2p::torrents::TorrentCommand command { i2p::torrents::TorrentCommandKind::Create, 0, false, request->argument };

@@ -181,6 +181,7 @@ I2PDTUI/1 NETDB
 I2PDTUI/1 NETDB-ROUTERS [limit]
 I2PDTUI/1 NETDB-LEASESETS [limit]
 I2PDTUI/1 DESTINATIONS
+I2PDTUI/1 SERVICES [limit]
 I2PDTUI/1 LOGS <after-sequence> [limit]
 I2PDTUI/1 ADMIN TRANSIT ON|OFF
 I2PDTUI/1 ADMIN LOGLEVEL none|critical|error|warn|info|debug
@@ -208,7 +209,8 @@ I2PDTUI/1 ERR <error-code> <message-length>\n<message>
 | Request line | 4096 bytes |
 | Response payload | 256 KiB |
 | Field name | 64 bytes |
-| Peer/connection/netDb/tunnel/log/torrent records per request | 200 |
+| Peer/connection/netDb/tunnel/service/log/torrent records per request | 200 |
+| Address-book records per request | 200 |
 | Torrent file records per request | 1000 |
 | Torrent argument | 2048 bytes |
 | Administrative argument | 16 bytes |
@@ -255,7 +257,7 @@ No Curses package is required on Windows.
 
 ### Windows with MSVC
 
-Use CMake 3.22 or newer and Visual Studio 2022 17.5 (MSVC 19.35) or newer.
+Use CMake 3.24 or newer and Visual Studio 2022 17.5 (MSVC 19.35) or newer.
 Dependencies may come from vcpkg, a system prefix or a package manager; the
 native CI job uses the runner's vcpkg only to build dependencies, not to run
 the product:
@@ -363,7 +365,7 @@ Runtime checks still required on a Windows host:
    account/group (`AccessChk` or `Get-Acl` on the pipe, where available).
 4. Start `i2pd-tui.exe --datadir <dir>` in Windows Terminal and in conhost;
    check Status, Peers, Connections, Tunnels, NetDb directories, Destinations,
-   Logs, Config and Torrent views.
+   Services, Logs, Config and Torrent views.
 5. Resize the console, use `n` in NetDb, `/` and `L` in Logs, confirm the
    transit toggle with `t`, disconnect/reconnect and quit with `q`; confirm the
    router remains running.
