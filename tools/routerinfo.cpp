@@ -24,6 +24,7 @@
 
 #include "Crypto.h"
 #include "RouterInfo.h"
+#include "common/file.hpp"
 #include "firewall.hpp"
 
 namespace
@@ -108,9 +109,11 @@ void AddAddress (std::vector<std::shared_ptr<const i2p::data::RouterInfo::Addres
 
 bool PrintRules (const std::string & hash,
 	const std::vector<std::shared_ptr<const i2p::data::RouterInfo::Address>> & addresses, const Options & options,
-	std::set<std::string> & seen, size_t & total)
+	std::set<std::string> & seen, size_t & total, bool & fatal)
 {
 	bool valid = true;
+	bool headerPrinted = false;
+	fatal = false;
 	for (const auto & address : addresses)
 	{
 		auto transport = TransportOf (*address);
@@ -129,19 +132,32 @@ bool PrintRules (const std::string & hash,
 			valid = false;
 			continue;
 		}
+		const auto key = i2p::tools::firewall::EndpointKey (*endpoint);
+		if (!seen.insert (key).second) continue;
 		if (++total > MAX_ENDPOINTS)
 		{
-			std::cerr << "routerinfo: too many endpoints" << std::endl;
+			std::cerr << "routerinfo: too many distinct endpoints (max " << MAX_ENDPOINTS << ")" << std::endl;
+			fatal = true;
 			return false;
 		}
 
-		const auto key = i2p::tools::firewall::EndpointKey (*endpoint);
-		if (!seen.insert (key).second) continue;
-
 		RenderOptions render = options.render;
 		render.ruleTag = hash.substr (0, 8);
+		if (!i2p::tools::firewall::IsSelectedByFamily (*endpoint, render)) continue;
 		auto rule = i2p::tools::firewall::Render (*endpoint, render);
-		if (rule) std::cout << *rule << std::endl;
+		if (!rule)
+		{
+			std::cerr << "routerinfo: cannot render endpoint " << endpoint->address << ":"
+				<< endpoint->port << " for " << hash << std::endl;
+			valid = false;
+			continue;
+		}
+		if (!headerPrinted)
+		{
+			std::cout << "# " << hash << std::endl;
+			headerPrinted = true;
+		}
+		std::cout << *rule << std::endl;
 	}
 	return valid;
 }
@@ -202,14 +218,19 @@ int main (int argc, char * argv[])
 		Usage (argv[0]);
 		return 0;
 	}
-	if (optind >= argc)
-	{
-		Usage (argv[0]);
-		return 1;
-	}
 	if (options.legacyFirewall && options.backend)
 	{
 		std::cerr << "routerinfo: -f cannot be combined with --firewall" << std::endl;
+		return 1;
+	}
+	if (options.legacyFirewall && options.nftOptionsGiven)
+	{
+		std::cerr << "routerinfo: nftables options cannot be combined with -f" << std::endl;
+		return 1;
+	}
+	if (optind >= argc)
+	{
+		Usage (argv[0]);
 		return 1;
 	}
 	if (options.legacyFirewall) options.backend = Backend::IptablesLegacy;
@@ -240,7 +261,17 @@ int main (int argc, char * argv[])
 				std::cerr << "routerinfo: invalid nft table or chain name" << std::endl;
 				return 1;
 			}
+			if (options.render.nftFamily == "ip6" && !options.ipv6)
+			{
+				std::cerr << "routerinfo: --nft-family=ip6 requires -6" << std::endl;
+				return 1;
+			}
 		}
+	}
+	if (options.yggdrasil && options.backend && !options.ipv6)
+	{
+		std::cerr << "routerinfo: -y firewall rules require -6" << std::endl;
+		return 1;
 	}
 
 	i2p::crypto::InitCrypto (false);
@@ -257,7 +288,14 @@ int main (int argc, char * argv[])
 		const std::string filename (argv[index]);
 		try
 		{
-			i2p::data::RouterInfo router (filename);
+			auto buffer = i2p::tools::ReadFile (filename);
+			if (!buffer)
+			{
+				std::cerr << "routerinfo: " << buffer.error () << std::endl;
+				inputError = true;
+				continue;
+			}
+			i2p::data::RouterInfo router (buffer->data (), buffer->size ());
 			if (router.IsUnreachable () || !router.GetRouterIdentity ())
 			{
 				std::cerr << "routerinfo: malformed or invalid RouterInfo: " << filename << std::endl;
@@ -278,10 +316,11 @@ int main (int argc, char * argv[])
 
 			if (options.backend)
 			{
-				std::cout << "# " << hash << std::endl;
-				if (!PrintRules (hash, addresses, options, seen, total))
+				bool fatal = false;
+				if (!PrintRules (hash, addresses, options, seen, total, fatal))
 				{
 					inputError = true;
+					if (fatal) return 1;
 					continue;
 				}
 			}

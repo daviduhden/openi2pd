@@ -151,12 +151,27 @@ inline bool IsValidEndpoint (const Endpoint & endpoint)
 	return parsed && parsed->address == endpoint.address && parsed->ipv6 == endpoint.ipv6;
 }
 
+inline bool IsAsciiAlpha (unsigned char ch)
+{
+	return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z');
+}
+
+inline bool IsAsciiAlnum (unsigned char ch)
+{
+	return IsAsciiAlpha (ch) || (ch >= '0' && ch <= '9');
+}
+
+inline char AsciiLower (unsigned char ch)
+{
+	return (ch >= 'A' && ch <= 'Z') ? static_cast<char> (ch - 'A' + 'a') : static_cast<char> (ch);
+}
+
 inline bool IsSafeIdentifier (std::string_view value)
 {
 	if (value.empty () || value.size () > 64) return false;
-	if (!(std::isalpha (static_cast<unsigned char> (value.front ())) || value.front () == '_')) return false;
+	if (!(IsAsciiAlpha (static_cast<unsigned char> (value.front ())) || value.front () == '_')) return false;
 	return std::all_of (value.begin () + 1, value.end (),
-		[] (unsigned char ch) { return std::isalnum (ch) || ch == '_' || ch == '-' || ch == '.'; });
+		[] (unsigned char ch) { return IsAsciiAlnum (ch) || ch == '_' || ch == '-' || ch == '.'; });
 }
 
 /**
@@ -169,7 +184,7 @@ inline bool IsSafeOutputChain (std::string_view value)
 	if (!IsSafeIdentifier (value)) return false;
 	std::string lower (value.begin (), value.end ());
 	std::transform (lower.begin (), lower.end (), lower.begin (),
-		[] (unsigned char ch) { return static_cast<char> (std::tolower (ch)); });
+		[] (unsigned char ch) { return AsciiLower (ch); });
 	return lower != "input" && lower != "forward" && lower != "prerouting" && lower != "postrouting";
 }
 
@@ -221,7 +236,8 @@ inline std::string IptablesCommand (const Endpoint & endpoint)
 
 inline std::optional<std::string> Nftables (const Endpoint & endpoint, const RenderOptions & options)
 {
-	if (!IsSafeIdentifier (options.nftTable) || !IsSafeOutputChain (options.nftChain)) return std::nullopt;
+	if (!IsSafeIdentifier (options.nftTable) || !IsSafeOutputChain (options.nftChain)
+		|| !IsSafeRuleTag (options.ruleTag)) return std::nullopt;
 
 	const bool useInet = options.nftFamily == "inet";
 	const bool useIp = options.nftFamily == "ip";
@@ -230,26 +246,54 @@ inline std::optional<std::string> Nftables (const Endpoint & endpoint, const Ren
 	if ((useIp && endpoint.ipv6) || (useIp6 && !endpoint.ipv6)) return std::nullopt;
 
 	const char * family = endpoint.ipv6 ? "ip6" : "ip";
-	return "nft add rule " + options.nftFamily + " " + options.nftTable + " " + options.nftChain + " " + family
+	std::string rule = "nft add rule " + options.nftFamily + " " + options.nftTable + " " + options.nftChain + " " + family
 		+ " daddr " + endpoint.address + " " + L4Protocol (endpoint.transport) + " dport "
 		+ std::to_string (endpoint.port) + " accept";
+	if (!options.ruleTag.empty ())
+		rule += " comment \"openi2pd " + std::string (TransportName (endpoint.transport)) + " " + options.ruleTag + "\"";
+	return rule;
 }
 
 inline std::optional<std::string> Windows (const Endpoint & endpoint, const RenderOptions & options)
 {
 	if (!IsSafeRuleTag (options.ruleTag)) return std::nullopt;
-	const std::string name = "openi2pd " + std::string (TransportName (endpoint.transport)) + " " + options.ruleTag
-		+ " " + endpoint.address + ":" + std::to_string (endpoint.port);
-	return "New-NetFirewallRule -DisplayName '" + EscapePowerShell (name)
-		+ "' -Direction Outbound -Action Allow -Protocol " + (endpoint.transport == Transport::NTCP2 ? "TCP" : "UDP")
-		+ " -RemoteAddress '" + EscapePowerShell (endpoint.address) + "' -RemotePort " + std::to_string (endpoint.port);
+	const std::string family = endpoint.ipv6 ? "v6" : "v4";
+	std::string addressId = endpoint.address;
+	std::replace (addressId.begin (), addressId.end (), ':', '_');
+	const std::string name = "openi2pd " + std::string (TransportName (endpoint.transport)) + " " + family + " "
+		+ options.ruleTag + " " + endpoint.address + ":" + std::to_string (endpoint.port);
+	std::string tagId = options.ruleTag;
+	std::replace_if (tagId.begin (), tagId.end (),
+		[] (unsigned char ch) { return !(IsAsciiAlnum (ch) || ch == '_' || ch == '-' || ch == '.'); }, '_');
+	const std::string ruleName = "openi2pd_" + std::string (TransportName (endpoint.transport)) + "_" + family + "_"
+		+ tagId + "_" + addressId + "_" + std::to_string (endpoint.port);
+	return "New-NetFirewallRule -Name '" + EscapePowerShell (ruleName)
+		+ "' -DisplayName '" + EscapePowerShell (name)
+		+ "' -Group 'openi2pd' -Direction Outbound -Action Allow -Protocol "
+		+ (endpoint.transport == Transport::NTCP2 ? "TCP" : "UDP")
+		+ " -RemoteAddress '" + EscapePowerShell (endpoint.address) + "' -RemotePort " + std::to_string (endpoint.port)
+		+ " -ErrorAction Stop";
 }
 
-inline std::string Pf (const Endpoint & endpoint)
+inline std::optional<std::string> Pf (const Endpoint & endpoint, const RenderOptions & options)
 {
-	return std::string ("pass out quick ") + (endpoint.ipv6 ? "inet6" : "inet") + " proto "
+	if (!IsSafeRuleTag (options.ruleTag)) return std::nullopt;
+	std::string rule = std::string ("pass out quick ") + (endpoint.ipv6 ? "inet6" : "inet") + " proto "
 		+ L4Protocol (endpoint.transport) + " to " + endpoint.address + " port " + std::to_string (endpoint.port)
 		+ " keep state";
+	if (!options.ruleTag.empty ())
+		rule += " label \"openi2pd " + std::string (TransportName (endpoint.transport)) + " " + options.ruleTag + "\"";
+	return rule;
+}
+
+
+/** True when the backend's configured family deliberately excludes endpoint. */
+inline bool IsSelectedByFamily (const Endpoint & endpoint, const RenderOptions & options)
+{
+	if (options.backend != Backend::Nftables) return true;
+	if (options.nftFamily == "ip") return !endpoint.ipv6;
+	if (options.nftFamily == "ip6") return endpoint.ipv6;
+	return true;
 }
 
 inline std::optional<std::string> Render (const Endpoint & endpoint, const RenderOptions & options)
@@ -261,7 +305,7 @@ inline std::optional<std::string> Render (const Endpoint & endpoint, const Rende
 	case Backend::Iptables: return IptablesCommand (endpoint);
 	case Backend::Nftables: return Nftables (endpoint, options);
 	case Backend::Windows: return Windows (endpoint, options);
-	case Backend::Pf: return Pf (endpoint);
+	case Backend::Pf: return Pf (endpoint, options);
 	default: return std::nullopt;
 	}
 }

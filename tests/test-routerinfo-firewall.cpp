@@ -124,13 +124,15 @@ int main ()
 	AssertSafeRule (Render (ssu4, options));
 
 	options.backend = Backend::Nftables;
-	assert (Render (ntcp4, options) == "nft add rule inet filter output ip daddr 192.0.2.10 tcp dport 12345 accept");
-	assert (Render (ssu6, options) == "nft add rule inet filter output ip6 daddr 2001:db8::20 udp dport 4567 accept");
+	assert (Render (ntcp4, options) == "nft add rule inet filter output ip daddr 192.0.2.10 tcp dport 12345 accept comment \"openi2pd NTCP2 abcdef12\"");
+	assert (Render (ssu6, options) == "nft add rule inet filter output ip6 daddr 2001:db8::20 udp dport 4567 accept comment \"openi2pd SSU2 abcdef12\"");
 
 	// Family-specific nftables output never silently widens to the other family.
 	options.nftFamily = "ip";
 	assert (Render (ntcp6, options) == std::nullopt);
 	assert (Render (ntcp4, options).has_value ());
+	assert (IsSelectedByFamily (ntcp4, options));
+	assert (!IsSelectedByFamily (ntcp6, options));
 	options.nftFamily = "ip6";
 	assert (Render (ntcp4, options) == std::nullopt);
 	assert (Render (ssu6, options).has_value ());
@@ -141,6 +143,7 @@ int main ()
 	assert (!IsSafeIdentifier ("-table"));
 	assert (!IsSafeIdentifier ("out;flush ruleset"));
 	assert (!IsSafeIdentifier ("out put"));
+	assert (!IsSafeIdentifier ("\xC0table"));
 	assert (IsSafeIdentifier ("i2pd_out-1.2"));
 	assert (IsSafeOutputChain ("output"));
 	assert (IsSafeOutputChain ("i2pd_out-1.2"));
@@ -173,11 +176,14 @@ int main ()
 	auto windows = Render (ntcp4, options);
 	assert (windows.has_value ());
 	assert (windows->find ("New-NetFirewallRule") == 0);
+	assert (windows->find ("-Name 'openi2pd_NTCP2_v4_abcdef12_192.0.2.10_12345'") != std::string::npos);
+	assert (windows->find ("-Group 'openi2pd'") != std::string::npos);
 	assert (windows->find ("-Direction Outbound") != std::string::npos);
 	assert (windows->find ("-Protocol TCP") != std::string::npos);
+	assert (windows->find ("-ErrorAction Stop") != std::string::npos);
 	assert (windows->find ("-RemoteAddress '192.0.2.10'") != std::string::npos);
 	assert (windows->find ("-RemotePort 12345") != std::string::npos);
-	assert (windows->find ("openi2pd NTCP2 abcdef12") != std::string::npos);
+	assert (windows->find ("openi2pd NTCP2 v4 abcdef12") != std::string::npos);
 	AssertSafeRule (windows);
 
 	options.backend = Backend::Windows;
@@ -185,6 +191,8 @@ int main ()
 	assert (windows6.has_value ());
 	assert (windows6->find ("-Protocol UDP") != std::string::npos);
 	assert (windows6->find ("-RemoteAddress '2001:db8::20'") != std::string::npos);
+	assert (windows6->find ("openi2pd SSU2 v6 abcdef12") != std::string::npos);
+	assert (windows6->find ("-Name 'openi2pd_SSU2_v6_abcdef12_2001_db8__20_4567'") != std::string::npos);
 	AssertSafeRule (windows6);
 
 	// Display-name tags accept base64/identifier characters and are rejected
@@ -202,13 +210,16 @@ int main ()
 	assert (Render (ntcp4, options) == std::nullopt);
 	options.ruleTag = "bad'tag";
 	assert (Render (ntcp4, options) == std::nullopt);
+	options.backend = Backend::Nftables;
+	assert (Render (ntcp4, options) == std::nullopt);
+	options.backend = Backend::Windows;
 	options.ruleTag = "abcdef12";
 
 	assert (EscapePowerShell ("a'b") == "a''b");
 
 	options.backend = Backend::Pf;
-	assert (Render (ntcp4, options) == "pass out quick inet proto tcp to 192.0.2.10 port 12345 keep state");
-	assert (Render (ssu6, options) == "pass out quick inet6 proto udp to 2001:db8::20 port 4567 keep state");
+	assert (Render (ntcp4, options) == "pass out quick inet proto tcp to 192.0.2.10 port 12345 keep state label \"openi2pd NTCP2 abcdef12\"");
+	assert (Render (ssu6, options) == "pass out quick inet6 proto udp to 2001:db8::20 port 4567 keep state label \"openi2pd SSU2 abcdef12\"");
 	AssertSafeRule (Render (ntcp4, options));
 
 	// Deduplication is independent of the rendering backend.

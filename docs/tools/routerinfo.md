@@ -38,7 +38,8 @@ routerinfo [-6] [-y] --firewall=BACKEND [options] routerinfo.dat...
 Multiple RouterInfo files may be given. Duplicate endpoints across files are
 emitted once. `-6` is required to include IPv6 addresses in every output mode,
 including `--firewall`; without it only IPv4 addresses are selected. `-y`
-separately selects the Yggdrasil mesh address when present. The tool never
+separately selects the Yggdrasil mesh address when present for listing; in
+firewall mode it requires `-6` because the mesh address is IPv6. The tool never
 executes a firewall command and never modifies `/etc/pf.conf` or any other
 system firewall configuration.
 
@@ -77,9 +78,12 @@ routerinfo -6 -f routerInfo.dat
  -A OUTPUT -p udp -d 198.51.100.20 --dport 4567 -j ACCEPT
 ```
 
-This is a rule fragment, not a complete command. It can be appended to an
-`iptables`/`ip6tables` rule file or pasted after the appropriate command. The
-leading space and lack of `iptables` prefix are intentional compatibility.
+This is a rule fragment, not a complete command. The leading space and lack of
+an `iptables` prefix are intentional compatibility. IPv4 fragments belong in an
+`iptables` file and IPv6 fragments in an `ip6tables` file; a mixed `-6 -f`
+stream cannot be loaded as one ruleset. Non-public or unspecified endpoints are
+skipped under the shared public-endpoint policy, so `-f` preserves the fragment
+shape rather than blindly reproducing unsafe upstream lines.
 
 ## iptables/ip6tables commands
 
@@ -109,13 +113,13 @@ routerinfo -6 --firewall=nftables \
 
 ```text
 # <router hash>
-nft add rule inet filter output ip daddr 192.0.2.10 tcp dport 12345 accept
-nft add rule inet filter output ip6 daddr 2001:db8::20 udp dport 4567 accept
+nft add rule inet filter output ip daddr 192.0.2.10 tcp dport 12345 accept comment "openi2pd NTCP2 abcdef12"
+nft add rule inet filter output ip6 daddr 2001:db8::20 udp dport 4567 accept comment "openi2pd SSU2 abcdef12"
 ```
 
 - `inet` accepts both families and selects `ip daddr`/`ip6 daddr` per endpoint.
-- `--nft-family=ip` skips IPv6 endpoints; `ip6` skips IPv4 endpoints. Skipped
-  endpoints never become permissive rules.
+- `--nft-family=ip` skips IPv6 endpoints; `ip6` skips IPv4 endpoints and
+  requires `-6`. Skipped endpoints never become permissive rules.
 - Table and chain names are restricted to a safe identifier syntax. The chain
   may be a custom output chain, but the standard `input`, `forward`,
   `prerouting` and `postrouting` hook names are rejected so a typo cannot turn
@@ -133,13 +137,18 @@ routerinfo -6 --firewall=windows routerInfo.dat
 
 ```powershell
 # <router hash>
-New-NetFirewallRule -DisplayName 'openi2pd NTCP2 abcdef12 192.0.2.10:12345' -Direction Outbound -Action Allow -Protocol TCP -RemoteAddress '192.0.2.10' -RemotePort 12345
+New-NetFirewallRule -Name 'openi2pd_NTCP2_v4_abcdef12_192.0.2.10_12345' -DisplayName 'openi2pd NTCP2 v4 abcdef12 192.0.2.10:12345' -Group 'openi2pd' -Direction Outbound -Action Allow -Protocol TCP -RemoteAddress '192.0.2.10' -RemotePort 12345 -ErrorAction Stop
 ```
 
 - Uses the `NetSecurity` module (`New-NetFirewallRule`), not `netsh`.
 - Outbound rules only, with `-RemoteAddress` and `-RemotePort`.
-- Display names include the transport, a router-hash prefix, address and port
-  so rules from multiple RouterInfo files remain distinguishable.
+- `-Name` is stable across re-runs, `-Group openi2pd` supports bulk cleanup,
+  and `-ErrorAction Stop` prevents a batch from silently continuing after a
+  failure. Names include the transport, address family, router-hash prefix,
+  address and port.
+- On a default Windows profile outbound traffic is already allowed, so these
+  rules matter when outbound is blocked; they do not open the router's inbound
+  listener.
 - Application requires an elevated PowerShell session with permission to
   modify the local firewall. The tool only prints the commands.
 
@@ -151,12 +160,13 @@ routerinfo -6 --firewall=pf routerInfo.dat
 
 ```pf
 # <router hash>
-pass out quick inet proto tcp to 192.0.2.10 port 12345 keep state
-pass out quick inet6 proto udp to 2001:db8::20 port 4567 keep state
+pass out quick inet proto tcp to 192.0.2.10 port 12345 keep state label "openi2pd NTCP2 abcdef12"
+pass out quick inet6 proto udp to 2001:db8::20 port 4567 keep state label "openi2pd SSU2 abcdef12"
 ```
 
-These are `pf.conf(5)` rules, not iptables translations. They can be placed in
-the main ruleset or in an anchor loaded from it. Keep the surrounding rule
+These are `pf.conf(5)` rules, not iptables translations. The `label` carries the
+public router-hash prefix for attribution. They can be placed in the main
+ruleset or in an anchor loaded from it. Keep the surrounding rule
 order in mind because `quick` terminates evaluation on match. The tool does not
 run `pfctl` or edit `/etc/pf.conf`.
 
