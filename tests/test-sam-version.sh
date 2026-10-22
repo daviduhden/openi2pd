@@ -49,6 +49,7 @@ EXP+=("NOVERSION")
 IN+=("MIN=31 MAX=31")
 EXP+=("OK VERSION=3.1")
 
+failed=0
 i=0
 while [ "$i" -lt "${#IN[@]}" ]; do
 	printf 'HELLO VERSION %s - ' "${IN[$i]}"
@@ -60,6 +61,10 @@ while [ "$i" -lt "${#IN[@]}" ]; do
 		printf "OK\n"
 	else
 		printf 'received %s\n' "$OBS"
+		failed=1
 	fi
 	i=$((i + 1))
 done
+
+# A printed mismatch must fail the manual live-bridge invocation.
+exit "$failed"

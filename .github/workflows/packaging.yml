@@ -50,6 +50,20 @@ jobs:
             contrib/runit/i2pd/run \
             contrib/runit/i2pd/log/run \
             debian/postinst debian/postrm debian/tests/smoke
+      - name: Check SAM mismatch exit status without a live router
+        run: |
+          fixture=$(mktemp -d "$RUNNER_TEMP/sam-version.XXXXXX")
+          trap 'rm -rf "$fixture"' EXIT
+          cat >"$fixture/nc" <<'EOF'
+          #!/bin/sh
+          cat >/dev/null
+          printf '%s\n' 'fixture mismatch'
+          EOF
+          chmod +x "$fixture/nc"
+          status=0
+          PATH="$fixture:$PATH" bash tests/test-sam-version.sh >"$fixture/output" || status=$?
+          grep -q ' - received fixture mismatch$' "$fixture/output"
+          test "$status" -eq 1
       - name: Validate DEP-8 control metadata
         run: |
           grep -q '^Tests: smoke' debian/tests/control
