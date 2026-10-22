@@ -238,12 +238,29 @@ namespace data
 		m_NetDbPersistInterval = persistInterval * 1000LL;
 
 		m_IsRunning.store (true, std::memory_order_relaxed);
-		m_Thread = std::make_unique<std::thread> (std::bind (&NetDb::Run, this));
+		try
+		{
+			m_Thread = std::make_unique<std::thread> (std::bind (&NetDb::Run, this));
+		}
+		catch (...)
+		{
+			m_IsRunning.store (false, std::memory_order_relaxed);
+			m_AcceptUpdates.store (false, std::memory_order_relaxed);
+			throw;
+		}
+		{
+			std::lock_guard<std::mutex> admission (m_QueueAdmissionMutex);
+			m_AcceptMessages = true;
+		}
 	}
 
 	void NetDb::Stop ()
 	{
 		std::lock_guard<std::mutex> lifecycle (m_LifecycleMutex);
+		{
+			std::lock_guard<std::mutex> admission (m_QueueAdmissionMutex);
+			m_AcceptMessages = false;
+		}
 		// Reject new RouterInfo/LeaseSet insertions before stopping the worker
 		// so a handler racing with shutdown cannot populate the maps again.
 		m_AcceptUpdates.store (false, std::memory_order_relaxed);
@@ -261,6 +278,11 @@ namespace data
 		// more. Drop them so a later Start() does not process stale stores.
 		std::list<std::shared_ptr<const I2NPMessage>> stale;
 		m_Queue.GetWholeQueue (stale);
+		{
+			std::lock_guard<std::mutex> throttle (m_ThrottleMutex);
+			m_LookupThrottle.clear ();
+			m_FloodThrottle.clear ();
+		}
 
 		std::shared_ptr<NetDbRequests> requests;
 		{
@@ -357,10 +379,12 @@ namespace data
 		{
 			try
 			{
-				if (m_Queue.Wait (1, 0)) // 1 sec
+				const auto queueReady = m_Queue.Wait (1, 0); // 1 sec
+				if (!m_IsRunning.load (std::memory_order_relaxed)) break;
+				if (queueReady)
 				{
 					m_Queue.GetWholeQueue (msgs);
-					while (!msgs.empty ())
+					while (!msgs.empty () && m_IsRunning.load (std::memory_order_relaxed))
 					{
 						auto msg = msgs.front ();
 						msgs.pop_front ();
@@ -1870,7 +1894,9 @@ namespace data
 
 	void NetDb::PostI2NPMsg (std::shared_ptr<const I2NPMessage> msg)
 	{
-		if (msg) m_Queue.Put (msg);
+		if (!msg) return;
+		std::lock_guard<std::mutex> admission (m_QueueAdmissionMutex);
+		if (m_AcceptMessages) m_Queue.Put (msg);
 	}
 
 	void NetDb::PostDatabaseSearchReplyMsg (std::shared_ptr<const I2NPMessage> msg)

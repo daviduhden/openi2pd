@@ -129,6 +129,7 @@ set(I2PD_TESTS
   test-routercontext-port-range
   test-router-profile-race
   test-router-profile-storage
+  test-netdb-stop-admission
   test-android-daemon-lifecycle
   test-daemon-init-rollback
   test-tunnel-dsm-policy
@@ -238,6 +239,9 @@ foreach(test IN LISTS I2PD_TESTS)
   endif()
   if(test STREQUAL "test-router-profile-race")
     set_property(TEST ${test} APPEND PROPERTY LABELS i2p)
+  endif()
+  if(test STREQUAL "test-netdb-stop-admission")
+    set_property(TEST ${test} APPEND PROPERTY LABELS "i2p;security;memory")
   endif()
   if(test STREQUAL "test-router-profile-storage")
     set_property(TEST ${test} APPEND PROPERTY LABELS "i2p;security;memory")

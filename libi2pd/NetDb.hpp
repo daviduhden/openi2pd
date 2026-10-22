@@ -290,6 +290,8 @@ namespace data
 		bool ShouldThrottleFlood (const IdentHash & ident);
 
 	private:
+		// Test fixture opens queue admission without starting storage/network workers.
+		friend struct NetDbLifecycleTestAccess;
 		i2p::util::MemoryPoolMt<RouterInfo::Buffer> m_RouterInfoBuffersPool;
 		i2p::util::MemoryPoolMt<RouterInfo::Address> m_RouterInfoAddressesPool;
 		i2p::util::MemoryPoolMt<RouterInfo::Addresses> m_RouterInfoAddressVectorsPool;
@@ -310,6 +312,9 @@ namespace data
 		std::atomic<bool> m_AcceptUpdates;
 		std::unique_ptr<std::thread> m_Thread;
 		i2p::util::Queue<std::shared_ptr<const I2NPMessage>> m_Queue; // of I2NPDatabaseStoreMsg
+		// Admission and enqueue share one lock; Stop closes before joining/draining.
+		std::mutex m_QueueAdmissionMutex;
+		bool m_AcceptMessages = false;
 
 		GzipInflator m_Inflator;
 		std::unique_ptr<Reseeder> m_Reseeder;
