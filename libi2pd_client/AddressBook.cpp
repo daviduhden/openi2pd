@@ -19,9 +19,11 @@
 #include <cctype>
 #include <string>
 #include <unordered_map>
+#include <filesystem>
 #include <fstream>
 #include <chrono>
 #include <future>
+#include <utility>
 #include <openssl/rand.h>
 #include <boost/algorithm/string.hpp>
 #include "Base.h"
@@ -47,20 +49,30 @@ namespace client
 {
 	namespace
 	{
-		bool HasSuffixIgnoreCase (std::string_view value, std::string_view suffix)
+		constexpr size_t MAX_SUBSCRIPTION_BODY = 5 * 1024 * 1024;
+		constexpr size_t MAX_SUBSCRIPTION_ENTRIES = 10000;
+	}
+
+	bool HasSuffixIgnoreCase (std::string_view value, std::string_view suffix)
+	{
+		if (value.size () < suffix.size ()) return false;
+		auto tail = value.substr (value.size () - suffix.size ());
+		for (size_t i = 0; i < suffix.size (); i++)
 		{
-			if (value.size () < suffix.size ()) return false;
-			auto tail = value.substr (value.size () - suffix.size ());
-			for (size_t i = 0; i < suffix.size (); i++)
-			{
-				char ch = tail[i];
-				char expected = suffix[i];
-				if (ch >= 'A' && ch <= 'Z') ch = static_cast<char> (ch - 'A' + 'a');
-				if (expected >= 'A' && expected <= 'Z') expected = static_cast<char> (expected - 'A' + 'a');
-				if (ch != expected) return false;
-			}
-			return true;
+			char ch = tail[i];
+			char expected = suffix[i];
+			if (ch >= 'A' && ch <= 'Z') ch = static_cast<char> (ch - 'A' + 'a');
+			if (expected >= 'A' && expected <= 'Z') expected = static_cast<char> (expected - 'A' + 'a');
+			if (ch != expected) return false;
 		}
+		return true;
+	}
+
+	bool IsI2PHost (std::string_view host)
+	{
+		auto normalized = NormalizeHostName (host);
+		if (!normalized.empty () && normalized.back () == '.') normalized.pop_back ();
+		return HasSuffixIgnoreCase (normalized, ".i2p") || HasSuffixIgnoreCase (normalized, ".i2p.alt");
 	}
 
 	std::string NormalizeHostName (std::string_view name)
@@ -71,10 +83,14 @@ namespace client
 		// the label immediately before an explicit ".b33.i2p" suffix. Preserve
 		// that label verbatim and fold the suffix and any subdomain prefix.
 		constexpr std::string_view b33Suffix = ".b33.i2p";
-		bool explicitB33 = HasSuffixIgnoreCase (name, b33Suffix) && name.size () > b33Suffix.size ();
+		constexpr std::string_view b33AltSuffix = ".b33.i2p.alt";
+		bool explicitB33 = HasSuffixIgnoreCase (name, b33AltSuffix) && name.size () > b33AltSuffix.size ();
+		if (!explicitB33) explicitB33 = HasSuffixIgnoreCase (name, b33Suffix) && name.size () > b33Suffix.size ();
 		size_t labelEnd = name.size ();
 		if (explicitB33)
-			labelEnd = name.size () - b33Suffix.size ();
+			labelEnd = name.size () - (HasSuffixIgnoreCase (name, b33AltSuffix) ? b33AltSuffix.size () : b33Suffix.size ());
+		else if (HasSuffixIgnoreCase (name, ".i2p.alt"))
+			labelEnd = name.size () - 8;
 		else if (HasSuffixIgnoreCase (name, ".i2p"))
 			labelEnd = name.size () - 4;
 
@@ -90,6 +106,114 @@ namespace client
 			if (ch >= 'A' && ch <= 'Z') normalized[i] = static_cast<char> (ch - 'A' + 'a');
 		}
 		return normalized;
+	}
+
+	bool IsValidHostName (std::string_view name)
+	{
+		auto normalized = NormalizeHostName (name);
+		if (normalized.size () < 5 || normalized.size () > 67) return false;
+		if (!normalized.ends_with (".i2p")) return false;
+		if (normalized.ends_with (".b32.i2p") || normalized.ends_with (".b33.i2p")) return false;
+		auto core = std::string_view (normalized).substr (0, normalized.size () - 4);
+		if (core.empty () || core.front () == '.' || core.front () == '-') return false;
+		if (core.find ("..") != std::string_view::npos || core.find (".-") != std::string_view::npos
+			|| core.find ("-.") != std::string_view::npos)
+			return false;
+		for (char ch : core)
+			if (!((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '.' || ch == '-')) return false;
+		for (std::string_view reserved : { "proxy", "router", "console" })
+		{
+			if (core == reserved) return false;
+			std::string suffix (".");
+			suffix.append (reserved);
+			if (core.ends_with (std::string_view (suffix))) return false;
+		}
+		return true;
+	}
+
+	bool AddressBook::IsValidDeletedPattern (std::string_view pattern)
+	{
+		if (pattern.size () < 5 || pattern.size () > 255 || !pattern.ends_with (".i2p")) return false;
+		if (pattern.front () == '.' || pattern.front () == '-') return false;
+		if (pattern.find ("..") != std::string_view::npos || pattern.find (".-") != std::string_view::npos
+			|| pattern.find ("-.") != std::string_view::npos)
+			return false;
+		for (char ch : pattern)
+		{
+			if ((ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch == '.' || ch == '-'
+				|| ch == '*' || ch == '_' || ch == '~' || (ch >= 'A' && ch <= 'Z'))
+				continue;
+			return false;
+		}
+		return true;
+	}
+
+	bool AddressBook::MatchesDeletedPattern (std::string_view pattern, std::string_view name)
+	{
+		// Anchored glob with a single backtrack point per '*'. The pattern is
+		// already bounded at 255 bytes and name at the address-book limit.
+		size_t p = 0, n = 0, star = std::string_view::npos, resume = 0;
+		while (n < name.size ())
+		{
+			if (p < pattern.size () && pattern[p] == name[n])
+			{
+				++p;
+				++n;
+			}
+			else if (p < pattern.size () && pattern[p] == '*')
+			{
+				star = p++;
+				resume = n;
+			}
+			else if (star != std::string_view::npos)
+			{
+				p = star + 1;
+				n = ++resume;
+			}
+			else
+				return false;
+		}
+		while (p < pattern.size () && pattern[p] == '*') ++p;
+		return p == pattern.size ();
+	}
+
+	bool AddressBook::IsDeletedHostLocked (std::string_view name) const
+	{
+		for (const auto & pattern : m_DeletedHosts)
+			if (MatchesDeletedPattern (pattern, name)) return true;
+		return false;
+	}
+
+	bool AddressBook::RemoveDeletedMatchesLocked (std::string_view name)
+	{
+		const auto before = m_DeletedHosts.size ();
+		std::erase_if (m_DeletedHosts, [name] (const std::string & pattern)
+			{ return MatchesDeletedPattern (pattern, name); });
+		return before != m_DeletedHosts.size ();
+	}
+
+	bool AddressBook::SaveDeletedHostsLocked ()
+	{
+		return m_Storage && m_Storage->SaveDeletedHosts (m_DeletedHosts);
+	}
+
+	void AddressBook::LoadDeletedHosts ()
+	{
+		if (!m_Storage) return;
+		std::vector<std::string> loaded;
+		if (!m_Storage->LoadDeletedHosts (loaded)) return;
+		std::lock_guard<std::mutex> l (m_AddressBookMutex);
+		m_DeletedHosts.clear ();
+		for (const auto & raw : loaded)
+		{
+			auto pattern = NormalizeHostName (raw);
+			if (!IsValidDeletedPattern (pattern)) continue;
+			if (std::find (m_DeletedHosts.begin (), m_DeletedHosts.end (), pattern) == m_DeletedHosts.end ())
+				m_DeletedHosts.push_back (std::move (pattern));
+			if (m_DeletedHosts.size () >= 256) break;
+		}
+		if (!m_DeletedHosts.empty ())
+			LogPrint (eLogInfo, "Addressbook: ", m_DeletedHosts.size (), " deleted-host patterns loaded");
 	}
 
 	void detail::AddressLookupRequests::Prune (uint64_t now)
@@ -158,6 +282,8 @@ namespace client
 		bool GetEtag (
 			const i2p::data::IdentHash & subscription, std::string & etag, std::string & lastModified) override;
 		void ResetEtags () override;
+		bool LoadDeletedHosts (std::vector<std::string> & patterns) override;
+		bool SaveDeletedHosts (const std::vector<std::string> & patterns) override;
 
 	private:
 		int LoadFromFile (const std::string & filename,
@@ -165,7 +291,7 @@ namespace client
 
 	private:
 		i2p::fs::HashedStorage storage;
-		std::string etagsPath, indexPath, localPath;
+		std::string etagsPath, indexPath, localPath, deletedPath;
 		bool m_IsPersist = false;
 		std::string m_HostsFile; // file to dump hosts.txt, empty if not used
 		std::unordered_map<i2p::data::IdentHash, std::pair<std::vector<uint8_t>, uint64_t>>
@@ -185,6 +311,7 @@ namespace client
 			// init address files
 			indexPath = i2p::fs::StorageRootPath (storage, "addresses.csv");
 			localPath = i2p::fs::StorageRootPath (storage, "local.csv");
+			deletedPath = i2p::fs::StorageRootPath (storage, "deleted.txt");
 			return true;
 		}
 		return false;
@@ -218,15 +345,26 @@ namespace client
 		}
 
 		f.seekg (0, std::ios::end);
-		size_t len = f.tellg ();
-		if (len < i2p::data::DEFAULT_IDENTITY_SIZE)
+		const auto end = f.tellg ();
+		if (end == std::streampos (-1))
 		{
-			LogPrint (eLogError, "Addressbook: File ", filename, " is too short: ", len);
+			LogPrint (eLogError, "Addressbook: File ", filename, " is unreadable");
+			return nullptr;
+		}
+		const auto length = static_cast<size_t> (static_cast<std::streamoff> (end));
+		if (length < i2p::data::DEFAULT_IDENTITY_SIZE)
+		{
+			LogPrint (eLogError, "Addressbook: File ", filename, " is too short: ", length);
+			return nullptr;
+		}
+		if (length > 64 * 1024)
+		{
+			LogPrint (eLogError, "Addressbook: File ", filename, " is too large: ", length);
 			return nullptr;
 		}
 		f.seekg (0, std::ios::beg);
-		std::vector<uint8_t> buf (len);
-		f.read ((char *)buf.data (), len);
+		std::vector<uint8_t> buf (length);
+		f.read (reinterpret_cast<char *> (buf.data ()), static_cast<std::streamsize> (length));
 		if (!f)
 		{
 			LogPrint (eLogError, "Addressbook: Couldn't read ", filename);
@@ -236,7 +374,7 @@ namespace client
 			std::lock_guard<std::mutex> l (m_FullAddressCacheMutex);
 			m_FullAddressCache.try_emplace (ident, buf, ts);
 		}
-		return std::make_shared<i2p::data::IdentityEx> (buf.data (), len);
+		return std::make_shared<i2p::data::IdentityEx> (buf.data (), length);
 	}
 
 	void AddressBookFilesystemStorage::AddAddress (std::shared_ptr<const i2p::data::IdentityEx> address)
@@ -282,11 +420,10 @@ namespace client
 		if (!f) return -1;
 
 		addresses.clear ();
-		while (!f.eof ())
+		std::string s;
+		while (std::getline (f, s))
 		{
-			std::string s;
-			getline (f, s);
-			if (!s.length ()) continue; // skip empty line
+			if (s.empty ()) continue; // skip empty line
 
 			std::size_t pos = s.find (',');
 			if (pos != std::string::npos)
@@ -298,6 +435,11 @@ namespace client
 				num++;
 			}
 		}
+		if (f.bad ())
+		{
+			LogPrint (eLogError, "Addressbook: I/O error while reading ", filename);
+			return -1;
+		}
 		return num;
 	}
 
@@ -307,7 +449,7 @@ namespace client
 		if (num < 0)
 		{
 			LogPrint (eLogWarning, "Addressbook: Can't open ", indexPath);
-			return 0;
+			return -1;
 		}
 		LogPrint (eLogInfo, "Addressbook: Using index file ", indexPath);
 		LogPrint (eLogInfo, "Addressbook: ", num, " addresses loaded from storage");
@@ -325,57 +467,89 @@ namespace client
 
 	int AddressBookFilesystemStorage::Save (const Addresses & addresses)
 	{
-		if (addresses.empty ())
+		int num = 0;
+		const std::string indexTemp = indexPath + ".tmp";
 		{
-			LogPrint (eLogWarning, "Addressbook: Not saving empty addressbook");
-			return 0;
+			// Replace the index only after a complete write. Truncating the
+			// live file first could leave an empty index after ENOSPC or a
+			// crash, which the loader would then treat as authoritative.
+			std::ofstream f (indexTemp, std::ofstream::out | std::ofstream::trunc); // in text mode
+			if (!f.is_open ())
+			{
+				LogPrint (eLogWarning, "Addressbook: Can't open ", indexTemp);
+				return -1;
+			}
+			for (const auto & it : addresses)
+			{
+				if (it.second->IsValid ())
+				{
+					f << it.first << ",";
+					if (it.second->IsIdentHash ())
+						f << it.second->identHash.ToBase32 ();
+					else
+						f << it.second->blindedPublicKey->ToB33 ();
+					f << std::endl;
+					num++;
+				}
+				else
+					LogPrint (eLogWarning, "Addressbook: Invalid address ", it.first);
+			}
+			if (!f)
+			{
+				LogPrint (eLogWarning, "Addressbook: Could not write ", indexTemp);
+				std::error_code ignored;
+				std::filesystem::remove (indexTemp, ignored);
+				return -1;
+			}
 		}
 
-		int num = 0;
-		{
-			// save index file
-			std::ofstream f (indexPath, std::ofstream::out); // in text mode
-			if (f.is_open ())
-			{
-				for (const auto & it : addresses)
-				{
-					if (it.second->IsValid ())
-					{
-						f << it.first << ",";
-						if (it.second->IsIdentHash ())
-							f << it.second->identHash.ToBase32 ();
-						else
-							f << it.second->blindedPublicKey->ToB33 ();
-						f << std::endl;
-						num++;
-					}
-					else
-						LogPrint (eLogWarning, "Addressbook: Invalid address ", it.first);
-				}
-				LogPrint (eLogInfo, "Addressbook: ", num, " addresses saved");
-			}
-			else
-				LogPrint (eLogWarning, "Addressbook: Can't open ", indexPath);
-		}
 		if (!m_HostsFile.empty ())
 		{
 			// dump full hosts.txt
 			std::ofstream f (m_HostsFile, std::ofstream::out); // in text mode
-			if (f.is_open ())
+			if (!f.is_open ())
 			{
-				for (const auto & it : addresses)
+				LogPrint (eLogWarning, "Addressbook: Can't open ", m_HostsFile);
+				std::error_code ignored;
+				std::filesystem::remove (indexTemp, ignored);
+				return -1;
+			}
+			for (const auto & it : addresses)
+			{
+				std::shared_ptr<const i2p::data::IdentityEx> addr;
+				if (it.second->IsIdentHash ())
 				{
-					std::shared_ptr<const i2p::data::IdentityEx> addr;
-					if (it.second->IsIdentHash ())
-					{
-						addr = GetAddress (it.second->identHash);
-						if (addr) f << it.first << "=" << addr->ToBase64 () << std::endl;
-					}
+					addr = GetAddress (it.second->identHash);
+					if (addr) f << it.first << "=" << addr->ToBase64 () << std::endl;
 				}
 			}
-			else
-				LogPrint (eLogWarning, "Addressbook: Can't open ", m_HostsFile);
+			if (!f)
+			{
+				LogPrint (eLogWarning, "Addressbook: Could not write ", m_HostsFile);
+				std::error_code ignored;
+				std::filesystem::remove (indexTemp, ignored);
+				return -1;
+			}
 		}
+
+		std::error_code renameError;
+		std::filesystem::rename (indexTemp, indexPath, renameError);
+		if (renameError)
+		{
+			// Windows rename does not replace an existing destination.
+			std::error_code ignored;
+			std::filesystem::remove (indexPath, ignored);
+			renameError.clear ();
+			std::filesystem::rename (indexTemp, indexPath, renameError);
+		}
+		if (renameError)
+		{
+			LogPrint (eLogWarning, "Addressbook: Could not replace ", indexPath, ": ", renameError.message ());
+			std::error_code ignored;
+			std::filesystem::remove (indexTemp, ignored);
+			return -1;
+		}
+		LogPrint (eLogInfo, "Addressbook: ", num, " addresses saved");
 
 		return num;
 	}
@@ -412,6 +586,87 @@ namespace client
 			if (!fs_lib::is_regular_file (it->status ())) continue;
 			fs_lib::remove (it->path ());
 		}
+	}
+
+	bool AddressBookFilesystemStorage::LoadDeletedHosts (std::vector<std::string> & patterns)
+	{
+		patterns.clear ();
+		std::error_code sizeError;
+		const auto fileSize = std::filesystem::file_size (deletedPath, sizeError);
+		if (!sizeError && fileSize > 64 * 1024)
+		{
+			LogPrint (eLogWarning, "Addressbook: ", deletedPath, " exceeds 64 KiB; ignored");
+			return false;
+		}
+		std::ifstream f (deletedPath, std::ifstream::in);
+		if (!f.is_open ()) return false;
+		std::string line;
+		size_t lines = 0;
+		while (std::getline (f, line) && lines++ < 4096)
+		{
+			if (!line.empty () && line.back () == '\r') line.pop_back ();
+			auto first = line.find_first_not_of (" \t");
+			if (first == std::string::npos || line[first] == '#') continue;
+			auto last = line.find_last_not_of (" \t");
+			line = line.substr (first, last - first + 1);
+			if (line.empty () || line.size () > 255) continue;
+			if (std::find (patterns.begin (), patterns.end (), line) == patterns.end ())
+				patterns.push_back (line);
+			if (patterns.size () >= 256) break;
+		}
+		if (f.bad ())
+		{
+			LogPrint (eLogWarning, "Addressbook: I/O error while reading ", deletedPath);
+			return false;
+		}
+		return true;
+	}
+
+	bool AddressBookFilesystemStorage::SaveDeletedHosts (const std::vector<std::string> & patterns)
+	{
+		const std::string temporary = deletedPath + ".tmp";
+		{
+			std::ofstream f (temporary, std::ofstream::out | std::ofstream::trunc);
+			if (!f.is_open ())
+			{
+				LogPrint (eLogWarning, "Addressbook: Can't open ", temporary);
+				return false;
+			}
+			f << "# Deleted address-book hosts; one name or wildcard pattern per line.\n";
+			size_t count = 0;
+			size_t written = 0;
+			for (const auto & pattern : patterns)
+			{
+				if (count++ >= 256 || pattern.empty () || pattern.size () > 255) continue;
+				if (written + pattern.size () + 1 > 64 * 1024 - 128) break;
+				f << pattern << '\n';
+				written += pattern.size () + 1;
+			}
+			if (!f)
+			{
+				LogPrint (eLogWarning, "Addressbook: Could not write ", temporary);
+				std::error_code ignored;
+				std::filesystem::remove (temporary, ignored);
+				return false;
+			}
+		}
+		std::error_code renameError;
+		std::filesystem::rename (temporary, deletedPath, renameError);
+		if (renameError)
+		{
+			std::error_code ignored;
+			std::filesystem::remove (deletedPath, ignored);
+			renameError.clear ();
+			std::filesystem::rename (temporary, deletedPath, renameError);
+		}
+		if (renameError)
+		{
+			LogPrint (eLogWarning, "Addressbook: Could not replace ", deletedPath, ": ", renameError.message ());
+			std::error_code ignored;
+			std::filesystem::remove (temporary, ignored);
+			return false;
+		}
+		return true;
 	}
 
 	void AddressBookFilesystemStorage::CleanUpCache ()
@@ -481,8 +736,9 @@ namespace client
 		return false;
 	}
 
-	AddressBook::AddressBook ()
-		: m_IsLoaded (false)
+	AddressBook::AddressBook (std::unique_ptr<AddressBookStorage> storage)
+		: m_Storage (std::move (storage))
+		, m_IsLoaded (false)
 		, m_NumRetries (0)
 		, m_DefaultSubscription (nullptr)
 		, m_SubscriptionsUpdateTimer (nullptr)
@@ -502,6 +758,7 @@ namespace client
 		{
 			if (!m_Storage) m_Storage = std::make_unique<AddressBookFilesystemStorage> ();
 			m_Storage->Init ();
+			LoadDeletedHosts ();
 			LoadHosts (); /* try storage, then hosts.txt, then download */
 			StartSubscriptions ();
 			StartLookups ();
@@ -554,7 +811,10 @@ namespace client
 		}
 		if (m_Storage)
 		{
-			m_Storage->Save (m_Addresses);
+			// Do not materialise an empty index when no index existed at
+			// startup. Otherwise a clean shutdown would make an empty
+			// addresses.csv authoritative and permanently mask hosts.txt.
+			if (m_IsLoaded) m_Storage->Save (m_Addresses);
 			m_Storage.reset ();
 		}
 		m_DefaultSubscription = nullptr;
@@ -568,6 +828,8 @@ namespace client
 		// names are ASCII case-insensitive; base64 destinations are not and
 		// are parsed from the original spelling below.
 		std::string normalized = NormalizeHostName (address);
+		// RFC 9476: .i2p.alt is a lookup-only alias for .i2p.
+		if (HasSuffixIgnoreCase (normalized, ".i2p.alt")) normalized.resize (normalized.size () - 4);
 		if (normalized.ends_with (".b32.i2p"))
 		{
 			auto addr = std::make_shared<const Address> (normalized.substr (0, normalized.size () - 8));
@@ -577,6 +839,8 @@ namespace client
 		{
 			if (!m_IsEnabled) return nullptr;
 			auto addr = FindAddress (normalized);
+			if (!addr && normalized.size () > 8 && normalized.compare (0, 4, "www.") == 0)
+				addr = FindAddress (normalized.substr (4)); // Java www. fallback, local only
 			if (!addr) LookupAddress (normalized); // TODO:
 			return addr;
 		}
@@ -623,6 +887,11 @@ namespace client
 		// original spelling.
 		auto key = NormalizeHostName (address);
 		std::lock_guard<std::mutex> l (m_AddressBookMutex);
+		if (IsDeletedHostLocked (key))
+		{
+			LogPrint (eLogInfo, "Addressbook: Refusing blocked host ", address);
+			return;
+		}
 		auto pos = jump.find (".b32.i2p");
 		if (pos != std::string::npos)
 		{
@@ -642,11 +911,204 @@ namespace client
 			else
 				LogPrint (eLogError, "Addressbook: Malformed address ", jump);
 		}
+		if (m_Storage) m_Storage->Save (m_Addresses);
 	}
 
 	void AddressBook::InsertFullAddress (std::shared_ptr<const i2p::data::IdentityEx> address)
 	{
 		if (m_Storage) m_Storage->AddAddress (address);
+	}
+
+	std::vector<AddressBookEntry> AddressBook::GetEntries (size_t limit)
+	{
+		if (!limit) limit = 200;
+		limit = std::min<size_t> (limit, 1000);
+		std::lock_guard<std::mutex> l (m_AddressBookMutex);
+		std::vector<AddressBookEntry> entries;
+		entries.reserve (std::min (limit, m_Addresses.size ()));
+		for (const auto & [name, address] : m_Addresses)
+		{
+			if (entries.size () >= limit) break;
+			if (!address || !address->IsValid ()) continue;
+			AddressBookEntry entry;
+			entry.name = name;
+			entry.destination = address->ToBase32 ();
+			entry.blinded = !address->IsIdentHash ();
+			if (!entry.destination.empty ()) entries.push_back (std::move (entry));
+		}
+		return entries;
+	}
+
+	std::vector<std::string> AddressBook::GetDeletedHosts (size_t limit)
+	{
+		if (!limit) limit = 200;
+		limit = std::min<size_t> (limit, 1000);
+		std::lock_guard<std::mutex> l (m_AddressBookMutex);
+		std::vector<std::string> result;
+		result.reserve (std::min (limit, m_DeletedHosts.size ()));
+		for (const auto & pattern : m_DeletedHosts)
+		{
+			if (result.size () >= limit) break;
+			result.push_back (pattern);
+		}
+		return result;
+	}
+
+	AddressBookMutationResult AddressBook::BlockAddress (std::string_view name)
+	{
+		auto cleaned = boost::algorithm::trim_copy (std::string (name));
+		if (cleaned.empty () || cleaned.size () > 255) return AddressBookMutationResult::InvalidName;
+		auto key = NormalizeHostName (cleaned);
+		if (!IsValidDeletedPattern (key)) return AddressBookMutationResult::InvalidName;
+		std::lock_guard<std::mutex> l (m_AddressBookMutex);
+		if (!m_Storage) return AddressBookMutationResult::Unavailable;
+		if (std::find (m_DeletedHosts.begin (), m_DeletedHosts.end (), key) != m_DeletedHosts.end ())
+			return AddressBookMutationResult::Ok;
+		// A wildcard may already cover this name. Record the exact pattern too
+		// so the blocked list can unblock this specific name without deleting
+		// the wildcard.
+		if (m_DeletedHosts.size () >= 256) return AddressBookMutationResult::Unavailable;
+		m_DeletedHosts.push_back (key);
+		if (!SaveDeletedHostsLocked ())
+		{
+			m_DeletedHosts.pop_back ();
+			return AddressBookMutationResult::Unavailable;
+		}
+		LogPrint (eLogInfo, "Addressbook: Blocked ", key);
+		return AddressBookMutationResult::Ok;
+	}
+
+	AddressBookMutationResult AddressBook::UnblockAddress (std::string_view name)
+	{
+		auto cleaned = boost::algorithm::trim_copy (std::string (name));
+		if (cleaned.empty () || cleaned.size () > 255) return AddressBookMutationResult::InvalidName;
+		auto key = NormalizeHostName (cleaned);
+		std::lock_guard<std::mutex> l (m_AddressBookMutex);
+		if (!m_Storage) return AddressBookMutationResult::Unavailable;
+		auto before = m_DeletedHosts;
+		auto it = std::find (m_DeletedHosts.begin (), m_DeletedHosts.end (), key);
+		if (it == m_DeletedHosts.end ()) return AddressBookMutationResult::NotFound;
+		m_DeletedHosts.erase (it);
+		if (!SaveDeletedHostsLocked ())
+		{
+			m_DeletedHosts = std::move (before);
+			return AddressBookMutationResult::Unavailable;
+		}
+		LogPrint (eLogInfo, "Addressbook: Unblocked ", key);
+		return AddressBookMutationResult::Ok;
+	}
+
+	AddressBookMutationResult AddressBook::AddAddress (
+		std::string_view name, std::string_view destination, bool replace)
+	{
+		if (!IsValidHostName (name)) return AddressBookMutationResult::InvalidName;
+		if (destination.empty () || destination.size () > 1024)
+			return AddressBookMutationResult::InvalidDestination;
+		auto identity = std::make_shared<i2p::data::IdentityEx> ();
+		if (!identity->FromBase64 (std::string (destination)))
+			return AddressBookMutationResult::InvalidDestination;
+		const auto key = NormalizeHostName (name);
+		const auto hash = identity->GetIdentHash ();
+
+		std::lock_guard<std::mutex> l (m_AddressBookMutex);
+		if (!m_Storage) return AddressBookMutationResult::Unavailable;
+		auto it = m_Addresses.find (key);
+		if (it != m_Addresses.end () && it->second)
+		{
+			if (it->second->IsIdentHash () && it->second->identHash == hash)
+			{
+				if (RemoveDeletedMatchesLocked (key) && !SaveDeletedHostsLocked ())
+					LogPrint (eLogWarning, "Addressbook: Could not persist cleared deleted-host pattern for ", key);
+				return AddressBookMutationResult::Ok;
+			}
+			if (!replace) return AddressBookMutationResult::Exists;
+		}
+
+		std::shared_ptr<Address> previous = it != m_Addresses.end () ? it->second : nullptr;
+		m_Storage->AddAddress (identity);
+		m_Addresses[key] = std::make_shared<Address> (hash);
+		if (m_Storage->Save (m_Addresses) < 0)
+		{
+			if (previous)
+				m_Addresses[key] = previous;
+			else
+				m_Addresses.erase (key);
+			// Do not leave an identity file orphaned when the index write
+			// failed, unless another name already references it.
+			bool referenced = false;
+			for (const auto & [unused, address] : m_Addresses)
+				if (address && address->IsIdentHash () && address->identHash == hash)
+				{
+					referenced = true;
+					break;
+				}
+			if (!referenced) m_Storage->RemoveAddress (hash);
+			return AddressBookMutationResult::Unavailable;
+		}
+		if (previous && previous->IsIdentHash () && previous->identHash != hash)
+		{
+			bool referenced = false;
+			for (const auto & [unused, address] : m_Addresses)
+				if (address && address->IsIdentHash () && address->identHash == previous->identHash)
+				{
+					referenced = true;
+					break;
+				}
+			if (!referenced) m_Storage->RemoveAddress (previous->identHash);
+		}
+		if (RemoveDeletedMatchesLocked (key) && !SaveDeletedHostsLocked ())
+			LogPrint (eLogWarning, "Addressbook: Could not persist cleared deleted-host pattern for ", key);
+		LogPrint (eLogInfo, "Addressbook: Added ", key, " -> ", hash.ToBase32 ());
+		return AddressBookMutationResult::Ok;
+	}
+
+	AddressBookMutationResult AddressBook::RemoveAddress (std::string_view name)
+	{
+		// Removal must also work for blinded (.b33.i2p) entries that were
+		// learned from subscriptions and therefore are not valid ADD targets.
+		if (name.empty () || name.size () > 255) return AddressBookMutationResult::InvalidName;
+		const auto key = NormalizeHostName (name);
+		std::lock_guard<std::mutex> l (m_AddressBookMutex);
+		if (!m_Storage) return AddressBookMutationResult::Unavailable;
+		auto it = m_Addresses.find (key);
+		if (it == m_Addresses.end ()) return AddressBookMutationResult::NotFound;
+		auto previous = it->second;
+		auto previousDeleted = m_DeletedHosts;
+		const bool alreadyBlocked = IsDeletedHostLocked (key);
+		if (!alreadyBlocked)
+		{
+			if (m_DeletedHosts.size () >= 256) return AddressBookMutationResult::Unavailable;
+			m_DeletedHosts.push_back (key);
+			if (!SaveDeletedHostsLocked ())
+			{
+				m_DeletedHosts = std::move (previousDeleted);
+				return AddressBookMutationResult::Unavailable;
+			}
+		}
+		m_Addresses.erase (it);
+		if (m_Storage->Save (m_Addresses) < 0)
+		{
+			m_Addresses[key] = previous;
+			if (!alreadyBlocked)
+			{
+				m_DeletedHosts = std::move (previousDeleted);
+				SaveDeletedHostsLocked ();
+			}
+			return AddressBookMutationResult::Unavailable;
+		}
+		if (previous && previous->IsIdentHash ())
+		{
+			bool referenced = false;
+			for (const auto & [unused, address] : m_Addresses)
+				if (address && address->IsIdentHash () && address->identHash == previous->identHash)
+				{
+					referenced = true;
+					break;
+				}
+			if (!referenced) m_Storage->RemoveAddress (previous->identHash);
+		}
+		LogPrint (eLogInfo, "Addressbook: Removed ", key);
+		return AddressBookMutationResult::Ok;
 	}
 
 	std::shared_ptr<const i2p::data::IdentityEx> AddressBook::GetFullAddress (const std::string & address)
@@ -659,13 +1121,16 @@ namespace client
 	void AddressBook::LoadHosts ()
 	{
 		if (!m_Storage) return;
-		if (m_Storage->Load (m_Addresses) > 0)
+		const int indexed = m_Storage->Load (m_Addresses);
+		if (indexed >= 0)
 		{
+			// An existing empty index is authoritative: the last entry was
+			// explicitly removed and must not be resurrected from hosts.txt.
 			m_IsLoaded = true;
 			return;
 		}
 
-		// then try hosts.txt
+		// No index yet: try hosts.txt
 		std::ifstream f (i2p::fs::DataDirPath ("hosts.txt"), std::ifstream::in); // in text mode
 		if (f.is_open ())
 		{
@@ -683,24 +1148,37 @@ namespace client
 		int numAddresses = 0;
 		bool incomplete = false;
 		std::string s;
-		while (!f.eof ())
+		while (std::getline (f, s))
 		{
-			getline (f, s);
-
-			if (!s.length () || s[0] == '#') continue; // skip empty or comment line
+			if (s.empty () || s[0] == '#') continue; // skip empty or comment line
 
 			size_t pos = s.find ('=');
 
 			if (pos != std::string::npos)
 			{
+				if (numAddresses >= (int)MAX_SUBSCRIPTION_ENTRIES)
+				{
+					LogPrint (eLogWarning, "Addressbook: Subscription entry limit reached");
+					break;
+				}
 				std::string_view name = std::string_view (s).substr (0, pos++);
 				std::string_view addr = std::string_view (s).substr (pos);
 
 				size_t commentPos = addr.find ('#');
 				if (commentPos != addr.npos) addr = addr.substr (0, commentPos); // remove comments
+				if (!IsValidHostName (name))
+				{
+					LogPrint (eLogWarning, "Addressbook: Invalid subscription host name ", name);
+					continue;
+				}
 				// The map key is the normalised name; the original spelling is
 				// kept in diagnostics (and in the jump-link writer's output).
 				auto key = NormalizeHostName (name);
+				if (is_update && IsDeletedHostLocked (key))
+				{
+					LogPrint (eLogInfo, "Addressbook: Skipping deleted host ", name);
+					continue;
+				}
 				if (key.ends_with (".b32.i2p"))
 				{
 					LogPrint (eLogError, "Addressbook: Skipped adding of b32 address: ", name);
@@ -747,6 +1225,7 @@ namespace client
 			else
 				incomplete = f.eof ();
 		}
+		if (f.bad ()) incomplete = true;
 		LogPrint (eLogInfo, "Addressbook: ", numAddresses, " addresses processed");
 		if (numAddresses > 0)
 		{
@@ -764,12 +1243,12 @@ namespace client
 			if (f.is_open ())
 			{
 				std::string s;
-				while (!f.eof ())
+				while (std::getline (f, s))
 				{
-					getline (f, s);
 					if (s.empty () || s[0] == '#') continue; // skip empty line or comment
 					m_Subscriptions.push_back (std::make_shared<AddressBookSubscription> (*this, s));
 				}
+				if (f.bad ()) LogPrint (eLogError, "Addressbook: I/O error while reading subscriptions.txt");
 				LogPrint (eLogInfo, "Addressbook: ", m_Subscriptions.size (), " subscriptions urls loaded");
 				LogPrint (eLogWarning, "Addressbook: subscriptions.txt usage is deprecated, use config file instead");
 			}
@@ -1045,7 +1524,10 @@ namespace client
 			{
 				auto key = NormalizeHostName (*address);
 				std::lock_guard<std::mutex> l (m_AddressBookMutex);
-				m_Addresses[key] = std::make_shared<Address> (hash);
+				if (IsDeletedHostLocked (key))
+					LogPrint (eLogInfo, "Addressbook: Ignoring blocked lookup response for ", *address);
+				else
+					m_Addresses[key] = std::make_shared<Address> (hash);
 			}
 			else
 				LogPrint (eLogInfo, "AddressBook: Lookup response: ", *address, " not found");
@@ -1158,7 +1640,7 @@ namespace client
 			LogPrint (eLogWarning, "Addressbook: Send HTTP request exception: ", ex.what ());
 			return false;
 		}
-		boost::beast::flat_buffer receiveBuffer;
+		boost::beast::flat_buffer receiveBuffer { MAX_SUBSCRIPTION_BODY };
 		boost::beast::http::response<boost::beast::http::string_body> res;
 		std::future<size_t> receiving
 			= boost::beast::http::async_read (httpStream, receiveBuffer, res, boost::asio::use_future);
@@ -1196,15 +1678,17 @@ namespace client
 		if (boost::iequals (res[boost::beast::http::field::content_encoding], "gzip")
 			|| boost::iequals (res[boost::beast::http::field::content_encoding], "x-i2p-gzip"))
 		{
-			std::stringstream unzipped;
+			std::vector<uint8_t> unzipped (MAX_SUBSCRIPTION_BODY);
 			i2p::data::GzipInflator inflator;
-			inflator.Inflate ((const uint8_t *)res.body ().data (), res.body ().size (), unzipped);
-			if (unzipped.fail ())
+			size_t unzippedLen = 0;
+			if (!inflator.InflateChecked ((const uint8_t *)res.body ().data (), res.body ().size (),
+					unzipped.data (), unzipped.size (), unzippedLen))
 			{
 				LogPrint (eLogError, "Addressbook: Can't gunzip http response");
 				return false;
 			}
-			m_Book.LoadHostsFromStream (std::move (unzipped), true);
+			m_Book.LoadHostsFromStream (
+				std::stringstream (std::string (reinterpret_cast<const char *> (unzipped.data ()), unzippedLen)), true);
 		}
 		else
 			m_Book.LoadHostsFromStream (std::stringstream (res.body ()), true);

@@ -13,6 +13,7 @@
 #define ADDRESS_BOOK_H__
 
 #include <string.h>
+#include <cstdint>
 #include <string>
 #include <string_view>
 #include <map>
@@ -74,11 +75,36 @@ namespace client
 
 	// Host names in the address book are case-insensitive: Java lowercases the
 	// name in its naming service and before the ".b32.i2p" check. Returns an
-	// ASCII-lowercase copy suitable as a lookup/insertion key; callers keep the
-	// original spelling for display and replies. Only 'A'-'Z' are folded so the
-	// result does not depend on the process locale, and a b33 label (URL-safe
+	// ASCII-lowercase copy suitable as a lookup/insertion key. The current
+	// administration listing returns that normalized key; diagnostics may keep
+	// the original spelling. Only 'A'-'Z' are folded so the result does not
+	// depend on the process locale, and a b33 label (URL-safe
 	// base64, case-sensitive) is preserved byte-for-byte.
+	bool HasSuffixIgnoreCase (std::string_view value, std::string_view suffix);
+	bool IsI2PHost (std::string_view host);
 	std::string NormalizeHostName (std::string_view name);
+
+	// Local, bounded address-book administration. Names use the ASCII rules
+	// expected by the Java address book; destinations are full base64
+	// identities, never paths, URLs or key filenames.
+	bool IsValidHostName (std::string_view name);
+
+	enum class AddressBookMutationResult : uint8_t
+	{
+		Ok = 0,
+		InvalidName,
+		InvalidDestination,
+		Exists,
+		NotFound,
+		Unavailable
+	};
+
+	struct AddressBookEntry
+	{
+		std::string name;
+		std::string destination; // b32 or b33 label; display-only
+		bool blinded = false;
+	};
 
 	namespace detail
 	{
@@ -127,6 +153,16 @@ namespace client
 		virtual bool GetEtag (const i2p::data::IdentHash & subscription, std::string & etag, std::string & lastModified)
 			= 0;
 		virtual void ResetEtags () = 0;
+
+		// Deleted-host tombstones are a small, read-only-at-startup policy
+		// list. The default implementation keeps custom storages usable; the
+		// filesystem backend persists them in deleted.txt.
+		virtual bool LoadDeletedHosts (std::vector<std::string> & patterns) { (void) patterns; return false; }
+		virtual bool SaveDeletedHosts (const std::vector<std::string> & patterns)
+		{
+			(void) patterns;
+			return true;
+		}
 	};
 
 	class AddressBookSubscription;
@@ -134,7 +170,7 @@ namespace client
 	class AddressBook
 	{
 	public:
-		AddressBook ();
+		explicit AddressBook (std::unique_ptr<AddressBookStorage> storage = nullptr);
 		~AddressBook ();
 		void Start ();
 		void ResetTimers (); // after the shared local destination is replaced
@@ -148,6 +184,20 @@ namespace client
 		void InsertFullAddress (std::shared_ptr<const i2p::data::IdentityEx> address);
 
 		bool RecordExists (const std::string & address, const std::string & jump);
+
+		// Administrative list/mutation helpers. They copy only names and
+		// public labels; identity files and storage paths never cross the
+		// local administration boundary.
+		std::vector<AddressBookEntry> GetEntries (size_t limit);
+		AddressBookMutationResult AddAddress (
+			std::string_view name, std::string_view destination, bool replace);
+		AddressBookMutationResult RemoveAddress (std::string_view name);
+		// Deleted-host tombstones: subscription merges must not resurrect a
+		// name the user removed. Patterns are bounded, ASCII-only names with
+		// optional '*' wildcards; an explicit Add wins and clears a match.
+		std::vector<std::string> GetDeletedHosts (size_t limit);
+		AddressBookMutationResult BlockAddress (std::string_view name);
+		AddressBookMutationResult UnblockAddress (std::string_view name);
 
 		bool LoadHostsFromStream (std::istream && f, bool is_update);
 		void DownloadComplete (bool success, const i2p::data::IdentHash & subscription, const std::string & etag,
@@ -167,8 +217,15 @@ namespace client
 		void StopSubscriptions ();
 
 		void LoadHosts ();
+		void LoadDeletedHosts ();
 		void LoadSubscriptions ();
 		void LoadLocal ();
+
+		static bool IsValidDeletedPattern (std::string_view pattern);
+		static bool MatchesDeletedPattern (std::string_view pattern, std::string_view name);
+		bool IsDeletedHostLocked (std::string_view name) const;
+		bool RemoveDeletedMatchesLocked (std::string_view name);
+		bool SaveDeletedHostsLocked ();
 
 		void HandleSubscriptionsUpdateTimer (const boost::system::error_code & ecode);
 
@@ -182,6 +239,7 @@ namespace client
 	private:
 		std::mutex m_AddressBookMutex;
 		AddressBookStorage::Addresses m_Addresses;
+		std::vector<std::string> m_DeletedHosts;
 		std::map<i2p::data::IdentHash, std::shared_ptr<AddressResolver>> m_Resolvers; // local destination->resolver
 		detail::AddressLookupRequests m_Lookups;
 		std::unique_ptr<AddressBookStorage> m_Storage;

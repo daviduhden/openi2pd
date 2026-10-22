@@ -78,6 +78,7 @@ function(i2pd_add_test name)
 endfunction()
 
 set(I2PD_TESTS
+  test-addressbook-admin
   test-rng-seed
   test-runnableservice-lifecycle
   test-transport-connector

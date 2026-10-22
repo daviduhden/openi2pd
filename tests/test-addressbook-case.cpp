@@ -56,6 +56,15 @@ void TestNormalizeHostName ()
 	assert (b33.size () > i2p::client::B33_ADDRESS_THRESHOLD);
 	assert (NormalizeHostName (b33 + ".I2P") == b33 + ".i2p");
 	assert (NormalizeHostName ("SUB." + b33 + ".I2P") == "sub." + b33 + ".i2p");
+	assert (NormalizeHostName (b33 + ".b33.I2P.ALT") == b33 + ".b33.i2p.alt");
+
+	using i2p::client::IsI2PHost;
+	assert (IsI2PHost ("EXAMPLE.I2P"));
+	assert (IsI2PHost ("example.I2P."));
+	assert (IsI2PHost ("site.i2p.alt"));
+	assert (!IsI2PHost ("abc"));
+	assert (!IsI2PHost ("i2p.example.com"));
+	assert (!IsI2PHost ("example.i2p.evil"));
 }
 
 void TestMixedCaseHostsFile ()
@@ -82,6 +91,13 @@ void TestMixedCaseHostsFile ()
 	assert (resolved->identHash == hash);
 	assert (book.RecordExists ("MIXED.EXAMPLE.I2P", Base64 (keys)));
 	assert (book.RecordExists ("mixed.example.i2p", hash.ToBase32 () + ".b32.i2p"));
+
+	// .i2p.alt is a lookup alias, and the Java www. fallback uses the apex
+	// local entry without issuing a second resolver query.
+	auto alt = book.GetAddress ("mIxEd.ExAmPlE.I2P.ALT");
+	assert (alt && alt->identHash == hash);
+	auto www = book.GetAddress ("www.Mixed.Example.I2P");
+	assert (www && www->identHash == hash);
 
 	// Unknown names are still unknown in any spelling.
 	assert (!book.FindAddress ("absent.example.i2p"));
