@@ -9,6 +9,7 @@
  * or Android resources.
  */
 
+#include "I18N_langs.h"
 #include <cassert>
 #include <string>
 #include <string_view>
@@ -42,6 +43,10 @@ int main ()
 	assert (i2p::i18n::ntr ("one item", "%d items", 1) == "one item");
 	assert (i2p::i18n::ntr ("one item", "%d items", 2) == "%d items");
 	assert (i2p::i18n::tr ("%s/%d%%", "x", 5) == "x/5%");
+	// Historical global helpers and qualified UI helpers share one overload set.
+	assert (::tr ("Status") == i2p::i18n::tr ("Status"));
+	assert (::tr ("%s/%d%%", "x", 5) == "x/5%");
+	assert (::ntr ("one item", "%d items", 2, 2) == "2 items");
 
 	// Catalog values remain byte-identical UTF-8, not locale-converted.
 	i2p::i18n::SetLanguage ("es");

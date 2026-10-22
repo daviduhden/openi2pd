@@ -94,6 +94,9 @@ the text crosses a protocol/IPC boundary.
 
 ## Known issues and decisions
 
+- `tr`/`ntr` are canonical `i2p::i18n` templates with global using aliases for
+  historical callers. Keep both forms in `test-i18n-locale`; locale accessor
+  declarations in `I18N_langs.h` include `<memory>` directly.
 - The native catalog is a compile-time `std::map<std::string_view,
   std::string_view>` table; it is installed as code, not runtime `.mo` files.
   Do not add libintl or a runtime locale directory without a packaging and

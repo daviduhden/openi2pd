@@ -11,6 +11,7 @@
 #ifndef __I18N_LANGS_H__
 #define __I18N_LANGS_H__
 
+#include <memory>
 #include "I18N.h"
 
 namespace i2p

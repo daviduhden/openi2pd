@@ -108,8 +108,6 @@ namespace i18n
 			return std::string (buffer.data (), static_cast<std::size_t> (written));
 		}
 	} // detail
-} // i18n
-} // i2p
 
 /**
  * @brief Get translation of string
@@ -156,5 +154,12 @@ std::string ntr (TValue && arg, TValue2 && arg2, int n, TArgs &&... args)
 		i2p::i18n::translate (std::forward<TValue> (arg), std::forward<TValue2> (arg2), std::forward<int> (n)),
 		std::forward<TArgs> (args)...);
 }
+} // i18n
+} // i2p
+
+// Preserve the historical unqualified helpers while exposing the namespace
+// used by standalone UI consumers. These are the same overload sets.
+using i2p::i18n::tr;
+using i2p::i18n::ntr;
 
 #endif // __I18N_H__
