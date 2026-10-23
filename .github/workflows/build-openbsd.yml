@@ -38,7 +38,7 @@ jobs:
           copyback: true
           prepare: |
             set -eu
-            pkg_add cmake ninja boost miniupnpc ncurses
+            pkg_add cmake ninja boost miniupnpc ncurses llvm libcxx
           run: |
             set -eu
             cmake -S build -B build-output -G Ninja \
