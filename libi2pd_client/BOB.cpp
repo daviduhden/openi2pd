@@ -53,47 +53,81 @@ namespace client
 
 	void BOBI2PInboundTunnel::Start ()
 	{
+		if (!m_Stopped.exchange (false, std::memory_order_acq_rel)) return;
 		m_Acceptor.listen ();
 		Accept ();
 	}
 
 	void BOBI2PInboundTunnel::Stop ()
 	{
-		m_Acceptor.close ();
+		std::vector<std::shared_ptr<AddressReceiver>> receivers;
+		{
+			std::lock_guard lock (m_AdmissionMutex);
+			if (m_Stopped.exchange (true, std::memory_order_acq_rel)) return;
+			receivers.assign (m_Receivers.begin (), m_Receivers.end ());
+			m_Receivers.clear ();
+		}
+		boost::system::error_code ec;
+		m_Acceptor.cancel (ec);
+		m_Acceptor.close (ec);
+		for (const auto & receiver : receivers)
+			if (receiver && receiver->socket) receiver->socket->close (ec);
 		ClearHandlers ();
 	}
 
 	void BOBI2PInboundTunnel::Accept ()
 	{
+		if (m_Stopped.load (std::memory_order_acquire)) return;
 		auto receiver = std::make_shared<AddressReceiver> ();
 		receiver->socket = std::make_shared<boost::asio::ip::tcp::socket> (GetService ());
-		m_Acceptor.async_accept (
-			*receiver->socket, std::bind (&BOBI2PInboundTunnel::HandleAccept, this, std::placeholders::_1, receiver));
+		{
+			std::lock_guard lock (m_AdmissionMutex);
+			if (m_Stopped.load (std::memory_order_acquire)) return;
+			m_Receivers.insert (receiver);
+		}
+		auto weak = std::weak_ptr<BOBI2PInboundTunnel> (
+			std::static_pointer_cast<BOBI2PInboundTunnel> (I2PService::shared_from_this ()));
+		m_Acceptor.async_accept (*receiver->socket,
+			[weak, receiver] (const boost::system::error_code & ecode)
+			{
+				if (auto self = weak.lock ()) self->HandleAccept (ecode, receiver);
+			});
 	}
 
 	void BOBI2PInboundTunnel::HandleAccept (
 		const boost::system::error_code & ecode, std::shared_ptr<AddressReceiver> receiver)
 	{
-		if (!ecode)
+		if (!ecode && !m_Stopped.load (std::memory_order_acquire))
 		{
 			Accept ();
 			ReceiveAddress (receiver);
 		}
+		else
+			CloseReceiver (receiver);
 	}
 
 	void BOBI2PInboundTunnel::ReceiveAddress (std::shared_ptr<AddressReceiver> receiver)
 	{
+		if (m_Stopped.load (std::memory_order_acquire)) return;
+		auto weak = std::weak_ptr<BOBI2PInboundTunnel> (
+			std::static_pointer_cast<BOBI2PInboundTunnel> (I2PService::shared_from_this ()));
 		receiver->socket->async_read_some (boost::asio::buffer (receiver->buffer + receiver->bufferOffset,
 											   BOB_COMMAND_BUFFER_SIZE - receiver->bufferOffset),
-			std::bind (&BOBI2PInboundTunnel::HandleReceivedAddress, this, std::placeholders::_1, std::placeholders::_2,
-				receiver));
+			[weak, receiver] (const boost::system::error_code & ecode, std::size_t transferred)
+			{
+				if (auto self = weak.lock ()) self->HandleReceivedAddress (ecode, transferred, receiver);
+			});
 	}
 
 	void BOBI2PInboundTunnel::HandleReceivedAddress (const boost::system::error_code & ecode,
 		std::size_t bytes_transferred, std::shared_ptr<AddressReceiver> receiver)
 	{
+		if (m_Stopped.load (std::memory_order_acquire)) return;
 		if (ecode)
+		{
 			LogPrint (eLogError, "BOB: Inbound tunnel read error: ", ecode.message ());
+			CloseReceiver (receiver);
+		}
 		else
 		{
 			receiver->bufferOffset += bytes_transferred;
@@ -110,6 +144,7 @@ namespace client
 				if (!addr)
 				{
 					LogPrint (eLogError, "BOB: Address ", receiver->buffer, " not found");
+					CloseReceiver (receiver);
 					return;
 				}
 				if (addr->IsIdentHash ())
@@ -118,21 +153,38 @@ namespace client
 					if (leaseSet)
 						CreateConnection (receiver, leaseSet);
 					else
+					{
+						auto weak = std::weak_ptr<BOBI2PInboundTunnel> (
+							std::static_pointer_cast<BOBI2PInboundTunnel> (I2PService::shared_from_this ()));
 						GetLocalDestination ()->RequestDestination (addr->identHash,
-							std::bind (&BOBI2PInboundTunnel::HandleDestinationRequestComplete, this,
-								std::placeholders::_1, receiver));
+							[weak, receiver] (std::shared_ptr<i2p::data::LeaseSet> result)
+							{
+								if (auto self = weak.lock ())
+									self->HandleDestinationRequestComplete (std::move (result), receiver);
+							});
+					}
 				}
 				else
+				{
+					auto weak = std::weak_ptr<BOBI2PInboundTunnel> (
+						std::static_pointer_cast<BOBI2PInboundTunnel> (I2PService::shared_from_this ()));
 					GetLocalDestination ()->RequestDestinationWithEncryptedLeaseSet (addr->blindedPublicKey,
-						std::bind (&BOBI2PInboundTunnel::HandleDestinationRequestComplete, this, std::placeholders::_1,
-							receiver));
+						[weak, receiver] (std::shared_ptr<i2p::data::LeaseSet> result)
+						{
+							if (auto self = weak.lock ())
+								self->HandleDestinationRequestComplete (std::move (result), receiver);
+						});
+				}
 			}
 			else
 			{
 				if (receiver->bufferOffset < BOB_COMMAND_BUFFER_SIZE)
 					ReceiveAddress (receiver);
 				else
+				{
 					LogPrint (eLogError, "BOB: Missing inbound address");
+					CloseReceiver (receiver);
+				}
 			}
 		}
 	}
@@ -140,19 +192,51 @@ namespace client
 	void BOBI2PInboundTunnel::HandleDestinationRequestComplete (
 		std::shared_ptr<i2p::data::LeaseSet> leaseSet, std::shared_ptr<AddressReceiver> receiver)
 	{
+		if (m_Stopped.load (std::memory_order_acquire)) return;
 		if (leaseSet)
 			CreateConnection (receiver, leaseSet);
 		else
+		{
 			LogPrint (eLogError, "BOB: LeaseSet for inbound destination not found");
+			CloseReceiver (receiver);
+		}
 	}
 
 	void BOBI2PInboundTunnel::CreateConnection (
 		std::shared_ptr<AddressReceiver> receiver, std::shared_ptr<const i2p::data::LeaseSet> leaseSet)
 	{
-		LogPrint (eLogDebug, "BOB: New inbound connection");
-		auto connection = std::make_shared<I2PTunnelConnection> (shared_from_this (), receiver->socket, leaseSet);
-		AddHandler (connection);
-		connection->I2PConnect (receiver->data, receiver->dataLen);
+		std::shared_ptr<I2PTunnelConnection> connection;
+		{
+			std::lock_guard lock (m_AdmissionMutex);
+			if (!m_Stopped.load (std::memory_order_acquire))
+			{
+				LogPrint (eLogDebug, "BOB: New inbound connection");
+				connection = std::make_shared<I2PTunnelConnection> (shared_from_this (), receiver->socket, leaseSet);
+				AddHandler (connection);
+			}
+			m_Receivers.erase (receiver);
+		}
+		if (connection)
+			connection->I2PConnect (receiver->data, receiver->dataLen);
+		else
+		{
+			boost::system::error_code ec;
+			receiver->socket->close (ec);
+		}
+	}
+
+	void BOBI2PInboundTunnel::CloseReceiver (const std::shared_ptr<AddressReceiver> & receiver)
+	{
+		if (!receiver) return;
+		{
+			std::lock_guard lock (m_AdmissionMutex);
+			m_Receivers.erase (receiver);
+		}
+		if (receiver->socket)
+		{
+			boost::system::error_code ec;
+			receiver->socket->close (ec);
+		}
 	}
 
 	BOBI2POutboundTunnel::BOBI2POutboundTunnel (
@@ -165,11 +249,16 @@ namespace client
 
 	void BOBI2POutboundTunnel::Start ()
 	{
+		if (!m_Stopped.exchange (false, std::memory_order_acq_rel)) return;
 		Accept ();
 	}
 
 	void BOBI2POutboundTunnel::Stop ()
 	{
+		{
+			std::lock_guard lock (m_AdmissionMutex);
+			if (m_Stopped.exchange (true, std::memory_order_acq_rel)) return;
+		}
 		auto localDestination = GetLocalDestination ();
 		if (localDestination) localDestination->StopAcceptingStreams ();
 		ClearHandlers ();
@@ -177,23 +266,38 @@ namespace client
 
 	void BOBI2POutboundTunnel::Accept ()
 	{
+		if (m_Stopped.load (std::memory_order_acquire)) return;
 		auto localDestination = GetLocalDestination ();
 		if (localDestination)
-			localDestination->AcceptStreams (
-				std::bind (&BOBI2POutboundTunnel::HandleAccept, this, std::placeholders::_1));
+		{
+			auto weak = std::weak_ptr<BOBI2POutboundTunnel> (
+				std::static_pointer_cast<BOBI2POutboundTunnel> (I2PService::shared_from_this ()));
+			localDestination->AcceptStreams ([weak] (std::shared_ptr<i2p::stream::Stream> stream)
+				{
+					if (auto self = weak.lock ()) self->HandleAccept (std::move (stream));
+					else if (stream) stream->AsyncClose ();
+				});
+		}
 		else
 			LogPrint (eLogError, "BOB: Local destination not set for server tunnel");
 	}
 
 	void BOBI2POutboundTunnel::HandleAccept (std::shared_ptr<i2p::stream::Stream> stream)
 	{
-		if (stream)
+		std::shared_ptr<BOBI2PTunnelIncomingConnection> conn;
 		{
-			auto conn
-				= std::make_shared<BOBI2PTunnelIncomingConnection> (shared_from_this (), stream, m_Endpoint, m_IsQuiet);
-			AddHandler (conn);
-			conn->Connect ();
+			std::lock_guard lock (m_AdmissionMutex);
+			if (!m_Stopped.load (std::memory_order_acquire) && stream)
+			{
+				conn = std::make_shared<BOBI2PTunnelIncomingConnection> (
+					shared_from_this (), stream, m_Endpoint, m_IsQuiet);
+				AddHandler (conn);
+			}
 		}
+		if (conn)
+			conn->Connect ();
+		else if (stream)
+			stream->AsyncClose ();
 	}
 
 	BOBDestination::BOBDestination (std::shared_ptr<ClientDestination> localDestination, const std::string & nickname,
@@ -637,7 +741,7 @@ namespace client
 
 	void BOBCommandSession::SetkeysCommandHandler (const char * operand, size_t)
 	{
-		LogPrint (eLogDebug, "BOB: setkeys ", operand);
+		LogPrint (eLogDebug, "BOB: setkeys");
 		if (*operand && m_Keys.FromBase64 (operand))
 			SendReplyOK (m_Keys.GetPublic ()->ToBase64 ());
 		else

@@ -29,6 +29,7 @@ death uses channel EOF; do not rely on `PR_SET_PDEATHSIG` as the only check.
 |---|---|---|
 | Transport | `privsep/WindowsIpc.*` | message-mode local pipe, reject remote clients |
 | DACL | `privsep/WindowsIpc.*` | protected user/SYSTEM DACL, no broad Everyone access |
+| Private atomic file | `libi2pd/FS.*` | protected user/SYSTEM DACL, reparse rejection, write-through replacement |
 | Peer identity | `privsep/WindowsIpc.*` | SID/session match; lookup failure rejects |
 | Process policy | `privsep/WindowsIpc.*`, `Worker.*` | suspended spawn, no inherited handles, Job Object, restricted token |
 | AppContainer | `privsep/WindowsIpc.*` | probe only; fail closed if unavailable |

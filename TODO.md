@@ -259,6 +259,11 @@ they do not establish 2.14.0 compatibility. See NET-026.
 
 ## C. Security and concurrency
 
+- [ ] **[SEC-026]** Harden BOB and I2PControl secrets, asynchronous lifetime and bounded control-plane admission.
+  - Priority P0/P1; Status Implemented / static; BOB secret operands are redacted and tunnel callbacks use weak ownership plus stopped-state gates. I2PControl uses bounded TLS admission, phase deadlines, asynchronous bounded HTTP reads, token/authentication quotas, non-loopback default-password refusal and atomic private PEM replacement.
+  - Files: `libi2pd_client/BOB.*`, `daemon/I2PControl.*`, `libi2pd/FS.*`, `build/CMakeLists.txt`, `tests/check-control-security.cmake`, security docs and owning skills.
+  - Validation: `control-security-static` prepared; manual CI compilation, security/memory labels, TLS slow-client/fragmentation, BOB STOP/CLEAR ASan/UBSan/TSan and POSIX/Windows file-authority tests pending.
+
 - [x] **[SEC-001]** Fix base64 lazy-table race and invalid alphabet/padding acceptance.
   - Status Implemented; `tests/test-base-64` passed on Linux.
 - [x] **[SEC-002]** Harden SU3 header parsing and bounded allocations in reseed.

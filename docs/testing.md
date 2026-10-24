@@ -139,6 +139,13 @@ references, reference links, orphan references and LICENSE headers. It does
 not execute a skill, build a target or call an external validator; manual CI
 execution remains pending.
 
+The compile-free `control-security-static` contract pins BOB secret redaction,
+weak callback ownership, receiver/admission shutdown seams, I2PControl
+connection/token/deadline bounds, fragmented HTTP classification and private
+atomic PEM replacement (including POSIX mode and Windows DACL/reparse seams).
+It does not replace TLS slow-client, BOB teardown, sanitizer or platform
+filesystem execution in manual CI.
+
 ### Manual CI execution matrix
 
 `.github/workflows/build.yml` now runs, on `workflow_dispatch` only:

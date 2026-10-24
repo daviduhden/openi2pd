@@ -18,7 +18,11 @@
 #include <thread>
 #include <memory>
 #include <array>
+#include <chrono>
+#include <functional>
+#include <mutex>
 #include <string>
+#include <string_view>
 #include <sstream>
 #include <map>
 #include <set>
@@ -34,6 +38,11 @@ namespace client
 	const size_t I2P_CONTROL_MAX_REQUEST_SIZE = 1024;
 	typedef std::array<char, I2P_CONTROL_MAX_REQUEST_SIZE> I2PControlBuffer;
 	const size_t I2P_CONTROL_MAX_CONTENT_LENGTH = 65536; // sanity limit on declared HTTP Content-Length
+	const size_t I2P_CONTROL_MAX_CONNECTIONS = 64;
+	const size_t I2P_CONTROL_MAX_TOKENS = 128;
+	const size_t I2P_CONTROL_MAX_AUTHENTICATIONS_PER_MINUTE = 32;
+	const std::chrono::seconds I2P_CONTROL_OPERATION_TIMEOUT { 15 };
+	constexpr std::string_view I2P_CONTROL_DEFAULT_PASSWORD { "itoopie" };
 
 	const uint64_t I2P_CONTROL_TOKEN_LIFETIME = 60 * 60; // 1 hour, in seconds
 	const long I2P_CONTROL_CERTIFICATE_VALIDITY = 365 * 10; // 10 years
@@ -50,17 +59,35 @@ namespace client
 		void Stop ();
 
 	private:
+		struct ConnectionRegistry
+		{
+			std::mutex mutex;
+			std::map<uint64_t, std::function<void ()>> close;
+			std::atomic_size_t active { 0 };
+			uint64_t nextID { 0 };
+		};
+
 		void Run ();
 		void Accept ();
 		template <typename ssl_socket>
 		void HandleAccepted (const boost::system::error_code & ecode, std::shared_ptr<ssl_socket> newSocket);
-		template <typename ssl_socket> void Handshake (std::shared_ptr<ssl_socket> socket);
-		template <typename ssl_socket> void ReadRequest (std::shared_ptr<ssl_socket> socket);
+		template <typename ssl_socket> void Handshake (std::shared_ptr<ssl_socket> socket,
+			std::shared_ptr<boost::asio::steady_timer> deadline, std::shared_ptr<void> connection);
+		template <typename ssl_socket> void ReadRequest (std::shared_ptr<ssl_socket> socket,
+			std::shared_ptr<boost::asio::steady_timer> deadline, std::shared_ptr<void> connection);
 		template <typename ssl_socket>
 		void HandleRequestReceived (const boost::system::error_code & ecode, size_t bytes_transferred,
-			std::shared_ptr<ssl_socket> socket, std::shared_ptr<I2PControlBuffer> buf);
+			std::shared_ptr<ssl_socket> socket, std::shared_ptr<I2PControlBuffer> buf,
+			std::shared_ptr<boost::asio::steady_timer> deadline, std::shared_ptr<void> connection);
+		template <typename ssl_socket> void ProcessRequest (std::shared_ptr<ssl_socket> socket,
+			std::shared_ptr<std::string> request, bool isHtml, std::shared_ptr<boost::asio::steady_timer> deadline,
+			std::shared_ptr<void> connection);
+		template <typename ssl_socket> void HandleHttpRequest (std::shared_ptr<ssl_socket> socket,
+			std::shared_ptr<std::string> request, std::shared_ptr<boost::asio::steady_timer> deadline,
+			std::shared_ptr<void> connection);
 		template <typename ssl_socket>
-		void SendResponse (std::shared_ptr<ssl_socket> socket, std::ostringstream & response, bool isHtml);
+		void SendResponse (std::shared_ptr<ssl_socket> socket, std::ostringstream & response, bool isHtml,
+			std::shared_ptr<boost::asio::steady_timer> deadline, std::shared_ptr<void> connection);
 
 		void CreateCertificate (const char * crt_path, const char * key_path);
 
@@ -97,6 +124,10 @@ namespace client
 		boost::asio::ssl::context m_SSLContext;
 		boost::asio::steady_timer m_ShutdownTimer;
 		std::map<std::string, uint64_t> m_Tokens; // token -> expiration time in seconds since epoch
+		uint64_t m_AuthenticationWindowStart { 0 };
+		size_t m_AuthenticationsInWindow { 0 };
+		std::shared_ptr<ConnectionRegistry> m_Connections { std::make_shared<ConnectionRegistry> () };
+		void PurgeExpiredTokens (uint64_t now);
 		bool IsValidToken (const std::string & token);
 
 		std::map<std::string, MethodHandler> m_MethodHandlers;

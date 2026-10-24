@@ -3207,3 +3207,27 @@ OpenBSD or Java/C++ dynamic test was run.
   documentation records static implementation, not compilation/test evidence.
 - Source/diff review, artifact inspection and git diff --check only; no build,
   test, project validator or workflow dispatch ran during publication review.
+
+## 2026-10-24 — Static BOB and I2PControl security hardening
+
+- SEC-026 removes BOB `setkeys` and I2PControl password values from logs.
+  BOB tunnel callbacks now use weak derived ownership, registered pending
+  receivers and atomic stopped/admission gates across accept, read, LeaseSet
+  lookup and stream delivery; late streams close instead of reviving stopped
+  tunnels or publishing handlers after drain.
+- I2PControl caps active TLS connections, tokens and successful authentication
+  issuance; purges expiry before use; rejects empty passwords and the public
+  default password on non-loopback TCP listeners. TLS handshake, bounded HTTP
+  header/body reads and response writes now carry cancellable deadlines and no
+  blocking read remains on the event-loop thread.
+- Certificate/key PEM is serialized in memory and committed with
+  `AtomicWritePrivate`: POSIX uses mode 0600/no-follow and Windows uses a
+  protected user/SYSTEM DACL plus reparse-target rejection, eliminating
+  chmod-then-reopen. Win32 hostile-parent traversal and two-file pair
+  transactionality remain residual. Added the compile-free
+  `control-security-static` contract and updated AGENTS/skills with reusable
+  secret-redaction, callback-lifetime, admission/deadline and private-file rules.
+- Status: Implemented / static; Pending CI compilation; Pending CI tests. No
+  compiler, test runner, project validator, workflow dispatch, commit or push
+  was used. Manual security/memory, ASan/UBSan/TSan, slow-client, BOB teardown
+  and POSIX/Windows file-authority validation remains required.

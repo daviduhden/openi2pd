@@ -92,6 +92,11 @@ build.
 
 ## Known issues and decisions
 
+- Windows `libi2pd` exposes `advapi32` transitively because `FS.cpp`
+  constructs protected DACLs for `AtomicWritePrivate`; static tools/tests must
+  resolve those imports. `build-system-static` pins the dependency, while
+  MSYS2/MSVC link validation remains pending manual CI.
+
 - `test-datagram-receiver-lifecycle` and `test-netdb-stop-admission` join the
   full manual CTest/sanitizer inventory with i2p/security/memory labels. The
   NetDb fixture opens admission with no worker, avoiding reseed/network startup;

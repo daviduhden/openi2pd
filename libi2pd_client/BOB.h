@@ -14,8 +14,11 @@
 
 #include <inttypes.h>
 #include <thread>
+#include <atomic>
 #include <memory>
 #include <map>
+#include <mutex>
+#include <set>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -158,9 +161,13 @@ namespace client
 
 		void CreateConnection (
 			std::shared_ptr<AddressReceiver> receiver, std::shared_ptr<const i2p::data::LeaseSet> leaseSet);
+		void CloseReceiver (const std::shared_ptr<AddressReceiver> & receiver);
 
 	private:
 		boost::asio::ip::tcp::acceptor m_Acceptor;
+		std::atomic_bool m_Stopped { true };
+		std::mutex m_AdmissionMutex;
+		std::set<std::shared_ptr<AddressReceiver>, std::owner_less<std::shared_ptr<AddressReceiver>>> m_Receivers;
 	};
 
 	class BOBI2POutboundTunnel : public BOBI2PTunnel
@@ -181,6 +188,8 @@ namespace client
 	private:
 		boost::asio::ip::tcp::endpoint m_Endpoint;
 		bool m_IsQuiet;
+		std::atomic_bool m_Stopped { true };
+		std::mutex m_AdmissionMutex;
 	};
 
 	class BOBDestination

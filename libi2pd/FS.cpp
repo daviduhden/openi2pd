@@ -23,8 +23,9 @@
 #include <sys/stat.h>
 
 #ifdef _WIN32
-#include <shlobj.h>
 #include <windows.h>
+#include <sddl.h>
+#include <shlobj.h>
 #include <codecvt>
 #else
 #include <fcntl.h>
@@ -45,6 +46,34 @@ namespace i2p
 namespace fs
 {
 	static std::mutex g_AtomicWriteMutex;
+
+#ifdef _WIN32
+	bool BuildPrivateFileSecurity (PSECURITY_DESCRIPTOR & descriptor)
+	{
+		HANDLE token = nullptr;
+		if (!OpenProcessToken (GetCurrentProcess (), TOKEN_QUERY, &token)) return false;
+		auto closeToken = i2p::modern::ScopeExit ([&] { CloseHandle (token); });
+		DWORD size = 0;
+		GetTokenInformation (token, TokenUser, nullptr, 0, &size);
+		if (GetLastError () != ERROR_INSUFFICIENT_BUFFER || !size) return false;
+		std::vector<BYTE> buffer (size);
+		if (!GetTokenInformation (token, TokenUser, buffer.data (), size, &size)) return false;
+		auto * user = reinterpret_cast<TOKEN_USER *> (buffer.data ());
+		LPWSTR sid = nullptr;
+		if (!ConvertSidToStringSidW (user->User.Sid, &sid)) return false;
+		auto freeSid = i2p::modern::ScopeExit ([&] { LocalFree (sid); });
+		const std::wstring sddl = L"D:P(A;;FA;;;" + std::wstring (sid) + L")(A;;FA;;;SY)";
+		if (!ConvertStringSecurityDescriptorToSecurityDescriptorW (
+				sddl.c_str (), SDDL_REVISION_1, &descriptor, nullptr))
+			return false;
+		BOOL present = FALSE, defaulted = FALSE;
+		PACL dacl = nullptr;
+		SECURITY_DESCRIPTOR_CONTROL control = 0;
+		DWORD revision = 0;
+		return GetSecurityDescriptorDacl (descriptor, &present, &dacl, &defaulted) && present && dacl
+			&& GetSecurityDescriptorControl (descriptor, &control, &revision) && (control & SE_DACL_PROTECTED);
+	}
+#endif
 	std::string appName = "i2pd";
 	std::string dataDir = "";
 	std::string certsDir = "";
@@ -276,13 +305,40 @@ namespace fs
 		return true;
 	}
 
-	bool AtomicWrite (std::string_view path, std::string_view contents)
+	bool AtomicWriteImpl (std::string_view path, std::string_view contents, bool privateWrite)
 	{
 		std::lock_guard writerLock (g_AtomicWriteMutex);
 		static std::atomic<uint64_t> sequence { 0 };
 		const fs_lib::path target { std::string (path) };
 		const auto parent = target.parent_path ();
 		if (target.empty () || target.filename ().empty ()) return false;
+#ifdef _WIN32
+		PSECURITY_DESCRIPTOR privateDescriptor = nullptr;
+		auto freeDescriptor = i2p::modern::ScopeExit (
+			[&]
+			{
+				if (privateDescriptor) LocalFree (privateDescriptor);
+			});
+		SECURITY_ATTRIBUTES privateAttributes { sizeof (SECURITY_ATTRIBUTES), nullptr, FALSE };
+		if (privateWrite)
+		{
+			if (!BuildPrivateFileSecurity (privateDescriptor))
+			{
+				LogPrint (eLogError, "FS: Can't build private file DACL");
+				return false;
+			}
+			privateAttributes.lpSecurityDescriptor = privateDescriptor;
+			const DWORD attributes = GetFileAttributesW (target.c_str ());
+			if (attributes != INVALID_FILE_ATTRIBUTES
+				&& (attributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)))
+			{
+				LogPrint (eLogError, "FS: Refusing private replacement of directory/reparse target ", target.string ());
+				return false;
+			}
+		}
+#else
+		(void)privateWrite;
+#endif
 		bool written = false;
 		for (unsigned attempt = 0; attempt < 16 && !written; ++attempt)
 		{
@@ -295,7 +351,8 @@ namespace fs
 			temporary += ".tmp-" + std::to_string (process) + "-" + std::to_string (++sequence);
 #ifdef _WIN32
 			HANDLE file = CreateFileW (
-				temporary.c_str (), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_TEMPORARY, nullptr);
+				temporary.c_str (), GENERIC_WRITE, 0, privateWrite ? &privateAttributes : nullptr, CREATE_NEW,
+				FILE_ATTRIBUTE_TEMPORARY | (privateWrite ? FILE_FLAG_OPEN_REPARSE_POINT : 0), nullptr);
 			if (file == INVALID_HANDLE_VALUE)
 			{
 				if (GetLastError () == ERROR_FILE_EXISTS) continue;
@@ -408,6 +465,7 @@ namespace fs
 				offset += static_cast<size_t> (count);
 			}
 			if (written && ::fsync (fd) != 0) written = false;
+			if (written && privateWrite && ::fchmod (fd, S_IRUSR | S_IWUSR) != 0) written = false;
 			if (::close (fd) != 0) written = false;
 			fileOpen = false;
 			if (written && ::renameat (dirfd, temporaryName.c_str (), dirfd, targetName.c_str ()) != 0)
@@ -432,6 +490,16 @@ namespace fs
 		}
 		if (!written) LogPrint (eLogError, "FS: Unable to allocate temporary file for ", target.string ());
 		return written;
+	}
+
+	bool AtomicWrite (std::string_view path, std::string_view contents)
+	{
+		return AtomicWriteImpl (path, contents, false);
+	}
+
+	bool AtomicWritePrivate (std::string_view path, std::string_view contents)
+	{
+		return AtomicWriteImpl (path, contents, true);
 	}
 
 	bool CreateDirectory (const std::string & path)

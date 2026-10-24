@@ -149,6 +149,8 @@ namespace fs
 	 * configured data directory's ownership against concurrent reparse changes.
 	 */
 	bool AtomicWrite (std::string_view path, std::string_view contents);
+	/** AtomicWrite with a protected owner/SYSTEM DACL on Windows and mode 0600 on POSIX. */
+	bool AtomicWritePrivate (std::string_view path, std::string_view contents);
 
 	/**
 	 * @brief Check existence of file

@@ -115,6 +115,20 @@ proposed tracking updates to the coordinator.
 - Preserve copyright, license, SPDX, NOTICE and upstream provenance.
 - Do not weaken `pledge`/`unveil`, cryptographic checks, signature/AEAD
   verification or untrusted-input limits.
+- Never log, format, echo or retain passwords, private keys, seeds, tokens or
+  complete credential-bearing protocol operands. Log only the operation and a
+  non-secret outcome; add a regression whenever a secret crosses a parser.
+- Every asynchronous callback must carry explicit lifetime authority. Raw `this` is forbidden
+  when cancellation, shutdown or owner removal can precede
+  completion; use weak/shared ownership plus stopped/generation checks and
+  make restart semantics explicit. Stop must close every accepted/pending
+  resource and share an admission barrier with handler publication; a stopped
+  event loop is not a drained callback queue.
+- Network and local-control services must bound concurrent connections,
+  queued state and authentication artifacts. Handshakes, headers, bodies and
+  writes require cancellable deadlines; never perform a blocking read on an event-loop thread.
+- Security-sensitive files must be created or replaced through one validated,
+  no-follow/atomic operation with private permissions. Never chmod a pathname and reopen it for secret output.
 - Do not change I2P wire formats or persisted formats without a specification
   reference and migration.
 - Static analysis is not dynamic validation. State clearly what was not run.
@@ -216,6 +230,11 @@ and knowledge affected by the change:
 6. Run only compile-free consistency checks (`git diff --check`, source/link
    inspection, the static CMake contracts and text parsing) and record that
    dynamic validation remains pending.
+
+Security fixes additionally require a negative compile-free contract or a
+focused regression that pins secret redaction, lifetime ownership, bounds and
+failure behavior. A size cap alone does not mitigate slow clients: inspect the
+executor for blocking calls, deadlines and admission quotas.
 
 The review is mandatory; file edits are not. Do not generate cosmetic changes
 when the existing knowledge is still correct. If a new reusable procedure has

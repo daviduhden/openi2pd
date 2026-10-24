@@ -90,8 +90,18 @@ execution. Ask for:
 - Preserve console/VT behavior and clean up handles on service stop and
   interactive exit.
 - Avoid `RemoveDirectoryA` macro collisions; use unambiguous names/APIs.
+- Private files created by shared filesystem helpers require a protected DACL
+  containing only the effective user and SYSTEM, non-inheritable handles and
+  reparse-point rejection. Do not treat POSIX mode bits or an inherited
+  datadir ACL as the Windows equivalent.
 
 ## Known issues and decisions
+
+- `AtomicWritePrivate` gives POSIX staging mode 0600 and Windows staging a
+  protected effective-user/SYSTEM DACL, with reparse-target rejection and
+  write-through replacement. Win32 pathname traversal retains a hostile-parent
+  TOCTOU window; certificate and key replacements are individually atomic, not
+  a two-file transaction. Platform CI must exercise DACL/reparse behavior.
 
 - Linux build-header age and runtime Landlock ABI are independent. The sandbox
   uses the stable extensible two-u64 ruleset layout and runtime-gated rights,

@@ -223,4 +223,48 @@ foreach(skill_file IN LISTS skill_files)
   endforeach()
 endforeach()
 
+file(READ "${PROJECT_ROOT}/AGENTS.md" agents_text)
+foreach(required_policy IN ITEMS
+    "Never log, format, echo or retain passwords"
+    "Raw `this` is forbidden"
+    "a stopped"
+    "never perform a blocking read on an event-loop thread"
+    "Never chmod a pathname and reopen it for secret output")
+  string(FIND "${agents_text}" "${required_policy}" policy_position)
+  if(policy_position EQUAL -1)
+    message(FATAL_ERROR "AGENTS security policy drift: ${required_policy}")
+  endif()
+endforeach()
+
+file(READ "${skills_root}/openi2pd-memory-security/SKILL.md" memory_security_skill)
+foreach(required_skill_rule IN ITEMS
+    "Treat logs and error strings as persistence boundaries"
+    "A byte limit does not prevent a"
+    "chmod followed by reopen is a symlink/TOCTOU defect")
+  string(FIND "${memory_security_skill}" "${required_skill_rule}" rule_position)
+  if(rule_position EQUAL -1)
+    message(FATAL_ERROR "memory-security skill policy drift: ${required_skill_rule}")
+  endif()
+endforeach()
+
+file(READ "${skills_root}/openi2pd-cpp23/SKILL.md" cpp23_skill)
+foreach(required_skill_rule IN ITEMS
+    "A cancellable operation is not a lifetime barrier"
+    "strong callback cycles in long-lived registrations")
+  string(FIND "${cpp23_skill}" "${required_skill_rule}" rule_position)
+  if(rule_position EQUAL -1)
+    message(FATAL_ERROR "C++23 skill policy drift: ${required_skill_rule}")
+  endif()
+endforeach()
+
+file(READ "${skills_root}/openi2pd-linux-windows/SKILL.md" linux_windows_skill)
+foreach(required_skill_rule IN ITEMS
+    "Private files created by shared filesystem helpers require a protected DACL"
+    "Do not treat POSIX mode bits or an inherited")
+  string(FIND "${linux_windows_skill}" "${required_skill_rule}" rule_position)
+  if(rule_position EQUAL -1)
+    message(FATAL_ERROR "Linux/Windows skill policy drift: ${required_skill_rule}")
+  endif()
+endforeach()
+
 message(STATUS "agent-skills-static: OK")

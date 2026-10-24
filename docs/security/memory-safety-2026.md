@@ -15,6 +15,23 @@ compiler, ASan/UBSan/TSan, fuzzer, OpenBSD, Windows, Android or live I2P run
 was performed for these changes. Severity is based on static reachability and
 impact, not on a reproduced exploit.
 
+## BOB and I2PControl follow-up (2026-10-24)
+
+| ID | Severity | Finding and correction | Regression / validation |
+|---|---|---|---|
+| CONTROL-01 | High | BOB `setkeys` and I2PControl password changes exposed complete secrets in logs. Both now record only the operation/outcome. | `control-security-static` pins absence of the known secret-bearing log forms; marker/sink CI regression pending. |
+| CONTROL-02 | High/medium | BOB accept/read/LeaseSet/stream callbacks captured raw tunnel pointers across `STOP`/`CLEAR`. Completions now lock weak derived ownership, pending receivers are registered/closed, and a short admission mutex makes stop atomic with handler publication. | Static seam prepared; BOB teardown under ASan/TSan pending. |
+| CONTROL-03 | Medium | I2PControl allowed unlimited TLS work, performed a blocking body read on its event-loop thread and had no operation deadline. Admission is capped, handshake/header/body/write phases carry a 15-second deadline, and bounded header/body reads are asynchronous. | `control-security-static`; fragmented-header, slow-client and timeout integration pending. |
+| CONTROL-04 | Medium | Authentication tokens were unbounded and the public default password could protect a non-loopback listener. Tokens and all authentication attempts are capped, expired entries purge before issuance/validation, empty/default runtime password changes are rejected, and the configured default is refused outside loopback. | Policy/static contracts prepared; TCP/UNIX configuration matrix pending. |
+| CONTROL-05 | Medium | Certificate-key creation chmodded and reopened a pathname, permitting a symlink/TOCTOU race under a hostile writable parent. PEM data is now serialized in memory and committed through `AtomicWritePrivate`: POSIX staging is mode 0600/no-follow and Windows staging has a protected effective-user/SYSTEM DACL with reparse-target rejection. | Static contract prepared; POSIX symlink and Windows DACL/reparse CI coverage pending. |
+
+Residual: the direct non-HTTP JSON form retains its legacy single-read framing.
+TLS slow-client, restart, BOB callback teardown and platform file-authority
+behavior require manual CI; this static correction is not validation.
+Windows pathname traversal retains a hostile-parent TOCTOU window, and the
+certificate and key replacements are individually atomic rather than a
+two-file transaction.
+
 ## SSU2 / NTCP2 / transports
 
 | ID | Severity | Finding and correction | Regression / validation |

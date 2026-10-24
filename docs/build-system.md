@@ -72,7 +72,7 @@ Component dependencies are target-scoped:
 
 | Component | Required dependencies | Optional dependency |
 |---|---|---|
-| `libi2pd` | Threads, Boost.program_options, OpenSSL/LibreSSL, zlib, libatomic when probed | — |
+| `libi2pd` | Threads, Boost.program_options, OpenSSL/LibreSSL, zlib, libatomic when probed | Windows: `mswsock`, `ws2_32`, `iphlpapi`, `shell32`, `advapi32` (`AtomicWritePrivate` DACL) |
 | `libi2pdclient` | `libi2pd`, Threads, Boost.JSON/Boost.URL when torrents are enabled | — |
 | `i2pd_privsep` | Threads; OpenBSD `util`; Windows `advapi32` | — |
 | `i2pd` | `libi2pd`, `libi2pdclient`, `libi2pdlang`, `i2pd_privsep` | MiniUPnPc when `WITH_UPNP=ON` |

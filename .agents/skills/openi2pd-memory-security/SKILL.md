@@ -86,10 +86,26 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
   by another thread; do not add unsynchronised container reads.
 - Release descriptors, child processes, timers and allocations on every error
   and shutdown path. Wipe secrets with the existing helpers.
+- Treat logs and error strings as persistence boundaries. Never include a
+  password, private key, seed, token or complete credential-bearing operand;
+  prepare a marker-based negative regression for every corrected leak.
+- For event-loop services, audit admission count, handshake/header/body/write
+  deadlines and every synchronous operation. A byte limit does not prevent a
+  slow-client denial of service.
+- Persist secrets through a single atomic private-file primitive. Pathname
+  chmod followed by reopen is a symlink/TOCTOU defect, not a permission fix.
 - Document a residual risk when a complete fix is not justified; do not claim
   the audit is complete.
 
 ## Known issues and decisions
+
+- BOB tunnel completions use weak derived ownership plus an atomic stopped
+  state, a pending-receiver registry and a short admission mutex shared with
+  handler publication; `STOP`/`CLEAR` may otherwise release the last owner or
+  publish work after draining. I2PControl uses bounded admission, per-operation
+  deadlines, asynchronous bounded HTTP reads, capped tokens/authentication and
+  atomic PEM replacement. `control-security-static` pins these seams; runtime
+  TLS slow-client and BOB teardown coverage remains pending manual CI.
 
 - CONC-011 registration tokens prevent stale teardown from removing another
   Datagram owner. External reset drains outside registry locks; callback reset

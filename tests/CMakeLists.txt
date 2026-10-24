@@ -320,6 +320,14 @@ set_tests_properties(build-system-static PROPERTIES
   LABELS "ci;static"
   TIMEOUT 60)
 
+add_test(NAME control-security-static
+  COMMAND "${CMAKE_COMMAND}"
+    "-DPROJECT_ROOT=${PROJECT_ROOT}"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/check-control-security.cmake")
+set_tests_properties(control-security-static PROPERTIES
+  LABELS "ci;static;security;memory"
+  TIMEOUT 30)
+
 # Compile-free modern-language policy/availability check. It reads AGENTS.md,
 # CMake, Gradle, documentation and the modernization seam headers only.
 add_test(NAME language-modernization-static

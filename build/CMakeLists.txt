@@ -624,7 +624,7 @@ target_link_libraries(libi2pd
 if(WIN32)
   # Transports uses AcceptEx/GetAcceptExSockaddrs; static consumers (tools)
   # also need mswsock to resolve them.
-  target_link_libraries(libi2pd PUBLIC mswsock ws2_32)
+  target_link_libraries(libi2pd PUBLIC mswsock ws2_32 advapi32)
 endif()
 target_link_libraries(libi2pd PRIVATE $<BUILD_INTERFACE:i2pd_warnings>)
 i2pd_enable_sanitizers(libi2pd)

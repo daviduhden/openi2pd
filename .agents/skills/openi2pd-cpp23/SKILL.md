@@ -90,6 +90,10 @@ compile, run tests or run project scripts.
 - Keep object lifetime and thread affinity explicit. A callback must not retain
   references to dead owners; use existing atomic/snapshot patterns rather than
   adding unsynchronised reads.
+- A cancellable operation is not a lifetime barrier. If owner removal can race
+  with completion, capture weak ownership and check both lock success and the
+  stopped/generation state before rearming or publishing side effects. Avoid
+  strong callback cycles in long-lived registrations.
 - Keep internal API breaks deliberate and update all call sites and tests.
   Deep refactors are allowed; do not preserve a broken interface merely to keep
   a local build looking plausible.
@@ -97,6 +101,12 @@ compile, run tests or run project scripts.
   configuration paths or security checks as part of a mechanical cleanup.
 
 ## Known issues and decisions
+
+- Legacy BOB tunnels are shared through `I2PService`; do not add a second
+  `enable_shared_from_this`. Derive weak tunnel pointers from the inherited
+  shared owner, gate every completion/rearm on `m_Stopped`, register and close
+  pending receivers, and serialize stop with handler admission. Close a stream
+  delivered after stop. Manual ASan/TSan lifecycle validation remains pending.
 
 - Datagram receiver lifetime uses shared invocation slots and weak owner tokens
   (CONC-011). Drop replaced callbacks outside registry locks: releasing a

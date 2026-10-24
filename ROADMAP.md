@@ -82,6 +82,11 @@ earlier revisions, not validation of current uncommitted changes.
   BitTorrent, TUI/privsep/JNI and daemon lifecycle. Confirmed structural fixes
   and regression/fuzz sources are present; ASan/UBSan/TSan and fuzz execution
   remain mandatory before claiming the audit complete.
+- BOB and I2PControl control-plane hardening now redacts credential operands,
+  closes raw-callback lifetime gaps, bounds TLS connections/tokens, adds
+  cancellable asynchronous HTTP deadlines, rejects unsafe default-password
+  exposure and atomically replaces PEM files. Static contracts are prepared;
+  slow-client, teardown, sanitizer and platform filesystem CI remain pending.
 - Dependency floors are now explicit: OpenSSL 3.0.2 through OpenSSL 4.0.x /
   LibreSSL 4.0, zlib 1.2.11, Boost 1.74 core / 1.81 JSON+URL, MiniUPnPc
   2.2.6/API 17, C++23; Boost.Atomic, Boost.Filesystem, XP/MSVC-only and

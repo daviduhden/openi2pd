@@ -177,6 +177,8 @@ assert_present("${top_cmake_text}" "BOOST_ASIO_HAS_SNPRINTF=1"
   "Boost.Asio scope-ID formatting must select the bounded snprintf path")
 assert_present("${top_cmake_text}" "target_link_libraries(libi2pd PUBLIC ws2_32 iphlpapi shell32)"
   "Windows static consumers need the SHGetFolderPathW import library")
+assert_present("${top_cmake_text}" "target_link_libraries(libi2pd PUBLIC mswsock ws2_32 advapi32)"
+  "Windows private-file DACL support must propagate advapi32 to static consumers")
 assert_present("${top_cmake_text}" "-Wl,--dynamicbase -Wl,--nxcompat"
   "MinGW hardening must use PE rather than ELF linker options")
 assert_present("${tests_cmake_text}" "test-boost-linkage"

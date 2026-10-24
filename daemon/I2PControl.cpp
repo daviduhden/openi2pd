@@ -13,11 +13,13 @@
  *
  */
 
-#include <cerrno>
-#include <cstdio>
+#include <algorithm>
 #include <cstring>
 #include <ctime>
 #include <memory>
+#include <optional>
+#include <stdexcept>
+#include <vector>
 #include <sstream>
 #include <iomanip>
 #include <openssl/x509.h>
@@ -40,38 +42,15 @@
 
 namespace
 {
-struct FileCloser
+template <typename Writer>
+bool WritePEMAtomically (std::string_view path, Writer && writer)
 {
-	void operator() (FILE * file) const
-	{
-		if (file) std::fclose (file);
-	}
-};
-using FilePtr = std::unique_ptr<FILE, FileCloser>;
-
-// The POSIX text helpers are reported as deprecated by the MSVC CRT, so the
-// bounds-checked variants are used on Windows while the portable calls are
-// kept on every other platform.
-FilePtr OpenBinaryFile (const char * path)
-{
-#ifdef _WIN32
-	FILE * file = nullptr;
-	if (fopen_s (&file, path, "wb") != 0) return FilePtr (nullptr);
-	return FilePtr (file);
-#else
-	return FilePtr (fopen (path, "wb"));
-#endif
-}
-
-std::string ErrorText (int error)
-{
-#ifdef _WIN32
-	char buffer[128];
-	if (strerror_s (buffer, sizeof (buffer), error) != 0) return "unknown error";
-	return buffer;
-#else
-	return strerror (error);
-#endif
+	std::unique_ptr<BIO, decltype (&BIO_free)> output (BIO_new (BIO_s_mem ()), BIO_free);
+	if (!output || writer (output.get ()) != 1) return false;
+	char * bytes = nullptr;
+	const long length = BIO_get_mem_data (output.get (), &bytes);
+	return length > 0 && bytes
+		&& i2p::fs::AtomicWritePrivate (path, std::string_view (bytes, static_cast<size_t> (length)));
 }
 
 // Return the first queued OpenSSL error and drain the queue, so a later
@@ -86,6 +65,22 @@ std::string GetOpenSSLError ()
 	{
 	}
 	return buffer;
+}
+
+template <typename Socket>
+void ArmControlDeadline (const std::shared_ptr<Socket> & socket,
+	const std::shared_ptr<boost::asio::steady_timer> & deadline)
+{
+	deadline->expires_after (i2p::client::I2P_CONTROL_OPERATION_TIMEOUT);
+	deadline->async_wait ([weakSocket = std::weak_ptr<Socket> (socket)] (const boost::system::error_code & ec)
+		{
+			if (ec) return;
+			if (auto locked = weakSocket.lock ())
+			{
+				boost::system::error_code ignored;
+				locked->lowest_layer ().close (ignored);
+			}
+		});
 }
 }
 
@@ -114,6 +109,14 @@ namespace client
 #endif
 
 		i2p::config::GetOption ("i2pcontrol.password", m_Password);
+		if (m_Password.empty ()) throw std::invalid_argument ("I2PControl password must not be empty");
+		if (port && m_Password == I2P_CONTROL_DEFAULT_PASSWORD)
+		{
+			auto listenAddress = boost::asio::ip::make_address (address);
+			if (!listenAddress.is_loopback ())
+				throw std::invalid_argument (
+					"I2PControl refuses a non-loopback listener with the default password");
+		}
 
 		// certificate / keys
 		std::string i2pcp_crt;
@@ -197,12 +200,27 @@ namespace client
 				std::remove (path.c_str ());
 			}
 #endif
+			std::vector<std::function<void ()>> closeConnections;
+			{
+				std::lock_guard lock (m_Connections->mutex);
+				for (const auto & [id, close] : m_Connections->close)
+				{
+					(void)id;
+					closeConnections.push_back (close);
+				}
+			}
+			for (const auto & close : closeConnections) close ();
+			boost::system::error_code ignored;
+			m_ShutdownTimer.cancel (ignored);
 			m_Service.stop ();
 			if (m_Thread)
 			{
 				m_Thread->join ();
 				m_Thread = nullptr;
 			}
+			m_Service.restart ();
+			m_Service.run ();
+			m_Service.stop ();
 		}
 	}
 
@@ -225,6 +243,7 @@ namespace client
 
 	void I2PControlService::Accept ()
 	{
+		if (!m_IsRunning.load (std::memory_order_acquire)) return;
 		if (m_Acceptor)
 		{
 			auto newSocket
@@ -254,35 +273,86 @@ namespace client
 			LogPrint (eLogError, "I2PControl: Accept error: ", ecode.message ());
 			return;
 		}
+		if (!m_IsRunning.load (std::memory_order_acquire))
+		{
+			boost::system::error_code ignored;
+			newSocket->lowest_layer ().close (ignored);
+			return;
+		}
+		if (m_Connections->active.fetch_add (1, std::memory_order_acq_rel) >= I2P_CONTROL_MAX_CONNECTIONS)
+		{
+			m_Connections->active.fetch_sub (1, std::memory_order_acq_rel);
+			boost::system::error_code ignored;
+			newSocket->lowest_layer ().close (ignored);
+			LogPrint (eLogWarning, "I2PControl: Active connection limit reached");
+			return;
+		}
+		uint64_t connectionID = 0;
+		{
+			std::lock_guard lock (m_Connections->mutex);
+			if (!m_IsRunning.load (std::memory_order_acquire))
+			{
+				m_Connections->active.fetch_sub (1, std::memory_order_acq_rel);
+				boost::system::error_code ignored;
+				newSocket->lowest_layer ().close (ignored);
+				return;
+			}
+			connectionID = ++m_Connections->nextID;
+			m_Connections->close.emplace (connectionID, [weak = std::weak_ptr<ssl_socket> (newSocket)]
+				{
+					if (auto socket = weak.lock ())
+					{
+						boost::system::error_code ignored;
+						socket->lowest_layer ().close (ignored);
+					}
+				});
+		}
+		auto connection = std::shared_ptr<void> (new int (0),
+			[registry = m_Connections, connectionID] (void * value)
+			{
+				delete static_cast<int *> (value);
+				{
+					std::lock_guard lock (registry->mutex);
+					registry->close.erase (connectionID);
+				}
+				registry->active.fetch_sub (1, std::memory_order_acq_rel);
+			});
+		auto deadline = std::make_shared<boost::asio::steady_timer> (m_Service);
 		LogPrint (eLogDebug, "I2PControl: New request from ", newSocket->lowest_layer ().remote_endpoint ());
-		Handshake (newSocket);
+		Handshake (newSocket, deadline, connection);
 	}
 
-	template <typename ssl_socket> void I2PControlService::Handshake (std::shared_ptr<ssl_socket> socket)
+	template <typename ssl_socket> void I2PControlService::Handshake (std::shared_ptr<ssl_socket> socket,
+		std::shared_ptr<boost::asio::steady_timer> deadline, std::shared_ptr<void> connection)
 	{
+		ArmControlDeadline (socket, deadline);
 		socket->async_handshake (boost::asio::ssl::stream_base::server,
-			[this, socket] (const boost::system::error_code & ecode)
+			[this, socket, deadline, connection] (const boost::system::error_code & ecode)
 			{
-				if (ecode)
+				if (ecode || !m_IsRunning.load (std::memory_order_acquire))
 				{
 					LogPrint (eLogError, "I2PControl: Handshake error: ", ecode.message ());
 					return;
 				}
-				ReadRequest (socket);
+				ReadRequest (socket, deadline, connection);
 			});
 	}
 
-	template <typename ssl_socket> void I2PControlService::ReadRequest (std::shared_ptr<ssl_socket> socket)
+	template <typename ssl_socket> void I2PControlService::ReadRequest (std::shared_ptr<ssl_socket> socket,
+		std::shared_ptr<boost::asio::steady_timer> deadline, std::shared_ptr<void> connection)
 	{
+		ArmControlDeadline (socket, deadline);
 		auto request = std::make_shared<I2PControlBuffer> ();
-		socket->async_read_some (boost::asio::buffer (*request),
-			[this, socket, request] (const boost::system::error_code & ecode, size_t bytes_transferred)
-			{ HandleRequestReceived (ecode, bytes_transferred, socket, request); });
+		boost::asio::async_read (*socket, boost::asio::buffer (request->data (), 4), boost::asio::transfer_exactly (4),
+			[this, socket, request, deadline, connection] (
+				const boost::system::error_code & ecode, size_t bytes_transferred)
+			{ HandleRequestReceived (ecode, bytes_transferred, socket, request, deadline, connection); });
 	}
 
 	template <typename ssl_socket>
 	void I2PControlService::HandleRequestReceived (const boost::system::error_code & ecode, size_t bytes_transferred,
-		std::shared_ptr<ssl_socket> socket, std::shared_ptr<I2PControlBuffer> buf)
+		std::shared_ptr<ssl_socket> socket, std::shared_ptr<I2PControlBuffer> buf,
+		std::shared_ptr<boost::asio::steady_timer> deadline, std::shared_ptr<void> connection)
 	{
 		if (ecode)
 		{
@@ -291,43 +361,122 @@ namespace client
 		}
 		else
 		{
-			bool isHtml = !memcmp (buf->data (), "POST", 4);
+			if (!m_IsRunning.load (std::memory_order_acquire)) return;
+			bool isHtml = bytes_transferred == 4 && !memcmp (buf->data (), "POST", 4);
 			try
 			{
-				std::stringstream ss;
-				ss.write (buf->data (), bytes_transferred);
+				auto request = std::make_shared<std::string> (buf->data (), bytes_transferred);
 				if (isHtml)
 				{
-					std::string header;
-					size_t contentLength = 0;
-					while (!ss.eof () && header != "\r")
+					if (request->find ("\r\n\r\n") == std::string::npos)
 					{
-						std::getline (ss, header);
-						auto colon = header.find (':');
-						if (colon != std::string::npos && boost::iequals (header.substr (0, colon), "Content-Length"))
-							contentLength = std::stoi (header.substr (colon + 1));
-					}
-					if (ss.eof ())
-					{
-						LogPrint (eLogError, "I2PControl: Malformed request, HTTP header expected");
-						return; // TODO:
-					}
-					if (contentLength > I2P_CONTROL_MAX_CONTENT_LENGTH)
-					{
-						LogPrint (
-							eLogError, "I2PControl: Content-Length ", contentLength, " exceeds maximum allowed size");
+						ArmControlDeadline (socket, deadline);
+						boost::asio::async_read_until (*socket,
+							boost::asio::dynamic_buffer (*request, I2P_CONTROL_MAX_REQUEST_SIZE), "\r\n\r\n",
+							[this, socket, request, deadline, connection] (
+								const boost::system::error_code & readError, size_t)
+							{
+								if (readError || !m_IsRunning.load (std::memory_order_acquire))
+								{
+									LogPrint (eLogError, "I2PControl: Incomplete or oversized HTTP headers");
+									return;
+								}
+								HandleHttpRequest (socket, request, deadline, connection);
+							});
 						return;
 					}
-					std::streamoff rem = contentLength + ss.tellg () - bytes_transferred; // more bytes to read
-					while (rem > 0) // read in chunks to prevent buffer overflow
-					{
-						size_t toRead = std::min ((size_t)rem, buf->size ()); // don't exceed buffer size
-						bytes_transferred = boost::asio::read (*socket, boost::asio::buffer (buf->data (), toRead));
-						if (bytes_transferred == 0) break;
-						ss.write (buf->data (), bytes_transferred);
-						rem -= bytes_transferred;
-					}
+					HandleHttpRequest (socket, request, deadline, connection);
+					return;
 				}
+				ArmControlDeadline (socket, deadline);
+				buf->fill (0);
+				socket->async_read_some (boost::asio::buffer (*buf),
+					[this, socket, request, buf, deadline, connection] (
+						const boost::system::error_code & readError, size_t transferred)
+					{
+						if (readError || !m_IsRunning.load (std::memory_order_acquire)) return;
+						request->append (buf->data (), transferred);
+						ProcessRequest (socket, request, false, deadline, connection);
+					});
+			}
+			catch (std::exception & ex)
+			{
+				LogPrint (eLogError, "I2PControl: Exception while reading request: ", ex.what ());
+			}
+		}
+	}
+
+	template <typename ssl_socket> void I2PControlService::HandleHttpRequest (std::shared_ptr<ssl_socket> socket,
+		std::shared_ptr<std::string> request, std::shared_ptr<boost::asio::steady_timer> deadline,
+		std::shared_ptr<void> connection)
+	{
+		try
+		{
+			const auto separator = request->find ("\r\n\r\n");
+			if (separator == std::string::npos || separator + 4 > I2P_CONTROL_MAX_REQUEST_SIZE)
+				throw std::runtime_error ("Malformed or oversized HTTP headers");
+			std::stringstream headers (request->substr (0, separator + 2));
+			std::string header;
+			std::optional<size_t> contentLength;
+			while (std::getline (headers, header))
+			{
+				auto colon = header.find (':');
+				if (colon != std::string::npos && boost::iequals (header.substr (0, colon), "Content-Length"))
+				{
+					if (contentLength) throw std::runtime_error ("Duplicate Content-Length");
+					const auto value = boost::algorithm::trim_copy (header.substr (colon + 1));
+					size_t parsed = 0;
+					const auto length = std::stoull (value, &parsed);
+					if (parsed != value.size () || length > I2P_CONTROL_MAX_CONTENT_LENGTH)
+						throw std::runtime_error ("Invalid Content-Length");
+					contentLength = static_cast<size_t> (length);
+				}
+			}
+			if (!contentLength) throw std::runtime_error ("Missing Content-Length");
+			const size_t bodyOffset = separator + 4;
+			const size_t received = request->size () - bodyOffset;
+			if (received > *contentLength) throw std::runtime_error ("Contradictory Content-Length");
+			const size_t remaining = *contentLength - received;
+			if (!remaining)
+			{
+				ProcessRequest (socket, request, true, deadline, connection);
+				return;
+			}
+			auto body = std::make_shared<std::vector<char>> (remaining);
+			ArmControlDeadline (socket, deadline);
+			boost::asio::async_read (*socket, boost::asio::buffer (*body), boost::asio::transfer_exactly (remaining),
+				[this, socket, request, body, deadline, connection] (
+					const boost::system::error_code & readError, size_t transferred)
+				{
+					if (readError || !m_IsRunning.load (std::memory_order_acquire)
+						|| transferred != body->size ())
+					{
+						LogPrint (eLogError, "I2PControl: Incomplete HTTP request body");
+						return;
+					}
+					request->append (body->data (), body->size ());
+					ProcessRequest (socket, request, true, deadline, connection);
+				});
+		}
+		catch (const std::exception & ex)
+		{
+			LogPrint (eLogError, "I2PControl: Invalid HTTP request: ", ex.what ());
+		}
+	}
+
+	template <typename ssl_socket> void I2PControlService::ProcessRequest (std::shared_ptr<ssl_socket> socket,
+		std::shared_ptr<std::string> request, bool isHtml, std::shared_ptr<boost::asio::steady_timer> deadline,
+		std::shared_ptr<void> connection)
+	{
+		try
+		{
+			std::stringstream ss (*request);
+			if (isHtml)
+			{
+				std::string header;
+				do std::getline (ss, header); while (ss && header != "\r");
+				if (!ss) throw std::runtime_error ("Malformed HTTP headers");
+			}
 				std::ostringstream response;
 				boost::property_tree::ptree pt;
 				boost::property_tree::read_json (ss, pt);
@@ -359,16 +508,16 @@ namespace client
 					response << "{\"code\":-32601,\"message\":\"Method not found\"},";
 					response << "\"jsonrpc\":\"2.0\"}\n";
 				}
-				SendResponse (socket, response, isHtml);
+				SendResponse (socket, response, isHtml, deadline, connection);
 			}
 			catch (std::exception & ex)
 			{
 				LogPrint (eLogError, "I2PControl: Exception when handle request: ", ex.what ());
 				std::ostringstream response;
 				response << "{\"id\":null,\"error\":";
-				response << "{\"code\":-32700,\"message\":\"" << ex.what () << "\"},";
+				response << "{\"code\":-32700,\"message\":\"Malformed request\"},";
 				response << "\"jsonrpc\":\"2.0\"}\n";
-				SendResponse (socket, response, isHtml);
+				SendResponse (socket, response, isHtml, deadline, connection);
 			}
 			catch (...)
 			{
@@ -379,7 +528,8 @@ namespace client
 
 	template <typename ssl_socket>
 	void I2PControlService::SendResponse (
-		std::shared_ptr<ssl_socket> socket, std::ostringstream & response, bool isHtml)
+		std::shared_ptr<ssl_socket> socket, std::ostringstream & response, bool isHtml,
+		std::shared_ptr<boost::asio::steady_timer> deadline, std::shared_ptr<void> connection)
 	{
 		auto message = std::make_shared<std::string> ();
 		if (isHtml)
@@ -403,9 +553,13 @@ namespace client
 			*message = header.str ();
 		}
 		*message += response.str ();
+		ArmControlDeadline (socket, deadline);
 		boost::asio::async_write (*socket, boost::asio::buffer (*message), boost::asio::transfer_all (),
-			[socket, message] (const boost::system::error_code & ecode, std::size_t /*bytes_transferred*/)
+			[socket, message, deadline, connection] (
+				const boost::system::error_code & ecode, std::size_t /*bytes_transferred*/)
 			{
+				boost::system::error_code ignored;
+				deadline->cancel (ignored);
 				if (ecode) LogPrint (eLogError, "I2PControl: Write error: ", ecode.message ());
 			});
 	}
@@ -418,6 +572,19 @@ namespace client
 		int api = params.get<int> ("API");
 		auto password = params.get<std::string> ("Password");
 		LogPrint (eLogDebug, "I2PControl: Authenticate API=", api);
+		const auto now = i2p::util::GetSecondsSinceEpoch ();
+		PurgeExpiredTokens (now);
+		if (!m_AuthenticationWindowStart || now >= m_AuthenticationWindowStart + 60)
+		{
+			m_AuthenticationWindowStart = now;
+			m_AuthenticationsInWindow = 0;
+		}
+		if (m_AuthenticationsInWindow >= I2P_CONTROL_MAX_AUTHENTICATIONS_PER_MINUTE)
+		{
+			LogPrint (eLogWarning, "I2PControl: Authentication rate limit reached");
+			return;
+		}
+		++m_AuthenticationsInWindow;
 		bool isValid = password.size () == m_Password.size ()
 			&& CRYPTO_memcmp (password.data (), m_Password.data (), m_Password.size ()) == 0;
 		if (!isValid)
@@ -434,20 +601,25 @@ namespace client
 			return;
 		}
 		std::string token = i2p::data::ByteStreamToBase64 (tokenBytes, sizeof (tokenBytes));
-		m_Tokens[token] = i2p::util::GetSecondsSinceEpoch () + I2P_CONTROL_TOKEN_LIFETIME;
+		if (m_Tokens.size () >= I2P_CONTROL_MAX_TOKENS)
+		{
+			auto oldest = std::min_element (m_Tokens.begin (), m_Tokens.end (),
+				[] (const auto & left, const auto & right) { return left.second < right.second; });
+			if (oldest != m_Tokens.end ()) m_Tokens.erase (oldest);
+		}
+		m_Tokens[token] = now + I2P_CONTROL_TOKEN_LIFETIME;
 		InsertParam (results, "Token", token);
+	}
+
+	void I2PControlService::PurgeExpiredTokens (uint64_t now)
+	{
+		std::erase_if (m_Tokens, [now] (const auto & token) { return now >= token.second; });
 	}
 
 	bool I2PControlService::IsValidToken (const std::string & token)
 	{
 		uint64_t ts = i2p::util::GetSecondsSinceEpoch ();
-		for (auto it = m_Tokens.begin (); it != m_Tokens.end ();)
-		{
-			if (ts > it->second)
-				it = m_Tokens.erase (it); // expired
-			else
-				++it;
-		}
+		PurgeExpiredTokens (ts);
 		bool found = false;
 		for (const auto & it : m_Tokens)
 		{
@@ -485,8 +657,12 @@ namespace client
 
 	void I2PControlService::PasswordHandler (const std::string & value)
 	{
-		LogPrint (
-			eLogWarning, "I2PControl: New password=", value, ", to make it persistent you should update your config!");
+		if (value.empty () || value == I2P_CONTROL_DEFAULT_PASSWORD)
+		{
+			LogPrint (eLogWarning, "I2PControl: Refusing an empty or default administrative password");
+			return;
+		}
+		LogPrint (eLogWarning, "I2PControl: Administrative password changed; update the configuration to persist it");
 		m_Password = value;
 		m_Tokens.clear ();
 	}
@@ -616,33 +792,16 @@ namespace client
 				}
 			}
 
-			// save cert
-			FilePtr f = OpenBinaryFile (crt_path);
-			if (f)
-			{
-				LogPrint (eLogInfo, "I2PControl: Saving new cert to ", crt_path);
-				if (PEM_write_X509 (f.get (), x509.get ()) != 1)
-					LogPrint (eLogError, "I2PControl: Can't write cert: ", GetOpenSSLError ());
-				else if (std::fclose (f.release ()) != 0)
-					LogPrint (eLogError, "I2PControl: Can't close cert: ", ErrorText (errno));
-			}
-			else
-				LogPrint (eLogError, "I2PControl: Can't write cert: ", ErrorText (errno));
+			LogPrint (eLogInfo, "I2PControl: Saving new cert to ", crt_path);
+			if (!WritePEMAtomically (crt_path, [certificate = x509.get ()] (BIO * output)
+				{ return PEM_write_bio_X509 (output, certificate); }))
+				LogPrint (eLogError, "I2PControl: Can't atomically write cert: ", GetOpenSSLError ());
 		}
 
-		// save key
-		i2p::fs::CreatePrivateFile (key_path);
-		FilePtr f = OpenBinaryFile (key_path);
-		if (f)
-		{
-			LogPrint (eLogInfo, "I2PControl: saving cert key to ", key_path);
-			if (PEM_write_PrivateKey (f.get (), pkey.get (), NULL, NULL, 0, NULL, NULL) != 1)
-				LogPrint (eLogError, "I2PControl: Can't write key: ", GetOpenSSLError ());
-			else if (std::fclose (f.release ()) != 0)
-				LogPrint (eLogError, "I2PControl: Can't close key: ", ErrorText (errno));
-		}
-		else
-			LogPrint (eLogError, "I2PControl: Can't write key: ", ErrorText (errno));
+		LogPrint (eLogInfo, "I2PControl: Saving cert key to ", key_path);
+		if (!WritePEMAtomically (key_path, [key = pkey.get ()] (BIO * output)
+			{ return PEM_write_bio_PrivateKey (output, key, nullptr, nullptr, 0, nullptr, nullptr); }))
+			LogPrint (eLogError, "I2PControl: Can't atomically write key: ", GetOpenSSLError ());
 	}
 }
 }
