@@ -3231,3 +3231,34 @@ OpenBSD or Java/C++ dynamic test was run.
   compiler, test runner, project validator, workflow dispatch, commit or push
   was used. Manual security/memory, ASan/UBSan/TSan, slow-client, BOB teardown
   and POSIX/Windows file-authority validation remains required.
+
+## 2026-10-24 — Manual CI failure triage at `2aeb8135`
+
+- Inspected the five manual `workflow_dispatch` runs started at
+  `2026-10-24T17:31Z` with `gh run view --log-failed`. The failures are
+  compile/configuration defects, not peer or runtime evidence.
+- `privsep/Channel.cpp`: the empty-record retry used `continue` after the
+  receive retry loop had already closed, so every C++ target failed to parse
+  the file. The record handling now stays inside the loop, preserving the
+  zero-length-record budget, credential check and hangup distinction.
+- `libi2pd/LeaseSet.h` and `libi2pd_client/I2PService.h` use `LogPrint` in
+  inline code without including `Log.h`; translation units that did not include
+  the logger first failed on Linux, Android and Windows. Both headers now
+  include the logger directly.
+- `tests/check-agent-skills.cmake` ran as a CMake script without CMP0057, and
+  the README inventory loop iterated a `file(READ)` string whose semicolons
+  split it into fragments. The policy is set explicitly and the loop reads
+  real lines with `file(STRINGS ...)`.
+- OpenBSD configuration failed in `FindCurses` because CMake's wide-character
+  search only accepts the `ncursesw/` header layout while base OpenBSD
+  ncurses installs `ncurses.h`; the nonexistent `ncurses` package was also
+  requested by `pkg_add`. Configuration now retries the plain layout and
+  requires a `wadd_wch` entry point, and the workflow installs only existing
+  packages. The TUI contract documentation records the fallback.
+- The packaging service-contract job requested `openrc`, which Ubuntu does not
+  publish; the job is static and only needs `shellcheck`, so the unused
+  package requests were removed.
+- Status: Implemented / static; Pending CI compilation; Pending CI tests. No
+  compiler, test runner, project validator or workflow dispatch was used.
+  Publishing this correction does not validate it; only a later manual run
+  can.

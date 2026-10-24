@@ -27,6 +27,7 @@
 #include "Blinding.h"
 #include "Crypto.h"
 #include "CryptoKey.h"
+#include "Log.h"
 #include "util.h"
 
 namespace i2p

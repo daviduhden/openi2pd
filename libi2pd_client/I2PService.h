@@ -21,6 +21,7 @@
 #include "Destination.h"
 #include "Identity.h"
 #include "AddressBook.h"
+#include "Log.h"
 
 namespace i2p
 {

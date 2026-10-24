@@ -752,11 +752,27 @@ endif()
 # differ.
 if(I2PD_BUILD_TUI)
   if(UNIX)
+    # CMake's wide-character search only accepts the ncursesw/ header layout.
+    # OpenBSD's base ncurses provides wide-character support but installs
+    # ncurses.h directly, so retry the plain header layout and verify that the
+    # discovered library really exports wide-character entry points.
     set(CURSES_NEED_WIDE TRUE)
-    if(I2PD_TUI_REQUIRED)
-      find_package(Curses REQUIRED)
-    else()
-      find_package(Curses)
+    find_package(Curses QUIET)
+    if(NOT CURSES_FOUND)
+      unset(CURSES_NEED_WIDE)
+      set(CURSES_NEED_NCURSES TRUE)
+      find_package(Curses QUIET)
+      if(CURSES_FOUND)
+        include(CheckLibraryExists)
+        check_library_exists("${CURSES_NCURSES_LIBRARY}" wadd_wch "" I2PD_CURSES_HAS_WIDE_ENTRY)
+        if(NOT I2PD_CURSES_HAS_WIDE_ENTRY)
+          set(CURSES_FOUND FALSE)
+        endif()
+      endif()
+    endif()
+    if(I2PD_TUI_REQUIRED AND NOT CURSES_FOUND)
+      message(FATAL_ERROR
+        "The TUI requires an ncursesw-capable library; install ncursesw or configure with -DI2PD_TUI_REQUIRED=OFF")
     endif()
     if(CURSES_FOUND)
       add_executable(i2pd-tui

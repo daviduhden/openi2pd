@@ -109,6 +109,10 @@ report that limitation; do not substitute local execution. Ask for:
   model and migration review.
 - Negative capability, storage failure, broker restart and sanitizer tests
   remain pending; see [`references/worker-checklist.md`](references/worker-checklist.md).
+- `Channel::ReceiveWithFd` must keep ancillary parsing, the empty-record
+  credential check and the empty-record budget inside the same retry loop as
+  `poll`/`recvmsg`; a zero-length SOCK_SEQPACKET record is not terminal unless
+  a hangup/error event accompanies it.
 
 ## Do not
 

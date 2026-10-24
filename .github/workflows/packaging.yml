@@ -34,7 +34,7 @@ jobs:
         run: |
           sudo apt-get update -qq
           sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y \
-            --no-install-recommends openrc runit shellcheck
+            --no-install-recommends shellcheck
       - name: Validate service contracts and shell syntax
         run: |
           cmake -DPROJECT_ROOT="$PWD" -P tests/check-services.cmake

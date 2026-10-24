@@ -361,131 +361,130 @@ i2p::expected<std::optional<ReceivedMessage>, std::string> Channel::ReceiveWithF
 			}
 			return i2p::unexpected (std::string ("recvmsg: ") + strerror (error));
 		}
-		break;
-	}
 
-	// Parse ancillary data before treating the record as accepted. A
-	// truncated or duplicated descriptor set is a protocol violation; close
-	// every descriptor the kernel delivered so it cannot leak.
-	int receivedFd = -1;
+		// Parse ancillary data before treating the record as accepted. A
+		// truncated or duplicated descriptor set is a protocol violation; close
+		// every descriptor the kernel delivered so it cannot leak.
+		int receivedFd = -1;
 #if defined(__linux__)
-	bool receivedCredentials = false;
-	struct ucred messageCredentials { };
+		bool receivedCredentials = false;
+		struct ucred messageCredentials { };
 #endif
-	bool ancillaryError = false;
-	if (header.msg_flags & (MSG_TRUNC | MSG_CTRUNC)) ancillaryError = true;
-	for (auto * cmsg = CMSG_FIRSTHDR (&header); cmsg; cmsg = CMSG_NXTHDR (&header, cmsg))
-	{
-		if (cmsg->cmsg_level != SOL_SOCKET) continue;
-		if (cmsg->cmsg_type == SCM_RIGHTS)
+		bool ancillaryError = false;
+		if (header.msg_flags & (MSG_TRUNC | MSG_CTRUNC)) ancillaryError = true;
+		for (auto * cmsg = CMSG_FIRSTHDR (&header); cmsg; cmsg = CMSG_NXTHDR (&header, cmsg))
 		{
-			// The public Channel API permits at most one descriptor per
-			// operation. Close every descriptor in an oversized/duplicated
-			// control message before rejecting the whole record.
-			if (cmsg->cmsg_len < CMSG_LEN (0))
+			if (cmsg->cmsg_level != SOL_SOCKET) continue;
+			if (cmsg->cmsg_type == SCM_RIGHTS)
 			{
-				ancillaryError = true;
-				continue;
-			}
-			const size_t dataLen = cmsg->cmsg_len - CMSG_LEN (0);
-			const size_t count = dataLen / sizeof (int);
-			if (count != 1 || (dataLen % sizeof (int)) != 0 || receivedFd >= 0)
-			{
-				for (size_t i = 0; i < count; ++i)
+				// The public Channel API permits at most one descriptor per
+				// operation. Close every descriptor in an oversized/duplicated
+				// control message before rejecting the whole record.
+				if (cmsg->cmsg_len < CMSG_LEN (0))
 				{
-					int descriptor = -1;
-					memcpy (&descriptor, CMSG_DATA (cmsg) + i * sizeof (int), sizeof (descriptor));
-					if (descriptor >= 0) ::close (descriptor);
+					ancillaryError = true;
+					continue;
 				}
-				ancillaryError = true;
-				continue;
+				const size_t dataLen = cmsg->cmsg_len - CMSG_LEN (0);
+				const size_t count = dataLen / sizeof (int);
+				if (count != 1 || (dataLen % sizeof (int)) != 0 || receivedFd >= 0)
+				{
+					for (size_t i = 0; i < count; ++i)
+					{
+						int descriptor = -1;
+						memcpy (&descriptor, CMSG_DATA (cmsg) + i * sizeof (int), sizeof (descriptor));
+						if (descriptor >= 0) ::close (descriptor);
+					}
+					ancillaryError = true;
+					continue;
+				}
+				int descriptor = -1;
+				memcpy (&descriptor, CMSG_DATA (cmsg), sizeof (descriptor));
+				receivedFd = descriptor;
 			}
-			int descriptor = -1;
-			memcpy (&descriptor, CMSG_DATA (cmsg), sizeof (descriptor));
-			receivedFd = descriptor;
-		}
 #if defined(__linux__)
-		else if (cmsg->cmsg_type == SCM_CREDENTIALS && cmsg->cmsg_len >= CMSG_LEN (sizeof (struct ucred)))
-		{
-			memcpy (&messageCredentials, CMSG_DATA (cmsg), sizeof (messageCredentials));
-			receivedCredentials = true;
-		}
+			else if (cmsg->cmsg_type == SCM_CREDENTIALS && cmsg->cmsg_len >= CMSG_LEN (sizeof (struct ucred)))
+			{
+				memcpy (&messageCredentials, CMSG_DATA (cmsg), sizeof (messageCredentials));
+				receivedCredentials = true;
+			}
 #endif
-	}
-	if (ancillaryError)
-	{
-		if (receivedFd >= 0) ::close (receivedFd);
-		return i2p::unexpected ("invalid ancillary data");
-	}
-	if (received == 0)
-	{
+		}
+		if (ancillaryError)
+		{
+			if (receivedFd >= 0) ::close (receivedFd);
+			return i2p::unexpected ("invalid ancillary data");
+		}
+		if (received == 0)
+		{
+			if (receivedFd >= 0)
+			{
+				::close (receivedFd);
+				return i2p::unexpected ("descriptor on an empty record");
+			}
+			// A zero-length record is still a peer send and must satisfy the same
+			// per-record credential rule as a data frame.
+#if defined(__linux__)
+			if (!receivedCredentials) return i2p::unexpected ("missing SCM_CREDENTIALS on an empty record");
+			auto emptyPeer = Credentials ();
+			if (!emptyPeer) return i2p::unexpected (emptyPeer.error ());
+			if (messageCredentials.uid != emptyPeer->uid || messageCredentials.gid != emptyPeer->gid)
+				return i2p::unexpected ("empty record failed SCM_CREDENTIALS");
+#endif
+			// SOCK_SEQPACKET delivers a zero-length datagram as recvmsg()==0,
+			// exactly like EOF. Only a hangup/error event makes this terminal.
+			if (readyEvents
+				& (POLLERR | POLLHUP
+#ifdef POLLRDHUP
+					| POLLRDHUP
+#endif
+					))
+				return i2p::unexpected ("peer closed the channel");
+			if (++emptyRecords > 8) return i2p::unexpected ("empty-record flood");
+			continue; // consume the empty record and keep the channel usable
+		}
 		if (receivedFd >= 0)
 		{
-			::close (receivedFd);
-			return i2p::unexpected ("descriptor on an empty record");
+			// MSG_CMSG_CLOEXEC is not available on every supported UNIX. Do not
+			// rely on the sender; apply FD_CLOEXEC to every received descriptor.
+			const int descriptorFlags = fcntl (receivedFd, F_GETFD);
+			if (descriptorFlags < 0 || fcntl (receivedFd, F_SETFD, descriptorFlags | FD_CLOEXEC) < 0)
+			{
+				::close (receivedFd);
+				return i2p::unexpected (std::string ("fcntl(received FD_CLOEXEC): ") + strerror (errno));
+			}
 		}
-		// A zero-length record is still a peer send and must satisfy the same
-		// per-record credential rule as a data frame.
-#if defined(__linux__)
-		if (!receivedCredentials) return i2p::unexpected ("missing SCM_CREDENTIALS on an empty record");
-		auto emptyPeer = Credentials ();
-		if (!emptyPeer) return i2p::unexpected (emptyPeer.error ());
-		if (messageCredentials.uid != emptyPeer->uid || messageCredentials.gid != emptyPeer->gid)
-			return i2p::unexpected ("empty record failed SCM_CREDENTIALS");
-#endif
-		// SOCK_SEQPACKET delivers a zero-length datagram as recvmsg()==0,
-		// exactly like EOF. Only a hangup/error event makes this terminal.
-		if (readyEvents
-			& (POLLERR | POLLHUP
-#ifdef POLLRDHUP
-				| POLLRDHUP
-#endif
-				))
-			return i2p::unexpected ("peer closed the channel");
-		if (++emptyRecords > 8) return i2p::unexpected ("empty-record flood");
-		continue; // consume the empty record and keep the channel usable
-	}
-	if (receivedFd >= 0)
-	{
-		// MSG_CMSG_CLOEXEC is not available on every supported UNIX. Do not
-		// rely on the sender; apply FD_CLOEXEC to every received descriptor.
-		const int descriptorFlags = fcntl (receivedFd, F_GETFD);
-		if (descriptorFlags < 0 || fcntl (receivedFd, F_SETFD, descriptorFlags | FD_CLOEXEC) < 0)
+		frame.resize (static_cast<size_t> (received));
+		auto message = Decode (frame);
+		if (!message)
 		{
-			::close (receivedFd);
-			return i2p::unexpected (std::string ("fcntl(received FD_CLOEXEC): ") + strerror (errno));
+			if (receivedFd >= 0) ::close (receivedFd);
+			return i2p::unexpected (std::string ("protocol: ") + std::string (message.error ().text));
 		}
-	}
-	frame.resize (static_cast<size_t> (received));
-	auto message = Decode (frame);
-	if (!message)
-	{
-		if (receivedFd >= 0) ::close (receivedFd);
-		return i2p::unexpected (std::string ("protocol: ") + std::string (message.error ().text));
-	}
 #if defined(__linux__)
-	// SO_PASSCRED makes SCM_CREDENTIALS mandatory on every received record.
-	// SO_PEERCRED identifies the socket creator, but its PID is fixed before
-	// fork+exec; the worker's SCM_CREDENTIALS PID is the child PID and may
-	// legitimately differ. Compare the stable uid/gid, not the PID.
-	if (!receivedCredentials)
-	{
-		if (receivedFd >= 0) ::close (receivedFd);
-		return i2p::unexpected ("missing SCM_CREDENTIALS");
-	}
-	auto peer = Credentials ();
-	if (!peer)
-	{
-		if (receivedFd >= 0) ::close (receivedFd);
-		return i2p::unexpected (peer.error ());
-	}
-	if (messageCredentials.uid != peer->uid || messageCredentials.gid != peer->gid)
-	{
-		if (receivedFd >= 0) ::close (receivedFd);
-		return i2p::unexpected ("SCM_CREDENTIALS do not match peer");
-	}
+		// SO_PASSCRED makes SCM_CREDENTIALS mandatory on every received record.
+		// SO_PEERCRED identifies the socket creator, but its PID is fixed before
+		// fork+exec; the worker's SCM_CREDENTIALS PID is the child PID and may
+		// legitimately differ. Compare the stable uid/gid, not the PID.
+		if (!receivedCredentials)
+		{
+			if (receivedFd >= 0) ::close (receivedFd);
+			return i2p::unexpected ("missing SCM_CREDENTIALS");
+		}
+		auto peer = Credentials ();
+		if (!peer)
+		{
+			if (receivedFd >= 0) ::close (receivedFd);
+			return i2p::unexpected (peer.error ());
+		}
+		if (messageCredentials.uid != peer->uid || messageCredentials.gid != peer->gid)
+		{
+			if (receivedFd >= 0) ::close (receivedFd);
+			return i2p::unexpected ("SCM_CREDENTIALS do not match peer");
+		}
 #endif
-	return std::optional<ReceivedMessage> (ReceivedMessage { std::move (*message), receivedFd });
+		return std::optional<ReceivedMessage> (ReceivedMessage { std::move (*message), receivedFd });
+	}
 }
 
 i2p::expected<PeerCredentials, std::string> Channel::Credentials () const

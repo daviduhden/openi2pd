@@ -109,6 +109,9 @@ workflow, run `gh`, build or test.
 - The manual packaging service-contract job ShellChecks maintenance scripts
   as well as init scripts. Its fake-`nc` SAM regression checks mismatch exit
   status without a live bridge; it establishes no live SAM compatibility.
+- Ubuntu does not publish an `openrc` binary package, so the static service
+  job installs only `shellcheck` and validates OpenRC/runit files with `sh -n`
+  and ShellCheck. Never start a service manager in that job.
 
 
 - CONC-010 uses immutable process-local profile-root authority and flushed

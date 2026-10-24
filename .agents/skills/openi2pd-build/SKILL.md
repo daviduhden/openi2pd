@@ -120,6 +120,11 @@ build.
   `test-boost-linkage` and the manual installed-consumer lane cover both paths.
 - Windows SDK macros are PUBLIC core usage requirements; `WIN32_APP` remains
   PRIVATE. MinGW hardening uses PE flags, while Unix uses ELF `-z` flags.
+- OpenBSD base ncurses is wide-character capable but installs `ncurses.h`
+  directly and exposes `libncursesw` as a link to `libcurses`; CMake's
+  `CURSES_NEED_WIDE` search only accepts the `ncursesw/` header layout. The
+  build retries the plain layout and requires a `wadd_wch` symbol, and the
+  OpenBSD workflow must not `pkg_add ncurses` (no such package).
 - `language-modernization-static` is a compile-free but literal contract: it
   pins C++23/Java 25 levels, `minSdk 29`, the availability matrix and named
   seams (`Modern.h`, `ITransportConnector`, `jthread`/`stop_token`,

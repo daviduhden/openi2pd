@@ -115,6 +115,11 @@ compile, run tests or run project scripts.
   across concurrent invocations. Copy before claiming the in-flight count. Reset from a
   receiver callback cannot supply a full drain barrier; inspect its result.
 
+- Headers with inline `LogPrint`/`eLog*` use must include `Log.h` themselves.
+  Do not rely on the including translation unit's order: Android, Windows and
+  smaller targets compile `LeaseSet.h`/`I2PService.h` before any logger header
+  and fail with undeclared log levels.
+
 
 - CONC-010 uses immutable process-local profile-root authority and flushed
   same-directory replacement; storage IO/cleanup is serialized and shutdown

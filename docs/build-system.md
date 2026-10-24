@@ -222,7 +222,11 @@ service. See [Service management](service-management.md).
 `tui/TuiWin32Ipc.cpp`, and links only the Win32 libraries it uses. On Unix the
 same target uses `tui/TuiClient.cpp` and `tui/TerminalUnix.cpp` with ncursesw.
 Missing ncursesw is a configuration error unless `I2PD_TUI_REQUIRED=OFF` is
-passed explicitly. The daemon always compiles `daemon/TuiServerCommon.cpp`; it adds
+passed explicitly. CMake's wide-character module only accepts the `ncursesw/`
+header layout, so configuration retries the plain `ncurses.h` layout and
+requires a `wadd_wch` entry point; this covers OpenBSD base ncurses, which is
+wide-character capable without a separate `ncursesw/` include directory. The
+daemon always compiles `daemon/TuiServerCommon.cpp`; it adds
 `daemon/TuiServer.cpp` only on Unix and `daemon/TuiServerWin32.cpp` plus
 `tui/TuiWin32Ipc.cpp` only on Windows. See
 [TUI on Windows](TUI-WINDOWS.md).

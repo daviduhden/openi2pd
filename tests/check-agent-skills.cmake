@@ -21,6 +21,10 @@ if(NOT PROJECT_ROOT)
   message(FATAL_ERROR "PROJECT_ROOT is required")
 endif()
 
+# Script mode does not inherit the project's minimum version, so enable the
+# in-list operator used by the README inventory check explicitly.
+cmake_policy(SET CMP0057 NEW)
+
 set(skills_root "${PROJECT_ROOT}/.agents/skills")
 if(NOT IS_DIRECTORY "${skills_root}")
   message(FATAL_ERROR "Missing Agent Skills directory: ${skills_root}")
@@ -98,7 +102,10 @@ foreach(expected IN LISTS expected_skills)
     message(FATAL_ERROR "README inventory does not list ${expected}")
   endif()
 endforeach()
-foreach(line IN LISTS readme_text)
+# file(READ) keeps semicolons that would split a list; iterate real lines so
+# every referenced skill is validated independently.
+file(STRINGS "${readme_file}" readme_lines)
+foreach(line IN LISTS readme_lines)
   if(line MATCHES "`(openi2pd-[a-z0-9-]+)`")
     set(_listed "${CMAKE_MATCH_1}")
     if(NOT _listed IN_LIST expected_skills)

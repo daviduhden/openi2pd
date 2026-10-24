@@ -62,7 +62,8 @@ the component-install lane checks every tool binary, `i2pdctl` and
   crash reproducers are uploaded as short-retention artifacts. The workflow
   does not claim a long-running corpus campaign.
 - The manual `Packaging and service validation` workflow runs the service and
-  packaging static contracts, OpenRC/runit shell checks, then builds both
+  packaging static contracts, OpenRC/runit shell checks (no service manager is
+  installed or started), then builds both
   Debian binary packages, runs lintian, verifies the installed unit and
   manifests, preserves a conffile across reinstall, runs `autopkgtest`, and
   checks remove/purge data preservation. RPM/static bundles and OpenBSD port
