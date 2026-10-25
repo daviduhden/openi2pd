@@ -4,7 +4,7 @@
  *
  * openi2pd: test torrents dht interop.
  *
- * Checks the I2P torrent DHT codec: compact node layout and secure node-ID binding, opaque token bytes, nearest-node selection across buckets, seed maintenance and KRPC error envelopes.
+ * Checks the I2P torrent DHT codec: compact node layout and secure node-ID binding, opaque token bytes, nearest-node selection across buckets, peer-bound routing lookup and removal, seed maintenance and KRPC error envelopes.
  *
  */
 
@@ -93,6 +93,21 @@ int main ()
 	RequestInfo budget (nullptr, 1);
 	assert (budget.AddNode (inserted[0]) && budget.AddNode (inserted[1]));
 	assert (budget.GetNextNode () && !budget.GetNextNode ());
+
+	// A timed-out ping only records the peer identity. Resolve it back to the
+	// routing-table node so the heard-from check can use its node ID, and keep
+	// the peer-bound removal scoped to the matching entry.
+	i2p::data::IdentHash pingPeer = peer;
+	pingPeer ()[0] ^= 0x11;
+	NodeID pingNode { };
+	pingNode[0] = 0x40;
+	RoutingTable pingRouting (local);
+	assert (pingRouting.AddNode (std::make_shared<Node> (pingNode, pingPeer, port)));
+	auto pingEntry = pingRouting.FindNodeByPeer (pingPeer);
+	assert (pingEntry && pingEntry->id == pingNode);
+	assert (!pingRouting.FindNodeByPeer (peer));
+	pingRouting.RemoveNodeByPeer (pingPeer);
+	assert (!pingRouting.FindNodeByPeer (pingPeer));
 
 	// Persisted DHT state must remain a single safe leaf name.
 	assert (TorrentsDHT::IsValidStateFileName ("nodes.dht"));

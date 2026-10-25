@@ -194,6 +194,10 @@ namespace torrents
 
 		std::shared_ptr<Node> AddNode (std::shared_ptr<Node> node);
 		void RemoveNode (const NodeID & id);
+		// Return the routing-table entry bound to a peer identity, if any.
+		// Used to translate a timed-out ping (which only knows the peer) back
+		// to the node ID checked against the heard-from window.
+		std::shared_ptr<Node> FindNodeByPeer (const i2p::data::IdentHash & peer) const;
 		void RemoveNodeByPeer (const i2p::data::IdentHash & peer);
 		std::list<std::pair<NodeID, Bucket *>> GetExploratoryTargets (
 			std::mt19937 & rng, uint64_t ts); // (target, non-owning node to send find_node to)

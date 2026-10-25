@@ -293,6 +293,14 @@ namespace torrents
 			}
 	}
 
+	std::shared_ptr<Node> RoutingTable::FindNodeByPeer (const i2p::data::IdentHash & peer) const
+	{
+		for (auto bucket = m_Buckets.get (); bucket; bucket = bucket->next.get ())
+			for (const auto & entry : bucket->nodes)
+				if (entry.second && entry.second->peer == peer) return entry.second;
+		return nullptr;
+	}
+
 	std::list<std::pair<NodeID, Bucket *>> RoutingTable::GetExploratoryTargets (std::mt19937 & rng, uint64_t ts)
 	{
 		std::list<std::pair<NodeID, Bucket *>> ret;
@@ -1569,9 +1577,16 @@ namespace torrents
 					switch (std::get<2> (it->second))
 					{
 					case eKRPCQueryPing:
-						if (m_RoutingTable && !m_HeardFrom.contains (std::get<0> (it->second)))
-							m_RoutingTable->RemoveNodeByPeer (std::get<0> (it->second));
+					{
+						// A ping query only stores the peer identity. Resolve
+						// the routing-table node so the heard-from window is
+						// checked against its node ID, not the peer hash.
+						auto node = m_RoutingTable ?
+							m_RoutingTable->FindNodeByPeer (std::get<0> (it->second)) : nullptr;
+						if (node && !m_HeardFrom.contains (node->id))
+							m_RoutingTable->RemoveNodeByPeer (node->peer);
 						break;
+					}
 					case eKRPCQueryGetPeers: getpeers.push_back (std::get<3> (it->second)); break;
 					case eKRPCQueryFindNode: findnode.push_back (std::get<3> (it->second)); break;
 					default:;

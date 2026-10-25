@@ -116,6 +116,10 @@ Do not let them edit, build or run tests.
   the `AssetFileDescriptor`. Broker/process recovery stays generation-fenced.
 - Isolated payload/router persistence is opt-in and not global separation.
   `SNARK-001..SNARK-010`, live tracker/DHT/peer and device tests remain pending.
+- DHT heard-from state is keyed by `NodeID`, while a pending query stores the
+  destination peer `IdentHash`. A ping timeout must resolve the peer through
+  `RoutingTable::FindNodeByPeer` before checking `m_HeardFrom`; the comparator
+  is not transparent and peer hashes are not node IDs.
 
 ## Do not
 

@@ -3262,3 +3262,26 @@ OpenBSD or Java/C++ dynamic test was run.
   compiler, test runner, project validator or workflow dispatch was used.
   Publishing this correction does not validate it; only a later manual run
   can.
+
+## 2026-10-25 — Second manual CI triage at `d5d0bd6f`
+
+- The five runs started at `2026-10-24T17:45Z` all reached the same new
+  compile error in `libi2pd_client/TorrentsDHT.cpp`: the ping-expiry branch
+  passed the queried peer identity (`IdentHash`) to `m_HeardFrom.contains`,
+  which is a `std::map<NodeID, ...>`. `std::less<NodeID>` is not transparent
+  and no derived-key conversion exists, so every platform failed to compile
+  the file.
+- The timeout record only stores the peer. `RoutingTable::FindNodeByPeer`
+  resolves that peer to the routing-table node, and the heard-from guard now
+  compares against the node ID before `RemoveNodeByPeer` runs. This preserves
+  the intended "do not evict a node we recently heard from" rule instead of
+  comparing the peer hash with node IDs.
+- `test-torrents-dht-interop` now checks peer-to-node resolution, the absent
+  peer case and peer-bound removal.
+- Earlier corrections are confirmed by these runs: the Agent Skills static
+  contract and the packaging service contract passed, OpenBSD configuration
+  passed the ncurses/TUI requirement, and Android, Windows, OpenBSD, sanitizer,
+  fuzzing and Debian jobs compiled past the previous `Channel.cpp`,
+  `LeaseSet.h`/`I2PService.h` and `openrc` failures.
+- Status: Implemented / static; Pending CI compilation; Pending CI tests. No
+  compiler, test runner or project validator was used for this correction.
