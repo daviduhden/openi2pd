@@ -75,7 +75,11 @@ int main ()
 	{
 		NodeID candidate { };
 		candidate[0] = 1 + i * 16;
-		auto entry = std::make_shared<Node> (candidate, peer, port);
+		// Distinct destinations: the routing table admits at most two node IDs
+		// per peer, so reusing one identity would stop after the second node.
+		i2p::data::IdentHash candidatePeer = peer;
+		candidatePeer[1] = static_cast<uint8_t> (i);
+		auto entry = std::make_shared<Node> (candidate, candidatePeer, port);
 		assert (routing.AddNode (entry));
 		inserted.push_back (entry);
 	}

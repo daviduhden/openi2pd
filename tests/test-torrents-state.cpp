@@ -4,13 +4,16 @@
  *
  * openi2pd: local torrent state codec regressions.
  * Covers complete-input validation, version and resource bounds,
- * comment moderation, binary priorities and failed-decode atomicity.
+ * comment moderation, future-timestamp clamping, binary priorities and
+ * failed-decode atomicity.
  */
 
 #include <cassert>
 #include <limits>
 #include <string>
+#include <string_view>
 #include <utility>
+#include <vector>
 #include "TorrentsState.h"
 #include "Torrents.h"
 #ifndef NO_TORRENTS
@@ -22,6 +25,22 @@ std::string Envelope (std::string_view comments, std::string_view priorities, st
 	using namespace i2p::torrents;
 	return CreateDictionary (
 		{ { "comments", comments }, { "priorities", priorities }, { "stopped", stopped }, { "version", version } });
+}
+
+// Version 1 comment-state dictionary holding exactly the supplied entries.
+std::string CommentState (const std::vector<std::string> & entries)
+{
+	using namespace i2p::torrents;
+	return CreateDictionary ({ { "comments", CreateList (entries) }, { "enabled", CreateInteger (1) },
+		{ "version", CreateInteger (1) } });
+}
+
+std::string CommentEntry (int64_t id, std::string_view owner, std::string_view text, int64_t time)
+{
+	using namespace i2p::torrents;
+	return CreateDictionary ({ { "hidden", CreateInteger (0) }, { "id", CreateInteger (id) },
+		{ "like", CreateInteger (0) }, { "local", CreateInteger (0) }, { "owner", CreateByteString (owner) },
+		{ "text", CreateByteString (text) }, { "time", CreateInteger (time) } });
 }
 }
 
@@ -86,12 +105,44 @@ int main ()
 	rejectWithoutChanges (CreateDictionary ({ { "comments", commentState }, { "priorities", defaults },
 		{ "stopped", "i0e" }, { "unknown", "i0e" }, { "version", "i1e" } }));
 	rejectWithoutChanges (encoded.substr (0, encoded.size () - 1) + "7:versioni1ee");
+	// Structural comment-state corruption is still rejected as a whole: two
+	// entries sharing a local id, a non-positive id, a negative timestamp and
+	// terminal control characters are invalid entries, not clampable ones.
+	rejectWithoutChanges (
+		Envelope (CommentState ({ CommentEntry (1, "dup", "dup", 1), CommentEntry (1, "dup", "dup", 1) }), defaults));
+	rejectWithoutChanges (Envelope (CommentState ({ CommentEntry (0, "zero", "zero", 1) }), defaults));
+	rejectWithoutChanges (Envelope (CommentState ({ CommentEntry (1, "neg", "neg", -1) }), defaults));
+	rejectWithoutChanges (Envelope (CommentState ({ CommentEntry (1, "ctl", "bad \x01", 1) }), defaults));
+	rejectWithoutChanges (Envelope (CommentState ({ CommentEntry (1, "c1", "bad \xC2\x9B", 1) }), defaults));
+	std::vector<std::string> tooManyComments;
+	for (size_t i = 0; i < MAX_COMMENT_COUNT + 1; ++i)
+		tooManyComments.push_back (
+			CommentEntry (static_cast<int64_t> (i) + 1, "owner" + std::to_string (i), "text " + std::to_string (i), 1));
+	rejectWithoutChanges (Envelope (CommentState (tooManyComments), defaults));
 
+	// A timestamp ahead of the local clock (backwards clock or restored
+	// backup) no longer rejects the whole state: it is clamped to `now`, so the
+	// comments, priorities and the stopped flag survive and a paused torrent
+	// stays paused.
 	TorrentLocalState future;
+	future.stopped = true;
+	future.priorities = { 2, 1 };
 	future.comments.SetEnabled (true);
-	comment.time = now + 1;
+	comment.time = now + 5000;
 	assert (future.comments.Add (comment));
-	rejectWithoutChanges (Envelope (EncodeTorrentCommentState (future.comments), defaults));
+	const auto futureEncoded = EncodeTorrentLocalState (future, error);
+	assert (!futureEncoded.empty () && error.empty ());
+	TorrentLocalState restored;
+	assert (DecodeTorrentLocalState (futureEncoded, now, restored, error) && error.empty ());
+	assert (restored.stopped && restored.priorities == future.priorities);
+	auto clamped = restored.comments.Snapshot ();
+	assert (clamped.size () == 1 && clamped[0].time == now && clamped[0].owner == comment.owner);
+	// Moderation state is preserved and the clamped entry is a normal entry.
+	assert (restored.comments.HideId (clamped[0].localId) && restored.comments.HiddenCount () == 1);
+	// With a clock beyond the stored timestamp nothing is clamped.
+	TorrentLocalState futureClock;
+	assert (DecodeTorrentLocalState (futureEncoded, now + 6000, futureClock, error) && error.empty ());
+	assert (futureClock.comments.Snapshot ().front ().time == now + 5000);
 	future.comments.SetEnabled (false);
 	// Disabling comments must retain local moderation and privacy settings.
 	auto disabled = EncodeTorrentLocalState (future, error);

@@ -6,9 +6,11 @@
  *
  * Encodes and decodes bounded ut_comment request/response messages using
  * peer-wire age timestamps, and maintains the per-torrent store with
- * deduplication, hidden-entry retention and rating aggregation. Malformed
- * frames are rejected; an invalid entry is skipped without discarding a
- * valid entry from the same peer reply.
+ * normalized deduplication, hidden-entry retention, anonymous and
+ * pseudonymous visible quotas and rating aggregation. Malformed frames are
+ * rejected; an invalid entry is skipped without discarding a valid entry from
+ * the same peer reply. The persistence decoder clamps a future timestamp to
+ * the local clock rather than discarding the whole state.
  *
  */
 
@@ -18,6 +20,7 @@
 #include <algorithm>
 #include <limits>
 #include <set>
+#include <utility>
 
 namespace i2p::torrents
 {
@@ -75,6 +78,56 @@ namespace
 		return comment.rating <= 5 && ValidText (comment.owner, MAX_COMMENT_OWNER_UNITS)
 			&& ValidText (comment.text, MAX_COMMENT_TEXT_UNITS);
 	}
+	bool IsAsciiWhitespace (char ch)
+	{
+		return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' || ch == '\v' || ch == '\f';
+	}
+	// Deduplication key for a stored owner/text. The stored value is never
+	// rewritten; only the comparison ignores presentation-only differences, so
+	// trailing/leading whitespace, collapsed whitespace runs and zero-width
+	// characters cannot be used to replay the same comment past the dedupe and
+	// per-owner/anonymous quotas.
+	std::string CommentDedupeKey (std::string_view value)
+	{
+		std::string key;
+		key.reserve (value.size ());
+		bool pendingSpace = false;
+		for (size_t i = 0; i < value.size ();)
+		{
+			const auto ch = static_cast<unsigned char> (value[i]);
+			// U+200B/U+200C/U+200D and U+FEFF are invisible in every renderer and
+			// have no legitimate use as a comment separator.
+			if (ch == 0xE2 && i + 2 < value.size () && static_cast<unsigned char> (value[i + 1]) == 0x80
+				&& (static_cast<unsigned char> (value[i + 2]) == 0x8B
+					|| static_cast<unsigned char> (value[i + 2]) == 0x8C
+					|| static_cast<unsigned char> (value[i + 2]) == 0x8D))
+			{
+				i += 3;
+				continue;
+			}
+			if (ch == 0xEF && i + 2 < value.size () && value.compare (i, 3, "\xEF\xBB\xBF") == 0)
+			{
+				i += 3;
+				continue;
+			}
+			++i;
+			if (IsAsciiWhitespace (static_cast<char> (ch)))
+			{
+				// Trimming is implicit: a space is emitted only once real content
+				// follows it, so neither leading nor trailing whitespace reaches
+				// the key.
+				if (!key.empty ()) pendingSpace = true;
+				continue;
+			}
+			if (pendingSpace)
+			{
+				key.push_back (' ');
+				pendingSpace = false;
+			}
+			key.push_back (static_cast<char> (ch));
+		}
+		return key;
+	}
 	bool Integer (const std::map<std::string_view, std::string_view> & fields, std::string_view key, int64_t & result)
 	{
 		auto found = fields.find (key);
@@ -104,8 +157,13 @@ std::optional<TorrentCommentMessage> DecodeTorrentComments (std::string_view enc
 		message.requested = std::min<uint64_t> (count, MAX_COMMENT_COUNT);
 		if (auto it = fields.find ("filter"); it != fields.end ())
 		{
+			// The filter is an optimisation hint for the requester's own cache
+			// and is not authenticated. Java sends 64 zero bytes, and a peer may
+			// send any 0..64-byte hint; content is ignored either way. Only a
+			// hint longer than the documented size or malformed bencode makes the
+			// request itself invalid.
 			auto [filter, n] = ExtractByteString (it->second);
-			if (!n || n != it->second.size () || filter.size () != 64) return std::nullopt;
+			if (!n || n != it->second.size () || filter.size () > 64) return std::nullopt;
 		}
 		return message;
 	}
@@ -131,9 +189,12 @@ std::optional<TorrentCommentMessage> DecodeTorrentComments (std::string_view enc
 				if (!n || n != it->second.size ()) return size;
 				std::string & target = key == std::string_view ("owner") ? comment.owner : comment.text;
 				target.assign (text);
-				// Java normalizes CR/LF in comments to a single space.
+				// Java normalizes CR/LF/TAB in comments to a single space. TAB is
+				// a text separator in Java's CommentSet and a terminal control
+				// here, so it is sanitized before validation. Other C0/DEL/C1
+				// controls stay rejected by ValidText.
 				for (char & ch : target)
-					if (ch == '\r' || ch == '\n') ch = ' ';
+					if (ch == '\r' || ch == '\n' || ch == '\t') ch = ' ';
 			}
 			// Java clamps ratings to 0..5 and negative ages to "now".
 			comment.rating = static_cast<uint8_t> (std::clamp<int64_t> (rating, 0, 5));
@@ -191,25 +252,49 @@ std::string EncodeTorrentComments (const std::vector<TorrentComment> & comments,
 	return encoded;
 }
 
+bool TorrentCommentStore::IsDuplicate (const TorrentComment & comment) const
+{
+	const auto owner = CommentDedupeKey (comment.owner);
+	const auto text = CommentDedupeKey (comment.text);
+	for (const auto & existing : m_Comments)
+		if (CommentDedupeKey (existing.owner) == owner && CommentDedupeKey (existing.text) == text) return true;
+	return false;
+}
+
 bool TorrentCommentStore::Add (TorrentComment comment)
 {
 	if (!m_Enabled || !ValidComment (comment)
 		|| m_NextId >= static_cast<uint64_t> (std::numeric_limits<int64_t>::max ()))
 		return false;
-	// Content deduplication is independent of the rating. Otherwise the same
-	// pseudonymous text could be replayed six times with ratings 0..5.
-	for (const auto & existing : m_Comments)
-		if (existing.owner == comment.owner && existing.text == comment.text) return false;
+	// Content deduplication is independent of the rating and compares a
+	// normalized key, so the same pseudonymous text cannot be replayed with
+	// ratings 0..5 or with whitespace/zero-width padding. Hidden entries stay
+	// in the comparison; only local moderation can release a text again.
+	if (IsDuplicate (comment)) return false;
 	const auto textUnits = TextUnits (comment.text);
 	if (textUnits == static_cast<size_t> (-1)) return false;
-	// Bound one pseudonym's share of the visible store. Hidden entries remain
-	// for dedupe but do not count toward this per-author quota.
-	size_t ownerEntries = 0;
-	for (const auto & existing : m_Comments)
-		if (!comment.owner.empty () && !existing.hidden && existing.owner == comment.owner
-			&& ++ownerEntries >= MAX_COMMENT_PER_OWNER)
-			return false;
+	// Bound one pseudonym's share of the visible store, and give anonymous
+	// entries their own smaller budget: an empty owner has no stable label, so
+	// it must not escape the per-pseudonym quota. Hidden entries remain for
+	// dedupe but do not count toward either budget.
+	if (comment.owner.empty ())
+	{
+		size_t anonymousEntries = 0;
+		for (const auto & existing : m_Comments)
+			if (!existing.hidden && existing.owner.empty ()
+				&& ++anonymousEntries >= MAX_COMMENT_ANONYMOUS_VISIBLE)
+				return false;
+	}
+	else
+	{
+		size_t ownerEntries = 0;
+		for (const auto & existing : m_Comments)
+			if (!existing.hidden && existing.owner == comment.owner && ++ownerEntries >= MAX_COMMENT_PER_OWNER)
+				return false;
+	}
 	// Evict the oldest foreign entry rather than becoming permanently full.
+	// Local and hidden entries are never victims: moderation state and the
+	// operator's own comments outlive peer-supplied spam.
 	while (m_Comments.size () >= MAX_COMMENT_COUNT || m_TextUnits > MAX_COMMENT_TEXT_TOTAL_UNITS
 		|| textUnits > MAX_COMMENT_TEXT_TOTAL_UNITS - m_TextUnits)
 	{
@@ -236,14 +321,18 @@ bool TorrentCommentStore::Add (TorrentComment comment)
 bool TorrentCommentStore::Hide (size_t localIndex)
 {
 	if (localIndex >= m_Comments.size ()) return false;
+	bool changed = false;
 	if (!m_Comments[localIndex].hidden)
 	{
 		const auto units = TextUnits (m_Comments[localIndex].text);
 		if (units != static_cast<size_t> (-1)) m_TextUnits -= std::min (m_TextUnits, units);
-		++m_Revision;
+		changed = true;
 	}
 	m_Comments[localIndex].hidden = true;
-	TrimHidden ();
+	// Trimming can drop another hidden entry, which is a content change even
+	// when this entry was already hidden.
+	if (TrimHidden ()) changed = true;
+	if (changed) ++m_Revision;
 	return true;
 }
 
@@ -252,14 +341,16 @@ bool TorrentCommentStore::HideId (uint64_t id)
 	for (auto & comment : m_Comments)
 		if (comment.localId == id)
 		{
+			bool changed = false;
 			if (!comment.hidden)
 			{
 				const auto units = TextUnits (comment.text);
 				if (units != static_cast<size_t> (-1)) m_TextUnits -= std::min (m_TextUnits, units);
-				++m_Revision;
+				changed = true;
 			}
 			comment.hidden = true;
-			TrimHidden ();
+			if (TrimHidden ()) changed = true;
+			if (changed) ++m_Revision;
 			return true;
 		}
 	return false;
@@ -315,11 +406,12 @@ bool TorrentCommentStore::Restore (bool enabled, const std::vector<TorrentCommen
 	return true;
 }
 
-void TorrentCommentStore::TrimHidden ()
+bool TorrentCommentStore::TrimHidden ()
 {
 	size_t hidden = 0;
 	for (const auto & comment : m_Comments)
 		if (comment.hidden) ++hidden;
+	bool trimmed = false;
 	while (hidden > MAX_COMMENT_HIDDEN_COUNT)
 	{
 		auto victim = m_Comments.end ();
@@ -332,7 +424,33 @@ void TorrentCommentStore::TrimHidden ()
 		if (victim == m_Comments.end ()) break;
 		m_Comments.erase (victim);
 		--hidden;
+		trimmed = true;
 	}
+	return trimmed;
+}
+
+size_t TorrentCommentStore::VisibleCount () const
+{
+	size_t count = 0;
+	for (const auto & comment : m_Comments)
+		if (!comment.hidden) ++count;
+	return count;
+}
+
+size_t TorrentCommentStore::HiddenCount () const
+{
+	size_t count = 0;
+	for (const auto & comment : m_Comments)
+		if (comment.hidden) ++count;
+	return count;
+}
+
+size_t TorrentCommentStore::LocalCount () const
+{
+	size_t count = 0;
+	for (const auto & comment : m_Comments)
+		if (comment.local) ++count;
+	return count;
 }
 
 namespace
@@ -410,7 +528,7 @@ bool DecodeTorrentCommentState (std::string_view encoded, uint64_t now, TorrentC
 			if (!Integer (values, "id", id) || id <= 0 || !Integer (values, "like", rating) || rating < 0 || rating > 5
 				|| !Integer (values, "local", local) || (local != 0 && local != 1)
 				|| !Integer (values, "hidden", hidden) || (hidden != 0 && hidden != 1)
-				|| !Integer (values, "time", time) || time < 0 || static_cast<uint64_t> (time) > now)
+				|| !Integer (values, "time", time) || time < 0)
 			{
 				valid = false;
 				return len;
@@ -420,7 +538,11 @@ bool DecodeTorrentCommentState (std::string_view encoded, uint64_t now, TorrentC
 			comment.rating = rating;
 			comment.local = local;
 			comment.hidden = hidden;
-			comment.time = time;
+			// A timestamp ahead of the local clock (restored backup, backwards
+			// clock) is clamped to `now` instead of rejecting the whole state:
+			// losing every comment, priority and the stopped flag because of one
+			// future stamp would silently resume a paused torrent.
+			comment.time = static_cast<uint64_t> (time) > now ? now : static_cast<uint64_t> (time);
 			for (auto key : { "owner", "text" })
 			{
 				auto it = values.find (key);

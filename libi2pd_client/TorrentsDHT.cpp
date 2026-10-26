@@ -17,7 +17,9 @@
 #include <string.h>
 #include <vector>
 #include <fstream>
+#include <iterator>
 #include <limits>
+#include <utility>
 #include "I2PEndian.h"
 #include "Timestamp.h"
 #include "FS.h"
@@ -257,6 +259,11 @@ namespace torrents
 			bucket->lastUpdateTime = ts;
 			return it->second;
 		}
+		// A destination mints its own node ID, and only six of the 20 ID bytes
+		// are bound to it, so one peer can present many valid NIDs and fill
+		// several buckets. Enforce the per-peer cap by rejecting the newcomer;
+		// an existing entry is never evicted on its behalf.
+		if (CountPeerNodes (node->peer) >= MAX_DHT_NODES_PER_PEER) return nullptr;
 		if (bucket->IsFull ())
 		{
 			do
@@ -272,6 +279,15 @@ namespace torrents
 			bucket->lastUpdateTime = i2p::util::GetMonotonicSeconds ();
 		}
 		return node;
+	}
+
+	size_t RoutingTable::CountPeerNodes (const i2p::data::IdentHash & peer) const
+	{
+		size_t count = 0;
+		for (auto bucket = m_Buckets.get (); bucket; bucket = bucket->next.get ())
+			for (const auto & entry : bucket->nodes)
+				if (entry.second && entry.second->peer == peer) ++count;
+		return count;
 	}
 
 	void RoutingTable::RemoveNode (const NodeID & id)
@@ -348,6 +364,173 @@ namespace torrents
 		}
 		if (count >= MAX_DHT_QUERIES_PER_ORIGIN) return false;
 		++count;
+		return true;
+	}
+
+	PrivateInfoHashSet::Admission PrivateInfoHashSet::Insert (const Torrent::InfoHash & infoHash)
+	{
+		if (m_Hashes.contains (infoHash)) return Admission::AlreadyKnown;
+		Admission result = Admission::Inserted;
+		if (m_Hashes.size () >= MaxHashes && !m_Order.empty ())
+		{
+			// Evict only the oldest admission; the set must stay bounded even
+			// when an operator keeps adding private torrents.
+			m_Hashes.erase (m_Order.front ());
+			m_Order.pop_front ();
+			result = Admission::EvictedOldest;
+		}
+		m_Hashes.insert (infoHash);
+		m_Order.push_back (infoHash);
+		return result;
+	}
+
+	bool PrivateInfoHashSet::Erase (const Torrent::InfoHash & infoHash)
+	{
+		if (!m_Hashes.erase (infoHash)) return false;
+		std::erase (m_Order, infoHash);
+		return true;
+	}
+
+	void DHTTokenStore::Erase (Order::iterator it)
+	{
+		m_Tokens.erase (it->token);
+		auto node = m_ByNode.find (it->nodeID);
+		if (node != m_ByNode.end ())
+		{
+			std::erase (node->second, it);
+			if (node->second.empty ()) m_ByNode.erase (node);
+		}
+		m_Order.erase (it);
+	}
+
+	DHTTokenStore::Admission DHTTokenStore::Issue (const DHTIncomingToken & entry)
+	{
+		if (!IsValidToken (entry.token) || !IsValidPort (entry.port)) return Admission::Rejected;
+		if (m_Tokens.contains (entry.token)) return Admission::AlreadyPresent;
+		Admission result = Admission::Issued;
+		// Per-node quota first: reclaim only this node's own oldest token, so a
+		// destination that keeps issuing get_peers cannot flush every other
+		// destination's tokens. Re-look-up each round because Erase may drop an
+		// emptied per-node bucket.
+		while (true)
+		{
+			auto node = m_ByNode.find (entry.nodeID);
+			if (node == m_ByNode.end () || node->second.size () < MaxTokensPerNode) break;
+			Erase (node->second.front ());
+			result = Admission::ReplacedOwnOldest;
+		}
+		// Then the global capacity: the FIFO front is the oldest issue.
+		while (m_Tokens.size () >= MaxTokens && !m_Order.empty ())
+		{
+			Erase (m_Order.begin ());
+			result = Admission::EvictedOldest;
+		}
+		if (m_Tokens.size () >= MaxTokens) return Admission::Rejected;
+		m_Order.push_back (entry);
+		const auto last = std::prev (m_Order.end ());
+		m_Tokens.emplace (entry.token, last);
+		m_ByNode[entry.nodeID].push_back (last);
+		return result;
+	}
+
+	DHTTokenStore::Validation DHTTokenStore::Validate (std::string_view token, const NodeID & nodeID,
+		const Torrent::InfoHash & infoHash, uint16_t port, uint64_t now, DHTIncomingToken & out)
+	{
+		if (!IsValidToken (token) || !IsValidPort (port)) return Validation::Invalid;
+		auto it = m_Tokens.find (GetPeersToken (token));
+		if (it == m_Tokens.end ()) return Validation::Unknown;
+		const auto entry = it->second;
+		// Age is inclusive like the previous table: a token issued exactly
+		// TokenLifetime seconds ago is still usable. A clock regression keeps
+		// the token usable instead of extending or truncating its window.
+		if (now > entry->issued && now - entry->issued > TokenLifetime)
+		{
+			Erase (entry);
+			return Validation::Expired;
+		}
+		if (entry->infoHash != infoHash) return Validation::WrongInfoHash;
+		if (entry->nodeID != nodeID) return Validation::WrongNode;
+		if (entry->port != port) return Validation::WrongPort;
+		out = *entry;
+		return Validation::Valid;
+	}
+
+	bool DHTTokenStore::Refresh (std::string_view token, uint64_t now)
+	{
+		auto it = m_Tokens.find (GetPeersToken (token));
+		if (it == m_Tokens.end ()) return false;
+		it->second->issued = now;
+		return true;
+	}
+
+	bool DHTTokenStore::Contains (std::string_view token) const
+	{
+		return m_Tokens.contains (GetPeersToken (token));
+	}
+
+	size_t DHTTokenStore::SizeForNode (const NodeID & nodeID) const
+	{
+		auto it = m_ByNode.find (nodeID);
+		return it == m_ByNode.end () ? 0 : it->second.size ();
+	}
+
+	void DHTTokenStore::RemoveInfoHash (const Torrent::InfoHash & infoHash)
+	{
+		for (auto it = m_Order.begin (); it != m_Order.end ();)
+		{
+			if (it->infoHash == infoHash)
+			{
+				const auto next = std::next (it);
+				Erase (it);
+				it = next;
+			}
+			else
+				++it;
+		}
+	}
+
+	size_t DHTTokenStore::Expire (uint64_t now)
+	{
+		size_t expired = 0;
+		for (auto it = m_Order.begin (); it != m_Order.end ();)
+		{
+			if (now > it->issued && now - it->issued > TokenLifetime)
+			{
+				const auto next = std::next (it);
+				Erase (it);
+				++expired;
+				it = next;
+			}
+			else
+				++it;
+		}
+		return expired;
+	}
+
+	void DHTTokenStore::Clear ()
+	{
+		m_Tokens.clear ();
+		m_ByNode.clear ();
+		m_Order.clear ();
+	}
+
+	bool DHTRawFrameLimiter::Allow (uint64_t now)
+	{
+		if (!m_HasWindow)
+		{
+			m_WindowStart = now;
+			m_Count = 0;
+			m_HasWindow = true;
+		}
+		else if (now >= m_WindowStart && now - m_WindowStart >= Window)
+		{
+			m_WindowStart = now;
+			m_Count = 0;
+		}
+		// A clock regression (now < m_WindowStart) keeps the current window and
+		// its count, so a skewed clock cannot refill an exhausted budget.
+		if (m_Count >= MaxFrames) return false;
+		++m_Count;
 		return true;
 	}
 
@@ -448,25 +631,46 @@ namespace torrents
 
 	TorrentsDHT::TorrentsDHT (TorrentsTunnel & tunnel, uint16_t port, std::string_view dhtFileName)
 		: m_Tunnel (tunnel)
-		, m_Port (port)
+		, m_Port (ClampDHTPort (port))
 		, m_DHTFileName (dhtFileName)
 		, m_DHTUpdateCheckTimer (tunnel.GetService ())
 		, m_DHTExpirationCheckTimer (tunnel.GetService ())
 		, m_DHTSendPingCheckTimer (tunnel.GetService ())
 		, m_DHTQueryExpirationCheckTimer (tunnel.GetService ())
+		, m_DHTIncomingDrainTimer (tunnel.GetService ())
+		, m_DHTStateSaveTimer (tunnel.GetService ())
 		, m_NextDHTExploratoryTime (i2p::util::GetMonotonicSeconds () + DHT_INITIAL_EXPLORATORY_INTERVAL)
 	{
 		auto dest = tunnel.GetLocalDestination ();
 		if (dest)
 		{
 			memcpy (m_NodeID.data (), dest->GetIdentHash (), 6);
-			m_NodeID[4] ^= (port >> 8);
-			m_NodeID[5] ^= (port & 0xFF);
+			m_NodeID[4] ^= (m_Port >> 8);
+			m_NodeID[5] ^= (m_Port & 0xFF);
 			RAND_bytes (m_NodeID.data () + 6, m_NodeID.size () - 6);
 			m_RoutingTable = std::make_unique<RoutingTable> (m_NodeID);
 		}
 		else
 			m_NodeID.fill (0);
+	}
+
+	TorrentsDHT::~TorrentsDHT ()
+	{
+		// A timer callback that already reached its turn or a disk-domain save
+		// that has not run yet must fail closed instead of entering
+		// half-destroyed state.
+		m_ServiceState->stopping.store (true, std::memory_order_release);
+		m_DHTUpdateCheckTimer.cancel ();
+		m_DHTExpirationCheckTimer.cancel ();
+		m_DHTSendPingCheckTimer.cancel ();
+		m_DHTQueryExpirationCheckTimer.cancel ();
+		m_DHTIncomingDrainTimer.cancel ();
+		m_DHTStateSaveTimer.cancel ();
+		m_DatagramReceiver.Reset ();
+		{
+			std::lock_guard<std::mutex> lock (m_IncomingMutex);
+			m_Incoming.clear ();
+		}
 	}
 
 	void TorrentsDHT::Start ()
@@ -482,33 +686,63 @@ namespace torrents
 		}
 		else if (!m_DHTFileName.empty () && m_DHTFileName[0])
 			LogPrint (eLogError, "TorrentsDHT: Refusing unsafe DHT state filename");
+		m_ServiceState->stopping.store (false, std::memory_order_release);
+		// A fresh generation starts with no write in flight; a stale one could
+		// not have completed because Stop() marks `stopping` first.
+		m_ServiceState->saveInFlight.store (false, std::memory_order_release);
 		if (dest)
 		{
 			auto dgramDest = dest->GetDatagramDestination ();
 			if (dgramDest)
 			{
 				m_DatagramReceiver.Reset ();
+				// The receiver runs on the inbound network thread. It only copies
+				// the frame into the bounded hand-off queue; every routing, query
+				// and torrent mutation happens in DrainIncomingDatagrams() on the
+				// service thread. The shared state makes a late dispatch after
+				// teardown fail closed.
+				auto state = m_ServiceState;
 				m_DatagramReceiver = dgramDest->SetReceiver (
-					[this] (const i2p::data::IdentityEx & from, uint16_t fromPort, uint16_t toPort, const uint8_t * buf,
-						size_t len, const i2p::util::Mapping * options)
-					{ HandleDatagram (from, fromPort, toPort, buf, len, options); });
+					[this, state] (const i2p::data::IdentityEx & from, uint16_t fromPort, uint16_t toPort,
+						const uint8_t * buf, size_t len, const i2p::util::Mapping * options)
+					{
+						if (state->stopping.load (std::memory_order_acquire)) return;
+						EnqueueIncomingDatagram (from, fromPort, toPort, buf, len, options);
+					});
 			}
 		}
 		ScheduleDHTUpdateCheck ();
 		ScheduleDHTExpirationCheck ();
 		ScheduleDHTSendPingCheck ();
 		ScheduleDHTQueryExpirationCheck ();
+		ScheduleDHTIncomingDrain ();
+		ScheduleDHTStateSave ();
 	}
 
 	void TorrentsDHT::Stop ()
 	{
+		m_ServiceState->stopping.store (true, std::memory_order_release);
 		m_DHTUpdateCheckTimer.cancel ();
 		m_DHTExpirationCheckTimer.cancel ();
 		m_DHTSendPingCheckTimer.cancel ();
 		m_DHTQueryExpirationCheckTimer.cancel ();
+		m_DHTIncomingDrainTimer.cancel ();
+		m_DHTStateSaveTimer.cancel ();
 		// Reset waits for any callback already dispatched before this owner
 		// can be destroyed, and its token cannot remove a newer registration.
 		m_DatagramReceiver.Reset ();
+		// Frames queued but not yet drained belong to the stopped
+		// generation and must never be replayed into a later Start().
+		{
+			std::lock_guard<std::mutex> lock (m_IncomingMutex);
+			m_Incoming.clear ();
+		}
+		// A periodic write that has not started yet sees `stopping` and returns
+		// without writing, so the flag must not stay latched across a restart.
+		m_ServiceState->saveInFlight.store (false, std::memory_order_release);
+		// The final save stays synchronous: the caller stops the delegated
+		// storage worker only after this returns, so no periodic save may
+		// still be queued when that authority goes away.
 		if (!m_DHTFileName.empty () && m_DHTFileName[0] && IsValidStateFileName (m_DHTFileName))
 			Save (GetDHTFilePath (m_DHTFileName));
 	}
@@ -532,10 +766,10 @@ namespace torrents
 		return dhtFilePath;
 	}
 
-	void TorrentsDHT::Save (const std::filesystem::path & file)
+	bool TorrentsDHT::BuildStateSnapshot (std::vector<uint8_t> & bytes) const
 	{
-		if (!m_RoutingTable || file.empty () || !IsValidStateFileName (file.filename ().string ())) return;
-		std::vector<uint8_t> bytes;
+		bytes.clear ();
+		if (!m_RoutingTable) return false;
 		auto append = [&bytes] (const NodeInfo & node)
 		{
 			if (bytes.size () > MaxStateBytes - node.size ()) return false;
@@ -548,8 +782,17 @@ namespace torrents
 			if (!append (node->GetNodeInfo ()))
 			{
 				LogPrint (eLogError, "TorrentsDHT: State exceeds persistence limit");
-				return;
+				bytes.clear ();
+				return false;
 			}
+		return true;
+	}
+
+	void TorrentsDHT::Save (const std::filesystem::path & file)
+	{
+		if (file.empty () || !IsValidStateFileName (file.filename ().string ())) return;
+		std::vector<uint8_t> bytes;
+		if (!BuildStateSnapshot (bytes)) return;
 		if (m_DelegatedPersistence)
 		{
 			std::string error;
@@ -587,7 +830,7 @@ namespace torrents
 		}
 		// Keep the existing flat 54-byte NodeInfo format; reject partial files
 		// before changing identity or routing state.
-		if (bytes.empty () || bytes.size () > MaxStateBytes || bytes.size () % NodeInfo { }.size ()) return;
+		if (!DecodeDHTStateRecords (bytes)) return;
 		size_t offset = 0;
 		NodeInfo first;
 		std::copy_n (bytes.data (), first.size (), first.data ());
@@ -595,7 +838,10 @@ namespace torrents
 		if (dest)
 		{
 			Node node (first);
-			if (node.VerifyID () && node.peer == dest->GetIdentHash ())
+			// A persisted self record must carry a usable node ID and a port
+			// whose repliable successor is in 1..65535; 0 and 65535 are
+			// refused rather than adopted.
+			if (node.VerifyID () && node.peer == dest->GetIdentHash () && IsValidDHTPort (node.port))
 			{
 				m_NodeID = node.id;
 				m_Port = node.port;
@@ -616,47 +862,222 @@ namespace torrents
 			m_RoutingTable->GetNumBuckets (), " buckets");
 	}
 
+	std::optional<KRPCQuery> GetKRPCQueryKind (std::string_view name)
+	{
+		for (size_t i = 0; i < KRPCQueryStr.size (); i++)
+			if (KRPCQueryStr[i] == name) return static_cast<KRPCQuery> (i);
+		return std::nullopt;
+	}
+
+	namespace
+	{
+		// Length of the single bencoded value at the front of `value`, or zero
+		// when the value is malformed. Used so the envelope handler returns the
+		// consumed length instead of asking ParseDictionary to reparse.
+		size_t GetEncodedValueLength (std::string_view value)
+		{
+			if (value.empty ()) return 0;
+			switch (value.front ())
+			{
+			case 'i': return ExtractInteger (value).second;
+			case 'l': return ParseList (value).second;
+			case 'd': return ParseDictionary (value).second;
+			default: return ExtractByteString (value).second;
+			}
+		}
+
+		// KRPC `e` is [integer code, byte-string text]. The text is bounded and
+		// informational only; it is never logged.
+		bool DecodeKRPCError (std::string_view encoded, int32_t & code, std::string_view & text)
+		{
+			size_t count = 0;
+			bool valid = true;
+			const auto length = ParseList (encoded,
+				[&] (std::string_view entry) -> size_t
+				{
+					++count;
+					if (count == 1)
+					{
+						auto [value, size] = ExtractInteger (entry);
+						if (!size || value < std::numeric_limits<int32_t>::min ()
+							|| value > std::numeric_limits<int32_t>::max ())
+							valid = false;
+						else
+							code = static_cast<int32_t> (value);
+						return size;
+					}
+					if (count == 2)
+					{
+						auto [message, size] = ExtractByteString (entry);
+						if (!size || message.size () > MAX_DHT_ERROR_TEXT)
+							valid = false;
+						else
+							text = message;
+						return size;
+					}
+					valid = false;
+					return 0;
+				});
+			return valid && count == 2 && length && length == encoded.size ();
+		}
+	}
+
+	DHTFrame DecodeDHTFrame (std::string_view encoded)
+	{
+		DHTFrame frame;
+		if (encoded.empty () || encoded.size () > MAX_DHT_KRPC_FRAME) return frame;
+
+		bool malformed = false, hasType = false, hasTransaction = false;
+		std::string_view type, transaction, query, arguments, response, error;
+		// ParseDictionary rejects duplicate keys on its own and reports a
+		// malformed value as zero, which fails the whole frame below. The
+		// envelope is closed: an unknown top-level key cannot be interpreted,
+		// so it is rejected instead of silently skipped. BEP 5's optional `v`
+		// client version is the only extension key and is accepted unread.
+		const auto consumed = ParseDictionary (encoded,
+			[&] (std::string_view key, std::string_view value) -> size_t
+			{
+				const auto length = GetEncodedValueLength (value);
+				if (!length)
+				{
+					malformed = true;
+					return 0;
+				}
+				const auto view = value.substr (0, length);
+				if (key == "y")
+				{
+					hasType = true;
+					type = view;
+				}
+				else if (key == "t")
+				{
+					hasTransaction = true;
+					transaction = view;
+				}
+				else if (key == "q")
+					query = view;
+				else if (key == "a")
+					arguments = view;
+				else if (key == "r")
+					response = view;
+				else if (key == "e")
+					error = view;
+				else if (key != "v")
+					malformed = true;
+				return length;
+			});
+		if (!consumed || consumed != encoded.size () || malformed || !hasType || !hasTransaction) return frame;
+
+		auto [typeValue, typeLength] = ExtractByteString (type);
+		if (!typeLength || typeLength != type.size () || typeValue.size () != 1) return frame;
+		auto [transactionValue, transactionLength] = ExtractByteString (transaction);
+		if (!transactionLength || transactionLength != transaction.size () || transactionValue.empty ()
+			|| transactionValue.size () > MAX_DHT_TRANSACTION_ID)
+			return frame;
+		frame.transaction = transactionValue;
+
+		switch (typeValue[0])
+		{
+		case 'q':
+		{
+			if (query.empty () || !response.empty () || !error.empty ()) return frame;
+			auto [queryValue, queryLength] = ExtractByteString (query);
+			if (!queryLength || queryLength != query.size () || queryValue.empty ()
+				|| queryValue.size () > MAX_DHT_QUERY_NAME)
+				return frame;
+			// A query must carry exactly one well-formed argument dictionary.
+			if (arguments.empty () || arguments.front () != 'd') return frame;
+			const auto argumentsLength = ParseDictionary (arguments);
+			if (!argumentsLength || argumentsLength != arguments.size ()) return frame;
+			frame.kind = DHTFrameKind::Query;
+			frame.query = queryValue;
+			frame.arguments = arguments;
+			return frame;
+		}
+		case 'r':
+		{
+			if (response.empty () || !arguments.empty () || !query.empty () || !error.empty ()) return frame;
+			if (response.front () != 'd') return frame;
+			const auto responseLength = ParseDictionary (response);
+			if (!responseLength || responseLength != response.size ()) return frame;
+			frame.kind = DHTFrameKind::Response;
+			frame.response = response;
+			return frame;
+		}
+		case 'e':
+		{
+			if (error.empty () || !arguments.empty () || !response.empty () || !query.empty ()) return frame;
+			if (!DecodeKRPCError (error, frame.errorCode, frame.errorText)) return frame;
+			frame.kind = DHTFrameKind::Error;
+			return frame;
+		}
+		default: return frame;
+		}
+		return frame; // unreachable: every case above returns
+	}
+
 	std::optional<DHTErrorReply> DecodeDHTErrorReply (std::string_view encoded)
 	{
-		if (encoded.empty () || encoded.size () > 32768) return std::nullopt;
-		auto [fields, consumed] = ExtractDictionary (encoded);
-		if (!consumed || consumed != encoded.size () || !fields.contains ("y") || !fields.contains ("t")
-			|| !fields.contains ("e") || fields.contains ("a") || fields.contains ("r") || fields.contains ("q"))
-			return std::nullopt;
-		auto [type, typeSize] = ExtractByteString (fields.at ("y"));
-		auto [transaction, transactionSize] = ExtractByteString (fields.at ("t"));
-		if (!typeSize || type != "e" || typeSize != fields.at ("y").size () || !transactionSize
-			|| transactionSize != fields.at ("t").size () || transaction.empty () || transaction.size () > 16)
-			return std::nullopt;
+		// One authority for the envelope; the error reply view must match the
+		// full frame, including the absence of a/r/q and a bounded text.
+		const auto frame = DecodeDHTFrame (encoded);
+		if (frame.kind != DHTFrameKind::Error) return std::nullopt;
+		return DHTErrorReply { GetPeersToken (frame.transaction), frame.errorCode };
+	}
+
+	size_t DecodeCompactNodes (std::string_view nodes, std::vector<Node> & out, size_t maxCount)
+	{
+		out.clear ();
+		NodeInfo info;
+		size_t processed = 0;
+		while (nodes.size () >= info.size () && processed < maxCount)
+		{
+			memcpy (info.data (), nodes.data (), info.size ());
+			Node node (info);
+			// A record whose node ID does not bind its destination and port is
+			// skipped, never repaired.
+			if (node.VerifyID ()) out.emplace_back (node);
+			nodes.remove_prefix (info.size ());
+			++processed;
+		}
+		return out.size ();
+	}
+
+	size_t DecodeCompactPeers (const std::vector<std::string_view> & peers, std::vector<i2p::data::IdentHash> & out,
+		size_t maxCount)
+	{
+		out.clear ();
 		size_t count = 0;
-		bool valid = true;
-		int32_t code = 0;
-		const auto error = fields.at ("e");
-		auto errorSize = ParseList (error,
-			[&] (std::string_view entry) -> size_t
-			{
-				++count;
-				if (count == 1)
-				{
-					auto [value, size] = ExtractInteger (entry);
-					if (!size || value < std::numeric_limits<int32_t>::min ()
-						|| value > std::numeric_limits<int32_t>::max ())
-						valid = false;
-					else
-						code = static_cast<int32_t> (value);
-					return size;
-				}
-				if (count == 2)
-				{
-					auto [message, size] = ExtractByteString (entry);
-					if (!size || message.size () > 1024) valid = false;
-					return size;
-				}
-				valid = false;
-				return 0;
-			});
-		if (!valid || count != 2 || !errorSize || errorSize != error.size ()) return std::nullopt;
-		return DHTErrorReply { std::string (transaction), code };
+		for (const auto peer : peers)
+		{
+			if (count >= maxCount) break;
+			++count;
+			if (peer.size () != i2p::data::IdentHash::len) continue;
+			i2p::data::IdentHash hash (reinterpret_cast<const uint8_t *> (peer.data ()));
+			if (hash.IsZero ()) continue;
+			out.push_back (hash);
+		}
+		return out.size ();
+	}
+
+	size_t DecodeCompactPeers (std::string_view encodedList, std::vector<i2p::data::IdentHash> & out, size_t maxCount)
+	{
+		auto [peers, length] = ParseStringList (encodedList);
+		if (!length || length != encodedList.size ())
+		{
+			out.clear ();
+			return 0;
+		}
+		return DecodeCompactPeers (peers, out, maxCount);
+	}
+
+	std::optional<size_t> DecodeDHTStateRecords (std::span<const uint8_t> bytes, size_t maxRecords)
+	{
+		if (bytes.empty () || bytes.size () > TorrentsDHT::MaxStateBytes) return std::nullopt;
+		if (bytes.size () % NodeInfo { }.size ()) return std::nullopt;
+		const auto records = bytes.size () / NodeInfo { }.size ();
+		if (!maxRecords || records > maxRecords) return std::nullopt;
+		return records;
 	}
 
 	void TorrentsDHT::HandleErrorReply (const DHTErrorReply & error, uint16_t fromPort)
@@ -674,6 +1095,12 @@ namespace torrents
 		// A protocol error completes the request, but is not a successful
 		// ping/announce and must not promote routing or heard-from state.
 		auto completed = m_Queries.extract (it);
+		const auto & target = std::get<0> (completed.mapped ());
+		// An error answer means the peer cannot serve this query right now, so
+		// record it in the same bounded failure map a timeout uses before the
+		// lookup advances to the next candidate.
+		if (m_FailedPeers.contains (target) || m_FailedPeers.size () < MAX_DHT_FAILED_PEERS)
+			m_FailedPeers.insert_or_assign (target, i2p::util::GetMonotonicSeconds ());
 		auto info = std::get<3> (completed.mapped ());
 		LogPrint (eLogDebug, "TorrentsDHT: KRPC error code ", error.code);
 		if (query == eKRPCQueryGetPeers)
@@ -684,248 +1111,242 @@ namespace torrents
 
 	void TorrentsDHT::HandleRawDatagram (const uint8_t * buf, size_t len, uint16_t fromPort, uint16_t toPort)
 	{
-		if (!buf || !len || len > 32768 || toPort != GetRPort () || !fromPort || fromPort == 65535) return;
-		if (auto error = DecodeDHTErrorReply (std::string_view (reinterpret_cast<const char *> (buf), len)))
+		if (!buf || !len || len > MAX_DHT_KRPC_FRAME || toPort != GetRPort () || !fromPort || fromPort == 65535) return;
+		// A raw frame carries no authenticated sender. Charge one global fixed
+		// window before parsing so an anonymous flood cannot buy unbounded
+		// decode work; the budget never grows back on a clock regression.
+		if (!m_RawFrameLimiter.Allow (i2p::util::GetMonotonicSeconds ())) return;
+
+		const auto frame = DecodeDHTFrame (std::string_view (reinterpret_cast<const char *> (buf), len));
+		switch (frame.kind)
 		{
-			HandleErrorReply (*error, fromPort);
+		case DHTFrameKind::Malformed:
+			// Never reply to a frame that could not be decoded, and keep an
+			// anonymous flood out of the info log.
+			LogPrint (eLogDebug, "TorrentsDHT: Malformed raw datagram received");
 			return;
-		}
-		// response or error
-		char type = 0;
-		std::optional<GetPeersToken> token;
-		bool seed = false, hasValues = false;
-		bool isMalformed = false;
-		NodeID id { };
-		bool hasID = false;
-		Torrent::InfoHash infoHash { };
-		bool hasInfoHash = false;
-		std::string_view nodes;
-		std::string transactionID, query;
-		std::vector<std::string_view> values;
-		const auto parsed = ParseDictionary (std::string_view ((const char *)buf, len),
-			[&type, &transactionID, &id, &hasID, &values, &hasValues, &seed, &token, &infoHash, &hasInfoHash, &query,
-				&isMalformed, &nodes] (std::string_view key, std::string_view buf) -> size_t
-			{
-				if (key == "y")
+		case DHTFrameKind::Error:
+			HandleErrorReply (DHTErrorReply { GetPeersToken (frame.transaction), frame.errorCode }, fromPort);
+			return;
+		case DHTFrameKind::Response:
+		{
+			std::optional<GetPeersToken> token;
+			bool hasValues = false;
+			bool isMalformed = false;
+			NodeID id { };
+			bool hasID = false;
+			std::string_view nodes;
+			std::vector<std::string_view> values;
+			// A response carries its node ID, an optional token and either
+			// compact peer values, compact referral nodes, or both.
+			const auto parsed = ParseDictionary (frame.response,
+				[&id, &hasID, &values, &hasValues, &token, &isMalformed, &nodes] (std::string_view key,
+					std::string_view buf) -> size_t
 				{
-					auto [value, l] = ExtractByteString (buf);
-					if (l && value.size () == 1)
-						type = value[0];
-					else
-						isMalformed = true;
-					return l;
-				}
-				else if (key == "t")
-				{
-					auto [value, l] = ExtractByteString (buf);
-					if (l) transactionID = value;
-					return l;
-				}
-				else if (key == "q")
-				{
-					auto [value, l] = ExtractByteString (buf);
-					if (l) query = value;
-					return l;
-				}
-				else if (key == "r" || key == "a")
-				{
-					return ParseDictionary (buf,
-						[&id, &hasID, &values, &hasValues, &seed, &token, &infoHash, &hasInfoHash, &isMalformed,
-							&nodes] (std::string_view key, std::string_view buf) -> size_t
+					if (key == "id")
+					{
+						auto [l, success] = ParseByteArray (buf, id);
+						hasID = success;
+						if (!success) isMalformed = true;
+						return l;
+					}
+					else if (key == "values")
+					{
+						auto [v, l] = ParseStringList (buf);
+						if (l)
 						{
-							if (key == "id")
-							{
-								auto [l, success] = ParseByteArray (buf, id);
-								hasID = success;
-								if (!success) isMalformed = true;
-								return l;
-							}
-							else if (key == "values")
-							{
-								auto [v, l] = ParseStringList (buf);
-								if (l)
-								{
-									values = v;
-									hasValues = true;
-								}
-								else
-									isMalformed = true;
-								return l;
-							}
-							else if (key == "nodes")
-							{
-								auto [value, l] = ExtractByteString (buf);
-								if (l)
-									nodes = value;
-								else
-									isMalformed = true;
-								return l;
-							}
-							else if (key == "seed")
-							{
-								auto [value, l] = ExtractInteger (buf);
-								if (!l) isMalformed = true;
-								seed = value == 1;
-								return l;
-							}
-							else if (key == "token")
-							{
-								auto [value, l] = ExtractByteString (buf);
-								if (l && value.size () <= 64)
-									token.emplace (value);
-								else
-									isMalformed = true;
-								return l;
-							}
-							else if (key == "info_hash")
-							{
-								auto [l, success] = ParseByteArray (buf, infoHash);
-								hasInfoHash = success;
-								if (!success) isMalformed = true;
-								return l;
-							}
-							return 0;
-						});
-				}
-				return 0;
-			});
-		if (nodes.size () % NodeInfo { }.size () != 0 || values.size () > MAX_DHT_REQUEST_NODES * 2 || isMalformed
-			|| parsed != len || !parsed || !hasID || transactionID.empty () || transactionID.size () > 16)
-		{
-			LogPrint (eLogInfo, "TorrentsDHT: Malformed raw datagram received");
+							values = v;
+							hasValues = true;
+						}
+						else
+							isMalformed = true;
+						return l;
+					}
+					else if (key == "nodes")
+					{
+						auto [value, l] = ExtractByteString (buf);
+						if (l)
+							nodes = value;
+						else
+							isMalformed = true;
+						return l;
+					}
+					else if (key == "token")
+					{
+						auto [value, l] = ExtractByteString (buf);
+						if (l && value.size () <= 64)
+							token.emplace (value);
+						else
+							isMalformed = true;
+						return l;
+					}
+					return 0;
+				});
+			if (isMalformed || !parsed || parsed != frame.response.size ()
+				|| nodes.size () % DHT_COMPACT_NODE_SIZE != 0 || values.size () > MAX_DHT_REQUEST_NODES * 2 || !hasID)
+			{
+				LogPrint (eLogDebug, "TorrentsDHT: Malformed raw response received");
+				return;
+			}
+			HandleResponse (frame.transaction, id, token, values, hasValues, nodes, fromPort);
 			return;
 		}
-		if (type)
+		case DHTFrameKind::Query:
 		{
-			switch (type)
+			// Only announce_peer may arrive raw: it is authenticated by its
+			// token, and the raw port carries no sender identity.
+			if (frame.query != "announce_peer")
 			{
-			case 'r': HandleResponse (transactionID, id, token, values, hasValues, nodes, fromPort); break;
-			case 'e': LogPrint (eLogDebug, "TorrentsDHT: Error msg received"); break;
-			case 'q':
-				if (query == "announce_peer")
-				{
-					if (hasInfoHash && token)
-						HandleAnnouncePeer (transactionID, id, infoHash, *token, seed, fromPort);
-					else
-						LogPrint (eLogInfo, "TorrentsDHT: announce_peer without info_hash");
-				}
-				else
-					LogPrint (eLogError, "TorrentsDHT: Query can't come as raw datagram");
-				break;
-			default: LogPrint (eLogInfo, "TorrentsDHT: Unxpected msg type ", (int)type);
+				LogPrint (eLogDebug, "TorrentsDHT: Query can't come as raw datagram");
+				return;
 			}
+			bool isMalformed = false, seed = false;
+			NodeID id { };
+			bool hasID = false;
+			Torrent::InfoHash infoHash { };
+			bool hasInfoHash = false;
+			std::optional<GetPeersToken> token;
+			const auto parsed = ParseDictionary (frame.arguments,
+				[&id, &hasID, &infoHash, &hasInfoHash, &isMalformed, &seed, &token] (
+					std::string_view key, std::string_view buf) -> size_t
+				{
+					if (key == "id")
+					{
+						auto [l, success] = ParseByteArray (buf, id);
+						hasID = success;
+						if (!success) isMalformed = true;
+						return l;
+					}
+					else if (key == "info_hash")
+					{
+						auto [l, success] = ParseByteArray (buf, infoHash);
+						hasInfoHash = success;
+						if (!success) isMalformed = true;
+						return l;
+					}
+					else if (key == "seed")
+					{
+						auto [value, l] = ExtractInteger (buf);
+						if (!l) isMalformed = true;
+						seed = value == 1;
+						return l;
+					}
+					else if (key == "token")
+					{
+						auto [value, l] = ExtractByteString (buf);
+						if (l && value.size () <= 64)
+							token.emplace (value);
+						else
+							isMalformed = true;
+						return l;
+					}
+					return 0;
+				});
+			if (isMalformed || !parsed || parsed != frame.arguments.size () || !hasID)
+			{
+				LogPrint (eLogDebug, "TorrentsDHT: Malformed raw announce received");
+				return;
+			}
+			if (!hasInfoHash || !token)
+			{
+				LogPrint (eLogDebug, "TorrentsDHT: announce_peer without info_hash");
+				return;
+			}
+			HandleAnnouncePeer (frame.transaction, id, infoHash, *token, seed, fromPort);
+			return;
+		}
 		}
 	}
 
 	void TorrentsDHT::HandleDatagram (const i2p::data::IdentityEx & from, uint16_t fromPort, uint16_t toPort,
-		const uint8_t * buf, size_t len, const i2p::util::Mapping * options)
+		const uint8_t * buf, size_t len, const i2p::util::Mapping * /*options*/)
 	{
-		if (!buf || !len || len > 32768 || toPort != m_Port) return;
+		if (!buf || !len || len > MAX_DHT_KRPC_FRAME || toPort != m_Port) return;
+		// Service thread only: the network thread copied this frame into the
+		// hand-off queue without parsing it.
+		const auto frame = DecodeDHTFrame (std::string_view (reinterpret_cast<const char *> (buf), len));
+		if (frame.kind == DHTFrameKind::Malformed)
+		{
+			LogPrint (eLogDebug, "TorrentsDHT: Malformed datagram received");
+			return;
+		}
+		if (frame.kind != DHTFrameKind::Query)
+		{
+			// A response or error on the repliable query port is not part of
+			// this endpoint's protocol exchange.
+			LogPrint (eLogDebug, "TorrentsDHT: Unexpected msg type on the query port");
+			return;
+		}
+
 		// query
-		char type = 0;
 		bool isMalformed = false;
-		std::string transactionID, query;
 		NodeID id { }, target { };
 		bool hasTarget = false, noSeeds = false;
 		bool hasID = false;
 		Torrent::InfoHash infoHash { };
 		bool hasInfoHash = false;
-		const auto parsed = ParseDictionary (std::string_view ((const char *)buf, len),
-			[&type, &transactionID, &query, &id, &hasID, &infoHash, &hasInfoHash, &isMalformed, &target, &hasTarget,
-				&noSeeds] (std::string_view key, std::string_view buf) -> size_t
+		const auto parsed = ParseDictionary (frame.arguments,
+			[&id, &hasID, &infoHash, &hasInfoHash, &isMalformed, &target, &hasTarget, &noSeeds] (
+				std::string_view key, std::string_view buf) -> size_t
 			{
-				if (key == "y")
+				if (key == "id")
 				{
-					auto [value, l] = ExtractByteString (buf);
-					if (l && value.size () == 1)
-						type = value[0];
-					else
-						isMalformed = true;
+					auto [l, success] = ParseByteArray (buf, id);
+					hasID = success;
+					if (!success) isMalformed = true;
 					return l;
 				}
-				else if (key == "t")
+				else if (key == "info_hash")
 				{
-					auto [value, l] = ExtractByteString (buf);
-					if (l) transactionID = value;
+					auto [l, success] = ParseByteArray (buf, infoHash);
+					hasInfoHash = success;
+					if (!success) isMalformed = true;
 					return l;
 				}
-				else if (key == "q")
+				else if (key == "noseed")
 				{
-					auto [value, l] = ExtractByteString (buf);
-					if (l) query = value;
+					auto [value, l] = ExtractInteger (buf);
+					if (!l) isMalformed = true;
+					noSeeds = value == 1;
 					return l;
 				}
-				else if (key == "a")
+				else if (key == "target")
 				{
-					return ParseDictionary (buf,
-						[&id, &hasID, &infoHash, &hasInfoHash, &isMalformed, &target, &hasTarget, &noSeeds] (
-							std::string_view key, std::string_view buf) -> size_t
-						{
-							if (key == "id")
-							{
-								auto [l, success] = ParseByteArray (buf, id);
-								hasID = success;
-								if (!success) isMalformed = true;
-								return l;
-							}
-							else if (key == "info_hash")
-							{
-								auto [l, success] = ParseByteArray (buf, infoHash);
-								hasInfoHash = success;
-								if (!success) isMalformed = true;
-								return l;
-							}
-							else if (key == "noseed")
-							{
-								auto [value, l] = ExtractInteger (buf);
-								if (!l) isMalformed = true;
-								noSeeds = value == 1;
-								return l;
-							}
-							else if (key == "target")
-							{
-								auto [l, success] = ParseByteArray (buf, target);
-								hasTarget = success;
-								if (!success) isMalformed = true;
-								return l;
-							}
-							return 0;
-						});
+					auto [l, success] = ParseByteArray (buf, target);
+					hasTarget = success;
+					if (!success) isMalformed = true;
+					return l;
 				}
 				return 0;
 			});
-		if (isMalformed || parsed != len || !parsed || !hasID || transactionID.empty () || transactionID.size () > 16)
+		if (isMalformed || !parsed || parsed != frame.arguments.size () || !hasID)
 		{
-			LogPrint (eLogInfo, "TorrentsDHT: Malformed datagram received");
+			LogPrint (eLogDebug, "TorrentsDHT: Malformed datagram received");
 			return;
 		}
-		if (type == 'q')
+		const auto & query = frame.query;
+		auto candidate = std::make_shared<Node> (id, from.GetIdentHash (), fromPort);
+		if (!candidate->VerifyID ()
+			|| !m_QueryLimiter.Allow (from.GetIdentHash (), i2p::util::GetMonotonicSeconds ()))
+			return;
+		// Routing-table admission is best effort. A valid query from a node
+		// whose bucket is full must still receive a response.
+		auto stored = UpdateNode (candidate);
+		auto node = stored ? stored : candidate;
+		UpdateHeardFrom (node->id);
+		if (query == "ping")
+			HandlePingQuery (from.GetIdentHash (), fromPort, frame.transaction, id);
+		else if (query == "get_peers")
 		{
-			auto candidate = std::make_shared<Node> (id, from.GetIdentHash (), fromPort);
-			if (!candidate->VerifyID ()
-				|| !m_QueryLimiter.Allow (from.GetIdentHash (), i2p::util::GetMonotonicSeconds ()))
-				return;
-			// Routing-table admission is best effort. A valid query from a
-			// node whose bucket is full must still receive a response.
-			auto stored = UpdateNode (candidate);
-			auto node = stored ? stored : candidate;
-			UpdateHeardFrom (node->id);
-			if (query == "ping")
-				HandlePingQuery (from.GetIdentHash (), fromPort, transactionID, id);
-			else if (query == "get_peers")
-			{
-				if (hasInfoHash)
-					HandleGetPeersQuery (transactionID, node, infoHash, noSeeds);
-				else
-					LogPrint (eLogInfo, "TorrentsDHT: get_peers without info_hash");
-			}
-			else if (query == "find_node" && hasTarget)
-				HandleFindNodeQuery (from.GetIdentHash (), fromPort, transactionID, target);
+			if (hasInfoHash)
+				HandleGetPeersQuery (frame.transaction, node, infoHash, noSeeds);
 			else
-				LogPrint (eLogDebug, "TorrentsDHT: Unexpected query ", query);
+				LogPrint (eLogDebug, "TorrentsDHT: get_peers without info_hash");
 		}
-		else if (type)
-			LogPrint (eLogInfo, "TorrentsDHT: Unxpected msg type ", (int)type);
+		else if (query == "find_node" && hasTarget)
+			HandleFindNodeQuery (from.GetIdentHash (), fromPort, frame.transaction, target);
+		else
+			LogPrint (eLogDebug, "TorrentsDHT: Unexpected query ", query);
 	}
 
 	void TorrentsDHT::HandlePingQuery (const i2p::data::IdentHash & fromIdent, uint16_t fromPort,
@@ -940,20 +1361,37 @@ namespace torrents
 	{
 		LogPrint (eLogDebug, "TorrentsDHT: Get peers query msg received from ", from->id.ToBase64 ());
 
-		if (m_IncomingTokens.size () >= MAX_DHT_INCOMING_TOKENS)
+		if (m_PrivateInfoHashes.Contains (infoHash))
 		{
-			auto oldest = m_IncomingTokens.begin ();
-			auto it = oldest;
-			for (++it; it != m_IncomingTokens.end (); ++it)
-				if (it->second.time < oldest->second.time) oldest = it;
-			m_IncomingTokens.erase (oldest);
+			// A locally private swarm must not be confirmed, served or tokenized
+			// through the public DHT. Drop the query without a reply: an error or
+			// an empty response would still disclose that this node knows it.
+			LogPrint (eLogDebug, "TorrentsDHT: Ignoring get_peers for a locally private info hash");
+			return;
 		}
+
+		// The token stays cryptographic: eight CSPRNG bytes, never derived from
+		// the query or the node ID. The bounded store owns capacity, the
+		// per-node quota and eviction.
 		GetPeersToken token (8, '\0');
-		do
+		const auto ts = i2p::util::GetMonotonicSeconds ();
+		bool issued = false;
+		for (int attempt = 0; attempt < 4 && !issued; attempt++)
 		{
 			if (RAND_bytes (reinterpret_cast<unsigned char *> (token.data ()), token.size ()) != 1) return;
-		} while (m_IncomingTokens.contains (token));
-		m_IncomingTokens.emplace (token, IncomingToken { from, infoHash, i2p::util::GetMonotonicSeconds () });
+			DHTIncomingToken entry;
+			entry.token = token;
+			entry.nodeID = from->id;
+			entry.peer = from->peer;
+			entry.infoHash = infoHash;
+			entry.port = from->port;
+			entry.issued = ts;
+			const auto admission = m_IncomingTokens.Issue (entry);
+			if (admission == DHTTokenStore::Admission::AlreadyPresent) continue;
+			if (admission == DHTTokenStore::Admission::Rejected) return;
+			issued = true;
+		}
+		if (!issued) return;
 
 		auto it = m_Torrents.find (infoHash);
 		if (it != m_Torrents.end () && it->second->HasPeers (noSeeds))
@@ -997,43 +1435,51 @@ namespace torrents
 		const Torrent::InfoHash & infoHash, const GetPeersToken & token, bool seed, uint16_t fromPort)
 	{
 		LogPrint (eLogDebug, "TorrentsDHT: Announce peer received from ", nodeID.ToBase64 ());
-		auto it = m_IncomingTokens.find (token);
-		if (it != m_IncomingTokens.end ())
+		if (m_PrivateInfoHashes.Contains (infoHash))
 		{
-			auto ts = i2p::util::GetMonotonicSeconds ();
-			if (ts > it->second.time + DHT_INCOMING_GET_PEERS_TOKEN_EXPIRATION_TIME)
-			{
-				LogPrint (eLogInfo, "TorrentsDHT: Token for announce expired");
-				m_IncomingTokens.erase (it);
-				return;
-			}
-			if (infoHash != it->second.infoHash)
-			{
-				LogPrint (eLogInfo, "TorrentsDHT: Token bound to another info_hash");
-				return;
-			}
-			auto node = it->second.node;
-			if (node->id != nodeID || node->port != fromPort || !m_QueryLimiter.Allow (node->peer, ts)) return;
-			it->second.time = ts; // bounded refresh for legitimate re-announcers
-			auto torrentIt = m_Torrents.find (infoHash);
-			if (torrentIt == m_Torrents.end ())
-			{
-				if (m_Torrents.size () >= MAX_DHT_TORRENTS)
-				{
-					LogPrint (eLogInfo, "TorrentsDHT: Too many announced torrents");
-					return;
-				}
-				torrentIt = m_Torrents.emplace (infoHash, std::make_shared<DHTTorrent> ()).first;
-			}
-			torrentIt->second->AddPeer (node->peer, seed);
-			SendResponseMsg (
-				CreateDictionary ({
-					{ "id", CreateByteString (std::string_view ((const char *)m_NodeID.data (), m_NodeID.size ())) },
-				}),
-				transactionID, node->peer, node->port + 1); // to rport
+			// Members of a private swarm are only reachable through its trackers.
+			// Refuse before the token table is consulted so no token, peer or
+			// reply confirms local knowledge of the hash.
+			LogPrint (eLogDebug, "TorrentsDHT: Ignoring announce_peer for a locally private info hash");
+			return;
 		}
-		else
-			LogPrint (eLogInfo, "TorrentsDHT: Token for announce not found");
+		DHTIncomingToken entry;
+		const auto ts = i2p::util::GetMonotonicSeconds ();
+		switch (m_IncomingTokens.Validate (token, nodeID, infoHash, fromPort, ts, entry))
+		{
+		case DHTTokenStore::Validation::Valid: break;
+		case DHTTokenStore::Validation::Expired:
+			LogPrint (eLogInfo, "TorrentsDHT: Token for announce expired");
+			return;
+		case DHTTokenStore::Validation::WrongInfoHash:
+			LogPrint (eLogInfo, "TorrentsDHT: Token bound to another info_hash");
+			return;
+		case DHTTokenStore::Validation::Unknown:
+			// An unauthenticated guess at the token; never a reply.
+			LogPrint (eLogDebug, "TorrentsDHT: Token for announce not found");
+			return;
+		default:
+			// Wrong node, wrong port or a malformed token: silently dropped.
+			return;
+		}
+		if (!m_QueryLimiter.Allow (entry.peer, ts)) return;
+		m_IncomingTokens.Refresh (token, ts); // bounded refresh for legitimate re-announcers
+		auto torrentIt = m_Torrents.find (infoHash);
+		if (torrentIt == m_Torrents.end ())
+		{
+			if (m_Torrents.size () >= MAX_DHT_TORRENTS)
+			{
+				LogPrint (eLogInfo, "TorrentsDHT: Too many announced torrents");
+				return;
+			}
+			torrentIt = m_Torrents.emplace (infoHash, std::make_shared<DHTTorrent> ()).first;
+		}
+		torrentIt->second->AddPeer (entry.peer, seed);
+		SendResponseMsg (
+			CreateDictionary ({
+				{ "id", CreateByteString (std::string_view ((const char *)m_NodeID.data (), m_NodeID.size ())) },
+			}),
+			transactionID, entry.peer, entry.port + 1); // to rport
 	}
 
 	void TorrentsDHT::HandleResponse (std::string_view transactionID, const NodeID & nodeID,
@@ -1080,8 +1526,14 @@ namespace torrents
 						if (info && token) info->AddNodeToken (std::make_shared<Node> (nodeID, ident, port), *token);
 						HandleGetPeersResponseNodes (info, nodes);
 					}
-					else //values
+					else
+					{
+						// A reply may carry peer values and referral nodes at
+						// once. Take the referrals too, but let only the peers
+						// path advance the lookup.
+						if (!nodes.empty ()) ParseGetPeersResponseNodes (info, nodes);
 						HandleGetPeersResponsePeersAndAnnounce (info, values, token, ident, port + 1); // to rport
+					}
 					break;
 				}
 				case eKRPCQueryFindNode:
@@ -1104,23 +1556,26 @@ namespace torrents
 			LogPrint (eLogInfo, "TorrentsDHT: Query not found");
 	}
 
-	void TorrentsDHT::HandleGetPeersResponseNodes (std::shared_ptr<RequestInfo> info, std::string_view nodes)
+	void TorrentsDHT::ParseGetPeersResponseNodes (std::shared_ptr<RequestInfo> info, std::string_view nodes)
 	{
-		NodeInfo nodeInfo;
-		size_t processed = 0;
-		while (nodes.size () >= nodeInfo.size () && processed++ < MAX_DHT_NODES_PER_RESPONSE)
+		std::vector<Node> decoded;
+		DecodeCompactNodes (nodes, decoded);
+		for (const auto & entry : decoded)
 		{
-			memcpy (nodeInfo.data (), nodes.data (), nodeInfo.size ());
-			auto node = std::make_shared<Node> (nodeInfo);
-			if (info && node->id != m_NodeID && node->VerifyID () && info->AddNode (node))
+			auto node = std::make_shared<Node> (entry);
+			if (info && node->id != m_NodeID && info->AddNode (node))
 			{
 				if (m_HeardFrom.contains (node->id))
 					UpdateNode (node);
 				else if (!m_FailedPeers.contains (node->peer))
 					SendPingQuery (node->peer, node->port);
 			}
-			nodes = nodes.substr (nodeInfo.size ());
 		}
+	}
+
+	void TorrentsDHT::HandleGetPeersResponseNodes (std::shared_ptr<RequestInfo> info, std::string_view nodes)
+	{
+		ParseGetPeersResponseNodes (info, nodes);
 		if (info) SendNextGetPeersQuery (info);
 	}
 
@@ -1129,17 +1584,13 @@ namespace torrents
 		const i2p::data::IdentHash & toIdent, uint16_t toPort)
 	{
 		if (!info || !info->torrent || info->torrent->IsPrivate () || info->torrent->IsStopped ()) return;
+		if (IsLocallyPrivate (info->torrent->GetInfoHash ())) return;
 		if (!info->torrent->IsComplete ())
 		{
+			std::vector<i2p::data::IdentHash> decoded;
+			DecodeCompactPeers (peers, decoded);
 			std::unordered_set<i2p::data::IdentHash> newPeers;
-			size_t count = 0;
-			for (auto it : peers)
-			{
-				if (count++ >= MAX_DHT_VALUES_PER_RESPONSE) break;
-				if (it.size () != i2p::data::IdentHash::len) continue;
-				i2p::data::IdentHash peer ((const uint8_t *)it.data ());
-				if (!peer.IsZero ()) newPeers.emplace (peer);
-			}
+			for (const auto & peer : decoded) newPeers.emplace (peer);
 			if (!newPeers.empty ())
 			{
 				LogPrint (eLogDebug, "TorrentsDHT: ", newPeers.size (), " new peers received");
@@ -1155,20 +1606,18 @@ namespace torrents
 
 	void TorrentsDHT::HandleFindNodeResponse (std::shared_ptr<RequestInfo> info, std::string_view nodes)
 	{
-		NodeInfo nodeInfo;
-		size_t processed = 0;
-		while (nodes.size () >= nodeInfo.size () && processed++ < MAX_DHT_NODES_PER_RESPONSE)
+		std::vector<Node> decoded;
+		DecodeCompactNodes (nodes, decoded);
+		for (const auto & entry : decoded)
 		{
-			memcpy (nodeInfo.data (), nodes.data (), nodeInfo.size ());
-			auto node = std::make_shared<Node> (nodeInfo);
-			if (info && node->id != m_NodeID && node->VerifyID () && info->AddNode (node))
+			auto node = std::make_shared<Node> (entry);
+			if (info && node->id != m_NodeID && info->AddNode (node))
 			{
 				if (m_HeardFrom.contains (node->id))
 					UpdateNode (node);
 				else if (!m_FailedPeers.contains (node->peer))
 					SendPingQuery (node->peer, node->port);
 			}
-			nodes = nodes.substr (nodeInfo.size ());
 		}
 		if (info) SendNextFindNodeQuery (info);
 	}
@@ -1517,14 +1966,10 @@ namespace torrents
 				}
 			}
 			{
-				auto it = m_IncomingTokens.begin ();
-				while (it != m_IncomingTokens.end ())
-				{
-					if (ts > it->second.time + DHT_INCOMING_GET_PEERS_TOKEN_EXPIRATION_TIME)
-						it = m_IncomingTokens.erase (it);
-					else
-						it++;
-				}
+				// The bounded token store owns capacity, per-node quota and
+				// expiration; the sweep only ages it out.
+				const auto expired = m_IncomingTokens.Expire (ts);
+				if (expired) LogPrint (eLogDebug, "TorrentsDHT: ", expired, " announce tokens expired");
 			}
 			ScheduleDHTExpirationCheck ();
 		}
@@ -1622,6 +2067,139 @@ namespace torrents
 		}
 	}
 
+	size_t TorrentsDHT::GetNumQueuedDatagrams () const
+	{
+		std::lock_guard<std::mutex> lock (m_IncomingMutex);
+		return m_Incoming.size ();
+	}
+
+	void TorrentsDHT::EnqueueIncomingDatagram (const i2p::data::IdentityEx & from, uint16_t fromPort,
+		uint16_t toPort, const uint8_t * buf, size_t len, const i2p::util::Mapping * options)
+	{
+		// Hostile or oversized frames are dropped before anything is copied.
+		if (!buf || !len || len > MAX_DHT_DATAGRAM_SIZE) return;
+		IncomingDatagram dgram;
+		dgram.from = std::make_shared<const i2p::data::IdentityEx> (from);
+		if (options) dgram.options = *options;
+		dgram.payload.assign (buf, buf + len);
+		dgram.fromPort = fromPort;
+		dgram.toPort = toPort;
+		std::lock_guard<std::mutex> lock (m_IncomingMutex);
+		// Bounded drop-oldest: a flood may delay, but never grow, the queue.
+		if (m_Incoming.size () >= MAX_DHT_INCOMING_QUEUE) m_Incoming.pop_front ();
+		m_Incoming.push_back (std::move (dgram));
+	}
+
+	void TorrentsDHT::DrainIncomingDatagrams ()
+	{
+		// Swap the whole bounded batch out under the lock so the network thread
+		// is never blocked by the parsers. HandleDatagram() runs only here.
+		std::deque<IncomingDatagram> batch;
+		{
+			std::lock_guard<std::mutex> lock (m_IncomingMutex);
+			batch.swap (m_Incoming);
+		}
+		for (const auto & dgram : batch)
+		{
+			if (!dgram.from || dgram.payload.empty ()) continue;
+			HandleDatagram (*dgram.from, dgram.fromPort, dgram.toPort, dgram.payload.data (), dgram.payload.size (),
+				dgram.options.IsEmpty () ? nullptr : &dgram.options);
+		}
+	}
+
+	void TorrentsDHT::ScheduleDHTIncomingDrain ()
+	{
+		m_DHTIncomingDrainTimer.cancel ();
+		m_DHTIncomingDrainTimer.expires_after (std::chrono::milliseconds (DHT_INCOMING_DRAIN_INTERVAL));
+		std::weak_ptr<DHTServiceState> guard = m_ServiceState;
+		m_DHTIncomingDrainTimer.async_wait (
+			[this, guard] (const boost::system::error_code & ecode)
+			{
+				// The guard is authoritative: after Stop() the shared state is
+				// marked stopping, and a torn-down service is never entered.
+				const auto state = guard.lock ();
+				if (!state || state->stopping.load (std::memory_order_acquire)
+					|| ecode == boost::asio::error::operation_aborted)
+					return;
+				DrainIncomingDatagrams ();
+				ScheduleDHTIncomingDrain ();
+			});
+	}
+
+	void TorrentsDHT::ScheduleDHTStateSave ()
+	{
+		m_DHTStateSaveTimer.cancel ();
+		m_DHTStateSaveTimer.expires_after (std::chrono::seconds (DHT_STATE_SAVE_INTERVAL));
+		std::weak_ptr<DHTServiceState> guard = m_ServiceState;
+		m_DHTStateSaveTimer.async_wait (
+			[this, guard] (const boost::system::error_code & ecode)
+			{
+				const auto state = guard.lock ();
+				if (!state || state->stopping.load (std::memory_order_acquire)
+					|| ecode == boost::asio::error::operation_aborted)
+					return;
+				HandleDHTStateSaveTimer (ecode);
+			});
+	}
+
+	void TorrentsDHT::HandleDHTStateSaveTimer (const boost::system::error_code & ecode)
+	{
+		if (ecode == boost::asio::error::operation_aborted) return;
+		if (m_ServiceState->stopping.load (std::memory_order_acquire))
+		{
+			// Stop() performs the final synchronous save with the still-live
+			// storage authority.
+			return;
+		}
+		ScheduleDHTStateSave ();
+		if (m_DHTFileName.empty () || !m_DHTFileName[0] || !IsValidStateFileName (m_DHTFileName)) return;
+		if (!m_RoutingTable) return;
+		// Single flight: a save that is still queued or running makes this tick a
+		// no-op, so the disk domain never accumulates writes.
+		if (m_ServiceState->saveInFlight.exchange (true, std::memory_order_acq_rel)) return;
+		const auto file = GetDHTFilePath (m_DHTFileName);
+		if (file.empty ())
+		{
+			m_ServiceState->saveInFlight.store (false, std::memory_order_release);
+			return;
+		}
+		// The snapshot is built on the service thread because it reads the
+		// routing table and node identity. The write task captures no `this`:
+		// only the shared state, the path, the bytes and a copy of the storage
+		// callable, so it stays valid even if persistence is revoked first.
+		std::vector<uint8_t> bytes;
+		if (!BuildStateSnapshot (bytes))
+		{
+			m_ServiceState->saveInFlight.store (false, std::memory_order_release);
+			return;
+		}
+		const bool delegated = m_DelegatedPersistence;
+		auto save = m_SaveState;
+		auto state = m_ServiceState;
+		boost::asio::post (m_Tunnel.GetDiskIOService (),
+			[state, file, bytes = std::move (bytes), delegated, save = std::move (save)] () mutable
+			{
+				if (state->stopping.load (std::memory_order_acquire))
+				{
+					state->saveInFlight.store (false, std::memory_order_release);
+					return;
+				}
+				std::string error;
+				if (delegated)
+				{
+					// Delegated persistence never falls back to parent IO: a
+					// missing or failing worker means this save is lost, not
+					// written by the core.
+					if (!save || !save (file, bytes, error))
+						LogPrint (eLogError, "TorrentsDHT: Delegated periodic save failed: ", error);
+				}
+				else if (!WriteFileAtomicNoFollow (file.parent_path (), file.filename (), bytes.data (), bytes.size (),
+							 error))
+					LogPrint (eLogError, "TorrentsDHT: Can't write state file: ", error);
+				state->saveInFlight.store (false, std::memory_order_release);
+			});
+	}
+
 	void TorrentsDHT::Unannounce (const Torrent::InfoHash & infoHash)
 	{
 		auto dest = m_Tunnel.GetLocalDestination ();
@@ -1632,9 +2210,44 @@ namespace torrents
 		if (it->second->CleanUp (i2p::util::GetMonotonicSeconds ())) m_Torrents.erase (it);
 	}
 
+	void TorrentsDHT::PurgeInfoHash (const Torrent::InfoHash & infoHash)
+	{
+		// Served peers, our own rendezvous identity and every token issued for
+		// the hash go at once: a token would otherwise stay usable for the rest
+		// of its ten-minute window after the metadata revealed privacy.
+		m_Torrents.erase (infoHash);
+		m_IncomingTokens.RemoveInfoHash (infoHash);
+		// Outstanding lookups for the hash stop querying the network too: a
+		// removed or newly private swarm must not keep advertising our interest
+		// in it. The response to a dropped transaction is simply ignored.
+		for (auto it = m_Queries.begin (); it != m_Queries.end ();)
+		{
+			const auto & request = std::get<3> (it->second);
+			if (std::get<2> (it->second) == eKRPCQueryGetPeers && request && request->torrent
+				&& request->torrent->GetInfoHash () == infoHash)
+				it = m_Queries.erase (it);
+			else
+				++it;
+		}
+	}
+
+	void TorrentsDHT::MarkPrivate (const Torrent::InfoHash & infoHash)
+	{
+		if (m_PrivateInfoHashes.Insert (infoHash) == PrivateInfoHashSet::Admission::EvictedOldest)
+			LogPrint (eLogWarning, "TorrentsDHT: Private info hash set at its limit ",
+				PrivateInfoHashSet::MaxHashes, "; the oldest entry was evicted");
+		PurgeInfoHash (infoHash);
+	}
+
+	void TorrentsDHT::Forget (const Torrent::InfoHash & infoHash)
+	{
+		PurgeInfoHash (infoHash);
+	}
+
 	void TorrentsDHT::GetPeersAndAnnounce (std::shared_ptr<Torrent> torrent)
 	{
-		if (!torrent || torrent->IsPrivate () || torrent->IsStopped () || torrent->IsRemoved () || !m_RoutingTable)
+		if (!torrent || torrent->IsPrivate () || IsLocallyPrivate (torrent->GetInfoHash ()) || torrent->IsStopped ()
+			|| torrent->IsRemoved () || !m_RoutingTable)
 			return;
 
 		// If this torrent's hash is in our own k-bucket, we are one of the

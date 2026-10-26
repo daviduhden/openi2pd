@@ -19,6 +19,7 @@
 #include <limits>
 #include <iterator>
 #include <memory>
+#include <utility>
 #include <openssl/evp.h>
 #include <sys/stat.h>
 #ifdef _WIN32

@@ -18,6 +18,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <charconv>
+#include <deque>
 #include <sstream>
 #include <algorithm>
 #include <cerrno>
@@ -26,6 +27,7 @@
 #include <iterator>
 #include <limits>
 #include <set>
+#include <utility>
 #include <openssl/rand.h>
 #include <boost/algorithm/string.hpp>
 #include <boost/algorithm/hex.hpp>
@@ -983,10 +985,99 @@ namespace torrents
 		return s.str ();
 	}
 
+	//------------------------------
+	// Pure peer-extension decoders. No logging, no network, no connection or
+	// torrent state: the handlers below and the fuzz/regression tests call the
+	// same function, so a decoder fix cannot drift from the wire path.
+	//------------------------------
+
+	PEXDecodeResult DecodePEXAdded (std::string_view dictionary)
+	{
+		PEXDecodeResult result;
+		std::unordered_set<i2p::data::IdentHash> unique;
+		auto parsed = ParseDictionary (dictionary,
+			[&result, &unique] (std::string_view key, std::string_view value) -> size_t
+			{
+				// The I2P profile of BEP11 carries exactly one "added" byte
+				// string; "added.f" (flags) and "dropped" are not defined here
+				// and their values are only structurally validated.
+				if (key != "added") return 0;
+				auto [idents, len] = ExtractByteString (value);
+				if (!len)
+				{
+					result.malformed = true;
+					return 0;
+				}
+				if (idents.size () % i2p::data::IdentHash::len)
+				{
+					// A truncated hash list would otherwise drop only the last
+					// partial entry and silently accept a corrupt message.
+					result.malformed = true;
+					return len;
+				}
+				while (idents.size () >= i2p::data::IdentHash::len
+					&& result.peers.size () < MAX_PEX_RECEIVE_PEERS)
+				{
+					i2p::data::IdentHash peer (reinterpret_cast<const uint8_t *> (idents.data ()));
+					idents.remove_prefix (i2p::data::IdentHash::len);
+					if (peer.IsZero ()) continue;
+					if (unique.insert (peer).second) result.peers.push_back (peer);
+				}
+				return len;
+			});
+		// Trailing bytes after the dictionary would be ignored by the parser
+		// while the prefix was already applied, so require exact consumption.
+		if (!parsed || parsed != dictionary.size ()) result.malformed = true;
+		if (result.malformed) result.peers.clear ();
+		return result;
+	}
+
+	DHTHintResult DecodeDHTHint (std::string_view dictionary)
+	{
+		DHTHintResult result;
+		int64_t port = 0;
+		int64_t rport = 0;
+		bool hasRPort = false;
+		auto parsed = ParseDictionary (dictionary,
+			[&port, &rport, &hasRPort] (std::string_view key, std::string_view value) -> size_t
+			{
+				if (key != "port" && key != "rport") return 0;
+				auto [number, len] = ExtractInteger (value);
+				if (!len) return 0; // structurally validated, value unusable
+				if (key == "port")
+					port = number;
+				else
+				{
+					// Record presence even for an out-of-range value: an
+					// unrelated rport is tolerated, not a reason to drop a
+					// otherwise valid hint.
+					rport = number;
+					hasRPort = true;
+				}
+				return len;
+			});
+		if (!parsed || parsed != dictionary.size ())
+		{
+			result.malformed = true;
+			return result;
+		}
+		// 1..65534: 65535 and above leave no usable port+1 relationship.
+		if (port < 1 || port > 65534) return result;
+		result.port = static_cast<uint16_t> (port);
+		if (hasRPort)
+		{
+			// Java uses "port" and ignores "rport"; compare in 64 bits so
+			// port + 1 can never wrap at the boundary.
+			result.rportMismatch = rport != port + 1;
+		}
+		return result;
+	}
+
 	//------------------------------------
 
 	bool TorrentFile::Save (size_t offset, const uint8_t * buf, size_t len)
 	{
+		std::lock_guard<std::mutex> lock (m_Mutex);
 		// A peer-controlled offset/length may never index outside this file or
 		// wrap the bounds check, even if the session layout is corrupted.
 		if (offset > m_FileLength || len > m_FileLength - offset || (len && !buf))
@@ -995,7 +1086,7 @@ namespace torrents
 				m_FullFilePath);
 			return false;
 		}
-		Open (true);
+		OpenLocked (true);
 		if (m_PayloadStorage ? !m_StorageHandle : m_File < 0) return false;
 		if (!len) return true;
 		if (m_PayloadStorage)
@@ -1007,7 +1098,7 @@ namespace torrents
 				if (!m_PayloadStorage->Write (m_StorageHandle, offset + done, { buf + done, chunk }, error))
 				{
 					LogPrint (eLogError, "Torrents: Payload storage write failed: ", error);
-					Close (); // Retry must reacquire authority after provider/IPC recovery.
+					CloseLocked (); // Retry must reacquire authority after provider/IPC recovery.
 					return false;
 				}
 				done += chunk;
@@ -1024,13 +1115,14 @@ namespace torrents
 
 	bool TorrentFile::Load (size_t offset, uint8_t * buf, size_t len)
 	{
+		std::lock_guard<std::mutex> lock (m_Mutex);
 		if (offset > m_FileLength || len > m_FileLength - offset || (len && !buf))
 		{
 			LogPrint (eLogError, "Torrents: Refusing out-of-range read at ", offset, " length ", len, " from ",
 				m_FullFilePath);
 			return false;
 		}
-		Open (false);
+		OpenLocked (false);
 		if (m_PayloadStorage ? !m_StorageHandle : m_File < 0) return false;
 		if (!len) return true;
 		// A short file or short read is a failure: never hand partially
@@ -1044,7 +1136,7 @@ namespace torrents
 				if (!m_PayloadStorage->Read (m_StorageHandle, offset + done, { buf + done, chunk }, error))
 				{
 					LogPrint (eLogError, "Torrents: Payload storage read failed: ", error);
-					Close ();
+					CloseLocked ();
 					return false;
 				}
 				done += chunk;
@@ -1061,13 +1153,30 @@ namespace torrents
 
 	void TorrentFile::Complete ()
 	{
+		std::lock_guard<std::mutex> lock (m_Mutex);
 		m_IsPart = false;
-		Close ();
+		CloseLocked ();
 	}
 
 	void TorrentFile::Open (bool create)
 	{
-		if (m_File >= 0) return;
+		std::lock_guard<std::mutex> lock (m_Mutex);
+		OpenLocked (create);
+	}
+
+	void TorrentFile::OpenLocked (bool create)
+	{
+		// A final-name file is opened read-only for seeding. A later
+		// invalidation can force a re-download, which needs a writable
+		// descriptor; close and reopen instead of writing through the
+		// read-only handle (which would fail forever).
+		if (m_File >= 0)
+		{
+			if (!create || m_FileWritable) return;
+			CloseFile (m_File);
+			m_File = -1;
+			m_FileWritable = false;
+		}
 		auto filePath = m_FullFilePath;
 		if (m_IsPart && (!m_PayloadStorage || !m_PayloadStorage->UsesFinalNames ())) filePath += ".part";
 		if (m_PayloadStorage)
@@ -1104,17 +1213,20 @@ namespace torrents
 			const auto access = m_IsPart ? (create ? FileAccess::eReadWriteCreate : FileAccess::eReadWrite)
 										 : (create ? FileAccess::eReadWrite : FileAccess::eRead);
 			m_File = OpenNoFollowAt (m_RootDir, relative, access);
+			m_FileWritable = m_File >= 0 && access != FileAccess::eRead;
 		}
 		else
 		{
 			const auto access = m_IsPart ? (create ? FileAccess::eReadWriteCreate : FileAccess::eReadWrite)
 										 : (create ? FileAccess::eReadWrite : FileAccess::eRead);
 			m_File = OpenNoFollow (filePath, access);
+			m_FileWritable = m_File >= 0 && access != FileAccess::eRead;
 		}
 		if (m_File >= 0 && !IsRegularFileDescriptor (m_File))
 		{
 			CloseFile (m_File);
 			m_File = -1;
+			m_FileWritable = false;
 			errno = EINVAL;
 		}
 		if (m_File < 0) LogPrint (eLogError, "Torrents: Can't open file ", filePath, " : ", std::strerror (errno));
@@ -1122,6 +1234,12 @@ namespace torrents
 	}
 
 	void TorrentFile::Close ()
+	{
+		std::lock_guard<std::mutex> lock (m_Mutex);
+		CloseLocked ();
+	}
+
+	void TorrentFile::CloseLocked ()
 	{
 		if (m_StorageHandle && m_PayloadStorage)
 		{
@@ -1132,10 +1250,31 @@ namespace torrents
 		}
 		CloseFile (m_File);
 		m_File = -1;
+		m_FileWritable = false;
+	}
+
+	bool TorrentFile::IsOpen () const
+	{
+		std::lock_guard<std::mutex> lock (m_Mutex);
+		return m_File >= 0 || m_StorageHandle != 0;
+	}
+
+	bool TorrentFile::ProbePayload ()
+	{
+		std::lock_guard<std::mutex> lock (m_Mutex);
+		if (!m_PayloadStorage || m_StorageRootDir.empty ()) return m_File >= 0;
+		auto relative = m_FullFilePath.lexically_relative (m_StorageRootDir);
+		if (relative.empty () || !IsSafeRelativePath (relative)) return false;
+		std::string error;
+		const auto handle = m_PayloadStorage->Open (relative, m_FileLength, false, error);
+		if (!handle) return false;
+		(void)m_PayloadStorage->Close (handle, error);
+		return true;
 	}
 
 	bool TorrentFile::UpdateFullPath (const std::filesystem::path & rootDir)
 	{
+		std::lock_guard<std::mutex> lock (m_Mutex);
 		if (!IsSafeRelativePath (m_FullFilePath))
 		{
 			m_FullFilePath.clear ();
@@ -1346,25 +1485,25 @@ namespace torrents
 		return numBlocks;
 	}
 
-	void Piece::BlockReceived (const uint8_t * block, size_t len, size_t offset)
+	bool Piece::BlockReceived (const uint8_t * block, size_t len, size_t offset)
 	{
 		std::lock_guard<std::mutex> l (m_Mutex);
 		// Check the subtraction form so a hostile offset cannot wrap the
 		// addition and pass a bounds check on 32-bit size_t.
-		if (!len || !block || !m_Blocks || offset > m_Size || len > m_Size - offset) return;
+		if (!len || !block || !m_Blocks || offset > m_Size || len > m_Size - offset) return false;
 		// A requested block is exactly one aligned 16 KiB range (or the final
 		// partial range). Rejecting shorter/misaligned peer payloads prevents
 		// marking a whole block Available after one byte and later serving
 		// uninitialised bytes from the rest of the block.
-		if (offset % REQUEST_BLOCK_SIZE != 0) return;
+		if (offset % REQUEST_BLOCK_SIZE != 0) return false;
 		const size_t expectedLen = std::min (REQUEST_BLOCK_SIZE, m_Size - offset);
 		if (len != expectedLen)
 		{
 			LogPrint (eLogWarning, "Torrents: Partial/misaligned block (", offset, ",", len, ")");
-			return;
+			return false;
 		}
 		size_t blockIndex = offset / REQUEST_BLOCK_SIZE;
-		if (blockIndex >= m_Blocks->size ()) return;
+		if (blockIndex >= m_Blocks->size ()) return false;
 		if ((*m_Blocks)[blockIndex] == BlockStatus::Requested)
 		{
 			if (!m_Data) NewDataBufferLocked ();
@@ -1381,14 +1520,13 @@ namespace torrents
 				m_Blocks.reset ();
 				m_IsRequested = false;
 			}
+			return true;
 		}
+		if ((*m_Blocks)[blockIndex] == BlockStatus::Available)
+			LogPrint (eLogWarning, "Torrents: Duplicated piece block ", blockIndex);
 		else
-		{
-			if ((*m_Blocks)[blockIndex] == BlockStatus::Available)
-				LogPrint (eLogWarning, "Torrents: Duplicated piece block ", blockIndex);
-			else
-				LogPrint (eLogWarning, "Torrents: Late or unsolicited piece block ", blockIndex);
-		}
+			LogPrint (eLogWarning, "Torrents: Late or unsolicited piece block ", blockIndex);
+		return false;
 	}
 
 	bool Piece::Dump (PieceFileFragment && fragment)
@@ -1899,6 +2037,10 @@ namespace torrents
 		memcpy (m_Info.data (), (const uint8_t *)buf.data (), len);
 		// calculate info hash
 		SHA1 (m_Info.data (), len, m_InfoHash.data ());
+		// Metadata arriving after the fact (magnet/BEP9) can turn the torrent
+		// into a private swarm. Candidates learned from public gossip before
+		// that point must not survive the transition.
+		if (m_IsPrivate) ClearPeerCandidates ();
 		if (m_Error) m_IsStopped = true;
 		return len;
 	}
@@ -1906,8 +2048,9 @@ namespace torrents
 	std::string Torrent::CreateTorrentFileContent () const
 	{
 		if (m_Info.empty () || !m_MetaInfoComplete) return "";
-		std::vector<std::string> owned;
-		owned.reserve (32);
+		// std::deque keeps earlier values stable while add() appends more, so
+		// the string_views stored in fields cannot dangle after a reallocation.
+		std::deque<std::string> owned;
 		std::vector<std::pair<std::string_view, std::string_view>> fields;
 		auto add = [&owned, &fields] (std::string_view key, std::string value)
 		{
@@ -1957,6 +2100,11 @@ namespace torrents
 		if (!m_Comments.IsEnabled () || IsPrivate () || !IsValid ()) return;
 		for (auto & connection : GetConnections ())
 			if (connection) connection->RefreshComments ();
+	}
+
+	bool Torrent::AdmitCommentEntries (size_t count, uint64_t nowSeconds)
+	{
+		return m_CommentAdmission.Admit (count, MAX_COMMENT_ENTRIES_PER_TORRENT_WINDOW, nowSeconds);
 	}
 
 	bool Torrent::SetTrackerTiers (const TrackerTiers & tiers)
@@ -2228,6 +2376,66 @@ namespace torrents
 		return m_Length > completed ? m_Length - completed : 0;
 	}
 
+	AnnounceProgress Torrent::GetAnnounceProgress () const
+	{
+		AnnounceProgress progress;
+		// BEP 3 "left" is the whole torrent, exactly like Java's TrackerClient.
+		// File selection decides what is requested locally, never what the
+		// swarm is told: announcing the selected-file remainder would send
+		// left=0 and make a partially selected torrent look like a seeder.
+		// Without metadata yet (magnet/BEP 9 pending) there is no piece to
+		// account for, so the phony left=1 keeps us in the leecher set.
+		progress.left = m_Pieces.empty () ? 1 : static_cast<int64_t> (GetFullLeft ());
+		// "completed" is a whole-torrent event. It is only truthful once every
+		// piece has been hashed against the metainfo, not merely every selected
+		// piece. IsComplete()/GetStatus()/TUI progress stay selection-based, so
+		// a skip-selected torrent is still shown as seeding locally. A torrent
+		// without metadata has no pieces and is never "completed" here; once the
+		// metadata is parsed a zero-length payload is still rejected earlier.
+		progress.completed = !m_Pieces.empty () && IsValid () && AreAllPiecesVerified ();
+		return progress;
+	}
+
+	int TrackerSchedule::AdvertisedInterval (int64_t intervalSeconds)
+	{
+		constexpr int64_t maxSeconds = MAX_TRACKER_REQUESTS_INTERVAL / 1000;
+		// Negative, zero and absurd values are clamped, never trusted.
+		const int64_t seconds = std::clamp<int64_t> (intervalSeconds, MIN_TRACKER_ANNOUNCE_INTERVAL, maxSeconds);
+		return static_cast<int> (seconds * 1000);
+	}
+
+	int TrackerSchedule::AdvertisedMinInterval (int64_t minIntervalSeconds)
+	{
+		// Only the local sanity range applies: a tracker minimum below the
+		// announce floor is stored as announced and cannot shorten it.
+		constexpr int64_t minSeconds = MIN_TRACKER_REQUESTS_INTERVAL / 1000;
+		constexpr int64_t maxSeconds = MAX_TRACKER_REQUESTS_INTERVAL / 1000;
+		const int64_t seconds = std::clamp<int64_t> (minIntervalSeconds, minSeconds, maxSeconds);
+		return static_cast<int> (seconds * 1000);
+	}
+
+	int TrackerSchedule::EffectiveInterval (int interval, int minInterval)
+	{
+		const int advertised = std::max (interval, minInterval);
+		return std::max (advertised, MIN_TRACKER_ANNOUNCE_INTERVAL * 1000);
+	}
+
+	int TrackerSchedule::DefaultInterval (int minInterval)
+	{
+		return EffectiveInterval (MIN_TRACKER_ANNOUNCE_INTERVAL * 1000, minInterval);
+	}
+
+	int TrackerSchedule::FailureInterval (int previousFailureInterval, int minInterval)
+	{
+		const int64_t floor = std::max<int64_t> (MIN_TRACKER_REQUESTS_INTERVAL, minInterval);
+		// A tracker that demands a longer minimum interval still governs; the
+		// failure cap must never undercut its advertised contract.
+		const int64_t cap = std::max<int64_t> (MAX_TRACKER_FAILURE_BACKOFF * 1000LL, minInterval);
+		const int64_t next
+			= previousFailureInterval > 0 ? static_cast<int64_t> (previousFailureInterval) * 2 : floor;
+		return static_cast<int> (std::min (std::max (next, floor), cap));
+	}
+
 	void Torrent::ParseTrackerResponse (size_t trackerID, std::string_view buf)
 	{
 		CheckTrackerStatsSize (trackerID);
@@ -2250,14 +2458,11 @@ namespace torrents
 					if (l)
 					{
 						sawInterval = true;
-						auto interval = std::clamp<int64_t> (value, MIN_TRACKER_REQUESTS_INTERVAL / 1000,
-											MAX_TRACKER_REQUESTS_INTERVAL / 1000)
-							* 1000; // in milliseconds
-						const int minimum = GetMinInterval (trackerID);
-						if (interval < minimum) interval = minimum;
-						std::get<1> (m_TrackerStats[trackerID]) = (int)interval;
+						// Seconds on the wire; floored at 15 minutes like Java's
+						// TrackerClient and raised to a larger "min interval".
+						SetInterval (trackerID, TrackerSchedule::AdvertisedInterval (value));
 						std::get<2> (m_TrackerStats[trackerID])
-							= i2p::util::GetMonotonicMilliseconds () + interval; // reset next request
+							= i2p::util::GetMonotonicMilliseconds () + GetInterval (trackerID); // reset next request
 					}
 					return l;
 				}
@@ -2266,16 +2471,15 @@ namespace torrents
 					auto [value, l] = ExtractInteger (buf);
 					if (l)
 					{
-						auto minimum = std::clamp<int64_t> (value, MIN_TRACKER_REQUESTS_INTERVAL / 1000,
-										   MAX_TRACKER_REQUESTS_INTERVAL / 1000)
-							* 1000;
-						SetMinInterval (trackerID, (int)minimum);
-						// A tracker that publishes a minimum interval must
-						// not be polled faster than the current interval.
+						SetMinInterval (trackerID, TrackerSchedule::AdvertisedMinInterval (value));
+						// A tracker that publishes a larger minimum interval must
+						// not be polled faster than that, whichever of the two
+						// keys the response listed first.
 						auto & interval = std::get<1> (m_TrackerStats[trackerID]);
-						if (interval < minimum)
+						const int effective = TrackerSchedule::EffectiveInterval (interval, GetMinInterval (trackerID));
+						if (effective != interval)
 						{
-							interval = (int)minimum;
+							interval = effective;
 							std::get<2> (m_TrackerStats[trackerID]) = i2p::util::GetMonotonicMilliseconds () + interval;
 						}
 					}
@@ -2306,13 +2510,11 @@ namespace torrents
 				{
 					auto [reason, l] = ExtractByteString (buf);
 					failed = true;
-					SetTrackerError (trackerID, reason);
+					// A tracker-level failure is a consecutive failure: retry on
+					// the same bounded ladder as a transport failure instead of
+					// polling the tracker more often than it asked.
+					ReportTrackerFailure (trackerID, reason);
 					LogPrint (eLogError, "Torrents: Tracker error: ", std::get<6> (m_TrackerStats[trackerID]));
-					// double interval if tracker failure
-					int interval = std::clamp (std::get<1> (m_TrackerStats[trackerID]) * 2, GetMinInterval (trackerID),
-						MAX_TRACKER_REQUESTS_INTERVAL);
-					std::get<1> (m_TrackerStats[trackerID]) = interval;
-					std::get<2> (m_TrackerStats[trackerID]) = i2p::util::GetMonotonicMilliseconds () + interval;
 					return l;
 				}
 				return 0;
@@ -2323,10 +2525,12 @@ namespace torrents
 			return;
 		}
 		if (failed) return;
+		// A successful response ends the consecutive-failure ladder.
+		std::get<8> (m_TrackerStats[trackerID]) = 0;
 		if (!sawInterval)
 		{
 			auto & interval = std::get<1> (m_TrackerStats[trackerID]);
-			interval = std::max (GetMinInterval (trackerID), MIN_TRACKER_REQUESTS_INTERVAL);
+			interval = TrackerSchedule::DefaultInterval (GetMinInterval (trackerID));
 			std::get<2> (m_TrackerStats[trackerID]) = i2p::util::GetMonotonicMilliseconds () + interval;
 		}
 		std::get<5> (m_TrackerStats[trackerID]) = i2p::util::GetSecondsSinceEpoch ();
@@ -2407,14 +2611,17 @@ namespace torrents
 		size_t trackerID, uint32_t interval, const uint8_t * hashes, size_t hashesLen, int numSeeders, int numLeechers)
 	{
 		CheckTrackerStatsSize (trackerID);
-		auto & [peers, trackerRequestInterval, nextRequestTime, seeders, leechers, lastUpdateTime, error, minimum]
+		auto & [peers, trackerRequestInterval, nextRequestTime, seeders, leechers, lastUpdateTime, error, minimum,
+			failureInterval]
 			= m_TrackerStats[trackerID];
 		error = "";
+		// BEP 15 carries the advertised interval in seconds, just like the HTTP
+		// response, so the same 15-minute floor and "min interval" rule apply.
 		trackerRequestInterval
-			= std::clamp ((int)interval, MIN_TRACKER_REQUESTS_INTERVAL / 1000, MAX_TRACKER_REQUESTS_INTERVAL / 1000)
-			* 1000; // milliseconds
-		if (trackerRequestInterval < minimum) trackerRequestInterval = minimum;
+			= TrackerSchedule::EffectiveInterval (TrackerSchedule::AdvertisedInterval (static_cast<int64_t> (interval)),
+				minimum);
 		nextRequestTime = i2p::util::GetMonotonicMilliseconds () + trackerRequestInterval;
+		failureInterval = 0; // a successful response ends the retry ladder
 		seeders = ClampTrackerCount (numSeeders);
 		leechers = ClampTrackerCount (numLeechers);
 		lastUpdateTime = i2p::util::GetSecondsSinceEpoch ();
@@ -2440,15 +2647,20 @@ namespace torrents
 	{
 		CheckTrackerStatsSize (trackerID);
 		SetTrackerError (trackerID, reason);
-		int interval = std::clamp (
-			std::get<1> (m_TrackerStats[trackerID]) * 2, GetMinInterval (trackerID), MAX_TRACKER_REQUESTS_INTERVAL);
-		std::get<1> (m_TrackerStats[trackerID]) = interval;
+		// Retries follow the internal ladder and never the tracker-advertised
+		// interval: the first attempt after a failure waits
+		// MIN_TRACKER_REQUESTS_INTERVAL (15 s), each further failure doubles it,
+		// and it stops at MAX_TRACKER_FAILURE_BACKOFF (30 min, Java LONG_SLEEP).
+		const int interval = TrackerSchedule::FailureInterval (
+			std::get<8> (m_TrackerStats[trackerID]), GetMinInterval (trackerID));
+		std::get<8> (m_TrackerStats[trackerID]) = interval;
 		std::get<2> (m_TrackerStats[trackerID]) = i2p::util::GetMonotonicMilliseconds () + interval;
 	}
 
 	void Torrent::ExpireTrackerPeers (uint64_t nowEpoch)
 	{
-		for (auto & [peers, interval, next, seeders, leechers, lastUpdate, error, minimum] : m_TrackerStats)
+		for (auto & [peers, interval, next, seeders, leechers, lastUpdate, error, minimum, failureInterval] :
+			m_TrackerStats)
 		{
 			if (!lastUpdate || nowEpoch < lastUpdate) continue;
 			const uint64_t ttl = std::min<uint64_t> (
@@ -2469,13 +2681,17 @@ namespace torrents
 		if (trackerID >= m_TrackerStats.size ())
 			m_TrackerStats.resize (trackerID + 1,
 				TrackerStats { { }, MIN_TRACKER_REQUESTS_INTERVAL, 0, 0, 0, i2p::util::GetSecondsSinceEpoch (), "",
-					MIN_TRACKER_REQUESTS_INTERVAL });
+					MIN_TRACKER_REQUESTS_INTERVAL, 0 });
 	}
 
 	void Torrent::SetInterval (size_t trackerID, int interval)
 	{
 		CheckTrackerStatsSize (trackerID);
-		std::get<1> (m_TrackerStats[trackerID]) = std::max (interval, GetMinInterval (trackerID));
+		// Interval is in milliseconds. The effective value is floored at
+		// MIN_TRACKER_ANNOUNCE_INTERVAL and raised to a larger advertised
+		// minimum, so no caller can poll a tracker faster than the floor.
+		std::get<1> (m_TrackerStats[trackerID])
+			= TrackerSchedule::EffectiveInterval (interval, GetMinInterval (trackerID));
 	}
 
 	std::pair<std::vector<uint8_t>, boost::logic::tribool> Torrent::CreateBitfield () const
@@ -2582,11 +2798,30 @@ namespace torrents
 			for (size_t piece = first; piece <= last && piece < m_Pieces.size (); ++piece)
 			{
 				const auto & candidate = m_Pieces[piece];
-				if (!candidate.IsComplete () || !candidate.IsVerified () || candidate.IsSaving ()) return false;
+				if (!IsPieceProgressComplete (candidate.IsComplete (), candidate.IsVerified (), candidate.IsSaving ()))
+					return false;
 			}
 			return last < m_Pieces.size ();
 		}
 		return false;
+	}
+
+	uint32_t Torrent::ChargePieceFailure (const i2p::data::IdentHash & peer)
+	{
+		if (auto it = m_PeerPieceFailures.find (peer); it != m_PeerPieceFailures.end ())
+			return ++it->second;
+		// Bounded and non-evicting: a full table silently stops tracking new
+		// peers. The alternative (evicting a counter) would let a hostile swarm
+		// launder an already charged peer back to zero.
+		if (m_PeerPieceFailures.size () >= MAX_PENALIZED_PEERS) return 0;
+		m_PeerPieceFailures.emplace (peer, 1);
+		return 1;
+	}
+
+	uint32_t Torrent::GetPeerPieceFailures (const i2p::data::IdentHash & peer) const
+	{
+		auto it = m_PeerPieceFailures.find (peer);
+		return it != m_PeerPieceFailures.end () ? it->second : 0;
 	}
 
 	void Torrent::SetSelectedComplete ()
@@ -2851,6 +3086,9 @@ namespace torrents
 	bool Torrent::UpdateStatus (uint64_t ts)
 	{
 		GetConnections (); // cleanup expired connections
+		// Keep the bounded candidate table fresh on the periodic tick: expired
+		// and permanently failed candidates must not linger in it.
+		ExpirePeerCandidates (ts);
 		if (!m_Length) return false; // non ready magnet
 		const bool complete = IsSelectedComplete ();
 		for (auto & it : m_Pieces)
@@ -3018,29 +3256,36 @@ namespace torrents
 		std::vector<size_t> completed;
 		if (!m_Files.empty ())
 		{
+			// A piece is progress only when it is present, hashed and flushed.
+			// Counting a complete-but-unverified or still-saving piece made the
+			// file (and therefore the UI percentage) report 100% while HAVE and
+			// serving still withheld it.
+			const auto isCounted = [] (const Piece & piece)
+			{ return IsPieceProgressComplete (piece.IsComplete (), piece.IsVerified (), piece.IsSaving ()); };
 			auto filesIT = m_Files.begin ();
 			size_t currentSize = 0, currentCompletedSize = 0;
 			for (const auto & piece : m_Pieces)
 			{
+				const bool counted = isCounted (piece);
 				if (currentSize + m_PieceLength < (*filesIT)->GetFileLength ())
 				{
 					currentSize += m_PieceLength;
-					if (piece.IsComplete ()) currentCompletedSize += m_PieceLength;
+					if (counted) currentCompletedSize += m_PieceLength;
 				}
 				else
 				{
 					size_t leftoverSize = (*filesIT)->GetFileLength () - currentSize;
-					if (piece.IsComplete ()) currentCompletedSize += leftoverSize;
+					if (counted) currentCompletedSize += leftoverSize;
 					completed.push_back (currentCompletedSize);
 					currentSize = m_PieceLength - leftoverSize;
 					filesIT++;
 					while (filesIT != m_Files.end () && (*filesIT)->GetFileLength () <= currentSize)
 					{
-						completed.push_back (piece.IsComplete () ? (*filesIT)->GetFileLength () : 0);
+						completed.push_back (counted ? (*filesIT)->GetFileLength () : 0);
 						currentSize -= (*filesIT)->GetFileLength ();
 						filesIT++;
 					}
-					currentCompletedSize = piece.IsComplete () ? currentSize : 0;
+					currentCompletedSize = counted ? currentSize : 0;
 					if (filesIT == m_Files.end ()) break;
 				}
 			}
@@ -3080,7 +3325,7 @@ namespace torrents
 		if (trackerID >= m_TrackerStats.size ())
 			m_TrackerStats.resize (trackerID + 1,
 				TrackerStats { { }, MIN_TRACKER_REQUESTS_INTERVAL, 0, 0, 0, i2p::util::GetSecondsSinceEpoch (), "",
-					MIN_TRACKER_REQUESTS_INTERVAL });
+					MIN_TRACKER_REQUESTS_INTERVAL, 0 });
 		std::get<2> (m_TrackerStats[trackerID]) = ts;
 	}
 
@@ -3175,6 +3420,201 @@ namespace torrents
 			m_Connections.erase (it);
 		}
 		return false;
+	}
+
+	//------------------------------
+	// Peer-candidate table (service thread only)
+	//------------------------------
+
+	void Torrent::SetStopped (bool stopped)
+	{
+		m_IsStopped = stopped;
+		// A stopped torrent refuses dials, so remembered candidates would only
+		// accumulate and survive into the next start.
+		if (stopped) ClearPeerCandidates ();
+	}
+
+	void Torrent::MarkRemoved ()
+	{
+		m_Removed.store (true, std::memory_order_release);
+		ClearPeerCandidates ();
+	}
+
+	PeerCandidate * Torrent::FindPeerCandidate (const i2p::data::IdentHash & peer)
+	{
+		for (auto & candidate : m_PeerCandidates)
+			if (candidate.ident == peer) return &candidate;
+		return nullptr;
+	}
+
+	void Torrent::RemovePeerCandidate (const i2p::data::IdentHash & peer)
+	{
+		for (auto it = m_PeerCandidates.begin (); it != m_PeerCandidates.end (); ++it)
+		{
+			if (it->ident != peer) continue;
+			m_PeerCandidates.erase (it);
+			return;
+		}
+	}
+
+	bool Torrent::EvictPeerCandidate ()
+	{
+		if (m_PeerCandidates.empty ()) return false;
+		size_t victim = 0;
+		for (size_t i = 1; i < m_PeerCandidates.size (); ++i)
+		{
+			const auto & candidate = m_PeerCandidates[i];
+			const auto & current = m_PeerCandidates[victim];
+			const bool candidateDead = candidate.failures >= PEER_CANDIDATE_MAX_FAILURES;
+			const bool currentDead = current.failures >= PEER_CANDIDATE_MAX_FAILURES;
+			if (candidateDead != currentDead)
+			{
+				// A permanently failed entry is worthless; drop it first.
+				if (candidateDead) victim = i;
+				continue;
+			}
+			if (candidate.added != current.added)
+			{
+				if (candidate.added < current.added) victim = i; // oldest first
+				continue;
+			}
+			// Deterministic tie-break so eviction never depends on insertion
+			// order of equal-age entries from two different messages.
+			if (candidate.ident < current.ident) victim = i;
+		}
+		m_PeerCandidates.erase (m_PeerCandidates.begin () + victim);
+		return true;
+	}
+
+	bool Torrent::IsPeerConnected (const i2p::data::IdentHash & peer) const
+	{
+		// const view: never erases an expired entry (the caller may be a const
+		// query) and never takes a lock, because the table and the connection
+		// map are both service-thread state.
+		auto it = m_Connections.find (peer);
+		return it != m_Connections.end () && !it->second.expired ();
+	}
+
+	bool Torrent::AddPeerCandidate (
+		const i2p::data::IdentHash & peer, PeerConnectionOrigin origin, uint64_t nowSeconds)
+	{
+		// A zero hash is not a destination; a private swarm must never keep
+		// peer-supplied candidates; a stopped/removed torrent has no dials.
+		if (peer.IsZero () || !nowSeconds || m_IsStopped || IsRemoved () || m_IsPrivate) return false;
+		if (IsPeerConnected (peer)) return false;
+		// An existing entry keeps its origin, age and failure history: a
+		// re-advertisement must not refresh a candidate's TTL or reset its
+		// backoff.
+		if (FindPeerCandidate (peer)) return false;
+		if (m_PeerCandidates.size () >= MAX_PEER_CANDIDATES)
+		{
+			ExpirePeerCandidates (nowSeconds);
+			if (m_PeerCandidates.size () >= MAX_PEER_CANDIDATES && !EvictPeerCandidate ()) return false;
+		}
+		m_PeerCandidates.push_back (PeerCandidate { peer, origin, nowSeconds, 0, 0 });
+		return true;
+	}
+
+	bool Torrent::AdmitPeerCandidates (PeerConnectionOrigin origin, size_t count, uint64_t nowSeconds)
+	{
+		if (!count) return true;
+		PeerCandidateWindow * window = nullptr;
+		if (origin == ePeerConnectionOriginPEX)
+			window = &m_PexCandidateWindow;
+		else if (origin == ePeerConnectionOriginDHT)
+			window = &m_DhtCandidateWindow;
+		// Tracker and incoming peers are not peer-supplied gossip candidates and
+		// do not consume a window.
+		if (!window) return true;
+		if (!nowSeconds || count > MAX_PEER_CANDIDATES_PER_WINDOW) return false;
+		// Fixed window: it restarts exactly at start + PEER_CANDIDATE_WINDOW. A
+		// backwards clock does not restart it (that would hand out a second
+		// full budget) and the comparison cannot wrap.
+		if (!window->start || nowSeconds >= window->start + PEER_CANDIDATE_WINDOW)
+		{
+			window->start = nowSeconds;
+			window->admitted = 0;
+		}
+		if (count > MAX_PEER_CANDIDATES_PER_WINDOW - window->admitted) return false;
+		window->admitted += count;
+		return true;
+	}
+
+	std::vector<i2p::data::IdentHash> Torrent::GetPeerCandidatesToConnect (uint64_t nowSeconds, size_t max) const
+	{
+		std::vector<i2p::data::IdentHash> candidates;
+		// A private, stopped or removed torrent never dials an unauthenticated
+		// peer-offered destination, even if a caller asks for candidates.
+		if (!max || m_IsStopped || IsRemoved () || m_IsPrivate) return candidates;
+		candidates.reserve (std::min (max, m_PeerCandidates.size ()));
+		for (const auto & candidate : m_PeerCandidates)
+		{
+			if (candidates.size () >= max) break;
+			if (IsPeerConnected (candidate.ident)) continue;
+			if (!PeerCandidatePolicy::IsUsable (candidate.added, candidate.lastAttempt, candidate.failures,
+					nowSeconds, candidate.origin))
+				continue;
+			candidates.push_back (candidate.ident);
+		}
+		return candidates;
+	}
+
+	void Torrent::MarkPeerCandidateAttempt (const i2p::data::IdentHash & peer, uint64_t nowSeconds)
+	{
+		if (auto candidate = FindPeerCandidate (peer)) candidate->lastAttempt = nowSeconds;
+	}
+
+	void Torrent::MarkPeerCandidateConnected (const i2p::data::IdentHash & peer)
+	{
+		// The connection table owns the peer from now on. Keeping a pending
+		// candidate would hold a table slot while connected and would make the
+		// peer dialable again only after its backoff once the connection closes.
+		RemovePeerCandidate (peer);
+	}
+
+	void Torrent::MarkPeerCandidateFailed (const i2p::data::IdentHash & peer, uint64_t nowSeconds)
+	{
+		auto candidate = FindPeerCandidate (peer);
+		if (!candidate) return;
+		if (candidate->failures < PEER_CANDIDATE_MAX_FAILURES) ++candidate->failures;
+		candidate->lastAttempt = nowSeconds;
+		// The entry is kept after the budget is spent: a re-advertisement must
+		// not reset the failure history. It is never dialable again and is
+		// dropped by expiration or eviction.
+	}
+
+	void Torrent::ExpirePeerCandidates (uint64_t nowSeconds)
+	{
+		for (auto it = m_PeerCandidates.begin (); it != m_PeerCandidates.end ();)
+		{
+			// A backwards clock never expires anything: `now - added` cannot
+			// wrap into a fresh lifetime and a regression must not destroy the
+			// table.
+			const bool expired = !it->added
+				|| (nowSeconds >= it->added
+					&& nowSeconds - it->added >= PeerCandidatePolicy::Ttl (it->origin));
+			const bool dead = it->failures >= PEER_CANDIDATE_MAX_FAILURES;
+			if (expired || dead)
+				it = m_PeerCandidates.erase (it);
+			else
+				++it;
+		}
+	}
+
+	PeerConnectionOrigin Torrent::GetPeerCandidateOrigin (const i2p::data::IdentHash & peer) const
+	{
+		for (const auto & candidate : m_PeerCandidates)
+			if (candidate.ident == peer) return candidate.origin;
+		return ePeerConnectionOriginPEX;
+	}
+
+	void Torrent::ClearPeerCandidates ()
+	{
+		m_PeerCandidates.clear ();
+		// The admission windows belong to the same state: a stopped/removed
+		// torrent starts with a full budget again.
+		m_PexCandidateWindow = { };
+		m_DhtCandidateWindow = { };
 	}
 
 	uint64_t Torrent::GetDownloadRate ()
@@ -3283,6 +3723,26 @@ namespace torrents
 		m_SentSinceLastTimestamp = 0;
 	}
 
+	void PeerConnection::TorrentComplete ()
+	{
+		if (!m_Torrent) return;
+		// A peer that never sent a bitfield is not a seed: an empty bitfield is
+		// `.all()` as well, so the flag decides instead of the bitset.
+		if (IsRemoteSeed ())
+		{
+			Close ();
+			return;
+		}
+		ResetStats ();
+		ReleaseOutgoingRequests ();
+		m_LastRequestedPieceIndex = -1;
+		if (m_IsInterested)
+		{
+			m_IsInterested = false;
+			SendNotinterestedMsg ();
+		}
+	}
+
 	void PeerConnection::ScheduleHandshakeReceiveTimer ()
 	{
 		if (m_HandshakeReceiveTimer)
@@ -3367,35 +3827,70 @@ namespace torrents
 		if (m_IsEstablished && m_RemoteMsgIDI2PPEX && ts > m_LastPEXTime + PEER_PEX_SEND_INTERVAL) NotifyPEXPeers ();
 		if (m_IsEstablished)
 		{
+			// A rate sampled while blocks moved must not be reported forever
+			// after the transfer stopped.
+			UpdateIdleRates (ts);
 			if (ts > m_LastReceiveTime + PEER_KEEP_ALIVE_TIMEOUT)
 			{
 				LogPrint (eLogInfo, "Torrent: Peer timeout expired");
 				Close (); // Terminate shouldn't be called from IterateHandler directly
 			}
-			else if (ts > m_LastSendTime + PEER_KEEP_SEND_INTERVAL)
+			else
 			{
-				ReleaseOutgoingRequests (); // pending requests are invalid now
-				bool requested = false;
-				if (!m_Torrent->IsComplete () && m_Torrent->HasIncompletePieces (m_RemoteBitfield))
+				// Per-request deadline. It fires well before the blanket
+				// release below, so a peer that keeps sending keep-alives (or
+				// other blocks) can no longer pin a stalled block forever.
+				ReleaseExpiredOutgoingRequests (ts);
+				if (ts > m_LastSendTime + PEER_KEEP_SEND_INTERVAL)
 				{
-					// try to request if we still have blocks to request
-					if (!m_IsChoked)
-						requested = RequestNextBlocks ();
-					else if (!m_IsInterested)
+					ReleaseOutgoingRequests (); // pending requests are invalid now
+					bool requested = false;
+					if (!m_Torrent->IsComplete () && m_Torrent->HasIncompletePieces (m_RemoteBitfield))
 					{
-						m_IsInterested = true;
-						SendInterestedMsg ();
+						// try to request if we still have blocks to request
+						if (!m_IsChoked)
+							requested = RequestNextBlocks ();
+						else if (!m_IsInterested)
+						{
+							m_IsInterested = true;
+							SendInterestedMsg ();
+						}
 					}
-				}
-				if (!requested)
-				{
-					// send keep-alive
-					uint32_t len = 0;
-					WriteToStream ((const uint8_t *)&len, 4);
-					m_LastSendTime = ts;
+					if (!requested)
+					{
+						// send keep-alive
+						uint32_t len = 0;
+						WriteToStream ((const uint8_t *)&len, 4);
+						m_LastSendTime = ts;
+					}
 				}
 			}
 		}
+	}
+
+	void PeerConnection::UpdateIdleRates (uint64_t nowSeconds)
+	{
+		// The last accounted block is the only traffic timestamp a rate has.
+		// A direction that never moved a block has no rate to decay.
+		const auto decay = [nowSeconds] (uint64_t & rate, uint64_t & lastBlockTimestamp, size_t & sinceLastTimestamp)
+		{
+			if (!rate || !lastBlockTimestamp) return;
+			const auto lastSeconds = lastBlockTimestamp / 1000;
+			if (nowSeconds <= lastSeconds) return;
+			const auto decayed = DecayPeerRate (rate, nowSeconds - lastSeconds);
+			if (decayed == rate) return;
+			rate = decayed;
+			if (!rate)
+			{
+				// Nothing is left to decay: drop the stale window so the next
+				// block starts a fresh sample instead of averaging against a
+				// long idle interval, which would report a far too low rate.
+				lastBlockTimestamp = 0;
+				sinceLastTimestamp = 0;
+			}
+		};
+		decay (m_DownloadRate, m_LastBlockDownloadTimestamp, m_ReceivedSinceLastTimestamp);
+		decay (m_UploadRate, m_LastBlockUploadTimestamp, m_SentSinceLastTimestamp);
 	}
 
 	void PeerConnection::StreamReceive ()
@@ -3523,6 +4018,7 @@ namespace torrents
 			switch (m_ReceiveBuffer[offset])
 			{
 			case eMessageTypeRequest: HandleRequestMsg (m_ReceiveBuffer + offset + 1, msgLen - 1); break;
+			case eMessageTypeCancel: HandleCancelMsg (m_ReceiveBuffer + offset + 1, msgLen - 1); break;
 			case eMessageTypePiece: HandlePieceMsg (m_ReceiveBuffer + offset + 1, msgLen - 1); break;
 			case eMessageTypeChoke: HandleChokeMsg (); break;
 			case eMessageTypeUnchoke:
@@ -3537,7 +4033,10 @@ namespace torrents
 					SendUnchokeMsg ();
 				}
 				break;
-			case eMessageTypeNotInterested: m_IsRemoteInterested = false; break;
+			case eMessageTypeNotInterested:
+				m_IsRemoteInterested = false;
+				m_UploadRate = 0;
+				break;
 			case eMessageTypeHave: HandleHaveMsg (m_ReceiveBuffer + offset + 1, msgLen - 1); break;
 			case eMessageTypeBitfield: HandleBitfieldMsg (m_ReceiveBuffer + offset + 1, msgLen - 1); break;
 			case eMessageTypeHaveAll: HandleHaveAllMsg (); break;
@@ -3703,6 +4202,9 @@ namespace torrents
 	void PeerConnection::HandleBitfieldMsg (const uint8_t * buf, size_t len)
 	{
 		if (!m_Torrent || !m_Torrent->GetLength ()) return; // we are magnet and don't have torrent info yet
+		// A received bitfield (even an all-zero one) is authoritative: it is the
+		// only signal that lets later `.all()` checks mean "remote is a seed".
+		m_RemoteBitfieldReceived = true;
 		m_IsInterested = false;
 		size_t numPieces = m_Torrent->GetNumPieces ();
 		m_RemoteBitfield.resize (numPieces);
@@ -3724,7 +4226,7 @@ namespace torrents
 		}
 		if (m_IsInterested)
 			SendInterestedMsg ();
-		else if (m_RemoteBitfield.all ()) // remote is seeding
+		else if (IsRemoteSeed ()) // remote advertised every piece
 			Terminate (); // we don't need this connection
 	}
 
@@ -3743,6 +4245,7 @@ namespace torrents
 		size_t numPieces = m_Torrent->GetNumPieces ();
 		m_RemoteBitfield.resize (numPieces);
 		m_RemoteBitfield.set ();
+		m_RemoteBitfieldReceived = true;
 		if (!m_Torrent->IsComplete ())
 		{
 			m_IsInterested = true;
@@ -3766,6 +4269,7 @@ namespace torrents
 		size_t numPieces = m_Torrent->GetNumPieces ();
 		m_RemoteBitfield.resize (numPieces);
 		m_RemoteBitfield.reset ();
+		m_RemoteBitfieldReceived = true;
 	}
 
 	void PeerConnection::SendHaveNoneMsg ()
@@ -3782,6 +4286,7 @@ namespace torrents
 		uint32_t index = bufbe32toh (buf);
 		uint32_t offset = bufbe32toh (buf + 4);
 		len -= 8;
+		bool applied = false;
 		if (len && index < m_Torrent->GetNumPieces ())
 		{
 			Piece & piece = m_Torrent->GetPiece (index);
@@ -3796,8 +4301,8 @@ namespace torrents
 			}
 			else
 			{
-				piece.BlockReceived (buf + 8, len, offset);
-				if (piece.IsComplete () && !piece.IsSaving ())
+				applied = piece.BlockReceived (buf + 8, len, offset);
+				if (applied && piece.IsComplete () && !piece.IsSaving ())
 				{
 					piece.SetIsSaving (true);
 					if (piece.VerifyHash ())
@@ -3826,12 +4331,28 @@ namespace torrents
 										}
 									if (!saved)
 									{
+										// Withhold the piece as before, but also
+										// surface the storage failure: the UI and
+										// the announce path must not keep telling
+										// the swarm that this torrent is complete
+										// and being seeded while payload cannot be
+										// written. The piece is Missing again, so
+										// normal scheduling re-requests it later
+										// (no unbounded retry loop here); a later
+										// successful write clears the error again.
+										current->SetError (eTorrentErrorFilesystem);
 										current->InvalidatePiece (index);
 										LogPrint (
 											eLogError, "Torrents: Piece storage failed; piece remains unavailable");
 										return;
 									}
 									piece.SetIsSaving (false);
+									// A verified write proves the storage
+									// backend works again; clear a transient
+									// preparation failure so the torrent is not
+									// permanently marked and silenced.
+									if (current->GetError () == eTorrentErrorFilesystem)
+										current->SetError (eTorrentErrorNoError);
 									current->SaveTorrentResumeFile ();
 									boost::asio::post (tunnel->GetService (),
 										[torrent, tunnel, infoHash, index] ()
@@ -3850,6 +4371,21 @@ namespace torrents
 					else
 					{
 						LogPrint (eLogWarning, "Torrents: Received piece hash mismatch");
+						// Best-effort corrupt-peer accounting. Only an applied
+						// block that completed the piece reaches this branch, so
+						// a late/duplicate block never charges a peer. A shared
+						// piece may have been assembled from several peers, so
+						// this charges the connection that delivered the block
+						// completing it, not every contributor.
+						if (const auto remote = GetRemoteIdentHash ())
+						{
+							const auto failures = m_Torrent->ChargePieceFailure (*remote);
+							if (failures == Torrent::PEER_PENALTY_THRESHOLD)
+								LogPrint (eLogWarning, "Torrents: Peer ",
+									i2p::data::GetIdentHashAbbreviation (*remote),
+									" repeatedly contributed corrupt piece data; disconnecting");
+							if (failures >= Torrent::PEER_PENALTY_THRESHOLD) Close ();
+						}
 						m_Torrent->InvalidatePiece (index);
 					}
 				}
@@ -3857,13 +4393,17 @@ namespace torrents
 		}
 		ReleaseOutgoingRequest (index, offset);
 		if (m_NumRequests <= m_MaxNumRequests * 2 / 3) RequestNextBlocks ();
-		// update stats
-		m_Downloaded += REQUEST_BLOCK_SIZE;
-		m_Torrent->AddDownloaded (REQUEST_BLOCK_SIZE);
+		if (!applied) return;
+		// update stats only for a block that changed the piece state. Charge the
+		// bytes actually received: the final block of a piece is shorter than
+		// REQUEST_BLOCK_SIZE, so the constant would overstate the totals.
+		const auto accounted = BlockTransferBytes (len);
+		m_Downloaded += accounted;
+		m_Torrent->AddDownloaded (accounted);
 		auto ts = i2p::util::GetMonotonicMilliseconds ();
 		if (m_LastBlockDownloadTimestamp)
 		{
-			m_ReceivedSinceLastTimestamp += REQUEST_BLOCK_SIZE;
+			m_ReceivedSinceLastTimestamp += accounted;
 			auto delta = ts - m_LastBlockDownloadTimestamp;
 			if (delta >= BANDWIDTH_RATE_SAMPLING_INTERVAL)
 			{
@@ -3882,16 +4422,18 @@ namespace torrents
 	void PeerConnection::SendPieceMsg (uint32_t index, uint32_t offset, const uint8_t * data, size_t len)
 	{
 		if (!m_Stream) return;
-		std::vector<uint8_t> sendBuffer (len + 8 + 5);
-		htobe32buf (sendBuffer.data (), len + 8 + 1); // length
-		sendBuffer[4] = eMessageTypePiece; // msg ID
-		htobe32buf (sendBuffer.data () + 5, index);
-		htobe32buf (sendBuffer.data () + 9, offset);
-		memcpy (sendBuffer.data () + 13, data, len);
+		std::array<uint8_t, PIECE_MSG_LENGTH> header { };
+		htobe32buf (header.data (), len + 8 + 1); // length
+		header[4] = eMessageTypePiece; // msg ID
+		htobe32buf (header.data () + 5, index);
+		htobe32buf (header.data () + 9, offset);
 		LogPrint (eLogDebug, "Torrents: Sending piece index ", index, " offset ", offset, " length ", len);
 		m_NumPieces++;
-		m_Stream->AsyncSend (sendBuffer.data (), sendBuffer.size (),
-			[s = shared_from_this ()] (const boost::system::error_code & ecode, size_t bytes_transferred)
+		const std::vector<std::pair<const uint8_t *, size_t>> buffers {
+			{ header.data (), header.size () }, { data, len } };
+		auto sendBuffer = std::make_shared<i2p::stream::SendBuffer> (buffers, header.size () + len,
+			[s = shared_from_this (), blockLength = len] (const boost::system::error_code & ecode,
+				size_t bytes_transferred)
 			{
 				if (s->m_NumPieces > 0) s->m_NumPieces--;
 				if (!ecode && s->m_Stream)
@@ -3911,7 +4453,7 @@ namespace torrents
 					auto ts = i2p::util::GetMonotonicMilliseconds ();
 					if (s->m_LastBlockUploadTimestamp)
 					{
-						s->m_SentSinceLastTimestamp += REQUEST_BLOCK_SIZE;
+						s->m_SentSinceLastTimestamp += blockLength;
 						auto delta = ts - s->m_LastBlockUploadTimestamp;
 						if (delta >= BANDWIDTH_RATE_SAMPLING_INTERVAL)
 						{
@@ -3929,8 +4471,11 @@ namespace torrents
 				else
 					s->Terminate ();
 			});
+		m_Stream->Send (std::move (sendBuffer));
 		m_LastSendTime = i2p::util::GetMonotonicSeconds ();
-		m_Uploaded += REQUEST_BLOCK_SIZE;
+		// Charge what this block actually carried; the final block of a piece is
+		// shorter than REQUEST_BLOCK_SIZE.
+		m_Uploaded += BlockTransferBytes (len);
 		m_Torrent->AddUploaded (len);
 	}
 
@@ -3953,6 +4498,30 @@ namespace torrents
 		htobe32buf (buf + 9, offset); // offset
 		htobe32buf (buf + 13, len); // length
 		WriteToStream (buf, REJECT_REQUEST_MSG_LENGTH);
+	}
+
+	void PeerConnection::HandleCancelMsg (const uint8_t * buf, size_t len)
+	{
+		if (!m_Torrent) return;
+		if (len != CANCEL_MSG_PAYLOAD_LENGTH)
+		{
+			LogPrint (eLogWarning, "Torrents: Unexpected length of cancel message ", len);
+			return;
+		}
+		const uint32_t index = bufbe32toh (buf);
+		const uint32_t offset = bufbe32toh (buf + 4);
+		const uint32_t length = bufbe32toh (buf + 8);
+		const RequestedBlock cancelled { index, offset, length };
+		// Only a request still queued can be cancelled; an in-flight send is
+		// already copying the block and must not be interrupted mid-frame.
+		// BEP 3 identifies the request by the exact index/offset/length triple.
+		auto it = std::find (m_IncomingRequestsQueue.begin (), m_IncomingRequestsQueue.end (), cancelled);
+		if (it == m_IncomingRequestsQueue.end ()) return;
+		m_IncomingRequestsQueue.erase (it);
+		// Reject Request is a BEP 6 Fast Extension message, so it is only sent
+		// to a peer that negotiated the extension. Upstream answers
+		// unconditionally, which would be a protocol violation here.
+		if (m_IsFast) SendRejectRequestMsg (index, offset, length);
 	}
 
 	void PeerConnection::HandleRequestMsg (const uint8_t * buf, size_t len)
@@ -4161,6 +4730,7 @@ namespace torrents
 		m_IsChoked = true;
 		ReleaseOutgoingRequests ();
 		m_LastRequestedPieceIndex = -1;
+		m_DownloadRate = 0;
 	}
 
 	void PeerConnection::HandleSuggestPieceMsg (const uint8_t * buf, size_t len)
@@ -4182,47 +4752,107 @@ namespace torrents
 		if (len < 1) return;
 		if (!buf[0]) // Handshake
 		{
-			ParseDictionary (std::string_view ((const char *)(buf + 1), len - 1),
-				[this] (std::string_view key, std::string_view buf) -> size_t
+			// BEP10 negotiates the extension map once. A repeated ID-0 frame
+			// must not re-run the trigger block below: every re-run would
+			// request the metadata again, clear the bounded PEX announcement set
+			// and advertise the DHT endpoint again, so one frame could amplify
+			// four outgoing messages. Write-once extension IDs keep whatever the
+			// first handshake installed.
+			if (m_ExtendedHandshakeReceived)
+			{
+				LogPrint (eLogDebug, "Torrents: Ignoring a repeated BEP10 handshake");
+				return;
+			}
+			if (!m_Torrent) return;
+			const std::string_view payload ((const char *)buf + 1, len - 1);
+			// Parse into locals and apply only after the whole dictionary has
+			// been consumed, so a handshake with trailing bytes cannot leave a
+			// half-applied negotiation behind.
+			struct
+			{
+				std::vector<std::pair<std::string, int64_t>> extensions;
+				int64_t metadataSize = 0;
+				int64_t requests = 0;
+				std::string_view clientVersion { };
+				bool hasMetadataSize = false, hasRequests = false, hasClientVersion = false;
+			} handshake;
+			auto parsed = ParseDictionary (payload,
+				[&handshake] (std::string_view key, std::string_view value) -> size_t
 				{
 					if (key == "m")
 					{
-						return ParseDictionary (buf,
-							[this] (std::string_view msg, std::string_view msgID) -> size_t
+						return ParseDictionary (value,
+							[&handshake] (std::string_view extension, std::string_view msgID) -> size_t
 							{
 								auto [id, l] = ExtractInteger (msgID);
-								if (l) AddExtendedMsgHandler (msg, id);
+								if (l && handshake.extensions.size () < MAX_EXTENDED_HANDSHAKE_EXTENSIONS)
+									handshake.extensions.emplace_back (std::string (extension), id);
 								return l;
 							});
 					}
-					else if (key == "metadata_size")
+					if (key == "metadata_size")
 					{
-						auto [s, l] = ExtractInteger (buf);
+						auto [size, l] = ExtractInteger (value);
 						if (l)
 						{
-							if (s < 0 || (size_t)s > MAX_NUM_TORRENT_PIECES * SHA_DIGEST_LENGTH)
-							{
-								LogPrint (eLogError, "Torrents: Invalid metadata_size ", s);
-								s = 0;
-							}
-							m_RemoteMetadataSize = s;
+							handshake.metadataSize = size;
+							handshake.hasMetadataSize = true;
 						}
 						return l;
 					}
-					else if (key == "reqq")
+					if (key == "reqq")
 					{
-						auto [q, l] = ExtractInteger (buf);
-						if (l) m_MaxNumRequests = std::clamp ((size_t)q, MIN_NUM_REQUESTS, MAX_NUM_REQUESTS);
+						auto [requests, l] = ExtractInteger (value);
+						if (l)
+						{
+							handshake.requests = requests;
+							handshake.hasRequests = true;
+						}
 						return l;
 					}
-					else if (key == "v")
+					if (key == "v")
 					{
-						auto [v, l] = ExtractByteString (buf);
-						if (l) m_RemoteName = v;
+						auto [version, l] = ExtractByteString (value);
+						if (l)
+						{
+							// A client string is diagnostics only; cap it so a
+							// handshake cannot grow per-connection state.
+							handshake.clientVersion
+								= version.substr (0, MAX_EXTENDED_CLIENT_VERSION_LENGTH);
+							handshake.hasClientVersion = true;
+						}
 						return l;
 					}
 					return 0;
 				});
+			// `len` includes the extended message id; the dictionary starts
+			// after it. Anything else is a malformed or padded handshake.
+			if (!parsed || parsed != payload.size ())
+			{
+				LogPrint (eLogWarning, "Torrents: Malformed BEP10 handshake");
+				return;
+			}
+			m_ExtendedHandshakeReceived = true;
+			for (const auto & [extension, id] : handshake.extensions) AddExtendedMsgHandler (extension, id);
+			if (handshake.hasMetadataSize)
+			{
+				if (handshake.metadataSize < 0
+					|| (size_t)handshake.metadataSize > MAX_NUM_TORRENT_PIECES * SHA_DIGEST_LENGTH)
+				{
+					LogPrint (eLogError, "Torrents: Invalid metadata_size ", handshake.metadataSize);
+					m_RemoteMetadataSize = 0;
+				}
+				else
+					m_RemoteMetadataSize = static_cast<size_t> (handshake.metadataSize);
+			}
+			if (handshake.hasRequests)
+			{
+				// Clamp as a signed value before the cast: a negative reqq must
+				// not become a huge size_t that is then clamped by accident.
+				m_MaxNumRequests = static_cast<size_t> (
+					std::clamp<int64_t> (handshake.requests, MIN_NUM_REQUESTS, MAX_NUM_REQUESTS));
+			}
+			if (handshake.hasClientVersion) m_RemoteName = handshake.clientVersion;
 			// trigger extensions
 			// BEP9
 			if (!m_Torrent->GetLength ()) // magnet without info
@@ -4238,10 +4868,11 @@ namespace torrents
 				}
 			}
 			// BEP11: answer both outgoing and incoming peers. The private-swarm
-			// suppression lives in NotifyPEXPeers().
-			if (m_RemoteMsgIDI2PPEX && m_Stream) NotifyPEXPeers ();
-			// BEP5
-			if (m_RemoteMsgIDI2PDHT && GetTorrentsTunnel ()->SupportsDHT ()) SendDHTPortAdvertisement ();
+			// suppression and the 120 s per-connection interval live in
+			// NotifyPEXPeers(), so the handshake path cannot bypass either.
+			if (m_RemoteMsgIDI2PPEX) NotifyPEXPeers ();
+			// BEP5: the advertisement checks DHT support and its own interval.
+			SendDHTPortAdvertisement ();
 			RequestComments ();
 		}
 		else
@@ -4313,11 +4944,24 @@ namespace torrents
 			if (comments) extensions.emplace_back (COMMENT_EXTENSION_NAME, comment);
 			// A private torrent with metadata must not offer its info dict.
 			// Magnet mode still needs ut_metadata to acquire it.
-			if (!m_Torrent->IsPrivate () || !m_Torrent->IsValid ())
-				extensions.emplace_back (EXTENSION_NAME_UT_METADATA, metadata);
-			str = CreateDictionary ({ { "m", CreateDictionary (extensions) },
-				{ "metadata_size", CreateInteger (m_Torrent->GetInfo ().size ()) },
-				{ "reqq", CreateInteger (MAX_INCOMING_REQUESTS_QUEUE_SIZE) }, { "v", CreateByteString ("i2pd") } });
+			const bool advertiseMetadata = !m_Torrent->IsPrivate () || !m_Torrent->IsValid ();
+			if (advertiseMetadata) extensions.emplace_back (EXTENSION_NAME_UT_METADATA, metadata);
+			auto encodedExtensions = CreateDictionary (extensions);
+			auto requests = CreateInteger (MAX_INCOMING_REQUESTS_QUEUE_SIZE);
+			auto version = CreateByteString ("i2pd");
+			std::vector<std::pair<std::string_view, std::string_view>> fields {
+				{ "m", encodedExtensions }, { "reqq", requests }, { "v", version }
+			};
+			// metadata_size is the exact info-dict length. Emitting it without
+			// advertising ut_metadata would leak the size of an info dict this
+			// peer is never allowed to request, so both are gated together.
+			std::string metadataSize;
+			if (advertiseMetadata)
+			{
+				metadataSize = CreateInteger (m_Torrent->GetInfo ().size ());
+				fields.emplace_back ("metadata_size", metadataSize);
+			}
+			str = CreateDictionary (fields);
 			payload = str;
 		}
 		std::vector<uint8_t> sendBuffer (payload.length () + data.length () + 1 + 5);
@@ -4356,9 +5000,19 @@ namespace torrents
 		if (!m_Torrent || !m_Torrent->IsValid () || m_Torrent->IsPrivate ()
 			|| !m_Torrent->GetCommentStore ().IsEnabled () || !m_RemoteMsgIDComment)
 			return;
-		auto now = i2p::util::GetMonotonicSeconds ();
-		if (m_LastCommentRequest && now - m_LastCommentRequest < 600) return;
+		const auto now = i2p::util::GetMonotonicSeconds ();
+		const auto revision = m_Torrent->GetCommentStore ().Revision ();
+		// A local add/hide/restore changes the store revision and is worth an
+		// immediate refresh, because the periodic cadence alone would usually
+		// only re-handshake. RefreshComments() runs once per connection for
+		// every local mutation, so the minimum interval coalesces a burst of
+		// edits; without a revision change the slower periodic cadence applies.
+		const bool revisionChanged = revision != m_LastCommentRequestRevision;
+		const auto minInterval = revisionChanged ? COMMENT_REQUEST_MIN_INTERVAL : COMMENT_REQUEST_PERIODIC_INTERVAL;
+		if (m_LastCommentRequest && (now < m_LastCommentRequest || now - m_LastCommentRequest < minInterval))
+			return;
 		m_LastCommentRequest = now;
+		m_LastCommentRequestRevision = revision;
 		SendExtendedMsg (m_RemoteMsgIDComment, EncodeTorrentCommentRequest ());
 	}
 
@@ -4373,6 +5027,8 @@ namespace torrents
 			m_CommentWindow = now;
 			m_CommentBytes = 0;
 			m_CommentMessages = 0;
+			// The admitted-entry budget rolls with the same ingress window.
+			m_CommentEntryWindow = { };
 		}
 		if (len > MAX_COMMENT_MESSAGE_BYTES || m_CommentMessages >= 8 || len > 128 * 1024 - m_CommentBytes) return;
 		++m_CommentMessages;
@@ -4391,12 +5047,22 @@ namespace torrents
 		else
 		{
 			// A single reply may describe up to 256 comments, but accepting all
-			// of them at once would let one peer flush the bounded store.
-			size_t processed = 0;
+			// of them at once would let one peer flush the bounded store. Two
+			// budgets apply: this connection's entry window and the torrent-wide
+			// one, so reconnecting does not reset the effective rate. Only an
+			// entry whose normalized (owner,text) is not already stored is
+			// charged, so a duplicate replay cannot starve other peers; a later
+			// store-side quota rejection keeps the conservative charge.
+			auto & store = m_Torrent->GetCommentStore ();
+			size_t offered = 0;
 			for (auto & comment : message->comments)
 			{
-				if (processed++ >= MAX_COMMENT_MESSAGE_COUNT) break;
-				(void)m_Torrent->GetCommentStore ().Add (std::move (comment));
+				if (offered >= MAX_COMMENT_MESSAGE_COUNT) break;
+				if (store.IsDuplicate (comment)) continue;
+				if (!m_CommentEntryWindow.Admit (1, MAX_COMMENT_ENTRIES_PER_CONNECTION_WINDOW, now)) break;
+				if (!m_Torrent->AdmitCommentEntries (1, now)) break;
+				++offered;
+				(void)store.Add (std::move (comment));
 			}
 		}
 	}
@@ -4520,75 +5186,61 @@ namespace torrents
 			m_PexReceivePeers = 0;
 		}
 		if (m_PexReceiveMessages++ >= MAX_PEX_RECEIVE_MESSAGES) return;
-		std::unordered_set<i2p::data::IdentHash> newPeers;
-		auto parsed = ParseDictionary (std::string_view ((const char *)buf, len),
-			[&newPeers, this] (std::string_view key, std::string_view buf) -> size_t
-			{
-				if (key == "added")
-				{
-					auto [idents, l] = ExtractByteString (buf);
-					if (l && !(idents.size () & 0x1F)) // multiple of 32
-						while (idents.length () >= i2p::data::IdentHash::len
-							&& m_PexReceivePeers < MAX_PEX_RECEIVE_PEERS && newPeers.size () < MAX_PEX_RECEIVE_PEERS)
-						{
-							i2p::data::IdentHash peer (
-								(const uint8_t *)idents.substr (0, i2p::data::IdentHash::len).data ());
-							idents = idents.substr (i2p::data::IdentHash::len);
-							if (peer.IsZero ()) continue;
-							if (newPeers.emplace (peer).second) ++m_PexReceivePeers;
-						};
-					return l;
-				}
-				return 0;
-			});
-		if (parsed != len) return;
-		if (!newPeers.empty ())
+		auto decoded = DecodePEXAdded (std::string_view ((const char *)buf, len));
+		if (decoded.malformed)
 		{
-			LogPrint (eLogDebug, "Torrents: I2P_PEX ", newPeers.size (), " new peers received");
-			GetTorrentsTunnel ()->ConnectToNewPeers (m_Torrent, newPeers, ePeerConnectionOriginPEX);
+			LogPrint (eLogDebug, "Torrents: Malformed I2P_PEX message ignored");
+			return;
 		}
+		if (decoded.peers.empty ()) return;
+		// The decoder already bounds one message; the window bounds the total
+		// number of new destinations a peer may contribute per minute.
+		std::unordered_set<i2p::data::IdentHash> newPeers;
+		for (const auto & peer : decoded.peers)
+		{
+			if (m_PexReceivePeers >= MAX_PEX_RECEIVE_PEERS) break;
+			if (newPeers.insert (peer).second) ++m_PexReceivePeers;
+		}
+		if (newPeers.empty ()) return;
+		LogPrint (eLogDebug, "Torrents: I2P_PEX ", newPeers.size (), " new peers received");
+		GetTorrentsTunnel ()->ConnectToNewPeers (m_Torrent, newPeers, ePeerConnectionOriginPEX);
 	}
 
 	void PeerConnection::HandleI2PDHTExtension (const uint8_t * buf, size_t len)
 	{
 		if (!m_Torrent || m_Torrent->IsPrivate ()) return;
-		uint16_t port = 0, rport = 0;
-		bool hasRPort = false;
-		auto parsed = ParseDictionary (std::string_view ((const char *)buf, len),
-			[&port, &rport, &hasRPort] (std::string_view key, std::string_view buf) -> size_t
-			{
-				if (key == "port")
-				{
-					auto [value, l] = ExtractInteger (buf);
-					if (l && value > 0 && value < 65534) port = value;
-					return l;
-				}
-				if (key == "rport")
-				{
-					auto [value, l] = ExtractInteger (buf);
-					if (l && value > 0 && value < 65536)
-					{
-						rport = static_cast<uint16_t> (value);
-						hasRPort = true;
-					}
-					return l;
-				}
-				return 0;
-			});
-		if (parsed != len || !port || (hasRPort && rport != port + 1)) return;
+		auto decoded = DecodeDHTHint (std::string_view ((const char *)buf, len));
+		if (decoded.malformed || !decoded.port) return;
+		// Only an established connection with a transport-authenticated remote
+		// destination may seed a DHT query: the hint itself is unauthenticated,
+		// so it is never allowed to point a ping at some other identity.
+		if (!m_IsEstablished) return;
+		auto ident = GetRemoteIdentHash ();
+		if (!ident || ident->IsZero ()) return;
+		if (decoded.rportMismatch)
+		{
+			// "rport" is informational (Java uses "port"); a stale or unrelated
+			// value must not discard an otherwise valid hint.
+			LogPrint (eLogDebug, "Torrents: i2p_dht rport does not follow port; using port ", *decoded.port);
+		}
 		// A connected peer may advertise its DHT endpoint once per throttle
 		// window. The port may change after a legitimate restart, but repeated
 		// messages must not fill the pending-query table.
 		const auto now = i2p::util::GetMonotonicSeconds ();
 		if (m_LastDHTHintTime && now < m_LastDHTHintTime + PEER_DHT_HINT_INTERVAL) return;
 		m_LastDHTHintTime = now;
-		auto ident = GetRemoteIdentHash ();
-		if (ident) GetTorrentsTunnel ()->SendDHTPingQuery (*ident, port);
+		GetTorrentsTunnel ()->SendDHTPingQuery (*ident, *decoded.port);
 	}
 
 	void PeerConnection::NotifyPEXPeers ()
 	{
 		if (!m_Torrent || m_Torrent->IsPrivate () || !m_RemoteMsgIDI2PPEX || !m_Stream) return;
+		const auto now = i2p::util::GetMonotonicSeconds ();
+		// One announcement per interval per connection. The handshake path used
+		// to call this unconditionally: a repeated handshake cleared the bounded
+		// "already announced" set and re-sent the message, turning a single
+		// frame into unbounded wire amplification.
+		if (m_LastPEXTime && now < m_LastPEXTime + PEER_PEX_SEND_INTERVAL) return;
 		// The set of destinations already announced on this connection is
 		// bounded. When it fills up it is cleared, which restarts the rotation
 		// instead of growing for the lifetime of the connection.
@@ -4599,7 +5251,10 @@ namespace torrents
 		{
 			if (!conn || conn.get () == this) continue;
 			if (!conn->IsEstablished ()) continue;
-			if (conn->GetRemoteBitfield ().all ()) continue; // completed seed
+			// A peer that never sent a bitfield is not a known seed: an empty
+			// bitfield is `.all()` as well, so `.all()` alone skipped every new
+			// peer.
+			if (conn->IsRemoteSeed ()) continue;
 
 			auto ident = conn->GetRemoteIdentHash ();
 			if (!ident) continue;
@@ -4607,7 +5262,7 @@ namespace torrents
 			hashes.append (reinterpret_cast<const char *> (ident->data ()), i2p::data::IdentHash::len);
 			if (++count >= MAX_PEX_PEERS_PER_MESSAGE || m_SentPEXPeers.size () >= MAX_PEX_TRACKED_PEERS) break;
 		}
-		m_LastPEXTime = i2p::util::GetMonotonicSeconds ();
+		m_LastPEXTime = now;
 		if (hashes.empty ()) return;
 		SendExtendedMsg (
 			m_RemoteMsgIDI2PPEX, CreateDictionary ({ { "added", CreateByteString (std::string_view (hashes)) } }));
@@ -4616,7 +5271,16 @@ namespace torrents
 	void PeerConnection::SendDHTPortAdvertisement ()
 	{
 		if (!m_Torrent || m_Torrent->IsPrivate ()) return;
-		auto [port, rport] = GetTorrentsTunnel ()->GetDHTPorts ();
+		// Peer advertisement is only meaningful to a peer that negotiated the
+		// extension and only from a node that runs a DHT at all.
+		if (!m_RemoteMsgIDI2PDHT) return;
+		auto tunnel = GetTorrentsTunnel ();
+		if (!tunnel || !tunnel->SupportsDHT ()) return;
+		// Own per-connection interval: the handshake is not a reliable "once".
+		const auto now = i2p::util::GetMonotonicSeconds ();
+		if (m_LastDHTAdvertisementTime && now < m_LastDHTAdvertisementTime + PEER_DHT_ADVERTISE_INTERVAL) return;
+		m_LastDHTAdvertisementTime = now;
+		auto [port, rport] = tunnel->GetDHTPorts ();
 		SendExtendedMsg (m_RemoteMsgIDI2PDHT,
 			CreateDictionary ({ { "port", CreateInteger (port) }, { "rport", CreateInteger (rport) } }));
 	}
@@ -4631,7 +5295,9 @@ namespace torrents
 		if (m_LastRequestedPieceIndex >= 0)
 		{
 			m_LastRequestedPieceIndex = -1; // no request
-			if (m_IsInterested)
+			// Keep interest when this peer still advertises wanted pieces;
+			// the block may be temporarily in flight on another connection.
+			if (m_IsInterested && !m_Torrent->HasIncompletePieces (m_RemoteBitfield))
 			{
 				m_IsInterested = false;
 				SendNotinterestedMsg ();
@@ -4652,6 +5318,7 @@ namespace torrents
 		}
 		uint8_t buf[REQUEST_MSG_LENGTH * MAX_NUM_REQUESTS];
 		size_t bufOffset = 0;
+		const auto now = i2p::util::GetMonotonicSeconds ();
 		while (m_NumRequests < m_MaxNumRequests)
 		{
 			auto nextBlock = GetNextBlockToRequest ();
@@ -4660,8 +5327,8 @@ namespace torrents
 			FillRequestMsg (buf + bufOffset, index, offset, len);
 			bufOffset += REQUEST_MSG_LENGTH;
 			m_LastRequestedPieceIndex = index;
-			m_OutgoingRequests.push_back (OutgoingRequest {
-				index, offset, len, m_Torrent->GetPiece (static_cast<int> (index)).GetBlockEpoch () });
+			m_OutgoingRequests.push_back (OutgoingRequest { index, offset, len,
+				m_Torrent->GetPiece (static_cast<int> (index)).GetBlockEpoch (), now });
 			m_NumRequests++;
 		}
 		if (bufOffset > 0) WriteToStream (buf, bufOffset);
@@ -4689,6 +5356,35 @@ namespace torrents
 					m_Torrent->GetPiece (static_cast<int> (block.index)).ReleaseBlock (block.offset, block.epoch);
 		m_OutgoingRequests.clear ();
 		m_NumRequests = 0;
+	}
+
+	bool PeerConnection::ReleaseExpiredOutgoingRequests (uint64_t now)
+	{
+		if (!m_Torrent || m_OutgoingRequests.empty ()) return false;
+		bool released = false;
+		for (auto it = m_OutgoingRequests.begin (); it != m_OutgoingRequests.end ();)
+		{
+			if (!ShouldExpireOutgoingRequest (it->requestedAt, now, PEER_REQUEST_TIMEOUT))
+			{
+				++it;
+				continue;
+			}
+			// The epoch stored with the request keeps a stale expiry from
+			// resurrecting a block that a recheck or invalidation already reset:
+			// ReleaseBlock is a no-op once the piece epoch moved on.
+			if (it->index < m_Torrent->GetNumPieces ())
+				m_Torrent->GetPiece (static_cast<int> (it->index)).ReleaseBlock (it->offset, it->epoch);
+			it = m_OutgoingRequests.erase (it);
+			if (m_NumRequests) --m_NumRequests;
+			released = true;
+		}
+		// Leave the block's recovery to the normal scheduler: the released
+		// block is Missing again and can be requested here or by another peer.
+		// Only the bounded PEER_REQUEST_TIMEOUT can repeat this, so a peer that
+		// never answers cannot create an unbounded request loop. A stopped
+		// torrent stays silent until it is resumed.
+		if (released && !m_Torrent->IsStopped ()) RequestNextBlocks ();
+		return released;
 	}
 
 	std::optional<i2p::data::IdentHash> PeerConnection::GetRemoteIdentHash () const

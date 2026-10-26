@@ -32,6 +32,54 @@ inline constexpr size_t MAX_COMMENT_TEXT_UNITS = 512;
 inline constexpr size_t MAX_COMMENT_TEXT_TOTAL_UNITS = 4096;
 inline constexpr size_t MAX_COMMENT_PER_OWNER = 8;
 inline constexpr size_t MAX_COMMENT_HIDDEN_COUNT = 64;
+// An empty owner carries no stable label to attribute, so anonymous entries get
+// a separate, smaller visible budget instead of escaping the per-pseudonym cap.
+// Hidden entries stay for deduplication but count toward neither budget.
+inline constexpr size_t MAX_COMMENT_ANONYMOUS_VISIBLE = 16;
+// ut_comment admission. The ingress window still allows 8 messages per minute
+// and a message may carry MAX_COMMENT_MESSAGE_COUNT accepted entries, so the
+// store needs an explicit entry budget per connection and per torrent; without
+// it one peer could flush the 256-entry store in two minutes and reset the
+// budget by reconnecting. Both budgets are fixed, non-sliding windows and
+// neither replaces the 256-entry/4096-unit/64-hidden store limits.
+inline constexpr size_t MAX_COMMENT_ENTRIES_PER_CONNECTION_WINDOW = 40;
+inline constexpr size_t MAX_COMMENT_ENTRIES_PER_TORRENT_WINDOW = 80;
+inline constexpr uint64_t COMMENT_ENTRY_WINDOW = 60; // in seconds
+// A local mutation (add, hide, moderation restore) is worth an immediate
+// request once the store revision changed, but never faster than the minimum
+// interval: RefreshComments() runs once per connection for every local
+// mutation, so a burst of edits must coalesce. An unchanged revision keeps the
+// periodic cadence.
+inline constexpr uint64_t COMMENT_REQUEST_MIN_INTERVAL = 10; // in seconds
+inline constexpr uint64_t COMMENT_REQUEST_PERIODIC_INTERVAL = 600; // in seconds
+
+// Fixed-window admission counter for comment entries. Pure and
+// clock-parameterised so the regression test can pin the boundaries without a
+// connection or a timer. The owner supplies the storage and the clock; no
+// locking is performed. A zero count always succeeds without consuming the
+// window, and a backwards clock never restarts it (that would hand out a
+// second full budget).
+struct CommentAdmissionWindow
+{
+	uint64_t start = 0; // monotonic seconds
+	size_t admitted = 0;
+	constexpr bool Admit (size_t count, size_t cap, uint64_t nowSeconds)
+	{
+		if (!count) return true;
+		if (!nowSeconds || count > cap) return false;
+		// Fixed window: it restarts exactly at start + COMMENT_ENTRY_WINDOW and
+		// the comparison cannot wrap for a real monotonic clock.
+		if (!start || nowSeconds >= start + COMMENT_ENTRY_WINDOW)
+		{
+			start = nowSeconds;
+			admitted = 0;
+		}
+		if (count > cap - admitted) return false;
+		admitted += count;
+		return true;
+	}
+	constexpr size_t Remaining (size_t cap) const { return admitted >= cap ? 0 : cap - admitted; }
+};
 // Owner is an unauthenticated user-supplied pseudonym, never an identity.
 // Times are local epoch seconds; wire timestamp is an AGE in seconds.
 struct TorrentComment
@@ -57,6 +105,13 @@ std::string EncodeTorrentComments (
 // for deduplication, so a peer cannot immediately undo local moderation.
 // No filesystem, network or author verification is performed here. A local
 // add triggers a peer handshake/request in the tunnel, never an identity claim.
+//
+// Deduplication compares a normalized key and never rewrites the stored text:
+// leading and trailing ASCII whitespace is trimmed, internal ASCII whitespace
+// runs collapse to one space, and U+200B/U+200C/U+200D/U+FEFF are ignored. The
+// rating is not part of the key, so a rating is immutable for a given
+// normalized (owner,text): replaying the same content with another rating can
+// neither add nor re-rate an entry.
 class TorrentCommentStore
 {
 public:
@@ -71,17 +126,27 @@ public:
 	uint64_t Revision () const { return m_Revision; }
 	bool IsEnabled () const { return m_Enabled; }
 	bool Add (TorrentComment comment);
+	// Same normalized-key predicate Add uses, including hidden entries. Callers
+	// that charge an admission budget call this first so a duplicate replay
+	// cannot consume another peer's share of it.
+	bool IsDuplicate (const TorrentComment & comment) const;
 	bool Hide (size_t localIndex);
 	bool HideId (uint64_t localId);
 	bool UnhideId (uint64_t localId);
 	std::vector<TorrentComment> Snapshot () const { return m_Comments; }
+	// Stored-entry counts; visible = !hidden. They are plain field counts, so
+	// a snapshot builder can expose them without iterating a copy.
+	size_t VisibleCount () const;
+	size_t HiddenCount () const;
+	size_t LocalCount () const;
 	bool Restore (bool enabled, const std::vector<TorrentComment> & comments);
 	size_t RatingCount () const;
 	double AverageRating () const;
 	std::vector<TorrentComment> Visible () const;
 
 private:
-	void TrimHidden ();
+	// Returns true when at least one hidden entry was dropped.
+	bool TrimHidden ();
 	uint64_t m_Revision = 0;
 	uint64_t m_NextId = 1;
 	bool m_Enabled = false;
@@ -89,7 +154,10 @@ private:
 	std::vector<TorrentComment> m_Comments;
 };
 // Version 1 local state; distinct from the peer-wire age-based format.
-// Decode replaces the store only after full bounded validation.
+// Decode replaces the store only after full bounded validation: a structural
+// error, an unknown version or a duplicate local id rejects the whole state,
+// while a comment timestamp in the future (backwards clock or restored backup)
+// is clamped to `now` and the entry is kept.
 std::string EncodeTorrentCommentState (const TorrentCommentStore & store);
 bool DecodeTorrentCommentState (std::string_view encoded, uint64_t now, TorrentCommentStore & store);
 }

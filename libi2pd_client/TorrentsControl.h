@@ -5,9 +5,9 @@
  * openi2pd: TorrentsControl.
  *
  * Defines the bounded snapshot and command structures exchanged with the TUI
- * and IPC layer, together with magnet, I2P tracker-host and safe torrent-file
- * helpers. Fixed limits keep responses and control arguments bounded even for
- * hostile torrents.
+ * and IPC layer, together with magnet, I2P tracker-host, safe torrent-file
+ * helpers and the pure comment-page slice used by TORRENT-DETAIL. Fixed limits
+ * keep responses and control arguments bounded even for hostile torrents.
  *
  */
 
@@ -41,6 +41,10 @@ namespace torrents
 	inline constexpr size_t MAX_CONTROL_TRACKERS = 100;
 	inline constexpr size_t MAX_CONTROL_FILE_BYTES = 32 * 1024 * 1024;
 	inline constexpr size_t MAX_CONTROL_ARGUMENT = 2048;
+	// One TORRENT-DETAIL response emits at most this many comment records. It
+	// must stay equal to i2p::tui::MAX_TORRENT_COMMENT_RECORDS_PER_REQUEST;
+	// the daemon translation unit pins the equality with a static_assert.
+	inline constexpr size_t MAX_COMMENT_PAGE = 16;
 	inline constexpr std::chrono::milliseconds CONTROL_DEFAULT_TIMEOUT { 2000 };
 
 	enum class TorrentCommandKind
@@ -133,6 +137,12 @@ namespace torrents
 		bool privateTorrent = false;
 		bool commentsEnabled = false;
 		size_t commentCount = 0;
+		// Retained comment classification, counted over the whole snapshot
+		// vector (not only the page a client renders). An entry is hidden or
+		// visible, and independently local or peer-supplied.
+		size_t commentVisibleCount = 0;
+		size_t commentHiddenCount = 0;
+		size_t commentLocalCount = 0;
 		size_t ratingCount = 0;
 		double averageRating = 0;
 		std::string commentPersistenceError;
@@ -182,6 +192,36 @@ namespace torrents
 		int maxPeersPerTorrent = 0;
 		int maxTotalPeers = 0;
 	};
+
+	/**
+	 * One bounded page of the retained comment snapshot.
+	 *
+	 * `TORRENT-DETAIL` returns the newest records first (the snapshot is
+	 * sorted by time and local id) and emits at most MAX_COMMENT_PAGE records
+	 * per response. The slice below is pure: it never mutates the snapshot and
+	 * never fails, so a client asking beyond the retained records receives an
+	 * empty page with a truthful `total` rather than an error.
+	 */
+	struct CommentPageBounds
+	{
+		size_t offset = 0; // index of the first emitted record
+		size_t limit = MAX_COMMENT_PAGE; // effective page size
+		size_t count = 0; // records emitted by this page
+		size_t total = 0; // records retained in the snapshot
+		bool truncated = false; // further older records exist beyond this page
+	};
+
+	inline CommentPageBounds SliceCommentPage (size_t total, size_t offset, size_t limit)
+	{
+		CommentPageBounds bounds;
+		bounds.total = total;
+		bounds.limit = limit < 1 ? 1 : (limit > MAX_COMMENT_PAGE ? MAX_COMMENT_PAGE : limit);
+		bounds.offset = offset > total ? total : offset;
+		const size_t remaining = total - bounds.offset;
+		bounds.count = bounds.limit < remaining ? bounds.limit : remaining;
+		bounds.truncated = bounds.offset + bounds.count < total;
+		return bounds;
+	}
 
 	struct TorrentCommand
 	{

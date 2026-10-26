@@ -351,6 +351,9 @@ void TestRoutingTableOwnership ()
 		id[19] = last;
 		i2p::data::IdentHash peer { };
 		peer[0] = first;
+		// One node ID per destination reference: the table caps a peer at two
+		// nodes, so the bucket-split fixture needs a distinct peer per node.
+		peer[1] = last;
 		return table.AddNode (std::make_shared<Node> (id, peer, 0));
 	};
 

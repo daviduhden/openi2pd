@@ -16,6 +16,7 @@
 
 #include <fstream>
 #include <algorithm>
+#include <utility>
 #include "HTTP.h"
 
 namespace i2p

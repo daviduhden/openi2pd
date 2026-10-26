@@ -404,7 +404,7 @@ static void TestTrackerIntervalAndTrackerID ()
 		Dict ({ { "complete", "i7e" }, { "incomplete", "i3e" }, { "interval", "i60e" }, { "min interval", "i600e" },
 			{ "tracker id", Bytes ("opaque-id") } }));
 	assert (torrent.GetMinInterval (0) == 600 * 1000);
-	assert (torrent.GetInterval (0) == 600 * 1000); // raised to the minimum
+	assert (torrent.GetInterval (0) == MIN_TRACKER_ANNOUNCE_INTERVAL * 1000); // 15-minute floor
 	assert (torrent.GetTrackerID (0) == "opaque-id");
 	assert (torrent.GetNumSeeders (0) == 7 && torrent.GetNumLeechers (0) == 3);
 
@@ -432,14 +432,14 @@ static void TestTrackerIntervalAndTrackerID ()
 	assert (!torrent.GetTrackerError (0).empty ());
 	assert (torrent.GetNumPeers (0) == 1); // previous good list retained
 
-	// Transport/parse failures back off exponentially and a successful
-	// response without an interval re-bases the interval to the minimum.
+	// Transport/parse failures use the bounded retry ladder and a successful
+	// response without an interval re-bases the announce to the 15-minute floor.
 	const int before = torrent.GetInterval (3);
 	torrent.ReportTrackerFailure (3, "request failed");
 	assert (torrent.GetInterval (3) >= before);
 	assert (!torrent.GetTrackerError (3).empty ());
 	torrent.ParseTrackerResponse (3, Dict ({ { "peers", CompactPeers ({ 0x11 }) } }));
-	assert (torrent.GetInterval (3) == MIN_TRACKER_REQUESTS_INTERVAL);
+	assert (torrent.GetInterval (3) == MIN_TRACKER_ANNOUNCE_INTERVAL * 1000);
 	assert (torrent.GetTrackerError (3).empty ());
 
 	// A tracker's peer list expires after its bounded freshness window.

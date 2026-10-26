@@ -19,6 +19,8 @@
 #include <string>
 #include <string_view>
 #include <map>
+#include <mutex>
+#include <utility>
 #include <boost/asio.hpp>
 #include <boost/beast.hpp>
 #include "util.h"

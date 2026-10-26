@@ -14,6 +14,7 @@
 
 #ifndef NO_TORRENTS
 
+#include <cstring>
 #include <boost/json.hpp>
 #include <boost/url.hpp>
 #include <boost/url/encode.hpp>
@@ -827,11 +828,14 @@ namespace torrents
 		boost::json::array trackers;
 		for (size_t i = 0; i < m_Tunnel->GetNumTrackers (); i++)
 		{
-			if (torrent->GetNextTrackerRequestTime (i))
+			// A released registry slot keeps its index but reports an empty
+			// announce URL; never expose it as a tracker of this torrent.
+			const auto announce = m_Tunnel->GetTrackerAnnounce (i);
+			if (torrent->GetNextTrackerRequestTime (i) && !announce.empty ())
 			{
 				boost::json::object tracker;
 				tracker["id"] = i;
-				tracker["announce"] = m_Tunnel->GetTrackerAnnounce (i);
+				tracker["announce"] = announce;
 				tracker["tier"] = 0;
 				trackers.push_back (tracker);
 			}
@@ -846,13 +850,14 @@ namespace torrents
 		auto tsSinceEpoch = i2p::util::GetMillisecondsSinceEpoch ();
 		for (size_t i = 0; i < m_Tunnel->GetNumTrackers (); i++)
 		{
-			if (torrent->GetNextTrackerRequestTime (i))
+			const auto announce = m_Tunnel->GetTrackerAnnounce (i);
+			if (torrent->GetNextTrackerRequestTime (i) && !announce.empty ())
 			{
 				boost::json::object tracker;
 				tracker["id"] = i;
-				tracker["announce"] = m_Tunnel->GetTrackerAnnounce (i);
+				tracker["announce"] = announce;
 				i2p::http::URL announceURL;
-				announceURL.parse (m_Tunnel->GetTrackerAnnounce (i));
+				announceURL.parse (announce);
 				tracker["host"] = announceURL.host;
 				tracker["announceState"] = 1;
 				tracker["scrapeState"] = 0;

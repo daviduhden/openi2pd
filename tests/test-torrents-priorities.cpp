@@ -44,7 +44,11 @@ int main ()
 		piece.MarkCorrupt ();
 		auto [offset, length] = piece.GetNextBlockToRequest ();
 		assert (offset == 0 && length == bytes.size ());
-		piece.BlockReceived (reinterpret_cast<const uint8_t *> (bytes.data ()), length, offset);
+		assert (piece.BlockReceived (reinterpret_cast<const uint8_t *> (bytes.data ()), length, offset));
+		// A duplicate/unsolicited block for a complete piece changes nothing;
+		// it must not force a re-hash or disk rewrite.
+		assert (!piece.BlockReceived (reinterpret_cast<const uint8_t *> (bytes.data ()), length, offset));
+		assert (piece.IsComplete () && !piece.IsSaving ());
 		assert (piece.VerifyHash ());
 		assert (torrent->GetSelectedVerifiedBytes () == static_cast<size_t> ((index + 1) * 8192));
 	}
@@ -62,6 +66,24 @@ int main ()
 	assert (torrent->IsSelectedComplete () && torrent->GetSelectedWantedBytes () == 0);
 	assert (torrent->GetSelectedVerifiedBytes () == 0);
 	assert (!torrent->AreAllPiecesVerified ());
+	assert (torrent->GetLeft () == 0);
+	// Tracker progress is whole-torrent based even after selected completion:
+	// "left" counts the skipped piece and event=completed is withheld, while
+	// the local status above already reports seeding.
+	auto announce = torrent->GetAnnounceProgress ();
+	assert (announce.left == 16384 && !announce.completed);
+	// Once the last piece is present and verified, the same helper reports the
+	// whole payload as complete without changing any selection-based value.
+	{
+		auto & piece = torrent->GetPiece (2);
+		piece.MarkCorrupt (); // create the block map of a never-requested piece
+		auto [offset, length] = piece.GetNextBlockToRequest ();
+		assert (offset == 0 && length == bytes.size ());
+		assert (piece.BlockReceived (reinterpret_cast<const uint8_t *> (bytes.data ()), length, offset));
+		assert (piece.VerifyHash ());
+	}
+	auto finished = torrent->GetAnnounceProgress ();
+	assert (finished.left == 0 && finished.completed);
 	assert (torrent->GetLeft () == 0);
 	return 0;
 }
