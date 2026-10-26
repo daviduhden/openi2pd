@@ -20,6 +20,7 @@
 #include <string>
 #include <string_view>
 #include <compare>
+#include <functional>
 #include "Base.h"
 
 namespace i2p
