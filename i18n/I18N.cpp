@@ -57,6 +57,10 @@ namespace i18n
 
 		const Locale & ActiveLocale ()
 		{
+			// Standalone tools do not call SetLanguage themselves. Resolve the
+			// environment once on first use so LC_ALL/LC_MESSAGES/LANG selects a
+			// catalog without every tool duplicating the initialization.
+			if (!g_Locale) SetLanguage ({ });
 			if (g_Locale) return *g_Locale;
 			static const auto fallback = english::GetLocale ();
 			return *fallback;
