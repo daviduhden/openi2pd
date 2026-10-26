@@ -17,9 +17,15 @@
 #include <thread>
 #include <random>
 #include <sstream>
+#include <span>
 #include <string_view>
 #include <stdexcept>
 #include <iomanip>
+#include <algorithm>
+#include <filesystem>
+#include <functional>
+#include <memory>
+#include <mutex>
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/ini_parser.hpp>
 #include "Base.h"
@@ -30,6 +36,8 @@
 #include "NetDb.hpp"
 #include "Tunnel.h"
 #include "Profiling.h"
+#include "Blocklist.h"
+#include "PersistentStorage.h"
 
 namespace i2p
 {
@@ -48,6 +56,8 @@ namespace data
 	static std::mutex g_PostponedUpdatesMutex;
 	static std::mt19937 m_ProfilesRng (i2p::util::GetRngSeed ());
 	static std::mutex m_ProfilesRngMutex;
+	static std::mutex g_ProfileLoadObserverMutex;
+	static std::function<void (const i2p::data::IdentHash &)> g_ProfileLoadObserver;
 
 	RouterProfile::RouterProfile ()
 		: m_IsUpdated (false)
@@ -125,8 +135,14 @@ namespace data
 				LogPrint (eLogError, "Profiling: Storage is not initialized; refusing profile write");
 				return false;
 			}
-			const auto path = g_ProfilesStorage.Path (identHash.ToBase64 ());
-			if (!i2p::fs::AtomicWrite (path, serialized.str ())) return false;
+			// The peer identity is the artifact name and the INI bytes are
+			// unchanged, so a worker-written profile stays readable by Load().
+			// A failed write keeps the previous file and returns false, so the
+			// caller retains the dirty state and retries later.
+			const auto ident = identHash.ToBase64 ();
+			const auto text = serialized.str ();
+			const std::span<const uint8_t> bytes (reinterpret_cast<const uint8_t *> (text.data ()), text.size ());
+			if (!i2p::data::WriteArtifact (i2p::data::StorageArtifact::PeerProfile, ident, bytes)) return false;
 		}
 		catch (std::exception & ex)
 		{
@@ -496,6 +512,14 @@ namespace data
 				return it->second;
 			}
 		}
+		{
+			std::function<void (const IdentHash &)> observer;
+			{
+				std::lock_guard<std::mutex> l (g_ProfileLoadObserverMutex);
+				observer = g_ProfileLoadObserver;
+			}
+			if (observer) observer (identHash);
+		}
 		auto profile = netdb.NewRouterProfile ();
 		profile->Load (identHash); // if possible
 		{
@@ -507,8 +531,27 @@ namespace data
 		return profile;
 	}
 
+	std::shared_ptr<RouterProfile> GetRouterProfileIfExists (const IdentHash & identHash)
+	{
+		std::lock_guard<std::mutex> l (g_ProfilesMutex);
+		auto it = g_Profiles.find (identHash);
+		if (it == g_Profiles.end ()) return nullptr;
+		it->second->SetLastAccessTime (i2p::util::GetSecondsSinceEpoch ());
+		return it->second;
+	}
+
+	void SetRouterProfileLoadObserverForTesting (std::function<void (const IdentHash &)> observer)
+	{
+		std::lock_guard<std::mutex> l (g_ProfileLoadObserverMutex);
+		g_ProfileLoadObserver = std::move (observer);
+	}
+
 	bool IsRouterBanned (const IdentHash & identHash)
 	{
+		// Operator policy comes first: a blocklisted or runtime-banned router is
+		// never a valid peer, regardless of its historical profile. Both checks
+		// are cheap and the runtime-ban path is lock-free while the set is empty.
+		if (IsOperatorBlockedRouter (identHash) || IsRuntimeRouterBanned (identHash)) return true;
 		std::lock_guard<std::mutex> l (g_ProfilesMutex);
 		auto it = g_Profiles.find (identHash);
 		if (it != g_Profiles.end ()) return it->second->IsUnreachable ();
@@ -641,7 +684,16 @@ namespace data
 			if (now - st.st_mtime >= PEER_PROFILE_EXPIRATION_TIMEOUT)
 			{
 				LogPrint (eLogDebug, "Profiling: Removing expired peer profile: ", path);
-				i2p::fs::Remove (path);
+				// A delegated profile is removed through the same authority that
+				// writes it. Falling back to a direct deletion would touch a file
+				// the installed backend owns.
+				if (i2p::data::IsArtifactStorageInstalled ())
+				{
+					if (!i2p::data::RemoveArtifact (i2p::data::StorageArtifact::PeerProfile, encoded))
+						LogPrint (eLogWarning, "Profiling: Can't remove expired peer profile ", encoded);
+				}
+				else
+					i2p::fs::Remove (path);
 			}
 		}
 	}

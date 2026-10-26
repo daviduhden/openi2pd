@@ -15,6 +15,7 @@
 #include <string.h>
 #include <algorithm>
 #include <fstream>
+#include <string_view>
 #include <vector>
 #include <map>
 #include <utility>
@@ -36,6 +37,8 @@
 #include "Config.h"
 #include "util.h"
 #include "IdentMetrics.h"
+#include "Blocklist.h"
+#include "PersistentStorage.h"
 #include "NetDb.hpp"
 
 using namespace i2p::transport;
@@ -52,21 +55,41 @@ namespace data
 		// rejected for LeaseSet1. Router.CLOCK_FUDGE_FACTOR is 60 seconds.
 		constexpr uint64_t LEASESET1_MAX_EARLIEST_AGE = 10 * 60 * 1000LL;
 
+		// The administrative reseed state is bounded and never carries a URL, a
+		// proxy value or a credential.
+		void SetReseedStateReason (std::string & target, std::string_view reason)
+		{
+			if (reason.size () > RESEED_MAX_ERROR_LENGTH) reason = reason.substr (0, RESEED_MAX_ERROR_LENGTH);
+			target.assign (reason);
+		}
+
+		// KademliaNetworkDatabaseFacade: ROUTER_INFO_EXPIRATION_INTRODUCED (54
+		// minutes) and ROUTER_INFO_EXPIRATION_SHORT (75 minutes).
+		constexpr uint64_t JAVA_ROUTER_INFO_EXPIRATION_INTRODUCED = 54 * 60 * 1000LL;
+		constexpr uint64_t JAVA_ROUTER_INFO_EXPIRATION_SHORT = 75 * 60 * 1000LL;
+
 		bool IsRouterInfoStoreValid (const RouterInfo & router, uint64_t now)
 		{
 			if (router.IsUnreachable ()) return false;
-			if (!router.HasValidAddresses ())
+			if (now >= router.GetTimestamp () + JAVA_ROUTER_INFO_EXPIRATION_INTRODUCED)
 			{
-				// KademliaNetworkDatabaseFacade rejects a zero-address RI only
-				// when it is no longer current (54 minutes). A fresh hidden RI
-				// or one with only an unknown address style remains storable,
-				// but selection paths still require valid addresses.
-				constexpr uint64_t JAVA_NO_ADDRESS_GRACE = 54 * 60 * 1000LL;
-				if (now >= router.GetTimestamp () + JAVA_NO_ADDRESS_GRACE) return false;
+				// Java validate(RouterInfo), 54-minute block: a stale descriptor
+				// with no address, one that declares itself unreachable ('U'),
+				// or one whose SSU introducers may already have rotated is not
+				// storable. A fresh hidden RI or one with only an unknown address
+				// style keeps the grace period; selection still requires valid
+				// addresses.
+				if (!router.HasValidAddresses ()) return false;
+				if (router.GetCaps () & RouterInfo::eUnreachable) return false;
+				if (router.HasSSUIntroducers ()) return false;
 			}
 			if (router.IsFloodfill ())
 			{
-				auto profile = router.GetProfile ();
+				// Never create/load a profile here: AddRouterInfo can run on a
+				// transport thread, and a disk read would block it. An absent
+				// profile is treated as reachable (same as Java's in-memory
+				// profile default).
+				auto profile = router.GetProfileIfExists ();
 				if (profile && profile->IsUnreachable ()) return false;
 			}
 			// Same bounds as the historical insert path: reject entries more
@@ -76,7 +99,32 @@ namespace data
 			if (now >= router.GetTimestamp () + NETDB_MAX_EXPIRATION_TIMEOUT * 1000LL
 				&& i2p::context.GetUptime () >= NETDB_CHECK_FOR_EXPIRATION_UPTIME / 10)
 				return false;
+			// Java validate(), 75-minute block: after an hour of uptime an
+			// SSU-only descriptor without an NTCP/NTCP2 address is stale (the
+			// introducers it depended on may be gone). This never widens the
+			// accepted wire format; it only stops storing such a descriptor.
+			if (i2p::context.GetUptime () >= NETDB_JAVA_UP_LONG_ENOUGH
+				&& now >= router.GetTimestamp () + JAVA_ROUTER_INFO_EXPIRATION_SHORT && !router.HasNTCP2Address ())
+				return false;
 			return true;
+		}
+
+		// Selection filters run while the caller holds m_RouterInfosMutex or
+		// m_FloodfillsMutex. RouterInfo::GetProfile() lazily creates a profile and
+		// loads it from disk, which must never happen under those locks, so use
+		// the non-creating lookup. An absent profile is not evidence against a
+		// router: it is treated as reachable and real, and the netDb worker
+		// creates/loads profiles outside the selection path.
+		bool IsProfileReachable (const RouterInfo & router)
+		{
+			auto profile = router.GetProfileIfExists ();
+			return !profile || !profile->IsUnreachable ();
+		}
+
+		bool IsProfileRealOrUnknown (const RouterInfo & router)
+		{
+			auto profile = router.GetProfileIfExists ();
+			return !profile || profile->IsReal ();
 		}
 
 		// LeaseSet1 has no signed published timestamp. Java uses the earliest
@@ -119,6 +167,31 @@ namespace data
 			if (latest > now + LEASESET_MAX_LEASE_FUTURE + LEASESET2_CLOCK_FUDGE) return false;
 			return true;
 		}
+
+		// Operator blocklist enforcement for a stored RouterInfo. A matching
+		// router hash is a hard block. An address block applies only when the
+		// router has at least one published address and every published address
+		// matches, so a partially blocked multi-homed router stays selectable
+		// through its unblocked paths.
+		bool IsBlockedRouterInfo (const RouterInfo & router)
+		{
+			if (IsOperatorBlockedRouter (router.GetIdentHash ())
+				|| IsRuntimeRouterBanned (router.GetIdentHash ()))
+				return true;
+			// Only published endpoints count: an internal/firewalled address
+			// entry with no host must not keep an otherwise blocked router alive.
+			const std::shared_ptr<const RouterInfo::Address> addresses[] = {
+				router.GetPublishedNTCP2V4Address (), router.GetPublishedNTCP2V6Address (),
+				router.GetSSU2V4Address (), router.GetSSU2V6Address (), router.GetYggdrasilAddress () };
+			bool anyAddress = false;
+			for (const auto & address : addresses)
+			{
+				if (!address || address->host.is_unspecified ()) continue;
+				anyAddress = true;
+				if (!IsOperatorBlockedAddress (address->host)) return false;
+			}
+			return anyAddress;
+		}
 	}
 
 	bool ParseDatabaseLookupReplyKey (
@@ -130,9 +203,11 @@ namespace data
 		if (!encryptReply && !ratchetReply) return true;
 		if (!block) return false;
 		// Proposal 154 / I2NP: bits 4+1 (0x12) select the ECIES derived-key
-		// reply. The KDF is TBD, Java 2.14.0 does not implement it, and the
-		// block has no tag or count. There is no specified way to encrypt this
-		// reply, so fail closed instead of guessing or replying in cleartext.
+		// reply. Parity note: Java 2.14.0 parses the mode but has no sender/KDF
+		// for it, so a Java floodfill answers in cleartext. The block carries no
+		// tag or count, so there is no specified way to encrypt the reply here.
+		// Fail closed instead of guessing, replying in cleartext, or inventing a
+		// KDF; CanEncryptDatabaseLookupReply() pins that invariant for callers.
 		if (encryptReply && ratchetReply) return false;
 		if (len < 33) return false;
 		uint8_t numTags = block[32];
@@ -144,6 +219,51 @@ namespace data
 		replyKey.mode
 			= ratchetReply ? DatabaseLookupReplyKey::Mode::ECIESAEAD : DatabaseLookupReplyKey::Mode::ElGamalAES;
 		return true;
+	}
+
+	namespace
+	{
+		constexpr std::string_view ROUTER_INFO_FILE_PREFIX = "routerInfo-";
+		constexpr std::string_view ROUTER_INFO_FILE_SUFFIX = ".dat";
+		// Both AtomicWrite (".dat.tmp-<pid>-<seq>") and the retired in-place
+		// writer (".dat.tmp") stage next to the target with this marker. The
+		// base64 identity alphabet has no '.', so the marker cannot appear in a
+		// valid cache name.
+		constexpr std::string_view ROUTER_INFO_STAGING_MARKER = ".dat.tmp";
+
+		std::string_view GetFileBasename (const std::string & path)
+		{
+			const auto pos = path.find_last_of ("/\\");
+			if (pos == std::string::npos) return path;
+			return std::string_view (path).substr (pos + 1);
+		}
+	}
+
+	RouterInfoFileKind ClassifyRouterInfoFile (const std::string & path, std::string & identBase64)
+	{
+		identBase64.clear ();
+		const std::string_view name = GetFileBasename (path);
+		if (!name.starts_with (ROUTER_INFO_FILE_PREFIX)) return RouterInfoFileKind::Foreign;
+		// An interrupted write leaves a staging file behind. It is ours, so it is
+		// safe to remove; an unknown file is never deleted on an assumption of
+		// exclusive data-directory ownership that the caller has not enforced.
+		if (name.find (ROUTER_INFO_STAGING_MARKER) != std::string_view::npos)
+			return RouterInfoFileKind::Staging;
+		if (!name.ends_with (ROUTER_INFO_FILE_SUFFIX)
+			|| name.size () <= ROUTER_INFO_FILE_PREFIX.size () + ROUTER_INFO_FILE_SUFFIX.size ())
+			return RouterInfoFileKind::Foreign;
+		identBase64.assign (name.substr (ROUTER_INFO_FILE_PREFIX.size (),
+			name.size () - ROUTER_INFO_FILE_PREFIX.size () - ROUTER_INFO_FILE_SUFFIX.size ()));
+		return identBase64.empty () ? RouterInfoFileKind::Foreign : RouterInfoFileKind::Load;
+	}
+
+	bool IsRouterInfoFloodAdmitted (bool floodfillEnabled, const IdentHash & ident)
+	{
+		// Java PeerState.gotRI/PeerState2.gotRI forwards the received RI only
+		// when floodfillEnabled(); a blocklisted or runtime-banned key is never
+		// forwarded, and the per-key FloodThrottler is charged by the caller.
+		if (!floodfillEnabled) return false;
+		return !IsOperatorBlockedRouter (ident) && !IsRuntimeRouterBanned (ident);
 	}
 
 	NetDb::NetDb ()
@@ -180,6 +300,11 @@ namespace data
 		}
 		InitProfilesStorage ();
 		m_Families.LoadCertificates ();
+		// Java Router.runRouter() reads the operator blocklist before netDb
+		// startup. This one-shot read happens on the Start() caller (the daemon
+		// startup thread, never an io_context thread) and is not repeated, so a
+		// reader can never observe a partially built table.
+		LoadOperatorBlocklist ();
 		Load ();
 
 		// Loading is complete; reseed and the request thread may now insert.
@@ -264,6 +389,13 @@ namespace data
 		// Reject new RouterInfo/LeaseSet insertions before stopping the worker
 		// so a handler racing with shutdown cannot populate the maps again.
 		m_AcceptUpdates.store (false, std::memory_order_relaxed);
+		// Cancel and join the owned reseed job before the worker, the maps or the
+		// storage are released. The job is cancellable at every phase, so this
+		// does not wait for the retry budget.
+		{
+			std::lock_guard<std::mutex> reseed (m_ReseedMutex);
+			CancelReseedJob ();
+		}
 		// Stop and join the worker before touching the request manager or the
 		// containers it reads. The old order stopped requests and cleared
 		// m_RouterInfos while Run() could still be using them.
@@ -312,6 +444,18 @@ namespace data
 		waitFor (m_ApplyingProfileUpdates, "profile update");
 		waitFor (m_PersistingRouters, "RouterInfo persistence");
 
+		// The worker is joined, message admission is closed and the transport
+		// producers that insert RouterInfos have been quiesced by the embedding
+		// daemon, so a single final pass cannot race a new update. Without it up
+		// to one persist.netdbinterval of accepted RouterInfos was lost. The
+		// non-empty map check keeps the destructor path off the other singletons
+		// once the maps were already cleared by an earlier Stop().
+		if (wasRunning || GetNumRouters () > 0)
+		{
+			SaveUpdated ();
+			waitFor (m_PersistingRouters, "final RouterInfo persistence");
+		}
+
 		if (wasRunning)
 		{
 			// The embedding daemon/API stops profile producers before NetDb::Stop.
@@ -339,29 +483,6 @@ namespace data
 			std::lock_guard<std::mutex> l (m_ExploratorySelectionMutex);
 			m_ExploratorySelection.clear ();
 			m_LastExploratorySelectionUpdateTime = 0;
-		}
-	}
-
-	void NetDb::ResetRemoteRouterInfos ()
-	{
-		if (!m_AcceptUpdates.load (std::memory_order_relaxed)) return;
-		auto own = i2p::context.GetSharedRouterInfo ();
-		std::lock_guard<std::mutex> l (m_RouterInfosMutex);
-		// Stop() may have flipped the flag while this reseeder waited for the
-		// map lock; never repopulate a stopped netDb.
-		if (!m_AcceptUpdates.load (std::memory_order_relaxed)) return;
-		for (auto it = m_RouterInfos.begin (); it != m_RouterInfos.end ();)
-		{
-			if (own && it->second == own)
-				++it;
-			else
-				it = m_RouterInfos.erase (it);
-		}
-		{
-			std::lock_guard<std::mutex> lf (m_FloodfillsMutex);
-			m_Floodfills.Clear ();
-			if (own && i2p::context.IsFloodfill () && m_RouterInfos.find (own->GetIdentHash ()) != m_RouterInfos.end ())
-				m_Floodfills.Insert (own);
 		}
 	}
 
@@ -503,10 +624,34 @@ namespace data
 	{
 		if (!router || !m_AcceptUpdates.load (std::memory_order_relaxed)) return false;
 		auto ident = router->GetIdentHash ();
+		if (IsOperatorBlockedRouter (ident) || IsBlockedRouterInfo (*router))
+		{
+			LogPrint (eLogInfo, "NetDb: Not flooding blocklisted RouterInfo ", ident.ToBase64 ());
+			return false;
+		}
 		auto msg = CreateDatabaseStoreMsg (std::move (router));
 		if (!msg) return false;
 		Flood (ident, std::move (msg));
 		return true;
+	}
+
+	bool NetDb::FloodRouterInfoConditional (std::shared_ptr<const RouterInfo> router)
+	{
+		if (!router) return false;
+		const auto ident = router->GetIdentHash ();
+		if (!IsRouterInfoFloodAdmitted (i2p::context.IsFloodfill (), ident))
+		{
+			LogPrint (eLogDebug, "NetDb: RouterInfo flood refused for ", ident.ToBase64 ());
+			return false;
+		}
+		// Java FloodThrottler: charge the per-key budget only when the request
+		// would otherwise be forwarded, so a refused request cannot consume it.
+		if (ShouldThrottleFlood (ident))
+		{
+			LogPrint (eLogDebug, "NetDb: RouterInfo flood throttled for ", ident.ToBase64 ());
+			return false;
+		}
+		return FloodRouterInfo (std::move (router));
 	}
 
 	std::shared_ptr<const RouterInfo> NetDb::AddRouterInfo (const uint8_t * buf, int len, bool & updated)
@@ -547,6 +692,16 @@ namespace data
 			LogPrint (eLogWarning, "NetDb: RouterInfo identity does not match store key ", ident.ToBase64 ());
 			return nullptr;
 		}
+		// Operator blocklist: never store a blocklisted router hash, and reject
+		// it before any map or profile work. Runtime bans are administrative and
+		// in-memory, but a newly arriving RouterInfo for one is still rejected.
+		if (IsOperatorBlockedRouter (ident) || IsRuntimeRouterBanned (ident))
+		{
+			LogPrint (eLogInfo, "NetDb: RouterInfo from blocklisted router rejected ", ident.ToBase64 ());
+			auto requests = GetRequests ();
+			if (requests) requests->RequestComplete (ident, nullptr);
+			return nullptr;
+		}
 
 		auto now = i2p::util::GetMillisecondsSinceEpoch ();
 		auto r = FindRouter (ident);
@@ -564,7 +719,8 @@ namespace data
 		// the valid entry that is already in the map (Java store(): validate()
 		// throws before _ds.put()).
 		auto candidate = std::make_shared<RouterInfo> (buf, len);
-		if (candidate->GetIdentHash () != ident || !IsRouterInfoStoreValid (*candidate, now))
+		if (candidate->GetIdentHash () != ident || !IsRouterInfoStoreValid (*candidate, now)
+			|| IsBlockedRouterInfo (*candidate))
 		{
 			LogPrint (eLogWarning, "NetDb: RouterInfo can't be updated ", ident.ToBase64 ());
 			if (r)
@@ -580,15 +736,31 @@ namespace data
 
 		std::shared_ptr<RouterInfo> stored;
 		bool wasFloodfill = false;
+		bool overCapacity = false;
 		{
 			std::lock_guard<std::mutex> l (m_RouterInfosMutex);
 			auto it = m_RouterInfos.find (ident);
 			if (it == m_RouterInfos.end ())
 			{
-				// The entry was removed while the candidate was being parsed.
-				stored = candidate;
-				m_RouterInfos.emplace (ident, stored);
-				updated = true;
+				// Hard cap for a new, unsolicited entry. An update of an existing
+				// key is always allowed, and reseed (whose inserts are bounded by
+				// the verified SU3 payload) bypasses the cap so bootstrap cannot be
+				// starved by a flooded map. Java bounds memory with a probabilistic
+				// store pdrop instead; this deterministic cap is not a full
+				// reproduction, but it cannot drop an existing entry either.
+				const size_t limit
+					= i2p::context.IsFloodfill () ? NETDB_MAX_ROUTER_INFOS_FLOODFILL : NETDB_MAX_ROUTER_INFOS;
+				if (m_RouterInfos.size () >= limit && !m_IsReseeding.load (std::memory_order_relaxed))
+				{
+					overCapacity = true;
+				}
+				else
+				{
+					// The entry was removed while the candidate was being parsed.
+					stored = candidate;
+					m_RouterInfos.emplace (ident, stored);
+					updated = true;
+				}
 			}
 			else if (!it->second)
 			{
@@ -602,19 +774,31 @@ namespace data
 				wasFloodfill = stored->IsFloodfill ();
 				if (stored->IsNewer (buf, len))
 				{
-					if (!stored->Update (buf, len))
-					{
-						// The candidate parsed and verified, so Update() should
-						// not fail. If it does, install the validated candidate
-						// rather than leaving a half-updated object in the map.
-						stored = candidate;
-						it->second = stored;
-					}
+					// Install the already-validated candidate instead of calling
+					// Update() on the published object: signature verification and
+					// policy stay outside this lock, and a reader sees exactly one
+					// generation. Existing shared_ptr holders keep the previous
+					// descriptor, which is the same rule the LeaseSet path uses.
+					stored = candidate;
+					it->second = stored;
 					updated = true;
 				}
 				else // another thread stored the same or a newer RI first
 					stored->CancelBufferToDelete ();
 			}
+		}
+
+		if (overCapacity)
+		{
+			// Count every rejection but only log the first and every 256th, so a
+			// store flood cannot turn the drop path into a log flood.
+			const auto rejected = m_RejectedStoreCap.fetch_add (1, std::memory_order_relaxed) + 1;
+			if (rejected == 1 || !(rejected % 256))
+				LogPrint (eLogInfo, "NetDb: RouterInfo store cap reached, dropping new entry ",
+					ident.ToBase64 (), " (", rejected, " dropped)");
+			auto requests = GetRequests ();
+			if (requests) requests->RequestComplete (ident, r);
+			return r;
 		}
 
 		if (updated)
@@ -632,8 +816,11 @@ namespace data
 				{
 					if (stored->IsEligibleFloodfill ())
 					{
+						// Do not create or load a profile while holding
+						// m_FloodfillsMutex: an absent profile is simply not real.
+						auto profile = stored->GetProfileIfExists ();
 						if (m_Floodfills.GetSize () < NETDB_NUM_FLOODFILLS_THRESHOLD
-							|| stored->GetProfile ()->IsReal ())
+							|| (profile && profile->IsReal ()))
 							m_Floodfills.Insert (stored);
 						else
 							stored->ResetFloodfill ();
@@ -821,26 +1008,190 @@ namespace data
 
 	void NetDb::Reseed ()
 	{
-		// Reseed can be requested by the NetDb thread and by I2PControl at
-		// the same time. Never build or use m_Reseeder concurrently; a
-		// second request is simply ignored while one is in progress.
-		std::unique_lock<std::mutex> lock (m_ReseedMutex, std::try_to_lock);
-		if (!lock.owns_lock ()) return;
-		if (m_IsReseeding.exchange (true)) return;
-
-		struct ReseedGuard
+		// Blocking bootstrap used before client services start: start the owned
+		// job and wait for it. Stop() requests the job's stop token, so a
+		// shutdown during bootstrap is not delayed by the retry budget.
+		bool started = false;
 		{
-			std::atomic<bool> & flag;
-			~ReseedGuard () { flag.store (false); }
-		} guard { m_IsReseeding };
+			std::lock_guard<std::mutex> lock (m_ReseedMutex);
+			started = StartReseedLocked ();
+		}
+		if (!started) return;
+		std::unique_lock<std::mutex> done (m_ReseedDoneMutex);
+		m_ReseedDone.wait (done, [this] { return !m_IsReseeding.load (std::memory_order_relaxed); });
+	}
 
-		if (!m_Reseeder)
+	bool NetDb::RequestReseed ()
+	{
+		std::lock_guard<std::mutex> lock (m_ReseedMutex);
+		// StartReseedLocked() publishes the Disabled state and returns false when
+		// reseed is disabled, and refuses a second request while a job runs.
+		return StartReseedLocked ();
+	}
+
+	ReseedState NetDb::GetReseedState () const
+	{
+		// The job only publishes through m_ReseedStateMutex under this short
+		// copy, so an administrative reader never waits for the job itself. The
+		// enabled flag follows the live `reseed.disable` switch so a status view
+		// cannot report a stale policy.
+		ReseedState state;
+		{
+			std::lock_guard<std::mutex> lock (m_ReseedStateMutex);
+			state = m_ReseedState;
+		}
+		state.enabled = IsReseedEnabled ();
+		return state;
+	}
+
+	void NetDb::SetReseedTestHooks (const ReseedTestHooks & hooks)
+	{
+		std::lock_guard<std::mutex> lock (m_ReseedMutex);
+		m_ReseedHooks = hooks;
+	}
+
+	bool NetDb::StartReseedLocked ()
+	{
+		if (!IsReseedEnabled ())
+		{
+			std::lock_guard<std::mutex> state (m_ReseedStateMutex);
+			m_ReseedState.phase = ReseedPhase::Disabled;
+			m_ReseedState.enabled = false;
+			SetReseedStateReason (m_ReseedState.lastError, "disabled");
+			return false;
+		}
+		// A second request while the job runs is refused instead of queued.
+		if (m_IsReseeding.load (std::memory_order_relaxed)) return false;
+		// The previous job has published !m_IsReseeding, so joining it here
+		// cannot block on the job: the job never takes m_ReseedMutex.
+		if (m_ReseedThread)
+		{
+			if (m_ReseedThread->joinable ()) m_ReseedThread->join ();
+			m_ReseedThread.reset ();
+		}
+		try
 		{
 			m_Reseeder = std::make_unique<Reseeder> ();
-			m_Reseeder->LoadCertificates (); // we need certificates for SU3 verification
+			if (m_ReseedHooks.fetch) m_Reseeder->SetFetchHookForTesting (m_ReseedHooks.fetch);
+			if (m_ReseedHooks.nowMs) m_Reseeder->SetClockForTesting (m_ReseedHooks.nowMs);
+			if (m_ReseedHooks.overrideSources) m_Reseeder->SetSourcesForTesting (m_ReseedHooks.sources);
+			// A reseed always targets its own netDb, never a global singleton
+			// reached from another instance.
+			m_Reseeder->SetNetDbForTesting (this);
+			{
+				std::lock_guard<std::mutex> state (m_ReseedStateMutex);
+				m_ReseedState.phase = ReseedPhase::Running;
+				m_ReseedState.enabled = true;
+				++m_ReseedState.attempts;
+				m_ReseedState.lastAttemptMs = i2p::util::GetMillisecondsSinceEpoch ();
+				m_ReseedState.lastError.clear ();
+			}
+			m_IsReseeding.store (true, std::memory_order_relaxed);
+			auto * reseeder = m_Reseeder.get ();
+			m_ReseedThread = std::make_unique<std::jthread> (
+				[this, reseeder] (std::stop_token token) { RunReseedJob (reseeder, std::move (token)); });
 		}
+		catch (...)
+		{
+			m_IsReseeding.store (false, std::memory_order_relaxed);
+			m_Reseeder.reset ();
+			m_ReseedThread.reset ();
+			std::lock_guard<std::mutex> state (m_ReseedStateMutex);
+			m_ReseedState.phase = ReseedPhase::Failed;
+			SetReseedStateReason (m_ReseedState.lastError, "start");
+			throw;
+		}
+		return true;
+	}
 
-		m_Reseeder->Bootstrap ();
+	void NetDb::RunReseedJob (Reseeder * reseeder, std::stop_token token)
+	{
+		i2p::util::SetThreadName ("Reseed");
+		ReseedResult result;
+		if (reseeder)
+		{
+			try
+			{
+				reseeder->LoadCertificates (); // certificates are required for SU3 verification
+				result = reseeder->Bootstrap (token);
+			}
+			catch (const std::exception & ex)
+			{
+				LogPrint (eLogError, "NetDb: Reseed failed: ", ex.what ());
+				SetReseedStateReason (result.error, "exception");
+			}
+			catch (...)
+			{
+				LogPrint (eLogError, "NetDb: Reseed failed with an unknown error");
+				SetReseedStateReason (result.error, "exception");
+			}
+		}
+		else
+			SetReseedStateReason (result.error, "start");
+		PublishReseedCompletion (result, result.cancelled || token.stop_requested ());
+	}
+
+	void NetDb::PublishReseedCompletion (const ReseedResult & result, bool cancelled)
+	{
+		{
+			std::lock_guard<std::mutex> lock (m_ReseedStateMutex);
+			// `enabled` was published by StartReseedLocked(); this completion path
+			// deliberately avoids a configuration read so it also runs while the
+			// process is tearing down.
+			if (cancelled)
+			{
+				m_ReseedState.phase = ReseedPhase::Failed;
+				SetReseedStateReason (m_ReseedState.lastError, "cancelled");
+			}
+			else if (result.imported > 0)
+			{
+				m_ReseedState.phase = ReseedPhase::Succeeded;
+				++m_ReseedState.succeeded;
+				m_ReseedState.lastSuccessMs = i2p::util::GetMillisecondsSinceEpoch ();
+				m_ReseedState.lastError.clear ();
+			}
+			else
+			{
+				m_ReseedState.phase = ReseedPhase::Failed;
+				SetReseedStateReason (m_ReseedState.lastError, result.error.empty () ? "no server" : result.error);
+			}
+		}
+		// Publish completion last: a caller that observed !m_IsReseeding may
+		// join this thread, so nothing in this function may touch the job.
+		m_IsReseeding.store (false, std::memory_order_relaxed);
+		{
+			// Notify under the wait mutex: it cannot interleave between a
+			// waiter's predicate check and its block.
+			std::lock_guard<std::mutex> done (m_ReseedDoneMutex);
+			m_ReseedDone.notify_all ();
+		}
+	}
+
+	void NetDb::CancelReseedJob ()
+	{
+		// m_ReseedMutex is held by the caller. Requesting and joining under the
+		// same lock keeps a concurrent RequestReseed() from starting a new job
+		// between the two steps.
+		if (m_ReseedThread)
+		{
+			m_ReseedThread->request_stop ();
+			if (m_ReseedThread->joinable ()) m_ReseedThread->join ();
+			m_ReseedThread.reset ();
+		}
+		m_Reseeder.reset ();
+		m_IsReseeding.store (false, std::memory_order_relaxed);
+		{
+			// Notify under the wait mutex: it cannot interleave between a
+			// waiter's predicate check and its block.
+			std::lock_guard<std::mutex> done (m_ReseedDoneMutex);
+			m_ReseedDone.notify_all ();
+		}
+		// Stop()/destruction must not read the configuration: the option map's
+		// static lifetime is not ordered against the netDb singleton. The
+		// published flag from the last start is authoritative here.
+		std::lock_guard<std::mutex> lock (m_ReseedStateMutex);
+		m_ReseedState.phase = m_ReseedState.enabled ? ReseedPhase::Idle : ReseedPhase::Disabled;
+		m_ReseedState.lastError.clear ();
 	}
 
 	void NetDb::ReseedFromFloodfill (const RouterInfo & ri, int numRouters, int numFloodfills)
@@ -876,10 +1227,69 @@ namespace data
 
 	bool NetDb::LoadRouterInfo (const std::string & path, uint64_t ts)
 	{
+		std::string fileIdent;
+		const auto kind = ClassifyRouterInfoFile (path, fileIdent);
+		if (kind == RouterInfoFileKind::Staging)
+		{
+			if (AreArtifactWritesDelegated ())
+			{
+				// The storage worker owns its own staging files once writes are
+				// delegated, so a leftover next to the cache was not produced by
+				// this process and must not be swept here.
+				LogPrint (eLogInfo, "NetDb: Skipping RouterInfo staging file with delegated storage ", path);
+				return true;
+			}
+			// Leftover of an interrupted atomic write. The name is ours, so it is
+			// safe to remove; an unrecognised file is never deleted here because
+			// exclusive ownership of the data directory is the caller's contract.
+			LogPrint (eLogInfo, "NetDb: Removing stale RouterInfo staging file ", path);
+			i2p::fs::Remove (path);
+			return true;
+		}
+		if (kind != RouterInfoFileKind::Load)
+		{
+			LogPrint (eLogWarning, "NetDb: Ignoring unexpected file in netDb storage ", path);
+			return true;
+		}
+		// Deleting a rejected cache file follows the same authority as writing
+		// it: a canonical cache name goes through the artifact remover, and only
+		// a name outside the artifact namespace is removed directly.
+		auto removeCacheFile = [&path, &fileIdent] () -> bool
+		{
+			if (IsArtifactStorageInstalled ()
+				&& IsValidArtifactName (StorageArtifact::RouterInfoCache, fileIdent))
+				return RemoveArtifact (StorageArtifact::RouterInfoCache, fileIdent);
+			return i2p::fs::Remove (path);
+		};
 		auto r = std::make_shared<RouterInfo> (path);
 		constexpr uint64_t JAVA_NO_ADDRESS_GRACE = 54 * 60 * 1000LL;
+		// GetIdentHash() is only valid after a successful identity parse. Check
+		// that first: a corrupt file must reach the existing invalid-file path,
+		// not dereference a missing identity here.
+		if (!r->GetRouterIdentity ())
+		{
+			LogPrint (eLogWarning, "NetDb: RI from ", path, " has no parsable identity. Delete");
+			removeCacheFile ();
+			return true;
+		}
+		// Bind the file name to the identity hash of the parsed descriptor. A
+		// misplaced, copied or renamed cache file must not shadow another key,
+		// and a mismatch can never be re-persisted under that name.
+		if (r->GetIdentHashBase64 () != fileIdent)
+		{
+			LogPrint (eLogWarning, "NetDb: RI file name does not match its identity hash, delete ", path);
+			removeCacheFile ();
+			return true;
+		}
+		if (IsBlockedRouterInfo (*r))
+		{
+			// Keep the file: the blocklist is startup-only, so removing it would
+			// make unblocking require a reseed instead of a restart.
+			LogPrint (eLogInfo, "NetDb: Skipping blocklisted RouterInfo ", r->GetIdentHash ().ToBase64 ());
+			return true;
+		}
 		const bool addressesOk = r->HasValidAddresses () || ts < r->GetTimestamp () + JAVA_NO_ADDRESS_GRACE;
-		if (r->GetRouterIdentity () && !r->IsUnreachable () && addressesOk
+		if (!r->IsUnreachable () && addressesOk
 			&& ts < r->GetTimestamp () + 24 * 60 * 60 * NETDB_MAX_OFFLINE_EXPIRATION_TIMEOUT * 1000LL // too old
 			&& ts + NETDB_EXPIRATION_TIMEOUT_THRESHOLD * 1000LL > r->GetTimestamp () // from future
 			&& (r->GetVersion () >= NETDB_MIN_ALLOWED_VERSION || r->IsHighBandwidth ())) // old version
@@ -902,7 +1312,7 @@ namespace data
 		else
 		{
 			LogPrint (eLogWarning, "NetDb: RI from ", path, " is invalid, from the future or too old. Delete");
-			i2p::fs::Remove (path);
+			removeCacheFile ();
 		}
 		return true;
 	}
@@ -1216,23 +1626,23 @@ namespace data
 	void NetDb::PersistRouters (std::list<std::pair<std::string, std::shared_ptr<RouterInfo::Buffer>>> && update,
 		std::list<std::string> && remove)
 	{
-		std::vector<std::pair<std::string, std::shared_ptr<RouterInfo::Buffer>>> saves;
-		std::vector<std::string> removals;
+		// The artifact name is the canonical base64 identity hash, so the
+		// cache file stays netDb/r<shard>/routerInfo-<ident>.dat whether the
+		// installed writer or the direct backend stores it.
+		size_t failedSaves = 0;
+		for (const auto & it : update)
 		{
-			std::lock_guard<std::mutex> storage (m_StorageMutex);
-			saves.reserve (update.size ());
-			for (const auto & it : update) saves.emplace_back (m_Storage.Path (it.first), it.second);
-			removals.reserve (remove.size ());
-			for (const auto & it : remove) removals.push_back (it);
+			if (!RouterInfo::SaveToArtifact (it.first, it.second)) failedSaves++;
 		}
-		for (const auto & it : saves)
-			if (!RouterInfo::SaveToFile (it.first, it.second))
-				LogPrint (eLogError, "NetDb: Failed to persist RouterInfo ", it.first);
-		for (const auto & it : removals)
+		if (failedSaves)
+			LogPrint (eLogError, "NetDb: Failed to persist ", failedSaves, " of ", update.size (), " RouterInfos");
+		size_t failedRemovals = 0;
+		for (const auto & it : remove)
 		{
-			std::lock_guard<std::mutex> storage (m_StorageMutex);
-			m_Storage.Remove (it);
+			if (!RemoveArtifact (StorageArtifact::RouterInfoCache, it)) failedRemovals++;
 		}
+		if (failedRemovals)
+			LogPrint (eLogError, "NetDb: Failed to remove ", failedRemovals, " of ", remove.size (), " RouterInfos");
 	}
 
 	void NetDb::RequestDestination (
@@ -1262,14 +1672,20 @@ namespace data
 			LogPrint (eLogDebug, "NetDb: Database store with zero ident, dropped");
 			return;
 		}
-		uint32_t replyToken = bufbe32toh (buf + DATABASE_STORE_REPLY_TOKEN_OFFSET);
-		if (!IsTunnelDatabaseStoreAccepted (m->from != nullptr || m->fromClove, replyToken))
-		{
-			LogPrint (eLogDebug, "NetDb: Database store with reply token arrived through a tunnel, dropped");
-			return;
-		}
+		const auto origin = GetDatabaseStoreOrigin (*m);
+		const uint32_t wireReplyToken = bufbe32toh (buf + DATABASE_STORE_REPLY_TOKEN_OFFSET);
+		// Java InboundMessageDistributor: a store that crossed an I2NP tunnel
+		// keeps its entry but loses the reply token, reply tunnel and gateway;
+		// only a direct store (including a garlic received directly from a
+		// peer) may be acknowledged. Dropping the whole store here was wrong:
+		// it prevented a local destination from publishing its LeaseSet to a
+		// local floodfill.
+		const bool keepReplyToken = KeepsDatabaseStoreReplyToken (origin, wireReplyToken);
+		const uint32_t replyToken = keepReplyToken ? wireReplyToken : 0;
+		if (wireReplyToken && !keepReplyToken)
+			LogPrint (eLogDebug, "NetDb: Database store reply token cleared for tunnel origin");
 		size_t offset = DATABASE_STORE_HEADER_SIZE;
-		if (replyToken)
+		if (wireReplyToken) // the block is present on the wire even when ignored
 		{
 			if (len < offset + 36) // 32 + 4
 			{
@@ -1278,7 +1694,7 @@ namespace data
 			}
 			uint32_t tunnelID = bufbe32toh (buf + offset);
 			offset += 4;
-			if (replyToken != 0xFFFFFFFFU) // if not caught on OBEP or IBGW
+			if (keepReplyToken && replyToken != 0xFFFFFFFFU) // if not caught on OBEP or IBGW
 			{
 				IdentHash replyIdent (buf + offset);
 				if (replyIdent.IsZero ())
@@ -1341,7 +1757,7 @@ namespace data
 				LogPrint (eLogInfo, "NetDb: Not Floodfill, LeaseSet store request ignored for ", ident.ToBase32 ());
 				return;
 			}
-			else if (!m->from) // unsolicited LS must be received directly
+			else if (AcceptsUnsolicitedDatabaseStore (origin)) // any origin; only the ack is origin-gated
 			{
 				if (storeType == NETDB_STORE_TYPE_LEASESET) // 1
 				{
@@ -1384,11 +1800,14 @@ namespace data
 			}
 		}
 
-		if (replyToken && context.IsFloodfill () && updated && ShouldThrottleFlood (ident))
+		// Only a direct store may be relayed: a tunnel-origin store has already
+		// lost its reply token, so it is stored and stops here (no cleartext
+		// DeliveryStatus, no reflection, no flood).
+		if (keepReplyToken && context.IsFloodfill () && updated && ShouldThrottleFlood (ident))
 		{
 			LogPrint (eLogDebug, "NetDb: DatabaseStore flood throttled for ", ident.ToBase64 ());
 		}
-		else if (replyToken && context.IsFloodfill () && updated)
+		else if (keepReplyToken && context.IsFloodfill () && updated)
 		{
 			// flood updated. Size the message for the actual entry: a valid
 			// Meta/LS2 may be close to MAX_LS_BUFFER_SIZE and not fit the
@@ -1417,7 +1836,11 @@ namespace data
 	bool NetDb::ShouldThrottleLookup (const IdentHash & from, uint32_t tunnelID)
 	{
 		constexpr uint64_t window = 120; // seconds
-		constexpr uint32_t limit = 14; // Java floodfill limit
+		// Java LookupThrottler: floodfills serve 14 replies per reply tunnel,
+		// ordinary routers only 3. Re-read each call because the router may be
+		// promoted to floodfill at runtime.
+		const uint32_t limit = i2p::context.IsFloodfill () ? NETDB_LOOKUP_THROTTLE_FLOODFILL
+														  : NETDB_LOOKUP_THROTTLE_NON_FLOODFILL;
 		constexpr size_t maximum = 4096;
 		const auto now = i2p::util::GetSecondsSinceEpoch ();
 		std::lock_guard<std::mutex> l (m_ThrottleMutex);
@@ -1425,6 +1848,10 @@ namespace data
 		auto it = m_LookupThrottle.find (key);
 		if (it == m_LookupThrottle.end ())
 		{
+			// The cap keeps memory bounded. The arbitrary oldest-key eviction is
+			// inherited from the original implementation: a sweep here would be
+			// O(n) per insertion once full, which is worse under a flood of
+			// distinct spoofed reply tunnels.
 			if (m_LookupThrottle.size () >= maximum) m_LookupThrottle.erase (m_LookupThrottle.begin ());
 			m_LookupThrottle.emplace (key, std::make_pair (now, 1));
 			return false;
@@ -1531,6 +1958,18 @@ namespace data
 				return;
 			}
 		}
+		// Java FloodfillDatabaseLookupMessageHandler.createJob() drops EXPL and
+		// ANY lookups when this router is not a floodfill, before the lookup
+		// throttle is charged. Doing it here avoids letting dropped lookups
+		// exhaust the reply tunnel's budget for type-specific lookups that we
+		// still serve from the local cache.
+		if (!context.IsFloodfill ()
+			&& (lookupType == DATABASE_LOOKUP_TYPE_EXPLORATORY_LOOKUP
+				|| lookupType == DATABASE_LOOKUP_TYPE_NORMAL_LOOKUP))
+		{
+			LogPrint (eLogWarning, "NetDb: EXPL/ANY lookup to non-floodfill dropped");
+			return;
+		}
 		// HandleDatabaseLookupMessageJob: drop a direct reply addressed to us.
 		// Sending it would loop the DSM/DSRM back through the transport layer.
 		if (!replyTunnelID && replyIdent == i2p::context.GetIdentHash ())
@@ -1550,10 +1989,13 @@ namespace data
 		const uint8_t * replyKeyBlock = excluded + numExcluded * 32;
 		size_t replyKeyAvailable = msg->GetPayloadLength () - (replyKeyBlock - buf);
 		DatabaseLookupReplyKey replyKey;
-		if (!ParseDatabaseLookupReplyKey (replyKeyBlock, replyKeyAvailable, flag, replyKey))
+		if (!ParseDatabaseLookupReplyKey (replyKeyBlock, replyKeyAvailable, flag, replyKey)
+			|| !CanEncryptDatabaseLookupReply (flag, replyKey))
 		{
 			if (encryptReply && ratchetReply)
-				LogPrint (eLogWarning, "NetDb: DatabaseLookup derived-key ratchet reply is not implemented");
+				// 0x12: Java 2.14.0 parses this mode but has no sender/KDF and
+				// answers in cleartext. Stay fail-closed and invent nothing.
+				LogPrint (eLogWarning, "NetDb: DatabaseLookup derived-key ratchet reply is not implemented, dropped");
 			else
 				LogPrint (eLogWarning, "NetDb: DatabaseLookup reply key block is invalid or truncated");
 			return;
@@ -1567,11 +2009,6 @@ namespace data
 		std::shared_ptr<I2NPMessage> replyMsg;
 		if (lookupType == DATABASE_LOOKUP_TYPE_EXPLORATORY_LOOKUP)
 		{
-			if (!context.IsFloodfill ())
-			{
-				LogPrint (eLogWarning, "NetDb: Exploratory lookup to non-floodfill dropped");
-				return;
-			}
 			LogPrint (eLogInfo, "NetDb: Exploratory close to ", key, " ", numExcluded, " excluded");
 			std::unordered_set<IdentHash> excludedRouters;
 			const uint8_t * excluded_ident = excluded;
@@ -1771,7 +2208,7 @@ namespace data
 					&& router->IsECIES () && !router->IsHighCongestion (clientTunnel)
 					&& (!i2p::transport::transports.IsCheckReserved ()
 						|| (!router->IsSameFamily (*compatibleWith) && !router->IsSameSubnet (*compatibleWith)))
-					&& (!checkIsReal || router->GetProfile ()->IsReal ())
+					&& (!checkIsReal || IsProfileRealOrUnknown (*router))
 					&& (!endpoint
 						|| (router->IsV4 ()
 							&& (!reverse
@@ -1829,7 +2266,7 @@ namespace data
 					&& !router->IsHighCongestion (true)
 					&& (!i2p::transport::transports.IsCheckReserved ()
 						|| (!router->IsSameFamily (*compatibleWith) && !router->IsSameSubnet (*compatibleWith)))
-					&& (!checkIsReal || router->GetProfile ()->IsReal ())
+					&& (!checkIsReal || IsProfileRealOrUnknown (*router))
 					&& (!endpoint
 						|| (router->IsV4 ()
 							&& (!reverse
@@ -1845,11 +2282,19 @@ namespace data
 		std::lock_guard<std::mutex> l (m_RouterInfosMutex);
 		auto count = m_RouterInfos.size ();
 		if (count == 0) return nullptr;
+		// Apply the operator blocklist centrally so every random-selection
+		// caller (including peer test, introducers and family selection) skips a
+		// blocked router regardless of its own filter.
+		auto acceptable = [&filter] (const std::shared_ptr<RouterInfo> & router)
+		{
+			return !IsOperatorBlockedRouter (router->GetIdentHash ()) && !IsRuntimeRouterBanned (router->GetIdentHash ())
+				&& filter (router);
+		};
 		inds[0] %= count;
 		auto it = m_RouterInfos.begin ();
 		std::advance (it, inds[0]);
 		// try random router
-		if (it != m_RouterInfos.end () && !it->second->IsUnreachable () && filter (it->second)) return it->second;
+		if (it != m_RouterInfos.end () && !it->second->IsUnreachable () && acceptable (it->second)) return it->second;
 		// try some routers around
 		auto it1 = m_RouterInfos.begin ();
 		if (inds[0])
@@ -1872,21 +2317,21 @@ namespace data
 		it = it1;
 		while (it != it2 && it != m_RouterInfos.end ())
 		{
-			if (!it->second->IsUnreachable () && filter (it->second)) return it->second;
+			if (!it->second->IsUnreachable () && acceptable (it->second)) return it->second;
 			it++;
 		}
 		// still not found, try from the beginning
 		it = m_RouterInfos.begin ();
 		while (it != it1 && it != m_RouterInfos.end ())
 		{
-			if (!it->second->IsUnreachable () && filter (it->second)) return it->second;
+			if (!it->second->IsUnreachable () && acceptable (it->second)) return it->second;
 			it++;
 		}
 		// still not found, try to the beginning
 		it = it2;
 		while (it != m_RouterInfos.end ())
 		{
-			if (!it->second->IsUnreachable () && filter (it->second)) return it->second;
+			if (!it->second->IsUnreachable () && acceptable (it->second)) return it->second;
 			it++;
 		}
 		return nullptr; // seems we have too few routers
@@ -1896,7 +2341,19 @@ namespace data
 	{
 		if (!msg) return;
 		std::lock_guard<std::mutex> admission (m_QueueAdmissionMutex);
-		if (m_AcceptMessages) m_Queue.Put (msg);
+		if (!m_AcceptMessages) return;
+		// Bounded admission: a burst of DatabaseStore/DatabaseLookup messages
+		// must not grow the netDb backlog without limit. The worker drains the
+		// queue in one swap, so the cap only needs to cover one processing sweep.
+		if (!m_Queue.PutIfBelow (msg, NETDB_MAX_QUEUED_MESSAGES))
+		{
+			// Count every rejection; log the first and every 256th so a message
+			// flood cannot amplify into a log flood.
+			const auto dropped = m_DroppedQueueMessages.fetch_add (1, std::memory_order_relaxed) + 1;
+			if (dropped == 1 || !(dropped % 256))
+				LogPrint (eLogWarning, "NetDb: Message queue is full, dropping type ", (int)msg->GetTypeID (),
+					" (", dropped, " dropped)");
+		}
 	}
 
 	void NetDb::PostDatabaseSearchReplyMsg (std::shared_ptr<const I2NPMessage> msg)
@@ -1914,8 +2371,9 @@ namespace data
 		return m_Floodfills.FindClosest (destKey,
 			[&excluded] (const std::shared_ptr<RouterInfo> & r) -> bool
 			{
-				return r && !r->IsUnreachable () && !r->GetProfile ()->IsUnreachable ()
-					&& !excluded.count (r->GetIdentHash ());
+				return r && !r->IsUnreachable () && IsProfileReachable (*r)
+					&& !excluded.count (r->GetIdentHash ()) && !IsOperatorBlockedRouter (r->GetIdentHash ())
+					&& !IsRuntimeRouterBanned (r->GetIdentHash ());
 			});
 	}
 
@@ -1930,8 +2388,9 @@ namespace data
 			v = m_Floodfills.FindClosest (destKey, num,
 				[&excluded] (const std::shared_ptr<RouterInfo> & r) -> bool
 				{
-					return r && !r->IsUnreachable () && !r->GetProfile ()->IsUnreachable ()
-						&& !excluded.count (r->GetIdentHash ());
+					return r && !r->IsUnreachable () && IsProfileReachable (*r)
+						&& !excluded.count (r->GetIdentHash ()) && !IsOperatorBlockedRouter (r->GetIdentHash ())
+						&& !IsRuntimeRouterBanned (r->GetIdentHash ());
 				});
 		}
 		if (v.empty ()) return res;
@@ -1975,7 +2434,9 @@ namespace data
 				eligible.reserve (m_RouterInfos.size ());
 				for (const auto & it : m_RouterInfos)
 					if (!it.second->IsDeclaredFloodfill () && !it.second->IsUnreachable ()
-						&& (!checkIsReal || (it.second->HasProfile () && it.second->GetProfile ()->IsReal ())))
+						&& !IsOperatorBlockedRouter (it.second->GetIdentHash ())
+						&& !IsRuntimeRouterBanned (it.second->GetIdentHash ())
+						&& (!checkIsReal || IsProfileRealOrUnknown (*it.second)))
 						eligible.push_back (it.second);
 			}
 			if (eligible.size () > NETDB_MAX_EXPLORATORY_SELECTION_SIZE)

@@ -21,6 +21,8 @@
 #include <limits>
 #include <memory>
 #include <set>
+#include <span>
+#include <string_view>
 #include <charconv>
 #include <boost/algorithm/string.hpp> // for boost::to_lower
 #include "version.h"
@@ -36,6 +38,7 @@
 #if OPENSSL_PQ
 #include "PostQuantum.h"
 #endif
+#include "PersistentStorage.h"
 #include "RouterInfo.h"
 
 namespace i2p
@@ -202,6 +205,7 @@ namespace data
 		, m_IsUnreachable (false)
 		, m_IsFloodfill (false)
 		, m_IsBufferScheduledToDelete (false)
+		, m_HasForeignNetId (false)
 		, m_SupportedTransports (0)
 		, m_ReachableTransports (0)
 		, m_PublishedTransports (0)
@@ -221,6 +225,7 @@ namespace data
 		, m_IsUnreachable (false)
 		, m_IsFloodfill (false)
 		, m_IsBufferScheduledToDelete (false)
+		, m_HasForeignNetId (false)
 		, m_SupportedTransports (0)
 		, m_ReachableTransports (0)
 		, m_PublishedTransports (0)
@@ -242,6 +247,7 @@ namespace data
 		, m_IsUnreachable (false)
 		, m_IsFloodfill (false)
 		, m_IsBufferScheduledToDelete (false)
+		, m_HasForeignNetId (false)
 		, m_SupportedTransports (0)
 		, m_ReachableTransports (0)
 		, m_PublishedTransports (0)
@@ -287,6 +293,15 @@ namespace data
 			LogPrint (eLogWarning, "RouterInfo: Can't update without an identity");
 			return false;
 		}
+		// Java DatabaseEntry.verifySignature() rejects RSA router identities as
+		// a DoS policy, independently of whether this build can verify them.
+		// Keep that policy for updates too, so an RSA identity can never be
+		// introduced through a re-signed body.
+		if (identity->IsRSA ())
+		{
+			LogPrint (eLogWarning, "RouterInfo: RSA router identities are not accepted");
+			return false;
+		}
 		// Verify the signature with the identity we already have. This binds the
 		// new body to the cached router identity; the caller also checks that
 		// the announced identity hash matches the store key.
@@ -312,9 +327,11 @@ namespace data
 		// been validated. A signed but malformed update therefore leaves the
 		// previously cached RouterInfo untouched instead of destroying it
 		// (Java NetDb keeps the old RouterInfo when validation fails).
-		if (!ReadFromBuffer (buf + identityLen, signedLen - identityLen))
+		bool foreignNetId = false;
+		if (!ReadFromBuffer (buf + identityLen, signedLen - identityLen, &foreignNetId))
 		{
 			LogPrint (eLogError, "RouterInfo: Updated RouterInfo is malformed. Not changed");
+			if (foreignNetId) m_HasForeignNetId.store (true);
 			return false;
 		}
 		// Install the validated body first; publish the updated flag only after
@@ -411,11 +428,22 @@ namespace data
 			return;
 		}
 		size_t signedLen = bufferLen - signatureLen;
+		// Java DatabaseEntry.verifySignature() rejects an RSA-signed RouterInfo
+		// as a DoS policy. The RSA verifier stays available for SU3 files and
+		// local use, but a network or on-disk RouterInfo must never be accepted
+		// with an RSA identity (this also removes RSA modulus work from the
+		// untrusted parse path). Check it before signature verification so the
+		// policy does not depend on the verifier implementation.
+		if (m_RouterIdentity->IsRSA ())
+		{
+			LogPrint (eLogError, "RouterInfo: RSA router identities are not accepted");
+			m_IsUnreachable.store (true);
+			return;
+		}
 		if (verifySignature)
 		{
-			// RSA types 4/5/6 are legacy but Java can still publish them.
-			// IdentityEx::Verify now selects the raw PKCS#1 v1.5 verifier;
-			// unsupported/zero key material remains fail-closed there.
+			// Selects the verifier for the identity's signature type;
+			// unsupported or zero key material remains fail-closed there.
 			if (!m_RouterIdentity->Verify (
 					(uint8_t *)m_Buffer->data (), signedLen, (uint8_t *)m_Buffer->data () + signedLen))
 			{
@@ -431,14 +459,19 @@ namespace data
 			m_IsUnreachable.store (true);
 			return;
 		}
-		if (!ReadFromBuffer (m_Buffer->data () + identityLen, signedLen - identityLen))
+		bool foreignNetId = false;
+		if (!ReadFromBuffer (m_Buffer->data () + identityLen, signedLen - identityLen, &foreignNetId))
 		{
 			LogPrint (eLogError, "RouterInfo: Malformed message");
+			// The entry must stay rejected, but a foreign netId is reported
+			// separately from a malformed body so NTCP2 can apply the netID ban
+			// policy instead of reporting a signature failure.
+			if (foreignNetId) m_HasForeignNetId.store (true);
 			m_IsUnreachable.store (true);
 		}
 	}
 
-	bool RouterInfo::ReadFromBuffer (const uint8_t * buf, size_t len)
+	bool RouterInfo::ReadFromBuffer (const uint8_t * buf, size_t len, bool * foreignNetIdOut)
 	{
 		// Callers pass the signed body only: ReadFromBuffer(bool) and Update()
 		// already removed the identity prefix and the trailing signature. The
@@ -645,8 +678,8 @@ namespace data
 						{
 							size_t end = value.find (',', start);
 							if (end == std::string_view::npos) end = value.size ();
-							auto token = value.substr (start, end - start);
 #if OPENSSL_PQ
+							auto token = value.substr (start, end - start);
 							if ((token == "3" || token == "4" || token == "5")
 								&& i2p::crypto::CanPublishPQ (token[0] - '0'))
 								best = std::max (best, token[0] - '0');
@@ -919,12 +952,17 @@ namespace data
 			else if (key == ROUTER_INFO_PROPERTY_NETID)
 			{
 				isNetId = true;
-				int netID;
+				int netID = 0;
 				auto res = std::from_chars (value.data (), value.data () + value.size (), netID);
-				if (res.ec != std::errc () || res.ptr != value.data () + value.size ()
-					|| netID != i2p::context.GetNetID ())
+				const bool parsed = res.ec == std::errc () && res.ptr == value.data () + value.size ();
+				if (!parsed || netID != i2p::context.GetNetID ())
 				{
 					LogPrint (eLogError, "RouterInfo: Unexpected ", ROUTER_INFO_PROPERTY_NETID, "=", value);
+					// A non-zero netId of another network is recorded separately.
+					// The entry is still rejected (netId=0 is only accepted when it
+					// is our network ID), but NTCP2 reports reason 17 and bans the
+					// source instead of treating the RI as merely malformed.
+					if (parsed && netID != 0 && foreignNetIdOut) *foreignNetIdOut = true;
 					valid = false;
 				}
 			}
@@ -995,6 +1033,9 @@ namespace data
 		m_Addresses.Store (std::move (addresses));
 		m_IsFloodfill.store ((caps & eFloodfill) != 0);
 		m_IsUnreachable.store (false);
+		// A successfully parsed body is ours: clear any earlier foreign-netId
+		// observation for this object.
+		m_HasForeignNetId.store (false);
 		ClearProperties ();
 		for (const auto & property : properties) SetProperty (property.first, property.second);
 
@@ -1072,6 +1113,7 @@ namespace data
 	void RouterInfo::UpdateIntroducers (std::shared_ptr<Address> address, uint64_t ts)
 	{
 		if (!address || !address->ssu) return;
+		std::lock_guard<std::mutex> lock (address->ssu->mutex);
 		int numValid = 0;
 		for (auto & it : address->ssu->introducers)
 		{
@@ -1118,30 +1160,15 @@ namespace data
 	bool RouterInfo::SaveToFile (const std::string & fullPath, std::shared_ptr<Buffer> buf)
 	{
 		if (!buf) return false;
-		// Replace the previous descriptor atomically. A crash or short write
-		// must not truncate the last valid cached RouterInfo.
-		const std::string tempPath = fullPath + ".tmp";
+		// Replace the previous descriptor through the shared atomic writer:
+		// unique no-follow temporary file, fsync, then rename. A crash or short
+		// write must not truncate the last valid cached RouterInfo, and a
+		// predictable ".tmp" name must not be reusable as an attack surface.
+		const auto contents
+			= std::string_view (reinterpret_cast<const char *> (buf->data ()), buf->GetBufferLen ());
+		if (!i2p::fs::AtomicWrite (fullPath, contents))
 		{
-			std::ofstream f (tempPath, std::ofstream::binary | std::ofstream::out | std::ofstream::trunc);
-			if (!f.is_open ())
-			{
-				LogPrint (eLogError, "RouterInfo: Can't save to ", tempPath);
-				return false;
-			}
-			f.write ((char *)buf->data (), buf->GetBufferLen ());
-			f.flush ();
-			if (!f)
-			{
-				LogPrint (eLogError, "RouterInfo: Short write to ", tempPath);
-				f.close ();
-				i2p::fs::Remove (tempPath);
-				return false;
-			}
-		}
-		if (!i2p::fs::Rename (tempPath, fullPath))
-		{
-			LogPrint (eLogError, "RouterInfo: Can't replace ", fullPath);
-			i2p::fs::Remove (tempPath);
+			LogPrint (eLogError, "RouterInfo: Can't save to ", fullPath);
 			return false;
 		}
 		return true;
@@ -1161,6 +1188,18 @@ namespace data
 			return false;
 		}
 		return SaveToFile (fullPath, buffer);
+	}
+
+	bool RouterInfo::SaveToArtifact (const std::string & identBase64, std::shared_ptr<Buffer> buf)
+	{
+		if (!buf) return false;
+		const size_t len = buf->GetBufferLen ();
+		if (!len) return false;
+		// The artifact writer replaces the previous cache file atomically, so
+		// a failure keeps the last valid RouterInfo on disk. The bytes and the
+		// name are unchanged from the direct writer.
+		return i2p::data::WriteArtifact (i2p::data::StorageArtifact::RouterInfoCache, identBase64,
+			std::span<const uint8_t> (buf->data (), len));
 	}
 
 	std::string_view RouterInfo::ExtractString (const uint8_t * buf, size_t len, bool & valid) const
@@ -1567,6 +1606,35 @@ namespace data
 			m_Profile.Store (profile);
 		}
 		return profile;
+	}
+
+	std::shared_ptr<RouterProfile> RouterInfo::GetProfileIfExists () const
+	{
+		auto profile = m_Profile.Load ();
+		if (profile) return profile;
+		// Never create or load a profile here. Selection filters call this while
+		// holding a netDb container mutex, where disk IO is forbidden; a profile
+		// created by another component is still visible through the process-wide
+		// map, so a known-unreachable peer is not resurrected by the fallback.
+		return i2p::data::GetRouterProfileIfExists (GetIdentHash ());
+	}
+
+	bool RouterInfo::HasSSUIntroducers () const
+	{
+		auto addresses = GetAddresses ();
+		if (!addresses) return false;
+		for (const auto & address : *addresses)
+			if (address && address->ssu && address->ssu->HasIntroducers ()) return true;
+		return false;
+	}
+
+	bool RouterInfo::HasNTCP2Address () const
+	{
+		auto addresses = GetAddresses ();
+		if (!addresses) return false;
+		// Any NTCP2 address counts, published or not, matching Java's
+		// getTargetAddresses("NTCP", "NTCP2").isEmpty() predicate.
+		return (*addresses)[eNTCP2V4Idx] || (*addresses)[eNTCP2V6Idx];
 	}
 
 	bool RouterInfo::Encrypt (const uint8_t * data, uint8_t * encrypted) const
@@ -1997,10 +2065,11 @@ namespace data
 			if (address.transportStyle == eTransportSSU2)
 			{
 				// write introducers if any
-				if (address.ssu && !address.ssu->introducers.empty ())
+				const auto introducers = address.ssu ? address.ssu->GetIntroducers () : std::vector<Introducer> ();
+				if (!introducers.empty ())
 				{
 					int i = 0;
-					for (const auto & introducer : address.ssu->introducers)
+					for (const auto & introducer : introducers)
 					{
 						if (!introducer.iTag) continue;
 						if (introducer.iExp) // expiration is specified
@@ -2013,7 +2082,7 @@ namespace data
 						i++;
 					}
 					i = 0;
-					for (const auto & introducer : address.ssu->introducers)
+					for (const auto & introducer : introducers)
 					{
 						if (!introducer.iTag) continue;
 						WriteString ("ih" + std::to_string (i), properties);
@@ -2024,7 +2093,7 @@ namespace data
 						i++;
 					}
 					i = 0;
-					for (const auto & introducer : address.ssu->introducers)
+					for (const auto & introducer : introducers)
 					{
 						if (!introducer.iTag) continue;
 						WriteString ("itag" + std::to_string (i), properties);
@@ -2199,6 +2268,7 @@ namespace data
 		if (!addresses) return false;
 		auto addr = (*addresses)[v4 ? eSSU2V4Idx : eSSU2V6Idx];
 		if (!addr || !addr->ssu) return false;
+		std::lock_guard<std::mutex> lock (addr->ssu->mutex);
 		for (auto & intro : addr->ssu->introducers)
 			if (intro.iTag == introducer.iTag) return false; // already presented
 		// SSU2 RouterAddress mappings only define itag0..2/ih0..2/iexp0..2.
@@ -2222,6 +2292,7 @@ namespace data
 		auto addr = (*addresses)[v4 ? eSSU2V4Idx : eSSU2V6Idx];
 		if (addr && addr->ssu)
 		{
+			std::lock_guard<std::mutex> lock (addr->ssu->mutex);
 			for (auto it = addr->ssu->introducers.begin (); it != addr->ssu->introducers.end (); ++it)
 				if (h == it->iH)
 				{
@@ -2242,6 +2313,7 @@ namespace data
 		auto addr = (*addresses)[v4 ? eSSU2V4Idx : eSSU2V6Idx];
 		if (addr && addr->ssu)
 		{
+			std::lock_guard<std::mutex> lock (addr->ssu->mutex);
 			for (auto & it : addr->ssu->introducers)
 				if (h == it.iH)
 				{

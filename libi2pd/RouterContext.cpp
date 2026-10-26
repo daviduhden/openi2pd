@@ -13,9 +13,15 @@
  *
  */
 
+#include <cstring>
 #include "PersistentStorage.h"
+#include <algorithm>
+#include <atomic>
 #include <fstream>
+#include <mutex>
+#include <span>
 #include <stdexcept>
+#include <vector>
 #include <openssl/crypto.h>
 #include <openssl/rand.h>
 #include "Config.h"
@@ -23,6 +29,7 @@
 #include "Ed25519.h"
 #include "Timestamp.h"
 #include "I2NPProtocol.h"
+#include "Modern.h"
 #include "NetDb.hpp"
 #include "FS.h"
 #include "util.h"
@@ -37,7 +44,102 @@
 
 namespace i2p
 {
+namespace
+{
+	/**
+	 * One retained fixed-file write after a failed isolated persistence
+	 * attempt.
+	 *
+	 * `router.keys`, `ntcp2.keys` and `ssu2.keys` are only written when the
+	 * material is (re)generated, so a dropped write would silently leave the
+	 * process running with key material that is not durable. Exactly one
+	 * serialized record is retained; the next save tick retries it and a
+	 * successful write wipes the copy. The slot is process-wide because the
+	 * network process owns one router context; a second context in the same
+	 * process (tests) is sequential and only ever sees an empty slot.
+	 *
+	 * This is deliberately not a general write queue: it never grows, never
+	 * retries in a loop and never falls back to a local filesystem write.
+	 */
+	class PendingFixedWrite
+	{
+	public:
+		bool Store (i2p::data::RouterPersistentFile file, std::span<const uint8_t> bytes)
+		{
+			std::lock_guard<std::mutex> lock (m_Mutex);
+			m_File = file;
+			m_Bytes.assign (bytes.begin (), bytes.end ());
+			m_Pending.store (true, std::memory_order_release);
+			return true;
+		}
+
+		/** Retry the retained write once. True when nothing is pending. */
+		bool Flush ()
+		{
+			if (!m_Pending.load (std::memory_order_acquire)) return true;
+			std::lock_guard<std::mutex> lock (m_Mutex);
+			if (!m_Pending.load (std::memory_order_relaxed)) return true;
+			if (!i2p::data::WriteRouterPersistentFile (m_File, m_Bytes)) return false;
+			std::fill (m_Bytes.begin (), m_Bytes.end (), 0);
+			m_Bytes.clear ();
+			m_Pending.store (false, std::memory_order_release);
+			return true;
+		}
+
+		/**
+		 * Drop the retained record without writing. Used when initialization is
+		 * rolled back: no later tick may publish key material from a failed
+		 * start attempt.
+		 */
+		void Discard ()
+		{
+			std::lock_guard<std::mutex> lock (m_Mutex);
+			std::fill (m_Bytes.begin (), m_Bytes.end (), 0);
+			m_Bytes.clear ();
+			m_Pending.store (false, std::memory_order_release);
+		}
+
+	private:
+		std::mutex m_Mutex;
+		std::atomic<bool> m_Pending { false };
+		i2p::data::RouterPersistentFile m_File = i2p::data::RouterPersistentFile::RouterKeys;
+		std::vector<uint8_t> m_Bytes;
+	};
+
+	PendingFixedWrite & RetainedFixedWrite ()
+	{
+		static PendingFixedWrite slot;
+		return slot;
+	}
+
+	/**
+	 * Write one fixed router file through the installed persistence authority.
+	 * A failure is retained for one later retry; it never becomes a local
+	 * write in the network process.
+	 */
+	bool WriteRetainedFixedFile (i2p::data::RouterPersistentFile file, std::span<const uint8_t> bytes)
+	{
+		if (i2p::data::WriteRouterPersistentFile (file, bytes)) return true;
+		RetainedFixedWrite ().Store (file, bytes);
+		// The isolated writer may simply have been restarting with a bumped
+		// generation, so one immediate retry is meaningful. A second failure
+		// is left to the next save tick instead of spinning here.
+		return RetainedFixedWrite ().Flush ();
+	}
+}
 RouterContext context;
+
+namespace
+{
+	// Origin of the garlic currently being decrypted on this thread.
+	// RouterContext::ProcessGarlicMessage() posts to the router service and
+	// PostGarlicMessage() decrypts synchronously there, so every clove
+	// callback of that garlic runs on the same thread before the enclosing
+	// call returns. A nested garlic is posted again, never decrypted inline,
+	// so the value cannot leak into an unrelated garlic. Java makes the same
+	// distinction between HandleGarlicMessageJob and InboundMessageDistributor.
+	thread_local bool g_IncomingGarlicFromTunnel = false;
+}
 
 RouterContext::RouterContext ()
 	: m_LastUpdateTime (0)
@@ -115,6 +217,9 @@ void RouterContext::ResetAfterFailedInit ()
 		m_SaveBuffer.reset ();
 	}
 	m_IsSaving.clear ();
+	// A rolled-back initialization must not retry identity or transport key
+	// material from the failed attempt on a later tick.
+	RetainedFixedWrite ().Discard ();
 	Stop ();
 	m_ECIESSession.reset ();
 	m_Decryptor.reset ();
@@ -399,6 +504,11 @@ void RouterContext::UpdateRouterInfoLocked ()
 				{
 					while (true)
 					{
+						// A retained fixed-file write (router.keys/ntcp2.keys/
+						// ssu2.keys) is retried on the same tick, outside every
+						// context lock. Failure keeps it pending for a later
+						// tick; it never becomes a local write.
+						(void)RetainedFixedWrite ().Flush ();
 						std::shared_ptr<i2p::data::RouterInfo::Buffer> buffer;
 						{
 							std::lock_guard<std::mutex> l (m_SaveBufferMutex);
@@ -406,9 +516,22 @@ void RouterContext::UpdateRouterInfoLocked ()
 							m_SaveBuffer = nullptr;
 						}
 						if (!buffer) break;
-						if (!i2p::data::WriteRouterPersistentFile (i2p::data::RouterPersistentFile::RouterInfo,
+						if (i2p::data::WriteRouterPersistentFile (i2p::data::RouterPersistentFile::RouterInfo,
 								std::span<const uint8_t> (buffer->data (), buffer->GetBufferLen ())))
-							LogPrint (eLogError, "Router: isolated router.info persistence failed");
+							continue;
+						{
+							// The newest snapshot must survive a failed write:
+							// dropping it would silently persist an older
+							// address/port set that the next start would use.
+							// Exactly one buffer is retained (a newer update
+							// supersedes it) and this writer stops instead of
+							// spinning; the next update tick retries.
+							std::lock_guard<std::mutex> l (m_SaveBufferMutex);
+							if (!m_SaveBuffer) m_SaveBuffer = std::move (buffer);
+						}
+						LogPrint (eLogError,
+							"Router: isolated router.info persistence failed; retaining the newest snapshot for retry");
+						break;
 					}
 					m_IsSaving.clear ();
 				});
@@ -441,13 +564,14 @@ void RouterContext::NewNTCP2Keys ()
 	std::lock_guard<std::mutex> l (m_StaticKeysMutex);
 	if (m_NTCP2Keys) return; // idempotent; never reset loaded keys
 	auto staticKeys = std::make_unique<i2p::crypto::X25519Keys> ();
-	staticKeys->GenerateKeys ();
+	if (!staticKeys->GenerateKeys ())
+		throw std::runtime_error ("Router: NTCP2 static key generation failed");
 	auto keys = std::make_unique<NTCP2PrivateKeys> ();
 	staticKeys->GetPrivateKey (keys->staticPrivateKey);
 	memcpy (keys->staticPublicKey, staticKeys->GetPublicKey (), 32);
 	RAND_bytes (keys->iv, 16);
 	// save
-	if (!i2p::data::WriteRouterPersistentFile (i2p::data::RouterPersistentFile::NTCP2Keys,
+	if (!WriteRetainedFixedFile (i2p::data::RouterPersistentFile::NTCP2Keys,
 			std::span<const uint8_t> (reinterpret_cast<const uint8_t *> (keys.get ()), sizeof (NTCP2PrivateKeys))))
 		throw std::runtime_error ("Router: NTCP2 key persistence failed");
 	m_NTCP2StaticKeys = std::move (staticKeys);
@@ -459,13 +583,14 @@ void RouterContext::NewSSU2Keys ()
 	std::lock_guard<std::mutex> l (m_StaticKeysMutex);
 	if (m_SSU2Keys) return; // idempotent; never reset loaded keys
 	auto staticKeys = std::make_unique<i2p::crypto::X25519Keys> ();
-	staticKeys->GenerateKeys ();
+	if (!staticKeys->GenerateKeys ())
+		throw std::runtime_error ("Router: SSU2 static key generation failed");
 	auto keys = std::make_unique<SSU2PrivateKeys> ();
 	staticKeys->GetPrivateKey (keys->staticPrivateKey);
 	memcpy (keys->staticPublicKey, staticKeys->GetPublicKey (), 32);
 	RAND_bytes (keys->intro, 32);
 	// save
-	if (!i2p::data::WriteRouterPersistentFile (i2p::data::RouterPersistentFile::SSU2Keys,
+	if (!WriteRetainedFixedFile (i2p::data::RouterPersistentFile::SSU2Keys,
 			std::span<const uint8_t> (reinterpret_cast<const uint8_t *> (keys.get ()), sizeof (SSU2PrivateKeys))))
 		throw std::runtime_error ("Router: SSU2 key persistence failed");
 	m_SSU2StaticKeys = std::move (staticKeys);
@@ -655,7 +780,7 @@ void RouterContext::PublishSSU2Address (int port, bool publish, bool v4, bool v6
 				// version but lack the current B/C caps (older builds did not
 				// publish B on non-published addresses). Refresh them too.
 				|| (publish && (!address->IsPeerTesting () || address->IsIntroducer () != wantIntroducer))
-				|| (!publish && address->ssu && !address->ssu->introducers.empty ()))
+				|| (!publish && address->ssu && address->ssu->HasIntroducers ()))
 			&& ((v4 && address->IsV4 ()) || (v6 && address->IsV6 ())))
 		{
 			if (port)
@@ -677,7 +802,11 @@ void RouterContext::PublishSSU2Address (int port, bool publish, bool v4, bool v6
 				// IsReachableSSU() would still report the address as reachable
 				// through stale introducers even though no host/port is
 				// serialized.
-				if (address->ssu) address->ssu->introducers.clear ();
+				if (address->ssu)
+				{
+					std::lock_guard<std::mutex> lock (address->ssu->mutex);
+					address->ssu->introducers.clear ();
+				}
 			}
 			updated = true;
 		}
@@ -810,6 +939,11 @@ void RouterContext::UpdateAddress (const boost::asio::ip::address & host)
 						mtu = maxMTU;
 						LogPrint (eLogWarning, "Router: MTU dropped to upper limit of ", maxMTU, " bytes");
 					}
+					// Java caps published IPv6 SSU2 MTU at 1488: IPv6 routers do
+					// not fragment, so advertising 1500 on a 1480/1488 path would
+					// drop our largest datagrams.
+					if (mtu > (int)i2p::transport::SSU2_MAX_IPV6_MTU)
+						mtu = i2p::transport::SSU2_MAX_IPV6_MTU;
 					addr->ssu->mtu = mtu;
 				}
 			}
@@ -846,10 +980,15 @@ void RouterContext::ClearSSU2Introducers (bool v4)
 {
 	std::lock_guard<std::mutex> l (m_RouterInfoMutex);
 	auto addr = m_RouterInfo.GetSSU2Address (v4);
-	if (addr && addr->ssu && !addr->ssu->introducers.empty ())
+	if (addr && addr->ssu)
 	{
-		addr->ssu->introducers.clear ();
-		UpdateRouterInfoLocked ();
+		bool cleared = false;
+		{
+			std::lock_guard<std::mutex> lock (addr->ssu->mutex);
+			cleared = !addr->ssu->introducers.empty ();
+			addr->ssu->introducers.clear ();
+		}
+		if (cleared) UpdateRouterInfoLocked ();
 	}
 }
 
@@ -1047,7 +1186,10 @@ void RouterContext::SetUnreachable (bool v4, bool v6)
 			{
 				addr->published = false;
 				UpdateSSU2AddressCapsIntroducer (addr, false); // can't be introducer
-				addr->ssu->introducers.clear ();
+				{
+					std::lock_guard<std::mutex> lock (addr->ssu->mutex);
+					addr->ssu->introducers.clear ();
+				}
 				port = static_cast<uint16_t> (addr->port);
 			}
 	}
@@ -1094,7 +1236,10 @@ void RouterContext::SetReachable (bool v4, bool v6)
 			{
 				addr->published = true;
 				UpdateSSU2AddressCapsIntroducer (addr, !m_IsFloodfill.load (std::memory_order_relaxed));
-				addr->ssu->introducers.clear ();
+				{
+					std::lock_guard<std::mutex> lock (addr->ssu->mutex);
+					addr->ssu->introducers.clear ();
+				}
 				if (addr->port) port = static_cast<uint16_t> (addr->port);
 			}
 	}
@@ -1581,7 +1726,7 @@ void RouterContext::SaveKeys ()
 	// Preserve the exact existing key serialization; only IO authority changes.
 	std::vector<uint8_t> buffer (m_Keys.GetFullLen ());
 	m_Keys.ToBuffer (buffer.data (), buffer.size ());
-	const bool saved = i2p::data::WriteRouterPersistentFile (i2p::data::RouterPersistentFile::RouterKeys, buffer);
+	const bool saved = WriteRetainedFixedFile (i2p::data::RouterPersistentFile::RouterKeys, buffer);
 	OPENSSL_cleanse (buffer.data (), buffer.size ());
 	if (!saved) throw std::runtime_error ("Router: identity key persistence failed");
 }
@@ -1600,7 +1745,21 @@ int RouterContext::GetCongestionLevel (bool longTerm) const
 void RouterContext::HandleI2NPMessage (const uint8_t * buf, size_t len)
 {
 	auto msg = CreateI2NPMessage (buf, GetI2NPMessageLength (buf, len));
-	if (msg) msg->fromClove = true;
+	if (msg)
+	{
+		msg->fromClove = true;
+		// The enclosing garlic's tunnel pointer is not visible here; the
+		// decrypt entry point recorded it for the duration of this call.
+		msg->fromTunnel = g_IncomingGarlicFromTunnel;
+	}
+	else
+	{
+		static I2NPDropCounter cloveAllocationDrops;
+		if (cloveAllocationDrops.Record ())
+			LogPrint (eLogError, "Router: Can't allocate a clove message of ", len, " bytes (",
+				cloveAllocationDrops.GetCount (), " dropped)");
+		return;
+	}
 	i2p::HandleI2NPMessage (msg);
 }
 
@@ -1621,8 +1780,16 @@ bool RouterContext::HandleCloveI2NPMessage (I2NPMessageType typeID, const uint8_
 			return true;
 	}
 	auto msg = CreateI2NPMessage (typeID, payload, len, msgID);
-	if (!msg) return false;
+	if (!msg)
+	{
+		static I2NPDropCounter cloveAllocationDrops;
+		if (cloveAllocationDrops.Record ())
+			LogPrint (eLogError, "Router: Can't allocate clove message type ", (int)typeID, " of ", len,
+				" bytes (", cloveAllocationDrops.GetCount (), " dropped)");
+		return false;
+	}
 	msg->fromClove = true;
+	msg->fromTunnel = g_IncomingGarlicFromTunnel;
 	i2p::HandleI2NPMessage (msg);
 	return true;
 }
@@ -1652,6 +1819,14 @@ void RouterContext::PostGarlicMessage (std::shared_ptr<I2NPMessage> msg)
 		return;
 	}
 	buf += 4;
+	// Publish the enclosing garlic's delivery path for the clove callbacks
+	// below. Direct transport garlic has no InboundTunnel; a tunnel-delivered
+	// one is marked so a clove cannot be mistaken for a direct message. A
+	// garlic clove can itself contain a garlic message, so the marker has to
+	// survive that nesting as well.
+	const bool previousOrigin = g_IncomingGarlicFromTunnel;
+	g_IncomingGarlicFromTunnel = msg->from != nullptr || msg->fromTunnel;
+	auto restoreOrigin = i2p::modern::ScopeExit ([previousOrigin] { g_IncomingGarlicFromTunnel = previousOrigin; });
 	if (!HandleECIESx25519TagMessage (buf, len)) // try tag first
 	{
 		// then Noise_N one-time decryption
@@ -1673,9 +1848,14 @@ void RouterContext::ProcessDeliveryStatusMessage (std::shared_ptr<I2NPMessage> m
 
 void RouterContext::PostDeliveryStatusMessage (std::shared_ptr<I2NPMessage> msg)
 {
-	if (!msg || msg->GetLength () < I2NP_HEADER_SIZE + DELIVERY_STATUS_SIZE)
+	// Java DeliveryStatusMessage is exactly msgID (4) + timestamp (8). A
+	// different length means the layout is not the one this handler reads.
+	if (!msg || msg->GetLength () < I2NP_HEADER_SIZE || !IsValidDeliveryStatusPayload (msg->GetPayloadLength ()))
 	{
-		LogPrint (eLogWarning, "Router: truncated DeliveryStatus message");
+		static I2NPDropCounter badDeliveryStatus;
+		if (badDeliveryStatus.Record ())
+			LogPrint (eLogWarning, "Router: DeliveryStatus message is not ", DELIVERY_STATUS_SIZE, " bytes (",
+				badDeliveryStatus.GetCount (), " such messages)");
 		return;
 	}
 	if (m_PublishReplyToken == bufbe32toh (msg->GetPayload () + DELIVERY_STATUS_MSGID_OFFSET))

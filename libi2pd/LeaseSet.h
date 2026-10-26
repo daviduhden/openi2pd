@@ -21,6 +21,7 @@
 #include <set>
 #include <map>
 #include <memory>
+#include <functional>
 #include "Identity.h"
 #include "Timestamp.h"
 #include "I2PEndian.h"
@@ -41,6 +42,11 @@ namespace tunnel
 namespace data
 {
 	const int LEASE_ENDDATE_THRESHOLD = 51000; // in milliseconds
+
+	// True when this codebase can use the type as the active LeaseSet2
+	// encryptor. Reserved EC types and unsupported hybrid sets are false even
+	// though they may be parsed for compatibility.
+	bool IsSelectableLS2EncryptionKeyType (CryptoKeyType keyType);
 	struct Lease
 	{
 		IdentHash tunnelGateway;
@@ -205,6 +211,9 @@ namespace data
 		// LeaseSet2 options mapping (proposal 167 HostReply types 2-4).
 		const i2p::util::Mapping & GetProperties () const { return m_Properties; };
 		bool IsPublishedEncrypted () const override { return m_IsPublishedEncrypted; };
+		// Key must point to at least the advertised section length for `type`.
+		// Unknown types are compared with their opaque wire length, matching
+		// Java's List of PublicKey(type, data) entries.
 		bool IsEncryptionKey (CryptoKeyType type, const uint8_t * key) const override;
 		size_t GetNumEncryptionKeys () const { return m_EncryptionKeys.size (); };
 		CryptoKeyType GetEncryptionKeyType (size_t index) const

@@ -44,21 +44,6 @@ namespace data
 			return keyType >= SIGNING_KEY_TYPE_RSA_SHA256_2048 && keyType <= SIGNING_KEY_TYPE_RSA_SHA512_4096;
 		}
 
-		bool IsSelectableLS2EncryptionKeyType (CryptoKeyType keyType)
-		{
-			switch (keyType)
-			{
-			case CRYPTO_KEY_TYPE_ELGAMAL:
-			case CRYPTO_KEY_TYPE_ECIES_X25519_AEAD: return true;
-#if OPENSSL_PQ
-			case CRYPTO_KEY_TYPE_ECIES_MLKEM512_X25519_AEAD:
-			case CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD:
-			case CRYPTO_KEY_TYPE_ECIES_MLKEM1024_X25519_AEAD: return i2p::crypto::IsMLKEMSupported (keyType);
-#endif
-			default: return false;
-			}
-		}
-
 		// Java EncType.EC_P256 (code 1) carries a 64-byte uncompressed point
 		// on the wire. GetCryptoPublicKeyLen() reports 256 for this type only
 		// to keep the legacy 256-byte key file layout; LS2 uses the wire size.
@@ -104,6 +89,21 @@ namespace data
 				if (!mapping.Insert (key, value)) return false; // duplicate key
 			}
 			return offset == end;
+		}
+	}
+
+	bool IsSelectableLS2EncryptionKeyType (CryptoKeyType keyType)
+	{
+		switch (keyType)
+		{
+		case CRYPTO_KEY_TYPE_ELGAMAL:
+		case CRYPTO_KEY_TYPE_ECIES_X25519_AEAD: return true;
+#if OPENSSL_PQ
+		case CRYPTO_KEY_TYPE_ECIES_MLKEM512_X25519_AEAD:
+		case CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD:
+		case CRYPTO_KEY_TYPE_ECIES_MLKEM1024_X25519_AEAD: return i2p::crypto::IsMLKEMSupported (keyType);
+#endif
+		default: return false;
 		}
 	}
 
@@ -621,15 +621,17 @@ namespace data
 					expectedKeyLen);
 				return 0;
 			}
-			if (expectedKeyLen)
-			{
-				// Preserve every section in wire order. Java keeps a List and
-				// does not reject a repeated type; overwriting an earlier entry
-				// would make IsEncryptionKey() reject a key the publisher (and
-				// the peer's ratchet) actually advertised.
-				m_EncryptionKeys.push_back (
-					{ keyType, std::vector<uint8_t> (buf + offset, buf + offset + encryptionKeyLen) });
-			}
+			// Preserve every section in wire order, including an unknown type.
+			// Java LeaseSet2 keeps every advertised key in a List and only
+			// rejects a known type whose explicit length does not match, so
+			// GetNumEncryptionKeys()/IsEncryptionKey() must see unknown types
+			// too. They are retained inert: no encryptor is created for them
+			// because IsSelectableLS2EncryptionKeyType() refuses every type
+			// without a local implementation. Overwriting an earlier entry
+			// would also make IsEncryptionKey() reject a key the publisher
+			// (and the peer's ratchet) actually advertised.
+			m_EncryptionKeys.push_back (
+				{ keyType, std::vector<uint8_t> (buf + offset, buf + offset + encryptionKeyLen) });
 			if (IsStoreLeases () && !preferredKeyFound && expectedKeyLen && // create encryptor with leases only
 				IsSelectableLS2EncryptionKeyType (keyType) && (!dest || dest->SupportsEncryptionType (keyType)))
 			{
@@ -674,6 +676,14 @@ namespace data
 		}
 		if ((size_t)numLeases * LEASE2_SIZE > len - offset) return 0;
 		auto ts = i2p::util::GetMillisecondsSinceEpoch ();
+		// Deliberate divergence from Java 2.14.0: Java's standard LS2
+		// validation checks the individual leases and does not enforce the
+		// signed header `expires` on receipt. This node also rejects a header
+		// that has already expired and caps one that is too far in the future,
+		// because IsExpired()/cleanup are header-based here and a stored entry
+		// that never expires would keep being served. Do not relax these two
+		// checks without replacing the expiry rule used for storage and
+		// serving.
 		// KademliaNetworkDatabaseFacade.MAX_LEASE_FUTURE plus clock fudge.
 		// The old 12-minute check rejected valid LS2s from peers whose clock
 		// was a few minutes fast.
@@ -787,14 +797,28 @@ namespace data
 			if (endDate + LEASESET2_CLOCK_FUDGE > ts) hasCurrentEntry = true;
 			offset += META_LEASE_SIZE;
 		}
-		// Java's validate() uses min(earliest entry, published) for the age
-		// check and min(latest entry, header expiration) for freshness. A
-		// child entry may legitimately outlive the header; only the minimum
-		// bounds the MetaLeaseSet itself.
-		if (std::min (latestEntry, expiration) > ts + LEASESET2_META_MAX_FUTURE + LEASESET2_CLOCK_FUDGE)
+		// Java's MetaLeaseSet.readBytes() adds every entry through
+		// LeaseSet2.addLease(), which rewrites _expires to the latest entry,
+		// and MetaLeaseSet.writeBytesWithoutSig() re-serialises the signed
+		// header from that value. verifySignature() therefore compares the
+		// received bytes with the re-serialised ones, so a Meta LS2 is only
+		// accepted when the signed header `expires` equals
+		// latestEntry - published exactly, in either direction. Clamping the
+		// local copy instead let this node store, flood and serve a Meta LS2
+		// that every Java peer rejects as a bad signature.
+		if (expiration != latestEntry)
 		{
-			LogPrint (eLogWarning, "LeaseSet2: Meta latest lease/expiration is from future ",
-				std::min (latestEntry, expiration));
+			LogPrint (eLogWarning, "LeaseSet2: Meta expiration ", expiration / 1000LL,
+				" doesn't match the latest entry ", latestEntry / 1000LL);
+			return 0;
+		}
+		// Java's validate() uses min(earliest entry, published) for the age
+		// check and min(latest entry, header expiration) for freshness. Both
+		// bounds now agree by construction, so the canonical header value is
+		// sufficient here.
+		if (expiration > ts + LEASESET2_META_MAX_FUTURE + LEASESET2_CLOCK_FUDGE)
+		{
+			LogPrint (eLogWarning, "LeaseSet2: Meta latest lease/expiration is from future ", expiration);
 			return 0;
 		}
 		if (earliestEntry + LEASESET_MAX_LEASE_AGE <= ts)
@@ -811,19 +835,18 @@ namespace data
 		// so cross-type LS1/Meta replacement must compare this value rather
 		// than the zero sentinel used for encrypted outer layers.
 		SetEarliestLeaseDate (earliestEntry);
-		// MetaLeaseSet.addLease() also rewrites _expires to the latest entry,
-		// overriding a longer header expires. Bound the stored/served lifetime
-		// to the last usable child entry.
-		if (latestEntry && latestEntry < GetExpirationTime ()) SetExpirationTime (latestEntry);
-		// Revocations are validated for length but not applied. Java 2.14.0
-		// also leaves them as a TODO, and its verification re-serializes with
-		// count 0, so a Java peer rejects any nonzero revocation list. Keep
-		// accepting the proposal-123 form for future senders but document the
-		// serving-direction difference; no current implementation emits it.
+		// writeBytesWithoutSig() always writes a zero revocation count, so
+		// Java's re-serialisation cannot reproduce a signed buffer that
+		// carries revocations and verifySignature() fails for any count > 0.
+		// Java 2.14.0 also leaves revocation processing as a TODO; refuse the
+		// list rather than accepting a shape no peer can verify.
 		if (offset + 1 > len) return 0;
 		uint8_t numRevocations = buf[offset++];
-		if ((size_t)numRevocations * 32 > len - offset) return 0;
-		offset += (size_t)numRevocations * 32;
+		if (numRevocations)
+		{
+			LogPrint (eLogWarning, "LeaseSet2: Meta revocations are not accepted ", (int)numRevocations);
+			return 0;
+		}
 		return offset;
 	}
 
@@ -1171,16 +1194,20 @@ namespace data
 	{
 		if (!key) return false;
 		// Do not assume X25519: ML-KEM and future key types have other
-		// lengths. Compare against the stored LS2 wire key length.
-		auto keyLen = GetLS2PublicKeyLen (type);
-		if (!keyLen) return false;
+		// lengths. Compare against the stored LS2 wire section instead of a
+		// computed length so an unknown type is matched with the opaque length
+		// the publisher advertised, exactly like Java's List comparison.
+		// Whether the type is usable is a separate question (see
+		// IsSelectableLS2EncryptionKeyType).
 		// Every advertised section is kept, including a repeated type. Java's
 		// List may contain the same type twice and either key can be the one
 		// the peer's ratchet selected, so match any section rather than only
 		// the last one.
 		for (const auto & section : m_EncryptionKeys)
-			if (section.type == type && section.key.size () == keyLen && !memcmp (section.key.data (), key, keyLen))
-				return true;
+		{
+			if (section.type != type || section.key.empty ()) continue;
+			if (!memcmp (section.key.data (), key, section.key.size ())) return true;
+		}
 		return false;
 	}
 
@@ -1751,7 +1778,9 @@ namespace data
 		if (authType == ENCRYPTED_LEASESET_AUTH_TYPE_DH)
 		{
 			i2p::crypto::X25519Keys ek;
-			ek.GenerateKeys (); // esk and epk
+			// A failed generation leaves a zeroed public key; the existing
+			// zero check below then reports the failure to the caller.
+			if (!ek.GenerateKeys ()) return false; // esk and epk
 			if (i2p::data::Tag<32> (ek.GetPublicKey ()).IsZero ()) return false;
 			memcpy (authData, ek.GetPublicKey (), 32);
 			authData += 32; // epk

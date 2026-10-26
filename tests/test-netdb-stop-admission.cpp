@@ -32,6 +32,7 @@ struct NetDbLifecycleTestAccess
 	{
 		return database.ShouldThrottleFlood (hash);
 	}
+	static size_t QueueSize (NetDb & database) { return database.m_Queue.GetSize (); }
 };
 }
 
@@ -47,10 +48,23 @@ int main ()
 
 	i2p::data::IdentHash hash;
 	hash.Fill (0x42);
-	for (int i = 0; i < 14; ++i) assert (!Access::LookupThrottled (database, hash));
+	// The fixture never marks the router as a floodfill, so the Java
+	// non-floodfill lookup budget applies.
+	for (uint32_t i = 0; i < i2p::data::NETDB_LOOKUP_THROTTLE_NON_FLOODFILL; ++i)
+		assert (!Access::LookupThrottled (database, hash));
 	assert (Access::LookupThrottled (database, hash));
 	for (int i = 0; i < 3; ++i) assert (!Access::FloodThrottled (database, hash));
 	assert (Access::FloodThrottled (database, hash));
+
+	// Bounded admission: a burst larger than the cap is partially rejected and
+	// Stop() drains whatever was accepted. No worker is started.
+	{
+		Access::OpenAdmission (database);
+		for (size_t i = 0; i < i2p::data::NETDB_MAX_QUEUED_MESSAGES + 100; ++i) database.PostI2NPMsg (message);
+		assert (Access::QueueSize (database) == i2p::data::NETDB_MAX_QUEUED_MESSAGES);
+		database.Stop ();
+		assert (message.use_count () == 1);
+	}
 
 	for (int round = 0; round < 4; ++round)
 	{

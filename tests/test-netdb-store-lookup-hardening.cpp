@@ -4,7 +4,10 @@
  *
  * openi2pd: test netdb store lookup hardening.
  *
- * Checks netDb store replacement: future or badly signed RouterInfos and stale lease-sets must not erase valid entries, and floodfill membership must follow eligibility.
+ * Checks netDb store replacement: future or badly signed RouterInfos and stale
+ * lease-sets must not erase valid entries, a replaced RouterInfo is installed
+ * as one validated generation, and floodfill membership must follow
+ * eligibility.
  *
  */
 
@@ -210,13 +213,16 @@ void TestRouterInfoReplacementPreservesValidEntry ()
 	assert (!db.AddRouterInfo (ident, badSignature.data (), badSignature.size ()));
 	assert (db.FindRouter (ident) == original);
 
-	// A valid newer RI replaces the entry contents. The stored object is
-	// updated in place so existing shared_ptr holders see the new state.
+	// A valid newer RI is installed as the already-validated candidate. The
+	// map now publishes one generation instead of mutating the old object under
+	// the container lock; holders of the previous shared_ptr keep the old
+	// descriptor, like the LeaseSet replacement path.
 	auto newerBuffer = BuildRouterInfo (keys, now, false, "2.13.0");
 	assert (db.AddRouterInfo (ident, newerBuffer.data (), newerBuffer.size ()));
 	auto newer = db.FindRouter (ident);
-	assert (newer == original);
+	assert (newer != original);
 	assert (newer->GetTimestamp () == now);
+	assert (original->GetTimestamp () == now - 60 * 1000);
 }
 
 void TestFloodfillMembershipFollowsEligibility ()
@@ -385,14 +391,40 @@ void TestDatabaseLookupReplyKeyParser ()
 	assert (!ParseDatabaseLookupReplyKey (block.data (), 33, i2p::DATABASE_LOOKUP_RATCHET_FLAG, parsed));
 	assert (!ParseDatabaseLookupReplyKey (block.data (), 33 + 7, i2p::DATABASE_LOOKUP_RATCHET_FLAG, parsed));
 
-	// 0x12: proposal 154 derived keys are TBD. There is no tag/count and no
-	// specified KDF, so this must fail closed instead of producing a reply.
+	// 0x12: proposal 154 derived keys are TBD. Java 2.14.0 parses the mode but
+	// has no sender/KDF and answers in cleartext; this implementation stays
+	// fail-closed and must never produce a cleartext reply.
+	const uint8_t derivedKeyFlags = i2p::DATABASE_LOOKUP_ENCRYPTION_FLAG | i2p::DATABASE_LOOKUP_RATCHET_FLAG;
 	block[32] = 0;
-	assert (!ParseDatabaseLookupReplyKey (
-		block.data (), 32, i2p::DATABASE_LOOKUP_ENCRYPTION_FLAG | i2p::DATABASE_LOOKUP_RATCHET_FLAG, parsed));
+	assert (!ParseDatabaseLookupReplyKey (block.data (), 32, derivedKeyFlags, parsed));
+	assert (parsed.mode == DatabaseLookupReplyKey::Mode::None);
+	assert (!CanEncryptDatabaseLookupReply (derivedKeyFlags, parsed));
+	// The same matrix with a spurious count byte: no value of it may be read as
+	// a usable tag count or as an ElGamal/ECIES key block.
+	for (uint8_t count : { uint8_t (1), uint8_t (2), i2p::DATABASE_LOOKUP_MAX_NUM_TAGS, uint8_t (0xFF) })
+	{
+		block[32] = count;
+		for (size_t len : { size_t (32), size_t (33), size_t (33 + 8), size_t (33 + 32) })
+		{
+			assert (!ParseDatabaseLookupReplyKey (block.data (), len, derivedKeyFlags, parsed));
+			assert (parsed.mode == DatabaseLookupReplyKey::Mode::None);
+			assert (!CanEncryptDatabaseLookupReply (derivedKeyFlags, parsed));
+		}
+	}
 
 	// A 0x10-only reply must not be parsed as an ElGamal tag block.
 	assert (!ParseDatabaseLookupReplyKey (block.data (), 33 + 8, i2p::DATABASE_LOOKUP_ENCRYPTION_FLAG, parsed));
+	assert (parsed.mode == DatabaseLookupReplyKey::Mode::None);
+
+	// A successful parse always yields an encrypting mode, so a lookup that
+	// requested an encrypted reply can never fall back to cleartext.
+	block[32] = 1;
+	assert (ParseDatabaseLookupReplyKey (block.data (), 33 + 32, i2p::DATABASE_LOOKUP_ENCRYPTION_FLAG, parsed));
+	assert (CanEncryptDatabaseLookupReply (i2p::DATABASE_LOOKUP_ENCRYPTION_FLAG, parsed));
+	assert (ParseDatabaseLookupReplyKey (block.data (), 33 + 8, i2p::DATABASE_LOOKUP_RATCHET_FLAG, parsed));
+	assert (CanEncryptDatabaseLookupReply (i2p::DATABASE_LOOKUP_RATCHET_FLAG, parsed));
+	assert (ParseDatabaseLookupReplyKey (nullptr, 0, 0, parsed));
+	assert (CanEncryptDatabaseLookupReply (0, parsed));
 }
 }
 

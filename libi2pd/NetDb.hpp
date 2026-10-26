@@ -25,10 +25,13 @@
 #include <thread>
 #include <mutex>
 #include <future>
+#include <condition_variable>
 #include <random>
 #include <memory>
 #include <utility>
 #include <vector>
+#include <functional>
+#include <list>
 
 #include "Base.h"
 #include "Gzip.h"
@@ -75,6 +78,21 @@ namespace data
 	const int NETDB_NEXT_DAY_LEASESET_THRESHOLD = 10; // in minutes
 	const int NETDB_MIN_PERSIST_INTERVAL = 15; // 15 secs in seconds
 	const int NETDB_MAX_PERSIST_INTERVAL = 1800; // 30 minutes in seconds
+	// Java LookupThrottler: a floodfill serves more lookups than an ordinary
+	// router. Both limits share the same 120-second per-reply-tunnel window.
+	const uint32_t NETDB_LOOKUP_THROTTLE_FLOODFILL = 14;
+	const uint32_t NETDB_LOOKUP_THROTTLE_NON_FLOODFILL = 3;
+	// Hard caps for entries that need local work. The queue admission cap keeps
+	// a burst of DatabaseStore/DatabaseLookup messages from growing the netDb
+	// backlog without bound; the store caps bound the in-memory RouterInfo map
+	// for new, unsolicited entries (an update of an existing key is always
+	// allowed, and the reseed insert path bypasses the store cap).
+	const size_t NETDB_MAX_QUEUED_MESSAGES = 1024;
+	const size_t NETDB_MAX_ROUTER_INFOS = 1000;
+	const size_t NETDB_MAX_ROUTER_INFOS_FLOODFILL = 4000;
+	// Java validate() applies its short-freshness predicates only after an hour
+	// of uptime, when the local clock and peer view can be trusted.
+	const uint32_t NETDB_JAVA_UP_LONG_ENOUGH = 60 * 60; // in seconds
 
 	/** function for visiting a leaseset stored in a floodfill */
 	typedef std::function<void (const IdentHash, std::shared_ptr<LeaseSet>)> LeaseSetVisitor;
@@ -117,14 +135,95 @@ namespace data
 	bool ParseDatabaseLookupReplyKey (
 		const uint8_t * block, size_t len, uint8_t flags, DatabaseLookupReplyKey & replyKey);
 
-	// Java drops a DatabaseStore carrying any non-zero reply token when it
-	// arrives through a tunnel or a garlic clove: otherwise a last hop could
-	// make the router reflect DeliveryStatus messages to an arbitrary reply
-	// hash/tunnel. Only a direct store may carry a token.
-	inline bool IsTunnelDatabaseStoreAccepted (bool fromTunnel, uint32_t replyToken)
+	/**
+	 * True when the parsed reply key can encrypt the reply. A lookup that
+	 * requested an encrypted reply (bit 1 or bit 4) must never be answered in
+	 * cleartext, so callers drop the message when this returns false.
+	 *
+	 * Parity note: Java 2.14.0 parses the derived-key flag 0x12 (bits 4 and 1)
+	 * but has no sender/KDF for it, so a Java floodfill answers such a lookup
+	 * in cleartext. This implementation is deliberately fail-closed and drops
+	 * it instead. No KDF is invented, and the wire format is unchanged.
+	 */
+	inline bool CanEncryptDatabaseLookupReply (uint8_t flags, const DatabaseLookupReplyKey & replyKey)
 	{
-		return !fromTunnel || replyToken == 0;
+		const bool requested = (flags & (DATABASE_LOOKUP_ENCRYPTION_FLAG | DATABASE_LOOKUP_RATCHET_FLAG)) != 0;
+		return !requested || replyKey.mode != DatabaseLookupReplyKey::Mode::None;
 	}
+
+	/**
+	 * Delivery path of a DatabaseStore/DatabaseLookup.
+	 *
+	 * Java's InboundMessageDistributor treats a message that crossed an I2NP
+	 * tunnel differently from one received directly from a peer. A garlic
+	 * delivered directly (HandleGarlicMessageJob) counts as direct; a clove of
+	 * a tunnel-delivered garlic does not.
+	 */
+	enum class DatabaseStoreOrigin : uint8_t
+	{
+		Direct = 0, // direct transport, not inside garlic
+		DirectGarlic, // clove of a garlic received directly from a peer
+		Tunnel // I2NP tunnel, directly or via a tunnel-delivered garlic
+	};
+
+	inline DatabaseStoreOrigin GetDatabaseStoreOrigin (const I2NPMessage & msg)
+	{
+		if (msg.fromTunnel || msg.from) return DatabaseStoreOrigin::Tunnel;
+		return msg.fromClove ? DatabaseStoreOrigin::DirectGarlic : DatabaseStoreOrigin::Direct;
+	}
+
+	inline bool IsDirectDatabaseStoreOrigin (DatabaseStoreOrigin origin)
+	{
+		return origin != DatabaseStoreOrigin::Tunnel;
+	}
+
+	/**
+	 * Java InboundMessageDistributor/HandleDatabaseStoreMessageJob: only a
+	 * direct store may carry a reply token and be acknowledged/relayed. A
+	 * tunnel-origin store still keeps its entry, but the token, reply tunnel
+	 * and gateway are cleared, no DeliveryStatus is sent and nothing is
+	 * flooded, so a last hop cannot reflect a DeliveryStatus to an arbitrary
+	 * reply hash/tunnel.
+	 */
+	inline bool KeepsDatabaseStoreReplyToken (DatabaseStoreOrigin origin, uint32_t replyToken)
+	{
+		return IsDirectDatabaseStoreOrigin (origin) && replyToken != 0;
+	}
+
+	// A LeaseSet is stored only when the DatabaseStore itself was direct; a
+	// tunnel-delivered one is answered by the tunnel's originator, not us.
+	inline bool AcceptsUnsolicitedDatabaseStore (DatabaseStoreOrigin /* origin */)
+	{
+		// Java InboundMessageDistributor stores a tunnel-delivered DatabaseStore
+		// after clearing its reply fields; only the acknowledgement depends on
+		// the origin. Keep this explicit so a future change cannot reintroduce
+		// the old "drop every tunnel store" rule, which broke LeaseSet
+		// publication and floodfill propagation.
+		return true;
+	}
+
+	/**
+	 * Java PeerState.gotRI/PeerState2.gotRI admission for the request-flood
+	 * bit: only a floodfill forwards a received RouterInfo, and never for an
+	 * operator-blocked or runtime-banned key. The per-key FloodThrottler is
+	 * charged afterwards by NetDb::ShouldThrottleFlood().
+	 */
+	bool IsRouterInfoFloodAdmitted (bool floodfillEnabled, const IdentHash & ident);
+
+	/** Classification of a file found under the netDb hashed storage root. */
+	enum class RouterInfoFileKind : uint8_t
+	{
+		Load = 0, // exact routerInfo-<base64 identity hash>.dat
+		Staging, // interrupted atomic write (routerInfo-*.dat.tmp-<pid>-<seq>)
+		Foreign // not written by this storage; left untouched
+	};
+
+	/**
+	 * Classify a netDb storage path and, for Load, return the expected base64
+	 * identity hash. A cached RouterInfo is only accepted when its file name
+	 * still matches the identity hash of the parsed descriptor.
+	 */
+	RouterInfoFileKind ClassifyRouterInfoFile (const std::string & path, std::string & identBase64);
 
 	class NetDb
 	{
@@ -144,6 +243,11 @@ namespace data
 		// closest-floodfill selection. Used by the SSU2 request-flood flag;
 		// the netDb remains the owner of the actual flood routing.
 		bool FloodRouterInfo (std::shared_ptr<const RouterInfo> router);
+		// Transport-initiated flood (NTCP2/SSU2 request-flood bit). Applies the
+		// Java floodfill/shouldThrottleFlood admission before flooding; returns
+		// false when the request was refused (not a floodfill, banned key, or
+		// throttled). The DatabaseStore path keeps its own accounting.
+		bool FloodRouterInfoConditional (std::shared_ptr<const RouterInfo> router);
 		bool AddLeaseSet (const IdentHash & ident, const uint8_t * buf, int len);
 		bool AddLeaseSet2 (const IdentHash & ident, const uint8_t * buf, int len, uint8_t storeType);
 		std::shared_ptr<RouterInfo> FindRouter (const IdentHash & ident) const;
@@ -177,6 +281,16 @@ namespace data
 		void PostDatabaseSearchReplyMsg (std::shared_ptr<const I2NPMessage> msg); // to NetdbReq thread
 
 		void Reseed ();
+		// Non-blocking reseed request for administrative callers (TUI, Android,
+		// I2PControl). Returns false when reseed is disabled or when a job is
+		// already running; the caller is never blocked. The owned job is
+		// cancelled and joined by Stop().
+		bool RequestReseed ();
+		// Bounded, non-secret administrative view. Never waits for the job.
+		ReseedState GetReseedState () const;
+		// Test seam: replaces the transport, clock and source decisions so a
+		// regression never needs a network or a configuration file.
+		void SetReseedTestHooks (const ReseedTestHooks & hooks);
 		Families & GetFamilies () { return m_Families; };
 
 		// Counts for administrative interfaces. The containers are
@@ -219,19 +333,15 @@ namespace data
 
 		void ClearRouterInfos ()
 		{
-			// Called by Reseeder while the netDb/transport threads may still
-			// look up or insert RouterInfos. Keep the same router -> floodfill
-			// lock order as AddRouterInfo(), and do not leave floodfill entries
-			// that reference routers removed from the map.
+			// Called by Stop() while the netDb/transport threads may still look
+			// up or insert RouterInfos. Keep the same router -> floodfill lock
+			// order as AddRouterInfo(), and do not leave floodfill entries that
+			// reference routers removed from the map.
 			std::lock_guard<std::mutex> l (m_RouterInfosMutex);
 			m_RouterInfos.clear ();
 			std::lock_guard<std::mutex> lf (m_FloodfillsMutex);
 			m_Floodfills.Clear ();
 		};
-		// Reseed path: clear remote entries but preserve the local RouterInfo
-		// (and our floodfill registration). No-op after Stop() so a late
-		// reseeder cannot wipe a freshly started netDb.
-		void ResetRemoteRouterInfos ();
 		template <typename... TArgs> std::shared_ptr<RouterInfo::Buffer> NewRouterInfoBuffer (TArgs &&... args)
 		{
 			return m_RouterInfoBuffersPool.AcquireSharedMt (std::forward<TArgs> (args)...);
@@ -243,10 +353,8 @@ namespace data
 		};
 		RouterInfo::AddressesPtr NewRouterInfoAddresses ()
 		{
-			return RouterInfo::AddressesPtr { m_RouterInfoAddressVectorsPool.AcquireMt (),
-				std::bind<void (i2p::util::MemoryPoolMt<RouterInfo::Addresses>::*) (RouterInfo::Addresses *)> (
-					&i2p::util::MemoryPoolMt<RouterInfo::Addresses>::ReleaseMt, &m_RouterInfoAddressVectorsPool,
-					std::placeholders::_1) };
+			return RouterInfo::AddressesPtr (m_RouterInfoAddressVectorsPool.AcquireMt (),
+				i2p::util::MemoryPoolMt<RouterInfo::Addresses>::Deleter { &m_RouterInfoAddressVectorsPool });
 		};
 		std::shared_ptr<Lease> NewLease (const Lease & lease) { return m_LeasesPool.AcquireSharedMt (lease); };
 		std::shared_ptr<IdentityEx> NewIdentity (const uint8_t * buf, size_t len)
@@ -273,9 +381,15 @@ namespace data
 		void Flood (const IdentHash & ident, std::shared_ptr<I2NPMessage> floodMsg, bool andNextDay = false);
 		void ManageRouterInfos ();
 		void ManageLeaseSets ();
-		void ManageRequests ();
 
 		void ReseedFromFloodfill (const RouterInfo & ri, int numRouters = 40, int numFloodfills = 20);
+
+		// Reseed internals. StartReseedLocked() requires m_ReseedMutex and
+		// returns false when reseed is disabled or already running.
+		bool StartReseedLocked ();
+		void RunReseedJob (Reseeder * reseeder, std::stop_token token);
+		void PublishReseedCompletion (const ReseedResult & result, bool cancelled);
+		void CancelReseedJob ();
 
 		std::shared_ptr<const RouterInfo> AddRouterInfo (
 			const IdentHash & ident, const uint8_t * buf, int len, bool & updated);
@@ -315,11 +429,25 @@ namespace data
 		// Admission and enqueue share one lock; Stop closes before joining/draining.
 		std::mutex m_QueueAdmissionMutex;
 		bool m_AcceptMessages = false;
+		// Cumulative count of records rejected by the bounded admission above.
+		std::atomic<uint64_t> m_DroppedQueueMessages { 0 };
+		// Cumulative count of new RouterInfos rejected by the store cap.
+		std::atomic<uint64_t> m_RejectedStoreCap { 0 };
 
 		GzipInflator m_Inflator;
+		// Reseed ownership: the job is single-flight and owns the reseeder it
+		// uses. m_ReseedMutex serializes start/stop and the test hooks; the job
+		// itself only publishes through m_ReseedStateMutex, so it never needs
+		// m_ReseedMutex and Stop()/Start() can join it while holding the lock.
 		std::unique_ptr<Reseeder> m_Reseeder;
+		std::unique_ptr<std::jthread> m_ReseedThread;
 		std::mutex m_ReseedMutex;
+		ReseedTestHooks m_ReseedHooks;
 		std::atomic<bool> m_IsReseeding { false };
+		mutable std::mutex m_ReseedStateMutex;
+		ReseedState m_ReseedState;
+		std::mutex m_ReseedDoneMutex;
+		std::condition_variable m_ReseedDone;
 		Families m_Families;
 		i2p::fs::HashedStorage m_Storage;
 		// HashedStorage is not internally synchronized. Serialize Init(),

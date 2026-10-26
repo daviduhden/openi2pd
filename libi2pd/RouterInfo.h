@@ -170,8 +170,38 @@ namespace data
 
 		struct SSUExt
 		{
-			int mtu;
+			SSUExt () = default;
+			SSUExt (const SSUExt & other)
+				: mtu (other.mtu)
+			{
+				std::lock_guard<std::mutex> l (other.mutex);
+				introducers = other.introducers;
+			}
+			SSUExt & operator= (const SSUExt &) = delete;
+
+			// The introducer list is replaced and pruned by the netDb
+			// maintenance thread while transport threads select an introducer
+			// for a new session. Every reader takes a snapshot; every writer
+			// holds the mutex while it resizes, clears or erases.
+			std::vector<Introducer> GetIntroducers () const
+			{
+				std::lock_guard<std::mutex> l (mutex);
+				return introducers;
+			}
+			bool HasIntroducers () const
+			{
+				std::lock_guard<std::mutex> l (mutex);
+				return !introducers.empty ();
+			}
+			size_t GetNumIntroducers () const
+			{
+				std::lock_guard<std::mutex> l (mutex);
+				return introducers.size ();
+			}
+
+			int mtu = 0;
 			std::vector<Introducer> introducers;
+			mutable std::mutex mutex;
 		};
 
 		struct Address
@@ -220,7 +250,7 @@ namespace data
 			{
 				return (bool)ssu && ((published && port && !host.is_unspecified ()) || UsesIntroducer ());
 			}
-			bool UsesIntroducer () const { return (bool)ssu && !ssu->introducers.empty (); };
+			bool UsesIntroducer () const { return (bool)ssu && ssu->HasIntroducers (); };
 
 			bool IsIntroducer () const { return caps & eSSUIntroducer; };
 			bool IsPeerTesting () const { return caps & eSSUTesting; };
@@ -337,6 +367,11 @@ namespace data
 		};
 		CompatibleTransports GetPublishedTransports () const { return m_PublishedTransports.load (); };
 		bool HasValidAddresses () const { return m_SupportedTransports.load () != 0; };
+		// Java validate(): the 54-minute "introducers may have rotated" and the
+		// 75-minute "SSU only without introducers" predicates need a cheap view
+		// of the parsed addresses and introducer tags.
+		bool HasSSUIntroducers () const;
+		bool HasNTCP2Address () const;
 		// Java RouterInfo.isHidden() (2.13.0) checks both the "H" capability
 		// and a hidden certificate in the router identity.
 		bool IsHidden () const
@@ -367,6 +402,12 @@ namespace data
 
 		void SetUnreachable (bool unreachable) { m_IsUnreachable.store (unreachable); };
 		bool IsUnreachable () const { return m_IsUnreachable.load (); };
+		// A signed "netId" property that is non-zero and not ours. Such a
+		// RouterInfo is still rejected (IsUnreachable stays set), but the reason
+		// is distinguishable so NTCP2 can ban the peer with reason 17 instead of
+		// reporting a signature failure. netId=0 is never foreign.
+		bool HasForeignNetId () const { return m_HasForeignNetId.load (); };
+		bool IsForeignNetId () const { return HasForeignNetId (); };
 		void ExcludeReachableTransports (CompatibleTransports transports)
 		{
 			m_ReachableTransports.fetch_and (static_cast<CompatibleTransports> (~transports));
@@ -407,8 +448,20 @@ namespace data
 		void SetUpdated (bool updated) { m_IsUpdated.store (updated); };
 		bool SaveToFile (const std::string & fullPath);
 		static bool SaveToFile (const std::string & fullPath, std::shared_ptr<Buffer> buf);
+		/**
+		 * Persist a cached descriptor through the artifact writer. The artifact
+		 * name is the canonical base64 identity hash, so the cache file stays
+		 * netDb/routerInfo-<b64>.dat with identical bytes. A failed write keeps
+		 * the previous file intact and returns false.
+		 */
+		static bool SaveToArtifact (const std::string & identBase64, std::shared_ptr<Buffer> buf);
 
 		std::shared_ptr<RouterProfile> GetProfile () const;
+		// Non-creating lookup for callers that must not perform disk IO, such
+		// as the netDb selection filters running under a container lock. Returns
+		// the cached profile, else one already known process-wide, else null.
+		// An absent profile must be treated as reachable/real by those callers.
+		std::shared_ptr<RouterProfile> GetProfileIfExists () const;
 		void DropProfile () { m_Profile.Store (std::shared_ptr<RouterProfile> { }); };
 		bool HasProfile () const { return m_Profile.Load () != nullptr; };
 
@@ -451,7 +504,8 @@ namespace data
 	private:
 		bool LoadFile (const std::string & fullPath);
 		void ReadFromFile (const std::string & fullPath);
-		bool ReadFromBuffer (const uint8_t * buf, size_t len); // signed body only; signature already removed
+		bool ReadFromBuffer (const uint8_t * buf, size_t len,
+			bool * foreignNetId = nullptr); // signed body only; signature already removed
 		void ReadFromBuffer (bool verifySignature);
 		std::string_view ExtractString (const uint8_t * buf, size_t len, bool & valid) const;
 		std::tuple<std::string_view, std::string_view, size_t> ExtractParam (const uint8_t * buf, size_t len) const;
@@ -475,6 +529,9 @@ namespace data
 		// specialization. The mutable marker is required by const readers.
 		mutable i2p::util::AtomicSharedPtr<Addresses> m_Addresses;
 		std::atomic<bool> m_IsUpdated, m_IsUnreachable, m_IsFloodfill, m_IsBufferScheduledToDelete;
+		// Distinct from m_IsUnreachable: set when the parser saw a non-zero
+		// "netId" property that is not ours (see HasForeignNetId()).
+		std::atomic<bool> m_HasForeignNetId;
 		std::atomic<CompatibleTransports> m_SupportedTransports, m_ReachableTransports, m_PublishedTransports;
 		std::atomic<uint8_t> m_Caps;
 		std::atomic<char> m_BandwidthCap;

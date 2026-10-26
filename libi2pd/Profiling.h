@@ -122,7 +122,18 @@ namespace data
 	};
 
 	std::shared_ptr<RouterProfile> GetRouterProfile (const IdentHash & identHash);
-	bool IsRouterBanned (const IdentHash & identHash); // check only existing profiles
+	// Non-creating lookup: returns an existing in-memory profile, or null. It
+	// never creates a profile and never reads from disk, so it is safe for
+	// callers that hold a netDb container lock (selection filters).
+	std::shared_ptr<RouterProfile> GetRouterProfileIfExists (const IdentHash & identHash);
+	// Deterministic test seam: observes every profile created by
+	// GetRouterProfile() that has to load its persisted state. The observer runs
+	// before the load; nullptr restores the default (no observer).
+	void SetRouterProfileLoadObserverForTesting (std::function<void (const IdentHash &)> observer);
+	// Operator blocklist or runtime ban first, then the existing profile-tier
+	// unreachable check. Cheap and lock-free while the blocklist/runtime sets
+	// are empty; callers may use it on the transport hot path.
+	bool IsRouterBanned (const IdentHash & identHash);
 	bool IsRouterDuplicated (const IdentHash & identHash); // check only existing profiles
 	void InitProfilesStorage ();
 	// The selected root is immutable for the process lifetime; changing datadir

@@ -11,16 +11,62 @@
 
 #include <cassert>
 #include <chrono>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <span>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 
 #include "FS.h"
+#include "PersistentStorage.h"
 #include "Profiling.h"
+
+namespace
+{
+struct RecordedWrite
+{
+	bool called = false;
+	i2p::data::StorageArtifact kind = i2p::data::StorageArtifact::RouterInfoCache;
+	std::string name;
+	std::vector<uint8_t> bytes;
+};
+
+struct RecordedRemove
+{
+	bool called = false;
+	i2p::data::StorageArtifact kind = i2p::data::StorageArtifact::RouterInfoCache;
+	std::string name;
+};
+
+i2p::data::ArtifactWriter RecordingWriter (RecordedWrite & record, bool result)
+{
+	return [&record, result] (i2p::data::StorageArtifact kind, std::string_view name,
+			   std::span<const uint8_t> bytes)
+	{
+		record.called = true;
+		record.kind = kind;
+		record.name.assign (name);
+		record.bytes.assign (bytes.begin (), bytes.end ());
+		return result;
+	};
+}
+
+i2p::data::ArtifactRemover RecordingRemover (RecordedRemove & record, bool result)
+{
+	return [&record, result] (i2p::data::StorageArtifact kind, std::string_view name)
+	{
+		record.called = true;
+		record.kind = kind;
+		record.name.assign (name);
+		return result;
+	};
+}
+} // namespace
 
 int main ()
 {
@@ -31,6 +77,9 @@ int main ()
 	const auto abandonedStage = root / "peerProfiles" / "pA" / "profile-stale.txt.tmp-previous";
 	std::filesystem::create_directories (abandonedStage.parent_path ());
 	std::ofstream (abandonedStage) << "interrupted write";
+	// The direct artifact backend resolves profile files from the data
+	// directory, which the daemon sets to the same root as the storage.
+	i2p::fs::DetectDataDir (root.string (), false);
 	i2p::data::InitProfilesStorage (root.string ());
 	assert (std::filesystem::exists (abandonedStage));
 
@@ -133,6 +182,39 @@ int main ()
 	dirty.Connected ();
 	dirty.Load (ident);
 	assert (dirty.IsUpdated ());
+
+	// A delegated writer receives the profile instead of the data directory.
+	RecordedWrite write;
+	RecordedRemove remove;
+	i2p::data::InstallArtifactStorage (RecordingWriter (write, true), RecordingRemover (remove, true));
+	i2p::data::IdentHash writerIdent;
+	writerIdent.Fill (0x51);
+	i2p::data::RouterProfile delegated;
+	delegated.Connected ();
+	assert (delegated.Save (writerIdent));
+	assert (write.called);
+	assert (write.kind == i2p::data::StorageArtifact::PeerProfile);
+	assert (write.name == writerIdent.ToBase64 ());
+	const std::string delegatedIni (write.bytes.begin (), write.bytes.end ());
+	assert (delegatedIni.find ("lastupdatetimestamp=") != std::string::npos);
+	assert (delegatedIni.find ("connected=") != std::string::npos);
+	// The delegated profile was never written into the profile storage.
+	i2p::data::RouterProfile notOnDisk;
+	notOnDisk.Load (writerIdent);
+	assert (!notOnDisk.IsReal ());
+
+	// A failing writer returns false and keeps the profile dirty so the
+	// persistence pass retries instead of losing the update.
+	RecordedWrite failed;
+	i2p::data::InstallArtifactStorage (RecordingWriter (failed, false), RecordingRemover (remove, true));
+	i2p::data::RouterProfile retained;
+	retained.Connected ();
+	assert (retained.IsUpdated ());
+	assert (!retained.Save (writerIdent));
+	assert (failed.called);
+	assert (retained.IsUpdated ());
+	i2p::data::ClearArtifactStorage ();
+	assert (!i2p::data::IsArtifactStorageInstalled ());
 
 	std::filesystem::remove_all (root);
 	return 0;
