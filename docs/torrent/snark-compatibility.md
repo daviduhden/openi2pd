@@ -9,7 +9,7 @@ Documents project documentation.
 -->
 
 <!-- Copyright (c) 2026, David Uhden Collado -->
-<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- SPDX-License-Identifier: BSD-3-Clause -->
 # I2PSnark compatibility inventory
 
 Status: **implemented by static analysis where specified; pending CI

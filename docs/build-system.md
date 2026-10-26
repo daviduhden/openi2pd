@@ -183,7 +183,7 @@ Staging can select one CMake install component at a time:
 | `Libraries` | `libi2pd`, `libi2pdclient`, `libi2pdlang` and the internal privilege-separation archive |
 | `Development` | Public headers, the exported `privsep/` headers, `i2pd-targets.cmake`, `i2pdConfig.cmake` and the version file |
 | `Tools` | Native auxiliary tools, `i2pdctl`, its `i2pdctl.1` manual page and the renamed `LICENSE.i2pd-tools` |
-| `Documentation` | `ChangeLog`, `LICENSE`, `NOTICE`, `README.md`, `LICENSE.i2pd-tools`, `CC-BY-SA-4.0`, the filtered documentation tree and the branding assets |
+| `Documentation` | `ChangeLog`, `LICENSE`, `NOTICE`, `README.md`, `LICENSE.i2pd-tools`, the filtered documentation tree and the branding assets |
 | `Service` | The selected native service definition; requires `WITH_BINARY=ON` and `I2PD_INSTALL_CONFIG=ON` |
 
 Man pages are tied to the binary component rather than to
@@ -191,8 +191,8 @@ Man pages are tied to the binary component rather than to
 documentation tree still installs `i2pd.1`/`i2pd-tui.1`/`i2pdctl.1`. The tools
 licence is installed as `LICENSE.i2pd-tools` by both the `Tools` and
 `Documentation` components so a component-selective install keeps the
-attribution. The `CC-BY-SA-4.0` notice is installed by `Documentation` and is
-not a router-code licence.
+attribution. Project documentation uses BSD-3-Clause, including files with a
+file-specific SPDX declaration; no standalone CC notice file is installed.
 
 The exported package uses `configure_package_config_file`, `@PACKAGE_INIT@`
 and an exact version match,

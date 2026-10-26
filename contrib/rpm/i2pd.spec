@@ -16,7 +16,7 @@ Release:       2%{?dist}
 Summary:       C++ daemon for accessing the I2P network
 Conflicts:     i2pd-git
 
-License:       BSD-3-Clause and CC-BY-SA-4.0
+License:       BSD-3-Clause
 URL:           https://github.com/daviduhden/openi2pd
 Source0:       https://github.com/daviduhden/openi2pd/archive/%{version}/%name-%version.tar.gz
 
@@ -93,7 +93,6 @@ chrpath -d i2pd
 %{__install} -D -m 755 %{_builddir}/openi2pd-%{version}/tools/scripts/i2pdctl %{buildroot}%{_bindir}/i2pdctl
 %{__install} -D -m 644 %{_builddir}/openi2pd-%{version}/tools/LICENSE %{buildroot}%{_docdir}/i2pd/LICENSE.i2pd-tools
 %{__install} -D -m 644 %{_builddir}/openi2pd-%{version}/tools/README.md %{buildroot}%{_docdir}/i2pd/README.i2pd-tools
-%{__install} -D -m 644 %{_builddir}/openi2pd-%{version}/docs/CC-BY-SA-4.0 %{buildroot}%{_docdir}/i2pd/CC-BY-SA-4.0
 %{__install} -D -m 644 %{_builddir}/openi2pd-%{version}/contrib/openi2pd.desktop %{buildroot}%{_datadir}/applications/openi2pd.desktop
 %{__install} -D -m 644 %{_builddir}/openi2pd-%{version}/assets/branding/symbol.svg %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/openi2pd.svg
 %{__install} -D -m 644 %{_builddir}/openi2pd-%{version}/contrib/artwork/openi2pd-256.png %{buildroot}%{_datadir}/icons/hicolor/256x256/apps/openi2pd.png
@@ -154,7 +153,6 @@ getent passwd i2pd >/dev/null || \
 %doc LICENSE NOTICE README.md ChangeLog docs assets/branding contrib/i2pd.conf contrib/subscriptions.txt contrib/tunnels.conf contrib/tunnels.d
 %{_docdir}/i2pd/LICENSE.i2pd-tools
 %{_docdir}/i2pd/README.i2pd-tools
-%{_docdir}/i2pd/CC-BY-SA-4.0
 %config(noreplace) %{_sysconfdir}/i2pd/*.conf
 %config(noreplace) %{_sysconfdir}/i2pd/tunnels.conf.d/*.conf
 %config %{_sysconfdir}/i2pd/subscriptions.txt

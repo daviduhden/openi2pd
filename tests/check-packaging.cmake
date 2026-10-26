@@ -97,7 +97,7 @@ foreach(spec IN ITEMS "${rpm}" "${rpm_git}")
 endforeach()
 foreach(spec IN ITEMS "${rpm}" "${rpm_git}")
   assert_contains("${spec}" "LICENSE.i2pd-tools" "RPM specs must install the tools licence")
-  assert_contains("${spec}" "CC-BY-SA-4.0" "RPM specs must install the CC-BY-SA notice")
+  assert_absent("${spec}" "CC-BY-SA-4.0" "RPM metadata must not retain the replaced CC license")
   assert_contains("${spec}" "%{_datadir}/applications/openi2pd.desktop"
     "RPM %files must own the desktop entry")
   assert_contains("${spec}" "%{_datadir}/icons/hicolor/scalable/apps/openi2pd.svg"
@@ -125,8 +125,8 @@ assert_absent("${debian_control}" "Pre-Depends: \${misc:Pre-Depends}, adduser"
 assert_contains("${debian_control}" "\${perl:Depends}" "main package must use dh_perl substitution")
 assert_contains("${debian_i2pd_install}" "LICENSE.i2pd-tools"
   "daemon package must claim the tools licence notice")
-assert_contains("${debian_i2pd_install}" "CC-BY-SA-4.0"
-  "daemon package must claim the documentation licence notice")
+assert_absent("${debian_i2pd_install}" "CC-BY-SA-4.0"
+  "daemon package must not install a standalone CC notice")
 assert_absent("${debian_i2pd_install}" "openi2pd.desktop"
   "daemon package must not own the TUI desktop entry")
 assert_contains("${debian_tui_install}" "openi2pd.desktop"
@@ -195,7 +195,6 @@ foreach(required IN ITEMS
     "usr/share/doc/i2pd/README.md"
     "usr/share/doc/i2pd/NOTICE"
     "usr/share/doc/i2pd/LICENSE.i2pd-tools"
-    "usr/share/doc/i2pd/CC-BY-SA-4.0"
     "usr/share/doc/i2pd/docs"
     "usr/share/doc/i2pd/assets"
     "usr/share/man/man1/i2pd.1"
@@ -242,7 +241,6 @@ assert_contains("${debian_tests_control}" "systemd"
   "autopkgtest must install the unit validator")
 foreach(required IN ITEMS
     "LICENSE.i2pd-tools"
-    "CC-BY-SA-4.0"
     "docs/i18n.md"
     "apparmor_parser"
     "desktop-file-validate"
@@ -251,8 +249,6 @@ foreach(required IN ITEMS
 endforeach()
 
 # DEP-5 structure and the documentation licence split.
-assert_contains("${debian_copyright}" "Files: docs/CC-BY-SA-4.0"
-  "copyright must name the installed CC-BY-SA notice")
 assert_contains("${debian_copyright}" "Files: contrib/certificates/*"
   "copyright must describe the bundled trust anchors")
 assert_contains("${debian_copyright}" "Files: android/gradle/wrapper/*"
@@ -261,8 +257,11 @@ assert_contains("${debian_copyright}" "License: GPL-2"
   "copyright must distinguish the GPL-2 text from GPL-2+ code")
 assert_absent("${debian_copyright}" "Files: debian/changelog debian/NEWS"
   "NEWS is first-party and must not be declared GPL-2+")
-if(NOT EXISTS "${PROJECT_ROOT}/docs/CC-BY-SA-4.0")
-  message(FATAL_ERROR "the installed CC-BY-SA notice is missing")
+if(EXISTS "${PROJECT_ROOT}/CC-BY-SA-4.0")
+  message(FATAL_ERROR "standalone CC-BY-SA notice file must be absent from the repository")
+endif()
+if(EXISTS "${PROJECT_ROOT}/docs/CC-BY-SA-4.0")
+  message(FATAL_ERROR "standalone CC-BY-SA notice file must be absent from the repository")
 endif()
 
 # AppArmor profile: worker re-exec, sockets and log directory.
@@ -278,7 +277,7 @@ endforeach()
 
 # Static package and container attribution.
 assert_contains("${static_debian_docs}" "src/LICENSE" "static Debian docs")
-assert_contains("${static_debian_docs}" "src/docs/CC-BY-SA-4.0" "static Debian docs")
+assert_absent("${static_debian_docs}" "CC-BY-SA-4.0" "static Debian docs must not install a standalone CC notice")
 assert_contains("${static_debian_manpages}" "src/man/i2pd.1" "static Debian manpage")
 assert_absent("${static_debian_links}" "var/lib/i2pd/i2pd.conf"
   "static package must not recreate the removed configuration link")
@@ -286,6 +285,10 @@ assert_contains("${docker_entrypoint}" "\[ -e \"$DATA_DIR/certificates\" \]"
   "container entrypoint must not fail on a persisted certificate link")
 assert_contains("${docker}" "usr/share/licenses/i2pd/NOTICE"
   "container image must ship NOTICE")
+assert_contains("${docker}" "org.opencontainers.image.licenses=\"BSD-3-Clause\""
+  "container license metadata must match project documentation")
+assert_absent("${docker}" "CC-BY-SA-4.0"
+  "container license metadata must not retain the replaced CC license")
 
 # OpenBSD @sample targets resolve to share/examples/<absolute path>. The port
 # must install the mirrored trees, create /var/i2pd from a sample, keep the
@@ -296,8 +299,8 @@ assert_contains("${openbsd_port_make}" "share/examples/var/i2pd"
   "OpenBSD port must install the /var/i2pd sample directory")
 assert_contains("${openbsd_port_make}" "share/doc/i2pd/NOTICE"
   "OpenBSD port must install NOTICE")
-assert_contains("${openbsd_port_make}" "share/doc/i2pd/CC-BY-SA-4.0"
-  "OpenBSD port must install the CC-BY-SA notice")
+assert_absent("${openbsd_port_make}" "share/doc/i2pd/CC-BY-SA-4.0"
+  "OpenBSD port must not install a standalone CC notice")
 assert_contains("${openbsd_plist}" "@sample \${LOCALSTATEDIR}/i2pd/"
   "OpenBSD PLIST must sample the private state directory")
 assert_contains("${openbsd_plist}" "share/examples/etc/i2pd/i2pd.conf"

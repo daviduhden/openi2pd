@@ -169,6 +169,9 @@ execution. Ask for:
   callers must keep the wide value; narrowing it back to `std::string` makes
   `AcceptBound` ill-formed. `DecodeWindowsWorkerNonce` takes the narrow ASCII
   hex, so a test helper may narrow explicitly for decoding only.
+- Boost.Asio `basic_socket::native_handle()` is non-const; the local-control
+  peer-credential overload must receive a mutable accepted socket even though
+  the generic no-op overload can accept a const socket.
 
 ## Do not
 

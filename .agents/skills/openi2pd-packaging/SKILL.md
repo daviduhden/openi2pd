@@ -108,11 +108,15 @@ Ask for exact paths and package names. Do not let them run `dpkg-buildpackage`,
 - `contrib/openbsd/port/` is a merge template only; RPM/static/OpenBSD package
   builds, `lintian`, `autopkgtest`, `pkg_add` and service starts are unrun.
 - Upstream HTML/web assets and browser consoles are not package dependencies;
-  documentation remains Markdown/CC-BY-SA English; shipped UI locales are
+  documentation remains Markdown/BSD-3-Clause English; shipped UI locales are
   en/es/ru/zh-Hans, while package names, descriptions, man pages and paths stay
   English.
 - Package validation claims require the manual packaging workflow; static file
   inspection is not package validation.
+
+- The Debian workflow's dependency install must include every package in
+  `debian/control` Build-Depends, including `dh-apparmor`; otherwise
+  `dpkg-buildpackage` stops at `dpkg-checkbuilddeps` before starting a build.
 
 - systemd: `Type=exec`, `KillMode=mixed`, `KillSignal=SIGINT`,
   `TimeoutStopSec=660`, `StateDirectory`/`RuntimeDirectory`/`LogsDirectory`
@@ -153,7 +157,7 @@ Ask for exact paths and package names. Do not let them run `dpkg-buildpackage`,
 
 - CMake owns the distribution payload: `Documentation` installs
   `ChangeLog`/`LICENSE`/`NOTICE`/`README.md`, `LICENSE.i2pd-tools`,
-  `CC-BY-SA-4.0`, the filtered `docs/` tree and `assets/branding`; man pages are
+  the filtered `docs/` tree and `assets/branding`; man pages are
   owned by `Runtime` (`i2pd.1`), `Tui` (`i2pd-tui.1`) and `Tools`
   (`i2pdctl.1`), not by the optional docs block. `I2PD_INSTALL_CONFIG=OFF`
   combined with a service manager is a configure error.
@@ -179,8 +183,8 @@ Ask for exact paths and package names. Do not let them run `dpkg-buildpackage`,
   `LICENSE.i2pd-tools` and `tools/README.md` as `README.i2pd-tools` instead of
   listing both under `%doc`. The release spec must list every installed
   desktop/icon path in `%files`.
-- `docs/CC-BY-SA-4.0` is the canonical notice; do not recreate
-  `debian/CC-BY-SA-4.0`. The static Debian package keeps only the certificate
+- Project documentation declares BSD-3-Clause; no standalone CC notice file is
+  installed. The static Debian package keeps only the certificate
   compatibility link, not the removed config/tunnel links.
 
 ## Do not

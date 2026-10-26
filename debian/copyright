@@ -27,16 +27,6 @@ Comment: tools/LICENSE carries the original i2pd-reseed BSD-3-Clause notice.
  It is installed as LICENSE.i2pd-tools so it cannot overwrite the router
  LICENSE in the same documentation directory.
 
-Files: docs/file-headers.md docs/torrent/snark-compatibility.md
-Copyright: 2026 David Uhden Collado
-License: CC-BY-SA-4.0
- This documentation is licensed under the Creative Commons
- Attribution-ShareAlike 4.0 International License. The complete legal code is
- available at https://creativecommons.org/licenses/by-sa/4.0/legalcode and the
- installed notice is /usr/share/doc/i2pd/CC-BY-SA-4.0.
-Comment: Only these two documentation files declare CC-BY-SA-4.0. Every other
- first-party and imported documentation file is BSD-3-Clause.
-
 Files: docs/assets/branding/*
 Copyright: 2026 David Uhden Collado
 License: BSD-3-Clause
@@ -69,11 +59,6 @@ Copyright: 2026 David Uhden Collado <david@uhden.dev>
            2016-2023 R4SAS <r4sas@i2pmail.org>
            2017-2020 Yangfl <mmyangfl@gmail.com>
 License: BSD-3-Clause
-
-Files: docs/CC-BY-SA-4.0
-Copyright: 2026 David Uhden Collado
-License: CC-BY-SA-4.0
- Installed documentation licence notice; see the CC-BY-SA-4.0 stanza above.
 
 Files: debian/changelog
 Copyright: 2026 David Uhden Collado <david@uhden.dev>

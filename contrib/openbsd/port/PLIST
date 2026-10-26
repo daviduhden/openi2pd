@@ -33,7 +33,6 @@ share/examples/etc/login.conf.d/i2pd
 share/doc/i2pd/LICENSE
 share/doc/i2pd/NOTICE
 share/doc/i2pd/LICENSE.i2pd-tools
-share/doc/i2pd/CC-BY-SA-4.0
 share/applications/openi2pd.desktop
 share/icons/hicolor/256x256/apps/openi2pd.png
 share/icons/hicolor/scalable/apps/openi2pd.svg

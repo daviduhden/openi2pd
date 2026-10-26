@@ -241,7 +241,7 @@ jobs:
           sudo apt-get update -qq
           sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y \
             --no-install-recommends \
-            build-essential debhelper cmake ninja-build fakeroot lintian \
+            build-essential debhelper dh-apparmor cmake ninja-build fakeroot lintian \
             autopkgtest systemd shellcheck apparmor apparmor-utils \
             desktop-file-utils \
             libboost-program-options-dev libboost-json-dev libboost-url-dev \
@@ -283,7 +283,14 @@ jobs:
             exit 1
           fi
           grep -q /usr/share/doc/i2pd/LICENSE.i2pd-tools /tmp/i2pd-files
-          grep -q /usr/share/doc/i2pd/CC-BY-SA-4.0 /tmp/i2pd-files
+          if grep -q /usr/share/doc/i2pd/CC-BY-SA-4.0 /tmp/i2pd-files; then
+            echo "i2pd ships the removed standalone CC-BY-SA notice" >&2
+            exit 1
+          fi
+          if grep -q /usr/share/doc/i2pd/docs/CC-BY-SA-4.0 /tmp/i2pd-files; then
+            echo "i2pd ships the removed standalone CC-BY-SA notice" >&2
+            exit 1
+          fi
           grep -q /usr/share/doc/i2pd/docs/i18n.md /tmp/i2pd-files
           grep -q /usr/share/doc/i2pd/assets/branding/colors.md /tmp/i2pd-files
           grep -qE '/usr/share/man/man1/i2pd\.1(\.gz)?$' /tmp/i2pd-files

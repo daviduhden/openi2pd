@@ -63,7 +63,8 @@ PurpleI2P header. New fork-only files use the short `LICENSE` reference.
 | `LICENSE` | BSD-3-Clause copyright and text |
 | Upstream-derived C/C++ header/source | Holders consolidated in `LICENSE`, `NOTICE`, `debian/copyright` and provenance; source files carry the short `LICENSE` pointer |
 | `debian/copyright` | All upstream and packaging copyright holders, including Kill Your TV, hagen, R4SAS and Yangfl |
-| `docs/LICENSE.i2pd-docs-en` | BSD-3-Clause copyright for imported i2pd-docs material; first-party docs marked CC-BY-SA-4.0 retain that notice |
+| `docs/LICENSE` | BSD-3-Clause terms and attribution for imported i2pd-docs and fork-authored documentation |
+| `docs/file-headers.md`, `docs/torrent/snark-compatibility.md` | Project-authored documentation under BSD-3-Clause, with matching SPDX identifiers |
 | `docs/about/license.md` | Documentation license text |
 | `tools/LICENSE` | BSD license for imported tools (as published upstream) |
 | `Win32/Resource.rc2`, `build/win_installer.iss`, `build/build_mingw.cmd` | `LegalCopyright` / copyright notices |

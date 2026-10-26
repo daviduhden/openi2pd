@@ -22,7 +22,7 @@ provenance.
 
 | Category | Examples | Decision |
 |---|---|---|
-| Copyright / license | Holders consolidated in `LICENSE`, `NOTICE`, `debian/copyright` and provenance; imported docs BSD-3-Clause, marked first-party docs CC-BY-SA | **Preserved** for derived material; source files use the short `LICENSE` reference |
+| Copyright / license | Holders consolidated in `LICENSE`, `NOTICE`, `debian/copyright` and provenance; project documentation uses BSD-3-Clause | **Preserved** for derived material; source files use the short `LICENSE` reference |
 | Upstream provenance | GitHub URLs, i2pd-docs/tools commit pins, upstream manual links | **Preserved** (traceability/sync) |
 | I2P protocol identifiers | `i2p`, NTCP2, SSU2, netDb, LeaseSet, router hashes, crypto type names | **Unchanged** (wire compatibility) |
 | C++/ABI identifiers | `libi2pd`, `libi2pdclient`, `i2p::...` namespaces, installed headers | **Retained** for ABI/source compatibility |

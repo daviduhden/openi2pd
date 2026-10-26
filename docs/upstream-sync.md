@@ -128,7 +128,7 @@ The five tutorial diagrams under `tutorials/media/` are byte-identical to the
 pinned upstream tree. `docs/img/logo.png` and `docs/img/favicon.ico` are
 intentionally replaced by the official openi2pd assets; upstream branding is
 not treated as the fork's identity. License text is preserved unchanged in
-`LICENSE.i2pd-docs-en` and `about/license.md`.
+`LICENSE` and `about/license.md`.
 
 The old flat `tutorials/Filesharing/built-inTorrent.md` page was removed; it
 was a duplicate of the upstream nested guide. The current comparison page
@@ -143,7 +143,7 @@ add an HTML converter, JavaScript runtime or download step to the daemon build.
 ## Imported-file rules
 
 - Upstream license and copyright notices are preserved:
-  `docs/LICENSE.i2pd-docs-en`, `docs/about/license.md`,
+  `docs/LICENSE`, `docs/about/license.md`,
   `tools/LICENSE`, and copyright headers in source files.
 - Tool provenance, imported/local-only files and per-executable coverage are
   recorded in `docs/tools/provenance.md`; `tools/test-tools-inventory.cmake`

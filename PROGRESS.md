@@ -4924,6 +4924,21 @@ Status: Implemented / static; Pending CI compilation; Pending CI tests. Only
 compile-free checks ran. No compiler, configure, CTest, Gradle, device,
 package, workflow dispatch, commit or push occurred.
 
+## 2026-10-26 Project documentation BSD-3-Clause scope (static)
+
+Per the requested license consolidation, the project-authored text in
+`docs/file-headers.md` and `docs/torrent/snark-compatibility.md` now declares
+BSD-3-Clause. Their original attribution and technical references remain; the
+Snark inventory describes independently implemented behavior and does not
+include Java source text. Debian copyright, RPM and container license
+metadata, `NOTICE`, documentation policy, and the legal metadata contract now
+describe BSD-3-Clause for all project-authored documentation. Third-party
+licenses and upstream provenance remain intact.
+
+Status: Implemented / static; Pending CI compilation; Pending CI tests. Static
+review only; no license scanner, package build, workflow, or legal review was
+run.
+
 ## 2026-10-26 Compile/link audit continuation (static)
 
 Parallel subsystem reviews found two definite router-storage compile errors:
@@ -4945,3 +4960,36 @@ Status: Implemented / static; Pending CI compilation; Pending CI tests. The
 only local validation was source/interface inspection and `git diff --check`.
 No compiler, CMake configure, CTest, Gradle, project validator, workflow,
 commit or push ran.
+
+## 2026-10-26 Latest workflow failure triage (static)
+
+Read-only GitHub CLI review of the latest batch on `a2b8dc481b322db6d5997f586650766948772217`:
+Windows `40381344546`, packaging/services `40381324823`, OpenBSD `40381304032`
+and fuzzing `40381278483` failed; Linux/Android `40381250464` ended cancelled
+after its completed jobs reported failures. No workflow was dispatched or
+rerun for this triage.
+
+- **C++ compile corrections:** `Destination.cpp` omitted the final
+  `RequestLeaseSet` argument when binding the member function; `Garlic.cpp`
+  widened its cleanup snapshot to a base pointer that has no
+  `CleanupExpiredTags()` method; `SSU2Session.cpp` lacked the direct
+  `Blocklist.h` include; `TunnelPool.cpp` used an unqualified netDb constant;
+  `Streaming::IsRecentlyClosed()` and `SocksResolveCache::Lookup()` erase from
+  const cache views; and local I2PControl peer authentication called Asio's
+  non-const `native_handle()` through a const socket. The common C++ issues
+  stopped Windows, OpenBSD, Android, fuzz, Linux and package consumer builds;
+  MSVC also reported the garlic/SSU2/cache/constant errors.
+- **Packaging and static gates:** Debian stopped before building because the
+  workflow omitted `dh-apparmor`; the service-contract gate found the legal
+  notice source missing. The standalone `CC-BY-SA-4.0` and
+  `LICENSE.i2pd-docs-en` files have now been removed from the repository and
+  their standalone package-install entries removed. Existing CC SPDX
+  declarations and license metadata for the two documents remain. The i18n gate
+  falsely reported missing translations because its parser accepted only one
+  C++ literal per catalog key/value; it now joins adjacent literals. The
+  fuzzer inventory check used an invalid CMake string escape and now escapes
+  the dot correctly.
+- **Static review:** `git diff --check` only. No compiler, CMake configure,
+  CTest, Gradle, package build, project validator or workflow run was performed
+  against these corrections. CI compilation and test states remain
+  `Pending CI compilation` and `Pending CI tests`.

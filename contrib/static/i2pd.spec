@@ -15,7 +15,7 @@ Name:           i2pd
 Version:        %{ver}
 Release:        %{rel}
 Summary:        I2P router written in C++ (static build)
-License:        BSD-3-Clause and CC-BY-SA-4.0
+License:        BSD-3-Clause
 URL:            https://github.com/daviduhden/openi2pd
 Source0:        i2pd-%{_target_cpu}
 Requires(pre):  /usr/sbin/useradd
@@ -44,7 +44,6 @@ install -D -m 644 $S/contrib/i2pd.service %{buildroot}/usr/lib/systemd/system/i2
 install -D -m 644 $S/man/i2pd.1 %{buildroot}/usr/share/man/man1/i2pd.1
 install -D -m 644 $S/LICENSE %{buildroot}/usr/share/licenses/i2pd/LICENSE
 install -D -m 644 $S/NOTICE %{buildroot}/usr/share/licenses/i2pd/NOTICE
-install -D -m 644 $S/docs/CC-BY-SA-4.0 %{buildroot}/usr/share/licenses/i2pd/CC-BY-SA-4.0
 install -D -m 644 $S/ChangeLog %{buildroot}/usr/share/doc/i2pd/ChangeLog
 install -D -m 644 $S/README.md %{buildroot}/usr/share/doc/i2pd/README.md
 cp -r $S/contrib/certificates %{buildroot}/usr/share/i2pd/certificates
@@ -76,7 +75,6 @@ fi
 %files
 %license /usr/share/licenses/i2pd/LICENSE
 %license /usr/share/licenses/i2pd/NOTICE
-%license /usr/share/licenses/i2pd/CC-BY-SA-4.0
 %doc /usr/share/doc/i2pd/ChangeLog
 %doc /usr/share/doc/i2pd/README.md
 /usr/bin/i2pd

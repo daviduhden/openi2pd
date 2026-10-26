@@ -171,6 +171,12 @@ compile, run tests or run project scripts.
   container/utility used in the class body; do not rely on a sibling
   translation unit's include order.
 
+- `GarlicDestination::m_Sessions` stores `ElGamalAESSessionPtr`; keep cleanup
+  snapshots at that concrete pointer type because `CleanupExpiredTags()` is
+  not a `GarlicRoutingSession` virtual and ratchet sessions live in a separate
+  map. `std::bind` also does not apply default arguments: bind every member
+  parameter explicitly or use a lambda that calls the method.
+
 ## Do not
 
 - Do not compile, configure, run CTest, sanitizers, fuzzers or project scripts

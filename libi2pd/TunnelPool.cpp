@@ -132,7 +132,7 @@ namespace tunnel
 		}
 		// General version floor identical to NetDb random selection; a
 		// high-bandwidth peer is exempt, exactly as in NetDb::ManageRouterInfos.
-		if (router.GetVersion () < NETDB_MIN_ALLOWED_VERSION && !router.IsHighBandwidth ()) return false;
+		if (router.GetVersion () < i2p::data::NETDB_MIN_ALLOWED_VERSION && !router.IsHighBandwidth ()) return false;
 		if (router.IsHighCongestion (clientTunnel)) return false;
 		switch (role)
 		{

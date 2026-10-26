@@ -277,11 +277,11 @@ the same change when it intentionally changes a pinned contract.
   `See the LICENSE file at the top of the project tree...` reference. Do not
   reintroduce duplicated project copyright/SPDX boilerplate; the legal terms
   live in `LICENSE` and provenance remains in repository history.
-- Imported documentation is BSD-3-Clause under `docs/LICENSE.i2pd-docs-en`;
-  fork-authored documentation uses the same terms except files that explicitly
-  declare CC-BY-SA-4.0 (`docs/file-headers.md`,
-  `docs/torrent/snark-compatibility.md`). `NOTICE` records the inventory and
-  must be installed with the documentation.
+- Imported documentation is BSD-3-Clause under the terms in `LICENSE` and
+  `docs/LICENSE`;
+  fork-authored documentation uses the same BSD-3-Clause terms. Documentation
+  SPDX declarations must agree with that license. `NOTICE` records the
+  inventory and must be installed with the documentation.
   Third-party files retain their own notices; do not relicense Apache-2.0,
   BSL-1.0, Windows SDK, OpenBSD ports or imported components.
 - Preserve `LICENSE`, `NOTICE`, third-party license text and upstream
@@ -2125,15 +2125,14 @@ reintroduced.
 ## Documentation and identity consolidation (2026-10-26, static)
 
 Licensing is explicit: project code and imported documentation are
-BSD-3-Clause (`LICENSE`, `android/LICENSE`, `docs/LICENSE.i2pd-docs-en`);
-`docs/file-headers.md` and `docs/torrent/snark-compatibility.md` are
-CC-BY-SA-4.0; `tools/LICENSE` preserves the upstream BSD text and its empty
+BSD-3-Clause (`LICENSE`, `android/LICENSE`, `docs/LICENSE`);
+`docs/file-headers.md` and `docs/torrent/snark-compatibility.md` are also
+BSD-3-Clause; `tools/LICENSE` preserves the upstream BSD text and its empty
 holder/`i2pd-reseed` clause. `NOTICE` is the single inventory and must be
 installed by CMake (`Documentation`), Debian and both RPM specs. The Windows
 resource `LegalCopyright` must name both PurpleI2P and the fork holder.
 `tests/check-legal-metadata.cmake` pins the holders, SPDX lines, NOTICE,
-CC-BY-SA scope and install parity; never relicense or drop the inherited
-holders.
+BSD scope and install parity; never drop the inherited holders.
 
 `docs/i18n.md` is the single four-language policy: native/config
 `en`/`es`/`ru`/`zh-Hans`, Android `en`/`es`/`ru`/`zh-CN`, English fallback,
@@ -2205,8 +2204,11 @@ building the router. All of this remains static until that workflow passes.
 
 CMake owns the distribution payload. `Documentation` installs `ChangeLog`,
 `LICENSE`, `NOTICE`, `README.md`, `LICENSE.i2pd-tools` (renamed from
-`tools/LICENSE`), `CC-BY-SA-4.0` (from `docs/CC-BY-SA-4.0`) and the filtered
-`docs/` and `assets/branding` trees. Man pages belong to the binary component:
+`tools/LICENSE`) and the filtered `docs/` and `assets/branding` trees. The
+standalone `CC-BY-SA-4.0` notice file is not part of the repository or
+distribution; project documentation is BSD-3-Clause and SPDX declarations
+match that license.
+Man pages belong to the binary component:
 `i2pd.1` to `Runtime`, `i2pd-tui.1` to `Tui`, `i2pdctl.1` to `Tools`; they must
 not disappear when `I2PD_INSTALL_DOCS=OFF`. A service manager with
 `I2PD_INSTALL_CONFIG=OFF` is a configure error because every packaged unit

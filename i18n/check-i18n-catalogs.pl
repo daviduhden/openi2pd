@@ -80,10 +80,16 @@ sub parse_strings {
     $end = length($text) if $end < 0;
     my $block = substr( $text, $start, $end - $start );
     my %strings;
+    my $literal_run = qr/((?:"(?:[^"\\]|\\.)*"\s*)+)/;
     while (
-        $block =~ /\{\s*"((?:[^"\\]|\\.)*)"\s*,\s*"((?:[^"\\]|\\.)*)"\s*\}/g )
+        $block =~ /\{\s*$literal_run\s*,\s*$literal_run\s*\}/g )
     {
-        my ( $key, $value ) = ( unescape($1), unescape($2) );
+        my @key_parts = $1 =~ /"((?:[^"\\]|\\.)*)"/g;
+        my @value_parts = $2 =~ /"((?:[^"\\]|\\.)*)"/g;
+        my ( $key, $value ) = (
+            unescape( join( '', @key_parts ) ),
+            unescape( join( '', @value_parts ) )
+        );
         fail("duplicate key in $path: $key") if exists $strings{$key};
         $strings{$key} = $value;
     }

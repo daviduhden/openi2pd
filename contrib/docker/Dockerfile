@@ -22,7 +22,7 @@ RUN cmake -S build -B build-output -G Ninja \
 FROM alpine:latest
 LABEL org.opencontainers.image.title="openi2pd"
 LABEL org.opencontainers.image.source="https://github.com/daviduhden/openi2pd"
-LABEL org.opencontainers.image.licenses="BSD-3-Clause AND CC-BY-SA-4.0"
+LABEL org.opencontainers.image.licenses="BSD-3-Clause"
 RUN apk add --no-cache boost-program_options boost-json boost-url boost-container openssl miniupnpc zlib libstdc++ \
     && adduser -S -h /home/i2pd i2pd \
     && mkdir -p /home/i2pd/data \
@@ -35,7 +35,6 @@ COPY --from=builder /src/contrib/certificates /i2pd_certificates
 COPY --chown=i2pd:nobody contrib/docker/i2pd-docker.conf /home/i2pd/data/i2pd.conf
 COPY --from=builder /src/LICENSE /usr/share/licenses/i2pd/LICENSE
 COPY --from=builder /src/NOTICE /usr/share/licenses/i2pd/NOTICE
-COPY --from=builder /src/docs/CC-BY-SA-4.0 /usr/share/licenses/i2pd/CC-BY-SA-4.0
 COPY --chmod=755 contrib/docker/entrypoint.sh /entrypoint.sh
 VOLUME /home/i2pd/data
 EXPOSE 4444 4447 7656 2827 7654 7650

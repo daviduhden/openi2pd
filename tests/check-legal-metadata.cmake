@@ -27,9 +27,16 @@ function(assert_present text needle description)
   endif()
 endfunction()
 
+function(assert_absent text needle description)
+  string(FIND "${text}" "${needle}" position)
+  if(NOT position EQUAL -1)
+    message(FATAL_ERROR "${description}: unexpected '${needle}'")
+  endif()
+endfunction()
+
 read_required("${PROJECT_ROOT}/LICENSE" license)
 read_required("${PROJECT_ROOT}/android/LICENSE" android_license)
-read_required("${PROJECT_ROOT}/docs/LICENSE.i2pd-docs-en" docs_license)
+read_required("${PROJECT_ROOT}/docs/LICENSE" docs_license)
 read_required("${PROJECT_ROOT}/tools/LICENSE" tools_license)
 read_required("${PROJECT_ROOT}/NOTICE" notice)
 read_required("${PROJECT_ROOT}/debian/copyright" debian_copyright)
@@ -41,8 +48,22 @@ read_required("${PROJECT_ROOT}/debian/i2pd.install" debian_install)
 read_required("${PROJECT_ROOT}/contrib/rpm/i2pd.spec" rpm_spec)
 read_required("${PROJECT_ROOT}/contrib/rpm/i2pd-git.spec" rpm_git_spec)
 read_required("${PROJECT_ROOT}/contrib/static/debian/i2pd.docs" static_docs)
-read_required("${PROJECT_ROOT}/docs/CC-BY-SA-4.0" cc_notice)
 read_required("${PROJECT_ROOT}/contrib/rpm/i2pd-git.spec" rpm_git_spec_license)
+read_required("${PROJECT_ROOT}/contrib/static/i2pd.spec" static_spec)
+read_required("${PROJECT_ROOT}/contrib/docker/Dockerfile" dockerfile)
+
+file(GLOB_RECURSE repository_files LIST_DIRECTORIES FALSE "${PROJECT_ROOT}/*")
+foreach(repository_file IN LISTS repository_files)
+  if(repository_file MATCHES "/\\.git/")
+    continue()
+  endif()
+  get_filename_component(repository_filename "${repository_file}" NAME)
+  if(repository_filename STREQUAL "CC-BY-SA-4.0"
+      OR repository_filename STREQUAL "LICENSE.i2pd-docs-en")
+    message(FATAL_ERROR
+      "${repository_filename} must be absent from the repository")
+  endif()
+endforeach()
 
 # Project licensors must agree across the code, Android copy and package
 # metadata.
@@ -62,27 +83,35 @@ if(NOT root_spdx_position EQUAL -1)
 endif()
 assert_present("${android_license}" "SPDX-License-Identifier: BSD-3-Clause" "Android SPDX")
 assert_present("${tools_license}" "SPDX-License-Identifier: BSD-3-Clause" "tools SPDX")
-assert_present("${cc_notice}" "Attribution-ShareAlike 4.0" "installed CC-BY-SA notice")
 assert_present("${build_cmake}" "RENAME LICENSE.i2pd-tools" "CMake tools licence rename")
-assert_present("${build_cmake}" "docs/CC-BY-SA-4.0" "CMake CC-BY-SA install")
 assert_present("${docs_license}" "2017-2026, The PurpleI2P Project" "documentation upstream holder")
 assert_present("${debian_copyright}" "The PurpleI2P Project" "Debian upstream holder")
 assert_present("${debian_copyright}" "David Uhden Collado" "Debian fork holder")
-assert_present("${debian_copyright}" "CC-BY-SA-4.0" "Debian CC-BY-SA stanza")
+assert_absent("${debian_copyright}" "CC-BY-SA-4.0" "Debian metadata must not retain the replaced CC license")
+foreach(package_metadata IN ITEMS "${rpm_spec}" "${rpm_git_spec}" "${static_spec}" "${dockerfile}")
+  assert_present("${package_metadata}" "BSD-3-Clause" "package BSD license metadata")
+  assert_absent("${package_metadata}" "CC-BY-SA-4.0" "package metadata must not retain the replaced CC license")
+endforeach()
 
 # The Windows resource is a legal notice, not a build detail.
 assert_present("${win_resource}" "The PurpleI2P Project" "Windows LegalCopyright upstream holder")
 assert_present("${win_resource}" "David Uhden Collado" "Windows LegalCopyright fork holder")
 
-# The notice inventory and the two CC-BY-SA documents must stay explicit.
-foreach(needle IN ITEMS "BSD 3-Clause" "CC-BY-SA-4.0" "Apache License 2.0"
-    "docs/file-headers.md" "docs/torrent/snark-compatibility.md"
-    "tools/LICENSE" "android/LICENSE")
+# The notice inventory and project license scope must stay explicit.
+foreach(needle IN ITEMS "BSD-3-Clause" "tools/LICENSE" "android/LICENSE"
+    "docs/LICENSE" "debian/copyright")
   assert_present("${notice}" "${needle}" "NOTICE inventory")
 endforeach()
 assert_present("${docs_about_license}" "NOTICE" "documentation licence page NOTICE link")
-assert_present("${docs_about_license}" "CC-BY-SA-4.0" "documentation licence page CC-BY-SA scope")
-assert_present("${docs_file_headers}" "CC-BY-SA-4.0" "file-header policy CC-BY-SA scope")
+assert_absent("${notice}" "CC-BY-SA-4.0" "NOTICE must not list CC-licensed project documentation")
+assert_absent("${docs_about_license}" "CC-BY-SA-4.0" "documentation licence page must not list the replaced CC license")
+foreach(document IN ITEMS "docs/file-headers.md" "docs/torrent/snark-compatibility.md")
+  read_required("${PROJECT_ROOT}/${document}" document_license_text)
+  assert_present("${document_license_text}" "SPDX-License-Identifier: BSD-3-Clause"
+    "${document} BSD SPDX")
+  assert_absent("${document_license_text}" "CC-BY-SA-4.0"
+    "${document} must not retain the replaced CC license")
+endforeach()
 
 # Every install path must ship the notice, not only the Debian manifest.
 assert_present("${build_cmake}" "NOTICE" "CMake notice install")
@@ -91,13 +120,14 @@ assert_present("${rpm_spec}" "%doc LICENSE NOTICE" "RPM notice")
 assert_present("${rpm_git_spec}" "%doc LICENSE NOTICE" "RPM git notice")
 assert_present("${static_docs}" "src/NOTICE" "static package notice")
 assert_present("${static_docs}" "src/LICENSE" "static package licence")
-assert_present("${static_docs}" "src/docs/CC-BY-SA-4.0" "static package CC-BY-SA")
 assert_present("${rpm_git_spec_license}" "LICENSE.i2pd-tools" "RPM tools licence")
-assert_present("${rpm_git_spec_license}" "CC-BY-SA-4.0" "RPM CC-BY-SA notice")
+assert_absent("${build_cmake}" "docs/CC-BY-SA-4.0" "CMake must not install a standalone CC notice")
+assert_absent("${static_docs}" "CC-BY-SA-4.0" "static package must not ship a CC notice")
+assert_absent("${rpm_git_spec_license}" "CC-BY-SA-4.0" "RPM metadata must not retain the replaced CC license")
 
 foreach(document IN ITEMS "docs/file-headers.md" "docs/torrent/snark-compatibility.md")
   if(NOT EXISTS "${PROJECT_ROOT}/${document}")
-    message(FATAL_ERROR "declared CC-BY-SA document is missing: ${document}")
+    message(FATAL_ERROR "BSD documentation file is missing: ${document}")
   endif()
 endforeach()
 

@@ -189,11 +189,10 @@ dpkg-query -L i2pd | grep -qx '/var/lib/i2pd/certificates' \
 require_file /etc/apparmor.d/usr.bin.i2pd
 require_file /etc/logrotate.d/i2pd
 require_file /usr/share/doc/i2pd/LICENSE.i2pd-tools
-require_file /usr/share/doc/i2pd/CC-BY-SA-4.0
 require_file /usr/share/doc/i2pd/ChangeLog
 require_file /usr/share/doc/i2pd/LICENSE
 require_file /usr/share/doc/i2pd/README.md
-require_file /usr/share/doc/i2pd/docs/LICENSE.i2pd-docs-en
+require_file /usr/share/doc/i2pd/docs/LICENSE
 require_file /usr/share/doc/i2pd/docs/i18n.md
 require_file /usr/share/doc/i2pd/assets/branding/colors.md
 require_file /usr/share/doc/i2pd/copyright

@@ -354,7 +354,6 @@ endforeach()
 # documentation tree is enabled.
 foreach(payload IN ITEMS
     "RENAME LICENSE.i2pd-tools"
-    "docs/CC-BY-SA-4.0"
     "man/i2pd.1"
     "man/i2pd-tui.1"
     "man/i2pdctl.1")
@@ -449,7 +448,7 @@ endforeach()
 file(GLOB _registered_fuzzers RELATIVE "${PROJECT_ROOT}/tests/fuzz"
   "${PROJECT_ROOT}/tests/fuzz/fuzz-*.cpp")
 foreach(_source IN LISTS _registered_fuzzers)
-  string(REGEX REPLACE "\.cpp$" "" _fuzzer "${_source}")
+  string(REGEX REPLACE "\\.cpp$" "" _fuzzer "${_source}")
   if(NOT IS_DIRECTORY "${PROJECT_ROOT}/tests/fuzz/corpus/${_fuzzer}")
     message(FATAL_ERROR "fuzzer has no checked-in corpus directory: ${_fuzzer}")
   endif()

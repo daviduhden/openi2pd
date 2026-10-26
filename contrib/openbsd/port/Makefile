@@ -85,8 +85,6 @@ post-install:
 	${INSTALL_DATA} ${WRKDIST}/NOTICE ${PREFIX}/share/doc/i2pd/NOTICE
 	${INSTALL_DATA} ${WRKDIST}/tools/LICENSE \
 		${PREFIX}/share/doc/i2pd/LICENSE.i2pd-tools
-	${INSTALL_DATA} ${WRKDIST}/docs/CC-BY-SA-4.0 \
-		${PREFIX}/share/doc/i2pd/CC-BY-SA-4.0
 	${INSTALL_DATA_DIR} ${WRKINST}/etc/rc.d
 	${INSTALL_SCRIPT} ${WRKDIST}/contrib/openbsd/i2pd.rc \
 		${WRKINST}/etc/rc.d/i2pd

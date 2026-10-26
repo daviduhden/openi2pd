@@ -612,7 +612,7 @@ namespace stream
 		std::unordered_map<uint32_t, std::list<Packet *>>
 			m_SavedPackets; // receiveStreamID->packets, arrived before SYN
 		mutable std::mutex m_RecentlyClosedMutex;
-		std::unordered_map<uint32_t, uint64_t> m_RecentlyClosed; // receiveStreamID->seconds
+		mutable std::unordered_map<uint32_t, uint64_t> m_RecentlyClosed; // receiveStreamID->seconds
 		std::atomic<size_t> m_NumRejectionResets { 0 };
 		uint64_t m_LastSynRejectLogTime = 0; // in milliseconds
 		uint32_t m_NumSuppressedSynRejects = 0;

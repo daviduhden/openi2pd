@@ -45,7 +45,8 @@ ls -l /var/i2pd/i2pd.pid /var/i2pd/i2pd-tui.sock
 - Confirm `/var/i2pd/certificates` is not a leftover real directory competing
   with the packaged `/usr/local/share/i2pd/certificates` tree.
 - Confirm `/usr/local/share/doc/i2pd` contains `LICENSE`, `NOTICE`,
-  `LICENSE.i2pd-tools` and `CC-BY-SA-4.0`.
+  `LICENSE.i2pd-tools`; the two CC-licensed documents retain their SPDX
+  declarations, without a standalone notice file.
 
 ## 2. Service lifecycle
 

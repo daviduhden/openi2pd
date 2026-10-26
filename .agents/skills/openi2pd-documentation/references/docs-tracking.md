@@ -35,7 +35,8 @@ Do not convert “source exists” into “validated”.
 ## License review
 
 - First-party header uses the short LICENSE reference.
-- Documentation is CC-BY-SA-4.0 under its declared license.
+- First-party documentation uses BSD-3-Clause; its SPDX identifier, when
+  present, must match that license.
 - Third-party file retains its original notice; do not relicense.
 - Imported code/assets have provenance and license text where required.
 - Binary assets cannot carry a text header; list/exception is documented.

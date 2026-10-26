@@ -80,7 +80,8 @@ branding validators or a build.
   headers:
   `See the LICENSE file at the top of the project tree for copyright and
   license details.` Do not reintroduce duplicated SPDX/copyright boilerplate.
-- Documentation remains CC-BY-SA-4.0 as declared in its license file.
+- Project documentation uses BSD-3-Clause, including
+  `docs/file-headers.md` and `docs/torrent/snark-compatibility.md`.
   Third-party text/assets retain their own notices; never relicense Apache-2.0,
   BSL-1.0, Windows SDK, OpenBSD ports or imported components.
 - Preserve `LICENSE`, NOTICE-equivalent attribution, upstream provenance and
@@ -103,21 +104,21 @@ branding validators or a build.
 - Claims must distinguish static implementation, pending CI compilation,
   pending CI tests and validated-by-CI. Historical local-run rows in
   `docs/testing.md` are not current evidence.
-- Documentation is Markdown/MkDocs-compatible, English and CC-BY-SA-4.0;
-  UI localization is owned by `openi2pd-i18n` and does not translate docs.
+- Documentation is Markdown/MkDocs-compatible and English; preserve each
+  document's declared license. UI localization is owned by `openi2pd-i18n` and
+  does not translate docs.
   do not add HTML/JS/web assets or duplicate AGENTS policy.
 - `check-doc-links.pl`, `check-doc-nav.pl`, `agent-skills-static` and
   `language-modernization-static` are the relevant compile-free checks; the
   latter two pin exact phrases and can break on cosmetic rewording.
 - Link/nav/branding and CI validation remain pending manual Linux runs.
 
-- Licensing is split: project code and imported documentation are
-  BSD-3-Clause (`LICENSE`, `android/LICENSE`, `docs/LICENSE.i2pd-docs-en`);
-  the installed CC-BY-SA notice is `docs/CC-BY-SA-4.0` (CMake installs it as
-  `CC-BY-SA-4.0` in the documentation directory),
-  `docs/file-headers.md` and `docs/torrent/snark-compatibility.md` are
-  CC-BY-SA-4.0; `tools/LICENSE` is the upstream BSD text. `NOTICE` is the
-  inventory and is installed by CMake, Debian and both RPM specs.
+- Licensing is unified for project-authored docs: project code and documentation are
+  BSD-3-Clause (`LICENSE`, `android/LICENSE`, `docs/LICENSE`);
+  `docs/file-headers.md` and `docs/torrent/snark-compatibility.md` declare
+  BSD-3-Clause; `tools/LICENSE` is the upstream BSD text. `NOTICE` is the
+  inventory and is installed by CMake, Debian and both RPM specs. There is no
+  standalone CC-BY-SA notice file or CC-licensed project documentation.
   `tests/check-legal-metadata.cmake` pins holders, SPDX, NOTICE and the Windows
   `LegalCopyright`; do not relicense or drop the upstream holders.
 - `docs/i18n.md` is the single four-language policy: native

@@ -134,6 +134,9 @@ the text crosses a protocol/IPC boundary.
   adjacent literals before lookup, so a multi-line `tr(...)` argument is one
   key; a translation stored against only the first fragment never matches.
   `i18n/check-i18n-catalogs.pl` harvests full arguments and verifies parity.
+- The catalog checker must concatenate adjacent C++ literals in both catalog
+  keys and values as well as harvested call sites; otherwise valid multi-line
+  translations appear to be missing.
 - `SetStatus`/`BeginPrompt` translate at their boundary. `PutLine` only
   translates an exact full line and never sees the `"> "`/`"! "` status prefix,
   so a catalog entry for a status message is unreachable without the boundary

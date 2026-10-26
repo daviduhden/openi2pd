@@ -1037,7 +1037,8 @@ namespace client
 			return false;
 		}
 		boost::asio::post (m_Service,
-			std::bind (&LeaseSetDestination::RequestLeaseSet, shared_from_this (), dest, requestComplete, nullptr));
+			std::bind (&LeaseSetDestination::RequestLeaseSet, shared_from_this (), dest, requestComplete, nullptr,
+				std::vector<uint8_t> { }));
 		return true;
 	}
 

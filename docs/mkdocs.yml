@@ -142,7 +142,7 @@ nav:
       - License: about/license.md
       - Contributing: about/contributing.md
 
-copyright: BSD-3-Clause for router/tools and imported i2pd-docs; CC-BY-SA-4.0 for first-party documentation where marked.
+copyright: BSD-3-Clause for router, tools and project documentation; third-party components retain their own licenses.
 
 theme:
   name: readthedocs

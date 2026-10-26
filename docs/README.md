@@ -16,4 +16,4 @@ repository-facing pointer excluded from the MkDocs navigation; update
 
 The upstream i2pd-docs provenance and BSD-3-Clause notice are recorded in
 [`upstream-sync.md`](upstream-sync.md) and
-[`LICENSE.i2pd-docs-en`](LICENSE.i2pd-docs-en).
+[`LICENSE`](LICENSE).

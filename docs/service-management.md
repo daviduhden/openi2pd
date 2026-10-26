@@ -518,8 +518,8 @@ rather than starting the router from the desktop launcher.
 
 The package installs the AppArmor profile through `dh_apparmor` (loaded and
 reloaded by the maintainer scripts), the `i2pd`/`i2pdctl`/`i2pd-tui` man pages,
-the filtered `docs/` and `assets/` trees, `LICENSE.i2pd-tools` and
-`CC-BY-SA-4.0` under `/usr/share/doc/i2pd`, and a sysusers policy for the
+the filtered `docs/` and `assets/` trees, `docs/LICENSE` and
+`LICENSE.i2pd-tools` under `/usr/share/doc/i2pd`, and a sysusers policy for the
 service account. `i2pd-tui` carries `Breaks`/`Replaces` for the binary that
 older `i2pd` releases shipped, so an upgrade does not fail on the moved file.
 On upgrade, a real `/var/lib/i2pd/certificates` directory is moved to

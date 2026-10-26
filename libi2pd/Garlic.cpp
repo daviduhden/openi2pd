@@ -1335,7 +1335,7 @@ namespace garlic
 			// m_SessionsMutex. Calling one while holding the map lock would be the
 			// opposite order and could deadlock, so the map is only snapshotted
 			// here and every callback runs outside the lock.
-			std::vector<std::pair<i2p::data::IdentHash, GarlicRoutingSessionPtr>> sessions;
+			std::vector<std::pair<i2p::data::IdentHash, ElGamalAESSessionPtr>> sessions;
 			{
 				std::unique_lock<std::mutex> l (m_SessionsMutex);
 				sessions.reserve (m_Sessions.size ());

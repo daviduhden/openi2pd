@@ -19,6 +19,7 @@
 #include <openssl/rand.h>
 #include "Log.h"
 #include "Modern.h"
+#include "Blocklist.h"
 #include "Transports.h"
 #include "Gzip.h"
 #include "NetDb.hpp"

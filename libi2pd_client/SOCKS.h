@@ -266,7 +266,7 @@ namespace proxy
 		}
 
 		mutable std::mutex m_Mutex;
-		std::map<std::uint32_t, Entry> m_Entries;
+		mutable std::map<std::uint32_t, Entry> m_Entries;
 		std::array<std::uint8_t, 16> m_Key { };
 	};
 

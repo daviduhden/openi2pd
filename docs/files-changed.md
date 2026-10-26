@@ -299,7 +299,7 @@ version branches; comment-only changes are included:
 
 ## License header pass
 
-The current header policy uses a short `See the LICENSE file at the top of the project tree...` reference plus a file-specific description in first-party source, configuration and script files. Duplicated project copyright/SPDX blocks were removed from those files. The legal terms remain in `LICENSE`; existing third-party notices remain in place, including the Apache-2.0 Gradle wrapper, BSL-1.0 and New-BSD CMake modules, Windows SDK header, OpenBSD ports copies, fixtures and CC-BY-SA documentation.
+The current header policy uses a short `See the LICENSE file at the top of the project tree...` reference plus a file-specific description in first-party source, configuration and script files. Duplicated project copyright/SPDX blocks were removed from those files. The legal terms remain in `LICENSE`; third-party notices remain in place, including the Apache-2.0 Gradle wrapper, BSL-1.0 and New-BSD CMake modules, Windows SDK header, OpenBSD ports copies and fixtures. The two project documents formerly marked CC-BY-SA were relicensed BSD-3-Clause on 2026-10-26; historical packaging rows below record the earlier state.
 
 - `.clang-format` — C++ and Java formatting profiles for the maintained source tree.
 

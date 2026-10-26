@@ -9,7 +9,7 @@ Documents formats whose content cannot safely contain comment headers.
 -->
 
 <!-- Copyright (c) 2026, David Uhden Collado -->
-<!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
+<!-- SPDX-License-Identifier: BSD-3-Clause -->
 # File header coverage
 
 Project source, configuration, script and resource files carry a short
@@ -86,7 +86,7 @@ for third-party licenses. The supplied logo-original.png is unchanged.
 | `debian/i2pd.service` | Symbolic link; target provenance is retained. |
 | `debian/i2pd.tmpfile` | Symbolic link; target provenance is retained. |
 | `debian/source/format` | Exact-format package, store or protocol fixture data; retained without extra records. |
-| `docs/LICENSE.i2pd-docs-en` | Legal/provenance text; retained verbatim with its own license terms. |
+| `docs/LICENSE` | Legal/provenance text; retained with the documentation license terms and attribution. |
 | `docs/assets/branding/logo-original.png` | Binary asset; an inline text header would corrupt its format. |
 | `docs/assets/branding/logo.png` | Binary asset; an inline text header would corrupt its format. |
 | `docs/assets/branding/symbol.png` | Binary asset; an inline text header would corrupt its format. |

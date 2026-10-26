@@ -1130,16 +1130,11 @@ if(I2PD_INSTALL_DOCS)
     DESTINATION ${CMAKE_INSTALL_DOCDIR}
     COMPONENT Documentation)
   # The tool licence keeps its upstream text and is renamed so it cannot
-  # overwrite the router LICENSE in the same directory. The CC-BY-SA notice is
-  # a documentation licence, not a router-code licence; install it with the
-  # docs so every packager ships the attribution, not only Debian.
+  # overwrite the router LICENSE in the same directory.
   install(FILES
     "${PROJECT_ROOT}/tools/LICENSE"
     DESTINATION ${CMAKE_INSTALL_DOCDIR}
     RENAME LICENSE.i2pd-tools
-    COMPONENT Documentation)
-  install(FILES "${PROJECT_ROOT}/docs/CC-BY-SA-4.0"
-    DESTINATION ${CMAKE_INSTALL_DOCDIR}
     COMPONENT Documentation)
   install(DIRECTORY "${PROJECT_ROOT}/docs/"
     DESTINATION ${CMAKE_INSTALL_DOCDIR}/docs
@@ -1148,7 +1143,7 @@ if(I2PD_INSTALL_DOCS)
   install(DIRECTORY "${PROJECT_ROOT}/assets/branding/"
     DESTINATION ${CMAKE_INSTALL_DOCDIR}/assets/branding
     COMPONENT Documentation)
-  install(FILES "${PROJECT_ROOT}/docs/LICENSE.i2pd-docs-en"
+  install(FILES "${PROJECT_ROOT}/docs/LICENSE"
     DESTINATION ${CMAKE_INSTALL_DOCDIR}/docs
     COMPONENT Documentation)
 endif()
