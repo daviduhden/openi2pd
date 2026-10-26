@@ -10,17 +10,12 @@
 %global debug_package %{nil}
 %global __os_install_post %{nil}
 %global _build_id_links none
-# xz payload and sha256 digests: readable by rpm 4.11 (CentOS 7) and newer
-%define _binary_payload w9.xzdio
-%define _source_payload w9.xzdio
-%define _binary_filedigest_algorithm 8
-%define _source_filedigest_algorithm 8
 
 Name:           i2pd
 Version:        %{ver}
 Release:        %{rel}
 Summary:        I2P router written in C++ (static build)
-License:        BSD-3-Clause
+License:        BSD-3-Clause and CC-BY-SA-4.0
 URL:            https://github.com/daviduhden/openi2pd
 Source0:        i2pd-%{_target_cpu}
 Requires(pre):  /usr/sbin/useradd
@@ -46,8 +41,12 @@ install -D -m 644 $S/contrib/tunnels.conf %{buildroot}/etc/i2pd/tunnels.conf
 install -D -m 644 $S/contrib/tunnels.d/README %{buildroot}/etc/i2pd/tunnels.conf.d/README
 install -D -m 644 $S/contrib/i2pd.logrotate %{buildroot}/etc/logrotate.d/i2pd
 install -D -m 644 $S/contrib/i2pd.service %{buildroot}/usr/lib/systemd/system/i2pd.service
-install -D -m 644 $S/debian/i2pd.1 %{buildroot}/usr/share/man/man1/i2pd.1
+install -D -m 644 $S/man/i2pd.1 %{buildroot}/usr/share/man/man1/i2pd.1
 install -D -m 644 $S/LICENSE %{buildroot}/usr/share/licenses/i2pd/LICENSE
+install -D -m 644 $S/NOTICE %{buildroot}/usr/share/licenses/i2pd/NOTICE
+install -D -m 644 $S/docs/CC-BY-SA-4.0 %{buildroot}/usr/share/licenses/i2pd/CC-BY-SA-4.0
+install -D -m 644 $S/ChangeLog %{buildroot}/usr/share/doc/i2pd/ChangeLog
+install -D -m 644 $S/README.md %{buildroot}/usr/share/doc/i2pd/README.md
 cp -r $S/contrib/certificates %{buildroot}/usr/share/i2pd/certificates
 ln -s /usr/share/i2pd/certificates %{buildroot}/var/lib/i2pd/certificates
 
@@ -76,6 +75,10 @@ fi
 
 %files
 %license /usr/share/licenses/i2pd/LICENSE
+%license /usr/share/licenses/i2pd/NOTICE
+%license /usr/share/licenses/i2pd/CC-BY-SA-4.0
+%doc /usr/share/doc/i2pd/ChangeLog
+%doc /usr/share/doc/i2pd/README.md
 /usr/bin/i2pd
 %dir /etc/i2pd
 %config(noreplace) /etc/i2pd/i2pd.conf

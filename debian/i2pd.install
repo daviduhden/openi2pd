@@ -3,11 +3,14 @@
 #
 # openi2pd: i2pd.install.
 #
-# Explicit daemon, tool, configuration, certificate and AppArmor payload.
-# The ncurses binary and desktop assets belong to i2pd-tui; logrotate is
-# installed by dh_installlogrotate from debian/i2pd.logrotate.
+# Explicit daemon, tool, configuration, certificate, documentation, manpage and
+# AppArmor payload. Paths without a destination are resolved in debian/tmp,
+# which is populated by the CMake install; AppArmor comes from the source tree
+# because CMake does not install a distribution profile. The ncurses binary,
+# its desktop assets and its manpage belong to i2pd-tui.
 #
 
+# Router, i2pdctl and the fifteen native tools.
 usr/bin/i2pd
 usr/bin/i2pdctl
 usr/bin/autoconf_i2pd
@@ -25,6 +28,8 @@ usr/bin/routerinfo
 usr/bin/vain
 usr/bin/verifyhost
 usr/bin/x25519
+
+# Packaged configuration and certificates.
 etc/i2pd/i2pd.conf
 etc/i2pd/subscriptions.txt
 etc/i2pd/tunnels.conf
@@ -32,8 +37,23 @@ etc/i2pd/tunnels.conf.d/README
 etc/i2pd/tunnels.conf.d/IRC-Ilita.conf
 etc/i2pd/tunnels.conf.d/IRC-Irc2P.conf
 usr/share/i2pd/certificates usr/share/i2pd
+
+# CMake Documentation component. Do not list the source docs/ or
+# assets/branding directories here: dh_install would prefer the unfiltered
+# source tree over debian/tmp and bypass the CMake pattern filter.
+usr/share/doc/i2pd/ChangeLog
+usr/share/doc/i2pd/LICENSE
+usr/share/doc/i2pd/NOTICE
+usr/share/doc/i2pd/README.md
 usr/share/doc/i2pd/LICENSE.i2pd-tools
 usr/share/doc/i2pd/CC-BY-SA-4.0
+usr/share/doc/i2pd/docs
+usr/share/doc/i2pd/assets
+
+# Man pages are installed by the Runtime/Tools components, not by the optional
+# documentation tree, so they survive -DI2PD_INSTALL_DOCS=OFF packaging.
+usr/share/man/man1/i2pd.1
+usr/share/man/man1/i2pdctl.1
+
+# Distribution-specific AppArmor profile, loaded by dh_apparmor.
 contrib/apparmor/usr.bin.i2pd etc/apparmor.d
-docs usr/share/doc/i2pd
-assets/branding usr/share/doc/i2pd/assets

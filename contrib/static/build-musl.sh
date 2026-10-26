@@ -16,7 +16,7 @@ set -eu
 
 JOBS=${JOBS:-4}
 apk add --no-cache build-base cmake ninja perl linux-headers \
-	boost-dev boost-static zlib-dev zlib-static openssl-dev openssl-libs-static \
+	boost-dev boost-static boost-container zlib-dev zlib-static openssl-dev openssl-libs-static \
 	miniupnpc-dev miniupnpc-static
 
 cmake -S build -B build-output -G Ninja \

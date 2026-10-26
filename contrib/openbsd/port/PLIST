@@ -1,45 +1,42 @@
 @comment openi2pd OpenBSD PLIST template; merge into the external port.
+@comment Reserve _i2pd in infrastructure/db/user.list before merge; the number
+@comment below is a template placeholder and must not collide with another port.
 @newgroup _i2pd:838
-@newuser _i2pd:838:838::i2pd account:/var/i2pd:/sbin/nologin
+@newuser _i2pd:838:838:i2pd:0:0:i2pd account:/var/i2pd:/sbin/nologin
 @rcscript ${RCDIR}/i2pd
-@mode 0750
+@comment /var/i2pd is created from share/examples/var/i2pd and is private to
+@comment the service account; the certificate tree stays read-only below
+@comment /usr/local/share and is not a mutable sample.
+share/examples/var/i2pd/README
+@mode 0700
 @owner _i2pd
 @group _i2pd
 @sample ${LOCALSTATEDIR}/i2pd/
-@sample ${LOCALSTATEDIR}/i2pd/certificates/
-@sample ${LOCALSTATEDIR}/i2pd/certificates/family/
-@sample ${LOCALSTATEDIR}/i2pd/certificates/reseed/
+@mode 0640
+@owner _i2pd
+@group _i2pd
+share/examples/var/i2pd/subscriptions.txt
+@sample ${LOCALSTATEDIR}/i2pd/subscriptions.txt
 @mode
 @owner
 @group
 bin/i2pd
 bin/i2pd-tui
-share/examples/i2pd/i2pd.conf
-@mode 0640
-@owner _i2pd
-@group _i2pd
+share/examples/etc/i2pd/i2pd.conf
 @sample ${SYSCONFDIR}/i2pd/i2pd.conf
-@mode
-@owner
-@group
-share/examples/i2pd/tunnels.conf
-@mode 0640
-@owner _i2pd
-@group _i2pd
+share/examples/etc/i2pd/tunnels.conf
 @sample ${SYSCONFDIR}/i2pd/tunnels.conf
-@mode
-@owner
-@group
-share/examples/i2pd/tunnels.conf.d/README
-@mode 0640
-@owner _i2pd
-@group _i2pd
+share/examples/etc/i2pd/tunnels.conf.d/README
 @sample ${SYSCONFDIR}/i2pd/tunnels.conf.d/README
-@mode
-@owner
-@group
-share/examples/i2pd/login.conf.d/i2pd
+share/examples/etc/login.conf.d/i2pd
 @sample ${SYSCONFDIR}/login.conf.d/i2pd
+share/doc/i2pd/LICENSE
+share/doc/i2pd/NOTICE
+share/doc/i2pd/LICENSE.i2pd-tools
+share/doc/i2pd/CC-BY-SA-4.0
+share/applications/openi2pd.desktop
+share/icons/hicolor/256x256/apps/openi2pd.png
+share/icons/hicolor/scalable/apps/openi2pd.svg
 man/man1/i2pd.1
 man/man1/i2pd-tui.1
 share/i2pd/certificates/family/gostcoin.crt

@@ -22,18 +22,41 @@ Files: tools/*
 Copyright: 2016 i2pd-reseed contributors
            2013-2026 The PurpleI2P Project
            2026 David Uhden Collado
-Comment: tools/LICENSE carries the original i2pd-reseed BSD-3-Clause notice.
 License: BSD-3-Clause
+Comment: tools/LICENSE carries the original i2pd-reseed BSD-3-Clause notice.
+ It is installed as LICENSE.i2pd-tools so it cannot overwrite the router
+ LICENSE in the same documentation directory.
 
 Files: docs/file-headers.md docs/torrent/snark-compatibility.md
 Copyright: 2026 David Uhden Collado
 License: CC-BY-SA-4.0
  This documentation is licensed under the Creative Commons
- Attribution-ShareAlike 4.0 International License. The license notice is
- installed as /usr/share/doc/i2pd/CC-BY-SA-4.0; the complete legal code is
- available at https://creativecommons.org/licenses/by-sa/4.0/legalcode.
+ Attribution-ShareAlike 4.0 International License. The complete legal code is
+ available at https://creativecommons.org/licenses/by-sa/4.0/legalcode and the
+ installed notice is /usr/share/doc/i2pd/CC-BY-SA-4.0.
+Comment: Only these two documentation files declare CC-BY-SA-4.0. Every other
+ first-party and imported documentation file is BSD-3-Clause.
 
-Files: android/gradlew android/gradlew.bat android/gradle/wrapper/*
+Files: docs/assets/branding/*
+Copyright: 2026 David Uhden Collado
+License: BSD-3-Clause
+Comment: MkDocs mirror of the canonical assets/branding tree; keep both copies
+ byte-identical.
+
+Files: contrib/certificates/*
+Copyright: The respective certificate issuers
+License: other
+Comment: Bundled I2P reseed and family trust anchors (public certificates, not
+ executable code). They are redistributed verbatim by the issuing projects;
+ see the certificate contents and docs/security for provenance.
+
+Files: android/gradle/wrapper/*
+Copyright: 2015 the original Gradle wrapper authors
+License: Apache-2.0
+Comment: gradle-wrapper.jar is a binary bootstrap; its corresponding source is
+ the Gradle distribution referenced by gradle-wrapper.properties.
+
+Files: android/gradlew android/gradlew.bat
 Copyright: 2015 the original Gradle wrapper authors
 License: Apache-2.0
  On Debian systems, the complete text of the Apache License 2.0 can be
@@ -47,18 +70,27 @@ Copyright: 2026 David Uhden Collado <david@uhden.dev>
            2017-2020 Yangfl <mmyangfl@gmail.com>
 License: BSD-3-Clause
 
-Files: debian/CC-BY-SA-4.0
+Files: docs/CC-BY-SA-4.0
 Copyright: 2026 David Uhden Collado
 License: CC-BY-SA-4.0
  Installed documentation licence notice; see the CC-BY-SA-4.0 stanza above.
 
-Files: debian/changelog debian/NEWS debian/GPL-2.0.txt
+Files: debian/changelog
 Copyright: 2026 David Uhden Collado <david@uhden.dev>
            2013-2015 Kill Your TV <killyourtv@i2pmail.org>
            2014-2016 hagen <hagen@i2pmail.org>
            2016-2023 R4SAS <r4sas@i2pmail.org>
            2017-2020 Yangfl <mmyangfl@gmail.com>
 License: GPL-2+
+Comment: Historical Debian changelog entries predate the fork and retain their
+ original GPL-2+ terms; new entries are BSD-3-Clause like the rest of debian/.
+
+Files: debian/GPL-2.0.txt
+Copyright: Free Software Foundation, Inc.
+License: GPL-2
+Comment: Verbatim copy of the GNU General Public License version 2 text,
+ included because the historical debian/changelog is GPL-2+. It is a licence
+ text, not a separately licensed work.
 
 License: BSD-3-Clause
  Copyright (c) 2013-2026, The PurpleI2P Project
@@ -106,3 +138,18 @@ License: GPL-2+
  .
  On Debian systems, the complete text of the GNU General
  Public License version 2 can be found in "/usr/share/common-licenses/GPL-2".
+
+License: GPL-2
+ This package is free software; you can redistribute it and/or modify it under
+ the terms of the GNU General Public License version 2 as published by the Free
+ Software Foundation.
+ .
+ On Debian systems, the complete text of the GNU General Public License
+ version 2 can be found in "/usr/share/common-licenses/GPL-2".
+
+License: other
+ The files under contrib/certificates/ are public X.509 trust anchors used for
+ I2P reseed and family verification. They are redistributed verbatim by the
+ issuing projects and contain no executable code. This package does not claim
+ a copyright interest in the certificate material; see each certificate and
+ the corresponding upstream project for provenance and terms.

@@ -35,7 +35,6 @@ if [ "$FORMAT" = deb ]; then
 	cat "$SRC/debian/copyright" "$PKG/debian/copyright-bundled" >"$PKG/debian/copyright"
 	rm "$PKG/debian/copyright-bundled"
 	cp "$SRC/contrib/i2pd.service" "$PKG/debian/i2pd.service"
-	cp "$SRC/debian/CC-BY-SA-4.0" "$PKG/debian/CC-BY-SA-4.0"
 	cp "$SRC/debian/i2pd.tmpfiles" "$PKG/debian/i2pd.tmpfiles"
 	cp "$SRC/contrib/i2pd.logrotate" "$PKG/debian/i2pd.logrotate"
 	cp "$SRC/debian/i2pd.init" "$PKG/debian/i2pd.init"

@@ -3,11 +3,9 @@
 #
 # openi2pd: i2pd.links.
 #
-# Debian package symlinks exposing the installed configuration and certificates
-# under /var/lib/i2pd.
+# Debian package compatibility link exposing the packaged certificates at the
+# daemon's default <datadir>/certificates path. Configuration and tunnels are
+# not linked into /var/lib/i2pd; the service passes /etc/i2pd explicitly.
 #
 
-etc/i2pd/i2pd.conf var/lib/i2pd/i2pd.conf
-etc/i2pd/tunnels.conf var/lib/i2pd/tunnels.conf
-etc/i2pd/tunnels.conf.d var/lib/i2pd/tunnels.d
 usr/share/i2pd/certificates var/lib/i2pd/certificates

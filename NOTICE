@@ -1,0 +1,79 @@
+openi2pd notices and third-party attribution
+
+This file summarizes the licenses and provenance of the material distributed
+with openi2pd. It does not replace the full license texts; the referenced files
+are authoritative.
+
+Project code
+------------
+Copyright (c) 2013-2026, The PurpleI2P Project
+Copyright (c) 2026, David Uhden Collado
+
+The router, libraries, TUI, native tools and packaging are distributed under
+the BSD 3-Clause license in `LICENSE` (SPDX-License-Identifier: BSD-3-Clause).
+The Android application carries the same license in `android/LICENSE`.
+
+Imported documentation
+----------------------
+Documentation imported from the i2pd documentation project is distributed
+under the BSD 3-Clause license in `docs/LICENSE.i2pd-docs-en`
+(SPDX-License-Identifier: BSD-3-Clause), copyright 2017-2026 The PurpleI2P
+Project. Fork-authored documentation follows the same BSD 3-Clause terms
+except where a file explicitly declares CC-BY-SA-4.0.
+
+CC-BY-SA-4.0 documentation
+---------------------------
+The following files are licensed under Creative Commons
+Attribution-ShareAlike 4.0 International (SPDX-License-Identifier: CC-BY-SA-4.0):
+
+- `docs/file-headers.md`
+- `docs/torrent/snark-compatibility.md`
+
+The notice is installed as `CC-BY-SA-4.0` in the documentation directory. The
+complete legal code is available at
+https://creativecommons.org/licenses/by-sa/4.0/legalcode.
+
+Imported tools
+--------------
+The auxiliary tools in `tools/` are adapted from PurpleI2P/i2pd-tools and are
+distributed under the BSD 3-Clause license in `tools/LICENSE`. The pinned
+upstream commit, per-file manifest and divergence record are in
+`contrib/upstream/tools-files.txt`, `docs/tools/provenance.md` and repository
+history. The upstream file carries an empty copyright-holder field and a clause
+3 reference to `i2pd-reseed`; those inherited terms are preserved rather than
+rewritten.
+
+Artwork and brand assets
+------------------------
+The openi2pd name and the geometric node/tunnel mark are the project identity.
+The canonical vector and raster assets are in `assets/branding/`; the supplied
+reference `logo-original.png` is unchanged. The artwork is distributed with the
+project under the BSD 3-Clause terms unless a separate written grant applies.
+Provenance, dimensions and the original SHA-256 are recorded in
+`docs/branding/assets.md` and `assets/branding/colors.md`.
+
+Android dependencies
+--------------------
+The Android application uses AndroidX and Material Components for Android,
+distributed under the Apache License 2.0. The Gradle wrapper is distributed
+under the Apache License 2.0. Their notices remain in the resolved artifacts
+and are not replaced by this file.
+
+Java reference and interoperability fixtures
+--------------------------------------------
+The I2P Java implementation is a read-only interoperability reference. It is
+not vendored, built, linked or distributed with openi2pd. Fixture provenance is
+recorded in `tests/interop/FIXTURES.md`.
+
+Bundled native dependencies
+---------------------------
+Static and distribution packages may bundle OpenSSL, Boost, zlib, MiniUPnPc,
+musl, libstdc++ or platform libraries. Their licenses are recorded in
+`contrib/static/debian/copyright-bundled` and in the distribution package
+metadata. Those terms take precedence over this summary.
+
+Contact
+-------
+Project URLs and the issue tracker are listed in `README.md` and
+`docs/index.md`. This notice records attribution only; it is not a legal
+opinion or a replacement for the complete license texts.

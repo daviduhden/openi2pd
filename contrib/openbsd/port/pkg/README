@@ -12,7 +12,10 @@ The rc.d script uses the `i2pd` login class from
 
 The class raises the soft and hard file-descriptor limits to 8192 and sets a
 private creation mask. Ensure `kern.maxfiles` and `kern.maxfilesperproc` can
-support that limit for the service account.
+support that limit for the service account, for example in `/etc/sysctl.conf`:
+
+  kern.maxfiles=20000
+  kern.maxfilesperproc=8192
 
 Configuration and data
 ======================
@@ -31,17 +34,19 @@ the daemon after moving the file.
 
 Graceful shutdown
 =================
-`rcctl stop i2pd` uses SIGTERM (prompt ordered shutdown). For the graceful
-transit-tunnel drain, send SIGINT to the pidfile process:
-
-  # kill -INT "$(cat /var/i2pd/i2pd.pid)"
-
-The rc.subr timeout is 660 seconds so a deliberate SIGINT stop can complete
-after the daemon's ten-minute drain window. A second SIGINT stops immediately.
+`rcctl stop i2pd` sends SIGINT (the rc.d template sets `rc_stop_signal=INT`)
+and waits up to the 660-second `daemon_timeout` for the ordered stop and the
+ten-minute transit-tunnel drain. With no transit tunnels it exits promptly. A
+second SIGINT stops immediately. Do not replace this with a bare SIGTERM: that
+is the prompt path and skips the drain.
 
 TUI
 ===
 The optional `i2pd-tui` client connects to the local UNIX socket
-`/var/i2pd/i2pd-tui.sock` with mode 0600. Run it as the `_i2pd` account (or
-use an explicitly configured socket with matching ownership); do not add a
-second service or start a second router.
+`/var/i2pd/i2pd-tui.sock` with mode 0600. The socket is inside a 0700 state
+directory, so run the client as the service account (or configure a socket
+path with matching ownership):
+
+  # doas -u _i2pd i2pd-tui --datadir=/var/i2pd
+
+Do not add a second service or start a second router.

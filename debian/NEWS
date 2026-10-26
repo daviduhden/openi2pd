@@ -1,3 +1,21 @@
+i2pd (2.61.0-5) unstable; urgency=medium
+
+  * The Debian package now ships the complete documentation tree, branding,
+    ChangeLog, LICENSE, NOTICE, the tools licence and the i2pd/i2pdctl man
+    pages from the CMake install. The TUI package owns its own man page.
+  * An existing /var/lib/i2pd/certificates directory is moved to
+    /var/lib/i2pd/certificates.dpkg-old before the packaged compatibility
+    symlink is installed. Move any locally added trust anchors back into
+    /var/lib/i2pd/certificates after the upgrade, or configure certsdir.
+  * The AppArmor profile is now loaded and reloaded by dh_apparmor and permits
+    the optional privilege-separation workers to re-exec the router binary.
+    TUI and I2PControl sockets under /run/i2pd are allowed.
+  * The TUI package now declares Breaks/Replaces for the old i2pd binary
+    package, so upgrading from 2.61.0-2 or earlier does not fail on the moved
+    /usr/bin/i2pd-tui file.
+
+ -- openi2pd maintainers <daviduhden@users.noreply.github.com>  Mon, 26 Oct 2026 12:00:00 +0000
+
 i2pd (2.61.0-4) unstable; urgency=medium
 
   * The desktop entry now belongs to i2pd-tui and launches i2pd-tui instead

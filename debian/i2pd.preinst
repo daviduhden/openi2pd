@@ -1,0 +1,37 @@
+#!/bin/sh
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: preinst.
+#
+# The package exposes the read-only certificate tree at the daemon's default
+# /var/lib/i2pd/certificates path with a symlink. An older installation may
+# have created a real directory there. Move it aside before dpkg unpacks the
+# symlink so an upgrade neither fails nor loses locally added certificates.
+#
+
+set -e
+
+CERTDIR='/var/lib/i2pd/certificates'
+LEGACY="$CERTDIR.dpkg-old"
+
+case "$1" in
+  install|upgrade)
+    if [ -d "$CERTDIR" ] && [ ! -L "$CERTDIR" ]; then
+      if rmdir "$CERTDIR" 2>/dev/null; then
+        :
+      else
+        if [ -e "$LEGACY" ]; then
+          LEGACY="$CERTDIR.dpkg-old.$(date +%Y%m%d%H%M%S)"
+        fi
+        mv "$CERTDIR" "$LEGACY"
+        echo "i2pd: moved the existing certificate directory to $LEGACY" >&2
+        echo "i2pd: the packaged read-only tree is now /usr/share/i2pd/certificates" >&2
+      fi
+    fi
+    ;;
+esac
+
+#DEBHELPER#
+
+exit 0

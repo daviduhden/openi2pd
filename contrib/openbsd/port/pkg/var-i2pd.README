@@ -1,0 +1,9 @@
+openi2pd state directory
+========================
+
+This directory holds the router's keys, netDb, profiles, torrents and the
+default pidfile for the OpenBSD service. Keep it owned by `_i2pd` with mode
+0700 and do not edit files here that are managed by the daemon.
+
+The packaged configuration samples are installed under /etc/i2pd; see
+pkg_info -D i2pd and the pkg-readme for the service paths.

@@ -13,17 +13,25 @@
 #
 #include <tunables/global>
 
-profile i2pd /{usr/,}bin/i2pd {
+profile i2pd /{usr/,}bin/i2pd flags=(attach_disconnected) {
   #include <abstractions/base>
   #include <abstractions/openssl>
   #include <abstractions/nameservice>
 
-  # path specific (feel free to modify if you have another paths)
+  # Path specific (feel free to modify if you use other paths).
   /etc/i2pd/** r,
-  /var/lib/i2pd/** rw,
-  /var/log/i2pd/i2pd.log w,
+  # Keys, netDb, profiles, torrents and the default TUI socket. `k` is needed
+  # for the pidfile and torrent lock files.
+  /var/lib/i2pd/** rwk,
+  /var/log/i2pd/ rw,
+  /var/log/i2pd/** rw,
+  /{var/,}run/i2pd/ rw,
   /{var/,}run/i2pd/i2pd.pid rwk,
-  /{usr/,}bin/i2pd mr,
+  /{var/,}run/i2pd/*.sock rw,
+  # The privsep workers re-exec the same binary and stay in this profile
+  # (ix inherits it; `m` is required for the executable mapping). Do not
+  # replace this with `mr`, which would deny the exec.
+  /{usr/,}bin/i2pd mixr,
   @{system_share_dirs}/i2pd/** r,
 
   # user homedir (if started not by init.d or systemd)

@@ -6,4 +6,4 @@
 # Debian manpage list for the static i2pd package.
 #
 
-src/debian/i2pd.1
+src/man/i2pd.1

@@ -16,7 +16,7 @@ Release:       2%{?dist}
 Summary:       C++ daemon for accessing the I2P network
 Conflicts:     i2pd-git
 
-License:       BSD
+License:       BSD-3-Clause and CC-BY-SA-4.0
 URL:           https://github.com/daviduhden/openi2pd
 Source0:       https://github.com/daviduhden/openi2pd/archive/%{version}/%name-%version.tar.gz
 
@@ -32,12 +32,13 @@ BuildRequires: zlib-devel
 BuildRequires: boost-devel
 BuildRequires: openssl-devel
 BuildRequires: miniupnpc-devel
-BuildRequires: systemd-units
+BuildRequires: systemd-rpm-macros
 BuildRequires: ncurses-devel
 
-# Fedora in this range packages Boost.JSON/URL separately. The default
-# torrent client requires both at build time (see build/CMakeLists.txt).
-%if 0%{?fedora} && 0%{?fedora} <= 43
+# Fedora packages Boost.JSON/URL separately. The default torrent client
+# requires both at build time (see build/CMakeLists.txt); the requirement is
+# unconditional so a newer Fedora release cannot silently lose it.
+%if 0%{?fedora}
 BuildRequires: boost-json
 BuildRequires: boost-url
 %endif
@@ -90,6 +91,12 @@ chrpath -d i2pd
 %{__install} -D -m 755 tools/verifyhost %{buildroot}%{_bindir}/verifyhost
 %{__install} -D -m 755 tools/x25519 %{buildroot}%{_bindir}/x25519
 %{__install} -D -m 755 %{_builddir}/openi2pd-%{version}/tools/scripts/i2pdctl %{buildroot}%{_bindir}/i2pdctl
+%{__install} -D -m 644 %{_builddir}/openi2pd-%{version}/tools/LICENSE %{buildroot}%{_docdir}/i2pd/LICENSE.i2pd-tools
+%{__install} -D -m 644 %{_builddir}/openi2pd-%{version}/tools/README.md %{buildroot}%{_docdir}/i2pd/README.i2pd-tools
+%{__install} -D -m 644 %{_builddir}/openi2pd-%{version}/docs/CC-BY-SA-4.0 %{buildroot}%{_docdir}/i2pd/CC-BY-SA-4.0
+%{__install} -D -m 644 %{_builddir}/openi2pd-%{version}/contrib/openi2pd.desktop %{buildroot}%{_datadir}/applications/openi2pd.desktop
+%{__install} -D -m 644 %{_builddir}/openi2pd-%{version}/assets/branding/symbol.svg %{buildroot}%{_datadir}/icons/hicolor/scalable/apps/openi2pd.svg
+%{__install} -D -m 644 %{_builddir}/openi2pd-%{version}/contrib/artwork/openi2pd-256.png %{buildroot}%{_datadir}/icons/hicolor/256x256/apps/openi2pd.png
 %{__install} -d -m 755 %{buildroot}%{_datadir}/i2pd
 %{__install} -d -m 700 %{buildroot}%{_sharedstatedir}/i2pd
 %{__install} -d -m 700 %{buildroot}%{_localstatedir}/log/i2pd
@@ -98,7 +105,7 @@ chrpath -d i2pd
 %{__install} -D -m 644 %{_builddir}/openi2pd-%{version}/contrib/tunnels.conf %{buildroot}%{_sysconfdir}/i2pd/tunnels.conf
 %{__install} -D -m 644 %{_builddir}/openi2pd-%{version}/contrib/i2pd.logrotate %{buildroot}%{_sysconfdir}/logrotate.d/i2pd
 %{__install} -D -m 644 %{_builddir}/openi2pd-%{version}/contrib/i2pd.service %{buildroot}%{_unitdir}/i2pd.service
-%{__install} -D -m 644 %{_builddir}/openi2pd-%{version}/debian/i2pd.1 %{buildroot}%{_mandir}/man1/i2pd.1
+%{__install} -D -m 644 %{_builddir}/openi2pd-%{version}/man/i2pd.1 %{buildroot}%{_mandir}/man1/i2pd.1
 %{__install} -D -m 644 %{_builddir}/openi2pd-%{version}/man/i2pd-tui.1 %{buildroot}%{_mandir}/man1/i2pd-tui.1
 %{__install} -D -m 644 %{_builddir}/openi2pd-%{version}/man/i2pdctl.1 %{buildroot}%{_mandir}/man1/i2pdctl.1
 %{__cp} -r %{_builddir}/openi2pd-%{version}/contrib/certificates/ %{buildroot}%{_datadir}/i2pd/certificates
@@ -144,7 +151,10 @@ getent passwd i2pd >/dev/null || \
 %{_bindir}/vain
 %{_bindir}/verifyhost
 %{_bindir}/x25519
-%doc LICENSE README.md tools/LICENSE tools/README.md contrib/i2pd.conf contrib/subscriptions.txt contrib/tunnels.conf contrib/tunnels.d
+%doc LICENSE NOTICE README.md ChangeLog docs assets/branding contrib/i2pd.conf contrib/subscriptions.txt contrib/tunnels.conf contrib/tunnels.d
+%{_docdir}/i2pd/LICENSE.i2pd-tools
+%{_docdir}/i2pd/README.i2pd-tools
+%{_docdir}/i2pd/CC-BY-SA-4.0
 %config(noreplace) %{_sysconfdir}/i2pd/*.conf
 %config(noreplace) %{_sysconfdir}/i2pd/tunnels.conf.d/*.conf
 %config %{_sysconfdir}/i2pd/subscriptions.txt
@@ -154,6 +164,9 @@ getent passwd i2pd >/dev/null || \
 %{_mandir}/man1/i2pd.1*
 %{_mandir}/man1/i2pd-tui.1*
 %{_mandir}/man1/i2pdctl.1*
+%{_datadir}/applications/openi2pd.desktop
+%{_datadir}/icons/hicolor/scalable/apps/openi2pd.svg
+%{_datadir}/icons/hicolor/256x256/apps/openi2pd.png
 %dir %attr(0700,i2pd,i2pd) %{_sharedstatedir}/i2pd
 %dir %attr(0700,i2pd,i2pd) %{_localstatedir}/log/i2pd
 %{_datadir}/i2pd/certificates

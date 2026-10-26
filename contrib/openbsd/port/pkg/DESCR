@@ -1,0 +1,5 @@
+openi2pd is a C++ implementation of the I2P anonymity network router. It
+provides the router daemon, the native console client, the in-process
+BitTorrent client and the read-only certificate set. The auxiliary tools are
+not built by this port. Configuration samples and the login class are installed
+as @sample files; runtime state lives below /var/i2pd.

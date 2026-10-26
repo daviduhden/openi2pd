@@ -12,6 +12,8 @@ Section: net
 Priority: optional
 Maintainer: openi2pd maintainers <daviduhden@users.noreply.github.com>
 Build-Depends: debhelper-compat (= 13),
+               dh-apparmor,
+               dh-sequence-installsysusers,
                cmake (>= 3.24),
                ninja-build,
                g++ (>= 13) | clang (>= 17),
@@ -41,12 +43,17 @@ Description: C++ I2P router (openi2pd)
  network layer. All communications over I2P are anonymous and end-to-end
  encrypted, participants don't reveal their real IP addresses.
  .
- This package contains the router, command-line tools, configuration files,
- certificates, documentation, AppArmor profile and service integration.
+ This package contains the router, i2pdctl, the native tools, configuration
+ files, certificates, documentation, the AppArmor profile and the service
+ integration for systemd and SysVinit.
 
 Package: i2pd-tui
 Architecture: any
 Depends: ${shlibs:Depends}, ${misc:Depends}, i2pd (= ${binary:Version})
+Breaks: i2pd (<< 2.61.0-3)
+Replaces: i2pd (<< 2.61.0-3)
 Description: ncurses TUI for the openi2pd router
  Local terminal user interface for monitoring and controlling the openi2pd
- router over its local IPC channel.
+ router over its local IPC channel. This package contains the i2pd-tui
+ binary, its manual page, the desktop entry and the hicolor icons. It does
+ not contain a service definition or a second router.

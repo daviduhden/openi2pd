@@ -67,6 +67,10 @@ grep -q '^Exec=i2pd-tui$' /usr/share/applications/openi2pd.desktop \
 i2pd_version=$(dpkg-query -W -f='${Version}' i2pd)
 tui_version=$(dpkg-query -W -f='${Version}' i2pd-tui)
 [ "$i2pd_version" = "$tui_version" ] || fail "i2pd/i2pd-tui version mismatch"
+dpkg-query -W -f='${Depends}' i2pd-tui | grep -F "i2pd (= " >/dev/null \
+    || fail "i2pd-tui does not require the exact i2pd version"
+dpkg-query -W -f='${Depends}' i2pd | grep -F "adduser" >/dev/null \
+    || fail "i2pd does not depend on adduser"
 
 # Configuration is installed as conffiles, so upgrades preserve local edits.
 require_file /etc/i2pd/i2pd.conf
@@ -82,6 +86,9 @@ for conffile in /etc/i2pd/i2pd.conf /etc/i2pd/subscriptions.txt \
     printf '%s\n' "$conffiles" | grep -F " $conffile " >/dev/null \
         || fail "not a conffile: $conffile"
 done
+if printf '%s\n' "$conffiles" | grep -F ' /var/' >/dev/null; then
+    fail "a /var path is registered as a conffile"
+fi
 
 # Service integration: one native unit, one executable SysV fallback and a
 # tmpfiles policy for non-systemd managers.
@@ -108,11 +115,11 @@ done
 
 [ -x /etc/init.d/i2pd ] || fail "/etc/init.d/i2pd is not executable"
 sh -n /etc/init.d/i2pd || fail "/etc/init.d/i2pd has invalid shell syntax"
-grep -qE '^d /var/lib/i2pd ' "$tmpfiles" \
+grep -qE '^d /var/lib/i2pd 0700 i2pd i2pd ' "$tmpfiles" \
     || fail "$tmpfiles lacks the persistent state directory"
-grep -qE '^d /var/log/i2pd ' "$tmpfiles" \
+grep -qE '^d /var/log/i2pd 0700 i2pd i2pd ' "$tmpfiles" \
     || fail "$tmpfiles lacks the log directory"
-grep -qE '^d /run/i2pd ' "$tmpfiles" \
+grep -qE '^d /run/i2pd 0700 i2pd i2pd ' "$tmpfiles" \
     || fail "$tmpfiles lacks the runtime directory"
 
 # A native systemd unit plus a SysV script must not start the daemon twice.
@@ -183,11 +190,40 @@ require_file /etc/apparmor.d/usr.bin.i2pd
 require_file /etc/logrotate.d/i2pd
 require_file /usr/share/doc/i2pd/LICENSE.i2pd-tools
 require_file /usr/share/doc/i2pd/CC-BY-SA-4.0
+require_file /usr/share/doc/i2pd/ChangeLog
+require_file /usr/share/doc/i2pd/LICENSE
+require_file /usr/share/doc/i2pd/README.md
+require_file /usr/share/doc/i2pd/docs/LICENSE.i2pd-docs-en
+require_file /usr/share/doc/i2pd/docs/i18n.md
+require_file /usr/share/doc/i2pd/assets/branding/colors.md
+require_file /usr/share/doc/i2pd/copyright
+grep -q '^Format: https://www.debian.org/doc/packaging-manuals/copyright-format/1.0/' \
+    /usr/share/doc/i2pd/copyright || fail "copyright is not DEP-5 formatted"
+grep -q '^profile i2pd .*flags=(attach_disconnected)' /etc/apparmor.d/usr.bin.i2pd \
+    || fail "AppArmor profile header is missing"
+grep -q 'mixr' /etc/apparmor.d/usr.bin.i2pd \
+    || fail "AppArmor profile does not allow the privsep worker exec"
+if command -v apparmor_parser >/dev/null 2>&1; then
+    apparmor_parser -Q -T /etc/apparmor.d/usr.bin.i2pd >/dev/null 2>&1 \
+        || fail "apparmor_parser rejected the profile"
+fi
+if command -v desktop-file-validate >/dev/null 2>&1; then
+    desktop-file-validate /usr/share/applications/openi2pd.desktop \
+        || fail "desktop-file-validate rejected the launcher"
+fi
 
 # Manpages follow the package split.
 require_manpage i2pd.1
 require_manpage i2pdctl.1
 require_manpage i2pd-tui.1
+dpkg-query -L i2pd | grep -qE '/usr/share/man/man1/i2pd\.1(\.gz)?$' \
+    || fail "i2pd.1 is not owned by i2pd"
+dpkg-query -L i2pd | grep -qE '/usr/share/man/man1/i2pdctl\.1(\.gz)?$' \
+    || fail "i2pdctl.1 is not owned by i2pd"
+dpkg-query -L i2pd-tui | grep -qE '/usr/share/man/man1/i2pd-tui\.1(\.gz)?$' \
+    || fail "i2pd-tui.1 is not owned by i2pd-tui"
+# A package installation may have started the router through invoke-rc.d;
+# this test does not stop or restart it and never touches router state.
 
 # i2pdctl is Perl with an openssl fallback; syntax-check it without executing
 # a request.

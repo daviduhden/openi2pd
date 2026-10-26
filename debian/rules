@@ -4,9 +4,10 @@
 #
 # openi2pd: rules.
 #
-# Debhelper rules for the CMake/Ninja build. CMake installs runtime files into
-# debian/tmp; debhelper assigns them to i2pd and i2pd-tui, installs docs and
-# manpages from the source tree, and integrates systemd, SysV and tmpfiles.
+# Debhelper rules for the CMake/Ninja build. CMake installs runtime, tools,
+# documentation and man pages into debian/tmp; debhelper assigns them to i2pd
+# and i2pd-tui, loads the AppArmor profile and integrates systemd, SysV,
+# sysusers, tmpfiles and logrotate.
 #
 
 # CMake is the only supported build system. This file is executed by
@@ -36,11 +37,14 @@ override_dh_auto_configure:
 		-DCMAKE_SHARED_LINKER_FLAGS="$(shell dpkg-buildflags --get LDFLAGS)" \
 		-DCMAKE_MODULE_LINKER_FLAGS="$(shell dpkg-buildflags --get LDFLAGS)" \
 		-DBUILD_TESTING=OFF \
-		-DI2PD_INSTALL_DOCS=OFF \
+		-DI2PD_INSTALL_DOCS=ON \
+		-DI2PD_INSTALL_CONFIG=ON \
+		-DI2PD_OPENSSL_EXPECT=OpenSSL \
 		-DI2PD_SERVICE_MANAGER=none
 
 override_dh_auto_build:
-	cmake --build build-debian --parallel
+	cmake --build build-debian --parallel \
+		$(patsubst parallel=%,%,$(filter parallel=%,$(DEB_BUILD_OPTIONS)))
 
 override_dh_auto_test:
 	# Unit tests belong to CI. Router tests need network fixtures and are not
@@ -52,8 +56,13 @@ override_dh_auto_clean:
 
 override_dh_auto_install:
 	DESTDIR=$(CURDIR)/debian/tmp cmake --install build-debian
-	install -D -m 0644 debian/CC-BY-SA-4.0 \
-		debian/tmp/usr/share/doc/i2pd/CC-BY-SA-4.0
+
+# dh_apparmor installs the local include and reloads the profile. The profile
+# itself is in i2pd.install; running the helper after dh_install keeps the
+# profile and the maintscript snippets in the same package.
+override_dh_install:
+	dh_install
+	dh_apparmor --profile-name=usr.bin.i2pd -pi2pd
 
 # Keep the SysV script for non-systemd systems. dh_installinit owns the single
 # enable/start/stop action through invoke-rc.d, which reaches the native unit

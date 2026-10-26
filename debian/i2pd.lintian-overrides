@@ -9,3 +9,4 @@
 
 # GPL comes from debian/
 i2pd: possible-gpl-code-linked-with-openssl
+i2pd-tui: possible-gpl-code-linked-with-openssl

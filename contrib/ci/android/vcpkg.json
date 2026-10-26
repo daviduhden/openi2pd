@@ -4,6 +4,7 @@
     "boost-algorithm",
     "boost-asio",
     "boost-beast",
+    "boost-container",
     "boost-dynamic-bitset",
     "boost-json",
     "boost-logic",

@@ -33,17 +33,40 @@ case "$1" in
     # administrator's ownership or mode on an upgrade. In particular a local
     # backup group or a deliberately group-readable log directory must survive
     # package upgrades.
+    #
+    # The certificate compatibility link makes dpkg create /var/lib/i2pd as
+    # root:root 0755 before this script runs. Repair only that case (an
+    # otherwise empty directory owned by root); a directory with real router
+    # state is left untouched.
     if [ ! -d "$I2PDHOME" ]; then
       install -d -o "$I2PDUSER" -g "$I2PDUSER" -m 0700 "$I2PDHOME"
+    elif [ ! -L "$I2PDHOME" ] && [ "$(stat -c %u "$I2PDHOME")" = 0 ] \
+      && [ -z "$(find "$I2PDHOME" -mindepth 1 -maxdepth 1 \
+        ! -name certificates -print -quit 2>/dev/null)" ]; then
+      chown "$I2PDUSER:$I2PDUSER" "$I2PDHOME"
+      chmod 0700 "$I2PDHOME"
     fi
     if [ ! -d "$LOGDIR" ]; then
       install -d -o "$I2PDUSER" -g "$I2PDUSER" -m 0700 "$LOGDIR"
+    elif [ ! -L "$LOGDIR" ] && [ "$(stat -c %u "$LOGDIR")" = 0 ] \
+      && [ -z "$(find "$LOGDIR" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]; then
+      chown "$I2PDUSER:$I2PDUSER" "$LOGDIR"
+      chmod 0700 "$LOGDIR"
     fi
     if [ ! -d "$RUNDIR" ]; then
       install -d -o "$I2PDUSER" -g "$I2PDUSER" -m 0700 "$RUNDIR"
+    elif [ ! -L "$RUNDIR" ] && [ "$(stat -c %u "$RUNDIR")" = 0 ] \
+      && [ -z "$(find "$RUNDIR" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null)" ]; then
+      chown "$I2PDUSER:$I2PDUSER" "$RUNDIR"
+      chmod 0700 "$RUNDIR"
     fi
     if [ ! -e "$LOGFILE" ]; then
       install -o "$I2PDUSER" -g "$I2PDUSER" -m 0600 /dev/null "$LOGFILE"
+    elif [ ! -L "$LOGFILE" ] && [ "$(stat -c %u "$LOGFILE")" = 0 ]; then
+      # An older unit may have created the log as root; the service writes it
+      # as i2pd, so repair only the root-owned case.
+      chown "$I2PDUSER:$I2PDUSER" "$LOGFILE"
+      chmod 0600 "$LOGFILE"
     fi
     ;;
   abort-upgrade|abort-remove|abort-deconfigure|triggered)

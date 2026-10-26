@@ -7,10 +7,20 @@ tree. It is not installed by CMake and is not built by this repository's CI.
 Merge the files into the ports tree rather than copying them blindly:
 
   * `Makefile` selects CMake/Ninja, the native TUI and the packaged paths.
-  * `PLIST` records `_i2pd`, `@rcscript`, `@sample` configuration and the
-    read-only certificate tree.
-  * `pkg/README` documents resource limits, syslog, graceful shutdown and the
-    TUI socket. `pkg/DESCR` is intentionally not duplicated here.
+    `WRKSRC` points at the project's `build/` CMake source directory and
+    `WRKBUILD` at a separate `obj/` tree, so no CMake artefact enters the
+    extracted source.
+  * `PLIST` records `_i2pd` with login class `i2pd`, `@rcscript`, the
+    `@sample` configuration and login class (resolved from
+    `share/examples/etc/...`), the private `@sample` state directory
+    (`share/examples/var/i2pd`, including `subscriptions.txt`), the
+    licence/notice files, the man pages installed by CMake and the read-only
+    certificate tree. The port sets `-DI2PD_OPENSSL_EXPECT=LibreSSL` and
+    requires the LibreSSL 4.0+ floor enforced by CMake.
+  * `pkg/DESCR` is the package description, `pkg/README` documents resource
+    limits, syslog, graceful shutdown and the TUI socket, and
+    `pkg/var-i2pd.README` is the packaged marker that makes `@sample` create
+    the private `/var/i2pd` state directory.
 
 The rc.d and login-class sources remain `../i2pd.rc` and `../i2pd.login`; the
 port's `SUBST_VARS` must substitute `TRUEPREFIX`, `SYSCONFDIR` and
