@@ -11,9 +11,18 @@
 
 daemon="${TRUEPREFIX}/bin/i2pd"
 daemon_user="_i2pd"
+# The foreground path does not chdir(), so relative keys/logfile values in
+# i2pd.conf depend on this directory. Keep it aligned with --datadir.
+daemon_execdir="${LOCALSTATEDIR}/i2pd"
 pidfile="${LOCALSTATEDIR}/i2pd/i2pd.pid"
+# rc_bg starts the foreground daemon in the background; start therefore proves
+# only that rc.subr forked it, not that the router joined the network.
 rc_bg=YES
 daemon_logger="daemon.info"
+# rc_stop_signal is the default rc_stop signal. SIGINT selects the daemon's
+# ordered shutdown plus the transit-tunnel drain; daemon_timeout bounds the
+# stop/reload wait. SIGTERM (the rc.subr default) would stop promptly.
+rc_stop_signal=INT
 daemon_timeout=660
 daemon_flags="--foreground --service \
 	--datadir=${LOCALSTATEDIR}/i2pd \
@@ -25,5 +34,9 @@ daemon_flags="--foreground --service \
 	--log=syslog"
 
 . /etc/rc.d/rc.subr
+
+# Match the packaged binary rather than the full command line, so a stale
+# pidfile or a recycled PID cannot make rcctl check report a running router.
+pexp="${TRUEPREFIX}/bin/i2pd"
 
 rc_cmd "$1"

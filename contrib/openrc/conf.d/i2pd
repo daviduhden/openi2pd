@@ -37,6 +37,10 @@ I2PD_LOG="file"
 I2PD_LOGDIR="/var/log/i2pd"
 I2PD_LOGFILE="/var/log/i2pd/i2pd.log"
 
+# The runscript sets rc_ulimit="-n 8192" for the same descriptor budget as the
+# other managers. A non-root start can only select a value within the inherited
+# hard limit; override rc_ulimit here when a site needs a different value.
+
 # Extra daemon options appended to the service command line. Use this only for
 # options that the runscript does not already set; a duplicate option can make
 # config parsing fail. This file is root-controlled and its contents are

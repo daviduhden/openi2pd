@@ -27,6 +27,12 @@ StateDirectory=i2pd
 StateDirectoryMode=0700
 RuntimeDirectory=i2pd
 RuntimeDirectoryMode=0700
+# The packaged unit logs to the journal, but an administrator may select
+# `log = file` with `logfile = /var/log/i2pd/i2pd.log`. LogsDirectory creates
+# that directory with the service account as owner and makes it writable under
+# ProtectSystem=strict, so the documented opt-in does not fail at first write.
+LogsDirectory=i2pd
+LogsDirectoryMode=0700
 UMask=0077
 WorkingDirectory=/var/lib/i2pd
 
@@ -34,9 +40,16 @@ ExecStart=/usr/bin/i2pd --conf=/etc/i2pd/i2pd.conf --tunconf=/etc/i2pd/tunnels.c
 # SIGHUP reloads tunnel configuration without restarting the router.
 ExecReload=/bin/kill -HUP $MAINPID
 
-# SIGINT performs an orderly shutdown: the router stops accepting new tunnels
-# and gives existing tunnels up to ten minutes to expire. SIGKILL is only a
-# last resort after that grace period.
+# SIGINT performs the slower graceful shutdown: the router stops accepting new
+# transit tunnels and gives them up to ten minutes (600 s) to expire, then runs
+# its ordered stop (flush state, stop the IPC workers). SIGKILL is only a last
+# resort inside the 60-second shutdown margin.
+#
+# KillMode=mixed sends the stop signal to the main process only and SIGKILL to
+# the whole cgroup at the deadline. That is the required split: signalling the
+# workers directly would terminate a storage worker in the middle of a write
+# while the router still believes it owns the operation. The main process owns
+# worker shutdown; do not widen the stop signal to the whole cgroup.
 KillSignal=SIGINT
 KillMode=mixed
 TimeoutStopSec=660
@@ -47,6 +60,9 @@ LimitNOFILE=8192
 
 StandardOutput=journal
 StandardError=journal
+# `open-i2pd` is a frozen compatibility identifier for journal filtering and
+# rsyslog rules; it is not the product name. The product is `openi2pd` and the
+# unit is `i2pd.service`. Change this only with a journal-filter migration note.
 SyslogIdentifier=open-i2pd
 
 # Hardening. The local TUI/torrent IPC socket lives in the data directory and
@@ -55,9 +71,10 @@ SyslogIdentifier=open-i2pd
 # router needs AF_INET and AF_INET6 and interface discovery uses netlink.
 NoNewPrivileges=yes
 ProtectSystem=strict
-# Add any overridden datadir, pidfile directory or TUI socket directory here;
-# the packaged values below are the only writable paths. Keep the TUI socket
-# outside /tmp: PrivateTmp makes that directory namespace-private.
+# Add any overridden datadir, pidfile directory or TUI socket directory here.
+# StateDirectory/RuntimeDirectory/LogsDirectory add their paths automatically;
+# keep the TUI socket outside /tmp: PrivateTmp makes that directory
+# namespace-private.
 ReadWritePaths=/var/lib/i2pd /run/i2pd
 ProtectHome=yes
 PrivateTmp=yes

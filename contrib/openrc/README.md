@@ -29,11 +29,12 @@ owns:
 | `/var/log/i2pd` | `0750` | `i2pd:i2pd` | log directory (file logging only) |
 | `/var/log/i2pd/i2pd.log` | `0640` | `i2pd:i2pd` | log file (file logging only) |
 
-`checkpath` performs the preparation in `start_pre`. The pidfile at
-`/run/i2pd/i2pd.pid` is deliberately not created by the runscript: the daemon
-opens it with `O_NOFOLLOW`, restricts it to `0600`, locks it, and removes it on
-a clean shutdown. OpenRC's supervisor state is kept in a separate pidfile
-(`/var/run/supervise-i2pd.pid` by default), so the two roles do not collide.
+`checkpath` performs the preparation in `start_pre` and aborts the start on
+any failure. The pidfile at `/run/i2pd/i2pd.pid` is deliberately not created
+by the runscript: the daemon opens it with `O_NOFOLLOW`, restricts it to
+`0600`, locks it, and removes it on a clean shutdown. `supervise-daemon` keeps
+its own state under OpenRC's `RC_SVCDIR` (implementation-defined, commonly
+`/run/openrc/supervise-daemon/`), so the two roles do not collide.
 
 The packaged configuration is `/etc/i2pd/i2pd.conf`; tunnel definitions are
 read from `/etc/i2pd/tunnels.conf` and `/etc/i2pd/tunnels.conf.d`. Both the
@@ -54,7 +55,8 @@ Enablement is handled only by `rc-update`; there is no duplicate
 `I2PD_ENABLED` switch in `conf.d`.
 
 `supervise-daemon` restarts a crashed router after 5 seconds, gives up after 5
-restarts within 60 seconds, and exposes the native
+restarts within 300 seconds (matching the systemd start limit), and exposes the
+native
 `rc-service i2pd start|stop|restart|status` actions. A successful `start` or a
 `status` of `started` means that the supervisor and process are running, not
 that the router has built tunnels or completed reseeding; there is no readiness
@@ -68,13 +70,18 @@ rc-service i2pd reload        # SIGHUP: reload tunnel configuration
 rc-service i2pd reopenlogs    # SIGUSR1: reopen log files after rotation
 ```
 
-The default stop signal is `SIGTERM`, which stops the router without the
-ten-minute transit-tunnel grace period; OpenRC allows 30 seconds for the
-ordered shutdown to save state before escalating. To make
-`rc-service i2pd stop` request the graceful `SIGINT` path instead, set
-`stopsig="SIGINT"` in `/etc/conf.d/i2pd`; the runscript derives
-`retry="SIGINT/660"` and the daemon then has up to ten minutes to drain before
-OpenRC escalates.
+The default stop signal is `SIGTERM`, which performs the ordered shutdown
+without the ten-minute transit-tunnel grace period; OpenRC allows 30 seconds
+for the stop body before escalating. To make `rc-service i2pd stop` request the
+graceful `SIGINT` path instead, set `stopsig="SIGINT"` in
+`/etc/conf.d/i2pd`; the runscript derives `retry="SIGINT/660"` (the
+`supervise-daemon --retry` signal/timeout form) and the daemon then has up to
+ten minutes to drain before OpenRC escalates.
+
+The runscript defaults `rc_ulimit="-n 8192"`, applying the same descriptor
+budget as the other managers before the process starts; `/etc/conf.d/i2pd` may
+override it. A non-root invocation can only
+select a value within the inherited hard limit.
 
 ## Configuration variables
 
@@ -95,6 +102,7 @@ and extra options:
 | `I2PD_LOGDIR` | `/var/log/i2pd` | dedicated directory, forced to `0750` |
 | `I2PD_LOGFILE` | `/var/log/i2pd/i2pd.log` | used by `file` and captured `stdout` |
 | `I2PD_OPTS` | empty | extra command-line options |
+| `rc_ulimit` | `-n 8192` | descriptor limit applied by the runscript |
 
 When `I2PD_LOG=file`, the runscript passes `--log=file --logfile=...` and
 prepares the file with mode `0640`. When it is `syslog`, no log directory or

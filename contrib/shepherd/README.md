@@ -16,7 +16,11 @@ PID supervision and no readiness protocol.
 
 ## Requirements
 
-- GNU Shepherd 0.10.5 or newer with the `(shepherd service)` module.
+- GNU Shepherd 0.10.5 or newer with the `(shepherd service)` module. The
+  `#:grace-period` keyword and `#:requirement` slot are used by this file;
+  verify both on 0.10.5 before merging into an older host. `register-services`
+  is called with a list, which is the documented older form; keep it when the
+  host requires it.
 - Shepherd running as root, so `#:user` and `#:group` can drop privileges.
   Shepherd refuses the change if it is unprivileged.
 - An `i2pd` user and group.
@@ -60,8 +64,8 @@ same two forms there instead, or start Shepherd with
 Loading the file alone only defines and registers the service; it does not
 start it. The `start-in-the-background` call is required for boot autostart.
 
-`herd enable` does not provide boot autostart. It re-enables a service that
-Shepherd disabled after too many rapid respawns; the `start-in-the-background`
+`herd enable` does not provide boot autostart. It sets Shepherd's enabled flag
+(for example after a respawn-limit disable); the `start-in-the-background`
 call above is what starts the router when Shepherd starts.
 
 ## Control
@@ -76,10 +80,11 @@ herd disable i2pd
 ```
 
 `herd stop` sends `SIGINT`, the router's graceful shutdown, and Shepherd waits
-up to the configured 700-second grace period before escalating to `SIGKILL`.
-Shepherd signals the process group, so child workers may also receive the
-signal; use systemd or OpenRC when main-process-only signalling is required.
-`herd restart` performs a full stop and start.
+up to the configured 660-second grace period before escalating to `SIGKILL`.
+`make-kill-destructor` signals the **process group**, so the IPC workers also
+receive `SIGINT`; the router still performs its ordered stop, but a strict
+main-process-only worker drain is better served by systemd (`KillMode=mixed`),
+OpenRC, runit or s6. `herd restart` performs a full stop and start.
 
 Shepherd has no built-in reload action for this service. To reload tunnel
 configuration without a restart, send `SIGHUP` to the main PID shown by

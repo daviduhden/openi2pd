@@ -35,10 +35,10 @@ service name.
 
 The run script runs `/usr/bin/install` to create `/run/i2pd` and
 `/var/lib/i2pd` with mode 0700 and ownership `i2pd:i2pd` on every start. It
-then uses `s6-setuidgid` and execs the router in the foreground with `--service`,
-explicit configuration, data, certificate and PID paths, and `--log=syslog`.
-There is no shell wrapper and no `--daemon`; the PID file is written for
-administrative tools, not for supervision.
+applies `s6-softlimit -o 8192`, then uses `s6-setuidgid` and execs the router in
+the foreground with `--service`, explicit configuration, data, certificate and
+PID paths, and `--log=syslog`. There is no shell wrapper and no `--daemon`; the
+PID file is written for administrative tools, not for supervision.
 
 ## Install with plain s6
 
@@ -74,8 +74,8 @@ but the syslog destination is not a file owned by this service.
 s6 has no readiness protocol for this daemon. The run script does not create a
 `notification-fd` file, and the service is considered started when
 s6-supervise execs the run script, not when i2pd has joined the network. The
-s6-rc up transition likewise completes without a readiness notification; a
-warning from s6-rc about the missing notification is expected.
+s6-rc up transition likewise completes without a readiness notification;
+s6-rc does not print a warning for a longrun without `notification-fd`.
 
 ## Stopping and graceful shutdown
 
@@ -85,10 +85,11 @@ to ten minutes). `timeout-kill` is set to 660000 ms, matching that drain plus a
 shutdown margin. s6 escalates to `SIGKILL` only after the window; use
 `s6-svc -x` only for an intentional immediate teardown.
 
-No `finish` script is installed. The daemon removes its PID file on an orderly
-shutdown; after a forced `SIGKILL` the stale file is harmless because the next
-start reopens and locks it. A finish script would risk deleting a PID file
-belonging to a newer instance.
+`finish` pauses five seconds and is bounded by `timeout-finish` (10000 ms), so
+a persistent account or configuration failure becomes a slow retry instead of
+a hot respawn. It never touches the daemon-owned PID file: the next instance
+reopens and locks it. s6-supervise signals only the run script's process; the
+router stops its own IPC workers during the ordered stop.
 
 ## Scope
 

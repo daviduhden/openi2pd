@@ -12,13 +12,19 @@
 # The packaged /var/lib/i2pd directory must exist and be owned by i2pd before
 # the job starts. Upstart's setuid stanza can apply to job scripts, so this
 # definition deliberately has no root pre-start hook; it uses syslog and keeps
-# the pidfile under the data directory instead.
+# the pidfile under the data directory instead of /run because the job cannot
+# create /run/i2pd as root. This is the only sample with that pidfile path.
 #
 
 description "openi2pd router"
 
 start on runlevel [2345]
 stop on runlevel [016] or unmounting-filesystem
+
+# The router already logs through syslog. Keep Upstart's own console capture
+# explicit so an early startup failure before syslog is connected is still
+# recorded in /var/log/upstart/i2pd.log instead of being discarded.
+console log
 
 respawn
 respawn limit 5 60

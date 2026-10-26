@@ -19,6 +19,11 @@ foreground { /usr/bin/install -d -m 0700 -o i2pd -g i2pd /var/lib/i2pd }
 # Apply the same private creation mask as the packaged systemd/SysV services.
 umask 0077
 
+# Raise RLIMIT_NOFILE before dropping privileges, matching the 8192 used by
+# the other service definitions; the inherited supervisor limit is otherwise
+# unspecified. s6-softlimit applies to this process and its children.
+s6-softlimit -o 8192
+
 # setgid and setuid are performed before exec. i2pd must stay in the
 # foreground; --service selects the system paths and implies no daemonization.
 s6-setuidgid i2pd

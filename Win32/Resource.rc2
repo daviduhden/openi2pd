@@ -37,7 +37,7 @@ BEGIN
             VALUE "FileDescription", "openi2pd I2P router"
             VALUE "FileVersion", I2PD_VERSION
             VALUE "InternalName", CODENAME
-            VALUE "LegalCopyright", "Copyright (C) 2026, David Uhden Collado"
+            VALUE "LegalCopyright", "Copyright (C) 2013-2026, The PurpleI2P Project; Copyright (C) 2026, David Uhden Collado"
             VALUE "OriginalFilename", "i2pd"
             VALUE "ProductName", "openi2pd"
             VALUE "ProductVersion", I2P_VERSION

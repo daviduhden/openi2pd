@@ -55,7 +55,7 @@ Additional notes:
   bind/listen/accept and peer credentials; `stdio` covers poll and
   receive/send, `cpath` covers removing the socket, and `fattr` covers the
   0600 `chmod`.
-- With `log = syslog`, `/dev/log` is unveiled with `w`. The `unix` promise
+- With `log = syslog` and a core-owned sink, `/dev/log` is unveiled with `w` (a delegated log worker owns the sink instead). The `unix` promise
   alone does not authorize the filesystem lookup performed by `connect(2)`.
   Name-service files (`/etc/resolv.conf`, `/etc/hosts`, `/etc/services`,
   `/etc/protocols`) are opened internally by libc under the `dns` promise and
@@ -68,15 +68,13 @@ Additional notes:
   configured, are unveiled with `rwc`. A SOCKS outproxy without a port (a
   local socket) is unveiled with `w`.
 - `openbsd.unveil_file` lists extra paths, one per line; each is unveiled with
-  `rwc`. Use absolute paths. `openbsd.pledge_file` is additive, not an
-  override: the fixed startup and runtime baselines are always retained, and
-  custom whitespace-separated tokens are appended. `#` starts a comment,
-  duplicates are ignored and unknown tokens abort startup. The runtime policy
-  rejects `proc` and `exec`; workers are spawned before the runtime sandbox and
-  the core must not regain process-creation capability. Keep the file to
-  genuinely additional promises. In particular, `rpath`/`cpath` are required
-  to remove the pidfile and the TUI socket at shutdown, and `fattr` is required
-  when saving keys; the baseline already includes them.
+  `rwc`. Use absolute paths. `openbsd.pledge_file` is a fail-closed **subset
+  selector**, not an additive list: every token must already belong to the
+  phase base set, the runtime set is always a strict subset of the startup set,
+  and comments, blank lines, unknown tokens or a dangerous runtime token abort
+  startup. `rpath`/`cpath` are required to remove the pidfile and the TUI
+  socket at shutdown, and `fattr` is required when saving keys; those promises
+  are already in the baseline and must not be widened elsewhere.
 - `privsep.log` can run with the OpenBSD sandbox enabled since 2026: the
   supervisor/log pair is spawned while the startup pledge still has
   `proc`/`exec`, and each process installs its own policy after `execve`.
@@ -118,24 +116,34 @@ rcctl enable i2pd
 rcctl start i2pd
 ```
 
-The port must create `_i2pd` and install `login.conf.d/i2pd`; `rc.subr`
-selects that class by the script name. If the class is missing, `rc.subr` falls
-back to the `daemon` class and the 8192-descriptor/umask policy is not applied.
-Verify it with `getcap -f /etc/login.conf.d/i2pd i2pd`, not `id -c` (the
-password database has no login-class field).
+The port must create `_i2pd` with login class `i2pd` and install
+`login.conf.d/i2pd`; the PLIST `@newuser` line binds the class explicitly.
+If the class is missing, `rc.subr` falls back to the `daemon` class and the
+8192-descriptor/umask policy is not applied. Verify it with
+`getcap -f /etc/login.conf.d/i2pd i2pd`, not `id -c` (the password database has
+no login-class field). A minimal manual account setup is:
+
+```sh
+useradd -class i2pd -s /sbin/nologin -d /var/i2pd _i2pd
+```
 
 The script runs `i2pd --foreground --service` as `_i2pd` with an explicit
 pidfile, `/var/i2pd` as the data directory, `/etc/i2pd` for configuration and
 `/usr/local/share/i2pd/certificates` for certificates; `rc_bg=YES` lets rc.subr background
-the foreground process. A successful `rcctl start` means rc.subr supervised the
+the foreground process. A successful `rcctl start` means rc.subr started the
 process, not that the router finished initializing; use `rcctl check i2pd` and
-inspect the log or pidfile for startup errors. `rcctl stop` sends `SIGTERM`
-(ordered shutdown, no grace period), while
-`rcctl reload` sends `SIGHUP` (tunnel configuration reload). A graceful
-shutdown that waits for transit tunnels is requested explicitly:
+inspect the log or pidfile for startup errors. The template sets
+`rc_stop_signal=INT` and `daemon_timeout=660`, so `rcctl stop` requests the
+daemon's ordered shutdown plus the transit-tunnel drain and waits up to 660
+seconds before rc.subr escalates. With no transit tunnels the router exits
+promptly. `rcctl reload` sends `SIGHUP` (tunnel configuration reload).
+
+The TUI is a client, not a service. The default socket is mode 0600 inside a
+0700 `/var/i2pd`, so run the client as the service account (or configure a
+socket path with matching ownership):
 
 ```sh
-kill -INT "$(cat /var/i2pd/i2pd.pid)"
+doas -u _i2pd i2pd-tui --datadir=/var/i2pd
 ```
 
 Log rotation should send `SIGUSR1` after moving the file. Adjust the

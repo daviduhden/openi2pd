@@ -117,32 +117,32 @@ s6-svstat /run/service/i2pd
 ```
 
 The run script creates `/run/i2pd` and `/var/lib/i2pd` with mode 0700 and
-ownership `i2pd:i2pd`, drops privileges with `s6-setuidgid`, and execs
-`/usr/bin/i2pd` in the foreground with `--service`, explicit configuration,
-data, certificate and PID paths, and `--log=syslog`. It has no shell wrapper
-and never passes `--daemon`. The daemon writes
+ownership `i2pd:i2pd`, applies `s6-softlimit -o 8192`, drops privileges with
+`s6-setuidgid`, and execs `/usr/bin/i2pd` in the foreground with `--service`,
+explicit configuration, data, certificate and PID paths, and `--log=syslog`.
+It has no shell wrapper and never passes `--daemon`. The daemon writes
 `/run/i2pd/i2pd.pid`, but s6 supervision uses the process it started, not the
 PID file.
 
 Logs are sent to syslog, so there is no s6 logging pipeline, logger service or
 `notification-fd`. i2pd has no readiness protocol: s6-rc considers the longrun
-up when the run script has been executed, not when the router is ready. The
-warning that s6-rc may print about the missing readiness notification is
-expected. Do not invent a notification file.
+up when the run script has been executed, not when the router is ready. s6-rc
+does not print a warning for a longrun without `notification-fd`. Do not invent
+a notification file.
 
 ## Signals and shutdown
 
 `SIGINT` is the graceful stop (up to ten minutes for transit tunnels),
 `SIGHUP` reloads tunnels, and `SIGUSR1` reopens a file log destination. The
-source ships `down-signal` (`INT`) and `timeout-kill` (660000 ms), so the normal
-s6-rc down transition requests the graceful path and s6 escalates to `SIGKILL`
-only after that window. Recompile the source database after changing either
-file.
+source ships `down-signal` (`INT`), `timeout-kill` (660000 ms) and
+`timeout-finish` (10000 ms), so the normal s6-rc down transition requests the
+graceful path, s6 escalates to `SIGKILL` only after that window, and the
+five-second `finish` backoff is not cut short. Recompile the source database
+after changing any of them.
 
-No `finish` script is installed. The daemon removes the PID file on an orderly
-shutdown; after `SIGKILL` the stale file is harmless because the next start
-reopens and locks it. A finish script would risk removing a newer instance's
-PID file.
+`finish` never touches the daemon-owned PID file; the next instance reopens and
+locks it. s6-supervise signals only the run script's process, so the router
+stops its own IPC workers during the ordered stop.
 
 ## Scope
 

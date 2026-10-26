@@ -13,6 +13,8 @@
 # Provides:          i2pd
 # Required-Start:    $local_fs $remote_fs $network
 # Required-Stop:     $local_fs $remote_fs $network
+# Should-Start:      $syslog
+# Should-Stop:       $syslog
 # Default-Start:     2 3 4 5
 # Default-Stop:      0 1 6
 # Short-Description: openi2pd I2P router
@@ -60,8 +62,26 @@ fi
 [ -n "$I2PD_LOGFILE" ] || I2PD_LOGFILE=/var/log/i2pd/i2pd.log
 [ -n "$I2PD_LOG" ] || I2PD_LOG="file"
 
-# shellcheck source=/dev/null
-. /lib/lsb/init-functions
+# Accept the common boolean spellings, then reduce to one internal value.
+case "$(printf '%s' "$I2PD_ENABLED" | tr '[:upper:]' '[:lower:]')" in
+	1|true|yes) I2PD_ENABLED=yes ;;
+	*) I2PD_ENABLED=no ;;
+esac
+
+# LSB helpers are the normal implementation. A minimal SysV host without the
+# lsb-base package (for example a chkconfig-only system) still has to run this
+# script, so define stand-ins rather than failing at the first log_* call.
+if [ -r /lib/lsb/init-functions ]; then
+	# shellcheck source=/dev/null
+	. /lib/lsb/init-functions
+else
+	log_daemon_msg() { printf '%s' "${1:-}: ${2:-}"; }
+	log_end_msg() { [ "${1:-0}" -eq 0 ] && printf '.\n' || printf ' failed!\n'; }
+	log_success_msg() { printf '%s\n' "$*"; }
+	log_warning_msg() { printf '%s\n' "$*" >&2; }
+	log_failure_msg() { printf '%s\n' "$*" >&2; }
+	log_action_msg() { printf '%s\n' "$*"; }
+fi
 
 case "$I2PD_LOG" in
 	file|stdout|syslog) ;;
@@ -94,6 +114,26 @@ read_pid()
 	printf '%s\n' "$_pid"
 }
 
+# A stale pidfile can name a recycled PID. When /proc is available, require the
+# executable behind the PID to be this daemon before signalling it. On a host
+# without procfs, fall back to start-stop-daemon --exec matching where possible;
+# the no-helper fallback can only trust the pidfile.
+pid_matches_daemon()
+{
+	_pid=$1
+	[ -n "$_pid" ] || return 1
+	if [ -r "/proc/$_pid/exe" ]; then
+		_exe=$(readlink "/proc/$_pid/exe" 2>/dev/null) || return 1
+		# An upgraded package leaves the old process pointing at a deleted
+		# inode; strip the kernel suffix before comparing.
+		_exe=${_exe% (deleted)}
+		_daemon_real=$(readlink -f "$DAEMON" 2>/dev/null) || return 0
+		[ "$_exe" = "$_daemon_real" ]
+		return
+	fi
+	return 0
+}
+
 is_running()
 {
 	if [ "$HAVE_START_STOP_DAEMON" -eq 1 ]; then
@@ -107,7 +147,7 @@ is_running()
 		return 0
 	fi
 	_pid=$(read_pid) || return 1
-	kill -0 "$_pid" 2>/dev/null
+	kill -0 "$_pid" 2>/dev/null && pid_matches_daemon "$_pid"
 }
 
 install_owned_dir()
@@ -169,7 +209,8 @@ wait_for_start()
 	_count=0
 	while [ "$_count" -lt 10 ]; do
 		_pid=$(read_pid) || _pid=
-		if [ -n "$_pid" ] && kill -0 "$_pid" 2>/dev/null; then
+		if [ -n "$_pid" ] && kill -0 "$_pid" 2>/dev/null \
+			&& pid_matches_daemon "$_pid"; then
 			return 0
 		fi
 		sleep 1
@@ -185,6 +226,12 @@ wait_for_stop()
 	_count=0
 	while [ "$_count" -lt "$_limit" ]; do
 		kill -0 "$_pid" 2>/dev/null || return 0
+		# A recycled PID must not keep this loop alive (and must never be
+		# SIGKILLed by the caller). If /proc shows a different executable,
+		# the daemon we signalled is already gone.
+		if [ -r "/proc/$_pid/exe" ] && ! pid_matches_daemon "$_pid"; then
+			return 0
+		fi
 		sleep 1
 		_count=$((_count + 1))
 	done
@@ -261,9 +308,14 @@ do_start()
 			;;
 	esac
 	# DAEMON_OPTS is intentionally split into words as an administrator might
-	# supply several separate options.
+	# supply several separate options. Disable pathname expansion for the split
+	# so a literal * or ? in an option value is not silently globbed.
 	# shellcheck disable=SC2086
-	[ -z "$DAEMON_OPTS" ] || set -- "$@" $DAEMON_OPTS
+	if [ -n "$DAEMON_OPTS" ]; then
+		set -f
+		set -- "$@" $DAEMON_OPTS
+		set +f
+	fi
 
 	if [ "$HAVE_START_STOP_DAEMON" -eq 1 ]; then
 		start-stop-daemon --start --quiet --background \
@@ -294,7 +346,9 @@ do_stop()
 			--pidfile "$I2PD_PIDFILE" \
 			--exec "$DAEMON"
 		_rc=$?
-		if [ "$_rc" -eq 2 ]; then
+		# --oknodo turns "nothing to stop" into success, so the exit status
+		# alone cannot prove that the router is gone. Re-check the identity.
+		if [ "$_rc" -ne 0 ] || is_running; then
 			return 1
 		fi
 		# The daemon removes the identity-checked pidfile itself; deleting it
@@ -303,7 +357,8 @@ do_stop()
 	fi
 
 	_pid=$(read_pid) || _pid=
-	if [ -z "$_pid" ] || ! kill -0 "$_pid" 2>/dev/null; then
+	if [ -z "$_pid" ] || ! kill -0 "$_pid" 2>/dev/null \
+		|| ! pid_matches_daemon "$_pid"; then
 		return 0
 	fi
 
@@ -322,8 +377,19 @@ do_stop()
 
 do_reload()
 {
+	# SIGHUP reloads tunnel configuration only; i2pd.conf changes require a
+	# restart (force-reload).
+	if [ "$HAVE_START_STOP_DAEMON" -eq 1 ]; then
+		start-stop-daemon --stop --quiet --signal HUP \
+			--pidfile "$I2PD_PIDFILE" --exec "$DAEMON" || {
+			log_failure_msg "$NAME is not running"
+			return 1
+		}
+		return 0
+	fi
 	_pid=$(read_pid) || _pid=
-	if [ -z "$_pid" ] || ! kill -0 "$_pid" 2>/dev/null; then
+	if [ -z "$_pid" ] || ! kill -0 "$_pid" 2>/dev/null \
+		|| ! pid_matches_daemon "$_pid"; then
 		log_failure_msg "$NAME is not running"
 		return 1
 	fi
@@ -383,9 +449,29 @@ case "$1" in
 		fi
 		exit "$_rc"
 		;;
-	reload|force-reload)
+	reload)
 		log_daemon_msg "Reloading $DESC" "$NAME"
 		do_reload
+		_rc=$?
+		if [ "$_rc" -eq 0 ]; then
+			log_end_msg 0
+		else
+			log_end_msg 1
+		fi
+		exit "$_rc"
+		;;
+	force-reload)
+		# LSB force-reload means "apply configuration, restart if the service
+		# cannot reload it". i2pd.conf is only read at startup, so a full
+		# stop/start is the correct and only complete implementation.
+		log_daemon_msg "Restarting $DESC (force-reload)" "$NAME"
+		do_stop
+		_rc=$?
+		if [ "$_rc" -ne 0 ]; then
+			log_end_msg 1
+			exit "$_rc"
+		fi
+		do_start
 		_rc=$?
 		if [ "$_rc" -eq 0 ]; then
 			log_end_msg 0

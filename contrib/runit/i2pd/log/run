@@ -12,6 +12,7 @@
 set -eu
 umask 027
 
-install -d -m 0750 -o i2pd -g i2pd /var/log/i2pd
+/usr/bin/install -d -m 0750 -o i2pd -g i2pd /var/log/i2pd
 
-exec chpst -u i2pd:i2pd svlogd -tt /var/log/i2pd
+exec 2>&1
+exec /usr/bin/chpst -u i2pd:i2pd /usr/bin/svlogd -tt /var/log/i2pd

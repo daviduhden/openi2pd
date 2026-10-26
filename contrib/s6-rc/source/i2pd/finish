@@ -1,0 +1,14 @@
+#!/bin/execlineb -S0
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: finish.
+#
+# s6-supervise runs this after the router exits and before it restarts the run
+# script. The five-second pause turns a persistent account or configuration
+# failure into a slow retry loop instead of a hot respawn, and stays below the
+# timeout-finish limit. Do not remove the daemon-owned pidfile here: the next
+# instance reopens and locks it.
+#
+
+foreground { /bin/sleep 5 }

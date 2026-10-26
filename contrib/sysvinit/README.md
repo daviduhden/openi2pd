@@ -101,7 +101,21 @@ Signals have the same meaning as for a manual foreground run:
 
 `start` is idempotent: an already running instance is reported and is not
 started a second time. `stop` uses `--oknodo`, so stopping an already stopped
-service succeeds.
+service succeeds; after the stop attempt the script re-checks the process and
+returns failure if the router survived `SIGKILL`.
+
+`reload` sends `SIGHUP` and only reloads tunnels. `force-reload` performs a
+full stop/start because `i2pd.conf` is read only at startup. `status` returns
+0 (running), 1 (dead with a stale pidfile) or 3 (not running).
+
+`start` does not prove router readiness: it waits up to ten seconds for the
+pidfile and verifies that the PID belongs to the configured executable where
+`/proc` is available, but the router may still be reseeding. Check the log and
+the TUI/admin status after starting.
+
+`I2PD_ENABLED` accepts `yes`, `true` and `1` (case-insensitive) as enabled; any
+other value disables the service, and `start` then reports success without
+launching the router.
 
 ## Logging
 
@@ -112,11 +126,12 @@ with `install` under `umask 0077` when they are missing. The packaged
 rotation; `kill -USR1 "$(cat /run/i2pd/i2pd.pid)"` is the alternative if the
 log is moved and reopened externally.
 
-`I2PD_LOG=syslog` sends messages to syslog. `I2PD_LOG=stdout` leaves logging on
-the daemon's standard output, which under SysV is normally the init system's
-`/dev/null`; use it only when the script is itself supervised by a process
-manager that captures output. Use `I2PD_LOG=file` for an independent SysV
-boot.
+`I2PD_LOG=syslog` sends messages to syslog and adds a weak `$syslog` ordering
+through the LSB `Should-Start`/`Should-Stop` fields. `I2PD_LOG=stdout` leaves
+logging on the daemon's standard output, which under SysV is normally the init
+system's `/dev/null`; use it only when the script is itself supervised by a
+process manager that captures output. Use `I2PD_LOG=file` for an independent
+SysV boot.
 
 `I2PD_NOFILE` sets the open-file limit before the daemon starts; 8192 is the
 default and is ignored with a warning if it is not numeric or cannot be raised.

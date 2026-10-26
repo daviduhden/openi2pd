@@ -15,17 +15,21 @@ The service tree contains a foreground router service and a separate logger:
 ```text
 contrib/runit/i2pd/
 |-- run
+|-- finish
 `-- log/
-    `-- run
+    |-- run
+    `-- config
 ```
 
 Select it with `-DI2PD_SERVICE_MANAGER=runit`. CMake installs this tree as
 `/etc/sv/i2pd` by default, with the executable bits intact.
 `run` prepares the runtime and data directories as root, then uses `chpst` to
-drop to `i2pd:i2pd` and replaces the shell with `/usr/bin/i2pd`. The router
-stays in the foreground and writes to stdout; `log/run` creates the log
-directory and runs `svlogd -tt` as the same account. There is no `finish`
-script and no manual restart or PID management.
+drop to `i2pd:i2pd`, applies `RLIMIT_NOFILE=8192` and replaces the shell with
+`/usr/bin/i2pd`. The router stays in the foreground and writes to stdout;
+`log/run` creates the log directory and runs `svlogd -tt` as the same account,
+with rotation controlled by `log/config`. `finish` pauses five seconds and
+records the exit status before runsv restarts the router, so a persistent
+configuration failure is a slow, visible retry instead of a hot loop.
 
 ## Install
 
@@ -64,16 +68,22 @@ sv start i2pd        # alias for `sv up`
 sv stop i2pd         # alias for `sv down`
 sv restart i2pd
 sv reload i2pd       # SIGHUP: reload tunnel configuration
-sv 1 i2pd            # SIGUSR1: reopen daemon log files
 sv status i2pd/log   # or /var/service/i2pd/log
 ```
 
 `sv stop` (or `sv down`) sends `SIGTERM` to the router and stops the supervised
-service.
-`sv restart` uses runsv's normal term/cont/up sequence. `sv interrupt i2pd`
-sends `SIGINT`, which starts the daemon's ten-minute graceful drain; because
-runsv restarts an exiting service unless it is down, use that when the router
-should remain supervised, and use `sv down` for an ordinary service stop.
+service. `SIGTERM` performs the router's ordered stop: listeners close, state is
+flushed, and the IPC workers are joined. This is the correct default for
+runit. `sv restart` uses runsv's normal term/cont/up sequence.
+
+runit has no per-service stop timeout and stock `runsv` has no `down-signal`
+or `timeout-kill` file, so this tree deliberately ships no `down-signal`. A
+`SIGINT` would start the ten-minute transit-tunnel drain, but runsv restarts an
+exiting service unless it is down and offers no configurable window. For a
+drain under runit, send `SIGINT` to the main PID, wait for it to exit, then
+run `sv down`; do not add a `down-signal` file and expect a longer window.
+`sv 1 i2pd` sends `SIGUSR1`, which only reopens a file log; this service uses
+`--log=stdout`, so it is not useful here.
 
 runsv supervises the process, not the router's internal readiness. A status of
 `run` means the process is running, not that tunnels are built or reseeding has
@@ -84,8 +94,11 @@ second instance from starting.
 
 The logger is an independent supervised service. `sv status i2pd/log` shows
 its state, and `sv restart i2pd/log` restarts only `svlogd`. `svlogd` performs
-its own rotation and timestamping; do not add `logrotate` handling for
-`/var/log/i2pd` on this installation.
+its own rotation (`log/config`: 1 MiB, ten files) and timestamping; do not add
+`logrotate` handling for `/var/log/i2pd` on this installation.
+
+runsv signals only its direct child. The router must therefore stop its own IPC
+workers during the ordered stop; the service does not signal them directly.
 
 ## Security notes
 

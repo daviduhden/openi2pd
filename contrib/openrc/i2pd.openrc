@@ -37,16 +37,29 @@ directory="${I2PD_DATADIR}"
 supervisor="supervise-daemon"
 respawn_delay=5
 respawn_max=5
-respawn_period=60
-# Keep the stop signal and its retry budget in one knob. Setting stopsig to
-# SIGINT requests the daemon's graceful tunnel drain; retry follows it.
+# Match the packaged systemd StartLimitIntervalSec=300/StartLimitBurst=5 so a
+# crash loop is treated the same way on both managers.
+respawn_period=300
+# Keep the stop signal and its retry budget in one knob. supervise-daemon's
+# --retry grammar is SIGNAL/TIMEOUT (the man page uses SIGTERM/5), so the
+# SIG-prefixed form is the canonical one; INT/660 is accepted as well. SIGINT
+# selects the daemon's ten-minute transit-tunnel drain, SIGTERM the prompt
+# ordered shutdown.
 : "${stopsig:=SIGTERM}"
 case "${stopsig}" in
 	SIGINT|INT) : "${retry:=SIGINT/660}" ;;
+	SIGTERM|TERM) : "${retry:=SIGTERM/30}" ;;
+	SIGHUP|HUP) : "${retry:=SIGHUP/30}" ;;
 	*) : "${retry:=${stopsig}/30}" ;;
 esac
 umask=0077
-required_files="${I2PD_CONF}"
+# OpenRC applies rc_ulimit through the shell's ulimit built-in before it
+# starts the supervised process. Keep the same descriptor budget as the other
+# managers; a non-root invocation can only raise it within the inherited hard
+# limit.
+: "${rc_ulimit:=-n 8192}"
+required_files="${I2PD_CONF} ${I2PD_TUNCONF}"
+required_dirs="${I2PD_TUNNELSDIR}"
 
 command_args="--service --foreground --conf=${I2PD_CONF} --tunconf=${I2PD_TUNCONF} --tunnelsdir=${I2PD_TUNNELSDIR} --certsdir=${I2PD_CERTSDIR} --datadir=${I2PD_DATADIR} --pidfile=${I2PD_PIDFILE} --log=${I2PD_LOG}"
 case "${I2PD_LOG}" in
@@ -84,19 +97,27 @@ start_pre() {
 			;;
 	esac
 
-	checkpath -d -m 0700 -o "${I2PD_USER}:${I2PD_GROUP}" "$(dirname "${I2PD_PIDFILE}")"
-	checkpath -d -m 0700 -o "${I2PD_USER}:${I2PD_GROUP}" "${I2PD_DATADIR}"
+	# A failed checkpath must abort the start. Without the explicit checks,
+	# OpenRC reports only a later "failed to start" with no path or mode.
+	checkpath -d -m 0700 -o "${I2PD_USER}:${I2PD_GROUP}" "$(dirname "${I2PD_PIDFILE}")" \
+		|| { eerror "Cannot create or own $(dirname "${I2PD_PIDFILE}")"; return 1; }
+	checkpath -d -m 0700 -o "${I2PD_USER}:${I2PD_GROUP}" "${I2PD_DATADIR}" \
+		|| { eerror "Cannot create or own ${I2PD_DATADIR}"; return 1; }
 
 	case "${I2PD_LOG}" in
 		file)
-			checkpath -d -m 0750 -o "${I2PD_USER}:${I2PD_GROUP}" "${I2PD_LOGDIR}"
-			checkpath -f -m 0640 -o "${I2PD_USER}:${I2PD_GROUP}" "${I2PD_LOGFILE}"
+			checkpath -d -m 0750 -o "${I2PD_USER}:${I2PD_GROUP}" "${I2PD_LOGDIR}" \
+				|| { eerror "Cannot create or own ${I2PD_LOGDIR}"; return 1; }
+			checkpath -f -m 0640 -o "${I2PD_USER}:${I2PD_GROUP}" "${I2PD_LOGFILE}" \
+				|| { eerror "Cannot create or own ${I2PD_LOGFILE}"; return 1; }
 			;;
 		syslog)
 			;;
 		*)
-			checkpath -d -m 0750 -o "${I2PD_USER}:${I2PD_GROUP}" "${I2PD_LOGDIR}"
-			checkpath -f -m 0600 -o "${I2PD_USER}:${I2PD_GROUP}" "${I2PD_LOGFILE}"
+			checkpath -d -m 0750 -o "${I2PD_USER}:${I2PD_GROUP}" "${I2PD_LOGDIR}" \
+				|| { eerror "Cannot create or own ${I2PD_LOGDIR}"; return 1; }
+			checkpath -f -m 0600 -o "${I2PD_USER}:${I2PD_GROUP}" "${I2PD_LOGFILE}" \
+				|| { eerror "Cannot create or own ${I2PD_LOGFILE}"; return 1; }
 			;;
 	esac
 }
@@ -107,12 +128,12 @@ description_reopenlogs="Reopen log files (SIGUSR1)"
 
 reload() {
 	ebegin "Reloading ${name}"
-	supervise-daemon "${RC_SVCNAME}" --signal HUP
+	supervise-daemon --signal HUP "${RC_SVCNAME}"
 	eend $?
 }
 
 reopenlogs() {
 	ebegin "Reopening ${name} logs"
-	supervise-daemon "${RC_SVCNAME}" --signal USR1
+	supervise-daemon --signal USR1 "${RC_SVCNAME}"
 	eend $?
 }

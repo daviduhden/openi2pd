@@ -11,4 +11,4 @@ Documents project configuration and integration.
 # In that directory you can store separated config files for every tunnel.
 # Please read documentation for more info.
 #
-# You can find examples in /usr/share/doc/i2pd/tunnels.d directory
+# You can find examples in /usr/share/doc/i2pd/docs/user-guide/tunnels.md

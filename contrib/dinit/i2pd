@@ -7,6 +7,14 @@
 # process. i2pd logs to stdout; dinit appends that output to the configured log
 # file. Create /var/log/i2pd (0700, i2pd:i2pd) and /var/lib/i2pd before use.
 #
+# Minimum dinit: 0.17 (log-type/logfile/logfile-uid/logfile-gid/
+# logfile-permissions, restart-limit-count/interval, rlimit-nofile and
+# smooth-recovery must all be recognised; an older dinit rejects the file).
+# dinit has no per-service umask setting, so start it from a supervisor with a
+# private umask (0077) or accept the host default for newly created state.
+# The captured log file is not rotated by dinit; add newsyslog/logrotate
+# rotation for /var/log/i2pd/i2pd.log.
+#
 
 type = process
 run-as = i2pd

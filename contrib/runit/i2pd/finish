@@ -1,0 +1,19 @@
+#!/bin/sh
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# openi2pd: finish.
+#
+# runsv records the router exit status and restarts it after a short pause.
+# The delay turns a persistent configuration or account failure into a slow,
+# visible retry loop instead of a busy respawn. Never remove the daemon-owned
+# pidfile here: runsv may already have started a newer instance.
+#
+
+set -eu
+umask 077
+
+printf 'i2pd: run exited (code=%s status=%s); restarting in 5s\n' \
+	"${1:-unknown}" "${2:-unknown}" >&2
+/bin/sleep 5
+exit 0

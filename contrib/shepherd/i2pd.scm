@@ -33,12 +33,17 @@
     (list "HOME=/var/lib/i2pd"
           "PATH=/usr/bin:/bin"
           "LC_ALL=C"))
-   ;; make-kill-destructor sends SIGINT to the service process group and
+   ;; make-kill-destructor sends SIGINT to the service *process group* and
    ;; escalates to SIGKILL after the grace period. The default five seconds is
    ;; far shorter than the router's ten-minute graceful drain, so allow the
-   ;; documented drain plus a shutdown margin. The pidfile is under the data
-   ;; directory because Shepherd has no pre-start tmpfiles hook.
-   #:stop (make-kill-destructor SIGINT #:grace-period 700)
+   ;; documented 600-second drain plus the same 60-second shutdown margin used
+   ;; by the systemd/OpenRC/SysV units (660 s). Shepherd owns the group signal;
+   ;; the daemon still stops its own IPC workers during the ordered stop.
+   ;; Socket/storage workers receive the group signal too, so this manager is
+   ;; not the best choice when a strict main-process-only drain is required.
+   ;; The pidfile is under the data directory because Shepherd has no pre-start
+   ;; tmpfiles hook.
+   #:stop (make-kill-destructor SIGINT #:grace-period 660)
    #:respawn? #t
    #:respawn-delay 5
    ;; No dependency is declared. The native keyword is #:requirement;

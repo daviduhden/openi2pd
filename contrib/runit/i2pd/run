@@ -13,11 +13,25 @@
 set -eu
 umask 077
 
-install -d -m 0700 -o i2pd -g i2pd /run/i2pd
-install -d -m 0700 -o i2pd -g i2pd /var/lib/i2pd
+# Fail once with a clear diagnostic instead of entering runsv's respawn loop
+# because the account or the packaged configuration is missing.
+if ! id -u i2pd >/dev/null 2>&1; then
+	printf '%s\n' "i2pd: service account 'i2pd' does not exist" >&2
+	exit 1
+fi
+if [ ! -r /etc/i2pd/i2pd.conf ]; then
+	printf '%s\n' "i2pd: /etc/i2pd/i2pd.conf is not readable" >&2
+	exit 1
+fi
+
+/usr/bin/install -d -m 0700 -o i2pd -g i2pd /run/i2pd
+/usr/bin/install -d -m 0700 -o i2pd -g i2pd /var/lib/i2pd
 
 exec 2>&1
-exec chpst -u i2pd:i2pd /usr/bin/i2pd \
+# -o raises RLIMIT_NOFILE to the same 8192 used by the other definitions; the
+# inherited runsvdir limit is otherwise unspecified. chpst execs, so i2pd stays
+# the direct child of runsv and receives sv's signals.
+exec /usr/bin/chpst -o 8192 -u i2pd:i2pd /usr/bin/i2pd \
 	--service \
 	--foreground \
 	--conf=/etc/i2pd/i2pd.conf \
