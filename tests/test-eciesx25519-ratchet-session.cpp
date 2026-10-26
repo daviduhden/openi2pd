@@ -4,7 +4,7 @@
  *
  * openi2pd: test eciesx25519 ratchet session.
  *
- * Runs the ECIES-X25519-AEAD-Ratchet New Session/New Session Reply handshake between in-process destinations, validating payload block ordering, replay handling, retransmission and established-session traffic.
+ * Runs the ECIES-X25519-AEAD-Ratchet New Session/New Session Reply handshake between in-process destinations, validating payload block ordering, reply-split loss in both directions, delayed replies, tagset exhaustion, the router-N envelope, replay handling, retransmission and established-session traffic.
  *
  */
 
@@ -278,6 +278,51 @@ void CheckHandshakePayloadValidation ()
 	// An established payload may be empty, but a handshake may not.
 	assert (i2p::garlic::ValidateRatchetPayload (nullptr, 0));
 	assert (!i2p::garlic::ValidateNewSessionPayload (nullptr, 0));
+
+	// A New Session Reply may carry only DateTime, Garlic, Options and
+	// Padding. An empty reply is accepted like Java, which merely warns.
+	assert (i2p::garlic::ValidateNewSessionReplyPayload (nullptr, 0));
+	payload.clear ();
+	append (i2p::garlic::eECIESx25519BlkDateTime, dateTime ());
+	append (i2p::garlic::eECIESx25519BlkGalicClove, { 0, 20, 0, 0, 0, 1, 0, 0, 0, 0 });
+	append (i2p::garlic::eECIESx25519BlkOptions, { 0 });
+	append (i2p::garlic::eECIESx25519BlkPadding, { 0, 0 });
+	assert (i2p::garlic::ValidateNewSessionReplyPayload (payload.data (), payload.size ()));
+
+	// Termination, NEXT_KEY, SessionID, ACK, ACK_REQUEST and unknown blocks
+	// are all rejected before any split or session side effect. In particular
+	// a Termination block must never reach RemoveECIESx25519Session from an
+	// NSR.
+	{
+		struct RejectedBlock
+		{
+			uint8_t type;
+			std::vector<uint8_t> data;
+		};
+		const RejectedBlock rejected[] = {
+			{ i2p::garlic::eECIESx25519BlkTermination, { 0 } },
+			{ i2p::garlic::eECIESx25519BlkNextKey, { 0, 0, 0 } },
+			{ i2p::garlic::eECIESx25519BlkSessionID, { 0, 0, 0, 1 } },
+			{ i2p::garlic::eECIESx25519BlkAck, { 0, 0, 0, 1 } },
+			{ i2p::garlic::eECIESx25519BlkAckRequest, { 0 } },
+			{ 0x7f, { 0 } },
+		};
+		for (const auto & block : rejected)
+		{
+			payload.clear ();
+			append (i2p::garlic::eECIESx25519BlkDateTime, dateTime ());
+			append (block.type, block.data);
+			assert (!i2p::garlic::ValidateNewSessionReplyPayload (payload.data (), payload.size ()));
+		}
+		// The same well-framed NEXT_KEY/ACK blocks stay valid for an
+		// established session.
+		payload.clear ();
+		append (i2p::garlic::eECIESx25519BlkDateTime, dateTime ());
+		append (i2p::garlic::eECIESx25519BlkAck, { 0, 0, 0, 1 });
+		append (i2p::garlic::eECIESx25519BlkAckRequest, { 0 });
+		assert (i2p::garlic::ValidateRatchetPayload (payload.data (), payload.size ()));
+		assert (!i2p::garlic::ValidateNewSessionReplyPayload (payload.data (), payload.size ()));
+	}
 }
 
 void InteropLoop (CryptoKeyType type, const char * label)
@@ -385,39 +430,201 @@ void InteropLoop (CryptoKeyType type, const char * label)
 		oscar.destination->ProcessGarlicMessage (esLost);
 		assert (oscar.destination->Received ().size () == 1);
 		assert (oscar.destination->Received ().back ().payload == afterLost);
+
+		// The mirror case: the last reply is lost. Bob must not keep sending
+		// on a split Alice never saw; he retains both splits and promotes the
+		// one her first ES message actually uses.
+		Peer quinn = MakePeer (type);
+		Peer rita = MakePeer (type);
+		Establish (quinn, rita, first);
+		quinn.destination->ClearReceived ();
+		rita.destination->ClearReceived ();
+		auto nsrC = rita.session->WrapSingleMessage (MakeDataMessage (one, 0xCCCC0001));
+		auto nsrD = rita.session->WrapSingleMessage (MakeDataMessage (two, 0xDDDD0002));
+		assert (nsrC && nsrD);
+		assert (rita.session->GetNumPendingReplyTagsets () == 2);
+		quinn.destination->ProcessGarlicMessage (nsrC); // nsrD is lost
+		assert (quinn.session->GetNumPendingReplyTagsets () == 0);
+		const std::vector<uint8_t> forward { 0x61 };
+		auto esC = quinn.session->WrapSingleMessage (MakeDataMessage (forward, 0xEEEE0003));
+		assert (esC);
+		rita.destination->ProcessGarlicMessage (esC);
+		assert (rita.destination->Received ().size () == 1);
+		// Bob now sends on the promoted split, which Alice can decrypt.
+		rita.destination->ClearReceived ();
+		quinn.destination->ClearReceived ();
+		const std::vector<uint8_t> backward { 0x62, 0x63 };
+		auto esD = rita.session->WrapSingleMessage (MakeDataMessage (backward, 0xFFFF0004));
+		assert (esD);
+		quinn.destination->ProcessGarlicMessage (esD);
+		assert (quinn.destination->Received ().size () == 1);
+		assert (quinn.destination->Received ().back ().payload == backward);
+
+		// A delayed New Session Reply after establishment must not rewind the
+		// outbound tagset ID or its tag index.
+		Peer sam = MakePeer (type);
+		Peer tom = MakePeer (type);
+		Establish (sam, tom, first);
+		sam.destination->ClearReceived ();
+		tom.destination->ClearReceived ();
+		auto nsrE = tom.session->WrapSingleMessage (MakeDataMessage (one, 0x12340001));
+		auto nsrF = tom.session->WrapSingleMessage (MakeDataMessage (two, 0x12340002));
+		auto nsrG = tom.session->WrapSingleMessage (MakeDataMessage (one, 0x12340003));
+		assert (nsrE && nsrF && nsrG);
+		sam.destination->ProcessGarlicMessage (nsrE);
+		assert (sam.session->GetSendTagsetID () == 0);
+		assert (sam.session->GetSendTagsetNextIndex () == 0);
+		assert (sam.session->GetNumPendingReplyTagsets () == 0);
+		const std::vector<uint8_t> samBody { 0x71 };
+		auto samEs1 = sam.session->WrapSingleMessage (MakeDataMessage (samBody, 0x12340004));
+		assert (samEs1);
+		assert (sam.session->GetSendTagsetNextIndex () == 1);
+		tom.destination->ProcessGarlicMessage (samEs1);
+		// Delayed reply arrives after the session is established.
+		sam.destination->ProcessGarlicMessage (nsrG);
+		assert (sam.session->GetSendTagsetID () == 0);
+		assert (sam.session->GetSendTagsetNextIndex () == 1);
+		assert (sam.session->GetNumPendingReplyTagsets () == 1);
+		tom.destination->ClearReceived ();
+		auto samEs2 = sam.session->WrapSingleMessage (MakeDataMessage (samBody, 0x12340005));
+		assert (samEs2);
+		assert (sam.session->GetSendTagsetNextIndex () == 2);
+		tom.destination->ProcessGarlicMessage (samEs2);
+		assert (tom.destination->Received ().size () == 1);
 	}
 
 	std::printf ("ok: %s\n", label);
 }
 
-void AnonymousNewSession (CryptoKeyType type)
+void CheckRouterEnvelope ()
+{
+	// The router N envelope is exactly 32-byte ephemeral key + garlic payload
+	// + 16-byte Poly1305 tag. It must never gain the spec-1c 32-byte flags
+	// section that Java's N decoder does not parse.
+	Peer bob = MakePeer (i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD);
+	const std::vector<uint8_t> body { 0x77, 0x66, 0x55 };
+	auto msg = MakeDataMessage (body, 0x0E0E0001);
+	auto wrapped = i2p::garlic::WrapECIESX25519MessageForRouter (msg, bob.destination->GetPublicKey ());
+	assert (wrapped);
+	const size_t total = wrapped->GetPayloadLength (); // includes the 4-byte garlic length
+	assert (total > 4 + 32 + 16);
+	const size_t len = total - 4;
+	assert (bufbe32toh (wrapped->GetPayload ()) == len);
+	const uint8_t * inner = wrapped->GetPayload () + 4 + 32;
+	const size_t innerLen = len - 32 - 16;
+
+	size_t offset = 0;
+	bool gotDateTime = false, gotGarlic = false, gotPadding = false;
+	while (offset < innerLen)
+	{
+		assert (offset + 3 <= innerLen);
+		const uint8_t type = inner[offset++];
+		const uint16_t size = static_cast<uint16_t> ((inner[offset] << 8) | inner[offset + 1]);
+		offset += 2;
+		assert (offset + size <= innerLen);
+		if (gotPadding) assert (false); // nothing may follow Padding
+		if (type == i2p::garlic::eECIESx25519BlkDateTime)
+		{
+			assert (size == 4);
+			gotDateTime = true;
+		}
+		else if (type == i2p::garlic::eECIESx25519BlkGalicClove)
+		{
+			assert (size == body.size () + 10);
+			gotGarlic = true;
+		}
+		else if (type == i2p::garlic::eECIESx25519BlkPadding)
+			gotPadding = true;
+		else
+			assert (false); // no flags/static or unknown block
+		offset += size;
+	}
+	assert (offset == innerLen);
+	assert (gotDateTime && gotGarlic);
+}
+
+void CheckInboundTagClamp ()
+{
+	const CryptoKeyType type = i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD;
+	Peer peer = MakePeer (type);
+	auto * destination = peer.destination.get ();
+	destination->SetNumRatchetInboundTags (100000);
+	assert (destination->GetNumRatchetInboundTags () == i2p::garlic::ECIESX25519_MAX_INBOUND_TAGS);
+	destination->SetNumRatchetInboundTags (500);
+	assert (destination->GetNumRatchetInboundTags () == i2p::garlic::ECIESX25519_MAX_INBOUND_TAGS);
+	destination->SetNumRatchetInboundTags (-1);
+	assert (destination->GetNumRatchetInboundTags () == 0);
+	destination->SetNumRatchetInboundTags (24);
+	assert (destination->GetNumRatchetInboundTags () == 24);
+}
+
+void TagsetExhaustion (CryptoKeyType type)
 {
 	Peer alice = MakePeer (type);
 	Peer bob = MakePeer (type);
-	auto session = std::make_shared<ECIESX25519AEADRatchetSession> (alice.destination.get (), false);
-	session->SetRemoteStaticKey (type, bob.destination->GetPublicKey ());
-	const std::vector<uint8_t> body { 0x77, 0x66 };
-	auto ns = session->WrapOneTimeMessage (MakeDataMessage (body, 0xCCCC000C));
-	assert (ns);
-	bob.destination->ProcessGarlicMessage (ns);
-	assert (bob.destination->Received ().size () == 1);
-	assert (bob.destination->Received ().back ().payload == body);
-	// No reverse session may be created for a zero static key.
-	assert (!bob.destination->GetRoutingSession (alice.routing, false, false));
+	const std::vector<uint8_t> body { 0x10, 0x20 };
+	Establish (alice, bob, body);
+	alice.destination->ClearReceived ();
+	bob.destination->ClearReceived ();
+
+	// Complete the handshake so Alice owns an established send tagset.
+	auto nsr = bob.session->WrapSingleMessage (MakeDataMessage (body, 0x0A0A0001));
+	assert (nsr);
+	alice.destination->ProcessGarlicMessage (nsr);
+	auto es = alice.session->WrapSingleMessage (MakeDataMessage (body, 0x0A0A0002));
+	assert (es);
+	bob.destination->ProcessGarlicMessage (es);
+	assert (alice.session->IsReadyToSend ());
+	assert (!alice.session->IsExhausted ());
+
+	// The 16-bit tag space holds 65536 tags. One was already used by the ES
+	// above, so exactly 65535 more can be sent. Exhaustion must mark the
+	// session unusable for sending without removing or terminating it.
+	int sent = 0;
+	while (sent <= 0x10000)
+	{
+		auto message = alice.session->WrapSingleMessage (
+			MakeDataMessage (body, 0x0B0B0000u + static_cast<uint32_t> (sent)));
+		if (!message) break;
+		sent++;
+	}
+	assert (sent == 0xFFFF);
+	assert (alice.session->GetSendTagsetNextIndex () == 0x10000);
+	assert (!alice.session->WrapSingleMessage (MakeDataMessage (body, 0x0C0C0001)));
+	assert (alice.session->IsExhausted ());
+	assert (!alice.session->IsReadyToSend ());
+	assert (!alice.session->IsTerminated ());
+
+	// The destination must hand out a fresh session for the next send while
+	// the exhausted object stays alive to receive delayed messages.
+	auto replacement = alice.destination->GetRoutingSession (bob.routing, true);
+	assert (replacement);
+	assert (replacement != alice.session);
+
+	bob.destination->ClearReceived ();
+	alice.destination->ClearReceived ();
+	const std::vector<uint8_t> late { 0x30, 0x40 };
+	auto lateMessage = bob.session->WrapSingleMessage (MakeDataMessage (late, 0x0D0D0001));
+	assert (lateMessage);
+	alice.destination->ProcessGarlicMessage (lateMessage);
+	assert (alice.destination->Received ().size () == 1);
+	assert (alice.destination->Received ().back ().payload == late);
 }
 }
 
 int main ()
 {
 	CheckHandshakePayloadValidation ();
+	CheckRouterEnvelope ();
+	CheckInboundTagClamp ();
 
 	InteropLoop (i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, "ECIES-X25519");
-	AnonymousNewSession (i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD);
+	TagsetExhaustion (i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD);
 #if OPENSSL_PQ
 	if (i2p::crypto::IsMLKEMSupported (i2p::data::CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD))
 	{
 		InteropLoop (i2p::data::CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD, "ECIES-MLKEM768-X25519");
-		AnonymousNewSession (i2p::data::CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD);
+		TagsetExhaustion (i2p::data::CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD);
 	}
 	else
 		std::printf ("skip: ML-KEM-768 not supported by this OpenSSL\n");
