@@ -20,14 +20,18 @@
 #include <mutex>
 #include <utility>
 #include <cstddef>
+#include <cstring>
+#include <algorithm>
 #include <vector>
 #include <map>
 #include <set>
 #include <list>
+#include <unordered_map>
 #include <boost/asio.hpp>
 #include "version.h"
 #include "Crypto.h"
 #include "I2PEndian.h"
+#include "I2NPProtocol.h"
 #include "PostQuantum.h"
 #include "RouterInfo.h"
 #include "RouterContext.h"
@@ -41,12 +45,23 @@ namespace transport
 	// (EstablishmentManager.java:153) and per-message OB_MESSAGE_TIMEOUT = 15 s.
 	const int SSU2_CONNECT_TIMEOUT = 25; // in seconds
 	const int SSU2_TERMINATION_TIMEOUT = 165; // in seconds, Java UDPTransport.MIN_EXPIRE_TIMEOUT
-	const int SSU2_CLOCK_SKEW = 60; // in seconds
+	// Java EstablishmentManager compares the peer DateTime against a two
+	// minute window (and, for the handshake, additionally tolerates half the
+	// measured RTT). A one minute window dropped peers with a normally
+	// imperfect clock, so keep the same 120 s bound as the relay/peer-test
+	// paths.
+	const int SSU2_CLOCK_SKEW = 120; // in seconds
 	const int SSU2_CLOCK_THRESHOLD = 15; // in seconds, if more we should adjust
 	const int SSU2_TOKEN_EXPIRATION_TIMEOUT = 9; // for Retry message, in seconds
 	const int SSU2_NEXT_TOKEN_EXPIRATION_TIMEOUT = 52 * 60; // for next token block, in seconds
 	const int SSU2_TOKEN_EXPIRATION_THRESHOLD = 2; // in seconds
 	const int SSU2_RELAY_NONCE_EXPIRATION_TIMEOUT = 10; // in seconds
+	// Bob answers a RelayRequest immediately, so its pending nonce is
+	// short-lived. Alice waits for Charlie's HolePunch (and Bob's RelayResponse
+	// when the introduction is direct), so it keeps a longer budget.
+	const int SSU2_RELAY_NONCE_EXPIRATION_BOB = SSU2_RELAY_NONCE_EXPIRATION_TIMEOUT; // 10 seconds
+	const int SSU2_RELAY_NONCE_EXPIRATION_ALICE = 30; // 30 seconds
+	const uint32_t SSU2_RECENT_RELAY_REQUEST_EXPIRATION = 10; // 10 seconds, Bob replay cache
 	// IntroductionManager.MAX_SKEW = 2*60*1000 in Java 2.13.0
 	const int SSU2_RELAY_MAX_SKEW = 120; // in seconds
 	// Bounds for relay state/replay caches. Java uses an LHMCache of 32
@@ -63,8 +78,12 @@ namespace transport
 	const int SSU2_HANDSHAKE_RESEND_INTERVAL = 1250; // in milliseconds
 	const int SSU2_MAX_NUM_RESENDS = 5;
 	const int SSU2_RESEND_ATTEMPT_MIN_INTERVAL = 3; // in milliseconds
-	const int SSU2_INCOMPLETE_MESSAGES_CLEANUP_TIMEOUT = 30; // in seconds
-	const size_t SSU2_MAX_NUM_INCOMPLETE_MESSAGES = 128; // per session, bounds fragment reassembly memory
+	const int SSU2_INCOMPLETE_MESSAGES_CLEANUP_TIMEOUT = 10; // in seconds, Java MAX_RECEIVE_TIME
+	// Per-session incomplete-message cap. Each message can queue at most
+	// SSU2_MAX_FRAGMENTS_PER_MESSAGE fixed slabs, so 32 messages bound the
+	// reassembly working set to roughly 3 MiB instead of the previous 12 MiB.
+	const size_t SSU2_MAX_NUM_INCOMPLETE_MESSAGES = 32;
+	const size_t SSU2_MAX_OUT_OF_SEQUENCE_FRAGMENTS = 512; // per incomplete message
 	const int SSU2_MAX_NUM_RECEIVED_I2NP_MSGIDS = 5000; // how many msgID we store for duplicates check
 	const int SSU2_RECEIVED_I2NP_MSGIDS_CLEANUP_TIMEOUT = 10; // in seconds
 	const int SSU2_DECAY_INTERVAL = 20; // in seconds
@@ -88,6 +107,20 @@ namespace transport
 	const size_t SSU2_MAX_OUT_OF_SEQUENCE_PACKETS = SSU2_MAX_NUM_ACK_PACKETS;
 	const uint8_t SSU2_MAX_NUM_FRAGMENTS = 64;
 	const uint8_t SSU2_MAX_SESSION_CONFIRMED_FRAGMENTS = 15; // 4-bit frag/count field
+	// A follow-on fragment that is queued while out of sequence contributes at
+	// least one byte to the reassembled I2NP message, whose size is bounded by
+	// I2NP_MAX_MESSAGE_SIZE. More fragments than this can never be needed, so
+	// the per-message chain is capped independently of the 7-bit field.
+	const size_t SSU2_MAX_FRAGMENTS_PER_MESSAGE = SSU2_MAX_NUM_FRAGMENTS < I2NP_MAX_MESSAGE_SIZE
+		? static_cast<size_t> (SSU2_MAX_NUM_FRAGMENTS)
+		: I2NP_MAX_MESSAGE_SIZE;
+	// Fixed-slab byte budget for one incomplete message. A full chain of
+	// SSU2_MAX_FRAGMENTS_PER_MESSAGE slabs must fit, so this only guards
+	// against accounting mistakes; the fragment count is the real cap.
+	const size_t SSU2_MAX_OUT_OF_SEQUENCE_BYTES = 128 * 1024;
+	// The published/effective IPv6 MTU is clamped to the SSU2 IPv6 ceiling
+	// (Java PeerState2.MAX_IPV6_MTU) while keeping the 1280 byte floor.
+	const int SSU2_MAX_IPV6_MTU = 1488;
 	const int SSU2_SEND_DATETIME_NUM_PACKETS = 256;
 	const int SSU2_MIN_RELAY_RESPONSE_RESEND_VERSION = MAKE_VERSION_NUMBER (0, 9, 64); // 0.9.64
 	// Java PeerState2 connection migration: at most four PathChallenge sends and
@@ -153,6 +186,107 @@ namespace transport
 		}
 	}
 
+	/**
+	 * HolePunch/Introduced payload whitelist.
+	 *
+	 * SSU2 spec, Hole Punch: the payload carries DateTime, Address,
+	 * RelayResponse, Padding and an optional Termination. It is decrypted with
+	 * the public introduction key, so everything else (RouterInfo, NewToken,
+	 * fragments/I2NP, RelayRequest/Intro, PeerTest, PathChallenge, Ack) must be
+	 * rejected before a data-phase handler can act on it.
+	 */
+	inline bool IsHolePunchPayloadBlockAllowed (uint8_t block)
+	{
+		switch (block)
+		{
+		case eSSU2BlkDateTime:
+		case eSSU2BlkAddress:
+		case eSSU2BlkRelayResponse:
+		case eSSU2BlkPadding:
+		case eSSU2BlkTermination: return true;
+		default: return false;
+		}
+	}
+
+	/**
+	 * Out-of-session message versions accepted on receive.
+	 *
+	 * PeerTest and HolePunch always send version 2 (Java PacketBuilder2), but a
+	 * peer that already negotiated a post-quantum version may put it in the
+	 * long header. Accept 2..4 on receive and keep sending 2.
+	 */
+	constexpr bool IsSSU2OutOfSessionVersionAccepted (uint8_t version)
+	{
+		return version >= 2 && version <= 4;
+	}
+
+	/**
+	 * Advertised SSU2 version mask from a signed RouterInfo address.
+	 *
+	 * Version 2 is the base "v" option and is always usable. Bits 3 and 4 are
+	 * only set when the publisher listed them in the comma-separated "pq"
+	 * address option, which is what RouterInfo::Address::SupportsSSU2Version()
+	 * checks.
+	 */
+	constexpr uint8_t GetSSU2AdvertisedVersionMask (uint8_t pqVersions)
+	{
+		return static_cast<uint8_t> ((1u << 2) | (pqVersions & ((1u << 3) | (1u << 4))));
+	}
+
+	/** Highest advertised version, always at least 2. */
+	constexpr int GetHighestSSU2Version (uint8_t advertisedMask)
+	{
+		for (int version = 4; version >= 3; --version)
+			if (advertisedMask & (1u << version)) return version;
+		return 2;
+	}
+
+	/**
+	 * Whether an unauthenticated Retry header may change Alice's version.
+	 *
+	 * The Retry header is authenticated only with the peer's published intro
+	 * key, which any on-path attacker knows, so its "ver" byte is not
+	 * authority. A change is adopted only when the peer's signed RouterInfo
+	 * advertises that exact version and it is not below the highest advertised
+	 * version; the only accepted change is therefore the peer's own maximum.
+	 * Everything else fails the attempt instead of silently downgrading PQ.
+	 */
+	constexpr bool IsSSU2RetryVersionAccepted (int retryVersion, uint8_t advertisedMask)
+	{
+		if (retryVersion < 2 || retryVersion > 4) return false;
+		if (!(advertisedMask & (1u << retryVersion))) return false;
+		return retryVersion >= GetHighestSSU2Version (advertisedMask);
+	}
+
+	/**
+	 * Version to retry after an authenticated IncompatibleVersion termination.
+	 *
+	 * Returns the highest version strictly below `rejectedVersion` that the
+	 * peer advertised, or 0 when there is none (the attempt must then fail).
+	 * The termination block travels inside the AEAD payload, so this hint is
+	 * authentic, but it still may only select an advertised version: version 2
+	 * is always advertised, hybrid versions only when "pq" named them.
+	 */
+	constexpr int GetSSU2FallbackVersion (int rejectedVersion, uint8_t advertisedMask)
+	{
+		for (int version = rejectedVersion - 1; version >= 2; --version)
+			if (advertisedMask & (1u << version)) return version;
+		return 0;
+	}
+
+	/**
+	 * Whether an ACK block actually acknowledges packet 0.
+	 *
+	 * The ACK block covers [ackThrough - acnt, ackThrough] and no First Packet
+	 * Number is negotiated, so packet 0 is covered only when acnt counts back
+	 * to it. Alice must not treat an ACK for a later packet as the
+	 * SessionConfirmed confirmation and must keep retransmitting instead.
+	 */
+	constexpr bool IsSSU2AckCoveringPacketZero (uint32_t ackThrough, uint32_t acnt)
+	{
+		return acnt == ackThrough;
+	}
+
 	enum SSU2SessionState
 	{
 		eSSU2SessionStateUnknown,
@@ -206,6 +340,11 @@ namespace transport
 			// FIRST/FOLLOW-ON fragments have their own validation and are not
 			// valid in this context.
 			return block == eSSU2BlkRouterInfo || block == eSSU2BlkOptions || block == eSSU2BlkPadding;
+		case eSSU2SessionStateHolePunch: // Charlie waiting for Alice's SessionRequest
+		case eSSU2SessionStateIntroduced: // Alice in an out-of-session HolePunch
+			// HolePunch payloads are encrypted with the public introduction key
+			// and may only carry DateTime/Address/RelayResponse/Padding.
+			return IsHolePunchPayloadBlockAllowed (block);
 		default: return true;
 		}
 	}
@@ -236,6 +375,179 @@ namespace transport
 	inline bool IsSSU2EstablishedPayloadContext (SSU2SessionState state, bool hasRemoteIdentity)
 	{
 		return state == eSSU2SessionStateEstablished && hasRemoteIdentity;
+	}
+
+	// Inbound admission and PeerTest caps. An unauthenticated peer can create
+	// a non-established inbound session with one SessionRequest, so bound both
+	// the number of such sessions and the number of PeerTest pseudo-sessions.
+	// Java uses MAX_INBOUND_SESSIONS and limits PeerTest msgs 1/2 to 12 per
+	// source and 10 minutes. Deliberately not configurable: no new
+	// configuration keys are introduced for these internal bounds.
+	const size_t SSU2_MAX_INBOUND_SESSIONS = 40;
+	const size_t SSU2_MAX_PEER_TEST_SESSIONS = 64;
+	const size_t SSU2_PEER_TEST_RATE_LIMIT = 12;
+	const uint64_t SSU2_PEER_TEST_RATE_WINDOW = 10 * 60; // in seconds
+	const size_t SSU2_MAX_PEER_TEST_RATE_ENTRIES = 256;
+
+	/** Whether one more non-established inbound session may be created. */
+	constexpr bool IsInboundSessionAdmissionAllowed (size_t numNonEstablishedInboundSessions)
+	{
+		return numNonEstablishedInboundSessions < SSU2_MAX_INBOUND_SESSIONS;
+	}
+
+	/**
+	 * Reaction to an inbound packet while SSU2_MAX_INBOUND_SESSIONS is
+	 * reached. Only a SessionRequest or TokenRequest still has a handshake
+	 * context that a Retry can answer with
+	 * eSSU2TerminationReasonConnectionLimits; every other message type is
+	 * dropped without a reply.
+	 */
+	constexpr bool CanRejectInboundHandshakeWithRetry (uint8_t messageType)
+	{
+		return messageType == static_cast<uint8_t> (eSSU2SessionRequest)
+			|| messageType == static_cast<uint8_t> (eSSU2TokenRequest);
+	}
+
+	/** Whether one more out-of-session PeerTest session may be created. */
+	constexpr bool IsSSU2PeerTestSessionAdmissionAllowed (size_t numPeerTestSessions)
+	{
+		return numPeerTestSessions < SSU2_MAX_PEER_TEST_SESSIONS;
+	}
+
+	/**
+	 * Whether a peer test in the given family may proceed despite an existing
+	 * session to Alice. Java only blocks when the existing session has the same
+	 * address family (`aps.isIPv6() == isIPv6`), so an IPv4 session must not
+	 * suppress an IPv6 test (or vice versa).
+	 */
+	template <typename SessionPtr> bool IsSSU2PeerTestFamilyAvailable (const SessionPtr & existing, bool testV4)
+	{
+		if (!existing || !existing->IsEstablished ()) return true;
+		return existing->GetRemoteEndpoint ().address ().is_v4 () != testV4;
+	}
+
+	/** Whether the Bob-side PeerTest nonce table is full (never evict live state). */
+	constexpr bool IsSSU2PeerTestTableFull (size_t numEntries, size_t maximum)
+	{
+		return numEntries >= maximum;
+	}
+
+	/** Result of admitting a Bob-side PeerTest nonce. */
+	enum class SSU2PeerTestAdmission : uint8_t
+	{
+		Accepted = 0,
+		Duplicate,
+		LimitExceeded
+	};
+
+	/**
+	 * RouterInfo block frag byte for one complete (unfragmented) RouterInfo.
+	 * The SSU2 spec encodes `index << 4 | count` for fragments, but only this
+	 * value is valid in the SessionConfirmed leading block and in a data-phase
+	 * RouterInfo block, so a fragment is never parsed as a whole RouterInfo.
+	 */
+	constexpr uint8_t SSU2_ROUTER_INFO_FRAG_SINGLE = 0x01;
+
+	constexpr bool IsSSU2RouterInfoFragmentAcceptable (uint8_t frag)
+	{
+		return frag == SSU2_ROUTER_INFO_FRAG_SINGLE;
+	}
+
+	/**
+	 * Mint a relay tag. Zero means "no tag" in this implementation, so zero is
+	 * never published: at most `attempts` draws are made and 0 is returned when
+	 * every draw produced zero (the caller then publishes nothing).
+	 */
+	template <typename NextValue> uint32_t MintSSU2RelayTag (NextValue && next, unsigned int attempts = 4)
+	{
+		while (attempts--)
+		{
+			const uint32_t tag = static_cast<uint32_t> (next ());
+			if (tag) return tag;
+		}
+		return 0;
+	}
+
+	/**
+	 * Whether a received RelayTag block may set our tag. The first non-zero tag
+	 * wins; a later block is ignored so the tag already published to our
+	 * introducers never changes underneath them.
+	 */
+	constexpr bool AcceptSSU2RelayTag (uint32_t current, uint32_t received)
+	{
+		return !current && received != 0;
+	}
+
+	/**
+	 * States that an unauthenticated inbound packet can put a session in
+	 * before the handshake completes. They are the entries counted against
+	 * SSU2_MAX_INBOUND_SESSIONS.
+	 */
+	constexpr bool IsSSU2InboundHandshakeState (SSU2SessionState state)
+	{
+		switch (state)
+		{
+		case eSSU2SessionStateTokenRequestReceived:
+		case eSSU2SessionStateSessionRequestReceived:
+		case eSSU2SessionStateSessionCreatedSent: return true;
+		default: return false;
+		}
+	}
+
+	/** Fixed-window state for the per-source PeerTest msg 1/2 rate limit. */
+	struct SSU2PeerTestRateState
+	{
+		uint64_t windowStarted = 0; // in seconds
+		unsigned int count = 0;
+	};
+
+	/**
+	 * Charge one PeerTest msg 1/2 against a per-source window.
+	 *
+	 * Returns true when the message may be processed. The window is fixed: the
+	 * first message opens it, every admitted message increments the counter,
+	 * and the first message after the window expires opens a new one. A
+	 * backwards clock jump also restarts the window instead of blocking the
+	 * source until it catches up.
+	 */
+	constexpr bool AllowSSU2PeerTestMessage (SSU2PeerTestRateState & state, uint64_t now,
+		size_t limit = SSU2_PEER_TEST_RATE_LIMIT, uint64_t window = SSU2_PEER_TEST_RATE_WINDOW)
+	{
+		if (!state.windowStarted || now < state.windowStarted || now - state.windowStarted >= window)
+		{
+			state.windowStarted = now;
+			state.count = 1;
+			return true;
+		}
+		if (state.count >= limit) return false;
+		state.count++;
+		return true;
+	}
+
+	/**
+	 * Key for the PeerTest per-source limiter: IPv4 /32 and IPv6 /64.
+	 *
+	 * Java PeerTestManager keys the limiter on the source prefix, so a peer
+	 * cannot bypass it by rotating the interface identifier inside one IPv6
+	 * /64. The same prefix rule is used by SamePeerTestAddress().
+	 */
+	inline boost::asio::ip::address GetSSU2PeerTestRateKey (const boost::asio::ip::address & address)
+	{
+		if (!address.is_v6 ()) return address;
+		auto bytes = address.to_v6 ().to_bytes ();
+		std::fill (bytes.begin () + 8, bytes.end (), 0);
+		return boost::asio::ip::address_v6 (bytes);
+	}
+
+	/**
+	 * Whether PeerTest msg 4 may open msg 6 toward the Charlie endpoint that
+	 * the msg 4 signed data reports. The endpoint must be routable (Java
+	 * isValidPeerTestEndpoint), supported by this router and not
+	 * operator-blocked.
+	 */
+	constexpr bool AllowSSU2PeerTestTarget (bool endpointValid, bool addressSupported, bool operatorBlocked)
+	{
+		return endpointValid && addressSupported && !operatorBlocked;
 	}
 
 	/**
@@ -415,6 +727,12 @@ namespace transport
 		int lastFragmentNum = -1; // highest fragment explicitly marked isLast
 		uint32_t lastFragmentInsertTime; // in seconds
 		std::shared_ptr<Fragment> outOfSequenceFragments; // #1 and more
+		// A reordered peer can otherwise queue an unbounded chain for one
+		// reassembly entry. The byte budget charges the fixed fragment slab
+		// (each Fragment owns a full SSU2_MAX_PACKET_SIZE buffer) and is capped
+		// at one maximum-size I2NP message.
+		size_t outOfSequenceBytes = 0;
+		size_t numOutOfSequenceFragments = 0;
 
 		bool AttachNextFragment (const uint8_t * fragment, size_t fragmentSize); // false on size overflow
 		bool ConcatOutOfSequenceFragments (); // true if message complete
@@ -465,6 +783,27 @@ namespace transport
 
 		typedef std::function<void ()> OnEstablished;
 
+		/**
+		 * Which side of an introduction a pending relay nonce belongs to.
+		 *
+		 * The role used to be inferred from the stored session's
+		 * IsEstablished() state, which can mis-forward a RelayResponse when the
+		 * stored session establishes or closes between the request and the
+		 * response. Store it with the pending entry instead.
+		 */
+		enum SSU2RelayRole : uint8_t
+		{
+			eSSU2RelayRoleBob = 0, // we are Bob: forward Charlie's response to Alice
+			eSSU2RelayRoleAlice = 1 // we are Alice: wait for and process the response
+		};
+
+		struct RelaySession
+		{
+			std::shared_ptr<SSU2Session> session;
+			uint64_t timestamp; // in seconds
+			SSU2RelayRole role;
+		};
+
 	public:
 		SSU2Session (SSU2Server & server, std::shared_ptr<const i2p::data::RouterInfo> in_RemoteRouter = nullptr,
 			std::shared_ptr<const i2p::data::RouterInfo::Address> addr = nullptr);
@@ -480,7 +819,15 @@ namespace transport
 			return m_RemotePeerTestTransports;
 		};
 		int GetRemoteVersion () const { return m_RemoteVersion; };
-		std::shared_ptr<const i2p::data::RouterInfo::Address> GetAddress () const { return m_Address; };
+		// `m_Address` is written by the service thread (SessionConfirmed,
+		// RouterInfo update, peer test) and read from other threads through
+		// GetAddress(), so the accessors copy under the mutex. Internal
+		// service-thread code may still read the member directly.
+		std::shared_ptr<const i2p::data::RouterInfo::Address> GetAddress () const
+		{
+			std::lock_guard<std::mutex> l (m_AddressMutex);
+			return m_Address;
+		};
 		void SetOnEstablished (OnEstablished e)
 		{
 			std::lock_guard<std::mutex> l (m_OnEstablishedMutex);
@@ -538,7 +885,11 @@ namespace transport
 		uint64_t GetDestConnID () const { return m_DestConnID; }
 		void SetDestConnID (uint64_t destConnID) { m_DestConnID = destConnID; }
 
-		void SetAddress (std::shared_ptr<const i2p::data::RouterInfo::Address> addr) { m_Address = addr; }
+		void SetAddress (std::shared_ptr<const i2p::data::RouterInfo::Address> addr)
+		{
+			std::lock_guard<std::mutex> l (m_AddressMutex);
+			m_Address = std::move (addr);
+		}
 		// `from` is the authenticated source of a data-phase packet. It is
 		// required before accepting a PathResponse for pending migration.
 		void HandlePayload (const uint8_t * buf, size_t len, const boost::asio::ip::udp::endpoint * from = nullptr);
@@ -569,6 +920,10 @@ namespace transport
 		bool ProcessTokenRequest (Header & header, uint8_t * buf, size_t len);
 
 		void SelectOutgoingVersion ();
+		// Drops handshake crypto state that is bound to one negotiated
+		// version (Noise state, ephemeral X25519 pair, ML-KEM keys) before a
+		// Retry starts a new attempt.
+		void ResetHandshakeCryptoState ();
 		bool SendSessionRequest (uint64_t token = 0);
 		bool SendSessionCreated (const uint8_t * X);
 		bool SendSessionConfirmed (const uint8_t * Y);
@@ -643,6 +998,7 @@ namespace transport
 		std::unique_ptr<i2p::crypto::MLKEMKeys> m_PQKeys;
 #endif
 		std::shared_ptr<const i2p::data::RouterInfo::Address> m_Address;
+		mutable std::mutex m_AddressMutex; // guards m_Address for GetAddress()/SetAddress()
 		boost::asio::ip::udp::endpoint m_RemoteEndpoint;
 		i2p::data::RouterInfo::CompatibleTransports m_RemoteTransports, m_RemotePeerTestTransports;
 		int m_RemoteVersion;
@@ -654,8 +1010,8 @@ namespace transport
 		std::set<uint32_t> m_OutOfSequencePackets; // packet nums > receive packet num
 		std::map<uint32_t, std::shared_ptr<SSU2SentPacket>> m_SentPackets; // packetNum -> packet
 		std::unordered_map<uint32_t, std::shared_ptr<SSU2IncompleteMessage>> m_IncompleteMessages; // msgID -> I2NP
-		std::unordered_map<uint32_t, std::pair<std::shared_ptr<SSU2Session>, uint64_t>>
-			m_RelaySessions; // nonce->(Alice, timestamp) for Bob or nonce->(Charlie, timestamp) for Alice
+		std::unordered_map<uint32_t, RelaySession>
+			m_RelaySessions; // nonce -> pending relay introduction (role, target, timestamp)
 		std::unordered_map<uint32_t, uint32_t> m_RecentRelayRequests; // nonce->timestamp, Bob replay cache (bounded)
 		std::list<std::shared_ptr<I2NPMessage>> m_SendQueue;
 		i2p::I2NPMessagesHandler m_Handler;

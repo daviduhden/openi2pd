@@ -18,6 +18,7 @@
 #include <utility>
 #include <openssl/rand.h>
 #include "Log.h"
+#include "Modern.h"
 #include "Transports.h"
 #include "Gzip.h"
 #include "NetDb.hpp"
@@ -85,9 +86,18 @@ namespace transport
 			if (outOfSequenceFragments->fragmentNum == nextFragmentNum)
 			{
 				if (!AttachNextFragment (outOfSequenceFragments->buf, outOfSequenceFragments->len)) return false;
+				// Release the same fixed slab that AddOutOfSequenceFragment()
+				// charged, independently of the payload length.
+				constexpr size_t slab = sizeof (SSU2IncompleteMessage::Fragment);
+				outOfSequenceBytes -= std::min (outOfSequenceBytes, slab);
+				if (numOutOfSequenceFragments) --numOutOfSequenceFragments;
 				isLast = outOfSequenceFragments->isLast;
 				if (isLast)
+				{
 					outOfSequenceFragments = nullptr;
+					outOfSequenceBytes = 0;
+					numOutOfSequenceFragments = 0;
+				}
 				else
 					outOfSequenceFragments = outOfSequenceFragments->next;
 			}
@@ -110,6 +120,19 @@ namespace transport
 			LogPrint (eLogWarning, "SSU2: Fragment ", fragment->fragmentNum, " after last fragment ", lastFragmentNum);
 			return;
 		}
+		// Charge the fixed fragment slab, not the bytes it carries: every
+		// queued Fragment already owns a full SSU2_MAX_PACKET_SIZE buffer, so
+		// accounting for `len` would under-count the memory an attacker can
+		// pin with tiny fragments. The per-message fragment count is also
+		// bounded by what a reassembled I2NP message can need.
+		constexpr size_t slab = sizeof (SSU2IncompleteMessage::Fragment);
+		if (numOutOfSequenceFragments >= SSU2_MAX_FRAGMENTS_PER_MESSAGE
+			|| numOutOfSequenceFragments >= SSU2_MAX_OUT_OF_SEQUENCE_FRAGMENTS
+			|| outOfSequenceBytes + slab > SSU2_MAX_OUT_OF_SEQUENCE_BYTES)
+		{
+			LogPrint (eLogWarning, "SSU2: Out-of-sequence fragment budget exceeded for message");
+			return;
+		}
 		if (!outOfSequenceFragments)
 			outOfSequenceFragments = fragment;
 		else
@@ -129,6 +152,8 @@ namespace transport
 			else
 				outOfSequenceFragments = fragment;
 		}
+		outOfSequenceBytes += slab;
+		++numOutOfSequenceFragments;
 		if (fragment->isLast) lastFragmentNum = fragment->fragmentNum;
 		lastFragmentInsertTime = static_cast<uint32_t> (i2p::util::GetSecondsSinceEpoch ());
 	}
@@ -272,7 +297,7 @@ namespace transport
 		packet->payloadSize
 			+= CreatePaddingBlock (payload + packet->payloadSize, m_MaxPayloadSize - packet->payloadSize);
 		// send
-		if (!m_RelaySessions.emplace (nonce, std::make_pair (session, ts / 1000)).second)
+		if (!m_RelaySessions.emplace (nonce, RelaySession { session, ts / 1000, eSSU2RelayRoleAlice }).second)
 		{
 			LogPrint (eLogWarning, "SSU2: Relay nonce ", nonce, " already exists");
 			return false;
@@ -331,13 +356,23 @@ namespace transport
 	void SSU2Session::SendPeerTest ()
 	{
 		// we are Alice
+		if (!m_Server.IsPeerTestSessionAdmissionAllowed ())
+		{
+			LogPrint (eLogWarning, "SSU2: Too many PeerTest sessions, not starting a test");
+			return;
+		}
 		uint32_t nonce;
 		RAND_bytes ((uint8_t *)&nonce, 4);
 		auto ts = i2p::util::GetMillisecondsSinceEpoch ();
 		// session for message 5
 		auto session = std::make_shared<SSU2PeerTestSession> (m_Server, htobe64 (((uint64_t)nonce << 32) | nonce), 0);
 		m_Server.AddRequestedPeerTest (nonce, session, ts / 1000);
-		m_Server.AddSession (session);
+		if (!m_Server.AddSession (session))
+		{
+			LogPrint (eLogWarning, "SSU2: Could not register the PeerTest session for nonce ", nonce);
+			session->Done ();
+			return;
+		}
 		// peer test block
 		auto packet = m_Server.GetSentPacketsPool ().AcquireShared ();
 		packet->payloadSize = CreatePeerTestBlock (packet->payload, m_MaxPayloadSize, nonce);
@@ -933,6 +968,19 @@ namespace transport
 		return true;
 	}
 
+	void SSU2Session::ResetHandshakeCryptoState ()
+	{
+		// Noise state, the ephemeral X25519 pair and the ML-KEM key pair all
+		// belong to the version of the rejected attempt. They must never prefix
+		// a SessionRequest for a different version, and a stale handshake hash
+		// would make the next attempt fail in a confusing way.
+		m_NoiseState.reset ();
+		m_EphemeralKeys.reset ();
+#if OPENSSL_PQ
+		m_PQKeys.reset ();
+#endif
+	}
+
 	void SSU2Session::SelectOutgoingVersion ()
 	{
 #if OPENSSL_PQ
@@ -981,6 +1029,13 @@ namespace transport
 #endif
 		m_EphemeralKeys = i2p::transport::transports.GetNextX25519KeysPair ();
 		if (!m_EphemeralKeys) return false;
+		// Never send an all-zero X because the provider failed to generate a
+		// key for a pooled pair.
+		if (!m_EphemeralKeys->HasPrivateKey () && !m_EphemeralKeys->GenerateKeys ())
+		{
+			LogPrint (eLogError, "SSU2: no usable ephemeral key for SessionRequest");
+			return false;
+		}
 		m_SentHandshakePacket.reset (new HandshakePacket);
 		auto ts = i2p::util::GetMillisecondsSinceEpoch ();
 		m_SentHandshakePacket->sendTime = ts;
@@ -1037,7 +1092,11 @@ namespace transport
 #if OPENSSL_PQ
 		if (m_Version > 2)
 		{
-			InitNoiseXKStateMLKEM1 (*m_NoiseState, (i2p::data::CryptoKeyType)(m_Version + 2), m_Address->s);
+			if (!InitNoiseXKStateMLKEM1 (*m_NoiseState, (i2p::data::CryptoKeyType)(m_Version + 2), m_Address->s))
+			{
+				LogPrint (eLogError, "SSU2: unsupported hybrid handshake version ", (int)m_Version);
+				return false;
+			}
 			m_NoiseState->MixHash (GetRemoteIdentity ()->GetIdentHash (), 32); // h = SHA256(h || bhash)
 		}
 		else
@@ -1122,6 +1181,15 @@ namespace transport
 			LogPrint (eLogWarning, "SSU2: SessionRequest has wrong network ID ", (int)header.h.flags[1]);
 			return false;
 		}
+		if (m_TerminationReason == eSSU2TerminationReasonConnectionLimits)
+		{
+			// Inbound admission (SSU2Server::RejectInboundHandshake) rejected
+			// this handshake before any session state was created. Answer with
+			// a Retry carrying the connection-limit reason so the peer stops
+			// retrying, and do not build or insert a session.
+			SendRetry ();
+			return true;
+		}
 		int version = header.h.flags[0];
 		if (version < 2 || version > 4)
 		{
@@ -1186,8 +1254,12 @@ namespace transport
 #if OPENSSL_PQ
 		if (m_Version > 2)
 		{
-			InitNoiseXKStateMLKEM1 (
-				*m_NoiseState, (i2p::data::CryptoKeyType)(m_Version + 2), i2p::context.GetSSU2StaticPublicKey ());
+			if (!InitNoiseXKStateMLKEM1 (
+					*m_NoiseState, (i2p::data::CryptoKeyType)(m_Version + 2), i2p::context.GetSSU2StaticPublicKey ()))
+			{
+				LogPrint (eLogError, "SSU2: unsupported hybrid handshake version ", (int)m_Version);
+				return false;
+			}
 			m_NoiseState->MixHash (i2p::context.GetIdentHash (), 32); // h = SHA256(h || bhash)
 		}
 		else
@@ -1271,6 +1343,13 @@ namespace transport
 		if (!m_NoiseState || m_MaxPayloadSize <= 48) return false;
 		m_EphemeralKeys = i2p::transport::transports.GetNextX25519KeysPair ();
 		if (!m_EphemeralKeys) return false;
+		// A pooled pair whose generation failed would put an all-zero Y into
+		// SessionCreated and derive a useless shared secret.
+		if (!m_EphemeralKeys->HasPrivateKey () && !m_EphemeralKeys->GenerateKeys ())
+		{
+			LogPrint (eLogError, "SSU2: no usable ephemeral key for SessionCreated");
+			return false;
+		}
 		m_SentHandshakePacket.reset (new HandshakePacket);
 		auto ts = i2p::util::GetMillisecondsSinceEpoch ();
 		m_SentHandshakePacket->sendTime = ts;
@@ -1860,6 +1939,15 @@ namespace transport
 			LogPrint (eLogError, "SSU2: SessionConfirmed RouterInfo block is too long ", riSize);
 			return false;
 		}
+		// The leading RouterInfo must be a single unfragmented block: the frag
+		// field is `index << 4 | count` for fragments, but the SSU2 spec only
+		// defines 1 (fragment 0 of 1) in SessionConfirmed. Reject anything else
+		// instead of handing a fragment to the RouterInfo parser.
+		if (riSize < 2 || !IsSSU2RouterInfoFragmentAcceptable (decryptedPayload[4]))
+		{
+			LogPrint (eLogError, "SSU2: SessionConfirmed RouterInfo is fragmented or too short");
+			return false;
+		}
 		LogPrint (eLogDebug, "SSU2: RouterInfo in SessionConfirmed");
 		auto ri = ExtractRouterInfo (decryptedPayload.data () + 3, riSize);
 		if (!ri)
@@ -1907,17 +1995,18 @@ namespace transport
 		}
 		ri = ri1;
 
-		m_Address = m_RemoteEndpoint.address ().is_v6 () ? ri->GetSSU2V6Address () : ri->GetSSU2V4Address ();
-		if (!m_Address)
+		auto address = m_RemoteEndpoint.address ().is_v6 () ? ri->GetSSU2V6Address () : ri->GetSSU2V4Address ();
+		if (!address)
 		{
 			LogPrint (eLogError, "SSU2: Address not found in SessionConfirmed from ",
 				i2p::data::GetIdentHashAbbreviation (ri->GetIdentHash ()));
 			return false;
 		}
-		if (m_Address->published && m_RemoteEndpoint.address () != m_Address->host
+		SetAddress (address);
+		if (address->published && m_RemoteEndpoint.address () != address->host
 			&& (!m_RemoteEndpoint.address ().is_v6 ()
 				|| memcmp (m_RemoteEndpoint.address ().to_v6 ().to_bytes ().data (),
-					m_Address->host.to_v6 ().to_bytes ().data (), 8))) // temporary address
+					address->host.to_v6 ().to_bytes ().data (), 8))) // temporary address
 		{
 			if (isOlder) // older router?
 				i2p::data::UpdateRouterProfile (ri->GetIdentHash (),
@@ -1926,19 +2015,19 @@ namespace transport
 						if (profile) profile->Duplicated (); // mark router as duplicated in profile
 					});
 			else
-				LogPrint (eLogInfo, "SSU2: Host mismatch between published address ", m_Address->host,
+				LogPrint (eLogInfo, "SSU2: Host mismatch between published address ", address->host,
 					" and actual endpoint ", m_RemoteEndpoint.address (), " from ",
 					i2p::data::GetIdentHashAbbreviation (ri->GetIdentHash ()));
 			return false;
 		}
-		if (memcmp (S, m_Address->s, 32))
+		if (memcmp (S, address->s, 32))
 		{
 			LogPrint (eLogError, "SSU2: Wrong static key in SessionConfirmed from ",
 				i2p::data::GetIdentHashAbbreviation (ri->GetIdentHash ()));
-			if (m_Address->published) i2p::transport::transports.AddBan (m_RemoteEndpoint.address ());
+			if (address->published) i2p::transport::transports.AddBan (m_RemoteEndpoint.address ());
 			return false;
 		}
-		if (!m_Address->published)
+		if (!address->published)
 		{
 			if (ri->HasProfile ())
 				ri->GetProfile ()->SetLastEndpoint (m_RemoteEndpoint);
@@ -1964,7 +2053,7 @@ namespace transport
 		{
 			LogPrint (eLogError, "SSU2: Invalid block in SessionConfirmed from ",
 				i2p::data::GetIdentHashAbbreviation (ri->GetIdentHash ()));
-			if (m_Address->published) i2p::transport::transports.AddBan (m_RemoteEndpoint.address ());
+			if (address->published) i2p::transport::transports.AddBan (m_RemoteEndpoint.address ());
 			return false;
 		}
 
@@ -2026,7 +2115,8 @@ namespace transport
 		memset (nonce, 0, 12);
 		m_Server.ChaCha20 (h + 16, 16, m_Address->i, nonce, h + 16);
 		// send
-		if (m_Server.AddPendingOutgoingSession (shared_from_this ()))
+		if (m_Server.FindPendingOutgoingSession (m_RemoteEndpoint) == shared_from_this ()
+			|| m_Server.AddPendingOutgoingSession (shared_from_this ()))
 			m_Server.Send (header.buf, 16, h + 16, 16, payload, payloadSize, m_RemoteEndpoint);
 		else
 		{
@@ -2057,6 +2147,12 @@ namespace transport
 		{
 			LogPrint (eLogWarning, "SSU2: TokenRequest has wrong network ID ", (int)header.h.flags[1]);
 			return false;
+		}
+		if (m_TerminationReason == eSSU2TerminationReasonConnectionLimits)
+		{
+			// See ProcessSessionRequest(): refuse without creating state.
+			SendRetry ();
+			return true;
 		}
 		int version = header.h.flags[0];
 		if (version < 2 || version > 4)
@@ -2189,13 +2285,27 @@ namespace transport
 			LogPrint (eLogWarning, "SSU2: Retry has wrong Source Connection ID");
 			return false;
 		}
-		if (header.h.flags[0] < m_Version)
+		// A Retry header is authenticated only with the peer's published intro
+		// key, which is public, so an on-path attacker can forge it. Its "ver"
+		// byte therefore never authorises a version change on its own: adopt a
+		// change only when the peer's signed RouterInfo advertises that exact
+		// version and it is not below the highest version that RouterInfo
+		// advertises. In practice that means the only accepted change is the
+		// peer's own maximum; a lower or unadvertised value fails the attempt
+		// instead of silently downgrading the PQ handshake (the previous code
+		// adopted any lower value). See IsSSU2RetryVersionAccepted().
+		const auto address = GetAddress ();
+		if (!address) return false;
+		const uint8_t advertisedVersions = GetSSU2AdvertisedVersionMask (address->pqVersions);
+		const uint8_t retryVersion = header.h.flags[0];
+		const bool versionChanged = retryVersion != m_Version;
+		if (versionChanged && !IsSSU2RetryVersionAccepted (retryVersion, advertisedVersions))
 		{
-			// The responder selected a lower mutually supported version.
-			LogPrint (
-				eLogInfo, "SSU2: Retry selected version ", (int)header.h.flags[0], " instead of ", (int)m_Version);
-			m_Version = header.h.flags[0];
-			m_IsVersionFallback = true;
+			LogPrint (eLogWarning, "SSU2: Retry version ", (int)retryVersion,
+				" is not authorised by the peer RouterInfo (advertised mask ", (int)advertisedVersions,
+				"); failing the handshake attempt instead of downgrading");
+			Done ();
+			return false;
 		}
 		uint64_t token = headerX[1];
 		if (token)
@@ -2218,6 +2328,28 @@ namespace transport
 			LogPrint (eLogWarning, "SSU2: Retry has no valid DateTime first block");
 			return false;
 		}
+		if (versionChanged)
+		{
+			// Only now, after the Retry proved it is well formed, apply the
+			// version the signed RouterInfo authorised above. SetVersion()
+			// enforces the local provider capability and MTU as well, so an
+			// authorised version this router cannot use fails the attempt
+			// instead of falling back to a weaker one.
+			const uint8_t previousVersion = m_Version;
+			if (!SetVersion (retryVersion))
+			{
+				m_Version = previousVersion;
+				LogPrint (eLogWarning, "SSU2: Retry version ", (int)retryVersion, " is not usable locally");
+				Done ();
+				return false;
+			}
+			m_IsVersionFallback = true;
+			// The rejected attempt's Noise/KEM/ephemeral material belongs to
+			// the old version and must never prefix the next SessionRequest.
+			ResetHandshakeCryptoState ();
+			LogPrint (eLogInfo, "SSU2: Retry selected advertised version ", (int)m_Version, " instead of ",
+				(int)previousVersion);
+		}
 		m_State = eSSU2SessionStateTokenReceived;
 		m_ReceivedTermination = false;
 		m_TerminationReason = eSSU2TerminationReasonNormalClose;
@@ -2229,13 +2361,33 @@ namespace transport
 		}
 		if (m_TerminationReason == eSSU2TerminationReasonIncompatibleVersion)
 		{
-			// The Retry carried a version rejection. Consume the hint before
-			// the generic termination abort and retry at the next mutually
-			// supported version; Java's responder expects a fresh
-			// SessionRequest with the selected version.
-			m_Version = (m_Version > 3 && m_Address && m_Address->SupportsSSU2Version (3)) ? 3 : 2;
+			// The termination block travels inside the AEAD payload, so this
+			// rejection hint is authentic. Consume it before the generic
+			// termination abort and retry only with a version the peer's signed
+			// RouterInfo advertised (GetSSU2FallbackVersion()); when there is
+			// none the attempt fails instead of forcing 3 or 2. Noise/KEM
+			// state of the rejected version is never reused.
+			const int fallback = GetSSU2FallbackVersion (m_Version, advertisedVersions);
+			if (!fallback)
+			{
+				LogPrint (eLogWarning, "SSU2: peer rejected version ", (int)m_Version,
+					" and advertises no lower version; failing the handshake attempt");
+				Done ();
+				return false;
+			}
+			const uint8_t rejectedVersion = m_Version;
+			if (!SetVersion (static_cast<uint8_t> (fallback)))
+			{
+				m_Version = rejectedVersion;
+				LogPrint (eLogWarning, "SSU2: advertised fallback version ", fallback, " is not usable locally");
+				Done ();
+				return false;
+			}
+			LogPrint (eLogInfo, "SSU2: peer rejected version ", (int)rejectedVersion, "; retrying with advertised version ",
+				(int)m_Version);
 			m_IsVersionFallback = true;
 			m_ReceivedTermination = false;
+			ResetHandshakeCryptoState ();
 		}
 		if (m_ReceivedTermination)
 		{
@@ -2244,7 +2396,19 @@ namespace transport
 		}
 		if (!token)
 		{
-			// we should handle payload even for zero token to handle Datetime block and adjust clock in case of clock skew
+			// The payload still has to be handled for a zero token (DateTime
+			// clock adjustment), which happened above.
+			if (m_IsVersionFallback)
+			{
+				// A version-rejection Retry carries token 0 by construction
+				// (SendRetry() only attaches a token for a normal Retry). The
+				// previous attempt's token belongs to the rejected version, so
+				// request a fresh one instead of tearing the session down.
+				LogPrint (eLogInfo, "SSU2: Retry selected version ", (int)m_Version, "; requesting a new token");
+				m_State = eSSU2SessionStateUnknown;
+				SendTokenRequest ();
+				return true;
+			}
 			LogPrint (eLogWarning, "SSU2: Retry token is zero");
 			Done ();
 			return false;
@@ -2253,7 +2417,14 @@ namespace transport
 		if (!m_NoiseState) m_NoiseState.reset (new i2p::crypto::NoiseSymmetricState);
 #if OPENSSL_PQ
 		if (m_Version > 2)
-			InitNoiseXKStateMLKEM1 (*m_NoiseState, (i2p::data::CryptoKeyType)(m_Version + 2), m_Address->s);
+		{
+			if (!InitNoiseXKStateMLKEM1 (*m_NoiseState, (i2p::data::CryptoKeyType)(m_Version + 2), m_Address->s))
+			{
+				LogPrint (eLogError, "SSU2: unsupported hybrid handshake version ", (int)m_Version);
+				Done ();
+				return false;
+			}
+		}
 		else
 #endif
 			InitNoiseXKState1 (*m_NoiseState, m_Address->s); // reset Noise TODO: check state
@@ -2306,7 +2477,10 @@ namespace transport
 		}
 		// The SSU2 spec fixes the HolePunch version to 2 and validates the
 		// network ID exactly (Java PacketHandler does the same before dispatch).
-		if (header.h.flags[0] != 2)
+		// A peer that already negotiated a post-quantum session may still put
+		// its version in this long header, so accept 2..4 on receive while
+		// continuing to send 2.
+		if (!IsSSU2OutOfSessionVersionAccepted (header.h.flags[0]))
 		{
 			LogPrint (eLogWarning, "SSU2: HolePunch has wrong version ", (int)header.h.flags[0]);
 			return false;
@@ -2714,8 +2888,22 @@ namespace transport
 						auto addr = FindLocalAddress ();
 						if (addr && addr->IsIntroducer ())
 						{
-							RAND_bytes ((uint8_t *)&m_RelayTag, 4);
-							m_Server.AddRelay (m_RelayTag, shared_from_this ());
+							// A zero relay tag means "no tag" everywhere in this
+							// implementation, so never mint one. A failing RNG
+							// leaves us without a tag rather than publishing an
+							// unusable one.
+							const uint32_t tag = MintSSU2RelayTag (
+								[this] () -> uint64_t
+								{
+									uint32_t value = 0;
+									RAND_bytes (reinterpret_cast<uint8_t *> (&value), sizeof (value));
+									return value;
+								});
+							if (tag)
+							{
+								m_RelayTag = tag;
+								m_Server.AddRelay (m_RelayTag, shared_from_this ());
+							}
 						}
 					}
 				}
@@ -2723,7 +2911,15 @@ namespace transport
 			case eSSU2BlkRelayTag:
 				LogPrint (eLogDebug, "SSU2: RelayTag");
 				if (size >= 4)
-					m_RelayTag = bufbe32toh (buf + offset);
+				{
+					// First tag wins: a later RelayTag must not replace the tag
+					// we already published to our introducers.
+					const uint32_t tag = bufbe32toh (buf + offset);
+					if (AcceptSSU2RelayTag (m_RelayTag, tag))
+						m_RelayTag = tag;
+					else
+						LogPrint (eLogDebug, "SSU2: Ignoring RelayTag ", tag, " with current tag ", m_RelayTag);
+				}
 				else
 				{
 					LogPrint (eLogWarning, "SSU2: RelayTag block is too short ", size);
@@ -2793,12 +2989,18 @@ namespace transport
 	{
 		if (len < 4) return;
 		int64_t offset = (int64_t)i2p::util::GetSecondsSinceEpoch () - (int64_t)bufbe32toh (buf);
+		// Java adds half the measured RTT to the clock window on an established
+		// path. m_RTT is in milliseconds and stays SSU2_UNKNOWN_RTT (-1) until
+		// the first ACK sample, so an unmeasured session keeps the plain
+		// SSU2_CLOCK_SKEW window.
+		const double allowedSkew
+			= SSU2_CLOCK_SKEW + (m_RTT > 0 ? m_RTT / 2000.0 : 0.0);
 		switch (m_State)
 		{
 		case eSSU2SessionStateSessionRequestReceived:
 		case eSSU2SessionStateTokenRequestReceived:
 		case eSSU2SessionStateEstablished:
-			if (std::abs (offset) > SSU2_CLOCK_SKEW) m_TerminationReason = eSSU2TerminationReasonClockSkew;
+			if (std::abs (offset) > allowedSkew) m_TerminationReason = eSSU2TerminationReasonClockSkew;
 			break;
 		case eSSU2SessionStateSessionCreatedReceived:
 		case eSSU2SessionStateTokenReceived:
@@ -2834,6 +3036,15 @@ namespace transport
 	void SSU2Session::HandleRouterInfo (const uint8_t * buf, size_t len)
 	{
 		if (len < 2) return;
+		// A data-phase RouterInfo block must be a single unfragmented RI. The
+		// frag field is `index << 4 | count` for fragments, but the SSU2 spec
+		// only defines 0x01 for a complete RouterInfo in this block. Rejecting
+		// it here prevents a fragment being parsed as a complete RouterInfo.
+		if (!IsSSU2RouterInfoFragmentAcceptable (buf[1]))
+		{
+			LogPrint (eLogWarning, "SSU2: RouterInfo block frag ", (int)buf[1], " is not a single fragment, ignored");
+			return;
+		}
 		// not from SessionConfirmed, we must add it instantly to use in next block
 		std::shared_ptr<const i2p::data::RouterInfo> newRi;
 		bool updated = false;
@@ -2844,15 +3055,17 @@ namespace transport
 				newRi = i2p::data::netdb.AddRouterInfo (
 					ri->GetBuffer (), static_cast<int> (ri->GetBufferLen ()), updated);
 		}
-		else // use buffer directly. TODO: handle frag
+		else // use buffer directly (the single-fragment byte was checked above)
 			newRi = i2p::data::netdb.AddRouterInfo (buf + 2, static_cast<int> (len - 2), updated);
 
 		if (newRi)
 		{
 			// PeerState2.gotRI honors the request-flood bit: only a newly
-			// accepted/replaced RouterInfo is forwarded to the closest
-			// floodfills. A replayed old RI must not cause repeated flooding.
-			if (updated && (buf[0] & SSU2_ROUTER_INFO_FLAG_REQUEST_FLOOD)) i2p::data::netdb.FloodRouterInfo (newRi);
+			// accepted/replaced RouterInfo is forwarded, and Java additionally
+			// requires floodfillEnabled() plus a spare per-key FloodThrottler
+			// budget. A replayed old RI must not cause repeated flooding.
+			if (updated && (buf[0] & SSU2_ROUTER_INFO_FLAG_REQUEST_FLOOD))
+				i2p::data::netdb.FloodRouterInfoConditional (newRi);
 			auto remoteIdentity = GetRemoteIdentity ();
 			if (remoteIdentity && remoteIdentity->GetIdentHash () == newRi->GetIdentHash ())
 			{
@@ -2862,7 +3075,7 @@ namespace transport
 					= m_RemoteEndpoint.address ().is_v6 () ? newRi->GetSSU2V6Address () : newRi->GetSSU2V4Address ();
 				if (address)
 				{
-					m_Address = address;
+					SetAddress (address);
 					if (IsOutgoing () && m_RelayTag && !address->IsIntroducer ())
 						m_RelayTag = 0; // not longer introducer
 				}
@@ -2881,12 +3094,8 @@ namespace transport
 			LogPrint (eLogWarning, "SSU2: Bad ACK block length ", len);
 			return;
 		}
-		if (m_State == eSSU2SessionStateSessionConfirmedSent)
-		{
-			Established ();
-			return;
-		}
-		if (m_SentPackets.empty ()) return;
+		const bool sessionConfirmedSent = m_State == eSSU2SessionStateSessionConfirmedSent;
+		if (m_SentPackets.empty () && !sessionConfirmedSent) return;
 		// acnt
 		uint32_t ackThrough = bufbe32toh (buf);
 		uint32_t acnt = buf[4];
@@ -2897,25 +3106,40 @@ namespace transport
 			LogPrint (eLogWarning, "SSU2: ACK acnt ", acnt, " exceeds ack through ", ackThrough);
 			return;
 		}
+		// Process every ACK first, including while SessionConfirmed is
+		// unacknowledged: a non-covering ACK for a later packet is still valid
+		// and must retire those packets and feed the RTT sampler. The previous
+		// early return discarded them and left stale send timestamps behind.
 		uint32_t firstPacketNum = ackThrough - acnt;
 		HandleAckRange (firstPacketNum, ackThrough, i2p::util::GetMillisecondsSinceEpoch ()); // acnt
 		// ranges
 		len -= 5;
-		if (!len || m_SentPackets.empty ()) return; // don't handle ranges if nothing to acknowledge
-		const uint8_t * ranges = buf + 5;
-		while (len >= 2 && firstPacketNum)
+		if (len && !m_SentPackets.empty ()) // don't handle ranges if nothing to acknowledge
 		{
-			uint32_t nacks = *ranges++;
-			uint32_t acks = *ranges++;
-			len -= 2;
-			if (!nacks && !acks) break; // spec: both bytes may not be zero
-			const uint64_t lastBelow = (uint64_t)firstPacketNum - 1;
-			if (nacks > lastBelow) break; // would run below packet 0
-			uint32_t lastPacketNum = (uint32_t)(lastBelow - nacks);
-			if (acks > (uint64_t)lastPacketNum + 1) break; // would underflow
-			firstPacketNum = lastPacketNum + 1 - acks;
-			HandleAckRange (firstPacketNum, lastPacketNum, 0);
+			const uint8_t * ranges = buf + 5;
+			while (len >= 2 && firstPacketNum)
+			{
+				uint32_t nacks = *ranges++;
+				uint32_t acks = *ranges++;
+				len -= 2;
+				if (!nacks && !acks) break; // spec: both bytes may not be zero
+				const uint64_t lastBelow = (uint64_t)firstPacketNum - 1;
+				if (nacks > lastBelow) break; // would run below packet 0
+				uint32_t lastPacketNum = (uint32_t)(lastBelow - nacks);
+				if (acks > (uint64_t)lastPacketNum + 1) break; // would underflow
+				firstPacketNum = lastPacketNum + 1 - acks;
+				HandleAckRange (firstPacketNum, lastPacketNum, 0);
+			}
 		}
+		if (!sessionConfirmedSent) return;
+		// Only an ACK that actually covers packet 0 (the SessionConfirmed)
+		// completes Alice's handshake; Java waits for the ACK of packet 0 as
+		// well. The ACK handling above ran first, so any tracked packet 0 is
+		// retired (and its RTT sample taken) before Established() resets the
+		// timers; SessionConfirmed itself is retransmitted from
+		// m_SentHandshakePacket, not from m_SentPackets.
+		if (!IsSSU2AckCoveringPacketZero (ackThrough, acnt)) return;
+		Established ();
 	}
 
 	void SSU2Session::HandleAckRange (uint32_t firstPacketNum, uint32_t lastPacketNum, uint64_t ts)
@@ -3120,6 +3344,8 @@ namespace transport
 			}
 			m = m_Server.GetIncompleteMessagesPool ().AcquireShared ();
 			m->lastFragmentNum = -1;
+			m->outOfSequenceBytes = 0;
+			m->numOutOfSequenceFragments = 0;
 			m_IncompleteMessages.emplace (msgID, m);
 		}
 		m->msg = msg;
@@ -3211,6 +3437,8 @@ namespace transport
 			auto msg = m_Server.GetIncompleteMessagesPool ().AcquireShared ();
 			msg->nextFragmentNum = 0;
 			msg->lastFragmentNum = -1;
+			msg->outOfSequenceBytes = 0;
+			msg->numOutOfSequenceFragments = 0;
 			it = m_IncompleteMessages.emplace (msgID, msg).first;
 		}
 		// insert new out of sequence fragment
@@ -3313,6 +3541,13 @@ namespace transport
 			sendRelayResponse (eSSU2RelayResponseCodeBobUnspecified);
 			return;
 		}
+		if (i2p::data::IsRouterBanned (charlie->GetIdentHash ())
+			|| i2p::data::IsOperatorBlockedRouter (charlie->GetIdentHash ()))
+		{
+			LogPrint (eLogWarning, "SSU2: RelayRequest relay tag belongs to a banned or blocked router");
+			sendRelayResponse (eSSU2RelayResponseCodeBobRelayTagNotFound);
+			return;
+		}
 		// RelayRequestData || bhash || chash || nonce, tag, timestamp, ver,
 		// asz, Alice endpoint. Java validateSig(RELAY_REQUEST_PROLOGUE, ...).
 		SignedData<192> s;
@@ -3334,7 +3569,7 @@ namespace transport
 			sendRelayResponse (eSSU2RelayResponseCodeBobLimit);
 			return;
 		}
-		if (session->m_RelaySessions.emplace (nonce, std::make_pair (shared_from_this (), mts / 1000)).second)
+		if (session->m_RelaySessions.emplace (nonce, RelaySession { shared_from_this (), mts / 1000, eSSU2RelayRoleBob }).second)
 		{
 			// send relay intro to Charlie
 			auto r = i2p::data::netdb.FindRouter (alice->GetIdentHash ()); // Alice's RI
@@ -3382,6 +3617,12 @@ namespace transport
 			LogPrint (eLogWarning, "SSU2: RelayIntro without Bob identity");
 			return;
 		}
+		if (i2p::data::IsRouterBanned (bob->GetIdentHash ())
+			|| i2p::data::IsOperatorBlockedRouter (bob->GetIdentHash ()))
+		{
+			LogPrint (eLogWarning, "SSU2: RelayIntro from banned or operator-blocked Bob ignored");
+			return;
+		}
 		// flag, Alice hash, nonce, tag, timestamp, ver, asz, endpoint, signature
 		if (len < 47) return;
 		uint32_t timestamp = bufbe32toh (buf + 41);
@@ -3420,7 +3661,17 @@ namespace transport
 			s.Insert (i2p::context.GetIdentHash (), 32); // chash
 			s.Insert (buf + 33, 14); // nonce, relay tag, timestamp, ver, asz
 			s.Insert (buf + 47, asz); // Alice Port, Alice IP
-			if (s.Verify (r->GetIdentity (), buf + 47 + asz))
+			const bool aliceBlocked = i2p::data::IsRouterBanned (r->GetIdentHash ())
+				|| i2p::data::IsOperatorBlockedRouter (r->GetIdentHash ());
+			if (aliceBlocked)
+			{
+				// A banned or operator-blocked router is never introduced, even
+				// with a valid signature: no HolePunch and no fresh token are
+				// produced for it.
+				LogPrint (eLogInfo, "SSU2: RelayIntro Alice is banned or operator-blocked");
+				code = eSSU2RelayResponseCodeCharlieAliceIsUnknown;
+			}
+			else if (s.Verify (r->GetIdentity (), buf + 47 + asz))
 			{
 				// obtain and check endpoint and address for HolePunch
 				if (ExtractEndpoint (buf + 47, asz, ep))
@@ -3596,7 +3847,8 @@ namespace transport
 			auto address = GetAddress ();
 			if (address && address->ssu)
 			{
-				for (const auto & introducer : address->ssu->introducers)
+				const auto introducers = address->ssu->GetIntroducers ();
+				for (const auto & introducer : introducers)
 				{
 					SignedData<192> s;
 					s.Insert ((const uint8_t *)"RelayAgreementOK", 16); // prologue
@@ -3625,11 +3877,21 @@ namespace transport
 		auto it = m_RelaySessions.find (nonce);
 		if (it != m_RelaySessions.end ())
 		{
-			auto relaySession = it->second.first;
+			auto relaySession = it->second.session;
+			const auto role = it->second.role;
 			m_RelaySessions.erase (it);
-			if (relaySession && relaySession->IsEstablished ())
+			if (!relaySession)
+				LogPrint (eLogDebug, "SSU2: RelayResponse unknown session for nonce ", nonce);
+			else if (role == eSSU2RelayRoleBob)
 			{
-				// we are Bob, message from Charlie
+				// we are Bob, message from Charlie. Branch on the stored role,
+				// never on IsEstablished(): a session that closes between the
+				// request and the response must not receive Alice's traffic.
+				if (!relaySession->IsEstablished ())
+				{
+					LogPrint (eLogInfo, "SSU2: RelayResponse from Charlie has no established Alice session");
+					return;
+				}
 				size_t maxPayloadSize = relaySession->GetMaxPayloadSize ();
 				if (len + 3 > maxPayloadSize)
 				{
@@ -3653,7 +3915,7 @@ namespace transport
 					relaySession->m_SentPackets.emplace (packetNum, packet);
 				}
 			}
-			else if (relaySession)
+			else
 			{
 				// we are Alice, message from Bob
 				int code = buf[1];
@@ -3733,8 +3995,6 @@ namespace transport
 					relaySession->Done ();
 				}
 			}
-			else
-				LogPrint (eLogDebug, "SSU2: RelayResponse unknown session for nonce ", nonce);
 		}
 		else
 			LogPrint (eLogDebug, "SSU2: RelayResponse unknown nonce ", nonce);
@@ -3771,7 +4031,9 @@ namespace transport
 			LogPrint (eLogWarning, "SSU2: PeerTest block is too short for signed data ", len);
 			return;
 		}
-		if (buf[offset] != 2) // ver, Java PeerTestManager.receiveTest()
+		// PeerTest always sends version 2 (Java PacketBuilder2), but a peer that
+		// negotiated a post-quantum session may advertise 3 or 4 here.
+		if (!IsSSU2OutOfSessionVersionAccepted (buf[offset]))
 		{
 			LogPrint (eLogWarning, "SSU2: PeerTest has wrong version ", (int)buf[offset]);
 			return;
@@ -3818,9 +4080,36 @@ namespace transport
 				LogPrint (eLogWarning, "SSU2: PeerTest msg ", (int)msg, " has no test address");
 				return;
 			}
+			// Java PeerTestManager admits 12 PeerTest msgs 1/2 per source
+			// prefix (IPv4 /32, IPv6 /64) per 10 minutes. Charge it after the
+			// fixed-field validation so malformed packets cannot exhaust the
+			// budget of a legitimate peer.
+			if (!m_Server.AllowPeerTestMessage (m_RemoteEndpoint.address (),
+					static_cast<uint64_t> (i2p::util::GetSecondsSinceEpoch ())))
+			{
+				LogPrint (eLogWarning, "SSU2: PeerTest msg ", (int)msg, " rate limit for ", m_RemoteEndpoint.address ());
+				return;
+			}
 		}
 		auto ts = i2p::util::GetMillisecondsSinceEpoch ();
 		uint32_t nonce = bufbe32toh (buf + offset + 1);
+		// Bob rejects a msg 1 with a msg 4 code and Alice's signed data echoed
+		// back. Never evict another pending test to make room.
+		auto sendPeerTest4Error = [this, ts, buf, len, offset] (SSU2PeerTestCode code)
+		{
+			auto packet = m_Server.GetSentPacketsPool ().AcquireShared ();
+			uint8_t zeroHash[32] = { 0 };
+			packet->payloadSize = CreatePeerTestBlock (
+				packet->payload, m_MaxPayloadSize, 4, code, zeroHash, buf + offset, len - offset);
+			packet->payloadSize += CreatePaddingBlock (
+				packet->payload + packet->payloadSize, m_MaxPayloadSize - packet->payloadSize);
+			uint32_t packetNum = 0;
+			if (SendData (packet->payload, packet->payloadSize, 0, &packetNum))
+			{
+				packet->sendTime = ts;
+				m_SentPackets.emplace (packetNum, packet);
+			}
+		};
 		switch (msg) // msg
 		{
 		case 1: // Bob from Alice
@@ -3831,7 +4120,15 @@ namespace transport
 				GetRemoteIdentity ()->GetIdentHash ());
 			if (session) // session with Charlie
 			{
-				if (m_Server.AddPeerTest (nonce, shared_from_this (), ts / 1000))
+				const auto admission = m_Server.AddPeerTest (nonce, shared_from_this (), ts / 1000);
+				if (admission == SSU2PeerTestAdmission::Duplicate)
+					LogPrint (eLogInfo, "SSU2: Peer test 1 nonce ", nonce, " already exists. Ignored");
+				else if (admission == SSU2PeerTestAdmission::LimitExceeded)
+				{
+					LogPrint (eLogInfo, "SSU2: Too many pending peer tests, rejecting nonce ", nonce);
+					sendPeerTest4Error (eSSU2PeerTestCodeBobLimitExceeded);
+				}
+				else
 				{
 					auto packet = m_Server.GetSentPacketsPool ().AcquireShared ();
 					// Alice's RouterInfo
@@ -3866,29 +4163,25 @@ namespace transport
 						session->m_SentPackets.emplace (packetNum, packet);
 					}
 				}
-				else
-					LogPrint (eLogInfo, "SSU2: Peer test 1 nonce ", nonce, " already exists. Ignored");
 			}
 			else
 			{
 				// Charlie not found, send error back to Alice
-				auto packet = m_Server.GetSentPacketsPool ().AcquireShared ();
-				uint8_t zeroHash[32] = { 0 };
-				packet->payloadSize = CreatePeerTestBlock (packet->payload, m_MaxPayloadSize, 4,
-					eSSU2PeerTestCodeBobNoCharlieAvailable, zeroHash, buf + offset, len - offset);
-				packet->payloadSize += CreatePaddingBlock (
-					packet->payload + packet->payloadSize, m_MaxPayloadSize - packet->payloadSize);
-				uint32_t packetNum = 0;
-				if (SendData (packet->payload, packet->payloadSize, 0, &packetNum))
-				{
-					packet->sendTime = ts;
-					m_SentPackets.emplace (packetNum, packet);
-				}
+				sendPeerTest4Error (eSSU2PeerTestCodeBobNoCharlieAvailable);
 			}
 			break;
 		}
 		case 2: // Charlie from Bob
 		{
+			// Bob (the authenticated session peer) must not be banned or
+			// operator-blocked before Charlie signs anything on his behalf.
+			auto bob = GetRemoteIdentity ();
+			if (i2p::data::IsRouterBanned (bob->GetIdentHash ())
+				|| i2p::data::IsOperatorBlockedRouter (bob->GetIdentHash ()))
+			{
+				LogPrint (eLogWarning, "SSU2: PeerTest msg 2 from banned or operator-blocked Bob ignored");
+				return;
+			}
 			// Sign the forwarded request with Charlie's key. The incoming
 			// signature is Alice's and may use a different signature type, so
 			// its length must not be compared with Charlie's signature length.
@@ -3915,23 +4208,53 @@ namespace transport
 					s.Insert (buf + offset, asz + 10); // signed data
 					if (s.Verify (r->GetIdentity (), buf + offset + asz + 10))
 					{
-						if (!m_Server.FindSession (r->GetIdentity ()->GetIdentHash ()))
+						// Never open a test toward Alice when her router hash is
+						// excluded by the operator (reason 69, the existing
+						// "Alice is banned" code).
+						if (i2p::data::IsRouterBanned (r->GetIdentHash ())
+							|| i2p::data::IsOperatorBlockedRouter (r->GetIdentHash ()))
+						{
+							LogPrint (eLogInfo, "SSU2: PeerTest msg 2 Alice is banned or operator-blocked");
+							code = eSSU2PeerTestCodeCharlieAliceIsBanned;
+						}
+						else if (IsSSU2PeerTestFamilyAvailable (
+									 m_Server.FindSession (r->GetIdentHash ()), asz == 6))
 						{
 							boost::asio::ip::udp::endpoint ep;
 							std::shared_ptr<const i2p::data::RouterInfo::Address> addr;
-							if (ExtractEndpoint (buf + offset + 10, asz, ep) && IsValidPeerTestEndpoint (ep))
-								addr = r->GetSSU2Address (ep.address ().is_v4 ());
-							if (addr && m_Server.IsSupported (ep.address ())
-								&& i2p::context.GetRouterInfo ().IsSSU2PeerTesting (ep.address ().is_v4 ()))
+							const bool endpointValid
+								= ExtractEndpoint (buf + offset + 10, asz, ep) && IsValidPeerTestEndpoint (ep);
+							if (endpointValid) addr = r->GetSSU2Address (ep.address ().is_v4 ());
+							const bool supported = endpointValid && m_Server.IsSupported (ep.address ());
+							// This endpoint is where Charlie will send msg 5, so
+							// it must be routable, supported and not blocked.
+							if (AllowSSU2PeerTestTarget (endpointValid, supported,
+									endpointValid && i2p::data::IsOperatorBlockedAddress (ep.address ()))
+								&& addr && i2p::context.GetRouterInfo ().IsSSU2PeerTesting (ep.address ().is_v4 ()))
 							{
 								if (!m_Server.IsConnectedRecently (ep)) // no alive hole punch
 								{
-									// send msg 5 to Alice
-									auto session = std::make_shared<SSU2PeerTestSession> (
-										m_Server, 0, htobe64 (((uint64_t)nonce << 32) | nonce));
-									session->m_RemoteEndpoint = ep; // might be different
-									m_Server.AddSession (session);
-									session->SendPeerTest (5, newSignedData.data (), newSignedData.size (), addr);
+									if (!m_Server.IsPeerTestSessionAdmissionAllowed ())
+									{
+										LogPrint (eLogWarning,
+											"SSU2: Too many PeerTest sessions, refusing msg 2 for nonce ", nonce);
+										code = eSSU2PeerTestCodeCharlieLimitExceeded;
+									}
+									else
+									{
+										// send msg 5 to Alice
+										auto session = std::make_shared<SSU2PeerTestSession> (
+											m_Server, 0, htobe64 (((uint64_t)nonce << 32) | nonce));
+										session->SetRemoteEndpoint (ep); // might be different
+										if (m_Server.AddSession (session))
+											session->SendPeerTest (5, newSignedData.data (), newSignedData.size (), addr);
+										else
+										{
+											LogPrint (eLogWarning,
+												"SSU2: Could not register PeerTest session for nonce ", nonce);
+											code = eSSU2PeerTestCodeCharlieLimitExceeded;
+										}
+									}
 								}
 								else
 									code = eSSU2PeerTestCodeCharlieAliceIsAlreadyConnected;
@@ -4025,7 +4348,19 @@ namespace transport
 						session->Done ();
 						return;
 					}
-					if (GetRouterStatus () == eRouterStatusUnknown) SetTestingState (true);
+					// Bob and Charlie must both be usable before Alice spends
+					// any state or sends msg 6.
+					auto bobIdentity = GetRemoteIdentity ();
+					const i2p::data::IdentHash charlieHash (buf + 3);
+					const auto & bobHash = bobIdentity->GetIdentHash ();
+					if (i2p::data::IsRouterBanned (bobHash) || i2p::data::IsOperatorBlockedRouter (bobHash)
+						|| i2p::data::IsRouterBanned (charlieHash)
+						|| i2p::data::IsOperatorBlockedRouter (charlieHash))
+					{
+						LogPrint (eLogInfo, "SSU2: Peer test 4 from banned or operator-blocked router ignored");
+						session->Done ();
+						return;
+					}
 					auto r = i2p::data::netdb.FindRouter (buf + 3); // find Charlie
 					if (r && len >= offset + 10)
 					{
@@ -4042,6 +4377,10 @@ namespace transport
 						s.Insert (buf + offset, asz + 10); // ver, nonce, ts, asz, Alice's endpoint
 						if (s.Verify (r->GetIdentity (), buf + offset + asz + 10))
 						{
+							// Testing is published only for a signature-verified
+							// msg 4 and cleared on every exit path below.
+							if (GetRouterStatus () == eRouterStatusUnknown) SetTestingState (true);
+							[[maybe_unused]] modern::ScopeExit clearTesting ([this] () { SetTestingState (false); });
 							session->SetRemoteIdentity (r->GetIdentity ());
 							// m_Address identifies this session's peer; fall back to
 							// the UDP endpoint family if an older/testing session
@@ -4055,7 +4394,18 @@ namespace transport
 									// msg 5 already received and we know remote endpoint
 									if (session->GetMsgNumReceived () == 5)
 									{
+										const auto & charlieEndpoint = session->GetRemoteEndpoint ();
+										if (!AllowSSU2PeerTestTarget (IsValidPeerTestEndpoint (charlieEndpoint),
+												m_Server.IsSupported (charlieEndpoint.address ()),
+												i2p::data::IsOperatorBlockedAddress (charlieEndpoint.address ())))
+										{
+											LogPrint (eLogWarning, "SSU2: PeerTest 4 Charlie endpoint ",
+												charlieEndpoint, " is not acceptable");
+											session->Done ();
+											return;
+										}
 										if (!session->IsConnectedRecently ()) SetRouterStatus (eRouterStatusOK);
+										session->SetCharlieEndpoint (charlieEndpoint);
 										// send msg 6 immediately
 										session->SendPeerTest (6, buf + offset, len - offset, addr);
 									}
@@ -4065,14 +4415,25 @@ namespace transport
 								}
 								else
 								{
-									session->m_Address = addr;
+									session->SetAddress (addr);
 									if (GetTestingState ())
 									{
 										// schedule msg 6 with delay
 										if (!addr->host.is_unspecified () && addr->port)
 										{
-											session->SetRemoteEndpoint (boost::asio::ip::udp::endpoint (
-												addr->host, static_cast<uint16_t> (addr->port)));
+											const boost::asio::ip::udp::endpoint charlieEndpoint (
+												addr->host, static_cast<uint16_t> (addr->port));
+											if (!AllowSSU2PeerTestTarget (IsValidPeerTestEndpoint (charlieEndpoint),
+													m_Server.IsSupported (charlieEndpoint.address ()),
+													i2p::data::IsOperatorBlockedAddress (charlieEndpoint.address ())))
+											{
+												LogPrint (eLogWarning, "SSU2: PeerTest 4 target ", charlieEndpoint,
+													" is not acceptable");
+												session->Done ();
+												return;
+											}
+											session->SetRemoteEndpoint (charlieEndpoint);
+											session->SetCharlieEndpoint (charlieEndpoint);
 											session->SendPeerTest (6, buf + offset, len - offset, addr, true);
 										}
 										SetTestingState (false);
@@ -4228,6 +4589,11 @@ namespace transport
 			if (mtu)
 			{
 				if (mtu > (int)SSU2_MAX_PACKET_SIZE) mtu = SSU2_MAX_PACKET_SIZE;
+				// Keep the effective IPv6 MTU at or below 1488 bytes: the IPv6
+				// header plus UDP header leaves no room above that inside a
+				// 1500-byte path MTU, and Java PeerState2 uses the same cap.
+				// The 1280 byte SSU2 floor still applies.
+				if (addr->IsV6 () && mtu > SSU2_MAX_IPV6_MTU) mtu = SSU2_MAX_IPV6_MTU;
 				if (mtu < (int)SSU2_MIN_PACKET_SIZE) mtu = SSU2_MIN_PACKET_SIZE;
 				m_MaxPayloadSize = mtu - (addr->IsV6 () ? IPV6_HEADER_SIZE : IPV4_HEADER_SIZE) - UDP_HEADER_SIZE - 32;
 				LogPrint (eLogDebug, "SSU2: Session MTU=", mtu, ", max payload size=", m_MaxPayloadSize);
@@ -4946,6 +5312,9 @@ namespace transport
 
 	void SSU2Session::CleanUp (uint64_t ts)
 	{
+		// Java's MAX_RECEIVE_TIME is 10 s. Expiry is only observed on the next
+		// server cleanup pass (SSU2_CLEANUP_INTERVAL), so the effective bound is
+		// the timeout plus that interval; no per-message timer is introduced.
 		for (auto it = m_IncompleteMessages.begin (); it != m_IncompleteMessages.end ();)
 		{
 			if (ts > it->second->lastFragmentInsertTime + SSU2_INCOMPLETE_MESSAGES_CLEANUP_TIMEOUT)
@@ -4981,12 +5350,25 @@ namespace transport
 
 		for (auto it = m_RelaySessions.begin (); it != m_RelaySessions.end ();)
 		{
-			if (ts > it->second.second + SSU2_RELAY_NONCE_EXPIRATION_TIMEOUT)
+			// Bob answers immediately, Alice waits for Charlie's HolePunch or
+			// Bob's RelayResponse. Expire per role on monotonic seconds.
+			const int timeout = it->second.role == eSSU2RelayRoleAlice ? SSU2_RELAY_NONCE_EXPIRATION_ALICE
+																	  : SSU2_RELAY_NONCE_EXPIRATION_BOB;
+			if (ts > it->second.timestamp + static_cast<uint64_t> (timeout))
 			{
-				LogPrint (eLogInfo, "SSU2: Relay nonce ", it->first, " was not responded in ",
-					SSU2_RELAY_NONCE_EXPIRATION_TIMEOUT, " seconds, deleted");
+				LogPrint (eLogInfo, "SSU2: Relay nonce ", it->first, " was not responded in ", timeout,
+					" seconds, deleted");
 				it = m_RelaySessions.erase (it);
 			}
+			else
+				++it;
+		}
+		// Bob's RelayRequest replay cache is bounded by count as well as by a
+		// monotonic window, so a peer cannot pin entries until restart.
+		for (auto it = m_RecentRelayRequests.begin (); it != m_RecentRelayRequests.end ();)
+		{
+			if (ts > it->second + SSU2_RECENT_RELAY_REQUEST_EXPIRATION)
+				it = m_RecentRelayRequests.erase (it);
 			else
 				++it;
 		}

@@ -15,6 +15,7 @@
 #define SSU2_OUT_OF_SESSION_H__
 
 #include <vector>
+#include <memory>
 #include "SSU2Session.h"
 
 namespace i2p
@@ -47,6 +48,21 @@ namespace transport
 	 */
 	bool IsValidPeerTestEndpoint (const boost::asio::ip::udp::endpoint & ep);
 
+	/**
+	 * Whether an out-of-session PeerTest Address block may update our external
+	 * address.
+	 *
+	 * Java never publishes an address from msg 5 (Charlie's first contact) and
+	 * only completes a test when the msg 7 source is the Charlie learned from
+	 * msg 4. A single test result also must not publish a port, so this only
+	 * gates the corroborated observation; the caller applies the host without
+	 * a PublishSSU2Address() call.
+	 */
+	constexpr bool AllowPeerTestExternalAddressUpdate (uint8_t msg, bool senderIsLearnedCharlie)
+	{
+		return msg == 7 && senderIsLearnedCharlie;
+	}
+
 	class SSU2PeerTestSession : public SSU2Session // for PeerTest msgs 5,6,7
 	{
 	public:
@@ -55,6 +71,11 @@ namespace transport
 		uint8_t GetMsgNumReceived () const { return m_MsgNumReceived; }
 		bool IsConnectedRecently () const { return m_IsConnectedRecently; }
 		void SetStatusChanged () { m_IsStatusChanged = true; }
+		// Charlie's endpoint as learned from msg 4. It is the endpoint msg 6 is
+		// sent to, and the only source whose msg 7 may corroborate our external
+		// address.
+		const boost::asio::ip::udp::endpoint & GetCharlieEndpoint () const { return m_CharlieEndpoint; }
+		void SetCharlieEndpoint (const boost::asio::ip::udp::endpoint & ep) { m_CharlieEndpoint = ep; }
 
 		void SendPeerTest (uint8_t msg, const uint8_t * signedData, size_t signedDataLen,
 			std::shared_ptr<const i2p::data::RouterInfo::Address> addr, bool delayed = false);
@@ -73,7 +94,7 @@ namespace transport
 		void HandleAddress (const uint8_t * buf, size_t len) override;
 
 		void ScheduleResend (uint8_t msg);
-		void ApplyOurEndpoint (); // update our external host/port from an Address block
+		void ApplyOurEndpoint (uint8_t msg); // update our external host from a corroborated Address block
 
 	private:
 		uint8_t m_MsgNumReceived, m_NumResends;
@@ -81,6 +102,7 @@ namespace transport
 		std::vector<uint8_t> m_SignedData; // for resends
 		boost::asio::steady_timer m_PeerTestResendTimer;
 		boost::asio::ip::udp::endpoint m_OurEndpoint; // as seen by peer
+		boost::asio::ip::udp::endpoint m_CharlieEndpoint; // learned from msg 4, msg 6 target
 	};
 
 	const int SSU2_HOLE_PUNCH_RESEND_INTERVAL = 1000; // in milliseconds

@@ -329,6 +329,28 @@ void TestPayloadBlockValidator ()
 	assert (!ValidateSSU2PayloadBlocks (eSSU2SessionStateTokenRequestReceived, afterPadding, sizeof (afterPadding)));
 }
 
+void TestOutOfSessionVersionAndRouterInfoFrag ()
+{
+	using namespace i2p::transport;
+
+	// PeerTest and HolePunch send version 2 but accept 2..4 on receive, so a
+	// peer that already negotiated a post-quantum version is not rejected.
+	assert (!IsSSU2OutOfSessionVersionAccepted (1));
+	for (uint8_t version = 2; version <= 4; ++version) assert (IsSSU2OutOfSessionVersionAccepted (version));
+	assert (!IsSSU2OutOfSessionVersionAccepted (5));
+	assert (SSU2_HOLE_PUNCH_VERSION == 2);
+
+	// A single unfragmented RouterInfo is the only accepted frag byte. The
+	// SSU2 field is `index << 4 | count`, so 0x00, 0x11 and 0x12 are fragments
+	// and must be rejected in the SessionConfirmed leading block and in a
+	// data-phase RouterInfo block alike.
+	assert (IsSSU2RouterInfoFragmentAcceptable (0x01));
+	assert (!IsSSU2RouterInfoFragmentAcceptable (0x00));
+	assert (!IsSSU2RouterInfoFragmentAcceptable (0x11));
+	assert (!IsSSU2RouterInfoFragmentAcceptable (0x12));
+	assert (SSU2_ROUTER_INFO_FRAG_SINGLE == 0x01);
+}
+
 void TestPeerTestEndpointValidation ()
 {
 	using endpoint = boost::asio::ip::udp::endpoint;
@@ -389,6 +411,7 @@ int main ()
 	TestPQPublicationUsesPerFamilyMTU (keys);
 	TestStatePayloadBlockMatrix ();
 	TestPayloadBlockValidator ();
+	TestOutOfSessionVersionAndRouterInfoFrag ();
 	TestPeerTestEndpointValidation ();
 	return 0;
 }

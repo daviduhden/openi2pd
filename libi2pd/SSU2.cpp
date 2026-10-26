@@ -11,12 +11,15 @@
  *
  */
 
+#include <mutex>
 #include <random>
+#include <cstring>
 #include "Log.h"
 #include "RouterContext.h"
 #include "Transports.h"
 #include "NetDb.hpp"
 #include "Config.h"
+#include "Blocklist.h"
 #include "SSU2.h"
 
 namespace i2p
@@ -220,6 +223,10 @@ namespace transport
 		m_Introducers.clear ();
 		m_IntroducersV6.clear ();
 		m_RequestedPeerTests.clear ();
+		{
+			std::lock_guard<std::mutex> l (m_PeerTestRateMutex);
+			m_PeerTestRate.clear ();
+		}
 
 		m_PacketsPool.ReleaseMt (m_ReceivedPacketsQueue);
 		m_ReceivedPacketsQueue.clear ();
@@ -252,6 +259,10 @@ namespace transport
 			else if (mtu > (int)SSU2_MAX_PACKET_SIZE)
 				mtu = SSU2_MAX_PACKET_SIZE;
 			if (mtu < (int)SSU2_MIN_PACKET_SIZE) mtu = SSU2_MIN_PACKET_SIZE;
+			// Clamp the published IPv6 MTU to the SSU2 IPv6 ceiling: IPv6 plus
+			// UDP headers leave no room above 1488 inside a 1500-byte path MTU
+			// (Java PeerState2.MAX_IPV6_MTU). The 1280 floor above still applies.
+			if (mtu > (int)SSU2_MAX_IPV6_MTU) mtu = static_cast<uint16_t> (SSU2_MAX_IPV6_MTU);
 			i2p::context.SetMTU (mtu, false);
 		}
 	}
@@ -732,25 +743,32 @@ namespace transport
 		i2p::data::RouterInfo::CompatibleTransports remoteTransports, const i2p::data::IdentHash & excluded)
 	{
 		if (m_Sessions.empty ()) return nullptr;
+		// Charlie must not be banned or operator-blocked: the peer test would
+		// forward Alice's signed data to an excluded router.
+		auto isEligible = [&] (const std::shared_ptr<SSU2Session> & session) -> bool
+		{
+			if (!session->IsEstablished () || !(session->GetRemotePeerTestTransports () & remoteTransports)
+				|| session->GetRemoteVersion () < i2p::data::NETDB_MIN_PEER_TEST_VERSION)
+				return false;
+			auto identity = session->GetRemoteIdentity ();
+			if (!identity || identity->GetIdentHash () == excluded) return false;
+			const auto & ident = identity->GetIdentHash ();
+			if (i2p::data::IsOperatorBlockedAddress (session->GetRemoteEndpoint ().address ())) return false;
+			return !i2p::data::IsRouterBanned (ident) && !i2p::data::IsOperatorBlockedRouter (ident);
+		};
 		int ind = static_cast<int> (m_Rng () % m_Sessions.size ());
 		auto it = m_Sessions.begin ();
 		std::advance (it, ind);
 		while (it != m_Sessions.end ())
 		{
-			if (it->second->IsEstablished () && (it->second->GetRemotePeerTestTransports () & remoteTransports)
-				&& it->second->GetRemoteVersion () >= i2p::data::NETDB_MIN_PEER_TEST_VERSION
-				&& it->second->GetRemoteIdentity ()->GetIdentHash () != excluded)
-				return it->second;
+			if (isEligible (it->second)) return it->second;
 			it++;
 		}
 		// not found, try from beginning
 		it = m_Sessions.begin ();
 		while (it != m_Sessions.end () && ind)
 		{
-			if (it->second->IsEstablished () && (it->second->GetRemotePeerTestTransports () & remoteTransports)
-				&& it->second->GetRemoteVersion () >= i2p::data::NETDB_MIN_PEER_TEST_VERSION
-				&& it->second->GetRemoteIdentity ()->GetIdentHash () != excluded)
-				return it->second;
+			if (isEligible (it->second)) return it->second;
 			it++;
 			ind--;
 		}
@@ -782,19 +800,101 @@ namespace transport
 		return nullptr;
 	}
 
-	bool SSU2Server::AddPeerTest (uint32_t nonce, std::shared_ptr<SSU2Session> aliceSession, uint64_t ts)
+	SSU2PeerTestAdmission SSU2Server::AddPeerTest (
+		uint32_t nonce, std::shared_ptr<SSU2Session> aliceSession, uint64_t ts)
 	{
-		if (m_PeerTests.find (nonce) != m_PeerTests.end ()) return false;
-		// Nonces come from msg 1 on an established session. Bound the map so a
-		// peer cannot accumulate arbitrary pending entries between cleanup runs.
-		if (m_PeerTests.size () >= SSU2_MAX_PEER_TESTS)
+		if (m_PeerTests.find (nonce) != m_PeerTests.end ()) return SSU2PeerTestAdmission::Duplicate;
+		// Nonces come from msg 1 on an established session. Never evict a live
+		// test to make room: Bob answers msg 4 with
+		// eSSU2PeerTestCodeBobLimitExceeded instead (Java rejects at the cap
+		// rather than silently dropping another test's state).
+		if (IsSSU2PeerTestTableFull (m_PeerTests.size (), SSU2_MAX_PEER_TESTS))
+			return SSU2PeerTestAdmission::LimitExceeded;
+		if (!m_PeerTests.emplace (nonce, std::pair { aliceSession, ts }).second)
+			return SSU2PeerTestAdmission::Duplicate;
+		return SSU2PeerTestAdmission::Accepted;
+	}
+
+	bool SSU2Server::AllowPeerTestMessage (const boost::asio::ip::address & source, uint64_t now)
+	{
+		const auto key = GetSSU2PeerTestRateKey (source);
+		std::lock_guard<std::mutex> l (m_PeerTestRateMutex);
+		auto it = m_PeerTestRate.find (key);
+		if (it == m_PeerTestRate.end ())
 		{
-			auto oldest = m_PeerTests.begin ();
-			for (auto it = m_PeerTests.begin (); it != m_PeerTests.end (); ++it)
-				if (it->second.second < oldest->second.second) oldest = it;
-			m_PeerTests.erase (oldest);
+			if (m_PeerTestRate.size () >= SSU2_MAX_PEER_TEST_RATE_ENTRIES)
+			{
+				// Drop expired windows first; a source that keeps sending is
+				// still admitted when its own window opens again.
+				for (auto i = m_PeerTestRate.begin (); i != m_PeerTestRate.end ();)
+				{
+					if (!i->second.windowStarted || now < i->second.windowStarted
+						|| now - i->second.windowStarted >= SSU2_PEER_TEST_RATE_WINDOW)
+						i = m_PeerTestRate.erase (i);
+					else
+						++i;
+				}
+				if (m_PeerTestRate.size () >= SSU2_MAX_PEER_TEST_RATE_ENTRIES) return false;
+			}
+			it = m_PeerTestRate.emplace (key, SSU2PeerTestRateState { }).first;
 		}
-		return m_PeerTests.emplace (nonce, std::pair { aliceSession, ts }).second;
+		return AllowSSU2PeerTestMessage (it->second, now);
+	}
+
+	size_t SSU2Server::GetNumPeerTestSessions () const
+	{
+		size_t count = 0;
+		for (const auto & it : m_Sessions)
+			if (it.second->GetState () == eSSU2SessionStatePeerTest) count++;
+		return count;
+	}
+
+	bool SSU2Server::IsPeerTestSessionAdmissionAllowed () const
+	{
+		return IsSSU2PeerTestSessionAdmissionAllowed (GetNumPeerTestSessions ());
+	}
+
+	size_t SSU2Server::GetNumInboundHandshakeSessions () const
+	{
+		size_t count = 0;
+		for (const auto & it : m_Sessions)
+			if (IsSSU2InboundHandshakeState (it.second->GetState ())) count++;
+		return count;
+	}
+
+	bool SSU2Server::IsInboundAdmissionAllowed () const
+	{
+		return IsInboundSessionAdmissionAllowed (GetNumInboundHandshakeSessions ());
+	}
+
+	void SSU2Server::RejectInboundHandshake (
+		uint64_t connID, uint8_t * buf, size_t len, const boost::asio::ip::udp::endpoint & senderEndpoint)
+	{
+		// Only a SessionRequest or TokenRequest still has a handshake context
+		// that a Retry can answer; anything else is dropped without a reply.
+		SSU2Session::Header header;
+		header.h.connID = connID;
+		memcpy (header.buf + 8, buf + 8, 8);
+		header.ll[1] ^= CreateHeaderMask (i2p::context.GetSSU2IntroKey (), buf + (len - 12));
+		if (!CanRejectInboundHandshakeWithRetry (header.h.type))
+		{
+			LogPrint (eLogWarning, "SSU2: Inbound session limit reached (", GetNumInboundHandshakeSessions (), " of ",
+				SSU2_MAX_INBOUND_SESSIONS, "), dropping message type ", (int)header.h.type, " from ", senderEndpoint);
+			return;
+		}
+		LogPrint (eLogWarning, "SSU2: Inbound session limit reached (", GetNumInboundHandshakeSessions (), " of ",
+			SSU2_MAX_INBOUND_SESSIONS, "), rejecting ", senderEndpoint);
+		// The temporary session is never inserted into m_Sessions, so the
+		// admission cap holds. It only carries the parsed connection IDs so
+		// ProcessSessionRequest()/ProcessTokenRequest() can build the Retry.
+		auto session = std::make_shared<SSU2Session> (*this);
+		session->SetRemoteEndpoint (senderEndpoint);
+		session->AdjustMaxPayloadSize ();
+		session->SetVersion (static_cast<uint8_t> (m_Version));
+		// The handlers answer with a Retry carrying this reason and create no
+		// further state.
+		session->m_TerminationReason = eSSU2TerminationReasonConnectionLimits;
+		session->ProcessFirstIncomingMessage (connID, buf, len);
 	}
 
 	std::shared_ptr<SSU2Session> SSU2Server::GetPeerTest (uint32_t nonce)
@@ -935,6 +1035,7 @@ namespace transport
 					pending->ProcessRetry (buf, len);
 			}
 			else if (!i2p::transport::transports.IsInReservedRange (senderEndpoint.address ()) && senderEndpoint.port ()
+				&& !i2p::data::IsOperatorBlockedAddress (senderEndpoint.address ())
 				&& !i2p::transport::transports.IsBanned (senderEndpoint.address ()))
 			{
 				// assume new incoming session
@@ -943,7 +1044,12 @@ namespace transport
 					std::lock_guard<std::mutex> l (m_ReceivedPacketsQueueMutex);
 					queueSize = m_ReceivedPacketsQueue.size ();
 				}
-				if (queueSize < SSU2_STOP_ACCEPTING_NEW_SESSIONS_QUEUE_SIZE)
+				if (queueSize >= SSU2_STOP_ACCEPTING_NEW_SESSIONS_QUEUE_SIZE)
+				{
+					LogPrint (eLogWarning, "SSU2: Incoming session dropped from ", senderEndpoint, ". Queue size ",
+						queueSize, " exceeds ", SSU2_STOP_ACCEPTING_NEW_SESSIONS_QUEUE_SIZE);
+				}
+				else if (IsInboundAdmissionAllowed ())
 				{
 					auto session = std::make_shared<SSU2Session> (*this);
 					session->SetRemoteEndpoint (senderEndpoint);
@@ -952,8 +1058,7 @@ namespace transport
 					session->ProcessFirstIncomingMessage (connID, buf, len);
 				}
 				else
-					LogPrint (eLogWarning, "SSU2: Incoming session dropped from ", senderEndpoint, ". Queue size ",
-						queueSize, " exceeds ", SSU2_STOP_ACCEPTING_NEW_SESSIONS_QUEUE_SIZE);
+					RejectInboundHandshake (connID, buf, len, senderEndpoint);
 			}
 			else
 				LogPrint (
@@ -1111,10 +1216,13 @@ namespace transport
 		if (!address) return;
 		session->WaitForIntroduction ();
 		auto ts = i2p::util::GetSecondsSinceEpoch ();
+		// Snapshot under the address mutex: the netDb maintenance thread prunes
+		// or clears the live vector while this transport thread iterates it.
+		const auto introducers = address->ssu->GetIntroducers ();
 		std::vector<int> indices;
 		int i = 0;
 		// try to find existing session first
-		for (auto & it : address->ssu->introducers)
+		for (auto & it : introducers)
 		{
 			if (it.iTag && ts < it.iExp)
 			{
@@ -1144,7 +1252,7 @@ namespace transport
 
 			for (auto ind : indices)
 			{
-				const auto & introducer = address->ssu->introducers[ind];
+				const auto & introducer = introducers[ind];
 				// introducer is not expired, because in indices
 				r = i2p::data::netdb.FindRouter (introducer.iH);
 				if (r)
@@ -1509,11 +1617,17 @@ namespace transport
 		auto ts = i2p::util::GetSecondsSinceEpoch ();
 		for (const auto & s : m_Sessions)
 		{
-			if (s.second->IsEstablished () && (s.second->GetRelayTag () && s.second->IsOutgoing ())
-				&& ts < s.second->GetCreationTime () + SSU2_TO_INTRODUCER_SESSION_DURATION / 2
-				&& !excluded.count (s.second->GetRemoteIdentity ()->GetIdentHash ())
-				&& ((v4 && (s.second->GetRemoteTransports () & i2p::data::RouterInfo::eSSU2V4))
-					|| (!v4 && (s.second->GetRemoteTransports () & i2p::data::RouterInfo::eSSU2V6))))
+			// Publish an introducer only for a session in the same address
+			// family as the requested list (Java `cur.isIPv6() == ipv6`). The
+			// advertised transport mask can include both families, so it is not
+			// enough on its own.
+			const bool sessionV4 = s.second->GetRemoteEndpoint ().address ().is_v4 ();
+			if (!s.second->IsEstablished () || !s.second->GetRelayTag () || !s.second->IsOutgoing ())
+				continue;
+			auto identity = s.second->GetRemoteIdentity ();
+			if (!identity) continue; // established sessions normally have one
+			if (sessionV4 == v4 && ts < s.second->GetCreationTime () + SSU2_TO_INTRODUCER_SESSION_DURATION / 2
+				&& !excluded.count (identity->GetIdentHash ()))
 				eligible.push_back (s.second);
 		}
 
@@ -1594,12 +1708,14 @@ namespace transport
 			{
 				uint32_t tag = it->GetRelayTag ();
 				uint32_t exp = it->GetCreationTime () + SSU2_TO_INTRODUCER_SESSION_EXPIRATION;
-				if (!tag && ts >= exp) continue; // don't publish expired introducer
+				if (!tag || ts >= exp) continue; // don't publish tagless or expired introducer
+				auto identity = it->GetRemoteIdentity ();
+				if (!identity) continue;
 				i2p::data::RouterInfo::Introducer introducer;
 				introducer.iTag = tag;
-				introducer.iH = it->GetRemoteIdentity ()->GetIdentHash ();
+				introducer.iH = identity->GetIdentHash ();
 				introducer.iExp = exp;
-				excluded.insert (it->GetRemoteIdentity ()->GetIdentHash ());
+				excluded.insert (identity->GetIdentHash ());
 				if (i2p::context.AddSSU2Introducer (introducer, v4))
 				{
 					LogPrint (eLogDebug, "SSU2: Introducer added ", it->GetRelayTag (), " at ",
@@ -1718,7 +1834,7 @@ namespace transport
 				}
 				// we are firewalled
 				auto addr = i2p::context.GetRouterInfo ().GetSSU2V4Address ();
-				if (addr && addr->ssu && addr->ssu->introducers.empty ())
+				if (addr && addr->ssu && !addr->ssu->HasIntroducers ())
 					i2p::context.SetUnreachable (true, false); // v4
 
 				UpdateIntroducers (true);
@@ -1741,7 +1857,7 @@ namespace transport
 				}
 				// we are firewalled
 				auto addr = i2p::context.GetRouterInfo ().GetSSU2V6Address ();
-				if (addr && addr->ssu && addr->ssu->introducers.empty ())
+				if (addr && addr->ssu && !addr->ssu->HasIntroducers ())
 					i2p::context.SetUnreachable (false, true); // v6
 
 				UpdateIntroducers (false);

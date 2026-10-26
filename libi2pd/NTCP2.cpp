@@ -21,6 +21,7 @@
 #include <vector>
 #include <chrono>
 #include <limits>
+#include <cstring>
 #include "Log.h"
 #include "I2PEndian.h"
 #include "Crypto.h"
@@ -29,6 +30,7 @@
 #include "Transports.h"
 #include "NetDb.hpp"
 #include "HTTP.h"
+#include "Blocklist.h"
 #include "util.h"
 #include "Socks5.h"
 #include "NTCP2.h"
@@ -130,8 +132,13 @@ namespace transport
 #if OPENSSL_PQ
 		if (m_CryptoType == i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD)
 			i2p::crypto::InitNoiseXKState (*this, rs);
-		else
-			i2p::crypto::InitNoiseXKStateMLKEM (*this, m_CryptoType, rs);
+		else if (!i2p::crypto::InitNoiseXKStateMLKEM (*this, m_CryptoType, rs))
+		{
+			// An unsupported hybrid parameter set leaves the Noise state zeroed;
+			// continue only with a state that was actually initialised.
+			LogPrint (eLogError, "NTCP2: unsupported hybrid handshake crypto type ", (int)m_CryptoType);
+			return false;
+		}
 #else
 		i2p::crypto::InitNoiseXKState (*this, rs);
 #endif
@@ -195,6 +202,14 @@ namespace transport
 	void NTCP2Establisher::CreateEphemeralKey ()
 	{
 		m_EphemeralKeys = i2p::transport::transports.GetNextX25519KeysPair ();
+		if (m_EphemeralKeys && !m_EphemeralKeys->HasPrivateKey ())
+		{
+			// A pooled pair whose generation failed must never be used: the
+			// SessionRequest/SessionCreated would carry an all-zero X/Y.
+			LogPrint (eLogWarning, "NTCP2: ephemeral key generation failed, retrying");
+			if (!m_EphemeralKeys->GenerateKeys ())
+				LogPrint (eLogError, "NTCP2: no usable ephemeral key; the handshake will abort");
+		}
 	}
 
 	void NTCP2Establisher::ApplyPadding (uint8_t * padding, size_t paddingLength)
@@ -204,6 +219,11 @@ namespace transport
 
 	bool NTCP2Establisher::CreateSessionRequestMessage (std::mt19937 & rng)
 	{
+		if (!HasUsableEphemeralKey ())
+		{
+			LogPrint (eLogError, "NTCP2: no usable ephemeral key for SessionRequest");
+			return false;
+		}
 		// spec/ntcp2 Published Addresses: Alice must validate Bob's static key
 		// and IV before connecting. A zero value is not a valid X25519 point;
 		// the high bit is reserved for the hybrid PQ marker and must be clear
@@ -324,6 +344,11 @@ namespace transport
 
 	bool NTCP2Establisher::CreateSessionCreatedMessage (std::mt19937 & rng)
 	{
+		if (!HasUsableEphemeralKey ())
+		{
+			LogPrint (eLogError, "NTCP2: no usable ephemeral key for SessionCreated");
+			return false;
+		}
 		size_t offset = 0;
 		// encrypt Y
 		i2p::crypto::CBCEncryption encryption;
@@ -417,9 +442,10 @@ namespace transport
 	}
 
 	bool NTCP2Establisher::ProcessSessionRequestMessage (
-		uint16_t & paddingLen, bool & clockSkew, bool & pq, bool decryptX)
+		uint16_t & paddingLen, bool & clockSkew, bool & netIdMismatch, bool & pq, bool decryptX)
 	{
 		clockSkew = false;
+		netIdMismatch = false;
 		pq = false;
 		size_t offset = 0;
 		if (decryptX)
@@ -490,18 +516,21 @@ namespace transport
 			// options
 			if (options[0] && options[0] != i2p::context.GetNetID ())
 			{
-				LogPrint (eLogWarning, "NTCP2: SessionRequest networkID ", (int)options[0], " mismatch. Expected ",
-					i2p::context.GetNetID ());
+				// A netID in the options block is authoritative: the peer belongs
+				// to a different I2P network. The caller applies the transport ban
+				// and logs once; only netId=0 (unspecified) is accepted.
+				netIdMismatch = true;
 				return false;
 			}
 			if (options[1] == 2) // ver is always 2
 			{
 				paddingLen = bufbe16toh (options + 2);
-				const size_t maxPadding = NTCP2GetMaxHandshakePadding (GetVersion (), false);
-				if (paddingLen > maxPadding)
+				// spec/ntcp2-hybrid Maximum Padding: never accept a padLen above
+				// the per-version table (NTCP2GetMaxHandshakePadding).
+				if (!NTCP2IsValidHandshakePadding (GetVersion (), false, paddingLen))
 				{
-					LogPrint (
-						eLogWarning, "NTCP2: SessionRequest padding length ", (int)paddingLen, " exceeds ", maxPadding);
+					LogPrint (eLogWarning, "NTCP2: SessionRequest padding length ", (int)paddingLen, " exceeds ",
+						NTCP2GetMaxHandshakePadding (GetVersion (), false));
 					return false;
 				}
 				m_BufferLen = paddingLen + offset;
@@ -597,11 +626,10 @@ namespace transport
 			MixHash (m_Buffer + offset, 32); // encrypted options
 			// options
 			paddingLen = bufbe16toh (options + 2);
-			const size_t maxPadding = NTCP2GetMaxHandshakePadding (GetVersion (), true);
-			if (paddingLen > maxPadding)
+			if (!NTCP2IsValidHandshakePadding (GetVersion (), true, paddingLen))
 			{
-				LogPrint (
-					eLogWarning, "NTCP2: SessionCreated padding length ", (int)paddingLen, " exceeds ", maxPadding);
+				LogPrint (eLogWarning, "NTCP2: SessionCreated padding length ", (int)paddingLen, " exceeds ",
+					NTCP2GetMaxHandshakePadding (GetVersion (), true));
 				return false;
 			}
 			// actual padding is not known yet, apply MixHash later
@@ -665,8 +693,10 @@ namespace transport
 		: TransportSession (in_RemoteRouter, NTCP2_ESTABLISH_TIMEOUT)
 		, m_Server (server)
 		, m_Socket (m_Server.GetService ())
+		, m_ReadTimer (m_Server.GetService ())
 		, m_IsEstablished (false)
 		, m_IsTerminated (false)
+		, m_IsClockSkew (false)
 		, m_Establisher (new NTCP2Establisher)
 		, m_SendKey (nullptr)
 		, m_ReceiveKey (nullptr)
@@ -730,6 +760,11 @@ namespace transport
 		if (!isTerminated)
 		{
 			m_IsEstablished = false;
+			// A data-phase failure drain and the per-frame read deadline must not
+			// outlive the session; the handlers are idempotent but the timer keeps
+			// a shared reference to this session.
+			m_FailureDrain.Reset ();
+			m_ReadTimer.cancel ();
 			boost::system::error_code ec;
 			m_Socket.shutdown (boost::asio::ip::tcp::socket::shutdown_both, ec);
 			if (ec) LogPrint (eLogDebug, "NTCP2: Couldn't shutdown socket: ", ec.message ());
@@ -758,11 +793,16 @@ namespace transport
 
 	void NTCP2Session::Close ()
 	{
+		m_FailureDrain.Reset ();
+		m_ReadTimer.cancel ();
 		m_Socket.close ();
 	}
 
 	void NTCP2Session::TerminateByTimeout ()
 	{
+		// The failure drain owns the close while it is pending; its own deadline
+		// ends it within NTCP2_AEAD_FAILURE_DRAIN_TIMEOUT seconds.
+		if (m_FailureDrain.IsDraining ()) return;
 		// If a termination frame is already pending on a stalled write, force
 		// the close on the next timeout sweep instead of waiting forever.
 		if (m_IsTerminating || m_PendingTerminationReason >= 0)
@@ -904,26 +944,34 @@ namespace transport
 			return;
 		}
 		uint16_t paddingLen = 0;
-		bool clockSkew = false, pq = false;
-		if (m_Establisher->ProcessSessionRequestMessage (paddingLen, clockSkew, pq, first))
+		bool clockSkew = false, netIdMismatch = false, pq = false;
+		if (m_Establisher->ProcessSessionRequestMessage (paddingLen, clockSkew, netIdMismatch, pq, first))
 		{
+			// spec/ntcp2 SessionRequest: a peer whose tsA is outside ±60 s still
+			// gets SessionCreated, so Alice learns our time, but the session must
+			// not be established. Record it and continue the normal message 2
+			// exchange; EstablishSessionAfterSessionConfirmed() terminates with
+			// reason 7 once SessionConfirmed arrived (bounded by
+			// NTCP2_ESTABLISH_TIMEOUT) and the message 2 write has completed.
+			// Closing here instead could drop SessionCreated before it flushes.
 			if (clockSkew)
 			{
-				// we don't care about padding, send SessionCreated and close session
-				SendSessionCreated ();
-				boost::asio::post (m_Server.GetService (), std::bind (&NTCP2Session::Terminate, shared_from_this ()));
+				m_IsClockSkew = true;
+				LogPrint (eLogWarning, "NTCP2: Clock skew from ", m_RemoteEndpoint,
+					"; answering SessionRequest and terminating after SessionConfirmed");
 			}
 #if OPENSSL_PQ
-			else if (pq)
+			if (pq)
 			{
 				auto keyLen = i2p::crypto::GetMLKEMPublicKeyLen (m_Establisher->m_CryptoType);
 				boost::asio::async_read (m_Socket, boost::asio::buffer (m_Establisher->m_Buffer + 64, keyLen + 16),
 					boost::asio::transfer_all (),
 					std::bind (&NTCP2Session::HandleSessionRequestMLKEMReceived, shared_from_this (),
 						std::placeholders::_1, std::placeholders::_2));
+				return;
 			}
 #endif
-			else if (paddingLen > 0)
+			if (paddingLen > 0)
 			{
 				if (len + paddingLen <= m_Establisher->m_MaxMsgSize)
 				{
@@ -950,7 +998,19 @@ namespace transport
 				SendSessionCreated ();
 		}
 		else
+		{
+			if (netIdMismatch && !m_RemoteEndpoint.address ().is_unspecified ())
+			{
+				// A SessionRequest netID that is neither 0 nor ours means the peer
+				// is on another I2P network; ban the source at the transport level
+				// so it cannot keep occupying handshake slots. Logged once here
+				// instead of once per message, the parser does not log it at all.
+				LogPrint (eLogWarning, "NTCP2: SessionRequest network ID mismatch from ", m_RemoteEndpoint,
+					". Expected ", i2p::context.GetNetID (), "; banning address");
+				i2p::transport::transports.AddBan (m_RemoteEndpoint.address ());
+			}
 			ReadSomethingAndTerminate (); // probing resistance
+		}
 	}
 
 	void NTCP2Session::HandleSessionRequestPaddingReceived (
@@ -1246,6 +1306,20 @@ namespace transport
 		// we need to set keys for SendTerminationAndTerminate
 		// TODO: check flag
 		i2p::data::RouterInfo ri (buf->data () + 4, size - 1); // 1 byte block type + 2 bytes size + 1 byte flag
+		if (ri.HasForeignNetId ())
+		{
+			// The signed properties carry a non-zero netId that is not ours, so
+			// this RouterInfo belongs to another I2P network. It is rejected like
+			// any malformed RI (IsUnreachable stays set), but the reason is
+			// distinct and the source is banned at the transport level.
+			LogPrint (eLogError, "NTCP2: RouterInfo with foreign netId in SessionConfirmed from ", GetRemoteEndpoint ());
+			auto ident = ri.GetIdentHash ();
+			i2p::data::netdb.SetUnreachable (ident, true);
+			if (!m_RemoteEndpoint.address ().is_unspecified ())
+				i2p::transport::transports.AddBan (m_RemoteEndpoint.address ());
+			SendTerminationAndTerminate (eNTCP2Banned);
+			return;
+		}
 		if (ri.IsUnreachable ())
 		{
 			LogPrint (
@@ -1255,6 +1329,24 @@ namespace transport
 		}
 		LogPrint (eLogDebug, "NTCP2: SessionConfirmed from ", GetRemoteEndpoint (), " (",
 			i2p::data::GetIdentHashAbbreviation (ri.GetIdentHash ()), ")");
+		// SessionRequest was outside the ±NTCP2_CLOCK_SKEW window. SessionCreated
+		// was sent (so Alice could correct her clock) and has been flushed: message
+		// 3 was only read after its write completed. Now terminate with reason 7
+		// and record the peer in its profile so retries are not immediate.
+		// RouterProfile has no dedicated skew counter, so the existing
+		// unreachable marking is reused; it expires with the profile.
+		if (m_IsClockSkew)
+		{
+			LogPrint (
+				eLogWarning, "NTCP2: Clock skew with ", GetRemoteEndpoint (), "; terminating after SessionConfirmed");
+			i2p::data::UpdateRouterProfile (ri.GetIdentHash (),
+				[] (std::shared_ptr<i2p::data::RouterProfile> profile)
+				{
+					if (profile) profile->Unreachable (true);
+				});
+			SendTerminationAndTerminate (eNTCP2ClockSkew);
+			return;
+		}
 		auto ts = i2p::util::GetMillisecondsSinceEpoch ();
 		if (ts > ri.GetTimestamp () + i2p::data::NETDB_MIN_EXPIRATION_TIMEOUT * 1000LL) // 90 minutes
 		{
@@ -1405,9 +1497,11 @@ namespace transport
 		// rather than counting connect time against the handshake.
 		SetTerminationTimeout (NTCP2_ESTABLISH_TIMEOUT);
 		SetLastActivityTimestamp (i2p::util::GetSecondsSinceEpoch ());
-		if (m_Establisher->m_CryptoType > i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD
-			&& !(m_Server.GetRng () () & 0x03))
-			m_Establisher->SetVersion (2); // switch to non-PQ  with a probability of one in four
+		// Outbound NTCP2 always uses the version negotiated from the peer's
+		// RouterInfo. The former one-in-four random downgrade to x25519 let a
+		// passive observer weaken the handshake of a hybrid peer and diverged
+		// from Java 2.14.0, which never downgrades.
+		m_Establisher->SetVersion (NTCP2SelectOutboundVersion (m_Establisher->GetVersion ()));
 		m_Establisher->CreateEphemeralKey ();
 		boost::asio::post (
 			m_Server.GetEstablisherService (), [s = shared_from_this ()] () { s->SendSessionRequest (); });
@@ -1488,8 +1582,13 @@ namespace transport
 			}
 			else
 			{
-				LogPrint (eLogError, "NTCP2: Received length ", m_NextReceivedLen, " is too short");
-				Terminate ();
+				// An obfuscated length that decodes below the AEAD tag size means
+				// the peer is not using the session keys. Treat it like a tag
+				// failure: draining first keeps this path from becoming an
+				// immediate-reset oracle (spec/ntcp2 "AEAD Error Handling").
+				LogPrint (eLogError, "NTCP2: Received length ", m_NextReceivedLen, " is too short from ",
+					m_RemoteEndpoint);
+				EnterFailureDrain ();
 			}
 		}
 	}
@@ -1502,14 +1601,112 @@ namespace transport
 		setsockopt (m_Socket.native_handle (), IPPROTO_TCP, TCP_QUICKACK, &one, sizeof (one));
 #endif
 		m_IsReceiving = true;
+		// The obfuscated length is known, so a stalled body is a peer that stopped
+		// in the middle of a frame: bound it with reason 14. The length read
+		// itself stays unbounded so an idle session is not closed early; the 120 s
+		// idle termination covers a peer that never completes it.
+		ScheduleFrameReadDeadline ();
 		boost::asio::async_read (m_Socket, boost::asio::buffer (m_NextReceivedBuffer.get (), m_NextReceivedLen),
 			boost::asio::transfer_all (),
 			std::bind (
 				&NTCP2Session::HandleReceived, shared_from_this (), std::placeholders::_1, std::placeholders::_2));
 	}
 
+	void NTCP2Session::ScheduleFrameReadDeadline ()
+	{
+		// One timer serves the intra-frame deadline and the failure drain.
+		// expires_after() cancels a pending wait; that handler then observes
+		// operation_aborted and does nothing.
+		m_ReadTimer.expires_after (std::chrono::seconds (NTCP2_INTRA_FRAME_READ_TIMEOUT));
+		m_ReadTimer.async_wait ([s = shared_from_this ()] (const boost::system::error_code & ecode)
+			{ s->HandleReadDeadlineTimer (ecode); });
+	}
+
+	void NTCP2Session::HandleReadDeadlineTimer (const boost::system::error_code & ecode)
+	{
+		if (ecode == boost::asio::error::operation_aborted) return; // rescheduled or closed
+		if (ecode) LogPrint (eLogWarning, "NTCP2: Read deadline timer error: ", ecode.message ());
+		if (IsTerminated ()) return;
+		if (m_FailureDrain.IsDraining ())
+		{
+			// A peer that stops sending during the drain is answered exactly like
+			// one that sent the full amount: the reply must not reveal how much
+			// ciphertext was drained.
+			if (!m_FailureDrain.Expire ()) return;
+			LogPrint (eLogWarning, "NTCP2: Data phase AEAD failure drain timed out from ", m_RemoteEndpoint);
+			FinishFailureDrain ();
+			return;
+		}
+		if (!IsEstablished ()) return;
+		LogPrint (eLogWarning, "NTCP2: Intra-frame read timeout from ", m_RemoteEndpoint);
+		SendTerminationAndTerminate (eNTCP2IntraFrameReadTimeout);
+	}
+
+	void NTCP2Session::EnterFailureDrain ()
+	{
+		if (IsTerminated () || m_FailureDrain.IsDraining ()) return;
+		// The drain policy only applies to the data phase; before establishment
+		// there are no session keys, so an immediate close cannot be an oracle.
+		if (!IsEstablished ())
+		{
+			Terminate ();
+			return;
+		}
+		const auto drainSize = NTCP2GetAEADFailureDrainSize (m_Server.GetRng () ());
+		if (!m_FailureDrain.Begin (drainSize))
+		{
+			// The helper only rejects out-of-range sizes; stay fail-closed.
+			SendTerminationAndTerminate (eNTCP2DataPhaseAEADFailure);
+			return;
+		}
+		m_IsReceiving = false;
+		LogPrint (eLogWarning, "NTCP2: Data phase AEAD failure from ", m_RemoteEndpoint, "; draining ", drainSize,
+			" bytes before terminating");
+		// Bounded size and a fixed buffer: no allocation depends on the input.
+		// Nothing may be written until this drain finishes; SendQueue(),
+		// SendRouterInfo() and EncryptAndSendNextBuffer() check CanWrite().
+		boost::asio::async_read (m_Socket, boost::asio::buffer (m_FailureDrainBuffer, drainSize),
+			boost::asio::transfer_all (),
+			[s = shared_from_this ()] (const boost::system::error_code & ecode, std::size_t bytes_transferred)
+			{ s->HandleFailureDrainReceived (ecode, bytes_transferred); });
+		m_ReadTimer.expires_after (std::chrono::seconds (NTCP2_AEAD_FAILURE_DRAIN_TIMEOUT));
+		m_ReadTimer.async_wait ([s = shared_from_this ()] (const boost::system::error_code & ecode)
+			{ s->HandleReadDeadlineTimer (ecode); });
+	}
+
+	void NTCP2Session::HandleFailureDrainReceived (
+		const boost::system::error_code & ecode, std::size_t bytes_transferred)
+	{
+		if (!m_FailureDrain.IsDraining ()) return; // timed out, or the session closed first
+		m_ReadTimer.cancel ();
+		if (ecode)
+		{
+			// The peer closed or the drain read failed, so no Termination can be
+			// delivered; close without one.
+			LogPrint (eLogDebug, "NTCP2: Data phase AEAD failure drain ended: ", ecode.message ());
+			m_FailureDrain.Reset ();
+			Terminate ();
+			return;
+		}
+		m_FailureDrain.Consume (bytes_transferred);
+		FinishFailureDrain ();
+	}
+
+	void NTCP2Session::FinishFailureDrain ()
+	{
+		if (IsTerminated () || m_FailureDrain.IsDraining ()) return;
+		LogPrint (eLogDebug, "NTCP2: Data phase AEAD failure drain complete from ", m_RemoteEndpoint);
+		SendTerminationAndTerminate (eNTCP2DataPhaseAEADFailure);
+	}
+
 	void NTCP2Session::HandleReceived (const boost::system::error_code & ecode, std::size_t bytes_transferred)
 	{
+		// The frame body is complete (or failed); the intra-frame deadline must not
+		// run while the next frame is awaited.
+		m_ReadTimer.cancel ();
+		// A read timeout or a pending termination may have closed the session
+		// while this body was still arriving; do not process late frames.
+		if (IsTerminated ()) return;
 		if (ecode)
 		{
 			if (ecode != boost::asio::error::operation_aborted)
@@ -1537,8 +1734,11 @@ namespace transport
 			}
 			else
 			{
-				LogPrint (eLogWarning, "NTCP2: Received AEAD verification failed ");
-				SendTerminationAndTerminate (eNTCP2DataPhaseAEADFailure);
+				// spec/ntcp2 "AEAD Error Handling": do not answer immediately.
+				// m_ReceiveSequenceNumber stays unchanged: the failed frame is not
+				// a valid frame.
+				LogPrint (eLogWarning, "NTCP2: Received AEAD verification failed from ", m_RemoteEndpoint);
+				EnterFailureDrain ();
 			}
 		}
 	}
@@ -1580,10 +1780,16 @@ namespace transport
 			case eNTCP2BlkDateTime:
 			{
 				LogPrint (eLogDebug, "NTCP2: Datetime");
+				// Java NTCP2Payload.processPayload() rejects a DateTime block that
+				// is not exactly 4 bytes (DataFormatException), which terminates
+				// the session. A warning here would leave Alice and Bob with
+				// different views of the connection.
 				if (size != 4)
 				{
-					LogPrint (eLogWarning, "NTCP2: Datetime block has invalid size ", size);
-					break;
+					LogPrint (eLogError, "NTCP2: Datetime block has invalid size ", size);
+					SendTerminationAndTerminate (eNTCP2PayloadFormatError);
+					m_Handler.Flush ();
+					return;
 				}
 				if (m_IsEstablished)
 				{
@@ -1611,12 +1817,23 @@ namespace transport
 					LogPrint (eLogWarning, "NTCP2: RouterInfo block is too short");
 					break;
 				}
-				LogPrint (eLogDebug, "NTCP2: RouterInfo flag=", (int)frame[offset]);
+				const uint8_t flag = frame[offset];
+				LogPrint (eLogDebug, "NTCP2: RouterInfo flag=", (int)flag);
 				if (size <= i2p::data::MAX_RI_BUFFER_SIZE + 1)
 				{
-					auto newRi = i2p::data::netdb.AddRouterInfo (frame + offset + 1, size - 1);
+					bool updated = false;
+					auto newRi = i2p::data::netdb.AddRouterInfo (frame + offset + 1, size - 1, updated);
 					if (newRi)
 					{
+						// PeerState.gotRI honors the request-flood bit: only a
+						// newly accepted or replaced RouterInfo is forwarded, and
+						// Java additionally requires the RI block to be smaller
+						// than 3 KiB, floodfillEnabled() and a spare per-key
+						// FloodThrottler budget. NetDb owns those checks and the
+						// actual flood routing.
+						if ((flag & NTCP2_ROUTER_INFO_FLAG_REQUEST_FLOOD) && updated
+							&& size < NTCP2_ROUTER_INFO_MAX_FLOOD_SIZE)
+							i2p::data::netdb.FloodRouterInfoConditional (newRi);
 						auto remoteIdentity = GetRemoteIdentity ();
 						if (remoteIdentity && remoteIdentity->GetIdentHash () == newRi->GetIdentHash ())
 							// peer's RouterInfo update
@@ -1654,7 +1871,17 @@ namespace transport
 				break;
 			}
 			case eNTCP2BlkTermination:
-				if (size >= 9)
+				// Java NTCP2Payload: the Termination block is exactly 9 bytes
+				// (8-byte receive count + reason). A malformed termination is
+				// fatal, but it is never answered with another Termination: the
+				// peer is already closing and a reply could loop.
+				if (size != 9)
+				{
+					LogPrint (eLogError, "NTCP2: Unexpected termination block size ", size, " from ", m_RemoteEndpoint);
+					Terminate ();
+					m_Handler.Flush ();
+					return;
+				}
 				{
 					const auto reason = static_cast<NTCP2TerminationReason> (frame[offset + 8]);
 					LogPrint (eLogDebug, "NTCP2: Termination. reason=", (int)reason);
@@ -1665,8 +1892,6 @@ namespace transport
 						i2p::data::netdb.SetUnreachable (GetRemoteIdentity ()->GetIdentHash (), true);
 					Terminate ();
 				}
-				else
-					LogPrint (eLogWarning, "NTCP2: Unexpected termination block size ", size);
 				// Termination must be the last non-padding block; the session
 				// is closed either way, so do not process anything after it.
 				m_Handler.Flush ();
@@ -1797,6 +2022,14 @@ namespace transport
 			m_NextSendBuffer.reset ();
 			return false;
 		}
+		// A data-phase failure drain must complete first: answering earlier would
+		// turn the AEAD failure into a decryption oracle (spec/ntcp2 "AEAD Error
+		// Handling"). The drain itself calls this function only after it is over.
+		if (!m_FailureDrain.CanWrite ())
+		{
+			m_NextSendBuffer.reset ();
+			return false;
+		}
 		// Never start a second async_write on the same TCP stream. Callers that
 		// own a control frame remember the request and retry from the write
 		// completion handler.
@@ -1896,6 +2129,8 @@ namespace transport
 	void NTCP2Session::SendQueue ()
 	{
 		if (m_IsSending || m_IsTerminating || m_PendingTerminationReason >= 0) return;
+		// No data may be written while the data-phase failure drain is pending.
+		if (!m_FailureDrain.CanWrite ()) return;
 		if (!m_SendQueue.empty () && m_IsEstablished)
 		{
 			std::vector<std::shared_ptr<I2NPMessage>> msgs;
@@ -1977,6 +2212,8 @@ namespace transport
 	void NTCP2Session::SendRouterInfo ()
 	{
 		if (!IsEstablished () || m_IsTerminating || m_PendingTerminationReason >= 0) return;
+		// Do not queue a control frame behind a data-phase failure drain.
+		if (!m_FailureDrain.CanWrite ()) return;
 		if (m_IsSending)
 		{
 			m_PendingRouterInfo = true;
@@ -2038,6 +2275,14 @@ namespace transport
 	void NTCP2Session::SendTerminationAndTerminate (NTCP2TerminationReason reason)
 	{
 		if (IsTerminated () || m_IsTerminating) return;
+		if (m_FailureDrain.IsDraining ())
+		{
+			// The pending AEAD-failure drain owns the close: writing any frame
+			// before it finishes would recreate the decryption oracle the drain
+			// exists to prevent. The drain's own 10 s completion/timeout sends
+			// reason 4 and closes.
+			return;
+		}
 		if (m_PendingTerminationReason < 0) m_PendingTerminationReason = (int)reason;
 		if (m_IsSending) return; // HandleNextFrameSent() will send and close
 		if (SendTermination (reason))
@@ -2471,6 +2716,7 @@ namespace transport
 			{
 				LogPrint (eLogDebug, "NTCP2: Connected from ", ep);
 				if (!i2p::transport::transports.IsInReservedRange (ep.address ())
+					&& !i2p::data::IsOperatorBlockedAddress (ep.address ())
 					&& !i2p::transport::transports.IsBanned (ep.address ()))
 				{
 					if (m_PendingIncomingSessions.size () >= NTCP2_MAX_PENDING_INCOMING_SESSIONS)
@@ -2522,6 +2768,7 @@ namespace transport
 				LogPrint (eLogDebug, "NTCP2: Connected from ", ep);
 				if ((!i2p::transport::transports.IsInReservedRange (ep.address ())
 						|| i2p::util::net::IsYggdrasilAddress (ep.address ()))
+					&& !i2p::data::IsOperatorBlockedAddress (ep.address ())
 					&& !i2p::transport::transports.IsBanned (ep.address ()))
 				{
 					if (m_PendingIncomingSessions.size () >= NTCP2_MAX_PENDING_INCOMING_SESSIONS)

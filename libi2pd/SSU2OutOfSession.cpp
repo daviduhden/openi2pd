@@ -10,10 +10,12 @@
  *
  */
 
+#include <cstring>
 #include "Log.h"
 #include "SSU2.h"
 #include "SSU2OutOfSession.h"
 #include "Transports.h"
+#include "Blocklist.h"
 
 namespace i2p
 {
@@ -68,6 +70,9 @@ namespace transport
 		if (!IsValidPeerTestPort (ep.port ())) return false;
 		// Respects the reservedrange switch used by local/test networks.
 		if (transports.IsInReservedRange (ep.address ())) return false;
+		// The operator blocklist is checked before any PeerTest state or
+		// cryptographic work for this endpoint.
+		if (i2p::data::IsOperatorBlockedAddress (ep.address ())) return false;
 		return !transports.IsBanned (ep.address ());
 	}
 
@@ -115,7 +120,9 @@ namespace transport
 		}
 		// Out-of-session PeerTest is always version 2, including when the
 		// in-session handshake negotiated a PQ version (Java PacketBuilder2).
-		if (header.h.flags[0] != 2)
+		// Accept 2..4 on receive for a peer that advertises its negotiated
+		// version in the long header.
+		if (!IsSSU2OutOfSessionVersionAccepted (header.h.flags[0]))
 		{
 			LogPrint (eLogWarning, "SSU2: PeerTest has wrong version ", (int)header.h.flags[0]);
 			return false;
@@ -192,25 +199,30 @@ namespace transport
 		m_OurEndpoint = ep;
 	}
 
-	void SSU2PeerTestSession::ApplyOurEndpoint ()
+	void SSU2PeerTestSession::ApplyOurEndpoint (uint8_t msg)
 	{
 		// The Address block in msgs 5/7 reports our apparent endpoint. Java
-		// passes it to externalAddressReceived()/testComplete(), which updates
-		// the external address and port (unless the result is a symmetric NAT).
-		// Without this, SetReachable() could clear the introducers after a
-		// successful test while the address still had no host, making us
-		// unreachable again.
+		// never adopts it from msg 5 (Charlie's first contact) and only
+		// completes the test when msg 7 comes from the Charlie learned in
+		// msg 4, so a spoofed source cannot rewrite our external host. A single
+		// test result also must not publish a port: only the host observation
+		// is applied here.
+		if (!AllowPeerTestExternalAddressUpdate (msg, GetRemoteEndpoint () == m_CharlieEndpoint))
+		{
+			LogPrint (eLogDebug, "SSU2: PeerTest msg ", (int)msg, " address observation not applied");
+			return;
+		}
 		const auto & ep = m_OurEndpoint;
 		if (ep.address ().is_unspecified () || !ep.port () || !IsValidPeerTestPort (ep.port ())) return;
 		if (transports.IsInReservedRange (ep.address ())) return;
 		const bool v4 = ep.address ().is_v4 ();
 		i2p::context.UpdateAddress (ep.address ());
 		if (ep.port () == GetServer ().GetPort (v4)) return;
-		// A different external port is valid for a mapped NAT but must not be
-		// published when a symmetric NAT was detected (Java keeps the test
-		// result UNKNOWN and does not adopt the port in that case).
-		if ((v4 ? i2p::context.GetError () : i2p::context.GetErrorV6 ()) == eRouterErrorSymmetricNAT) return;
-		i2p::context.PublishSSU2Address (ep.port (), true, v4, !v4, GetServer ().GetVersion ());
+		// A different external port is reported for NAT analysis, but the
+		// published port and host stay unchanged until a separate test supplies
+		// corroborating evidence.
+		LogPrint (eLogInfo, "SSU2: PeerTest observed external port ", ep.port (), " (local ", GetServer ().GetPort (v4),
+			") kept unpublished");
 	}
 
 	void SSU2PeerTestSession::HandlePeerTest (const uint8_t * buf, size_t len)
@@ -235,7 +247,7 @@ namespace transport
 			return;
 		}
 		size_t offset = 3; // points to signed data after msg + code + flag
-		if (buf[offset] != 2) // ver
+		if (!IsSSU2OutOfSessionVersionAccepted (buf[offset])) // ver
 		{
 			LogPrint (eLogWarning, "SSU2: PeerTest has wrong version ", (int)buf[offset]);
 			return;
@@ -269,7 +281,9 @@ namespace transport
 				if (GetServer ().IsForcedFirewalled (GetRemoteEndpoint ().address ().is_v4 ()))
 					// we assume that msg 5 was not received if forced firewalled
 					return;
-				ApplyOurEndpoint ();
+				// Msg 5 is Charlie's first contact: Java never publishes an
+				// external address from it. m_OurEndpoint is only recorded by
+				// HandleAddress() for the msg 7 corroboration.
 				m_IsConnectedRecently = GetServer ().IsConnectedRecently (GetRemoteEndpoint ());
 				if (GetAddress ())
 				{
@@ -339,7 +353,7 @@ namespace transport
 					}
 				}
 			}
-			ApplyOurEndpoint ();
+			ApplyOurEndpoint (msg);
 			GetServer ().AddConnectedRecently (GetRemoteEndpoint (), i2p::util::GetSecondsSinceEpoch ());
 			GetServer ().RequestRemoveSession (GetConnID (), shared_from_this ());
 			break;

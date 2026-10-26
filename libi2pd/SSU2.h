@@ -19,10 +19,14 @@
 #include <unordered_set>
 #include <vector>
 #include <list>
+#include <map>
 #include <array>
+#include <functional>
 #include <mutex>
 #include <random>
+#include <string>
 #include <future>
+#include <memory>
 #include "util.h"
 #include "SSU2Session.h"
 #include "SSU2OutOfSession.h"
@@ -141,8 +145,17 @@ namespace transport
 		void RemoveRelay (uint32_t tag);
 		std::shared_ptr<SSU2Session> FindRelaySession (uint32_t tag);
 
-		bool AddPeerTest (uint32_t nonce, std::shared_ptr<SSU2Session> aliceSession, uint64_t ts);
+		SSU2PeerTestAdmission AddPeerTest (uint32_t nonce, std::shared_ptr<SSU2Session> aliceSession, uint64_t ts);
 		std::shared_ptr<SSU2Session> GetPeerTest (uint32_t nonce);
+		// Per-source PeerTest msg 1/2 rate limit (IPv4 /32, IPv6 /64; 12 per
+		// 10 minutes like Java). Bounded map; expired entries are evicted on
+		// insertion.
+		bool AllowPeerTestMessage (const boost::asio::ip::address & source, uint64_t now);
+		// Admission for out-of-session PeerTest pseudo-sessions, counted from
+		// m_Sessions. Alice's test start and Charlie's msg 2 handler must check
+		// it before creating a session. Service thread only.
+		size_t GetNumPeerTestSessions () const;
+		bool IsPeerTestSessionAdmissionAllowed () const;
 		// Charlie-side RelayIntro anti-amplification: one HolePunch per target
 		// within a five-second window and a bounded number of targets.
 		bool AllowRelayHolePunch (const boost::asio::ip::udp::endpoint & ep);
@@ -199,6 +212,16 @@ namespace transport
 		void HandleResendTimer (const boost::system::error_code & ecode);
 
 		bool CheckPendingOutgoingSession (const boost::asio::ip::udp::endpoint & ep, bool peerTest);
+		// Count of non-established inbound handshakes in m_Sessions. Service
+		// thread only.
+		size_t GetNumInboundHandshakeSessions () const;
+		bool IsInboundAdmissionAllowed () const;
+		// Answer a rejected handshake with a Retry carrying
+		// eSSU2TerminationReasonConnectionLimits (19) instead of creating
+		// unbounded session state. Packets without a handshake context are
+		// dropped; the temporary session is never inserted into m_Sessions.
+		void RejectInboundHandshake (uint64_t connID, uint8_t * buf, size_t len,
+			const boost::asio::ip::udp::endpoint & senderEndpoint);
 		void ConnectThroughIntroducer (std::shared_ptr<SSU2Session> session);
 		std::vector<std::shared_ptr<SSU2Session>> FindIntroducers (
 			int maxNumIntroducers, bool v4, const std::unordered_set<i2p::data::IdentHash> & excluded);
@@ -264,6 +287,13 @@ namespace transport
 		std::map<boost::asio::ip::udp::endpoint, uint64_t>
 			m_RecentHolePunches; // endpoint -> last HolePunch time in seconds
 		mutable std::mutex m_RecentHolePunchesMutex;
+		// Per-source PeerTest msg 1/2 limiter keyed by IPv4 /32 or IPv6 /64.
+		// std::map keeps this independent of std::hash specialisations for
+		// boost::asio::ip::address; the table is capped at
+		// SSU2_MAX_PEER_TEST_RATE_ENTRIES so a linear/logarithmic lookup is
+		// irrelevant.
+		std::map<boost::asio::ip::address, SSU2PeerTestRateState> m_PeerTestRate;
+		mutable std::mutex m_PeerTestRateMutex;
 		std::unordered_map<uint32_t, std::pair<std::weak_ptr<SSU2PeerTestSession>, uint64_t>>
 			m_RequestedPeerTests; // nonce->(Alice, timestamp)
 		std::list<Packet *> m_ReceivedPacketsQueue;

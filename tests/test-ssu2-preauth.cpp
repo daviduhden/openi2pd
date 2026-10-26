@@ -4,7 +4,7 @@
  *
  * openi2pd: test ssu2 preauth.
  *
- * Enforces SSU2 pre-authentication boundaries: handshake states accept only whitelisted blocks, PeerTest/I2NP/Address handlers require an established session with a remote identity, PathChallenge is answered only from an established session, and data-phase blocks are rejected before authentication.
+ * Enforces SSU2 pre-authentication boundaries: handshake states accept only whitelisted blocks, PeerTest/I2NP/Address handlers require an established session with a remote identity, PathChallenge is answered only from an established session, data-phase blocks are rejected before authentication, and an unauthenticated Retry cannot downgrade the negotiated PQ version.
  *
  */
 
@@ -219,6 +219,65 @@ void TestPayloadValidatorRejectsPreAuthInjection ()
 	assert (ValidateSSU2PayloadBlocks (
 		eSSU2SessionStateTokenRequestReceived, paddingAfterTermination.data (), paddingAfterTermination.size ()));
 }
+
+void TestRetryVersionAuthorisation ()
+{
+	// The Retry header "ver" byte is authenticated only with the peer's
+	// published intro key, so a forged lower value must never be adopted. The
+	// signed RouterInfo "pq" option is the only authority.
+	const uint8_t v2Only = GetSSU2AdvertisedVersionMask (0);
+	const uint8_t v2v3 = GetSSU2AdvertisedVersionMask (1u << 3);
+	const uint8_t v2v4 = GetSSU2AdvertisedVersionMask (1u << 4);
+	const uint8_t v2v3v4 = GetSSU2AdvertisedVersionMask ((1u << 3) | (1u << 4));
+
+	// Version 2 is the base version and is always advertised.
+	assert (v2Only == (1u << 2));
+	for (auto mask : { v2Only, v2v3, v2v4, v2v3v4 }) assert (mask & (1u << 2));
+	assert (GetHighestSSU2Version (v2Only) == 2);
+	assert (GetHighestSSU2Version (v2v3) == 3);
+	assert (GetHighestSSU2Version (v2v4) == 4);
+	assert (GetHighestSSU2Version (v2v3v4) == 4);
+
+	// Adopting only the peer's advertised maximum is allowed.
+	assert (IsSSU2RetryVersionAccepted (2, v2Only));
+	assert (IsSSU2RetryVersionAccepted (3, v2v3));
+	assert (IsSSU2RetryVersionAccepted (4, v2v3v4));
+	assert (IsSSU2RetryVersionAccepted (3, v2v3v4) == false); // not the maximum
+	assert (IsSSU2RetryVersionAccepted (2, v2v3v4) == false); // PQ downgrade
+	assert (IsSSU2RetryVersionAccepted (2, v2v3) == false); // PQ downgrade
+	assert (IsSSU2RetryVersionAccepted (3, v2v4) == false); // not advertised
+	assert (IsSSU2RetryVersionAccepted (4, v2v3) == false); // not advertised
+	for (int version = 5; version < 256; ++version)
+		assert (!IsSSU2RetryVersionAccepted (version, v2v3v4));
+	assert (!IsSSU2RetryVersionAccepted (0, v2Only));
+	assert (!IsSSU2RetryVersionAccepted (1, v2Only));
+
+	// The authenticated IncompatibleVersion fallback may only select a version
+	// the peer advertised, and only ever downwards.
+	assert (GetSSU2FallbackVersion (4, v2v3v4) == 3);
+	assert (GetSSU2FallbackVersion (4, v2v4) == 2); // 3 was not advertised
+	assert (GetSSU2FallbackVersion (3, v2v3) == 2);
+	assert (GetSSU2FallbackVersion (3, v2v3v4) == 2);
+	// Nothing left to fall back to: the attempt must fail, not force version 2
+	// for a peer that never advertised a lower one.
+	assert (GetSSU2FallbackVersion (2, v2Only) == 0);
+	assert (GetSSU2FallbackVersion (2, v2v3v4) == 0);
+	assert (GetSSU2FallbackVersion (0, v2Only) == 0);
+}
+
+void TestAckHandshakeCoverage ()
+{
+	// The ACK covers [ackThrough - acnt, ackThrough] and packet 0 is the
+	// SessionConfirmed. Only an ACK that reaches packet 0 may call
+	// Established(), and the ACK ranges are processed first so packet 0 is
+	// retired from the sent-packet map before the data phase starts.
+	assert (IsSSU2AckCoveringPacketZero (0, 0));
+	assert (IsSSU2AckCoveringPacketZero (5, 5));
+	assert (!IsSSU2AckCoveringPacketZero (5, 4));
+	assert (!IsSSU2AckCoveringPacketZero (5, 0));
+	assert (!IsSSU2AckCoveringPacketZero (1, 2));
+}
+
 } // namespace
 
 int main ()
@@ -228,5 +287,7 @@ int main ()
 	TestPathChallengeStateMatrix ();
 	TestPathChallengeRetransmissionSchedule ();
 	TestPayloadValidatorRejectsPreAuthInjection ();
+	TestRetryVersionAuthorisation ();
+	TestAckHandshakeCoverage ();
 	return 0;
 }
