@@ -198,6 +198,18 @@ execution. Ask for:
   unavailable namespace, seccomp denial and AppContainer failure.
 - Record results as pending until the manual Windows/Linux jobs pass.
 
+- Windows token helpers must not share a name with a `TOKEN_INFORMATION_CLASS`
+  enumerator (`TokenAppContainerSid`, `TokenIntegrityLevel`). Unqualified
+  lookup inside the helper selects the function itself and the
+  `GetTokenInformation` call fails to compile; qualify the enumerator with
+  `::` or rename the helper.
+- Asio's `remote_endpoint(error_code)` and `native_handle()` are non-const.
+  A peer-identity helper that calls them must take a mutable socket reference;
+  the caller normally already owns a mutable session socket.
+- `privsep/Channel.cpp` consumes `struct ucred`, `SO_PASSCRED` and
+  `SCM_CREDENTIALS`; define `_GNU_SOURCE` in the translation unit as
+  `Worker.cpp` does, rather than relying on libstdc++ to predefine it.
+
 ## Tracking
 
 Use `PRIVSEP`/M plus platform IDs. Record mechanism, sandbox order, credential

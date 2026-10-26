@@ -13,6 +13,7 @@
 #include <span>
 #include <string>
 #include <limits>
+#include <utility>
 #include "TorrentStorageWorker.h"
 
 namespace i2p::torrents

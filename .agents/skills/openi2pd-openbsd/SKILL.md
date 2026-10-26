@@ -149,6 +149,11 @@ limitation; do not substitute local execution. Ask for:
 - Record LibreSSL/no-PQ and OpenBSD runtime checks as pending until the manual
   job actually passes.
 
+- OpenBSD 7.7–7.9 expose `imsg_get()`; 8.0 replaced it with `imsgbuf_get()`
+  (1/0/-1 instead of a total size). `build/CMakeLists.txt` probes
+  `imsgbuf_get` against `libutil` and defines `I2PD_HAVE_IMSGBUF_GET`; keep the
+  fallback compiling on the documented 7.7 floor rather than raising it.
+
 ## Tracking
 
 Use `OBSD`/I and `OPENBSD-SBX-*`/`PRIVSEP-*`. Record policy before/after,

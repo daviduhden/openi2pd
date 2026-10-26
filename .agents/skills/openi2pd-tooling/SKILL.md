@@ -193,6 +193,19 @@ a TUI client.
 - Record tool execution as pending until the manual Linux/Windows/OpenBSD job
   runs; static help/version inspection is not execution.
 
+- `i2pdctl` diagnostics are terminal-safe: `_display()` escapes control and
+  non-ASCII bytes and the invalid-choice message does not add Python-argparse
+  quotes. Tests must match the actual unquoted wording rather than the former
+  argparse output.
+
+- CMake test scripts must use valid quoted-argument escapes: `\.` and `\0`
+  are invalid (and CMake cannot store NUL). Use `\\.` for a literal regex dot
+  and let base64 decode an `AAAA` payload to NUL bytes instead of embedding
+  one in the script.
+- `perl-install-layout` covers both component ownership cases: `Tools` owns
+  the licence only when documentation is disabled; otherwise install
+  `Documentation` into the same private prefix before asserting it.
+
 ## Tracking
 
 Use `TOOLS`/`FW`/F and `PERL`/Perl. Record command/tool, input boundary, output

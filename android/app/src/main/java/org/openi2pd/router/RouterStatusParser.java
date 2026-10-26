@@ -49,7 +49,7 @@ final class RouterStatusParser {
         boolean started = safeState.isStartedOkay();
 
         String status = bound(firstNonEmpty(values.get("status"), "Unknown"), 64);
-        int statusCode = intValue(values.get("statusCode"), 0, true);
+        int statusCode = intValue(values.get("statusCode"), -1, true);
         String routerError = normalizeError(values.get("error"));
         long uptime = longValue(values.get("uptime"), 0L);
         // The native error snapshot uses statusCode=-1. If a key is missing

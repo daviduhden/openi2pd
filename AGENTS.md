@@ -2287,3 +2287,22 @@ missing direct includes for crypto, NTCP2/SSU2, streaming, tunnel endpoints,
 torrents and TUI consumers. Android JNI/AIDL/resources and the explicit CMake
 graph had no additional demonstrated source defect. All compilation and tests
 remain pending manual CI; this entry records static inspection only.
+
+## Latest workflow and compile/link follow-up (2026-10-26, static)
+
+Read-only `gh` triage of the `a2b8dc48` and `b9cbdaa8` manual batches is
+complete. The `b9cbdaa8` batch was cancelled after several failures; cancelled
+jobs are not evidence for the rest of the matrix. Confirmed corrections are
+recorded in `CI-002` and `PROGRESS.md`: the BOB const-socket peer check, Win32
+token-enumerator shadowing in `privsep/WindowsIpc.cpp`, the `size_t`
+`ParseList`/`ParseDictionary` returns, explicit `Mapping` assignment, the i18n
+checker capture reset, the invalid CMake escapes in the static tests, the
+removed Alpine `miniupnpc-static` package, the stale `i2pdctl` diagnostic
+expectation, the OpenBSD `imsg_get`/`imsgbuf_get` probe, `_GNU_SOURCE` for IPC
+credentials, direct standard/OpenSSL includes, the `OPENSSL_PQ 0` fallback,
+the NTCP2 SipHash provider parameter, the SSU2 PeerTest null guard and the
+Android status/internal-storage/reseed/dimension contracts. Keep those static
+contracts in the owning checkers; they remain Pending CI compilation and
+Pending CI tests until a manual run passes. No compiler, configure, CTest,
+Gradle, package, validator, workflow, commit or push was performed for this
+follow-up.

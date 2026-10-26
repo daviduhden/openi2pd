@@ -219,9 +219,20 @@ endif()
 
 include(CheckAtomic)
 include(CheckCXXSourceCompiles)
+include(CheckSymbolExists)
 # CheckAtomic restores its probe flags and reports the library that the host
 # actually needs (empty when lock-free atomics are native).
 set(I2PD_EXTRA_LIBS "${I2PD_ATOMIC_LIBRARIES}")
+# OpenBSD 8.0 replaced imsg_get() with imsgbuf_get() (the older name returns the
+# total message size, the new one 1/0/-1; this tree treats any positive result
+# as success). Probe the selected base rather than hard-coding a release macro.
+if(CMAKE_SYSTEM_NAME STREQUAL "OpenBSD")
+  set(_i2pd_saved_required_libraries "${CMAKE_REQUIRED_LIBRARIES}")
+  set(CMAKE_REQUIRED_LIBRARIES util)
+  check_symbol_exists(imsgbuf_get "imsg.h" I2PD_HAVE_IMSGBUF_GET)
+  set(CMAKE_REQUIRED_LIBRARIES "${_i2pd_saved_required_libraries}")
+  unset(_i2pd_saved_required_libraries)
+endif()
 set(THREADS_PREFER_PTHREAD_FLAG ON)
 find_package(Threads REQUIRED)
 
@@ -798,8 +809,12 @@ if(PRIVSEP_SOURCES AND NOT ANDROID)
   )
   target_link_libraries(i2pd_privsep PRIVATE Threads::Threads ${I2PD_EXTRA_LIBS} $<BUILD_INTERFACE:i2pd_warnings>)
   if(CMAKE_SYSTEM_NAME STREQUAL "OpenBSD")
-    # OpenBSD imsg lives in libutil.
+    # OpenBSD imsg lives in libutil. 8.0 exposes imsgbuf_get(); older bases use
+    # imsg_get(). The configure probe selects the available name.
     target_link_libraries(i2pd_privsep PUBLIC util)
+    if(I2PD_HAVE_IMSGBUF_GET)
+      target_compile_definitions(i2pd_privsep PRIVATE I2PD_HAVE_IMSGBUF_GET=1)
+    endif()
   elseif(WIN32)
     # CreateRestrictedToken/CreateProcessAsUser, pipe/named-object security and
     # the DACL grant APIs (advapi32), AppContainer profile creation and SID

@@ -204,6 +204,14 @@ the text crosses a protocol/IPC boundary.
 - Record Android translation coverage as prepared until AAPT2/Lint/device
   evidence exists.
 
+- `i18n/check-i18n-catalogs.pl` parses adjacent C++ literals with a repeated
+  capture group. Any nested `=~` match resets `$1`/`$2`, so snapshot the
+  literal runs before extracting fragments; otherwise values silently become
+  empty and the checker reports false missing translations.
+- The Android and native catalogs are keyed by the full concatenated C++
+  literal. A multi-line `tr()`/`SetStatus()`/`BeginPrompt()` argument is one
+  key, never its first fragment.
+
 ## Tracking
 
 Use `I18N-*`/`ANDROID-*` rows and the exact status vocabulary in `TODO.md`.

@@ -363,7 +363,7 @@ int RunTorrentStorageSupervisor (int fd)
 	auto received = control.ReceiveWithFd (5000);
 	if (!received || !*received) return 1;
 	auto & initial = **received;
-	struct RootOwner unexpected { initial.fd };
+	struct RootOwner unexpectedRequestFd { initial.fd };
 	PayloadReader setup (initial.message.payload);
 	auto configuredRoot = setup.ReadString ();
 	// Kept for wire compatibility only. It is never executed: the broker resolves

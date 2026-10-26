@@ -18,6 +18,8 @@
 #include <string>
 #include <string_view>
 #include <array>
+#include <memory>
+#include <vector>
 #include "Crypto.h"
 #include "Identity.h"
 

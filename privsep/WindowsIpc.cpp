@@ -512,10 +512,10 @@ namespace
 	bool TokenAppContainerSid (HANDLE token, std::wstring & out)
 	{
 		DWORD size = 0;
-		GetTokenInformation (token, TokenAppContainerSid, nullptr, 0, &size);
+		GetTokenInformation (token, ::TokenAppContainerSid, nullptr, 0, &size);
 		if (GetLastError () != ERROR_INSUFFICIENT_BUFFER || size == 0) return false;
 		std::vector<BYTE> buffer (size);
-		if (!GetTokenInformation (token, TokenAppContainerSid, buffer.data (), size, &size)) return false;
+		if (!GetTokenInformation (token, ::TokenAppContainerSid, buffer.data (), size, &size)) return false;
 		auto * info = reinterpret_cast<TOKEN_APPCONTAINER_INFORMATION *> (buffer.data ());
 		return SidToString (info->TokenAppContainer, out);
 	}
@@ -523,10 +523,10 @@ namespace
 	bool TokenIntegrityLevel (HANDLE token, DWORD & rid)
 	{
 		DWORD size = 0;
-		GetTokenInformation (token, TokenIntegrityLevel, nullptr, 0, &size);
+		GetTokenInformation (token, ::TokenIntegrityLevel, nullptr, 0, &size);
 		if (GetLastError () != ERROR_INSUFFICIENT_BUFFER || size == 0) return false;
 		std::vector<BYTE> buffer (size);
-		if (!GetTokenInformation (token, TokenIntegrityLevel, buffer.data (), size, &size)) return false;
+		if (!GetTokenInformation (token, ::TokenIntegrityLevel, buffer.data (), size, &size)) return false;
 		auto * label = reinterpret_cast<TOKEN_MANDATORY_LABEL *> (buffer.data ());
 		if (!label->Label.Sid) return false;
 		const auto * count = GetSidSubAuthorityCount (label->Label.Sid);
@@ -968,11 +968,11 @@ WindowsChannel::~WindowsChannel ()
 WindowsChannel::WindowsChannel (WindowsChannel && other) noexcept
 	: m_Pipe (other.m_Pipe)
 	, m_ServerSide (other.m_ServerSide)
-	, m_ReadEvent (std::move (other.m_ReadEvent))
-	, m_ReadBuffer (std::move (other.m_ReadBuffer))
 	, m_Role (other.m_Role)
 	, m_RoleSet (other.m_RoleSet)
 	, m_CoreSide (other.m_CoreSide)
+	, m_ReadEvent (std::move (other.m_ReadEvent))
+	, m_ReadBuffer (std::move (other.m_ReadBuffer))
 	, m_ProtocolViolations (other.m_ProtocolViolations)
 {
 	other.m_Pipe = INVALID_HANDLE_VALUE;

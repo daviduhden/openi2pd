@@ -86,6 +86,9 @@
 		&& I2PD_HAVE_OPENSSL_MLKEM_H)) // 3.5.0 openssl, 4.3.0 libressl with mlkem.h
 #define OPENSSL_PQ 1
 #endif
+#ifndef OPENSSL_PQ
+#define OPENSSL_PQ 0
+#endif
 
 namespace i2p
 {

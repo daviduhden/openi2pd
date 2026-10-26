@@ -202,11 +202,11 @@ public class DaemonWrapper {
 
         List<File> roots = new ArrayList<>(2);
         File internalFiles = appContext.getFilesDir();
-        this.torrentStorage =
-                new File(Objects.requireNonNull(internalFiles, "internal files"), "torrents");
-        if (internalFiles != null) {
-            roots.add(internalFiles);
+        if (internalFiles == null) {
+            throw new IllegalStateException("internal storage unavailable");
         }
+        this.torrentStorage = new File(internalFiles, "torrents");
+        roots.add(internalFiles);
         if (external != null) {
             roots.add(external);
         }

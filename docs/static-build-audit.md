@@ -210,3 +210,50 @@ members, `OPENSSL_SIPHASH`/`OPENSSL_PQ`) are layout-compatible today but an
 installed consumer still compiles its own macro fallback; no compiler,
 configure, CTest, Gradle, device or workflow was executed. Compilation and
 linkage remain pending manual CI.
+
+## 2026-10-26 latest workflow and six-subsystem follow-up (static)
+
+Read-only triage of the `a2b8dc48` and cancelled `b9cbdaa8` manual batches
+added these confirmed compile/link or static-gate corrections:
+
+- `libi2pd_client/BOB.cpp`: Asio peer operations require a mutable socket.
+- `privsep/WindowsIpc.cpp`: token helpers shadowed the
+  `TOKEN_INFORMATION_CLASS` enumerators; qualify them and keep the move
+  constructor in declaration order.
+- `libi2pd_client/TorrentsDHT.cpp` and `libi2pd/util.h`: the bencode parsers
+  return `size_t`, and `Mapping` now has defaulted assignment operators.
+- `i18n/check-i18n-catalogs.pl`: snapshot capture groups before a nested
+  literal match; adjacent literals remain one key/value.
+- `tests/check-packaging.cmake`, `tools/test-tools-inventory.cmake` and
+  `tools/test-tools-cli.cmake`: quoted CMake arguments cannot use `\[`, `\.`
+  or `\0`. `tests/check-legal-metadata.cmake` now uses the actual
+  `2013-2026` documentation holder.
+- `tools/test-perl-install.cmake`: when documentation is enabled, the shared
+  tools licence is owned by `Documentation`; install that component before
+  asserting attribution.
+- `privsep/OpenBSDImsg.cpp` and `build/CMakeLists.txt`: OpenBSD 7.7-7.9 use
+  `imsg_get()` while 8.0 uses `imsgbuf_get()`; a `libutil` symbol probe selects
+  the available API, and `check-build-system.cmake` pins both branches.
+- `privsep/Channel.cpp`: define `_GNU_SOURCE` for `ucred`/`SCM_CREDENTIALS`
+  instead of relying on libstdc++ to do it.
+- Direct standard-library includes were added to `Socks5.h`,
+  `NetDbRequests.h`, `Transports.h`, `TransportSession.h`, `Blinding.h`,
+  `MatchedDestination.h` and `IdentMetrics.cpp`; `Config.cpp` and
+  `ClientContext.cpp` include `Crypto.h` before testing `OPENSSL_PQ`.
+- `NTCP2.cpp` pins the 8-byte SipHash tag with `OSSL_MAC_PARAM_SIZE` through
+  `EVP_PKEY_CTX_set_params`; `SSU2Session.cpp` guards a missing PeerTest peer
+  identity.
+- `contrib/static/build-musl.sh` no longer requests the removed Alpine
+  `miniupnpc-static` package; the packaging workflow uploads evidence from the
+  workspace instead of `/tmp`.
+- Android: a missing `statusCode` no longer counts as an observed status,
+  missing internal storage fails explicitly, reseed errors cannot forge a
+  status field, and the `content_max_width` cap follows `w600dp`.
+
+Residual static findings not corrected here: the Android SAF status call on the
+UI thread, JNI state calls under the state monitor, unused data-directory JNI
+helpers, the `TorrentsComments.h` `NO_TORRENTS` guard asymmetry, the latent
+`AcceptLocalControlPeer` template overload hazard, and the unaudited
+provider/ABI branches listed by the transport review. No compiler, CMake
+configure, CTest, Gradle, device, package, validator or workflow was executed
+for this follow-up; all results remain static.

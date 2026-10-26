@@ -108,6 +108,8 @@ compile, run tests or run project scripts.
   shared owner, gate every completion/rearm on `m_Stopped`, register and close
   pending receivers, and serialize stop with handler admission. Close a stream
   delivered after stop. Manual ASan/TSan lifecycle validation remains pending.
+  Peer-identity checks need a mutable Asio socket because
+  `remote_endpoint(error_code)` and `native_handle()` are non-const.
 
 - Datagram receiver lifetime uses shared invocation slots and weak owner tokens
   (CONC-011). Drop replaced callbacks outside registry locks: releasing a
@@ -201,6 +203,13 @@ compile, run tests or run project scripts.
   change.
 - Record tests as prepared, not passed. Only a manual CI run can move a task to
   `Validated by CI`.
+
+- Public headers and standalone `.cpp` files include the standard facilities
+  they expose directly (`<chrono>`, `<utility>`, `<cstddef>`, `<cstdint>`,
+  `<map>`, `<string_view>`, `<list>`, `<functional>`, `<memory>`, `<vector>`,
+  `<openssl/sha.h>`). Do not depend on Boost.Asio, OpenSSL or another project
+  header to supply them; `Crypto.h` must keep the `OPENSSL_PQ 0` fallback.
+  `SOCKS.cpp` declarations must not survive without a definition.
 
 ## Tracking
 

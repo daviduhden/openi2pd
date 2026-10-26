@@ -84,8 +84,11 @@ sub parse_strings {
     while (
         $block =~ /\{\s*$literal_run\s*,\s*$literal_run\s*\}/g )
     {
-        my @key_parts = $1 =~ /"((?:[^"\\]|\\.)*)"/g;
-        my @value_parts = $2 =~ /"((?:[^"\\]|\\.)*)"/g;
+        # A nested match below resets $1/$2, so snapshot both literal runs
+        # before extracting the individual string fragments from them.
+        my ( $key_run, $value_run ) = ( $1, $2 );
+        my @key_parts = $key_run =~ /"((?:[^"\\]|\\.)*)"/g;
+        my @value_parts = $value_run =~ /"((?:[^"\\]|\\.)*)"/g;
         my ( $key, $value ) = (
             unescape( join( '', @key_parts ) ),
             unescape( join( '', @value_parts ) )

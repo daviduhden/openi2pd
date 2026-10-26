@@ -189,8 +189,8 @@ jobs:
       - name: Verify the static binary and package it
         run: |
           set -euo pipefail
-          file build-output/i2pd | tee /tmp/static-file
-          grep -q 'statically linked' /tmp/static-file
+          file build-output/i2pd | tee static-file.txt
+          grep -q 'statically linked' static-file.txt
           build-output/i2pd --version
           mkdir -p static-bin/i2pd-static-x86_64
           cp build-output/i2pd static-bin/i2pd-static-x86_64/i2pd
@@ -208,7 +208,7 @@ jobs:
           name: static-musl-packages
           path: |
             static-out
-            /tmp/static-file
+            static-file.txt
           if-no-files-found: warn
           retention-days: 7
 

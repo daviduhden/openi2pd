@@ -13,6 +13,8 @@
 #ifndef GOST_H__
 #define GOST_H__
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <openssl/ec.h>
 

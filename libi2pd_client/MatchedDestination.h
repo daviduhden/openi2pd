@@ -15,6 +15,7 @@
 
 #include <string>
 #include <mutex>
+#include <memory>
 #include "Destination.h"
 
 namespace i2p

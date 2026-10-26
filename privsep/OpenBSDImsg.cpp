@@ -241,7 +241,11 @@ i2p::expected<std::optional<ReceivedMessage>, std::string> ImsgChannel::Receive 
 		// messages to the user buffer. Always consume that buffer first;
 		// otherwise a second frame is stranded until new bytes arrive.
 		struct imsg message { };
+#if defined(I2PD_HAVE_IMSGBUF_GET)
 		int got = imsgbuf_get (m_Buffer, &message);
+#else
+		int got = imsg_get (m_Buffer, &message);
+#endif
 		if (got == 0)
 		{
 			pollfd pfd { m_Fd, POLLIN, 0 };
@@ -267,7 +271,7 @@ i2p::expected<std::optional<ReceivedMessage>, std::string> ImsgChannel::Receive 
 			}
 			continue; // re-check the user buffer before polling again
 		}
-		if (got < 0) return i2p::unexpected (std::string ("imsgbuf_get: ") + strerror (errno));
+		if (got < 0) return i2p::unexpected (std::string ("imsg receive: ") + strerror (errno));
 
 		const size_t length = imsg_get_len (&message);
 		std::string payload (length, '\0');

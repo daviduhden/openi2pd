@@ -282,6 +282,13 @@ Do not let them edit, build or run tests.
   lanes and a controlled Java I2PSnark exchange where applicable.
 - Record tests as prepared until the manual CI/device run passes.
 
+- `ParseList` and `ParseDictionary` return the consumed byte count
+  (`size_t`); only `ExtractByteString`/`ExtractInteger`/`ExtractDictionary`
+  return a pair. Do not apply `.second` to the parser helpers.
+- `i2p::util::Mapping` declares a move constructor, so its copy assignment is
+  implicitly deleted unless explicitly defaulted. Datagram-option copies rely
+  on both assignments; keep them defaulted when changing the class.
+
 ## Tracking
 
 Use `TORRENT`/N, `SNARK-*` and `PARITY-*`. Record engine vs storage vs SAF

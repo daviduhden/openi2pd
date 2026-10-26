@@ -21,6 +21,7 @@
 #include "FS.h"
 #include "Log.h"
 #include "Identity.h"
+#include "Crypto.h"
 #include "util.h"
 #include "ClientContext.h"
 #include "HTTPProxy.h"

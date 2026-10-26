@@ -124,7 +124,7 @@ namespace client
 		// is not universally available. Where the platform exposes one it is
 		// enforced; otherwise the peer must at least be local and the operator
 		// must opt in explicitly to the private-key reply.
-		bool IsTrustedCommandPeer (const boost::asio::ip::tcp::socket & socket)
+		bool IsTrustedCommandPeer (boost::asio::ip::tcp::socket & socket)
 		{
 			boost::system::error_code ec;
 			const auto peer = socket.remote_endpoint (ec);

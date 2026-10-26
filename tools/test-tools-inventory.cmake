@@ -46,7 +46,7 @@ foreach(source IN LISTS REQUIRED_SOURCES)
 endforeach()
 
 # The installed Perl client must travel with its manual page.
-string(REGEX REPLACE "/contrib/upstream/tools-files\.txt$" "" PROJECT_ROOT
+string(REGEX REPLACE "/contrib/upstream/tools-files\\.txt$" "" PROJECT_ROOT
   "${TOOLS_UPSTREAM_MANIFEST}")
 if(NOT EXISTS "${PROJECT_ROOT}/man/i2pdctl.1")
   message(FATAL_ERROR "Missing man page: ${PROJECT_ROOT}/man/i2pdctl.1")

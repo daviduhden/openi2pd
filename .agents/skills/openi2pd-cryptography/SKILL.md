@@ -180,6 +180,14 @@ executing project code, or inspect a real private key.
 - Record any provider-specific behavior as pending, not passed, until the
   corresponding manual job runs.
 
+- NTCP2's SipHash tag is 8 bytes while the peer-ordering digest is 16;
+  both must use `OSSL_MAC_PARAM_SIZE` through `EVP_PKEY_CTX_set_params`, not
+  the generic `EVP_PKEY_CTX_ctrl` digest-size control, or provider-backed
+  OpenSSL can reject the session.
+- Translation units that test `#if OPENSSL_PQ` must include `Crypto.h` (or
+  `PostQuantum.h`) directly; relying on `Identity.h`/`Signature.h` to define
+  the macro silently selects the non-PQ branch if the include chain changes.
+
 ## Tracking
 
 Use `CRY`/C or the owning transport/client area. Record the primitive, trust

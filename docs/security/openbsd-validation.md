@@ -330,10 +330,12 @@ uncommitted corrections.
 The current tree adds `privsep/OpenBSDSandbox.{h,cpp}`,
 `privsep/OpenBSDImsg.{h,cpp}`, `tests/test-privsep-openbsd-policy.cpp` and
 `tests/test-privsep-openbsd-imsg.cpp`. The imsg test links `libutil` on
-OpenBSD. These files have not been compiled locally; the manual OpenBSD job is
-the required first dynamic check. If the 7.9 libutil ABI differs from the
-adapter assumptions, correct it from the CI error rather than weakening the
-version/type checks.
+OpenBSD. OpenBSD 7.7–7.9 expose `imsg_get()`, while 8.0 replaced it with
+`imsgbuf_get()`; the configure probe sets `I2PD_HAVE_IMSGBUF_GET` and the
+adapter selects the available name. These files have not been compiled
+locally; the manual OpenBSD job is the required first dynamic check. If the
+selected libutil ABI differs from the adapter assumptions, correct it from the
+CI error rather than weakening the version/type checks.
 
 ## 10. Not covered by this checklist
 

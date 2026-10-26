@@ -11,6 +11,10 @@
  *
  */
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+
 #include "Channel.h"
 
 #ifndef _WIN32

@@ -4993,3 +4993,90 @@ rerun for this triage.
   CTest, Gradle, package build, project validator or workflow run was performed
   against these corrections. CI compilation and test states remain
   `Pending CI compilation` and `Pending CI tests`.
+
+## 2026-10-26 Latest workflow follow-up and static compile/link audit (static)
+
+Read-only GitHub CLI triage covered the latest manual dispatches on
+`b9cbdaa8abea9d7efa511aa02b90c7e8ef06869a` (`40389733799`, `40389743711`,
+`40389738898`, `40389749162`, `40389753745`). The run was cancelled after
+several jobs had already failed; the failure logs are evidence for those jobs
+only, not for the cancelled remainder. No workflow was dispatched or rerun.
+
+- `libi2pd_client/BOB.cpp`: `IsTrustedCommandPeer` called Asio's non-const
+  `remote_endpoint(error_code)` and `native_handle()` through a `const
+  tcp::socket &`. The parameter is now non-const; the only caller already
+  passes the session's mutable socket.
+- `privsep/WindowsIpc.cpp`: the local `TokenAppContainerSid` and
+  `TokenIntegrityLevel` helpers shadowed the equally named
+  `TOKEN_INFORMATION_CLASS` enumerators, so `GetTokenInformation` could not
+  resolve its second argument under MSYS2 clang. The calls now use the
+  global-qualified enumerators. The move constructor initializer order was
+  aligned with the declared member order.
+- `libi2pd_client/TorrentsDHT.cpp`: `ParseList`/`ParseDictionary` return the
+  consumed `size_t`, not a pair; `GetEncodedValueLength` no longer applies
+  `.second`.
+- `libi2pd/util.h`: `Mapping` declared a move constructor without an explicit
+  assignment operator, which deleted copy assignment. Both copy and move
+  assignment are explicitly defaulted; `TorrentsDHT` copies the optional
+  datagram options this way.
+- `i18n/check-i18n-catalogs.pl`: the nested match that extracts the key
+  fragments reset the `$1`/`$2` captures before the value run was read. Both
+  literal runs are now snapshotted first; adjacent C++ literals remain one
+  catalog key/value.
+- `tests/check-packaging.cmake`: the container-entrypoint assertion used the
+  invalid CMake escape `\[`, so the expected text was never matched. Brackets
+  need no escaping inside a quoted CMake argument.
+- `contrib/static/build-musl.sh`: Alpine no longer publishes a
+  `miniupnpc-static` package; `miniupnpc-dev` already ships
+  `/usr/lib/libminiupnpc.a`, which the static finder selects.
+- `tools/tests/i2pdctl.t`: the Perl client's escaped diagnostic intentionally
+  prints `invalid choice: bogus` without the Python-argparse quotes; the test
+  now matches the actual, terminal-safe message.
+
+The six parallel read-only reviews also confirmed:
+
+- `privsep/OpenBSDImsg.cpp`/`build/CMakeLists.txt`: OpenBSD 7.7–7.9 expose
+  `imsg_get()` while 8.0 replaced it with `imsgbuf_get()`. A `libutil`
+  `check_symbol_exists` probe defines `I2PD_HAVE_IMSGBUF_GET`; the adapter
+  keeps both branches and `check-build-system.cmake` pins them.
+- `privsep/Channel.cpp` defines `_GNU_SOURCE` before consuming `struct ucred`,
+  `SO_PASSCRED` and `SCM_CREDENTIALS`; `privsep/Supervisor.cpp` no longer names
+  a local RAII object `unexpected`.
+- `tools/test-perl-install.cmake` installs the `Documentation` component when
+  docs are enabled, because that component owns `LICENSE.i2pd-tools`;
+  `tests/check-legal-metadata.cmake` uses the real `2013-2026` holder.
+- `tools/test-tools-inventory.cmake` and `tools/test-tools-cli.cmake` used the
+  invalid CMake escapes `\.` and `\0`; the base64 `AAAA` payload still decodes
+  to the NUL bytes the CLI regression needs.
+- `.github/workflows/packaging.yml` uploads `static-file.txt` from the
+  workspace instead of an unsupported `/tmp` path.
+- Direct standard-library includes were added to `Socks5.h`,
+  `NetDbRequests.h`, `Transports.h`, `TransportSession.h`, `Blinding.h`,
+  `MatchedDestination.h`, `TorrentPayloadStorage.h`, `Queue.h`, `Gost.h`,
+  `I2PControlHandlers.h` and `IdentMetrics.cpp`; `Config.cpp` and
+  `ClientContext.cpp` include `Crypto.h` before testing `OPENSSL_PQ`, and
+  `Crypto.h` now defines `OPENSSL_PQ 0` when it is unavailable.
+- `libi2pd_client/SOCKS.cpp` dropped the unused, undefined
+  `AsyncUpstreamSockRead()` declaration.
+- `NTCP2.cpp` pins the 8-byte SipHash tag with `OSSL_MAC_PARAM_SIZE` through
+  `EVP_PKEY_CTX_set_params`; `SSU2Session.cpp` rejects a PeerTest msg 2 with no
+  peer identity instead of dereferencing null.
+- Android: a missing `statusCode` defaults to `-1` (not an observed status),
+  missing internal storage throws an explicit `IllegalStateException`, a
+  reseed error cannot inject a row separator/control, and `content_max_width`
+  now follows `w600dp` as well as `sw600dp`. A pure-JVM regression covers the
+  missing-status contract.
+
+Residual static findings not corrected in this pass: the Android SAF grant
+status call on the UI thread, JNI state calls under the state monitor, unused
+data-directory JNI helpers, the `TorrentsComments.h` `NO_TORRENTS` guard
+asymmetry, the latent `AcceptLocalControlPeer` template overload hazard, the
+unaudited provider/ABI branches and the `TorrentsComments`/TUI documentation
+mismatch. The CMake review's `CURSES_INCLUDE_DIRS` concern was checked against
+the documented module variable (available since CMake 3.1) and required no
+change.
+
+Status: Implemented / static; Pending CI compilation; Pending CI tests. The
+only local validation was source/interface inspection and `git diff --check`.
+No compiler, CMake configure, CTest, Gradle, package build, project validator,
+workflow, commit or push ran. CI still owns all dynamic validation.

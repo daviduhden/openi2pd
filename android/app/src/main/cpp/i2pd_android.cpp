@@ -1044,7 +1044,11 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getReseedStatus (JN
 			out.push_back ('|');
 			out.append (std::to_string (state.lastSuccessMs));
 			out.push_back ('|');
-			out.append (std::string_view (state.lastError).substr (0, i2p::data::RESEED_MAX_ERROR_LENGTH));
+			std::string lastError (state.lastError.substr (0, i2p::data::RESEED_MAX_ERROR_LENGTH));
+			for (auto & ch : lastError)
+				if (ch == '|' || ch == '\n' || ch == '\r' || static_cast<unsigned char> (ch) < 0x20 || ch == 0x7f)
+					ch = ' ';
+			out.append (lastError);
 			return NewStringChecked (env, out);
 		},
 		"");

@@ -305,6 +305,15 @@ run Gradle, install an APK or run a device test.
 - Record APK/Lint/JNI/device results as pending until the Android job or a
   device run actually passes.
 
+- `RouterStatusParser` must default a missing `statusCode` to `-1`; `0` is a
+  valid online code and would make `hasStatus()`/live metrics lie. A missing
+  internal files directory is an explicit `IllegalStateException`, not a
+  nullable torrent path. The reseed status field sanitizes `|`, CR/LF and
+  controls before the seven-field Java parser sees it.
+- `content_max_width` needs a `values-w600dp` override as well as
+  `values-sw600dp`; the rail layout uses `w600dp` and multi-window can select
+  it without `smallestWidth >= 600dp`.
+
 ## Tracking
 
 Use `ANDROID`/H, `PARITY-006`, `PRIVSEP-012` and SAF/state IDs. Record the

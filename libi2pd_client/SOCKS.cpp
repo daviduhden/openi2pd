@@ -179,7 +179,6 @@ namespace proxy
 		void ForwardSOCKS ();
 
 		template <typename Socket> void SocksUpstreamSuccess (std::shared_ptr<Socket> & upstreamSock);
-		void AsyncUpstreamSockRead ();
 		template <typename Socket> void SendUpstreamRequest (std::shared_ptr<Socket> & upstreamSock);
 		void HandleUpstreamConnected (
 			const boost::system::error_code & ecode, const boost::asio::ip::tcp::endpoint & ep);

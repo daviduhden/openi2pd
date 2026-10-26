@@ -25,6 +25,9 @@
 #include "Log.h"
 #include "I2PEndian.h"
 #include "Crypto.h"
+#if OPENSSL_SIPHASH
+#include <openssl/core_names.h>
+#endif
 #include "Siphash.h"
 #include "RouterContext.h"
 #include "Transports.h"
@@ -1462,8 +1465,11 @@ namespace transport
 			if (!sipKey) return nullptr;
 			EVP_MD_CTX * md = EVP_MD_CTX_new ();
 			EVP_PKEY_CTX * pkeyCtx = nullptr;
+			size_t macSize = 8;
+			OSSL_PARAM params[2]
+				= { OSSL_PARAM_construct_size_t (OSSL_MAC_PARAM_SIZE, &macSize), OSSL_PARAM_construct_end () };
 			const bool ok = md && EVP_DigestSignInit (md, &pkeyCtx, nullptr, nullptr, sipKey) == 1 && pkeyCtx
-				&& EVP_PKEY_CTX_ctrl (pkeyCtx, -1, EVP_PKEY_OP_SIGNCTX, EVP_PKEY_CTRL_SET_DIGEST_SIZE, 8, nullptr) == 1;
+				&& EVP_PKEY_CTX_set_params (pkeyCtx, params) == 1;
 			EVP_PKEY_free (sipKey);
 			if (!ok)
 			{

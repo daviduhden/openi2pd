@@ -1565,3 +1565,25 @@ transports, streaming, torrents and the TUI. Android JNI/AIDL/resources and
 the CMake source/link graph had no additional demonstrable defect in this
 pass. Exit criteria remain a manual dispatch of every supported compiler and
 platform plus `WITH_TORRENTS=ON/OFF`; static inspection is not compilation.
+
+## Latest workflow and static compile/link follow-up (2026-10-26, static)
+
+Read-only `gh` triage covered the `a2b8dc48` and `b9cbdaa8` manual batches.
+The `b9cbdaa8` batch was cancelled after several jobs failed; only the failed
+jobs provide evidence. Confirmed corrections include the BOB const-socket peer
+check, Win32 token-enumerator shadowing, the `size_t` torrent parser returns,
+`Mapping` assignment, the i18n capture reset, the invalid packaging CMake
+escapes, the removed Alpine `miniupnpc-static` package, the stale
+`i2pdctl` diagnostic expectation, the OpenBSD `imsg_get`/`imsgbuf_get` probe,
+`_GNU_SOURCE` for IPC credentials, direct standard/OpenSSL includes, the
+`OPENSSL_PQ 0` fallback, the NTCP2 SipHash provider parameter and the Android
+status/internal-storage/reseed/dimension contracts. The six parallel subsystem
+reviews also recorded residual Android thread/lifetime work, the
+`TorrentsComments.h` guard asymmetry and the latent local-control template
+overload hazard; the CMake `CURSES_INCLUDE_DIRS` concern was not a defect
+(variable available since CMake 3.1).
+
+Exit criteria: a manual dispatch compiles and links the corrected tree on
+Linux/OpenSSL, Windows/MSVC+MinGW, OpenBSD/LibreSSL, Android and the sanitizer,
+fuzzer, packaging and static lanes. No compiler, configure, CTest, Gradle,
+package or workflow evidence exists for these changes.

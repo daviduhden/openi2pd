@@ -185,6 +185,12 @@ workflow, run `gh`, build or test.
   failure logs.
 - Record status as pending CI compilation/tests until the authorized run passes.
 
+- Keep uploaded evidence inside `GITHUB_WORKSPACE`; `upload-artifact` v4 does
+  not follow absolute paths outside it (for example `/tmp/static-file`).
+- Compile-free test scripts are still CMake programs: an invalid escape such
+  as `\.`, `\[` or `\0` in `string(REGEX REPLACE)` or `file(WRITE)` can fail
+  the whole CTest lane even when no compiler runs.
+
 ## Tracking
 
 Use `CI`/J and `GOV-*`. Record workflow/job, revision, run id, result, first

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+See the LICENSE file at the top of the project tree for copyright
+and license details.
+
+openi2pd: dimens.
+
+Defines native Android application resources.
+
+-->
+
+<resources>
+    <!-- The rail layout is selected at w600dp; keep the programmatic column
+         cap aligned with that qualifier, not only with smallestWidth. -->
+    <dimen name="content_max_width">1000dp</dimen>
+</resources>

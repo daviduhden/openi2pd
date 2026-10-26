@@ -78,7 +78,7 @@ Component dependencies are target-scoped:
 |---|---|---|
 | `libi2pd` | Threads, Boost.program_options, OpenSSL/LibreSSL, zlib, libatomic when probed | Windows: `mswsock`, `ws2_32`, `iphlpapi`, `shell32`, `advapi32` (`AtomicWritePrivate` DACL) |
 | `libi2pdclient` | `libi2pd`, Threads, Boost.JSON/Boost.URL when torrents are enabled | Boost.Container when the host ships it (required by a static Boost.JSON link) |
-| `i2pd_privsep` | Threads; OpenBSD `util`; Windows `advapi32`, `bcrypt`, `userenv`; shared `I2PD_HAVE_*`/`BOOST_ASIO_HAS_SNPRINTF` capability definitions | — |
+| `i2pd_privsep` | Threads; OpenBSD `util` (with an `imsgbuf_get`/`imsg_get` capability probe); Windows `advapi32`, `bcrypt`, `userenv`; shared `I2PD_HAVE_*`/`BOOST_ASIO_HAS_SNPRINTF` capability definitions | — |
 | `i2pd` | `libi2pd`, `libi2pdclient`, `libi2pdlang`, `i2pd_privsep` | MiniUPnPc when `WITH_UPNP=ON` |
 | `i2pd_jni` (Android) | `libi2pd`, `libi2pdclient`, `libi2pdlang`, common daemon lifecycle, UPnP, I2PControl and the shared TUI request dispatcher; no `i2pd_privsep` (`I2PD_NO_PRIVSEP`) and no AF_UNIX TUI listener | MiniUPnPc when `WITH_UPNP=ON` |
 | `i2pd-tui` | Threads; Boost headers; ncursesw on Unix; Win32 libraries on Windows | — |

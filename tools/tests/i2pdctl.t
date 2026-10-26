@@ -435,7 +435,7 @@ ok( $server_port > 0, 'fake I2PControl server is listening' );
 {
     my ( $out, $err, $code ) = run_i2pdctl('bogus');
     is( $code, 2, 'unknown command exits 2' );
-    like( $err, qr/invalid choice: 'bogus'/, 'unknown command is reported' );
+    like( $err, qr/invalid choice: bogus/, 'unknown command is reported' );
     like( $err, qr/usage: i2pdctl/, 'usage is printed on argument error' );
 }
 

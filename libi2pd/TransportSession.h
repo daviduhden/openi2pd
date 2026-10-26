@@ -18,6 +18,7 @@
 #include <string.h>
 #include <memory>
 #include <vector>
+#include <list>
 #include <mutex>
 #include "Identity.h"
 #include "Crypto.h"

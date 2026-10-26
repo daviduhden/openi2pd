@@ -4179,6 +4179,11 @@ namespace transport
 			// Bob (the authenticated session peer) must not be banned or
 			// operator-blocked before Charlie signs anything on his behalf.
 			auto bob = GetRemoteIdentity ();
+			if (!bob)
+			{
+				LogPrint (eLogWarning, "SSU2: PeerTest msg 2 without a peer identity ignored");
+				return;
+			}
 			if (i2p::data::IsRouterBanned (bob->GetIdentHash ())
 				|| i2p::data::IsOperatorBlockedRouter (bob->GetIdentHash ()))
 			{

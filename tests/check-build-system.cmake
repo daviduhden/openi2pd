@@ -56,6 +56,7 @@ set(rpm_spec "${PROJECT_ROOT}/contrib/rpm/i2pd.spec")
 set(rpm_git_spec "${PROJECT_ROOT}/contrib/rpm/i2pd-git.spec")
 set(presets_file "${PROJECT_ROOT}/build/CMakePresets.json")
 set(fuzz_workflow "${PROJECT_ROOT}/.github/workflows/fuzz.yml")
+set(openbsd_imsg_source "${PROJECT_ROOT}/privsep/OpenBSDImsg.cpp")
 
 read_required("${root_makefile}" root_make)
 read_required("${test_makefile}" test_make)
@@ -207,6 +208,14 @@ assert_present("${package_config_text}" "find_dependency(ZLIB 1.2.11)"
   "the package config must keep the zlib floor")
 assert_absent("${top_cmake_text}" "set(CMAKE_MODULE_PATH"
   "CMake module path must be prepended rather than overwritten")
+# OpenBSD 7.7-7.9 expose imsg_get(); 8.0 replaced it with imsgbuf_get().
+assert_present("${top_cmake_text}" "check_symbol_exists(imsgbuf_get"
+  "the OpenBSD imsg API must be probed instead of hard-coding a release")
+read_required("${openbsd_imsg_source}" openbsd_imsg_text)
+assert_present("${openbsd_imsg_text}" "imsg_get (m_Buffer"
+  "the OpenBSD adapter must keep the pre-8.0 imsg_get() fallback")
+assert_present("${openbsd_imsg_text}" "imsgbuf_get (m_Buffer"
+  "the OpenBSD adapter must support the 8.0 imsgbuf_get() API")
 assert_present("${top_cmake_text}" "CMAKE_GENERATOR MATCHES \"Makefiles"
   "OpenBSD must reject the Unix Makefiles generator")
 assert_present("${top_cmake_text}" "BOOST_ASIO_HAS_SNPRINTF=1"

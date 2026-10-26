@@ -15,6 +15,8 @@
 
 #include <string>
 #include <memory>
+#include <vector>
+#include <utility>
 #include <boost/asio.hpp>
 #include "I2PEndian.h"
 

@@ -25,6 +25,8 @@
 #include <vector>
 #include <list>
 #include <string>
+#include <string_view>
+#include <map>
 #include <memory>
 #include <atomic>
 #include <random>

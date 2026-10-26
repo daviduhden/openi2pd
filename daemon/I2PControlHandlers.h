@@ -23,6 +23,7 @@
 #include <string>
 #include <string_view>
 #include <system_error>
+#include <utility>
 #include <boost/property_tree/ptree.hpp>
 
 namespace i2p

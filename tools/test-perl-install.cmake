@@ -37,6 +37,22 @@ if(NOT install_result EQUAL 0)
     "Tools install failed (${install_result}): ${install_output}${install_error}")
 endif()
 
+# The shared tools licence belongs to Documentation when that component is
+# enabled (the Tools rule is conditioned on the same option), so install the
+# documentation component into the private prefix before checking attribution.
+if(I2PD_INSTALL_DOCS)
+  execute_process(
+    COMMAND "${CMAKE_COMMAND}" --install "${BUILD_DIR}"
+      --prefix "${WORK_DIR}" --component Documentation ${config_args}
+    RESULT_VARIABLE docs_install_result
+    OUTPUT_VARIABLE docs_install_output
+    ERROR_VARIABLE docs_install_error)
+  if(NOT docs_install_result EQUAL 0)
+    message(FATAL_ERROR
+      "Documentation install failed (${docs_install_result}): ${docs_install_output}${docs_install_error}")
+  endif()
+endif()
+
 if(IS_ABSOLUTE "${INSTALL_BINDIR}")
   message(FATAL_ERROR
     "perl-install-layout requires a relative CMAKE_INSTALL_BINDIR, got ${INSTALL_BINDIR}")

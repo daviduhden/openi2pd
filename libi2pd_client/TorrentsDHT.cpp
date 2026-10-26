@@ -880,8 +880,8 @@ namespace torrents
 			switch (value.front ())
 			{
 			case 'i': return ExtractInteger (value).second;
-			case 'l': return ParseList (value).second;
-			case 'd': return ParseDictionary (value).second;
+			case 'l': return ParseList (value);
+			case 'd': return ParseDictionary (value);
 			default: return ExtractByteString (value).second;
 			}
 		}

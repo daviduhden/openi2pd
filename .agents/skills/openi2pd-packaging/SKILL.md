@@ -218,6 +218,21 @@ Ask for exact paths and package names. Do not let them run `dpkg-buildpackage`,
 - Record the exact AGENTS.md tracking state and state which validations were
   not run; package/service results remain pending until the manual job passes.
 
+- Alpine no longer publishes a `miniupnpc-static` package. `miniupnpc-dev`
+  already contains `/usr/lib/libminiupnpc.a`, which the `WITH_STATIC` finder
+  selects; do not re-add a separate static subpackage.
+- Inside a quoted CMake argument, `[`/`]` are literal. Escaping them as `\[`
+  is an invalid escape and makes the assertion search for different text;
+  only `\"`, `\$` and `\\` need escaping for this kind of contract.
+
+- `tools/test-perl-install.cmake` installs `Tools`; when
+  `I2PD_INSTALL_DOCS=ON` the shared `LICENSE.i2pd-tools` belongs to
+  `Documentation`, so the test must install that component too before checking
+  attribution. Never install two components that both own the same destination
+  from separate rules.
+- CI artifact uploads must stay inside `GITHUB_WORKSPACE`; `upload-artifact`
+  v4 skips absolute paths such as `/tmp/static-file`.
+
 ## Tracking
 
 Use `BUILD`/`DEPS` or packaging-specific IDs and the native-service/packaging

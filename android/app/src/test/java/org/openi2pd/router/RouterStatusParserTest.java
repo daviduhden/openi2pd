@@ -71,6 +71,15 @@ public class RouterStatusParserTest {
     }
 
     @Test
+    public void missingStatusCodeIsNotReportedAsObserved() {
+        RouterSnapshot snapshot = parse(String.join("\n", "status=OK", "online=1", "uptime=1"));
+
+        assertEquals(-1, snapshot.routerStatusCode());
+        assertFalse(snapshot.hasStatus());
+        assertFalse(snapshot.hasLiveMetrics());
+    }
+
+    @Test
     public void parsesBoundedLogRecords() {
         List<LogEntry> logs = RouterStatusParser.parseLogs("10|1700000000|2|error text|with pipe\n"
                         + "9|1699999999|4|older\n"

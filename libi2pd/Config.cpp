@@ -24,6 +24,7 @@
 #include <boost/program_options/variables_map.hpp>
 
 #include "Identity.h"
+#include "Crypto.h"
 #include "Config.h"
 #include "version.h"
 #include "Log.h"

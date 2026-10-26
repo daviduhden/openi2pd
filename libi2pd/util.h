@@ -279,6 +279,8 @@ namespace util
 		Mapping () = default;
 		Mapping (const Mapping &) = default;
 		Mapping (Mapping &&) = default;
+		Mapping & operator= (const Mapping &) = default;
+		Mapping & operator= (Mapping &&) = default;
 		Mapping (std::initializer_list<std::pair<const std::string, std::string>> options)
 			: m_Options (options)
 		{

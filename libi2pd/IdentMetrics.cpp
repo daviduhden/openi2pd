@@ -13,6 +13,7 @@
 
 #include <openssl/evp.h>
 #include <openssl/rand.h>
+#include <openssl/sha.h>
 #include <cstring>
 #include "Siphash.h"
 #include "Log.h"

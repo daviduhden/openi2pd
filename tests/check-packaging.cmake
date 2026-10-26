@@ -281,7 +281,7 @@ assert_absent("${static_debian_docs}" "CC-BY-SA-4.0" "static Debian docs must no
 assert_contains("${static_debian_manpages}" "src/man/i2pd.1" "static Debian manpage")
 assert_absent("${static_debian_links}" "var/lib/i2pd/i2pd.conf"
   "static package must not recreate the removed configuration link")
-assert_contains("${docker_entrypoint}" "\[ -e \"$DATA_DIR/certificates\" \]"
+assert_contains("${docker_entrypoint}" "[ -e \"$DATA_DIR/certificates\" ]"
   "container entrypoint must not fail on a persisted certificate link")
 assert_contains("${docker}" "usr/share/licenses/i2pd/NOTICE"
   "container image must ship NOTICE")

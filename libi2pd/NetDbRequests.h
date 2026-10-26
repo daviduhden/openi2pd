@@ -17,6 +17,7 @@
 #include <inttypes.h>
 #include <memory>
 #include <random>
+#include <functional>
 #include <unordered_set>
 #include <unordered_map>
 #include <list>

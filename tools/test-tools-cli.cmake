@@ -161,9 +161,10 @@ if(NOT "${before}" STREQUAL "${after}")
 endif()
 
 # ---------------------------------------------------------------------------
-# b33address: an embedded NUL is rejected and never reaches stdout.
+# b33address: a decoded NUL is rejected and never reaches stdout. "AAAA"
+# base64-decodes to three NUL bytes; CMake strings cannot carry a literal NUL.
 # ---------------------------------------------------------------------------
-file(WRITE "${WORK}/nul.b64" "AAAA\0BBBB\n")
+file(WRITE "${WORK}/nul.b64" "AAAA\n")
 set(TOOL_STDIN "${WORK}/nul.b64")
 run_cli(b33address out err)
 unset(TOOL_STDIN)
