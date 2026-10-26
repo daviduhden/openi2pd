@@ -15,6 +15,9 @@
 #define STREAMING_H__
 
 #include <inttypes.h>
+#include <atomic>
+#include <condition_variable>
+#include <cstring>
 #include <string>
 #include <unordered_map>
 #include <set>
@@ -22,7 +25,11 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <span>
+#include <chrono>
+#include <list>
+#include <utility>
 #include <boost/asio.hpp>
 #include "Base.h"
 #include "Gzip.h"
@@ -33,6 +40,7 @@
 #include "Garlic.h"
 #include "Tunnel.h"
 #include "util.h" // MemoryPool
+#include "StreamingThrottle.h"
 #include "ECIESX25519AEADRatchetSession.h"
 
 namespace i2p
@@ -80,6 +88,13 @@ namespace stream
 	const size_t MAX_PENDING_INCOMING_BACKLOG = 1024;
 	const size_t MAX_SAVED_STREAM_IDS = 512;
 	const size_t MAX_SAVED_PACKETS_PER_STREAM = 64;
+	// Java ConnectionManager keeps a bounded map of closed connections so a
+	// retransmitted SYN cannot resurrect a connection the peer has not yet
+	// noticed as gone. The window only has to outlive the peer's SYN retry
+	// ladder; a bounded, timestamped table is enough.
+	const size_t MAX_RECENTLY_CLOSED_STREAMS = 128;
+	const uint64_t RECENTLY_CLOSED_TIMEOUT = 120; // in seconds
+	const uint64_t SYN_REJECT_LOG_INTERVAL = 1000; // in milliseconds
 	const int PENDING_INCOMING_TIMEOUT = 10; // in seconds
 	const int MAX_RECEIVE_TIMEOUT = 90; // in seconds
 	const uint16_t DELAY_CHOKING = 60000; // in milliseconds
@@ -92,6 +107,7 @@ namespace stream
 	const uint64_t REQUEST_IMMEDIATE_ACK_INTERVAL_VARIANCE = 3200; // in milliseconds
 	const bool LOSS_BASED_CONTROL_ENABLED = 0; // 0/1
 	const uint64_t STREAMING_DESTINATION_POOLS_CLEANUP_INTERVAL = 646; // in seconds
+	const uint64_t STREAMING_CONNECTION_CLEANUP_INTERVAL = 60; // in seconds
 
 	struct Packet
 	{
@@ -218,12 +234,60 @@ namespace stream
 	};
 
 	class StreamingDestination;
+
+	// Policy answer for one incoming SYN. The server tunnel's access filter
+	// and the streaming connection limits share it so a refused peer is
+	// answered before any stream exists and before a SYNACK is sent.
+	enum class StreamAdmission
+	{
+		eAllow,
+		eDrop, // silence: no SYNACK, no RESET
+		eReset // one signed RESET
+	};
+
+	// Identity announced by a SYN, or the ratchet-authenticated destination
+	// when the packet carries no FROM option. Empty when the packet does not
+	// reveal a peer identity (such a SYN is refused later by the normal
+	// authentication path, never by the admission policy).
+	std::optional<i2p::data::IdentHash> ExtractSynPeerIdentity (const Packet * packet);
+
+	class Stream;
+
+	// Shared state for the blocking StreamingDestination::AcceptStream helper.
+	// The armed acceptor owns this object through a shared_ptr, so a late
+	// invocation after AcceptStream returned writes into live heap memory
+	// instead of a dead stack frame; Cancel() makes such an invocation a no-op
+	// and the caller re-offers the stream instead of losing it.
+	class SyncAcceptState
+	{
+	public:
+		// Returns false when the waiter already cancelled: the caller must
+		// re-offer the stream rather than drop it.
+		bool Deliver (std::shared_ptr<Stream> stream);
+		// Marks the wait as abandoned without a delivery. Returns true when the
+		// cancellation won, i.e. no stream was delivered.
+		bool Cancel ();
+		// Waits for a delivery. `timeout` == 0 waits indefinitely, a positive
+		// value bounds the wait and a negative one returns immediately. Returns
+		// true when the wait was completed (by a stream or by a reset with
+		// nullptr).
+		bool Wait (int timeout);
+		std::shared_ptr<Stream> GetStream () const;
+
+	private:
+		mutable std::mutex m_Mutex;
+		std::condition_variable m_Changed;
+		std::shared_ptr<Stream> m_Stream;
+		bool m_Completed = false;
+		bool m_Cancelled = false;
+	};
+
 	class Stream : public std::enable_shared_from_this<Stream>
 	{
 	public:
-		Stream (boost::asio::io_context & service, StreamingDestination & local,
+		Stream (boost::asio::io_context & service, std::shared_ptr<StreamingDestination> local,
 			std::shared_ptr<const i2p::data::LeaseSet> remote, int port = 0); // outgoing
-		Stream (boost::asio::io_context & service, StreamingDestination & local); // incoming
+		Stream (boost::asio::io_context & service, std::shared_ptr<StreamingDestination> local); // incoming
 
 		~Stream ();
 		uint32_t GetSendStreamID () const { return m_SendStreamID; };
@@ -278,6 +342,29 @@ namespace stream
 
 		void Terminate (bool deleteFromDestination = true);
 
+		// --- connection termination helpers ----------------------------------
+		// One-shot RESET for a connection that is not retained: a policy
+		// rejection or a retransmitted SYN for a recently closed stream. Unlike
+		// SendReset() it never enters the resend queue (Java sends one RESET).
+		// Returns false when the stream has no sendStreamID yet.
+		bool SendResetOnce ();
+		// Answers a first SYN with a single RESET instead of a SYNACK. The
+		// packet is consumed. Returns false when the SYN did not authenticate,
+		// so a forged SYN never gets a signed response.
+		bool RejectWithReset (Packet * packet);
+		// Resets and terminates a stream that was created but cannot be handed
+		// to an acceptor: one RESET is sent and the stream leaves the maps.
+		void AbortWithReset ();
+
+		// Deterministic test seams: force the wire state of a stream so the
+		// post-CLOSE/RESET behaviour can be checked without a live peer.
+		void SetStatusForTesting (StreamStatus status) { m_Status = status; }
+		void SetStreamIDsForTesting (uint32_t sendStreamID, uint32_t recvStreamID)
+		{
+			m_SendStreamID = sendStreamID;
+			m_RecvStreamID = recvStreamID;
+		}
+
 	private:
 		void CleanUp ();
 
@@ -285,6 +372,7 @@ namespace stream
 		void SendQuickAck ();
 		void SendClose ();
 		void SendReset ();
+		Packet * CreateResetPacket ();
 		bool SendPacket (Packet * packet);
 		void SendPackets (const std::list<Packet *> & packets);
 		void SendUpdatedLeaseSet ();
@@ -327,8 +415,12 @@ namespace stream
 			m_IsSendTime, m_IsWinDropped, m_IsChoking2, m_IsChoking3, m_IsClientChoked, m_IsClientChoked2,
 			m_IsTimeOutResend, m_IsImmediateAckRequested, m_IsRemoteLeaseChangeInProgress, m_IsBufferEmpty,
 			m_IsJavaClient, m_DontSign, m_IsResetReceived = false, m_IsRequestingLeaseSet = false;
+		// Keep the destination alive: timer, receive and send handlers can still
+		// run after the owner removed it from its map, and every one of them
+		// reaches the destination or its packet pools through the reference below.
+		std::shared_ptr<StreamingDestination> m_LocalDestinationOwner;
 		StreamingDestination & m_LocalDestination;
-		// own reference to the pool: the destination can be gone by the time we are destroyed
+		// own reference: the stream may outlive the destination's map entry
 		std::shared_ptr<const i2p::data::IdentityEx> m_RemoteIdentity;
 		std::shared_ptr<const i2p::crypto::Verifier> m_TransientVerifier; // in case of offline key
 		std::shared_ptr<const i2p::data::LeaseSet> m_RemoteLeaseSet;
@@ -365,6 +457,27 @@ namespace stream
 	public:
 		typedef std::function<void (std::shared_ptr<Stream>)> Acceptor;
 		typedef std::function<void (const i2p::data::IdentHash *)> PongHandler;
+		// Access-filter seam: consulted for a first SYN before the stream is
+		// created, so a denied peer never receives a SYNACK and never reaches
+		// an acceptor. `toPort` is the local streaming port.
+		typedef std::function<StreamAdmission (const i2p::data::IdentHash & peer, uint16_t toPort)>
+			AdmissionPredicate;
+		// Identifies one armed one-shot acceptor so a caller can unlink exactly
+		// that registration (AcceptStream's timeout) without disturbing the
+		// acceptors other clients armed.
+		typedef uint64_t AcceptorToken;
+
+		// Outcome of the SYN admission policy. The packet path uses it to decide
+		// between accepting, dropping a duplicate and answering with a RESET.
+		enum class SynAdmission
+		{
+			eAccept,
+			eDuplicate, // an incoming stream with this receiveStreamID is live
+			eRecentlyClosed, // the peer retransmitted a SYN for a finished stream
+			eOverLimit, // concurrent stream cap
+			eBacklogFull, // pending incoming backlog is full
+			eThrottled // per-peer/total connection throttle
+		};
 
 		StreamingDestination (
 			std::shared_ptr<i2p::client::ClientDestination> owner, uint16_t localPort = 0, bool gzip = false);
@@ -383,17 +496,43 @@ namespace stream
 			std::lock_guard<std::mutex> l (m_StreamsMutex);
 			return m_Streams.size ();
 		};
-		void SetAcceptor (const Acceptor & acceptor);
+		// Replaces the persistent acceptor and returns the previous one, so the
+		// caller owns exactly the registration it displaced and cannot silently
+		// disable another tunnel's acceptor without knowing about it.
+		Acceptor SetAcceptor (const Acceptor & acceptor);
+		// Remove every armed acceptor (one-shot registrations first, then the
+		// persistent one). Each registration is completed with nullptr so a
+		// waiter such as a SAM socket cannot hang forever.
 		void ResetAcceptor ();
-		bool IsAcceptorSet () const { return m_Acceptor != nullptr; };
-		void AcceptOnce (const Acceptor & acceptor);
-		void AcceptOnceAcceptor (std::shared_ptr<Stream> stream, Acceptor acceptor, Acceptor prev);
+		bool IsAcceptorSet () const;
+		// Installs or clears the SYN admission predicate. The predicate is
+		// copied out under the registration lock and invoked without any
+		// streaming lock held, so it may take its own (filter) lock safely.
+		void SetAdmissionPredicate (const AdmissionPredicate & predicate);
+		void ResetAdmissionPredicate ();
+		bool IsAdmissionPredicateSet () const;
+		// Action for a SYN refused by a limit or by the access filter. Java
+		// i2ptunnel's `limitAction` selects `drop` (silence) or `reset` (one
+		// signed RESET); the default keeps the historical RESET.
+		void SetRejectionAction (StreamAdmission action) { m_RejectionAction.store (action); }
+		StreamAdmission GetRejectionAction () const { return m_RejectionAction.load (); }
+		// Arms a one-shot acceptor and returns its registration token. The
+		// registration owns every object it needs, so a late invocation after
+		// the caller gave up cannot touch a dead stack frame.
+		AcceptorToken AcceptOnce (const Acceptor & acceptor);
+		// Unlinks one armed registration. Returns false when it was already
+		// consumed for delivery or removed, so the caller knows that a delivery
+		// may be in flight.
+		bool RemoveAcceptor (AcceptorToken token);
+		// Blocking accept for the C API. On timeout this unlinks exactly its own
+		// registration (RemoveAcceptor), so other armed acceptors keep working;
+		// the wait state lives on the heap and outlives the caller's frame.
 		std::shared_ptr<Stream> AcceptStream (int timeout = 0); // sync
 		void SetPongHandler (const PongHandler & handler);
 		void ResetPongHandler ();
 
 		std::shared_ptr<i2p::client::ClientDestination> GetOwner () const { return m_Owner; };
-		void SetOwner (std::shared_ptr<i2p::client::ClientDestination> owner) { m_Owner = owner; };
+		void SetOwner (std::shared_ptr<i2p::client::ClientDestination> owner);
 		uint16_t GetLocalPort () const { return m_LocalPort; };
 
 		void HandleDataMessagePayload (
@@ -413,8 +552,33 @@ namespace stream
 		void HandleNextPacket (Packet * packet);
 		std::shared_ptr<Stream> CreateNewIncomingStream (uint32_t receiveStreamID);
 		void HandlePendingIncomingTimer (const boost::system::error_code & ecode);
-
-		void CleanupExpiredNumConnectionsPerSecond (std::list<uint64_t> & numConnectionsList, uint64_t ts);
+		void StopInternal ();
+		void StartInternal ();
+		void UpdateConnectionLimits ();
+		// Decides and dispatches under one lock so a stream is either handed to
+		// an acceptor or queued in m_PendingIncomingStreams, never lost.
+		void DispatchPendingIncoming ();
+		bool AddPendingIncomingStream (std::shared_ptr<Stream> stream);
+		AcceptorToken ArmSyncAccept (const std::shared_ptr<SyncAcceptState> & state);
+		// Service thread only.
+		SynAdmission DecideSynAdmission (
+			uint32_t receiveStreamID, i2p::garlic::ECIESX25519AEADRatchetSession * from);
+		// Consumes `packet`, answers it with one signed RESET when it
+		// authenticates, and leaves no stream behind. Returns true when a RESET
+		// was built.
+		bool RejectSynWithReset (Packet * packet, uint32_t receiveStreamID);
+		bool IsRecentlyClosed (uint32_t receiveStreamID) const;
+		void RememberRecentlyClosed (uint32_t receiveStreamID);
+		void ClearRecentlyClosed ();
+		void LogSynRejection (const char * reason, uint32_t receiveStreamID);
+		// Consumes a SYN refused by a limit: drops it silently or answers with
+		// one signed RESET according to m_RejectionAction.
+		void RejectSyn (Packet * packet, uint32_t receiveStreamID, const char * reason);
+		// Copies the installed predicate out of the registration lock and
+		// invokes it. Returns eAllow when no predicate is installed.
+		StreamAdmission EvaluateAdmission (const i2p::data::IdentHash & peer) const;
+		void ScheduleConnectionCleanup ();
+		void HandleConnectionCleanup (const boost::system::error_code & ecode);
 
 	private:
 		i2p::util::MemoryPool<Packet> m_PacketsPool;
@@ -428,16 +592,35 @@ namespace stream
 		std::unordered_map<uint32_t, std::shared_ptr<Stream>> m_IncomingStreams; // receiveStreamID->stream
 		std::shared_ptr<Stream> m_LastStream;
 		uint16_t m_LastFromPort = 0, m_LastToPort = 0;
+		// Guards the acceptor registrations, the pong handler and the pending
+		// incoming queue; all of them are published or cleared from threads other
+		// than the destination service.
+		mutable std::mutex m_AcceptorMutex;
+		struct AcceptorRegistration
+		{
+			AcceptorToken id;
+			Acceptor acceptor;
+		};
 		Acceptor m_Acceptor;
-		PongHandler m_PongHandler;
+		std::shared_ptr<const AdmissionPredicate> m_AdmissionPredicate;
+		std::atomic<StreamAdmission> m_RejectionAction { StreamAdmission::eReset };
+		std::vector<AcceptorRegistration> m_ArmedAcceptors; // back() is the newest
+		std::shared_ptr<const PongHandler> m_PongHandler;
+		std::atomic<AcceptorToken> m_NextAcceptorToken { 1 };
 		std::list<std::shared_ptr<Stream>> m_PendingIncomingStreams;
 		boost::asio::steady_timer m_PendingIncomingTimer;
+		boost::asio::steady_timer m_ConnectionCleanupTimer;
+		std::atomic<bool> m_Started { false };
 		std::unordered_map<uint32_t, std::list<Packet *>>
 			m_SavedPackets; // receiveStreamID->packets, arrived before SYN
+		mutable std::mutex m_RecentlyClosedMutex;
+		std::unordered_map<uint32_t, uint64_t> m_RecentlyClosed; // receiveStreamID->seconds
+		std::atomic<size_t> m_NumRejectionResets { 0 };
+		uint64_t m_LastSynRejectLogTime = 0; // in milliseconds
+		uint32_t m_NumSuppressedSynRejects = 0;
 
 		uint64_t m_LastCleanupTime; // in seconds
-		std::unordered_map<i2p::data::Tag<32>, std::list<uint64_t>>
-			m_NumIncomingConnectionsPerSecond; // static key -> list of timestamps in seconds
+		std::shared_ptr<StreamingConnectionThrottle> m_ConnectionThrottle;
 
 	public:
 		i2p::data::GzipInflator m_Inflator;
@@ -448,6 +631,58 @@ namespace stream
 
 		// copy for other threads, unlike GetStreams which hands out the map itself
 		std::vector<std::shared_ptr<const Stream>> GetStreamsList ();
+
+		// --- deterministic test seams -----------------------------------------
+		// Run the real admission/policy helpers without constructing a signed
+		// streaming packet, so the state transitions stay testable in isolation.
+		SynAdmission AdmitSynForTesting (uint32_t receiveStreamID)
+		{
+			return DecideSynAdmission (receiveStreamID, nullptr);
+		}
+		void RememberRecentlyClosedForTesting (uint32_t receiveStreamID)
+		{
+			RememberRecentlyClosed (receiveStreamID);
+		}
+		size_t GetNumRecentlyClosedForTesting () const;
+		size_t GetNumRejectionResetsForTesting () const { return m_NumRejectionResets.load (); }
+		size_t GetNumPendingIncomingForTesting () const;
+		size_t GetNumArmedAcceptorsForTesting () const;
+		// Hands an already-created stream to the acceptor/pending dispatch, as
+		// the SYN path does. Returns false when the backlog is full.
+		bool OfferIncomingStreamForTesting (std::shared_ptr<Stream> stream)
+		{
+			return AddPendingIncomingStream (std::move (stream));
+		}
+		// Arms the same registration AcceptStream uses, without waiting.
+		AcceptorToken StartSyncAcceptForTesting (const std::shared_ptr<SyncAcceptState> & state)
+		{
+			return ArmSyncAccept (state);
+		}
+		// Removes and returns one armed registration so a test can prove that a
+		// late invocation after cancellation has no effect.
+		Acceptor TakeArmedAcceptorForTesting (AcceptorToken token);
+		// Builds (and counts) the one-shot RESET a rejected SYN receives without
+		// requiring a signed SYN packet.
+		bool BuildRejectionResetForTesting (uint32_t receiveStreamID);
+		// Runs the installed admission predicate exactly as the SYN path does.
+		StreamAdmission EvaluateAdmissionForTesting (const i2p::data::IdentHash & peer) const
+		{
+			return EvaluateAdmission (peer);
+		}
+		// Applies the denial side effects of the SYN path for a denied peer:
+		// a silent drop keeps the stream set and the reset counter untouched,
+		// a reset increments the counter and remembers the connection as
+		// closed. No stream is ever created or offered to an acceptor.
+		StreamAdmission ApplyAdmissionForTesting (uint32_t receiveStreamID, const i2p::data::IdentHash & peer);
+		// Applies the configured rejection action for a limit rejection.
+		StreamAdmission ApplyRejectionActionForTesting (uint32_t receiveStreamID);
+		// Registers an extra local stream so tests can reach the concurrent
+		// stream cap without a live peer.
+		std::shared_ptr<Stream> CreateStreamForTesting () { return CreateNewIncomingStream (GetRandom ()); }
+		// Runs the real teardown on the calling thread so a test can release the
+		// pending backlog (and break the destination/stream ownership cycle)
+		// without starting an io thread.
+		void StopForTesting () { StopInternal (); }
 	};
 
 	//-------------------------------------------------
@@ -488,6 +723,11 @@ namespace stream
 				handler (boost::system::error_code (), received);
 			else
 			{
+				// Half-close semantics: bytes that were already queued above stay
+				// readable, and only an empty read reports the connection state.
+				// The mapping is deliberate: a CLOSE is an orderly end of stream
+				// (eof) and a RESET is connection_reset, exactly like a socket,
+				// while operation_aborted means the read itself was cancelled.
 				boost::system::error_code retCode;
 				switch (m_Status)
 				{

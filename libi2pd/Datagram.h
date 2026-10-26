@@ -6,8 +6,10 @@
  *
  * Declares the I2P datagram endpoint for I2CP protocols 17, 18, 19 and 20 and
  * its per-peer garlic sessions. Sessions manage routing paths, LeaseSet
- * refresh, bounded send queues and idle cleanup, while port-keyed receivers
- * dispatch Datagram, raw and Datagram2/3 payloads.
+ * refresh, bounded send queues and idle cleanup. Identity and hash receivers
+ * are keyed by (protocol, port) so Datagram1/2/3 subsessions can share a port,
+ * and raw receivers use the same keying (SAM 3.3 LISTEN_PROTOCOL). The framing
+ * version is per send, not only per destination.
  *
  */
 
@@ -15,6 +17,7 @@
 #define DATAGRAM_H__
 
 #include <inttypes.h>
+#include <atomic>
 #include <condition_variable>
 #include <memory>
 #include <functional>
@@ -140,10 +143,28 @@ namespace datagram
 
 	enum DatagramVersion
 	{
+		// Unset: keep the session's framing (destination default or the style
+		// learned from a received Datagram1/Datagram2/Datagram3).
+		eDatagramDefault = 0,
 		eDatagramV1 = 1,
 		eDatagramV2 = 2,
 		eDatagramV3 = 3,
 	};
+
+	// Resolve the framing version of one send. An explicit request wins, because
+	// a SAM DATAGRAM3 subsession shares the DatagramDestination that a
+	// DATAGRAM/DATAGRAM2 session created with its own version, and Java selects
+	// the framing per message from the subsession style. eDatagramDefault keeps
+	// the session's version.
+	constexpr DatagramVersion ResolveDatagramVersion (DatagramVersion requested, DatagramVersion session)
+	{
+		return requested == eDatagramDefault ? session : requested;
+	}
+
+	constexpr bool IsDatagramVersionSupported (DatagramVersion version)
+	{
+		return version == eDatagramV1 || version == eDatagramV2 || version == eDatagramV3;
+	}
 
 	constexpr uint8_t DATAGRAM2_FLAG_OPTIONS = 0x10;
 	constexpr uint8_t DATAGRAM2_FLAG_OFFLINE_SIGNATURE = 0x20;
@@ -151,6 +172,23 @@ namespace datagram
 	// I2CP PROTOCOL_TYPE_RAW. Datagram.h is included by Destination.h, so the
 	// constant is duplicated here instead of creating an include cycle.
 	constexpr uint8_t DATAGRAM_RAW_PROTOCOL = 18;
+
+	// I2CP protocols that a typed handler consumes (PROTOCOL_TYPE_DATAGRAM 17,
+	// PROTOCOL_TYPE_DATAGRAM2 19, PROTOCOL_TYPE_DATAGRAM3 20). Duplicated here
+	// for the same include-cycle reason: HandleDataMessagePayload dispatches
+	// them before the raw path, so a raw receiver registered for one of them
+	// could never receive anything.
+	constexpr bool IsTypedDatagramProtocol (uint8_t protocol)
+	{
+		return protocol == 17 || protocol == 19 || protocol == 20;
+	}
+
+	// Streaming (6) and the typed datagram protocols are never forwarded to a
+	// raw receiver. SAM 3.3 refuses the same set on LISTEN_PROTOCOL.
+	constexpr bool IsReservedRawProtocol (uint8_t protocol)
+	{
+		return protocol == 6 || IsTypedDatagramProtocol (protocol);
+	}
 
 	class DatagramSession : public std::enable_shared_from_this<DatagramSession>
 	{
@@ -169,33 +207,29 @@ namespace datagram
 		void SendMsg (std::shared_ptr<I2NPMessage> msg);
 		void FlushSendQueue (bool waitForLeaseSet = true);
 		/** get the last time in milliseconds for when we used this datagram session */
-		uint64_t LastActivity () const { return m_LastUse; }
+		uint64_t LastActivity () const { return m_LastUse.load (std::memory_order_relaxed); }
 
-		bool IsRatchets () const { return m_RoutingSession && m_RoutingSession->IsRatchets (); }
-		void SetRemoteLeaseSet (std::shared_ptr<const i2p::data::LeaseSet> ls)
-		{
-			m_RemoteLeaseSet = ls;
-			m_LoggedIncompatibleLeaseSet = false;
-		}
-		std::shared_ptr<const i2p::data::LeaseSet> GetRemoteLeaseSet () const { return m_RemoteLeaseSet; }
+		bool IsRatchets () const;
+		void SetRemoteLeaseSet (std::shared_ptr<const i2p::data::LeaseSet> ls);
+		std::shared_ptr<const i2p::data::LeaseSet> GetRemoteLeaseSet () const;
 		const i2p::data::IdentHash & GetRemoteIdent () const { return m_RemoteIdent; }
 
-		DatagramVersion GetVersion () const { return m_Version; }
-		void SetVersion (DatagramVersion version) { m_Version = version; }
+		DatagramVersion GetVersion () const { return m_Version.load (std::memory_order_relaxed); }
+		void SetVersion (DatagramVersion version) { m_Version.store (version, std::memory_order_relaxed); }
 
-		void DropSharedRoutingPath ()
-		{
-			if (m_RoutingSession)
-			{
-				m_RoutingSession->SetSharedRoutingPath (nullptr);
-				m_NumPathDrops++;
-			}
-		}
+		void DropSharedRoutingPath ();
+
+		// Deterministic test seam: while an observer is installed, SendMsg hands
+		// the built I2NP Data message to it instead of queueing it, so the
+		// per-send framing can be verified without a routing path or a peer. The
+		// observer is invoked without the session lock and must not call back
+		// into this session. Never installed by the daemon.
+		void SetSendObserverForTesting (std::function<void (const I2NPMessage &)> observer);
 		// request LeaseSet update from floodfill in case our copy contains dead leases
 		void RequestUpdatedLeaseSet ();
 
-		uint32_t GetNumPathDrops () const { return m_NumPathDrops; }
-		uint32_t GetNumDroppedNoPath () const { return m_NumDroppedNoPath; }
+		uint32_t GetNumPathDrops () const { return m_NumPathDrops.load (std::memory_order_relaxed); }
+		uint32_t GetNumDroppedNoPath () const { return m_NumDroppedNoPath.load (std::memory_order_relaxed); }
 
 		struct Info
 		{
@@ -226,26 +260,46 @@ namespace datagram
 		Info GetSessionInfo () const;
 
 	private:
+		// Caller holds m_Mutex. GetSharedRoutingPath may re-enter FlushSendQueue
+		// through the LeaseSet request callback only after the lock is released.
 		std::shared_ptr<i2p::garlic::GarlicRoutingPath> GetSharedRoutingPath ();
+		void SendMsgLocked (std::shared_ptr<I2NPMessage> msg);
+		void FlushSendQueueLocked (bool waitForLeaseSet);
+		bool IsRatchetsLocked () const { return m_RoutingSession && m_RoutingSession->IsRatchets (); }
 
 		void HandleLeaseSetUpdated (std::shared_ptr<i2p::data::LeaseSet> ls);
 
 	private:
 		std::shared_ptr<i2p::client::ClientDestination> m_LocalDestination;
-		i2p::data::IdentHash m_RemoteIdent;
+		const i2p::data::IdentHash m_RemoteIdent;
+		// m_Mutex serializes the send queue, the routing-session state and the
+		// remote LeaseSet. SAM calls SendDatagramTo/SendDatagram from its own
+		// socket thread while inbound datagrams Ack() on the destination
+		// service, so none of these fields may be touched without it. Lock order
+		// is DatagramDestination::m_SessionsMutex -> m_Mutex; a session method
+		// never acquires m_SessionsMutex.
+		mutable std::mutex m_Mutex;
 		std::shared_ptr<const i2p::data::LeaseSet> m_RemoteLeaseSet;
 		std::shared_ptr<i2p::garlic::GarlicRoutingSession> m_RoutingSession;
 		std::vector<std::weak_ptr<i2p::garlic::GarlicRoutingSession>> m_PendingRoutingSessions;
 		std::vector<std::shared_ptr<const I2NPMessage>> m_SendQueue;
-		uint64_t m_LastUse, m_LastFlush; // milliseconds
-		bool m_RequestingLS;
+		// Relaxed atomics: liveness/counters read from CleanUp and the
+		// administrative views without taking m_Mutex.
+		std::atomic<uint64_t> m_LastUse { 0 }; // milliseconds
+		std::atomic<uint32_t> m_NumPathDrops { 0 }, m_NumDroppedNoPath { 0 };
+		uint64_t m_LastFlush = 0; // milliseconds, guarded by m_Mutex
+		bool m_RequestingLS = false;
 		bool m_LoggedIncompatibleLeaseSet = false;
-		DatagramVersion m_Version;
-		uint32_t m_NumPathDrops = 0, m_NumDroppedNoPath = 0;
+		std::atomic<DatagramVersion> m_Version { eDatagramV1 };
+		std::function<void (const I2NPMessage &)> m_SendObserver; // guarded by m_Mutex
 	};
 
 	typedef std::shared_ptr<DatagramSession> DatagramSession_ptr;
 
+	// Local inbound decompression bound. Java's DataMessage limit is 61 KiB, so
+	// this is a deliberate divergence (a larger Datagram3 would be dropped
+	// here); it is tracked for the coordinator instead of being changed with
+	// the protocol-version work.
 	const size_t MAX_DATAGRAM_SIZE = 32768;
 
 	// Parse the optional Datagram2/3 options block (16-bit length followed by a
@@ -262,7 +316,8 @@ namespace datagram
 		typedef std::function<void (const i2p::data::IdentHash & from, uint16_t fromPort, uint16_t toPort,
 			const uint8_t * buf, size_t len, const i2p::util::Mapping * options)>
 			HashReceiver;
-		// Includes the I2CP protocol number for SAM 3.2 RAW RECEIVED headers.
+		// Includes the I2CP protocol number for SAM 3.2 RAW RECEIVED headers and
+		// for SAM 3.3 LISTEN_PROTOCOL dispatch.
 		typedef std::function<void (
 			uint8_t protocol, uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len)>
 			RawReceiver;
@@ -291,31 +346,44 @@ namespace datagram
 			};
 			friend class DatagramDestination;
 			ReceiverRegistration (
-				std::weak_ptr<DatagramDestination> destination, std::weak_ptr<void> slot, uint16_t port, Kind kind)
+				std::weak_ptr<DatagramDestination> destination, std::weak_ptr<void> slot, uint16_t port,
+				ReceiverRegistration::Kind kind, uint8_t protocol = 0)
 				: m_Destination (std::move (destination))
 				, m_Slot (std::move (slot))
 				, m_Port (port)
 				, m_Kind (kind)
+				, m_Protocol (protocol)
 			{
 			}
 			std::weak_ptr<DatagramDestination> m_Destination;
 			std::weak_ptr<void> m_Slot;
 			uint16_t m_Port = 0;
 			Kind m_Kind = Kind::Identity;
+			// Receiving protocol: SAM 3.3 LISTEN_PROTOCOL for a RAW
+			// registration and the I2CP style protocol (17/19/20) for an
+			// identity/hash registration. 0 is the catch-all.
+			uint8_t m_Protocol = 0;
 		};
 
 		DatagramDestination (std::shared_ptr<i2p::client::ClientDestination> owner, bool gzip, DatagramVersion version);
 		~DatagramDestination ();
 
+		// `version` selects the framing of this message. eDatagramDefault keeps
+		// the session's version; an explicit V1/V2/V3 overrides it so a SAM
+		// subsession style is not frozen by the destination's default.
 		void SendDatagramTo (const uint8_t * payload, size_t len, const i2p::data::IdentHash & ident,
-			uint16_t fromPort = 0, uint16_t toPort = 0);
+			uint16_t fromPort = 0, uint16_t toPort = 0,
+			DatagramVersion version = eDatagramDefault);
 		void SendRawDatagramTo (const uint8_t * payload, size_t len, const i2p::data::IdentHash & ident,
 			uint16_t fromPort = 0, uint16_t toPort = 0, uint8_t protocol = DATAGRAM_RAW_PROTOCOL);
-		// TODO: implement calls from other thread from SAM
+		// Send-time entry points may be called from SAM socket threads. The
+		// session send queue and routing state are mutex-guarded; the message
+		// pool is thread-safe and the gzip deflator is serialized.
 
 		std::shared_ptr<DatagramSession> GetSession (const i2p::data::IdentHash & ident);
 		void SendDatagram (std::shared_ptr<DatagramSession> session, const uint8_t * payload, size_t len,
-			uint16_t fromPort, uint16_t toPort, const i2p::util::Mapping * options = nullptr);
+			uint16_t fromPort, uint16_t toPort, const i2p::util::Mapping * options = nullptr,
+			DatagramVersion version = eDatagramDefault);
 		void SendRawDatagram (std::shared_ptr<DatagramSession> session, const uint8_t * payload, size_t len,
 			uint16_t fromPort, uint16_t toPort, uint8_t protocol = DATAGRAM_RAW_PROTOCOL);
 		void FlushSendQueue (std::shared_ptr<DatagramSession> session);
@@ -323,11 +391,26 @@ namespace datagram
 		void HandleDataMessagePayload (uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len,
 			uint8_t protocolType, i2p::garlic::ECIESX25519AEADRatchetSession * from);
 
-		ReceiverRegistration SetReceiver (const Receiver & receiver, uint16_t port = 0);
+		// Identity receiver for a (protocol, port) pair. The two-argument form
+		// registers the protocol-0 catch-all; a port-specific registration is
+		// never promoted to the destination-wide fallback, so it cannot capture
+		// another subsession's traffic. Only an explicit (0, 0) registration
+		// becomes the fallback (Java: PROTO_ANY, PORT_ANY).
+		ReceiverRegistration SetReceiver (const Receiver & receiver, uint16_t port = 0, uint8_t protocol = 0);
 
-		ReceiverRegistration SetHashReceiver (const HashReceiver & receiver, uint16_t port = 0);
+		// Sender-hash receiver with the same keying. DATAGRAM3 registers
+		// protocol 20.
+		ReceiverRegistration SetHashReceiver (const HashReceiver & receiver, uint16_t port = 0, uint8_t protocol = 0);
 
+		// Port-keyed RAW receiver. Protocol 0 is the catch-all, so the legacy
+		// two-argument form keeps receiving every raw protocol as before.
 		ReceiverRegistration SetRawReceiver (const RawReceiver & receiver, uint16_t port = 0);
+
+		// SAM 3.3 LISTEN_PROTOCOL. Selects the raw receiver for an exact I2CP
+		// payload protocol with protocol 0 as the catch-all fallback. Streaming
+		// (6) and the typed datagram protocols (17/19/20) are consumed by their
+		// own handlers and are refused.
+		ReceiverRegistration SetRawReceiver (const RawReceiver & receiver, uint16_t port, uint8_t protocol);
 
 		std::shared_ptr<DatagramSession::Info> GetInfoForRemote (const i2p::data::IdentHash & remote);
 
@@ -354,9 +437,9 @@ namespace datagram
 		void HandleDatagram3 (uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len,
 			i2p::garlic::ECIESX25519AEADRatchetSession * from);
 
-		ReceiverSlotPtr FindReceiver (uint16_t port);
-		HashReceiverSlotPtr FindHashReceiver (uint16_t port);
-		RawReceiverSlotPtr FindRawReceiver (uint16_t port);
+		ReceiverSlotPtr FindReceiver (uint16_t port, uint8_t protocol);
+		HashReceiverSlotPtr FindHashReceiver (uint16_t port, uint8_t protocol);
+		RawReceiverSlotPtr FindRawReceiver (uint16_t port, uint8_t protocol);
 		bool ResetRegistration (const ReceiverRegistration & registration);
 
 	private:
@@ -371,18 +454,27 @@ namespace datagram
 		std::mutex m_ReceiversMutex;
 		std::mutex m_HashReceiversMutex;
 		std::mutex m_RawReceiversMutex;
-		std::unordered_map<uint16_t, ReceiverSlotPtr> m_ReceiversByPorts;
-		std::unordered_map<uint16_t, HashReceiverSlotPtr> m_HashReceiversByPorts;
-		std::unordered_map<uint16_t, RawReceiverSlotPtr> m_RawReceiversByPorts;
+		// (protocol << 16) | port for all three receiver kinds. Keying identity
+		// and hash receivers by protocol keeps a DATAGRAM2 subsession from
+		// receiving Datagram1 payloads (and vice versa) on a shared port.
+		std::unordered_map<uint32_t, ReceiverSlotPtr> m_ReceiversByProtocolPorts;
+		std::unordered_map<uint32_t, HashReceiverSlotPtr> m_HashReceiversByProtocolPorts;
+		std::unordered_map<uint32_t, RawReceiverSlotPtr> m_RawReceiversByProtocolPorts;
 
-		bool m_Gzip; // gzip compression of data messages
-		DatagramVersion m_Version; // default for destination
+		const bool m_Gzip; // gzip compression of data messages
+		const DatagramVersion m_Version; // default for destination
+		// The zlib streams keep per-datagram state, so they are serialized:
+		// SAM sends on its socket thread while inbound datagrams inflate on the
+		// destination service.
+		std::mutex m_InflatorMutex;
 		i2p::data::GzipInflator m_Inflator;
+		std::mutex m_DeflatorMutex;
 		std::unique_ptr<i2p::data::GzipDeflator> m_Deflator;
-		i2p::util::Mapping m_Options;
 		std::mutex m_FromMutex;
 		std::vector<uint8_t> m_From;
-		i2p::util::MemoryPool<I2NPMessageBuffer<I2NP_MAX_MESSAGE_SIZE>> m_I2NPMsgsPool;
+		// Thread-safe pool: messages are acquired on SAM threads and released
+		// from whichever thread drops the last reference.
+		i2p::util::MemoryPoolMt<I2NPMessageBuffer<I2NP_MAX_MESSAGE_SIZE>> m_I2NPMsgsPool;
 	};
 }
 }

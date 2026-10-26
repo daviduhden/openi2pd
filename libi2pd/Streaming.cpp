@@ -11,6 +11,11 @@
  *
  */
 
+#include <algorithm>
+#include <chrono>
+#include <future>
+#include <utility>
+#include <cstring>
 #include "Crypto.h"
 #include "Log.h"
 #include "RouterInfo.h"
@@ -40,6 +45,31 @@ namespace stream
 			return optionsSize <= packet->len - optionsOffset - 2;
 		}
 	} // namespace
+
+	std::optional<i2p::data::IdentHash> ExtractSynPeerIdentity (const Packet * packet)
+	{
+		if (!ValidatePacket (packet)) return std::nullopt;
+		if (!(packet->GetFlags () & PACKET_FLAG_FROM_INCLUDED))
+		{
+			// A ratchet-authenticated SYN without a FROM option is identified
+			// by the session's destination hash.
+			if (packet->from)
+				if (auto destination = packet->from->GetDestinationPtr ()) return *destination;
+			return std::nullopt;
+		}
+		const uint8_t * optionData = packet->GetOptionData ();
+		const size_t optionOffset = optionData - packet->buf;
+		const size_t optionSize = packet->GetOptionSize ();
+		if (optionOffset > packet->len || optionSize > packet->len - optionOffset || !optionSize)
+			return std::nullopt;
+		// The FROM identity is the first option of a SYN (streaming spec order,
+		// same assumption ProcessOptions validates before using it). The
+		// signature is verified later by the normal path; a forged identity
+		// only makes its sender choose its own admission outcome.
+		i2p::data::IdentityEx identity;
+		if (!identity.FromBuffer (optionData, optionSize)) return std::nullopt;
+		return identity.GetIdentHash ();
+	}
 
 	SendBuffer::SendBuffer (
 		const std::vector<std::pair<const uint8_t *, size_t>> & bufs, size_t totalLen, SendHandler && h)
@@ -121,7 +151,7 @@ namespace stream
 		}
 	}
 
-	Stream::Stream (boost::asio::io_context & service, StreamingDestination & local,
+	Stream::Stream (boost::asio::io_context & service, std::shared_ptr<StreamingDestination> local,
 		std::shared_ptr<const i2p::data::LeaseSet> remote, int port)
 		: m_Service (service)
 		, m_SendStreamID (0)
@@ -150,8 +180,9 @@ namespace stream
 		, m_IsRemoteLeaseChangeInProgress (false)
 		, m_IsBufferEmpty (false)
 		, m_IsJavaClient (false)
-		, m_DontSign (local.GetOwner ()->IsStreamingDontSign ())
-		, m_LocalDestination (local)
+		, m_DontSign (local->GetOwner ()->IsStreamingDontSign ())
+		, m_LocalDestinationOwner (local) // copy: later initializers still use local
+		, m_LocalDestination (*m_LocalDestinationOwner)
 		, m_RemoteLeaseSet (remote)
 		, m_SizeToReceive (0)
 		, m_ReceiveTimer (m_Service)
@@ -161,18 +192,18 @@ namespace stream
 		, m_NumSentBytes (0)
 		, m_NumReceivedBytes (0)
 		, m_Port (static_cast<uint16_t> (port))
-		, m_LocalPort (local.GetLocalPort ())
+		, m_LocalPort (local->GetLocalPort ())
 		, m_RTT (INITIAL_RTT)
 		, m_MinRTT (INITIAL_RTT)
 		, m_SlowRTT (INITIAL_RTT)
 		, m_FastRTT (INITIAL_RTT)
 		, m_WindowSize (INITIAL_WINDOW_SIZE)
-		, m_MaxWindowSize (static_cast<float> (local.GetOwner ()->GetStreamingMaxWindowSize ()))
+		, m_MaxWindowSize (static_cast<float> (local->GetOwner ()->GetStreamingMaxWindowSize ()))
 		, m_LastWindowDropSize (0)
 		, m_WindowDropTargetSize (0)
 		, m_WindowIncCounter (0)
 		, m_RTO (INITIAL_RTO)
-		, m_AckDelay (local.GetOwner ()->GetStreamingAckDelay ())
+		, m_AckDelay (local->GetOwner ()->GetStreamingAckDelay ())
 		, m_PrevRTTSample (INITIAL_RTT)
 		, m_Jitter (0)
 		, m_MinPacingTime (0)
@@ -180,7 +211,7 @@ namespace stream
 		, m_PacingTimeRem (0)
 		, m_LastSendTime (0)
 		, m_LastACKRecieveTime (0)
-		, m_ACKRecieveInterval (local.GetOwner ()->GetStreamingAckDelay ())
+		, m_ACKRecieveInterval (local->GetOwner ()->GetStreamingAckDelay ())
 		, m_RemoteLeaseChangeTime (0)
 		, m_LastWindowIncTime (0)
 		, m_LastACKRequestTime (0)
@@ -188,7 +219,7 @@ namespace stream
 		, m_PacketACKInterval (1)
 		, m_PacketACKIntervalRem (0)
 		, // for limit inbound speed
-		m_MaxNumResendAttempts (local.GetOwner ()->GetStreamingMaxResends ())
+		m_MaxNumResendAttempts (local->GetOwner ()->GetStreamingMaxResends ())
 		, m_NumResendAttempts (0)
 		, m_NumPacketsToSend (0)
 		, m_JitterAccum (0)
@@ -197,14 +228,14 @@ namespace stream
 	{
 		RAND_bytes ((uint8_t *)&m_RecvStreamID, 4);
 		m_RemoteIdentity = remote->GetIdentity ();
-		auto outboundSpeed = local.GetOwner ()->GetStreamingOutboundSpeed ();
+		auto outboundSpeed = m_LocalDestinationOwner->GetOwner ()->GetStreamingOutboundSpeed ();
 		if (outboundSpeed) m_MinPacingTime = (1000000LL * STREAMING_MTU) / outboundSpeed;
 
-		auto inboundSpeed = local.GetOwner ()->GetStreamingInboundSpeed (); // for limit inbound speed
+		auto inboundSpeed = m_LocalDestinationOwner->GetOwner ()->GetStreamingInboundSpeed (); // for limit inbound speed
 		if (inboundSpeed) m_PacketACKInterval = (1000000LL * STREAMING_MTU) / inboundSpeed;
 	}
 
-	Stream::Stream (boost::asio::io_context & service, StreamingDestination & local)
+	Stream::Stream (boost::asio::io_context & service, std::shared_ptr<StreamingDestination> local)
 		: m_Service (service)
 		, m_SendStreamID (0)
 		, m_SequenceNumber (0)
@@ -232,8 +263,9 @@ namespace stream
 		, m_IsRemoteLeaseChangeInProgress (false)
 		, m_IsBufferEmpty (false)
 		, m_IsJavaClient (false)
-		, m_DontSign (local.GetOwner ()->IsStreamingDontSign ())
-		, m_LocalDestination (local)
+		, m_DontSign (local->GetOwner ()->IsStreamingDontSign ())
+		, m_LocalDestinationOwner (local) // copy: later initializers still use local
+		, m_LocalDestination (*m_LocalDestinationOwner)
 		, m_SizeToReceive (0)
 		, m_ReceiveTimer (m_Service)
 		, m_SendTimer (m_Service)
@@ -248,12 +280,12 @@ namespace stream
 		, m_SlowRTT (INITIAL_RTT)
 		, m_FastRTT (INITIAL_RTT)
 		, m_WindowSize (INITIAL_WINDOW_SIZE)
-		, m_MaxWindowSize (static_cast<float> (local.GetOwner ()->GetStreamingMaxWindowSize ()))
+		, m_MaxWindowSize (static_cast<float> (local->GetOwner ()->GetStreamingMaxWindowSize ()))
 		, m_LastWindowDropSize (0)
 		, m_WindowDropTargetSize (0)
 		, m_WindowIncCounter (0)
 		, m_RTO (INITIAL_RTO)
-		, m_AckDelay (local.GetOwner ()->GetStreamingAckDelay ())
+		, m_AckDelay (local->GetOwner ()->GetStreamingAckDelay ())
 		, m_PrevRTTSample (INITIAL_RTT)
 		, m_Jitter (0)
 		, m_MinPacingTime (0)
@@ -261,7 +293,7 @@ namespace stream
 		, m_PacingTimeRem (0)
 		, m_LastSendTime (0)
 		, m_LastACKRecieveTime (0)
-		, m_ACKRecieveInterval (local.GetOwner ()->GetStreamingAckDelay ())
+		, m_ACKRecieveInterval (local->GetOwner ()->GetStreamingAckDelay ())
 		, m_RemoteLeaseChangeTime (0)
 		, m_LastWindowIncTime (0)
 		, m_LastACKRequestTime (0)
@@ -269,7 +301,7 @@ namespace stream
 		, m_PacketACKInterval (1)
 		, m_PacketACKIntervalRem (0)
 		, // for limit inbound speed
-		m_MaxNumResendAttempts (local.GetOwner ()->GetStreamingMaxResends ())
+		m_MaxNumResendAttempts (local->GetOwner ()->GetStreamingMaxResends ())
 		, m_NumResendAttempts (0)
 		, m_NumPacketsToSend (0)
 		, m_JitterAccum (0)
@@ -277,10 +309,10 @@ namespace stream
 		, m_MTU (STREAMING_MTU)
 	{
 		RAND_bytes ((uint8_t *)&m_RecvStreamID, 4);
-		auto outboundSpeed = local.GetOwner ()->GetStreamingOutboundSpeed ();
+		auto outboundSpeed = m_LocalDestinationOwner->GetOwner ()->GetStreamingOutboundSpeed ();
 		if (outboundSpeed) m_MinPacingTime = (1000000LL * STREAMING_MTU) / outboundSpeed;
 
-		auto inboundSpeed = local.GetOwner ()->GetStreamingInboundSpeed (); // for limit inbound speed
+		auto inboundSpeed = m_LocalDestinationOwner->GetOwner ()->GetStreamingInboundSpeed (); // for limit inbound speed
 		if (inboundSpeed) m_PacketACKInterval = (1000000LL * STREAMING_MTU) / inboundSpeed;
 	}
 
@@ -1186,6 +1218,16 @@ namespace stream
 			m_SendBuffer.CleanUp ();
 			return;
 		}
+		if (m_Status == eStreamStatusClosed || m_Status == eStreamStatusReset)
+		{
+			// No data may follow a CLOSE or RESET. CleanUp completes the queued
+			// write handlers with operation_aborted, so a caller that writes
+			// after the connection ended sees the failure instead of silent
+			// success. Orderly half-close is unaffected: eStreamStatusClosing
+			// still flushes the send buffer before the FIN.
+			m_SendBuffer.CleanUp ();
+			return;
+		}
 		if (m_RemoteLeaseSet) // don't schedule send for first SYN for incoming stream
 			ScheduleSend ();
 		auto ts = i2p::util::GetMillisecondsSinceEpoch ();
@@ -1676,6 +1718,10 @@ namespace stream
 		}
 
 		p->len = size;
+		// The FIN is sent once: it is not retransmitted and no TIME-WAIT state
+		// retains the closed connection. FIN/TIME-WAIT retention is tracked as
+		// an open divergence from I2P Java; do not add retransmission here
+		// without a specification reference.
 		boost::asio::post (m_Service, std::bind (&Stream::SendPacket, shared_from_this (), p));
 		if (m_RoutingSession)
 		{
@@ -1685,7 +1731,7 @@ namespace stream
 		LogPrint (eLogDebug, "Streaming: FIN sent, sSID=", m_SendStreamID);
 	}
 
-	void Stream::SendReset ()
+	Packet * Stream::CreateResetPacket ()
 	{
 		Packet * p = m_LocalDestination.NewPacket ();
 		uint8_t * packet = p->GetBuffer ();
@@ -1739,6 +1785,12 @@ namespace stream
 			m_LocalDestination.GetOwner ()->Sign (packet, static_cast<int> (size), signature);
 		}
 		p->len = size;
+		return p;
+	}
+
+	void Stream::SendReset ()
+	{
+		Packet * p = CreateResetPacket ();
 		boost::asio::post (m_Service, std::bind (&Stream::SendPacket, shared_from_this (), p));
 		if (m_RoutingSession)
 		{
@@ -1746,6 +1798,39 @@ namespace stream
 			m_RoutingSession->SetNumSentPackets (numSentPackets + 1);
 		}
 		LogPrint (eLogDebug, "Streaming: RST sent, sSID=", m_SendStreamID);
+	}
+
+	bool Stream::SendResetOnce ()
+	{
+		if (!m_SendStreamID) return false;
+		Packet * p = CreateResetPacket ();
+		// Send synchronously and do not retain the packet: a RESET for a
+		// connection we never accepted must not enter the resend queue, which
+		// would retransmit it and arm timers for a stream nobody owns.
+		SendPackets ({ p });
+		m_LocalDestination.DeletePacket (p);
+		LogPrint (eLogDebug, "Streaming: RST sent once, sSID=", m_SendStreamID);
+		return true;
+	}
+
+	bool Stream::RejectWithReset (Packet * packet)
+	{
+		if (!packet) return false;
+		// Suppress the SYNACK that HandleNextPacket sends for a first SYN: this
+		// connection is being refused, not accepted.
+		m_Status = eStreamStatusReset;
+		HandleNextPacket (packet); // consumes the packet
+		if (m_Status == eStreamStatusTerminated || !m_SendStreamID) return false;
+		return SendResetOnce ();
+	}
+
+	void Stream::AbortWithReset ()
+	{
+		if (m_Status == eStreamStatusTerminated) return;
+		m_Status = eStreamStatusReset;
+		m_IsResetReceived = false;
+		SendResetOnce ();
+		Terminate (true);
 	}
 
 	size_t Stream::ConcatenatePackets (uint8_t * buf, size_t len)
@@ -2494,14 +2579,273 @@ namespace stream
 		m_IsRemoteLeaseChangeInProgress = false;
 	}
 
+	bool SyncAcceptState::Deliver (std::shared_ptr<Stream> stream)
+	{
+		{
+			std::lock_guard<std::mutex> lock (m_Mutex);
+			if (m_Cancelled) return false;
+			m_Stream = std::move (stream);
+			m_Completed = true;
+		}
+		m_Changed.notify_all ();
+		return true;
+	}
+
+	bool SyncAcceptState::Cancel ()
+	{
+		std::lock_guard<std::mutex> lock (m_Mutex);
+		if (m_Completed) return false;
+		m_Cancelled = true;
+		return true;
+	}
+
+	bool SyncAcceptState::Wait (int timeout)
+	{
+		std::unique_lock<std::mutex> lock (m_Mutex);
+		auto ready = [this] () { return m_Completed; };
+		// A zero timeout waits indefinitely, a positive one bounds the wait and a
+		// negative one returns immediately, matching the previous helper.
+		if (timeout != 0) return m_Changed.wait_for (lock, std::chrono::seconds (timeout), ready);
+		m_Changed.wait (lock, ready);
+		return true;
+	}
+
+	std::shared_ptr<Stream> SyncAcceptState::GetStream () const
+	{
+		std::lock_guard<std::mutex> lock (m_Mutex);
+		return m_Stream;
+	}
+
+	StreamingDestination::SynAdmission StreamingDestination::DecideSynAdmission (
+		uint32_t receiveStreamID, i2p::garlic::ECIESX25519AEADRatchetSession * from)
+	{
+		if (IsRecentlyClosed (receiveStreamID)) return SynAdmission::eRecentlyClosed;
+		{
+			std::lock_guard<std::mutex> lock (m_StreamsMutex);
+			if (m_IncomingStreams.find (receiveStreamID) != m_IncomingStreams.end ())
+				return SynAdmission::eDuplicate;
+		}
+		if (m_Owner->GetStreamingMaxConcurrentStreams () > 0
+			&& (int)GetNumStreams () > m_Owner->GetStreamingMaxConcurrentStreams ())
+			return SynAdmission::eOverLimit;
+		{
+			// Only the owning service thread appends to the backlog, so this
+			// check is exact when the caller is that thread.
+			std::lock_guard<std::mutex> lock (m_AcceptorMutex);
+			if (!m_Acceptor && m_ArmedAcceptors.empty ()
+				&& m_PendingIncomingStreams.size () >= MAX_PENDING_INCOMING_BACKLOG)
+				return SynAdmission::eBacklogFull;
+		}
+		if (from && m_ConnectionThrottle)
+		{
+			auto ts = i2p::util::GetSecondsSinceEpoch ();
+			if (m_ConnectionThrottle->Check (from->GetRemoteStaticKey (), ts) > 0) return SynAdmission::eThrottled;
+		}
+		return SynAdmission::eAccept;
+	}
+
+	bool StreamingDestination::RejectSynWithReset (Packet * packet, uint32_t receiveStreamID)
+	{
+		if (!packet) return false;
+		// A detached stream consumes the SYN so only an authenticated packet is
+		// answered, and it is never registered: follow-on packets for this
+		// receiveStreamID still find no stream and are treated as unknown.
+		auto stream = std::make_shared<Stream> (m_Owner->GetService (), shared_from_this ());
+		stream->SetPorts (m_LastFromPort, m_LastToPort);
+		bool sent = stream->RejectWithReset (packet);
+		if (sent)
+		{
+			m_NumRejectionResets.fetch_add (1);
+			LogPrint (eLogDebug, "Streaming: RESET sent for rejected SYN rSID=", receiveStreamID);
+		}
+		stream->Terminate (false);
+		return sent;
+	}
+
+	bool StreamingDestination::BuildRejectionResetForTesting (uint32_t receiveStreamID)
+	{
+		auto stream = std::make_shared<Stream> (m_Owner->GetService (), shared_from_this ());
+		stream->SetStreamIDsForTesting (receiveStreamID, GetRandom ());
+		bool sent = stream->SendResetOnce ();
+		if (sent) m_NumRejectionResets.fetch_add (1);
+		stream->Terminate (false);
+		return sent;
+	}
+
+	StreamAdmission StreamingDestination::EvaluateAdmission (const i2p::data::IdentHash & peer) const
+	{
+		std::shared_ptr<const AdmissionPredicate> predicate;
+		{
+			std::lock_guard<std::mutex> lock (m_AcceptorMutex);
+			predicate = m_AdmissionPredicate;
+		}
+		// Invoke outside the lock: the filter takes its own lock and may read a
+		// cached file list, so no streaming lock may be held here.
+		if (!predicate || !*predicate) return StreamAdmission::eAllow;
+		return (*predicate) (peer, m_LocalPort);
+	}
+
+	StreamAdmission StreamingDestination::ApplyAdmissionForTesting (
+		uint32_t receiveStreamID, const i2p::data::IdentHash & peer)
+	{
+		auto action = EvaluateAdmission (peer);
+		switch (action)
+		{
+		case StreamAdmission::eDrop:
+			LogSynRejection ("access filter drop", receiveStreamID);
+			break;
+		case StreamAdmission::eReset:
+			LogSynRejection ("access filter deny", receiveStreamID);
+			RememberRecentlyClosed (receiveStreamID);
+			BuildRejectionResetForTesting (receiveStreamID);
+			break;
+		case StreamAdmission::eAllow: break;
+		}
+		return action;
+	}
+
+	StreamAdmission StreamingDestination::ApplyRejectionActionForTesting (uint32_t receiveStreamID)
+	{
+		auto action = m_RejectionAction.load ();
+		if (action == StreamAdmission::eDrop)
+			LogSynRejection ("limit drop", receiveStreamID);
+		else
+		{
+			LogSynRejection ("limit reset", receiveStreamID);
+			RememberRecentlyClosed (receiveStreamID);
+			BuildRejectionResetForTesting (receiveStreamID);
+		}
+		return action;
+	}
+
+	void StreamingDestination::RejectSyn (Packet * packet, uint32_t receiveStreamID, const char * reason)
+	{
+		LogSynRejection (reason, receiveStreamID);
+		if (m_RejectionAction.load () == StreamAdmission::eDrop)
+		{
+			// `limitAction=drop`: the peer gets no answer at all, so the SYN is
+			// consumed without a stream and without polluting the
+			// recently-closed table (a retransmission is dropped again).
+			DeletePacket (packet);
+			return;
+		}
+		RememberRecentlyClosed (receiveStreamID);
+		RejectSynWithReset (packet, receiveStreamID);
+	}
+
+	bool StreamingDestination::IsRecentlyClosed (uint32_t receiveStreamID) const
+	{
+		if (!receiveStreamID) return false;
+		auto ts = i2p::util::GetSecondsSinceEpoch ();
+		std::lock_guard<std::mutex> lock (m_RecentlyClosedMutex);
+		auto it = m_RecentlyClosed.find (receiveStreamID);
+		if (it == m_RecentlyClosed.end ()) return false;
+		if (ts > it->second + RECENTLY_CLOSED_TIMEOUT)
+		{
+			m_RecentlyClosed.erase (it);
+			return false;
+		}
+		return true;
+	}
+
+	void StreamingDestination::RememberRecentlyClosed (uint32_t receiveStreamID)
+	{
+		if (!receiveStreamID) return;
+		auto ts = i2p::util::GetSecondsSinceEpoch ();
+		std::lock_guard<std::mutex> lock (m_RecentlyClosedMutex);
+		// Decay first so the bound applies to the live window only.
+		for (auto it = m_RecentlyClosed.begin (); it != m_RecentlyClosed.end ();)
+		{
+			if (ts > it->second + RECENTLY_CLOSED_TIMEOUT)
+				it = m_RecentlyClosed.erase (it);
+			else
+				++it;
+		}
+		while (m_RecentlyClosed.size () >= MAX_RECENTLY_CLOSED_STREAMS)
+		{
+			auto oldest = m_RecentlyClosed.begin ();
+			for (auto it = m_RecentlyClosed.begin (); it != m_RecentlyClosed.end (); ++it)
+				if (it->second < oldest->second) oldest = it;
+			if (oldest == m_RecentlyClosed.end ()) break;
+			m_RecentlyClosed.erase (oldest);
+		}
+		m_RecentlyClosed[receiveStreamID] = ts;
+	}
+
+	void StreamingDestination::ClearRecentlyClosed ()
+	{
+		std::lock_guard<std::mutex> lock (m_RecentlyClosedMutex);
+		m_RecentlyClosed.clear ();
+	}
+
+	void StreamingDestination::LogSynRejection (const char * reason, uint32_t receiveStreamID)
+	{
+		// Throttle: a rejected peer retransmits, and each retransmission must not
+		// produce an unbounded log line.
+		auto ts = i2p::util::GetMillisecondsSinceEpoch ();
+		if (ts < m_LastSynRejectLogTime + SYN_REJECT_LOG_INTERVAL)
+		{
+			m_NumSuppressedSynRejects++;
+			return;
+		}
+		if (m_NumSuppressedSynRejects)
+			LogPrint (eLogInfo, "Streaming: Incoming SYN rSID=", receiveStreamID, " rejected: ", reason, " (",
+				m_NumSuppressedSynRejects, " similar lines suppressed)");
+		else
+			LogPrint (eLogInfo, "Streaming: Incoming SYN rSID=", receiveStreamID, " rejected: ", reason);
+		m_NumSuppressedSynRejects = 0;
+		m_LastSynRejectLogTime = ts;
+	}
+
 	StreamingDestination::StreamingDestination (
 		std::shared_ptr<i2p::client::ClientDestination> owner, uint16_t localPort, bool gzip)
 		: m_Owner (owner)
 		, m_LocalPort (localPort)
 		, m_Gzip (gzip)
 		, m_PendingIncomingTimer (m_Owner->GetService ())
+		, m_ConnectionCleanupTimer (m_Owner->GetService ())
 		, m_LastCleanupTime (i2p::util::GetSecondsSinceEpoch ())
+		, m_ConnectionThrottle (owner->GetStreamingConnectionThrottle ())
 	{
+		UpdateConnectionLimits ();
+	}
+
+	void StreamingDestination::SetOwner (std::shared_ptr<i2p::client::ClientDestination> owner)
+	{
+		m_Owner = std::move (owner);
+		m_ConnectionThrottle = m_Owner ? m_Owner->GetStreamingConnectionThrottle () : nullptr;
+		UpdateConnectionLimits ();
+	}
+
+	void StreamingDestination::UpdateConnectionLimits ()
+	{
+		StreamingConnectionLimits limits;
+		if (m_Owner)
+		{
+			limits.perPeerMinute = m_Owner->GetStreamingMaxConnsPerMinute ();
+			limits.perPeerHour = m_Owner->GetStreamingMaxConnsPerHour ();
+			limits.perPeerDay = m_Owner->GetStreamingMaxConnsPerDay ();
+			limits.totalMinute = m_Owner->GetStreamingMaxTotalConnsPerMinute ();
+			limits.totalHour = m_Owner->GetStreamingMaxTotalConnsPerHour ();
+			limits.totalDay = m_Owner->GetStreamingMaxTotalConnsPerDay ();
+		}
+		if (m_ConnectionThrottle) m_ConnectionThrottle->SetLimits (limits);
+	}
+
+	void StreamingDestination::ScheduleConnectionCleanup ()
+	{
+		m_ConnectionCleanupTimer.expires_after (std::chrono::seconds (STREAMING_CONNECTION_CLEANUP_INTERVAL));
+		m_ConnectionCleanupTimer.async_wait ([weak = weak_from_this ()] (const boost::system::error_code & ecode)
+			{
+				if (auto self = weak.lock ()) self->HandleConnectionCleanup (ecode);
+			});
+	}
+
+	void StreamingDestination::HandleConnectionCleanup (const boost::system::error_code & ecode)
+	{
+		if (ecode) return;
+		if (m_ConnectionThrottle) m_ConnectionThrottle->Cleanup (i2p::util::GetSecondsSinceEpoch ());
+		ScheduleConnectionCleanup ();
 	}
 
 	StreamingDestination::~StreamingDestination ()
@@ -2514,14 +2858,73 @@ namespace stream
 		m_SavedPackets.clear ();
 	}
 
-	void StreamingDestination::Start () { }
+	void StreamingDestination::Start ()
+	{
+		// Like Stop(), timer arming belongs to the owning io_context. SAM
+		// creates and starts an additional per-port destination from its own
+		// control thread while the destination service may already be running.
+		if (m_Owner)
+		{
+			auto & service = m_Owner->GetService ();
+			if (!service.stopped () && !service.get_executor ().running_in_this_thread ())
+			{
+				auto self = shared_from_this ();
+				boost::asio::post (service, [self] () { self->StartInternal (); });
+				return;
+			}
+		}
+		StartInternal ();
+	}
+
+	void StreamingDestination::StartInternal ()
+	{
+		// Start must stay idempotent even when SAM posts it and the owning
+		// destination also starts the same object from its service thread.
+		if (m_Started.exchange (true)) return;
+		ScheduleConnectionCleanup ();
+	}
 
 	void StreamingDestination::Stop ()
 	{
+		// Timers, stream maps and acceptor callbacks belong to the owning
+		// destination's io_context. SAM removes a streaming destination from its
+		// own control thread, so marshal the teardown like ClientDestination::Stop
+		// does instead of cancelling timers and terminating streams concurrently.
+		if (m_Owner)
+		{
+			auto & service = m_Owner->GetService ();
+			if (!service.stopped () && !service.get_executor ().running_in_this_thread ())
+			{
+				auto done = std::make_shared<std::promise<void>> ();
+				auto future = done->get_future ();
+				auto self = shared_from_this ();
+				boost::asio::post (service,
+					[this, self, done] ()
+					{
+						StopInternal ();
+						done->set_value ();
+					});
+				if (future.wait_for (std::chrono::seconds (i2p::client::STOP_ON_SERVICE_TIMEOUT)) == std::future_status::ready) return;
+				LogPrint (eLogError, "Streaming: Service didn't stop the destination in ", i2p::client::STOP_ON_SERVICE_TIMEOUT,
+					" seconds");
+				return;
+			}
+		}
+		StopInternal ();
+	}
+
+	void StreamingDestination::StopInternal ()
+	{
+		m_Started.store (false);
 		ResetAcceptor ();
 		ResetPongHandler ();
 		m_PendingIncomingTimer.cancel ();
-		m_PendingIncomingStreams.clear ();
+		m_ConnectionCleanupTimer.cancel ();
+		ClearRecentlyClosed ();
+		{
+			std::lock_guard<std::mutex> l (m_AcceptorMutex);
+			m_PendingIncomingStreams.clear ();
+		}
 		{
 			std::lock_guard<std::mutex> l (m_StreamsMutex);
 			for (auto it : m_Streams) it.second->Terminate (false); // we delete here
@@ -2561,7 +2964,7 @@ namespace stream
 			{
 				// ping
 				LogPrint (eLogInfo, "Streaming: Ping received sSID=", sendStreamID);
-				auto s = std::make_shared<Stream> (m_Owner->GetService (), *this);
+				auto s = std::make_shared<Stream> (m_Owner->GetService (), shared_from_this ());
 				s->SetPorts (lastFromPort, lastToPort);
 				s->HandlePing (packet);
 			}
@@ -2577,52 +2980,87 @@ namespace stream
 			{
 				// pong
 				LogPrint (eLogInfo, "Streaming: Pong received rSID=", packet->GetReceiveStreamID ());
-				if (m_PongHandler != nullptr)
-					m_PongHandler (packet->from ? packet->from->GetDestinationPtr () : nullptr);
+				std::shared_ptr<const PongHandler> pongHandler;
+				{
+					std::lock_guard<std::mutex> l (m_AcceptorMutex);
+					pongHandler = m_PongHandler;
+				}
+				// Invoke the snapshot outside the lock: the handler is replaced
+				// from other threads while this one runs.
+				if (pongHandler && *pongHandler)
+					(*pongHandler) (packet->from ? packet->from->GetDestinationPtr () : nullptr);
 				DeletePacket (packet);
 				return;
 			}
 			if (packet->IsSYN () && !packet->GetSeqn ()) // new incoming stream
 			{
 				uint32_t receiveStreamID = packet->GetReceiveStreamID ();
-				auto it1 = m_IncomingStreams.find (receiveStreamID);
-				if (it1 != m_IncomingStreams.end ())
+				switch (DecideSynAdmission (receiveStreamID, packet->from))
 				{
-					// already pending
+				case SynAdmission::eDuplicate:
+					// Already pending: the SYNACK or its ACK is still in flight.
+					// Drop the retransmission and let the normal SYNACK resend
+					// re-acknowledge it, but never reset the routing path of a
+					// live stream (that would throw away a working path and the
+					// connection's RTT/RTO history).
 					LogPrint (eLogInfo, "Streaming: Incoming streaming with rSID=", receiveStreamID, " already exists");
-					it1->second->ResetRoutingPath (); // Ack was not delivered, changing path
-					DeletePacket (packet); // drop it, because previous should be connected
-					return;
-				}
-				if (m_Owner->GetStreamingMaxConcurrentStreams () > 0
-					&& (int)GetNumStreams () > m_Owner->GetStreamingMaxConcurrentStreams ())
-				{
-					LogPrint (eLogInfo, "Streaming: Number of streams exceeds ",
-						m_Owner->GetStreamingMaxConcurrentStreams ());
 					DeletePacket (packet);
 					return;
+				case SynAdmission::eRecentlyClosed:
+					// A retransmitted SYN must not resurrect a connection that is
+					// already gone (Java ConnectionManager._recentlyClosed).
+					RejectSyn (packet, receiveStreamID, "recently closed"); // consumes the packet
+					return;
+				case SynAdmission::eOverLimit:
+					RejectSyn (packet, receiveStreamID, "concurrent stream limit");
+					return;
+				case SynAdmission::eBacklogFull:
+					RejectSyn (packet, receiveStreamID, "pending incoming backlog full");
+					return;
+				case SynAdmission::eThrottled:
+					RejectSyn (packet, receiveStreamID, "connection throttle");
+					return;
+				case SynAdmission::eAccept: break;
 				}
-				if (m_Owner->GetStreamingMaxConnsPerMinute () > 0 && packet->from)
+				// Server-tunnel access filter (Java access/*). The decision is
+				// taken on the identity the SYN announces, before the stream is
+				// created, so a refused peer gets no SYNACK and never reaches
+				// an acceptor. A denial is silent (`drop`) or answered with one
+				// signed RESET (Java limitAction=reset).
+				if (IsAdmissionPredicateSet ())
 				{
-					auto ts = i2p::util::GetSecondsSinceEpoch ();
-					auto & numConnectionsList
-						= m_NumIncomingConnectionsPerSecond[packet->from->GetRemoteStaticKey ()]; // find or create new
-					CleanupExpiredNumConnectionsPerSecond (numConnectionsList, ts);
-					if ((int)numConnectionsList.size () >= m_Owner->GetStreamingMaxConnsPerMinute ())
+					auto peer = ExtractSynPeerIdentity (packet);
+					if (peer)
 					{
-						LogPrint (eLogInfo, "Streaming: Number of incoming streams exceeds ",
-							m_Owner->GetStreamingMaxConnsPerMinute (), " streams per minute");
-						DeletePacket (packet);
-						return;
+						switch (EvaluateAdmission (*peer))
+						{
+						case StreamAdmission::eDrop:
+							LogSynRejection ("access filter drop", receiveStreamID);
+							DeletePacket (packet);
+							return;
+						case StreamAdmission::eReset:
+							LogSynRejection ("access filter deny", receiveStreamID);
+							RememberRecentlyClosed (receiveStreamID);
+							RejectSynWithReset (packet, receiveStreamID); // consumes the packet
+							return;
+						case StreamAdmission::eAllow: break;
+						}
 					}
-					else
-						numConnectionsList.emplace_back (ts);
 				}
 				auto incomingStream = CreateNewIncomingStream (receiveStreamID);
 				incomingStream->HandleNextPacket (packet); // SYN
 				if (incomingStream->GetStatus () != eStreamStatusOpen)
 				{
 					LogPrint (eLogInfo, "Streaming: SYN did not create an open stream, rSID=", receiveStreamID);
+					// Do not leave a half-open registration behind: follow-on
+					// packets for this receiveStreamID must never be routed to a
+					// stream that never opened.
+					incomingStream->Terminate (false);
+					{
+						std::lock_guard<std::mutex> l (m_StreamsMutex);
+						m_Streams.erase (incomingStream->GetRecvStreamID ());
+						m_IncomingStreams.erase (receiveStreamID);
+					}
 					return;
 				}
 				if (!incomingStream->GetRemoteLeaseSet ())
@@ -2645,32 +3083,30 @@ namespace stream
 						m_SavedPackets.erase (it);
 					}
 				}
-				// accept
-				if (m_Acceptor != nullptr)
-					m_Acceptor (incomingStream);
-				else
+				// Hand the stream to an acceptor or queue it. Admission and the
+				// acceptor decision happen under one lock, so a concurrent
+				// ResetAcceptor cannot orphan the stream between the check and
+				// the invocation.
+				if (!AddPendingIncomingStream (incomingStream))
 				{
-					LogPrint (eLogWarning, "Streaming: Acceptor for incoming stream is not set");
-					if (m_PendingIncomingStreams.size () < MAX_PENDING_INCOMING_BACKLOG)
-					{
-						m_PendingIncomingStreams.push_back (incomingStream);
-						m_PendingIncomingTimer.cancel ();
-						m_PendingIncomingTimer.expires_after (std::chrono::seconds (PENDING_INCOMING_TIMEOUT));
-						m_PendingIncomingTimer.async_wait (std::bind (&StreamingDestination::HandlePendingIncomingTimer,
-							shared_from_this (), std::placeholders::_1));
-						LogPrint (eLogDebug, "Streaming: Pending incoming stream added, rSID=", receiveStreamID);
-					}
-					else
-					{
-						LogPrint (eLogWarning, "Streaming: Pending incoming streams backlog exceeds ",
-							MAX_PENDING_INCOMING_BACKLOG);
-						incomingStream->Close ();
-					}
+					// The backlog can only fill on this thread, so this is a
+					// defensive branch: refuse the stream instead of leaving the
+					// peer to retransmit against silence.
+					LogSynRejection ("pending incoming backlog full", receiveStreamID);
+					RememberRecentlyClosed (receiveStreamID);
+					incomingStream->AbortWithReset ();
 				}
 			}
 			else // follow on packet without SYN
 			{
 				uint32_t receiveStreamID = packet->GetReceiveStreamID ();
+				if (IsRecentlyClosed (receiveStreamID))
+				{
+					// Late data for a connection that is already gone: do not
+					// buffer it for a stream that will never be created.
+					DeletePacket (packet);
+					return;
+				}
 				auto it1 = m_IncomingStreams.find (receiveStreamID);
 				if (it1 != m_IncomingStreams.end ())
 				{
@@ -2725,7 +3161,7 @@ namespace stream
 	std::shared_ptr<Stream> StreamingDestination::CreateNewOutgoingStream (
 		std::shared_ptr<const i2p::data::LeaseSet> remote, int port)
 	{
-		auto s = std::make_shared<Stream> (m_Owner->GetService (), *this, remote, port);
+		auto s = std::make_shared<Stream> (m_Owner->GetService (), shared_from_this (), remote, port);
 		std::lock_guard<std::mutex> l (m_StreamsMutex);
 		m_Streams.emplace (s->GetRecvStreamID (), s);
 		return s;
@@ -2734,14 +3170,14 @@ namespace stream
 	void StreamingDestination::SendPing (
 		std::shared_ptr<const i2p::data::LeaseSet> remote, uint16_t fromPort, uint16_t toPort)
 	{
-		auto s = std::make_shared<Stream> (m_Owner->GetService (), *this, remote, toPort);
+		auto s = std::make_shared<Stream> (m_Owner->GetService (), shared_from_this (), remote, toPort);
 		s->SetPorts (toPort, fromPort); // remote port, local port
 		s->SendPing ();
 	}
 
 	std::shared_ptr<Stream> StreamingDestination::CreateNewIncomingStream (uint32_t receiveStreamID)
 	{
-		auto s = std::make_shared<Stream> (m_Owner->GetService (), *this);
+		auto s = std::make_shared<Stream> (m_Owner->GetService (), shared_from_this ());
 		// An incoming stream replies to the peer's source port, and reports the
 		// destination port it arrived on (SAM 3.2 FROM_PORT/TO_PORT).
 		s->SetPorts (m_LastFromPort, m_LastToPort);
@@ -2755,27 +3191,26 @@ namespace stream
 	{
 		if (stream)
 		{
-			std::lock_guard<std::mutex> l (m_StreamsMutex);
-			m_Streams.erase (stream->GetRecvStreamID ());
-			if (stream->IsIncoming ()) m_IncomingStreams.erase (stream->GetSendStreamID ());
-			if (m_LastStream == stream) m_LastStream = nullptr;
+			uint32_t recentlyClosedID = 0;
+			{
+				std::lock_guard<std::mutex> l (m_StreamsMutex);
+				// Only a stream that was really registered counts as closed; the
+				// detached stream used to refuse a SYN is never in the map, so a
+				// forged SYN cannot poison the recently-closed set.
+				if (m_Streams.erase (stream->GetRecvStreamID ()) && stream->IsIncoming ())
+					recentlyClosedID = stream->GetSendStreamID ();
+				if (stream->IsIncoming ()) m_IncomingStreams.erase (stream->GetSendStreamID ());
+				if (m_LastStream == stream) m_LastStream = nullptr;
+			}
+			// Java ConnectionManager._recentlyClosed: a retransmitted SYN for
+			// this connection must not open it again.
+			if (recentlyClosedID) RememberRecentlyClosed (recentlyClosedID);
 		}
 		auto ts = i2p::util::GetSecondsSinceEpoch ();
 		if (GetNumStreams () == 0 || ts > m_LastCleanupTime + STREAMING_DESTINATION_POOLS_CLEANUP_INTERVAL)
 		{
 			m_PacketsPool.CleanUp ();
 			m_I2NPMsgsPool.CleanUp ();
-			if (!m_NumIncomingConnectionsPerSecond.empty ())
-			{
-				for (auto it = m_NumIncomingConnectionsPerSecond.begin ();
-					it != m_NumIncomingConnectionsPerSecond.end ();)
-				{
-					if (it->second.empty () || it->second.back () + 60 < ts) // newest is too old
-						it = m_NumIncomingConnectionsPerSecond.erase (it);
-					else
-						it++;
-				}
-			}
 			m_LastCleanupTime = ts;
 		}
 	}
@@ -2794,104 +3229,268 @@ namespace stream
 		auto it = m_Streams.find (recvStreamID);
 		if (it == m_Streams.end ()) return false;
 		auto s = it->second;
+		auto weak = weak_from_this ();
 		boost::asio::post (m_Owner->GetService (),
-			[this, s] ()
+			[weak, s] ()
 			{
+				auto self = weak.lock ();
+				if (!self) return;
 				s->Close (); // try to send FIN
 				s->Terminate (false);
-				DeleteStream (s);
+				self->DeleteStream (s);
 			});
 		return true;
 	}
 
-	void StreamingDestination::SetAcceptor (const Acceptor & acceptor)
+	StreamingDestination::Acceptor StreamingDestination::SetAcceptor (const Acceptor & acceptor)
 	{
-		m_Acceptor = acceptor; // we must set it immediately for IsAcceptorSet
-		auto s = shared_from_this ();
-		boost::asio::post (m_Owner->GetService (),
-			[s, acceptor] (void)
-			{
-				// Capture the function by value: ResetAcceptor() may run before
-				// this posted handler and would otherwise leave an empty
-				// std::function that throws bad_function_call.
-				auto pending = std::move (s->m_PendingIncomingStreams);
-				s->m_PendingIncomingStreams.clear ();
-				s->m_PendingIncomingTimer.cancel ();
-				if (!acceptor) return;
-				for (auto & it : pending)
-					if (it->GetStatus () == eStreamStatusOpen) acceptor (it);
-			});
+		Acceptor replaced;
+		{
+			std::lock_guard<std::mutex> lock (m_AcceptorMutex);
+			replaced = std::move (m_Acceptor);
+			m_Acceptor = acceptor; // we must set it immediately for IsAcceptorSet
+		}
+		if (acceptor)
+		{
+			auto self = shared_from_this ();
+			boost::asio::post (m_Owner->GetService (), [self] () { self->DispatchPendingIncoming (); });
+		}
+		// Hand the previous registration back: the caller owns exactly what it
+		// displaced and can tell whether it took over another tunnel's acceptor.
+		return replaced;
+	}
+
+	void StreamingDestination::SetAdmissionPredicate (const AdmissionPredicate & predicate)
+	{
+		auto holder = predicate ? std::make_shared<const AdmissionPredicate> (predicate) : nullptr;
+		std::lock_guard<std::mutex> lock (m_AcceptorMutex);
+		m_AdmissionPredicate = std::move (holder);
+	}
+
+	void StreamingDestination::ResetAdmissionPredicate ()
+	{
+		std::lock_guard<std::mutex> lock (m_AcceptorMutex);
+		m_AdmissionPredicate = nullptr;
+	}
+
+	bool StreamingDestination::IsAdmissionPredicateSet () const
+	{
+		std::lock_guard<std::mutex> lock (m_AcceptorMutex);
+		return m_AdmissionPredicate != nullptr;
 	}
 
 	void StreamingDestination::ResetAcceptor ()
 	{
-		if (m_Acceptor) m_Acceptor (nullptr);
-		m_Acceptor = nullptr;
+		std::vector<Acceptor> registrations;
+		Acceptor persistent;
+		{
+			std::lock_guard<std::mutex> lock (m_AcceptorMutex);
+			persistent = std::move (m_Acceptor);
+			m_Acceptor = nullptr;
+			registrations.reserve (m_ArmedAcceptors.size ());
+			// Newest first, the order the old lazy AcceptOnce chain unwound in.
+			for (auto it = m_ArmedAcceptors.rbegin (); it != m_ArmedAcceptors.rend (); ++it)
+				registrations.push_back (std::move (it->acceptor));
+			m_ArmedAcceptors.clear ();
+		}
+		// Every armed registration is completed with nullptr, outside the lock:
+		// a single reset must not strand the other waiters (a SAM socket would
+		// otherwise stay in its accepting state forever).
+		for (auto & acceptor : registrations)
+			if (acceptor) acceptor (nullptr);
+		if (persistent) persistent (nullptr);
+	}
+
+	bool StreamingDestination::IsAcceptorSet () const
+	{
+		std::lock_guard<std::mutex> lock (m_AcceptorMutex);
+		return m_Acceptor != nullptr || !m_ArmedAcceptors.empty ();
+	}
+
+	bool StreamingDestination::RemoveAcceptor (AcceptorToken token)
+	{
+		std::lock_guard<std::mutex> lock (m_AcceptorMutex);
+		auto it = std::find_if (m_ArmedAcceptors.begin (), m_ArmedAcceptors.end (),
+			[token] (const AcceptorRegistration & registration) { return registration.id == token; });
+		if (it == m_ArmedAcceptors.end ()) return false;
+		m_ArmedAcceptors.erase (it);
+		return true;
+	}
+
+	StreamingDestination::Acceptor StreamingDestination::TakeArmedAcceptorForTesting (AcceptorToken token)
+	{
+		std::lock_guard<std::mutex> lock (m_AcceptorMutex);
+		auto it = std::find_if (m_ArmedAcceptors.begin (), m_ArmedAcceptors.end (),
+			[token] (const AcceptorRegistration & registration) { return registration.id == token; });
+		if (it == m_ArmedAcceptors.end ()) return nullptr;
+		auto acceptor = std::move (it->acceptor);
+		m_ArmedAcceptors.erase (it);
+		return acceptor;
+	}
+
+	size_t StreamingDestination::GetNumArmedAcceptorsForTesting () const
+	{
+		std::lock_guard<std::mutex> lock (m_AcceptorMutex);
+		return m_ArmedAcceptors.size ();
+	}
+
+	size_t StreamingDestination::GetNumPendingIncomingForTesting () const
+	{
+		std::lock_guard<std::mutex> lock (m_AcceptorMutex);
+		return m_PendingIncomingStreams.size ();
+	}
+
+	size_t StreamingDestination::GetNumRecentlyClosedForTesting () const
+	{
+		std::lock_guard<std::mutex> lock (m_RecentlyClosedMutex);
+		return m_RecentlyClosed.size ();
+	}
+
+	bool StreamingDestination::AddPendingIncomingStream (std::shared_ptr<Stream> stream)
+	{
+		if (!stream) return false;
+		{
+			std::lock_guard<std::mutex> lock (m_AcceptorMutex);
+			if (m_PendingIncomingStreams.size () >= MAX_PENDING_INCOMING_BACKLOG) return false;
+			m_PendingIncomingStreams.push_back (stream);
+		}
+		DispatchPendingIncoming ();
+		return true;
+	}
+
+	void StreamingDestination::DispatchPendingIncoming ()
+	{
+		for (;;)
+		{
+			std::shared_ptr<Stream> stream;
+			Acceptor acceptor;
+			{
+				// Decide and dequeue under one lock: a concurrent ResetAcceptor
+				// either sees the stream in the queue or the acceptor already
+				// took it, never neither.
+				std::lock_guard<std::mutex> lock (m_AcceptorMutex);
+				if (m_PendingIncomingStreams.empty ()) break;
+				if (!m_ArmedAcceptors.empty ())
+				{
+					acceptor = std::move (m_ArmedAcceptors.back ().acceptor);
+					m_ArmedAcceptors.pop_back ();
+				}
+				else if (m_Acceptor)
+					acceptor = m_Acceptor;
+				else
+					break;
+				stream = m_PendingIncomingStreams.front ();
+				m_PendingIncomingStreams.pop_front ();
+			}
+			// Invoke outside the lock: an acceptor may re-enter the destination.
+			if (acceptor && stream) acceptor (std::move (stream));
+		}
+		bool isEmpty;
+		{
+			std::lock_guard<std::mutex> lock (m_AcceptorMutex);
+			isEmpty = m_PendingIncomingStreams.empty ();
+		}
+		// Only the owning service thread touches the timer.
+		m_PendingIncomingTimer.cancel ();
+		if (!isEmpty)
+		{
+			m_PendingIncomingTimer.expires_after (std::chrono::seconds (PENDING_INCOMING_TIMEOUT));
+			m_PendingIncomingTimer.async_wait (std::bind (&StreamingDestination::HandlePendingIncomingTimer,
+				shared_from_this (), std::placeholders::_1));
+		}
 	}
 
 	void StreamingDestination::SetPongHandler (const PongHandler & handler)
 	{
-		m_PongHandler = handler;
+		// Publish an immutable copy: the service thread invokes the handler while
+		// BOB/other clients may replace or clear it.
+		auto holder = handler ? std::make_shared<const PongHandler> (handler) : nullptr;
+		std::lock_guard<std::mutex> lock (m_AcceptorMutex);
+		m_PongHandler = std::move (holder);
 	}
 
 	void StreamingDestination::ResetPongHandler ()
 	{
+		std::lock_guard<std::mutex> lock (m_AcceptorMutex);
 		m_PongHandler = nullptr;
 	}
 
-	void StreamingDestination::AcceptOnce (const Acceptor & acceptor)
+	StreamingDestination::AcceptorToken StreamingDestination::AcceptOnce (const Acceptor & acceptor)
 	{
-		boost::asio::post (m_Owner->GetService (),
-			[acceptor, this] (void)
-			{
-				if (!m_PendingIncomingStreams.empty ())
-				{
-					acceptor (m_PendingIncomingStreams.front ());
-					m_PendingIncomingStreams.pop_front ();
-					if (m_PendingIncomingStreams.empty ()) m_PendingIncomingTimer.cancel ();
-				}
-				else // we must save old acceptor and set it back
-				{
-					m_Acceptor = std::bind (
-						&StreamingDestination::AcceptOnceAcceptor, this, std::placeholders::_1, acceptor, m_Acceptor);
-				}
-			});
+		AcceptorToken token = m_NextAcceptorToken.fetch_add (1);
+		if (!token) token = m_NextAcceptorToken.fetch_add (1);
+		{
+			// Publish the registration before returning: a concurrent SYN on the
+			// service thread either sees it or the posted dispatch below feeds a
+			// queued stream to it.
+			std::lock_guard<std::mutex> lock (m_AcceptorMutex);
+			m_ArmedAcceptors.push_back (AcceptorRegistration { token, acceptor });
+		}
+		auto self = shared_from_this ();
+		boost::asio::post (m_Owner->GetService (), [self] () { self->DispatchPendingIncoming (); });
+		return token;
 	}
 
-	void StreamingDestination::AcceptOnceAcceptor (std::shared_ptr<Stream> stream, Acceptor acceptor, Acceptor prev)
+	StreamingDestination::AcceptorToken StreamingDestination::ArmSyncAccept (
+		const std::shared_ptr<SyncAcceptState> & state)
 	{
-		m_Acceptor = prev;
-		acceptor (stream);
+		auto weak = weak_from_this ();
+		return AcceptOnce (
+			[weak, state] (std::shared_ptr<Stream> stream)
+			{
+				// Pass a copy: the parameter must stay valid for the re-offer below
+				// when the waiter already cancelled.
+				if (state && state->Deliver (stream)) return;
+				// The blocking caller already gave up (its timeout raced with the
+				// delivery). Re-offer the stream on the service thread instead of
+				// dropping it: it goes back to the next acceptor or the backlog.
+				auto self = weak.lock ();
+				if (!self) return;
+				boost::asio::post (self->GetOwner ()->GetService (),
+					[self, stream] ()
+					{
+						// A full backlog is the only way this can fail; answer the
+						// peer with a RESET instead of dropping an established
+						// connection silently.
+						if (!self->AddPendingIncomingStream (stream)) stream->AbortWithReset ();
+					});
+			});
 	}
 
 	std::shared_ptr<Stream> StreamingDestination::AcceptStream (int timeout)
 	{
-		std::shared_ptr<i2p::stream::Stream> stream;
-		std::condition_variable streamAccept;
-		std::mutex streamAcceptMutex;
-		std::unique_lock<std::mutex> l (streamAcceptMutex);
-		AcceptOnce (
-			[&streamAccept, &streamAcceptMutex, &stream] (std::shared_ptr<i2p::stream::Stream> s)
-			{
-				stream = s;
-				std::unique_lock<std::mutex> l (streamAcceptMutex);
-				streamAccept.notify_all ();
-			});
-		if (timeout)
-			streamAccept.wait_for (l, std::chrono::seconds (timeout));
-		else
-			streamAccept.wait (l);
-		return stream;
+		if (m_Owner && m_Owner->GetService ().get_executor ().running_in_this_thread ())
+		{
+			// Blocking here deadlocks: the acceptor is invoked on this very thread,
+			// so the wait could never be completed.
+			LogPrint (eLogError, "Streaming: AcceptStream called from the destination service thread");
+			return nullptr;
+		}
+		auto state = std::make_shared<SyncAcceptState> ();
+		auto token = ArmSyncAccept (state);
+		if (state->Wait (timeout)) return state->GetStream ();
+		// Timed out. Cancel first and unlink afterwards: when the cancellation
+		// wins, no invocation can reach this wait any more and the armSyncAccept
+		// callback re-offers any stream it may still receive. When a delivery won
+		// the race the stream exists and is returned, never dropped.
+		if (state->Cancel ())
+		{
+			RemoveAcceptor (token);
+			return nullptr;
+		}
+		return state->GetStream ();
 	}
 
 	void StreamingDestination::HandlePendingIncomingTimer (const boost::system::error_code & ecode)
 	{
-		if (ecode != boost::asio::error::operation_aborted)
+		if (ecode == boost::asio::error::operation_aborted) return;
+		LogPrint (eLogWarning, "Streaming: Pending incoming timeout expired");
+		std::list<std::shared_ptr<Stream>> pending;
 		{
-			LogPrint (eLogWarning, "Streaming: Pending incoming timeout expired");
-			for (auto & it : m_PendingIncomingStreams) it->Close ();
-			m_PendingIncomingStreams.clear ();
+			std::lock_guard<std::mutex> lock (m_AcceptorMutex);
+			pending.swap (m_PendingIncomingStreams);
 		}
+		for (auto & it : pending) it->Close ();
 	}
 
 	void StreamingDestination::HandleDataMessagePayload (uint16_t fromPort, uint16_t toPort, const uint8_t * buf,
@@ -2951,19 +3550,6 @@ namespace stream
 	uint32_t StreamingDestination::GetRandom ()
 	{
 		return m_Owner ? m_Owner->GetRng () () : i2p::crypto::RandomUInt32 ();
-	}
-
-	void StreamingDestination::CleanupExpiredNumConnectionsPerSecond (
-		std::list<uint64_t> & numConnectionsList, uint64_t ts)
-	{
-		if (numConnectionsList.empty ()) return;
-		auto it = numConnectionsList.begin ();
-		while (it != numConnectionsList.end ())
-		{
-			if (*it + 60 >= ts) break; // 1 minute
-			it++;
-		}
-		numConnectionsList.erase (numConnectionsList.begin (), it);
 	}
 }
 }

@@ -4,8 +4,9 @@
  *
  * openi2pd: test datagram receiver lifecycle.
  *
- * Covers identity-bearing receiver reset, wildcard fallback compatibility,
- * draining callbacks before owner teardown, and reset from inside a callback.
+ * Covers identity-bearing receiver reset, no port-to-wildcard promotion,
+ * protocol/port keyed identity and hash dispatch, draining callbacks before
+ * owner teardown, and reset from inside a callback.
  *
  */
 
@@ -23,6 +24,7 @@
 
 #include "Datagram.h"
 #include "Destination.h"
+#include "Gzip.h"
 
 namespace
 {
@@ -52,34 +54,119 @@ void DispatchRaw (const std::shared_ptr<i2p::datagram::DatagramDestination> & de
 		0, port, payload.data (), payload.size (), i2p::client::PROTOCOL_TYPE_RAW, nullptr);
 }
 
-void TestRegistrationIdentityAndFallback ()
+// Identity/hash dispatch needs a real remote peer: a Datagram1 frame carries
+// the sender's full identity and signature, Datagram3 the sender hash.
+struct Sender
+{
+	i2p::data::PrivateKeys keys;
+	std::shared_ptr<const i2p::data::IdentityEx> identity;
+	std::vector<uint8_t> identityBuffer;
+};
+
+Sender MakeSender ()
+{
+	Sender sender;
+	sender.keys = i2p::data::PrivateKeys::CreateRandomKeys (
+		i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, true);
+	sender.identity = sender.keys.GetPublic ();
+	sender.identityBuffer.resize (sender.identity->GetFullLen ());
+	sender.identity->ToBuffer (sender.identityBuffer.data (), sender.identityBuffer.size ());
+	return sender;
+}
+
+std::vector<uint8_t> Store (const std::vector<uint8_t> & frame)
+{
+	std::vector<uint8_t> out (frame.size () + 23);
+	auto len = i2p::data::GzipNoCompression (
+		frame.data (), static_cast<uint16_t> (frame.size ()), out.data (), out.size ());
+	assert (len == out.size ());
+	return out;
+}
+
+void DispatchDatagram1 (
+	const std::shared_ptr<i2p::datagram::DatagramDestination> & destination, const Sender & sender, uint16_t port)
+{
+	const uint8_t payload[] = { 0x11, 0x22, 0x33 };
+	std::vector<uint8_t> signature (sender.keys.GetSignatureLen ());
+	sender.keys.Sign (payload, sizeof (payload), signature.data ());
+	std::vector<uint8_t> frame = sender.identityBuffer;
+	frame.insert (frame.end (), signature.begin (), signature.end ());
+	frame.insert (frame.end (), payload, payload + sizeof (payload));
+	auto compressed = Store (frame);
+	destination->HandleDataMessagePayload (
+		0, port, compressed.data (), compressed.size (), i2p::client::PROTOCOL_TYPE_DATAGRAM, nullptr);
+}
+
+void DispatchDatagram3 (
+	const std::shared_ptr<i2p::datagram::DatagramDestination> & destination, const Sender & sender, uint16_t port)
+{
+	const uint8_t flags[] = { 0x00, 0x03 };
+	const auto & hash = sender.identity->GetIdentHash ();
+	std::vector<uint8_t> frame (hash.data (), hash.data () + 32);
+	frame.insert (frame.end (), flags, flags + 2);
+	frame.push_back (0x44);
+	auto compressed = Store (frame);
+	destination->HandleDataMessagePayload (
+		0, port, compressed.data (), compressed.size (), i2p::client::PROTOCOL_TYPE_DATAGRAM3, nullptr);
+}
+
+void TestIdentityRegistrationAndNoPromotion ()
 {
 	auto destination = MakeDatagramDestination ();
-	int fallbackCalls = 0, replacementCalls = 0, secondPortCalls = 0;
-	auto first = destination->SetRawReceiver (
-		[&] (uint8_t, uint16_t, uint16_t, const uint8_t *, size_t) { ++fallbackCalls; }, 41);
-	auto second = destination->SetRawReceiver (
-		[&] (uint8_t, uint16_t, uint16_t, const uint8_t *, size_t) { ++secondPortCalls; }, 42);
-	auto replacement = destination->SetRawReceiver (
-		[&] (uint8_t, uint16_t, uint16_t, const uint8_t *, size_t) { ++replacementCalls; }, 41);
+	auto sender = MakeSender ();
+	int firstCalls = 0, secondPortCalls = 0, replacementCalls = 0, hashCalls = 0;
+	auto first = destination->SetReceiver (
+		[&] (const i2p::data::IdentityEx &, uint16_t, uint16_t, const uint8_t *, size_t,
+			const i2p::util::Mapping *) { ++firstCalls; },
+		41);
+	auto second = destination->SetReceiver (
+		[&] (const i2p::data::IdentityEx &, uint16_t, uint16_t, const uint8_t *, size_t,
+			const i2p::util::Mapping *) { ++secondPortCalls; },
+		42);
 
-	// Port keys are last-wins; the initial port-specific receiver remains the
-	// wildcard fallback until an explicit wildcard registration replaces it.
-	DispatchRaw (destination, 41);
-	DispatchRaw (destination, 42);
-	DispatchRaw (destination, 99);
-	assert (replacementCalls == 1);
+	DispatchDatagram1 (destination, sender, 41);
+	DispatchDatagram1 (destination, sender, 42);
+	assert (firstCalls == 1);
 	assert (secondPortCalls == 1);
-	assert (fallbackCalls == 1);
+
+	// A port-specific registration is never promoted to the destination-wide
+	// fallback (Java only falls back to an explicit PROTO_ANY/PORT_ANY
+	// listener), so an unrelated port and the default port stay undelivered.
+	DispatchDatagram1 (destination, sender, 99);
+	DispatchDatagram1 (destination, sender, 0);
+	assert (firstCalls == 1);
+	assert (secondPortCalls == 1);
+
+	// Port keys remain last-wins.
+	auto replacement = destination->SetReceiver (
+		[&] (const i2p::data::IdentityEx &, uint16_t, uint16_t, const uint8_t *, size_t,
+			const i2p::util::Mapping *) { ++replacementCalls; },
+		41);
+	DispatchDatagram1 (destination, sender, 41);
+	assert (replacementCalls == 1);
 
 	// A stale owner's token cannot remove a replacement at the same port or
 	// the replacement's independent lifetime.
 	assert (first.Reset ());
-	DispatchRaw (destination, 41);
+	DispatchDatagram1 (destination, sender, 41);
 	assert (replacementCalls == 2);
 	replacement.Reset ();
-	DispatchRaw (destination, 41);
+	DispatchDatagram1 (destination, sender, 41);
 	assert (replacementCalls == 2);
+
+	// Hash (Datagram3) receivers follow the same keying: only the addressed
+	// port delivers, and the default slot stays empty.
+	auto hash = destination->SetHashReceiver (
+		[&] (const i2p::data::IdentHash &, uint16_t, uint16_t, const uint8_t *, size_t,
+			const i2p::util::Mapping *) { ++hashCalls; },
+		41);
+	DispatchDatagram3 (destination, sender, 41);
+	assert (hashCalls == 1);
+	DispatchDatagram3 (destination, sender, 42);
+	DispatchDatagram3 (destination, sender, 0);
+	assert (hashCalls == 1);
+
+	hash.Reset ();
 	second.Reset ();
 }
 
@@ -231,7 +318,7 @@ void TestReentrantCallbackDestructionOutsideRegistryLock ()
 
 int main ()
 {
-	TestRegistrationIdentityAndFallback ();
+	TestIdentityRegistrationAndNoPromotion ();
 	TestResetDrainsInFlightCallback ();
 	TestSelfResetDoesNotDeadlock ();
 	TestConcurrentSelfResetDoesNotDeadlock ();

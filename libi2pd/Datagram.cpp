@@ -6,10 +6,12 @@
  *
  * Serialises datagram1, datagram2 and datagram3 payloads into I2NP Data
  * messages and dispatches inbound Data, raw and protocol-specific payloads to
- * port-keyed receivers. Datagram2 signatures cover the remote hash, flags,
- * options, offline section and payload; Datagram3 options use a bounded
- * 16-bit-length-prefixed Mapping, and per-peer sessions handle routing paths,
- * LeaseSet refresh, send queues and idle cleanup.
+ * (protocol, port)-keyed receivers. Datagram2 signatures cover the remote
+ * hash, flags, options, offline section and payload; Datagram3 options use a
+ * bounded 16-bit-length-prefixed Mapping, and per-peer sessions handle routing
+ * paths, LeaseSet refresh, send queues and idle cleanup. The framing version is
+ * selected per send, and the session queue/routing state is mutex-guarded for
+ * SAM sends from its own socket threads.
  *
  */
 
@@ -26,6 +28,52 @@ namespace i2p
 {
 namespace datagram
 {
+	namespace
+	{
+		// All receiver tables are addressed by (protocol, port). SAM 3.3 keys a
+		// subsession on its listen protocol so two subsessions may share a port;
+		// the protocol is the high half to keep the map key bounded. Protocol 0
+		// is the catch-all on every table.
+		constexpr uint32_t MakeReceiverKey (uint8_t protocol, uint16_t port)
+		{
+			return (static_cast<uint32_t> (protocol) << 16) | port;
+		}
+
+		// The project signer is a void interface that leaves zeroed output behind
+		// when the provider operation fails. A zero signature can never verify,
+		// so it must never be published; the fallible Signer::Sign interface is
+		// tracked separately.
+		bool IsZeroSignature (const uint8_t * signature, size_t len)
+		{
+			if (!signature || !len) return true;
+			uint8_t accumulator = 0;
+			for (size_t i = 0; i < len; ++i) accumulator |= signature[i];
+			return accumulator == 0;
+		}
+
+		// Datagram2 offline section: expires(4) || transient key type(2) ||
+		// transient public key || long-term signature (PrivateKeys::
+		// CreateOfflineKeys). A shorter section cannot be parsed by the receiver,
+		// so it is dropped instead of published as an unverifiable datagram.
+		bool IsCompleteOfflineSection (const std::vector<uint8_t> & offline, size_t ownerSignatureLen)
+		{
+			if (offline.size () < i2p::data::OFFLINE_SIGNATURE_HEADER_LENGTH) return false;
+			std::unique_ptr<i2p::crypto::Verifier> verifier (
+				i2p::data::IdentityEx::CreateVerifier (static_cast<i2p::data::SigningKeyType> (bufbe16toh (offline.data () + 4))));
+			if (!verifier) return false;
+			const size_t expected
+				= i2p::data::OFFLINE_SIGNATURE_HEADER_LENGTH + verifier->GetPublicKeyLen () + ownerSignatureLen;
+			return offline.size () >= expected;
+		}
+
+		// Signing failures are locally generated, but a broken provider would
+		// otherwise log once per datagram.
+		i2p::I2NPDropCounter g_SignatureFailures;
+		// An unsupported framing request is a caller error; keep it observable
+		// without letting a misbehaving subsession flood the log.
+		i2p::I2NPDropCounter g_UnsupportedFraming;
+	}
+
 	// Datagram2/3 options are a Mapping prefixed by its 16-bit length.
 	// A zero-length Mapping is valid (Java reads the length, then only parses
 	// properties when it is non-zero); Mapping::FromBuffer alone cannot
@@ -69,11 +117,11 @@ namespace datagram
 		m_From.swap (from);
 	}
 
-	void DatagramDestination::SendDatagramTo (
-		const uint8_t * payload, size_t len, const i2p::data::IdentHash & identity, uint16_t fromPort, uint16_t toPort)
+	void DatagramDestination::SendDatagramTo (const uint8_t * payload, size_t len, const i2p::data::IdentHash & identity,
+		uint16_t fromPort, uint16_t toPort, DatagramVersion version)
 	{
-		auto session = ObtainSession (identity);
-		SendDatagram (session, payload, len, fromPort, toPort);
+		auto session = GetSession (identity);
+		SendDatagram (session, payload, len, fromPort, toPort, nullptr, version);
 		FlushSendQueue (session);
 	}
 
@@ -91,17 +139,28 @@ namespace datagram
 	}
 
 	void DatagramDestination::SendDatagram (std::shared_ptr<DatagramSession> session, const uint8_t * payload,
-		size_t len, uint16_t fromPort, uint16_t toPort, const i2p::util::Mapping * options)
+		size_t len, uint16_t fromPort, uint16_t toPort, const i2p::util::Mapping * options, DatagramVersion version)
 	{
 		if (session)
 		{
+			// The framing is selected per send. The session's version is only
+			// the default: a DATAGRAM3 SAM subsession must not inherit the
+			// Datagram1 framing that created the shared destination.
+			const auto framing = ResolveDatagramVersion (version, session->GetVersion ());
+			if (!IsDatagramVersionSupported (framing))
+			{
+				if (g_UnsupportedFraming.Record ())
+					LogPrint (eLogError, "Datagram: datagram type ", (int)framing, " is not supported (",
+						g_UnsupportedFraming.GetCount (), " such sends dropped)");
+				return;
+			}
 			std::vector<uint8_t> from;
 			{
 				std::lock_guard<std::mutex> l (m_FromMutex);
 				from = m_From;
 			}
 			std::shared_ptr<I2NPMessage> msg;
-			switch (session->GetVersion ())
+			switch (framing)
 			{
 			case eDatagramV3:
 			{
@@ -131,6 +190,11 @@ namespace datagram
 					break;
 				}
 				std::vector<uint8_t> signature (m_Owner->GetPrivateKeys ().GetSignatureLen ());
+				if (signature.empty ())
+				{
+					LogPrint (eLogError, "Datagram: no usable signing key for datagram1");
+					break;
+				}
 				if (m_Owner->GetIdentity ()->GetSigningKeyType () == i2p::data::SIGNING_KEY_TYPE_DSA_SHA1)
 				{
 					uint8_t hash[32];
@@ -139,6 +203,13 @@ namespace datagram
 				}
 				else
 					m_Owner->Sign (payload, static_cast<int> (len), signature.data ());
+				if (IsZeroSignature (signature.data (), signature.size ()))
+				{
+					if (g_SignatureFailures.Record ())
+						LogPrint (eLogError, "Datagram: datagram1 signing failed, message dropped (",
+							g_SignatureFailures.GetCount (), " failures)");
+					break;
+				}
 				msg = CreateDataMessage (
 					{ { from.data (), from.size () }, { signature.data (), signature.size () }, { payload, len } },
 					fromPort, toPort, i2p::client::PROTOCOL_TYPE_DATAGRAM, !session->IsRatchets ()); // datagram1
@@ -170,7 +241,7 @@ namespace datagram
 				if (isOfflineSignature)
 				{
 					offlineSignature = keys.GetOfflineSignature ();
-					if (offlineSignature.size () < 6)
+					if (!IsCompleteOfflineSection (offlineSignature, m_Owner->GetIdentity ()->GetSignatureLen ()))
 					{
 						LogPrint (eLogError, "Datagram: malformed offline signature section");
 						break;
@@ -188,6 +259,13 @@ namespace datagram
 				if (!signature.empty ())
 				{
 					m_Owner->Sign (signedData.data (), static_cast<int> (signedData.size ()), signature.data ());
+					if (IsZeroSignature (signature.data (), signature.size ()))
+					{
+						if (g_SignatureFailures.Record ())
+							LogPrint (eLogError, "Datagram: datagram2 signing failed, message dropped (",
+								g_SignatureFailures.GetCount (), " failures)");
+						break;
+					}
 					msg = CreateDataMessage (
 						{ { from.data (), from.size () }, { flags, 2 }, { optionsBuf.data (), optionsBuf.size () },
 							{ offlineSignature.data (), offlineSignature.size () }, { payload, len },
@@ -196,7 +274,7 @@ namespace datagram
 				}
 				break;
 			}
-			default: LogPrint (eLogError, "Datagram: datagram type ", (int)session->GetVersion (), " is not supported");
+			default: LogPrint (eLogError, "Datagram: datagram type ", (int)framing, " is not supported");
 			}
 			if (msg) session->SendMsg (msg);
 		}
@@ -269,7 +347,9 @@ namespace datagram
 			if (!hadSession) session->SetVersion (eDatagramV1);
 			if (ls) session->SetRemoteLeaseSet (ls);
 			session->Ack ();
-			auto r = FindReceiver (toPort);
+			// Datagram1 framing is carried by protocol 17, so a receiver
+			// registered for another style on the same port is not eligible.
+			auto r = FindReceiver (toPort, i2p::client::PROTOCOL_TYPE_DATAGRAM);
 			if (r)
 				r->Invoke (identity, fromPort, toPort, buf + headerLen, len - headerLen, nullptr);
 			else
@@ -282,11 +362,24 @@ namespace datagram
 	void DatagramDestination::HandleRawDatagram (
 		uint8_t protocol, uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len)
 	{
-		auto r = FindRawReceiver (toPort);
+		// I2CP forwards the payload protocol byte verbatim, and the OS-level
+		// "unspecified" value 0xff reaches us from a peer or a local UDP client.
+		// Java maps it to PROTO_UNSPECIFIED (0) before selecting a listener.
+		if (protocol == 0xff) protocol = 0;
+		// Streaming (6) and the typed datagram protocols are never raw payloads.
+		// Java's SAM 3.3 PrimarySession refuses to route them to a RAW subsession
+		// and a catch-all (protocol 0) registration must not capture them either.
+		if (IsReservedRawProtocol (protocol))
+		{
+			LogPrint (eLogWarning, "DatagramDestination: protocol ", (int)protocol, " is not a raw payload");
+			return;
+		}
+		auto r = FindRawReceiver (toPort, protocol);
 		if (r)
 			r->Invoke (protocol, fromPort, toPort, buf, len);
 		else
-			LogPrint (eLogWarning, "DatagramDestination: no receiver for raw datagram");
+			LogPrint (eLogWarning, "DatagramDestination: no receiver for raw datagram protocol ", (int)protocol,
+				" port ", toPort);
 	}
 
 	void DatagramDestination::HandleDatagram2 (uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len,
@@ -322,11 +415,14 @@ namespace datagram
 
 		size_t offset = identityLen + 2;
 		bool isOptions = false;
+		// Per-call options: the receiver may hold the pointer for the duration of
+		// the callback only, and a member would be overwritten by the next
+		// datagram while the callback still runs.
+		i2p::util::Mapping options;
 		if (flags[1] & DATAGRAM2_FLAG_OPTIONS)
 		{
 			isOptions = true;
-			m_Options.CleanUp ();
-			if (!ParseDatagramOptions (m_Options, buf, len, offset))
+			if (!ParseDatagramOptions (options, buf, len, offset))
 			{
 				LogPrint (eLogWarning, "Datagram: datagram2 can't read options");
 				return;
@@ -384,10 +480,10 @@ namespace datagram
 			if (ls) session->SetRemoteLeaseSet (ls);
 			session->Ack ();
 		}
-		auto r = FindReceiver (toPort);
+		auto r = FindReceiver (toPort, i2p::client::PROTOCOL_TYPE_DATAGRAM2);
 		if (r)
 			r->Invoke (identity, fromPort, toPort, buf + offset, len - offset - signatureLen,
-				isOptions ? &m_Options : nullptr);
+				isOptions ? &options : nullptr);
 		else
 			LogPrint (eLogWarning, "DatagramDestination: no receiver for port ", toPort);
 	}
@@ -421,11 +517,11 @@ namespace datagram
 		}
 		size_t offset = 34;
 		bool isOptions = false;
+		i2p::util::Mapping options;
 		if (flags[1] & DATAGRAM3_FLAG_OPTIONS)
 		{
 			isOptions = true;
-			m_Options.CleanUp ();
-			if (!ParseDatagramOptions (m_Options, buf, len, offset))
+			if (!ParseDatagramOptions (options, buf, len, offset))
 			{
 				LogPrint (eLogWarning, "Datagram: datagram3 can't read options");
 				return;
@@ -478,18 +574,18 @@ namespace datagram
 				LogPrint (eLogWarning, "Datagram: unauthenticated datagram3 will not create a reply session");
 		}
 
-		auto r = FindHashReceiver (toPort);
+		auto r = FindHashReceiver (toPort, i2p::client::PROTOCOL_TYPE_DATAGRAM3);
 		if (r)
-			r->Invoke (ident, fromPort, toPort, buf + offset, len - offset, isOptions ? &m_Options : nullptr);
+			r->Invoke (ident, fromPort, toPort, buf + offset, len - offset, isOptions ? &options : nullptr);
 		else
 		{
 			// Internal consumers such as the torrent tracker still use the
 			// full-identity callback. Only promote when a verified cached
 			// LeaseSet is available; a Datagram3 hash alone is never trusted.
-			auto receiver = FindReceiver (toPort);
+			auto receiver = FindReceiver (toPort, i2p::client::PROTOCOL_TYPE_DATAGRAM3);
 			if (receiver && ls)
 				receiver->Invoke (*ls->GetIdentity (), fromPort, toPort, buf + offset, len - offset,
-					isOptions ? &m_Options : nullptr);
+					isOptions ? &options : nullptr);
 			else
 				LogPrint (eLogWarning, "DatagramDestination: no hash receiver or cached identity for port ", toPort);
 		}
@@ -497,7 +593,7 @@ namespace datagram
 	}
 
 	DatagramDestination::ReceiverRegistration DatagramDestination::SetReceiver (
-		const Receiver & receiver, uint16_t port)
+		const Receiver & receiver, uint16_t port, uint8_t protocol)
 	{
 		auto owner = weak_from_this ();
 		if (owner.expired ()) throw std::logic_error ("DatagramDestination receiver requires shared ownership");
@@ -505,26 +601,29 @@ namespace datagram
 		std::vector<ReceiverSlotPtr> retired;
 		{
 			std::lock_guard<std::mutex> lock (m_ReceiversMutex);
-			if (port)
+			if (port || protocol)
 			{
-				auto it = m_ReceiversByPorts.find (port);
-				if (it != m_ReceiversByPorts.end ()) retired.push_back (std::move (it->second));
-				m_ReceiversByPorts[port] = slot;
+				// A (protocol, port) registration stays keyed by both fields. It
+				// is never promoted to the destination-wide fallback: Java only
+				// falls back to an explicitly registered (PROTO_ANY, PORT_ANY)
+				// listener, and promoting would disclose one subsession's traffic
+				// to another.
+				const auto key = MakeReceiverKey (protocol, port);
+				auto it = m_ReceiversByProtocolPorts.find (key);
+				if (it != m_ReceiversByProtocolPorts.end ()) retired.push_back (std::move (it->second));
+				m_ReceiversByProtocolPorts[key] = slot;
 			}
-			// Keep the historical fallback rule: the first port-specific
-			// registration supplies the wildcard until an explicit wildcard
-			// registration replaces it. Port keys themselves remain last-wins.
-			if (!port || !m_DefaultReceiver || !m_DefaultReceiver->HasCallback ())
+			else
 			{
 				if (m_DefaultReceiver) retired.push_back (std::move (m_DefaultReceiver));
 				m_DefaultReceiver = slot;
 			}
 		}
-		return ReceiverRegistration (std::move (owner), slot, port, ReceiverRegistration::Kind::Identity);
+		return ReceiverRegistration (std::move (owner), slot, port, ReceiverRegistration::Kind::Identity, protocol);
 	}
 
 	DatagramDestination::ReceiverRegistration DatagramDestination::SetHashReceiver (
-		const HashReceiver & receiver, uint16_t port)
+		const HashReceiver & receiver, uint16_t port, uint8_t protocol)
 	{
 		auto owner = weak_from_this ();
 		if (owner.expired ()) throw std::logic_error ("DatagramDestination receiver requires shared ownership");
@@ -532,43 +631,63 @@ namespace datagram
 		std::vector<HashReceiverSlotPtr> retired;
 		{
 			std::lock_guard<std::mutex> lock (m_HashReceiversMutex);
-			if (port)
+			if (port || protocol)
 			{
-				auto it = m_HashReceiversByPorts.find (port);
-				if (it != m_HashReceiversByPorts.end ()) retired.push_back (std::move (it->second));
-				m_HashReceiversByPorts[port] = slot;
+				const auto key = MakeReceiverKey (protocol, port);
+				auto it = m_HashReceiversByProtocolPorts.find (key);
+				if (it != m_HashReceiversByProtocolPorts.end ()) retired.push_back (std::move (it->second));
+				m_HashReceiversByProtocolPorts[key] = slot;
 			}
-			if (!port || !m_DefaultHashReceiver || !m_DefaultHashReceiver->HasCallback ())
+			else
 			{
 				if (m_DefaultHashReceiver) retired.push_back (std::move (m_DefaultHashReceiver));
 				m_DefaultHashReceiver = slot;
 			}
 		}
-		return ReceiverRegistration (std::move (owner), slot, port, ReceiverRegistration::Kind::Hash);
+		return ReceiverRegistration (std::move (owner), slot, port, ReceiverRegistration::Kind::Hash, protocol);
 	}
 
 	DatagramDestination::ReceiverRegistration DatagramDestination::SetRawReceiver (
 		const RawReceiver & receiver, uint16_t port)
 	{
+		// Legacy callers (UDP tunnels, torrents) keep receiving every raw
+		// protocol on the selected port through the protocol-0 catch-all.
+		return SetRawReceiver (receiver, port, 0);
+	}
+
+	DatagramDestination::ReceiverRegistration DatagramDestination::SetRawReceiver (
+		const RawReceiver & receiver, uint16_t port, uint8_t protocol)
+	{
 		auto owner = weak_from_this ();
 		if (owner.expired ()) throw std::logic_error ("DatagramDestination receiver requires shared ownership");
+		if (IsReservedRawProtocol (protocol))
+		{
+			// Streaming and the typed datagram protocols are consumed by their
+			// own handlers, so such a registration could never receive
+			// anything; refusing it keeps the rejection observable to SAM.
+			LogPrint (eLogWarning, "DatagramDestination: protocol ", (int)protocol,
+				" is not a raw receiver protocol");
+			return { };
+		}
 		auto slot = std::make_shared<detail::ReceiverSlot<RawReceiver>> (receiver);
 		std::vector<RawReceiverSlotPtr> retired;
 		{
 			std::lock_guard<std::mutex> lock (m_RawReceiversMutex);
-			if (port)
-			{
-				auto it = m_RawReceiversByPorts.find (port);
-				if (it != m_RawReceiversByPorts.end ()) retired.push_back (std::move (it->second));
-				m_RawReceiversByPorts[port] = slot;
-			}
-			if (!port || !m_DefaultRawReceiver || !m_DefaultRawReceiver->HasCallback ())
+			const auto key = MakeReceiverKey (protocol, port);
+			auto it = m_RawReceiversByProtocolPorts.find (key);
+			if (it != m_RawReceiversByProtocolPorts.end ()) retired.push_back (std::move (it->second));
+			m_RawReceiversByProtocolPorts[key] = slot;
+			// Only a catch-all registration participates in the historical
+			// destination-wide fallback; a protocol-specific registration must
+			// never capture unrelated raw protocols. The first registration (or
+			// an explicit port-0 one) supplies that fallback, as before.
+			if (!protocol && (!port || !m_DefaultRawReceiver || !m_DefaultRawReceiver->HasCallback ()))
 			{
 				if (m_DefaultRawReceiver) retired.push_back (std::move (m_DefaultRawReceiver));
 				m_DefaultRawReceiver = slot;
 			}
 		}
-		return ReceiverRegistration (std::move (owner), slot, port, ReceiverRegistration::Kind::Raw);
+		return ReceiverRegistration (std::move (owner), slot, port, ReceiverRegistration::Kind::Raw, protocol);
 	}
 
 	bool DatagramDestination::ReceiverRegistration::Reset () const
@@ -589,12 +708,16 @@ namespace datagram
 			auto slot = std::static_pointer_cast<detail::ReceiverSlot<Receiver>> (identity);
 			{
 				std::lock_guard<std::mutex> lock (m_ReceiversMutex);
-				auto it = m_ReceiversByPorts.find (registration.m_Port);
-				if (registration.m_Port && it != m_ReceiversByPorts.end () && it->second.get () == identity.get ())
+				if (registration.m_Port || registration.m_Protocol)
 				{
-					m_ReceiversByPorts.erase (it);
+					auto it = m_ReceiversByProtocolPorts.find (
+						MakeReceiverKey (registration.m_Protocol, registration.m_Port));
+					if (it != m_ReceiversByProtocolPorts.end () && it->second.get () == identity.get ())
+					{
+						m_ReceiversByProtocolPorts.erase (it);
+					}
 				}
-				if (m_DefaultReceiver.get () == identity.get ())
+				else if (m_DefaultReceiver.get () == identity.get ())
 				{
 					m_DefaultReceiver.reset ();
 				}
@@ -607,12 +730,16 @@ namespace datagram
 			auto slot = std::static_pointer_cast<detail::ReceiverSlot<HashReceiver>> (identity);
 			{
 				std::lock_guard<std::mutex> lock (m_HashReceiversMutex);
-				auto it = m_HashReceiversByPorts.find (registration.m_Port);
-				if (registration.m_Port && it != m_HashReceiversByPorts.end () && it->second.get () == identity.get ())
+				if (registration.m_Port || registration.m_Protocol)
 				{
-					m_HashReceiversByPorts.erase (it);
+					auto it = m_HashReceiversByProtocolPorts.find (
+						MakeReceiverKey (registration.m_Protocol, registration.m_Port));
+					if (it != m_HashReceiversByProtocolPorts.end () && it->second.get () == identity.get ())
+					{
+						m_HashReceiversByProtocolPorts.erase (it);
+					}
 				}
-				if (m_DefaultHashReceiver.get () == identity.get ())
+				else if (m_DefaultHashReceiver.get () == identity.get ())
 				{
 					m_DefaultHashReceiver.reset ();
 				}
@@ -625,10 +752,11 @@ namespace datagram
 			auto slot = std::static_pointer_cast<detail::ReceiverSlot<RawReceiver>> (identity);
 			{
 				std::lock_guard<std::mutex> lock (m_RawReceiversMutex);
-				auto it = m_RawReceiversByPorts.find (registration.m_Port);
-				if (registration.m_Port && it != m_RawReceiversByPorts.end () && it->second.get () == identity.get ())
+				auto it = m_RawReceiversByProtocolPorts.find (
+					MakeReceiverKey (registration.m_Protocol, registration.m_Port));
+				if (it != m_RawReceiversByProtocolPorts.end () && it->second.get () == identity.get ())
 				{
-					m_RawReceiversByPorts.erase (it);
+					m_RawReceiversByProtocolPorts.erase (it);
 				}
 				if (m_DefaultRawReceiver.get () == identity.get ())
 				{
@@ -642,35 +770,102 @@ namespace datagram
 		return drained;
 	}
 
-	DatagramDestination::ReceiverSlotPtr DatagramDestination::FindReceiver (uint16_t port)
+	DatagramDestination::ReceiverSlotPtr DatagramDestination::FindReceiver (uint16_t port, uint8_t protocol)
 	{
 		std::lock_guard<std::mutex> lock (m_ReceiversMutex);
-		auto it = m_ReceiversByPorts.find (port);
-		return it != m_ReceiversByPorts.end () ? it->second : m_DefaultReceiver;
+		// Fallback order (Java PrimarySession): the exact (protocol, port) pair,
+		// the protocol-0 catch-all on that port, the protocol wildcard, and only
+		// then the explicitly registered destination-wide fallback.
+		if (protocol)
+		{
+			auto it = m_ReceiversByProtocolPorts.find (MakeReceiverKey (protocol, port));
+			if (it != m_ReceiversByProtocolPorts.end ()) return it->second;
+			if (port)
+			{
+				it = m_ReceiversByProtocolPorts.find (MakeReceiverKey (0, port));
+				if (it != m_ReceiversByProtocolPorts.end ()) return it->second;
+			}
+			it = m_ReceiversByProtocolPorts.find (MakeReceiverKey (protocol, 0));
+			if (it != m_ReceiversByProtocolPorts.end ()) return it->second;
+		}
+		else if (port)
+		{
+			auto it = m_ReceiversByProtocolPorts.find (MakeReceiverKey (0, port));
+			if (it != m_ReceiversByProtocolPorts.end ()) return it->second;
+		}
+		return m_DefaultReceiver;
 	}
 
-	DatagramDestination::HashReceiverSlotPtr DatagramDestination::FindHashReceiver (uint16_t port)
+	DatagramDestination::HashReceiverSlotPtr DatagramDestination::FindHashReceiver (uint16_t port, uint8_t protocol)
 	{
 		std::lock_guard<std::mutex> lock (m_HashReceiversMutex);
-		auto it = m_HashReceiversByPorts.find (port);
-		return it != m_HashReceiversByPorts.end () ? it->second : m_DefaultHashReceiver;
+		if (protocol)
+		{
+			auto it = m_HashReceiversByProtocolPorts.find (MakeReceiverKey (protocol, port));
+			if (it != m_HashReceiversByProtocolPorts.end ()) return it->second;
+			if (port)
+			{
+				it = m_HashReceiversByProtocolPorts.find (MakeReceiverKey (0, port));
+				if (it != m_HashReceiversByProtocolPorts.end ()) return it->second;
+			}
+			it = m_HashReceiversByProtocolPorts.find (MakeReceiverKey (protocol, 0));
+			if (it != m_HashReceiversByProtocolPorts.end ()) return it->second;
+		}
+		else if (port)
+		{
+			auto it = m_HashReceiversByProtocolPorts.find (MakeReceiverKey (0, port));
+			if (it != m_HashReceiversByProtocolPorts.end ()) return it->second;
+		}
+		return m_DefaultHashReceiver;
 	}
 
-	DatagramDestination::RawReceiverSlotPtr DatagramDestination::FindRawReceiver (uint16_t port)
+	DatagramDestination::RawReceiverSlotPtr DatagramDestination::FindRawReceiver (uint16_t port, uint8_t protocol)
 	{
+		// Defence in depth: registration already refuses these, and no typed
+		// protocol may be forwarded to a raw receiver even if one exists.
+		if (IsReservedRawProtocol (protocol)) return nullptr;
 		std::lock_guard<std::mutex> lock (m_RawReceiversMutex);
-		auto it = m_RawReceiversByPorts.find (port);
-		return it != m_RawReceiversByPorts.end () ? it->second : m_DefaultRawReceiver;
+		// Java's SAM 3.3 routing prefers an exact protocol match on the
+		// addressed port, then the protocol-0 catch-all on that port, then the
+		// port wildcards, and finally the destination-wide fallback.
+		if (protocol)
+		{
+			auto it = m_RawReceiversByProtocolPorts.find (MakeReceiverKey (protocol, port));
+			if (it != m_RawReceiversByProtocolPorts.end ()) return it->second;
+			if (port)
+			{
+				it = m_RawReceiversByProtocolPorts.find (MakeReceiverKey (0, port));
+				if (it != m_RawReceiversByProtocolPorts.end ()) return it->second;
+			}
+			it = m_RawReceiversByProtocolPorts.find (MakeReceiverKey (protocol, 0));
+			if (it != m_RawReceiversByProtocolPorts.end ()) return it->second;
+		}
+		else if (port)
+		{
+			auto it = m_RawReceiversByProtocolPorts.find (MakeReceiverKey (0, port));
+			if (it != m_RawReceiversByProtocolPorts.end ()) return it->second;
+		}
+		return m_DefaultRawReceiver;
 	}
 
 	void DatagramDestination::HandleDataMessagePayload (uint16_t fromPort, uint16_t toPort, const uint8_t * buf,
 		size_t len, uint8_t protocolType, i2p::garlic::ECIESX25519AEADRatchetSession * from)
 	{
+		// I2CP passes the payload protocol byte through unchanged and a peer (or
+		// a local UDP client) can send the OS-level "unspecified" value 0xff.
+		// Java maps it to PROTO_UNSPECIFIED (0) before listener selection.
+		if (protocolType == 0xff) protocolType = 0;
 		// unzip it. A valid gzip stream may produce zero bytes; only a
-		// decompression failure is dropped.
+		// decompression failure is dropped. The inflator keeps zlib state per
+		// call, so concurrent delivery must not share it.
 		uint8_t uncompressed[MAX_DATAGRAM_SIZE];
 		size_t uncompressedLen = 0;
-		if (m_Inflator.InflateChecked (buf, len, uncompressed, MAX_DATAGRAM_SIZE, uncompressedLen))
+		bool inflated;
+		{
+			std::lock_guard<std::mutex> lock (m_InflatorMutex);
+			inflated = m_Inflator.InflateChecked (buf, len, uncompressed, MAX_DATAGRAM_SIZE, uncompressedLen);
+		}
+		if (inflated)
 		{
 			switch (protocolType)
 			{
@@ -699,15 +894,21 @@ namespace datagram
 		uint8_t protocolType, bool checksum)
 	{
 		size_t size;
-		auto msg = m_I2NPMsgsPool.AcquireShared ();
+		// The pool is thread-safe (SAM sends on its socket thread while inbound
+		// Acks release messages on the destination service); the deflator holds
+		// one zlib stream and is serialized here.
+		auto msg = m_I2NPMsgsPool.AcquireSharedMt ();
 		uint8_t * buf = msg->GetPayload ();
 		buf += 4; // reserve for length
 		msg->len += 4; // account for the reserved length before deflating
 
-		if (m_Gzip && m_Deflator)
-			size = m_Deflator->Deflate (payloads, buf, msg->maxLen - msg->len);
-		else
-			size = i2p::data::GzipNoCompression (payloads, buf, msg->maxLen - msg->len);
+		{
+			std::lock_guard<std::mutex> lock (m_DeflatorMutex);
+			if (m_Gzip && m_Deflator)
+				size = m_Deflator->Deflate (payloads, buf, msg->maxLen - msg->len);
+			else
+				size = i2p::data::GzipNoCompression (payloads, buf, msg->maxLen - msg->len);
+		}
 
 		if (size)
 		{
@@ -776,7 +977,9 @@ namespace datagram
 			}
 			// not found, create new session
 			session = std::make_shared<DatagramSession> (m_Owner, identity);
-			session->SetVersion (m_Version);
+			// The destination default is normally V1/V2/V3; an unset or unknown
+			// value must not leave every send unsupported.
+			session->SetVersion (IsDatagramVersionSupported (m_Version) ? m_Version : eDatagramV1);
 			session->Start ();
 			m_Sessions.emplace (identity, session);
 		}
@@ -807,61 +1010,117 @@ namespace datagram
 		std::shared_ptr<i2p::client::ClientDestination> localDestination, const i2p::data::IdentHash & remoteIdent)
 		: m_LocalDestination (localDestination)
 		, m_RemoteIdent (remoteIdent)
-		, m_LastUse (0)
-		, m_LastFlush (0)
-		, m_RequestingLS (false)
-		, m_Version (eDatagramV1)
 	{
 	}
 
 	void DatagramSession::Start ()
 	{
-		m_LastUse = i2p::util::GetMillisecondsSinceEpoch ();
+		m_LastUse.store (i2p::util::GetMillisecondsSinceEpoch (), std::memory_order_relaxed);
 	}
 
 	void DatagramSession::Stop () { }
 
+	bool DatagramSession::IsRatchets () const
+	{
+		std::lock_guard<std::mutex> lock (m_Mutex);
+		return IsRatchetsLocked ();
+	}
+
+	void DatagramSession::SetRemoteLeaseSet (std::shared_ptr<const i2p::data::LeaseSet> ls)
+	{
+		std::lock_guard<std::mutex> lock (m_Mutex);
+		m_RemoteLeaseSet = std::move (ls);
+		m_LoggedIncompatibleLeaseSet = false;
+	}
+
+	std::shared_ptr<const i2p::data::LeaseSet> DatagramSession::GetRemoteLeaseSet () const
+	{
+		std::lock_guard<std::mutex> lock (m_Mutex);
+		return m_RemoteLeaseSet;
+	}
+
+	void DatagramSession::DropSharedRoutingPath ()
+	{
+		std::lock_guard<std::mutex> lock (m_Mutex);
+		if (m_RoutingSession)
+		{
+			m_RoutingSession->SetSharedRoutingPath (nullptr);
+			m_NumPathDrops.fetch_add (1, std::memory_order_relaxed);
+		}
+	}
+
+	void DatagramSession::SetSendObserverForTesting (std::function<void (const I2NPMessage &)> observer)
+	{
+		std::lock_guard<std::mutex> lock (m_Mutex);
+		m_SendObserver = std::move (observer);
+	}
+
 	void DatagramSession::SendMsg (std::shared_ptr<I2NPMessage> msg)
 	{
+		// Read the observer under the lock, then invoke it outside so a test
+		// callback can inspect the message without re-entering the lock.
+		std::function<void (const I2NPMessage &)> observer;
+		{
+			std::lock_guard<std::mutex> lock (m_Mutex);
+			observer = m_SendObserver;
+		}
+		if (observer)
+		{
+			if (msg) observer (*msg);
+			return;
+		}
+		std::lock_guard<std::mutex> lock (m_Mutex);
+		SendMsgLocked (std::move (msg));
+	}
+
+	void DatagramSession::SendMsgLocked (std::shared_ptr<I2NPMessage> msg)
+	{
 		// we used this session
-		m_LastUse = i2p::util::GetMillisecondsSinceEpoch ();
+		const auto now = i2p::util::GetMillisecondsSinceEpoch ();
+		m_LastUse.store (now, std::memory_order_relaxed);
 		if (msg || m_SendQueue.empty ()) m_SendQueue.push_back (msg);
 		// flush queue right away if full
-		if (!msg || m_SendQueue.size () >= DATAGRAM_SEND_QUEUE_MAX_SIZE
-			|| m_LastUse > m_LastFlush + DATAGRAM_MAX_FLUSH_INTERVAL)
+		if (!msg || m_SendQueue.size () >= DATAGRAM_SEND_QUEUE_MAX_SIZE || now > m_LastFlush + DATAGRAM_MAX_FLUSH_INTERVAL)
 		{
-			FlushSendQueue ();
-			m_LastFlush = m_LastUse;
+			FlushSendQueueLocked (true);
+			m_LastFlush = now;
 		}
 	}
 
 	DatagramSession::Info DatagramSession::GetSessionInfo () const
 	{
-		if (!m_RoutingSession) return DatagramSession::Info (nullptr, nullptr, m_LastUse);
+		const auto activity = m_LastUse.load (std::memory_order_relaxed);
+		std::shared_ptr<i2p::garlic::GarlicRoutingSession> routingSession;
+		{
+			std::lock_guard<std::mutex> lock (m_Mutex);
+			routingSession = m_RoutingSession;
+		}
+		if (!routingSession) return DatagramSession::Info (nullptr, nullptr, activity);
 
-		auto routingPath = m_RoutingSession->GetSharedRoutingPath ();
-		if (!routingPath) return DatagramSession::Info (nullptr, nullptr, m_LastUse);
+		auto routingPath = routingSession->GetSharedRoutingPath ();
+		if (!routingPath) return DatagramSession::Info (nullptr, nullptr, activity);
 		auto lease = routingPath->remoteLease;
 		auto tunnel = routingPath->outboundTunnel;
 		if (lease)
 		{
 			if (tunnel)
-				return DatagramSession::Info (lease->tunnelGateway, tunnel->GetEndpointIdentHash (), m_LastUse);
+				return DatagramSession::Info (lease->tunnelGateway, tunnel->GetEndpointIdentHash (), activity);
 			else
-				return DatagramSession::Info (lease->tunnelGateway, nullptr, m_LastUse);
+				return DatagramSession::Info (lease->tunnelGateway, nullptr, activity);
 		}
 		else if (tunnel)
-			return DatagramSession::Info (nullptr, tunnel->GetEndpointIdentHash (), m_LastUse);
+			return DatagramSession::Info (nullptr, tunnel->GetEndpointIdentHash (), activity);
 		else
-			return DatagramSession::Info (nullptr, nullptr, m_LastUse);
+			return DatagramSession::Info (nullptr, nullptr, activity);
 	}
 
 	void DatagramSession::Ack ()
 	{
-		m_LastUse = i2p::util::GetMillisecondsSinceEpoch ();
+		std::lock_guard<std::mutex> lock (m_Mutex);
+		m_LastUse.store (i2p::util::GetMillisecondsSinceEpoch (), std::memory_order_relaxed);
 		auto path = GetSharedRoutingPath ();
 		if (path) path->updateTime = static_cast<uint32_t> (i2p::util::GetSecondsSinceEpoch ());
-		if (IsRatchets ()) SendMsg (nullptr); // send empty message in case if we don't have some data to send
+		if (IsRatchetsLocked ()) SendMsgLocked (nullptr); // send empty message in case if we don't have some data to send
 	}
 
 	std::shared_ptr<i2p::garlic::GarlicRoutingPath> DatagramSession::GetSharedRoutingPath ()
@@ -1029,6 +1288,7 @@ namespace datagram
 
 	void DatagramSession::HandleLeaseSetUpdated (std::shared_ptr<i2p::data::LeaseSet> ls)
 	{
+		std::lock_guard<std::mutex> lock (m_Mutex);
 		m_RequestingLS = false;
 		if (ls)
 		{
@@ -1041,11 +1301,12 @@ namespace datagram
 				m_LoggedIncompatibleLeaseSet = false;
 			}
 		}
-		FlushSendQueue (false); // process deferred flush
+		FlushSendQueueLocked (false); // process deferred flush
 	}
 
 	void DatagramSession::RequestUpdatedLeaseSet ()
 	{
+		std::lock_guard<std::mutex> lock (m_Mutex);
 		if (!m_RequestingLS)
 		{
 			m_RequestingLS = true;
@@ -1056,13 +1317,19 @@ namespace datagram
 
 	void DatagramSession::FlushSendQueue (bool waitForLeaseSet)
 	{
+		std::lock_guard<std::mutex> lock (m_Mutex);
+		FlushSendQueueLocked (waitForLeaseSet);
+	}
+
+	void DatagramSession::FlushSendQueueLocked (bool waitForLeaseSet)
+	{
 		if (m_SendQueue.empty ()) return;
 		auto routingPath = GetSharedRoutingPath ();
 		if (!routingPath && waitForLeaseSet && m_RequestingLS) return; // defer to HandleLeaseSetUpdated
 		// if we don't have a routing path we will drop all queued messages
 		if (routingPath && routingPath->outboundTunnel && routingPath->remoteLease)
 		{
-			if (m_Version == eDatagramV3)
+			if (m_Version.load (std::memory_order_relaxed) == eDatagramV3)
 			{
 				auto msgs = m_RoutingSession->WrapMultipleMessages (m_SendQueue);
 				if (!msgs.empty ())
@@ -1085,9 +1352,10 @@ namespace datagram
 		}
 		else
 		{
-			m_NumDroppedNoPath += static_cast<uint32_t> (m_SendQueue.size ());
-			LogPrint (eLogWarning, "Datagram: No routing path, dropped ", m_SendQueue.size (), " messages, ",
-				m_NumDroppedNoPath, " total");
+			const auto dropped = static_cast<uint32_t> (m_SendQueue.size ());
+			const auto total = m_NumDroppedNoPath.fetch_add (dropped, std::memory_order_relaxed) + dropped;
+			LogPrint (eLogWarning, "Datagram: No routing path, dropped ", m_SendQueue.size (), " messages, ", total,
+				" total");
 		}
 		m_SendQueue.clear ();
 	}
