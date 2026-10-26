@@ -12,15 +12,142 @@
  */
 
 #include <string.h>
+#include <algorithm>
+#include <charconv>
+#include <vector>
 #include "Log.h"
 #include "ClientContext.h"
+#include "Config.h"
 #include "util.h"
 #include "BOB.h"
+
+#ifndef _WIN32
+#include <sys/socket.h>
+#include <sys/types.h>
+#include <unistd.h>
+#endif
 
 namespace i2p
 {
 namespace client
 {
+	BOBCommandLineReader::Result BOBCommandLineReader::Feed (std::string_view bytes)
+	{
+		// One bounded line plus its terminator is all that is ever stored.
+		constexpr size_t capacity = BOB_MAX_COMMAND_LINE + 1;
+		if (m_Pending.size () < capacity)
+		{
+			const size_t room = capacity - m_Pending.size ();
+			m_Pending.append (bytes.substr (0, std::min (room, bytes.size ())));
+		}
+		const auto newline = m_Pending.find ('\n');
+		if (newline != std::string::npos)
+		{
+			// A line longer than the limit is rejected even if it does end.
+			if (newline > BOB_MAX_COMMAND_LINE) return Result::Overflow;
+			return Result::Complete;
+		}
+		if (m_Pending.size () >= capacity) return Result::Overflow;
+		return Result::Incomplete;
+	}
+
+	std::string BOBCommandLineReader::TakeLine ()
+	{
+		const auto newline = m_Pending.find ('\n');
+		if (newline == std::string::npos) return { };
+		std::string line = m_Pending.substr (0, newline);
+		m_Pending.erase (0, newline + 1);
+		// Strip the optional CR of a CRLF peer (Transmission does this).
+		if (!line.empty () && line.back () == '\r') line.pop_back ();
+		return line;
+	}
+
+	BOBPortResult ParseBOBPort (std::string_view operand, uint16_t & port)
+	{
+		port = 0;
+		if (operand.empty ()) return BOBPortResult::Empty;
+		if (operand.size () > 5) return BOBPortResult::OutOfRange;
+		unsigned value = 0;
+		const auto * const first = operand.data ();
+		const auto * const last = first + operand.size ();
+		const auto result = std::from_chars (first, last, value);
+		if (result.ec == std::errc::result_out_of_range) return BOBPortResult::OutOfRange;
+		if (result.ec != std::errc () || result.ptr != last) return BOBPortResult::Invalid;
+		if (value > 65535) return BOBPortResult::OutOfRange;
+		port = static_cast<uint16_t> (value);
+		return BOBPortResult::Ok;
+	}
+
+	bool TryAcquireBOBSession (BOBAdmissionState & state)
+	{
+		size_t current = state.active.load (std::memory_order_relaxed);
+		do
+		{
+			if (current >= BOB_MAX_CONCURRENT_SESSIONS) return false;
+		} while (!state.active.compare_exchange_weak (
+			current, current + 1, std::memory_order_acq_rel, std::memory_order_relaxed));
+		return true;
+	}
+
+	void ReleaseBOBSession (BOBAdmissionState & state)
+	{
+		size_t current = state.active.load (std::memory_order_relaxed);
+		while (current > 0
+			&& !state.active.compare_exchange_weak (
+				current, current - 1, std::memory_order_acq_rel, std::memory_order_relaxed))
+		{
+		}
+	}
+
+	bool ResolveBOBAllowGetKeys (bool optionFound, bool optionValue)
+	{
+		return optionFound && optionValue;
+	}
+
+	namespace
+	{
+		// Strict small unsigned parse for the optional key-type operands.
+		bool ParseSmallUnsigned (std::string_view text, unsigned & value)
+		{
+			value = 0;
+			if (text.empty () || text.size () > 9) return false;
+			unsigned parsed = 0;
+			const auto * const first = text.data ();
+			const auto * const last = first + text.size ();
+			const auto result = std::from_chars (first, last, parsed);
+			if (result.ec != std::errc () || result.ptr != last) return false;
+			value = parsed;
+			return true;
+		}
+
+		// The command listener is an INET socket, so a per-user peer credential
+		// is not universally available. Where the platform exposes one it is
+		// enforced; otherwise the peer must at least be local and the operator
+		// must opt in explicitly to the private-key reply.
+		bool IsTrustedCommandPeer (const boost::asio::ip::tcp::socket & socket)
+		{
+			boost::system::error_code ec;
+			const auto peer = socket.remote_endpoint (ec);
+			if (ec || !peer.address ().is_loopback ()) return false;
+#if defined(__linux__)
+			struct ucred credentials { };
+			socklen_t length = sizeof (credentials);
+			if (getsockopt (socket.native_handle (), SOL_SOCKET, SO_PEERCRED, &credentials, &length) == 0)
+			{
+				if (credentials.uid != geteuid ()) return false;
+			}
+			else
+			{
+				// EOPNOTSUPP/ENOPROTOOPT: this socket family does not expose a
+				// peer credential here. The loopback check above is then the
+				// only admission rule, which is why the private-key reply also
+				// needs an explicit operator opt-in.
+			}
+#endif
+			return true;
+		}
+	}
+
 	void BOBI2PTunnelIncomingConnection::Established ()
 	{
 		if (m_IsQuiet)
@@ -384,8 +511,8 @@ namespace client
 	BOBCommandSession::BOBCommandSession (BOBCommandChannel & owner)
 		: m_Owner (owner)
 		, m_Socket (m_Owner.GetService ())
-		, m_ReceiveBuffer (BOB_COMMAND_BUFFER_SIZE + 1)
-		, m_SendBuffer (BOB_COMMAND_BUFFER_SIZE + 1)
+		, m_ReadBuffer { }
+		, m_SendBuffer (BOB_MAX_REPLY_SIZE)
 		, m_IsOpen (true)
 		, m_IsQuiet (false)
 		, m_IsActive (false)
@@ -396,51 +523,89 @@ namespace client
 	{
 	}
 
-	BOBCommandSession::~BOBCommandSession () { }
+	BOBCommandSession::~BOBCommandSession ()
+	{
+		if (m_Admitted && m_Admission) ReleaseBOBSession (*m_Admission);
+	}
+
+	bool BOBCommandSession::Admit (const std::shared_ptr<BOBAdmissionState> & admission)
+	{
+		if (!admission) return false;
+		if (!TryAcquireBOBSession (*admission)) return false;
+		m_Admission = admission;
+		m_Admitted = true;
+		return true;
+	}
 
 	void BOBCommandSession::Terminate ()
 	{
-		m_Socket.close ();
+		boost::system::error_code ignored;
+		m_Socket.close (ignored);
 		m_IsOpen = false;
 	}
 
 	void BOBCommandSession::Receive ()
 	{
-		boost::asio::async_read_until (m_Socket, m_ReceiveBuffer, '\n',
-			std::bind (&BOBCommandSession::HandleReceivedLine, shared_from_this (), std::placeholders::_1,
+		// A pipelined command that already sits in the reader is executed
+		// before another socket read, so the accumulator cannot grow past one
+		// bounded line while the session is waiting for a reply to be sent.
+		if (m_LineReader.HasCompleteLine ())
+		{
+			HandleLine ();
+			return;
+		}
+		Read ();
+	}
+
+	void BOBCommandSession::Read ()
+	{
+		m_Socket.async_read_some (boost::asio::buffer (m_ReadBuffer),
+			std::bind (&BOBCommandSession::HandleReceivedBytes, shared_from_this (), std::placeholders::_1,
 				std::placeholders::_2));
 	}
 
-	void BOBCommandSession::HandleReceivedLine (const boost::system::error_code & ecode, std::size_t)
+	void BOBCommandSession::HandleReceivedBytes (const boost::system::error_code & ecode, std::size_t bytes_transferred)
 	{
 		if (ecode)
 		{
-			LogPrint (eLogError, "BOB: Command channel read error: ", ecode.message ());
+			if (ecode != boost::asio::error::operation_aborted)
+				LogPrint (eLogDebug, "BOB: Command channel read closed");
 			if (ecode != boost::asio::error::operation_aborted) Terminate ();
+			return;
+		}
+		const auto result = m_LineReader.Feed (
+			std::string_view (m_ReadBuffer.data (), bytes_transferred));
+		if (result == BOBCommandLineReader::Result::Overflow)
+		{
+			// A newline-free flood: close instead of buffering more input.
+			LogPrint (eLogWarning, "BOB: Command line limit exceeded, closing session");
+			Terminate ();
+			return;
+		}
+		Receive ();
+	}
+
+	void BOBCommandSession::HandleLine ()
+	{
+		std::string line = m_LineReader.TakeLine ();
+
+		std::string command, operand;
+		std::istringstream iss (line);
+		iss >> command >> operand;
+
+		// process command
+		auto & handlers = m_Owner.GetCommandHandlers ();
+		auto it = handlers.find (command);
+		if (it != handlers.end ())
+		{
+			(this->*(it->second)) (operand.c_str (), operand.length ());
 		}
 		else
 		{
-			std::string line;
-
-			std::istream is (&m_ReceiveBuffer);
-			std::getline (is, line);
-
-			std::string command, operand;
-			std::istringstream iss (line);
-			iss >> command >> operand;
-
-			// process command
-			auto & handlers = m_Owner.GetCommandHandlers ();
-			auto it = handlers.find (command);
-			if (it != handlers.end ())
-			{
-				(this->*(it->second)) (operand.c_str (), operand.length ());
-			}
-			else
-			{
-				LogPrint (eLogError, "BOB: Unknown command ", command.c_str ());
-				SendReplyError ("unknown command");
-			}
+			// The command word is not a secret; the operand may be (a keypair
+			// or a password), so it is never logged.
+			LogPrint (eLogError, "BOB: Unknown command ", command.c_str ());
+			SendReplyError ("unknown command");
 		}
 	}
 
@@ -669,7 +834,7 @@ namespace client
 
 	void BOBCommandSession::SetNickCommandHandler (const char * operand, size_t)
 	{
-		LogPrint (eLogDebug, "BOB: setnick ", operand);
+		LogPrint (eLogDebug, "BOB: setnick");
 		if (*operand)
 		{
 			auto dest = m_Owner.FindDestination (operand);
@@ -687,7 +852,7 @@ namespace client
 
 	void BOBCommandSession::GetNickCommandHandler (const char * operand, size_t)
 	{
-		LogPrint (eLogDebug, "BOB: getnick ", operand);
+		LogPrint (eLogDebug, "BOB: getnick");
 		if (*operand)
 		{
 			m_CurrentDestination = m_Owner.FindDestination (operand);
@@ -718,21 +883,26 @@ namespace client
 		i2p::data::CryptoKeyType cryptoType = i2p::data::CRYPTO_KEY_TYPE_ELGAMAL;
 		if (*operand)
 		{
-			try
+			// Parse without throwing: the previous std::stoi could raise
+			// std::out_of_range out of a command handler.
+			std::string_view types (operand);
+			const auto separator = types.find (' ');
+			unsigned signature = 0;
+			if (!ParseSmallUnsigned (types.substr (0, separator), signature))
 			{
-				char * operand1 = (char *)strchr (operand, ' ');
-				if (operand1)
-				{
-					*operand1 = 0;
-					operand1++;
-					cryptoType = static_cast<i2p::data::CryptoKeyType> (std::stoi (operand1));
-				}
-				signatureType = static_cast<i2p::data::SigningKeyType> (std::stoi (operand));
+				SendReplyError ("invalid signature type");
+				return;
 			}
-			catch (std::invalid_argument & ex)
+			unsigned crypto = 0;
+			if (separator != std::string_view::npos
+				&& !ParseSmallUnsigned (types.substr (separator + 1), crypto))
 			{
-				LogPrint (eLogWarning, "BOB: Error on newkeys: ", ex.what ());
+				SendReplyError ("invalid crypto type");
+				return;
 			}
+			signatureType = static_cast<i2p::data::SigningKeyType> (signature);
+			if (separator != std::string_view::npos)
+				cryptoType = static_cast<i2p::data::CryptoKeyType> (crypto);
 		}
 
 		m_Keys = i2p::data::PrivateKeys::CreateRandomKeys (signatureType, cryptoType, true);
@@ -750,7 +920,16 @@ namespace client
 
 	void BOBCommandSession::GetkeysCommandHandler (const char *, size_t)
 	{
-		LogPrint (eLogDebug, "BOB: getkeys");
+		LogPrint (eLogDebug, "BOB: getkeys request");
+		// The reply carries a destination's private keys. It is refused unless
+		// the operator explicitly enabled the option: BOB itself authenticates
+		// nothing beyond the local peer.
+		if (!m_Owner.IsGetKeysAllowed ())
+		{
+			LogPrint (eLogWarning, "BOB: getkeys is disabled; set bob.allowgetkeys=true to enable it");
+			SendReplyError ("getkeys is disabled");
+			return;
+		}
 		if (m_Keys.GetPublic ()) // keys are set ?
 			SendReplyOK (m_Keys.ToBase64 ());
 		else
@@ -768,7 +947,7 @@ namespace client
 
 	void BOBCommandSession::OuthostCommandHandler (const char * operand, size_t)
 	{
-		LogPrint (eLogDebug, "BOB: outhost ", operand);
+		LogPrint (eLogDebug, "BOB: outhost");
 		if (*operand)
 		{
 			m_OutHost = operand;
@@ -780,25 +959,24 @@ namespace client
 
 	void BOBCommandSession::OutportCommandHandler (const char * operand, size_t)
 	{
-		LogPrint (eLogDebug, "BOB: outport ", operand);
-		if (*operand)
+		LogPrint (eLogDebug, "BOB: outport");
+		uint16_t port = 0;
+		switch (ParseBOBPort (std::string_view (operand), port))
 		{
-			int port = std::stoi (operand);
-			if (port >= 0 && port < 65536)
-			{
-				m_OutPort = static_cast<uint16_t> (port);
-				SendReplyOK ("outbound port set");
-			}
-			else
-				SendReplyError ("port out of range");
+		case BOBPortResult::Ok:
+			m_OutPort = port;
+			SendReplyOK ("outbound port set");
+			return;
+		case BOBPortResult::Empty: SendReplyError ("empty outport"); return;
+		case BOBPortResult::Invalid: SendReplyError ("invalid port"); return;
+		case BOBPortResult::OutOfRange:
+		default: SendReplyError ("port out of range"); return;
 		}
-		else
-			SendReplyError ("empty outport");
 	}
 
 	void BOBCommandSession::InhostCommandHandler (const char * operand, size_t)
 	{
-		LogPrint (eLogDebug, "BOB: inhost ", operand);
+		LogPrint (eLogDebug, "BOB: inhost");
 		if (*operand)
 		{
 			m_InHost = operand;
@@ -810,20 +988,19 @@ namespace client
 
 	void BOBCommandSession::InportCommandHandler (const char * operand, size_t)
 	{
-		LogPrint (eLogDebug, "BOB: inport ", operand);
-		if (*operand)
+		LogPrint (eLogDebug, "BOB: inport");
+		uint16_t port = 0;
+		switch (ParseBOBPort (std::string_view (operand), port))
 		{
-			int port = std::stoi (operand);
-			if (port >= 0 && port < 65536)
-			{
-				m_InPort = static_cast<uint16_t> (port);
-				SendReplyOK ("inbound port set");
-			}
-			else
-				SendReplyError ("port out of range");
+		case BOBPortResult::Ok:
+			m_InPort = port;
+			SendReplyOK ("inbound port set");
+			return;
+		case BOBPortResult::Empty: SendReplyError ("empty inport"); return;
+		case BOBPortResult::Invalid: SendReplyError ("invalid port"); return;
+		case BOBPortResult::OutOfRange:
+		default: SendReplyError ("port out of range"); return;
 		}
-		else
-			SendReplyError ("empty inport");
 	}
 
 	void BOBCommandSession::QuietCommandHandler (const char *, size_t)
@@ -845,7 +1022,7 @@ namespace client
 
 	void BOBCommandSession::LookupCommandHandler (const char * operand, size_t)
 	{
-		LogPrint (eLogDebug, "BOB: lookup ", operand);
+		LogPrint (eLogDebug, "BOB: lookup");
 		if (*operand)
 		{
 			auto addr = context.GetAddressBook ().GetAddress (operand);
@@ -892,7 +1069,7 @@ namespace client
 
 	void BOBCommandSession::LookupLocalCommandHandler (const char * operand, size_t)
 	{
-		LogPrint (eLogDebug, "BOB: lookup local ", operand);
+		LogPrint (eLogDebug, "BOB: lookup local");
 		if (*operand)
 		{
 			auto addr = context.GetAddressBook ().GetAddress (operand);
@@ -913,7 +1090,7 @@ namespace client
 
 	void BOBCommandSession::PingCommandHandler (const char * operand, size_t)
 	{
-		LogPrint (eLogDebug, "BOB: ping ", operand);
+		LogPrint (eLogDebug, "BOB: ping");
 		if (*operand)
 		{
 			auto addr = context.GetAddressBook ().GetAddress (operand);
@@ -1031,7 +1208,7 @@ namespace client
 
 	void BOBCommandSession::OptionCommandHandler (const char * operand, size_t)
 	{
-		LogPrint (eLogDebug, "BOB: option ", operand);
+		LogPrint (eLogDebug, "BOB: option");
 		const char * value = strchr (operand, '=');
 		if (value)
 		{
@@ -1046,7 +1223,7 @@ namespace client
 
 	void BOBCommandSession::StatusCommandHandler (const char * operand, size_t)
 	{
-		LogPrint (eLogDebug, "BOB: status ", operand);
+		LogPrint (eLogDebug, "BOB: status");
 		const std::string name = operand;
 
 		// always prefer destination
@@ -1091,7 +1268,7 @@ namespace client
 	void BOBCommandSession::SetTunnelTypeCommandHandler (const char * operand, size_t len)
 	{
 		std::string_view sv (operand, len);
-		LogPrint (eLogDebug, "BOB: settunneltype ", operand);
+		LogPrint (eLogDebug, "BOB: settunneltype");
 		if (sv == "socks")
 		{
 			m_TunnelType = TunnelType::SOCKS;
@@ -1163,6 +1340,12 @@ namespace client
 		m_HelpStrings[BOB_COMMAND_SETTUNNELTYPE] = BOB_HELP_SETTUNNELTYPE;
 		m_HelpStrings[BOB_COMMAND_PING] = BOB_HELP_PING;
 		m_HelpStrings[BOB_COMMAND_HELP] = BOB_HELP_HELP;
+		// Fail closed: an absent or false option leaves the private-key reply
+		// disabled, and reading an unregistered option is safe here.
+		bool allowGetKeys = BOB_DEFAULT_ALLOW_GETKEYS;
+		const bool found = i2p::config::GetOption (std::string (BOB_OPTION_ALLOW_GETKEYS), allowGetKeys);
+		m_AllowGetKeys = ResolveBOBAllowGetKeys (found, allowGetKeys);
+		if (m_AllowGetKeys) LogPrint (eLogWarning, "BOB: getkeys is enabled by configuration");
 	}
 
 	BOBCommandChannel::~BOBCommandChannel ()
@@ -1235,13 +1418,26 @@ namespace client
 	{
 		if (ecode != boost::asio::error::operation_aborted) Accept ();
 
-		if (!ecode)
+		if (ecode)
 		{
-			LogPrint (eLogInfo, "BOB: New command connection from ", session->GetSocket ().remote_endpoint ());
-			session->SendVersion ();
-		}
-		else
 			LogPrint (eLogError, "BOB: Accept error: ", ecode.message ());
+			return;
+		}
+		if (!IsTrustedCommandPeer (session->GetSocket ()))
+		{
+			// Never log the rejected operand: this path only reports the rule.
+			LogPrint (eLogWarning, "BOB: Rejected a command connection that is not a local same-user peer");
+			session->Terminate ();
+			return;
+		}
+		if (!session->Admit (m_Admission))
+		{
+			LogPrint (eLogWarning, "BOB: Concurrent command session limit reached");
+			session->Terminate ();
+			return;
+		}
+		LogPrint (eLogInfo, "BOB: New command connection");
+		session->SendVersion ();
 	}
 }
 }

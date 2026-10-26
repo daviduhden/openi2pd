@@ -23,6 +23,7 @@
 #include <vector>
 #include <list>
 #include <unordered_map>
+#include <mutex>
 #include <boost/asio.hpp>
 #include "util.h"
 #include "Identity.h"
@@ -264,8 +265,6 @@ namespace client
 
 		void ScheduleStatsTimer ();
 		void HandleStatsTimer (const boost::system::error_code & ecode);
-		void ScheduleCleanupTimer ();
-		void HandleCleanupTimer (const boost::system::error_code & ecode);
 
 	private:
 		const std::string m_Name;

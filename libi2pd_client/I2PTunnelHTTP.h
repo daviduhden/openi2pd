@@ -29,7 +29,16 @@ public:
 	{
 		ClientRequest,
 		ServerRequest,
-		ServerResponse
+		ServerResponse,
+		/**
+		 * A response travelling from an I2P destination towards a local HTTP
+		 * proxy client. Hop-by-hop and proxy-only headers are removed so a
+		 * destination cannot inject them into the browser, while
+		 * Transfer-Encoding and every other framing header are preserved
+		 * verbatim: the body must still be parsed exactly as the destination
+		 * produced it.
+		 */
+		ClientResponse
 	};
 	enum class Result
 	{
@@ -110,6 +119,30 @@ private:
 			for (auto prefix :
 				std::array<std::string_view, 5> { "Server:", "Date:", "X-Runtime:", "X-Powered-By:", "Proxy" })
 				if (std::string_view (m_Line).starts_with (prefix)) return;
+		}
+		else if (m_Mode == Mode::ClientResponse)
+		{
+			// Hop-by-hop and proxy-only headers must not reach the local
+			// client. Transfer-Encoding stays untouched so the chunked or
+			// identity framing of the body is unchanged.
+			if (StartsWith (m_Line, "Proxy-") // Proxy-Authenticate, Proxy-Authorization, ...
+				|| StartsWith (m_Line, "Keep-Alive:") || StartsWith (m_Line, "TE:")
+				|| StartsWith (m_Line, "Trailer:") || StartsWith (m_Line, "X-Forwarded-")
+				|| StartsWith (m_Line, "X-Real-IP:") || StartsWith (m_Line, "Client-IP:")
+				|| StartsWith (m_Line, "X-Originating-IP:"))
+				return;
+			if (StartsWith (m_Line, "Connection:"))
+			{
+				m_Connection = true;
+				// A websocket upgrade answer must reach the client unchanged;
+				// every other connection directive collapses to "close".
+				const auto pos = m_Line.find ("pgrade");
+				if (pos != std::string::npos && pos && Lower (m_Line[pos - 1]) == 'u')
+					m_Output += m_Line + '\n';
+				else
+					m_Output += "Connection: close\r\n";
+				return;
+			}
 		}
 		else
 		{

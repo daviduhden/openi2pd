@@ -46,8 +46,11 @@ EXP+=("OK VERSION=3.3")
 IN+=("MIN=afddab3vsfdsg1df MAX=dsaaffdb3ggfgfbgf1bssbf")
 EXP+=("NOVERSION")
 
+# A bound without a dot is not a supported version range: SAMHandlerFactory
+# matches no candidate and answers NOVERSION (the old local comparator treated
+# the digits as "3.1").
 IN+=("MIN=31 MAX=31")
-EXP+=("OK VERSION=3.1")
+EXP+=("NOVERSION")
 
 failed=0
 i=0

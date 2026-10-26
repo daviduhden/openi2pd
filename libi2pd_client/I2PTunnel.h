@@ -13,12 +13,18 @@
 #define I2PTUNNEL_H__
 
 #include <inttypes.h>
+#include <atomic>
+#include <functional>
 #include <string>
 #include <string_view>
 #include "I2PTunnelHTTP.h"
+#include "I2PTunnelAccessFilter.h"
+#include <map>
+#include <mutex>
 #include <set>
 #include <vector>
 #include <tuple>
+#include <utility>
 #include <memory>
 #include <sstream>
 #include <boost/asio.hpp>
@@ -38,10 +44,17 @@ namespace client
 	constexpr size_t I2P_TUNNEL_CONNECTION_STREAM_BUFFER_SIZE = 16384;
 	constexpr int I2P_TUNNEL_CONNECTION_MAX_IDLE = 3600; // in seconds
 	constexpr int I2P_TUNNEL_DESTINATION_REQUEST_TIMEOUT = 10; // in seconds
+	// Server-tunnel option bounds (Java i2ptunnel defaults).
+	constexpr size_t I2P_SERVER_TUNNEL_MAX_PORT_TARGETS = 16;
+	constexpr int I2P_SERVER_TUNNEL_DEFAULT_POST_MAX = 6;
+	constexpr uint64_t I2P_SERVER_TUNNEL_POST_WINDOW = 60; // in seconds
 	// for HTTP tunnels
 	constexpr std::string_view X_I2P_DEST_HASH { "X-I2P-DestHash" }; // hash in base64
 	constexpr std::string_view X_I2P_DEST_B64 { "X-I2P-DestB64" }; // full address in base64
 	constexpr std::string_view X_I2P_DEST_B32 { "X-I2P-DestB32" }; // .b32.i2p address
+
+	class I2PServerTunnelHTTPPolicy;
+	class I2PServerTunnelTargetMap;
 
 	class I2PTunnelConnection : public I2PServiceHandler, public std::enable_shared_from_this<I2PTunnelConnection>
 	{
@@ -60,7 +73,9 @@ namespace client
 
 	protected:
 		virtual void Established ();
-		void Terminate ();
+		// Virtual teardown: it owns the socket/stream/TLS objects, so a
+		// ClearHandlers() call through I2PServiceHandler must reach it.
+		void Terminate () override;
 
 		void Receive ();
 		void StreamReceive ();
@@ -108,14 +123,20 @@ namespace client
 	public:
 		I2PServerTunnelConnectionHTTP (std::shared_ptr<I2PService> owner, std::shared_ptr<i2p::stream::Stream> stream,
 			const boost::asio::ip::tcp::endpoint & target, const std::string & host, const std::string & XI2P,
-			std::shared_ptr<boost::asio::ssl::context> sslCtx = nullptr);
+			std::shared_ptr<boost::asio::ssl::context> sslCtx = nullptr,
+			std::shared_ptr<I2PServerTunnelHTTPPolicy> policy = nullptr);
 
 	protected:
 		void Write (const uint8_t * buf, size_t len) override;
 		void WriteToStream (const uint8_t * buf, size_t len) override;
 
 	private:
+		// Answers a request refused by the tunnel policy and closes the stream.
+		void RejectRequest (int status, std::string_view reason);
+
 		I2PTunnelHTTPHeader m_RequestHeader, m_ResponseHeader;
+		std::shared_ptr<I2PServerTunnelHTTPPolicy> m_Policy;
+		bool m_RequestRejected = false;
 	};
 
 	class I2PTunnelConnectionIRC : public I2PTunnelConnection
@@ -152,6 +173,9 @@ namespace client
 
 		const char * GetName () const override { return m_Name.c_str (); }
 		void SetKeepAliveInterval (uint32_t keepAliveInterval);
+		// Configured destination names, in round-robin order, for the
+		// administrative inventory.
+		const std::vector<std::string> & GetDestinations () const { return m_Destinations; }
 
 	private:
 		std::shared_ptr<const Address> GetAddress ();
@@ -169,6 +193,44 @@ namespace client
 		std::unique_ptr<boost::asio::steady_timer> m_KeepAliveTimer;
 	};
 
+	// Immutable, bounded `targetForPort.<port>=host:port` map. At most
+	// I2P_SERVER_TUNNEL_MAX_PORT_TARGETS entries; malformed values, duplicate
+	// local ports and out-of-range ports are rejected at configuration load.
+	class I2PServerTunnelTargetMap
+	{
+	public:
+		struct Entry
+		{
+			std::string host;
+			uint16_t port = 0;
+		};
+		struct Selection
+		{
+			enum class Status
+			{
+				eDefault,
+				eTarget,
+				eReset
+			};
+			Status status = Status::eDefault;
+			std::string host;
+			uint16_t port = 0;
+		};
+
+		bool Add (uint16_t localPort, std::string host, uint16_t port, std::string & error);
+		// Parses one `host:port` specification; `[v6]:port` is accepted.
+		bool AddSpec (uint16_t localPort, std::string_view specification, std::string & error);
+		Selection Select (uint16_t acceptedLocalPort) const;
+		// Java requires an explicit mapping for these local ports.
+		static bool IsReservedLocalPort (uint16_t localPort) { return localPort == 443 || localPort == 22; }
+		bool Empty () const { return m_Targets.empty (); }
+		size_t Size () const { return m_Targets.size (); }
+		const std::map<uint16_t, Entry> & Entries () const { return m_Targets; }
+
+	private:
+		std::map<uint16_t, Entry> m_Targets;
+	};
+
 	class I2PServerTunnel : public I2PService
 	{
 	public:
@@ -177,8 +239,27 @@ namespace client
 
 		void Start () override;
 		void Stop () override;
+		// Java I2PTunnelServer.stop(forced): stop accepting in both cases;
+		// close the live stream/socket pairs only when forced or when nothing
+		// is in use. Stop() is the forced form used by daemon shutdown.
+		void Stop (bool forced);
+		bool IsInUse () const { return GetNumHandlers () > 0; }
 
 		void SetAccessList (const std::set<i2p::data::IdentHash> & accessList);
+		// Installs the parsed `filterDefinition` and its rejection action. The
+		// predicate runs inside the streaming SYN path, before any stream is
+		// created; `limitAction=reset` answers a denial with a signed RESET,
+		// anything else (the default) keeps the peer in silence.
+		void SetAccessFilter (std::shared_ptr<const FilterDefinition> definition, std::string_view limitAction);
+		void SetLimitAction (std::string_view limitAction);
+		// Wire action used for a refused SYN (`limitAction`). Filter denials
+		// default to a silent drop; `limitAction=reset` opts into a signed RESET.
+		TunnelAccessRejectAction GetAccessRejectAction () const { return m_AccessRejectAction; }
+
+		void SetTargets (const I2PServerTunnelTargetMap & targets);
+		const I2PServerTunnelTargetMap & GetTargets () const { return m_Targets; }
+		void SetDefaultAcceptor (bool isDefaultAcceptor) { m_IsDefaultAcceptor = isDefaultAcceptor; }
+		bool IsDefaultAcceptor () const { return m_IsDefaultAcceptor; }
 
 		void SetUniqueLocal (bool isUniqueLocal) { m_IsUniqueLocal = isUniqueLocal; }
 		bool IsUniqueLocal () const { return m_IsUniqueLocal; }
@@ -192,33 +273,137 @@ namespace client
 		uint16_t GetPort () const { return m_Port; };
 		uint16_t GetLocalPort () const { return m_PortDestination->GetLocalPort (); };
 		const boost::asio::ip::tcp::endpoint & GetEndpoint () const { return m_Endpoint; }
+		// Local target for a stream accepted on `localPort`. Returns false when
+		// the port has no usable target and the stream must be reset: Java
+		// requires an explicit `targetForPort` mapping for 443 and 22.
+		bool SelectTarget (uint16_t localPort, boost::asio::ip::tcp::endpoint & target) const;
 
 		const char * GetName () const override { return m_Name.c_str (); }
 
 		void Accept ();
 		void DetachAcceptor (); // called before the tunnels are read again on reload
 
+	protected:
+		virtual void HandleAccept (std::shared_ptr<i2p::stream::Stream> stream);
+		void Connect (std::shared_ptr<i2p::stream::Stream> stream, const boost::asio::ip::tcp::endpoint & target);
+		virtual std::shared_ptr<I2PTunnelConnection> CreateI2PConnection (
+			std::shared_ptr<i2p::stream::Stream> stream, const boost::asio::ip::tcp::endpoint & target);
+
 	private:
 		bool Resolve (std::shared_ptr<i2p::stream::Stream> stream);
 		void HandleResolve (const boost::system::error_code & ecode,
 			boost::asio::ip::tcp::resolver::results_type endpoints, std::shared_ptr<i2p::stream::Stream> stream);
-
-		void HandleAccept (std::shared_ptr<i2p::stream::Stream> stream);
-		void Connect (std::shared_ptr<i2p::stream::Stream> stream);
-		virtual std::shared_ptr<I2PTunnelConnection> CreateI2PConnection (std::shared_ptr<i2p::stream::Stream> stream);
+		// Registers the acceptor and admission predicate on one streaming
+		// destination. The lambda holds a weak owner plus the start generation.
+		void InstallAcceptor (const std::shared_ptr<i2p::stream::StreamingDestination> & destination);
+		void InstallAdmissionPolicy (const std::shared_ptr<i2p::stream::StreamingDestination> & destination);
+		// Resolves `targetForPort` hostnames asynchronously; a nameless (IP
+		// literal) entry is installed immediately.
+		void ResolveTargets ();
+		void HandleTargetResolve (const boost::system::error_code & ecode,
+			boost::asio::ip::tcp::resolver::results_type endpoints, uint16_t localPort);
 
 	private:
 		bool m_IsUniqueLocal;
 		bool m_IsDefaultAcceptor; // this tunnel is the one accepting on the destination
+		bool m_HasAcceptor;
 		std::string m_Name, m_Address;
 		uint16_t m_Port;
 		boost::asio::ip::tcp::endpoint m_Endpoint;
 		std::shared_ptr<i2p::stream::StreamingDestination> m_PortDestination;
+		// The default streaming destination when `defaultacceptor=true` made a
+		// port-specific tunnel take it over as well.
+		std::shared_ptr<i2p::stream::StreamingDestination> m_DefaultAcceptorDestination;
 		std::set<i2p::data::IdentHash> m_AccessList;
 		bool m_IsAccessList;
+		std::shared_ptr<const FilterDefinition> m_AccessFilterDefinition;
+		std::shared_ptr<TunnelAccessFilter> m_AccessFilter;
+		TunnelAccessRejectAction m_AccessRejectAction;
+		bool m_LimitActionConfigured;
+		I2PServerTunnelTargetMap m_Targets;
+		mutable std::mutex m_TargetsMutex;
+		std::map<uint16_t, boost::asio::ip::tcp::endpoint> m_ResolvedTargets;
+		std::vector<std::shared_ptr<boost::asio::ip::tcp::resolver>> m_TargetResolvers;
+		std::atomic<uint64_t> m_Generation;
 		std::unique_ptr<boost::asio::ip::address> m_LocalAddress;
 		std::shared_ptr<boost::asio::ssl::context> m_SSLCtx;
 		std::shared_ptr<boost::asio::ip::tcp::resolver> m_Resolver;
+	};
+
+	enum class I2PServerTunnelRequestDecision
+	{
+		eAllow,
+		eForbidden, // rejectInproxy / rejectReferer / rejectUserAgents
+		eTooManyRequests // POST/PUT throttle
+	};
+
+	// Server-tunnel HTTP request policy: `spoofedhost.<port>` with a
+	// `hostoverride` fallback, the inproxy/referer/user-agent rejects and the
+	// bounded POST/PUT throttle. Header names and values are never logged.
+	class I2PServerTunnelHTTPPolicy
+	{
+	public:
+		void SetHostOverride (std::string host)
+		{
+			std::lock_guard<std::mutex> lock (m_Mutex);
+			m_HostOverride = std::move (host);
+		}
+		bool SetSpoofedHost (uint16_t port, std::string host, std::string & error);
+		// The spoofed host for the accepted local port, else the override.
+		std::string HostFor (uint16_t port) const;
+
+		void SetRejectInproxy (bool reject)
+		{
+			std::lock_guard<std::mutex> lock (m_Mutex);
+			m_RejectInproxy = reject;
+		}
+		void SetRejectReferer (bool reject)
+		{
+			std::lock_guard<std::mutex> lock (m_Mutex);
+			m_RejectReferer = reject;
+		}
+		// Comma separated, case-insensitive substrings.
+		bool SetRejectUserAgents (std::string_view list, std::string & error);
+		void SetPostLimit (int perWindow);
+
+		int GetPostLimit () const
+		{
+			std::lock_guard<std::mutex> lock (m_Mutex);
+			return m_PostLimit;
+		}
+		bool IsRejectInproxy () const
+		{
+			std::lock_guard<std::mutex> lock (m_Mutex);
+			return m_RejectInproxy;
+		}
+		bool IsRejectReferer () const
+		{
+			std::lock_guard<std::mutex> lock (m_Mutex);
+			return m_RejectReferer;
+		}
+		size_t GetNumRejectUserAgents () const
+		{
+			std::lock_guard<std::mutex> lock (m_Mutex);
+			return m_RejectUserAgents.size ();
+		}
+
+		// Inspects one complete transformed request header (request line and
+		// header lines, CRLF or LF terminated).
+		I2PServerTunnelRequestDecision Check (std::string_view header, uint64_t nowSeconds);
+
+	private:
+		static constexpr size_t MAX_SPOOFED_HOSTS = 16;
+		static constexpr size_t MAX_REJECT_USER_AGENTS = 32;
+		static constexpr size_t MAX_PATTERN_LENGTH = 256;
+
+		mutable std::mutex m_Mutex;
+		std::map<uint16_t, std::string> m_SpoofedHosts;
+		std::string m_HostOverride;
+		std::vector<std::string> m_RejectUserAgents; // lowercased substrings
+		bool m_RejectInproxy = false, m_RejectReferer = false;
+		int m_PostLimit = I2P_SERVER_TUNNEL_DEFAULT_POST_MAX;
+		uint64_t m_PostWindowStart = 0;
+		uint32_t m_PostCount = 0;
 	};
 
 	class I2PServerTunnelHTTP : public I2PServerTunnel
@@ -228,13 +413,23 @@ namespace client
 			std::shared_ptr<ClientDestination> localDestination, const std::string & host, uint16_t inport = 0,
 			bool gzip = true, bool i2pheaders = true);
 
-	private:
-		std::shared_ptr<I2PTunnelConnection> CreateI2PConnection (std::shared_ptr<i2p::stream::Stream> stream);
+		void SetHostOverride (const std::string & host);
+		bool SetSpoofedHost (uint16_t port, const std::string & host, std::string & error);
+		void SetRejectInproxy (bool reject);
+		void SetRejectReferer (bool reject);
+		bool SetRejectUserAgents (const std::string & list, std::string & error);
+		void SetPostLimit (int perWindow);
+		const I2PServerTunnelHTTPPolicy & GetPolicy () const { return *m_Policy; }
+
+	protected:
+		std::shared_ptr<I2PTunnelConnection> CreateI2PConnection (
+			std::shared_ptr<i2p::stream::Stream> stream, const boost::asio::ip::tcp::endpoint & target) override;
 
 	private:
 		std::string m_Host, m_XI2P;
 		std::weak_ptr<const i2p::data::IdentityEx> m_From;
 		bool m_I2PHeaders;
+		std::shared_ptr<I2PServerTunnelHTTPPolicy> m_Policy;
 	};
 
 	class I2PServerTunnelIRC : public I2PServerTunnel
@@ -244,8 +439,9 @@ namespace client
 			std::shared_ptr<ClientDestination> localDestination, const std::string & webircpass, uint16_t inport = 0,
 			bool gzip = true);
 
-	private:
-		std::shared_ptr<I2PTunnelConnection> CreateI2PConnection (std::shared_ptr<i2p::stream::Stream> stream);
+	protected:
+		std::shared_ptr<I2PTunnelConnection> CreateI2PConnection (
+			std::shared_ptr<i2p::stream::Stream> stream, const boost::asio::ip::tcp::endpoint & target) override;
 
 	private:
 		std::string m_WebircPass;

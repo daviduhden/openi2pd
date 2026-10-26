@@ -6,8 +6,10 @@
  *
  * Exercises the bounded SAM control framer and the one-word command grammar:
  * pipelined commands, split lines and SEND payloads across reads, CRLF,
- * buffer limits, PING/PONG/HELP/QUIT classification and the exact reply
- * lines of SAMv3Handler. No socket, router or session is created.
+ * buffer limits, PING/PONG/HELP/AUTH/QUIT classification, the exact reply lines
+ * of SAMv3Handler, the HELLO VERSION negotiation, duplicate-parameter
+ * rejection, bare boolean tokens and the non-secret SESSION CREATE log summary.
+ * No socket, router or session is created.
  *
  */
 
@@ -184,7 +186,10 @@ void TestParameterLookup ()
 	assert (params["ID"] == "MySession");
 	assert (params["NAME"] == "two words");
 	assert (params["PATH"] == "a\"b");
-	assert (!params.Contains ("BARE"));
+	// A bare token is a present parameter with the value "true"
+	// (SAMUtils.getBool treats KEY/SILENT/HEADER without '=' as true).
+	assert (params.Contains ("BARE"));
+	assert (params["BARE"] == SAM_VALUE_TRUE);
 
 	uint16_t port = 0;
 	assert (ParseSAMNumber ("1234", port) && port == 1234);
@@ -192,6 +197,149 @@ void TestParameterLookup ()
 	assert (!ParseSAMNumber ("", port));
 	size_t size = 0;
 	assert (ParseSAMNumber ("31744", size) && size == 31744);
+}
+
+void TestBooleanParameters ()
+{
+	// SAMUtils.getBool(): a bare key is true, "true" (any case) is true, an
+	// explicit "false" and an absent key are false.
+	auto enabled = ParseSAMParams ("SILENT HEADER=true key=TrUe off=false").values;
+	assert (SAMIsParamTrue (enabled, SAM_PARAM_SILENT));
+	assert (SAMIsParamTrue (enabled, SAM_PARAM_HEADER));
+	assert (SAMIsParamTrue (enabled, "KEY"));
+	assert (!SAMIsParamTrue (enabled, "OFF"));
+	assert (!SAMIsParamTrue (enabled, "MISSING"));
+	assert (!SAMIsParamTrue (ParseSAMParams ("").values, SAM_PARAM_SILENT));
+
+	// A bare key and an explicit key with an empty value are both true.
+	assert (SAMIsParamTrue (ParseSAMParams ("SILENT=").values, SAM_PARAM_SILENT));
+	// Any other value is not a boolean true.
+	assert (!SAMIsParamTrue (ParseSAMParams ("SILENT=yes").values, SAM_PARAM_SILENT));
+}
+
+void TestDuplicateParameter ()
+{
+	// A repeated key is reported, whatever the value form is (Java
+	// SAMUtils.parseParams throws, which closes the control connection).
+	assert (!ParseSAMParams ("ID=a ID=b").duplicate);
+	assert (ParseSAMParams ("ID=a id=b").duplicate);
+	assert (ParseSAMParams ("STYLE=RAW STYLE=STREAM").duplicate);
+	assert (ParseSAMParams ("SILENT SILENT").duplicate);
+	assert (ParseSAMParams ("SILENT SILENT=true").duplicate);
+	assert (ParseSAMParams ("SIZE=1").duplicate == false);
+
+	// The duplicate is not silently merged away: the first value is kept so a
+	// diagnostic can name the key.
+	auto parsed = ParseSAMParams ("ID=first ID=second");
+	assert (parsed.duplicate);
+	assert (parsed.values["ID"] == "first");
+
+	// The UDP first-line option parser keeps its historical last-wins-free
+	// behaviour; only the duplicate flag is additive.
+	assert (!SAMSocket::ExtractParams ("FROM_PORT=1 TO_PORT=2").Contains ("ID"));
+}
+
+void TestHandshakeNegotiation ()
+{
+	int version = 0;
+
+	// A normal 3.x client selects the newest version in its range.
+	assert (NegotiateSAMHandshake ("HELLO VERSION MIN=3.0 MAX=3.3", version) == SAMHandshakeResult::eSAMHandshakeOk);
+	assert (version == MAX_SAM_VERSION);
+	assert (NegotiateSAMHandshake ("HELLO VERSION MIN=3.0 MAX=3.1", version) == SAMHandshakeResult::eSAMHandshakeOk);
+	assert (version == MAKE_SAM_VERSION_NUMBER (3, 1));
+	assert (NegotiateSAMHandshake ("HELLO VERSION MIN=3.0 MAX=9.9", version) == SAMHandshakeResult::eSAMHandshakeOk);
+	assert (version == MAX_SAM_VERSION);
+
+	// MIN only, MAX only, case-insensitive words and tab separators.
+	assert (NegotiateSAMHandshake ("HELLO VERSION MIN=3.2", version) == SAMHandshakeResult::eSAMHandshakeOk);
+	assert (version == MAX_SAM_VERSION);
+	assert (NegotiateSAMHandshake ("hello version max=3.0", version) == SAMHandshakeResult::eSAMHandshakeOk);
+	assert (version == MAKE_SAM_VERSION_NUMBER (3, 0));
+	assert (NegotiateSAMHandshake ("HELLO\tVERSION\tMIN=3.0\tMAX=3.2", version) == SAMHandshakeResult::eSAMHandshakeOk);
+	assert (version == SAM_VERSION_32);
+
+	// A well-formed range that selects nothing is NOVERSION.
+	assert (NegotiateSAMHandshake ("HELLO VERSION MIN=3.4 MAX=3.9", version)
+		== SAMHandshakeResult::eSAMHandshakeNoVersion);
+	assert (NegotiateSAMHandshake ("HELLO VERSION MIN=3.3 MAX=3.0", version)
+		== SAMHandshakeResult::eSAMHandshakeNoVersion);
+	assert (NegotiateSAMHandshake ("HELLO VERSION MIN=2.0 MAX=2.9", version)
+		== SAMHandshakeResult::eSAMHandshakeNoVersion);
+	// A component above 3.3.x is still a well-formed range, not a syntax error.
+	assert (NegotiateSAMHandshake ("HELLO VERSION MIN=3.0.0.0.0.0.0.0.0.0.0.0.1", version)
+		== SAMHandshakeResult::eSAMHandshakeNoVersion);
+
+	// Malformed HELLO lines (not a HELLO VERSION command at all, or a
+	// duplicate parameter key) get I2P_ERROR, as SAMHandlerFactory throws on
+	// them.
+	for (const char * line : { "", "HELLO", "HELLO VERSIONX", "VERSION MIN=3.0",
+			 "HELLO VERSION MIN=3.0 MIN=3.1" })
+	{
+		version = 0;
+		assert (NegotiateSAMHandshake (line, version) == SAMHandshakeResult::eSAMHandshakeInvalid);
+	}
+	// A present but unparsable/empty bound matches no supported version.
+	// SAMHandlerFactory does not validate the syntax either; it answers
+	// NOVERSION rather than I2P_ERROR. The numeric comparison here is stricter
+	// than Java's lexicographic VersionComparator (which happens to accept a
+	// negative bound), a deliberate and documented divergence.
+	for (const char * line : { "HELLO VERSION MIN=x", "HELLO VERSION MAX=3.x", "HELLO VERSION MIN= 3.0",
+			 "HELLO VERSION MIN=-1", "HELLO VERSION MAX=" })
+	{
+		version = 0;
+		assert (NegotiateSAMHandshake (line, version) == SAMHandshakeResult::eSAMHandshakeNoVersion);
+	}
+
+	// A bare HELLO VERSION (no MIN/MAX) still selects the newest version, as
+	// the previous implementation did.
+	assert (NegotiateSAMHandshake ("HELLO VERSION", version) == SAMHandshakeResult::eSAMHandshakeOk);
+	assert (version == MAX_SAM_VERSION);
+
+	// Trailing components beyond the 3.x pair still compare numerically.
+	assert (NegotiateSAMHandshake ("HELLO VERSION MIN=3.0.0 MAX=3.1.5", version) == SAMHandshakeResult::eSAMHandshakeOk);
+	assert (version == SAM_VERSION_32);
+}
+
+void TestHandshakePrecedesCommands ()
+{
+	// The first complete frame of a control connection is consumed as HELLO
+	// (SAMSocket::ProcessOneBufferedFrame), so no SESSION/STREAM/DEST command
+	// can execute before a successful HELLO VERSION exchange.
+	assert (!SAMCanDispatchCommands (false));
+	assert (SAMCanDispatchCommands (true));
+
+	// A command line is not a HELLO line: the handshake parser refuses it, so a
+	// pipelined command cannot be mistaken for the handshake.
+	int version = 0;
+	for (const char * line : { "SESSION CREATE STYLE=STREAM SILENT=true", "DEST GENERATE", "STREAM ACCEPT ID=x",
+			 "AUTH", "PING" })
+	{
+		assert (NegotiateSAMHandshake (line, version) == SAMHandshakeResult::eSAMHandshakeInvalid);
+	}
+}
+
+void TestSecretRedaction ()
+{
+	// The SESSION CREATE log line never carries DESTINATION (base64 private
+	// keys) or any other operand value, and an unrecognized STYLE cannot inject
+	// log content either.
+	const std::string raw = MakeSAMSessionCreateLogLine ("RAW", true);
+	assert (raw == "SAM: Session create, STYLE=RAW, id present");
+	assert (raw.find ("DESTINATION") == std::string::npos);
+	assert (raw.find ("PRIV") == std::string::npos);
+	assert (MakeSAMSessionCreateLogLine ("datagram3", false) == "SAM: Session create, STYLE=DATAGRAM3, id missing");
+	assert (MakeSAMSessionCreateLogLine ("primary", true) == "SAM: Session create, STYLE=PRIMARY, id present");
+	assert (MakeSAMSessionCreateLogLine ("Master", true) == "SAM: Session create, STYLE=MASTER, id present");
+	const std::string injected = MakeSAMSessionCreateLogLine ("RAW DESTINATION=secret\nPASSWORD=x", true);
+	assert (injected == "SAM: Session create, STYLE=unknown, id present");
+	assert (injected.find ("secret") == std::string::npos);
+	assert (injected.find ('\n') == std::string::npos);
+
+	// The reply builders never include a secret operand in the fixed part; the
+	// DESTINATION reply is formatted separately and is not logged.
+	assert (std::string_view (SAM_AUTH_STATUS_I2P_ERROR).find ("PASSWORD") == std::string_view::npos);
+	assert (std::string_view (SAM_HANDSHAKE_NOVERSION) == "HELLO REPLY RESULT=NOVERSION\n");
 }
 
 void TestControlGrammar ()
@@ -220,6 +368,13 @@ void TestControlGrammar ()
 	assert (ParseSAMControlCommand ("STOP", argument) == Command::eSAMControlCommandStop);
 	assert (ParseSAMControlCommand ("EXIT", argument) == Command::eSAMControlCommandExit);
 	assert (ParseSAMControlCommand ("exit", argument) == Command::eSAMControlCommandExit);
+
+	// AUTH is a one-word control command, with or without a credential
+	// argument. The argument is never logged.
+	assert (ParseSAMControlCommand ("AUTH", argument) == Command::eSAMControlCommandAuth);
+	assert (argument.empty ());
+	assert (ParseSAMControlCommand ("auth USER=x PASSWORD=y", argument) == Command::eSAMControlCommandAuth);
+	assert (argument == "USER=x PASSWORD=y");
 
 	// Two-word SAM commands are not control commands, and a lone unknown word
 	// is reported without dropping the session.
@@ -255,6 +410,13 @@ void TestControlReplies ()
 	assert (MakeSAMControlReply (Command::eSAMControlCommandUnknown, "foo", "")
 		== "FOO STATUS RESULT=I2P_ERROR MESSAGE=\"unknown command or missing subcommand, enter HELP "
 		   "for help\"\n");
+
+	// AUTH is refused without closing the connection, and the reply never
+	// echoes the credential argument.
+	assert (MakeSAMControlReply (Command::eSAMControlCommandAuth, "AUTH", "USER=x PASSWORD=y")
+		== std::string (SAM_AUTH_STATUS_I2P_ERROR));
+	assert (MakeSAMControlReply (Command::eSAMControlCommandAuth, "auth", "").find ("PASSWORD")
+		== std::string::npos);
 }
 
 void TestSendCommandDetection ()
@@ -275,6 +437,11 @@ int main ()
 	TestSendFraming ();
 	TestBufferLimits ();
 	TestParameterLookup ();
+	TestBooleanParameters ();
+	TestDuplicateParameter ();
+	TestHandshakeNegotiation ();
+	TestHandshakePrecedesCommands ();
+	TestSecretRedaction ();
 	TestControlGrammar ();
 	TestControlReplies ();
 	TestSendCommandDetection ();

@@ -12,6 +12,7 @@
 #include <string_view>
 
 #include "SAM.h"
+#include "Datagram.h"
 
 int main ()
 {
@@ -67,6 +68,24 @@ int main ()
 	assert (GetSAMSendResumeOffset (paramsOffset, 100, 40) == 60);
 	assert (GetSAMSendResumeOffset (paramsOffset, 100, 100) == 0);
 	assert (GetSAMSendResumeOffset (paramsOffset, 0, 0) == 0);
+
+	// The SAM 3.3 LISTEN_PROTOCOL contract and the DatagramDestination dispatch
+	// contract must agree: streaming (6) and the typed datagram protocols
+	// (17/19/20) are consumed by their own handlers and are never RAW payloads,
+	// while PROTO_UNSPECIFIED (0) and ordinary payload protocols are.
+	for (const uint8_t reserved : { SAM_LISTEN_PROTOCOL_STREAMING, PROTOCOL_TYPE_DATAGRAM, PROTOCOL_TYPE_DATAGRAM2,
+			 PROTOCOL_TYPE_DATAGRAM3 })
+	{
+		assert (IsSAMReservedRawListenProtocol (reserved));
+		assert (i2p::datagram::IsReservedRawProtocol (reserved));
+		assert (i2p::datagram::IsTypedDatagramProtocol (reserved) == (reserved != SAM_LISTEN_PROTOCOL_STREAMING));
+	}
+	for (const uint8_t allowed : { (uint8_t) 0, (uint8_t) PROTOCOL_TYPE_RAW, (uint8_t) 33 })
+	{
+		assert (!IsSAMReservedRawListenProtocol (allowed));
+		assert (!i2p::datagram::IsReservedRawProtocol (allowed));
+	}
+	assert (i2p::datagram::DATAGRAM_RAW_PROTOCOL == PROTOCOL_TYPE_RAW);
 
 	return 0;
 }

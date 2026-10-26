@@ -11,6 +11,8 @@
  * SEND payloads across reads, and serialises replies so protocol order is
  * unchanged. Version-gated port fields and bounded accept/session tracking
  * keep the protocol replies compatible and the peer-controlled state limited.
+ * Control connections are admission-capped and carry a cancellable HELLO and
+ * inter-command deadline; private-key and credential operands are never logged.
  *
  */
 
@@ -39,6 +41,7 @@ namespace client
 		: m_Owner (owner)
 		, m_Socket (owner.GetService ())
 		, m_Timer (m_Owner.GetService ())
+		, m_ControlDeadline (m_Owner.GetService ())
 		, m_BufferOffset (0)
 		, m_InputSize (0)
 		, m_IsWriting (false)
@@ -56,6 +59,9 @@ namespace client
 	SAMSocket::~SAMSocket ()
 	{
 		m_Stream = nullptr;
+		// Terminate() normally released the slot; a socket dropped without it
+		// (io_context already stopped) must not leak the admission count.
+		ReleaseControlConnection ();
 	}
 
 	void SAMSocket::Terminate (const char *)
@@ -66,6 +72,8 @@ namespace client
 		if (previousType == SAMSocketType::eSAMSocketTypeTerminated) return;
 		m_SocketType = SAMSocketType::eSAMSocketTypeTerminated;
 		ResetAllDatagramReceivers ();
+		CancelControlDeadline ();
+		ReleaseControlConnection ();
 
 		if (m_Stream)
 		{
@@ -83,12 +91,15 @@ namespace client
 			if (session)
 			{
 				session->RemoveAccept (shared_from_this ());
+				if (previousType == SAMSocketType::eSAMSocketTypeForward)
+					session->RemoveForwardAcceptor (m_ListenPort);
 				if (m_IsAccepting && session->GetLocalDestination ())
-				{
-					uint16_t listenPort = 0;
-					if (auto sub = std::dynamic_pointer_cast<SAMSubSession> (session)) listenPort = sub->inPort;
-					session->GetLocalDestination ()->StopAcceptingStreams (listenPort);
-				}
+					session->GetLocalDestination ()->StopAcceptingStreams (m_ListenPort);
+				// The armed acceptor is gone: a queued ACCEPT for the same port
+				// must be armed again or it would wait forever. The queued
+				// sockets are separate control connections, so their own
+				// deadlines are unaffected.
+				RearmQueuedAccept (m_ListenPort);
 			}
 			break;
 		}
@@ -135,66 +146,50 @@ namespace client
 		Receive ();
 	}
 
-	namespace
+	void SAMSocket::ArmControlDeadline (int seconds, const char * reason)
 	{
-		// SAM version components are compared numerically, component by
-		// component, like Java's VersionComparator. Concatenating the digits
-		// (the previous approach) mis-orders versions such as "3.2.1".
-		bool ParseSAMVersion (std::string_view ver, std::vector<uint64_t> & components)
-		{
-			components.clear ();
-			if (ver.empty ()) return false;
-			size_t pos = 0;
-			while (pos <= ver.size ())
-			{
-				auto dot = ver.find ('.', pos);
-				auto end = dot == std::string_view::npos ? ver.size () : dot;
-				if (end == pos) return false;
-				uint64_t value = 0;
-				for (size_t i = pos; i < end; i++)
-				{
-					auto ch = ver[i];
-					if (ch < '0' || ch > '9') return false;
-					if (value > MAX_SAM_VERSION_VALUE) return false; // absurd component
-					value = value * 10 + (ch - '0');
-				}
-				components.push_back (value);
-				if (dot == std::string_view::npos) break;
-				pos = dot + 1;
-			}
-			return !components.empty ();
-		}
+		if (!m_Socket.is_open ()) return;
+		m_ControlDeadlineReason = reason;
+		m_ControlDeadline.expires_after (std::chrono::seconds (seconds));
+		m_ControlDeadline.async_wait (
+			std::bind (&SAMSocket::HandleControlDeadline, shared_from_this (), std::placeholders::_1));
+	}
 
-		int CompareSAMVersion (int candidate, const std::vector<uint64_t> & other)
-		{
-			// Missing trailing components are zero, so "3", "3.0" and "3.0.0"
-			// select the same 3.0 handler.
-			uint64_t parts[2] = { (uint64_t)(candidate / 10), (uint64_t)(candidate % 10) };
-			size_t n = std::max<size_t> (2, other.size ());
-			for (size_t i = 0; i < n; i++)
-			{
-				uint64_t a = i < 2 ? parts[i] : 0;
-				uint64_t b = i < other.size () ? other[i] : 0;
-				if (a < b) return -1;
-				if (a > b) return 1;
-			}
-			return 0;
-		}
+	void SAMSocket::CancelControlDeadline ()
+	{
+		// cancel() only aborts the wait; the handler still runs and returns on
+		// the aborted error code, so a closed/reused timer cannot fire.
+		boost::system::error_code ec;
+		m_ControlDeadline.cancel (ec);
+	}
 
-		int ChooseSAMVersion (
-			bool hasMin, const std::vector<uint64_t> & minVer, bool hasMax, const std::vector<uint64_t> & maxVer)
-		{
-			static constexpr int candidates[] = { MAKE_SAM_VERSION_NUMBER (3, 3), MAKE_SAM_VERSION_NUMBER (3, 2),
-				MAKE_SAM_VERSION_NUMBER (3, 1), MAKE_SAM_VERSION_NUMBER (3, 0) };
-			for (auto candidate : candidates)
-			{
-				if (hasMin && CompareSAMVersion (candidate, minVer) < 0) continue;
-				if (hasMax && CompareSAMVersion (candidate, maxVer) > 0) continue;
-				return candidate;
-			}
-			return -1;
-		}
-	} // namespace
+	void SAMSocket::HandleControlDeadline (const boost::system::error_code & ecode)
+	{
+		if (ecode == boost::asio::error::operation_aborted) return;
+		if (m_SocketType == SAMSocketType::eSAMSocketTypeTerminated) return;
+		LogPrint (eLogInfo, "SAM: Control connection closed: ", m_ControlDeadlineReason ? m_ControlDeadlineReason : "");
+		Terminate (m_ControlDeadlineReason);
+	}
+
+	void SAMSocket::ReleaseControlConnection ()
+	{
+		// Exactly once per admitted socket, whatever terminates it. The counter
+		// is shared, so a socket that outlives the bridge stays safe.
+		if (!m_IsControlConnectionCounted.exchange (false)) return;
+		if (m_ControlConnectionCounter) m_ControlConnectionCounter->fetch_sub (1);
+	}
+
+	bool SAMSocket::GetCommandParams (std::string_view buf, i2p::util::Mapping & params)
+	{
+		auto parsed = ParseSAMParams (buf);
+		params = std::move (parsed.values);
+		if (!parsed.duplicate) return true;
+		// Java SAMUtils.parseParams() throws on a duplicate key, which closes
+		// the control connection. There is no SAM error reply for this.
+		LogPrint (eLogError, "SAM: Duplicate parameter key in command");
+		Terminate ("SAM: duplicate parameter");
+		return false;
+	}
 
 	static std::string CreateVersion (int ver)
 	{
@@ -292,45 +287,23 @@ namespace client
 
 	void SAMSocket::ProcessHandshakeLine (std::string_view line)
 	{
-		LogPrint (eLogDebug, "SAM: Handshake ", line);
+		// The HELLO line can carry SAM credentials (AUTH/USER/PASSWORD style
+		// clients) and is therefore never logged: only the negotiated version
+		// and the outcome are.
 		if (line.size () >= SAM_SOCKET_BUFFER_SIZE)
 		{
-			Terminate ("SAM: handshake line too long");
+			SendReplyWithMessage (SAM_HANDSHAKE_I2P_ERROR_MESSAGE, "HELLO line too long", true);
 			return;
 		}
-		// SAMUtils.parseParams treats spaces, tabs and form feeds as
-		// separators and normalises command case. Tokenise the handshake the
-		// same way instead of requiring exactly one literal space.
-		std::string_view rest = line;
-		std::string_view hello, version;
-		if (!NextToken (rest, hello) || !NextToken (rest, version) || !SAMCommandEquals (hello, "HELLO")
-			|| !SAMCommandEquals (version, "VERSION"))
+		int selected = MIN_SAM_VERSION;
+		const auto result = NegotiateSAMHandshake (line, selected);
+		if (result == SAMHandshakeResult::eSAMHandshakeInvalid)
 		{
-			LogPrint (eLogError, "SAM: Handshake mismatch");
-			Terminate ("SAM: handshake mismatch");
+			LogPrint (eLogError, "SAM: Malformed handshake");
+			SendReplyWithMessage (SAM_HANDSHAKE_I2P_ERROR_MESSAGE, "Malformed HELLO VERSION", true);
 			return;
 		}
-
-		bool hasMin = false, hasMax = false, verErr = false;
-		std::vector<uint64_t> minVer, maxVer;
-		{
-			auto params = ExtractParams (rest);
-			auto maxVerStr = params[SAM_PARAM_MAX];
-			if (!maxVerStr.empty ())
-			{
-				hasMax = true;
-				if (!ParseSAMVersion (maxVerStr, maxVer)) verErr = true;
-			}
-			auto minVerStr = params[SAM_PARAM_MIN];
-			if (!minVerStr.empty ())
-			{
-				hasMin = true;
-				if (!ParseSAMVersion (minVerStr, minVer)) verErr = true;
-			}
-		}
-		// A min > max range simply selects nothing (NOVERSION).
-		int selected = verErr ? -1 : ChooseSAMVersion (hasMin, minVer, hasMax, maxVer);
-		if (verErr || selected < 0)
+		if (result == SAMHandshakeResult::eSAMHandshakeNoVersion)
 		{
 			LogPrint (eLogError, "SAM: Handshake version mismatch");
 			SendMessageReply (SAM_HANDSHAKE_NOVERSION, true);
@@ -338,6 +311,9 @@ namespace client
 		}
 		m_Version = selected;
 		m_IsHandshakeDone = true;
+		LogPrint (eLogInfo, "SAM: Handshake done, version ", CreateVersion (m_Version));
+		// The HELLO deadline is replaced by the inter-command deadline as soon
+		// as the next control read starts.
 		SendReplyWithMessage (SAM_HANDSHAKE_REPLY, CreateVersion (m_Version), false);
 	}
 
@@ -400,7 +376,7 @@ namespace client
 		line.remove_suffix (1); // '\n'
 		if (!line.empty () && line.back () == '\r') line.remove_suffix (1);
 
-		if (!m_IsHandshakeDone)
+		if (!SAMCanDispatchCommands (m_IsHandshakeDone))
 		{
 			ProcessHandshakeLine (line);
 			ConsumeInput (frame.lineLength);
@@ -429,7 +405,9 @@ namespace client
 			auto space = line.find (' ');
 			auto word = space == std::string_view::npos ? line : line.substr (0, space);
 			auto reply = MakeSAMControlReply (control, word, argument);
-			LogPrint (eLogDebug, "SAM: Command ", word, " ", argument);
+			// Only the command word is logged: the argument of AUTH (and of a
+			// PING echo) may carry credentials and is never written to the log.
+			LogPrint (eLogDebug, "SAM: Control command ", word);
 			ConsumeInput (lineLength);
 			switch (control)
 			{
@@ -442,6 +420,12 @@ namespace client
 				return;
 			case SAMControlCommand::eSAMControlCommandPing:
 			case SAMControlCommand::eSAMControlCommandHelp: SendMessageReply (reply, false); return;
+			case SAMControlCommand::eSAMControlCommandAuth:
+				// No authenticator exists: refuse without dropping the control
+				// connection, so the client can continue unauthenticated.
+				LogPrint (eLogWarning, "SAM: AUTH is not supported");
+				SendMessageReply (reply, false);
+				return;
 			case SAMControlCommand::eSAMControlCommandUnknown:
 				LogPrint (eLogError, "SAM: Unknown command ", word);
 				SendMessageReply (reply, false);
@@ -543,7 +527,10 @@ namespace client
 
 	void SAMSocket::SendMessageReply (std::string_view msg, bool close)
 	{
-		LogPrint (eLogDebug, "SAMSocket::SendMessageReply, close=", close ? "true" : "false", " reason: ", msg);
+		// The reply body may carry secret operands: SESSION STATUS RESULT=OK
+		// contains DESTINATION=<private keys> and DEST REPLY contains PRIV=.
+		// Log only the size and the close decision, never the bytes.
+		LogPrint (eLogDebug, "SAMSocket::SendMessageReply, close=", close ? "true" : "false", ", bytes=", msg.size ());
 
 		// The reply (or the decision not to send one) settles any deferred
 		// command: further commands may now be parsed once the write is done.
@@ -642,11 +629,15 @@ namespace client
 		// SESSION STATUS may be delayed until the destination is ready; no
 		// later command may be dispatched (or answered) before it.
 		m_IsCommandPending = true;
-		LogPrint (eLogDebug, "SAM: Session create: ", buf);
-		auto params = ExtractParams (buf);
+		// DESTINATION carries the base64 private keys. The command line is
+		// never logged; only the canonical style and whether an ID was supplied
+		// are (MakeSAMSessionCreateLogLine).
+		i2p::util::Mapping params;
+		if (!GetCommandParams (buf, params)) return;
 		std::string_view style = params[SAM_PARAM_STYLE];
 		std::string_view id = params[SAM_PARAM_ID];
 		std::string_view destination = params[SAM_PARAM_DESTINATION];
+		LogPrint (eLogDebug, MakeSAMSessionCreateLogLine (style, !id.empty ()));
 
 		if (id.empty () || !IsAcceptableSessionName (id))
 		{
@@ -712,17 +703,41 @@ namespace client
 			SendSessionI2PError ("Invalid PROTOCOL");
 			return;
 		}
+		// SAM 3.3 LISTEN_PROTOCOL selects the effective receive protocol. It is
+		// interpreted for RAW, validated and ignored for DATAGRAM (the style
+		// selects 17/19/20) and rejected for STREAM/PRIMARY. `PORT` below is
+		// only the local UDP forward endpoint (see SAMv3Handler/SAM 3.x), so it
+		// can never become the I2CP receive port.
+		uint8_t listenProtocol = protocol;
+		if (!ResolveSAMListenProtocol (params, type, protocol, listenProtocol))
+		{
+			SendSessionI2PError ("Invalid LISTEN_PROTOCOL");
+			return;
+		}
+		const uint8_t receiveProtocol = SAMStyleListenProtocol (type, datagramVersion, listenProtocol);
+		// I2CP receive port: LISTEN_PORT, default 0 (PORT_ANY). Java uses 0 for
+		// a single session unless LISTEN_PORT is given.
+		uint16_t listenPort = 0;
+		if (!ResolveSAMSessionListenPort (params, listenPort))
+		{
+			SendSessionI2PError ("Invalid LISTEN_PORT");
+			return;
+		}
 		// HEADER=true makes forwarded raw datagrams carry a PROTOCOL/FROM_PORT/
-		// TO_PORT line, as in SAMv3RawSession (SAM 3.2+).
+		// TO_PORT line, as in SAMv3RawSession (SAM 3.2+). A bare HEADER token
+		// means true (SAMUtils.getBool).
 		bool header = m_Version >= SAM_VERSION_32 && type == SAMSessionType::eSAMSessionTypeRaw
-			&& SAMCommandEquals (params[SAM_PARAM_HEADER], SAM_VALUE_TRUE);
+			&& SAMIsParamTrue (params, SAM_PARAM_HEADER);
 
 		std::shared_ptr<boost::asio::ip::udp::endpoint> forward = nullptr;
 		if ((type == SAMSessionType::eSAMSessionTypeDatagram || type == SAMSessionType::eSAMSessionTypeRaw)
 			&& params.Contains (SAM_PARAM_PORT))
 		{
 			// udp forward selected. Like SAMv3RawSession.getSocketAddress(), HOST
-			// defaults to the control connection's remote address.
+			// defaults to the control connection's remote address. SAM v3
+			// (`SESSION CREATE`) defines PORT as this local forwarding endpoint
+			// and LISTEN_PORT as the I2CP receive port, so PORT never selects
+			// the receiver registration below.
 			uint16_t port = 0;
 			if (!ParseSAMPort (params, SAM_PARAM_PORT, port))
 			{
@@ -795,41 +810,39 @@ namespace client
 			session->ToPort = toPort;
 			session->Protocol = protocol;
 			session->Header = header;
+			session->ListenPort = listenPort;
 			if (type == SAMSessionType::eSAMSessionTypeDatagram || type == SAMSessionType::eSAMSessionTypeRaw)
 			{
 				session->DatagramVersion = datagramVersion;
 				session->UDPEndpoint = forward;
 				auto dest = session->GetLocalDestination ()->CreateDatagramDestination (true, datagramVersion);
-				uint16_t port = 0;
-				if (forward)
-				{
-					std::string_view p = params[SAM_PARAM_PORT];
-					auto res = std::from_chars (p.data (), p.data () + p.size (), port);
-					if (res.ec != std::errc ()) port = 0;
-				}
 				if (type == SAMSessionType::eSAMSessionTypeDatagram)
 				{
+					// DATAGRAM/DATAGRAM2/DATAGRAM3 register identity receivers
+					// under their own I2CP protocol (17/19) and DATAGRAM3 under
+					// the sender-hash protocol 20, so the styles can share a
+					// listen port.
 					if (datagramVersion == i2p::datagram::eDatagramV3)
 						TrackDatagramReceiver (m_ID,
 							dest->SetHashReceiver (
 								std::bind (&SAMSocket::HandleI2PDatagram3Receive, shared_from_this (), m_ID,
 									std::placeholders::_1, std::placeholders::_2, std::placeholders::_3,
 									std::placeholders::_4, std::placeholders::_5, std::placeholders::_6),
-								port));
+								listenPort, receiveProtocol));
 					else
 						TrackDatagramReceiver (m_ID,
 							dest->SetReceiver (
 								std::bind (&SAMSocket::HandleI2PDatagramReceive, shared_from_this (), m_ID,
 									std::placeholders::_1, std::placeholders::_2, std::placeholders::_3,
 									std::placeholders::_4, std::placeholders::_5, std::placeholders::_6),
-								port));
+								listenPort, receiveProtocol));
 				}
 				else // raw
 					TrackDatagramReceiver (m_ID,
 						dest->SetRawReceiver (std::bind (&SAMSocket::HandleI2PRawDatagramReceive, shared_from_this (),
 												  m_ID, std::placeholders::_1, std::placeholders::_2,
 												  std::placeholders::_3, std::placeholders::_4, std::placeholders::_5),
-							port));
+							listenPort, receiveProtocol));
 			}
 
 			if (session->GetLocalDestination ()->IsReady ())
@@ -888,17 +901,26 @@ namespace client
 		// The reply arrives after the connect completes, so no further command
 		// may be parsed (or replied to) in the meantime.
 		m_IsCommandPending = true;
+		// CONNECT carries only a public destination and ports, so the parameter
+		// list is safe to log (unlike SESSION CREATE and HELLO).
 		LogPrint (eLogDebug, "SAM: Stream connect: ", buf);
 		if (m_SocketType != SAMSocketType::eSAMSocketTypeUnknown)
 		{
 			SendStreamI2PError ("Socket already in use");
 			return;
 		}
-		auto params = ExtractParams (buf);
+		i2p::util::Mapping params;
+		if (!GetCommandParams (buf, params)) return;
 		std::string_view id = params[SAM_PARAM_ID];
 		std::string_view destination = params[SAM_PARAM_DESTINATION];
-		std::string_view silent = params[SAM_PARAM_SILENT];
-		if (SAMCommandEquals (silent, SAM_VALUE_TRUE)) m_IsSilent = true;
+		// SAMv3Handler/SAMv1Handler report a missing ID as I2P_ERROR, not as an
+		// unknown session.
+		if (id.empty ())
+		{
+			SendStreamI2PError ("ID not specified");
+			return;
+		}
+		if (SAMIsParamTrue (params, SAM_PARAM_SILENT)) m_IsSilent = true;
 		SetID (id);
 		auto session = m_Owner.FindSession (id);
 		m_ConnectFromPort = session ? session->FromPort : 0;
@@ -990,6 +1012,9 @@ namespace client
 			if (session->GetLocalDestination ()->SupportsEncryptionType (remote->GetEncryptionType ()))
 			{
 				m_SocketType = SAMSocketType::eSAMSocketTypeStream;
+				// The control phase is over; stream payload has its own idle
+				// handling.
+				CancelControlDeadline ();
 				auto localDest = session->GetLocalDestination ();
 				uint16_t fromPort = m_ConnectFromPort ? m_ConnectFromPort : session->FromPort;
 				auto streamingDest = localDest->GetStreamingDestination (fromPort);
@@ -1037,7 +1062,9 @@ namespace client
 		if (++m_ConnectAttempts * 100 >= SAM_STREAM_CONNECT_TIMEOUT)
 		{
 			m_Stream->AsyncClose (); // timer runs on the SAM service, not the stream's
-			SendStreamCantReachPeer ("Connection timeout");
+			// An expired connect is TIMEOUT; CANT_REACH_PEER is reserved for a
+			// reachable-but-failed attempt (no LeaseSet, incompatible crypto).
+			SendMessageReply (SAM_STREAM_STATUS_TIMEOUT, true);
 			return;
 		}
 		m_Timer.expires_after (std::chrono::milliseconds (100));
@@ -1069,10 +1096,15 @@ namespace client
 			SendStreamI2PError ("Socket already in use");
 			return;
 		}
-		auto params = ExtractParams (buf);
+		i2p::util::Mapping params;
+		if (!GetCommandParams (buf, params)) return;
 		std::string_view id = params[SAM_PARAM_ID];
-		std::string_view silent = params[SAM_PARAM_SILENT];
-		if (SAMCommandEquals (silent, SAM_VALUE_TRUE)) m_IsSilent = true;
+		if (id.empty ())
+		{
+			SendStreamI2PError ("ID not specified");
+			return;
+		}
+		if (SAMIsParamTrue (params, SAM_PARAM_SILENT)) m_IsSilent = true;
 		SetID (id);
 		auto session = m_Owner.FindSession (id);
 		if (session)
@@ -1082,10 +1114,21 @@ namespace client
 				SendStreamI2PError ("Specified ID is not a STREAM session");
 				return;
 			}
+			// A STREAM FORWARD acceptor owns this session's listen port: a
+			// concurrent ACCEPT cannot be armed or queued behind it.
+			const uint16_t listenPort = session->ListenPort;
+			if (session->IsForwarding (listenPort))
+			{
+				LogPrint (eLogInfo, "SAM: Session ", m_ID, " is forwarding on port ", listenPort);
+				SendMessageReply (SAM_STREAM_STATUS_ALREADY_ACCEPTING, false);
+				return;
+			}
 			m_SocketType = SAMSocketType::eSAMSocketTypeAcceptor;
+			// The socket now waits for an incoming stream, not for commands: the
+			// inter-command deadline no longer applies.
+			CancelControlDeadline ();
+			m_ListenPort = listenPort;
 			auto localDest = session->GetLocalDestination ();
-			uint16_t listenPort = 0;
-			if (auto sub = std::dynamic_pointer_cast<SAMSubSession> (session)) listenPort = sub->inPort;
 			auto streamDest = localDest ? localDest->GetStreamingDestination (listenPort) : nullptr;
 			if (!streamDest && localDest && listenPort)
 			{
@@ -1128,11 +1171,12 @@ namespace client
 	{
 		LogPrint (eLogDebug, "SAM: Stream forward: ", buf);
 
-		auto params = ExtractParams (buf);
+		i2p::util::Mapping params;
+		if (!GetCommandParams (buf, params)) return;
 		auto id = params[SAM_PARAM_ID];
 		if (id.empty ())
 		{
-			SendStreamI2PError ("Missing ID");
+			SendStreamI2PError ("ID not specified");
 			return;
 		}
 
@@ -1147,9 +1191,25 @@ namespace client
 			SendStreamI2PError ("Specified ID is not a STREAM session");
 			return;
 		}
-		if (session->GetLocalDestination ()->IsAcceptingStreams ())
+		// Per-port forwarding: only the port-scoped streaming destination of
+		// the session is used, so a port-specific forwarder never accepts the
+		// traffic of another port. An ACCEPT armed on the same port wins.
+		const uint16_t listenPort = session->ListenPort;
+		auto localDest = session->GetLocalDestination ();
+		auto streamDest = localDest ? localDest->GetStreamingDestination (listenPort) : nullptr;
+		if (!streamDest && localDest && listenPort)
 		{
-			SendStreamI2PError ("Already accepting");
+			streamDest = localDest->CreateStreamingDestination (listenPort);
+			if (streamDest) streamDest->Start ();
+		}
+		if (!streamDest)
+		{
+			SendStreamI2PError ("Streaming destination is not available");
+			return;
+		}
+		if (streamDest->IsAcceptorSet () || session->IsForwarding (listenPort))
+		{
+			SendMessageReply (SAM_STREAM_STATUS_ALREADY_ACCEPTING, false);
 			return;
 		}
 
@@ -1201,12 +1261,16 @@ namespace client
 		}
 
 		m_SocketType = SAMSocketType::eSAMSocketTypeForward;
+		m_ListenPort = listenPort;
+		// A forwarder waits for incoming streams instead of commands.
+		CancelControlDeadline ();
 		SetID (id);
 		m_IsAccepting = true;
 
-		if (SAMCommandEquals (params[SAM_PARAM_SILENT], SAM_VALUE_TRUE)) m_IsSilent = true;
+		if (SAMIsParamTrue (params, SAM_PARAM_SILENT)) m_IsSilent = true;
 
-		session->GetLocalDestination ()->AcceptStreams (
+		session->AddForwardAcceptor (listenPort);
+		streamDest->SetAcceptor (
 			std::bind (&SAMSocket::HandleI2PForward, shared_from_this (), std::placeholders::_1, ep));
 
 		SendMessageReply (SAM_STREAM_STATUS_OK, false);
@@ -1214,18 +1278,33 @@ namespace client
 
 	size_t SAMSocket::ProcessDatagramSend (std::string_view line, const char * payload, size_t available)
 	{
+		// The SEND parameters name the public peer destination, ports and size;
+		// the payload itself is never logged.
 		LogPrint (eLogDebug, "SAM: Datagram send: ", line);
-		auto params = ExtractParams (line);
+		i2p::util::Mapping params;
+		if (!GetCommandParams (line, params)) return available;
+		// A SEND has no ID parameter: it belongs to the session created on this
+		// control connection. Java SAMv1Handler reports a missing/unknown
+		// session as an error and closes the connection instead of silently
+		// consuming the command and its payload.
+		if (m_ID.empty ())
+		{
+			LogPrint (eLogError, "SAM: DATAGRAM SEND without a session, ID not specified");
+			Terminate ("SAM: ID not specified");
+			return available;
+		}
 		auto session = m_Owner.FindSession (m_ID);
 		if (!session)
 		{
-			LogPrint (eLogError, "SAM: Session is not created from DATAGRAM SEND");
-			return available; // consume the unusable command, payload included
+			LogPrint (eLogError, "SAM: DATAGRAM SEND on an unknown session");
+			Terminate ("SAM: unknown session");
+			return available;
 		}
 		if (session->Type != SAMSessionType::eSAMSessionTypeRaw
 			&& session->Type != SAMSessionType::eSAMSessionTypeDatagram)
 		{
 			LogPrint (eLogError, "SAM: SEND on a non-datagram session ", session->Name);
+			Terminate ("SAM: SEND on a non-datagram session");
 			return available;
 		}
 		bool isRaw = session->Type == SAMSessionType::eSAMSessionTypeRaw;
@@ -1263,7 +1342,8 @@ namespace client
 		if (params[SAM_PARAM_DESTINATION].empty ())
 		{
 			LogPrint (eLogError, "SAM: Missing SEND DESTINATION");
-			return size;
+			Terminate ("SAM: SEND DESTINATION not specified");
+			return available;
 		}
 		session->SendDatagram (
 			params[SAM_PARAM_DESTINATION], (const uint8_t *)payload, size, fromPort, toPort, protocol);
@@ -1273,7 +1353,8 @@ namespace client
 	void SAMSocket::ProcessDestGenerate (std::string_view buf)
 	{
 		LogPrint (eLogDebug, "SAM: Dest generate");
-		auto params = ExtractParams (buf);
+		i2p::util::Mapping params;
+		if (!GetCommandParams (buf, params)) return;
 		// extract signature type
 		i2p::data::SigningKeyType signatureType = i2p::data::SIGNING_KEY_TYPE_DSA_SHA1;
 		i2p::data::CryptoKeyType cryptoType = i2p::data::CRYPTO_KEY_TYPE_ELGAMAL;
@@ -1304,7 +1385,8 @@ namespace client
 		// from producing replies first.
 		m_IsCommandPending = true;
 		LogPrint (eLogDebug, "SAM: Naming lookup: ", buf);
-		auto params = ExtractParams (buf);
+		i2p::util::Mapping params;
+		if (!GetCommandParams (buf, params)) return;
 		std::string name (params[SAM_PARAM_NAME]);
 		std::shared_ptr<const i2p::data::IdentityEx> identity;
 		std::shared_ptr<const Address> addr;
@@ -1344,7 +1426,8 @@ namespace client
 
 	void SAMSocket::ProcessSessionAdd (std::string_view buf)
 	{
-		auto params = ExtractParams (buf);
+		i2p::util::Mapping params;
+		if (!GetCommandParams (buf, params)) return;
 		std::string_view id = params[SAM_PARAM_ID];
 		if (m_Version < SAM_VERSION_33) // < SAM 3.3
 		{
@@ -1411,8 +1494,20 @@ namespace client
 				SendSubsessionError (id, "Invalid PROTOCOL");
 				return;
 			}
+			// SAM 3.3 LISTEN_PROTOCOL: interpreted for RAW (defaults to
+			// PROTOCOL, 0 is the catch-all, streaming/datagram protocols are
+			// rejected), validated and ignored for DATAGRAM and rejected for
+			// STREAM. The effective protocol of the style then selects the
+			// receiver key below.
+			uint8_t listenProtocol = protocol;
+			if (!ResolveSAMListenProtocol (params, type, protocol, listenProtocol))
+			{
+				SendSubsessionError (id, "Invalid LISTEN_PROTOCOL");
+				return;
+			}
+			const uint8_t receiveProtocol = SAMStyleListenProtocol (type, datagramVersion, listenProtocol);
 			bool header = m_Version >= SAM_VERSION_32 && type == SAMSessionType::eSAMSessionTypeRaw
-				&& SAMCommandEquals (params[SAM_PARAM_HEADER], SAM_VALUE_TRUE);
+				&& SAMIsParamTrue (params, SAM_PARAM_HEADER);
 
 			std::shared_ptr<boost::asio::ip::udp::endpoint> forward = nullptr;
 			if ((type == SAMSessionType::eSAMSessionTypeDatagram || type == SAMSessionType::eSAMSessionTypeRaw)
@@ -1464,11 +1559,17 @@ namespace client
 				SendSubsessionError (id, "DATAGRAM/RAW subsession must specify PORT");
 				return;
 			}
+			// Java PrimarySession keys a subsession on (STYLE, effective
+			// receive protocol, LISTEN_PORT): two RAW subsessions may share a
+			// port on different protocols, and DATAGRAM/DATAGRAM2/DATAGRAM3 may
+			// share a port because their styles select 17/19/20.
+			const auto candidateKey = MakeSAMSubsessionKey (type, receiveProtocol, listenPort);
 			for (const auto & existingId : masterSession->subsessions)
 			{
 				auto existing = m_Owner.FindSession (existingId);
 				auto sub = std::dynamic_pointer_cast<SAMSubSession> (existing);
-				if (sub && sub->Type == type && sub->inPort == listenPort)
+				if (sub
+					&& MakeSAMSubsessionKey (sub->Type, sub->inProtocol, sub->inPort) == candidateKey)
 				{
 					SendSubsessionError (id, "Duplicate protocol and port");
 					return;
@@ -1477,7 +1578,8 @@ namespace client
 
 			// STREAM subsessions route incoming connections by LISTEN_PORT;
 			// FROM_PORT remains the outgoing source port.
-			auto subsession = std::make_shared<SAMSubSession> (masterSession, id, type, listenPort);
+			auto subsession
+				= std::make_shared<SAMSubSession> (masterSession, id, type, listenPort, receiveProtocol);
 			if (m_Owner.AddSession (subsession))
 			{
 				subsession->FromPort = fromPort;
@@ -1492,6 +1594,8 @@ namespace client
 						= masterSession->GetLocalDestination ()->CreateDatagramDestination (true, datagramVersion);
 					if (type == SAMSessionType::eSAMSessionTypeDatagram)
 					{
+						// Identity receivers use the style protocol (17/19), the
+						// DATAGRAM3 sender-hash receiver protocol 20.
 						if (datagramVersion == i2p::datagram::eDatagramV3)
 							TrackDatagramReceiver (id,
 								dest->SetHashReceiver (
@@ -1499,14 +1603,14 @@ namespace client
 										std::string (id), std::placeholders::_1, std::placeholders::_2,
 										std::placeholders::_3, std::placeholders::_4, std::placeholders::_5,
 										std::placeholders::_6),
-									listenPort));
+									listenPort, receiveProtocol));
 						else
 							TrackDatagramReceiver (id,
 								dest->SetReceiver (std::bind (&SAMSocket::HandleI2PDatagramReceive, shared_from_this (),
 													   std::string (id), std::placeholders::_1, std::placeholders::_2,
 													   std::placeholders::_3, std::placeholders::_4,
 													   std::placeholders::_5, std::placeholders::_6),
-									listenPort));
+									listenPort, receiveProtocol));
 					}
 					else
 						TrackDatagramReceiver (id,
@@ -1514,7 +1618,7 @@ namespace client
 								std::bind (&SAMSocket::HandleI2PRawDatagramReceive, shared_from_this (),
 									std::string (id), std::placeholders::_1, std::placeholders::_2,
 									std::placeholders::_3, std::placeholders::_4, std::placeholders::_5),
-								listenPort));
+								listenPort, receiveProtocol));
 				}
 				masterSession->subsessions.insert (std::string (id));
 				SendSubsessionStatusOk (id);
@@ -1528,7 +1632,8 @@ namespace client
 
 	void SAMSocket::ProcessSessionRemove (std::string_view buf)
 	{
-		auto params = ExtractParams (buf);
+		i2p::util::Mapping params;
+		if (!GetCommandParams (buf, params)) return;
 		std::string id (params[SAM_PARAM_ID]);
 		if (m_Version < SAM_VERSION_33) // < SAM 3.3
 		{
@@ -1642,68 +1747,20 @@ namespace client
 
 	i2p::util::Mapping SAMSocket::ExtractParams (std::string_view buf)
 	{
-		i2p::util::Mapping params;
-		size_t pos = 0;
-		auto skipSpaces = [&buf, &pos] ()
-		{
-			while (pos < buf.size () && buf[pos] == ' ') ++pos;
-		};
-		while (pos < buf.size ())
-		{
-			skipSpaces ();
-			if (pos >= buf.size ()) break;
-
-			const size_t keyStart = pos;
-			while (pos < buf.size () && buf[pos] != '=' && buf[pos] != ' ') ++pos;
-			if (pos >= buf.size () || buf[pos] != '=')
-			{
-				// A bare token is not a SAM parameter. Skip it without
-				// desynchronising the rest of the line.
-				while (pos < buf.size () && buf[pos] != ' ') ++pos;
-				continue;
-			}
-			auto key = ToUpperSAMCommand (buf.substr (keyStart, pos - keyStart));
-			++pos;
-			std::string value;
-			if (pos < buf.size () && buf[pos] == '"')
-			{
-				// SAMUtils.parseParams() supports quoted values. A backslash
-				// escapes the next byte; an unterminated quote consumes the
-				// remainder as a bounded value.
-				++pos;
-				bool escaped = false;
-				while (pos < buf.size ())
-				{
-					const char ch = buf[pos++];
-					if (escaped)
-					{
-						value.push_back (ch);
-						escaped = false;
-					}
-					else if (ch == '\\')
-						escaped = true;
-					else if (ch == '"')
-						break;
-					else
-						value.push_back (ch);
-				}
-				if (escaped) value.push_back ('\\');
-			}
-			else
-			{
-				const size_t valueStart = pos;
-				while (pos < buf.size () && buf[pos] != ' ') ++pos;
-				value.assign (buf.substr (valueStart, pos - valueStart));
-			}
-			if (!key.empty ()) params.Insert (key, value);
-		}
-		return params;
+		// Shared grammar: ParseSAMParams() also reports duplicate keys and
+		// treats a bare token as true, which SAMSocket::GetCommandParams()
+		// consumes. This static form stays available to the UDP first-line
+		// options and to tests.
+		return ParseSAMParams (buf).values;
 	}
 
 	void SAMSocket::Receive ()
 	{
 		if (m_SocketType == SAMSocketType::eSAMSocketTypeStream)
 		{
+			// A stream socket carries payload, not commands: the control
+			// deadlines only apply to the control phases.
+			CancelControlDeadline ();
 			if (m_IsReceiving) return;
 			size_t bufSize = SAM_SOCKET_BUFFER_SIZE;
 			size_t unsentSize = m_Stream ? m_Stream->GetSendBufferSize () : 0;
@@ -1731,6 +1788,16 @@ namespace client
 				Terminate ("SAM: control input overflow");
 				return;
 			}
+			// Before HELLO the client has 60 s (SAMHandlerFactory.HELLO_TIMEOUT).
+			// After HELLO Java calls setSoTimeout(0): a session control socket may
+			// stay idle for hours, so only a *partially* received command line is
+			// bounded, and an idle connection is left to the peer.
+			if (!m_IsHandshakeDone)
+				ArmControlDeadline (SAM_CONTROL_HELLO_TIMEOUT, "HELLO timeout");
+			else if (m_InputSize)
+				ArmControlDeadline (SAM_CONTROL_PARTIAL_TIMEOUT, "incomplete command");
+			else
+				CancelControlDeadline ();
 			m_IsReading = true;
 			m_ControlReadOffset = m_InputSize;
 			m_Socket.async_read_some (boost::asio::buffer (m_InputBuffer + m_ControlReadOffset, capacity),
@@ -1914,6 +1981,43 @@ namespace client
 			[s, stream = std::move (stream)] () mutable { s->HandleI2PAcceptOnService (std::move (stream)); });
 	}
 
+	bool SAMSocket::ArmAcceptorOnService (
+		const std::shared_ptr<SAMSession> & session, const std::shared_ptr<SAMSocket> & socket)
+	{
+		if (!session || !socket) return false;
+		auto localDest = session->GetLocalDestination ();
+		if (!localDest) return false;
+		const uint16_t listenPort = socket->m_ListenPort;
+		auto streamDest = localDest->GetStreamingDestination (listenPort);
+		if (!streamDest && listenPort)
+		{
+			streamDest = localDest->CreateStreamingDestination (listenPort);
+			if (streamDest) streamDest->Start ();
+		}
+		if (!streamDest) return false;
+		socket->m_IsAccepting = true;
+		streamDest->AcceptOnce (std::bind (&SAMSocket::HandleI2PAccept, socket, std::placeholders::_1));
+		return true;
+	}
+
+	void SAMSocket::RearmQueuedAccept (uint16_t listenPort)
+	{
+		auto session = m_Owner.FindSession (m_ID);
+		if (!session) return;
+		auto next = session->TakeNextAcceptOnPort (listenPort);
+		if (!next) return;
+		LogPrint (eLogDebug, "SAM: Re-arming a queued ACCEPT on port ", listenPort);
+		// Arm on the SAM service: Terminate can run inside a destination
+		// callback, where the streaming destination must not be touched.
+		boost::asio::post (m_Owner.GetService (),
+			[session, next] ()
+			{
+				if (next->GetSocketType () != SAMSocketType::eSAMSocketTypeAcceptor
+					|| !ArmAcceptorOnService (session, next))
+					next->Terminate (nullptr);
+			});
+	}
+
 	void SAMSocket::HandleI2PAcceptOnService (std::shared_ptr<i2p::stream::Stream> stream)
 	{
 		if (stream && (m_SocketType == SAMSocketType::eSAMSocketTypeTerminated || !m_Socket.is_open ()))
@@ -1926,41 +2030,21 @@ namespace client
 		{
 			LogPrint (eLogDebug, "SAM: Incoming I2P connection for session ", m_ID);
 			m_SocketType = SAMSocketType::eSAMSocketTypeStream;
+			CancelControlDeadline ();
 			m_IsAccepting = false;
 			m_Stream = stream;
 			context.GetAddressBook ().InsertFullAddress (stream->GetRemoteIdentity ());
 			auto session = m_Owner.FindSession (m_ID);
 			if (session)
 			{
-				// pending acceptors
-				auto ts = i2p::util::GetSecondsSinceEpoch ();
-				std::list<std::shared_ptr<SAMSocket>> expired;
-				auto socket = session->TakeNextAccept (ts, expired);
-				for (const auto & item : expired)
-					if (item) item->Terminate (nullptr);
+				// Re-arm the next pending ACCEPT of *this* listen port. Queued
+				// acceptors of other ports stay queued; a subsession's ACCEPT
+				// must never be armed on another port's destination.
+				auto socket = session->TakeNextAcceptOnPort (m_ListenPort);
 				if (socket)
 				{
-					if (socket->GetSocketType () == SAMSocketType::eSAMSocketTypeAcceptor)
-					{
-						uint16_t listenPort = 0;
-						if (auto sub = std::dynamic_pointer_cast<SAMSubSession> (session)) listenPort = sub->inPort;
-						auto localDest = session->GetLocalDestination ();
-						auto streamDest = localDest ? localDest->GetStreamingDestination (listenPort) : nullptr;
-						if (!streamDest && localDest && listenPort)
-						{
-							streamDest = localDest->CreateStreamingDestination (listenPort);
-							if (streamDest) streamDest->Start ();
-						}
-						if (streamDest)
-						{
-							socket->m_IsAccepting = true;
-							streamDest->AcceptOnce (
-								std::bind (&SAMSocket::HandleI2PAccept, socket, std::placeholders::_1));
-						}
-						else
-							socket->Terminate (nullptr);
-					}
-					else
+					if (socket->GetSocketType () != SAMSocketType::eSAMSocketTypeAcceptor
+						|| !ArmAcceptorOnService (session, socket))
 						socket->Terminate (nullptr);
 				}
 			}
@@ -2301,6 +2385,47 @@ namespace client
 		return acceptQueue.size ();
 	}
 
+	std::shared_ptr<SAMSocket> SAMSession::TakeNextAcceptOnPort (uint16_t port)
+	{
+		std::lock_guard<std::mutex> l (acceptQueueMutex);
+		for (auto it = acceptQueue.begin (); it != acceptQueue.end (); ++it)
+		{
+			if (it->first && it->first->GetAcceptListenPort () == port)
+			{
+				auto socket = it->first;
+				acceptQueue.erase (it);
+				return socket;
+			}
+		}
+		return nullptr;
+	}
+
+	bool SAMSession::IsForwarding (uint16_t port) const
+	{
+		std::lock_guard<std::mutex> l (acceptQueueMutex);
+		return forwardAcceptors.find (port) != forwardAcceptors.end ();
+	}
+
+	bool SAMSession::IsForwardingAnyPort () const
+	{
+		std::lock_guard<std::mutex> l (acceptQueueMutex);
+		return !forwardAcceptors.empty ();
+	}
+
+	void SAMSession::AddForwardAcceptor (uint16_t port)
+	{
+		std::lock_guard<std::mutex> l (acceptQueueMutex);
+		++forwardAcceptors[port];
+	}
+
+	void SAMSession::RemoveForwardAcceptor (uint16_t port)
+	{
+		std::lock_guard<std::mutex> l (acceptQueueMutex);
+		auto it = forwardAcceptors.find (port);
+		if (it == forwardAcceptors.end ()) return;
+		if (--it->second == 0) forwardAcceptors.erase (it);
+	}
+
 	void SAMSession::CloseStreams ()
 	{
 		for (const auto & itr : m_Bridge.ListSockets (Name))
@@ -2338,11 +2463,15 @@ namespace client
 			LogPrint (eLogError, "SAM: Datagram invalid destination ", destination);
 			return;
 		}
-		auto sendTo = [datagramDest, type = Type, fromPort, toPort, protocol] (
+		auto sendTo = [datagramDest, type = Type, version = DatagramVersion, fromPort, toPort, protocol] (
 						  const uint8_t * p, size_t l, const i2p::data::IdentHash & ident)
 		{
 			if (type == SAMSessionType::eSAMSessionTypeDatagram)
-				datagramDest->SendDatagramTo (p, l, ident, fromPort, toPort);
+			{
+				// The session's SAM style selects the I2CP datagram framing:
+				// DATAGRAM3 must never emit Datagram1/Datagram2 payloads.
+				datagramDest->SendDatagramTo (p, l, ident, fromPort, toPort, version);
+			}
 			else if (type == SAMSessionType::eSAMSessionTypeRaw)
 				datagramDest->SendRawDatagramTo (p, l, ident, fromPort, toPort, protocol);
 			else
@@ -2399,19 +2528,22 @@ namespace client
 		subsessions.clear ();
 	}
 
-	SAMSubSession::SAMSubSession (
-		std::shared_ptr<SAMMasterSession> master, std::string_view name, SAMSessionType type, uint16_t port)
+	SAMSubSession::SAMSubSession (std::shared_ptr<SAMMasterSession> master, std::string_view name, SAMSessionType type,
+		uint16_t port, uint8_t listenProtocol)
 		: SAMSession (master->m_Bridge, name, type)
 		, masterSession (master)
 		, inPort (port)
+		, inProtocol (listenProtocol)
 	{
+		// Everything that selects receivers or the port-scoped streaming
+		// destination reads the base ListenPort.
+		ListenPort = port;
 		if (Type == SAMSessionType::eSAMSessionTypeStream && port)
 		{
 			// additional streaming destination, use default if port is 0
 			auto d = masterSession->GetLocalDestination ()->CreateStreamingDestination (inPort);
 			if (d) d->Start ();
 		}
-		// TODO: implement datagrams
 	}
 
 	std::shared_ptr<ClientDestination> SAMSubSession::GetLocalDestination ()
@@ -2427,7 +2559,9 @@ namespace client
 			auto d = dest->RemoveStreamingDestination (inPort);
 			if (d) d->Stop ();
 		}
-		// TODO: implement datagrams
+		// Datagram receivers are protocol/port registrations tracked by the
+		// owning SAMSocket; SESSION REMOVE and socket teardown reset them before
+		// this subsession (and the callback's owner) is released.
 	}
 
 	SAMBridge::SAMBridge (const std::string & address, uint16_t portTCP, uint16_t portUDP, bool singleThread)
@@ -2543,6 +2677,16 @@ namespace client
 		m_OpenSockets.remove_if ([socket] (const std::shared_ptr<SAMSocket> & item) -> bool { return item == socket; });
 	}
 
+	bool SAMBridge::TryAddControlConnection ()
+	{
+		auto current = m_ControlConnections->load ();
+		while (current < SAM_MAX_CONTROL_CONNECTIONS)
+		{
+			if (m_ControlConnections->compare_exchange_weak (current, current + 1)) return true;
+		}
+		return false;
+	}
+
 	void SAMBridge::HandleAccept (const boost::system::error_code & ecode, std::shared_ptr<SAMSocket> socket)
 	{
 		if (!ecode)
@@ -2551,9 +2695,24 @@ namespace client
 			auto ep = socket->GetSocket ().remote_endpoint (ec);
 			if (!ec)
 			{
-				LogPrint (eLogDebug, "SAM: New connection from ", ep);
-				AddSocket (socket);
-				socket->ReceiveHandshake ();
+				// Bounded admission: a control connection that would exceed
+				// SAM_MAX_CONTROL_CONNECTIONS is closed immediately and never
+				// counted, so Terminate has nothing to release.
+				if (!TryAddControlConnection ())
+				{
+					LogPrint (eLogWarning, "SAM: Too many control connections (", SAM_MAX_CONTROL_CONNECTIONS,
+						"), rejecting ", ep);
+					boost::system::error_code ignored;
+					socket->GetSocket ().shutdown (boost::asio::ip::tcp::socket::shutdown_both, ignored);
+					socket->GetSocket ().close (ignored);
+				}
+				else
+				{
+					socket->MarkControlConnectionCounted (m_ControlConnections);
+					LogPrint (eLogDebug, "SAM: New connection from ", ep);
+					AddSocket (socket);
+					socket->ReceiveHandshake ();
+				}
 			}
 			else
 				LogPrint (eLogError, "SAM: Incoming connection error: ", ec.message ());

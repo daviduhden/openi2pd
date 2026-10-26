@@ -17,6 +17,9 @@
 #include <mutex>
 #include <unordered_set>
 #include <memory>
+#include <functional>
+#include <vector>
+#include <string_view>
 #include <boost/asio.hpp>
 #include "Destination.h"
 #include "Identity.h"
@@ -52,6 +55,11 @@ namespace client
 			m_Handlers.erase (conn);
 		}
 		void ClearHandlers ();
+		size_t GetNumHandlers () const
+		{
+			std::unique_lock<std::mutex> l (m_HandlersMutex);
+			return m_Handlers.size ();
+		}
 
 		void SetConnectTimeout (uint64_t timeout);
 		void SetCloseIdleTime (uint64_t idleTime);
@@ -75,6 +83,11 @@ namespace client
 		virtual void Start ();
 		virtual void Stop ();
 
+		// True between a successful Start() and Stop(). ServiceAcceptor,
+		// client and server tunnels update it through the base methods so the
+		// administrative inventory can report a disabled or stopped tunnel.
+		bool IsRunning () const { return m_Running.load (); }
+
 		virtual const char * GetName () const { return "Generic I2P Service"; }
 
 	protected:
@@ -94,7 +107,7 @@ namespace client
 	private:
 		std::shared_ptr<ClientDestination> m_LocalDestination;
 		std::unordered_set<std::shared_ptr<I2PServiceHandler>> m_Handlers;
-		std::mutex m_HandlersMutex;
+		mutable std::mutex m_HandlersMutex;
 		std::vector<std::pair<ReadyCallback, uint64_t>> m_ReadyCallbacks;
 		boost::asio::steady_timer m_ReadyTimer;
 		bool m_ReadyTimerTriggered;
@@ -103,6 +116,7 @@ namespace client
 		bool m_NewDestOnResume;
 		uint64_t m_LastActivityTime; // monotonic milliseconds
 		std::unique_ptr<boost::asio::steady_timer> m_IdleCheckTimer;
+		std::atomic<bool> m_Running { false };
 
 		static constexpr size_t NEVER_TIMES_OUT = 0;
 
@@ -123,7 +137,12 @@ namespace client
 		virtual void Handle () { }; //Start handling the socket
 		virtual void Start () { };
 
-		void Terminate () { Kill (); };
+		// Virtual: a derived handler owns the resource that must actually be
+		// released (socket, stream, TLS object). ClearHandlers dispatches
+		// through this base, so a non-virtual Terminate used to set m_Dead
+		// first and make the real teardown a no-op, leaking every live
+		// connection of a stopping service.
+		virtual void Terminate () { Kill (); };
 
 	protected:
 		// Call when terminating or handing over to avoid race conditions
@@ -180,7 +199,7 @@ namespace client
 		}
 
 	private:
-		void Terminate ()
+		void Terminate () override
 		{
 			if (Kill ()) return;
 			if (m_up)
@@ -244,6 +263,11 @@ namespace client
 	}
 
 	//This is a service that listens for connections on the IP network or local socket and interacts with I2P
+	// A local listener must not let an unauthenticated peer allocate handlers
+	// without bound. The cap is per listener and applies to every accepted
+	// socket, including those still in a proxy handshake.
+	constexpr size_t MAX_ACCEPTED_HANDLERS = 1024;
+
 	template <typename Protocol> class ServiceAcceptor : public I2PService
 	{
 	public:
@@ -271,8 +295,11 @@ namespace client
 				m_Acceptor->close ();
 				m_Acceptor.reset (nullptr);
 			}
-			ClearHandlers ();
+			// Close the handler admission barrier before the snapshot so a
+			// concurrent accept either publishes before it (and is cleared) or
+			// sees the stopped flag and terminates itself.
 			I2PService::Stop ();
+			ClearHandlers ();
 		}
 		const typename Protocol::endpoint & GetLocalEndpoint () const { return m_LocalEndpoint; };
 
@@ -286,25 +313,47 @@ namespace client
 		void Accept ()
 		{
 			auto newSocket = std::make_shared<typename Protocol::socket> (GetService ());
+			// The pending accept outlives a stop/destroy of this service, so the
+			// completion must not dereference a raw owner. Accept() runs from
+			// Start() on an already shared service; before that the weak form
+			// keeps the historical behaviour.
+			std::weak_ptr<ServiceAcceptor> weakSelf
+				= std::static_pointer_cast<ServiceAcceptor> (weak_from_this ().lock ());
 			m_Acceptor->async_accept (*newSocket,
-				[newSocket, this] (const boost::system::error_code & ecode)
+				[newSocket, weakSelf] (const boost::system::error_code & ecode)
 				{
+					auto self = weakSelf.lock ();
+					if (!self)
+					{
+						boost::system::error_code ignored;
+						newSocket->close (ignored);
+						return;
+					}
 					if (ecode == boost::asio::error::operation_aborted) return;
 					if (!ecode)
 					{
-						LogPrint (eLogDebug, "ServiceAcceptor: ", GetName (), " accepted");
-						auto handler = CreateHandler (newSocket);
+						if (self->GetNumHandlers () >= MAX_ACCEPTED_HANDLERS)
+						{
+							LogPrint (eLogWarning, "ServiceAcceptor: ", self->GetName (),
+								" rejected a connection: ", MAX_ACCEPTED_HANDLERS, " handlers already active");
+							boost::system::error_code ignored;
+							newSocket->close (ignored);
+							self->Accept ();
+							return;
+						}
+						LogPrint (eLogDebug, "ServiceAcceptor: ", self->GetName (), " accepted");
+						auto handler = self->CreateHandler (newSocket);
 						if (handler)
 						{
-							AddHandler (handler);
+							self->AddHandler (handler);
 							handler->Handle ();
 						}
 						else
 							newSocket->close ();
-						Accept ();
+						self->Accept ();
 					}
 					else
-						LogPrint (eLogError, "ServiceAcceptor: ", GetName (),
+						LogPrint (eLogError, "ServiceAcceptor: ", self->GetName (),
 							" closing socket on accept because: ", ecode.message ());
 				});
 		}

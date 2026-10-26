@@ -52,6 +52,7 @@ namespace client
 
 	void I2PService::Start ()
 	{
+		m_Running.store (true);
 		if (m_CloseIdleTime)
 		{
 			if (m_LocalDestination && m_LocalDestination->GetRefCounter () <= 1)
@@ -69,6 +70,7 @@ namespace client
 
 	void I2PService::Stop ()
 	{
+		m_Running.store (false);
 		if (m_IdleCheckTimer)
 		{
 			m_IdleCheckTimer->cancel ();
@@ -79,12 +81,17 @@ namespace client
 	void I2PService::ClearHandlers ()
 	{
 		if (m_ConnectTimeout) m_ReadyTimer.cancel ();
-		IterateHandlers (
-			[] (std::shared_ptr<I2PServiceHandler> handler)
-			{
-				if (handler) handler->Terminate ();
-			});
-		m_Handlers.clear ();
+		// Snapshot and detach under the lock, then terminate outside it: a
+		// handler's Terminate() re-enters RemoveHandler through Done() and may
+		// close sockets whose completion handlers run on another thread.
+		std::vector<std::shared_ptr<I2PServiceHandler>> handlers;
+		{
+			std::unique_lock<std::mutex> l (m_HandlersMutex);
+			handlers.assign (m_Handlers.begin (), m_Handlers.end ());
+			m_Handlers.clear ();
+		}
+		for (auto & handler : handlers)
+			if (handler) handler->Terminate ();
 	}
 
 	void I2PService::SetConnectTimeout (uint64_t timeout)
@@ -213,21 +220,31 @@ namespace client
 	{
 		if (m_ConnectTimeout && !m_LocalDestination->IsReady ())
 		{
+			// The readiness callback can fire after this service was stopped and
+			// destroyed, so it captures a weak owner plus the destination it must
+			// talk to instead of `this`.
+			auto localDestination = m_LocalDestination;
+			std::weak_ptr<I2PService> weakSelf = weak_from_this ();
 			AddReadyCallback (
-				[this, streamRequestComplete, address, port] (const boost::system::error_code & ec)
+				[weakSelf, localDestination, streamRequestComplete, address, port] (
+					const boost::system::error_code & ec)
 				{
 					if (ec)
 					{
 						LogPrint (eLogWarning, "I2PService::CreateStream() ", ec.message ());
 						streamRequestComplete (nullptr);
 					}
+					else if (!weakSelf.lock () || !localDestination)
+					{
+						// The service stopped while waiting for readiness.
+						streamRequestComplete (nullptr);
+					}
 					else
 					{
 						if (address->IsIdentHash ())
-							this->m_LocalDestination->CreateStream (streamRequestComplete, address->identHash, port);
+							localDestination->CreateStream (streamRequestComplete, address->identHash, port);
 						else
-							this->m_LocalDestination->CreateStream (
-								streamRequestComplete, address->blindedPublicKey, port);
+							localDestination->CreateStream (streamRequestComplete, address->blindedPublicKey, port);
 					}
 				});
 		}

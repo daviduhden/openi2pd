@@ -5,7 +5,10 @@
  * openi2pd: BOB.
  *
  * Declares the legacy BOB command channel, per-nickname destinations and the
- * inbound/outbound I2P tunnel classes they manage.
+ * inbound/outbound I2P tunnel classes they manage. The command channel is
+ * default-disabled, accepts same-user local peers, bounds its line reader and
+ * its concurrent sessions, and never logs or exposes key material unless
+ * `bob.allowgetkeys` is explicitly enabled.
  *
  */
 
@@ -13,14 +16,17 @@
 #define BOB_H__
 
 #include <inttypes.h>
-#include <thread>
+#include <array>
 #include <atomic>
-#include <memory>
+#include <charconv>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <set>
 #include <string>
 #include <string_view>
+#include <system_error>
+#include <thread>
 #include <vector>
 #include <boost/asio.hpp>
 #include "util.h"
@@ -37,6 +43,19 @@ namespace client
 {
 	const size_t BOB_COMMAND_BUFFER_SIZE = 1024;
 	const int BOB_PING_TIMEOUT = 8000; // in milliseconds
+
+	// A command line is bounded independently of the socket read size: a peer
+	// that never sends a newline is disconnected instead of growing a buffer.
+	constexpr size_t BOB_MAX_COMMAND_LINE = 4096;
+	// Bound on one queued reply (a `list` of every accepted nickname).
+	constexpr size_t BOB_MAX_REPLY_SIZE = 8192;
+	// Concurrent command sessions. BOB has no per-request authentication, so
+	// an unbounded session count is a local denial of service.
+	constexpr size_t BOB_MAX_CONCURRENT_SESSIONS = 16;
+	// `getkeys` returns a destination's private keys. It stays disabled unless
+	// the operator sets the option explicitly.
+	constexpr std::string_view BOB_OPTION_ALLOW_GETKEYS { "bob.allowgetkeys" };
+	constexpr bool BOB_DEFAULT_ALLOW_GETKEYS = false;
 
 	constexpr std::string_view BOB_COMMAND_ZAP { "zap" };
 	constexpr std::string_view BOB_COMMAND_QUIT { "quit" };
@@ -99,6 +118,59 @@ namespace client
 		"ping <I2P_HOSTNAME> - Send ping to I2P Hostname. Responds with pong or timeout."
 	};
 	constexpr std::string_view BOB_HELP_HELP { "help <COMMAND> - Get help on a command." };
+
+	/*
+	 * Bounded line accumulator for the command channel.
+	 *
+	 * Feed() never stores more than one command line plus its terminator, so a
+	 * peer that sends no newline is disconnected instead of growing memory, and
+	 * a pipelined burst keeps its remaining complete lines queued.
+	 */
+	class BOBCommandLineReader
+	{
+	public:
+		enum class Result
+		{
+			Incomplete = 0,
+			Complete,
+			Overflow
+		};
+
+		Result Feed (std::string_view bytes);
+		bool HasCompleteLine () const { return m_Pending.find ('\n') != std::string::npos; }
+		// Removes and returns the first complete line without its CR/LF ending.
+		std::string TakeLine ();
+		void Clear () { m_Pending.clear (); }
+		size_t GetPendingSize () const { return m_Pending.size (); }
+
+	private:
+		std::string m_Pending;
+	};
+
+	enum class BOBPortResult
+	{
+		Ok = 0,
+		Empty,
+		Invalid,
+		OutOfRange
+	};
+
+	// Parses a decimal port operand without throwing: a non-numeric, negative
+	// or out-of-range value becomes a protocol ERROR reply.
+	BOBPortResult ParseBOBPort (std::string_view operand, uint16_t & port);
+
+	// Shared, non-blocking session admission counter.
+	struct BOBAdmissionState
+	{
+		std::atomic<size_t> active { 0 };
+	};
+
+	bool TryAcquireBOBSession (BOBAdmissionState & state);
+	void ReleaseBOBSession (BOBAdmissionState & state);
+
+	// Fail closed: only the literal `true` from the configuration enables the
+	// private-key reply.
+	bool ResolveBOBAllowGetKeys (bool optionFound, bool optionValue);
 
 	class BOBI2PTunnelIncomingConnection : public I2PTunnelConnection
 	{
@@ -241,6 +313,9 @@ namespace client
 		BOBCommandSession (BOBCommandChannel & owner);
 		~BOBCommandSession ();
 		void Terminate ();
+		// Claims one admission slot. Returns false when the channel is at its
+		// concurrent-session limit; the caller then closes the socket.
+		bool Admit (const std::shared_ptr<BOBAdmissionState> & admission);
 
 		boost::asio::ip::tcp::socket & GetSocket () { return m_Socket; };
 		void SendVersion ();
@@ -273,8 +348,9 @@ namespace client
 
 	private:
 		void Receive ();
-		void HandleReceivedLine (const boost::system::error_code & ecode, std::size_t bytes_transferred);
-		void HandleReceived (const boost::system::error_code & ecode, std::size_t bytes_transferred);
+		void Read ();
+		void HandleReceivedBytes (const boost::system::error_code & ecode, std::size_t bytes_transferred);
+		void HandleLine ();
 
 		void Send ();
 		void HandleSent (const boost::system::error_code & ecode, std::size_t bytes_transferred);
@@ -290,7 +366,11 @@ namespace client
 	private:
 		BOBCommandChannel & m_Owner;
 		boost::asio::ip::tcp::socket m_Socket;
-		boost::asio::streambuf m_ReceiveBuffer, m_SendBuffer;
+		std::array<char, BOB_COMMAND_BUFFER_SIZE> m_ReadBuffer;
+		BOBCommandLineReader m_LineReader;
+		boost::asio::streambuf m_SendBuffer;
+		std::shared_ptr<BOBAdmissionState> m_Admission;
+		bool m_Admitted = false;
 		bool m_IsOpen, m_IsQuiet, m_IsActive;
 		std::string m_Nickname, m_InHost, m_OutHost;
 		uint16_t m_InPort, m_OutPort;
@@ -317,6 +397,8 @@ namespace client
 		void AddProxy (const std::string & name, std::shared_ptr<I2PService> && proxy, std::string_view type);
 		std::pair<std::shared_ptr<I2PService>, std::string> GetProxy (const std::string & name) const;
 		void RemoveProxy (const std::string & name);
+		// True only when `bob.allowgetkeys=true` was configured at startup.
+		bool IsGetKeysAllowed () const { return m_AllowGetKeys; }
 
 	private:
 		void Accept ();
@@ -324,6 +406,8 @@ namespace client
 
 	private:
 		boost::asio::ip::tcp::acceptor m_Acceptor;
+		std::shared_ptr<BOBAdmissionState> m_Admission { std::make_shared<BOBAdmissionState> () };
+		bool m_AllowGetKeys = BOB_DEFAULT_ALLOW_GETKEYS;
 		std::map<std::string, std::shared_ptr<BOBDestination>> m_Destinations;
 		std::map<std::string_view, BOBCommandHandler> m_CommandHandlers;
 		std::map<std::string_view, std::string_view> m_HelpStrings;
