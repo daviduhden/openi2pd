@@ -4,7 +4,7 @@
  *
  * openi2pd: test reseed zip bounds.
  *
- * Checks the reseed ZIP reader's local-header and descriptor bounds, deflate/CRC handling and rejection of oversized, truncated or inconsistent entries before AddRouterInfo.
+ * Checks the reseed ZIP reader's local-header and descriptor bounds, deflate/CRC handling, proposal-147 netid URL composition and rejection of oversized, truncated or inconsistent entries before AddRouterInfo.
  *
  */
 
@@ -171,6 +171,15 @@ int main ()
 	}
 
 	for (const auto & path : cases) assert (reseeder.ProcessZIPFile (path.c_str ()) == 0);
+
+	// Proposal 147: the router network ID is appended without destroying an
+	// existing query string, and an explicit netid is never duplicated.
+	assert (i2p::data::AppendReseedNetId ("https://example.invalid/i2pseeds.su3", 2)
+		== "https://example.invalid/i2pseeds.su3?netid=2");
+	assert (i2p::data::AppendReseedNetId ("https://example.invalid/i2pseeds.su3?x=1", 2)
+		== "https://example.invalid/i2pseeds.su3?x=1&netid=2");
+	assert (i2p::data::AppendReseedNetId ("https://example.invalid/i2pseeds.su3?netid=7", 2)
+		== "https://example.invalid/i2pseeds.su3?netid=7");
 
 	std::filesystem::remove_all (directory, error);
 	return 0;
