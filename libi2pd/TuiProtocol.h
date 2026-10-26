@@ -42,12 +42,21 @@
  * mutable engine state. Configuration snapshots are read-only and limited to
  * a server-side allowlist; version 1 has no configuration writer. Router-wide
  * writes are restricted to a closed set of explicitly typed ADMIN operations:
- * reseed, shutdown/cancel, tunnel reload, bandwidth class, share percentage,
- * transit acceptance, daemon log level and bounded address-book add/remove.
+ * non-blocking reseed, shutdown/cancel, tunnel reload, one configured client
+ * or server tunnel start/stop, bandwidth class, share percentage, transit
+ * acceptance, daemon log level, bounded address-book add/replace/remove and
+ * bounded subscription/ban list edits.
  * The dispatcher converts each into a bounded daemon command; no request
  * carries a generic option name, path, URL or shell string. ADMIN replies
  * carry typed fields: admin=<action>,
- * result=ok|accepted|error, code=<reason>, value=<integer>, message=<text>.
+ * result=ok|accepted|error, code=<reason>, value=<integer>, message=<text>
+ * and, for the verbs with a discrete outcome, outcome=<token>
+ * (started|stopped|already-running|already-stopped|unknown|disabled|exists).
+ * The reseed verb never waits for the bootstrap: it reports that the job was
+ * started, is already running or is disabled by configuration.
+ * TORRENT-DETAIL accepts an optional trailing comment page
+ * (`[offset] [limit]`, offset 0..255, limit 1..16); without arguments it
+ * returns the newest page every existing client already understands.
  */
 namespace i2p
 {
@@ -66,13 +75,36 @@ namespace tui
 	inline constexpr size_t MAX_CONNECTION_RECORDS_PER_REQUEST = 200;
 	inline constexpr size_t MAX_NETDB_RECORDS_PER_REQUEST = 200;
 	inline constexpr size_t MAX_ADDRESS_BOOK_RECORDS_PER_REQUEST = 200;
+	// Address-book subscription URLs are capped by the address book itself; the
+	// protocol refuses to page beyond that fixed bound.
+	inline constexpr size_t MAX_SUBSCRIPTION_RECORDS_PER_REQUEST = 16;
+	inline constexpr size_t MAX_BLOCKLIST_RECORDS_PER_REQUEST = 200;
+	inline constexpr size_t MAX_SUBSCRIPTION_URL_LENGTH = 512;
+	inline constexpr size_t MAX_ROUTER_HASH_TEXT_LENGTH = 64; // base64 of a 32-byte hash
+	// A configured tunnel service name is printable, whitespace-free text. The
+	// bound matches ClientContext::I2P_TUNNEL_SERVICE_NAME_MAX_LENGTH so a name
+	// the client context can never hold is also rejected at the wire.
+	inline constexpr size_t MAX_TUNNEL_SERVICE_NAME_LENGTH = 64;
+	// Address-book administration: a stored name is bounded by the address
+	// book, an added/replaced name additionally has to be a host label, and a
+	// destination is one full base64 identity.
+	inline constexpr size_t MAX_ADDRESS_NAME_LENGTH = 255;
+	inline constexpr size_t MAX_ADDRESS_ADD_NAME_LENGTH = 67;
+	inline constexpr size_t MAX_ADDRESS_DESTINATION_LENGTH = 1024;
 	inline constexpr size_t MAX_TUNNEL_RECORDS_PER_REQUEST = 200;
 	inline constexpr size_t MAX_SERVICE_RECORDS_PER_REQUEST = 200;
 	inline constexpr size_t MAX_TORRENT_RECORDS_PER_REQUEST = 200;
 	inline constexpr size_t MAX_TORRENT_FILE_RECORDS_PER_REQUEST = 1000;
 	inline constexpr size_t MAX_TORRENT_PEER_RECORDS_PER_REQUEST = 200;
 	inline constexpr size_t MAX_TORRENT_TRACKER_RECORDS_PER_REQUEST = 100;
+	// One TORRENT-DETAIL response emits at most this many comment records even
+	// though a torrent retains up to MAX_COMMENT_COUNT (256) records, of which
+	// at most MAX_COMMENT_HIDDEN_COUNT (64) are hidden. Clients page with the
+	// optional `[offset] [limit]` arguments instead of the daemon growing the
+	// single-response bound. The offset bound is the highest record index the
+	// retained store can have.
 	inline constexpr size_t MAX_TORRENT_COMMENT_RECORDS_PER_REQUEST = 16;
+	inline constexpr size_t MAX_TORRENT_COMMENT_OFFSET = 255;
 	inline constexpr size_t MAX_TORRENT_ARGUMENT_LENGTH = 2048;
 	// CONFIG returns an allowlisted, typed snapshot. Both the number of
 	// options and each string value are bounded so a misconfigured router
@@ -103,18 +135,29 @@ namespace tui
 		Logs,
 		Config, // bounded, typed snapshot of allowlisted options; no writer
 		AdminTransit,
+		AdminOnline,
+		AdminLogReopen,
 		AdminLogLevel,
 		AdminReseed,
 		AdminShutdown,
 		AdminReloadTunnels,
 		AdminBandwidth,
 		AdminShare,
+		AdminTunnelStart,
+		AdminTunnelStop,
 		AdminAddressAdd,
+		AdminAddressReplace,
 		AdminAddressRemove,
 		AdminAddressBlock,
 		AdminAddressUnblock,
+		AdminNetDbBan,
+		AdminNetDbUnban,
+		AdminAddressSubAdd,
+		AdminAddressSubRemove,
 		AddressBook,
 		AddressBookBlocked,
+		AddressBookSubscriptions,
+		Blocklist,
 		Ping,
 		Quit,
 		Torrents,
@@ -126,6 +169,7 @@ namespace tui
 		TorrentReannounce,
 		TorrentRecheck,
 		TorrentRemove,
+		TorrentRemoveAll,
 		TorrentStartAll,
 		TorrentStopAll,
 		TorrentReannounceAll,
@@ -155,14 +199,20 @@ namespace tui
 		uint32_t limit = 0; // LOGS/PEERS/CONNECTIONS/NETDB-*/ADDRESSBOOK/TORRENTS: record count
 		uint32_t tunnelIndex = 0; // TORRENT-*: index into the sorted tunnel snapshot
 		int torrentId = 0; // TORRENT-*: engine-assigned torrent id
-		bool deleteFiles = false; // TORRENT-REMOVE: explicit files flag
+		// TORRENT-REMOVE/TORRENT-REMOVE-ALL: explicit exact "files" token
+		bool deleteFiles = false;
 		bool enabled = false; // ADMIN TRANSIT: requested acceptance state
 		AdminShutdownMode shutdownMode = AdminShutdownMode::Graceful; // ADMIN SHUTDOWN
 		// ADMIN BANDWIDTH: ASCII class; ADMIN SHARE: percent;
 		// ADMIN LOGLEVEL: zero-based index into the fixed level table.
 		uint32_t adminValue = 0;
-		std::string argument; // TORRENT-ADD-*/ADMIN LOGLEVEL/ADDRESS-*: bounded argument
-		std::string argument2; // ADMIN ADDRESS-ADD: full base64 identity
+		std::string argument; // TORRENT-ADD-*/ADMIN LOGLEVEL/ADDRESS-*/NETDB-*/TUNNEL-*: bounded argument
+		std::string argument2; // ADMIN ADDRESS-ADD/ADDRESS-REPLACE: full base64 identity
+		// TORRENT-DETAIL: first retained comment record to emit (0..255) and
+		// the page size (1..16). The defaults reproduce the paging-free
+		// response every existing client already understands.
+		uint32_t commentOffset = 0;
+		uint32_t commentLimit = static_cast<uint32_t> (MAX_TORRENT_COMMENT_RECORDS_PER_REQUEST);
 		uint32_t createPieceLength = 0;
 		bool createPrivate = false;
 		std::vector<std::vector<std::string>> createTrackers;
@@ -478,6 +528,30 @@ namespace tui
 				request.limit = *limit;
 			}
 		}
+		else if (command == "ADDRESSBOOK-SUBSCRIPTIONS")
+		{
+			request.type = RequestType::AddressBookSubscriptions;
+			request.limit = MAX_SUBSCRIPTION_RECORDS_PER_REQUEST;
+			if (!rest.empty ())
+			{
+				auto limit = detail::ParseLimit (detail::NextToken (rest), MAX_SUBSCRIPTION_RECORDS_PER_REQUEST);
+				if (!limit) return i2p::unexpected (limit.error ());
+				request.limit = *limit;
+			}
+		}
+		else if (command == "BLOCKLIST")
+		{
+			// Bounded read-only view: startup blocklist counters plus the
+			// in-memory runtime router bans. There is no file writer.
+			request.type = RequestType::Blocklist;
+			request.limit = MAX_BLOCKLIST_RECORDS_PER_REQUEST;
+			if (!rest.empty ())
+			{
+				auto limit = detail::ParseLimit (detail::NextToken (rest), MAX_BLOCKLIST_RECORDS_PER_REQUEST);
+				if (!limit) return i2p::unexpected (limit.error ());
+				request.limit = *limit;
+			}
+		}
 		else if (command == "ADMIN")
 		{
 			const auto action = detail::NextToken (rest);
@@ -495,6 +569,22 @@ namespace tui
 					return i2p::unexpected (
 						ProtocolError { ErrorCode::BadArgument, "admin transit expects ON or OFF" });
 				request.type = RequestType::AdminTransit;
+			}
+			else if (action == "ONLINE")
+			{
+				const auto value = detail::NextToken (rest);
+				if (value == "ON")
+					request.enabled = true;
+				else if (value == "OFF")
+					request.enabled = false;
+				else
+					return i2p::unexpected (
+						ProtocolError { ErrorCode::BadArgument, "admin online expects ON or OFF" });
+				request.type = RequestType::AdminOnline;
+			}
+			else if (action == "LOG-REOPEN")
+			{
+				request.type = RequestType::AdminLogReopen;
 			}
 			else if (action == "LOGLEVEL")
 			{
@@ -541,20 +631,41 @@ namespace tui
 				request.adminValue = static_cast<uint32_t> (*percent);
 				request.type = RequestType::AdminShare;
 			}
-			else if (action == "ADDRESS-ADD" || action == "ADDRESS-REMOVE" || action == "ADDRESS-BLOCK"
-				|| action == "ADDRESS-UNBLOCK")
+			else if (action == "TUNNEL-START" || action == "TUNNEL-STOP")
 			{
+				// One configured client or server tunnel, addressed by its
+				// unique service name. The name is printable, free of spaces
+				// and bounded; the daemon resolves it against its own
+				// inventory and rejects anything it does not own.
 				const auto name = detail::NextToken (rest);
-				if (!detail::IsSafeAdminText (name, action == "ADDRESS-ADD" ? 67 : 255))
+				if (!detail::IsSafeAdminText (name, MAX_TUNNEL_SERVICE_NAME_LENGTH))
+					return i2p::unexpected (ProtocolError { ErrorCode::BadArgument, "invalid tunnel service name" });
+				auto trailing = detail::RejectTrailing (rest);
+				if (trailing) return i2p::unexpected (*trailing);
+				request.argument = std::string (name);
+				request.type = action == "TUNNEL-START" ? RequestType::AdminTunnelStart
+														: RequestType::AdminTunnelStop;
+			}
+			else if (action == "ADDRESS-ADD" || action == "ADDRESS-REPLACE" || action == "ADDRESS-REMOVE"
+				|| action == "ADDRESS-BLOCK" || action == "ADDRESS-UNBLOCK")
+			{
+				const bool changesDestination = action == "ADDRESS-ADD" || action == "ADDRESS-REPLACE";
+				const auto name = detail::NextToken (rest);
+				if (!detail::IsSafeAdminText (name,
+						changesDestination ? MAX_ADDRESS_ADD_NAME_LENGTH : MAX_ADDRESS_NAME_LENGTH))
 					return i2p::unexpected (ProtocolError { ErrorCode::BadArgument, "invalid address name" });
 				request.argument = std::string (name);
-				if (action == "ADDRESS-ADD")
+				if (changesDestination)
 				{
 					const auto destination = detail::NextToken (rest);
-					if (!detail::IsSafeAdminText (destination, 1024))
+					if (!detail::IsSafeAdminText (destination, MAX_ADDRESS_DESTINATION_LENGTH))
 						return i2p::unexpected (ProtocolError { ErrorCode::BadArgument, "invalid base64 destination" });
 					request.argument2 = std::string (destination);
-					request.type = RequestType::AdminAddressAdd;
+					// ADDRESS-ADD never re-points an existing name: the daemon
+					// answers `exists` and the operator has to ask for
+					// ADDRESS-REPLACE explicitly.
+					request.type = action == "ADDRESS-ADD" ? RequestType::AdminAddressAdd
+														   : RequestType::AdminAddressReplace;
 				}
 				else if (action == "ADDRESS-REMOVE")
 					request.type = RequestType::AdminAddressRemove;
@@ -562,6 +673,29 @@ namespace tui
 					request.type = RequestType::AdminAddressBlock;
 				else
 					request.type = RequestType::AdminAddressUnblock;
+			}
+			else if (action == "NETDB-BAN" || action == "NETDB-UNBAN")
+			{
+				const auto hash = detail::NextToken (rest);
+				if (!detail::IsSafeAdminText (hash, MAX_ROUTER_HASH_TEXT_LENGTH))
+					return i2p::unexpected (ProtocolError { ErrorCode::BadArgument, "invalid router hash" });
+				auto trailing = detail::RejectTrailing (rest);
+				if (trailing) return i2p::unexpected (*trailing);
+				request.argument = std::string (hash);
+				request.type = action == "NETDB-BAN" ? RequestType::AdminNetDbBan : RequestType::AdminNetDbUnban;
+			}
+			else if (action == "ADDRESS-SUB-ADD" || action == "ADDRESS-SUB-REMOVE")
+			{
+				// A subscription URL is a single line without whitespace; the
+				// address book performs the scheme/host validation.
+				const auto url = detail::NextToken (rest);
+				if (!detail::IsSafeAdminText (url, MAX_SUBSCRIPTION_URL_LENGTH))
+					return i2p::unexpected (ProtocolError { ErrorCode::BadArgument, "invalid subscription URL" });
+				auto trailing = detail::RejectTrailing (rest);
+				if (trailing) return i2p::unexpected (*trailing);
+				request.argument = std::string (url);
+				request.type = action == "ADDRESS-SUB-ADD" ? RequestType::AdminAddressSubAdd
+														   : RequestType::AdminAddressSubRemove;
 			}
 			else
 			{
@@ -598,7 +732,8 @@ namespace tui
 		}
 		else if (command == "TORRENT-DETAIL" || command == "TORRENT-START" || command == "TORRENT-STOP"
 			|| command == "TORRENT-PAUSE" || command == "TORRENT-RESUME" || command == "TORRENT-REANNOUNCE"
-			|| command == "TORRENT-RECHECK" || command == "TORRENT-REMOVE" || command == "TORRENT-START-ALL"
+			|| command == "TORRENT-RECHECK" || command == "TORRENT-REMOVE" || command == "TORRENT-REMOVE-ALL"
+			|| command == "TORRENT-START-ALL"
 			|| command == "TORRENT-STOP-ALL" || command == "TORRENT-REANNOUNCE-ALL" || command == "TORRENT-ADD-MAGNET"
 			|| command == "TORRENT-TRACKER-ADD" || command == "TORRENT-TRACKER-REMOVE" || command == "TORRENT-COMMENTS"
 			|| command == "TORRENT-COMMENT-ADD" || command == "TORRENT-COMMENT-HIDE"
@@ -629,6 +764,10 @@ namespace tui
 				request.type = RequestType::TorrentRecheck;
 			else if (command == "TORRENT-REMOVE")
 				request.type = RequestType::TorrentRemove;
+			else if (command == "TORRENT-REMOVE-ALL")
+				// Session-wide removal is addressed by the tunnel index alone;
+				// there is no per-torrent id to bind.
+				request.type = RequestType::TorrentRemoveAll;
 			else if (command == "TORRENT-START-ALL")
 				request.type = RequestType::TorrentStartAll;
 			else if (command == "TORRENT-STOP-ALL")
@@ -668,7 +807,21 @@ namespace tui
 			else
 				request.type = RequestType::TorrentDht;
 
-			if (request.type == RequestType::TorrentCreateV1)
+			if (request.type == RequestType::TorrentRemoveAll)
+			{
+				// Bounded exactly like TORRENT-REMOVE: the only accepted
+				// option is the exact token "files"; anything else is
+				// rejected as an unknown remove option.
+				if (!rest.empty ())
+				{
+					auto option = detail::NextToken (rest);
+					if (option != "files")
+						return i2p::unexpected (
+							ProtocolError { ErrorCode::BadArgument, "unknown remove option" });
+					request.deleteFiles = true;
+				}
+			}
+			else if (request.type == RequestType::TorrentCreateV1)
 			{
 				auto size = detail::ParseUnsigned (detail::NextToken (rest));
 				auto privacy = detail::NextToken (rest);
@@ -710,7 +863,8 @@ namespace tui
 				|| request.type == RequestType::TorrentRecheck || request.type == RequestType::TorrentRemove
 				|| request.type == RequestType::TorrentAddTracker || request.type == RequestType::TorrentRemoveTracker
 				|| request.type == RequestType::TorrentCommentsEnable || request.type == RequestType::TorrentCommentAdd
-				|| request.type == RequestType::TorrentCommentHide || request.type == RequestType::TorrentFilePriority
+				|| request.type == RequestType::TorrentCommentHide || request.type == RequestType::TorrentCommentUnhide
+				|| request.type == RequestType::TorrentFilePriority
 				|| request.type == RequestType::TorrentSetComment || request.type == RequestType::TorrentSetCreatedBy)
 			{
 				if (rest.empty ())
@@ -718,6 +872,28 @@ namespace tui
 				auto id = detail::ParseTorrentId (detail::NextToken (rest));
 				if (!id) return i2p::unexpected (id.error ());
 				request.torrentId = *id;
+
+				if (request.type == RequestType::TorrentDetail && !rest.empty ())
+				{
+					// Optional trailing page: TORRENT-DETAIL <tunnel> <id>
+					// [offset] [limit]. Both bounds are explicit so a hostile
+					// client cannot ask the daemon to emit an unbounded slice
+					// of the retained comment store. Absent arguments keep the
+					// historic response (offset 0, limit 16).
+					auto offset = detail::ParseUnsigned (detail::NextToken (rest));
+					if (!offset || *offset > MAX_TORRENT_COMMENT_OFFSET)
+						return i2p::unexpected (
+							ProtocolError { ErrorCode::BadArgument, "comment offset out of range" });
+					request.commentOffset = static_cast<uint32_t> (*offset);
+					if (!rest.empty ())
+					{
+						auto limit = detail::ParseUnsigned (detail::NextToken (rest));
+						if (!limit || *limit == 0 || *limit > MAX_TORRENT_COMMENT_RECORDS_PER_REQUEST)
+							return i2p::unexpected (
+								ProtocolError { ErrorCode::BadArgument, "comment limit out of range" });
+						request.commentLimit = static_cast<uint32_t> (*limit);
+					}
+				}
 
 				if (request.type == RequestType::TorrentAddTracker || request.type == RequestType::TorrentRemoveTracker
 					|| request.type == RequestType::TorrentCommentsEnable

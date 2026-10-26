@@ -369,6 +369,7 @@ namespace tui
 				case VK_BACK: return KEY_BACKSPACE;
 				case VK_RETURN: return KEY_ENTER;
 				case VK_ESCAPE: return 27;
+				case VK_CANCEL: return 3; // Ctrl-Break follows the Ctrl-C path
 				case VK_TAB: return shift ? KEY_BTAB : '\t';
 				case VK_F1: return KEY_F1;
 				case VK_F2: return KEY_F2;

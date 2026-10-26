@@ -41,12 +41,60 @@ namespace tui
 		Bandwidth,
 		Share,
 		Transit,
+		Online,
+		LogReopen,
 		LogLevel,
 		AddressAdd,
 		AddressRemove,
 		AddressBlock,
-		AddressUnblock
+		AddressUnblock,
+		// One configured client or server tunnel, addressed by its unique
+		// service name. Both are idempotent; the executor reports whether the
+		// tunnel changed state.
+		TunnelStart,
+		TunnelStop,
+		// In-memory router ban (until restart) and address-book subscription
+		// source administration. Both carry bounded text only.
+		NetDbBan,
+		NetDbUnban,
+		AddressSubAdd,
+		AddressSubRemove
 	};
+
+	/**
+	 * Discrete outcome of a verb that can report more than success/failure.
+	 *
+	 * Only the operations listed below publish one; every other verb reports
+	 * through AdminResultCode alone. The spellings are protocol tokens and are
+	 * never translated.
+	 */
+	enum class AdminOutcome : uint8_t
+	{
+		None = 0,
+		Started,
+		Stopped,
+		AlreadyRunning,
+		AlreadyStopped,
+		Unknown, // no configured tunnel with that name
+		Disabled, // reseed is disabled by configuration
+		Exists // ADDRESS-ADD found the name without a replace request
+	};
+
+	inline std::string_view AdminOutcomeName (AdminOutcome outcome)
+	{
+		switch (outcome)
+		{
+		case AdminOutcome::None: return "";
+		case AdminOutcome::Started: return "started";
+		case AdminOutcome::Stopped: return "stopped";
+		case AdminOutcome::AlreadyRunning: return "already-running";
+		case AdminOutcome::AlreadyStopped: return "already-stopped";
+		case AdminOutcome::Unknown: return "unknown";
+		case AdminOutcome::Disabled: return "disabled";
+		case AdminOutcome::Exists: return "exists";
+		default: return "";
+		}
+	}
 
 	struct AdminCommand
 	{
@@ -54,9 +102,16 @@ namespace tui
 		// Bandwidth: ASCII class letter. Share: 0..100.
 		// LogLevel: zero-based index into the fixed level table.
 		int32_t value = 0;
-		bool enabled = false; // Transit only
-		// Address add/remove: validated, NUL-terminated fixed storage. The
-		// queue copies this struct and never allocates for a submission.
+		// Transit: requested acceptance state.
+		// AddressAdd: true re-points an existing name (ADDRESS-REPLACE); false
+		// reports `exists` instead of overwriting.
+		bool enabled = false;
+		// Address add/remove: validated, NUL-terminated fixed storage. NetDb
+		// ban/unban store the base64 router hash in `name`; subscription
+		// add/remove store the validated URL in `destination` (bounded by the
+		// address book to MAX_SUBSCRIPTION_URL_LENGTH); tunnel start/stop
+		// store the service name in `name`. The queue copies this struct and
+		// never allocates for a submission.
 		char name[256] = { };
 		char destination[1025] = { };
 	};
@@ -71,10 +126,29 @@ namespace tui
 		Failed
 	};
 
+	inline std::string_view AdminResultCodeName (AdminResultCode code)
+	{
+		switch (code)
+		{
+		case AdminResultCode::Ok: return "ok";
+		case AdminResultCode::Accepted: return "accepted";
+		case AdminResultCode::QueueFull: return "queue-full";
+		case AdminResultCode::Unavailable: return "unavailable";
+		case AdminResultCode::Invalid: return "invalid";
+		case AdminResultCode::Failed: return "failed";
+		default: return "failed";
+		}
+	}
+
 	struct AdminCommandResult
 	{
 		AdminResultCode code = AdminResultCode::Failed;
+		// Set only by the verbs with a discrete outcome; None means the verb
+		// reports through `code` alone.
+		AdminOutcome outcome = AdminOutcome::None;
 		int32_t value = 0;
+		// Transit: applied acceptance state. Tunnel start/stop: running state
+		// after the command.
 		bool enabled = false;
 		// Fixed storage: the IPC thread only copies, never allocates, this.
 		// messageLength makes the valid prefix explicit so serialization never

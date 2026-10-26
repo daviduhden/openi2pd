@@ -59,7 +59,7 @@ namespace tui
 		constexpr int CLIENT_POLL_MS = 200;
 		constexpr auto CLIENT_IDLE_TIMEOUT = std::chrono::seconds (5);
 		constexpr size_t MAX_REQUESTS_PER_CONNECTION = 4096;
-		constexpr auto MAX_CONNECTION_DURATION = std::chrono::minutes (5);
+		constexpr auto MAX_CONNECTION_DURATION = std::chrono::minutes (30);
 	}
 
 	class Server::Impl

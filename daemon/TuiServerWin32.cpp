@@ -4,7 +4,7 @@
  *
  * openi2pd: TuiServerWin32.
  *
- * Implements the Windows TUI transport as a single-instance message-mode
+ * Implements the Windows TUI transport as a single-instance byte-mode
  * named pipe with a protected DACL admitting only the daemon user, SYSTEM and
  * Administrators, and rejects remote clients. Overlapped reads and writes
  * share the UNIX transport's request, idle and connection-duration budgets.
@@ -65,7 +65,7 @@ namespace tui
 		// Per-connection budgets mirror the UNIX transport: a client cannot
 		// hold the single IPC instance forever or issue unlimited requests.
 		constexpr size_t PIPE_MAX_REQUESTS_PER_CONNECTION = 4096;
-		constexpr auto PIPE_MAX_CONNECTION_DURATION = std::chrono::minutes (5);
+		constexpr auto PIPE_MAX_CONNECTION_DURATION = std::chrono::minutes (30);
 
 		struct LocalFreeDeleter
 		{

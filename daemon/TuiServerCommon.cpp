@@ -31,6 +31,7 @@
 #include <vector>
 
 #include "AddressBook.h"
+#include "Blocklist.h"
 #include "AddressFormat.h"
 #include "ClientContext.h"
 #include "Config.h"
@@ -53,6 +54,18 @@ namespace i2p
 {
 namespace tui
 {
+	// The protocol parser and the address book validate the same URL bound; a
+	// change in one without the other would let the IPC side accept a value the
+	// book then rejects (or vice versa).
+	static_assert (i2p::tui::MAX_SUBSCRIPTION_URL_LENGTH == i2p::client::MAX_SUBSCRIPTION_URL_LENGTH,
+		"TUI and address-book subscription URL bounds must match");
+#ifndef NO_TORRENTS
+	// The comment page size is declared once by the protocol and once by the
+	// snapshot helper; a page larger than the wire bound would truncate
+	// silently and a smaller one would waste responses.
+	static_assert (i2p::torrents::MAX_COMMENT_PAGE == MAX_TORRENT_COMMENT_RECORDS_PER_REQUEST,
+		"TUI and torrent comment page bounds must match");
+#endif
 	namespace
 	{
 		enum class QueueSlotState : uint8_t
@@ -253,6 +266,7 @@ namespace tui
 			AppendField (payload, "router.uptime", i2p::context.GetUptime ());
 			AppendField (payload, "router.bandwidth_limit", i2p::context.GetBandwidthLimit ());
 			AppendField (payload, "log.level", static_cast<int> (i2p::log::Logger ().GetLogLevel ()));
+			AppendField (payload, "log.dropped", i2p::log::Logger ().GetDroppedCount ());
 
 			AppendField (payload, "network.v4", i2p::context.SupportsV4 ());
 			AppendField (payload, "network.v6", i2p::context.SupportsV6 ());
@@ -376,6 +390,19 @@ namespace tui
 			return payload;
 		}
 
+		std::string_view ReseedPhaseName (i2p::data::ReseedPhase phase)
+		{
+			switch (phase)
+			{
+			case i2p::data::ReseedPhase::Idle: return "idle";
+			case i2p::data::ReseedPhase::Running: return "running";
+			case i2p::data::ReseedPhase::Succeeded: return "succeeded";
+			case i2p::data::ReseedPhase::Failed: return "failed";
+			case i2p::data::ReseedPhase::Disabled: return "disabled";
+			default: return "idle";
+			}
+		}
+
 		std::string BuildNetDb ()
 		{
 			std::string payload;
@@ -383,9 +410,26 @@ namespace tui
 			AppendField (payload, "netdb.floodfills", i2p::data::netdb.GetNumFloodfills ());
 			AppendField (payload, "netdb.leasesets", i2p::data::netdb.GetNumLeaseSets ());
 			AppendField (payload, "netdb.reseeding", i2p::data::netdb.IsReseeding ());
+			// Bounded, non-secret administrative view of the reseed job. It
+			// never waits for the job and never carries a URL or a proxy.
+			const auto reseed = i2p::data::netdb.GetReseedState ();
+			AppendField (payload, "netdb.reseed.phase", ReseedPhaseName (reseed.phase));
+			AppendField (payload, "netdb.reseed.enabled", reseed.enabled);
+			AppendField (payload, "netdb.reseed.attempts", reseed.attempts);
+			AppendField (payload, "netdb.reseed.succeeded", reseed.succeeded);
+			AppendField (payload, "netdb.reseed.last_attempt_ms", reseed.lastAttemptMs);
+			AppendField (payload, "netdb.reseed.last_success_ms", reseed.lastSuccessMs);
+			AppendField (payload, "netdb.reseed.last_error",
+				std::string_view (reseed.lastError).substr (0, i2p::data::RESEED_MAX_ERROR_LENGTH));
 			AppendField (payload, "router.floodfill", i2p::context.IsFloodfill ());
 			AppendField (payload, "router.hidden", i2p::context.IsHidden ());
 			AppendField (payload, "router.family", i2p::context.GetFamily ());
+			const auto blocklist = i2p::data::GetOperatorBlocklistStats ();
+			AppendField (payload, "blocklist.loaded", blocklist.loaded);
+			AppendField (payload, "blocklist.ipv4", blocklist.ipv4Ranges);
+			AppendField (payload, "blocklist.ipv6", blocklist.ipv6Addresses);
+			AppendField (payload, "blocklist.hashes", blocklist.routerHashes);
+			AppendField (payload, "blocklist.runtime", i2p::data::GetRuntimeRouterBanCount ());
 			return payload;
 		}
 
@@ -442,20 +486,6 @@ namespace tui
 			return payload;
 		}
 
-		std::string_view AdminResultCodeName (AdminResultCode code)
-		{
-			switch (code)
-			{
-			case AdminResultCode::Ok: return "ok";
-			case AdminResultCode::Accepted: return "accepted";
-			case AdminResultCode::QueueFull: return "queue-full";
-			case AdminResultCode::Unavailable: return "unavailable";
-			case AdminResultCode::Invalid: return "invalid";
-			case AdminResultCode::Failed: return "failed";
-			default: return "failed";
-			}
-		}
-
 		std::string BuildAdminCommandResult (std::string_view action, const AdminCommandResult & result)
 		{
 			// The queue already executed the operation on the daemon-owned
@@ -470,8 +500,14 @@ namespace tui
 				status = "accepted";
 			AppendField (payload, "result", status);
 			AppendField (payload, "code", AdminResultCodeName (result.code));
+			// Discrete outcome token for the verbs that have one. It is absent
+			// for every other verb so an older client sees the same fields as
+			// before.
+			if (result.outcome != AdminOutcome::None)
+				AppendField (payload, "outcome", AdminOutcomeName (result.outcome));
 			AppendField (payload, "value", result.value);
 			if (action == "transit") AppendField (payload, "transit", result.enabled);
+			if (action == "tunnel-start" || action == "tunnel-stop") AppendField (payload, "running", result.enabled);
 			AppendField (payload, "message",
 				std::string_view (result.message, std::min (result.messageLength, sizeof (result.message) - 1)));
 			return payload;
@@ -559,6 +595,37 @@ namespace tui
 			const auto i2cp = i2p::client::context.GetI2CPServer ();
 			add ("i2cp", "I2CP server", "local control", { }, i2cp != nullptr);
 			AppendField (payload, "service.count", count);
+
+			// Configured client/server tunnels, each with its unique service
+			// name, kind and running state so the console can start or stop
+			// exactly one of them. Only public labels are published: no
+			// private keys, no identity files and no local filesystem path
+			// beyond the already-published listener endpoint. Each field is
+			// additionally capped so a hostile configuration value cannot
+			// turn one row into a large snapshot.
+			auto cap = [] (std::string text)
+			{
+				constexpr size_t MAX_FIELD = 256;
+				if (text.size () > MAX_FIELD) text.resize (MAX_FIELD);
+				return text;
+			};
+			size_t tunnelCount = 0;
+			for (const auto & service : i2p::client::context.GetTunnelServices ())
+			{
+				if (tunnelCount >= limit) break;
+				std::string value = cap (clean (service.name));
+				value.push_back ('|');
+				value.append (cap (clean (service.kind)));
+				value.push_back ('|');
+				value.push_back (service.running ? '1' : '0');
+				value.push_back ('|');
+				value.append (cap (clean (service.localEndpoint)));
+				value.push_back ('|');
+				value.append (cap (clean (service.destination)));
+				AppendField (payload, "tunnel.service", value);
+				++tunnelCount;
+			}
+			AppendField (payload, "tunnel.service.count", tunnelCount);
 			return payload;
 		}
 
@@ -585,6 +652,31 @@ namespace tui
 			const auto patterns = i2p::client::context.GetAddressBook ().GetDeletedHosts (limit);
 			AppendField (payload, "blocked.count", patterns.size ());
 			for (const auto & pattern : patterns) AppendField (payload, "blocked", pattern);
+			return payload;
+		}
+
+		std::string BuildSubscriptions (uint32_t limit)
+		{
+			std::string payload;
+			const auto urls = i2p::client::context.GetAddressBook ().GetSubscriptions (limit);
+			AppendField (payload, "subscription.count", urls.size ());
+			for (const auto & url : urls) AppendField (payload, "subscription", url);
+			return payload;
+		}
+
+		std::string BuildBlocklist (uint32_t limit)
+		{
+			std::string payload;
+			const auto stats = i2p::data::GetOperatorBlocklistStats ();
+			AppendField (payload, "blocklist.loaded", stats.loaded);
+			AppendField (payload, "blocklist.ipv4", stats.ipv4Ranges);
+			AppendField (payload, "blocklist.ipv6", stats.ipv6Addresses);
+			AppendField (payload, "blocklist.hashes", stats.routerHashes);
+			std::vector<i2p::data::IdentHash> bans;
+			const auto count = i2p::data::GetRuntimeRouterBans (bans, limit);
+			AppendField (payload, "blocklist.runtime", count);
+			for (size_t i = 0; i < bans.size (); ++i)
+				AppendField (payload, "blocklist.banned", bans[i].ToBase64 ());
 			return payload;
 		}
 
@@ -803,18 +895,31 @@ namespace tui
 				torrent.etaSeconds ? static_cast<int64_t> (*torrent.etaSeconds) : static_cast<int64_t> (-1));
 		}
 
-		void AppendTorrentDetail (std::string & payload, const i2p::torrents::TorrentInfo & torrent)
+		void AppendTorrentDetail (std::string & payload, const i2p::torrents::TorrentInfo & torrent,
+			uint32_t commentOffset, uint32_t commentLimit)
 		{
 			AppendTorrentSummary (payload, "detail", torrent);
 			AppendField (payload, "detail.comment", torrent.metaComment);
 			AppendField (payload, "detail.createdBy", torrent.createdBy);
 			AppendField (payload, "comments.enabled", torrent.commentsEnabled);
 			AppendField (payload, "comments.total", torrent.commentCount);
-			const size_t shownComments = std::min (torrent.comments.size (), MAX_TORRENT_COMMENT_RECORDS_PER_REQUEST);
-			// comments.count is the number of records actually emitted; the
-			// total retained count remains in comments.total. Clients must not
-			// iterate count against a truncated comments array.
-			AppendField (payload, "comments.count", shownComments);
+			// Retained classification over the whole snapshot vector, not only
+			// over the emitted page: hidden records are retained for
+			// moderation and must stay countable after a page boundary.
+			AppendField (payload, "comments.visible", torrent.commentVisibleCount);
+			AppendField (payload, "comments.hidden", torrent.commentHiddenCount);
+			AppendField (payload, "comments.local", torrent.commentLocalCount);
+			// One response emits at most MAX_TORRENT_COMMENT_RECORDS_PER_REQUEST
+			// records. Clients page with TORRENT-DETAIL <tunnel> <id> <offset>
+			// <limit>; without the page arguments this is the newest page,
+			// which is exactly the response earlier clients already parse.
+			const auto page
+				= i2p::torrents::SliceCommentPage (torrent.comments.size (), commentOffset, commentLimit);
+			// comments.offset/count describe the emitted slice; comments.total
+			// remains the retained count, so clients must not iterate count
+			// against a truncated comments array.
+			AppendField (payload, "comments.offset", page.offset);
+			AppendField (payload, "comments.count", page.count);
 			AppendField (payload, "comments.ratingCount", torrent.ratingCount);
 			{
 				char average[16];
@@ -822,9 +927,9 @@ namespace tui
 				AppendField (payload, "comments.average", average);
 			}
 			AppendField (payload, "comments.persistenceError", torrent.commentPersistenceError);
-			for (size_t i = 0; i < shownComments; ++i)
+			for (size_t i = 0; i < page.count; ++i)
 			{
-				const auto & comment = torrent.comments[i];
+				const auto & comment = torrent.comments[page.offset + i];
 				auto prefix = "comment." + std::to_string (i);
 				AppendField (payload, prefix + ".id", comment.localId);
 				AppendField (payload, prefix + ".owner", comment.owner);
@@ -834,7 +939,7 @@ namespace tui
 				AppendField (payload, prefix + ".hidden", comment.hidden);
 				AppendField (payload, prefix + ".local", comment.local);
 			}
-			AppendField (payload, "comments.truncated", torrent.comments.size () > shownComments);
+			AppendField (payload, "comments.truncated", page.truncated);
 
 			size_t count = 0;
 			for (const auto & file : torrent.files)
@@ -908,7 +1013,8 @@ namespace tui
 			return payload;
 		}
 
-		i2p::expected<std::string, std::string> BuildTorrentDetail (uint32_t tunnelIndex, int torrentId)
+		i2p::expected<std::string, std::string> BuildTorrentDetail (
+			uint32_t tunnelIndex, int torrentId, uint32_t commentOffset, uint32_t commentLimit)
 		{
 			auto tunnels = GetSortedTorrentsTunnels ();
 			if (tunnelIndex >= tunnels.size ()) return i2p::unexpected ("torrent tunnel not found");
@@ -919,7 +1025,7 @@ namespace tui
 				[torrentId] (const auto & torrent) { return torrent.id == torrentId; });
 			if (it == snapshot->torrents.end ()) return i2p::unexpected ("torrent not found");
 			std::string payload;
-			AppendTorrentDetail (payload, *it);
+			AppendTorrentDetail (payload, *it, commentOffset, commentLimit);
 			return payload;
 		}
 
@@ -1138,10 +1244,16 @@ namespace tui
 			case RequestType::Services: return makeOk (BuildServices (request->limit));
 			case RequestType::AddressBook: return makeOk (BuildAddressBook (request->limit));
 			case RequestType::AddressBookBlocked: return makeOk (BuildBlockedAddresses (request->limit));
+			case RequestType::AddressBookSubscriptions: return makeOk (BuildSubscriptions (request->limit));
+			case RequestType::Blocklist: return makeOk (BuildBlocklist (request->limit));
 			case RequestType::Logs: return makeOk (BuildLogs (request->after, request->limit));
 			case RequestType::Config: return makeOk (BuildConfig ());
 			case RequestType::AdminTransit:
 				return runAdmin ("transit", { AdminCommandKind::Transit, 0, request->enabled });
+			case RequestType::AdminOnline:
+				return runAdmin ("online", { AdminCommandKind::Online, 0, request->enabled });
+			case RequestType::AdminLogReopen:
+				return runAdmin ("log-reopen", { AdminCommandKind::LogReopen, 0, false });
 			case RequestType::AdminLogLevel:
 				return runAdmin (
 					"loglevel", { AdminCommandKind::LogLevel, static_cast<int32_t> (request->adminValue), false });
@@ -1154,17 +1266,33 @@ namespace tui
 			case RequestType::AdminShare:
 				return runAdmin (
 					"share", { AdminCommandKind::Share, static_cast<int32_t> (request->adminValue), false });
+			case RequestType::AdminTunnelStart:
+			case RequestType::AdminTunnelStop:
+			{
+				AdminCommand command;
+				const bool start = request->type == RequestType::AdminTunnelStart;
+				command.kind = start ? AdminCommandKind::TunnelStart : AdminCommandKind::TunnelStop;
+				// The parser already bounded the name to printable,
+				// whitespace-free text; the fixed buffer copy is the second
+				// bound and never depends on the request length.
+				std::snprintf (command.name, sizeof (command.name), "%s", request->argument.c_str ());
+				return runAdmin (start ? "tunnel-start" : "tunnel-stop", command);
+			}
 			case RequestType::AdminAddressAdd:
+			case RequestType::AdminAddressReplace:
 			case RequestType::AdminAddressRemove:
 			case RequestType::AdminAddressBlock:
 			case RequestType::AdminAddressUnblock:
 			{
 				AdminCommand command;
 				std::string_view action;
-				if (request->type == RequestType::AdminAddressAdd)
+				if (request->type == RequestType::AdminAddressAdd || request->type == RequestType::AdminAddressReplace)
 				{
 					command.kind = AdminCommandKind::AddressAdd;
-					action = "address-add";
+					// ADDRESS-ADD never re-points an existing name; only the
+					// explicit replace verb authorises the overwrite.
+					command.enabled = request->type == RequestType::AdminAddressReplace;
+					action = command.enabled ? "address-replace" : "address-add";
 				}
 				else if (request->type == RequestType::AdminAddressRemove)
 				{
@@ -1184,6 +1312,24 @@ namespace tui
 				std::snprintf (command.name, sizeof (command.name), "%s", request->argument.c_str ());
 				std::snprintf (command.destination, sizeof (command.destination), "%s", request->argument2.c_str ());
 				return runAdmin (action, command);
+			}
+			case RequestType::AdminNetDbBan:
+			case RequestType::AdminNetDbUnban:
+			{
+				AdminCommand command;
+				const bool ban = request->type == RequestType::AdminNetDbBan;
+				command.kind = ban ? AdminCommandKind::NetDbBan : AdminCommandKind::NetDbUnban;
+				std::snprintf (command.name, sizeof (command.name), "%s", request->argument.c_str ());
+				return runAdmin (ban ? "netdb-ban" : "netdb-unban", command);
+			}
+			case RequestType::AdminAddressSubAdd:
+			case RequestType::AdminAddressSubRemove:
+			{
+				AdminCommand command;
+				const bool add = request->type == RequestType::AdminAddressSubAdd;
+				command.kind = add ? AdminCommandKind::AddressSubAdd : AdminCommandKind::AddressSubRemove;
+				std::snprintf (command.destination, sizeof (command.destination), "%s", request->argument.c_str ());
+				return runAdmin (add ? "address-sub-add" : "address-sub-remove", command);
 			}
 			case RequestType::AdminShutdown:
 			{
@@ -1209,7 +1355,8 @@ namespace tui
 			case RequestType::TorrentTunnels: return makeOk (BuildTorrentTunnelList ());
 			case RequestType::Torrents: return makeQuery (BuildTorrentList (request->tunnelIndex, request->limit));
 			case RequestType::TorrentDetail:
-				return makeQuery (BuildTorrentDetail (request->tunnelIndex, request->torrentId));
+				return makeQuery (BuildTorrentDetail (request->tunnelIndex, request->torrentId,
+					request->commentOffset, request->commentLimit));
 			case RequestType::TorrentSession: return makeQuery (BuildTorrentSession (request->tunnelIndex));
 			case RequestType::TorrentDht: return makeQuery (BuildTorrentDht (request->tunnelIndex));
 			case RequestType::TorrentStart:
@@ -1233,6 +1380,11 @@ namespace tui
 			case RequestType::TorrentRemove:
 				return makeOk (BuildTorrentCommandResult (request->tunnelIndex,
 					{ i2p::torrents::TorrentCommandKind::Remove, request->torrentId, request->deleteFiles, { } }));
+			case RequestType::TorrentRemoveAll:
+				// Session-wide removal: no torrent id is involved, and the
+				// files flag is the same exact token as TORRENT-REMOVE.
+				return makeOk (BuildTorrentCommandResult (request->tunnelIndex,
+					{ i2p::torrents::TorrentCommandKind::RemoveAll, 0, request->deleteFiles, { } }));
 			case RequestType::TorrentStartAll:
 				return makeOk (BuildTorrentCommandResult (
 					request->tunnelIndex, { i2p::torrents::TorrentCommandKind::StartAll, 0, false, { } }));

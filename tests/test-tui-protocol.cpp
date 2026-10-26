@@ -14,6 +14,15 @@
 #include <string_view>
 
 #include "TuiProtocol.h"
+// The daemon-side header is self-contained and declares only enums plus
+// inline name tables, so the token vocabulary can be pinned by this test
+// without linking the daemon dispatcher.
+#include "daemon/TuiServerCommon.h"
+#ifndef NO_TORRENTS
+// Pure comment-page slicing lives in the snapshot header; the torrents build
+// pins its page size against the wire bound.
+#include "TorrentsControl.h"
+#endif
 
 using namespace i2p::tui;
 
@@ -94,6 +103,19 @@ static void TestRequests ()
 	assert (transitOff.has_value ());
 	assert (transitOff->type == RequestType::AdminTransit);
 	assert (!transitOff->enabled);
+	auto onlineOn = ParseRequest ("I2PDTUI/1 ADMIN ONLINE ON");
+	assert (onlineOn.has_value ());
+	assert (onlineOn->type == RequestType::AdminOnline && onlineOn->enabled);
+	auto onlineOff = ParseRequest ("I2PDTUI/1 ADMIN ONLINE OFF");
+	assert (onlineOff.has_value ());
+	assert (onlineOff->type == RequestType::AdminOnline && !onlineOff->enabled);
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN ONLINE").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN ONLINE MAYBE").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN ONLINE ON extra").has_value ());
+	auto logReopen = ParseRequest ("I2PDTUI/1 ADMIN LOG-REOPEN");
+	assert (logReopen.has_value ());
+	assert (logReopen->type == RequestType::AdminLogReopen);
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN LOG-REOPEN now").has_value ());
 	auto logLevel = ParseRequest ("I2PDTUI/1 ADMIN LOGLEVEL warn");
 	assert (logLevel.has_value ());
 	assert (logLevel->type == RequestType::AdminLogLevel);
@@ -310,6 +332,42 @@ static void TestAdminCommands ()
 	assert (blocked.has_value () && blocked->type == RequestType::AddressBookBlocked);
 	assert (blocked->limit == 12);
 
+	// Address-book subscription sources are read as a bounded list and edited
+	// through typed ADMIN verbs; a URL is one whitespace-free token.
+	auto subscriptions = ParseRequest ("I2PDTUI/1 ADDRESSBOOK-SUBSCRIPTIONS 16");
+	assert (subscriptions.has_value () && subscriptions->type == RequestType::AddressBookSubscriptions);
+	assert (subscriptions->limit == 16);
+	auto clampedSubscriptions = ParseRequest ("I2PDTUI/1 ADDRESSBOOK-SUBSCRIPTIONS 17");
+	assert (clampedSubscriptions.has_value ());
+	assert (clampedSubscriptions->limit == i2p::tui::MAX_SUBSCRIPTION_RECORDS_PER_REQUEST);
+	assert (!ParseRequest ("I2PDTUI/1 ADDRESSBOOK-SUBSCRIPTIONS 0").has_value ());
+	auto subAdd = ParseRequest ("I2PDTUI/1 ADMIN ADDRESS-SUB-ADD http://reg.i2p/hosts.txt");
+	assert (subAdd.has_value () && subAdd->type == RequestType::AdminAddressSubAdd);
+	assert (subAdd->argument == "http://reg.i2p/hosts.txt");
+	auto subRemove = ParseRequest ("I2PDTUI/1 ADMIN ADDRESS-SUB-REMOVE http://reg.i2p/hosts.txt");
+	assert (subRemove.has_value () && subRemove->type == RequestType::AdminAddressSubRemove);
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN ADDRESS-SUB-ADD").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN ADDRESS-SUB-ADD http://a/ http://b/").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN ADDRESS-SUB-ADD bad\nurl").has_value ());
+
+	// Operator blocklist: counters plus the in-memory runtime ban list. The
+	// router hash is a bounded base64 token.
+	auto blocklist = ParseRequest ("I2PDTUI/1 BLOCKLIST 200");
+	assert (blocklist.has_value () && blocklist->type == RequestType::Blocklist);
+	assert (blocklist->limit == 200);
+	auto clampedBlocklist = ParseRequest ("I2PDTUI/1 BLOCKLIST 201");
+	assert (clampedBlocklist.has_value ());
+	assert (clampedBlocklist->limit == i2p::tui::MAX_BLOCKLIST_RECORDS_PER_REQUEST);
+	auto netDbBan = ParseRequest ("I2PDTUI/1 ADMIN NETDB-BAN AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=");
+	assert (netDbBan.has_value () && netDbBan->type == RequestType::AdminNetDbBan);
+	assert (netDbBan->argument == "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=");
+	auto netDbUnban = ParseRequest ("I2PDTUI/1 ADMIN NETDB-UNBAN AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=");
+	assert (netDbUnban.has_value () && netDbUnban->type == RequestType::AdminNetDbUnban);
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN NETDB-BAN").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN NETDB-BAN hash extra").has_value ());
+	std::string longHash (i2p::tui::MAX_ROUTER_HASH_TEXT_LENGTH + 1, 'A');
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN NETDB-BAN " + longHash).has_value ());
+
 	auto commentsEnable = ParseRequest ("I2PDTUI/1 TORRENT-COMMENTS 0 3 ON");
 	assert (commentsEnable && commentsEnable->type == RequestType::TorrentCommentsEnable);
 	assert (commentsEnable->argument == "ON");
@@ -341,6 +399,130 @@ static void TestAdminCommands ()
 	assert (!ParseRequest ("I2PDTUI/1 ADMIN BANDWIDTH").has_value ());
 	assert (!ParseRequest ("I2PDTUI/1 ADMIN RELOAD https://example.invalid/").has_value ());
 	assert (!ParseRequest ("I2PDTUI/1 ADMIN SHUTDOWN GRACEFUL;reboot").has_value ());
+}
+
+static void TestTunnelAndReseedAdminVerbs ()
+{
+	// One configured tunnel, addressed by its bounded, whitespace-free service
+	// name. Both verbs accept exactly one token and no trailing data.
+	auto start = ParseRequest ("I2PDTUI/1 ADMIN TUNNEL-START web");
+	assert (start.has_value () && start->type == RequestType::AdminTunnelStart);
+	assert (start->argument == "web");
+	auto stop = ParseRequest ("I2PDTUI/1 ADMIN TUNNEL-STOP web");
+	assert (stop.has_value () && stop->type == RequestType::AdminTunnelStop);
+	assert (stop->argument == "web");
+	auto longest = std::string ("I2PDTUI/1 ADMIN TUNNEL-START ")
+		+ std::string (MAX_TUNNEL_SERVICE_NAME_LENGTH, 'a');
+	assert (ParseRequest (longest).has_value ());
+	assert (!ParseRequest (longest + "a").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN TUNNEL-START").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN TUNNEL-START web extra").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN TUNNEL-START ").has_value ());
+	// A name is one line: no whitespace, control characters, NUL or a hidden
+	// second request can ride along.
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN TUNNEL-START two words").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN TUNNEL-START web\tname").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN TUNNEL-START web\nQUIT").has_value ());
+	assert (!ParseRequest (std::string ("I2PDTUI/1 ADMIN TUNNEL-START web") + '\0' + "QUIT").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN TUNNEL-START web\x01name").has_value ());
+	// Only the closed verb set exists: no generic tunnel writer. The argument is
+	// a lookup key and never a file path or URL the daemon would open, so a
+	// path-shaped name simply resolves to "unknown".
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN TUNNEL-RESTART web").has_value ());
+	assert (ParseRequest ("I2PDTUI/1 ADMIN TUNNEL-START /etc/i2pd/tunnels.conf").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 TUNNEL-START web").has_value ());
+
+	// Reseed never carries an argument: the daemon reports the typed outcome.
+	auto reseed = ParseRequest ("I2PDTUI/1 ADMIN RESEED");
+	assert (reseed.has_value () && reseed->type == RequestType::AdminReseed);
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN RESEED now").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN RESEED ON").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 RESEED").has_value ());
+
+	// The typed outcome tokens are the protocol vocabulary; the reseed and
+	// tunnel verbs are the only producers of these spellings.
+	using i2p::tui::AdminOutcome;
+	assert (AdminOutcomeName (AdminOutcome::None).empty ());
+	assert (AdminOutcomeName (AdminOutcome::Started) == "started");
+	assert (AdminOutcomeName (AdminOutcome::Stopped) == "stopped");
+	assert (AdminOutcomeName (AdminOutcome::AlreadyRunning) == "already-running");
+	assert (AdminOutcomeName (AdminOutcome::AlreadyStopped) == "already-stopped");
+	assert (AdminOutcomeName (AdminOutcome::Unknown) == "unknown");
+	assert (AdminOutcomeName (AdminOutcome::Disabled) == "disabled");
+	assert (AdminOutcomeName (AdminOutcome::Exists) == "exists");
+	// Every token is one lowercase word, so a client never has to translate
+	// or guess a spelling and a token can never carry whitespace.
+	for (auto outcome : { AdminOutcome::Started, AdminOutcome::Stopped, AdminOutcome::AlreadyRunning,
+			 AdminOutcome::AlreadyStopped, AdminOutcome::Unknown, AdminOutcome::Disabled,
+			 AdminOutcome::Exists })
+	{
+		const auto token = AdminOutcomeName (outcome);
+		assert (!token.empty () && token.size () <= MAX_FIELD_NAME);
+		for (char ch : token)
+			assert ((ch >= 'a' && ch <= 'z') || ch == '-');
+	}
+
+	// The reseed status and tunnel list field names must fit the wire limit,
+	// including the largest indexed variant a bounded snapshot can produce.
+	for (auto name : { "netdb.reseed.phase", "netdb.reseed.enabled", "netdb.reseed.attempts",
+			 "netdb.reseed.succeeded", "netdb.reseed.last_attempt_ms", "netdb.reseed.last_success_ms",
+			 "netdb.reseed.last_error", "tunnel.service", "tunnel.service.count", "outcome", "running" })
+		assert (std::string_view (name).size () <= MAX_FIELD_NAME);
+
+	// A tunnel row and an admin reply must survive framing and escaping.
+	std::string payload;
+	AppendField (payload, "tunnel.service", "web|client|1|127.0.0.1:4444|site.i2p");
+	AppendField (payload, "tunnel.service.count", 1);
+	AppendField (payload, "outcome", "already-running");
+	AppendField (payload, "running", true);
+	auto frame = MakeResponse (ResponseStatus::Ok, payload);
+	auto newline = frame.find ('\n');
+	assert (newline != std::string::npos);
+	auto header = ParseResponseHeader (std::string_view (frame).substr (0, newline));
+	assert (header.has_value ());
+	assert (header->payloadSize == payload.size ());
+	assert (frame.substr (newline + 1) == payload);
+}
+
+static void TestAddressReplaceVerbs ()
+{
+	// ADDRESS-ADD never re-points an existing name; ADDRESS-REPLACE is the
+	// explicit overwrite verb. Both carry the same bounded pair.
+	auto add = ParseRequest ("I2PDTUI/1 ADMIN ADDRESS-ADD site.i2p AAAA");
+	assert (add.has_value () && add->type == RequestType::AdminAddressAdd);
+	assert (add->argument == "site.i2p" && add->argument2 == "AAAA");
+	auto replace = ParseRequest ("I2PDTUI/1 ADMIN ADDRESS-REPLACE site.i2p BBBB");
+	assert (replace.has_value () && replace->type == RequestType::AdminAddressReplace);
+	assert (replace->argument == "site.i2p" && replace->argument2 == "BBBB");
+	assert (RequestType::AdminAddressAdd != RequestType::AdminAddressReplace);
+
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN ADDRESS-REPLACE site.i2p").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN ADDRESS-REPLACE").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN ADDRESS-REPLACE site.i2p AAAA extra").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN ADDRESS-REPLACE site.i2p AAAA\nQUIT").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN ADDRESS-REPLACE " + std::string (MAX_ADDRESS_ADD_NAME_LENGTH + 1, 'a')
+						   + " AAAA")
+				   .has_value ());
+	std::string longDestination (MAX_ADDRESS_DESTINATION_LENGTH + 1, 'A');
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN ADDRESS-ADD site.i2p " + longDestination).has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN ADDRESS-REPLACE site.i2p " + longDestination).has_value ());
+	// Exactly the declared destination bound is accepted; the address book
+	// still validates that it is a full base64 destination.
+	std::string atBound (MAX_ADDRESS_DESTINATION_LENGTH, 'A');
+	assert (ParseRequest ("I2PDTUI/1 ADMIN ADDRESS-ADD site.i2p " + atBound).has_value ());
+	// The stored-name verbs keep the wider name bound.
+	std::string longName (MAX_ADDRESS_NAME_LENGTH, 'a');
+	assert (ParseRequest ("I2PDTUI/1 ADMIN ADDRESS-REMOVE " + longName).has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 ADMIN ADDRESS-REMOVE " + longName + "a").has_value ());
+
+	// The add/replace result codes are a closed set too.
+	using i2p::tui::AdminResultCode;
+	assert (AdminResultCodeName (AdminResultCode::Ok) == "ok");
+	assert (AdminResultCodeName (AdminResultCode::Accepted) == "accepted");
+	assert (AdminResultCodeName (AdminResultCode::Invalid) == "invalid");
+	assert (AdminResultCodeName (AdminResultCode::Unavailable) == "unavailable");
+	assert (AdminResultCodeName (AdminResultCode::QueueFull) == "queue-full");
+	assert (AdminResultCodeName (AdminResultCode::Failed) == "failed");
 }
 
 static void TestConfigRequests ()
@@ -401,7 +583,43 @@ static void TestTorrentRequests ()
 	auto detail = ParseRequest ("I2PDTUI/1 TORRENT-DETAIL 1 7");
 	assert (detail.has_value () && detail->type == RequestType::TorrentDetail);
 	assert (detail->tunnelIndex == 1 && detail->torrentId == 7);
+	// Without page arguments the historic request is preserved exactly: page
+	// one, newest records first.
+	assert (detail->commentOffset == 0);
+	assert (detail->commentLimit == MAX_TORRENT_COMMENT_RECORDS_PER_REQUEST);
 	assert (!ParseRequest ("I2PDTUI/1 TORRENT-DETAIL 1 0").has_value ());
+
+	// TORRENT-DETAIL accepts an optional trailing comment page
+	// `[offset] [limit]`: offset 0..255, limit 1..16.
+	auto detailPage = ParseRequest ("I2PDTUI/1 TORRENT-DETAIL 0 7 16 8");
+	assert (detailPage.has_value () && detailPage->type == RequestType::TorrentDetail);
+	assert (detailPage->tunnelIndex == 0 && detailPage->torrentId == 7);
+	assert (detailPage->commentOffset == 16 && detailPage->commentLimit == 8);
+	auto detailOffsetOnly = ParseRequest ("I2PDTUI/1 TORRENT-DETAIL 0 7 16");
+	assert (detailOffsetOnly.has_value () && detailOffsetOnly->commentOffset == 16);
+	assert (detailOffsetOnly->commentLimit == MAX_TORRENT_COMMENT_RECORDS_PER_REQUEST);
+	auto detailFullPage = ParseRequest ("I2PDTUI/1 TORRENT-DETAIL 0 7 240 16");
+	assert (detailFullPage.has_value () && detailFullPage->commentOffset == 240);
+	assert (detailFullPage->commentLimit == MAX_TORRENT_COMMENT_RECORDS_PER_REQUEST);
+	auto detailSingle = ParseRequest ("I2PDTUI/1 TORRENT-DETAIL 0 7 0 1");
+	assert (detailSingle.has_value () && detailSingle->commentOffset == 0
+		&& detailSingle->commentLimit == 1);
+	auto detailLastPage = ParseRequest ("I2PDTUI/1 TORRENT-DETAIL 0 7 255 16");
+	assert (detailLastPage.has_value () && detailLastPage->commentOffset == MAX_TORRENT_COMMENT_OFFSET);
+	// Out-of-range, negative, non-numeric and extra tokens are rejected rather
+	// than clamped: a client must learn that its page request was invalid.
+	assert (!ParseRequest ("I2PDTUI/1 TORRENT-DETAIL 0 7 0 0").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 TORRENT-DETAIL 0 7 0 17").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 TORRENT-DETAIL 0 7 256").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 TORRENT-DETAIL 0 7 256 16").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 TORRENT-DETAIL 0 7 -1").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 TORRENT-DETAIL 0 7 0 -1").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 TORRENT-DETAIL 0 7 1x").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 TORRENT-DETAIL 0 7 0 x").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 TORRENT-DETAIL 0 7 0 8 extra").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 TORRENT-DETAIL 0 7 8 8 8").has_value ());
+	// The page arguments belong to TORRENT-DETAIL alone.
+	assert (!ParseRequest ("I2PDTUI/1 TORRENT-PAUSE 0 7 8").has_value ());
 
 	auto pause = ParseRequest ("I2PDTUI/1 TORRENT-PAUSE 0 3");
 	assert (pause.has_value () && pause->type == RequestType::TorrentPause);
@@ -421,6 +639,31 @@ static void TestTorrentRequests ()
 	assert (remove.has_value () && remove->type == RequestType::TorrentRemove);
 	assert (remove->deleteFiles);
 	assert (!ParseRequest ("I2PDTUI/1 TORRENT-REMOVE 0 3 all").has_value ());
+
+	// TORRENT-REMOVE-ALL is addressed by the tunnel index alone. The only
+	// accepted option is the exact token "files"; no torrent id is parsed.
+	auto removeAll = ParseRequest ("I2PDTUI/1 TORRENT-REMOVE-ALL 2");
+	assert (removeAll.has_value () && removeAll->type == RequestType::TorrentRemoveAll);
+	assert (removeAll->tunnelIndex == 2 && !removeAll->deleteFiles && removeAll->torrentId == 0);
+	auto removeAllFiles = ParseRequest ("I2PDTUI/1 TORRENT-REMOVE-ALL 2 files");
+	assert (removeAllFiles.has_value () && removeAllFiles->type == RequestType::TorrentRemoveAll);
+	assert (removeAllFiles->tunnelIndex == 2 && removeAllFiles->deleteFiles);
+	assert (!ParseRequest ("I2PDTUI/1 TORRENT-REMOVE-ALL").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 TORRENT-REMOVE-ALL 2 Files").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 TORRENT-REMOVE-ALL 2 files extra").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 TORRENT-REMOVE-ALL 2 5").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 TORRENT-REMOVE-ALL -1").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 TORRENT-REMOVE-ALL 4294967296").has_value ());
+
+	// Comment hide/unhide carry the bounded local comment id as their argument.
+	auto commentHide = ParseRequest ("I2PDTUI/1 TORRENT-COMMENT-HIDE 0 3 42");
+	assert (commentHide.has_value () && commentHide->type == RequestType::TorrentCommentHide);
+	assert (commentHide->tunnelIndex == 0 && commentHide->torrentId == 3 && commentHide->argument == "42");
+	auto commentUnhide = ParseRequest ("I2PDTUI/1 TORRENT-COMMENT-UNHIDE 0 3 42");
+	assert (commentUnhide.has_value () && commentUnhide->type == RequestType::TorrentCommentUnhide);
+	assert (commentUnhide->tunnelIndex == 0 && commentUnhide->torrentId == 3
+		&& commentUnhide->argument == "42");
+	assert (!ParseRequest ("I2PDTUI/1 TORRENT-COMMENT-UNHIDE 0 3").has_value ());
 
 	auto add = ParseRequest ("I2PDTUI/1 TORRENT-ADD-MAGNET 0 magnet:?xt=urn:btih:abc");
 	assert (add.has_value () && add->type == RequestType::TorrentAddMagnet);
@@ -449,14 +692,75 @@ static void TestTorrentRequests ()
 	auto startAll = ParseRequest ("I2PDTUI/1 TORRENT-START-ALL 3");
 	assert (startAll.has_value () && startAll->type == RequestType::TorrentStartAll);
 	assert (!ParseRequest ("I2PDTUI/1 TORRENT-STOP-ALL").has_value ());
+
+	// Single-torrent lifecycle verbs used by the TUI and the Android detail
+	// actions; each binds a tunnel index and a positive engine id.
+	auto startOne = ParseRequest ("I2PDTUI/1 TORRENT-START 1 9");
+	assert (startOne.has_value () && startOne->type == RequestType::TorrentStart);
+	assert (startOne->tunnelIndex == 1 && startOne->torrentId == 9);
+	auto stopOne = ParseRequest ("I2PDTUI/1 TORRENT-STOP 1 9");
+	assert (stopOne.has_value () && stopOne->type == RequestType::TorrentStop);
+	assert (stopOne->tunnelIndex == 1 && stopOne->torrentId == 9);
+	auto reannounceOne = ParseRequest ("I2PDTUI/1 TORRENT-REANNOUNCE 1 9");
+	assert (reannounceOne.has_value () && reannounceOne->type == RequestType::TorrentReannounce);
+	assert (reannounceOne->tunnelIndex == 1 && reannounceOne->torrentId == 9);
+	assert (!ParseRequest ("I2PDTUI/1 TORRENT-START 0 0").has_value ());
+	assert (!ParseRequest ("I2PDTUI/1 TORRENT-REANNOUNCE 0 3 files").has_value ());
+}
+
+static void TestCommentPageBounds ()
+{
+#ifndef NO_TORRENTS
+	using i2p::torrents::SliceCommentPage;
+	// The snapshot retains up to 256 records while one response emits at most
+	// 16; the pure slice is what both the daemon and the clients rely on.
+	// The per-torrent comments.visible/hidden/local counters are produced by
+	// TorrentsTunnel::GetControlSnapshot and need a live torrent fixture, so
+	// they are not exercised by this protocol test.
+	assert (i2p::torrents::MAX_COMMENT_PAGE == MAX_TORRENT_COMMENT_RECORDS_PER_REQUEST);
+
+	auto first = SliceCommentPage (40, 0, MAX_TORRENT_COMMENT_RECORDS_PER_REQUEST);
+	assert (first.offset == 0u && first.limit == 16u && first.count == 16u && first.total == 40u);
+	assert (first.truncated);
+
+	auto middle = SliceCommentPage (40, 16, 16);
+	assert (middle.offset == 16u && middle.count == 16u && middle.truncated);
+
+	auto last = SliceCommentPage (40, 32, 16);
+	assert (last.offset == 32u && last.count == 8u && !last.truncated);
+
+	auto exact = SliceCommentPage (16, 0, 16);
+	assert (exact.count == 16u && !exact.truncated);
+
+	auto single = SliceCommentPage (256, 255, 16);
+	assert (single.offset == 255u && single.count == 1u && !single.truncated);
+
+	auto empty = SliceCommentPage (0, 0, 16);
+	assert (empty.count == 0u && empty.truncated == false);
+
+	// A page size outside 1..16 is clamped, never honoured as given.
+	auto clamped = SliceCommentPage (40, 0, 4096);
+	assert (clamped.limit == 16u && clamped.count == 16u && clamped.truncated);
+	auto zeroLimit = SliceCommentPage (40, 0, 0);
+	assert (zeroLimit.limit == 1u && zeroLimit.count == 1u && zeroLimit.truncated);
+
+	// An offset past the retained records is an empty page with a truthful
+	// total; it never reads out of range and never fails.
+	auto beyond = SliceCommentPage (5, 255, 16);
+	assert (beyond.total == 5u && beyond.offset == 5u && beyond.count == 0u);
+	assert (!beyond.truncated);
+#endif
 }
 
 int main ()
 {
 	TestRequests ();
 	TestAdminCommands ();
+	TestTunnelAndReseedAdminVerbs ();
+	TestAddressReplaceVerbs ();
 	TestConfigRequests ();
 	TestTorrentRequests ();
+	TestCommentPageBounds ();
 	TestResponseHeader ();
 	TestFraming ();
 	TestFields ();

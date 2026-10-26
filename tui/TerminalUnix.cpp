@@ -70,6 +70,18 @@ constexpr int NC_KEY_F12 = KEY_F (12);
 #undef KEY_IC
 #undef KEY_BTAB
 #undef KEY_F
+#undef KEY_F1
+#undef KEY_F2
+#undef KEY_F3
+#undef KEY_F4
+#undef KEY_F5
+#undef KEY_F6
+#undef KEY_F7
+#undef KEY_F8
+#undef KEY_F9
+#undef KEY_F10
+#undef KEY_F11
+#undef KEY_F12
 
 namespace i2p
 {
