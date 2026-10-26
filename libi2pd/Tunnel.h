@@ -25,6 +25,7 @@
 #include <mutex>
 #include <memory>
 #include <random>
+#include <functional>
 #include "util.h"
 #include "AtomicSharedPtr.h"
 #include "Queue.h"
@@ -45,8 +46,6 @@ namespace tunnel
 	const int TUNNEL_EXPIRATION_THRESHOLD = 60; // 1 minute
 	const int TUNNEL_RECREATION_THRESHOLD = 90; // 1.5 minutes
 	const int TUNNEL_CREATION_TIMEOUT = 30; // 30 seconds
-	const int STANDARD_NUM_RECORDS = 4; // in VariableTunnelBuild message
-	const int MAX_NUM_RECORDS = 8;
 	const int UNKNOWN_LATENCY = -1;
 	const int HIGH_LATENCY_PER_HOP = 250000; // in microseconds
 	const int MAX_TUNNEL_MSGS_BATCH_SIZE = 100; // handle messages without interrupt
@@ -62,6 +61,26 @@ namespace tunnel
 
 	const double TCSR_SMOOTHING_CONSTANT = 0.0005; // smoothing constant in exponentially weighted moving average
 	const double TCSR_START_VALUE = 0.1; // start value of tunnel creation success rate
+
+	/**
+	 * Record table planned for one short tunnel build message.
+	 *
+	 * `numHops` are the real hops of the configured path, `insertPhonyRecord`
+	 * adds the trailing phony record for an inbound tunnel and `numRecords` is
+	 * the record count advertised in ShortTunnelBuild. The hop loop indexes the
+	 * shuffled record map once per real hop, so `valid == false` means the
+	 * build must fail before any record buffer is touched. `PlanTunnelBuildRecords`
+	 * is the single authority for that decision.
+	 */
+	struct TunnelBuildRecordPlan
+	{
+		int numHops = 0;
+		int numRecords = 0;
+		bool insertPhonyRecord = false;
+		bool valid = false;
+	};
+
+	TunnelBuildRecordPlan PlanTunnelBuildRecords (int numHops, bool isInbound);
 
 	enum TunnelState
 	{
@@ -104,6 +123,25 @@ namespace tunnel
 		bool IsRecreated () const { return m_IsRecreated.load (std::memory_order_relaxed); };
 		void SetRecreated (bool recreated) { m_IsRecreated.store (recreated, std::memory_order_relaxed); };
 		int GetNumHops () const { return static_cast<int> (m_Hops.size ()); };
+		/** record count advertised by the last build request, 0 if none was sent */
+		int GetNumBuildRecords () const { return m_NumBuildRecords.load (std::memory_order_relaxed); };
+
+		/**
+		 * @name Tunnel test strikes
+		 *
+		 * How many tunnel tests this tunnel has failed in a row. The counter is
+		 * deliberately independent of the state machine: inbound traffic may
+		 * promote a pending tunnel to established, but it must not erase the
+		 * evidence that the tunnel already missed its test deadlines. The pool
+		 * fails the tunnel at TUNNEL_POOL_TEST_STRIKES and clears the counter
+		 * when a test succeeds.
+		 */
+		///@{
+		int GetTestStrikes () const { return m_TestStrikes.load (std::memory_order_relaxed); };
+		int AddTestStrike () { return m_TestStrikes.fetch_add (1, std::memory_order_relaxed) + 1; };
+		void ResetTestStrikes () { m_TestStrikes.store (0, std::memory_order_relaxed); };
+		///@}
+
 		virtual bool IsInbound () const = 0;
 		virtual bool Recreate () = 0;
 
@@ -152,6 +190,8 @@ namespace tunnel
 		i2p::data::RouterInfo::CompatibleTransports m_FarEndTransports;
 		std::atomic<bool> m_IsRecreated; // if tunnel is replaced by new, or new tunnel requested to replace
 		std::atomic<int> m_Latency; // in microseconds
+		std::atomic<int> m_NumBuildRecords; // record count sent with the build request
+		std::atomic<int> m_TestStrikes; // failed tunnel tests in a row
 	};
 
 	class OutboundTunnel : public Tunnel
@@ -192,6 +232,8 @@ namespace tunnel
 			, m_Endpoint (true) { };
 		void HandleTunnelDataMsg (std::shared_ptr<I2NPMessage> && msg) override;
 		virtual size_t GetNumReceivedBytes () const { return m_Endpoint.GetNumReceivedBytes (); };
+		/** last tunnel data message arrival in milliseconds, 0 if none yet */
+		uint64_t GetLastReceiveTimeMs () const { return m_Endpoint.GetLastReceiveTimeMs (); };
 		bool IsInbound () const override { return true; }
 		bool Recreate () override;
 
@@ -231,6 +273,21 @@ namespace tunnel
 	private:
 		size_t m_NumSentBytes;
 	};
+
+	/**
+	 * One-hop tunnel configurations used by the fallback builders.
+	 *
+	 * The far-end transport mask is the peer's real transport set in the
+	 * tunnel's direction. Passing a zero mask (a `false` boolean in the old
+	 * call sites) makes the tunnel incompatible with every paired tunnel and
+	 * disables the pairing checks in the pool, so these helpers exist to keep
+	 * the mask correct and testable.
+	 */
+	std::shared_ptr<TunnelConfig> CreateOneHopInboundTunnelConfig (const i2p::data::RouterInfo & router);
+	std::shared_ptr<TunnelConfig> CreateOneHopOutboundTunnelConfig (const i2p::data::RouterInfo & router,
+		uint32_t replyTunnelID, const i2p::data::IdentHash & replyIdent);
+	/** Outbound mirror of @a inbound: same peers, same far-end mask. */
+	std::shared_ptr<TunnelConfig> CreatePairedOutboundTunnelConfig (const InboundTunnel & inbound);
 
 	class Tunnels
 	{
@@ -272,6 +329,16 @@ namespace tunnel
 		void StopTunnelPool (std::shared_ptr<TunnelPool> pool);
 
 		std::shared_ptr<I2NPMessage> NewI2NPTunnelMessage (bool endpoint);
+
+		/** Tunnels with an outstanding build request that belong to @a pool. */
+		size_t GetNumPendingTunnels (const TunnelPool * pool, bool inbound) const;
+		/** Inbound registry messages dropped because the queue was full. */
+		uint64_t GetNumDroppedTunnelMessages () const
+		{
+			return m_NumDroppedTunnelMessages.load (std::memory_order_relaxed);
+		}
+		/** Queue size bound used by PostTunnelData(), for diagnostics and tests. */
+		size_t GetTunnelMessageQueueLimit () const { return TUNNEL_MESSAGE_QUEUE_MAX_SIZE; }
 
 		void SetMaxNumTransitTunnels (uint32_t maxNumTransitTunnels);
 		uint32_t GetMaxNumTransitTunnels () const { return m_MaxNumTransitTunnels.load (std::memory_order_relaxed); };
@@ -369,6 +436,7 @@ namespace tunnel
 		std::list<std::shared_ptr<TunnelPool>> m_Pools;
 		mutable i2p::util::AtomicSharedPtr<TunnelPool> m_ExploratoryPool;
 		i2p::util::Queue<std::shared_ptr<I2NPMessage>> m_Queue;
+		std::atomic<uint64_t> m_NumDroppedTunnelMessages;
 		std::atomic<uint32_t> m_MaxNumTransitTunnels;
 		// count of tunnels for total TCSR algorithm
 		std::atomic<int> m_TotalNumSuccesiveTunnelCreations, m_TotalNumFailedTunnelCreations;

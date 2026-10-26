@@ -4,7 +4,9 @@
  *
  * openi2pd: test tunnelpool zero hop.
  *
- * Injects failed zero-hop test tunnels and runs TestTunnels(), requiring synchronous replacement publication without self-deadlock and non-empty inbound/outbound pools.
+ * Injects a tunnel test that expired on its last strike and runs
+ * TestTunnels(), requiring synchronous replacement publication without
+ * self-deadlock and non-empty inbound/outbound pools.
  *
  */
 
@@ -28,13 +30,22 @@ namespace tunnel
 {
 	struct TunnelPoolTestAccess
 	{
-		static void AddFailedTest (
+		static void AddExpiredTestOnLastStrike (
 			TunnelPool & pool, std::shared_ptr<OutboundTunnel> outbound, std::shared_ptr<InboundTunnel> inbound)
 		{
-			outbound->SetState (eTunnelStateTestFailed);
-			inbound->SetState (eTunnelStateTestFailed);
+			// One more failed test reaches TUNNEL_POOL_TEST_STRIKES.
+			for (int i = 0; i + 1 < TUNNEL_POOL_TEST_STRIKES; i++)
+			{
+				outbound->AddTestStrike ();
+				inbound->AddTestStrike ();
+			}
+			TunnelPool::TunnelTest test;
+			test.outbound = outbound;
+			test.inbound = inbound;
+			test.sentTime = i2p::util::GetMillisecondsSinceEpoch ();
+			test.expiration = test.sentTime; // already expired
 			std::lock_guard<std::mutex> l (pool.m_TestsMutex);
-			pool.m_Tests[0x5A5A5A5AU] = std::make_pair (outbound, inbound);
+			pool.m_Tests[0x5A5A5A5AU] = test;
 		}
 
 		static void RunTestTunnels (TunnelPool & pool, uint64_t ts) { pool.TestTunnels (ts); }
@@ -65,7 +76,7 @@ int main ()
 	auto outbound = tunnels.CreateOutboundTunnel (nullptr, pool);
 	pool->TunnelCreated (outbound);
 
-	TunnelPoolTestAccess::AddFailedTest (*pool, outbound, inbound);
+	TunnelPoolTestAccess::AddExpiredTestOnLastStrike (*pool, outbound, inbound);
 
 	std::atomic<bool> done { false };
 	std::thread worker (

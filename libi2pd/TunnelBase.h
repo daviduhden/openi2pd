@@ -41,6 +41,24 @@ namespace tunnel
 	const size_t TUNNEL_DATA_ENCRYPTED_SIZE = 1008;
 	const size_t TUNNEL_DATA_MAX_PAYLOAD_SIZE = 1003;
 
+	// Record table of a short tunnel build message. These live here because
+	// both the tunnel object and the pool that configures its length need
+	// them: a path longer than the record table is a memory-safety bug, not a
+	// tunable.
+	const int STANDARD_NUM_RECORDS = 4; // records in a ShortTunnelBuild message
+	const int MAX_NUM_RECORDS = 8;
+	// An inbound tunnel spends one record slot on the phony record, so a pool
+	// can never configure more than this many real hops for it.
+	const int MAX_INBOUND_HOPS = MAX_NUM_RECORDS - 1;
+	// Bounded inbound tunnel queue. A stalled tunnel worker must not let
+	// producers grow the queue without limit; excess messages are dropped and
+	// counted instead of retried.
+	const size_t TUNNEL_MESSAGE_QUEUE_MAX_SIZE = 8192;
+	inline bool IsTunnelQueueAdmissionAllowed (size_t queueSize)
+	{
+		return queueSize < TUNNEL_MESSAGE_QUEUE_MAX_SIZE;
+	}
+
 	enum TunnelDeliveryType
 	{
 		eDeliveryTypeLocal = 0,

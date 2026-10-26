@@ -15,12 +15,17 @@
 
 #include <inttypes.h>
 #include <atomic>
+#include <deque>
 #include <list>
+#include <unordered_set>
 #include <vector>
 #include <mutex>
 #include <memory>
+#include <string_view>
+#include <thread>
 #include "Crypto.h"
 #include "Queue.h"
+#include "Tag.h"
 #include "I2NPProtocol.h"
 #include "TunnelEndpoint.h"
 #include "TunnelGateway.h"
@@ -113,6 +118,72 @@ namespace tunnel
 	const int TRANSIT_TUNNELS_QUEUE_WAIT_INTERVAL = 10; // in seconds
 	const int TRANSIT_TUNNELS_BUILD_MSG_QUEUE_MAX_SIZE = 100;
 
+	// A transit build request is replayed when the same derived reply key is
+	// seen again inside this window. The key is derived from the request's DH,
+	// so it is unique per legitimate request; only a replay matches.
+	const uint64_t TRANSIT_TUNNEL_BUILD_REPLAY_WINDOW_MS = 8 * 60 * 1000; // 8 minutes
+	const size_t TRANSIT_TUNNEL_BUILD_REPLAY_MAX_ENTRIES = 4096;
+	// Java BuildHandler: a build reply we send for a tunnel we just created may
+	// take a full round trip, a build request we merely relay is forwarded with
+	// a much shorter lifetime.
+	const uint64_t TUNNEL_BUILD_REPLY_EXPIRATION_MS = 60 * 1000; // 60 seconds
+	const uint64_t TUNNEL_BUILD_RELAY_EXPIRATION_MS = 25 * 1000; // 25 seconds
+
+	/** Exact ShortTunnelBuild payload size for @a numRecords records. */
+	constexpr size_t GetShortTunnelBuildMessageSize (int numRecords)
+	{
+		return 1 + static_cast<size_t> (numRecords) * SHORT_TUNNEL_BUILD_RECORD_SIZE;
+	}
+	/** Exact VariableTunnelBuild payload size for @a numRecords records. */
+	constexpr size_t GetVariableTunnelBuildMessageSize (int numRecords)
+	{
+		return 1 + static_cast<size_t> (numRecords) * TUNNEL_BUILD_RECORD_SIZE;
+	}
+	/** True when a build payload is exactly the declared size (no trailing bytes). */
+	inline bool IsExactTunnelBuildMessageSize (size_t payloadLength, int numRecords, bool shortRecords)
+	{
+		if (numRecords <= 0 || numRecords > MAX_NUM_RECORDS) return false;
+		const size_t expected
+			= shortRecords ? GetShortTunnelBuildMessageSize (numRecords) : GetVariableTunnelBuildMessageSize (numRecords);
+		return payloadLength == expected;
+	}
+
+	/**
+	 * Bounded, decaying replay filter for transit build requests.
+	 *
+	 * Entries expire after the replay window and the table is capped, so a
+	 * hostile peer cannot grow it without limit. Keys are never logged: only
+	 * the record index and the outcome are.
+	 */
+	class TransitBuildReplayFilter final
+	{
+	public:
+		explicit TransitBuildReplayFilter (uint64_t windowMs = TRANSIT_TUNNEL_BUILD_REPLAY_WINDOW_MS,
+			size_t maximumEntries = TRANSIT_TUNNEL_BUILD_REPLAY_MAX_ENTRIES)
+			: m_WindowMs (windowMs)
+			, m_MaximumEntries (maximumEntries)
+		{
+		}
+
+		/** @return true when @a key is new (and remembers it), false on replay */
+		bool CheckAndStore (const uint8_t * key, uint64_t nowMs);
+		size_t GetSize () const { return m_Entries.size (); }
+		void Clear ();
+
+	private:
+		struct Entry
+		{
+			i2p::data::Tag<32> key;
+			uint64_t time;
+		};
+
+	private:
+		const uint64_t m_WindowMs;
+		const size_t m_MaximumEntries;
+		std::deque<Entry> m_Entries; // insertion order, oldest first
+		std::unordered_set<i2p::data::Tag<32>> m_Keys;
+	};
+
 	constexpr std::string_view TRANSIT_TUNNEL_MINIMUM_BANDWIDTH { "m" };
 	constexpr std::string_view TRANSIT_TUNNEL_REQUESTED_BANDWIDTH { "r" };
 	constexpr std::string_view TRANSIT_TUNNEL_LIMIT_BANDWIDTH { "l" };
@@ -154,6 +225,8 @@ namespace tunnel
 		mutable std::mutex m_TransitTunnelsMutex;
 		std::list<std::shared_ptr<TransitTunnel>> m_TransitTunnels;
 		i2p::util::Queue<std::shared_ptr<I2NPMessage>> m_TunnelBuildMsgQueue;
+		// The manager thread is the only producer, so no lock is needed.
+		TransitBuildReplayFilter m_BuildReplayFilter;
 		std::mt19937 m_Rng;
 
 	public:

@@ -29,6 +29,7 @@ namespace tunnel
 	void TunnelEndpoint::HandleDecryptedTunnelDataMsg (std::shared_ptr<I2NPMessage> msg)
 	{
 		m_NumReceivedBytes += TUNNEL_DATA_MSG_SIZE;
+		m_LastReceiveTime.store (i2p::util::GetMillisecondsSinceEpoch (), std::memory_order_relaxed);
 
 		uint8_t * decrypted = msg->GetPayload () + 20; // 4 + 16
 		uint8_t * zero
@@ -115,6 +116,16 @@ namespace tunnel
 					// existing message
 					if (m_CurrentMsgID && m_CurrentMsgID == msgID && m_CurrentMessage.nextFragmentNum == fragmentNum)
 						HandleCurrenMessageFollowOnFragment (fragment, size, isLastFragment); // previous
+					else if (m_CurrentMsgID && m_CurrentMsgID == msgID
+						&& fragmentNum < m_CurrentMessage.nextFragmentNum)
+					{
+						// A duplicate of a fragment this message already
+						// consumed. Storing it as out-of-sequence data would
+						// corrupt the reassembly, so drop it and keep the
+						// current message.
+						LogPrint (eLogDebug, "TunnelMessage: Stale fragment ", (int)fragmentNum, " below ",
+							(int)m_CurrentMessage.nextFragmentNum, " of message ", msgID, ", dropped");
+					}
 					else
 					{
 						HandleFollowOnFragment (
@@ -205,9 +216,19 @@ namespace tunnel
 			}
 			else
 			{
-				LogPrint (eLogWarning, "TunnelMessage: Unexpected fragment ", (int)fragmentNum, " instead ",
-					(int)msg.nextFragmentNum, " of message ", msgID, ", saved");
-				AddOutOfSequenceFragment (msgID, fragmentNum, isLastFragment, fragment, size);
+				if (fragmentNum < msg.nextFragmentNum)
+				{
+					// Already covered by data we hold; replaying it would corrupt
+					// the message. Never store it as an out-of-sequence fragment.
+					LogPrint (eLogDebug, "TunnelMessage: Stale fragment ", (int)fragmentNum, " below ", (int)msg.nextFragmentNum,
+						" of message ", msgID, ", dropped");
+				}
+				else
+				{
+					LogPrint (eLogWarning, "TunnelMessage: Unexpected fragment ", (int)fragmentNum, " instead ",
+						(int)msg.nextFragmentNum, " of message ", msgID, ", saved");
+					AddOutOfSequenceFragment (msgID, fragmentNum, isLastFragment, fragment, size);
+				}
 			}
 		}
 		else
@@ -403,11 +424,16 @@ namespace tunnel
 
 	void TunnelEndpoint::Cleanup ()
 	{
-		auto ts = i2p::util::GetMillisecondsSinceEpoch ();
+		Cleanup (i2p::util::GetMillisecondsSinceEpoch ());
+	}
+
+	void TunnelEndpoint::Cleanup (uint64_t nowMs)
+	{
+		auto ts = nowMs;
 		// out-of-sequence fragments
 		for (auto it = m_OutOfSequenceFragments.begin (); it != m_OutOfSequenceFragments.end ();)
 		{
-			if (ts > it->second.receiveTime + i2p::I2NP_MESSAGE_EXPIRATION_TIMEOUT)
+			if (ts > it->second.receiveTime + TUNNEL_FRAGMENT_REASSEMBLY_TIMEOUT)
 				it = m_OutOfSequenceFragments.erase (it);
 			else
 				++it;
@@ -415,7 +441,7 @@ namespace tunnel
 		// incomplete messages
 		for (auto it = m_IncompleteMessages.begin (); it != m_IncompleteMessages.end ();)
 		{
-			if (ts > it->second.receiveTime + i2p::I2NP_MESSAGE_EXPIRATION_TIMEOUT)
+			if (ts > it->second.receiveTime + TUNNEL_FRAGMENT_REASSEMBLY_TIMEOUT)
 				it = m_IncompleteMessages.erase (it);
 			else
 				++it;

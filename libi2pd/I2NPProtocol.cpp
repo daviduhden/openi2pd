@@ -8,7 +8,10 @@
  * type-specific constructors for database lookup/store/search-reply, delivery
  * status, tunnel data/gateway and tunnel-build messages, with expiry and clock
  * skew checks. The batching handler groups tunnel data and gateway traffic and
- * rate-limits tunnel-build messages under bounded drop counters.
+ * rate-limits tunnel-build messages under bounded drop counters. The dispatcher
+ * applies Java's 90/240 s expiration window, a bounded decaying duplicate
+ * filter for every non-tunnel message and the origin-dependent clove allow-list
+ * before a message reaches netDb, garlic or a status handler.
  *
  */
 
@@ -82,9 +85,23 @@ bool I2NPMessage::IsExpired () const
 std::shared_ptr<I2NPMessage> CreateI2NPMessage (
 	I2NPMessageType msgType, const uint8_t * buf, size_t len, uint32_t replyMsgID)
 {
+	// Refuse an oversized payload before allocating: the previous version kept
+	// the truncated bytes and then wrote a header and size field describing a
+	// message that did not exist.
+	if (!buf && len) return nullptr;
+	if (len > I2NP_MAX_MESSAGE_SIZE - I2NP_HEADER_SIZE - 2)
+	{
+		++GetI2NPDispatchCounters ().oversizedMessage;
+		LogPrint (eLogError, "I2NP: Message length ", len, " exceeds the maximum I2NP length");
+		return nullptr;
+	}
 	auto msg = NewI2NPMessage (len);
+	if (!msg) return nullptr;
 	if (msg->Concat (buf, len) < len)
+	{
 		LogPrint (eLogError, "I2NP: Message length ", len, " exceeds max length ", msg->maxLen);
+		return nullptr;
+	}
 	msg->FillI2NPMessageHeader (msgType, replyMsgID);
 	return msg;
 }
@@ -92,22 +109,29 @@ std::shared_ptr<I2NPMessage> CreateI2NPMessage (
 std::shared_ptr<I2NPMessage> CreateI2NPMessage (
 	const uint8_t * buf, size_t len, std::shared_ptr<i2p::tunnel::InboundTunnel> from)
 {
+	if (!buf && len) return nullptr;
 	auto msg = NewI2NPMessage ();
-	if (msg->offset + len < msg->maxLen)
+	// `<=`: a payload that exactly fills the buffer is valid. Returning the
+	// half-written message on overflow used to hand callers a header with a
+	// zero type and a stale length.
+	if (len <= msg->maxLen - msg->offset)
 	{
 		memcpy (msg->GetBuffer (), buf, len);
 		msg->len = msg->offset + len;
 		msg->from = from;
+		return msg;
 	}
-	else
-		LogPrint (eLogError, "I2NP: Message length ", len, " exceeds max length");
-	return msg;
+	++GetI2NPDispatchCounters ().oversizedMessage;
+	LogPrint (eLogError, "I2NP: Message length ", len, " exceeds max length ", msg->maxLen);
+	return nullptr;
 }
 
 std::shared_ptr<I2NPMessage> CopyI2NPMessage (std::shared_ptr<I2NPMessage> msg)
 {
 	if (!msg) return nullptr;
-	auto newMsg = NewI2NPMessage (msg->len);
+	auto newMsg = NewI2NPMessage (msg->GetLength ());
+	if (!newMsg) return nullptr;
+	if (msg->GetLength () > newMsg->maxLen - msg->offset) return nullptr;
 	newMsg->offset = msg->offset;
 	*newMsg = *msg;
 	return newMsg;
@@ -527,15 +551,22 @@ std::shared_ptr<I2NPMessage> CreateTunnelGatewayMsg (
 
 size_t GetI2NPMessageLength (const uint8_t * msg, size_t len)
 {
+	// Both failures are reachable from an unauthenticated peer, so the log is
+	// throttled to the first and every 256th occurrence.
+	static I2NPDropCounter lengthDrops;
 	if (len < I2NP_HEADER_SIZE_OFFSET + 2)
 	{
-		LogPrint (eLogError, "I2NP: Message length ", len, " is smaller than header");
+		if (lengthDrops.Record ())
+			LogPrint (eLogError, "I2NP: Message length ", len, " is smaller than header (",
+				lengthDrops.GetCount (), " such messages)");
 		return len;
 	}
 	auto l = bufbe16toh (msg + I2NP_HEADER_SIZE_OFFSET) + I2NP_HEADER_SIZE;
 	if (l > len)
 	{
-		LogPrint (eLogError, "I2NP: Message length ", l, " exceeds buffer length ", len);
+		if (lengthDrops.Record ())
+			LogPrint (eLogError, "I2NP: Message length ", l, " exceeds buffer length ", len, " (",
+				lengthDrops.GetCount (), " such messages)");
 		l = len;
 	}
 	return l;
@@ -543,94 +574,175 @@ size_t GetI2NPMessageLength (const uint8_t * msg, size_t len)
 
 namespace
 {
-	bool IsAllowedCloveType (uint8_t typeID)
+	I2NPDispatchCounters g_DispatchCounters;
+	I2NPDuplicateFilter g_RouterDuplicateFilter;
+	I2NPDropCounter g_ExpiredDrops;
+	I2NPDropCounter g_DuplicateDrops;
+	I2NPDropCounter g_CloveTypeDrops;
+} // namespace
+
+I2NPDispatchCounters & GetI2NPDispatchCounters ()
+{
+	return g_DispatchCounters;
+}
+
+I2NPDuplicateFilter & GetI2NPRouterDuplicateFilter ()
+{
+	return g_RouterDuplicateFilter;
+}
+
+void I2NPDuplicateFilter::Rotate (uint64_t nowSeconds)
+{
+	// The previous generation is dropped wholesale and the current one becomes
+	// the previous, so an entry stays visible for at most two windows.
+	m_Previous.swap (m_Current);
+	m_Current.clear ();
+	m_Order.clear ();
+	m_NextRotation = nowSeconds + m_GenerationTimeout;
+}
+
+bool I2NPDuplicateFilter::CheckAndInsert (uint32_t key, uint64_t nowSeconds)
+{
+	std::lock_guard<std::mutex> l (m_Mutex);
+	if (!m_NextRotation || nowSeconds >= m_NextRotation) Rotate (nowSeconds);
+	if (m_Current.find (key) != m_Current.end () || m_Previous.find (key) != m_Previous.end ()) return true;
+	while (m_Current.size () >= m_MaxEntries && !m_Order.empty ())
 	{
-		switch (typeID)
-		{
-		case eI2NPDatabaseStore:
-		case eI2NPDatabaseSearchReply:
-		case eI2NPDeliveryStatus:
-		case eI2NPGarlic:
-		case eI2NPData:
-		case eI2NPTunnelBuildReply:
-		case eI2NPVariableTunnelBuildReply:
-		case eI2NPShortTunnelBuildReply: return true;
-		default: return false;
-		}
+		m_Current.erase (m_Order.front ());
+		m_Order.pop_front ();
 	}
+	m_Current.insert (key);
+	m_Order.push_back (key);
+	return false;
+}
+
+size_t I2NPDuplicateFilter::GetSize () const
+{
+	std::lock_guard<std::mutex> l (m_Mutex);
+	return m_Current.size () + m_Previous.size ();
+}
+
+void I2NPDuplicateFilter::Clear ()
+{
+	std::lock_guard<std::mutex> l (m_Mutex);
+	m_Current.clear ();
+	m_Previous.clear ();
+	m_Order.clear ();
+	m_NextRotation = 0;
+}
+
+bool IsI2NPDispatchDuplicate (const I2NPMessage & msg, uint64_t nowSeconds)
+{
+	// A TunnelData cell has its own IV-based replay filter at the tunnel
+	// endpoint, and SSU2 keeps a per-session message-ID map, so neither path
+	// may be second-guessed here.
+	if (msg.GetTypeID () == eI2NPTunnelData) return false;
+	// A clove is deduplicated by its destination's per-context clove filter
+	// (GarlicDestination), which includes the destination-specific salt Java
+	// uses. Applying the router-wide key here as well would let a message to one
+	// destination suppress a different destination's clove with the same ID.
+	if (msg.fromClove) return false;
+	const uint32_t key = GetI2NPDuplicateKey (msg.GetMsgID (), msg.GetExpiration (), I2NP_DUPLICATE_SALT_ROUTER);
+	return g_RouterDuplicateFilter.CheckAndInsert (key, nowSeconds);
 }
 
 void HandleI2NPMessage (std::shared_ptr<I2NPMessage> msg)
 {
-	if (msg)
+	if (!msg) return;
+	uint8_t typeID = msg->GetTypeID ();
+	// The clove allow-list depends on the origin of the enclosing garlic: a
+	// tunnel-delivered clove is Java's InboundMessageDistributor path, a clove
+	// of a garlic received directly from a peer is HandleGarlicMessageJob.
+	if (msg->fromClove && !IsAllowedCloveMessageType (typeID, msg->fromTunnel))
 	{
-		uint8_t typeID = msg->GetTypeID ();
-		// Java InboundMessageDistributor.handleClove() allows only data and
-		// control replies in a clove. Tunnel/build/request types would inject
-		// directly into the tunnel worker or bypass the build throttle.
-		if (msg->fromClove && !IsAllowedCloveType (typeID))
-		{
-			LogPrint (eLogWarning, "I2NP: Dropped clove-delivered message type ", (int)typeID);
-			return;
-		}
-		LogPrint (eLogDebug, "I2NP: Handling message with type ", (int)typeID);
-		switch (typeID)
-		{
-		case eI2NPTunnelData:
-			if (!msg->from) i2p::tunnel::tunnels.PostTunnelData (msg);
-			break;
-		case eI2NPTunnelGateway:
-			if (!msg->from) i2p::tunnel::tunnels.PostTunnelData (msg);
-			break;
-		case eI2NPGarlic:
-		{
-			if (msg->from && msg->from->GetTunnelPool ())
-				msg->from->GetTunnelPool ()->ProcessGarlicMessage (msg);
-			else
-				i2p::context.ProcessGarlicMessage (msg);
-			break;
-		}
-		case eI2NPDatabaseStore:
-			// forward to netDb if came directly or through exploratory tunnel as response to our request
-			if (!msg->from || !msg->from->GetTunnelPool () || msg->from->GetTunnelPool ()->IsExploratory ())
-				i2p::data::netdb.PostI2NPMsg (msg);
-			break;
-		case eI2NPDatabaseSearchReply:
-			if (!msg->from || !msg->from->GetTunnelPool () || msg->from->GetTunnelPool ()->IsExploratory ())
-				i2p::data::netdb.PostDatabaseSearchReplyMsg (msg);
-			break;
-		case eI2NPDatabaseLookup:
-			// Forward to netDb only for an authenticated direct message. A clove
-			// has no tunnel pointer but still crossed an untrusted garlic path.
-			if (!msg->from && !msg->fromClove && i2p::context.IsFloodfill ()) i2p::data::netdb.PostI2NPMsg (msg);
-			break;
-		case eI2NPDeliveryStatus:
-		{
-			if (msg->from && msg->from->GetTunnelPool ())
-				msg->from->GetTunnelPool ()->ProcessDeliveryStatus (msg);
-			else
-				i2p::context.ProcessDeliveryStatusMessage (msg);
-			break;
-		}
-		case eI2NPTunnelTest:
-			if (msg->from && msg->from->GetTunnelPool ()) msg->from->GetTunnelPool ()->ProcessTunnelTest (msg);
-			break;
-		case eI2NPVariableTunnelBuild:
-		case eI2NPTunnelBuild:
-		case eI2NPShortTunnelBuild:
-			// forward to tunnel thread
-			if (!msg->from) i2p::tunnel::tunnels.PostTunnelData (msg);
-			break;
-		case eI2NPVariableTunnelBuildReply:
-		case eI2NPTunnelBuildReply:
-		case eI2NPShortTunnelBuildReply:
-			// forward to tunnel thread
-			i2p::tunnel::tunnels.PostTunnelData (msg);
-			break;
-		default:
-			LogPrint (
-				eLogError, "I2NP: Unexpected I2NP message with type ", int (typeID), " during handling; skipping");
-		}
+		const uint64_t dropped = GetI2NPDispatchCounters ().disallowedCloveType.fetch_add (1) + 1;
+		if (g_CloveTypeDrops.Record ())
+			LogPrint (eLogWarning, "I2NP: Dropped clove-delivered message type ", (int)typeID, " (", dropped,
+				" such cloves)");
+		return;
+	}
+	// Java MessageValidator: drop a message whose expiration date is older
+	// than 90 s or further than 240 s in the future before any handler sees
+	// it. Replaying a very old netDb, garlic or DeliveryStatus message must not
+	// reach netDb/garlic/status state.
+	const uint64_t now = i2p::util::GetMillisecondsSinceEpoch ();
+	if (IsI2NPDispatchExpired (*msg, now))
+	{
+		const uint64_t dropped = GetI2NPDispatchCounters ().expired.fetch_add (1) + 1;
+		if (g_ExpiredDrops.Record ())
+			LogPrint (eLogWarning, "I2NP: Dropped message type ", (int)typeID, " with expiration ",
+				msg->GetExpiration (), " (", dropped, " expired messages)");
+		return;
+	}
+	if (IsI2NPDispatchDuplicate (*msg, now / 1000))
+	{
+		const uint64_t dropped = GetI2NPDispatchCounters ().duplicate.fetch_add (1) + 1;
+		if (g_DuplicateDrops.Record ())
+			LogPrint (eLogWarning, "I2NP: Dropped duplicate message type ", (int)typeID, " msgID ", msg->GetMsgID (),
+				" (", dropped, " duplicate messages)");
+		return;
+	}
+	LogPrint (eLogDebug, "I2NP: Handling message with type ", (int)typeID);
+	switch (typeID)
+	{
+	case eI2NPTunnelData:
+		if (!msg->from) i2p::tunnel::tunnels.PostTunnelData (msg);
+		break;
+	case eI2NPTunnelGateway:
+		if (!msg->from) i2p::tunnel::tunnels.PostTunnelData (msg);
+		break;
+	case eI2NPGarlic:
+	{
+		if (msg->from && msg->from->GetTunnelPool ())
+			msg->from->GetTunnelPool ()->ProcessGarlicMessage (msg);
+		else
+			i2p::context.ProcessGarlicMessage (msg);
+		break;
+	}
+	case eI2NPDatabaseStore:
+		// forward to netDb if came directly or through exploratory tunnel as response to our request
+		if (!msg->from || !msg->from->GetTunnelPool () || msg->from->GetTunnelPool ()->IsExploratory ())
+			i2p::data::netdb.PostI2NPMsg (msg);
+		break;
+	case eI2NPDatabaseSearchReply:
+		if (!msg->from || !msg->from->GetTunnelPool () || msg->from->GetTunnelPool ()->IsExploratory ())
+			i2p::data::netdb.PostDatabaseSearchReplyMsg (msg);
+		break;
+	case eI2NPDatabaseLookup:
+		// Java accepts a DatabaseLookup from a directly received garlic
+		// (HandleGarlicMessageJob) but refuses one dispatched by
+		// InboundMessageDistributor, i.e. a garlic or plain message that
+		// crossed a tunnel. `fromTunnel` records exactly that for a clove;
+		// `from` covers a plain tunnel-delivered message.
+		if (IsDatabaseLookupDispatchAllowed (*msg) && i2p::context.IsFloodfill ())
+			i2p::data::netdb.PostI2NPMsg (msg);
+		break;
+	case eI2NPDeliveryStatus:
+	{
+		if (msg->from && msg->from->GetTunnelPool ())
+			msg->from->GetTunnelPool ()->ProcessDeliveryStatus (msg);
+		else
+			i2p::context.ProcessDeliveryStatusMessage (msg);
+		break;
+	}
+	case eI2NPTunnelTest:
+		if (msg->from && msg->from->GetTunnelPool ()) msg->from->GetTunnelPool ()->ProcessTunnelTest (msg);
+		break;
+	case eI2NPVariableTunnelBuild:
+	case eI2NPTunnelBuild:
+	case eI2NPShortTunnelBuild:
+		// forward to tunnel thread
+		if (!msg->from) i2p::tunnel::tunnels.PostTunnelData (msg);
+		break;
+	case eI2NPVariableTunnelBuildReply:
+	case eI2NPTunnelBuildReply:
+	case eI2NPShortTunnelBuildReply:
+		// forward to tunnel thread
+		i2p::tunnel::tunnels.PostTunnelData (msg);
+		break;
+	default:
+		LogPrint (
+			eLogError, "I2NP: Unexpected I2NP message with type ", int (typeID), " during handling; skipping");
 	}
 }
 

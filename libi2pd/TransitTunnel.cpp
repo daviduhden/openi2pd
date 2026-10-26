@@ -61,6 +61,40 @@ namespace tunnel
 			}
 			return true;
 		}
+
+		void SetBuildMessageExpiration (I2NPMessage & msg, uint64_t timeoutMs)
+		{
+			msg.SetExpiration (i2p::util::GetMillisecondsSinceEpoch () + timeoutMs);
+		}
+	}
+
+	bool TransitBuildReplayFilter::CheckAndStore (const uint8_t * key, uint64_t nowMs)
+	{
+		if (!key) return false;
+		// Decay: entries older than the window can no longer be replayed with a
+		// valid request time.
+		while (!m_Entries.empty () && m_Entries.front ().time + m_WindowMs <= nowMs)
+		{
+			m_Keys.erase (m_Entries.front ().key);
+			m_Entries.pop_front ();
+		}
+		i2p::data::Tag<32> tag (key);
+		if (m_Keys.count (tag)) return false; // replay
+		if (m_Entries.size () >= m_MaximumEntries)
+		{
+			// Bounded table: evict the oldest entry, not the newest.
+			m_Keys.erase (m_Entries.front ().key);
+			m_Entries.pop_front ();
+		}
+		m_Entries.push_back ({ tag, nowMs });
+		m_Keys.insert (tag);
+		return true;
+	}
+
+	void TransitBuildReplayFilter::Clear ()
+	{
+		m_Entries.clear ();
+		m_Keys.clear ();
 	}
 
 	TransitTunnel::TransitTunnel (uint32_t receiveTunnelID, const i2p::data::IdentHash & nextIdent,
@@ -101,9 +135,15 @@ namespace tunnel
 
 	void TransitTunnelParticipant::HandleTunnelDataMsg (std::shared_ptr<i2p::I2NPMessage> && tunnelMsg)
 	{
-		if (tunnelMsg->GetPayloadLength () < 4 + 16 || !CheckAndStoreIV (tunnelMsg->GetPayload () + 4))
+		if (tunnelMsg->GetPayloadLength () != TUNNEL_DATA_MSG_SIZE)
 		{
-			LogPrint (eLogWarning, "TransitTunnel: Dropped replayed or truncated tunnel message");
+			LogPrint (eLogWarning, "TransitTunnel: Tunnel data message of ", tunnelMsg->GetPayloadLength (),
+				" bytes instead of ", TUNNEL_DATA_MSG_SIZE, ", dropped");
+			return;
+		}
+		if (!CheckAndStoreIV (tunnelMsg->GetPayload () + 4))
+		{
+			LogPrint (eLogWarning, "TransitTunnel: Dropped replayed tunnel message");
 			return;
 		}
 		EncryptTunnelMsg (tunnelMsg, tunnelMsg);
@@ -169,9 +209,15 @@ namespace tunnel
 
 	void TransitTunnelEndpoint::HandleTunnelDataMsg (std::shared_ptr<i2p::I2NPMessage> && tunnelMsg)
 	{
-		if (tunnelMsg->GetPayloadLength () < 4 + 16 || !CheckAndStoreIV (tunnelMsg->GetPayload () + 4))
+		if (tunnelMsg->GetPayloadLength () != TUNNEL_DATA_MSG_SIZE)
 		{
-			LogPrint (eLogWarning, "TransitTunnel: Dropped replayed or truncated endpoint message");
+			LogPrint (eLogWarning, "TransitTunnel: Endpoint tunnel data message of ", tunnelMsg->GetPayloadLength (),
+				" bytes instead of ", TUNNEL_DATA_MSG_SIZE, ", dropped");
+			return;
+		}
+		if (!CheckAndStoreIV (tunnelMsg->GetPayload () + 4))
+		{
+			LogPrint (eLogWarning, "TransitTunnel: Dropped replayed endpoint message");
 			return;
 		}
 		auto newMsg = CreateEmptyTunnelDataMsg (true);
@@ -288,6 +334,9 @@ namespace tunnel
 		// Any queued build messages belong to the stopped instance.
 		std::list<std::shared_ptr<I2NPMessage>> stale;
 		m_TunnelBuildMsgQueue.GetWholeQueue (stale);
+		// Replay state is per instance too: a restart must not inherit a window
+		// that would silently drop legitimate first requests.
+		m_BuildReplayFilter.Clear ();
 	}
 
 	void TransitTunnels::Run ()
@@ -362,9 +411,10 @@ namespace tunnel
 			LogPrint (eLogError, "TransitTunnel: Too many records in ShortTunnelBuild message ", num);
 			return;
 		}
-		if (len < num * SHORT_TUNNEL_BUILD_RECORD_SIZE + 1)
+		if (!IsExactTunnelBuildMessageSize (len, num, true))
 		{
-			LogPrint (eLogError, "TransitTunnel: ShortTunnelBuild message of ", num, " records is too short ", len);
+			LogPrint (eLogError, "TransitTunnel: ShortTunnelBuild message of ", num, " records has ", len,
+				" bytes instead of ", num > 0 ? GetShortTunnelBuildMessageSize (num) : 0);
 			return;
 		}
 		const uint8_t * record = buf + 1;
@@ -410,6 +460,16 @@ namespace tunnel
 				memcpy (replyKey, noiseState.m_CK + 32, 32);
 				i2p::crypto::HKDF (noiseState.m_CK, nullptr, 0, "SMTunnelLayerKey", noiseState.m_CK);
 				memcpy (layerKey, noiseState.m_CK + 32, 32);
+				// The reply key is unique per legitimate request (it is derived
+				// from the request DH), so a repeat inside the window is a
+				// replay. Reject it before creating a transit tunnel or a reply.
+				if (!m_BuildReplayFilter.CheckAndStore (
+						replyKey, i2p::util::GetMillisecondsSinceEpoch ()))
+				{
+					LogPrint (
+						eLogWarning, "TransitTunnel: Replayed short build request record ", i, " dropped");
+					return;
+				}
 				if (isEndpoint)
 				{
 					i2p::crypto::HKDF (noiseState.m_CK, nullptr, 0, "TunnelLayerIVKey", noiseState.m_CK);
@@ -550,6 +610,9 @@ namespace tunnel
 					replyMsg->Concat (buf, len);
 					replyMsg->FillI2NPMessageHeader (
 						eI2NPShortTunnelBuildReply, bufbe32toh (clearText + SHORT_REQUEST_RECORD_SEND_MSG_ID_OFFSET));
+					// The creator waits for a full round trip through the reply
+					// tunnel; 60 s not 8 s (Java BuildHandler).
+					SetBuildMessageExpiration (*replyMsg, TUNNEL_BUILD_REPLY_EXPIRATION_MS);
 					if (transitTunnel) replyMsg->onDrop = onDrop;
 					if (memcmp ((const uint8_t *)i2p::context.GetIdentHash (),
 							clearText + SHORT_REQUEST_RECORD_NEXT_IDENT_OFFSET, 32)) // reply IBGW is not local?
@@ -581,6 +644,10 @@ namespace tunnel
 				{
 					auto relayMsg = CreateI2NPMessage (eI2NPShortTunnelBuild, buf, len,
 						bufbe32toh (clearText + SHORT_REQUEST_RECORD_SEND_MSG_ID_OFFSET));
+					if (!relayMsg) return; // allocation/overflow: drop, never relay a partial message
+					// A relayed request only has to reach the next hop; 25 s not
+					// 8 s (Java BuildHandler).
+					SetBuildMessageExpiration (*relayMsg, TUNNEL_BUILD_RELAY_EXPIRATION_MS);
 					if (transitTunnel) relayMsg->onDrop = onDrop;
 					i2p::transport::transports.SendMessage (
 						clearText + SHORT_REQUEST_RECORD_NEXT_IDENT_OFFSET, relayMsg);
@@ -624,6 +691,14 @@ namespace tunnel
 				}
 				if (!IsBuildRequestTimeValid (clearText, ECIES_BUILD_REQUEST_RECORD_REQUEST_TIME_OFFSET, i))
 					return false;
+				// noiseState.m_CK is this record's reply key, unique per
+				// legitimate request. Reject a replay before creating a tunnel.
+				if (!m_BuildReplayFilter.CheckAndStore (
+						noiseState.m_CK, i2p::util::GetMillisecondsSinceEpoch ()))
+				{
+					LogPrint (eLogWarning, "TransitTunnel: Replayed build request record ", i, " dropped");
+					return false;
+				}
 				if (!isEndpoint && // if next ident is now ours
 					!memcmp ((const uint8_t *)i2p::context.GetIdentHash (),
 						clearText + ECIES_BUILD_REQUEST_RECORD_NEXT_IDENT_OFFSET, 32))
@@ -719,27 +794,38 @@ namespace tunnel
 			LogPrint (eLogError, "TransitTunnle: Too many records in VaribleTunnelBuild message ", num);
 			return;
 		}
-		if (len < num * TUNNEL_BUILD_RECORD_SIZE + 1)
+		if (!IsExactTunnelBuildMessageSize (len, num, false))
 		{
-			LogPrint (eLogError, "TransitTunnel: VaribleTunnelBuild message of ", num, " records is too short ", len);
+			LogPrint (eLogError, "TransitTunnel: VaribleTunnelBuild message of ", num, " records has ", len,
+				" bytes instead of ", num > 0 ? GetVariableTunnelBuildMessageSize (num) : 0);
 			return;
 		}
 		uint8_t clearText[ECIES_BUILD_REQUEST_RECORD_CLEAR_TEXT_SIZE];
 		if (HandleBuildRequestRecords (num, buf + 1, clearText))
 		{
+			const uint32_t sendMsgID = bufbe32toh (clearText + ECIES_BUILD_REQUEST_RECORD_SEND_MSG_ID_OFFSET);
 			if (clearText[ECIES_BUILD_REQUEST_RECORD_FLAG_OFFSET]
 				& TUNNEL_BUILD_RECORD_ENDPOINT_FLAG) // we are endpoint of outboud tunnel
 			{
 				// so we send it to reply tunnel
+				auto replyMsg = CreateI2NPMessage (eI2NPVariableTunnelBuildReply, buf, len, sendMsgID);
+				if (!replyMsg) return; // allocation/overflow: no reply
+				// The creator waits for a full round trip through the reply
+				// tunnel; 60 s not 8 s (Java BuildHandler).
+				SetBuildMessageExpiration (*replyMsg, TUNNEL_BUILD_REPLY_EXPIRATION_MS);
 				i2p::transport::transports.SendMessage (clearText + ECIES_BUILD_REQUEST_RECORD_NEXT_IDENT_OFFSET,
-					CreateTunnelGatewayMsg (bufbe32toh (clearText + ECIES_BUILD_REQUEST_RECORD_NEXT_TUNNEL_OFFSET),
-						eI2NPVariableTunnelBuildReply, buf, len,
-						bufbe32toh (clearText + ECIES_BUILD_REQUEST_RECORD_SEND_MSG_ID_OFFSET)));
+					CreateTunnelGatewayMsg (
+						bufbe32toh (clearText + ECIES_BUILD_REQUEST_RECORD_NEXT_TUNNEL_OFFSET), replyMsg));
 			}
 			else
-				i2p::transport::transports.SendMessage (clearText + ECIES_BUILD_REQUEST_RECORD_NEXT_IDENT_OFFSET,
-					CreateI2NPMessage (eI2NPVariableTunnelBuild, buf, len,
-						bufbe32toh (clearText + ECIES_BUILD_REQUEST_RECORD_SEND_MSG_ID_OFFSET)));
+			{
+				auto relayMsg = CreateI2NPMessage (eI2NPVariableTunnelBuild, buf, len, sendMsgID);
+				if (!relayMsg) return; // allocation/overflow: drop
+				// A relayed request only has to reach the next hop (Java 25 s).
+				SetBuildMessageExpiration (*relayMsg, TUNNEL_BUILD_RELAY_EXPIRATION_MS);
+				i2p::transport::transports.SendMessage (
+					clearText + ECIES_BUILD_REQUEST_RECORD_NEXT_IDENT_OFFSET, relayMsg);
+			}
 		}
 	}
 

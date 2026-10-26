@@ -9,11 +9,15 @@
  * expiry and persistence, delivery instructions/status and routing-path reuse.
  * Incoming blocks are bounded to 200 ElGamal tags and fixed per-destination
  * tag pools, and unknown or malformed tags are discarded without growing
- * state.
+ * state. A clove payload is limited to I2NP_MAX_CLOVES well-framed cloves, a
+ * stale or foreign clove is skipped without stopping the walk, a replayed
+ * clove is dropped by a bounded per-destination filter, and every session
+ * serializes its own state so concurrent wrapping cannot share tags or IVs.
  *
  */
 
 #include <inttypes.h>
+#include <cstring>
 #include "I2PEndian.h"
 #include <algorithm>
 #include <limits>
@@ -41,16 +45,38 @@ namespace garlic
 	// must be rejected before the receiver grows its tag table.
 	constexpr uint16_t MAX_ELGAMAL_AES_TAGS = 200;
 	// Per-destination bounds. A peer can otherwise add up to 200 ElGamal tags
-	// per block (retained for 960 s) or 800 ECIES tags per NEXT_KEY block.
+	// per block (retained for INCOMING_TAGS_EXPIRATION_TIMEOUT) or request up
+	// to 800 ECIES tags in one NEXT_KEY block.
 	constexpr size_t MAX_INCOMING_ELGAMAL_TAGS = 4096;
 	constexpr size_t MAX_INCOMING_ECIES_TAGS = 8192;
 
+	namespace
+	{
+		// Throttled diagnostics for the garlic parse paths. A peer controls the
+		// ciphertext, clove headers and tag sets, so a malformed block or a stale
+		// clove must not be able to flood the log.
+		I2NPDropCounter g_GarlicParseDrops;
+		I2NPDropCounter g_ElGamalTagBudgetDrops;
+		I2NPDropCounter g_CloveStaleDrops;
+		I2NPDropCounter g_CloveReplayDrops;
+		I2NPDropCounter g_CloveDestinationDrops;
+	} // namespace
+
 	// Java MessageValidator: reject a clove whose expiration is older than
-	// 90 seconds or more than 240 seconds in the future.
+	// 90 seconds or more than 240 seconds in the future. The same window is
+	// applied by the I2NP dispatcher (IsFreshI2NPExpiration).
 	bool IsFreshCloveDate (uint64_t dateMs)
 	{
-		const auto now = i2p::util::GetMillisecondsSinceEpoch ();
-		return dateMs + 90 * 1000 >= now && dateMs <= now + 240 * 1000;
+		return IsFreshI2NPExpiration (dateMs, i2p::util::GetMillisecondsSinceEpoch ());
+	}
+
+	i2p::crypto::HKDFContext & GetThreadLocalHKDFContext ()
+	{
+		// A provider derivation context is not reentrant. One instance per
+		// thread keeps concurrent tag generation from interleaving inside a
+		// single derivation without holding a lock across crypto work.
+		thread_local i2p::crypto::HKDFContext ctx;
+		return ctx;
 	}
 
 	GarlicRoutingSession::GarlicRoutingSession (GarlicDestination * owner, bool attachLeaseSet)
@@ -74,6 +100,7 @@ namespace garlic
 
 	std::shared_ptr<GarlicRoutingPath> GarlicRoutingSession::GetSharedRoutingPath ()
 	{
+		std::lock_guard<std::recursive_mutex> l (m_StateMutex);
 		if (!m_SharedRoutingPath) return nullptr;
 		uint32_t ts = static_cast<uint32_t> (i2p::util::GetSecondsSinceEpoch ());
 		if (!m_SharedRoutingPath->outboundTunnel || !m_SharedRoutingPath->remoteLease
@@ -90,15 +117,17 @@ namespace garlic
 			path->updateTime = static_cast<uint32_t> (i2p::util::GetSecondsSinceEpoch ());
 		else
 			path = nullptr;
+		std::lock_guard<std::recursive_mutex> l (m_StateMutex);
 		m_SharedRoutingPath = path;
 	}
 
 	bool GarlicRoutingSession::MessageConfirmed (uint32_t msgID)
 	{
-		if (msgID == GetLeaseSetUpdateMsgID ())
+		std::lock_guard<std::recursive_mutex> l (m_StateMutex);
+		if (msgID == m_LeaseSetUpdateMsgID)
 		{
-			SetLeaseSetUpdateStatus (eLeaseSetUpToDate);
-			SetLeaseSetUpdateMsgID (0);
+			m_LeaseSetUpdateStatus = eLeaseSetUpToDate;
+			m_LeaseSetUpdateMsgID = 0;
 			LogPrint (eLogInfo, "Garlic: LeaseSet update confirmed");
 			return true;
 		}
@@ -107,11 +136,17 @@ namespace garlic
 
 	void GarlicRoutingSession::CleanupUnconfirmedLeaseSet (uint64_t ts)
 	{
-		if (m_LeaseSetUpdateMsgID && ts * 1000LL > m_LeaseSetSubmissionTime + LEASESET_CONFIRMATION_TIMEOUT)
+		uint32_t updateMsgID = 0;
 		{
-			if (GetOwner ()) GetOwner ()->RemoveDeliveryStatusSession (m_LeaseSetUpdateMsgID);
-			m_LeaseSetUpdateMsgID = 0;
+			std::lock_guard<std::recursive_mutex> l (m_StateMutex);
+			if (m_LeaseSetUpdateMsgID && ts * 1000LL > m_LeaseSetSubmissionTime + LEASESET_CONFIRMATION_TIMEOUT)
+			{
+				updateMsgID = m_LeaseSetUpdateMsgID;
+				m_LeaseSetUpdateMsgID = 0;
+			}
 		}
+		// Drop the delivery-status ownership outside the session lock.
+		if (updateMsgID && GetOwner ()) GetOwner ()->RemoveDeliveryStatusSession (updateMsgID);
 	}
 
 	std::shared_ptr<I2NPMessage> GarlicRoutingSession::CreateEncryptedDeliveryStatusMsg (uint32_t msgID)
@@ -179,6 +214,11 @@ namespace garlic
 
 	std::shared_ptr<I2NPMessage> ElGamalAESSession::WrapSingleMessage (std::shared_ptr<const I2NPMessage> msg)
 	{
+		// The tag list, the CBC state, the IV and the unconfirmed-tag map are
+		// shared by every caller that wraps to this destination, and the
+		// delivery-status callback below re-enters the owner, so the whole
+		// wrapping path runs under the recursive session lock.
+		std::lock_guard<std::recursive_mutex> l (m_StateMutex);
 		if (!m_SessionKeyValid)
 		{
 			LogPrint (eLogError, "Garlic: ElGamal/AES session key is not available");
@@ -449,6 +489,14 @@ namespace garlic
 				return 0;
 			}
 		}
+		if (!*numCloves)
+		{
+			// A garlic payload that announces no clove is invalid on the
+			// receiving side (IsValidCloveCount) and confirms nothing. Refuse to
+			// emit it instead of producing a message every peer must drop.
+			LogPrint (eLogWarning, "Garlic: no clove could be created for the payload");
+			return 0;
+		}
 		memset (payload + size, 0, 3); // certificate of message
 		size += 3;
 		htobe32buf (payload + size, msgID); // MessageID
@@ -571,6 +619,7 @@ namespace garlic
 
 	bool ElGamalAESSession::MessageConfirmed (uint32_t msgID)
 	{
+		std::lock_guard<std::recursive_mutex> l (m_StateMutex);
 		TagsConfirmed (msgID);
 		if (!GarlicRoutingSession::MessageConfirmed (msgID)) CleanupExpiredTags ();
 		return true;
@@ -593,6 +642,7 @@ namespace garlic
 
 	bool ElGamalAESSession::CleanupExpiredTags ()
 	{
+		std::lock_guard<std::recursive_mutex> l (m_StateMutex);
 		auto ts = i2p::util::GetSecondsSinceEpoch ();
 		for (auto it = m_SessionTags.begin (); it != m_SessionTags.end ();)
 		{
@@ -608,6 +658,7 @@ namespace garlic
 
 	bool ElGamalAESSession::CleanupUnconfirmedTags ()
 	{
+		std::lock_guard<std::recursive_mutex> l (m_StateMutex);
 		bool ret = false;
 		uint32_t ts = static_cast<uint32_t> (i2p::util::GetSecondsSinceEpoch ());
 		// delete expired unconfirmed tags
@@ -626,8 +677,7 @@ namespace garlic
 	}
 
 	GarlicDestination::GarlicDestination ()
-		: m_Rng (i2p::util::GetRngSeed ())
-		, m_IsIdling (false)
+		: m_IsIdling (false)
 		, m_NumTags (32)
 		, // 32 tags by default
 		m_LastIncomingSessionTimestamp (0)
@@ -635,31 +685,55 @@ namespace garlic
 	{
 	}
 
+	std::mt19937 & GarlicDestination::GetRng ()
+	{
+		// One generator per thread: the destination service, streaming,
+		// datagram, torrent and timer threads all ask for random selection, and
+		// a shared std::mt19937 would be read and written concurrently.
+		thread_local std::mt19937 rng (i2p::util::GetRngSeed ());
+		return rng;
+	}
+
 	GarlicDestination::~GarlicDestination () = default;
 
 	void GarlicDestination::CleanUp ()
 	{
-		for (auto it : m_Sessions) it.second->SetOwner (nullptr);
-		m_Sessions.clear ();
-		m_DeliveryStatusSessions.clear ();
+		// Detach and destroy every session outside the locks. The ElGamal map
+		// used to be iterated and cleared without any lock while another thread
+		// could insert into it, and every map was destroyed under its mutex.
+		std::unordered_map<i2p::data::IdentHash, ElGamalAESSessionPtr> sessions;
+		std::unordered_map<i2p::data::Tag<32>, ECIESX25519AEADRatchetSessionPtr> ratchetSessions;
+		std::unordered_map<uint32_t, GarlicRoutingSessionPtr> deliveryStatusSessions;
+		std::unordered_map<SessionTag, std::shared_ptr<AESDecryption>, std::hash<i2p::data::Tag<32>>> tags;
+		std::unordered_map<uint64_t, ECIESX25519AEADRatchetIndexTagset> ratchetTags;
+		std::deque<std::pair<i2p::data::Tag<32>, uint64_t>> newSessionKeys;
 		{
-			std::lock_guard<std::mutex> l (m_TagsMutex);
-			m_Tags.clear ();
-			m_ECIESx25519Tags.clear ();
+			std::lock_guard<std::mutex> l (m_SessionsMutex);
+			sessions.swap (m_Sessions);
+			ratchetSessions.swap (m_ECIESx25519Sessions);
 		}
 		{
-			std::unique_lock<std::mutex> l (m_SessionsMutex);
-			for (auto it : m_ECIESx25519Sessions)
-			{
-				it.second->Terminate ();
-				it.second->SetOwner (nullptr);
-			}
-			m_ECIESx25519Sessions.clear ();
+			std::lock_guard<std::mutex> l (m_DeliveryStatusSessionsMutex);
+			deliveryStatusSessions.swap (m_DeliveryStatusSessions);
+		}
+		{
+			std::lock_guard<std::mutex> l (m_TagsMutex);
+			tags.swap (m_Tags);
+			ratchetTags.swap (m_ECIESx25519Tags);
 		}
 		{
 			std::lock_guard<std::mutex> l (m_NewSessionKeysMutex);
-			m_NewSessionKeys.clear ();
+			newSessionKeys.swap (m_NewSessionKeys);
 		}
+		m_CloveReplayFilter.Clear ();
+		for (auto & it : sessions) it.second->SetOwner (nullptr);
+		for (auto & it : ratchetSessions)
+		{
+			it.second->Terminate ();
+			it.second->SetOwner (nullptr);
+		}
+		// The local maps and the tag maps are destroyed here, outside every
+		// lock, because a tagset destructor can call back into its session.
 	}
 	void GarlicDestination::AddSessionKey (const uint8_t * key, const uint8_t * tag)
 	{
@@ -672,17 +746,25 @@ namespace garlic
 		}
 	}
 
-	void GarlicDestination::MakeRoomForECIESx25519Tag (size_t minSlots)
+	void GarlicDestination::MakeRoomForECIESx25519Tag (size_t minSlots, std::vector<ReceiveRatchetTagSetPtr> * removed)
 	{
 		if (!minSlots) minSlots = 1;
 		if (m_ECIESx25519Tags.size () + minSlots <= MAX_INCOMING_ECIES_TAGS) return;
+		auto drop = [removed] (ECIESX25519AEADRatchetIndexTagset & entry)
+		{
+			// Keep the tagset alive until the caller has released m_TagsMutex.
+			if (removed && entry.tagset) removed->push_back (std::move (entry.tagset));
+		};
 		const auto now = i2p::util::GetSecondsSinceEpoch ();
 		for (auto it = m_ECIESx25519Tags.begin (); it != m_ECIESx25519Tags.end ();)
 		{
 			const auto & entry = it->second;
 			if (!entry.tagset || entry.tagset->IsExpired (now) || entry.tagset->IsIndexExpired (entry.index)
 				|| entry.tagset->IsSessionTerminated ())
+			{
+				drop (it->second);
 				it = m_ECIESx25519Tags.erase (it);
+			}
 			else
 				++it;
 		}
@@ -691,21 +773,29 @@ namespace garlic
 		// than preserving one abusive session's tags. A later message fails
 		// authentication/decryption instead of blocking all new handshakes.
 		while (m_ECIESx25519Tags.size () + minSlots > MAX_INCOMING_ECIES_TAGS && !m_ECIESx25519Tags.empty ())
-			m_ECIESx25519Tags.erase (m_ECIESx25519Tags.begin ());
+		{
+			auto it = m_ECIESx25519Tags.begin ();
+			drop (it->second);
+			m_ECIESx25519Tags.erase (it);
+		}
 	}
 
 	void GarlicDestination::AddECIESx25519Key (const uint8_t * key, uint64_t tag)
 	{
 		if (!key) return;
 		auto tagset = std::make_shared<SymmetricKeyTagSet> (this, key);
-		std::lock_guard<std::mutex> l (m_TagsMutex);
-		MakeRoomForECIESx25519Tag (1);
-		if (m_ECIESx25519Tags.size () >= MAX_INCOMING_ECIES_TAGS)
+		std::vector<ReceiveRatchetTagSetPtr> removed;
 		{
-			LogPrint (eLogWarning, "Garlic: Incoming ECIES tag budget exceeded");
-			return;
+			std::lock_guard<std::mutex> l (m_TagsMutex);
+			MakeRoomForECIESx25519Tag (1, &removed);
+			if (m_ECIESx25519Tags.size () >= MAX_INCOMING_ECIES_TAGS)
+				LogPrint (eLogWarning, "Garlic: Incoming ECIES tag budget exceeded");
+			else
+				m_ECIESx25519Tags.emplace (tag, ECIESX25519AEADRatchetIndexTagset { 0, tagset });
 		}
-		m_ECIESx25519Tags.emplace (tag, ECIESX25519AEADRatchetIndexTagset { 0, tagset });
+		// Any removed tagset is released here, outside m_TagsMutex, because its
+		// destructor calls back into the session.
+		removed.clear ();
 	}
 
 	bool GarlicDestination::SubmitSessionKey (const uint8_t * key, const uint8_t * tag)
@@ -723,7 +813,8 @@ namespace garlic
 	{
 		if (!msg || msg->GetLength () < I2NP_HEADER_SIZE + 4)
 		{
-			LogPrint (eLogWarning, "Garlic: Message is too short for a length prefix");
+			if (g_GarlicParseDrops.Record ())
+				LogPrint (eLogWarning, "Garlic: Message is too short for a length prefix");
 			return;
 		}
 		uint8_t * buf = msg->GetPayload ();
@@ -731,13 +822,16 @@ namespace garlic
 		uint32_t length = bufbe32toh (buf);
 		if (length > payloadLength - 4)
 		{
-			LogPrint (eLogWarning, "Garlic: Message length ", length, " exceeds payload length ", payloadLength - 4);
+			if (g_GarlicParseDrops.Record ())
+				LogPrint (eLogWarning, "Garlic: Message length ", length, " exceeds payload length ",
+					payloadLength - 4);
 			return;
 		}
 		if (length < 8)
 		{
 			// every supported encryption envelope is longer than the tag
-			LogPrint (eLogWarning, "Garlic: Message length ", length, " is too short");
+			if (g_GarlicParseDrops.Record ())
+				LogPrint (eLogWarning, "Garlic: Message length ", length, " is too short");
 			return;
 		}
 		auto mod = length & 0x0f; // %16
@@ -792,13 +886,13 @@ namespace garlic
 						auto session = std::make_shared<ECIESX25519AEADRatchetSession> (this, false); // incoming
 						if (session->HandleNextMessage (buf, length, nullptr, 0))
 							m_LastIncomingSessionTimestamp = ts;
-						else
+						else if (g_GarlicParseDrops.Record ())
 							LogPrint (eLogError, "Garlic: Can't handle ECIES-X25519-AEAD-Ratchet message");
 					}
-					else
+					else if (g_GarlicParseDrops.Record ())
 						LogPrint (eLogWarning, "Garlic: Incoming sessions come too often");
 				}
-				else
+				else if (g_GarlicParseDrops.Record ())
 					LogPrint (eLogError, "Garlic: Failed to decrypt message");
 			}
 		}
@@ -823,7 +917,10 @@ namespace garlic
 			m_ECIESx25519Tags.erase (it);
 		}
 		if (!tagset || !tagset->HandleNextMessage (buf, len, index))
-			LogPrint (eLogError, "Garlic: Can't handle ECIES-X25519-AEAD-Ratchet message");
+		{
+			if (g_GarlicParseDrops.Record ())
+				LogPrint (eLogError, "Garlic: Can't handle ECIES-X25519-AEAD-Ratchet message");
+		}
 		return true;
 	}
 
@@ -832,7 +929,8 @@ namespace garlic
 	{
 		if (len < 2)
 		{
-			LogPrint (eLogError, "Garlic: AES block length ", len, " is too short");
+			if (g_GarlicParseDrops.Record ())
+				LogPrint (eLogError, "Garlic: AES block length ", len, " is too short");
 			return;
 		}
 		uint16_t tagCount = bufbe16toh (buf);
@@ -840,7 +938,9 @@ namespace garlic
 		len -= 2;
 		if (tagCount > MAX_ELGAMAL_AES_TAGS)
 		{
-			LogPrint (eLogError, "Garlic: Tag count ", tagCount, " exceeds the maximum ", (int)MAX_ELGAMAL_AES_TAGS);
+			if (g_GarlicParseDrops.Record ())
+				LogPrint (eLogError, "Garlic: Tag count ", tagCount, " exceeds the maximum ",
+					(int)MAX_ELGAMAL_AES_TAGS);
 			return;
 		}
 		const uint8_t * tagsStart = buf;
@@ -850,7 +950,8 @@ namespace garlic
 			const size_t tagBytes = static_cast<size_t> (tagCount) * 32;
 			if (tagBytes > len)
 			{
-				LogPrint (eLogError, "Garlic: Tag count ", tagCount, " exceeds length ", len);
+				if (g_GarlicParseDrops.Record ())
+					LogPrint (eLogError, "Garlic: Tag count ", tagCount, " exceeds length ", len);
 				return;
 			}
 			tagsCreationTime = static_cast<uint32_t> (i2p::util::GetSecondsSinceEpoch ());
@@ -859,7 +960,8 @@ namespace garlic
 		len -= tagCount * 32;
 		if (len < 37) // 4 (payload size) + 32 (payload hash) + 1 (flag)
 		{
-			LogPrint (eLogError, "Garlic: AES block is too short for payload header, length ", len);
+			if (g_GarlicParseDrops.Record ())
+				LogPrint (eLogError, "Garlic: AES block is too short for payload header, length ", len);
 			return;
 		}
 		uint32_t payloadSize = bufbe32toh (buf);
@@ -873,7 +975,8 @@ namespace garlic
 		{
 			if (len < 33) // 32 (new session key) + 1 (flag)
 			{
-				LogPrint (eLogError, "Garlic: AES block is too short for session key, length ", len);
+				if (g_GarlicParseDrops.Record ())
+					LogPrint (eLogError, "Garlic: AES block is too short for session key, length ", len);
 				return;
 			}
 			newSessionKey = buf + 1;
@@ -884,7 +987,8 @@ namespace garlic
 		len--; // flag
 		if (payloadSize > len)
 		{
-			LogPrint (eLogError, "Garlic: Unexpected payload size ", payloadSize);
+			if (g_GarlicParseDrops.Record ())
+				LogPrint (eLogError, "Garlic: Unexpected payload size ", payloadSize);
 			return;
 		}
 
@@ -893,7 +997,7 @@ namespace garlic
 		SHA256 (buf, payloadSize, digest);
 		if (CRYPTO_memcmp (payloadHash, digest, 32)) // payload hash doesn't match
 		{
-			LogPrint (eLogError, "Garlic: Wrong payload hash");
+			if (g_GarlicParseDrops.Record ()) LogPrint (eLogError, "Garlic: Wrong payload hash");
 			return;
 		}
 		// Only install the announced session tags once the payload hash has
@@ -905,15 +1009,34 @@ namespace garlic
 		if (newSessionKey) tagDecryption = std::make_shared<AESDecryption> (newSessionKey);
 		{
 			std::lock_guard<std::mutex> l (m_TagsMutex);
-			if (m_Tags.size () + tagCount > MAX_INCOMING_ELGAMAL_TAGS)
+			// A full tag budget must not make the receiver drop an otherwise
+			// authenticated message: skip the tag installation and keep
+			// processing the payload. The peer will fall back to ElGamal or a
+			// ratchet once its tags are not confirmed.
+			if (m_Tags.size () + static_cast<size_t> (tagCount) > MAX_INCOMING_ELGAMAL_TAGS)
 			{
-				LogPrint (eLogError, "Garlic: Incoming ElGamal/AES tag budget exceeded");
-				return;
+				if (g_ElGamalTagBudgetDrops.Record ())
+					LogPrint (eLogError, "Garlic: Incoming ElGamal/AES tag budget exceeded, tags skipped (",
+						g_ElGamalTagBudgetDrops.GetCount (), " blocks)");
 			}
-			for (int i = 0; i < tagCount; i++)
-				m_Tags[SessionTag (tagsStart + i * 32, tagsCreationTime)] = tagDecryption;
+			else
+			{
+				for (int i = 0; i < tagCount; i++)
+					m_Tags[SessionTag (tagsStart + i * 32, tagsCreationTime)] = tagDecryption;
+			}
 		}
 		HandleGarlicPayload (buf, payloadSize, from);
+	}
+
+	bool GarlicDestination::IsDuplicateClove (uint32_t msgID, uint64_t expiration)
+	{
+		const uint32_t key = GetI2NPDuplicateKey (msgID, expiration, I2NP_DUPLICATE_SALT_DESTINATION);
+		if (!m_CloveReplayFilter.CheckAndInsert (key, i2p::util::GetSecondsSinceEpoch ())) return false;
+		++GetI2NPDispatchCounters ().replayedClove;
+		if (g_CloveReplayDrops.Record ())
+			LogPrint (eLogWarning, "Garlic: Skipped replayed clove msgID ", msgID, " (",
+				GetI2NPDispatchCounters ().replayedClove.load (), " replayed cloves)");
+		return true;
 	}
 
 	void GarlicDestination::HandleGarlicPayload (
@@ -921,187 +1044,182 @@ namespace garlic
 	{
 		if (len < 1)
 		{
-			LogPrint (eLogError, "Garlic: Payload is too short");
+			if (g_GarlicParseDrops.Record ()) LogPrint (eLogError, "Garlic: Payload is too short");
 			return;
 		}
-		int numCloves = buf[0];
+		const unsigned int numCloves = buf[0];
 		LogPrint (eLogDebug, "Garlic: ", numCloves, " cloves");
+		if (!IsValidCloveCount (numCloves))
+		{
+			++GetI2NPDispatchCounters ().badCloveCount;
+			if (g_GarlicParseDrops.Record ())
+				LogPrint (eLogWarning, "Garlic: Clove count ", numCloves, " is outside 1..", I2NP_MAX_CLOVES);
+			return;
+		}
 		buf++;
 		len--;
-		for (int i = 0; i < numCloves; i++)
+		for (unsigned int i = 0; i < numCloves; i++)
 		{
 			if (len < 1) // no flag byte left for the announced clove
 			{
-				LogPrint (eLogError, "Garlic: Payload ended before clove ", i);
+				if (g_GarlicParseDrops.Record ())
+					LogPrint (eLogError, "Garlic: Payload ended before clove ", i);
 				break;
 			}
-			const uint8_t * buf1 = buf;
+			uint8_t * const buf1 = buf;
 			// delivery instructions
 			uint8_t flag = buf[0];
 			buf++; // flag
 			if (flag & 0x80) // encrypted?
 			{
 				// TODO: implement
-				LogPrint (eLogWarning, "Garlic: Clove encrypted");
+				if (g_GarlicParseDrops.Record ()) LogPrint (eLogWarning, "Garlic: Clove encrypted");
 				if (static_cast<size_t> (buf - buf1) + 32 > len)
 				{
-					LogPrint (eLogError, "Garlic: Encrypted clove is too short");
+					if (g_GarlicParseDrops.Record ())
+						LogPrint (eLogError, "Garlic: Encrypted clove is too short");
 					break;
 				}
 				buf += 32;
 			}
 			ptrdiff_t offset = buf - buf1;
-			GarlicDeliveryType deliveryType = (GarlicDeliveryType)((flag >> 5) & 0x03);
-			if (deliveryType == eGarlicDeliveryTypeLocal || deliveryType == eGarlicDeliveryTypeDestination)
+			const GarlicDeliveryType deliveryType = (GarlicDeliveryType)((flag >> 5) & 0x03);
+			// Locate the embedded I2NP message. LOCAL carries no delivery hash;
+			// DESTINATION, ROUTER and TUNNEL prefix one (TUNNEL also a 4-byte
+			// tunnel ID). Everything is relative to buf1 so the shared advance
+			// below can skip exactly one clove.
+			size_t messageOffset = buf - buf1;
+			if (deliveryType != eGarlicDeliveryTypeLocal) messageOffset += 32;
+			if (deliveryType == eGarlicDeliveryTypeTunnel) messageOffset += 4;
+			bool wellFramed = messageOffset <= len;
+			bool fresh = false;
+			if (wellFramed)
 			{
-				const size_t headerOffset = buf - buf1;
-				const size_t messageLength = GetI2NPMessageLength (buf, len - headerOffset);
-				if (messageLength < I2NP_HEADER_SIZE || messageLength + headerOffset + 15 > len)
-				{
-					LogPrint (eLogError, "Garlic: Invalid local clove length");
-					return;
-				}
-				if (!IsFreshCloveDate (bufbe64toh (buf + messageLength + 4)))
-				{
-					LogPrint (eLogWarning, "Garlic: Dropped stale local clove");
-					return;
-				}
+				uint8_t * message = buf1 + messageOffset;
+				const size_t messageLength = GetI2NPMessageLength (message, len - messageOffset);
+				// The trailer (CloveID, Date, Certificate) has a fixed length, so
+				// the message plus trailer must fit in what is left.
+				wellFramed = messageLength >= I2NP_HEADER_SIZE && messageLength + messageOffset + 15 <= len;
+				if (wellFramed) fresh = IsFreshCloveDate (bufbe64toh (message + messageLength + 4));
 			}
-			switch (deliveryType)
+			// Only a DESTINATION clove names a destination; the other types are
+			// local or explicitly addressed and need no local-hash check.
+			const bool destinationMatches = deliveryType != eGarlicDeliveryTypeDestination
+				|| (static_cast<size_t> (buf - buf1) + 32 <= len && IsCloveForDestination (buf, GetIdentHash ()));
+			const GarlicCloveDisposition disposition = ClassifyGarlicClove (wellFramed, fresh, destinationMatches);
+			if (disposition == GarlicCloveDisposition::RejectMessage)
 			{
-			case eGarlicDeliveryTypeLocal:
-				LogPrint (eLogDebug, "Garlic: Type local");
-				if (offset > (int)len || len - offset < I2NP_HEADER_SIZE)
-				{
-					LogPrint (eLogError, "Garlic: Message is too short");
-					break;
-				}
-				HandleI2NPMessage (buf, len - offset);
-				break;
-			case eGarlicDeliveryTypeDestination:
-				LogPrint (eLogDebug, "Garlic: Type destination");
-				if (static_cast<size_t> (buf - buf1) + 32 > len)
-				{
-					LogPrint (eLogError, "Garlic: Message is too short");
-					break;
-				}
-				buf += 32; // destination. check it later or for multiple destinations
-				offset = buf - buf1;
-				if (offset > (int)len || len - offset < I2NP_HEADER_SIZE)
-				{
-					LogPrint (eLogError, "Garlic: Message is too short");
-					break;
-				}
-				HandleI2NPMessage (buf, len - offset);
-				break;
-			case eGarlicDeliveryTypeTunnel:
-			{
-				LogPrint (eLogDebug, "Garlic: Type tunnel");
-				// gwHash and gwTunnel sequence is reverted
-				if (static_cast<size_t> (buf - buf1) + 36 > len)
-				{
-					LogPrint (eLogError, "Garlic: Message is too short");
-					break;
-				}
-				uint8_t * gwHash = buf;
-				buf += 32;
-				offset = buf - buf1;
-				uint32_t gwTunnel = bufbe32toh (buf);
-				buf += 4;
-				offset += 4;
-				const size_t messageLength = GetI2NPMessageLength (buf, len - offset);
-				if (messageLength < I2NP_HEADER_SIZE || messageLength + offset + 15 > len)
-				{
-					LogPrint (eLogError, "Garlic: Invalid I2NP message length");
-					break;
-				}
-				if (!IsFreshCloveDate (bufbe64toh (buf + messageLength + 4)))
-				{
-					LogPrint (eLogWarning, "Garlic: Dropped stale tunnel clove");
-					return;
-				}
-				auto msg = CreateI2NPMessage (buf, messageLength, from);
-				if (!msg)
-				{
-					LogPrint (eLogError, "Garlic: Can't allocate I2NP message");
-					break;
-				}
-				if (from) // received through an inbound tunnel
-				{
-					std::shared_ptr<i2p::tunnel::OutboundTunnel> tunnel;
-					if (from->GetTunnelPool ())
-						tunnel = from->GetTunnelPool ()->GetNextOutboundTunnel ();
-					else
-						LogPrint (eLogError, "Garlic: Tunnel pool is not set for inbound tunnel");
-					if (tunnel) // we have sent it through an outbound tunnel
-						tunnel->SendTunnelDataMsgTo (gwHash, gwTunnel, msg);
-					else
-						LogPrint (eLogWarning, "Garlic: No outbound tunnels available for garlic clove");
-				}
-				else // received directly
-					i2p::transport::transports.SendMessage (
-						gwHash, i2p::CreateTunnelGatewayMsg (gwTunnel, msg)); // send directly
+				if (g_GarlicParseDrops.Record ())
+					LogPrint (eLogError, "Garlic: Invalid clove framing, walk stopped");
 				break;
 			}
-			case eGarlicDeliveryTypeRouter:
+			if (disposition == GarlicCloveDisposition::SkipStale)
 			{
-				if (static_cast<size_t> (buf - buf1) + 32 > len)
+				++GetI2NPDispatchCounters ().staleClove;
+				if (g_CloveStaleDrops.Record ())
+					LogPrint (eLogWarning, "Garlic: Skipped stale clove (",
+						GetI2NPDispatchCounters ().staleClove.load (), " stale cloves)");
+			}
+			else if (disposition == GarlicCloveDisposition::SkipWrongDestination)
+			{
+				++GetI2NPDispatchCounters ().wrongDestination;
+				if (g_CloveDestinationDrops.Record ())
+					LogPrint (eLogWarning, "Garlic: Skipped clove for another destination (",
+						GetI2NPDispatchCounters ().wrongDestination.load (), " such cloves)");
+			}
+			else
+				switch (deliveryType)
 				{
-					LogPrint (eLogError, "Garlic: Message is too short");
-					break;
-				}
-				uint8_t * ident = buf;
-				buf += 32;
-				offset = buf - buf1;
-				if (!from) // received directly
-				{
-					const size_t messageLength = GetI2NPMessageLength (buf, len - offset);
-					if (messageLength < I2NP_HEADER_SIZE || messageLength + offset + 15 > len)
-					{
-						LogPrint (eLogError, "Garlic: Invalid I2NP message length");
+				case eGarlicDeliveryTypeLocal:
+					LogPrint (eLogDebug, "Garlic: Type local");
+					if (IsDuplicateClove (bufbe32toh (buf + I2NP_HEADER_MSGID_OFFSET),
+							bufbe64toh (buf + I2NP_HEADER_EXPIRATION_OFFSET)))
 						break;
-					}
-					if (!IsFreshCloveDate (bufbe64toh (buf + messageLength + 4)))
-					{
-						LogPrint (eLogWarning, "Garlic: Dropped stale router clove");
-						return;
-					}
-					auto msg = CreateI2NPMessage (buf, messageLength);
+					HandleI2NPMessage (buf, len - offset);
+					break;
+				case eGarlicDeliveryTypeDestination:
+					LogPrint (eLogDebug, "Garlic: Type destination");
+					buf += 32; // destination, checked above
+					offset = buf - buf1;
+					if (IsDuplicateClove (bufbe32toh (buf + I2NP_HEADER_MSGID_OFFSET),
+							bufbe64toh (buf + I2NP_HEADER_EXPIRATION_OFFSET)))
+						break;
+					HandleI2NPMessage (buf, len - offset);
+					break;
+				case eGarlicDeliveryTypeTunnel:
+				{
+					LogPrint (eLogDebug, "Garlic: Type tunnel");
+					// gwHash and gwTunnel sequence is reverted
+					uint8_t * gwHash = buf;
+					buf += 32;
+					offset = buf - buf1;
+					const uint32_t gwTunnel = bufbe32toh (buf);
+					buf += 4;
+					offset += 4;
+					const size_t messageLength = GetI2NPMessageLength (buf, len - offset);
+					if (IsDuplicateClove (bufbe32toh (buf + I2NP_HEADER_MSGID_OFFSET),
+							bufbe64toh (buf + I2NP_HEADER_EXPIRATION_OFFSET)))
+						break;
+					auto msg = CreateI2NPMessage (buf, messageLength, from);
 					if (!msg)
 					{
-						LogPrint (eLogError, "Garlic: Can't allocate I2NP message");
+						if (g_GarlicParseDrops.Record ())
+							LogPrint (eLogError, "Garlic: Can't allocate I2NP message");
 						break;
 					}
-					i2p::transport::transports.SendMessage (ident, msg);
+					if (from) // received through an inbound tunnel
+					{
+						std::shared_ptr<i2p::tunnel::OutboundTunnel> tunnel;
+						if (from->GetTunnelPool ())
+							tunnel = from->GetTunnelPool ()->GetNextOutboundTunnel ();
+						else
+							LogPrint (eLogError, "Garlic: Tunnel pool is not set for inbound tunnel");
+						if (tunnel) // we have sent it through an outbound tunnel
+							tunnel->SendTunnelDataMsgTo (gwHash, gwTunnel, msg);
+						else
+							LogPrint (eLogWarning, "Garlic: No outbound tunnels available for garlic clove");
+					}
+					else // received directly
+						i2p::transport::transports.SendMessage (
+							gwHash, i2p::CreateTunnelGatewayMsg (gwTunnel, msg)); // send directly
+					break;
 				}
-				else
-					LogPrint (eLogWarning, "Garlic: Type router for inbound tunnels not supported");
-				break;
-			}
-			default: LogPrint (eLogWarning, "Garlic: Unknown delivery type ", (int)deliveryType);
-			}
-			if (offset > (int)len)
-			{
-				LogPrint (eLogError, "Garlic: Message is too short");
-				break;
-			}
+				case eGarlicDeliveryTypeRouter:
+				{
+					uint8_t * ident = buf; // router hash
+					buf += 32;
+					offset = buf - buf1;
+					if (!from) // received directly
+					{
+						// A repeated ROUTER clove would forward the same message
+						// again; drop it like every other delivery type.
+						if (IsDuplicateClove (bufbe32toh (buf + I2NP_HEADER_MSGID_OFFSET),
+								bufbe64toh (buf + I2NP_HEADER_EXPIRATION_OFFSET)))
+							break;
+						const size_t messageLength = GetI2NPMessageLength (buf, len - offset);
+						auto msg = CreateI2NPMessage (buf, messageLength);
+						if (!msg)
+						{
+							if (g_GarlicParseDrops.Record ())
+								LogPrint (eLogError, "Garlic: Can't allocate I2NP message");
+							break;
+						}
+						i2p::transport::transports.SendMessage (ident, msg);
+					}
+					else
+						LogPrint (eLogWarning, "Garlic: Type router for inbound tunnels not supported");
+					break;
+				}
+				default: break;
+				}
+			// Advance past exactly this clove: skip the embedded message and
+			// the fixed trailer. A skipped clove has intact framing by
+			// definition, so the walk continues with the next one.
+			buf = buf1 + messageOffset;
+			offset = messageOffset;
 			const size_t messageLength = GetI2NPMessageLength (buf, len - offset);
-			if (messageLength < I2NP_HEADER_SIZE || messageLength > len - offset)
-			{
-				LogPrint (eLogError, "Garlic: Invalid I2NP message length");
-				break;
-			}
-			if (messageLength + static_cast<size_t> (offset) + 15 > len)
-			{
-				LogPrint (eLogError, "Garlic: Clove trailer is truncated");
-				break;
-			}
-			buf += messageLength; // I2NP
-			buf += 4; // CloveID
-			buf += 8; // Date
-			buf += 3; // Certificate
-			offset = buf - buf1;
-			len -= offset;
+			buf += messageLength + 15; // I2NP + CloveID + Date + Certificate
+			len -= (buf - buf1);
 		}
 	}
 
@@ -1145,7 +1263,17 @@ namespace garlic
 					if (it != m_ECIESx25519Sessions.end ())
 					{
 						session = it->second;
-						if (session->IsInactive (i2p::util::GetSecondsSinceEpoch ()))
+						if (session->IsExhausted ())
+						{
+							// Java RatchetSKM.consumeNext() starts a new session
+							// when the outbound tagset is empty. Keep the old
+							// object for receiving and let the caller create a
+							// fresh New Session for sending.
+							LogPrint (eLogDebug, "Garlic: Sending session exhausted, starting a new one");
+							requestNewIfNotFound = true;
+							session = nullptr;
+						}
+						else if (session->IsInactive (i2p::util::GetSecondsSinceEpoch ()))
 						{
 							LogPrint (eLogDebug, "Garlic: Session restarted");
 							requestNewIfNotFound = true; // it's not a new session
@@ -1208,18 +1336,38 @@ namespace garlic
 
 		// outgoing
 		{
-			std::unique_lock<std::mutex> l (m_SessionsMutex);
-			for (auto it = m_Sessions.begin (); it != m_Sessions.end ();)
+			// A session method takes the session's own state lock, and a session
+			// that registers itself with this destination takes that lock before
+			// m_SessionsMutex. Calling one while holding the map lock would be the
+			// opposite order and could deadlock, so the map is only snapshotted
+			// here and every callback runs outside the lock.
+			std::vector<std::pair<i2p::data::IdentHash, GarlicRoutingSessionPtr>> sessions;
 			{
-				it->second->GetSharedRoutingPath (); // delete shared path if necessary
-				if (!it->second->CleanupExpiredTags ())
+				std::unique_lock<std::mutex> l (m_SessionsMutex);
+				sessions.reserve (m_Sessions.size ());
+				for (const auto & it : m_Sessions) sessions.emplace_back (it.first, it.second);
+			}
+			for (auto & it : sessions)
+			{
+				if (!it.second) continue;
+				it.second->GetSharedRoutingPath (); // delete shared path if necessary
+				if (it.second->CleanupExpiredTags ()) continue;
+				bool erased = false;
 				{
-					LogPrint (eLogInfo, "Garlic: Routing session to ", it->first.ToBase32 (), " deleted");
-					it->second->SetOwner (nullptr);
-					it = m_Sessions.erase (it);
+					std::unique_lock<std::mutex> l (m_SessionsMutex);
+					auto found = m_Sessions.find (it.first);
+					// Never erase a session that replaced this one meanwhile.
+					if (found != m_Sessions.end () && found->second == it.second)
+					{
+						m_Sessions.erase (found);
+						erased = true;
+					}
 				}
-				else
-					++it;
+				if (erased)
+				{
+					LogPrint (eLogInfo, "Garlic: Routing session to ", it.first.ToBase32 (), " deleted");
+					it.second->SetOwner (nullptr);
+				}
 			}
 		}
 		// delivery status sessions
@@ -1235,20 +1383,27 @@ namespace garlic
 		}
 		// ECIESx25519 sessions
 		{
-			std::unique_lock<std::mutex> l (m_SessionsMutex);
-			for (auto it = m_ECIESx25519Sessions.begin (); it != m_ECIESx25519Sessions.end ();)
+			// Same rule as the ElGamal map: evaluate and terminate outside the
+			// map lock, then erase only the entry that is still the same object.
+			std::vector<std::pair<i2p::data::Tag<32>, ECIESX25519AEADRatchetSessionPtr>> sessions;
 			{
-				if (it->second->CheckExpired (ts))
-				{
-					it->second->Terminate ();
-					it = m_ECIESx25519Sessions.erase (it);
-				}
-				else
-					++it;
+				std::unique_lock<std::mutex> l (m_SessionsMutex);
+				sessions.reserve (m_ECIESx25519Sessions.size ());
+				for (const auto & it : m_ECIESx25519Sessions) sessions.emplace_back (it.first, it.second);
+			}
+			for (auto & it : sessions)
+			{
+				if (!it.second || !it.second->CheckExpired (ts)) continue;
+				it.second->Terminate ();
+				std::unique_lock<std::mutex> l (m_SessionsMutex);
+				auto found = m_ECIESx25519Sessions.find (it.first);
+				if (found != m_ECIESx25519Sessions.end () && found->second == it.second)
+					m_ECIESx25519Sessions.erase (found);
 			}
 		}
 
 		numExpiredTags = 0;
+		std::vector<ReceiveRatchetTagSetPtr> removedTagsets;
 		{
 			std::lock_guard<std::mutex> l (m_TagsMutex);
 			for (auto it = m_ECIESx25519Tags.begin (); it != m_ECIESx25519Tags.end ();)
@@ -1257,6 +1412,9 @@ namespace garlic
 					|| it->second.tagset->IsIndexExpired (it->second.index))
 				{
 					if (it->second.tagset) it->second.tagset->DeleteSymmKey (it->second.index);
+					// Hold the tagset until after the unlock: its destructor
+					// calls back into the session.
+					if (it->second.tagset) removedTagsets.push_back (it->second.tagset);
 					it = m_ECIESx25519Tags.erase (it);
 					numExpiredTags++;
 				}
@@ -1264,6 +1422,7 @@ namespace garlic
 				{
 					if (it->second.tagset->IsSessionTerminated ())
 					{
+						removedTagsets.push_back (it->second.tagset);
 						it = m_ECIESx25519Tags.erase (it);
 						numExpiredTags++;
 					}
@@ -1272,6 +1431,7 @@ namespace garlic
 				}
 			}
 		}
+		removedTagsets.clear ();
 		if (numExpiredTags > 0)
 			LogPrint (
 				eLogDebug, "Garlic: ", numExpiredTags, " ECIESx25519 tags expired for ", GetIdentHash ().ToBase64 ());
@@ -1310,14 +1470,18 @@ namespace garlic
 
 	void GarlicDestination::SetLeaseSetUpdated (bool /* post */)
 	{
+		// Snapshot both maps and notify outside m_SessionsMutex: the setter takes
+		// the session state lock, which a self-registering session takes before
+		// this map lock.
+		std::vector<GarlicRoutingSessionPtr> sessions;
 		{
 			std::unique_lock<std::mutex> l (m_SessionsMutex);
-			for (auto & it : m_Sessions) it.second->SetLeaseSetUpdated ();
+			sessions.reserve (m_Sessions.size () + m_ECIESx25519Sessions.size ());
+			for (const auto & it : m_Sessions) sessions.push_back (it.second);
+			for (const auto & it : m_ECIESx25519Sessions) sessions.push_back (it.second);
 		}
-		{
-			std::unique_lock<std::mutex> l (m_SessionsMutex);
-			for (auto & it : m_ECIESx25519Sessions) it.second->SetLeaseSetUpdated ();
-		}
+		for (auto & session : sessions)
+			if (session) session->SetLeaseSetUpdated ();
 	}
 
 	void GarlicDestination::ProcessGarlicMessage (std::shared_ptr<I2NPMessage> msg)
@@ -1327,9 +1491,14 @@ namespace garlic
 
 	void GarlicDestination::ProcessDeliveryStatusMessage (std::shared_ptr<I2NPMessage> msg)
 	{
-		if (!msg || msg->GetLength () < I2NP_HEADER_SIZE + DELIVERY_STATUS_MSGID_OFFSET + 4)
+		// Java DeliveryStatusMessage is exactly msgID (4) + timestamp (8); a
+		// longer or shorter payload means the sender and this handler disagree
+		// about the message layout, so it is not used to confirm anything.
+		if (!msg || msg->GetLength () < I2NP_HEADER_SIZE
+			|| !IsValidDeliveryStatusPayload (msg->GetPayloadLength ()))
 		{
-			LogPrint (eLogWarning, "Garlic: DeliveryStatus message is too short");
+			if (g_GarlicParseDrops.Record ())
+				LogPrint (eLogWarning, "Garlic: DeliveryStatus message is not ", DELIVERY_STATUS_SIZE, " bytes");
 			return;
 		}
 		uint32_t msgID = bufbe32toh (msg->GetPayload () + DELIVERY_STATUS_MSGID_OFFSET);
@@ -1421,7 +1590,7 @@ namespace garlic
 	{
 		if (!len)
 		{
-			LogPrint (eLogError, "Garlic: Clove is empty");
+			if (g_GarlicParseDrops.Record ()) LogPrint (eLogError, "Garlic: Clove is empty");
 			return;
 		}
 		const uint8_t * buf1 = buf;
@@ -1434,10 +1603,21 @@ namespace garlic
 			LogPrint (eLogDebug, "Garlic: Type destination");
 			if (len < 33) // flag + 32-byte destination hash
 			{
-				LogPrint (eLogError, "Garlic: Message is too short");
+				if (g_GarlicParseDrops.Record ()) LogPrint (eLogError, "Garlic: Message is too short");
 				break;
 			}
-			buf += 32; // TODO: check destination
+			// The delivery instruction names the destination this clove is
+			// for. A clove addressed to another destination must not be
+			// delivered locally.
+			if (!IsCloveForDestination (buf, GetIdentHash ()))
+			{
+				++GetI2NPDispatchCounters ().wrongDestination;
+				if (g_CloveDestinationDrops.Record ())
+					LogPrint (eLogWarning, "Garlic: Skipped ECIES clove for another destination (",
+						GetI2NPDispatchCounters ().wrongDestination.load (), " such cloves)");
+				break;
+			}
+			buf += 32; // destination
 			[[fallthrough]];
 			// no break here
 		case eGarlicDeliveryTypeLocal:
@@ -1445,7 +1625,7 @@ namespace garlic
 			LogPrint (eLogDebug, "Garlic: Type local");
 			if ((size_t)(buf - buf1) + 9 > len) // typeid(1) + msgID(4) + expiration(4)
 			{
-				LogPrint (eLogError, "Garlic: Message is too short");
+				if (g_GarlicParseDrops.Record ()) LogPrint (eLogError, "Garlic: Message is too short");
 				break;
 			}
 			I2NPMessageType typeID = (I2NPMessageType)(buf[0]);
@@ -1456,13 +1636,20 @@ namespace garlic
 			buf += 4; // expiration
 			if (!IsFreshCloveDate (expiration))
 			{
-				LogPrint (eLogWarning, "Garlic: Dropped stale ECIES clove");
-				return;
+				// This clove cannot be delivered, but the remaining blocks of
+				// the same payload can: the block framing is known, so only
+				// this clove is skipped.
+				++GetI2NPDispatchCounters ().staleClove;
+				if (g_CloveStaleDrops.Record ())
+					LogPrint (eLogWarning, "Garlic: Skipped stale ECIES clove (",
+						GetI2NPDispatchCounters ().staleClove.load (), " stale cloves)");
+				break;
 			}
+			if (IsDuplicateClove (msgID, expiration)) break;
 			ptrdiff_t offset = buf - buf1;
 			if (offset <= (int)len)
 				HandleCloveI2NPMessage (typeID, buf, len - offset, msgID, from);
-			else
+			else if (g_GarlicParseDrops.Record ())
 				LogPrint (eLogError, "Garlic: Clove is too long");
 			break;
 		}
@@ -1475,7 +1662,7 @@ namespace garlic
 			ptrdiff_t offset = buf - buf1;
 			if (offset + 13 > (int)len)
 			{
-				LogPrint (eLogError, "Garlic: Message is too short");
+				if (g_GarlicParseDrops.Record ()) LogPrint (eLogError, "Garlic: Message is too short");
 				break;
 			}
 			uint32_t gwTunnel = bufbe32toh (buf);
@@ -1488,16 +1675,28 @@ namespace garlic
 			buf += 4; // expiration
 			if (!IsFreshCloveDate (expiration))
 			{
-				LogPrint (eLogWarning, "Garlic: Dropped stale ECIES tunnel clove");
-				return;
+				++GetI2NPDispatchCounters ().staleClove;
+				if (g_CloveStaleDrops.Record ())
+					LogPrint (eLogWarning, "Garlic: Skipped stale ECIES tunnel clove (",
+						GetI2NPDispatchCounters ().staleClove.load (), " stale cloves)");
+				break;
 			}
+			if (IsDuplicateClove (msgID, expiration)) break;
 			offset += 13;
 			if (GetTunnelPool ())
 			{
 				auto tunnel = GetTunnelPool ()->GetNextOutboundTunnel ();
 				if (tunnel)
-					tunnel->SendTunnelDataMsgTo (
-						gwHash, gwTunnel, CreateI2NPMessage (typeID, buf, len - offset, msgID));
+				{
+					auto msg = CreateI2NPMessage (typeID, buf, len - offset, msgID);
+					if (!msg)
+					{
+						if (g_GarlicParseDrops.Record ())
+							LogPrint (eLogError, "Garlic: Can't allocate I2NP message");
+						break;
+					}
+					tunnel->SendTunnelDataMsgTo (gwHash, gwTunnel, msg);
+				}
 				else
 					LogPrint (eLogWarning, "Garlic: No outbound tunnels available for garlic clove");
 			}
@@ -1505,7 +1704,17 @@ namespace garlic
 				LogPrint (eLogError, "Garlic: Tunnel pool is not set for inbound tunnel");
 			break;
 		}
-		default: LogPrint (eLogWarning, "Garlic: Unexpected delivery type ", (int)deliveryType);
+		case eGarlicDeliveryTypeRouter:
+			// Java can carry a ROUTER delivery instruction in a ratchet
+			// garlic, but this destination has no authenticated router
+			// forwarding path: the clove would have to be re-addressed and
+			// re-encrypted for a different router identity. Reject it
+			// explicitly instead of sending the plaintext anywhere.
+			LogPrint (eLogDebug, "Garlic: Rejected router-mode ECIES clove");
+			break;
+		default:
+			if (g_GarlicParseDrops.Record ())
+				LogPrint (eLogWarning, "Garlic: Unexpected delivery type ", (int)deliveryType);
 		}
 	}
 
@@ -1538,17 +1747,22 @@ namespace garlic
 		// Reserve the budget before advancing the tag chain. If the map is
 		// full, leaving the index unchanged lets a later cleanup generate the
 		// same tag instead of permanently skipping it.
-		std::lock_guard<std::mutex> l (m_TagsMutex);
-		MakeRoomForECIESx25519Tag (1);
-		if (m_ECIESx25519Tags.size () >= MAX_INCOMING_ECIES_TAGS)
+		std::vector<ReceiveRatchetTagSetPtr> removed;
+		uint64_t tag = 0;
 		{
-			LogPrint (eLogWarning, "Garlic: Incoming ECIES tag budget exceeded");
-			return 0;
+			std::lock_guard<std::mutex> l (m_TagsMutex);
+			MakeRoomForECIESx25519Tag (1, &removed);
+			if (m_ECIESx25519Tags.size () >= MAX_INCOMING_ECIES_TAGS)
+				LogPrint (eLogWarning, "Garlic: Incoming ECIES tag budget exceeded");
+			else
+			{
+				auto index = tagset->GetNextIndex ();
+				tag = tagset->GetNextSessionTag (GetThreadLocalHKDFContext ());
+				if (tag) m_ECIESx25519Tags.emplace (tag, ECIESX25519AEADRatchetIndexTagset { index, tagset });
+			}
 		}
-		auto index = tagset->GetNextIndex ();
-		uint64_t tag = tagset->GetNextSessionTag (m_HKDFContext);
-		if (!tag) return 0;
-		m_ECIESx25519Tags.emplace (tag, ECIESX25519AEADRatchetIndexTagset { index, tagset });
+		// Removed tagsets are released outside m_TagsMutex.
+		removed.clear ();
 		return tag;
 	}
 
@@ -1560,7 +1774,16 @@ namespace garlic
 		auto it = m_ECIESx25519Sessions.find (staticKeyTag);
 		if (it != m_ECIESx25519Sessions.end ())
 		{
-			if (it->second->CanBeRestarted (i2p::util::GetSecondsSinceEpoch ()))
+			if (it->second->IsExhausted ())
+			{
+				// The old session cannot send any more but may still receive
+				// delayed ES messages on its registered tags. Drop the map entry
+				// without terminating it; the tag map keeps it reachable until
+				// those tags expire.
+				if (it->second == session) return;
+				m_ECIESx25519Sessions.erase (it);
+			}
+			else if (it->second->CanBeRestarted (i2p::util::GetSecondsSinceEpoch ()))
 			{
 				it->second->Terminate (); // detach
 				m_ECIESx25519Sessions.erase (it);

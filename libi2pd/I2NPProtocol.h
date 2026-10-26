@@ -7,7 +7,9 @@
  * I2NP wire format: message type IDs, field offsets, buffer accessors and header conversion
  * for NTCP2 framing, with expiration and checksum handling. Also defines tunnel-build record
  * layouts, database lookup/search-reply bounds, strict DatabaseSearchReply parsing, message
- * factories and a handler that throttles tunnel-build traffic.
+ * factories and a handler that throttles tunnel-build traffic. The dispatcher applies Java's
+ * expiration window, a bounded router-wide duplicate filter for non-tunnel messages, and the
+ * clove-type allow-list that depends on whether the enclosing garlic crossed a tunnel.
  *
  */
 
@@ -16,6 +18,9 @@
 
 #include <inttypes.h>
 #include <string.h>
+#include <atomic>
+#include <deque>
+#include <mutex>
 #include <unordered_set>
 #include <memory>
 #include <list>
@@ -54,6 +59,14 @@ const size_t TUNNEL_GATEWAY_HEADER_SIZE = TUNNEL_GATEWAY_HEADER_LENGTH_OFFSET + 
 const size_t DELIVERY_STATUS_MSGID_OFFSET = 0;
 const size_t DELIVERY_STATUS_TIMESTAMP_OFFSET = DELIVERY_STATUS_MSGID_OFFSET + 4;
 const size_t DELIVERY_STATUS_SIZE = DELIVERY_STATUS_TIMESTAMP_OFFSET + 8;
+
+// Java DeliveryStatusMessage carries exactly msgID (4) + timestamp (8). Any
+// other payload length means the sender and this handler disagree about the
+// layout, so the message must not confirm or clear any delivery state.
+constexpr bool IsValidDeliveryStatusPayload (size_t payloadLen) noexcept
+{
+	return payloadLen == DELIVERY_STATUS_SIZE;
+}
 
 // TunnelTest
 const size_t TUNNEL_TEST_MSGID_OFFSET = 0;
@@ -183,6 +196,167 @@ const unsigned int I2NP_MESSAGE_LOCAL_EXPIRATION_TIMEOUT_TRANSIT = 4000000; // i
 const unsigned int I2NP_MESSAGE_EXPIRATION_TIMEOUT = 8000; // in milliseconds (as initial RTT)
 const unsigned int I2NP_MESSAGE_CLOCK_SKEW = 60 * 1000; // 1 minute in milliseconds
 
+/**
+ * Java MessageValidator window applied before an I2NP message reaches a
+ * handler: an expiration date older than 90 s or further than 240 s in the
+ * future is invalid. The stricter per-hop tunnel window
+ * (I2NP_MESSAGE_CLOCK_SKEW) of the tunnel data path is unchanged; this only
+ * guards the dispatcher, where a direct, garlic-clove or tunnel-delivered
+ * message would otherwise reach netDb, garlic and delivery-status handlers
+ * with an unbounded expiration date.
+ */
+const uint64_t I2NP_DISPATCH_MAX_AGE = 90 * 1000; // milliseconds
+const uint64_t I2NP_DISPATCH_MAX_FUTURE = 240 * 1000; // milliseconds
+
+// A garlic payload announces its clove count in a single byte. Java's clove
+// walker processes a bounded number of cloves per message; the bound also
+// stops one authenticated garlic from turning into thousands of dispatch
+// calls, clove-replay lookups and log lines.
+const int I2NP_MAX_CLOVES = 32;
+
+constexpr bool IsFreshI2NPExpiration (uint64_t expiration, uint64_t now) noexcept
+{
+	// Written as additions so a hostile 64-bit expiration cannot underflow;
+	// UINT64_MAX wraps to a small value and is rejected.
+	return expiration + I2NP_DISPATCH_MAX_AGE >= now && expiration <= now + I2NP_DISPATCH_MAX_FUTURE;
+}
+
+/**
+ * Throttled diagnostics for a drop path an unauthenticated peer can trigger.
+ * The first drop and every `logEvery`-th drop are logged; the total stays
+ * readable so an operator can still see the rate.
+ */
+class I2NPDropCounter
+{
+public:
+	explicit I2NPDropCounter (uint64_t logEvery = 256) : m_LogEvery (logEvery ? logEvery : 1) { }
+
+	// Records one drop; returns true when this drop should be logged.
+	bool Record ()
+	{
+		const uint64_t n = m_Count.fetch_add (1, std::memory_order_relaxed) + 1;
+		return n == 1 || (n % m_LogEvery) == 0;
+	}
+	uint64_t GetCount () const { return m_Count.load (std::memory_order_relaxed); }
+	void Reset () { m_Count.store (0, std::memory_order_relaxed); }
+
+private:
+	std::atomic<uint64_t> m_Count { 0 };
+	uint64_t m_LogEvery;
+};
+
+/**
+ * Drop accounting for the I2NP dispatcher and the garlic clove walker. All
+ * counters are relaxed atomics: they only feed throttled diagnostics and the
+ * administrative view, never a decision.
+ */
+struct I2NPDispatchCounters
+{
+	std::atomic<uint64_t> expired { 0 };
+	std::atomic<uint64_t> duplicate { 0 };
+	std::atomic<uint64_t> disallowedCloveType { 0 };
+	std::atomic<uint64_t> badCloveCount { 0 };
+	std::atomic<uint64_t> staleClove { 0 };
+	std::atomic<uint64_t> replayedClove { 0 };
+	std::atomic<uint64_t> wrongDestination { 0 };
+	std::atomic<uint64_t> oversizedMessage { 0 };
+
+	void Reset ()
+	{
+		expired.store (0, std::memory_order_relaxed);
+		duplicate.store (0, std::memory_order_relaxed);
+		disallowedCloveType.store (0, std::memory_order_relaxed);
+		badCloveCount.store (0, std::memory_order_relaxed);
+		staleClove.store (0, std::memory_order_relaxed);
+		replayedClove.store (0, std::memory_order_relaxed);
+		wrongDestination.store (0, std::memory_order_relaxed);
+		oversizedMessage.store (0, std::memory_order_relaxed);
+	}
+};
+
+I2NPDispatchCounters & GetI2NPDispatchCounters ();
+
+// Java DecayingHashSet.TIME_MASK: the expiration second is masked before it is
+// mixed into the duplicate key.
+const uint32_t I2NP_DUPLICATE_TIME_MASK = 0x7fffffff;
+// Per-context salts keep a router-wide filter and a destination-scoped garlic
+// clove filter from treating each other's message IDs as duplicates.
+const uint32_t I2NP_DUPLICATE_SALT_ROUTER = 0x9e3779b9;
+const uint32_t I2NP_DUPLICATE_SALT_DESTINATION = 0x85ebca6b;
+const size_t I2NP_DUPLICATE_MAX_ENTRIES = 8192; // per generation
+// One entry stays visible for one to two windows, i.e. 5-10 minutes, which is
+// far longer than the 90/240 s dispatch window it has to cover.
+const uint64_t I2NP_DUPLICATE_GENERATION_TIMEOUT = 300; // seconds
+
+/**
+ * Java DecayingHashSet key for I2NP duplicate suppression: the message ID is
+ * combined with the message's expiration second and a per-context salt. The
+ * expiration component means a peer cannot keep one message ID alive forever
+ * by resending it with a later date, and it separates two different messages
+ * that happen to share an ID.
+ */
+constexpr uint32_t GetI2NPDuplicateKey (uint32_t msgID, uint64_t expiration, uint32_t salt) noexcept
+{
+	const uint32_t seconds = static_cast<uint32_t> ((expiration / 1000) & I2NP_DUPLICATE_TIME_MASK);
+	uint32_t key = msgID ^ salt;
+	key *= 0x9e3779b1U; // odd multiplier spreads adjacent message IDs
+	key ^= seconds * 0x85ebca6bU;
+	key ^= key >> 15;
+	return key;
+}
+
+/**
+ * Bounded, decaying duplicate filter. Two generations are kept and rotated by
+ * age (Java DecayingBloomFilter's double-buffered set), so an entry survives at
+ * most two generation windows and the memory is fixed. The oldest key of the
+ * current generation is evicted when the hard bound is reached: keeping the
+ * bound is more important than perfect recall, because a dropped entry can only
+ * let one duplicate through, never block a new message.
+ */
+class I2NPDuplicateFilter
+{
+public:
+	explicit I2NPDuplicateFilter (size_t maxEntries = I2NP_DUPLICATE_MAX_ENTRIES,
+		uint64_t generationTimeout = I2NP_DUPLICATE_GENERATION_TIMEOUT)
+		: m_GenerationTimeout (generationTimeout ? generationTimeout : 1)
+		, m_MaxEntries (maxEntries ? maxEntries : 1) { }
+
+	// Returns true when the key was already present, i.e. a duplicate.
+	bool CheckAndInsert (uint32_t key, uint64_t nowSeconds);
+	size_t GetSize () const;
+	void Clear ();
+
+private:
+	void Rotate (uint64_t nowSeconds);
+
+	mutable std::mutex m_Mutex;
+	std::unordered_set<uint32_t> m_Current;
+	std::unordered_set<uint32_t> m_Previous;
+	std::deque<uint32_t> m_Order; // insertion order in m_Current, for eviction
+	uint64_t m_NextRotation = 0;
+	uint64_t m_GenerationTimeout;
+	size_t m_MaxEntries;
+};
+
+// Router-wide filter used by HandleI2NPMessage(). Destination-scoped filters
+// (garlic clove replay) own their instance and use the destination salt.
+I2NPDuplicateFilter & GetI2NPRouterDuplicateFilter ();
+
+/**
+ * Where a garlic clove came from.
+ *
+ * Java separates a garlic message received directly from a peer
+ * (HandleGarlicMessageJob) from one that arrived through an I2NP tunnel
+ * (InboundMessageDistributor). A clove has no InboundTunnel pointer of its own,
+ * so the enclosing garlic's origin must be carried explicitly.
+ */
+enum class I2NPCloveOrigin : uint8_t
+{
+	Direct = 0, // direct transport, not inside garlic
+	DirectGarlic, // clove of a garlic received directly from a peer
+	TunnelGarlic // clove of a garlic that arrived through an I2NP tunnel
+};
+
 struct I2NPMessage
 {
 	uint8_t * buf;
@@ -192,6 +366,12 @@ struct I2NPMessage
 	// through an exploratory tunnel. Preserve that untrusted origin so netDb
 	// does not treat a clove-delivered DatabaseStore/Lookup as direct.
 	bool fromClove = false;
+	// True only when the enclosing garlic was delivered through an I2NP
+	// tunnel. `fromClove` alone is ambiguous: a garlic received directly from
+	// a peer is trusted enough for a DatabaseLookup/DatabaseStore reply token,
+	// a tunnel-delivered one is not. Set by the clove dispatch paths from the
+	// outer garlic's `from` pointer; never set for a non-clove message.
+	bool fromTunnel = false;
 	std::function<void ()> onDrop;
 	uint64_t enqueueTime; // monotonic microseconds
 
@@ -202,6 +382,15 @@ struct I2NPMessage
 		, maxLen (0)
 		, from (nullptr)
 		, enqueueTime (0) { }; // reserve 2 bytes for NTCP header
+
+	I2NPCloveOrigin GetCloveOrigin () const
+	{
+		if (!fromClove) return I2NPCloveOrigin::Direct;
+		return fromTunnel ? I2NPCloveOrigin::TunnelGarlic : I2NPCloveOrigin::DirectGarlic;
+	}
+	// True when this message crossed an I2NP tunnel, either directly
+	// (`from` set) or as a clove of a tunnel-delivered garlic.
+	bool IsTunnelOrigin () const { return from != nullptr || fromTunnel; }
 
 	// header accessors
 	uint8_t * GetHeader () { return GetBuffer (); };
@@ -259,6 +448,7 @@ struct I2NPMessage
 		len = offset + other.GetLength ();
 		from = other.from;
 		fromClove = other.fromClove;
+		fromTunnel = other.fromTunnel;
 		return *this;
 	}
 
@@ -305,12 +495,84 @@ template <int sz> struct I2NPMessageBuffer : public I2NPMessage
 	uint8_t m_Buffer[sz + 32]; // 16 alignment + 16 padding
 };
 
+// True when the dispatcher must drop the message because of its expiration
+// date. A TunnelData cell carries no meaningful expiration (the endpoint
+// validates the inner I2NP message after decryption), so it is exempt.
+inline bool IsI2NPDispatchExpired (const I2NPMessage & msg, uint64_t now)
+{
+	if (msg.GetTypeID () == eI2NPTunnelData) return false;
+	return !IsFreshI2NPExpiration (msg.GetExpiration (), now);
+}
+
+// True when this non-TunnelData message repeats one the dispatcher already
+// saw. TunnelData is exempt (the tunnel IV filter rejects replays), and SSU2
+// keeps its own per-session message-ID map.
+bool IsI2NPDispatchDuplicate (const I2NPMessage & msg, uint64_t nowSeconds);
+
+/**
+ * Java InboundMessageDistributor.handleClove() allow-list for a clove of a
+ * garlic that arrived through an I2NP tunnel. A clove may carry a data or
+ * control-reply message only; tunnel/build/request types would inject directly
+ * into the tunnel worker or bypass the build throttle. DatabaseLookup is
+ * allowed because HandleGarlicMessageJob dispatches it to the netDb, where the
+ * origin check below still decides whether it may be answered.
+ */
+constexpr bool IsAllowedCloveMessageType (uint8_t typeID) noexcept
+{
+	switch (typeID)
+	{
+		case eI2NPDatabaseStore:
+		case eI2NPDatabaseLookup:
+		case eI2NPDatabaseSearchReply:
+		case eI2NPDeliveryStatus:
+		case eI2NPGarlic:
+		case eI2NPData:
+		case eI2NPTunnelBuildReply:
+		case eI2NPVariableTunnelBuildReply:
+		case eI2NPShortTunnelBuildReply: return true;
+		default: return false;
+	}
+}
+
+/**
+ * Clove types of a garlic received directly from a peer (Java
+ * HandleGarlicMessageJob). The set is the tunnel set plus TunnelTest: a peer
+ * that has no inbound tunnel of its own can only test ours through garlic, and
+ * the tunnel-test handler validates the payload before use. TunnelData and the
+ * tunnel/build request types stay rejected either way.
+ */
+constexpr bool IsAllowedDirectGarlicCloveMessageType (uint8_t typeID) noexcept
+{
+	return IsAllowedCloveMessageType (typeID) || typeID == eI2NPTunnelTest;
+}
+
+// The clove allow-list depends on where the enclosing garlic came from: only a
+// tunnel-delivered garlic is Java's InboundMessageDistributor path.
+constexpr bool IsAllowedCloveMessageType (uint8_t typeID, bool fromTunnel) noexcept
+{
+	return fromTunnel ? IsAllowedCloveMessageType (typeID) : IsAllowedDirectGarlicCloveMessageType (typeID);
+}
+
+/**
+ * Java DatabaseLookup admission. A directly received message and a clove of a
+ * garlic received directly from a peer are dispatched to the netDb; a message
+ * or clove that crossed an I2NP tunnel is dropped. The caller still requires
+ * floodfill mode.
+ */
+inline bool IsDatabaseLookupDispatchAllowed (const I2NPMessage & msg)
+{
+	return msg.from == nullptr && !msg.fromTunnel;
+}
+
 std::shared_ptr<I2NPMessage> NewI2NPMessage ();
 std::shared_ptr<I2NPMessage> NewI2NPShortMessage ();
 std::shared_ptr<I2NPMessage> NewI2NPMediumMessage ();
 std::shared_ptr<I2NPMessage> NewI2NPTunnelMessage (bool endpoint);
 std::shared_ptr<I2NPMessage> NewI2NPMessage (size_t len);
 
+// Both factories return nullptr when the payload does not fit any I2NP buffer
+// instead of handing back an empty or truncated message that still carries a
+// header and a size field. Callers must check.
 std::shared_ptr<I2NPMessage> CreateI2NPMessage (
 	I2NPMessageType msgType, const uint8_t * buf, size_t len, uint32_t replyMsgID = 0);
 std::shared_ptr<I2NPMessage> CreateI2NPMessage (
