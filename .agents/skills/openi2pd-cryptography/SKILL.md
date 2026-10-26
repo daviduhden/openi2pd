@@ -1,6 +1,6 @@
 ---
 name: openi2pd-cryptography
-description: Use when changing or reviewing openi2pd cryptographic primitives, identities, signatures, blinding, ratchets, post-quantum selection, randomness or reseed verification.
+description: Use when changing or reviewing openi2pd cryptographic primitives, identities, signatures, blinding, ratchets, post-quantum selection, randomness, reseed verification or OpenSSL 4.x/LibreSSL provider floors, excluding wire-parity claims owned by i2p-interop.
 ---
 <!--
 See the LICENSE file at the top of the project tree for copyright
@@ -92,9 +92,68 @@ executing project code, or inspect a real private key.
 - `PrivateKeys::FromBuffer` uses a `ScopeExit` reset guard and dismisses it only
   on final success. Do not chain an already-offline signing key.
 - Supported crypto floors are OpenSSL 3.0.2–4.0.x and LibreSSL 4.0+ with
-  `TLS_method()`; PQ publication/selection stays runtime-gated.
-- NSR timer lifecycle, provider PQ transcripts, LibreSSL/OpenSSL 4 builds and
-  ASan/TSan crypto runs remain pending manual CI.
+  `TLS_method()`; CMake enforces only the **lower** floor (3.0.2 / 4.0), so
+  "–4.0.x" is a support statement, not a configure guard. The probe cache is
+  stamped by `I2PD_OPENSSL_EXPECT`/`I2PD_OPENSSL_EXPECT_VERSION` and
+  `I2PD_OPENSSL_PROBE_STAMP` (include dir|kind|version); clear the build
+  directory when switching backend or prefix. PQ publication/selection stays
+  runtime-gated by the real provider round trip.
+- HKDF prefers `EVP_KDF_fetch("HKDF")` with `OSSL_KDF_PARAM_*` when the CMake
+  probe succeeds and keeps the `EVP_PKEY_HKDF` bridge for LibreSSL. Preserve
+  the exact expand-only PRK derivation for zero-length keys.
+- CMake stamps all `I2PD_HAVE_*` probe answers with the selected backend and
+  runs one linked modern-API probe; reusing a build directory across
+  OpenSSL/LibreSSL or prefixes must clear stale answers. Both reseed hostname
+  setters are probed and a backend without either fails configure.
+- SipHash provider output is pinned to 16 bytes with `OSSL_MAC_PARAM_SIZE`;
+  the capability probe must sign, not only create a key. ML-KEM availability
+  requires a real encapsulate/decapsulate round trip. `InitCrypto` returns
+  false and the daemon refuses to start when a required provider algorithm
+  (including Ed25519) is absent.
+- ECIES/ElGamal encryptors return failure and cleanse key/IV/plaintext buffers.
+  DSA/ECDSA DER buffers are sized by `i2d_*`; RSA rejects a modulus that does
+  not fill the wire field. Reserved EC LeaseSet2 types (1/2/3) are never
+  selectable and hybrid types require `IsMLKEMSupported`.
+- `Signer::Sign` is still `void`; publication of an all-zero signature on a
+  provider without DSA remains a planned fallible-interface change
+  (`CRY-236`), not a fixed path. The I2PControl certificate/key pair is
+  verified before use and TLS contexts set an explicit 1.2 floor.
+- NSR timer lifecycle, provider PQ transcripts, Java type-8/blinding/NTCP2
+  `pq` vectors, restricted-provider lanes, LibreSSL/OpenSSL 4 builds and
+  ASan/UBSan/TSan crypto runs remain pending manual CI. `test-x25519-rfc7748`
+  is the mandatory provider-independent X25519 KAT.
+
+- SSU2 PQ version fallback must survive a zero-token version-rejection Retry:
+  reset Noise/KEM/ephemeral state and request a fresh token; otherwise the
+  downgrade path is unreachable. NTCP2's hybrid Noise names are
+  `..._25519+MLKEM{512,768,1024}_...` (SSU2 uses `XKhfschaobfse`); a mix-up is
+  silent, so keep the name/KDF guards.
+
+- Ratchet New Session Reply splits are pending, not overwriting: keep up to
+  eight `(receiveTagset, sendTagset)` pairs and promote the outbound split when
+  the matching inbound tagset first consumes a tag (Java `firstTagConsumed`).
+  A delayed NSR must never rewind an established tagset. Tag exhaustion marks
+  the session send-exhausted but readable; the next send opens a new NS.
+- New Session Reply allows only DateTime/Garlic/Options/Padding; Termination,
+  NEXT_KEY, SessionID, ACK and unknown blocks are rejected before side effects.
+  `crypto.ratchet.inboundTags` is capped at 320; the anonymous one-time NS
+  path is gone (router-N is `32+payload+16`).
+- X25519 key generation is fallible end-to-end: never persist, publish or pool
+  an all-zero private/public pair; `X25519Keys` is non-copyable and derives the
+  public key. Ed25519 secret scalars and nonces use `BN_clear_free`, the
+  hand-rolled verifier rejects `S >= L`, and off-curve decoding fails closed.
+- ML-KEM availability requires a real round trip on every backend (including
+  LibreSSL); hybrid Noise initialisers return bool. An SSU2 Retry authenticated
+  only with the public intro key may not change version unless the signed
+  RouterInfo advertises that exact maximum; NTCP2 never randomly downgrades a
+  PQ peer.
+- The provider `HKDFContext` is stateful and not reentrant. Tag generation uses
+  a per-thread instance (`GetThreadLocalHKDFContext()`); never serialise one
+  context across the router, client and transport threads.
+- Tunnel build-record encryption is fallible: no ephemeral key, a failed X25519
+  agreement or an AEAD error must cleanse the shared secret, zero the whole
+  record and fail the build. Never publish a record whose key material was
+  produced by a partially failed operation.
 
 ## Do not
 
@@ -113,9 +172,11 @@ executing project code, or inspect a real private key.
 - Add known-answer tests and malformed-key/signature cases under `tests/`;
   register with `security` (and `i2p` where applicable).
 - Use existing fuzzers where possible (`fuzz-signature-der`,
-  `fuzz-protocol-bounds`, `fuzz-torrents-parsers`); add a target only for a new
-  parser surface.
-- Identify OpenSSL, LibreSSL/no-PQ, PQ-enabled, ASan/UBSan and TSan lanes.
+  `fuzz-protocol-bounds`, `fuzz-base-blinding`, `fuzz-ntcp2-blocks`,
+  `fuzz-i2np-policy`, `fuzz-torrents-parsers`); add a target only for a new
+  parser surface, with a checked-in corpus seed and per-target `-max_len`.
+- Identify OpenSSL, LibreSSL/no-PQ, PQ-enabled, ASan+UBSan, UBSan-only and
+  TSan lanes.
 - Record any provider-specific behavior as pending, not passed, until the
   corresponding manual job runs.
 

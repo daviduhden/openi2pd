@@ -111,6 +111,27 @@ branding validators or a build.
   latter two pin exact phrases and can break on cosmetic rewording.
 - Link/nav/branding and CI validation remain pending manual Linux runs.
 
+- Licensing is split: project code and imported documentation are
+  BSD-3-Clause (`LICENSE`, `android/LICENSE`, `docs/LICENSE.i2pd-docs-en`);
+  the installed CC-BY-SA notice is `docs/CC-BY-SA-4.0` (CMake installs it as
+  `CC-BY-SA-4.0` in the documentation directory),
+  `docs/file-headers.md` and `docs/torrent/snark-compatibility.md` are
+  CC-BY-SA-4.0; `tools/LICENSE` is the upstream BSD text. `NOTICE` is the
+  inventory and is installed by CMake, Debian and both RPM specs.
+  `tests/check-legal-metadata.cmake` pins holders, SPDX, NOTICE and the Windows
+  `LegalCopyright`; do not relicense or drop the upstream holders.
+- `docs/i18n.md` is the single four-language policy: native
+  `en/es/ru/zh-Hans`, Android `en/es/ru/zh-CN`, English fallback, `zh-TW`/
+  `zh-Hant` fallback, plural arity and the translated/identifier boundary.
+  README, the docs index and the configuration table must link it.
+- Documentation stays Markdown/MkDocs-compatible and English-only. The
+  `assets/branding/` tree is mirrored at `docs/assets/branding/`; update both
+  and let `validate-branding.pl` compare them. Do not replace the official
+  mark, palette or `openi2pd` name; `open-i2pd` is a frozen technical token.
+- Upstream pins live in `contrib/upstream/sync.sh`, `docs/upstream-sync.md`,
+  `docs/tools/provenance.md`, `tests/interop/check-reference.sh` and
+  `FIXTURES.md`; `tests/check-upstream-pins.cmake` keeps them equal.
+
 ## Do not
 
 - Do not compile, run CTest, link/branding validators, `mkdocs`, man-page

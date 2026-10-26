@@ -114,6 +114,146 @@ report that limitation; do not substitute local execution. Ask for:
   `poll`/`recvmsg`; a zero-length SOCK_SEQPACKET record is not terminal unless
   a hangup/error event accompanies it.
 
+- `privsep/Capabilities.h` is the single role×capability authority: no target
+  role may set `ExternalNetwork` **and** `PersistentWrite`. The core's legacy
+  row keeps the write bit on purpose; never delete it to make the matrix
+  "green" before the network/crypto split. A policy builder existing is not a
+  backend.
+- A worker role is bound to its spawner by `[role-id | 16-byte CSPRNG nonce]`
+  on a pre-fork pipe, read from fd 5 and closed before the channel or sandbox.
+  Never move that record to argv/environ/logs/the protocol channel. Descriptor
+  contract: 3 channel, 4 inherited root (OpenBSD), 5 identity, ≥6 closed.
+- `privsep.artifacts` delegates the netDb RouterInfo cache, peer profiles and
+  destination private keys to the data-storage worker with canonical names,
+  staging slots and an atomic no-follow replace; the installed writer is the
+  only path and a failure must never fall back to a local write. Startup reads
+  remain direct. Garlic tags, address book, torrent state, bootstrap keys and
+  config are still core-written — do not describe the core as write-free.
+- Storage clients are generation-fenced and restartable; never replay an
+  ambiguous write, and return `Busy` at request-id exhaustion instead of
+  killing the client. OpenBSD cannot respawn an exec'ed worker after the
+  runtime pledge, so a lost data worker is terminal there until restart.
+- Log records are sanitised (UTF-8/C1), secrets are redacted by key name, the
+  file sink stops at 64 MiB without rotation, and the client sends outside the
+  logging mutex. The pre-opened descriptor is the production file sink:
+  `Configure/Reattach` passes it over IPC and `ValidateLogDescriptorIdentity`
+  checks dev/inode/owner/`st_nlink == 1` before use. Rotation itself is still
+  absent; do not describe the sink as missing.
+
+- `privsep/Protocol.h` is the single `MessageSpec` authority (min version,
+  direction, receivers, per-type ceiling, descriptor policy). Do not add a
+  second role switch in a worker, backend or test; change the row. A worker
+  receives request-direction types only; the requesting side receives replies
+  only. `Pong` is the worker-to-core reply; a non-core endpoint may receive
+  `Error` and `TorrentStorageSupervisorReply` (the supervisor/broker issue
+  their own requests).
+- Versioning is per type: `DataStorage*` requires v3, `Cancel` requires v4,
+  `PROTOCOL_VERSION = 5` adds the Windows `WorkerHello` spawn proof, and a
+  newer type in an older header is `UnsupportedVersion`. Never reinterpret it
+  or fall back to the 64 KiB frame maximum for a per-type ceiling.
+- Serving endpoints use `EnforcementPolicy::Endpoint`: registry descriptor
+  presence/kind, a typed `Error` for an attributable fault, at most 8 tolerated
+  faults. A frame is attributable only with magic+version+length agreement;
+  credential failures stay fatal. A wrong-role frame is a bounded refusal, not
+  a worker exit; a duplicate `ConfigureLog` is a refusal too.
+- `Cancel` is advisory. Never treat it as a rollback, never replay an ambiguous
+  request, and drain the outstanding reply. `Busy` is not a poison state.
+- An idle receive timeout must never close a channel (the Windows pipe used to
+  do so). A pre-opened log descriptor must be bound to the configured path by
+  dev/inode, owner and single link count before use.
+- `imsg` cannot carry a frame above 16 KiB (the OpenBSD adapter owns that
+  ceiling); no explicit version-negotiation handshake exists yet. Do not claim
+  either as implemented.
+- The service manager signals the main router process only; workers are
+  stopped inside the daemon's ordered stop. A group/cgroup-wide stop bypasses
+  that ordering. The 600 s drain/660 s stop budgets and per-manager values are
+  owned by `docs/service-management.md` and `openi2pd-packaging`; do not
+  restate them here.
+- New tests use `i2pd_add_test()`/the explicit `add_test()` contract: label,
+  `TIMEOUT` (120 s, 300 s under sanitizers), `SKIP_RETURN_CODE 77` instead of a
+  passing skip, and `RUN_SERIAL` for fork/sandbox/storage workers. Workflow
+  guards are owned by `openi2pd-ci`.
+
+- OpenBSD worker identity is resolved once (`privsep.user`/`privsep.group`,
+  bounded NSS, uid 0 rejected) and dropped in the forked child with
+  `setgroups(0,nullptr)`, `setgid`, `setuid` plus verification. A root core
+  with isolation and no configured identity fails startup; it is not silently
+  degraded. The core itself is not chrooted or dropped.
+- The hello record is 25 bytes `[role|nonce16|uid|gid]` written after the drop
+  on fd 5; require exact length, role/uid/gid agreement and uid != 0. Descriptor
+  contract: 3 channel, 4 inherited root, 5 hello, 0/1/2 `/dev/null`, >=6 closed;
+  close fd4 for roles without a root. The executable is frozen from
+  `argv[0]`/`realpath`, never `$PATH` or `/proc`.
+- A worker accepts a channel peer with its own uid or, when unprivileged, uid 0
+  (the delegating root core). A delegated root must be owned by the worker uid.
+  `AdoptValidated` on a broker-forwarded socket uses the worker uid.
+- OpenBSD supervisor/broker pledge is `stdio proc exec` / `stdio proc exec
+  sendfd` with an x-only unveil of the frozen executable and no `unix`/`recvfd`.
+  Keep `OPENBSD_PLEDGE_EXECPROMISES = nullptr`; the startup set must be a
+  superset of the runtime set. No execpromises, no inherited unveil assumption.
+
+- Linux channels use a `PeerExpectation` because `SO_PEERCRED` is the creator's
+  snapshot. Set it in `CreatePair`/`Adopt`/`AdoptValidated`/spawn: core side
+  worker uid/gid + child pid, worker side own uid or root, adopted broker socket
+  worker uid with an empty receive queue.
+- Drop capabilities in the spawn child before `setuid`/`execve`; verify
+  `no_new_privs` and an empty capability set in `RunWorker`. Reset ignored
+  signals. Do not reintroduce a post-drop-only `capset`.
+- Linux storage seccomp denies connection/exec/fork syscalls and Landlock denies
+  `EXECUTE`; install the socket/capability lockdown before the configure frame.
+  Only `*-inherited` roles/broker accept a root; fd 4 is closed otherwise.
+- cgroup-v2 limits, global admission, supervisor-status IPC, unified stop/restart
+  budgets and worker-side core-pid binding remain open (`PRIVSEP-031`).
+
+- Windows worker IPC is a message-mode Named Pipe authenticated at accept by
+  PID/session/user SID/AppContainer SID plus a `WorkerHello` nonce; the role is
+  bound only after that proof, then `WindowsChannel::Receive` enforces the
+  shared registry. `Accept()` is test-only. A completed-during-cancel read is
+  delivered, not dropped.
+- Windows separation is AppContainer-based: low-privilege containers without
+  `internetClient` for storage/log/crypto/admin, an Internet-capable container
+  for network, and no role with both an Internet capability and a write root.
+  Grant only the delegated root to the container SID. Supervisor uses a
+  restricted token; never silently substitute it for a container role.
+- `WindowsWorkerSupervisor` owns one role and restarts under the shared budget
+  with generation fencing; the service drains `Daemon.stop()` with non-zero
+  wait hints. No daemon path instantiates it yet (`WIN-013`).
+
+- Android is a two-process same-UID app: `:torrent_storage` is a SAF capability
+  broker (containment, not privilege separation) and the default process hosts
+  the router service. INTERNET and SAF grants are per UID; isolatedProcess is
+  not usable for either role. Do not claim Android separation.
+- The SAF broker authorizes every handle/root/operation/token by `(uid,pid)`,
+  uses a handshake generation and one-shot export tokens, and never exports a
+  file descriptor. Admission is typed, not exceptional; a slow provider cancels
+  at 15 s and fences only at 30 s.
+- Native process roles are one-shot (`Router`/`StorageBroker`); a conflict must
+  fail closed. The JNI string boundary and stop-token ordering are load-bearing.
+
+- The SAF broker watchdog is armed only after the operation owns the provider
+  lock, so a queued operation is not process-fenced for a stalled sibling. The
+  15 s cancel / 30 s fence ordering, owner `(uid,pid)` binding and generation
+  retirement are unchanged. Client bind recovery is bounded (6 attempts,
+  250 ms→10 s; attempts restored only after a 30 s stable binding).
+
+- The daemon must not initialize ncurses, read stdin or require a TTY. The TUI
+  is an optional local-IPC client; headless/session-0 operation and service
+  mode must remain functional. Never add a browser/web console as an
+  alternative administration surface.
+
+
+- Keep the wide/narrow worker-nonce types straight: `EncodeWindowsWorkerNonce`
+  and the spawn/accept APIs use `std::wstring`, while
+  `DecodeWindowsWorkerNonce` consumes ASCII `std::string_view`. A narrowed
+  nonce cannot be passed back to `AcceptBound`.
+- Storage clients that inspect an ancillary descriptor must call
+  `ReceiveWithFd()` and use `ReceivedMessage`; `Receive()` returns only the
+  nested `Message`. Local descriptor RAII owners need an explicit release
+  operation before transferring an authorized root into client state.
+- `i2pd_privsep` is an exported archive and now publishes its `libi2pd`
+  dependency; keep the link edge when adding a new supervisor/worker unit so
+  installed consumers and the Windows tests resolve the core symbols.
+
 ## Do not
 
 - Do not compile, run CTest, sanitizers, process tests or project validators

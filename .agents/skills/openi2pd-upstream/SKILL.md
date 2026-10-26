@@ -96,6 +96,15 @@ run tests.
   dropping them.
 - Browser-console, obsolete GNU make and incompatible packaging changes remain
   intentionally omitted.
+- The reviewed `openssl` high-water mark is
+  `5bcf6101a456dc991e44d3d79cb69994c7bae484` (`9725b8b2..5bcf6101`, fifteen
+  commits, seven files). Re-run `git ls-remote` before claiming it is still the
+  tip; the window added no transport, netDb, crypto-primitive, dependency or
+  wire-format change.
+- Upstream torrent `cancel` replies are unconditional; keep the fork's
+  `m_IsFast` gate. Upstream `Makefile.linux` and the Debian quilt series have no
+  local target (CMake components and no GNU make), so their fixes are recorded
+  as omitted rather than ported.
 - No upstream change is validated until the corresponding manual CI lane and
   provenance/vectors are updated.
 

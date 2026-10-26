@@ -31,7 +31,7 @@ not a claim of compatibility.
 |---|---|---|---|
 | NTCP2 handshake/data | `libi2pd/NTCP2.*` | `router/transport/ntcp2` | `test-ntcp2-*`; `tests/interop/vectors` |
 | SSU2 handshake/data | `libi2pd/SSU2*`, `SSU2Session.h` | `router/transport/ssu2` | `test-ssu2-*` |
-| I2NP | `I2NPProtocol.*` | `router/I2NP*` | `test-protocol-bounds`, interop I2NP vectors |
+| I2NP | `I2NPProtocol.*`; `test-i2np-database-bounds`, `fuzz-i2np-database` | `router/I2NP*` | `test-protocol-bounds`, interop I2NP vectors |
 | RouterInfo/LeaseSet | `RouterInfo.*`, `LeaseSet.*` | `data/RouterInfo`, `data/LeaseSet*` | `test-routerinfo-*`, `test-leaseset*` |
 | netDb | `NetDb.*`, `NetDbRequests.*`, `KadDHT.*` | `router/database`, `router/netdb` | `test-netdb-*`, `test-kad-dht` |
 | SAM | `libi2pd_client/SAM.*` | `client/sam` | `test-sam-*`, SAM vectors |

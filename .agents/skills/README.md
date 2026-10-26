@@ -75,6 +75,15 @@ by `openi2pd-tui`.
 - Launch at least one read-only reconnaissance subagent when subagents are
   available. Split independent implementation work across owners; do not let
   two agents edit the same file.
+- Every relevant change performs the `AGENTS.md` `Agent Knowledge Maintenance`
+  review, including the affected skills and their references. Knowledge is not
+  complete unless the review outcome is recorded, even when no skill file
+  changes.
+- Never duplicate normative policy. Link the single `AGENTS.md` owner and keep
+  only the subsystem procedure, file map, invariant or review step here. A
+  rule change updates the owner and removes stale copies in the same
+  increment; generated lists and values owned by another skill are not
+  restated.
 - Do not compile, configure a build, run CTest, Gradle, sanitizers, fuzzers or
   project validators locally. Dynamic validation is dispatched manually in CI.
 - Do not create commits, tags, releases, worktrees or temporary commits, and do not push. Inspect `git status`/`git diff` and preserve existing worktree changes.

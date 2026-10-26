@@ -91,6 +91,15 @@ peer or add a hidden external checkout. The reference is for reading only.
 
 ## Known issues and decisions
 
+- LeaseSet2 encryption selection uses `IsSelectableLS2EncryptionKeyType`:
+  ElGamal and ECIES-X25519 are universal, EC_P256/P384/P521 are never
+  selectable, and hybrid types require the runtime ML-KEM probe. `i2cp.leaseSetEncType`
+  and the preferred type must name a key actually installed.
+- SSU2 introducer selection and HolePunch verification read
+  `SSUExt::GetIntroducers()`; the netDb thread prunes the live vector under the
+  same `SSUExt::mutex`, so never iterate or index `address->ssu->introducers`
+  directly in transport code. Local add/remove/update and `RouterContext`
+  clears take that lock. Wire fields (`itag`/`ih`/`iexp`) are unchanged.
 - The comparison target is I2P Java 2.14.0
   (`3c98503c5f14efe7bdd783528ba7f621f12d8081`); 2.13.0 citations and fixtures
   are historical and must keep that provenance.
@@ -101,6 +110,165 @@ peer or add a hidden external checkout. The reference is for reading only.
   origin; never relabel tunnel-delivered messages as direct.
 - `test-transport-connector` checks only static mapping/short-circuit behavior;
   live NTCP2/SSU2, PeerTest, tunnel and Java-peer evidence remain pending.
+  Socket-free negative matrices (`test-ssu2-payload-blocks`,
+  `test-i2np-database-bounds`, `fuzz-i2np-database`) are preferred over a
+  fixture-only check for parser boundaries; they do not prove live
+  interoperability.
+- Streaming admission follows Java `ConnThrottler`: `StreamingConnectionThrottle`
+  keys windows by remote static key and checks day, hour, minute per peer and
+  in total. `limitAction=drop` and `limitAction=reset` are implemented
+  (`test-streaming-limitaction`); `http`/custom responses and the Java
+  differential run remain open. Throttled SYNs otherwise drop, so this is not
+  full equivalence. SAM 3.3 `LISTEN_PROTOCOL`
+  routing and local HTTP Basic/SOCKS5 RFC 1929 auth are implemented statically;
+  HTTP Digest and the Java differential run remain pending.
+
+- Blocklist grammar is the Java text format with documented divergences:
+  hostnames are skipped (no DNS), only the `;` IPv6 form is accepted because
+  the last `:` separates the reason, and IPv6 ranges/CIDR plus GeoIP countries
+  are unsupported. The file is read once before netDb loads cached RouterInfos.
+- NetDb lookup budget: 14 replies per 120 s reply tunnel when floodfill, 3
+  otherwise; a non-floodfill drops EXPL and ANY before the throttle is charged.
+- Tracker accounting matches Java `TrackerClient`: `left` is the whole-torrent
+  remainder (phony 1 without metadata) and `event=completed` requires every
+  piece to be verified, while local Seeding/promotion remain selection-based.
+  Advertised intervals are floored at 15 minutes and raised by a larger
+  `min interval`; the internal failure ladder is capped at 30 minutes.
+- Address-book merges keep pre-existing destinations (Java `Daemon.java`);
+  last-wins applies only to duplicate lines inside one source.
+
+- NTCP2 padding has **two** columns: SessionRequest 880/1264/1648 and
+  SessionCreated 848/1168/1648 for v2/v3/v4/v5; v5 requires
+  `1648 + 1648 == 3296`. The old 1136/1616 values were an "Enc len" column
+  misread; do not restore them or collapse the two columns.
+- NTCP2 data-phase AEAD failure is a probing-resistance contract: drain
+  18..1041 random bytes with a 10 s deadline, then reason 4; a stalled frame
+  sends reason 14 at 30 s. Clock skew gets SessionCreated first and reason 7
+  only after SessionConfirmed. A foreign netID is reason 17 plus a ban, not a
+  signature failure.
+- SSU2 HolePunch/Introduced accept only DateTime, Address, RelayResponse,
+  Padding and Termination. PeerTest msg 5 never publishes an address; msg 7 is
+  corroborated against the Charlie learned in msg 4; msg 4→6 targets pass
+  endpoint/reserved/blocklist checks. PeerTest/HolePunch accept `ver` 2..4.
+- SSU2 `Established()` in `SessionConfirmedSent` requires an ACK covering packet
+  0; a version-rejection Retry with token 0 must request a fresh token so the
+  PQ fallback stays reachable. RouterInfo blocks require the single-fragment
+  byte 0x01.
+
+- Ratchet NSR selection follows Java `RatchetSKM`: the first inbound tagset
+  that receives a tag selects the outbound split; a lost latest NSR must not
+  break Bob→Alice traffic. NSR payloads carry no Termination/NEXT_KEY/ACK.
+- RouterInfo RSA-signed identities are rejected on the netDb path (Java
+  `DatabaseEntry` DoS policy); `i2cp.leaseSetEncType` accepts exact decimal
+  tokens only and rejects multiple hybrid or ElGamal+hybrid combinations;
+  unknown LS2 key sections are retained inert.
+- b33 two-byte signature-type flags are rejected like Java 2.14.0. The
+  provider-free Ed25519 verifier rejects non-canonical `S`; the live path is
+  OpenSSL.
+- SSU2 PQ fallback is authorised only by the signed RouterInfo advertisement;
+  NTCP2 prefers the negotiated hybrid version without random classic sessions.
+- Reseed `netid` (Proposal 147) is appended to SU3/directory URLs and server
+  selection uses Java's two-server/100-RouterInfo acceptance threshold;
+  `test-reseed-netid-url` pins URL composition. Do not reintroduce a
+  single-server acceptance or a cleartext fallback.
+
+- Garlic cloves carry two origin bits: `fromClove` and `fromTunnel`. A clove of
+  a directly received garlic may carry a DatabaseLookup and keeps a
+  DatabaseStore reply token; a clove of a tunnel-delivered garlic drops
+  lookups and stores without token/ack/relay. Never collapse the distinction.
+- A MetaLeaseSet is valid only with zero revocations and header `expires` equal
+  to the latest entry: Java re-serialises that canonical form before verifying.
+  Do not restore the old one-way clamp.
+- Reply-key 0x12 is parse-only and fail-closed: Java 2.14.0 has no sender/KDF,
+  reads it into an unused key and answers cleartext; the spec derived form is
+  TBD. Do not invent a KDF, and do not answer cleartext.
+- Transport request-flood RIs are forwarded only by a floodfill and within the
+  3/90 s per-key budget. netDb uses deterministic 1024/1000/4000 caps, not
+  Java's probabilistic pdrop.
+- A RouterInfo cache file is trusted only when `routerInfo-<base64>.dat` matches
+  the parsed identity; `.dat.tmp-*` staging and mismatched names are removed.
+
+- `PlanTunnelBuildRecords()` is the only authority for the hop↔record mapping;
+  a path it rejects fails the build before a byte is written. Inbound reserves
+  the phony slot (`MAX_INBOUND_HOPS`). `CreateBuildRequestRecord()` returns
+  `bool` and zeroes the whole record on any failure.
+- A transit build request is deduplicated by its derived reply key (bounded
+  8-minute/4096-entry decaying table, key never logged). Relayed requests carry
+  Java's ~25 s expiration and replies ~60 s, not the generic 8 s; build payload
+  sizes are exact.
+- The dispatcher applies the Java `MessageValidator` window (90 s past, 240 s
+  future) before the type switch and exempts `TunnelData` (endpoint IV filter).
+  Duplicate suppression is the `DecayingHashSet` msgID+expiration-second+salt
+  form; cloves are excluded because each destination has its own salted filter.
+- A clove payload announces 1..32 cloves. A stale or foreign clove is skipped
+  and the walk continues; only broken framing stops it. The tunnel-only clove
+  allowlist applies to `fromTunnel` garlic; a direct garlic additionally allows
+  `TunnelTest`. ROUTER-mode ratchet cloves are rejected, never forwarded in
+  cleartext.
+- Reuse and fresh selection share `IsRouterUsableForTunnel()`; a failed or
+  test-struck path is never recreated. Tunnel tests use a 7.5–15 s per-path
+  deadline and three consecutive strikes, and `TestFailed` is never published.
+- Java B1/B2/B3 payload-size normalisation is not implemented; only the
+  1912-byte target padding exists. Do not approximate the buckets without the
+  reference boundaries.
+
+- SAM `PORT` is the local UDP forward socket; the I2CP receive port is
+  `LISTEN_PORT` (default 0/PORT_ANY). Use `ResolveSAMSessionListenPort()` and
+  `SAMStyleListenProtocol()` (17/19/20 for DATAGRAM/DATAGRAM2/DATAGRAM3) so a
+  subsession is keyed by `(STYLE, protocol, LISTEN_PORT)`. Never register a
+  receiver on the forward port or key a non-RAW subsession on protocol 0.
+- An established SAM control connection is never closed for idleness: Java
+  calls `setSoTimeout(0)` after HELLO. Only HELLO (60 s) and a partially
+  received command line are bounded. `STREAM ACCEPT` and `STREAM FORWARD` are
+  mutually exclusive per port (`ALREADY_ACCEPTING`); a queued ACCEPT must be
+  re-armed after the armed one is torn down.
+- SAM version bounds are compared numerically; an unparsable/empty MIN/MAX is
+  `NOVERSION`, not `I2P_ERROR` (which is reserved for a line that is not
+  `HELLO VERSION` or a duplicate parameter).
+- `.b33.i2p`/implicit long-label names are blinded destinations
+  (`AddressBook::GetAddress`), not address-book keys. A type-42 BlindingInfo is
+  keyed by the unblinded signing key and its 32-byte DH private key or PSK is
+  passed to `RequestDestinationWithEncryptedLeaseSet`; HostReply uses Java's
+  1/2/3/4/5/6 codes. Keys/secrets are never truncated or logged.
+- Datagram framing is per send (`eDatagramDefault` keeps the session default);
+  receivers are keyed by `(protocol, port)` with 0 as the explicit catch-all
+  and no port-to-wildcard promotion. Raw receivers refuse 6/17/19/20 and a
+  0xff protocol byte is 0.
+- Streaming: a retransmitted SYN for a closed stream is dropped by the bounded
+  recently-closed set and answered with one RESET; over-limit/throttled/backlog
+  SYNs are RESET; no data after CLOSE/RESET. TIME-WAIT/FIN retention and
+  SYNACK-before-LeaseSet ordering remain open divergences.
+- CLS1 (CreateLeaseSet) is DSA-only and fail-closed; do not guess per-type
+  private-key offsets. CLS2 follows the `i2cp.leaseSetEncType` order and
+  compares derived keys.
+
+- HTTP proxy pages/logs never echo a client `Host`/path or the configured
+  outproxy URL (it can carry `user:pass@`). Only `http`/CONNECT-`https` are
+  proxied; other schemes get 403 before resolution. Proxied responses use the
+  client-response mode to strip hop-by-hop and disclosure headers. Digest is
+  opt-in MD5/SHA-256 with a bounded nonce cache; Basic remains the default.
+- A stopped server tunnel must close its live streams/sockets and be
+  restartable (`I2PServiceHandler::Terminate` is virtual; `Stop(bool forced)`).
+  `filterDefinition` is evaluated by the streaming admission predicate before a
+  stream or SYNACK exists; `drop` is the filter default and `limitAction=reset`
+  opts into one signed RESET. `targetForPort.<port>` selects the upstream by
+  accepted local port (443/22 without a mapping is reset); only port 0 or
+  `defaultacceptor=true` owns the destination-wide acceptor.
+- Reseed never deletes cached peers from a bundle: stale entries are skipped
+  and counted. Administrative reseed is a cancellable job with per-phase and
+  per-host deadlines (`RequestReseed`/`ReseedState`); `reseed.disable`/
+  `i2p.noReseed` disable it, and `reseed.proxy` credentials are never logged.
+- `ADDRESS-ADD` never re-points an existing name (`ADDRESS-REPLACE` is
+  explicit). A subscription `#!action=delete` retracts only names whose
+  recorded origin matches that source, via the bounded `entry-sources.txt`
+  sidecar. b33 names are never negatively cached. All address-book artifacts
+  use the atomic no-follow writer.
+- BOB is loopback-only legacy: 16-session cap, 4 KiB command lines,
+  `getkeys` requires `bob.allowgetkeys`, no operand logging. The I2PControl
+  AF_UNIX path is owner/type-checked, 0600, removed only while it is this
+  process's socket and requires a same-UID peer. NTP needs three agreeing
+  servers for a large jump; UPnP uses a 3 h renewable lease and refuses a
+  same-host IGD.
 
 ## Do not
 

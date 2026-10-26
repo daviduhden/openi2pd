@@ -12,11 +12,11 @@ Use with `SKILL.md`. All jobs are manual; no result here validates a revision.
 
 | Workflow | Jobs | Main coverage |
 |---|---|---|
-| `build.yml` | skills-static, Linux Clang/GCC, Linux OpenSSL 3.x, pinned OpenSSL, install-components, Android, interop, sanitizers | compile-free Agent Skills, modern-language and i18n catalog contracts; full graph/CTest; component staging/consumer; Java 25/JNI/APK; pinned Java reference; ASan+UBSan/TSan |
+| `build.yml` | skills-static, perl-quality (opt-in), Linux Clang/GCC, Linux OpenSSL 3.x, pinned OpenSSL, install-components, Android (arm64), android-ui (opt-in), interop, sanitizers | compile-free skills/workflow/service/packaging/legal/upstream checks; optional Perl::Critic; full graph/CTest; component staging/consumer; Java 25/JNI/APK; pinned Java reference; ASan+UBSan, UBSan-only and TSan |
 | `build-openbsd.yml` | OpenBSD | LibreSSL build, full CTest, platform tests |
 | `build-windows.yml` | MSYS2/Clang64, MSVC | full Windows graph/CTest; TUI/API/install |
-| `fuzz.yml` | fuzzing | eight libFuzzer targets + bounded smoke |
-| `packaging.yml` | service contracts, Debian | static service/packaging contracts; packages, lintian/autopkgtest, conffile reinstall, remove/purge |
+| `fuzz.yml` | fuzzing | fifteen libFuzzer targets + bounded smoke; `--no-tests=error`/JUnit smoke |
+| `packaging.yml` | service-contracts, service-install-matrix, static-musl, container-image, Debian | static contracts; seven-manager Service staging; static Debian/RPM-style package; container image; Debian lintian/autopkgtest, conffile reinstall, remove/purge |
 
 All use `workflow_dispatch` only. Actions are SHA-pinned and checkout
 credentials are not persisted.
@@ -32,11 +32,12 @@ or a dynamic compatibility result.
 
 `unit`, `i2p`, `security`, `memory`, `ipc`, `tui`, `torrent`, `tools`,
 `docs`, `perl`, `interop`, `platform`, `android`, `fuzz`, `ci`, `static`,
-`smoke`, `packaging`, `install`, `services`, `reference`; `critic` is optional.
-`integration` is not registered by the current suite.
+`smoke`, `packaging`, `install`, `services`, `reference`, `cli`,
+`integration`, `binary`, `workflow`; `critic` is optional.
 
 The Linux label gate enumerates `i2p security memory ipc tui torrent tools perl
-docs interop platform android ci static packaging services unit install smoke`.
+docs interop platform android ci static packaging services unit install smoke
+cli integration`.
 `fuzz`, `reference` and `critic` remain outside the normal-build gate. Add a
 new gate-relevant label to that explicit loop; `agent-skills-static` is part of
 the `ci;static` gate.

@@ -14,8 +14,9 @@ manual CI work.
 | Component | File | Rule |
 |---|---|---|
 | Startup/runtime | `daemon/UnixDaemon.cpp` | spawn supervisor/log before runtime pledge; drop `exec` after startup |
-| Core runtime | `daemon/UnixDaemon.cpp` | retain only required `proc`/`recvfd`; no arbitrary file/network promises |
-| Supervisor | `privsep/OpenBSDSandbox.*` | `stdio unix proc exec` for lifecycle; never opens router/log payload |
+| Core runtime | `daemon/UnixDaemon.cpp` | runtime set must be a strict subset of startup; retain `proc` only for supervisor reaping, `recvfd` only for supervised storage; no `exec`/`id`/`chown`/`unveil` |
+| Supervisor | `privsep/OpenBSDSandbox.*` | `stdio proc exec` + `unveil(exe,"x")` lock for lifecycle; no `unix`, never opens router/log payload |
+| Storage broker | `privsep/Supervisor.cpp` | `stdio proc exec sendfd` + same `x`-only unveil; no `unix`/`recvfd`, never receives a descriptor |
 | Log worker | `privsep/LogWorker.*` | own `unveil` + `pledge` after exec; only configured sink |
 | Storage supervisor | `privsep/TorrentStorage.*`, `Supervisor.*` | pre-pledge root authorization; fd4 inherited root; socket-only return |
 | Storage worker | `libi2pd_client/TorrentStorageWorker.*` | own storage-only policy before ACK; no network/exec |

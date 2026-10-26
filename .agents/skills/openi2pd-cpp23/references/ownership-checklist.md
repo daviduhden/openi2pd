@@ -17,7 +17,7 @@ or test procedure.
 | Transports | `Transports.*`, `NTCP2.*`, `SSU2*`, `Tunnel*`, `Garlic.*` | `RouterContext`, packet buffers, timers |
 | NetDb and routing | `NetDb.*`, `KadDHT.*`, `NetDbRequests.*`, `RouterContext.*` | Locks, snapshots, persistence |
 | Cryptography | `Crypto.*`, `Signature.*`, `PostQuantum.*`, `ECIESX25519AEADRatchetSession.*` | Key handles and secret wiping |
-| Client protocols | `libi2pd_client/SAM.*`, `I2CP.*`, `Streaming.*`, `Datagram.*`, `HTTPProxy.*`, `SOCKS.*` | Async owners and connection lifetimes |
+| Client protocols | `libi2pd_client/SAM.*`, `I2CP.*`, `I2PTunnel*`, `AddressBook.*`, `HTTPProxy.*`, `SOCKS.*`; `libi2pd/Streaming.*`, `Datagram.*` | Async owners and connection lifetimes |
 | Torrent | `libi2pd_client/Torrents*`, `TorrentPayloadStorage.*`, `TorrentStorageWorker.*` | Service/storage/network domains |
 | Daemon/TUI/IPC | `daemon/*`, `tui/*`, `privsep/*` | Shared protocol and shutdown ordering |
 | Modernization seams | `Modern.h`, `TransportConnector.h`, `Log.*` | `language-modernization-static` pins named symbols/paths |
@@ -65,8 +65,10 @@ Use an `explore` subagent with a prompt shaped like:
 - Linux Clang and GCC jobs: full build and CTest.
 - `-L memory` for lifetime/bounds changes; `-L security` for parser/crypto
   changes.
-- Separate ASan+UBSan and TSan jobs when the change touches concurrency,
-  callbacks or lifetime.
+- ASan+UBSan, UBSan-only and TSan lanes when the change touches concurrency,
+  callbacks or lifetime; sanitizer CTest is serial with 300 s per-test budgets.
+- Fuzz corpus/`-max_len`/artifact ownership follows `openi2pd-memory-security`
+  and `check-build-system.cmake`.
 - `build-system-static` when source lists, options or labels change.
 - Windows, OpenBSD and Android only when the touched code is compiled there.
 

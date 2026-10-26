@@ -120,6 +120,56 @@ execution. Ask for:
 - Cross-user, AppContainer, WFP and Windows service runtime tests remain
   pending.
 
+- Linux `SO_PEERCRED` is the socket creator, not the live peer. After a root
+  core drops a worker to `privsep.user`, per-frame `SCM_CREDENTIALS` must be
+  checked against a spawner-set `PeerExpectation` (uid/gid/pid, root-parent
+  allowance), never against `SO_PEERCRED`. The core binds the direct child pid;
+  a worker accepts its own uid or uid 0; an adopted broker socket is uid-bound
+  and must have an empty receive queue.
+- Capability teardown has two stages in the forked child: `PR_SET_NO_NEW_PRIVS`
+  and ambient/bounding clear while still privileged (keep effective/permitted
+  for setgid/setuid), then gid/uid drop, then `capset(0)` + `capget` verify and
+  exec. The whole teardown after the drop is an EPERM no-op; never tolerate it
+  when euid 0.
+- Storage seccomp denies `connect`/`bind`/`listen`/`accept*`/`sendto`/`execve*`/
+  `fork`/`clone`, not only `socket`/`socketpair`; Landlock handles `EXECUTE`
+  without granting it; `Storage` restricts reads to the delegated root. The
+  socket/capability lockdown is installed before the configure frame.
+- The network namespace is best-effort pre-exec (`CAP_SYS_ADMIN`) and seccomp is
+  the mandatory boundary. cgroup-v2 limits and a global admission cap are not
+  wired; do not claim them.
+
+- Windows transport is a message-mode Named Pipe with a protected DACL, a
+  per-spawn random name and `FILE_FLAG_FIRST_PIPE_INSTANCE`. `ncalrpc`/MIDL and
+  raw ALPC/`Nt*` port APIs are rejected; do not introduce them.
+- A worker proves its spawn with `WorkerHello` (protocol v5: role + 32-byte
+  nonce) after `ConnectBound`; the server impersonates the client and checks
+  user SID, PID/session, AppContainer SID and nonce before binding the role.
+  `Accept()` is test-only; the nonce is not a secret on the command line.
+- `WindowsIsolation.cpp` is the role authority: storage/log/crypto/admin are
+  low-privilege AppContainers with no `internetClient`; network has Internet
+  capability and no write root; supervisor uses a restricted token. Never
+  grant Everyone/ALL APPLICATION PACKAGES; grant only the delegated root to the
+  container SID. Fail closed instead of falling back to a restricted token.
+- Spawn is suspended with NUL std handles, no handle inheritance, an explicit
+  empty handle list, Job-List + security-capabilities attributes, Job limits
+  and mitigations. Stop terminates the Job Object within a budget. A
+  completed-during-cancel record must be delivered; a timed-out write closes.
+- No daemon path starts the Windows supervisor and no Windows role backend
+  exists yet (`WIN-013`); do not describe production separation as wired.
+
+- The Windows TUI installs a console control handler for Ctrl-C/Break, close,
+  logoff and shutdown; it only sets the TUI stop flag and the normal shutdown
+  restores console modes. The daemon itself must remain independent of any
+  terminal; no console allocation or input read belongs in the router process.
+
+
+- The Windows worker handshake nonce is transported as `std::wstring` hex
+  (`EncodeWindowsWorkerNonce`, `SpawnWindowsWorker`, `AcceptBound`). Tests and
+  callers must keep the wide value; narrowing it back to `std::string` makes
+  `AcceptBound` ill-formed. `DecodeWindowsWorkerNonce` takes the narrow ASCII
+  hex, so a test helper may narrow explicitly for decoding only.
+
 ## Do not
 
 - Do not compile, run CTest, sanitizers, console/pipe tests or validators

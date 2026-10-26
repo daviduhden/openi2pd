@@ -121,10 +121,56 @@ a TUI client.
   `ip6tables` to make family selection explicit (TOOL-012). The non-installed
   `routerinfo-fixture` helper creates a signed public RouterInfo only in CI;
   `tools-smoke` exercises the production CLI without checked-in private keys.
+- Firewall output is all-or-nothing: `routerinfo` buffers a run and writes
+  stdout only after every input parsed, so a later malformed file cannot leave
+  a partial rule set for a pipeline to apply. Usage errors go to stderr;
+  `--help` stays on stdout. The 4096 budget counts emitted rules after family
+  selection, not skipped endpoints.
+- Special-purpose addresses are not public peers: NAT64 `64:ff9b::/96`, 6to4
+  `2002::/16`, Teredo `2001::/32`, discard `100::/64`, `3fff::/20`, benchmark
+  `198.18/15`, IETF `192.0.0/24` and 6to4 relay `192.88.99/24` are rejected.
+  The `192.0.2/24`, `198.51.100/24`, `203.0.113/24` and `2001:db8::/32`
+  documentation ranges stay allowed because the signed fixture uses them.
+- nft table/chain identifiers reject keywords, a leading `_` and hook names;
+  `IsSelectedByFamily` fails closed on an unknown family. PF labels are limited
+  to 64 bytes including the NUL, so a library tag longer than 48 bytes is
+  refused. Windows `-Name` keeps `~` from a base64 prefix and is deterministic
+  but not idempotent: a second apply fails and must be treated as an operator
+  error or preceded by an explicit removal.
+- Renderers revalidate the endpoint at the optional return boundary; a direct
+  `Windows`/`Pf`/`Nftables` call cannot emit a hand-built invalid aggregate.
+  `EscapePowerShell` strips CR/LF as defense in depth.
 - `references/perl-inventory.md` maps scripts, tests, labels and consumers;
   update it when a script, interpreter requirement or CI consumer changes.
 - Perl/tool install, portability and live firewall tests remain pending manual
   CI.
+
+- `autoconf_i2pd` is the interactive tool that uses the shared `i2p::i18n`
+  catalogs (en/es/ru/zh-Hans) and reads a token for the yes/no answer so
+  multibyte `s`/`д` work. Other CLI output, usage and machine-readable
+  (`host=dest#!action=`) lines stay English; standalone tools resolve the
+  environment on first translation.
+- Never translate protocol/config identifiers or data labels that scripts
+  parse. The i18n checker rejects such keys and `i2pdctl.t` pins its English
+  argparse text.
+
+- Key I/O belongs to `tools/common/keys.hpp`: exact-consumption
+  `LoadPrivateKeys`, `SecureBuffer`, and `SavePrivateKeys` over
+  `fs::AtomicWritePrivate`. Never `O_TRUNC`/`ofstream` a key path. Tools that
+  can name their own input call `SameFile` and refuse; `autoconf_i2pd` uses
+  `fs::AtomicWrite` and rejects a NUL file name.
+- One `CryptoGuard` from `common/crypto.hpp`; no local clone or manual
+  `InitCrypto`/`TerminateCrypto`. `x25519` uses core `X25519Keys`; numeric
+  options use `ParseBounded`.
+- Link `libi2pd` only; `autoconf_i2pd` alone links `libi2pdlang`. The getopt
+  shim is Windows-only (`I2PD_TOOLS_GETOPT_TEST` builds the host test).
+- Inventory parity: the CMake list, docs nav, Debian/RPM specs and workflow
+  loop are one contract, checked by `tests/check-tools-inventory.cmake`. Add a
+  per-tool doc page when adding a target. `contrib/upstream/tools-files.txt`
+  lists upstream imports only; the Perl `i2pdctl` rewrite is fork-owned.
+- CLI: explicit help is exit 0 on stdout; usage/runtime errors are stderr with
+  a documented code; data/machine output stays on stdout; `regaddr_3ld` emits
+  one LF-only record. `tools-cli`/`tools-getopt` are the focused tests.
 
 ## Do not
 

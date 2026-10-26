@@ -73,8 +73,9 @@ compile, run tests or run project scripts.
 
 - Split by independent translation units or components. Do not let two agents
   edit a shared header, CMake target or the same source file.
-- The coordinator owns changes to `Log.h`, `RouterContext`, `Expected.h`,
-  `CMakeLists.txt`, `TuiProtocol.h` and cross-library APIs.
+- Shared interfaces require coordinator review. The authoritative list is in
+  `AGENTS.md` `## Coordinator / ownership`; link it instead of keeping a
+  partial local copy.
 - Preserve existing user changes. Use `git status` and `git diff` before
   editing; do not overwrite unrelated modifications.
 - Prepare the test and documentation changes in the same workstream, but keep
@@ -121,11 +122,9 @@ compile, run tests or run project scripts.
   and fail with undeclared log levels.
 
 
-- CONC-010 uses immutable process-local profile-root authority and flushed
-  same-directory replacement; storage IO/cleanup is serialized and shutdown
-  drains postponed updates after producers stop. Cross-process ownership,
-  abandoned staging cleanup and retained external mutators remain open.
-  `test-router-profile-storage` is prepared, not executed.
+- Profile-root/durability decisions (CONC-010) and their residual risks are
+  owned by `openi2pd-memory-security`; do not restate the storage protocol in
+  this skill.
 
 
 - `RouterProfile` state is guarded per instance; `GetLastEndpoint()` returns
@@ -134,20 +133,43 @@ compile, run tests or run project scripts.
   the state mutex; no filesystem operation holds the state mutex. Global
   process-local profile storage/delete coordination is CONC-010; external
   producer quiescence remains a caller contract.
-- `libi2pd/Modern.h` is shared vocabulary, but adoption is deliberately narrow
-  (`Identity.cpp`, `test-modern`). `ScopeExit` cleanup must not throw;
-  `AsByteSpan` rejects temporaries and must not be replaced by
-  `reinterpret_cast` helpers.
+- `libi2pd/Modern.h` is shared vocabulary. `ScopeExit` replaces the old
+  `Defer`/`SaveStateHelper` helpers in `Identity.cpp`, `AddressBook.cpp`, the
+  ECIES ratchet, `RouterContext.cpp` and `SSU2Session.cpp`; cleanup must not
+  throw. `AsByteSpan` rejects temporaries
+  and must not be replaced by `reinterpret_cast` helpers. `i2p::expected` now
+  provides `value_or`/`and_then`, and memory pools use typed nested deleters
+  instead of `std::function`/`std::bind`.
 - Signing-key sizes use one `constexpr` registry; unknown types return `false`
   and callers keep documented defaults. Offline signing keys are not chained.
 - `ITransportConnector` is a stateless Strategy. `false` means "not
   applicable, try the next priority"; a pending SSU2 endpoint must return
   `true` and must not fall through to NTCP2.
-- `jthread` adoption is partial: `TuiServer` and the X25519 supplier use stop
-  tokens; `Transports::m_Thread` still has an explicit self-join/detach path.
+- `jthread` adoption is partial: `TuiServer` and
+  `X25519KeysPairSupplier::m_Thread` use stop tokens; `Transports::m_Thread`
+  remains a `std::unique_ptr<std::thread>` with the documented self-detach
+  path. Do not describe `Transports` as jthread-owned.
   `LogLevel` remains a plain enum with `eNumLogLevels`/`g_LogLevelStr`.
 - `test-modern` and `test-transport-connector` are registered but unexecuted;
   `language-modernization-static` pins seam names and exact AGENTS/doc phrases.
+
+
+- C++23 has no `operator+(std::string, std::string_view)`. A helper that
+  returns `std::string_view` (for example the one-argument `i2p::i18n::tr`)
+  must be materialised with `std::string (...)` before a binary `+`, and the
+  left operand must never be a `const char*`. `operator+=` and a
+  `std::string_view` parameter accept the view directly.
+- Qualify constants that live in another namespace instead of relying on
+  argument-dependent lookup: `i2p::stream` does not see
+  `i2p::client::STOP_ON_SERVICE_TIMEOUT` unqualified.
+- When an aggregate or helper type is reshaped (for example an
+  `std::pair` replaced by a named struct), expire every structured access
+  (`.first`/`.second`) together with the declaration; the compiler cannot
+  find hidden stale accesses in a rarely built platform branch.
+- Public headers must include what they use. Add `<cstring>` for `memcpy`,
+  `<unordered_map>` for its members and the matching standard header for every
+  container/utility used in the class body; do not rely on a sibling
+  translation unit's include order.
 
 ## Do not
 

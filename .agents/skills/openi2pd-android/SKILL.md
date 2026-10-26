@@ -149,12 +149,131 @@ run Gradle, install an APK or run a device test.
   keeps the sequence cursor. Do not close a SAF descriptor from the canceller.
 - UI locale catalogs are `values` (English source/fallback),
   `values-es`, `values-ru` and `values-zh-rCN`; `locales_config` and
-  `localeFilters` list en/es/ru/zh-CN. Use `openi2pd-i18n` for new visible
+  `localeFilters` list en/es/ru/zh-CN. Every **translatable** key needs all
+  four catalogs; `translatable="false"` identifiers (`app_name`,
+  `services_bob/sam/i2cp`, `value_unknown`, `repository_url`, `license_url`)
+  and the language/bandwidth/loglevel value arrays are deliberately exempt. Use `openi2pd-i18n` for new visible
   strings. Per-app selection uses `AppCompatDelegate`, never the device locale.
   Do not translate protocol/status tokens, config values or user data.
 - Java 25 source features are not Android library APIs. Virtual threads,
   scoped values and structured concurrency remain guarded; D8/R8, Lint,
   APK and device evidence are pending.
+
+- Runtime administration has an Android bridge: `I2PD_JNI` exposes
+  `getSubscriptions`/`addSubscription`/`removeSubscription`/`banRouter`/
+  `unbanRouter`, `RuntimeAdminPolicy` validates the closed typed inputs and
+  `RuntimeAdminFragment` plus `RuntimeAdminParityTest` exercise them. Router
+  blocklist *counters* still have no Android surface; `torrentCommand` must
+  never be widened to accept `ADMIN` verbs.
+
+- Administrative JNI entry points stay a closed typed set and go through the
+  daemon-owned queue: tunnel start/stop (name ≤64), reseed (non-blocking status
+  token), add/replace address (name ≤255, destination ≤1024, `Exists` feedback),
+  subscription add/remove (URL ≤512) and NetDb ban/unban (44-char hash). Bound
+  every string with `GetStringLength()` before UTF-8 conversion, reject on a
+  stopped router, and never expose private keys, credentials or paths.
+- The router UI is native Material; there is no web console or INTERNET-facing
+  administration surface.
+
+- Android permissions are per UID: a second same-UID process is containment,
+  not privilege separation; `isolatedProcess` loses INTERNET and persisted SAF
+  grants. The SAF broker stays `:torrent_storage`; the router/presentation split
+  is `ANDROID-026` and needs a closed `IRouterControl` AIDL.
+- `RouterService` owns the router, not an Activity. `RouterRunState` persists
+  `run_phase`/`graceful_deadline_epoch_ms`/`run_generation` plus the legacy
+  `should_run` mirror; an expired drain is terminal across START_STICKY/boot, a
+  live drain re-arms only after `startedOkay`, and corrupt deadlines fail closed.
+  `onTaskRemoved` keeps the daemon; `onDestroy` purges callbacks.
+- SAF AIDL v2: `handshake` generation, one-shot owner-bound `prepareExport` →
+  `openExport(token)`, `retire(generation)`, `(uid,pid)` ownership on every
+  handle/root/operation/token, owner-scoped cancel/close/revoke, typed admission
+  and a 15 s cancel / 30 s process fence. Admission caps are 8 concurrent
+  operations, 4096 handles, 128 tree roots, 8 export tokens (30 s each), URI/
+  path <=8192 chars, 32 path components and 16384-byte read/write chunks.
+  Raising any cap is an AIDL contract change requiring coordinator review. No
+  FD crosses Binder; never delete a user-chosen export document automatically.
+- Native code claims one process role (`Router`/`StorageBroker`) before its
+  first router/document entry; a conflict returns `process-role-conflict`.
+  `stopDaemon` publishes the native stop token before the monitor and a start
+  returns `start-canceled`; the JNI empty-string path must never pass a null
+  `jchar*` and must clear exceptions/local refs on failure.
+- No Gradle/NDK/device evidence exists; do not describe Android separation or
+  the AIDL/JNI changes as validated.
+
+- Android torrent commands go through `I2PD_JNI.torrentCommand`, whose allowlist
+  must admit every verb the Java UI builds: single/bulk start, stop and
+  reannounce, remove-all, recheck and the existing magnet/tracker/comment
+  verbs. A UI action rejected by the allowlist is a defect, not a fallback.
+- SAF creation tracker hints use the creation-scoped validator; they must not
+  require an engine torrent id, and the admin tracker verb still requires a
+  positive id. `TorrentControl.single` and `Bulk.REMOVE_ALL*` are the typed
+  builders for the torrent detail/session actions.
+
+- Torrent comments page through `TORRENT-DETAIL <tunnel> <id> [offset]
+  [limit]` via `TorrentControl.commentPage`; offset 0/limit 16 keeps the
+  historic line. Read `comments.offset/count/total/visible/hidden/local/
+  truncated`, show age/local markers and hidden previews, and report a busy
+  refusal instead of silently dropping an action. The four comment strings
+  ship in en/es/ru/zh-Hans; keep placeholder parity.
+
+- SAF payload startup probes each document via `TorrentFile::ProbePayload`
+  (open exact final name, `create=false`, close). Missing/deleted/revoked
+  documents stay missing and their pieces remain downloadable; zero-length
+  documents are never opened. Do not mark every SAF file present or trust the
+  resume bitfield for provider storage; present documents are still hashed.
+- The broker watchdog starts only after `ioLock`; a queued operation must not
+  be cancelled/fenced for a stalled sibling. Bind retries are 6 with 250 ms→10 s
+  backoff; success clears exhaustion but restores attempts only after a 30 s
+  stable binding; `initialize`/selection/status may re-arm once per window.
+  No-seek/socket providers and short writes fail closed without staging.
+- Instrumentation fixtures: nested multi-file tree, zero-length, deleted,
+  revoked, same-length-replaced, no-seek/socket, read-only write failure and
+  post-retire rebind. Device runs are the evidence.
+
+- Java 25 is the real source/class-file target; never lower it. Records,
+  sealed types and type-pattern switches require D8 to remove
+  `java.lang.Record`/`ObjectMethods` and lower `SwitchBootstraps.typeSwitch`
+  and `MatchException` at minSdk 29. A javac success is not ART evidence.
+- The compile classpath resolves JDK 25 APIs: keep API-30+/33+
+  collection/String/stream APIs and all virtual-thread/scoped-value/FFM/KDF
+  APIs out of `src/main` and `androidTest`; `src/test` runs on the build JDK.
+  `android.builtInKotlin=false` is the AGP 9.4 workaround; document AGP 10.
+- Every Java native declaration needs a header and `Java_*` definition;
+  run `android/tools/check-android-jni-symbols.pl`. `noexcept` must match,
+  `GetStringChars` needs an RAII owner, pending exceptions must be cleared, and
+  no Activity/Listener may be retained. Reuse the process-lifetime SAF bridge
+  global class reference and keep old bridges alive for their payloads.
+- Prepared gates: all nested probe classes dexed at `--min-api 29`, DEX 039
+  and no record/type-switch bootstraps in the packaged DEX. There is no
+  automated API denylist; API-30+/33+ usage is prevented by review only.
+  Real Gradle/D8/R8/Lint/device evidence is manual CI only.
+
+- Native GUI contract: `UiFactory` owns the programmatic-screen row and
+  column helpers (48dp target, logical padding, centred `MaxWidthLinearLayout`,
+  content/state description). Never build a screen-local button or a hard-coded
+  dp inset in a fragment. Programmatic screens must keep the `w600dp`
+  `content_max_width` cap; secondary destinations stay hidden while a detail is
+  open and every fragment tag must be hidden on destination change.
+- SAF grant mutation is service-owned: `RouterService.selectPayloadTree` /
+  `detachPayload` run on `safWorker` and report a typed boolean on the main
+  thread. Never call `TorrentSafStorage.select/detach` from a picker or row
+  callback: they commit the grant map and may round-trip to the provider.
+- I2PSnark snapshots are decoded by the bounded `TorrentRow` record, not by
+  direct map lookups in the fragment. A non-numeric id is rejected, a bad
+  hash/magnet is dropped and counters/percent are clamped; `TorrentRowTest`
+  pins it on the JVM.
+- Notification: one drain action only, chosen from the lifecycle state
+  (Graceful stop vs Cancel graceful stop) with `setOnlyAlertOnce`; the
+  graceful countdown is not a live region.
+- `android_ui` is an opt-in dispatch input for the API 29 x86_64 emulator lane.
+  It is prepared, not executed; do not claim device/TalkBack/visual evidence.
+
+- Counts use `<plurals>` in all four locales (ru one/few/many/other) and
+  `getQuantityString`; never concatenate a number with an English plural.
+  Placeholders are positional (`%1$s`). User-visible validation errors use
+  resource ids (`TorrentControl.UserMessageException`), and the log row,
+  notification channel and torrent labels are resources. `zh-TW`/`zh-Hant`
+  must fall back to English; `LocaleResourceTest` pins both rules.
 
 ## Do not
 
@@ -175,8 +294,13 @@ run Gradle, install an APK or run a device test.
 - Instrumentation under `android/app/src/androidTest/` for navigation,
   lifecycle, SAF provider/cancellation, en/es/ru/zh-CN resources and JNI
   consistency; device execution stays a separate lane.
-- Android CI: Java 25 guard, `:i2pd:testDebugUnitTest`, `lintDebug`, arm64
-  native JNI link and debug APK build; vcpkg/NDK prefix must be current.
+- Android CI: `android/tools/java25-probe/check-config.sh`,
+  `verify-java25.sh` (class-file 69, D8/R8 `--min-api 29`, DEX 039),
+  `check-android-jni-symbols.pl` and `check-android-locales.pl`;
+  `:i2pd:testDebugUnitTest`, `lintDebug`, arm64 native JNI link, packaged-DEX
+  bootstrap scan and debug APK build; vcpkg/NDK prefix must be current. The
+  opt-in `android-ui` job builds x86_64 API 29 and runs
+  `connectedDebugAndroidTest`; it remains Prepared / not executed.
 - Keep dependency coordinates pinned; no runtime download and no bundled JDK.
 - Record APK/Lint/JNI/device results as pending until the Android job or a
   device run actually passes.

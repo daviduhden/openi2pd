@@ -24,3 +24,10 @@ openi2pd translation identifier boundary.
 Presentation may wrap these values in translated sentences, but the value
 itself must be inserted unchanged as a placeholder. Native error text may stay
 English inside a translated wrapper until a typed error-code mapping exists.
+
+- `open-i2pd` is a frozen technical spelling (syslog identity, Android data
+  directory, Windows installer identity, legacy artwork filename), not the
+  product name; never translate or rebrand it.
+- Torrent/LeaseSet status wire tokens stay English. A display helper may map
+  them to a translated label, but the stored/logged value and IPC field must
+  remain the exact token.

@@ -106,6 +106,27 @@ limitation; do not substitute local execution. Ask for:
 - OpenBSD compilation, service lifecycle, TUI and storage-broker runtime
   evidence remain pending manual CI.
 
+- The supervisor and storage broker are exec authorities: pre-resolve the
+  executable, `unveil(exe,"x")` + lock, pledge `stdio proc exec` /
+  `stdio proc exec sendfd`. No `unix`, path read/write, `recvfd` or network.
+  `OPENBSD_PLEDGE_EXECPROMISES` is `nullptr`; never pass execpromises and never
+  assume pledge/unveil survive `execve`. A new image installs its own policy.
+- The startup pledge must include `recvfd` (and `id` when a worker identity is
+  configured) because pledge only removes promises; the runtime set is a strict
+  subset. `openbsd.pledge_file` is subset-only, rejects comments/blank lines
+  and dangerous runtime tokens. `unveil_file` entries must be absolute and not
+  `/`.
+- Worker identity: bounded `privsep.user`/`privsep.group` resolution before the
+  sandbox, uid 0 rejected, setgroups/setgid/setuid and verification in the
+  forked child, 25-byte role/nonce/uid/gid hello on fd 5. Descriptors 3/4/5,
+  stdio `/dev/null`, >=6 closed; fd4 closed when the role has no root. Never
+  resolve the executable through `$PATH` or `/proc`.
+- A root core with isolation and no `privsep.user` must fail startup; a
+  delegated root must be owned by the worker uid. Workers accept uid 0 only as
+  the delegating spawner. The core itself is not dropped.
+- Remaining: broker respawn for router/data, and TUI/I2PControl sockets inside
+  a storage-unveiled datadir are still a named-socket isolation gap.
+
 ## Do not
 
 - Do not compile, run CTest, `systemd-analyze`, rc.d, package or validators

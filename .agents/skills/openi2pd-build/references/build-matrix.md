@@ -42,20 +42,26 @@ desktop supervisor.
 | Linux Clang/GCC | full graph, `BUILD_TESTING=ON`, TUI | full CTest + labels |
 | Linux OpenSSL 3.x | distribution OpenSSL 3 | full CTest |
 | Linux pinned OpenSSL | `I2PD_OPENSSL_EXPECT`/version pin | build + full CTest |
-| Install components | Runtime/Tui/Libraries/Development/Tools/Documentation | staged tree + consumer package |
+| Install components | Runtime/Tui/Libraries/Development/Tools/Documentation/Service | staged tree, DESTDIR, consumer package |
 | Linux ASan+UBSan | full graph, sanitizer option | full CTest |
+| Linux UBSan-only | full graph, `WITH_UNDEFSANITIZER` | full CTest |
+| Packaging | static musl build/package and container image | `--version`, static-file and package assertions |
 | Linux TSan | full graph, sanitizer option | full CTest |
-| Fuzzing | `WITH_FUZZERS=ON`, Clang | eight bounded smoke targets |
+| Fuzzing | `WITH_FUZZERS=ON`, Clang, ASan+UBSan | fifteen bounded smoke targets + checked-in corpus |
 | OpenBSD | CMake/Ninja, LibreSSL | full CTest, platform-only IPC/sandbox tests |
 | Windows MSYS2/Clang64 | full graph | Windows CTest |
 | Windows MSVC | TUI/API-focused | TUI/API/install |
-| Android | Gradle + NDK r30 + vcpkg API 29 | unit/Lint/JNI/APK; instrumentation device-only |
+| Android | Gradle + NDK r30 + vcpkg API 29, arm64-v8a, c++_shared | unit/Lint/JNI/APK content/symbols; instrumentation device-only |
 
 ## CMake/Make rules
 
-- CMake source of truth; root `Makefile` and `tests/Makefile` are POSIX
-  front-ends, not alternative rule sources.
-- `cmake -S build -B <dir> -G Ninja`.
+- CMake source of truth; root `Makefile` is the POSIX front-end and
+  `tests/Makefile` only forwards to it. Neither is an alternative rule source.
+- `cmake -S build -B <dir> -G Ninja`. Options that gate distribution/packaging:
+  `I2PD_INSTALL_DOCS`, `I2PD_INSTALL_CONFIG`, `I2PD_TUI_REQUIRED`,
+  `I2PD_REQUIRE_PERL`, `I2PD_SERVICE_MANAGER`/`_DIR`/`_CONFDIR`.
+  `WITH_FUZZERS` requires `BUILD_TESTING=ON` plus ASan and UBSan; it cannot be
+  combined with `WITH_STATIC`.
 - No `file(GLOB ...)`, configure-time download, hidden external checkout,
   absolute install prefix or GNU-only make syntax.
 - Explicit source lists and target-scoped dependencies.

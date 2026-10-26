@@ -6,12 +6,16 @@ openi2pd locale matrix.
 -->
 # Locale matrix
 
-| UI language | BCP-47 | Native catalog | Android resources | Per-app/config tag | Plurals |
-|---|---|---|---|---|---|
-| English | `en` | `i18n/English.cpp` | `res/values/strings.xml` | `en` | one/other |
-| Spanish | `es` | `i18n/Spanish.cpp` | `res/values-es/strings.xml` | `es` | one/other |
-| Russian | `ru` | `i18n/Russian.cpp` | `res/values-ru/strings.xml` | `ru` | one/few/many/other |
-| Simplified Chinese | `zh-Hans` | `i18n/ChineseSimplified.cpp` | `res/values-zh-rCN/strings.xml` | `zh-CN` | other |
+| UI language | BCP-47 | Native catalog | Android resources | Per-app/config tag | Native forms | Android quantities |
+|---|---|---|---|---|---|---|
+| English | `en` | `i18n/English.cpp` | `res/values/strings.xml` | `en` | one/other | one/other |
+| Spanish | `es` | `i18n/Spanish.cpp` | `res/values-es/strings.xml` | `es` | one/other | one/other |
+| Russian | `ru` | `i18n/Russian.cpp` | `res/values-ru/strings.xml` | `ru` | one/few/many | one/few/many/other |
+| Simplified Chinese | `zh-Hans` | `i18n/ChineseSimplified.cpp` | `res/values-zh-rCN/strings.xml` | `zh-CN` | one form | one/other (identical text) |
+
+Native plural arity is es 2, ru 3 and zh 1; Android always needs `one` plus
+`other` for these catalogs, with Russian adding `few`/`many`. Do not "fix" the
+Chinese Android `one` entry by deleting it.
 
 Traditional Chinese (`zh-Hant`/`zh-TW`) is optional. Add `values-zh-rTW` only
 with verified Traditional translations; otherwise it must fall back to English,

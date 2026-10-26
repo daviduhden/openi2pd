@@ -110,8 +110,9 @@ workflow, run `gh`, build or test.
   as well as init scripts. Its fake-`nc` SAM regression checks mismatch exit
   status without a live bridge; it establishes no live SAM compatibility.
 - Ubuntu does not publish an `openrc` binary package, so the static service
-  job installs only `shellcheck` and validates OpenRC/runit files with `sh -n`
-  and ShellCheck. Never start a service manager in that job.
+  job installs `shellcheck` and `ksh`; it validates OpenRC/runit files with
+  `sh -n`, the OpenBSD rc.d template with `ksh -n` and ShellCheck. Never start
+  a service manager in that job.
 
 
 - CONC-010 uses immutable process-local profile-root authority and flushed
@@ -138,6 +139,27 @@ workflow, run `gh`, build or test.
   the checker and the owning skill/docs together.
 - No `continue-on-error`, deleted tests or suppressed failures. Dynamic
   validation remains pending until the relevant manual job passes.
+
+- Every executing CTest step uses `-j` (2 for release/platform, 1 for
+  sanitizers), `--no-tests=error` and `--output-junit`; JUnit/`Testing` logs
+  are uploaded. `tools/scripts/check-workflows.pl` (CTest `workflow-static` and the
+  `skills-static` job) rejects other triggers, `continue-on-error` and any ctest
+  line without those flags.
+- Linux and sanitizer test builds pass `-DI2PD_REQUIRE_PERL=ON`; a missing
+  interpreter must unregister tests loudly, not silently turn a lane green.
+  OpenBSD base Perl satisfies the same requirement.
+- The fuzzer inventory is fifteen targets across `tests/fuzz/*.cpp`,
+  `tests/CMakeLists.txt`, `fuzz.yml` and `docs/testing.md`; the doc list,
+  checked-in corpus, per-target cap and dual build/run registration are
+  enforced by `check-build-system.cmake`. The sanitizer matrix is ASan+UBSan,
+  UBSan-only and TSan; the fuzz job runs from `tests/fuzz/corpus/<target>/`
+  with a per-target log and artifact directory.
+- SIGPIPE under `pipefail` can turn a matching `grep -q` pipeline into status
+  141 (false pass) or a failing check (false fail). Capture `javap`,
+  `strings`, `file` or `nm` output to a temporary file before grepping.
+- Workflows are `workflow_dispatch`-only; `workflow_call` is allowed only for
+  a real reusable consumer. Manual results never validate an unpublished
+  local tree.
 
 ## Do not
 

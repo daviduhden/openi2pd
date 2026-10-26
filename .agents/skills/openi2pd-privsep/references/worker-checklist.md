@@ -27,13 +27,18 @@ Use with `SKILL.md`. It does not replace the architecture document.
 
 - Magic/version/type/request-id/payload length are explicit and bounded.
 - Frame length matches the seqpacket record exactly.
-- Unknown types/versions and duplicate configuration are fatal.
+- A credential/ancillary failure is fatal. An attributable wrong-role,
+  unknown-type or oversize frame is a typed refusal, tolerated up to
+  `MAX_PROTOCOL_VIOLATIONS` (8); a duplicate `ConfigureLog` is a refusal, not a
+  worker exit.
 - Text fields reject embedded NUL and are truncated only on encode.
 - Descriptor passing is operation-specific, count-checked and rights-minimized.
 - Peer UID/SID/session is checked; manual invocation cannot downgrade transport.
 - Request/response ids cannot be reused to confuse a pending operation.
 - One in-flight transaction per worker where the design says so.
-- Timeout, EOF, malformed frame and send failure poison/close the channel.
+- EOF, send failure and frame corruption that makes the stream unattributable
+  poison/close the channel. An idle receive timeout must not close a Windows
+  message-mode pipe.
 - No generic privileged path-write or arbitrary descriptor RPC.
 
 ## Lifecycle checklist
@@ -63,14 +68,22 @@ Use with `SKILL.md`. It does not replace the architecture document.
 
 ## Tests to prepare
 
-- `test-privsep-protocol`: codec bounds and malformed frames.
-- `test-privsep-linux-ipc` / `test-privsep-linux-sandbox`: peer credentials,
-  descriptor transfer, sandbox and queue pressure.
-- `test-privsep-openbsd-imsg` / `test-privsep-openbsd-policy`: imsg framing and
-  role policy.
-- `test-privsep-windows-ipc`: pipe/DACL/peer checks.
-- `test-privsep-log`, `test-torrent-storage-*`: worker lifecycle and storage
-  capability.
+- `test-privsep-protocol` / `-authorization` / `-capabilities`: codec,
+  registry, role/descriptor policy.
+- `test-privsep-supervisor`, `-worker-identity`, `-credentials`: restart ladder,
+  hello/fd contract, credential binding.
+- `test-privsep-linux-ipc` / `-linux-sandbox`: peer credentials, descriptor
+  transfer, Landlock/seccomp.
+- `test-privsep-openbsd-imsg` / `-openbsd-policy`: imsg framing and pledge
+  policy.
+- `test-privsep-windows-ipc` / `-windows-isolation` / `-windows-supervisor`:
+  pipe/DACL/peer, role/capability table and restart.
+- `test-datastorage-{protocol,worker,client}`, `test-router-storage`,
+  `test-artifact-storage`, `test-torrent-storage-*`: storage generation,
+  cancellation and worker lifecycle.
+- `fuzz-privsep-protocol`, `fuzz-log-record`: codec/log parsers. A new parser
+  also needs `tests/fuzz/corpus/<target>/` and the four-way fuzzer inventory.
+- The state-machine tests exist; no child-process/fork restart test is claimed.
 
 Add labels `ipc;security;platform`; platform-only tests must register only on
 their host. Do not execute them locally.

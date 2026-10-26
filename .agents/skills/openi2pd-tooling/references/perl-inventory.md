@@ -18,6 +18,9 @@ Use with `openi2pd-tooling/SKILL.md`. This is a static map; do not execute
 | `tools/scripts/check-doc-links.pl` | Documentation link, anchor and target checks | Perl core modules; repository-contained paths only |
 | `tools/scripts/check-doc-nav.pl` | MkDocs navigation/theme/unlisted-page checks | Perl core modules; reads docs config and tree |
 | `android/tools/check-android-locales.pl` | en/es/ru/zh-CN resource parity and locale policy | Perl core modules; reads Android sources |
+| `android/tools/check-android-jni-symbols.pl` | Java `native` ↔ header ↔ `Java_*` parity | Perl core modules; reads Android sources |
+| `i18n/check-i18n-catalogs.pl` | native catalog key/placeholder/plural contract | Perl core modules; reads `i18n/` |
+| `tools/tests/maintenance-checkers.t` | negative fixtures for link/nav/JNI checkers | Test::More/File::Temp/Open3; temporary trees only |
 | `tests/interop/check-vectors.pl` | Static/differential fixture and provenance checks | Perl core modules; optional read-only Java checkout |
 
 No CPAN, Python, Node, network install or hidden download. No script may write
@@ -27,7 +30,8 @@ outside an explicitly assigned temporary output path.
 
 - `perl-i2pdctl-syntax`, `perl-syntax-<tool>`, `perl-i2pdctl`,
   `perl-portability`, `perl-validate-branding`, `perl-install-layout`,
-  `perl-doc-links`, `docs-nav-static`, `android-locale-policy`.
+  `perl-maintenance-checkers`, `perl-doc-links`, `docs-nav-static`,
+  `android-locale-policy`, `android-jni-symbols-static`.
 - Optional `perl-critic` only when `-DI2PD_PERL_CRITIC=ON` and the analyzer is
   already installed; absence is not a successful style run.
 - `tools-inventory`, `tools-smoke`, `tools-regressions` and

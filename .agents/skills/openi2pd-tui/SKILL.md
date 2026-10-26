@@ -104,7 +104,79 @@ the console.
 - UI text is selected through `openi2pd-i18n`; `terminal::Put` takes a column
   budget, tab layout uses `DisplayWidth`, and translated/wide text must not be
   advanced or truncated by byte length.
+- POSIX startup retries `LC_CTYPE` with `C.UTF-8`/`en_US.UTF-8` when `MB_CUR_MAX`
+  is 1, because the renderer decodes UTF-8 with `mbrtowc`/`wcwidth`. Undefine
+  both `KEY_F` and `KEY_F1..KEY_F12` before returning native key codes; curses
+  implementations differ on which names are macros.
 - TUI IPC regressions are prepared but no manual CI/live console run exists.
+
+- New read verbs `ADDRESSBOOK-SUBSCRIPTIONS [limit]` and `BLOCKLIST [limit]`
+  plus typed writes `ADMIN ADDRESS-SUB-ADD/REMOVE` and `ADMIN NETDB-BAN/UNBAN`.
+  Destinations uses `s`/`x`, NetDb uses `b`/`u`. The admin queue stays
+  fixed-size and allocation-free; the only URL accepted is a validated
+  `http(s)` subscription source. Runtime bans never rewrite the blocklist file
+  and are cleared on restart.
+- The Android JNI bridge deliberately rejects generic `ADMIN` verbs; the new
+  operations need a typed JNI method before they appear in the app. Do not
+  widen the `torrentCommand`/admin allowlist instead.
+
+- Administrative writes remain a closed typed set. `ADMIN TUNNEL-START`/
+  `TUNNEL-STOP <name>` answer `started|stopped|already-running|already-stopped|
+  unknown` plus `running=0|1`; `ADMIN RESEED` is non-blocking and returns
+  `started|already-running|disabled`, with phase/last error in `netdb.reseed.*`;
+  `ADMIN ADDRESS-ADD` never re-points a name (`exists`) and
+  `ADMIN ADDRESS-REPLACE` is explicit. `SERVICES` carries
+  `tunnel.service=name|kind|running|localEndpoint|destination` plus the
+  protocol-server rows. Never add a generic config writer, an arbitrary
+  path/URL argument or a web console.
+- New TUI strings are added in English through `tr()` and must also be added to
+  the es/ru/zh-Hans catalogs; English fallback is a tracked gap, not a
+  translation (`I18N-004`).
+
+- Torrent page `Ctrl-X` / `Ctrl-D` are confirmed session-wide removals
+  (`TORRENT-REMOVE-ALL`, the latter with `files`); they are bound to the tunnel
+  index and re-check the session before sending. Keep the typed verb closed and
+  do not add a generic removal path.
+
+- Torrent Comments uses `[`/`]` to page retained records (16 per page), shows
+  aged timestamps, a persistence-error line and owner/rating previews for
+  hidden entries, and requires `[y/N]` confirmation before hide/unhide. Strip
+  bidi controls U+202A..U+202E and U+2066..U+2069 before rendering peer labels
+  or text. Comment strings remain English until `I18N-004` catalog entries
+  exist; do not present English as a translation.
+
+- Status has more fields than a 24-line terminal: Up/Down/PgUp/PgDn scroll the
+  fixed rows, Home/End jump to the first/last field, and the bandwidth history
+  stays on the first page. `q` in a torrent detail returns to the table; only
+  table-mode `q` (or `Q`) exits the TUI. A disconnected client keeps the last
+  snapshots but every panel marks them `[stale]`.
+- Destinations rotates one address-book auxiliary request per 6 s instead of
+  issuing four blocking requests per tick. All IPC requests remain synchronous
+  with bounded deadlines; do not claim a non-blocking loop.
+- All untrusted text goes through `SanitizeText`, which replaces invalid
+  UTF-8/C1/C0/DEL and strips bidi controls U+202A..U+202E/U+2066..U+2069.
+  Locale initialization must provide a multibyte LC_CTYPE before ncursesw.
+- Status admin keys include `o` for transport online/offline (confirmed) and
+  Logs `O` for daemon log reopen; both use the closed typed admin queue.
+- Windows installs a console control handler (Ctrl-C/Break/close/logoff/
+  shutdown) that only publishes the stop flag so the normal shutdown restores
+  the alternate screen. `VK_CANCEL` maps to the Ctrl-C path.
+
+- TUI text is translated at the rendering boundary: `PutLine` only matches an
+  exact full line, while `SetStatus`/`BeginPrompt` translate their input.
+  Measure with `DisplayWidth` and wrap/fit in columns, never bytes. Protocol
+  tokens (torrent status, peer flags, log levels, IPC verbs) stay English;
+  `TorrentStatusText` maps them for display only.
+- Confirmation prompts advertise `[s/N]`/`[д/Н]`; the parser accepts
+  `y/yes/s/sí/д/да`. A new prompt must update both the catalog and
+  `IsAffirmative`.
+
+
+- `i2p::i18n::tr` with one argument returns `std::string_view`, and C++23 has
+  no `std::string + std::string_view` operator. Materialise the translation
+  with `std::string (i2p::i18n::tr (...))` before concatenating it. The
+  `i18n-static` check rejects the unwrapped form in `tui/main.cpp`; keep both
+  the code and that guard.
 
 ## Do not
 
