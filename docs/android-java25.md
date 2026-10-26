@@ -218,6 +218,11 @@ known JDK-only APIs (`java.lang.foreign`, `java.lang.invoke`,
 APIs and `jdk.incubator.vector`) in app source. It is not a substitute for
 javac, D8/R8, Lint or device testing.
 
+The verifier now passes **all** probe classes (nested records included) to
+D8/R8 and requires DEX version **039** at `--min-api 29`; the historical
+transcript below used one class and DEX 037 and is retained only as
+provenance. The updated verifier has not been executed.
+
 The probe is in `android/tools/java25-probe/`. It is not part of the app and is
 not added to the APK. It exercises:
 
@@ -363,10 +368,31 @@ class is absent:
 | `java.lang.foreign` (FFM) | final in 22 | absent |
 | `jdk.incubator.vector` (Vector API) | incubator in 25 | absent |
 
-`java.lang.Record` **is** present in `android.jar`, so records can compile and
-run. Android's `java.*` set is a subset of the JDK; D8/R8 does not supply the
-missing classes. Core library desugaring was not enabled because it covers a
-limited API set and does not make Java 25 platform APIs available.
+`java.lang.Record` is present in the compileSdk `android.jar`, so a record
+compiles. It does **not** exist in ART 10/API 29: D8 must remove the record
+superclass and `ObjectMethods` bootstrap, and `Class.isRecord()` /
+`getRecordComponents()` (API 33) remain unavailable. A record can therefore be
+used as a value type but not reflectively. The same applies to the sealed
+`RouterCommand` pattern switch: javac emits
+`java.lang.runtime.SwitchBootstraps.typeSwitch` and may reference
+`java.lang.MatchException`; D8 must lower both for API 29. These are **D8
+bytecode desugaring** requirements, separate from core-library desugaring.
+
+| API family | Available on API 29 | App rule / replacement |
+|---|---|---|
+| `List.of`/`Map.of`/`Set.of`, `*.copyOf` | no (API 30–31) | use `Collections.unmodifiable*` over a fresh collection |
+| `String.repeat/isBlank/strip/lines/formatted` | no (API 33) | explicit loops/`trim`/`replace` |
+| `Stream.toList`, `Optional.isEmpty`, `HexFormat` | no (API 33–34) | collectors/`isPresent`, manual hex |
+| `SequencedCollection`/`getFirst`/`getLast` | no | indexed `List` access |
+| `java.util.concurrent.Flow` | no (API 30) | explicit callbacks/executors |
+| virtual threads, `StructuredTaskScope`, `ScopedValue`, `StableValue` | never | platform threads, executors, atomics |
+| `Class.isRecord/getRecordComponents/isSealed`, `MatchException` | no | avoid reflection on these; D8 lowers the switch |
+| `java.lang.classfile`, FFM, PEM/KDF | never | none; keep out of app code |
+
+Core library desugaring remains disabled: it would not add any of these
+platform APIs. The Gradle compile classpath still contains the JDK 25 platform
+classes, so a JDK-only API can compile and fail on ART; the static
+`check-config.sh` denylist and a bytecode/API scan are the guards.
 
 Avoid all JDK-only APIs in app code. Note that the Gradle compile classpath
 contains both `android.jar` and the JDK 25 platform classes (`BOOTSTRAP=null`,
@@ -411,3 +437,8 @@ The manual Android CI lane is being extended to run `assembleDebug`,
 a class-file-69 assertion and the prepared instrumentation tests. Until that
 lane is dispatched successfully, no build or device result exists for this
 tree. Instrumentation remains compile-only where no emulator/device lane exists.
+
+## See also
+
+- [android modernization](android-modernization.md)
+- [android jni status](android-jni-status.md)

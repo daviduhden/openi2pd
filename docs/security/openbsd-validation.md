@@ -38,6 +38,14 @@ ls -l /var/i2pd/i2pd.pid /var/i2pd/i2pd-tui.sock
   after installing `login.conf.d/i2pd`.
 - Confirm `/etc/i2pd` is root-owned/not writable by `_i2pd` and `/var/i2pd`
   is owned by `_i2pd` with no group/world write access.
+- Confirm the rendered rc.d sets `pexp="${TRUEPREFIX}/bin/i2pd"`, so
+  `rcctl check` matches the binary rather than a stale command line.
+- Confirm the package sampled `/var/i2pd/subscriptions.txt` and that it is
+  writable by `_i2pd`; the daemon updates it in place.
+- Confirm `/var/i2pd/certificates` is not a leftover real directory competing
+  with the packaged `/usr/local/share/i2pd/certificates` tree.
+- Confirm `/usr/local/share/doc/i2pd` contains `LICENSE`, `NOTICE`,
+  `LICENSE.i2pd-tools` and `CC-BY-SA-4.0`.
 
 ## 2. Service lifecycle
 
@@ -57,10 +65,12 @@ tail -n 50 /var/log/daemon
   pidfile was locked, pledge/unveil were applied, the logger started and
   `Daemon_Singleton::start()` returned true. Confirm
   the pidfile and TUI socket are present immediately after `rcctl check i2pd`.
-- If the child fails or times out, `rcctl start` must return a nonzero status
-  and the parent must print the readiness error. A timed-out child is killed
-  with `SIGKILL`; confirm no stray `i2pd` process remains. Do not rely on the
-  old assumption that the parent exits before initialization completes.
+- The rc.d path has no readiness pipe: `rcctl start` cannot report a later
+  child failure. Prove the failure reporting with a separate manual
+  `i2pd --daemon` probe instead: the parent must wait for the readiness byte,
+  return nonzero on failure/timeout and print the error; a timed-out child is
+  killed with `SIGKILL`, and no stray `i2pd` process may remain. Do not apply
+  that expectation to `rcctl start`.
 - The process state from `ps -o state` must include `p` (pledged) and `U`
   (unveil locked); the `pledge` column must list the runtime promises. It must
   never contain `exec`; `proc` may appear only when `privsep.log` needs bounded
@@ -68,8 +78,10 @@ tail -n 50 /var/log/daemon
 - `fstat -p` should show the pidfile descriptor, the TUI listening socket, and
   a `/dev/log` descriptor when `log = syslog` (or otherwise confirm delivery in
   `/var/log/daemon`).
-- `rcctl stop i2pd` must complete within the default 30 s timeout, remove the
-  pidfile and the TUI socket, and leave no `i2pd` process.
+- `rcctl stop i2pd` sends `SIGINT` (the template sets `rc_stop_signal=INT`)
+  and waits up to `daemon_timeout=660` for the ordered stop and transit-tunnel
+  drain. With no transit tunnels it must complete promptly, remove the pidfile
+  and the TUI socket and leave no `i2pd` process.
 - `rcctl reload i2pd` must send `SIGHUP` and reload tunnel configuration
   without restarting the process (PID unchanged).
 - Repeat after `reboot`; confirm the service is started only when enabled.
@@ -136,27 +148,50 @@ Run each case from a fresh configuration copy and record `lastcomm` flags
 - UPnP enabled must not produce a pledge violation (`mcast`);
   `/var/run/minissdpd.sock` must be the only extra socket path used.
 - `openbsd.unveil_file` with one extra absolute path.
-- `openbsd.pledge_file` is additive, not an override. Each line is tokenized
-  on spaces/tabs/CR, `#` starts a comment, duplicate tokens are ignored and
-  unknown tokens abort startup. The runtime policy always contains the fixed
-  baseline `stdio rpath wpath cpath fattr inet dns unix flock recvfd`, plus `mcast`
-  when `upnp.enabled` is true and `proc` when `privsep.log` is active;
-  accepted custom tokens are appended in file order. An empty custom file therefore keeps the baseline unchanged. The
-  runtime parser rejects `proc` and `exec`; adding them to the core would
-  restore process-creation capability after worker preparation. Adding `error`
-  remains an explicit enforcement change and should be reviewed.
-  - Positive case: a custom file containing only `stdio` must start, and
-    `ps -o pledge -p "$(cat /var/i2pd/i2pd.pid)"` must still show the whole
-    baseline (and `mcast` with UPnP enabled).
-  - Negative case: a custom file containing `stdio;` or `procc` must fail
-    startup with `Unknown pledge promise` in syslog (daemon stderr is
-    `/dev/null`), remove the pidfile and exit nonzero. Repeating the same token
-    on several lines must not duplicate it in the `pledge` column. A runtime
-    file adding `proc` or `exec` must fail with the explicit refusal.
-- The separate startup-phase pledge in `Daemon.cpp` is also additive: it
-  includes `proc`, `exec` for worker spawning, `unveil` when enabled, and the
-  filesystem/network baseline, then appends custom tokens. A custom file therefore cannot remove
-  startup-only promises either.
+- `openbsd.pledge_file` is a **subset selector**, never an override or an
+  additive escape. One parser serves the startup and runtime phases: the file
+  is bounded (64 KiB), tokens are space/tab separated, comments and blank
+  lines are rejected (a commented-out promise must never look active), unknown
+  tokens abort startup, and every token must already be present in that
+  phase's validated base set. Duplicates are ignored. The startup base set is
+  `stdio rpath wpath cpath fattr inet dns unix flock recvfd proc exec` plus
+  `unveil`, `mcast` (UPnP) and `id` when a worker identity is configured; the
+  runtime base set is the same table without process/identity promises, plus
+  `proc` only while the log supervisor is owned and `mcast` with UPnP. Startup
+  fails if the runtime set is not a strict subset, because pledge can only
+  remove promises.
+  - Positive case: a custom runtime file containing only `stdio` must start,
+    and `ps -o pledge -p "$(cat /var/i2pd/i2pd.pid)"` must still show the
+    runtime baseline (and `mcast` with UPnP enabled).
+  - Negative case: `stdio;`, `procc`, a comment line, a blank line and a
+    runtime `proc`/`exec`/`id`/`chown`/`dpath` token must each fail startup
+    with a bounded diagnostic in syslog (daemon stderr is `/dev/null`), remove
+    the pidfile and exit nonzero. Repeating a token on several lines must not
+    duplicate it.
+- `openbsd.unveil_file` entries are trimmed, must be absolute and NUL-free, and
+  may not be `/` either textually or after `realpath()`. A configured datadir
+  symlink is intentionally resolved before unveil.
+- A root-started daemon with `privsep.enabled`, `privsep.routerstorage`,
+  `privsep.artifacts` or an isolated tunnel and no `privsep.user` must fail
+  startup with the explicit identity diagnostic instead of silently skipping
+  the broker. With `privsep.user`, the delegated data directory must be owned
+  by that uid.
+- Start the daemon with an `argv[0]` that contains `/` (the rc.d unit and
+  service managers already use an absolute path). The executable is frozen
+  from `argv[0]`/`realpath` and is never resolved through `$PATH` or `/proc`;
+  a bare program name leaves it unset and every worker spawn fails closed.
+- Worker identity: `test-privsep-credentials` resolves the current
+  account, rejects unknown/uid-0/malformed names, verifies the fixed diagnostic
+  and the forked drop (real/effective ids, empty supplementary set). The
+  spawn-bound hello is covered by `test-privsep-worker-identity`: 25-byte
+  layout, uid/gid mismatch, uid 0, trailing byte and open writer, pinned stdio
+  and the one-way `ForbidProcessCreation()` barrier.
+- Supervisor/broker: `test-privsep-openbsd-policy` requires exactly one `x`
+  unveil rule for the frozen executable, no `unix`/`recvfd` in the broker,
+  no `proc`/`exec` in storage/log roles, and a runtime promise set that is a
+  subset of startup. It probes that a storage worker cannot `socket(AF_INET)`
+  or `fork()`, that `unveil` after lock is `EPERM`, and that `execve("/bin/sh")`
+  fails while the frozen image is still executable.
 
 ## 5. TUI and log worker
 
@@ -169,7 +204,8 @@ Run each case from a fresh configuration copy and record `lastcomm` flags
   supervisor/log pair is spawned before the runtime pledge; verify both worker
   processes have their own pledge state, the core has no `exec`, and `proc` is
   present only for supervisor reaping/signalling.
-- Run `test-privsep-openbsd-policy` and `test-privsep-openbsd-imsg` from
+- Run `test-privsep-openbsd-policy`, `test-privsep-credentials`,
+  `test-privsep-worker-identity` and `test-privsep-openbsd-imsg` from
   CTest. The policy test forks children and requires a pledge violation when
   the storage policy attempts an AF_INET socket and when the network policy
   attempts to create a persistent file; it also checks pre-opened stream/
@@ -216,9 +252,10 @@ kill -TERM "$(cat /var/i2pd/i2pd.pid)"   # ordered immediate shutdown
   tunnels, transports, NetDB, logger) and exit before `daemon_timeout`.
 - During shutdown, further `SIGTERM`/`SIGINT` must not corrupt state; the PID
   file must disappear only after persistence completes.
-- `SIGABRT` from an actual `abort()` must still terminate and produce a core
-  if configured; an externally sent `SIGABRT` is currently treated as a
-  shutdown request.
+- `SIGABRT` (from `abort()` or an external sender) must terminate with the
+  default disposition and a nonzero signal status, producing a core if
+  configured. It must not be converted into a clean shutdown: the service
+  manager has to observe the crash and apply its restart policy.
 - `unix.handle_sigtstp` is now registered on OpenBSD and the daemon installs
   TSTP/CONT in its blocked-signal set; verify the main sigwait loop reconnects
   and restores transports on a real host.
@@ -307,3 +344,9 @@ version/type checks.
   tunnel churn) still needs soak testing.
 - No comparison against OpenBSD-current kernel changes is implied; rerun on
   each supported release.
+
+## See also
+
+- [OpenBSD port template](../../contrib/openbsd/README.md)
+- [service management](../service-management.md)
+- [build system](../build-system.md)

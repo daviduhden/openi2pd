@@ -12,7 +12,7 @@ Documents project documentation.
 
 The tools in `../../tools/` are imported from
 [PurpleI2P/i2pd-tools](https://github.com/PurpleI2P/i2pd-tools) and built
-against the in-tree `libi2pd`/`libi2pdclient`. They are independent
+against the in-tree `libi2pd`. They are independent
 executables; there is no submodule and no external i2pd checkout.
 
 Build everything (tools are enabled by default):
@@ -83,27 +83,35 @@ CTest registers three native-tool tests plus the library-level firewall test:
   bytes, embedded NULs, whitespace and malformed input; `offlinekeys` defaults,
   limits and output parseability; and `vain` thread, pattern, signature and
   regex bounds. It never starts a vanity search or contacts the network.
-- `tools-inventory`: every native tool target and its source are present, the
-  pinned upstream manifest is checked for missing files, and an unregistered
-  top-level `tools/*.cpp` fails the check. `test-routerinfo-firewall` separately
+- `tools-inventory`: every built native artifact is present, the pinned
+  upstream manifest is checked for missing files, and an unregistered
+  top-level `tools/*.cpp` fails the check.
+- `tools-inventory-static`: compile-free parity across the CMake target list,
+  documentation navigation, Debian/RPM packaging and the manual install
+  assertion.
+- `tools-cli`: exact exit codes, stdout/stderr separation, same-file refusal
+  and CRLF-normalized registration records.
+- `tools-getopt`: host regression for the MSVC getopt shim. `test-routerinfo-firewall` separately
   pins the endpoint grammar and renderers.
 
 The regression test generates ephemeral keys below the build tree, restricts
 them to the owner where the platform supports it, and removes the directory on
 success and on failure. It uses only CMake, has a timeout per tool invocation,
-and does not depend on Perl or Python. The positive `famtool` sign/verify path
-still needs a RouterInfo fixture and is not covered yet. All workflows remain
+and does not depend on Perl or Python. The positive `famtool` sign/verify path needs a generated router keys file;
+the fixture that creates the signed RouterInfo now exists. All workflows remain
 manual; dynamic validation of this test is pending the next manual CI run. No
 fuzzing has been run on the imported parsers, and dynamic Windows CLI testing
 also remains pending.
 
 The Perl `i2pdctl` client is covered separately by `perl-i2pdctl-syntax`,
-`perl-portability`, `perl-install-layout` and the Test::More suites. The install
+`perl-portability`, `perl-maintenance-checkers`, `perl-install-layout` and the
+Test::More suites; `android-jni-symbols-static` and `i18n-static` cover the
+compile-free Android/native guards. The install
 test verifies all declared native executables and `LICENSE.i2pd-tools` in the
 `Tools` component; see [i2pdctl](i2pdctl.md).
 
-The maintained native tools use C++23 and the in-tree `libi2pd`/`libi2pdclient`
-libraries. `tools/common/getopt.*` provides the small getopt/getopt_long
+The maintained native tools use C++23 and the in-tree `libi2pd` library;
+`autoconf_i2pd` additionally links `libi2pdlang` for its shared catalogs. `tools/common/getopt.*` provides the small getopt/getopt_long
 compatibility used by MSVC while Unix keeps the system implementation.
 
 See [provenance and inventory](provenance.md) for the pinned upstream commit,

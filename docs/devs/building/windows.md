@@ -64,10 +64,11 @@ ctest --test-dir build-msvc -C Release --output-on-failure
 
 Install with `cmake --install build-msvc --config Release --prefix <dir>`;
 `i2pd.exe`, `i2pd-tui.exe`, the native tools and `i2pdctl` are placed in the
-runtime `bin` directory when `I2PD_BUILD_TOOLS=ON`. The legacy
-`build/build_mingw.cmd` packaging path builds all targets and includes the TUI
-and tool executables in its ZIP/installer. No dependency is downloaded by the
-installed product.
+runtime `bin` directory when `I2PD_BUILD_TOOLS=ON`. `i2pdctl` needs a Perl
+interpreter at runtime. The legacy `build/build_mingw.cmd` packaging path
+builds all targets and includes the TUI and native tool executables in its
+ZIP/installer; it does not package the Perl client. No dependency is
+downloaded by the installed product.
 
 ### TUI on Windows
 

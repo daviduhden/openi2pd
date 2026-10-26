@@ -37,7 +37,17 @@ openi2pd supports the following signals:
 * TERM - Immediate ordered shutdown. This is not the 10-minute graceful path.
 * HUP - Reload tunnel configuration files. A sandboxed process cannot add a new filesystem path through HUP; restart after changing a configured path.
 * USR1 - Reopen the log file, for example after log rotation.
+* ABRT - No handler: `abort()` and an external `SIGABRT` terminate with the
+  default signal disposition, so a crash is not reported as a clean stop.
 * TSTP/CONT - Disconnect from/restore the network when `unix.handle_sigtstp` is enabled.
+
+`SIGINT` first drains transit tunnels (600 seconds) and then runs the ordered
+stop; `SIGTERM` skips the drain and runs the ordered stop immediately. Both
+stop the TUI/I2PControl listeners and the IPC log/storage workers in order. A
+process-group or cgroup signal reaches the workers directly and bypasses that
+ordering; signal only the main PID when a clean worker drain matters. The
+daemon exits `0` after an orderly stop, `1` for a startup or configuration
+failure, and `128+N` when terminated by signal `N`.
 
 For a managed service, use the service manager instead of signalling the
 process directly; see [Service management](../service-management.md).

@@ -591,8 +591,10 @@ OpenBSD/Linux/Windows runtime or live-peer run exists.
   records with 8192-byte truncation and a dropped counter.
 - **Storage root handoff**: the OpenBSD torrent-storage broker receives a
   validated data root as inherited fd4 instead of re-opening a path after
-  pledge. It uses `pledge("stdio unix proc exec sendfd recvfd")` without
-  `rpath`; directory descriptors are never sent through `SCM_RIGHTS`.
+  pledge. It uses `pledge("stdio proc exec sendfd")` with an `x`-only unveil of its
+  frozen executable (current policy; earlier revisions used
+  `stdio unix proc exec sendfd recvfd`); directory descriptors are never sent
+  through `SCM_RIGHTS`.
 - **Router storage recovery**: a worker-level write rejection (status 1) no
   longer poisons the IPC channel; only malformed frames/request IDs do. This
   prevents one ENOSPC/symlink rejection from disabling later persistence.

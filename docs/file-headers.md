@@ -15,10 +15,10 @@ Documents formats whose content cannot safely contain comment headers.
 Project source, configuration, script and resource files carry a short
 reference to the repository `LICENSE` and a file-specific description in their
 native comment syntax. The duplicated project copyright/SPDX boilerplate has
-been removed; the legal terms remain in `LICENSE` and in the notices of
-imported components. Shebangs, XML declarations and Markdown front matter
-retain their required positions. This change does not relicense imported
-components.
+been consolidated into `LICENSE`, `NOTICE`, `debian/copyright`, the upstream
+provenance files and repository history; the short header is a pointer, not a
+relicense. Imported components keep their own notices. Shebangs, XML
+declarations and Markdown front matter retain their required positions.
 
 The files below retain their own contents because binary formats, certificates,
 protocol fixtures, machine-readable data and legal texts require a different
@@ -81,7 +81,7 @@ for third-party licenses. The supplied logo-original.png is unchanged.
 | `debian/compat` | Exact-format package, store or protocol fixture data; retained without extra records. |
 | `debian/copyright` | Legal/provenance text; retained verbatim with its own license terms. |
 | `debian/docs` | Unclassified text/data format; requires a format-specific header rather than an unsafe insertion. |
-| `debian/i2pd.1` | Symbolic link; target provenance is retained. |
+| `man/i2pd.1` | Installed by the CMake `Runtime` component; the former `debian/i2pd.1` copy was removed to avoid duplicate ownership. |
 | `debian/i2pd.logrotate` | Symbolic link; target provenance is retained. |
 | `debian/i2pd.service` | Symbolic link; target provenance is retained. |
 | `debian/i2pd.tmpfile` | Symbolic link; target provenance is retained. |

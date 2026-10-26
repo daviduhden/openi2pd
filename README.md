@@ -22,9 +22,11 @@ canonical palette in [assets/branding/colors.md](assets/branding/colors.md).
 
 The supported platforms are **Windows, Linux, OpenBSD and Android**. macOS,
 FreeBSD and Solaris are outside the CMake support matrix; use upstream i2pd
-there. The Android UI ships complete English, Spanish, Russian and Simplified Chinese
-catalogs; the native TUI, proxy messages and daemon UI use en/es/ru/zh-Hans
-catalogs with English fallback. Documentation remains in English. OpenSSL and
+there. The Android UI ships complete English, Spanish, Russian and Simplified
+Chinese (`zh-CN`) catalogs; the native TUI, proxy messages and daemon UI use
+`en`/`es`/`ru`/`zh-Hans` catalogs with English fallback, and `zh-TW`/`zh-Hant`
+fall back to English. See the [language policy](docs/i18n.md). Documentation
+remains in English. OpenSSL and
 LibreSSL are supported. The HTTP administrative console has been removed.
 
 The executable remains `i2pd`, and existing configuration files, service names
@@ -53,7 +55,8 @@ works with BSD make on OpenBSD. It uses the Ninja generator because CMake's
 "Unix Makefiles" generator emits GNU make syntax. GNU make is not required by
 the CMake build or the POSIX front-end. Targets include
 `configure`, `build`, `router`, `tui`, `tools`, `test`, `check` and `install`;
-`tests/Makefile` configures, builds and runs CTest. Windows build
+`tests/Makefile` forwards to the root front-end and keeps no second build
+configuration. Windows build
 instructions are in [build_mingw.cmd](build/build_mingw.cmd).
 
 Android app sources are integrated under [android](android/). The app builds

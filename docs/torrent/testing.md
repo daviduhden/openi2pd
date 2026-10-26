@@ -180,3 +180,15 @@ callbacks without fallback, DHT format/callback limits, metadata block reads and
 legacy-name authorization. OpenBSD policy regressions cover the configured
 storage-worker restriction to preopened IPC. Android adds same-size document
 replacement rejection. All are pending manual CI compilation and tests.
+
+The DHT/PEX continuation prepares `test-torrents-dht-protocol` (KRPC envelope
+goldens and malformed prefixes, compact node/peer decoders, token store with
+per-node quota/replay/expiry, per-peer routing cap, raw-frame budget, port
+clamping and state-record validation) and `test-torrents-pex` (PEX `added` and
+`i2p_dht` hint decoders, candidate-table dedupe/capacity/TTL/backoff/admission
+windows and stop/remove purge). `fuzz-torrents-krpc` drives the envelope and
+compact decoders plus the token/limiter helpers; `fuzz-torrents-extensions`
+drives the PEX/hint decoders and candidate policy. Both fuzzers are registered
+in `tests/CMakeLists.txt` under `WITH_FUZZERS` and in both target lists of the
+manual `fuzz.yml` workflow; both tests are in the focused torrent selection of
+`build.yml`. These sources are registered but have not been compiled or run.

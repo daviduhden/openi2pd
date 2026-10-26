@@ -10,18 +10,38 @@ Documents project documentation.
 
 # Android JNI status and log snapshots
 
-This document describes the Android JNI status/log surface and the bounded
-runtime administration entries used by the service:
+This page is a historical snapshot of the first status/log and administration
+methods. The authoritative declaration list is
+`android/app/src/main/java/org/openi2pd/router/I2PD_JNI.java` with the generated
+header `android/app/src/main/cpp/org_openi2pd_router_I2PD_JNI.h`; the
+compile-free `android/tools/check-android-jni-symbols.pl` check keeps all 43
+native declarations, header declarations and C++ definitions in parity. It now
+also covers process-role selection, SAF storage, torrent metadata/commands,
+address-book administration, transport/tunnel controls, data directory, ABI
+and network-state callbacks. The subset below is retained for history:
 
 ```java
 public static native String getStatusSnapshot();
 public static native String getRecentLogs(long afterSequence, int limit);
-public static native boolean requestReseed();
+public static native String requestReseed();
+public static native String getReseedStatus();
 public static native boolean setRuntimeLogLevel(String level);
+public static native String getTunnelServices();
+public static native String startTunnel(String name); // returns the typed outcome
+public static native String stopTunnel(String name); // returns the typed outcome
+public static native String addAddressWithResult(String name, String destination, boolean replace);
+public static native String getSubscriptions();
+public static native String addSubscription(String url);
+public static native String removeSubscription(String url);
+public static native String banRouter(String base64Hash); // returns the typed outcome
+public static native String unbanRouter(String base64Hash); // returns the typed outcome
 ```
 
-They are implemented in `android/app/src/main/cpp/i2pd_android.cpp` and
-declared in `android/app/src/main/cpp/org_openi2pd_router_I2PD_JNI.h`.
+The current methods are implemented in
+`android/app/src/main/cpp/i2pd_android.cpp` and declared in the generated
+header. See [SAF storage](torrent/saf-storage.md) and
+[process capabilities](security/process-capabilities.md#android) for the storage and
+process boundaries.
 
 Native start and stop share `NativeCallGuard` with these status/control calls.
 `DaemonLifecycle.h` owns the `Stopped -> Starting -> Running` transition;
@@ -34,12 +54,19 @@ linking and device startup/restart validation remain pending manual CI.
 The status/log methods expose only aggregate counters, the local router's
 published/tested transport addresses, and the bounded log ring. No private
 keys, router identity material, pointers, session objects or raw memory are
-returned. `requestReseed()` accepts no URL or path and calls the existing
-single-flight NetDb bootstrap; `setRuntimeLogLevel()` accepts only the exact
-case-sensitive set `none`, `critical`, `error`, `warn`, `info`, `debug` and
-never writes the configuration file. Both return `false` when the router is not
-running, and both execute on the service worker rather than the Android main
-thread. They are typed native boundary calls, not a generic control channel.
+returned. `requestReseed()` accepts no URL or path, returns the non-blocking
+`started|already-running|disabled` outcome and never blocks the service worker;
+`getReseedStatus()` returns the bounded phase/error/timestamp fields.
+`setRuntimeLogLevel()` accepts only the exact case-sensitive set `none`,
+`critical`, `error`, `warn`, `info`, `debug` and never writes the configuration
+file. The administration calls are a closed typed set: `startTunnel`/
+`stopTunnel` take a configured name (≤64 bytes) and never edit a tunnel file;
+`addAddressWithResult` reports `Exists` and only replaces when the explicit
+`replace` flag is set; subscription and ban calls take a validated URL
+(≤512 bytes) or a 44-character base64 router hash and go through the
+daemon-owned queue. Every string is length-checked before UTF-8 conversion, and
+all calls return a failure when the router is not running. They are typed
+native boundary calls, not a generic control channel.
 
 ## `getStatusSnapshot()`
 
@@ -172,7 +199,8 @@ gap explicitly. An empty result is returned as the empty string.
   internally consistent, but a reader can observe, for example, a peer count
   from before a tunnel count update. Treat the result as a sample, not a
   transaction.
-- No global JNI references are created and no Java object is retained by
+- The SAF bridge holds one process-lifetime global class reference; no Java
+  object, activity or listener is retained by
   native code. Each call creates one local `jstring` (returned) and, for
   `getRecentLogs`, a temporary C++ vector that is destroyed before returning.
 - The caller owns the returned string. Repeated calls are independent.
@@ -222,6 +250,21 @@ Java must therefore parse defensively:
   typed boolean/closed-set value, take no path or URL, and require no additional
   permission beyond the app process. They are serialized by the existing
   `NativeCallGuard` and must run on the service worker.
+- A process claims exactly one native role (`Router` or `StorageBroker`) before
+  its first router- or document-capable entry. `startDaemon` and the SAF bridge
+  require `Router`; `restrictSafStorageProcess` claims `StorageBroker` and is
+  irreversible. A conflict returns the fixed token `process-role-conflict` and
+  never starts a second router.
+- The string boundary never passes a null `jchar*` to `NewString` for an empty
+  result, clears pending exceptions on `GetStringChars`/array failures, deletes
+  local references on every `buildTorrentMetadata` failure and returns its
+  documented null fallback.
+- `stopDaemon` publishes a native cancellation token before any monitor; a start
+  that is inside the asset wait or between `Daemon.init` and `Daemon.start`
+  aborts and returns `start-canceled`. The Java start maps that to stopped with
+  at most one rollback stop. SAF payloads are detached on the stop path; the
+  bridge/payload destructors do not attach a thread or perform JNI after the
+  VM lifetime ends.
 
 ## Validation status
 

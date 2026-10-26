@@ -119,3 +119,94 @@ branches still require the actual configured dependency/toolchain CI lanes.
 
 See `BUILD-018`, `TEST-023` and `ANDROID-017` in `TODO.md`. No task is marked
 validated by CI on the basis of this audit.
+
+## 2026-10-25 multi-subsystem audit update
+
+Six read-only passes rechecked the tree after `2ae36284`. Confirmed defects
+were corrected without compilation:
+
+- `daemon/I2PControl.cpp`: a stray closing brace closed `namespace client`
+  before the handler definitions, and `steady_timer::cancel(error_code)` was
+  called on Boost.Asio releases that only provide `cancel()`. Includes for
+  `<cstdio>`, `Crypto.h`, `<openssl/bn.h>` and `<openssl/rsa.h>` are now
+  explicit; the throwing `remote_endpoint()` log and the shutdown/handshake
+  conflation were removed. `ip::port_type` became `unsigned short` so the
+  documented Boost 1.74 floor still works.
+- Dead declarations removed: `NetDb::ManageRequests` and the undefined client
+  `I2PUDPClientTunnel` cleanup-timer pair.
+- Warnings removed from the last completed package run: unused `str_rmatch`,
+  PQ-only `token`, unused `MAX_RESEED_ENTRIES` (now the 400-entry SU3 bound),
+  redundant `deny` capture, and the deprecated `SSL_set1_host` selection.
+- Build graph: a `CheckLanguage(RC)` probe enables the Windows resource when a
+  resource compiler exists (platform modules normally do this already), with
+  `version.h` on the `i2pd` include path; the ncurses fallback probes
+  `CURSES_LIBRARIES` with `wadd_wch`;
+  `I2PD_HAVE_SSL_SET1_DNSNAME`/`I2PD_HAVE_OPENSSL_MLKEM_H` have `Crypto.h`
+  defaults and static-contract markers; `I2PD_INSTALL_CONFIG` keeps the
+  OpenBSD port from installing a second configuration tree; `WITH_HARDENING`
+  warns on MSVC; the Android APK job asserts packaged reseed certificates.
+- Torrent/TUI: administrative posts hold `weak_from_this().lock()`; the
+  no-destination shutdown stops owned storage workers; generated metainfo
+  values use `std::deque`; POSIX startup retries a UTF-8 `LC_CTYPE` and the
+  terminal undefines every `KEY_Fn` macro it maps.
+
+Residual items require design work or dynamic evidence and were not changed:
+`TorrentsTunnel::InitTorrentFiles` mutates session objects from the disk
+worker; OpenBSD `CMAKE_INSTALL_SYSCONFDIR` needs a port build (WANTLIB/libutil
+and the `i2pd_privsep` capability macro set are corrected statically); Android
+D8/R8 Java 25 dexing is now invoked by the manual lane but remains unexecuted; the PARITY-014 feature backlog is
+not compile-audit work.
+
+This update is static analysis only. No compiler, configure, CTest, Gradle,
+validator or workflow was executed, and nothing here is CI validation.
+
+## 2026-10-26 compile/link continuation
+
+Six read-only passes rechecked the current uncommitted tree: core C++23 and
+headers; transports/crypto/netDb/client protocols; IPC/privsep; BitTorrent/
+TUI/tools; Android/JNI; CMake/linkage. The confirmed defects were corrected
+without invoking a compiler, configurator or test runner.
+
+- `libi2pd/TunnelPool.cpp`: `TunnelExpired` still used the removed
+  `std::pair` shape (`.first`/`.second`) after `m_Tests` became a
+  `std::map<uint32_t, TunnelTest>`; it now uses `.outbound`/`.inbound`.
+- `libi2pd/Streaming.cpp`: the `Stop()` wait referenced
+  `STOP_ON_SERVICE_TIMEOUT` unqualified from `i2p::stream`, but the constant
+  lives in `i2p::client`; both uses are qualified.
+- `privsep/WindowsIpc.h`: `WindowsChannel` declared `m_Role` and `m_RoleSet`
+  twice; the duplicate pair is removed and the `Admin` default retained.
+  `WindowsSupervisor.cpp` now defines the declared
+  `IsCurrentProcessInJobObject()` test seam, which the Windows supervisor test
+  links.
+- `daemon/Daemon.cpp`: the init-rollback guards used `_ANDROID__`, which no
+  toolchain defines, while the members are compiled out by `I2PD_NO_PRIVSEP`;
+  both guards use `__ANDROID__`.
+- `tui/main.cpp`: multiple status/title builders concatenated the
+  `std::string_view` returned by one-argument `i2p::i18n::tr` with
+  `std::string`/`const char*`, which C++23 does not provide. Every such
+  operand is materialised as `std::string`; `check-i18n.cmake` now rejects the
+  unwrapped pattern.
+- `libi2pd/Crypto.cpp` and `libi2pd/Log.cpp` include `<openssl/hmac.h>` and
+  `<cctype>` explicitly; `SSU2Session.h` includes `<cstring>` and
+  `<unordered_map>`; other public headers gained the standard header for the
+  containers/utilities they declare.
+- `libi2pd_client/HTTPProxy.cpp` includes `<cctype>` and casts the
+  `Connection` byte to `unsigned char` before `std::tolower`.
+- Windows IPC test: `AcceptBound`/`SpawnWindowsWorker` take a wide nonce hex
+  (`std::wstring`). The test now keeps the wide value instead of narrowing it;
+  it narrows only for `DecodeWindowsWorkerNonce`.
+- `test-i2pcontrol-socket.cpp` uses the same
+  `BOOST_ASIO_HAS_LOCAL_SOCKETS && !_WIN32` guard as the production helpers,
+  so an Asio build without AF_UNIX is a skip rather than an ill-formed TU.
+- CMake: the combined linked OpenSSL probe includes `<openssl/bn.h>`; preset
+  schema 5 declares the required CMake 3.25; `i2pd_privsep` and both TUI
+  backends inherit `${I2PD_EXTRA_LIBS}`; the exported `i2pd_privsep` archive
+  publishes its `libi2pd` dependency; `tools/LICENSE` is installed from one
+  component; the header-only `test-privsep-{supervisor,authorization,
+  capabilities}` suites link the IPC archive.
+
+Residual and not claimed: probe-dependent header branches (`HKDFContext`
+members, `OPENSSL_SIPHASH`/`OPENSSL_PQ`) are layout-compatible today but an
+installed consumer still compiles its own macro fallback; no compiler,
+configure, CTest, Gradle, device or workflow was executed. Compilation and
+linkage remain pending manual CI.

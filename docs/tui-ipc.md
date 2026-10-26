@@ -105,9 +105,13 @@ I2PDTUI/1 DESTINATIONS
 I2PDTUI/1 SERVICES [limit]
 I2PDTUI/1 ADDRESSBOOK [limit]
 I2PDTUI/1 ADDRESSBOOK-BLOCKED [limit]
+I2PDTUI/1 ADDRESSBOOK-SUBSCRIPTIONS [limit]
+I2PDTUI/1 BLOCKLIST [limit]
 I2PDTUI/1 CONFIG
 I2PDTUI/1 LOGS <after-sequence> [limit]
 I2PDTUI/1 ADMIN TRANSIT ON|OFF
+I2PDTUI/1 ADMIN ONLINE ON|OFF
+I2PDTUI/1 ADMIN LOG-REOPEN
 I2PDTUI/1 ADMIN LOGLEVEL none|critical|error|warn|info|debug
 I2PDTUI/1 ADMIN RESEED
 I2PDTUI/1 ADMIN SHUTDOWN GRACEFUL|IMMEDIATE|CANCEL
@@ -115,12 +119,22 @@ I2PDTUI/1 ADMIN RELOAD TUNNELS
 I2PDTUI/1 ADMIN BANDWIDTH K|L|M|N|O|P|X
 I2PDTUI/1 ADMIN SHARE 0..100
 I2PDTUI/1 ADMIN ADDRESS-ADD <name.i2p> <full-base64-destination>
+I2PDTUI/1 ADMIN ADDRESS-REPLACE <name.i2p> <full-base64-destination>
 I2PDTUI/1 ADMIN ADDRESS-REMOVE <name.i2p>
 I2PDTUI/1 ADMIN ADDRESS-BLOCK <name-or-wildcard.i2p>
 I2PDTUI/1 ADMIN ADDRESS-UNBLOCK <name-or-wildcard.i2p>
+I2PDTUI/1 ADMIN ADDRESS-SUB-ADD <http(s)-subscription-url>
+I2PDTUI/1 ADMIN ADDRESS-SUB-REMOVE <http(s)-subscription-url>
+I2PDTUI/1 ADMIN NETDB-BAN <base64-router-hash>
+I2PDTUI/1 ADMIN NETDB-UNBAN <base64-router-hash>
+I2PDTUI/1 ADMIN TUNNEL-START <name>
+I2PDTUI/1 ADMIN TUNNEL-STOP <name>
+I2PDTUI/1 TORRENT-TUNNELS
+I2PDTUI/1 TORRENTS <tunnel-index> [limit]
 I2PDTUI/1 TORRENT-RECHECK <tunnel-index> <torrent-id>
 I2PDTUI/1 TORRENT-META-COMMENT <tunnel-index> <torrent-id> <text>
 I2PDTUI/1 TORRENT-META-CREATED-BY <tunnel-index> <torrent-id> <text>
+I2PDTUI/1 TORRENT-* ...
 I2PDTUI/1 PING
 I2PDTUI/1 QUIT
 ```
@@ -134,7 +148,11 @@ I2PDTUI/1 ERR <error-code> <message-length>\n<message>
 
 Payloads are fields separated by `\n`, each `name=escaped-value`; `\`, newline
 and carriage return are escaped. Unknown fields are ignored, which allows
-additive evolution. A version mismatch is rejected explicitly.
+additive evolution. A version mismatch is rejected explicitly. The complete
+torrent command set (creation, trackers, priorities, comments, session/DHT,
+remove-all and bulk lifecycle) is the canonical table in
+[torrent IPC](torrent/ipc.md); this page covers the console envelope and the
+administrative verbs.
 
 Limits:
 
@@ -157,7 +175,10 @@ Limits:
 | Configuration records/request | 128 |
 | Configuration value | 512 bytes |
 | Socket permissions (Unix) | 0600 |
-| Receive/send timeout | 5 s |
+| Server client idle timeout | 5 s |
+| Client socket I/O timeout | 3 s |
+| Administrative wait | 2 s |
+| Administrative queue capacity | 8 |
 
 `tests/test-tui-protocol.cpp` checks the inclusive limit and rejects the first
 byte over it. The Windows transport applies the same limits; see
@@ -228,12 +249,20 @@ store type, encryption type, expiration, earliest lease date, validity and
 expiry flags. Both use bounded container snapshots and never expose private
 keys, addresses or raw records.
 
-`SERVICES [limit]` returns a bounded, read-only inventory of configured client
-and server TCP/UDP tunnels, HTTP/SOCKS proxies and the SAM, BOB and I2CP
-servers. Each `service` record is `kind|name|endpoint|destination|enabled`;
-only public b32 destinations are included. The snapshot is copied under the
-client-context locks and never exposes private keys, listener objects or
-filesystem paths.
+`SERVICES [limit]` returns a bounded inventory of configured client, server and
+UDP tunnels, HTTP/SOCKS proxies and the SAM, BOB and I2CP servers. Each
+`tunnel.service` row is `name|kind|running|localEndpoint|destination` (each
+field capped and control characters replaced); `tunnel.service.count` reports
+the number returned, and the protocol-server rows keep the
+`service=kind|name|endpoint|destination|enabled` form. Only public b32/b33
+labels are included: never private keys, listener objects or filesystem
+paths. The snapshot is copied under the client-context locks; the `running`
+flag is a snapshot and `ADMIN TUNNEL-START`/`TUNNEL-STOP` re-check the live
+state before acting (`already-running`/`already-stopped` are reported instead
+of a spurious action). `NETDB` also carries the reseed status:
+`netdb.reseed.phase` (`idle|running|succeeded|failed|disabled`),
+`.enabled`, `.attempts`, `.succeeded`, `.last_attempt_ms`,
+`.last_success_ms` and `.last_error` (a bounded, non-secret reason token).
 
 ### Administrative operations
 
@@ -242,6 +271,9 @@ Version 1 exposes a closed set of typed router-wide writes:
 ```
 I2PDTUI/1 ADMIN TRANSIT ON
 I2PDTUI/1 ADMIN TRANSIT OFF
+I2PDTUI/1 ADMIN ONLINE ON
+I2PDTUI/1 ADMIN ONLINE OFF
+I2PDTUI/1 ADMIN LOG-REOPEN
 I2PDTUI/1 ADMIN LOGLEVEL info
 I2PDTUI/1 ADMIN RESEED
 I2PDTUI/1 ADMIN SHUTDOWN GRACEFUL
@@ -251,17 +283,46 @@ I2PDTUI/1 ADMIN RELOAD TUNNELS
 I2PDTUI/1 ADMIN BANDWIDTH L
 I2PDTUI/1 ADMIN SHARE 50
 I2PDTUI/1 ADMIN ADDRESS-ADD site.i2p <full-base64-destination>
+I2PDTUI/1 ADMIN ADDRESS-REPLACE site.i2p <full-base64-destination>
 I2PDTUI/1 ADMIN ADDRESS-REMOVE site.i2p
 I2PDTUI/1 ADMIN ADDRESS-BLOCK *spam*.i2p
 I2PDTUI/1 ADMIN ADDRESS-UNBLOCK *spam*.i2p
+I2PDTUI/1 ADMIN ADDRESS-SUB-ADD http://reg.i2p/hosts.txt
+I2PDTUI/1 ADMIN ADDRESS-SUB-REMOVE http://reg.i2p/hosts.txt
+I2PDTUI/1 ADMIN NETDB-BAN <base64-router-hash>
+I2PDTUI/1 ADMIN NETDB-UNBAN <base64-router-hash>
+I2PDTUI/1 ADMIN TUNNEL-START site
+I2PDTUI/1 ADMIN TUNNEL-STOP site
 ```
+
+`ADDRESS-ADD` never re-points an existing name: it answers
+`outcome=exists` and leaves the entry untouched. Re-pointing requires the
+explicit `ADDRESS-REPLACE` verb, so a typo or a compromised local client cannot
+silently redirect a curated name. Tunnel start/stop accept a configured
+service name (printable, at most 64 bytes, no spaces) and answer an
+`outcome=started|stopped|already-running|already-stopped|unknown` token; a
+`running=0|1` field reports the post-action state. `ADMIN RESEED` never blocks
+the administrative thread: it returns `started|already-running|disabled` and
+the phase/last error are read from the next `NETDB` snapshot.
 
 `ADDRESSBOOK [limit]` returns bounded `address.count` and
 `address=name|b32-or-b33|blinded` rows. `ADDRESSBOOK-BLOCKED [limit]` returns
 `blocked.count` and `blocked=<name-or-pattern>` rows from the deleted-host
-tombstone file. Address mutations accept only a Java-compatible `.i2p` label
-and a full base64 identity; block/unblock accept a bounded `.i2p` name or
-`*` wildcard. They never accept a path, URL, key filename or subscription URL.
+tombstone file. `ADDRESSBOOK-SUBSCRIPTIONS [limit]` returns
+`subscription.count` and `subscription=<url>` rows (at most 16). Address
+mutations accept only a Java-compatible `.i2p` label and a full base64
+identity; block/unblock accept a bounded `.i2p` name or `*` wildcard. They
+never accept a path, key filename or subscription URL. Only
+`ADDRESS-SUB-ADD`/`ADDRESS-SUB-REMOVE` take a URL: a single `http`/`https`
+token of at most 512 bytes with no userinfo, fragment or whitespace, validated
+again by the address book and written to `subscriptions.txt` atomically.
+
+`BLOCKLIST [limit]` returns the startup blocklist counters
+(`blocklist.loaded`, `blocklist.ipv4`, `blocklist.ipv6`, `blocklist.hashes`)
+and `blocklist.runtime` plus bounded `blocklist.banned=<base64-hash>` rows.
+`ADMIN NETDB-BAN`/`NETDB-UNBAN` edit only the in-memory runtime set (1024
+entries, cleared on restart); they never rewrite the blocklist file. The
+startup blocklist is read once before netDb loads cached RouterInfos.
 Removing an address persists an exact tombstone and subscription merges skip
 matching names; an explicit add clears matching patterns.
 
@@ -272,11 +333,12 @@ thread executes it and returns a typed payload containing `admin`, `result`
 still running after the bounded wait is reported as `accepted`; further
 submissions are rejected as queue-full when every slot is occupied.
 
-`ADMIN TRANSIT` updates the atomic `RouterContext` acceptance flag only. It
+`ADMIN ONLINE` calls `Transports::SetOnline` and reports the applied state; it does not stop the router or the IPC service. `ADMIN LOG-REOPEN` reopens the daemon log sink and reports success. `ADMIN TRANSIT` updates the atomic `RouterContext` acceptance flag only. It
 does not create, tear down or modify existing tunnels. `ADMIN LOGLEVEL` updates
 the logger's atomic minimum level; valid values are `none`, `critical`,
-`error`, `warn`, `info` and `debug`. `ADMIN RESEED` requests the existing
-single-flight NetDb reseed. `ADMIN SHUTDOWN` uses the daemon's graceful/immediate
+`error`, `warn`, `info` and `debug`. `ADMIN RESEED` starts the owned,
+single-flight NetDb reseed job and returns immediately; the per-host
+handshake/read deadlines and the shutdown cancellation are owned by NetDb. `ADMIN SHUTDOWN` uses the daemon's graceful/immediate
 shutdown paths; immediate shutdown requires a separate typed confirmation in
 the TUI. `ADMIN RELOAD TUNNELS` reuses the client tunnel reload path. Bandwidth
 accepts only the one-letter classes `K/L/M/N/O/P/X`; share accepts `0..100`.
@@ -353,7 +415,8 @@ code, but its ACLs and cross-user rejection are pending runtime validation.
   `v`. All eleven views are reachable by cycling with `Tab` or the arrow keys.
   Narrow terminals show the active view in the header instead of truncated tab
   labels.
-- Status: `t` opens a typed confirmation and toggles transit acceptance;
+- Status: Up/Down/PgUp/PgDn scroll the fixed fields; Home/End jump to the
+  first/last field. `t` opens a typed confirmation and toggles transit acceptance;
   `e` confirms a NetDb reseed, `H` reloads tunnels, `s`/`S` begin graceful or
   immediate shutdown, `c` cancels a pending graceful drain, and `b`/`%` set the
   bandwidth class/share ratio. The view includes a 60-sample bandwidth history,
@@ -369,12 +432,21 @@ code, but its ACLs and cross-user rejection are pending runtime validation.
   view resumes streaming instead of waiting forever for a reset sequence.
 - Refresh: state every 2 s; active peer/connection/tunnel/netDb/destination/
   service/config view every 2 s; netDb directories every 5 s; logs every 1 s
-  while visible. `getch` uses a 200 ms timeout, so the UI never blocks on the socket
-  or terminal.
+  while visible. The Destinations view rotates one address-book auxiliary
+  request per 6 s instead of issuing four blocking requests in one tick.
+  Requests are synchronous with bounded 3 s send/receive deadlines; `getch`
+  uses a 200 ms timeout. A slow daemon can therefore delay a tick, but never
+  unboundedly, and a disconnected client keeps the last snapshot marked
+  `[stale]`. Server connections are recycled after 30 minutes and reconnect
+  automatically.
 - Destinations is a dedicated bounded view of the local client b32 addresses,
   address-book entries and blocked patterns; it does not share the NetDb panel.
   `a`/`d` add/replace or remove an address; `b`/`u` block or unblock a
   subscription name or wildcard.
+- `q` quits from the table views; inside a torrent detail it returns to the
+  table (Esc also returns), so a detail view cannot be mistaken for the quit
+  key. The Windows console handler stops the UI on Ctrl-C/Break, close, logoff
+  or shutdown and restores the alternate screen through the normal path.
 - Services is a bounded list of configured client/server tunnels, proxies and
   local protocol servers; `v` opens it and Up/Down/PgUp/PgDn scroll it.
 - Config is a read-only table of the allowlisted snapshot, with the option
@@ -546,3 +618,33 @@ still executed and that a remote error code is preserved.
 the named-pipe/DACL primitives, not console rendering. Both are registered with
 CTest; no live Windows TUI session or cross-user ACL test has been executed in
 this environment. See [TUI on Windows](TUI-WINDOWS.md#verification).
+
+## Localization
+
+The TUI renders English source text through the process-local `i2p::i18n`
+catalog (`--lang`, configuration `lang`, or `LC_ALL`/`LC_MESSAGES`/`LANG`, with
+English fallback). Spanish, Russian and Simplified Chinese ship as complete
+catalogs.
+
+- `SetStatus` and `BeginPrompt` translate at their boundary. `PutLine` only
+  matches an exact whole line and never sees the `"> "`/`"! "` status prefix,
+  so a status catalog entry depends on the boundary lookup.
+- Wire tokens stay English: IPC verbs, field names, torrent/lease-set status,
+  peer flags, log levels, transport names and config keys. Torrent status is
+  mapped for display only by `TorrentStatusText`.
+- Labels are fitted with `DisplayWidth` (wcwidth columns) and wrapped with
+  `WrapUtf8`; the status/NetDb label column is 26 cells. A longer translation
+  is truncated deliberately rather than shifting the value column.
+- Confirmation prompts advertise `[s/N]`/`[д/Н]`; `IsAffirmative` accepts
+  `y/yes/s/sí/д/да`.
+- Counts use `ntr` keyed by the English plural form; the catalogs provide the
+  two Spanish, three Russian and one Chinese forms.
+- The Help bodies and the daemon `--help` prose remain English until they are
+  re-wrapped for multibyte text (`I18N-007`).
+
+## See also
+
+- [ipc](torrent/ipc.md)
+- [service management](service-management.md)
+- [ipc protocol](security/ipc-protocol.md)
+- [TUI WINDOWS](TUI-WINDOWS.md)

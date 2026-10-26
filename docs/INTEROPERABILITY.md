@@ -10,6 +10,8 @@ Documents project documentation.
 
 # I2P Java interoperability audit
 
+> Historical interoperability record. “Local CTest passed” cells describe the capture date and are not current evidence; use the manual CI matrix and `tests/interop/FIXTURES.md` for the active target.
+
 Current comparison target and historical audit provenance:
 
 | Item | Value |
@@ -57,7 +59,7 @@ Status vocabulary:
 
 | Area | Specification | I2P Java reference | openi2pd reference | Java behavior (static) | openi2pd behavior | Difference | Interoperability consequence | Priority | Change / tests | Validation |
 |---|---|---|---|---|---|---|---|---|---|---|
-| NTCP2 version negotiation | `spec/ntcp2` | `router/.../transport/ntcp/NTCPTransport.java`, `InboundEstablishState.java`, `OutboundNTCP2State.java` | `libi2pd/NTCP2.cpp` `SetVersion`, SessionRequest/Confirmed | `NTCP2_INT_VERSION=2`, `PQ_INT_VERSION=4`; normal config publishes v2, PQ config publishes 4/5; accepts 2–5 internally when the provider supports it | Can accept 3–5, but configured version 3 is clamped to 2; no-PQ builds publish no `pq` | None found; i2pd supports 5 beyond Java's 4 but negotiates down | Compatible when PQ availability matches; otherwise version 2 | P0 | Existing version tests; PQ publication gated | Needs dynamic PQ/non-PQ session test |
+| NTCP2 version negotiation | `spec/ntcp2` | `router/.../transport/ntcp/NTCPTransport.java`, `InboundEstablishState.java`, `OutboundNTCP2State.java` | `libi2pd/NTCP2.cpp` `SetVersion`, SessionRequest/Confirmed | `NTCP2_INT_VERSION=2`, `PQ_INT_VERSION=4`; the address publishes `v=2` plus `pq=N` (N=3..5) when the provider supports ML-KEM, and accepts 2–5 internally | Can accept 3–5, but configured version 3 is clamped to 2; no-PQ builds publish no `pq` | None found; i2pd supports 5 beyond Java's 4 but negotiates down | Compatible when PQ availability matches; otherwise version 2 | P0 | Existing version tests; PQ publication gated | Needs dynamic PQ/non-PQ session test |
 | NTCP2 handshake/frames | `spec/ntcp2` | `OutboundNTCP2State`, `InboundEstablishState`, `NTCP2Payload` | `libi2pd/NTCP2.cpp` | X25519/ML-KEM, obfuscation, length bounds, 65516 max message | Same structure; separate implementation; replayed SessionRequest rejection, strict SessionConfirmed block order, 4048-byte msg3p2 cap and data-phase ordering now enforced | Replay/cap/ordering gaps fixed; termination-count and DateTime handling aligned | Compatible (static, validation pending) | P0 | NET-118..NET-123 and NET-134..NET-140; `test-ntcp2-session-confirmed-payload`/`test-ntcp2-handshake-bounds` passed in the local 48-test CTest | Needs dynamic session/replay/PQ test |
 | SSU2 version/options | `spec/ssu2` | `router/.../udp/UDPTransport.java`, `PacketBuilder2.java`, `InboundEstablishState2.java` | `libi2pd/SSU2*.cpp` | `SSU2_INT_VERSION=2`; publishes `v=2` plus `pq` for PQ | Publishes `v=2` plus `pq` 3/4; LibreSSL server advertisement now maps unsupported 3 to 2 | C++ could advertise PQ v3 under LibreSSL even though sessions fall back to v2 | Fixed static; no invalid capability advertisement | P0 | `SSU2Server::SetVersion` mapping; validate LibreSSL publication | Fixed (validation pending) |
 | SSU2 handshake/tokens/relay | `spec/ssu2` | `OutboundEstablishState2`, `InboundEstablishState2`, `PacketBuilder2` | `libi2pd/SSU2Session.cpp` | Retry/token, relay request/response, peer test blocks | Equivalent blocks and state machine; PathResponse length now includes its 3-byte block header | None found beyond bounds fix | Compatible (static) | P0 | Existing TUI/status only | Needs relay/peer-test dynamic test |
@@ -72,12 +74,12 @@ Status vocabulary:
 | Reseed/SU3 | `spec/su3` | `router/.../util/SU3File.java` | `Reseed.cpp` | SU3 header/signature/ZIP | Checked reads and bounds | C++ hardening only | Compatible (static) | P1 | Malformed fixture pending | Pending |
 | Tunnel build (short/variable) | `spec/tunnel-creation` | `router/.../tunnel/*.java`, build request records | `TunnelConfig.*`, `Tunnel.*` | Record layouts, reply mapping | Equivalent | None found | Compatible (static) | P1 | Existing tests limited | Needs live tunnels |
 | Garlic / tunnel messages | `spec/tunnel-message`, garlic | `router/.../router/...` message handling, garlic | `Garlic.cpp`, `TransitTunnel.cpp` | Layered messages, delivery instructions | Equivalent | None found | Compatible (static) | P1 | None | Needs live tunnel traffic |
-| ECIES-X25519-AEAD-Ratchet | `spec/ecies` | `core/.../crypto/ecies/...`, ratchet session classes | `ECIESX25519AEADRatchetSession.*` | IK/ratchet, tags, AEAD, nonces | Same external format; NS uses a deliberately stricter non-empty Garlic policy (Java accepts an empty clove set) and valid DateTime; NSR/ES payloads are pre-validated before side effects | NSR/ES partial application and replay-cache lifetime fixed statically | Implemented (static); tests registered but not executed | P0 | `test-eciesx25519-ratchet-session`, `test-eciesx25519-ratchet-tagsets`; no Java vector | Needs CI/cross-vectors |
+| ECIES-X25519-AEAD-Ratchet | `spec/ecies` | `router/.../crypto/ratchet/...` (Java 2.14.0 moved the package) | `ECIESX25519AEADRatchetSession.*` | IK/ratchet, tags, AEAD, nonces | Same external format; NS uses a deliberately stricter non-empty Garlic policy (Java accepts an empty clove set) and valid DateTime; NSR/ES payloads are pre-validated before side effects, NSR splits are promoted by the first inbound tag and tag exhaustion restarts the session | NSR/ES partial application and replay-cache lifetime fixed statically | Implemented (static); tests registered but not executed | P0 | `test-eciesx25519-ratchet-session`, `test-eciesx25519-ratchet-tagsets`; no Java vector | Needs CI/cross-vectors |
 | Signatures | `spec/common-structures` | `SigType.java` types 0–8, 11 | `Identity.h`, `Signature.*` | DSA/ECDSA/RSA/Ed25519/Ed25519ph/RedDSA | Same constants plus GOST 9/10; type 8 now uses Java-compatible plain Ed25519 over the supplied bytes | GOST is not in Java stable list; optional | No interoperability impact for common types | P2 | Type-8 vectors still needed | Existing vectors/static review |
 | ML-KEM encryption types | proposal 169 / `spec/ecies` | `EncType.java` codes 5–7 | `PostQuantum.*`, `Crypto.h` | MLKEM512/768/1024 hybrid | Same codes when the provider exposes ML-KEM; capability is now probed at runtime and cached, LibreSSL 4 excludes ML-KEM-512, and unsupported key creation fails closed | Provider probe implemented statically; type-5/7 session and Java provider vectors remain missing | PQ sessions only when both support | P1 | Capability checks retained; publication/selection gated | Needs PQ interop |
 | Streaming | `spec/streaming` | `router/.../client/streaming/*.java` | `Streaming.*` | SYN/SYN-ACK, windows, resets, close | Equivalent | None found | Compatible (static) | P1 | None | Needs dynamic stream test |
 | Datagrams v1/2/3 | `spec/datagrams` | `core/.../client/Datagram*.java` | `Datagram.*` | Repliable/raw, ports, auth | Same | None found | Compatible (static) | P1 | Existing code | Needs client interop |
-| SAM | `spec/samv3` | `apps/sam/java/src/net/i2p/sam/*` | `libi2pd_client/SAM.cpp` | Session/handshake/naming/streams, pipelined commands and one-word controls | Same commands plus persistent bounded framing, quoted parameter values, case-insensitive keys and repeated-space command words; LISTEN_PROTOCOL routing remains partial | New framing/control fixes are statically implemented; live SAM client and split-frame tests remain | Interoperability improvement for pipelined clients | P1 | `test-sam-control-framing`; `test-sam-version.sh` not run | Pending |
+| SAM | `spec/samv3` | `apps/sam/java/src/net/i2p/sam/*` | `libi2pd_client/SAM.cpp` | Session/handshake/naming/streams, pipelined commands and one-word controls | Same commands plus persistent bounded framing, quoted parameter values, case-insensitive keys and repeated-space command words; SAM 3.3 `LISTEN_PROTOCOL` routing and protocol-aware RAW dispatch are implemented statically | New framing/control fixes are statically implemented; live SAM client and split-frame tests remain | Interoperability improvement for pipelined clients | P1 | `test-sam-control-framing`; `test-sam-version.sh` not run | Pending |
 | I2CP | `spec/i2cp` | `core/.../client/I2CP*.java` | `I2CP.cpp` | Message codes, options, LeaseSet lookup | Same | None found | Compatible (static) | P1 | None | Needs dynamic client |
 | HTTP client proxy | RFC 9110/9112 | Java apps use HTTP client/proxy separately | `HTTP.cpp`, `HTTPProxy.cpp` | Not a router wire protocol | Header OWS and strict lengths fixed | Interop improvement | Compatible (unit tested) | P2 | Tests passed | Linux unit test |
 | Web console | Java router feature | Java console classes | removed | Java-only UI | Removed | Intentional; not protocol | None | — | N/A | N/A |
@@ -176,7 +178,7 @@ This table records the second static pass against the pinned Java 2.13.0 tree.
 | NET-136 | NTCP2 SessionCreated replay | `spec/ntcp2` SessionCreated replay; Java incoming filter at `NTCPTransport.java:227,855-857` | `NTCP2.cpp::ProcessSessionCreated`, `NTCP2Server::IsHandshakeReplayOutgoing` | Alice caches encrypted Y prefixes for at least `2*D` | Only Bob had a replay cache | Replayed message 2 could force repeated handshake work | P2 | Separate bounded 10-minute outgoing cache | Fixed (static); `test-ntcp2-handshake-bounds` covers cache separation |
 | NET-137 | NTCP2 pending inbound bounds | `spec/ntcp2` DoS Mitigation | `NTCP2.cpp::HandleAccept/RemoveNTCP2Session` | Bound pending handshakes and release the slot on termination | A failed handshake kept its per-IP slot until the 28–33 s sweep; no global cap | Immediate legitimate reconnect rejected; pending-slot exhaustion | P2 | Remove on Terminate; 512-entry global cap; iterator-safe stop | Fixed (static); lifecycle test pending |
 | NET-138 | NTCP2 extra pending handshake bytes | `InboundEstablishState.java:477-519`; `OutboundNTCP2State.java:390-393`; spec/ntcp2 | `NTCP2.cpp::HasPendingIncomingData` | Reject bytes already queued after message 1/2 | Extra bytes were ignored | Handshake smuggling / probing weakness | P2 | `socket.available()` check before proceeding; probing-resistant close | Fixed (static); live TCP test pending |
-| NET-139 | NTCP2 handshake padding limits | `spec/ntcp2-hybrid` Maximum Padding; `InboundEstablishState.java:444-449`; `OutboundNTCP2State.java:342-346` | `NTCP2.cpp` request/created generation and validation | Per-version limits: msg1 880/1264/1648; msg2 848/1136/1616 | Shared `m_MaxMsgSize` allowed excessive padding; v4 generation could exceed 1136 | Excess allocation and version-dependent divergence | P2 | `NTCP2GetMaxHandshakePadding` and clamped generation | Fixed (static); `test-ntcp2-handshake-bounds` covers limits |
+| NET-139 | NTCP2 handshake padding limits | `spec/ntcp2-hybrid` Maximum Padding; `InboundEstablishState.java:444-449`; `OutboundNTCP2State.java:342-346` | `NTCP2.cpp` request/created generation and validation | Per-version limits: msg1 880/1264/1648; msg2 848/1168/1648 (the historical 1136/1616 values were wrong) | Shared `m_MaxMsgSize` allowed excessive padding; the SessionCreated receive cap was 32 bytes too small for ML-KEM-768/1024 | Excess allocation and a rejected conforming handshake | P2 | `NTCP2GetMaxHandshakePadding`, `NTCP2IsValidHandshakePadding`, clamped generation, 3296-byte buffer equality | Fixed (static) in NET-171; `test-ntcp2-handshake-bounds` covers limits and limit+1 |
 | NET-140 | NTCP2 HTTP proxy buffer lifetime | Asio async buffer lifetime; no Java counterpart | `NTCP2.cpp::HandleProxyConnect` | Response buffer must outlive async read and commit exactly once | Stack `streambuf` retained by async handler; double commit | Use-after-free / corrupted proxy response | P1 | `shared_ptr<streambuf>` capture; remove duplicate commit | Fixed (static); proxy path not dynamically tested |
 | NET-141 | SSU2 SessionConfirmed multi-fragment/MTU | `PacketBuilder2.java:541-700`; `InboundEstablishState2.java:862-960`; spec Session Confirmed Fragmentation | `SSU2Session.cpp::SendSessionConfirmed/ResendHandshakePacket/ProcessSessionConfirmed` | Up to 15 fragments sized by MTU, retransmitted unchanged; duplicate fragment 0 keeps original AD | Sender effectively emitted at most 2 and could exceed MTU; only one fragment retransmitted | Large RouterInfo failed; malformed/oversized fragments | P1 | MTU-sized 15-fragment sender, gzip forcing, padding, exact retransmit | Fixed (static); `test-ssu2-session-fragment-bounds` passed local CTest |
 | NET-142 | SSU2 SendData failure result | `PeerState2.java:143-155`; spec Packet Numbering | `SSU2Session.cpp::SendData` and callers | Packet 0 is valid; a failed send must not be recorded as packet 0 | `0` was both failure and a valid packet number | Lost packets stored/retransmitted under a false ID | P1 | `bool` + packet-number out parameter; no nonce advance on failure | Fixed (static); call-site/ACK tests passed local CTest |
@@ -345,18 +347,18 @@ the earlier matrix. **No dynamic test was executed.**
 | LS-121 | Inner unpublished bit | `EncryptedLeaseSet.sign` | Locally written encrypted inner omitted `UNPUBLISHED`, allowing extraction/republication | Fixed (static): emit `UNPUBLISHED | PUBLISHED_ENCRYPTED` |
 | LS-122 | Encrypted blinded RSA type | `LeaseSet2.java:649-661`; `EncryptedLeaseSet.java:881-896` | `LeaseSet.cpp::ReadFromBufferEncrypted/ExtractPublishedTimestamp` | RSA blinded/transient signature type was accepted and verified on untrusted type-5 stores | 2048/4096-bit CPU amplification | P1 | Reject RSA before `CreateVerifier` in both parse/order views | Implemented (static); RSA header/negative test pending |
 | LS-123 | LS2 PopulateLeases | `LeaseSet2.readBytes` | `LeaseSet::PopulateLeases` | Non-virtual method re-ran the LS1 parser on cached LS2, clearing validity and lease date | Cache invalidation/latent wrong key slot | P2 | Virtual no-op override in `LeaseSet2`; LS1 still reparses | Implemented (static); refresh regression pending |
-| LS-124 | Meta effective expiry | `MetaLeaseSet.java:42-78`; `LeaseSet2.addLease` | `LeaseSet.cpp::ReadMetaLS2TypeSpecificPart` | Header `expires` could extend a Meta LS far beyond its latest entry | Stale Meta served up to 18.2 h | P2 | Clamp effective expiry to latest entry, one-way | Implemented (static); header-longer test added |
+| LS-124 | Meta effective expiry | `MetaLeaseSet.java:42-78`; `LeaseSet2.addLease` | `LeaseSet.cpp::ReadMetaLS2TypeSpecificPart` | Java re-serialises MetaLS2 with `_expires` = latest entry and zero revocations, so any other header fails its signature check | Local could store/flood/serve entries Java rejects | P1 | Reject non-canonical header expiry and any revocation (I2P-001) | Implemented (static); canonical fixture and negative vectors prepared |
 | LS-125 | LS1 trailing bytes | `LeaseSet.java:307-320` | `LeaseSet.cpp::ReadFromBuffer` | LS1 stored/re-served bytes outside the signed body | Unauthenticated cache data / publish verification mismatch | P2 | Trim buffer to signed body + signature after verification | Implemented (static); canonical-buffer test added |
 
 | DB-113 | Client DSRM parser | `DatabaseSearchReplyMessage.readMessage`; `SearchReplyJob` | Destination layer clamped the count and ignored mandatory trailing `from` | Fixed (static): use the strict parser and require a non-zero sender |
 | DB-114 | Client DatabaseStore mask | `DatabaseStoreMessage` type mask | Destination layer switched on the raw type byte | Fixed (static): mask `0x0f` before dispatch |
-| DB-115 | Clove origin bypass | `InboundMessageDistributor.java:250-375` | `I2NPProtocol.h`, `RouterContext.cpp`, `NetDb.cpp` | A clove has no `InboundTunnel`; token DSM/DLM inside garlic looked direct | Token reflection and direct-only DLM bypass | P1 | `I2NPMessage::fromClove`, direct-only DLM admission, no non-zero token from clove/tunnel | Implemented (static); clove DSM/DLM tests pending |
+| DB-115 | Clove origin bypass | `HandleGarlicMessageJob.java`, `InboundMessageDistributor.java:250-375` | `I2NPProtocol.h`, `RouterContext.cpp`, `NetDb.cpp` | `fromClove` could not distinguish direct-transport garlic from tunnel garlic, and the DLM allowlist omitted DatabaseLookup | Direct-garlic DLM and token DSM were dropped | P1 | `fromTunnel` marker, DLM allowlist, three-state DSM origin (NETDB-CLOVE-1) | Implemented (static); clove-origin/DSM tests prepared |
 | DB-116 | Client DSRM binding | `IterativeLookupJob.java:37-68`; `SearchMessageSelector.java:79-89` | `Destination.cpp::HandleDatabaseSearchReplyMessage` | Any sender matching the public LS hash could inject peers and abort a lookup | Lookup injection, up to 255 follow-ups, replay starvation | P1 | `requestedPeers`/`repliedPeers`, one reply per queried peer, 16-hash cap, self/sender/dedup filter | Implemented (static); unqueried/replay vector pending |
 | DB-117 | Floodfill lookup throttle | `LookupThrottler.java:18-60` | `NetDb::ShouldThrottleLookup` | No per-sender/reply-tunnel rate limit | Small DLM amplification/CPU | P2 | Bounded 14/2 min per `(reply hash, tunnel)`, self-key exempt | Implemented (static); 15-request/window test pending |
 | DB-118 | DatabaseStore flood throttle | `FloodThrottler.java:18-38` | `NetDb::ShouldThrottleFlood` | Every updated token store flooded | Repeated valid updates amplify DSM floods | P2 | Store/ack unchanged; 3/90 s per key, bounded map | Implemented (static); 4-store/window test pending |
 | DB-119 | Fresh zero-address RouterInfo | `RouterInfo.java:589-596`; `Kademlia...validate` | `RouterInfo.cpp`, `NetDb.cpp::IsRouterInfoStoreValid` | Any RI with no supported address was rejected outright | Fresh hidden/unknown-style RI never stored | P2 | Accept signature-valid zero-address RI for 54 min, never select it; persistence uses same bound | Implemented (static); fresh/55-minute fixtures pending |
 | DB-120 | Persistence snapshot race | `Kademlia...store`; persistence invariant | `RouterInfo::TakeUpdatedBuffer`, `NetDb::SaveUpdated` | Delete/updated/buffer/flag were separate and could lose a concurrent update | Disk reverted to an older validated RI | P1 | One buffer-mutex snapshot; install body before publishing updated | Implemented (static); race harness pending |
-| DB-121 | Reseed self-entry loss | Java persistent netDb keeps local router | `NetDb::ResetRemoteRouterInfos`, `Reseed.cpp` | Reseed cleared self RI/floodfill and could race Stop/Start | Self lookups stopped being served; late reseed wiped restarted netDb | P1 | Preserve local RI/floodfill, no-op after Stop, recheck under map lock | Implemented (static); reseed lifecycle test pending |
+| DB-121 | Reseed self-entry loss | Java persistent netDb keeps local router | `Reseed.cpp` (the former `NetDb::ResetRemoteRouterInfos` is removed) | Reseed cleared self RI/floodfill and could race Stop/Start | Self lookups stopped being served; late reseed wiped restarted netDb | P1 | Preserve local RI/floodfill, no-op after Stop, recheck under map lock | Implemented (static); reseed lifecycle test pending |
 | DB-122 | Start count race | NetDb container invariant | `NetDb::Start` | Raw `m_RouterInfos.size()`/floodfill count read without locks | Data race / stale reseed decision | P2 | Use locked count accessors | Implemented (static); TSan test pending |
 | DB-123 | RouterInfo file replacement | Java temp+rename persistence | `RouterInfo::SaveToFile` | Truncating write destroyed previous cache on crash/ENOSPC | Cache corruption/loss | P2 | Same-directory `.tmp`, flush, rename, cleanup on failure; failures logged | Implemented (static); fault-injection test pending |
 
@@ -388,7 +390,7 @@ the earlier matrix. **No dynamic test was executed.**
 | CRY-223 | PQ version fallback | `OutboundEstablishState2.createNewState()` | `SSU2Session.cpp` | A downgrade to SSU2 v2 could reuse a stale ML-KEM key; the `IncompatibleVersion` Retry cascade was dead code | Malformed v2 request or unusable peer after version decline | P1 | Reset KEM state per attempt; consume version termination before abort and retry at 3/2 | Implemented (static); provider/type/Retry matrix pending |
 | CRY-224 | Local LS2 encryption policy | `ClientConnectionRunner` leaseSetEncType parsing | `Destination.cpp` | An explicitly configured but unsupported type list was silently replaced by defaults | Operator policy discarded; weaker key set published | P1 | Fail closed when an explicit list yields no supported type; defaults only when omitted | Implemented (static); provider/type tests pending |
 | CRY-225 | I2CP private-key lengths | `CreateLeaseSet2Message.readBytes`; `EncType` | `libi2pd_client/I2CP.cpp` | Declared key length was ignored; fixed-size reads over-read or truncated keys, unknown types accepted | Over-read of stale bytes as long-term keys; unusable LS2 key published | P0 | Exact per-type lengths, reject unknown types and mismatches, zero-fill legacy P256 storage | Implemented (static); over-read/type matrix pending |
-| SAM-111 | SAM parser grammar | `SAMUtils.parseParams` | Quotes/escapes, repeated spaces and bare PING/PONG are not fully parsed | Fixed (static) for bare PING/PONG/HELP/QUIT, case-insensitive command/key normalization, quoted/escaped values, repeated-space command words, persistent bounded framing and pipelined commands; LISTEN_PROTOCOL routing remains residual |
+| SAM-111 | SAM parser grammar | `SAMUtils.parseParams` | Quotes/escapes, repeated spaces and bare PING/PONG are not fully parsed | Fixed (static) for bare PING/PONG/HELP/QUIT, case-insensitive command/key normalization, quoted/escaped values, repeated-space command words, persistent bounded framing and pipelined commands; SAM 3.3 `LISTEN_PROTOCOL`, (type,protocol,port) duplicate keys and protocol-aware RAW dispatch are implemented statically (`test-sam-subsessions`) |
 | I2CP-105 | BlindingInfo TYPE_KEY/secret | `ClientMessageEventListener.handleBlindingInfo`; `LookupDestJob` | TYPE_KEY is merged with TYPE_DEST, but secret-blinded/client-auth decryption is absent | Partial (static): routing sessions are now keyed by the parsed full identity hash, closing cross-destination reuse; secret-blinded/client-auth decryption remains residual |
 
 The stale “no newer stable” date, the DG-103 “not implemented” row and the
@@ -414,7 +416,7 @@ NTCP2 outgoing-replay residual have been corrected above.
 
 ### Known remaining incompatibilities (not claimed fixed)
 
-SAM 3.2/3.3 `LISTEN_PROTOCOL` routing, I2CP secret-blinded/TYPE_KEY b33 authorization, per-session outgoing Datagram1/2/3 selection, Datagram2 offline-signature vectors, proposal-154 derived-key reply KDFs, and GOST signature types 9/10 toward Java. The Java 2.14.0 tree has no usable caller for the 0x12 public-key lookup form; that path is fail-closed and marked pending. RelayResponse role disambiguation, type-5/type-7 NSR vectors and the 7/4 multi-key session matrix remain residual. SSU2 Path Challenge retransmission, RouterInfo flood-request propagation, RSA verification/identity-key layout, runtime ML-KEM provider probing, SAM persistent pipelining/bare controls/quoted values and I2CP identity-hash routing keys are now implemented statically, but none has dynamic evidence. Some timeout/keepalive policies need dynamic evidence.
+`LISTEN_PROTOCOL` routing is implemented statically; I2CP secret-blinded/TYPE_KEY b33 authorization, per-session outgoing Datagram1/2/3 selection, Datagram2 offline-signature vectors, proposal-154 derived-key reply KDFs, and GOST signature types 9/10 toward Java. The Java 2.14.0 tree has no usable caller for the 0x12 public-key lookup form; that path is fail-closed and marked pending. RelayResponse role disambiguation, type-5/type-7 NSR vectors and the 7/4 multi-key session matrix remain residual. SSU2 Path Challenge retransmission, RouterInfo flood-request propagation, RSA verification/identity-key layout, runtime ML-KEM provider probing, SAM persistent pipelining/bare controls/quoted values and I2CP identity-hash routing keys are now implemented statically, but none has dynamic evidence. Some timeout/keepalive policies need dynamic evidence.
 
 ## 2026-10-20 functional-parity continuation
 
@@ -778,6 +780,271 @@ Residual: I2CP `m_EncryptionKeys`/owner publication across `i2cp.singlethread=fa
 threads remains a TSan item (`CONC-008`); SAM `LISTEN_PROTOCOL`, UDP
 SEND_TAGS/EXPIRES and full b33 secret authorization remain open. No
 privilege-separation boundary was widened.
+
+## 2026-10-26 NTCP2/SSU2 hardening continuation (static)
+
+Four read-only audits compared handshake, state, ACK, retransmission,
+fragmentation, PeerTest, relay, NAT, MTU, IPv6 and PQ negotiation with the
+SSU2/NTCP2 specifications and the pinned Java 2.14.0 tree
+(`3c98503c5f14efe7bdd783528ba7f621f12d8081`). Everything below is implemented
+by static analysis only; no compiler, CTest, sanitizer, fuzzer, Java peer,
+packet capture or live relay/PeerTest run exists.
+
+| ID | Area | Finding | Correction |
+|---|---|---|---|
+| NTCP2-PAD-1 | Message 2 padding | The SessionCreated cap used the "Enc len" column (1136/1616) instead of the spec maximum (1168/1648 for ML-KEM-768/1024), so a conforming peer could be rejected. | Table corrected; both parsers share `NTCP2IsValidHandshakePadding`; the 3296-byte buffer equality is asserted. |
+| NTCP2-DRAIN-1 | AEAD oracle | A data-phase AEAD/tag failure answered immediately, violating the spec's probing-resistance requirement; a frame read had no deadline. | Fail state drains 18..1041 random bytes with a 10 s deadline before reason 4; a stalled frame sends reason 14 after 30 s. No write is possible while draining. |
+| NTCP2-SKEW-1 | Clock skew | SessionCreated was closed before it flushed and reason 7 was never sent. | Skew is recorded, message 2 is sent normally, and reason 7 is sent after SessionConfirmed. |
+| NTCP2-NETID-1 | netID | A foreign msg1 netID was neither banned nor distinguished from a signature failure. | msg1 mismatch bans the source; a signed foreign `netId` sets `HasForeignNetId()` and is answered with reason 17, unreachable and a transport ban. |
+| NTCP2-FLOOD-1 | RI propagation | The RouterInfo request-flood flag was defined but ignored. | Honoured for a newly accepted RI block smaller than 3 KiB; otherwise store-only. |
+| NTCP2-BLOCK-1 | Malformed blocks | Wrong-size DateTime/Termination blocks were logged but not fatal. | DateTime size != 4 terminates with reason 10; a bad Termination closes without replying. |
+| SSU2-HP-1 | HolePunch blocks | HolePunch/Introduced accepted any authenticated block, allowing netDb/token/fragment injection through the public intro key. | Only DateTime, Address, RelayResponse, Padding and Termination are accepted in those states. |
+| SSU2-PT-4 | External address poisoning | msg 5 (and uncorroborated msg 7) could publish an attacker-chosen host/port. | msg 5 never publishes; msg 7 applies a host observation only from the Charlie learned in msg 4, after endpoint/port/reserved/blocklist checks, and never publishes a port from one test. |
+| SSU2-PT-5 | msg 4 → msg 6 target | The Charlie endpoint from a peer-supplied RouterInfo was used without port/address validation. | `IsValidPeerTestEndpoint` + server family support + operator blocklist are required before msg 6, in both the delayed and the msg-5-first path. |
+| SSU2-PT-6 | PeerTest bounds | Charlie ignored `AddSession()` failure and re-sent msg 5; Bob evicted live tests to admit new ones; there was no per-source limit. | Charlie checks the insertion result (code 66); Bob rejects at capacity with code 3; a bounded 12/600 s per-prefix limiter and a global 64-session cap apply. |
+| SSU2-ADM-1 | Inbound admission | Inbound half-open sessions were unbounded and created on the single SSU2 thread. | `SSU2_MAX_INBOUND_SESSIONS` (40) is enforced before construction; SessionRequest/TokenRequest at the cap receive a Retry with reason 19, other types are dropped without insertion. |
+| SSU2-ACK-1 | ACK 0 | Any ACK in `SessionConfirmedSent` completed the handshake, even without acknowledging SessionConfirmed. | `Established()` requires `acnt == ackThrough` (packet 0 covered); otherwise ACK ranges are processed and retransmission continues. |
+| SSU2-SKEW-1 | Clock skew | The handshake window was ±60 s; Java/spec use ±120 s. | Window is 120 s with an RTT/2 allowance. |
+| SSU2-VER-1 | Out-of-session version | PeerTest/HolePunch required `ver == 2`; the hybrid spec requires accepting 2–4. | 2..4 accepted; we still send 2. |
+| SSU2-RI-1 | RouterInfo fragment byte | A fragment-flagged RouterInfo was parsed as a whole RI. | The single-fragment byte `0x01` is required in SessionConfirmed and the data phase. |
+| SSU2-FALLBACK-1 | PQ downgrade | A version-rejection Retry carries token 0, so the downgrade path aborted instead of retrying. | After lowering the version, a zero token requests a fresh token (state reset); the fallback is reachable. |
+| SSU2-ADDR-1 | Address publication race | `m_Address` was copied by the transports thread while the service thread replaced it. | `m_AddressMutex` guards the accessors; all assignments use `SetAddress()`. |
+| SSU2-FRAG-2 | Reassembly budget | The out-of-sequence budget charged payload length while each fragment owns a 1500-byte slab. | Charges `sizeof(Fragment)` with a 128 KiB per-message budget, 64 fragments per message and a 32-message per-session cap. |
+| SSU2-INTRO-1 | Introducer publication | The old predicate published a tagless introducer and family selection used the transport mask. | A zero tag or an expired session is rejected; selection uses the session endpoint family; a null identity is skipped. |
+| SSU2-RELAY-1 | Relay invariants | Relay role was inferred from `IsEstablished()`; a zero tag could be minted and later blocks replaced the first; maps never expired. | Explicit Bob/Alice role, non-zero first-wins tag, 10 s/30 s expiry. |
+| SSU2-MTU-1 | IPv6 MTU | A discovered IPv6 MTU could be published as 1500. | Published/effective IPv6 MTU is capped at 1488 (1280 floor kept). |
+| SSU2-TEST-1 | Testing flag | `Testing` was set before the msg 4 signature verified and not cleared on early exits. | Set after verification with a scoped clear on every exit. |
+
+Previously recorded corrections re-checked against the 2.14.0 tree: SSU2 late
+packet 0 monotonicity, wrong-type drop, owner-checked removal, failed
+SessionCreated reset, resend throttling, introducer snapshot, fragment budgets
+and the PeerTest source/family/timestamp/private-target rules remain correct;
+NTCP2 `m3p2len` 459..4048, termination reason 17 and the valid-frame count
+remain correct. The 2.13→2.14 window contains no SSU2 delta and only the two
+NTCP2 buffer/read fixes already mirrored here.
+
+Prepared regressions: `test-ntcp2-failstate`, `test-ntcp2-netid-signal`,
+updated `test-ntcp2-handshake-bounds`, `test-ssu2-holepunch-whitelist`,
+`test-ssu2-peertest-policy`, `test-ssu2-admission`, and extensions to
+`test-ssu2-control-plane` (version 2–4, fragment byte) and
+`test-ssu2-session-fragment-bounds` (slab budget). The session/PeerTest state
+sequences still need the controlled differential harness; the current tests
+cover pure predicates and helpers, not sockets.
+
+Residual: NTCP2 has no established-session cap, the establisher thread still
+initiates socket I/O owned by the service thread, the options block is not
+negotiated, and the 2-byte length read has no deadline. SSU2 `ProcessData`
+still establishes Alice on any authenticable data packet (deliberate), the
+incomplete-message timeout is observed at the 72 s cleanup pass, the socket is
+shared between receive and send threads, and the memory-pool lifetime across
+deferred teardown remains an open SEC-025 item. No dynamic claim is made.
+
+## 2026-10-26 cryptography modernization continuation (static)
+
+Four read-only audits covered the ECIES-X25519-AEAD-Ratchet protocol, Elligator2
+and X25519 ephemeral keys, ML-KEM/provider negotiation, and
+signatures/identities/LeaseSet2 against the ECIES specs, the hybrid specs, and
+the pinned Java 2.14.0 tree (`3c98503c5f14efe7bdd783528ba7f621f12d8081`; the
+ratchet classes live in `router/java/src/net/i2p/router/crypto/ratchet/` in
+this release). Everything below is implemented by static analysis; no
+compiler, CTest, sanitizer, fuzzer, Java peer, provider matrix or live session
+has run.
+
+| ID | Area | Finding | Correction |
+|---|---|---|---|
+| CRY-227 | Ratchet NSR split | Bob overwrote `m_SendTagset` with the newest New Session Reply split. If that NSR was lost, Alice adopted an older split and every Bob→Alice message was dropped until the 90 s timeout. | Pending `(receiveTagset, sendTagset)` splits (bounded 8, 180 s) are kept; the outbound tagset is promoted when the matching inbound tagset first consumes a tag (Java `firstTagConsumed`); delayed NSRs never rewind an established tagset. |
+| CRY-228 | Tagset exhaustion | Exhausting the 16-bit tag index removed the session, losing all queued traffic. | The session is marked exhausted for sends but remains readable; the next send creates a fresh New Session. |
+| CRY-229 | NSR payload / tags / cleansing | New Session Reply accepted Termination/NEXT_KEY/SessionID/ACK and could tear down a half-open session; `inboundTags` had no upper clamp; one-time-NS emitted a flags section Java's N decoder cannot parse; stack shared secrets were not wiped. | NSR validation accepts only DateTime/Garlic/Options/Padding; `inboundTags` is clamped to 320; the anonymous one-time path is removed (router-N remains `32+payload+16`); derived secrets are cleansed. |
+| CRY-230 | X25519 key generation | A provider/RNG failure produced an all-zero static key that was accepted, persisted and published (unrecoverable identity). | `GenerateKeys`, `CreateECIESX25519AEADRatchetRandomKeys` and `LocalEncryptionKey::GenerateKeys` return bool; `PrivateKeys::GenerateCryptoKeyPair` rejects zero material; static-key and pool consumers fail closed or retry. |
+| CRY-231 | X25519 ownership | `X25519Keys` was copyable with owning raw pointers and trusted a caller-supplied public key. | Copy/assignment deleted, safe move added; the public key is derived and compared, failing closed on mismatch. |
+| CRY-232 | Ed25519 | Blinded scalars and nonces were freed with `BN_free` (the CRY-222 claim was only partially true); the hand-rolled verifier accepted non-canonical `S`; `DecodePoint` returned off-curve points. | `BN_clear_free` for secret scalars/nonces; `S < L` and `CRYPTO_memcmp` in the unused verifier; off-curve decode returns an empty point and blinding fails closed. |
+| B33-202 | b33 flags | Local accepted the two-byte signature-type flag that Java 2.14.0 rejects. | Rejected; the hardening test now pins rejection. |
+| CRY-233 | RouterInfo RSA | RouterInfo accepted RSA-signed identities that Java rejects for netDb entries (DoS policy). | RSA identities are rejected before verification; the RSA primitive remains for SU3/local use. |
+| CRY-234 | LeaseSet2 keys | `i2cp.leaseSetEncType` accepted trailing garbage and multiple hybrid/ElGamal+hybrid combinations; unknown LS2 key sections were dropped instead of retained inert. | Strict decimal-token parser with Java's combination rules; unknown sections are kept for accounting and never selectable; known-type length mismatches still reject the LS2. |
+| CRY-235 | ML-KEM / provider | The LibreSSL probe only created a key (no KEM round trip); the hybrid Noise initialisers could not report an unsupported type; SSU2 adopted any lower version from a Retry authenticated only by the public intro key. | LibreSSL now performs generate/marshal/parse/encaps/decaps/compare; `InitNoise*MLKEM` return bool and callers fail closed; SSU2 accepts a version change only when the signed RouterInfo advertises that exact maximum, otherwise the attempt fails (no silent PQ downgrade). |
+| NET-173 | NTCP2 PQ policy | Outbound NTCP2 randomly chose classic X25519 for 1 in 4 PQ-capable peers, unlike Java. | Randomisation removed; the negotiated hybrid version is used. |
+
+Previously recorded corrections re-checked: NS/NSR type-4 layouts, hybrid
+type-5/6/7 frame order (`e1`/`ekem1`, nonce reset), tag replay one-time-use,
+DateTime ±5 min/2 min, HKDF info strings, LS2 selectable encryption types,
+offline-signature validation and the `EdDSAEngine` constant-time 2.14.0 delta
+remain correct. The documented CRY-222 “private scalars use BN_clear_free” is
+now true for the blinded scalar and nonces as well. The CRY-223 PQ fallback is
+now reachable and authorised.
+
+Residual and tracked: no Java-generated type-5/7 NSR vectors (CRY-206..214
+remain open); `Signer::Sign` is still `void`, so a provider failure can publish
+an all-zero signature and a LocalLeaseSet2 is not self-verified (CRY-236);
+secret containers still cleanse only `size()` rather than `capacity()`
+(CRY-237); the ratchet/ElGamal adaptive ordering and the 200 ms per-destination
+New Session gate were not changed (CRY-238); the provider-free Ed25519 signer
+is variable-time on secret scalars and its nonce derivation is
+implementation-defined (documented, not rewritten); LibreSSL ML-KEM APIs and a
+real PQ provider matrix are unverified.
+
+Prepared regressions: extended `test-eciesx25519-ratchet-session` (both
+NSR-loss orders, delayed NSR, NSR block matrix, router-N length, tagset
+exhaustion), `test-crypto-x25519-noise-elligator-mlkem-audit` (keygen failure,
+ownership, fallible Noise init, provider gating), `test-eddsa` (`S+L`
+malleability, off-curve), `test-blinding-b33-hardening`,
+`test-leaseset2-enc-types` (strict config, unknown-section retention),
+`test-ssu2-preauth` (unauthorised Retry version, ACK-0), `test-ntcp2-handshake-bounds`
+(no random downgrade) and the new `test-routerinfo-rsa-reject`. No dynamic
+evidence exists for any of them.
+
+## 2026-10-26 netDb/LeaseSet continuation (static)
+
+Four read-only audits covered the LeaseSet family (MetaLeaseSet type 7 first),
+DatabaseLookup reply keys and DatabaseSearchReply validation, RouterInfo
+freshness/persistence, and netDb concurrency/floodfill behaviour against the
+pinned Java 2.14.0 tree. Everything below is implemented by static analysis
+only; no compiler, CTest, sanitizer, fuzzer, Java peer or live floodfill ran.
+
+| ID | Area | Finding | Correction |
+|---|---|---|---|
+| NETDB-CLOVE-1 | Garlic origin | Every garlic clove was marked `fromClove`, and the clove allowlist omitted DatabaseLookup, so all garlic-wrapped DLMs (Java `IterativeSearchJob` and local tunnel lookups) were dropped; a direct-garlic token-bearing DSM was also dropped before store/ack. | A separate `fromTunnel` marker records the enclosing garlic's origin; DLM is allowed from direct garlic and still dropped from tunnel garlic; DSM keeps its token for Direct/DirectGarlic, and TunnelGarlic stores without token/ack/relay. |
+| NETDB-FLOOD-1 | Transport RI flood | NTCP2/SSU2 request-flood blocks were re-flooded by non-floodfills and without the per-key FloodThrottler. | `FloodRouterInfoConditional` requires floodfill mode, a non-banned key and the flood budget; the DSM path keeps its own accounting. |
+| NETDB-CAP-1 | Admission bounds | The netDb inbound queue was unbounded and there was no store cap. | `Queue::PutIfBelow` with 1024 messages and a deterministic 1000/4000 new-RI cap that never drops updates and bypasses during reseed. Java's probabilistic pdrop is not reproduced. |
+| DB-126 | Persistence | RouterInfo saves used a predictable `.tmp` + ofstream + rename (no fsync), leftovers were re-parsed, and the file name was not bound to the identity hash; Stop never flushed accepted RIs. | Saves use `fs::AtomicWrite` (no-follow, unique temp, fsync file+dir); load accepts only `routerInfo-<base64>.dat` whose stem matches the parsed identity and deletes staging/mismatched files; Stop performs one bounded final persist. |
+| CONC-013 | Selection locks | Selection filters called `GetProfile()`, which creates a profile and loads it from disk while `m_FloodfillsMutex`/`m_RouterInfosMutex` were held. | Non-creating `GetRouterProfileIfExists`/`GetProfileIfExists` is used by every selection filter and by store validation; profile creation/persistence stays off those locks. |
+| DB-127 | Replacement generation | `AddRouterInfo` mutated the stored RouterInfo in place under the map lock, re-verifying the signature there. | The already-validated candidate replaces the map entry; readers hold one generation. |
+| I2P-001 | MetaLeaseSet | Java re-serialises a MetaLS2 with `_expires` = latest entry and revocation count 0, so a non-canonical header or any revocation fails Java signature validation. Local accepted both and could flood/serve unverifiable entries. | A MetaLS2 whose header `expires` differs from the latest entry, or that carries revocations, is rejected. The test fixture is rebuilt Java-canonically with negative vectors. |
+| LS-127 | Encrypted LS client replay | A type-5 reply was installed without comparing its signed outer published time with the cached entry. | Strictly-newer replacement; an equal/older authentic reply keeps the cached snapshot. |
+| I2P-002 | Reply key 0x12 | Java 2.14.0 parses 0x12 into an unused key and answers cleartext (reply wrapping only supports 0x02/0x10); the derived KDF is TBD. | Local remains fail-closed: 0x12 is parsed and rejected with no cleartext reply. No non-normative KDF is invented. Test matrix added. |
+| NET-176 | RouterInfo freshness | Only the zero-address 54-minute rule, 2-minute future and 27-hour age were enforced. | Adds the 54-minute `U`-cap and SSU-introducer predicates and the 75-minute SSU-only/no-NTCP rule, gated on one hour of uptime. |
+
+Previously recorded corrections re-checked: DLM/DSRM byte bounds, DSRM
+sender/from correlation and one-reply-per-sender, per-(from,tunnel) 14/3 and
+per-key 3/90 s throttles, 0x02/0x10 encrypted reply formats, one-time reply-key
+erasure, LS1/LS2/encrypted-LS2 store binding and Meta floodfill serving remain
+correct. The earlier "Meta expiry clamp" and "no clove DSM token" rows
+(LS-124/DB-115) are superseded by the canonical-rejection and three-state origin
+rules above.
+
+Residual and tracked: probabilistic store admission/go-away RI, client-side
+MetaLeaseSet resolution (type 7 is served but not followed), exploratory-pool
+router garlic forwarding, encrypted replies for our own RI/EXPL lookups,
+throttle-map eviction by hash order, `m_AcceptUpdates` memory ordering,
+asynchronous reseed, local RouterInfo address-slot copy-on-write (SEC-025) and
+the netDb memory-pool destruction order. No dynamic evidence exists for any
+row.
+
+## 2026-10-26 tunnel-build / I2NP / garlic continuation (static)
+
+Four read-only audits covered tunnel construction (long/short build records,
+layered encryption, time windows, replay), tunnel pools/peer selection/timers,
+I2NP framing/dispatch/tunnel-message processing, and garlic/ratchet clove
+handling with its multiprocess integration, against the pinned Java 2.14.0 tree
+and the tunnel-creation, tunnel-alt-creation and i2np specifications. Everything
+below is implemented by static analysis only; no compiler, CTest, sanitizer,
+fuzzer, Java peer, live tunnel or workflow ran.
+
+| ID | Area | Finding | Correction |
+|---|---|---|---|
+| TU-107 | Build record table | `Tunnel::Build()` indexed the shuffled `recordIndicies[]` (4 or 8 entries) once per hop while `numHops` was unbounded (config/`Reconfigure`/variance), so an inbound or outbound path above the table wrote past the record map. | `PlanTunnelBuildRecords()` validates hops/phony/record count before any write and fails the build; `ClampTunnelLength()` clamps config, reconfigure and selection (inbound reserves the phony slot); the record writer validates its index. |
+| TU-108 | Record encryption | A provider failure or AEAD error left a partially written record that was relayed as if valid; the phony record dereferenced a missing identity/keypair. | `EncryptECIES()`/`CreateBuildRequestRecord()` return `bool`, cleanse the shared secret, zero the whole record on any failure and abort the build; the creator requires the reply to carry exactly the advertised record count and length. |
+| TU-109 | Transit build replay | No build-request replay filter; build messages used the generic 8 s expiration; size checks accepted trailing bytes; a failed allocation no longer produced a message but was still relayed. | A bounded 8-minute/4096-entry decaying filter keyed on the derived reply key (never logged) rejects replays before tunnel creation; relayed requests use 25 s and replies 60 s (Java `BuildHandler`); exact payload sizes required; a null message aborts the relay/reply. |
+| TU-110 | Reuse admission | `Recreate*Tunnel()` reused peers chosen earlier without re-applying the blocklist, runtime bans, revocation, reachability, version floor, congestion, ECIES or endpoint family rules. | One `IsRouterUsableForTunnel()` predicate shared by fresh selection, explicit peers and reuse; a failed/test-struck path is never reused; `ValidatePeers()` is direction-aware. |
+| TU-111 | Pool builds/tests | Pending builds were not counted, so a slow round was oversubscribed; no failure backoff; a test was recreated every tick and failed a tunnel on the first lost reply; inbound traffic resurrected a test-failed tunnel; `TestFailed` tunnels could still be published. | In-flight builds count against the target; Java-like 4/8-failure ladder and 10–240 s delay; tests persist with a 7.5–15 s deadline and fail on the third strike only; strikes are independent of state; 40 s inbound-activity skip; `TestFailed` is filtered from LeaseSets. |
+| TU-112 | Selector lifetime/masks | The raw `ITunnelPeerSelector*` was used after the owner could be released (use-after-free), the three fallback builders passed `false` as a `CompatibleTransports` mask (zero), the inbound queue was unbounded, fragment reassembly used the 8 s I2NP lifetime and stored duplicate old fragments, and `GetLowestLatency*Tunnel(exclude)` could return the excluded tunnel. | `TunnelPeerSelectorHandle` pins a weak owner for the whole call outside the pool mutex; real per-direction masks; `PutIfBelow` queue (8192) with a drop counter; exact 1028-byte tunnel data; 45 s reassembly window; stale fragments dropped; exclusion and first-hop fallback fixed. |
+| I2NP-011 | Dispatch window | `HandleI2NPMessage()` never checked expiration, so a replay of an old netDb/garlic/status message reached its handler; there was no router-wide duplicate suppression (Java `MessageValidator` + `DecayingHashSet`). | 90 s past / 240 s future window applied before the type switch (TunnelData keeps its endpoint/IV policy) plus a bounded two-generation filter keyed by msgID, expiration second and a router salt; cloves use the destination filter; throttled drop counters. |
+| I2NP-012 | Exact lengths | `CreateI2NPMessage()` returned an uninitialised/truncated message on overflow; DeliveryStatus and DataMessage accepted trailing bytes. | Null on overflow with every network caller checking it; DeliveryStatus exactly 12 bytes; DataMessage declared length must cover the whole payload; throttled parse diagnostics. |
+| GAR-005 | Clove grammar/session state | Garlic session state (tagsets, ACK list, paths, lease-set status) had no serialization; the provider HKDF context was shared across threads; the destination garlic queue was unbounded; zero/>32-clove payloads, a `fromTunnel`-only allowlist applied to direct garlic, a destination-hash check that ignored the clove type, and a tag-budget full path that discarded the payload. | Per-session recursive `m_StateMutex` plus a per-thread `HKDFContext`; `CleanUp()` swaps maps and destroys outside locks; 256-entry bounded clove queue; 1..32 cloves; stale/foreign cloves skipped and the walk continues; per-destination clove replay filter; origin-aware allowlist; budget-full still decrypts; `DESTINATION` hash check; ROUTER-mode ratchet cloves rejected explicitly. |
+| CONC-014 | Lock inversion | With the new session lock, `CleanupExpiredTags()`/`SetLeaseSetUpdated()` held `m_SessionsMutex` while calling session methods that take the state lock, while a self-registering session takes the state lock first — an ABBA deadlock. | Both loops snapshot the map, call the sessions outside the map lock and re-check identity before erasing/terminating; `IsTerminated()`/`IsExhausted()` remain atomic so the tag-budget path stays lock-free. |
+
+Preserved deliberately: existing short/variable record byte layout, HKDF
+derivation chain, ChaCha20 slot nonces and AEAD associated data (no wire
+change); the tunnel duration/creation constants were not retuned in this
+increment; a replay of a build request is rejected rather than answered twice;
+an unsigned `ver` fallback still requires the signed RouterInfo maximum; garlic
+keys, decryption and tag state remain core-only and were not moved behind the
+IPC boundary.
+
+Residual and tracked: probabilistic netDb store admission/go-away, client
+MetaLeaseSet resolution, exploratory router garlic forwarding, encrypted
+replies for our own RI/EXPL lookups, NTCP2 established-session cap/12-byte
+options/establisher-thread socket ownership (NET-172), SSU2 socket sharing and
+memory-pool lifetime after deferred teardown (SEC-025), local RouterInfo
+address-slot copy-on-write, `TorrentsTunnel::InitTorrentFiles` disk-domain
+mutation, and Java's additional B1/B2/B3 payload-size normalisation (deferred
+rather than approximated). No dynamic evidence exists for any row above.
+
+## 2026-10-26 SAM / I2CP / streaming / datagram continuation (static)
+
+Four read-only audits compared the native SAM bridge, I2CP client, streaming
+state machine and Datagram1/2/3 implementation with the pinned Java 2.14.0 tree
+and the SAM v3, I2CP, streaming and datagram specifications. Everything below is
+implemented by static analysis only; no compiler, CTest, sanitizer, fuzzer,
+Java peer, SAM client or workflow ran.
+
+| ID | Area | Finding | Correction |
+|---|---|---|---|
+| SAM-122 | Listen vs forward port | A single-session `SESSION CREATE … PORT=7666` used 7666 as the I2CP receive port, so a peer sending to the PORT_ANY the session actually advertised was dropped and `RAW RECEIVED` never fired. | `PORT` only builds the local UDP forward endpoint; the receive port is `LISTEN_PORT` (default 0/PORT_ANY) as in Java `SAMv3RawSession`/`SAMv3DatagramSession`. |
+| SAM-123 | Control plane | No connection cap, no HELLO deadline, and the SESSION CREATE/HELLO lines were logged verbatim (`DESTINATION=<private keys>`, `USER`/`PASSWORD`). | 64-connection admission with exactly-once release, 60 s HELLO deadline, no idle disconnection after HELLO (Java sets `SO_TIMEOUT=0`; only a partial command line is bounded), and no secret operand is ever logged. |
+| SAM-124 | Command semantics | ACCEPT during FORWARD hung forever, FORWARD armed the default destination, missing ID returned INVALID_ID, connect timeout returned CANT_REACH_PEER, malformed HELLO produced no reply, AUTH closed silently, duplicate parameters and bare tokens were mishandled. | ACCEPT/FORWARD are mutually exclusive per port (`ALREADY_ACCEPTING`), FORWARD is port-scoped, Java's `I2P_ERROR`/`TIMEOUT` codes are emitted, malformed HELLO replies I2P_ERROR while an unparsable MIN/MAX bound is NOVERSION, duplicate keys close, bare tokens mean true. |
+| SAM-125 | Subsession identity | Subsession key forced protocol 0 for non-RAW, so DATAGRAM/DATAGRAM2/DATAGRAM3 could not share a listen port, and receivers were protocol-blind. | Key `(STYLE, listenProtocol, LISTEN_PORT)` with 17/19/20, protocol-keyed identity/hash registration, RAW rejects 6/17/19/20, and sends carry the subsession version so framing is never inherited. |
+| SAM-126 | Accept re-arm | Terminating the armed acceptor (or a FORWARD socket) reset the chain; queued ACCEPTs waited forever. | A queued ACCEPT for the same port is armed again on the SAM service; port isolation is preserved. |
+| I2CP-112 | b33 resolution | `.b33.i2p` and implicit long-label names fell into the address book and never resolved. | Both spellings build a `BlindedPublicKey` (bounded label, canonical base32, blindable type); invalid/reserved/over-long labels and `www.` aliasing fail closed. |
+| I2CP-113 | BlindingInfo (42) | Parsed and stored, but no reader existed: DH/PSK client-auth material never reached the encrypted-LeaseSet request. | Bounded reader keyed by the unblinded signing key, blinded-key lookup for a b33 name, and the 32-byte secret is passed to `RequestDestinationWithEncryptedLeaseSet` (preferred over the session key). |
+| I2CP-114 | HostReply codes | Every failure was result 1. | Java's 2/3/4 (secret/key/both required), 5 (decryption failure) and 6 (leaseset lookup failure) are emitted; success is byte-identical. |
+| I2CP-115 | I2CP admission/deadlines | Unbounded connections and sessions, untimed reads and a synchronous `available()`/`read()` path on the service thread. | `i2cp.maxconnections`/`i2cp.maxsessions` (bounded defaults/caps), exactly-once release, cancellable async handshake/header/body deadlines. |
+| I2CP-116 | LeaseSet/send validation | CLS1 assumed a DSA key offset and installed an unvalidated LeaseSet; CLS2 read a key count for a MetaLeaseSet2, chose the highest key type and never compared keys; expired sends were still sent. | CLS1 derives the key length, rejects foreign/invalid LeaseSets and stays DSA-only (fail closed); CLS2 is Meta-correct, preference-ordered and key-matched; status 14/10/11 replace silent drops. |
+| STR-113 | Accept lifetime | `AcceptStream(timeout)` left a lambda holding stack references installed after timeout (use-after-free on the next SYN); one acceptor teardown collapsed the whole chain. | Heap sync state, timeout unregisters, explicit acceptor registrations with `RemoveAcceptor(token)`; `ResetAcceptor()` completes every waiter. |
+| STR-114 | SYN rejection/replay | A retransmitted SYN re-opened a closed stream and re-invited the application; over-limit/throttled/backlog-full SYNs were dropped in silence. | Bounded recently-closed set (128/120 s) plus one signed RESET per rejected authenticated SYN. |
+| STR-115 | Post-close/races | Data could still be emitted after CLOSE/RESET, the pong handler raced, a duplicate SYN reset the routing path, an acceptor reset could orphan a stream. | Data stops after CLOSE/RESET, handler snapshotted under the acceptor mutex, duplicate SYN keeps the path, decision+dequeue+enqueue under one lock. |
+| DG-111 | Framing version | The version was frozen per destination, so a DATAGRAM3 subsession emitted Datagram1 framing on protocol 17 and a Java peer dropped it. | Per-send `version` (`eDatagramDefault` keeps the session default) on `SendDatagram`/`SendDatagramTo`. |
+| DG-112 | Receiver isolation | Identity/hash receivers were keyed by port only and a port-specific registration was promoted to the wildcard, so a Datagram2 payload could reach a Datagram1 subsession and an unregistered port could be delivered to a random subsession. | `(protocol, port)` keying with 0 as catch-all, exact dispatch 17/19/20, no promotion; raw rejects the typed protocols and 0xff normalises to 0. |
+| DG-113 | Parser/session state | One shared options object and inflator, plus unsynchronised session queue/routing state; an all-zero signature could be published. | Per-call options, mutexed (in)deflator, thread-safe pool, one session mutex, zero-signature/offline-section rejection. |
+
+Preserved deliberately: SAM/I2CP wire layouts, datagram framing bytes and the
+`MAX_DATAGRAM_SIZE` (32 KiB) inbound bound; streaming window/MTU/RTO constants;
+the ratchet/garlic layer that authenticates datagrams and streams. A rejected
+streaming SYN is answered with a RESET, never a plaintext forward.
+
+Residual and tracked: streaming TIME-WAIT/FIN retention (FIN is still sent once),
+SYNACK-before-LeaseSet ordering, the Java `limitAction` response to an
+over-limit stream and uploader/blame parity; CLS1 remains DSA-only; the
+BlindingInfo match uses the current day's blinded key; 33–61 KiB Java datagrams
+exceed the local 32 KiB bound; `TorrentsTunnel` still mutates a shared session
+version; and no dynamic evidence exists for any row above.
+
+## 2026-10-26 application-services continuation (static)
+
+Four read-only audits compared the HTTP/SOCKS proxies, client/server tunnels,
+reseeding, `.i2p`/b32/b33 naming with the address book, and the auxiliary
+services plus their administration surface with the pinned Java 2.14.0 tree.
+Everything below is implemented by static analysis only; no compiler, CTest,
+sanitizer, fuzzer, live proxy/tunnel/reseed/IGD/NTP/SAM client, Android device
+or workflow ran.
+
+| ID | Area | Finding | Correction |
+|---|---|---|---|
+| PARITY-019 | HTTP proxy content | Generated error/helper pages interpolated the client `Host` unescaped (reflected HTML/JS), and the 502 page echoed the configured outproxy URL (including `user:pass@`). | Every page value goes through a checked `EscapeHTML`; only a fixed non-secret reason is emitted, and the configured URL/credentials never reach a page or log. |
+| PARITY-019 | HTTP proxy protocol | Non-http(s) schemes (`ftp:`, `mailto:`) were rewritten into a plaintext HTTP GET; proxied responses passed hop-by-hop and proxy-only headers through; relative-form requests lost the port default. | `http`/CONNECT-`https` only (403 otherwise, before resolution); a new client-response mode strips `Proxy-*`, `Connection`, `Keep-Alive`, `TE`, `Trailer` and disclosure headers; relative-form defaults to 80/443; CONNECT IPv6 literals parse. |
+| PARITY-019 | Proxy auth/limits | Basic only, no failure delay, no upstream resolve/connect/response deadlines. | Opt-in RFC 7616 Digest (MD5/SHA-256, bounded nonce cache, `nc` replay, stale) with constant-time compare and a configurable failure delay; cancellable resolve/connect/response-header deadlines (504 on expiry); Basic remains the default. |
+| DG-114 | SOCKS | RESOLVE used an unbounded, unguarded cache with unused timestamps and `std::hash` fake addresses; UDP ASSOCIATE replied with a wildcard and CONNECT with an own-b32/truncated-id trick. | Bounded (256) 10-minute cache under a mutex, keyed SipHash into 255/8; replies are the Java loopback/`127.0.0.1:1` forms. |
+| PARITY-019 | Tunnel teardown | `I2PTunnel.h` declared a `Terminate()` that hid the non-virtual base; `ClearHandlers` poisoned `m_Dead`, so stopped server tunnels never closed live streams/sockets (leak until a 1 h idle timeout) and could not restart. | Teardown is virtual, handlers are snapshotted under the mutex and terminated outside it; `Stop(bool forced)` distinguishes forced/in-use; `Start()` restarts. |
+| PARITY-017 | Server-tunnel filters | `filterDefinition` was absent and the `accesslist` check ran after accept, so a denied peer still cost a full inbound tunnel and SYNACK. | Bounded parser (`default`, `explicit`, `file`, `record`, first-match-wins, mtime-cached 1 MiB file, 4096 counters) and a `StreamingDestination` admission predicate that rejects before the stream exists, with `limitAction=drop|reset`. |
+| PARITY-019 | Server-tunnel options | No `targetForPort.<port>` (HTTPS on 443 was forwarded as plaintext HTTP), `spoofedHost`, `rejectInproxy`/`rejectReferer`/`rejectUserAgents`, POST throttling, `enable`/`startOnLoad` or per-tunnel control. | All are parsed and enforced (443/22 reset without a mapping, 403/429 bodies, bounded POST window); stable names plus `GetTunnelServices`/`StartTunnel`/`StopTunnel`, and only port 0 may own the default acceptor. |
+| RS-107 | Reseed lifecycle | A stale-but-signature-valid bundle could call `ResetRemoteRouterInfos()` and erase every cached peer; the synchronous reseed blocked the admin thread/Android worker for minutes and TLS read/write had no deadline; proxy credentials were logged. | The reset path is gone (stale entries are skipped and counted); reseed is an owned, stop-token-cancellable job with per-phase/per-host deadlines, `RequestReseed()`/`ReseedState`, `reseed.disable`/`i2p.noReseed`, redacted proxy logs and strict `netid` query handling. |
+| AB-106 | Address book | Index/identity/etag/`deleted.txt` writes were non-atomic and could follow a symlink; add always replaced; feed `#!action=delete` was ignored; destination/host bounds were looser than Java; 304 escalated retries; every miss re-looked-up. | All artifacts use the atomic no-follow writer; `AddAddressChecked` distinguishes `Exists`; feed retraction is origin-scoped via a bounded sidecar; Java-compatible length/label rules; 304 keeps the ETag/cadence; bounded negative cache. |
+| SEC-029 | Auxiliary services | BOB returned private keys to any loopback client, had no session/line cap and threw on bad ports; the I2PControl AF_UNIX path was unlinked blindly, mode depended on umask and had no peer check; JSON ids/strings could inject or break the reply; bandwidth accepted negatives; NTP trusted any source and a single packet; UPnP used permanent mappings. | BOB is loopback/same-UID only, capped (16 sessions, 4 KiB line), `from_chars` ports and `getkeys` behind `bob.allowgetkeys`; I2PControl validates the stale socket, `chmod 0600`, removes only its own socket, requires a same-UID peer, escapes ids/strings, validates `API` and returns Java error objects; NTP validates every field and needs three agreeing servers for a large jump; UPnP uses a 3 h renewable lease, replaces mappings and refuses a same-host IGD. |
+| PARITY-021 | Administration | TUI/Android could only read tunnel counters and request a blocking reseed; address add always replaced; Android lacked subscription and ban bridges. | Typed verbs `ADMIN TUNNEL-START/TUNNEL-STOP`, `ADMIN ADDRESS-REPLACE` (plain add answers `exists`), non-blocking `ADMIN RESEED` with `netdb.reseed.*`, `tunnel.service` rows, TUI screens/actions and Android JNI/screens for tunnels, reseed, add-vs-replace, subscriptions and bans. No config writer and no web console. |
+
+Preserved deliberately: proxy/tunnel wire behaviour, the 1 MiB HTTP header cap
+and 30 s handshake deadlines, subscription validation (I2P-only, atomic
+`subscriptions.txt`), tombstones/merge precedence, SU3/ZIP reseed bounds,
+HTTPS chain+hostname verification, the 100-RI/2-server threshold, and the
+closed typed admin queue.
+
+Residual and tracked: HTTP client keep-alive/pipelining, IRC `ircclient`,
+UDP/torrent tunnels in the start/stop registry, Streaming `limitAction`
+`http`/custom responses, daemon bootstrap still waiting synchronously for the
+first reseed, day-scoped BlindingInfo matching, 33–61 KiB Java datagrams
+versus the local 32 KiB bound, feed retraction depending on the
+`entry-sources.txt` sidecar, UPnP status not yet in TUI/Android, Windows
+local-socket peer credentials, and the es/ru/zh-Hans catalog entries for the
+new TUI strings (`I18N-004`). No dynamic evidence exists for any row above.
 
 ## Open items requiring dynamic evidence
 

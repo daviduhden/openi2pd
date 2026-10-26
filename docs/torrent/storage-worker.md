@@ -55,7 +55,7 @@ existing imsg adapter remains separate; this path uses typed UNIX seqpacket IPC.
 
 ## Typed operations
 
-The `IP2P` envelope is version 2 (version-1 frames remain readable) and uses
+The `IP2P` envelope is version 5 (older frames remain readable and are rejected per-type when their minimum version is newer) and uses
 typed local message types: `ConfigureTorrentStorage=7`,
 `TorrentStorageRequest=8`, `TorrentStorageReply=9`,
 `SpawnTorrentStorage=10`, `TorrentStorageSupervisorReply=11`,

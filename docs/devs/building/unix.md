@@ -41,9 +41,9 @@ CMAKE_BUILD_PARALLEL_LEVEL=8 make
 Available front-end targets are `configure`, `build`, `all`, `router`, `tui`,
 `tools`, `test`, `check`, `install`, `clean` and `dist`. `router`, `tools` and
 `test` configure with the TUI disabled, so they do not require ncursesw; use
-`make tui` or plain `make` when the TUI is wanted. `tests/Makefile` configures
-with `BUILD_TESTING=ON` and the TUI disabled, builds and runs CTest. Do not pass `-j` to the
-front-end; parallelism is controlled by CMake.
+`make tui` or plain `make` when the TUI is wanted. `tests/Makefile` forwards to
+the root front-end instead of keeping a second configuration. Do not pass `-j`
+to the front-end; parallelism is controlled by CMake.
 
 ## Tests
 
@@ -67,10 +67,11 @@ With `I2PD_BUILD_TOOLS=ON` the install includes all native tools and
 Debian package set splits the interactive client into `i2pd-tui`. Set
 `I2PD_INSTALL_DOCS=OFF` to omit the shared documentation component.
 
-or, after configuring the prefix:
+The POSIX front-end can also stage an install; `DESTDIR` is honoured without
+changing the configured prefix:
 
 ```sh
-sudo make install
+make PREFIX=/usr DESTDIR=/tmp/stage install
 ```
 
 ### Service installation
@@ -114,10 +115,12 @@ Pass options as `-D<key>=<value>`:
 | `I2PD_BUILD_TUI` | ON | Build `i2pd-tui` |
 | `I2PD_TUI_REQUIRED` | ON | Fail configuration if ncursesw is missing; set OFF for an explicitly TUI-less Unix build |
 | `I2PD_INSTALL_DOCS` | ON | Install documentation, branding assets and manual pages |
+| `I2PD_INSTALL_CONFIG` | ON | Install the sample router configuration, subscriptions and tunnel examples |
 | `I2PD_SERVICE_MANAGER` | `none` | Install a service definition for `systemd`, `openrc`, `runit`, `s6`, `s6-rc`, `shepherd` or `sysvinit` |
 | `I2PD_SERVICE_DIR` | manager default | Destination for the service unit, script or directory |
 | `I2PD_SERVICE_CONFDIR` | `${CMAKE_INSTALL_SYSCONFDIR}/conf.d` | OpenRC `conf.d` installation directory; not the router configuration directory |
-| `I2PD_PERL_CRITIC` | OFF | Opt-in Perl::Critic CTest check when `perlcritic` is installed |
+| `I2PD_PERL_CRITIC` | OFF | Require `perlcritic` and register the Perl::Critic CTest check; fail configure when unavailable |
+| `I2PD_REQUIRE_PERL` | OFF | Fail configuration instead of skipping the Perl-based static checks |
 | `BUILD_TESTING` | OFF | Build unit and protocol tests |
 | `WITH_BINARY` | ON | Build the router |
 | `WITH_LIBRARY` | ON | Install libraries and headers |
@@ -136,7 +139,7 @@ List cached options with `cmake -L -S build -B build-output`.
 ```sh
 sudo apt install build-essential cmake ninja-build \
   libboost-program-options-dev libboost-json-dev libboost-url-dev \
-  libssl-dev zlib1g-dev
+  libssl-dev zlib1g-dev libncurses-dev
 sudo apt install libminiupnpc-dev  # optional UPnP
 ```
 
@@ -147,18 +150,18 @@ removed.
 ## Arch/Manjaro
 
 ```sh
-sudo pacman -S --needed base-devel cmake ninja boost openssl zlib
+sudo pacman -S --needed base-devel cmake ninja boost openssl zlib ncurses
 ```
 
 ## Fedora/RHEL/CentOS Stream
 
 ```sh
 sudo dnf install cmake ninja-build gcc gcc-c++ boost-devel \
-  openssl-devel zlib-devel
+  openssl-devel zlib-devel ncurses-devel
 ```
 
 MiniUPnPc is in `miniupnpc-devel`; static Boost is in `boost-static` if needed.
-On Fedora through 43, add `boost-json boost-url` to the install command.
+On Fedora, add `boost-json boost-url` to the install command.
 RHEL 9 cannot meet the GCC 13/C++23 floor with its default
 toolchain and does not package Boost.URL for its Boost 1.75; enable a
 `gcc-toolset-13` environment and use `-DWITH_TORRENTS=OFF` before attempting
@@ -172,7 +175,7 @@ doas pkg_add miniupnpc   # optional
 ```
 
 OpenSSL is provided as LibreSSL in base; openi2pd requires LibreSSL 4.0 or
-newer (OpenBSD 7.6+). The default TUI needs wide-character `ncursesw` from
+newer and Clang 17+ (OpenBSD 7.7+). The default TUI needs wide-character `ncursesw` from
 `devel/ncurses`, and C++23 needs base Clang 17+ or `ports-gcc`. Build with
 CMake/Ninja or with the POSIX make front-end
 (`bmake`):

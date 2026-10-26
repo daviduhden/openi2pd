@@ -190,7 +190,9 @@ I2PDTUI/1 ADMIN SHUTDOWN GRACEFUL|IMMEDIATE|CANCEL
 I2PDTUI/1 ADMIN RELOAD TUNNELS
 I2PDTUI/1 ADMIN BANDWIDTH K|L|M|N|O|P|X
 I2PDTUI/1 ADMIN SHARE 0..100
-I2PDTUI/1 TORRENT-TUNNELS
+See [TUI IPC](tui-ipc.md) for the canonical verb registry, including
+`TORRENT-TUNNELS`, `TORRENTS`, the administrative verbs and the torrent
+commands. The examples below are illustrative, not an exhaustive list.
 I2PDTUI/1 TORRENTS <tunnel-index> [limit]
 I2PDTUI/1 TORRENT-* ...
 I2PDTUI/1 PING

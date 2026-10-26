@@ -41,11 +41,12 @@ The first production-shaped separation is **logging**:
   even when `privsep.log` is disabled; otherwise the default build could not
   exec the storage broker. The parent then installs its runtime policy without
   `exec`; `proc` is retained only for bounded supervisor reaping/signalling.
-  The log supervisor applies `pledge("stdio unix proc exec")` after receiving
-  configuration and pre-resolving the executable. The torrent-storage broker
-  receives a validated data root as inherited fd 4 and applies
-  `pledge("stdio unix proc exec sendfd recvfd")` without `rpath`; it never
-  re-resolves the root path. The log/storage workers apply their own policy
+  The log supervisor pre-resolves the executable, unveils exactly that path
+  with `x`, locks the list and applies `pledge("stdio proc exec")`. The
+  torrent-storage broker receives a validated data root as inherited fd 4 and
+  applies `pledge("stdio proc exec sendfd")` with the same single-`x` unveil;
+  it never re-resolves the root path and never receives a descriptor. Neither
+  role has `unix` or a pathname read/write promise. The log/storage workers apply their own policy
   after `execve` (`unveil` + `pledge`, with no dependency on inherited sandbox
   state). Failure is fatal.
 - On Linux the log worker applies the full `LinuxSandbox` role policy:
@@ -160,10 +161,69 @@ enabled = true
 log = true
 ```
 
-`privsep.enabled` is intentionally **off by default** until network, storage and
+`privsep.enabled` is intentionally **off by default** until network, crypto and
 core separation are complete; enabling it is safe for the log component but
 does not yet satisfy all ten invariants. Do not describe it as full privilege
 separation.
+
+```ini
+[privsep]
+enabled = true
+log = true
+# Delegate the netDb RouterInfo cache, peer profiles and destination private
+# keys to the data-storage worker. Requires enabled = true. With this on, those
+# runtime artifacts are written only by the worker; an installed-writer
+# failure never falls back to a core filesystem write.
+artifacts = true
+# Delegate the four fixed router files (router.keys, router.info, NTCP2/SSU2
+# keys) to the router-storage worker.
+routerstorage = true
+# Unprivileged account/group for every worker. Resolved once before the
+# startup sandbox; workers drop in the forked child before execve and verify
+# the identity from a 25-byte hello record. A root daemon with isolation
+# enabled must set user; uid 0 is always rejected.
+user = _i2pd
+group = _i2pd
+```
+
+Start the daemon with an `argv[0]` containing `/` (service units use an
+absolute path), because the worker executable is frozen from
+`argv[0]`/`realpath` and never resolved through `$PATH` or `/proc`. The
+`privsep.user`/`privsep.group` drop applies to forked workers only; the core
+keeps its own identity and is not chrooted or dropped.
+
+`privsep.user` is resolved with bounded `getpwnam_r`/`getgrnam_r` lookups and is
+never retained as a name after resolution. If it is set, the delegated storage
+root must be owned by that uid (not by a root core), because the worker checks
+the root against its own post-drop identity. Supplementary groups are cleared
+in the child when the core is root; an unprivileged core cannot clear them, so
+such a deployment must start without supplementary groups.
+
+`privsep.artifacts` removes the runtime artifact-write capability from the
+socket-owning core for the netDb cache, peer profiles and destination keys.
+Startup reads, garlic tags, address book, torrent state, bootstrap keys and
+configuration are still core-written; the invariant is therefore not yet
+global.
+
+## OpenBSD supervised start (2026-10-26)
+
+The OpenBSD core keeps `exec`/`proc`/`id` only in its startup pledge window.
+Before the runtime sandbox it spawns the log supervisor, the storage broker and
+the direct router/data storage workers; the broker can then replace storage
+workers without the core ever regaining `exec`. The startup set includes
+`recvfd` because pledge can only remove promises; the runtime set is rebuilt
+from the same table and startup aborts if it is not a strict subset. No
+`execpromises` is ever passed, and no worker relies on pledge or unveil state
+surviving `execve`: each image installs its own policy before serving frames.
+
+Descriptors are fixed: 3 channel, 4 inherited storage root (only for
+`*-inherited` roles), 5 one-shot hello, 0/1/2 `/dev/null`, >=6 closed. A role
+without a root closes fd 4; a terminal, rc.d log pipe or activation socket is
+never writable. The supervisor and broker pre-resolve their own executable,
+unveil exactly that path with `x`, lock the list, then pledge
+`stdio proc exec` / `stdio proc exec sendfd`. A worker accepts a channel peer
+with its own uid or, when unprivileged, uid 0 (the delegating root core); the
+channel is always an anonymous `socketpair`.
 
 ## Service-manager implications
 
@@ -227,10 +287,17 @@ Foreground stdout worker (empty path, not syslog):
 pledge("stdio unix", NULL)
 ```
 
-Supervisor (executable resolved before this policy):
+Supervisor (executable resolved and unveiled with `x` before this policy):
 
 ```text
-pledge("stdio unix proc exec", NULL)
+unveil("<frozen executable>", "x"); unveil(NULL, NULL);
+pledge("stdio proc exec", NULL)
+```
+
+Storage broker (same unveil, plus descriptor sending):
+
+```text
+pledge("stdio proc exec sendfd", NULL)
 ```
 
 **Current integration limit:** `DaemonUnix::start()` calls
@@ -253,12 +320,44 @@ is an OpenBSD `imsg` adapter for the versioned frame and descriptor passing,
 tested in the manual OpenBSD job; production worker channels remain
 `SOCK_SEQPACKET` until the backends are migrated.
 
+## 2026-10-26 increment: capability invariant and data storage
+
+- **Role identity:** a worker role is bound to its spawner by a CSPRNG nonce
+  delivered on a pre-fork pipe (child fd 5, closed before the channel or
+  sandbox). The record is never on `argv`, `environ`, a log or the protocol
+  channel, so a same-UID process cannot adopt a role with its own socketpair.
+  Descriptor contract: 3 = channel, 4 = inherited storage root (OpenBSD),
+  5 = one-shot identity, ≥6 closed.
+- **Capability matrix:** `privsep/Capabilities.h` declares every role's
+  capabilities and the invariant that no target role may combine
+  `ExternalNetwork` with `PersistentWrite`. The core's legacy row keeps the
+  write bit so the remaining gap (transport sockets + residual persistence) is
+  explicit; the target row has no write capability.
+- **Data-storage worker (opt-in, `privsep.artifacts`):** owns the netDb
+  RouterInfo cache, peer profiles and destination private keys under a
+  validated root, with canonical names, 8 staging slots, atomic no-follow
+  replace and 0600 key files; no network capability. The installed writer is
+  the only write path; a failure never falls back to a local write and an
+  unavailable worker fails closed. Startup reads remain direct.
+- **Recovery:** storage clients are generation-fenced, restart with
+  250 ms→30 s backoff (8 attempts in 60 s, 60 s stable reset), return `Busy` at
+  request-id exhaustion and never replay an ambiguous write. `router.info` /
+  fixed-file save failures retain the last buffer. The supervisor publishes a
+  bounded status; OpenBSD has no post-pledge respawn, so a lost worker is
+  terminal there until restart.
+- **Log worker:** UTF-8/C1 sanitisation, key-name redaction, 64 MiB file-sink
+  cap without rotation, and send outside the logging mutex.
+
 ## Remaining implementation stages
 
 1. Storage worker with typed, allowlisted operations; migrate `FS`/netDb/profile
-   writes; remove `wpath/cpath` from core.
+   writes; remove `wpath/cpath` from core. *(NetDb/profile/destination-key
+   writes are delegated when `privsep.artifacts` is enabled; startup reads, garlic
+   tags, address book, torrent state and bootstrap keys remain core-written.)*
 2. Network worker owning transport sockets; core receives normalized session
-   events; no private keys in the network process.
+   events; no private keys in the network process. *(Next phase: listener-only
+   handoff, then connect handoff; the audit ranks the full transport worker
+   last because it needs a signing oracle/netDb-over-IPC.)*
 3. Dedicated supervisor process with pidfd/`waitpid`, restart policy and
    channel ownership. The log worker is under it; the OpenBSD torrent-storage
    broker is a separate pre-pledge process with an inherited root fd. Router

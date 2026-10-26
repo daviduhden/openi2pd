@@ -25,26 +25,60 @@ Documents project documentation.
   `SOCK_SEQPACKET` socket (`fstat`/`S_ISSOCK` and `SO_TYPE`) and rejects any
   other descriptor number, so a manual invocation cannot downgrade the
   transport to a stream/regular file or alias the inherited root at fd 4.
-- Peer identity is checked with `SO_PEERCRED` (Linux) or `getpeereid`
-  (OpenBSD/BSD). The worker rejects a peer whose UID is not its effective UID.
-  The parent does not need a separate check because it created the socketpair
-  and execs the child itself. Cross-UID rejection is not yet exercised by an
-  automated test (it requires a second UID).
+- Peer identity is checked with `getpeereid` (OpenBSD/BSD) or, on Linux, with
+  a per-message `SCM_CREDENTIALS` expectation. `SO_PEERCRED` reports the
+  credentials captured when the socket was **created**; after a root core drops
+  a worker to `privsep.user`, comparing every frame against that record rejects
+  the worker's own replies. Production channels therefore carry an explicit
+  `PeerExpectation`: the core requires the worker uid/gid and the direct child
+  pid, a worker requires its own uid (or uid 0 for the delegating root core),
+  and an adopted broker socket requires the worker uid. The caller that created
+  the socketpair and forked the child is the only party that knows the
+  topology, so it sets the expectation. A record with a mismatched or missing
+  credential is rejected. Cross-UID execution is not yet exercised by an
+  automated test (it requires a second UID); the root-gated case is prepared.
 - Every operation has a timeout and bounded message size.
+- A spawned worker is bound to its spawner by a one-shot **25-byte identity
+  record** on descriptor 5: `[role u8 | nonce 16 | uid u32 BE | gid u32 BE]`.
+  The forked child writes it after its credential drop. The worker requires the
+  record's role to match `argv`, its uid/gid to match `geteuid()/getegid()`,
+  a non-zero uid and exactly one record (a trailing byte or a still-open writer
+  is rejected), then closes fd 5 before reading any frame. The nonce is never
+  logged or formatted.
+- The Windows message-mode pipe has no descriptor channel, so the spawn proof
+  is a typed `WorkerHello` frame (version 5): `u8 role | u8 nonce length (32) |
+  nonce`. The worker connects with `ConnectBound` to the spawned parent
+  PID/session, sends `WorkerHello`, and the server consumes it with
+  `AcceptBound` after impersonating the client and checking the user SID,
+  PID/session, AppContainer SID (when the role uses one) and the nonce. Only
+  then is the channel's role bound and the registry applied.
+- Descriptor contract for every worker: 3 = channel, 4 = inherited storage root
+  (only for `*-inherited` roles), 5 = one-shot identity record, 0/1/2 =
+  `/dev/null`, >=6 closed. A role without a root closes fd 4 explicitly; stdio
+  is pinned even for a directly invoked worker so a terminal, rc.d log pipe or
+  socket-activation descriptor is never writable.
+- A channel peer must have the worker's own uid or, for an unprivileged worker,
+  uid 0 (the root core that delegates the role). The channel is an anonymous
+  `socketpair`, never a pathname socket, so a same-uid sibling cannot connect
+  to it; the hello nonce is the spawner binding and `getpeereid` is the
+  identity check.
 
 ## Frame
 
 ```
 0                4        6        8                 12              16
 +----------------+--------+--------+-----------------+---------------+
-| magic "IP2P"   | ver=2  | type   | request-id      | payload-len    |
+| magic "IP2P"   | ver=5  | type   | request-id      | payload-len    |
 +----------------+--------+--------+-----------------+---------------+
 | payload (0..65536-16 bytes)                                      |
 +-------------------------------------------------------------------+
 ```
 
 All integers are network byte order. The header is encoded field-by-field; no
-C++ object memory is transmitted.
+C++ object memory is transmitted. `Channel::Send` builds the 16-byte header and
+passes the caller-owned payload as a second iovec, so the hot path does not
+concatenate a second copy of every frame. `Encode()` remains the contiguous
+form used by tests and the `imsg` adapter.
 
 Limits:
 
@@ -60,8 +94,28 @@ Limits:
 - A declared frame length that does not exactly match the `SOCK_SEQPACKET`
   record fails with `Malformed`; a declared length above the payload limit
   fails with `TooLarge`. Truncated datagrams (`MSG_TRUNC`) are rejected.
-- Log text is additionally sanitized (control characters, including DEL,
-  flattened) by the worker.
+- Log text is additionally sanitized (strict UTF-8 walk; C0/DEL/C1 including
+  U+009B neutralised; invalid sequences replaced) by the worker.
+
+## Message registry
+
+`privsep/Protocol.h` owns one `MessageSpec` row per type:
+`{type, minVersion, direction, receiving roles, payload ceiling, descriptor
+policy}`. Encoders, decoders and `Channel` all read it, and a compile-time
+`ValidateMessageRegistry()` check requires a contiguous 1..N table with a
+per-type ceiling below the frame maximum and a version inside the supported
+range. Adding a type without a deliberate role/limit/descriptor decision does
+not compile.
+
+- `Encode` refuses an unknown type and a payload above that type's ceiling.
+- `Decode` refuses an unknown type, a type carried in a version older than its
+  `minVersion` (no downgrade reinterpretation), and a payload above the
+  per-type ceiling.
+- `AllowsOperation(role, type)` is derived from the same table: a worker role
+  can only receive request-direction types and the requesting side can only
+  receive reply types. The hand-written allowlist no longer exists.
+- `DescriptorPolicyFor` is the only authority for whether a frame may carry a
+  descriptor and of which kind.
 
 ## Message types
 
@@ -75,6 +129,23 @@ Limits:
 | `Error` | worker/broker → caller | `u16 offending-type`, `u8 ErrorCode`, bounded detail string; no descriptor |
 | `ConfigureTorrentStorage`, `SpawnTorrentStorage`, `ConfigureRouterStorage` | typed storage setup | see `docs/torrent/storage-worker.md`; no generic path/write operation |
 | `TorrentStorageRequest` / `Reply`, `RouterStorageRequest` / `Reply` | typed storage operations | bounded handle/path request and status reply |
+| `ConfigureDataStorage`, `DataStorageRequest`, `DataStorageReply` | core → data worker | canonical artifact name + bounded bytes; see `docs/security/process-capabilities.md` |
+| `ConfigureTorrentStorageSupervised` | core → torrent-storage supervisor | typed supervised-storage setup; see `docs/torrent/storage-worker.md` |
+| `WorkerHello` | worker → supervisor/server (v5) | `u8 role`, `u8 nonce-len`, nonce (32 bytes on Windows); spawn proof |
+| `Cancel` | core → storage worker (v4) | `u32 request-id`; advisory, no reply, never a rollback |
+
+Per-type payload ceilings come from the single `MessageSpec` registry
+(`privsep/Protocol.h`), not from ad-hoc checks: the 64 KiB frame limit is an
+upper bound, while frames such as `ConfigureLog`, `LogRecord`, data-storage and
+router/torrent storage requests have smaller declared ceilings. A frame above
+its type ceiling is `TooLarge` even when it fits the 64 KiB transport bound.
+Descriptor policy per type: `None` for every control/log/storage-request frame;
+`RequiredFile` for `ConfigureLogFd`; `OptionalDirectory` for the three configure
+frames that may carry a delegated root; `OptionalSocket` for
+`TorrentStorageSupervisorReply` (the broker acknowledges without a descriptor,
+the supervisor hands one accepted worker socket to the core, which still
+requires it before adoption). A received descriptor is `FD_CLOEXEC` and is
+closed on every rejection path.
 
 The production supervisor path forwards `ConfigureLog`; the **log worker**
 owns the file capability and opens the configured path with
@@ -84,12 +155,16 @@ remains for direct/legacy tests: the sender pre-opens the file, transfers one
 descriptor with `SCM_RIGHTS`, and retains no copy. The supervisor rejects an
 unexpected descriptor.
 
-A log worker rejects `LogRecord` before `ConfigureLog`, rejects unknown types,
-rejects malformed/oversized fields and exits on protocol error. `Ping` and
-`Shutdown` are accepted before configuration so a supervisor can probe or stop
-a freshly spawned worker. `ConfigureLog` is accepted exactly once; a duplicate
-is a fatal protocol error. `path` and `tag` containing an embedded NUL are
-rejected so the worker cannot open a different path than the parent encoded.
+A log worker rejects `LogRecord` before `ConfigureLog`, rejects unknown types
+and malformed/oversized fields. `Ping` and `Shutdown` are accepted before
+configuration so a supervisor can probe or stop a freshly spawned worker.
+`ConfigureLog` is accepted exactly once; a duplicate is a bounded typed
+`BadField` refusal, not a teardown, because the original sink still belongs to
+its owner. `path` and `tag` containing an embedded NUL are rejected so the
+worker cannot open a different path than the parent encoded. A pre-opened log
+descriptor is additionally bound to the configured path by dev/inode identity,
+owner and link count, so a sender cannot substitute an arbitrary same-UID
+writable file for the log capability.
 
 After sending configuration, the core/supervisor sends a bounded `Ping` and
 waits for the matching `Pong`. Configuration success therefore means the
@@ -105,14 +180,58 @@ operations under a delegated root. Descriptor passing is operation-specific
 The OpenBSD/Linux network and crypto role policies remain preparation, not a
 claim that those backends are migrated.
 
+## Enforcement and recoverability
+
+`Channel` has two explicit policies:
+
+- `Transport` (default, used by request-issuing clients and the raw transport
+  tests): framing, size, credentials and the single-descriptor rule only.
+- `Endpoint` (every serving worker and the supervisor/broker): additionally
+  enforces the per-type descriptor policy and answers an *attributable* frame
+  fault with a typed `Error` correlated by request id, closing any descriptor,
+  instead of dropping the connection. A record is only attributable when its
+  magic, version and declared length are consistent, so a corrupt header can
+  never choose a request id. The tolerated faults are bounded
+  (`MAX_PROTOCOL_VIOLATIONS = 8`); exceeding the budget is terminal.
+  Credential and ancillary-data failures stay fatal in both modes.
+
+Timeouts are absolute deadlines in both directions. A receive timeout returns
+an empty result and leaves the channel open on every backend; only a broken
+pipe, an oversize record, a corrupt/credential fault or an exhausted violation
+budget closes it. Linux/OpenBSD `Channel` and the Windows message-mode pipe
+implement the same contract (the Windows path previously closed the pipe on
+`ERROR_TIMEOUT`, which terminated any polling worker after one idle period).
+
+Backpressure is credit- and deadline-based rather than an unbounded queue: one
+reader per endpoint, single-flight storage requests, a bounded fault budget and
+the kernel's `SOCK_SEQPACKET` buffer are the only buffering. A `Send` that
+cannot queue the record before its absolute deadline fails (`send timeout`) and
+the caller must not replay a mutation; there is no user-space backlog that a
+peer can grow without bound.
+
+`Cancel` is advisory because the storage workers are single-flight and
+synchronous: a cancel observed after the mutation started cannot roll it back.
+The client never replays such a request, drains the outstanding reply to keep
+the channel in sync and reports the operation as failed (`Busy`). The worker
+suppresses a matching request that has not run yet. `Busy` also covers
+request-id exhaustion and a busy single-flight slot; neither poisons the
+channel.
+
 ## Authorization
 
 - Every server dispatch checks `AllowsOperation(EndpointRole, MessageType)`
-  before its switch. A type valid for one endpoint (for example
-  `LogRecord`) is a protocol failure on every other endpoint.
-- Log worker only accepts log/configure/shutdown/ping operations. Router and
-  torrent storage only accept their own setup/request/shutdown/ping types.
-  The storage broker only accepts configure/spawn/shutdown/ping.
+  before its switch. The answer comes from the message registry; a type valid
+  for one endpoint (for example `LogRecord`) is a bounded typed
+  `NotAuthorized` refusal on every other endpoint, never an accepted frame.
+- A wrong-direction frame cannot be injected: worker roles are only listed as
+  receivers of request-direction types and the requesting side only of reply
+  types. `Error`, `Pong` and `TorrentStorageSupervisorReply` are the only
+  replies a non-core endpoint may receive (supervisor and broker), because
+  they issue their own requests.
+- Log worker only accepts log/configure/shutdown/ping operations. Router,
+  torrent and data storage accept their own setup/request/shutdown/ping types
+  plus the advisory `Cancel`. The storage broker only accepts
+  configure/spawn/shutdown/ping.
 - `Shutdown` and `Ping` payloads must be empty. A descriptor on `Ping`,
   `Shutdown` or a log record is rejected.
 - Router storage accepts four fixed filenames; torrent storage accepts only
@@ -122,9 +241,13 @@ claim that those backends are migrated.
   replayed or out-of-order request is rejected without re-executing a mutation.
   The OpenBSD broker similarly drops stale spawn IDs and reports per-request
   path/capacity failures as typed `Error` replies without killing live workers.
-- Descriptor passing is operation-specific. `ConfigureLogFd` accepts exactly
-  one regular-file descriptor; torrent storage accepts one validated root
-  descriptor (or inherits it at fd 4 on OpenBSD). Adopted worker channels are
+- Descriptor passing is operation-specific and registry-declared. An endpoint
+  in `Endpoint` enforcement mode closes and answers with `BadField` any
+  descriptor on a type whose policy is `None`, any descriptor of the wrong
+  kind, and any missing descriptor a `Required*` policy demands. `ConfigureLogFd`
+  accepts exactly one regular file and binds it to the configured path by
+  identity; torrent storage accepts one validated root descriptor (or inherits
+  it at fd 4 on OpenBSD). Adopted worker channels are
   re-validated as `AF_UNIX/SOCK_SEQPACKET` (where `SO_DOMAIN` exists), not
   listening, with the expected peer UID and `FD_CLOEXEC`; Linux enables
   `SO_PASSCRED` before use. There is no generic descriptor-passing API.
@@ -139,7 +262,10 @@ claim that those backends are migrated.
   polling a closed socket forever.
 - The router drops log records if the worker channel closes; it never falls
   back to opening the log file in the core process.
-- Worker protocol violation exits the worker with failure.
+- A serving endpoint answers an attributable frame/descriptor fault with a
+  typed `Error` and continues; after `MAX_PROTOCOL_VIOLATIONS` (8) tolerated
+  faults, or on any credential/ancillary failure, the worker exits with
+  failure.
 - The supervisor process restarts a dead log worker with 250 ms exponential
   backoff capped at 30 s, eight consecutive attempts and a 60 s stable-period
   reset. The previous child is reaped before a replacement is spawned, so
@@ -156,8 +282,10 @@ claim that those backends are migrated.
   restarted; the sink send timeout bounds the logger stall and then the
   channel is closed and subsequent records are counted as dropped.
 - A zero-length `SOCK_SEQPACKET` record is consumed and is not treated as
-  peer EOF, but it must satisfy the same Linux `SCM_CREDENTIALS` check as a
-  data frame. More than eight consecutive empty records in one receive call
+  peer EOF, but it must satisfy the same Linux `SCM_CREDENTIALS` expectation as
+  a data frame. A socket handed over by a broker is rejected at adoption if a
+  record is already queued, so the broker cannot pre-load a frame whose kernel
+  credentials would impersonate the worker. More than eight consecutive empty records in one receive call
   is a flood error. Only a hangup/error poll event is terminal.
 - The storage broker returns `Error{Busy}`/`Error{NotAuthorized}`/`Error{
   Internal}` for capacity, path-replacement and worker-spawn failures. These
@@ -166,12 +294,18 @@ claim that those backends are migrated.
 
 ## Versioning
 
-`PROTOCOL_VERSION = 2`; `MIN_PROTOCOL_VERSION = 1`. Version 2 adds the typed
-`Error` message and the shared endpoint allowlist. Version-1 frames remain
-readable by the same binary for upgrade compatibility, but new senders always
-emit version 2. A version outside `1..2` is rejected; there is no downgrade or
-"best effort" mode. Future changes must either bump the version or add a new
-message type with explicit negotiation.
+`PROTOCOL_VERSION = 5`; `MIN_PROTOCOL_VERSION = 1`. Version 2 adds the typed
+`Error` message and the shared endpoint allowlist, version 3 the data-storage
+frame family, version 4 the message registry plus the advisory `Cancel`, and
+version 5 the Windows `WorkerHello` spawn proof.
+Versioning is per type: a frame carrying a type whose `minVersion` is newer
+than its header is rejected with `UnsupportedVersion` instead of being
+interpreted with older semantics, and a header outside `1..5` is rejected.
+There is no downgrade or "best effort" mode. New senders emit version 5.
+The OpenBSD `imsg` adapter cannot carry a frame above `MAX_IMSGSIZE`
+(16 KiB), so the 32 KiB `RouterStorageRequest` ceiling is a POSIX
+`SOCK_SEQPACKET`/Windows capability; a future imsg backend must chunk or the
+operation must stay below that bound.
 
 ## OpenBSD native adapter
 
@@ -197,7 +331,7 @@ the remaining backends are migrated; the adapter is not a weaker fallback.
 | Requirement | OpenBSD | Linux | Windows |
 |---|---|---|---|
 | Local transport | UNIX `SOCK_SEQPACKET` (implemented); native `imsg` adapter prepared/tested in CI | UNIX `SOCK_SEQPACKET` (implemented) | Local message-mode Named Pipe (`PIPE_TYPE_MESSAGE`, `PIPE_REJECT_REMOTE_CLIENTS`) implemented as primitives; random per-spawn names, server-authenticated connect, listener re-arm and cancel/drain hardening; worker integration pending |
-| Peer identity | `getpeereid(3)` (implemented) | `SO_PEERCRED` (implemented) | Client PID/session + token user SID via `GetNamedPipeClient*` (implemented); no impersonation |
+| Peer identity | `getpeereid(3)` at adoption (implemented) | `SO_PEERCRED` at adoption plus a spawner-set per-frame `SCM_CREDENTIALS` expectation (uid/gid/pid, root-parent allowance) | Client PID/session + token user SID via `GetNamedPipeClient*` (implemented); no impersonation |
 | Message boundaries | `SOCK_SEQPACKET`; imsg adapter preserves versioned frame | `SOCK_SEQPACKET` | One message-mode pipe message per versioned frame |
 | Descriptor transfer | `SCM_RIGHTS` for `ConfigureLogFd`; torrent-storage broker receives its root as inherited fd 4 (directories are not sent through `sendfd` after pledge) | `SCM_RIGHTS` for `ConfigureLogFd`; Linux router storage passes a validated root descriptor | No inheritance/`DuplicateHandle`; worker reconnects by local pipe name |
 | Process supervision | `waitpid`, signals; separate supervisor process for log worker (implemented) | eager `pidfd` preferred, `waitpid` fallback; separate supervisor process (implemented) | Restricted token + Job Object + mitigation attributes implemented as primitives; supervisor integration pending |
@@ -209,3 +343,11 @@ The public Windows APIs are preferred over undocumented ALPC. No worker IPC
 uses TCP. The UNIX implementation deliberately fails if `SOCK_SEQPACKET` is
 unavailable instead of silently switching to a weaker channel; Windows uses a
 local message-mode Named Pipe with an explicit DACL.
+
+## See also
+
+- [process capabilities](process-capabilities.md)
+- [privilege separation](privilege-separation.md)
+- [windows worker ipc](windows-worker-ipc.md)
+- [storage worker](../torrent/storage-worker.md)
+- [tui ipc](../tui-ipc.md)

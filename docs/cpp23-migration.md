@@ -37,7 +37,7 @@ are not proven by the build probes or the manual CI matrix remain unavailable.
 | `std::expected` | language feature available; library missing on some OpenBSD libc++ | use the portable `i2p::expected` shim |
 | `span`/`string_view` | available | explicit extents and non-owning text |
 | ranges/views, generic lambdas, `<=>` | available with libc++/libstdc++ support | local algorithms and comparisons |
-| `chrono`, `jthread`, stop tokens | available; already used in TUI | timers and owned workers with explicit joins |
+| `chrono`, `jthread`, stop tokens | available; used by the TUI server and X25519 supplier | `Transports` still keeps its legacy join path; do not describe it as jthread-owned |
 | `std::format`/`std::print` | not assumed on the OpenBSD floor | `snprintf`/existing formatting stays |
 | `std::mdspan` | not assumed | no packet-buffer adoption yet |
 | coroutines/executors | not assumed with the current Boost.Asio floor | remain rejected |
@@ -75,7 +75,10 @@ dynamic availability remains a manual-CI claim, never a local inference.
 | `consteval` table construction | `libi2pd/Base.cpp` | Removes lazy, racy initialization of the base64 reverse table |
 | `constexpr` `std::array`/`std::optional`/ranges registry | `libi2pd/Identity.cpp` | Signing-key wire sizes are one compile-time table instead of a duplicated switch |
 | `std::jthread`/`std::stop_token`/`condition_variable_any` | `libi2pd/Transports.*`, `daemon/TuiServer.cpp` | Workers own their lifetime and cancellation; the TUI listener has no separate stop flag |
-| Move-only `ScopeExit` guard | `libi2pd/Identity.cpp` | Private-key parse failure cleanup is one path instead of repeated `fail()` returns |
+| Move-only `ScopeExit` guard | `libi2pd/Identity.cpp`, `libi2pd_client/AddressBook.cpp`, `libi2pd/ECIESX25519AEADRatchetSession.cpp` | Replaces the ad-hoc `Defer` and `SaveStateHelper` vocabulary with one move-only RAII guard |
+| Monadic `expected` helpers | `libi2pd/Expected.h`, `tests/test-modern.cpp` | `value_or`/`and_then` compose value-or-error paths without sentinel values |
+| Typed memory-pool deleters | `libi2pd/util.h`, `libi2pd/NetDb.hpp` | Replaces `std::function`/`std::bind` erasure with small nested deleters and removes the member-pointer cast workaround |
+| `constexpr` clove allowlist table | `libi2pd/I2NPProtocol.cpp` | One compile-time membership table instead of a switch, preserving the Java clove policy |
 | Strategy interface + protocol connectors | `libi2pd/TransportConnector.h`, `Transports.cpp` | Outbound NTCP2/SSU2/Yggdrasil selection is polymorphic and isolated from peer policy |
 | Concepts / abbreviated constraints | `libi2pd/TuiProtocol.h` field encoder, `libi2pd/Modern.h` | Restricts generic APIs and keeps misuse a compile-time error |
 | Ranges / views | `libi2pd/Identity.cpp`, `libi2pd/Transports.cpp`, `libi2pd/Log.cpp` | Replaces hand-written scans/if-chains with constrained algorithms; no lifetime extension |
@@ -148,6 +151,29 @@ paths:
 TUI-visible router/tunnel status fields now use atomics or bounded accessor
 snapshots; that item was moved out of the candidate list.
 
+## Build probes and enforcement
+
+The supported compiler/library floor is not assumed from `__cplusplus` alone.
+`build/CMakeLists.txt` probes the facilities that affect the public build
+contract:
+
+| Probe | Gates | Fallback |
+|---|---|---|
+| `CheckLanguage(CXX)` / `cxx_std_23` | C++23 language and dialect flags | configure failure below the floor |
+| `CheckLanguage(RC)` | Windows resource compiler only when the platform module expects it | platform RC handling |
+| `CheckAtomic` | `std::atomic`/`std::atomic_ref` support and `I2PD_ATOMIC_LIBRARIES` | explicit atomic library |
+| OpenSSL compile/link probes | `SSL_set1_host`/`SSL_set1_dnsname`, `EVP_KDF`, ML-KEM headers and provider calls | documented LibreSSL/OpenSSL-3 fallback paths |
+| `I2PD_OPENSSL_EXPECT` | backend identity (`OpenSSL`/`LibreSSL`) stamped into configure results | fail-closed provider checks |
+| wide-entry `wadd_wch` probe | ncursesw wide-character entry point | `I2PD_TUI_REQUIRED` failure |
+| `I2PD_HAVE_OPENSSL_MLKEM_H` | ML-KEM header availability | runtime capability check before advertising PQ |
+
+`tests/check-language-modernization.cmake` pins the policy phrases and the
+short-header contract without compiling. `test-modern` covers
+`i2p::expected`, `modern::ScopeExit` and the typed pool deleters;
+`test-transport-connector` covers the outbound Strategy seam. The expected
+shim is `libi2pd/Expected.h`, with `value_or`/`and_then`; `std::expected` is not
+assumed on OpenBSD libc++.
+
 ## Validation status
 
 Historical Linux/GCC 16 build and TUI test results in `testing.md` predate the
@@ -177,3 +203,10 @@ RouterContext service/static-key, NetDb and Logger corrections are
 RouterContext lifecycle/static-key tests. `fuzz-signature-der` was added to
 the optional fuzzer set. None has been compiled, run, sanitized, fuzzed or
 validated on OpenBSD/Windows/Android/live peers in the current tree.
+
+## See also
+
+- [build system](build-system.md)
+- [testing](testing.md)
+- [android java25](android-java25.md)
+- [Developer guide](developer-guide/README.md)

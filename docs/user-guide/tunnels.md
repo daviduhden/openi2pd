@@ -130,6 +130,18 @@ cryptotype          | Crypto type for new keys. Experimental. Should be always 0
 destinationport     | Connect to particular port at destination. 0 by default (targeting first tunnel on server side for destination)
 keepaliveinterval   | Send ping to the destination after this interval in seconds. (default: 0 - no pings)
 keys                | Keys for destination. When same for several tunnels, will be using same destination for every tunnel.
+name                | Stable tunnel name used by the TUI/Android start/stop verbs. Defaults to the INI section name; duplicates are rejected at load.
+enable              | Start the tunnel when the router starts. (default: true)
+startOnLoad         | Alias for `enable`.
+filterDefinition    | Java-compatible access filter: `default=allow|deny;explicit allow|deny <b32|*.*.*.*|*>;file allow|deny <absolute-path>;record allow|deny <threshold>`. First match wins; a denied SYN is rejected before it reaches the acceptor. `record` counters are memory-only.
+limitAction         | Wire action for a refused peer: `drop` (silence, default for filter denials) or `reset` (one signed RESET). Unknown values fall back to drop for filter denials and reset for streaming limits.
+targetForPort.<port>| Route an accepted stream whose local port is `<port>` to a different target `host:port` (up to 16 mappings). Ports 443/22 without a mapping are reset, so an HTTP tunnel never forwards TLS to the plaintext target by mistake.
+spoofedHost.<port>  | `Host:` header override for that local port (falls back to `hostoverride`).
+defaultacceptor     | Allow this tunnel to take the destination-wide (port 0) acceptor. Off by default; a port-specific tunnel must not receive traffic for other ports.
+rejectInproxy       | Reject requests carrying `X-Forwarded-For`/`Via` with 403. (default: false)
+rejectReferer       | Reject requests that carry a `Referer`. (default: false)
+rejectUserAgents    | Comma-separated, case-insensitive user-agent substrings rejected with 403.
+postMax             | Maximum POST/PUT requests per throttle window before 429. (default: 6; 0 disables)
 gzip                | Turns internal compression off if set to false. (default: false)
 connecttimeout      | Sets the connection timeout for client-side tunnels. (default: 0, in seconds)
 matchtunnels        | Enables matched-tunnel destination behavior (for sharing/aligning tunnels with the same destination). (default: false)
@@ -276,6 +288,9 @@ address             | Local address HTTP proxy binds to (default: `127.0.0.1`)
 port                | TCP port HTTP proxy binds to.
 outproxy            | It will be used when requesting addresses outside the I2P network (e.g, http://outproxy.acetone.i2p:3128)
 senduseragent       | Pass real User-Agent (default: false)
+auth.enabled        | Require local HTTP Basic authentication on this proxy (default: false)
+auth.username       | Accepted username, 1..255 bytes; empty fails closed
+auth.password       | Accepted password, 1..255 bytes; never logged or forwarded
 addresshelper       | Enable address helper (default: true)
 
 Socks proxy
@@ -299,6 +314,9 @@ address             | Local address Socks proxy binds to (default: `127.0.0.1`)
 port                | TCP port Socks proxy binds to
 outproxy            | It will be used when requesting addresses outside the I2P network. e.g, outproxy = PROXY_ADDRESS
 destinationport     | It set the upstream proxy port  (default: 0, used when `outproxy` is set). e.g, destinationport = PROXY_PORT
+auth.enabled        | Require local RFC 1929 username/password authentication (default: false)
+auth.username       | Accepted username, 1..255 bytes; empty fails closed
+auth.password       | Accepted password, 1..255 bytes; never logged or forwarded
 
 Torrents tunnels
 ----------------
@@ -360,7 +378,7 @@ outbound.nickname             | Custom nickname for outbound tunnels to show in 
 inbound.randomKey             | Base64 encoded 16 or 32 bytes key used for inbound tunnels peer ordering
 outbound.randomKey            | Base64 encoded 16 or 32 bytes key used for outbound tunnels peer ordering 
 crypto.tagsToSend             | Number of ElGamal/AES tags to send. 40 by default; too low value may cause problems with tunnel building
-crypto.ratchet.inboundTags    | Max number of generated inbound tags for tagset (default: 800)
+crypto.ratchet.inboundTags    | Max number of generated inbound tags for tagset (default: 800, capped at 320 like Java's Elastic Session window)
 explicitPeers                 | List of comma-separated b64 addresses of peers to use (default: unset)
 trustedRouters                | List of comma-separated b64 addresses of routers to choose from for first hop (default: unset)
 i2p.streaming.initialAckDelay | Milliseconds to wait before sending Ack. (default: 200)
@@ -369,7 +387,12 @@ i2p.streaming.maxOutboundSpeed| Max outbound speed of stream in bytes/sec. (defa
 i2p.streaming.maxInboundSpeed | Max inbound speed of stream in bytes/sec. (default: 1730000000)
 i2p.streaming.profile         | Bandwidth usage profile. 1 - bulk(high), 2- interactive(low). (default: 1)
 i2p.streaming.maxConcurrentStreams  | Total limit for streams at the time. (default: 2048)
-i2p.streaming.maxConnsPerMinute  | Max number of incoming connections per minute per ratchet session (default: 0 - unlimited)
+i2p.streaming.maxConnsPerMinute  | Max number of incoming connections per minute per ratchet key (default: 0 - unlimited)
+i2p.streaming.maxConnsPerHour    | Max number of incoming connections per hour per ratchet key (default: 0 - unlimited)
+i2p.streaming.maxConnsPerDay     | Max number of incoming connections per day per ratchet key (default: 0 - unlimited)
+i2p.streaming.maxTotalConnsPerMinute | Max number of incoming connections per minute across all ratchet keys (default: 0 - unlimited)
+i2p.streaming.maxTotalConnsPerHour   | Max number of incoming connections per hour across all ratchet keys (default: 0 - unlimited)
+i2p.streaming.maxTotalConnsPerDay    | Max number of incoming connections per day across all ratchet keys (default: 0 - unlimited)
 i2p.streaming.maxWindowSize   | Max window size for streams (default: 512)
 i2p.streaming.maxResends      | Max number of retransmissions before failure.(default: 10)
 i2p.streaming.dontSign        | Don't include signature when required. Enable only if other side doesn't verify signatures (default: false)

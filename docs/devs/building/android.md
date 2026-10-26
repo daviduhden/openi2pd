@@ -19,10 +19,11 @@ use a Git submodule and it does not contain a second copy of the router.
 - Gradle 9.8.1 and AGP 9.4.1 (the wrapper is pinned)
 - Android SDK platform 37, Build Tools 36.0.0 (AGP 9.4 default), CMake 3.31.6
   (pinned in Gradle) and NDK r30 LTS (`30.0.16248370` or newer)
-- Boost, OpenSSL/LibreSSL, zlib and MiniUPnPc 2.2.6+ built for the target
-  Android ABI, findable by CMake (for example a vcpkg prefix). MiniUPnPc backs
-  the default-on UPnP client and is listed in
-  `contrib/ci/android/vcpkg.json`.
+- Boost, OpenSSL/LibreSSL, zlib and MiniUPnPc 2.2.6+ built for the selected
+  Android ABI with the **c++_shared** STL, findable by CMake (for example a
+  vcpkg prefix). MiniUPnPc backs the default-on UPnP client and is listed in
+  `contrib/ci/android/vcpkg.json`. The Gradle build passes
+  `-DANDROID_STL=c++_shared`; do not mix it with the AGP c++_static default.
 - No network download happens during the CMake build itself
 
 ## Build
@@ -40,10 +41,19 @@ export ANDROID_NDK_HOME=$ANDROID_HOME/ndk/30.0.16248370
 cd android
 ./gradlew assembleDebug \
   -Pi2pd.ndkVersion=30.0.16248370 \
+  -Pi2pd.abis=arm64-v8a \
   -Pi2pd.cmakeArgs="-DCMAKE_PREFIX_PATH=/path/to/dependencies/arm64-android"
 ```
 
-APKs are produced in `android/app/build/outputs/apk/`. The Gradle build invokes
+`arm64-v8a` is the default ABI because the maintained vcpkg prefix and CI lane
+build only that target. Add more ABI prefixes and pass
+`-Pi2pd.abis=arm64-v8a,armeabi-v7a` only after building the matching dependency
+prefixes; otherwise Gradle configures native targets whose libraries do not
+exist.
+
+APKs are produced in `android/app/build/outputs/apk/`. The wrapper CMake file
+allows package/header discovery outside the NDK sysroot (`BOTH` modes), so the
+same `CMAKE_PREFIX_PATH` works locally and in manual CI. The Gradle build invokes
 CMake through `app/src/main/cpp/CMakeLists.txt`, which enables
 `I2PD_BUILD_JNI`, enables torrents and UPnP, and disables the host daemon, tools, TUI, tests and standalone libraries. Java
 source/target 25 is intentional: it compiles to class-file major 69, which

@@ -14,11 +14,11 @@ Documents project documentation.
 
 | Process | OpenBSD pledge/unveil | Linux | Windows |
 |---|---|---|---|
-| Router core | Existing broad policy (`stdio rpath wpath cpath fattr inet dns unix flock`, optional `mcast`; `/dev/log` `w` only when the core owns syslog). When `privsep.log` owns the sink, `proc` is retained for bounded supervisor reaping/signalling; `exec` is absent | No seccomp/Landlock; normal process | Normal process |
-| Log worker | `OpenBSDSandbox` policy: direct file `unveil(/etc/localtime,r)` + `unveil(logfile,rwc)` + `pledge("stdio unix rpath wpath cpath fattr")`; pre-opened descriptor `pledge("stdio unix rpath")` with no log path rule; syslog `unveil(/dev/log,w)` + `pledge("stdio unix")`; stdout `pledge("stdio unix")`. The worker is spawned before the parent runtime sandbox | `LinuxSandbox`: no-new-privs, capset/bounding-set drop, Landlock write restriction to the log file, seccomp denies AF_INET/AF_INET6 while allowing AF_UNIX; `requireLandlock=false` for pre-opened/stdout compatibility | Message-mode pipe primitives, protected DACL, peer SID check, restricted token and Job Object helpers implemented; daemon/log integration pending |
-| Supervisor | Separate process; owns log worker/channel; pre-resolves the executable, then `pledge("stdio unix proc exec")`; no network and no path write/read promise; it never opens the log file. The OpenBSD torrent-storage broker uses an inherited root fd and `pledge("stdio unix proc exec sendfd recvfd")` without `rpath` | `ApplyLinuxSupervisorSandbox`: no-new-privs and capability/bounding-set drop only. It deliberately installs no Landlock/seccomp/netns domain because those are inherited and cannot be relaxed for exec'ed storage/network children; each child applies its full role policy | Named-pipe primitives/Job Object policy implemented; supervisor integration pending |
-| Network worker | `OpenBSDSandbox` policy builder: `stdio unix inet`, optional `dns`/`recvfd`/`route` (+ `mcast` only with UPnP), no `wpath/cpath/fattr`; backend migration pending | `LinuxSandbox` profile builder: sockets allowed, Landlock persistent-write deny, no seccomp socket deny; backend not migrated | `WindowsWorkerPolicy` network profile; AppContainer/LPAC fail closed; backend not migrated |
-| Storage worker | Router/torrent workers use `OpenBSDSandbox`: `stdio rpath wpath cpath` (plus `unix`/`recvfd` only for the non-preopened Linux-style path), unveiling only the delegated root; no `inet/dns`; netDb/profile/keys migration pending | Router/torrent workers use `LinuxSandbox`: no new sockets, empty network namespace where available, Landlock writes only to the delegated root; netDb/profile/keys migration pending | `WindowsWorkerPolicy` storage profile; restricted token + Job Object; AppContainer/LPAC fail closed; backend not migrated |
+| Router core | Existing broad policy (`stdio rpath wpath cpath fattr inet dns unix flock`, optional `mcast`; `/dev/log` `w` only when the core owns syslog). When `privsep.log` owns the sink, `proc` is retained for bounded supervisor reaping/signalling; `exec` is absent | No seccomp/Landlock; normal process. With `privsep.artifacts`, netDb/profile/destination-key writes go to the data-storage worker; the core keeps its direct write capability for the read path and remaining artifacts | Normal process |
+| Log worker | `OpenBSDSandbox` policy: direct file `unveil(/etc/localtime,r)` + `unveil(logfile,rwc)` + `pledge("stdio unix rpath wpath cpath fattr")`; pre-opened descriptor `pledge("stdio unix rpath")` with no log path rule; syslog `unveil(/dev/log,w)` + `pledge("stdio unix")`; stdout `pledge("stdio unix")`. The worker is spawned before the parent runtime sandbox | `LinuxSandbox`: no-new-privs and capability teardown happen in the spawn child before `execve`; Landlock write restriction to the log file and no `EXECUTE`; seccomp AF_INET/AF_INET6 deny (AF_UNIX kept for syslog) is installed **before** the configuration frame; `requireLandlock=false` for pre-opened/stdout compatibility | Low-privilege AppContainer (no `internetClient`) with a delegated log root, protected pipe DACL, PID/session/container/nonce-bound accept and role-bound per-operation IPC; no Windows log backend yet |
+| Supervisor and storage broker | Separate processes; the supervisor owns the log worker, the broker owns storage-worker spawning. Both pre-resolve their own executable, `unveil(exe,"x")` + lock (exactly one `x` rule) and `pledge("stdio proc exec")` / `("stdio proc exec sendfd")`: no `unix`, no `rpath/wpath/cpath`, no descriptor reception, no network, and no way to exec anything except the frozen image. The log worker and every exec'ed storage worker install their own unveil+pledge after `execve` | `ApplyLinuxSupervisorSandbox`: no-new-privs and capability/bounding-set drop only. It deliberately installs no Landlock/seccomp/netns domain because those are inherited and cannot be relaxed for exec'ed storage/network children; each child applies its full role policy | Named-pipe primitives/Job Object policy implemented; supervisor integration pending |
+| Network worker | `OpenBSDSandbox` policy builder: `stdio unix inet`, optional `dns`/`recvfd`/`route` (+ `mcast` only with UPnP), no `wpath/cpath/fattr`; backend migration pending | `LinuxSandbox` profile builder: sockets allowed, Landlock persistent-write deny, no seccomp socket deny; backend not migrated | AppContainer with `internetClient` + `privateNetworkClientServer`, no delegated write root and no persistent-write ACL; backend not migrated |
+| Storage workers | Router-storage owns the four fixed router files; the data-storage worker owns `netDb/r*/routerInfo-<b64>.dat`, `peerProfiles/p*/profile-<b64>.txt` and `destinations/<b32>.<type>.dat`. Both use `OpenBSDSandbox`: `stdio rpath wpath cpath` (plus `unix`/`recvfd` only for the non-preopened path), unveiling only the delegated root; no `inet/dns`; torrent storage keeps its broker | Same roles under `LinuxSandbox`: capabilities are emptied in the spawn child; seccomp denies `socket`/`socketpair` **and** `connect`/`bind`/`listen`/`accept*`/`sendto`/`execve*`/`fork`/`clone`, installed before the configure frame; Landlock limits reads and writes to the delegated root and denies `EXECUTE`; an empty network namespace is attempted pre-exec when the core has `CAP_SYS_ADMIN` (best-effort; seccomp is the mandatory boundary); cgroup-v2 limits remain unwired | Low-privilege AppContainer (no `internetClient`) with one delegated write root granted to the container SID; protected pipe DACL; Job Object/mitigations; backend not migrated |
 | Crypto worker | `OpenBSDSandbox` policy builder: `stdio unix`, no network/path write; key handles and backend pending | `LinuxSandbox` profile builder: no sockets, capability drop, Landlock write deny; backend not migrated | `WindowsWorkerPolicy` crypto profile; backend not migrated |
 | TUI | Separate client; local UNIX socket 0600 | Same | Not available |
 
@@ -49,6 +49,168 @@ the same versioned frame and supports `imsgbuf_allow_fdpass`/one descriptor.
 It is exercised by the manual OpenBSD CI test; the current supervisor/log path
 continues to use the portable `SOCK_SEQPACKET` channel until all backends are
 migrated.
+
+### Capability invariant and worker identity (2026-10-26)
+
+`privsep/Capabilities.h` declares every process role and a small capability
+set (`ExternalNetwork`, `PersistentWrite`, `FilesystemRead`, `Signal`, `Exec`,
+`FdPassSend`, `FdPassReceive`, `Ipc`). The contract is: **no role may set both
+`ExternalNetwork` and `PersistentWrite`**. The table records the current core
+row explicitly with the write bit (`CORE_LEGACY_CAPABILITIES`) so the remaining
+gap is visible, and `CORE_TARGET_CAPABILITIES` is the row the network/crypto
+split must reach. `IsRoleCapabilitySafe()` and `ValidateCapabilityMatrix()` are
+compile-time/test-checked; every OS backend policy must be reviewable against
+exactly one row.
+
+A worker role is bound to its spawner: `SpawnWorker*` generates 16 bytes from
+the platform CSPRNG and writes `[role-id u8 | nonce 16]` into an anonymous pipe
+before `fork()`. The child reads it from fd 5, closes fd 5, and only then
+touches the channel or applies its policy. The record never appears in `argv`,
+`environ`, a log line or the protocol channel, so a same-UID process cannot
+invoke `--privsep-worker <role> 3` with its own socketpair and adopt the role.
+Descriptor contract: 3 = channel, 4 = inherited storage root (OpenBSD),
+5 = one-shot identity record, ≥6 closed.
+
+### Data-storage worker (implemented, opt-in)
+
+With `privsep.artifacts=true` the core installs a `DataStorageClient` as the
+only writer for three hash-named artifact kinds: the netDb RouterInfo cache,
+peer profiles and destination private keys. The worker validates the delegated
+root and creates the three `0700` directories before applying the storage
+policy; it has no network capability. Names are canonical (44-character I2P
+base64 identity hash, or `<52-char b32>.<keyType>`), re-encoded and compared
+before use; separators, NUL, `..`, drive colons, symlinked/hardlinked or
+foreign-owned targets are rejected, and writes use fixed staging slots plus an
+atomic no-follow replace. Startup reads remain direct in this phase.
+`PersistentStorage` never falls back to a local write after an installed
+writer fails, and an enabled-but-unavailable worker fails closed. Channels are
+generation-fenced; a client death/restart bumps the generation, stale replies
+are dropped, ambiguous writes are not replayed, and restart uses 250 ms→30 s
+backoff (8 attempts in 60 s, stable reset after 60 s) where an exec'ed worker
+can be respawned (Linux). OpenBSD has no post-pledge respawn in the core.
+
+### Log worker hardening
+
+The log record text is sanitised with a strict UTF-8 walk (C0 except TAB, DEL
+and the C1 block including U+009B become spaces; invalid/truncated sequences
+become one `?`; a cut at the 8 KiB bound never splits a sequence and appends a
+truncation marker). Known secret keys (`password`, `privatekey`, `private key`,
+`passphrase`, `secret`, `token`) have their value replaced with `<redacted>`
+before the record is framed. The file sink stops appending at 64 MiB
+(`MAX_LOG_SINK_BYTES`) with one stderr notice and no rotation. The client sends
+from a snapshot of the channel outside the log mutex, so a wedged worker cannot
+hold the router's logging lock for a full send timeout; drop counters remain
+bounded and monotonic. A pre-opened log descriptor (`ConfigureLogFd`) is bound
+to the configured path by dev/inode identity, owner and `st_nlink == 1` before
+`fchmod` or sandboxing, so it cannot be an arbitrary same-UID writable file.
+Frames are checked against the shared message registry: a serving endpoint
+enforces the per-type descriptor policy and answers an attributable fault with
+a typed `Error` (at most eight), and an idle receive timeout never closes the
+Windows pipe.
+
+### Windows AppContainer and supervisor (2026-10-26)
+
+Windows has no per-process network/filesystem switch analogous to Landlock.
+The documented boundary is an AppContainer: storage/log/crypto/admin run in a
+low-privilege container with no `internetClient`, network runs in a container
+with `internetClient`/`privateNetworkClientServer`, and only the delegated
+write root is granted to the container SID. The supervisor uses a restricted
+token because it must spawn children. `WindowsIsolation.cpp` is the single
+role authority and rejects any role that combines an Internet capability with a
+write root; `SpawnWindowsWorker` refuses a container role without a container,
+a container for a non-container role, or a persistent-write role without a
+delegated root.
+
+The pipe is message-mode, `PIPE_REJECT_REMOTE_CLIENTS`, protected DACL (service
+user, SYSTEM and the exact container SID), `FILE_FLAG_FIRST_PIPE_INSTANCE`, and
+one frame per record. `AcceptBound` impersonates the client to read
+`TokenUser`/`TokenIsAppContainer`/`TokenAppContainerSid`/`TokenIntegrityLevel`,
+requires the spawned PID/session and, for a container role, the exact container
+SID, then consumes one `WorkerHello` carrying the role and the 32-byte CSPRNG
+nonce before binding the role. `WindowsChannel::Receive` enforces the shared
+registry per role and answers one typed `Error` under the eight-violation
+budget. A completed-during-cancel record is delivered rather than discarded.
+The worker entry (`--privsep-worker`) connects bound to the parent PID/session,
+sends the hello, binds its role and never initialises the router.
+
+`WindowsWorkerSupervisor` owns one role, creates the per-generation pipe and
+AppContainer identity, spawns and authenticates the child, restarts it under
+the shared 250 ms→30 s / 8-in-60 s budget with a monotonic generation, and
+terminates the Job Object within a bounded stop. The service drains
+`Daemon.stop()` within a non-zero wait hint instead of reporting STOPPED while
+the router runs. No daemon path instantiates the supervisor yet, and the
+storage/network engines remain in the core; no live Windows worker exists.
+
+### Linux backend hardening (2026-10-26)
+
+- **Peer authentication:** Linux `SO_PEERCRED` is the **socket creator**, so it
+  becomes stale when a root core drops a worker to `privsep.user`. Every
+  production channel now carries an explicit `PeerExpectation`: the core
+  requires the worker uid/gid and the direct child pid, a worker requires its
+  own uid (or uid 0 for the delegating root core), and an adopted broker socket
+  requires the worker uid. A socket with a pre-queued record is refused at
+  adoption. `configured=false` keeps the creator comparison only for raw
+  transport tests.
+- **Capabilities:** the spawn child sets `PR_SET_NO_NEW_PRIVS` and clears the
+  ambient and bounding sets while still privileged (effective/permitted are
+  kept so `setgroups`/`setgid`/`setuid` still have CAP_SETGID/CAP_SETUID); after
+  the credential drop it calls `capset(0)` and verifies with `capget`, then
+  execs. Doing the whole teardown only in the exec'ed worker was a no-op
+  (EPERM). `RunWorker` re-asserts `PR_GET_NO_NEW_PRIVS == 1` and an empty
+  capability set before any role reads a frame. Ignored signal dispositions are
+  reset to `SIG_DFL` in the child.
+- **Seccomp/Landlock:** storage denies the whole connection lifecycle and
+  process creation, not only `socket`; Landlock handles `EXECUTE` without
+  granting it through a writable root; `Storage` restricts reads as well as
+  writes to the delegated root. The socket/capability lockdown is installed
+  before the configure frame; Landlock (which needs the root) follows.
+- **Executable identity:** the frozen path is checked at freeze time (regular,
+  owner root/self, no group/world write, non-writable parent directory) and its
+  dev/inode/size are re-checked immediately before `execve` on Linux.
+- **Role/root pairing:** only `*-inherited` storage roles and the broker accept
+  an inherited root; every other role refuses one, and the root must be a
+  directory owned by the worker uid without group/world write. `RunWorker`
+  closes fd 4 for any other role.
+- **Residual:** cgroup-v2 limits and a global worker-admission cap are not
+  wired; the empty network namespace is best-effort because it needs
+  `CAP_SYS_ADMIN`; a same-uid sibling that already has the worker channel can
+  still inject frames in the worker->core direction (the core->worker direction
+  is pid-bound); the core itself is not sandboxed.
+
+### Supervised start, worker identity and descriptors (2026-10-26)
+
+The core keeps a wide **startup** pledge only until every allowed worker is
+running: `stdio rpath wpath cpath fattr inet dns unix flock recvfd proc exec`
+plus `unveil`/`mcast`/`id` when configured. `recvfd` is present in the startup
+set because pledge can only remove promises; without it the runtime `recvfd`
+would be silently ignored and the first supervised worker handoff would abort
+the core. The **runtime** set is rebuilt from the same table and startup fails
+if it is not a strict subset. It never contains `exec`, `id`, `chown` or
+`unveil`.
+
+`privsep.user`/`privsep.group` select the worker identity. Names are resolved
+once before the startup pledge (bounded `getpwnam_r`/`getgrnam_r`), uid 0 is
+rejected, and the pair is published process-wide. The forked child calls
+`setgroups(0,nullptr)`, `setgid`, `setuid` before `execve` and verifies the
+real/effective ids and an empty supplementary set; a root core with any
+isolation feature enabled and no configured identity fails startup with an
+explicit diagnostic. The core itself is not chrooted or dropped.
+
+A worker is bound to its spawner by a 25-byte hello
+`[role u8 | nonce 16 | uid u32 | gid u32]` on fd 5, written by the child after
+the drop. `RunWorker` requires the role to match `argv`, the uid/gid to match
+`geteuid()/getegid()`, a non-zero uid and one exact record (a trailing byte or
+an open writer is rejected), then closes fd 5. A channel peer may be the same
+uid or, for an unprivileged worker, uid 0 (the root core that delegates the
+role); the channel is an anonymous `socketpair`, never a named socket.
+
+Descriptor contract: 3 = channel, 4 = inherited storage root (only for
+`*-inherited` roles), 5 = one-shot hello, 0/1/2 = `/dev/null`, >=6 closed. A
+role without a root closes fd 4 explicitly; stdio is pinned even for a
+directly invoked worker, so a terminal, rc.d log pipe or activation socket is
+never writable. The executable path is frozen from `argv[0]`/`realpath` before
+the sandbox (absolute, regular, owner root/self, no group/world write) and is
+never resolved through `$PATH` or `/proc`.
 
 ## Target policies
 
@@ -105,9 +267,11 @@ migrated.
 ### Supervisor
 
 - **Current:** a separate supervisor process owns the log worker and forwards
-  records. On OpenBSD it pre-resolves the executable and applies
-  `pledge("stdio unix proc exec")`; it has no network and never opens the log
-  file. It retains fork/exec only to restart the log child, which is why no
+  records. On OpenBSD it pre-resolves the executable, unveils exactly that path
+  with `x`, locks the list and applies `pledge("stdio proc exec")`; it has no
+  `unix`, no pathname read/write and never opens the log file. The storage
+  broker uses `pledge("stdio proc exec sendfd")` with the same single-`x`
+  unveil. It retains fork/exec only to restart the log child, which is why no
   seccomp/Landlock filter is installed yet. The core does not retain `exec`; it
   keeps `proc` only for bounded supervisor reaping/signalling and cannot replace
   a dead supervisor.
@@ -204,11 +368,21 @@ enforced boundary is required before claiming effective Windows separation. See
 
 ## Android
 
-The app remains a single ART process hosting JNI. Android process/UID
-isolation, SELinux domains and service lifecycle make a desktop-style worker
-split non-trivial. Current app changes remove broad storage permissions and the
-WebView console; full worker separation is a documented platform limitation, not
-a claimed guarantee.
+The app uses two same-UID processes: the default process hosts the Activity,
+ViewModel, service client and (today) the router service with JNI; the
+`:torrent_storage` process hosts the SAF payload broker. The broker has no
+network capability (seccomp `no_new_privs` plus a socket/connect deny) and owns
+all `ParcelFileDescriptor`s; no descriptor crosses Binder. This is a real
+heap/crash/network containment boundary, not a privilege boundary: both
+processes share the app UID, data directory, keystore and INTERNET permission.
+An `isolatedProcess` cannot replace the router or broker because it loses both
+INTERNET and persisted SAF grants. A separate `:i2pd_router` process for the
+router/JNI is the next slice (`ANDROID-026`) and needs a closed `IRouterControl`
+AIDL; networking cannot be split into a separate Android permission domain.
+The Activity is not the router owner: `RouterService` is a foreground service
+with `stopWithTask=false`, a persisted run intent (`run_phase`/graceful
+deadline/generation) and a boot/package-replace restart path. Do not claim
+global Android privilege separation.
 
 ## Linux build headers and Landlock ABI
 

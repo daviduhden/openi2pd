@@ -14,8 +14,9 @@ This directory records cross-component decisions for the openi2pd fork.
 
 ## ADR-001 — Supervised logging worker; monolithic core remains interim
 
-- **Status:** In progress; logging and opt-in storage are split, while the
-  network/crypto/router-core split remains a tracked implementation task.
+- **Status:** In progress; logging, fixed-file storage and (opt-in) hash-named
+  runtime artifacts are split, while the network/crypto/router-core split
+  remains a tracked implementation task.
 - **Context:** I2P session state, tunnel crypto, netDb persistence and the event
   loop are coupled to process-wide singletons. Splitting a state machine
   without clear ownership risks nonce reuse, lost retransmissions and
@@ -30,7 +31,43 @@ This directory records cross-component decisions for the openi2pd fork.
   storage workers. The core still combines network, most persistence and
   long-term keys; this is a documented risk and not global privilege
   separation.
-- **Follow-up:** `PRIVSEP-005..014` in `TODO.md`.
+- **Follow-up:** `PRIVSEP-005..021` in `TODO.md`; ADR-005 records the
+  capability invariant and the artifact boundary.
+
+## ADR-005 — Capability invariant, spawn identity and artifact storage
+
+- **Status:** Implemented / static (Pending CI compilation and tests). The
+  invariant is declared and enforced by policy for worker roles; the router
+  core still violates it until the network/crypto split lands.
+- **Decision:** No process role may combine `ExternalNetwork` with
+  `PersistentWrite`. `privsep/Capabilities.h` is the single role×capability
+  matrix; every OS backend policy must be reviewable against one row, and a
+  target row is rejected at compile time if it sets both bits. The legacy core
+  row is recorded explicitly (with the write bit) so the gap cannot be mistaken
+  for compliance.
+- **Spawn identity:** a worker role is bound to its spawner by a 16-byte
+  CSPRNG nonce delivered on a dedicated pipe (child fd 5, closed before any
+  frame or sandbox) rather than on `argv`, so a same-UID process cannot invoke
+  `--privsep-worker <role> 3` with its own socketpair and adopt a role.
+- **Artifact boundary:** when `privsep.artifacts` is enabled, the core stops
+  writing the netDb RouterInfo cache, peer profiles and destination private
+  keys. They are written by a data-storage worker that owns only the
+  hash-named artifacts under a validated root, with no network capability. The
+  writer is the only path: an installed writer failure never falls back to the
+  filesystem, and an enabled-but-missing worker fails closed. Startup reads
+  remain direct until the read path is split.
+- **Generation fencing:** every storage channel is configured with a monotonic
+  generation; requests are fenced per generation, replies from a previous
+  generation are dropped, an ambiguous write is never replayed, and a failed
+  client restarts with bounded backoff (250 ms→30 s, 8 attempts in 60 s,
+  stable reset after 60 s) where the platform allows an exec'ed worker.
+- **Consequences:** a parser compromise in the network side no longer reaches
+  the runtime write authority for these artifacts when the option is enabled.
+  The core still owns transport sockets and (at bootstrap) router keys, so the
+  invariant is not yet global; the remaining phases are the network worker
+  (listener/connect handoff), the crypto/signing worker, the read path and
+  Windows/OpenBSD parity.
+- **Follow-up:** `PRIVSEP-018..022` in `TODO.md`.
 
 ## ADR-002 — IPC framing and authentication
 

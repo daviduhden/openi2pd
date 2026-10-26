@@ -22,7 +22,7 @@ provenance.
 
 | Category | Examples | Decision |
 |---|---|---|
-| Copyright / license | `Copyright ... The PurpleI2P Project` on upstream/derived files, `LICENSE`, BSD text, imported docs BSD-3-Clause, marked first-party docs CC-BY-SA | **Preserved** for derived material; new fork-only files use the fork copyright |
+| Copyright / license | Holders consolidated in `LICENSE`, `NOTICE`, `debian/copyright` and provenance; imported docs BSD-3-Clause, marked first-party docs CC-BY-SA | **Preserved** for derived material; source files use the short `LICENSE` reference |
 | Upstream provenance | GitHub URLs, i2pd-docs/tools commit pins, upstream manual links | **Preserved** (traceability/sync) |
 | I2P protocol identifiers | `i2p`, NTCP2, SSU2, netDb, LeaseSet, router hashes, crypto type names | **Unchanged** (wire compatibility) |
 | C++/ABI identifiers | `libi2pd`, `libi2pdclient`, `i2p::...` namespaces, installed headers | **Retained** for ABI/source compatibility |
@@ -139,15 +139,25 @@ app-specific directory and copy it into the new one.
 - The static branding validator rejects platform hex values absent from
   `assets/branding/colors.md`, verifies the MkDocs colour mirror is identical,
   and still checks SVG/PNG assets. The offline documentation link checker
-  reports 100 Markdown files with no broken relative links or local anchors.
+  reports 110 Markdown files with no broken relative links or local anchors.
 - An earlier Android Java 25 revision compiled with Gradle 9.8.1/AGP 9.4.1
   and JDK 25. The latest JNI/lifecycle edits are pending CI compilation;
   APK/JNI/Lint/device validation is deferred to CI.
-- CMake C++ build and 20/20 CTest passed at the Session 7 checkpoint; the
-  2026-10-18 Java 2.13.0 transport/netDb/LeaseSet recheck reached 48/48 on Linux/GCC 16. Other platform
-  validation remains delegated to CI.
+- Historical, before the static-only policy: CMake C++ build and 20/20 CTest
+  passed at the Session 7 checkpoint; the 2026-10-18 Java 2.13.0
+  transport/netDb/LeaseSet recheck reached 48/48 on Linux/GCC 16. These are not
+  evidence for the current tree; other platform validation is delegated to CI.
 - Icon files regenerated and verified as valid PNG/ICO; Android vector XML
   replaced. `validate-branding.pl` now also checks derived documentation,
   packaging, Windows and Android icon dimensions, exact SVG mirrors/copies and
   brand-vector fill colours.
 - Dynamic Android/APK and Windows icon checks remain pending.
+
+## Legacy `open-i2pd` spelling
+
+`open-i2pd` appears only in frozen technical identifiers: the syslog identity,
+the Android data-directory name and log tag, the Windows installer
+application ID/default directory, and the legacy artwork filename. They are not
+the product name and must not be used in new user-facing text, logos or package
+descriptions. Renaming the data directory or installer identity requires a
+migration and is not part of a documentation change.

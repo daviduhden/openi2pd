@@ -41,8 +41,11 @@ integer boolean, and a `comments` list. Each entry contains `id` (positive
 local integer), `like` (0..5), `local` and `hidden` (integer booleans), `owner`
 and `text` (validated UTF-8), and `time` (nonnegative local epoch seconds, not
 a wire age). IDs are unique within the store. Size, Unicode and aggregate text
-limits are enforced by `TorrentsComments.*`. Invalid future timestamps are
-rejected. The peer-wire `timestamp` instead carries an age in seconds.
+limits are enforced by `TorrentsComments.*`. A timestamp ahead of the local
+clock is clamped to `now` instead of rejecting the state (a restored backup or
+backwards clock must not lose priorities and the stopped flag); negative or
+structurally invalid entries still reject the file atomically. The peer-wire
+`timestamp` instead carries an age in seconds.
 
 Comment arrivals update a revision counter. Persistence coalesces writes,
 keeps at most one ordinary settings write outstanding per torrent and retries

@@ -117,7 +117,20 @@ current platform and registers it with CTest. The suite labels are:
   supervision, stop budgets, s6 `down-signal`/`timeout-kill`, OpenRC
   `stopsig`, SysV pidfile ownership, systemd sysusers/tmpfiles, OpenBSD
   rc.d/login/config and the unselected Upstart/dinit samples;
-- `ci`, `static`, `smoke`: build-policy, version and static checks.
+- `ci`, `static`, `workflow`, `binary`, `smoke`: build-policy, manual-only
+  workflow contract, version and static checks;
+- `cli`, `integration`: native tool exit-code/stdout contracts and the
+  scripted tool/firewall suites;
+- `reference`: optional read-only Java reference and fixture-provenance checks
+  (registered only when the external checkouts are configured);
+- `critic`: opt-in Perl::Critic policy (requires `-DI2PD_PERL_CRITIC=ON` and
+  the distribution analyzer).
+
+`unit` is the broad regression label and still includes the privileged IPC and
+storage suites; use the specific `ipc`, `security`, `platform` or `torrent`
+labels for narrower selection. Forked sandbox/storage tests are marked
+`RUN_SERIAL`, and the remaining fixed-`/tmp` tests share the
+`openi2pd-fixed-tmp` resource lock, so `ctest -j` cannot overlap them.
 
 Linux-specific IPC/sandbox tests are registered only on Linux; OpenBSD policy
 and imsg tests only on OpenBSD. The source files retain portable stubs, but
@@ -143,8 +156,13 @@ The compile-free `control-security-static` contract pins BOB secret redaction,
 weak callback ownership, receiver/admission shutdown seams, I2PControl
 connection/token/deadline bounds, fragmented HTTP classification and private
 atomic PEM replacement (including POSIX mode and Windows DACL/reparse seams).
-It does not replace TLS slow-client, BOB teardown, sanitizer or platform
-filesystem execution in manual CI.
+It also pins the 2026-10-25 lifetime/handshake seams: strong StreamingDestination
+ownership plus io-context Stop, the guarded per-port registry, SSU2 introducer
+snapshots, TorrentFile locked handle pairs, deferred SOCKS authentication input,
+HTTP/SOCKS handshake timers, the 1024-handler acceptor cap, the I2PControl
+self-join guard and the SAF local-frame exception clear. It does not replace
+TLS slow-client, BOB teardown, streaming/torrent/SOCKS runtime races, sanitizer
+or platform filesystem execution in manual CI.
 
 ### Manual CI execution matrix
 
@@ -162,7 +180,7 @@ filesystem execution in manual CI.
   using the current Homebrew Clang, Boost, OpenSSL, zlib and MiniUPnPc.
 
 `.github/workflows/fuzz.yml` uses the current Homebrew Clang, Boost, OpenSSL
-and zlib, builds all eight libFuzzer targets and runs a bounded smoke pass for
+and zlib, builds all fifteen libFuzzer targets and runs a bounded smoke pass for
 each. `.github/workflows/build-windows.yml` runs the
 complete MSYS2/Clang64 target graph and CTest suite; the MSVC job remains
 TUI/API-focused. `.github/workflows/build-openbsd.yml` runs the complete
@@ -224,10 +242,16 @@ accounts or kernel ACL enforcement across users; those remain runtime checks
 on a Windows host.
 
 `tests/test-privsep-windows-ipc.cpp` is compiled only on Windows. It validates
-the worker message-mode pipe, protected user/SYSTEM DACL, peer PID/SID/session,
-unknown-frame rejection, close/recovery, restricted-token creation and Job
-Object creation. It does not validate cross-user ACL rejection, a service
-account, AppContainer/LPAC or a live storage/network worker.
+the message-mode pipe, protected user/SYSTEM (+container) DACL, pipe-name
+squatting, peer PID/SID/session/container binding, `WorkerHello` nonce/role
+rejection, role-bound per-operation refusal, exact frame ceilings, the
+completed-during-cancel delivery and close/reconnect recovery.
+`test-privsep-windows-isolation.cpp` checks the role table (no Internet
+capability plus write root), AppContainer profile/SID/capability creation and
+the delegated-root grant. `test-privsep-windows-supervisor.cpp` checks the
+restart ladder/status, Job Object kill, failed-spawn handle neutrality and a
+live Ping-only worker over an authenticated pipe. None proves cross-user ACL
+denial, a real service account or a live storage/network backend.
 
 `tests/test-su3-bounds.cpp` constructs empty, truncated and oversized SU3
 headers and verifies that `Reseeder::ProcessSU3File()` rejects them without
@@ -237,6 +261,17 @@ or archive test.
 `tests/test-streaming-buffer.cpp` checks the owning `SendBuffer` copy
 semantics, the `std::span<const uint8_t>` constructor and the writable staging
 constructor. It does not exercise a live socket or an asynchronous completion.
+`tests/test-streaming-throttle.cpp` checks the Java-compatible per-peer and
+total minute/hour/day admission counters, retry intervals, saturation of the
+peer table and periodic cleanup without constructing a streaming destination.
+`tests/test-sam-subsessions.cpp` covers SAM 3.3 `LISTEN_PROTOCOL` grammar,
+`(type,protocol,port)` duplicate keys and protocol-aware RAW dispatch/fallback;
+it does not start a SAM bridge or contact a peer.
+`tests/test-proxy-auth.cpp` covers local HTTP Basic parsing/bounds/constant-time
+comparison, the 407 challenge, credential stripping, fail-closed configuration
+and SOCKS5 RFC 1929 method selection/field bounds; it does not open a listener.
+`tests/test-reseed-zip-bounds.cpp` also pins Proposal 147 `netid` URL
+composition; neither test executes a live SYN or a reseed download.
 
 `tests/test-log-lifecycle.cpp` exercises repeated `Log::Start`/`Stop`, sink
 replacement, concurrent signal-style `Reopen` calls and the bounded
@@ -259,22 +294,30 @@ is the meaningful validator. `tests/test-kad-dht.cpp` exercises deterministic
 Kademlia insertion/removal/promotion/clear/filter-owner paths through
 `std::unique_ptr` trees. `tests/test-addressbook.cpp` parses in-memory
 hosts/identity forms without starting storage, resolvers or a network.
-`tests/test-privsep-protocol.cpp` covers protocol v2/v1 frame negotiation,
+`tests/test-privsep-protocol.cpp` covers v5/v1 frame negotiation and the v5 `WorkerHello` proof,
 typed `Error` replies, the shared endpoint allowlist, fallible path encoders and
 text/record bounds. `tests/test-privsep-linux-ipc.cpp` exercises raw
 `SOCK_SEQPACKET` framing, credentials, descriptor ownership, validated channel
-adoption (including AF_UNIX/SO_PASSCRED), zero-length records and empty-record
-flood bounds, ancillary-data rejection and bounded send pressure; `tests/test-privsep-linux-sandbox.cpp` checks storage socketpair and
-capability denial, process-memory/pidfd syscall denial, log
-AF_INET-deny/AF_UNIX-allow, and that the supervisor bootstrap drops
-capabilities without installing an inherited Landlock/seccomp domain that
-would break exec'ed storage/network children;
+adoption (including AF_UNIX/SO_PASSCRED and rejection of a pre-queued record),
+zero-length records and empty-record flood bounds, ancillary-data rejection,
+bounded send pressure, the explicit `PeerExpectation` (wrong uid, pid mismatch,
+root-parent allowance); `tests/test-privsep-linux-sandbox.cpp` checks storage
+socket/socketpair/connect-on-inherited-socket denial, `execve`/`fork` denial,
+outside-root read/write denial, effective-capability denial, process-memory/
+pidfd syscall denial, log AF_INET-deny/AF_UNIX-allow, and that the supervisor
+bootstrap drops capabilities without installing an inherited Landlock/seccomp
+domain that would break exec'ed storage/network children;
 `tests/test-privsep-log.cpp` adds real fork/worker descriptor policies.
 `tests/test-router-storage.cpp` checks fixed-name atomic writes and that a
 worker-level rejection does not poison later requests. On OpenBSD, `test-privsep-openbsd-policy` forks children, requires a pledge
-violation for storage's AF_INET socket and network's persistent file creation,
-and checks the empty-storage-root rejection plus pre-opened socket type/
-CLOEXEC/listening validation. `test-privsep-openbsd-imsg` covers validated
+violation for storage's AF_INET socket/`fork()`/file write and network's
+persistent file creation, checks the supervisor's `x`-only unveil (`unveil`
+after lock is `EPERM`, `execve("/bin/sh")` is denied while the frozen image
+runs), the broker's `sendfd`-only descriptor contract, the startup/runtime
+promise subset and the single pledge-file parser, and validates pre-opened
+socket type/CLOEXEC/listening. `test-privsep-credentials` resolves the
+service account with bounded lookups, rejects uid 0/unknown/malformed names and
+verifies the forked credential drop; it skips as root. `test-privsep-openbsd-imsg` covers validated
 adoption (getpeereid/socket type/CLOEXEC), one descriptor, descriptor ownership
 on failed compose and multiple frames buffered by a single `imsgbuf_read`.
 `test-torrent-storage-openbsd` exercises nested supervised delegation and a
@@ -316,13 +359,26 @@ The Java 2.13.0 static-interoperability and 2026-10-20 parity regressions are:
   exact base64 destination handling.
 - `test-addressbook-admin.cpp` — local address-book name validation,
   add/replace/remove, deleted-host block/unblock, tombstone merge-skip,
-  save-count/rollback behavior and shared-identity reference retention.
+  save-count/rollback behavior, shared-identity reference retention and the
+  subscription URL validation/atomic-round-trip matrix.
+- `test-addressbook-merge.cpp` — automatic subscription merges never re-point a
+  known name, intra-source last-wins, conflict counting, tombstone skip and
+  `.i2p.alt`/`www.` behaviour.
+- `test-blocklist-parse.cpp` — Java-compatible blocklist grammar: address,
+  range, CIDR, IPv6 `;` form, base64 hash, comments/reasons, backwards/bad
+  input rejection and the line/file/entry caps.
+- `test-blocklist-enforce.cpp` — snapshot matching inside/outside ranges,
+  router-hash membership and the bounded in-memory runtime ban set.
 - `test-tunnel-dsm-policy.cpp` — direct/tunnel DatabaseStore reply-token
   acceptance policy.
 - `test-torrents-verify-parity.cpp` — resume/final-name re-verification,
   tracker peer forms/limits, tracker id/min interval, percent-encoded peer id,
   connection-limit relationships and top-level metainfo preservation/edit
   round trips.
+- `test-torrents-tracker-schedule.cpp` — pure tracker scheduling arithmetic
+  (15-minute advertised floor, larger `min interval`, 30-minute failure cap,
+  reset on success) plus whole-torrent `left`/`completed` announce progress
+  without sockets, timers or sleeps.
 - `test-signature-identity-hardening.cpp` — Java-compatible raw RSA
   verification and RSA identity certificate layout.
 - `test-su3-bounds.cpp` — malformed SU3 bounds plus the fail-closed
@@ -331,12 +387,19 @@ The Java 2.13.0 static-interoperability and 2026-10-20 parity regressions are:
   addition to the existing block whitelist.
 - `test-crypto-x25519-noise-elligator-mlkem-audit.cpp` — cached runtime
   ML-KEM provider gating.
+- `test-x25519-rfc7748.cpp` — RFC 7748 section 6.1 X25519 public-key and
+  shared-secret known-answer vectors, independent of the provider version.
 - `test-tui-protocol.cpp` / `test-tui-ipc-regression.cpp` — typed TUI admin
   parsing/manual queue and real socket dispatch.
 - `test-leaseset-netdb-2.13-freshness.cpp` — LS1/LS2 future lease windows,
   unpublished/blinded flags, EC_P256 wire keys, DatabaseStore type mask.
 - `test-ssu2-address-negotiation.cpp` — SSU2 `v` lists, PQ/MTU selection and
   sub-1280 rejection.
+- `test-ssu2-payload-blocks.cpp` — negative SSU2 block framing: DateTime and
+  termination sizes, padding/termination ordering, truncated headers and the
+  per-state block whitelist.
+- `test-i2np-database-bounds.cpp` — DatabaseSearchReply key/count/from
+  truncation, count overflow and Java-compatible trailing-byte handling.
 - `test-ssu2-fragment-ordering.cpp` — last-fragment ordering/duplicate
   rejection.
 - `test-crypto-wire-validation.cpp` — key-certificate lengths, strict b33
@@ -396,27 +459,28 @@ made.
 ## Sanitizers
 
 The commands below are the CI contract; they are not local execution results.
-The manual workflow runs ASan+UBSan together and TSan separately, then executes
-the full CTest suite. Sanitizer findings are not suppressed.
+The manual workflow runs ASan+UBSan together, UBSan-only (to expose undefined
+behaviour that the combined run can mask) and TSan separately, then executes
+the full CTest suite serially. Sanitizer findings are not suppressed.
 
 ```sh
 cmake -S build -B build-asan -G Ninja \
   -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON \
   -DWITH_ADDRSANITIZER=ON -DWITH_UPNP=OFF
 cmake --build build-asan --parallel
-ctest --test-dir build-asan --output-on-failure
+ctest --test-dir build-asan -j 1 --no-tests=error --output-on-failure
 
 cmake -S build -B build-ubsan -G Ninja \
   -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON \
   -DWITH_UNDEFSANITIZER=ON -DWITH_UPNP=OFF
 cmake --build build-ubsan --parallel
-ctest --test-dir build-ubsan --output-on-failure
+ctest --test-dir build-ubsan -j 1 --no-tests=error --output-on-failure
 
 cmake -S build -B build-tsan -G Ninja \
   -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON \
   -DWITH_THREADSANITIZER=ON -DWITH_UPNP=OFF
 cmake --build build-tsan --parallel
-ctest --test-dir build-tsan --output-on-failure
+ctest --test-dir build-tsan -j 1 --no-tests=error --output-on-failure
 ```
 
 TSan is configured to fail if combined with ASan. TSan on the full router is
@@ -438,22 +502,37 @@ reproducible local or CI recipe; no fuzz run is claimed for the current tree.
 ```sh
 cmake -S build -B build-fuzz -G Ninja \
   -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
-  -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON \
+  -DCMAKE_BUILD_TYPE=RelWithDebInfo -DBUILD_TESTING=ON \
   -DWITH_FUZZERS=ON -DWITH_UPNP=OFF
 cmake --build build-fuzz --parallel --target fuzz-tui-protocol fuzz-http-parser \
-  fuzz-protocol-bounds fuzz-log-record fuzz-privsep-protocol fuzz-torrents-parsers fuzz-base-blinding \
-  fuzz-signature-der
-mkdir -p corpus/tui corpus/http corpus/protocol corpus/log corpus/privsep corpus/torrents corpus/base corpus/signature
-ctest --test-dir build-fuzz -L fuzz --output-on-failure
+  fuzz-protocol-bounds fuzz-log-record fuzz-privsep-protocol fuzz-torrents-parsers \
+  fuzz-torrents-krpc fuzz-torrents-extensions fuzz-base-blinding fuzz-signature-der fuzz-i2np-policy \
+  fuzz-i2np-database fuzz-ntcp2-blocks fuzz-sam-control fuzz-i2cp-message
+mkdir -p corpus/tui corpus/http corpus/protocol corpus/log corpus/privsep corpus/torrents corpus/krpc corpus/extensions corpus/base corpus/signature corpus/i2np corpus/ntcp2 corpus/sam corpus/i2cp corpus/i2np-db
+ctest --test-dir build-fuzz -j 2 -L fuzz --no-tests=error --output-on-failure
 ./build-fuzz/tests/fuzz-tui-protocol corpus/tui
 ./build-fuzz/tests/fuzz-http-parser corpus/http
 ./build-fuzz/tests/fuzz-protocol-bounds corpus/protocol
 ./build-fuzz/tests/fuzz-log-record corpus/log
 ./build-fuzz/tests/fuzz-privsep-protocol corpus/privsep
 ./build-fuzz/tests/fuzz-torrents-parsers corpus/torrents
+./build-fuzz/tests/fuzz-torrents-krpc corpus/krpc
+./build-fuzz/tests/fuzz-torrents-extensions corpus/extensions
 ./build-fuzz/tests/fuzz-base-blinding corpus/base
 ./build-fuzz/tests/fuzz-signature-der corpus/signature
+./build-fuzz/tests/fuzz-i2np-policy corpus/i2np
+./build-fuzz/tests/fuzz-ntcp2-blocks corpus/ntcp2
+./build-fuzz/tests/fuzz-sam-control corpus/sam
+./build-fuzz/tests/fuzz-i2cp-message corpus/i2cp
+./build-fuzz/tests/fuzz-i2np-database corpus/i2np-db
 ```
+
+Corpus seeds are checked in under `tests/fuzz/corpus/<target>/` (one small,
+non-secret seed per target; 64 KiB maximum) and are copied into the runner's
+per-target corpus before the bounded pass. The CMake smoke entry passes the
+same directory and a per-target `-max_len`, so a finding is reproducible from a
+clean clone rather than a one-off temporary corpus. Crash and timeout files
+use a per-target `-artifact_prefix`.
 
 Targets prepared:
 
@@ -463,11 +542,18 @@ Targets prepared:
 - `fuzz-log-record` — bounded/sanitized log record snapshot.
 - `fuzz-privsep-protocol` — worker frame and log/config payload decoders.
 - `fuzz-torrents-parsers` — bencode, metainfo, peer block, DHT node parsers.
+- `fuzz-torrents-krpc` — KRPC envelope, token and error decoders.
+- `fuzz-torrents-extensions` — PEX and BEP 10 extension payloads.
+- `fuzz-i2np-policy` — I2NP dispatch predicates, expiry and clove allowlists.
+- `fuzz-ntcp2-blocks` — SessionConfirmed block ordering and handshake padding tables.
+- `fuzz-sam-control` — SAM HELLO/parameter/frame parsers.
+- `fuzz-i2cp-message` — I2CP SEND MESSAGE wire parser.
+- `fuzz-i2np-database` — DatabaseSearchReply body parser.
 - `fuzz-base-blinding` — Base32/Base64 decoders and strict b33 parsing.
 - `fuzz-signature-der` — ECDSA P-521 DER sizing and verification with a fixed identity.
 
-Still planned: dedicated NTCP2/SSU2 packet-block and I2NP fuzz harnesses; these
-need protocol corpus seeds and must not call the public I2P network.
+Still planned: dedicated NTCP2/SSU2 packet-block fuzz harnesses; these need
+protocol corpus seeds and must not call the public I2P network.
 
 ## Regression tests for security findings
 
@@ -482,7 +568,7 @@ need protocol corpus seeds and must not call the public I2P network.
 | S-07 constant-time compare | Reviewed; no timing test |
 | S-08 console removal | Build/link check only |
 | S-09 TUI input | `test-tui-protocol`, `test-tui-ipc-regression`; live Windows/client stress pending |
-| S-11 OpenBSD sandbox | `test-privsep-openbsd-policy` (storage/no-AF_INET, network/no-persistent-write, pre-opened descriptors) and `test-privsep-openbsd-imsg`; **pending** OpenBSD VM execution |
+| S-11 OpenBSD sandbox | `test-privsep-openbsd-policy` (storage/no-AF_INET-no-fork, network/no-persistent-write, supervisor x-only unveil, pledge subset, pre-opened descriptors), `test-privsep-credentials`, `test-privsep-worker-identity` and `test-privsep-openbsd-imsg`; **pending** OpenBSD VM execution |
 | S-12 SSU2/RouterInfo bounds | `test-ssu2-routerinfo-bounds`, `fuzz-protocol-bounds` |
 | S-13 crypto/b33/reseed bounds | `test-crypto-audit-bounds`, `test-blinding-b33-strict`, `test-reseed-zip-bounds`, `fuzz-base-blinding` |
 | S-14 torrent state/parsers | `test-torrents-security`, `fuzz-torrents-parsers` |
@@ -588,7 +674,7 @@ cmake -S build -B build-out -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build-out --parallel
 
 # Verify no GNU-only make construct in maintained makefiles
-grep -nE 'wildcard|shell|patsubst|ifeq|ifneq|\$\(or |\$\(findstring' Makefile tests/Makefile
+grep -nE 'wildcard|shell|patsubst|ifeq|ifneq|\$\(or |\$\(findstring' Makefile
 # expect no output
 ```
 
@@ -630,7 +716,7 @@ current uncommitted tree.
 | Translation check | `i18n-static` validates native catalog registration, TUI selection/boundaries and Android locale metadata without compiling; CI execution pending |
 | Language modernization check | `language-modernization-static` validates the AGENTS.md modernization and Agent Knowledge Maintenance policy, C++23/Java 25 levels, availability matrix, Strategy/`jthread`/registry seams and typed Java models without compiling; CI execution pending |
 | CTest registration and labels | Static inventory prepared; Linux-only and OpenBSD-only tests are registered on their host, with i2p/security/memory/ipc/tui/torrent/tools/perl/interop/platform/android groups; CTest execution pending CI |
-| Fuzzers | Eight targets and manual smoke workflow prepared; not run |
+| Fuzzers | Fifteen targets, checked-in corpus seeds, per-target bounds/artifacts and manual smoke workflow prepared; not run |
 | OpenBSD build/runtime | Baseline `39160543186` failed at `getexecname()`; local `<stdlib.h>` fix and full CTest pending. New dispatch `39189495752` reproduced the same old-revision failure |
 | Windows build/runtime | Baseline `39160540886` MSYS2 failed at `tools-smoke`/named-pipe DACL; local full-build/SID fixes pending. New dispatch `39189492769` reproduced MSYS2 `routerinfo`/pipe DACL and the MSVC generator failure |
 | Android build | Baseline `39160538632` failed at `UnixDaemon`/`DaemonAndroid`; local JNI-only Android graph and Gradle steps pending. New dispatch `39189489953` reproduced the old failure |
@@ -821,6 +907,23 @@ document name verification; display-name `:`/`\`; pending autostart across
 Activity death; `MY_PACKAGE_REPLACED` resume; torrent id 0 rejection. No Gradle,
 Lint, JNI link, emulator or device run exists.
 
+The Android multiprocess/lifecycle continuation adds JVM-testable contracts:
+`RouterRunStateTest` (legacy `should_run` migration, drain expiry and clamping,
+corrupt deadlines, generation monotonicity, stopped-never-starts) and
+`TorrentSafProtocolTest` (AIDL v2 constants, one-shot export tokens, caller
+`(uid,pid)` binding, bounded admission, generation-fenced retirement,
+range/path bounds). Normal Gradle `testDebugUnitTest` discovers both. The
+instrumentation suite adds `TorrentSafBrokerContractTest` (real broker bind,
+versioned handshake, foreign-generation refusal, typed capability fallbacks,
+generation-fenced retire and a bounded rebind) and updates
+`TorrentSafCancellationWireTest` for `retire(long)`; the manual Android job
+assembles the instrumentation APK but no emulator/device lane runs it. The host
+`test-android-daemon-lifecycle` adds the one-shot process-role and
+stop-during-start contracts, and `control-security-static` pins the JNI
+empty-string/exception/role/stop-token and SAF destructor rules. The
+`onTaskRemoved`/`onDestroy` service contract needs a device and stays manual. No
+Gradle, javac, AIDL, JNI, emulator or device run exists.
+
 ## Static build audit regressions
 
 `test-boost-linkage` is registered only with torrents enabled and carries
@@ -860,3 +963,14 @@ all schedules or caller teardown paths. `ServiceOwnerEpochTest` uses a blocked
 process FIFO to check accepted old work, stop barrier, new-owner work and stale
 submission/retirement behavior; normal Android JVM CI discovers it. JNI, actual
 Service callbacks and per-caller sanitizer runs remain pending.
+
+The 2.14.0 parity audit continuation prepares `test-blocklist-parse`,
+`test-blocklist-enforce`, `test-addressbook-merge`, the extended
+`test-addressbook-admin`, `test-torrents-tracker-schedule`, the extended
+`test-torrents-priorities`/`test-torrents-verify-parity`, new
+`test-tui-protocol` cases for `ADDRESSBOOK-SUBSCRIPTIONS`, `BLOCKLIST` and the
+typed `ADDRESS-SUB-*`/`NETDB-BAN` verbs, and updated `test-netdb-stop-admission`
+expectations for the non-floodfill lookup budget. `control-security-static`
+pins the immutable blocklist snapshot, merge precedence, tracker progress and
+the closed administrative verb set. None of these has been compiled or
+executed; manual CI is the first dynamic check.

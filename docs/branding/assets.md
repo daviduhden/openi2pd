@@ -30,7 +30,7 @@ Derived distribution assets:
 | `docs/img/logo.png` | `assets/branding/logo.svg` | 512×512 documentation header |
 | `docs/img/favicon.ico` | `assets/branding/symbol.svg` | 16, 32, 48 and 64 px favicon |
 | `contrib/artwork/openi2pd-256.png` | `assets/branding/symbol.svg` | 256×256 hicolor packaging icon |
-| `contrib/artwork/open-i2pd-icon.svg` | `assets/branding/symbol.svg` | Exact vector copy for packaging |
+| `contrib/artwork/open-i2pd-icon.svg` | `assets/branding/symbol.svg` | Legacy packaging filename; byte-identical vector copy. CMake installs the canonical `symbol.svg` as `openi2pd.svg` |
 | `Win32/openi2pd.ico` | `assets/branding/symbol.svg` | 16–256 px Windows executable/installer icon |
 | Android `mipmap-anydpi/ic_launcher.xml`, `mipmap-anydpi-v33/ic_launcher.xml` | `assets/branding/symbol.svg` | Adaptive and Android 13 themed icon |
 | Android `drawable/ic_launcher_foreground.xml`, `ic_launcher_monochrome.xml` | `assets/branding/symbol.svg` | Adaptive/themed icon layers |

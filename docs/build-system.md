@@ -14,10 +14,12 @@ Documents project documentation.
 
 - CMake is the single source of build rules, tests, installation and options.
 - No maintained file requires GNU make.
-- The root `Makefile` and `tests/Makefile` use only POSIX make syntax
-  (`=`, variable expansion, explicit targets and recipes). They contain no
-  `?=`, `wildcard`, `shell`, `patsubst`, `ifeq`, `ifneq`, `include` or
-  multiline variables. Command-line overrides still work, for example
+- The root `Makefile` uses only POSIX make syntax (`=`, variable expansion,
+  explicit targets and recipes). It contains no `?=`, `wildcard`, `shell`,
+  `patsubst`, `ifeq`, `ifneq`, `include` or multiline variables.
+  `tests/Makefile` is a compatibility shim that forwards every target to the
+  root file, so there is only one CMake configuration. Command-line overrides
+  still work, for example
   `make BUILD_DIR=build-release CMAKE_FLAGS="-DCMAKE_BUILD_TYPE=Release"`.
 - Platform make fragments (`Makefile.linux`, `Makefile.openbsd`,
   `Makefile.mingw`) and `filelist.mk` were removed.
@@ -53,7 +55,9 @@ Options:
 | `I2PD_BUILD_TOOLS` | ON | Build and install the auxiliary tools |
 | `I2PD_BUILD_JNI` | OFF | Android-only JNI shared library; rejected on other platforms |
 | `I2PD_INSTALL_DOCS` | ON | Install documentation, branding assets and manual pages |
-| `I2PD_PERL_CRITIC` | OFF | Register the opt-in `perl-critic` CTest target when `perlcritic` is installed |
+| `I2PD_INSTALL_CONFIG` | ON | Install the sample `i2pd.conf`, `subscriptions.txt` and `tunnels.conf`; set OFF when the packager ships its own examples |
+| `I2PD_PERL_CRITIC` | OFF | Require `perlcritic` and register the `perl-critic` CTest target; configuration fails when it is unavailable |
+| `I2PD_REQUIRE_PERL` | OFF | Fail configuration instead of silently omitting the Perl-based static checks |
 | `WITH_UPNP` | ON | Require MiniUPnPc 2.2.6/API 17 and define `USE_UPNP`; API 18 signature used when available; also used by the Android JNI target |
 | `WITH_TORRENTS` | ON | Include the BitTorrent client and require Boost.JSON/URL; pass `-DWITH_TORRENTS=OFF` to omit it on Linux, OpenBSD or Windows |
 | `WITH_STATIC` | OFF | Static link the router where supported |
@@ -73,16 +77,18 @@ Component dependencies are target-scoped:
 | Component | Required dependencies | Optional dependency |
 |---|---|---|
 | `libi2pd` | Threads, Boost.program_options, OpenSSL/LibreSSL, zlib, libatomic when probed | Windows: `mswsock`, `ws2_32`, `iphlpapi`, `shell32`, `advapi32` (`AtomicWritePrivate` DACL) |
-| `libi2pdclient` | `libi2pd`, Threads, Boost.JSON/Boost.URL when torrents are enabled | — |
-| `i2pd_privsep` | Threads; OpenBSD `util`; Windows `advapi32` | — |
+| `libi2pdclient` | `libi2pd`, Threads, Boost.JSON/Boost.URL when torrents are enabled | Boost.Container when the host ships it (required by a static Boost.JSON link) |
+| `i2pd_privsep` | Threads; OpenBSD `util`; Windows `advapi32`, `bcrypt`, `userenv`; shared `I2PD_HAVE_*`/`BOOST_ASIO_HAS_SNPRINTF` capability definitions | — |
 | `i2pd` | `libi2pd`, `libi2pdclient`, `libi2pdlang`, `i2pd_privsep` | MiniUPnPc when `WITH_UPNP=ON` |
-| `i2pd_jni` (Android) | `libi2pd`, `libi2pdclient`, `libi2pdlang`, common daemon lifecycle, UPnP, I2PControl, TUI server; no `i2pd_privsep` (`I2PD_NO_PRIVSEP`) | MiniUPnPc when `WITH_UPNP=ON` |
+| `i2pd_jni` (Android) | `libi2pd`, `libi2pdclient`, `libi2pdlang`, common daemon lifecycle, UPnP, I2PControl and the shared TUI request dispatcher; no `i2pd_privsep` (`I2PD_NO_PRIVSEP`) and no AF_UNIX TUI listener | MiniUPnPc when `WITH_UPNP=ON` |
 | `i2pd-tui` | Threads; Boost headers; ncursesw on Unix; Win32 libraries on Windows | — |
 | tools | in-tree libraries, Threads, portability/getopt source | — |
-| tests | in-tree libraries and component sources | Perl/prove for syntax, portability, client and install checks; fuzzers require Clang |
+| tests | in-tree libraries and the `i2pd_privsep` archive | Perl/prove for syntax, portability, client and install checks; fuzzers require Clang |
 
 No target uses a configure-time download, an in-tree glob, an absolute
-installation prefix or a hidden external checkout.
+installation prefix or a hidden external checkout. `WITH_STATIC` is rejected
+together with sanitizer options or the Android JNI library because `-static`
+cannot carry the sanitizer runtime and Android links a shared JNI object.
 
 ## Generator compatibility
 
@@ -103,7 +109,8 @@ make install
 ```
 
 `make BUILD_DIR=build-release CMAKE_FLAGS="-DCMAKE_BUILD_TYPE=Release"` and
-`make check` are supported; `tests/Makefile` configures, builds and runs CTest.
+`make check` are supported; `tests/Makefile` forwards to the root `test`
+target and does not keep a second build directory or option set.
 
 Generator portability:
 
@@ -118,14 +125,20 @@ This requires Ninja, which is a declared build dependency. It does not require
 GNU make. Users may still invoke CMake directly with any generator that matches
 their environment; the CMake project itself does not emit make syntax.
 
-The Ninja presets live next to the CMake entry point in `build/`:
+The Ninja presets live next to the CMake entry point in `build/`. Preset
+schema 5 with `installPresets` requires CMake 3.25 or newer; the project
+itself still configures with the 3.24 floor when presets are not used:
 
 ```sh
 cd build
 cmake --preset default
 cmake --build --preset default
 ctest --preset default
+cmake --install --preset default
 ```
+
+The `portable` preset also disables tests; `ci-linux` enables the TUI, tools
+and documentation for the manual CI matrix.
 
 Parallel build jobs are controlled with CMake, not `make -j`:
 
@@ -150,7 +163,9 @@ cmake --install build-output --prefix /usr
 ```
 
 Installed files include `i2pd`, optional `i2pd-tui`, its desktop launcher and
-icons in the `Tui` component, libraries/headers when `WITH_LIBRARY=ON`,
+icons in the `Tui` component, libraries/headers (including the exported
+`privsep/` headers required by the internal IPC archive) when
+`WITH_LIBRARY=ON`,
 configuration files under `SYSCONFDIR/i2pd`, certificates under
 `DATADIR/i2pd`, the man pages matching enabled targets, CMake package files and,
 when selected, a native service definition. On Windows the
@@ -163,21 +178,35 @@ Staging can select one CMake install component at a time:
 
 | Component | Contents |
 |---|---|
-| `Runtime` | `i2pd`, configuration and certificates |
-| `Tui` | `i2pd-tui`, its desktop launcher and icons; no service definition |
+| `Runtime` | `i2pd`, its `i2pd.1` manual page, configuration and certificates |
+| `Tui` | `i2pd-tui`, its `i2pd-tui.1` manual page, desktop launcher and icons; no service definition |
 | `Libraries` | `libi2pd`, `libi2pdclient`, `libi2pdlang` and the internal privilege-separation archive |
-| `Development` | Public headers, `i2pd-targets.cmake`, `i2pdConfig.cmake` and the version file |
-| `Tools` | Native auxiliary tools and `i2pdctl` |
-| `Documentation` | License, README, documentation tree including its licence, branding assets and the man pages matching enabled targets |
-| `Service` | The selected native service definition; requires `WITH_BINARY=ON` |
+| `Development` | Public headers, the exported `privsep/` headers, `i2pd-targets.cmake`, `i2pdConfig.cmake` and the version file |
+| `Tools` | Native auxiliary tools, `i2pdctl`, its `i2pdctl.1` manual page and the renamed `LICENSE.i2pd-tools` |
+| `Documentation` | `ChangeLog`, `LICENSE`, `NOTICE`, `README.md`, `LICENSE.i2pd-tools`, `CC-BY-SA-4.0`, the filtered documentation tree and the branding assets |
+| `Service` | The selected native service definition; requires `WITH_BINARY=ON` and `I2PD_INSTALL_CONFIG=ON` |
 
-The exported package uses `configure_package_config_file` and `@PACKAGE_INIT@`,
+Man pages are tied to the binary component rather than to
+`I2PD_INSTALL_DOCS`, so a static or OpenBSD package that disables the optional
+documentation tree still installs `i2pd.1`/`i2pd-tui.1`/`i2pdctl.1`. The tools
+licence is installed as `LICENSE.i2pd-tools` by both the `Tools` and
+`Documentation` components so a component-selective install keeps the
+attribution. The `CC-BY-SA-4.0` notice is installed by `Documentation` and is
+not a router-code licence.
+
+The exported package uses `configure_package_config_file`, `@PACKAGE_INIT@`
+and an exact version match,
 so it remains relocatable and resolves multiarch `LIBDIR`/`INCLUDEDIR` layouts.
-Consumers must install both `Libraries` and `Development` before calling
-`find_package(i2pd CONFIG)`.
+Consumers normally install both `Libraries` and `Development`; a
+Libraries-only staging tree remains discoverable with
+`find_package(i2pd COMPONENTS Libraries)`.
 `DESTDIR` is honoured by `cmake --install` and by the POSIX `make install`
 front-end; `PREFIX` overrides the configured install prefix only for that
-invocation.
+invocation. There is no generated `uninstall` target: use the package manager
+for installed files, or remove a staged tree. Debian installs the
+`Documentation`/`Tools` components with `I2PD_INSTALL_DOCS=ON` and relies on
+the CMake install for README/LICENSE/NOTICE/man pages instead of duplicating
+them in debhelper metadata.
 
 ### Service install selection
 
@@ -245,6 +274,13 @@ service/sandbox files and validation notes are in
    `unveil` with `rwc` on its configured path and does not require a new
    promise.
 4. Not enable a terminal UI service; `i2pd-tui` is an interactive tool.
+5. Configure with `-DI2PD_INSTALL_CONFIG=OFF` when the port ships its own
+   examples under `share/examples` and `@sample` entries, so CMake does not
+   also write an unlisted tree under `${SYSCONFDIR}/i2pd`.
+6. List the compiled Boost.JSON/URL libraries (`boost_json-mt`, `boost_url-mt`)
+   and `util` for imsg in `WANTLIB`. `packaging-static` checks those entries
+   and that every `contrib/certificates/*.crt` file is represented in the
+   PLIST.
 
 ## Packaging changes in this tree
 
@@ -261,7 +297,7 @@ service/sandbox files and validation notes are in
   path is validated.
 - The Windows helper builds with CMake/Ninja; the Windows XP path was removed.
 - CI workflows use Ninja explicitly and remain **manual-only**
-  (`workflow_dispatch`) during the refactoring. Linux native, sanitizer and
+  (`workflow_dispatch`). Linux native, sanitizer and
   fuzz jobs install the latest GCC, LLVM, CMake, Ninja, Boost, OpenSSL, zlib,
   MiniUPnPc and ncurses from Homebrew. The Debian package job deliberately
   retains the distribution toolchain so the produced package is validated
@@ -303,6 +339,7 @@ pending manual CI. See `testing.md`, `AGENTS.md` and
 The [static compilation and linkage audit](static-build-audit.md) records
 corrections to compiled Boost.JSON/URL dependency discovery and installed
 exports, Windows SDK usage requirements and PE hardening, plus native source
-errors and Android API review. `test-boost-linkage` and the installed-consumer manual job
-exercise both Boost implementations. All compilation and tests for these
-changes remain pending manual CI.
+errors and Android API review. The Windows target probes and enables the CMake RC language when a resource
+compiler exists, so `Win32/Resource.rc` supplies the icon and version block. `test-boost-linkage`
+and the installed-consumer manual job exercise both Boost implementations. All
+compilation and tests for these changes remain pending manual CI.

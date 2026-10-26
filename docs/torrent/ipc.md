@@ -37,14 +37,17 @@ I2PDTUI/1 ERR <code> <message-length>\n<message>
 Payload fields are `key=escaped-value\n`; escaping covers backslash, newline
 and carriage return. Numeric fields are parsed with `from_chars` and bounded.
 Lists have per-request limits. The protocol does not carry file descriptors,
-raw pointers or piece payloads.
+raw pointers or piece payloads. The native control envelope is version 1; the
+separate privileged IPC registry is at version 5 (see
+[IPC protocol](../security/ipc-protocol.md)) and the storage workers accept an
+advisory `Cancel` that is never a rollback.
 
 ## Torrent commands
 
 ```
 TORRENT-TUNNELS
 TORRENTS <tunnel-index> [limit]
-TORRENT-DETAIL <tunnel-index> <torrent-id>
+TORRENT-DETAIL <tunnel-index> <torrent-id> [comment-offset] [comment-limit]
 TORRENT-START <tunnel-index> <torrent-id>
 TORRENT-STOP <tunnel-index> <torrent-id>
 TORRENT-PAUSE <tunnel-index> <torrent-id>
@@ -53,7 +56,18 @@ TORRENT-REANNOUNCE <tunnel-index> <torrent-id>
 TORRENT-RECHECK <tunnel-index> <torrent-id>
 TORRENT-META-COMMENT <tunnel-index> <torrent-id> <text>
 TORRENT-META-CREATED-BY <tunnel-index> <torrent-id> <text>
+TORRENT-TRACKER-ADD <tunnel-index> <torrent-id> <url>
+TORRENT-TRACKER-REMOVE <tunnel-index> <torrent-id> <url>
+TORRENT-CREATE <tunnel-index> <name>
+TORRENT-CREATE-V1 <tunnel-index> <pieceBytes> public|private <trackerCount> <tier:URL...> <source>
+TORRENT-CREATE-CANCEL <tunnel-index> <torrent-id>
+TORRENT-FILE-PRIORITY <tunnel-index> <torrent-id> <file-index> <0|1|2>
+TORRENT-COMMENTS <tunnel-index> <torrent-id> ON|OFF
+TORRENT-COMMENT-ADD <tunnel-index> <torrent-id> <rating> <text>
+TORRENT-COMMENT-HIDE <tunnel-index> <torrent-id> <comment-id>
+TORRENT-COMMENT-UNHIDE <tunnel-index> <torrent-id> <comment-id>
 TORRENT-REMOVE <tunnel-index> <torrent-id> [files]
+TORRENT-REMOVE-ALL <tunnel-index> [files]
 TORRENT-START-ALL <tunnel-index>
 TORRENT-STOP-ALL <tunnel-index>
 TORRENT-REANNOUNCE-ALL <tunnel-index>
@@ -63,7 +77,22 @@ TORRENT-SESSION <tunnel-index>
 TORRENT-DHT <tunnel-index>
 ```
 
-`PAUSE` maps to the engine stop path (it announces the stop event and closes
+`TORRENT-REMOVE-ALL` removes every torrent of the selected session; the only
+accepted option is the exact token `files`, which also deletes local payload
+through the same serialized removal path as `TORRENT-REMOVE`. It has no
+per-torrent id and is therefore confirmed by the UI against the session
+identity. `COMMENT-UNHIDE`, `START`, `STOP` and `REANNOUNCE` accept the same
+bounded per-torrent id forms as their counterparts. `TORRENT-DETAIL` accepts an optional comment page: `comment-offset` 0..255
+(default 0) and `comment-limit` 1..16 (default 16). The response keeps
+`comments.total` as the retained count, adds `comments.offset`,
+`comments.visible`, `comments.hidden` and `comments.local`, and sets
+`comments.count`/`comments.truncated` for the emitted slice. Pages are ordered
+newest-first; a client that never pages still receives the newest 16 records.
+Comment records keep the unchanged `id/owner/text/rating/time/hidden/local`
+fields; `time` is the local epoch second while the wire timestamp is an age.
+
+`PAUSE` maps to the engine
+stop path (it announces the stop event and closes
 peer connections), while `RESUME` maps to the start path (it clears the stopped
 flag and announces the start event). `START`/`STOP` remain available for
 compatibility. `magnet` and `path` are the bounded rest of the request line
@@ -192,8 +221,15 @@ from stale generations are discarded and writes with uncertain results are not
 replayed. Native storage IPC now includes narrow metadata transactions and
 nonrecursive promotion/removal operations, documented in storage-worker.md.
 
-Private envelope message types12/13/14 configure/request/reply for fixed router
+Private envelope message types 12/13/14 configure/request/reply for fixed router
 persistence. The request carries only a fixed file enum plus <=32KiB bytes.
 Torrent storage adds read-only bounded metadata reads and explicit exact-name
 DHT authorization. These are local additive IPC changes; I2P wire formats and
 state serialization remain unchanged.
+
+## See also
+
+- [tui ipc](../tui-ipc.md)
+- [ipc protocol](../security/ipc-protocol.md)
+- [console matrix](console-matrix.md)
+- [testing](testing.md)

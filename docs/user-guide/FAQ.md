@@ -8,6 +8,8 @@ Documents project documentation.
 
 -->
 
+# Frequently asked questions
+
 ## What is I2P?
 
 I2P (Invisible Internet Protocol) is a universal anonymous network layer. 

@@ -59,25 +59,33 @@ that principal explicitly. Do not replace this with a `NULL` DACL or
 - The client token user SID must equal the server's process user SID.
 - `PIPE_REJECT_REMOTE_CLIENTS` rejects SMB/remote clients; the pipe name itself
   must start with `\\.\pipe\`.
-- `WindowsAllowsOperation(role, type)` is the Windows role matrix and the
-  dispatcher entry point when worker wiring lands; the POSIX
-  `AllowsOperation(EndpointRole, type)` is the corresponding shared matrix. A
-  log worker accepts only log/configure/ping/shutdown operations; storage
-  request types are present but have no Windows backend yet.
-- `WindowsServer::AcceptBound()` requires the accepted client PID/session to
-  match the spawned worker when the caller supplies them; `Accept()` remains
-  the SID-only/bootstrap form. A rejected connection re-arms the listener
-  instead of destroying it, so a same-user impostor cannot trigger a permanent
-  worker-channel denial of service.
+- `WindowsAllowsOperation(role, type)` is derived from the shared registry and
+  is enforced by `WindowsChannel::Receive` after the role is bound: a role may
+  only receive the request-direction types the registry grants it, a
+  `Required*` descriptor type is always refused (Windows has no descriptor
+  channel), and a refusal is one typed `Error` under the eight-violation
+  budget. `WorkerHello` is the only request the server reads before a role is
+  bound; it carries the role and the 32-byte spawn nonce.
+- `WindowsServer::AcceptBound()` requires the accepted client PID, session,
+  user SID and (when the role uses AppContainer) the exact container SID; it
+  impersonates the client to read `TokenUser`/`TokenIsAppContainer`/
+  `TokenAppContainerSid`/`TokenIntegrityLevel`, then reverts. It then consumes
+  one `WorkerHello` with the expected role and nonce before returning the
+  channel. Rejections re-arm with a bounded backoff (16 per accept) so a
+  same-user impostor cannot starve the real worker. `Accept()` is test-only.
 - `WindowsChannel::ConnectBound()` authenticates the expected server PID and
   session. `MakeRandomPipeName()` uses `BCryptGenRandom` for a per-spawn name;
   the deterministic `MakePrivatePipeName()` remains test-only.
+- The pipe DACL is protected and contains only the service user, SYSTEM and,
+  when the role uses AppContainer, its exact container SID. There is no
+  Everyone, Authenticated Users or ALL APPLICATION PACKAGES entry.
 - An oversized or malformed message-mode record closes the pipe. The receive
   buffer is one byte over the maximum legal frame, so every larger record is
   terminal and cannot become a valid prefix plus a separate tail frame.
-- Canceled overlapped I/O is drained with `GetOverlappedResult(..., TRUE)`
-  before its `OVERLAPPED`/buffer are released; send/receive timeouts close the
-  channel rather than leaving a pending operation behind.
+- Canceled overlapped I/O is reaped with `GetOverlappedResult` after
+  `CancelIoEx`: a record that completed before the cancellation is delivered,
+  not discarded. A timed-out write closes the channel instead of being retried
+  on a new one.
 
 The same-account process boundary is not a defense against a compromised user
 account. A restricted token, not the pipe DACL alone, must carry the actual
@@ -103,43 +111,56 @@ active-process/process/job memory limits and basic UI restrictions.
 No handle is inherited and no `DuplicateHandle` transfer is performed. The
 worker reconnects by name.
 
-AppContainer and LPAC are still **not implemented**: the current probe is
-necessary but not sufficient because `CreateAppContainerToken`,
-`TokenIsAppContainer`/`TokenIsLessPrivilegedAppContainer`, capability SIDs and
-profile cleanup are not exercised. A policy requesting AppContainer/LPAC fails
-closed. Restricted tokens and Job Objects alone do not enforce network or
-filesystem separation; they are process-restriction primitives, not a complete
-sandbox. The Windows worker entry point and daemon wiring also remain pending,
-so no Windows worker can yet start or reconnect.
+`WindowsIsolation.cpp` is the role authority. Storage, log, crypto and admin
+use a low-privilege AppContainer (no `internetClient`); network uses a
+non-low-privilege AppContainer with `internetClient` and
+`privateNetworkClientServer`; the supervisor uses the restricted token because
+it must spawn children. `CreateWindowsAppContainer` creates or derives the
+durable per-role profile (`openi2pd.<role>`) and capability SIDs; `GrantApp
+ContainerPath` grants only the delegated write root to the container SID. The
+role table rejects any role that combines an Internet capability with a write
+root. `SpawnWindowsWorker` refuses a container role without a container, a
+container for a non-container role, or a persistent-write role without a
+delegated root, and uses `PROC_THREAD_ATTRIBUTE_SECURITY_CAPABILITIES` plus the
+LPAC all-applications opt-out for containers. A restricted token is never
+silently substituted for a role that requires a container. Profiles are durable
+and are not deleted automatically; cleanup is an operator action.
 
 ## Networking and storage separation
 
-`GetWindowsWorkerPolicy` defines the intended role matrix:
+The AppContainer capability set is the boundary:
 
-- storage: no external-network policy, persistent writes allowed only through
-  an explicitly delegated data-directory ACL;
-- networking: external sockets allowed, persistent writes disabled;
-- supervisor/log: no network and no persistent writes (Linux bootstrap is
-  capability-only so exec'ed children can apply their own role policy);
-- crypto/admin: no network and no persistent writes.
+- storage/log/crypto/admin: no `internetClient`; storage/log receive one
+  delegated write root; crypto/admin have no write root;
+- network: `internetClient` and `privateNetworkClientServer`, no delegated
+  write root; it can still write inside its own AppContainer profile folder,
+  which is a documented residual;
+- supervisor: restricted token, no container, no network/write capability.
 
-These are policy profiles, not a claim that the storage/network workers are
-already migrated. The network and storage backends remain in the core process.
-Only the IPC, DACL, token and Job Object foundations are implemented here.
+These are still role profiles for the future worker backends: the storage and
+network engines remain in the core process today. The IPC, DACL, token,
+AppContainer, Job Object and supervisor foundations are implemented; no live
+storage/network worker is wired into the daemon yet.
 
 ## Tests
 
-`tests/test-privsep-windows-ipc.cpp` is a Windows-only CTest target. It covers:
+`tests/test-privsep-windows-ipc.cpp`, `test-privsep-windows-isolation.cpp` and
+`test-privsep-windows-supervisor.cpp` are Windows-only CTest targets. They
+cover:
 
-- protected DACL inspection: no `Everyone`, `Authenticated Users` or anonymous
-  ACE;
-- local pipe-name generation and rejection of a remote UNC pipe;
-- message-mode Ping round trip;
-- peer PID/SID/session inspection and PID-bound acceptance;
-- unknown protocol type rejection, oversized-message pipe termination and
-  recovery after close;
-- restricted-token and Job Object creation;
-- isolation capability probing.
+- protected DACL inspection: no `Everyone`, `Authenticated Users`, anonymous
+  or ALL APPLICATION PACKAGES ACE;
+- local pipe-name generation, remote/UNC rejection and pre-created-name
+  refusal;
+- message-mode Ping round trip, role-bound per-operation refusal, exact
+  maximum frame versus one byte over, and recovery after close;
+- peer PID/SID/session inspection, wrong PID/session/nonce/role rejection,
+  AppContainer SID matching and listener re-arm;
+- completed-during-cancel delivery and stale-write closure;
+- restricted-token, AppContainer profile/SID, capability-set and delegated-root
+  grant inspection;
+- Job Object limits/mitigations, supervisor restart/backoff, worker kill and
+  handle-leak checks, and the service stop budget.
 
 It does not prove a second user's access denial, a Windows service account,
 AppContainer/LPAC execution, mitigation enforcement, or a live storage/network
@@ -148,21 +169,27 @@ worker. Those require a dedicated Windows host and the manual workflow.
 ## Known limitations
 
 - No current Windows compilation/CTest run exists for this change.
-- AppContainer/LPAC is not implemented; requesting it fails closed.
-- The worker backends and typed storage/network operations are pending.
-- A restricted token plus Job Object does not restrict network access or file
-  paths by itself; the deployment must use AppContainer/LPAC or an equivalent
-  OS-enforced boundary before claiming full separation.
+- The worker backends and typed storage/network operations are pending, and no
+  daemon path instantiates the supervisor yet.
+- AppContainer profiles are durable and operator-owned; the code never deletes
+  one automatically.
+- The nonce travels on the worker command line, so it is not a secret from a
+  same-user process that can read the argument block; the protected DACL plus
+  PID/session/container binding remain the primary boundary, and the nonce
+  binds the connection to one spawn.
+- A network AppContainer can write inside its own profile folder; only the
+  delegated data root is protected.
 - DACL/owner policy is same-account oriented; it is not an administrative
   boundary and does not protect against a compromised account or the service
   process itself.
 - `ncalrpc` remains an evaluated alternative, not a second protocol
   implementation. No undocumented ALPC API is used.
 - `SpawnWindowsWorker` still inherits the parent environment and current
-  directory; a minimal environment block and explicit install-directory CWD
-  remain pending.
-- The Windows `--privsep-worker` entry point, supervisor/restart owner and
-  daemon wiring do not exist yet, so no Windows worker can currently start.
+  directory; `CREATE_NO_WINDOW` and NUL std handles are set, but a minimal
+  environment block and explicit install-directory CWD remain pending.
+- The Windows `--privsep-worker` entry point and `WindowsWorkerSupervisor` exist,
+  but no daemon path starts a Windows worker yet, so production wiring remains
+  pending.
 
 ## Manual CI matrix
 
@@ -177,7 +204,7 @@ without changing triggers:
 | Standard user | `CreateProcessAsUser` privilege failure is reported explicitly, with no fallback worker |
 | Second local user | Pipe DACL rejects connection; listener remains usable and accepts the real worker |
 | Service account | Start/stop/restart ordering, Job `KILL_ON_JOB_CLOSE`, bounded stop and exit status |
-| AppContainer/LPAC request | Fails closed with a reason; no silent downgrade to a restricted token |
+| AppContainer/LPAC | Profile/SID/capability/root-grant inspection; storage has no socket, network has no write root; no silent downgrade to a restricted token |
 | Overlapped stall | Stalled reader/writer returns a bounded timeout, closes the channel, and does not corrupt freed buffers |
 
 ## Transport decision: Named Pipes vs ncalrpc

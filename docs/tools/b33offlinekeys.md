@@ -16,11 +16,12 @@ LeaseSet without holding the destination signing key.
 ## Syntax
 
 ```sh
-b33offlinekeys <router-keys-file> <destination-keys-file> [<days>]
+b33offlinekeys <output-keys-file> <destination-keys-file> [<days>]
 ```
 
-The destination must be Ed25519 or RedDSA. Days default to 365 and are bounded
-by the tool's `kMaxDays` constant (1..365).
+The destination must be Ed25519 or RedDSA. `<output-keys-file>` is the file
+handed to the router; it must differ from the destination key file. Days
+default to 365 and are bounded by `kMaxDays` (1..65535).
 
 ## Example
 

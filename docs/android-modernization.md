@@ -49,8 +49,10 @@ Java 25 is a source/class-file level, not a claim that every JDK 25 library API
 exists on Android API 29. The application deliberately uses records for
 immutable snapshots and typed results, sealed interfaces with exhaustive
 pattern switches for service commands, switch expressions, lambdas/method
-references, generics, streams/collectors and `Optional` where they clarify a
-boundary. `RouterCommand` and `LogLevel` are the current examples; the service
+references, generics and `Optional` where they clarify a boundary. Streams and
+collectors are not currently used in app source; prefer a clear loop or a
+record-producing helper over a pipeline that hides a bound. `RouterCommand`,
+`ReseedStatus` and `LogLevel` are the current examples; the service
 still performs the same foreground checks, worker ordering and native calls.
 
 Virtual threads, scoped values and structured concurrency are not adopted
@@ -343,8 +345,8 @@ not validated until the workflow or a device run passes.
 | Axis | Values | Current coverage |
 |---|---|---|
 | Build type | debug, release (unsigned), AAB | debug was the only prepared build; release APK/lint release added to the manual job; AAB remains deferred because ABI splits and bundle packaging need an explicit policy |
-| ABI | arm64-v8a, armeabi-v7a, x86_64, x86, universal | arm64-v8a only; universal version-code ordering is fixed statically but not inspected |
-| API device | 29, 33, 36/37 | none executed; instrumentation APK is compile-only |
+| ABI | arm64-v8a, armeabi-v7a, x86_64, x86, universal | the default job builds arm64-v8a; the opt-in UI lane builds x86_64 for the emulator. armeabi-v7a/x86 and universal packaging are not built |
+| API device | 29, 33, 36/37 | an opt-in `android_ui` dispatch input adds an API 29 x86_64 emulator lane running `connectedDebugAndroidTest`; no run exists yet |
 | Java/D8/R8 | JDK 25 compiler, class-file 69, AGP-selected D8/R8, release R8 | class-file assertion added; AGP D8/R8 version remains unpinned and unproven |
 | NDK/CMake | r30 `30.0.16248370`, CMake 3.31.6, C++23 JNI | arm64 configure/link only; 32-bit and x86 branches compile only in a future ABI lane |
 | Resources | API 29 baseline, API 35+ edge-to-edge, API 37 target | unit/Lint only; no AAPT2/APK content assertion beyond the packaged `libi2pd.so` check |
@@ -359,7 +361,8 @@ Required manual lanes:
    symbol assertions; then each declared ABI in a bounded compile lane.
 4. Device: `connectedDebugAndroidTest` on API 29 and a current API, including
    SAF provider faults, service lifecycle, broker death/rebind and negative
-   seccomp checks. No such lane exists yet.
+   seccomp checks. The `android-ui` job (dispatch input `android_ui`) prepares
+   the API 29 x86_64 lane with sdkmanager/avdmanager, but has never run.
 
 Known tool limitations must remain explicit: Java 25 source/class-file support
 by the AGP-resolved D8/R8 is assumed until the CI class-file/DEX checks pass;
@@ -389,3 +392,89 @@ seeding/import-after-create, queue/bandwidth policy, notification live counters,
 ViewModel-owned traffic history, process-wide daemon ownership, rotated
 restart/apply banners, and the device/API instrumentation lane. `UiContractTest`
 and the pure JVM filter/format/command tests are prepared but not executed.
+
+
+## Native GUI Material 3 continuation (2026-10-26, static)
+
+The router, configuration, connections (network), tunnels, statistics, logs and
+I2PSnark screens were reviewed against the M3/adaptive/accessibility contract.
+The following corrections are implemented by static analysis only:
+
+- **Programmatic rows.** Torrents, address book and runtime administration
+  build their rows in Java. `UiFactory` now owns the shared contract: 48dp
+  minimum touch target, logical padding, a centred `MaxWidthLinearLayout`
+  column (`content_max_width`, 840dp phone content / 1000dp at `w600dp`) and a
+  one-utterance content/state description. Previously those screens used a
+  hard-coded 16dp inset, no width cap and TalkBack read each line separately.
+- **Typed I2PSnark row.** `TorrentRow` is a bounded record decoder for the
+  `TORRENTS` snapshot (id/name/status/error/hash/magnet/counters/percent/ETA).
+  The fragment no longer concatenates raw map lookups, a malformed hash or
+  magnet is dropped, counters are clamped, an invalid id is rejected and the
+  daemon's fractional `std::to_string(double)` percentage is parsed as a bounded
+  double and rounded (integer parsing silently returned 0 for every row). The
+  actions dialog is titled with the torrent name so the 14 verbs cannot be
+  applied to the wrong row, and the private badge and error join the TalkBack
+  description. `TorrentRowTest` pins the decoder on the JVM.
+- **SAF authority runs off the UI thread.** Selecting or detaching a payload
+  tree commits the grant map and may round-trip to the provider. Both now run
+  on the service's SAF worker (`RouterService.selectPayloadTree` /
+  `detachPayload`), report a typed boolean on the main thread and are ignored
+  after the fragment view is gone. The former `SharedPreferences.commit()` and
+  provider calls ran directly in the picker/row callback.
+- **Rotation and process restart.** `TorrentsFragment` restores the selected
+  session, import tunnel and SAF grant identity from instance state; it no
+  longer reopens the session picker on every rotation and cannot render one
+  tunnel's rows under another tunnel's name.
+- **Accessibility.** Address-book rows announce name, destination and the
+  blindable marker (the former hard-coded `(blinded)` string is now a
+  translated `address_book_blinded` resource). The graceful-stop countdown is
+  no longer a live region, so TalkBack does not announce it every second.
+- **Notification.** The foreground notification offers Graceful stop while the
+  router runs and Cancel graceful stop while it drains; both use the existing
+  typed service actions. It is `setOnlyAlertOnce` and immediate, so a
+  one-second status update never re-alerts.
+- **Navigation.** Secondary entries (logs, about, I2PSnark, address book,
+  runtime administration) are hidden while a detail screen is open, and
+  `showDestination` hides every known fragment tag. Opening a second detail
+  would silently replace the first and lose the back target.
+- **Theme.** `Theme.Material3.DayNight.NoActionBar` keeps the fixed openi2pd
+  role table; `values-night/colors.xml` defines every light token, and
+  `forceDarkAllowed=false` prevents the platform from re-darkening the branded
+  surfaces. `UiContractTest` now asserts that the resolved `colorSurface`
+  equals `brand_surface` in both modes and that the night surface differs.
+
+Still open: per-tunnel inventory and live accept-transit control, a config
+search/editor beyond the validated preference subset, a two-pane tablet detail
+layout for logs/torrents, queue/bandwidth policy, notification live counters,
+ViewModel-owned traffic history and a process-wide daemon owner. The API 29
+emulator lane is prepared but has never executed; instrumentation, TalkBack and
+visual results remain manual evidence.
+
+
+## Internationalization completion (2026-10-26, static)
+
+Android ships `values`, `values-es`, `values-ru` and `values-zh-rCN` with exact
+key parity. Counts use `<plurals>` (`logs_summary`, `torrent_count`,
+`runtime_admin_reseed_status`) and `getQuantityString`; Russian supplies
+one/few/many/other and Simplified Chinese one/other. Placeholders are
+positional, and `android/tools/check-android-locales.pl` now validates plural
+arity, per-quantity placeholders, non-positional conversions and references
+from `src/test`/`src/androidTest` as well as `src/main`.
+
+User-visible validation errors carry resource ids through
+`TorrentControl.UserMessageException`; `torrent_creation_failed_unknown`,
+`torrent_create_source_invalid` and `torrent_operation_failed_generic` replace
+hardcoded English. The log row uses `log_row_description`, the foreground
+notification channel has a translated name and description, the tracker label
+is no longer the English token, and Russian uses `роутер`/`пересев`
+consistently. `LocaleResourceTest` asserts that `zh-TW`/`zh-Hant`/`zh-HK` fall
+back to English and that Russian selects distinct one/few/many forms.
+
+No AAPT2, Gradle, Lint or device run exists for these changes.
+
+## See also
+
+- [android java25](android-java25.md)
+- [android jni status](android-jni-status.md)
+- [saf storage](torrent/saf-storage.md)
+- [process capabilities](security/process-capabilities.md)

@@ -192,7 +192,7 @@ Prepared but **not executed** for this pass:
   `test-tunnelpool-detach-race`, `test-tunnels-restart`,
   `test-timestamp-offset`, `test-ntp-timesync-lifecycle` and the
   `tools-regressions` CMake test.
-- ASan+UBSan, TSan and the eight libFuzzer targets (including
+- ASan+UBSan, TSan and the fifteen libFuzzer targets (including
   `fuzz-signature-der`) through the manual `build.yml`/`fuzz.yml` workflows.
 - OpenBSD/LibreSSL, Windows, Android Unit/Lint/APK/instrumentation and live
   Java/I2P peer tests.
@@ -230,3 +230,70 @@ OpenBSD/LibreSSL, Windows and Android native compilation and controlled peer/
 socket tests remain necessary. No compiler, test, project validator or workflow
 was executed for this continuation. These changes do not close global
 privilege separation, address-book subscription lifecycle or live Java parity.
+
+## 2026-10-25 cross-thread lifetime, handle and handshake pass (static)
+
+Six read-only audits covered transports, cryptography, netDb, BitTorrent,
+IPC/daemon and Android JNI. This pass closes the findings that follow directly
+from the code; nothing was compiled or executed.
+
+- **Streaming destination teardown (High).** `Stream` kept a bare reference to
+  `StreamingDestination`, while SAM removed and released the destination on
+  its control thread. A pending timer or receive handler could then touch the
+  freed packet pools. `Stream` now holds `m_LocalDestinationOwner`, and
+  `StreamingDestination::Stop()` posts `StopInternal()` to the owner's
+  io_context with a bounded wait. The acceptor callback is copied under
+  `m_AcceptorMutex`, and `AcceptOnce` stores a weak-owner callback instead of
+  a raw `this` bind.
+- **Per-port streaming registry (High).** `ClientDestination` created,
+  removed and iterated `m_StreamingDestinationsByPorts` from SAM while the
+  service thread dispatched I2P data messages. Every access now takes
+  `m_StreamingDestinationsMutex`, and callers invoke a shared_ptr copy after
+  releasing it.
+- **SSU2 fragment budget (Medium).** Out-of-sequence fragments were bounded
+  only by the number of incomplete messages, so a reordered peer could queue
+  an arbitrary chain for one message. Each message now caps the chain at 512
+  fragments and `I2NP_MAX_MESSAGE_SIZE` bytes.
+- **SSU2 introducers (High).** `ConnectThroughIntroducer` and HolePunch
+  verification iterated/indexed `address->ssu->introducers` while the netDb
+  maintenance thread resized or cleared the same vector. `SSUExt` now owns a
+  mutex and a snapshot accessor; transport readers never see the live vector.
+  Local add/remove/update and `RouterContext` clears take the same lock.
+- **Torrent file handle (High).** `TorrentFile::SetSelectedComplete` on the
+  service thread could close or repurpose `m_File`/`m_StorageHandle` while the
+  disk worker was inside `Load`/`Save`, causing a double close or IO on the
+  wrong file. All handle and authority changes, including path/root updates,
+  now serialize on `m_Mutex`; the inactivity timestamp is atomic.
+- **SOCKS reply/parse overlap and handshake bounds (High/Medium).** A
+  pipelined request behind the RFC 1929 reply could reuse `m_response` while
+  the authentication write was pending. Input after a reply is deferred until
+  `SentSocksResponse` runs; HTTP and SOCKS arm 30-second handshake deadlines;
+  `ServiceAcceptor` rejects connections above 1024 concurrent handlers.
+- **I2PControl self-join and tunnel iteration (High/Medium).**
+  `I2PControlService::Stop()` now detaches when called from its own io thread
+  and skips re-entrant `run()`; `I2PTunnelInfoHandler` uses the locked tunnel
+  snapshots instead of live references.
+- **SAF local-frame exception (Medium).** A failed `PushLocalFrame` left an
+  `OutOfMemoryError` pending; `SafEnv` clears it and reports failure.
+
+Regressions: `tests/check-control-security.cmake` pins each source contract
+and runs in the existing `ci;security;memory` static test. The ASan+UBSan and
+TSan manual jobs execute the static test and the whole CTest suite. Focused
+runtime tests are still required for the streaming teardown, `TorrentFile`
+disk/service overlap, SSU2 introducer pruning and slow proxy handshakes.
+
+SSU2 reassembly queues at most 512 out-of-sequence fragments and
+`I2NP_MAX_MESSAGE_SIZE` bytes per incomplete message; the counters are
+released as fragments are consumed. `test-ssu2-session-fragment-bounds` adds
+the over-count, byte-budget and counter-release cases plus a locked
+`SSUExt` writer against `GetIntroducers()`/`HasIntroducers()` readers for the
+manual TSan job.
+
+Residual (SEC-025): SSU2 pool lifetime across deferred session teardown,
+cross-thread address/endpoint publication, `RouterInfo`
+address-slot copy-on-write, ratchet crypto-context serialization, raw datagram
+receiver captures and the SSU2 version-downgrade branch. `InitTorrentFiles`
+still discovers files on the disk worker and mutates `Torrent` state there;
+per-file handle operations are serialized but the phase split remains open.
+
+No compiler, CTest, sanitizer, fuzzer, workflow, commit or push was performed.

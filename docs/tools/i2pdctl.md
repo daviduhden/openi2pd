@@ -73,12 +73,11 @@ forge output lines.
 External commands use an argument list (`IPC::Open3`), never a shell; the
 validated host, port and path are passed as separate arguments, and no
 `eval STRING` is applied to network data. Proxy environment variables are
-removed from a localized environment before `HTTP::Tiny` is created, and the
-proxy environment variables are deleted in a localized environment, so the
-password and token are not forwarded to an unintended proxy. The `openssl` fallback is found only through
-absolute `PATH` entries; relative entries are ignored. The self-signed TLS
-exception is documented as a compatibility choice, not a general
-recommendation.
+deleted in a localized environment before `HTTP::Tiny` is created, so the
+password and token are not forwarded to an unintended proxy. The `openssl`
+fallback is found only through absolute `PATH` entries; relative entries are
+ignored. The self-signed TLS exception is documented as a compatibility
+choice, not a general recommendation.
 
 ## Compatibility
 

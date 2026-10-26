@@ -11,6 +11,8 @@ status for the current repository increment.
 
 # Files created, modified and removed
 
+> Historical, append-only record. CTest/build counts and “passed” statements describe the entry date; they are not current evidence for the working tree. Current status is tracked in `PROGRESS.md`/`TODO.md`.
+
 This list covers the refactoring described in the other documents. No commit
 was created.
 

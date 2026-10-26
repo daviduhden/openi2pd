@@ -14,8 +14,8 @@ The native utilities in `tools/` are adapted from
 [PurpleI2P/i2pd-tools](https://github.com/PurpleI2P/i2pd-tools) at pinned
 commit `ca7ece8da86aa80b58fce6fa64375bfd75cbf843`. They are not a Git
 submodule, do not fetch an external router checkout and do not use a separate
-Makefile. The source is maintained in this repository and links the in-tree
-`libi2pd`/`libi2pdclient` libraries.
+Makefile. The source is maintained in this repository and links the in-tree `libi2pd`
+library; `autoconf_i2pd` additionally links `libi2pdlang`.
 
 The imported-file manifest is
 [`contrib/upstream/tools-files.txt`](../../contrib/upstream/tools-files.txt).
@@ -29,6 +29,10 @@ the working tree.
   the import manifest and repository history. Project-standard source headers
   point to the repository `LICENSE` instead of duplicating copyright/SPDX
   boilerplate.
+- `tools/LICENSE` is the upstream BSD-3-Clause text. Its copyright-holder field
+  is empty and clause 3 names `i2pd-reseed`, both inherited from the import;
+  the fork records this rather than inventing a holder or silently rewriting
+  the notice. See `docs/attribution-audit.md`.
 - Third-party files that carry their own license terms or attribution
   requirements retain those notices.
 - New compatibility, validation, test and CMake files use the same short
@@ -58,7 +62,9 @@ the working tree.
 
 `tools/scripts/i2pdctl` is the Perl I2PControl client. It is installed with the
 same `Tools` component and has separate syntax and `prove` checks. It is not a
-native executable and does not use the tool key format.
+native executable and does not use the tool key format. Upstream shipped this
+client in Python; the Perl 5 rewrite is a fork addition and is therefore not an
+upstream manifest entry.
 
 ## Fork-only shared files
 
@@ -70,11 +76,19 @@ imports:
 - `tools/common/getopt.cpp` / `getopt.h` — MSVC-compatible `getopt`/
   `getopt_long` surface.
 - `tools/firewall.hpp` — endpoint model and firewall renderers.
+- `tools/common/keys.hpp` — one load/store authority for destination key files
+  (exact consumption, durable private replacement, same-file refusal).
 - `tools/common/crypto.hpp` — RAII crypto lifetime for key-generating tools.
 - `tools/CMakeLists.txt`, `tools/test-tools*.cmake`,
   `tools/test-perl-install.cmake`, `tools/tests/*.t` — CMake/CTest integration.
-- `tools/scripts/check-doc-links.pl`, `tools/scripts/validate-branding.pl` —
-  offline repository checks.
+- `tools/scripts/check-doc-links.pl`, `tools/scripts/check-doc-nav.pl`,
+  `tools/scripts/validate-branding.pl` — offline repository checks.
+- `android/tools/check-android-locales.pl`,
+  `android/tools/check-android-jni-symbols.pl` and
+  `i18n/check-i18n-catalogs.pl` — compile-free Android resource/JNI and
+  native-catalog contracts.
+- `tools/tests/routerinfo-fixture.cpp` — generates the signed RouterInfo used
+  by the manual tool tests; no keys or binary fixture are checked in.
 
 ## Build and installation
 
@@ -87,17 +101,24 @@ by the same CMake graph; the POSIX Make front-end only invokes CMake/Ninja.
 
 CTest registers:
 
-- `tools-inventory` — every native artifact exists.
+- `tools-inventory` — every built native artifact exists.
+- `tools-inventory-static` — CMake/docs/packaging inventory parity (compile-free).
+- `tools-cli` — exact exit codes, stream separation and same-file refusal.
+- `tools-getopt` — host regression for the MSVC getopt shim.
 - `tools-smoke` — basic key, base64, registration, offline-key and CLI checks.
 - `tools-regressions` — per-tool deterministic checks plus the scripted
   `autoconf_i2pd` transcript.
 - `perl-i2pdctl-syntax`, `perl-i2pdctl`, `perl-portability`,
-  `perl-validate-branding` and `perl-install-layout` when Perl is available
+  `perl-maintenance-checkers`, `perl-validate-branding`,
+  `android-jni-symbols-static`, `i18n-static` and `perl-install-layout` when
+  Perl is available
   (`perl-i2pdctl` uses `prove` when present and otherwise runs the TAP file
   directly); `perl-critic` is opt-in with `-DI2PD_PERL_CRITIC=ON`.
 
 No test contacts the I2P network, starts a long vanity search or uses a
-download step.
+download step. The pinned upstream commit was reviewed when the manifest was
+created and has not been re-verified since; `sync.sh --tools` performs the
+comparison only when a maintainer invokes it.
 
 ## Security review boundaries
 

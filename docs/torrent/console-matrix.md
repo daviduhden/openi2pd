@@ -45,7 +45,7 @@ it.
 | Multi-tunnel | One mount/path per tunnel | map of tunnels | Tunnel index selector/list | Implemented / validation pending |
 | File selection/priorities | None | `SetFilePriority`, persisted priorities | Details tab + `f`; Android priority dialog | Implemented / validation pending |
 | Force recheck | Button (stopped torrent) | `RequestLocalVerification(true)` | `V` for a paused torrent; Android menu action | Implemented / validation pending |
-| Queue/bandwidth limits | None in console | No queue or token bucket | Not advertised in TUI | Fork-specific resource policy; Java has no queue or per-torrent rate limit |
+| Queue/bandwidth limits | Session-wide up/down limits and a global uploader cap (`SnarkManager`, `BandwidthManager`) | No queue or token bucket | Not advertised in TUI | Java has no torrent queue and no per-torrent rate limit; its session limits and uploader slots remain an open engine item (`SNARK-011`) |
 | Browser HTML/CSS/JS | Required | n/a | Removed | Target: no web assets |
 | JSON-RPC compatibility | `rpc.js` consumer | `TorrentsRPC` | Separate optional API | Retained only if audited; not used by TUI |
 

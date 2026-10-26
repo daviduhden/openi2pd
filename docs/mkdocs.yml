@@ -56,6 +56,7 @@ nav:
           - Router storage: torrent/router-storage.md
           - Android SAF payload storage: torrent/saf-storage.md
           - Testing: torrent/testing.md
+      - Language policy: i18n.md
       - Perl migration: development/perl-migration.md
       - Android modernization: android-modernization.md
       - Android JNI status: android-jni-status.md

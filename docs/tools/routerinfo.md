@@ -129,14 +129,23 @@ nft add rule inet filter output ip6 daddr 2001:db8::20 udp dport 4567 accept com
 - `inet` accepts both families and selects `ip daddr`/`ip6 daddr` per endpoint.
 - `--nft-family=ip` skips IPv6 endpoints; `ip6` skips IPv4 endpoints and
   requires `-6`. Skipped endpoints never become permissive rules.
-- Table and chain names are restricted to a safe identifier syntax. The chain
-  may be a custom output chain, but the standard `input`, `forward`,
-  `prerouting` and `postrouting` hook names are rejected so a typo cannot turn
-  the generated rule into an inbound rule.
+- Table and chain names are restricted to a safe identifier syntax: a letter
+  followed by letters, digits, `_`, `-` or `.`, with nft keywords (`table`,
+  `chain`, `rule`, `add`, `accept`, `ip`, `ip6`, `inet`, ...) and a leading
+  `_` rejected. The chain may be a custom output chain, but the standard
+  `input`, `forward`, `prerouting` and `postrouting` hook names are rejected so
+  a typo cannot turn the generated rule into an inbound rule.
 - The `filter` table and `output` chain are **not** created by the tool. Create
   them in your nftables configuration first, or use names that already exist.
 - The generated `nft add rule` commands are text only; the tool does not run
-  `nft`.
+  `nft`. `ip daddr`/`ip6 daddr` in an `inet` table relies on the implicit
+  `meta nfproto` dependency of nftables 0.9 and later; older releases should
+  use `--nft-family=ip`/`ip6` or validate with `nft -c -f`.
+- `accept` is a base-chain verdict. The chain must be an output base chain
+  (`type filter hook output`), not a regular chain reached from input.
+- Re-running the generator appends duplicate rules. Remove them with
+  `nft -a list chain` and the reported handles, or load the output into a
+  replaceable anchor.
 
 ## Windows Defender Firewall
 
@@ -151,13 +160,20 @@ New-NetFirewallRule -Name 'openi2pd_NTCP2_v4_abcdef12_192.0.2.10_12345' -Display
 
 - Uses the `NetSecurity` module (`New-NetFirewallRule`), not `netsh`.
 - Outbound rules only, with `-RemoteAddress` and `-RemotePort`.
-- `-Name` is stable across re-runs, `-Group openi2pd` supports bulk cleanup,
-  and `-ErrorAction Stop` prevents a batch from silently continuing after a
-  failure. Names include the transport, address family, router-hash prefix,
-  address and port.
+- `-Name` is deterministic across runs, `-Group openi2pd` supports bulk
+  cleanup, and `-ErrorAction Stop` prevents a batch from silently continuing
+  after a failure. Names include the transport, address family, router-hash
+  prefix, address and port; a `~` in the base64 prefix is preserved. `-Name`
+  is a unique key, so applying the same line twice fails; remove the old rule
+  first (`Remove-NetFirewallRule -Name ... -ErrorAction SilentlyContinue`) or
+  treat a re-run as an error. The cmdlet also emits an object, so append
+  `| Out-Null` in scripts.
 - On a default Windows profile outbound traffic is already allowed, so these
   rules matter when outbound is blocked; they do not open the router's inbound
-  listener.
+  listener. An explicit Block rule takes precedence over an Allow.
+- `-Program` is not set, so the allow applies to any local process; the tool
+  cannot know the installed router path. Use `-WhatIf` first in an elevated
+  session to inspect the effect.
 - Application requires an elevated PowerShell session with permission to
   modify the local firewall. The tool only prints the commands.
 
@@ -174,10 +190,16 @@ pass out quick inet6 proto udp to 2001:db8::20 port 4567 keep state label "openi
 ```
 
 These are `pf.conf(5)` rules, not iptables translations. The `label` carries the
-public router-hash prefix for attribution. They can be placed in the main
-ruleset or in an anchor loaded from it. Keep the surrounding rule
-order in mind because `quick` terminates evaluation on match. The tool does not
-run `pfctl` or edit `/etc/pf.conf`.
+public router-hash prefix for attribution and is limited to 64 bytes including
+the NUL, so an overlong library tag is refused (the CLI's eight-character hash
+prefix is always safe). `quick` is final across the current ruleset and loaded
+anchors, so a later `block` cannot override a match. No `on` clause means the
+rule also matches `lo0`; no `from` clause is the implied `any`. PF passes by
+default, so these rules only matter under a default-deny outbound policy.
+`keep state` is valid but redundant on modern PF, and `flags S/SA` must not be
+added (it would break UDP). The tool does not run `pfctl` or edit
+`/etc/pf.conf`, so stale rules persist until the ruleset is reloaded. An anchor
+(`anchor "openi2pd"` plus `load anchor`) is the natural replaceable container.
 
 Validate a candidate file without loading it:
 
@@ -194,10 +216,15 @@ pfctl -nf candidate.conf
 - Numeric IP addresses are parsed with `boost::asio::ip::make_address`.
   Unspecified, loopback, multicast, IPv4 broadcast (`255.255.255.255`),
   IPv4 link-local (`169.254.0.0/16`), IPv6 link-local (`fe80::/10`),
-  IPv4 private/CGNAT ranges, `0.0.0.0/8`, `240.0.0.0/4`, IPv6 ULA
-  (`fc00::/7`), deprecated IPv6 site-local (`fec0::/10`), IPv4-mapped IPv6 and
-  deprecated IPv4-compatible IPv6 addresses are rejected. Documentation and
-  benchmark ranges remain selectable for explicit test use.
+  IPv4 private/CGNAT ranges, benchmark (`198.18.0.0/15`), IETF
+  (`192.0.0.0/24`), 6to4 relay (`192.88.99.0/24`), `0.0.0.0/8`,
+  `240.0.0.0/4`, IPv6 ULA (`fc00::/7`), deprecated IPv6 site-local
+  (`fec0::/10`), IPv4-mapped IPv6, deprecated IPv4-compatible IPv6, NAT64
+  (`64:ff9b::/96`), 6to4 (`2002::/16`), Teredo (`2001::/32`), discard
+  (`100::/64`) and the `3fff::/20` documentation prefix are rejected.
+  The `192.0.2.0/24`, `198.51.100.0/24`, `203.0.113.0/24` and
+  `2001:db8::/32` documentation ranges remain selectable because the signed
+  test fixture uses them.
 - Malformed or unreadable RouterInfo files are reported and produce a non-zero
   exit status; they are never passed to the hash or address accessors.
 - SSU2 addresses with no concrete host/port are introducer-only and produce no
@@ -211,9 +238,17 @@ pfctl -nf candidate.conf
   input files.
 - Every renderer emits an outbound rule: iptables `OUTPUT`, nftables output
   chain, Windows `-Direction Outbound`, and PF `pass out`.
-- The total endpoint count is capped at 4096; invalid endpoints are skipped
-  with a diagnostic and make firewall generation exit non-zero.
-- nftables identifiers and PowerShell strings are escaped/validated. The
+- The total distinct emitted endpoint count is capped at 4096; endpoints
+  filtered by the nftables family or rejected by a renderer are not charged.
+  Invalid endpoints are skipped with a diagnostic and make generation exit
+  non-zero. If a valid run selects no endpoint for the backend/family, a
+  diagnostic is written to stderr and the exit status remains zero.
+- Output is buffered and written only when every input file parsed. A malformed
+  later file leaves stdout empty and exits 1, so a pipeline cannot apply a
+  partial rule set. Usage errors go to stderr; `--help` uses stdout.
+- `-p` is a listing-only option and is ignored with any firewall backend.
+- nftables identifiers are validated (not shell-quoted) and PowerShell
+  strings are single-quoted with `''` doubling. The
   Windows display-name tag is restricted to printable identifier characters
   (letters, digits, `+ / = _ - ~ .`) so a tag cannot introduce a quote,
   newline or control character. Router hashes in names are public identifiers

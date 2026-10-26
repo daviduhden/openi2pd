@@ -60,11 +60,11 @@ conf                                   | Config file (default: ~/.i2pd/i2pd.conf
 tunconf                                | Tunnels config file (default: ~/.i2pd/tunnels.conf or /var/lib/i2pd/tunnels.conf)
 tunnelsdir                             | Path to extra tunnels' configs folder. All *.conf files inside are automatically loaded (recommended for modular setups) default: or /var/lib/i2pd/tunnels.d or ~/.i2pd/tunnels.d
 certsdir                               | Path to certificates used for verifying .su3, families (default: )
-pidfile                                | Where to write pidfile (default: i2pd.pid, not used in Windows)
+pidfile                                | Where to write pidfile (default: `<datadir>/i2pd.pid`, not used in Windows; packaged services pass `/run/i2pd/i2pd.pid`)
 log                                    | Logs destination: stdout, file, syslog (stdout if not set or invalid) (if daemon, stdout/unspecified are replaced by file in some cases)
 logfile                                | Path to logfile (default - autodetect)
 loglevel                               | Log messages above this level (debug, info, warn, error, none; default - warn)
-lang                                   | UI language for built-in web/proxy and desktop messages: en, es, ru, zh-Hans; empty follows the process locale
+lang                                   | Native UI/daemon language: en, es, ru, zh-Hans; empty follows the process locale (see [language policy](../i18n.md))
 logclftime                             | Write full CLF-formatted date and time to log (default: false (write only time))
 datadir                                | Path to storage of i2pd data (configs, keys, netdb, peer profiles, etc ...). Can be passed as an agrument only.
 host                                   | Router external IP for incoming connections (default: auto if SSU2 is enabled)
@@ -91,7 +91,11 @@ stan                                   | For places with limited connectivity (d
 
 #### Notes
 
-`datadir` and `service` options are only used as arguments for i2pd, these options have no effect when set in `i2pd.conf`.
+`datadir` is only effective as a command-line argument: the data directory is
+resolved before `i2pd.conf` is parsed. `service` is read from the configuration
+on OpenBSD, which re-resolves the data directory after parsing; on other
+platforms pass it on the command line. The native service definitions pass both
+explicitly.
 
 ### NTCP2
 
@@ -160,6 +164,12 @@ httpproxy.outbound.lengthVariance      | Outbound tunnels length variance if key
 httpproxy.outproxy                     | HTTP proxy upstream outproxy URL (for example http://outproxy.example.i2p)
 httpproxy.addresshelper                | Enable or disable addresshelper. (default: true)
 httpproxy.senduseragent                | Pass through user's User-Agent if enabled. (default: false)
+httpproxy.auth.enabled                | Require local HTTP Basic authentication (407). Empty credentials fail closed. (default: false)
+httpproxy.auth.username               | Accepted HTTP proxy username, 1..255 bytes. Never logged or forwarded.
+httpproxy.auth.password               | Accepted HTTP proxy password, 1..255 bytes. Never logged or forwarded.
+httpproxy.auth.type                   | Proxy authentication scheme: `basic` (default) or `digest` (RFC 7616 qop=auth, MD5/SHA-256)
+httpproxy.auth.realm                  | Authentication realm sent to clients (default: openi2pd)
+httpproxy.auth.failuredelay           | Milliseconds to delay a failed authentication attempt (default: 0)
 httpproxy.i2cp.leaseSetType            | Type of LeaseSet to be sent. 1, 3 or 5. (default: 3)
 httpproxy.i2cp.leaseSetEncType         | Comma separated encryption types to be used in LeaseSet type 3 or 5
 httpproxy.i2p.streaming.profile        | HTTP Proxy bandwidth usage profile. 1 - bulk(high), 2 - interactive(low). (default: 1)
@@ -188,6 +198,9 @@ socksproxy.outbound.lengthVariance     | Outbound tunnels length variance if key
 socksproxy.outproxy.enabled            | Enable or disable SOCKS5 outproxy. (default: false)
 socksproxy.outproxy                    | Address of outproxy(IP or local). Requests outside I2P will go there.
 socksproxy.outproxyport                | Outproxy port. If 0 socksproxy.outproxy contains path to local socket
+socksproxy.auth.enabled                | Require local RFC 1929 username/password authentication. Empty credentials fail closed. (default: false)
+socksproxy.auth.username               | Accepted SOCKS username, 1..255 bytes. Never logged or forwarded.
+socksproxy.auth.password               | Accepted SOCKS password, 1..255 bytes. Never logged or forwarded.
 socksproxy.i2cp.leaseSetType           | Type of LeaseSet to be sent. 1, 3 or 5. (default: 3)
 socksproxy.i2cp.leaseSetEncType        | Comma separated encryption types to be used in LeaseSet type 3 or 5
 socksproxy.i2p.streaming.profile       | SOCKS Proxy bandwidth usage profile. 1 - bulk(high), 2 - interactive(low). (default: 1)
@@ -215,6 +228,7 @@ Option                                 | Description
 bob.enabled                            | If BOB is enabled. (default: false)
 bob.address                            | The address to listen on (BOB command channel)
 bob.port                               | Port of BOB command channel. Usually 2827. BOB is off if not specified
+bob.allowgetkeys                       | Allow the BOB `getkeys` command to return a destination's private keys. Fail-closed by default. BOB is a loopback-only legacy extra and accepts local peers only.
 
 ### I2CP interface
 
@@ -261,9 +275,30 @@ reseed.yggurls                         | Reseed Yggdrasil's URLs, separated by c
 reseed.file                            | Path to local .su3 file or HTTPS URL to reseed from
 reseed.zipfile                         | Path to local .zip file to reseed from
 reseed.threshold                       | Minimum number of known routers before requesting reseed. (default: 25)
+reseed.disable                         | Disable reseed: no automatic or administrative RouterInfo bootstrap. (default: false)
+i2p.noReseed                           | Alias for `reseed.disable`. (default: false)
 reseed.proxy                           | Url for https/socks reseed proxy
 reseed.floodfill                       | Ignored. Always empty. Path to router info of floodfill to reseed from.
 reseed.followredirect                  | Follow redirects when reseeding from URLs (default: false)
+
+### Operator blocklist
+
+The blocklist is read once at startup, before netDb loads cached RouterInfos,
+and is never watched or reloaded. It accepts the Java-compatible text format:
+one IPv4 address, IPv4 range (`a.b.c.d-a.b.c.d2`), IPv4 CIDR (mask 3..32),
+an IPv6 literal written with `;` instead of `:`, or a 44-character base64
+router hash per line. `#` in column 1 starts a comment and an optional
+`reason:` prefix before the last `:` is kept only for diagnostics. Hostnames
+are skipped without DNS resolution and IPv6 ranges are not supported.
+
+Option                                 | Description
+-------------------------------------- | --------------------------------------
+blocklist.enable                       | Read the operator blocklist at startup. (default: true)
+blocklist.file                         | Blocklist path, relative to the data directory unless absolute. (default: blocklist.txt)
+blocklist.detail                       | Retain a bounded diagnostic sample of rejected lines. (default: false)
+
+Runtime router bans added from the TUI (`ADMIN NETDB-BAN`) are held in memory
+only and are cleared when the daemon restarts.
 
 ### Addressbook options
 

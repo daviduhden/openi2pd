@@ -124,6 +124,18 @@ The following pairs were calculated with the WCAG relative-luminance formula:
 | dark `on-surface-variant` / `surface-variant` | 7.83:1 |
 | dark `on-primary` / `primary` | 7.63:1 |
 | dark `on-secondary` / `secondary` | 7.55:1 |
+| light `error` / `surface` | 6.54:1 |
+| light `warning` / `surface` | 5.93:1 |
+| light `success` / `surface` | 6.47:1 |
+| light `outline` / `surface` | 5.27:1 |
+| light `on-surface` / `selected` | 13.10:1 |
+| dark `error` / `surface` | 10.17:1 |
+| dark `warning` / `surface` | 12.36:1 |
+| dark `success` / `surface` | 10.60:1 |
+| dark `outline` / `surface` | 6.58:1 |
+| dark `on-surface` / `selected` | 10.35:1 |
+| light `disabled` / `surface` | 2.10:1 (inactive only; exempt) |
+| dark `disabled` / `surface` | 2.43:1 (inactive only; exempt) |
 
 Do not use `openi2pd-teal` or `openi2pd-blue` as normal-size text on a light
 surface. For small teal/blue text, use the corresponding semantic token.

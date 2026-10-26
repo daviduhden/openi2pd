@@ -16,7 +16,7 @@ Documents project documentation.
 |---|---|---|---|---|
 | Documentation | https://github.com/PurpleI2P/i2pd_docs_en | default (`master`) | `30ddc4c7c74e055fc858ecff3ae6f69d1a73ab5e` | `docs/` (upstream files; fork reports coexist) |
 | Tools | https://github.com/PurpleI2P/i2pd-tools | default (`master`) | `ca7ece8da86aa80b58fce6fa64375bfd75cbf843` | `tools/` |
-| Router source | https://github.com/PurpleI2P/i2pd | `openssl` | reviewed through `9725b8b227293a796c069ac270fa6b5b47cf9a13` | existing main tree; selective adaptation, no bulk import |
+| Router source | https://github.com/PurpleI2P/i2pd | `openssl` | reviewed through `5bcf6101a456dc991e44d3d79cb69994c7bae484` | existing main tree; selective adaptation, no bulk import |
 
 ## Reviewed router-source commits (2026-10-18/19/20 UTC)
 
@@ -290,12 +290,14 @@ git diff --check -- docs contrib/upstream
 
 ## Post-high-water verification (2026-10-21)
 
-A fresh read-only `git ls-remote` and clone check on 2026-10-21 confirms that
-`9725b8b227293a796c069ac270fa6b5b47cf9a13` is still the `openssl` branch tip.
-`git rev-list --all --not 9725b8b2 --count` is **0**; there is no later commit,
-merge or tag to classify. The six commits in `de32c8c3..9725b8b2` remain the
-complete continuation table above; no upstream file was copied wholesale and
-no merge/cherry-pick was used.
+A fresh read-only `git ls-remote` and clone check on 2026-10-21 confirmed that
+`9725b8b227293a796c069ac270fa6b5b47cf9a13` was the `openssl` branch tip at
+that time; the continuation section above supersedes this historical claim.
+`git rev-list --all --not 9725b8b2 --count` was **0** at that time; fifteen
+further commits now exist up to `5bcf6101` and are classified in the
+continuation section above. The six commits in `de32c8c3..9725b8b2` remain the
+first continuation table; no upstream file was copied wholesale and no
+merge/cherry-pick was used.
 
 The verification pass closed fork-side integration gaps exposed by that
 continuation:
@@ -317,3 +319,45 @@ continuation:
 
 These are static-only changes pending manual CI compilation/tests; no new
 upstream commit or dynamic interoperability evidence is claimed.
+
+
+## Continuation 9725b8b2..5bcf6101 (2026-10-21..24 UTC)
+
+A fresh `git ls-remote https://github.com/PurpleI2P/i2pd refs/heads/openssl`
+returns `5bcf6101a456dc991e44d3d79cb69994c7bae484`. `9725b8b2` is no longer
+the tip: 15 commits are in the continuation. The range touches only seven
+files (`Makefile.linux`, a Debian UPnP patch, `libi2pd/Signature.cpp` and the
+`libi2pd_client/Torrents*` files); no SSU2/NTCP2/I2NP/netDb/Garlic change,
+dependency-floor change, web-console restoration or bulk import is involved.
+`git diff --stat 9725b8b2..5bcf6101` is 7 files, +128/-43. All rows below are
+static dispositions; no workflow was dispatched.
+
+| SHA | Subject | Disposition |
+|---|---|---|
+| `b31431ba` | check DSA signing result instead of dereferencing NULL signature | **Equivalent (fork stronger).** `Signature.cpp` already checks `MDCtxPtr`, `EVP_DigestSignInit`/`EVP_DigestSign`, DER decode, `r`/`s`, and zeroes the signature on every failure; the LibreSSL `DSA_do_sign` NULL path is guarded too. No hunk applied. |
+| `b77073bf` | Merge PR #2606 | **Merge-only**; disposition carried by `b31431ba`. |
+| `05d05ff6` | eliminate extra copy of block to send | **Integrated with adaptation.** `SendPieceMsg` now builds the 13-byte header in `std::array` and passes a header/payload buffer pair to `SendBuffer`, which copies once synchronously before `Stream::Send` posts the owning buffer. The caller's `Piece::CopyBlock` vector therefore still outlives only the call, as before. `m_NumPieces` and the completion/abort handler are unchanged; `PIECE_MSG_LENGTH` added. |
+| `1a5c0bde` | handle cancel msg | **Integrated with fork divergence.** Added BEP 3 message id 8 and exact 12-byte parser; removes only a queued request and does not interrupt an in-flight send. Unlike upstream, the reject is gated on `m_IsFast` to preserve BEP 6 behavior. |
+| `18a73d64` | send not interested when complete | **Integrated.** Added `PeerConnection::TorrentComplete()`: close seeds, reset stats, release outgoing requests and send *not interested* to remaining peers; the tunnel completion closure now calls it. |
+| `e7660d0b` | not interested only if peer doesn't have more pieces | **Integrated.** `GetNextBlockToRequest` now checks `HasIncompletePieces(m_RemoteBitfield)`; choke and remote-not-interested handlers clear the corresponding rate. The fork's epoch-based `ReleaseOutgoingRequests()` remains the request-accounting implementation. |
+| `c87decbe` | set datagram tracker port to 6969 if omitted | **Integrated with a deliberate difference.** Added `DATAGRAM_TRACKER_DEFAULT_PORT` and applies it at both datagram send/connect use sites. The stored tracker URL is not rewritten, because `IsTorrentTracker` compares the exact `URL::to_string()` identity against the torrent announce. |
+| `bb302d89` | set filesystem error if can't create directories/part files | **Integrated with fork adaptation.** Added `eTorrentErrorFilesystem` and `"Filesystem error"`, made `Torrent::m_Error` atomic because `InitTorrentFiles` runs on the disk worker, and now checks `CreateAndReserveFile` failure (which also covers missing directories) without ever falling back to parent filesystem IO, and the initial tracker announce moved behind `InitTorrentFiles` on the disk worker so a torrent whose files could not be created is never announced as a live peer. A freshly created part file still does not mark its file `present`. The fork goes further than upstream: the add-time disk job and its announce continuation carry a `weak_from_this()` owner reference instead of raw `this`, every announce path (initial, periodic, start, reannounce) skips a torrent with a non-zero error, and a later verified piece write clears `eTorrentErrorFilesystem` so a transient preparation failure is not permanent. `TorrentErrorStr` stays English. |
+| `a646ac2c` | check if received block was applied | **Integrated (security/memory).** `Piece::BlockReceived` now returns true only for a newly applied block; `HandlePieceMsg` gates completion/hash/save and download accounting on that result. This prevents duplicate/unsolicited blocks on a complete piece from forcing a re-hash, disk rewrite or invalidation. The fork's stricter alignment/length checks are retained. |
+| `e64e5109` | close torrent's files on stop | **Integrated.** The existing disk-service resume post now closes every `TorrentFile` before `SaveTorrentResumeFile`; it captures the strong `shared_ptr<Torrent>` and never raw `this`. Payload/SAF handles are released on stop rather than waiting for the 90-second inactivity sweep. |
+| `5bcf6101` | reset piece if not able to save | **Equivalent (fork stronger).** `Piece::Dump` already returns `bool`, refuses unverified writes and the caller invalidates the piece on failure. Only the small `m_UploadRate = 0` reset on remote *not interested* was adopted. |
+| `14261bb7` | fix Makefile.linux logic | **Omitted: no GNU make.** `Makefile.linux` does not exist; GCC 13/Clang 17 are hard floors. Boost.JSON/URL, `NO_TORRENTS`, static-Boost discovery and atomics are already modelled in CMake, which fails configure instead of silently disabling torrents. Do not import the compiler-version heuristic. |
+| `b1a30e99` | fix UPnP patch | **Omitted: obsolete packaging path.** `debian/patches/` was deliberately removed; CMake `WITH_UPNP` defaults ON and every maintained package supplies MiniUPnPc. `daemon/UPnP.cpp` and `FindMiniUPnPc.cmake` did not change in this window and already exceed the legacy patch. |
+| `20e30320` | Merge PR #2610 | **Merge-only**; no independent tree change. |
+| `597ef7a5` | Merge PR #2609 | **Merge-only**; no independent tree change. |
+
+Fork guards retained in the adapted torrent paths: private-swarm/DHT/PEX
+suppression, `IsStopped()`/`IsRemoved()` checks, pending-write withholding,
+worker-mediated storage authority, bounded queues and the no-fallback rule for
+isolated/SAF payload storage. The web console, browser RPC assets, GNU make and
+the Debian quilt series remain absent. `b31431ba` confirms that a provider
+without DSA can return a null signature; openi2pd already fails closed there,
+but `Signer::Sign` remains `void` and all-zero publication is still a tracked
+future interface change rather than a validated fix.
+
+The old "post-high-water verification (2026-10-21)" section below is retained
+as history. Its tip claim is superseded by this continuation.

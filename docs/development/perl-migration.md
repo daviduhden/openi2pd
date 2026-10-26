@@ -23,7 +23,7 @@ excluded.
 
 | Original | Consumer(s) | Perl replacement | Install/validation |
 |---|---|---|---|
-| `tools/scripts/i2pdctl` (Python 3, shebang) | `tools/CMakeLists.txt`; `docs/tools/README.md`; `docs/tools/i2pdctl.md`; `contrib/upstream/tools-files.txt` | `tools/scripts/i2pdctl` (Perl 5) | `tools/CMakeLists.txt` installs the Perl file; `perl -c` and `tools/tests/i2pdctl.t` prepare regression coverage |
+| `tools/scripts/i2pdctl` (Python 3, shebang) | `tools/CMakeLists.txt`; `docs/tools/README.md`; `docs/tools/i2pdctl.md` | `tools/scripts/i2pdctl` (Perl 5) | `tools/CMakeLists.txt` installs the Perl file; `perl -c` and `tools/tests/i2pdctl.t` prepare regression coverage. The Perl rewrite is fork-owned and was removed from `contrib/upstream/tools-files.txt`. |
 
 No other project-maintained `.py` file or Python shebang was found. Generic
 references in `docs/Doxyfile` describe optional Doxygen language support and
@@ -36,17 +36,25 @@ invocation returns to a maintained build consumer.
 | Script | Role | CTest coverage |
 |---|---|---|
 | `tools/scripts/i2pdctl` | I2PControl client | syntax, `prove`, install layout, portability |
-| `tools/scripts/check-doc-links.pl` | offline Markdown link checker | syntax, `perl-doc-links`, portability |
+| `tools/scripts/check-doc-links.pl` | offline Markdown link checker | syntax, `perl-doc-links`, portability, negative fixture |
+| `tools/scripts/check-workflows.pl` | manual-only workflow and empty-CTest guard | syntax, `workflow-static`, `skills-static` |
+| `tools/scripts/check-doc-nav.pl` | MkDocs navigation/unlisted-page checker | syntax, `docs-nav-static`, portability |
 | `tools/scripts/validate-branding.pl` | static branding/palette validator | syntax, `prove` wrapper, portability |
 | `tools/tests/i2pdctl.t` | Test::More client/transport regressions | `perl-i2pdctl` |
 | `tools/tests/validate-branding.t` | Test::More branding wrapper | `perl-validate-branding` |
 | `tools/tests/perl-portability.t` | Python-free/core-module/permissions guard | `perl-portability` |
+| `tools/tests/maintenance-checkers.t` | negative fixtures for the link/nav/JNI checkers | `perl-maintenance-checkers` |
 | `tests/interop/check-vectors.pl` | static interoperability fixtures | syntax, `interop-static` |
-| `android/tools/check-android-locales.pl` | compile-free four-locale parity guard | syntax, Android workflow |
+| `android/tools/check-android-locales.pl` | compile-free four-locale parity guard | syntax, `android-locale-policy` |
+| `android/tools/check-android-jni-symbols.pl` | Java/header/C++ JNI parity guard | syntax, `android-jni-symbols-static`, negative fixture |
+| `i18n/check-i18n-catalogs.pl` | native catalog key/placeholder/plural contract | syntax, `i18n-static` |
 
-All imports are core modules. The portability test also rejects `system`,
-`exec`, `qx`, string `eval`, insecure temporary-name helpers and a
-world-writable `chmod` in maintained Perl files.
+All required imports are core modules; `IO::Socket::SSL` is an optional runtime
+enhancement for `i2pdctl` and the documented `openssl s_client` fallback is
+used when it is absent. The portability test also rejects `system`, `exec`,
+`qx`, string `eval`, insecure temporary-name helpers and a world-writable
+`chmod` in maintained Perl files. The scripts declare a Perl 5.16 floor; the
+OpenBSD base interpreter is newer.
 
 ## Behaviour preserved
 
@@ -101,10 +109,14 @@ world-writable `chmod` in maintained Perl files.
 ```sh
 perl -c tools/scripts/i2pdctl
 perl -c tools/scripts/check-doc-links.pl
+perl -c tools/scripts/check-doc-nav.pl
 perl -c tools/scripts/validate-branding.pl
 perl -c tests/interop/check-vectors.pl
 perl -c android/tools/check-android-locales.pl
+perl -c android/tools/check-android-jni-symbols.pl
+perl -c i18n/check-i18n-catalogs.pl
 prove -v tools/tests/i2pdctl.t
+prove -v tools/tests/maintenance-checkers.t
 I2PDCTL_TLS_BACKEND=openssl prove -v tools/tests/i2pdctl.t
 prove -v tools/tests/validate-branding.t
 prove -v tools/tests/perl-portability.t
@@ -122,8 +134,10 @@ stderr and the no-cleartext refusal are covered deterministically without a
 network. A live TLS exchange against a real i2pd I2PControl endpoint (Linux and
 OpenBSD/LibreSSL) remains the required dynamic validation.
 
-CMake registers the Perl syntax, portability, branding and install-layout
-checks when Perl is available. `perl-i2pdctl` runs through `prove` when that
+CMake registers the Perl syntax, portability, branding, maintenance-checker
+and install-layout checks when Perl is available and `I2PD_BUILD_TOOLS=ON`
+(the default). A `BUILD_TESTING` configuration without Perl keeps the native
+tests but skips these optional static guards. `perl-i2pdctl` runs through `prove` when that
 wrapper exists and directly runs the TAP file otherwise.
 The registered names include `perl-i2pdctl-syntax`, the other
 `perl-syntax-*` targets, `perl-i2pdctl`, `perl-portability`,
@@ -134,6 +148,10 @@ Test::More. `perl-install-layout` installs only the `Tools` component into a
 private prefix and verifies every declared native tool, the executable mode,
 portable shebang and `perl -c` syntax of the installed `i2pdctl`, and the
 installed `LICENSE.i2pd-tools` notice.
+The OpenBSD port builds with `I2PD_BUILD_TOOLS=OFF` and therefore ships neither
+the native tools nor `i2pdctl`; install the client from the Debian/RPM package
+or run it from a checkout there.
+
 `.perlcriticrc` is a non-blocking optional profile. Set
 `-DI2PD_PERL_CRITIC=ON` to register the opt-in `perl-critic` CTest target when
 `perlcritic` is installed; it is not a required dependency and no CPAN module

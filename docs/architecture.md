@@ -24,6 +24,7 @@ every component has been validated dynamically.
 | Daemon | `daemon/` | Lifecycle, configuration, signals, I2PControl, UPnP, local TUI IPC | `i2pd` executable |
 | Diagnostics UI | `tui/` | ncursesw (Unix) or Win32/VT (Windows) client, no router state ownership | `i2pd-tui` executable |
 | Tests | `tests/` | Parsing, encoding and crypto vectors | CTest |
+| Privilege separation | `privsep/` | Supervisor/worker channels, message registry, capability policy and platform sandboxes | internal `i2pd_privsep` archive, installed headers |
 | Build | `build/CMakeLists.txt`, `Makefile` | CMake build graph, POSIX make front-end | packagers |
 
 Dependency direction after the change:
@@ -92,9 +93,10 @@ peer policy differ per platform. See
   and `i2p::tui` protocol in `libi2pd/TuiProtocol.h`. The server is a separate
   thread with a bounded request accumulator, per-connection timeouts, peer UID
   checks, 0600 socket permissions, bounded read-only snapshots, explicitly
-  authorized torrent control operations and two operation-specific router
-  writes (transit acceptance and daemon log level). There is still no generic
-  configuration writer or command queue.
+  authorized torrent control operations and a typed, daemon-owned
+  administration queue (capacity 8) for router, tunnel and address-book
+  operations. There is still no generic configuration writer or arbitrary
+  command execution.
 - **ncurses client**: `tui/main.cpp` and `tui/TuiClient.cpp`, target
   `i2pd-tui`, optional at configure time; includes native torrent status,
   details and administrative actions over the local IPC.
@@ -140,3 +142,9 @@ peer policy differ per platform. See
   without a protocol change and was intentionally deferred.
 - Public headers expose global state; ABI stability was preserved rather than
   redesigned.
+
+## See also
+
+- [privilege separation](security/privilege-separation.md)
+- [architecture](torrent/architecture.md)
+- [build system](build-system.md)

@@ -15,14 +15,14 @@ Encrypted LeaseSet2 Configuration
 
 Encrypted LeaseSets are supported only for server tunnels (types: `server`, `http`, `irc`). Client tunnels cannot publish them.
 
-### To enable Encrypted LeaseSet2:
+## To enable Encrypted LeaseSet2:
 
 - Signature type must be Red25519 (`signatureType=11`)
 - Set the I2CP parameter `i2cp.leaseSetType=5` in the tunnel section.
 
 Once the tunnel starts, openi2pd automatically generates blinded keys, encrypts the LeaseSet, and publishes it as an Encrypted LeaseSet2.
 
-### Example (No Authentication)
+## Example (No Authentication)
 
 Add this to your `~/.i2pd/tunnels.conf`:
 
@@ -41,7 +41,7 @@ Save the file and reload the tunnel configuration (`kill -HUP $(cat ~/.i2pd/i2pd
 Note: To access it, you need the b33 address.
 Run `keyinfo -b encrypted.dat` to print the blinded b33 address, or inspect the local destinations in the `i2pd-tui` NetDb view.
 
-### Adding Client Authentication
+## Adding Client Authentication
 
 base parameters:
 
