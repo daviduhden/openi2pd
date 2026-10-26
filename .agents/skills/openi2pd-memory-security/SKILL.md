@@ -374,6 +374,12 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
   `uint8_t` NACK counter wrapped before its `>= 256` guard and could bypass the
   saved-packet cap (`SEC-033`, `libi2pd/Streaming.cpp`).
 
+
+- Open review items `SEC-034` (FS empty-identity/private-file TOCTOU, LeaseSet
+  DH/PSK cleanup) and `CONC-029` (trusted-router vector race, Windows core-side
+  error send, blocking console connect) are documented but not fixed. Do not
+  treat them as resolved when adding a new caller.
+
 ## Do not
 
 - Do not compile, run CTest, sanitizers, fuzzers, Gradle or project validators

@@ -42,7 +42,7 @@ namespace fs
 	 * h.Init(alphabet, 8); <- creates needed dirs, 8 is size of alphabet
 	 * h.Path("abcd");      <- returns /tmp/hs-test/name/ya/z-abcd.txt
 	 * h.Remove("abcd");    <- removes /tmp/hs-test/name/ya/z-abcd.txt, if it exists
-	 * std::vector<std::string> files;
+	 * std::vector&lt;std::string&gt; files;
 	 * h.Traverse(files);   <- finds all files in storage and saves in given vector
 	 */
 	class HashedStorage
@@ -94,7 +94,7 @@ namespace fs
 
 	/**
 	 * @brief Set datadir either from cmdline option or using autodetection
-	 * @param cmdline_datadir Value of cmdline parameter --datadir=<something>
+	 * @param cmdline_datadir Value of cmdline parameter --datadir=&lt;something&gt;
 	 * @param isService Value of cmdline parameter --service
 	 *
 	 * Examples of autodetected paths:
@@ -107,7 +107,7 @@ namespace fs
 
 	/**
 	 * @brief Set certsdir either from cmdline option or using autodetection
-	 * @param cmdline_certsdir Value of cmdline parameter --certsdir=<something>
+	 * @param cmdline_certsdir Value of cmdline parameter --certsdir=&lt;something&gt;
 	 *
 	 * Examples of autodetected paths:
 	 *

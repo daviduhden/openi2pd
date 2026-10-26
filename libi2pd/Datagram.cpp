@@ -299,6 +299,14 @@ namespace datagram
 	void DatagramDestination::HandleDatagram (uint16_t fromPort, uint16_t toPort, const uint8_t * buf, size_t len,
 		i2p::garlic::ECIESX25519AEADRatchetSession * from)
 	{
+		// Datagram1 authentication is two-sided and deliberately strict. A ratchet
+		// session that already proved the sender is accepted only when its static
+		// key is the one the cached LeaseSet advertises; otherwise the embedded
+		// identity's own signature over the payload is the only authority. A
+		// static-key mismatch is fatal rather than falling back to the signature,
+		// because then the LeaseSet and the live session disagree about who the
+		// peer is. A newly observed peer inherits the framing of this datagram;
+		// an existing session keeps its own outgoing version.
 		i2p::data::IdentityEx identity;
 		size_t identityLen = identity.FromBuffer (buf, len);
 		if (!identityLen) return;
@@ -697,6 +705,13 @@ namespace datagram
 
 	bool DatagramDestination::ResetRegistration (const ReceiverRegistration & registration)
 	{
+		// Teardown of one registration, identified by its token rather than by the
+		// map key: a replacement installed later under the same (protocol, port)
+		// must never be removed by the previous owner's reset. The registry entry
+		// is erased under its own mutex and the slot is then deactivated outside
+		// every registry lock; DeactivateAndWait() returns false when this runs
+		// inside a receiver callback, and the caller must not treat that as a
+		// destruction barrier or free the callback target on it.
 		auto identity = registration.m_Slot.lock ();
 		if (!identity) return true;
 		bool drained = false;
@@ -1126,6 +1141,13 @@ namespace datagram
 
 	std::shared_ptr<i2p::garlic::GarlicRoutingPath> DatagramSession::GetSharedRoutingPath ()
 	{
+		// Precondition: the caller holds m_Mutex (Ack(), FlushSendQueueLocked() and
+		// the recursive re-entry at the end of this function all do). The method
+		// mutates m_RemoteLeaseSet, m_RequestingLS, m_RoutingSession and
+		// m_PendingRoutingSessions, and it may rebuild the path once after a
+		// ratchet tag cleanup; holding the lock is what makes that re-entry safe.
+		// It also performs a netDb lookup and may start a LeaseSet request, so it
+		// must not be called while a tunnel or session lock is already held.
 		if (!m_RemoteLeaseSet || m_RemoteLeaseSet->IsExpired ())
 		{
 			m_RemoteLeaseSet = m_LocalDestination->FindLeaseSet (m_RemoteIdent);
@@ -1324,6 +1346,13 @@ namespace datagram
 
 	void DatagramSession::FlushSendQueueLocked (bool waitForLeaseSet)
 	{
+		// Drains the whole queue in one pass. V3 batches every queued clove into a
+		// single multi-message garlic payload; older framings wrap per message
+		// because those peers do not accept a multi-clove payload. Without a usable
+		// path the queue is dropped and counted in m_NumDroppedNoPath rather than
+		// retried forever; waitForLeaseSet only defers that decision while a
+		// LeaseSet request is genuinely outstanding (HandleLeaseSetUpdated then
+		// re-enters here). Called with m_Mutex held.
 		if (m_SendQueue.empty ()) return;
 		auto routingPath = GetSharedRoutingPath ();
 		if (!routingPath && waitForLeaseSet && m_RequestingLS) return; // defer to HandleLeaseSetUpdated

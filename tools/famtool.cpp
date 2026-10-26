@@ -242,7 +242,7 @@ static bool CreateFamilySignature (
 /// File roles differ per mode: `-k` is the PEM private key (the new key when
 /// generating, the signing key otherwise), `-c` the certificate (the new
 /// certificate when generating, the verification certificate otherwise);
-/// omitted paths default to `<family>.key`/`<family>.crt` when generating.
+/// omitted paths default to `&lt;family&gt;.key`/`&lt;family&gt;.crt` when generating.
 ///
 /// Generation writes both PEM objects in memory and installs them through the
 /// validated atomic helpers: the private key uses the core owner-only writer

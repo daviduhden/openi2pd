@@ -271,6 +271,12 @@ build.
   `docs/generated/source-api` before Doxygen. `WARN_AS_ERROR` turns a missing
   output directory into a job failure (`CE-003`).
 
+
+- Doxygen treats `<word>` in comments as an XML/HTML tag under
+  `WARN_AS_ERROR`. Escape placeholders as `&lt;...&gt;` (or avoid angle
+  brackets) in headers/protocol prose; comments-only edits can otherwise fail
+  the source-docs lane (CE-012).
+
 ## Do not
 
 - Do not configure, build, run CTest, `make`, Ninja, Gradle, sanitizers,

@@ -9,6 +9,14 @@
 # the foreground and writes its log to stdout for the companion svlogd
 # service; runsv owns restart and stop handling.
 #
+# Stop contract: stock runsv has no down-signal or timeout-kill file, so
+# `sv down`/`sv restart` send SIGTERM, which is the prompt ordered stop and
+# does not wait for the 600 s transit-tunnel drain. For the drain, send SIGINT
+# to the router PID and let it exit before stopping the service; `sv -w` only
+# bounds the client's wait. runsv restarts the process whenever the service is
+# still wanted, so a graceful exit is not a permanent stop. A start proves
+# only that this script executed the router, never readiness.
+#
 
 set -eu
 umask 077

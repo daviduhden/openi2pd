@@ -196,6 +196,12 @@ Ask for exact paths and package names. Do not let them run `dpkg-buildpackage`,
   [`docs/source-documentation.md`](../../../docs/source-documentation.md) and
   never claim readiness or validation the unit cannot provide.
 
+
+- `PKG-029` records that `debian/i2pd.tmpfiles` re-applies 0700 on every boot,
+  conflicting with the postinst promise that administrator directory modes
+  survive an upgrade. Do not describe modes as preserved until this is
+  reconciled and tested.
+
 ## Do not
 
 - Do not compile, build a package, run `lintian`, `autopkgtest`, `systemctl`,

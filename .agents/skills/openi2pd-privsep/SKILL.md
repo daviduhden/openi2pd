@@ -263,6 +263,11 @@ report that limitation; do not substitute local execution. Ask for:
   only. The Windows supervisor does not adopt a POSIX child, but the daemon
   includes the header for the worker-identity declarations.
 
+
+- `CONC-029` records that a core-side Windows channel refuses the `Send` used
+  for the attributable-fault `Error`. Do not assume a rejected peer always
+  receives a typed reply until the direction/ownership path is corrected.
+
 ## Do not
 
 - Do not compile, run CTest, sanitizers, process tests or project validators

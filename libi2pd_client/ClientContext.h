@@ -122,8 +122,8 @@ namespace client
 		// Server tunnels: the local destination in base32. Client tunnels: the
 		// configured destination list, comma separated.
 		std::string destination;
-		// Client tunnels: the bound 127.0.0.1:<port>. Server tunnels:
-		// i2p:<inport>, the port clients connect to.
+		// Client tunnels: the bound 127.0.0.1:&lt;port&gt;. Server tunnels:
+		// i2p:&lt;inport&gt;, the port clients connect to.
 		std::string localEndpoint;
 		// Client tunnels: the configured destination list. Server tunnels:
 		// the configured local host:port upstream.
@@ -132,7 +132,7 @@ namespace client
 	};
 
 	// Stable administrative service name: the configured `name=` value when
-	// set, the INI section name otherwise and `<type>://<endpoint>` as the last
+	// set, the INI section name otherwise and `&lt;type&gt;://&lt;endpoint&gt;` as the last
 	// fallback for a nameless section.
 	std::string MakeTunnelServiceName (std::string_view configuredName, std::string_view sectionName,
 		std::string_view type, std::string_view endpoint);

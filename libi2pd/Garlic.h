@@ -306,7 +306,7 @@ namespace garlic
 		// for administrative views
 		virtual size_t GetNumOutgoingTags () const { return 0; };
 	};
-	//using GarlicRoutingSessionPtr = std::shared_ptr<GarlicRoutingSession>;
+	//using GarlicRoutingSessionPtr = std::shared_ptr&lt;GarlicRoutingSession&gt;;
 	typedef std::shared_ptr<GarlicRoutingSession> GarlicRoutingSessionPtr; // TODO: replace to using after switch to 4.8
 
 	/// Outbound ElGamal/AES+SessionTag session for one remote destination.

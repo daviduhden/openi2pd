@@ -1641,3 +1641,32 @@ bounded and keeps the same common-name contract. BUILD-022 tracks the pass.
 Exit criteria: a new manual dispatch reports no warning from first-party
 sources in Linux/OpenBSD/Windows/Android/OpenSSL 4 and fuzz builds. This is
 not yet demonstrated; the changes remain Pending CI compilation.
+
+## Source documentation continuation (2026-10-27, static)
+
+A second documentation pass covered the implementation-level core runtime,
+crypto/persistence, Windows/OpenBSD IPC, terminal protocol, remaining Android
+screens/receivers, systemd/runit/s6/OpenBSD port/Debian scripts and remaining
+C++ tools. Comments state ownership, locking, bounds, trust boundaries and
+failure behavior; no code changed. Findings are tracked in CONC-029, SEC-034,
+TUI-014, ANDROID-036, TOOL-019 and PKG-029; DOCS-013 remains the coverage
+umbrella.
+
+Exit criteria: the manual source-docs lane generates Doxygen/Javadoc with
+warnings as errors, the remaining files are reviewed, and the tracked findings
+are fixed with regressions or explicitly accepted. No local generator,
+compiler, CMake, CTest, Gradle or package validation exists for this pass.
+
+## Second CI compile/warning continuation (2026-10-27, static)
+
+The `b8c6473e` dispatch exposed a second layer: const-correct X509 access,
+one unqualified tool helper, a `string_view`/`string` copy-initialization in
+JNI, Doxygen placeholder tags, SOCKS override/unused-field warnings, a DHT
+sign-compare and Boost.Asio endpoint formatting reaching `strcat` on OpenBSD.
+All were corrected locally (CE-009..CE-013, BUILD-023); the generic `LogPrint`
+now routes Asio addresses/endpoints through the safe formatters.
+
+Exit criteria: the next manual Linux/OpenSSL/Windows/OpenBSD/Android/fuzz/
+packaging dispatch compiles and the source-docs lane emits no unsupported-tag
+warning. No local compiler, CMake, CTest, Gradle, Doxygen or package evidence
+exists for this revision.

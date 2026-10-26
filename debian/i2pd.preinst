@@ -9,6 +9,12 @@
 # have created a real directory there. Move it aside before dpkg unpacks the
 # symlink so an upgrade neither fails nor loses locally added certificates.
 #
+# The move happens before unpack and is not reverted: if the upgrade later
+# aborts, the directory stays at the .dpkg-old name and the administrator moves
+# it back after inspecting it. A rename inside /var/lib/i2pd is atomic, so an
+# interrupted upgrade cannot leave a half-moved certificate tree. Only install
+# and upgrade are handled; remove and purge never touch the directory.
+#
 
 set -e
 

@@ -10,7 +10,10 @@
 #
 # Companion files in this directory: down-signal (INT, the graceful drain),
 # timeout-kill (660000 ms before SIGKILL) and timeout-finish (10000 ms for the
-# finish script). No readiness file is shipped, so s6-svc -u returns before the
+# finish script). The kill window is the 600 s transit-tunnel drain plus a 60 s
+# margin for the ordered stop; `s6-svc -d` only requests the down transition,
+# so wait with `s6-svwait -d` or `s6-svstat` before assuming the router stopped.
+# No readiness file is shipped, so s6-svc -u returns before the
 # router has joined the network. This script must start as root because it
 # creates directories and changes user; everything after s6-setuidgid runs as
 # i2pd. Logging goes to syslog, so no log directory or redirect is needed. The

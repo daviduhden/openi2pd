@@ -56,7 +56,7 @@ namespace torrents
 	std::optional<NodeID> Bucket::GetMiddleID () const
 	{
 		const int bit = std::max (start.FindLowestBit (), next ? next->start.FindLowestBit () : -1) + 1;
-		if (bit < 0 || bit >= NodeID::len * 8) return { };
+		if (bit < 0 || bit >= static_cast<int> (NodeID::len * 8)) return { };
 		NodeID middleID = start;
 		middleID[bit >> 3] |= (0x80 >> (bit & 0x07));
 		return { middleID };
@@ -65,7 +65,7 @@ namespace torrents
 	NodeID Bucket::GetRandomID (std::mt19937 & rng) const
 	{
 		const int bit = std::max (start.FindLowestBit (), next ? next->start.FindLowestBit () : -1) + 1;
-		if (bit < 0 || bit >= NodeID::len * 8) return start;
+		if (bit < 0 || bit >= static_cast<int> (NodeID::len * 8)) return start;
 
 		NodeID randomID;
 		auto d = div (bit, 8);

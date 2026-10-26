@@ -223,6 +223,13 @@ public record RouterRunState(Phase phase, long gracefulDeadlineEpochMs, long gen
      * Write the complete record, including the legacy {@code should_run}
      * mirror, into {@code editor}. The caller applies or commits exactly once;
      * {@link RouterService} uses {@code apply()}.
+     *
+     * <p>This method does not read back, compare generations or serialize
+     * anything: it is the caller's job to hold one writer. Some service
+     * transitions still read the persisted record outside the write lock, so
+     * two concurrent transitions can lose an update; that stale-state gap is
+     * tracked as ANDROID-033, and the record type deliberately does not pretend
+     * to solve it.</p>
      */
     public void save(SharedPreferences.Editor editor) {
         if (editor == null) {

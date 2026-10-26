@@ -130,6 +130,11 @@ namespace tunnel
 		}
 
 		// decrypt real records
+		// Peeling order is the reverse of the send order: the last real hop's
+		// record is decrypted by every earlier hop, so walking from last-1 to the
+		// first and decrypting each later record leaves the last hop able to read
+		// its own record. The phony record is removed only after this pass: it must
+		// still occupy its shuffled slot while the layers are applied.
 		hop = m_Config->GetLastHop ()->prev;
 		while (hop)
 		{
@@ -188,6 +193,12 @@ namespace tunnel
 
 	bool Tunnel::HandleTunnelBuildResponse (uint8_t * msg, size_t len)
 	{
+		// Records were layered in hop order (each creator hop decrypts the records
+		// after it, see Build()), so the reply is peeled in reverse: the last hop's
+		// record is decrypted first, then the records belonging to the hops before
+		// it. The advertised record count and the exact length are checked against
+		// what Build() sent, because decrypting a reply of a different size would
+		// use the wrong offsets and could accept a forged status byte.
 		if (!msg || !len)
 		{
 			LogPrint (eLogError, "Tunnel: Empty TunnelBuildResponse");
@@ -789,6 +800,14 @@ namespace tunnel
 
 	void Tunnels::Run ()
 	{
+		// Single worker thread: every tunnel/pool map mutation for this manager
+		// happens here (transit tunnels are added from the TBM thread through
+		// AddTransitTunnel, which takes the same locks). One queue drain is
+		// processed in arrival order, with two optimisations that are load-bearing:
+		// consecutive messages for the same tunnel reuse the previous lookup, and
+		// the per-tunnel outbound buffer is flushed before switching to another
+		// tunnel, so a batch keeps its ordering on the wire. A drain keeps pulling
+		// until MAX_TUNNEL_MSGS_BATCH_SIZE to avoid re-entering Wait() per message.
 		i2p::util::SetThreadName ("Tunnels");
 		std::this_thread::sleep_for (std::chrono::seconds (1)); // wait for other parts are ready
 
@@ -1093,6 +1112,14 @@ namespace tunnel
 
 	void Tunnels::ManageOutboundTunnels (uint64_t ts, std::vector<std::shared_ptr<Tunnel>> & toRecreate)
 	{
+		// The list is snapshotted under m_TunnelsMutex and mutated afterwards,
+		// because TunnelExpired()/AcceptsOutboundLength() reach into the owning pool
+		// and must not run under the tunnel map lock. Recreation is queued rather
+		// than started here so ManageTunnels() can shuffle the batch; only tunnels
+		// whose hop count still matches a possibly reconfigured pool are recreated,
+		// so an old-shape tunnel is allowed to expire instead of being replaced by
+		// another old shape. The tunnel is marked expiring before its last few
+		// minutes, which is what removes it from selection.
 		size_t numEstablishedOutboundTunnels = 0;
 		std::vector<std::shared_ptr<OutboundTunnel>> snapshot;
 		{

@@ -1154,7 +1154,7 @@ void FinalizeTorrent (TorrentRow & row)
 	if (row.eta && !*row.eta) row.eta.reset ();
 }
 
-/// @brief Rebuild torrent rows from a flat `torrent.<index>.<field>` snapshot.
+/// @brief Rebuild torrent rows from a flat `torrent.&lt;index&gt;.&lt;field&gt;` snapshot.
 ///
 /// The daemon replies with one key per field, not with records, so decoding is
 /// a fold over an ordered map: unknown prefixes and unknown fields are ignored

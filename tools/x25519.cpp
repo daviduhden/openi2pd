@@ -69,6 +69,15 @@ int main (int argc, char * argv[])
 	std::array<uint8_t, KEYSIZE> privateKey { };
 	keys.GetPrivateKey (privateKey.data ());
 
+	// Output contract: `PublicKey:` is safe to publish and belongs in
+	// `i2cp.leaseSetClient.dh.210`; `PrivateKey:` is the client credential for
+	// `i2cp.leaseSetPrivKey` and is printed deliberately, only to stdout, so an
+	// operator can capture it. Redirect it into an owner-only file instead of
+	// leaving it in a terminal scrollback, and never log or paste it elsewhere.
+	// Both are I2P base64 of the raw 32-byte values, not PEM. The local copy and
+	// its base64 rendering are cleansed below; the public bytes are not secret.
+	// Exit status is 0 for help or a generated pair and 1 for an extra operand,
+	// an unknown option (reported on stderr) or a key generation failure.
 	auto b64Public = i2p::data::ByteStreamToBase64 (std::span<const uint8_t> (keys.GetPublicKey (), KEYSIZE));
 	std::cout << "PublicKey: " << b64Public;
 

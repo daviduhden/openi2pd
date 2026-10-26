@@ -60,6 +60,19 @@ struct Options
 	bool multiple = false;
 };
 
+/**
+ * Shared result of one search generation.
+ *
+ * `found` is the stop signal, not only a result: a worker that matches sets it
+ * with `exchange`, and only the first winner (the one that observes `false`)
+ * publishes `nonce`, `address` and `keyId`. The other atomics are progress
+ * counters, so they are read without the mutex. `address`/`keyId` are written
+ * and read under `mutex`; the main thread reads them only after joining every
+ * worker, so the lock there is for a later reuse of the same state object
+ * rather than for the join itself. `failed` is set by a worker that caught an
+ * exception and also stops the other workers; it always wins over a reported
+ * match.
+ */
 struct SearchState
 {
 	std::atomic<bool> found { false };
@@ -470,6 +483,16 @@ Outcome RunSearch (Options & options, std::string_view prefix, const std::regex 
 	// exists() would treat as free and then follow on write. A missing
 	// output path is the normal case: clear ENOENT instead of treating it
 	// as an inspection failure.
+	//
+	// Collision policy: an occupied name advances to the next `PREFIX&lt;N&gt;.dat`
+	// for the rest of the run (foundKeys is never reset), so multiple-address
+	// mode cannot overwrite an earlier match or an operator file. With no `-o`
+	// the stored prefix is empty, so the fallback name is `&lt;N&gt;.dat` rather than
+	// `&lt;address&gt;&lt;N&gt;.dat`. The probe is
+	// advisory: it does not reserve the name, the file is created later by the
+	// atomic writer, and a directory this user cannot write or a non-regular
+	// leaf is rejected there rather than silently replaced. Run the tool in a
+	// directory no other user can create names in.
 	for (;;)
 	{
 		const auto status = std::filesystem::symlink_status (options.outputpath, ec);
@@ -581,6 +604,14 @@ ParseResult ParseArguments (int argc, char ** argv, Options & options)
 
 int main (int argc, char * argv[])
 {
+	// Exit status: 0 for help and for a written key; 1 for every rejected
+	// argument, unsupported signature type, invalid regular expression,
+	// thread-start, path-inspection or write failure. With no operands the usage
+	// text goes to stdout and the status is 0; that differs from the other key
+	// tools, which treat a missing operand as a usage error on stderr with status
+	// 1. Option and pattern errors use stderr so stdout stays limited to progress
+	// and result lines, with one historical exception: the "not correct
+	// prefix" diagnostic for a non-base32 pattern is still printed to stdout.
 	if (argc < 2)
 	{
 		usage ();

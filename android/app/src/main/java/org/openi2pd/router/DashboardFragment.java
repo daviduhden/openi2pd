@@ -37,6 +37,19 @@ import com.google.android.material.progressindicator.LinearProgressIndicator;
 /**
  * Router overview. Every control is enabled from the published snapshot and
  * destructive actions require confirmation.
+ *
+ * <p>Display-only: this screen never calls JNI, binds the service or owns a
+ * native handle. Start, stop, restart and graceful stop are forwarded to the
+ * {@link RouterViewModel} that owns the worker hop, and a refused command is
+ * reported by that path rather than here.</p>
+ *
+ * <p><b>Threading.</b> Every method below runs on the main thread. The snapshot
+ * is consumed from a {@code LiveData} observer registered with
+ * {@code getViewLifecycleOwner()}, so it stops arriving when the view is
+ * destroyed; {@link #render} still re-checks {@code isAdded()} because it is
+ * also called once from {@code onViewCreated} with a {@code null} snapshot.
+ * Inflation, formatting and dialog construction all happen on that same
+ * thread; the class keeps no cache beyond the one snapshot reference.</p>
  */
 public class DashboardFragment extends Fragment {
     private RouterViewModel viewModel;
@@ -155,8 +168,28 @@ public class DashboardFragment extends Fragment {
         viewModel.getSnapshot().observe(getViewLifecycleOwner(), this::render);
     }
 
+    /**
+     * Last snapshot handed to {@link #render}, kept only so the graceful button
+     * can choose between "begin" and "cancel". Main thread only; a stale value
+     * cannot start work because every command still goes through the service
+     * and is re-validated there.
+     */
     private RouterSnapshot lastSnapshot;
 
+    /**
+     * Apply one published snapshot to the views.
+     *
+     * <p>Runs on the main thread from the {@code LiveData} observer and once
+     * with {@code null} before the first publish. {@code null} and a snapshot
+     * without live metrics both render the "unknown" placeholders, because the
+     * zero-initialised counters of {@link RouterSnapshot#empty} are not observed
+     * values. Text is written through {@code UiFormat.setTextIfChanged} so a
+     * repeated poll with identical values does not invalidate the layout.</p>
+     *
+     * <p>Only presentation is derived here: which buttons the operator may press
+     * is recomputed from the snapshot on every call, and the actual start/stop
+     * decision stays in {@link RouterService}.</p>
+     */
     private void render(@Nullable RouterSnapshot snapshot) {
         lastSnapshot = snapshot;
         if (!isAdded()) {
@@ -223,6 +256,14 @@ public class DashboardFragment extends Fragment {
         buttonGraceful.setEnabled(gracefulActive || UiFormat.canGraceful(snapshot));
     }
 
+    /**
+     * Show the confirmation dialog for a destructive command.
+     *
+     * <p>The {@code action} runs on the main thread only after the positive
+     * button is pressed; cancelling the dialog or dismissing it leaves the
+     * service untouched. The lambda captures the fragment, so it must stay a
+     * short-lived dialog callback and never outlive the view.</p>
+     */
     private void confirm(@StringRes int title, @StringRes int message, @StringRes int positive,
             @NonNull Runnable action) {
         new MaterialAlertDialogBuilder(requireContext())

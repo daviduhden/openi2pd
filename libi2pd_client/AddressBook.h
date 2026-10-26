@@ -13,7 +13,7 @@
  * thread may list, add and remove; the destination's io_context reloads them.
  *
  * A source may retract a name it created with the Java advanced hosts.txt form
- * "<name>=<destination>#!action=delete". To honour that without letting a feed
+ * "&lt;name&gt;=&lt;destination&gt;#!action=delete". To honour that without letting a feed
  * delete a locally curated name, the book records which subscription first
  * supplied each entry. The legacy "name,destination" index columns are kept
  * byte-compatible, so the origin is persisted in a separate "entry-sources.txt"
@@ -64,7 +64,7 @@ namespace client
 	const size_t B33_ADDRESS_THRESHOLD = 52; // characters
 	// A 32-byte destination hash is 52 base32 characters. A final ".i2p" label
 	// of exactly that length is rejected so a name cannot imitate the
-	// "<hash>.b32.i2p" form.
+	// "&lt;hash&gt;.b32.i2p" form.
 	const size_t B32_HASH_LABEL_LENGTH = 52;
 	// A b33 label of a 32-byte key is 56 base32 characters. The parser rejects
 	// any non-canonical encoding, so this bound only stops an oversized label
@@ -123,7 +123,7 @@ namespace client
 	// may not contain a doubled hyphen (the IDNA "xn--" prefix position is
 	// reserved, and no I2P name needs one) and the final label may not be
 	// exactly 52 base32 characters: that is the length of a base32 destination
-	// hash and would let a name imitate the "<hash>.b32.i2p" form.
+	// hash and would let a name imitate the "&lt;hash&gt;.b32.i2p" form.
 	bool IsValidHostName (std::string_view name);
 
 	// Subscription sources are fetched through the I2P HTTP client, so the
@@ -297,7 +297,7 @@ namespace client
 		void Stop ();
 		/// Resolve a name or destination for a local caller (proxy, tunnel or
 		/// destination). Three input forms are accepted: a base32
-		/// `<hash>.b32.i2p` label, an `.i2p`/`.b33.i2p` host name, and a full
+		/// `&lt;hash&gt;.b32.i2p` label, an `.i2p`/`.b33.i2p` host name, and a full
 		/// base64 destination. A `.i2p.alt` suffix is treated as a lookup-only
 		/// alias for `.i2p`.
 		/// A b32/b33 result is decoded locally and succeeds without any network

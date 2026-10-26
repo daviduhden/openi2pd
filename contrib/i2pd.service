@@ -18,6 +18,8 @@ StartLimitIntervalSec=300
 StartLimitBurst=5
 
 [Service]
+# The exec service type reports success once the packaged argv was executed; it is not a
+# readiness or network-join signal and no notification socket is configured.
 Type=exec
 User=i2pd
 Group=i2pd
@@ -54,6 +56,11 @@ KillSignal=SIGINT
 KillMode=mixed
 TimeoutStopSec=660
 SendSIGKILL=yes
+# A graceful ordered stop exits 0, so on-failure restarts a crash or a failed
+# start but not an operator stop. Restart/upgrade reuse KillSignal and
+# TimeoutStopSec below, so a `systemctl restart` and a package upgrade wait
+# for the same drain; StartLimitIntervalSec/StartLimitBurst in [Unit] bound
+# the retry rate.
 Restart=on-failure
 RestartSec=5s
 LimitNOFILE=8192

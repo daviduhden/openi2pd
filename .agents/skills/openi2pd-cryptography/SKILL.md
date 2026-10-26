@@ -164,6 +164,12 @@ executing project code, or inspect a real private key.
   instead; it preserves the common-name contract, NUL-terminates and rejects
   conversion failure. Do not reintroduce the deprecated call in Family/Reseed.
 
+
+- On OpenSSL 4/LibreSSL, `X509_NAME_get_entry` and
+  `X509_NAME_ENTRY_get_data` return const pointers. Keep the bounded
+  `GetX509NameTextByNID` helper const-correct; `ASN1_STRING_to_UTF8` already
+  takes a const ASN1 string.
+
 ## Do not
 
 - Do not compile, run CTest, sanitizers, fuzzers, Java peers or validators

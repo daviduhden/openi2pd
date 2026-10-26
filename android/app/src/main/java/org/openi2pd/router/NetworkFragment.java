@@ -31,6 +31,18 @@ import com.google.android.material.chip.Chip;
  * Network and client-service status. All values come from the service-owned
  * snapshot; missing values are rendered as an em dash instead of invented
  * state.
+ *
+ * <p>Read-only by construction: the only control asks the view model for a
+ * fresh poll, and no value on this screen starts, stops or reconfigures a
+ * service. Addresses, transport names and service flags are copied from the
+ * native snapshot into display strings; the host text is treated as opaque and
+ * is never resolved, opened or interpreted here.</p>
+ *
+ * <p>Runs on the main thread. The observer uses {@code getViewLifecycleOwner()}
+ * so it stops at view destruction, and {@link #render} requires the attached
+ * view: it calls {@code requireContext()}. The address list is already bounded
+ * by {@link RouterStatusParser} (at most 32 entries), and each family is
+ * rendered from that bounded list rather than from a live query.</p>
  */
 public class NetworkFragment extends Fragment {
     private RouterViewModel viewModel;
@@ -80,6 +92,16 @@ public class NetworkFragment extends Fragment {
         viewModel.getSnapshot().observe(getViewLifecycleOwner(), this::render);
     }
 
+    /**
+     * Render one snapshot, or the unknown placeholders for {@code null}.
+     *
+     * <p>Main thread, attached view only. {@code hasData} gates every metric so
+     * the zero-initialised defaults of a start-in-progress snapshot are shown as
+     * unknown rather than as "offline"/"no addresses"; the IPv4/IPv6 chips are
+     * additionally gated on the published address list being non-empty. A
+     * snapshot is display input only and never implies that a client service is
+     * actually reachable.</p>
+     */
     private void render(@Nullable RouterSnapshot snapshot) {
         Context context = requireContext();
         boolean hasData = UiFormat.hasLiveMetrics(snapshot);

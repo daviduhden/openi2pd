@@ -263,6 +263,10 @@ executor for blocking calls, deadlines and admission quotas.
   `docs/source-documentation.md`; a malformed Doxygen block, a `@param` that
   does not match the declaration or a generated-doc warning is a source defect,
   not a cosmetic issue.
+- A documentation-only pass verifies that every added/removed code line is a
+  comment or POD/prose, runs the owning compile-free checkers and records any
+  code/comment mismatch as a `TODO.md` finding. Fix code only for a clear,
+  bounded defect; do not smuggle functional changes into a comment pass.
 
 The review is mandatory; file edits are not. Do not generate cosmetic changes
 when the existing knowledge is still correct. If a new reusable procedure has
@@ -2352,6 +2356,15 @@ corrections. The load-bearing lessons are:
 - The source-docs lane must create the gitignored
   `docs/generated/source-api` before Doxygen; bare `shellcheck -s sh` treats a
   compatibility helper's SC2317/SC2329 as failure.
+
+The `b8c6473e` follow-up (`BUILD-023`, CE-009..CE-013) adds: the X509 helper
+must use const `X509_NAME_ENTRY`/`ASN1_STRING` accessors on OpenSSL 4/LibreSSL;
+`LoadPrivateKeys` is `i2p::tools::LoadPrivateKeys`; a `std::string_view`
+returned by `ReseedPhaseToken` needs direct `std::string` initialization;
+Doxygen comment placeholders are escaped as `&lt;...&gt;` under
+`WARN_AS_ERROR`; and the generic `LogPrint` excludes Asio address/endpoint
+types so they use `FormatAddress`/`FormatEndpoint` instead of Boost's POSIX
+`strcat` scope-ID path.
 
 `BUILD-022` also removes the warning classes visible in the same logs:
 nested comment openers, unused captures/helpers, a hidden virtual `Start`, the

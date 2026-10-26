@@ -10,12 +10,15 @@
 #
 # Companion files in this source definition: type (longrun), down-signal (INT,
 # the graceful drain), timeout-kill (660000 ms before SIGKILL), timeout-finish
-# (10000 ms for the finish script) and dependencies.d/base. No readiness file is
-# shipped, so bringing the service up does not prove the router joined the
-# network. This script must start as root because it creates directories and
-# changes user; everything after s6-setuidgid runs as i2pd. Logging goes to
-# syslog. The daemon argv must stay identical to the plain s6 run script; the
-# static service contract compares the two.
+# (10000 ms for the finish script) and dependencies.d/base. The kill window is
+# the 600 s transit-tunnel drain plus a 60 s margin for the ordered stop; trust
+# the s6-svstat state rather than the s6-rc command's return to decide that the
+# router has stopped. No readiness file is shipped, so bringing the service up
+# does not prove the router joined the network. This script must start as root
+# because it creates directories and changes user; everything after
+# s6-setuidgid runs as i2pd. Logging goes to syslog. The daemon argv must stay
+# identical to the plain s6 run script; the static service contract compares
+# the two.
 #
 
 # The system supervision tree normally runs as root. install creates the

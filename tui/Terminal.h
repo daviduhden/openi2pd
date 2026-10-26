@@ -37,6 +37,16 @@ namespace tui
 {
 	namespace terminal
 	{
+		/*
+		 * Fixed key codes live outside the byte range because a printable
+		 * key is returned as the raw UTF-8 byte that the console appends to
+		 * its prompt buffer. The two value spaces must not collide, so a
+		 * backend must never remap ordinary input into this range. Ctrl-C
+		 * keeps the historical value 3 and is the only control byte the main
+		 * loop treats as a command; both backends synthesise it (ncurses
+		 * passes the byte, Win32 also maps VK_CANCEL) rather than expecting
+		 * the terminal to send a signal.
+		 */
 		constexpr int KEY_NONE = -1;
 		constexpr int KEY_CTRL_C = 3;
 		constexpr int KEY_RESIZE = 0x100;
@@ -86,6 +96,14 @@ namespace tui
 		constexpr int PAIR_MASK = 0xFF;
 		constexpr int MAX_PAIR = 255;
 
+		/*
+		 * Pack a pair number into the attribute word. Pair 0 is the terminal
+		 * default and is reserved, never allocated; the 8-bit mask follows
+		 * the width of the pair field in ncurses A_COLOR. A backend whose
+		 * pair space is smaller rejects the number, which is why the caller
+		 * (Theme) owns allocation and treats a failure as the next
+		 * degradation step.
+		 */
 		constexpr int ColorPair (int pair)
 		{
 			return (pair & PAIR_MASK) << PAIR_SHIFT;
@@ -119,6 +137,12 @@ namespace tui
 		 * A negative limit means "whole string".  Bytes that the locale
 		 * cannot decode are consumed one at a time so the cursor still
 		 * advances, instead of letting ncursesw swallow the rest of the row.
+		 *
+		 * Input must already be sanitized (SanitizeText turns tabs and line
+		 * breaks into spaces). A control character that wcwidth() reports as
+		 * -1 is charged one column here although a terminal may advance a tab
+		 * to the next tab stop, so the backend does not expand tabs itself and
+		 * a caller that bypasses sanitizing can drift the column budget.
 		 */
 		void Put (std::string_view text, int limit = -1);
 		void ClearToEol ();

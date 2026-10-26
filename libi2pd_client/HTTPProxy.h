@@ -111,7 +111,7 @@ namespace proxy
 	 * Every value interpolated into a proxy-generated page comes from an
 	 * untrusted peer: the `Host` header, the request target, a jump-service
 	 * link and the destination host. EscapeHTML() is the single escaper for
-	 * text and attribute contexts, so a hostile `Host: <script>` can never
+	 * text and attribute contexts, so a hostile `Host: &lt;script&gt;` can never
 	 * produce markup. Escaping is bounded: input past
 	 * HTTP_PROXY_MAX_ESCAPED_INPUT bytes is dropped, so a generated page
 	 * cannot grow arbitrarily from a 1 MiB header.
@@ -119,7 +119,7 @@ namespace proxy
 	inline constexpr std::size_t HTTP_PROXY_MAX_ESCAPED_INPUT = 2048;
 
 	/**
-	 * Escape `&`, `<`, `>`, `"` and `'` (and drop C0 controls, DEL and any
+	 * Escape `&`, `&lt;`, `&gt;`, `"` and `'` (and drop C0 controls, DEL and any
 	 * byte that is not part of a valid UTF-8 sequence) for interpolation into
 	 * HTML text or a quoted attribute. The result never contains a character
 	 * that can terminate an element, an attribute or a line.

@@ -302,10 +302,12 @@ struct WindowsWorkerSupervisorConfig
  *
  * Threading: status accessors are lock-free (atomics). Start/PumpOnce/
  * RunMonitor/Stop/Send/Receive share one lifecycle mutex, so a control thread
- * may Stop a supervisor whose monitor loop runs on another thread: Stop waits at
- * most one poll slice for the loop, then performs the bounded drain itself. The
- * type never posts a callback and never captures `this`, so no completion can
- * outlive the object.
+ * may Stop a supervisor whose monitor loop runs on another thread. Stop first
+ * waits for the slice that is currently running, and a slice can be inside the
+ * accept of a replacement generation or a bounded worker release, so the
+ * caller's budget starts after that wait and should be sized above one slice.
+ * The type never posts a callback and never captures `this`, so no completion
+ * can outlive the object.
  */
 class WindowsWorkerSupervisor
 {
@@ -322,6 +324,12 @@ public:
 	/**
 	 * Validate the role policy and identity, create the stop event, then spawn
 	 * and authenticate generation 1. Any failure is terminal and published.
+	 *
+	 * @pre Called once per object and before RunMonitor(). The construction does
+	 *      not guard re-entry: a second call after a successful start would
+	 *      create a new AppContainer/container reference and generation and
+	 *      replace the live worker and channel without stopping them, which
+	 *      loses the previous generation instead of restarting it.
 	 */
 	i2p::expected<void, std::string> Start ();
 

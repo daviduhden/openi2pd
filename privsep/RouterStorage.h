@@ -17,12 +17,26 @@ namespace i2p::privsep
 /// Calls are serialized. A lost response makes a write's outcome ambiguous;
 /// the client may restart a worker for a later call but never replays that write.
 /// OpenBSD cannot respawn this worker after runtime pledge and fails closed.
+///
+/// Scope: exactly the four fixed names (`router.keys`, `router.info`,
+/// `ntcp2.keys`, `ssu2.keys`). A request carries no path field, so the worker
+/// cannot be redirected; netDb RouterInfo files, peer profiles, destination
+/// keys, the address book and the configuration stay with their own writers.
+/// This class is not thread-safe for its own lifetime management: Start,
+/// Write and Stop serialize on one internal mutex, but the object must not be
+/// destroyed while another thread is inside a call. Stop (also run by the
+/// destructor) closes the retained root and the channel.
 class RouterStorageClient
 {
 public:
 	RouterStorageClient ();
 	~RouterStorageClient ();
 	/// Open and validate the administrator-selected root and configure a worker.
+	///
+	/// The root is resolved to an absolute, non-symlink directory that must be
+	/// owned by the worker uid and free of group/world write permission; a core
+	/// without a configured worker identity is refused instead of falling back
+	/// to an unseparated writer.
 	/// @param error Receives a non-secret failure description; cleared on entry.
 	/// @return true only when the worker accepted its configuration.
 	bool Start (const std::filesystem::path & root, std::string & error);

@@ -5,8 +5,8 @@
  * openi2pd: Expected.
  *
  * Provides a minimal value-or-error type for toolchains that advertise C++23
- * but do not ship <expected>, notably the OpenBSD base libc++. Implements
- * expected<T, E>, expected<void, E> and unexpected<E> with the subset of
+ * but do not ship the expected header, notably the OpenBSD base libc++. Implements
+ * expected&lt;T, E&gt;, expected&lt;void, E&gt; and unexpected&lt;E&gt; with the subset of
  * operations used by this tree.
  *
  */
@@ -26,7 +26,7 @@
  * Small, portable subset of i2p::expected used by the fork.
  *
  * Some supported toolchains -- notably the OpenBSD base libc++ used by the
- * CI image -- advertise C++23 but do not ship <expected>. Keeping this shim
+ * CI image -- advertise C++23 but do not ship the expected header. Keeping this shim
  * lets the native code remain C++23 (concepts, ranges, etc.) while preserving
  * a value-or-error API and the same syntax at call sites. The implementation
  * intentionally exposes only the operations used by this tree.

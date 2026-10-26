@@ -113,7 +113,7 @@ namespace client
 		// absent option or a non-numeric value falls back to the default; the
 		// hard ceiling is applied by MakeI2CPAdmissionPolicy(). The option is
 		// declared as uint32_t in Config.cpp, so the value must be read with the
-		// same type: boost::any_cast<int> on it would throw.
+		// same type: boost::any_cast&lt;int&gt; on it would throw.
 		size_t ReadI2CPLimit (const char * name)
 		{
 			uint32_t configured = 0;

@@ -799,7 +799,7 @@ namespace data
 							return failure ("signature");
 						}
 						BN_bin2bn (signature.data (), signatureLength, sig);
-						// A certificate slot is at most 512 bytes (Tag<512>).
+						// A certificate slot is at most 512 bytes (Tag&lt;512&gt;).
 						BN_bin2bn (it->second.data (), static_cast<int> (it->second.len), n);
 						std::vector<uint8_t> enSigBuf (signatureLength);
 						if (!BN_is_odd (n) || BN_mod_exp (sig, sig, i2p::crypto::GetRSAE (), n, bnctx) != 1)

@@ -188,3 +188,84 @@ No local MSVC/MinGW/OpenSSL 4 build exists, so a clean warning output is not
 claimed. One MSVC STL-originated `std::tuple` size_t/uint32_t warning may
 remain in the torrent rarity ordering until the next log confirms whether the
 explicit casts removed it.
+
+## Second-pass failures (`b8c6473e`)
+
+The b8c6473e dispatch removed the first blockers and exposed the next layer.
+Runs: Linux/Android 40416816523, OpenBSD 40416823112, Fuzzing 40416827033,
+Packaging 40416830825, Windows 40416819852 (MinGW completed, MSVC still
+running when this was written).
+
+### CE-009 — Const-correct X.509 entry/data in `Crypto.h`
+
+- **First diagnostic:** `Crypto.h:115: error: cannot initialize a variable of
+  type 'X509_NAME_ENTRY *' with an rvalue of type 'const X509_NAME_ENTRY *'`;
+  `Crypto.h:117` has the same for `ASN1_STRING`.
+- **Cause:** OpenSSL 4/LibreSSL return const pointers from
+  `X509_NAME_get_entry`/`X509_NAME_ENTRY_get_data`; the helper added for the
+  deprecated API used mutable locals.
+- **Correction:** use `const X509_NAME_ENTRY *` and `const ASN1_STRING *`;
+  `ASN1_STRING_to_UTF8` accepts a const input.
+- **Files:** `libi2pd/Crypto.h`.
+- **State:** Corregido mediante análisis estático; **Pending CI compilation**.
+
+### CE-010 — Unqualified `LoadPrivateKeys` in `b33offlinekeys`
+
+- **First diagnostic:** `tools/b33offlinekeys.cpp:146: error: 'LoadPrivateKeys'
+  was not declared in this scope; did you mean 'i2p::tools::LoadPrivateKeys'?`
+- **Cause:** the helper lives in namespace `i2p::tools`; the earlier build
+  stopped before this tool target.
+- **Correction:** qualify the call. The same latent unqualified use existed in
+  `regaddr`, `regaddr_3ld`, `regaddralias` and `offlinekeys`; all are
+  qualified now.
+- **Files:** `tools/{b33offlinekeys,regaddr,regaddr_3ld,regaddralias,offlinekeys}.cpp`.
+- **State:** Corregido mediante análisis estático; **Pending CI compilation**.
+
+### CE-011 — `string_view` to `string` copy-initialization in Android JNI
+
+- **First diagnostic:** `i2pd_android.cpp:1060: error: no viable conversion from
+  'std::string_view' to 'std::string'`.
+- **Cause:** `ReseedPhaseToken()` returns `string_view`; copy-initialization
+  selects the explicit `std::string` constructor.
+- **Correction:** direct-initialize `std::string out (ReseedPhaseToken (...));`.
+- **Files:** `android/app/src/main/cpp/i2pd_android.cpp`.
+- **State:** Corregido mediante análisis estático; **Pending CI compilation**.
+
+### CE-012 — Doxygen treats placeholder tags as XML
+
+- **First diagnostic:** `TuiProtocol.h:43: error: Unsupported xml/html tag
+  <expected> found (warning treated as error)`.
+- **Cause:** comments and included prose contained angle-bracket placeholders
+  (`<expected>`, `<COMMAND>`, `<port>`, `<-`-style examples) that Doxygen
+  parses as unsupported HTML/XML tags; `WARN_AS_ERROR=YES` aborts.
+- **Correction:** escape comment placeholders as `&lt;...&gt;` in the affected
+  C++/header prose, including `Modern.h`, `Expected.h` and the protocol/API
+  descriptions; no code changed.
+- **Files:** `libi2pd/{Modern.h,Expected.h,TuiProtocol.h,FS.h,...}`,
+  `libi2pd_client/*.h/.cpp`, `privsep/LogWorker.h`, `daemon/api.h`,
+  `tui/TuiWin32Ipc.h` and the other comment sites.
+- **State:** Corregido mediante análisis estático; **Pending CI**.
+
+### CE-013 — Warning classes after the first build succeeded
+
+- **First diagnostics:** `SOCKS.cpp:176` missing `override`; unused private
+  fields `m_remaining_upstream_data`/`m_command`; `TorrentsDHT.cpp:59/68`
+  signed/unsigned compare; `I2PControl.cpp:95` unused
+  `AcceptLocalControlPeer`; OpenBSD linker `strcat` warning from Boost.Asio
+  endpoint formatting.
+- **Correction:** add `override`; remove the unused fields and initializers;
+  compare the DHT bit index against a cast bound; mark the platform overload
+  `[[maybe_unused]]`; constrain the generic `LogPrint` so Asio endpoints use
+  the safe `FormatAddress`/`FormatEndpoint` overloads instead of Boost's
+  POSIX `sprintf`/`strcat` scope-ID formatter.
+- **Files:** `libi2pd_client/SOCKS.cpp`, `libi2pd_client/TorrentsDHT.cpp`,
+  `daemon/I2PControl.cpp`, `libi2pd/Log.h`.
+- **State:** Corregido mediante análisis estático; **Pending CI**.
+
+## Second-pass warning cleanup
+
+`BUILD-022` remains the warning umbrella. The second pass additionally removed
+the SOCKS/Log/TorrentsDHT warning families listed in CE-013 and the Doxygen
+placeholder-tag failure. No local OpenBSD linker, Doxygen, MinGW/MSVC or
+Android build exists; the next manual dispatch must confirm the warning set
+and the `-static` link closure.

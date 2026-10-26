@@ -5,5 +5,7 @@ This directory holds the router's keys, netDb, profiles, torrents and the
 default pidfile for the OpenBSD service. Keep it owned by `_i2pd` with mode
 0700 and do not edit files here that are managed by the daemon.
 
-The packaged configuration samples are installed under /etc/i2pd; see
-pkg_info -D i2pd and the pkg-readme for the service paths.
+This README is also the package marker that makes the PLIST `@sample` entry
+create `/var/i2pd`; leave it in place. The packaged configuration samples are
+installed under /etc/i2pd; see pkg_info -D i2pd and the pkg-readme for the
+service paths.

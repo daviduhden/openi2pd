@@ -22,6 +22,9 @@ MAINTAINER = openi2pd maintainers <daviduhden@users.noreply.github.com>
 # BSD-3-Clause
 PERMIT_PACKAGE = Yes
 
+# WANTLIB must name every shared library the binaries link. Boost.JSON,
+# Boost.URL and Boost.Container are compiled libraries here, not header-only
+# substitutes, and ncursesw is required by the native TUI.
 WANTLIB += ${COMPILER_LIBCXX} boost_container-mt boost_json-mt
 WANTLIB += boost_program_options-mt boost_url-mt
 WANTLIB += c crypto m miniupnpc ncursesw ssl util z
@@ -34,6 +37,17 @@ LIB_DEPENDS = devel/boost \
 		net/miniupnp/miniupnpc
 
 CONFIGURE_STYLE = cmake
+# Argument rationale, in the order below: the TUI is part of this package, so
+# I2PD_TUI_REQUIRED makes configure fail instead of silently dropping it when
+# ncursesw is absent; I2PD_BUILD_TOOLS=OFF keeps the auxiliary tools out (PLIST
+# lists neither them nor `man/man1/i2pdctl.1`); WITH_LIBRARY=OFF installs no
+# shared libi2pd or headers; WITH_HARDENING=ON keeps the project hardening
+# flags; BUILD_TESTING=OFF matches NO_TEST below; I2PD_INSTALL_DOCS=OFF and
+# I2PD_INSTALL_CONFIG=OFF leave documentation and sample configuration to this
+# port's share/examples and share/doc rules; I2PD_SERVICE_MANAGER=none avoids a
+# second service authority because the rc.d template is installed below; and
+# I2PD_OPENSSL_EXPECT=LibreSSL makes configure fail on a base LibreSSL below
+# the supported 4.0 floor instead of quietly building with fewer features.
 CONFIGURE_ARGS = -DI2PD_BUILD_TUI=ON \
 			-DI2PD_BUILD_TOOLS=OFF \
 			-DI2PD_TUI_REQUIRED=ON \
@@ -54,15 +68,20 @@ SUBST_VARS = TRUEPREFIX SYSCONFDIR LOCALSTATEDIR
 SUBST_FILES = ../contrib/openbsd/i2pd.rc
 
 WRKDIST = ${WRKDIR}/${DISTNAME}
-# The project's CMakeLists.txt lives in build/. Keep the ports build tree in a
-# separate directory so CMake never writes into the extracted source tree.
+# The project's CMakeLists.txt lives in build/, not at the tree root. Keep the
+# ports build tree in a separate obj/ directory so CMake never writes into the
+# extracted source and a re-extract stays clean.
 SEPARATE_BUILD = Yes
 WRKSRC = ${WRKDIST}/build
 WRKBUILD = ${WRKDIST}/obj
 
 # @sample resolves an absolute target to share/examples/<absolute path>. The
 # etc and var sources must mirror the target tree exactly, or pkg_add installs
-# no configuration and never creates /var/i2pd.
+# no configuration and never creates /var/i2pd. The rc.d script is installed to
+# ${WRKINST}/etc/rc.d (outside ${PREFIX}) because PLIST registers it with
+# @rcscript, and it is the SUBST-ed copy, not this directory's template. The
+# notices ship with the LICENSE text under share/doc/i2pd so the package keeps
+# its attribution after pkg_delete of the source tree.
 post-install:
 	${INSTALL_DATA_DIR} ${PREFIX}/share/examples/etc/i2pd \
 		${PREFIX}/share/examples/etc/i2pd/tunnels.conf.d \

@@ -120,6 +120,12 @@ i2p::expected<void, std::string> WindowsWorkerSupervisor::Start ()
 	return SpawnGeneration (generation);
 }
 
+// One generation owns exactly one listener and one nonce: the pipe is created
+// here (random per spawn unless a test pins the name), the DACL carries the
+// role's AppContainer SID, and the accept is bound to this child's PID, session,
+// role and nonce. After a successful accept the server object is dropped because
+// the single pipe instance now belongs to the channel; the next generation
+// creates a new one.
 i2p::expected<void, std::string> WindowsWorkerSupervisor::SpawnGeneration (uint32_t generation)
 {
 	m_State.store (SupervisorWorkerState::Starting, std::memory_order_release);
@@ -312,6 +318,11 @@ void WindowsWorkerSupervisor::ReleaseWorker (uint32_t budgetMs)
 	m_Running.store (false, std::memory_order_release);
 }
 
+// Every terminal path funnels through here so the object ends handle-neutral:
+// worker, channel, listener, stop event and container are released before the
+// single Failed snapshot is published, and the detail is kept only in the
+// bounded diagnostic (it may contain a path, never a secret operand). The
+// supervisor stays terminal for its lifetime; only a new object may try again.
 i2p::expected<void, std::string> WindowsWorkerSupervisor::FailTerminal (
 	WindowsWorkerFailureKind kind, uint32_t generation, std::string detail)
 {
@@ -345,6 +356,13 @@ void WindowsWorkerSupervisor::PublishFailedOnce (const WindowsWorkerFailureOutco
 		m_Status, m_Name, SupervisorWorkerState::Failed, outcome.generation, outcome.restarts, outcome.reason);
 }
 
+// Stop supports two callers at once (a control thread and the monitor loop)
+// and is idempotent: the stop flag is published and the stop event signalled
+// before anything else, so a monitor waiting on it leaves its slice. The
+// ordering is intentional: advisory Shutdown frame, short graceful window with
+// the channel still open, channel close, Job Object termination, bounded wait.
+// The Job Object remains the authority; a worker that ignores the frame is
+// terminated, and the caller's budget bounds the whole sequence.
 bool WindowsWorkerSupervisor::Stop (uint32_t budgetMs)
 {
 	std::lock_guard<std::mutex> lock (m_LifecycleMutex);

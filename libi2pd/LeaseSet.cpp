@@ -92,6 +92,18 @@ namespace data
 		}
 	}
 
+	/**
+	 * @brief May this advertised LS2 key type become the active encryptor?
+	 *
+	 * Selection is policy, not parsing: every advertised section is retained so
+	 * IsEncryptionKey() can match what the publisher (and the peer's ratchet)
+	 * actually used, but only a type with a local implementation may encrypt to a
+	 * peer. ElGamal and X25519 are always usable; the hybrid ML-KEM types are
+	 * gated on a real provider round trip (IsMLKEMSupported) so a build without PQ
+	 * support cannot advertise or select a key it cannot use. Reserved EC types
+	 * (P384/P521 codes) and unknown types are never selectable here even when
+	 * their wire length is known.
+	 */
 	bool IsSelectableLS2EncryptionKeyType (CryptoKeyType keyType)
 	{
 		switch (keyType)
@@ -141,6 +153,20 @@ namespace data
 		ReadFromBuffer (false);
 	}
 
+	/**
+	 * @brief Parse an LS1 (or the legacy layout) from the stored buffer.
+	 * @param readIdentity re-read the identity prefix instead of reusing it.
+	 * @param verifySignature verify the trailing signature over the signed body.
+	 *
+	 * A reused object must not keep a previous verdict, so validity and the
+	 * earliest-lease date are reset on entry. The order is identity, the two key
+	 * fields, the lease count and the lease block, with each step bounds-checked
+	 * against the remaining bytes before it is read. Lease timestamps are checked
+	 * against the Java windows (earliest not too old, latest not too far in the
+	 * future) before any lease is stored, so a forged far-future LS1 cannot occupy
+	 * a netDb slot. When the signature is verified, trailing bytes outside the
+	 * signed body are trimmed so every node stores and serves one canonical form.
+	 */
 	void LeaseSet::ReadFromBuffer (bool readIdentity, bool verifySignature)
 	{
 		// Reused objects must not keep a previous valid flag or lease date if
@@ -1077,6 +1103,30 @@ namespace data
 		return false;
 	}
 
+	/**
+	 * @brief Decode per-client authorization data and derive the auth cookie.
+	 * @param buf encrypted-LeaseSet tail that follows the header.
+	 * @param len bytes available.
+	 * @param secret caller-supplied client secret: X25519 private key for the DH
+	 *        scheme (flag bits 3-1 = 0) or the 32-byte PSK for scheme 2.
+	 * @param subcredential 36-byte subcredential for this blinded destination.
+	 * @param authCookie 32-byte output, written only on success.
+	 * @return bytes consumed, 0 when the message declares no client auth, or
+	 *         size_t(-1) on any validation failure.
+	 *
+	 * The secret never leaves this function: it is used as the DH private key or
+	 * hashed into the PSK input and is never logged. Both derivation inputs bind
+	 * the recipient's key/PSK to the subcredential and the salt/ephemeral key, so a
+	 * cookie from another destination or another blinded period cannot be
+	 * replayed. The client entry list is bounded by the remaining buffer before it
+	 * is walked, and a client identifier match is the only way the cookie is
+	 * produced.
+	 *
+	 * The intermediate key material (authInput, okm, okm-derived client key and IV)
+	 * currently remains in local stack buffers after return; clearing it is part of
+	 * the tracked secret-cleansing work (`CRY-237`), not something this function
+	 * claims to do.
+	 */
 	size_t LeaseSet2::ExtractClientAuthData (const uint8_t * buf, size_t len, const uint8_t * secret,
 		const uint8_t * subcredential, uint8_t * authCookie) const
 	{
@@ -1344,6 +1394,20 @@ namespace data
 		return ts > m_ExpirationTime;
 	}
 
+	/**
+	 * @brief Validate a stored LS1 before it is accepted into the netDb.
+	 * @param ptr buffer beginning with the identity prefix.
+	 * @param sz bytes available.
+	 * @param expires out-parameter receiving the latest lease end date.
+	 * @return true only when the structure, the lease windows and the signature
+	 *         all validate.
+	 *
+	 * This is the store-side counterpart of LeaseSet::ReadFromBuffer(): it never
+	 * keeps state, so it can be used to decide whether an incoming LS1 may be
+	 * cached or flooded. The lease windows are the Java validate() bounds (latest
+	 * lease not years ahead, earliest not older than ten minutes), and the
+	 * signature covers only the bytes before it.
+	 */
 	bool LeaseSetBufferValidate (const uint8_t * ptr, size_t sz, uint64_t & expires)
 	{
 		expires = 0;

@@ -130,6 +130,19 @@ namespace crypto
 		return cryptoConstants;
 	}
 
+	/**
+	 * @brief Serialise a BIGNUM into a fixed-width big-endian field.
+	 * @param bn value to serialise; a null pointer is a failure, not zero.
+	 * @param buf caller-owned output of exactly @a len bytes.
+	 * @param len wire width of the field, which is fixed by the I2P format.
+	 * @return false when the value does not fit or BN_bn2bin fails; on success
+	 *         the high bytes are zero-padded, never truncated.
+	 *
+	 * Left padding is what keeps wire fields fixed-width for small values such
+	 * as a leading zero byte or a short X coordinate. Rejecting an oversized
+	 * value instead of truncating prevents a malformed key from being silently
+	 * published as a different (shortened) one.
+	 */
 	bool bn2buf (const BIGNUM * bn, uint8_t * buf, size_t len)
 	{
 		if (!bn) return false; // BN_num_bytes dereferences its argument
@@ -198,6 +211,13 @@ namespace crypto
 #endif
 
 	// DH/ElGamal
+
+	// ElGamal exponentiation table. InitCrypto() may build it once from the
+	// fixed I2P modulus; afterwards it is read-only and shared by every thread
+	// that calls ElGamalEncrypt(), so it must never be rebuilt or mutated while
+	// the router is running. TerminateCrypto() destroys the entries after all
+	// callers have stopped. When the table is absent, encryption falls back to
+	// the generic BN_mod_exp() path, which is slower but identical on the wire.
 
 #if !IS_X86_64
 	const int ELGAMAL_SHORT_EXPONENT_NUM_BITS = 226;
@@ -287,6 +307,7 @@ namespace crypto
 	static BIGNUM * (*g_ElggTable)[255] = nullptr;
 
 	// x25519
+
 	X25519Keys::X25519Keys ()
 	{
 		m_Ctx = EVP_PKEY_CTX_new_id (NID_X25519, NULL);
@@ -294,6 +315,19 @@ namespace crypto
 		memset (m_PublicKey, 0, sizeof (m_PublicKey));
 	}
 
+	/**
+	 * @brief Construct the key holder from raw private/public material.
+	 * @param priv 32-byte private scalar, or null for an empty holder.
+	 * @param pub optional 32-byte public key the caller believes belongs to
+	 *            @a priv; it is compared, never trusted.
+	 *
+	 * The public key is always re-derived from the private key. A caller-supplied
+	 * public key is only used for a constant-time comparison, so a mismatched or
+	 * unrelated key cannot be published on behalf of this scalar. There is no
+	 * error return: any provider or comparison failure leaves the object empty
+	 * (Reset()), and every operation on it then fails. Callers must check
+	 * HasPrivateKey() before advertising or persisting the pair.
+	 */
 	X25519Keys::X25519Keys (const uint8_t * priv, const uint8_t * pub)
 	{
 		memset (m_PublicKey, 0, sizeof (m_PublicKey));
@@ -417,6 +451,20 @@ namespace crypto
 		return true;
 	}
 
+	/**
+	 * @brief Derive the shared secret with a peer's ephemeral/static key.
+	 * @param pub 32-byte peer public key; the high bit must be clear because
+	 *            I2P never uses a compressed/tagged encoding here.
+	 * @param shared caller-owned 32-byte output, always cleared first.
+	 * @return false on provider failure, a malformed peer key or an all-zero
+	 *         agreement result; @a shared is then zeroed.
+	 *
+	 * The all-zero check is the RFC 7748 low-order-point rule: some
+	 * LibreSSL/OpenSSL builds report success for a small-order point and would
+	 * otherwise hand out an attacker-known "shared secret". The check is
+	 * performed on the derived value, not on a public key table, so it holds
+	 * for any provider.
+	 */
 	bool X25519Keys::Agree (const uint8_t * pub, uint8_t * shared)
 	{
 		// No output buffer means there is nothing to report.
@@ -472,6 +520,22 @@ namespace crypto
 	}
 
 	// ElGamal
+
+	/**
+	 * @brief Encrypt 222 bytes into the 514-byte I2P ElGamal envelope.
+	 * @param key 256-byte public key field (big-endian y).
+	 * @param data 222-byte plaintext block supplied by the caller.
+	 * @param encrypted 514-byte output, zeroed on every failure path.
+	 * @return false when the key, the random exponent or the arithmetic fails.
+	 *
+	 * The plaintext is not used directly: the block is a leading 0xFF marker,
+	 * SHA-256 of the payload, then the payload, and only that padded block is
+	 * exponentiated. The digest is what Decrypt() compares, so a wrong private key
+	 * or a corrupted ciphertext cannot return plausible data, and the marker keeps
+	 * the block in the I2P layout used by every other implementation.
+	 * Trivial subgroup elements (y = 0, 1 or p - 1) are rejected first because
+	 * they make the ciphertext independent of the random exponent.
+	 */
 	bool ElGamalEncrypt (const uint8_t * key, const uint8_t * data, uint8_t * encrypted)
 	{
 		if (!key || !data || !encrypted) return false;
@@ -591,6 +655,17 @@ namespace crypto
 		return true;
 	}
 
+	/**
+	 * @brief Generate an ElGamal key pair (private exponent plus public y).
+	 * @param priv 256-byte private key field, cleansed then written.
+	 * @param pub 256-byte public key field, zeroed on failure.
+	 *
+	 * x86-64 and MSVC use a full-size random exponent; other targets use the
+	 * I2P short exponent (226 bits, zero upper bytes) for speed, which is what
+	 * Java also accepts. Either way a failed RNG or a failed exponentiation
+	 * cleanses the private buffer and leaves the public field zero, so a caller
+	 * that ignores the (void) result still cannot persist a valid-looking key.
+	 */
 	void GenerateElGamalKeyPair (uint8_t * priv, uint8_t * pub)
 	{
 		if (!priv || !pub) return;
@@ -647,6 +722,23 @@ namespace crypto
 		}
 	}
 
+	/**
+	 * @brief Encrypt 222 bytes into the fixed 514-byte ECIES envelope.
+	 * @param curve group holding @a key; the order determines the field width.
+	 * @param key recipient public point, must not be the point at infinity.
+	 * @param data 222-byte plaintext block.
+	 * @param encrypted 514-byte output, zeroed on every failure path.
+	 * @return false when any bounds, random or provider step fails.
+	 *
+	 * Layout (unchanged from i2pd and Java): a zero byte, the ephemeral point's
+	 * x and y padded into a 256-byte field with randomness, one further zero byte,
+	 * then 256 bytes of AES-256-CBC over the same 0xFF/digest/payload block
+	 * ElGamal uses. The shared secret is SHA-256 of the x coordinate and the
+	 * ephemeral y coordinate is the CBC IV, so the random filler is the only
+	 * non-derivable material transmitted. The trailing digest is an integrity check
+	 * that also shows the recipient's key was used, but it is not a MAC:
+	 * authenticity of the outer protocol layer must not be inferred from it.
+	 */
 	bool ECIESEncrypt (const EC_GROUP * curve, const EC_POINT * key, const uint8_t * data, uint8_t * encrypted)
 	{
 		if (!curve || !key || !data || !encrypted || EC_POINT_is_at_infinity (curve, key))
@@ -1056,6 +1148,27 @@ namespace crypto
 
 	// AEAD/ChaCha20/Poly1305
 
+	/**
+	 * @brief One ChaCha20-Poly1305 operation with an explicit context.
+	 * @param ctx caller-owned provider context, reused across calls.
+	 * @param msg ciphertext without tag (decrypt) or plaintext (encrypt).
+	 * @param msgLen message length in bytes.
+	 * @param ad additional authenticated data, may be null only when adLen is 0.
+	 * @param adLen AAD length.
+	 * @param key 32-byte key; it is not retained.
+	 * @param nonce 12-byte nonce; it is not retained.
+	 * @param buf in-place buffer of @a len bytes; on encrypt it must hold
+	 *            msgLen + 16 bytes for the tag at buf + msgLen.
+	 * @param len capacity of @a buf.
+	 * @param encrypt direction selector.
+	 * @return false on any validation or provider failure; @a buf is then
+	 *         zeroed so unauthenticated output is never exposed.
+	 *
+	 * The tag is transmitted immediately after the ciphertext, which is why a
+	 * decryption needs a message pointer even for an empty plaintext. Both
+	 * lengths are checked against INT_MAX because the EVP update interface is
+	 * int-sized in OpenSSL and LibreSSL alike.
+	 */
 	static bool AEADChaCha20Poly1305 (EVP_CIPHER_CTX * ctx, const uint8_t * msg, size_t msgLen, const uint8_t * ad,
 		size_t adLen, const uint8_t * key, const uint8_t * nonce, uint8_t * buf, size_t len, bool encrypt)
 	{
@@ -1255,6 +1368,20 @@ namespace crypto
 		ctx (salt, key, keyLen, info, out, outLen);
 	}
 
+	/**
+	 * @brief Construct a reusable HKDF-SHA256 context.
+	 *
+	 * The provider path (EVP_KDF_fetch) and the legacy EVP_PKEY_HKDF path must
+	 * produce identical output for I2P: a non-empty key uses EXTRACT_AND_EXPAND
+	 * with the 32-byte salt, and a zero-length key selects EXPAND_ONLY with
+	 * PRK = HMAC-SHA256(salt, ""), which is what the ratchet spec pins. Output is
+	 * capped at 255 * 32 bytes per RFC 5869 and is zeroed on every failure, so a
+	 * caller never derives a session key from a partially written buffer.
+	 *
+	 * The context is stateful and not reentrant: concurrent calls from two
+	 * threads corrupt both derivations. Use the free HKDF() helper or one
+	 * context per thread (the router uses a thread-local instance).
+	 */
 	HKDFContext::HKDFContext ()
 	{
 #if I2PD_HAVE_EVP_KDF_FETCH
@@ -1660,6 +1787,21 @@ namespace crypto
 		return g_CryptoCapabilities;
 	}
 
+	/**
+	 * @brief One-time crypto initialisation; returns false to refuse startup.
+	 * @param precomputation build the ElGamal exponentiation table.
+	 * @return false when a required algorithm is missing from the provider.
+	 *
+	 * A missing algorithm is a hard failure, not a degraded mode: the caller
+	 * must abort instead of running with a construction that cannot be completed
+	 * for some peers. Ed25519 is included because destination identity signing and
+	 * the SU3 reseed trust path both depend on it. SipHash is only required when the
+	 * build expects the provider implementation; otherwise the project-owned SipHash
+	 * is used. The capability answer is cached by GetCryptoCapabilities().
+	 *
+	 * The table allocation is intentionally not thread-safe: it must be called
+	 * once from the startup thread before transports or client services start.
+	 */
 	bool InitCrypto (bool precomputation)
 	{
 		/*		auto numLocks = CRYPTO_num_locks();

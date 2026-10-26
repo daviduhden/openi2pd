@@ -209,6 +209,15 @@ std::string DescribeWorkerCredentials (const WorkerCredentials & credentials)
 
 namespace i2p::privsep
 {
+/*
+ * Windows stub set. The Windows backend has no uid/gid worker identity: a
+ * worker is proved by the named-pipe peer token, the spawn PID/session and the
+ * WorkerHello nonce (see privsep/WindowsIpc.h). Every function here therefore
+ * reports the absence of POSIX credentials instead of a permissive default:
+ * `WorkerUid()` is 0 and `DropWorkerCredentialsInChild()` is false, so callers
+ * that require a real unprivileged identity (for example the storage clients)
+ * refuse to start rather than run unseparated.
+ */
 i2p::expected<WorkerCredentials, std::string> ResolveWorkerCredentials (std::string_view, std::string_view)
 {
 	return i2p::unexpected (std::string ("worker credentials are not supported on this platform"));

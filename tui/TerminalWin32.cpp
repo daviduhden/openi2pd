@@ -64,6 +64,15 @@ namespace tui
 				bool configured = false;
 			};
 
+			// One console, owned by the console thread; like the ncurses
+			// backend these globals are an initialization guard rather than
+			// synchronization.
+			//
+			// g_Front is what has been painted on screen, g_Back is the cell
+			// grid the application writes. Refresh() diffs back against front
+			// and then adopts back as front, so nothing is emitted twice. Both
+			// are rebuilt on a size change, which forces a full repaint of the
+			// new geometry instead of trying to map the old cells.
 			HANDLE g_Output = INVALID_HANDLE_VALUE;
 			HANDLE g_Input = INVALID_HANDLE_VALUE;
 			DWORD g_SavedOutputMode = 0;
@@ -161,6 +170,13 @@ namespace tui
 
 			void RestoreConsole ()
 			{
+				// Idempotent by construction: every flag is cleared as its
+				// effect is undone, so the normal Shutdown path, an error path
+				// after a partially successful Init and a fatal read/write
+				// error can all call it once. The console modes are restored
+				// last because the VT sequences need them still enabled, and
+				// the alternate-screen exit is emitted only when this run
+				// actually entered it.
 				if (g_AltScreen)
 					WriteUtf8 ("\x1b[0m\x1b[?25h\x1b[?7h\x1b[?1049l");
 				else if (g_OutputModeSaved)
@@ -348,6 +364,13 @@ namespace tui
 
 			int TranslateKey (const KEY_EVENT_RECORD & key)
 			{
+				// Ctrl-letter arrives as the matching C0 byte, so Ctrl-C is 3
+				// and the main loop sees the same value as under ncurses. The
+				// C0 mapping requires control without alt because AltGr reports
+				// Ctrl+Alt on many layouts and must still produce text. A high
+				// surrogate is remembered until its low half arrives and is
+				// cleared by any other key, so a lost half can never pair with
+				// an unrelated character later.
 				const DWORD state = key.dwControlKeyState;
 				const bool shift = (state & SHIFT_PRESSED) != 0;
 				const bool control = (state & (LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED)) != 0;
@@ -546,6 +569,17 @@ namespace tui
 
 		void Put (std::string_view text, int limit)
 		{
+			// Cell model: a one-column glyph occupies one cell, a double-width
+			// glyph occupies a lead cell plus a continuation cell that records
+			// the occupied second column, and a zero-width combining mark is
+			// appended to the preceding cell's text. Control bytes are replaced
+			// before anything reaches the VT stream: SanitizeText is the primary
+			// filter, this is the backstop that stops router data from injecting
+			// an escape sequence.
+			//
+			// Writing past the last column wraps to the next row, and a wide
+			// glyph that would straddle the right edge wraps as a whole; text
+			// that runs past the last row is dropped, not scrolled.
 			if (!g_Initialized || text.empty () || g_Width <= 0 || g_Height <= 0) return;
 			std::size_t offset = 0;
 			while (offset < text.size ())
@@ -623,6 +657,13 @@ namespace tui
 
 		void Refresh ()
 		{
+			// One batched WriteUtf8 per frame: the whole diff is assembled
+			// first so a slow console cannot interleave a half-painted screen.
+			// The cursor is only moved when the next changed cell is not the
+			// current physical position, SGR state is tracked so a reset is
+			// emitted only on a real attribute change, and a blank row tail
+			// becomes one clear-to-end-of-line. g_Front is adopted only after
+			// the write succeeded, so a failed frame is retried in full.
 			if (!g_Initialized) return;
 			std::string output;
 			int currentAttributes = -1;
@@ -709,6 +750,13 @@ namespace tui
 
 		int ReadKey (int timeoutMilliseconds)
 		{
+			// A non-BMP character is queued as its remaining UTF-8 bytes so the
+			// prompt receives one byte per call, exactly like the byte-oriented
+			// ncurses backend. The deadline is recomputed from GetTickCount64
+			// after every discarded event so repeated window or key-up events
+			// cannot extend the caller's timeout. A resize event rebuilds the
+			// cell buffers and is reported as KEY_RESIZE, which makes the main
+			// loop redraw at the new size.
 			if (!g_Initialized) return KEY_NONE;
 			if (!g_PendingKeys.empty ())
 			{

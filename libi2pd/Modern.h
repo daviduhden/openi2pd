@@ -7,9 +7,9 @@
  * Small, portable C++23 vocabulary used by the native tree: enumeration and
  * byte-range concepts, a checked underlying-value conversion, an overload-set
  * helper for std::visit, a move-only scope guard and read-only byte-span
- * views. The header deliberately avoids <expected>, <format>, <print>,
- * <mdspan>, coroutines and executors, which the supported toolchains do not
- * all provide.
+ * views. The header deliberately avoids the expected, format, print and
+ * mdspan headers, coroutines and executors, which the supported toolchains do
+ * not all provide.
  *
  */
 

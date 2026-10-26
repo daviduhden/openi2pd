@@ -25,6 +25,17 @@ import java.util.List;
  * counters and status strings rather than native handles or sockets. The
  * diagnostic strings can include exception details; consumers must not
  * assume they have been redacted.</p>
+ *
+ * <p>The compact constructor is the only place that normalises a snapshot:
+ * negative counters are clamped to zero, {@code null} state/services fall back
+ * to {@code uninitialized}/{@code ServiceStates.NONE} and the address list is
+ * copied into an unmodifiable list, so a publisher that keeps mutating its own
+ * list cannot change an already published snapshot. A record is immutable but
+ * not deep: {@link AddressInfo} and {@link ServiceStates} must stay immutable
+ * for that guarantee to hold.</p>
+ *
+ * <p>{@code routerStatusCode} is the discriminator for observed state: only a
+ * recognised status with a non-negative code makes the counters meaningful.</p>
  */
 public record RouterSnapshot(DaemonWrapper.State state, boolean nativeStarted, boolean online,
         String routerStatus, int routerStatusCode, String routerError, long uptimeSeconds,
@@ -72,7 +83,15 @@ public record RouterSnapshot(DaemonWrapper.State state, boolean nativeStarted, b
                 && !"Unknown".equalsIgnoreCase(routerStatus);
     }
 
-    /** True when this snapshot contains live, observed router metrics. */
+    /**
+     * True when this snapshot contains live, observed router metrics.
+     *
+     * <p>Intentionally an alias of {@link #hasStatus()}: screens ask this
+     * question, and keeping a separate name lets a future metric source (for
+     * example a cached sample plus a differential) change without touching every
+     * caller. A {@code false} answer means the counters are placeholders, not
+     * zeros.</p>
+     */
     public boolean hasLiveMetrics() {
         return hasStatus();
     }
@@ -80,6 +99,11 @@ public record RouterSnapshot(DaemonWrapper.State state, boolean nativeStarted, b
     /**
      * Snapshot without native counters. Safe to build on the main thread: it
      * only reads already-cached Java state from {@link DaemonWrapper}.
+     *
+     * <p>{@code nativeStarted} follows {@link DaemonWrapper.State#isStartedOkay}
+     * but {@code online} stays false, so this placeholder never claims observed
+     * metrics; {@link #hasStatus()} is therefore false until the worker replaces
+     * it with a parsed snapshot.</p>
      */
     public static RouterSnapshot empty(DaemonWrapper.State state, String errorText,
             String startResult, long graceRemainingMillis) {

@@ -38,7 +38,7 @@ int main (int argc, char * argv[])
 
 	i2p::tools::CryptoGuard cryptoGuard;
 	i2p::data::PrivateKeys keys;
-	if (auto loaded = LoadPrivateKeys (argv[1], keys); !loaded)
+	if (auto loaded = i2p::tools::LoadPrivateKeys (argv[1], keys); !loaded)
 	{
 		std::cerr << "Failed to load keyfile " << argv[1] << ": " << loaded.error () << std::endl;
 		return 2;
@@ -49,6 +49,20 @@ int main (int argc, char * argv[])
 		return 2;
 	}
 
+	// Record grammar: `name=&lt;base64 destination&gt;#!sig=&lt;base64 signature&gt;`.
+	// The signed bytes are exactly the `name=destination` text built so far,
+	// with no line terminator and no `#!sig=` field, so the record must be
+	// captured verbatim and submitted as one line. Appending the `#!sig=`
+	// marker afterwards is what makes the signature verifiable by the
+	// registration service and by `verifyhost`.
+	//
+	// The signature length is taken from the loaded public identity rather than
+	// assumed: a non-Ed25519 destination signs with its own length. Only the
+	// record goes to stdout; diagnostics go to stderr, and nothing is written to
+	// the filesystem. Exit status is 1 for a usage error and 2 for a rejected
+	// name, an unreadable key file or a key file without a public identity.
+	// The name is validated before the key is read, so a malformed name cannot
+	// consume the private key at all.
 	std::ostringstream out;
 	out << argv[2] << "=" << keys.GetPublic ()->ToBase64 ();
 	const std::string signedPart = out.str ();

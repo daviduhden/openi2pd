@@ -55,7 +55,7 @@ namespace client
 		};
 
 		// A dotted component mask matched against the loopback-mapped IPv4
-		// address of a peer (127.<hash byte 0>.<byte 1>.<byte 2>, the same
+		// address of a peer (127.&lt;hash byte 0&gt;.&lt;byte 1&gt;.&lt;byte 2&gt;, the same
 		// convention the Linux unique-local mapping uses). `-1` is a wildcard.
 		struct AddressMask
 		{

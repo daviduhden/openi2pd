@@ -7,6 +7,16 @@
 # Persistent state and administrator configuration are removed only on purge.
 # An ordinary remove or an upgrade leaves /var/lib/i2pd and /etc/i2pd intact.
 #
+# Ordering: the debhelper marker runs first, so its generated snippet removes
+# the unit/init registration before the directories below disappear. The dpkg
+# prerm phase and the debhelper stop actions have already stopped the service,
+# so purge never deletes a live data directory. dpkg itself removes the
+# registered conffiles during purge; the rm -rf lines also cover non-conffile
+# leftovers such as tunnel fragments and daemon-created keys.
+# The i2pd account is not deleted here: the account and tmpfiles policy belong
+# to the sysusers/tmpfiles snippets, and a local account with the same name must
+# survive a package purge. Nothing in this script runs on remove or upgrade.
+#
 
 set -e
 

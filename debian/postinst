@@ -16,6 +16,13 @@
 # router; the single service action is generated at the DEBHELPER marker at the
 # end. It performs no network operation and needs no running daemon.
 #
+# The order above the marker is deliberate: the account and the directories
+# exist before debhelper starts the service, because the daemon creates its
+# pidfile, netDb and TUI socket there on first start. Nothing here removes
+# state; debian/postrm owns purge. /var/lib/i2pd is also the state directory the
+# sysusers home field records, and the tmpfiles policy also creates the
+# paths on a systemd host after the package is configured.
+#
 
 set -e
 

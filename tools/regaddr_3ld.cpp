@@ -38,7 +38,7 @@ void Help ()
 
 bool LoadKeys (const char * path, i2p::data::PrivateKeys & keys)
 {
-	return static_cast<bool> (LoadPrivateKeys (path, keys));
+	return static_cast<bool> (i2p::tools::LoadPrivateKeys (path, keys));
 }
 
 i2p::expected<std::string, std::string> ReadText (const char * path)
@@ -50,6 +50,13 @@ i2p::expected<std::string, std::string> ReadText (const char * path)
 	// A step file is exactly one record. Trailing CR/LF is a line terminator,
 	// not signed data; an embedded newline would emit two records from one
 	// invocation and never verify on the other platform.
+	//
+	// Only trailing terminators are stripped: leading text is part of the
+	// record and would change the signed bytes, so a step file must not be
+	// re-indented or wrapped. The signed record itself never contains a
+	// terminator; the ending written to stdout follows the platform, so a
+	// redirected Windows record reaches the next step with CRLF and is
+	// normalized here before signing.
 	while (!text.empty () && (text.back () == '\n' || text.back () == '\r')) text.pop_back ();
 	if (text.find ('\n') != std::string::npos || text.find ('\r') != std::string::npos)
 		return i2p::unexpected ("step file must contain exactly one line");
@@ -57,6 +64,22 @@ i2p::expected<std::string, std::string> ReadText (const char * path)
 	return text;
 }
 
+/**
+	 * Sign everything accumulated so far, then append the marker and the
+	 * base64 signature.
+	 *
+	 * Call order is the wire contract: each step signs the complete previous
+	 * record, so step2 covers step1 plus `#date=`/`#olddest=`/`#oldname=` and
+	 * step3 covers the step2 record including `#oldsig=`. Appending a field
+	 * after a signature therefore invalidates that signature instead of
+	 * silently changing what was signed.
+	 *
+	 * @return Always true today. `PrivateKeys::Sign` is still a void interface,
+	 *         so a provider that cannot sign is not observable here and would
+	 *         produce a zero-filled signature field; a fallible signing result
+	 *         (tracked as CRY-236) must be propagated through this return value
+	 *         rather than ignored.
+	 */
 bool AppendSignature (std::ostringstream & out, i2p::data::PrivateKeys & keys, const char * marker)
 {
 	const std::string signedPart = out.str ();
@@ -126,6 +149,11 @@ int main (int argc, char * argv[])
 			else
 			{
 				std::ostringstream out;
+				// Field order is fixed: the step1 record, then the observed time,
+				// the counter-signing destination and the old name, and finally the
+				// old signature. `#date=` is the local wall clock in seconds; this
+				// tool neither validates it nor compares clocks, the registration
+				// service decides whether the record is fresh enough.
 				out << *regtxt << "#date=" << std::time (nullptr) << "#olddest=" << keys.GetPublic ()->ToBase64 ()
 					<< "#oldname=" << argv[4];
 				AppendSignature (out, keys, "#oldsig=");

@@ -28,6 +28,22 @@ import java.util.function.LongConsumer;
  * Builds v1 metainfo from provider streams without converting a content URI
  * into a filesystem path. The caller owns the worker and cancellation signal;
  * cursors, descriptors and streams opened here are closed before return.
+ *
+ * <p><b>Execution.</b> This performs blocking provider I/O and hashing, so it
+ * must run on the torrent worker, never on the main thread. Progress is
+ * reported to the caller's consumer on that same thread and is throttled to
+ * roughly four updates per second; it is a hint, not a completion signal.</p>
+ *
+ * <p><b>Bounds.</b> At most {@value #MAX_FILES} files, {@value #MAX_BYTES} total
+ * source bytes, 32 tracker URLs, 32 directory levels, 20000 enumerated document
+ * ids, 5 MiB of accumulated piece hashes, a 16 KiB..4 MiB power-of-two piece
+ * size and 255-character path components. A source whose provider-reported
+ * length disagrees with the bytes actually read fails the whole creation, so
+ * metainfo never describes content that is no longer there.</p>
+ *
+ * <p><b>Ownership.</b> The result is serialized metadata only. It is not a
+ * persisted grant: seeding the created torrent still needs a selected tree or
+ * document authority, and the caller must persist that separately.</p>
  */
 final class TorrentSafCreator {
     private record Source(Uri uri, String path, long length) {}
@@ -52,6 +68,12 @@ final class TorrentSafCreator {
      * @param privateTorrent whether to mark the metainfo private
      * @return serialized metainfo, not a persistent grant to seed the sources
      * @throws Exception if provider access, validation, hashing or encoding fails
+     * @implNote Cancellation is observed at the next read boundary; the
+     *           descriptor is never closed from the signal callback, because
+     *           that listener runs on the cancelling thread while this thread
+     *           may be inside {@code read()}. A provider that ignores
+     *           cancellation can therefore stay blocked past the caller's
+     *           deadline.
      */
     static byte[] create(ContentResolver resolver, Uri uri, boolean tree, CancellationSignal cancel,
             LongConsumer progress, int pieceLength, String[] trackers, boolean privateTorrent)

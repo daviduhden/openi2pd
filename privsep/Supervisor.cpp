@@ -499,7 +499,7 @@ int RunTorrentStorageSupervisor (int fd)
 				return 1;
 			continue;
 		}
-		// A dedicated `<datadir>/torrents` payload root is required before the
+		// A dedicated `&lt;datadir&gt;/torrents` payload root is required before the
 		// "." case can be rejected; today the torrent tunnel may request the
 		// whole data directory. Do not widen this fallback to a future router or
 		// data-storage role: those already own a narrower root.

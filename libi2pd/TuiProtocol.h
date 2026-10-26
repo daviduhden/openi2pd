@@ -31,9 +31,9 @@
  * Versioned, line-framed protocol used between the router and i2pd-tui over
  * a local UNIX stream socket.
  *
- * Request:   I2PDTUI/1 <COMMAND> [arguments]\n
- * Response:  I2PDTUI/1 OK <payload-length>\n<payload>
- *            I2PDTUI/1 ERR <error-code> <message-length>\n<message>
+ * Request:   I2PDTUI/1 &lt;COMMAND&gt; [arguments]\n
+ * Response:  I2PDTUI/1 OK &lt;payload-length&gt;\n&lt;payload&gt;
+ *            I2PDTUI/1 ERR &lt;error-code&gt; &lt;message-length&gt;\n&lt;message&gt;
  *
  * The payload is a sequence of "key=escaped-value\n" fields. Every length is
  * explicit and bounded; the receiver must never allocate based on a value it
@@ -48,9 +48,9 @@
  * bounded subscription/ban list edits.
  * The dispatcher converts each into a bounded daemon command; no request
  * carries a generic option name, path, URL or shell string. ADMIN replies
- * carry typed fields: admin=<action>,
- * result=ok|accepted|error, code=<reason>, value=<integer>, message=<text>
- * and, for the verbs with a discrete outcome, outcome=<token>
+ * carry typed fields: admin=&lt;action&gt;,
+ * result=ok|accepted|error, code=&lt;reason&gt;, value=&lt;integer&gt;, message=&lt;text&gt;
+ * and, for the verbs with a discrete outcome, outcome=&lt;token&gt;
  * (started|stopped|already-running|already-stopped|unknown|disabled|exists).
  * The reseed verb never waits for the bootstrap: it reports that the job was
  * started, is already running or is disabled by configuration.
@@ -62,6 +62,23 @@ namespace i2p
 {
 namespace tui
 {
+	/**
+	 * Framing invariants shared by the daemon and the console.
+	 *
+	 * A request is exactly one line; a response is a header line followed by
+	 * exactly `payload-size` bytes. There are no request ids and no
+	 * pipelining, so a receiver must consume the declared payload before it
+	 * can read the next header. The header bounds are inclusive (4096 bytes
+	 * for a request, 128 bytes for a response header), and the 256 KiB
+	 * payload ceiling is what makes the `uint32_t` conversion of a parsed
+	 * length safe in ParseResponseHeader.
+	 *
+	 * Every constant below is the wire contract, mirrored by
+	 * docs/tui-ipc.md. A producer must clamp to them before serializing
+	 * because the receiver rejects an oversized frame instead of truncating
+	 * it; a limit is a ceiling for one response, never an invitation to emit
+	 * a full page of every collection in a single message.
+	 */
 	inline constexpr std::string_view PROTOCOL_NAME = "I2PDTUI";
 	inline constexpr uint32_t PROTOCOL_VERSION = 1;
 
@@ -872,7 +889,7 @@ namespace tui
 
 				if (request.type == RequestType::TorrentDetail && !rest.empty ())
 				{
-					// Optional trailing page: TORRENT-DETAIL <tunnel> <id>
+					// Optional trailing page: TORRENT-DETAIL &lt;tunnel&gt; &lt;id&gt;
 					// [offset] [limit]. Both bounds are explicit so a hostile
 					// client cannot ask the daemon to emit an unbounded slice
 					// of the retained comment store. Absent arguments keep the
@@ -968,6 +985,12 @@ namespace tui
 		return header;
 	}
 
+	// Field values are escaped so a payload always splits on LF and a field on
+	// its first '='. Only backslash, LF and CR need escaping, and '=' is left
+	// alone because the splitter takes the first one, so a value may contain
+	// '=' unchanged. UnescapeValue deliberately keeps an unknown escape as
+	// backslash plus the character, which makes it the exact inverse for
+	// every string EscapeValue can produce and never drops input.
 	inline std::string EscapeValue (std::string_view value)
 	{
 		std::string escaped;
@@ -1029,6 +1052,10 @@ namespace tui
 			AppendField (payload, name, std::to_string (value));
 	}
 
+	// Serialise one frame. The payload is not re-checked against
+	// MAX_RESPONSE_PAYLOAD here: the daemon verifies the bound while building
+	// the payload and substitutes a ResponseTooLarge error frame, and a client
+	// only ever parses a frame whose declared length it already accepted.
 	inline std::string MakeResponse (
 		ResponseStatus status, std::string_view payload, ErrorCode errorCode = ErrorCode::None)
 	{

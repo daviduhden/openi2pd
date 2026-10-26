@@ -17,6 +17,13 @@ package org.openi2pd.router;
  *
  * <p>This is a presentation record only. It deliberately contains booleans,
  * never listening sockets, keys or file paths.</p>
+ *
+ * <p>A {@code false} component is only meaningful together with a snapshot that
+ * has live metrics: {@link #NONE} is what the service publishes before the
+ * daemon has reported, so screens gate on
+ * {@link RouterSnapshot#hasLiveMetrics()} and render "unknown" instead of
+ * claiming a service is disabled. The flags describe configured/running state,
+ * not reachability from an I2P client.</p>
  */
 public record ServiceStates(
         boolean httpProxy, boolean socksProxy, boolean bob, boolean sam, boolean i2cp) {

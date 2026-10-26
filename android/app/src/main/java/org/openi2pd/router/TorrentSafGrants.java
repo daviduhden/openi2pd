@@ -16,6 +16,12 @@ import java.util.Map;
  * Checks whether a persisted tree URI remains referenced by another torrent.
  * Grant release is performed by the caller only after the mapping update is
  * committed, so a failed update cannot revoke a still-referenced tree.
+ *
+ * <p>Plain, dependency-free helper: it is called from the service worker that
+ * owns the grant map and never releases a permission itself. Matching is by
+ * exact URI string, so a textually different spelling of the same tree counts
+ * as a separate grant and delays a release; the grant map must therefore store
+ * one canonical string per selected tree.</p>
  */
 final class TorrentSafGrants {
     private TorrentSafGrants() {

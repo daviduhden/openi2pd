@@ -92,14 +92,14 @@ template <typename Socket> bool AcceptLocalControlPeer (const Socket &)
 }
 #if !defined(_WIN32)
 constexpr bool I2P_CONTROL_LOCAL_PEER_AUTH = i2p::client::localcontrol::HAS_PEER_CREDENTIALS;
-bool AcceptLocalControlPeer (boost::asio::local::stream_protocol::socket & socket)
+[[maybe_unused]] bool AcceptLocalControlPeer (boost::asio::local::stream_protocol::socket & socket)
 {
 	return i2p::client::localcontrol::IsSameUserPeer (socket.native_handle ());
 }
 #else
 // No per-user credential call exists for a local socket on this platform.
 constexpr bool I2P_CONTROL_LOCAL_PEER_AUTH = false;
-bool AcceptLocalControlPeer (const boost::asio::local::stream_protocol::socket &)
+[[maybe_unused]] bool AcceptLocalControlPeer (const boost::asio::local::stream_protocol::socket &)
 {
 	return true;
 }

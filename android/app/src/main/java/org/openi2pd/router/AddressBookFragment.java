@@ -29,7 +29,27 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.textfield.TextInputEditText;
 import com.google.android.material.textfield.TextInputLayout;
 
-/** Bounded address-book administration; no files or native handles reach the UI. */
+/**
+ * Bounded address-book administration; no files or native handles reach the UI.
+ *
+ * <p>Every read and mutation is a request to {@link RouterViewModel}, which owns
+ * the worker hop into the daemon-owned administrative queue; this fragment never
+ * touches native code, address-book files, key material or storage paths, and
+ * the returned strings are treated as untrusted display text.</p>
+ *
+ * <p><b>Lifecycle and async results.</b> All work runs on the main thread
+ * except the bridge call itself. Each bridge callback captures
+ * {@link #generation}; {@code onDestroyView} increments it, so a late result
+ * is discarded instead of addressing a released row list. {@link #busy} makes
+ * each mutation single-flight: while one request is outstanding every other
+ * action returns early, so a double tap cannot enqueue two mutations for the
+ * same name.</p>
+ *
+ * <p><b>Bounds.</b> The length filters mirror the native JNI limits published by
+ * {@link RuntimeAdminPolicy}, and at most 200 address rows and 200 blocked
+ * patterns are materialised as views; the lists are display views of daemon
+ * state, never an authority that is edited in place.</p>
+ */
 public final class AddressBookFragment extends Fragment {
     /** Bounds enforced by the native JNI entry points. */
     private static final int MAX_NAME = RuntimeAdminPolicy.MAX_ADDRESS_NAME;
@@ -101,6 +121,16 @@ public final class AddressBookFragment extends Fragment {
         parent.addView(button);
     }
 
+    /**
+     * Reload address rows and subscription sources, then rebuild both lists.
+     *
+     * <p>Main thread. Single-flight through {@link #busy}; the two bridge
+     * callbacks are independent, so either list can render before the other.
+     * Both capture {@link #generation} and discard a result that arrives after
+     * the view was destroyed. Row text is the daemon's {@code name|destination|
+     * blinded} line and is used verbatim for display only; a row click opens a
+     * removal confirmation instead of mutating the book.</p>
+     */
     private void refresh() {
         if (busy || status == null)
             return;
@@ -191,6 +221,17 @@ public final class AddressBookFragment extends Fragment {
                 .show();
     }
 
+    /**
+     * Validate and submit one add-or-replace request.
+     *
+     * <p>The name and destination are trimmed and checked against the native
+     * bounds before any request is queued; an invalid pair is reported locally
+     * and never reaches the daemon. {@code replace} is the explicit operator
+     * overwrite: a plain add never re-points an existing name, and an
+     * {@code Exists} outcome is answered with a separate confirmation rather
+     * than a silent second write. Outcome tokens are matched against
+     * {@link RuntimeAdminPolicy}; nothing is assumed about their text.</p>
+     */
     private void submitAdd(String name, String destination, boolean replace) {
         if (busy || status == null)
             return;

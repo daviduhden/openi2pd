@@ -96,6 +96,13 @@ namespace transport
 
 	bool SSU2PeerTestSession::ProcessPeerTest (uint8_t * buf, size_t len)
 	{
+		// Order matters here: the source endpoint is validated against the reserved
+		// range, blocklist and ban list first, so no state or AEAD work happens for
+		// an excluded peer; then the long header is unmasked and the source
+		// connection ID is checked against the one derived from the test nonce
+		// before the payload is authenticated with the intro key. Only an
+		// authenticated payload is parsed, and a payload carrying an unknown or
+		// invalid block fails the whole test instead of partially applying it.
 		// we are Alice or Charlie, msgs 5,6,7
 		const auto & sender = GetRemoteEndpoint ();
 		if (!IsValidPeerTestEndpoint (sender))
@@ -230,6 +237,11 @@ namespace transport
 		// msgs 5-7. This session type is deliberately not "established": the
 		// out-of-session PeerTest exchange is authenticated by the test nonce
 		// and the connection IDs derived from it, not by a Noise handshake.
+		// m_MsgNumReceived is a monotonic watermark: a repeated or out-of-order
+		// message number is ignored outright, which is what makes the resend timers
+		// safe to cancel from any branch without risking a second delivery of the
+		// same step. The timestamp check is the Java +/-120 s window, applied before
+		// the nonce is compared so an old capture cannot drive the NAT assessment.
 		if (len < 13)
 		{
 			LogPrint (eLogWarning, "SSU2: PeerTest block is too short ", len);

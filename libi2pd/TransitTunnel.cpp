@@ -560,6 +560,13 @@ namespace tunnel
 				}
 
 				// encrypt reply
+				// Our own record is AEAD-sealed with the reply key and a
+				// record-number nonce, while every other record is only ChaCha20
+				// stream-encrypted with that same key: the creator can peel the
+				// later records but can only authenticate the status for the hop it
+				// addressed. The whole reply is then relayed as one message, so a
+				// failure to encrypt our record aborts the reply rather than
+				// forwarding a partially sealed one.
 				uint8_t nonce[12];
 				memset (nonce, 0, 12);
 				uint8_t * reply = buf + 1;
@@ -746,6 +753,10 @@ namespace tunnel
 				memset (record + ECIES_BUILD_RESPONSE_RECORD_OPTIONS_OFFSET, 0, 2); // no options
 				record[ECIES_BUILD_RESPONSE_RECORD_RET_OFFSET] = retCode;
 				// encrypt reply
+				// Same two-tier scheme as the short record path, but the other
+				// records are CBC-encrypted with the reply key/IV carried in this
+				// record. Order is preserved (record i, then every j), and any AEAD
+				// failure returns false so the caller sends no reply at all.
 				i2p::crypto::CBCEncryption encryption;
 				for (int j = 0; j < num; j++)
 				{

@@ -25,6 +25,14 @@ are in `/var/i2pd`. The packaged certificate tree is read-only under
 `/etc/i2pd`; do not edit files under `/var/i2pd` that are managed by the
 package.
 
+Startup and readiness
+=====================
+`rcctl start i2pd` starts the foreground daemon in the background
+(`rc_bg=YES`), so a returning start proves only that rc.subr forked it; a
+later startup failure appears in the log and not in the exit status. The first
+start creates the router keys and netDb entries below `/var/i2pd` as `_i2pd`;
+those files are the router identity and must not be deleted casually.
+
 Logging
 =======
 The rc.d service sends output to syslog and early start diagnostics through
@@ -38,7 +46,9 @@ Graceful shutdown
 and waits up to the 660-second `daemon_timeout` for the ordered stop and the
 ten-minute transit-tunnel drain. With no transit tunnels it exits promptly. A
 second SIGINT stops immediately. Do not replace this with a bare SIGTERM: that
-is the prompt path and skips the drain.
+is the prompt path and skips the drain. `rcctl reload i2pd` sends SIGHUP, which
+re-reads tunnel configuration only; the router configuration is read at
+startup, so restart after editing `/etc/i2pd/i2pd.conf`.
 
 TUI
 ===

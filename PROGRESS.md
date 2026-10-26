@@ -5191,3 +5191,64 @@ had hidden several warning classes; the following were corrected locally:
 Static checks and `shellcheck` pass; no compiler, CTest, Gradle, Doxygen or
 workflow was run. These warning fixes are Pending CI compilation and are not
 claimed as a clean warning-free build.
+
+## 2026-10-27 Source documentation continuation (static)
+
+Seven subagents documented the remaining implementation-heavy areas with
+disjoint file scopes:
+
+- **Core runtime:** garlic envelope/clove walk, destination lease publication,
+  datagram reliability/registration, transport peer/key management, SSU2
+  receive/service split and relay dispatch, tunnel build/peeling, endpoint
+  fragments and gateway framing.
+- **Crypto/persistence:** provider/fallback zeroization, X25519/ElGamal/ECIES
+  envelopes, HKDF split, identity/RouterInfo/LeaseSet validation, atomic FS
+  writes, logger bounds/redaction boundary, startup-only config and profile
+  lock order.
+- **IPC/platform:** Windows peer/token/AppContainer/Job/Object ordering,
+  OpenBSD unveil/pledge, credential drop and storage/log restart contracts.
+- **TUI:** terminal cell/column model, ncurses/Win32 differences, theme
+  degradation, IPC deadlines and `TuiProtocol` framing.
+- **Android:** remaining fragments, snapshot/status parsing, run state,
+  SAF creation/grants and BOOT_COMPLETED receiver contracts.
+- **Shell/packaging:** systemd/runit/s6/OpenBSD rc.d/port and Debian
+  maintainer-script upgrade/purge behavior.
+- **C++ tools:** remaining CLI/exit-code, key-file and registration-grammar
+  contracts.
+
+All edits were comments only; a diff audit found no non-comment added or
+removed code lines. Defects found during the pass are tracked as CONC-029,
+SEC-034, TUI-014, ANDROID-036, TOOL-019 and PKG-029; DOCS-013 records the
+remaining coverage. Static checks (`check-*`, docs links/nav/branding,
+shellcheck, `git diff --check`) pass. No compiler, CMake, CTest, Gradle,
+Doxygen, package, workflow, commit or push was performed; generated docs and
+all behavioral findings remain Pending CI.
+
+## 2026-10-27 Second CI-driven compile pass (static)
+
+The manual `b8c6473e` dispatch was read with `gh`: Linux/Android 40416816523,
+OpenBSD 40416823112, Fuzzing 40416827033 and Packaging 40416830825 failed;
+Windows 40416819852 had MinGW failed and MSVC still running. The first errors
+after the previous fixes were:
+
+- **CE-009:** the new X509 helper used mutable `X509_NAME_ENTRY`/
+  `ASN1_STRING` locals, but OpenSSL 4/LibreSSL return const pointers; changed
+  to const accessors.
+- **CE-010:** `b33offlinekeys` called `LoadPrivateKeys` unqualified; now
+  `i2p::tools::LoadPrivateKeys`.
+- **CE-011:** Android JNI copy-initialized `std::string` from a
+  `std::string_view`; now direct-initializes.
+- **CE-012:** Doxygen parsed placeholder tags (`<expected>`, `<COMMAND>`,
+  `<port>`, etc.) as XML and aborted under `WARN_AS_ERROR`; comment
+  placeholders are escaped as `&lt;...&gt;`, and a documentation-pass rule now
+  requires this audit.
+- **CE-013:** SOCKS missing `override` and unused fields; DHT signed
+  comparison; unused local-control overload; OpenBSD Boost.Asio endpoint
+  formatting reached `strcat`. The generic `LogPrint` is constrained so Asio
+  address/endpoint types use the safe `FormatAddress`/`FormatEndpoint`
+  overloads.
+
+Static checks (all `check-*`, docs links/nav/branding, shellcheck and
+`git diff --check`) pass. No compiler, CMake, CTest, Gradle, Doxygen or
+package was run; the fixes remain Pending CI compilation and the Windows MSVC
+lane was still in progress when the diagnostics were collected.

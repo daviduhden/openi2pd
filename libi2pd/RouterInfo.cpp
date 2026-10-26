@@ -280,6 +280,20 @@ namespace data
 
 	RouterInfo::~RouterInfo () { }
 
+	/**
+	 * @brief Replace the cached body with a re-signed RouterInfo.
+	 * @param buf complete new RouterInfo, identity prefix included.
+	 * @param len bytes available; bounded by MAX_RI_BUFFER_SIZE.
+	 * @return true only when the new body was verified and installed.
+	 *
+	 * The update is bound to the identity already cached for this entry: the
+	 * identity prefix of @a buf is not re-parsed and cannot introduce a different
+	 * router. RSA identities are refused before any provider work, mirroring the
+	 * network parse path. The body is parsed into temporary state and installed
+	 * only after the whole structure validates, and the updated flag is published
+	 * after the buffer, so a persistence pass can never observe the new flag with
+	 * the old bytes. Any failure leaves the previous entry intact.
+	 */
 	bool RouterInfo::Update (const uint8_t * buf, size_t len)
 	{
 		if (!buf || len > MAX_RI_BUFFER_SIZE)
@@ -471,6 +485,27 @@ namespace data
 		}
 	}
 
+	/**
+	 * @brief Parse the signed body of a RouterInfo (no identity, no signature).
+	 * @param buf first byte after the identity prefix.
+	 * @param len bytes up to the start of the trailing signature.
+	 * @param foreignNetIdOut optional flag set when the body declared a netId
+	 *        other than ours and the parse was rejected for that reason.
+	 * @return true when the complete body was parsed and committed.
+	 *
+	 * Two rules keep this parser safe against untrusted peers. First, the caller
+	 * has already removed the prefix and signature, so no length is subtracted
+	 * twice and the property section must end exactly at @a len. Second, all state
+	 * is parsed into locals and committed only on success, because the same
+	 * function is used by Update() on an existing entry that must survive a
+	 * malformed but correctly signed replacement.
+	 *
+	 * Independent checks mirror Java RouterInfo.readBytes(): at most sixteen
+	 * addresses, each address block bounded by its own declared size, unique
+	 * parameter keys, and only the exact "NTCP"/"NTCP2"/"SSU"/"SSU2" transport
+	 * names are matched. A parse failure never yields a partially populated
+	 * address list or property map.
+	 */
 	bool RouterInfo::ReadFromBuffer (const uint8_t * buf, size_t len, bool * foreignNetIdOut)
 	{
 		// Callers pass the signed body only: ReadFromBuffer(bool) and Update()
@@ -1847,6 +1882,17 @@ namespace data
 		return false;
 	}
 
+	/**
+	 * @brief Rebuild the serialised RouterInfo and sign it.
+	 * @param privateKeys our identity; signs the body and supplies the prefix.
+	 *
+	 * The previous timestamp is restored when serialisation, buffer allocation or
+	 * the size bound fails, so a failed rebuild never leaves a timestamp newer than
+	 * the retained bytes. The signature is written directly after the body with
+	 * exactly GetSignatureLen() bytes; len + signatureLen is checked against
+	 * MAX_RI_BUFFER_SIZE before the buffer is created, which is what makes the
+	 * narrowing cast of len to int safe.
+	 */
 	void LocalRouterInfo::CreateBuffer (const PrivateKeys & privateKeys)
 	{
 		auto publicKeys = privateKeys.GetPublic ();
@@ -1901,6 +1947,12 @@ namespace data
 		UpdateCapsProperty ();
 	}
 
+	// The caps string is a wire value: peers and Java compare it as flags, so the
+	// order and the single letter per flag matter more than readability. Bandwidth
+	// is the only flag that is encoded as exactly one of L/O/P/X, and congestion
+	// only appends a letter for medium/high/reject-all (low congestion is the
+	// absence of a letter). Keep this in sync with ExtractCaps() and never emit a
+	// duplicate letter: a duplicated cap is ambiguous to the peer.
 	void LocalRouterInfo::UpdateCapsProperty ()
 	{
 		std::string caps;
@@ -1949,6 +2001,11 @@ namespace data
 		return false;
 	}
 
+	// A RouterInfo is only hashed, signed and served from the buffer written by
+	// CreateBuffer(); the trailing bytes are the signature over everything before
+	// them. Writing stops at the declared addresses/properties, so a RouterInfo with
+	// no addresses still serialises a valid empty list rather than a truncated
+	// structure.
 	void LocalRouterInfo::WriteToStream (std::ostream & s) const
 	{
 		auto addresses = GetAddresses ();

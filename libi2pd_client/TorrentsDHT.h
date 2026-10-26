@@ -594,7 +594,7 @@ namespace torrents
 			m_DelegatedPersistence = true;
 		}
 		static constexpr size_t MaxStateBytes = 8 * 1024 * 1024;
-		// Legacy flat DHT filename: one component beneath <datadir>/torrents,
+		// Legacy flat DHT filename: one component beneath &lt;datadir&gt;/torrents,
 		// no traversal, separators, reserved prefixes or control bytes.
 		static bool IsValidStateFileName (std::string_view name);
 		/// Load persisted routing state, publish the datagram receivers (when the

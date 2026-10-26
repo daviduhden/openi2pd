@@ -225,7 +225,7 @@ struct WindowsWorkerProcess
  * Spawn a worker bound to one supervisor.
  *
  * The child receives
- * `--privsep-worker <role> <pipe> <parentPid> <parentSession> <nonceHex>` and
+ * `--privsep-worker &lt;role&gt; &lt;pipe&gt; &lt;parentPid&gt; &lt;parentSession&gt; &lt;nonceHex&gt;` and
  * inherits no handle: it reconnects to the named pipe by name. The process is
  * created suspended, placed in a Job Object with per-role limits and then
  * resumed. A role that the isolation table marks as AppContainer-based is
@@ -265,6 +265,10 @@ public:
 	 * (`S-1-...`) granted full access in addition to the service user and
 	 * SYSTEM; an empty value keeps the two-ACE DACL. The name must be free:
 	 * FILE_FLAG_FIRST_PIPE_INSTANCE fails instead of joining a squatted name.
+	 *
+	 * Exactly one instance exists and a successful accept consumes it: a
+	 * replacement worker needs a new server (and, in production, a new pipe
+	 * name), which is what keeps one listener bound to one spawn.
 	 */
 	static i2p::expected<WindowsServer, std::string> Create (
 		const std::wstring & pipeName, const std::wstring & extraSid = { });
@@ -324,6 +328,14 @@ public:
 	WindowsChannel (const WindowsChannel &) = delete;
 	WindowsChannel & operator= (const WindowsChannel &) = delete;
 
+	/**
+	 * Connect without binding the server identity.
+	 *
+	 * This is the unbound form and exists for local tests and tools: it accepts
+	 * whichever process created the pipe name. The worker path uses
+	 * `ConnectBound` with the supervisor PID and session, because a worker that
+	 * trusts a guessed name would accept a foreign supervisor.
+	 */
 	static i2p::expected<WindowsChannel, std::string> Connect (const std::wstring & pipeName, DWORD timeoutMs);
 	/** Connect and authenticate the expected server process/session. */
 	static i2p::expected<WindowsChannel, std::string> ConnectBound (
@@ -368,6 +380,16 @@ public:
 	bool RoleSet () const { return m_RoleSet; }
 	bool IsCoreSide () const { return m_CoreSide; }
 
+	/**
+	 * Send exactly one frame.
+	 *
+	 * Direction is checked first when the endpoint has a role: the
+	 * request-issuing side sends requests, a bound worker sends replies, and a
+	 * WorkerHello is only sendable before the role is bound. A timeout or a
+	 * short write closes the channel and is reported as a failure, because the
+	 * record may already have been delivered; the caller must not retry it on a
+	 * replacement channel.
+	 */
 	i2p::expected<void, std::string> Send (const Message & message, DWORD timeoutMs = 5000);
 	/**
 	 * Receive one frame. A deadline expiry that cancels a read is reported as

@@ -29,6 +29,7 @@
 #include <memory>
 #include <mutex>
 #include <thread>
+#include <type_traits>
 #include <functional>
 #include <utility>
 #include <vector>
@@ -294,7 +295,16 @@ inline void LogPrint (std::stringstream & s, const boost::asio::ip::udp::endpoin
 }
 
 /** internal usage only -- folding args array to single string */
-template <typename TValue> void LogPrint (std::stringstream & s, TValue && arg) noexcept
+// Exclude Asio address/endpoint types so an rvalue/lvalue does not prefer
+// this forwarding overload over the safe FormatAddress/FormatEndpoint
+// overloads above (Boost's POSIX formatter uses sprintf/strcat for scope IDs).
+template <typename TValue>
+	requires (!std::is_same_v<std::remove_cvref_t<TValue>, boost::asio::ip::address>
+		&& !std::is_same_v<std::remove_cvref_t<TValue>, boost::asio::ip::address_v4>
+		&& !std::is_same_v<std::remove_cvref_t<TValue>, boost::asio::ip::address_v6>
+		&& !std::is_same_v<std::remove_cvref_t<TValue>, boost::asio::ip::tcp::endpoint>
+		&& !std::is_same_v<std::remove_cvref_t<TValue>, boost::asio::ip::udp::endpoint>)
+void LogPrint (std::stringstream & s, TValue && arg) noexcept
 {
 	s << std::forward<TValue> (arg);
 }

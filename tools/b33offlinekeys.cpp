@@ -143,7 +143,7 @@ int main (int argc, char * argv[])
 
 	std::string fname (argv[2]);
 	i2p::data::PrivateKeys keys;
-	if (auto loaded = LoadPrivateKeys (fname, keys); !loaded)
+	if (auto loaded = i2p::tools::LoadPrivateKeys (fname, keys); !loaded)
 	{
 		std::cerr << loaded.error () << std::endl;
 		return loaded.error () == "bad keys file format" ? 3 : 2;

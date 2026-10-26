@@ -5,8 +5,18 @@
 #
 # systemd-tmpfiles policy for the persistent state directory and for the
 # runtime and log paths used by the service definitions. The packaged systemd
-# unit also declares StateDirectory=/RuntimeDirectory= for the same paths.
+# unit also declares StateDirectory=/RuntimeDirectory=/LogsDirectory= for the
+# same paths, so service startup does not depend on tmpfiles having run.
 #
+# The 0700 mode is a security requirement, not a cosmetic default: the state
+# directory holds the router identity keys and the mode-0600 TUI socket, and the
+# log directory must not be readable by other local accounts. A `d` line also
+# re-applies mode and ownership to an existing directory on every run, so an
+# administrator who deliberately widens the log directory needs a local
+# drop-in; debian/postinst only preserves custom modes during package upgrade.
+#
+# These entries matter on a systemd host. A non-systemd host never runs
+# systemd-tmpfiles, and the maintainer script creates the same three paths.
 
 d /var/lib/i2pd 0700 i2pd i2pd -
 d /var/log/i2pd 0700 i2pd i2pd -

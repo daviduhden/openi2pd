@@ -31,6 +31,16 @@ final class TorrentDocumentReader {
      * Read a complete torrent document under a caller-selected cap. The caller
      * retains ownership of {@code input} and must close it, including on error.
      *
+     * <p>The cap is enforced by reading one byte past it: reaching
+     * {@code maximum + 1} bytes is an overflow, while exactly {@code maximum}
+     * bytes followed by EOF is accepted. A provider that reports a wrong length,
+     * or none at all, therefore cannot smuggle metadata past the limit, and a
+     * zero-length read is treated as a stall rather than as EOF.</p>
+     *
+     * <p>Cancellation is cooperative: the calling thread's interrupt flag is
+     * checked between reads. The stream is never closed here, so the caller
+     * decides when the provider capability is released.</p>
+     *
      * @param input stream from a user-selected document provider
      * @param maximum accepted byte count, up to the import limit
      * @return nonempty bytes read through EOF

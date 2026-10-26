@@ -181,6 +181,18 @@ a TUI client.
   transforms, retries or atomic writes. Shell helpers follow the POSIX rules in
   [`docs/source-documentation.md`](../../../docs/source-documentation.md).
 
+
+- `TOOL-019` records that `tools/common/crypto.hpp` ignores `InitCrypto`
+  failure and that `vain`/`regaddr_3ld` usage/error streams and `vain`'s
+  default output name are inconsistent with the CLI contract. Tools must fail
+  closed on provider initialization and keep usage on stderr with a non-zero
+  status.
+
+
+- `LoadPrivateKeys` lives in `i2p::tools` (`tools/common/keys.hpp`); a tool
+  outside that namespace must qualify the call. The `b33offlinekeys` target
+  exposed this only after the earlier build blockers were removed (CE-010).
+
 ## Do not
 
 - Do not compile, run tools, Perl/prove/shell tests, firewall commands,

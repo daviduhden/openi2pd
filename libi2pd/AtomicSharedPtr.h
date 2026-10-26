@@ -5,7 +5,7 @@
  * openi2pd: AtomicSharedPtr.
  *
  * Portable atomic shared-pointer storage. libc++ did not expose the C++20
- * std::atomic<std::shared_ptr<T>> specialization on every supported target;
+ * std::atomic&lt;std::shared_ptr&lt;T&gt;&gt; specialization on every supported target;
  * the mutex fallback keeps those builds correct without deprecated free
  * functions.
  *

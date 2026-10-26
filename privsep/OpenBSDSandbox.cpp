@@ -341,6 +341,9 @@ i2p::expected<void, std::string> ApplyOpenBSDPolicy (const OpenBSDPolicy & polic
 		return i2p::unexpected ("pledge " + policy.pledge + ": " + std::string (strerror (errno)));
 	return { };
 #else
+	// Deliberate fail-closed stub: an unavailable sandbox is an error, never a
+	// successful no-op, so no caller can silently continue unconfined on a
+	// platform that does not implement pledge/unveil.
 	(void)policy;
 	return i2p::unexpected ("OpenBSD sandbox is not available on this platform");
 #endif
@@ -369,6 +372,10 @@ i2p::expected<int, std::string> OpenPreopenedDirectory (std::string_view path)
 	return fd;
 }
 
+// Validation is performed on the descriptor, not on the path it was addressed
+// with, so a rename or replacement between sendfd and this call cannot redirect
+// the authority. CLOEXEC is required as well: an inherited descriptor that
+// survives execve would bypass the exec'ed worker's own descriptor contract.
 i2p::expected<void, std::string> ValidatePreopenedDescriptor (int fd, bool directory)
 {
 	if (fd < 0) return i2p::unexpected ("invalid pre-opened descriptor");
@@ -497,6 +504,10 @@ bool IsPledgePromiseSubset (std::string_view subset, std::string_view superset)
 	return true;
 }
 
+// Reading the operator policy file needs rpath, so it belongs to the startup
+// phase: after the runtime pledge has removed path opening, the same call would
+// abort the core instead of returning an error. The accepted list is only
+// intersected with the phase base set; nothing here can widen a promise.
 i2p::expected<std::vector<std::string>, std::string> ParseOpenBSDPledgeFile (
 	const std::string & path, std::span<const std::string_view> allowedPromises, OpenBSDPledgePhase phase)
 {

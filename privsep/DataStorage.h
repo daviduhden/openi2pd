@@ -50,9 +50,9 @@ bool IsCanonicalArtifactName (i2p::data::StorageArtifact kind, std::string_view 
 
 /**
  * Relative path of one artifact inside the delegated root. The layout matches
- * the core's existing readers exactly: `netDb/r<first>/routerInfo-<name>.dat`,
- * `peerProfiles/p<first>/profile-<name>.txt` and
- * `destinations/<name>.dat`. Returns an empty string for an unknown kind or a
+ * the core's existing readers exactly: `netDb/r&lt;first&gt;/routerInfo-&lt;name&gt;.dat`,
+ * `peerProfiles/p&lt;first&gt;/profile-&lt;name&gt;.txt` and
+ * `destinations/&lt;name&gt;.dat`. Returns an empty string for an unknown kind or a
  * non-canonical name.
  */
 std::string ArtifactRelativePath (i2p::data::StorageArtifact kind, std::string_view name);
@@ -74,6 +74,9 @@ bool AcceptsArtifactTarget (bool isRegularFile, uint32_t targetUid, uint32_t cur
  * attempts inside a 60 s window, then terminal failure until the owner calls
  * Start() again. No member blocks; callers ask CanAttempt() and schedule a new
  * attempt when the clock passes NextAttempt().
+ *
+ * Every member takes the caller's `now` and touches no clock, thread or
+ * descriptor, so it is also usable from a unit test with an injected time.
  */
 class StorageClientRestart
 {
@@ -123,6 +126,12 @@ bool IsCurrentDataStorageReply (
  * An ambiguous in-flight write is never replayed: the call that hit the
  * failure returns false. Request-id exhaustion is a local Busy refusal that
  * leaves the channel usable.
+ *
+ * Concurrency: Start, Stop, Write and Remove serialize on that mutex, so a
+ * second caller waits for the in-flight request instead of interleaving two
+ * frames on the channel. The diagnostic accessors read atomics and may be
+ * called from any thread. The client owns its root descriptor and child
+ * process; Stop (also run by the destructor) closes both.
  */
 class DataStorageClient
 {

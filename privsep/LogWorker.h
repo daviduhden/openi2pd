@@ -30,7 +30,7 @@ namespace i2p::privsep
  * lives inside the bound, so one sanitised record never exceeds MAX_TEXT_SIZE.
  */
 inline constexpr std::string_view LOG_TRUNCATION_MARKER = "...[truncated]";
-/** Replacement for the value of a sensitive `<key>=<value>` pair. */
+/** Replacement for the value of a sensitive `&lt;key&gt;=&lt;value&gt;` pair. */
 inline constexpr std::string_view LOG_REDACTED_VALUE = "<redacted>";
 /** Bound on redactions per record; keeps the pass cheap for hostile input. */
 inline constexpr size_t MAX_LOG_REDACTIONS = 64;
@@ -82,7 +82,15 @@ public:
 	 * capability; the supervisor never opens the log file.
 	 */
 	i2p::expected<void, std::string> ConfigureProxy (bool useSyslog, std::string_view path, std::string_view tag);
-	/** Attach a freshly spawned worker after re-sending the configuration. */
+	/**
+	 * Attach a freshly spawned worker after re-sending the configuration.
+	 *
+	 * The replacement is proven before it is adopted: the old channel is closed
+	 * only after the new one answered the configuration probe. A failed
+	 * reattach closes the candidate and leaves the previous channel and its
+	 * failed state untouched, so the caller may retry or accept the documented
+	 * record drops; it never leaves two sinks attached.
+	 */
 	i2p::expected<void, std::string> Reattach (Channel channel);
 	/** Reattach a proxy-owned worker without opening the log file locally. */
 	i2p::expected<void, std::string> ReattachProxy (Channel channel);
@@ -127,7 +135,17 @@ private:
 	std::string m_Tag;
 };
 
-/** Entry point for the isolated log worker process. */
+/**
+ * Entry point for the isolated log worker process.
+ *
+ * @param fd Channel descriptor adopted as descriptor 3; the worker takes
+ *        ownership and closes it on every exit path.
+ * @return 0 only after a `Shutdown` frame flushed the sink. 1 is returned for
+ *         a role/sandbox failure, a peer uid that is not an allowed parent, a
+ *         malformed or out-of-order frame, an unusable log descriptor and a
+ *         write/flush error, so the parent's restart policy sees a real
+ *         failure instead of a silent stop.
+ */
 int RunLogWorker (int fd);
 
 /**
@@ -142,7 +160,7 @@ int RunLogWorker (int fd);
 std::string SanitizeLogText (std::string_view text);
 
 /**
- * Replace the value of a `<sensitive key><separator><value>` pair with
+ * Replace the value of a `&lt;sensitive key&gt;&lt;separator&gt;&lt;value&gt;` pair with
  * LOG_REDACTED_VALUE. The key set is compiled in (password, private key,
  * privatekey, passphrase, token, secret), matched case-insensitively at an
  * identifier boundary, with '=' or ':' as separator. Everything that is not a

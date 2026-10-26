@@ -811,6 +811,18 @@ namespace garlic
 
 	void GarlicDestination::HandleGarlicMessage (std::shared_ptr<I2NPMessage> msg)
 	{
+		// Envelope selection is a fixed order, not a guess: (1) an ECIES-X25519
+		// ratchet tag, (2) an ElGamal/AES+SessionTag block (16-byte aligned and at
+		// least 32 bytes for the tag), (3) a new-session envelope, chosen as
+		// ElGamal/AES only when the length is 2 mod 16, at least 514 bytes (the
+		// encrypted block) and the destination still has an ElGamal key; otherwise
+		// an ECIES-X25519 New Session message is assumed. A failed step must not
+		// consume state for the next one, so a tag is erased only by the branch
+		// that then uses it.
+		// Runs on the executor that owns this destination (LeaseSetDestination
+		// drains its incoming queue on its own service). The shared tag and
+		// session maps are still locked because transport threads insert
+		// received session keys and tags from outside that executor.
 		if (!msg || msg->GetLength () < I2NP_HEADER_SIZE + 4)
 		{
 			if (g_GarlicParseDrops.Record ())
@@ -1056,6 +1068,13 @@ namespace garlic
 		}
 		buf++;
 		len--;
+		// Two-phase walk per clove: classify first (framing, freshness, addressed
+		// destination), then deliver. A clove that is merely skipped still has
+		// intact framing, so the shared advance at the bottom of the loop moves
+		// past exactly one clove and the walk continues; broken framing is the
+		// only reason to stop the whole payload. `from` marks tunnel delivery,
+		// which decides whether a TUNNEL clove is forwarded through this
+		// destination's outbound tunnel or sent directly with a gateway wrapper.
 		for (unsigned int i = 0; i < numCloves; i++)
 		{
 			if (len < 1) // no flag byte left for the announced clove
@@ -1297,6 +1316,11 @@ namespace garlic
 			}
 			if (!session)
 			{
+				// Built outside the map lock: the constructor generates the
+				// session key and tag set. Two racing callers can both create a
+				// session and the later insert wins; that is harmless because no
+				// tag from the loser has been announced yet, so nothing can be
+				// encrypted with it.
 				session = std::make_shared<ElGamalAESSession> (this, destination, attachLeaseSet ? m_NumTags : 4,
 					attachLeaseSet); // specified num tags for connections and 4 for LS requests
 				std::unique_lock<std::mutex> l (m_SessionsMutex);
@@ -1521,6 +1545,12 @@ namespace garlic
 
 	void GarlicDestination::LoadTags ()
 	{
+		// Tags are handed over exactly once per clean shutdown: SaveTags() writes
+		// them, this function installs only records still inside
+		// INCOMING_TAGS_EXPIRATION_TIMEOUT and then removes the file (see the
+		// Remove at the end). A crash therefore cannot leave a stale tag set that
+		// a later start would install as if it were fresh. A short read stops the
+		// loop instead of publishing a partially filled tag or key.
 		std::string ident = GetIdentHash ().ToBase32 ();
 		std::string path = i2p::fs::DataDirPath ("tags", (ident + ".tags"));
 		uint32_t ts = static_cast<uint32_t> (i2p::util::GetSecondsSinceEpoch ());

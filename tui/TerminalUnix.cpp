@@ -91,6 +91,14 @@ namespace tui
 	{
 		namespace
 		{
+			// ncurses keeps its screen and input state in process globals, so
+			// this backend does the same: there is exactly one terminal, owned
+			// by the console thread. Init, Shutdown and every drawing call must
+			// run on that thread; the flags below are deliberately not atomic
+			// and act as an initialization guard, not as synchronization. Init
+			// is idempotent: a second call reports success without re-entering
+			// initscr(), while a failed call leaves the guard clear so the
+			// caller may retry.
 			bool g_Initialized = false;
 			const char * g_Error = nullptr;
 
@@ -201,6 +209,12 @@ namespace tui
 			// limit is a terminal-column budget, not a byte count. Decode each
 			// UTF-8 sequence so a wide CJK glyph or a combining mark cannot be
 			// split or consume the wrong number of cells.
+			//
+			// Each iteration starts from a fresh mbstate_t, which is only
+			// correct for a stateless encoding: the startup LC_CTYPE check
+			// exists so the locale is always UTF-8-like. The bounded prefix is
+			// built first so addnstr() is called once with whole sequences,
+			// never with a partial one that ncursesw would swallow.
 			std::string copy;
 			int columns = 0;
 			size_t offset = 0;
@@ -248,6 +262,11 @@ namespace tui
 
 		int ReadKey (int timeoutMilliseconds)
 		{
+			// timeout() is global ncurses state that Init seeds with 200 ms;
+			// every call re-arms it, so a poll (0) or a block (negative) here
+			// does not leak into the next read. Errors and special keys the
+			// translation table does not name (mouse, keypad) become KEY_NONE,
+			// i.e. an idle tick.
 			if (!g_Initialized) return KEY_NONE;
 			timeout (timeoutMilliseconds);
 			return TranslateKey (getch ());

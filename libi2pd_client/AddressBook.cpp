@@ -20,7 +20,7 @@
  * no per-conflict file is written.
  *
  * Feed retraction: a subscription may ask for the removal of a name it created
- * with the Java advanced form "<name>=<destination>#!action=delete". The origin
+ * with the Java advanced form "&lt;name&gt;=&lt;destination&gt;#!action=delete". The origin
  * of every feed-supplied entry is remembered in memory and in the bounded
  * entry-sources.txt sidecar, so the index keeps its legacy "name,destination" columns
  * and old readers stay compatible. A name without a recorded origin (locally
@@ -95,7 +95,7 @@ namespace client
 		constexpr size_t MAX_ACTION_KEY_LENGTH = 24;
 		constexpr size_t MAX_ACTION_VALUE_LENGTH = 128;
 		constexpr size_t MAX_ACTION_BLOCK_LENGTH = 256;
-		// entry-sources.txt is written by the book itself: one "name<TAB>origin" line
+		// entry-sources.txt is written by the book itself: one "name&lt;TAB&gt;origin" line
 		// per entry that a subscription supplied. The bounds follow the merge
 		// entry cap (10000 addresses) with room for the origin column.
 		constexpr size_t MAX_ADDRESS_SOURCE_FILE = 1024 * 1024;
@@ -189,7 +189,7 @@ namespace client
 			return true;
 		}
 
-		// One persisted "name<TAB>origin" line. Names and origins are host
+		// One persisted "name&lt;TAB&gt;origin" line. Names and origins are host
 		// names, so a tab (which neither can contain) is an unambiguous
 		// separator.
 		bool ParseAddressSourceLine (std::string_view line, std::string & name, std::string & origin)
@@ -302,7 +302,7 @@ namespace client
 			// imitate a punycode prefix.
 			if (label.find ("--") != std::string_view::npos) return false;
 			// A final label of exactly the base32-hash length is the
-			// "<hash>.i2p" lookalike of "<hash>.b32.i2p": a name like that would
+			// "&lt;hash&gt;.i2p" lookalike of "&lt;hash&gt;.b32.i2p": a name like that would
 			// never resolve as a destination and can only mislead.
 			if (finalLabel)
 			{

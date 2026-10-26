@@ -444,6 +444,13 @@ namespace transport
 	void SSU2Server::HandleReceivedFrom (const boost::system::error_code & ecode, size_t bytes_transferred,
 		Packet * packet, boost::asio::ip::udp::socket & socket)
 	{
+		// Runs on the receive service (m_ReceiveService), never on the SSU2
+		// service: packets are only classified by size here and handed to the
+		// bounded queue, which the SSU2 service drains in ProcessNextPacket().
+		// available() is used to coalesce a burst into one batch, capped at
+		// SSU2_MAX_NUM_PACKETS_PER_BATCH so one busy socket cannot monopolise the
+		// thread. ICMP-induced errors are treated as continue-reading, not as a
+		// reason to tear down the socket.
 		if (!ecode || ecode == boost::asio::error::connection_refused || ecode == boost::asio::error::connection_reset
 			|| ecode == boost::asio::error::network_reset || ecode == boost::asio::error::network_unreachable
 			|| ecode == boost::asio::error::host_unreachable
@@ -667,6 +674,11 @@ namespace transport
 
 	void SSU2Server::AddSessionByRouterHash (std::shared_ptr<SSU2Session> session)
 	{
+		// One published session per router identity. A replacement must not silently
+		// drop work that the old session still holds, so its unsent messages are
+		// moved to the new session before the old one is terminated through the
+		// service queue (terminating inline would re-enter the session maps from
+		// the caller's context). PeerTest sessions never reach this map.
 		if (session)
 		{
 			auto ident = session->GetRemoteIdentity ();
@@ -957,6 +969,18 @@ namespace transport
 	void SSU2Server::ProcessNextPacket (
 		uint8_t * buf, size_t len, const boost::asio::ip::udp::endpoint & senderEndpoint)
 	{
+		// All SSU2 state (m_Sessions, m_LastSession, m_PendingOutgoingSessions) is
+		// owned by the SSU2 service thread; this function runs only there.
+		// The connection ID is demultiplexed with the intro-key header mask, and
+		// m_LastSession caches the last match so a burst for one session does not
+		// search the map per packet. Before switching to a different session the
+		// previous one is flushed, and m_LastSession is the only place a
+		// termination is detected: a state that has already ended (Closing/
+		// Terminated) drops the cached pointer instead of processing further data.
+		// An unknown ID is either an outgoing handshake still in progress
+		// (SessionCreated/Retry are matched by remote endpoint, not by connID) or a
+		// new inbound session, which is admitted only after the address, blocklist
+		// and admission checks below.
 		if (len < 24) return;
 		uint64_t connID;
 		memcpy (&connID, buf, 8);
@@ -1211,6 +1235,13 @@ namespace transport
 
 	void SSU2Server::ConnectThroughIntroducer (std::shared_ptr<SSU2Session> session)
 	{
+		// The introducer list is an immutable snapshot taken under the address
+		// mutex (netDb prunes the live vector from its own thread). An existing
+		// session to any listed introducer with a live relay tag is used directly;
+		// otherwise only introducers still published on a transport we can reach
+		// are dialled, and the relay tag of the first usable candidate is what the
+		// introduction is bound to. Everything else triggers a RouterInfo request
+		// and gives up immediately instead of waiting for the connect timeout.
 		if (!session) return;
 		auto address = session->GetAddress ();
 		if (!address) return;

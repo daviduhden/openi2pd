@@ -51,7 +51,16 @@ inline constexpr std::array<SigTypeName, 16> SIG_TYPE_NAMES { {
 	{ "GOSTR3410-TC26-A-GOSTR3411-512", i2p::data::SIGNING_KEY_TYPE_GOSTR3410_TC26_A_512_GOSTR3411_512 },
 } };
 
-/** @brief returns stable string representation of a signing key type */
+/**
+ * @brief returns stable string representation of a signing key type
+ *
+ * The first table entry with a matching type wins, so an alias must never be
+ * listed before the canonical I2P spelling: `ECDSA-P256` therefore renders as
+ * `ECDSA-P256` while `ECDSA-SHA256-P256` stays an accepted input alias. The
+ * result is display and diagnostic text (`keygen` and `b33address` print it)
+ * and is never parsed back, so an unnamed type degrades to
+ * `unknown: &lt;number&gt;` instead of failing.
+ */
 inline std::string SigTypeToName (uint16_t keytype)
 {
 	for (const auto & entry : SIG_TYPE_NAMES)
@@ -65,6 +74,14 @@ inline std::string SigTypeToName (uint16_t keytype)
  * A registration record is `name=destination#!sig=...`; a name carrying a
  * separator, control byte or whitespace could forge extra fields. The check is
  * deliberately about the record grammar, not DNS policy.
+ *
+ * Rejecting `=` and `#` keeps the signed prefix parseable, and refusing every
+ * byte at or below space plus DEL keeps it one LF-terminated line on both
+ * platforms. Backslash is refused because the registration services accept
+ * escaped fields. Length is capped at 255 bytes; the DNS/label rules a
+ * registration service applies are a separate, later decision. Callers run
+ * this before loading a key file, so a malformed name is refused without
+ * touching the key.
  */
 inline bool IsValidRecordName (std::string_view name)
 {
@@ -102,6 +119,12 @@ template <typename TValue> std::optional<TValue> ParseBounded (std::string_view 
 /// @return The signing key type, or std::nullopt for an unknown, empty or
 ///         out-of-range spelling; callers report a CLI error instead of
 ///         silently defaulting.
+///
+/// The one/two-character gate is part of the contract: `7` and `11` are
+/// numbers, while a zero-padded `007` is treated as a name and refused. Numeric
+/// input stops at `RED25519-SHA512`, so the remaining wire values stay
+/// unnameable here rather than being accepted for a key this build cannot
+/// generate or label.
 inline std::optional<uint16_t> NameToSigType (std::string_view keyname)
 {
 	if (keyname.empty ()) return std::nullopt;

@@ -75,7 +75,7 @@ int main (int argc, char * argv[])
 	i2p::tools::CryptoGuard cryptoGuard;
 
 	i2p::data::PrivateKeys keys;
-	if (auto loaded = LoadPrivateKeys (argv[2], keys); !loaded)
+	if (auto loaded = i2p::tools::LoadPrivateKeys (argv[2], keys); !loaded)
 	{
 		std::cerr << loaded.error () << std::endl;
 		return loaded.error () == "bad keys file format" ? 3 : 2;

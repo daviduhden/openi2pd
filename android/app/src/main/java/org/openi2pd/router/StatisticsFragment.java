@@ -28,6 +28,19 @@ import androidx.lifecycle.ViewModelProvider;
 /**
  * Traffic history and lifetime counters. The chart is a bounded custom view;
  * samples are appended only when the service publishes a snapshot.
+ *
+ * <p>Sample rule: one chart point per distinct observed uptime value, so a
+ * faster poll interval cannot manufacture fake history and a repeated snapshot
+ * is a no-op. A snapshot whose uptime is lower than the last sample means the
+ * daemon restarted (or the counter wrapped), so the chart is cleared first
+ * instead of appending a stale point to the new run.</p>
+ *
+ * <p>Main thread only: {@link #lastSampleUptime} and the chart history are
+ * plain fields with no synchronization. They survive a configuration change
+ * through {@code onSaveInstanceState} (two long arrays bounded by
+ * {@code TrafficChartView.MAX_SAMPLES} plus the last uptime), not through a
+ * process death. Every value is display-only; nothing here authors router
+ * state and no JNI is called.</p>
  */
 public class StatisticsFragment extends Fragment {
     private static final String STATE_CHART_DOWNLOAD = "chart_download";
@@ -86,6 +99,15 @@ public class StatisticsFragment extends Fragment {
         viewModel.getSnapshot().observe(getViewLifecycleOwner(), this::render);
     }
 
+    /**
+     * Render one snapshot and extend the chart history.
+     *
+     * <p>Main thread, attached view only (it calls {@code requireContext()}).
+     * Without live metrics every counter is replaced by "unknown" and no sample
+     * is appended, so an unavailable status bridge cannot flatten the chart to
+     * zero. {@link #lastSampleUptime} is only advanced when a sample was
+     * actually appended.</p>
+     */
     private void render(@Nullable RouterSnapshot snapshot) {
         boolean hasData = UiFormat.hasLiveMetrics(snapshot);
         String download = hasData ? UiFormat.rate(requireContext(), snapshot.inRate15())

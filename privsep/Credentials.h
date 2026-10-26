@@ -24,9 +24,20 @@
 
 namespace i2p::privsep
 {
+/**
+ * Fixed service identity of every spawned worker.
+ *
+ * The pair is non-secret and process-wide: it is resolved once before the
+ * startup sandbox and the first spawn, and no later NSS lookup can change it.
+ * On Windows the struct is inert (`configured` stays false and `WorkerUid()` is
+ * 0) because the Windows backend identifies a worker by its authenticated pipe
+ * peer token instead of a POSIX uid/gid; a caller that needs a real worker
+ * identity, such as the storage clients, must therefore fail closed there
+ * rather than treat 0 as a valid uid.
+ */
 struct WorkerCredentials
 {
-	/** False when the daemon runs as a non-root identity and no override was configured. */
+	/** True only when `privsep.user` was resolved; false keeps the daemon's own effective identity. */
 	bool configured = false;
 	uint32_t uid = 0;
 	uint32_t gid = 0;
@@ -67,6 +78,10 @@ bool IsAllowedParentUid (uint32_t peerUid);
  * real/effective ids plus an empty supplementary set. Async-signal-safe: only
  * syscalls, no allocation, no logging. Returns false on any mismatch; the
  * caller must `_exit` without exec.
+ *
+ * On Windows there is no forked child to drop into and this function always
+ * returns false: a caller must treat it as "the spawn is not available here",
+ * never as "no drop was needed".
  */
 bool DropWorkerCredentialsInChild (const WorkerCredentials & credentials);
 

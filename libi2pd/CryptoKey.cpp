@@ -64,6 +64,24 @@ namespace crypto
 			if (encrypted) memset (encrypted, 0, ECIES_ENCRYPTED_SIZE);
 		}
 
+		/**
+		 * @brief Decode an I2P 64-byte X||Y point onto an OpenSSL curve.
+		 * @param curve group the point belongs to.
+		 * @param point pre-allocated destination point.
+		 * @param pub 64-byte big-endian affine coordinates.
+		 * @return false for a null argument, a provider failure, an off-curve
+		 *         point or the point at infinity.
+		 *
+		 * I2P transmits affine coordinates without an uncompressed-point tag, so
+		 * the encoding itself carries no curve information and the caller must
+		 * already know which group is expected. OpenSSL validates that the
+		 * coordinates satisfy the curve equation in
+		 * EC_POINT_set_affine_coordinates(); the point at infinity is rejected
+		 * explicitly. No separate subgroup check is performed, which matches the I2P
+		 * key formats (P-256 has cofactor 1) and keeps the accepted encodings
+		 * identical to Java's. The coordinates are public input, so the temporary
+		 * BIGNUMs are freed without cleansing.
+		 */
 		bool LoadECPublicKey (const EC_GROUP * curve, EC_POINT * point, const uint8_t * pub)
 		{
 			if (!curve || !point || !pub) return false;
@@ -317,6 +335,16 @@ namespace crypto
 		return true;
 	}
 
+	/**
+	 * @brief Build the decryptor for this local key pair on first use.
+	 *
+	 * Lazy creation keeps the long-term private key out of a second object until
+	 * a peer actually sends a message. An empty or all-zero private field is the
+	 * fail-closed result of GenerateKeys() and never produces a decryptor: such a
+	 * key was never published, so silently decrypting with it would only hide a
+	 * generation failure. Not synchronized; the owning destination must call it
+	 * before the key is used from another thread.
+	 */
 	void LocalEncryptionKey::CreateDecryptor ()
 	{
 		if (priv.empty ())

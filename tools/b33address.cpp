@@ -33,6 +33,13 @@ int main (int argc, char * argv[])
 		std::cerr << "Usage: b33address < base64-destination" << std::endl;
 		return 1;
 	}
+	// Contract: the prompt goes to stderr so stdout carries only the two data
+	// lines a pipeline can parse, and only the first line of stdin is read (a
+	// pasted multi-address input uses the first destination, not an error).
+	// Exit status is 0 for `--help` or a derived address, 1 for a usage error,
+	// oversized input, non-printable byte, undecodable base64 or a
+	// non-blindable key.
+	//
 	// base64 input, b33 and store key output, 11->11 only. Read one byte at a
 	// time so the cap is enforced before allocation and an embedded NUL can
 	// never silently truncate the value the way getline()+string_view did.

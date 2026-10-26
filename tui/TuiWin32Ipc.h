@@ -6,7 +6,7 @@
  *
  * Derives the Windows named-pipe path shared by the daemon and i2pd-tui from
  * the configured local endpoint. The endpoint is normalised and hashed with
- * FNV-1a into \\.\pipe\openi2pd-tui-<16 hex digits>, so path spelling cannot
+ * FNV-1a into \\.\pipe\openi2pd-tui-&lt;16 hex digits&gt;, so path spelling cannot
  * change the pipe and arbitrary pipe names cannot be selected.
  *
  */
@@ -26,14 +26,14 @@ namespace tui
 	 *
 	 * The daemon and i2pd-tui are separate processes and do not share a
 	 * runtime object, so both derive the pipe from the same configured
-	 * value: `tui.socket` when set, otherwise <datadir>/i2pd-tui.sock.
+	 * value: `tui.socket` when set, otherwise &lt;datadir&gt;/i2pd-tui.sock.
 	 *
 	 * The derivation is deliberately one-way:
 	 *
 	 *   - separators are normalised to `\` and ASCII is folded to lower case
 	 *     so equivalent path spellings yield the same pipe;
 	 *   - the normalised bytes are hashed with 64-bit FNV-1a;
-	 *   - the result is `\\.\pipe\openi2pd-tui-<16 lowercase hex digits>`.
+	 *   - the result is `\\.\pipe\openi2pd-tui-&lt;16 lowercase hex digits&gt;`.
 	 *
 	 * No endpoint byte becomes part of the pipe name, which avoids invalid
 	 * pipe characters and keeps the name bounded. A full `\\.\pipe\...`

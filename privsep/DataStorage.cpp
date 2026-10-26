@@ -452,7 +452,7 @@ bool IsCanonicalArtifactName (i2p::data::StorageArtifact kind, std::string_view 
 	}
 	case i2p::data::StorageArtifact::DestinationKeys:
 	{
-		// <52-character lower-case base32 identity>.<decimal key type>
+		// &lt;52-character lower-case base32 identity&gt;.&lt;decimal key type&gt;
 		// Key type 0 is ElGamal, which the core still persists, so the range is
 		// 0..65535. Any other spelling (leading zero, sign, suffix) is not
 		// canonical and is refused. `libi2pd/PersistentStorage.h` documents the

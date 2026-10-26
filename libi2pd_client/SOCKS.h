@@ -60,7 +60,7 @@ namespace proxy
 		return { 0x05, 0x00, 0x00, 0x01, 0x7f, 0x00, 0x00, 0x01, 0x00, SOCKS5_CONNECT_REPLY_PORT };
 	}
 
-	/** `05 00 00 01 7F 00 00 01 <port>` (UDP ASSOCIATE succeeded). */
+	/** `05 00 00 01 7F 00 00 01 &lt;port&gt;` (UDP ASSOCIATE succeeded). */
 	inline std::array<std::uint8_t, 10> SOCKS5UdpAssociateReply (std::uint16_t port) noexcept
 	{
 		return { 0x05, 0x00, 0x00, 0x01, 0x7f, 0x00, 0x00, 0x01, static_cast<std::uint8_t> (port >> 8),

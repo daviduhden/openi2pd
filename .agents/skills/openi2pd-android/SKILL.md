@@ -284,6 +284,18 @@ run Gradle, install an APK or run a device test.
   [`docs/source-documentation.md`](../../../docs/source-documentation.md);
   doclint runs with warnings as errors in the manual lane.
 
+
+- `ANDROID-036` records address-book generation/single-flight gaps and a null
+  progress-consumer assumption in `TorrentSafCreator`. New UI callbacks must
+  capture the view generation and check the busy gate; do not copy the
+  affected pattern.
+
+
+- `ReseedPhaseToken()` and similar helpers return `std::string_view`;
+  copy-initializing `std::string` from it is ill-formed because the string
+  constructor is explicit. Use direct initialization, as in
+  `i2pd_android.cpp` (CE-011).
+
 ## Do not
 
 - Do not compile, run Gradle, unit/instrumentation tests, Lint, an emulator or

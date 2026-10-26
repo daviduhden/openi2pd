@@ -160,7 +160,7 @@ namespace client
 	};
 
 	/// IRC server-tunnel connection: it prefixes the first outbound line with a
-	/// WEBIRC command (`WEBIRC <pass> cgiirc <destination> <local address>`) and
+	/// WEBIRC command (`WEBIRC &lt;pass&gt; cgiirc &lt;destination&gt; &lt;local address&gt;`) and
 	/// replaces the hostname field of a `USER` line with the peer destination,
 	/// so the upstream ircd attributes the session to the I2P identity instead
 	/// of the tunnel's local address.
@@ -233,7 +233,7 @@ namespace client
 		std::unique_ptr<boost::asio::steady_timer> m_KeepAliveTimer;
 	};
 
-	// Immutable, bounded `targetForPort.<port>=host:port` map. At most
+	// Immutable, bounded `targetForPort.&lt;port&gt;=host:port` map. At most
 	// I2P_SERVER_TUNNEL_MAX_PORT_TARGETS entries; malformed values, duplicate
 	// local ports and out-of-range ports are rejected at configuration load.
 	class I2PServerTunnelTargetMap
@@ -392,7 +392,7 @@ namespace client
 		eTooManyRequests // POST/PUT throttle
 	};
 
-	// Server-tunnel HTTP request policy: `spoofedhost.<port>` with a
+	// Server-tunnel HTTP request policy: `spoofedhost.&lt;port&gt;` with a
 	// `hostoverride` fallback, the inproxy/referer/user-agent rejects and the
 	// bounded POST/PUT throttle. Header names and values are never logged.
 	class I2PServerTunnelHTTPPolicy

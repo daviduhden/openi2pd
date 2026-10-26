@@ -91,7 +91,7 @@ namespace torrents
 	constexpr size_t MIN_PIECE_LENGTH = 16 * 1024; // 16K
 	constexpr size_t MAX_PIECE_LENGTH = 256 * 1024 * 1024; // 256M
 	constexpr size_t MAX_NUM_TORRENT_PIECES = 1024 * 1024; // 1M
-	// Bound the eager per-piece std::vector<BlockStatus> allocation. This is
+	// Bound the eager per-piece std::vector&lt;BlockStatus&gt; allocation. This is
 	// independent of the nominal piece count: 1M pieces of 256 MiB would
 	// otherwise request ~64 GiB of status arrays before any data arrives.
 	constexpr size_t MAX_TORRENT_BLOCKS = 4 * 1024 * 1024;

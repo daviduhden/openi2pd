@@ -32,6 +32,12 @@ namespace i2p::tools
 	 * Owner of a private-key serialization. The destructor wipes the bytes and
 	 * the type is non-copyable/non-movable so it cannot be accidentally left
 	 * behind in a second buffer.
+	 *
+	 * The wipe covers the current `size()` bytes only: growing the buffer
+	 * leaves the freed, smaller allocation uncleansed, and `resize(0)` wipes
+	 * nothing. Treat this as a scoped staging buffer for one serialization, not
+	 * as a long-lived secret store, and do not shrink it after it held key
+	 * material.
 	 */
 class SecureBuffer
 {
@@ -62,6 +68,17 @@ private:
 /**
 	 * Read a destination key file and require the parser to consume every byte.
 	 * A trailing block is rejected instead of silently ignored.
+	 *
+	 * The read is capped by the `ReadFile` default (16 MiB), so an oversized
+	 * file is refused before a buffer is allocated for it. The whole input is
+	 * wiped on both paths, including a parse failure.
+	 *
+	 * @param keys Receives the parsed destination. `PrivateKeys::FromBuffer`
+	 *             resets itself before parsing, so on failure this object is
+	 *             left empty rather than partially populated; callers must
+	 *             still stop and must not sign with it.
+	 * @return Success, or the file error, or `bad keys file format` for a
+	 *         truncated file or one with trailing bytes.
 	 */
 inline i2p::expected<void, std::string> LoadPrivateKeys (const std::string & path, i2p::data::PrivateKeys & keys)
 {
@@ -78,6 +95,18 @@ inline i2p::expected<void, std::string> LoadPrivateKeys (const std::string & pat
 	 * Replace a key file through the core staged writer: same directory,
 	 * fsync, owner-only mode and no in-place truncation. The original bytes are
 	 * unchanged, so existing key files stay interoperable.
+	 *
+	 * The byte layout is untouched, but the write is not a no-op when @a data
+	 * is empty: an empty span replaces the file with a zero-length file, so a
+	 * failed or skipped serialization must be checked by the caller before this
+	 * is called. A `false` result after the POSIX rename means the new file may
+	 * already be visible while parent-directory durability could not be
+	 * confirmed; report it as a failure and let the operator inspect the file
+	 * rather than retrying with different bytes.
+	 *
+	 * @warning The parent hierarchy must be trusted and owned by the caller; the
+	 *          writer relies on it against concurrent symlink or reparse
+	 *          changes.
 	 */
 inline bool SavePrivateKeys (const std::string & path, std::span<const uint8_t> data)
 {
@@ -92,6 +121,12 @@ inline bool SavePrivateKeys (const std::string & path, std::span<const uint8_t> 
 	 * True when two paths name the same file, either textually after
 	 * canonicalization or through the same device/inode. Used to refuse an
 	 * output that would destroy its own input.
+	 *
+	 * This is a convenience guard for an obvious operator mistake, not a
+	 * security boundary: the comparison happens before the write, so a rename
+	 * between the check and the atomic replace is not detected, and a missing
+	 * path falls back to a textual comparison. Callers must still write through
+	 * key-material-safe writers rather than relying on this result.
 	 */
 inline bool SameFile (const std::string & first, const std::string & second)
 {

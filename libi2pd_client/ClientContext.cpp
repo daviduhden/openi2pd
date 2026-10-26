@@ -1534,7 +1534,7 @@ namespace client
 						delayOpen > 0)
 						LogPrint (eLogWarning, "Clients: delayOpen is not supported and is ignored for ", name);
 
-					// targetForPort.<port>=host:port (bounded, Java compatible)
+					// targetForPort.&lt;port&gt;=host:port (bounded, Java compatible)
 					I2PServerTunnelTargetMap targets;
 					for (const auto & property : section.second)
 					{

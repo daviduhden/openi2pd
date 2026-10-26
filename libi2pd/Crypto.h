@@ -112,9 +112,9 @@ namespace crypto
 		if (!name || !out || size <= 0) return -1;
 		const int index = X509_NAME_get_index_by_NID (name, nid, -1);
 		if (index < 0) return -1;
-		X509_NAME_ENTRY * entry = X509_NAME_get_entry (name, index);
+		const X509_NAME_ENTRY * entry = X509_NAME_get_entry (name, index);
 		if (!entry) return -1;
-		ASN1_STRING * data = X509_NAME_ENTRY_get_data (entry);
+		const ASN1_STRING * data = X509_NAME_ENTRY_get_data (entry);
 		if (!data) return -1;
 		unsigned char * utf8 = nullptr;
 		const int length = ASN1_STRING_to_UTF8 (&utf8, data);

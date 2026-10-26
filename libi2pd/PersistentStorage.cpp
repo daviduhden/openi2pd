@@ -98,7 +98,7 @@ namespace
 		return std::string_view (hash.ToBase32 ()) == identBase32;
 	}
 
-	// "<52-character lowercase base32 identity>.<decimal CryptoKeyType>".
+	// "&lt;52-character lowercase base32 identity&gt;.&lt;decimal CryptoKeyType&gt;".
 	// ElGamal is type 0, so zero is a valid key type; leading zeros are not
 	// canonical and are rejected.
 	bool IsCanonicalDestinationKeyName (std::string_view name)

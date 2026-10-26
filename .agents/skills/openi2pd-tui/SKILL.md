@@ -186,6 +186,17 @@ the console.
   localization invariants rather than restating code. See
   [`docs/source-documentation.md`](../../../docs/source-documentation.md).
 
+
+- `TUI-014` records the remaining boundary defects: Win32 `Put` treats `limit`
+  as bytes, `ReadLine(128)` rejects an inclusive 128-byte header, and an
+  embedded NUL/COLORFGBG edge can mis-size or mis-select colours. Keep new
+  callers on the shared column/UTF-8 contract until the regression lands.
+
+
+- Protocol comments must escape placeholder tags (`&lt;COMMAND&gt;`) because
+  Doxygen runs with warnings-as-errors. Prefer entities over raw angle
+  brackets in `TuiProtocol.h` and the terminal headers.
+
 ## Do not
 
 - Do not compile, run CTest, the console, sanitizers, fuzzers or validators

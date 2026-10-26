@@ -6,7 +6,7 @@
  *
  * Windows/MSVC implementation of the getopt and getopt_long subset used by the
  * tools, preserving their historical short and long command-line forms. On
- * POSIX the translation unit is empty and the system <getopt.h> is used.
+ * POSIX the translation unit is empty and the system &lt;getopt.h&gt; is used.
  *
  */
 

@@ -31,6 +31,17 @@ import org.openi2pd.router.RouterService;
  * type, which is not one of the types Android 15 blocks from
  * BOOT_COMPLETED; the attempt is still fail-closed: failure is logged and the
  * user can start the router from the launcher.</p>
+ *
+ * <p>Two actions are handled and they are not equivalent: {@code BOOT_COMPLETED}
+ * starts only when the user's autostart preference is set, while
+ * {@code MY_PACKAGE_REPLACED} resumes only a router whose start was already
+ * requested, because the package update killed the process. Any other action
+ * is ignored. A refused or failed start logs the action category only — never
+ * keys, paths or configuration — and leaves recovery to the user.</p>
+ *
+ * <p>{@code onReceive} runs on the main thread under the broadcast timeout, so
+ * it only decides and forwards one start request; the daemon lifecycle stays in
+ * {@link RouterService}.</p>
  */
 public class BootUpReceiver extends BroadcastReceiver {
     private static final String TAG = "i2pdBoot";

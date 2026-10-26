@@ -173,7 +173,7 @@ namespace proxy
 		bool HandleData (uint8_t * sock_buff, std::size_t len);
 		bool ValidateSOCKSRequest ();
 		void HandleSockRecv (const boost::system::error_code & ecode, std::size_t bytes_transfered);
-		void Terminate ();
+		void Terminate () override;
 		void AsyncSockRead ();
 		std::shared_ptr<SOCKSServer> GetServer () { return std::static_pointer_cast<SOCKSServer> (GetOwner ()); };
 		boost::asio::const_buffer GenerateSOCKS4Response (errTypes error, uint32_t ip, uint16_t port);
@@ -211,13 +211,11 @@ namespace proxy
 #endif
 		std::shared_ptr<i2p::stream::Stream> m_stream;
 		uint8_t * m_remaining_data; //Data left to be sent
-		uint8_t * m_remaining_upstream_data; //upstream data left to be forwarded
 		uint8_t m_response[7 + SOCKS_MAX_HOSTNAME_SIZE];
 		address m_address { }; //Address
 		std::size_t m_remaining_data_len; //Size of the data left to be sent
 		uint32_t m_4aip; //Used in 4a requests
 		uint16_t m_port;
-		uint8_t m_command;
 		uint8_t m_parseleft; //Octets left to parse
 		authMethods m_authchosen; //Authentication chosen
 		addrTypes m_addrtype; //Address type chosen
@@ -253,11 +251,9 @@ namespace proxy
 			, m_sock (sock)
 			, m_stream (nullptr)
 			, m_remaining_data (nullptr)
-			, m_remaining_upstream_data (nullptr)
 			, m_remaining_data_len (0)
 			, m_4aip (0)
 			, m_port (0)
-			, m_command (0)
 			, m_parseleft (0)
 			, m_authchosen (AUTH_UNACCEPTABLE)
 			, m_addrtype (ADDR_IPV4)

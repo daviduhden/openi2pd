@@ -184,7 +184,7 @@ namespace log
 	std::string str_tolower (std::string s)
 	{
 		std::transform (s.begin (), s.end (), s.begin (),
-			// static_cast<int(*)(int)>(std::tolower)      // wrong
+			// static_cast&lt;int(*)(int)&gt;(std::tolower)      // wrong
 			// [](int c){ return std::tolower(c); }        // wrong
 			// [](char c){ return std::tolower(c); }       // wrong
 			[] (unsigned char c) { return std::tolower (c); } // correct
@@ -238,9 +238,21 @@ namespace log
 	}
 
 	/**
+	 * @brief Write one record to the current destination on the writer thread.
 	 * @note This function better to be run in separate thread due to disk i/o.
 	 * Unfortunately, with current startup process with late fork() this
 	 * will give us nothing but pain. Maybe later. See in NetDb as example.
+	 *
+	 * The destination, sink and stream are snapshotted under m_LogMutex and used
+	 * after the lock is dropped, so a concurrent SendTo()/Reopen() only replaces a
+	 * pointer and never waits for a slow disk. A custom sink takes the record
+	 * verbatim; the file and stdout paths add the timestamp, thread id and level.
+	 *
+	 * This layer performs no redaction and no secret filtering. The text is a
+	 * persistence boundary: producers must never pass a password, private key,
+	 * seed, token or credential-bearing operand, and the privilege-separated log
+	 * worker's redaction pass is a safety net for untrusted text, not a licence to
+	 * log a secret.
 	 */
 	void Log::Process (std::shared_ptr<LogMsg> msg)
 	{
@@ -327,6 +339,21 @@ namespace log
 		FlushStream ();
 	}
 
+	/**
+	 * @brief Enqueue a record and update the bounded recent-record ring.
+	 *
+	 * Two independent bounds apply. The queue holds at most LOG_QUEUE_MAX_RECORDS
+	 * (8192) entries; beyond that the record is dropped and only a counter is
+	 * incremented, so a stalled writer degrades into lossy logging instead of
+	 * unbounded memory growth. The TUI ring keeps the newest LOG_RECENT_CAPACITY
+	 * (512) records with at most LOG_RECENT_TEXT_LIMIT bytes of text each.
+	 *
+	 * The ring copy is additionally flattened: control bytes below 0x20 except TAB
+	 * are replaced with spaces so a hostile log line cannot inject terminal escapes
+	 * into an administrative client. The queued text keeps its bytes (only the
+	 * hard size cap applies), which is why producers must still keep secrets out of
+	 * the message.
+	 */
 	void Log::Append (std::shared_ptr<i2p::log::LogMsg> & msg)
 	{
 		if (msg)

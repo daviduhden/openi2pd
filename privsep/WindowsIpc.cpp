@@ -882,6 +882,13 @@ i2p::expected<WindowsChannel, std::string> WindowsServer::Accept (DWORD timeoutM
 	}
 }
 
+// Identity is checked in a fixed order, and each step is an independent
+// boundary: the pipe-reported PID/session name the connecting process, the
+// impersonated client token proves the user SID and the AppContainer identity,
+// and only then does the WorkerHello nonce prove that this is the child the
+// supervisor spawned for this generation. A rejected connection is closed and
+// the listener is re-armed, because a same-user squatter must not be able to
+// deny the real worker; the rejection budget bounds how much work that costs.
 i2p::expected<WindowsChannel, std::string> WindowsServer::AcceptBound (DWORD timeoutMs, DWORD expectedProcessId,
 	DWORD expectedSessionId, WindowsWorkerRole role, const std::wstring & nonceHex,
 	const WindowsAppContainer * container)
@@ -1024,6 +1031,11 @@ i2p::expected<WindowsChannel, std::string> WindowsChannel::Connect (const std::w
 	return ConnectBound (pipeName, 0, 0, timeoutMs);
 }
 
+// A zero PID or session disables that half of the binding, which is the test
+// seam used by Connect()/Accept(); RunWindowsWorker always passes both. The
+// retry loop keeps the same absolute deadline across WaitNamedPipe and
+// CreateFile, so a busy or not-yet-created pipe cannot extend the caller's
+// budget, and any other error is terminal instead of retried.
 i2p::expected<WindowsChannel, std::string> WindowsChannel::ConnectBound (
 	const std::wstring & pipeName, DWORD expectedServerProcessId, DWORD expectedSessionId, DWORD timeoutMs)
 {
@@ -1410,6 +1422,12 @@ i2p::expected<WindowsHandle, std::string> CreateRestrictedWorkerToken (const Win
 	return WindowsHandle (restricted);
 }
 
+// Creation fails closed: a job that cannot carry the limits or the UI
+// restrictions is closed and reported instead of being used as a bare
+// container. KILL_ON_JOB_CLOSE is the stop backstop (closing the last job
+// handle terminates the tree), DIE_ON_UNHANDLED_EXCEPTION turns a worker crash
+// into a diagnosable exit, and the active-process limit is what makes
+// "this role never spawns a child" enforceable rather than conventional.
 i2p::expected<WindowsHandle, std::string> CreateWorkerJobObject (const WindowsWorkerPolicy & policy)
 {
 	HANDLE job = CreateJobObjectW (nullptr, nullptr);
@@ -1450,6 +1468,12 @@ i2p::expected<WindowsHandle, std::string> CreateWorkerJobObject (const WindowsWo
 	return WindowsHandle (job);
 }
 
+// Failure handling: every handle here is RAII-owned, so a rejected attribute or
+// a failed CreateProcess leaves no process and no handle behind, while a
+// failure after creation terminates the job, terminates the process and waits
+// before returning. The child is created suspended and resumed only after the
+// Job Object attribute or its fallback assignment succeeded, so no worker
+// instruction runs outside the job.
 i2p::expected<WindowsWorkerProcess, std::string> SpawnWindowsWorker (const std::wstring & executable,
 	WindowsWorkerRole role, const std::wstring & pipeName, DWORD parentProcessId, DWORD parentSessionId,
 	const std::wstring & nonceHex, const WindowsAppContainer * container, const WindowsWorkerPolicy & policy)
@@ -1685,6 +1709,10 @@ DWORD WindowsWorkerProcess::ExitCode () const
 	return code;
 }
 
+// Termination order is job first, process second, wait last: the job covers
+// every process the worker created, and the wait keeps the process handle alive
+// until the kernel is done with it. A timeout returns false and leaves the
+// KILL_ON_JOB_CLOSE backstop to finish the teardown when the handles go away.
 bool WindowsWorkerProcess::TerminateAndWait (DWORD timeoutMs, UINT exitCode)
 {
 	// The job owns every process the worker created; closing the job first
@@ -1702,6 +1730,11 @@ bool WindowsWorkerProcess::Stop (DWORD timeoutMs)
 	return TerminateAndWait (timeoutMs);
 }
 
+// Deterministic name for tests and local tools: it is derived from the
+// configured endpoint, so it is guessable by any local process. Authorization
+// is the protected DACL plus the PID/session/token/nonce accept, never the
+// name; a production supervisor uses MakeRandomPipeName() so two generations
+// cannot collide or be anticipated.
 i2p::expected<std::wstring, std::string> MakePrivatePipeName (std::string_view endpoint)
 {
 	const std::wstring normalized = NormalizeEndpoint (endpoint);

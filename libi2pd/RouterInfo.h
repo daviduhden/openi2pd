@@ -455,7 +455,7 @@ namespace data
 		/**
 		 * Persist a cached descriptor through the artifact writer. The artifact
 		 * name is the canonical base64 identity hash, so the cache file stays
-		 * netDb/routerInfo-<b64>.dat with identical bytes. A failed write keeps
+		 * netDb/routerInfo-&lt;b64&gt;.dat with identical bytes. A failed write keeps
 		 * the previous file intact and returns false.
 		 */
 		static bool SaveToArtifact (const std::string & identBase64, std::shared_ptr<Buffer> buf);
@@ -541,7 +541,7 @@ namespace data
 		std::shared_ptr<const IdentityEx> m_RouterIdentity;
 		std::shared_ptr<Buffer> m_Buffer;
 		std::atomic<uint64_t> m_Timestamp; // in milliseconds
-		// AtomicSharedPtr uses std::atomic<std::shared_ptr> where available and
+		// AtomicSharedPtr uses std::atomic&lt;std::shared_ptr&gt; where available and
 		// a mutex-backed fallback on libc++ targets that lack the C++20
 		// specialization. The mutable marker is required by const readers.
 		mutable i2p::util::AtomicSharedPtr<Addresses> m_Addresses;

@@ -267,7 +267,7 @@ namespace client
 				continue;
 			}
 
-			// `<kind> <allow|deny> <value>`
+			// `&lt;kind&gt; &lt;allow|deny&gt; &lt;value&gt;`
 			size_t pos = 0;
 			auto next = [&token, &pos] () -> std::string_view
 			{

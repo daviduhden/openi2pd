@@ -123,6 +123,11 @@ namespace tui
 
 		struct RoleSpec
 		{
+			// defaultForeground/defaultBackground mean "use the terminal's own
+			// colour for this part", which is only safe when the background is
+			// known; ResolveColors otherwise substitutes black or white from
+			// the detected luminance so plain text is not left on an assumed
+			// background.
 			Rgb foreground;
 			Rgb background;
 			bool defaultForeground = false;
@@ -335,6 +340,11 @@ namespace tui
 
 		inline int RgbTo256 (const Rgb & colour)
 		{
+			// The search starts at index 16 on purpose: slots 0..15 are the
+			// themeable ANSI colours a terminal profile may redefine, so using
+			// them for a brand role would produce an unpredictable hue. The
+			// metric is plain squared RGB distance (no perceptual weighting),
+			// which is adequate for choosing between 240 cube and grey steps.
 			int best = 16;
 			int bestDistance = 1 << 30;
 			for (int index = 16; index < 256; ++index)
@@ -376,6 +386,12 @@ namespace tui
 
 		inline bool DetectLightBackground ()
 		{
+			// COLORFGBG is "&lt;fg&gt;;&lt;bg&gt;[:&lt;fg&gt;;&lt;bg&gt;...]" as set by some terminals;
+			// only the last numeric field (the background palette index) is
+			// considered, and it must name a palette entry this module can map
+			// to RGB. An unparsable value reports "not light", which keeps the
+			// dark palette; Theme::Init separately records that the variable
+			// was present at all.
 			const std::string value = EnvironmentValue ("COLORFGBG");
 			if (value.empty ()) return false;
 
@@ -423,6 +439,11 @@ namespace tui
 		 *
 		 * @post Every role maps either to an allocated pair or to a
 		 *       monochrome attribute; Attributes() is always safe to call.
+		 * @note m_BackgroundKnown records that COLORFGBG was *present*, not
+		 *       that it was understood: an unparsable value is classified as a
+		 *       dark background, so a light terminal that exports a
+		 *       non-numeric value still receives the dark palette and default
+		 *       colours.
 		 * @return True when at least one colour pair was installed.
 		 */
 		bool Init ()
@@ -585,6 +606,15 @@ namespace tui
 
 		std::size_t InitPairs ()
 		{
+			// Pair numbers are allocated lowest-first from 1 and a rejected pair
+			// does not consume a number, so the numbering stays stable across
+			// the degradation passes and for the life of the Theme. LogInfo is
+			// skipped deliberately: ordinary log lines keep the terminal's own
+			// text colour, so the role stays on pair 0 and Attributes() degrades
+			// it to ATTR_NORMAL. Allocation also stops at pair 63 even when the
+			// terminal reports more pairs; the theme needs at most one pair per
+			// role, so the ceiling keeps every number inside the range all
+			// supported terminals can address.
 			m_RolePair.fill (0);
 			if (m_Mode == Mode::Monochrome) return 0;
 

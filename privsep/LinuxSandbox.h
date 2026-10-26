@@ -65,6 +65,11 @@ struct LinuxSandboxProfile
  * to retain. It is the contract, not the enforcement; the backend policy for a
  * given platform must never grant more than this profile, and the profile never
  * implies that the role already runs in its own process.
+ *
+ * Log and Storage are the classes with a live process today; Network, Crypto,
+ * Admin and Supervisor describe intended boundaries, and Supervisor is applied
+ * only through `ApplyLinuxSupervisorSandbox`, which deliberately installs no
+ * Landlock/seccomp/namespace domain.
  */
 LinuxSandboxProfile GetLinuxSandboxProfile (WorkerClass workerClass);
 /**
@@ -141,7 +146,10 @@ i2p::expected<void, std::string> ApplyLinuxCgroupV2Limits (const LinuxCgroupV2Li
 
 /**
  * Evaluation result for diagnostics and tests. It never enables a capability;
- * it only reports which mechanisms the running kernel can enforce.
+ * it only reports which mechanisms the running kernel can enforce. A false
+ * field here is not a policy decision either: the caller's profile still marks
+ * a mechanism as required or optional, and a required one that is reported
+ * unavailable makes the sandbox installation fail closed.
  */
 struct LinuxIsolationSupport
 {

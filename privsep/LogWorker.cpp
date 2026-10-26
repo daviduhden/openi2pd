@@ -431,6 +431,12 @@ i2p::expected<void, std::string> LogSink::ConfigureChannel (
 	return WaitForPong (channel, pingId, 5000);
 }
 
+// Configure() is the only sink entry point that opens the path locally. The
+// descriptor is opened O_NOFOLLOW/O_CLOEXEC/0600, transferred once over
+// SCM_RIGHTS and closed here on every path; the worker validates it against the
+// configured path before it may write. m_Mutex stays held across the whole
+// handshake (configure frame plus Pong), so a concurrent Write either sees an
+// unconfigured sink or a proven one, never a half-attached channel.
 i2p::expected<void, std::string> LogSink::Configure (bool useSyslog, std::string_view path, std::string_view tag)
 {
 	std::lock_guard<std::mutex> lock (m_Mutex);
@@ -476,6 +482,11 @@ i2p::expected<void, std::string> LogSink::ConfigureProxy (bool useSyslog, std::s
 	return { };
 }
 
+// Reattach() keeps the previous channel until the replacement answered the
+// configuration probe. Closing the old descriptor first would leave the sink
+// detached while the new worker is still unproven, and adopting the new one
+// early would allow two sinks to write the same file. The local descriptor is
+// opened per reattach because the restored worker needs its own capability.
 i2p::expected<void, std::string> LogSink::Reattach (Channel channel)
 {
 	std::lock_guard<std::mutex> lock (m_Mutex);
@@ -574,6 +585,11 @@ uint64_t LogSink::GetWorkerDroppedCount () const
 	return m_WorkerDropped;
 }
 
+// Shutdown() is a single advisory frame plus a local close: it never waits for
+// or reaps the worker process, because the spawn owner owns the child. The sink
+// is marked shut down first so a concurrent Write counts a drop instead of
+// racing a half-closed channel, and a failed send is still returned to the
+// caller while the descriptor is closed regardless.
 i2p::expected<void, std::string> LogSink::Shutdown ()
 {
 	std::lock_guard<std::mutex> lock (m_Mutex);
@@ -649,6 +665,10 @@ int RunLogWorker (int fd)
 		}
 		if (!received->has_value ()) continue;
 		const Message & message = (*received)->message;
+		// Descriptor ownership for one iteration: the receiver hands over at
+		// most one optional descriptor, which must either be consumed into the
+		// sink stream or closed explicitly. The end-of-loop check below turns a
+		// forgotten close into a protocol error instead of a leaked descriptor.
 		int messageFd = (*received)->fd;
 		auto closeMessageFd = [&messageFd] ()
 		{

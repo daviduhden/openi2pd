@@ -527,7 +527,7 @@ namespace client
 	void SAMSocket::SendMessageReply (std::string_view msg, bool close)
 	{
 		// The reply body may carry secret operands: SESSION STATUS RESULT=OK
-		// contains DESTINATION=<private keys> and DEST REPLY contains PRIV=.
+		// contains DESTINATION=&lt;private keys&gt; and DEST REPLY contains PRIV=.
 		// Log only the size and the close decision, never the bytes.
 		LogPrint (eLogDebug, "SAMSocket::SendMessageReply, close=", close ? "true" : "false", ", bytes=", msg.size ());
 

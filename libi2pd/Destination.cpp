@@ -323,6 +323,11 @@ namespace client
 
 	std::shared_ptr<i2p::data::LeaseSet> LeaseSetDestination::FindLeaseSet (const i2p::data::IdentHash & ident)
 	{
+		// Callable from any thread. The lookup and the expired-entry removal take
+		// only m_RemoteLeaseSetsMutex; the "expires soon" refresh is posted to the
+		// destination service and re-locks the map inside its own callback, so the
+		// caller keeps using the snapshot it already received rather than a
+		// half-updated entry.
 		std::shared_ptr<i2p::data::LeaseSet> remoteLS;
 		{
 			std::lock_guard<std::mutex> lock (m_RemoteLeaseSetsMutex);
@@ -559,6 +564,13 @@ namespace client
 	void LeaseSetDestination::HandleDatabaseStoreMessage (
 		const uint8_t * buf, size_t len, i2p::garlic::ECIESX25519AEADRatchetSession * from)
 	{
+		// Reached only from the destination service (garlic/data dispatch), so
+		// m_LeaseSetRequests is deliberately unguarded here and in
+		// RequestLeaseSet/CancelDestinationRequest/HandleRequestTimeoutTimer: all
+		// of them run on that one executor. Only m_RemoteLeaseSets is shared,
+		// because FindLeaseSet() is called from streaming, datagram and torrent
+		// threads. A candidate that fails validation keeps the previous snapshot
+		// installed, so readers are never left without a usable LeaseSet.
 		if (len < DATABASE_STORE_HEADER_SIZE)
 		{
 			LogPrint (eLogError, "Destination: Database store msg is too short ", len);
@@ -862,6 +874,13 @@ namespace client
 
 	void LeaseSetDestination::Publish ()
 	{
+		// Single-flight publication on the destination service: m_PublishReplyToken
+		// stays non-zero for the whole attempt (including the retry value installed
+		// by SchedulePublishRetry()), so a concurrent Publish() only logs. Each
+		// attempt excludes the floodfills it already tried and needs a tunnel pair
+		// whose far end is compatible with the chosen floodfill. The confirmation
+		// timeout is scaled by the real (or hop-estimated) latency of both tunnels,
+		// because a fixed timeout would retry a slow but healthy path.
 		auto leaseSet = GetLeaseSetMt ();
 		if (!leaseSet || !m_Pool)
 		{
@@ -1148,6 +1167,13 @@ namespace client
 	bool LeaseSetDestination::SendLeaseSetRequest (const i2p::data::IdentHash & dest,
 		std::shared_ptr<const i2p::data::RouterInfo> nextFloodfill, std::shared_ptr<LeaseSetRequest> request)
 	{
+		// The reply path is a fresh inbound tunnel plus a throw-away ECIES
+		// key/tag pair registered before the lookup leaves: the floodfill answers
+		// through that tunnel to a destination-only garlic clove, so the key must
+		// already exist or the reply is undecryptable. A dropped outbound message
+		// (onDrop) retries with the next floodfill instead of failing the request,
+		// and the timeout is re-armed from the real tunnel latency so a slow path
+		// is not mistaken for a missing LeaseSet.
 		if (!request->replyTunnel || !request->replyTunnel->IsEstablished ())
 			request->replyTunnel = m_Pool->GetNextInboundTunnel (
 				nullptr, nextFloodfill->GetCompatibleTransports (false)); // outbound from floodfill
@@ -1923,6 +1949,13 @@ namespace client
 
 	void ClientDestination::CreateNewLeaseSet (const std::vector<std::shared_ptr<i2p::tunnel::InboundTunnel>> & tunnels)
 	{
+		// One immutable LeaseSet object per call: the previous one stays readable
+		// through GetLeaseSetMt() until SetLeaseSet() swaps the pointer, so no
+		// reader ever observes a half-built or unsigned buffer. LS2 key sections
+		// are published highest-type-first with the local preferred type moved to
+		// the front, and the published timestamp is forced strictly increasing: a
+		// second update within the same second would otherwise be rejected as an
+		// older store by every receiver (types 1/3 compare it before replacing).
 		std::shared_ptr<i2p::data::LocalLeaseSet> leaseSet;
 		if (GetLeaseSetType () == i2p::data::NETDB_STORE_TYPE_LEASESET)
 		{

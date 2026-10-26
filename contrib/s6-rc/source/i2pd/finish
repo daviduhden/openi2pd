@@ -4,9 +4,12 @@
 #
 # openi2pd: finish.
 #
-# s6-supervise runs this after the router exits. If the service is still
-# wanted, the five-second pause slows retries for persistent startup failures;
-# it stays below timeout-finish. Do not remove the daemon-owned pidfile here:
+# s6-supervise runs this after the router exits, so it sees both a crash and a
+# requested stop. If the service is still wanted, the five-second pause slows
+# retries for persistent startup failures; it stays below timeout-finish
+# (10000 ms), so s6 never kills the script. It exits 0 in every case because
+# the restart decision belongs to s6-supervise and the wanted/up state, not to
+# this exit status. Do not remove the daemon-owned pidfile here:
 # the router owns its lifetime.
 #
 

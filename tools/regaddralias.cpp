@@ -27,7 +27,7 @@ namespace
 {
 bool LoadKeys (const char * path, i2p::data::PrivateKeys & keys)
 {
-	return static_cast<bool> (LoadPrivateKeys (path, keys));
+	return static_cast<bool> (i2p::tools::LoadPrivateKeys (path, keys));
 }
 }
 
@@ -71,6 +71,13 @@ int main (int argc, char * argv[])
 		out << marker << i2p::data::ByteStreamToBase64 (signature.data (), signature.size ());
 	};
 
+	// Two signatures over one accumulated record, in this order:
+	// `#oldsig=` covers `name=newdest#!action=adddest#olddest=&lt;old&gt;`, and the
+	// final `#sig=` covers that plus the old signature. The new destination key
+	// signs last because it is the key the record claims; the old key proves
+	// the operator still controls the previous address. Both key files are read
+	// before any output is produced, so a missing or empty key file cannot leave
+	// a partially signed record on stdout.
 	appendSignature (oldKeys, "#oldsig=");
 	appendSignature (newKeys, "#sig=");
 	std::cout << out.str () << std::endl;

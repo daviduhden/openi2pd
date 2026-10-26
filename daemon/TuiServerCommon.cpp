@@ -909,8 +909,8 @@ namespace tui
 			AppendField (payload, "comments.hidden", torrent.commentHiddenCount);
 			AppendField (payload, "comments.local", torrent.commentLocalCount);
 			// One response emits at most MAX_TORRENT_COMMENT_RECORDS_PER_REQUEST
-			// records. Clients page with TORRENT-DETAIL <tunnel> <id> <offset>
-			// <limit>; without the page arguments this is the newest page,
+			// records. Clients page with TORRENT-DETAIL &lt;tunnel&gt; &lt;id&gt; &lt;offset&gt;
+			// &lt;limit&gt;; without the page arguments this is the newest page,
 			// which is exactly the response earlier clients already parse.
 			const auto page = i2p::torrents::SliceCommentPage (torrent.comments.size (), commentOffset, commentLimit);
 			// comments.offset/count describe the emitted slice; comments.total

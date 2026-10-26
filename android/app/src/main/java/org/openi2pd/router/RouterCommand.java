@@ -27,7 +27,11 @@ package org.openi2pd.router;
  * <p>Commands that carry state (the runtime log level, an unrecognised action)
  * are records with a component; the remaining commands are marker records.
  * Decoding is pure: every side effect, thread hand-off and {@code startId}
- * return stays in the service dispatcher.</p>
+ * return stays in the service dispatcher. {@link RouterService#onStartCommand}
+ * calls the decoder on the main thread and must dispatch it through an
+ * exhaustive pattern switch with no {@code default}; a new action therefore
+ * needs a record, a mapping, a service case and a {@code RouterCommandTest}
+ * update together.</p>
  */
 sealed interface RouterCommand {
     /** Null or absent action: the START_STICKY restore path. */

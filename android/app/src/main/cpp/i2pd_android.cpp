@@ -1057,7 +1057,7 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getReseedStatus (JN
 			i2p::android::NativeCallGuard call;
 			if (!call.IsRunning ()) return NewStringChecked (env, "");
 			const auto state = i2p::data::netdb.GetReseedState ();
-			std::string out = ReseedPhaseToken (state.phase);
+			std::string out (ReseedPhaseToken (state.phase));
 			out.push_back ('|');
 			out.push_back (state.enabled ? '1' : '0');
 			out.push_back ('|');

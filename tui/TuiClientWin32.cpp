@@ -442,6 +442,10 @@ namespace tui
 	private:
 		bool WaitForIo (OVERLAPPED & overlapped, DWORD timeoutMs, DWORD & transferred, std::string & error);
 		bool WriteAll (std::string_view data, std::string & error);
+		// Overlapped I/O needs the OVERLAPPED structure, and its buffer, to
+		// outlive the call. Those live on the caller's stack, so every path
+		// (including a timeout) must cancel *and* drain the operation before
+		// returning; see WaitForIo.
 		i2p::expected<std::string, std::string> ReadLine (size_t limit);
 		i2p::expected<std::string, std::string> ReadExact (size_t size);
 
@@ -453,6 +457,14 @@ namespace tui
 
 	i2p::expected<void, std::string> Client::Impl::Connect ()
 	{
+		// One logical attempt bounded by a three-second deadline; the retry
+		// inside the loop exists only for the short window in which the daemon
+		// has closed its single instance and not yet created the next one. The
+		// pipe name is derived from the endpoint hash (TuiWin32Ipc), never used
+		// verbatim, so --socket cannot select an arbitrary existing pipe. The
+		// server identity is verified before the first command is written,
+		// because the DACL is the authorization boundary and this check only
+		// catches a same-user squatter.
 		Disconnect ();
 		if (m_Endpoint.empty ()) return i2p::unexpected ("local IPC endpoint is empty");
 		if (m_PipeName.empty ()) m_PipeName = MakeWin32PipeName (m_Endpoint);
@@ -527,6 +539,13 @@ namespace tui
 
 	bool Client::Impl::WaitForIo (OVERLAPPED & overlapped, DWORD timeoutMs, DWORD & transferred, std::string & error)
 	{
+		// The OVERLAPPED and the I/O buffer belong to the caller's stack, so a
+		// timeout must cancel the request and then wait for it to finish
+		// before this function returns; otherwise the kernel could still write
+		// into a dead frame. A write that completes during the cancellation is
+		// deliberately treated as a failure here: the caller closes the
+		// channel, so a retry can never land on a stream whose position is
+		// ambiguous.
 		DWORD wait = WaitForSingleObject (overlapped.hEvent, timeoutMs);
 		if (wait == WAIT_OBJECT_0)
 		{
@@ -549,6 +568,10 @@ namespace tui
 
 	bool Client::Impl::WriteAll (std::string_view data, std::string & error)
 	{
+		// Each WriteFile on this byte-mode pipe appends bytes, so the loop
+		// normally completes in one iteration; it exists because a short count
+		// is still possible and must never truncate the request line. A
+		// timeout or a closed pipe reports failure and the caller disconnects.
 		while (!data.empty ())
 		{
 			OVERLAPPED overlapped { };
@@ -583,6 +606,12 @@ namespace tui
 
 	i2p::expected<std::string, std::string> Client::Impl::ReadLine (size_t limit)
 	{
+		// The server creates the pipe in byte mode, so a one-byte read is a
+		// valid request for the next byte rather than a truncated message.
+		// Reading exactly the header leaves the declared payload for
+		// ReadExact, so the frame stays aligned. As in the POSIX client the
+		// loop counts characters before LF, making the effective bound one
+		// byte smaller than the codec's inclusive 128-byte response header.
 		std::string line;
 		line.reserve (std::min (limit, size_t (128)));
 		while (line.size () < limit)

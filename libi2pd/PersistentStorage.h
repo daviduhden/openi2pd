@@ -34,11 +34,11 @@ const char * RouterPersistentFileName (RouterPersistentFile file);
  * The name is the only authority for the destination path; it is canonical
  * and therefore cannot select a directory outside the artifact root:
  *  - RouterInfoCache: 44-character base64 identity hash
- *    ("netDb/r<shard>/routerInfo-<name>.dat")
+ *    ("netDb/r&lt;shard&gt;/routerInfo-&lt;name&gt;.dat")
  *  - PeerProfile: 44-character base64 identity hash
- *    ("peerProfiles/p<shard>/profile-<name>.txt")
+ *    ("peerProfiles/p&lt;shard&gt;/profile-&lt;name&gt;.txt")
  *  - DestinationKeys: 52-character lowercase base32 identity, then '.', then
- *    the decimal CryptoKeyType ("destinations/<name>.dat")
+ *    the decimal CryptoKeyType ("destinations/&lt;name&gt;.dat")
  *
  * The persisted bytes, file names and sizes are identical to the previous
  * direct writers, so a worker-written artifact stays readable by the

@@ -5,7 +5,7 @@
 # openi2pd: i2pd.
 #
 # OpenBSD rc.d script that runs i2pd as the _i2pd user with packaged config,
-# tunnel and certificate paths. It delegates start/stop/status to
+# tunnel and certificate paths. It delegates start/stop/status/reload to
 # /etc/rc.d/rc.subr.
 #
 # The ${TRUEPREFIX}, ${SYSCONFDIR} and ${LOCALSTATEDIR} references are
@@ -16,11 +16,19 @@
 # i2pd login class (contrib/openbsd/i2pd.login). It needs root to switch to
 # daemon_user and writes no router state itself.
 #
+# daemon_class is not assigned: rc.subr derives it from the script name and the
+# template must not override it, so the `i2pd` entry from login.conf.d supplies
+# the 8192 open-file limits and the 0077 mask. Start returns once rc.subr
+# forked the foreground daemon (no readiness pipe); stop sends SIGINT and
+# waits up to daemon_timeout for the ordered stop and the 600 s transit-tunnel
+# drain, and reload signals SIGHUP, which re-reads tunnel configuration only.
+#
 
 daemon="${TRUEPREFIX}/bin/i2pd"
 daemon_user="_i2pd"
-# The foreground path does not chdir(), so relative keys/logfile values in
-# i2pd.conf depend on this directory. Keep it aligned with --datadir.
+# The daemon runs with --foreground and does not chdir() itself; rc.subr enters
+# daemon_execdir before starting it, so relative keys/logfile values in
+# i2pd.conf resolve here. Keep it aligned with --datadir.
 daemon_execdir="${LOCALSTATEDIR}/i2pd"
 pidfile="${LOCALSTATEDIR}/i2pd/i2pd.pid"
 # rc_bg starts the foreground daemon in the background; start therefore proves

@@ -224,7 +224,7 @@ namespace data
 	{
 		constexpr std::string_view ROUTER_INFO_FILE_PREFIX = "routerInfo-";
 		constexpr std::string_view ROUTER_INFO_FILE_SUFFIX = ".dat";
-		// Both AtomicWrite (".dat.tmp-<pid>-<seq>") and the retired in-place
+		// Both AtomicWrite (".dat.tmp-&lt;pid&gt;-&lt;seq&gt;") and the retired in-place
 		// writer (".dat.tmp") stage next to the target with this marker. The
 		// base64 identity alphabet has no '.', so the marker cannot appear in a
 		// valid cache name.
@@ -1643,7 +1643,7 @@ namespace data
 		std::list<std::string> && remove)
 	{
 		// The artifact name is the canonical base64 identity hash, so the
-		// cache file stays netDb/r<shard>/routerInfo-<ident>.dat whether the
+		// cache file stays netDb/r&lt;shard&gt;/routerInfo-&lt;ident&gt;.dat whether the
 		// installed writer or the direct backend stores it.
 		size_t failedSaves = 0;
 		for (const auto & it : update)

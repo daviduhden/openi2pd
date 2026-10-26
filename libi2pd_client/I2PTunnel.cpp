@@ -1300,7 +1300,7 @@ namespace client
 			ss << X_I2P_DEST_B64 << ": " << from->ToBase64 () << "\r\n";
 			m_XI2P = ss.str ();
 		}
-		// `spoofedhost.<port>` wins over the `hostoverride` fallback for the
+		// `spoofedhost.&lt;port&gt;` wins over the `hostoverride` fallback for the
 		// port the client connected to.
 		const auto host = m_Policy->HostFor (stream->GetLocalPort ());
 		return std::make_shared<I2PServerTunnelConnectionHTTP> (

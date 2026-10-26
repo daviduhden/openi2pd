@@ -236,6 +236,11 @@ namespace
 	/**
 	 * The Windows isolation authority. Every OS policy for a Windows worker role
 	 * must be reviewable against exactly one row.
+	 *
+	 * A row is a policy, not a backend. The supervisor can spawn any role, but
+	 * RunWindowsWorker serves control frames only: no Windows role executes
+	 * router, storage or network work yet, so these rows never justify a claim
+	 * that Windows privilege separation is wired.
 	 */
 	constexpr std::array<WindowsRoleIsolation, WINDOWS_ROLE_COUNT> WINDOWS_ROLE_ISOLATION_TABLE {
 		// Supervisor: it must spawn workers, so it cannot be an AppContainer
@@ -384,7 +389,7 @@ struct WindowsAppContainer::Impl
 		}
 		sidString.assign (sidText);
 		LocalFree (sidText);
-		// An AppContainer package SID is S-1-15-2-<hash>. Any other shape means
+		// An AppContainer package SID is S-1-15-2-&lt;hash&gt;. Any other shape means
 		// the deterministic name resolved to something this component did not
 		// create, so the token would be built against an unrelated identity.
 		if (sidString.rfind (L"S-1-15-2-", 0) != 0)
@@ -490,6 +495,17 @@ i2p::expected<WindowsAppContainer, std::string> CreateWindowsAppContainer (Windo
 	return container;
 }
 
+// The grant is additive and scoped to one object: SetEntriesInAcl merges the
+// container ACE into the existing DACL, so an administrator's entries survive
+// and nothing is granted to Everyone, Authenticated Users or ALL APPLICATION
+// PACKAGES. Inheriting ACEs are added only for a directory, so a delegated root
+// stays usable for its children.
+//
+// Known limitation: the path is resolved by name here, so a hostile ancestor
+// that can rename or reparse between the attribute query and
+// SetNamedSecurityInfoW can redirect the grant. Callers must pass a root whose
+// ancestors are already trusted (see the Windows notes in the platform skill);
+// this helper does not turn a hostile path into a safe one.
 i2p::expected<void, std::string> GrantAppContainerPath (
 	const WindowsAppContainer & container, const std::wstring & path, bool write)
 {

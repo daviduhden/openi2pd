@@ -2,12 +2,22 @@
 @comment Reserve _i2pd in infrastructure/db/user.list before merge; the number
 @comment below is a template placeholder and must not collide with another port.
 @newgroup _i2pd:838
+@comment @newuser fields are name:uid:gid:class:change:expire:gecos:home:shell.
+@comment The class `i2pd` is the login class that supplies the 8192 open-file
+@comment limits and the 0077 mask; /sbin/nologin keeps the account out of any
+@comment interactive login and the state directory stays private to it.
 @newuser _i2pd:838:838:i2pd:0:0:i2pd account:/var/i2pd:/sbin/nologin
 @rcscript ${RCDIR}/i2pd
 @comment /var/i2pd is created from share/examples/var/i2pd and is private to
 @comment the service account; the certificate tree stays read-only below
 @comment /usr/local/share and is not a mutable sample.
+@comment pkg/var-i2pd.README is therefore a package marker, not documentation
+@comment that may be dropped: without a file in share/examples/var/i2pd the
+@comment @sample below creates nothing.
 share/examples/var/i2pd/README
+@comment @mode/@owner/@group apply to every following entry until they are
+@comment reset. This block creates the private state directory; the block after
+@comment it additionally makes the subscription sample writable by the daemon.
 @mode 0700
 @owner _i2pd
 @group _i2pd
@@ -20,6 +30,12 @@ share/examples/var/i2pd/subscriptions.txt
 @mode
 @owner
 @group
+@comment The reset above matters: the configuration and login-class samples are
+@comment installed root-owned, so the daemon can read but never rewrite /etc.
+@comment The man pages come from the CMake Runtime/Tui components and the
+@comment desktop/icon files from the Tui component; the certificate tree below
+@comment is package-owned read-only content, which is why no state or
+@comment certificate sample is listed here.
 bin/i2pd
 bin/i2pd-tui
 share/examples/etc/i2pd/i2pd.conf

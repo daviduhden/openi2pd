@@ -29,6 +29,11 @@ namespace i2p::privsep
  * not a claim that every backend has already been moved out of the router
  * core. The policy builder is deliberately independent of the IPC message
  * codec so a worker can apply the policy before entering its service loop.
+ *
+ * Log, Storage, StorageBroker and Supervisor match processes that exist today
+ * (the log worker, the data/router/torrent storage workers and the pre-pledge
+ * broker). Network, Crypto and Admin are policy-builder-only: no process claims
+ * those roles yet, so a reviewable policy row is not a backend.
  */
 enum class OpenBSDWorkerRole : uint8_t
 {
@@ -141,6 +146,10 @@ i2p::expected<OpenBSDPolicy, std::string> BuildOpenBSDPolicy (
  * pledge promise, so every exec'ed worker must install its own unveil rules and
  * pledge before it serves a frame. This code never relies on pledge or unveil
  * state surviving execve, and it never sets execpromises.
+ *
+ * @return An error when any rule or the pledge itself fails, and on a
+ *         non-OpenBSD build. A caller must then abort the worker: continuing
+ *         would mean serving frames with no sandbox at all.
  */
 i2p::expected<void, std::string> ApplyOpenBSDPolicy (const OpenBSDPolicy & policy);
 
