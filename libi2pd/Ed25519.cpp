@@ -14,6 +14,7 @@
 
 #include <openssl/evp.h>
 #include <openssl/crypto.h>
+#include <cstring>
 #include "Log.h"
 #include "Crypto.h"
 #include "Ed25519.h"
@@ -123,25 +124,45 @@ namespace crypto
 		BN_CTX * ctx = BN_CTX_new ();
 		if (!ctx) return false;
 		const auto p = DecodePoint (buf, ctx);
-		const bool ok = IsOnCurve (p, ctx);
+		// DecodePoint() returns an empty point when the recovered x does not
+		// satisfy the curve equation, so presence is the on-curve result.
+		const bool ok = p.x && p.y;
 		BN_CTX_free (ctx);
 		return ok;
 	}
 
 	bool Ed25519::Verify (const EDDSAPoint & publicKey, const uint8_t * digest, const uint8_t * signature) const
 	{
+		if (!digest || !signature) return false;
+		if (!publicKey.x || !publicKey.y)
+		{
+			LogPrint (eLogError, "25519 signature verification with an invalid public key");
+			return false;
+		}
 		BN_CTX * ctx = BN_CTX_new ();
+		if (!ctx) return false;
 		BIGNUM * h = DecodeBN<64> (digest);
 		// signature 0..31 - R, 32..63 - S
 		// B*S = R + PK*h => R = B*S - PK*h
-		// we don't decode R, but encode (B*S - PK*h)
-		auto Bs = MulB (signature + EDDSA25519_SIGNATURE_LENGTH / 2, ctx); // B*S;
-		BN_mod (h, h, l, ctx); // public key is multiple of B, but B%l = 0
-		auto PKh = Mul (publicKey, h, ctx); // PK*h
-		uint8_t diff[32];
-		EncodePoint (Normalize (Sum (Bs, -PKh, ctx), ctx), diff); // Bs - PKh encoded
-		bool passed = !memcmp (signature, diff, 32); // R
-		BN_free (h);
+		// RFC 8032 section 5.1.7 requires 0 <= S < L. Without this check a
+		// malleated signature with S + L verifies, because MulB() reduces the
+		// scalar modulo the group order.
+		BIGNUM * s = DecodeBN<32> (signature + EDDSA25519_SIGNATURE_LENGTH / 2);
+		bool passed = h && s && BN_cmp (s, l) < 0;
+		if (s) BN_free (s); // public value
+		if (passed)
+		{
+			// we don't decode R, but encode (B*S - PK*h)
+			auto Bs = MulB (signature + EDDSA25519_SIGNATURE_LENGTH / 2, ctx); // B*S;
+			BN_mod (h, h, l, ctx); // public key is multiple of B, but B%l = 0
+			auto PKh = Mul (publicKey, h, ctx); // PK*h
+			uint8_t diff[32];
+			EncodePoint (Normalize (Sum (Bs, -PKh, ctx), ctx), diff); // Bs - PKh encoded
+			// Constant-time comparison: the expected value must not leak
+			// through an early-exit memcmp().
+			passed = CRYPTO_memcmp (signature, diff, 32) == 0; // R
+		}
+		if (h) BN_free (h);
 		BN_CTX_free (ctx);
 		if (!passed) LogPrint (eLogError, "25519 signature verification failed");
 		return passed;
@@ -150,43 +171,58 @@ namespace crypto
 	void Ed25519::Sign (const uint8_t * expandedPrivateKey, const uint8_t * publicKeyEncoded, const uint8_t * buf,
 		size_t len, uint8_t * signature) const
 	{
+		if (!expandedPrivateKey || !publicKeyEncoded || !signature || (!buf && len)) return;
 		BN_CTX * bnCtx = BN_CTX_new ();
-		// calculate r
-		EVP_MD_CTX * ctx = EVP_MD_CTX_new ();
-		EVP_DigestInit_ex (ctx, EVP_sha512 (), NULL);
-		EVP_DigestUpdate (ctx, expandedPrivateKey + EDDSA25519_PRIVATE_KEY_LENGTH,
-			EDDSA25519_PRIVATE_KEY_LENGTH); // right half of expanded key
-		EVP_DigestUpdate (ctx, buf, len); // data
-		uint8_t digest[64];
-		unsigned int dl = 64;
-		EVP_DigestFinal_ex (ctx, digest, &dl);
-		EVP_MD_CTX_free (ctx);
-		BIGNUM * r = DecodeBN<32> (digest); // DecodeBN<64> (digest); // for test vectors
+		EVP_MD_CTX * ctx = nullptr;
+		BIGNUM * r = nullptr, * h = nullptr, * a = nullptr;
+		uint8_t digest[64] = { };
+		unsigned int dl = sizeof (digest);
+		bool ok = bnCtx && (ctx = EVP_MD_CTX_new ()) != nullptr
+			&& EVP_DigestInit_ex (ctx, EVP_sha512 (), nullptr) == 1
+			&& EVP_DigestUpdate (ctx, expandedPrivateKey + EDDSA25519_PRIVATE_KEY_LENGTH,
+				   EDDSA25519_PRIVATE_KEY_LENGTH)
+				== 1
+			&& EVP_DigestUpdate (ctx, buf, len) == 1 && EVP_DigestFinal_ex (ctx, digest, &dl) == 1
+			&& dl == sizeof (digest);
+		if (ctx)
+		{
+			EVP_MD_CTX_free (ctx);
+			ctx = nullptr;
+		}
+		r = ok ? DecodeBN<32> (digest) : nullptr; // DecodeBN<64> (digest) for test vectors
 		// calculate R
-		uint8_t R[EDDSA25519_SIGNATURE_LENGTH / 2]; // we must use separate buffer because signature might be inside buf
-		EncodePoint (
-			Normalize (MulB (digest, bnCtx), bnCtx), R); // EncodePoint (Mul (B, r, bnCtx), R); // for test vectors
+		uint8_t R[EDDSA25519_SIGNATURE_LENGTH / 2] = { }; // signature might overlap buf
+		if (ok && r)
+			EncodePoint (
+				Normalize (MulB (digest, bnCtx), bnCtx), R); // EncodePoint (Mul (B, r, bnCtx), R) for test vectors
 		// calculate S
-		ctx = EVP_MD_CTX_new ();
-		EVP_DigestInit_ex (ctx, EVP_sha512 (), NULL);
-		EVP_DigestUpdate (ctx, R, EDDSA25519_SIGNATURE_LENGTH / 2); // R
-		EVP_DigestUpdate (ctx, publicKeyEncoded, EDDSA25519_PUBLIC_KEY_LENGTH); // public key
-		EVP_DigestUpdate (ctx, buf, len); // data
-		dl = 64;
-		EVP_DigestFinal_ex (ctx, digest, &dl);
-		EVP_MD_CTX_free (ctx);
-		BIGNUM * h = DecodeBN<64> (digest);
-		// S = (r + h*a) % l
-		BIGNUM * a = DecodeBN<EDDSA25519_PRIVATE_KEY_LENGTH> (expandedPrivateKey); // left half of expanded key
-		BN_mod_mul (h, h, a, l, bnCtx); // %l
-		BN_mod_add (h, h, r, l, bnCtx); // %l
-		memcpy (signature, R, EDDSA25519_SIGNATURE_LENGTH / 2);
-		EncodeBN (h, signature + EDDSA25519_SIGNATURE_LENGTH / 2, EDDSA25519_SIGNATURE_LENGTH / 2); // S
-		BN_free (r);
-		BN_free (h);
-		BN_clear_free (a);
+		ctx = ok ? EVP_MD_CTX_new () : nullptr;
+		ok = ok && ctx && EVP_DigestInit_ex (ctx, EVP_sha512 (), nullptr) == 1
+			&& EVP_DigestUpdate (ctx, R, EDDSA25519_SIGNATURE_LENGTH / 2) == 1
+			&& EVP_DigestUpdate (ctx, publicKeyEncoded, EDDSA25519_PUBLIC_KEY_LENGTH) == 1
+			&& EVP_DigestUpdate (ctx, buf, len) == 1 && EVP_DigestFinal_ex (ctx, digest, &dl) == 1
+			&& dl == sizeof (digest);
+		if (ctx) EVP_MD_CTX_free (ctx);
+		h = ok ? DecodeBN<64> (digest) : nullptr;
+		a = ok ? DecodeBN<EDDSA25519_PRIVATE_KEY_LENGTH> (expandedPrivateKey) : nullptr; // left half
+		ok = ok && r && h && a && BN_mod_mul (h, h, a, l, bnCtx) == 1 && BN_mod_add (h, h, r, l, bnCtx) == 1;
+		if (ok)
+		{
+			memcpy (signature, R, EDDSA25519_SIGNATURE_LENGTH / 2);
+			EncodeBN (h, signature + EDDSA25519_SIGNATURE_LENGTH / 2, EDDSA25519_SIGNATURE_LENGTH / 2); // S
+		}
+		else
+		{
+			memset (signature, 0, EDDSA25519_SIGNATURE_LENGTH);
+			LogPrint (eLogError, "Ed25519: signing failed");
+		}
+		if (r) BN_clear_free (r); // secret nonce scalar
+		if (h) BN_free (h); // public signature scalar
+		if (a) BN_clear_free (a);
+
 		OPENSSL_cleanse (digest, sizeof (digest));
-		BN_CTX_free (bnCtx);
+		OPENSSL_cleanse (R, sizeof (R));
+		if (bnCtx) BN_CTX_free (bnCtx);
 	}
 
 	void Ed25519::SignRedDSA (const uint8_t * privateKey, const uint8_t * publicKeyEncoded, const uint8_t * buf,
@@ -238,8 +274,8 @@ namespace crypto
 		EncodeBN (h, signature + EDDSA25519_SIGNATURE_LENGTH / 2, EDDSA25519_SIGNATURE_LENGTH / 2); // S
 		OPENSSL_cleanse (T, sizeof (T));
 		OPENSSL_cleanse (digest, sizeof (digest));
-		BN_free (r);
-		BN_free (h);
+		BN_clear_free (r); // secret nonce scalar
+		BN_free (h); // public signature scalar
 		BN_clear_free (a);
 		BN_CTX_free (bnCtx);
 	}
@@ -412,6 +448,8 @@ namespace crypto
 
 	bool Ed25519::IsOnCurve (const EDDSAPoint & p, BN_CTX * ctx) const
 	{
+		// An empty (rejected) point is never on the curve.
+		if (!p.x || !p.y) return false;
 		BN_CTX_start (ctx);
 		BIGNUM *x2 = BN_CTX_get (ctx), *y2 = BN_CTX_get (ctx), *tmp = BN_CTX_get (ctx);
 		BN_sqr (x2, p.x, ctx); // x^2
@@ -470,7 +508,14 @@ namespace crypto
 		BN_one (z);
 		BN_mod_mul (t, x, y, q, ctx); // pre-calculate t
 		EDDSAPoint p { x, y, z, t };
-		if (!IsOnCurve (p, ctx)) LogPrint (eLogError, "Decoded point is not on 25519");
+		if (!IsOnCurve (p, ctx))
+		{
+			// Fail closed. Java's GroupElement decoding throws for a y value
+			// whose recovered x does not satisfy the curve equation; returning
+			// the point used to let callers blind or verify through it.
+			LogPrint (eLogError, "Decoded point is not on 25519");
+			return EDDSAPoint (); // releases x, y, z and t
+		}
 		return p;
 	}
 
@@ -508,29 +553,59 @@ namespace crypto
 		}
 	}
 
-	void Ed25519::BlindPublicKey (const uint8_t * pub, const uint8_t * seed, uint8_t * blinded)
+	bool Ed25519::BlindPublicKey (const uint8_t * pub, const uint8_t * seed, uint8_t * blinded)
 	{
+		if (!blinded) return false;
+		memset (blinded, 0, EDDSA25519_PUBLIC_KEY_LENGTH);
+		if (!pub || !seed) return false;
 		BN_CTX * ctx = BN_CTX_new ();
+		if (!ctx) return false;
 		// calculate alpha = seed mod l
 		BIGNUM * alpha = DecodeBN<64> (seed); // seed is in Little Endian
+		if (!alpha)
+		{
+			BN_CTX_free (ctx);
+			return false;
+		}
 		BN_mod (alpha, alpha, l, ctx); // % l
-		uint8_t priv[32];
+		uint8_t priv[32] = { };
 		EncodeBN (alpha, priv, 32); // back to Little Endian
-		BN_free (alpha);
+		// alpha is a secret blinding scalar: wipe it, do not just free it.
+		BN_clear_free (alpha);
 		// A' = BLIND_PUBKEY(A, alpha) = A + DERIVE_PUBLIC(alpha)
-		auto A1 = Sum (DecodePublicKey (pub, ctx), MulB (priv, ctx), ctx); // pub + B*alpha
+		auto A = DecodePublicKey (pub, ctx);
+		if (!A.x || !A.y)
+		{
+			OPENSSL_cleanse (priv, sizeof (priv));
+			BN_CTX_free (ctx);
+			return false;
+		}
+		auto A1 = Sum (A, MulB (priv, ctx), ctx); // pub + B*alpha
 		EncodePublicKey (A1, blinded, ctx);
+		OPENSSL_cleanse (priv, sizeof (priv));
 		BN_CTX_free (ctx);
+		return true;
 	}
 
-	void Ed25519::BlindPrivateKey (
+	bool Ed25519::BlindPrivateKey (
 		const uint8_t * priv, const uint8_t * seed, uint8_t * blindedPriv, uint8_t * blindedPub)
 	{
+		if (blindedPriv) memset (blindedPriv, 0, EDDSA25519_PRIVATE_KEY_LENGTH);
+		if (blindedPub) memset (blindedPub, 0, EDDSA25519_PUBLIC_KEY_LENGTH);
+		if (!priv || !seed || !blindedPriv || !blindedPub) return false;
 		BN_CTX * ctx = BN_CTX_new ();
+		if (!ctx) return false;
 		// calculate alpha = seed mod l
 		BIGNUM * alpha = DecodeBN<64> (seed); // seed is in Little Endian
-		BN_mod (alpha, alpha, l, ctx); // % l
 		BIGNUM * p = DecodeBN<32> (priv); // priv is in Little Endian
+		if (!alpha || !p)
+		{
+			BN_clear_free (alpha);
+			BN_clear_free (p);
+			BN_CTX_free (ctx);
+			return false;
+		}
+		BN_mod (alpha, alpha, l, ctx); // % l
 		BN_add (alpha, alpha, p); // alpha = alpha + priv
 		// a' = BLIND_PRIVKEY(a, alpha) = (a + alpha) mod L
 		BN_mod (alpha, alpha, l, ctx); // % l
@@ -538,9 +613,10 @@ namespace crypto
 		// A' = DERIVE_PUBLIC(a')
 		auto A1 = MulB (blindedPriv, ctx);
 		EncodePublicKey (A1, blindedPub, ctx);
-		BN_free (alpha);
+		BN_clear_free (alpha);
 		BN_clear_free (p);
 		BN_CTX_free (ctx);
+		return true;
 	}
 
 	void Ed25519::ExpandPrivateKey (const uint8_t * key, uint8_t * expandedKey)

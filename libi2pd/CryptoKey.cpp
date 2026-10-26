@@ -13,6 +13,7 @@
  */
 
 #include <string.h>
+#include <algorithm>
 #include <openssl/crypto.h>
 #include "Log.h"
 #include "Gost.h"
@@ -33,8 +34,7 @@ namespace crypto
 	bool ElGamalEncryptor::Encrypt (const uint8_t * data, uint8_t * encrypted)
 	{
 		if (!data || !encrypted) return false;
-		ElGamalEncrypt (m_PublicKey, data, encrypted);
-		return true;
+		return ElGamalEncrypt (m_PublicKey, data, encrypted);
 	}
 
 	ElGamalDecryptor::ElGamalDecryptor (const uint8_t * priv)
@@ -98,10 +98,7 @@ namespace crypto
 	bool ECIESP256Encryptor::Encrypt (const uint8_t * data, uint8_t * encrypted)
 	{
 		if (m_Curve && m_PublicKey && data && encrypted)
-		{
-			ECIESEncrypt (m_Curve, m_PublicKey, data, encrypted);
-			return true;
-		}
+			return ECIESEncrypt (m_Curve, m_PublicKey, data, encrypted);
 		ClearECIESOutput (encrypted);
 		return false;
 	}
@@ -183,10 +180,7 @@ namespace crypto
 	{
 		auto & curve = GetGOSTR3410Curve (eGOSTR3410CryptoProA);
 		if (m_PublicKey && data && encrypted && curve && curve->GetGroup ())
-		{
-			ECIESEncrypt (curve->GetGroup (), m_PublicKey, data, encrypted);
-			return true;
-		}
+			return ECIESEncrypt (curve->GetGroup (), m_PublicKey, data, encrypted);
 		ClearECIESOutput (encrypted);
 		return false;
 	}
@@ -266,12 +260,37 @@ namespace crypto
 		return m_StaticKeys.Agree (epub, sharedSecret);
 	}
 
-	void CreateECIESX25519AEADRatchetRandomKeys (uint8_t * priv, uint8_t * pub)
+	bool CreateECIESX25519AEADRatchetRandomKeys (uint8_t * priv, uint8_t * pub)
 	{
+		if (!priv || !pub)
+		{
+			if (priv) OPENSSL_cleanse (priv, 32);
+			if (pub) memset (pub, 0, 32);
+			LogPrint (eLogError, "Crypto: null X25519 key output buffer");
+			return false;
+		}
+		// Fail closed: a provider that cannot generate a key must not leave a
+		// partially initialised pair that a caller would publish.
+		OPENSSL_cleanse (priv, 32);
+		memset (pub, 0, 32);
 		X25519Keys k;
-		k.GenerateKeys ();
+		if (!k.GenerateKeys () || !k.HasPrivateKey ())
+		{
+			LogPrint (eLogError, "Crypto: X25519 key generation failed");
+			return false;
+		}
 		k.GetPrivateKey (priv);
 		memcpy (pub, k.GetPublicKey (), 32);
+		uint8_t acc = 0;
+		for (size_t i = 0; i < 32; ++i) acc |= priv[i] | pub[i];
+		if (!acc)
+		{
+			LogPrint (eLogError, "Crypto: generated X25519 key pair is empty");
+			OPENSSL_cleanse (priv, 32);
+			memset (pub, 0, 32);
+			return false;
+		}
+		return true;
 	}
 
 	LocalEncryptionKey::LocalEncryptionKey (i2p::data::CryptoKeyType t)
@@ -281,14 +300,22 @@ namespace crypto
 		priv.resize (GetCryptoPrivateKeyLen (keyType));
 	}
 
-	void LocalEncryptionKey::GenerateKeys ()
+	bool LocalEncryptionKey::GenerateKeys ()
 	{
 		if (priv.empty () || pub.empty ())
 		{
 			LogPrint (eLogError, "Crypto: unsupported local encryption key type ", (int)keyType);
-			return;
+			return false;
 		}
-		i2p::data::PrivateKeys::GenerateCryptoKeyPair (keyType, priv.data (), pub.data ());
+		if (!i2p::data::PrivateKeys::GenerateCryptoKeyPair (keyType, priv.data (), pub.data ()))
+		{
+			// Never leave a zeroed key available: it would be published as a
+			// key section that no peer can use.
+			std::fill (priv.begin (), priv.end (), 0);
+			std::fill (pub.begin (), pub.end (), 0);
+			return false;
+		}
+		return true;
 	}
 
 	void LocalEncryptionKey::CreateDecryptor ()
@@ -296,6 +323,16 @@ namespace crypto
 		if (priv.empty ())
 		{
 			LogPrint (eLogError, "Crypto: no private key for encryption type ", (int)keyType);
+			decryptor.reset ();
+			return;
+		}
+		// A zeroed private key is the fail-closed result of a failed
+		// generation, not a usable key: never build a decryptor for it.
+		uint8_t acc = 0;
+		for (auto byte : priv) acc |= byte;
+		if (!acc)
+		{
+			LogPrint (eLogError, "Crypto: empty private key for encryption type ", (int)keyType);
 			decryptor.reset ();
 			return;
 		}

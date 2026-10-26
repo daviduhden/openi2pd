@@ -12,12 +12,14 @@
  */
 
 #include <memory>
+#include <vector>
 #include <openssl/evp.h>
 #include <openssl/crypto.h>
 #ifndef LIBRESSL_VERSION_NUMBER // OpenSSL 3.0.2 is the minimum
 #include <openssl/core_names.h>
 #include <openssl/param_build.h>
 #endif
+#include <cstring>
 #include "Log.h"
 #include "Signature.h"
 
@@ -36,6 +38,17 @@ using MDCtxPtr = std::unique_ptr<EVP_MD_CTX, MDCtxDeleter>;
 // Encode an ECDSA_SIG into a buffer that is sized from the DER length
 // reported by OpenSSL. A fixed keyLen + 8 buffer is too small for P-521:
 // two 66-byte integers with their high bit set need 141 bytes, not 140.
+[[maybe_unused]] bool EncodeDSASignature (const DSA_SIG * sig, std::vector<uint8_t> & der)
+{
+	if (!sig) return false;
+	const int derLen = i2d_DSA_SIG (sig, nullptr);
+	if (derLen <= 0) return false;
+	der.resize (static_cast<size_t> (derLen));
+	uint8_t * out = der.data ();
+	const int written = i2d_DSA_SIG (sig, &out);
+	return written > 0 && written <= derLen && static_cast<size_t> (written) == der.size ();
+}
+
 [[maybe_unused]] bool EncodeECDSASignature (const ECDSA_SIG * sig, std::vector<uint8_t> & der)
 {
 	if (!sig) return false;
@@ -92,16 +105,15 @@ namespace crypto
 			DSA_SIG_free (sig);
 			return false;
 		}
-		// to DER format
-		uint8_t sign[DSA_SIGNATURE_LENGTH + 8];
-		uint8_t * der = sign;
-		auto l = i2d_DSA_SIG (sig, &der);
+		// to DER format, sized exactly from the encoder
+		std::vector<uint8_t> sign;
+		const bool encoded = EncodeDSASignature (sig, sign);
 		DSA_SIG_free (sig);
-		if (l <= 0) return false;
+		if (!encoded || sign.empty ()) return false;
 		// verify
 		MDCtxPtr ctx (EVP_MD_CTX_new ());
 		return ctx && EVP_DigestVerifyInit (ctx.get (), NULL, EVP_sha1 (), NULL, m_PublicKey) == 1
-			&& EVP_DigestVerify (ctx.get (), sign, l, buf, len) == 1;
+			&& EVP_DigestVerify (ctx.get (), sign.data (), sign.size (), buf, len) == 1;
 	}
 
 	DSASigner::DSASigner (const uint8_t * signingPrivateKey, const uint8_t * /* signingPublicKey */)
@@ -493,8 +505,11 @@ namespace crypto
 		m_PublicKey.reset ();
 		if (!signingKey || !m_KeyLen || !m_Hash) return;
 		BIGNUM * n = BN_bin2bn (signingKey, static_cast<int> (m_KeyLen), nullptr);
-		if (!n || BN_is_zero (n) || !BN_is_odd (n))
+		if (!n || BN_is_zero (n) || !BN_is_odd (n)
+			|| BN_num_bytes (n) != static_cast<int> (m_KeyLen))
 		{
+			// BN_bin2bn strips leading zero bytes. A modulus that no longer
+			// fills the wire field is not the fixed-size I2P RSA identity.
 			BN_free (n);
 			LogPrint (eLogError, "RSA public modulus is invalid");
 			return;
@@ -560,7 +575,7 @@ namespace crypto
 		uint8_t digest[EVP_MAX_MD_SIZE];
 		unsigned int digestLength = 0;
 		if (EVP_Digest (buf, len, digest, &digestLength, m_Hash, nullptr) != 1 || !digestLength
-			|| digestLength > m_KeyLen)
+			|| digestLength + 11 > m_KeyLen) // PKCS#1 v1.5 DigestInfo + padding
 		{
 			OPENSSL_cleanse (digest, sizeof (digest));
 			return false;

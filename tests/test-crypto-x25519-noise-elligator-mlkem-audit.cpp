@@ -15,6 +15,8 @@
 #include <cstdint>
 #include <cstring>
 #include <string_view>
+#include <type_traits>
+#include <utility>
 #include <vector>
 
 #include <openssl/crypto.h>
@@ -90,8 +92,9 @@ void TestX25519 ()
 {
 	uint8_t privateA[32], privateB[32];
 	i2p::crypto::X25519Keys a, b;
-	a.GenerateKeys ();
-	b.GenerateKeys ();
+	assert (a.GenerateKeys ());
+	assert (b.GenerateKeys ());
+	assert (a.HasPrivateKey () && b.HasPrivateKey ());
 	assert (!IsAllZero (a.GetPublicKey (), 32));
 	assert (!IsAllZero (b.GetPublicKey (), 32));
 
@@ -125,7 +128,45 @@ void TestX25519 ()
 	a.GetPrivateKey (privateA);
 	b.GetPrivateKey (privateB);
 	i2p::crypto::X25519Keys reloaded (privateA, nullptr);
+	assert (reloaded.HasPrivateKey ());
 	assert (memcmp (reloaded.GetPublicKey (), a.GetPublicKey (), 32) == 0);
+
+	// The two-argument constructor must verify a caller-supplied public key
+	// against the private key instead of trusting it.
+	i2p::crypto::X25519Keys matched (privateA, a.GetPublicKey ());
+	assert (matched.HasPrivateKey ());
+	assert (memcmp (matched.GetPublicKey (), a.GetPublicKey (), 32) == 0);
+	uint8_t mismatched[32];
+	memcpy (mismatched, a.GetPublicKey (), sizeof (mismatched));
+	mismatched[0] ^= 0x01;
+	i2p::crypto::X25519Keys rejected (privateA, mismatched);
+	assert (!rejected.HasPrivateKey ());
+	assert (IsAllZero (rejected.GetPublicKey (), 32));
+	uint8_t rejectedPrivate[32];
+	memset (rejectedPrivate, 0xA5, sizeof (rejectedPrivate));
+	rejected.GetPrivateKey (rejectedPrivate);
+	assert (IsAllZero (rejectedPrivate, 32));
+	assert (!rejected.Agree (b.GetPublicKey (), shared));
+
+	// Owning raw provider pointers: copying would double-free, so the type
+	// must be move-only.
+	static_assert (!std::is_copy_constructible_v<i2p::crypto::X25519Keys>);
+	static_assert (!std::is_copy_assignable_v<i2p::crypto::X25519Keys>);
+	static_assert (std::is_move_constructible_v<i2p::crypto::X25519Keys>);
+	static_assert (std::is_move_assignable_v<i2p::crypto::X25519Keys>);
+	{
+		i2p::crypto::X25519Keys moved (std::move (matched));
+		assert (moved.HasPrivateKey ());
+		assert (memcmp (moved.GetPublicKey (), a.GetPublicKey (), 32) == 0);
+		assert (!matched.HasPrivateKey ());
+		assert (IsAllZero (matched.GetPublicKey (), 32));
+		i2p::crypto::X25519Keys assigned;
+		assert (assigned.GenerateKeys ());
+		assigned = std::move (moved);
+		assert (assigned.HasPrivateKey ());
+		assert (memcmp (assigned.GetPublicKey (), a.GetPublicKey (), 32) == 0);
+		assert (!moved.HasPrivateKey ());
+	}
 
 	// Key material replacement must clear a stale Elligator2 ineligibility
 	// flag, otherwise pooled keys never try random representatives again.
@@ -135,9 +176,9 @@ void TestX25519 ()
 	assert (!a.IsElligatorIneligible ());
 
 	i2p::crypto::X25519Keys pooled;
-	pooled.GenerateKeys ();
+	assert (pooled.GenerateKeys ());
 	pooled.SetElligatorIneligible ();
-	pooled.GenerateKeys ();
+	assert (pooled.GenerateKeys ());
 	assert (!pooled.IsElligatorIneligible ());
 }
 
@@ -212,7 +253,7 @@ void TestElligator ()
 	for (int attempt = 0; attempt < 64; ++attempt)
 	{
 		i2p::crypto::X25519Keys keys;
-		keys.GenerateKeys ();
+		assert (keys.GenerateKeys ());
 		uint8_t encoded[32];
 		if (!el.Encode (keys.GetPublicKey (), encoded, false, true)) continue;
 		uint8_t decoded[32];
@@ -406,16 +447,47 @@ void TestCryptoKeyLengthsAndECIES ()
 	// Unsupported local key types must stay empty and fail without crashing.
 	i2p::crypto::LocalEncryptionKey unsupported ((CryptoKeyType)8);
 	assert (unsupported.pub.empty () && unsupported.priv.empty ());
-	unsupported.GenerateKeys ();
+	assert (!unsupported.GenerateKeys ());
 	unsupported.CreateDecryptor ();
 	assert (!unsupported.decryptor);
 
 	i2p::crypto::LocalEncryptionKey local (CRYPTO_KEY_TYPE_ECIES_X25519_AEAD);
 	assert (local.pub.size () == 32 && local.priv.size () == 32);
-	local.GenerateKeys ();
+	assert (local.GenerateKeys ());
 	assert (!IsAllZero (local.pub.data (), local.pub.size ()));
 	local.CreateDecryptor ();
 	assert (local.decryptor);
+
+	// A zeroed private key is the fail-closed result of a failed generation
+	// and must never produce a decryptor.
+	i2p::crypto::LocalEncryptionKey empty (CRYPTO_KEY_TYPE_ECIES_X25519_AEAD);
+	assert (IsAllZero (empty.priv.data (), empty.priv.size ()));
+	empty.CreateDecryptor ();
+	assert (!empty.decryptor);
+
+	// PrivateKeys::GenerateCryptoKeyPair() must report a usable pair for every
+	// supported type and fail closed for an unsupported one.
+	{
+		uint8_t priv[256] = { }, pub[256] = { };
+		for (auto type : { CRYPTO_KEY_TYPE_ELGAMAL, CRYPTO_KEY_TYPE_ECIES_X25519_AEAD,
+				 CRYPTO_KEY_TYPE_ECIES_MLKEM512_X25519_AEAD, CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD,
+				 CRYPTO_KEY_TYPE_ECIES_MLKEM1024_X25519_AEAD })
+		{
+			memset (priv, 0xA5, sizeof (priv));
+			memset (pub, 0xA5, sizeof (pub));
+			assert (i2p::data::PrivateKeys::GenerateCryptoKeyPair (type, priv, pub));
+			const size_t privLen = GetCryptoPrivateKeyLen (type);
+			const size_t pubLen = GetCryptoPublicKeyLen (type);
+			assert (privLen && pubLen);
+			assert (!IsAllZero (priv, privLen));
+			assert (!IsAllZero (pub, pubLen));
+		}
+		memset (priv, 0xA5, sizeof (priv));
+		memset (pub, 0xA5, sizeof (pub));
+		assert (!i2p::data::PrivateKeys::GenerateCryptoKeyPair ((CryptoKeyType)8, priv, pub));
+		assert (IsAllZero (priv, sizeof (priv)));
+		assert (IsAllZero (pub, sizeof (pub)));
+	}
 
 	// ECIES P256 valid round trip.
 	uint8_t p256Priv[256], p256Pub[256];
@@ -443,8 +515,12 @@ void TestCryptoKeyLengthsAndECIES ()
 
 	// X25519 ratchet wrapper: static-key agree and public-key copy.
 	uint8_t ratchetPriv[32], ratchetPub[32], ephemeralPriv[32], ephemeralPub[32];
-	i2p::crypto::CreateECIESX25519AEADRatchetRandomKeys (ratchetPriv, ratchetPub);
-	i2p::crypto::CreateECIESX25519AEADRatchetRandomKeys (ephemeralPriv, ephemeralPub);
+	assert (i2p::crypto::CreateECIESX25519AEADRatchetRandomKeys (ratchetPriv, ratchetPub));
+	assert (i2p::crypto::CreateECIESX25519AEADRatchetRandomKeys (ephemeralPriv, ephemeralPub));
+	assert (!IsAllZero (ratchetPriv, 32) && !IsAllZero (ratchetPub, 32));
+	// Null outputs fail closed instead of dereferencing.
+	assert (!i2p::crypto::CreateECIESX25519AEADRatchetRandomKeys (nullptr, ratchetPub));
+	assert (!i2p::crypto::CreateECIESX25519AEADRatchetRandomKeys (ratchetPriv, nullptr));
 	i2p::crypto::ECIESX25519AEADRatchetEncryptor ratchetEncryptor (ratchetPub);
 	uint8_t copied[32];
 	ratchetEncryptor.Encrypt (nullptr, copied);
@@ -482,9 +558,18 @@ void CheckMLKEMInit (i2p::data::CryptoKeyType type, const char * name)
 	Sha256 (hh, 32, pub, 32, h);
 
 	i2p::crypto::NoiseSymmetricState state { };
-	i2p::crypto::InitNoiseIKStateMLKEM (state, type, pub);
+	assert (i2p::crypto::InitNoiseIKStateMLKEM (state, type, pub));
 	assert (memcmp (state.m_CK, ck, 32) == 0);
 	assert (memcmp (state.m_H, h, 32) == 0);
+
+	// An unsupported type (or a null peer key) must report failure and leave a
+	// deterministic zero state, so a caller can abort the handshake.
+	i2p::crypto::NoiseSymmetricState unsupported { };
+	assert (!i2p::crypto::InitNoiseIKStateMLKEM (unsupported, i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, pub));
+	assert (IsAllZero (unsupported.m_CK, sizeof (unsupported.m_CK)));
+	assert (IsAllZero (unsupported.m_H, sizeof (unsupported.m_H)));
+	assert (unsupported.m_N == 0);
+	assert (!i2p::crypto::InitNoiseIKStateMLKEM (unsupported, type, nullptr));
 }
 
 void TestMLKEM ()
@@ -525,6 +610,18 @@ void TestMLKEM ()
 	assert (!IsMLKEMSupported (CRYPTO_KEY_TYPE_ECIES_X25519_AEAD));
 	assert (!IsMLKEMSupported ((CryptoKeyType)8));
 
+	// Provider gating: a hybrid version may only be published when the cached
+	// provider probe succeeds for its parameter set, and versions outside the
+	// hybrid range are never publishable.
+	for (int version = 0; version <= 6; ++version)
+	{
+		const bool canPublish = CanPublishPQ (version);
+		if (version < 3 || version > 5)
+			assert (!canPublish);
+		else
+			assert (canPublish == IsMLKEMSupported (static_cast<CryptoKeyType> (version + 2)));
+	}
+
 	CheckMLKEMInit (CRYPTO_KEY_TYPE_ECIES_MLKEM512_X25519_AEAD, "Noise_IKhfselg2_25519+MLKEM512_ChaChaPoly_SHA256");
 	CheckMLKEMInit (CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD, "Noise_IKhfselg2_25519+MLKEM768_ChaChaPoly_SHA256");
 	CheckMLKEMInit (CRYPTO_KEY_TYPE_ECIES_MLKEM1024_X25519_AEAD, "Noise_IKhfselg2_25519+MLKEM1024_ChaChaPoly_SHA256");
@@ -545,20 +642,25 @@ void TestMLKEM ()
 			Sha256 (nameHash, 32, nullptr, 0, hh);
 			Sha256 (hh, 32, pub, 32, h);
 			NoiseSymmetricState state { };
-			InitNoiseXKStateMLKEM (state, types[t], pub);
+			assert (InitNoiseXKStateMLKEM (state, types[t], pub));
 			assert (memcmp (state.m_CK, nameHash, 32) == 0);
 			assert (memcmp (state.m_H, h, 32) == 0);
 		}
+		NoiseSymmetricState rejected { };
+		assert (!InitNoiseXKStateMLKEM (rejected, CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, pub));
+		assert (IsAllZero (rejected.m_CK, sizeof (rejected.m_CK)));
+		assert (!InitNoiseXKStateMLKEM (rejected, types[0], nullptr));
 	}
 
 	// SSU2 has 512/768 only; 1024 must leave a deterministic zero state.
 	{
 		uint8_t pub[32] = { 7 };
 		NoiseSymmetricState unsupported { };
-		InitNoiseXKStateMLKEM1 (unsupported, CRYPTO_KEY_TYPE_ECIES_MLKEM1024_X25519_AEAD, pub);
+		assert (!InitNoiseXKStateMLKEM1 (unsupported, CRYPTO_KEY_TYPE_ECIES_MLKEM1024_X25519_AEAD, pub));
 		assert (IsAllZero (unsupported.m_CK, sizeof (unsupported.m_CK)));
 		assert (IsAllZero (unsupported.m_H, sizeof (unsupported.m_H)));
 		assert (unsupported.m_N == 0);
+		assert (!InitNoiseXKStateMLKEM1 (unsupported, CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD, nullptr));
 
 		uint8_t nameHash[32], hh[32], h[32];
 		const char * name = "Noise_XKhfschaobfse+hs1+hs2+hs3_25519+MLKEM768_ChaChaPoly_SHA256";
@@ -566,7 +668,7 @@ void TestMLKEM ()
 		Sha256 (nameHash, 32, nullptr, 0, hh);
 		Sha256 (hh, 32, pub, 32, h);
 		NoiseSymmetricState supported { };
-		InitNoiseXKStateMLKEM1 (supported, CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD, pub);
+		assert (InitNoiseXKStateMLKEM1 (supported, CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD, pub));
 		assert (memcmp (supported.m_CK, nameHash, 32) == 0);
 		assert (memcmp (supported.m_H, h, 32) == 0);
 	}

@@ -17,6 +17,7 @@
 #include <inttypes.h>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 #include <openssl/bn.h>
 #include <openssl/crypto.h>
@@ -66,14 +67,23 @@
 #ifndef I2PD_HAVE_EVP_EC_GEN
 #define I2PD_HAVE_EVP_EC_GEN 0
 #endif
+#ifndef I2PD_HAVE_SSL_SET1_DNSNAME
+#define I2PD_HAVE_SSL_SET1_DNSNAME 0
+#endif
+#ifndef I2PD_HAVE_SSL_SET1_HOST
+#define I2PD_HAVE_SSL_SET1_HOST 0
+#endif
+#ifndef I2PD_HAVE_OPENSSL_MLKEM_H
+#define I2PD_HAVE_OPENSSL_MLKEM_H 0
+#endif
 #ifndef LIBRESSL_VERSION_NUMBER
 #define OPENSSL_SIPHASH I2PD_HAVE_EVP_PKEY_SIPHASH
 #else
 #define OPENSSL_SIPHASH 0
 #endif
 #if (!defined(LIBRESSL_VERSION_NUMBER) && OPENSSL_VERSION_NUMBER >= 0x030500000)                                       \
-	|| ((defined(LIBRESSL_VERSION_NUMBER)                                                                              \
-		&& (LIBRESSL_VERSION_NUMBER >= 0x4030000fL))) // 3.5.0 openssl, 4.3.0 libressl
+	|| ((defined(LIBRESSL_VERSION_NUMBER) && (LIBRESSL_VERSION_NUMBER >= 0x4030000fL)                                  \
+			&& I2PD_HAVE_OPENSSL_MLKEM_H)) // 3.5.0 openssl, 4.3.0 libressl with mlkem.h
 #define OPENSSL_PQ 1
 #endif
 
@@ -94,14 +104,29 @@ namespace crypto
 	const BIGNUM * GetRSAE ();
 
 	// x25519
+	//
+	// The object owns an EVP_PKEY and its context, so it is neither copyable
+	// nor assignable: a shallow copy would double-free the provider objects.
+	// A move transfers the ownership and leaves the source in the same
+	// fail-closed state as a default-constructed object.
 	class X25519Keys
 	{
 	public:
 		X25519Keys ();
-		X25519Keys (const uint8_t * priv, const uint8_t * pub); // if pub is null, derive from priv
+		// A non-null pub is not trusted: it is compared with the public key
+		// derived from priv and the object is left unusable on any mismatch.
+		X25519Keys (const uint8_t * priv, const uint8_t * pub);
+		X25519Keys (const X25519Keys &) = delete;
+		X25519Keys & operator= (const X25519Keys &) = delete;
+		X25519Keys (X25519Keys && other) noexcept;
+		X25519Keys & operator= (X25519Keys && other) noexcept;
 		~X25519Keys ();
 
-		void GenerateKeys ();
+		// Returns false when the provider cannot generate a key. On failure no
+		// private key is held and the public key is an all-zero value, so the
+		// caller must abort instead of publishing the key material.
+		bool GenerateKeys ();
+		bool HasPrivateKey () const { return m_Pkey != nullptr; };
 		const uint8_t * GetPublicKey () const { return m_PublicKey; };
 		void GetPrivateKey (uint8_t * priv) const;
 		void SetPrivateKey (const uint8_t * priv, bool calculatePublic = false);
@@ -111,6 +136,8 @@ namespace crypto
 		void SetElligatorIneligible () { m_IsElligatorIneligible = true; }
 
 	private:
+		void Reset ();
+
 		uint8_t m_PublicKey[32];
 		EVP_PKEY_CTX * m_Ctx;
 		EVP_PKEY * m_Pkey;
@@ -118,15 +145,15 @@ namespace crypto
 	};
 
 	// ElGamal
-	void ElGamalEncrypt (
+	bool ElGamalEncrypt (
 		const uint8_t * key, const uint8_t * data, uint8_t * encrypted); // 222 bytes data, 514 bytes encrypted
 	bool ElGamalDecrypt (
 		const uint8_t * key, const uint8_t * encrypted, uint8_t * data); // 514 bytes encrypted, 222 data
 	void GenerateElGamalKeyPair (uint8_t * priv, uint8_t * pub);
 
 	// ECIES
-	void ECIESEncrypt (const EC_GROUP * curve, const EC_POINT * key, const uint8_t * data,
-		uint8_t * encrypted); // 222 bytes data, 514 bytes encrypted
+	bool ECIESEncrypt (const EC_GROUP * curve, const EC_POINT * key, const uint8_t * data,
+		uint8_t * encrypted); // 222 bytes data, 514 bytes encrypted; false on failure
 	bool ECIESDecrypt (const EC_GROUP * curve, const BIGNUM * key, const uint8_t * encrypted,
 		uint8_t * data); // 514 bytes encrypted, 222 data
 	void GenerateECIESKeyPair (const EC_GROUP * curve, BIGNUM *& priv, EC_POINT *& pub);
@@ -290,7 +317,11 @@ namespace crypto
 			size_t outLen = 64); // salt - 32, out - 32 or 64, info <= 32
 
 	private:
+#if I2PD_HAVE_EVP_KDF_FETCH
+		EVP_KDF_CTX * m_KdfCtx;
+#else
 		EVP_PKEY_CTX * m_Ctx;
+#endif
 	};
 
 	// Noise
@@ -332,12 +363,13 @@ namespace crypto
 		bool chacha20Poly1305;
 		bool hkdf;
 		bool sipHash;
+		bool ed25519;
 	};
 
 	const CryptoCapabilities & GetCryptoCapabilities ();
 
 	// init and terminate
-	void InitCrypto (bool precomputation);
+	bool InitCrypto (bool precomputation); // false when a required provider algorithm is unavailable
 	void TerminateCrypto ();
 }
 }

@@ -14,6 +14,7 @@
 
 #include <array>
 #include <cstring>
+#include <vector>
 #include <mutex>
 #include <openssl/crypto.h>
 #include "Log.h"
@@ -30,6 +31,25 @@ namespace i2p
 {
 namespace crypto
 {
+#ifdef LIBRESSL_VERSION_NUMBER
+	// LibreSSL allocates operation outputs. Always wipe and release them,
+	// including when an operation or a subsequent length check fails. Declared
+	// before the provider probe so the probe uses the same wiping wrapper.
+	struct MLKEMBuffer
+	{
+		MLKEMBuffer () = default;
+		MLKEMBuffer (const MLKEMBuffer &) = delete;
+		MLKEMBuffer & operator= (const MLKEMBuffer &) = delete;
+		uint8_t * data = nullptr;
+		size_t len = 0;
+		~MLKEMBuffer ()
+		{
+			if (data) OPENSSL_cleanse (data, len);
+			OPENSSL_free (data);
+		}
+	};
+#endif
+
 	namespace
 	{
 		// One cached provider probe per parameter set. Probe keys are generated
@@ -60,20 +80,68 @@ namespace crypto
 				supported
 					= EVP_PKEY_get_octet_string_param (pkey, OSSL_PKEY_PARAM_PUB_KEY, nullptr, 0, &publicKeyLength) == 1
 					&& publicKeyLength == std::get<1> (MLKEMS[index]);
+				// Key generation alone is not interoperability: a provider may
+				// expose keymgmt but fail the KEM operation. Exercise one
+				// encapsulate/decapsulate round trip before advertising a
+				// hybrid version.
+				if (supported)
+				{
+					const size_t cipherTextLength = std::get<2> (MLKEMS[index]);
+					std::vector<uint8_t> cipherText (cipherTextLength), encapsulated (32), decapsulated (32);
+					size_t ctLen = cipherText.size (), encLen = encapsulated.size (), decLen = decapsulated.size ();
+					EVP_PKEY_CTX * kem = EVP_PKEY_CTX_new_from_pkey (nullptr, pkey, nullptr);
+					supported = kem && EVP_PKEY_encapsulate_init (kem, nullptr) == 1
+						&& EVP_PKEY_encapsulate (kem, cipherText.data (), &ctLen, encapsulated.data (), &encLen) == 1
+						&& ctLen == cipherText.size () && encLen == encapsulated.size ();
+					if (supported)
+						supported = EVP_PKEY_decapsulate_init (kem, nullptr) == 1
+							&& EVP_PKEY_decapsulate (kem, decapsulated.data (), &decLen, cipherText.data (), ctLen)
+								== 1
+							&& decLen == decapsulated.size ()
+							&& CRYPTO_memcmp (encapsulated.data (), decapsulated.data (), encLen) == 0;
+					OPENSSL_cleanse (encapsulated.data (), encapsulated.size ());
+					OPENSSL_cleanse (decapsulated.data (), decapsulated.size ());
+					EVP_PKEY_CTX_free (kem);
+				}
 			}
 			EVP_PKEY_free (pkey);
 			EVP_PKEY_CTX_free (ctx);
 			return supported;
 #else
-			// LibreSSL has no provider interface; probe the rank-specific API.
-			// ML-KEM-512 has no rank in the supported LibreSSL API and stays
-			// unsupported.
+			// LibreSSL has no provider interface; mirror the OpenSSL round trip
+			// through the rank-specific API: generate, marshal/parse the public
+			// key, then encapsulate and decapsulate while comparing the shared
+			// secrets. Key generation alone would advertise a parameter set
+			// whose KEM operation is broken. ML-KEM-512 has no rank in the
+			// supported LibreSSL API and stays unsupported.
 			const int rank = index == 1 ? MLKEM768_RANK : index == 2 ? MLKEM1024_RANK : 0;
 			if (!rank) return false;
-			MLKEM_private_key * key = MLKEM_private_key_new (rank);
-			if (!key) return false;
-			MLKEM_private_key_free (key);
-			return true;
+			const size_t keyLength = std::get<1> (MLKEMS[index]);
+			const size_t cipherTextLength = std::get<2> (MLKEMS[index]);
+			using PrivateKeyPtr = std::unique_ptr<MLKEM_private_key, decltype (&MLKEM_private_key_free)>;
+			using PublicKeyPtr = std::unique_ptr<MLKEM_public_key, decltype (&MLKEM_public_key_free)>;
+			PrivateKeyPtr privateKey (MLKEM_private_key_new (rank), MLKEM_private_key_free);
+			PublicKeyPtr publicKey (MLKEM_public_key_new (rank), MLKEM_public_key_free);
+			PublicKeyPtr importedKey (MLKEM_public_key_new (rank), MLKEM_public_key_free);
+			if (!privateKey || !publicKey || !importedKey) return false;
+			MLKEMBuffer generated, marshalled, cipherText, encapsulated, decapsulated;
+			if (MLKEM_generate_key (privateKey.get (), &generated.data, &generated.len, nullptr, nullptr) != 1
+				|| generated.len != keyLength || MLKEM_public_from_private (privateKey.get (), publicKey.get ()) != 1)
+				return false;
+			if (MLKEM_marshal_public_key (publicKey.get (), &marshalled.data, &marshalled.len) != 1
+				|| marshalled.len != keyLength
+				|| MLKEM_parse_public_key (importedKey.get (), marshalled.data, marshalled.len) != 1)
+				return false;
+			if (MLKEM_encap (importedKey.get (), &cipherText.data, &cipherText.len, &encapsulated.data,
+					&encapsulated.len) != 1
+				|| cipherText.len != cipherTextLength || encapsulated.len != 32)
+				return false;
+			if (MLKEM_decap (privateKey.get (), cipherText.data, cipherText.len, &decapsulated.data,
+					&decapsulated.len) != 1
+				|| decapsulated.len != 32)
+				return false;
+			// MLKEMBuffer wipes every buffer above on scope exit.
+			return CRYPTO_memcmp (encapsulated.data, decapsulated.data, 32) == 0;
 #endif
 		}
 	} // namespace
@@ -107,24 +175,6 @@ namespace crypto
 			if (CanPublishPQ (version)) return version;
 		return 0;
 	}
-
-#ifdef LIBRESSL_VERSION_NUMBER
-	// LibreSSL allocates operation outputs. Always wipe and release them,
-	// including when an operation or a subsequent length check fails.
-	struct MLKEMBuffer
-	{
-		MLKEMBuffer () = default;
-		MLKEMBuffer (const MLKEMBuffer &) = delete;
-		MLKEMBuffer & operator= (const MLKEMBuffer &) = delete;
-		uint8_t * data = nullptr;
-		size_t len = 0;
-		~MLKEMBuffer ()
-		{
-			if (data) OPENSSL_cleanse (data, len);
-			OPENSSL_free (data);
-		}
-	};
-#endif
 
 	MLKEMKeys::MLKEMKeys (MLKEMTypes type)
 		: m_Name (std::get<0> (MLKEMS.at (type)))
@@ -321,7 +371,7 @@ namespace crypto
 					  0x6d, 0x13, 0x1d, 0xa2 } // SHA256 (first)
 				  ) };
 
-	void InitNoiseIKStateMLKEM (NoiseSymmetricState & state, i2p::data::CryptoKeyType type, const uint8_t * pub)
+	bool InitNoiseIKStateMLKEM (NoiseSymmetricState & state, i2p::data::CryptoKeyType type, const uint8_t * pub)
 	{
 		if (!pub || type <= i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD
 			|| type - i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD > (int)NoiseIKInitMLKEMKeys.size ())
@@ -330,10 +380,11 @@ namespace crypto
 			OPENSSL_cleanse (state.m_CK, sizeof (state.m_CK));
 			memset (state.m_H, 0, sizeof (state.m_H));
 			state.m_N = 0;
-			return;
+			return false;
 		}
 		auto ind = type - i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD - 1;
 		state.Init (NoiseIKInitMLKEMKeys[ind].first.data (), NoiseIKInitMLKEMKeys[ind].second.data (), pub);
+		return true;
 	}
 
 	static constexpr std::array NoiseXKInitMLKEMKeys
@@ -362,7 +413,7 @@ namespace crypto
 					  0xab, 0xf3, 0x57, 0x3f } // SHA256 (first)
 				  ) };
 
-	void InitNoiseXKStateMLKEM (NoiseSymmetricState & state, i2p::data::CryptoKeyType type, const uint8_t * pub)
+	bool InitNoiseXKStateMLKEM (NoiseSymmetricState & state, i2p::data::CryptoKeyType type, const uint8_t * pub)
 	{
 		if (!pub || type <= i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD
 			|| type - i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD > (int)NoiseXKInitMLKEMKeys.size ())
@@ -371,10 +422,11 @@ namespace crypto
 			OPENSSL_cleanse (state.m_CK, sizeof (state.m_CK));
 			memset (state.m_H, 0, sizeof (state.m_H));
 			state.m_N = 0;
-			return;
+			return false;
 		}
 		auto ind = type - i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD - 1;
 		state.Init (NoiseXKInitMLKEMKeys[ind].first.data (), NoiseXKInitMLKEMKeys[ind].second.data (), pub);
+		return true;
 	}
 
 	static constexpr std::array NoiseXKInitMLKEMKeys1 = {
@@ -397,7 +449,7 @@ namespace crypto
 		// no ML-KEM-1024
 	};
 
-	void InitNoiseXKStateMLKEM1 (NoiseSymmetricState & state, i2p::data::CryptoKeyType type, const uint8_t * pub)
+	bool InitNoiseXKStateMLKEM1 (NoiseSymmetricState & state, i2p::data::CryptoKeyType type, const uint8_t * pub)
 	{
 		if (!pub || type <= i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD
 			|| type - i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD > (int)NoiseXKInitMLKEMKeys1.size ())
@@ -406,10 +458,11 @@ namespace crypto
 			OPENSSL_cleanse (state.m_CK, sizeof (state.m_CK));
 			memset (state.m_H, 0, sizeof (state.m_H));
 			state.m_N = 0;
-			return;
+			return false;
 		}
 		auto ind = type - i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD - 1;
 		state.Init (NoiseXKInitMLKEMKeys1[ind].first.data (), NoiseXKInitMLKEMKeys1[ind].second.data (), pub);
+		return true;
 	}
 }
 }

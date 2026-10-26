@@ -7,7 +7,8 @@
  * ML-KEM (FIPS 203) key encapsulation wrappers for the hybrid I2P crypto types, with
  * key/ciphertext sizes selected by CryptoKeyType and OpenSSL/LibreSSL feature detection.
  * Provides the Noise IK, XK and XK1 state initialization used by ratchets, NTCP2 and SSU2;
- * operations report failure so a handshake aborts instead of continuing with partial output.
+ * every initialization reports failure so a handshake aborts instead of continuing with
+ * partial or zeroed hash state.
  *
  */
 
@@ -15,12 +16,13 @@
 #define POST_QUANTUM_H__
 
 #include <memory>
+#include <string>
 #include <string_view>
 #include <array>
 #include <tuple>
 #include "Crypto.h"
 #include "Identity.h"
-#if OPENSSL_PQ && defined(LIBRESSL_VERSION_NUMBER)
+#if OPENSSL_PQ && defined(LIBRESSL_VERSION_NUMBER) && I2PD_HAVE_OPENSSL_MLKEM_H
 #include <openssl/mlkem.h>
 #endif
 
@@ -116,11 +118,14 @@ namespace crypto
 
 	std::unique_ptr<MLKEMKeys> CreateMLKEMKeys (i2p::data::CryptoKeyType type);
 
-	void InitNoiseIKStateMLKEM (NoiseSymmetricState & state, i2p::data::CryptoKeyType type,
+	// These return false for an unsupported type or a null peer key, after
+	// zeroing the state. A caller that cannot use the returned state must abort
+	// the handshake instead of continuing with a zero/partially mixed hash.
+	bool InitNoiseIKStateMLKEM (NoiseSymmetricState & state, i2p::data::CryptoKeyType type,
 		const uint8_t * pub); // Noise_IK (ratchets) PQ ML-KEM
-	void InitNoiseXKStateMLKEM (
+	bool InitNoiseXKStateMLKEM (
 		NoiseSymmetricState & state, i2p::data::CryptoKeyType type, const uint8_t * pub); // Noise_XK (NTCP2) PQ ML-KEM
-	void InitNoiseXKStateMLKEM1 (
+	bool InitNoiseXKStateMLKEM1 (
 		NoiseSymmetricState & state, i2p::data::CryptoKeyType type, const uint8_t * pub); // Noise_XK1 (SSU2) PQ ML-KEM
 }
 }

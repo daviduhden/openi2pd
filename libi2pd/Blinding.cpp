@@ -7,14 +7,16 @@
  * Implements Proposal 149 destination blinding for EdDSA and RedDSA keys:
  * b33 address parsing, credential/subcredential derivation, daily key
  * blinding and store-hash calculation. Only canonical base32, supported
- * signature types and defined flag bits are accepted; malformed, non-blindable
- * or secret-requiring addresses produce an invalid key instead of a usable
- * address.
+ * signature types, defined flag bits and the one-byte signature-type form are
+ * accepted (Java 2.14.0 rejects the two-byte form); malformed, non-blindable,
+ * off-curve or secret-requiring addresses produce an invalid key instead of a
+ * usable address.
  *
  */
 
 #include <cstdint>
 #include <cctype>
+#include <cstring>
 #include <string>
 #include <zlib.h> // for crc32
 #include <openssl/sha.h>
@@ -114,21 +116,24 @@ namespace data
 			m_IsValid = false;
 			return;
 		}
+		if (flags & B33_TWO_BYTES_SIGTYPE_FLAG)
+		{
+			// Java 2.14.0 (net.i2p.data.Destination's b33 decoder in
+			// Blinding.java) rejects the two-byte signature-type form. Accepting
+			// it would let one blinded destination have two encodings (and two
+			// store keys) for the same key material, so fail closed.
+			LogPrint (eLogError, "Blinding: Two-byte b33 signature types are not supported");
+			m_SigType = i2p::data::SIGNING_KEY_TYPE_DSA_SHA1;
+			m_PublicKey.fill (0);
+			m_IsValid = false;
+			return;
+		}
 		size_t offset = 1;
-		if (flags & B33_TWO_BYTES_SIGTYPE_FLAG) // two bytes signatures
-		{
-			m_SigType = bufbe16toh (addr.data () + offset);
-			offset += 2;
-			m_BlindedSigType = bufbe16toh (addr.data () + offset);
-			offset += 2;
-		}
-		else // one byte sig
-		{
-			m_SigType = addr[offset];
-			offset++;
-			m_BlindedSigType = addr[offset];
-			offset++;
-		}
+		// One-byte signature types, as emitted by ToB33() and Java.
+		m_SigType = addr[offset];
+		offset++;
+		m_BlindedSigType = addr[offset];
+		offset++;
 		m_IsClientAuth = flags & B33_PER_CLIENT_AUTH_FLAG;
 
 		// The b33 encoding of a 32-byte signing key is exactly the header plus
@@ -239,8 +244,15 @@ namespace data
 		{
 		case i2p::data::SIGNING_KEY_TYPE_REDDSA_SHA512_ED25519:
 		case i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519:
-			i2p::crypto::GetEd25519 ()->BlindPublicKey (GetPublicKey (), seed, blindedKey);
-			publicKeyLength = i2p::crypto::EDDSA25519_PUBLIC_KEY_LENGTH;
+			if (i2p::crypto::GetEd25519 ()->BlindPublicKey (GetPublicKey (), seed, blindedKey))
+				publicKeyLength = i2p::crypto::EDDSA25519_PUBLIC_KEY_LENGTH;
+			else
+			{
+				// Off-curve key or provider failure: never derive a store key
+				// from a zeroed blinded point.
+				memset (blindedKey, 0, i2p::crypto::EDDSA25519_PUBLIC_KEY_LENGTH);
+				LogPrint (eLogError, "Blinding: Can't blind the public key of type ", (int)m_SigType);
+			}
 			break;
 		default: LogPrint (eLogError, "Blinding: Can't blind signature type ", (int)m_SigType);
 		}
@@ -258,19 +270,25 @@ namespace data
 		switch (m_SigType)
 		{
 		case i2p::data::SIGNING_KEY_TYPE_REDDSA_SHA512_ED25519:
-			i2p::crypto::GetEd25519 ()->BlindPrivateKey (priv, seed, blindedPriv, blindedPub);
-			publicKeyLength = i2p::crypto::EDDSA25519_PUBLIC_KEY_LENGTH;
+			if (i2p::crypto::GetEd25519 ()->BlindPrivateKey (priv, seed, blindedPriv, blindedPub))
+				publicKeyLength = i2p::crypto::EDDSA25519_PUBLIC_KEY_LENGTH;
 			break;
 		case i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519:
 		{
 			uint8_t exp[64];
 			i2p::crypto::Ed25519::ExpandPrivateKey (priv, exp);
-			i2p::crypto::GetEd25519 ()->BlindPrivateKey (exp, seed, blindedPriv, blindedPub);
+			if (i2p::crypto::GetEd25519 ()->BlindPrivateKey (exp, seed, blindedPriv, blindedPub))
+				publicKeyLength = i2p::crypto::EDDSA25519_PUBLIC_KEY_LENGTH;
 			OPENSSL_cleanse (exp, sizeof (exp));
-			publicKeyLength = i2p::crypto::EDDSA25519_PUBLIC_KEY_LENGTH;
 			break;
 		}
 		default: LogPrint (eLogError, "Blinding: Can't blind signature type ", (int)m_SigType);
+		}
+		if (!publicKeyLength)
+		{
+			memset (blindedPriv, 0, i2p::crypto::EDDSA25519_PRIVATE_KEY_LENGTH);
+			memset (blindedPub, 0, i2p::crypto::EDDSA25519_PUBLIC_KEY_LENGTH);
+			LogPrint (eLogError, "Blinding: Can't blind the private key of type ", (int)m_SigType);
 		}
 		OPENSSL_cleanse (seed, sizeof (seed));
 		return publicKeyLength;

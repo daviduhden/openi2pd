@@ -22,7 +22,11 @@
 #include <openssl/crypto.h>
 #include "TunnelBase.h"
 #include <openssl/ssl.h>
+#include <openssl/hmac.h>
 #include <openssl/kdf.h>
+#if I2PD_HAVE_EVP_KDF_FETCH
+#include <openssl/core_names.h>
+#endif
 #ifndef LIBRESSL_VERSION_NUMBER // OpenSSL 3.0.2 is the minimum
 #include <openssl/param_build.h>
 #include <openssl/core_names.h>
@@ -154,26 +158,30 @@ namespace crypto
 	{
 		EVP_PKEY * pkey = nullptr;
 		int selection = EVP_PKEY_KEY_PARAMETERS;
-		auto bld = OSSL_PARAM_BLD_new ();
-		OSSL_PARAM_BLD_push_BN (bld, OSSL_PKEY_PARAM_FFC_P, dsap);
-		OSSL_PARAM_BLD_push_BN (bld, OSSL_PKEY_PARAM_FFC_Q, dsaq);
-		OSSL_PARAM_BLD_push_BN (bld, OSSL_PKEY_PARAM_FFC_G, dsag);
+		OSSL_PARAM_BLD * bld = OSSL_PARAM_BLD_new ();
+		if (!bld) return nullptr;
+		bool built = OSSL_PARAM_BLD_push_BN (bld, OSSL_PKEY_PARAM_FFC_P, dsap) == 1
+			&& OSSL_PARAM_BLD_push_BN (bld, OSSL_PKEY_PARAM_FFC_Q, dsaq) == 1
+			&& OSSL_PARAM_BLD_push_BN (bld, OSSL_PKEY_PARAM_FFC_G, dsag) == 1;
 		if (pubKey)
 		{
-			OSSL_PARAM_BLD_push_BN (bld, OSSL_PKEY_PARAM_PUB_KEY, pubKey);
+			built = built && OSSL_PARAM_BLD_push_BN (bld, OSSL_PKEY_PARAM_PUB_KEY, pubKey) == 1;
 			selection = EVP_PKEY_PUBLIC_KEY;
 		}
 		if (privKey)
 		{
-			OSSL_PARAM_BLD_push_BN (bld, OSSL_PKEY_PARAM_PRIV_KEY, privKey);
+			built = built && OSSL_PARAM_BLD_push_BN (bld, OSSL_PKEY_PARAM_PRIV_KEY, privKey) == 1;
 			selection = EVP_PKEY_KEYPAIR;
 		}
-		auto params = OSSL_PARAM_BLD_to_param (bld);
-
-		EVP_PKEY_CTX * ctx = EVP_PKEY_CTX_new_from_name (NULL, "DSA", NULL);
-		EVP_PKEY_fromdata_init (ctx);
-		EVP_PKEY_fromdata (ctx, &pkey, selection, params);
-
+		OSSL_PARAM * params = built ? OSSL_PARAM_BLD_to_param (bld) : nullptr;
+		EVP_PKEY_CTX * ctx = params ? EVP_PKEY_CTX_new_from_name (nullptr, "DSA", nullptr) : nullptr;
+		const bool ok = ctx && EVP_PKEY_fromdata_init (ctx) == 1
+			&& EVP_PKEY_fromdata (ctx, &pkey, selection, params) == 1;
+		if (!ok && pkey)
+		{
+			EVP_PKEY_free (pkey);
+			pkey = nullptr;
+		}
 		EVP_PKEY_CTX_free (ctx);
 		OSSL_PARAM_free (params);
 		OSSL_PARAM_BLD_free (bld);
@@ -291,24 +299,83 @@ namespace crypto
 		memset (m_PublicKey, 0, sizeof (m_PublicKey));
 		m_Pkey = priv ? EVP_PKEY_new_raw_private_key (EVP_PKEY_X25519, NULL, priv, 32) : nullptr;
 		m_Ctx = m_Pkey ? EVP_PKEY_CTX_new (m_Pkey, NULL) : nullptr;
-		if (!m_Pkey) return;
-		if (pub)
-			memcpy (m_PublicKey, pub, 32); // TODO: verify against m_Pkey
-		else
+		if (!m_Pkey || !m_Ctx)
 		{
-			size_t len = 32;
-			if (EVP_PKEY_get_raw_public_key (m_Pkey, m_PublicKey, &len) != 1 || len != 32)
-				memset (m_PublicKey, 0, sizeof (m_PublicKey));
+			Reset ();
+			return;
 		}
+		// Always derive the public key from the private key. A caller-supplied
+		// public key is not authority for anything: copying it unchecked used
+		// to publish a key that does not belong to the private scalar.
+		uint8_t derived[32] = { };
+		size_t len = 32;
+		if (EVP_PKEY_get_raw_public_key (m_Pkey, derived, &len) != 1 || len != 32)
+		{
+			OPENSSL_cleanse (derived, sizeof (derived));
+			Reset ();
+			return;
+		}
+		if (pub && CRYPTO_memcmp (derived, pub, sizeof (derived)) != 0)
+		{
+			LogPrint (eLogError, "X25519: public key does not match the private key");
+			OPENSSL_cleanse (derived, sizeof (derived));
+			Reset ();
+			return;
+		}
+		memcpy (m_PublicKey, derived, sizeof (m_PublicKey));
+		OPENSSL_cleanse (derived, sizeof (derived));
+	}
+
+	X25519Keys::X25519Keys (X25519Keys && other) noexcept
+		: m_Ctx (other.m_Ctx)
+		, m_Pkey (other.m_Pkey)
+		, m_IsElligatorIneligible (other.m_IsElligatorIneligible)
+	{
+		memcpy (m_PublicKey, other.m_PublicKey, sizeof (m_PublicKey));
+		other.m_Ctx = nullptr;
+		other.m_Pkey = nullptr;
+		memset (other.m_PublicKey, 0, sizeof (other.m_PublicKey));
+		other.m_IsElligatorIneligible = false;
+	}
+
+	X25519Keys & X25519Keys::operator= (X25519Keys && other) noexcept
+	{
+		if (this != &other)
+		{
+			Reset ();
+			m_Ctx = other.m_Ctx;
+			m_Pkey = other.m_Pkey;
+			m_IsElligatorIneligible = other.m_IsElligatorIneligible;
+			memcpy (m_PublicKey, other.m_PublicKey, sizeof (m_PublicKey));
+			other.m_Ctx = nullptr;
+			other.m_Pkey = nullptr;
+			memset (other.m_PublicKey, 0, sizeof (other.m_PublicKey));
+			other.m_IsElligatorIneligible = false;
+		}
+		return *this;
 	}
 
 	X25519Keys::~X25519Keys ()
 	{
-		if (m_Ctx) EVP_PKEY_CTX_free (m_Ctx);
-		if (m_Pkey) EVP_PKEY_free (m_Pkey);
+		Reset ();
 	}
 
-	void X25519Keys::GenerateKeys ()
+	void X25519Keys::Reset ()
+	{
+		if (m_Ctx)
+		{
+			EVP_PKEY_CTX_free (m_Ctx);
+			m_Ctx = nullptr;
+		}
+		if (m_Pkey)
+		{
+			EVP_PKEY_free (m_Pkey);
+			m_Pkey = nullptr;
+		}
+		memset (m_PublicKey, 0, sizeof (m_PublicKey));
+	}
+
+	bool X25519Keys::GenerateKeys ()
 	{
 		// The pool reuses X25519Keys objects. A key that was ineligible for
 		// Elligator2 must become eligible again once its key material is
@@ -329,7 +396,7 @@ namespace crypto
 				EVP_PKEY_free (m_Pkey);
 				m_Pkey = nullptr;
 			}
-			return;
+			return false;
 		}
 		EVP_PKEY_CTX_free (m_Ctx);
 		m_Ctx = EVP_PKEY_CTX_new (m_Pkey, NULL); // TODO: do we really need to re-create m_Ctx?
@@ -345,7 +412,9 @@ namespace crypto
 				EVP_PKEY_CTX_free (m_Ctx);
 				m_Ctx = nullptr;
 			}
+			return false;
 		}
+		return true;
 	}
 
 	bool X25519Keys::Agree (const uint8_t * pub, uint8_t * shared)
@@ -387,17 +456,7 @@ namespace crypto
 	void X25519Keys::SetPrivateKey (const uint8_t * priv, bool calculatePublic)
 	{
 		m_IsElligatorIneligible = false;
-		if (m_Ctx)
-		{
-			EVP_PKEY_CTX_free (m_Ctx);
-			m_Ctx = nullptr;
-		}
-		if (m_Pkey)
-		{
-			EVP_PKEY_free (m_Pkey);
-			m_Pkey = nullptr;
-		}
-		memset (m_PublicKey, 0, sizeof (m_PublicKey));
+		Reset ();
 		if (!priv) return;
 		m_Pkey = EVP_PKEY_new_raw_private_key (EVP_PKEY_X25519, NULL, priv, 32);
 		m_Ctx = m_Pkey ? EVP_PKEY_CTX_new (m_Pkey, NULL) : nullptr;
@@ -408,29 +467,19 @@ namespace crypto
 		if (m_Pkey)
 		{
 			size_t len = 32;
-			if (!m_Ctx || EVP_PKEY_get_raw_public_key (m_Pkey, m_PublicKey, &len) != 1 || len != 32)
-			{
-				memset (m_PublicKey, 0, sizeof (m_PublicKey));
-				EVP_PKEY_free (m_Pkey);
-				m_Pkey = nullptr;
-				if (m_Ctx)
-				{
-					EVP_PKEY_CTX_free (m_Ctx);
-					m_Ctx = nullptr;
-				}
-			}
+			if (!m_Ctx || EVP_PKEY_get_raw_public_key (m_Pkey, m_PublicKey, &len) != 1 || len != 32) Reset ();
 		}
 	}
 
 	// ElGamal
-	void ElGamalEncrypt (const uint8_t * key, const uint8_t * data, uint8_t * encrypted)
+	bool ElGamalEncrypt (const uint8_t * key, const uint8_t * data, uint8_t * encrypted)
 	{
-		if (!key || !data || !encrypted) return;
+		if (!key || !data || !encrypted) return false;
 		BN_CTX * ctx = BN_CTX_new ();
 		if (!ctx)
 		{
 			memset (encrypted, 0, 514);
-			return;
+			return false;
 		}
 		BN_CTX_start (ctx);
 		// everything, but a, because a might come from table
@@ -457,7 +506,7 @@ namespace crypto
 			memset (encrypted, 0, 514);
 			BN_CTX_end (ctx);
 			BN_CTX_free (ctx);
-			return;
+			return false;
 		}
 		// calculate a
 		BIGNUM * a;
@@ -469,23 +518,25 @@ namespace crypto
 			BN_mod_exp (a, elgg, k, elgp, ctx);
 		}
 		// calculate b1
-		BN_mod_exp (b1, y, k, elgp, ctx);
+		bool ok = a && BN_mod_exp (b1, y, k, elgp, ctx) == 1;
 		// create m
-		uint8_t m[255];
+		uint8_t m[255] = { };
 		m[0] = 0xFF;
 		memcpy (m + 33, data, 222);
 		SHA256 (m + 33, 222, m + 1);
 		// calculate b = b1*m mod p
-		BN_bin2bn (m, 255, b);
-		BN_mod_mul (b, b1, b, elgp, ctx);
+		ok = ok && BN_bin2bn (m, 255, b) && BN_mod_mul (b, b1, b, elgp, ctx) == 1;
 		// copy a and b
 		encrypted[0] = 0;
 		encrypted[257] = 0;
-		if (!bn2buf (a, encrypted + 1, 256) || !bn2buf (b, encrypted + 258, 256)) memset (encrypted, 0, 514);
+		ok = ok && bn2buf (a, encrypted + 1, 256) && bn2buf (b, encrypted + 258, 256);
+		if (!ok) memset (encrypted, 0, 514);
+		OPENSSL_cleanse (m, sizeof (m));
 
-		BN_free (a);
+		if (a) BN_free (a);
 		BN_CTX_end (ctx);
 		BN_CTX_free (ctx);
+		return ok;
 	}
 
 	bool ElGamalDecrypt (const uint8_t * key, const uint8_t * encrypted, uint8_t * data)
@@ -596,20 +647,20 @@ namespace crypto
 		}
 	}
 
-	void ECIESEncrypt (const EC_GROUP * curve, const EC_POINT * key, const uint8_t * data, uint8_t * encrypted)
+	bool ECIESEncrypt (const EC_GROUP * curve, const EC_POINT * key, const uint8_t * data, uint8_t * encrypted)
 	{
 		if (!curve || !key || !data || !encrypted || EC_POINT_is_at_infinity (curve, key))
 		{
 			// Never leave the caller's fixed-size envelope uninitialised or
 			// encrypt to the point at infinity (whose shared secret is public).
 			ClearECIESOutput (encrypted);
-			return;
+			return false;
 		}
 		BN_CTX * ctx = BN_CTX_new ();
 		if (!ctx)
 		{
 			ClearECIESOutput (encrypted);
-			return;
+			return false;
 		}
 		BN_CTX_start (ctx);
 		BIGNUM * q = BN_CTX_get (ctx);
@@ -648,12 +699,12 @@ namespace crypto
 		if (ok)
 		{
 			uint8_t keyBuf[ECIES_KEY_BUF_SIZE], iv[ECIES_KEY_BUF_SIZE], shared[32];
+			uint8_t m[256] = { };
 			ok = bn2buf (x, keyBuf, len) && bn2buf (y, iv, len);
 			if (ok)
 			{
 				SHA256 (keyBuf, len, shared);
 				// create buffer
-				uint8_t m[256];
 				m[0] = 0xFF;
 				m[255] = 0xFF;
 				memcpy (m + 33, data, 222);
@@ -664,11 +715,16 @@ namespace crypto
 				encrypted[257] = 0;
 				ok = encryption.EncryptChecked (m, 256, iv, encrypted + 258);
 			}
+			OPENSSL_cleanse (keyBuf, sizeof (keyBuf));
+			OPENSSL_cleanse (iv, sizeof (iv));
+			OPENSSL_cleanse (shared, sizeof (shared));
+			OPENSSL_cleanse (m, sizeof (m));
 		}
 		if (!ok) ClearECIESOutput (encrypted);
 		if (p) EC_POINT_free (p);
 		BN_CTX_end (ctx);
 		BN_CTX_free (ctx);
+		return ok;
 	}
 
 	bool ECIESDecrypt (const EC_GROUP * curve, const BIGNUM * key, const uint8_t * encrypted, uint8_t * data)
@@ -714,11 +770,11 @@ namespace crypto
 				&& EC_POINT_get_affine_coordinates (curve, s, x, y, nullptr) == 1)
 			{
 				uint8_t keyBuf[ECIES_KEY_BUF_SIZE], iv[ECIES_KEY_BUF_SIZE], shared[32];
+				uint8_t m[256] = { };
 				if (bn2buf (x, keyBuf, len) && bn2buf (y, iv, len))
 				{
 					SHA256 (keyBuf, len, shared);
 					// decrypt
-					uint8_t m[256];
 					CBCDecryption decryption;
 					decryption.SetKey (shared);
 					if (decryption.DecryptChecked (encrypted + 258, 256, iv, m))
@@ -733,8 +789,13 @@ namespace crypto
 						}
 						else
 							LogPrint (eLogError, "ECIES decrypt hash doesn't match");
+						OPENSSL_cleanse (hash, sizeof (hash));
 					}
 				}
+				OPENSSL_cleanse (keyBuf, sizeof (keyBuf));
+				OPENSSL_cleanse (iv, sizeof (iv));
+				OPENSSL_cleanse (shared, sizeof (shared));
+				OPENSSL_cleanse (m, sizeof (m));
 			}
 		}
 		else
@@ -1196,12 +1257,22 @@ namespace crypto
 
 	HKDFContext::HKDFContext ()
 	{
+#if I2PD_HAVE_EVP_KDF_FETCH
+		EVP_KDF * kdf = EVP_KDF_fetch (nullptr, "HKDF", nullptr);
+		m_KdfCtx = kdf ? EVP_KDF_CTX_new (kdf) : nullptr;
+		EVP_KDF_free (kdf);
+#else
 		m_Ctx = EVP_PKEY_CTX_new_id (EVP_PKEY_HKDF, nullptr);
+#endif
 	}
 
 	HKDFContext::~HKDFContext ()
 	{
+#if I2PD_HAVE_EVP_KDF_FETCH
+		if (m_KdfCtx) EVP_KDF_CTX_free (m_KdfCtx);
+#else
 		if (m_Ctx) EVP_PKEY_CTX_free (m_Ctx);
+#endif
 	}
 
 	void HKDFContext::operator() (
@@ -1209,11 +1280,62 @@ namespace crypto
 	{
 		// RFC 5869 allows at most 255 * HashLen output bytes.
 		constexpr size_t MAX_HKDF_OUTPUT = 255 * 32;
-		if (!m_Ctx || !out || !outLen || outLen > MAX_HKDF_OUTPUT || !salt || (!key && keyLen)
-			|| keyLen > (size_t)std::numeric_limits<int>::max ()
-			|| info.size () > (size_t)std::numeric_limits<int>::max ())
+		if (!out || !outLen || outLen > MAX_HKDF_OUTPUT || !salt || (!key && keyLen))
 		{
 			if (out && outLen) OPENSSL_cleanse (out, outLen);
+			return;
+		}
+#if I2PD_HAVE_EVP_KDF_FETCH
+		if (!m_KdfCtx)
+		{
+			OPENSSL_cleanse (out, outLen);
+			return;
+		}
+		uint8_t tempKey[32];
+		const bool zeroKey = !key || !keyLen;
+		if (zeroKey)
+		{
+			unsigned int len = 0;
+			if (!HMAC (EVP_sha256 (), salt, 32, nullptr, 0, tempKey, &len) || len != sizeof (tempKey))
+			{
+				OPENSSL_cleanse (tempKey, sizeof (tempKey));
+				OPENSSL_cleanse (out, outLen);
+				LogPrint (eLogError, "HKDF: expand-only PRK derivation failed");
+				return;
+			}
+		}
+		OSSL_PARAM params[6];
+		size_t n = 0;
+		params[n++] = OSSL_PARAM_construct_utf8_string (
+			OSSL_KDF_PARAM_DIGEST, const_cast<char *> ("SHA256"), 0);
+		params[n++] = OSSL_PARAM_construct_utf8_string (OSSL_KDF_PARAM_MODE,
+			const_cast<char *> (zeroKey ? "EXPAND_ONLY" : "EXTRACT_AND_EXPAND"), 0);
+		if (!zeroKey)
+		{
+			params[n++] = OSSL_PARAM_construct_octet_string (
+				OSSL_KDF_PARAM_SALT, const_cast<uint8_t *> (salt), 32);
+			params[n++] = OSSL_PARAM_construct_octet_string (
+				OSSL_KDF_PARAM_KEY, const_cast<uint8_t *> (key), keyLen);
+		}
+		else
+			params[n++] = OSSL_PARAM_construct_octet_string (
+				OSSL_KDF_PARAM_KEY, tempKey, sizeof (tempKey));
+		if (!info.empty ())
+			params[n++] = OSSL_PARAM_construct_octet_string (
+				OSSL_KDF_PARAM_INFO, const_cast<char *> (info.data ()), info.size ());
+		params[n] = OSSL_PARAM_construct_end ();
+		const int ok = EVP_KDF_derive (m_KdfCtx, out, outLen, params);
+		OPENSSL_cleanse (tempKey, sizeof (tempKey));
+		if (ok != 1)
+		{
+			OPENSSL_cleanse (out, outLen);
+			LogPrint (eLogError, "HKDF: derivation failed");
+		}
+#else
+		if (!m_Ctx || keyLen > (size_t)std::numeric_limits<int>::max ()
+			|| info.size () > (size_t)std::numeric_limits<int>::max ())
+		{
+			OPENSSL_cleanse (out, outLen);
 			return;
 		}
 		bool ok = EVP_PKEY_derive_init (m_Ctx) == 1 && EVP_PKEY_CTX_set_hkdf_md (m_Ctx, EVP_sha256 ()) == 1;
@@ -1247,6 +1369,7 @@ namespace crypto
 			OPENSSL_cleanse (out, outLen);
 			LogPrint (eLogError, "HKDF: derivation failed");
 		}
+#endif
 	}
 
 	// Noise
@@ -1438,13 +1561,29 @@ namespace crypto
 #endif
 		}
 
+		[[maybe_unused]] bool FetchPkeyAlgorithm (const char * name)
+		{
+#ifndef LIBRESSL_VERSION_NUMBER
+			EVP_PKEY_CTX * ctx = EVP_PKEY_CTX_new_from_name (nullptr, name, nullptr);
+			if (!ctx) return false;
+			EVP_PKEY_CTX_free (ctx);
+			return true;
+#else
+			(void)name;
+			return true; // LibreSSL uses its legacy Ed25519 implementation
+#endif
+		}
+
 		bool FetchHKDF ()
 		{
 #if I2PD_HAVE_EVP_KDF_FETCH
 			EVP_KDF * kdf = EVP_KDF_fetch (nullptr, "HKDF", nullptr);
 			if (!kdf) return false;
+			EVP_KDF_CTX * ctx = EVP_KDF_CTX_new (kdf);
+			const bool available = ctx != nullptr;
+			EVP_KDF_CTX_free (ctx);
 			EVP_KDF_free (kdf);
-			return true;
+			return available;
 #else
 #ifdef EVP_PKEY_HKDF
 			EVP_PKEY_CTX * ctx = EVP_PKEY_CTX_new_id (EVP_PKEY_HKDF, nullptr);
@@ -1463,8 +1602,21 @@ namespace crypto
 			EVP_PKEY * key = EVP_PKEY_new_raw_private_key (
 				EVP_PKEY_SIPHASH, nullptr, reinterpret_cast<const unsigned char *> ("0123456789abcdef"), 16);
 			if (!key) return false;
+			EVP_MD_CTX * md = EVP_MD_CTX_new ();
+			EVP_PKEY_CTX * pctx = nullptr;
+			size_t macSize = 16;
+			OSSL_PARAM params[2] = {
+				OSSL_PARAM_construct_size_t (OSSL_MAC_PARAM_SIZE, &macSize), OSSL_PARAM_construct_end ()};
+			uint8_t input[32] = { 0 }, output[16] = { 0 };
+			size_t outputLen = sizeof (output);
+			bool ok = md && EVP_DigestSignInit (md, &pctx, nullptr, nullptr, key) == 1
+				&& EVP_PKEY_CTX_set_params (pctx, params) == 1
+				&& EVP_DigestSign (md, output, &outputLen, input, sizeof (input)) == 1
+				&& outputLen == sizeof (output);
+			if (md) EVP_MD_CTX_free (md);
 			EVP_PKEY_free (key);
-			return true;
+			OPENSSL_cleanse (output, sizeof (output));
+			return ok;
 #else
 			// The project-owned SipHash-2-4 implementation is the fallback for
 			// LibreSSL and for OpenSSL builds without this provider algorithm.
@@ -1499,6 +1651,7 @@ namespace crypto
 #endif
 			capabilities.hkdf = FetchHKDF ();
 			capabilities.sipHash = FetchSipHash ();
+			capabilities.ed25519 = FetchPkeyAlgorithm ("ED25519");
 			return capabilities;
 		}
 
@@ -1512,7 +1665,7 @@ namespace crypto
 		return g_CryptoCapabilities;
 	}
 
-	void InitCrypto (bool precomputation)
+	bool InitCrypto (bool precomputation)
 	{
 		/*		auto numLocks = CRYPTO_num_locks();
 		for (int i = 0; i < numLocks; i++)
@@ -1520,10 +1673,14 @@ namespace crypto
 		CRYPTO_set_locking_callback (OpensslLockingCallback);*/
 		const auto & capabilities = GetCryptoCapabilities ();
 		if (!capabilities.sha256 || !capabilities.aes256Cbc || !capabilities.aes256Ecb || !capabilities.chacha20
-			|| !capabilities.chacha20Poly1305 || !capabilities.hkdf || (OPENSSL_SIPHASH && !capabilities.sipHash))
+			|| !capabilities.chacha20Poly1305 || !capabilities.hkdf || !capabilities.ed25519
+			|| (OPENSSL_SIPHASH && !capabilities.sipHash))
+		{
 			LogPrint (eLogCritical,
 				"Crypto: active libcrypto provider is missing a required algorithm "
-				"(SHA256/AES-256-CBC/AES-256-ECB/ChaCha20/ChaCha20-Poly1305/HKDF/SipHash)");
+				"(SHA256/AES-256-CBC/AES-256-ECB/ChaCha20/ChaCha20-Poly1305/HKDF/Ed25519/SipHash)");
+			return false;
+		}
 		if (precomputation)
 		{
 #if IS_X86_64
@@ -1534,6 +1691,7 @@ namespace crypto
 			PrecalculateElggTable (g_ElggTable, ELGAMAL_SHORT_EXPONENT_NUM_BYTES);
 #endif
 		}
+		return true;
 	}
 
 	void TerminateCrypto ()

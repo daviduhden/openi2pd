@@ -15,6 +15,8 @@
 #define CRYPTO_KEY_H__
 
 #include <inttypes.h>
+#include <memory>
+#include <vector>
 #include "Crypto.h"
 #include "Identity.h"
 
@@ -144,7 +146,10 @@ namespace crypto
 		X25519Keys m_StaticKeys;
 	};
 
-	void CreateECIESX25519AEADRatchetRandomKeys (uint8_t * priv, uint8_t * pub); // including hybrid
+	// Generates an X25519 (or hybrid X25519 first hop) key pair. Returns false
+	// when the provider cannot generate a key; both buffers are left all-zero
+	// in that case and the caller must abort instead of publishing them.
+	bool CreateECIESX25519AEADRatchetRandomKeys (uint8_t * priv, uint8_t * pub); // including hybrid
 
 	constexpr size_t GetCryptoPrivateKeyLen (i2p::data::CryptoKeyType type)
 	{
@@ -185,7 +190,10 @@ namespace crypto
 		std::shared_ptr<CryptoKeyDecryptor> decryptor;
 
 		LocalEncryptionKey (i2p::data::CryptoKeyType t);
-		void GenerateKeys ();
+		// Returns false for an unsupported type or a provider failure. pub and
+		// priv are then all-zero/empty, so a caller must not add the key to a
+		// LeaseSet2 key section.
+		bool GenerateKeys ();
 		void CreateDecryptor ();
 	};
 }

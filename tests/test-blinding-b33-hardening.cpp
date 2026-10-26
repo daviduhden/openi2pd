@@ -4,7 +4,9 @@
  *
  * openi2pd: test blinding b33 hardening.
  *
- * Checks proposal 149 b33 flag handling: secret-required and undefined flags are rejected, per-client authentication survives re-encoding, and two-byte signature types resolve to the canonical key.
+ * Checks proposal 149 b33 flag handling: secret-required, two-byte signature-type and
+ * undefined flags are rejected, per-client authentication survives re-encoding, and
+ * off-curve or identity key encodings are handled fail-closed.
  *
  */
 
@@ -16,6 +18,7 @@
 #include <string>
 
 #include "Base.h"
+#include "Ed25519.h"
 #include "I2PEndian.h"
 #include "Identity.h"
 #include "Blinding.h"
@@ -113,14 +116,57 @@ void TestTwoByteSigTypes ()
 
 	const std::string b33 = i2p::data::ByteStreamToBase32 (raw.data (), raw.size ());
 	assert (b33.size () == 60);
+	// Java 2.14.0 rejects the two-byte signature-type form, so the same
+	// destination must not gain a second encoding (and store key) here.
 	BlindedPublicKey twoByte (b33);
-	assert (twoByte.IsValid ());
-	assert (twoByte.GetSigType () == SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519);
-	assert (twoByte.GetBlindedSigType () == SIGNING_KEY_TYPE_REDDSA_SHA512_ED25519);
-	assert (twoByte.GetPublicKeyLen () == 32);
-	assert (!memcmp (twoByte.GetPublicKey (), original.GetPublicKey (), 32));
-	// The canonical encoder emits the one-byte form.
-	assert (twoByte.ToB33 () == original.ToB33 ());
+	assert (!twoByte.IsValid ());
+	assert (twoByte.ToB33 ().empty ());
+	assert (twoByte.GetStoreHash ("20260101").IsZero ());
+}
+
+void TestOffCurveAndIdentityKeys ()
+{
+	using namespace i2p::data;
+
+	auto keys = PrivateKeys::CreateRandomKeys (SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519);
+	BlindedPublicKey original (keys.GetPublic ());
+	assert (original.IsValid ());
+	const std::string b33 = original.ToB33 ();
+	assert (!b33.empty ());
+
+	// The all-zero encoding is the order-4 identity point: Java accepts it as
+	// a valid group element, so blinding must not treat it as "invalid".
+	uint8_t allZero[32] { };
+	assert (i2p::crypto::GetEd25519 ()->IsValidPublicKey (allZero));
+	const std::string identity = Reencode (b33, [] (uint8_t * raw, size_t) {
+		memset (raw + 3, 0, 32);
+	});
+	BlindedPublicKey identityKey (identity);
+	assert (identityKey.IsValid ());
+	assert (identityKey.GetPublicKeyLen () == 32);
+	assert (!memcmp (identityKey.GetPublicKey (), allZero, 32));
+
+	// An off-curve y encoding must be rejected instead of becoming a store
+	// key that no peer can derive.
+	uint8_t offCurve[32] { };
+	for (unsigned i = 0; i < 256; ++i)
+	{
+		offCurve[0] = static_cast<uint8_t> (i);
+		if (!i2p::crypto::GetEd25519 ()->IsValidPublicKey (offCurve)) break;
+	}
+	assert (!i2p::crypto::GetEd25519 ()->IsValidPublicKey (offCurve));
+	const std::string offCurveAddress = Reencode (
+		b33, [&offCurve] (uint8_t * raw, size_t) { memcpy (raw + 3, offCurve, sizeof (offCurve)); });
+	BlindedPublicKey offCurveKey (offCurveAddress);
+	assert (!offCurveKey.IsValid ());
+	assert (offCurveKey.ToB33 ().empty ());
+	assert (offCurveKey.GetStoreHash ("20260101").IsZero ());
+
+	// Blinding an off-curve key reports failure and publishes nothing.
+	uint8_t seed[64] { }, blinded[32];
+	memset (blinded, 0xA5, sizeof (blinded));
+	assert (!i2p::crypto::GetEd25519 ()->BlindPublicKey (offCurve, seed, blinded));
+	for (auto byte : blinded) assert (byte == 0);
 }
 } // namespace
 
@@ -128,5 +174,6 @@ int main ()
 {
 	TestFlags ();
 	TestTwoByteSigTypes ();
+	TestOffCurveAndIdentityKeys ();
 	return 0;
 }

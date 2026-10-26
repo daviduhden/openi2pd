@@ -4,7 +4,10 @@
  *
  * openi2pd: test leaseset2 java213 regression.
  *
- * Static checks for Java 2.13 LeaseSet, LeaseSet2 and MetaLeaseSet parsing: offline signatures, truncated blocks, lease freshness, key-section lengths and duplicate or overrunning mappings.
+ * Static checks for Java 2.13 LeaseSet, LeaseSet2 and MetaLeaseSet parsing:
+ * offline signatures, truncated blocks, lease freshness, key-section lengths,
+ * duplicate or overrunning mappings and the canonical Meta header/revocation
+ * shape.
  *
  */
 
@@ -130,9 +133,14 @@ std::vector<uint8_t> BuildLeaseSet2 (const PrivateKeys & keys, uint32_t publishe
 	return buffer;
 }
 
-std::vector<uint8_t> BuildMetaLeaseSet (
-	const PrivateKeys & keys, uint32_t published, uint16_t expires, const std::vector<MetaEntry> & entries)
+// Meta LS2 header + type-specific body without the signature. `declaredEntries`
+// is written to the wire so a negative vector can declare more entries than it
+// actually carries.
+std::vector<uint8_t> BuildMetaBody (const PrivateKeys & keys, uint32_t published, uint16_t expires,
+	const std::vector<MetaEntry> & entries, size_t declaredEntries, const std::vector<uint8_t> & revocations)
 {
+	assert (declaredEntries <= 255);
+	assert (revocations.size () % 32 == 0);
 	std::vector<uint8_t> buffer;
 	buffer.push_back (NETDB_STORE_TYPE_META_LEASESET2);
 	AppendIdentity (buffer, keys);
@@ -140,8 +148,7 @@ std::vector<uint8_t> BuildMetaLeaseSet (
 	AppendBe16 (buffer, expires);
 	AppendBe16 (buffer, 0); // flags
 	AppendBe16 (buffer, 0); // empty properties
-	assert (entries.size () <= 255);
-	buffer.push_back (static_cast<uint8_t> (entries.size ()));
+	buffer.push_back (static_cast<uint8_t> (declaredEntries));
 	for (size_t i = 0; i < entries.size (); ++i)
 	{
 		buffer.resize (buffer.size () + 32, static_cast<uint8_t> (0x30 + i)); // target hash
@@ -150,7 +157,15 @@ std::vector<uint8_t> BuildMetaLeaseSet (
 		buffer.push_back (entries[i].cost);
 		AppendBe32 (buffer, entries[i].endDate);
 	}
-	buffer.push_back (0); // revocations
+	buffer.push_back (static_cast<uint8_t> (revocations.size () / 32));
+	buffer.insert (buffer.end (), revocations.begin (), revocations.end ());
+	return buffer;
+}
+
+std::vector<uint8_t> BuildMetaLeaseSet (const PrivateKeys & keys, uint32_t published, uint16_t expires,
+	const std::vector<MetaEntry> & entries, const std::vector<uint8_t> & revocations = { })
+{
+	auto buffer = BuildMetaBody (keys, published, expires, entries, entries.size (), revocations);
 	AppendSignature (buffer, keys);
 	return buffer;
 }
@@ -346,18 +361,75 @@ void TestMetaLeaseValidation ()
 		SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, true);
 	auto now = static_cast<uint32_t> (i2p::util::GetMillisecondsSinceEpoch () / 1000);
 
+	// Canonical Meta LS2. MetaLeaseSet.readBytes() adds each entry through
+	// LeaseSet2.addLease(), which rewrites _expires to the latest entry, and
+	// MetaLeaseSet.writeBytesWithoutSig() re-serialises the signed header from
+	// it. The header field is therefore latestEntry - published (600 here),
+	// not latestEntry - now, and Java's verifySignature() rejects any other
+	// value in either direction.
+	{
+		std::vector<MetaEntry> entries {
+			{ now + 180, NETDB_STORE_TYPE_STANDARD_LEASESET2, 1 },
+			{ now + 480, NETDB_STORE_TYPE_META_LEASESET2, 5 },
+		};
+		auto buffer = BuildMetaLeaseSet (keys, now - 120, 600, entries);
+		auto leaseSet = ParseLeaseSet2 (buffer);
+		assert (leaseSet.IsValid ());
+		// MetaLeaseSet derives its earliest lease from the entries; the
+		// cross-type LS1/Meta replacement rule must not use the encrypted
+		// outer-layer zero sentinel.
+		assert (leaseSet.GetEarliestLeaseDate () == static_cast<uint64_t> (now + 180) * 1000);
+		// The canonical header already equals the latest entry, so the
+		// stored/served expiration cannot exceed the last usable child.
+		assert (leaseSet.GetExpirationTime () == static_cast<uint64_t> (now + 480) * 1000);
+
+		// A longer or a shorter signed header no longer re-serialises to the
+		// same bytes; Java treats both as a bad signature.
+		auto longer = BuildMetaLeaseSet (keys, now - 120, 660, entries);
+		assert (!ParseLeaseSet2 (longer).IsValid ());
+		auto shorter = BuildMetaLeaseSet (keys, now - 120, 540, entries);
+		assert (!ParseLeaseSet2 (shorter).IsValid ());
+	}
+
+	// writeBytesWithoutSig() always writes revocation count 0, so a signed
+	// buffer that carries a revocation list cannot verify on a Java peer.
+	{
+		std::vector<MetaEntry> entries { { now + 300, NETDB_STORE_TYPE_STANDARD_LEASESET2, 1 } };
+		std::vector<uint8_t> revocations (32, 0);
+		auto buffer = BuildMetaLeaseSet (keys, now - 60, 360, entries, revocations);
+		assert (!ParseLeaseSet2 (buffer).IsValid ());
+	}
+
 	// MetaLeaseSet.readBytes() adds every entry through LeaseSet.addLease(),
 	// which enforces MAX_LEASES = 16.
 	{
 		std::vector<MetaEntry> entries (17, MetaEntry { now + 3000, NETDB_STORE_TYPE_STANDARD_LEASESET2, 1 });
-		auto buffer = BuildMetaLeaseSet (keys, now, 3600, entries);
+		auto buffer = BuildMetaLeaseSet (keys, now, 3000, entries);
 		auto leaseSet = ParseLeaseSet2 (buffer);
 		assert (!leaseSet.IsValid ());
 	}
 
+	// An entry count larger than the entry block must not read into the
+	// revocation field or the signature.
+	{
+		std::vector<MetaEntry> entries { { now + 300, NETDB_STORE_TYPE_STANDARD_LEASESET2, 1 } };
+		auto body = BuildMetaBody (keys, now - 60, 360, entries, 2, { });
+		assert (!ParseLeaseSet2 (body).IsValid ());
+	}
+
+	// A body that stops before the revocation count is truncated, not an
+	// empty revocation list.
+	{
+		std::vector<MetaEntry> entries { { now + 300, NETDB_STORE_TYPE_STANDARD_LEASESET2, 1 } };
+		auto body = BuildMetaBody (keys, now - 60, 360, entries, 1, { });
+		assert (body.size () > 1);
+		body.pop_back (); // drop the revocation count byte
+		assert (!ParseLeaseSet2 (body).IsValid ());
+	}
+
 	// Java's earliest = min(earliest entry, published) rejects a Meta LS2
 	// whose oldest entry is more than 10 minutes old even if another entry is
-	// current.
+	// current. The canonical header (latestEntry - published) is unaffected.
 	{
 		std::vector<MetaEntry> entries {
 			{ now + 300, NETDB_STORE_TYPE_STANDARD_LEASESET2, 1 },
@@ -366,24 +438,6 @@ void TestMetaLeaseValidation ()
 		auto buffer = BuildMetaLeaseSet (keys, now, 300, entries);
 		auto leaseSet = ParseLeaseSet2 (buffer);
 		assert (!leaseSet.IsValid ());
-	}
-
-	// A normal, current Meta LS2 remains valid.
-	{
-		std::vector<MetaEntry> entries {
-			{ now + 300, NETDB_STORE_TYPE_STANDARD_LEASESET2, 1 },
-			{ now + 600, NETDB_STORE_TYPE_META_LEASESET2, 5 },
-		};
-		auto buffer = BuildMetaLeaseSet (keys, now, 3600, entries);
-		auto leaseSet = ParseLeaseSet2 (buffer);
-		assert (leaseSet.IsValid ());
-		// MetaLeaseSet derives its earliest lease from the entries; the
-		// cross-type LS1/Meta replacement rule must not use the encrypted
-		// outer-layer zero sentinel.
-		assert (leaseSet.GetEarliestLeaseDate () == static_cast<uint64_t> (now + 300) * 1000);
-		// Java's addLease() rewrites _expires to the latest entry, so a longer
-		// signed header must not extend the served Meta LS lifetime.
-		assert (leaseSet.GetExpirationTime () == static_cast<uint64_t> (now + 600) * 1000);
 	}
 }
 

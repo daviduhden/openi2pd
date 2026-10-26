@@ -59,9 +59,24 @@ namespace garlic
 	// Upper bound for ACK requests queued on one session. Java drains at most
 	// MAX_SEND_ACKS per message, so the queue is bounded in practice too.
 	const size_t ECIESX25519_MAX_PENDING_ACKS = 128;
+	// Java RatchetSKM.OutboundSession keeps every New Session Reply split in
+	// _unackedTagSets until the matching inbound tagset consumes its first tag.
+	// Bound that list and expire unused splits after Java's
+	// SESSION_PENDING_DURATION_MS (3 minutes).
+	const size_t ECIESX25519_MAX_PENDING_REPLY_TAGSETS = 8;
+	const uint64_t ECIESX25519_PENDING_REPLY_TAGSET_TIMEOUT = 180; // seconds
 
 	const size_t ECIESX25519_OPTIMAL_PAYLOAD_SIZE = 1912; // 1912 = 1956 /* to fit 2 tunnel messages */
 	// - 16 /* I2NP header */ - 16 /* poly hash */ - 8 /* tag */ - 4 /* garlic length */
+
+	// Payload-size normalisation status: this implementation pads a payload to
+	// the optimal size above and keeps a New Session out of the 2 (mod 16)
+	// residue that selects the ElGamal/AES path. Java's additional B1/B2/B3
+	// bucket normalisation (which also moves the plaintext out of the size
+	// classes a peer can distinguish) is deliberately deferred: applying it
+	// without the exact bucket boundaries from the reference would change the
+	// length distribution without matching it, which is worse than not applying
+	// it. Tracked as an open tuning item, not as a security fix.
 
 	class RatchetTagSet
 	{
@@ -124,6 +139,9 @@ namespace garlic
 
 		void Expire ();
 		bool IsExpired (uint64_t ts) const;
+		// Java RatchetSKM consumes the first tag of an inbound ES tagset only
+		// once and promotes the matching pending outbound tagset then.
+		bool MarkFirstTagConsumed () { return !m_FirstTagConsumed.exchange (true, std::memory_order_acq_rel); }
 
 		virtual bool IsIndexExpired (int index) const;
 		virtual bool HandleNextMessage (uint8_t * buf, size_t len, int index);
@@ -133,6 +151,7 @@ namespace garlic
 		int m_TrimBehindIndex = 0;
 		std::shared_ptr<ECIESX25519AEADRatchetSession> m_Session;
 		bool m_IsNS;
+		std::atomic_bool m_FirstTagConsumed { false };
 		uint64_t m_ExpirationTimestamp = 0;
 	};
 
@@ -168,7 +187,17 @@ namespace garlic
 	const uint8_t ECIESX25519_NEXT_KEY_REVERSE_KEY_FLAG = 0x02;
 	const uint8_t ECIESX25519_NEXT_KEY_REQUEST_REVERSE_KEY_FLAG = 0x04;
 
-	// Validates an established/NSR payload before any side effects are applied:
+	// Payload context. An established-session payload may carry ratchet keys,
+	// ACKs and a Termination block; a New Session Reply may carry only
+	// DateTime, Garlic, Options and Padding; a New Session is stricter still.
+	enum class RatchetPayloadMode
+	{
+		NewSession,
+		NewSessionReply,
+		ExistingSession
+	};
+
+	// Validates an established payload before any side effects are applied:
 	// exact block framing, DateTime uniqueness/skew, NEXT_KEY/ACK/ACKREQUEST
 	// lengths, and Padding/Termination ordering.
 	bool ValidateRatchetPayload (const uint8_t * buf, size_t len);
@@ -177,6 +206,11 @@ namespace garlic
 	// Termination/SessionID/unknown blocks and nothing after Padding.
 	// Exposed for the self-contained regression tests.
 	bool ValidateNewSessionPayload (const uint8_t * buf, size_t len);
+	// Validates the payload of a New Session Reply (NSR): only DateTime,
+	// Garlic, Options and Padding. Any Termination/NEXT_KEY/SessionID/ACK/
+	// ACK_REQUEST or unknown block is rejected before the split is installed,
+	// so an NSR can never remove a session.
+	bool ValidateNewSessionReplyPayload (const uint8_t * buf, size_t len);
 
 	class ECIESX25519AEADRatchetSession : public GarlicRoutingSession,
 										  private i2p::crypto::NoiseSymmetricState,
@@ -188,8 +222,7 @@ namespace garlic
 			eSessionStateNewSessionReceived,
 			eSessionStateNewSessionSent,
 			eSessionStateNewSessionReplySent,
-			eSessionStateEstablished,
-			eSessionStateOneTime
+			eSessionStateEstablished
 		};
 
 		struct DHRatchet
@@ -213,33 +246,48 @@ namespace garlic
 		std::shared_ptr<I2NPMessage> WrapSingleMessage (std::shared_ptr<const I2NPMessage> msg) override;
 		std::vector<std::shared_ptr<I2NPMessage>> WrapMultipleMessages (
 			const std::vector<std::shared_ptr<const I2NPMessage>> & msgs) override;
-		std::shared_ptr<I2NPMessage> WrapOneTimeMessage (std::shared_ptr<const I2NPMessage> msg);
 
-		const uint8_t * GetRemoteStaticKey () const { return m_RemoteStaticKey; }
-		i2p::data::CryptoKeyType GetRemoteStaticKeyType () const { return m_RemoteStaticKeyType; }
+		const uint8_t * GetRemoteStaticKey () const
+		{
+			std::lock_guard<std::recursive_mutex> l (m_StateMutex);
+			return m_RemoteStaticKey;
+		}
+		i2p::data::CryptoKeyType GetRemoteStaticKeyType () const
+		{
+			std::lock_guard<std::recursive_mutex> l (m_StateMutex);
+			return m_RemoteStaticKeyType;
+		}
 		void SetRemoteStaticKey (i2p::data::CryptoKeyType keyType, const uint8_t * key)
 		{
+			std::lock_guard<std::recursive_mutex> l (m_StateMutex);
 			m_RemoteStaticKeyType = keyType;
 			memcpy (m_RemoteStaticKey, key, 32);
 		}
 		void Terminate () { m_IsTerminated.store (true, std::memory_order_release); }
 		void SetDestination (const i2p::data::IdentHash & dest)
 		{
+			std::lock_guard<std::recursive_mutex> l (m_StateMutex);
 			if (!m_Destination) m_Destination.reset (new i2p::data::IdentHash (dest));
 		}
 		const i2p::data::IdentHash * GetDestinationPtr () const
 		{
+			std::lock_guard<std::recursive_mutex> l (m_StateMutex);
 			return m_Destination ? m_Destination.get () : nullptr;
 		}; // for pongs
 		bool CheckExpired (uint64_t ts); // true is expired
-		bool CanBeRestarted (uint64_t ts) const { return ts > m_SessionCreatedTimestamp + ECIESX25519_RESTART_TIMEOUT; }
+		bool CanBeRestarted (uint64_t ts) const
+		{
+			return ts > m_SessionCreatedTimestamp.load (std::memory_order_relaxed) + ECIESX25519_RESTART_TIMEOUT;
+		}
 		bool IsInactive (uint64_t ts) const override
 		{
-			return ts > m_LastActivityTimestamp + ECIESX25519_INACTIVITY_TIMEOUT && CanBeRestarted (ts);
+			return ts > m_LastActivityTimestamp.load (std::memory_order_relaxed) + ECIESX25519_INACTIVITY_TIMEOUT
+				&& CanBeRestarted (ts);
 		}
 		void CleanupReceiveNSRKeys (); // called from ReceiveRatchetTagSet at Alice's side
 		bool IsResponseRequired () const
 		{
+			std::lock_guard<std::recursive_mutex> l (m_StateMutex);
 			return m_State == eSessionStateNewSessionReceived || m_SendReverseKey || !m_AckRequests.empty ();
 		};
 		// One fallback ACK/NSR timer per session. ACK-request floods must not
@@ -248,24 +296,56 @@ namespace garlic
 		void DisarmResponseTimer () { m_ResponseTimerArmed.store (false); }
 
 		bool IsRatchets () const override { return true; };
-		bool IsReadyToSend () const override { return m_State != eSessionStateNewSessionSent; };
+		bool IsReadyToSend () const override
+		{
+			std::lock_guard<std::recursive_mutex> l (m_StateMutex);
+			return m_State != eSessionStateNewSessionSent && !IsExhausted ();
+		}
+		// Java RatchetSKM.consumeNext() creates a new Session when the outbound
+		// tagset is empty. The exhausted object stays alive to receive but must
+		// never be handed out for a new send.
+		bool IsExhausted () const override { return m_SendTagsetExhausted.load (std::memory_order_acquire); }
 		bool IsTerminated () const override { return m_IsTerminated.load (std::memory_order_acquire); }
-		uint64_t GetLastActivityTimestamp () const override { return m_LastActivityTimestamp; };
-		void SetAckRequestInterval (int interval) override { m_AckRequestInterval = interval; };
+		uint64_t GetLastActivityTimestamp () const override
+		{
+			return m_LastActivityTimestamp.load (std::memory_order_relaxed);
+		};
+		void SetAckRequestInterval (int interval) override
+		{
+			std::lock_guard<std::recursive_mutex> l (m_StateMutex);
+			m_AckRequestInterval = interval;
+		};
 		bool CleanupUnconfirmedTags () override; // return true if unanswered Ack requests, called from I2CP
 
 	protected:
 		i2p::crypto::NoiseSymmetricState & GetNoiseState () { return *this; };
 		void SetNoiseState (const i2p::crypto::NoiseSymmetricState & state) { GetNoiseState () = state; };
 		void CreateNonce (uint64_t seqn, uint8_t * nonce);
-		void HandlePayload (
-			const uint8_t * buf, size_t len, const std::shared_ptr<ReceiveRatchetTagSet> & receiveTagset, int index);
+		void HandlePayload (const uint8_t * buf, size_t len,
+			const std::shared_ptr<ReceiveRatchetTagSet> & receiveTagset, int index, RatchetPayloadMode mode);
 		bool MessageConfirmed (uint32_t msgID) override;
 
 	private:
+		// Java RatchetSKM.OutboundSession._unackedTagSets: one entry per New
+		// Session Reply split until its inbound tagset consumes the first tag.
+		struct PendingReplyTagsets
+		{
+			std::shared_ptr<ReceiveRatchetTagSet> receive;
+			std::shared_ptr<RatchetTagSet> send;
+			uint64_t created = 0; // seconds
+		};
+
 		bool GenerateEphemeralKeysAndEncode (uint8_t * buf); // buf is 32 bytes
 		void InitNewSessionTagset (std::shared_ptr<RatchetTagSet> tagsetNsr) const;
 		void RestoreNewSessionState ();
+
+		void SetSendTagset (std::shared_ptr<RatchetTagSet> tagset);
+		void AddPendingReplyTagset (std::shared_ptr<ReceiveRatchetTagSet> receive, std::shared_ptr<RatchetTagSet> send);
+		std::shared_ptr<RatchetTagSet> TakeMatchingPendingSendTagset (
+			const std::shared_ptr<ReceiveRatchetTagSet> & receiveTagset);
+		std::shared_ptr<RatchetTagSet> TakeFallbackPendingSendTagset ();
+		void ClearPendingReplyTagsets ();
+		void ExpirePendingReplyTagsets (uint64_t ts);
 
 		bool HandleNewIncomingSession (const uint8_t * buf, size_t len);
 		// Try one locally supported ratchet key type. A trial never touches the
@@ -277,8 +357,7 @@ namespace garlic
 		void HandleNextKey (
 			const uint8_t * buf, size_t len, const std::shared_ptr<ReceiveRatchetTagSet> & receiveTagset);
 
-		bool NewOutgoingSessionMessage (
-			const uint8_t * payload, size_t len, uint8_t * out, size_t outLen, bool isStatic = true);
+		bool NewOutgoingSessionMessage (const uint8_t * payload, size_t len, uint8_t * out, size_t outLen);
 		bool NewSessionReplyMessage (const uint8_t * payload, size_t len, uint8_t * out, size_t outLen);
 		bool NextNewSessionReplyMessage (const uint8_t * payload, size_t len, uint8_t * out, size_t outLen);
 		bool CreateNewSessionReplyMessage (const uint8_t * payload, size_t len, uint8_t * out, size_t outLen);
@@ -309,11 +388,25 @@ namespace garlic
 		std::unique_ptr<i2p::crypto::MLKEMKeys> m_PQKeys;
 #endif
 		SessionState m_State = eSessionStateNew;
-		uint64_t m_SessionCreatedTimestamp = 0, m_LastActivityTimestamp = 0, // incoming (in seconds)
-			m_LastSentTimestamp = 0; // in milliseconds
+		// Written by the payload path and read by the administrative and
+		// liveness accessors from other threads.
+		std::atomic<uint64_t> m_SessionCreatedTimestamp { 0 }, m_LastActivityTimestamp { 0 }, // incoming (in seconds)
+			m_LastSentTimestamp { 0 }; // in milliseconds
 		std::shared_ptr<RatchetTagSet> m_SendTagset, m_NSRSendTagset;
+		// Every New Session Reply split that has not seen its first inbound ES
+		// tag yet. Guarded by m_PendingReplyTagsetsMutex; the actual outbound
+		// tagset is only promoted when the matching inbound tagset is used.
+		mutable std::mutex m_PendingReplyTagsetsMutex;
+		std::list<PendingReplyTagsets> m_PendingReplyTagsets;
+		std::atomic_bool m_SendTagsetExhausted { false };
 		std::unique_ptr<i2p::data::IdentHash> m_Destination; // must be set for NS if outgoing and NSR if incoming
 		std::list<std::pair<uint16_t, int>> m_AckRequests; // incoming (tagsetid, index)
+		// Java caps how often a forward/reverse key is re-announced while the
+		// peer has not acknowledged it (MAX_SEND_REVERSE_KEY). That cap could
+		// not be verified against the pinned reference in this environment, so
+		// it is intentionally not guessed: the flags are cleared as soon as the
+		// matching NEXT_KEY or tagset arrives, and the per-session tag budget
+		// already bounds the work a peer can cause.
 		bool m_SendReverseKey = false, m_SendForwardKey = false;
 		std::atomic_bool m_IsTerminated { false };
 		std::atomic_bool m_ResponseTimerArmed { false };
@@ -326,9 +419,29 @@ namespace garlic
 
 	public:
 		// for administrative views
-		int GetState () const { return (int)m_State; }
+		int GetState () const
+		{
+			std::lock_guard<std::recursive_mutex> l (m_StateMutex);
+			return (int)m_State;
+		}
+		int GetSendTagsetID () const
+		{
+			std::lock_guard<std::recursive_mutex> l (m_StateMutex);
+			return m_SendTagset ? m_SendTagset->GetTagSetID () : -1;
+		}
+		int GetSendTagsetNextIndex () const
+		{
+			std::lock_guard<std::recursive_mutex> l (m_StateMutex);
+			return m_SendTagset ? m_SendTagset->GetNextIndex () : -1;
+		}
+		size_t GetNumPendingReplyTagsets () const
+		{
+			std::lock_guard<std::mutex> l (m_PendingReplyTagsetsMutex);
+			return m_PendingReplyTagsets.size ();
+		}
 		i2p::data::IdentHash GetDestination () const
 		{
+			std::lock_guard<std::recursive_mutex> l (m_StateMutex);
 			return m_Destination ? *m_Destination : i2p::data::IdentHash ();
 		}
 	};

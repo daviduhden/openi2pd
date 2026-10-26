@@ -117,12 +117,15 @@ namespace crypto
 		void EncodePublicKey (const EDDSAPoint & publicKey, uint8_t * buf, BN_CTX * ctx) const;
 		// Java GroupElement decoding rejects a y encoding whose recovered x
 		// does not satisfy the curve equation. Callers must not blind or hash
-		// through such a key.
+		// through such a key. A rejected encoding decodes to an empty point.
 		bool IsValidPublicKey (const uint8_t * buf) const;
 
-		void BlindPublicKey (const uint8_t * pub, const uint8_t * seed,
+		// Both return false when the input point is not on the curve or the
+		// provider fails; the output buffers are then all-zero and the caller
+		// must not derive a blinded store key from them.
+		bool BlindPublicKey (const uint8_t * pub, const uint8_t * seed,
 			uint8_t * blinded); // for encrypted LeaseSet2, pub - 32, seed - 64, blinded - 32
-		void BlindPrivateKey (const uint8_t * priv, const uint8_t * seed, uint8_t * blindedPriv,
+		bool BlindPrivateKey (const uint8_t * priv, const uint8_t * seed, uint8_t * blindedPriv,
 			uint8_t * blindedPub); // for encrypted LeaseSet2, pub - 32, seed - 64, blinded - 32
 
 		bool Verify (const EDDSAPoint & publicKey, const uint8_t * digest, const uint8_t * signature) const;

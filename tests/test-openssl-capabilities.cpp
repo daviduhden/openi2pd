@@ -18,7 +18,7 @@
 
 int main ()
 {
-	i2p::crypto::InitCrypto (false);
+	assert (i2p::crypto::InitCrypto (false));
 	const auto & capabilities = i2p::crypto::GetCryptoCapabilities ();
 
 	// These primitives are required by the router's wire protocols. The
@@ -31,15 +31,20 @@ int main ()
 	assert (capabilities.chacha20Poly1305);
 	assert (capabilities.hkdf);
 	assert (capabilities.sipHash);
+	assert (capabilities.ed25519);
 
 #if OPENSSL_PQ
 	// A version may be advertised only when its exact ML-KEM parameter set is
 	// usable; the selection helper must never return an unsupported version.
-	const int highest = i2p::crypto::HighestSupportedPQVersion (5, 5);
-	if (highest)
+	for (int maximum = 2; maximum <= 5; ++maximum)
 	{
-		assert (highest >= 3 && highest <= 5);
-		assert (i2p::crypto::CanPublishPQ (highest));
+		const int highest = i2p::crypto::HighestSupportedPQVersion (5, maximum);
+		assert (highest <= maximum);
+		if (highest)
+		{
+			assert (highest >= 3);
+			assert (i2p::crypto::CanPublishPQ (highest));
+		}
 	}
 #endif
 

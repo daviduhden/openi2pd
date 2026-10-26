@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <array>
 #include <optional>
+#include <cstring>
 #include "Crypto.h"
 #include "I2PEndian.h"
 #include "Log.h"
@@ -964,6 +965,13 @@ namespace data
 	void PrivateKeys::Sign (const uint8_t * buf, int len, uint8_t * signature) const
 	{
 		if (!m_Public || !signature) return;
+		if (len < 0 || (!buf && len))
+		{
+			// A negative length would be converted to a huge size_t by the
+			// provider interface and read past the caller's buffer.
+			memset (signature, 0, GetSignatureLen ());
+			return;
+		}
 		if (!m_Signer) CreateSigner ();
 		if (!m_Signer)
 		{
@@ -1212,21 +1220,51 @@ namespace data
 
 	bool PrivateKeys::GenerateCryptoKeyPair (CryptoKeyType type, uint8_t * priv, uint8_t * pub)
 	{
+		// Both buffers are 256 bytes long. Only the type's own key length is
+		// meaningful; the remaining bytes stay zero padding for the legacy
+		// 256-byte key-file layout and must not be checked.
+		const size_t privLen = i2p::crypto::GetCryptoPrivateKeyLen (type);
+		const size_t pubLen = i2p::crypto::GetCryptoPublicKeyLen (type);
+		if (!priv || !pub || !privLen || !pubLen || privLen > 256 || pubLen > 256)
+		{
+			LogPrint (eLogError, "Identity: Crypto key type ", (int)type, " is not supported");
+			if (priv) OPENSSL_cleanse (priv, 256);
+			if (pub) memset (pub, 0, 256);
+			return false;
+		}
+		auto isAllZero = [] (const uint8_t * buf, size_t len)
+		{
+			uint8_t acc = 0;
+			for (size_t i = 0; i < len; ++i) acc |= buf[i];
+			return acc == 0;
+		};
+		bool generated = false;
 		switch (type)
 		{
-		case CRYPTO_KEY_TYPE_ELGAMAL: i2p::crypto::GenerateElGamalKeyPair (priv, pub); return true;
+		case CRYPTO_KEY_TYPE_ELGAMAL: i2p::crypto::GenerateElGamalKeyPair (priv, pub); generated = true; break;
 		case CRYPTO_KEY_TYPE_ECIES_P256_SHA256_AES256CBC:
 			i2p::crypto::CreateECIESP256RandomKeys (priv, pub);
-			return true;
+			generated = true;
+			break;
 		case CRYPTO_KEY_TYPE_ECIES_X25519_AEAD:
 		case CRYPTO_KEY_TYPE_ECIES_MLKEM512_X25519_AEAD:
 		case CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD:
 		case CRYPTO_KEY_TYPE_ECIES_MLKEM1024_X25519_AEAD:
-			i2p::crypto::CreateECIESX25519AEADRatchetRandomKeys (priv, pub);
-			return true;
+			generated = i2p::crypto::CreateECIESX25519AEADRatchetRandomKeys (priv, pub);
+			break;
 		default: LogPrint (eLogError, "Identity: Crypto key type ", (int)type, " is not supported");
 		}
-		return false;
+		// A provider failure is not the only way to arrive here with empty key
+		// material: report both cases so CreateRandomKeys() takes its fallback
+		// instead of publishing an unusable identity.
+		if (!generated || isAllZero (priv, privLen) || isAllZero (pub, pubLen))
+		{
+			LogPrint (eLogError, "Identity: Crypto key generation failed for type ", (int)type);
+			OPENSSL_cleanse (priv, 256);
+			memset (pub, 0, 256);
+			return false;
+		}
+		return true;
 	}
 
 	PrivateKeys PrivateKeys::CreateOfflineKeys (SigningKeyType type, uint32_t expires) const
