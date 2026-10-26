@@ -12,7 +12,9 @@
 
 #include <memory>
 #include <openssl/rand.h>
+#include <openssl/crypto.h>
 #include <openssl/sha.h>
+#include <cstring>
 #include "Log.h"
 #include "Transports.h"
 #include "Timestamp.h"
@@ -37,6 +39,7 @@ namespace tunnel
 
 		next = nullptr;
 		prev = nullptr;
+		recordIndex = -1; // assigned by Tunnel::Build; -1 is out of range by design
 	}
 
 	void TunnelHopConfig::SetNextIdent (const i2p::data::IdentHash & identHash)
@@ -78,27 +81,48 @@ namespace tunnel
 		}
 	}
 
-	void ShortECIESTunnelHopConfig::EncryptECIES (const uint8_t * plainText, uint8_t * encrypted)
+	bool ShortECIESTunnelHopConfig::EncryptECIES (const uint8_t * plainText, uint8_t * encrypted)
 	{
-		if (!ident) return;
+		if (!ident) return false;
 		i2p::crypto::InitNoiseNState (*this, ident->GetEncryptionPublicKey ());
 		auto ephemeralKeys = i2p::transport::transports.GetNextX25519KeysPair ();
+		if (!ephemeralKeys || !ephemeralKeys->HasPrivateKey ())
+		{
+			// Provider failure: leave a zero ephemeral key so the peer rejects
+			// this record instead of building a tunnel with an unusable DH.
+			// The caller zeroes the whole record.
+			memset (encrypted, 0, 32);
+			return false;
+		}
 		memcpy (encrypted, ephemeralKeys->GetPublicKey (), 32);
 		MixHash (encrypted, 32); // h = SHA256(h || sepk)
 		encrypted += 32;
 		uint8_t sharedSecret[32];
-		ephemeralKeys->Agree (ident->GetEncryptionPublicKey (), sharedSecret); // x25519(sesk, hepk)
+		if (!ephemeralKeys->Agree (ident->GetEncryptionPublicKey (), sharedSecret)) // x25519(sesk, hepk)
+		{
+			// Provider failure or an invalid peer key: a mixed state derived
+			// from an uninitialised secret would produce a record the hop can
+			// never decrypt. Fail closed and zero the record.
+			OPENSSL_cleanse (sharedSecret, sizeof (sharedSecret));
+			memset (encrypted - 32, 0, 32 + SHORT_REQUEST_RECORD_CLEAR_TEXT_SIZE + 16);
+			return false;
+		}
 		MixKey (sharedSecret);
+		OPENSSL_cleanse (sharedSecret, sizeof (sharedSecret));
 		if (!Encrypt (plainText, encrypted, SHORT_REQUEST_RECORD_CLEAR_TEXT_SIZE))
 		{
 			LogPrint (eLogWarning, "Tunnel: Plaintext AEAD encryption failed");
-			return;
+			memset (encrypted, 0, SHORT_REQUEST_RECORD_CLEAR_TEXT_SIZE + 16);
+			return false;
 		}
 		MixHash (encrypted, SHORT_REQUEST_RECORD_CLEAR_TEXT_SIZE + 16); // h = SHA256(h || ciphertext)
+		return true;
 	}
 
-	void ShortECIESTunnelHopConfig::CreateBuildRequestRecord (uint8_t * records, uint32_t replyMsgID)
+	bool ShortECIESTunnelHopConfig::CreateBuildRequestRecord (uint8_t * records, size_t numRecords, uint32_t replyMsgID)
 	{
+		if (!records || !ident || !IsRecordIndexValid (numRecords)) return false;
+		uint8_t * record = records + static_cast<size_t> (recordIndex) * SHORT_TUNNEL_BUILD_RECORD_SIZE;
 		// fill clear text
 		uint8_t flag = 0;
 		if (isGateway) flag |= TUNNEL_BUILD_RECORD_GATEWAY_FLAG;
@@ -120,8 +144,12 @@ namespace tunnel
 			memset (clearText + SHORT_REQUEST_RECORD_TUNNEL_BUILD_OPTIONS_OFFSET + optionsSize, 0,
 				SHORT_REQUEST_RECORD_CLEAR_TEXT_SIZE - SHORT_REQUEST_RECORD_TUNNEL_BUILD_OPTIONS_OFFSET - optionsSize);
 		// encrypt
-		uint8_t * record = records + recordIndex * SHORT_TUNNEL_BUILD_RECORD_SIZE;
-		EncryptECIES (clearText, record + SHORT_REQUEST_RECORD_ENCRYPTED_OFFSET);
+		if (!EncryptECIES (clearText, record + SHORT_REQUEST_RECORD_ENCRYPTED_OFFSET))
+		{
+			// Fail closed: nothing but zeros may reach the next hop.
+			memset (record, 0, SHORT_TUNNEL_BUILD_RECORD_SIZE);
+			return false;
+		}
 		// derive keys
 		i2p::crypto::HKDF (m_CK, nullptr, 0, "SMTunnelReplyKey", m_CK);
 		memcpy (replyKey, m_CK + 32, 32);
@@ -137,6 +165,7 @@ namespace tunnel
 		else
 			memcpy (ivKey, m_CK, 32); // last HKDF
 		memcpy (record + BUILD_REQUEST_RECORD_TO_PEER_OFFSET, (const uint8_t *)ident->GetIdentHash (), 16);
+		return true;
 	}
 
 	bool ShortECIESTunnelHopConfig::DecryptBuildResponseRecord (uint8_t * records) const
@@ -168,13 +197,30 @@ namespace tunnel
 		return { m_CK + 32, buf64toh (m_CK) };
 	}
 
-	void ShortPhonyTunnelHopConfig::CreateBuildRequestRecord (uint8_t * records, uint32_t /* replyMsgID */)
+	bool ShortPhonyTunnelHopConfig::CreateBuildRequestRecord (uint8_t * records, size_t numRecords, uint32_t /* replyMsgID */)
 	{
-		uint8_t * record = records + recordIndex * SHORT_TUNNEL_BUILD_RECORD_SIZE;
-		memcpy (record + BUILD_REQUEST_RECORD_TO_PEER_OFFSET, (const uint8_t *)i2p::context.GetIdentHash (), 16);
-		memcpy (record + SHORT_REQUEST_RECORD_ENCRYPTED_OFFSET,
-			i2p::transport::transports.GetNextX25519KeysPair ()->GetPublicKey (), 32);
+		if (!records || !IsRecordIndexValid (numRecords)) return false;
+		uint8_t * record = records + static_cast<size_t> (recordIndex) * SHORT_TUNNEL_BUILD_RECORD_SIZE;
+		auto identity = i2p::context.GetIdentity ();
+		if (!identity)
+		{
+			// No local identity means the phony record cannot name us; a
+			// half-filled record would leak into the message.
+			memset (record, 0, SHORT_TUNNEL_BUILD_RECORD_SIZE);
+			return false;
+		}
+		memcpy (record + BUILD_REQUEST_RECORD_TO_PEER_OFFSET, (const uint8_t *)identity->GetIdentHash (), 16);
+		auto ephemeralKeys = i2p::transport::transports.GetNextX25519KeysPair ();
+		if (!ephemeralKeys || !ephemeralKeys->HasPrivateKey ())
+		{
+			// Same provider guard as a real record: never publish a zero
+			// ephemeral key as if it were a valid phony hop.
+			memset (record, 0, SHORT_TUNNEL_BUILD_RECORD_SIZE);
+			return false;
+		}
+		memcpy (record + SHORT_REQUEST_RECORD_ENCRYPTED_OFFSET, ephemeralKeys->GetPublicKey (), 32);
 		RAND_bytes (record + 48, SHORT_TUNNEL_BUILD_RECORD_SIZE - 48);
+		return true;
 	}
 
 	TunnelConfig::TunnelConfig (const std::vector<std::shared_ptr<const i2p::data::IdentityEx>> & peers,
@@ -184,7 +230,21 @@ namespace tunnel
 		// inbound
 		CreatePeers (peers);
 		if (m_LastHop)
-			m_LastHop->SetNextIdent (i2p::context.GetIdentHash ());
+		{
+			// The last hop points back at us. Unit tests may build a config
+			// before the router identity exists; an empty hash is inert and is
+			// never used by a running router in that state.
+			auto identity = i2p::context.GetIdentity ();
+			if (identity)
+				m_LastHop->SetNextIdent (identity->GetIdentHash ());
+			else
+			{
+				// No zero-init assumption on Tag<>: build an explicit empty hash
+				// so a test config can never carry uninitialised bytes.
+				uint8_t emptyIdent[i2p::data::IdentHash::len] = { 0 };
+				m_LastHop->SetNextIdent (i2p::data::IdentHash (emptyIdent));
+			}
+		}
 		else
 			LogPrint (eLogError, "Tunnel: Can't create inbound tunnel config with no peers");
 	}

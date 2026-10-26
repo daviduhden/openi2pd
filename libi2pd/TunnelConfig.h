@@ -14,6 +14,7 @@
 #ifndef TUNNEL_CONFIG_H__
 #define TUNNEL_CONFIG_H__
 
+#include <cstddef>
 #include <memory>
 #include <vector>
 #include "Identity.h"
@@ -46,13 +47,25 @@ namespace tunnel
 		void SetPrev (TunnelHopConfig * p);
 
 		virtual uint8_t GetRetCode (const uint8_t * records) const = 0;
-		virtual void CreateBuildRequestRecord (uint8_t * records, uint32_t replyMsgID) = 0;
+		/**
+		 * Write this hop's build request record at `recordIndex`.
+		 *
+		 * `numRecords` bounds the record table. Returns false when the record
+		 * index is out of range or the record could not be encrypted; the
+		 * caller must then fail the whole build instead of sending a partially
+		 * initialised record.
+		 */
+		virtual bool CreateBuildRequestRecord (uint8_t * records, size_t numRecords, uint32_t replyMsgID) = 0;
 		virtual bool DecryptBuildResponseRecord (uint8_t * records) const = 0;
 		virtual void DecryptRecord (uint8_t * records, int index) const = 0;
 		virtual std::pair<const uint8_t *, uint64_t> GetGarlicKey () const
 		{
 			return { nullptr, 0 };
 		}; // return [key,tag]
+		bool IsRecordIndexValid (size_t numRecords) const
+		{
+			return recordIndex >= 0 && static_cast<size_t> (recordIndex) < numRecords;
+		}
 	};
 
 	struct ShortECIESTunnelHopConfig : public TunnelHopConfig, public i2p::crypto::NoiseSymmetricState
@@ -60,13 +73,14 @@ namespace tunnel
 		ShortECIESTunnelHopConfig (std::shared_ptr<const i2p::data::IdentityEx> r)
 			: TunnelHopConfig (r) { };
 
-		void EncryptECIES (const uint8_t * clearText, uint8_t * encrypted);
+		/** @return false when the record could not be encrypted (fail closed) */
+		bool EncryptECIES (const uint8_t * clearText, uint8_t * encrypted);
 
 		uint8_t GetRetCode (const uint8_t * records) const override
 		{
 			return (records + recordIndex * SHORT_TUNNEL_BUILD_RECORD_SIZE)[SHORT_RESPONSE_RECORD_RET_OFFSET];
 		};
-		void CreateBuildRequestRecord (uint8_t * records, uint32_t replyMsgID) override;
+		bool CreateBuildRequestRecord (uint8_t * records, size_t numRecords, uint32_t replyMsgID) override;
 		bool DecryptBuildResponseRecord (uint8_t * records) const override;
 		void DecryptRecord (uint8_t * records, int index) const override; // Chacha20
 		std::pair<const uint8_t *, uint64_t> GetGarlicKey () const override;
@@ -81,7 +95,7 @@ namespace tunnel
 		uint8_t GetRetCode (const uint8_t * /* records */) const override { return 0; }
 		bool DecryptBuildResponseRecord (uint8_t * /* records */) const override { return true; }
 		void DecryptRecord (uint8_t * /* records */, int /* index */) const override { } // do nothing
-		void CreateBuildRequestRecord (uint8_t * records, uint32_t /* replyMsgID */) override;
+		bool CreateBuildRequestRecord (uint8_t * records, size_t numRecords, uint32_t /* replyMsgID */) override;
 	};
 
 	class TunnelConfig
