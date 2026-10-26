@@ -45,8 +45,7 @@ struct RecordedRemove
 
 i2p::data::ArtifactWriter RecordingWriter (RecordedWrite & record, bool result)
 {
-	return [&record, result] (i2p::data::StorageArtifact kind, std::string_view name,
-			   std::span<const uint8_t> bytes)
+	return [&record, result] (i2p::data::StorageArtifact kind, std::string_view name, std::span<const uint8_t> bytes)
 	{
 		record.called = true;
 		record.kind = kind;

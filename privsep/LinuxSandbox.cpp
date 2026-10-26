@@ -548,22 +548,20 @@ i2p::expected<void, std::string> ClearCapabilitiesAfterCredentialDrop ()
 	struct __user_cap_data_struct current[2] { };
 	if (syscall (SYS_capget, &header, current) != 0)
 		return i2p::unexpected (std::string ("capget: ") + strerror (errno));
-	if (current[0].effective || current[0].permitted || current[0].inheritable
-		|| current[1].effective || current[1].permitted || current[1].inheritable)
+	if (current[0].effective || current[0].permitted || current[0].inheritable || current[1].effective
+		|| current[1].permitted || current[1].inheritable)
 		return i2p::unexpected ("worker capabilities are not empty");
 	return { };
 }
 
 i2p::expected<void, std::string> VerifyWorkerPrivileges ()
 {
-	if (prctl (PR_GET_NO_NEW_PRIVS, 0, 0, 0, 0) != 1)
-		return i2p::unexpected ("worker did not set PR_SET_NO_NEW_PRIVS");
+	if (prctl (PR_GET_NO_NEW_PRIVS, 0, 0, 0, 0) != 1) return i2p::unexpected ("worker did not set PR_SET_NO_NEW_PRIVS");
 	struct __user_cap_header_struct header { _LINUX_CAPABILITY_VERSION_3, 0 };
 	struct __user_cap_data_struct data[2] { };
-	if (syscall (SYS_capget, &header, data) != 0)
-		return i2p::unexpected (std::string ("capget: ") + strerror (errno));
-	if (data[0].effective || data[0].permitted || data[0].inheritable
-		|| data[1].effective || data[1].permitted || data[1].inheritable)
+	if (syscall (SYS_capget, &header, data) != 0) return i2p::unexpected (std::string ("capget: ") + strerror (errno));
+	if (data[0].effective || data[0].permitted || data[0].inheritable || data[1].effective || data[1].permitted
+		|| data[1].inheritable)
 		return i2p::unexpected ("worker capabilities are not empty");
 	return { };
 }

@@ -120,8 +120,7 @@ namespace torrents
 	// announces. The payload is opaque, so the policy can be exercised without
 	// a service, a socket or a timer. `TryAcquire` never evicts an admitted
 	// request: a duplicate is refused and the cap is enforced exactly.
-	template <typename Payload>
-	class TrackerInflightRegistry
+	template <typename Payload> class TrackerInflightRegistry
 	{
 	public:
 		enum class Admission
@@ -153,7 +152,7 @@ namespace torrents
 		{
 			std::vector<TrackerRequestKey> released;
 			for (auto it = m_Entries.lower_bound (TrackerRequestKey { infoHash, 0 });
-				 it != m_Entries.end () && it->first.infoHash == infoHash; it = m_Entries.erase (it))
+				it != m_Entries.end () && it->first.infoHash == infoHash; it = m_Entries.erase (it))
 				released.push_back (it->first);
 			return released;
 		}
@@ -167,15 +166,13 @@ namespace torrents
 		}
 		// Read-only traversal used to retire per-request state (a stream handle)
 		// before the entries are dropped. The visitor must not insert or erase.
-		template <typename Visitor>
-		void ForEachTorrent (const Torrent::InfoHash & infoHash, Visitor visitor)
+		template <typename Visitor> void ForEachTorrent (const Torrent::InfoHash & infoHash, Visitor visitor)
 		{
 			for (auto it = m_Entries.lower_bound (TrackerRequestKey { infoHash, 0 });
-				 it != m_Entries.end () && it->first.infoHash == infoHash; ++it)
+				it != m_Entries.end () && it->first.infoHash == infoHash; ++it)
 				visitor (it->first, it->second);
 		}
-		template <typename Visitor>
-		void ForEach (Visitor visitor)
+		template <typename Visitor> void ForEach (Visitor visitor)
 		{
 			for (auto & entry : m_Entries) visitor (entry.first, entry.second);
 		}
@@ -249,8 +246,8 @@ namespace torrents
 	enum class TrackerSlotRelease
 	{
 		Invalid = 0, // no such slot, or its count is already zero
-		Retained,    // another holder (or the common flag) keeps the slot live
-		Freed        // the caller must clear the slot's announce URL
+		Retained, // another holder (or the common flag) keeps the slot live
+		Freed // the caller must clear the slot's announce URL
 	};
 
 	inline TrackerSlotRelease ReleaseTrackerSlotReference (TrackerSlots & slots, size_t trackerID)
@@ -280,8 +277,7 @@ namespace torrents
 			const int64_t floorMs = TrackerSchedule::FailureInterval (0, minInterval);
 			const int64_t capMs = std::max<int64_t> (MAX_TRACKER_FAILURE_BACKOFF * 1000LL, minInterval);
 			const int64_t remaining = scheduledFailureTime > now
-				? static_cast<int64_t> (
-					std::min<uint64_t> (scheduledFailureTime - now, static_cast<uint64_t> (capMs)))
+				? static_cast<int64_t> (std::min<uint64_t> (scheduledFailureTime - now, static_cast<uint64_t> (capMs)))
 				: floorMs;
 			const int64_t wait = std::clamp<int64_t> (remaining + static_cast<int64_t> (jitter), floorMs, capMs);
 			return now + static_cast<uint64_t> (wait);

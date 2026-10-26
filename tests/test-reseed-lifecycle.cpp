@@ -113,8 +113,8 @@ int main ()
 	// Let the stalled fetch actually start so cancellation is exercised on an
 	// in-flight phase, not only before it.
 	{
-		const bool started = WaitFor ([&] { return fetchCount.load (std::memory_order_relaxed) > 0; },
-			std::chrono::seconds (2));
+		const bool started
+			= WaitFor ([&] { return fetchCount.load (std::memory_order_relaxed) > 0; }, std::chrono::seconds (2));
 		assert (started);
 	}
 
@@ -159,8 +159,8 @@ int main ()
 		const auto before = fetchCount.load (std::memory_order_relaxed);
 		assert (database.RequestReseed ());
 		assert (database.IsReseeding ());
-		assert (WaitFor ([&] { return fetchCount.load (std::memory_order_relaxed) > before; },
-			std::chrono::seconds (2)));
+		assert (
+			WaitFor ([&] { return fetchCount.load (std::memory_order_relaxed) > before; }, std::chrono::seconds (2)));
 		database.Stop ();
 		assert (!database.IsReseeding ());
 	}

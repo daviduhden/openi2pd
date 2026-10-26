@@ -406,8 +406,8 @@ namespace torrents
 	// Decode up to `maxCount` compact BEP 5 node records. Records that fail the
 	// node-ID check are skipped, never repaired; work is bounded by both the
 	// input length and maxCount.
-	size_t DecodeCompactNodes (std::string_view nodes, std::vector<Node> & out,
-		size_t maxCount = MAX_DHT_NODES_PER_RESPONSE);
+	size_t DecodeCompactNodes (
+		std::string_view nodes, std::vector<Node> & out, size_t maxCount = MAX_DHT_NODES_PER_RESPONSE);
 	// Decode a BEP 5 `values` list (or an already parsed entry list) into peer
 	// destination hashes. Wrong-length and all-zero entries are dropped.
 	size_t DecodeCompactPeers (const std::vector<std::string_view> & peers, std::vector<i2p::data::IdentHash> & out,
@@ -419,8 +419,8 @@ namespace torrents
 	// records. Empty, oversized and misaligned input is rejected before any
 	// parser can walk it; the result is the record count, bounded by
 	// `maxRecords`.
-	std::optional<size_t> DecodeDHTStateRecords (std::span<const uint8_t> bytes,
-		size_t maxRecords = MAX_DHT_LOADED_NODES);
+	std::optional<size_t> DecodeDHTStateRecords (
+		std::span<const uint8_t> bytes, size_t maxRecords = MAX_DHT_LOADED_NODES);
 
 	// One token issued in reply to a get_peers query. The wire token stays
 	// opaque; the node ID, destination hash, repliable port and info hash bind

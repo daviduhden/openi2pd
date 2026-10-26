@@ -1164,8 +1164,7 @@ namespace data
 		// unique no-follow temporary file, fsync, then rename. A crash or short
 		// write must not truncate the last valid cached RouterInfo, and a
 		// predictable ".tmp" name must not be reusable as an attack surface.
-		const auto contents
-			= std::string_view (reinterpret_cast<const char *> (buf->data ()), buf->GetBufferLen ());
+		const auto contents = std::string_view (reinterpret_cast<const char *> (buf->data ()), buf->GetBufferLen ());
 		if (!i2p::fs::AtomicWrite (fullPath, contents))
 		{
 			LogPrint (eLogError, "RouterInfo: Can't save to ", fullPath);
@@ -1198,8 +1197,8 @@ namespace data
 		// The artifact writer replaces the previous cache file atomically, so
 		// a failure keeps the last valid RouterInfo on disk. The bytes and the
 		// name are unchanged from the direct writer.
-		return i2p::data::WriteArtifact (i2p::data::StorageArtifact::RouterInfoCache, identBase64,
-			std::span<const uint8_t> (buf->data (), len));
+		return i2p::data::WriteArtifact (
+			i2p::data::StorageArtifact::RouterInfoCache, identBase64, std::span<const uint8_t> (buf->data (), len));
 	}
 
 	std::string_view RouterInfo::ExtractString (const uint8_t * buf, size_t len, bool & valid) const

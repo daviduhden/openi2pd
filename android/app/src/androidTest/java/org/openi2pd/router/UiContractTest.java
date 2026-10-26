@@ -81,14 +81,16 @@ public final class UiContractTest {
     @Test
     public void themeExposesBrandRolesInBothModes() {
         Context day = resolution(Configuration.UI_MODE_NIGHT_NO);
-        int daySurface = MaterialColors.getColor(day, com.google.android.material.R.attr.colorSurface, 0);
+        int daySurface =
+                MaterialColors.getColor(day, com.google.android.material.R.attr.colorSurface, 0);
         assertEquals(day.getColor(R.color.brand_surface), daySurface);
 
         Context night = resolution(Configuration.UI_MODE_NIGHT_YES);
-        int nightSurface = MaterialColors.getColor(night, com.google.android.material.R.attr.colorSurface, 0);
+        int nightSurface =
+                MaterialColors.getColor(night, com.google.android.material.R.attr.colorSurface, 0);
         assertEquals(night.getColor(R.color.brand_surface), nightSurface);
-        assertTrue("the night surface must differ from the day surface",
-                daySurface != nightSurface);
+        assertTrue(
+                "the night surface must differ from the day surface", daySurface != nightSurface);
     }
 
     @Test
@@ -110,8 +112,7 @@ public final class UiContractTest {
 
         UiFactory.applyRowSemantics(button, "example, Seeding, 100%");
         assertEquals("example, Seeding, 100%", button.getContentDescription());
-        assertEquals("example, Seeding, 100%",
-                ViewCompat.getStateDescription(button));
+        assertEquals("example, Seeding, 100%", ViewCompat.getStateDescription(button));
     }
 
     private static Context resolution(int nightMode) {
@@ -120,7 +121,8 @@ public final class UiContractTest {
         configuration.uiMode =
                 (configuration.uiMode & ~Configuration.UI_MODE_NIGHT_MASK) | nightMode;
         return new android.view.ContextThemeWrapper(
-                ApplicationProvider.getApplicationContext().createConfigurationContext(configuration),
+                ApplicationProvider.getApplicationContext().createConfigurationContext(
+                        configuration),
                 R.style.Theme_OpenI2Pd);
     }
 
@@ -129,9 +131,10 @@ public final class UiContractTest {
                 ApplicationProvider.getApplicationContext().getResources().getConfiguration());
         configuration.screenWidthDp = widthDp;
         configuration.smallestScreenWidthDp = smallestWidthDp;
-        Context wide = ApplicationProvider.getApplicationContext()
-                .createConfigurationContext(configuration);
-        return LayoutInflater.from(new android.view.ContextThemeWrapper(wide, R.style.Theme_OpenI2Pd))
+        Context wide = ApplicationProvider.getApplicationContext().createConfigurationContext(
+                configuration);
+        return LayoutInflater
+                .from(new android.view.ContextThemeWrapper(wide, R.style.Theme_OpenI2Pd))
                 .inflate(layout, null, false);
     }
 }

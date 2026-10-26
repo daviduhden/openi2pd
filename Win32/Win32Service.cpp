@@ -25,17 +25,17 @@
 
 namespace
 {
-	/**
+/**
 	 * The service stop flag is published with Interlocked operations so the
 	 * monitor thread and the control handler never race on a plain BOOL. The
 	 * value is 0 (running) or 1 (stopping).
 	 */
-	BOOL IsStopping (volatile LONG * flag)
-	{
-		return InterlockedCompareExchange (flag, 0, 0) != 0;
-	}
+BOOL IsStopping (volatile LONG * flag)
+{
+	return InterlockedCompareExchange (flag, 0, 0) != 0;
+}
 
-	/**
+/**
 	 * Drain the router and join its bounded monitor thread.
 	 *
 	 * Order is load-bearing: `Daemon.stop()` tears down router subsystems on
@@ -44,26 +44,25 @@ namespace
 	 * thread joined. The monitor observes the flag within one sleep slice, so
 	 * the join is bounded even when the event wait expires.
 	 */
-	void DrainDaemonAndJoinWorker (
-		volatile LONG * stopping, HANDLE stoppedEvent, std::thread *& worker, DWORD budgetMs)
+void DrainDaemonAndJoinWorker (volatile LONG * stopping, HANDLE stoppedEvent, std::thread *& worker, DWORD budgetMs)
+{
+	LogPrint (eLogInfo, "Win32Service: draining the router before reporting stopped");
+	Daemon.stop ();
+	InterlockedExchange (stopping, 1);
+	if (stoppedEvent) SetEvent (stoppedEvent);
+	if (stoppedEvent && WaitForSingleObject (stoppedEvent, budgetMs) != WAIT_OBJECT_0)
 	{
-		LogPrint (eLogInfo, "Win32Service: draining the router before reporting stopped");
-		Daemon.stop ();
-		InterlockedExchange (stopping, 1);
-		if (stoppedEvent) SetEvent (stoppedEvent);
-		if (stoppedEvent && WaitForSingleObject (stoppedEvent, budgetMs) != WAIT_OBJECT_0)
-		{
-			// The daemon is already stopped; a monitor that missed its slice is
-			// reported instead of extending the SCM wait indefinitely.
-			LogPrint (eLogCritical, "Win32Service: worker did not signal stop within ", budgetMs, " ms");
-		}
-		if (worker)
-		{
-			if (worker->joinable ()) worker->join ();
-			delete worker;
-			worker = NULL;
-		}
+		// The daemon is already stopped; a monitor that missed its slice is
+		// reported instead of extending the SCM wait indefinitely.
+		LogPrint (eLogCritical, "Win32Service: worker did not signal stop within ", budgetMs, " ms");
 	}
+	if (worker)
+	{
+		if (worker->joinable ()) worker->join ();
+		delete worker;
+		worker = NULL;
+	}
+}
 }
 
 I2PService * I2PService::s_service = NULL;
@@ -193,8 +192,7 @@ void I2PService::Start (DWORD dwArgc, PSTR * pszArgv)
 		LogPrint (eLogCritical, "Win32Service: start failed: ", failure);
 		try
 		{
-			DrainDaemonAndJoinWorker (
-				reinterpret_cast<volatile LONG *> (&m_fStopping), m_hStoppedEvent, _worker,
+			DrainDaemonAndJoinWorker (reinterpret_cast<volatile LONG *> (&m_fStopping), m_hStoppedEvent, _worker,
 				i2p::privsep::WINDOWS_SERVICE_DRAIN_BUDGET_MS);
 		}
 		catch (...)

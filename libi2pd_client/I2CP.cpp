@@ -70,8 +70,7 @@ namespace client
 		std::mutex g_BlindingInfosMutex;
 		std::map<BlindingInfoKey, BlindingInfoEntry> g_BlindingInfos;
 
-		BlindingInfoKey MakeBlindingInfoKey (
-			i2p::data::SigningKeyType keyType, const uint8_t * key, size_t keyLen)
+		BlindingInfoKey MakeBlindingInfoKey (i2p::data::SigningKeyType keyType, const uint8_t * key, size_t keyLen)
 		{
 			return { (uint16_t)keyType, std::vector<uint8_t> (key, key + keyLen) };
 		}
@@ -124,8 +123,7 @@ namespace client
 
 		I2CPAdmissionPolicy ReadI2CPAdmissionPolicy ()
 		{
-			return MakeI2CPAdmissionPolicy (
-				ReadI2CPLimit ("i2cp.maxconnections"), ReadI2CPLimit ("i2cp.maxsessions"));
+			return MakeI2CPAdmissionPolicy (ReadI2CPLimit ("i2cp.maxconnections"), ReadI2CPLimit ("i2cp.maxsessions"));
 		}
 	} // namespace
 
@@ -173,8 +171,7 @@ namespace client
 		return buf;
 	}
 
-	bool ParseI2CPSendMessage (
-		const uint8_t * buf, size_t len, bool withExpiration, I2CPSendMessageRequest & request)
+	bool ParseI2CPSendMessage (const uint8_t * buf, size_t len, bool withExpiration, I2CPSendMessageRequest & request)
 	{
 		request = I2CPSendMessageRequest { };
 		if (!buf || len < 2) return false;
@@ -218,8 +215,8 @@ namespace client
 		return offset == len;
 	}
 
-	I2CPSendMessageCheck CheckI2CPSendMessage (const I2CPSendMessageRequest & request, uint16_t ownSessionID,
-		bool hasDestination, uint64_t nowMilliseconds)
+	I2CPSendMessageCheck CheckI2CPSendMessage (
+		const I2CPSendMessageRequest & request, uint16_t ownSessionID, bool hasDestination, uint64_t nowMilliseconds)
 	{
 		if (request.sessionID != ownSessionID) return I2CPSendMessageCheck::BadSession;
 		if (!hasDestination) return I2CPSendMessageCheck::BadSession;
@@ -360,9 +357,7 @@ namespace client
 			offset += keyLen;
 			break;
 		}
-		default:
-			error = "bad endpoint type";
-			return eI2CPBlindingInfoMalformed;
+		default: error = "bad endpoint type"; return eI2CPBlindingInfoMalformed;
 		}
 
 		// The 32-byte auth private key exists for the DH schemes only; PSK
@@ -492,11 +487,13 @@ namespace client
 			if (info.authPrivateKey.size () == SECRET_LEN) return info.authPrivateKey;
 			return { };
 		case eI2CPBlindingAuthPSK:
-			if (info.secret.size () == SECRET_LEN) return std::vector<uint8_t> (info.secret.begin (), info.secret.end ());
+			if (info.secret.size () == SECRET_LEN)
+				return std::vector<uint8_t> (info.secret.begin (), info.secret.end ());
 			return { };
 		case eI2CPBlindingAuthDHAndPSK:
 			if (info.authPrivateKey.size () == SECRET_LEN) return info.authPrivateKey;
-			if (info.secret.size () == SECRET_LEN) return std::vector<uint8_t> (info.secret.begin (), info.secret.end ());
+			if (info.secret.size () == SECRET_LEN)
+				return std::vector<uint8_t> (info.secret.begin (), info.secret.end ());
 			return { };
 		default: return { };
 		}
@@ -1096,8 +1093,8 @@ namespace client
 		m_Self.reset ();
 	}
 
-	I2CPSession::I2CPSession (I2CPServer & owner, std::shared_ptr<boost::asio::ip::tcp::socket> socket,
-		bool connectionAdmitted)
+	I2CPSession::I2CPSession (
+		I2CPServer & owner, std::shared_ptr<boost::asio::ip::tcp::socket> socket, bool connectionAdmitted)
 		: m_Owner (owner)
 		, m_Socket (socket)
 		, m_SessionID (0xFFFF)
@@ -1140,9 +1137,8 @@ namespace client
 		boost::system::error_code ec;
 		m_ReadTimer.cancel (ec);
 		m_ReadTimer.expires_after (std::chrono::seconds (seconds));
-		m_ReadTimer.async_wait ([s = shared_from_this ()] (const boost::system::error_code & ecode) {
-			s->HandleReadTimeout (ecode);
-		});
+		m_ReadTimer.async_wait (
+			[s = shared_from_this ()] (const boost::system::error_code & ecode) { s->HandleReadTimeout (ecode); });
 	}
 
 	void I2CPSession::CancelReadTimeout ()
@@ -1198,13 +1194,15 @@ namespace client
 		// of it is covered by the read deadline, while a connection that has
 		// not started a message yet is idle and must not be killed: established
 		// clients keep the socket open between messages.
-		if (!m_HandshakeComplete) ArmReadTimeout (I2CP_HANDSHAKE_TIMEOUT);
-		else if (m_HeaderReceived > 0) ArmReadTimeout (I2CP_BODY_TIMEOUT);
-		else CancelReadTimeout ();
+		if (!m_HandshakeComplete)
+			ArmReadTimeout (I2CP_HANDSHAKE_TIMEOUT);
+		else if (m_HeaderReceived > 0)
+			ArmReadTimeout (I2CP_BODY_TIMEOUT);
+		else
+			CancelReadTimeout ();
 		// the handler keeps the socket alive: Terminate resets m_Socket, while a
 		// pending read holds a reference to the socket object until it completes
-		socket->async_read_some (
-			boost::asio::buffer (m_Header + m_HeaderReceived, I2CP_HEADER_SIZE - m_HeaderReceived),
+		socket->async_read_some (boost::asio::buffer (m_Header + m_HeaderReceived, I2CP_HEADER_SIZE - m_HeaderReceived),
 			[s = shared_from_this (), socket] (const boost::system::error_code & ecode, std::size_t bytes_transferred)
 			{
 				if (ecode)
@@ -1781,8 +1779,7 @@ namespace client
 			// as the destination's encryption key. DSA-only install (residual
 			// risk tracked in the audit notes) is preferable to guessing.
 			LogPrint (eLogError, "I2CP: CreateLeaseSet for signing type ", (int)identity->GetSigningKeyType (),
-				" and crypto type ", (int)identity->GetCryptoKeyType (),
-				" is not supported; use CreateLeaseSet2");
+				" and crypto type ", (int)identity->GetCryptoKeyType (), " is not supported; use CreateLeaseSet2");
 			return;
 		}
 		const size_t encryptionKeyLen = 256; // ElGamal private key on the wire
@@ -1936,8 +1933,8 @@ namespace client
 				if (!m_Destination->IsAdvertisedEncryptionKey (
 						key.first, key.second.data (), key.second.size (), ls, verifiable))
 				{
-					LogPrint (eLogError, "I2CP: LeaseSet2 key type ", (int)key.first,
-						" does not match the private key");
+					LogPrint (
+						eLogError, "I2CP: LeaseSet2 key type ", (int)key.first, " does not match the private key");
 					return;
 				}
 				if (!verifiable)
@@ -1948,8 +1945,7 @@ namespace client
 		for (const auto & key : stagedKeys)
 		{
 			if (key.first >= i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD)
-				m_Destination->SetECIESx25519EncryptionPrivateKey (
-					key.first, key.second.data (), key.second.size ());
+				m_Destination->SetECIESx25519EncryptionPrivateKey (key.first, key.second.data (), key.second.size ());
 			else
 				m_Destination->SetEncryptionPrivateKey (key.first, key.second.data (), key.second.size ());
 			if (!m_Destination->SupportsEncryptionType (key.first))
@@ -2022,8 +2018,7 @@ namespace client
 			SendMessageStatusMessage (request.nonce, eI2CPMessageStatusNoLocalTunnels);
 			return;
 		}
-		if (m_IsSendAccepted.load ())
-			SendMessageStatusMessage (request.nonce, eI2CPMessageStatusAccepted); // accepted
+		if (m_IsSendAccepted.load ()) SendMessageStatusMessage (request.nonce, eI2CPMessageStatusAccepted); // accepted
 		// The cache is indexed by the parsed identity hash, so every
 		// signature/crypto type keys its own entry and a crafted identity cannot
 		// reuse another peer's session.
@@ -2040,8 +2035,7 @@ namespace client
 					m_RoutingSessions.erase (it);
 			}
 		}
-		const bool sent = remoteSession
-			&& m_Destination->SendMsg (request.payload, request.payloadLen, remoteSession);
+		const bool sent = remoteSession && m_Destination->SendMsg (request.payload, request.payloadLen, remoteSession);
 		if (sent)
 			SendMessageStatusMessage (request.nonce, eI2CPMessageStatusGuaranteedSuccess);
 		else
@@ -2200,15 +2194,13 @@ namespace client
 						}
 						// A null completion without a decryption result is a
 						// lookup that timed out or found no LeaseSet.
-						if (!leaseSet && result == eI2CPHostReplySuccess)
-							result = eI2CPHostReplyLeaseSetLookupFailure;
-						s->SendHostReplyMessage (requestID, sessionID,
-							leaseSet ? leaseSet->GetIdentity () : nullptr, requestOptions, std::move (leaseSet),
-							result);
+						if (!leaseSet && result == eI2CPHostReplySuccess) result = eI2CPHostReplyLeaseSetLookupFailure;
+						s->SendHostReplyMessage (requestID, sessionID, leaseSet ? leaseSet->GetIdentity () : nullptr,
+							requestOptions, std::move (leaseSet), result);
 					};
 					if (blinded)
-						destination->RequestDestinationWithEncryptedLeaseSet (blinded, complete,
-							secret.empty () ? nullptr : secret.data (), secret.size ());
+						destination->RequestDestinationWithEncryptedLeaseSet (
+							blinded, complete, secret.empty () ? nullptr : secret.data (), secret.size ());
 					else
 						destination->RequestDestination (ident, complete);
 				}
@@ -2476,9 +2468,11 @@ namespace client
 				// No I2CP message has been exchanged yet, so there is no
 				// session to answer with STATUS REFUSED: close the socket and
 				// keep the admission slot free for a real client.
-				if (ec) LogPrint (eLogError, "I2CP: Incoming connection error ", ec.message ());
-				else LogPrint (eLogWarning, "I2CP: Refused connection, ", GetNumConnections (), " of ",
-							 m_AdmissionPolicy.maxConnections, " in use");
+				if (ec)
+					LogPrint (eLogError, "I2CP: Incoming connection error ", ec.message ());
+				else
+					LogPrint (eLogWarning, "I2CP: Refused connection, ", GetNumConnections (), " of ",
+						m_AdmissionPolicy.maxConnections, " in use");
 				boost::system::error_code closeEc;
 				socket->shutdown (boost::asio::ip::tcp::socket::shutdown_both, closeEc);
 				socket->close (closeEc);

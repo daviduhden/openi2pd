@@ -675,8 +675,7 @@ namespace tui
 			std::vector<i2p::data::IdentHash> bans;
 			const auto count = i2p::data::GetRuntimeRouterBans (bans, limit);
 			AppendField (payload, "blocklist.runtime", count);
-			for (size_t i = 0; i < bans.size (); ++i)
-				AppendField (payload, "blocklist.banned", bans[i].ToBase64 ());
+			for (size_t i = 0; i < bans.size (); ++i) AppendField (payload, "blocklist.banned", bans[i].ToBase64 ());
 			return payload;
 		}
 
@@ -913,8 +912,7 @@ namespace tui
 			// records. Clients page with TORRENT-DETAIL <tunnel> <id> <offset>
 			// <limit>; without the page arguments this is the newest page,
 			// which is exactly the response earlier clients already parse.
-			const auto page
-				= i2p::torrents::SliceCommentPage (torrent.comments.size (), commentOffset, commentLimit);
+			const auto page = i2p::torrents::SliceCommentPage (torrent.comments.size (), commentOffset, commentLimit);
 			// comments.offset/count describe the emitted slice; comments.total
 			// remains the retained count, so clients must not iterate count
 			// against a truncated comments array.
@@ -1252,8 +1250,7 @@ namespace tui
 				return runAdmin ("transit", { AdminCommandKind::Transit, 0, request->enabled });
 			case RequestType::AdminOnline:
 				return runAdmin ("online", { AdminCommandKind::Online, 0, request->enabled });
-			case RequestType::AdminLogReopen:
-				return runAdmin ("log-reopen", { AdminCommandKind::LogReopen, 0, false });
+			case RequestType::AdminLogReopen: return runAdmin ("log-reopen", { AdminCommandKind::LogReopen, 0, false });
 			case RequestType::AdminLogLevel:
 				return runAdmin (
 					"loglevel", { AdminCommandKind::LogLevel, static_cast<int32_t> (request->adminValue), false });
@@ -1355,8 +1352,8 @@ namespace tui
 			case RequestType::TorrentTunnels: return makeOk (BuildTorrentTunnelList ());
 			case RequestType::Torrents: return makeQuery (BuildTorrentList (request->tunnelIndex, request->limit));
 			case RequestType::TorrentDetail:
-				return makeQuery (BuildTorrentDetail (request->tunnelIndex, request->torrentId,
-					request->commentOffset, request->commentLimit));
+				return makeQuery (BuildTorrentDetail (
+					request->tunnelIndex, request->torrentId, request->commentOffset, request->commentLimit));
 			case RequestType::TorrentSession: return makeQuery (BuildTorrentSession (request->tunnelIndex));
 			case RequestType::TorrentDht: return makeQuery (BuildTorrentDht (request->tunnelIndex));
 			case RequestType::TorrentStart:

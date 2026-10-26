@@ -93,8 +93,8 @@ std::vector<uint8_t> BuildStandardLeaseSet2 (
 // LocalEncryptedLeaseSet2 with ENCRYPTED_LEASESET_AUTH_TYPE_NONE, but with an
 // explicit published timestamp so the replay order is deterministic instead
 // of depending on the wall clock.
-std::vector<uint8_t> SealEncryptedLeaseSet2 (const PrivateKeys & keys, const std::vector<uint8_t> & inner,
-	uint32_t published, uint16_t expires)
+std::vector<uint8_t> SealEncryptedLeaseSet2 (
+	const PrivateKeys & keys, const std::vector<uint8_t> & inner, uint32_t published, uint16_t expires)
 {
 	assert (inner.size () > 1);
 	auto identity = keys.GetPublic ();

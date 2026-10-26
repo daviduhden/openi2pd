@@ -31,8 +31,8 @@ std::string Envelope (std::string_view comments, std::string_view priorities, st
 std::string CommentState (const std::vector<std::string> & entries)
 {
 	using namespace i2p::torrents;
-	return CreateDictionary ({ { "comments", CreateList (entries) }, { "enabled", CreateInteger (1) },
-		{ "version", CreateInteger (1) } });
+	return CreateDictionary (
+		{ { "comments", CreateList (entries) }, { "enabled", CreateInteger (1) }, { "version", CreateInteger (1) } });
 }
 
 std::string CommentEntry (int64_t id, std::string_view owner, std::string_view text, int64_t time)

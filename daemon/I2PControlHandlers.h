@@ -146,13 +146,34 @@ namespace client
 				const auto byte = static_cast<unsigned char> (value[index]);
 				switch (byte)
 				{
-				case '"': escaped.append ("\\\""); ++index; continue;
-				case '\\': escaped.append ("\\\\"); ++index; continue;
-				case '\b': escaped.append ("\\b"); ++index; continue;
-				case '\t': escaped.append ("\\t"); ++index; continue;
-				case '\n': escaped.append ("\\n"); ++index; continue;
-				case '\f': escaped.append ("\\f"); ++index; continue;
-				case '\r': escaped.append ("\\r"); ++index; continue;
+				case '"':
+					escaped.append ("\\\"");
+					++index;
+					continue;
+				case '\\':
+					escaped.append ("\\\\");
+					++index;
+					continue;
+				case '\b':
+					escaped.append ("\\b");
+					++index;
+					continue;
+				case '\t':
+					escaped.append ("\\t");
+					++index;
+					continue;
+				case '\n':
+					escaped.append ("\\n");
+					++index;
+					continue;
+				case '\f':
+					escaped.append ("\\f");
+					++index;
+					continue;
+				case '\r':
+					escaped.append ("\\r");
+					++index;
+					continue;
 				default: break;
 				}
 				if (byte < 0x20)
@@ -268,8 +289,7 @@ namespace client
 						if (codePoint >= 0xD800 && codePoint <= 0xDBFF)
 						{
 							// A high surrogate must be followed by a low one.
-							if (index + 6 > document.size () || document[index] != '\\'
-								|| document[index + 1] != 'u')
+							if (index + 6 > document.size () || document[index] != '\\' || document[index + 1] != 'u')
 								return false;
 							uint32_t low = 0;
 							for (int i = 0; i < 4; ++i)
@@ -317,7 +337,10 @@ namespace client
 					}
 					switch (value)
 					{
-					case '"': inString = true; ++index; break;
+					case '"':
+						inString = true;
+						++index;
+						break;
 					case '{':
 					case '[':
 						if (++depth > MAX_DEPTH) return false;
@@ -325,8 +348,7 @@ namespace client
 						break;
 					case '}':
 					case ']':
-						if (depth == 0)
-							return true; // end of the enclosing object
+						if (depth == 0) return true; // end of the enclosing object
 						--depth;
 						++index;
 						if (depth == 0) return true;

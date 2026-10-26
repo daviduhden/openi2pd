@@ -206,8 +206,7 @@ void TestDispatcherDropsExpiredAndDuplicate ()
 	// An expired message is dropped before the handler, even with a fresh ID.
 	auto expired = CreateI2NPMessage (eI2NPDatabaseStore, payload, sizeof (payload), 0xAABBCCDF);
 	assert (expired);
-	expired->SetExpiration (
-		i2p::util::GetMillisecondsSinceEpoch () - I2NP_DISPATCH_MAX_AGE - 1);
+	expired->SetExpiration (i2p::util::GetMillisecondsSinceEpoch () - I2NP_DISPATCH_MAX_AGE - 1);
 	HandleI2NPMessage (expired);
 	assert (Access::Queued (database) == 2);
 	assert (GetI2NPDispatchCounters ().expired.load () == 1);
@@ -286,8 +285,7 @@ void TestStrictPayloadLengths ()
 void TestGarlicQueueBound ()
 {
 	assert (MAX_INCOMING_GARLIC_QUEUE >= 64);
-	for (size_t size = 0; size < MAX_INCOMING_GARLIC_QUEUE; size++)
-		assert (!IsIncomingGarlicQueueFull (size));
+	for (size_t size = 0; size < MAX_INCOMING_GARLIC_QUEUE; size++) assert (!IsIncomingGarlicQueueFull (size));
 	assert (IsIncomingGarlicQueueFull (MAX_INCOMING_GARLIC_QUEUE));
 	assert (IsIncomingGarlicQueueFull (MAX_INCOMING_GARLIC_QUEUE + 1000));
 }

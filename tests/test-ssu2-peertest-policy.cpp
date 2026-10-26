@@ -31,8 +31,7 @@ void TestPeerTestRateLimit ()
 	// Java admits 12 PeerTest msgs 1/2 per source prefix and 10 minutes.
 	SSU2PeerTestRateState state;
 	const uint64_t start = 1000000;
-	for (unsigned int i = 0; i < SSU2_PEER_TEST_RATE_LIMIT; ++i)
-		assert (AllowSSU2PeerTestMessage (state, start));
+	for (unsigned int i = 0; i < SSU2_PEER_TEST_RATE_LIMIT; ++i) assert (AllowSSU2PeerTestMessage (state, start));
 	assert (state.count == SSU2_PEER_TEST_RATE_LIMIT);
 	assert (!AllowSSU2PeerTestMessage (state, start));
 	// The window is still open one second before it expires.
@@ -45,8 +44,7 @@ void TestPeerTestRateLimit ()
 	// A backwards clock jump restarts the window instead of blocking the
 	// source until the wall clock catches up again.
 	SSU2PeerTestRateState jumped;
-	for (unsigned int i = 0; i < SSU2_PEER_TEST_RATE_LIMIT; ++i)
-		assert (AllowSSU2PeerTestMessage (jumped, start));
+	for (unsigned int i = 0; i < SSU2_PEER_TEST_RATE_LIMIT; ++i) assert (AllowSSU2PeerTestMessage (jumped, start));
 	assert (!AllowSSU2PeerTestMessage (jumped, start));
 	assert (AllowSSU2PeerTestMessage (jumped, start - 10));
 	assert (jumped.count == 1);

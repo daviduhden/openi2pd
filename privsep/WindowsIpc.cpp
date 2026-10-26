@@ -565,8 +565,7 @@ namespace
 			fatal = true;
 			return i2p::unexpected ("RevertToSelf: " + Win32ErrorText (GetLastError ()));
 		}
-		if (!opened || !token)
-			return i2p::unexpected ("OpenThreadToken(worker peer): " + Win32ErrorText (openError));
+		if (!opened || !token) return i2p::unexpected ("OpenThreadToken(worker peer): " + Win32ErrorText (openError));
 		ScopedHandle tokenGuard (token);
 
 		if (!TokenUserSid (token, peer.userSid))
@@ -712,8 +711,7 @@ i2p::expected<std::wstring, std::string> GenerateWindowsWorkerNonce ()
 i2p::expected<std::string, std::string> EncodeWorkerHelloFrame (WindowsWorkerRole role, std::string_view nonce)
 {
 	if (!IsKnownRole (role)) return i2p::unexpected ("unknown worker role");
-	if (nonce.size () != WINDOWS_WORKER_NONCE_SIZE)
-		return i2p::unexpected ("worker hello nonce must be 32 bytes");
+	if (nonce.size () != WINDOWS_WORKER_NONCE_SIZE) return i2p::unexpected ("worker hello nonce must be 32 bytes");
 	bool nonZero = false;
 	for (char byte : nonce) nonZero = nonZero || byte != 0;
 	if (!nonZero) return i2p::unexpected ("worker hello nonce must not be all zero");
@@ -739,8 +737,7 @@ i2p::expected<std::pair<WindowsWorkerRole, std::string>, std::string> DecodeWork
 	auto nonce = reader.ReadRaw (*length);
 	if (!nonce) return i2p::unexpected ("worker hello nonce is truncated");
 	if (!reader.Done ()) return i2p::unexpected ("worker hello has trailing data");
-	if (!IsKnownRole (static_cast<WindowsWorkerRole> (*role)))
-		return i2p::unexpected ("worker hello role is unknown");
+	if (!IsKnownRole (static_cast<WindowsWorkerRole> (*role))) return i2p::unexpected ("worker hello role is unknown");
 	bool nonZero = false;
 	for (char byte : *nonce) nonZero = nonZero || byte != 0;
 	if (!nonZero) return i2p::unexpected ("worker hello nonce is all zero");
@@ -809,8 +806,8 @@ i2p::expected<WindowsServer, std::string> WindowsServer::Create (
 	// nOutBufferSize is the buffer for records the client sends. One byte above
 	// the frame maximum lets the receiver distinguish "exactly the maximum
 	// frame" from "one byte too large" without a dead zone.
-	const HANDLE pipe = CreateNamedPipeW (pipeName.c_str (), openMode, pipeMode, PIPE_MAX_INSTANCES,
-		PIPE_BUFFER_SIZE, PIPE_BUFFER_SIZE + 1, 0, &attributes);
+	const HANDLE pipe = CreateNamedPipeW (pipeName.c_str (), openMode, pipeMode, PIPE_MAX_INSTANCES, PIPE_BUFFER_SIZE,
+		PIPE_BUFFER_SIZE + 1, 0, &attributes);
 	if (pipe == INVALID_HANDLE_VALUE)
 	{
 		LocalFree (descriptor);
@@ -830,10 +827,8 @@ i2p::expected<bool, std::string> WindowsServer::WaitForConnection (DWORD timeout
 	if (!connected)
 	{
 		const DWORD error = GetLastError ();
-		if (error == ERROR_PIPE_CONNECTED)
-			return true;
-		if (error != ERROR_IO_PENDING)
-			return i2p::unexpected ("ConnectNamedPipe: " + Win32ErrorText (error));
+		if (error == ERROR_PIPE_CONNECTED) return true;
+		if (error != ERROR_IO_PENDING) return i2p::unexpected ("ConnectNamedPipe: " + Win32ErrorText (error));
 		const auto outcome = WaitOverlapped (m_Pipe, overlapped, timeoutMs, true /* a connect transfers no bytes */);
 		if (!outcome.completed)
 		{
@@ -878,8 +873,7 @@ i2p::expected<WindowsChannel, std::string> WindowsServer::Accept (DWORD timeoutM
 			// rejection budget bounds the work it can cause.
 			candidate.Release ();
 			DisconnectNamedPipe (m_Pipe);
-			if (++rejected >= MAX_REJECTED_CONNECTIONS)
-				return i2p::unexpected ("too many rejected worker connections");
+			if (++rejected >= MAX_REJECTED_CONNECTIONS) return i2p::unexpected ("too many rejected worker connections");
 			Sleep (REJECTED_CONNECTION_BACKOFF_MS);
 			continue;
 		}
@@ -888,8 +882,8 @@ i2p::expected<WindowsChannel, std::string> WindowsServer::Accept (DWORD timeoutM
 	}
 }
 
-i2p::expected<WindowsChannel, std::string> WindowsServer::AcceptBound (DWORD timeoutMs,
-	DWORD expectedProcessId, DWORD expectedSessionId, WindowsWorkerRole role, const std::wstring & nonceHex,
+i2p::expected<WindowsChannel, std::string> WindowsServer::AcceptBound (DWORD timeoutMs, DWORD expectedProcessId,
+	DWORD expectedSessionId, WindowsWorkerRole role, const std::wstring & nonceHex,
 	const WindowsAppContainer * container)
 {
 	if (m_Pipe == INVALID_HANDLE_VALUE) return i2p::unexpected ("worker pipe is closed");
@@ -1147,7 +1141,8 @@ i2p::expected<std::optional<Message>, std::string> WindowsChannel::Receive (DWOR
 	OVERLAPPED overlapped { };
 	overlapped.hEvent = m_ReadEvent.Native ();
 	DWORD read = 0;
-	BOOL result = ReadFile (m_Pipe, m_ReadBuffer.data (), static_cast<DWORD> (m_ReadBuffer.size ()), &read, &overlapped);
+	BOOL result
+		= ReadFile (m_Pipe, m_ReadBuffer.data (), static_cast<DWORD> (m_ReadBuffer.size ()), &read, &overlapped);
 	if (!result)
 	{
 		const DWORD error = GetLastError ();
@@ -1505,8 +1500,7 @@ i2p::expected<WindowsWorkerProcess, std::string> SpawnWindowsWorker (const std::
 		auto granted = GrantAppContainerPath (*container, policy.persistentWriteRoot, true);
 		if (!granted) return i2p::unexpected ("AppContainer root grant: " + granted.error ());
 	}
-	const bool lowPrivilege = useContainer
-		&& (container->LowPrivilege () || isolation.lowPrivilegeAppContainer);
+	const bool lowPrivilege = useContainer && (container->LowPrivilege () || isolation.lowPrivilegeAppContainer);
 
 	auto job = policy.useJobObject ? CreateWorkerJobObject (policy)
 								   : i2p::expected<WindowsHandle, std::string> (WindowsHandle ());
@@ -1519,21 +1513,20 @@ i2p::expected<WindowsWorkerProcess, std::string> SpawnWindowsWorker (const std::
 		token = std::move (*created);
 	}
 
-	const std::wstring commandLine = L"\"" + executable + L"\" --privsep-worker " + RoleName (role) + L" "
-		+ pipeName + L" " + std::to_wstring (parentProcessId) + L" " + std::to_wstring (parentSessionId) + L" "
-		+ nonce;
+	const std::wstring commandLine = L"\"" + executable + L"\" --privsep-worker " + RoleName (role) + L" " + pipeName
+		+ L" " + std::to_wstring (parentProcessId) + L" " + std::to_wstring (parentSessionId) + L" " + nonce;
 	std::vector<wchar_t> mutableCommandLine (commandLine.begin (), commandLine.end ());
 	mutableCommandLine.push_back (L'\0');
 
 	// Standard handles are pinned to NUL so a service manager's console or log
 	// pipe is never handed to a worker. bInheritHandles stays FALSE: the values
 	// document intent, and inheritance itself is already impossible.
-	ScopedHandle nullInput (CreateFileW (
-		L"NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr));
-	ScopedHandle nullOutput (CreateFileW (
-		L"NUL", GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr));
-	ScopedHandle nullError (CreateFileW (
-		L"NUL", GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr));
+	ScopedHandle nullInput (
+		CreateFileW (L"NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr));
+	ScopedHandle nullOutput (
+		CreateFileW (L"NUL", GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr));
+	ScopedHandle nullError (
+		CreateFileW (L"NUL", GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr));
 	if (!nullInput || !nullOutput || !nullError)
 		return i2p::unexpected ("CreateFile(NUL): " + Win32ErrorText (GetLastError ()));
 
@@ -1598,8 +1591,8 @@ i2p::expected<WindowsWorkerProcess, std::string> SpawnWindowsWorker (const std::
 			| PROCESS_CREATION_MITIGATION_POLICY_EXTENSION_POINT_DISABLE_ALWAYS_ON
 			| PROCESS_CREATION_MITIGATION_POLICY_PROHIBIT_DYNAMIC_CODE_ALWAYS_ON
 			| PROCESS_CREATION_MITIGATION_POLICY_CONTROL_FLOW_GUARD_ALWAYS_ON;
-		if (!UpdateProcThreadAttribute (startup.lpAttributeList, 0, PROC_THREAD_ATTRIBUTE_MITIGATION_POLICY, &mitigation,
-				sizeof (mitigation), nullptr, nullptr))
+		if (!UpdateProcThreadAttribute (startup.lpAttributeList, 0, PROC_THREAD_ATTRIBUTE_MITIGATION_POLICY,
+				&mitigation, sizeof (mitigation), nullptr, nullptr))
 			return i2p::unexpected ("UpdateProcThreadAttribute(mitigation): " + Win32ErrorText (GetLastError ()));
 	}
 
@@ -1610,14 +1603,13 @@ i2p::expected<WindowsWorkerProcess, std::string> SpawnWindowsWorker (const std::
 		// The process is created suspended either way, so the fallback
 		// assignment below also happens before the first instruction runs.
 		jobInAttributeList = UpdateProcThreadAttribute (startup.lpAttributeList, 0, PROC_THREAD_ATTRIBUTE_JOB_LIST,
-								&jobHandle, sizeof (jobHandle), nullptr, nullptr)
+								 &jobHandle, sizeof (jobHandle), nullptr, nullptr)
 			!= FALSE;
 	}
 
 	if (useContainer)
 	{
-		if (!container->Sid ())
-			return i2p::unexpected ("worker AppContainer has no SID");
+		if (!container->Sid ()) return i2p::unexpected ("worker AppContainer has no SID");
 		SECURITY_CAPABILITIES capabilities { };
 		capabilities.AppContainerSid = container->Sid ();
 		capabilities.Capabilities = const_cast<SID_AND_ATTRIBUTES *> (container->Capabilities ().data ());
@@ -1636,7 +1628,8 @@ i2p::expected<WindowsWorkerProcess, std::string> SpawnWindowsWorker (const std::
 			if (!UpdateProcThreadAttribute (startup.lpAttributeList, 0,
 					PROC_THREAD_ATTRIBUTE_ALL_APPLICATION_PACKAGES_POLICY, &allPackages, sizeof (allPackages), nullptr,
 					nullptr))
-				return i2p::unexpected ("UpdateProcThreadAttribute(low privilege): " + Win32ErrorText (GetLastError ()));
+				return i2p::unexpected (
+					"UpdateProcThreadAttribute(low privilege): " + Win32ErrorText (GetLastError ()));
 		}
 	}
 
@@ -1862,9 +1855,7 @@ int RunWindowsWorker (std::string_view roleArgument, std::string_view pipeName, 
 			}
 			break;
 		case MessageType::Shutdown: return 0;
-		case MessageType::Error:
-			WorkerFault ("privsep worker: supervisor refused a frame");
-			return 1;
+		case MessageType::Error: WorkerFault ("privsep worker: supervisor refused a frame"); return 1;
 		default:
 			// No Windows data-plane backend is implemented for any role yet. A
 			// data frame is answered with a typed refusal and the worker exits

@@ -138,8 +138,8 @@ void TestPoolRegistration ()
 
 	pool->UnsetCustomPeerSelector ();
 	assert (!pool->HasCustomPeerSelector ());
-	assert (pool->GetCustomPeerSelector ().TrySelectPeers (path, 1, false)
-		== TunnelPeerSelectorHandle::Result::NoSelector);
+	assert (
+		pool->GetCustomPeerSelector ().TrySelectPeers (path, 1, false) == TunnelPeerSelectorHandle::Result::NoSelector);
 
 	tunnels.DeleteTunnelPool (pool);
 }

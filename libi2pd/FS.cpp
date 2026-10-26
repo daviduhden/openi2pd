@@ -350,9 +350,9 @@ namespace fs
 #endif
 			temporary += ".tmp-" + std::to_string (process) + "-" + std::to_string (++sequence);
 #ifdef _WIN32
-			HANDLE file = CreateFileW (
-				temporary.c_str (), GENERIC_WRITE, 0, privateWrite ? &privateAttributes : nullptr, CREATE_NEW,
-				FILE_ATTRIBUTE_TEMPORARY | (privateWrite ? FILE_FLAG_OPEN_REPARSE_POINT : 0), nullptr);
+			HANDLE file
+				= CreateFileW (temporary.c_str (), GENERIC_WRITE, 0, privateWrite ? &privateAttributes : nullptr,
+					CREATE_NEW, FILE_ATTRIBUTE_TEMPORARY | (privateWrite ? FILE_FLAG_OPEN_REPARSE_POINT : 0), nullptr);
 			if (file == INVALID_HANDLE_VALUE)
 			{
 				if (GetLastError () == ERROR_FILE_EXISTS) continue;

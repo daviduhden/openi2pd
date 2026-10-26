@@ -1159,8 +1159,7 @@ namespace torrents
 							// close seed connections, reset stats and tell remaining
 							// peers that we are no longer interested.
 							auto conns = torrent->GetConnections ();
-							for (auto it : conns)
-								it->TorrentComplete ();
+							for (auto it : conns) it->TorrentComplete ();
 						});
 				}
 			});
@@ -2455,8 +2454,7 @@ namespace torrents
 					// Release payload/part/SAF handles before the resume write;
 					// paused torrents must not keep files open until the
 					// inactivity sweep (or forever on Windows).
-					for (const auto & file : torrent->GetFiles ())
-						file->Close ();
+					for (const auto & file : torrent->GetFiles ()) file->Close ();
 					torrent->SaveTorrentResumeFile ();
 				});
 		// inform trackers that we stopped
@@ -2804,8 +2802,7 @@ namespace torrents
 				const bool authorized = stoppedEvent
 					|| (IsTrackerSlotLive (self->m_TrackerSlots, key.trackerID)
 						&& self->IsTorrentTracker (key.trackerID, *torrent));
-				if (!self->m_TrackerRequests.Contains (key) || !authorized
-					|| (!stoppedEvent && torrent->IsStopped ()))
+				if (!self->m_TrackerRequests.Contains (key) || !authorized || (!stoppedEvent && torrent->IsStopped ()))
 				{
 					stream->AsyncClose ();
 					self->ReleaseTrackerRequest (key);
@@ -2814,8 +2811,8 @@ namespace torrents
 				if (auto * state = self->m_TrackerRequests.Find (key)) state->stream = stream;
 				auto httpStream = std::make_shared<i2p::client::BoostAsyncStream> (stream);
 				boost::beast::http::async_write (*httpStream, *req,
-					[weakSelf, httpStream, torrent, req, key] (const boost::beast::error_code & ecode,
-						size_t bytes_transferred)
+					[weakSelf, httpStream, torrent, req, key] (
+						const boost::beast::error_code & ecode, size_t bytes_transferred)
 					{
 						auto self = std::static_pointer_cast<TorrentsTunnel> (weakSelf.lock ());
 						if (!self) return;
@@ -2977,8 +2974,7 @@ namespace torrents
 		}
 	}
 
-	bool TorrentsTunnel::AcquireTrackerRequest (
-		const TrackerRequestKey & key, const std::shared_ptr<Torrent> & torrent)
+	bool TorrentsTunnel::AcquireTrackerRequest (const TrackerRequestKey & key, const std::shared_ptr<Torrent> & torrent)
 	{
 		const auto admission = m_TrackerRequests.TryAcquire (
 			key, TrackerRequestState { nullptr, { }, torrent, i2p::util::GetMonotonicMilliseconds () });
@@ -3384,8 +3380,7 @@ namespace torrents
 			{
 				auto self = std::static_pointer_cast<TorrentsTunnel> (weakSelf.lock ());
 				if (!self || self->m_Stopping.load (std::memory_order_acquire)) return;
-				self->HandleRecvFromI2PRawOnService (
-					protocol, fromPort, toPort, payload.data (), payload.size ());
+				self->HandleRecvFromI2PRawOnService (protocol, fromPort, toPort, payload.data (), payload.size ());
 			});
 	}
 
@@ -3640,8 +3635,7 @@ namespace torrents
 			m_TrackerMemberships.erase (previous);
 		}
 		if (!wanted.empty ())
-			m_TrackerMemberships.emplace (
-				infoHash, std::vector<size_t> (wanted.begin (), wanted.end ()));
+			m_TrackerMemberships.emplace (infoHash, std::vector<size_t> (wanted.begin (), wanted.end ()));
 	}
 
 	void TorrentsTunnel::ReleaseTorrentTrackers (const Torrent::InfoHash & infoHash)

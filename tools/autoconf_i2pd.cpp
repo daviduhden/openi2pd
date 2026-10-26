@@ -93,10 +93,8 @@ bool AskYN (void) noexcept
 		{
 			return false;
 		}
-		if (answ == "y" || answ == "Y" || answ == "s" || answ == "S" || answ == "д" || answ == "Д")
-			return true;
-		if (answ == "n" || answ == "N" || answ == "н" || answ == "Н")
-			return false;
+		if (answ == "y" || answ == "Y" || answ == "s" || answ == "S" || answ == "д" || answ == "Д") return true;
+		if (answ == "n" || answ == "N" || answ == "н" || answ == "Н") return false;
 		// keep asking instead of consuming the stack with recursion
 	}
 }
@@ -129,8 +127,7 @@ bool IsOnlyYggdrasil () noexcept
 	for (;;)
 	{
 		std::string answ;
-		std::cout << i2p::i18n::tr ("Hello. Select type of config\r\n1 - clearnet\r\n2 - only yggdrasil")
-				  << std::endl;
+		std::cout << i2p::i18n::tr ("Hello. Select type of config\r\n1 - clearnet\r\n2 - only yggdrasil") << std::endl;
 		if (!ReadToken (answ))
 		{
 			// keep the default clearnet configuration on input failure
@@ -165,16 +162,16 @@ int main (void)
 		{
 #define ASKYN_MACRO(A, B, C, REGEX)                                                                                    \
 	{                                                                                                                  \
-		std::cout << i2p::i18n::tr (A);                                                                 \
+		std::cout << i2p::i18n::tr (A);                                                                                \
 		if (AskYN ())                                                                                                  \
 		{                                                                                                              \
 			for (;;)                                                                                                   \
 			{                                                                                                          \
-				std::cout << i2p::i18n::tr (B) << "\r\n";                                               \
+				std::cout << i2p::i18n::tr (B) << "\r\n";                                                              \
 				std::string inp;                                                                                       \
 				if (!AutoConf::ReadToken (inp))                                                                        \
 				{                                                                                                      \
-					std::cerr << i2p::i18n::tr ("No correct input") << std::endl;                                                      \
+					std::cerr << i2p::i18n::tr ("No correct input") << std::endl;                                      \
 					break;                                                                                             \
 				}                                                                                                      \
 				std::smatch bmatch;                                                                                    \
@@ -185,20 +182,26 @@ int main (void)
 				}                                                                                                      \
 				else                                                                                                   \
 				{                                                                                                      \
-					std::cerr << i2p::i18n::tr ("No correct input") << std::endl;                                                      \
+					std::cerr << i2p::i18n::tr ("No correct input") << std::endl;                                      \
 				}                                                                                                      \
 			}                                                                                                          \
 		}                                                                                                              \
 	};
-			ASKYN_MACRO ("Use a different path for tunnels?", "Enter path for tunnels", "tunconf", AutoConf::Regexps::path);
-			ASKYN_MACRO ("Use a different path for the tunnels folder?", "Enter path for the tunnels folder", "tunnelsdir", AutoConf::Regexps::path);
-			ASKYN_MACRO ("Use a different path for the certificates folder?", "Enter path for the certificates folder", "certsdir", AutoConf::Regexps::path);
-			ASKYN_MACRO ("Use a different path for the PID file?", "Enter path for pidfile", "pidfile", AutoConf::Regexps::path);
+			ASKYN_MACRO (
+				"Use a different path for tunnels?", "Enter path for tunnels", "tunconf", AutoConf::Regexps::path);
+			ASKYN_MACRO ("Use a different path for the tunnels folder?", "Enter path for the tunnels folder",
+				"tunnelsdir", AutoConf::Regexps::path);
+			ASKYN_MACRO ("Use a different path for the certificates folder?", "Enter path for the certificates folder",
+				"certsdir", AutoConf::Regexps::path);
+			ASKYN_MACRO (
+				"Use a different path for the PID file?", "Enter path for pidfile", "pidfile", AutoConf::Regexps::path);
 			//ASKYN_MACRO("logYN","log","log",AutoConf::Regexps::any);
-			ASKYN_MACRO ("Do you need to change the default log level?", "Enter log level (warn, info, none, critical, error, debug)", "loglevel", AutoConf::Regexps::any); // TODO: word type
+			ASKYN_MACRO ("Do you need to change the default log level?",
+				"Enter log level (warn, info, none, critical, error, debug)", "loglevel",
+				AutoConf::Regexps::any); // TODO: word type
 #define ASK_BOOL(A, B)                                                                                                 \
 	{                                                                                                                  \
-		std::cout << i2p::i18n::tr (A) << std::endl;                                                    \
+		std::cout << i2p::i18n::tr (A) << std::endl;                                                                   \
 		bool v = AskYN ();                                                                                             \
 		conf << B "=" << (v ? "true" : "false") << "\r\n";                                                             \
 	}
@@ -209,7 +212,7 @@ int main (void)
 // TODO: - to constexpr or just const and use this const in text formating
 #define ASK_TEXT(A, B)                                                                                                 \
 	{                                                                                                                  \
-		std::cout << i2p::i18n::tr (A) << std::endl;                                                    \
+		std::cout << i2p::i18n::tr (A) << std::endl;                                                                   \
 		std::string inp;                                                                                               \
 		if (AutoConf::ReadToken (inp))                                                                                 \
 		{                                                                                                              \
@@ -220,7 +223,7 @@ int main (void)
 		}                                                                                                              \
 		else                                                                                                           \
 		{                                                                                                              \
-			std::cerr << i2p::i18n::tr ("No correct input") << std::endl;                                                              \
+			std::cerr << i2p::i18n::tr ("No correct input") << std::endl;                                              \
 		}                                                                                                              \
 	}
 			ASK_TEXT ("Enter your netfamily or just hit -.", "family");

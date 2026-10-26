@@ -72,10 +72,10 @@ namespace
 	}
 
 	/** Promise names accepted by the supported OpenBSD release (pledge(2)). */
-	constexpr std::string_view KNOWN_PLEDGE_PROMISES[] = { "audio", "bpf", "chown", "cpath", "disklabel", "dns",
-		"dpath", "drm", "error", "exec", "fattr", "flock", "getpw", "id", "inet", "mcast", "pf", "proc",
-		"prot_exec", "ps", "recvfd", "route", "rpath", "sendfd", "settime", "stdio", "tape", "tty", "unix",
-		"unveil", "video", "vminfo", "vmm", "wpath", "wroute" };
+	constexpr std::string_view KNOWN_PLEDGE_PROMISES[]
+		= { "audio", "bpf", "chown", "cpath", "disklabel", "dns", "dpath", "drm", "error", "exec", "fattr", "flock",
+			  "getpw", "id", "inet", "mcast", "pf", "proc", "prot_exec", "ps", "recvfd", "route", "rpath", "sendfd",
+			  "settime", "stdio", "tape", "tty", "unix", "unveil", "video", "vminfo", "vmm", "wpath", "wroute" };
 
 	/**
 	 * Promises a runtime policy file may never add, even when the runtime base
@@ -84,8 +84,7 @@ namespace
 	 * kernel interfaces the router never needs.
 	 */
 	constexpr std::string_view RUNTIME_FORBIDDEN_PLEDGE_PROMISES[] = { "proc", "exec", "id", "chown", "dpath",
-		"prot_exec", "pf", "bpf", "vmm", "tty", "audio", "video", "tape", "disklabel", "drm", "wroute",
-		"settime" };
+		"prot_exec", "pf", "bpf", "vmm", "tty", "audio", "video", "tape", "disklabel", "drm", "wroute", "settime" };
 
 	constexpr size_t MAX_PLEDGE_FILE_BYTES = 64 * 1024;
 	constexpr size_t MAX_PLEDGE_TOKEN_LENGTH = 32;
@@ -498,15 +497,14 @@ bool IsPledgePromiseSubset (std::string_view subset, std::string_view superset)
 	return true;
 }
 
-i2p::expected<std::vector<std::string>, std::string> ParseOpenBSDPledgeFile (const std::string & path,
-	std::span<const std::string_view> allowedPromises, OpenBSDPledgePhase phase)
+i2p::expected<std::vector<std::string>, std::string> ParseOpenBSDPledgeFile (
+	const std::string & path, std::span<const std::string_view> allowedPromises, OpenBSDPledgePhase phase)
 {
 	if (path.empty () || path.find ('\0') != std::string::npos)
 		return i2p::unexpected ("empty or invalid pledge policy path");
 	std::ifstream file (path);
 	if (!file) return i2p::unexpected ("cannot open pledge policy file");
-	const std::string_view phaseName
-		= phase == OpenBSDPledgePhase::Startup ? "startup" : "runtime";
+	const std::string_view phaseName = phase == OpenBSDPledgePhase::Startup ? "startup" : "runtime";
 	std::vector<std::string> accepted;
 	std::string line;
 	size_t consumed = 0;
@@ -518,8 +516,7 @@ i2p::expected<std::vector<std::string>, std::string> ParseOpenBSDPledgeFile (con
 			return i2p::unexpected ("pledge policy file exceeds the size bound");
 		consumed += line.size ();
 		if (line.find ('#') != std::string::npos)
-			return i2p::unexpected (
-				"comment on line " + std::to_string (lineNumber) + " of the pledge policy file");
+			return i2p::unexpected ("comment on line " + std::to_string (lineNumber) + " of the pledge policy file");
 		const auto trimmed = TrimPledgeText (line);
 		if (trimmed.empty ())
 			return i2p::unexpected ("blank line " + std::to_string (lineNumber) + " in the pledge policy file");

@@ -108,8 +108,8 @@ namespace tunnel
 	 * rule: a client tunnel may not use a peer that is congested for client
 	 * traffic, an exploratory tunnel is more tolerant.
 	 */
-	bool IsRouterUsableForTunnel (const i2p::data::RouterInfo & router,
-		const i2p::data::RouterInfo * compatibleWith, TunnelPeerRole role, bool inbound, bool clientTunnel);
+	bool IsRouterUsableForTunnel (const i2p::data::RouterInfo & router, const i2p::data::RouterInfo * compatibleWith,
+		TunnelPeerRole role, bool inbound, bool clientTunnel);
 
 	/**
 	 * Role of peer @a index in a path of @a numPeers.
@@ -245,10 +245,7 @@ namespace tunnel
 		/** record the outcome of a tunnel build owned by this pool */
 		void TunnelBuildFailed () { m_ConsecutiveBuildFailures.fetch_add (1, std::memory_order_relaxed); };
 		void TunnelBuildSucceeded () { m_ConsecutiveBuildFailures.store (0, std::memory_order_relaxed); };
-		int GetConsecutiveBuildFailures () const
-		{
-			return m_ConsecutiveBuildFailures.load (std::memory_order_relaxed);
-		}
+		int GetConsecutiveBuildFailures () const { return m_ConsecutiveBuildFailures.load (std::memory_order_relaxed); }
 		uint64_t GetNextBuildTime () const { return m_NextBuildTime.load (std::memory_order_relaxed); }
 		/** outstanding tunnel tests, for diagnostics and regression tests */
 		size_t GetNumTests () const

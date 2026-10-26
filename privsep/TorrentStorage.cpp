@@ -309,8 +309,7 @@ int RunTorrentStorageWorker (int fd, int inheritedRoot)
 #if defined(__linux__)
 	// The socket/capability boundary does not need the delegated root and is
 	// installed before the first Configure frame is parsed.
-	if (auto lockdown = ApplyLinuxIpcLockdown (GetLinuxSandboxProfile (WorkerClass::Storage)); !lockdown)
-		return 1;
+	if (auto lockdown = ApplyLinuxIpcLockdown (GetLinuxSandboxProfile (WorkerClass::Storage)); !lockdown) return 1;
 #endif
 	auto first = channel.ReceiveWithFd (5000);
 	if (!first || !*first) return 1;
@@ -467,8 +466,8 @@ int RunTorrentStorageWorker (int fd, int inheritedRoot)
 		auto reject = [&] (ErrorCode code, std::string_view detail)
 		{
 			if (++violations > Channel::MAX_PROTOCOL_VIOLATIONS) return false;
-			return channel.Send ({ MessageType::Error, request.requestId, EncodeError (request.type, code, detail) },
-				5000)
+			return channel
+				.Send ({ MessageType::Error, request.requestId, EncodeError (request.type, code, detail) }, 5000)
 				.has_value ();
 		};
 		if (!AllowsOperation (EndpointRole::TorrentStorage, request.type))
@@ -507,8 +506,9 @@ int RunTorrentStorageWorker (int fd, int inheritedRoot)
 		if (cancelledRequest && request.requestId == *cancelledRequest)
 		{
 			cancelledRequest.reset ();
-			if (!channel.Send ({ MessageType::Error, request.requestId,
-					   EncodeError (MessageType::TorrentStorageRequest, ErrorCode::Busy, "request cancelled") },
+			if (!channel.Send (
+					{ MessageType::Error, request.requestId,
+						EncodeError (MessageType::TorrentStorageRequest, ErrorCode::Busy, "request cancelled") },
 					5000))
 				return 1;
 			continue;

@@ -287,8 +287,8 @@ public final class TorrentsFragment extends Fragment {
             return;
         String session =
                 currentTunnelName.isEmpty() ? getString(R.string.torrent_title) : currentTunnelName;
-        String[] options = {getString(R.string.torrent_remove),
-                getString(R.string.torrent_remove_files)};
+        String[] options = {
+                getString(R.string.torrent_remove), getString(R.string.torrent_remove_files)};
         new MaterialAlertDialogBuilder(requireContext())
                 .setTitle(R.string.torrent_remove)
                 .setItems(options, (dialog, choice) -> confirmRemoveAll(choice == 0, session))
@@ -298,14 +298,14 @@ public final class TorrentsFragment extends Fragment {
     private void confirmRemoveAll(boolean keepData, String session) {
         int message =
                 keepData ? R.string.torrent_remove_confirm : R.string.torrent_remove_files_confirm;
-        TorrentControl.Bulk bulk = keepData ? TorrentControl.Bulk.REMOVE_ALL
-                                            : TorrentControl.Bulk.REMOVE_ALL_FILES;
+        TorrentControl.Bulk bulk =
+                keepData ? TorrentControl.Bulk.REMOVE_ALL : TorrentControl.Bulk.REMOVE_ALL_FILES;
         new MaterialAlertDialogBuilder(requireContext())
                 .setTitle(R.string.torrent_remove)
                 .setMessage(keepData ? getString(message) : getString(message, session))
                 .setNegativeButton(R.string.action_cancel, null)
-                .setPositiveButton(keepData ? R.string.torrent_remove
-                                            : R.string.torrent_remove_files,
+                .setPositiveButton(
+                        keepData ? R.string.torrent_remove : R.string.torrent_remove_files,
                         (confirmation, which) -> sendBulk(bulk))
                 .show();
     }
@@ -389,7 +389,8 @@ public final class TorrentsFragment extends Fragment {
             currentTunnelName = safeTunnelName(fields.getOrDefault("torrent.tunnel.name", ""));
             setBulkEnabled(count > 0 && !busy);
             status.setText(currentTunnelName.isEmpty()
-                            ? getResources().getQuantityString(R.plurals.torrent_count, count, count)
+                            ? getResources().getQuantityString(
+                                      R.plurals.torrent_count, count, count)
                             : getString(R.string.torrent_session_count, currentTunnelName, count));
             for (int i = 0; i < count; ++i) {
                 TorrentRow row = TorrentRow.from(fields, "torrent." + i + ".");
@@ -454,8 +455,8 @@ public final class TorrentsFragment extends Fragment {
                                         fields -> trackers(id, fields));
                             case 6 -> {
                                 try {
-                                    request(TorrentControl.commentPage(tunnel, id, 0,
-                                                    TorrentControl.COMMENT_PAGE),
+                                    request(TorrentControl.commentPage(
+                                                    tunnel, id, 0, TorrentControl.COMMENT_PAGE),
                                             fields -> comments(id, fields));
                                 } catch (IllegalArgumentException error) {
                                     if (status != null)
@@ -974,9 +975,9 @@ public final class TorrentsFragment extends Fragment {
         content.addView(summary);
         TextView paging = new TextView(requireContext());
         paging.setText(getString(R.string.torrent_comments_page,
-                Integer.toString(count == 0 ? 0 : offset + 1),
-                Integer.toString(offset + count), Integer.toString(total),
-                Integer.toString(hiddenCount), Integer.toString(localCount)));
+                Integer.toString(count == 0 ? 0 : offset + 1), Integer.toString(offset + count),
+                Integer.toString(total), Integer.toString(hiddenCount),
+                Integer.toString(localCount)));
         content.addView(paging);
         if (privateTorrent) {
             TextView privateNotice = new TextView(requireContext());
@@ -1055,7 +1056,7 @@ public final class TorrentsFragment extends Fragment {
             label.append(owner.isEmpty() ? getString(R.string.torrent_comment_anonymous) : owner)
                     .append(" \u00b7 ")
                     .append("0".equals(rating) ? getString(R.string.torrent_comment_no_rating)
-                                               : rating + "/5");
+                                                 : rating + "/5");
             String when = commentAge(fields.getOrDefault(prefix + "time", "0"));
             if (!when.isEmpty())
                 label.append(" \u00b7 ").append(when);
@@ -1070,9 +1071,8 @@ public final class TorrentsFragment extends Fragment {
                             .setMessage(unhide ? R.string.torrent_comment_unhide_confirm
                                                : R.string.torrent_comment_hide_confirm)
                             .setNegativeButton(R.string.action_cancel, null)
-                            .setPositiveButton(
-                                    unhide ? R.string.torrent_comment_unhide
-                                           : R.string.torrent_comment_hide,
+                            .setPositiveButton(unhide ? R.string.torrent_comment_unhide
+                                                      : R.string.torrent_comment_hide,
                                     (confirmation, button) -> {
                                         if (!ready())
                                             return;
@@ -1084,8 +1084,8 @@ public final class TorrentsFragment extends Fragment {
                                             // after a moderation decision.
                                             request(command,
                                                     result
-                                                    -> request(TorrentControl.commentPage(
-                                                                       tunnel, id, offset,
+                                                    -> request(TorrentControl.commentPage(tunnel,
+                                                                       id, offset,
                                                                        TorrentControl.COMMENT_PAGE),
                                                             refreshed -> comments(id, refreshed)));
                                         } catch (IllegalArgumentException error) {

@@ -59,8 +59,8 @@ std::shared_ptr<i2p::datagram::DatagramDestination> MakeDatagramDestination ()
 // Delivers a raw payload with the given I2CP protocol number through the
 // production dispatch path, so the protocol-6 guard and receiver selection are
 // both exercised.
-void DispatchRaw (const std::shared_ptr<i2p::datagram::DatagramDestination> & destination, uint16_t port,
-	uint8_t protocol)
+void DispatchRaw (
+	const std::shared_ptr<i2p::datagram::DatagramDestination> & destination, uint16_t port, uint8_t protocol)
 {
 	auto payload = MakeEmptyStoredGzipMember ();
 	destination->HandleDataMessagePayload (0, port, payload.data (), payload.size (), protocol, nullptr);

@@ -111,8 +111,7 @@ std::vector<uint8_t> BuildRouterInfo (const PrivateKeys & keys, uint64_t publish
 	assert (identity);
 	const auto identityOffset = buffer.size ();
 	buffer.resize (identityOffset + identity->GetFullLen ());
-	assert (
-		identity->ToBuffer (buffer.data () + identityOffset, identity->GetFullLen ()) == identity->GetFullLen ());
+	assert (identity->ToBuffer (buffer.data () + identityOffset, identity->GetFullLen ()) == identity->GetFullLen ());
 	buffer.insert (buffer.end (), body.begin (), body.end ());
 
 	std::vector<uint8_t> signature (identity->GetSignatureLen ());

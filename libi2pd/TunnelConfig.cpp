@@ -197,7 +197,8 @@ namespace tunnel
 		return { m_CK + 32, buf64toh (m_CK) };
 	}
 
-	bool ShortPhonyTunnelHopConfig::CreateBuildRequestRecord (uint8_t * records, size_t numRecords, uint32_t /* replyMsgID */)
+	bool ShortPhonyTunnelHopConfig::CreateBuildRequestRecord (
+		uint8_t * records, size_t numRecords, uint32_t /* replyMsgID */)
 	{
 		if (!records || !IsRecordIndexValid (numRecords)) return false;
 		uint8_t * record = records + static_cast<size_t> (recordIndex) * SHORT_TUNNEL_BUILD_RECORD_SIZE;

@@ -96,8 +96,7 @@ public final class RouterRunStateTest {
 
     @Test
     public void savedStateRoundTripsAndMirrorsTheLegacyFlag() {
-        RouterRunState draining =
-                RouterRunState.stopped().running(NOW).draining(NOW + 600_000L);
+        RouterRunState draining = RouterRunState.stopped().running(NOW).draining(NOW + 600_000L);
         assertTrue(draining.isDraining());
 
         MemoryPreferences preferences = new MemoryPreferences();
@@ -108,8 +107,8 @@ public final class RouterRunStateTest {
         assertEquals("draining", preferences.getString("run_phase", null));
         assertEquals(NOW + 600_000L, preferences.getLong("graceful_deadline_epoch_ms", 0L));
         assertEquals(draining.generation(), preferences.getLong("run_generation", -1L));
-        assertTrue("the legacy mirror must stay usable",
-                preferences.getBoolean("should_run", false));
+        assertTrue(
+                "the legacy mirror must stay usable", preferences.getBoolean("should_run", false));
         assertEquals(draining, RouterRunState.load(preferences, NOW));
 
         MemoryPreferences stoppedPreferences = new MemoryPreferences();
@@ -117,14 +116,13 @@ public final class RouterRunStateTest {
         RouterRunState.stopped().save(stoppedEditor);
         stoppedEditor.apply();
         assertFalse(stoppedPreferences.getBoolean("should_run", true));
-        assertEquals(RouterRunState.Phase.Stopped,
-                RouterRunState.load(stoppedPreferences, NOW).phase());
+        assertEquals(
+                RouterRunState.Phase.Stopped, RouterRunState.load(stoppedPreferences, NOW).phase());
     }
 
     @Test
     public void drainExpiryFollowsTheWallClock() {
-        RouterRunState draining =
-                RouterRunState.stopped().running(NOW).draining(NOW + 90_000L);
+        RouterRunState draining = RouterRunState.stopped().running(NOW).draining(NOW + 90_000L);
 
         assertFalse(draining.isDrainExpired(NOW));
         assertFalse(draining.isDrainExpired(NOW + 89_999L));
@@ -148,8 +146,7 @@ public final class RouterRunStateTest {
 
     @Test
     public void cancelGracefulReturnsToRunningAndClearsTheDeadline() {
-        RouterRunState draining =
-                RouterRunState.stopped().running(NOW).draining(NOW + 60_000L);
+        RouterRunState draining = RouterRunState.stopped().running(NOW).draining(NOW + 60_000L);
         RouterRunState cancelled = draining.cancelGraceful();
 
         assertEquals(RouterRunState.Phase.Running, cancelled.phase());
@@ -160,14 +157,13 @@ public final class RouterRunStateTest {
 
         // A repeated cancel is a no-op and can never resurrect a stopped router.
         assertEquals(cancelled, cancelled.cancelGraceful());
-        assertEquals(RouterRunState.Phase.Stopped,
-                RouterRunState.stopped().cancelGraceful().phase());
+        assertEquals(
+                RouterRunState.Phase.Stopped, RouterRunState.stopped().cancelGraceful().phase());
     }
 
     @Test
     public void stopClearsTheDeadlineAndAdvancesTheGeneration() {
-        RouterRunState draining =
-                RouterRunState.stopped().running(NOW).draining(NOW + 60_000L);
+        RouterRunState draining = RouterRunState.stopped().running(NOW).draining(NOW + 60_000L);
         RouterRunState stopped = draining.stop();
 
         assertEquals(RouterRunState.Phase.Stopped, stopped.phase());
@@ -186,22 +182,16 @@ public final class RouterRunStateTest {
     public void corruptDeadlinesAreDroppedOrClamped() {
         // Negative deadline.
         MemoryPreferences negative = drainingPreferences(-5L);
-        assertEquals(RouterRunState.Phase.Stopped,
-                RouterRunState.load(negative, NOW).phase());
+        assertEquals(RouterRunState.Phase.Stopped, RouterRunState.load(negative, NOW).phase());
 
         // Missing deadline.
         MemoryPreferences missing = new MemoryPreferences();
-        missing.edit()
-                .putBoolean("should_run", true)
-                .putString("run_phase", "draining")
-                .apply();
-        assertEquals(RouterRunState.Phase.Stopped,
-                RouterRunState.load(missing, NOW).phase());
+        missing.edit().putBoolean("should_run", true).putString("run_phase", "draining").apply();
+        assertEquals(RouterRunState.Phase.Stopped, RouterRunState.load(missing, NOW).phase());
 
         // Buried more than one window in the past.
         MemoryPreferences deepPast = drainingPreferences(NOW - 2L * MAX);
-        assertEquals(RouterRunState.Phase.Stopped,
-                RouterRunState.load(deepPast, NOW).phase());
+        assertEquals(RouterRunState.Phase.Stopped, RouterRunState.load(deepPast, NOW).phase());
 
         // Absurdly far in the future: clamped to the configured maximum.
         long absurdDeadline = NOW + 365L * MAX;
@@ -298,8 +288,8 @@ public final class RouterRunStateTest {
     public void hasPersistedRecognizesBothSchemaVersions() {
         MemoryPreferences legacy = new MemoryPreferences();
         legacy.edit().putBoolean("should_run", false).apply();
-        assertTrue("a legacy stop is still a persisted record",
-                RouterRunState.hasPersisted(legacy));
+        assertTrue(
+                "a legacy stop is still a persisted record", RouterRunState.hasPersisted(legacy));
 
         MemoryPreferences current = new MemoryPreferences();
         SharedPreferences.Editor editor = current.edit();
@@ -346,8 +336,7 @@ public final class RouterRunStateTest {
         public Set<String> getStringSet(String key, Set<String> defValues) {
             Object value = values.get(key);
             if (value instanceof Set<?> stored) {
-                @SuppressWarnings("unchecked")
-                Set<String> typed = (Set<String>) stored;
+                @SuppressWarnings("unchecked") Set<String> typed = (Set<String>) stored;
                 return typed;
             }
             return defValues;

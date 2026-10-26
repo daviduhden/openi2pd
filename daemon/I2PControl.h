@@ -69,7 +69,11 @@ namespace client
 	class I2PControlError : public std::runtime_error
 	{
 	public:
-		I2PControlError (int code, const std::string & message) : std::runtime_error (message), m_Code (code) { }
+		I2PControlError (int code, const std::string & message)
+			: std::runtime_error (message)
+			, m_Code (code)
+		{
+		}
 		int GetCode () const { return m_Code; }
 
 	private:
@@ -145,8 +149,7 @@ namespace client
 			if (!identity.valid) return false;
 			struct stat status { };
 			if (lstat (path.c_str (), &status) != 0) return false;
-			if (!S_ISSOCK (status.st_mode) || status.st_dev != identity.device
-				|| status.st_ino != identity.inode)
+			if (!S_ISSOCK (status.st_mode) || status.st_dev != identity.device || status.st_ino != identity.inode)
 				return false;
 			return unlink (path.c_str ()) == 0;
 		}
@@ -210,20 +213,22 @@ namespace client
 		void Accept ();
 		template <typename ssl_socket>
 		void HandleAccepted (const boost::system::error_code & ecode, std::shared_ptr<ssl_socket> newSocket);
-		template <typename ssl_socket> void Handshake (std::shared_ptr<ssl_socket> socket,
-			std::shared_ptr<boost::asio::steady_timer> deadline, std::shared_ptr<void> connection);
-		template <typename ssl_socket> void ReadRequest (std::shared_ptr<ssl_socket> socket,
-			std::shared_ptr<boost::asio::steady_timer> deadline, std::shared_ptr<void> connection);
+		template <typename ssl_socket>
+		void Handshake (std::shared_ptr<ssl_socket> socket, std::shared_ptr<boost::asio::steady_timer> deadline,
+			std::shared_ptr<void> connection);
+		template <typename ssl_socket>
+		void ReadRequest (std::shared_ptr<ssl_socket> socket, std::shared_ptr<boost::asio::steady_timer> deadline,
+			std::shared_ptr<void> connection);
 		template <typename ssl_socket>
 		void HandleRequestReceived (const boost::system::error_code & ecode, size_t bytes_transferred,
 			std::shared_ptr<ssl_socket> socket, std::shared_ptr<I2PControlBuffer> buf,
 			std::shared_ptr<boost::asio::steady_timer> deadline, std::shared_ptr<void> connection);
-		template <typename ssl_socket> void ProcessRequest (std::shared_ptr<ssl_socket> socket,
-			std::shared_ptr<std::string> request, bool isHtml, std::shared_ptr<boost::asio::steady_timer> deadline,
-			std::shared_ptr<void> connection);
-		template <typename ssl_socket> void HandleHttpRequest (std::shared_ptr<ssl_socket> socket,
-			std::shared_ptr<std::string> request, std::shared_ptr<boost::asio::steady_timer> deadline,
-			std::shared_ptr<void> connection);
+		template <typename ssl_socket>
+		void ProcessRequest (std::shared_ptr<ssl_socket> socket, std::shared_ptr<std::string> request, bool isHtml,
+			std::shared_ptr<boost::asio::steady_timer> deadline, std::shared_ptr<void> connection);
+		template <typename ssl_socket>
+		void HandleHttpRequest (std::shared_ptr<ssl_socket> socket, std::shared_ptr<std::string> request,
+			std::shared_ptr<boost::asio::steady_timer> deadline, std::shared_ptr<void> connection);
 		template <typename ssl_socket>
 		void SendResponse (std::shared_ptr<ssl_socket> socket, std::ostringstream & response, bool isHtml,
 			std::shared_ptr<boost::asio::steady_timer> deadline, std::shared_ptr<void> connection);

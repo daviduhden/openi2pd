@@ -138,9 +138,7 @@ void TestOffCurveAndIdentityKeys ()
 	// a valid group element, so blinding must not treat it as "invalid".
 	uint8_t allZero[32] { };
 	assert (i2p::crypto::GetEd25519 ()->IsValidPublicKey (allZero));
-	const std::string identity = Reencode (b33, [] (uint8_t * raw, size_t) {
-		memset (raw + 3, 0, 32);
-	});
+	const std::string identity = Reencode (b33, [] (uint8_t * raw, size_t) { memset (raw + 3, 0, 32); });
 	BlindedPublicKey identityKey (identity);
 	assert (identityKey.IsValid ());
 	assert (identityKey.GetPublicKeyLen () == 32);
@@ -155,8 +153,8 @@ void TestOffCurveAndIdentityKeys ()
 		if (!i2p::crypto::GetEd25519 ()->IsValidPublicKey (offCurve)) break;
 	}
 	assert (!i2p::crypto::GetEd25519 ()->IsValidPublicKey (offCurve));
-	const std::string offCurveAddress = Reencode (
-		b33, [&offCurve] (uint8_t * raw, size_t) { memcpy (raw + 3, offCurve, sizeof (offCurve)); });
+	const std::string offCurveAddress
+		= Reencode (b33, [&offCurve] (uint8_t * raw, size_t) { memcpy (raw + 3, offCurve, sizeof (offCurve)); });
 	BlindedPublicKey offCurveKey (offCurveAddress);
 	assert (!offCurveKey.IsValid ());
 	assert (offCurveKey.ToB33 ().empty ());

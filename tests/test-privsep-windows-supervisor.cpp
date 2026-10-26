@@ -101,8 +101,8 @@ void TestRestartLadder ()
 
 	// Documented ladder: 250 ms doubling to the 30 s cap, one generation per
 	// authenticated exit.
-	const milliseconds expected[] = { milliseconds (250), milliseconds (500), milliseconds (1000),
-		milliseconds (2000), milliseconds (4000), milliseconds (8000), milliseconds (16000), milliseconds (30000) };
+	const milliseconds expected[] = { milliseconds (250), milliseconds (500), milliseconds (1000), milliseconds (2000),
+		milliseconds (4000), milliseconds (8000), milliseconds (16000), milliseconds (30000) };
 	uint32_t generation = first;
 	int64_t elapsed = 0;
 	for (uint32_t index = 0; index < LogWorkerRestartBudget::MAX_RESTARTS; ++index)
@@ -126,8 +126,7 @@ void TestRestartLadder ()
 
 		elapsed += outcome.delay.count ();
 		policy.NoteReady (At (elapsed));
-		PublishWindowsWorkerTransition (
-			status, worker, SupervisorWorkerState::Ready, generation, outcome.restarts);
+		PublishWindowsWorkerTransition (status, worker, SupervisorWorkerState::Ready, generation, outcome.restarts);
 		snapshot = status.Get (worker);
 		assert (snapshot->state == SupervisorWorkerState::Ready);
 	}
@@ -217,8 +216,8 @@ void TestFailureClassification ()
 	// A terminal setup failure never consumes the restart budget.
 	assert (policy.Restarts () == 0);
 	assert (!policy.Exhausted ());
-	PublishWindowsWorkerTransition (
-		status, worker, SupervisorWorkerState::Failed, generation, 0, WindowsWorkerFailureReason (WindowsWorkerFailureKind::Accept));
+	PublishWindowsWorkerTransition (status, worker, SupervisorWorkerState::Failed, generation, 0,
+		WindowsWorkerFailureReason (WindowsWorkerFailureKind::Accept));
 	assert (status.Get (worker)->state == SupervisorWorkerState::Failed);
 }
 
@@ -611,7 +610,8 @@ int main (int argc, char ** argv)
 				const std::string token = argv[rest];
 				if (token.rfind ("\\\\.\\pipe\\", 0) != 0) continue;
 				pipeName.clear ();
-				for (char character : token) pipeName.push_back (static_cast<wchar_t> (static_cast<unsigned char> (character)));
+				for (char character : token)
+					pipeName.push_back (static_cast<wchar_t> (static_cast<unsigned char> (character)));
 				break;
 			}
 			if (pipeName.empty ()) return 2;

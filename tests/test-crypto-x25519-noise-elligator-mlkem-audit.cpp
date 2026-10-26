@@ -469,9 +469,9 @@ void TestCryptoKeyLengthsAndECIES ()
 	// supported type and fail closed for an unsupported one.
 	{
 		uint8_t priv[256] = { }, pub[256] = { };
-		for (auto type : { CRYPTO_KEY_TYPE_ELGAMAL, CRYPTO_KEY_TYPE_ECIES_X25519_AEAD,
-				 CRYPTO_KEY_TYPE_ECIES_MLKEM512_X25519_AEAD, CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD,
-				 CRYPTO_KEY_TYPE_ECIES_MLKEM1024_X25519_AEAD })
+		for (auto type :
+			{ CRYPTO_KEY_TYPE_ELGAMAL, CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, CRYPTO_KEY_TYPE_ECIES_MLKEM512_X25519_AEAD,
+				CRYPTO_KEY_TYPE_ECIES_MLKEM768_X25519_AEAD, CRYPTO_KEY_TYPE_ECIES_MLKEM1024_X25519_AEAD })
 		{
 			memset (priv, 0xA5, sizeof (priv));
 			memset (pub, 0xA5, sizeof (pub));

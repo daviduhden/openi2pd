@@ -823,8 +823,8 @@ namespace garlic
 		if (length > payloadLength - 4)
 		{
 			if (g_GarlicParseDrops.Record ())
-				LogPrint (eLogWarning, "Garlic: Message length ", length, " exceeds payload length ",
-					payloadLength - 4);
+				LogPrint (
+					eLogWarning, "Garlic: Message length ", length, " exceeds payload length ", payloadLength - 4);
 			return;
 		}
 		if (length < 8)
@@ -929,8 +929,7 @@ namespace garlic
 	{
 		if (len < 2)
 		{
-			if (g_GarlicParseDrops.Record ())
-				LogPrint (eLogError, "Garlic: AES block length ", len, " is too short");
+			if (g_GarlicParseDrops.Record ()) LogPrint (eLogError, "Garlic: AES block length ", len, " is too short");
 			return;
 		}
 		uint16_t tagCount = bufbe16toh (buf);
@@ -939,8 +938,8 @@ namespace garlic
 		if (tagCount > MAX_ELGAMAL_AES_TAGS)
 		{
 			if (g_GarlicParseDrops.Record ())
-				LogPrint (eLogError, "Garlic: Tag count ", tagCount, " exceeds the maximum ",
-					(int)MAX_ELGAMAL_AES_TAGS);
+				LogPrint (
+					eLogError, "Garlic: Tag count ", tagCount, " exceeds the maximum ", (int)MAX_ELGAMAL_AES_TAGS);
 			return;
 		}
 		const uint8_t * tagsStart = buf;
@@ -987,8 +986,7 @@ namespace garlic
 		len--; // flag
 		if (payloadSize > len)
 		{
-			if (g_GarlicParseDrops.Record ())
-				LogPrint (eLogError, "Garlic: Unexpected payload size ", payloadSize);
+			if (g_GarlicParseDrops.Record ()) LogPrint (eLogError, "Garlic: Unexpected payload size ", payloadSize);
 			return;
 		}
 
@@ -1062,8 +1060,7 @@ namespace garlic
 		{
 			if (len < 1) // no flag byte left for the announced clove
 			{
-				if (g_GarlicParseDrops.Record ())
-					LogPrint (eLogError, "Garlic: Payload ended before clove ", i);
+				if (g_GarlicParseDrops.Record ()) LogPrint (eLogError, "Garlic: Payload ended before clove ", i);
 				break;
 			}
 			uint8_t * const buf1 = buf;
@@ -1076,8 +1073,7 @@ namespace garlic
 				if (g_GarlicParseDrops.Record ()) LogPrint (eLogWarning, "Garlic: Clove encrypted");
 				if (static_cast<size_t> (buf - buf1) + 32 > len)
 				{
-					if (g_GarlicParseDrops.Record ())
-						LogPrint (eLogError, "Garlic: Encrypted clove is too short");
+					if (g_GarlicParseDrops.Record ()) LogPrint (eLogError, "Garlic: Encrypted clove is too short");
 					break;
 				}
 				buf += 32;
@@ -1109,8 +1105,7 @@ namespace garlic
 			const GarlicCloveDisposition disposition = ClassifyGarlicClove (wellFramed, fresh, destinationMatches);
 			if (disposition == GarlicCloveDisposition::RejectMessage)
 			{
-				if (g_GarlicParseDrops.Record ())
-					LogPrint (eLogError, "Garlic: Invalid clove framing, walk stopped");
+				if (g_GarlicParseDrops.Record ()) LogPrint (eLogError, "Garlic: Invalid clove framing, walk stopped");
 				break;
 			}
 			if (disposition == GarlicCloveDisposition::SkipStale)
@@ -1163,8 +1158,7 @@ namespace garlic
 					auto msg = CreateI2NPMessage (buf, messageLength, from);
 					if (!msg)
 					{
-						if (g_GarlicParseDrops.Record ())
-							LogPrint (eLogError, "Garlic: Can't allocate I2NP message");
+						if (g_GarlicParseDrops.Record ()) LogPrint (eLogError, "Garlic: Can't allocate I2NP message");
 						break;
 					}
 					if (from) // received through an inbound tunnel
@@ -1494,8 +1488,7 @@ namespace garlic
 		// Java DeliveryStatusMessage is exactly msgID (4) + timestamp (8); a
 		// longer or shorter payload means the sender and this handler disagree
 		// about the message layout, so it is not used to confirm anything.
-		if (!msg || msg->GetLength () < I2NP_HEADER_SIZE
-			|| !IsValidDeliveryStatusPayload (msg->GetPayloadLength ()))
+		if (!msg || msg->GetLength () < I2NP_HEADER_SIZE || !IsValidDeliveryStatusPayload (msg->GetPayloadLength ()))
 		{
 			if (g_GarlicParseDrops.Record ())
 				LogPrint (eLogWarning, "Garlic: DeliveryStatus message is not ", DELIVERY_STATUS_SIZE, " bytes");
@@ -1691,8 +1684,7 @@ namespace garlic
 					auto msg = CreateI2NPMessage (typeID, buf, len - offset, msgID);
 					if (!msg)
 					{
-						if (g_GarlicParseDrops.Record ())
-							LogPrint (eLogError, "Garlic: Can't allocate I2NP message");
+						if (g_GarlicParseDrops.Record ()) LogPrint (eLogError, "Garlic: Can't allocate I2NP message");
 						break;
 					}
 					tunnel->SendTunnelDataMsgTo (gwHash, gwTunnel, msg);

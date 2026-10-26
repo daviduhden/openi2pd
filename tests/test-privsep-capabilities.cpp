@@ -206,7 +206,8 @@ void TestMasksAreDistinctAndDocumented ()
 	assert (combined.Has (Capability::PersistentWrite));
 	assert (combined.Has (Capability::FilesystemRead));
 	assert (!combined.Has (Capability::ExternalNetwork));
-	assert (combined.Without (Capability::PersistentWrite) == STORAGE_CAPABILITIES.Without (Capability::PersistentWrite));
+	assert (
+		combined.Without (Capability::PersistentWrite) == STORAGE_CAPABILITIES.Without (Capability::PersistentWrite));
 	assert (combined.Without (Capability::FilesystemRead) == LOG_CAPABILITIES);
 	assert (MaskText (CapabilityMask ()) == "<none>");
 }

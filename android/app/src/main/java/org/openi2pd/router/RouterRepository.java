@@ -265,8 +265,8 @@ public final class RouterRepository implements RouterService.Listener {
     }
 
     /** Release a persisted SAF payload grant on the service's SAF worker. */
-    public void detachPayload(String tunnel, String hash,
-            java.util.function.Consumer<Boolean> callback) {
+    public void detachPayload(
+            String tunnel, String hash, java.util.function.Consumer<Boolean> callback) {
         RouterService local = service;
         if (closed || local == null) {
             mainHandler.post(() -> callback.accept(false));
@@ -367,8 +367,7 @@ public final class RouterRepository implements RouterService.Listener {
         local.tunnelCommand(name, start, callback);
     }
 
-    public void addAddressChecked(
-            String name, String destination, boolean replace,
+    public void addAddressChecked(String name, String destination, boolean replace,
             java.util.function.Consumer<String> callback) {
         RouterService local = service;
         if (closed || local == null) {

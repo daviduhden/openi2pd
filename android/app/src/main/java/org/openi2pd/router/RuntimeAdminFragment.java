@@ -157,10 +157,10 @@ public final class RuntimeAdminFragment extends Fragment {
             LinearLayout row = new LinearLayout(requireContext());
             row.setOrientation(LinearLayout.VERTICAL);
             TextView label = new TextView(requireContext());
-            label.setText(getString(R.string.runtime_admin_tunnel_row, service.name(),
-                    service.kind(),
-                    getString(service.running() ? R.string.runtime_admin_state_running
-                                                : R.string.runtime_admin_state_stopped)));
+            label.setText(
+                    getString(R.string.runtime_admin_tunnel_row, service.name(), service.kind(),
+                            getString(service.running() ? R.string.runtime_admin_state_running
+                                                        : R.string.runtime_admin_state_stopped)));
             row.addView(label);
             LinearLayout actions = new LinearLayout(requireContext());
             actions.setOrientation(LinearLayout.HORIZONTAL);
@@ -189,8 +189,7 @@ public final class RuntimeAdminFragment extends Fragment {
     }
 
     private void renderReseed(String response) {
-        RuntimeAdminPolicy.ReseedStatus status =
-                RuntimeAdminPolicy.parseReseedStatus(response);
+        RuntimeAdminPolicy.ReseedStatus status = RuntimeAdminPolicy.parseReseedStatus(response);
         if (!status.isKnown()) {
             reseedStatus.setText(R.string.value_unknown);
             return;
@@ -198,10 +197,11 @@ public final class RuntimeAdminFragment extends Fragment {
         int attempts = boundedInt(status.attempts());
         int succeeded = boundedInt(status.succeeded());
         StringBuilder text = new StringBuilder(
-                getResources().getQuantityString(R.plurals.runtime_admin_reseed_status,
-                        attempts, status.phase(), attempts, succeeded));
+                getResources().getQuantityString(R.plurals.runtime_admin_reseed_status, attempts,
+                        status.phase(), attempts, succeeded));
         if (!status.lastError().isEmpty()) {
-            text.append('\n').append(getString(R.string.runtime_admin_reseed_error, status.lastError()));
+            text.append('\n').append(
+                    getString(R.string.runtime_admin_reseed_error, status.lastError()));
         }
         reseedStatus.setText(text.toString());
     }
@@ -225,18 +225,19 @@ public final class RuntimeAdminFragment extends Fragment {
                 .setTitle(R.string.runtime_admin_reseed_title)
                 .setMessage(R.string.runtime_admin_reseed_confirm)
                 .setNegativeButton(R.string.action_cancel, null)
-                .setPositiveButton(R.string.runtime_admin_reseed_now, (dialog, which) -> {
-                    busy = true;
-                    int expected = generation;
-                    model.requestReseed(outcome -> {
-                        if (expected != generation || status == null || !isAdded()) {
-                            return;
-                        }
-                        busy = false;
-                        status.setText(reseedOutcomeLabel(outcome));
-                        refresh();
-                    });
-                })
+                .setPositiveButton(R.string.runtime_admin_reseed_now,
+                        (dialog, which) -> {
+                            busy = true;
+                            int expected = generation;
+                            model.requestReseed(outcome -> {
+                                if (expected != generation || status == null || !isAdded()) {
+                                    return;
+                                }
+                                busy = false;
+                                status.setText(reseedOutcomeLabel(outcome));
+                                refresh();
+                            });
+                        })
                 .show();
     }
 
@@ -301,34 +302,37 @@ public final class RuntimeAdminFragment extends Fragment {
                               : R.string.runtime_admin_unban_action)
                 .setView(layout)
                 .setNegativeButton(R.string.action_cancel, null)
-                .setPositiveButton(R.string.address_book_save, (dialog, which) -> {
-                    String hash = input.getText() == null ? "" : input.getText().toString().trim();
-                    if (busy || status == null) {
-                        return;
-                    }
-                    if (!RuntimeAdminPolicy.isValidRouterHash(hash)) {
-                        status.setText(R.string.runtime_admin_ban_invalid);
-                        return;
-                    }
-                    busy = true;
-                    int expected = generation;
-                    model.banCommand(hash, ban, outcome -> {
-                        if (expected != generation || status == null || !isAdded()) {
-                            return;
-                        }
-                        busy = false;
-                        String token = outcome == null ? "" : outcome;
-                        if ("ok".equals(token)) {
-                            status.setText(ban ? R.string.runtime_admin_ban_ok
-                                               : R.string.runtime_admin_unban_ok);
-                        } else if ("invalid".equals(token)) {
-                            status.setText(R.string.runtime_admin_ban_invalid);
-                        } else {
-                            status.setText(R.string.runtime_admin_ban_failed);
-                        }
-                        refresh();
-                    });
-                })
+                .setPositiveButton(R.string.address_book_save,
+                        (dialog, which) -> {
+                            String hash = input.getText() == null
+                                    ? ""
+                                    : input.getText().toString().trim();
+                            if (busy || status == null) {
+                                return;
+                            }
+                            if (!RuntimeAdminPolicy.isValidRouterHash(hash)) {
+                                status.setText(R.string.runtime_admin_ban_invalid);
+                                return;
+                            }
+                            busy = true;
+                            int expected = generation;
+                            model.banCommand(hash, ban, outcome -> {
+                                if (expected != generation || status == null || !isAdded()) {
+                                    return;
+                                }
+                                busy = false;
+                                String token = outcome == null ? "" : outcome;
+                                if ("ok".equals(token)) {
+                                    status.setText(ban ? R.string.runtime_admin_ban_ok
+                                                       : R.string.runtime_admin_unban_ok);
+                                } else if ("invalid".equals(token)) {
+                                    status.setText(R.string.runtime_admin_ban_invalid);
+                                } else {
+                                    status.setText(R.string.runtime_admin_ban_failed);
+                                }
+                                refresh();
+                            });
+                        })
                 .show();
     }
 }

@@ -21,42 +21,42 @@
 
 namespace
 {
-	using i2p::client::FilterDefinition;
-	using i2p::client::TunnelAccessFilter;
+using i2p::client::FilterDefinition;
+using i2p::client::TunnelAccessFilter;
 
-	i2p::data::IdentHash MakeIdentity (uint8_t first, uint8_t second, uint8_t third)
-	{
-		i2p::data::IdentHash identity;
-		identity.Fill (0);
-		uint8_t * bytes = identity;
-		bytes[0] = first;
-		bytes[1] = second;
-		bytes[2] = third;
-		bytes[3] = 0x11;
-		return identity;
-	}
+i2p::data::IdentHash MakeIdentity (uint8_t first, uint8_t second, uint8_t third)
+{
+	i2p::data::IdentHash identity;
+	identity.Fill (0);
+	uint8_t * bytes = identity;
+	bytes[0] = first;
+	bytes[1] = second;
+	bytes[2] = third;
+	bytes[3] = 0x11;
+	return identity;
+}
 
-	std::string MakeDefinition (const std::string & text, bool expectValid = true)
+std::string MakeDefinition (const std::string & text, bool expectValid = true)
+{
+	std::string error;
+	auto definition = FilterDefinition::Parse (text, error);
+	if (expectValid)
 	{
-		std::string error;
-		auto definition = FilterDefinition::Parse (text, error);
-		if (expectValid)
-		{
-			assert (definition);
-			assert (error.empty ());
-		}
-		else
-		{
-			assert (!definition);
-			assert (!error.empty ());
-		}
-		return error;
+		assert (definition);
+		assert (error.empty ());
 	}
+	else
+	{
+		assert (!definition);
+		assert (!error.empty ());
+	}
+	return error;
+}
 
-	bool Allows (TunnelAccessFilter & filter, const i2p::data::IdentHash & peer, uint64_t now)
-	{
-		return filter.Evaluate (peer, now).allow;
-	}
+bool Allows (TunnelAccessFilter & filter, const i2p::data::IdentHash & peer, uint64_t now)
+{
+	return filter.Evaluate (peer, now).allow;
+}
 } // namespace
 
 int main ()

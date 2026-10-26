@@ -534,8 +534,8 @@ namespace tunnel
 			router.GetCompatibleTransports (true));
 	}
 
-	std::shared_ptr<TunnelConfig> CreateOneHopOutboundTunnelConfig (const i2p::data::RouterInfo & router,
-		uint32_t replyTunnelID, const i2p::data::IdentHash & replyIdent)
+	std::shared_ptr<TunnelConfig> CreateOneHopOutboundTunnelConfig (
+		const i2p::data::RouterInfo & router, uint32_t replyTunnelID, const i2p::data::IdentHash & replyIdent)
 	{
 		// The far end of an outbound tunnel is the OBEP; it must be paired with
 		// the reply tunnel's gateway, so the mask uses the outbound direction.
@@ -1143,9 +1143,8 @@ namespace tunnel
 					  i2p::context.GetSharedRouterInfo (), false, true, false); // reachable by us
 			if (!inboundTunnel || !router) return;
 			LogPrint (eLogDebug, "Tunnel: Creating one hop outbound tunnel");
-			CreateTunnel<OutboundTunnel> (
-				CreateOneHopOutboundTunnelConfig (
-					*router, inboundTunnel->GetNextTunnelID (), inboundTunnel->GetNextIdentHash ()),
+			CreateTunnel<OutboundTunnel> (CreateOneHopOutboundTunnelConfig (*router, inboundTunnel->GetNextTunnelID (),
+											  inboundTunnel->GetNextIdentHash ()),
 				nullptr);
 		}
 	}
@@ -1363,8 +1362,8 @@ namespace tunnel
 			if (!pool)
 			{
 				// build symmetric outbound tunnel with the same far end
-				CreateTunnel<OutboundTunnel> (CreatePairedOutboundTunnelConfig (*newTunnel), nullptr,
-					GetNextOutboundTunnel ());
+				CreateTunnel<OutboundTunnel> (
+					CreatePairedOutboundTunnelConfig (*newTunnel), nullptr, GetNextOutboundTunnel ());
 			}
 			else
 			{

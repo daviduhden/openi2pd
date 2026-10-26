@@ -28,7 +28,10 @@ namespace client
 {
 	namespace
 	{
-		bool IsSpace (char ch) { return ch == ' ' || ch == '\t' || ch == '\r'; }
+		bool IsSpace (char ch)
+		{
+			return ch == ' ' || ch == '\t' || ch == '\r';
+		}
 
 		std::string_view Trim (std::string_view text)
 		{
@@ -71,7 +74,8 @@ namespace client
 			while (start <= text.size ())
 			{
 				auto dot = text.find ('.', start);
-				auto component = text.substr (start, dot == std::string_view::npos ? std::string_view::npos : dot - start);
+				auto component
+					= text.substr (start, dot == std::string_view::npos ? std::string_view::npos : dot - start);
 				if (index >= octets.size ()) return false;
 				if (component == "*")
 					octets[index] = -1;
@@ -112,8 +116,8 @@ namespace client
 
 		uint64_t FileMilliseconds (const std::filesystem::file_time_type & time)
 		{
-			return static_cast<uint64_t> (std::chrono::duration_cast<std::chrono::milliseconds> (time.time_since_epoch ())
-											  .count ());
+			return static_cast<uint64_t> (
+				std::chrono::duration_cast<std::chrono::milliseconds> (time.time_since_epoch ()).count ());
 		}
 	}
 
@@ -223,8 +227,8 @@ namespace client
 		while (start <= definition.size ())
 		{
 			auto end = definition.find_first_of (";\n", start);
-			auto chunk = definition.substr (
-				start, end == std::string_view::npos ? std::string_view::npos : end - start);
+			auto chunk
+				= definition.substr (start, end == std::string_view::npos ? std::string_view::npos : end - start);
 			chunk = Trim (chunk);
 			if (!chunk.empty () && chunk.front () != '#') tokens.push_back (chunk);
 			if (end == std::string_view::npos) break;
@@ -333,8 +337,8 @@ namespace client
 					}
 					threshold = threshold * 10 + static_cast<uint64_t> (ch - '0');
 				}
-				element.threshold = static_cast<uint32_t> (
-					std::min<uint64_t> (threshold, std::numeric_limits<uint32_t>::max ()));
+				element.threshold
+					= static_cast<uint32_t> (std::min<uint64_t> (threshold, std::numeric_limits<uint32_t>::max ()));
 			}
 			else if (element.kind == ElementKind::eFile)
 			{
@@ -364,14 +368,12 @@ namespace client
 	{
 	}
 
-	TunnelAccessFilter::Decision TunnelAccessFilter::Evaluate (
-		const i2p::data::IdentHash & peer, uint64_t nowSeconds)
+	TunnelAccessFilter::Decision TunnelAccessFilter::Evaluate (const i2p::data::IdentHash & peer, uint64_t nowSeconds)
 	{
 		return EvaluateInternal (peer, nowSeconds, true);
 	}
 
-	TunnelAccessFilter::Decision TunnelAccessFilter::Peek (
-		const i2p::data::IdentHash & peer, uint64_t nowSeconds) const
+	TunnelAccessFilter::Decision TunnelAccessFilter::Peek (const i2p::data::IdentHash & peer, uint64_t nowSeconds) const
 	{
 		return EvaluateInternal (peer, nowSeconds, false);
 	}
@@ -386,8 +388,7 @@ namespace client
 			switch (element.kind)
 			{
 			case FilterDefinition::ElementKind::eExplicit:
-				matches = MatchesEntries (
-					element.destinations, element.masks, element.matchesAny, peer);
+				matches = MatchesEntries (element.destinations, element.masks, element.matchesAny, peer);
 				break;
 			case FilterDefinition::ElementKind::eFile:
 			{
@@ -401,8 +402,8 @@ namespace client
 				// yet, Peek path) never matches.
 				if (element.threshold)
 				{
-					const auto count = consumeRecord ? NextRecordCountLocked (peer, nowSeconds)
-													 : PeekRecordCountLocked (peer);
+					const auto count
+						= consumeRecord ? NextRecordCountLocked (peer, nowSeconds) : PeekRecordCountLocked (peer);
 					matches = count != 0 && count <= element.threshold;
 				}
 				break;
@@ -420,8 +421,7 @@ namespace client
 		auto & cache = it->second;
 
 		// The stat rate is bounded; a changed mtime or size reloads the list.
-		if (cache.loaded && m_FileCacheSeconds && nowSeconds < cache.lastCheck + m_FileCacheSeconds)
-			return cache;
+		if (cache.loaded && m_FileCacheSeconds && nowSeconds < cache.lastCheck + m_FileCacheSeconds) return cache;
 		cache.lastCheck = nowSeconds;
 
 		std::error_code ec;
@@ -464,8 +464,7 @@ namespace client
 			auto trimmed = Trim (line);
 			if (trimmed.empty () || trimmed.front () == '#') continue;
 			std::string error;
-			if (!ParseFilterTarget (
-					trimmed, reloaded.destinations, reloaded.masks, reloaded.matchesAny, error))
+			if (!ParseFilterTarget (trimmed, reloaded.destinations, reloaded.masks, reloaded.matchesAny, error))
 			{
 				++reloaded.rejectedLines;
 				continue;
@@ -480,8 +479,7 @@ namespace client
 		return cache;
 	}
 
-	uint32_t TunnelAccessFilter::NextRecordCountLocked (
-		const i2p::data::IdentHash & peer, uint64_t nowSeconds) const
+	uint32_t TunnelAccessFilter::NextRecordCountLocked (const i2p::data::IdentHash & peer, uint64_t nowSeconds) const
 	{
 		auto it = m_Records.find (peer);
 		if (it == m_Records.end ())

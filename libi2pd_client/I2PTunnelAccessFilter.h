@@ -160,8 +160,7 @@ namespace client
 		FileCache & GetFileCacheLocked (const std::string & path, uint64_t nowSeconds) const;
 		uint32_t NextRecordCountLocked (const i2p::data::IdentHash & peer, uint64_t nowSeconds) const;
 		uint32_t PeekRecordCountLocked (const i2p::data::IdentHash & peer) const;
-		Decision EvaluateInternal (
-			const i2p::data::IdentHash & peer, uint64_t nowSeconds, bool consumeRecord) const;
+		Decision EvaluateInternal (const i2p::data::IdentHash & peer, uint64_t nowSeconds, bool consumeRecord) const;
 
 	private:
 		std::shared_ptr<const FilterDefinition> m_Definition;

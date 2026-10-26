@@ -261,19 +261,19 @@ void TestConnectAuthority ()
 void TestHopByHopStripMatrix ()
 {
 	using i2p::proxy::IsHopByHopHeaderName;
-	using i2p::proxy::IsProxyDisclosureHeaderName;
 	using i2p::proxy::IsNTLMAuthorizationValue;
+	using i2p::proxy::IsProxyDisclosureHeaderName;
 	using i2p::proxy::StripHopByHopHeaders;
 
-	for (const char * name : { "Connection", "connection", "Keep-Alive", "Proxy-Authenticate",
-			 "Proxy-Authorization", "Proxy-Connection", "TE", "te", "Trailer" })
+	for (const char * name : { "Connection", "connection", "Keep-Alive", "Proxy-Authenticate", "Proxy-Authorization",
+			 "Proxy-Connection", "TE", "te", "Trailer" })
 		assert (IsHopByHopHeaderName (name));
-	for (const char * name : { "Content-Length", "Transfer-Encoding", "Host", "Upgrade", "Authorization",
-			 "Proxy-Foo", "TE2", "Trailers" })
+	for (const char * name :
+		{ "Content-Length", "Transfer-Encoding", "Host", "Upgrade", "Authorization", "Proxy-Foo", "TE2", "Trailers" })
 		assert (!IsHopByHopHeaderName (name));
 
-	for (const char * name : { "X-Forwarded-For", "x-forwarded-proto", "X-Real-IP", "Client-IP",
-			 "X-Originating-IP", "Forwarded" })
+	for (const char * name :
+		{ "X-Forwarded-For", "x-forwarded-proto", "X-Real-IP", "Client-IP", "X-Originating-IP", "Forwarded" })
 		assert (IsProxyDisclosureHeaderName (name));
 	for (const char * name : { "Content-Length", "Referer", "X-Requested-With" })
 		assert (!IsProxyDisclosureHeaderName (name));
@@ -346,8 +346,7 @@ void TestHtmlEscaping ()
 	assert (EscapeHTML ("\xff") == "&#xFFFD;");
 
 	// The escaper is bounded: a 1 MiB Host cannot inflate a page freely.
-	assert (EscapeHTML (std::string (HTTP_PROXY_MAX_ESCAPED_INPUT + 100, 'a')).size ()
-		== HTTP_PROXY_MAX_ESCAPED_INPUT);
+	assert (EscapeHTML (std::string (HTTP_PROXY_MAX_ESCAPED_INPUT + 100, 'a')).size () == HTTP_PROXY_MAX_ESCAPED_INPUT);
 }
 
 /** A configured outproxy URL never appears in a page or a log line. */

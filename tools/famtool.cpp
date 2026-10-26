@@ -77,7 +77,6 @@ std::unique_ptr<RouterInfo> LoadRouterInfo (const std::string & path)
 	}
 }
 
-
 struct FileCloser
 {
 	void operator() (FILE * file) const
@@ -257,8 +256,8 @@ int main (int argc, char * argv[])
 			fam = optarg;
 			if (!IsValidFamilyName (fam))
 			{
-				std::cerr << "family name must use letters, digits, '.', '_' or '-' and fit "
-						  << MAX_FAMILY_NAME_LENGTH << " bytes" << std::endl;
+				std::cerr << "family name must use letters, digits, '.', '_' or '-' and fit " << MAX_FAMILY_NAME_LENGTH
+						  << " bytes" << std::endl;
 				return 1;
 			}
 			break;
@@ -447,8 +446,7 @@ int main (int argc, char * argv[])
 		std::string keyPem (keyData ? keyData : "", keyLen > 0 ? static_cast<size_t> (keyLen) : 0);
 		std::string certPem (certData ? certData : "", certLen > 0 ? static_cast<size_t> (certLen) : 0);
 		const bool wrote = keyWritten && certWritten && !keyPem.empty () && !certPem.empty ()
-			&& i2p::fs::AtomicWrite (certfile, certPem)
-			&& i2p::fs::AtomicWritePrivate (privkey, keyPem);
+			&& i2p::fs::AtomicWrite (certfile, certPem) && i2p::fs::AtomicWritePrivate (privkey, keyPem);
 		if (!keyPem.empty ()) OPENSSL_cleanse (keyPem.data (), keyPem.size ());
 		if (!wrote)
 		{

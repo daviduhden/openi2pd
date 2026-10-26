@@ -1015,8 +1015,7 @@ namespace torrents
 					result.malformed = true;
 					return len;
 				}
-				while (idents.size () >= i2p::data::IdentHash::len
-					&& result.peers.size () < MAX_PEX_RECEIVE_PEERS)
+				while (idents.size () >= i2p::data::IdentHash::len && result.peers.size () < MAX_PEX_RECEIVE_PEERS)
 				{
 					i2p::data::IdentHash peer (reinterpret_cast<const uint8_t *> (idents.data ()));
 					idents.remove_prefix (i2p::data::IdentHash::len);
@@ -2431,8 +2430,7 @@ namespace torrents
 		// A tracker that demands a longer minimum interval still governs; the
 		// failure cap must never undercut its advertised contract.
 		const int64_t cap = std::max<int64_t> (MAX_TRACKER_FAILURE_BACKOFF * 1000LL, minInterval);
-		const int64_t next
-			= previousFailureInterval > 0 ? static_cast<int64_t> (previousFailureInterval) * 2 : floor;
+		const int64_t next = previousFailureInterval > 0 ? static_cast<int64_t> (previousFailureInterval) * 2 : floor;
 		return static_cast<int> (std::min (std::max (next, floor), cap));
 	}
 
@@ -2612,14 +2610,12 @@ namespace torrents
 	{
 		CheckTrackerStatsSize (trackerID);
 		auto & [peers, trackerRequestInterval, nextRequestTime, seeders, leechers, lastUpdateTime, error, minimum,
-			failureInterval]
-			= m_TrackerStats[trackerID];
+			failureInterval] = m_TrackerStats[trackerID];
 		error = "";
 		// BEP 15 carries the advertised interval in seconds, just like the HTTP
 		// response, so the same 15-minute floor and "min interval" rule apply.
-		trackerRequestInterval
-			= TrackerSchedule::EffectiveInterval (TrackerSchedule::AdvertisedInterval (static_cast<int64_t> (interval)),
-				minimum);
+		trackerRequestInterval = TrackerSchedule::EffectiveInterval (
+			TrackerSchedule::AdvertisedInterval (static_cast<int64_t> (interval)), minimum);
 		nextRequestTime = i2p::util::GetMonotonicMilliseconds () + trackerRequestInterval;
 		failureInterval = 0; // a successful response ends the retry ladder
 		seeders = ClampTrackerCount (numSeeders);
@@ -2651,8 +2647,8 @@ namespace torrents
 		// interval: the first attempt after a failure waits
 		// MIN_TRACKER_REQUESTS_INTERVAL (15 s), each further failure doubles it,
 		// and it stops at MAX_TRACKER_FAILURE_BACKOFF (30 min, Java LONG_SLEEP).
-		const int interval = TrackerSchedule::FailureInterval (
-			std::get<8> (m_TrackerStats[trackerID]), GetMinInterval (trackerID));
+		const int interval
+			= TrackerSchedule::FailureInterval (std::get<8> (m_TrackerStats[trackerID]), GetMinInterval (trackerID));
 		std::get<8> (m_TrackerStats[trackerID]) = interval;
 		std::get<2> (m_TrackerStats[trackerID]) = i2p::util::GetMonotonicMilliseconds () + interval;
 	}
@@ -2808,8 +2804,7 @@ namespace torrents
 
 	uint32_t Torrent::ChargePieceFailure (const i2p::data::IdentHash & peer)
 	{
-		if (auto it = m_PeerPieceFailures.find (peer); it != m_PeerPieceFailures.end ())
-			return ++it->second;
+		if (auto it = m_PeerPieceFailures.find (peer); it != m_PeerPieceFailures.end ()) return ++it->second;
 		// Bounded and non-evicting: a full table silently stops tracking new
 		// peers. The alternative (evicting a counter) would let a hostile swarm
 		// launder an already charged peer back to zero.
@@ -3495,8 +3490,7 @@ namespace torrents
 		return it != m_Connections.end () && !it->second.expired ();
 	}
 
-	bool Torrent::AddPeerCandidate (
-		const i2p::data::IdentHash & peer, PeerConnectionOrigin origin, uint64_t nowSeconds)
+	bool Torrent::AddPeerCandidate (const i2p::data::IdentHash & peer, PeerConnectionOrigin origin, uint64_t nowSeconds)
 	{
 		// A zero hash is not a destination; a private swarm must never keep
 		// peer-supplied candidates; a stopped/removed torrent has no dials.
@@ -3551,8 +3545,8 @@ namespace torrents
 		{
 			if (candidates.size () >= max) break;
 			if (IsPeerConnected (candidate.ident)) continue;
-			if (!PeerCandidatePolicy::IsUsable (candidate.added, candidate.lastAttempt, candidate.failures,
-					nowSeconds, candidate.origin))
+			if (!PeerCandidatePolicy::IsUsable (
+					candidate.added, candidate.lastAttempt, candidate.failures, nowSeconds, candidate.origin))
 				continue;
 			candidates.push_back (candidate.ident);
 		}
@@ -3591,8 +3585,7 @@ namespace torrents
 			// wrap into a fresh lifetime and a regression must not destroy the
 			// table.
 			const bool expired = !it->added
-				|| (nowSeconds >= it->added
-					&& nowSeconds - it->added >= PeerCandidatePolicy::Ttl (it->origin));
+				|| (nowSeconds >= it->added && nowSeconds - it->added >= PeerCandidatePolicy::Ttl (it->origin));
 			const bool dead = it->failures >= PEER_CANDIDATE_MAX_FAILURES;
 			if (expired || dead)
 				it = m_PeerCandidates.erase (it);
@@ -4381,8 +4374,7 @@ namespace torrents
 						{
 							const auto failures = m_Torrent->ChargePieceFailure (*remote);
 							if (failures == Torrent::PEER_PENALTY_THRESHOLD)
-								LogPrint (eLogWarning, "Torrents: Peer ",
-									i2p::data::GetIdentHashAbbreviation (*remote),
+								LogPrint (eLogWarning, "Torrents: Peer ", i2p::data::GetIdentHashAbbreviation (*remote),
 									" repeatedly contributed corrupt piece data; disconnecting");
 							if (failures >= Torrent::PEER_PENALTY_THRESHOLD) Close ();
 						}
@@ -4429,11 +4421,11 @@ namespace torrents
 		htobe32buf (header.data () + 9, offset);
 		LogPrint (eLogDebug, "Torrents: Sending piece index ", index, " offset ", offset, " length ", len);
 		m_NumPieces++;
-		const std::vector<std::pair<const uint8_t *, size_t>> buffers {
-			{ header.data (), header.size () }, { data, len } };
+		const std::vector<std::pair<const uint8_t *, size_t>> buffers { { header.data (), header.size () },
+			{ data, len } };
 		auto sendBuffer = std::make_shared<i2p::stream::SendBuffer> (buffers, header.size () + len,
-			[s = shared_from_this (), blockLength = len] (const boost::system::error_code & ecode,
-				size_t bytes_transferred)
+			[s = shared_from_this (), blockLength = len] (
+				const boost::system::error_code & ecode, size_t bytes_transferred)
 			{
 				if (s->m_NumPieces > 0) s->m_NumPieces--;
 				if (!ecode && s->m_Stream)
@@ -4817,8 +4809,7 @@ namespace torrents
 						{
 							// A client string is diagnostics only; cap it so a
 							// handshake cannot grow per-connection state.
-							handshake.clientVersion
-								= version.substr (0, MAX_EXTENDED_CLIENT_VERSION_LENGTH);
+							handshake.clientVersion = version.substr (0, MAX_EXTENDED_CLIENT_VERSION_LENGTH);
 							handshake.hasClientVersion = true;
 						}
 						return l;
@@ -4949,9 +4940,8 @@ namespace torrents
 			auto encodedExtensions = CreateDictionary (extensions);
 			auto requests = CreateInteger (MAX_INCOMING_REQUESTS_QUEUE_SIZE);
 			auto version = CreateByteString ("i2pd");
-			std::vector<std::pair<std::string_view, std::string_view>> fields {
-				{ "m", encodedExtensions }, { "reqq", requests }, { "v", version }
-			};
+			std::vector<std::pair<std::string_view, std::string_view>> fields { { "m", encodedExtensions },
+				{ "reqq", requests }, { "v", version } };
 			// metadata_size is the exact info-dict length. Emitting it without
 			// advertising ut_metadata would leak the size of an info dict this
 			// peer is never allowed to request, so both are gated together.
@@ -5009,8 +4999,7 @@ namespace torrents
 		// edits; without a revision change the slower periodic cadence applies.
 		const bool revisionChanged = revision != m_LastCommentRequestRevision;
 		const auto minInterval = revisionChanged ? COMMENT_REQUEST_MIN_INTERVAL : COMMENT_REQUEST_PERIODIC_INTERVAL;
-		if (m_LastCommentRequest && (now < m_LastCommentRequest || now - m_LastCommentRequest < minInterval))
-			return;
+		if (m_LastCommentRequest && (now < m_LastCommentRequest || now - m_LastCommentRequest < minInterval)) return;
 		m_LastCommentRequest = now;
 		m_LastCommentRequestRevision = revision;
 		SendExtendedMsg (m_RemoteMsgIDComment, EncodeTorrentCommentRequest ());
@@ -5327,8 +5316,8 @@ namespace torrents
 			FillRequestMsg (buf + bufOffset, index, offset, len);
 			bufOffset += REQUEST_MSG_LENGTH;
 			m_LastRequestedPieceIndex = index;
-			m_OutgoingRequests.push_back (OutgoingRequest { index, offset, len,
-				m_Torrent->GetPiece (static_cast<int> (index)).GetBlockEpoch (), now });
+			m_OutgoingRequests.push_back (OutgoingRequest {
+				index, offset, len, m_Torrent->GetPiece (static_cast<int> (index)).GetBlockEpoch (), now });
 			m_NumRequests++;
 		}
 		if (bufOffset > 0) WriteToStream (buf, bufOffset);

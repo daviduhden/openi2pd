@@ -155,22 +155,20 @@ void CheckDacl (HANDLE pipe, const std::wstring & expectedSid, DWORD expectedAce
 }
 
 /** Connect as the (trusted) test process and run `handshake` on the channel. */
-std::thread StartTestWorker (const std::wstring & pipeName,
-	std::function<void (WindowsChannel &)> handshake, std::unique_ptr<WindowsChannel> & channel)
+std::thread StartTestWorker (const std::wstring & pipeName, std::function<void (WindowsChannel &)> handshake,
+	std::unique_ptr<WindowsChannel> & channel)
 {
 	return std::thread (
 		[&pipeName, handshake = std::move (handshake), &channel]
 		{
-			auto connected = WindowsChannel::ConnectBound (
-				pipeName, GetCurrentProcessId (), CurrentSessionId (), 5000);
+			auto connected = WindowsChannel::ConnectBound (pipeName, GetCurrentProcessId (), CurrentSessionId (), 5000);
 			if (!connected) return;
 			channel = std::make_unique<WindowsChannel> (std::move (*connected));
 			handshake (*channel);
 		});
 }
 
-void SendHello (WindowsChannel & channel, WindowsWorkerRole role, const std::string & nonce,
-	uint32_t requestId = 1)
+void SendHello (WindowsChannel & channel, WindowsWorkerRole role, const std::string & nonce, uint32_t requestId = 1)
 {
 	auto payload = EncodeWorkerHelloFrame (role, nonce);
 	assert (payload.has_value ());
@@ -196,8 +194,7 @@ void WriteRawRecord (HANDLE pipe, const std::string & record)
 void TestPolicyAndRoles ()
 {
 	static constexpr WindowsWorkerRole kRoles[] = { WindowsWorkerRole::Supervisor, WindowsWorkerRole::Log,
-		WindowsWorkerRole::Storage, WindowsWorkerRole::Network, WindowsWorkerRole::Crypto,
-		WindowsWorkerRole::Admin };
+		WindowsWorkerRole::Storage, WindowsWorkerRole::Network, WindowsWorkerRole::Crypto, WindowsWorkerRole::Admin };
 
 	for (auto role : kRoles)
 	{
@@ -340,11 +337,11 @@ void TestWorkerHelloCodec ()
 		assert (!DecodeWorkerHelloFrame ({ MessageType::WorkerHello, 6, writer.Data () }).has_value ());
 	}
 	// The whole frame is bounded by the registry, not by the 64 KiB maximum.
-	assert (Encode (Message { MessageType::WorkerHello, 1,
-				 std::string (MaxPayloadFor (MessageType::WorkerHello) + 1, 'x') })
+	assert (Encode (Message {
+						MessageType::WorkerHello, 1, std::string (MaxPayloadFor (MessageType::WorkerHello) + 1, 'x') })
 				.error ()
 				.code
-			== ErrorCode::TooLarge);
+		== ErrorCode::TooLarge);
 }
 
 void TestPrivatePipeNameAndSquatting ()
@@ -363,9 +360,8 @@ void TestPrivatePipeNameAndSquatting ()
 	// A name that is already listening must not be joined: the worker would
 	// otherwise connect to a squatted listener instead of its supervisor.
 	const std::wstring squatted = MakeTestPipeName (L"squatted");
-	HANDLE squatter = CreateNamedPipeW (squatted.c_str (), PIPE_ACCESS_DUPLEX, PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE
-			| PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS,
-		1, 4096, 4096, 0, nullptr);
+	HANDLE squatter = CreateNamedPipeW (squatted.c_str (), PIPE_ACCESS_DUPLEX,
+		PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS, 1, 4096, 4096, 0, nullptr);
 	assert (squatter != INVALID_HANDLE_VALUE);
 	auto server = WindowsServer::Create (squatted);
 	assert (!server.has_value ());
@@ -388,8 +384,7 @@ void TestDaclWithExtraSid ()
 
 	// An SDDL injection must never reach ConvertStringSecurityDescriptor and a
 	// value that is not a SID string is refused outright.
-	auto injected
-		= WindowsServer::Create (MakeTestPipeName (L"dacl-inject"), L"S-1-5-21-1)(A;;GA;;;WD");
+	auto injected = WindowsServer::Create (MakeTestPipeName (L"dacl-inject"), L"S-1-5-21-1)(A;;GA;;;WD");
 	assert (!injected.has_value ());
 	auto notSid = WindowsServer::Create (MakeTestPipeName (L"dacl-notsid"), L"WD");
 	assert (!notSid.has_value ());
@@ -404,16 +399,19 @@ void TestBindRequiresExplicitIdentity ()
 	assert (server.has_value ());
 	const std::wstring nonce = TestNonceHexA ();
 	// A zero PID or session is a programming error, never "any peer".
-	assert (!server->AcceptBound (100, 0, CurrentSessionId (), WindowsWorkerRole::Storage, nonce, nullptr).has_value ());
-	assert (!server->AcceptBound (100, GetCurrentProcessId (), 0, WindowsWorkerRole::Storage, nonce, nullptr)
-				 .has_value ());
+	assert (
+		!server->AcceptBound (100, 0, CurrentSessionId (), WindowsWorkerRole::Storage, nonce, nullptr).has_value ());
+	assert (
+		!server->AcceptBound (100, GetCurrentProcessId (), 0, WindowsWorkerRole::Storage, nonce, nullptr).has_value ());
 	// A malformed nonce is refused before the listener is touched.
-	assert (!server->AcceptBound (100, GetCurrentProcessId (), CurrentSessionId (), WindowsWorkerRole::Storage, L"abcd",
-				 nullptr)
-				 .has_value ());
-	assert (!server->AcceptBound (100, GetCurrentProcessId (), CurrentSessionId (), WindowsWorkerRole::Storage,
-				 std::wstring (WINDOWS_WORKER_NONCE_SIZE * 2, '0'), nullptr)
-				 .has_value ());
+	assert (!server
+			->AcceptBound (
+				100, GetCurrentProcessId (), CurrentSessionId (), WindowsWorkerRole::Storage, L"abcd", nullptr)
+			.has_value ());
+	assert (!server
+			->AcceptBound (100, GetCurrentProcessId (), CurrentSessionId (), WindowsWorkerRole::Storage,
+				std::wstring (WINDOWS_WORKER_NONCE_SIZE * 2, '0'), nullptr)
+			.has_value ());
 }
 
 void TestAcceptBoundHappyPath ()
@@ -426,8 +424,8 @@ void TestAcceptBoundHappyPath ()
 
 	std::unique_ptr<WindowsChannel> client;
 	std::thread worker (StartTestWorker (
-		name,
-		[&nonce] (WindowsChannel & channel) { SendHello (channel, WindowsWorkerRole::Storage, nonce, 7); }, client));
+		name, [&nonce] (WindowsChannel & channel) { SendHello (channel, WindowsWorkerRole::Storage, nonce, 7); },
+		client));
 	auto accepted = server->AcceptBound (
 		5000, GetCurrentProcessId (), CurrentSessionId (), WindowsWorkerRole::Storage, nonceHex, nullptr);
 	worker.join ();
@@ -560,8 +558,8 @@ void TestHelloRejectionsAndRearm ()
 		std::thread worker (StartTestWorker (
 			name, [&nonce] (WindowsChannel & channel) { SendHello (channel, WindowsWorkerRole::Storage, nonce); },
 			client));
-		auto accepted = server->AcceptBound (500, GetCurrentProcessId () + 1, CurrentSessionId (),
-			WindowsWorkerRole::Storage, nonceHex, nullptr);
+		auto accepted = server->AcceptBound (
+			500, GetCurrentProcessId () + 1, CurrentSessionId (), WindowsWorkerRole::Storage, nonceHex, nullptr);
 		worker.join ();
 		assert (!accepted.has_value ());
 		if (client) client->Close ();
@@ -575,8 +573,8 @@ void TestHelloRejectionsAndRearm ()
 		std::thread worker (StartTestWorker (
 			name, [&nonce] (WindowsChannel & channel) { SendHello (channel, WindowsWorkerRole::Storage, nonce); },
 			client));
-		auto accepted = server->AcceptBound (500, GetCurrentProcessId (), CurrentSessionId () + 1,
-			WindowsWorkerRole::Storage, nonceHex, nullptr);
+		auto accepted = server->AcceptBound (
+			500, GetCurrentProcessId (), CurrentSessionId () + 1, WindowsWorkerRole::Storage, nonceHex, nullptr);
 		worker.join ();
 		assert (!accepted.has_value ());
 		if (client) client->Close ();
@@ -639,8 +637,7 @@ void TestAuthorizationAndDescriptorRefusal ()
 
 	std::unique_ptr<WindowsChannel> client;
 	std::thread worker (StartTestWorker (
-		name, [&nonce] (WindowsChannel & channel) { SendHello (channel, WindowsWorkerRole::Storage, nonce); },
-		client));
+		name, [&nonce] (WindowsChannel & channel) { SendHello (channel, WindowsWorkerRole::Storage, nonce); }, client));
 	auto accepted = server->AcceptBound (
 		5000, GetCurrentProcessId (), CurrentSessionId (), WindowsWorkerRole::Storage, nonceHex, nullptr);
 	worker.join ();
@@ -707,8 +704,7 @@ void TestFrameBounds ()
 
 	std::unique_ptr<WindowsChannel> client;
 	std::thread worker (StartTestWorker (
-		name, [&nonce] (WindowsChannel & channel) { SendHello (channel, WindowsWorkerRole::Storage, nonce); },
-		client));
+		name, [&nonce] (WindowsChannel & channel) { SendHello (channel, WindowsWorkerRole::Storage, nonce); }, client));
 	auto accepted = server->AcceptBound (
 		5000, GetCurrentProcessId (), CurrentSessionId (), WindowsWorkerRole::Storage, nonceHex, nullptr);
 	worker.join ();
@@ -755,8 +751,8 @@ void TestFrameBounds ()
 			OVERLAPPED overlapped { };
 			overlapped.hEvent = writerEvent;
 			DWORD count = 0;
-			BOOL result = WriteFile (client->Native (), beyond.data (), static_cast<DWORD> (beyond.size ()), &count,
-				&overlapped);
+			BOOL result = WriteFile (
+				client->Native (), beyond.data (), static_cast<DWORD> (beyond.size ()), &count, &overlapped);
 			if (!result && GetLastError () == ERROR_IO_PENDING)
 				GetOverlappedResult (client->Native (), &overlapped, &count, TRUE);
 			CloseHandle (writerEvent);

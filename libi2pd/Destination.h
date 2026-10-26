@@ -227,9 +227,8 @@ namespace client
 		bool IsReady () const { return m_LeaseSet && !m_LeaseSet->IsExpired () && m_Pool->HasOutboundTunnels (); };
 		std::shared_ptr<i2p::data::LeaseSet> FindLeaseSet (const i2p::data::IdentHash & ident);
 		bool RequestDestination (const i2p::data::IdentHash & dest, RequestComplete requestComplete = nullptr);
-		bool RequestDestinationWithEncryptedLeaseSet (
-			std::shared_ptr<const i2p::data::BlindedPublicKey> dest, RequestComplete requestComplete = nullptr,
-			const uint8_t * secret = nullptr, size_t secretLen = 0);
+		bool RequestDestinationWithEncryptedLeaseSet (std::shared_ptr<const i2p::data::BlindedPublicKey> dest,
+			RequestComplete requestComplete = nullptr, const uint8_t * secret = nullptr, size_t secretLen = 0);
 		void CancelDestinationRequest (const i2p::data::IdentHash & dest, bool notify = true);
 		void CancelDestinationRequestWithEncryptedLeaseSet (
 			std::shared_ptr<const i2p::data::BlindedPublicKey> dest, bool notify = true);
@@ -281,7 +280,7 @@ namespace client
 
 		void RequestLeaseSet (const i2p::data::IdentHash & dest, RequestComplete requestComplete,
 			std::shared_ptr<const i2p::data::BlindedPublicKey> requestedBlindedKey = nullptr,
-			std::vector<uint8_t> authSecret = {});
+			std::vector<uint8_t> authSecret = { });
 		bool SendLeaseSetRequest (const i2p::data::IdentHash & dest,
 			std::shared_ptr<const i2p::data::RouterInfo> nextFloodfill, std::shared_ptr<LeaseSetRequest> request);
 		void SendNextLeaseSetRequest (const i2p::data::IdentHash & key, std::shared_ptr<LeaseSetRequest> request);

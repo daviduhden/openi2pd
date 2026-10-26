@@ -164,8 +164,8 @@ void TestInboundActivitySkip ()
 	assert (!ShouldSkipTunnelTest (now, 0)); // no traffic yet
 	assert (ShouldSkipTunnelTest (now, now));
 	assert (ShouldSkipTunnelTest (now, now - (TUNNEL_POOL_INBOUND_ACTIVITY_SKIP_TEST * 1000ULL - 1)));
-	assert (!ShouldSkipTunnelTest (
-		now, now - (static_cast<uint64_t> (TUNNEL_POOL_INBOUND_ACTIVITY_SKIP_TEST) * 1000ULL)));
+	assert (
+		!ShouldSkipTunnelTest (now, now - (static_cast<uint64_t> (TUNNEL_POOL_INBOUND_ACTIVITY_SKIP_TEST) * 1000ULL)));
 	// A clock that moved backwards is not evidence of recent traffic.
 	assert (!ShouldSkipTunnelTest (now, now + 1));
 }

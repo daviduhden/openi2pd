@@ -119,16 +119,16 @@ public final class LocaleResourceTest {
         String one = ru.getResources().getQuantityString(R.plurals.torrent_count, 1, 1);
         String few = ru.getResources().getQuantityString(R.plurals.torrent_count, 2, 2);
         String many = ru.getResources().getQuantityString(R.plurals.torrent_count, 5, 5);
-        assertTrue("Russian one/few forms must differ: " + one + " / " + few,
-                !one.equals(few));
-        assertTrue("Russian few/many forms must differ: " + few + " / " + many,
-                !few.equals(many));
+        assertTrue("Russian one/few forms must differ: " + one + " / " + few, !one.equals(few));
+        assertTrue("Russian few/many forms must differ: " + few + " / " + many, !few.equals(many));
         // Spanish has one/other and Simplified Chinese uses one form text.
         Configuration esConfig = new Configuration(base.getResources().getConfiguration());
         esConfig.setLocale(Locale.forLanguageTag("es-ES"));
         Context es = base.createConfigurationContext(esConfig);
         assertTrue("Spanish plural forms must differ",
-                !es.getResources().getQuantityString(R.plurals.torrent_count, 1, 1)
-                        .equals(es.getResources().getQuantityString(R.plurals.torrent_count, 2, 2)));
+                !es.getResources()
+                        .getQuantityString(R.plurals.torrent_count, 1, 1)
+                        .equals(es.getResources().getQuantityString(
+                                R.plurals.torrent_count, 2, 2)));
     }
 }

@@ -281,8 +281,7 @@ bool TorrentCommentStore::Add (TorrentComment comment)
 	{
 		size_t anonymousEntries = 0;
 		for (const auto & existing : m_Comments)
-			if (!existing.hidden && existing.owner.empty ()
-				&& ++anonymousEntries >= MAX_COMMENT_ANONYMOUS_VISIBLE)
+			if (!existing.hidden && existing.owner.empty () && ++anonymousEntries >= MAX_COMMENT_ANONYMOUS_VISIBLE)
 				return false;
 	}
 	else

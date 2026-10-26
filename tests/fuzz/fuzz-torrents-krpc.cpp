@@ -45,9 +45,7 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t * data, size_t size)
 	assert (frame.errorText.size () <= MAX_DHT_ERROR_TEXT);
 	switch (frame.kind)
 	{
-	case DHTFrameKind::Malformed:
-		assert (!frame.IsValid ());
-		break;
+	case DHTFrameKind::Malformed: assert (!frame.IsValid ()); break;
 	case DHTFrameKind::Query:
 		assert (!frame.query.empty ());
 		assert (frame.arguments.front () == 'd');
@@ -111,10 +109,9 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t * data, size_t size)
 	assert (store.SizeForNode (entry.nodeID) <= DHTTokenStore::MaxTokensPerNode);
 
 	DHTIncomingToken validated;
-	const auto validation = store.Validate (
-		entry.token, entry.nodeID, entry.infoHash, entry.port, entry.issued, validated);
-	assert (validation == DHTTokenStore::Validation::Valid
-		|| validation == DHTTokenStore::Validation::Invalid
+	const auto validation
+		= store.Validate (entry.token, entry.nodeID, entry.infoHash, entry.port, entry.issued, validated);
+	assert (validation == DHTTokenStore::Validation::Valid || validation == DHTTokenStore::Validation::Invalid
 		|| validation == DHTTokenStore::Validation::Unknown);
 	(void)store.Refresh (entry.token, entry.issued);
 	store.RemoveInfoHash (entry.infoHash);

@@ -59,7 +59,8 @@ struct NetDbLifecycleTestAccess
 		return database.m_Storage.Path (ident);
 	}
 	static void Persist (NetDb & database,
-		std::list<std::pair<std::string, std::shared_ptr<RouterInfo::Buffer>>> && update, std::list<std::string> && remove)
+		std::list<std::pair<std::string, std::shared_ptr<RouterInfo::Buffer>>> && update,
+		std::list<std::string> && remove)
 	{
 		database.PersistRouters (std::move (update), std::move (remove));
 	}
@@ -146,8 +147,7 @@ void TestFileNameBinding ()
 	std::string ident;
 	const char * hash = "AbCdEfGhIjKlMnOpQrStUvWxYz0123456789-~abcd=";
 
-	assert (ClassifyRouterInfoFile (std::string ("/data/netDb/r/") + hash + ".dat", ident)
-		== RouterInfoFileKind::Load);
+	assert (ClassifyRouterInfoFile (std::string ("/data/netDb/r/") + hash + ".dat", ident) == RouterInfoFileKind::Load);
 	assert (ident == hash);
 
 	// Both the retired ".tmp" name and AtomicWrite's unique staging name are
@@ -219,8 +219,8 @@ void TestStopFlushesUpdatedRouterInfo ()
 	const auto expectedPath = i2p::data::NetDbLifecycleTestAccess::Path (database, ident.ToBase64 ());
 
 	auto buffer = BuildRouterInfo (keys, now - 60 * 1000);
-	auto router = std::make_shared<RouterInfo> (netdb.NewRouterInfoBuffer (buffer.data (), buffer.size ()),
-		buffer.size ());
+	auto router
+		= std::make_shared<RouterInfo> (netdb.NewRouterInfoBuffer (buffer.data (), buffer.size ()), buffer.size ());
 	assert (!router->IsUnreachable ());
 	assert (router->GetIdentHash () == ident);
 	assert (router->IsUpdated ()); // a freshly parsed descriptor is pending
@@ -302,8 +302,7 @@ void TestArtifactRoutedPersistence ()
 	assert (IsArtifactStorageInstalled ());
 
 	std::list<std::pair<std::string, std::shared_ptr<RouterInfo::Buffer>>> update;
-	update.emplace_back (
-		name, std::make_shared<RouterInfo::Buffer> (buffer.data (), buffer.size ()));
+	update.emplace_back (name, std::make_shared<RouterInfo::Buffer> (buffer.data (), buffer.size ()));
 	std::list<std::string> removals { removedName };
 	i2p::data::NetDbLifecycleTestAccess::Persist (database, std::move (update), std::move (removals));
 

@@ -174,13 +174,11 @@ namespace crypto
 		if (!expandedPrivateKey || !publicKeyEncoded || !signature || (!buf && len)) return;
 		BN_CTX * bnCtx = BN_CTX_new ();
 		EVP_MD_CTX * ctx = nullptr;
-		BIGNUM * r = nullptr, * h = nullptr, * a = nullptr;
+		BIGNUM *r = nullptr, *h = nullptr, *a = nullptr;
 		uint8_t digest[64] = { };
 		unsigned int dl = sizeof (digest);
-		bool ok = bnCtx && (ctx = EVP_MD_CTX_new ()) != nullptr
-			&& EVP_DigestInit_ex (ctx, EVP_sha512 (), nullptr) == 1
-			&& EVP_DigestUpdate (ctx, expandedPrivateKey + EDDSA25519_PRIVATE_KEY_LENGTH,
-				   EDDSA25519_PRIVATE_KEY_LENGTH)
+		bool ok = bnCtx && (ctx = EVP_MD_CTX_new ()) != nullptr && EVP_DigestInit_ex (ctx, EVP_sha512 (), nullptr) == 1
+			&& EVP_DigestUpdate (ctx, expandedPrivateKey + EDDSA25519_PRIVATE_KEY_LENGTH, EDDSA25519_PRIVATE_KEY_LENGTH)
 				== 1
 			&& EVP_DigestUpdate (ctx, buf, len) == 1 && EVP_DigestFinal_ex (ctx, digest, &dl) == 1
 			&& dl == sizeof (digest);

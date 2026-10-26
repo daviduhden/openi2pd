@@ -2383,8 +2383,8 @@ namespace transport
 				Done ();
 				return false;
 			}
-			LogPrint (eLogInfo, "SSU2: peer rejected version ", (int)rejectedVersion, "; retrying with advertised version ",
-				(int)m_Version);
+			LogPrint (eLogInfo, "SSU2: peer rejected version ", (int)rejectedVersion,
+				"; retrying with advertised version ", (int)m_Version);
 			m_IsVersionFallback = true;
 			m_ReceivedTermination = false;
 			ResetHandshakeCryptoState ();
@@ -2993,8 +2993,7 @@ namespace transport
 		// path. m_RTT is in milliseconds and stays SSU2_UNKNOWN_RTT (-1) until
 		// the first ACK sample, so an unmeasured session keeps the plain
 		// SSU2_CLOCK_SKEW window.
-		const double allowedSkew
-			= SSU2_CLOCK_SKEW + (m_RTT > 0 ? m_RTT / 2000.0 : 0.0);
+		const double allowedSkew = SSU2_CLOCK_SKEW + (m_RTT > 0 ? m_RTT / 2000.0 : 0.0);
 		switch (m_State)
 		{
 		case eSSU2SessionStateSessionRequestReceived:
@@ -3569,7 +3568,9 @@ namespace transport
 			sendRelayResponse (eSSU2RelayResponseCodeBobLimit);
 			return;
 		}
-		if (session->m_RelaySessions.emplace (nonce, RelaySession { shared_from_this (), mts / 1000, eSSU2RelayRoleBob }).second)
+		if (session->m_RelaySessions
+				.emplace (nonce, RelaySession { shared_from_this (), mts / 1000, eSSU2RelayRoleBob })
+				.second)
 		{
 			// send relay intro to Charlie
 			auto r = i2p::data::netdb.FindRouter (alice->GetIdentHash ()); // Alice's RI
@@ -4084,10 +4085,11 @@ namespace transport
 			// prefix (IPv4 /32, IPv6 /64) per 10 minutes. Charge it after the
 			// fixed-field validation so malformed packets cannot exhaust the
 			// budget of a legitimate peer.
-			if (!m_Server.AllowPeerTestMessage (m_RemoteEndpoint.address (),
-					static_cast<uint64_t> (i2p::util::GetSecondsSinceEpoch ())))
+			if (!m_Server.AllowPeerTestMessage (
+					m_RemoteEndpoint.address (), static_cast<uint64_t> (i2p::util::GetSecondsSinceEpoch ())))
 			{
-				LogPrint (eLogWarning, "SSU2: PeerTest msg ", (int)msg, " rate limit for ", m_RemoteEndpoint.address ());
+				LogPrint (
+					eLogWarning, "SSU2: PeerTest msg ", (int)msg, " rate limit for ", m_RemoteEndpoint.address ());
 				return;
 			}
 		}
@@ -4101,8 +4103,8 @@ namespace transport
 			uint8_t zeroHash[32] = { 0 };
 			packet->payloadSize = CreatePeerTestBlock (
 				packet->payload, m_MaxPayloadSize, 4, code, zeroHash, buf + offset, len - offset);
-			packet->payloadSize += CreatePaddingBlock (
-				packet->payload + packet->payloadSize, m_MaxPayloadSize - packet->payloadSize);
+			packet->payloadSize
+				+= CreatePaddingBlock (packet->payload + packet->payloadSize, m_MaxPayloadSize - packet->payloadSize);
 			uint32_t packetNum = 0;
 			if (SendData (packet->payload, packet->payloadSize, 0, &packetNum))
 			{
@@ -4217,8 +4219,7 @@ namespace transport
 							LogPrint (eLogInfo, "SSU2: PeerTest msg 2 Alice is banned or operator-blocked");
 							code = eSSU2PeerTestCodeCharlieAliceIsBanned;
 						}
-						else if (IsSSU2PeerTestFamilyAvailable (
-									 m_Server.FindSession (r->GetIdentHash ()), asz == 6))
+						else if (IsSSU2PeerTestFamilyAvailable (m_Server.FindSession (r->GetIdentHash ()), asz == 6))
 						{
 							boost::asio::ip::udp::endpoint ep;
 							std::shared_ptr<const i2p::data::RouterInfo::Address> addr;
@@ -4247,7 +4248,8 @@ namespace transport
 											m_Server, 0, htobe64 (((uint64_t)nonce << 32) | nonce));
 										session->SetRemoteEndpoint (ep); // might be different
 										if (m_Server.AddSession (session))
-											session->SendPeerTest (5, newSignedData.data (), newSignedData.size (), addr);
+											session->SendPeerTest (
+												5, newSignedData.data (), newSignedData.size (), addr);
 										else
 										{
 											LogPrint (eLogWarning,
@@ -4354,8 +4356,7 @@ namespace transport
 					const i2p::data::IdentHash charlieHash (buf + 3);
 					const auto & bobHash = bobIdentity->GetIdentHash ();
 					if (i2p::data::IsRouterBanned (bobHash) || i2p::data::IsOperatorBlockedRouter (bobHash)
-						|| i2p::data::IsRouterBanned (charlieHash)
-						|| i2p::data::IsOperatorBlockedRouter (charlieHash))
+						|| i2p::data::IsRouterBanned (charlieHash) || i2p::data::IsOperatorBlockedRouter (charlieHash))
 					{
 						LogPrint (eLogInfo, "SSU2: Peer test 4 from banned or operator-blocked router ignored");
 						session->Done ();
@@ -5353,11 +5354,11 @@ namespace transport
 			// Bob answers immediately, Alice waits for Charlie's HolePunch or
 			// Bob's RelayResponse. Expire per role on monotonic seconds.
 			const int timeout = it->second.role == eSSU2RelayRoleAlice ? SSU2_RELAY_NONCE_EXPIRATION_ALICE
-																	  : SSU2_RELAY_NONCE_EXPIRATION_BOB;
+																	   : SSU2_RELAY_NONCE_EXPIRATION_BOB;
 			if (ts > it->second.timestamp + static_cast<uint64_t> (timeout))
 			{
-				LogPrint (eLogInfo, "SSU2: Relay nonce ", it->first, " was not responded in ", timeout,
-					" seconds, deleted");
+				LogPrint (
+					eLogInfo, "SSU2: Relay nonce ", it->first, " was not responded in ", timeout, " seconds, deleted");
 				it = m_RelaySessions.erase (it);
 			}
 			else

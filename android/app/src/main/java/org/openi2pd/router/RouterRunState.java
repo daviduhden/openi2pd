@@ -91,10 +91,10 @@ public record RouterRunState(Phase phase, long gracefulDeadlineEpochMs, long gen
                 return null;
             }
             return switch (value) {
-            case "stopped" -> Stopped;
-            case "running" -> Running;
-            case "draining" -> Draining;
-            default -> null;
+                case "stopped" -> Stopped;
+                case "running" -> Running;
+                case "draining" -> Draining;
+                default -> null;
             };
         }
     }

@@ -29,7 +29,6 @@ import java.util.List;
  * {@code AdminOutcome}/{@code AdminResultCode} spellings exactly.</p>
  */
 public class RuntimeAdminPolicyTest {
-
     @Test
     public void tunnelNameBoundMatchesTheNativeVerb() {
         assertTrue(RuntimeAdminPolicy.isValidTunnelName("web"));
@@ -102,9 +101,8 @@ public class RuntimeAdminPolicyTest {
     @Test
     public void parseTunnelServiceRows() {
         List<RuntimeAdminPolicy.TunnelService> services =
-                RuntimeAdminPolicy.parseTunnelServices(
-                        "web|client|1|127.0.0.1:4444|site.i2p\n"
-                                + "irc|server|0|i2p:6668|abcd\n");
+                RuntimeAdminPolicy.parseTunnelServices("web|client|1|127.0.0.1:4444|site.i2p\n"
+                        + "irc|server|0|i2p:6668|abcd\n");
         assertEquals(2, services.size());
         assertEquals("web", services.get(0).name());
         assertEquals("client", services.get(0).kind());
@@ -131,8 +129,8 @@ public class RuntimeAdminPolicyTest {
 
     @Test
     public void parseReseedStatusRecord() {
-        RuntimeAdminPolicy.ReseedStatus status =
-                RuntimeAdminPolicy.parseReseedStatus("failed|1|3|1|1700000000000|1699999999000|no server");
+        RuntimeAdminPolicy.ReseedStatus status = RuntimeAdminPolicy.parseReseedStatus(
+                "failed|1|3|1|1700000000000|1699999999000|no server");
         assertTrue(status.isKnown());
         assertEquals("failed", status.phase());
         assertEquals("1", status.enabled());

@@ -82,11 +82,10 @@ void TestAdvertisedIntervalFloor ()
 	assert (NextTrackerDispatchTime (now, false, 0, 30 * 1000, MIN_TRACKER_REQUESTS_INTERVAL, 0)
 		== now + static_cast<uint64_t> (MIN_TRACKER_ANNOUNCE_INTERVAL) * 1000);
 	// A hostile zero/negative interval is a floor, never a spin.
-	assert (NextTrackerDispatchTime (now, false, 0, 0, MIN_TRACKER_REQUESTS_INTERVAL, 0)
-		== now + 900 * 1000);
+	assert (NextTrackerDispatchTime (now, false, 0, 0, MIN_TRACKER_REQUESTS_INTERVAL, 0) == now + 900 * 1000);
 	// A larger advertised interval is honoured, as before this change.
-	assert (NextTrackerDispatchTime (now, false, 0, 3600 * 1000, MIN_TRACKER_REQUESTS_INTERVAL, 0)
-		== now + 3600 * 1000);
+	assert (
+		NextTrackerDispatchTime (now, false, 0, 3600 * 1000, MIN_TRACKER_REQUESTS_INTERVAL, 0) == now + 3600 * 1000);
 	// Jitter is added on top of a healthy interval only.
 	assert (NextTrackerDispatchTime (now, false, 0, 900 * 1000, 15000, 2999) == now + 900 * 1000 + 2999);
 }
@@ -109,9 +108,8 @@ void TestSilentTrackerKeepsFailureLadder ()
 	const uint64_t ladderRetry = torrent.GetNextTrackerRequestTime (0);
 	assert (ladderRetry > now);
 
-	const uint64_t next = NextTrackerDispatchTime (
-		now, !torrent.GetTrackerError (0).empty (), ladderRetry, torrent.GetInterval (0),
-		torrent.GetMinInterval (0), 0);
+	const uint64_t next = NextTrackerDispatchTime (now, !torrent.GetTrackerError (0).empty (), ladderRetry,
+		torrent.GetInterval (0), torrent.GetMinInterval (0), 0);
 	assert (next == ladderRetry);
 	assert (next < now + static_cast<uint64_t> (torrent.GetInterval (0)));
 	assert (next - now <= static_cast<uint64_t> (MIN_TRACKER_REQUESTS_INTERVAL) + 1000);
@@ -128,9 +126,9 @@ void TestSilentTrackerKeepsFailureLadder ()
 	assert (escalatedNext - escalatedNow > static_cast<uint64_t> (MIN_TRACKER_REQUESTS_INTERVAL));
 
 	// Jitter may not push a retry past the failure cap.
-	const uint64_t capped = NextTrackerDispatchTime (now, true,
-		now + static_cast<uint64_t> (MAX_TRACKER_FAILURE_BACKOFF) * 1000, torrent.GetInterval (0),
-		torrent.GetMinInterval (0), 2999);
+	const uint64_t capped
+		= NextTrackerDispatchTime (now, true, now + static_cast<uint64_t> (MAX_TRACKER_FAILURE_BACKOFF) * 1000,
+			torrent.GetInterval (0), torrent.GetMinInterval (0), 2999);
 	assert (capped == now + static_cast<uint64_t> (MAX_TRACKER_FAILURE_BACKOFF) * 1000);
 
 	// An already-expired retry time still waits a full ladder floor instead of

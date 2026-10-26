@@ -339,8 +339,7 @@ void TestDirectFallback ()
 #ifndef _WIN32
 	const auto permissions = fs::status (keyPath).permissions ();
 	assert ((permissions
-				& (fs::perms::group_read | fs::perms::group_write | fs::perms::others_read
-					| fs::perms::others_write))
+				& (fs::perms::group_read | fs::perms::group_write | fs::perms::others_read | fs::perms::others_write))
 		== fs::perms::none);
 #endif
 	assert (RemoveArtifact (StorageArtifact::DestinationKeys, keyName));
@@ -388,8 +387,7 @@ void TestDestinationKeyArtifact ()
 	// Secret material is written with the private mode the worker uses.
 	const auto permissions = fs::status (path).permissions ();
 	assert ((permissions
-				& (fs::perms::group_read | fs::perms::group_write | fs::perms::others_read
-					| fs::perms::others_write))
+				& (fs::perms::group_read | fs::perms::group_write | fs::perms::others_read | fs::perms::others_write))
 		== fs::perms::none);
 #endif
 

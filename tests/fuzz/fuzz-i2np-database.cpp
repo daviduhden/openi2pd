@@ -18,6 +18,6 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t * data, size_t size)
 {
 	if (!data || size < 65) return 0;
 	i2p::DatabaseSearchReply reply;
-	(void) i2p::ParseDatabaseSearchReply (data, size, reply);
+	(void)i2p::ParseDatabaseSearchReply (data, size, reply);
 	return 0;
 }

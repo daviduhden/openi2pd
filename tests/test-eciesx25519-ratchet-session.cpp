@@ -583,8 +583,8 @@ void TagsetExhaustion (CryptoKeyType type)
 	int sent = 0;
 	while (sent <= 0x10000)
 	{
-		auto message = alice.session->WrapSingleMessage (
-			MakeDataMessage (body, 0x0B0B0000u + static_cast<uint32_t> (sent)));
+		auto message
+			= alice.session->WrapSingleMessage (MakeDataMessage (body, 0x0B0B0000u + static_cast<uint32_t> (sent)));
 		if (!message) break;
 		sent++;
 	}

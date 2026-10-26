@@ -126,10 +126,9 @@ private:
 			// client. Transfer-Encoding stays untouched so the chunked or
 			// identity framing of the body is unchanged.
 			if (StartsWith (m_Line, "Proxy-") // Proxy-Authenticate, Proxy-Authorization, ...
-				|| StartsWith (m_Line, "Keep-Alive:") || StartsWith (m_Line, "TE:")
-				|| StartsWith (m_Line, "Trailer:") || StartsWith (m_Line, "X-Forwarded-")
-				|| StartsWith (m_Line, "X-Real-IP:") || StartsWith (m_Line, "Client-IP:")
-				|| StartsWith (m_Line, "X-Originating-IP:"))
+				|| StartsWith (m_Line, "Keep-Alive:") || StartsWith (m_Line, "TE:") || StartsWith (m_Line, "Trailer:")
+				|| StartsWith (m_Line, "X-Forwarded-") || StartsWith (m_Line, "X-Real-IP:")
+				|| StartsWith (m_Line, "Client-IP:") || StartsWith (m_Line, "X-Originating-IP:"))
 				return;
 			if (StartsWith (m_Line, "Connection:"))
 			{

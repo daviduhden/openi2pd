@@ -82,7 +82,8 @@ int main (int argc, char ** argv)
 	if (::geteuid () == 0) return 77;
 	const auto support = i2p::privsep::ProbeLinuxIsolation ();
 	if (!support.filesystem || !support.seccompFilter) return 77;
-	const auto root = std::filesystem::temp_directory_path () / ("openi2pd-data-client-" + std::to_string (::getpid ()));
+	const auto root
+		= std::filesystem::temp_directory_path () / ("openi2pd-data-client-" + std::to_string (::getpid ()));
 	std::filesystem::create_directory (root);
 	struct Cleanup
 	{

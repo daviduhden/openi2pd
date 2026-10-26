@@ -279,8 +279,7 @@ namespace garlic
 	void ECIESX25519AEADRatchetSession::InitNewSessionTagset (std::shared_ptr<RatchetTagSet> tagsetNsr) const
 	{
 		uint8_t tagsetKey[32];
-		i2p::modern::ScopeExit cleanseTagsetKey (
-			[&tagsetKey] () { OPENSSL_cleanse (tagsetKey, sizeof (tagsetKey)); });
+		i2p::modern::ScopeExit cleanseTagsetKey ([&tagsetKey] () { OPENSSL_cleanse (tagsetKey, sizeof (tagsetKey)); });
 		i2p::crypto::HKDF (m_CK, nullptr, 0, "SessionReplyTags", tagsetKey,
 			32); // tagsetKey = HKDF(chainKey, ZEROLEN, "SessionReplyTags", 32)
 		// Session Tag Ratchet
@@ -831,7 +830,8 @@ namespace garlic
 			uint8_t remote[32];
 			memcpy (remote, hasKey ? buf : m_NextSendRatchet->remote, 32);
 			uint8_t sharedSecret[32], tagsetKey[32];
-			i2p::modern::ScopeExit cleanseRatchetSecrets ([&sharedSecret, &tagsetKey] ()
+			i2p::modern::ScopeExit cleanseRatchetSecrets (
+				[&sharedSecret, &tagsetKey] ()
 				{
 					OPENSSL_cleanse (sharedSecret, sizeof (sharedSecret));
 					OPENSSL_cleanse (tagsetKey, sizeof (tagsetKey));
@@ -930,7 +930,8 @@ namespace garlic
 				key = m_NextReceiveRatchet->key;
 			}
 			uint8_t sharedSecret[32], tagsetKey[32];
-			i2p::modern::ScopeExit cleanseRatchetSecrets ([&sharedSecret, &tagsetKey] ()
+			i2p::modern::ScopeExit cleanseRatchetSecrets (
+				[&sharedSecret, &tagsetKey] ()
 				{
 					OPENSSL_cleanse (sharedSecret, sizeof (sharedSecret));
 					OPENSSL_cleanse (tagsetKey, sizeof (tagsetKey));
@@ -1576,7 +1577,8 @@ namespace garlic
 			// The 16-bit index space is used up. Do not remove the session:
 			// Destination::GetRoutingSession will create a fresh one and this
 			// object stays available for receiving delayed messages.
-			LogPrint (eLogError, "Garlic: ECIES-X25519-AEAD-Ratchet send tagset is exhausted, a new session is required");
+			LogPrint (
+				eLogError, "Garlic: ECIES-X25519-AEAD-Ratchet send tagset is exhausted, a new session is required");
 			m_SendTagsetExhausted.store (true, std::memory_order_release);
 			return false;
 		}

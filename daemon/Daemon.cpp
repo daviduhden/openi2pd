@@ -259,8 +259,7 @@ namespace util
 					result.code = AdminResultCode::Failed;
 					result.enabled = running;
 					result.value = running ? 1 : 0;
-					SetAdminResultMessage (
-						result, error.empty () ? "tunnel command failed" : error.c_str ());
+					SetAdminResultMessage (result, error.empty () ? "tunnel command failed" : error.c_str ());
 					break;
 				}
 				bool nowRunning = start;
@@ -340,8 +339,8 @@ namespace util
 			case AdminCommandKind::Online:
 				i2p::transport::transports.SetOnline (command.enabled);
 				result.enabled = i2p::transport::transports.IsOnline ();
-				SetAdminResultMessage (result,
-					result.enabled ? "transports online" : "transports offline; the router keeps running");
+				SetAdminResultMessage (
+					result, result.enabled ? "transports online" : "transports offline; the router keeps running");
 				break;
 			case AdminCommandKind::LogReopen:
 				i2p::log::Logger ().Reopen ();
@@ -1147,8 +1146,7 @@ namespace util
 			window.descriptorReception = true;
 			// The forked child drops supplementary groups, gid and uid.
 			window.credentialDrop = i2p::privsep::GetWorkerCredentials ().configured;
-			auto promises = i2p::privsep::OpenBSDPledgePromiseList (
-				i2p::privsep::OpenBSDPledgePhase::Startup, window);
+			auto promises = i2p::privsep::OpenBSDPledgePromiseList (i2p::privsep::OpenBSDPledgePhase::Startup, window);
 			std::string policy;
 			i2p::config::GetOption ("openbsd.pledge_file", policy);
 			if (!policy.empty ())
@@ -1159,8 +1157,8 @@ namespace util
 				std::vector<std::string_view> allowed;
 				allowed.reserve (promises.size ());
 				for (const auto & promise : promises) allowed.emplace_back (promise);
-				auto accepted = i2p::privsep::ParseOpenBSDPledgeFile (
-					policy, allowed, i2p::privsep::OpenBSDPledgePhase::Startup);
+				auto accepted
+					= i2p::privsep::ParseOpenBSDPledgeFile (policy, allowed, i2p::privsep::OpenBSDPledgePhase::Startup);
 				if (!accepted)
 				{
 					std::cerr << "Daemon: openbsd.pledge_file: " << accepted.error () << std::endl;
@@ -1235,36 +1233,37 @@ namespace util
 			// The data worker joins the same isolation phase as the fixed-file
 			// router storage: both are persistence authority, and a rollback
 			// must revoke both before either process is stopped.
-			initTransaction.Run (DaemonInitPhase::DataStorage, [&] ()
-			{
-				// Fail closed until the isolated writer is actually installed.
-				i2p::data::ClearArtifactStorage ();
-#if !defined(__ANDROID__)
-				std::string error;
-				d->dataStorage = std::make_shared<i2p::privsep::DataStorageClient> ();
-				if (!d->dataStorage->Start (i2p::fs::GetDataDir (), error))
+			initTransaction.Run (DaemonInitPhase::DataStorage,
+				[&] ()
 				{
-					// A bounded, non-secret diagnostic: the message never
-					// contains an artifact name, path or key material. The
-					// router continues with artifact writes failing closed
-					// instead of silently reverting to core writes.
-					LogPrint (eLogError, "Daemon: Data storage worker unavailable: ", error);
-					d->dataStorage->Stop ();
-					d->dataStorage.reset ();
+					// Fail closed until the isolated writer is actually installed.
 					i2p::data::ClearArtifactStorage ();
-					return;
-				}
-				auto client = d->dataStorage;
-				i2p::data::InstallArtifactStorage (
-					[client] (i2p::data::StorageArtifact kind, std::string_view name, std::span<const uint8_t> bytes)
-					{ return client->Write (kind, name, bytes); },
-					[client] (i2p::data::StorageArtifact kind, std::string_view name)
-					{ return client->Remove (kind, name); });
-				LogPrint (eLogInfo, "Daemon: Hash-named artifact writes are isolated");
+#if !defined(__ANDROID__)
+					std::string error;
+					d->dataStorage = std::make_shared<i2p::privsep::DataStorageClient> ();
+					if (!d->dataStorage->Start (i2p::fs::GetDataDir (), error))
+					{
+						// A bounded, non-secret diagnostic: the message never
+						// contains an artifact name, path or key material. The
+						// router continues with artifact writes failing closed
+						// instead of silently reverting to core writes.
+						LogPrint (eLogError, "Daemon: Data storage worker unavailable: ", error);
+						d->dataStorage->Stop ();
+						d->dataStorage.reset ();
+						i2p::data::ClearArtifactStorage ();
+						return;
+					}
+					auto client = d->dataStorage;
+					i2p::data::InstallArtifactStorage ([client] (i2p::data::StorageArtifact kind, std::string_view name,
+														   std::span<const uint8_t> bytes)
+						{ return client->Write (kind, name, bytes); },
+						[client] (i2p::data::StorageArtifact kind, std::string_view name)
+						{ return client->Remove (kind, name); });
+					LogPrint (eLogInfo, "Daemon: Hash-named artifact writes are isolated");
 #else
 				LogPrint (eLogError, "Daemon: Data storage worker unavailable on this platform");
 #endif
-			});
+				});
 		}
 #endif
 

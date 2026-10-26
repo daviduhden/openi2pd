@@ -84,14 +84,10 @@ constexpr std::string_view SupervisorWorkerStateName (SupervisorWorkerState stat
 {
 	switch (state)
 	{
-	case SupervisorWorkerState::Starting:
-		return "starting";
-	case SupervisorWorkerState::Ready:
-		return "ready";
-	case SupervisorWorkerState::Restarting:
-		return "restarting";
-	case SupervisorWorkerState::Failed:
-		return "failed";
+	case SupervisorWorkerState::Starting: return "starting";
+	case SupervisorWorkerState::Ready: return "ready";
+	case SupervisorWorkerState::Restarting: return "restarting";
+	case SupervisorWorkerState::Failed: return "failed";
 	}
 	return "unknown";
 }
@@ -347,11 +343,11 @@ struct SupervisorReplyDecision
 constexpr SupervisorReplyDecision ClassifySupervisorReply (uint32_t pendingRequest, uint32_t receivedRequest)
 {
 	if (receivedRequest < pendingRequest)
-		return SupervisorReplyDecision { SupervisorReplyKind::Stale, ErrorCode::None, "stale storage supervisor reply" };
+		return SupervisorReplyDecision { SupervisorReplyKind::Stale, ErrorCode::None,
+			"stale storage supervisor reply" };
 	if (receivedRequest > pendingRequest)
-		return SupervisorReplyDecision {
-			SupervisorReplyKind::OutOfOrder, ErrorCode::BadField, "storage supervisor replied out of order"
-		};
+		return SupervisorReplyDecision { SupervisorReplyKind::OutOfOrder, ErrorCode::BadField,
+			"storage supervisor replied out of order" };
 	return SupervisorReplyDecision { };
 }
 }

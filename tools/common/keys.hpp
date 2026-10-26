@@ -28,82 +28,84 @@
 
 namespace i2p::tools
 {
-	/**
+/**
 	 * Owner of a private-key serialization. The destructor wipes the bytes and
 	 * the type is non-copyable/non-movable so it cannot be accidentally left
 	 * behind in a second buffer.
 	 */
-	class SecureBuffer
+class SecureBuffer
+{
+public:
+	SecureBuffer () = default;
+	explicit SecureBuffer (size_t size)
+		: m_Data (size)
 	{
-	public:
-		SecureBuffer () = default;
-		explicit SecureBuffer (size_t size) : m_Data (size) { }
-		~SecureBuffer () { Wipe (m_Data); }
-		SecureBuffer (const SecureBuffer &) = delete;
-		SecureBuffer & operator= (const SecureBuffer &) = delete;
-		SecureBuffer (SecureBuffer &&) = delete;
-		SecureBuffer & operator= (SecureBuffer &&) = delete;
+	}
+	~SecureBuffer () { Wipe (m_Data); }
+	SecureBuffer (const SecureBuffer &) = delete;
+	SecureBuffer & operator= (const SecureBuffer &) = delete;
+	SecureBuffer (SecureBuffer &&) = delete;
+	SecureBuffer & operator= (SecureBuffer &&) = delete;
 
-		uint8_t * data () { return m_Data.data (); }
-		const uint8_t * data () const { return m_Data.data (); }
-		size_t size () const { return m_Data.size (); }
-		bool empty () const { return m_Data.empty (); }
-		void resize (size_t size) { m_Data.resize (size); }
-		std::span<uint8_t> span () { return m_Data; }
-		std::span<const uint8_t> span () const { return m_Data; }
+	uint8_t * data () { return m_Data.data (); }
+	const uint8_t * data () const { return m_Data.data (); }
+	size_t size () const { return m_Data.size (); }
+	bool empty () const { return m_Data.empty (); }
+	void resize (size_t size) { m_Data.resize (size); }
+	std::span<uint8_t> span () { return m_Data; }
+	std::span<const uint8_t> span () const { return m_Data; }
 
-	private:
-		std::vector<uint8_t> m_Data;
-	};
+private:
+	std::vector<uint8_t> m_Data;
+};
 
-	/**
+/**
 	 * Read a destination key file and require the parser to consume every byte.
 	 * A trailing block is rejected instead of silently ignored.
 	 */
-	inline i2p::expected<void, std::string> LoadPrivateKeys (
-		const std::string & path, i2p::data::PrivateKeys & keys)
-	{
-		auto input = ReadFile (path);
-		if (!input) return i2p::unexpected (input.error ());
-		const size_t size = input->size ();
-		const size_t consumed = keys.FromBuffer (input->data (), size);
-		Wipe (*input);
-		if (!consumed || consumed != size) return i2p::unexpected ("bad keys file format");
-		return { };
-	}
+inline i2p::expected<void, std::string> LoadPrivateKeys (const std::string & path, i2p::data::PrivateKeys & keys)
+{
+	auto input = ReadFile (path);
+	if (!input) return i2p::unexpected (input.error ());
+	const size_t size = input->size ();
+	const size_t consumed = keys.FromBuffer (input->data (), size);
+	Wipe (*input);
+	if (!consumed || consumed != size) return i2p::unexpected ("bad keys file format");
+	return { };
+}
 
-	/**
+/**
 	 * Replace a key file through the core staged writer: same directory,
 	 * fsync, owner-only mode and no in-place truncation. The original bytes are
 	 * unchanged, so existing key files stay interoperable.
 	 */
-	inline bool SavePrivateKeys (const std::string & path, std::span<const uint8_t> data)
-	{
-		if (path.empty ()) return false;
-		const std::string_view contents
-			= data.empty () ? std::string_view ()
-							: std::string_view (reinterpret_cast<const char *> (data.data ()), data.size ());
-		return i2p::fs::AtomicWritePrivate (path, contents);
-	}
+inline bool SavePrivateKeys (const std::string & path, std::span<const uint8_t> data)
+{
+	if (path.empty ()) return false;
+	const std::string_view contents = data.empty ()
+		? std::string_view ()
+		: std::string_view (reinterpret_cast<const char *> (data.data ()), data.size ());
+	return i2p::fs::AtomicWritePrivate (path, contents);
+}
 
-	/**
+/**
 	 * True when two paths name the same file, either textually after
 	 * canonicalization or through the same device/inode. Used to refuse an
 	 * output that would destroy its own input.
 	 */
-	inline bool SameFile (const std::string & first, const std::string & second)
-	{
-		if (first.empty () || second.empty ()) return false;
-		std::error_code error;
-		if (std::filesystem::equivalent (first, second, error) && !error) return true;
-		error.clear ();
-		const auto a = std::filesystem::weakly_canonical (first, error);
-		if (error) return first == second;
-		error.clear ();
-		const auto b = std::filesystem::weakly_canonical (second, error);
-		if (error) return first == second;
-		return a == b;
-	}
+inline bool SameFile (const std::string & first, const std::string & second)
+{
+	if (first.empty () || second.empty ()) return false;
+	std::error_code error;
+	if (std::filesystem::equivalent (first, second, error) && !error) return true;
+	error.clear ();
+	const auto a = std::filesystem::weakly_canonical (first, error);
+	if (error) return first == second;
+	error.clear ();
+	const auto b = std::filesystem::weakly_canonical (second, error);
+	if (error) return first == second;
+	return a == b;
+}
 } // namespace i2p::tools
 
 #endif // I2PD_TOOLS_COMMON_KEYS_HPP

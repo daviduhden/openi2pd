@@ -71,8 +71,8 @@ void TestSchedulingArithmetic ()
 	assert (TrackerSchedule::AdvertisedInterval (3600) == 3600 * 1000);
 	assert (TrackerSchedule::AdvertisedInterval (0) == 900 * 1000);
 	assert (TrackerSchedule::AdvertisedInterval (-30) == 900 * 1000);
-	assert (TrackerSchedule::AdvertisedInterval (std::numeric_limits<int64_t>::max ())
-		== MAX_TRACKER_REQUESTS_INTERVAL);
+	assert (
+		TrackerSchedule::AdvertisedInterval (std::numeric_limits<int64_t>::max ()) == MAX_TRACKER_REQUESTS_INTERVAL);
 
 	// "min interval" is stored as announced; it can raise but never lower the
 	// effective interval, and it cannot undercut the 15-minute floor.
@@ -134,14 +134,12 @@ void TestResponseParsing ()
 	assert (torrent.GetInterval (1) == 3600 * 1000);
 
 	// A larger "min interval" wins over "interval".
-	torrent.ParseTrackerResponse (
-		2, Dict ({ { "interval", Integer (3600) }, { "min interval", Integer (7200) } }));
+	torrent.ParseTrackerResponse (2, Dict ({ { "interval", Integer (3600) }, { "min interval", Integer (7200) } }));
 	assert (torrent.GetMinInterval (2) == 7200 * 1000);
 	assert (torrent.GetInterval (2) == 7200 * 1000);
 
 	// A smaller "min interval" cannot shorten "interval" ...
-	torrent.ParseTrackerResponse (
-		3, Dict ({ { "interval", Integer (3600) }, { "min interval", Integer (1800) } }));
+	torrent.ParseTrackerResponse (3, Dict ({ { "interval", Integer (3600) }, { "min interval", Integer (1800) } }));
 	assert (torrent.GetMinInterval (3) == 1800 * 1000);
 	assert (torrent.GetInterval (3) == 3600 * 1000);
 
@@ -182,8 +180,8 @@ void TestResponseParsing ()
 	assert (torrent.GetInterval (10) == 900 * 1000);
 	assert (torrent.GetNumPeers (10) == 0); // zero destinations are skipped
 	assert (torrent.GetNumSeeders (10) == 1 && torrent.GetNumLeechers (10) == 2);
-	torrent.HandleDatagramTrackerResponse (11, std::numeric_limits<uint32_t>::max (), hashes.data (),
-		hashes.size (), 0, 0);
+	torrent.HandleDatagramTrackerResponse (
+		11, std::numeric_limits<uint32_t>::max (), hashes.data (), hashes.size (), 0, 0);
 	assert (torrent.GetInterval (11) == MAX_TRACKER_REQUESTS_INTERVAL);
 }
 

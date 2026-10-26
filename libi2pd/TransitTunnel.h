@@ -143,8 +143,8 @@ namespace tunnel
 	inline bool IsExactTunnelBuildMessageSize (size_t payloadLength, int numRecords, bool shortRecords)
 	{
 		if (numRecords <= 0 || numRecords > MAX_NUM_RECORDS) return false;
-		const size_t expected
-			= shortRecords ? GetShortTunnelBuildMessageSize (numRecords) : GetVariableTunnelBuildMessageSize (numRecords);
+		const size_t expected = shortRecords ? GetShortTunnelBuildMessageSize (numRecords)
+											 : GetVariableTunnelBuildMessageSize (numRecords);
 		return payloadLength == expected;
 	}
 

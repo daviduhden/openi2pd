@@ -284,8 +284,8 @@ namespace tunnel
 	 * the mask correct and testable.
 	 */
 	std::shared_ptr<TunnelConfig> CreateOneHopInboundTunnelConfig (const i2p::data::RouterInfo & router);
-	std::shared_ptr<TunnelConfig> CreateOneHopOutboundTunnelConfig (const i2p::data::RouterInfo & router,
-		uint32_t replyTunnelID, const i2p::data::IdentHash & replyIdent);
+	std::shared_ptr<TunnelConfig> CreateOneHopOutboundTunnelConfig (
+		const i2p::data::RouterInfo & router, uint32_t replyTunnelID, const i2p::data::IdentHash & replyIdent);
 	/** Outbound mirror of @a inbound: same peers, same far-end mask. */
 	std::shared_ptr<TunnelConfig> CreatePairedOutboundTunnelConfig (const InboundTunnel & inbound);
 

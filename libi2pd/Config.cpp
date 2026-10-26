@@ -123,12 +123,12 @@ namespace config
 
 		options_description privsep ("Privilege-separation options (Unix only)");
 		privsep.add_options () ("privsep.enabled", value<bool> ()->default_value (false),
-			"Enable isolated worker processes (log and opt-in storage) (default: false)") ("privsep.log", value<bool> ()->default_value (true),
-			"Isolate log writing in a worker process") ("privsep.routerstorage", value<bool> ()->default_value (false),
-			"Delegate fixed router state writes to a storage worker") ("privsep.artifacts",
-			value<bool> ()->default_value (false),
-			"With privsep.enabled, delegate netDb cache, peer profile and destination key writes to the data-storage worker") (
-			"privsep.user", value<std::string> ()->default_value (""),
+			"Enable isolated worker processes (log and opt-in storage) (default: false)") ("privsep.log",
+			value<bool> ()->default_value (true), "Isolate log writing in a worker process") ("privsep.routerstorage",
+			value<bool> ()->default_value (false), "Delegate fixed router state writes to a storage worker") (
+			"privsep.artifacts", value<bool> ()->default_value (false),
+			"With privsep.enabled, delegate netDb cache, peer profile and destination key writes to the data-storage "
+			"worker") ("privsep.user", value<std::string> ()->default_value (""),
 			"Unprivileged account every privilege-separated worker runs as; resolved before the sandbox is installed "
 			"(default: keep the daemon identity)") ("privsep.group", value<std::string> ()->default_value (""),
 			"Group for privilege-separated workers; requires privsep.user (default: the account's primary group)");
@@ -151,35 +151,34 @@ namespace config
 			"File to persist HTTP Proxy keys. Transient by default") ("httpproxy.signaturetype",
 			value<i2p::data::SigningKeyType> ()->default_value (i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519),
 			"Signature type for new keys. 7 (EdDSA) by default") ("httpproxy.inbound.length",
-			value<std::string> ()->default_value ("3"),
-			"HTTP proxy inbound tunnel length") ("httpproxy.outbound.length",
-			value<std::string> ()->default_value ("3"), "HTTP proxy outbound tunnel length") (
-			"httpproxy.inbound.quantity", value<std::string> ()->default_value ("5"),
-			"HTTP proxy inbound tunnels quantity") ("httpproxy.outbound.quantity",
-			value<std::string> ()->default_value ("5"), "HTTP proxy outbound tunnels quantity") (
-			"httpproxy.inbound.lengthVariance", value<std::string> ()->default_value ("0"),
-			"HTTP proxy inbound tunnels length variance") ("httpproxy.outbound.lengthVariance",
-			value<std::string> ()->default_value ("0"), "HTTP proxy outbound tunnels length variance") (
-			"httpproxy.latency.min", value<std::string> ()->default_value ("0"), "HTTP proxy min latency for tunnels") (
-			"httpproxy.latency.max", value<std::string> ()->default_value ("0"), "HTTP proxy max latency for tunnels") (
-			"httpproxy.outproxy", value<std::string> ()->default_value (""), "HTTP proxy upstream out proxy url") (
-			"httpproxy.addresshelper", value<bool> ()->default_value (true), "Enable or disable addresshelper") (
-			"httpproxy.senduseragent", value<bool> ()->default_value (false),
-			"Pass through user's User-Agent if enabled. Disabled by default") ("httpproxy.auth.enabled",
-			value<bool> ()->default_value (false),
+			value<std::string> ()->default_value ("3"), "HTTP proxy inbound tunnel length") (
+			"httpproxy.outbound.length", value<std::string> ()->default_value ("3"),
+			"HTTP proxy outbound tunnel length") ("httpproxy.inbound.quantity",
+			value<std::string> ()->default_value ("5"), "HTTP proxy inbound tunnels quantity") (
+			"httpproxy.outbound.quantity", value<std::string> ()->default_value ("5"),
+			"HTTP proxy outbound tunnels quantity") ("httpproxy.inbound.lengthVariance",
+			value<std::string> ()->default_value ("0"), "HTTP proxy inbound tunnels length variance") (
+			"httpproxy.outbound.lengthVariance", value<std::string> ()->default_value ("0"),
+			"HTTP proxy outbound tunnels length variance") ("httpproxy.latency.min",
+			value<std::string> ()->default_value ("0"), "HTTP proxy min latency for tunnels") ("httpproxy.latency.max",
+			value<std::string> ()->default_value ("0"), "HTTP proxy max latency for tunnels") ("httpproxy.outproxy",
+			value<std::string> ()->default_value (""), "HTTP proxy upstream out proxy url") ("httpproxy.addresshelper",
+			value<bool> ()->default_value (true), "Enable or disable addresshelper") ("httpproxy.senduseragent",
+			value<bool> ()->default_value (false), "Pass through user's User-Agent if enabled. Disabled by default") (
+			"httpproxy.auth.enabled", value<bool> ()->default_value (false),
 			"Require local proxy authentication (HTTP 407). Disabled by default") ("httpproxy.auth.type",
 			value<std::string> ()->default_value ("basic"),
 			"Local proxy authentication scheme: basic (RFC 7617) or digest (RFC 7616 qop=auth)") (
 			"httpproxy.auth.username", value<std::string> ()->default_value (""),
 			"Username accepted by the HTTP proxy. Empty with auth.enabled rejects every request") (
 			"httpproxy.auth.password", value<std::string> ()->default_value (""),
-			"Password accepted by the HTTP proxy. Never logged or forwarded to a destination") (
-			"httpproxy.auth.realm", value<std::string> ()->default_value ("openi2pd"),
-			"Realm shown by the HTTP proxy authentication challenge") (
-			"httpproxy.auth.failuredelay", value<std::string> ()->default_value ("0"),
+			"Password accepted by the HTTP proxy. Never logged or forwarded to a destination") ("httpproxy.auth.realm",
+			value<std::string> ()->default_value ("openi2pd"),
+			"Realm shown by the HTTP proxy authentication challenge") ("httpproxy.auth.failuredelay",
+			value<std::string> ()->default_value ("0"),
 			"Non-blocking delay in milliseconds before answering a rejected credential (0..30000)") (
-			"httpproxy.i2cp.leaseSetType",
-			value<std::string> ()->default_value ("3"), "Local destination's LeaseSet type")
+			"httpproxy.i2cp.leaseSetType", value<std::string> ()->default_value ("3"),
+			"Local destination's LeaseSet type")
 #if OPENSSL_PQ
 			("httpproxy.i2cp.leaseSetEncType", value<std::string> ()->default_value ("6,4"),
 				"Local destination's LeaseSet encryption type")
@@ -224,15 +223,14 @@ namespace config
 			value<bool> ()->default_value (false), "Enable or disable SOCKS outproxy") ("socksproxy.outproxy",
 			value<std::string> ()->default_value ("127.0.0.1"), "Upstream outproxy address for SOCKS Proxy") (
 			"socksproxy.outproxyport", value<uint16_t> ()->default_value (9050),
-			"Upstream outproxy port for SOCKS Proxy") ("socksproxy.auth.enabled",
-			value<bool> ()->default_value (false),
+			"Upstream outproxy port for SOCKS Proxy") ("socksproxy.auth.enabled", value<bool> ()->default_value (false),
 			"Require RFC 1929 username/password authentication on the SOCKS proxy. Disabled by default") (
 			"socksproxy.auth.username", value<std::string> ()->default_value (""),
 			"Username accepted by the SOCKS proxy. Empty with auth.enabled rejects every request") (
 			"socksproxy.auth.password", value<std::string> ()->default_value (""),
 			"Password accepted by the SOCKS proxy. Never logged or forwarded to a destination") (
-			"socksproxy.i2cp.leaseSetType",
-			value<std::string> ()->default_value ("3"), "Local destination's LeaseSet type")
+			"socksproxy.i2cp.leaseSetType", value<std::string> ()->default_value ("3"),
+			"Local destination's LeaseSet type")
 #if OPENSSL_PQ
 			("socksproxy.i2cp.leaseSetEncType", value<std::string> ()->default_value ("6,4"),
 				"Local destination's LeaseSet encryption type")
@@ -291,14 +289,13 @@ namespace config
 		options_description i2cp ("I2CP options");
 		i2cp.add_options () ("i2cp.enabled", value<bool> ()->default_value (false), "Enable or disable I2CP") (
 			"i2cp.address", value<std::string> ()->default_value ("127.0.0.1"), "I2CP listen address") (
-			"i2cp.port", value<uint16_t> ()->default_value (7654), "I2CP listen port") ("i2cp.singlethread",
-			value<bool> ()->default_value (true),
-			"Destinations run in the I2CP server's thread") (
+			"i2cp.port", value<uint16_t> ()->default_value (7654), "I2CP listen port") (
+			"i2cp.singlethread", value<bool> ()->default_value (true), "Destinations run in the I2CP server's thread") (
 			"i2cp.maxconnections", value<uint32_t> ()->default_value (0),
 			"Maximum concurrent I2CP control connections. 0 uses the default of 50, capped at 2048") (
 			"i2cp.maxsessions", value<uint32_t> ()->default_value (0),
-			"Maximum concurrent I2CP sessions. 0 uses the default of 512, capped at 4096") (
-			"i2cp.inboundlimit", value<uint32_t> ()->default_value (0),
+			"Maximum concurrent I2CP sessions. 0 uses the default of 512, capped at 4096") ("i2cp.inboundlimit",
+			value<uint32_t> ()->default_value (0),
 			"Client inbound limit in KBps to return in BandwidthLimitsMessage. Router's bandwidth by default") (
 			"i2cp.outboundlimit", value<uint32_t> ()->default_value (0),
 			"Client outbound limit in KBps to return in BandwidthLimitsMessage. Router's bandwidth by default");
@@ -337,9 +334,8 @@ namespace config
 		reseed.add_options () ("reseed.verify", value<bool> ()->default_value (true), "Verify .su3 signature") (
 			"reseed.disable", value<bool> ()->default_value (false),
 			"Disable reseed: no automatic or administrative RouterInfo bootstrap") (
-			"i2p.noReseed", value<bool> ()->default_value (false), "Alias for reseed.disable") (
-			"reseed.threshold", value<uint16_t> ()->default_value (25),
-			"Minimum number of known routers before requesting reseed") (
+			"i2p.noReseed", value<bool> ()->default_value (false), "Alias for reseed.disable") ("reseed.threshold",
+			value<uint16_t> ()->default_value (25), "Minimum number of known routers before requesting reseed") (
 			"reseed.floodfill", value<std::string> ()->default_value (""), "Ignored. Always empty") ("reseed.file",
 			value<std::string> ()->default_value (""),
 			"Path to local .su3 file or HTTPS URL to reseed from") ("reseed.zipfile",
@@ -375,8 +371,7 @@ namespace config
 			"Enable the operator blocklist read once at startup (default: enabled)") ("blocklist.file",
 			value<std::string> ()->default_value (""),
 			"Operator blocklist file, relative to the data directory (default: blocklist.txt)") ("blocklist.detail",
-			value<bool> ()->default_value (false),
-			"Retain a bounded diagnostic sample of rejected blocklist reasons");
+			value<bool> ()->default_value (false), "Retain a bounded diagnostic sample of rejected blocklist reasons");
 
 		options_description addressbook ("AddressBook options");
 		addressbook.add_options () ("addressbook.enabled", value<bool> ()->default_value (true),
@@ -546,7 +541,8 @@ namespace config
 		for (const char * secret : secretOptions)
 		{
 			if (m_Options.count (secret))
-				ThrowFatal ("Proxy authentication credentials must be set in the configuration file, not on the command line");
+				ThrowFatal (
+					"Proxy authentication credentials must be set in the configuration file, not on the command line");
 		}
 
 		if (!ignoreUnknown && (m_Options.count ("help") || m_Options.count ("h")))

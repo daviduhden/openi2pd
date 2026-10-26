@@ -88,8 +88,8 @@ namespace data
 		EVP_PKEY * sipKey = EVP_PKEY_new_raw_private_key (EVP_PKEY_SIPHASH, nullptr, m_PeerOrderingKey, 16);
 		EVP_PKEY_CTX * pctx = nullptr;
 		size_t macSize = 16;
-		OSSL_PARAM params[2] = {
-			OSSL_PARAM_construct_size_t (OSSL_MAC_PARAM_SIZE, &macSize), OSSL_PARAM_construct_end ()};
+		OSSL_PARAM params[2]
+			= { OSSL_PARAM_construct_size_t (OSSL_MAC_PARAM_SIZE, &macSize), OSSL_PARAM_construct_end () };
 		bool ok = md && sipKey && EVP_DigestSignInit (md, &pctx, nullptr, nullptr, sipKey) == 1;
 		// SipHash defaults to an 8-byte tag. The I2P peer-ordering group uses
 		// the first byte of a 16-byte digest, matching the project fallback.

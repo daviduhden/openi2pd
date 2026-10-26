@@ -194,8 +194,7 @@ namespace data
 		}
 
 		const auto colon = line.rfind (':');
-		const auto payload
-			= colon == std::string_view::npos ? line : line.substr (colon + 1);
+		const auto payload = colon == std::string_view::npos ? line : line.substr (colon + 1);
 		if (payload.empty ()) return i2p::unexpected<std::string_view> ("missing entry after reason prefix");
 		if (ContainsWhitespace (payload)) return i2p::unexpected<std::string_view> ("whitespace in blocklist entry");
 		if (colon != std::string_view::npos) entry.reason = line.substr (0, colon);
@@ -299,8 +298,8 @@ namespace data
 		// An IPv4-mapped IPv6 peer must not bypass an IPv4 range entry.
 		if (IsIpv4Mapped (bytes))
 		{
-			const uint32_t ipv4 = (static_cast<uint32_t> (bytes[12]) << 24)
-				| (static_cast<uint32_t> (bytes[13]) << 16) | (static_cast<uint32_t> (bytes[14]) << 8) | bytes[15];
+			const uint32_t ipv4 = (static_cast<uint32_t> (bytes[12]) << 24) | (static_cast<uint32_t> (bytes[13]) << 16)
+				| (static_cast<uint32_t> (bytes[14]) << 8) | bytes[15];
 			if (IsAddressBlocked (ipv4)) return true;
 		}
 		return m_Ipv6Addresses.contains (bytes);
@@ -431,8 +430,8 @@ namespace data
 			// A missing default file is the normal state (no operator list is
 			// shipped). Only an explicitly configured path that cannot be read
 			// is worth a warning.
-			LogPrint (configuredByOperator ? eLogWarning : eLogInfo,
-				"Blocklist: File not found or unreadable ", path.string ());
+			LogPrint (configuredByOperator ? eLogWarning : eLogInfo, "Blocklist: File not found or unreadable ",
+				path.string ());
 			g_Snapshot.Store (std::make_shared<const OperatorBlocklistSnapshot> ());
 			return false;
 		}
@@ -519,8 +518,8 @@ namespace data
 		if (g_RuntimeBans.size () >= OPERATOR_BLOCKLIST_MAX_RUNTIME_BANS)
 		{
 			if (!g_RuntimeBanFullLogged.exchange (true, std::memory_order_relaxed))
-				LogPrint (eLogWarning, "Blocklist: Runtime ban set is full (",
-					OPERATOR_BLOCKLIST_MAX_RUNTIME_BANS, " entries); refusing ", hash.ToBase64 ());
+				LogPrint (eLogWarning, "Blocklist: Runtime ban set is full (", OPERATOR_BLOCKLIST_MAX_RUNTIME_BANS,
+					" entries); refusing ", hash.ToBase64 ());
 			return false;
 		}
 		g_RuntimeBans.insert (hash);

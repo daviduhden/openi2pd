@@ -226,8 +226,8 @@ void TestPolicySeparation ()
 	// The single cross-role invariant: external network and persistent writes
 	// never coexist in one process, for every role this builder can produce.
 	const OpenBSDWorkerRole roles[] = { OpenBSDWorkerRole::Supervisor, OpenBSDWorkerRole::Log,
-		OpenBSDWorkerRole::Storage, OpenBSDWorkerRole::Network, OpenBSDWorkerRole::Crypto,
-		OpenBSDWorkerRole::Admin, OpenBSDWorkerRole::StorageBroker };
+		OpenBSDWorkerRole::Storage, OpenBSDWorkerRole::Network, OpenBSDWorkerRole::Crypto, OpenBSDWorkerRole::Admin,
+		OpenBSDWorkerRole::StorageBroker };
 	for (const auto role : roles)
 	{
 		OpenBSDPolicyConfig config = BaseConfig ();
@@ -281,8 +281,7 @@ void TestPledgeWindows ()
 {
 	// The execpromises argument is pinned to null: an exec'ed image starts
 	// without any promise and installs its own unveil+pledge.
-	static_assert (OPENBSD_PLEDGE_EXECPROMISES == nullptr,
-		"pledge(2) must never be called with execpromises");
+	static_assert (OPENBSD_PLEDGE_EXECPROMISES == nullptr, "pledge(2) must never be called with execpromises");
 	assert (!IsPledgePromiseSubset ("recvfd", "stdio proc exec"));
 	assert (IsPledgePromiseSubset ("stdio exec", "stdio proc exec"));
 	assert (IsPledgePromiseSubset ("", "stdio"));
@@ -315,11 +314,9 @@ void TestPledgeWindows ()
 		else
 			assert (!HasPromiseText (runtime, "recvfd"));
 		if (window.unveil) assert (HasPromiseText (startup, "unveil"));
-		if (window.upnp)
-			assert (HasPromiseText (startup, "mcast") && HasPromiseText (runtime, "mcast"));
+		if (window.upnp) assert (HasPromiseText (startup, "mcast") && HasPromiseText (runtime, "mcast"));
 		if (window.credentialDrop) assert (HasPromiseText (startup, "id"));
-		if (window.execWorkers)
-			assert (HasPromiseText (startup, "proc") && HasPromiseText (startup, "exec"));
+		if (window.execWorkers) assert (HasPromiseText (startup, "proc") && HasPromiseText (startup, "exec"));
 	}
 
 	// The daemon's exact windows: startup is the widest, runtime keeps recvfd
@@ -420,8 +417,8 @@ void TestPledgeFileParser ()
 	assert (startupSelected.has_value () && startupSelected->size () == 2);
 
 	// A missing file is an error, not an empty policy.
-	auto missing = ParseOpenBSDPledgeFile ("/var/empty/openi2pd-pledge-missing", startupAllowed,
-		OpenBSDPledgePhase::Startup);
+	auto missing
+		= ParseOpenBSDPledgeFile ("/var/empty/openi2pd-pledge-missing", startupAllowed, OpenBSDPledgePhase::Startup);
 	assert (!missing.has_value ());
 }
 
@@ -519,8 +516,8 @@ void TestSupervisorExecUnveil (const std::string & executable)
 			if (errno != ENOENT) return 4;
 			// The unveiled image itself is executable. The probe argument makes
 			// the re-executed test binary exit immediately.
-			char * const allowedArgv[] = { const_cast<char *> (executable.c_str ()),
-				const_cast<char *> ("--unveil-exec-probe"), nullptr };
+			char * const allowedArgv[]
+				= { const_cast<char *> (executable.c_str ()), const_cast<char *> ("--unveil-exec-probe"), nullptr };
 			char * const allowedEnv[] = { nullptr };
 			execve (executable.c_str (), allowedArgv, allowedEnv);
 			return 5;

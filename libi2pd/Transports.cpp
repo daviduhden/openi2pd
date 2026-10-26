@@ -728,8 +728,8 @@ namespace transport
 				peer->numAttempts++;
 				if (IsBlockedConnectAddress (*peer->router, tr))
 				{
-					LogPrint (eLogInfo, "Transports: Blocklisted address for ", ident.ToBase64 (),
-						" on transport ", (int)tr);
+					LogPrint (
+						eLogInfo, "Transports: Blocklisted address for ", ident.ToBase64 (), " on transport ", (int)tr);
 					continue;
 				}
 				const auto * connector = FindTransportConnector (tr);

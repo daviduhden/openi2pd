@@ -110,8 +110,8 @@ namespace tunnel
 		return TunnelPeerRole::Middle;
 	}
 
-	bool IsRouterUsableForTunnel (const i2p::data::RouterInfo & router,
-		const i2p::data::RouterInfo * compatibleWith, TunnelPeerRole role, bool inbound, bool clientTunnel)
+	bool IsRouterUsableForTunnel (const i2p::data::RouterInfo & router, const i2p::data::RouterInfo * compatibleWith,
+		TunnelPeerRole role, bool inbound, bool clientTunnel)
 	{
 		const auto & hash = router.GetIdentHash ();
 		if (router.IsHidden ()) return false;
@@ -545,8 +545,7 @@ namespace tunnel
 			for (int i = 0; i < num; i++) CreateInboundTunnel (ts);
 		}
 
-		if (attempted)
-			m_NextBuildTime.store (ts + GetTunnelBuildBackoff (failures), std::memory_order_relaxed);
+		if (attempted) m_NextBuildTime.store (ts + GetTunnelBuildBackoff (failures), std::memory_order_relaxed);
 
 		if (createdInbound && m_NumInboundHops.load (std::memory_order_relaxed) <= 0)
 		{
@@ -586,8 +585,8 @@ namespace tunnel
 			if (test.outbound && !test.outbound->IsFailed () && test.outbound->GetState () != eTunnelStateExpiring)
 			{
 				const int strikes = test.outbound->AddTestStrike ();
-				LogPrint (eLogWarning, "Tunnels: Test of outbound tunnel ", test.outbound->GetTunnelID (), " failed, strike ",
-					strikes, " of ", TUNNEL_POOL_TEST_STRIKES);
+				LogPrint (eLogWarning, "Tunnels: Test of outbound tunnel ", test.outbound->GetTunnelID (),
+					" failed, strike ", strikes, " of ", TUNNEL_POOL_TEST_STRIKES);
 				if (strikes >= TUNNEL_POOL_TEST_STRIKES)
 				{
 					test.outbound->SetState (eTunnelStateFailed);
@@ -603,8 +602,8 @@ namespace tunnel
 			if (test.inbound && !test.inbound->IsFailed () && test.inbound->GetState () != eTunnelStateExpiring)
 			{
 				const int strikes = test.inbound->AddTestStrike ();
-				LogPrint (eLogWarning, "Tunnels: Test of inbound tunnel ", test.inbound->GetTunnelID (), " failed, strike ",
-					strikes, " of ", TUNNEL_POOL_TEST_STRIKES);
+				LogPrint (eLogWarning, "Tunnels: Test of inbound tunnel ", test.inbound->GetTunnelID (),
+					" failed, strike ", strikes, " of ", TUNNEL_POOL_TEST_STRIKES);
 				if (strikes >= TUNNEL_POOL_TEST_STRIKES)
 				{
 					test.inbound->SetState (eTunnelStateFailed);
@@ -614,8 +613,8 @@ namespace tunnel
 						{
 							createInbound = true;
 							inboundRemoved = true;
-							LogPrint (
-								eLogDebug, "Tunnels: Inbound tunnel ", test.inbound->GetTunnelID (), " failed its tests");
+							LogPrint (eLogDebug, "Tunnels: Inbound tunnel ", test.inbound->GetTunnelID (),
+								" failed its tests");
 						}
 					}
 				}
@@ -708,8 +707,8 @@ namespace tunnel
 			test.inbound = it.second;
 			test.sentTime = nowMs;
 			test.expiration = nowMs
-				+ GetTunnelTestTimeout (it.first->GetNumHops () + it.second->GetNumHops (),
-					i2p::transport::transports.GetLocalDelay ());
+				+ GetTunnelTestTimeout (
+					it.first->GetNumHops () + it.second->GetNumHops (), i2p::transport::transports.GetLocalDelay ());
 			{
 				std::unique_lock<std::mutex> l (m_TestsMutex);
 				m_Tests[msgID] = test;
@@ -826,8 +825,7 @@ namespace tunnel
 			if (test.inbound)
 			{
 				test.inbound->ResetTestStrikes ();
-				if (test.inbound->GetState () != eTunnelStateExpiring)
-					test.inbound->SetState (eTunnelStateEstablished);
+				if (test.inbound->GetState () != eTunnelStateExpiring) test.inbound->SetState (eTunnelStateEstablished);
 				// update latency
 				int latency = 0;
 				if (numHops) latency = dlt * test.inbound->GetNumHops () / numHops;
@@ -1282,7 +1280,8 @@ namespace tunnel
 		return true;
 	}
 
-	bool TunnelPool::ValidatePeers (std::vector<std::shared_ptr<const i2p::data::IdentityEx>> & peers, bool inbound) const
+	bool TunnelPool::ValidatePeers (
+		std::vector<std::shared_ptr<const i2p::data::IdentityEx>> & peers, bool inbound) const
 	{
 		const bool clientTunnel = !IsExploratory ();
 		const auto ourRouter = i2p::context.GetSharedRouterInfo ();

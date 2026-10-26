@@ -578,8 +578,7 @@ namespace tui
 				else if (value == "OFF")
 					request.enabled = false;
 				else
-					return i2p::unexpected (
-						ProtocolError { ErrorCode::BadArgument, "admin online expects ON or OFF" });
+					return i2p::unexpected (ProtocolError { ErrorCode::BadArgument, "admin online expects ON or OFF" });
 				request.type = RequestType::AdminOnline;
 			}
 			else if (action == "LOG-REOPEN")
@@ -643,16 +642,15 @@ namespace tui
 				auto trailing = detail::RejectTrailing (rest);
 				if (trailing) return i2p::unexpected (*trailing);
 				request.argument = std::string (name);
-				request.type = action == "TUNNEL-START" ? RequestType::AdminTunnelStart
-														: RequestType::AdminTunnelStop;
+				request.type = action == "TUNNEL-START" ? RequestType::AdminTunnelStart : RequestType::AdminTunnelStop;
 			}
 			else if (action == "ADDRESS-ADD" || action == "ADDRESS-REPLACE" || action == "ADDRESS-REMOVE"
 				|| action == "ADDRESS-BLOCK" || action == "ADDRESS-UNBLOCK")
 			{
 				const bool changesDestination = action == "ADDRESS-ADD" || action == "ADDRESS-REPLACE";
 				const auto name = detail::NextToken (rest);
-				if (!detail::IsSafeAdminText (name,
-						changesDestination ? MAX_ADDRESS_ADD_NAME_LENGTH : MAX_ADDRESS_NAME_LENGTH))
+				if (!detail::IsSafeAdminText (
+						name, changesDestination ? MAX_ADDRESS_ADD_NAME_LENGTH : MAX_ADDRESS_NAME_LENGTH))
 					return i2p::unexpected (ProtocolError { ErrorCode::BadArgument, "invalid address name" });
 				request.argument = std::string (name);
 				if (changesDestination)
@@ -664,8 +662,8 @@ namespace tui
 					// ADDRESS-ADD never re-points an existing name: the daemon
 					// answers `exists` and the operator has to ask for
 					// ADDRESS-REPLACE explicitly.
-					request.type = action == "ADDRESS-ADD" ? RequestType::AdminAddressAdd
-														   : RequestType::AdminAddressReplace;
+					request.type
+						= action == "ADDRESS-ADD" ? RequestType::AdminAddressAdd : RequestType::AdminAddressReplace;
 				}
 				else if (action == "ADDRESS-REMOVE")
 					request.type = RequestType::AdminAddressRemove;
@@ -733,14 +731,14 @@ namespace tui
 		else if (command == "TORRENT-DETAIL" || command == "TORRENT-START" || command == "TORRENT-STOP"
 			|| command == "TORRENT-PAUSE" || command == "TORRENT-RESUME" || command == "TORRENT-REANNOUNCE"
 			|| command == "TORRENT-RECHECK" || command == "TORRENT-REMOVE" || command == "TORRENT-REMOVE-ALL"
-			|| command == "TORRENT-START-ALL"
-			|| command == "TORRENT-STOP-ALL" || command == "TORRENT-REANNOUNCE-ALL" || command == "TORRENT-ADD-MAGNET"
-			|| command == "TORRENT-TRACKER-ADD" || command == "TORRENT-TRACKER-REMOVE" || command == "TORRENT-COMMENTS"
-			|| command == "TORRENT-COMMENT-ADD" || command == "TORRENT-COMMENT-HIDE"
-			|| command == "TORRENT-COMMENT-UNHIDE" || command == "TORRENT-FILE-PRIORITY"
-			|| command == "TORRENT-META-COMMENT" || command == "TORRENT-META-CREATED-BY"
-			|| command == "TORRENT-CREATE-V1" || command == "TORRENT-CREATE-CANCEL" || command == "TORRENT-CREATE"
-			|| command == "TORRENT-ADD-FILE" || command == "TORRENT-SESSION" || command == "TORRENT-DHT")
+			|| command == "TORRENT-START-ALL" || command == "TORRENT-STOP-ALL" || command == "TORRENT-REANNOUNCE-ALL"
+			|| command == "TORRENT-ADD-MAGNET" || command == "TORRENT-TRACKER-ADD"
+			|| command == "TORRENT-TRACKER-REMOVE" || command == "TORRENT-COMMENTS" || command == "TORRENT-COMMENT-ADD"
+			|| command == "TORRENT-COMMENT-HIDE" || command == "TORRENT-COMMENT-UNHIDE"
+			|| command == "TORRENT-FILE-PRIORITY" || command == "TORRENT-META-COMMENT"
+			|| command == "TORRENT-META-CREATED-BY" || command == "TORRENT-CREATE-V1"
+			|| command == "TORRENT-CREATE-CANCEL" || command == "TORRENT-CREATE" || command == "TORRENT-ADD-FILE"
+			|| command == "TORRENT-SESSION" || command == "TORRENT-DHT")
 		{
 			if (rest.empty ())
 				return i2p::unexpected (ProtocolError { ErrorCode::BadArgument, "missing tunnel index" });
@@ -816,8 +814,7 @@ namespace tui
 				{
 					auto option = detail::NextToken (rest);
 					if (option != "files")
-						return i2p::unexpected (
-							ProtocolError { ErrorCode::BadArgument, "unknown remove option" });
+						return i2p::unexpected (ProtocolError { ErrorCode::BadArgument, "unknown remove option" });
 					request.deleteFiles = true;
 				}
 			}
@@ -864,8 +861,8 @@ namespace tui
 				|| request.type == RequestType::TorrentAddTracker || request.type == RequestType::TorrentRemoveTracker
 				|| request.type == RequestType::TorrentCommentsEnable || request.type == RequestType::TorrentCommentAdd
 				|| request.type == RequestType::TorrentCommentHide || request.type == RequestType::TorrentCommentUnhide
-				|| request.type == RequestType::TorrentFilePriority
-				|| request.type == RequestType::TorrentSetComment || request.type == RequestType::TorrentSetCreatedBy)
+				|| request.type == RequestType::TorrentFilePriority || request.type == RequestType::TorrentSetComment
+				|| request.type == RequestType::TorrentSetCreatedBy)
 			{
 				if (rest.empty ())
 					return i2p::unexpected (ProtocolError { ErrorCode::BadArgument, "missing torrent id" });

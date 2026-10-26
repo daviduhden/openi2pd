@@ -23,78 +23,77 @@
 
 namespace
 {
-	int failures = 0;
+int failures = 0;
 
-	void Check (bool condition, const std::string & what)
+void Check (bool condition, const std::string & what)
+{
+	if (condition) return;
+	std::cerr << "FAIL: " << what << std::endl;
+	++failures;
+}
+
+namespace json = i2p::client::json;
+using i2p::client::BandwidthLimitResult;
+using i2p::client::I2P_CONTROL_ERROR_API_UNSPECIFIED;
+using i2p::client::I2P_CONTROL_ERROR_API_UNSUPPORTED;
+using i2p::client::I2P_CONTROL_ERROR_EXPIRED_TOKEN;
+using i2p::client::I2P_CONTROL_ERROR_INTERNAL;
+using i2p::client::I2P_CONTROL_ERROR_INVALID_PARAMS;
+using i2p::client::I2P_CONTROL_ERROR_INVALID_PASSWORD;
+using i2p::client::I2P_CONTROL_ERROR_INVALID_REQUEST;
+using i2p::client::I2P_CONTROL_ERROR_METHOD_NOT_FOUND;
+using i2p::client::I2P_CONTROL_ERROR_NO_TOKEN;
+using i2p::client::I2P_CONTROL_ERROR_PARSE;
+using i2p::client::I2P_CONTROL_ERROR_RATE_LIMITED;
+using i2p::client::I2P_CONTROL_ERROR_UNKNOWN_TOKEN;
+using i2p::client::I2P_CONTROL_MAX_BANDWIDTH_LIMIT;
+using i2p::client::I2P_CONTROL_SUPPORTED_API;
+using i2p::client::ParseBandwidthLimit;
+using i2p::client::ParseUnsignedDecimal;
+
+// The reply is only accepted when it is real JSON.
+bool Parses (const std::string & document, boost::property_tree::ptree * result = nullptr)
+{
+	std::istringstream stream (document);
+	boost::property_tree::ptree tree;
+	try
 	{
-		if (condition) return;
-		std::cerr << "FAIL: " << what << std::endl;
-		++failures;
+		boost::property_tree::read_json (stream, tree);
 	}
-
-	namespace json = i2p::client::json;
-	using i2p::client::BandwidthLimitResult;
-	using i2p::client::I2P_CONTROL_ERROR_API_UNSPECIFIED;
-	using i2p::client::I2P_CONTROL_ERROR_API_UNSUPPORTED;
-	using i2p::client::I2P_CONTROL_ERROR_EXPIRED_TOKEN;
-	using i2p::client::I2P_CONTROL_ERROR_INTERNAL;
-	using i2p::client::I2P_CONTROL_ERROR_INVALID_PARAMS;
-	using i2p::client::I2P_CONTROL_ERROR_INVALID_PASSWORD;
-	using i2p::client::I2P_CONTROL_ERROR_INVALID_REQUEST;
-	using i2p::client::I2P_CONTROL_ERROR_METHOD_NOT_FOUND;
-	using i2p::client::I2P_CONTROL_ERROR_NO_TOKEN;
-	using i2p::client::I2P_CONTROL_ERROR_PARSE;
-	using i2p::client::I2P_CONTROL_ERROR_RATE_LIMITED;
-	using i2p::client::I2P_CONTROL_ERROR_UNKNOWN_TOKEN;
-	using i2p::client::I2P_CONTROL_MAX_BANDWIDTH_LIMIT;
-	using i2p::client::I2P_CONTROL_SUPPORTED_API;
-	using i2p::client::ParseBandwidthLimit;
-	using i2p::client::ParseUnsignedDecimal;
-
-	// The reply is only accepted when it is real JSON.
-	bool Parses (const std::string & document, boost::property_tree::ptree * result = nullptr)
+	catch (const std::exception &)
 	{
-		std::istringstream stream (document);
-		boost::property_tree::ptree tree;
-		try
-		{
-			boost::property_tree::read_json (stream, tree);
-		}
-		catch (const std::exception &)
-		{
-			return false;
-		}
-		if (result) *result = tree;
-		return true;
+		return false;
 	}
+	if (result) *result = tree;
+	return true;
+}
 
-	void CheckIdKind (std::string_view document, json::JSONIdKind expected, const std::string & what)
-	{
-		const auto id = json::ParseRequestId (document);
-		Check (id.kind == expected, what);
-	}
+void CheckIdKind (std::string_view document, json::JSONIdKind expected, const std::string & what)
+{
+	const auto id = json::ParseRequestId (document);
+	Check (id.kind == expected, what);
+}
 
-	void CheckBandwidth (std::string_view operand, BandwidthLimitResult expected, const std::string & what)
-	{
-		unsigned limit = 12345;
-		const auto result = ParseBandwidthLimit (operand, limit);
-		Check (result == expected, what);
-		if (result == BandwidthLimitResult::Ok)
-			Check (limit <= I2P_CONTROL_MAX_BANDWIDTH_LIMIT, what + " (in range)");
-	}
+void CheckBandwidth (std::string_view operand, BandwidthLimitResult expected, const std::string & what)
+{
+	unsigned limit = 12345;
+	const auto result = ParseBandwidthLimit (operand, limit);
+	Check (result == expected, what);
+	if (result == BandwidthLimitResult::Ok) Check (limit <= I2P_CONTROL_MAX_BANDWIDTH_LIMIT, what + " (in range)");
+}
 
-	// Builds the same error object the dispatcher emits.
-	std::string BuildError (const std::string & id, int code, std::string_view message)
-	{
-		std::string out = "{\"id\":";
-		out += id;
-		out += ",\"error\":{\"code\":";
-		out += std::to_string (code);
-		out += ",\"message\":";
-		out += json::Quote (message);
-		out += "},\"jsonrpc\":\"2.0\"}";
-		return out;
-	}
+// Builds the same error object the dispatcher emits.
+std::string BuildError (const std::string & id, int code, std::string_view message)
+{
+	std::string out = "{\"id\":";
+	out += id;
+	out += ",\"error\":{\"code\":";
+	out += std::to_string (code);
+	out += ",\"message\":";
+	out += json::Quote (message);
+	out += "},\"jsonrpc\":\"2.0\"}";
+	return out;
+}
 }
 
 int main ()
@@ -193,10 +192,9 @@ int main ()
 		Check (I2P_CONTROL_ERROR_RATE_LIMITED == -32007, "rate limited code");
 		Check (I2P_CONTROL_SUPPORTED_API == 1, "supported API version");
 
-		for (const auto code :
-			{ I2P_CONTROL_ERROR_PARSE, I2P_CONTROL_ERROR_INVALID_REQUEST, I2P_CONTROL_ERROR_METHOD_NOT_FOUND,
-				I2P_CONTROL_ERROR_INVALID_PARAMS, I2P_CONTROL_ERROR_INTERNAL, I2P_CONTROL_ERROR_INVALID_PASSWORD,
-				I2P_CONTROL_ERROR_NO_TOKEN, I2P_CONTROL_ERROR_RATE_LIMITED })
+		for (const auto code : { I2P_CONTROL_ERROR_PARSE, I2P_CONTROL_ERROR_INVALID_REQUEST,
+				 I2P_CONTROL_ERROR_METHOD_NOT_FOUND, I2P_CONTROL_ERROR_INVALID_PARAMS, I2P_CONTROL_ERROR_INTERNAL,
+				 I2P_CONTROL_ERROR_INVALID_PASSWORD, I2P_CONTROL_ERROR_NO_TOKEN, I2P_CONTROL_ERROR_RATE_LIMITED })
 		{
 			boost::property_tree::ptree parsed;
 			Check (Parses (BuildError ("1", code, "quote \" inside"), &parsed), "error object is valid JSON");

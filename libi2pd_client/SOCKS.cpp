@@ -1015,7 +1015,6 @@ namespace proxy
 							{
 								if (self->m_sock) self->SocksRequestSuccess ();
 							});
-
 					}
 					break;
 					default:;
@@ -1337,8 +1336,9 @@ namespace proxy
 			if (m_Auth.HasUsableCredentials ())
 				LogPrint (eLogInfo, "SOCKS: Local username/password authentication enabled for ", m_Name);
 			else
-				LogPrint (eLogCritical, "SOCKS: socksproxy.auth.enabled is set but socksproxy.auth.username/password are "
-										"empty or longer than ",
+				LogPrint (eLogCritical,
+					"SOCKS: socksproxy.auth.enabled is set but socksproxy.auth.username/password are "
+					"empty or longer than ",
 					SOCKS_AUTH_MAX_FIELD_SIZE, " bytes; every request will be rejected");
 		}
 	}
@@ -1349,8 +1349,8 @@ namespace proxy
 		m_Auth.username = std::move (username);
 		m_Auth.password = std::move (password);
 		if (!m_Auth.HasUsableCredentials ())
-			LogPrint (
-				eLogCritical, "SOCKS: Local authentication configured without usable credentials; every request will be rejected");
+			LogPrint (eLogCritical,
+				"SOCKS: Local authentication configured without usable credentials; every request will be rejected");
 	}
 
 	std::shared_ptr<i2p::client::I2PServiceHandler> SOCKSServer::CreateHandler (

@@ -91,8 +91,7 @@ namespace client
 			if (session)
 			{
 				session->RemoveAccept (shared_from_this ());
-				if (previousType == SAMSocketType::eSAMSocketTypeForward)
-					session->RemoveForwardAcceptor (m_ListenPort);
+				if (previousType == SAMSocketType::eSAMSocketTypeForward) session->RemoveForwardAcceptor (m_ListenPort);
 				if (m_IsAccepting && session->GetLocalDestination ())
 					session->GetLocalDestination ()->StopAcceptingStreams (m_ListenPort);
 				// The armed acceptor is gone: a queued ACCEPT for the same port
@@ -1568,8 +1567,7 @@ namespace client
 			{
 				auto existing = m_Owner.FindSession (existingId);
 				auto sub = std::dynamic_pointer_cast<SAMSubSession> (existing);
-				if (sub
-					&& MakeSAMSubsessionKey (sub->Type, sub->inProtocol, sub->inPort) == candidateKey)
+				if (sub && MakeSAMSubsessionKey (sub->Type, sub->inProtocol, sub->inPort) == candidateKey)
 				{
 					SendSubsessionError (id, "Duplicate protocol and port");
 					return;
@@ -1578,8 +1576,7 @@ namespace client
 
 			// STREAM subsessions route incoming connections by LISTEN_PORT;
 			// FROM_PORT remains the outgoing source port.
-			auto subsession
-				= std::make_shared<SAMSubSession> (masterSession, id, type, listenPort, receiveProtocol);
+			auto subsession = std::make_shared<SAMSubSession> (masterSession, id, type, listenPort, receiveProtocol);
 			if (m_Owner.AddSession (subsession))
 			{
 				subsession->FromPort = fromPort;

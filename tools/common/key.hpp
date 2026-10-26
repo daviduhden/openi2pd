@@ -80,8 +80,7 @@ inline bool IsValidRecordName (std::string_view name)
  * Parse a complete decimal integer inside a closed range. Trailing characters,
  * overflow and an empty input are rejected instead of silently truncated.
  */
-template <typename TValue>
-std::optional<TValue> ParseBounded (std::string_view text, TValue minimum, TValue maximum)
+template <typename TValue> std::optional<TValue> ParseBounded (std::string_view text, TValue minimum, TValue maximum)
 {
 	if (text.empty ()) return std::nullopt;
 	TValue value { };

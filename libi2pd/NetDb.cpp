@@ -175,14 +175,13 @@ namespace data
 		// through its unblocked paths.
 		bool IsBlockedRouterInfo (const RouterInfo & router)
 		{
-			if (IsOperatorBlockedRouter (router.GetIdentHash ())
-				|| IsRuntimeRouterBanned (router.GetIdentHash ()))
+			if (IsOperatorBlockedRouter (router.GetIdentHash ()) || IsRuntimeRouterBanned (router.GetIdentHash ()))
 				return true;
 			// Only published endpoints count: an internal/firewalled address
 			// entry with no host must not keep an otherwise blocked router alive.
-			const std::shared_ptr<const RouterInfo::Address> addresses[] = {
-				router.GetPublishedNTCP2V4Address (), router.GetPublishedNTCP2V6Address (),
-				router.GetSSU2V4Address (), router.GetSSU2V6Address (), router.GetYggdrasilAddress () };
+			const std::shared_ptr<const RouterInfo::Address> addresses[]
+				= { router.GetPublishedNTCP2V4Address (), router.GetPublishedNTCP2V6Address (),
+					  router.GetSSU2V4Address (), router.GetSSU2V6Address (), router.GetYggdrasilAddress () };
 			bool anyAddress = false;
 			for (const auto & address : addresses)
 			{
@@ -247,8 +246,7 @@ namespace data
 		// An interrupted write leaves a staging file behind. It is ours, so it is
 		// safe to remove; an unknown file is never deleted on an assumption of
 		// exclusive data-directory ownership that the caller has not enforced.
-		if (name.find (ROUTER_INFO_STAGING_MARKER) != std::string_view::npos)
-			return RouterInfoFileKind::Staging;
+		if (name.find (ROUTER_INFO_STAGING_MARKER) != std::string_view::npos) return RouterInfoFileKind::Staging;
 		if (!name.ends_with (ROUTER_INFO_FILE_SUFFIX)
 			|| name.size () <= ROUTER_INFO_FILE_PREFIX.size () + ROUTER_INFO_FILE_SUFFIX.size ())
 			return RouterInfoFileKind::Foreign;
@@ -794,8 +792,8 @@ namespace data
 			// store flood cannot turn the drop path into a log flood.
 			const auto rejected = m_RejectedStoreCap.fetch_add (1, std::memory_order_relaxed) + 1;
 			if (rejected == 1 || !(rejected % 256))
-				LogPrint (eLogInfo, "NetDb: RouterInfo store cap reached, dropping new entry ",
-					ident.ToBase64 (), " (", rejected, " dropped)");
+				LogPrint (eLogInfo, "NetDb: RouterInfo store cap reached, dropping new entry ", ident.ToBase64 (), " (",
+					rejected, " dropped)");
 			auto requests = GetRequests ();
 			if (requests) requests->RequestComplete (ident, r);
 			return r;
@@ -819,8 +817,7 @@ namespace data
 						// Do not create or load a profile while holding
 						// m_FloodfillsMutex: an absent profile is simply not real.
 						auto profile = stored->GetProfileIfExists ();
-						if (m_Floodfills.GetSize () < NETDB_NUM_FLOODFILLS_THRESHOLD
-							|| (profile && profile->IsReal ()))
+						if (m_Floodfills.GetSize () < NETDB_NUM_FLOODFILLS_THRESHOLD || (profile && profile->IsReal ()))
 							m_Floodfills.Insert (stored);
 						else
 							stored->ResetFloodfill ();
@@ -1256,8 +1253,7 @@ namespace data
 		// a name outside the artifact namespace is removed directly.
 		auto removeCacheFile = [&path, &fileIdent] () -> bool
 		{
-			if (IsArtifactStorageInstalled ()
-				&& IsValidArtifactName (StorageArtifact::RouterInfoCache, fileIdent))
+			if (IsArtifactStorageInstalled () && IsValidArtifactName (StorageArtifact::RouterInfoCache, fileIdent))
 				return RemoveArtifact (StorageArtifact::RouterInfoCache, fileIdent);
 			return i2p::fs::Remove (path);
 		};
@@ -1839,8 +1835,8 @@ namespace data
 		// Java LookupThrottler: floodfills serve 14 replies per reply tunnel,
 		// ordinary routers only 3. Re-read each call because the router may be
 		// promoted to floodfill at runtime.
-		const uint32_t limit = i2p::context.IsFloodfill () ? NETDB_LOOKUP_THROTTLE_FLOODFILL
-														  : NETDB_LOOKUP_THROTTLE_NON_FLOODFILL;
+		const uint32_t limit
+			= i2p::context.IsFloodfill () ? NETDB_LOOKUP_THROTTLE_FLOODFILL : NETDB_LOOKUP_THROTTLE_NON_FLOODFILL;
 		constexpr size_t maximum = 4096;
 		const auto now = i2p::util::GetSecondsSinceEpoch ();
 		std::lock_guard<std::mutex> l (m_ThrottleMutex);
@@ -2287,8 +2283,8 @@ namespace data
 		// blocked router regardless of its own filter.
 		auto acceptable = [&filter] (const std::shared_ptr<RouterInfo> & router)
 		{
-			return !IsOperatorBlockedRouter (router->GetIdentHash ()) && !IsRuntimeRouterBanned (router->GetIdentHash ())
-				&& filter (router);
+			return !IsOperatorBlockedRouter (router->GetIdentHash ())
+				&& !IsRuntimeRouterBanned (router->GetIdentHash ()) && filter (router);
 		};
 		inds[0] %= count;
 		auto it = m_RouterInfos.begin ();
@@ -2351,8 +2347,8 @@ namespace data
 			// flood cannot amplify into a log flood.
 			const auto dropped = m_DroppedQueueMessages.fetch_add (1, std::memory_order_relaxed) + 1;
 			if (dropped == 1 || !(dropped % 256))
-				LogPrint (eLogWarning, "NetDb: Message queue is full, dropping type ", (int)msg->GetTypeID (),
-					" (", dropped, " dropped)");
+				LogPrint (eLogWarning, "NetDb: Message queue is full, dropping type ", (int)msg->GetTypeID (), " (",
+					dropped, " dropped)");
 		}
 	}
 
@@ -2371,9 +2367,8 @@ namespace data
 		return m_Floodfills.FindClosest (destKey,
 			[&excluded] (const std::shared_ptr<RouterInfo> & r) -> bool
 			{
-				return r && !r->IsUnreachable () && IsProfileReachable (*r)
-					&& !excluded.count (r->GetIdentHash ()) && !IsOperatorBlockedRouter (r->GetIdentHash ())
-					&& !IsRuntimeRouterBanned (r->GetIdentHash ());
+				return r && !r->IsUnreachable () && IsProfileReachable (*r) && !excluded.count (r->GetIdentHash ())
+					&& !IsOperatorBlockedRouter (r->GetIdentHash ()) && !IsRuntimeRouterBanned (r->GetIdentHash ());
 			});
 	}
 
@@ -2388,9 +2383,8 @@ namespace data
 			v = m_Floodfills.FindClosest (destKey, num,
 				[&excluded] (const std::shared_ptr<RouterInfo> & r) -> bool
 				{
-					return r && !r->IsUnreachable () && IsProfileReachable (*r)
-						&& !excluded.count (r->GetIdentHash ()) && !IsOperatorBlockedRouter (r->GetIdentHash ())
-						&& !IsRuntimeRouterBanned (r->GetIdentHash ());
+					return r && !r->IsUnreachable () && IsProfileReachable (*r) && !excluded.count (r->GetIdentHash ())
+						&& !IsOperatorBlockedRouter (r->GetIdentHash ()) && !IsRuntimeRouterBanned (r->GetIdentHash ());
 				});
 		}
 		if (v.empty ()) return res;

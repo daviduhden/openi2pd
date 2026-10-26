@@ -69,8 +69,7 @@ namespace stream
 			// consumes and checks the total budget.
 			PeerWindows overflow;
 			PeerWindows * windows = &overflow;
-			const bool trackPeer
-				= m_Limits.perPeerMinute > 0 || m_Limits.perPeerHour > 0 || m_Limits.perPeerDay > 0;
+			const bool trackPeer = m_Limits.perPeerMinute > 0 || m_Limits.perPeerHour > 0 || m_Limits.perPeerDay > 0;
 			if (trackPeer)
 			{
 				auto it = m_Peers.find (peer);
@@ -84,10 +83,8 @@ namespace stream
 			if (IncrementAndOver (m_TotalDay, now, DAY_WINDOW, m_Limits.totalDay)) return DAY_WINDOW;
 			if (IncrementAndOver (windows->hour, now, HOUR_WINDOW, m_Limits.perPeerHour)) return HOUR_WINDOW;
 			if (IncrementAndOver (m_TotalHour, now, HOUR_WINDOW, m_Limits.totalHour)) return HOUR_WINDOW;
-			if (IncrementAndOver (windows->minute, now, MINUTE_WINDOW, m_Limits.perPeerMinute))
-				return MINUTE_WINDOW;
-			if (IncrementAndOver (m_TotalMinute, now, MINUTE_WINDOW, m_Limits.totalMinute))
-				return MINUTE_WINDOW;
+			if (IncrementAndOver (windows->minute, now, MINUTE_WINDOW, m_Limits.perPeerMinute)) return MINUTE_WINDOW;
+			if (IncrementAndOver (m_TotalMinute, now, MINUTE_WINDOW, m_Limits.totalMinute)) return MINUTE_WINDOW;
 			return 0;
 		}
 

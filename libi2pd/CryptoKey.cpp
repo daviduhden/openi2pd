@@ -97,8 +97,7 @@ namespace crypto
 
 	bool ECIESP256Encryptor::Encrypt (const uint8_t * data, uint8_t * encrypted)
 	{
-		if (m_Curve && m_PublicKey && data && encrypted)
-			return ECIESEncrypt (m_Curve, m_PublicKey, data, encrypted);
+		if (m_Curve && m_PublicKey && data && encrypted) return ECIESEncrypt (m_Curve, m_PublicKey, data, encrypted);
 		ClearECIESOutput (encrypted);
 		return false;
 	}

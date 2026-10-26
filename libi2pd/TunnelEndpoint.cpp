@@ -220,8 +220,8 @@ namespace tunnel
 				{
 					// Already covered by data we hold; replaying it would corrupt
 					// the message. Never store it as an out-of-sequence fragment.
-					LogPrint (eLogDebug, "TunnelMessage: Stale fragment ", (int)fragmentNum, " below ", (int)msg.nextFragmentNum,
-						" of message ", msgID, ", dropped");
+					LogPrint (eLogDebug, "TunnelMessage: Stale fragment ", (int)fragmentNum, " below ",
+						(int)msg.nextFragmentNum, " of message ", msgID, ", dropped");
 				}
 				else
 				{

@@ -126,10 +126,9 @@ public class RouterViewModel extends AndroidViewModel {
                 -> safCreation.setValue(new SafCreation(true, bytes, null, null)),
                 metadata
                 -> safCreation.setValue(new SafCreation(false, 0, metadata,
-                        metadata == null
-                                ? getApplication().getString(
-                                        R.string.torrent_creation_failed_unknown)
-                                : null)));
+                        metadata == null ? getApplication().getString(
+                                                   R.string.torrent_creation_failed_unknown)
+                                         : null)));
     }
     public void cancelSafCreation() {
         repository.cancelSafCreation();
@@ -149,8 +148,8 @@ public class RouterViewModel extends AndroidViewModel {
         repository.selectPayloadTree(tunnel, hash, tree, callback);
     }
 
-    public void detachPayload(String tunnel, String hash,
-            java.util.function.Consumer<Boolean> callback) {
+    public void detachPayload(
+            String tunnel, String hash, java.util.function.Consumer<Boolean> callback) {
         repository.detachPayload(tunnel, hash, callback);
     }
 
@@ -197,8 +196,7 @@ public class RouterViewModel extends AndroidViewModel {
         repository.tunnelCommand(name, start, callback);
     }
 
-    public void addAddressChecked(
-            String name, String destination, boolean replace,
+    public void addAddressChecked(String name, String destination, boolean replace,
             java.util.function.Consumer<String> callback) {
         repository.addAddressChecked(name, destination, replace, callback);
     }

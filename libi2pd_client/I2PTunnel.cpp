@@ -455,8 +455,7 @@ namespace client
 			+ "\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
 		// Terminate() closes the stream, whose closing state flushes the send
 		// buffer before the FIN, so the status line is not lost.
-		I2PTunnelConnection::WriteToStream (
-			reinterpret_cast<const uint8_t *> (response.data ()), response.size ());
+		I2PTunnelConnection::WriteToStream (reinterpret_cast<const uint8_t *> (response.data ()), response.size ());
 		Terminate ();
 	}
 
@@ -869,12 +868,11 @@ namespace client
 	{
 		if (m_Resolver) return false; // already resolving
 		m_Resolver = std::make_shared<boost::asio::ip::tcp::resolver> (GetService ());
-		std::weak_ptr<I2PServerTunnel> weakSelf
-			= std::static_pointer_cast<I2PServerTunnel> (weak_from_this ().lock ());
+		std::weak_ptr<I2PServerTunnel> weakSelf = std::static_pointer_cast<I2PServerTunnel> (weak_from_this ().lock ());
 		const auto generation = m_Generation.load ();
 		m_Resolver->async_resolve (m_Address, "",
-			[weakSelf, generation, stream] (const boost::system::error_code & ecode,
-				boost::asio::ip::tcp::resolver::results_type endpoints)
+			[weakSelf, generation, stream] (
+				const boost::system::error_code & ecode, boost::asio::ip::tcp::resolver::results_type endpoints)
 			{
 				auto self = weakSelf.lock ();
 				if (!self || self->m_Generation.load () != generation) return;
@@ -961,8 +959,8 @@ namespace client
 				= std::static_pointer_cast<I2PServerTunnel> (weak_from_this ().lock ());
 			const auto generation = m_Generation.load ();
 			resolver->async_resolve (entry.host, std::to_string (entry.port),
-				[weakSelf, generation, localPort] (const boost::system::error_code & ecode,
-					boost::asio::ip::tcp::resolver::results_type endpoints)
+				[weakSelf, generation, localPort] (
+					const boost::system::error_code & ecode, boost::asio::ip::tcp::resolver::results_type endpoints)
 				{
 					auto self = weakSelf.lock ();
 					if (!self || self->m_Generation.load () != generation) return;
@@ -976,8 +974,8 @@ namespace client
 	{
 		if (ecode || endpoints.empty ())
 		{
-			LogPrint (eLogWarning, "I2PTunnel: targetForPort ", localPort,
-				" of ", m_Name, " cannot be resolved; streams on that port are reset");
+			LogPrint (eLogWarning, "I2PTunnel: targetForPort ", localPort, " of ", m_Name,
+				" cannot be resolved; streams on that port are reset");
 			return;
 		}
 		std::lock_guard<std::mutex> lock (m_TargetsMutex);
@@ -1113,22 +1111,20 @@ namespace client
 		}
 		if (!m_HasAcceptor && !m_IsDefaultAcceptor && m_PortDestination->IsAcceptorSet ())
 		{
-			LogPrint (eLogWarning, "I2PTunnel: ", m_Name,
-				" does not take over an acceptor that another tunnel already owns");
+			LogPrint (
+				eLogWarning, "I2PTunnel: ", m_Name, " does not take over an acceptor that another tunnel already owns");
 			return;
 		}
 		InstallAcceptor (m_PortDestination);
 	}
 
-	void I2PServerTunnel::InstallAcceptor (
-		const std::shared_ptr<i2p::stream::StreamingDestination> & destination)
+	void I2PServerTunnel::InstallAcceptor (const std::shared_ptr<i2p::stream::StreamingDestination> & destination)
 	{
 		if (!destination) return;
 		// The acceptor outlives an unforced stop, so it holds a weak owner and
 		// the generation it was installed in. A late invocation for a stopped
 		// tunnel answers with a RESET instead of touching freed memory.
-		std::weak_ptr<I2PServerTunnel> weakSelf
-			= std::static_pointer_cast<I2PServerTunnel> (weak_from_this ().lock ());
+		std::weak_ptr<I2PServerTunnel> weakSelf = std::static_pointer_cast<I2PServerTunnel> (weak_from_this ().lock ());
 		const auto generation = m_Generation.load ();
 		auto replaced = destination->SetAcceptor (
 			[weakSelf, generation] (std::shared_ptr<i2p::stream::Stream> stream)
@@ -1157,8 +1153,7 @@ namespace client
 			? i2p::stream::StreamAdmission::eReset
 			: i2p::stream::StreamAdmission::eDrop;
 		destination->SetAdmissionPredicate (
-			[filter, filterAction] (
-				const i2p::data::IdentHash & peer, uint16_t) -> i2p::stream::StreamAdmission
+			[filter, filterAction] (const i2p::data::IdentHash & peer, uint16_t) -> i2p::stream::StreamAdmission
 			{
 				// Only the outcome is visible to the log; the definition, the
 				// file entries and the peer identity stay out of it.
@@ -1202,8 +1197,7 @@ namespace client
 			Connect (stream, target);
 		else if (!Resolve (stream))
 		{
-			LogPrint (
-				eLogWarning, "I2PTunnel: Address ", m_Address, " can't be resolved. Incoming connection dropped");
+			LogPrint (eLogWarning, "I2PTunnel: Address ", m_Address, " can't be resolved. Incoming connection dropped");
 			stream->AbortWithReset ();
 		}
 	}
@@ -1350,8 +1344,7 @@ namespace client
 		return true;
 	}
 
-	bool I2PServerTunnelTargetMap::AddSpec (
-		uint16_t localPort, std::string_view specification, std::string & error)
+	bool I2PServerTunnelTargetMap::AddSpec (uint16_t localPort, std::string_view specification, std::string & error)
 	{
 		if (specification.empty () || specification.size () > 2 * FilterDefinition::MAX_TARGET_LENGTH)
 		{
@@ -1432,7 +1425,10 @@ namespace client
 
 	namespace
 	{
-		char ToLowerAscii (char ch) { return ch >= 'A' && ch <= 'Z' ? static_cast<char> (ch + ('a' - 'A')) : ch; }
+		char ToLowerAscii (char ch)
+		{
+			return ch >= 'A' && ch <= 'Z' ? static_cast<char> (ch + ('a' - 'A')) : ch;
+		}
 
 		bool HeaderNameEquals (std::string_view name, std::string_view expected)
 		{
@@ -1458,8 +1454,7 @@ namespace client
 			error = "spoofedHost port must not be zero";
 			return false;
 		}
-		if (host.empty () || host.size () > MAX_PATTERN_LENGTH
-			|| host.find_first_of ("\r\n\t ") != std::string::npos)
+		if (host.empty () || host.size () > MAX_PATTERN_LENGTH || host.find_first_of ("\r\n\t ") != std::string::npos)
 		{
 			error = "invalid spoofedHost value";
 			return false;
@@ -1525,8 +1520,7 @@ namespace client
 		m_PostLimit = perWindow;
 	}
 
-	I2PServerTunnelRequestDecision I2PServerTunnelHTTPPolicy::Check (
-		std::string_view header, uint64_t nowSeconds)
+	I2PServerTunnelRequestDecision I2PServerTunnelHTTPPolicy::Check (std::string_view header, uint64_t nowSeconds)
 	{
 		const bool isPost = IsPostMethod (header);
 		std::lock_guard<std::mutex> lock (m_Mutex);

@@ -136,8 +136,7 @@ namespace proxy
 				table[static_cast<std::size_t> ('A' + i)] = static_cast<std::int8_t> (i);
 				table[static_cast<std::size_t> ('a' + i)] = static_cast<std::int8_t> (26 + i);
 			}
-			for (int i = 0; i < 10; ++i)
-				table[static_cast<std::size_t> ('0' + i)] = static_cast<std::int8_t> (52 + i);
+			for (int i = 0; i < 10; ++i) table[static_cast<std::size_t> ('0' + i)] = static_cast<std::int8_t> (52 + i);
 			table[static_cast<std::size_t> ('+')] = 62;
 			table[static_cast<std::size_t> ('/')] = 63;
 			table[static_cast<std::size_t> ('=')] = -2; // padding marker, never a symbol
@@ -283,8 +282,7 @@ namespace proxy
 		 * Parse `host[:port]` or `[ipv6][:port]`.
 		 * @return false and sets @a error on a syntax failure.
 		 */
-		bool ParseAuthority (
-			std::string_view authority, bool requirePort, std::string & host, std::uint16_t & port,
+		bool ParseAuthority (std::string_view authority, bool requirePort, std::string & host, std::uint16_t & port,
 			ProxyTargetError & error)
 		{
 			error = ProxyTargetError::Malformed;
@@ -378,11 +376,26 @@ namespace proxy
 			const auto ch = static_cast<unsigned char> (value[i]);
 			switch (ch)
 			{
-			case '&': out += "&amp;"; ++i; break;
-			case '<': out += "&lt;"; ++i; break;
-			case '>': out += "&gt;"; ++i; break;
-			case '"': out += "&quot;"; ++i; break;
-			case '\'': out += "&#39;"; ++i; break;
+			case '&':
+				out += "&amp;";
+				++i;
+				break;
+			case '<':
+				out += "&lt;";
+				++i;
+				break;
+			case '>':
+				out += "&gt;";
+				++i;
+				break;
+			case '"':
+				out += "&quot;";
+				++i;
+				break;
+			case '\'':
+				out += "&#39;";
+				++i;
+				break;
 			default:
 				if (ch < 0x20 || ch == 0x7f)
 					++i; // C0 controls and DEL cannot be represented safely
@@ -506,8 +519,8 @@ namespace proxy
 				for (std::size_t i = 0; i < colon; ++i)
 				{
 					const char ch = target[i];
-					if (!((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9')
-							|| ch == '+' || ch == '-' || ch == '.'))
+					if (!((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9') || ch == '+'
+							|| ch == '-' || ch == '.'))
 					{
 						scheme_like = false;
 						break;
@@ -718,9 +731,21 @@ namespace proxy
 			if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9')) return true;
 			switch (ch)
 			{
-			case '!': case '#': case '$': case '%': case '&': case '\'': case '*': case '+': case '-': case '.':
-			case '^': case '_': case '`': case '|': case '~':
-				return true;
+			case '!':
+			case '#':
+			case '$':
+			case '%':
+			case '&':
+			case '\'':
+			case '*':
+			case '+':
+			case '-':
+			case '.':
+			case '^':
+			case '_':
+			case '`':
+			case '|':
+			case '~': return true;
 			default: return false;
 			}
 		}
@@ -791,7 +816,8 @@ namespace proxy
 		std::size_t position = 0;
 		while (position < value.size ())
 		{
-			while (position < value.size () && (value[position] == ' ' || value[position] == '\t' || value[position] == ','))
+			while (position < value.size ()
+				&& (value[position] == ' ' || value[position] == '\t' || value[position] == ','))
 				++position;
 			if (position >= value.size ()) break;
 
@@ -1095,9 +1121,8 @@ namespace proxy
 		return ProxyDigestResult::Accepted;
 	}
 
-	std::string HTTPProxyDigestChallenge (
-		std::string_view realm, std::string_view nonce, std::string_view opaque, ProxyDigestAlgorithm algorithm,
-		bool stale)
+	std::string HTTPProxyDigestChallenge (std::string_view realm, std::string_view nonce, std::string_view opaque,
+		ProxyDigestAlgorithm algorithm, bool stale)
 	{
 		std::string value = "Digest realm=\"";
 		value += EscapeHTML (realm);
@@ -1160,7 +1185,8 @@ namespace proxy
 		void GenericProxyError (
 			std::string_view title, std::string_view description, int code = HTTP_PROXY_STATUS_INTERNAL_ERROR);
 		/** Trusted HTML fragment with an escaped title. */
-		void SendProxyInfoHTML (std::string_view title, std::string_view html, int code = HTTP_PROXY_STATUS_INTERNAL_ERROR);
+		void SendProxyInfoHTML (
+			std::string_view title, std::string_view html, int code = HTTP_PROXY_STATUS_INTERNAL_ERROR);
 		void HostNotFound (std::string_view host);
 		void SendProxyError (std::string_view content, int code = HTTP_PROXY_STATUS_INTERNAL_ERROR);
 		void SendRedirect (const std::string & address);
@@ -1441,8 +1467,8 @@ namespace proxy
 				|| !m_DigestAuth->NewChallenge (
 					static_cast<std::int64_t> (i2p::util::GetMillisecondsSinceEpoch ()), nonce, opaque))
 			{
-				GenericProxyError (tr ("Internal error"),
-					tr ("The proxy cannot issue an authentication challenge"), HTTP_PROXY_STATUS_INTERNAL_ERROR);
+				GenericProxyError (tr ("Internal error"), tr ("The proxy cannot issue an authentication challenge"),
+					HTTP_PROXY_STATUS_INTERNAL_ERROR);
 				return;
 			}
 			m_Response = HTTPProxyDigestChallengeResponse (m_AuthRealm, nonce, opaque, stale);
@@ -1622,11 +1648,10 @@ namespace proxy
 		req.RemoveHeader ("Proxy-"); // Proxy-*
 
 		/*
-		 * Hop-by-hop headers and the X-Forwarded-*/*-IP family are never
-		 * forwarded. The websocket upgrade decision is taken first because a
-		 * legitimate `Connection: Upgrade` must survive in a normalised form.
-		 */
-		const std::string connection = req.GetHeader ("Connection");
+		 * Hop-by-hop headers and the X-Forwarded-*/ *-IP family are never * forwarded
+				.The websocket upgrade decision is taken first because a * legitimate `Connection
+			: Upgrade` must survive in a normalised form.* / const std::string connection
+			= req.GetHeader ("Connection");
 		const auto upgrade = connection.find ("pgrade");
 		const bool preserveUpgrade = upgrade != std::string::npos && upgrade
 			&& std::tolower (static_cast<unsigned char> (connection[upgrade - 1])) == 'u';
@@ -1695,8 +1720,8 @@ namespace proxy
 		{
 			const std::string_view line (m_recv_buf.data (), firstLine);
 			const auto firstSpace = line.find (' ');
-			const auto secondSpace = firstSpace == std::string_view::npos ? std::string_view::npos
-																		 : line.find (' ', firstSpace + 1);
+			const auto secondSpace
+				= firstSpace == std::string_view::npos ? std::string_view::npos : line.find (' ', firstSpace + 1);
 			if (firstSpace != std::string_view::npos && secondSpace != std::string_view::npos)
 			{
 				const auto method = line.substr (0, firstSpace);
@@ -1759,8 +1784,7 @@ namespace proxy
 				GenericProxyError (tr ("Unsupported request"),
 					tr ("Only http:// requests and HTTPS CONNECT tunnels are supported"), HTTP_PROXY_STATUS_FORBIDDEN);
 			else
-				GenericProxyError (
-					tr ("Invalid request"), tr ("Invalid request URI"), HTTP_PROXY_STATUS_BAD_REQUEST);
+				GenericProxyError (tr ("Invalid request"), tr ("Invalid request URI"), HTTP_PROXY_STATUS_BAD_REQUEST);
 			return true;
 		}
 		LogPrint (eLogDebug, "HTTPProxy: ", m_ClientRequest.method, " for host ", requestTarget.host, ":",
@@ -1821,7 +1845,8 @@ namespace proxy
 							"source of this URL may be harmful!</b> Click here to update record: <a "
 							"href=\"%s%s%s&update=true\">Continue</a>.",
 							escapedHost.c_str (), full_url.c_str (),
-							(full_url.find ('?') != std::string::npos ? "&amp;i2paddresshelper=" : "?i2paddresshelper="),
+							(full_url.find ('?') != std::string::npos ? "&amp;i2paddresshelper="
+																	  : "?i2paddresshelper="),
 							escapedJump.c_str ());
 						SendProxyInfoHTML (tr ("Addresshelper forced update rejected"), ss.str ());
 					}
@@ -1834,7 +1859,8 @@ namespace proxy
 						ss << tr ("To add host <b>%s</b> in router's addressbook, click here: <a "
 								  "href=\"%s%s%s\">Continue</a>.",
 							escapedHost.c_str (), full_url.c_str (),
-							(full_url.find ('?') != std::string::npos ? "&amp;i2paddresshelper=" : "?i2paddresshelper="),
+							(full_url.find ('?') != std::string::npos ? "&amp;i2paddresshelper="
+																	  : "?i2paddresshelper="),
 							escapedJump.c_str ());
 						SendProxyInfoHTML (tr ("Addresshelper request"), ss.str ());
 					}
@@ -2051,8 +2077,7 @@ namespace proxy
 		else
 		{
 			/* unknown type: report a fixed reason, never the configured URL */
-			GenericProxyError (
-				tr ("Unknown outproxy URL"), tr ("The configured outproxy scheme is not supported"),
+			GenericProxyError (tr ("Unknown outproxy URL"), tr ("The configured outproxy scheme is not supported"),
 				HTTP_PROXY_STATUS_BAD_GATEWAY);
 		}
 	}
@@ -2120,8 +2145,8 @@ namespace proxy
 		if (endpoints.begin () == endpoints.end () || !handler)
 		{
 			CancelUpstreamDeadline ();
-			GenericProxyError (tr ("Cannot resolve upstream proxy"), tr ("No address was returned"),
-				HTTP_PROXY_STATUS_BAD_GATEWAY);
+			GenericProxyError (
+				tr ("Cannot resolve upstream proxy"), tr ("No address was returned"), HTTP_PROXY_STATUS_BAD_GATEWAY);
 			return;
 		}
 		// The resolve phase finished: the same deadline now covers connect.
@@ -2144,8 +2169,8 @@ namespace proxy
 				CancelUpstreamDeadline ();
 				// Fixed reason: echoing the host would let a request reflect
 				// content into a page.
-				GenericProxyError (
-					tr ("Hostname is too long"), tr ("The destination hostname is too long"), HTTP_PROXY_STATUS_BAD_REQUEST);
+				GenericProxyError (tr ("Hostname is too long"), tr ("The destination hostname is too long"),
+					HTTP_PROXY_STATUS_BAD_REQUEST);
 				return;
 			}
 			uint16_t port = m_Target.port;
@@ -2594,9 +2619,10 @@ namespace proxy
 				// Fail closed: every request is rejected instead of falling
 				// back to an unauthenticated proxy. The realm or a credential
 				// is unusable, which is a configuration error.
-				LogPrint (eLogCritical, "HTTPProxy: httpproxy.auth.type=digest is set but "
-										"httpproxy.auth.username/password/realm are unusable; every request will be "
-										"rejected");
+				LogPrint (eLogCritical,
+					"HTTPProxy: httpproxy.auth.type=digest is set but "
+					"httpproxy.auth.username/password/realm are unusable; every request will be "
+					"rejected");
 			}
 			m_DigestAuth = std::move (digest);
 			m_AuthScheme = ProxyAuthScheme::Digest;
@@ -2611,8 +2637,9 @@ namespace proxy
 			// `proxyAuth` value.
 			m_AuthScheme = ProxyAuthScheme::Digest;
 			m_DigestAuth = nullptr;
-			LogPrint (eLogCritical, "HTTPProxy: httpproxy.auth.type is not basic or digest; every request will be "
-									"rejected");
+			LogPrint (eLogCritical,
+				"HTTPProxy: httpproxy.auth.type is not basic or digest; every request will be "
+				"rejected");
 			return;
 		}
 
@@ -2620,8 +2647,9 @@ namespace proxy
 		if (m_Auth.HasUsableCredentials ())
 			LogPrint (eLogInfo, "HTTPProxy: Local Basic authentication enabled for ", m_Name);
 		else
-			LogPrint (eLogCritical, "HTTPProxy: httpproxy.auth.enabled is set but httpproxy.auth.username/password are empty "
-									"or longer than ",
+			LogPrint (eLogCritical,
+				"HTTPProxy: httpproxy.auth.enabled is set but httpproxy.auth.username/password are empty "
+				"or longer than ",
 				PROXY_AUTH_MAX_FIELD_SIZE, " bytes; every request will be rejected");
 	}
 
@@ -2635,7 +2663,8 @@ namespace proxy
 		m_AuthScheme = ProxyAuthScheme::Basic;
 		if (!m_Auth.HasUsableCredentials ())
 			LogPrint (eLogCritical,
-				"HTTPProxy: Local authentication configured without usable credentials; every request will be rejected");
+				"HTTPProxy: Local authentication configured without usable credentials; every request will be "
+				"rejected");
 	}
 
 	std::string HTTPProxy::GetOutproxyURL ()

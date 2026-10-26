@@ -162,9 +162,9 @@ namespace data
 
 		std::string HttpsRequest (const std::string & address, int redirects, const std::stop_token & token);
 		std::string YggdrasilRequest (const std::string & address, int redirects, const std::stop_token & token);
-		template <typename Stream> std::string ReseedRequest (Stream & s, boost::asio::io_context & service,
-			const std::string & uri, int redirects, const std::stop_token & token,
-			std::chrono::steady_clock::time_point hostDeadline);
+		template <typename Stream>
+		std::string ReseedRequest (Stream & s, boost::asio::io_context & service, const std::string & uri,
+			int redirects, const std::stop_token & token, std::chrono::steady_clock::time_point hostDeadline);
 
 		uint64_t NowMilliseconds () const;
 		std::chrono::milliseconds PhaseBudget (std::chrono::steady_clock::time_point hostDeadline) const;

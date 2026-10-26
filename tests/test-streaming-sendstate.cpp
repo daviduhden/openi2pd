@@ -49,8 +49,7 @@ struct SendResult
 // Queues one write and runs the posted send work deterministically.
 void Write (boost::asio::io_context & service, i2p::stream::Stream & stream, SendResult & result)
 {
-	stream.AsyncSend (
-		TEST_PAYLOAD, sizeof (TEST_PAYLOAD),
+	stream.AsyncSend (TEST_PAYLOAD, sizeof (TEST_PAYLOAD),
 		[&result] (const boost::system::error_code & ecode, size_t len)
 		{
 			result.ecode = ecode;

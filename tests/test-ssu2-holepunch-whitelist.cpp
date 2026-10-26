@@ -65,30 +65,14 @@ void TestBlockMatrix ()
 	}
 
 	// Explicitly reject everything that reaches a data-phase handler.
-	const uint8_t forbiddenBlocks[] = {
-		eSSU2BlkOptions,
-		eSSU2BlkRouterInfo,
-		eSSU2BlkI2NPMessage,
-		eSSU2BlkFirstFragment,
-		eSSU2BlkFollowOnFragment,
-		eSSU2BlkRelayRequest,
-		eSSU2BlkRelayIntro,
-		eSSU2BlkPeerTest,
-		eSSU2BlkNextNonce,
-		eSSU2BlkAck,
-		eSSU2BlkIntroKey,
-		eSSU2BlkRelayTagRequest,
-		eSSU2BlkRelayTag,
-		eSSU2BlkNewToken,
-		eSSU2BlkPathChallenge,
-		eSSU2BlkPathResponse,
-		eSSU2BlkFirstPacketNumber
-	};
+	const uint8_t forbiddenBlocks[] = { eSSU2BlkOptions, eSSU2BlkRouterInfo, eSSU2BlkI2NPMessage, eSSU2BlkFirstFragment,
+		eSSU2BlkFollowOnFragment, eSSU2BlkRelayRequest, eSSU2BlkRelayIntro, eSSU2BlkPeerTest, eSSU2BlkNextNonce,
+		eSSU2BlkAck, eSSU2BlkIntroKey, eSSU2BlkRelayTagRequest, eSSU2BlkRelayTag, eSSU2BlkNewToken,
+		eSSU2BlkPathChallenge, eSSU2BlkPathResponse, eSSU2BlkFirstPacketNumber };
 	for (auto block : forbiddenBlocks)
 	{
 		assert (!IsHolePunchPayloadBlockAllowed (block));
-		for (auto state : holePunchStates)
-			assert (!IsSSU2PayloadBlockAllowedForState (state, block));
+		for (auto state : holePunchStates) assert (!IsSSU2PayloadBlockAllowedForState (state, block));
 	}
 
 	// The PeerTest whitelist is independent and unchanged: it still accepts
@@ -135,8 +119,8 @@ void TestPayloadValidation ()
 	const auto newToken = MakeBlock (eSSU2BlkNewToken, 12);
 	const auto routerInfo = MakeBlock (eSSU2BlkRouterInfo, 2);
 
-	for (const auto * forbidden : { &i2np, &firstFragment, &relayRequest, &peerTest, &pathChallenge, &ack, &newToken,
-			 &routerInfo })
+	for (const auto * forbidden :
+		{ &i2np, &firstFragment, &relayRequest, &peerTest, &pathChallenge, &ack, &newToken, &routerInfo })
 	{
 		const auto payload = Concat ({ dateTime, *forbidden, padding });
 		for (auto state : holePunchStates)

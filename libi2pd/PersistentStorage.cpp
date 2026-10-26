@@ -37,7 +37,8 @@ namespace
 	uint64_t SteadyMilliseconds ()
 	{
 		return static_cast<uint64_t> (std::chrono::duration_cast<std::chrono::milliseconds> (
-			std::chrono::steady_clock::now ().time_since_epoch ()).count ());
+			std::chrono::steady_clock::now ().time_since_epoch ())
+				.count ());
 	}
 
 	size_t ArtifactSlot (StorageArtifact kind)
@@ -128,11 +129,9 @@ namespace
 		switch (kind)
 		{
 		case StorageArtifact::RouterInfoCache:
-			return i2p::fs::DataDirPath (
-				"netDb", std::string ("r") + encoded[0], "routerInfo-" + encoded + ".dat");
+			return i2p::fs::DataDirPath ("netDb", std::string ("r") + encoded[0], "routerInfo-" + encoded + ".dat");
 		case StorageArtifact::PeerProfile:
-			return i2p::fs::DataDirPath (
-				"peerProfiles", std::string ("p") + encoded[0], "profile-" + encoded + ".txt");
+			return i2p::fs::DataDirPath ("peerProfiles", std::string ("p") + encoded[0], "profile-" + encoded + ".txt");
 		case StorageArtifact::DestinationKeys: return i2p::fs::DataDirPath ("destinations", encoded + ".dat");
 		}
 		return { };

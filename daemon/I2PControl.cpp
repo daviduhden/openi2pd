@@ -54,16 +54,14 @@
 
 namespace
 {
-template <typename Writer>
-bool WritePEMAtomically (std::string_view path, Writer && writer)
+template <typename Writer> bool WritePEMAtomically (std::string_view path, Writer && writer)
 {
 	std::unique_ptr<BIO, decltype (&BIO_free)> output (BIO_new (BIO_s_mem ()), BIO_free);
 	if (!output || writer (output.get ()) != 1) return false;
 	char * bytes = nullptr;
 	const long length = BIO_get_mem_data (output.get (), &bytes);
 	if (length <= 0 || !bytes) return false;
-	const bool written
-		= i2p::fs::AtomicWritePrivate (path, std::string_view (bytes, static_cast<size_t> (length)));
+	const bool written = i2p::fs::AtomicWritePrivate (path, std::string_view (bytes, static_cast<size_t> (length)));
 	// This helper carries the private-key PEM as well as the certificate.
 	OPENSSL_cleanse (bytes, static_cast<size_t> (length));
 	return written;
@@ -88,7 +86,10 @@ std::string GetOpenSSLError ()
 // user where the platform provides a peer-credential call for local sockets.
 // Elsewhere the constructor requires a non-default password instead, so the
 // listener is not left with file mode as its only gate.
-template <typename Socket> bool AcceptLocalControlPeer (const Socket &) { return true; }
+template <typename Socket> bool AcceptLocalControlPeer (const Socket &)
+{
+	return true;
+}
 #if !defined(_WIN32)
 constexpr bool I2P_CONTROL_LOCAL_PEER_AUTH = i2p::client::localcontrol::HAS_PEER_CREDENTIALS;
 bool AcceptLocalControlPeer (const boost::asio::local::stream_protocol::socket & socket)
@@ -98,7 +99,10 @@ bool AcceptLocalControlPeer (const boost::asio::local::stream_protocol::socket &
 #else
 // No per-user credential call exists for a local socket on this platform.
 constexpr bool I2P_CONTROL_LOCAL_PEER_AUTH = false;
-bool AcceptLocalControlPeer (const boost::asio::local::stream_protocol::socket &) { return true; }
+bool AcceptLocalControlPeer (const boost::asio::local::stream_protocol::socket &)
+{
+	return true;
+}
 #endif
 #else
 // No local listener is available, so the credential policy is not consulted.
@@ -106,11 +110,12 @@ bool AcceptLocalControlPeer (const boost::asio::local::stream_protocol::socket &
 #endif
 
 template <typename Socket>
-void ArmControlDeadline (const std::shared_ptr<Socket> & socket,
-	const std::shared_ptr<boost::asio::steady_timer> & deadline)
+void ArmControlDeadline (
+	const std::shared_ptr<Socket> & socket, const std::shared_ptr<boost::asio::steady_timer> & deadline)
 {
 	deadline->expires_after (i2p::client::I2P_CONTROL_OPERATION_TIMEOUT);
-	deadline->async_wait ([weakSocket = std::weak_ptr<Socket> (socket)] (const boost::system::error_code & ec)
+	deadline->async_wait (
+		[weakSocket = std::weak_ptr<Socket> (socket)] (const boost::system::error_code & ec)
 		{
 			if (ec) return;
 			if (auto locked = weakSocket.lock ())
@@ -139,8 +144,7 @@ namespace client
 		{
 			auto listenAddress = boost::asio::ip::make_address (address);
 			if (!listenAddress.is_loopback ())
-				throw std::invalid_argument (
-					"I2PControl refuses a non-loopback listener with the default password");
+				throw std::invalid_argument ("I2PControl refuses a non-loopback listener with the default password");
 		}
 		// A local socket is protected by its mode and its peer-user check. If
 		// the platform provides neither, the password is the only gate. This is
@@ -224,8 +228,7 @@ namespace client
 		if (!ec && SSL_CTX_check_private_key (m_SSLContext.native_handle ()) != 1)
 		{
 			LogPrint (eLogWarning, "I2PControl: certificate and private key do not match; recreating");
-			ec = boost::system::error_code (
-				boost::system::errc::invalid_argument, boost::system::generic_category ());
+			ec = boost::system::error_code (boost::system::errc::invalid_argument, boost::system::generic_category ());
 		}
 		if (ec)
 		{
@@ -449,7 +452,8 @@ namespace client
 				return;
 			}
 			connectionID = ++m_Connections->nextID;
-			m_Connections->close.emplace (connectionID, [weak = std::weak_ptr<ssl_socket> (newSocket)]
+			m_Connections->close.emplace (connectionID,
+				[weak = std::weak_ptr<ssl_socket> (newSocket)]
 				{
 					if (auto socket = weak.lock ())
 					{
@@ -480,7 +484,8 @@ namespace client
 		Handshake (newSocket, deadline, connection);
 	}
 
-	template <typename ssl_socket> void I2PControlService::Handshake (std::shared_ptr<ssl_socket> socket,
+	template <typename ssl_socket>
+	void I2PControlService::Handshake (std::shared_ptr<ssl_socket> socket,
 		std::shared_ptr<boost::asio::steady_timer> deadline, std::shared_ptr<void> connection)
 	{
 		ArmControlDeadline (socket, deadline);
@@ -503,7 +508,8 @@ namespace client
 			});
 	}
 
-	template <typename ssl_socket> void I2PControlService::ReadRequest (std::shared_ptr<ssl_socket> socket,
+	template <typename ssl_socket>
+	void I2PControlService::ReadRequest (std::shared_ptr<ssl_socket> socket,
 		std::shared_ptr<boost::asio::steady_timer> deadline, std::shared_ptr<void> connection)
 	{
 		ArmControlDeadline (socket, deadline);
@@ -571,9 +577,9 @@ namespace client
 		}
 	}
 
-	template <typename ssl_socket> void I2PControlService::HandleHttpRequest (std::shared_ptr<ssl_socket> socket,
-		std::shared_ptr<std::string> request, std::shared_ptr<boost::asio::steady_timer> deadline,
-		std::shared_ptr<void> connection)
+	template <typename ssl_socket>
+	void I2PControlService::HandleHttpRequest (std::shared_ptr<ssl_socket> socket, std::shared_ptr<std::string> request,
+		std::shared_ptr<boost::asio::steady_timer> deadline, std::shared_ptr<void> connection)
 	{
 		try
 		{
@@ -613,8 +619,7 @@ namespace client
 				[this, socket, request, body, deadline, connection] (
 					const boost::system::error_code & readError, size_t transferred)
 				{
-					if (readError || !m_IsRunning.load (std::memory_order_acquire)
-						|| transferred != body->size ())
+					if (readError || !m_IsRunning.load (std::memory_order_acquire) || transferred != body->size ())
 					{
 						LogPrint (eLogError, "I2PControl: Incomplete HTTP request body");
 						return;
@@ -629,9 +634,9 @@ namespace client
 		}
 	}
 
-	template <typename ssl_socket> void I2PControlService::ProcessRequest (std::shared_ptr<ssl_socket> socket,
-		std::shared_ptr<std::string> request, bool isHtml, std::shared_ptr<boost::asio::steady_timer> deadline,
-		std::shared_ptr<void> connection)
+	template <typename ssl_socket>
+	void I2PControlService::ProcessRequest (std::shared_ptr<ssl_socket> socket, std::shared_ptr<std::string> request,
+		bool isHtml, std::shared_ptr<boost::asio::steady_timer> deadline, std::shared_ptr<void> connection)
 	{
 		bool responseStarted = false;
 		// Kept outside the try block so an error reply can echo the same id.
@@ -715,7 +720,8 @@ namespace client
 					LogPrint (eLogWarning, "I2PControl: No authentication token presented for method ", *method);
 					responseStarted = true;
 					{
-						auto errorResponse = makeError (I2P_CONTROL_ERROR_NO_TOKEN, "No authentication token presented");
+						auto errorResponse
+							= makeError (I2P_CONTROL_ERROR_NO_TOKEN, "No authentication token presented");
 						SendResponse (socket, errorResponse, isHtml, deadline, connection);
 					}
 					return;
@@ -723,7 +729,8 @@ namespace client
 					LogPrint (eLogWarning, "I2PControl: Unknown authentication token for method ", *method);
 					responseStarted = true;
 					{
-						auto errorResponse = makeError (I2P_CONTROL_ERROR_UNKNOWN_TOKEN, "Authentication token does not exist");
+						auto errorResponse
+							= makeError (I2P_CONTROL_ERROR_UNKNOWN_TOKEN, "Authentication token does not exist");
 						SendResponse (socket, errorResponse, isHtml, deadline, connection);
 					}
 					return;
@@ -731,7 +738,8 @@ namespace client
 					LogPrint (eLogWarning, "I2PControl: Expired authentication token for method ", *method);
 					responseStarted = true;
 					{
-						auto errorResponse = makeError (I2P_CONTROL_ERROR_EXPIRED_TOKEN, "Authentication token has expired");
+						auto errorResponse
+							= makeError (I2P_CONTROL_ERROR_EXPIRED_TOKEN, "Authentication token has expired");
 						SendResponse (socket, errorResponse, isHtml, deadline, connection);
 					}
 					return;
@@ -753,8 +761,8 @@ namespace client
 			}
 			LogPrint (eLogError, "I2PControl: Request failed: ", ex.what ());
 			std::ostringstream response;
-			response << "{\"id\":" << (idText.empty () ? "null" : idText) << ",\"error\":{\"code\":"
-					 << ex.GetCode () << ",\"message\":" << json::Quote (ex.what ()) << "},\"jsonrpc\":\"2.0\"}\n";
+			response << "{\"id\":" << (idText.empty () ? "null" : idText) << ",\"error\":{\"code\":" << ex.GetCode ()
+					 << ",\"message\":" << json::Quote (ex.what ()) << "},\"jsonrpc\":\"2.0\"}\n";
 			SendResponse (socket, response, isHtml, deadline, connection);
 		}
 		catch (std::exception & ex)
@@ -779,9 +787,8 @@ namespace client
 	}
 
 	template <typename ssl_socket>
-	void I2PControlService::SendResponse (
-		std::shared_ptr<ssl_socket> socket, std::ostringstream & response, bool isHtml,
-		std::shared_ptr<boost::asio::steady_timer> deadline, std::shared_ptr<void> connection)
+	void I2PControlService::SendResponse (std::shared_ptr<ssl_socket> socket, std::ostringstream & response,
+		bool isHtml, std::shared_ptr<boost::asio::steady_timer> deadline, std::shared_ptr<void> connection)
 	{
 		auto message = std::make_shared<std::string> ();
 		if (isHtml)
@@ -823,7 +830,8 @@ namespace client
 		// The API version is required by Java 2.14.0: a missing or unknown
 		// value is a protocol error, not a silently successful handshake.
 		const auto apiValue = params.get_optional<std::string> ("API");
-		if (!apiValue) throw I2PControlError (I2P_CONTROL_ERROR_API_UNSPECIFIED, "I2PControl API version not specified");
+		if (!apiValue)
+			throw I2PControlError (I2P_CONTROL_ERROR_API_UNSPECIFIED, "I2PControl API version not specified");
 		unsigned api = 0;
 		if (!ParseUnsignedDecimal (*apiValue, api) || api != I2P_CONTROL_SUPPORTED_API)
 			throw I2PControlError (I2P_CONTROL_ERROR_API_UNSUPPORTED, "I2PControl API version not supported");
@@ -968,10 +976,11 @@ namespace client
 		LogPrint (eLogInfo, "I2PControl: Shutdown requested");
 		InsertParam (results, "Shutdown", "");
 		m_ShutdownTimer.expires_after (std::chrono::seconds (1)); // 1 second to make sure response has been sent
-		m_ShutdownTimer.async_wait ([] (const boost::system::error_code & ecode)
-		{
-			if (!ecode) Daemon.running = 0;
-		});
+		m_ShutdownTimer.async_wait (
+			[] (const boost::system::error_code & ecode)
+			{
+				if (!ecode) Daemon.running = 0;
+			});
 	}
 
 	void I2PControlService::ShutdownGracefulHandler (std::ostringstream & results)
@@ -981,10 +990,11 @@ namespace client
 		LogPrint (eLogInfo, "I2PControl: Graceful shutdown requested, ", timeout, " seconds remains");
 		InsertParam (results, "ShutdownGraceful", "");
 		m_ShutdownTimer.expires_after (std::chrono::seconds (timeout + 1)); // + 1 second
-		m_ShutdownTimer.async_wait ([] (const boost::system::error_code & ecode)
-		{
-			if (!ecode) Daemon.running = 0;
-		});
+		m_ShutdownTimer.async_wait (
+			[] (const boost::system::error_code & ecode)
+			{
+				if (!ecode) Daemon.running = 0;
+			});
 	}
 
 	void I2PControlService::ReseedHandler (std::ostringstream & results)
@@ -994,8 +1004,8 @@ namespace client
 		// thread (and every other control client) for the whole transfer.
 		const bool accepted = i2p::data::netdb.RequestReseed ();
 		const auto state = i2p::data::netdb.GetReseedState ();
-		LogPrint (eLogInfo, "I2PControl: Reseed requested, accepted=", accepted,
-			" phase=", static_cast<int> (state.phase));
+		LogPrint (
+			eLogInfo, "I2PControl: Reseed requested, accepted=", accepted, " phase=", static_cast<int> (state.phase));
 		InsertParam (results, "Reseed", "");
 	}
 
@@ -1081,14 +1091,14 @@ namespace client
 			}
 
 			LogPrint (eLogInfo, "I2PControl: Saving new cert to ", crt_path);
-			if (!WritePEMAtomically (crt_path, [certificate = x509.get ()] (BIO * output)
-				{ return PEM_write_bio_X509 (output, certificate); }))
+			if (!WritePEMAtomically (crt_path,
+					[certificate = x509.get ()] (BIO * output) { return PEM_write_bio_X509 (output, certificate); }))
 				LogPrint (eLogError, "I2PControl: Can't atomically write cert: ", GetOpenSSLError ());
 		}
 
 		LogPrint (eLogInfo, "I2PControl: Saving cert key to ", key_path);
 		if (!WritePEMAtomically (key_path, [key = pkey.get ()] (BIO * output)
-			{ return PEM_write_bio_PrivateKey (output, key, nullptr, nullptr, 0, nullptr, nullptr); }))
+				{ return PEM_write_bio_PrivateKey (output, key, nullptr, nullptr, 0, nullptr, nullptr); }))
 			LogPrint (eLogError, "I2PControl: Can't atomically write key: ", GetOpenSSLError ());
 	}
 }

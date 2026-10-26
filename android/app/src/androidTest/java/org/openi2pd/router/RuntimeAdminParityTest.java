@@ -72,15 +72,14 @@ public final class RuntimeAdminParityTest {
         assertEquals("", I2PD_JNI.getTunnelServices());
         assertEquals("unavailable", I2PD_JNI.startTunnel("unused"));
         assertEquals("unavailable", I2PD_JNI.stopTunnel("unused"));
-        assertEquals("unavailable",
-                I2PD_JNI.addAddressWithResult("unused.i2p", "AAAA", false));
+        assertEquals("unavailable", I2PD_JNI.addAddressWithResult("unused.i2p", "AAAA", false));
         assertEquals("", I2PD_JNI.getSubscriptions());
         assertEquals("unavailable", I2PD_JNI.addSubscription("http://unused.i2p/hosts.txt"));
         assertEquals("unavailable", I2PD_JNI.removeSubscription("http://unused.i2p/hosts.txt"));
-        assertEquals("unavailable", I2PD_JNI.banRouter(
-                "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="));
-        assertEquals("unavailable", I2PD_JNI.unbanRouter(
-                "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="));
+        assertEquals(
+                "unavailable", I2PD_JNI.banRouter("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="));
+        assertEquals("unavailable",
+                I2PD_JNI.unbanRouter("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="));
         // Even a valid level is rejected: the daemon, not the name, is missing.
         assertFalse(I2PD_JNI.setRuntimeLogLevel("debug"));
         assertFalse(I2PD_JNI.setRuntimeLogLevel("verbose"));

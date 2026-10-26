@@ -275,8 +275,7 @@ void TestSubscriptionRoundTrip ()
 	assert (std::filesystem::exists (file));
 	size_t staging = 0;
 	for (const auto & entry : std::filesystem::directory_iterator (root))
-		if (entry.is_regular_file ()
-			&& entry.path ().filename ().string ().find (".tmp-") != std::string::npos)
+		if (entry.is_regular_file () && entry.path ().filename ().string ().find (".tmp-") != std::string::npos)
 			staging++;
 	assert (staging == 0);
 
@@ -296,8 +295,7 @@ void TestSubscriptionRoundTrip ()
 		std::ifstream saved (file);
 		assert (saved.is_open ());
 		std::string line;
-		while (std::getline (saved, line))
-			assert (line.empty () || line[0] == '#');
+		while (std::getline (saved, line)) assert (line.empty () || line[0] == '#');
 	}
 
 	// The source list is capped; an entry beyond the cap is rejected instead of

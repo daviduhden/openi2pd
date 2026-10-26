@@ -75,8 +75,7 @@ int Decode (std::istream & input, std::ostream & output)
 			for (std::streamsize i = 0; i < readSize; ++i)
 			{
 				const char ch = inbuf[static_cast<size_t> (i)];
-				if (ch == '\n' || ch == '\r' || ch == ' ' || ch == '\t' || ch == '\v' || ch == '\f')
-					continue;
+				if (ch == '\n' || ch == '\r' || ch == ' ' || ch == '\t' || ch == '\v' || ch == '\f') continue;
 				if (sawPadding)
 				{
 					// '=' terminates the encoded stream. Any non-whitespace byte

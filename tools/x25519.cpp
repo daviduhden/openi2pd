@@ -69,8 +69,7 @@ int main (int argc, char * argv[])
 	std::array<uint8_t, KEYSIZE> privateKey { };
 	keys.GetPrivateKey (privateKey.data ());
 
-	auto b64Public
-		= i2p::data::ByteStreamToBase64 (std::span<const uint8_t> (keys.GetPublicKey (), KEYSIZE));
+	auto b64Public = i2p::data::ByteStreamToBase64 (std::span<const uint8_t> (keys.GetPublicKey (), KEYSIZE));
 	std::cout << "PublicKey: " << b64Public;
 
 	auto b64Private = i2p::data::ByteStreamToBase64 (std::span<const uint8_t> (privateKey));

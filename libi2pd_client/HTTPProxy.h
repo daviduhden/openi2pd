@@ -212,7 +212,8 @@ namespace proxy
 	/** Status code for a classification failure: 403 for a scheme, else 400. */
 	constexpr int ProxyTargetErrorStatus (ProxyTargetError error) noexcept
 	{
-		return error == ProxyTargetError::UnsupportedScheme ? HTTP_PROXY_STATUS_FORBIDDEN : HTTP_PROXY_STATUS_BAD_REQUEST;
+		return error == ProxyTargetError::UnsupportedScheme ? HTTP_PROXY_STATUS_FORBIDDEN
+															: HTTP_PROXY_STATUS_BAD_REQUEST;
 	}
 
 	/*
@@ -538,9 +539,8 @@ namespace proxy
 	};
 
 	/** One `Proxy-Authenticate: Digest ...` value (one algorithm). */
-	std::string HTTPProxyDigestChallenge (
-		std::string_view realm, std::string_view nonce, std::string_view opaque, ProxyDigestAlgorithm algorithm,
-		bool stale);
+	std::string HTTPProxyDigestChallenge (std::string_view realm, std::string_view nonce, std::string_view opaque,
+		ProxyDigestAlgorithm algorithm, bool stale);
 
 	/** Bounded 407 page carrying both Digest challenges (SHA-256 first). */
 	std::string HTTPProxyDigestChallengeResponse (

@@ -42,22 +42,22 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t * data, size_t size)
 	const unsigned int cloves = data[12];
 	const uint32_t declared = ReadU32 (data, size, 13);
 
-	(void) i2p::IsFreshI2NPExpiration (expiration, now);
-	(void) i2p::GetI2NPDuplicateKey (msgID, expiration, salt);
-	(void) i2p::IsValidDeliveryStatusPayload (size);
-	(void) i2p::garlic::IsValidCloveCount (cloves);
-	(void) i2p::garlic::IsValidCloveCount (cloves & 0x1F);
-	(void) i2p::client::IsValidDataMessageLength (declared, size);
-	(void) i2p::IsAllowedCloveMessageType (type, fromTunnel);
-	(void) i2p::IsAllowedCloveMessageType (type);
+	(void)i2p::IsFreshI2NPExpiration (expiration, now);
+	(void)i2p::GetI2NPDuplicateKey (msgID, expiration, salt);
+	(void)i2p::IsValidDeliveryStatusPayload (size);
+	(void)i2p::garlic::IsValidCloveCount (cloves);
+	(void)i2p::garlic::IsValidCloveCount (cloves & 0x1F);
+	(void)i2p::client::IsValidDataMessageLength (declared, size);
+	(void)i2p::IsAllowedCloveMessageType (type, fromTunnel);
+	(void)i2p::IsAllowedCloveMessageType (type);
 
 	// Exercise the bounded filter itself, including generation rotation and
 	// eviction, with a tiny capacity so the input can reach both branches.
 	i2p::I2NPDuplicateFilter filter (size % 64 + 1, 1 + (size % 4));
-	(void) filter.CheckAndInsert (i2p::GetI2NPDuplicateKey (msgID, expiration, salt), now / 1000);
-	(void) filter.CheckAndInsert (i2p::GetI2NPDuplicateKey (msgID, expiration, salt), now / 1000 + 1);
-	(void) filter.CheckAndInsert (i2p::GetI2NPDuplicateKey (msgID ^ 0xFFFFFFFFU, expiration, salt), now / 1000 + 8);
-	(void) filter.GetSize ();
-	(void) fromClove; // clove origin is handled by the destination-specific filter
+	(void)filter.CheckAndInsert (i2p::GetI2NPDuplicateKey (msgID, expiration, salt), now / 1000);
+	(void)filter.CheckAndInsert (i2p::GetI2NPDuplicateKey (msgID, expiration, salt), now / 1000 + 1);
+	(void)filter.CheckAndInsert (i2p::GetI2NPDuplicateKey (msgID ^ 0xFFFFFFFFU, expiration, salt), now / 1000 + 8);
+	(void)filter.GetSize ();
+	(void)fromClove; // clove origin is handled by the destination-specific filter
 	return 0;
 }

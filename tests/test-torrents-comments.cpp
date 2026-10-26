@@ -23,29 +23,28 @@
 #ifndef NO_TORRENTS
 namespace
 {
-	using namespace i2p::torrents;
+using namespace i2p::torrents;
 
-	// Minimal valid single-file torrent used for the per-torrent admission
-	// budget. No stream, tunnel, timer or network is created.
-	std::shared_ptr<Torrent> MakeTorrent ()
-	{
-		std::string bytes (MIN_PIECE_LENGTH, 'a');
-		Torrent::InfoHash hash;
-		SHA1 (reinterpret_cast<const uint8_t *> (bytes.data ()), bytes.size (), hash.data ());
-		auto torrent = Torrent::CreateV1 ("comments", { { "", MIN_PIECE_LENGTH } }, MIN_PIECE_LENGTH, { hash });
-		assert (torrent);
-		return torrent;
-	}
+// Minimal valid single-file torrent used for the per-torrent admission
+// budget. No stream, tunnel, timer or network is created.
+std::shared_ptr<Torrent> MakeTorrent ()
+{
+	std::string bytes (MIN_PIECE_LENGTH, 'a');
+	Torrent::InfoHash hash;
+	SHA1 (reinterpret_cast<const uint8_t *> (bytes.data ()), bytes.size (), hash.data ());
+	auto torrent = Torrent::CreateV1 ("comments", { { "", MIN_PIECE_LENGTH } }, MIN_PIECE_LENGTH, { hash });
+	assert (torrent);
+	return torrent;
+}
 
-	// One reply-style list entry, so decoder-level normalization can be pinned
-	// without going through the encoder (which filters invalid entries).
-	std::string CommentReply (std::string_view owner, std::string_view text)
-	{
-		auto entry = CreateDictionary ({ { "like", CreateInteger (0) }, { "owner", CreateByteString (owner) },
-			{ "text", CreateByteString (text) }, { "timestamp", CreateInteger (0) } });
-		return CreateDictionary (
-			{ { "comments", CreateList ({ entry }) }, { "msg_type", CreateInteger (1) } });
-	}
+// One reply-style list entry, so decoder-level normalization can be pinned
+// without going through the encoder (which filters invalid entries).
+std::string CommentReply (std::string_view owner, std::string_view text)
+{
+	auto entry = CreateDictionary ({ { "like", CreateInteger (0) }, { "owner", CreateByteString (owner) },
+		{ "text", CreateByteString (text) }, { "timestamp", CreateInteger (0) } });
+	return CreateDictionary ({ { "comments", CreateList ({ entry }) }, { "msg_type", CreateInteger (1) } });
+}
 }
 
 int main ()
@@ -411,9 +410,8 @@ int main ()
 			{ "local", CreateInteger (0) }, { "owner", CreateByteString ("hidden" + std::to_string (i)) },
 			{ "text", CreateByteString ("hidden text " + std::to_string (i)) },
 			{ "time", CreateInteger (static_cast<int64_t> (now)) } }));
-	const auto hiddenHeavyState = CreateDictionary (
-		{ { "comments", CreateList (hiddenEntries) }, { "enabled", CreateInteger (1) },
-			{ "version", CreateInteger (1) } });
+	const auto hiddenHeavyState = CreateDictionary ({ { "comments", CreateList (hiddenEntries) },
+		{ "enabled", CreateInteger (1) }, { "version", CreateInteger (1) } });
 	TorrentCommentStore trimmed;
 	assert (DecodeTorrentCommentState (hiddenHeavyState, now, trimmed));
 	assert (trimmed.HiddenCount () == MAX_COMMENT_HIDDEN_COUNT && trimmed.VisibleCount () == 0);

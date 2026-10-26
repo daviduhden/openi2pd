@@ -35,41 +35,41 @@
 
 namespace
 {
-	int failures = 0;
+int failures = 0;
 
-	void Check (bool condition, const std::string & what)
-	{
-		if (condition) return;
-		std::cerr << "FAIL: " << what << std::endl;
-		++failures;
-	}
+void Check (bool condition, const std::string & what)
+{
+	if (condition) return;
+	std::cerr << "FAIL: " << what << std::endl;
+	++failures;
+}
 
-	bool Exists (const std::string & path)
-	{
-		struct stat status { };
-		return lstat (path.c_str (), &status) == 0;
-	}
+bool Exists (const std::string & path)
+{
+	struct stat status { };
+	return lstat (path.c_str (), &status) == 0;
+}
 
-	int BindUnixSocket (const std::string & path)
+int BindUnixSocket (const std::string & path)
+{
+	const int fd = ::socket (AF_UNIX, SOCK_STREAM, 0);
+	if (fd < 0) return -1;
+	sockaddr_un address { };
+	address.sun_family = AF_UNIX;
+	if (path.size () >= sizeof (address.sun_path))
 	{
-		const int fd = ::socket (AF_UNIX, SOCK_STREAM, 0);
-		if (fd < 0) return -1;
-		sockaddr_un address { };
-		address.sun_family = AF_UNIX;
-		if (path.size () >= sizeof (address.sun_path))
-		{
-			::close (fd);
-			return -1;
-		}
-		std::memcpy (address.sun_path, path.c_str (), path.size () + 1);
-		if (::bind (fd, reinterpret_cast<sockaddr *> (&address), sizeof (address)) != 0)
-		{
-			::close (fd);
-			return -1;
-		}
-		::listen (fd, 1);
-		return fd;
+		::close (fd);
+		return -1;
 	}
+	std::memcpy (address.sun_path, path.c_str (), path.size () + 1);
+	if (::bind (fd, reinterpret_cast<sockaddr *> (&address), sizeof (address)) != 0)
+	{
+		::close (fd);
+		return -1;
+	}
+	::listen (fd, 1);
+	return fd;
+}
 }
 
 int main ()
@@ -172,8 +172,7 @@ int main ()
 	}
 
 	// A different UID cannot be simulated without changing credentials.
-	if (geteuid () != 0)
-		std::cout << "skip: different-UID peer rejection needs root" << std::endl;
+	if (geteuid () != 0) std::cout << "skip: different-UID peer rejection needs root" << std::endl;
 
 	unlink (filePath.c_str ());
 	rmdir (directoryPath.c_str ());

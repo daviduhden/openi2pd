@@ -81,13 +81,13 @@ int main ()
 	}
 	for (uint16_t version : { uint16_t { 3 }, uint16_t { 4 } })
 		assert (Decode (Header (PROTOCOL_MAGIC, version, static_cast<uint16_t> (MessageType::DataStorageRequest), 1, 0))
-					.has_value ());
+				.has_value ());
 	// Cancel is version 4 only.
 	assert (!Decode (Header (PROTOCOL_MAGIC, 3, static_cast<uint16_t> (MessageType::Cancel), 0, 0)).has_value ());
 	assert (Decode (Header (PROTOCOL_MAGIC, 4, static_cast<uint16_t> (MessageType::Cancel), 0, 0)).has_value ());
 	// The new types are known and the boundary above them is not.
 	for (uint16_t type = static_cast<uint16_t> (MessageType::ConfigureTorrentStorageSupervised);
-		 type <= static_cast<uint16_t> (MessageType::DataStorageReply); ++type)
+		type <= static_cast<uint16_t> (MessageType::DataStorageReply); ++type)
 		assert (Decode (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, type, 1, 0)).has_value ());
 	assert (MAX_MESSAGE_TYPE == static_cast<uint16_t> (MessageType::WorkerHello));
 	assert (!Decode (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, MAX_MESSAGE_TYPE + 1, 1, 0)).has_value ());
@@ -141,7 +141,8 @@ int main ()
 		assert (!IsCanonicalArtifactName (StorageArtifact::RouterInfoCache, std::string (base64).replace (1, 1, ".")));
 		assert (!IsCanonicalArtifactName (StorageArtifact::RouterInfoCache, ".." + std::string (42, 'A')));
 		assert (!IsCanonicalArtifactName (StorageArtifact::RouterInfoCache, std::string (base64).replace (2, 1, "\0")));
-		assert (!IsCanonicalArtifactName (StorageArtifact::RouterInfoCache, std::string (MAX_ARTIFACT_NAME_SIZE + 1, 'A')));
+		assert (
+			!IsCanonicalArtifactName (StorageArtifact::RouterInfoCache, std::string (MAX_ARTIFACT_NAME_SIZE + 1, 'A')));
 		// Destination keys: <52 base32>.<decimal key type>, key type 0 is
 		// ElGamal; a leading zero or any non-decimal spelling is refused.
 		assert (IsCanonicalArtifactName (StorageArtifact::DestinationKeys, base32 + ".0"));
@@ -164,7 +165,8 @@ int main ()
 			== "netDb/r" + std::string (1, base64[0]) + "/routerInfo-" + base64 + ".dat");
 		assert (ArtifactRelativePath (StorageArtifact::PeerProfile, base64)
 			== "peerProfiles/p" + std::string (1, base64[0]) + "/profile-" + base64 + ".txt");
-		assert (ArtifactRelativePath (StorageArtifact::DestinationKeys, base32 + ".3") == "destinations/" + base32 + ".3.dat");
+		assert (ArtifactRelativePath (StorageArtifact::DestinationKeys, base32 + ".3")
+			== "destinations/" + base32 + ".3.dat");
 		assert (ArtifactRelativePath (StorageArtifact::RouterInfoCache, "../escape").empty ());
 	}
 
@@ -178,7 +180,8 @@ int main ()
 	{
 		const auto base64 = Base64Name (7);
 		const std::string payload (32, 'x');
-		auto encoded = EncodeDataStorageRequest (static_cast<uint8_t> (StorageArtifact::RouterInfoCache), base64, payload);
+		auto encoded
+			= EncodeDataStorageRequest (static_cast<uint8_t> (StorageArtifact::RouterInfoCache), base64, payload);
 		assert (encoded.has_value ());
 		auto decoded = DecodeDataStorageRequest (*encoded);
 		assert (decoded.has_value ());

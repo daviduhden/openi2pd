@@ -149,8 +149,8 @@ int main ()
 	// only runs when the set is already empty.
 	if (::getgroups (0, nullptr) != 0)
 	{
-		std::fprintf (stderr,
-			"test-privsep-openbsd-credentials: supplementary groups present, skipping the drop check\n");
+		std::fprintf (
+			stderr, "test-privsep-openbsd-credentials: supplementary groups present, skipping the drop check\n");
 		return 0;
 	}
 	{

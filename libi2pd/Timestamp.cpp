@@ -75,8 +75,7 @@ namespace util
 		htobe64buf (packet.data () + 40, transmitTimestamp);
 	}
 
-	NTPReplyError ValidateNTPReply (
-		std::span<const uint8_t> packet, uint64_t expectedOrigin, uint32_t & serverSeconds)
+	NTPReplyError ValidateNTPReply (std::span<const uint8_t> packet, uint64_t expectedOrigin, uint32_t & serverSeconds)
 	{
 		serverSeconds = 0;
 		if (packet.size () < NTP_PACKET_SIZE) return NTPReplyError::Size;
@@ -125,9 +124,7 @@ namespace util
 		size_t kept = 0;
 		for (size_t i = 0; i < m_Count; ++i)
 		{
-			if (nowSeconds > m_Samples[i].at
-				&& nowSeconds - m_Samples[i].at > NTP_AGREEMENT_SAMPLE_LIFETIME)
-				continue;
+			if (nowSeconds > m_Samples[i].at && nowSeconds - m_Samples[i].at > NTP_AGREEMENT_SAMPLE_LIFETIME) continue;
 			m_Samples[kept++] = m_Samples[i];
 		}
 		m_Count = kept;
@@ -200,8 +197,8 @@ namespace util
 				std::array<uint8_t, NTP_PACKET_SIZE> request { };
 				// A random fraction makes the echoed origin timestamp an
 				// unpredictable nonce for this request.
-				const uint64_t transmit = MakeNTPTransmitTimestamp (
-					GetLocalSecondsSinceEpoch (), i2p::crypto::RandomUInt32 ());
+				const uint64_t transmit
+					= MakeNTPTransmitTimestamp (GetLocalSecondsSinceEpoch (), i2p::crypto::RandomUInt32 ());
 				BuildNTPRequest (request, transmit);
 				std::array<uint8_t, NTP_PACKET_SIZE> buf { };
 				size_t len = 0;
@@ -236,8 +233,8 @@ namespace util
 				if (len)
 				{
 					uint32_t serverSeconds = 0;
-					const auto validation = ValidateNTPReply (
-						std::span<const uint8_t> (buf.data (), len), transmit, serverSeconds);
+					const auto validation
+						= ValidateNTPReply (std::span<const uint8_t> (buf.data (), len), transmit, serverSeconds);
 					if (validation != NTPReplyError::None)
 					{
 						LogPrint (eLogWarning, "Timestamp: Ignoring an invalid NTP reply (reason ",
@@ -249,7 +246,8 @@ namespace util
 					const auto agreed = agreement.Add (offset, ourTs);
 					if (!agreed)
 					{
-						LogPrint (eLogInfo, "Timestamp: NTP reply from ", address, " not applied; waiting for agreement");
+						LogPrint (
+							eLogInfo, "Timestamp: NTP reply from ", address, " not applied; waiting for agreement");
 						return false;
 					}
 					// The clock is never moved from a single unauthenticated

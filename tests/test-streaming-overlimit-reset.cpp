@@ -35,7 +35,10 @@ struct Fixture
 		destination = std::make_shared<i2p::stream::StreamingDestination> (owner);
 	}
 
-	Fixture () : Fixture (i2p::util::Mapping ()) {}
+	Fixture ()
+		: Fixture (i2p::util::Mapping ())
+	{
+	}
 };
 } // namespace
 
@@ -67,8 +70,8 @@ int main ()
 		// refused as an already-closed connection instead of consuming another
 		// signature verification and RESET round trip.
 		destination.RememberRecentlyClosedForTesting (receiveStreamID);
-		assert (destination.AdmitSynForTesting (receiveStreamID)
-			== StreamingDestination::SynAdmission::eRecentlyClosed);
+		assert (
+			destination.AdmitSynForTesting (receiveStreamID) == StreamingDestination::SynAdmission::eRecentlyClosed);
 
 		// Teardown releases the registered streams.
 		destination.StopForTesting ();
@@ -90,8 +93,7 @@ int main ()
 		assert (destination.GetNumPendingIncomingForTesting () == MAX_PENDING_INCOMING_BACKLOG);
 
 		const uint32_t receiveStreamID = 0x0BADBEEF;
-		assert (destination.AdmitSynForTesting (receiveStreamID)
-			== StreamingDestination::SynAdmission::eBacklogFull);
+		assert (destination.AdmitSynForTesting (receiveStreamID) == StreamingDestination::SynAdmission::eBacklogFull);
 		assert (destination.BuildRejectionResetForTesting (receiveStreamID));
 		assert (destination.GetNumRejectionResetsForTesting () == 1);
 

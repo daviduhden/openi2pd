@@ -25,37 +25,37 @@
 
 namespace
 {
-	// Counts the virtual Terminate dispatch and never allocates a socket.
-	class CountingHandler : public i2p::client::I2PServiceHandler
+// Counts the virtual Terminate dispatch and never allocates a socket.
+class CountingHandler : public i2p::client::I2PServiceHandler
+{
+public:
+	explicit CountingHandler (std::shared_ptr<i2p::client::I2PService> owner)
+		: I2PServiceHandler (std::move (owner))
 	{
-	public:
-		explicit CountingHandler (std::shared_ptr<i2p::client::I2PService> owner)
-			: I2PServiceHandler (std::move (owner))
-		{
-		}
+	}
 
-		void Terminate () override
-		{
-			++terminations;
-			I2PServiceHandler::Terminate ();
-		}
-
-		int terminations = 0;
-	};
-
-	struct Fixture
+	void Terminate () override
 	{
-		boost::asio::io_context service;
-		std::shared_ptr<i2p::client::ClientDestination> destination;
+		++terminations;
+		I2PServiceHandler::Terminate ();
+	}
 
-		Fixture ()
-		{
-			i2p::util::Mapping params;
-			auto keys = i2p::data::PrivateKeys::CreateRandomKeys (
-				i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, true);
-			destination = std::make_shared<i2p::client::ClientDestination> (service, keys, false, &params);
-		}
-	};
+	int terminations = 0;
+};
+
+struct Fixture
+{
+	boost::asio::io_context service;
+	std::shared_ptr<i2p::client::ClientDestination> destination;
+
+	Fixture ()
+	{
+		i2p::util::Mapping params;
+		auto keys = i2p::data::PrivateKeys::CreateRandomKeys (
+			i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, true);
+		destination = std::make_shared<i2p::client::ClientDestination> (service, keys, false, &params);
+	}
+};
 } // namespace
 
 int main ()

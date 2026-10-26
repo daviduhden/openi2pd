@@ -73,14 +73,14 @@ int main ()
 	// contract must agree: streaming (6) and the typed datagram protocols
 	// (17/19/20) are consumed by their own handlers and are never RAW payloads,
 	// while PROTO_UNSPECIFIED (0) and ordinary payload protocols are.
-	for (const uint8_t reserved : { SAM_LISTEN_PROTOCOL_STREAMING, PROTOCOL_TYPE_DATAGRAM, PROTOCOL_TYPE_DATAGRAM2,
-			 PROTOCOL_TYPE_DATAGRAM3 })
+	for (const uint8_t reserved :
+		{ SAM_LISTEN_PROTOCOL_STREAMING, PROTOCOL_TYPE_DATAGRAM, PROTOCOL_TYPE_DATAGRAM2, PROTOCOL_TYPE_DATAGRAM3 })
 	{
 		assert (IsSAMReservedRawListenProtocol (reserved));
 		assert (i2p::datagram::IsReservedRawProtocol (reserved));
 		assert (i2p::datagram::IsTypedDatagramProtocol (reserved) == (reserved != SAM_LISTEN_PROTOCOL_STREAMING));
 	}
-	for (const uint8_t allowed : { (uint8_t) 0, (uint8_t) PROTOCOL_TYPE_RAW, (uint8_t) 33 })
+	for (const uint8_t allowed : { (uint8_t)0, (uint8_t)PROTOCOL_TYPE_RAW, (uint8_t)33 })
 	{
 		assert (!IsSAMReservedRawListenProtocol (allowed));
 		assert (!i2p::datagram::IsReservedRawProtocol (allowed));

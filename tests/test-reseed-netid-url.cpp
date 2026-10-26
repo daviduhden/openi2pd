@@ -60,9 +60,8 @@ int main ()
 		== "https://example.invalid/i2pseeds.su3?x=1&netid=2");
 
 	// Idempotent: a second pass cannot append a duplicate parameter.
-	for (const char * url : { "https://example.invalid/i2pseeds.su3",
-			 "https://example.invalid/i2pseeds.su3?x=1", "https://example.invalid/i2pseeds.su3#f",
-			 "https://example.invalid/i2pseeds.su3?x=netid=9" })
+	for (const char * url : { "https://example.invalid/i2pseeds.su3", "https://example.invalid/i2pseeds.su3?x=1",
+			 "https://example.invalid/i2pseeds.su3#f", "https://example.invalid/i2pseeds.su3?x=netid=9" })
 	{
 		const auto once = AppendReseedNetId (url, 2);
 		assert (AppendReseedNetId (once, 2) == once);

@@ -23,26 +23,26 @@
 
 namespace
 {
-	using i2p::stream::StreamAdmission;
-	using i2p::stream::StreamingDestination;
+using i2p::stream::StreamAdmission;
+using i2p::stream::StreamingDestination;
 
-	struct Fixture
+struct Fixture
+{
+	boost::asio::io_context service;
+	std::shared_ptr<i2p::client::ClientDestination> owner;
+	std::shared_ptr<StreamingDestination> defaultDestination;
+	std::shared_ptr<StreamingDestination> portDestination;
+
+	Fixture ()
 	{
-		boost::asio::io_context service;
-		std::shared_ptr<i2p::client::ClientDestination> owner;
-		std::shared_ptr<StreamingDestination> defaultDestination;
-		std::shared_ptr<StreamingDestination> portDestination;
-
-		Fixture ()
-		{
-			i2p::util::Mapping params;
-			auto keys = i2p::data::PrivateKeys::CreateRandomKeys (
-				i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, true);
-			owner = std::make_shared<i2p::client::ClientDestination> (service, keys, false, &params);
-			defaultDestination = std::make_shared<StreamingDestination> (owner);
-			portDestination = std::make_shared<StreamingDestination> (owner, 5555);
-		}
-	};
+		i2p::util::Mapping params;
+		auto keys = i2p::data::PrivateKeys::CreateRandomKeys (
+			i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, true);
+		owner = std::make_shared<i2p::client::ClientDestination> (service, keys, false, &params);
+		defaultDestination = std::make_shared<StreamingDestination> (owner);
+		portDestination = std::make_shared<StreamingDestination> (owner, 5555);
+	}
+};
 } // namespace
 
 int main ()
@@ -77,8 +77,8 @@ int main ()
 
 	// Per-port isolation: a second predicate on another destination must not
 	// change the first one.
-	const auto resetAll = [] (const i2p::data::IdentHash &, uint16_t) -> StreamAdmission
-	{ return StreamAdmission::eReset; };
+	const auto resetAll
+		= [] (const i2p::data::IdentHash &, uint16_t) -> StreamAdmission { return StreamAdmission::eReset; };
 	auto otherDestination = std::make_shared<StreamingDestination> (fixture.owner, 6666);
 	otherDestination->SetAdmissionPredicate (resetAll);
 	assert (portDestination.EvaluateAdmissionForTesting (peer) == StreamAdmission::eDrop);
@@ -96,8 +96,7 @@ int main ()
 		assert (portDestination.GetNumStreams () == 0);
 		// A retransmitted SYN is not remembered, so it is dropped again rather
 		// than answered with a RESET.
-		assert (portDestination.AdmitSynForTesting (receiveStreamID)
-			== StreamingDestination::SynAdmission::eAccept);
+		assert (portDestination.AdmitSynForTesting (receiveStreamID) == StreamingDestination::SynAdmission::eAccept);
 	}
 
 	// A reset admission answers with exactly one signed RESET and remembers the
@@ -121,8 +120,7 @@ int main ()
 		const uint32_t receiveStreamID = 0x0BAD1234;
 		assert (portDestination.ApplyRejectionActionForTesting (receiveStreamID) == StreamAdmission::eDrop);
 		assert (portDestination.GetNumRejectionResetsForTesting () == 0);
-		assert (portDestination.AdmitSynForTesting (receiveStreamID)
-			== StreamingDestination::SynAdmission::eAccept);
+		assert (portDestination.AdmitSynForTesting (receiveStreamID) == StreamingDestination::SynAdmission::eAccept);
 	}
 	portDestination.SetRejectionAction (StreamAdmission::eReset);
 	{
@@ -141,13 +139,10 @@ int main ()
 	// An access-filter denial flows through the same seam: a deny-all
 	// definition refuses the peer.
 	{
-		auto denyAll = std::make_shared<i2p::client::TunnelAccessFilter> (
-			i2p::client::FilterDefinition::DenyAll ());
+		auto denyAll = std::make_shared<i2p::client::TunnelAccessFilter> (i2p::client::FilterDefinition::DenyAll ());
 		defaultDestination.SetAdmissionPredicate (
 			[denyAll] (const i2p::data::IdentHash & peer, uint16_t) -> StreamAdmission
-			{
-				return denyAll->Evaluate (peer, 1000).allow ? StreamAdmission::eAllow : StreamAdmission::eDrop;
-			});
+			{ return denyAll->Evaluate (peer, 1000).allow ? StreamAdmission::eAllow : StreamAdmission::eDrop; });
 		assert (defaultDestination.EvaluateAdmissionForTesting (peer) == StreamAdmission::eDrop);
 	}
 	defaultDestination.ResetAdmissionPredicate ();

@@ -247,8 +247,7 @@ void TestRetryVersionAuthorisation ()
 	assert (IsSSU2RetryVersionAccepted (2, v2v3) == false); // PQ downgrade
 	assert (IsSSU2RetryVersionAccepted (3, v2v4) == false); // not advertised
 	assert (IsSSU2RetryVersionAccepted (4, v2v3) == false); // not advertised
-	for (int version = 5; version < 256; ++version)
-		assert (!IsSSU2RetryVersionAccepted (version, v2v3v4));
+	for (int version = 5; version < 256; ++version) assert (!IsSSU2RetryVersionAccepted (version, v2v3v4));
 	assert (!IsSSU2RetryVersionAccepted (0, v2Only));
 	assert (!IsSSU2RetryVersionAccepted (1, v2Only));
 

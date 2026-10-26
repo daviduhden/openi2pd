@@ -1312,7 +1312,8 @@ namespace transport
 			// this RouterInfo belongs to another I2P network. It is rejected like
 			// any malformed RI (IsUnreachable stays set), but the reason is
 			// distinct and the source is banned at the transport level.
-			LogPrint (eLogError, "NTCP2: RouterInfo with foreign netId in SessionConfirmed from ", GetRemoteEndpoint ());
+			LogPrint (
+				eLogError, "NTCP2: RouterInfo with foreign netId in SessionConfirmed from ", GetRemoteEndpoint ());
 			auto ident = ri.GetIdentHash ();
 			i2p::data::netdb.SetUnreachable (ident, true);
 			if (!m_RemoteEndpoint.address ().is_unspecified ())
@@ -1586,8 +1587,8 @@ namespace transport
 				// the peer is not using the session keys. Treat it like a tag
 				// failure: draining first keeps this path from becoming an
 				// immediate-reset oracle (spec/ntcp2 "AEAD Error Handling").
-				LogPrint (eLogError, "NTCP2: Received length ", m_NextReceivedLen, " is too short from ",
-					m_RemoteEndpoint);
+				LogPrint (
+					eLogError, "NTCP2: Received length ", m_NextReceivedLen, " is too short from ", m_RemoteEndpoint);
 				EnterFailureDrain ();
 			}
 		}

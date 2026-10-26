@@ -505,8 +505,7 @@ namespace crypto
 		m_PublicKey.reset ();
 		if (!signingKey || !m_KeyLen || !m_Hash) return;
 		BIGNUM * n = BN_bin2bn (signingKey, static_cast<int> (m_KeyLen), nullptr);
-		if (!n || BN_is_zero (n) || !BN_is_odd (n)
-			|| BN_num_bytes (n) != static_cast<int> (m_KeyLen))
+		if (!n || BN_is_zero (n) || !BN_is_odd (n) || BN_num_bytes (n) != static_cast<int> (m_KeyLen))
 		{
 			// BN_bin2bn strips leading zero bytes. A modulus that no longer
 			// fills the wire field is not the fixed-size I2P RSA identity.

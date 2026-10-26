@@ -95,8 +95,7 @@ namespace crypto
 						&& ctLen == cipherText.size () && encLen == encapsulated.size ();
 					if (supported)
 						supported = EVP_PKEY_decapsulate_init (kem, nullptr) == 1
-							&& EVP_PKEY_decapsulate (kem, decapsulated.data (), &decLen, cipherText.data (), ctLen)
-								== 1
+							&& EVP_PKEY_decapsulate (kem, decapsulated.data (), &decLen, cipherText.data (), ctLen) == 1
 							&& decLen == decapsulated.size ()
 							&& CRYPTO_memcmp (encapsulated.data (), decapsulated.data (), encLen) == 0;
 					OPENSSL_cleanse (encapsulated.data (), encapsulated.size ());
@@ -132,12 +131,13 @@ namespace crypto
 				|| marshalled.len != keyLength
 				|| MLKEM_parse_public_key (importedKey.get (), marshalled.data, marshalled.len) != 1)
 				return false;
-			if (MLKEM_encap (importedKey.get (), &cipherText.data, &cipherText.len, &encapsulated.data,
-					&encapsulated.len) != 1
+			if (MLKEM_encap (
+					importedKey.get (), &cipherText.data, &cipherText.len, &encapsulated.data, &encapsulated.len)
+					!= 1
 				|| cipherText.len != cipherTextLength || encapsulated.len != 32)
 				return false;
-			if (MLKEM_decap (privateKey.get (), cipherText.data, cipherText.len, &decapsulated.data,
-					&decapsulated.len) != 1
+			if (MLKEM_decap (privateKey.get (), cipherText.data, cipherText.len, &decapsulated.data, &decapsulated.len)
+					!= 1
 				|| decapsulated.len != 32)
 				return false;
 			// MLKEMBuffer wipes every buffer above on scope exit.

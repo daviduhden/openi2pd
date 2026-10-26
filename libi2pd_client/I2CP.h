@@ -170,8 +170,7 @@ namespace client
 	// whenever the buffer held it and `hasNonce` records whether the trailing
 	// nonce could still be located, so the caller can answer with a status
 	// instead of dropping the message silently.
-	bool ParseI2CPSendMessage (
-		const uint8_t * buf, size_t len, bool withExpiration, I2CPSendMessageRequest & request);
+	bool ParseI2CPSendMessage (const uint8_t * buf, size_t len, bool withExpiration, I2CPSendMessageRequest & request);
 
 	enum class I2CPSendMessageCheck : uint8_t
 	{
@@ -180,8 +179,8 @@ namespace client
 		BadMessage, // malformed identity, payload or nonce
 		Expired // SEND MESSAGE EXPIRES carried an expiration in the past
 	};
-	I2CPSendMessageCheck CheckI2CPSendMessage (const I2CPSendMessageRequest & request, uint16_t ownSessionID,
-		bool hasDestination, uint64_t nowMilliseconds);
+	I2CPSendMessageCheck CheckI2CPSendMessage (
+		const I2CPSendMessageRequest & request, uint16_t ownSessionID, bool hasDestination, uint64_t nowMilliseconds);
 
 	// BlindingInfo (message type 42) endpoint and client-auth values.
 	enum I2CPBlindingEndpointType : uint8_t
@@ -237,8 +236,7 @@ namespace client
 	// Blinding is one-way and the b33 address never carries the unblinded key,
 	// so a b33 lookup matches a stored destination identity by re-deriving the
 	// current day's blinded key. The scan is bounded by the registry size.
-	bool FindI2CPBlindingInfoByBlindedKey (
-		const i2p::data::BlindedPublicKey & blinded, I2CPBlindingInfo & info);
+	bool FindI2CPBlindingInfoByBlindedKey (const i2p::data::BlindedPublicKey & blinded, I2CPBlindingInfo & info);
 	// The 32-byte value LeaseSet2 client auth consumes: the DH private key for
 	// auth types 1/3, otherwise the PSK secret for types 2/3. Empty when the
 	// record carries no usable material.
@@ -282,8 +280,7 @@ namespace client
 		// whose public key cannot be re-derived from the stored scalar (ElGamal,
 		// P-256) return "not verifiable" so the caller can keep the install-time
 		// check for them instead of rejecting a valid set.
-		bool IsAdvertisedEncryptionKey (
-			i2p::data::CryptoKeyType keyType, const uint8_t * key, size_t keyLen,
+		bool IsAdvertisedEncryptionKey (i2p::data::CryptoKeyType keyType, const uint8_t * key, size_t keyLen,
 			const i2p::data::LeaseSet2 & ls, bool & verifiable) const;
 		void LeaseSetCreated (const uint8_t * buf, size_t len); // called from I2CPSession
 		void LeaseSet2Created (uint8_t storeType, const uint8_t * buf, size_t len); // called from I2CPSession
@@ -367,8 +364,8 @@ namespace client
 	class I2CPSession : public std::enable_shared_from_this<I2CPSession>
 	{
 	public:
-		I2CPSession (I2CPServer & owner, std::shared_ptr<boost::asio::ip::tcp::socket> socket,
-			bool connectionAdmitted = false);
+		I2CPSession (
+			I2CPServer & owner, std::shared_ptr<boost::asio::ip::tcp::socket> socket, bool connectionAdmitted = false);
 
 		~I2CPSession ();
 
@@ -432,8 +429,7 @@ namespace client
 		void SendMessageRequest (const uint8_t * buf, size_t len, bool withExpiration);
 		void SendHostReplyMessage (uint32_t requestID, uint16_t sessionID,
 			std::shared_ptr<const i2p::data::IdentityEx> identity, bool withOptions = false,
-			std::shared_ptr<const i2p::data::LeaseSet> leaseSet = nullptr,
-			uint8_t result = eI2CPHostReplySuccess);
+			std::shared_ptr<const i2p::data::LeaseSet> leaseSet = nullptr, uint8_t result = eI2CPHostReplySuccess);
 
 	private:
 		I2CPServer & m_Owner;

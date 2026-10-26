@@ -78,8 +78,8 @@ void AppendParam (std::string & out, std::string_view key, std::string_view valu
 	out.push_back (';');
 }
 
-std::vector<uint8_t> BuildRouterInfo (const PrivateKeys & keys, const std::string & version,
-	const std::string & caps, bool withAddress)
+std::vector<uint8_t> BuildRouterInfo (
+	const PrivateKeys & keys, const std::string & version, const std::string & caps, bool withAddress)
 {
 	std::vector<uint8_t> body;
 	AppendBe64 (body, 1700000000000ULL);
@@ -163,8 +163,7 @@ void TestAdmissionPredicate ()
 	assert (!IsRouterUsableForTunnel (*old, nullptr, TunnelPeerRole::Middle, true, false));
 
 	// ElGamal-only identities cannot be tunnel hops in an ECIES network.
-	auto elgamalKeys
-		= PrivateKeys::CreateRandomKeys (SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, CRYPTO_KEY_TYPE_ELGAMAL);
+	auto elgamalKeys = PrivateKeys::CreateRandomKeys (SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, CRYPTO_KEY_TYPE_ELGAMAL);
 	auto elgamal = MakeRouter (elgamalKeys);
 	assert (!elgamal->IsECIES ());
 	assert (!IsRouterUsableForTunnel (*elgamal, nullptr, TunnelPeerRole::Middle, true, false));
@@ -218,9 +217,8 @@ void TestFarEndTransports ()
 
 void TestNoReuseOfFailedPath ()
 {
-	std::vector<std::shared_ptr<const IdentityEx>> peers {
-		MakeRouter (MakeEciesKeys ())->GetRouterIdentity (), MakeRouter (MakeEciesKeys ())->GetRouterIdentity ()
-	};
+	std::vector<std::shared_ptr<const IdentityEx>> peers { MakeRouter (MakeEciesKeys ())->GetRouterIdentity (),
+		MakeRouter (MakeEciesKeys ())->GetRouterIdentity () };
 	auto config = std::make_shared<i2p::tunnel::TunnelConfig> (peers, 1, IdentHash { });
 	auto tunnel = std::make_shared<i2p::tunnel::OutboundTunnel> (config);
 	auto pool = std::make_shared<i2p::tunnel::TunnelPool> (2, 2, 1, 1, 0, 0, false);

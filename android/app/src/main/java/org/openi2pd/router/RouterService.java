@@ -311,8 +311,7 @@ public class RouterService extends Service {
                     markRestoreDeferred("daemon start failed during a restored drain");
                 }
             }
-            if (newState == DaemonWrapper.State.startedOkay
-                    && pendingDrainResumeMillis >= 0L) {
+            if (newState == DaemonWrapper.State.startedOkay && pendingDrainResumeMillis >= 0L) {
                 long resume = pendingDrainResumeMillis;
                 pendingDrainResumeMillis = -1L;
                 // The start is asynchronous, so the drain is re-armed here
@@ -594,8 +593,9 @@ public class RouterService extends Service {
         if (!destroyed) {
             if (taskRemovedEvents < MAX_TASK_REMOVED_EVENTS) {
                 taskRemovedEvents++;
-                Log.i(TAG, "task removed; the router keeps running ("
-                        + taskRemovedEvents + "/" + MAX_TASK_REMOVED_EVENTS + ")");
+                Log.i(TAG,
+                        "task removed; the router keeps running (" + taskRemovedEvents + "/"
+                                + MAX_TASK_REMOVED_EVENTS + ")");
             }
             // Refresh the notification text without changing any state.
             publishNotification();
@@ -974,7 +974,8 @@ public class RouterService extends Service {
     }
 
     /** Start or stop one configured tunnel; the callback receives the outcome token. */
-    public void tunnelCommand(String name, boolean start, java.util.function.Consumer<String> callback) {
+    public void tunnelCommand(
+            String name, boolean start, java.util.function.Consumer<String> callback) {
         if (destroyed || !RuntimeAdminPolicy.isValidTunnelName(name)) {
             mainHandler.post(() -> callback.accept("invalid"));
             return;
@@ -983,8 +984,9 @@ public class RouterService extends Service {
             String outcome = "failed";
             try {
                 DaemonWrapper local = daemon;
-                outcome = local == null ? "unavailable"
-                                        : (start ? local.startTunnel(name) : local.stopTunnel(name));
+                outcome = local == null
+                        ? "unavailable"
+                        : (start ? local.startTunnel(name) : local.stopTunnel(name));
             } catch (RuntimeException | LinkageError error) {
                 outcome = "failed";
             }
@@ -994,8 +996,7 @@ public class RouterService extends Service {
     }
 
     /** Add/replace one address-book name; the callback receives the outcome token. */
-    public void addAddressChecked(
-            String name, String destination, boolean replace,
+    public void addAddressChecked(String name, String destination, boolean replace,
             java.util.function.Consumer<String> callback) {
         runOnWorker(() -> {
             String outcome = "failed";
@@ -1037,8 +1038,9 @@ public class RouterService extends Service {
             String outcome = "failed";
             try {
                 DaemonWrapper local = daemon;
-                outcome = local == null ? "unavailable"
-                                        : (add ? local.addSubscription(url) : local.removeSubscription(url));
+                outcome = local == null
+                        ? "unavailable"
+                        : (add ? local.addSubscription(url) : local.removeSubscription(url));
             } catch (RuntimeException | LinkageError error) {
                 outcome = "failed";
             }
@@ -1345,8 +1347,8 @@ public class RouterService extends Service {
     private RouterSnapshot localSnapshot() {
         DaemonWrapper local = daemon;
         if (local == null) {
-            return RouterSnapshot.empty(DaemonWrapper.State.uninitialized,
-                    deferredRestoreErrorText(""), "", 0L);
+            return RouterSnapshot.empty(
+                    DaemonWrapper.State.uninitialized, deferredRestoreErrorText(""), "", 0L);
         }
         return RouterSnapshot.empty(local.getState(),
                 deferredRestoreErrorText(describe(local.getLastThrowable())),
@@ -1466,7 +1468,8 @@ public class RouterService extends Service {
                         .setSmallIcon(R.drawable.ic_logo_monochrome)
                         .setPriority(NotificationCompat.PRIORITY_DEFAULT)
                         .setCategory(NotificationCompat.CATEGORY_SERVICE)
-                        .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+                        .setForegroundServiceBehavior(
+                                NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
                         .setOnlyAlertOnce(true)
                         .setTicker(text)
                         .setWhen(System.currentTimeMillis())
@@ -1505,9 +1508,9 @@ public class RouterService extends Service {
             return;
         }
         try {
-            NotificationChannel channel = new NotificationChannel(
-                    CHANNEL_ID, getText(R.string.notification_channel_name),
-                    NotificationManager.IMPORTANCE_LOW);
+            NotificationChannel channel =
+                    new NotificationChannel(CHANNEL_ID, getText(R.string.notification_channel_name),
+                            NotificationManager.IMPORTANCE_LOW);
             channel.setDescription(getString(R.string.notification_channel_description));
             channel.setLockscreenVisibility(Notification.VISIBILITY_PRIVATE);
             channel.setShowBadge(false);
@@ -1686,10 +1689,12 @@ public class RouterService extends Service {
      * owns the authority; the callback is delivered on the main thread and may
      * be invoked after the calling view is destroyed.
      */
-    public void selectPayloadTree(
-            String tunnel, String hash, android.net.Uri tree, java.util.function.Consumer<Boolean> callback) {
+    public void selectPayloadTree(String tunnel, String hash, android.net.Uri tree,
+            java.util.function.Consumer<Boolean> callback) {
         runSafGrantOperation(
-                () -> TorrentSafStorage.select(getApplicationContext(), tunnel, hash, tree), callback);
+                ()
+                        -> TorrentSafStorage.select(getApplicationContext(), tunnel, hash, tree),
+                callback);
     }
 
     /** Release the persisted grant for one torrent payload. */
@@ -1699,8 +1704,8 @@ public class RouterService extends Service {
                 () -> TorrentSafStorage.detach(getApplicationContext(), tunnel, hash), callback);
     }
 
-    private void runSafGrantOperation(
-            java.util.concurrent.Callable<Boolean> operation, java.util.function.Consumer<Boolean> callback) {
+    private void runSafGrantOperation(java.util.concurrent.Callable<Boolean> operation,
+            java.util.function.Consumer<Boolean> callback) {
         if (destroyed || callback == null) {
             if (callback != null) {
                 mainHandler.post(() -> callback.accept(false));
@@ -2139,8 +2144,7 @@ public class RouterService extends Service {
         SharedPreferences preferences = runStatePreferences();
         long storedDeadline = RouterRunState.persistedDeadline(preferences);
         RouterRunState persisted = RouterRunState.load(preferences, now);
-        if (persisted.isDraining()
-                && !RouterRunState.isPlausibleDeadline(storedDeadline, now)) {
+        if (persisted.isDraining() && !RouterRunState.isPlausibleDeadline(storedDeadline, now)) {
             Log.w(TAG, "persisted graceful-stop deadline was implausible; clamped or dropped");
         }
         if (persisted.phase() == RouterRunState.Phase.Stopped) {

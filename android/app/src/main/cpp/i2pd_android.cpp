@@ -59,7 +59,9 @@ class ScopedJStringChars
 {
 public:
 	ScopedJStringChars (JNIEnv * env, jstring text)
-		: m_Env (env), m_Text (text), m_Chars (env ? env->GetStringChars (text, nullptr) : nullptr)
+		: m_Env (env)
+		, m_Text (text)
+		, m_Chars (env ? env->GetStringChars (text, nullptr) : nullptr)
 	{
 	}
 	~ScopedJStringChars ()
@@ -70,6 +72,7 @@ public:
 	ScopedJStringChars & operator= (const ScopedJStringChars &) = delete;
 	explicit operator bool () const { return m_Chars != nullptr; }
 	const jchar * data () const { return m_Chars; }
+
 private:
 	JNIEnv * m_Env;
 	jstring m_Text;
@@ -439,8 +442,8 @@ std::string_view ReseedPhaseToken (i2p::data::ReseedPhase phase) noexcept
 	 * the fixed command kinds listed by the JNI entry points; there is no
 	 * generic request/verb string.
 	 */
-std::string SubmitAdminOutcome (i2p::tui::AdminCommandKind kind, std::string_view name,
-	std::string_view destination, bool enabled)
+std::string SubmitAdminOutcome (
+	i2p::tui::AdminCommandKind kind, std::string_view name, std::string_view destination, bool enabled)
 {
 	i2p::tui::AdminCommand command;
 	command.kind = kind;
@@ -919,8 +922,7 @@ extern "C" JNIEXPORT jint JNICALL Java_org_openi2pd_router_I2PD_1JNI_processRole
 	 * lock: a start transition owns the native-call guard for its whole
 	 * duration, so a guarded stop request could never reach it.
 	 */
-extern "C" JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_requestStopNative (
-	JNIEnv *, jclass) noexcept
+extern "C" JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_requestStopNative (JNIEnv *, jclass) noexcept
 {
 	i2p::android::RequestStartCancel ();
 }
@@ -1011,7 +1013,7 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_requestReseed (JNIE
 		{
 			i2p::android::NativeCallGuard call;
 			if (!call.IsRunning ()) return NewStringChecked (env, "unavailable");
-			return NewStringChecked (env, SubmitAdminOutcome (i2p::tui::AdminCommandKind::Reseed, {}, {}, false));
+			return NewStringChecked (env, SubmitAdminOutcome (i2p::tui::AdminCommandKind::Reseed, { }, { }, false));
 		},
 		"failed");
 }
@@ -1068,8 +1070,7 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getTunnelServices (
 				constexpr size_t MAX_FIELD = 256;
 				if (text.size () > MAX_FIELD) text.resize (MAX_FIELD);
 				for (auto & ch : text)
-					if (ch == '|' || ch == '\n' || ch == '\r' || static_cast<unsigned char> (ch) < 0x20
-						|| ch == 0x7f)
+					if (ch == '|' || ch == '\n' || ch == '\r' || static_cast<unsigned char> (ch) < 0x20 || ch == 0x7f)
 						ch = ' ';
 				return text;
 			};
@@ -1106,7 +1107,7 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_startTunnel (JNIEnv
 			i2p::android::NativeCallGuard call;
 			if (!call.IsRunning ()) return NewStringChecked (env, "unavailable");
 			return NewStringChecked (
-				env, SubmitAdminOutcome (i2p::tui::AdminCommandKind::TunnelStart, nameUtf8.view (), {}, false));
+				env, SubmitAdminOutcome (i2p::tui::AdminCommandKind::TunnelStart, nameUtf8.view (), { }, false));
 		},
 		"failed");
 }
@@ -1124,7 +1125,7 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_stopTunnel (JNIEnv 
 			i2p::android::NativeCallGuard call;
 			if (!call.IsRunning ()) return NewStringChecked (env, "unavailable");
 			return NewStringChecked (
-				env, SubmitAdminOutcome (i2p::tui::AdminCommandKind::TunnelStop, nameUtf8.view (), {}, false));
+				env, SubmitAdminOutcome (i2p::tui::AdminCommandKind::TunnelStop, nameUtf8.view (), { }, false));
 		},
 		"failed");
 }
@@ -1189,8 +1190,7 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getSubscriptions (J
 }
 
 /** Add one validated subscription source through the typed daemon verb. */
-JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_addSubscription (
-	JNIEnv * env, jclass clazz, jstring url)
+JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_addSubscription (JNIEnv * env, jclass clazz, jstring url)
 {
 	return JniStringCall (
 		env,
@@ -1202,7 +1202,7 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_addSubscription (
 			i2p::android::NativeCallGuard call;
 			if (!call.IsRunning ()) return NewStringChecked (env, "unavailable");
 			return NewStringChecked (
-				env, SubmitAdminOutcome (i2p::tui::AdminCommandKind::AddressSubAdd, {}, urlUtf8.view (), false));
+				env, SubmitAdminOutcome (i2p::tui::AdminCommandKind::AddressSubAdd, { }, urlUtf8.view (), false));
 		},
 		"failed");
 }
@@ -1221,7 +1221,7 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_removeSubscription 
 			i2p::android::NativeCallGuard call;
 			if (!call.IsRunning ()) return NewStringChecked (env, "unavailable");
 			return NewStringChecked (
-				env, SubmitAdminOutcome (i2p::tui::AdminCommandKind::AddressSubRemove, {}, urlUtf8.view (), false));
+				env, SubmitAdminOutcome (i2p::tui::AdminCommandKind::AddressSubRemove, { }, urlUtf8.view (), false));
 		},
 		"failed");
 }
@@ -1239,7 +1239,7 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_banRouter (JNIEnv *
 			i2p::android::NativeCallGuard call;
 			if (!call.IsRunning ()) return NewStringChecked (env, "unavailable");
 			return NewStringChecked (
-				env, SubmitAdminOutcome (i2p::tui::AdminCommandKind::NetDbBan, hashUtf8.view (), {}, false));
+				env, SubmitAdminOutcome (i2p::tui::AdminCommandKind::NetDbBan, hashUtf8.view (), { }, false));
 		},
 		"failed");
 }
@@ -1257,7 +1257,7 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_unbanRouter (JNIEnv
 			i2p::android::NativeCallGuard call;
 			if (!call.IsRunning ()) return NewStringChecked (env, "unavailable");
 			return NewStringChecked (
-				env, SubmitAdminOutcome (i2p::tui::AdminCommandKind::NetDbUnban, hashUtf8.view (), {}, false));
+				env, SubmitAdminOutcome (i2p::tui::AdminCommandKind::NetDbUnban, hashUtf8.view (), { }, false));
 		},
 		"failed");
 }
@@ -1532,8 +1532,7 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_torrentCommand (JNI
 		env,
 		[&] () -> jstring
 		{
-			if (!request
-				|| static_cast<size_t> (env->GetArrayLength (request)) > i2p::tui::MAX_REQUEST_LINE)
+			if (!request || static_cast<size_t> (env->GetArrayLength (request)) > i2p::tui::MAX_REQUEST_LINE)
 				return NewStringChecked (env, "I2PDTUI/1 ERR 4 15\ninvalid request");
 			// Standard UTF-8, rather than JNI modified UTF-8, preserves comment
 			// supplementary characters and rejects embedded NUL at the parser.
@@ -1746,7 +1745,8 @@ extern "C" JNIEXPORT jbyteArray JNICALL Java_org_openi2pd_router_I2PD_1JNI_build
 		i2p::torrents::Torrent::TrackerTiers tiers;
 		for (jsize i = 0; i < trackerCount; ++i)
 		{
-			ScopedLocalRef<jbyteArray> tracker (env, static_cast<jbyteArray> (env->GetObjectArrayElement (trackers, i)));
+			ScopedLocalRef<jbyteArray> tracker (
+				env, static_cast<jbyteArray> (env->GetObjectArrayElement (trackers, i)));
 			if (env->ExceptionCheck ())
 			{
 				ClearJniException (env);
@@ -1775,8 +1775,8 @@ extern "C" JNIEXPORT jbyteArray JNICALL Java_org_openi2pd_router_I2PD_1JNI_build
 			ClearJniException (env);
 			return nullptr;
 		}
-		env->SetByteArrayRegion (
-			result.get (), 0, static_cast<jsize> (metadata.size ()), reinterpret_cast<const jbyte *> (metadata.data ()));
+		env->SetByteArrayRegion (result.get (), 0, static_cast<jsize> (metadata.size ()),
+			reinterpret_cast<const jbyte *> (metadata.data ()));
 		if (env->ExceptionCheck ())
 		{
 			ClearJniException (env);
@@ -2013,10 +2013,7 @@ public:
 		, hash (std::move (h))
 	{
 	}
-	~SafPayload () override
-	{
-		ReleaseWithoutAttach ();
-	}
+	~SafPayload () override { ReleaseWithoutAttach (); }
 
 	/**
 	 * Best-effort document release that never attaches a thread and never
@@ -2258,8 +2255,8 @@ void DetachSafPayloads () noexcept
 #else
 namespace
 {
-	/** The torrent engine is absent, so no SAF payload can exist. */
-	void DetachSafPayloads () noexcept { }
+/** The torrent engine is absent, so no SAF payload can exist. */
+void DetachSafPayloads () noexcept { }
 }
 #endif
 extern "C" JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_installSafStorageBridge (
@@ -2276,7 +2273,7 @@ extern "C" JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_install
 		// Construct the JNI lifetime guard late (once), so it is destroyed
 		// before program-initialised statics that may own payload backends.
 		static SafJniLifetimeGuard lifetimeGuard;
-		(void) lifetimeGuard;
+		(void)lifetimeGuard;
 		// Install denial before any JNI allocation/lookup. Failed setup cannot
 		// leave a selected document torrent on the native filesystem backend.
 		i2p::torrents::SetTorrentPayloadStorageFactory (

@@ -121,8 +121,8 @@ void TestKnownNameKeepsLocalDestination ()
 	assert (book.GetMergeConflicts () == 1);
 
 	// An explicit administrative replace is an operator action and still wins.
-	assert (book.AddAddress ("curated.example.i2p", Base64 (remote), true)
-		== i2p::client::AddressBookMutationResult::Ok);
+	assert (
+		book.AddAddress ("curated.example.i2p", Base64 (remote), true) == i2p::client::AddressBookMutationResult::Ok);
 	assert (book.FindAddress ("curated.example.i2p")->identHash == remoteHash);
 	assert (fake->identities.contains (remoteHash));
 	assert (!fake->identities.contains (localHash));
@@ -166,8 +166,7 @@ void TestTombstoneBlocksMerge ()
 	assert (book.BlockAddress ("blocked.i2p") == i2p::client::AddressBookMutationResult::Ok);
 	assert (fake->deleted.size () == 1);
 
-	std::istringstream source (
-		"blocked.i2p=" + Base64 (key) + "\n" + "allowed.i2p=" + Base64 (key) + "\n");
+	std::istringstream source ("blocked.i2p=" + Base64 (key) + "\n" + "allowed.i2p=" + Base64 (key) + "\n");
 	assert (book.LoadHostsFromStream (std::move (source), true, "stats.i2p"));
 	// The tombstone still wins; a skipped tombstone is not a conflict.
 	assert (!book.FindAddress ("blocked.i2p"));
@@ -185,8 +184,10 @@ void TestAliasAndWwwFallbackUnaffected ()
 	i2p::client::AddressBook book;
 	book.InsertAddress ("Portal.Example.I2P", Base64 (local));
 
-	std::istringstream source ("portal.example.i2p=" + Base64 (remote) + "\n"
-		"other.example.i2p=" + Base64 (remote) + "\n");
+	std::istringstream source ("portal.example.i2p=" + Base64 (remote)
+		+ "\n"
+		  "other.example.i2p="
+		+ Base64 (remote) + "\n");
 	assert (book.LoadHostsFromStream (std::move (source), true, "stats.i2p"));
 	assert (book.GetMergeConflicts () == 1);
 

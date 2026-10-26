@@ -239,7 +239,7 @@ void TestSelectionDoesNotLoadProfiles ()
 	}
 	// Random selection applies the same filter map; it must not create a
 	// profile either.
-	for (int i = 0; i < 8; ++i) (void) database.GetRandomRouter ();
+	for (int i = 0; i < 8; ++i) (void)database.GetRandomRouter ();
 	assert (profileLoads.load () == 0);
 	assert (!stored->HasProfile ());
 

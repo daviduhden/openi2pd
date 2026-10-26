@@ -22,10 +22,10 @@
 
 namespace
 {
-using i2p::proxy::SOCKS5ConnectSuccessReply;
-using i2p::proxy::SOCKS5UdpAssociateReply;
 using i2p::proxy::SOCKS5_CONNECT_REPLY_PORT;
 using i2p::proxy::SOCKS5_REPLY_LOOPBACK_ADDRESS;
+using i2p::proxy::SOCKS5ConnectSuccessReply;
+using i2p::proxy::SOCKS5UdpAssociateReply;
 using i2p::proxy::SOCKS_RESOLVE_CACHE_MAX_ENTRIES;
 using i2p::proxy::SOCKS_RESOLVE_CACHE_TTL_MS;
 using i2p::proxy::SOCKS_RESOLVE_FAKE_PREFIX;

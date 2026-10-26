@@ -260,12 +260,12 @@ void TestHandshakeNegotiation ()
 	assert (version == SAM_VERSION_32);
 
 	// A well-formed range that selects nothing is NOVERSION.
-	assert (NegotiateSAMHandshake ("HELLO VERSION MIN=3.4 MAX=3.9", version)
-		== SAMHandshakeResult::eSAMHandshakeNoVersion);
-	assert (NegotiateSAMHandshake ("HELLO VERSION MIN=3.3 MAX=3.0", version)
-		== SAMHandshakeResult::eSAMHandshakeNoVersion);
-	assert (NegotiateSAMHandshake ("HELLO VERSION MIN=2.0 MAX=2.9", version)
-		== SAMHandshakeResult::eSAMHandshakeNoVersion);
+	assert (
+		NegotiateSAMHandshake ("HELLO VERSION MIN=3.4 MAX=3.9", version) == SAMHandshakeResult::eSAMHandshakeNoVersion);
+	assert (
+		NegotiateSAMHandshake ("HELLO VERSION MIN=3.3 MAX=3.0", version) == SAMHandshakeResult::eSAMHandshakeNoVersion);
+	assert (
+		NegotiateSAMHandshake ("HELLO VERSION MIN=2.0 MAX=2.9", version) == SAMHandshakeResult::eSAMHandshakeNoVersion);
 	// A component above 3.3.x is still a well-formed range, not a syntax error.
 	assert (NegotiateSAMHandshake ("HELLO VERSION MIN=3.0.0.0.0.0.0.0.0.0.0.0.1", version)
 		== SAMHandshakeResult::eSAMHandshakeNoVersion);
@@ -273,8 +273,7 @@ void TestHandshakeNegotiation ()
 	// Malformed HELLO lines (not a HELLO VERSION command at all, or a
 	// duplicate parameter key) get I2P_ERROR, as SAMHandlerFactory throws on
 	// them.
-	for (const char * line : { "", "HELLO", "HELLO VERSIONX", "VERSION MIN=3.0",
-			 "HELLO VERSION MIN=3.0 MIN=3.1" })
+	for (const char * line : { "", "HELLO", "HELLO VERSIONX", "VERSION MIN=3.0", "HELLO VERSION MIN=3.0 MIN=3.1" })
 	{
 		version = 0;
 		assert (NegotiateSAMHandshake (line, version) == SAMHandshakeResult::eSAMHandshakeInvalid);
@@ -297,7 +296,8 @@ void TestHandshakeNegotiation ()
 	assert (version == MAX_SAM_VERSION);
 
 	// Trailing components beyond the 3.x pair still compare numerically.
-	assert (NegotiateSAMHandshake ("HELLO VERSION MIN=3.0.0 MAX=3.1.5", version) == SAMHandshakeResult::eSAMHandshakeOk);
+	assert (
+		NegotiateSAMHandshake ("HELLO VERSION MIN=3.0.0 MAX=3.1.5", version) == SAMHandshakeResult::eSAMHandshakeOk);
 	assert (version == SAM_VERSION_32);
 }
 
@@ -312,8 +312,8 @@ void TestHandshakePrecedesCommands ()
 	// A command line is not a HELLO line: the handshake parser refuses it, so a
 	// pipelined command cannot be mistaken for the handshake.
 	int version = 0;
-	for (const char * line : { "SESSION CREATE STYLE=STREAM SILENT=true", "DEST GENERATE", "STREAM ACCEPT ID=x",
-			 "AUTH", "PING" })
+	for (const char * line :
+		{ "SESSION CREATE STYLE=STREAM SILENT=true", "DEST GENERATE", "STREAM ACCEPT ID=x", "AUTH", "PING" })
 	{
 		assert (NegotiateSAMHandshake (line, version) == SAMHandshakeResult::eSAMHandshakeInvalid);
 	}
@@ -415,8 +415,7 @@ void TestControlReplies ()
 	// echoes the credential argument.
 	assert (MakeSAMControlReply (Command::eSAMControlCommandAuth, "AUTH", "USER=x PASSWORD=y")
 		== std::string (SAM_AUTH_STATUS_I2P_ERROR));
-	assert (MakeSAMControlReply (Command::eSAMControlCommandAuth, "auth", "").find ("PASSWORD")
-		== std::string::npos);
+	assert (MakeSAMControlReply (Command::eSAMControlCommandAuth, "auth", "").find ("PASSWORD") == std::string::npos);
 }
 
 void TestSendCommandDetection ()

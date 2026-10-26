@@ -17,8 +17,9 @@ use 5.016;
 use File::Spec;
 use FindBin qw($Bin);
 
-my $root = File::Spec->rel2abs( File::Spec->catdir( $Bin, File::Spec->updir, File::Spec->updir ) );
-my $dir  = File::Spec->catdir( $root, '.github', 'workflows' );
+my $root = File::Spec->rel2abs(
+    File::Spec->catdir( $Bin, File::Spec->updir, File::Spec->updir ) );
+my $dir = File::Spec->catdir( $root, '.github', 'workflows' );
 
 opendir my $dh, $dir or die "cannot open $dir: $!\n";
 my @files = sort grep { /\.ya?ml\z/ } readdir $dh;
@@ -71,7 +72,10 @@ for my $file (@files) {
         if ( $line =~ /^\s*continue-on-error\s*:/ ) {
             push @errors, "$file: continue-on-error is forbidden";
         }
-        if ( $line =~ /(?:^|\s)ctest\s+--/ && $line !~ /\s-N(?:\s|$)/ && $line !~ /--print-labels/ ) {
+        if (   $line =~ /(?:^|\s)ctest\s+--/
+            && $line !~ /\s-N(?:\s|$)/
+            && $line !~ /--print-labels/ )
+        {
             push @errors, "$file: ctest invocation lacks --no-tests=error"
               unless $line =~ /--no-tests=error/;
             push @errors, "$file: ctest invocation lacks --output-junit"
@@ -85,7 +89,8 @@ for my $file (@files) {
     else {
         for my $trigger (@triggers) {
             $trigger =~ s/:$//;
-            next if $trigger eq 'workflow_dispatch' || $trigger eq 'workflow_call';
+            next
+              if $trigger eq 'workflow_dispatch' || $trigger eq 'workflow_call';
             push @errors, "$file: unsupported trigger '$trigger'";
         }
         push @errors, "$file: workflow_dispatch is not declared"
@@ -98,5 +103,6 @@ if (@errors) {
     exit 1;
 }
 
-print "workflow-static: $checked workflow(s) are manual-only and fail on empty CTest selections\n";
+print
+"workflow-static: $checked workflow(s) are manual-only and fail on empty CTest selections\n";
 exit 0;

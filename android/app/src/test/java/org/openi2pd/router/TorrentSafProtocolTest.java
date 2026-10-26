@@ -49,8 +49,7 @@ public class TorrentSafProtocolTest {
 
     @Test
     public void preparedExportTokenIsSingleUse() {
-        TorrentSafStorageService.ExportGrants grants =
-                new TorrentSafStorageService.ExportGrants();
+        TorrentSafStorageService.ExportGrants grants = new TorrentSafStorageService.ExportGrants();
         assertTrue(grants.prepare(77, OWNER, URI, 16384, "doc:1", 1000));
         assertEquals(1, grants.size());
         TorrentSafStorageService.ExportGrants.Grant grant = grants.consume(77, OWNER, 1000);
@@ -66,8 +65,7 @@ public class TorrentSafProtocolTest {
 
     @Test
     public void exportTokenIsBoundToTheRegisteringProcess() {
-        TorrentSafStorageService.ExportGrants grants =
-                new TorrentSafStorageService.ExportGrants();
+        TorrentSafStorageService.ExportGrants grants = new TorrentSafStorageService.ExportGrants();
         assertTrue(grants.prepare(11, OWNER, URI, 4096, "doc:1", 0));
         // A sibling process of the same UID cannot spend the capability, and the
         // refusal does not burn the owner's token.
@@ -79,8 +77,7 @@ public class TorrentSafProtocolTest {
 
     @Test
     public void expiredExportTokenIsRefused() {
-        TorrentSafStorageService.ExportGrants grants =
-                new TorrentSafStorageService.ExportGrants();
+        TorrentSafStorageService.ExportGrants grants = new TorrentSafStorageService.ExportGrants();
         assertTrue(grants.prepare(5, OWNER, URI, 1024, "doc:1", 0));
         long ttl = TorrentSafStorageService.EXPORT_TTL_MS;
         assertNotNull(grants.consume(5, OWNER, ttl - 1));
@@ -92,8 +89,7 @@ public class TorrentSafProtocolTest {
 
     @Test
     public void exportTokensAreBoundedAndValidated() {
-        TorrentSafStorageService.ExportGrants grants =
-                new TorrentSafStorageService.ExportGrants();
+        TorrentSafStorageService.ExportGrants grants = new TorrentSafStorageService.ExportGrants();
         for (int i = 1; i <= TorrentSafStorageService.MAX_EXPORTS; ++i)
             assertTrue("token " + i, grants.prepare(i, OWNER, URI, 1024, "doc:1", 0));
         assertFalse(grants.prepare(99, OWNER, URI, 1024, "doc:1", 0));
@@ -101,8 +97,8 @@ public class TorrentSafProtocolTest {
         // Invalid arguments never allocate a capability or truncate anything.
         assertFalse(grants.prepare(0, OWNER, URI, 1024, "doc:1", 0));
         assertFalse(grants.prepare(101, OWNER, URI, 0, "doc:1", 0));
-        assertFalse(grants.prepare(102, OWNER, URI, TorrentSafStorageService.MAX_EXPORT + 1,
-                "doc:1", 0));
+        assertFalse(grants.prepare(
+                102, OWNER, URI, TorrentSafStorageService.MAX_EXPORT + 1, "doc:1", 0));
         assertFalse(grants.prepare(103, OWNER, null, 1024, "doc:1", 0));
         assertFalse(grants.prepare(104, OWNER, URI, 1024, "", 0));
         assertFalse(grants.prepare(105, OWNER, URI, 1024, null, 0));
@@ -175,8 +171,7 @@ public class TorrentSafProtocolTest {
 
     @Test
     public void handleOwnershipNeedsTheExactUidAndPid() {
-        TorrentSafStorageService.Caller same =
-                new TorrentSafStorageService.Caller(APP_UID, 4242);
+        TorrentSafStorageService.Caller same = new TorrentSafStorageService.Caller(APP_UID, 4242);
         assertTrue(TorrentSafStorageService.sameOwner(OWNER, same));
         assertFalse(TorrentSafStorageService.sameOwner(OWNER, SIBLING));
         assertFalse(TorrentSafStorageService.sameOwner(OWNER, FOREIGN_UID));

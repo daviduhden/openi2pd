@@ -68,8 +68,8 @@ namespace transport
 	inline bool IsOwnUPnPMapping (std::string_view mappingClient, std::string_view mappingPort,
 		std::string_view ourAddress, std::string_view ourPort)
 	{
-		return !mappingClient.empty () && !ourAddress.empty () && mappingClient == ourAddress
-			&& !mappingPort.empty () && mappingPort == ourPort;
+		return !mappingClient.empty () && !ourAddress.empty () && mappingClient == ourAddress && !mappingPort.empty ()
+			&& mappingPort == ourPort;
 	}
 
 	struct UPnPStatus

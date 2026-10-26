@@ -143,7 +143,7 @@ std::vector<uint8_t> RawHello (uint8_t role, const std::vector<uint8_t> & nonce,
 	return record;
 }
 
-int RunChildScenario (int ( *body ) ())
+int RunChildScenario (int (*body) ())
 {
 	const pid_t pid = fork ();
 	assert (pid >= 0);
@@ -429,24 +429,25 @@ int main (int argc, char ** argv)
 	// fixed error while the parent's spawn path stays usable.
 	{
 		assert (!IsProcessCreationForbidden ());
-		const int code = RunChildScenario ([] () -> int
-		{
-			ForbidProcessCreation ();
-			if (!IsProcessCreationForbidden ()) return 1;
-			auto spawned = SpawnWorker ("log", { });
-			if (spawned) return 2;
-			if (spawned.error ().find ("forbidden") == std::string::npos) return 3;
-			auto withRoot = SpawnWorkerWithRoot ("log", { }, 0);
-			if (withRoot) return 4;
-			if (withRoot.error ().find ("forbidden") == std::string::npos) return 5;
-			auto detached = SpawnDetachedWorker ("log");
-			if (detached) return 6;
-			if (detached.error ().find ("forbidden") == std::string::npos) return 7;
-			auto detachedRoot = SpawnDetachedWorkerWithRoot ("log", 0);
-			if (detachedRoot) return 8;
-			if (detachedRoot.error ().find ("forbidden") == std::string::npos) return 9;
-			return 0;
-		});
+		const int code = RunChildScenario (
+			[] () -> int
+			{
+				ForbidProcessCreation ();
+				if (!IsProcessCreationForbidden ()) return 1;
+				auto spawned = SpawnWorker ("log", { });
+				if (spawned) return 2;
+				if (spawned.error ().find ("forbidden") == std::string::npos) return 3;
+				auto withRoot = SpawnWorkerWithRoot ("log", { }, 0);
+				if (withRoot) return 4;
+				if (withRoot.error ().find ("forbidden") == std::string::npos) return 5;
+				auto detached = SpawnDetachedWorker ("log");
+				if (detached) return 6;
+				if (detached.error ().find ("forbidden") == std::string::npos) return 7;
+				auto detachedRoot = SpawnDetachedWorkerWithRoot ("log", 0);
+				if (detachedRoot) return 8;
+				if (detachedRoot.error ().find ("forbidden") == std::string::npos) return 9;
+				return 0;
+			});
 		assert (code == 0);
 		assert (!IsProcessCreationForbidden ());
 		// The parent still spawns: the barrier never leaked out of the child.
@@ -458,21 +459,22 @@ int main (int argc, char ** argv)
 	// An unusable executable path is refused instead of being resolved through
 	// $PATH or /proc, and the spawn fails closed with a fixed error.
 	{
-		const int code = RunChildScenario ([] () -> int
-		{
-			SetExecutablePath ("i2pd");
-			if (!ExecutablePath ().empty ()) return 1;
-			auto relative = SpawnWorker ("log", { });
-			if (relative) return 2;
-			if (relative.error ().find ("not frozen") == std::string::npos) return 3;
-			SetExecutablePath ("/nonexistent-openi2pd-worker");
-			if (!ExecutablePath ().empty ()) return 4;
-			SetExecutablePath ("/tmp");
-			if (!ExecutablePath ().empty ()) return 5;
-			SetExecutablePath ("/$PATH/i2pd");
-			if (!ExecutablePath ().empty ()) return 6;
-			return 0;
-		});
+		const int code = RunChildScenario (
+			[] () -> int
+			{
+				SetExecutablePath ("i2pd");
+				if (!ExecutablePath ().empty ()) return 1;
+				auto relative = SpawnWorker ("log", { });
+				if (relative) return 2;
+				if (relative.error ().find ("not frozen") == std::string::npos) return 3;
+				SetExecutablePath ("/nonexistent-openi2pd-worker");
+				if (!ExecutablePath ().empty ()) return 4;
+				SetExecutablePath ("/tmp");
+				if (!ExecutablePath ().empty ()) return 5;
+				SetExecutablePath ("/$PATH/i2pd");
+				if (!ExecutablePath ().empty ()) return 6;
+				return 0;
+			});
 		assert (code == 0);
 		assert (!ExecutablePath ().empty ());
 	}

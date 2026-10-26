@@ -87,11 +87,11 @@ int main ()
 	// MLKEM1024 the base SessionRequest/SessionCreated is 1648 bytes and the v5
 	// padding limit is also 1648, so the largest total is exactly
 	// 2*MLKEM1024_KEY_LENGTH + 160 = 3296 bytes in both directions.
-	static_assert (i2p::transport::NTCP2_MLKEM1024_HANDSHAKE_BASE_SIZE
-			+ i2p::transport::NTCP2GetMaxHandshakePadding (5, false)
+	static_assert (
+		i2p::transport::NTCP2_MLKEM1024_HANDSHAKE_BASE_SIZE + i2p::transport::NTCP2GetMaxHandshakePadding (5, false)
 		== 3296);
-	static_assert (i2p::transport::NTCP2_MLKEM1024_HANDSHAKE_BASE_SIZE
-			+ i2p::transport::NTCP2GetMaxHandshakePadding (5, true)
+	static_assert (
+		i2p::transport::NTCP2_MLKEM1024_HANDSHAKE_BASE_SIZE + i2p::transport::NTCP2GetMaxHandshakePadding (5, true)
 		== 3296);
 #if OPENSSL_PQ
 	// The shared buffer is 2 * MLKEM1024_KEY_LENGTH + 160 = 3296 bytes, which is

@@ -23,9 +23,9 @@ import java.util.regex.Pattern;
  * an invented value.
  */
 record TorrentRow(String id, String name, String status, String error, String hash, String magnet,
-        long total, long wanted, long have, boolean privateTorrent, long downloaded,
-        long uploaded, long downRate, long upRate, int peers, int seeders, int leechers,
-        int percent, int etaSeconds) {
+        long total, long wanted, long have, boolean privateTorrent, long downloaded, long uploaded,
+        long downRate, long upRate, int peers, int seeders, int leechers, int percent,
+        int etaSeconds) {
     private static final int MAX_NAME = 512;
     private static final int MAX_STATUS = 64;
     private static final int MAX_ERROR = 256;

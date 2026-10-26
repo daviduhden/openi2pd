@@ -1241,7 +1241,10 @@ namespace data
 		bool generated = false;
 		switch (type)
 		{
-		case CRYPTO_KEY_TYPE_ELGAMAL: i2p::crypto::GenerateElGamalKeyPair (priv, pub); generated = true; break;
+		case CRYPTO_KEY_TYPE_ELGAMAL:
+			i2p::crypto::GenerateElGamalKeyPair (priv, pub);
+			generated = true;
+			break;
 		case CRYPTO_KEY_TYPE_ECIES_P256_SHA256_AES256CBC:
 			i2p::crypto::CreateECIESP256RandomKeys (priv, pub);
 			generated = true;

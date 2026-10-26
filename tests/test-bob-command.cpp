@@ -24,14 +24,14 @@
 
 namespace
 {
-	int failures = 0;
+int failures = 0;
 
-	void Check (bool condition, const std::string & what)
-	{
-		if (condition) return;
-		std::cerr << "FAIL: " << what << std::endl;
-		++failures;
-	}
+void Check (bool condition, const std::string & what)
+{
+	if (condition) return;
+	std::cerr << "FAIL: " << what << std::endl;
+	++failures;
+}
 }
 
 int main ()

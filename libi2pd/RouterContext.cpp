@@ -564,8 +564,7 @@ void RouterContext::NewNTCP2Keys ()
 	std::lock_guard<std::mutex> l (m_StaticKeysMutex);
 	if (m_NTCP2Keys) return; // idempotent; never reset loaded keys
 	auto staticKeys = std::make_unique<i2p::crypto::X25519Keys> ();
-	if (!staticKeys->GenerateKeys ())
-		throw std::runtime_error ("Router: NTCP2 static key generation failed");
+	if (!staticKeys->GenerateKeys ()) throw std::runtime_error ("Router: NTCP2 static key generation failed");
 	auto keys = std::make_unique<NTCP2PrivateKeys> ();
 	staticKeys->GetPrivateKey (keys->staticPrivateKey);
 	memcpy (keys->staticPublicKey, staticKeys->GetPublicKey (), 32);
@@ -583,8 +582,7 @@ void RouterContext::NewSSU2Keys ()
 	std::lock_guard<std::mutex> l (m_StaticKeysMutex);
 	if (m_SSU2Keys) return; // idempotent; never reset loaded keys
 	auto staticKeys = std::make_unique<i2p::crypto::X25519Keys> ();
-	if (!staticKeys->GenerateKeys ())
-		throw std::runtime_error ("Router: SSU2 static key generation failed");
+	if (!staticKeys->GenerateKeys ()) throw std::runtime_error ("Router: SSU2 static key generation failed");
 	auto keys = std::make_unique<SSU2PrivateKeys> ();
 	staticKeys->GetPrivateKey (keys->staticPrivateKey);
 	memcpy (keys->staticPublicKey, staticKeys->GetPublicKey (), 32);
@@ -942,8 +940,7 @@ void RouterContext::UpdateAddress (const boost::asio::ip::address & host)
 					// Java caps published IPv6 SSU2 MTU at 1488: IPv6 routers do
 					// not fragment, so advertising 1500 on a 1480/1488 path would
 					// drop our largest datagrams.
-					if (mtu > (int)i2p::transport::SSU2_MAX_IPV6_MTU)
-						mtu = i2p::transport::SSU2_MAX_IPV6_MTU;
+					if (mtu > (int)i2p::transport::SSU2_MAX_IPV6_MTU) mtu = i2p::transport::SSU2_MAX_IPV6_MTU;
 					addr->ssu->mtu = mtu;
 				}
 			}
@@ -1784,8 +1781,8 @@ bool RouterContext::HandleCloveI2NPMessage (I2NPMessageType typeID, const uint8_
 	{
 		static I2NPDropCounter cloveAllocationDrops;
 		if (cloveAllocationDrops.Record ())
-			LogPrint (eLogError, "Router: Can't allocate clove message type ", (int)typeID, " of ", len,
-				" bytes (", cloveAllocationDrops.GetCount (), " dropped)");
+			LogPrint (eLogError, "Router: Can't allocate clove message type ", (int)typeID, " of ", len, " bytes (",
+				cloveAllocationDrops.GetCount (), " dropped)");
 		return false;
 	}
 	msg->fromClove = true;

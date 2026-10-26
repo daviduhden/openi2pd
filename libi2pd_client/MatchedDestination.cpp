@@ -141,8 +141,7 @@ namespace client
 					leases.erase (leases.begin () + idx);
 					auto candidate = i2p::data::netdb.FindRouter (lease->tunnelGateway);
 					// Only an ECIES-capable gateway can serve as our OBEP.
-					if (candidate && candidate->IsECIES () && !candidate->IsUnreachable ())
-						obep = candidate;
+					if (candidate && candidate->IsECIES () && !candidate->IsUnreachable ()) obep = candidate;
 				}
 				if (obep)
 				{

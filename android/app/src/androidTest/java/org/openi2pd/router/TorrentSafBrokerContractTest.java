@@ -139,8 +139,8 @@ public final class TorrentSafBrokerContractTest {
         assertEquals(2, broker.apiVersion());
         long generation = broker.handshake();
         assertTrue("Broker generation must be a non-zero CSPRNG value", generation > 0);
-        assertEquals("The generation is stable for one broker process", generation,
-                broker.handshake());
+        assertEquals(
+                "The generation is stable for one broker process", generation, broker.handshake());
     }
 
     @Test
@@ -168,8 +168,8 @@ public final class TorrentSafBrokerContractTest {
         assertEquals(0L, broker.prepareExport(NO_GRANT, 0, next()));
         assertEquals(0L, broker.prepareExport(NO_GRANT, 1024, next()));
         assertEquals(0L, broker.prepareExport(NO_GRANT, 8 * 1024 * 1024 + 1, next()));
-        assertEquals(0L, broker.authorizeTree(
-                "content://org.openi2pd.router.test.saf/tree/null", next()));
+        assertEquals(0L,
+                broker.authorizeTree("content://org.openi2pd.router.test.saf/tree/null", next()));
         assertFalse(broker.finishExport(UNKNOWN, true, next()));
         assertFalse(broker.finishExport(UNKNOWN, false, next()));
         assertNull(broker.read(UNKNOWN, 0, 16, next()));
@@ -204,8 +204,8 @@ public final class TorrentSafBrokerContractTest {
                 SystemClock.elapsedRealtime() - start <= BIND_TIMEOUT_MS);
         long replacement = broker.handshake();
         assertTrue(replacement > 0);
-        assertNotEquals("A replacement broker must not reuse the fenced generation",
-                generation, replacement);
+        assertNotEquals("A replacement broker must not reuse the fenced generation", generation,
+                replacement);
         assertEquals(2, broker.apiVersion());
     }
 
@@ -224,12 +224,14 @@ public final class TorrentSafBrokerContractTest {
         // the instrumentation APK under MANAGE_DOCUMENTS. The typed surface,
         // including the multi-file nested paths the engine uses, is what this
         // bounded case can pin.
-        assertEquals(0L, broker.openFile(UNKNOWN, TorrentSafFixtureProvider.PART_ONE,
-                TorrentSafFixtureProvider.PART_ONE_SIZE, false, next()));
-        assertEquals(0L, broker.openFile(UNKNOWN, TorrentSafFixtureProvider.PART_TWO,
-                TorrentSafFixtureProvider.PART_TWO_SIZE, true, next()));
-        assertEquals(0L, broker.openFile(UNKNOWN, TorrentSafFixtureProvider.EMPTY, 0, false,
-                next()));
+        assertEquals(0L,
+                broker.openFile(UNKNOWN, TorrentSafFixtureProvider.PART_ONE,
+                        TorrentSafFixtureProvider.PART_ONE_SIZE, false, next()));
+        assertEquals(0L,
+                broker.openFile(UNKNOWN, TorrentSafFixtureProvider.PART_TWO,
+                        TorrentSafFixtureProvider.PART_TWO_SIZE, true, next()));
+        assertEquals(
+                0L, broker.openFile(UNKNOWN, TorrentSafFixtureProvider.EMPTY, 0, false, next()));
         assertEquals(0L, broker.openFile(UNKNOWN, "../escape", 1, false, next()));
         assertNull(broker.read(UNKNOWN, 0, 16, next()));
         assertFalse(broker.write(UNKNOWN, 0, new byte[16], next()));

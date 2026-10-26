@@ -87,8 +87,7 @@ namespace util
 	};
 
 	// Validates one reply and extracts the server time as Unix seconds.
-	NTPReplyError ValidateNTPReply (
-		std::span<const uint8_t> packet, uint64_t expectedOrigin, uint32_t & serverSeconds);
+	NTPReplyError ValidateNTPReply (std::span<const uint8_t> packet, uint64_t expectedOrigin, uint32_t & serverSeconds);
 
 	/*
 	 * Majority agreement for clock offsets. Small offsets are returned from a

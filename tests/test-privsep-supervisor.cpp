@@ -30,7 +30,7 @@ using std::chrono::milliseconds;
 
 Clock::time_point At (int64_t millisecondsSinceStart)
 {
-	return Clock::time_point {} + milliseconds (millisecondsSinceStart);
+	return Clock::time_point { } + milliseconds (millisecondsSinceStart);
 }
 
 void TestStateNames ()
@@ -49,8 +49,8 @@ void TestRestartBudgetSchedule ()
 	assert (budget.NextDelay () == LogWorkerRestartBudget::INITIAL_DELAY);
 
 	// Documented ladder: 250 ms, 500 ms, 1 s, 2 s, 4 s, 8 s, 16 s, 30 s.
-	const milliseconds expected[] = { milliseconds (250), milliseconds (500), milliseconds (1000),
-		milliseconds (2000), milliseconds (4000), milliseconds (8000), milliseconds (16000), milliseconds (30000) };
+	const milliseconds expected[] = { milliseconds (250), milliseconds (500), milliseconds (1000), milliseconds (2000),
+		milliseconds (4000), milliseconds (8000), milliseconds (16000), milliseconds (30000) };
 	int64_t elapsed = 0;
 	for (uint32_t index = 0; index < LogWorkerRestartBudget::MAX_RESTARTS; ++index)
 	{

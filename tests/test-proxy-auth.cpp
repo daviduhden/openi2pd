@@ -26,12 +26,13 @@
 
 namespace
 {
-using i2p::proxy::HTTPProxyStripCredentials;
-using i2p::proxy::HTTPProxyAuthChallengeResponse;
-using i2p::proxy::HTTPProxyDigestChallengeResponse;
 using i2p::proxy::HTTP_PROXY_AUTH_CHALLENGE;
 using i2p::proxy::HTTP_PROXY_AUTH_REALM;
 using i2p::proxy::HTTP_PROXY_STATUS_PROXY_AUTH_REQUIRED;
+using i2p::proxy::HTTPProxyAuthChallengeResponse;
+using i2p::proxy::HTTPProxyDigestChallengeResponse;
+using i2p::proxy::HTTPProxyStripCredentials;
+using i2p::proxy::ParseProxyDigestCredentials;
 using i2p::proxy::PROXY_AUTH_MAX_ENCODED_SIZE;
 using i2p::proxy::PROXY_AUTH_MAX_FIELD_SIZE;
 using i2p::proxy::PROXY_DIGEST_MAX_NONCES;
@@ -47,10 +48,9 @@ using i2p::proxy::ProxyDigestHashHex;
 using i2p::proxy::ProxyDigestResult;
 using i2p::proxy::ProxyDigestResultName;
 using i2p::proxy::ProxySecretEquals;
-using i2p::proxy::ParseProxyDigestCredentials;
 using i2p::proxy::SOCKS_AUTH_MAX_FIELD_SIZE;
-using i2p::proxy::SOCKSChooseAuthMethod;
 using i2p::proxy::SOCKSAuthMethodChoice;
+using i2p::proxy::SOCKSChooseAuthMethod;
 using i2p::proxy::SOCKSUserPassAuth;
 using i2p::proxy::SOCKSUserPassFieldValid;
 
@@ -428,8 +428,8 @@ void TestDigestRFC7616Vectors ()
 	{
 		auto auth = MakeDigestAuth (RFC7616_USER, RFC7616_PASSWORD, RFC7616_REALM);
 		auth->SeedNonce (RFC7616_NONCE, RFC7616_OPAQUE, DIGEST_NOW);
-		const std::string header = DigestHeader (RFC7616_USER, RFC7616_REALM, RFC7616_URI, "SHA-256",
-			RFC7616_NONCE, "00000001", RFC7616_CNONCE, RFC7616_SHA256_RESPONSE, RFC7616_OPAQUE);
+		const std::string header = DigestHeader (RFC7616_USER, RFC7616_REALM, RFC7616_URI, "SHA-256", RFC7616_NONCE,
+			"00000001", RFC7616_CNONCE, RFC7616_SHA256_RESPONSE, RFC7616_OPAQUE);
 		assert (auth->Verify (header, "GET", DIGEST_NOW) == ProxyDigestResult::Accepted);
 	}
 	{
@@ -440,8 +440,8 @@ void TestDigestRFC7616Vectors ()
 		assert (auth->Verify (header, "GET", DIGEST_NOW) == ProxyDigestResult::Accepted);
 	}
 	// The hashes themselves must match the published H(A1)/H(A2) inputs.
-	assert (ProxyDigestHashHex (std::string (RFC7616_USER) + ":" + RFC7616_REALM + ":" + RFC7616_PASSWORD,
-				 ProxyDigestAlgorithm::Md5)
+	assert (ProxyDigestHashHex (
+				std::string (RFC7616_USER) + ":" + RFC7616_REALM + ":" + RFC7616_PASSWORD, ProxyDigestAlgorithm::Md5)
 		== "3d78807defe7de2157e2b0b6573a855f");
 	assert (ProxyDigestHashHex ("GET:" + std::string (RFC7616_URI), ProxyDigestAlgorithm::Sha256)
 		== "9a3fdae9a622fe8de177c24fa9c070f2b181ec85e15dcbdc32e10c82ad450b04");
@@ -453,9 +453,9 @@ void TestDigestRejections ()
 	auto auth = MakeDigestAuth (RFC7616_USER, RFC7616_PASSWORD, RFC7616_REALM);
 	auth->SeedNonce (RFC7616_NONCE, RFC7616_OPAQUE, DIGEST_NOW);
 
-	const auto header = [&] (std::string_view user, std::string_view realm, std::string_view nonce,
-							 std::string_view nc, std::string_view algorithm, std::string_view response,
-							 std::string_view opaque, std::string_view qop = "auth")
+	const auto header = [&] (std::string_view user, std::string_view realm, std::string_view nonce, std::string_view nc,
+							std::string_view algorithm, std::string_view response, std::string_view opaque,
+							std::string_view qop = "auth")
 	{
 		std::string value = "Digest username=\"";
 		value += user;
@@ -483,62 +483,62 @@ void TestDigestRejections ()
 
 	// Wrong password (a valid MD5 digest for a different secret).
 	assert (auth->Verify (header (RFC7616_USER, RFC7616_REALM, RFC7616_NONCE, "00000001", "MD5",
-								 "0123456789abcdef0123456789abcdef", RFC7616_OPAQUE),
-				 "GET", DIGEST_NOW)
+							  "0123456789abcdef0123456789abcdef", RFC7616_OPAQUE),
+				"GET", DIGEST_NOW)
 		== ProxyDigestResult::BadCredentials);
 	// Wrong username with the correct response for the configured user.
 	assert (auth->Verify (header ("mufasa", RFC7616_REALM, RFC7616_NONCE, "00000002", "MD5", RFC7616_MD5_RESPONSE,
-								 RFC7616_OPAQUE),
-				 "GET", DIGEST_NOW)
+							  RFC7616_OPAQUE),
+				"GET", DIGEST_NOW)
 		== ProxyDigestResult::BadCredentials);
 	// A different method changes H(A2).
 	assert (auth->Verify (header (RFC7616_USER, RFC7616_REALM, RFC7616_NONCE, "00000003", "MD5", RFC7616_MD5_RESPONSE,
-								 RFC7616_OPAQUE),
-				 "POST", DIGEST_NOW)
+							  RFC7616_OPAQUE),
+				"POST", DIGEST_NOW)
 		== ProxyDigestResult::BadCredentials);
 	// Wrong realm is rejected before the digest is evaluated.
-	assert (auth->Verify (header (RFC7616_USER, "other-realm", RFC7616_NONCE, "00000004", "MD5",
-								 RFC7616_MD5_RESPONSE, RFC7616_OPAQUE),
-				 "GET", DIGEST_NOW)
+	assert (auth->Verify (header (RFC7616_USER, "other-realm", RFC7616_NONCE, "00000004", "MD5", RFC7616_MD5_RESPONSE,
+							  RFC7616_OPAQUE),
+				"GET", DIGEST_NOW)
 		== ProxyDigestResult::BadRealm);
 	// Unknown nonce: the client must retry with the new challenge.
-	assert (auth->Verify (header (RFC7616_USER, RFC7616_REALM, "unknown-nonce", "00000001", "MD5",
-								 RFC7616_MD5_RESPONSE, RFC7616_OPAQUE),
-				 "GET", DIGEST_NOW)
+	assert (auth->Verify (header (RFC7616_USER, RFC7616_REALM, "unknown-nonce", "00000001", "MD5", RFC7616_MD5_RESPONSE,
+							  RFC7616_OPAQUE),
+				"GET", DIGEST_NOW)
 		== ProxyDigestResult::StaleNonce);
 	// Expired nonce (one hour plus one millisecond).
-	const std::string expired = header (RFC7616_USER, RFC7616_REALM, RFC7616_NONCE, "00000001", "MD5",
-		RFC7616_MD5_RESPONSE, RFC7616_OPAQUE);
+	const std::string expired
+		= header (RFC7616_USER, RFC7616_REALM, RFC7616_NONCE, "00000001", "MD5", RFC7616_MD5_RESPONSE, RFC7616_OPAQUE);
 	assert (auth->Verify (expired, "GET", DIGEST_NOW + PROXY_DIGEST_NONCE_LIFETIME_MS + 1)
 		== ProxyDigestResult::StaleNonce);
 	// Wrong opaque value for a known nonce.
-	assert (auth->Verify (header (RFC7616_USER, RFC7616_REALM, RFC7616_NONCE, "00000001", "MD5",
-								 RFC7616_MD5_RESPONSE, "wrong-opaque"),
-				 "GET", DIGEST_NOW)
+	assert (auth->Verify (header (RFC7616_USER, RFC7616_REALM, RFC7616_NONCE, "00000001", "MD5", RFC7616_MD5_RESPONSE,
+							  "wrong-opaque"),
+				"GET", DIGEST_NOW)
 		== ProxyDigestResult::BadNonce);
 	// Algorithms the proxy does not advertise.
 	for (const char * algorithm : { "SHA-512-256", "MD5-sess", "SHA-256-sess" })
 		assert (auth->Verify (header (RFC7616_USER, RFC7616_REALM, RFC7616_NONCE, "00000001", algorithm,
-									 RFC7616_SHA256_RESPONSE, RFC7616_OPAQUE),
-					 "GET", DIGEST_NOW)
+								  RFC7616_SHA256_RESPONSE, RFC7616_OPAQUE),
+					"GET", DIGEST_NOW)
 			== ProxyDigestResult::UnsupportedAlgorithm);
 	// qop=auth-int is not advertised.
-	assert (auth->Verify (header (RFC7616_USER, RFC7616_REALM, RFC7616_NONCE, "00000001", "MD5",
-								 RFC7616_MD5_RESPONSE, RFC7616_OPAQUE, "auth-int"),
-				 "GET", DIGEST_NOW)
+	assert (auth->Verify (header (RFC7616_USER, RFC7616_REALM, RFC7616_NONCE, "00000001", "MD5", RFC7616_MD5_RESPONSE,
+							  RFC7616_OPAQUE, "auth-int"),
+				"GET", DIGEST_NOW)
 		== ProxyDigestResult::BadQop);
 	// Nonce count and response framing.
-	assert (auth->Verify (header (RFC7616_USER, RFC7616_REALM, RFC7616_NONCE, "1", "MD5", RFC7616_MD5_RESPONSE,
-								 RFC7616_OPAQUE),
-				 "GET", DIGEST_NOW)
+	assert (auth->Verify (
+				header (RFC7616_USER, RFC7616_REALM, RFC7616_NONCE, "1", "MD5", RFC7616_MD5_RESPONSE, RFC7616_OPAQUE),
+				"GET", DIGEST_NOW)
 		== ProxyDigestResult::Malformed);
-	assert (auth->Verify (header (RFC7616_USER, RFC7616_REALM, RFC7616_NONCE, "00000000", "MD5",
-								 RFC7616_MD5_RESPONSE, RFC7616_OPAQUE),
-				 "GET", DIGEST_NOW)
+	assert (auth->Verify (header (RFC7616_USER, RFC7616_REALM, RFC7616_NONCE, "00000000", "MD5", RFC7616_MD5_RESPONSE,
+							  RFC7616_OPAQUE),
+				"GET", DIGEST_NOW)
 		== ProxyDigestResult::Malformed);
-	assert (auth->Verify (header (RFC7616_USER, RFC7616_REALM, RFC7616_NONCE, "00000001", "MD5", "not-hex",
-								 RFC7616_OPAQUE),
-				 "GET", DIGEST_NOW)
+	assert (
+		auth->Verify (header (RFC7616_USER, RFC7616_REALM, RFC7616_NONCE, "00000001", "MD5", "not-hex", RFC7616_OPAQUE),
+			"GET", DIGEST_NOW)
 		== ProxyDigestResult::Malformed);
 	// Missing parameters and non-Digest schemes.
 	assert (auth->Verify ("Digest username=\"Mufasa\"", "GET", DIGEST_NOW) == ProxyDigestResult::Malformed);
@@ -575,13 +575,13 @@ void TestDigestNonceCount ()
 	// A rejected digest must not consume an nc value.
 	auto fresh = MakeDigestAuth (RFC7616_USER, RFC7616_PASSWORD, RFC7616_REALM);
 	fresh->SeedNonce (RFC7616_NONCE, RFC7616_OPAQUE, DIGEST_NOW);
-	assert (fresh->Verify (DigestHeader (RFC7616_USER, RFC7616_REALM, RFC7616_URI, "MD5", RFC7616_NONCE,
-								 "00000005", RFC7616_CNONCE, "0123456789abcdef0123456789abcdef", RFC7616_OPAQUE),
-				 "GET", DIGEST_NOW)
+	assert (fresh->Verify (DigestHeader (RFC7616_USER, RFC7616_REALM, RFC7616_URI, "MD5", RFC7616_NONCE, "00000005",
+							   RFC7616_CNONCE, "0123456789abcdef0123456789abcdef", RFC7616_OPAQUE),
+				"GET", DIGEST_NOW)
 		== ProxyDigestResult::BadCredentials);
-	assert (fresh->Verify (DigestHeader (RFC7616_USER, RFC7616_REALM, RFC7616_URI, "MD5", RFC7616_NONCE,
-								 "00000005", RFC7616_CNONCE, RFC7616_MD5_RESPONSE, RFC7616_OPAQUE),
-				 "GET", DIGEST_NOW)
+	assert (fresh->Verify (DigestHeader (RFC7616_USER, RFC7616_REALM, RFC7616_URI, "MD5", RFC7616_NONCE, "00000005",
+							   RFC7616_CNONCE, RFC7616_MD5_RESPONSE, RFC7616_OPAQUE),
+				"GET", DIGEST_NOW)
 		== ProxyDigestResult::Accepted);
 }
 
@@ -667,7 +667,8 @@ void TestDigestConfiguration ()
 
 void TestDigestChallenges ()
 {
-	const std::string response = HTTPProxyDigestChallengeResponse (HTTP_PROXY_AUTH_REALM, "nonce-value", "opaque-value", false);
+	const std::string response
+		= HTTPProxyDigestChallengeResponse (HTTP_PROXY_AUTH_REALM, "nonce-value", "opaque-value", false);
 	assert (response.rfind ("HTTP/1.1 407 ", 0) == 0);
 	assert (response.find ("\r\nProxy-Authenticate: Digest realm=\"openi2pd\"") != std::string::npos);
 	assert (response.find ("algorithm=SHA-256") != std::string::npos);

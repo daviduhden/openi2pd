@@ -48,8 +48,8 @@ namespace
 	// The supervisor role must never combine external network access with
 	// persistent writes. Capabilities.h is the single authority for that
 	// invariant; this is the production consumer of the declaration.
-	static_assert (IsRoleCapabilitySafe (ProcessRole::Supervisor),
-		"the supervisor capability mask violates the role invariant");
+	static_assert (
+		IsRoleCapabilitySafe (ProcessRole::Supervisor), "the supervisor capability mask violates the role invariant");
 	static_assert (ValidateCapabilityMatrix ().valid, "the capability matrix is inconsistent");
 
 	// Admission gate for worker creation. It is a process-local flag, not a
@@ -741,8 +741,8 @@ int RunSupervisor (int fd)
 				break;
 			}
 			if (!control.Send ({ MessageType::Error, message.requestId,
-					   EncodeError (message.type, ErrorCode::NotAuthorized,
-						   "operation is not allowed on the supervisor endpoint") },
+								   EncodeError (message.type, ErrorCode::NotAuthorized,
+									   "operation is not allowed on the supervisor endpoint") },
 					500))
 			{
 				protocolFailed = true;

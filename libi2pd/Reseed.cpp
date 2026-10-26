@@ -135,7 +135,8 @@ namespace data
 					expired = true;
 					cancel ();
 				});
-			std::stop_callback onStop (token, [&service, cancel]
+			std::stop_callback onStop (token,
+				[&service, cancel]
 				{
 					// Cancel on the I/O thread: a socket is not a shared object,
 					// so a stop request from the admin thread posts the abort.
@@ -217,7 +218,10 @@ namespace data
 		m_FetchHook = std::move (hook);
 	}
 
-	void Reseeder::SetClockForTesting (std::function<uint64_t ()> nowMs) { m_ClockHook = std::move (nowMs); }
+	void Reseeder::SetClockForTesting (std::function<uint64_t ()> nowMs)
+	{
+		m_ClockHook = std::move (nowMs);
+	}
 
 	void Reseeder::SetSourcesForTesting (std::vector<std::string> sources)
 	{
@@ -225,7 +229,10 @@ namespace data
 		m_HasSourceOverride = true;
 	}
 
-	void Reseeder::SetNetDbForTesting (NetDb * database) { m_NetDbOverride = database; }
+	void Reseeder::SetNetDbForTesting (NetDb * database)
+	{
+		m_NetDbOverride = database;
+	}
 
 	uint64_t Reseeder::NowMilliseconds () const
 	{
@@ -269,8 +276,7 @@ namespace data
 			if (su3FileName.length () > 8 && su3FileName.substr (0, 8) == "https://")
 			{
 				// Proposal 147 network-ID cross-check for a single SU3 URL.
-				result = ReseedFromSU3Url (
-					AppendReseedNetId (su3FileName, i2p::context.GetNetID ()), true, token);
+				result = ReseedFromSU3Url (AppendReseedNetId (su3FileName, i2p::context.GetNetID ()), true, token);
 			}
 			else
 				result = ReadSU3File (su3FileName.c_str ());
@@ -399,8 +405,8 @@ namespace data
 					result.servers++;
 					if (result.imported >= MIN_RESEED_ROUTER_INFOS && result.servers >= MIN_RESEED_SERVERS)
 					{
-						LogPrint (eLogInfo, "Reseed: ", result.imported, " router infos from ", result.servers,
-							" servers");
+						LogPrint (
+							eLogInfo, "Reseed: ", result.imported, " router infos from ", result.servers, " servers");
 						return result;
 					}
 				}
@@ -462,9 +468,15 @@ namespace data
 		return ProcessSU3Stream (s, token, true);
 	}
 
-	int Reseeder::ProcessSU3File (const char * filename) { return ReadSU3File (filename).imported; }
+	int Reseeder::ProcessSU3File (const char * filename)
+	{
+		return ReadSU3File (filename).imported;
+	}
 
-	int Reseeder::ProcessZIPFile (const char * filename) { return ReadZIPFile (filename).imported; }
+	int Reseeder::ProcessZIPFile (const char * filename)
+	{
+		return ReadZIPFile (filename).imported;
+	}
 
 	ReseedResult Reseeder::ReadSU3File (const char * filename)
 	{
@@ -1058,8 +1070,8 @@ namespace data
 		// X509_NAME_oneline() format truncates long or escaped names and is not
 		// a stable parser.
 		char name[256] = { };
-		const int cnLength = X509_NAME_get_text_by_NID (
-			X509_get_issuer_name (cert.get ()), NID_commonName, name, sizeof (name));
+		const int cnLength
+			= X509_NAME_get_text_by_NID (X509_get_issuer_name (cert.get ()), NID_commonName, name, sizeof (name));
 		char * cn = cnLength > 0 ? name : nullptr;
 
 		// Extract the signing key. RSA keeps the modulus only (e = 65537).
@@ -1244,12 +1256,12 @@ namespace data
 			boost::asio::ip::tcp::resolver resolver (service);
 			boost::asio::ip::tcp::resolver::results_type endpoints;
 			boost::system::error_code resolveError;
-			const bool resolved = RunWithDeadline (service, PhaseBudget (hostDeadline), token,
+			const bool resolved = RunWithDeadline (
+				service, PhaseBudget (hostDeadline), token,
 				[&]
 				{
 					resolver.async_resolve (proxyUrl.host, std::to_string (proxyUrl.port),
-						[&] (const boost::system::error_code & ec,
-							boost::asio::ip::tcp::resolver::results_type results)
+						[&] (const boost::system::error_code & ec, boost::asio::ip::tcp::resolver::results_type results)
 						{
 							resolveError = ec;
 							endpoints = std::move (results);
@@ -1258,18 +1270,23 @@ namespace data
 				[&] { resolver.cancel (); });
 			if (!resolved || resolveError)
 			{
-				SetReseedReason (m_LastTransportError, resolved ? "resolve" : (token.stop_requested () ? "cancelled" : "timeout"));
-				LogPrint (eLogError, "Reseed: Can't resolve the proxy endpoint: ",
-					resolved ? resolveError.message () : "no answer");
+				SetReseedReason (
+					m_LastTransportError, resolved ? "resolve" : (token.stop_requested () ? "cancelled" : "timeout"));
+				LogPrint (eLogError,
+					"Reseed: Can't resolve the proxy endpoint: ", resolved ? resolveError.message () : "no answer");
 				return "";
 			}
 			bool connected = false;
 			for (const auto & entry : endpoints)
 			{
 				boost::system::error_code connectError;
-				const bool done = RunWithDeadline (service, PhaseBudget (hostDeadline), token,
-					[&] { s.lowest_layer ().async_connect (entry.endpoint (), [&] (const boost::system::error_code & ec)
-							{ connectError = ec; }); },
+				const bool done = RunWithDeadline (
+					service, PhaseBudget (hostDeadline), token,
+					[&]
+					{
+						s.lowest_layer ().async_connect (
+							entry.endpoint (), [&] (const boost::system::error_code & ec) { connectError = ec; });
+					},
 					[&] { s.lowest_layer ().cancel (); });
 				if (!done)
 				{
@@ -1302,32 +1319,40 @@ namespace data
 
 				const std::string connectRequest = proxyReq.to_string ();
 				boost::system::error_code writeError;
-				const bool written = RunWithDeadline (service, PhaseBudget (hostDeadline), token,
-					[&] { boost::asio::async_write (sock, boost::asio::buffer (connectRequest),
-							[&] (const boost::system::error_code & ec, std::size_t) { writeError = ec; }); },
+				const bool written = RunWithDeadline (
+					service, PhaseBudget (hostDeadline), token,
+					[&]
+					{
+						boost::asio::async_write (sock, boost::asio::buffer (connectRequest),
+							[&] (const boost::system::error_code & ec, std::size_t) { writeError = ec; });
+					},
 					[&] { sock.cancel (); });
 				if (!written || writeError)
 				{
 					sock.close ();
-					SetReseedReason (m_LastTransportError,
-						written ? "proxy" : (token.stop_requested () ? "cancelled" : "timeout"));
-					LogPrint (eLogError, "Reseed: HTTP CONNECT write error: ",
-						written ? writeError.message () : "no answer");
+					SetReseedReason (
+						m_LastTransportError, written ? "proxy" : (token.stop_requested () ? "cancelled" : "timeout"));
+					LogPrint (
+						eLogError, "Reseed: HTTP CONNECT write error: ", written ? writeError.message () : "no answer");
 					return "";
 				}
 				boost::asio::streambuf readbuf;
 				boost::system::error_code readError;
-				const bool read = RunWithDeadline (service, PhaseBudget (hostDeadline), token,
-					[&] { boost::asio::async_read_until (sock, readbuf, "\r\n\r\n",
-							[&] (const boost::system::error_code & ec, std::size_t) { readError = ec; }); },
+				const bool read = RunWithDeadline (
+					service, PhaseBudget (hostDeadline), token,
+					[&]
+					{
+						boost::asio::async_read_until (sock, readbuf, "\r\n\r\n",
+							[&] (const boost::system::error_code & ec, std::size_t) { readError = ec; });
+					},
 					[&] { sock.cancel (); });
 				if (!read || readError)
 				{
 					sock.close ();
-					SetReseedReason (m_LastTransportError,
-						read ? "proxy" : (token.stop_requested () ? "cancelled" : "timeout"));
-					LogPrint (eLogError, "Reseed: HTTP CONNECT read error: ",
-						read ? readError.message () : "no answer");
+					SetReseedReason (
+						m_LastTransportError, read ? "proxy" : (token.stop_requested () ? "cancelled" : "timeout"));
+					LogPrint (
+						eLogError, "Reseed: HTTP CONNECT read error: ", read ? readError.message () : "no answer");
 					return "";
 				}
 				if (proxyRes.parse (std::string { boost::asio::buffers_begin (readbuf.data ()),
@@ -1361,7 +1386,8 @@ namespace data
 						if (ec) return;
 						sock.close ();
 					});
-				std::stop_callback onStop (token, [&service, &sock]
+				std::stop_callback onStop (token,
+					[&service, &sock]
 					{
 						// Close on the I/O thread; the request frame owns the
 						// socket for the whole handshake.
@@ -1399,12 +1425,12 @@ namespace data
 			boost::asio::ip::tcp::resolver resolver (service);
 			boost::asio::ip::tcp::resolver::results_type endpoints;
 			boost::system::error_code resolveError;
-			const bool resolved = RunWithDeadline (service, PhaseBudget (hostDeadline), token,
+			const bool resolved = RunWithDeadline (
+				service, PhaseBudget (hostDeadline), token,
 				[&]
 				{
 					resolver.async_resolve (url.host, std::to_string (url.port),
-						[&] (const boost::system::error_code & ec,
-							boost::asio::ip::tcp::resolver::results_type results)
+						[&] (const boost::system::error_code & ec, boost::asio::ip::tcp::resolver::results_type results)
 						{
 							resolveError = ec;
 							endpoints = std::move (results);
@@ -1413,8 +1439,8 @@ namespace data
 				[&] { resolver.cancel (); });
 			if (!resolved || resolveError)
 			{
-				SetReseedReason (m_LastTransportError,
-					resolved ? "resolve" : (token.stop_requested () ? "cancelled" : "timeout"));
+				SetReseedReason (
+					m_LastTransportError, resolved ? "resolve" : (token.stop_requested () ? "cancelled" : "timeout"));
 				LogPrint (eLogError, "Reseed: Failed to connect to ", url.host);
 				return "";
 			}
@@ -1428,15 +1454,18 @@ namespace data
 					if (ep.address ().is_v4 ())
 						supported = i2p::context.SupportsV4 ();
 					else if (ep.address ().is_v6 ())
-						supported = i2p::util::net::IsYggdrasilAddress (ep.address ())
-							? i2p::context.SupportsMesh ()
-							: i2p::context.SupportsV6 ();
+						supported = i2p::util::net::IsYggdrasilAddress (ep.address ()) ? i2p::context.SupportsMesh ()
+																					   : i2p::context.SupportsV6 ();
 				}
 				if (!supported) continue;
 				boost::system::error_code connectError;
-				const bool done = RunWithDeadline (service, PhaseBudget (hostDeadline), token,
-					[&] { s.lowest_layer ().async_connect (ep, [&] (const boost::system::error_code & ec)
-							{ connectError = ec; }); },
+				const bool done = RunWithDeadline (
+					service, PhaseBudget (hostDeadline), token,
+					[&]
+					{
+						s.lowest_layer ().async_connect (
+							ep, [&] (const boost::system::error_code & ec) { connectError = ec; });
+					},
 					[&] { s.lowest_layer ().cancel (); });
 				if (!done)
 				{
@@ -1477,9 +1506,13 @@ namespace data
 			return "";
 		}
 		boost::system::error_code handshakeError;
-		const bool handshaked = RunWithDeadline (service, PhaseBudget (hostDeadline), token,
-			[&] { s.async_handshake (boost::asio::ssl::stream_base::client,
-					[&] (const boost::system::error_code & ec) { handshakeError = ec; }); },
+		const bool handshaked = RunWithDeadline (
+			service, PhaseBudget (hostDeadline), token,
+			[&]
+			{
+				s.async_handshake (boost::asio::ssl::stream_base::client,
+					[&] (const boost::system::error_code & ec) { handshakeError = ec; });
+			},
 			[&] { s.lowest_layer ().cancel (); });
 		if (!handshaked)
 		{
@@ -1513,9 +1546,13 @@ namespace data
 
 		const std::string request = req.to_string ();
 		boost::system::error_code writeError;
-		const bool written = RunWithDeadline (service, PhaseBudget (hostDeadline), token,
-			[&] { boost::asio::async_write (s, boost::asio::buffer (request),
-					[&] (const boost::system::error_code & ec, std::size_t) { writeError = ec; }); },
+		const bool written = RunWithDeadline (
+			service, PhaseBudget (hostDeadline), token,
+			[&]
+			{
+				boost::asio::async_write (s, boost::asio::buffer (request),
+					[&] (const boost::system::error_code & ec, std::size_t) { writeError = ec; });
+			},
 			[&] { s.lowest_layer ().cancel (); });
 		if (!written)
 		{
@@ -1543,13 +1580,17 @@ namespace data
 			}
 			size_t l = 0;
 			boost::system::error_code readError;
-			const bool read = RunWithDeadline (service, PhaseBudget (hostDeadline), token,
-				[&] { s.async_read_some (boost::asio::buffer (recv_buf, sizeof (recv_buf)),
+			const bool read = RunWithDeadline (
+				service, PhaseBudget (hostDeadline), token,
+				[&]
+				{
+					s.async_read_some (boost::asio::buffer (recv_buf, sizeof (recv_buf)),
 						[&] (const boost::system::error_code & ec, std::size_t n)
 						{
 							readError = ec;
 							l = n;
-						}); },
+						});
+				},
 				[&] { s.lowest_layer ().cancel (); });
 			if (!read)
 			{
@@ -1645,7 +1686,8 @@ namespace data
 		boost::asio::ip::tcp::resolver resolver (service);
 		boost::asio::ip::tcp::resolver::results_type endpoints;
 		boost::system::error_code resolveError;
-		const bool resolved = RunWithDeadline (service, PhaseBudget (hostDeadline), token,
+		const bool resolved = RunWithDeadline (
+			service, PhaseBudget (hostDeadline), token,
 			[&]
 			{
 				resolver.async_resolve (url.host, std::to_string (url.port),
@@ -1660,7 +1702,8 @@ namespace data
 		{
 			LogPrint (eLogError, "Reseed: Yggdrasil: Couldn't resolve ", url.host, ": ",
 				resolved ? resolveError.message () : "no answer");
-			SetReseedReason (m_LastTransportError, resolved ? "resolve" : (token.stop_requested () ? "cancelled" : "timeout"));
+			SetReseedReason (
+				m_LastTransportError, resolved ? "resolve" : (token.stop_requested () ? "cancelled" : "timeout"));
 			return "";
 		}
 		bool connected = false;
@@ -1670,7 +1713,8 @@ namespace data
 			if (!i2p::util::net::IsYggdrasilAddress (ep.address ()) || !i2p::context.SupportsMesh ()) continue;
 			LogPrint (eLogDebug, "Reseed: Yggdrasil: Resolved to ", i2p::util::net::FormatAddress (ep.address ()));
 			boost::system::error_code connectError;
-			const bool done = RunWithDeadline (service, PhaseBudget (hostDeadline), token,
+			const bool done = RunWithDeadline (
+				service, PhaseBudget (hostDeadline), token,
 				[&] { s.async_connect (ep, [&] (const boost::system::error_code & ec) { connectError = ec; }); },
 				[&] { s.cancel (); });
 			if (!done)

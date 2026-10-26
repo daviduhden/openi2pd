@@ -73,8 +73,8 @@ namespace
 		size_t pos = 0;
 		for (; pos + 2 < size; pos += 3)
 		{
-			const uint32_t value = (static_cast<uint32_t> (in[pos]) << 16)
-				| (static_cast<uint32_t> (in[pos + 1]) << 8) | in[pos + 2];
+			const uint32_t value
+				= (static_cast<uint32_t> (in[pos]) << 16) | (static_cast<uint32_t> (in[pos + 1]) << 8) | in[pos + 2];
 			out.push_back (BASE64_TABLE[(value >> 18) & 0x3f]);
 			out.push_back (BASE64_TABLE[(value >> 12) & 0x3f]);
 			out.push_back (BASE64_TABLE[(value >> 6) & 0x3f]);
@@ -250,8 +250,7 @@ namespace
 	 */
 	int OpenChildDirectory (int root, std::string_view child)
 	{
-		if (child.empty () || child.find ('/') != std::string_view::npos
-			|| child.find ('\0') != std::string_view::npos)
+		if (child.empty () || child.find ('/') != std::string_view::npos || child.find ('\0') != std::string_view::npos)
 			return -1;
 		const std::string name (child);
 		struct stat named { };
@@ -274,8 +273,7 @@ namespace
 	bool TargetStatus (int directory, const std::string & file, struct stat & status, bool & exists)
 	{
 		exists = false;
-		if (::fstatat (directory, file.c_str (), &status, AT_SYMLINK_NOFOLLOW) != 0)
-			return errno == ENOENT;
+		if (::fstatat (directory, file.c_str (), &status, AT_SYMLINK_NOFOLLOW) != 0) return errno == ENOENT;
 		exists = true;
 		return true;
 	}
@@ -374,16 +372,16 @@ namespace
 		// Removing an absent artifact succeeds: the typed operation is
 		// idempotent, and a failed cleanup must not block a later retry.
 		if (!exists) return true;
-		if (!AcceptsArtifactTarget (S_ISREG (target.st_mode), target.st_uid, ::geteuid (), target.st_nlink)) return false;
+		if (!AcceptsArtifactTarget (S_ISREG (target.st_mode), target.st_uid, ::geteuid (), target.st_nlink))
+			return false;
 		return ::unlinkat (directory, layout.file.c_str (), 0) == 0 && ::fsync (directory) == 0;
 	}
 
 	bool SendStatus (Channel & channel, uint32_t requestId, DataStorageStatus status, uint8_t kind, uint32_t generation)
 	{
 		return channel
-			.Send (
-				{ MessageType::DataStorageReply, requestId,
-					EncodeDataStorageReply (static_cast<uint8_t> (status), kind, generation) },
+			.Send ({ MessageType::DataStorageReply, requestId,
+					   EncodeDataStorageReply (static_cast<uint8_t> (status), kind, generation) },
 				REQUEST_TIMEOUT_MS)
 			.has_value ();
 	}
@@ -528,8 +526,7 @@ int RunDataStorageWorker (int fd, int inheritedRoot)
 #if defined(__linux__)
 	// The socket/capability boundary does not need the delegated root and is
 	// installed before the first Configure frame is parsed.
-	if (auto lockdown = ApplyLinuxIpcLockdown (GetLinuxSandboxProfile (WorkerClass::Storage)); !lockdown)
-		return 1;
+	if (auto lockdown = ApplyLinuxIpcLockdown (GetLinuxSandboxProfile (WorkerClass::Storage)); !lockdown) return 1;
 #endif
 	auto first = channel.ReceiveWithFd (REQUEST_TIMEOUT_MS);
 	if (!first || !*first) return 1;
@@ -615,9 +612,9 @@ int RunDataStorageWorker (int fd, int inheritedRoot)
 			// A known frame type that this endpoint does not implement is a
 			// typed refusal, bounded so a peer that keeps sending one is
 			// disconnected instead of being served forever.
-			if (!channel.Send (
-					{ MessageType::Error, request.requestId,
-						EncodeError (request.type, ErrorCode::NotAuthorized, "operation is not allowed on the data storage endpoint") },
+			if (!channel.Send ({ MessageType::Error, request.requestId,
+								   EncodeError (request.type, ErrorCode::NotAuthorized,
+									   "operation is not allowed on the data storage endpoint") },
 					REQUEST_TIMEOUT_MS)
 				|| ++violations > Channel::MAX_PROTOCOL_VIOLATIONS)
 				return 1;
@@ -636,8 +633,7 @@ int RunDataStorageWorker (int fd, int inheritedRoot)
 		}
 		auto reject = [&] (ErrorCode code, std::string_view detail)
 		{
-			if (!channel.Send (
-					{ MessageType::Error, request.requestId, EncodeError (request.type, code, detail) },
+			if (!channel.Send ({ MessageType::Error, request.requestId, EncodeError (request.type, code, detail) },
 					REQUEST_TIMEOUT_MS))
 				return false;
 			// A bounded number of malformed requests is tolerated as a typed
@@ -743,10 +739,7 @@ struct DataStorageClient::Impl
 #endif
 	}
 
-	std::chrono::steady_clock::time_point Now () const
-	{
-		return clock ? clock () : std::chrono::steady_clock::now ();
-	}
+	std::chrono::steady_clock::time_point Now () const { return clock ? clock () : std::chrono::steady_clock::now (); }
 
 	void CloseWorker ()
 	{
@@ -818,7 +811,8 @@ struct DataStorageClient::Impl
 		}
 		const auto id = ++nextRequest;
 		child.ChannelFd ().SetEnforcementPolicy (EnforcementPolicy::Endpoint);
-		if (!child.ChannelFd ().SendWithFd ({ MessageType::ConfigureDataStorage, id, *setup }, passed, REQUEST_TIMEOUT_MS))
+		if (!child.ChannelFd ().SendWithFd (
+				{ MessageType::ConfigureDataStorage, id, *setup }, passed, REQUEST_TIMEOUT_MS))
 		{
 			error = "data storage worker is unreachable";
 			return false;
@@ -872,8 +866,8 @@ struct DataStorageClient::Impl
 			return false;
 		}
 		state = State::Failed;
-		std::fprintf (stderr, "privsep data storage: restart limit reached (%.*s)\n",
-			static_cast<int> (error.size ()), error.data ());
+		std::fprintf (stderr, "privsep data storage: restart limit reached (%.*s)\n", static_cast<int> (error.size ()),
+			error.data ());
 		return false;
 	}
 

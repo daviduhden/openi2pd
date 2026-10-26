@@ -52,53 +52,53 @@ namespace
  * kind only. A missing required descriptor and a forbidden one are both a
  * `BadField` fault; the caller closes the descriptor (if any) before replying.
  */
-bool ValidateRegistryDescriptor (MessageType type, int fd, std::string & why)
-{
-	const auto policy = DescriptorPolicyFor (type);
-	const bool present = fd >= 0;
-	if (!DescriptorPresenceAllowed (type, present))
+	bool ValidateRegistryDescriptor (MessageType type, int fd, std::string & why)
 	{
-		why = present ? "descriptor is not allowed on this message type" : "message requires a descriptor";
+		const auto policy = DescriptorPolicyFor (type);
+		const bool present = fd >= 0;
+		if (!DescriptorPresenceAllowed (type, present))
+		{
+			why = present ? "descriptor is not allowed on this message type" : "message requires a descriptor";
+			return false;
+		}
+		if (!present) return true;
+		struct stat info { };
+		if (::fstat (fd, &info) != 0)
+		{
+			why = "descriptor cannot be inspected";
+			return false;
+		}
+		switch (policy)
+		{
+		case DescriptorPolicy::OptionalFile:
+		case DescriptorPolicy::RequiredFile:
+			if (!S_ISREG (info.st_mode))
+			{
+				why = "message requires a regular file descriptor";
+				return false;
+			}
+			return true;
+		case DescriptorPolicy::OptionalDirectory:
+		case DescriptorPolicy::RequiredDirectory:
+			if (!S_ISDIR (info.st_mode))
+			{
+				why = "message requires a directory descriptor";
+				return false;
+			}
+			return true;
+		case DescriptorPolicy::OptionalSocket:
+		case DescriptorPolicy::RequiredSocket:
+			if (!S_ISSOCK (info.st_mode))
+			{
+				why = "message requires a socket descriptor";
+				return false;
+			}
+			return true;
+		case DescriptorPolicy::None: break;
+		}
 		return false;
 	}
-	if (!present) return true;
-	struct stat info { };
-	if (::fstat (fd, &info) != 0)
-	{
-		why = "descriptor cannot be inspected";
-		return false;
-	}
-	switch (policy)
-	{
-	case DescriptorPolicy::OptionalFile:
-	case DescriptorPolicy::RequiredFile:
-		if (!S_ISREG (info.st_mode))
-		{
-			why = "message requires a regular file descriptor";
-			return false;
-		}
-		return true;
-	case DescriptorPolicy::OptionalDirectory:
-	case DescriptorPolicy::RequiredDirectory:
-		if (!S_ISDIR (info.st_mode))
-		{
-			why = "message requires a directory descriptor";
-			return false;
-		}
-		return true;
-	case DescriptorPolicy::OptionalSocket:
-	case DescriptorPolicy::RequiredSocket:
-		if (!S_ISSOCK (info.st_mode))
-		{
-			why = "message requires a socket descriptor";
-			return false;
-		}
-		return true;
-	case DescriptorPolicy::None: break;
-	}
-	return false;
-}
-bool IsInfiniteTimeout (int timeoutMs)
+	bool IsInfiniteTimeout (int timeoutMs)
 	{
 		return timeoutMs < 0;
 	}
@@ -146,9 +146,8 @@ Channel Channel::Adopt (int fd)
 	Channel channel (fd);
 	// A worker is spawned by the core/supervisor and may be a different uid
 	// after the credential drop. It accepts its own uid or the root core.
-	channel.m_PeerExpectation = PeerExpectation {
-		static_cast<uint32_t> (::geteuid ()), 0, 0, false, false, true, true
-	};
+	channel.m_PeerExpectation
+		= PeerExpectation { static_cast<uint32_t> (::geteuid ()), 0, 0, false, false, true, true };
 	return channel;
 }
 
@@ -294,9 +293,8 @@ i2p::expected<std::pair<Channel, Channel>, std::string> Channel::CreatePair ()
 	// Both ends are created by this process. The parent overrides the child
 	// end with the post-drop worker identity after fork; a test that keeps
 	// both ends in one process matches itself.
-	const PeerExpectation expectation {
-		static_cast<uint32_t> (::geteuid ()), static_cast<uint32_t> (::getegid ()), 0, true, false, false, true
-	};
+	const PeerExpectation expectation { static_cast<uint32_t> (::geteuid ()), static_cast<uint32_t> (::getegid ()), 0,
+		true, false, false, true };
 	Channel first (fds[0]);
 	Channel second (fds[1]);
 	first.ExpectPeer (expectation);
@@ -393,7 +391,8 @@ bool Channel::RejectFrame (const Message & frame, ErrorCode code, std::string_vi
 	// unbounded error loop by filling the socket in both directions.
 	if (++m_ProtocolViolations > MAX_PROTOCOL_VIOLATIONS) return false;
 	std::string_view bounded = detail.substr (0, MAX_ERROR_DETAIL);
-	return Send ({ MessageType::Error, frame.requestId, EncodeError (frame.type, code, bounded) }, timeoutMs).has_value ();
+	return Send ({ MessageType::Error, frame.requestId, EncodeError (frame.type, code, bounded) }, timeoutMs)
+		.has_value ();
 }
 
 i2p::expected<std::optional<Message>, std::string> Channel::Receive (int timeoutMs)
@@ -546,8 +545,7 @@ i2p::expected<std::optional<ReceivedMessage>, std::string> Channel::ReceiveWithF
 			if (!receivedCredentials) return i2p::unexpected ("missing SCM_CREDENTIALS on an empty record");
 			if (m_PeerExpectation.configured)
 			{
-				if (!MatchesPeerExpectation (
-						messageCredentials.uid, messageCredentials.gid, messageCredentials.pid))
+				if (!MatchesPeerExpectation (messageCredentials.uid, messageCredentials.gid, messageCredentials.pid))
 					return i2p::unexpected ("empty record failed the peer expectation");
 			}
 			else
@@ -597,7 +595,8 @@ i2p::expected<std::optional<ReceivedMessage>, std::string> Channel::ReceiveWithF
 					&& inspection.lengthConsistent;
 				if (attributable)
 				{
-					const Message offending { static_cast<MessageType> (inspection.rawType), inspection.requestId, { } };
+					const Message offending { static_cast<MessageType> (inspection.rawType), inspection.requestId,
+						{ } };
 					if (RejectFrame (offending, message.error ().code, message.error ().text, 250)) continue;
 				}
 			}

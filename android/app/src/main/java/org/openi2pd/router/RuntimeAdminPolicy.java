@@ -90,8 +90,8 @@ final class RuntimeAdminPolicy {
         for (int i = 0; i < hash.length(); ++i) {
             char ch = hash.charAt(i);
             boolean allowed = (ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z')
-                    || (ch >= '0' && ch <= '9') || ch == '+' || ch == '/' || ch == '='
-                    || ch == '-' || ch == '~';
+                    || (ch >= '0' && ch <= '9') || ch == '+' || ch == '/' || ch == '=' || ch == '-'
+                    || ch == '~';
             if (!allowed) {
                 return false;
             }
@@ -140,8 +140,8 @@ final class RuntimeAdminPolicy {
             if (fields.length != 5 || !isValidTunnelName(fields[0])) {
                 continue;
             }
-            services.add(new TunnelService(fields[0], bound(fields[1], 16),
-                    "1".equals(fields[2]), bound(fields[3], 128), bound(fields[4], 256)));
+            services.add(new TunnelService(fields[0], bound(fields[1], 16), "1".equals(fields[2]),
+                    bound(fields[3], 128), bound(fields[4], 256)));
             if (services.size() >= MAX_TUNNEL_ROWS) {
                 break;
             }
@@ -157,8 +157,7 @@ final class RuntimeAdminPolicy {
      */
     record ReseedStatus(String phase, String enabled, String attempts, String succeeded,
             String lastAttemptMs, String lastSuccessMs, String lastError) {
-        static final ReseedStatus UNKNOWN =
-                new ReseedStatus("", "", "", "", "", "", "");
+        static final ReseedStatus UNKNOWN = new ReseedStatus("", "", "", "", "", "", "");
 
         boolean isKnown() {
             return !phase.isEmpty();

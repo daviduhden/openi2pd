@@ -42,16 +42,16 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t * data, size_t size)
 		{
 			const size_t wholeHashes = (size / i2p::data::IdentHash::len) * i2p::data::IdentHash::len;
 			const std::string hashBytes (input.substr (0, wholeHashes));
-			const std::string message = i2p::torrents::CreateDictionary (
-				{ { "added", i2p::torrents::CreateByteString (hashBytes) } });
+			const std::string message
+				= i2p::torrents::CreateDictionary ({ { "added", i2p::torrents::CreateByteString (hashBytes) } });
 			auto rebuilt = i2p::torrents::DecodePEXAdded (message);
 			assert (!rebuilt.malformed);
 			assert (rebuilt.peers.size () <= wholeHashes / i2p::data::IdentHash::len);
 			assert (rebuilt.peers.size () <= i2p::torrents::MAX_PEX_RECEIVE_PEERS);
 			// Every returned destination is a 32-byte slice of the input.
 			for (const auto & peer : rebuilt.peers)
-				assert (hashBytes.find (std::string (reinterpret_cast<const char *> (peer.data ()),
-							i2p::data::IdentHash::len))
+				assert (hashBytes.find (
+							std::string (reinterpret_cast<const char *> (peer.data ()), i2p::data::IdentHash::len))
 					!= std::string::npos);
 		}
 	}
@@ -66,8 +66,7 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t * data, size_t size)
 		// boundary is either a tolerated mismatch or a plain mismatch.
 		const int64_t port = static_cast<int64_t> (size % 65540);
 		const std::string message = i2p::torrents::CreateDictionary (
-			{ { "port", i2p::torrents::CreateInteger (port) },
-				{ "rport", i2p::torrents::CreateInteger (port + 1) } });
+			{ { "port", i2p::torrents::CreateInteger (port) }, { "rport", i2p::torrents::CreateInteger (port + 1) } });
 		auto rebuilt = i2p::torrents::DecodeDHTHint (message);
 		assert (!rebuilt.malformed);
 		if (rebuilt.port) assert (*rebuilt.port >= 1 && *rebuilt.port <= 65534);
@@ -104,10 +103,9 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t * data, size_t size)
 			(void)i2p::torrents::PeerCandidatePolicy::IsUsable (1000, 0, failures, clock, origin);
 			(void)i2p::torrents::PeerCandidatePolicy::IsUsable (clock, clock, failures, 1000, origin);
 		}
-		assert (i2p::torrents::PeerCandidatePolicy::RetryDelay (failures)
-			<= i2p::torrents::PEER_CANDIDATE_MAX_RETRY_DELAY);
-		assert (i2p::torrents::PeerCandidatePolicy::RetryDelay (failures)
-			>= i2p::torrents::PEER_CANDIDATE_RETRY_DELAY);
+		assert (
+			i2p::torrents::PeerCandidatePolicy::RetryDelay (failures) <= i2p::torrents::PEER_CANDIDATE_MAX_RETRY_DELAY);
+		assert (i2p::torrents::PeerCandidatePolicy::RetryDelay (failures) >= i2p::torrents::PEER_CANDIDATE_RETRY_DELAY);
 	}
 
 	return 0;

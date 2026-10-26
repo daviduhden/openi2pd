@@ -83,7 +83,7 @@
 #endif
 #if (!defined(LIBRESSL_VERSION_NUMBER) && OPENSSL_VERSION_NUMBER >= 0x030500000)                                       \
 	|| ((defined(LIBRESSL_VERSION_NUMBER) && (LIBRESSL_VERSION_NUMBER >= 0x4030000fL)                                  \
-			&& I2PD_HAVE_OPENSSL_MLKEM_H)) // 3.5.0 openssl, 4.3.0 libressl with mlkem.h
+		&& I2PD_HAVE_OPENSSL_MLKEM_H)) // 3.5.0 openssl, 4.3.0 libressl with mlkem.h
 #define OPENSSL_PQ 1
 #endif
 

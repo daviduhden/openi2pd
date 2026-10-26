@@ -63,8 +63,8 @@ int main ()
 	// The redaction helper keeps only scheme://host:port and never returns the
 	// credential-bearing part of the value.
 	assert (RedactReseedProxyForLog (CREDENTIAL_PROXY) == "http://127.0.0.1:1");
-	assert (RedactReseedProxyForLog ("socks://user:secret@127.0.0.1:9050/path?x=1#fragment")
-		== "socks://127.0.0.1:9050");
+	assert (
+		RedactReseedProxyForLog ("socks://user:secret@127.0.0.1:9050/path?x=1#fragment") == "socks://127.0.0.1:9050");
 	assert (RedactReseedProxyForLog ("http://[::1]:8080") == "http://[::1]:8080");
 	assert (RedactReseedProxyForLog ("127.0.0.1:1080") == "127.0.0.1:1080");
 	assert (RedactReseedProxyForLog ("user:secret@127.0.0.1") == "127.0.0.1");

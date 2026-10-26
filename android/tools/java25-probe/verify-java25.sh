@@ -69,7 +69,17 @@ if [ -n "${R8_JAR:-}" ] || [ -n "${ANDROID_JAR:-}" ]; then
 	# Dex every probe class, including the nested record/sealed classes. Passing
 	# only the outer class left the record and type-switch lowering paths
 	# untested while the keep rule referenced classes D8 never saw.
+	# Probe class names cannot contain newlines; split only on the find output
+	# line separator and disable pathname expansion so spaces stay within paths.
 	class_files=$(find "$classes_dir" -name '*.class' -print)
+	class_files_ifs=$IFS
+	IFS='
+'
+	set -f
+	# shellcheck disable=SC2086
+	set -- $class_files
+	set +f
+	IFS=$class_files_ifs
 
 	echo
 	echo "== D8 --min-api 29 =="
@@ -77,7 +87,7 @@ if [ -n "${R8_JAR:-}" ] || [ -n "${ANDROID_JAR:-}" ]; then
 		--min-api 29 \
 		--lib "$ANDROID_JAR" \
 		--output "$dex_dir" \
-		$class_files
+		"$@"
 	ls -l "$dex_dir/classes.dex"
 
 	echo
@@ -87,7 +97,7 @@ if [ -n "${R8_JAR:-}" ] || [ -n "${ANDROID_JAR:-}" ]; then
 		--lib "$ANDROID_JAR" \
 		--pg-conf "$keep_file" \
 		--output "$r8_dir" \
-		$class_files
+		"$@"
 	ls -l "$r8_dir/classes.dex"
 
 	echo

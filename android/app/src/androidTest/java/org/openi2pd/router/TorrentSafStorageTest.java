@@ -73,8 +73,8 @@ public final class TorrentSafStorageTest {
     @Test
     public void nestedFixturePathsFollowThePathPolicy() {
         // The multi-file fixture layout is exactly what the engine opens.
-        for (String path : new String[] {"torrent/part-00001.bin", "torrent/sub/part-00002.bin",
-                     "torrent/empty.bin"})
+        for (String path : new String[] {
+                     "torrent/part-00001.bin", "torrent/sub/part-00002.bin", "torrent/empty.bin"})
             assertTrue(path, TorrentSafStorageService.validPath(path));
         for (String path : new String[] {"/torrent/part-00001.bin", "torrent/../part-00001.bin",
                      "torrent//part-00001.bin", "torrent/./part-00001.bin", "torrent/",

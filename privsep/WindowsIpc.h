@@ -124,8 +124,7 @@ i2p::expected<std::string, std::string> EncodeWorkerHelloFrame (WindowsWorkerRol
  * Validate one received WorkerHello frame. The nonce is returned as raw bytes
  * and is never included in an error message.
  */
-i2p::expected<std::pair<WindowsWorkerRole, std::string>, std::string> DecodeWorkerHelloFrame (
-	const Message & message);
+i2p::expected<std::pair<WindowsWorkerRole, std::string>, std::string> DecodeWorkerHelloFrame (const Message & message);
 
 struct WindowsIsolationSupport
 {
@@ -231,8 +230,8 @@ public:
 	 * SYSTEM; an empty value keeps the two-ACE DACL. The name must be free:
 	 * FILE_FLAG_FIRST_PIPE_INSTANCE fails instead of joining a squatted name.
 	 */
-	static i2p::expected<WindowsServer, std::string> Create (const std::wstring & pipeName,
-		const std::wstring & extraSid = { });
+	static i2p::expected<WindowsServer, std::string> Create (
+		const std::wstring & pipeName, const std::wstring & extraSid = { });
 
 	/**
 	 * Test-only legacy accept. It binds the same user SID but verifies no spawn

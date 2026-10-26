@@ -64,8 +64,7 @@ namespace
 	}
 }
 
-i2p::expected<WorkerCredentials, std::string> ResolveWorkerCredentials (
-	std::string_view user, std::string_view group)
+i2p::expected<WorkerCredentials, std::string> ResolveWorkerCredentials (std::string_view user, std::string_view group)
 {
 	WorkerCredentials credentials;
 	credentials.uid = static_cast<uint32_t> (::geteuid ());
@@ -77,25 +76,24 @@ i2p::expected<WorkerCredentials, std::string> ResolveWorkerCredentials (
 	// A group without a user would change the group while keeping the daemon's
 	// uid, which is never a coherent service identity.
 	if (user.empty ()) return i2p::unexpected (std::string ("privsep.group requires privsep.user"));
-	if (!IsValidIdentityName (user))
-		return i2p::unexpected (std::string ("privsep.user is not a valid account name"));
+	if (!IsValidIdentityName (user)) return i2p::unexpected (std::string ("privsep.user is not a valid account name"));
 	if (!group.empty () && !IsValidIdentityName (group))
 		return i2p::unexpected (std::string ("privsep.group is not a valid group name"));
 
 	const std::string userName (user);
 	struct passwd userEntry { };
 	struct passwd * userResult = nullptr;
-	const int userError = LookupBounded ([&] (char * buffer, size_t size)
-	{
-		userResult = nullptr;
-		return ::getpwnam_r (userName.c_str (), &userEntry, buffer, size, &userResult);
-	});
+	const int userError = LookupBounded (
+		[&] (char * buffer, size_t size)
+		{
+			userResult = nullptr;
+			return ::getpwnam_r (userName.c_str (), &userEntry, buffer, size, &userResult);
+		});
 	if (userError != 0) return i2p::unexpected (std::string ("cannot resolve privsep.user"));
 	if (!userResult) return i2p::unexpected (std::string ("privsep.user does not exist"));
 	// A worker must never run as the superuser: every sandbox bypass would then
 	// be a full privilege compromise.
-	if (userEntry.pw_uid == 0)
-		return i2p::unexpected (std::string ("privsep.user must not be the superuser"));
+	if (userEntry.pw_uid == 0) return i2p::unexpected (std::string ("privsep.user must not be the superuser"));
 	credentials.uid = static_cast<uint32_t> (userEntry.pw_uid);
 	credentials.gid = static_cast<uint32_t> (userEntry.pw_gid);
 
@@ -104,11 +102,12 @@ i2p::expected<WorkerCredentials, std::string> ResolveWorkerCredentials (
 		const std::string groupName (group);
 		struct group groupEntry { };
 		struct group * groupResult = nullptr;
-		const int groupError = LookupBounded ([&] (char * buffer, size_t size)
-		{
-			groupResult = nullptr;
-			return ::getgrnam_r (groupName.c_str (), &groupEntry, buffer, size, &groupResult);
-		});
+		const int groupError = LookupBounded (
+			[&] (char * buffer, size_t size)
+			{
+				groupResult = nullptr;
+				return ::getgrnam_r (groupName.c_str (), &groupEntry, buffer, size, &groupResult);
+			});
 		if (groupError != 0) return i2p::unexpected (std::string ("cannot resolve privsep.group"));
 		if (!groupResult) return i2p::unexpected (std::string ("privsep.group does not exist"));
 		credentials.gid = static_cast<uint32_t> (groupEntry.gr_gid);
@@ -210,15 +209,12 @@ std::string DescribeWorkerCredentials (const WorkerCredentials & credentials)
 
 namespace i2p::privsep
 {
-i2p::expected<WorkerCredentials, std::string> ResolveWorkerCredentials (
-	std::string_view, std::string_view)
+i2p::expected<WorkerCredentials, std::string> ResolveWorkerCredentials (std::string_view, std::string_view)
 {
 	return i2p::unexpected (std::string ("worker credentials are not supported on this platform"));
 }
 
-void SetWorkerCredentials (const WorkerCredentials &)
-{
-}
+void SetWorkerCredentials (const WorkerCredentials &) { }
 
 const WorkerCredentials & GetWorkerCredentials ()
 {

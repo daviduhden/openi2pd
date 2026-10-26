@@ -37,8 +37,7 @@ bool ParseDays (const char * text, int & days)
 
 int main (int argc, char * argv[])
 {
-	constexpr const char * usage
-		= "Usage: offlinekeys <output file> <keys file> [<signature type>] [<days>]\n";
+	constexpr const char * usage = "Usage: offlinekeys <output file> <keys file> [<signature type>] [<days>]\n";
 	if (argc == 2 && (std::string_view (argv[1]) == "-h" || std::string_view (argv[1]) == "--help"))
 	{
 		std::cout << usage;

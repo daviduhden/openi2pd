@@ -21,9 +21,9 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t * data, size_t size)
 	if (!data) return 0;
 	const std::string_view input (reinterpret_cast<const char *> (data), size);
 	int version = 0;
-	(void) i2p::client::NegotiateSAMHandshake (input, version);
-	(void) i2p::client::ParseSAMParams (input);
+	(void)i2p::client::NegotiateSAMHandshake (input, version);
+	(void)i2p::client::ParseSAMParams (input);
 	i2p::client::SAMFrame frame;
-	(void) i2p::client::GetSAMNextFrame (input, 32768, frame);
+	(void)i2p::client::GetSAMNextFrame (input, 32768, frame);
 	return 0;
 }

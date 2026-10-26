@@ -299,8 +299,7 @@ final class TorrentSafStorage {
             return false;
         }
         synchronized (lock) {
-            if (TorrentSafStorage.generation != session.generation
-                    || remote != session.remote)
+            if (TorrentSafStorage.generation != session.generation || remote != session.remote)
                 return false;
             brokerGeneration = generation;
             return true;
@@ -343,8 +342,7 @@ final class TorrentSafStorage {
             if (retiringBinder != binder)
                 return; // The death recipient already completed the transition.
             if (!binder.isBinderAlive() && attempt < RETIREMENT_CHECKS) {
-                main.postDelayed(() -> checkRetirement(binder, attempt + 1),
-                        RETIREMENT_BOUND_MS);
+                main.postDelayed(() -> checkRetirement(binder, attempt + 1), RETIREMENT_BOUND_MS);
                 return;
             }
             retiringBinder = null;
@@ -702,8 +700,8 @@ final class TorrentSafStorage {
                 if (canceled.get() || exportCanceled.get())
                     return false;
                 final int at = offset;
-                byte[] chunk = java.util.Arrays.copyOfRange(
-                        owned, at, Math.min(owned.length, at + 16384));
+                byte[] chunk =
+                        java.util.Arrays.copyOfRange(owned, at, Math.min(owned.length, at + 16384));
                 if (!exportCall(session
                             -> session.remote.write(handle, at, chunk, session.operation),
                             false))
@@ -789,7 +787,8 @@ final class TorrentSafStorage {
             if (!readPermission)
                 return "Document permission revoked. Select the directory again.";
             if (!writePermission)
-                return "SAF storage is read-only; existing data can seed but downloads need write access.";
+                return "SAF storage is read-only; existing data can seed but downloads need write "
+                       + "access.";
             if (retiringBinder != null)
                 return "Storage provider cancellation pending; waiting for broker termination";
             if (budget.exhausted()) {
@@ -932,8 +931,8 @@ final class TorrentSafStorage {
      * unusable frame may replace the broker: a busy local queue, a slow provider
      * and a client deadline return a typed retryable fallback.
      */
-    private static <T> Outcome<T> execute(Session session, Operation<T> action, T fallback,
-            long deadline, boolean recover) {
+    private static <T> Outcome<T> execute(
+            Session session, Operation<T> action, T fallback, long deadline, boolean recover) {
         java.util.concurrent.Future<Outcome<T>> future = null;
         try {
             if (deadline - android.os.SystemClock.elapsedRealtime() <= 0)

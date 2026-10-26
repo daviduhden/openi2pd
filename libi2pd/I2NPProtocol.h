@@ -229,7 +229,10 @@ constexpr bool IsFreshI2NPExpiration (uint64_t expiration, uint64_t now) noexcep
 class I2NPDropCounter
 {
 public:
-	explicit I2NPDropCounter (uint64_t logEvery = 256) : m_LogEvery (logEvery ? logEvery : 1) { }
+	explicit I2NPDropCounter (uint64_t logEvery = 256)
+		: m_LogEvery (logEvery ? logEvery : 1)
+	{
+	}
 
 	// Records one drop; returns true when this drop should be logged.
 	bool Record ()
@@ -316,10 +319,12 @@ constexpr uint32_t GetI2NPDuplicateKey (uint32_t msgID, uint64_t expiration, uin
 class I2NPDuplicateFilter
 {
 public:
-	explicit I2NPDuplicateFilter (size_t maxEntries = I2NP_DUPLICATE_MAX_ENTRIES,
-		uint64_t generationTimeout = I2NP_DUPLICATE_GENERATION_TIMEOUT)
+	explicit I2NPDuplicateFilter (
+		size_t maxEntries = I2NP_DUPLICATE_MAX_ENTRIES, uint64_t generationTimeout = I2NP_DUPLICATE_GENERATION_TIMEOUT)
 		: m_GenerationTimeout (generationTimeout ? generationTimeout : 1)
-		, m_MaxEntries (maxEntries ? maxEntries : 1) { }
+		, m_MaxEntries (maxEntries ? maxEntries : 1)
+	{
+	}
 
 	// Returns true when the key was already present, i.e. a duplicate.
 	bool CheckAndInsert (uint32_t key, uint64_t nowSeconds);
@@ -521,16 +526,16 @@ constexpr bool IsAllowedCloveMessageType (uint8_t typeID) noexcept
 {
 	switch (typeID)
 	{
-		case eI2NPDatabaseStore:
-		case eI2NPDatabaseLookup:
-		case eI2NPDatabaseSearchReply:
-		case eI2NPDeliveryStatus:
-		case eI2NPGarlic:
-		case eI2NPData:
-		case eI2NPTunnelBuildReply:
-		case eI2NPVariableTunnelBuildReply:
-		case eI2NPShortTunnelBuildReply: return true;
-		default: return false;
+	case eI2NPDatabaseStore:
+	case eI2NPDatabaseLookup:
+	case eI2NPDatabaseSearchReply:
+	case eI2NPDeliveryStatus:
+	case eI2NPGarlic:
+	case eI2NPData:
+	case eI2NPTunnelBuildReply:
+	case eI2NPVariableTunnelBuildReply:
+	case eI2NPShortTunnelBuildReply: return true;
+	default: return false;
 	}
 }
 

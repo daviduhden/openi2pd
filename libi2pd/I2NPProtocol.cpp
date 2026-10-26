@@ -557,8 +557,8 @@ size_t GetI2NPMessageLength (const uint8_t * msg, size_t len)
 	if (len < I2NP_HEADER_SIZE_OFFSET + 2)
 	{
 		if (lengthDrops.Record ())
-			LogPrint (eLogError, "I2NP: Message length ", len, " is smaller than header (",
-				lengthDrops.GetCount (), " such messages)");
+			LogPrint (eLogError, "I2NP: Message length ", len, " is smaller than header (", lengthDrops.GetCount (),
+				" such messages)");
 		return len;
 	}
 	auto l = bufbe16toh (msg + I2NP_HEADER_SIZE_OFFSET) + I2NP_HEADER_SIZE;
@@ -714,8 +714,7 @@ void HandleI2NPMessage (std::shared_ptr<I2NPMessage> msg)
 		// InboundMessageDistributor, i.e. a garlic or plain message that
 		// crossed a tunnel. `fromTunnel` records exactly that for a clove;
 		// `from` covers a plain tunnel-delivered message.
-		if (IsDatabaseLookupDispatchAllowed (*msg) && i2p::context.IsFloodfill ())
-			i2p::data::netdb.PostI2NPMsg (msg);
+		if (IsDatabaseLookupDispatchAllowed (*msg) && i2p::context.IsFloodfill ()) i2p::data::netdb.PostI2NPMsg (msg);
 		break;
 	case eI2NPDeliveryStatus:
 	{
@@ -741,8 +740,7 @@ void HandleI2NPMessage (std::shared_ptr<I2NPMessage> msg)
 		i2p::tunnel::tunnels.PostTunnelData (msg);
 		break;
 	default:
-		LogPrint (
-			eLogError, "I2NP: Unexpected I2NP message with type ", int (typeID), " during handling; skipping");
+		LogPrint (eLogError, "I2NP: Unexpected I2NP message with type ", int (typeID), " during handling; skipping");
 	}
 }
 

@@ -55,8 +55,8 @@ public:
 
 	bool HasRoomForTerminal () const { return Remaining () > 3; }
 
-	void AddFirstFragment (uint32_t msgID, TunnelDeliveryType deliveryType, const uint8_t * toHash,
-		const uint8_t * data, uint16_t size)
+	void AddFirstFragment (
+		uint32_t msgID, TunnelDeliveryType deliveryType, const uint8_t * toHash, const uint8_t * data, uint16_t size)
 	{
 		*m_Cursor++ = static_cast<uint8_t> (0x08 | (deliveryType << 5)); // fragmented first fragment
 		if (deliveryType == eDeliveryTypeRouter || deliveryType == eDeliveryTypeTunnel)
@@ -99,10 +99,7 @@ public:
 	}
 
 private:
-	size_t Remaining () const
-	{
-		return static_cast<size_t> (m_Msg->GetPayload () + TUNNEL_DATA_MSG_SIZE - m_Cursor);
-	}
+	size_t Remaining () const { return static_cast<size_t> (m_Msg->GetPayload () + TUNNEL_DATA_MSG_SIZE - m_Cursor); }
 	void WriteBe32 (uint32_t value)
 	{
 		uint8_t encoded[4];

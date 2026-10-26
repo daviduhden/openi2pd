@@ -262,8 +262,7 @@ void TestRetractionOutsideFeed ()
 	// A startup hosts.txt load is not a feed merge, so a retraction request can
 	// never be honoured there. The line is skipped instead of being merged as a
 	// new destination; every other line of the same file is still applied.
-	std::istringstream startup (
-		"plain.i2p=" + Base64 (key) + "#!action=delete\n" + "kept.i2p=" + Base64 (key) + "\n");
+	std::istringstream startup ("plain.i2p=" + Base64 (key) + "#!action=delete\n" + "kept.i2p=" + Base64 (key) + "\n");
 	assert (book->LoadHostsFromStream (std::move (startup), false));
 	assert (!book->FindAddress ("plain.i2p"));
 	assert (book->FindAddress ("kept.i2p"));

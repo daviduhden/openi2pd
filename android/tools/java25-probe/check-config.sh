@@ -76,7 +76,7 @@ micro=$(sed -n 's/^#define I2PD_VERSION_MICRO \([0-9][0-9]*\)$/\1/p' "$version_h
 [ -n "$major" ] && [ -n "$minor" ] && [ -n "$micro" ] ||
 	fail 'cannot read the project version from libi2pd/version.h'
 expected_name="$major.$minor.$micro"
-expected_code=$(( (major * 100 + minor) * 10000 + micro * 100 ))
+expected_code=$(((major * 100 + minor) * 10000 + micro * 100))
 grep -Fq "versionName \"$expected_name\"" "$app_gradle" ||
 	fail "Android versionName does not match $expected_name"
 grep -Fq "versionCode $expected_code" "$app_gradle" ||

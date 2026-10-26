@@ -1043,8 +1043,8 @@ namespace torrents
 		return out.size ();
 	}
 
-	size_t DecodeCompactPeers (const std::vector<std::string_view> & peers, std::vector<i2p::data::IdentHash> & out,
-		size_t maxCount)
+	size_t DecodeCompactPeers (
+		const std::vector<std::string_view> & peers, std::vector<i2p::data::IdentHash> & out, size_t maxCount)
 	{
 		out.clear ();
 		size_t count = 0;
@@ -1140,8 +1140,8 @@ namespace torrents
 			// A response carries its node ID, an optional token and either
 			// compact peer values, compact referral nodes, or both.
 			const auto parsed = ParseDictionary (frame.response,
-				[&id, &hasID, &values, &hasValues, &token, &isMalformed, &nodes] (std::string_view key,
-					std::string_view buf) -> size_t
+				[&id, &hasID, &values, &hasValues, &token, &isMalformed, &nodes] (
+					std::string_view key, std::string_view buf) -> size_t
 				{
 					if (key == "id")
 					{
@@ -1182,8 +1182,8 @@ namespace torrents
 					}
 					return 0;
 				});
-			if (isMalformed || !parsed || parsed != frame.response.size ()
-				|| nodes.size () % DHT_COMPACT_NODE_SIZE != 0 || values.size () > MAX_DHT_REQUEST_NODES * 2 || !hasID)
+			if (isMalformed || !parsed || parsed != frame.response.size () || nodes.size () % DHT_COMPACT_NODE_SIZE != 0
+				|| values.size () > MAX_DHT_REQUEST_NODES * 2 || !hasID)
 			{
 				LogPrint (eLogDebug, "TorrentsDHT: Malformed raw response received");
 				return;
@@ -1326,8 +1326,7 @@ namespace torrents
 		}
 		const auto & query = frame.query;
 		auto candidate = std::make_shared<Node> (id, from.GetIdentHash (), fromPort);
-		if (!candidate->VerifyID ()
-			|| !m_QueryLimiter.Allow (from.GetIdentHash (), i2p::util::GetMonotonicSeconds ()))
+		if (!candidate->VerifyID () || !m_QueryLimiter.Allow (from.GetIdentHash (), i2p::util::GetMonotonicSeconds ()))
 			return;
 		// Routing-table admission is best effort. A valid query from a node
 		// whose bucket is full must still receive a response.
@@ -1448,9 +1447,7 @@ namespace torrents
 		switch (m_IncomingTokens.Validate (token, nodeID, infoHash, fromPort, ts, entry))
 		{
 		case DHTTokenStore::Validation::Valid: break;
-		case DHTTokenStore::Validation::Expired:
-			LogPrint (eLogInfo, "TorrentsDHT: Token for announce expired");
-			return;
+		case DHTTokenStore::Validation::Expired: LogPrint (eLogInfo, "TorrentsDHT: Token for announce expired"); return;
 		case DHTTokenStore::Validation::WrongInfoHash:
 			LogPrint (eLogInfo, "TorrentsDHT: Token bound to another info_hash");
 			return;
@@ -2026,10 +2023,9 @@ namespace torrents
 						// A ping query only stores the peer identity. Resolve
 						// the routing-table node so the heard-from window is
 						// checked against its node ID, not the peer hash.
-						auto node = m_RoutingTable ?
-							m_RoutingTable->FindNodeByPeer (std::get<0> (it->second)) : nullptr;
-						if (node && !m_HeardFrom.contains (node->id))
-							m_RoutingTable->RemoveNodeByPeer (node->peer);
+						auto node
+							= m_RoutingTable ? m_RoutingTable->FindNodeByPeer (std::get<0> (it->second)) : nullptr;
+						if (node && !m_HeardFrom.contains (node->id)) m_RoutingTable->RemoveNodeByPeer (node->peer);
 						break;
 					}
 					case eKRPCQueryGetPeers: getpeers.push_back (std::get<3> (it->second)); break;
@@ -2073,8 +2069,8 @@ namespace torrents
 		return m_Incoming.size ();
 	}
 
-	void TorrentsDHT::EnqueueIncomingDatagram (const i2p::data::IdentityEx & from, uint16_t fromPort,
-		uint16_t toPort, const uint8_t * buf, size_t len, const i2p::util::Mapping * options)
+	void TorrentsDHT::EnqueueIncomingDatagram (const i2p::data::IdentityEx & from, uint16_t fromPort, uint16_t toPort,
+		const uint8_t * buf, size_t len, const i2p::util::Mapping * options)
 	{
 		// Hostile or oversized frames are dropped before anything is copied.
 		if (!buf || !len || len > MAX_DHT_DATAGRAM_SIZE) return;
@@ -2193,8 +2189,8 @@ namespace torrents
 					if (!save || !save (file, bytes, error))
 						LogPrint (eLogError, "TorrentsDHT: Delegated periodic save failed: ", error);
 				}
-				else if (!WriteFileAtomicNoFollow (file.parent_path (), file.filename (), bytes.data (), bytes.size (),
-							 error))
+				else if (!WriteFileAtomicNoFollow (
+							 file.parent_path (), file.filename (), bytes.data (), bytes.size (), error))
 					LogPrint (eLogError, "TorrentsDHT: Can't write state file: ", error);
 				state->saveInFlight.store (false, std::memory_order_release);
 			});
@@ -2234,8 +2230,8 @@ namespace torrents
 	void TorrentsDHT::MarkPrivate (const Torrent::InfoHash & infoHash)
 	{
 		if (m_PrivateInfoHashes.Insert (infoHash) == PrivateInfoHashSet::Admission::EvictedOldest)
-			LogPrint (eLogWarning, "TorrentsDHT: Private info hash set at its limit ",
-				PrivateInfoHashSet::MaxHashes, "; the oldest entry was evicted");
+			LogPrint (eLogWarning, "TorrentsDHT: Private info hash set at its limit ", PrivateInfoHashSet::MaxHashes,
+				"; the oldest entry was evicted");
 		PurgeInfoHash (infoHash);
 	}
 

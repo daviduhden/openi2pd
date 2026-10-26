@@ -1622,8 +1622,7 @@ namespace transport
 			// advertised transport mask can include both families, so it is not
 			// enough on its own.
 			const bool sessionV4 = s.second->GetRemoteEndpoint ().address ().is_v4 ();
-			if (!s.second->IsEstablished () || !s.second->GetRelayTag () || !s.second->IsOutgoing ())
-				continue;
+			if (!s.second->IsEstablished () || !s.second->GetRelayTag () || !s.second->IsOutgoing ()) continue;
 			auto identity = s.second->GetRemoteIdentity ();
 			if (!identity) continue; // established sessions normally have one
 			if (sessionV4 == v4 && ts < s.second->GetCreationTime () + SSU2_TO_INTRODUCER_SESSION_DURATION / 2
@@ -1834,8 +1833,7 @@ namespace transport
 				}
 				// we are firewalled
 				auto addr = i2p::context.GetRouterInfo ().GetSSU2V4Address ();
-				if (addr && addr->ssu && !addr->ssu->HasIntroducers ())
-					i2p::context.SetUnreachable (true, false); // v4
+				if (addr && addr->ssu && !addr->ssu->HasIntroducers ()) i2p::context.SetUnreachable (true, false); // v4
 
 				UpdateIntroducers (true);
 				ScheduleIntroducersUpdateTimer ();
@@ -1857,8 +1855,7 @@ namespace transport
 				}
 				// we are firewalled
 				auto addr = i2p::context.GetRouterInfo ().GetSSU2V6Address ();
-				if (addr && addr->ssu && !addr->ssu->HasIntroducers ())
-					i2p::context.SetUnreachable (false, true); // v6
+				if (addr && addr->ssu && !addr->ssu->HasIntroducers ()) i2p::context.SetUnreachable (false, true); // v6
 
 				UpdateIntroducers (false);
 				ScheduleIntroducersUpdateTimerV6 ();

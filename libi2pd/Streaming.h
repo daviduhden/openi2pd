@@ -460,8 +460,7 @@ namespace stream
 		// Access-filter seam: consulted for a first SYN before the stream is
 		// created, so a denied peer never receives a SYNACK and never reaches
 		// an acceptor. `toPort` is the local streaming port.
-		typedef std::function<StreamAdmission (const i2p::data::IdentHash & peer, uint16_t toPort)>
-			AdmissionPredicate;
+		typedef std::function<StreamAdmission (const i2p::data::IdentHash & peer, uint16_t toPort)> AdmissionPredicate;
 		// Identifies one armed one-shot acceptor so a caller can unlink exactly
 		// that registration (AcceptStream's timeout) without disturbing the
 		// acceptors other clients armed.
@@ -561,8 +560,7 @@ namespace stream
 		bool AddPendingIncomingStream (std::shared_ptr<Stream> stream);
 		AcceptorToken ArmSyncAccept (const std::shared_ptr<SyncAcceptState> & state);
 		// Service thread only.
-		SynAdmission DecideSynAdmission (
-			uint32_t receiveStreamID, i2p::garlic::ECIESX25519AEADRatchetSession * from);
+		SynAdmission DecideSynAdmission (uint32_t receiveStreamID, i2p::garlic::ECIESX25519AEADRatchetSession * from);
 		// Consumes `packet`, answers it with one signed RESET when it
 		// authenticates, and leaves no stream behind. Returns true when a RESET
 		// was built.
@@ -639,10 +637,7 @@ namespace stream
 		{
 			return DecideSynAdmission (receiveStreamID, nullptr);
 		}
-		void RememberRecentlyClosedForTesting (uint32_t receiveStreamID)
-		{
-			RememberRecentlyClosed (receiveStreamID);
-		}
+		void RememberRecentlyClosedForTesting (uint32_t receiveStreamID) { RememberRecentlyClosed (receiveStreamID); }
 		size_t GetNumRecentlyClosedForTesting () const;
 		size_t GetNumRejectionResetsForTesting () const { return m_NumRejectionResets.load (); }
 		size_t GetNumPendingIncomingForTesting () const;

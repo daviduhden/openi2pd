@@ -32,6 +32,12 @@ extern "C"
 	JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_installSafStorageBridge (JNIEnv *, jclass, jclass);
 	JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_restrictSafStorageProcess (JNIEnv *, jclass);
 
+	JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_claimProcessRole (JNIEnv *, jclass, jint) noexcept;
+
+	JNIEXPORT jint JNICALL Java_org_openi2pd_router_I2PD_1JNI_processRole (JNIEnv *, jclass) noexcept;
+
+	JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_requestStopNative (JNIEnv *, jclass) noexcept;
+
 	JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getABICompiledWith (JNIEnv *, jclass);
 
 	JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_startDaemon (JNIEnv *, jclass);
@@ -44,7 +50,15 @@ extern "C"
 
 	JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_reloadTunnelsConfigs (JNIEnv *, jclass);
 
-	JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_requestReseed (JNIEnv *, jclass);
+	JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_requestReseed (JNIEnv *, jclass);
+
+	JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getReseedStatus (JNIEnv *, jclass);
+
+	JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getTunnelServices (JNIEnv *, jclass);
+
+	JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_startTunnel (JNIEnv *, jclass, jstring);
+
+	JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_stopTunnel (JNIEnv *, jclass, jstring);
 
 	JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_setRuntimeLogLevel (JNIEnv *, jclass, jstring);
 
@@ -74,10 +88,16 @@ extern "C"
 	JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getRecentLogs (JNIEnv *, jclass, jlong, jint);
 
 	JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getAddressBook (JNIEnv *, jclass);
-	JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_addAddress (JNIEnv *, jclass, jstring, jstring);
+	JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_addAddressWithResult (
+		JNIEnv *, jclass, jstring, jstring, jboolean);
 	JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_removeAddress (JNIEnv *, jclass, jstring);
 	JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_blockAddress (JNIEnv *, jclass, jstring);
 	JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_unblockAddress (JNIEnv *, jclass, jstring);
+	JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getSubscriptions (JNIEnv *, jclass);
+	JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_addSubscription (JNIEnv *, jclass, jstring);
+	JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_removeSubscription (JNIEnv *, jclass, jstring);
+	JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_banRouter (JNIEnv *, jclass, jstring);
+	JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_unbanRouter (JNIEnv *, jclass, jstring);
 	JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getBlockedAddresses (JNIEnv *, jclass);
 
 	JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_torrentCommand (JNIEnv *, jclass, jbyteArray);

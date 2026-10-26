@@ -245,7 +245,8 @@ namespace transport
 			strPort.c_str (), m_NetworkAddr, strDesc.c_str (), strType.c_str (), nullptr, lease.c_str ());
 		if (err != UPNPCOMMAND_SUCCESS)
 		{
-			LogPrint (eLogError, "UPnP: Port forwarding to ", m_NetworkAddr, ":", strPort, " failed: return code ", err);
+			LogPrint (
+				eLogError, "UPnP: Port forwarding to ", m_NetworkAddr, ":", strPort, " failed: return code ", err);
 			SetStatus (false, err);
 			return;
 		}

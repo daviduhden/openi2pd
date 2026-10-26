@@ -218,8 +218,8 @@ bool IsPledgePromiseSubset (std::string_view subset, std::string_view superset);
  * The returned list contains the accepted tokens without duplicates. Errors are
  * bounded, non-secret diagnostics suitable for a startup message.
  */
-i2p::expected<std::vector<std::string>, std::string> ParseOpenBSDPledgeFile (const std::string & path,
-	std::span<const std::string_view> allowedPromises, OpenBSDPledgePhase phase);
+i2p::expected<std::vector<std::string>, std::string> ParseOpenBSDPledgeFile (
+	const std::string & path, std::span<const std::string_view> allowedPromises, OpenBSDPledgePhase phase);
 
 /**
  * Open a directory for descriptor passing (SCM_RIGHTS). The descriptor is

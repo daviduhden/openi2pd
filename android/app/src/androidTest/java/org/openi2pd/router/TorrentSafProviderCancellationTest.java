@@ -144,8 +144,7 @@ public final class TorrentSafProviderCancellationTest {
                      TorrentSafFixtureProvider.PART_TWO, TorrentSafFixtureProvider.EMPTY})
             assertEquals(id,
                     DocumentsContract.getDocumentId(
-                            DocumentsContract.buildDocumentUriUsingTree(
-                                    treeUri(), id)));
+                            DocumentsContract.buildDocumentUriUsingTree(treeUri(), id)));
     }
     @Test
     public void nestedDocumentsSupportExactRangeWrites() throws Exception {
@@ -161,14 +160,14 @@ public final class TorrentSafProviderCancellationTest {
             long offset = TorrentSafFixtureProvider.PART_TWO_SIZE - finalBlock;
             byte[] tail = new byte[finalBlock];
             Arrays.fill(tail, (byte) 0x5a);
-            assertEquals(finalBlock,
-                    Os.pwrite(fd.getFileDescriptor(), tail, 0, finalBlock, offset));
+            assertEquals(
+                    finalBlock, Os.pwrite(fd.getFileDescriptor(), tail, 0, finalBlock, offset));
             Os.fsync(fd.getFileDescriptor());
             byte[] read = new byte[finalBlock];
             int done = 0;
             while (done < read.length)
-                done += Os.pread(fd.getFileDescriptor(), read, done, read.length - done,
-                        offset + done);
+                done += Os.pread(
+                        fd.getFileDescriptor(), read, done, read.length - done, offset + done);
             assertArrayEquals(tail, read);
             // A transfer past the declared end is refused by the shared range
             // rule before the provider is reached.
@@ -218,14 +217,14 @@ public final class TorrentSafProviderCancellationTest {
             assertTrue("A same-length replacement must change the inode",
                     before.st_ino != after.st_ino);
             assertFalse("A same-length replacement must not pass the deletion check",
-                    TorrentSafStorageService.sameDocument(before, after,
-                            TorrentSafFixtureProvider.PART_ONE_SIZE));
+                    TorrentSafStorageService.sameDocument(
+                            before, after, TorrentSafFixtureProvider.PART_ONE_SIZE));
             assertFalse(TorrentSafStorageService.sameDocumentIdentity(before, after));
             byte[] original = new byte[64], replaced = new byte[64];
             Os.pread(first.getFileDescriptor(), original, 0, original.length, 0);
             Os.pread(second.getFileDescriptor(), replaced, 0, replaced.length, 0);
-            assertFalse("The replacement carries different bytes",
-                    Arrays.equals(original, replaced));
+            assertFalse(
+                    "The replacement carries different bytes", Arrays.equals(original, replaced));
         }
     }
     @Test

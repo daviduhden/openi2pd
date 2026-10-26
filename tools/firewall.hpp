@@ -181,9 +181,9 @@ inline char AsciiLower (unsigned char ch)
 
 inline bool IsReservedNftWord (std::string_view value)
 {
-	static constexpr std::array<std::string_view, 24> reserved { { "add", "chain", "comment", "counter", "ct",
-		"delete", "drop", "flush", "handle", "hook", "inet", "insert", "ip", "ip6", "list", "meta", "policy",
-		"priority", "queue", "reject", "rule", "table", "tcp", "type" } };
+	static constexpr std::array<std::string_view, 24> reserved { { "add", "chain", "comment", "counter", "ct", "delete",
+		"drop", "flush", "handle", "hook", "inet", "insert", "ip", "ip6", "list", "meta", "policy", "priority", "queue",
+		"reject", "rule", "table", "tcp", "type" } };
 	std::string lower (value.begin (), value.end ());
 	std::transform (lower.begin (), lower.end (), lower.begin (), [] (unsigned char ch) { return AsciiLower (ch); });
 	return std::find (reserved.begin (), reserved.end (), std::string_view (lower)) != reserved.end ();
@@ -296,9 +296,8 @@ inline std::optional<std::string> Windows (const Endpoint & endpoint, const Rend
 		+ options.ruleTag + " " + endpoint.address + ":" + std::to_string (endpoint.port);
 	std::string tagId = options.ruleTag;
 	std::replace_if (
-		tagId.begin (), tagId.end (),
-		[] (unsigned char ch) { return !(IsAsciiAlnum (ch) || ch == '_' || ch == '-' || ch == '.' || ch == '~'); },
-		'_');
+		tagId.begin (), tagId.end (), [] (unsigned char ch)
+		{ return !(IsAsciiAlnum (ch) || ch == '_' || ch == '-' || ch == '.' || ch == '~'); }, '_');
 	const std::string ruleName = "openi2pd_" + std::string (TransportName (endpoint.transport)) + "_" + family + "_"
 		+ tagId + "_" + addressId + "_" + std::to_string (endpoint.port);
 	return "New-NetFirewallRule -Name '" + EscapePowerShell (ruleName) + "' -DisplayName '" + EscapePowerShell (name)

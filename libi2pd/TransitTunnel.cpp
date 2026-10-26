@@ -463,11 +463,9 @@ namespace tunnel
 				// The reply key is unique per legitimate request (it is derived
 				// from the request DH), so a repeat inside the window is a
 				// replay. Reject it before creating a transit tunnel or a reply.
-				if (!m_BuildReplayFilter.CheckAndStore (
-						replyKey, i2p::util::GetMillisecondsSinceEpoch ()))
+				if (!m_BuildReplayFilter.CheckAndStore (replyKey, i2p::util::GetMillisecondsSinceEpoch ()))
 				{
-					LogPrint (
-						eLogWarning, "TransitTunnel: Replayed short build request record ", i, " dropped");
+					LogPrint (eLogWarning, "TransitTunnel: Replayed short build request record ", i, " dropped");
 					return;
 				}
 				if (isEndpoint)
@@ -693,8 +691,7 @@ namespace tunnel
 					return false;
 				// noiseState.m_CK is this record's reply key, unique per
 				// legitimate request. Reject a replay before creating a tunnel.
-				if (!m_BuildReplayFilter.CheckAndStore (
-						noiseState.m_CK, i2p::util::GetMillisecondsSinceEpoch ()))
+				if (!m_BuildReplayFilter.CheckAndStore (noiseState.m_CK, i2p::util::GetMillisecondsSinceEpoch ()))
 				{
 					LogPrint (eLogWarning, "TransitTunnel: Replayed build request record ", i, " dropped");
 					return false;

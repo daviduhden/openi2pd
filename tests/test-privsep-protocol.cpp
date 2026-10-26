@@ -140,12 +140,12 @@ int main ()
 		ErrorCode::TooLarge);
 	// A header-only record one byte over the type ceiling is a size error too.
 	ExpectDecodeError (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 2, 0,
-						 static_cast<uint32_t> (MaxPayloadFor (MessageType::LogRecord) + 1)),
+						   static_cast<uint32_t> (MaxPayloadFor (MessageType::LogRecord) + 1)),
 		ErrorCode::TooLarge);
 	// A header that declares the per-type maximum but carries no payload is a
 	// framing error: the length is legal for the type but absent.
-	ExpectDecodeError (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 2, 0,
-						 static_cast<uint32_t> (MaxPayloadFor (MessageType::LogRecord))),
+	ExpectDecodeError (
+		Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 2, 0, static_cast<uint32_t> (MaxPayloadFor (MessageType::LogRecord))),
 		ErrorCode::Malformed);
 	ExpectDecodeError (Header (PROTOCOL_MAGIC, PROTOCOL_VERSION, 2, 0, 1), ErrorCode::Malformed);
 	{

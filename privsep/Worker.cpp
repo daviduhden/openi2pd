@@ -194,8 +194,8 @@ namespace
 	 *
 	 * Async-signal-safe only (pipe/fcntl/dup2/write/close), no allocation.
 	 */
-	bool WriteWorkerHelloRecord (WorkerRole role, const std::array<uint8_t, WORKER_HELLO_NONCE_SIZE> & nonce,
-		uint32_t uid, uint32_t gid)
+	bool WriteWorkerHelloRecord (
+		WorkerRole role, const std::array<uint8_t, WORKER_HELLO_NONCE_SIZE> & nonce, uint32_t uid, uint32_t gid)
 	{
 		int fds[2] = { -1, -1 };
 #if defined(__linux__)
@@ -279,8 +279,7 @@ namespace
 		struct sigaction defaultAction { };
 		defaultAction.sa_handler = SIG_DFL;
 		sigemptyset (&defaultAction.sa_mask);
-		for (int signal : { SIGTERM, SIGINT, SIGHUP, SIGPIPE, SIGCHLD })
-			::sigaction (signal, &defaultAction, nullptr);
+		for (int signal : { SIGTERM, SIGINT, SIGHUP, SIGPIPE, SIGCHLD }) ::sigaction (signal, &defaultAction, nullptr);
 #if defined(__linux__)
 		// Do not let a setuid/file-capability executable raise privileges
 		// before the worker installs its own seccomp/capability policy.
@@ -329,8 +328,8 @@ namespace
 		if (!PinStandardDescriptors ()) _exit (127);
 		// The record carries the identity the worker actually has, so a partial
 		// drop cannot be hidden from the exec'ed process.
-		if (!WriteWorkerHelloRecord (role, nonce, static_cast<uint32_t> (::geteuid ()),
-				static_cast<uint32_t> (::getegid ())))
+		if (!WriteWorkerHelloRecord (
+				role, nonce, static_cast<uint32_t> (::geteuid ()), static_cast<uint32_t> (::getegid ())))
 			_exit (127);
 		// dup2 cleared FD_CLOEXEC on fd3/fd4/fd5; everything above is foreign.
 		CloseFrom (6);
@@ -347,9 +346,8 @@ namespace
 		// argv[0] is the frozen absolute path, so an exec'ed worker (the
 		// supervisor) can freeze the same path without a PATH or /proc lookup.
 		char fdText[] = "3";
-		char * const argv[] = { const_cast<char *> (executable.c_str ()),
-			const_cast<char *> ("--privsep-worker"), const_cast<char *> (WorkerRoleName (role)), fdText,
-			nullptr };
+		char * const argv[] = { const_cast<char *> (executable.c_str ()), const_cast<char *> ("--privsep-worker"),
+			const_cast<char *> (WorkerRoleName (role)), fdText, nullptr };
 		::execv (executable.c_str (), argv);
 		_exit (127);
 	}
@@ -461,8 +459,7 @@ std::optional<WorkerHelloRecord> DecodeWorkerHello (std::span<const uint8_t> hel
 	const auto role = static_cast<WorkerRole> (hello[0]);
 	if (!WorkerRoleName (role)) return std::nullopt;
 	bool nonZero = false;
-	for (auto byte : hello.subspan (1, WORKER_HELLO_NONCE_SIZE))
-		nonZero = nonZero || byte != 0;
+	for (auto byte : hello.subspan (1, WORKER_HELLO_NONCE_SIZE)) nonZero = nonZero || byte != 0;
 	if (!nonZero) return std::nullopt;
 	WorkerHelloRecord record;
 	record.role = role;
@@ -621,8 +618,7 @@ void SetExecutablePath (std::string path)
 	std::string canonical;
 	if (!ValidateExecutablePath (path, canonical)) canonical.clear ();
 	struct stat status { };
-	const bool haveStatus = !canonical.empty () && stat (canonical.c_str (), &status) == 0
-		&& S_ISREG (status.st_mode);
+	const bool haveStatus = !canonical.empty () && stat (canonical.c_str (), &status) == 0 && S_ISREG (status.st_mode);
 	std::lock_guard lock (g_ExecutableMutex);
 	g_ExecutablePath = std::move (canonical);
 	g_ExecutableDevice = haveStatus ? status.st_dev : 0;
@@ -817,8 +813,7 @@ static i2p::expected<ChildProcess, std::string> SpawnWorkerInternal (
 			|| rootStatus.st_uid != static_cast<uid_t> (credentials.uid) || (rootStatus.st_mode & 0022))
 			return i2p::unexpected (std::string ("worker root is not a safe delegated directory"));
 	}
-	const std::string executable
-		= executableOverride.empty () ? ExecutablePath () : std::string (executableOverride);
+	const std::string executable = executableOverride.empty () ? ExecutablePath () : std::string (executableOverride);
 	if (!IsSpawnableExecutablePath (executable))
 		return i2p::unexpected (std::string ("worker executable path is not frozen"));
 	// Bind the exec'ed role to this spawn. The nonce is generated here and
@@ -858,8 +853,8 @@ static i2p::expected<ChildProcess, std::string> SpawnWorkerInternal (
 	// The worker runs as `credentials.uid` and, for a direct fork, is exactly
 	// `pid`. Binding both closes the stale-creator ambiguity of SO_PEERCRED and
 	// the same-uid frame-injection window.
-	parent.ExpectPeer (PeerExpectation { credentials.uid, credentials.gid, static_cast<uint32_t> (pid), true, true,
-		false, true });
+	parent.ExpectPeer (
+		PeerExpectation { credentials.uid, credentials.gid, static_cast<uint32_t> (pid), true, true, false, true });
 	return ChildProcess::Adopt (pid, std::move (parent));
 }
 

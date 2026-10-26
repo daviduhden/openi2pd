@@ -77,8 +77,9 @@ constexpr uint32_t NonZeroWaitHint (uint32_t requestedMs)
  * job, so the topology is reported *before* the spawn instead of guessing from
  * the assignment error afterwards. Empty when the process is not in a job.
  */
-inline constexpr std::string_view WINDOWS_NESTED_JOB_DIAGNOSTIC =
-	"the service process already belongs to a Job Object; a nested worker job can be rejected by a restrictive parent job";
+inline constexpr std::string_view WINDOWS_NESTED_JOB_DIAGNOSTIC
+	= "the service process already belongs to a Job Object; a nested worker job can be rejected by a restrictive "
+	  "parent job";
 
 constexpr std::string_view NestedJobDiagnostic (bool insideJobObject)
 {
@@ -118,16 +119,11 @@ constexpr std::string_view WindowsWorkerFailureReason (WindowsWorkerFailureKind 
 {
 	switch (kind)
 	{
-	case WindowsWorkerFailureKind::Spawn:
-		return "worker spawn failed";
-	case WindowsWorkerFailureKind::Assign:
-		return "worker job assignment failed";
-	case WindowsWorkerFailureKind::Accept:
-		return "worker authentication failed";
-	case WindowsWorkerFailureKind::Exit:
-		return "worker exited";
-	case WindowsWorkerFailureKind::Budget:
-		return "restart budget exhausted";
+	case WindowsWorkerFailureKind::Spawn: return "worker spawn failed";
+	case WindowsWorkerFailureKind::Assign: return "worker job assignment failed";
+	case WindowsWorkerFailureKind::Accept: return "worker authentication failed";
+	case WindowsWorkerFailureKind::Exit: return "worker exited";
+	case WindowsWorkerFailureKind::Budget: return "restart budget exhausted";
 	}
 	return "worker failure";
 }
@@ -153,10 +149,7 @@ public:
 	uint32_t BeginGeneration () { return ++m_Generation; }
 
 	/** Account one authenticated worker exit; nullopt when the budget is spent. */
-	std::optional<std::chrono::milliseconds> NoteExit (Clock::time_point now)
-	{
-		return m_Budget.NoteFailure (now);
-	}
+	std::optional<std::chrono::milliseconds> NoteExit (Clock::time_point now) { return m_Budget.NoteFailure (now); }
 
 	/** Reset the ladder when the current worker served the stable period. */
 	bool NoteStable (Clock::time_point now) { return m_Budget.NoteStable (now); }
@@ -198,8 +191,8 @@ struct WindowsWorkerFailureOutcome
  * budget becomes `Budget` (terminal). Setup failures are terminal immediately
  * and leave the generation untouched.
  */
-inline WindowsWorkerFailureOutcome PlanWindowsWorkerFailure (WindowsWorkerRestartPolicy & policy,
-	WindowsWorkerFailureKind kind, std::chrono::steady_clock::time_point now)
+inline WindowsWorkerFailureOutcome PlanWindowsWorkerFailure (
+	WindowsWorkerRestartPolicy & policy, WindowsWorkerFailureKind kind, std::chrono::steady_clock::time_point now)
 {
 	WindowsWorkerFailureOutcome outcome;
 	outcome.generation = policy.Generation ();
@@ -236,18 +229,10 @@ inline void PublishWindowsWorkerTransition (SupervisorStatus & status, std::stri
 {
 	switch (state)
 	{
-	case SupervisorWorkerState::Starting:
-		status.NoteStarting (worker, generation, reason);
-		return;
-	case SupervisorWorkerState::Ready:
-		status.NoteReady (worker, generation, restarts);
-		return;
-	case SupervisorWorkerState::Restarting:
-		status.NoteRestarting (worker, generation, restarts, reason);
-		return;
-	case SupervisorWorkerState::Failed:
-		status.NoteFailed (worker, generation, restarts, reason);
-		return;
+	case SupervisorWorkerState::Starting: status.NoteStarting (worker, generation, reason); return;
+	case SupervisorWorkerState::Ready: status.NoteReady (worker, generation, restarts); return;
+	case SupervisorWorkerState::Restarting: status.NoteRestarting (worker, generation, restarts, reason); return;
+	case SupervisorWorkerState::Failed: status.NoteFailed (worker, generation, restarts, reason); return;
 	}
 }
 
@@ -275,18 +260,12 @@ constexpr std::string_view WindowsWorkerSupervisorName (WindowsWorkerRole role)
 {
 	switch (role)
 	{
-	case WindowsWorkerRole::Supervisor:
-		return "windows-supervisor";
-	case WindowsWorkerRole::Log:
-		return "windows-log";
-	case WindowsWorkerRole::Storage:
-		return "windows-storage";
-	case WindowsWorkerRole::Network:
-		return "windows-network";
-	case WindowsWorkerRole::Crypto:
-		return "windows-crypto";
-	case WindowsWorkerRole::Admin:
-		return "windows-admin";
+	case WindowsWorkerRole::Supervisor: return "windows-supervisor";
+	case WindowsWorkerRole::Log: return "windows-log";
+	case WindowsWorkerRole::Storage: return "windows-storage";
+	case WindowsWorkerRole::Network: return "windows-network";
+	case WindowsWorkerRole::Crypto: return "windows-crypto";
+	case WindowsWorkerRole::Admin: return "windows-admin";
 	}
 	return "windows-worker";
 }

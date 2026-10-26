@@ -60,7 +60,8 @@ void TestRecordPlan ()
 			else
 				assert (!plan.insertPhonyRecord);
 			const int hopsIncludingPhony = hops + (plan.insertPhonyRecord ? 1 : 0);
-			assert (plan.numRecords == (hopsIncludingPhony <= STANDARD_NUM_RECORDS ? STANDARD_NUM_RECORDS : MAX_NUM_RECORDS));
+			assert (plan.numRecords
+				== (hopsIncludingPhony <= STANDARD_NUM_RECORDS ? STANDARD_NUM_RECORDS : MAX_NUM_RECORDS));
 			assert (plan.numRecords == STANDARD_NUM_RECORDS || plan.numRecords == MAX_NUM_RECORDS);
 			// The invariant that was violated before the guard existed.
 			assert (hopsIncludingPhony <= plan.numRecords);

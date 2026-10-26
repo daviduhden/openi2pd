@@ -596,8 +596,7 @@ int RunLogWorker (int fd)
 	channel.SetEnforcementPolicy (EnforcementPolicy::Endpoint);
 #if defined(__linux__)
 	// Restrict the log role before it reads its configuration frame.
-	if (auto lockdown = ApplyLinuxIpcLockdown (GetLinuxSandboxProfile (WorkerClass::Log)); !lockdown)
-		return 1;
+	if (auto lockdown = ApplyLinuxIpcLockdown (GetLinuxSandboxProfile (WorkerClass::Log)); !lockdown) return 1;
 #endif
 	auto peer = channel.PeerUid ();
 	if (!peer || !IsAllowedParentUid (*peer))
@@ -642,7 +641,8 @@ int RunLogWorker (int fd)
 			closeMessageFd ();
 			if (++violations > Channel::MAX_PROTOCOL_VIOLATIONS) return 1;
 			if (!channel.Send ({ MessageType::Error, message.requestId,
-					   EncodeError (message.type, ErrorCode::NotAuthorized, "operation is not allowed on the log endpoint") },
+								   EncodeError (message.type, ErrorCode::NotAuthorized,
+									   "operation is not allowed on the log endpoint") },
 					500))
 				return 1;
 			continue;
@@ -659,7 +659,7 @@ int RunLogWorker (int fd)
 				closeMessageFd ();
 				if (++violations > Channel::MAX_PROTOCOL_VIOLATIONS) return 1;
 				if (!channel.Send ({ MessageType::Error, message.requestId,
-						   EncodeError (message.type, ErrorCode::BadField, "duplicate log configuration") },
+									   EncodeError (message.type, ErrorCode::BadField, "duplicate log configuration") },
 						500))
 					return 1;
 				continue;

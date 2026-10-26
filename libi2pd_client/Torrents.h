@@ -219,7 +219,10 @@ namespace torrents
 	// BEP 3 requests carry their own length and the final block of a piece is
 	// shorter than REQUEST_BLOCK_SIZE, so the nominal block size must never be
 	// used to account a variable-length block.
-	constexpr size_t BlockTransferBytes (size_t payloadLength) { return payloadLength; }
+	constexpr size_t BlockTransferBytes (size_t payloadLength)
+	{
+		return payloadLength;
+	}
 
 	// A piece counts as transferred progress only when its bytes are present,
 	// hashed against the metainfo and flushed to storage. The same rule guards
@@ -716,8 +719,8 @@ namespace torrents
 		// backoff after a previous attempt is still running, after the failure
 		// budget is spent, or when the monotonic clock went backwards (a
 		// regression must never wrap `now - added` into a fresh lifetime).
-		static constexpr bool IsUsable (uint64_t added, uint64_t lastAttempt, uint32_t failures, uint64_t now,
-			PeerConnectionOrigin origin)
+		static constexpr bool IsUsable (
+			uint64_t added, uint64_t lastAttempt, uint32_t failures, uint64_t now, PeerConnectionOrigin origin)
 		{
 			if (!now || !added || now < added) return false;
 			if (now - added >= Ttl (origin)) return false;
@@ -731,8 +734,8 @@ namespace torrents
 	class PeerConnection;
 	class Torrent final
 	{
-		using TrackerStats = std::tuple<std::unordered_set<i2p::data::IdentHash>, int, uint64_t, int, int,
-			uint64_t, std::string, int, int>;
+		using TrackerStats = std::tuple<std::unordered_set<i2p::data::IdentHash>, int, uint64_t, int, int, uint64_t,
+			std::string, int, int>;
 		// (peers, interval, next tracker request time in monotonic milliseconds,
 		//  seeders, leechers, last update time in seconds since epoch, error,
 		//  minimum interval announced by the tracker in milliseconds,
@@ -942,8 +945,7 @@ namespace torrents
 		// history). At MAX_PEER_CANDIDATES it expires dead/old entries and then
 		// evicts one; it fails only if nothing can be evicted. A private,
 		// stopped or removed torrent never accepts candidates.
-		bool AddPeerCandidate (
-			const i2p::data::IdentHash & peer, PeerConnectionOrigin origin, uint64_t nowSeconds);
+		bool AddPeerCandidate (const i2p::data::IdentHash & peer, PeerConnectionOrigin origin, uint64_t nowSeconds);
 		// Charges the per-origin fixed window (100 PEX and 100 DHT candidates
 		// per 60 s, tracked independently) and returns false when `count` does
 		// not fit. Tracker and incoming origins are not peer-supplied gossip and

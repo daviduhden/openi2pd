@@ -910,8 +910,7 @@ namespace client
 
 	// `listenProtocol` is the effective receive protocol from
 	// SAMStyleListenProtocol(), not the raw LISTEN_PROTOCOL option.
-	inline SAMSubsessionKey MakeSAMSubsessionKey (
-		SAMSessionType type, uint8_t listenProtocol, uint16_t listenPort)
+	inline SAMSubsessionKey MakeSAMSubsessionKey (SAMSessionType type, uint8_t listenProtocol, uint16_t listenPort)
 	{
 		SAMSubsessionKey key;
 		key.type = type;
@@ -957,8 +956,8 @@ namespace client
 	// `sendProtocol` is the already parsed/defaulted PROTOCOL value. On a RAW
 	// session `listenProtocol` receives the effective receive key; a DATAGRAM
 	// session ignores it because SAMStyleListenProtocol() supplies 17/19/20.
-	inline bool ResolveSAMListenProtocol (const i2p::util::Mapping & params, SAMSessionType type,
-		uint8_t sendProtocol, uint8_t & listenProtocol)
+	inline bool ResolveSAMListenProtocol (
+		const i2p::util::Mapping & params, SAMSessionType type, uint8_t sendProtocol, uint8_t & listenProtocol)
 	{
 		listenProtocol = sendProtocol; // SAM 3.3: LISTEN_PROTOCOL defaults to PROTOCOL
 		const bool present = params.Contains (SAM_PARAM_LISTEN_PROTOCOL);
@@ -1139,8 +1138,7 @@ namespace client
 		// Declared before the socket list and shared with every admitted
 		// SAMSocket, so a socket destroyed after the bridge (for example by the
 		// io_context releasing a late handler) only touches the counter.
-		std::shared_ptr<std::atomic<std::size_t>> m_ControlConnections
-			= std::make_shared<std::atomic<std::size_t>> (0);
+		std::shared_ptr<std::atomic<std::size_t>> m_ControlConnections = std::make_shared<std::atomic<std::size_t>> (0);
 		mutable std::mutex m_OpenSocketsMutex;
 		std::list<std::shared_ptr<SAMSocket>> m_OpenSockets;
 		uint8_t m_DatagramReceiveBuffer[i2p::datagram::MAX_DATAGRAM_SIZE + 1];

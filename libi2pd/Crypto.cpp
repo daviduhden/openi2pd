@@ -175,8 +175,8 @@ namespace crypto
 		}
 		OSSL_PARAM * params = built ? OSSL_PARAM_BLD_to_param (bld) : nullptr;
 		EVP_PKEY_CTX * ctx = params ? EVP_PKEY_CTX_new_from_name (nullptr, "DSA", nullptr) : nullptr;
-		const bool ok = ctx && EVP_PKEY_fromdata_init (ctx) == 1
-			&& EVP_PKEY_fromdata (ctx, &pkey, selection, params) == 1;
+		const bool ok
+			= ctx && EVP_PKEY_fromdata_init (ctx) == 1 && EVP_PKEY_fromdata (ctx, &pkey, selection, params) == 1;
 		if (!ok && pkey)
 		{
 			EVP_PKEY_free (pkey);
@@ -1306,20 +1306,16 @@ namespace crypto
 		}
 		OSSL_PARAM params[6];
 		size_t n = 0;
+		params[n++] = OSSL_PARAM_construct_utf8_string (OSSL_KDF_PARAM_DIGEST, const_cast<char *> ("SHA256"), 0);
 		params[n++] = OSSL_PARAM_construct_utf8_string (
-			OSSL_KDF_PARAM_DIGEST, const_cast<char *> ("SHA256"), 0);
-		params[n++] = OSSL_PARAM_construct_utf8_string (OSSL_KDF_PARAM_MODE,
-			const_cast<char *> (zeroKey ? "EXPAND_ONLY" : "EXTRACT_AND_EXPAND"), 0);
+			OSSL_KDF_PARAM_MODE, const_cast<char *> (zeroKey ? "EXPAND_ONLY" : "EXTRACT_AND_EXPAND"), 0);
 		if (!zeroKey)
 		{
-			params[n++] = OSSL_PARAM_construct_octet_string (
-				OSSL_KDF_PARAM_SALT, const_cast<uint8_t *> (salt), 32);
-			params[n++] = OSSL_PARAM_construct_octet_string (
-				OSSL_KDF_PARAM_KEY, const_cast<uint8_t *> (key), keyLen);
+			params[n++] = OSSL_PARAM_construct_octet_string (OSSL_KDF_PARAM_SALT, const_cast<uint8_t *> (salt), 32);
+			params[n++] = OSSL_PARAM_construct_octet_string (OSSL_KDF_PARAM_KEY, const_cast<uint8_t *> (key), keyLen);
 		}
 		else
-			params[n++] = OSSL_PARAM_construct_octet_string (
-				OSSL_KDF_PARAM_KEY, tempKey, sizeof (tempKey));
+			params[n++] = OSSL_PARAM_construct_octet_string (OSSL_KDF_PARAM_KEY, tempKey, sizeof (tempKey));
 		if (!info.empty ())
 			params[n++] = OSSL_PARAM_construct_octet_string (
 				OSSL_KDF_PARAM_INFO, const_cast<char *> (info.data ()), info.size ());
@@ -1605,14 +1601,13 @@ namespace crypto
 			EVP_MD_CTX * md = EVP_MD_CTX_new ();
 			EVP_PKEY_CTX * pctx = nullptr;
 			size_t macSize = 16;
-			OSSL_PARAM params[2] = {
-				OSSL_PARAM_construct_size_t (OSSL_MAC_PARAM_SIZE, &macSize), OSSL_PARAM_construct_end ()};
+			OSSL_PARAM params[2]
+				= { OSSL_PARAM_construct_size_t (OSSL_MAC_PARAM_SIZE, &macSize), OSSL_PARAM_construct_end () };
 			uint8_t input[32] = { 0 }, output[16] = { 0 };
 			size_t outputLen = sizeof (output);
 			bool ok = md && EVP_DigestSignInit (md, &pctx, nullptr, nullptr, key) == 1
 				&& EVP_PKEY_CTX_set_params (pctx, params) == 1
-				&& EVP_DigestSign (md, output, &outputLen, input, sizeof (input)) == 1
-				&& outputLen == sizeof (output);
+				&& EVP_DigestSign (md, output, &outputLen, input, sizeof (input)) == 1 && outputLen == sizeof (output);
 			if (md) EVP_MD_CTX_free (md);
 			EVP_PKEY_free (key);
 			OPENSSL_cleanse (output, sizeof (output));

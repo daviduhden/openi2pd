@@ -54,25 +54,25 @@ struct Options
 void Usage (const char * program, std::ostream & out)
 {
 	out << "usage: " << program
-			  << " [-6] [-p] [-y] [--firewall=BACKEND] [NFT OPTIONS] routerinfo.dat...\n"
-				 "\n"
-				 "Print addresses from one or more RouterInfo files.\n"
-				 "\n"
-				 "  -6                     include IPv6 addresses\n"
-				 "  -p                     print ports in address listing (listing only; ignored with a backend)\n"
-				 "  -y                     include Yggdrasil addresses\n"
-				 "  -f                     print legacy iptables OUTPUT fragments (default backend)\n"
-				 "  --firewall=iptables    print full iptables/ip6tables commands\n"
-				 "  --firewall=nftables    print nft(8) commands\n"
-				 "  --firewall=windows     print PowerShell New-NetFirewallRule commands\n"
-				 "  --firewall=pf          print OpenBSD pf.conf rules\n"
-				 "  --nft-family=FAMILY    nftables family: inet (default), ip or ip6\n"
-				 "  --nft-table=NAME       nftables table (default: filter)\n"
-				 "  --nft-chain=NAME       nftables output chain (default: output)\n"
-				 "  -h, --help             this help\n"
-				 "\n"
-				 "All backends can be generated on any platform. The tool only writes\n"
-				 "text and never executes or reloads a firewall.\n";
+		<< " [-6] [-p] [-y] [--firewall=BACKEND] [NFT OPTIONS] routerinfo.dat...\n"
+		   "\n"
+		   "Print addresses from one or more RouterInfo files.\n"
+		   "\n"
+		   "  -6                     include IPv6 addresses\n"
+		   "  -p                     print ports in address listing (listing only; ignored with a backend)\n"
+		   "  -y                     include Yggdrasil addresses\n"
+		   "  -f                     print legacy iptables OUTPUT fragments (default backend)\n"
+		   "  --firewall=iptables    print full iptables/ip6tables commands\n"
+		   "  --firewall=nftables    print nft(8) commands\n"
+		   "  --firewall=windows     print PowerShell New-NetFirewallRule commands\n"
+		   "  --firewall=pf          print OpenBSD pf.conf rules\n"
+		   "  --nft-family=FAMILY    nftables family: inet (default), ip or ip6\n"
+		   "  --nft-table=NAME       nftables table (default: filter)\n"
+		   "  --nft-chain=NAME       nftables output chain (default: output)\n"
+		   "  -h, --help             this help\n"
+		   "\n"
+		   "All backends can be generated on any platform. The tool only writes\n"
+		   "text and never executes or reloads a firewall.\n";
 }
 
 std::optional<Backend> ParseBackend (std::string_view name)

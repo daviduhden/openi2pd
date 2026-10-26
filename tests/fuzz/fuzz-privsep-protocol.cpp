@@ -63,8 +63,7 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t * data, size_t size)
 		if (encoded)
 		{
 			auto decoded = DecodeDataStorageRequest (*encoded);
-			if (!decoded || decoded->kind != kind || decoded->name != name
-				|| decoded->payload.size () != size)
+			if (!decoded || decoded->kind != kind || decoded->name != name || decoded->payload.size () != size)
 				std::abort ();
 		}
 	}

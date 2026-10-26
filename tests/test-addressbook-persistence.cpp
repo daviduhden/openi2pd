@@ -160,8 +160,7 @@ int main ()
 #ifndef _WIN32
 		assert (!book.FindAddress ("evil.i2p"));
 #endif
-		assert (book.AddAddressChecked ("site.i2p", destination, false)
-			== i2p::client::AddressAddResult::Ok);
+		assert (book.AddAddressChecked ("site.i2p", destination, false) == i2p::client::AddressAddResult::Ok);
 		assert (!fs::is_symlink (indexPath));
 		const auto contents = ReadFile (indexPath);
 		assert (contents == "site.i2p," + b32 + "\n");
@@ -194,8 +193,7 @@ int main ()
 		PlaceSymlink (victim, etagPath);
 		PlaceSymlink (victim, sourcesPath);
 #endif
-		assert (book.AddAddressChecked ("artifact.i2p", destination, false)
-			== i2p::client::AddressAddResult::Ok);
+		assert (book.AddAddressChecked ("artifact.i2p", destination, false) == i2p::client::AddressAddResult::Ok);
 		assert (!fs::is_symlink (identityPath));
 		const auto identity = ReadFile (identityPath);
 		assert (identity.size () == keys.GetPublic ()->GetFullLen ());

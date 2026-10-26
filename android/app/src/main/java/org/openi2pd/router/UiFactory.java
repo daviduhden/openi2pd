@@ -24,7 +24,8 @@ import androidx.core.view.ViewCompat;
 import com.google.android.material.button.MaterialButton;
 
 final class UiFactory {
-    private UiFactory() {}
+    private UiFactory() {
+    }
 
     /**
      * Scroll container plus its centred, width-capped column. The programmatic
@@ -42,9 +43,9 @@ final class UiFactory {
         int inset = context.getResources().getDimensionPixelSize(R.dimen.screen_padding);
         content.setPadding(inset, inset, inset,
                 context.getResources().getDimensionPixelSize(R.dimen.screen_padding_bottom));
-        scroll.addView(content, new FrameLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT,
-                Gravity.CENTER_HORIZONTAL));
+        scroll.addView(content,
+                new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT,
+                        ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER_HORIZONTAL));
         return new Column(scroll, content);
     }
 

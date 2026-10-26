@@ -18,14 +18,14 @@
 
 namespace
 {
-	void Reset (int & index)
-	{
-		optarg = nullptr;
-		optind = 1;
-		optopt = 0;
-		opterr = 0;
-		index = 0;
-	}
+void Reset (int & index)
+{
+	optarg = nullptr;
+	optind = 1;
+	optopt = 0;
+	opterr = 0;
+	index = 0;
+}
 }
 
 int main ()
@@ -102,8 +102,7 @@ int main ()
 
 	// A long option that requires an argument and has none reports '?'.
 	{
-		struct option options[] = { { "threads", required_argument, nullptr, 't' },
-			{ nullptr, 0, nullptr, 0 } };
+		struct option options[] = { { "threads", required_argument, nullptr, 't' }, { nullptr, 0, nullptr, 0 } };
 		char arg0[] = "tool";
 		char arg1[] = "--threads";
 		char * argv[] = { arg0, arg1, nullptr };

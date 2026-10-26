@@ -92,8 +92,8 @@ int main ()
 	// shorter than the nominal block size. That wire length is what a peer and
 	// the torrent must be charged.
 	std::string small (8192, 'x');
-	auto single = Torrent::CreateV1 ("single", { { "", small.size () } }, MIN_PIECE_LENGTH,
-		{ HashBytes (small.data (), small.size ()) });
+	auto single = Torrent::CreateV1 (
+		"single", { { "", small.size () } }, MIN_PIECE_LENGTH, { HashBytes (small.data (), small.size ()) });
 	assert (single && single->GetNumPieces () == 1);
 
 	Piece & lastPiece = single->GetPiece (0);
@@ -121,7 +121,8 @@ int main ()
 	lastPiece.ReleaseBlock (againOffset, lastPiece.GetBlockEpoch ());
 	auto [releasedOffset, releasedLength] = lastPiece.GetNextBlockToRequest ();
 	assert (releasedOffset == 0 && releasedLength == small.size ());
-	assert (lastPiece.BlockReceived (reinterpret_cast<const uint8_t *> (small.data ()), releasedLength, releasedOffset));
+	assert (
+		lastPiece.BlockReceived (reinterpret_cast<const uint8_t *> (small.data ()), releasedLength, releasedOffset));
 	assert (lastPiece.VerifyHash ());
 
 	// --- per-file progress with empty, shared and saving pieces ------------
@@ -134,7 +135,8 @@ int main ()
 	payload.append (8192, 'c');
 	auto torrent = Torrent::CreateV1 ("scheduler", { { "a", 8192 }, { "empty", 0 }, { "b", 16384 }, { "c", 8192 } },
 		MIN_PIECE_LENGTH,
-		{ HashBytes (payload.data (), MIN_PIECE_LENGTH), HashBytes (payload.data () + MIN_PIECE_LENGTH, MIN_PIECE_LENGTH) });
+		{ HashBytes (payload.data (), MIN_PIECE_LENGTH),
+			HashBytes (payload.data () + MIN_PIECE_LENGTH, MIN_PIECE_LENGTH) });
 	assert (torrent && torrent->GetNumPieces () == 2 && torrent->GetFiles ().size () == 4);
 
 	// Freshly created pieces are incomplete and never verified, so no file may

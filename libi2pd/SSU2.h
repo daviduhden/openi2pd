@@ -220,8 +220,8 @@ namespace transport
 		// eSSU2TerminationReasonConnectionLimits (19) instead of creating
 		// unbounded session state. Packets without a handshake context are
 		// dropped; the temporary session is never inserted into m_Sessions.
-		void RejectInboundHandshake (uint64_t connID, uint8_t * buf, size_t len,
-			const boost::asio::ip::udp::endpoint & senderEndpoint);
+		void RejectInboundHandshake (
+			uint64_t connID, uint8_t * buf, size_t len, const boost::asio::ip::udp::endpoint & senderEndpoint);
 		void ConnectThroughIntroducer (std::shared_ptr<SSU2Session> session);
 		std::vector<std::shared_ptr<SSU2Session>> FindIntroducers (
 			int maxNumIntroducers, bool v4, const std::unordered_set<i2p::data::IdentHash> & excluded);

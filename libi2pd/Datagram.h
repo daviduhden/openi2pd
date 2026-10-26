@@ -345,9 +345,8 @@ namespace datagram
 				Raw
 			};
 			friend class DatagramDestination;
-			ReceiverRegistration (
-				std::weak_ptr<DatagramDestination> destination, std::weak_ptr<void> slot, uint16_t port,
-				ReceiverRegistration::Kind kind, uint8_t protocol = 0)
+			ReceiverRegistration (std::weak_ptr<DatagramDestination> destination, std::weak_ptr<void> slot,
+				uint16_t port, ReceiverRegistration::Kind kind, uint8_t protocol = 0)
 				: m_Destination (std::move (destination))
 				, m_Slot (std::move (slot))
 				, m_Port (port)
@@ -372,8 +371,7 @@ namespace datagram
 		// the session's version; an explicit V1/V2/V3 overrides it so a SAM
 		// subsession style is not frozen by the destination's default.
 		void SendDatagramTo (const uint8_t * payload, size_t len, const i2p::data::IdentHash & ident,
-			uint16_t fromPort = 0, uint16_t toPort = 0,
-			DatagramVersion version = eDatagramDefault);
+			uint16_t fromPort = 0, uint16_t toPort = 0, DatagramVersion version = eDatagramDefault);
 		void SendRawDatagramTo (const uint8_t * payload, size_t len, const i2p::data::IdentHash & ident,
 			uint16_t fromPort = 0, uint16_t toPort = 0, uint8_t protocol = DATAGRAM_RAW_PROTOCOL);
 		// Send-time entry points may be called from SAM socket threads. The

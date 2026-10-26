@@ -61,23 +61,22 @@ namespace
 	// shift a capability row.
 	static_assert (WINDOWS_ROLE_COUNT == WINDOWS_ISOLATION_ROLE_COUNT,
 		"the Windows worker roles drifted from the capability mapping");
-	static_assert (static_cast<uint8_t> (WindowsWorkerRole::Supervisor)
-			== static_cast<uint8_t> (WindowsIsolationRole::Supervisor),
+	static_assert (
+		static_cast<uint8_t> (WindowsWorkerRole::Supervisor) == static_cast<uint8_t> (WindowsIsolationRole::Supervisor),
 		"Windows role order drifted: Supervisor");
-	static_assert (static_cast<uint8_t> (WindowsWorkerRole::Log)
-			== static_cast<uint8_t> (WindowsIsolationRole::Log),
+	static_assert (static_cast<uint8_t> (WindowsWorkerRole::Log) == static_cast<uint8_t> (WindowsIsolationRole::Log),
 		"Windows role order drifted: Log");
-	static_assert (static_cast<uint8_t> (WindowsWorkerRole::Storage)
-			== static_cast<uint8_t> (WindowsIsolationRole::Storage),
+	static_assert (
+		static_cast<uint8_t> (WindowsWorkerRole::Storage) == static_cast<uint8_t> (WindowsIsolationRole::Storage),
 		"Windows role order drifted: Storage");
-	static_assert (static_cast<uint8_t> (WindowsWorkerRole::Network)
-			== static_cast<uint8_t> (WindowsIsolationRole::Network),
+	static_assert (
+		static_cast<uint8_t> (WindowsWorkerRole::Network) == static_cast<uint8_t> (WindowsIsolationRole::Network),
 		"Windows role order drifted: Network");
-	static_assert (static_cast<uint8_t> (WindowsWorkerRole::Crypto)
-			== static_cast<uint8_t> (WindowsIsolationRole::Crypto),
+	static_assert (
+		static_cast<uint8_t> (WindowsWorkerRole::Crypto) == static_cast<uint8_t> (WindowsIsolationRole::Crypto),
 		"Windows role order drifted: Crypto");
-	static_assert (static_cast<uint8_t> (WindowsWorkerRole::Admin)
-			== static_cast<uint8_t> (WindowsIsolationRole::Admin),
+	static_assert (
+		static_cast<uint8_t> (WindowsWorkerRole::Admin) == static_cast<uint8_t> (WindowsIsolationRole::Admin),
 		"Windows role order drifted: Admin");
 
 	const wchar_t * RoleToken (WindowsWorkerRole role)
@@ -142,8 +141,7 @@ namespace
 		if (HRESULT_FACILITY (result) == FACILITY_WIN32)
 			return Win32ErrorText (static_cast<DWORD> (HRESULT_CODE (result)));
 		std::ostringstream text;
-		text << "HRESULT 0x" << std::hex << std::setw (8) << std::setfill ('0')
-			 << static_cast<unsigned long> (result);
+		text << "HRESULT 0x" << std::hex << std::setw (8) << std::setfill ('0') << static_cast<unsigned long> (result);
 		return text.str ();
 	}
 
@@ -170,14 +168,12 @@ namespace
 	 */
 	bool IsAbsoluteFilesystemPath (const std::wstring & path)
 	{
-		if (path.size () >= 3 && IsAsciiLetter (path[0]) && path[1] == L':'
-			&& (path[2] == L'\\' || path[2] == L'/'))
+		if (path.size () >= 3 && IsAsciiLetter (path[0]) && path[1] == L':' && (path[2] == L'\\' || path[2] == L'/'))
 			return true;
-		const bool leadingPair = path.size () >= 2 && (path[0] == L'\\' || path[0] == L'/')
-			&& (path[1] == L'\\' || path[1] == L'/');
+		const bool leadingPair
+			= path.size () >= 2 && (path[0] == L'\\' || path[0] == L'/') && (path[1] == L'\\' || path[1] == L'/');
 		if (!leadingPair) return false;
-		const bool deviceNamespace
-			= path.size () >= 4 && path[2] == L'.' && (path[3] == L'\\' || path[3] == L'/');
+		const bool deviceNamespace = path.size () >= 4 && path[2] == L'.' && (path[3] == L'\\' || path[3] == L'/');
 		return !deviceNamespace;
 	}
 
@@ -315,8 +311,7 @@ struct WindowsAppContainer::Impl
 		const auto isolation = GetWindowsRoleIsolation (role);
 		if (!isolation.appContainer)
 		{
-			error = std::string ("worker role '") + NarrowAscii (RoleToken (role))
-				+ "' must not use an AppContainer";
+			error = std::string ("worker role '") + NarrowAscii (RoleToken (role)) + "' must not use an AppContainer";
 			return;
 		}
 		// The probe is the single authority for availability; without it the call
@@ -331,8 +326,7 @@ struct WindowsAppContainer::Impl
 
 		name = ProfileName (role);
 		lowPrivilege = isolation.lowPrivilegeAppContainer;
-		if (isolation.internetClient && !AppendCapability (WinCapabilityInternetClientSid, capabilities, error))
-			return;
+		if (isolation.internetClient && !AppendCapability (WinCapabilityInternetClientSid, capabilities, error)) return;
 		if (isolation.privateNetworkClientServer
 			&& !AppendCapability (WinCapabilityPrivateNetworkClientServerSid, capabilities, error))
 			return;
@@ -367,8 +361,8 @@ struct WindowsAppContainer::Impl
 		}
 		if (FAILED (result))
 		{
-			error = std::string ("AppContainer profile for role '") + NarrowAscii (RoleToken (role)) + "': "
-				+ HResultText (result);
+			error = std::string ("AppContainer profile for role '") + NarrowAscii (RoleToken (role))
+				+ "': " + HResultText (result);
 			if (profileSid) LocalFree (profileSid);
 			return;
 		}
@@ -518,10 +512,9 @@ i2p::expected<void, std::string> GrantAppContainerPath (
 	std::wstring target = path;
 	PACL existing = nullptr;
 	PSECURITY_DESCRIPTOR descriptor = nullptr;
-	const DWORD queried = GetNamedSecurityInfoW (target.data (), SE_FILE_OBJECT, DACL_SECURITY_INFORMATION, nullptr,
-		nullptr, &existing, nullptr, &descriptor);
-	if (queried != ERROR_SUCCESS)
-		return i2p::unexpected ("GetNamedSecurityInfo: " + Win32ErrorText (queried));
+	const DWORD queried = GetNamedSecurityInfoW (
+		target.data (), SE_FILE_OBJECT, DACL_SECURITY_INFORMATION, nullptr, nullptr, &existing, nullptr, &descriptor);
+	if (queried != ERROR_SUCCESS) return i2p::unexpected ("GetNamedSecurityInfo: " + Win32ErrorText (queried));
 	LocalPtr descriptorGuard (descriptor);
 	if (!descriptor) return i2p::unexpected ("GetNamedSecurityInfo returned no security descriptor");
 	if (!existing) return i2p::unexpected ("AppContainer grant path has a null DACL; refusing to grant on it");
@@ -545,8 +538,7 @@ i2p::expected<void, std::string> GrantAppContainerPath (
 
 	PACL merged = nullptr;
 	const DWORD combined = SetEntriesInAclW (1, &access, existing, &merged);
-	if (combined != ERROR_SUCCESS)
-		return i2p::unexpected ("SetEntriesInAcl: " + Win32ErrorText (combined));
+	if (combined != ERROR_SUCCESS) return i2p::unexpected ("SetEntriesInAcl: " + Win32ErrorText (combined));
 	LocalPtr mergedGuard (merged);
 	if (!merged) return i2p::unexpected ("SetEntriesInAcl returned no ACL");
 
@@ -558,10 +550,9 @@ i2p::expected<void, std::string> GrantAppContainerPath (
 		// parent start contributing inherited entries again.
 		information |= PROTECTED_DACL_SECURITY_INFORMATION;
 
-	const DWORD applied = SetNamedSecurityInfoW (
-		target.data (), SE_FILE_OBJECT, information, nullptr, nullptr, merged, nullptr);
-	if (applied != ERROR_SUCCESS)
-		return i2p::unexpected ("SetNamedSecurityInfo: " + Win32ErrorText (applied));
+	const DWORD applied
+		= SetNamedSecurityInfoW (target.data (), SE_FILE_OBJECT, information, nullptr, nullptr, merged, nullptr);
+	if (applied != ERROR_SUCCESS) return i2p::unexpected ("SetNamedSecurityInfo: " + Win32ErrorText (applied));
 	return { };
 }
 

@@ -62,24 +62,15 @@ constexpr const char * CapabilityName (Capability capability)
 {
 	switch (capability)
 	{
-	case Capability::ExternalNetwork:
-		return "external-network";
-	case Capability::PersistentWrite:
-		return "persistent-write";
-	case Capability::FilesystemRead:
-		return "filesystem-read";
-	case Capability::Signal:
-		return "signal";
-	case Capability::Exec:
-		return "exec";
-	case Capability::FdPassSend:
-		return "fd-pass-send";
-	case Capability::FdPassReceive:
-		return "fd-pass-receive";
-	case Capability::Ipc:
-		return "ipc";
-	case Capability::Count:
-		break;
+	case Capability::ExternalNetwork: return "external-network";
+	case Capability::PersistentWrite: return "persistent-write";
+	case Capability::FilesystemRead: return "filesystem-read";
+	case Capability::Signal: return "signal";
+	case Capability::Exec: return "exec";
+	case Capability::FdPassSend: return "fd-pass-send";
+	case Capability::FdPassReceive: return "fd-pass-receive";
+	case Capability::Ipc: return "ipc";
+	case Capability::Count: break;
 	}
 	return "unknown";
 }
@@ -109,26 +100,16 @@ constexpr const char * ProcessRoleName (ProcessRole role)
 {
 	switch (role)
 	{
-	case ProcessRole::Core:
-		return "core";
-	case ProcessRole::Supervisor:
-		return "supervisor";
-	case ProcessRole::Log:
-		return "log";
-	case ProcessRole::RouterStorage:
-		return "router-storage";
-	case ProcessRole::DataStorage:
-		return "data-storage";
-	case ProcessRole::TorrentStorage:
-		return "torrent-storage";
-	case ProcessRole::StorageBroker:
-		return "storage-broker";
-	case ProcessRole::Network:
-		return "network";
-	case ProcessRole::Crypto:
-		return "crypto";
-	case ProcessRole::Count:
-		break;
+	case ProcessRole::Core: return "core";
+	case ProcessRole::Supervisor: return "supervisor";
+	case ProcessRole::Log: return "log";
+	case ProcessRole::RouterStorage: return "router-storage";
+	case ProcessRole::DataStorage: return "data-storage";
+	case ProcessRole::TorrentStorage: return "torrent-storage";
+	case ProcessRole::StorageBroker: return "storage-broker";
+	case ProcessRole::Network: return "network";
+	case ProcessRole::Crypto: return "crypto";
+	case ProcessRole::Count: break;
 	}
 	return "unknown";
 }
@@ -143,10 +124,7 @@ public:
 	{
 	}
 
-	static constexpr uint32_t Bit (Capability capability)
-	{
-		return 1u << static_cast<uint32_t> (capability);
-	}
+	static constexpr uint32_t Bit (Capability capability) { return 1u << static_cast<uint32_t> (capability); }
 
 	constexpr bool Has (Capability capability) const { return (m_Bits & Bit (capability)) != 0; }
 	constexpr uint32_t Bits () const { return m_Bits; }
@@ -185,18 +163,17 @@ struct RoleCapabilityRow
  * for every non-legacy (target) row.
  */
 inline constexpr CapabilityMask CORE_TARGET_CAPABILITIES = CapabilityMask ()
-	.With (Capability::ExternalNetwork)
-	.With (Capability::FilesystemRead)
-	.With (Capability::Signal)
-	.With (Capability::Ipc);
+															   .With (Capability::ExternalNetwork)
+															   .With (Capability::FilesystemRead)
+															   .With (Capability::Signal)
+															   .With (Capability::Ipc);
 /**
  * Migration state, not compliance: the router core still performs netDb,
  * profile, destination-key and configuration persistence in-process. This row
  * documents reality, and it deliberately violates the invariant so the gap
  * cannot be mistaken for a satisfied requirement.
  */
-inline constexpr CapabilityMask CORE_LEGACY_CAPABILITIES
-	= CORE_TARGET_CAPABILITIES.With (Capability::PersistentWrite);
+inline constexpr CapabilityMask CORE_LEGACY_CAPABILITIES = CORE_TARGET_CAPABILITIES.With (Capability::PersistentWrite);
 
 inline constexpr CapabilityMask SUPERVISOR_CAPABILITIES
 	= CapabilityMask ().With (Capability::Exec).With (Capability::Signal).With (Capability::Ipc);
@@ -204,16 +181,14 @@ inline constexpr CapabilityMask LOG_CAPABILITIES
 	= CapabilityMask ().With (Capability::PersistentWrite).With (Capability::Ipc);
 // The three storage roles differ in their delegated root and their protocol,
 // not in capability: each writes and reads only the root it was handed.
-inline constexpr CapabilityMask STORAGE_CAPABILITIES = CapabilityMask ()
-	.With (Capability::PersistentWrite)
-	.With (Capability::FilesystemRead)
-	.With (Capability::Ipc);
+inline constexpr CapabilityMask STORAGE_CAPABILITIES
+	= CapabilityMask ().With (Capability::PersistentWrite).With (Capability::FilesystemRead).With (Capability::Ipc);
 inline constexpr CapabilityMask STORAGE_BROKER_CAPABILITIES = CapabilityMask ()
-	.With (Capability::Exec)
-	.With (Capability::Signal)
-	.With (Capability::FdPassSend)
-	.With (Capability::FdPassReceive)
-	.With (Capability::Ipc);
+																  .With (Capability::Exec)
+																  .With (Capability::Signal)
+																  .With (Capability::FdPassSend)
+																  .With (Capability::FdPassReceive)
+																  .With (Capability::Ipc);
 inline constexpr CapabilityMask NETWORK_CAPABILITIES
 	= CapabilityMask ().With (Capability::ExternalNetwork).With (Capability::Ipc);
 inline constexpr CapabilityMask CRYPTO_CAPABILITIES = CapabilityMask ().With (Capability::Ipc);
@@ -242,8 +217,8 @@ inline constexpr std::array<RoleCapabilityRow, 10> ROLE_CAPABILITY_MATRIX {
 		"one channel descriptor per worker." },
 	RoleCapabilityRow { ProcessRole::Network, false, NETWORK_CAPABILITIES,
 		"Transport worker: external sockets only, no durable write." },
-	RoleCapabilityRow { ProcessRole::Crypto, false, CRYPTO_CAPABILITIES,
-		"Key/crypto worker: no network, no durable write, no exec." }
+	RoleCapabilityRow {
+		ProcessRole::Crypto, false, CRYPTO_CAPABILITIES, "Key/crypto worker: no network, no durable write, no exec." }
 };
 
 inline constexpr size_t ROLE_CAPABILITY_ROW_COUNT = ROLE_CAPABILITY_MATRIX.size ();
@@ -331,8 +306,7 @@ static_assert (IsRoleCapabilitySafe (ProcessRole::Core), "the core target must n
 // invariant, otherwise the comment above would be wrong.
 static_assert (!SatisfiesCapabilityInvariant (CORE_LEGACY_CAPABILITIES),
 	"the recorded core legacy mask no longer exceeds the target");
-static_assert (!SatisfiesCapabilityInvariant (
-				   NETWORK_CAPABILITIES.With (Capability::PersistentWrite)),
+static_assert (!SatisfiesCapabilityInvariant (NETWORK_CAPABILITIES.With (Capability::PersistentWrite)),
 	"the invariant must reject a network role with durable writes");
 
 /**
@@ -353,27 +327,19 @@ enum class WindowsIsolationRole : uint8_t
 	Count
 };
 
-inline constexpr size_t WINDOWS_ISOLATION_ROLE_COUNT
-	= static_cast<size_t> (WindowsIsolationRole::Count);
+inline constexpr size_t WINDOWS_ISOLATION_ROLE_COUNT = static_cast<size_t> (WindowsIsolationRole::Count);
 
 constexpr const char * WindowsIsolationRoleName (WindowsIsolationRole role)
 {
 	switch (role)
 	{
-	case WindowsIsolationRole::Supervisor:
-		return "supervisor";
-	case WindowsIsolationRole::Log:
-		return "log";
-	case WindowsIsolationRole::Storage:
-		return "storage";
-	case WindowsIsolationRole::Network:
-		return "network";
-	case WindowsIsolationRole::Crypto:
-		return "crypto";
-	case WindowsIsolationRole::Admin:
-		return "admin";
-	case WindowsIsolationRole::Count:
-		break;
+	case WindowsIsolationRole::Supervisor: return "supervisor";
+	case WindowsIsolationRole::Log: return "log";
+	case WindowsIsolationRole::Storage: return "storage";
+	case WindowsIsolationRole::Network: return "network";
+	case WindowsIsolationRole::Crypto: return "crypto";
+	case WindowsIsolationRole::Admin: return "admin";
+	case WindowsIsolationRole::Count: break;
 	}
 	return "unknown";
 }
@@ -388,24 +354,17 @@ constexpr std::optional<ProcessRole> WindowsRoleToProcessRole (WindowsIsolationR
 {
 	switch (role)
 	{
-	case WindowsIsolationRole::Supervisor:
-		return ProcessRole::Supervisor;
-	case WindowsIsolationRole::Log:
-		return ProcessRole::Log;
+	case WindowsIsolationRole::Supervisor: return ProcessRole::Supervisor;
+	case WindowsIsolationRole::Log: return ProcessRole::Log;
 	// The Windows storage worker covers the router, data and torrent storage
 	// roles; all three declare the same capability mask, so one row is enough.
-	case WindowsIsolationRole::Storage:
-		return ProcessRole::RouterStorage;
-	case WindowsIsolationRole::Network:
-		return ProcessRole::Network;
-	case WindowsIsolationRole::Crypto:
-		return ProcessRole::Crypto;
+	case WindowsIsolationRole::Storage: return ProcessRole::RouterStorage;
+	case WindowsIsolationRole::Network: return ProcessRole::Network;
+	case WindowsIsolationRole::Crypto: return ProcessRole::Crypto;
 	// The administration worker has no documented process row yet: it is
 	// control-plane only. Report that instead of inventing a capability set.
-	case WindowsIsolationRole::Admin:
-		return std::nullopt;
-	case WindowsIsolationRole::Count:
-		break;
+	case WindowsIsolationRole::Admin: return std::nullopt;
+	case WindowsIsolationRole::Count: break;
 	}
 	return std::nullopt;
 }
@@ -418,21 +377,20 @@ struct WindowsRoleMapping
 	std::string_view rationale;
 };
 
-inline constexpr std::array<WindowsRoleMapping, WINDOWS_ISOLATION_ROLE_COUNT> WINDOWS_ROLE_MAPPING { {
-	{ WindowsIsolationRole::Supervisor, ProcessRole::Supervisor,
-		"Owns and replaces workers; no network and no delegated write root." },
-	{ WindowsIsolationRole::Log, ProcessRole::Log,
-		"Appends to one delegated log root; no network." },
-	{ WindowsIsolationRole::Storage, ProcessRole::RouterStorage,
-		"Writes one delegated root; no network. Router, data and torrent "
-		"storage declare the same mask." },
-	{ WindowsIsolationRole::Network, ProcessRole::Network,
-		"External sockets only; never a persistent-write root." },
-	{ WindowsIsolationRole::Crypto, ProcessRole::Crypto, "No network, no durable write, no exec." },
-	{ WindowsIsolationRole::Admin, std::nullopt,
-		"Control-plane administration worker; no process capability row exists "
-		"yet, so it stays Ipc-only and is tracked as a mapping backlog item." }
-} };
+inline constexpr std::array<WindowsRoleMapping, WINDOWS_ISOLATION_ROLE_COUNT> WINDOWS_ROLE_MAPPING {
+	{ { WindowsIsolationRole::Supervisor, ProcessRole::Supervisor,
+		  "Owns and replaces workers; no network and no delegated write root." },
+		{ WindowsIsolationRole::Log, ProcessRole::Log, "Appends to one delegated log root; no network." },
+		{ WindowsIsolationRole::Storage, ProcessRole::RouterStorage,
+			"Writes one delegated root; no network. Router, data and torrent "
+			"storage declare the same mask." },
+		{ WindowsIsolationRole::Network, ProcessRole::Network,
+			"External sockets only; never a persistent-write root." },
+		{ WindowsIsolationRole::Crypto, ProcessRole::Crypto, "No network, no durable write, no exec." },
+		{ WindowsIsolationRole::Admin, std::nullopt,
+			"Control-plane administration worker; no process capability row exists "
+			"yet, so it stays Ipc-only and is tracked as a mapping backlog item." } }
+};
 
 /**
  * Structural validation of the Windows mapping. Every Windows worker role has

@@ -305,7 +305,10 @@ namespace client
 			return joined;
 		}
 
-		char ToLowerAscii (char ch) { return ch >= 'A' && ch <= 'Z' ? static_cast<char> (ch + ('a' - 'A')) : ch; }
+		char ToLowerAscii (char ch)
+		{
+			return ch >= 'A' && ch <= 'Z' ? static_cast<char> (ch + ('a' - 'A')) : ch;
+		}
 
 		std::string ToLowerCopy (std::string_view text)
 		{
@@ -331,8 +334,8 @@ namespace client
 		}
 	}
 
-	std::string MakeTunnelServiceName (std::string_view configuredName, std::string_view sectionName,
-		std::string_view type, std::string_view endpoint)
+	std::string MakeTunnelServiceName (
+		std::string_view configuredName, std::string_view sectionName, std::string_view type, std::string_view endpoint)
 	{
 		auto candidate = configuredName;
 		if (candidate.empty ()) candidate = sectionName;
@@ -895,8 +898,7 @@ namespace client
 			GetI2CPOption (
 				section, I2CP_PARAM_STREAMING_MAX_TOTAL_CONNS_PER_MINUTE, DEFAULT_MAX_TOTAL_CONNS_PER_MINUTE));
 		options.Insert (I2CP_PARAM_STREAMING_MAX_TOTAL_CONNS_PER_HOUR,
-			GetI2CPOption (
-				section, I2CP_PARAM_STREAMING_MAX_TOTAL_CONNS_PER_HOUR, DEFAULT_MAX_TOTAL_CONNS_PER_HOUR));
+			GetI2CPOption (section, I2CP_PARAM_STREAMING_MAX_TOTAL_CONNS_PER_HOUR, DEFAULT_MAX_TOTAL_CONNS_PER_HOUR));
 		options.Insert (I2CP_PARAM_STREAMING_MAX_TOTAL_CONNS_PER_DAY,
 			GetI2CPOption (section, I2CP_PARAM_STREAMING_MAX_TOTAL_CONNS_PER_DAY, DEFAULT_MAX_TOTAL_CONNS_PER_DAY));
 		options.Insert (I2CP_PARAM_STREAMING_ANSWER_PINGS,
@@ -914,8 +916,7 @@ namespace client
 #if OPENSSL_PQ
 		// Hybrid + X25519. ElGamal is deliberately not combined with a hybrid
 		// type: the strict parser rejects that combination (same policy as Java).
-		std::string encType
-			= GetI2CPStringOption (section, I2CP_PARAM_LEASESET_ENCRYPTION_TYPE, "6,4");
+		std::string encType = GetI2CPStringOption (section, I2CP_PARAM_LEASESET_ENCRYPTION_TYPE, "6,4");
 #else
 		std::string encType
 			= GetI2CPStringOption (section, I2CP_PARAM_LEASESET_ENCRYPTION_TYPE, isServer ? "4" : "4,0");
@@ -1093,8 +1094,8 @@ namespace client
 			{
 				std::string type = section.second.get<std::string> (I2P_TUNNELS_SECTION_TYPE);
 				const std::string configuredName = section.second.get<std::string> (I2P_TUNNEL_NAME, "");
-				bool enable = ShouldStartTunnelOnLoad (section.second.get (I2P_TUNNEL_ENABLE, true),
-					section.second.get (I2P_TUNNEL_START_ON_LOAD, true));
+				bool enable = ShouldStartTunnelOnLoad (
+					section.second.get (I2P_TUNNEL_ENABLE, true), section.second.get (I2P_TUNNEL_START_ON_LOAD, true));
 				// Claim the administrative name once the endpoint is known. A
 				// duplicate is a configuration error, not a silent alias, so the
 				// typed StartTunnel/StopTunnel verbs stay unambiguous.
@@ -1102,8 +1103,8 @@ namespace client
 				{
 					name = MakeTunnelServiceName (configuredName, section.first, type, endpoint);
 					if (m_ServiceNames.Register (name)) return true;
-					LogPrint (eLogError, "Clients: Duplicate tunnel service name ", name, " in section ",
-						section.first, "; the section is skipped");
+					LogPrint (eLogError, "Clients: Duplicate tunnel service name ", name, " in section ", section.first,
+						"; the section is skipped");
 					return false;
 				};
 				if (type == I2P_TUNNELS_SECTION_TYPE_CLIENT || type == I2P_TUNNELS_SECTION_TYPE_SOCKS
@@ -1210,8 +1211,8 @@ namespace client
 								numClientTunnels++;
 							}
 							else
-								LogPrint (eLogInfo, "Clients: I2P UDP client tunnel ", name,
-									" is disabled (enable=false)");
+								LogPrint (
+									eLogInfo, "Clients: I2P UDP client tunnel ", name, " is disabled (enable=false)");
 						}
 						else if (existing)
 						{
@@ -1242,8 +1243,7 @@ namespace client
 							auto tun = std::make_shared<i2p::proxy::SOCKSProxy> (
 								name, address, port, !outproxy.empty (), outproxy, destinationPort, localDestination);
 							if (section.second.get<bool> ("auth.enabled", false))
-								tun->SetAuth (
-									section.second.get<std::string> ("auth.username", ""),
+								tun->SetAuth (section.second.get<std::string> ("auth.username", ""),
 									section.second.get<std::string> ("auth.password", ""));
 							clientTunnel = tun;
 							clientEndpoint = tun->GetLocalEndpoint ();
@@ -1257,8 +1257,7 @@ namespace client
 							auto tun = std::make_shared<i2p::proxy::HTTPProxy> (
 								name, address, port, outproxy, addresshelper, senduseragent, localDestination);
 							if (section.second.get<bool> ("auth.enabled", false))
-								tun->SetBasicAuth (
-									section.second.get<std::string> ("auth.username", ""),
+								tun->SetBasicAuth (section.second.get<std::string> ("auth.username", ""),
 									section.second.get<std::string> ("auth.password", ""));
 							clientTunnel = tun;
 							clientEndpoint = tun->GetLocalEndpoint ();
@@ -1323,8 +1322,7 @@ namespace client
 								numClientTunnels++;
 							}
 							else
-								LogPrint (eLogInfo, "Clients: I2P client tunnel ", name,
-									" is disabled (enable=false)");
+								LogPrint (eLogInfo, "Clients: I2P client tunnel ", name, " is disabled (enable=false)");
 						}
 						else if (existing)
 						{
@@ -1458,8 +1456,8 @@ namespace client
 									localDestination->GetIdentHash ().ToBase32 ());
 							}
 							else
-								LogPrint (eLogInfo, "Clients: I2P server forward ", name,
-									" is disabled (enable=false)");
+								LogPrint (
+									eLogInfo, "Clients: I2P server forward ", name, " is disabled (enable=false)");
 						}
 						else
 						{
@@ -1500,7 +1498,8 @@ namespace client
 					if (ssl) serverTunnel->SetSSL (true);
 					serverTunnel->SetDefaultAcceptor (
 						section.second.get<bool> (I2P_SERVER_TUNNEL_DEFAULT_ACCEPTOR, false));
-					if (double delayOpen = section.second.get<double> (I2P_SERVER_TUNNEL_DELAY_OPEN, 0.0); delayOpen > 0)
+					if (double delayOpen = section.second.get<double> (I2P_SERVER_TUNNEL_DELAY_OPEN, 0.0);
+						delayOpen > 0)
 						LogPrint (eLogWarning, "Clients: delayOpen is not supported and is ignored for ", name);
 
 					// targetForPort.<port>=host:port (bounded, Java compatible)
@@ -1512,14 +1511,13 @@ namespace client
 						if (!lower.starts_with (I2P_SERVER_TUNNEL_TARGET_FOR_PORT)) continue;
 						uint16_t localPort = 0;
 						std::string error;
-						if (!ParseLocalPort (lower.substr (
-								std::string_view (I2P_SERVER_TUNNEL_TARGET_FOR_PORT).size ()),
-								localPort)
+						if (!ParseLocalPort (
+								lower.substr (std::string_view (I2P_SERVER_TUNNEL_TARGET_FOR_PORT).size ()), localPort)
 							|| !targets.AddSpec (localPort, property.second.get_value<std::string> (), error))
 						{
 							std::string reason = error.empty () ? std::string ("invalid port") : error;
-							LogPrint (eLogError, "Clients: invalid targetForPort entry for server tunnel ", name,
-								": ", reason);
+							LogPrint (eLogError, "Clients: invalid targetForPort entry for server tunnel ", name, ": ",
+								reason);
 						}
 					}
 					serverTunnel->SetTargets (targets);
@@ -1576,8 +1574,7 @@ namespace client
 								LogPrint (eLogWarning, "Clients: ", invalid, " accesslist entries of ", name,
 									" are invalid and were skipped");
 							if (!idents.empty ())
-								serverTunnel->SetAccessFilter (
-									FilterDefinition::FromAccessList (idents), limitAction);
+								serverTunnel->SetAccessFilter (FilterDefinition::FromAccessList (idents), limitAction);
 							else
 							{
 								LogPrint (eLogWarning, "Clients: accesslist of ", name,
@@ -1600,9 +1597,8 @@ namespace client
 							if (!lower.starts_with (I2P_SERVER_TUNNEL_SPOOFED_HOST)) continue;
 							uint16_t localPort = 0;
 							std::string error;
-							if (!ParseLocalPort (lower.substr (
-									std::string_view (I2P_SERVER_TUNNEL_SPOOFED_HOST).size ()),
-									localPort)
+							if (!ParseLocalPort (
+									lower.substr (std::string_view (I2P_SERVER_TUNNEL_SPOOFED_HOST).size ()), localPort)
 								|| !httpTunnel->SetSpoofedHost (
 									localPort, property.second.get_value<std::string> (), error))
 							{
@@ -1622,8 +1618,8 @@ namespace client
 						{
 							std::string error;
 							if (!httpTunnel->SetRejectUserAgents (rejectUserAgents, error))
-								LogPrint (eLogError, "Clients: invalid rejectUserAgents for server tunnel ", name,
-									": ", error);
+								LogPrint (eLogError, "Clients: invalid rejectUserAgents for server tunnel ", name, ": ",
+									error);
 						}
 						if (auto postMax = section.second.get_optional<int> (I2P_SERVER_TUNNEL_POST_MAX))
 							httpTunnel->SetPostLimit (*postMax);

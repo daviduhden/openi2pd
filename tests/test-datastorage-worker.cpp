@@ -73,7 +73,8 @@ int main (int argc, char ** argv)
 	if (::geteuid () == 0) return 77;
 	const auto support = i2p::privsep::ProbeLinuxIsolation ();
 	if (!support.filesystem || !support.seccompFilter) return 77;
-	const auto root = std::filesystem::temp_directory_path () / ("openi2pd-data-storage-" + std::to_string (::getpid ()));
+	const auto root
+		= std::filesystem::temp_directory_path () / ("openi2pd-data-storage-" + std::to_string (::getpid ()));
 	std::filesystem::create_directory (root);
 	struct Cleanup
 	{
@@ -141,8 +142,7 @@ int main (int argc, char ** argv)
 		assert (!client.Write (StorageArtifact::PeerProfile, infoName + "/x", Bytes (1, 4)));
 		assert (!client.Write (StorageArtifact::RouterInfoCache, infoName, { }));
 		assert (!client.Write (static_cast<StorageArtifact> (9), infoName, Bytes (1, 4)));
-		assert (!client.Write (
-			StorageArtifact::RouterInfoCache, infoName, Bytes (1, MAX_ARTIFACT_PAYLOAD_SIZE + 1)));
+		assert (!client.Write (StorageArtifact::RouterInfoCache, infoName, Bytes (1, MAX_ARTIFACT_PAYLOAD_SIZE + 1)));
 		assert (client.LastStatus () == DataStorageStatus::Rejected);
 		// A rejection must not poison the live worker.
 		assert (client.Write (StorageArtifact::RouterInfoCache, infoName, Bytes (3, 16)));

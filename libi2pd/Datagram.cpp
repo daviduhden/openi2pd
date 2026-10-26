@@ -58,8 +58,8 @@ namespace datagram
 		bool IsCompleteOfflineSection (const std::vector<uint8_t> & offline, size_t ownerSignatureLen)
 		{
 			if (offline.size () < i2p::data::OFFLINE_SIGNATURE_HEADER_LENGTH) return false;
-			std::unique_ptr<i2p::crypto::Verifier> verifier (
-				i2p::data::IdentityEx::CreateVerifier (static_cast<i2p::data::SigningKeyType> (bufbe16toh (offline.data () + 4))));
+			std::unique_ptr<i2p::crypto::Verifier> verifier (i2p::data::IdentityEx::CreateVerifier (
+				static_cast<i2p::data::SigningKeyType> (bufbe16toh (offline.data () + 4))));
 			if (!verifier) return false;
 			const size_t expected
 				= i2p::data::OFFLINE_SIGNATURE_HEADER_LENGTH + verifier->GetPublicKeyLen () + ownerSignatureLen;
@@ -117,8 +117,8 @@ namespace datagram
 		m_From.swap (from);
 	}
 
-	void DatagramDestination::SendDatagramTo (const uint8_t * payload, size_t len, const i2p::data::IdentHash & identity,
-		uint16_t fromPort, uint16_t toPort, DatagramVersion version)
+	void DatagramDestination::SendDatagramTo (const uint8_t * payload, size_t len,
+		const i2p::data::IdentHash & identity, uint16_t fromPort, uint16_t toPort, DatagramVersion version)
 	{
 		auto session = GetSession (identity);
 		SendDatagram (session, payload, len, fromPort, toPort, nullptr, version);
@@ -482,8 +482,8 @@ namespace datagram
 		}
 		auto r = FindReceiver (toPort, i2p::client::PROTOCOL_TYPE_DATAGRAM2);
 		if (r)
-			r->Invoke (identity, fromPort, toPort, buf + offset, len - offset - signatureLen,
-				isOptions ? &options : nullptr);
+			r->Invoke (
+				identity, fromPort, toPort, buf + offset, len - offset - signatureLen, isOptions ? &options : nullptr);
 		else
 			LogPrint (eLogWarning, "DatagramDestination: no receiver for port ", toPort);
 	}
@@ -584,8 +584,8 @@ namespace datagram
 			// LeaseSet is available; a Datagram3 hash alone is never trusted.
 			auto receiver = FindReceiver (toPort, i2p::client::PROTOCOL_TYPE_DATAGRAM3);
 			if (receiver && ls)
-				receiver->Invoke (*ls->GetIdentity (), fromPort, toPort, buf + offset, len - offset,
-					isOptions ? &options : nullptr);
+				receiver->Invoke (
+					*ls->GetIdentity (), fromPort, toPort, buf + offset, len - offset, isOptions ? &options : nullptr);
 			else
 				LogPrint (eLogWarning, "DatagramDestination: no hash receiver or cached identity for port ", toPort);
 		}
@@ -665,8 +665,7 @@ namespace datagram
 			// Streaming and the typed datagram protocols are consumed by their
 			// own handlers, so such a registration could never receive
 			// anything; refusing it keeps the rejection observable to SAM.
-			LogPrint (eLogWarning, "DatagramDestination: protocol ", (int)protocol,
-				" is not a raw receiver protocol");
+			LogPrint (eLogWarning, "DatagramDestination: protocol ", (int)protocol, " is not a raw receiver protocol");
 			return { };
 		}
 		auto slot = std::make_shared<detail::ReceiverSlot<RawReceiver>> (receiver);
@@ -1080,7 +1079,8 @@ namespace datagram
 		m_LastUse.store (now, std::memory_order_relaxed);
 		if (msg || m_SendQueue.empty ()) m_SendQueue.push_back (msg);
 		// flush queue right away if full
-		if (!msg || m_SendQueue.size () >= DATAGRAM_SEND_QUEUE_MAX_SIZE || now > m_LastFlush + DATAGRAM_MAX_FLUSH_INTERVAL)
+		if (!msg || m_SendQueue.size () >= DATAGRAM_SEND_QUEUE_MAX_SIZE
+			|| now > m_LastFlush + DATAGRAM_MAX_FLUSH_INTERVAL)
 		{
 			FlushSendQueueLocked (true);
 			m_LastFlush = now;
@@ -1120,7 +1120,8 @@ namespace datagram
 		m_LastUse.store (i2p::util::GetMillisecondsSinceEpoch (), std::memory_order_relaxed);
 		auto path = GetSharedRoutingPath ();
 		if (path) path->updateTime = static_cast<uint32_t> (i2p::util::GetSecondsSinceEpoch ());
-		if (IsRatchetsLocked ()) SendMsgLocked (nullptr); // send empty message in case if we don't have some data to send
+		if (IsRatchetsLocked ())
+			SendMsgLocked (nullptr); // send empty message in case if we don't have some data to send
 	}
 
 	std::shared_ptr<i2p::garlic::GarlicRoutingPath> DatagramSession::GetSharedRoutingPath ()

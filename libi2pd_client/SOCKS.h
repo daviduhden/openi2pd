@@ -159,8 +159,8 @@ namespace proxy
 	inline boost::asio::ip::address_v4 SocksFakeIPv4Address (
 		std::string_view destination, const std::array<std::uint8_t, 16> & key) noexcept
 	{
-		const auto hash = socks_detail::SipHash24 (key.data (),
-			reinterpret_cast<const std::uint8_t *> (destination.data ()), destination.size ());
+		const auto hash = socks_detail::SipHash24 (
+			key.data (), reinterpret_cast<const std::uint8_t *> (destination.data ()), destination.size ());
 		const auto low = static_cast<std::uint32_t> (hash & 0x00ffffffu);
 		return boost::asio::ip::address_v4 (SOCKS_RESOLVE_FAKE_PREFIX | low);
 	}
@@ -300,7 +300,8 @@ namespace proxy
 	constexpr SOCKSAuthMethodChoice SOCKSChooseAuthMethod (
 		bool auth_enabled, bool offered_none, bool offered_userpass) noexcept
 	{
-		if (auth_enabled) return offered_userpass ? SOCKSAuthMethodChoice::UserPass : SOCKSAuthMethodChoice::Unacceptable;
+		if (auth_enabled)
+			return offered_userpass ? SOCKSAuthMethodChoice::UserPass : SOCKSAuthMethodChoice::Unacceptable;
 		return offered_none ? SOCKSAuthMethodChoice::None : SOCKSAuthMethodChoice::Unacceptable;
 	}
 

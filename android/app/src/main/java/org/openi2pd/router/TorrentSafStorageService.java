@@ -157,8 +157,8 @@ public final class TorrentSafStorageService extends Service {
 
         private final Map<Long, Grant> grants = new HashMap<>();
 
-        boolean prepare(long token, Caller owner, String uri, long length, String documentId,
-                long now) {
+        boolean prepare(
+                long token, Caller owner, String uri, long length, String documentId, long now) {
             prune(now);
             if (owner == null || token <= 0 || uri == null || uri.isEmpty()
                     || uri.length() > MAX_TEXT || length <= 0 || length > MAX_EXPORT
@@ -489,8 +489,9 @@ public final class TorrentSafStorageService extends Service {
                         // first write must not leave a full-length zero file.
                         Os.ftruncate(fd.getFileDescriptor(), 0);
                         long key = id();
-                        files.put(key, new File(0, uri, fd, grant.length(), true,
-                                               grant.documentId(), owner));
+                        files.put(key,
+                                new File(0, uri, fd, grant.length(), true, grant.documentId(),
+                                        owner));
                         fd = null;
                         return key;
                     } catch (Exception failure) {
@@ -603,9 +604,9 @@ public final class TorrentSafStorageService extends Service {
                         return 0;
                     current.signal.throwIfCanceled();
                     Root root = roots.get(rootId);
-                    if (root == null || !sameOwner(root.owner, owner)
-                            || create && !root.writable || files.size() >= MAX_HANDLES
-                            || length < 0 || length > MAX_FILE || !validPath(relative))
+                    if (root == null || !sameOwner(root.owner, owner) || create && !root.writable
+                            || files.size() >= MAX_HANDLES || length < 0 || length > MAX_FILE
+                            || !validPath(relative))
                         return 0;
                     ParcelFileDescriptor fd = null;
                     try {
@@ -635,8 +636,9 @@ public final class TorrentSafStorageService extends Service {
                         }
                         current.signal.throwIfCanceled();
                         long key = id();
-                        files.put(key, new File(rootId, doc, fd, length, create,
-                                               currentDocumentId(doc, current.signal), owner));
+                        files.put(key,
+                                new File(rootId, doc, fd, length, create,
+                                        currentDocumentId(doc, current.signal), owner));
                         fd = null;
                         return key;
                     } catch (Exception failure) {
@@ -766,9 +768,8 @@ public final class TorrentSafStorageService extends Service {
                         }
                         // A provider may replace an existing document ID. Compare
                         // a freshly opened descriptor with the registered object.
-                        try (ParcelFileDescriptor fresh =
-                                        getContentResolver().openFileDescriptor(
-                                                file.uri, "r", current.signal)) {
+                        try (ParcelFileDescriptor fresh = getContentResolver().openFileDescriptor(
+                                     file.uri, "r", current.signal)) {
                             if (fresh == null)
                                 return false;
                             if (!sameDocument(Os.fstat(file.fd.getFileDescriptor()),
@@ -814,25 +815,23 @@ public final class TorrentSafStorageService extends Service {
                     // Identity must survive the resolution: a provider may rebind
                     // the display name to a different document between the two
                     // opens, so compare device/inode across both descriptors.
-                    try (ParcelFileDescriptor opened =
-                                    getContentResolver().openFileDescriptor(
-                                            doc, "r", current.signal)) {
+                    try (ParcelFileDescriptor opened = getContentResolver().openFileDescriptor(
+                                 doc, "r", current.signal)) {
                         if (opened == null)
                             return false;
                         StructStat first = Os.fstat(opened.getFileDescriptor());
                         if (!OsConstants.S_ISREG(first.st_mode))
                             return false;
-                        try (ParcelFileDescriptor fresh =
-                                        getContentResolver().openFileDescriptor(
-                                                doc, "r", current.signal)) {
+                        try (ParcelFileDescriptor fresh = getContentResolver().openFileDescriptor(
+                                     doc, "r", current.signal)) {
                             if (fresh == null
                                     || !sameDocumentIdentity(
                                             first, Os.fstat(fresh.getFileDescriptor())))
                                 return false;
                         }
                         current.signal.throwIfCanceled();
-                        boolean removed = DocumentsContract.deleteDocument(
-                                getContentResolver(), doc);
+                        boolean removed =
+                                DocumentsContract.deleteDocument(getContentResolver(), doc);
                         if (removed)
                             releaseAliases(doc, owner);
                         return removed;
@@ -868,8 +867,7 @@ public final class TorrentSafStorageService extends Service {
                     if (doc == null || !emptyDirectory(root.uri, doc, current.signal))
                         return false;
                     current.signal.throwIfCanceled();
-                    boolean removed =
-                            DocumentsContract.deleteDocument(getContentResolver(), doc);
+                    boolean removed = DocumentsContract.deleteDocument(getContentResolver(), doc);
                     if (removed)
                         releaseAliases(doc, owner);
                     return removed;
@@ -901,8 +899,7 @@ public final class TorrentSafStorageService extends Service {
                     roots.remove(rootId);
                     for (long key : new ArrayList<>(files.keySet())) {
                         File file = files.get(key);
-                        if (file != null && file.root == rootId
-                                && sameOwner(file.owner, owner))
+                        if (file != null && file.root == rootId && sameOwner(file.owner, owner))
                             releaseHandle(key);
                     }
                 }
@@ -973,8 +970,9 @@ public final class TorrentSafStorageService extends Service {
                                  null, null, null, signal)) {
                         boolean matches = cursor != null && cursor.moveToFirst()
                                 && parts[i].equals(cursor.getString(0))
-                                && directory == DocumentsContract.Document.MIME_TYPE_DIR
-                                                        .equals(cursor.getString(1));
+                                && directory
+                                        == DocumentsContract.Document.MIME_TYPE_DIR.equals(
+                                                cursor.getString(1));
                         if (!matches) {
                             try {
                                 DocumentsContract.deleteDocument(getContentResolver(), child);
@@ -1001,8 +999,7 @@ public final class TorrentSafStorageService extends Service {
         if (parts.length > MAX_PARTS)
             return false;
         for (String part : parts) {
-            if (part.isEmpty() || part.equals(".") || part.equals("..")
-                    || part.length() > MAX_PART)
+            if (part.isEmpty() || part.equals(".") || part.equals("..") || part.length() > MAX_PART)
                 return false;
             for (int i = 0; i < part.length(); i++)
                 if (Character.isISOControl(part.charAt(i)))

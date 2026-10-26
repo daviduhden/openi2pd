@@ -40,8 +40,7 @@ struct WorkerCredentials
  * used when `group` is empty. A configured group must exist. The result is a
  * fixed uid/gid pair; later lookups or NSS changes cannot alter it.
  */
-i2p::expected<WorkerCredentials, std::string> ResolveWorkerCredentials (
-	std::string_view user, std::string_view group);
+i2p::expected<WorkerCredentials, std::string> ResolveWorkerCredentials (std::string_view user, std::string_view group);
 
 /** Install the process-wide worker identity. Must precede the first spawn. */
 void SetWorkerCredentials (const WorkerCredentials & credentials);

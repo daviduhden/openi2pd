@@ -649,8 +649,8 @@ namespace util
 		runtimeWindow.upnp = upnp;
 		runtimeWindow.reapChildren = privsepEnabled && privsepLog;
 		runtimeWindow.descriptorReception = true;
-		auto promises = i2p::privsep::OpenBSDPledgePromiseList (
-			i2p::privsep::OpenBSDPledgePhase::Runtime, runtimeWindow);
+		auto promises
+			= i2p::privsep::OpenBSDPledgePromiseList (i2p::privsep::OpenBSDPledgePhase::Runtime, runtimeWindow);
 		std::vector<std::string> extraPaths;
 		auto fail = [] (const std::string & message)
 		{
@@ -688,8 +688,8 @@ namespace util
 				std::vector<std::string_view> allowed;
 				allowed.reserve (promises.size ());
 				for (const auto & promise : promises) allowed.emplace_back (promise);
-				auto accepted = i2p::privsep::ParseOpenBSDPledgeFile (
-					policy, allowed, i2p::privsep::OpenBSDPledgePhase::Runtime);
+				auto accepted
+					= i2p::privsep::ParseOpenBSDPledgeFile (policy, allowed, i2p::privsep::OpenBSDPledgePhase::Runtime);
 				if (!accepted)
 				{
 					fail ("Daemon: openbsd.pledge_file: " + accepted.error ());
@@ -710,8 +710,7 @@ namespace util
 			{
 				if (path.empty ()) return true;
 				while (path.size () > 1 && path.back () == '/') path.pop_back ();
-				if (path == "/")
-					return fail ("Daemon: refusing to unveil the whole filesystem");
+				if (path == "/") return fail ("Daemon: refusing to unveil the whole filesystem");
 				// realpath() intentionally resolves a configured datadir or
 				// certificate symlink: unveil() matches the resolved path, and a
 				// configured symlink is an explicit administrator choice.
@@ -875,8 +874,8 @@ namespace util
 		startupWindow.reapChildren = runtimeWindow.reapChildren;
 		startupWindow.descriptorReception = true;
 		startupWindow.credentialDrop = i2p::privsep::GetWorkerCredentials ().configured;
-		const auto startupPromises = i2p::privsep::BuildOpenBSDPledgePromises (
-			i2p::privsep::OpenBSDPledgePhase::Startup, startupWindow);
+		const auto startupPromises
+			= i2p::privsep::BuildOpenBSDPledgePromises (i2p::privsep::OpenBSDPledgePhase::Startup, startupWindow);
 		if (!i2p::privsep::IsPledgePromiseSubset (pledgePromises, startupPromises))
 		{
 			fail ("Daemon: internal pledge policy error: the runtime promise set is not a subset of the "

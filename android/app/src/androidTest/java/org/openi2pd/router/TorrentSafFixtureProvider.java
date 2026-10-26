@@ -165,8 +165,8 @@ public final class TorrentSafFixtureProvider extends DocumentsProvider {
         MatrixCursor cursor = new MatrixCursor(new String[] {DocumentsContract.Root.COLUMN_ROOT_ID,
                 DocumentsContract.Root.COLUMN_DOCUMENT_ID, DocumentsContract.Root.COLUMN_TITLE,
                 DocumentsContract.Root.COLUMN_FLAGS});
-        cursor.addRow(new Object[] {"fixture", ROOT, "SAF fault fixture",
-                DocumentsContract.Root.FLAG_SUPPORTS_CREATE});
+        cursor.addRow(new Object[] {
+                "fixture", ROOT, "SAF fault fixture", DocumentsContract.Root.FLAG_SUPPORTS_CREATE});
         return cursor;
     }
 
@@ -189,7 +189,7 @@ public final class TorrentSafFixtureProvider extends DocumentsProvider {
         boolean directory = DocumentsContract.Document.MIME_TYPE_DIR.equals(entry.mime());
         int flags = directory ? DocumentsContract.Document.FLAG_DIR_SUPPORTS_CREATE
                               : DocumentsContract.Document.FLAG_SUPPORTS_WRITE
-                                      | DocumentsContract.Document.FLAG_SUPPORTS_DELETE;
+                        | DocumentsContract.Document.FLAG_SUPPORTS_DELETE;
         cursor.addRow(new Object[] {entry.id(), entry.name(), entry.mime(), flags, entry.size()});
     }
 
@@ -225,38 +225,38 @@ public final class TorrentSafFixtureProvider extends DocumentsProvider {
         }
         try {
             switch (configured) {
-                case PIPE: {
-                    ParcelFileDescriptor[] pipe = ParcelFileDescriptor.createPipe();
-                    pipe[1].close();
-                    return pipe[0];
-                }
-                case NO_SEEK: {
-                    // Bidirectional but non-seekable: lseek fails with ESPIPE and
-                    // fstat is not a regular file, so the broker rejects the
-                    // document before any transfer or temporary copy.
-                    ParcelFileDescriptor[] pair = ParcelFileDescriptor.createSocketPair();
-                    closeQuietly(pair[1]);
-                    return pair[0];
-                }
-                case FAILS_WRITE:
-                    // A read-only descriptor for a write open is the
-                    // deterministic, signal-free stand-in for a provider
-                    // ENOSPC: pwrite and fsync fail instead of a partial write
-                    // being reported as success.
-                    return ParcelFileDescriptor.open(
-                            document(entry), ParcelFileDescriptor.MODE_READ_ONLY);
-                case REPLACED_SAME_LENGTH:
-                    return ParcelFileDescriptor.open(
-                            replace(entry), ParcelFileDescriptor.parseMode(access));
-                default: {
-                    ParcelFileDescriptor fd = ParcelFileDescriptor.open(
-                            document(entry), ParcelFileDescriptor.parseMode(access));
-                    if (configured == DELETED_AFTER_OPEN)
-                        // The descriptor still names the old inode, exactly as a
-                        // provider that removed the document after the open.
-                        discard(entry);
-                    return fd;
-                }
+            case PIPE: {
+                ParcelFileDescriptor[] pipe = ParcelFileDescriptor.createPipe();
+                pipe[1].close();
+                return pipe[0];
+            }
+            case NO_SEEK: {
+                // Bidirectional but non-seekable: lseek fails with ESPIPE and
+                // fstat is not a regular file, so the broker rejects the
+                // document before any transfer or temporary copy.
+                ParcelFileDescriptor[] pair = ParcelFileDescriptor.createSocketPair();
+                closeQuietly(pair[1]);
+                return pair[0];
+            }
+            case FAILS_WRITE:
+                // A read-only descriptor for a write open is the
+                // deterministic, signal-free stand-in for a provider
+                // ENOSPC: pwrite and fsync fail instead of a partial write
+                // being reported as success.
+                return ParcelFileDescriptor.open(
+                        document(entry), ParcelFileDescriptor.MODE_READ_ONLY);
+            case REPLACED_SAME_LENGTH:
+                return ParcelFileDescriptor.open(
+                        replace(entry), ParcelFileDescriptor.parseMode(access));
+            default: {
+                ParcelFileDescriptor fd = ParcelFileDescriptor.open(
+                        document(entry), ParcelFileDescriptor.parseMode(access));
+                if (configured == DELETED_AFTER_OPEN)
+                    // The descriptor still names the old inode, exactly as a
+                    // provider that removed the document after the open.
+                    discard(entry);
+                return fd;
+            }
             }
         } catch (IOException failure) {
             throw new FileNotFoundException(failure.toString());
@@ -270,18 +270,17 @@ public final class TorrentSafFixtureProvider extends DocumentsProvider {
         boolean directory = DocumentsContract.Document.MIME_TYPE_DIR.equals(mime);
         synchronized (this) {
             Entry parentEntry = served(parent);
-            if (!DocumentsContract.Document.MIME_TYPE_DIR.equals(parentEntry.mime())
-                    || name == null || name.isEmpty() || name.length() > 255
-                    || name.indexOf('/') >= 0 || name.equals(".") || name.equals(".."))
+            if (!DocumentsContract.Document.MIME_TYPE_DIR.equals(parentEntry.mime()) || name == null
+                    || name.isEmpty() || name.length() > 255 || name.indexOf('/') >= 0
+                    || name.equals(".") || name.equals(".."))
                 throw new FileNotFoundException("Fixture refuses the display name");
             String id = parent + "/" + name;
             if (entries.containsKey(id))
                 return id;
             if (entries.size() >= MAX_DOCUMENTS)
                 throw new FileNotFoundException("Fixture catalog is full");
-            put(id, parent, name, directory ? DocumentsContract.Document.MIME_TYPE_DIR
-                                            : OCTET_STREAM,
-                    0);
+            put(id, parent, name,
+                    directory ? DocumentsContract.Document.MIME_TYPE_DIR : OCTET_STREAM, 0);
             return id;
         }
     }

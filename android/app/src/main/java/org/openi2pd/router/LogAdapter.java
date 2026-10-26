@@ -124,8 +124,8 @@ public class LogAdapter extends ListAdapter<LogEntry, LogAdapter.Holder> {
             // excluded from the accessibility tree (item_log.xml) so TalkBack
             // does not announce the timestamp, level and message separately,
             // and the combined description preserves the reading order.
-            itemView.setContentDescription(
-                    context.getString(R.string.log_row_description, timeText, levelText, messageText));
+            itemView.setContentDescription(context.getString(
+                    R.string.log_row_description, timeText, levelText, messageText));
         }
 
         private int colorFor(@NonNull String rawLevel) {

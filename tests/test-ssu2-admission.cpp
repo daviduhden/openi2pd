@@ -40,20 +40,17 @@ void TestCountedStates ()
 
 	// Everything else is either pre-created (Unknown), authenticated or a
 	// bounded pseudo-session with its own cap.
-	for (auto state :
-		{ eSSU2SessionStateUnknown, eSSU2SessionStateTokenReceived, eSSU2SessionStateSessionRequestSent,
-			eSSU2SessionStateSessionCreatedReceived, eSSU2SessionStateSessionConfirmedSent,
-			eSSU2SessionStateEstablished, eSSU2SessionStateClosing, eSSU2SessionStateClosingConfirmed,
-			eSSU2SessionStateTerminated, eSSU2SessionStateFailed, eSSU2SessionStateIntroduced,
-			eSSU2SessionStateHolePunch, eSSU2SessionStatePeerTest })
+	for (auto state : { eSSU2SessionStateUnknown, eSSU2SessionStateTokenReceived, eSSU2SessionStateSessionRequestSent,
+			 eSSU2SessionStateSessionCreatedReceived, eSSU2SessionStateSessionConfirmedSent,
+			 eSSU2SessionStateEstablished, eSSU2SessionStateClosing, eSSU2SessionStateClosingConfirmed,
+			 eSSU2SessionStateTerminated, eSSU2SessionStateFailed, eSSU2SessionStateIntroduced,
+			 eSSU2SessionStateHolePunch, eSSU2SessionStatePeerTest })
 		assert (!IsSSU2InboundHandshakeState (state));
 
 	// The admission decision is a pure comparison of the counted value.
 	size_t counted = 0;
-	for (auto state :
-		{ eSSU2SessionStateSessionRequestReceived, eSSU2SessionStateSessionCreatedSent,
-			eSSU2SessionStateEstablished, eSSU2SessionStatePeerTest,
-			eSSU2SessionStateSessionRequestReceived })
+	for (auto state : { eSSU2SessionStateSessionRequestReceived, eSSU2SessionStateSessionCreatedSent,
+			 eSSU2SessionStateEstablished, eSSU2SessionStatePeerTest, eSSU2SessionStateSessionRequestReceived })
 	{
 		if (IsSSU2InboundHandshakeState (state)) counted++;
 	}

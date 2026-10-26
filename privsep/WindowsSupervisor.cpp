@@ -73,8 +73,8 @@ bool IsCurrentProcessInJobObject ()
 	return IsProcessInJob (GetCurrentProcess (), nullptr, &insideJob) && insideJob != FALSE;
 }
 
-WindowsWorkerSupervisor::WindowsWorkerSupervisor (std::string workerName,
-	WindowsWorkerSupervisorConfig config, SupervisorStatus & status)
+WindowsWorkerSupervisor::WindowsWorkerSupervisor (
+	std::string workerName, WindowsWorkerSupervisorConfig config, SupervisorStatus & status)
 	: m_Name (std::move (workerName))
 	, m_Config (std::move (config))
 	, m_Status (status)
@@ -95,7 +95,8 @@ WindowsWorkerSupervisor::~WindowsWorkerSupervisor ()
 
 i2p::expected<void, std::string> WindowsWorkerSupervisor::Start ()
 {
-	if (m_Config.executable.empty ()) return FailTerminal (WindowsWorkerFailureKind::Spawn, 0, "empty worker executable");
+	if (m_Config.executable.empty ())
+		return FailTerminal (WindowsWorkerFailureKind::Spawn, 0, "empty worker executable");
 	if (!m_StopEvent.IsValid ()) return FailTerminal (WindowsWorkerFailureKind::Spawn, 0, "stop event unavailable");
 	const auto isolation = GetWindowsRoleIsolation (m_Config.role);
 	if (isolation.appContainer)
@@ -110,8 +111,8 @@ i2p::expected<void, std::string> WindowsWorkerSupervisor::Start ()
 			return FailTerminal (WindowsWorkerFailureKind::Spawn, 0,
 				"role requires an AppContainer identity and cannot run with a restricted token");
 		if (m_Config.persistentWriteRoot.empty ())
-			return FailTerminal (WindowsWorkerFailureKind::Spawn, 0,
-				"role requires an explicitly delegated persistent-write root");
+			return FailTerminal (
+				WindowsWorkerFailureKind::Spawn, 0, "role requires an explicitly delegated persistent-write root");
 		auto granted = GrantAppContainerPath (*m_Container, m_Config.persistentWriteRoot, true);
 		if (!granted) return FailTerminal (WindowsWorkerFailureKind::Spawn, 0, granted.error ());
 	}
@@ -122,14 +123,14 @@ i2p::expected<void, std::string> WindowsWorkerSupervisor::Start ()
 i2p::expected<void, std::string> WindowsWorkerSupervisor::SpawnGeneration (uint32_t generation)
 {
 	m_State.store (SupervisorWorkerState::Starting, std::memory_order_release);
-	PublishWindowsWorkerTransition (m_Status, m_Name, SupervisorWorkerState::Starting, generation, m_Policy.Restarts ());
+	PublishWindowsWorkerTransition (
+		m_Status, m_Name, SupervisorWorkerState::Starting, generation, m_Policy.Restarts ());
 
 	std::wstring pipeName = m_Config.pipeName;
 	if (pipeName.empty ())
 	{
 		auto randomName = MakeRandomPipeName ();
-		if (!randomName)
-			return FailTerminal (WindowsWorkerFailureKind::Spawn, generation, randomName.error ());
+		if (!randomName) return FailTerminal (WindowsWorkerFailureKind::Spawn, generation, randomName.error ());
 		pipeName = *randomName;
 	}
 	const WindowsAppContainer * container = m_Container ? &*m_Container : nullptr;
@@ -165,8 +166,8 @@ i2p::expected<void, std::string> WindowsWorkerSupervisor::SpawnGeneration (uint3
 	// The spawn helper is authoritative for the value the child actually
 	// received; fall back to the requested value when it reports none.
 	const std::wstring acceptedNonce = m_Worker->nonceHex.empty () ? *nonce : m_Worker->nonceHex;
-	auto accepted = m_Server->AcceptBound (m_Config.acceptTimeoutMs, m_Worker->processId,
-		CurrentProcessSessionId (), m_Config.role, acceptedNonce, container);
+	auto accepted = m_Server->AcceptBound (m_Config.acceptTimeoutMs, m_Worker->processId, CurrentProcessSessionId (),
+		m_Config.role, acceptedNonce, container);
 	if (!accepted)
 	{
 		// The child exists but never authenticated: terminate the Job Object and
@@ -181,8 +182,7 @@ i2p::expected<void, std::string> WindowsWorkerSupervisor::SpawnGeneration (uint3
 	m_Policy.NoteReady (Clock::now ());
 	m_State.store (SupervisorWorkerState::Ready, std::memory_order_release);
 	m_Running.store (true, std::memory_order_release);
-	PublishWindowsWorkerTransition (
-		m_Status, m_Name, SupervisorWorkerState::Ready, generation, m_Policy.Restarts ());
+	PublishWindowsWorkerTransition (m_Status, m_Name, SupervisorWorkerState::Ready, generation, m_Policy.Restarts ());
 	return { };
 }
 
@@ -208,8 +208,8 @@ bool WindowsWorkerSupervisor::PumpOnce (uint32_t maxWaitMs)
 			const auto remaining = std::chrono::duration_cast<std::chrono::milliseconds> (m_RestartDue - now).count ();
 			// Never sleep through a stop request and never block past the
 			// caller's slice.
-			const auto sleep = std::min<int64_t> (static_cast<int64_t> (std::max<uint32_t> (maxWaitMs, 1)),
-				std::max<int64_t> (remaining, 1));
+			const auto sleep = std::min<int64_t> (
+				static_cast<int64_t> (std::max<uint32_t> (maxWaitMs, 1)), std::max<int64_t> (remaining, 1));
 			if (m_StopEvent.IsValid ())
 				WaitForSingleObject (m_StopEvent.Native (), static_cast<DWORD> (sleep));
 			else
@@ -230,8 +230,8 @@ bool WindowsWorkerSupervisor::PumpOnce (uint32_t maxWaitMs)
 	if (m_StopEvent.IsValid ()) handles[handleCount++] = m_StopEvent.Native ();
 	if (handleCount == 0)
 	{
-		(void)FailTerminal (WindowsWorkerFailureKind::Assign, m_Policy.Generation (),
-			"worker process handle is invalid");
+		(void)FailTerminal (
+			WindowsWorkerFailureKind::Assign, m_Policy.Generation (), "worker process handle is invalid");
 		return false;
 	}
 
@@ -243,8 +243,7 @@ bool WindowsWorkerSupervisor::PumpOnce (uint32_t maxWaitMs)
 			"WaitForMultipleObjects(worker): " + Win32ErrorText (GetLastError ()));
 		return false;
 	}
-	if (wait == WAIT_OBJECT_0 && m_Worker && m_Worker->process.IsValid ()
-		&& handles[0] == m_Worker->process.Native ())
+	if (wait == WAIT_OBJECT_0 && m_Worker && m_Worker->process.IsValid () && handles[0] == m_Worker->process.Native ())
 	{
 		HandleWorkerExit ();
 		return !IsTerminal ();
@@ -259,8 +258,7 @@ void WindowsWorkerSupervisor::HandleWorkerExit ()
 	// The exit code is diagnostic only (never a secret operand). It comes from
 	// the retained process handle, not from the PID.
 	DWORD exitCode = ERROR_PROCESS_ABORTED;
-	if (m_Worker && m_Worker->process.IsValid ())
-		(void)GetExitCodeProcess (m_Worker->process.Native (), &exitCode);
+	if (m_Worker && m_Worker->process.IsValid ()) (void)GetExitCodeProcess (m_Worker->process.Native (), &exitCode);
 	// Release the dead generation first: the next spawn needs the pipe name and
 	// the Job Object back, and the handles must be closed only after the wait.
 	ReleaseWorker (m_Config.stopBudgetMs);
@@ -330,8 +328,8 @@ i2p::expected<void, std::string> WindowsWorkerSupervisor::FailTerminal (
 	m_Running.store (false, std::memory_order_release);
 	m_State.store (SupervisorWorkerState::Failed, std::memory_order_release);
 	SetDiagnostic (detail);
-	const WindowsWorkerFailureOutcome outcome { SupervisorWorkerState::Failed, true, generation,
-		m_Policy.Restarts (), std::chrono::milliseconds { 0 }, WindowsWorkerFailureReason (kind) };
+	const WindowsWorkerFailureOutcome outcome { SupervisorWorkerState::Failed, true, generation, m_Policy.Restarts (),
+		std::chrono::milliseconds { 0 }, WindowsWorkerFailureReason (kind) };
 	PublishFailedOnce (outcome);
 	std::cerr << "windows worker supervisor (" << m_Name << "): " << outcome.reason << ": " << detail << std::endl;
 	return i2p::unexpected (std::move (detail));
@@ -385,8 +383,8 @@ bool WindowsWorkerSupervisor::Stop (uint32_t budgetMs)
 		// the job afterwards is the KILL_ON_JOB_CLOSE backstop. A worker that
 		// already left is a clean stop even if the forced reap reports nothing
 		// left to terminate.
-		const bool alreadyExited = m_Worker->process.IsValid ()
-			&& WaitForSingleObject (m_Worker->process.Native (), 0) == WAIT_OBJECT_0;
+		const bool alreadyExited
+			= m_Worker->process.IsValid () && WaitForSingleObject (m_Worker->process.Native (), 0) == WAIT_OBJECT_0;
 		const uint32_t remaining = RemainingBudgetMs (ElapsedMs (started), budgetMs);
 		if (m_Worker->job.IsValid ()) (void)TerminateJobObject (m_Worker->job.Native (), ERROR_PROCESS_ABORTED);
 		if (!m_Worker->Stop (remaining) && !alreadyExited)
@@ -410,16 +408,14 @@ bool WindowsWorkerSupervisor::Stop (uint32_t budgetMs)
 i2p::expected<void, std::string> WindowsWorkerSupervisor::Send (const Message & message)
 {
 	std::lock_guard<std::mutex> lock (m_LifecycleMutex);
-	if (!m_Channel || !m_Channel->IsOpen ())
-		return i2p::unexpected ("windows worker channel is not open");
+	if (!m_Channel || !m_Channel->IsOpen ()) return i2p::unexpected ("windows worker channel is not open");
 	return m_Channel->Send (message, WINDOWS_WORKER_SEND_TIMEOUT_MS);
 }
 
 i2p::expected<std::optional<Message>, std::string> WindowsWorkerSupervisor::Receive (uint32_t timeoutMs)
 {
 	std::lock_guard<std::mutex> lock (m_LifecycleMutex);
-	if (!m_Channel || !m_Channel->IsOpen ())
-		return i2p::unexpected ("windows worker channel is not open");
+	if (!m_Channel || !m_Channel->IsOpen ()) return i2p::unexpected ("windows worker channel is not open");
 	return m_Channel->Receive (timeoutMs);
 }
 

@@ -54,8 +54,8 @@ uint32_t Crc32 (const uint8_t * data, size_t len)
 // Re-encodes a valid b33 with a different header. A b33 stores the CRC32 of the
 // key XORed into flags/signature types, so a crafted header still has one
 // canonical encoding and exercises the parser's own validation.
-std::string MakeB33WithHeader (const std::string & validB33, uint8_t flags, uint8_t signatureType,
-	uint8_t blindedSignatureType)
+std::string MakeB33WithHeader (
+	const std::string & validB33, uint8_t flags, uint8_t signatureType, uint8_t blindedSignatureType)
 {
 	uint8_t raw[35] = { 0 };
 	const size_t decoded = i2p::data::Base32ToByteStream (validB33, raw, sizeof (raw));

@@ -19,12 +19,12 @@ extern "C" int LLVMFuzzerTestOneInput (const uint8_t * data, size_t size)
 {
 	if (!data || size < 2) return 0;
 	size_t routerInfoDataSize = 0;
-	(void) i2p::transport::ValidateNTCP2SessionConfirmedPayload (data + 1, size - 1, routerInfoDataSize);
+	(void)i2p::transport::ValidateNTCP2SessionConfirmedPayload (data + 1, size - 1, routerInfoDataSize);
 	const int version = data[0] % 5;
 	for (bool sessionCreated : { false, true })
 	{
-		(void) i2p::transport::NTCP2IsValidHandshakePadding (version, sessionCreated, size);
-		(void) i2p::transport::NTCP2IsValidHandshakePadding (version, sessionCreated, size + 1);
+		(void)i2p::transport::NTCP2IsValidHandshakePadding (version, sessionCreated, size);
+		(void)i2p::transport::NTCP2IsValidHandshakePadding (version, sessionCreated, size + 1);
 	}
 	return 0;
 }

@@ -77,8 +77,8 @@ Sender MakeSender ()
 std::vector<uint8_t> Store (const std::vector<uint8_t> & frame)
 {
 	std::vector<uint8_t> out (frame.size () + 23);
-	auto len = i2p::data::GzipNoCompression (
-		frame.data (), static_cast<uint16_t> (frame.size ()), out.data (), out.size ());
+	auto len
+		= i2p::data::GzipNoCompression (frame.data (), static_cast<uint16_t> (frame.size ()), out.data (), out.size ());
 	assert (len == out.size ());
 	return out;
 }
@@ -116,13 +116,11 @@ void TestIdentityRegistrationAndNoPromotion ()
 	auto sender = MakeSender ();
 	int firstCalls = 0, secondPortCalls = 0, replacementCalls = 0, hashCalls = 0;
 	auto first = destination->SetReceiver (
-		[&] (const i2p::data::IdentityEx &, uint16_t, uint16_t, const uint8_t *, size_t,
-			const i2p::util::Mapping *) { ++firstCalls; },
-		41);
+		[&] (const i2p::data::IdentityEx &, uint16_t, uint16_t, const uint8_t *, size_t, const i2p::util::Mapping *)
+		{ ++firstCalls; }, 41);
 	auto second = destination->SetReceiver (
-		[&] (const i2p::data::IdentityEx &, uint16_t, uint16_t, const uint8_t *, size_t,
-			const i2p::util::Mapping *) { ++secondPortCalls; },
-		42);
+		[&] (const i2p::data::IdentityEx &, uint16_t, uint16_t, const uint8_t *, size_t, const i2p::util::Mapping *)
+		{ ++secondPortCalls; }, 42);
 
 	DispatchDatagram1 (destination, sender, 41);
 	DispatchDatagram1 (destination, sender, 42);
@@ -139,9 +137,8 @@ void TestIdentityRegistrationAndNoPromotion ()
 
 	// Port keys remain last-wins.
 	auto replacement = destination->SetReceiver (
-		[&] (const i2p::data::IdentityEx &, uint16_t, uint16_t, const uint8_t *, size_t,
-			const i2p::util::Mapping *) { ++replacementCalls; },
-		41);
+		[&] (const i2p::data::IdentityEx &, uint16_t, uint16_t, const uint8_t *, size_t, const i2p::util::Mapping *)
+		{ ++replacementCalls; }, 41);
 	DispatchDatagram1 (destination, sender, 41);
 	assert (replacementCalls == 1);
 
@@ -157,9 +154,8 @@ void TestIdentityRegistrationAndNoPromotion ()
 	// Hash (Datagram3) receivers follow the same keying: only the addressed
 	// port delivers, and the default slot stays empty.
 	auto hash = destination->SetHashReceiver (
-		[&] (const i2p::data::IdentHash &, uint16_t, uint16_t, const uint8_t *, size_t,
-			const i2p::util::Mapping *) { ++hashCalls; },
-		41);
+		[&] (const i2p::data::IdentHash &, uint16_t, uint16_t, const uint8_t *, size_t, const i2p::util::Mapping *)
+		{ ++hashCalls; }, 41);
 	DispatchDatagram3 (destination, sender, 41);
 	assert (hashCalls == 1);
 	DispatchDatagram3 (destination, sender, 42);

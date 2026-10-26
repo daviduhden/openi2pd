@@ -87,8 +87,7 @@ void TestHitAndExpiry ()
 void TestBound ()
 {
 	Cache cache;
-	for (size_t i = 0; i < Cache::MAX_ENTRIES; i++)
-		cache.Insert (std::to_string (i) + ".example.i2p", 1000);
+	for (size_t i = 0; i < Cache::MAX_ENTRIES; i++) cache.Insert (std::to_string (i) + ".example.i2p", 1000);
 	assert (cache.Size (1000) == Cache::MAX_ENTRIES);
 
 	// One more miss evicts exactly one entry instead of growing the table.

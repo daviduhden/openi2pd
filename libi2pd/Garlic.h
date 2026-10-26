@@ -108,8 +108,7 @@ namespace garlic
 
 	// Pure decision shared by the ElGamal and the ratchet clove walkers, so the
 	// policy can be unit-tested and fuzzed without keys or a session.
-	constexpr GarlicCloveDisposition ClassifyGarlicClove (
-		bool wellFramed, bool fresh, bool destinationMatches) noexcept
+	constexpr GarlicCloveDisposition ClassifyGarlicClove (bool wellFramed, bool fresh, bool destinationMatches) noexcept
 	{
 		if (!wellFramed) return GarlicCloveDisposition::RejectMessage;
 		if (!fresh) return GarlicCloveDisposition::SkipStale;
@@ -242,10 +241,7 @@ namespace garlic
 		}
 
 		uint64_t LastSendTime () const { return m_LastSendTime.load (std::memory_order_relaxed); }
-		void SetLastSendTime (uint64_t lastSendTime)
-		{
-			m_LastSendTime.store (lastSendTime, std::memory_order_relaxed);
-		}
+		void SetLastSendTime (uint64_t lastSendTime) { m_LastSendTime.store (lastSendTime, std::memory_order_relaxed); }
 
 		GarlicDestination * GetOwner () const { return m_Owner.load (std::memory_order_acquire); }
 		void SetOwner (GarlicDestination * owner) { m_Owner.store (owner, std::memory_order_release); }

@@ -369,8 +369,8 @@ namespace client
 		switch (ParseBandwidthLimit (value, limit))
 		{
 		case BandwidthLimitResult::Ok: return limit;
-		case BandwidthLimitResult::OutOfRange: throw I2PControlError (
-			I2P_CONTROL_ERROR_INVALID_PARAMS, "Bandwidth limit out of range");
+		case BandwidthLimitResult::OutOfRange:
+			throw I2PControlError (I2P_CONTROL_ERROR_INVALID_PARAMS, "Bandwidth limit out of range");
 		case BandwidthLimitResult::Invalid:
 		default: throw I2PControlError (I2P_CONTROL_ERROR_INVALID_PARAMS, "Invalid bandwidth limit");
 		}

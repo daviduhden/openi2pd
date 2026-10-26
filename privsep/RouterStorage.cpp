@@ -32,10 +32,7 @@ namespace
 		{
 			if (value >= 0) ::close (value);
 		}
-		int Release () noexcept
-		{
-			return std::exchange (value, -1);
-		}
+		int Release () noexcept { return std::exchange (value, -1); }
 	};
 	const char * FileName (uint8_t id)
 	{
@@ -193,10 +190,8 @@ struct RouterStorageClient::Impl
 		auto & frame = **reply;
 		if (frame.fd >= 0) ::close (frame.fd);
 		const bool accepted = frame.fd < 0 && frame.message.requestId == id
-			&& (frame.message.type == MessageType::RouterStorageReply
-				|| frame.message.type == MessageType::Error)
-			&& (frame.message.type == MessageType::Error
-				|| frame.message.payload == std::string (1, '\0'));
+			&& (frame.message.type == MessageType::RouterStorageReply || frame.message.type == MessageType::Error)
+			&& (frame.message.type == MessageType::Error || frame.message.payload == std::string (1, '\0'));
 		if (!accepted)
 		{
 			error = "router storage sandbox/setup failed";
@@ -229,8 +224,7 @@ struct RouterStorageClient::Impl
 	bool EnsureReady ()
 	{
 		if (state == State::Ready) return true;
-		if (!restartPermitted || state != State::Restarting
-			|| !restart.CanAttempt (std::chrono::steady_clock::now ()))
+		if (!restartPermitted || state != State::Restarting || !restart.CanAttempt (std::chrono::steady_clock::now ()))
 			return false;
 		std::string error;
 		if (Configure (error))
@@ -380,8 +374,7 @@ int RunRouterStorageWorker (int fd, int inheritedRoot)
 	// The socket/capability boundary does not need the delegated root and is
 	// installed before the first Configure frame is parsed. This runs in the
 	// worker, never in the socket-owning core.
-	if (auto lockdown = ApplyLinuxIpcLockdown (GetLinuxSandboxProfile (WorkerClass::Storage)); !lockdown)
-		return 1;
+	if (auto lockdown = ApplyLinuxIpcLockdown (GetLinuxSandboxProfile (WorkerClass::Storage)); !lockdown) return 1;
 #endif
 	auto first = channel.ReceiveWithFd (5000);
 	if (!first || !*first) return 1;
@@ -458,8 +451,8 @@ int RunRouterStorageWorker (int fd, int inheritedRoot)
 			// request, is answered once and then bounded: the channel stays
 			// usable for a legitimate retry but a flooding peer is dropped.
 			if (++violations > Channel::MAX_PROTOCOL_VIOLATIONS) return false;
-			return channel.Send ({ MessageType::Error, request.requestId, EncodeError (request.type, code, detail) },
-				5000)
+			return channel
+				.Send ({ MessageType::Error, request.requestId, EncodeError (request.type, code, detail) }, 5000)
 				.has_value ();
 		};
 		if (!AllowsOperation (EndpointRole::RouterStorage, request.type))

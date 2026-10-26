@@ -51,8 +51,10 @@ int main ()
 
 	// A termination block is at least nine bytes and must be last except for
 	// padding.
-	assert (!Validate (eSSU2SessionStateEstablished, Block (i2p::transport::eSSU2BlkTermination, std::vector<uint8_t> (8, 0))));
-	assert (Validate (eSSU2SessionStateEstablished, Block (i2p::transport::eSSU2BlkTermination, std::vector<uint8_t> (9, 0))));
+	assert (!Validate (
+		eSSU2SessionStateEstablished, Block (i2p::transport::eSSU2BlkTermination, std::vector<uint8_t> (8, 0))));
+	assert (Validate (
+		eSSU2SessionStateEstablished, Block (i2p::transport::eSSU2BlkTermination, std::vector<uint8_t> (9, 0))));
 
 	std::vector<uint8_t> afterTermination;
 	Append (afterTermination, Block (i2p::transport::eSSU2BlkTermination, std::vector<uint8_t> (9, 0)));
@@ -84,7 +86,7 @@ int main ()
 
 	// Empty payload is a valid block list (the caller decides whether a state
 	// requires at least one block).
-	assert (Validate (eSSU2SessionStateEstablished, {}));
+	assert (Validate (eSSU2SessionStateEstablished, { }));
 
 	return 0;
 }

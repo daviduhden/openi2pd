@@ -117,8 +117,9 @@ public final class AddressBookFragment extends Fragment {
                 MaterialButton row = UiFactory.button(requireContext());
                 row.setText(name + "\n" + destination
                         + (blinded ? " (" + getString(R.string.address_book_blinded) + ")" : ""));
-                UiFactory.applyRowSemantics(row, name + ", " + destination
-                        + (blinded ? ", " + getString(R.string.address_book_blinded) : ""));
+                UiFactory.applyRowSemantics(row,
+                        name + ", " + destination
+                                + (blinded ? ", " + getString(R.string.address_book_blinded) : ""));
                 row.setOnClickListener(ignored -> removeDialog(name));
                 rows.addView(row);
                 if (++count >= 200)
@@ -156,7 +157,8 @@ public final class AddressBookFragment extends Fragment {
         TextInputLayout nameLayout = new TextInputLayout(requireContext());
         nameLayout.setHint(getString(R.string.address_book_name));
         TextInputEditText name = new TextInputEditText(requireContext());
-        name.setFilters(new android.text.InputFilter[] {new android.text.InputFilter.LengthFilter(MAX_NAME)});
+        name.setFilters(new android.text.InputFilter[] {
+                new android.text.InputFilter.LengthFilter(MAX_NAME)});
         nameLayout.addView(name);
         form.addView(nameLayout);
         TextInputLayout destinationLayout = new TextInputLayout(requireContext());
@@ -179,8 +181,7 @@ public final class AddressBookFragment extends Fragment {
                 .setPositiveButton(R.string.address_book_save,
                         (dialog, which)
                                 -> submitAdd(name.getText().toString(),
-                                        destination.getText().toString(),
-                                        replace.isChecked()))
+                                        destination.getText().toString(), replace.isChecked()))
                 .show();
     }
 
@@ -202,8 +203,8 @@ public final class AddressBookFragment extends Fragment {
                 return;
             busy = false;
             if (RuntimeAdminPolicy.isOk(outcome)) {
-                status.setText(replace ? R.string.address_book_replaced
-                                       : R.string.address_book_added);
+                status.setText(
+                        replace ? R.string.address_book_replaced : R.string.address_book_added);
                 refresh();
             } else if (RuntimeAdminPolicy.isExists(outcome)) {
                 // The daemon reports the existing name instead of silently
@@ -240,10 +241,13 @@ public final class AddressBookFragment extends Fragment {
                 .setTitle(R.string.address_book_subscription_add)
                 .setView(layout)
                 .setNegativeButton(R.string.action_cancel, null)
-                .setPositiveButton(R.string.address_book_save, (dialog, which) -> {
-                    String url = input.getText() == null ? "" : input.getText().toString().trim();
-                    submitSubscription(url, true);
-                })
+                .setPositiveButton(R.string.address_book_save,
+                        (dialog, which) -> {
+                            String url = input.getText() == null
+                                    ? ""
+                                    : input.getText().toString().trim();
+                            submitSubscription(url, true);
+                        })
                 .show();
     }
 

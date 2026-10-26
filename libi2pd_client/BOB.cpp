@@ -399,10 +399,13 @@ namespace client
 		{
 			auto weak = std::weak_ptr<BOBI2POutboundTunnel> (
 				std::static_pointer_cast<BOBI2POutboundTunnel> (I2PService::shared_from_this ()));
-			localDestination->AcceptStreams ([weak] (std::shared_ptr<i2p::stream::Stream> stream)
+			localDestination->AcceptStreams (
+				[weak] (std::shared_ptr<i2p::stream::Stream> stream)
 				{
-					if (auto self = weak.lock ()) self->HandleAccept (std::move (stream));
-					else if (stream) stream->AsyncClose ();
+					if (auto self = weak.lock ())
+						self->HandleAccept (std::move (stream));
+					else if (stream)
+						stream->AsyncClose ();
 				});
 		}
 		else
@@ -573,8 +576,7 @@ namespace client
 			if (ecode != boost::asio::error::operation_aborted) Terminate ();
 			return;
 		}
-		const auto result = m_LineReader.Feed (
-			std::string_view (m_ReadBuffer.data (), bytes_transferred));
+		const auto result = m_LineReader.Feed (std::string_view (m_ReadBuffer.data (), bytes_transferred));
 		if (result == BOBCommandLineReader::Result::Overflow)
 		{
 			// A newline-free flood: close instead of buffering more input.
@@ -894,15 +896,13 @@ namespace client
 				return;
 			}
 			unsigned crypto = 0;
-			if (separator != std::string_view::npos
-				&& !ParseSmallUnsigned (types.substr (separator + 1), crypto))
+			if (separator != std::string_view::npos && !ParseSmallUnsigned (types.substr (separator + 1), crypto))
 			{
 				SendReplyError ("invalid crypto type");
 				return;
 			}
 			signatureType = static_cast<i2p::data::SigningKeyType> (signature);
-			if (separator != std::string_view::npos)
-				cryptoType = static_cast<i2p::data::CryptoKeyType> (crypto);
+			if (separator != std::string_view::npos) cryptoType = static_cast<i2p::data::CryptoKeyType> (crypto);
 		}
 
 		m_Keys = i2p::data::PrivateKeys::CreateRandomKeys (signatureType, cryptoType, true);

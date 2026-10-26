@@ -184,8 +184,7 @@ namespace client
 				auto key = pair.substr (0, equals);
 				auto value = pair.substr (equals + 1);
 				if (key.size () > MAX_ACTION_KEY_LENGTH || value.size () > MAX_ACTION_VALUE_LENGTH) continue;
-				if (EqualIgnoreCase (key, "action") && EqualIgnoreCase (value, "delete"))
-					action.deleteRequested = true;
+				if (EqualIgnoreCase (key, "action") && EqualIgnoreCase (value, "delete")) action.deleteRequested = true;
 			}
 			return true;
 		}
@@ -588,8 +587,7 @@ namespace client
 		}
 		if (!m_AddressSources.empty ())
 			LogPrint (eLogInfo, "Addressbook: ", m_AddressSources.size (), " subscription origins loaded");
-		if (stale)
-			LogPrint (eLogInfo, "Addressbook: ", stale, " stale subscription origins ignored");
+		if (stale) LogPrint (eLogInfo, "Addressbook: ", stale, " stale subscription origins ignored");
 	}
 
 	void detail::AddressLookupRequests::Prune (uint64_t now)
@@ -858,7 +856,8 @@ namespace client
 			// A same-directory atomic replacement never opens the target path for
 			// truncation and never follows a symlink placed at it. The identity is
 			// a per-destination file, so it is written with private permissions.
-			if (!i2p::fs::AtomicWritePrivate (path, std::string_view (reinterpret_cast<const char *> (buf.data ()), len)))
+			if (!i2p::fs::AtomicWritePrivate (
+					path, std::string_view (reinterpret_cast<const char *> (buf.data ()), len)))
 				LogPrint (eLogError, "Addressbook: Could not write identity file ", path);
 		}
 	}
@@ -993,8 +992,7 @@ namespace client
 		contents.push_back ('\n');
 		contents.append (lastModified);
 		contents.push_back ('\n');
-		if (!i2p::fs::AtomicWrite (fname, contents))
-			LogPrint (eLogError, "Addressbook: Could not write ", fname);
+		if (!i2p::fs::AtomicWrite (fname, contents)) LogPrint (eLogError, "Addressbook: Could not write ", fname);
 	}
 
 	bool AddressBookFilesystemStorage::GetEtag (
@@ -1456,9 +1454,9 @@ namespace client
 			// assume base64
 			if (!IsValidDestinationLength (jump))
 			{
-				LogPrint (eLogError, "Addressbook: Rejected jump-link destination for ", address,
-					" of length ", jump.size (), " (expected ", MIN_DESTINATION_BASE64_LENGTH, "..",
-					MAX_DESTINATION_BASE64_LENGTH, ")");
+				LogPrint (eLogError, "Addressbook: Rejected jump-link destination for ", address, " of length ",
+					jump.size (), " (expected ", MIN_DESTINATION_BASE64_LENGTH, "..", MAX_DESTINATION_BASE64_LENGTH,
+					")");
 				return;
 			}
 			auto ident = std::make_shared<i2p::data::IdentityEx> ();
@@ -1571,8 +1569,7 @@ namespace client
 		return AddressBookMutationResult::Ok;
 	}
 
-	AddressAddResult AddressBook::AddAddressChecked (
-		std::string_view name, std::string_view destination, bool replace)
+	AddressAddResult AddressBook::AddAddressChecked (std::string_view name, std::string_view destination, bool replace)
 	{
 		if (!IsValidHostName (name)) return AddressAddResult::InvalidName;
 		// Java bounds the base64 destination string before decoding it. The value
@@ -1824,8 +1821,8 @@ namespace client
 					// always kept.
 					if (!is_update || source.empty ())
 					{
-						LogPrint (eLogInfo, "Addressbook: Ignoring retraction of ", name,
-							" outside a subscription merge");
+						LogPrint (
+							eLogInfo, "Addressbook: Ignoring retraction of ", name, " outside a subscription merge");
 						continue;
 					}
 					if (!IsFeedOriginLocked (key, source))
@@ -1889,13 +1886,12 @@ namespace client
 							conflicts++;
 							RecordMergeConflict ();
 							if (conflictLogs++ < MAX_CONFLICT_LOG_LINES)
-								LogPrint (eLogWarning, "Addressbook: ",
-									source.empty () ? "Bulk source" : std::string (source),
+								LogPrint (eLogWarning,
+									"Addressbook: ", source.empty () ? "Bulk source" : std::string (source),
 									" offers another destination for ", name, "; keeping the existing entry");
 						}
 					}
-					else if (!sameDestination && it->second->IsIdentHash ()
-						&& // address changed inside this source?
+					else if (!sameDestination && it->second->IsIdentHash () && // address changed inside this source?
 						ident->GetSigningKeyType () != i2p::data::SIGNING_KEY_TYPE_DSA_SHA1) // don't replace by DSA
 					{
 						if (m_Storage)
@@ -1977,8 +1973,8 @@ namespace client
 		const auto subscriptionsSize = std::filesystem::file_size (subscriptionsPath, sizeError);
 		const bool tooLarge = !sizeError && subscriptionsSize > MAX_SUBSCRIPTION_FILE;
 		if (tooLarge)
-			LogPrint (eLogError, "Addressbook: subscriptions.txt exceeds the ",
-				MAX_SUBSCRIPTION_FILE, "-byte bound; using addressbook.subscriptions");
+			LogPrint (eLogError, "Addressbook: subscriptions.txt exceeds the ", MAX_SUBSCRIPTION_FILE,
+				"-byte bound; using addressbook.subscriptions");
 		std::ifstream f (subscriptionsPath, std::ifstream::in); // in text mode
 		if (f.is_open () && !tooLarge)
 		{
@@ -2338,8 +2334,7 @@ namespace client
 				m_SubscriptionsUpdateTimer = nullptr;
 				if (dest && m_ReloadAlive && m_ReloadAlive->load (std::memory_order_relaxed))
 				{
-					m_SubscriptionsUpdateTimer
-						= std::make_unique<boost::asio::steady_timer> (dest->GetService ());
+					m_SubscriptionsUpdateTimer = std::make_unique<boost::asio::steady_timer> (dest->GetService ());
 					m_SubscriptionsUpdateTimer->expires_after (
 						std::chrono::minutes (INITIAL_SUBSCRIPTION_UPDATE_TIMEOUT));
 					m_SubscriptionsUpdateTimer->async_wait (

@@ -411,8 +411,7 @@ static void TestTunnelAndReseedAdminVerbs ()
 	auto stop = ParseRequest ("I2PDTUI/1 ADMIN TUNNEL-STOP web");
 	assert (stop.has_value () && stop->type == RequestType::AdminTunnelStop);
 	assert (stop->argument == "web");
-	auto longest = std::string ("I2PDTUI/1 ADMIN TUNNEL-START ")
-		+ std::string (MAX_TUNNEL_SERVICE_NAME_LENGTH, 'a');
+	auto longest = std::string ("I2PDTUI/1 ADMIN TUNNEL-START ") + std::string (MAX_TUNNEL_SERVICE_NAME_LENGTH, 'a');
 	assert (ParseRequest (longest).has_value ());
 	assert (!ParseRequest (longest + "a").has_value ());
 	assert (!ParseRequest ("I2PDTUI/1 ADMIN TUNNEL-START").has_value ());
@@ -453,20 +452,18 @@ static void TestTunnelAndReseedAdminVerbs ()
 	// Every token is one lowercase word, so a client never has to translate
 	// or guess a spelling and a token can never carry whitespace.
 	for (auto outcome : { AdminOutcome::Started, AdminOutcome::Stopped, AdminOutcome::AlreadyRunning,
-			 AdminOutcome::AlreadyStopped, AdminOutcome::Unknown, AdminOutcome::Disabled,
-			 AdminOutcome::Exists })
+			 AdminOutcome::AlreadyStopped, AdminOutcome::Unknown, AdminOutcome::Disabled, AdminOutcome::Exists })
 	{
 		const auto token = AdminOutcomeName (outcome);
 		assert (!token.empty () && token.size () <= MAX_FIELD_NAME);
-		for (char ch : token)
-			assert ((ch >= 'a' && ch <= 'z') || ch == '-');
+		for (char ch : token) assert ((ch >= 'a' && ch <= 'z') || ch == '-');
 	}
 
 	// The reseed status and tunnel list field names must fit the wire limit,
 	// including the largest indexed variant a bounded snapshot can produce.
-	for (auto name : { "netdb.reseed.phase", "netdb.reseed.enabled", "netdb.reseed.attempts",
-			 "netdb.reseed.succeeded", "netdb.reseed.last_attempt_ms", "netdb.reseed.last_success_ms",
-			 "netdb.reseed.last_error", "tunnel.service", "tunnel.service.count", "outcome", "running" })
+	for (auto name : { "netdb.reseed.phase", "netdb.reseed.enabled", "netdb.reseed.attempts", "netdb.reseed.succeeded",
+			 "netdb.reseed.last_attempt_ms", "netdb.reseed.last_success_ms", "netdb.reseed.last_error",
+			 "tunnel.service", "tunnel.service.count", "outcome", "running" })
 		assert (std::string_view (name).size () <= MAX_FIELD_NAME);
 
 	// A tunnel row and an admin reply must survive framing and escaping.
@@ -500,9 +497,9 @@ static void TestAddressReplaceVerbs ()
 	assert (!ParseRequest ("I2PDTUI/1 ADMIN ADDRESS-REPLACE").has_value ());
 	assert (!ParseRequest ("I2PDTUI/1 ADMIN ADDRESS-REPLACE site.i2p AAAA extra").has_value ());
 	assert (!ParseRequest ("I2PDTUI/1 ADMIN ADDRESS-REPLACE site.i2p AAAA\nQUIT").has_value ());
-	assert (!ParseRequest ("I2PDTUI/1 ADMIN ADDRESS-REPLACE " + std::string (MAX_ADDRESS_ADD_NAME_LENGTH + 1, 'a')
-						   + " AAAA")
-				   .has_value ());
+	assert (!ParseRequest (
+		"I2PDTUI/1 ADMIN ADDRESS-REPLACE " + std::string (MAX_ADDRESS_ADD_NAME_LENGTH + 1, 'a') + " AAAA")
+			.has_value ());
 	std::string longDestination (MAX_ADDRESS_DESTINATION_LENGTH + 1, 'A');
 	assert (!ParseRequest ("I2PDTUI/1 ADMIN ADDRESS-ADD site.i2p " + longDestination).has_value ());
 	assert (!ParseRequest ("I2PDTUI/1 ADMIN ADDRESS-REPLACE site.i2p " + longDestination).has_value ());
@@ -602,8 +599,7 @@ static void TestTorrentRequests ()
 	assert (detailFullPage.has_value () && detailFullPage->commentOffset == 240);
 	assert (detailFullPage->commentLimit == MAX_TORRENT_COMMENT_RECORDS_PER_REQUEST);
 	auto detailSingle = ParseRequest ("I2PDTUI/1 TORRENT-DETAIL 0 7 0 1");
-	assert (detailSingle.has_value () && detailSingle->commentOffset == 0
-		&& detailSingle->commentLimit == 1);
+	assert (detailSingle.has_value () && detailSingle->commentOffset == 0 && detailSingle->commentLimit == 1);
 	auto detailLastPage = ParseRequest ("I2PDTUI/1 TORRENT-DETAIL 0 7 255 16");
 	assert (detailLastPage.has_value () && detailLastPage->commentOffset == MAX_TORRENT_COMMENT_OFFSET);
 	// Out-of-range, negative, non-numeric and extra tokens are rejected rather
@@ -661,8 +657,7 @@ static void TestTorrentRequests ()
 	assert (commentHide->tunnelIndex == 0 && commentHide->torrentId == 3 && commentHide->argument == "42");
 	auto commentUnhide = ParseRequest ("I2PDTUI/1 TORRENT-COMMENT-UNHIDE 0 3 42");
 	assert (commentUnhide.has_value () && commentUnhide->type == RequestType::TorrentCommentUnhide);
-	assert (commentUnhide->tunnelIndex == 0 && commentUnhide->torrentId == 3
-		&& commentUnhide->argument == "42");
+	assert (commentUnhide->tunnelIndex == 0 && commentUnhide->torrentId == 3 && commentUnhide->argument == "42");
 	assert (!ParseRequest ("I2PDTUI/1 TORRENT-COMMENT-UNHIDE 0 3").has_value ());
 
 	auto add = ParseRequest ("I2PDTUI/1 TORRENT-ADD-MAGNET 0 magnet:?xt=urn:btih:abc");

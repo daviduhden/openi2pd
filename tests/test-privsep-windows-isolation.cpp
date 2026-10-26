@@ -63,8 +63,8 @@ namespace
 // Concrete (non-generic) write rights. FILE_GENERIC_WRITE cannot be used as a
 // probe mask: it shares STANDARD_RIGHTS_WRITE and SYNCHRONIZE with
 // FILE_GENERIC_READ, so a read-only ACE would look writable.
-constexpr DWORD WRITE_ACCESS_MASK = static_cast<DWORD> (
-	FILE_WRITE_DATA | FILE_APPEND_DATA | FILE_WRITE_EA | FILE_WRITE_ATTRIBUTES | DELETE);
+constexpr DWORD WRITE_ACCESS_MASK
+	= static_cast<DWORD> (FILE_WRITE_DATA | FILE_APPEND_DATA | FILE_WRITE_EA | FILE_WRITE_ATTRIBUTES | DELETE);
 
 bool MatchesStringSid (PSID sid, const wchar_t * stringSid)
 {
@@ -139,8 +139,8 @@ std::wstring MakeFixtureDirectory (const wchar_t * suffix)
 
 void TestRoleTableInvariant ()
 {
-	const WindowsWorkerRole roles[] { WindowsWorkerRole::Supervisor, WindowsWorkerRole::Log,
-		WindowsWorkerRole::Storage, WindowsWorkerRole::Network, WindowsWorkerRole::Crypto, WindowsWorkerRole::Admin };
+	const WindowsWorkerRole roles[] { WindowsWorkerRole::Supervisor, WindowsWorkerRole::Log, WindowsWorkerRole::Storage,
+		WindowsWorkerRole::Network, WindowsWorkerRole::Crypto, WindowsWorkerRole::Admin };
 	for (const auto role : roles)
 	{
 		const auto isolation = GetWindowsRoleIsolation (role);

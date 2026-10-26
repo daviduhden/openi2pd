@@ -260,8 +260,8 @@ void TestLogRedaction ()
 	assert (RedactLogSecrets ("passphrase=topsecret rest") == "passphrase=<redacted> rest");
 
 	// Non-secret text is never touched.
-	for (const std::string_view plain : { "user=david tokens=5 passwordless=1",
-			 "path=/var/lib/i2pd/router.info", "assertion failed: value=3", "key exchange started" })
+	for (const std::string_view plain : { "user=david tokens=5 passwordless=1", "path=/var/lib/i2pd/router.info",
+			 "assertion failed: value=3", "key exchange started" })
 	{
 		assert (RedactLogSecrets (plain) == plain);
 	}
@@ -280,7 +280,7 @@ void TestLogRedaction ()
 	const std::string capped = RedactLogSecrets (many);
 	size_t redactions = 0;
 	for (size_t offset = capped.find (LOG_REDACTED_VALUE); offset != std::string::npos;
-		 offset = capped.find (LOG_REDACTED_VALUE, offset + LOG_REDACTED_VALUE.size ()))
+		offset = capped.find (LOG_REDACTED_VALUE, offset + LOG_REDACTED_VALUE.size ()))
 	{
 		++redactions;
 	}

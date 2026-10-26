@@ -89,7 +89,8 @@ namespace client
 		while (begin <= value.size () && result.valid)
 		{
 			const size_t end = value.find (',', begin);
-			const auto token = value.substr (begin, end == std::string_view::npos ? std::string_view::npos : end - begin);
+			const auto token
+				= value.substr (begin, end == std::string_view::npos ? std::string_view::npos : end - begin);
 			uint16_t parsed = 0;
 			if (!ParseLeaseSetEncTypeToken (token, parsed))
 			{
@@ -453,8 +454,8 @@ namespace client
 			m_IncomingMsgsQueue.push_back (msg);
 		}
 		if (dropped && queueDropLogs.Record ())
-			LogPrint (eLogWarning, "Destination: Incoming garlic queue is full, dropped the oldest message (",
-				dropped, " dropped)");
+			LogPrint (eLogWarning, "Destination: Incoming garlic queue is full, dropped the oldest message (", dropped,
+				" dropped)");
 		if (post)
 			boost::asio::post (m_Service,
 				[s = shared_from_this ()] ()
@@ -485,8 +486,7 @@ namespace client
 		if (!msg || msg->GetLength () < I2NP_HEADER_SIZE || !IsValidDeliveryStatusPayload (msg->GetPayloadLength ()))
 		{
 			if (g_CloveParseDrops.Record ())
-				LogPrint (eLogWarning, "Destination: DeliveryStatus message is not ", DELIVERY_STATUS_SIZE,
-					" bytes");
+				LogPrint (eLogWarning, "Destination: DeliveryStatus message is not ", DELIVERY_STATUS_SIZE, " bytes");
 			return;
 		}
 		uint32_t msgID = bufbe32toh (msg->GetPayload () + DELIVERY_STATUS_MSGID_OFFSET);
@@ -498,8 +498,7 @@ namespace client
 	{
 		if (len < I2NP_HEADER_SIZE)
 		{
-			if (g_CloveParseDrops.Record ())
-				LogPrint (eLogWarning, "Destination: I2NP message is too short ", len);
+			if (g_CloveParseDrops.Record ()) LogPrint (eLogWarning, "Destination: I2NP message is too short ", len);
 			return;
 		}
 		I2NPMessageType typeID = (I2NPMessageType)(buf[I2NP_HEADER_TYPEID_OFFSET]);
@@ -1319,7 +1318,8 @@ namespace client
 					LogPrint (eLogError, "Destination: no configured leaseSetEncType is supported by this provider");
 				else
 					LogPrint (eLogError,
-						"Destination: invalid leaseSetEncType configuration; no LeaseSet2 encryption key will be installed");
+						"Destination: invalid leaseSetEncType configuration; no LeaseSet2 encryption key will be "
+						"installed");
 			}
 			else
 			{
@@ -1386,8 +1386,7 @@ namespace client
 				params->Get (I2CP_PARAM_STREAMING_MAX_CONNS_PER_MINUTE, m_StreamingMaxConnsPerMinute);
 				params->Get (I2CP_PARAM_STREAMING_MAX_CONNS_PER_HOUR, m_StreamingMaxConnsPerHour);
 				params->Get (I2CP_PARAM_STREAMING_MAX_CONNS_PER_DAY, m_StreamingMaxConnsPerDay);
-				params->Get (
-					I2CP_PARAM_STREAMING_MAX_TOTAL_CONNS_PER_MINUTE, m_StreamingMaxTotalConnsPerMinute);
+				params->Get (I2CP_PARAM_STREAMING_MAX_TOTAL_CONNS_PER_MINUTE, m_StreamingMaxTotalConnsPerMinute);
 				params->Get (I2CP_PARAM_STREAMING_MAX_TOTAL_CONNS_PER_HOUR, m_StreamingMaxTotalConnsPerHour);
 				params->Get (I2CP_PARAM_STREAMING_MAX_TOTAL_CONNS_PER_DAY, m_StreamingMaxTotalConnsPerDay);
 				if (params->Get (I2CP_PARAM_STREAMING_MAX_WINDOW_SIZE, m_StreamingMaxWindowSize)
@@ -1438,7 +1437,8 @@ namespace client
 			std::lock_guard<std::mutex> lock (m_StreamingDestinationsMutex);
 			if (m_StreamingDestination) return;
 			LeaseSetDestination::Start ();
-			m_StreamingDestination = std::make_shared<i2p::stream::StreamingDestination> (GetSharedFromThis ()); // TODO:
+			m_StreamingDestination
+				= std::make_shared<i2p::stream::StreamingDestination> (GetSharedFromThis ()); // TODO:
 			targets.push_back (m_StreamingDestination);
 			for (auto & it : m_StreamingDestinationsByPorts) targets.push_back (it.second);
 		}
@@ -1586,8 +1586,7 @@ namespace client
 	{
 		if (len < 14) // 4-byte length prefix, then fromPort/toPort/protocol read at offsets up to 9 past it
 		{
-			if (g_CloveParseDrops.Record ())
-				LogPrint (eLogWarning, "Destination: Data message is too short ", len);
+			if (g_CloveParseDrops.Record ()) LogPrint (eLogWarning, "Destination: Data message is too short ", len);
 			return;
 		}
 		uint32_t length = bufbe32toh (buf);
@@ -1597,8 +1596,7 @@ namespace client
 		if (!IsValidDataMessageLength (length, len))
 		{
 			if (g_CloveParseDrops.Record ())
-				LogPrint (eLogError, "Destination: Data message length ", length, " does not match payload ",
-					len - 4);
+				LogPrint (eLogError, "Destination: Data message length ", length, " does not match payload ", len - 4);
 			return;
 		}
 		buf += 4;
@@ -1614,7 +1612,8 @@ namespace client
 			{
 				m_LastStreamingDestination = GetStreamingDestination (toPort);
 				if (!m_LastStreamingDestination)
-					m_LastStreamingDestination = GetDefaultStreamingDestination (); // if no destination on port use default
+					m_LastStreamingDestination
+						= GetDefaultStreamingDestination (); // if no destination on port use default
 				m_LastPort = toPort;
 			}
 			if (m_LastStreamingDestination)
@@ -1917,8 +1916,8 @@ namespace client
 			= i2p::data::WriteArtifact (i2p::data::StorageArtifact::DestinationKeys, artifactName, blob);
 		OPENSSL_cleanse (blob.data (), blob.size ());
 		if (!persisted)
-			LogPrint (eLogError, "Destination: Can't persist temporary keys of type ", keys->keyType,
-				" for address ", ident, ".b32.i2p");
+			LogPrint (eLogError, "Destination: Can't persist temporary keys of type ", keys->keyType, " for address ",
+				ident, ".b32.i2p");
 	}
 
 	void ClientDestination::CreateNewLeaseSet (const std::vector<std::shared_ptr<i2p::tunnel::InboundTunnel>> & tunnels)

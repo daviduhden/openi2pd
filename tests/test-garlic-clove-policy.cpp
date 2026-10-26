@@ -83,7 +83,8 @@ void TestCloveReplayFilterIsSeparated ()
 	assert (!cloveFilter.CheckAndInsert (cloveKey, 1000));
 	assert (cloveFilter.CheckAndInsert (cloveKey, 1000));
 	// The same ID with a different expiration is a different clove.
-	assert (!cloveFilter.CheckAndInsert (GetI2NPDuplicateKey (7, expiration + 1000, I2NP_DUPLICATE_SALT_DESTINATION), 1000));
+	assert (!cloveFilter.CheckAndInsert (
+		GetI2NPDuplicateKey (7, expiration + 1000, I2NP_DUPLICATE_SALT_DESTINATION), 1000));
 }
 
 void TestThreadLocalHKDFContext ()

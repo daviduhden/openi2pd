@@ -176,9 +176,11 @@ for my $file ( sort @files ) {
             my $resolved = abs_path($path);
             $resolved = File::Spec->canonpath($path) unless defined $resolved;
             push @missing, "$file:$line_number: $target (escapes repository)"
-              if $resolved ne $repo_root && index( $resolved, $repo_prefix ) != 0;
+              if $resolved ne $repo_root
+              && index( $resolved, $repo_prefix ) != 0;
             push @missing, "$file:$line_number: $target"
-              if ( $resolved eq $repo_root || index( $resolved, $repo_prefix ) == 0 )
+              if ( $resolved eq $repo_root
+                || index( $resolved, $repo_prefix ) == 0 )
               && !-e $resolved;
         }
     }

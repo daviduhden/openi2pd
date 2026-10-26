@@ -126,8 +126,7 @@ int main ()
 	assert (bounded->outOfSequenceBytes == acceptedFragments * slab);
 	assert (bounded->outOfSequenceBytes <= i2p::transport::SSU2_MAX_OUT_OF_SEQUENCE_BYTES);
 	assert (CountQueuedFragments (bounded) == acceptedFragments);
-	bounded->AddOutOfSequenceFragment (
-		MakeFragment (static_cast<int> (acceptedFragments + 1), false, 0x5B));
+	bounded->AddOutOfSequenceFragment (MakeFragment (static_cast<int> (acceptedFragments + 1), false, 0x5B));
 	assert (bounded->numOutOfSequenceFragments == acceptedFragments);
 	assert (CountQueuedFragments (bounded) == acceptedFragments);
 	assert (!bounded->ConcatOutOfSequenceFragments ()); // no last marker

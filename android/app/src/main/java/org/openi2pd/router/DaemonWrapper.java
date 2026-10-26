@@ -524,8 +524,9 @@ public class DaemonWrapper {
                 if (result != null) {
                     daemonStartResult = result;
                 }
-                change = setStateLocked(
-                        started ? State.startedOkay : canceled ? State.stopped : State.startFailed);
+                change = setStateLocked(started ? State.startedOkay
+                                : canceled      ? State.stopped
+                                                : State.startFailed);
             }
         } catch (Throwable tr) {
             lastThrowable = tr;

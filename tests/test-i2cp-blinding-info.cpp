@@ -64,8 +64,7 @@ void AppendIdentity (std::vector<uint8_t> & buf, const i2p::data::IdentityEx & i
 	buf.insert (buf.end (), raw.begin (), raw.end ());
 }
 
-std::vector<uint8_t> MakeDestinationMessage (uint8_t flags, const i2p::data::IdentityEx & identity,
-	uint32_t expiration)
+std::vector<uint8_t> MakeDestinationMessage (uint8_t flags, const i2p::data::IdentityEx & identity, uint32_t expiration)
 {
 	// blindType = EdDSA (7), endpoint type = destination (2)
 	auto buf = MakeHeader (flags, i2p::client::eI2CPBlindingEndpointDestination, 7, expiration);
@@ -200,8 +199,7 @@ void TestDestinationEndpoints (const i2p::data::IdentityEx & identity)
 		buf[4] = 0xff;
 		buf[5] = 0xff;
 		I2CPBlindingInfo info;
-		assert (ParseI2CPBlindingInfoMessage (buf.data (), buf.size (), info, error)
-			== eI2CPBlindingInfoUnsupported);
+		assert (ParseI2CPBlindingInfoMessage (buf.data (), buf.size (), info, error) == eI2CPBlindingInfoUnsupported);
 	}
 }
 
@@ -236,8 +234,7 @@ void TestOtherEndpoints (const i2p::data::IdentityEx & identity)
 		// Empty host name is malformed.
 		auto empty = MakeHeader (0, eI2CPBlindingEndpointHost, 7, 0);
 		empty.push_back (0);
-		assert (ParseI2CPBlindingInfoMessage (empty.data (), empty.size (), info, error)
-			== eI2CPBlindingInfoMalformed);
+		assert (ParseI2CPBlindingInfoMessage (empty.data (), empty.size (), info, error) == eI2CPBlindingInfoMalformed);
 	}
 
 	// Endpoint type key: signing key type + public key, no identity.
@@ -283,8 +280,8 @@ void TestRegistry (const i2p::data::IdentityEx & identity)
 	StoreI2CPBlindingInfo (stored);
 
 	I2CPBlindingInfo found;
-	assert (FindI2CPBlindingInfoBySigningKey (identity.GetSigningKeyType (),
-		identity.GetSigningPublicKeyBuffer (), identity.GetSigningPublicKeyLen (), found));
+	assert (FindI2CPBlindingInfoBySigningKey (identity.GetSigningKeyType (), identity.GetSigningPublicKeyBuffer (),
+		identity.GetSigningPublicKeyLen (), found));
 	assert (found.authType == eI2CPBlindingAuthDH);
 	assert (found.authPrivateKey.size () == 32);
 	assert (GetI2CPBlindingAuthSecret (found).size () == 32);
@@ -292,16 +289,16 @@ void TestRegistry (const i2p::data::IdentityEx & identity)
 	// An unrelated signing key finds nothing.
 	auto otherKeys = MakeDestinationKeys ();
 	assert (!FindI2CPBlindingInfoBySigningKey (otherKeys.GetPublic ()->GetSigningKeyType (),
-		otherKeys.GetPublic ()->GetSigningPublicKeyBuffer (),
-		otherKeys.GetPublic ()->GetSigningPublicKeyLen (), found));
+		otherKeys.GetPublic ()->GetSigningPublicKeyBuffer (), otherKeys.GetPublic ()->GetSigningPublicKeyLen (),
+		found));
 
 	// An expired record is pruned on access and never returned.
 	{
 		I2CPBlindingInfo expired = stored;
 		expired.expiration = 1; // 1970, long past
 		StoreI2CPBlindingInfo (expired);
-		assert (!FindI2CPBlindingInfoBySigningKey (identity.GetSigningKeyType (),
-			identity.GetSigningPublicKeyBuffer (), identity.GetSigningPublicKeyLen (), found));
+		assert (!FindI2CPBlindingInfoBySigningKey (identity.GetSigningKeyType (), identity.GetSigningPublicKeyBuffer (),
+			identity.GetSigningPublicKeyLen (), found));
 		assert (GetI2CPBlindingInfoCount () == 0);
 	}
 
@@ -354,9 +351,9 @@ void TestHostReplyEncoding (const i2p::data::IdentityEx & identity)
 
 	// Every failure is the 7-byte layout with the Java result code; an identity
 	// passed alongside a failure result is dropped.
-	const uint8_t failures[] = { eI2CPHostReplySecretRequired, eI2CPHostReplyKeyRequired,
-		eI2CPHostReplySecretAndKeyRequired, eI2CPHostReplyDecryptionFailure, eI2CPHostReplyLeaseSetLookupFailure,
-		eI2CPHostReplyFailure };
+	const uint8_t failures[]
+		= { eI2CPHostReplySecretRequired, eI2CPHostReplyKeyRequired, eI2CPHostReplySecretAndKeyRequired,
+			  eI2CPHostReplyDecryptionFailure, eI2CPHostReplyLeaseSetLookupFailure, eI2CPHostReplyFailure };
 	for (auto result : failures)
 	{
 		auto payload = BuildI2CPHostReplyPayload (0x01020304, 0x0a0b, identityCopy, { 0, 0 }, result);
@@ -381,7 +378,8 @@ void TestSendMessageSeams (const i2p::data::IdentityEx & identity)
 	(void)identityWritten;
 	const std::vector<uint8_t> payload { 1, 2, 3, 4 };
 
-	auto makeRequest = [&] (bool expires, uint64_t expiration) {
+	auto makeRequest = [&] (bool expires, uint64_t expiration)
+	{
 		std::vector<uint8_t> buf;
 		Append16 (buf, 0x0102);
 		buf.insert (buf.end (), identityBuf.begin (), identityBuf.end ());

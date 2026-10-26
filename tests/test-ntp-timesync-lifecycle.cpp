@@ -41,68 +41,68 @@ namespace util
 
 namespace
 {
-	int failures = 0;
+int failures = 0;
 
-	void Check (bool condition, const std::string & what)
-	{
-		if (condition) return;
-		std::cerr << "FAIL: " << what << std::endl;
-		++failures;
-	}
+void Check (bool condition, const std::string & what)
+{
+	if (condition) return;
+	std::cerr << "FAIL: " << what << std::endl;
+	++failures;
+}
 
-	void PutBigEndian32 (std::array<uint8_t, i2p::util::NTP_PACKET_SIZE> & packet, size_t offset, uint32_t value)
-	{
-		packet[offset] = static_cast<uint8_t> (value >> 24);
-		packet[offset + 1] = static_cast<uint8_t> ((value >> 16) & 0xFF);
-		packet[offset + 2] = static_cast<uint8_t> ((value >> 8) & 0xFF);
-		packet[offset + 3] = static_cast<uint8_t> (value & 0xFF);
-	}
+void PutBigEndian32 (std::array<uint8_t, i2p::util::NTP_PACKET_SIZE> & packet, size_t offset, uint32_t value)
+{
+	packet[offset] = static_cast<uint8_t> (value >> 24);
+	packet[offset + 1] = static_cast<uint8_t> ((value >> 16) & 0xFF);
+	packet[offset + 2] = static_cast<uint8_t> ((value >> 8) & 0xFF);
+	packet[offset + 3] = static_cast<uint8_t> (value & 0xFF);
+}
 
-	void PutBigEndian64 (std::array<uint8_t, i2p::util::NTP_PACKET_SIZE> & packet, size_t offset, uint64_t value)
-	{
-		PutBigEndian32 (packet, offset, static_cast<uint32_t> (value >> 32));
-		PutBigEndian32 (packet, offset + 4, static_cast<uint32_t> (value & 0xFFFFFFFFULL));
-	}
+void PutBigEndian64 (std::array<uint8_t, i2p::util::NTP_PACKET_SIZE> & packet, size_t offset, uint64_t value)
+{
+	PutBigEndian32 (packet, offset, static_cast<uint32_t> (value >> 32));
+	PutBigEndian32 (packet, offset + 4, static_cast<uint32_t> (value & 0xFFFFFFFFULL));
+}
 
-	struct ReplyFields
-	{
-		uint8_t leap = 0;
-		uint8_t version = 4;
-		uint8_t mode = 4;
-		uint8_t stratum = 2;
-		uint32_t rootDelaySeconds = 0;
-		uint32_t rootDispersionSeconds = 0;
-		uint32_t ntpSeconds = 0;
-		uint64_t origin = 0;
-	};
+struct ReplyFields
+{
+	uint8_t leap = 0;
+	uint8_t version = 4;
+	uint8_t mode = 4;
+	uint8_t stratum = 2;
+	uint32_t rootDelaySeconds = 0;
+	uint32_t rootDispersionSeconds = 0;
+	uint32_t ntpSeconds = 0;
+	uint64_t origin = 0;
+};
 
-	std::array<uint8_t, i2p::util::NTP_PACKET_SIZE> MakeReply (const ReplyFields & fields)
-	{
-		std::array<uint8_t, i2p::util::NTP_PACKET_SIZE> packet { };
-		packet[0] = static_cast<uint8_t> ((fields.leap << 6) | (fields.version << 3) | fields.mode);
-		packet[1] = fields.stratum;
-		PutBigEndian32 (packet, 4, fields.rootDelaySeconds << 16);
-		PutBigEndian32 (packet, 8, fields.rootDispersionSeconds << 16);
-		PutBigEndian64 (packet, 24, fields.origin);
-		PutBigEndian64 (packet, 32, static_cast<uint64_t> (fields.ntpSeconds) << 32);
-		return packet;
-	}
+std::array<uint8_t, i2p::util::NTP_PACKET_SIZE> MakeReply (const ReplyFields & fields)
+{
+	std::array<uint8_t, i2p::util::NTP_PACKET_SIZE> packet { };
+	packet[0] = static_cast<uint8_t> ((fields.leap << 6) | (fields.version << 3) | fields.mode);
+	packet[1] = fields.stratum;
+	PutBigEndian32 (packet, 4, fields.rootDelaySeconds << 16);
+	PutBigEndian32 (packet, 8, fields.rootDispersionSeconds << 16);
+	PutBigEndian64 (packet, 24, fields.origin);
+	PutBigEndian64 (packet, 32, static_cast<uint64_t> (fields.ntpSeconds) << 32);
+	return packet;
+}
 
-	uint32_t UnixToNTP (uint64_t unixSeconds)
-	{
-		return static_cast<uint32_t> (unixSeconds + i2p::util::NTP_UNIX_EPOCH_DELTA);
-	}
+uint32_t UnixToNTP (uint64_t unixSeconds)
+{
+	return static_cast<uint32_t> (unixSeconds + i2p::util::NTP_UNIX_EPOCH_DELTA);
+}
 
-	void CheckReply (const ReplyFields & fields, uint64_t origin, i2p::util::NTPReplyError expected,
-		const std::string & what)
-	{
-		const auto packet = MakeReply (fields);
-		uint32_t seconds = 0;
-		const auto result = i2p::util::ValidateNTPReply (packet, origin, seconds);
-		Check (result == expected, what);
-		if (expected == i2p::util::NTPReplyError::None)
-			Check (seconds == fields.ntpSeconds - i2p::util::NTP_UNIX_EPOCH_DELTA, what + " (time extracted)");
-	}
+void CheckReply (
+	const ReplyFields & fields, uint64_t origin, i2p::util::NTPReplyError expected, const std::string & what)
+{
+	const auto packet = MakeReply (fields);
+	uint32_t seconds = 0;
+	const auto result = i2p::util::ValidateNTPReply (packet, origin, seconds);
+	Check (result == expected, what);
+	if (expected == i2p::util::NTPReplyError::None)
+		Check (seconds == fields.ntpSeconds - i2p::util::NTP_UNIX_EPOCH_DELTA, what + " (time extracted)");
+}
 }
 
 int main ()

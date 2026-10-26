@@ -60,8 +60,7 @@ namespace stream
 		const uint8_t * optionData = packet->GetOptionData ();
 		const size_t optionOffset = optionData - packet->buf;
 		const size_t optionSize = packet->GetOptionSize ();
-		if (optionOffset > packet->len || optionSize > packet->len - optionOffset || !optionSize)
-			return std::nullopt;
+		if (optionOffset > packet->len || optionSize > packet->len - optionOffset || !optionSize) return std::nullopt;
 		// The FROM identity is the first option of a SYN (streaming spec order,
 		// same assumption ProcessOptions validates before using it). The
 		// signature is verified later by the normal path; a forged identity
@@ -231,7 +230,8 @@ namespace stream
 		auto outboundSpeed = m_LocalDestinationOwner->GetOwner ()->GetStreamingOutboundSpeed ();
 		if (outboundSpeed) m_MinPacingTime = (1000000LL * STREAMING_MTU) / outboundSpeed;
 
-		auto inboundSpeed = m_LocalDestinationOwner->GetOwner ()->GetStreamingInboundSpeed (); // for limit inbound speed
+		auto inboundSpeed
+			= m_LocalDestinationOwner->GetOwner ()->GetStreamingInboundSpeed (); // for limit inbound speed
 		if (inboundSpeed) m_PacketACKInterval = (1000000LL * STREAMING_MTU) / inboundSpeed;
 	}
 
@@ -312,7 +312,8 @@ namespace stream
 		auto outboundSpeed = m_LocalDestinationOwner->GetOwner ()->GetStreamingOutboundSpeed ();
 		if (outboundSpeed) m_MinPacingTime = (1000000LL * STREAMING_MTU) / outboundSpeed;
 
-		auto inboundSpeed = m_LocalDestinationOwner->GetOwner ()->GetStreamingInboundSpeed (); // for limit inbound speed
+		auto inboundSpeed
+			= m_LocalDestinationOwner->GetOwner ()->GetStreamingInboundSpeed (); // for limit inbound speed
 		if (inboundSpeed) m_PacketACKInterval = (1000000LL * STREAMING_MTU) / inboundSpeed;
 	}
 
@@ -2622,8 +2623,7 @@ namespace stream
 		if (IsRecentlyClosed (receiveStreamID)) return SynAdmission::eRecentlyClosed;
 		{
 			std::lock_guard<std::mutex> lock (m_StreamsMutex);
-			if (m_IncomingStreams.find (receiveStreamID) != m_IncomingStreams.end ())
-				return SynAdmission::eDuplicate;
+			if (m_IncomingStreams.find (receiveStreamID) != m_IncomingStreams.end ()) return SynAdmission::eDuplicate;
 		}
 		if (m_Owner->GetStreamingMaxConcurrentStreams () > 0
 			&& (int)GetNumStreams () > m_Owner->GetStreamingMaxConcurrentStreams ())
@@ -2691,9 +2691,7 @@ namespace stream
 		auto action = EvaluateAdmission (peer);
 		switch (action)
 		{
-		case StreamAdmission::eDrop:
-			LogSynRejection ("access filter drop", receiveStreamID);
-			break;
+		case StreamAdmission::eDrop: LogSynRejection ("access filter drop", receiveStreamID); break;
 		case StreamAdmission::eReset:
 			LogSynRejection ("access filter deny", receiveStreamID);
 			RememberRecentlyClosed (receiveStreamID);
@@ -2835,7 +2833,8 @@ namespace stream
 	void StreamingDestination::ScheduleConnectionCleanup ()
 	{
 		m_ConnectionCleanupTimer.expires_after (std::chrono::seconds (STREAMING_CONNECTION_CLEANUP_INTERVAL));
-		m_ConnectionCleanupTimer.async_wait ([weak = weak_from_this ()] (const boost::system::error_code & ecode)
+		m_ConnectionCleanupTimer.async_wait (
+			[weak = weak_from_this ()] (const boost::system::error_code & ecode)
 			{
 				if (auto self = weak.lock ()) self->HandleConnectionCleanup (ecode);
 			});
@@ -2904,9 +2903,11 @@ namespace stream
 						StopInternal ();
 						done->set_value ();
 					});
-				if (future.wait_for (std::chrono::seconds (i2p::client::STOP_ON_SERVICE_TIMEOUT)) == std::future_status::ready) return;
-				LogPrint (eLogError, "Streaming: Service didn't stop the destination in ", i2p::client::STOP_ON_SERVICE_TIMEOUT,
-					" seconds");
+				if (future.wait_for (std::chrono::seconds (i2p::client::STOP_ON_SERVICE_TIMEOUT))
+					== std::future_status::ready)
+					return;
+				LogPrint (eLogError, "Streaming: Service didn't stop the destination in ",
+					i2p::client::STOP_ON_SERVICE_TIMEOUT, " seconds");
 				return;
 			}
 		}
@@ -3011,15 +3012,11 @@ namespace stream
 					// already gone (Java ConnectionManager._recentlyClosed).
 					RejectSyn (packet, receiveStreamID, "recently closed"); // consumes the packet
 					return;
-				case SynAdmission::eOverLimit:
-					RejectSyn (packet, receiveStreamID, "concurrent stream limit");
-					return;
+				case SynAdmission::eOverLimit: RejectSyn (packet, receiveStreamID, "concurrent stream limit"); return;
 				case SynAdmission::eBacklogFull:
 					RejectSyn (packet, receiveStreamID, "pending incoming backlog full");
 					return;
-				case SynAdmission::eThrottled:
-					RejectSyn (packet, receiveStreamID, "connection throttle");
-					return;
+				case SynAdmission::eThrottled: RejectSyn (packet, receiveStreamID, "connection throttle"); return;
 				case SynAdmission::eAccept: break;
 				}
 				// Server-tunnel access filter (Java access/*). The decision is
@@ -3395,8 +3392,8 @@ namespace stream
 		if (!isEmpty)
 		{
 			m_PendingIncomingTimer.expires_after (std::chrono::seconds (PENDING_INCOMING_TIMEOUT));
-			m_PendingIncomingTimer.async_wait (std::bind (&StreamingDestination::HandlePendingIncomingTimer,
-				shared_from_this (), std::placeholders::_1));
+			m_PendingIncomingTimer.async_wait (std::bind (
+				&StreamingDestination::HandlePendingIncomingTimer, shared_from_this (), std::placeholders::_1));
 		}
 	}
 

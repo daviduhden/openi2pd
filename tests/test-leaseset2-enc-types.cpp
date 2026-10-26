@@ -154,8 +154,8 @@ void TestEncTypeOptionGrammar ()
 
 // Builds a signed standard LeaseSet2 with the given key sections. The returned
 // vector starts with the NetDb store type, which is part of the signed data.
-std::vector<uint8_t> BuildLeaseSet2 (const PrivateKeys & keys,
-	const std::vector<std::pair<uint16_t, std::vector<uint8_t>>> & sections)
+std::vector<uint8_t> BuildLeaseSet2 (
+	const PrivateKeys & keys, const std::vector<std::pair<uint16_t, std::vector<uint8_t>>> & sections)
 {
 	auto now = static_cast<uint32_t> (i2p::util::GetMillisecondsSinceEpoch () / 1000);
 	std::vector<uint8_t> buffer;
@@ -199,8 +199,7 @@ std::vector<uint8_t> BuildLeaseSet2 (const PrivateKeys & keys,
 LeaseSet2 ParseLeaseSet2 (const std::vector<uint8_t> & buffer, CryptoKeyType preferred, bool storeLeases = true)
 {
 	assert (buffer.size () > 1);
-	return LeaseSet2 (
-		buffer[0], buffer.data () + 1, buffer.size () - 1, storeLeases, nullptr, preferred);
+	return LeaseSet2 (buffer[0], buffer.data () + 1, buffer.size () - 1, storeLeases, nullptr, preferred);
 }
 
 void TestUnknownKeyTypeIsRetainedInert ()
@@ -228,7 +227,8 @@ void TestUnknownKeyTypeIsRetainedInert ()
 	// A known usable type next to it still wins, and the wire order is kept.
 	{
 		std::vector<uint8_t> x25519Key (32, 0x44);
-		const auto buffer = BuildLeaseSet2 (keys, { { unknownType, unknownKey }, { CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, x25519Key } });
+		const auto buffer
+			= BuildLeaseSet2 (keys, { { unknownType, unknownKey }, { CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, x25519Key } });
 		auto leaseSet = ParseLeaseSet2 (buffer, CRYPTO_KEY_TYPE_ECIES_X25519_AEAD);
 		assert (leaseSet.IsValid ());
 		assert (leaseSet.GetNumEncryptionKeys () == 2);

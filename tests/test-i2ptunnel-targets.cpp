@@ -24,27 +24,27 @@
 
 namespace
 {
-	using i2p::client::I2PServerTunnel;
-	using i2p::client::I2PServerTunnelHTTPPolicy;
-	using i2p::client::I2PServerTunnelRequestDecision;
-	using i2p::client::I2PServerTunnelTargetMap;
+using i2p::client::I2PServerTunnel;
+using i2p::client::I2PServerTunnelHTTPPolicy;
+using i2p::client::I2PServerTunnelRequestDecision;
+using i2p::client::I2PServerTunnelTargetMap;
 
-	struct Fixture
+struct Fixture
+{
+	boost::asio::io_context service;
+	std::shared_ptr<i2p::client::ClientDestination> destination;
+
+	Fixture ()
 	{
-		boost::asio::io_context service;
-		std::shared_ptr<i2p::client::ClientDestination> destination;
+		i2p::util::Mapping params;
+		auto keys = i2p::data::PrivateKeys::CreateRandomKeys (
+			i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, true);
+		destination = std::make_shared<i2p::client::ClientDestination> (service, keys, false, &params);
+	}
+};
 
-		Fixture ()
-		{
-			i2p::util::Mapping params;
-			auto keys = i2p::data::PrivateKeys::CreateRandomKeys (
-				i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519, i2p::data::CRYPTO_KEY_TYPE_ECIES_X25519_AEAD, true);
-			destination = std::make_shared<i2p::client::ClientDestination> (service, keys, false, &params);
-		}
-	};
-
-	const std::string BasicPost = "POST /upload HTTP/1.1\r\nHost: peer\r\nContent-Length: 0\r\n\r\n";
-	const std::string BasicGet = "GET / HTTP/1.1\r\nHost: peer\r\n\r\n";
+const std::string BasicPost = "POST /upload HTTP/1.1\r\nHost: peer\r\nContent-Length: 0\r\n\r\n";
+const std::string BasicGet = "GET / HTTP/1.1\r\nHost: peer\r\n\r\n";
 } // namespace
 
 int main ()
@@ -169,8 +169,8 @@ int main ()
 
 		policy.SetPostLimit (0); // disabled
 		for (int i = 0; i < 100; ++i)
-			assert (policy.Check (BasicPost, 9000 + static_cast<uint64_t> (i))
-				== I2PServerTunnelRequestDecision::eAllow);
+			assert (
+				policy.Check (BasicPost, 9000 + static_cast<uint64_t> (i)) == I2PServerTunnelRequestDecision::eAllow);
 	}
 
 	// --- limitAction mapping ----------------------------------------------

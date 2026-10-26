@@ -48,8 +48,7 @@ inline constexpr uint64_t MAX_LOG_SINK_BYTES = 64 * 1024 * 1024;
  * Whether one more record still fits the file-sink budget. Pure so the bound
  * can be tested without writing 64 MiB; the worker passes its own counters.
  */
-constexpr bool FitsLogSinkBudget (
-	uint64_t currentBytes, uint64_t recordBytes, uint64_t cap = MAX_LOG_SINK_BYTES)
+constexpr bool FitsLogSinkBudget (uint64_t currentBytes, uint64_t recordBytes, uint64_t cap = MAX_LOG_SINK_BYTES)
 {
 	return currentBytes <= cap && recordBytes <= cap - currentBytes;
 }

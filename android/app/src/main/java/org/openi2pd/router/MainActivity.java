@@ -337,9 +337,9 @@ public class MainActivity extends AppCompatActivity {
         }
 
         FragmentTransaction transaction = fragments.beginTransaction().setReorderingAllowed(true);
-        for (String existingTag : new String[] {TAG_DASHBOARD, TAG_NETWORK, TAG_TUNNELS,
-                     TAG_STATISTICS, TAG_SETTINGS, TAG_LOGS, TAG_ABOUT, TAG_TORRENTS,
-                     TAG_ADDRESS_BOOK, TAG_RUNTIME_ADMIN}) {
+        for (String existingTag :
+                new String[] {TAG_DASHBOARD, TAG_NETWORK, TAG_TUNNELS, TAG_STATISTICS, TAG_SETTINGS,
+                        TAG_LOGS, TAG_ABOUT, TAG_TORRENTS, TAG_ADDRESS_BOOK, TAG_RUNTIME_ADMIN}) {
             Fragment existing = fragments.findFragmentByTag(existingTag);
             if (existing != null && !existingTag.equals(tag)) {
                 transaction.hide(existing);
