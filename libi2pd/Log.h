@@ -202,7 +202,9 @@ namespace log
 
 		/**
 			 * @brief Format log message and write to output stream/syslog
-			 * @param msg Pointer to processed message
+			 *
+			 * The record is consumed by reference; the caller keeps ownership of
+			 * the shared message.
 			 */
 		void Append (std::shared_ptr<i2p::log::LogMsg> &);
 
@@ -301,6 +303,13 @@ template <typename TValue> void LogPrint (std::stringstream & s, TValue && arg) 
  * @brief Create log message and send it to queue
  * @param level Message level (eLogError, eLogInfo, ...)
  * @param args Array of message parts
+ *
+ * The formatted text is a persistence boundary: it reaches a file, syslog, the
+ * privilege-separated log worker and the TUI ring. Never pass a password,
+ * private key, seed, token, PSK or a complete credential-bearing operand; log
+ * only the operation and a non-secret outcome. The log worker additionally
+ * redacts known secret labels and control characters, which is a safety net for
+ * untrusted text, not a licence to pass a secret.
  */
 template <typename... TArgs> void LogPrint (LogLevel level, TArgs &&... args) noexcept
 {

@@ -74,6 +74,15 @@ public final class RouterConfigStore {
         this.configFile = resolveConfigFile(appContext);
     }
 
+    /**
+     * Process-wide store for the daemon's {@code i2pd.conf}, created once under
+     * the class lock and bound to the application context.
+     *
+     * <p>The returned instance is a file-backed cache: reads and writes go to
+     * the configuration file, so call them from a worker. The settings screen
+     * keeps all access on one background executor and only touches views back
+     * on the main thread.</p>
+     */
     public static RouterConfigStore get(Context context) {
         Objects.requireNonNull(context, "context");
         RouterConfigStore local = instance;

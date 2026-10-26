@@ -281,6 +281,9 @@ namespace client
 		eSAMFrameTooLong // the bounded control buffer cannot hold the frame
 	};
 
+	/// Offsets in the bounded control input: a newline-terminated command can
+	/// be followed immediately by SIZE bytes for DATAGRAM/RAW SEND. The payload
+	/// is not another command, even when it contains a newline.
 	struct SAMFrame
 	{
 		size_t lineLength = 0; // command line including the '\n' terminator
@@ -592,15 +595,11 @@ namespace client
 		return line;
 	}
 
-	// Frames the bounded SAM control input. A command line is one frame; the
-	// DATAGRAM SEND/RAW SEND commands additionally carry SIZE payload bytes
-	// after the line terminator, so a split payload is reported as NeedMore
-	// instead of being parsed as further commands. `sendLimit` is the largest
-	// SIZE accepted for the addressed session (31744 DATAGRAM, 32768 RAW);
-	// 0 means the addressed session cannot accept a SEND at all, so the line is
-	// completed immediately for the handler to report. An invalid SIZE also
-	// completes the line so the SEND handler can report it and close the
-	// session exactly as the non-pipelined path does.
+	/// Frame the bounded SAM control input. DATAGRAM/RAW SEND adds SIZE bytes
+	/// after the line; a split payload needs more input rather than becoming a
+	/// second command. A zero @a sendLimit or invalid SIZE completes the line
+	/// for the handler to reject, without waiting for an unusable payload.
+	/// @see https://i2p.net/en/docs/specs/samv3/
 	inline SAMFrameStatus GetSAMNextFrame (std::string_view input, size_t sendLimit, SAMFrame & frame)
 	{
 		frame = { };
@@ -646,6 +645,9 @@ namespace client
 
 	class SAMBridge;
 	struct SAMSession;
+	/// One SAM TCP control or stream socket. The bridge is borrowed and must
+	/// outlive this socket and its callbacks; shared handlers retain the socket.
+	/// Terminate releases its admission slot, receivers, stream and socket once.
 	class SAMSocket : public std::enable_shared_from_this<SAMSocket>
 	{
 	public:
@@ -696,8 +698,8 @@ namespace client
 		void ContinueProcessing ();
 		size_t GetSAMSendLimit () const;
 
-		// Cancellable deadline for the HELLO exchange and for silence between
-		// control commands. Any expiry closes the control socket.
+		// Cancellable deadline for HELLO and for a partially received command.
+		// An established idle session may remain open between commands.
 		void ArmControlDeadline (int seconds, const char * reason);
 		void CancelControlDeadline ();
 		void HandleControlDeadline (const boost::system::error_code & ecode);
@@ -976,6 +978,8 @@ namespace client
 		return true;
 	}
 
+	/// Session state shared by the bridge and admitted sockets. The bridge is a
+	/// borrowed owner; the accept queue and forwarder registry share one mutex.
 	struct SAMSession
 	{
 		SAMBridge & m_Bridge;
@@ -1071,6 +1075,8 @@ namespace client
 		void StopLocalDestination ();
 	};
 
+	/// Owns the SAM listener, datagram endpoint and session/socket registries.
+	/// Destination callbacks marshal socket work onto the SAM service thread.
 	class SAMBridge : private i2p::util::RunnableService
 	{
 	public:
@@ -1086,9 +1092,26 @@ namespace client
 			std::lock_guard<std::mutex> l (m_ServiceThreadMutex);
 			return m_ServiceThreadID == std::this_thread::get_id ();
 		}
+		/// Build a session for a validated SESSION CREATE.
+		///
+		/// @param id          client-chosen session name (unique per bridge)
+		/// @param type        validated STYLE; MASTER creates a master session
+		/// @param destination base64 private keys, or empty for a transient
+		///   identity created from SIGNATURE_TYPE/CRYPTO_TYPE
+		/// @param params      the other options, applied only to a new destination
+		/// @return nullptr when the key material does not parse or names an
+		///   orphaned destination; the caller answers SESSION STATUS instead.
+		///
+		/// The destination reference of the returned session is acquired here and
+		/// released by SAMSession::StopLocalDestination(). Key material and the
+		/// options mapping are never logged.
 		std::shared_ptr<SAMSession> CreateSession (std::string_view id, SAMSessionType type,
 			std::string_view destination, // empty string means transient
 			const i2p::util::Mapping & params);
+		/// Insert a session under its ID and report whether the ID was free.
+		/// Used for SESSION ADD subsessions after the caller has checked the
+		/// (style, receive protocol, listen port) key; an already used ID fails
+		/// and the caller answers SESSION STATUS instead of sharing state.
 		bool AddSession (std::shared_ptr<SAMSession> session);
 		void CloseSession (std::string_view id);
 		std::shared_ptr<SAMSession> FindSession (std::string_view id) const;

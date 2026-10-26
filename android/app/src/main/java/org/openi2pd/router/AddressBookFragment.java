@@ -41,6 +41,12 @@ public final class AddressBookFragment extends Fragment {
     private LinearLayout subscriptionRows;
     private TextView status;
     private boolean busy;
+    /**
+     * View generation. Bridge callbacks are asynchronous, so the ones that
+     * rebuild a row list capture the current value and discard their result
+     * once {@link #onDestroyView()} has incremented it; a late result must never
+     * address a released list or a detached view.
+     */
     private int generation;
 
     @Nullable

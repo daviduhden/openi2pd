@@ -78,6 +78,10 @@ namespace garlic
 	// length distribution without matching it, which is worse than not applying
 	// it. Tracked as an open tuning item, not as a security fix.
 
+	/// Holds the tag and message-key chains for one ECIES ratchet generation.
+	/// Derived intermediate keys support out-of-order delivery; retrieving a
+	/// cached key consumes it. The destructor wipes the retained key material.
+	/// @see https://i2p.net/en/docs/specs/ecies/
 	class RatchetTagSet
 	{
 	public:
@@ -98,6 +102,9 @@ namespace garlic
 		uint64_t GetNextSessionTag (i2p::crypto::HKDFContext & hkdfCtx);
 		const uint8_t * GetNextRootKey () const { return m_NextRootKey; };
 		int GetNextIndex () const { return m_NextIndex; };
+		/// Derive or consume a cached key for the 16-bit message index.
+		/// @param key Writable 32-byte output.
+		/// @return False for an invalid index, null output or missing cached key.
 		bool GetSymmKey (int index, uint8_t * key);
 		void DeleteSymmKey (int index);
 
@@ -123,6 +130,8 @@ namespace garlic
 	};
 
 	class ECIESX25519AEADRatchetSession;
+	/// Receive-side tag set that retains its session while tags can be used.
+	/// Destruction of a New Session tag set also releases the session's NSR keys.
 	class ReceiveRatchetTagSet : public RatchetTagSet, public std::enable_shared_from_this<ReceiveRatchetTagSet>
 	{
 	public:
@@ -212,6 +221,12 @@ namespace garlic
 	// so an NSR can never remove a session.
 	bool ValidateNewSessionReplyPayload (const uint8_t * buf, size_t len);
 
+	/// ECIES-X25519 garlic session with handshake, tag-set and ACK state.
+	/// A received New Session candidate is validated and authenticated before
+	/// its Noise state and remote key are committed. The first consumed inbound
+	/// tag selects a matching pending reply split; when no send tag set exists,
+	/// the send path can use the oldest pending split as a fallback.
+	/// @see https://i2p.net/en/docs/specs/ecies/
 	class ECIESX25519AEADRatchetSession : public GarlicRoutingSession,
 										  private i2p::crypto::NoiseSymmetricState,
 										  public std::enable_shared_from_this<ECIESX25519AEADRatchetSession>

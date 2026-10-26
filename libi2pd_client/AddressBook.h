@@ -295,13 +295,39 @@ namespace client
 		void ResetTimers (); // after the shared local destination is replaced
 		void StartResolvers ();
 		void Stop ();
+		/// Resolve a name or destination for a local caller (proxy, tunnel or
+		/// destination). Three input forms are accepted: a base32
+		/// `<hash>.b32.i2p` label, an `.i2p`/`.b33.i2p` host name, and a full
+		/// base64 destination. A `.i2p.alt` suffix is treated as a lookup-only
+		/// alias for `.i2p`.
+		/// A b32/b33 result is decoded locally and succeeds without any network
+		/// activity; a host name that is not in the book triggers one bounded,
+		/// non-blocking resolver query (see LookupAddress()) and returns `nullptr`
+		/// for this call, so a caller must not treat a miss as terminal.
+		/// A miss is negatively cached for a short, bounded time; a b33 label is
+		/// never cached and never resolved through the local `www.` alias.
 		std::shared_ptr<const Address> GetAddress (std::string_view address);
 		std::shared_ptr<const i2p::data::IdentityEx> GetFullAddress (const std::string & address);
+		/// Local-only lookup under the normalised (lower-case) key. It never
+		/// sends a query, so it is the right call for a caller that must not
+		/// create network side effects.
 		std::shared_ptr<const Address> FindAddress (std::string_view address);
+		/// Send one resolver query for an unqualified host name. The name must
+		/// have a `.i2p` target already present in the book, its length must fit
+		/// the single byte of the wire format, and the reply is correlated by a
+		/// CSPRNG nonce that is bound to the queried name and the authenticated
+		/// resolver identity: a reply can only inform, never authorize, a name
+		/// change.
 		void LookupAddress (std::string_view address);
+		/// Store a jump-link result. The destination value is an identity, not a
+		/// path or URL; an invalid length or a blocked (tombstoned) name is
+		/// refused, and the value is never logged.
 		void InsertAddress (const std::string & address, const std::string & jump); // for jump links
 		void InsertFullAddress (std::shared_ptr<const i2p::data::IdentityEx> address);
 
+		/// True when the stored destination for @a address equals the one in
+		/// @a jump (accepted as a b32 label or a full base64 identity). Used to
+		/// decide whether a jump link is new information before it is applied.
 		bool RecordExists (const std::string & address, const std::string & jump);
 
 		// Administrative list/mutation helpers. They copy only names and

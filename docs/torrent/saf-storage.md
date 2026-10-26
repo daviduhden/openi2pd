@@ -126,6 +126,12 @@ ambiguous: the engine invalidates the piece and verifies/re-downloads on a later
 attempt. A failed seed read also clears the torrent's seeding completion state,
 so it can recover instead of remaining falsely complete.
 
+SAF torrent creation reads provider streams directly on the app's SAF worker;
+it does not go through this broker watchdog. Its 30-minute deadline cancels a
+`CancellationSignal`, but a provider that ignores cancellation can keep the
+worker blocked. A bounded recovery design and device regression remain open
+under `ANDROID-032`.
+
 External document providers remain outside this fence: their remote operations
 may finish after client death. Immutable destination authority, exact offsets
 and subsequent piece hashes remain necessary; no atomic provider rollback is

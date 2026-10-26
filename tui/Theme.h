@@ -405,6 +405,26 @@ namespace tui
 	class Theme
 	{
 	public:
+		/*
+		 * Discover capabilities and allocate one colour pair per semantic
+		 * role.
+		 *
+		 * The degradation ladder is re-entered after every failed allocation
+		 * pass: direct colour -> xterm-256 -> 16-colour ANSI -> 8-colour ANSI
+		 * -> monochrome attributes.  A terminal that cannot provide colours
+		 * is not an error; the console keeps working with reverse/bold and
+		 * the caller can report the degraded mode.
+		 *
+		 * Default terminal colours are used only when the background is
+		 * known (COLORFGBG is set).  Without that hint an explicit black or
+		 * white background is chosen from the detected luminance, because
+		 * inheriting the terminal default can render dark text on a light
+		 * background or the reverse.
+		 *
+		 * @post Every role maps either to an allocated pair or to a
+		 *       monochrome attribute; Attributes() is always safe to call.
+		 * @return True when at least one colour pair was installed.
+		 */
 		bool Init ()
 		{
 			m_RolePair.fill (0);

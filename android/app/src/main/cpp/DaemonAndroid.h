@@ -114,37 +114,6 @@ namespace android
 	bool IsStartCancelRequested () noexcept;
 
 	/**
-	 * Native mirror of the Java daemon state. It is published before the
-	 * corresponding transition, so a status/control call that is not holding
-	 * the native-call lock can tell that the router is going away instead of
-	 * touching a torn-down RouterContext.
-	 *
-	 * Java owns the user-visible state machine (DaemonWrapper.State). In
-	 * particular DaemonWrapper publishes the "stopping" state before
-	 * stopDaemon(), and RouterService enqueues stop/status operations on its
-	 * single worker. Start still runs on DaemonWrapper's dedicated start
-	 * thread so asset copying and native initialisation do not block status
-	 * polling; the native side cannot enforce either Java executor, so it
-	 * keeps this defensive mirror and serialises the calls it receives.
-	 *
-	 * Java now publishes DaemonWrapper.State.stopping before native teardown,
-	 * and RouterService schedules the graceful-stop deadline on its main
-	 * handler before enqueuing the actual stop on the single-thread service
-	 * worker. The native guard remains defence in depth for any caller that
-	 * bypasses that path (for example service destruction); it is not a
-	 * substitute for the Java lifecycle contract.
-	 *
-	 * Because start() holds this guard for the whole native transition, a stop
-	 * request cannot be expressed by calling stop(): it would wait for the
-	 * start to finish. RequestStartCancel() is therefore the only lock-free
-	 * signal; start() observes it in the packaged-asset wait and between
-	 * Daemon.init and Daemon.start, rolls the initialized daemon back and
-	 * reports START_CANCELED_RESULT. Stop-vs-start ordering is: publish the
-	 * Java stop token, set the native cancel token, then take the Java state
-	 * monitor and, only for a daemon that already reached Running, call the
-	 * guarded native stop.
-	 */
-	/**
 	 * Serialises every JNI-visible control/status call (start, stop, reload,
 	 * status, snapshots, network state and proxy probes) against each other.
 	 *
@@ -174,7 +143,34 @@ namespace android
 		std::unique_lock<std::mutex> m_Lock;
 	};
 
-	/** Current lifecycle without taking the native-call lock (diagnostics). */
+	/**
+	 * Current lifecycle without taking the native-call lock (diagnostics).
+	 *
+	 * Native mirror of the Java daemon state. It is published before the
+	 * corresponding transition, so a status or control call that does not hold
+	 * the native-call lock can tell that the router is going away instead of
+	 * touching a torn-down RouterContext.
+	 *
+	 * Java owns the user-visible state machine (DaemonWrapper.State):
+	 * DaemonWrapper publishes "stopping" before stopDaemon(), and RouterService
+	 * schedules the graceful-stop deadline on its main handler before enqueuing
+	 * the actual stop on its single worker. Start still runs on the wrapper's
+	 * dedicated start thread so asset copying and native initialisation do not
+	 * block status polling. The native side cannot enforce either Java executor,
+	 * so it keeps this defensive mirror and serialises the calls it receives;
+	 * the guard is defence in depth for callers that bypass the Java contract,
+	 * not a substitute for it.
+	 *
+	 * Because start() holds the guard for the whole native transition, a stop
+	 * request cannot be expressed by calling stop(): it would wait for the start
+	 * to finish. RequestStartCancel() is therefore the only lock-free signal;
+	 * start() observes it during the packaged-asset wait and between
+	 * Daemon.init and Daemon.start, rolls the initialized daemon back and
+	 * reports START_CANCELED_RESULT. Stop-vs-start ordering is: publish the Java
+	 * stop token, set the native cancel token, then take the Java state monitor
+	 * and, only for a daemon that already reached Running, call the guarded
+	 * native stop.
+	 */
 	DaemonLifecycle GetDaemonLifecycle () noexcept;
 
 	class DaemonAndroidImpl
@@ -204,9 +200,16 @@ namespace android
 	/** Publishes Stopping before Daemon.stop(). Callers must hold the guard. */
 	void stop ();
 
-	// set datadir received from jni
+	/**
+	 * Record the application data directory used by the next start.
+	 *
+	 * The value is a path inside app-specific storage, already validated by
+	 * Java, and is only read by start(); it is guarded by stateMutex and never
+	 * crosses a log line or a status record.
+	 */
 	void SetDataDir (std::string jdataDir);
-	// get datadir
+
+	/** Copy of the recorded data directory; safe on the UI thread. */
 	std::string GetDataDir (void);
 }
 }

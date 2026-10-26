@@ -15,6 +15,7 @@ upstream building/API material is kept under `../devs/` to preserve links.
 
 ## Refactoring reports
 
+- [Source documentation conventions](../source-documentation.md)
 - [Architecture](../architecture.md)
 - [C++23 migration](../cpp23-migration.md)
 - [Build requirements](../devs/building/requirements.md)

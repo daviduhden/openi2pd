@@ -225,6 +225,10 @@ namespace data
 	 */
 	RouterInfoFileKind ClassifyRouterInfoFile (const std::string & path, std::string & identBase64);
 
+	/// Owns the router and LeaseSet stores, lookup admission and reseed job.
+	/// Container locks protect membership; returned shared pointers keep entries
+	/// alive after a lock is released and are not a frozen database transaction.
+	/// @see https://i2p.net/en/docs/specs/i2np/
 	class NetDb
 	{
 	public:
@@ -249,15 +253,55 @@ namespace data
 		// throttled). The DatabaseStore path keeps its own accounting.
 		bool FloodRouterInfoConditional (std::shared_ptr<const RouterInfo> router);
 		bool AddLeaseSet (const IdentHash & ident, const uint8_t * buf, int len);
+		/// Store a LeaseSet2 from an untrusted DatabaseStore.
+		/// The entry is accepted only while updates are open, with one of the
+		/// three known store types, a valid signature and a store key that matches
+		/// `ident` (the destination hash, or the blinded destination for an
+		/// encrypted set). An encrypted LS2 is additionally bounded by its outer
+		/// published/expiry window because a floodfill cannot read the inner set.
+		/// @return False when the entry was rejected; the caller must not
+		/// acknowledge or flood a rejected store.
 		bool AddLeaseSet2 (const IdentHash & ident, const uint8_t * buf, int len, uint8_t storeType);
+		/// Look up a router by identity hash.
+		/// @return A snapshot under shared ownership, or null when absent. The
+		/// object may be replaced by a later AddRouterInfo, so callers must keep
+		/// the pointer for as long as they use it and must not treat it as a
+		/// stable view of the map.
 		std::shared_ptr<RouterInfo> FindRouter (const IdentHash & ident) const;
+		/// Look up a destination's LeaseSet.
+		/// @return A shared pointer to the currently cached object, or null. A
+		/// later store normally installs a freshly validated object rather than
+		/// mutating this one, but locally built LeaseSets do update in place, so
+		/// the pointer must not be treated as an immutable snapshot of the cache.
 		std::shared_ptr<LeaseSet> FindLeaseSet (const IdentHash & destination) const;
+		/// Look up the profile attached to a stored router.
+		/// @return Null when the router is unknown or profiles are disabled.
+		/// @warning This uses RouterInfo::GetProfile(), which may create and load
+		/// a profile from disk; callers already holding a netDb container lock
+		/// must use RouterInfo::GetProfileIfExists() instead.
 		std::shared_ptr<RouterProfile> FindRouterProfile (const IdentHash & ident) const;
 
 		void RequestDestination (const IdentHash & destination,
 			RequestedDestination::RequestComplete requestComplete = nullptr, bool direct = true);
 
 		std::shared_ptr<const RouterInfo> GetRandomRouter () const;
+		/// Pick a random router usable next to `compatibleWith`.
+		/// The candidate must be ECIES, at least the minimum accepted version, not
+		/// hidden, not a high-congestion peer for a client tunnel, and not the
+		/// same family/subnet when reserved-range checking is enabled.
+		/// @param compatibleWith Local or previous-hop router the candidate has to
+		/// interoperate with; its transport mask is the filter anchor.
+		/// @param reverse Inbound direction: require the candidate to reach us
+		/// rather than the other way round (and, for an endpoint, a published
+		/// IPv4 address).
+		/// @param endpoint Candidate must belong to the last-hop ordering group
+		/// when peer ordering is active.
+		/// @param clientTunnel Selects the client-tunnel congestion policy and may
+		/// add the precise-build-rate "is real" profile check.
+		/// @param peerOrdering Per-lookup ordering state used to keep first and
+		/// last hops in different groups; optional and borrowed for the call.
+		/// @warning Selection filters run under the RouterInfo container lock and
+		/// must use the non-creating profile lookup.
 		std::shared_ptr<const RouterInfo> GetRandomRouter (std::shared_ptr<const RouterInfo> compatibleWith,
 			bool reverse, bool endpoint, bool clientTunnel, PeerOrdering * peerOrdering = nullptr) const;
 		std::shared_ptr<const RouterInfo> GetHighBandwidthRandomRouter (
@@ -277,6 +321,9 @@ namespace data
 		void SetUnreachable (const IdentHash & ident, bool unreachable);
 		void ExcludeReachableTransports (const IdentHash & ident, RouterInfo::CompatibleTransports transports);
 
+		/// Submit a message to the bounded worker queue. Null messages, requests
+		/// after admission closes, and messages over the queue cap are dropped.
+		/// The shared pointer keeps an admitted message alive until it is handled.
 		void PostI2NPMsg (std::shared_ptr<const I2NPMessage> msg);
 		void PostDatabaseSearchReplyMsg (std::shared_ptr<const I2NPMessage> msg); // to NetdbReq thread
 
@@ -313,22 +360,24 @@ namespace data
 		}
 		bool IsReseeding () const { return m_IsReseeding.load (std::memory_order_relaxed); }
 
-		/**
-		 * Bounded immutable snapshots for administrative interfaces.
-		 * The returned RouterInfo/LeaseSet shared pointers keep each object
-		 * alive while the caller formats it; container iteration itself is
-		 * serialized by the corresponding NetDb mutex.
-		 */
+		/// Bounded snapshots of container membership for administrative views.
+		/// Returned shared pointers keep objects alive after the container lock is
+		/// released; LeaseSet objects are not immutable snapshots of their state.
+		/// @param max Maximum entries to return; zero returns an empty vector.
 		std::vector<std::shared_ptr<const RouterInfo>> GetRouterInfosSnapshot (size_t max) const;
+		/// Like GetRouterInfosSnapshot(), but also returns each LeaseSet key.
 		std::vector<std::pair<IdentHash, std::shared_ptr<LeaseSet>>> GetLeaseSetsSnapshot (size_t max) const;
 
-		/** visit all lease sets we currently store */
+		/// Snapshot membership under the container lock, then invoke v unlocked.
 		void VisitLeaseSets (LeaseSetVisitor v);
-		/** visit all router infos we have currently on disk, usually insanely expensive, does not access in memory RI */
+		/// Visit RouterInfos read from a snapshot of stored paths; disk I/O can be expensive.
 		void VisitStoredRouterInfos (RouterInfoVisitor v);
-		/** visit all router infos we have loaded in memory, cheaper than VisitLocalRouterInfos but locks access while visiting */
+		/// Snapshot in-memory membership under the container lock, then invoke v unlocked.
 		void VisitRouterInfos (RouterInfoVisitor v);
-		/** visit N random router that match using filter, then visit them with a visitor, return number of RouterInfos that were visited */
+		/// Select up to n matching routers and visit the selected entries unlocked.
+		/// @warning The filter runs while the RouterInfo container mutex is held;
+		/// it must not reenter operations that acquire the same mutex.
+		/// @return Number visited, which may be less than n after bounded retries.
 		size_t VisitRandomRouterInfos (RouterInfoFilter f, RouterInfoVisitor v, size_t n);
 
 		void ClearRouterInfos ()

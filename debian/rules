@@ -15,12 +15,31 @@
 # invocation bypasses dh_auto_configure, so pass the dpkg-buildflags values
 # explicitly (including PIE/FORTIFY/RELRO/NOW) and enable the project's own
 # hardening diagnostics.
+#
+# Build inputs: the packaging reads only the checked-out source tree and the
+# Build-Depends that the build environment provides; it downloads nothing.
+# Environment: DEB_BUILD_OPTIONS may carry "parallel=N"; DEB_HOST_ARCH selects
+# the target architecture. The rules run unprivileged (Rules-Requires-Root: no)
+# and write only below build-debian/ and debian/tmp/.
 export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 export DEB_CXXFLAGS_MAINT_APPEND = -Wall -pedantic
 
 %:
 	dh $@
 
+# Install prefixes mirror the Debian filesystem layout so the CMake install
+# rules place units, sysusers/tmpfiles policy and man pages at their final
+# paths; debian/i2pd.install then claims them from debian/tmp.
+#
+# RelWithDebInfo keeps debug info for dh_strip/dh_dwz to split into a -dbgsym
+# package instead of shipping it in the binary.
+#
+# BUILD_TESTING=OFF keeps CTest out of the package build (see
+# override_dh_auto_test).
+#
+# I2PD_SERVICE_MANAGER=none makes CMake skip its own service payload: debhelper
+# integrates contrib/i2pd.service and contrib/sysvinit/i2pd, and installing
+# both owners would create duplicate units and start actions.
 override_dh_auto_configure:
 	cmake -S build -B build-debian -G Ninja \
 		-DCMAKE_BUILD_TYPE=RelWithDebInfo \
@@ -42,6 +61,9 @@ override_dh_auto_configure:
 		-DI2PD_OPENSSL_EXPECT=OpenSSL \
 		-DI2PD_SERVICE_MANAGER=none
 
+# An empty "parallel=" value (the common case) leaves --parallel without a job
+# count, so CMake/Ninja use their own default; a distro-supplied value is passed
+# through unchanged.
 override_dh_auto_build:
 	cmake --build build-debian --parallel \
 		$(patsubst parallel=%,%,$(filter parallel=%,$(DEB_BUILD_OPTIONS)))
@@ -51,6 +73,8 @@ override_dh_auto_test:
 	# run during a package build.
 	@true
 
+# Remove only the out-of-tree build directory; the source tree, including the
+# checked-in Gradle wrapper, stays untouched.
 override_dh_auto_clean:
 	cmake -E remove_directory build-debian
 
@@ -77,5 +101,8 @@ override_dh_installsystemd:
 override_dh_installtmpfiles:
 	dh_installtmpfiles
 
+# Any file installed by CMake but claimed by no manifest is a packaging error
+# (an unshipped binary, stray doc tree or new unit), so fail the build rather
+# than silently dropping it.
 override_dh_missing:
 	dh_missing --fail-missing

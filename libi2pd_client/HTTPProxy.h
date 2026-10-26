@@ -546,6 +546,9 @@ namespace proxy
 	std::string HTTPProxyDigestChallengeResponse (
 		std::string_view realm, std::string_view nonce, std::string_view opaque, bool stale);
 
+	/// HTTP forward proxy listener. Each accepted handler receives the local
+	/// authentication configuration and selects an I2P destination or configured
+	/// outproxy; the base acceptor owns the handler registry.
 	class HTTPProxy : public i2p::client::TCPIPAcceptor
 	{
 	public:

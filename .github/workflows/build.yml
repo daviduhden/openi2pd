@@ -23,6 +23,10 @@ on:
         description: 'Run the Perl::Critic and Test::More quality lane'
         type: boolean
         default: false
+      source_docs:
+        description: 'Generate and check source API documentation'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -32,6 +36,43 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  source-docs:
+    name: C++ source API documentation
+    if: ${{ inputs.source_docs == true }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4
+        with:
+          persist-credentials: false
+      - name: Install Doxygen
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends doxygen ripgrep
+      - name: Generate and check C++ API documentation
+        run: doxygen docs/Doxyfile.source
+      - name: Collect source TODO candidates for review
+        if: always()
+        run: |
+          if rg -n '\b(TODO|FIXME|XXX)\b' libi2pd libi2pd_client privsep daemon tui tools android i18n tests/interop contrib debian \
+            -g '*.{h,hpp,c,cpp,java,aidl,pl,sh,rc,openrc,scm}' \
+            -g '**/run' -g '**/finish' -g '**/i2pd' -g '**/i2pdctl' > source-doc-todos.txt; then
+            :
+          else
+            result=$?
+            if [ "$result" -ne 1 ]; then exit "$result"; fi
+          fi
+      - name: Upload source documentation and TODO candidates
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4
+        with:
+          name: source-api-docs
+          path: |
+            docs/generated/source-api
+            source-doc-todos.txt
+          if-no-files-found: warn
+          retention-days: 7
+
   skills-static:
     name: Agent Skills static contract
     runs-on: ubuntu-24.04
@@ -492,6 +533,15 @@ jobs:
             -Pi2pd.abis=arm64-v8a \
             -Pandroid.injected.build.abi=arm64-v8a \
             -Pi2pd.cmakeArgs="$I2PD_ANDROID_CMAKE_ARGS"
+      - name: Generate and check Android Javadoc
+        if: ${{ inputs.source_docs == true }}
+        run: |
+          cd android
+          ./gradlew :i2pd:sourceJavadoc --no-daemon \
+            -Pi2pd.ndkVersion="$NDK_VERSION" \
+            -Pi2pd.abis=arm64-v8a \
+            -Pandroid.injected.build.abi=arm64-v8a \
+            -Pi2pd.cmakeArgs="$I2PD_ANDROID_CMAKE_ARGS"
       - name: Assert Android JVM tests actually ran
         run: |
           test -n "$(find android/app/build/test-results/testDebugUnitTest -name '*.xml' -print -quit)"
@@ -585,6 +635,7 @@ jobs:
             android/app/build/reports
             android/app/build/test-results
             android/app/build/outputs/apk
+            android/app/build/docs/javadoc
           if-no-files-found: warn
           retention-days: 7
 

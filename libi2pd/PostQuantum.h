@@ -82,6 +82,10 @@ namespace crypto
 	// the active provider supports. Returns 0 when no hybrid version works.
 	int HighestSupportedPQVersion (int requested, int maximum);
 
+	/// Owning ML-KEM key pair for one parameter set.
+	/// Non-copyable because it holds provider key material; the destructor
+	/// frees it. A key is only usable after GenerateKeys() or SetPublicKey()
+	/// succeeded, and private material is never logged or serialized here.
 	class MLKEMKeys
 	{
 	public:

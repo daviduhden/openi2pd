@@ -122,6 +122,11 @@ namespace data
 		bool overrideSources { false };
 	};
 
+	/// Imports bootstrap RouterInfos from configured local or remote sources.
+	/// Remote SU3 bundles are checked against loaded signing certificates;
+	/// a local ZIP import is a separate entry point and has no SU3 signature.
+	/// One owner performs a pass and controls cancellation through its stop token.
+	/// @see https://i2p.net/en/docs/specs/su3/
 	class Reseeder
 	{
 		typedef Tag<512> PublicKey;
@@ -143,6 +148,11 @@ namespace data
 		ReseedResult ReadSU3File (const char * filename);
 		ReseedResult ReadZIPFile (const char * filename);
 
+		/// Load the SU3 signing certificates into the in-process trust store.
+		/// Only `*.crt` entries are read; unparsable files are logged and skipped.
+		/// The store only grows, so a certificate removed from the directory stays
+		/// trusted until the process restarts, and a bundle whose signer is absent
+		/// from the store is rejected rather than imported unverified.
 		void LoadCertificates ();
 
 		void SetFetchHookForTesting (

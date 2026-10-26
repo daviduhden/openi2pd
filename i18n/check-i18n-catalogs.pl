@@ -76,6 +76,8 @@ sub parse_strings {
     my ( $text, $path ) = @_;
     my $start = index( $text, 'static const LocaleStrings strings {' );
     fail("$path has no LocaleStrings table") if $start < 0;
+    # The singular table ends where the plural map begins. Parsing stays
+    # textual on purpose: the checker must run without a C++ compiler.
     my $end = index( $text, 'static const std::map', $start );
     $end = length($text) if $end < 0;
     my $block = substr( $text, $start, $end - $start );
@@ -123,6 +125,10 @@ sub parse_plurals {
 
 sub placeholders {
     my ($value) = @_;
+    # Conversions are compared as a sorted multiset, never by position: a
+    # translation may reorder a sentence, but the set of %s/%d/%i/%u/%f
+    # conversions (with widths, flags and positional indexes ignored) must stay
+    # identical. "%%" is a literal percent sign and never counts.
     my @found;
     while ( $value =~ /%(?!%)(?:\d+\$)?[-+ 0#]*\d*(?:\.\d+)?([sdiuf])/g ) {
         push @found, $1;
@@ -132,6 +138,10 @@ sub placeholders {
 
 sub valid_utf8 {
     my ($value) = @_;
+    # Reject overlong encodings, UTF-16 surrogates and code points above
+    # U+10FFFF. The catalogs are compiled as UTF-8 literals and the TUI
+    # measures display columns, so an invalid sequence would corrupt output
+    # long before any build step noticed it.
     return $value !~ /[\x80-\xFF]/ || $value =~ /^(?:
         [\x00-\x7F]|
         [\xC2-\xDF][\x80-\xBF]|
@@ -166,6 +176,9 @@ for my $catalog (@catalogs) {
         fail(
 "placeholder mismatch for '$key' in $catalog->{path} ($want != $got)"
         ) if $want ne $got;
+        # A trailing space in the English key is a word separator in a composed
+        # TUI line. If a translation stores its last word without it, the next
+        # label runs into the sentence, so treat a lost space as a defect.
         if ( $key =~ / $/ && $value =~ /[A-Za-z0-9:;,.!?)]$/ ) {
             fail("trailing space lost for '$key' in $catalog->{path}");
         }
@@ -280,3 +293,86 @@ my $pluralCount = scalar keys %{ $catalogs[0]{plurals} };
 print
 "i18n catalogs: $count keys, $pluralCount plural groups, en/es/ru/zh-Hans parity OK\n";
 exit 0;
+
+=head1 NAME
+
+check-i18n-catalogs.pl - verify the native translation catalogs
+
+=head1 SYNOPSIS
+
+    perl i18n/check-i18n-catalogs.pl [--root DIR]
+
+DIR defaults to the repository containing the script.
+
+=head1 DESCRIPTION
+
+Compile-free contract for the Spanish, Russian and Simplified Chinese
+catalogs in F<i18n/>. The English source strings are the keys, so this checker
+compares each translation against the source literals rather than against a
+generated message file. It fails when:
+
+=over 4
+
+=item *
+
+a catalog is missing, contains a byte-order mark or CRLF, or is not valid
+UTF-8;
+
+=item *
+
+a key appears twice, or the three catalogs do not have exactly the same key
+set;
+
+=item *
+
+a printf conversion set differs from the English key, or a trailing separator
+space was dropped;
+
+=item *
+
+a plural group has the wrong arity for its language (two forms for Spanish,
+three for Russian, one for Simplified Chinese), an empty form, or a key set
+that differs from the other catalogs;
+
+=item *
+
+a key is a protocol, configuration or wire identifier (for example an
+C<ntcp2.*> or C<torrent.*> key, a C<TORRENT-> verb, an C<< ADMIN >> verb, an
+C<I2PDTUI/> request or a magnet link), because those must never be
+translated; or
+
+=item *
+
+a translatable literal harvested from F<tui/main.cpp>,
+F<libi2pd_client/HTTPProxy.cpp>, F<daemon/Daemon.cpp> or
+F<tools/autoconf_i2pd.cpp> has no entry in one of the catalogs.
+
+=back
+
+=head1 FILE FORMAT
+
+The catalogs are C++ sources holding a C<LocaleStrings> initialiser and a
+plural map. Entries are read textually: adjacent string literals are
+concatenated before comparison, because the compiler joins them into one key
+and a translation stored against a single fragment would never match.
+Harvested call sites are C<tr(...)>, C<SetStatus(...)>,
+C<BeginPrompt(...)> and, in F<tui/main.cpp> only, the label helpers
+C<show(...)> and C<add(...)>.
+
+=head1 OUTPUT AND EXIT STATUS
+
+Every violation is written to STDERR and the script exits 1. A clean run
+prints one summary line on STDOUT and exits 0. Invalid arguments or a missing
+root print the usage line and exit 2.
+
+=head1 DEPENDENCIES
+
+Core Perl only (strict, warnings, Getopt::Long, File::Spec, File::Basename,
+Cwd, 5.016). No compiler, catalog generator or locale installation is
+required, which is why the check runs on OpenBSD base Perl.
+
+=head1 SECURITY AND PORTABILITY
+
+Read-only: no file is written, no program is compiled and no network is used.
+Diagnostics quote catalog keys but never a credential; catalogs contain UI
+text only.

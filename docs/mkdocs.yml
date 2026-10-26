@@ -113,6 +113,7 @@ nav:
       - i2pdctl: tools/i2pdctl.md
   - Developer:
       - Guide: developer-guide/README.md
+      - Source documentation: source-documentation.md
       - Requirements: devs/building/requirements.md
       - Linux and OpenBSD: devs/building/unix.md
       - Windows: devs/building/windows.md

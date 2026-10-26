@@ -22,6 +22,27 @@ namespace i2p::client
 inline constexpr size_t I2P_TUNNEL_HTTP_MAX_HEADER_SIZE = 8192;
 inline constexpr size_t I2P_TUNNEL_MAX_NUM_HTTP_HEADERS = 100;
 
+/// Bounded, incremental HTTP header transformer for one tunnel direction.
+///
+/// The parser is fed arbitrary socket fragments and never holds more than one
+/// partial line plus the transformed output, both capped at
+/// I2P_TUNNEL_HTTP_MAX_HEADER_SIZE; bodies are appended verbatim after the
+/// terminating empty line because their bytes are not header syntax.
+///
+/// Invariants that must survive a change here:
+/// - an obsolete obs-fold continuation line (leading SP/HTAB) is rejected,
+///   because it can smuggle a header-name lookalike past a prefix filter;
+/// - `Connection` is normalised to `close`, except a websocket `Upgrade`
+///   which is forwarded and remembered so no second `Connection` line is
+///   synthesised;
+/// - a ClientResponse transformation removes hop-by-hop and proxy-only
+///   headers but never rewrites `Transfer-Encoding` or any other framing
+///   header, so the body is still interpreted exactly as the peer sent it.
+///
+/// @post On Result::Complete the Output() view stays valid until this object is
+///   destroyed, so an asynchronous write may borrow it.
+/// @warning A rejected header is never partially forwarded: the caller must
+///   close the connection instead of writing Output().
 class I2PTunnelHTTPHeader
 {
 public:

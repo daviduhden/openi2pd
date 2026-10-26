@@ -135,6 +135,15 @@ const int GRACEFUL_SHUTDOWN_INTERVAL = 10 * 60; // in seconds
 // a handler may only touch volatile sig_atomic_t, everything else is done by the daemon loop
 static volatile sig_atomic_t g_PendingSignals[NSIG] = { };
 
+/**
+ * Async-signal-safe handler shared by the daemon's installed dispositions.
+ *
+ * The handler only records the signal number in a `volatile sig_atomic_t` table
+ * and restores errno; every effect (reload, log reopen, graceful drain, exit) is
+ * executed by HandlePendingSignals() on the daemon loop. Coalescing repeated
+ * signals into one slot is intentional: a signal storm must not queue unbounded
+ * work, and the loop re-checks router state before acting.
+ */
 void handle_signal (int sig)
 {
 	int savedErrno = errno;

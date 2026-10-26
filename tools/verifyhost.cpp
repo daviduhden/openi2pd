@@ -38,6 +38,23 @@ std::optional<std::string_view> FindValue (std::string_view record, std::string_
 }
 }
 
+/// @brief Verify the `#sig=`/`!sig=` signature on an address-book record.
+///
+/// Input is the whole record as one argument: `host=destination#!sig=...`
+/// optionally followed by `olddest=`/`oldsig=` for a destination rotation.
+/// The primary signature covers the record text before its marker; the old
+/// signature covers the text before `#oldsig=`, which by then includes the
+/// newly added signature.
+///
+/// CMake and the Windows text-mode toolchain can hand the tool CRLF while the
+/// signer canonicalized LF; signatures cover the logical record, so line
+/// endings are normalized before any verification. `FindValue` stops at `#`,
+/// CR and LF because a record may carry an internal newline between the old
+/// signature and a later marker.
+///
+/// @return 0 when every present signature verifies, 1 on a malformed record,
+///         missing/invalid encoding, or a failed verification.
+/// @post All diagnostics go to stdout, including the success line.
 int main (int argc, char * argv[])
 {
 	if (argc < 2 || argc > 2)

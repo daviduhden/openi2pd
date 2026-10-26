@@ -52,6 +52,12 @@ public final class RuntimeAdminFragment extends Fragment {
     private TextView reseedStatus;
     private LinearLayout rows;
     private boolean busy;
+    /**
+     * View generation. Command and read callbacks run after their JNI call has
+     * returned, so each one captures the current value and is dropped once
+     * {@link #onDestroyView()} has incremented it; a stale outcome is therefore
+     * never shown on a detached view or applied to a recreated screen.
+     */
     private int generation;
 
     @Nullable

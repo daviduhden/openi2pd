@@ -8,6 +8,14 @@
 # the RouterService-owned graceful-stop path are present, and fails on any
 # app-source reference to a JDK-only API that ART does not provide.
 #
+# Contract: a static, grep-only audit of the checked-in Android and native build
+# configuration. It needs no JDK, Android SDK/NDK, Gradle or network access, and
+# it is run from the manual Android job on a clean checkout. Every path it reads
+# is derived from this script's location, so it is safe to invoke from any
+# working directory. It writes nothing and fails on the first violated contract
+# with exit 1 and a diagnostic on stderr; it does not build, dex or run on a
+# device.
+#
 
 set -eu
 

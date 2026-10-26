@@ -80,6 +80,11 @@ public final class AutoStartController {
         return legacy;
     }
 
+    /**
+     * Read the autostart preference. Only the app-private marker is inspected,
+     * apart from the one-time legacy migration in {@link #getMarker(Context)},
+     * so a worker thread may call it.
+     */
     public static boolean isEnabled(Context context) {
         return getMarker(context).isFile();
     }

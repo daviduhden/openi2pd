@@ -157,6 +157,10 @@ namespace client
 		std::set<std::string> m_Names;
 	};
 
+	/// Owns the client destination registry and configured client services.
+	/// Registry snapshots retain shared objects after the lock is released, but
+	/// do not guarantee that those objects are still running. Lifecycle changes
+	/// stop services outside registry locks because shutdown can re-enter them.
 	class ClientContext
 	{
 	public:
@@ -166,6 +170,23 @@ namespace client
 		void Start ();
 		void Stop ();
 
+		/// Re-read the live client configuration. It replaces the shared local
+		/// destination, the HTTP/SOCKS proxies and the configured tunnels, then
+		/// drops destinations that no configured tunnel references any more.
+		///
+		/// Server tunnel acceptors are detached before the tunnels are re-read,
+		/// so incoming streams queue while a tunnel that still exists re-installs
+		/// its own acceptor, and `isUpdated` (a transient reload flag) decides
+		/// which tunnels are removed afterwards. The already loaded
+		/// configuration object and the tunnel files are read again, but the
+		/// process-wide configuration is not reparsed.
+		///
+		/// @pre The caller is the single owner of the reload path (the daemon
+		///   administration thread); the path stops and joins destination threads
+		///   and must not run on a destination or TUI handler thread.
+		/// @warning Any reference returned by the legacy accessors (or a raw
+		///   service pointer) is invalid once this returns. Use the snapshot
+		///   accessors instead.
 		void ReloadConfig ();
 
 		std::shared_ptr<ClientDestination> GetSharedLocalDestination () const
@@ -188,10 +209,22 @@ namespace client
 			const i2p::util::Mapping * params = nullptr); // same as previous but on external io_service
 		std::shared_ptr<ClientDestination> CreateNewMatchedTunnelDestination (
 			const i2p::data::PrivateKeys & keys, const std::string & name, const i2p::util::Mapping * params = nullptr);
+		/// Remove and stop the exact registered destination object, including
+		/// when its map key has been replaced. An unregistered object is ignored.
 		void DeleteLocalDestination (std::shared_ptr<ClientDestination> destination);
 		bool ReplaceLocalDestinationHash (
 			const i2p::data::IdentHash & oldIdentHash, const i2p::data::IdentHash & newIdentHash);
 		std::shared_ptr<ClientDestination> FindLocalDestination (const i2p::data::IdentHash & destination) const;
+		/// Load a destination's private keys, generating a fresh identity when
+		/// @a filename starts with "transient".
+		/// The file is read relative to the data directory, its size is bounded
+		/// before reading, and only the generated or loaded public address is
+		/// ever logged. A missing file is not an error: a new identity is
+		/// created and written back. A file that exists but is empty, oversized,
+		/// truncated or unparsable fails the call instead of silently creating a
+		/// replacement identity, so a damaged key file cannot rotate an
+		/// operator's address.
+		/// @return false only for an existing file that cannot be used as a key.
 		bool LoadPrivateKeys (i2p::data::PrivateKeys & keys, std::string_view filename,
 			i2p::data::SigningKeyType sigType = i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519,
 			i2p::data::CryptoKeyType cryptoType = i2p::data::CRYPTO_KEY_TYPE_ELGAMAL);

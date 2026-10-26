@@ -75,6 +75,9 @@ the console.
 
 ## Conventions
 
+- Apply the [source documentation policy](../../../AGENTS.md#source-documentation-policy)
+  to terminal ownership, local IPC deadlines and snapshot presentation.
+
 - All administrative operations are typed, allowlisted and daemon-owned. Do
   not expose a raw engine pointer, generic `write_file`, arbitrary path or
   shell command.
@@ -177,6 +180,11 @@ the console.
   with `std::string (i2p::i18n::tr (...))` before concatenating it. The
   `i18n-static` check rejects the unwrapped form in `tui/main.cpp`; keep both
   the code and that guard.
+
+- Public TUI/IPC declarations receive Doxygen contracts (ownership, thread
+  affinity, bounded deadlines); rendering helpers explain column/UTF-8 and
+  localization invariants rather than restating code. See
+  [`docs/source-documentation.md`](../../../docs/source-documentation.md).
 
 ## Do not
 

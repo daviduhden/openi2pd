@@ -335,6 +335,9 @@ namespace proxy
 		}
 	};
 
+	/// SOCKS listener with optional local authentication and upstream proxy.
+	/// The resolve cache maps fake IPv4 hints back to destination names; those
+	/// hints do not authorize or identify a remote peer.
 	class SOCKSServer : public i2p::client::TCPIPAcceptor
 	{
 	public:
@@ -344,7 +347,16 @@ namespace proxy
 		~SOCKSServer () { };
 
 		void SetUpstreamProxy (const std::string & addr, const uint16_t port);
+		/// Allocate a local UDP port for a UDP ASSOCIATE relay.
+		/// The scan starts at the listener's own port and takes the first port
+		/// not currently held by this listener, so the relay endpoint stays on
+		/// the proxy address. The held set grows with the live associations and
+		/// has no eviction: a port stays reserved until its owner calls
+		/// ReleaseLocalUDPPort(), which is why the association teardown path must
+		/// release it exactly once.
 		boost::asio::ip::udp::endpoint GetNextLocalUDPEndpoint ();
+		/// Return a relay port allocated by GetNextLocalUDPEndpoint() so a later
+		/// client can reuse it. Must not be called twice for one association.
 		void ReleaseLocalUDPPort (uint16_t port);
 
 		/**

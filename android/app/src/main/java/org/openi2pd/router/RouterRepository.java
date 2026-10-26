@@ -163,6 +163,16 @@ public final class RouterRepository implements RouterService.Listener {
         }
     }
 
+    /**
+     * Run one bounded torrent control request through the service.
+     *
+     * <p>{@code request} is the typed {@code I2PDTUI/1} line built by
+     * {@link TorrentControl}; the service validates it and the native side
+     * re-validates it again. The callback always runs on the main thread and
+     * receives a protocol response, including the fixed
+     * {@code I2PDTUI/1 ERR 6 14 router stopped} refusal when no service is
+     * bound, so a caller never has to distinguish "no answer" from failure.</p>
+     */
     public void torrentCommand(String request, java.util.function.Consumer<String> callback) {
         RouterService local = service;
         if (closed || local == null) {
@@ -243,6 +253,11 @@ public final class RouterRepository implements RouterService.Listener {
         local.exportTorrent(target, metadata, callback);
     }
 
+    /**
+     * Import bounded metainfo from a user-granted {@code content} URI. Only the
+     * bytes cross into the engine; a provider path and display name are never
+     * trusted or converted, and the result is a typed control response.
+     */
     public void importTorrent(
             int tunnel, android.net.Uri document, java.util.function.Consumer<String> callback) {
         RouterService local = service;
@@ -441,6 +456,11 @@ public final class RouterRepository implements RouterService.Listener {
         runOnMain(() -> logs.setValue(applyFilter(allLogs)));
     }
 
+    /**
+     * Release the service binding and stop observation. Idempotent and
+     * main-thread safe; {@link RouterViewModel#onCleared()} calls it so a
+     * finished UI never leaks a connection.
+     */
     public void close() {
         runOnMain(() -> {
             if (closed) {

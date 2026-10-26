@@ -264,6 +264,12 @@ namespace client
 		std::mutex m_AdmissionMutex;
 	};
 
+	/// One BOB nickname: a client destination plus the optional inbound/outbound
+	/// tunnel pair another process can attach to by connecting locally.
+	/// Start()/Stop() own both tunnel objects. A host, port or quiet change is
+	/// only applied while the corresponding tunnel object is absent, i.e. after
+	/// an explicit stop, so a running tunnel is never mutated underneath its
+	/// handlers; StopTunnels() clears both objects and the running flag.
 	class BOBDestination
 	{
 	public:
@@ -381,6 +387,24 @@ namespace client
 	};
 	typedef void (BOBCommandSession::*BOBCommandHandler) (const char * operand, size_t len);
 
+	/// Legacy BOB command channel.
+	///
+	/// A line-oriented TCP protocol (default bind 127.0.0.1, disabled by
+	/// default) whose sessions act on the process-global client context: they
+	/// create and start nicknamed destinations and their tunnel direction, and
+	/// register the SOCKS/HTTP proxies they start.
+	///
+	/// The protocol carries no authentication, so it is only safe on a local
+	/// loopback socket. The channel therefore bounds what a local peer can
+	/// consume instead: one command line (BOB_MAX_COMMAND_LINE), one queued
+	/// reply (BOB_MAX_REPLY_SIZE) and a fixed number of concurrent sessions
+	/// (BOB_MAX_CONCURRENT_SESSIONS). The private-key reply is denied unless
+	/// `bob.allowgetkeys=true` was configured at startup, and no command
+	/// operand, key or credential is written to a log.
+	///
+	/// @warning Do not bind this channel to a non-loopback address: any local
+	///   process that can connect can otherwise start and stop tunnels and
+	///   enumerate them.
 	class BOBCommandChannel : private i2p::util::RunnableService
 	{
 	public:

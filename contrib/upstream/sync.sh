@@ -9,6 +9,16 @@
 # files. It verifies documentation inventory coverage, never writes tracked
 # files, and exits non-zero on unclassified or HTML upstream pages.
 #
+# Usage: sync.sh [--docs|--tools|--all]. With no argument only the
+# documentation comparison runs; --tools (as the first or second argument)
+# compares the tool sources; --all runs both. Requires network access to GitHub
+# and the git, diff, find and grep commands. The working tree is cloned below
+# ${TMPDIR:-/tmp} and removed by the EXIT/HUP/INT/TERM trap, so a hard kill can
+# leave that directory behind. Exit status is 1 when coverage fails (HTML page,
+# untracked upstream file, stale path map or missing local target) and 0 when
+# the diffs were merely printed; differing files are reported, not applied.
+# Review every hunk by hand before importing anything.
+#
 
 set -eu
 

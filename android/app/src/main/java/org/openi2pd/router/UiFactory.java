@@ -23,6 +23,11 @@ import android.widget.ScrollView;
 import androidx.core.view.ViewCompat;
 import com.google.android.material.button.MaterialButton;
 
+/**
+ * Shared Material Views construction for programmatic screens. Callers create
+ * and update these views on the Android main thread and retain them only for
+ * the owning Fragment's view lifecycle.
+ */
 final class UiFactory {
     private UiFactory() {
     }

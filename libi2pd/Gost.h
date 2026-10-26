@@ -46,8 +46,21 @@ namespace crypto
 		EC_POINT * MulP (const BIGNUM * n) const;
 		bool GetXY (const EC_POINT * p, BIGNUM * x, BIGNUM * y) const;
 		EC_POINT * CreatePoint (const BIGNUM * x, const BIGNUM * y) const;
+		/// Sign a pre-hashed digest with GOST R 34.10 (RFC 7091).
+		/// The digest is reduced modulo the subgroup order q and normalized to
+		/// e = 1 when that reduction is zero; both r and s are reduced modulo q
+		/// and must lie in [1, q-1]. The caller owns r and s and must cleanse
+		/// them.
 		void Sign (const BIGNUM * priv, const BIGNUM * digest, BIGNUM * r, BIGNUM * s);
+		/// Verify r/s against pub and the same digest normalization as Sign().
+		/// @return False for r or s outside [1, q-1], an invalid point or a
+		/// mismatch; verification is the only accepted success signal.
 		bool Verify (const EC_POINT * pub, const BIGNUM * digest, const BIGNUM * r, const BIGNUM * s);
+		/// Recover a candidate public key from a signature, used for I2P
+		/// signatures that omit the key. Returns an owned point that the caller
+		/// must free, or null when no candidate exists. A recovered key is
+		/// unauthenticated: it must be checked against the identity it claims to
+		/// belong to and never accepted as an anonymous sender.
 		EC_POINT * RecoverPublicKey (
 			const BIGNUM * digest, const BIGNUM * r, const BIGNUM * s, bool isNegativeY = false) const;
 

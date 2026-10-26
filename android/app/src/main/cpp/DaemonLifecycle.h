@@ -37,21 +37,19 @@ enum class DaemonStartResult
 	Stopping
 };
 
-/**
-	 * Own one complete start transition. Initialization and the underlying
-	 * daemon start are invoked only after Stopped has been atomically claimed.
-	 * If initialization fails, the lifecycle returns to Stopped without calling
-	 * stop. This helper cannot infer which initialization phases completed;
-	 * Daemon::init owns its separate phase-aware rollback transaction. After
-	 * successful initialization, a false or throwing start
-	 * attempts stop once and returns the lifecycle to Stopped. Stop exceptions
-	 * during rollback are suppressed so the original failure remains
-	 * authoritative.
-	 *
-	 * The caller must still hold the native-call serialization guard. Atomic
-	 * claiming makes ownership explicit and protects against accidental nested
-	 * transitions; it does not replace that guard.
-	 */
+/// Own one start transition after atomically claiming the stopped lifecycle.
+/// Initialization failure returns to Stopped without calling stop; the
+/// initializer owns rollback of any partially acquired phases. After a
+/// successful initialization, a failed or throwing start attempts stop once.
+/// Stop exceptions during rollback are suppressed to preserve the failure.
+/// @pre The caller holds the native-call serialization guard. The atomic
+/// claim rejects re-entry but does not serialize other daemon operations.
+/// @param lifecycle Atomic lifecycle state owned by the caller.
+/// @param initialize Callable returning whether initialization succeeded.
+/// @param start Callable returning whether the daemon started.
+/// @param stop Cleanup callable after a successfully initialized start fails.
+/// @return The result of the transition or the already-active state.
+/// Exceptions from initialization or start propagate after lifecycle reset.
 template <typename Initialize, typename Start, typename Stop>
 DaemonStartResult StartDaemonLifecycle (
 	std::atomic<DaemonLifecycle> & lifecycle, Initialize && initialize, Start && start, Stop && stop)

@@ -359,6 +359,10 @@ namespace
 		return SanitizeLogText (RedactLogSecrets (text));
 	}
 
+	/// Render one sink line. The level is clamped to the documented table so an
+	/// out-of-range transport value can never index past it, and the text runs
+	/// through the single redaction/sanitisation pipeline, which is what keeps a
+	/// terminal escape or a secret operand out of the file and syslog sinks.
 	std::string FormatRecord (uint8_t level, std::time_t timestamp, std::string_view text)
 	{
 		static constexpr const char * levels[] = { "none", "critical", "error", "warn", "info", "debug" };
@@ -383,6 +387,11 @@ namespace
 	}
 }
 
+/// Wait for the `Pong` that proves a freshly configured worker is alive.
+/// A stale pong for an earlier request id is ignored (the worker answers in
+/// order, but a reattach may race a late reply), any other frame is a protocol
+/// fault, and the deadline is absolute across the whole wait rather than
+/// restarted per poll.
 i2p::expected<void, std::string> LogSink::WaitForPong (Channel & channel, uint32_t expected, int timeoutMs)
 {
 	auto deadline = std::chrono::steady_clock::now () + std::chrono::milliseconds (timeoutMs);
@@ -589,6 +598,20 @@ bool LogSink::IsShutdown () const
 	return m_Shutdown;
 }
 
+/**
+ * Log-worker body.
+ *
+ * Ordering and failure classification: on Linux the role sandbox for the socket
+ * and capability boundary is applied before the first frame, the peer uid is
+ * checked against `IsAllowedParentUid`, exactly one configuration frame is
+ * accepted (a duplicate is a bounded refusal that keeps the original sink), a
+ * pre-opened file descriptor is validated against the configured path before the
+ * mode is restricted, and the storage/log sandbox is installed only after that
+ * descriptor is known good. A malformed record, an unexpected descriptor or an
+ * unconsumed descriptor exits non-zero so the parent's restart policy sees a
+ * real failure; `Shutdown` flushes and exits 0. Records keep being drained after
+ * the sink byte budget is reached, so a capped sink never wedges the channel.
+ */
 int RunLogWorker (int fd)
 {
 	SanitizeInheritedStdio ();

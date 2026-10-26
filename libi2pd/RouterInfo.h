@@ -96,6 +96,10 @@ namespace data
 	const int HIGH_CONGESTION_INTERVAL = 15 * 60; // in seconds, 15 minutes
 	const int INTRODUCER_UPDATE_INTERVAL = 20 * 60 * 1000; // in milliseconds, 20 minutes
 
+	/// Router identity, signed descriptor bytes and advertised transport addresses.
+	/// Address snapshots use shared ownership so selection can outlive a map
+	/// lookup; the SSU introducer list has its own synchronization contract.
+	/// @see https://i2p.net/en/docs/specs/common-structures/
 	class RouterInfo : public RoutingDestination
 	{
 	public:
@@ -465,7 +469,20 @@ namespace data
 		void DropProfile () { m_Profile.Store (std::shared_ptr<RouterProfile> { }); };
 		bool HasProfile () const { return m_Profile.Load () != nullptr; };
 
+		/// Replace this descriptor from an already received buffer.
+		/// The identity is retained and every field is re-parsed from the new
+		/// body, which must still verify under the stored identity's signing key.
+		/// RSA router identities, a missing identity, an oversized buffer or a
+		/// failed signature/parse check leave the previous state untouched and
+		/// return false. The freshness comparison is the caller's decision: a
+		/// netDb store path must apply IsNewer() first, because Update() itself
+		/// does not compare timestamps.
 		bool Update (const uint8_t * buf, size_t len);
+		/// True when the supplied buffer carries a strictly newer published
+		/// timestamp than the stored descriptor. The buffer must already describe
+		/// this identity; the timestamp is read at the identity's fixed offset.
+		/// This check is what prevents an old RouterInfo replay from replacing
+		/// fresher addresses or keys; equal timestamps are not newer.
 		bool IsNewer (const uint8_t * buf, size_t len) const;
 
 		/** return true if we are in a router family and the signature is valid */
@@ -548,6 +565,11 @@ namespace data
 	{
 	public:
 		LocalRouterInfo () = default;
+		/// Re-serialize and sign this router's own descriptor.
+		/// The published timestamp is refreshed first; the previous timestamp is
+		/// restored when serialization fails, so a failed rebuild never advances
+		/// the timestamp without producing a signed body. Only a descriptor that
+		/// fits MAX_RI_BUFFER_SIZE after the identity and signature is kept.
 		void CreateBuffer (const PrivateKeys & privateKeys);
 		void UpdateCaps (uint8_t caps);
 		bool UpdateCongestion (Congestion c); // returns true if updated

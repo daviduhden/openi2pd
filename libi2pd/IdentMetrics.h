@@ -39,10 +39,16 @@ namespace data
 	};
 
 	IdentHash CreateRoutingKey (const IdentHash & ident, bool nextDay = false);
+	/// XOR distance metric used for closest-floodfill ordering.
 	XORMetric operator^ (const IdentHash & key1, const IdentHash & key2);
 
 	// peer ordering
 	constexpr uint64_t PEER_ORDERING_INACTIVITY_TIMEOUT = 400; // in seconds
+	/// Keyed peer-ordering groups for tunnel hop placement.
+	/// The ordering key is a short-lived SipHash key rotated by the router, so a
+	/// remote peer cannot predict or bias which group it lands in; it is secret
+	/// material and must never be logged or published. Cached groups expire after
+	/// PEER_ORDERING_INACTIVITY_TIMEOUT and are recomputed from the new key.
 	class PeerOrdering
 	{
 	public:
@@ -50,6 +56,10 @@ namespace data
 		~PeerOrdering ();
 		void CleanUp (uint64_t ts);
 
+		/// Install a 16-byte ordering key and invalidate cached groups. A null
+		/// key draws a fresh CSPRNG key; when the provider fails the key stays
+		/// invalid (wiped) and group lookups must not treat the peer as ordered.
+		/// The caller owns the source buffer; only the bytes are copied.
 		void SetKey (const uint8_t * key);
 		const Tag<16> & GetKey () const { return m_PeerOrderingKey; }
 

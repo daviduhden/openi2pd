@@ -73,6 +73,17 @@ namespace tunnel
 		std::shared_ptr<I2NPMessage> data;
 	};
 
+	/// One tunnel endpoint on this router, in either direction, with its IDs,
+	/// next hop and per-tunnel IV replay filter.
+	///
+	/// `HandleTunnelDataMsg()` consumes the shared message it is given and runs
+	/// only on the tunnel worker. `SendTunnelDataMsg()` is the producing side;
+	/// each implementation decides its own synchronization, and the outbound and
+	/// transit-gateway variants serialize producers with a mutex.
+	/// `EncryptTunnelMsg()` applies one hop's layer of the onion encryption: `in`
+	/// is the plaintext cell and `out` receives the encrypted one. A transit
+	/// participant re-encrypts in place, so `in` and `out` may alias there; any
+	/// caller that still needs the plaintext must pass two distinct buffers.
 	class TunnelBase
 	{
 	public:
@@ -142,6 +153,14 @@ namespace tunnel
 		}
 	};
 
+	/// Caches the transport session used to reach the next hop of a tunnel.
+	///
+	/// `m_CurrentTransport` is a weak reference on purpose: a session can close
+	/// at any time, and a strong reference would keep a dead session and its
+	/// buffers alive. A miss harvests a completed `transports.SendMessages`
+	/// future and adopts the session when it is established; while that future
+	/// is still pending the cells are handed to `Transports` again rather than
+	/// waiting here, so the tunnel worker never blocks on a connect attempt.
 	class TunnelTransportSender final
 	{
 	public:

@@ -12,6 +12,7 @@
  *
  */
 
+#include <array>
 #include <cassert>
 #include <cstdint>
 #include <cstring>
@@ -239,6 +240,53 @@ void TestFragmentTimeoutConstant ()
 	assert (TUNNEL_FRAGMENT_REASSEMBLY_TIMEOUT == 45 * 1000);
 	assert (TUNNEL_FRAGMENT_REASSEMBLY_TIMEOUT > i2p::I2NP_MESSAGE_EXPIRATION_TIMEOUT);
 }
+
+void TestTruncatedFragmentHeaders ()
+{
+	struct HeaderCase
+	{
+		uint8_t flag;
+		size_t size; // includes the flag, address, optional ID and size field
+	};
+	constexpr std::array cases {
+		HeaderCase { 0x00, 3 }, // local, unfragmented
+		HeaderCase { 0x08, 7 }, // local, fragmented
+		HeaderCase { 0x20, 39 }, // tunnel, unfragmented
+		HeaderCase { 0x28, 43 }, // tunnel, fragmented
+		HeaderCase { 0x40, 35 }, // router, unfragmented
+		HeaderCase { 0x48, 39 }, // router, fragmented
+		HeaderCase { 0x80, 7 } // follow-on
+	};
+
+	for (const auto & header : cases)
+	{
+		for (size_t present = 1; present < header.size; ++present)
+		{
+			// Only the IV suffix used for the checksum follows the cell. ASan
+			// therefore catches an address read extending beyond that suffix.
+			constexpr size_t prefix = 2 + I2NP_HEADER_SIZE;
+			std::vector<uint8_t> storage (prefix + TUNNEL_DATA_MSG_SIZE + 16, 1);
+			auto msg = std::make_shared<I2NPMessage> ();
+			msg->buf = storage.data ();
+			msg->len = prefix + TUNNEL_DATA_MSG_SIZE;
+			msg->maxLen = storage.size ();
+			auto payload = msg->GetPayload ();
+			auto fragment = payload + TUNNEL_DATA_MSG_SIZE - present;
+			fragment[-1] = 0; // padding terminator immediately before the fragment
+			fragment[0] = header.flag;
+			std::memset (fragment + 1, 0, present - 1);
+			std::memcpy (payload + TUNNEL_DATA_MSG_SIZE, payload + 4, 16);
+			uint8_t hash[32];
+			SHA256 (fragment, present + 16, hash);
+			std::memcpy (payload + 20, hash, 4);
+
+			TunnelEndpoint endpoint (false);
+			endpoint.HandleDecryptedTunnelDataMsg (msg);
+			assert (endpoint.GetNumIncompleteMessages () == 0);
+			assert (endpoint.GetNumOutOfSequenceFragments () == 0);
+		}
+	}
+}
 }
 
 int main ()
@@ -247,5 +295,6 @@ int main ()
 	TestOutOfSequenceExpiry ();
 	TestIncompleteExpiry ();
 	TestFragmentTimeoutConstant ();
+	TestTruncatedFragmentHeaders ();
 	return 0;
 }

@@ -69,6 +69,11 @@ I2PService * I2PService::s_service = NULL;
 
 BOOL I2PService::isService ()
 {
+	// The SCM starts a service on a non-visible window station, so the process
+	// can detect service mode without an extra Registry dependency. This is a
+	// startup-mode heuristic for choosing console/file defaults only: it is not
+	// an authentication boundary and a caller that can choose its window station
+	// can influence it.
 	BOOL bIsService = FALSE;
 	HWINSTA hWinStation = GetProcessWindowStation ();
 	if (hWinStation != NULL)

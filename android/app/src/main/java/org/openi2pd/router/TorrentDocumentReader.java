@@ -27,6 +27,15 @@ final class TorrentDocumentReader {
         return read(input, TorrentControl.MAX_IMPORT_BYTES);
     }
 
+    /**
+     * Read a complete torrent document under a caller-selected cap. The caller
+     * retains ownership of {@code input} and must close it, including on error.
+     *
+     * @param input stream from a user-selected document provider
+     * @param maximum accepted byte count, up to the import limit
+     * @return nonempty bytes read through EOF
+     * @throws IOException on invalid bounds, overflow, observed interruption or stalled input
+     */
     static byte[] read(InputStream input, int maximum) throws IOException {
         if (input == null || maximum < 1 || maximum > TorrentControl.MAX_IMPORT_BYTES) {
             throw new IOException("Invalid torrent input");

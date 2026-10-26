@@ -83,6 +83,9 @@ compile, run tests or run project scripts.
 
 ## Conventions
 
+- Apply the [source documentation policy](../../../AGENTS.md#source-documentation-policy)
+  when reviewing ownership, borrowed views, templates and thread-bound APIs.
+
 - Target C++23 only. Do not add C++20 fallback branches or compiler-specific
   workarounds unless a platform capability check is already established.
 - Prefer `std::unique_ptr`/`std::shared_ptr` with explicit ownership over raw
@@ -178,6 +181,12 @@ compile, run tests or run project scripts.
   not a `GarlicRoutingSession` virtual and ratchet sessions live in a separate
   map. `std::bind` also does not apply default arguments: bind every member
   parameter explicitly or use a lambda that calls the method.
+
+- Source comments follow
+  [`docs/source-documentation.md`](../../../docs/source-documentation.md):
+  Doxygen contracts for public APIs, `//` for non-obvious algorithms, and no
+  comment that contradicts the implementation. A documentation-only change
+  must not alter code, identifiers or formatting.
 
 ## Do not
 

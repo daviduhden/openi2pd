@@ -369,6 +369,11 @@ Do not let reconnaissance agents edit, compile, execute tests or run scripts.
   parser and log sanitizer both pin the cast, so a new byte classifier must
   do the same.
 
+- Do not accumulate a bounded count in the narrow type used by the wire field.
+  Use `size_t`, apply the limit guard, and cast once at serialization; a
+  `uint8_t` NACK counter wrapped before its `>= 256` guard and could bypass the
+  saved-packet cap (`SEC-033`, `libi2pd/Streaming.cpp`).
+
 ## Do not
 
 - Do not compile, run CTest, sanitizers, fuzzers, Gradle or project validators

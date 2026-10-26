@@ -244,6 +244,26 @@ focused regression that pins secret redaction, lifetime ownership, bounds and
 failure behavior. A size cap alone does not mitigate slow clients: inspect the
 executor for blocking calls, deadlines and admission quotas.
 
+## Source documentation policy
+
+- New code must include documentation appropriate to its complexity and
+  audience. Public APIs must state their contracts, including ownership,
+  lifetime, preconditions, failures and synchronization when relevant.
+- Explain security decisions and the invariants enforced at trust boundaries;
+  describe current guarantees and track unfinished protections separately.
+- Update affected comments whenever implementation or interfaces change.
+  Do not retain comments that contradict the code or claim unverified behavior.
+- Write comments in English, explaining intent and non-obvious constraints
+  rather than restating instructions. Use Doxygen for public C++ interfaces,
+  Javadoc for relevant Java interfaces, idiomatic Perl comments/POD and POSIX
+  shell comments as appropriate; avoid boilerplate for trivial operations.
+- Documentation generation and validation run only in manual CI. Document
+  source-level findings and retain pending CI states until that revision passes.
+  The language-specific checklist and the current `source_docs` lane live in
+  `docs/source-documentation.md`; a malformed Doxygen block, a `@param` that
+  does not match the declaration or a generated-doc warning is a source defect,
+  not a cosmetic issue.
+
 The review is mandatory; file edits are not. Do not generate cosmetic changes
 when the existing knowledge is still correct. If a new reusable procedure has
 no equivalent skill, propose a new skill with valid Agent Skills metadata and
@@ -1758,8 +1778,10 @@ is false, the run intent is persisted in `RouterRunState` (`run_phase`,
 expired drain is terminal across `START_STICKY`/boot, a live drain re-arms the
 remaining wall-clock delay only after the daemon reports started, and corrupt
 deadlines are clamped or fail closed. `onTaskRemoved` keeps the daemon;
-`onDestroy` purges pending callbacks. The boot/package-replace receiver starts
-only from the persisted intent.
+`onDestroy` removes callbacks already queued on its main handler, but SAF
+work can still publish later (`ANDROID-035`). Some persisted transitions read
+outside the write lock, so stale-state protection remains open (`ANDROID-033`).
+The boot/package-replace receiver starts only from the persisted intent.
 
 The SAF AIDL is version 2: `handshake()` returns a CSPRNG generation;
 `prepareExport` issues a one-shot owner-bound token consumed by
@@ -2183,7 +2205,9 @@ not prove router readiness.
 
 `SyslogIdentifier=open-i2pd` is a frozen journal-filter identifier, not the
 product name (`openi2pd`). The systemd unit owns `StateDirectory`,
-`RuntimeDirectory` and `LogsDirectory` so `log = file` remains writable under
+`RuntimeDirectory` and `LogsDirectory`; the packaged `ExecStart` passes
+`--log=stdout`, so file logging also requires an `ExecStart` override.
+`LogsDirectory` makes the default file-log path writable under
 `ProtectSystem=strict`; tmpfiles mirrors the same modes. Debian
 `i2pd.service`/`i2pd.init` are symlinks to the canonical `contrib/` files.
 OpenBSD rc.d sets `rc_stop_signal=INT` and `daemon_timeout=660`; its port

@@ -62,8 +62,21 @@ namespace client
 	/** local socket buffers, not datagram size */
 	const size_t I2P_UDP_SOCKET_BUFFER_SIZE = 4 * 1024 * 1024;
 
-	// handlers of both sides are queued on sockets and can outlive the object
-	// they belong to, so they hold it by a shared pointer
+	// Reliability state of one datagram conversation. Both tunnel directions
+	// share it: the client tunnel keeps one per local UDP conversation, the
+	// server tunnel one per (from port, to port) pair.
+	//
+	// The send side numbers repliable datagrams from 1 and keeps them in one
+	// ascending unacknowledged list. That list is the window: a full list stops
+	// new sends instead of dropping the oldest entry, and the window is a
+	// configured value clamped to 500..8192. RTT samples feed an RFC 6298 style
+	// estimator; the retransmission timeout is `srtt + 4*rttvar` and is clamped
+	// between the minimum ack timeout and the maximum unacked time. Ack,
+	// receive, send and timeout are the only state transitions; keep them
+	// together and keep them on the owning service thread.
+	//
+	// Handlers of both sides are queued on sockets and can outlive the object
+	// they belong to, so they hold it by a shared pointer.
 	struct UDPConnection : public std::enable_shared_from_this<UDPConnection>
 	{
 		std::shared_ptr<i2p::datagram::DatagramDestination> m_Destination;
@@ -105,16 +118,36 @@ namespace client
 		virtual void Start () { };
 		virtual void Stop ();
 
+		/// Remove @a seqn from the unacknowledged list and sample its RTT.
+		/// The first ack also ends the "first packet" state that suppresses
+		/// sending while an unconfirmed session is still being probed.
 		void Acked (uint32_t seqn);
+		/// Arm the single outstanding ack timer; @a seqn is the datagram being
+		/// timed and only one timer runs at a time. The deadline is the current
+		/// RTO shifted by the consecutive-timeout count and capped by the maximum
+		/// unacked time. On expiry it counts the timeout and probes the peer with
+		/// an ack-request flag; the shared routing path (and the lease set) is
+		/// reset only after several consecutive timeouts and actual silence,
+		/// because timeouts also happen under congestion.
 		void ScheduleAckTimer (uint32_t seqn);
 		void UpdateRTT (uint64_t rtt, uint64_t ts);
 		void UpdateSendRate (uint32_t numDatagrams, uint64_t ts);
+		/// Current retransmission timeout in milliseconds, derived from the
+		/// smoothed RTT and its variance and clamped to the documented bounds.
 		uint64_t GetRTO () const;
+		/// Deadline for a window probe: never shorter than one RTT, so a probe
+		/// cannot outrun the ack it is waiting for.
 		uint64_t GetWindowProbeInterval () const;
 		size_t GetMaxNumUnackedDatagrams () const;
 		bool IsWindowFull () const;
+		/// Drop unacknowledged entries older than the maximum unacked time. The
+		/// list stays ascending, so this removes a prefix and never reorders it.
 		void ExpireUnackedDatagrams (uint64_t ts);
 
+		/// Current datagram session of this conversation, resolving it from the
+		/// destination on first use and caching a weak reference afterwards.
+		/// Returns `nullptr` while the remote identity is unknown or the session
+		/// is gone; callers must handle that instead of assuming a live path.
 		std::shared_ptr<i2p::datagram::DatagramSession> GetDatagramSession ();
 	};
 
@@ -161,7 +194,21 @@ namespace client
 
 	typedef std::shared_ptr<UDPSession> UDPSessionPtr;
 
-	/** server side udp tunnel, many i2p inbound to 1 ip outbound */
+	/// Server-side datagram tunnel: many I2P senders to one local UDP service.
+	///
+	/// Each conversation is keyed by its `(from port, to port)` pair and owns a
+	/// local UDP socket, so two destinations using the same port pair cannot
+	/// share state. One receiver token is registered for repliable datagrams and
+	/// one for raw datagrams, and both are reset in Stop(). A raw datagram that
+	/// matches no conversation is counted and dropped instead of creating a
+	/// socket for an unauthenticated source.
+	///
+	/// A reload builds a second tunnel object and discards it when the section
+	/// is unchanged, so an object that never started must not reset the live
+	/// tunnel's receivers: Stop() is a no-op unless Start() ran.
+	/// @warning `filterDefinition` is a streaming admission policy; it does not
+	///   apply to datagrams, which are bounded by the per-conversation window
+	///   and by stale-conversation expiry instead.
 	class I2PUDPServerTunnel
 	{
 	public:
@@ -220,6 +267,19 @@ namespace client
 		bool isUpdated; // transient, used during reload only
 	};
 
+	/// Client-side datagram tunnel: one local UDP listener to a remote
+	/// destination.
+	///
+	/// Every local peer is keyed by its source port and keeps the endpoint it
+	/// sent from, so replies go back to that socket; the map is guarded by
+	/// m_SessionsMutex and the sender of a datagram is never trusted to name a
+	/// different destination.
+	/// The destination name is resolved on a dedicated thread that Stop() joins,
+	/// because name resolution may block; the thread observes m_cancel_resolve
+	/// and must exit before the socket and receivers are gone.
+	///
+	/// The datagram version (and gzip framing) is fixed at construction and
+	/// applies to every send of this tunnel; it is never inferred per datagram.
 	class I2PUDPClientTunnel : public UDPConnection
 	{
 	public:

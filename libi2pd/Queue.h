@@ -26,6 +26,9 @@ namespace i2p
 {
 namespace util
 {
+	/// Mutex-protected FIFO for nullable, copyable elements.
+	/// Waiting is notification-based rather than a queue-nonempty predicate;
+	/// consumers must recheck both their stop condition and the queue after wakeup.
 	template <typename Element> class Queue
 	{
 	public:
@@ -40,7 +43,8 @@ namespace util
 		 * Enqueue only while the queue is below an explicit limit. The size
 		 * check and insertion are one critical section, so concurrent
 		 * producers cannot exceed the limit. Returns false when the record was
-		 * rejected; the element is then left untouched.
+		 * rejected. The argument is passed by value, so an rvalue supplied by
+		 * the caller has already been moved from even when admission fails.
 		 */
 		bool PutIfBelow (Element e, size_t limit)
 		{
@@ -61,6 +65,8 @@ namespace util
 			}
 		}
 
+		/// Wait at most once for notification and return the next element.
+		/// @return nullptr if woken without an element, including a spurious wake.
 		Element GetNext ()
 		{
 			std::unique_lock<std::mutex> l (m_QueueMutex);
@@ -73,6 +79,8 @@ namespace util
 			return el;
 		}
 
+		/// As GetNext(), with a timed wait. Despite the legacy parameter name,
+		/// usec is interpreted as milliseconds.
 		Element GetNextWithTimeout (int usec)
 		{
 			std::unique_lock<std::mutex> l (m_QueueMutex);
@@ -91,6 +99,10 @@ namespace util
 			m_NonEmpty.wait (l);
 		}
 
+		/// Wait for a notification without checking queue contents.
+		/// @param sec Whole seconds in the wait duration.
+		/// @param usec Additional milliseconds (legacy name).
+		/// @return False on timeout; true can also indicate a spurious wake.
 		bool Wait (int sec, int usec)
 		{
 			std::unique_lock<std::mutex> l (m_QueueMutex);
@@ -124,6 +136,8 @@ namespace util
 			return GetNonThreadSafe (true);
 		}
 
+		/// Swap out all currently queued elements, discarding the output list's
+		/// previous contents before transferring the FIFO to it.
 		void GetWholeQueue (std::list<Element> & queue)
 		{
 			if (!queue.empty ())

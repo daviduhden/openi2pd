@@ -3,7 +3,22 @@
  * and license details.
  *
  * openi2pd: atomic router-key and RouterInfo storage process.
- * Only four fixed filenames are writable. The worker has no network capability.
+ *
+ * Only four fixed filenames are writable (router.keys, router.info,
+ * ntcp2.keys, ssu2.keys); a write request carries no path field, so the worker
+ * cannot be pointed at another object. The worker has no network capability.
+ * Each write stages into one fixed same-directory slot, fsyncs it, renames it
+ * over the target and fsyncs the directory, and refuses a symlink, hardlink,
+ * directory or foreign-owned target at every step.
+ *
+ * The client is single-flight and generation-fenced: a reply is applied only
+ * when both its generation and its request id match the outstanding request, so
+ * a reply from a replaced worker cannot be mistaken for the current one. A lost
+ * reply leaves the write's outcome unknown; it is reported as a failure and is
+ * never replayed. Restarts use the shared bounded ladder and fail closed without
+ * a core-side filesystem fallback. On OpenBSD the worker cannot be re-exec'ed
+ * after the runtime pledge, so a lost worker stays terminal until the daemon
+ * restarts.
  */
 #include "RouterStorage.h"
 #include "Credentials.h"

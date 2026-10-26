@@ -287,6 +287,9 @@ namespace transport
 		return acnt == ackThrough;
 	}
 
+	/// Handshake, data, closing and auxiliary introduction/peer-test states.
+	/// Payload block admission depends on this state; it is not a linear counter.
+	/// @see https://i2p.net/en/docs/specs/ssu2/
 	enum SSU2SessionState
 	{
 		eSSU2SessionStateUnknown,
@@ -752,10 +755,19 @@ namespace transport
 	const uint8_t SSU2_ROUTER_INFO_FLAG_GZIP = 0x02;
 
 	class SSU2Server;
+	/// UDP transport session owning SSU2 handshake and data-phase state.
+	/// Packet acknowledgements, retransmissions and fragment reassembly are
+	/// session-specific; the server must outlive the session that refers to it.
+	/// @see https://i2p.net/en/docs/specs/ssu2/
 	class SSU2Session : public TransportSession, public std::enable_shared_from_this<SSU2Session>
 	{
 		friend class SSU2Server; // service-thread shutdown/expiry calls Terminate()
 	protected:
+		/// First 16 bytes of an SSU2 long header, in wire order.
+		/// `connID` is the destination connection ID, `packetNum`/`type` follow,
+		/// then version, netID and the flag byte pack into `flags[0..2]`. The
+		/// whole block is XOR-masked with CreateHeaderMask() before it is sent,
+		/// so a parsed value is only meaningful once the mask is removed.
 		union Header
 		{
 			uint64_t ll[2];
@@ -847,12 +859,20 @@ namespace transport
 		void WaitForIntroduction ();
 		void SendPeerTest (); // Alice, Data message
 		void SendKeepAlive ();
+		/// Ask for an orderly close. In an established/closing session this sends
+		/// an ACK+Termination frame and moves to Closing; in every other state
+		/// there is no authenticated channel to notify, so it drops the session
+		/// immediately. It never blocks and never waits for the peer's reply.
 		void RequestTermination (SSU2TerminationReason reason);
 		void CleanUp (uint64_t ts);
 		void FlushData ();
 		void Done () override;
 		void SendLocalRouterInfo (bool update) override;
 		void SendI2NPMessages (std::list<std::shared_ptr<I2NPMessage>> & msgs) override;
+		/// Re-offer this session's unsent queue to a replacement session for the
+		/// same peer. Only messages whose expiration has not passed are moved;
+		/// the rest are dropped (their `onDrop` runs) so a timed-out message is
+		/// never delivered later. The source queue is emptied either way.
 		void MoveSendQueue (std::shared_ptr<SSU2Session> other);
 		uint32_t GetRelayTag () const override { return m_RelayTag; };
 		size_t Resend (uint64_t ts); // return number of resent packets
@@ -871,6 +891,11 @@ namespace transport
 		bool ProcessRetry (uint8_t * buf, size_t len);
 		bool ProcessHolePunch (uint8_t * buf, size_t len);
 		virtual bool ProcessPeerTest (uint8_t * buf, size_t len);
+		/// Handle one data packet; the payload is authenticated by the AEAD tag
+		/// before any handler runs.
+		/// @param from Sender endpoint of this datagram. It is the only source
+		/// accepted for the PathResponse that completes a pending connection
+		/// migration, so a replayed or forwarded packet cannot move the session.
 		void ProcessData (uint8_t * buf, size_t len, const boost::asio::ip::udp::endpoint & from);
 
 	protected:
@@ -1037,6 +1062,13 @@ namespace transport
 		uint8_t m_Ranges[(SSU2_MAX_NUM_ACK_RANGES + 1) * 2]; // ranges sent with previous Ack if any
 	};
 
+	/// Obfuscation mask for one 8-byte half of an SSU2 header.
+	///
+	/// Eight zero bytes are encrypted with ChaCha20 under @a kh (the peer's
+	/// introduction key, or the per-session header key) and the 12-byte
+	/// @a nonce taken from the tail of the encrypted payload. XOR-ing the result
+	/// into `header.ll[0]`/`header.ll[1]` both hides and restores the field, and
+	/// an observer cannot recompute the mask without the key.
 	inline uint64_t CreateHeaderMask (const uint8_t * kh, const uint8_t * nonce)
 	{
 		uint64_t data = 0;
@@ -1044,6 +1076,9 @@ namespace transport
 		return data;
 	}
 
+	/// Build the 12-byte AEAD nonce for a data packet: four zero bytes followed
+	/// by the packet number in little-endian order. The packet number is unique
+	/// per key direction, so nonces never repeat inside one session.
 	inline void CreateNonce (uint64_t seqn, uint8_t * nonce)
 	{
 		memset (nonce, 0, 4);

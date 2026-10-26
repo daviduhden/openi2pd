@@ -90,6 +90,18 @@ template <typename TValue> std::optional<TValue> ParseBounded (std::string_view 
 	return value;
 }
 
+/// @brief Resolve a numeric or textual signature-type spelling to its wire value.
+///
+/// Two spellings are accepted because the CLI historically allowed both. A
+/// one- or two-character argument is a decimal type number, bounded to the
+/// highest type this build names; anything longer is a name, matched
+/// case-insensitively after folding '_' to '-' (so `eddsa_sha512_ed25519` and
+/// `EDDSA-SHA512-ED25519` are the same alias). The table intentionally keeps
+/// alternate short names such as `ECDSA-P256` next to the canonical I2P name.
+///
+/// @return The signing key type, or std::nullopt for an unknown, empty or
+///         out-of-range spelling; callers report a CLI error instead of
+///         silently defaulting.
 inline std::optional<uint16_t> NameToSigType (std::string_view keyname)
 {
 	if (keyname.empty ()) return std::nullopt;

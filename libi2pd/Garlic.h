@@ -156,6 +156,9 @@ namespace garlic
 	};
 
 	class GarlicDestination;
+	/// Common outbound garlic session state shared by ElGamal and ratchet paths.
+	/// The owner pointer is non-owning; atomic publication does not extend the
+	/// destination's lifetime, so teardown must be coordinated with users.
 	class GarlicRoutingSession
 	{
 	protected:
@@ -243,6 +246,8 @@ namespace garlic
 		uint64_t LastSendTime () const { return m_LastSendTime.load (std::memory_order_relaxed); }
 		void SetLastSendTime (uint64_t lastSendTime) { m_LastSendTime.store (lastSendTime, std::memory_order_relaxed); }
 
+		/// Borrow the current owner, or null after detachment. A successful load
+		/// is not a lifetime barrier against concurrent destination teardown.
 		GarlicDestination * GetOwner () const { return m_Owner.load (std::memory_order_acquire); }
 		void SetOwner (GarlicDestination * owner) { m_Owner.store (owner, std::memory_order_release); }
 
@@ -304,6 +309,14 @@ namespace garlic
 	//using GarlicRoutingSessionPtr = std::shared_ptr<GarlicRoutingSession>;
 	typedef std::shared_ptr<GarlicRoutingSession> GarlicRoutingSessionPtr; // TODO: replace to using after switch to 4.8
 
+	/// Outbound ElGamal/AES+SessionTag session for one remote destination.
+	///
+	/// The session owns a short list of one-time session tags and the CBC state
+	/// used to wrap messages; wrapping is serialized by the inherited
+	/// `m_StateMutex` because several client threads can target the same
+	/// destination. A tag is only usable after the peer confirmed the message
+	/// that announced it (`MessageConfirmed`), so unconfirmed tags stay in
+	/// `m_UnconfirmedTagsMsgs` until an ACK clears them.
 	class ElGamalAESSession : public GarlicRoutingSession, public std::enable_shared_from_this<ElGamalAESSession>
 	{
 		struct UnconfirmedTags
@@ -382,6 +395,9 @@ namespace garlic
 		ReceiveRatchetTagSetPtr tagset; // null if used
 	};
 
+	/// Local garlic endpoint managing session and receive-tag registries.
+	/// Session snapshots and retired tag sets are released outside registry
+	/// locks because their cleanup can reenter session or destination code.
 	class GarlicDestination : public i2p::data::LocalDestination
 	{
 	public:
@@ -389,14 +405,10 @@ namespace garlic
 		~GarlicDestination ();
 
 		void CleanUp ();
-		// Legacy seeded generator kept for compatibility. It is not
-		// thread-safe; the garlic code uses the CSPRNG for every nonce, message
-		// ID and padding size, so no concurrent path touches it.
-		// The generator is per-thread. Returning one shared mutable reference let
-		// the destination service, streaming, datagram, torrent and timer
-		// threads interleave the state of a single std::mt19937, which is a data
-		// race for no benefit: every caller wants an unpredictable value, never
-		// a reproducible sequence shared across threads.
+		/// Return this thread's generator for selections and message identifiers.
+		/// The reference is valid only for the calling thread's lifetime; this
+		/// generator is not a cryptographic source for keys or secret nonces and
+		/// must not be shared across threads.
 		std::mt19937 & GetRng ();
 		bool IsIdling () const { return m_IsIdling; };
 		void SetIsIdling (bool isIdling) { m_IsIdling = isIdling; };
@@ -431,6 +443,11 @@ namespace garlic
 			bool requestNewIfNotFound = true);
 		void CleanupExpiredTags ();
 		void RemoveDeliveryStatusSession (uint32_t msgID);
+		/// Wrap one I2NP message for a router (not a destination) and return the
+		/// resulting Garlic message, or null when no session could be created.
+		/// A ratchet-capable router is wrapped with a one-shot ECIES-X25519
+		/// garlic; otherwise an ElGamal/AES routing session is used, so the
+		/// returned message is always ready to hand to a transport.
 		std::shared_ptr<I2NPMessage> WrapMessageForRouter (
 			std::shared_ptr<const i2p::data::RouterInfo> router, std::shared_ptr<I2NPMessage> msg);
 

@@ -301,6 +301,12 @@ foreach(action IN ITEMS "start)" "stop)" "restart)" "status)" "reload)")
   require_text("${sysvinit_text}" "${action}" "sysvinit script")
 endforeach()
 require_text("${sysvinit_text}" "1|true|yes) I2PD_ENABLED=yes" "sysvinit script")
+require_text("${sysvinit_text}" [=[''|*[!0-9]*|0*) return 1 ;;]=]
+  "sysvinit read_pid must reject zero and non-canonical PID strings")
+require_text("${sysvinit_text}" [=[_daemon_real=$(readlink -f "$DAEMON" 2>/dev/null) || return 1]=]
+  "sysvinit executable resolution must fail closed")
+forbid_text("${sysvinit_text}" [=[_daemon_real=$(readlink -f "$DAEMON" 2>/dev/null) || return 0]=]
+  "sysvinit must not accept an unresolved daemon path")
 require_text("${sysvinit_text}" "0) log_action_msg" "sysvinit script")
 require_text("${sysvinit_text}" "1) log_failure_msg" "sysvinit script")
 require_text("${sysvinit_text}" "3) log_action_msg" "sysvinit script")

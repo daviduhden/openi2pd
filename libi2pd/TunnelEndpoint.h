@@ -32,6 +32,9 @@ namespace tunnel
 	// I2NP expiration (8 s) is far too short for a multi-tunnel retransmission.
 	const uint64_t TUNNEL_FRAGMENT_REASSEMBLY_TIMEOUT = 45 * 1000; // milliseconds
 
+	/// Reassembles tunnel fragments and routes complete I2NP messages.
+	/// Reassembly maps and delivery queues are owned by the tunnel's caller;
+	/// calls that manipulate them must be serialized with cleanup and flushing.
 	class TunnelEndpoint final
 	{
 		struct TunnelMessageBlockEx : public TunnelMessageBlock
@@ -71,10 +74,17 @@ namespace tunnel
 		/** expiry pass against an explicit clock, used by deterministic tests */
 		void Cleanup (uint64_t nowMs);
 
+		/// Parse a decrypted cell after its owning tunnel has checked its size.
+		/// @pre The message contains a full TUNNEL_DATA_MSG_SIZE payload and has
+		/// 16 writable bytes after it for the checksum's IV suffix.
+		/// @param msg Shared message whose backing storage must remain alive while
+		/// retained; the final fragment may reuse this buffer.
 		void HandleDecryptedTunnelDataMsg (std::shared_ptr<I2NPMessage> msg);
 		void FlushI2NPMsgs ();
 
-		const i2p::data::IdentHash * GetCurrentHash () const; // return null if not available
+		/// Borrow the current outbound target, or null when no sender/queue exists.
+		/// The pointed-to value may change on a later send and does not outlive this endpoint.
+		const i2p::data::IdentHash * GetCurrentHash () const;
 		const std::unique_ptr<TunnelTransportSender> & GetSender () const { return m_Sender; };
 
 	private:
@@ -94,7 +104,7 @@ namespace tunnel
 
 	private:
 		std::unordered_map<uint32_t, TunnelMessageBlockEx> m_IncompleteMessages;
-		std::unordered_map<uint64_t, Fragment> m_OutOfSequenceFragments; // ((msgID << 8) + fragment#)->fragment
+		std::unordered_map<uint64_t, Fragment> m_OutOfSequenceFragments; // (msgID << 32 | fragment#) -> fragment
 		bool m_IsInbound;
 		size_t m_NumReceivedBytes;
 		std::atomic<uint64_t> m_LastReceiveTime; // milliseconds since epoch

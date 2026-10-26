@@ -96,6 +96,14 @@ namespace tui
 		 * console (for example redirected standard handles on Windows) or
 		 * when the terminal cannot provide the required capabilities.
 		 * LastError() then describes the failure.
+		 *
+		 * Init is idempotent and owns the process-wide console state: on
+		 * POSIX the ncursesw screen and keypad mode, on Windows the saved
+		 * console modes and the alternate screen.  The locale must already
+		 * provide a multibyte LC_CTYPE, because Put decodes UTF-8 to measure
+		 * columns.  Shutdown is the only operation that restores that state
+		 * and must run on every exit path, including an error path after a
+		 * partially successful Init.
 		 */
 		bool Init ();
 		void Shutdown ();
@@ -104,6 +112,14 @@ namespace tui
 		void Dimensions (int & height, int & width);
 		void Clear ();
 		void Move (int row, int column);
+		/*
+		 * Write text at the cursor.  `limit` is a terminal-column budget, not
+		 * a byte count: the text is decoded so a wide CJK glyph counts as two
+		 * cells and a combining mark as zero, and a sequence is never split.
+		 * A negative limit means "whole string".  Bytes that the locale
+		 * cannot decode are consumed one at a time so the cursor still
+		 * advances, instead of letting ncursesw swallow the rest of the row.
+		 */
 		void Put (std::string_view text, int limit = -1);
 		void ClearToEol ();
 		void SetAttribute (int attributes);
@@ -121,6 +137,13 @@ namespace tui
 		int ColorCount ();
 		int ColorPairCount ();
 		bool UseDefaultColors ();
+		/*
+		 * Allocate one colour pair.  Pair 0 is reserved for the terminal
+		 * default and is rejected here; the caller (Theme) owns the number
+		 * allocation so a failed allocation is a normal, non-fatal result
+		 * that selects the next degradation step.  InitExtendedPair needs a
+		 * direct-colour build and returns false where it is unavailable.
+		 */
 		bool InitPair (int pair, int foreground, int background);
 		bool InitExtendedPair (int pair, int foreground, int background);
 	}

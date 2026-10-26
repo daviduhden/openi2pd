@@ -425,6 +425,14 @@ namespace stream
 		}
 
 		LogPrint (eLogDebug, "Streaming: Received seqn=", receivedSeqn, " on sSID=", m_SendStreamID);
+		// Receive-side reordering and backpressure. Three independent limits
+		// apply below: a queue above three windows drops the packet and sets the
+		// choke flag; a gap of a whole window, or of 256 sequence numbers when
+		// nothing is saved yet, is dropped instead of saved; and a saved set
+		// whose gaps plus the new distance reach 256 is dropped, because an ACK
+		// block carries one NACK-count byte and cannot describe more missing
+		// ranges. A dropped packet is not acknowledged here; the peer's
+		// retransmission recovers it.
 		if (m_ReceiveQueue.size () > m_MaxWindowSize * 3)
 		{
 			LogPrint (eLogDebug, "Streaming: ReceiveQueue is full, delete packet");
@@ -517,7 +525,7 @@ namespace stream
 				}
 				else if (!m_SavedPackets.empty ())
 				{
-					uint8_t numNacks = 0;
+					size_t numNacks = 0;
 					auto lastSavedSeq = 0;
 					auto nextSeqn = m_LastReceivedSequenceNumber + 1;
 					for (auto it : m_SavedPackets)
@@ -1508,7 +1516,7 @@ namespace stream
 		size += 4; // sequenceNum
 		htobe32buf (packet + size, lastReceivedSeqn);
 		size += 4; // ack Through
-		uint8_t numNacks = 0;
+		size_t numNacks = 0;
 		bool choking = (m_IsChoking2 || m_IsChoking3);
 		if (lastReceivedSeqn > m_LastReceivedSequenceNumber)
 		{
@@ -1538,7 +1546,7 @@ namespace stream
 				}
 				nextSeqn = seqn + 1;
 			}
-			packet[size] = numNacks;
+			packet[size] = static_cast<uint8_t> (numNacks); // guarded < 256 above
 			size++; // NACK count
 			size += numNacks * 4; // NACKs
 		}
@@ -1634,6 +1642,13 @@ namespace stream
 	{
 		LogPrint (eLogDebug, "Streaming: closing stream with sSID=", m_SendStreamID, ", rSID=", m_RecvStreamID,
 			", status=", m_Status);
+		// Close is a two-step state machine and is re-entered on purpose:
+		// Open moves to Closing and recurses so pending data can drain; Closing
+		// sends the FIN only once the send queue and the buffer are empty; Reset
+		// sends one RESET (unless the peer reset first) and terminates. The
+		// Closed and New states have nothing to send and only release the stream.
+		// A caller that closes an Open stream while data is still queued therefore
+		// gets a deferred FIN, not data after FIN.
 		switch (m_Status)
 		{
 		case eStreamStatusOpen:
@@ -2173,6 +2188,13 @@ namespace stream
 
 	void Stream::ResendPacket ()
 	{
+		// Retransmission timer. Only packets older than the current RTO are
+		// collected, and one iteration sends at most m_NumPacketsToSend so a
+		// single tick cannot flush the whole send queue. A packet resent within
+		// 3xRTO is marked resent so ProcessAck() excludes it from the RTT sample
+		// (the retransmission has an ambiguous round trip). The attempt counter is
+		// bounded by m_MaxNumResendAttempts, and an unacknowledged SYNACK is
+		// abandoned earlier because the peer never confirmed the reverse path.
 		// check for resend attempts
 		if (m_IsIncoming && m_SequenceNumber == 1 && m_NumResendAttempts > 0
 			&& (!m_RoutingSession || !m_RoutingSession->HasSharedRoutingPath ())) // ack not received
@@ -2258,6 +2280,12 @@ namespace stream
 			}
 			else if (m_IsTimeOutResend && m_NumResendAttempts > 1)
 			{
+				// Repeated timeouts mean the selected path is probably dead, not
+				// merely lossy. Reset the RTO and window bookkeeping, drop the
+				// shared routing path, and on successive attempts alternate
+				// between choosing another outbound tunnel and choosing another
+				// remote lease, so both halves of the path get a chance to change
+				// instead of retrying one dead hop forever.
 				m_RTO = INITIAL_RTO; // drop RTO to initial upon tunnels pair change
 				m_WindowDropTargetSize = INITIAL_WINDOW_SIZE;
 				m_LastWindowDropSize = 0;
@@ -2620,6 +2648,12 @@ namespace stream
 	StreamingDestination::SynAdmission StreamingDestination::DecideSynAdmission (
 		uint32_t receiveStreamID, i2p::garlic::ECIESX25519AEADRatchetSession * from)
 	{
+		// Order matters: the cheap local checks run before the connection
+		// throttle is charged, so a duplicate, an over-limit SYN or a full
+		// backlog cannot consume the per-peer admission budget that a fresh
+		// legitimate connection needs. Every rejection is answered by the caller
+		// after this decision, which keeps the throttle and the response
+		// consistent.
 		if (IsRecentlyClosed (receiveStreamID)) return SynAdmission::eRecentlyClosed;
 		{
 			std::lock_guard<std::mutex> lock (m_StreamsMutex);
@@ -2731,6 +2765,13 @@ namespace stream
 		RejectSynWithReset (packet, receiveStreamID);
 	}
 
+	// Bounded memory of streams that ended, or whose SYN was refused, recently.
+	// A retransmitted SYN for such a receive stream ID must not create a second
+	// stream or a second RESET, so it is answered once and then dropped. Entries
+	// decay after RECENTLY_CLOSED_TIMEOUT and are trimmed to
+	// MAX_RECENTLY_CLOSED_STREAMS (oldest evicted) on insertion, so the bound
+	// applies to the live window. The key is the peer-chosen receive stream ID:
+	// this is per-destination state, never a peer identity or a ban.
 	bool StreamingDestination::IsRecentlyClosed (uint32_t receiveStreamID) const
 	{
 		if (!receiveStreamID) return false;

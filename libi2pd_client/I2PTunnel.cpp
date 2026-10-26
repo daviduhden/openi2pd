@@ -1163,6 +1163,14 @@ namespace client
 		if (m_LimitActionConfigured) destination->SetRejectionAction (filterAction);
 	}
 
+	// Server-side admission of one accepted I2P stream. The filter predicate
+	// has already run inside the SYN path when one is configured; this function
+	// only repeats the legacy access-list check that has no predicate
+	// equivalent, refuses a stream when the tunnel stopped between the acceptor
+	// dispatch and this call, and selects the local target for the port the
+	// stream arrived on. Every refusal answers with one signed RESET instead of
+	// leaving an accepted stream unowned, and a target that is a host name is
+	// resolved asynchronously so no blocking lookup runs on the service thread.
 	void I2PServerTunnel::HandleAccept (std::shared_ptr<i2p::stream::Stream> stream)
 	{
 		if (!stream) return;

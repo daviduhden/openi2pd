@@ -230,6 +230,9 @@ namespace torrents
 		bool Split ();
 	};
 
+	/// Owns the bucket chain and shared node records for one DHT identity.
+	/// Bucket pointers returned by FindBucket are borrowed and expire when the
+	/// chain changes; callers must serialize access to the table.
 	class RoutingTable
 	{
 	public:
@@ -378,10 +381,9 @@ namespace torrents
 		Error // y="e"
 	};
 
-	// Top-level KRPC envelope. The views point into the decoded input and stay
-	// valid only while it does. The nested `a`/`r` dictionaries are returned
-	// raw: their fields are decoded by the handler that knows which query or
-	// response they belong to, so this decoder stays side-effect free.
+	/// Parsed KRPC envelope with views borrowing the input. Nested `a`/`r`
+	/// dictionaries stay encoded for the handler that knows their message type;
+	/// no view may outlive the input passed to DecodeDHTFrame().
 	struct DHTFrame
 	{
 		DHTFrameKind kind = DHTFrameKind::Malformed;
@@ -395,12 +397,12 @@ namespace torrents
 		bool IsValid () const { return kind != DHTFrameKind::Malformed; }
 	};
 
-	// Decode the KRPC envelope. The dict must consume the whole input, keys
-	// must be unique, the envelope is closed (y/t/q/a/r/e plus the optional
-	// BEP 5 `v` client version, which is ignored), `y` must be exactly "q",
-	// "r" or "e", `t` must be 1..16 bytes, and a query/response must carry
-	// exactly one well-formed `a`/`r` dictionary. Never throws, never
-	// allocates more than the input and never logs.
+	/// Decode one complete KRPC envelope without changing DHT state or logging.
+	/// Keys must be unique and belong to y/t/q/a/r/e or optional BEP 5 `v`;
+	/// transaction IDs are 1..16 bytes, and queries/responses carry one encoded
+	/// `a`/`r` dictionary. Returned views borrow @a encoded.
+	/// @return A malformed frame on structural or size failure.
+	/// @see https://www.bittorrent.org/beps/bep_0005.html
 	DHTFrame DecodeDHTFrame (std::string_view encoded);
 
 	// Decode up to `maxCount` compact BEP 5 node records. Records that fail the
@@ -437,10 +439,9 @@ namespace torrents
 		uint64_t issued = 0; // monotonic seconds
 	};
 
-	// Bounded FIFO of issued tokens. Insertion and oldest-first eviction are
-	// constant time; a per-node quota means one destination that keeps issuing
-	// get_peers can only reclaim its own tokens, never every other
-	// destination's. A removed or newly private info hash is purged explicitly.
+	/// Bounded FIFO of issued tokens, indexed by opaque token and node ID.
+	/// The per-node quota limits eviction pressure from one node; callers purge
+	/// removed or newly private info hashes. Access is serialized by the owner.
 	class DHTTokenStore
 	{
 	public:
@@ -571,6 +572,10 @@ namespace torrents
 		std::atomic<bool> saveInFlight { false };
 	};
 
+	/// I2P datagram DHT for one tunnel. It borrows the tunnel for its lifetime;
+	/// routing, tokens and query state belong to the tunnel service thread.
+	/// Repliable network datagrams enter a bounded queue before service-thread
+	/// parsing. This is I2P destination discovery, not a public IP DHT fallback.
 	class TorrentsDHT
 	{
 	public:
@@ -592,7 +597,15 @@ namespace torrents
 		// Legacy flat DHT filename: one component beneath <datadir>/torrents,
 		// no traversal, separators, reserved prefixes or control bytes.
 		static bool IsValidStateFileName (std::string_view name);
+		/// Load persisted routing state, publish the datagram receivers (when the
+		/// destination provides a datagram endpoint) and arm the DHT timers.
+		/// Loading may be delegated; an enabled-but-failing delegate must not
+		/// substitute a parent filesystem read.
 		void Start ();
+		/// Publish the stopping flag before cancelling timers or resetting the
+		/// receivers, discard frames queued by the stopped generation and save
+		/// the routing snapshot. No callback may enter the DHT afterwards, and a
+		/// queued frame is never replayed into a later Start().
 		void Stop ();
 
 		// Both are always in 1..65535: 65535 is refused at construction and on
@@ -605,6 +618,11 @@ namespace torrents
 		void HandleRawDatagram (const uint8_t * buf, size_t len, uint16_t fromPort, uint16_t toPort);
 
 		void SendPingQuery (const i2p::data::IdentHash & toIdent, uint16_t toPort);
+		/// Announce a torrent through the I2P DHT and start a bounded get_peers
+		/// lookup. Private, locally private, stopped and removed torrents are
+		/// ignored, and a rendezvous hit reuses peers that already announced
+		/// here instead of running a full lookup. Everything stays on the tunnel
+		/// service thread.
 		void GetPeersAndAnnounce (std::shared_ptr<Torrent> torrent);
 		// Remove only our own rendezvous identity after stop/remove. Remote
 		// announcers remain until their normal expiry.

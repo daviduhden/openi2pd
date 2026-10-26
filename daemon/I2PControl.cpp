@@ -335,9 +335,9 @@ namespace client
 			for (const auto & deadline : deadlines) deadline->cancel ();
 			for (const auto & close : closeConnections) close ();
 			m_ShutdownTimer.cancel ();
-			// Re-entering run() from one of its own handlers would block on the
-			// handler that is still on the stack; the pending cancellations are
-			// drained by the current loop instead.
+			// Do not re-enter run() from a handler that is still on the stack.
+			// In that path cancellation handlers remain queued on the stopped
+			// context until it is restarted and run, or the context is destroyed.
 			if (!onServiceThread)
 			{
 				m_Service.restart ();

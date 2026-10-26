@@ -96,16 +96,25 @@ namespace data
 	const uint64_t LEASESET2_META_MAX_PUBLISHED_AGE = 10 * 60 * 1000; // Java earliest-lease bound
 
 	const uint8_t NETDB_STORE_TYPE_LEASESET = 1;
+	/// Parsed LS1 destination and leases, with its serialized representation.
+	/// The object owns its buffer and lease objects; consumers must synchronize
+	/// reads with updates rather than treating a shared pointer as a state snapshot.
+	/// @see https://i2p.net/en/docs/specs/common-structures/
 	class LeaseSet : public RoutingDestination
 	{
 	public:
 		LeaseSet (const uint8_t * buf, size_t len, bool storeLeases = true);
 		virtual ~LeaseSet () = default;
+		/// Replace and parse the stored buffer.
+		/// @warning verifySignature=false skips signature verification and is only
+		/// suitable when the caller has already authenticated the exact bytes.
 		virtual void Update (
 			const uint8_t * buf, size_t len, std::shared_ptr<LocalDestination> dest, bool verifySignature);
 		virtual bool IsNewer (const uint8_t * buf, size_t len) const;
 		virtual void PopulateLeases (); // from buffer
 
+		/// Borrow the serialized bytes. Update or destruction may invalidate the
+		/// pointer; GetBufferLen() is the current usable length.
 		const uint8_t * GetBuffer () const { return m_Buffer.get (); };
 		size_t GetBufferLen () const { return m_BufferLen; };
 		bool IsValid () const { return m_IsValid; };
@@ -220,6 +229,11 @@ namespace data
 		{
 			return index < m_EncryptionKeys.size () ? m_EncryptionKeys[index].type : CRYPTO_KEY_TYPE_ELGAMAL;
 		};
+		/// True when a received DatabaseStore keyed by `key` belongs to this
+		/// LeaseSet: the recorded store hash for an encrypted LeaseSet2, otherwise
+		/// the inner identity hash. Callers must use this predicate rather than
+		/// comparing the identity hash themselves, because an encrypted LeaseSet2
+		/// is published under the blinded destination.
 		bool IsStoreKey (const IdentHash & key) const;
 		std::shared_ptr<const i2p::crypto::Verifier> GetTransientVerifier () const override
 		{
@@ -247,6 +261,16 @@ namespace data
 
 		uint64_t ExtractExpirationTimestamp (const uint8_t * buf, size_t len) const override;
 		uint64_t ExtractPublishedTimestamp (const uint8_t * buf, size_t len, uint64_t & expiration) const;
+		/// Build the encrypted-LeaseSet2 client-auth block (Proposal 123).
+		/// @param secret 32-byte DH private key or PSK supplied by the caller; it
+		/// is a credential and must never be logged, stored in the object or
+		/// reused as a nonce.
+		/// @param subcredential Subcredential extended with the LeaseSet timestamp.
+		/// @return Length of the auth data without its leading flag; 0 means the
+		/// publisher requested no per-client auth. Malformed auth data, a missing
+		/// secret or a failed agreement returns the size_t failure sentinel, so
+		/// callers must treat any value other than a plausible length as a
+		/// rejected LeaseSet rather than as "no auth".
 		size_t ExtractClientAuthData (const uint8_t * buf, size_t len, const uint8_t * secret,
 			const uint8_t * subcredential, uint8_t * authCookie)
 			const; // subcredential is subcredential + timestamp, return length of autData without flag

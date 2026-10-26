@@ -60,7 +60,29 @@ struct LinuxSandboxProfile
 	std::vector<std::string> writablePaths;
 };
 
+/**
+ * Declared policy of one Linux worker class: the capabilities a role is allowed
+ * to retain. It is the contract, not the enforcement; the backend policy for a
+ * given platform must never grant more than this profile, and the profile never
+ * implies that the role already runs in its own process.
+ */
 LinuxSandboxProfile GetLinuxSandboxProfile (WorkerClass workerClass);
+/**
+ * Install the profile's Landlock domain and seccomp filter.
+ *
+ * `writablePaths` must be absolute and resolved before this call; an empty list
+ * means the process may not write anywhere. A mechanism that the profile marks
+ * as required (Landlock by default) fails closed when the kernel cannot provide
+ * it, so a caller never silently continues with fewer restrictions. This must
+ * run before the first untrusted frame is parsed, and a delegated root the
+ * policy must include has to be resolved first.
+ *
+ * A profile that requests both external networking and persistent writes is
+ * rejected: that is the process-level enforcement of the role/capability
+ * invariant in privsep/Capabilities.h. The socket filter is installed at most
+ * once per process and cannot be relaxed afterwards, so a later profile can
+ * only add restrictions.
+ */
 i2p::expected<void, std::string> ApplyLinuxSandbox (const LinuxSandboxProfile & profile);
 // The supervisor must not install Landlock/seccomp/network namespaces: those
 // domains are inherited across fork+exec and would prevent every child from

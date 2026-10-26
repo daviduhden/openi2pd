@@ -7,7 +7,8 @@
  * Declares the SOCK_SEQPACKET channel abstraction for isolated workers,
  * including bounded sends and receives, SCM_RIGHTS descriptor transfer and
  * peer credential lookup. Received descriptors are owned by the caller, and
- * Linux per-message credentials are checked against SO_PEERCRED.
+ * Linux per-message credentials are checked against the configured peer
+ * expectation (or SO_PEERCRED when no expectation is configured).
  *
  */
 
@@ -81,6 +82,8 @@ enum class EnforcementPolicy : uint8_t
 	Endpoint = 1
 };
 
+/// Owns one SOCK_SEQPACKET endpoint and closes it unless ownership is released.
+/// The channel is movable, not copyable; it does not serialize its users.
 class Channel
 {
 public:
@@ -137,13 +140,15 @@ public:
 	 * timeout keeps the historical infinite-wait meaning.
 	 */
 	i2p::expected<void, std::string> SendWithFd (const Message & message, int fd, int timeoutMs = 5000);
+	/// Receive a message without a descriptor. An unexpected descriptor is closed
+	/// and reported as an error; an empty optional means the deadline expired.
 	i2p::expected<std::optional<Message>, std::string> Receive (int timeoutMs = 1000);
 	/**
 	 * Receive one frame and optionally one descriptor. Any SCM_RIGHTS
 	 * descriptor is returned to the caller and must be closed by it. More
 	 * than one descriptor is a protocol error. On Linux the per-message
-	 * SCM_CREDENTIALS are checked against SO_PEERCRED before the frame is
-	 * accepted.
+	 * SCM_CREDENTIALS must match the configured peer expectation; when none is
+	 * configured, uid and gid are compared with SO_PEERCRED instead.
 	 *
 	 * Concurrency contract: each endpoint must have exactly one reader.
 	 * SOCK_SEQPACKET delivers every record to exactly one recvmsg, so a
@@ -154,7 +159,9 @@ public:
 	 * The receive is bounded by @a timeoutMs. A ready record can still be
 	 * taken by another reader between poll() and recvmsg(); the resulting
 	 * EAGAIN is retried until the absolute deadline rather than blocking.
-	 * A negative timeout keeps the historical infinite-wait meaning.
+	 * A negative timeout keeps the historical infinite-wait meaning. A timeout
+	 * returns an empty optional; transport, credential and protocol failures
+	 * return an error.
 	 */
 	i2p::expected<std::optional<ReceivedMessage>, std::string> ReceiveWithFd (int timeoutMs = 1000);
 	i2p::expected<uint32_t, std::string> PeerUid () const;

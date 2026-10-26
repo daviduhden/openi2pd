@@ -79,6 +79,9 @@ report that limitation; do not substitute local execution. Ask for:
 
 ## Conventions
 
+- Apply the [source documentation policy](../../../AGENTS.md#source-documentation-policy)
+  to IPC authority, descriptor ownership, shutdown and worker boundaries.
+
 - Version the protocol; reject unknown versions and types. No downgrade or
   “best effort” mode.
 - Bound every frame, field, queue, request id and timeout before allocation.

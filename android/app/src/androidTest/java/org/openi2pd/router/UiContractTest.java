@@ -31,6 +31,15 @@ import com.google.android.material.color.MaterialColors;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
+/**
+ * Read-only contract checks for the native Material 3 screens.
+ *
+ * <p>Asserts one-screen-reader-stop rows, visible touch targets, the
+ * `w600dp` navigation rail, the semantic brand color roles in both light and
+ * dark themes and the log filter/summary wiring. The daemon and the service are
+ * never started, so this says nothing about live router behaviour; device and
+ * TalkBack evidence remains the manual UI lane.</p>
+ */
 @RunWith(AndroidJUnit4.class)
 public final class UiContractTest {
     private Context themed() {

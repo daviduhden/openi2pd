@@ -78,6 +78,10 @@ peer or add a hidden external checkout. The reference is for reading only.
 
 ## Conventions
 
+- Apply the [source documentation policy](../../../AGENTS.md#source-documentation-policy)
+  to wire comments; cite the relevant specification and distinguish static
+  interpretation from tested interoperability.
+
 - Preserve exact byte layout, field order, endianness and signature scope.
 - Reject malformed/truncated input before state mutation or allocation.
 - Preserve unknown-field handling and version negotiation deliberately; do not

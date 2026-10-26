@@ -86,6 +86,12 @@ namespace tunnel
 		return std::min (delay, TUNNEL_POOL_BUILD_BACKOFF_MAX);
 	}
 
+	// Per-path test deadline. A test leaves through the outbound tunnel and
+	// returns through the inbound one, so the budget is twice the one-way
+	// estimate: TUNNEL_POOL_TEST_TIMEOUT_PER_HOP (2.5 s) per hop plus the locally
+	// measured transport delay. The result is clamped to 7.5..15 s so a zero-hop
+	// pair still gets a usable deadline and a long path cannot hold a test entry
+	// open for minutes. Units: milliseconds.
 	uint64_t GetTunnelTestTimeout (int numHops, int localDelayMs)
 	{
 		if (numHops < 0) numHops = 0;
@@ -335,7 +341,15 @@ namespace tunnel
 			std::unique_lock<std::mutex> l (m_InboundTunnelsMutex);
 			if (createdTunnel->IsRecreated ())
 			{
-				// find and mark old tunnel as expired
+				// A recreated tunnel replaces the path it was built from.
+				// RecreateInboundTunnel() marks the new tunnel, and creating it
+				// clears the flag here while the first still-marked member with
+				// the same next hop moves to Expiring instead of being erased:
+				// the expiry path owns removal, so in-flight traffic is not cut
+				// at the moment the replacement is published. Only one
+				// predecessor is matched per creation, so a pool full of
+				// recreated tunnels converges instead of expiring everything at
+				// once.
 				createdTunnel->SetRecreated (false);
 				for (auto & it : m_InboundTunnels)
 					if (it->IsRecreated () && it->GetNextIdentHash () == createdTunnel->GetNextIdentHash ())
@@ -809,6 +823,10 @@ namespace tunnel
 			int numHops = 0;
 			if (test.outbound) numHops += test.outbound->GetNumHops ();
 			if (test.inbound) numHops += test.inbound->GetNumHops ();
+			// The round trip covers both paths, so each tunnel is charged only its
+			// share of the measured time (hops of that tunnel over the total hops).
+			// A zero-hop tunnel has no share, hence the dlt/2 fallback, and the
+			// sample is added to the tunnel's mean rather than replacing it.
 			// A successful test clears the strike ladder and restores a tunnel
 			// that an earlier test had demoted.
 			if (test.outbound)
@@ -841,6 +859,14 @@ namespace tunnel
 		return i2p::tunnel::tunnels.GetExploratoryPool () == shared_from_this ();
 	}
 
+	// Hop selection first tries the client-tunnel candidate set (the
+	// high-bandwidth variant when this pool serves a high-bandwidth router), then
+	// falls back once to the general random set, so one exhausted filter cannot
+	// fail an entire path build. The pool's peer ordering key keeps the
+	// per-pool peer order stable across builds without pinning the same peers
+	// forever. When the previous hop is this router - the first hop of the path -
+	// a peer whose subnet already has too many established connections is
+	// refused; only the transport layer can decide that.
 	std::shared_ptr<const i2p::data::RouterInfo> TunnelPool::SelectNextHop (
 		std::shared_ptr<const i2p::data::RouterInfo> prevHop, bool reverse, bool endpoint)
 	{

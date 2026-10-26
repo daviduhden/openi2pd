@@ -286,6 +286,9 @@ namespace torrents
 		return now + static_cast<uint64_t> (interval) + jitter;
 	}
 
+	/// Owns one I2P torrent session, its service-thread state and a separate disk
+	/// service. Administrative snapshots and commands are posted to the tunnel
+	/// service, which also owns a separate executor for payload IO.
 	class TorrentsTunnel final : public i2p::client::I2PService
 	{
 	private:
@@ -310,6 +313,10 @@ namespace torrents
 			std::string_view dhtFileName = "", bool isolatedStorage = false);
 		~TorrentsTunnel () override;
 
+		/// Start the tunnel service: load persisted DHT state, begin accepting
+		/// inbound peer streams, enumerate the torrents directory on the disk
+		/// service and arm the tracker/keep-alive/reconnect/status timers. The
+		/// service thread never walks the directory or opens a torrent file.
 		void Start () override;
 		// Marshals the service-thread teardown with a bounded wait. When it
 		// times out the posted closure owns a reference and completes the
@@ -318,9 +325,14 @@ namespace torrents
 		void Stop () override;
 		auto & GetDiskIOService () { return m_DiskIOService.GetService (); };
 
-		// Control snapshots and commands are executed on this tunnel's Asio
-		// service thread. Callers on other threads wait for at most timeout.
+		/// Obtain a bounded snapshot on the tunnel's Asio service thread.
+		/// @pre Call from another thread: this method posts to the service and waits.
+		/// @return nullopt if posting, execution or the bounded wait fails.
 		std::optional<TorrentsSnapshot> GetControlSnapshot (std::chrono::milliseconds timeout);
+		/// Post an administrative command to the tunnel service and wait at most
+		/// @a timeout for its result. The posted closure owns the tunnel and command.
+		/// @pre Call from another thread to avoid blocking the service executor.
+		/// @warning A timeout does not cancel a queued command: it may still run.
 		TorrentCommandResult ExecuteControlCommand (const TorrentCommand & command, std::chrono::milliseconds timeout);
 
 		const std::filesystem::path & GetTorrentsDir () const { return m_TorrentsDir; }
@@ -347,14 +359,27 @@ namespace torrents
 		std::shared_ptr<Torrent> FindTorrentByID (int id) const;
 		std::vector<int> GetTorrentIDs () const;
 		std::list<std::shared_ptr<Torrent>> GetTorrents () const;
+		/// Parse, validate and insert a .torrent, or reject it without side
+		/// effects. Trackers must be explicit I2P endpoints and a private torrent
+		/// needs at least one; the download root is confined beneath the torrents
+		/// directory before the session map is touched.
+		/// @return (torrent, id > 0) on success, (nullptr, 0) on rejection.
 		std::pair<std::shared_ptr<Torrent>, int> AddTorrent (
 			std::string_view torrentFileContent); // retrun (torrent, id)
+		/// Insert a BEP 9 magnet. Without metadata it yields a metadata-less
+		/// stub whose files, trackers and privacy are validated only when the
+		/// info dictionary arrives (UpdateTorrentInfo).
 		std::pair<std::shared_ptr<Torrent>, int> AddMagnet (std::string_view magnet); // return (torrent, id)
 		// RPC entry points marshal to the tunnel service thread; they never
 		// touch m_Torrents from an HTTP I/O thread. Return {nullptr, 0} on timeout.
 		std::pair<std::shared_ptr<Torrent>, int> AddTorrentFromRpc (std::string_view torrentFileContent);
 		std::pair<std::shared_ptr<Torrent>, int> AddMagnetFromRpc (std::string_view magnet);
 		void UpdateTorrentInfo (std::shared_ptr<Torrent> torrent, std::string_view info); // magnet
+		/// Remove one torrent. The instance is tombstoned immediately, its
+		/// trackers/dials/candidates are retired and payload deletion (when
+		/// requested) is delegated to the storage service. The infohash stays
+		/// reserved until serialized cleanup succeeds, so a re-add before that
+		/// point is refused rather than racing the old files.
 		bool RemoveTorrent (int id, bool deleteFiles);
 		void RemoveAllTorrents (bool deleteFiles);
 		bool StopTorrent (int id);
@@ -412,6 +437,17 @@ namespace torrents
 		bool ReadTorrentFileForControl (
 			const std::filesystem::path & path, std::vector<uint8_t> & content, std::string & error);
 		void SaveTorrentFile (std::shared_ptr<Torrent> torrent, const std::string & content);
+		/// Prepare one torrent's payload authority after its metainfo is inserted
+		/// or completed by BEP 9 metadata.
+		/// Runs on the disk service: it installs the resume persistence callback,
+		/// injects the administrative payload capability, resolves/validates every
+		/// file path and probes existing data (final file, .part or SAF document)
+		/// so only intact data is marked present. Filesystem failures publish the
+		/// atomic eTorrentErrorFilesystem from this thread; the caller must check
+		/// GetError() before announcing.
+		/// @warning It still mutates some Torrent-level state from the disk
+		/// service; per-file operations are serialized, but the remaining split
+		/// into a disk phase plus service-thread commit is tracked (CONC-005).
 		void InitTorrentFiles (std::shared_ptr<Torrent> torrent);
 		std::pair<int, bool> InsertTorrent (
 			std::shared_ptr<Torrent> torrent); // returns id > 0 if success and 0 if failed, true if innserted

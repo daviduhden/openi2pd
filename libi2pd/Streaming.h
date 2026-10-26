@@ -109,6 +109,12 @@ namespace stream
 	const uint64_t STREAMING_DESTINATION_POOLS_CLEANUP_INTERVAL = 646; // in seconds
 	const uint64_t STREAMING_CONNECTION_CLEANUP_INTERVAL = 60; // in seconds
 
+	/// Buffered streaming wire packet. Header accessors assume the caller has
+	/// checked len, the NACK count and option length before accessing fields.
+	/// `from` is a borrowed ratchet session pointer. The destination-level queue
+	/// clears it for packets saved before SYN; stream-level reordering requires
+	/// separate lifetime review because it retains packets without clearing it.
+	/// @see https://i2p.net/en/docs/specs/streaming/
 	struct Packet
 	{
 		size_t len, offset;
@@ -156,6 +162,10 @@ namespace stream
 	typedef std::function<void (const boost::system::error_code & ecode, size_t bytes_transferred)> SendHandler;
 #endif
 
+	/// Owns bytes and their completion handler while queued for streaming.
+	/// Destruction invokes a remaining handler with success; an owner discarding
+	/// unsent data must call Cancel() first. This reports local queue progress,
+	/// not acknowledgment by the remote peer.
 	struct SendBuffer
 	{
 		// Owns the payload for the whole asynchronous write. `buf` is a
@@ -198,6 +208,8 @@ namespace stream
 		}
 		size_t GetRemainingSize () const { return len - offset; };
 		const uint8_t * GetRemaningBuffer () const { return buf + offset; };
+		/// Complete the handler with operation_aborted and the consumed byte count.
+		/// The handler is cleared so destruction does not report success as well.
 		void Cancel ()
 		{
 			if (handler) handler (boost::asio::error::make_error_code (boost::asio::error::operation_aborted), offset);
@@ -282,6 +294,18 @@ namespace stream
 		bool m_Cancelled = false;
 	};
 
+	/// One I2P streaming connection: sequence/ACK state, window and pacing,
+	/// resend queue and the send/receive buffers.
+	///
+	/// Every state-machine entry point (`HandleNextPacket`, `SendBuffer`,
+	/// `ProcessAck`, `Close`, `Terminate`, the timers) runs on the owning
+	/// destination's io_context, so the members are not mutex-guarded; only the
+	/// `Async*` helpers may be called from another thread, and they post onto
+	/// that context. `Receive()` blocks the calling thread until such a posted
+	/// read completes, so it must never run on the service thread itself.
+	/// `Packet` objects come from and return to the destination's pool, and
+	/// `m_LocalDestinationOwner` keeps the destination alive for handlers that
+	/// outlive its map entry.
 	class Stream : public std::enable_shared_from_this<Stream>
 	{
 	public:
@@ -452,6 +476,15 @@ namespace stream
 		size_t m_MTU;
 	};
 
+	/// Streaming endpoint for one local port: accepts incoming SYNs, dispatches
+	/// data packets to the right `Stream`, and holds the acceptor registrations.
+	///
+	/// `m_Streams`/`m_IncomingStreams` are guarded by `m_StreamsMutex`; the
+	/// acceptor registrations, the pong handler, the admission predicate and the
+	/// pending-incoming backlog are guarded by `m_AcceptorMutex` because other
+	/// threads (SAM, server tunnels, tests) publish them while the service
+	/// thread dispatches. A SYN is refused by the installed admission predicate
+	/// before a stream object exists, so a denied peer never receives a SYNACK.
 	class StreamingDestination : public std::enable_shared_from_this<StreamingDestination>
 	{
 	public:

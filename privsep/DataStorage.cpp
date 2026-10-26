@@ -185,6 +185,10 @@ namespace
 		return static_cast<int> (written);
 	}
 
+	/// Owning descriptor for one directory level of an artifact path. `Release()`
+	/// transfers the number to the caller that keeps it (an opened kind or shard
+	/// directory, or the worker's root), so ownership moves explicitly instead of
+	/// a borrowed `int` being copied.
 	struct Fd
 	{
 		int value = -1;
@@ -218,6 +222,15 @@ namespace
 		std::string file;
 	};
 
+	/**
+	 * Map one canonical artifact name onto the fixed kind directory, the
+	 * first-character shard the core's readers already use and the file name.
+	 *
+	 * The name must already have passed `IsCanonicalArtifactName`: this helper
+	 * assumes it contains no separator, NUL or ".." and only copies it into a
+	 * component. A non-canonical name, or a kind this worker does not own,
+	 * returns false so the request is refused before any path is opened.
+	 */
 	bool BuildLayout (i2p::data::StorageArtifact kind, std::string_view name, TargetLayout & out)
 	{
 		if (!IsCanonicalArtifactName (kind, name)) return false;
@@ -377,6 +390,13 @@ namespace
 		return ::unlinkat (directory, layout.file.c_str (), 0) == 0 && ::fsync (directory) == 0;
 	}
 
+	/**
+	 * Send the single status reply of one request. It is used for the
+	 * configuration acknowledgement, for the result of an operation and for a
+	 * local refusal (Busy/Rejected), so the client always has exactly one
+	 * correlated frame to consume. A false result means the channel itself is
+	 * unusable and the worker must exit instead of continuing to serve.
+	 */
 	bool SendStatus (Channel & channel, uint32_t requestId, DataStorageStatus status, uint8_t kind, uint32_t generation)
 	{
 		return channel
@@ -519,6 +539,24 @@ bool IsCurrentDataStorageReply (
 	return replyGeneration == currentGeneration && replyRequestId == inFlightRequestId;
 }
 
+/**
+ * Data-storage worker body. Ordering is the contract, not an accident:
+ *  1. adopt the channel and apply the socket/capability lockdown before the
+ *     first untrusted frame;
+ *  2. accept exactly one configuration frame, from an allowed parent uid, whose
+ *     dev/inode identity matches the root this worker actually received, so a
+ *     swapped or forged root is refused;
+ *  3. keep the root above the inherited descriptors and create the three fixed
+ *     0700 kind directories before the sandbox, so a missing directory is a
+ *     configuration failure rather than a later per-request rejection;
+ *  4. drop stdio and install the storage sandbox (Landlock/seccomp or
+ *     pledge/unveil) with only that root;
+ *  5. acknowledge with the generation, then serve requests, refusing a replayed
+ *     or out-of-order request id without executing it twice.
+ * The worker is single-flight and synchronous; a Cancel only suppresses a
+ * request that has not run, and any local or framing fault that is tolerable is
+ * answered with a typed Error until the violation budget is spent.
+ */
 int RunDataStorageWorker (int fd, int inheritedRoot)
 {
 	Channel channel = Channel::Adopt (fd);
@@ -701,6 +739,14 @@ int RunDataStorageWorker (int fd, int inheritedRoot)
 
 struct DataStorageClient::Impl
 {
+	/**
+	 * Client-side lifecycle. `Stopped` is the state before `Start()` and after
+	 * `Stop()`; `Ready` owns a configured worker; `Restarting` may respawn once
+	 * the shared backoff deadline has passed; `Failed` is terminal for this
+	 * owner because the attempt window is spent (or restart is not permitted on
+	 * this platform), and only an explicit `Start()` leaves it. A `Failed`
+	 * client refuses every operation instead of writing locally.
+	 */
 	enum class State : uint8_t
 	{
 		Stopped,
@@ -741,6 +787,10 @@ struct DataStorageClient::Impl
 
 	std::chrono::steady_clock::time_point Now () const { return clock ? clock () : std::chrono::steady_clock::now (); }
 
+	/// Close the channel first, so a worker that only watches for EOF leaves on
+	/// its own. On Linux the owned child is then stopped; on OpenBSD the
+	/// detached worker is disowned instead, because signalling it would need
+	/// proc authority the core no longer holds after its runtime pledge.
 	void CloseWorker ()
 	{
 		child.ChannelFd ().Close ();
@@ -871,6 +921,18 @@ struct DataStorageClient::Impl
 		return false;
 	}
 
+	/**
+	 * Single-flight write or removal under @ref mutex.
+	 *
+	 * Validation (kind, canonical name, payload bound) happens before any worker
+	 * contact, so a refused request cannot change the worker's state. A
+	 * send/receive failure closes the channel and moves the client into
+	 * restarting, and becomes a terminal `Failed` once the shared attempt window
+	 * is spent; the ambiguous request is never replayed, so the caller sees
+	 * false. `LastStatus()` reports Busy for that case, Rejected for a typed
+	 * per-request `Error` reply (which leaves the channel usable) and for a local
+	 * refusal, and request-id exhaustion is a local Busy refusal.
+	 */
 	bool Operate (i2p::data::StorageArtifact kind, std::string_view name, std::span<const uint8_t> bytes, bool remove,
 		std::stop_token token)
 	{
@@ -1074,6 +1136,10 @@ void DataStorageClient::SetRequestIdForTesting (uint32_t nextRequestId)
 
 namespace i2p::privsep
 {
+// Fail-closed stubs, not a backend: the data-storage worker needs UNIX process
+// and descriptor primitives. Every entry point reports "unavailable" so a
+// caller that enables isolated persistence cannot silently fall back to writing
+// artifacts from the router process.
 bool IsKnownArtifactKind (uint8_t)
 {
 	return false;

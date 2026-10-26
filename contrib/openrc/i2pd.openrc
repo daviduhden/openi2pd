@@ -52,15 +52,26 @@ case "${stopsig}" in
 	SIGHUP|HUP) : "${retry:=SIGHUP/30}" ;;
 	*) : "${retry:=${stopsig}/30}" ;;
 esac
+# Keep the creation mask private for everything the service creates. The
+# directory modes are additionally set explicitly by start_pre.
 umask=0077
 # OpenRC applies rc_ulimit through the shell's ulimit built-in before it
 # starts the supervised process. Keep the same descriptor budget as the other
 # managers; a non-root invocation can only raise it within the inherited hard
 # limit.
 : "${rc_ulimit:=-n 8192}"
+# required_files and required_dirs are preconditions checked by OpenRC as part
+# of the start action; the runscript creates the data/runtime/log paths but never
+# the packaged configuration or tunnel directory. A missing entry fails the start
+# with OpenRC's own diagnostic instead of a daemon parsing error.
 required_files="${I2PD_CONF} ${I2PD_TUNCONF}"
 required_dirs="${I2PD_TUNNELSDIR}"
 
+# The command line is expanded into one string and split on whitespace by the
+# runscript framework, so a path or value containing spaces would become two
+# arguments. I2PD_OPTS is appended unquoted and is therefore word-split as well;
+# use it only for additional options, never for secrets (it is visible in the
+# process list).
 command_args="--service --foreground --conf=${I2PD_CONF} --tunconf=${I2PD_TUNCONF} --tunnelsdir=${I2PD_TUNNELSDIR} --certsdir=${I2PD_CERTSDIR} --datadir=${I2PD_DATADIR} --pidfile=${I2PD_PIDFILE} --log=${I2PD_LOG}"
 case "${I2PD_LOG}" in
 	file)
@@ -99,6 +110,8 @@ start_pre() {
 
 	# A failed checkpath must abort the start. Without the explicit checks,
 	# OpenRC reports only a later "failed to start" with no path or mode.
+	# The configured directories and log file are service-owned paths:
+	# checkpath may apply the requested owner and mode to existing entries.
 	checkpath -d -m 0700 -o "${I2PD_USER}:${I2PD_GROUP}" "$(dirname "${I2PD_PIDFILE}")" \
 		|| { eerror "Cannot create or own $(dirname "${I2PD_PIDFILE}")"; return 1; }
 	checkpath -d -m 0700 -o "${I2PD_USER}:${I2PD_GROUP}" "${I2PD_DATADIR}" \
@@ -128,12 +141,15 @@ description_reopenlogs="Reopen log files (SIGUSR1)"
 
 reload() {
 	ebegin "Reloading ${name}"
+	# --signal must stay before the service name: supervise-daemon is a musl
+	# binary, and musl's argument parser does not permute options after operands.
 	supervise-daemon --signal HUP "${RC_SVCNAME}"
 	eend $?
 }
 
 reopenlogs() {
 	ebegin "Reopening ${name} logs"
+	# SIGUSR1 makes the daemon reopen its log file after external rotation.
 	supervise-daemon --signal USR1 "${RC_SVCNAME}"
 	eend $?
 }

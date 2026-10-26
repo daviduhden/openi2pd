@@ -27,10 +27,10 @@ StateDirectory=i2pd
 StateDirectoryMode=0700
 RuntimeDirectory=i2pd
 RuntimeDirectoryMode=0700
-# The packaged unit logs to the journal, but an administrator may select
-# `log = file` with `logfile = /var/log/i2pd/i2pd.log`. LogsDirectory creates
-# that directory with the service account as owner and makes it writable under
-# ProtectSystem=strict, so the documented opt-in does not fail at first write.
+# ExecStart explicitly selects stdout. To use `log = file` and
+# `logfile = /var/log/i2pd/i2pd.log`, an administrator must also override
+# ExecStart to remove or replace --log=stdout. LogsDirectory creates the
+# target directory for the service account under ProtectSystem=strict.
 LogsDirectory=i2pd
 LogsDirectoryMode=0700
 UMask=0077

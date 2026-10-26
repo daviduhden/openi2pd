@@ -9,6 +9,15 @@
 # directories, and static syntax only. It never starts the router or uses the
 # network.
 #
+# Invocation: run by autopkgtest after the built packages are installed, with
+# the dpkg database and both packages available; it reads the installed paths
+# and changes no file. Optional validators (systemd-analyze, apparmor_parser,
+# desktop-file-validate) run only when installed. Each check prints FAIL: on
+# stderr and exits 1 at the first mismatch; the final line is the pass marker. A
+# package install may already have started the router through invoke-rc.d, so
+# the test inspects the installation and leaves any running instance and its
+# state untouched.
+#
 
 set -eu
 

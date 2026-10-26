@@ -80,8 +80,8 @@ struct CommentAdmissionWindow
 	}
 	constexpr size_t Remaining (size_t cap) const { return admitted >= cap ? 0 : cap - admitted; }
 };
-// Owner is an unauthenticated user-supplied pseudonym, never an identity.
-// Times are local epoch seconds; wire timestamp is an AGE in seconds.
+/// A comment's owner is an unauthenticated pseudonym, never an identity.
+/// The stored time is epoch seconds; the wire timestamp is an age in seconds.
 struct TorrentComment
 {
 	std::string owner, text;
@@ -97,21 +97,24 @@ struct TorrentCommentMessage
 	size_t requested = MAX_COMMENT_MESSAGE_COUNT;
 	std::vector<TorrentComment> comments;
 };
+/// Decode a bounded ut_comment payload and convert ages using @a now.
+/// @return nullopt for an invalid envelope; invalid individual comment entries
+/// can be skipped so other usable entries in the same message survive.
 std::optional<TorrentCommentMessage> DecodeTorrentComments (std::string_view encoded, uint64_t now);
+/// Encode a request with a bounded count and a 64-byte empty filter hint.
 std::string EncodeTorrentCommentRequest (size_t count = MAX_COMMENT_MESSAGE_COUNT);
+/// Encode the newest valid, non-hidden comments, dropping older entries if the
+/// negotiated extension payload would exceed MAX_COMMENT_MESSAGE_BYTES.
 std::string EncodeTorrentComments (
 	const std::vector<TorrentComment> & comments, uint64_t now, size_t count = MAX_COMMENT_MESSAGE_COUNT);
-// One store per torrent; caller serializes access. Hidden entries remain
-// for deduplication, so a peer cannot immediately undo local moderation.
-// No filesystem, network or author verification is performed here. A local
-// add triggers a peer handshake/request in the tunnel, never an identity claim.
-//
-// Deduplication compares a normalized key and never rewrites the stored text:
-// leading and trailing ASCII whitespace is trimmed, internal ASCII whitespace
-// runs collapse to one space, and U+200B/U+200C/U+200D/U+FEFF are ignored. The
-// rating is not part of the key, so a rating is immutable for a given
-// normalized (owner,text): replaying the same content with another rating can
-// neither add nor re-rate an entry.
+/// One in-memory store per torrent; the caller serializes access. Hidden
+/// entries remain for deduplication, so peers cannot immediately undo local
+/// moderation. This class performs no IO or author verification.
+///
+/// Deduplication compares normalized owner/text without rewriting stored text:
+/// ASCII whitespace is trimmed/collapsed and U+200B/U+200C/U+200D/U+FEFF are
+/// ignored. Rating is not part of the key, so replay cannot re-rate the same
+/// normalized text.
 class TorrentCommentStore
 {
 public:

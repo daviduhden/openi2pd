@@ -262,13 +262,52 @@ private:
  * does not need rpath after the sandbox is installed.
  */
 i2p::expected<ChildProcess, std::string> SpawnLogWorker (std::string_view executable = { });
+/**
+ * Spawn the supervisor process that owns the log worker.
+ *
+ * The child is bound to a fresh CSPRNG nonce over descriptor 5 and drops to the
+ * configured service identity before execve; the caller keeps the channel end
+ * and must Reattach/Configure it with a LogSink. On OpenBSD this must run before
+ * the core's runtime pledge removes proc/exec.
+ */
 i2p::expected<ChildProcess, std::string> SpawnSupervisor ();
+/**
+ * Spawn one worker role with no inherited storage root.
+ *
+ * Descriptor contract for the exec'ed child: 3 = control channel, 5 = one-shot
+ * identity record, 0/1/2 pinned to /dev/null, 4 closed. The caller receives the
+ * parent endpoint with a peer expectation of the configured uid/gid and this
+ * child's pid. Fails closed when process creation has been forbidden, when the
+ * worker identity is unresolved (uid 0), when the frozen executable is not
+ * usable, or when the CSPRNG fails.
+ *
+ * @param role role name accepted by WorkerRoleFromName; it must not require an
+ *        inherited root.
+ * @param executableOverride empty to use the frozen ExecutablePath(); the
+ *        override is still validated as a spawnable path.
+ */
 i2p::expected<ChildProcess, std::string> SpawnWorker (const char * role, std::string_view executableOverride);
 // Pre-sandbox only: orphan the supervisor via a reaped intermediate process.
 // The returned channel is its lifetime token; no proc promise is needed later.
 i2p::expected<Channel, std::string> SpawnDetachedWorker (const char * role);
-/** Pre-pledge startup only; inherited fd4, channel EOF owns worker lifetime. */
+/**
+ * Pre-pledge startup only; inherited fd4, channel EOF owns worker lifetime.
+ *
+ * The worker is double-forked so it is not the daemon's child, so only the
+ * configured uid/gid (not a pid) can be bound on the channel. Closing the
+ * returned descriptor is the worker's lifetime signal, and the caller must not
+ * expect a waitable child.
+ */
 i2p::expected<Channel, std::string> SpawnDetachedWorkerWithRoot (const char * role, int rootFd);
+/**
+ * Spawn a worker role that takes the delegated storage root as fd4.
+ *
+ * @param rootFd validated directory owned by the worker identity; it is
+ *        duplicated above descriptor 5 and closed in the parent, so the child's
+ *        capability cannot alias the identity record or the channel.
+ * @pre The role must be one of the `*-inherited` roles; any other pairing is
+ *      refused rather than silently downgraded.
+ */
 i2p::expected<ChildProcess, std::string> SpawnWorkerWithRoot (
 	const char * role, std::string_view executable, int rootFd);
 

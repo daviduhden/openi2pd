@@ -24,6 +24,9 @@ namespace i2p
 {
 namespace crypto
 {
+	/// Destination encryption interface selected by the identity's key type.
+	/// Implementations have different wire sizes and, for ratchets, different
+	/// semantics; callers must provide buffers sized for the selected type.
 	class CryptoKeyEncryptor
 	{
 	public:
@@ -31,6 +34,11 @@ namespace crypto
 		virtual bool Encrypt (const uint8_t * data, uint8_t * encrypted) = 0;
 	};
 
+	/// Matching destination decryption or key-agreement interface.
+	/// A false return from Decrypt must stop processing of the result.
+	/// Implementations hold long-term private key material, so an instance must
+	/// never be copied, cached in a log or reused after the owning destination's
+	/// keys were regenerated.
 	class CryptoKeyDecryptor
 	{
 	public:

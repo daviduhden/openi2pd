@@ -26,12 +26,20 @@ namespace i2p
 namespace util
 {
 	class Daemon_Singleton_Private;
+	/// Process-wide router lifecycle shared by platform daemon front ends.
+	/// init() prepares configuration and core state, start() starts services,
+	/// and stop() tears them down in dependency order. Platform run() owns the
+	/// main wait loop; requesting shutdown does not itself perform teardown.
 	class Daemon_Singleton
 	{
 	public:
+		/// Initialize router state, rolling back completed initialization phases
+		/// when a later phase fails. The optional log stream remains shared.
 		virtual bool init (int argc, char * argv[], std::shared_ptr<std::ostream> logstream);
 		virtual bool init (int argc, char * argv[]);
+		/// Start the initialized router and auxiliary services.
 		virtual bool start ();
+		/// Stop control clients and service threads before router state and logging.
 		virtual bool stop ();
 		virtual void run () { };
 

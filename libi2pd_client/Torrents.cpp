@@ -934,13 +934,22 @@ namespace torrents
 	std::pair<std::vector<std::string_view>, size_t> ParseStringList (std::string_view buf)
 	{
 		std::vector<std::string_view> strings;
+		bool wrongType = false;
 		size_t len = ParseList (buf,
-			[&strings] (std::string_view str) -> size_t
+			[&strings, &wrongType] (std::string_view str) -> size_t
 			{
 				auto [s, l] = ExtractByteString (str);
-				if (l) strings.push_back (s);
+				if (l)
+					strings.push_back (s);
+				else
+					wrongType = true;
 				return l;
 			});
+		// ParseList treats a zero handler result as a request for generic
+		// parsing. Reject that fallback here: metainfo path components and DHT
+		// values are byte-string lists, and silently omitting another type would
+		// change the meaning of untrusted input.
+		if (!len || wrongType) return { { }, 0 };
 		return { strings, len };
 	}
 
@@ -2954,6 +2963,10 @@ namespace torrents
 		return true;
 	}
 
+	// Maps the current file priorities onto piece priorities. A piece that spans
+	// several files takes the highest priority of its files, so selecting any
+	// boundary file keeps the shared piece requestable; a piece with priority 0
+	// and no data drops outstanding requests instead of downloading silently.
 	void Torrent::RebuildPiecePriorities ()
 	{
 		m_PiecePriorities.assign (m_Pieces.size (), 0);

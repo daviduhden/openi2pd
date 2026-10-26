@@ -42,6 +42,17 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+/**
+ * Owns provider descriptors and serves the app-private SAF Binder interface.
+ * The separate process runs under the application UID; it is containment, not
+ * an independent Android permission boundary. Each root, file, operation and
+ * export grant additionally belongs to the creating caller's UID and PID.
+ *
+ * <p>Provider work is serialized by {@code ioLock}. Cancellation and retirement
+ * remain available through a separate control path, and the watchdog is armed
+ * only once an admitted operation reaches the provider. Descriptor ownership
+ * stays in this service; no descriptor is transferred to the router process.</p>
+ */
 public final class TorrentSafStorageService extends Service {
     /** Wire contract version reported by {@link ITorrentSafStorage#apiVersion()}. */
     static final int API_VERSION = 2;
@@ -1163,6 +1174,14 @@ public final class TorrentSafStorageService extends Service {
 
     private boolean restricted;
 
+    /**
+     * Claim the storage-broker process role before serving any Binder call.
+     *
+     * <p>The claim is irreversible and installs the broker sandbox. When the
+     * library cannot be loaded, or this process already owns the router role,
+     * the service stops itself here so {@link #onBind} never exposes a broker
+     * that could perform document IO inside a router process.</p>
+     */
     @Override
     public void onCreate() {
         super.onCreate();
@@ -1172,17 +1191,34 @@ public final class TorrentSafStorageService extends Service {
             stopSelf();
     }
 
+    /**
+     * Serve the app-private broker interface, or {@code null} when the role
+     * claim in {@link #onCreate()} failed. The service is not exported, and each
+     * transaction is additionally authenticated against the exact
+     * {@code (uid, pid)} recorded when its root, handle or token was created.
+     */
     @Override
     public IBinder onBind(Intent intent) {
         return restricted ? binder : null;
     }
 
+    /**
+     * Fence the broker when the last client unbinds. Retirement is process
+     * death, so a later client must rebind, repeat the handshake and receive a
+     * new generation instead of reusing any earlier handle or export token.
+     */
     @Override
     public boolean onUnbind(Intent intent) {
         retireProcess();
         return false;
     }
 
+    /**
+     * Release the process-owned resources: pending watchdog stages and queued
+     * descriptor closes are dropped, and the process is fenced. A close that
+     * was still queued is abandoned, but the descriptor dies with the process
+     * and never left it.
+     */
     @Override
     public void onDestroy() {
         reaper.shutdownNow();

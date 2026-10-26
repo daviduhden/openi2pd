@@ -60,6 +60,19 @@ bool WriteAll (std::ostream & output, std::string_view data)
 	return static_cast<bool> (output);
 }
 
+/// @brief Streaming base64 decoder for I2P base64 on stdin or one file.
+///
+/// Decoding is chunked, so `=padding` can arrive in a later read than the data
+/// it terminates. Only whole four-character quads are decoded at a time, and
+/// once a decoded quad contained `=` the `sawPadding` latch rejects every later
+/// non-whitespace byte, so a second encoded value cannot be appended to the
+/// same stream. A trailing partial quad is reported as truncated rather than
+/// padded implicitly.
+///
+/// Whitespace (space, tab, CR, LF, VT, FF) is ignored anywhere; anything else
+/// outside the alphabet is an error from the core decoder.
+/// @return 0 on success, 1 on invalid/truncated input or a write/read error.
+/// @post Diagnostics go to stderr; decoded bytes are the only stdout output.
 int Decode (std::istream & input, std::ostream & output)
 {
 	std::array<char, CHUNK_SIZE> inbuf { };

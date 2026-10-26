@@ -3,9 +3,26 @@
 #
 # openi2pd: i2pd.logrotate.
 #
-# logrotate policy for the daemon log directory: daily copy-truncate rotation,
-# five compressed generations and tolerance for logs that have not been created.
+# logrotate fragment for an opt-in file log: daily copy-truncate rotation,
+# five compressed generations and tolerance for logs that have not been
+# created. Debian installs it as /etc/logrotate.d/i2pd through the
+# debian/i2pd.logrotate symlink. CMake does not install it, and the packaged
+# systemd unit logs to the journal, so on a default installation the quoted
+# pattern matches nothing and missingok keeps rotation a no-op. The pattern is
+# quoted so logrotate expands the wildcard itself.
 #
+# copytruncate is deliberate. The records are written by whichever process owns
+# the sink, which is the isolated log worker when privsep.log is enabled, and
+# the documented SIGUSR1 reopen only re-creates a file stream the core opened
+# itself. Copying the file and truncating it in place keeps the inode, so the
+# writer continues without a reopen, a restart or a PID lookup. The price is
+# that records appended between the copy and the truncate are lost, so prefer a
+# long interval and a small file over a postrotate signal that this daemon
+# cannot honour in every configuration.
+#
+# delaycompress leaves the newest copy uncompressed for one cycle and
+# notifempty avoids rotating an empty file. No `su`/`create` line is needed:
+# copytruncate keeps the inode, so owner and mode never have to be recreated.
 
 "/var/log/i2pd/*.log" {
     copytruncate

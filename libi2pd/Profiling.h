@@ -55,6 +55,9 @@ namespace data
 	const int PEER_PROFILE_APPLY_POSTPONED_TIMEOUT = 2100; // in milliseconds
 	const int PEER_PROFILE_APPLY_POSTPONED_TIMEOUT_VARIANCE = 500; // in milliseconds
 
+	/// Mutable per-peer observations used in tunnel selection and reachability.
+	/// State is protected by m_Mutex; persistence takes m_IoMutex first and
+	/// snapshots state briefly, so disk I/O does not hold the state lock.
 	class RouterProfile
 	{
 	public:

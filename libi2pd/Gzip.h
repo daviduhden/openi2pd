@@ -28,6 +28,12 @@ namespace data
 		GzipInflator ();
 		~GzipInflator ();
 
+		/// Inflate one gzip stream into a fixed output buffer.
+		/// @return Bytes written, or 0 when the input is too short, the stored
+		/// length exceeds the input or inflation fails. A truncated stored block
+		/// is copied up to outLen without an error, and a valid empty stream also
+		/// yields 0, so callers that must distinguish success from failure use
+		/// InflateChecked().
 		size_t Inflate (const uint8_t * in, size_t inLen, uint8_t * out, size_t outLen);
 		// Unlike Inflate(), this distinguishes a valid empty stream from a
 		// malformed one and reports the exact uncompressed length.

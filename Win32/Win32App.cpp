@@ -132,6 +132,15 @@ namespace win32
 		Shell_NotifyIcon (NIM_DELETE, &nid);
 	}
 
+	/**
+	 * Window procedure for the hidden main window.
+	 *
+	 * All router interaction from outside this thread is expressed as a posted
+	 * command (ID_EXIT, ID_GRACEFUL_SHUTDOWN, ...), never as a direct call into
+	 * the daemon from another thread. WM_CLOSE kills every timer and posts the
+	 * quit message, so the message loop - not the window procedure - decides when
+	 * run() returns.
+	 */
 	static LRESULT CALLBACK WndProc (HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	{
 		static UINT s_uTaskbarRestart;

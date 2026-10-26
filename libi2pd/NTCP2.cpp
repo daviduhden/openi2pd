@@ -737,6 +737,12 @@ namespace transport
 				if (m_Server.GetVersion () > 2) // we support post quantum in config
 					m_Establisher->SetVersion (addr->v);
 #endif
+				// Long padding is a local generation policy, not a wire
+				// requirement: it widens the random padding range only for a
+				// peer that publishes a hybrid version and is at least 0.9.69.
+				// Every emitted value is still clamped to the per-version
+				// maximum (NTCP2GetMaxHandshakePadding), so a conforming peer
+				// is never required to reject our handshake.
 				if (addr->v > 2 && in_RemoteRouter->GetVersion () >= MAKE_VERSION_NUMBER (0, 9, 69)) // 0.9.69
 					m_Establisher->m_IsLongPadding = true;
 			}
@@ -841,6 +847,10 @@ namespace transport
 		transports.PeerConnected (shared_from_this ());
 	}
 
+	// The AEAD nonce is the 64-bit frame sequence number in big-endian order
+	// with a zeroed 4-byte prefix (spec/ntcp2 framing). The counter is
+	// per-direction and only increments after the AEAD operation succeeded, so a
+	// failed frame never advances the expected nonce.
 	void NTCP2Session::CreateNonce (uint64_t seqn, uint8_t * nonce)
 	{
 		memset (nonce, 0, 4);
@@ -864,6 +874,19 @@ namespace transport
 		}
 	}
 
+	/**
+	 * @brief Derive the data-phase AEAD and SipHash keys from the final Noise chaining key.
+	 *
+	 * The chain is normative (spec/ntcp2, data phase key derivation):
+	 * k_ab and k_ba come from HKDF(ck), ask_master from HKDF(ck, info="ask")
+	 * and sip_master from HKDF(ask_master, h || "siphash"). Bob sends with k_ba
+	 * and receives with k_ab; Alice does the reverse. Never derive one
+	 * direction from the other and never reuse a chaining key after this call.
+	 *
+	 * @warning Runs on the session thread exactly once, after the final
+	 *          handshake message was authenticated; the derived arrays are
+	 *          cleansed in the destructor.
+	 */
 	void NTCP2Session::KeyDerivationFunctionDataPhase ()
 	{
 		uint8_t k[64];
@@ -2188,6 +2211,13 @@ namespace transport
 		if (!msgs.empty ()) other->SendI2NPMessages (msgs);
 	}
 
+	// Data-phase padding policy. The block grows with the payload up to
+	// NTCP2_MAX_PADDING_RATIO percent and the emitted length is drawn from a
+	// batch of random bytes instead of being recomputed per frame, so two frames
+	// of equal size do not share a padding length. A short frame is measured as
+	// 256 bytes so the block is not always zero. The result is clamped to the
+	// caller-supplied capacity and to NTCP2_UNENCRYPTED_FRAME_MAX_SIZE, so no
+	// input can produce a frame the encryptor must reject.
 	size_t NTCP2Session::CreatePaddingBlock (size_t msgLen, uint8_t * buf, size_t len)
 	{
 		if (len < 3) return 0;
@@ -2301,6 +2331,12 @@ namespace transport
 		boost::asio::post (m_Server.GetService (), std::bind (&NTCP2Session::Terminate, shared_from_this ()));
 	}
 
+	// Probing resistance for a rejected handshake (spec/ntcp2 "AEAD Error
+	// Handling" for the handshake path): consume a random amount of pending
+	// input before closing, so neither the close timing nor the reset describes
+	// how much of the rejected message was parsed. The length comes from the
+	// server RNG and is bounded by the handshake maximum; nothing is written and
+	// the completion handler ignores both the result and the error.
 	void NTCP2Session::ReadSomethingAndTerminate ()
 	{
 		size_t len = m_Server.GetRng () () % NTCP2_SESSION_HANDSHAKE_MAX_SIZE;
@@ -2330,6 +2366,12 @@ namespace transport
 				m_Server.GetService (), std::bind (&NTCP2Session::PostI2NPMessages, shared_from_this ()));
 	}
 
+	// Queue admission runs on the session thread; m_IntermediateQueue is filled
+	// from any thread and swapped here under its mutex. Above half of
+	// NTCP2_MAX_OUTGOING_QUEUE_SIZE, messages that carry an onDrop callback are
+	// dropped instead of queued because their producer can retransmit them, and
+	// a queue above the hard cap terminates the session instead of growing
+	// without bound.
 	void NTCP2Session::PostI2NPMessages ()
 	{
 		if (m_IsTerminated) return;

@@ -13,6 +13,21 @@ Documents project documentation.
 Workflows remain **manual-only** (`workflow_dispatch`); no `push`,
 `pull_request`, schedule or automatic trigger is allowed.
 
+The optional `source_docs` input on **Linux and Android** generates C++ API
+HTML with `docs/Doxyfile.source` and Android Javadoc with the debug Java
+compiler's Android SDK, dependency and generated-class paths, using JDK 25
+and including package-private APIs. Doxygen checks
+documented parameter and reference syntax, and Javadoc runs doclint with
+warnings treated as errors. Missing comments are not counted as successful
+coverage: the documentation audit remains open until each subsystem is
+reviewed. The C++ job also uploads a list of TODO/FIXME/XXX candidates for
+human comparison with `TODO.md`; a textual match can include a string literal
+and does not establish that a marker is tracked. External specification URLs
+still require review. Generated reports are CI artifacts, not installed files.
+This lane is prepared by static analysis and has not yet run. The
+language-specific comment conventions, Doxygen/Javadoc/POD rules and the
+review checklist are in [source documentation](source-documentation.md).
+
 ## Hardening applied
 
 - All third-party actions are pinned to commit SHAs with a version comment.

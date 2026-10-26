@@ -9,7 +9,7 @@
  * reseed, runtime log level, the graceful-shutdown deadline and connectivity
  * callbacks forwarded to JNI.
  * State transitions are lock-guarded and listeners are invoked after the
- * monitor is released, so no Activity or Service reference is retained.
+ * monitor is released. The owner must unregister its listener when destroyed.
  *
  */
 
@@ -44,11 +44,12 @@ import android.util.Log;
 /**
  * Process-wide owner of the native i2pd daemon.
  *
- * <p>The wrapper deliberately keeps no reference to an Activity or Service. It
- * is created with the application context and may outlive any UI component.
- * All mutable state is guarded by {@link #lock}; listeners are copied while the
- * lock is held and invoked after it is released, so a listener cannot deadlock
- * against another component's monitor.</p>
+ * <p>The wrapper uses application-owned resources rather than storing an
+ * Activity. Listener registrations are strong references; their owner must
+ * remove them, as {@link RouterService} does on destruction. State transitions
+ * and the listener set use {@link #lock}, while cancellation and selected
+ * observations use atomics or volatile fields. Listeners are copied under the
+ * lock and invoked after it is released.</p>
  */
 public class DaemonWrapper {
     private static final String TAG = "open-i2pd";
@@ -68,6 +69,16 @@ public class DaemonWrapper {
      */
     public static final long GRACEFUL_STOP_DELAY_MILLIS = 10L * 60L * 1000L;
 
+    /**
+     * Receives lifecycle transitions of the native daemon.
+     *
+     * <p>A callback runs on whichever thread performed the transition (the main
+     * thread, the dedicated start thread or a control worker) and is invoked
+     * after the state monitor has been released, so it must be short,
+     * thread-safe and must not re-enter this wrapper or block on a native call.
+     * The registration is a strong reference: the owner calls
+     * {@link DaemonWrapper#removeStateChangeListener} before it is destroyed.</p>
+     */
     public interface StateUpdateListener {
         void daemonStateUpdate(State oldValue, State newValue);
     }
@@ -75,6 +86,14 @@ public class DaemonWrapper {
     private record
             StateChange(State oldState, State newState, List<StateUpdateListener> listeners) {}
 
+    /**
+     * Lifecycle state published to listeners.
+     *
+     * <p>{@link #isStartedOkay()} switches over every constant on purpose, so a
+     * new state is a compile error instead of an implicit "assume stopped" or
+     * "assume running" branch. {@code gracefulShutdownInProgress} still counts
+     * as started because the router is draining, not gone.</p>
+     */
     public enum State {
         uninitialized(R.string.uninitialized),
         starting(R.string.starting),
@@ -374,19 +393,17 @@ public class DaemonWrapper {
      * Stop the daemon.
      *
      * <p>The start-cancellation token is published before any monitor is
-     * acquired. A start that is inside {@code I2PD_JNI.startDaemon()} holds
-     * {@link #lock} and the native-call guard for the whole transition, so
-     * waiting for either first would make the stop unable to cancel it; the
-     * native {@link I2PD_JNI#requestStop()} token is instead observed by that
-     * start in its packaged-asset wait and between initialisation and start.</p>
+     * acquired. Native startup holds the native-call guard, while the Java
+     * state lock is released before entering it. Publishing
+     * {@link I2PD_JNI#requestStop()} first allows startup to observe
+     * cancellation without waiting for the native guard.</p>
      *
      * <p>{@link #stopLock} still serialises two concurrent stop calls, so the
      * native teardown is never entered twice for the same router.</p>
      */
     public void stopDaemon() {
-        // Publish the cancellation request first: it is the only signal that can
-        // reach a start which already owns the Java state monitor and the native
-        // guard. Both calls are non-blocking and never throw.
+        // Publish cancellation before waiting for either state or native
+        // teardown. Startup can hold the native guard for its entire transition.
         stopRequested.set(true);
         I2PD_JNI.requestStop();
 
@@ -418,6 +435,15 @@ public class DaemonWrapper {
         notifyListeners(finishChange);
     }
 
+    /**
+     * Request a start and return immediately; the native initialisation runs on
+     * the dedicated {@code i2pdDaemonStart} thread.
+     *
+     * <p>A call while a start thread is still running, or while the daemon is
+     * already past {@link State#stopped}/{@link State#startFailed}, is ignored
+     * rather than queued. Callers therefore observe the published state and the
+     * listener callbacks instead of assuming that this call performed a start.</p>
+     */
     public void startDaemon() {
         startDaemonInternal();
     }
@@ -917,6 +943,15 @@ public class DaemonWrapper {
         return scheduledDelay;
     }
 
+    /**
+     * Cancel a scheduled graceful shutdown and resume accepting transit
+     * tunnels. Only a {@link State#gracefulShutdownInProgress} router changes;
+     * the deadline is cleared either way.
+     *
+     * <p>The delayed native stop is scheduled by {@link RouterService}, so
+     * cancelling the deadline here is not enough on its own: the service also
+     * drops its pending stop when it handles the cancel command.</p>
+     */
     public void cancelGracefulShutdown() {
         StateChange change = null;
         synchronized (lock) {
@@ -1098,6 +1133,17 @@ public class DaemonWrapper {
         }
     }
 
+    /**
+     * Install the bundled configuration and asset trees once per application
+     * version.
+     *
+     * <p>{@code assets.ready} holding the current version name is the marker.
+     * Existing files are never overwritten, so operator edits survive an
+     * upgrade; only the regenerated {@code certificates} tree is replaced.
+     * Asset failures are logged and leave a partial tree instead of aborting
+     * the start. Runs on the daemon start thread or on the caller of
+     * {@link #changeDataDir}.</p>
+     */
     private void processAssets() {
         synchronized (assetsLock) {
             File appPath = dataDir;

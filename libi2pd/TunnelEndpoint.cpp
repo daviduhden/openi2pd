@@ -47,12 +47,33 @@ namespace tunnel
 				return;
 			}
 			// process fragments
-			while (fragment < decrypted + TUNNEL_DATA_ENCRYPTED_SIZE)
+			uint8_t * const end = decrypted + TUNNEL_DATA_ENCRYPTED_SIZE;
+			while (fragment < end)
 			{
 				uint8_t flag = fragment[0];
 				fragment++;
 
 				bool isFollowOnFragment = flag & 0x80, isLastFragment = true;
+				// The size field follows the optional delivery address and message
+				// ID. Check the entire header before decoding any of those fields:
+				// the checksum covers the cell's contents, not their framing.
+				size_t headerSize = 2; // fragment size
+				if (isFollowOnFragment)
+					headerSize += 4; // message ID
+				else
+				{
+					auto delivery = static_cast<TunnelDeliveryType> ((flag >> 5) & 0x03);
+					if (delivery == eDeliveryTypeTunnel) headerSize += 4 + 32;
+					else if (delivery == eDeliveryTypeRouter) headerSize += 32;
+					if (flag & 0x08) headerSize += 4; // fragmented first message ID
+				}
+				if (static_cast<size_t> (end - fragment) < headerSize)
+				{
+					LogPrint (eLogError, "TunnelMessage: Truncated fragment header, message dropped");
+					m_CurrentMsgID = 0;
+					m_CurrentMessage.data = nullptr;
+					return;
+				}
 				uint32_t msgID = 0;
 				int fragmentNum = 0;
 				if (!isFollowOnFragment)
@@ -101,7 +122,7 @@ namespace tunnel
 				uint16_t size = bufbe16toh (fragment);
 				fragment += 2;
 
-				if (fragment + size > decrypted + TUNNEL_DATA_ENCRYPTED_SIZE)
+				if (size > static_cast<size_t> (end - fragment))
 				{
 					LogPrint (eLogError, "TunnelMessage: Fragment size ", size,
 						" exceeds tunnel data message, message dropped");
@@ -376,16 +397,16 @@ namespace tunnel
 
 	void TunnelEndpoint::HandleNextMessage (const TunnelMessageBlock & msg)
 	{
-		if (!m_IsInbound && msg.data->IsExpired ())
-		{
-			LogPrint (eLogInfo, "TunnelMessage: Message expired");
-			return;
-		}
 		if (msg.data->GetLength () < I2NP_HEADER_SIZE)
 		{
 			// GetPayloadLength subtracts the header size, a shorter message wraps it around
 			LogPrint (eLogError, "TunnelMessage: Message of ", msg.data->GetLength (),
 				" bytes is shorter than I2NP header, dropped");
+			return;
+		}
+		if (!m_IsInbound && msg.data->IsExpired ())
+		{
+			LogPrint (eLogInfo, "TunnelMessage: Message expired");
 			return;
 		}
 		uint8_t typeID = msg.data->GetTypeID ();

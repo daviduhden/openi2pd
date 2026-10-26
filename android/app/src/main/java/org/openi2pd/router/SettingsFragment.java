@@ -72,6 +72,12 @@ public class SettingsFragment extends PreferenceFragmentCompat {
     private Map<String, String> configValues = Collections.emptyMap();
     private boolean restartDialogShown;
     private boolean viewDestroyed;
+    /**
+     * View generation. Every asynchronous configuration load or save captures
+     * the current value and is applied only while it still matches and the view
+     * exists, so a result that arrives after {@link #onDestroyView()} cannot
+     * touch a detached view.
+     */
     private int loadGeneration;
 
     @Override
@@ -314,15 +320,6 @@ public class SettingsFragment extends PreferenceFragmentCompat {
     }
 
     /**
-     * Runtime apply control for the log level.
-     *
-     * <p>The preference file keeps the value for the next start; a running
-     * router is updated through the service's typed worker action so the new
-     * level takes effect without a restart. The accepted values come from the
-     * same {@code pref_loglevel_values} array used by the list, which mirrors
-     * the exact closed set the native logger accepts.</p>
-     */
-    /**
      * Per-app language selection. AppCompat stores the choice without touching
      * the device locale; an empty locale list follows the system. This is the
      * only runtime locale override allowed in the app.
@@ -364,6 +361,15 @@ public class SettingsFragment extends PreferenceFragmentCompat {
         }
     }
 
+    /**
+     * Runtime apply control for the log level.
+     *
+     * <p>The preference file keeps the value for the next start; a running
+     * router is updated through the service's typed worker action so the new
+     * level takes effect without a restart. The accepted values come from the
+     * same {@code pref_loglevel_values} array used by the list, which mirrors
+     * the exact closed set the native logger accepts.</p>
+     */
     private void bindLogLevel() {
         ListPreference preference = findPreference("logLevelPreference");
         if (preference == null) {

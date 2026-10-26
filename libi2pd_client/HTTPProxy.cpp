@@ -1635,6 +1635,20 @@ namespace proxy
 		return false;
 	}
 
+	// Request hygiene for anything forwarded to a destination. The order is
+	// load-bearing:
+	//   1. the websocket-upgrade decision is taken from the *original*
+	//      Connection value, because hop-by-hop stripping would remove it;
+	//   2. hop-by-hop headers, proxy-only headers and the X-Forwarded-* family
+	//      are removed in both directions (a destination must not learn a
+	//      client's address, and a client must not attribute a request to one);
+	//   3. an NTLM Authorization value is dropped, because NTLM authenticates
+	//      the upstream *connection* and would bind the destination connection
+	//      to the proxy identity;
+	//   4. either the upgrade is restored as `Connection: Upgrade` or the
+	//      connection is forced to `close`.
+	// Nothing here logs a header value, and no header that carries a credential
+	// is copied into an error page.
 	void HTTPReqHandler::SanitizeHTTPRequest (i2p::http::HTTPReq & req)
 	{
 		/* drop common headers */
@@ -1648,10 +1662,11 @@ namespace proxy
 		req.RemoveHeader ("Proxy-"); // Proxy-*
 
 		/*
-		 * Hop-by-hop headers and the X-Forwarded-*/ *-IP family are never * forwarded
-				.The websocket upgrade decision is taken first because a * legitimate `Connection
-			: Upgrade` must survive in a normalised form.* / const std::string connection
-			= req.GetHeader ("Connection");
+		 * Hop-by-hop headers and the X-Forwarded-* and *-IP families are never
+		 * forwarded. The websocket upgrade decision is taken first because a
+		 * legitimate `Connection: Upgrade` must survive in a normalised form.
+		 */
+		const std::string connection = req.GetHeader ("Connection");
 		const auto upgrade = connection.find ("pgrade");
 		const bool preserveUpgrade = upgrade != std::string::npos && upgrade
 			&& std::tolower (static_cast<unsigned char> (connection[upgrade - 1])) == 'u';
@@ -1994,6 +2009,14 @@ namespace proxy
 		return true;
 	}
 
+	// Forward one sanitized request to the configured outproxy.
+	// Two shapes are supported: an I2P outproxy (a destination reached through a
+	// stream, with an optional locally added Proxy-Authorization) and a
+	// configured upstream HTTP/SOCKS proxy. The outproxy credential is used only
+	// to build that header; it is never logged and never forwarded as part of a
+	// URI. A non-I2P upstream is used only because the operator configured it as
+	// an outproxy; an ordinary request target is never resolved to a cleartext
+	// address on this path.
 	void HTTPReqHandler::ForwardToUpstreamProxy ()
 	{
 		LogPrint (eLogDebug, "HTTPProxy: Forwarded to upstream");
@@ -2487,6 +2510,14 @@ namespace proxy
 		boost::asio::steady_timer m_ResponseTimer;
 	};
 
+	// Completion of the destination stream request. This is the ownership
+	// handoff point: a successful completion moves the client socket into a new
+	// I2PTunnelConnection (registered with the owner) and clears m_sock, so the
+	// request handler never closes a socket it no longer owns. A failed
+	// completion answers 504 and releases the owner's handler reference
+	// immediately, so request accounting does not depend on the error write
+	// completing; a handler that was killed meanwhile closes its sockets instead
+	// of writing.
 	void HTTPReqHandler::HandleStreamRequestComplete (std::shared_ptr<i2p::stream::Stream> stream)
 	{
 		// Any upstream phase (an I2P outproxy stream included) ends here.

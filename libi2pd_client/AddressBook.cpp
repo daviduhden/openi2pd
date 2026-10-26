@@ -1762,6 +1762,26 @@ namespace client
 		return LoadHostsFromStream (std::move (f), is_update, std::string_view ());
 	}
 
+	// Parse and merge one hosts.txt-shaped stream.
+	//
+	// Rules that must survive a change:
+	// - name keys are normalised, `b32.i2p` names and non-`.i2p` names are
+	//   skipped, and the destination must be a full base64 identity of a valid
+	//   length; a rejected value is never logged because it is an identity;
+	// - an automatic merge never re-points a name that already had a
+	//   destination before the stream started; only an explicit local
+	//   add/replace may do that, and a conflict is counted and logged at most a
+	//   few times;
+	// - inside one source a later line may refine an earlier one (last value
+	//   wins), but never for an entry that predates the stream, and a DSA
+	//   destination never replaces an existing non-DSA one;
+	// - the `#!action=delete` form retracts a name only when `source` is the
+	//   recorded origin of that entry and this is an update; a name without an
+	//   origin, a local name or another feed's name is kept;
+	// - tombstones are honoured before the entry is added.
+	//
+	// Returns false when the stream ended in the middle of an entry or the read
+	// failed, so a truncated download is not marked as loaded.
 	bool AddressBook::LoadHostsFromStream (std::istream && f, bool is_update, std::string_view source)
 	{
 		std::unique_lock<std::mutex> l (m_AddressBookMutex);

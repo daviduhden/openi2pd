@@ -9,9 +9,16 @@
 # dependencies with apk, builds only the i2pd target and strips the result.
 #
 
-# Fully static openi2pd build, run from the source tree inside Alpine.
-# No source code is downloaded: OpenSSL, Boost, zlib and MiniUPnPc come from
-# Alpine packages, and the project is built by the main CMake graph.
+# Run from the source root inside Alpine with permission to install packages.
+# JOBS sets CMake's parallelism (default 4). Dependencies come from apk rather
+# than downloaded source trees; build-output/i2pd is replaced and stripped.
+#
+# Requires root for apk and network access for the Alpine repositories. The
+# script only builds: it installs nothing, runs no tests and packages nothing,
+# and leaves the build-output/ directory for the caller (contrib/static/
+# package.sh and the manual packaging workflow consume it). The library and TUI
+# builds plus the auxiliary tools are disabled so the result is one static
+# router binary.
 set -eu
 
 JOBS=${JOBS:-4}

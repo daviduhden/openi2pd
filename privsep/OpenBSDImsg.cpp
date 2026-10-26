@@ -110,6 +110,13 @@ void ImsgChannel::Close ()
 	}
 }
 
+/// Adopt an inherited imsg-capable descriptor and enable descriptor passing.
+///
+/// The caller transfers ownership: on success the channel owns @a fd, and on
+/// every failure path the descriptor is already closed. The socket is switched
+/// to non-blocking because `imsgbuf_write`/`imsgbuf_read` are driven by the
+/// caller's bounded `poll` loop; a blocking socket would let a peer that stops
+/// reading wedge a worker past its deadline.
 i2p::expected<ImsgChannel, std::string> ImsgChannel::Adopt (int fd)
 {
 #if defined(__OpenBSD__)
@@ -145,6 +152,17 @@ i2p::expected<ImsgChannel, std::string> ImsgChannel::Adopt (int fd)
 #endif
 }
 
+/**
+ * Adopt a descriptor that another process forwarded, after proving it is the
+ * object this role is allowed to use.
+ *
+ * The checks run before `imsgbuf_init` so a rejected descriptor is never
+ * registered with the imsg buffer: socket type must be SOCK_STREAM or
+ * SOCK_SEQPACKET, the descriptor gets FD_CLOEXEC, and `getpeereid` must report
+ * @a expectedUid. `sendfd`/`recvfd` can carry a socket but never a directory,
+ * so this path is the only way a worker receives a channel from the broker.
+ * Ownership transfers on success; every failure closes @a fd exactly once.
+ */
 i2p::expected<ImsgChannel, std::string> ImsgChannel::AdoptValidated (int fd, uint32_t expectedUid)
 {
 #if defined(__OpenBSD__)
@@ -180,6 +198,22 @@ i2p::expected<ImsgChannel, std::string> ImsgChannel::AdoptValidated (int fd, uin
 #endif
 }
 
+/**
+ * Send one frame, optionally with one descriptor, within @a timeoutMs.
+ *
+ * The imsg adapter has its own ceiling: an `imsg_compose` frame must fit
+ * MAX_IMSGSIZE *including* the imsg header, and that bound is smaller than the
+ * 64 KiB project frame maximum on OpenBSD. A frame whose per-type ceiling is
+ * legal but whose imsg framing is not is therefore refused here, and this
+ * transport has no chunking, so the send fails instead of splitting the frame.
+ * The buffer is drained with `poll` and an absolute deadline; a negative timeout
+ * keeps the infinite-wait meaning.
+ *
+ * A timeout closes the channel, because a frame already composed may have been
+ * partially written and must never be retried on the same buffer as a second
+ * mutation. Poll errors are reported without closing so the caller can decide
+ * whether the channel is still worth draining.
+ */
 i2p::expected<void, std::string> ImsgChannel::Send (const Message & message, int fd, int timeoutMs)
 {
 #if defined(__OpenBSD__)
@@ -198,14 +232,26 @@ i2p::expected<void, std::string> ImsgChannel::Send (const Message & message, int
 		int polled;
 		do polled = ::poll (&pfd, 1, PollTimeout (infinite, deadline));
 		while (polled < 0 && errno == EINTR && (infinite || !DeadlineExpired (deadline)));
-		if (polled < 0) return i2p::unexpected (std::string ("imsg poll: ") + strerror (errno));
+		if (polled < 0)
+		{
+			Close (); // a queued frame must not be retried as a second mutation
+			return i2p::unexpected (std::string ("imsg poll: ") + strerror (errno));
+		}
 		if (polled == 0)
 		{
 			Close (); // a queued frame must not be retried as a second mutation
 			return i2p::unexpected ("imsg send timeout");
 		}
-		if (pfd.revents & POLLNVAL) return i2p::unexpected ("imsg poll: invalid descriptor");
-		if (pfd.revents & (POLLERR | POLLHUP)) return i2p::unexpected ("imsg poll: peer closed the channel");
+		if (pfd.revents & POLLNVAL)
+		{
+			Close ();
+			return i2p::unexpected ("imsg poll: invalid descriptor");
+		}
+		if (pfd.revents & (POLLERR | POLLHUP))
+		{
+			Close ();
+			return i2p::unexpected ("imsg poll: peer closed the channel");
+		}
 		if (imsgbuf_write (m_Buffer) == -1)
 		{
 			if (errno == EAGAIN || errno == EWOULDBLOCK || errno == ENOBUFS)
@@ -217,6 +263,7 @@ i2p::expected<void, std::string> ImsgChannel::Send (const Message & message, int
 				}
 				continue;
 			}
+			Close (); // the queued frame is now ambiguous; never replay it
 			return i2p::unexpected (std::string ("imsgbuf_write: ") + strerror (errno));
 		}
 	}
@@ -229,6 +276,17 @@ i2p::expected<void, std::string> ImsgChannel::Send (const Message & message, int
 #endif
 }
 
+/**
+ * Receive exactly one frame, optionally with one forwarded descriptor.
+ *
+ * `imsgbuf_read` may append several complete messages to the user buffer, so
+ * the buffer is always drained first and the socket is polled only when it is
+ * empty: otherwise a second compact frame would stay stranded until more bytes
+ * arrive. The descriptor is set close-on-exec and returned to the caller, which
+ * must close it; a descriptor that arrives on a frame that fails to decode is
+ * closed here, so no capability leaks on a protocol error. An expired deadline
+ * returns an empty optional, a closed peer returns an error.
+ */
 i2p::expected<std::optional<ReceivedMessage>, std::string> ImsgChannel::Receive (int timeoutMs)
 {
 #if defined(__OpenBSD__)
@@ -305,6 +363,10 @@ i2p::expected<std::optional<ReceivedMessage>, std::string> ImsgChannel::Receive 
 #endif
 }
 
+/// Peer identity as `getpeereid` reports it: the credentials of the peer at
+/// connect time, uid and gid only. There is no per-message credential on this
+/// transport and no pid, so a `PeerExpectation` that requires a pid cannot be
+/// satisfied here; callers compare the uid against `IsAllowedParentUid`.
 i2p::expected<PeerCredentials, std::string> ImsgChannel::Credentials () const
 {
 	if (!IsOpen ()) return i2p::unexpected ("imsg channel is closed");

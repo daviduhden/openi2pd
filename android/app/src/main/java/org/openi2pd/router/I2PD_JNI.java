@@ -6,9 +6,9 @@
  *
  * Non-instantiable declaration of the native methods loaded from
  * {@code libi2pd.so}, with a repeatable fail-closed loader that caches load
- * errors. Only {@link RouterService} calls these control and status entry
- * points; UI code must go through {@link RouterRepository} and
- * {@link RouterViewModel} so JNI never runs on the main thread.
+ * errors. Router control and status belong to the service and its wrapper;
+ * the SAF creator and broker also use dedicated native entry points. UI code
+ * goes through {@link RouterRepository} and {@link RouterViewModel}.
  *
  */
 
@@ -19,10 +19,11 @@ import android.util.Log;
 /**
  * Thin, auditable Java surface over the in-tree C++23 JNI library.
  *
- * <p>Only the router service calls the methods below. UI classes must go
- * through {@link RouterRepository}/{@link RouterViewModel} so native calls
- * never run on the main thread and so no component can keep a native handle
- * alive after the service is gone.</p>
+ * <p>{@link RouterService} and {@link DaemonWrapper} own router control and
+ * status calls. {@link TorrentSafCreator} invokes metadata serialization on
+ * the service's SAF worker, while {@link TorrentSafStorageService} claims the
+ * broker process role. UI classes use {@link RouterRepository} and
+ * {@link RouterViewModel}, rather than making native calls directly.</p>
  *
  * <p>Library loading is deliberately fail-closed and repeatable: a failed
  * load is remembered and reported as a link error instead of leaving a
@@ -72,9 +73,30 @@ public final class I2PD_JNI {
         // Native entry points only.
     }
 
+    /**
+     * Serialize a v1 torrent from already hashed SAF sources. The native
+     * encoder validates all input again and does not read the source documents.
+     * Call from a worker because validation and encoding scale with file and
+     * piece counts.
+     *
+     * @param name UTF-8 torrent name
+     * @param paths UTF-8 relative paths, in the same order as {@code lengths}
+     * @param lengths byte lengths of the source files
+     * @param pieceLength power-of-two piece size in the supported range
+     * @param hashes concatenated 20-byte SHA-1 piece digests
+     * @param trackers UTF-8 tracker URLs, subject to native I2P-only validation
+     * @param privateTorrent whether the metadata marks a private swarm
+     * @return encoded metainfo, or {@code null} if validation or encoding fails
+     */
     public static native byte[] buildTorrentMetadata(byte[] name, byte[][] paths, long[] lengths,
             int pieceLength, byte[] hashes, byte[][] trackers, boolean privateTorrent);
 
+    /**
+     * Install the process-owned Java SAF bridge after claiming the router role.
+     * Existing payloads retain their bridge while a replacement is installed.
+     *
+     * @return whether the native payload factory was installed successfully
+     */
     static native boolean installSafStorageBridge(Class<?> bridge);
 
     /**
@@ -199,10 +221,32 @@ public final class I2PD_JNI {
     }
 
     /**
-     * returns error info if failed
-     * returns "ok" if daemon initialized and started okay
+     * Start the native router and block until its initialisation transition has
+     * finished.
+     *
+     * <p>The call takes the native-call lock for the whole transition, so it
+     * runs on a worker: {@link DaemonWrapper} uses a dedicated start thread and
+     * publishes its own state around the call. Only a process that already
+     * claimed {@link #PROCESS_ROLE_ROUTER} may start the router; any other
+     * process receives {@link #PROCESS_ROLE_CONFLICT}.</p>
+     *
+     * @return {@code ok} after startup, or an error/status token on failure
+     *         (including {@link #START_CANCELED} when a concurrent
+     *         {@link #requestStop()} won the race)
      */
     public static native String startDaemon();
+
+    /**
+     * Stop and tear down the running router synchronously.
+     *
+     * <p>Listeners, client and transit tunnels, netDb and the torrent workers
+     * are joined before the call returns, and the remaining SAF payload
+     * capabilities are released on this attached JNI thread rather than from a
+     * payload destructor. The native-call lock serialises it against start and
+     * status, so it must not run on the main thread, and it does not cancel a
+     * start that is still initialising — that is what {@link #requestStop()}
+     * publishes.</p>
+     */
     public static native void stopDaemon();
 
     public static native void startAcceptingTunnels();
@@ -254,6 +298,14 @@ public final class I2PD_JNI {
      */
     public static native boolean setRuntimeLogLevel(String level);
 
+    /**
+     * Publish the app-private data directory the router will use.
+     *
+     * <p>State only: it copies no assets and does not start the daemon, and it
+     * deliberately does not take the native-call lock so it cannot wait behind
+     * a multi-second start. {@link DaemonWrapper} sets it immediately before
+     * {@link #startDaemon()}.</p>
+     */
     public static native void setDataDir(String jdataDir);
 
     public static native int getTransitTunnelsCount();

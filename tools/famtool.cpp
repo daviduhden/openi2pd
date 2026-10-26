@@ -174,6 +174,20 @@ static std::shared_ptr<Verifier> LoadCertificate (const std::string & filename)
 	return verifier;
 }
 
+/// @brief Sign `family || identityHash` with the family's P-256 key.
+///
+/// The signed input is the family label followed by the 32-byte identity hash,
+/// bounded by MAX_FAMILY_SIGNATURE_INPUT so a family name cannot make the
+/// signature cover an unbounded buffer. The private key is read from PEM, must
+/// be P-256 (nothing else is a valid family key), and the result is the two
+/// fixed 32-byte r/s values in I2P family-signature wire form.
+///
+/// @param family Validated family label.
+/// @param ident Router identity the signature is bound to.
+/// @param filename PEM private key of the family.
+/// @param sig Receives base64 of the raw signature; cleared on entry.
+/// @return false when the inputs are unusable or the key is not P-256.
+/// @warning The key file contents are never printed or logged.
 static bool CreateFamilySignature (
 	const std::string & family, const IdentHash & ident, const std::string & filename, std::string & sig)
 {
@@ -221,6 +235,26 @@ static bool CreateFamilySignature (
 	return !sig.empty ();
 }
 
+/// @brief Generate a family key/certificate, sign a RouterInfo, or verify one.
+///
+/// At least one of `-g` (generate), `-s` (sign) or `-V` (verify) is required,
+/// together with a family name (`-n`); the selected modes run in that order.
+/// File roles differ per mode: `-k` is the PEM private key (the new key when
+/// generating, the signing key otherwise), `-c` the certificate (the new
+/// certificate when generating, the verification certificate otherwise);
+/// omitted paths default to `<family>.key`/`<family>.crt` when generating.
+///
+/// Generation writes both PEM objects in memory and installs them through the
+/// validated atomic helpers: the private key uses the core owner-only writer
+/// (no in-place truncation, no symlink follow) and the certificate the public
+/// writer. Each file is replaced atomically, but the pair is not one
+/// transaction: a failure after the certificate was installed leaves that
+/// certificate in place without a matching key file.
+///
+/// `-o` is accepted for compatibility with the historical tool and ignored;
+/// `-v` only enables progress lines on stdout. Diagnostics stay on stderr.
+///
+/// @return 0 on success, 1 for usage, mode, key/certificate or write failures.
 int main (int argc, char * argv[])
 {
 	if (argc == 1)

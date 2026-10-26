@@ -129,13 +129,28 @@ namespace crypto
 			uint8_t * blindedPub); // for encrypted LeaseSet2, pub - 32, seed - 64, blinded - 32
 
 		bool Verify (const EDDSAPoint & publicKey, const uint8_t * digest, const uint8_t * signature) const;
+		/// Produce an Ed25519 signature over the message in buf.
+		/// The nonce is derived deterministically from the expanded key prefix
+		/// and the message, so the expanded key is secret material that the
+		/// caller must cleanse. A missing input or a provider/digest failure
+		/// zeroes the whole signature instead of returning a partial one.
 		void Sign (const uint8_t * expandedPrivateKey, const uint8_t * publicKeyEncoded, const uint8_t * buf,
 			size_t len, uint8_t * signature) const;
+		/// RedDSA variant (Proposal 123) used by LeaseSet2: the nonce is
+		/// randomized (80 CSPRNG bytes per RFC-style construction) because a
+		/// predictable nonce would reveal the private scalar. A failed nonce draw
+		/// zeroes the signature rather than falling back to a deterministic nonce.
 		void SignRedDSA (const uint8_t * privateKey, const uint8_t * publicKeyEncoded, const uint8_t * buf, size_t len,
 			uint8_t * signature) const;
 
+		/// Expand a 32-byte seed into the 64-byte secret scalar and prefix:
+		/// SHA-512 followed by the RFC 8032 clamping. The output is secret and
+		/// must be cleansed by the caller when no longer needed.
 		static void ExpandPrivateKey (
 			const uint8_t * key, uint8_t * expandedKey); // key - 32 bytes, expandedKey - 64 bytes
+		/// Generate a RedDSA private scalar reduced modulo the group order.
+		/// @return False when the CSPRNG fails or no usable scalar was drawn; a
+		/// false result must never be used as a key.
 		bool CreateRedDSAPrivateKey (uint8_t * priv); // priv is 32 bytes
 
 	private:

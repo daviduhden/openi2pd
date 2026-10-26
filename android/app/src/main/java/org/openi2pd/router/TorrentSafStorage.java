@@ -17,6 +17,16 @@ import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+/**
+ * Client-side SAF capability registry and Binder adapter for torrent payloads.
+ * Local root and file IDs survive a broker replacement, while the remote IDs
+ * cached in each entry are valid only for one client binding generation.
+ * Paths remain relative to an authorized tree and are resolved by the broker.
+ *
+ * <p>Binder transactions use a bounded worker queue and typed fallbacks.
+ * Calls that can wait for a binding or a provider belong on a worker thread;
+ * the main-thread binding check returns unavailable rather than waiting.</p>
+ */
 final class TorrentSafStorage {
     private static final Object lock = new Object();
     private static final android.os.Handler main =
@@ -435,6 +445,15 @@ final class TorrentSafStorage {
             return;
         scheduleBind();
     }
+    /**
+     * Install the application context and begin a fresh bind episode.
+     *
+     * <p>Called from {@link RouterService#onCreate()} on the main thread. It
+     * only records the context and schedules a broker bind; library loading and
+     * the native bridge installation stay on the daemon start worker. Resetting
+     * the retry budget here means a transient bind failure cannot keep SAF
+     * storage disabled for the rest of the process lifetime.</p>
+     */
     static void initialize(Context app) {
         synchronized (lock) {
             if (context == null)
@@ -448,6 +467,13 @@ final class TorrentSafStorage {
         // Library load and bridge installation run on the daemon start worker,
         // not on the service main thread. Binding alone only starts the broker.
     }
+    /**
+     * Persist a torrent-to-tree mapping after obtaining at least read access.
+     * A read-only grant may seed existing content, but cannot authorize writes.
+     * Existing mappings sharing a URI keep their grant when this one changes.
+     *
+     * @return whether the grant and mapping were stored successfully
+     */
     static boolean select(Context app, String tunnel, String hash, Uri tree) {
         if (tunnel == null || tunnel.isEmpty() || tunnel.length() > 1024 || hash == null
                 || !hash.matches("[0-9a-fA-F]{40}") || tree == null
@@ -520,6 +546,13 @@ final class TorrentSafStorage {
         }
     }
 
+    /**
+     * Remove one persisted mapping and release its tree permission only when
+     * no remaining mapping references that URI. A failed preference commit
+     * leaves the permission intact.
+     *
+     * @return whether removal of the mapping was committed
+     */
     static boolean detach(Context app, String tunnel, String hash) {
         if (app == null || tunnel == null || hash == null || !hash.matches("[0-9a-fA-F]{40}"))
             return false;
@@ -546,12 +579,33 @@ final class TorrentSafStorage {
     }
     // Called only from native disk workers, never the main thread. A selected but
     // revoked/unavailable mapping remains selected and fails closed.
+    /**
+     * True when any torrent-to-tree mapping is persisted.
+     *
+     * <p>Called from {@link DaemonWrapper}'s start worker through the native
+     * bridge, never from the main thread. A mapping counts even when its grant
+     * was revoked or the broker is unavailable: the torrent stays selected and
+     * fails closed instead of reverting to private filesystem storage.</p>
+     */
     static boolean hasAnyGrant() {
         return context != null
                 && !context.getSharedPreferences("torrent-saf-grants", Context.MODE_PRIVATE)
                             .getAll()
                             .isEmpty();
     }
+    /**
+     * Whether the native backend must treat this torrent as provider-backed.
+     *
+     * <p>This is the fail-closed answer for native callers: a missing context
+     * reports {@code true} because claiming "not configured" would let a
+     * selected torrent fall back to an ordinary filesystem path. A missing
+     * grant then makes {@link #root(String, String)} return zero, so the
+     * payload stays unavailable rather than silently changing storage
+     * authority.</p>
+     *
+     * @param tunnel tunnel index as a decimal string
+     * @param hash   lowercase or uppercase 40-character infohash
+     */
     public static boolean configured(String tunnel, String hash) {
         // A missing context must fail closed for the native backend: claiming
         // "not configured" would let a selected torrent fall back to an
@@ -562,6 +616,17 @@ final class TorrentSafStorage {
                 && context.getSharedPreferences("torrent-saf-grants", Context.MODE_PRIVATE)
                            .contains(tunnel + ":" + hash.toLowerCase(java.util.Locale.ROOT));
     }
+    /**
+     * Create or return the local tree capability for one torrent's grant.
+     *
+     * <p>A local ID is stable across broker replacements; the remote root ID is
+     * cached per binding generation and re-authorized after a reconnect. The
+     * cap {@link TorrentSafStorageService#MAX_ROOTS} and an exhausted ID space
+     * both answer zero, and a torrent without a persisted grant gets no
+     * capability at all.</p>
+     *
+     * @return a non-zero local tree ID, or {@code 0} when unavailable
+     */
     public static long root(String tunnel, String hash) {
         synchronized (lock) {
             if (context == null)
@@ -621,6 +686,15 @@ final class TorrentSafStorage {
         }
         return result;
     }
+    /**
+     * Create a local file capability and open it through the current broker.
+     *
+     * @param root local tree capability returned by {@link #root(String, String)}
+     * @param relative path below that tree, validated by the broker
+     * @param length expected file length in bytes
+     * @param create whether the broker may create or extend the document
+     * @return a nonzero local handle, or zero if opening fails
+     */
     public static long open(long root, String relative, long length, boolean create) {
         long id;
         synchronized (lock) {
@@ -638,6 +712,10 @@ final class TorrentSafStorage {
         }
         return id;
     }
+    /**
+     * Read an exact bounded range through the broker.
+     * @return exactly {@code count} bytes, or {@code null} on refusal or failure
+     */
     public static byte[] read(long handle, long offset, int count) {
         if (offset < 0 || count < 0 || count > 16384)
             return null;
@@ -656,6 +734,11 @@ final class TorrentSafStorage {
         invalidate(handle);
         return null;
     }
+    /**
+     * Write a bounded range; the copied buffer belongs to this transaction.
+     * Ambiguous failed writes are reported to the engine and are not replayed.
+     * @return whether the broker completed the write
+     */
     public static boolean write(long handle, long offset, byte[] bytes) {
         if (offset < 0 || bytes == null || bytes.length > 16384)
             return false;
@@ -768,6 +851,16 @@ final class TorrentSafStorage {
             return id != 0 && session.remote.removeEmptyDirectory(id, path, session.operation);
         }, false).value());
     }
+    /**
+     * Human-readable payload-storage state for the torrent list.
+     *
+     * <p>Strings are fixed diagnostics (no URI, document name or account data)
+     * and double as the bounded UI recovery path: an exhausted bind budget is
+     * re-armed at most once per stability window, so a refresh can recover a
+     * transient failure without letting a broken provider spawn and kill a
+     * broker on every tick. Reports "native private storage" when the torrent
+     * has no mapping.</p>
+     */
     static String status(String tunnel, String hash) {
         synchronized (lock) {
             if (context == null)

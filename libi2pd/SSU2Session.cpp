@@ -159,6 +159,11 @@ namespace transport
 		lastFragmentInsertTime = static_cast<uint32_t> (i2p::util::GetSecondsSinceEpoch ());
 	}
 
+	// m_MaxPayloadSize starts from the IPv6 worst case (no IPv4 header) and is
+	// replaced by AdjustMaxPayloadSize() once the local address, MTU and
+	// negotiated version are known. Keep the initial value conservative: the
+	// first packets are sized from it before the address-specific MTU is applied,
+	// so it must never exceed what any supported family can carry.
 	SSU2Session::SSU2Session (SSU2Server & server, std::shared_ptr<const i2p::data::RouterInfo> in_RemoteRouter,
 		std::shared_ptr<const i2p::data::RouterInfo::Address> addr)
 		: TransportSession (in_RemoteRouter, SSU2_CONNECT_TIMEOUT)
@@ -252,6 +257,12 @@ namespace transport
 		}
 	}
 
+	// RelayRequest (Alice to Bob) asks Bob to introduce this session to Charlie,
+	// who answers with a HolePunch. The pending introduction is keyed by a
+	// random nonce with a bounded lifetime and a per-role expiry; the nonce also
+	// derives the pairwise connection IDs of the new session, so the three
+	// parties agree on them without exchanging them in the clear. The relay
+	// signature covers "RelayRequestData" || bhash || chash || the relay fields.
 	bool SSU2Session::Introduce (std::shared_ptr<SSU2Session> session, uint32_t relayTag)
 	{
 		// we are Alice
@@ -748,6 +759,15 @@ namespace transport
 		return false;
 	}
 
+	// Fragmentation policy: a message that fits is sent as a single I2NP block,
+	// otherwise it is split into FIRSTFRAG plus FOLLOWON blocks of at most
+	// m_MaxPayloadSize. The surplus capacity of the last fragment (extraSize) is
+	// spread over the earlier fragments as a random per-fragment shrinkage
+	// before the fragment is built. pickOffset() bounds that shrinkage by both
+	// the remaining surplus and the minimum room a valid fragment needs: a block
+	// header plus 10 bytes of FIRSTFRAG payload, or 6 bytes of FOLLOWON payload,
+	// because the peer rejects anything shorter as malformed. The returned value
+	// only reports whether an ACK block was prepended for the surplus.
 	bool SSU2Session::SendFragmentedMessage (std::shared_ptr<I2NPMessage> msg)
 	{
 		if (!msg || m_MaxPayloadSize < 16) return false;
@@ -2687,6 +2707,13 @@ namespace transport
 					LogPrint (
 						eLogDebug, "SSU2: Ignoring packet from third address ", from, " during connection migration");
 			}
+			// A new source endpoint is not trusted on the strength of one
+			// packet: migration starts only for an established session, from the
+			// same address family, from a non-zero port, for the newest packet
+			// number (a reordered packet must not let off-path traffic start a
+			// challenge) and from an address outside the reserved range.
+			// SendPathChallenge() then proves reachability before
+			// m_RemoteEndpoint is changed.
 			else if (m_State == eSSU2SessionStateEstablished && from != m_RemoteEndpoint
 				&& from.address ().is_v4 () == m_RemoteEndpoint.address ().is_v4 () && from.port () != 0
 				&& packetNum == GetHighestReceivedPacketNum () // not a reordered packet
@@ -3299,6 +3326,13 @@ namespace transport
 		}
 	}
 
+	// Reassembly state is bounded per session and per message: at most
+	// SSU2_MAX_NUM_INCOMPLETE_MESSAGES incomplete messages, 64 fragment numbers
+	// per message, 512 out-of-sequence fragments and 128 KiB of out-of-sequence
+	// payload charged by the fixed fragment slab rather than by the claimed
+	// length. A repeated first fragment is ignored instead of resetting progress
+	// (Java InboundMessageState), and a message that already completed is never
+	// rebuilt from a late fragment.
 	void SSU2Session::HandleFirstFragment (const uint8_t * buf, size_t len)
 	{
 		if (len <= 9) // Java SSU2Payload: len <= 9 is invalid for FIRSTFRAG
@@ -5105,6 +5139,21 @@ namespace transport
 		return ri;
 	}
 
+	/**
+	 * @brief Record an authenticated packet number and advance the contiguous receive point.
+	 * @param packetNum packet number decoded from an authenticated header.
+	 * @return true when the packet is new, either in sequence or stored as an
+	 *         out-of-sequence entry; false for a duplicate, for a number at or
+	 *         below the contiguous point, or for an out-of-sequence insert that
+	 *         the memory bound rejects.
+	 *
+	 * Only an authenticated packet may reach this method: a forged number would
+	 * otherwise move m_ReceivePacketNum and let CreateAckBlock acknowledge
+	 * packets that were never received. The contiguous point never crosses a
+	 * gap, the out-of-sequence set is capped between cleanup passes, and
+	 * m_NumRanges is invalidated whenever the range shape changes so the next
+	 * ACK block is rebuilt from the actual set.
+	 */
 	bool SSU2Session::UpdateReceivePacketNum (uint32_t packetNum)
 	{
 		if (packetNum <= m_ReceivePacketNum) return false; // duplicate

@@ -10,6 +10,13 @@ Documents project documentation.
 
 # CMake and POSIX Make migration
 
+Source API documentation is optional and runs in the manual Linux/Android CI
+workflow with the `source_docs` input. Doxygen reads the curated C++ input in
+`docs/Doxyfile.source`; Android's `:i2pd:sourceJavadoc` task uses the debug
+compiler classpath and generated classes. The outputs are CI artifacts and do
+not alter the install components. See [CI policy](ci.md) for the checks and
+their coverage limits. This lane remains pending its first CI run.
+
 ## Result
 
 - CMake is the single source of build rules, tests, installation and options.

@@ -559,8 +559,10 @@ and no guard against a second router in the storage-broker process.
 - `RouterRunState` persists phase/deadline/generation in `router_state` and
   reconciles on `onCreate`/`Restore`: an expired drain is terminal, a live drain
   re-arms the remaining wall-clock delay only after start, and corrupt deadlines
-  clamp or fail closed. `onTaskRemoved` keeps the daemon; `onDestroy` purges
-  pending callbacks; the notification channel is verified before foregrounding.
+  clamp or fail closed. `onTaskRemoved` keeps the daemon; `onDestroy` removes
+  callbacks already queued, but SAF work can still publish later
+  (`ANDROID-035`); persisted transitions also need stale-write fencing
+  (`ANDROID-033`). The notification channel is verified before foregrounding.
 - AIDL v2: `handshake()` generation, `prepareExport`/`openExport(token)`,
   `retire(generation)`, owner `(uid,pid)` on every root/handle/operation/token,
   owner-scoped cancel/close/revoke, typed admission (no exceptions) and a
@@ -1587,3 +1589,25 @@ Exit criteria: a manual dispatch compiles and links the corrected tree on
 Linux/OpenSSL, Windows/MSVC+MinGW, OpenBSD/LibreSSL, Android and the sanitizer,
 fuzzer, packaging and static lanes. No compiler, configure, CTest, Gradle,
 package or workflow evidence exists for these changes.
+
+## Source documentation pass (2026-10-26, static)
+
+Nine read-only/limited-edit subagents documented disjoint source areas:
+core transports and protocols; crypto/netDb/persistence; IPC/daemon/Win32;
+the torrent engine; client services; TUI and C++ tools; Android
+Java/JNI/AIDL/SAF; Perl scripts; and service/packaging shell. Comments explain
+contracts, ownership, locking, bounded resources, trust boundaries and wire
+formats rather than restating code. `docs/source-documentation.md` records the
+Doxygen/Javadoc/POD/POSIX conventions and the manual `source_docs` lane.
+
+The pass also repaired source-comment defects: a malformed `*/` block in
+`HTTPProxy.cpp` that turned prose into code, mismatched `@param` names in
+`FS.h`/`Log.h`, and a misplaced Android manifest explanation. Confirmed
+behavioural/lifetime findings are tracked in DOCS-015, CONC-028, SEC-032,
+TOOL-018, PKG-028 and WIN-014; they were not silently changed.
+
+Exit criteria: the manual `source_docs` lane generates Doxygen/Javadoc with
+warnings as errors, the remaining unreviewed files receive contracts, and the
+tracked findings are either fixed with regressions or explicitly accepted.
+No compiler, generator, Gradle, package, validator or workflow ran for this
+pass; everything remains static analysis pending manual CI.

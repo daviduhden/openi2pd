@@ -72,6 +72,10 @@ workflow, run `gh`, build or test.
 
 ## Conventions
 
+- Source-documentation generation and checks follow the
+  [source documentation policy](../../../AGENTS.md#source-documentation-policy)
+  and run in manual CI; report generator coverage and unresolved warnings.
+
 - Every workflow remains `workflow_dispatch`-only; no `push`,
   `pull_request`, `schedule` or automatic `workflow_call` unless the policy is
   deliberately changed by the coordinator.

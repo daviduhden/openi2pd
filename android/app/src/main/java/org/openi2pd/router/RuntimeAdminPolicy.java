@@ -66,11 +66,21 @@ final class RuntimeAdminPolicy {
         return true;
     }
 
+    /**
+     * A host label of at most {@link #MAX_ADDRESS_NAME} characters with no
+     * space. The native boundary re-applies the same limit, and the address
+     * book applies the full host-name and destination rules.
+     */
     static boolean isValidAddressName(String name) {
         return name != null && !name.isEmpty() && name.length() <= MAX_ADDRESS_NAME
                 && name.indexOf(' ') < 0;
     }
 
+    /**
+     * A full base64 destination of at most {@link #MAX_DESTINATION} characters.
+     * Only the size and the absent space are checked here; the daemon verifies
+     * the base64 identity itself.
+     */
     static boolean isValidDestination(String destination) {
         return destination != null && !destination.isEmpty()
                 && destination.length() <= MAX_DESTINATION && destination.indexOf(' ') < 0;

@@ -14,7 +14,8 @@
  * Version 3 adds the data-storage frame family (configure/request/reply) for
  * hash-named runtime artifacts. Version 4 adds the shared MessageSpec registry
  * (per-type roles, direction, minimum version, payload ceiling and descriptor
- * policy) and the advisory Cancel frame. Version 1..3 frames remain decodable;
+ * policy) and the advisory Cancel frame. Version 5 adds Windows WorkerHello.
+ * Version 1..4 frames remain decodable;
  * a type whose minimum version is newer than the frame is rejected rather than
  * interpreted with different semantics.
  *
@@ -46,6 +47,10 @@ inline constexpr uint32_t PROTOCOL_MAGIC = 0x49503250; // "IP2P"
 // own protocol.
 inline constexpr uint16_t MIN_PROTOCOL_VERSION = 1;
 inline constexpr uint16_t PROTOCOL_VERSION = 5;
+/// Header fields are big-endian: magic at 0 (u32), version at 4 (u16),
+/// type at 6 (u16), request id at 8 (u32), and payload length at 12 (u32).
+/// One transport record carries exactly this header and its declared payload;
+/// see docs/security/ipc-protocol.md for per-type authority and descriptor rules.
 inline constexpr size_t HEADER_SIZE = 16;
 inline constexpr size_t MAX_MESSAGE_SIZE = 64 * 1024;
 inline constexpr size_t MAX_TEXT_SIZE = 8 * 1024;
@@ -126,20 +131,34 @@ enum class MessageType : uint16_t
 	 * First frame a Windows worker sends after connecting to its supervisor.
 	 * Payload: u8 worker role, u8 nonce length (32), 32 CSPRNG nonce bytes that
 	 * the spawner generated and passed on the worker command line. The nonce
-	 * binds the accepted pipe connection to exactly one spawn, so a same-user
-	 * impostor that can guess the pipe name still cannot serve the role. The
-	 * receiver is always the core: no worker endpoint may receive a handshake.
+	 * binds the accepted pipe connection to a spawn. It is passed on the command
+	 * line and is not secret from a same-user process; PID/session and SID checks
+	 * remain part of authorization. The receiver is always the core: no worker
+	 * endpoint may receive a handshake.
 	 */
 	WorkerHello = 21
 };
 
 inline constexpr uint16_t MAX_MESSAGE_TYPE = static_cast<uint16_t> (MessageType::WorkerHello);
 
+/// Range check only: it answers "this build has a row for the type", never
+/// "this endpoint may receive it". Authorization is `AllowsOperation`, which
+/// reads the registry below.
 inline bool IsKnownMessageType (uint16_t type)
 {
 	return type >= static_cast<uint16_t> (MessageType::ConfigureLog) && type <= MAX_MESSAGE_TYPE;
 }
 
+/**
+ * One decoded frame. `payload` owns its bytes, so a handler may keep a Message
+ * after the wire buffer is released; the field accessors of `PayloadReader`
+ * only borrow, so a decoded sub-field must be copied to outlive it.
+ *
+ * `requestId` is echoed unchanged in the reply: a reply whose id does not match
+ * the request the sender is waiting for is dropped (or refused) by the client,
+ * and `0` is reserved for fire-and-forget frames such as `Shutdown` and
+ * `LogRecord`.
+ */
 struct Message
 {
 	MessageType type = MessageType::Ping;
@@ -380,6 +399,9 @@ struct ProtocolError
 	std::string_view text;
 };
 
+/// Owns encoded payload bytes. Multi-byte integers use network byte order.
+/// Data() borrows the string; later writes change its contents and can
+/// invalidate views or iterators into its storage.
 class PayloadWriter
 {
 public:
@@ -429,6 +451,12 @@ public:
 	{
 		m_Data.append (reinterpret_cast<const char *> (bytes.data ()), bytes.size ());
 	}
+	/**
+	 * Unchecked append for values whose length prefix was written separately.
+	 * Nothing here enforces a bound, so the caller must have validated the size
+	 * against the type's registry ceiling first; a wrong count desynchronises
+	 * the decoder instead of being reported.
+	 */
 	void WriteRaw (std::string_view bytes) { m_Data.append (bytes); }
 	const std::string & Data () const { return m_Data; }
 
@@ -436,6 +464,9 @@ private:
 	std::string m_Data;
 };
 
+/// Cursor over a borrowed frame or payload. Views returned by ReadString and
+/// ReadRaw borrow the original buffer, which must outlive both reader and view.
+/// A failed multi-byte read can advance the cursor; abandon the reader on error.
 class PayloadReader
 {
 public:
@@ -627,6 +658,12 @@ inline i2p::expected<Message, ProtocolError> Decode (std::string_view frame)
 	return Message { static_cast<MessageType> (*type), *request, std::string (frame.substr (HEADER_SIZE, *length)) };
 }
 
+/**
+ * Log-record payload: `u8 level | u64 timestamp (Unix seconds) | text`.
+ * The text is bounded and truncated by `WriteString`, so an encoder can never
+ * produce a record above the registry ceiling; the level is a transport value
+ * that the worker validates, not a translated label.
+ */
 inline std::string EncodeLogRecord (uint8_t level, int64_t timestamp, std::string_view text)
 {
 	PayloadWriter writer;
@@ -636,6 +673,8 @@ inline std::string EncodeLogRecord (uint8_t level, int64_t timestamp, std::strin
 	return writer.Data ();
 }
 
+/// Decode one log record. Trailing bytes are a framing fault, so a decoder
+/// never silently drops part of a record.
 inline i2p::expected<std::tuple<uint8_t, int64_t, std::string>, ProtocolError> DecodeLogRecord (
 	std::string_view payload)
 {
@@ -681,6 +720,13 @@ inline i2p::expected<std::tuple<bool, std::string, std::string>, ProtocolError> 
 		return i2p::unexpected (ProtocolError { ErrorCode::BadField, "invalid log path/tag" });
 	return std::tuple { *syslog != 0, std::string (*path), std::string (*tag) };
 }
+/**
+ * Typed error payload: `u16 offending type | u8 ErrorCode | bounded detail`.
+ * The detail is clipped to MAX_ERROR_DETAIL by the encoder, so a caller cannot
+ * put a path, a payload or a credential operand of arbitrary length on the
+ * wire; the request id of the frame is the correlation key, and the frame never
+ * carries a descriptor.
+ */
 inline std::string EncodeError (MessageType offendingType, ErrorCode code, std::string_view detail)
 {
 	PayloadWriter writer;
@@ -690,6 +736,9 @@ inline std::string EncodeError (MessageType offendingType, ErrorCode code, std::
 	return writer.Data ();
 }
 
+/// Decode a typed error. An unknown offending type, an unknown code, a detail
+/// above the bound or trailing bytes are rejected, because a receiver must not
+/// act on a refusal it cannot attribute or classify.
 inline i2p::expected<std::tuple<MessageType, ErrorCode, std::string>, ProtocolError> DecodeError (
 	std::string_view payload)
 {
@@ -814,6 +863,10 @@ inline i2p::expected<DataStorageRequestFrame, ProtocolError> DecodeDataStorageRe
 	return DataStorageRequestFrame { *kind, std::string (*name), std::string (*bytes) };
 }
 
+/// Fixed six-byte reply: `u8 status | u8 kind | u32 generation`. The
+/// generation is echoed from the configure request so a client can fence a
+/// reply that belongs to a replaced worker; the decoder rejects generation 0,
+/// so the encoder must never be called with an unset generation.
 inline std::string EncodeDataStorageReply (uint8_t status, uint8_t kind, uint32_t generation)
 {
 	PayloadWriter writer;

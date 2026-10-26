@@ -1,0 +1,22 @@
+# See the LICENSE file at the top of the project tree for copyright
+# and license details.
+#
+# Source API documentation. Invoke from the repository root in manual CI.
+# This deliberately uses a small configuration rather than inheriting the
+# legacy Doxyfile 1.8.8 options, some of which newer Doxygen versions removed.
+
+PROJECT_NAME           = openi2pd
+OUTPUT_DIRECTORY       = docs/generated/source-api
+INPUT                  = libi2pd libi2pd_client privsep daemon tui tools android/app/src/main/cpp
+FILE_PATTERNS          = *.h *.hpp *.c *.cpp
+EXCLUDE_PATTERNS       = */tools/tests/*
+RECURSIVE              = YES
+EXTRACT_ALL            = NO
+QUIET                  = YES
+WARN_IF_UNDOCUMENTED   = NO
+WARN_IF_DOC_ERROR      = YES
+WARN_NO_PARAMDOC       = NO
+WARN_AS_ERROR          = YES
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+HAVE_DOT               = NO

@@ -5080,3 +5080,53 @@ Status: Implemented / static; Pending CI compilation; Pending CI tests. The
 only local validation was source/interface inspection and `git diff --check`.
 No compiler, CMake configure, CTest, Gradle, package build, project validator,
 workflow, commit or push ran. CI still owns all dynamic validation.
+
+## 2026-10-26 Source documentation pass (static)
+
+Nine subagents received disjoint scopes and edited comments only: core
+transports/protocols; crypto/netDb/persistence; IPC/daemon/Win32; torrent
+engine; client services; TUI/tools; Android Java/JNI/AIDL/SAF; Perl; and
+service/packaging shell. Each was told to document contracts and "why", not to
+narrate code, and not to compile, generate docs or run tests.
+
+- **C++:** ownership/lifetime, mutex-to-field mapping, thread affinity, bounded
+  buffers, tunnel/transport state machines, crypto zeroization and provider
+  gates, netDb snapshot/disk-I/O rules, IPC descriptor/role contracts,
+  cancellation and generation fencing, torrent piece/tracker/DHT/SAF rules,
+  proxy sanitization and SAM/I2CP framing.
+- **Android:** service/run-state lifecycle, executor/main-thread ownership,
+  SAF AIDL v2 owner/generation/cancel rules, JNI reference/exception rules,
+  permissions and Material 3/i18n boundaries. The misplaced broker comment in
+  `AndroidManifest.xml` was attached to `RouterService` and `DaemonAndroid.h`
+  duplicate Javadoc was merged.
+- **Perl:** POD headers for purpose, CLI, I/O, exit codes, core-module
+  dependencies and OpenBSD portability; inline comments for complex regex,
+  JNI mangling, PNG/ICO parsing and reaping. **Shell:** POSIX contracts for
+  service signals/stop budgets, identity, cleanup, maintainer-script phases,
+  upgrade/purge safety and static packaging.
+- **Documentation assets:** added `docs/source-documentation.md`, linked it
+  from the developer guide and MkDocs, and extended the documentation, C++23,
+  Android, TUI, tooling and packaging skills. `AGENTS.md` already carries the
+  permanent source documentation policy.
+- **Comment defects fixed:** `HTTPProxy.cpp` had a literal `*/` inside prose
+  that closed the block early; `FS.h` `@param` names and the unnamed
+  `Log::Append` parameter were corrected. Checker drift exposed by the pass
+  was corrected: `check-build-system` now applies Crypto.h fallback checks only
+  to `I2PD_OPENSSL_PROBES`, `check-control-security` matches the multiline
+  I2CP call, the Android/tools licences carry the expected BSD-3-Clause SPDX
+  identifier, and a Shepherd comment avoids the checker's forbidden wait-loop
+  words. One clear bounded defect uncovered while documenting
+  `Streaming.cpp` was fixed: the NACK accumulator wrapped in `uint8_t` before
+  the `>= 256` guard, so it now uses `size_t` and casts only at the one-byte
+  wire write (SEC-033); a regression is prepared but not executed. The OpenBSD
+  imsg send path also now closes the channel on every post-enqueue failure, so
+  a partially queued mutation cannot be replayed (PRIVSEP-032). `DOCS-015` records the fixes;
+  CONC-028, SEC-032, TOOL-018, PKG-028 and WIN-014 record findings that need
+  design/runtime work and were not changed here.
+
+Status: comments and documentation Implemented / static; the fixes are
+Pending CI compilation and the generated API lane is Pending CI. Static checks
+(`check-agent-skills`, `check-doc-links`, `check-doc-nav`,
+`check-build-system`, `check-i18n`, `git diff --check`) passed. No Doxygen,
+Javadoc, compiler, CTest, Gradle, package, validator, workflow, commit or push
+was performed.

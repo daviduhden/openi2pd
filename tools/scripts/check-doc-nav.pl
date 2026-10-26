@@ -21,6 +21,9 @@ die "missing $config\n" unless -f $config;
 
 open my $fh, '<', $config or die "open $config: $!\n";
 my ( @nav, $in_nav );
+# Only the indented `- Title: page.md` values matter; the nav block ends at
+# the next top-level key. Indentation depth is ignored so nested sections are
+# covered without needing a YAML parser.
 while ( my $line = <$fh> ) {
     $in_nav = 1 if $line =~ /^nav:\s*$/;
     last if $in_nav && $line =~ /^\S/ && $line !~ /^nav:/;
@@ -89,3 +92,49 @@ print "Documentation navigation OK ("
   . " entries, "
   . scalar(@unlisted)
   . " allowlisted)\n";
+
+=head1 NAME
+
+check-doc-nav.pl - verify the MkDocs navigation, allowlist and theme assets
+
+=head1 SYNOPSIS
+
+    perl tools/scripts/check-doc-nav.pl [ROOT]
+
+ROOT defaults to the current directory and must contain F<docs/mkdocs.yml>.
+
+=head1 DESCRIPTION
+
+Static publication check. It collects the Markdown targets of the top-level
+C<nav:> block, verifies that each one exists under F<ROOT/docs>, reports every
+Markdown file that is neither navigated nor in the built-in allowlist (README
+files, asset notes and build-platform pages that MkDocs renders without a nav
+entry), and rejects C<.html>/C<.htm>/C<.xhtml> files in the documentation
+tree. The theme assets F<docs/img/logo.png> and F<docs/img/favicon.ico> must
+exist because F<mkdocs.yml> references them.
+
+=head1 OUTPUT AND EXIT STATUS
+
+One diagnostic per problem on STDERR, followed by a one-line summary on
+STDOUT. Exit 0 when clean, 1 when anything was reported. A missing or
+unreadable F<mkdocs.yml> aborts through C<die>, so a wrong ROOT cannot be
+mistaken for a clean tree.
+
+=head1 FILE FORMAT
+
+F<mkdocs.yml> is scanned line by line instead of being parsed as YAML: only
+indented C<- Title: page.md> values inside C<nav:> are collected, and the block
+ends at the first line that starts in column 1. A quoted target, a trailing
+inline comment or a flow-style nav is therefore not recognised, and the pages
+it lists are reported as unlisted. Indentation depth is irrelevant, so nested
+sections are covered.
+
+=head1 DEPENDENCIES
+
+Core Perl only (strict, warnings, File::Find, File::Spec, 5.016), so the check
+runs with the OpenBSD base interpreter and needs no YAML module.
+
+=head1 SECURITY AND PORTABILITY
+
+Read-only and offline: no network access, no MkDocs run, nothing written.
+Paths are reported relative to ROOT.

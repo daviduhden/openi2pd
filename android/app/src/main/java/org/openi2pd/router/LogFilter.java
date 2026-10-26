@@ -11,6 +11,17 @@ package org.openi2pd.router;
 
 import java.util.Locale;
 
+/**
+ * Pure predicate helpers applied to the retained native log list.
+ *
+ * <p>A chip is a <em>minimum</em> severity, so {@code Warn} also shows errors;
+ * only the explicit {@code All}/{@code Debug} views are unfiltered and skip
+ * classification. Query matching lowercases with {@link Locale#ROOT} and uses
+ * plain substring search, so no regular expression is compiled per line and a
+ * hostile log line cannot turn the filter into a backtracking cost. Both
+ * methods are side-effect free and safe on any thread; the caller owns the
+ * list and its synchronization.</p>
+ */
 final class LogFilter {
     private LogFilter() {
     }

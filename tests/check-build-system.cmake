@@ -516,7 +516,8 @@ endforeach()
 # definition and have a Crypto.h fallback, so a target that includes the header
 # without CMake's definitions cannot silently select a different branch.
 file(READ "${PROJECT_ROOT}/libi2pd/Crypto.h" crypto_feature_text)
-string(REGEX MATCHALL "I2PD_HAVE_[A-Z0-9_]+" crypto_probe_names "${top_cmake_text}")
+string(REGEX MATCH "set\\(I2PD_OPENSSL_PROBES[^)]*\\)" openssl_probes_block "${top_cmake_text}")
+string(REGEX MATCHALL "I2PD_HAVE_[A-Z0-9_]+" crypto_probe_names "${openssl_probes_block}")
 list(REMOVE_DUPLICATES crypto_probe_names)
 foreach(probe_name IN LISTS crypto_probe_names)
   string(FIND "${top_cmake_text}" "${probe_name}=$<BOOL:" probe_definition)

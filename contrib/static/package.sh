@@ -9,8 +9,20 @@
 # with VERSION, RPM_VERSION and RPM_RELEASE supplied through the environment.
 #
 
-# Packages the static binaries present in BIN/i2pd-static-<arch>/i2pd, run inside debian (deb) or rocky/fedora (rpm)
-# usage: package.sh deb|rpm BIN OUT, with VERSION (deb), RPM_VERSION and RPM_RELEASE in the environment
+# Run inside a Debian or RPM build container with permission to install the
+# packaging tools. BIN contains i2pd-static-<Alpine-arch>/i2pd; OUT receives
+# the resulting packages. VERSION is needed for Debian and output names;
+# RPM_VERSION and RPM_RELEASE also select the RPM version and release.
+# Architectures without an input binary are skipped rather than treated as an
+# error. The mktemp workspace is not removed by this script; the container or
+# caller owns its cleanup and must not assume every architecture was packaged.
+#
+# Requires root (apt-get/dnf install and dpkg-buildpackage/rpmbuild), network
+# access for those package managers, and a host whose tools can target the
+# requested architectures. `dpkg-buildpackage -d` skips Build-Depends checks
+# because nothing is compiled here; lintian runs only on the amd64 Debian
+# output and aborts on errors. Output names use linux-all plus the target
+# architecture, and an unsupported FORMAT prints the usage line and exits 1.
 set -e
 
 FORMAT=$1
@@ -18,7 +30,7 @@ BIN=$(realpath "$2")
 mkdir -p "$3"
 OUT=$(realpath "$3")
 SRC=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd)
-# alpine:deb:rpm architecture names
+# Map the input binary's Alpine architecture to Debian and RPM names.
 ARCHS='x86_64:amd64:x86_64
 aarch64:arm64:aarch64
 armhf:armhf:armv7hl

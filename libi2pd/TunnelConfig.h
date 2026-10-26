@@ -25,6 +25,9 @@ namespace i2p
 {
 namespace tunnel
 {
+	/// One build record's keys and routing data for a configured hop.
+	/// next and prev are non-owning links into the owning TunnelConfig.
+	/// @see https://i2p.net/en/docs/specs/tunnel-creation/
 	struct TunnelHopConfig
 	{
 		std::shared_ptr<const i2p::data::IdentityEx> ident;
@@ -98,6 +101,9 @@ namespace tunnel
 		bool CreateBuildRequestRecord (uint8_t * records, size_t numRecords, uint32_t /* replyMsgID */) override;
 	};
 
+	/// Owns the ordered hop chain used to construct a tunnel build request.
+	/// GetFirstHop()/GetLastHop() return borrowed observers; insertion/removal
+	/// of a phony hop or destruction of the config can invalidate an observer.
 	class TunnelConfig
 	{
 	public:
@@ -134,6 +140,7 @@ namespace tunnel
 
 		bool IsEmpty () const { return !m_FirstHop; }
 
+		/// @pre This base implementation requires a non-empty hop chain.
 		virtual bool IsInbound () const { return m_FirstHop->isGateway; }
 
 		virtual uint32_t GetTunnelID () const

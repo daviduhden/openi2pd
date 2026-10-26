@@ -45,6 +45,24 @@ struct WipeGuard
 };
 }
 
+/// @brief Build the daily b33 offline-key batch for a destination.
+///
+/// Layout (unchanged): `version || identHash || numKeys || per-day records`,
+/// where each record is `expires || transientSigType || transientPublicKey ||
+/// signature by the blinded key || transientPrivateKey`. Day `i` expires at the
+/// end of that UTC day, and the batch day count is bounded by the two-byte
+/// count field, so the allocation is `header + days * keyLen` and stays small.
+///
+/// Every transient key is blinded and signed by the destination's blinded
+/// signing key, which is what lets a b33 address rotate daily while the
+/// destination private key stays offline. Intermediate private material is
+/// wiped through WipeGuard on every failure path.
+///
+/// @param keys Destination private keys; must not itself hold offline keys.
+/// @param transientSigType Signature type for the daily transient keys.
+/// @param days 1..65535 days to cover.
+/// @return Packed batch, or an empty vector when any step fails.
+/// @warning The result contains private keys; the caller must wipe it.
 static std::vector<uint8_t> createB33OfflineKeys (
 	const i2p::data::PrivateKeys & keys, i2p::data::SigningKeyType transientSigType, int days)
 {

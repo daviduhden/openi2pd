@@ -176,6 +176,9 @@ namespace client
 
 	typedef std::function<void (std::shared_ptr<i2p::stream::Stream> stream)> StreamRequestComplete;
 
+	/// Destination service responsible for LeaseSet lookup and publication.
+	/// Lookup requests and timer callbacks are dispatched on the supplied
+	/// io_context; individual handlers determine their own lifetime authority.
 	class LeaseSetDestination : public i2p::garlic::GarlicDestination,
 								public std::enable_shared_from_this<LeaseSetDestination>
 	{
@@ -225,8 +228,19 @@ namespace client
 
 		std::shared_ptr<i2p::tunnel::TunnelPool> GetTunnelPool () { return m_Pool; };
 		bool IsReady () const { return m_LeaseSet && !m_LeaseSet->IsExpired () && m_Pool->HasOutboundTunnels (); };
+		/// Cache-only lookup for a remote destination.
+		/// An entry that is still valid is returned, and one that expires soon
+		/// also triggers a background refresh so the caller keeps a usable
+		/// LeaseSet; an expired entry is removed and null is returned. A miss
+		/// returns null without starting a lookup, so callers that need the
+		/// LeaseSet must use RequestDestination().
 		std::shared_ptr<i2p::data::LeaseSet> FindLeaseSet (const i2p::data::IdentHash & ident);
+		/// Post a LeaseSet lookup; the completion receives null on failure.
+		/// @return False when the pool is unavailable or not ready, in which
+		/// case a supplied completion is still posted with null.
 		bool RequestDestination (const i2p::data::IdentHash & dest, RequestComplete requestComplete = nullptr);
+		/// Request a blinded LeaseSet; a supplied client-auth secret is copied
+		/// only when its length is exactly 32 bytes, otherwise it is ignored.
 		bool RequestDestinationWithEncryptedLeaseSet (std::shared_ptr<const i2p::data::BlindedPublicKey> dest,
 			RequestComplete requestComplete = nullptr, const uint8_t * secret = nullptr, size_t secretLen = 0);
 		void CancelDestinationRequest (const i2p::data::IdentHash & dest, bool notify = true);
@@ -349,6 +363,9 @@ namespace client
 		}
 	};
 
+	/// Local client identity and its streaming/datagram endpoints.
+	/// Stop() normally posts teardown to the service, or runs it inline when the
+	/// service is already stopped or the caller is on its executor.
 	class ClientDestination : public LeaseSetDestination
 	{
 	public:
@@ -358,7 +375,7 @@ namespace client
 
 		void Start () override;
 		void Stop () override;
-		void StopInternal (); // the teardown itself, always on the destination's thread
+		void StopInternal (); // called by Stop() on the executor or when the service is stopped
 
 		const i2p::data::PrivateKeys & GetPrivateKeys () const { return m_Keys; };
 		void SetPrivateKeys (const i2p::data::PrivateKeys & keys);

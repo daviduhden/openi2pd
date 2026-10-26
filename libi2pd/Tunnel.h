@@ -95,6 +95,9 @@ namespace tunnel
 
 	class OutboundTunnel;
 	class InboundTunnel;
+	/// Locally built tunnel with a configuration, build state and hop ciphers.
+	/// Successful build-response processing installs the ciphers and releases
+	/// the configuration; the pool association is a shared-ownership snapshot.
 	class Tunnel : public TunnelBase, public std::enable_shared_from_this<Tunnel>
 	{
 		struct TunnelHop
@@ -151,6 +154,12 @@ namespace tunnel
 			m_Pool.Store (std::move (pool), std::memory_order_release);
 		};
 
+		/// Decrypt and evaluate the response for the outstanding build.
+		/// @param msg Mutable response payload, including its record-count byte.
+		/// @param len Exact payload length; it must match the sent record count.
+		/// @return True only when every hop accepted the build.
+		/// @warning Records are decrypted in place; a false result can still leave
+		/// the buffer modified and it must not be reused as the original response.
 		bool HandleTunnelBuildResponse (uint8_t * msg, size_t len);
 
 		// implements TunnelBase
@@ -194,6 +203,11 @@ namespace tunnel
 		std::atomic<int> m_TestStrikes; // failed tunnel tests in a row
 	};
 
+	/// Locally built outbound tunnel: this router is the gateway, so locally
+	/// originated cells are encrypted hop by hop and handed to the first peer.
+	/// `SendTunnelDataMsg...` are producer entry points and serialize through
+	/// `m_SendMutex`; `HandleTunnelDataMsg()` cannot legitimately be reached in
+	/// this direction and only logs an error.
 	class OutboundTunnel : public Tunnel
 	{
 	public:
@@ -224,6 +238,10 @@ namespace tunnel
 		i2p::data::IdentHash m_EndpointIdentHash;
 	};
 
+	/// Locally built inbound tunnel: the last hop delivers to this router, which
+	/// decrypts every layer and reassembles the I2NP message in `m_Endpoint`.
+	/// `HandleTunnelDataMsg()` runs on the tunnel worker and consumes the cell;
+	/// fragments and the per-tunnel IV replay filter are owned by the endpoint.
 	class InboundTunnel : public Tunnel
 	{
 	public:
@@ -250,6 +268,9 @@ namespace tunnel
 		TunnelEndpoint m_Endpoint;
 	};
 
+	/// Inbound shortcut for the local (zero-hop) case: no peer decrypts the cell,
+	/// so `SendTunnelDataMsg()` delivers it straight to the local endpoint and
+	/// the counter only exists for statistics.
 	class ZeroHopsInboundTunnel : public InboundTunnel
 	{
 	public:
@@ -261,6 +282,9 @@ namespace tunnel
 		size_t m_NumReceivedBytes;
 	};
 
+	/// Outbound shortcut for the local (zero-hop) case: a cell destined for
+	/// another router or tunnel is sent as a plain I2NP message, and a local
+	/// delivery is dispatched directly, so nothing is layered-encrypted.
 	class ZeroHopsOutboundTunnel : public OutboundTunnel
 	{
 	public:
@@ -289,6 +313,17 @@ namespace tunnel
 	/** Outbound mirror of @a inbound: same peers, same far-end mask. */
 	std::shared_ptr<TunnelConfig> CreatePairedOutboundTunnelConfig (const InboundTunnel & inbound);
 
+	/// Tunnel manager: owns the tunnel worker thread, the registered tunnel
+	/// maps, the pending builds keyed by reply message ID, the pool list and the
+	/// transit-tunnel worker.
+	///
+	/// Tunnel and pool objects are shared, so administrative views publish
+	/// copies under `m_TunnelsMutex`. `m_PendingTunnelsMutex` guards the
+	/// reply-ID maps alone, while `m_LifecycleMutex` serializes Start/Stop
+	/// transitions and `m_QueueAdmissionMutex` keeps queue admission short so a
+	/// producer rejects promptly during a stop. The shared `std::mt19937` is
+	/// not thread-safe, so it is only reached through `GetRng()`/`Shuffle()`
+	/// under `m_RngMutex`.
 	class Tunnels
 	{
 	public:

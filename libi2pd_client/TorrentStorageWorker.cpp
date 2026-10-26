@@ -30,6 +30,13 @@ struct TorrentStorageWorker::Impl
 	i2p::privsep::ChildProcess process;
 	uint32_t next = 0;
 	bool ready = false;
+	// One request/response transaction on the storage channel. Callers serialize
+	// through `mutex`, so at most one frame is in flight. Both the send and the
+	// receive carry a 5 s deadline; a transport failure retires the worker
+	// instead of leaving a late reply that could be matched to the next request.
+	// A typed Error reply with the same request id is an operation rejection and
+	// keeps the channel usable, while a reply with a descriptor, a foreign id or
+	// an unrecognized shape is treated as corruption and retires the worker.
 	bool Exchange (
 		i2p::privsep::MessageType type, std::string payload, int fd, std::string & result, std::string & error)
 	{

@@ -49,6 +49,13 @@ final class ServiceOwnerEpoch {
         return epoch != 0L && currentEpoch == epoch;
     }
 
+    /**
+     * Run an owner callback only if its epoch is current. The check and action
+     * share the epoch monitor with acquisition and retirement, so the callback
+     * must remain short and must not enter JNI or wait for worker completion.
+     *
+     * @return {@code true} if the callback ran
+     */
     static synchronized boolean runIfCurrent(long epoch, Runnable action) {
         if (epoch == 0L || currentEpoch != epoch) {
             return false;

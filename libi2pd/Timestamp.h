@@ -44,6 +44,11 @@ namespace util
 	void GetNextDayDate (char * date); // returns next UTC day as YYYYMMDD string, 9 bytes
 	void GetDateString (
 		uint64_t timestamp, char * date); // timestamp is seconds since epoch, returns date as YYYYMMDD string, 9 bytes
+	/// Shift the router-wide clock offset in seconds.
+	/// The offset is applied by every GetSecondsSinceEpoch()/GetMillisecondsSinceEpoch()
+	/// caller, so it changes signed descriptor timestamps and lease expiry for the
+	/// whole process. Only the NTP sync path or an explicit operator action may
+	/// move it, and a large jump is applied only after independent agreement.
 	void AdjustTimeOffset (int64_t offset); // in seconds from current
 
 	/*

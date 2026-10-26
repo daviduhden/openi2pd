@@ -362,6 +362,12 @@ enum class I2NPCloveOrigin : uint8_t
 	TunnelGarlic // clove of a garlic that arrived through an I2NP tunnel
 };
 
+/// Message view over a byte buffer containing the normal 16-byte I2NP header.
+/// `buf` is borrowed; the allocating I2NPMessageBuffer specialization owns its
+/// storage. The logical message occupies [offset, len), with maxLen limiting
+/// writes. Accessors do not check framing, so callers must validate lengths
+/// before reading an untrusted header or payload.
+/// @see https://i2p.net/en/docs/specs/i2np/
 struct I2NPMessage
 {
 	uint8_t * buf;
@@ -438,6 +444,9 @@ struct I2NPMessage
 		}
 	}
 
+	/// Append at most the remaining capacity; a short result means truncation.
+	/// @param buf1 Source bytes, valid for at least len1 bytes.
+	/// @return Number of bytes copied, which may be less than len1.
 	size_t Concat (const uint8_t * buf1, size_t len1)
 	{
 		// make sure with don't write beyond maxLen
@@ -447,6 +456,9 @@ struct I2NPMessage
 		return len1;
 	}
 
+	/// Copy the message bytes and tunnel-origin metadata into this buffer.
+	/// @pre This buffer has at least other.GetLength() bytes after its offset.
+	/// Drop callback and enqueue time remain properties of the destination.
 	I2NPMessage & operator= (const I2NPMessage & other)
 	{
 		memcpy (buf + offset, other.buf + other.offset, other.GetLength ());
@@ -627,12 +639,24 @@ std::shared_ptr<I2NPMessage> CreateTunnelGatewayMsg (
 	uint32_t tunnelID, I2NPMessageType msgType, const uint8_t * buf, size_t len, uint32_t replyMsgID = 0);
 std::shared_ptr<I2NPMessage> CreateTunnelGatewayMsg (uint32_t tunnelID, std::shared_ptr<I2NPMessage> msg);
 
+/// Total wire length of the I2NP message starting at @a msg, from the 16-bit
+/// size field in its header. @a len is the number of readable bytes: the caller
+/// is parsing an untrusted stream, so a short prefix or a declared size beyond
+/// @a len yields @a len instead of an exception, and the offending message is
+/// counted (the log is throttled because any peer can trigger it).
 size_t GetI2NPMessageLength (const uint8_t * msg, size_t len);
 void HandleI2NPMessage (std::shared_ptr<I2NPMessage> msg);
 
 const uint64_t TUNNEL_BUILD_MESSAGES_MIN_INTERVAL = 500; // in milliseconds
 const int MAX_NUM_THROTTLED_TUNNEL_BUILD_MESSAGES = 5;
 const int MAX_NUM_DROPPED_TUNNEL_BUILD_MESSAGES = 1000;
+/// Groups the I2NP messages a session accepted before dispatching them.
+/// TunnelData and TunnelGateway messages are buffered and flushed in order,
+/// while tunnel-build requests are rate limited by
+/// `TUNNEL_BUILD_MESSAGES_MIN_INTERVAL` so a burst cannot monopolise the
+/// tunnel worker; over the cap they are counted and dropped instead of queued.
+/// One handler belongs to one session and `Flush()` runs on that session's
+/// service thread.
 class I2NPMessagesHandler
 {
 public:

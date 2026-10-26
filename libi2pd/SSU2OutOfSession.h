@@ -109,6 +109,13 @@ namespace transport
 	const int SSU2_HOLE_PUNCH_RESEND_INTERVAL_VARIANCE = 500; // in milliseconds
 	const int SSU2_HOLE_PUNCH_MAX_NUM_RESENDS = 3;
 
+	/// Charlie-side hole-punch state: answer a RelayResponse by sending
+	/// HolePunch packets to the introduced peer until a SessionRequest arrives,
+	/// then hand the session to the normal handshake path.
+	///
+	/// The relay-response block is retained verbatim because every resend must
+	/// carry the same signed bytes; the packet itself is always version 2
+	/// (SSU2_HOLE_PUNCH_VERSION) regardless of the version negotiated later.
 	class SSU2HolePunchSession : public SSU2Session // Charlie
 	{
 	public:

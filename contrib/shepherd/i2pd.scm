@@ -29,6 +29,9 @@
     #:user "i2pd"
     #:group "i2pd"
     #:directory "/var/lib/i2pd"
+    ;; LC_ALL=C fixes the process locale. The router pins LC_NUMERIC itself, and
+    ;; the UI catalog comes from --lang or the `lang` option; when both are unset
+    ;; the catalog falls back to this environment value, which means English.
     #:environment-variables
     (list "HOME=/var/lib/i2pd"
           "PATH=/usr/bin:/bin"
@@ -45,6 +48,9 @@
    ;; tmpfiles hook.
    #:stop (make-kill-destructor SIGINT #:grace-period 660)
    #:respawn? #t
+   ;; Restart a crashed router after a five-second delay instead of immediately.
+   ;; The delay is fixed, so a permanently failing configuration retries at that
+   ;; pace and repeats the failure in the log pending operator intervention.
    #:respawn-delay 5
    ;; No dependency is declared. The native keyword is #:requirement;
    ;; #:requires from older examples is not accepted by current Shepherd.

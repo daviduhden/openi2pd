@@ -76,6 +76,15 @@ namespace transport
 	const size_t SSU2_MAX_PEER_TESTS = 64;
 	const size_t SSU2_MAX_REQUESTED_PEER_TESTS = 64;
 
+	/// UDP transport manager and socket owner for SSU2.
+	///
+	/// It owns the v4/v6 sockets, the session and pending-handshake maps, the
+	/// token/relay/peer-test caches and the periodic termination, cleanup,
+	/// resend and introducer-update timers. Unless a
+	/// method documents otherwise, entries in `m_Sessions` are created, mutated
+	/// and removed on the SSU2 service thread only; administrative readers must
+	/// use `GetSSU2Sessions()`, which posts the copy onto that thread. The
+	/// receive service only parses and queues packets.
 	class SSU2Server : private i2p::util::RunnableServiceWithWork
 	{
 		struct Packet

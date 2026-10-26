@@ -30,6 +30,24 @@
 
 // version || ident hash || number of keys, then per day expires || transient signature type ||
 // transient public key || signature by that day's blinded key || transient private key
+/// @brief Print and sanity-check the b33 offline-key batch embedded in a key file.
+///
+/// A key file is local but not necessarily well formed (an old file, a
+/// truncated copy or a hand-edited blob), so every field is bounds-checked
+/// against the remaining length before it is read: the day count, the
+/// per-record header, the public/private key and signature lengths derived from
+/// the declared verifiers, and the resulting record stride. A record whose
+/// derived length does not fit fails the whole batch instead of being printed
+/// partially, and an expiry below one day is rejected as structurally invalid.
+///
+/// Output lists one UTC date per covered day; dates are derived from the expiry
+/// minus one day so the first day of the batch is reported as its start.
+///
+/// @param keys Destination keys that may carry the batch.
+/// @param blindedKey Supplies the blinded-key signature length used to derive
+///        each record's stride; the batch is not otherwise cryptographically
+///        verified here.
+/// @return true when a complete, well-formed batch was printed.
 static bool printB33OfflineKeys (const i2p::data::PrivateKeys & keys, const i2p::data::BlindedPublicKey & blindedKey)
 {
 	const auto & batch = keys.GetB33OfflineKeys ();

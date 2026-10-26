@@ -828,6 +828,17 @@ namespace util
 			return false;
 		}
 
+		/**
+		 * The isolation switches that require a worker identity.
+		 *
+		 * They are read independently: `privsep.enabled` selects the log
+		 * supervisor (still gated by `privsep.log`), `privsep.routerstorage` the
+		 * fixed-file writer, `privsep.artifacts` the hash-named artifact writer,
+		 * and an installed tunnel that requests `isolatedstorage` the torrent
+		 * payload worker. Any() therefore decides whether a root core without a
+		 * configured `privsep.user` must refuse startup, not whether a specific
+		 * worker is configured.
+		 */
 		struct PrivsepFeatures
 		{
 			bool enabled = false;

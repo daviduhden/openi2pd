@@ -1258,6 +1258,11 @@ namespace data
 			return i2p::fs::Remove (path);
 		};
 		auto r = std::make_shared<RouterInfo> (path);
+		// Java's no-address grace period (ROUTER_INFO_EXPIRATION_INTRODUCED, 54
+		// minutes): a descriptor whose addresses are not yet usable is still
+		// accepted within this window, because a router may publish its addresses
+		// shortly after it first announces itself. After that window the entry is
+		// removed as invalid instead of being kept as a permanently unusable peer.
 		constexpr uint64_t JAVA_NO_ADDRESS_GRACE = 54 * 60 * 1000LL;
 		// GetIdentHash() is only valid after a successful identity parse. Check
 		// that first: a corrupt file must reach the existing invalid-file path,
@@ -1497,8 +1502,18 @@ namespace data
 		double minTunnelCreationSuccessRate;
 		i2p::config::GetOption ("limits.zombies", minTunnelCreationSuccessRate);
 		bool isLowRate = i2p::tunnel::tunnels.GetPreciseTunnelCreationSuccessRate () < minTunnelCreationSuccessRate;
-		// routers don't expire if less than 90 or uptime is less than 1 hour
+		// Two different gates apply here. Age-based expiry is only considered
+		// once the map holds more than NETDB_MIN_ROUTERS entries and the router
+		// has been up for NETDB_CHECK_FOR_EXPIRATION_UPTIME (10 minutes), so a
+		// cold start cannot expire the entries it has just imported. The adaptive
+		// timeout below needs an established router
+		// (SSU2_TO_INTRODUCER_SESSION_DURATION, 1 hour) and otherwise keeps
+		// NETDB_MAX_EXPIRATION_TIMEOUT.
 		bool checkForExpiration = total > NETDB_MIN_ROUTERS && uptime > NETDB_CHECK_FOR_EXPIRATION_UPTIME; // 10 minutes
+		// Adaptive timeout: floodfills keep the fixed maximum; ordinary routers
+		// interpolate between the minimum and the maximum inversely with the
+		// number of known entries, so a small netDb retains its peers far longer
+		// than a large one instead of deleting itself down to the floor.
 		if (checkForExpiration && uptime > i2p::transport::SSU2_TO_INTRODUCER_SESSION_DURATION) // 1 hour
 			expirationTimeout = i2p::context.IsFloodfill () ? NETDB_FLOODFILL_EXPIRATION_TIMEOUT * 1000LL
 															: NETDB_MIN_EXPIRATION_TIMEOUT * 1000LL
@@ -1581,6 +1596,11 @@ namespace data
 			}
 		} // m_RouterInfos iteration
 
+		// Persistence is single-flight. A previous std::async job is joined when it
+		// is already finished, otherwise this tick is skipped; the job owns the
+		// buffers handed to it and TakeUpdatedBuffer()/ScheduleBufferToDelete()
+		// decide when a RouterInfo may release its copy. Never start a second
+		// writer for the same directory.
 		if (!saveToDisk.empty () || !removeFromDisk.empty ())
 		{
 			m_PersistingRouters = std::async (
@@ -1641,6 +1661,9 @@ namespace data
 			LogPrint (eLogError, "NetDb: Failed to remove ", failedRemovals, " of ", remove.size (), " RouterInfos");
 	}
 
+	// A direct lookup can only be delivered over an existing transport route. On
+	// restricted routes or with limited connectivity there is no such route, so
+	// the request is silently demoted to a tunnel lookup instead of failing.
 	void NetDb::RequestDestination (
 		const IdentHash & destination, RequestedDestination::RequestComplete requestComplete, bool direct)
 	{
@@ -1862,6 +1885,12 @@ namespace data
 		return false;
 	}
 
+	// Per-key flood budget: at most 3 forwarded RouterInfos per identity in a
+	// 90 s window, shared by every transport request. The window is charged only
+	// after the caller established that this router may flood at all, so a
+	// non-floodfill never consumes the budget it also never serves. Keys are
+	// bounded by a hard cap with the same arbitrary oldest-key eviction as the
+	// lookup throttle; eviction can only forget a spent budget, never extend one.
 	bool NetDb::ShouldThrottleFlood (const IdentHash & ident)
 	{
 		constexpr uint64_t window = 90; // seconds

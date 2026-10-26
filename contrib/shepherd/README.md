@@ -103,6 +103,16 @@ effect, which can leave a root-owned file that the router cannot rotate or
 reopen. The PID file is written for administrative tools; Shepherd supervises
 the foreground child directly and does not use the PID file for readiness.
 
+## Logging and rotation
+
+Because the service logs through syslog, rotation belongs to the syslog daemon
+(for example the distribution's `logrotate` rules for `/var/log/messages` or
+`newsyslog.conf`). The shipped `contrib/i2pd.logrotate` fragment targets
+`/var/log/i2pd/*.log` and is therefore unused here. It becomes relevant only if
+the definition is switched to `--log=file`; in that case also set `logfile` to a
+path inside a directory owned by `i2pd`, because a file created by root cannot
+be reopened by the service account.
+
 No `#:requirement` is declared. (The dependency keyword in this Shepherd
 generation is `#:requirement`; older descriptions sometimes call it
 `#:requires`, which current Shepherd does not accept.) Native Shepherd has no

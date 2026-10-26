@@ -88,6 +88,9 @@ Do not let them edit, build or run tests.
 
 ## Conventions
 
+- Apply the [source documentation policy](../../../AGENTS.md#source-documentation-policy)
+  to torrent state, bounded payload access and private-swarm behavior.
+
 - Preserve v1 info bytes and infohash; pure v2 is unsupported and a hybrid only
   works through a valid v1 layout. Do not silently reinterpret unknown
   dictionaries.

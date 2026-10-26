@@ -6,6 +6,18 @@
 #
 # Drives a live SAM bridge on 127.0.0.1:7656 with MIN/MAX version ranges, including reversed, unparseable and out-of-range values, expecting OK VERSION=3.3 or NOVERSION replies.
 #
+# This is a manual interoperability probe, not a CTest case: it requires an
+# already running router with the SAM bridge enabled on the loopback default
+# port, a netcat that supports `-q 0` (so the client half-closes after the
+# greeting), and bash for the parallel IN/EXP arrays below. It reads no router
+# files, changes no configuration and is expected to run unprivileged.
+#
+# Each case sends one `HELLO VERSION ...` line and compares the whole reply with
+# the expected `HELLO REPLY RESULT=...` line. Exit status is 0 only when every
+# case matched and 1 if any reply differed; there is no retry, so start the
+# router first and stop it afterwards. The greeting is not a secret, but the
+# bridge itself is a local administrative surface and must not be reachable
+# from the network while this script runs.
 
 # This script tests the version negotiation in the SAM handshake.
 

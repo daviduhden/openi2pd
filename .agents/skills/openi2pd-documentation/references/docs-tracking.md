@@ -79,3 +79,19 @@ the current state look better.
 - `agent-skills-static` when `.agents/skills/` is touched
 - Markdown/XML/YAML inspection where applicable
 - no local execution by the writing agent
+
+## Source-comment pass
+
+1. Read `AGENTS.md` `## Source documentation policy` and
+   `docs/source-documentation.md`.
+2. Document contracts, ownership, locking, bounds, failure paths and trust
+   boundaries; do not narrate trivial statements.
+3. Use Doxygen (`///`, `@brief`, `@param`, `@return`, `@pre`, `@post`,
+   `@warning`), Javadoc, POD or POSIX comments according to the file language.
+4. Confirm every `@param` exists in the next declaration and never put a
+   literal `*/` inside prose.
+5. Keep the diff comment-only unless a separately reviewed bounded defect fix
+   is included; report other findings to the coordinator for a tracking row.
+6. Verify with `git diff --check` and the owning compile-free checker. Do not
+   run Doxygen, Javadoc, `podchecker`, a compiler or any test locally; the
+   manual `source_docs` lane is the generator of record.

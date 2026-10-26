@@ -8,6 +8,14 @@
 # tunnel and certificate paths. It delegates start/stop/status to
 # /etc/rc.d/rc.subr.
 #
+# The ${TRUEPREFIX}, ${SYSCONFDIR} and ${LOCALSTATEDIR} references are
+# substituted by the port's SUBST_VARS when this file is installed; do not
+# hard-code the rendered paths here. The script creates no directory and sets
+# no resource limit: the port's @sample tree owns /var/i2pd as _i2pd, the
+# configuration stays root-owned, and the open-file limit comes from the
+# i2pd login class (contrib/openbsd/i2pd.login). It needs root to switch to
+# daemon_user and writes no router state itself.
+#
 
 daemon="${TRUEPREFIX}/bin/i2pd"
 daemon_user="_i2pd"
@@ -18,6 +26,8 @@ pidfile="${LOCALSTATEDIR}/i2pd/i2pd.pid"
 # rc_bg starts the foreground daemon in the background; start therefore proves
 # only that rc.subr forked it, not that the router joined the network.
 rc_bg=YES
+# rc.subr redirects the daemon's stdout/stderr to syslog at this facility; the
+# daemon's own --log=syslog below is the second, independent output path.
 daemon_logger="daemon.info"
 # rc_stop_signal is the default rc_stop signal. SIGINT selects the daemon's
 # ordered shutdown plus the transit-tunnel drain; daemon_timeout bounds the
@@ -35,8 +45,9 @@ daemon_flags="--foreground --service \
 
 . /etc/rc.d/rc.subr
 
-# Match the packaged binary rather than the full command line, so a stale
-# pidfile or a recycled PID cannot make rcctl check report a running router.
+# Match the packaged binary rather than a full argument list. This process
+# pattern does not uniquely distinguish multiple invocations of the same
+# binary, so it is not an instance identity or a readiness check.
 pexp="${TRUEPREFIX}/bin/i2pd"
 
 rc_cmd "$1"

@@ -50,15 +50,27 @@ namespace i2p
 {
 namespace torrents
 {
-	// BEncoded
+	/// Bencode readers parse one value from the front of @a buf and return the
+	/// consumed byte count, or 0 for a malformed value. A successful prefix can
+	/// leave trailing bytes; callers requiring a complete frame must compare the
+	/// count with buf.size(). Views in results borrow buf and cannot outlive it.
+	/// See BEP 3: https://www.bittorrent.org/beps/bep_0003.html.
 	std::pair<std::string_view, size_t> ExtractByteString (std::string_view buf);
 	std::pair<int64_t, size_t> ExtractInteger (std::string_view buf);
+	/// The handler sees a decoded key and the encoded value suffix. A nonzero
+	/// return consumes that many value bytes; 0 falls back to generic parsing, so
+	/// 0 cannot be used by the handler alone to reject a value.
 	size_t ParseDictionary (std::string_view buf,
 		std::function<size_t (std::string_view key, std::string_view buf)> handler = nullptr, size_t depth = 0);
+	/// Return borrowed decoded keys and encoded value slices, plus bytes consumed.
 	std::pair<std::map<std::string_view, std::string_view>, size_t> ExtractDictionary (
 		std::string_view buf); // decoded keys, encoded values
+	/// Parse a list with the same handler fallback and prefix semantics as the
+	/// dictionary reader; nesting and item counts have fixed parser limits.
 	size_t ParseList (
 		std::string_view buf, std::function<size_t (std::string_view buf)> handler = nullptr, size_t depth = 0);
+	/// Collect byte-string elements as borrowed views. A malformed list or a
+	/// non-string element returns an empty vector and a zero consumed count.
 	std::pair<std::vector<std::string_view>, size_t> ParseStringList (std::string_view buf);
 	std::string CreateByteString (std::string_view str);
 	std::string CreateInteger (int64_t v);
@@ -357,6 +369,10 @@ namespace torrents
 	bool CreateDirectoriesWithinRootNoFollow (
 		const std::filesystem::path & root, const std::filesystem::path & relativeDirectory);
 
+	/// Owns a lazily opened payload descriptor or backend capability for one
+	/// metainfo file. Its mutex serializes disk IO, close and authority changes;
+	/// destruction closes the held handle. Backend failure does not fall back to
+	/// direct filesystem access.
 	class TorrentFile
 	{
 	public:
@@ -374,7 +390,12 @@ namespace torrents
 		TorrentFile (const TorrentFile &) = delete;
 		TorrentFile & operator= (const TorrentFile &) = delete;
 
+		/// Write the requested range within the declared file length.
+		/// @return true only for a complete write; earlier chunks may have been
+		/// written when a later chunk fails.
 		bool Save (size_t offset, const uint8_t * buf, size_t len);
+		/// Read the complete requested range; discard the buffer when false is
+		/// returned because an earlier chunk may already have filled part of it.
 		bool Load (size_t offset, uint8_t * buf, size_t len);
 		void Complete ();
 		void Open (bool create = false);
@@ -495,6 +516,9 @@ namespace torrents
 	};
 
 	class PeerConnection;
+	/// One piece's block map, buffer and SHA-1 verification state. The mutex
+	/// serializes access by the service and disk threads; the buffer is owned
+	/// here and callers obtain block copies rather than borrowed pointers.
 	class Piece final
 	{
 		enum class BlockStatus
@@ -515,13 +539,18 @@ namespace torrents
 		Piece & operator= (Piece &&) = delete;
 		~Piece ();
 
-		// All mutable state below is guarded by m_Mutex. That includes the
-		// data buffer, the block map and the sending/loading flags, because
-		// the service thread and the disk I/O thread both touch a piece.
+		/// True when the block map is complete; this alone does not authenticate
+		/// the data or establish that a pending storage write has finished.
 		bool IsComplete () const;
 		// Pending local verification must not publish candidate availability.
 		void Complete (bool pendingVerification = false);
+		/// Hash the buffer against the metainfo digest under the piece lock.
+		/// @return true only when the bytes match. A piece whose buffer was
+		/// evicted has nothing to hash, so it reports false and clears the
+		/// verified flag; reloading the data re-arms verification.
 		bool VerifyHash (); // marks the piece verified when the digest matches
+		/// True only after a matching digest and while neither a write nor local
+		/// re-verification is pending. Use this distinction for availability.
 		bool IsVerified () const;
 		// Local data re-verification. A resume bitfield or a pre-existing final
 		// file only claims which bytes should be on disk; this state marks a
@@ -542,7 +571,16 @@ namespace torrents
 		size_t GetNumPeers () const;
 		void SetNumPeers (size_t numPeers);
 
+		/// Apply one peer block under the piece lock.
+		/// Only an exact aligned 16 KiB range (or the final partial range) for a
+		/// block that is still Requested is accepted; a duplicate, late or
+		/// unsolicited block is ignored.
+		/// @return true only when this call newly applied the block. Only an
+		/// applied block may trigger completion, hashing, persistence, HAVE
+		/// publication or download accounting.
 		bool BlockReceived (const uint8_t * block, size_t len, size_t offset); // true only if newly applied
+		/// Write one verified fragment to its file. Refuses to write a piece that
+		/// is not verified or a fragment outside the piece.
 		bool Dump (PieceFileFragment && fragment);
 		bool Load (PieceFileFragment && fragment);
 		bool HasData () const;
@@ -590,6 +628,12 @@ namespace torrents
 		size_t m_NumPeers; // where this piece is available
 	};
 
+	/// Status vocabulary presented to the TUI, RPC and Android clients.
+	/// Torrent::GetStatus() derives the value from the stopped flag, completion
+	/// and an active local verification pass; nothing here is persisted. The
+	/// engine currently produces only Stopped, VerifyingLocalData, Downloading
+	/// or Seeding, so the queued entries remain console/wire vocabulary: adding
+	/// a queued transition requires teaching every status renderer about it.
 	enum TorrentStatus
 	{
 		eTorrentStatusStopped = 0,
@@ -732,6 +776,26 @@ namespace torrents
 	};
 
 	class PeerConnection;
+	/// One torrent's metadata, piece map, peer candidates and tracker state.
+	///
+	/// Thread affinity: mutators and the connection/piece/tracker bookkeeping
+	/// run on the owning TorrentsTunnel service thread. The exceptions are
+	/// explicit: the atomics (completion, error, removal, verification flags)
+	/// exist because the disk service publishes staged filesystem errors and
+	/// timers poll progress, while Piece and TorrentFile serialize their own
+	/// heap and disk access per object. Any new cross-thread reader needs an
+	/// atomic or a documented lock.
+	///
+	/// Load-bearing invariants:
+	/// - The retained v1 `info` bytes and their SHA-1 infohash are the identity;
+	///   a .torrent rewrite must copy those bytes verbatim.
+	/// - Completion is selection-based, while verification and storage flushing
+	///   are per piece. Only a complete, hash-verified and not-still-saving
+	///   piece may be advertised, served or counted (IsPieceProgressComplete).
+	/// - A private swarm suppresses DHT, PEX and comment exchange once metadata
+	///   arrives; peers learned from public gossip before that are purged.
+	/// - MarkRemoved() is a terminal tombstone: queued work may finish, but no
+	///   new job may start and the infohash stays reserved until cleanup ends.
 	class Torrent final
 	{
 		using TrackerStats = std::tuple<std::unordered_set<i2p::data::IdentHash>, int, uint64_t, int, int, uint64_t,
@@ -756,9 +820,30 @@ namespace torrents
 
 		Torrent (std::string_view buf);
 		Torrent (const InfoHash & infoHash);
+		/// Parse one `info` dictionary as a value prefix and derive the length,
+		/// piece length, piece map, files and privacy flag.
+		/// @param buf Encoded info dictionary; trailing bytes are not consumed.
+		/// @return Bytes consumed, or 0 when the dictionary itself is malformed.
+		/// @post The raw info bytes and their infohash are retained even when a
+		/// policy check (version, name, file layout) recorded m_Error, because a
+		/// caller may still report the failure; the torrent is stopped in that
+		/// case and must not be inserted as usable.
 		size_t ParseInfo (std::string_view buf);
+		/// Rebuild the .torrent bencode from the retained info bytes plus the
+		/// current trackers, comment, created-by and bounded unknown top-level
+		/// keys.
+		/// @return The file content, or an empty string when no complete info
+		/// dictionary is held (a metadata-less magnet has nothing to write).
 		std::string CreateTorrentFileContent () const;
+		/// Parse one bounded HTTP tracker response: interval/min interval, peer
+		/// list, seeder/leecher counts and the opaque tracker id.
+		/// @warning A malformed, oversized or error-status response is not applied
+		/// as a partial update; it records a tracker failure so the retry ladder,
+		/// not the advertised interval, schedules the next attempt.
 		void ParseTrackerResponse (size_t trackerID, std::string_view buf);
+		/// Apply a BEP 15 announce result: advertised interval, bounded peer
+		/// hashes and swarm counts. Datagram announces stay outside the HTTP
+		/// single-flight registry, so the caller owns transaction correlation.
 		void HandleDatagramTrackerResponse (size_t trackerID, uint32_t interval, const uint8_t * hashes,
 			size_t hashesLen, int numSeeders, int numLeechers);
 
@@ -830,8 +915,15 @@ namespace torrents
 		// Service-thread policy only; metadata, payload and resume bitfields
 		// retain all files. Shared boundary pieces use the maximum priority.
 		int GetFilePriority (size_t index) const;
+		/// Set one file priority: 0 = skipped, 1 = normal, 2 = high.
+		/// The change rebuilds piece priorities, clears completion if a newly
+		/// selected file is incomplete, and refreshes every connection's interest.
+		/// @return false for an out-of-range index or a value above 2.
 		bool SetFilePriority (size_t index, uint8_t priority);
 		std::vector<uint8_t> GetFilePriorities () const { return m_FilePriorities; }
+		/// Replace the whole priority vector at once (used when restoring local
+		/// state). Rejected while the torrent has a metadata error, is invalid or
+		/// receives a vector whose size or values do not match the file set.
 		bool SetFilePriorities (const std::vector<uint8_t> & priorities);
 		uint8_t GetPiecePriority (size_t index) const;
 		size_t GetSelectedWantedBytes () const;
@@ -907,20 +999,44 @@ namespace torrents
 		}
 		size_t GetNumPieceFailurePeers () const { return m_PeerPieceFailures.size (); }
 		void SetSelectedComplete ();
+		/// Build the BEP 3 bitfield from the pieces that may be advertised now.
+		/// A piece still being written is reported as absent, so this can differ
+		/// from the resume bitmap.
+		/// @return (bitfield, true = all set, false = none set, indeterminate =
+		/// mixed). A metadata-less torrent returns an empty bitfield and false.
 		std::pair<std::vector<uint8_t>, boost::logic::tribool>
 		CreateBitfield () const; // (bitfield, true - all false - none)
 		// Exact wire length and zero spare bits. Separate from ApplyBitfield
 		// because a valid partial resume is not "complete".
 		bool IsBitfieldValid (const std::vector<uint8_t> & bitfield) const;
+		/// Mark the pieces named by a previously validated bitfield as complete.
+		/// Completion only claims that bytes should be on disk: the pieces stay
+		/// unverified and must be hashed before serving.
+		/// @return true when the bitfield marked every piece.
 		bool ApplyBitfield (const std::vector<uint8_t> & bitfield); // return true if complete
 		std::unordered_set<i2p::data::IdentHash> GetNonConnectedPeers ();
 		std::unordered_set<i2p::data::IdentHash> GetNonConnectedPeers (size_t trackerID);
+		/// Pick the next outbound block for one connection.
+		/// The highest eligible piece priority wins; within it the active piece
+		/// is continued and new pieces are ordered rarest-first with a random
+		/// tiebreak. BEP 6 suggestions never override that policy.
+		/// @param conn Connection whose remote bitfield constrains eligibility;
+		/// may be null to use the unconstrained policy.
+		/// @param skipRequested Exclude pieces already requested elsewhere.
+		/// @return (index, offset, len), or (0, 0, 0) when nothing is eligible.
 		RequestedBlock GetNextBlockToRequest (std::shared_ptr<PeerConnection> conn, bool skipRequested = true);
 		std::vector<PieceFileFragment> GetPieceFileFragments (int index) const;
 		// Verified-and-flushed bytes per file. A complete-but-unverified or
 		// currently-saving piece contributes nothing, so a file never reports
 		// 100% while HAVE and serving still withhold its pieces.
 		std::vector<size_t> GetFilesCompleted () const;
+		/// Periodic per-torrent maintenance driven by the status timer: prune
+		/// expired connections and candidates, then release idle piece memory.
+		/// Evicting a complete piece drops only its buffer (it stays complete and
+		/// verified); an incomplete piece loses its outstanding requests. Only
+		/// corruption calls Reset()/MarkCorrupt(), which makes a complete piece
+		/// downloadable again.
+		/// @return True when every selected piece is complete.
 		bool UpdateStatus (uint64_t ts); // return true if complete
 		uint64_t GetNextUpdateStatusTime () { return m_NextUpdateStatusTime; }
 		void SetNextUpdateStatusTime (uint64_t nextUpdateStatusTime) { m_NextUpdateStatusTime = nextUpdateStatusTime; }
@@ -1011,6 +1127,12 @@ namespace torrents
 		size_t GetDownloaded () const { return m_Downloaded; }
 		void AddDownloaded (size_t add) { m_Downloaded += add; }
 
+		/// Persist the current advertisement bitmap as the .resume state.
+		/// Skipped entirely while removed, path-less or a verification pass is
+		/// still running, because a mid-pass bitmap would claim fewer pieces than
+		/// the data on disk. With a delegated persistence callback there is no
+		/// direct-write fallback: a failed worker write is logged and retried on
+		/// the next call.
 		void SaveTorrentResumeFile ();
 		// Irreversible instance tombstone. IO already running may finish, but
 		// the single disk queue drains it before removal; later jobs must stop.
@@ -1127,6 +1249,18 @@ namespace torrents
 	};
 
 	class TorrentsTunnel;
+	/// One peer-wire connection, owned by the I2PService handler list and
+	/// referenced weakly by the torrent's connection map.
+	///
+	/// All I/O is asynchronous on the tunnel service thread; handlers retain the
+	/// object through shared_from_this(), so Close() may be posted while a read
+	/// or write is still pending. Terminate() must stay the single teardown
+	/// path: it releases outgoing requests, drops the handler and closes the
+	/// stream exactly once.
+	///
+	/// Peer-supplied input is untrusted: message lengths are bounded by the
+	/// receive buffer, piece blocks must be exact aligned ranges, and an
+	/// extension payload is only parsed after a gateway that knows its ID.
 	class PeerConnection : public i2p::client::I2PServiceHandler, public std::enable_shared_from_this<PeerConnection>
 	{
 		using ExtendedMessageHandler = void (PeerConnection::*) (const uint8_t * buf, size_t len);
@@ -1179,6 +1313,9 @@ namespace torrents
 
 		// stats
 		void ResetStats ();
+		/// End-of-torrent peer state: close seeds, reset the transfer counters,
+		/// release every outgoing request and send *not interested*. Called once
+		/// when the local torrent completes, so no further block is requested.
 		void TorrentComplete ();
 		uint64_t GetDownloadRate () const { return m_DownloadRate; }
 		uint64_t GetUploadRate () const { return m_UploadRate; }

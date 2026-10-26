@@ -94,7 +94,7 @@ namespace fs
 
 	/**
 	 * @brief Set datadir either from cmdline option or using autodetection
-	 * @param cmdline_param Value of cmdline parameter --datadir=<something>
+	 * @param cmdline_datadir Value of cmdline parameter --datadir=<something>
 	 * @param isService Value of cmdline parameter --service
 	 *
 	 * Examples of autodetected paths:
@@ -107,7 +107,7 @@ namespace fs
 
 	/**
 	 * @brief Set certsdir either from cmdline option or using autodetection
-	 * @param cmdline_param Value of cmdline parameter --certsdir=<something>
+	 * @param cmdline_certsdir Value of cmdline parameter --certsdir=<something>
 	 *
 	 * Examples of autodetected paths:
 	 *
@@ -137,6 +137,11 @@ namespace fs
 	 */
 	bool Remove (const std::string & path);
 
+	/// Rename a file or directory within one storage hierarchy.
+	/// A POSIX rename is atomic but durable only after the parent directory is
+	/// synced; callers that need durability use the atomic writers above rather
+	/// than a bare rename. Returns false when the operating system rejects the
+	/// rename.
 	bool Rename (std::string_view from, std::string_view to);
 
 	/**

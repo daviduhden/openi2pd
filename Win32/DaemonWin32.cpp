@@ -32,6 +32,8 @@ namespace util
 {
 	bool DaemonWin32::init (int argc, char * argv[])
 	{
+		// The console code page is pinned before the shared init reads any
+		// configuration text; LC_TIME stays "C" so log timestamps are stable.
 		setlocale (LC_CTYPE, "");
 		SetConsoleCP (1251);
 		SetConsoleOutputCP (1251);
@@ -42,6 +44,9 @@ namespace util
 
 		if (!Daemon_Singleton::init (argc, argv)) return false;
 
+		// Service mode hands the process to the SCM dispatcher, which blocks
+		// until the service stops; reporting success here would let main() call
+		// start() on a router the service already owns.
 		if (isDaemon)
 		{
 			LogPrint (eLogDebug, "Daemon: running as service");
@@ -64,6 +69,8 @@ namespace util
 		SetConsoleOutputCP (1251);
 		setlocale (LC_TIME, "C");
 #ifdef WIN32_APP
+		// The tray/window is created before the router starts; a failure here
+		// aborts the start instead of running a GUI build without its shell.
 		if (!i2p::win32::StartWin32App (isDaemon)) return false;
 #endif
 		bool ret = Daemon_Singleton::start ();
@@ -75,6 +82,8 @@ namespace util
 		}
 		bool insomnia;
 		i2p::config::GetOption ("insomnia", insomnia);
+		// Execution-state request, not a security control: it may be ignored by
+		// the OS or overridden by a later power policy.
 		if (insomnia) SetThreadExecutionState (ES_CONTINUOUS | ES_SYSTEM_REQUIRED);
 		return ret;
 	}
@@ -82,6 +91,8 @@ namespace util
 	bool DaemonWin32::stop ()
 	{
 #ifdef WIN32_APP
+		// The GUI window is stopped before the ordered daemon teardown so no
+		// timer or menu action can touch a router that is closing.
 		i2p::win32::StopWin32App ();
 #endif
 		return Daemon_Singleton::stop ();
@@ -92,6 +103,8 @@ namespace util
 #ifdef WIN32_APP
 		i2p::win32::RunWin32App ();
 #else
+		// Console/service builds have no message loop to own; wait in bounded
+		// slices so a requested shutdown is observed promptly.
 		while (running)
 		{
 			std::this_thread::sleep_for (std::chrono::seconds (1));

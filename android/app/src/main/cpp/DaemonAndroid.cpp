@@ -125,9 +125,19 @@ namespace android
 	static char * argv[] = { programName, nullptr };
 
 	/**
-	 * returns error details if failed
-	 * returns "ok" if daemon initialized and started okay
-	 * returns START_CANCELED_RESULT if a stop request aborted the transition
+	 * Run one complete start transition: wait for the packaged assets, set the
+	 * application data directory, Daemon.init(), then Daemon.start().
+	 *
+	 * The caller must already hold a NativeCallGuard. A start-cancellation token
+	 * is cleared first, so only a request that arrives after this point aborts
+	 * this attempt. Cancellation is observed during the bounded asset wait and
+	 * between init and start; an aborted transition returns
+	 * START_CANCELED_RESULT and the lifecycle helper rolls the already
+	 * initialized daemon back exactly once.
+	 *
+	 * @return "ok" after initialization and start succeeded, a bounded
+	 *         diagnostic on failure, or START_CANCELED_RESULT when a stop
+	 *         request won the race
 	 */
 	std::string start (/*int argc, char* argv[]*/)
 	{

@@ -13,8 +13,10 @@
 set -eu
 umask 077
 
-# Fail once with a clear diagnostic instead of entering runsv's respawn loop
-# because the account or the packaged configuration is missing.
+# Report a missing account or configuration before attempting privilege drop.
+# If the service remains wanted, runsv may retry after the finish script's
+# five-second backoff; these checks do not disable supervision. The config
+# readability check uses the supervisor's credentials, not the dropped user.
 if ! id -u i2pd >/dev/null 2>&1; then
 	printf '%s\n' "i2pd: service account 'i2pd' does not exist" >&2
 	exit 1
@@ -24,6 +26,8 @@ if [ ! -r /etc/i2pd/i2pd.conf ]; then
 	exit 1
 fi
 
+# install also applies the specified owner and mode to an existing directory.
+# The service administrator must keep both paths dedicated to this daemon.
 /usr/bin/install -d -m 0700 -o i2pd -g i2pd /run/i2pd
 /usr/bin/install -d -m 0700 -o i2pd -g i2pd /var/lib/i2pd
 

@@ -195,3 +195,25 @@ androidComponents {
         }
     }
 }
+
+// Optional manual-CI API documentation. Reuse the debug javac classpath and
+// output so AndroidX, generated R/BuildConfig and AIDL types resolve exactly as
+// they do for the application; the JDK itself is never packaged in the APK.
+tasks.register('sourceJavadoc', Javadoc) {
+    def debugJava = tasks.named('compileDebugJavaWithJavac', JavaCompile)
+    dependsOn debugJava
+    javadocTool.set(javaToolchains.javadocToolFor {
+        languageVersion = JavaLanguageVersion.of(25)
+    })
+    source = android.sourceSets.main.java.srcDirs
+    classpath = files(android.bootClasspath) + debugJava.get().classpath +
+            files(debugJava.flatMap { it.destinationDirectory })
+    destinationDir = layout.buildDirectory.dir('docs/javadoc').get().asFile
+    options.encoding = 'UTF-8'
+    options.addStringOption('source', '25')
+    options.addBooleanOption('private', true)
+    // Missing Javadoc remains a tracked coverage task; malformed tags and
+    // broken references in existing comments must fail the documentation job.
+    options.addBooleanOption('Xdoclint:all,-missing', true)
+    options.addBooleanOption('Werror', true)
+}

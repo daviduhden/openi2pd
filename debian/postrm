@@ -14,6 +14,8 @@ set -e
 
 case "$1" in
   purge)
+    # Purge is destructive by design: the data directory can contain router
+    # identity keys and other persistent state. A normal remove leaves it.
     rm -rf /etc/i2pd
     rm -rf /var/lib/i2pd
     rm -rf /var/log/i2pd

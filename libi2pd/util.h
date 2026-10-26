@@ -101,6 +101,10 @@ namespace util
 			return std::unique_ptr<T, Deleter> (Acquire (std::forward<TArgs> (args)...), Deleter { this });
 		}
 
+		/// Acquire with shared ownership.
+		/// @warning The result keeps the object alive but holds only a borrow of
+		/// the pool: the last owner must be released before the pool is
+		/// destroyed, otherwise the deleter touches freed pool state.
 		template <typename... TArgs> std::shared_ptr<T> AcquireShared (TArgs &&... args)
 		{
 			return std::shared_ptr<T> (Acquire (std::forward<TArgs> (args)...), Deleter { this });
@@ -141,6 +145,10 @@ namespace util
 	{
 	public:
 		MemoryPoolMt () { }
+		/// Acquire from the shared pool. The locked section only pops a cached
+		/// object; construction of a new object happens outside the mutex, so a
+		/// slow constructor cannot block other threads and a throwing constructor
+		/// does not leave the pool locked.
 		template <typename... TArgs> T * AcquireMt (TArgs &&... args)
 		{
 			T * ret = nullptr;

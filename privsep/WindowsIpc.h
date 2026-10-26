@@ -102,7 +102,23 @@ struct WindowsWorkerPolicy
 	uint32_t processLimit = 1;
 };
 
+/**
+ * Job Object, token and mitigation policy of one role. These are the
+ * operator-visible limits; the isolation mechanism itself (AppContainer versus
+ * restricted token, Internet capability, delegated root) is owned by
+ * `GetWindowsRoleIsolation()` and must not be widened here.
+ */
 WindowsWorkerPolicy GetWindowsWorkerPolicy (WindowsWorkerRole role);
+/**
+ * Whether one Windows worker role may receive @a type.
+ *
+ * The shared message registry is the policy; this function adds only the
+ * limitations of this transport (no descriptor channel, so descriptor-bearing
+ * types are refused) and the fact that a role without a data-plane backend
+ * accepts control frames only. It is not an authorization substitute: the
+ * receiving channel still enforces the registry and answers a wrong-role frame
+ * with a bounded typed refusal.
+ */
 bool WindowsAllowsOperation (WindowsWorkerRole role, MessageType type);
 
 /** Nonce size of the WorkerHello frame, in bytes. */
@@ -136,6 +152,10 @@ struct WindowsIsolationSupport
 	bool messageModePipes = true;
 };
 
+/// Report which mechanisms this build and host can actually enforce. It never
+/// enables anything: a mechanism the probe cannot confirm (for example LPAC,
+/// which needs a verified mitigation profile, not just userenv exports) stays
+/// reported as unavailable.
 WindowsIsolationSupport ProbeWindowsIsolation ();
 
 /** Owns one Win32 handle; closes it exactly once. */
@@ -161,7 +181,23 @@ private:
 	HANDLE m_Handle = INVALID_HANDLE_VALUE;
 };
 
+/**
+ * Restricted token for a non-AppContainer worker role.
+ *
+ * Every privilege the parent holds is deleted (not merely disabled) and LUA_TOKEN
+ * is added when the parent is elevated, so the worker cannot re-enable one. An
+ * AppContainer or LPAC policy is refused here: those roles must be created
+ * through their real container identity, never by silently degrading to a
+ * restricted token.
+ */
 i2p::expected<WindowsHandle, std::string> CreateRestrictedWorkerToken (const WindowsWorkerPolicy & policy);
+/**
+ * Job Object for one worker. KILL_ON_JOB_CLOSE is the backstop for any stop
+ * path that cannot wait, DIE_ON_UNHANDLED_EXCEPTION turns a crash into a
+ * diagnosable exit, and the configured process/memory limits and desktop/clipboard
+ * UI restrictions are applied before the worker is assigned. A role that is
+ * allowed to spawn a child (the supervisor) must not set a process limit of one.
+ */
 i2p::expected<WindowsHandle, std::string> CreateWorkerJobObject (const WindowsWorkerPolicy & policy);
 
 struct WindowsWorkerProcess

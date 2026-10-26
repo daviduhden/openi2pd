@@ -35,7 +35,13 @@ import com.google.android.material.textfield.TextInputLayout;
 import java.util.Map;
 import java.util.function.Consumer;
 
-/** Administrative views only: closing this screen never stops the service or torrents. */
+/**
+ * Material Views for torrent administration through {@link RouterViewModel}.
+ * The fragment owns only its view and picker state; the service owns torrent
+ * operations and continues when the screen closes. LiveData observers use the
+ * view lifecycle, and selected asynchronous completions compare a view
+ * generation before updating controls after recreation.
+ */
 public final class TorrentsFragment extends Fragment {
     /** Highest comment record offset TORRENT-DETAIL accepts (0..255). */
     private static final int MAX_COMMENT_OFFSET = 255;

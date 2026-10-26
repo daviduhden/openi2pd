@@ -76,6 +76,9 @@ sub find_git {
         return Cwd::abs_path( $ENV{GIT} );
     }
     for my $directory ( File::Spec->path ) {
+        # Only absolute PATH entries are trusted: a relative entry (including
+        # the implicit empty one) could resolve to an unrelated program in the
+        # current directory.
         next
           unless length $directory
           && File::Spec->file_name_is_absolute($directory);
@@ -92,6 +95,8 @@ sub run_git {
     my $git = find_git();
     return ( undef, 'git not found in an absolute PATH directory' )
       unless defined $git;
+    # List-form pipe open: the argument vector is handed to the process
+    # directly, so no shell interprets the reference path or the git options.
     open my $fh, '-|', $git, '-C', $reference, @args
       or return ( undef, "git: $!" );
     local $/;
@@ -258,6 +263,9 @@ sub static_checks {
             push @errors, 'shorter than the 16-byte I2NP header';
         }
         else {
+            # I2NP header: type, message id, expiration, payload size, then a
+            # one-byte checksum. Java defines that byte as the first SHA-256
+            # byte of the payload, so the fixture must agree with its header.
             my ( $type, $msgid, $exp, $size, $chk ) = unpack 'C N Q> n C',
               substr( $bytes, 0, 16 );
             my $payload = substr( $bytes, 16 );
@@ -320,6 +328,8 @@ sub static_checks {
 
 sub canonical {
     my ($data) = @_;
+    # Sorted keys make the comparison independent of hash order, which the
+    # pretty-printed expectation in a case file does not control.
     return JSON::PP->new->canonical->encode($data);
 }
 
@@ -329,6 +339,8 @@ sub run_binary {
       or return ( undef, "cannot execute $bin: $!" );
     my $out       = '';
     my $too_large = 0;
+    # Cap the collected output so a runaway harness cannot exhaust memory; a
+    # truncated case is reported instead of being compared.
     while (1) {
         my $chunk;
         my $read = read( $ph, $chunk, 65536 );
@@ -478,3 +490,88 @@ else {
     print "differential cases executed: $executed\n";
 }
 exit( $failed ? 1 : 0 );
+
+=head1 NAME
+
+check-vectors.pl - validate the interoperability fixtures and provenance
+
+=head1 SYNOPSIS
+
+    perl tests/interop/check-vectors.pl [options]
+
+=head1 OPTIONS
+
+=over 4
+
+=item --reference DIR
+
+Validate the historical corpus against an I2P Java 2.13.0 checkout: tag,
+commit and a clean working tree are required before the provenance line
+references are compared.
+
+=item --require-reference
+
+Fail instead of skipping when no reference checkout is available.
+
+=item --binary PATH
+
+Run an external C++ harness per case as C<PATH --case ID INPUT>. The harness
+must print one JSON object on STDOUT; its output is capped at 1 MiB.
+
+=item --vectors DIR
+
+Fixture root, default F<tests/interop/vectors>.
+
+=item --case ID
+
+Restrict the run to one identifier.
+
+=item --list
+
+Print case identifiers, kind and expectation from the manifests without
+reading the fixture input bytes.
+
+=back
+
+=head1 ENVIRONMENT
+
+C<I2P_JAVA_FIXTURE_REFERENCE> supplies the default reference checkout.
+C<GIT> overrides the git executable, but only an absolute path to an
+executable file is accepted; otherwise git is resolved from absolute C<PATH>
+entries only.
+
+=head1 FILE FORMAT
+
+Every F<*.case.json> below the fixture root describes one case and must carry
+C<id>, C<kind>, C<input>, C<format>, C<sha256>, C<expectation>, C<expect> and
+C<provenance>. The input path must be relative to the case file (absolute
+paths and C<..> are refused) and its SHA-256 must match the manifest.
+C<format> is C<hex> or C<raw>; C<kind> is C<i2np>, C<i2cp> or C<sam>.
+C<expectation> is C<accept> or C<reject>; C<known_gap> optionally records a
+documented divergence. Structural checks are per kind: the I2NP length field
+and checksum, the I2CP length framing, and raw text for SAM.
+
+=head1 OUTPUT AND EXIT STATUS
+
+One line per case (C<STATIC-OK>, C<PASS>, C<FAIL>, C<KNOWN-GAP> or
+C<UNEXPECTED-PASS>) followed by a summary. Exit 0 when no case failed, 1 when
+at least one case failed, and 2 for bad arguments, a rejected reference
+checkout or a selection that matches no case. A known gap and an unexpected
+pass are counted but do not change the status: removing a stale C<known_gap>
+marker stays a deliberate edit. Without C<--binary> the script states that
+differential cases were not executed.
+
+=head1 DEPENDENCIES
+
+Core Perl only (strict, warnings, Getopt::Long, Digest::SHA, JSON::PP,
+File::Find, File::Spec, File::Basename, Cwd, 5.016), plus git when a reference
+checkout is validated. The harness is an external program supplied by the
+operator.
+
+=head1 SECURITY AND PORTABILITY
+
+The reference tree is only read; a writable checkout produces a warning
+because the corpus must stay comparable. Nothing is downloaded, the git
+executable never comes from a relative path, and no credential, key or
+private material is part of a fixture. All modules are in the OpenBSD base
+interpreter.

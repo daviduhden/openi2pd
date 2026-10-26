@@ -35,6 +35,14 @@ namespace i2p
 {
 namespace tunnel
 {
+	/// One hop of a tunnel built by another router: it holds only that hop's
+	/// layer and IV keys and re-encrypts a cell for the next hop.
+	///
+	/// The base class is abstract scaffolding: `SendTunnelDataMsg()` and
+	/// `HandleTunnelDataMsg()` log an error, so only the role subclasses below
+	/// are created. `EncryptTunnelMsg()` applies exactly this hop's AES layer and
+	/// may be called with the same buffer for `in` and `out` (a participant
+	/// re-encrypts in place); the counter feeds the transit bandwidth statistic.
 	class TransitTunnel : public TunnelBase
 	{
 	public:
@@ -54,6 +62,10 @@ namespace tunnel
 		std::unique_ptr<i2p::crypto::TunnelEncryption> m_Encryption;
 	};
 
+	/// Middle hop: validate and de-duplicate the cell, replace the tunnel ID and
+	/// message ID, re-encrypt one layer and queue it for the next hop. Batches
+	/// are flushed by the tunnel worker so several cells share one transport
+	/// write.
 	class TransitTunnelParticipant : public TransitTunnel
 	{
 	public:
@@ -74,6 +86,10 @@ namespace tunnel
 		std::unique_ptr<TunnelTransportSender> m_Sender;
 	};
 
+	/// First hop of an inbound tunnel built by another router: this router is the
+	/// gateway, so locally originated I2NP messages enter here. `m_SendMutex`
+	/// serializes the producers against the worker's flush, and all messages are
+	/// packed as local deliveries at this end of the path.
 	class TransitTunnelGateway : public TransitTunnel
 	{
 	public:
@@ -92,6 +108,10 @@ namespace tunnel
 		TunnelGateway m_Gateway;
 	};
 
+	/// Last hop of an outbound tunnel built by another router: remove this hop's
+	/// layer into a fresh cell and let the endpoint reassemble and dispatch the
+	/// I2NP message. The endpoint is created on first use under `m_HandleMutex`
+	/// because `Cleanup()` can run concurrently from the tunnel worker.
 	class TransitTunnelEndpoint : public TransitTunnel
 	{
 	public:
@@ -189,6 +209,13 @@ namespace tunnel
 	constexpr std::string_view TRANSIT_TUNNEL_LIMIT_BANDWIDTH { "l" };
 	constexpr std::string_view TRANSIT_TUNNEL_AVAILABLE_BANDWIDTH { "b" };
 
+	/// Registry and owner of the transit tunnels this router participates in.
+	///
+	/// A single worker thread consumes build requests from a bounded queue
+	/// (`TRANSIT_TUNNELS_BUILD_MSG_QUEUE_MAX_SIZE`), creates the tunnels and then
+	/// expires them; `m_TransitTunnelsMutex` guards the list for that worker and
+	/// for the administrative snapshots. The replay filter is only touched by
+	/// the worker, so it needs no lock of its own.
 	class TransitTunnels
 	{
 	public:

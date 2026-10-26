@@ -133,6 +133,10 @@ namespace crypto
 		const uint8_t * GetPublicKey () const { return m_PublicKey; };
 		void GetPrivateKey (uint8_t * priv) const;
 		void SetPrivateKey (const uint8_t * priv, bool calculatePublic = false);
+		/// Derive a 32-byte shared secret from a 32-byte peer public key.
+		/// @return False for an unusable local key, invalid peer or all-zero
+		/// result. A non-null output is zeroed on failure; never use that output
+		/// as a handshake key.
 		bool Agree (const uint8_t * pub, uint8_t * shared);
 
 		bool IsElligatorIneligible () const { return m_IsElligatorIneligible; }
@@ -287,6 +291,13 @@ namespace crypto
 		EVP_CIPHER_CTX * m_Ctx;
 	};
 
+	/// ChaCha20-Poly1305 with a 32-byte key and 12-byte nonce.
+	/// @param msgLen Plaintext/ciphertext length excluding the 16-byte tag.
+	/// @param len Capacity of buf: at least msgLen + 16 for encryption and
+	/// at least msgLen for decryption. For decryption msg must also contain the
+	/// tag immediately after its msgLen ciphertext bytes.
+	/// @return True only when encryption or tag-verified decryption succeeds.
+	/// @warning Discard output on false, including argument-validation failures.
 	bool AEADChaCha20Poly1305 (const uint8_t * msg, size_t msgLen, const uint8_t * ad, size_t adLen,
 		const uint8_t * key, const uint8_t * nonce, uint8_t * buf, size_t len,
 		bool encrypt); // msgLen is len without tag
@@ -307,15 +318,29 @@ namespace crypto
 
 	// HKDF
 
+	/// RFC 5869 HKDF-SHA256 over a 32-byte salt.
+	/// @param key Input keying material; a null pointer together with keyLen 0
+	/// selects the expand-only form, where HMAC-SHA256(salt, empty) is used as
+	/// the PRK because the handshake already produced a pseudorandom key.
+	/// @param info Protocol context string; it separates otherwise identical
+	/// derivations and must never carry secret material.
+	/// @param out Destination holding at least outLen bytes.
+	/// @param outLen Requested length, bounded by RFC 5869's 255 * 32 bytes.
+	/// @warning A failed or rejected derivation leaves the whole output
+	/// zeroed; callers must treat that as failure rather than as a key.
 	void HKDF (const uint8_t * salt, const uint8_t * key, size_t keyLen, std::string_view info, uint8_t * out,
 		size_t outLen = 64); // salt - 32, out - 32 or 64, info <= 32
 
+	/// Reusable HKDF context. Unlike the free function it owns a provider
+	/// context and is therefore stateful and not reentrant: every thread that
+	/// derives keys must use its own instance, never one shared context.
 	class HKDFContext final
 	{
 	public:
 		HKDFContext ();
 		~HKDFContext ();
 
+		/// Derive with the same contract as the free HKDF() function.
 		void operator() (const uint8_t * salt, const uint8_t * key, size_t keyLen, std::string_view info, uint8_t * out,
 			size_t outLen = 64); // salt - 32, out - 32 or 64, info <= 32
 
@@ -329,6 +354,9 @@ namespace crypto
 
 	// Noise
 
+	/// Mutable Noise transcript and chain state used during I2P handshakes.
+	/// The caller owns the protocol transition order and must abort a handshake
+	/// when Encrypt or Decrypt fails. The chain-key storage is wiped on destruction.
 	struct NoiseSymmetricState
 	{
 		uint8_t m_H[32] /*h*/ { }, m_CK[64] /*[ck, k]*/ { };

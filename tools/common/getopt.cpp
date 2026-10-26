@@ -35,6 +35,17 @@ void ReportUnknown (const char * argv0, int option)
 }
 }
 
+/// @brief Parse one short option and advance the shared cursor.
+///
+/// The compatibility shim reproduces the subset the maintained tools rely on:
+/// clustered short options, `-xVALUE` and `-x VALUE` forms, `--` termination
+/// and `?` for an unknown option, with `opterr` suppressing the diagnostic.
+/// `optind`/`optarg` are process-wide like the POSIX pair, so this must not be
+/// called concurrently.
+///
+/// @param optstring Short option letters; a trailing ':' means one argument.
+/// @return The option letter, '?' (or ':' when optstring starts with ':' for a
+///         missing argument), or -1 when option processing is finished.
 extern "C" int getopt (int argc, char * const argv[], const char * optstring)
 {
 	optarg = nullptr;
@@ -101,6 +112,16 @@ extern "C" int getopt (int argc, char * const argv[], const char * optstring)
 	return static_cast<unsigned char> (option);
 }
 
+/// @brief Parse a long option, delegating anything that is not `--name` to getopt.
+///
+/// Matching is exact (no GNU abbreviation): a documented CLI must not silently
+/// accept a truncated spelling. `--name=value` and `--name value` are both
+/// accepted for required_argument; a value given to a no_argument option is an
+/// error. `optstring` remains the fallback for the tools that mix both forms,
+/// and a bare `--` terminates processing.
+///
+/// @param optionIndex Receives the matched long-option index, or -1.
+/// @return The option value, 0 when `flag` was set, '?' on error, -1 at end.
 extern "C" int getopt_long (
 	int argc, char * const argv[], const char * optstring, const struct option * longOptions, int * optionIndex)
 {

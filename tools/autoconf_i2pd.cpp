@@ -81,6 +81,16 @@ namespace PreInitConfigs
 }
 
 // Functions
+/// @brief Read a yes/no answer from the interactive configuration wizard.
+///
+/// The answer is read as a whitespace-delimited token rather than one byte
+/// because the localized catalogs advertise multibyte answers: Spanish `s`/`sí`
+/// and Russian `д`/`да`. Accepting only ASCII would make the advertised prompt
+/// unusable in those languages. An unrecognized token re-asks in a loop
+/// (never recurses, so a scripted stdin cannot exhaust the stack); EOF keeps
+/// the safe default of "no".
+///
+/// @return true for y/Y/s/S/д/Д, false for n/N/н/Н, EOF or input failure.
 bool AskYN (void) noexcept
 {
 	for (;;)

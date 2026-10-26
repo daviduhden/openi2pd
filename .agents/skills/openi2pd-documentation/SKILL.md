@@ -1,6 +1,6 @@
 ---
 name: openi2pd-documentation
-description: Use when changing openi2pd documentation, licensing and attribution, branding metadata, manual pages or navigation, excluding coordinator-owned TODO/ROADMAP/PROGRESS edits unless explicitly assigned.
+description: Use when changing openi2pd documentation, source comments/Doxygen/Javadoc/POD/shell comments, licensing and attribution, branding metadata, manual pages or navigation, excluding subsystem design claims and coordinator-owned tracking edits unless assigned.
 ---
 <!--
 See the LICENSE file at the top of the project tree for copyright
@@ -12,8 +12,9 @@ and license details.
 ## Activate when
 
 Use this skill for `docs/`, `README.md`, manuals, licensing/provenance,
-branding metadata, or a coordinated update of `TODO.md`, `ROADMAP.md` and
-`PROGRESS.md`. Use the technical owner skill for design claims; this skill
+branding metadata, in-source documentation conventions (C++ Doxygen, Android
+Javadoc, Perl POD, POSIX shell), or a coordinated update of `TODO.md`,
+`ROADMAP.md` and `PROGRESS.md`. Use the technical owner skill for design claims; this skill
 owns coherence, attribution and tracking format.
 
 Read [`../../../AGENTS.md`](../../../AGENTS.md) first. It remains the source of
@@ -22,6 +23,8 @@ permanent policy; do not copy it wholesale into docs or skills.
 ## Inspect first
 
 - The changed document and every inbound/outbound link in the relevant section.
+- `docs/source-documentation.md`, `docs/Doxyfile.source` and the manual
+  `source_docs` lane when source comments or generated API docs change.
 - `docs/file-headers.md`, `docs/attribution-audit.md`,
   `docs/files-changed.md`, `docs/REBRANDING.md`, `docs/branding/*`.
 - `assets/branding/colors.md` and the SVG masters; do not redesign the mark.
@@ -32,6 +35,9 @@ permanent policy; do not copy it wholesale into docs or skills.
 
 ## Reference sources
 
+- [`../../../docs/source-documentation.md`](../../../docs/source-documentation.md)
+  — Doxygen/Javadoc/POD/shell comment conventions, contracts and the manual
+  generation lane.
 - [`../../../docs/file-headers.md`](../../../docs/file-headers.md) — short
   license-header rule and binary/no-header exceptions.
 - [`../../../docs/attribution-audit.md`](../../../docs/attribution-audit.md) —
@@ -75,6 +81,9 @@ branding validators or a build.
   `PROGRESS.md` concurrently.
 
 ## Conventions
+
+- Coordinate source comments and optional API documentation with the owning
+  subsystem under the [source documentation policy](../../../AGENTS.md#source-documentation-policy).
 
 - Use the short project license reference for first-party source/config/script
   headers:
@@ -132,6 +141,20 @@ branding validators or a build.
 - Upstream pins live in `contrib/upstream/sync.sh`, `docs/upstream-sync.md`,
   `docs/tools/provenance.md`, `tests/interop/check-reference.sh` and
   `FIXTURES.md`; `tests/check-upstream-pins.cmake` keeps them equal.
+
+- Doxygen runs with `WARN_AS_ERROR`; a `@param` name that does not exist, a
+  `@param` on an unnamed parameter or a reference to a removed symbol fails
+  the manual lane. Match the declaration and only document verified behavior.
+- A literal `*/` inside `//`/`/* */` prose closes the block early. Write
+  `X-Forwarded-* and *-IP`; a malformed block can turn the remaining prose
+  into code (`libi2pd_client/HTTPProxy.cpp` had this defect).
+- Source comments are English, contracts and "why", not a narration of the
+  next statement. Track unfinished guarantees in `TODO.md`; never describe a
+  planned protection as implemented.
+- Code-oriented checkers also scan comments. A prose word such as "until " in a
+  Shepherd file can trip a forbidden-wait-loop rule; reword the comment,
+  never weaken the checker. Run the owning compile-free checker after a
+  comment pass.
 
 ## Do not
 

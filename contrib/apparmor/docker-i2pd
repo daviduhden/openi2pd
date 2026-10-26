@@ -7,6 +7,15 @@
 # the container entrypoint, certificates and runtime paths under an explicitly
 # attach-disconnected profile.
 #
+# This is a sample for the image built from contrib/docker: the binary lives at
+# /usr/local/bin/i2pd, the entrypoint at /entrypoint.sh and the persisted data
+# volume at /home/i2pd/data. Neither CMake nor the Debian package installs it;
+# the operator copies it to /etc/apparmor.d and selects it per container.
+#
+# attach_disconnected covers a container process whose root differs from the
+# host view, and mediate_deleted makes an access to an already-deleted file fail
+# closed instead of being allowed by a stale path rule.
+#
 
 # _________________________________________
 # /  Copy this file to the right location   \
@@ -34,19 +43,29 @@ profile docker-i2pd flags=(attach_disconnected,mediate_deleted) {
   #include <abstractions/openssl>
   #include <abstractions/nameservice>
 
+  # The entrypoint runs under the image's shell and then execs the router, so
+  # all three executables need an exec rule.
   /bin/busybox ix,
   /usr/local/bin/i2pd ix,
   /entrypoint.sh ixr,
 
+  # Reseed and family certificates baked into the image; the entrypoint links
+  # them into the data volume so verification also works offline.
   /i2pd_certificates/** r,
 
+  # Keys, netDb, torrent state and the file written by `log = file`.
   /home/i2pd/data/** rw,
 
+  # Lock only: the router owns the pidfile through its own descriptor.
   /home/i2pd/data/i2pd.pid k,
 
+  # The mounted configuration, tunnel definitions and certificates are
+  # operator-owned. The data rule above grants read access; these deny rules stop
+  # the container from rewriting its own policy.
   deny /home/i2pd/data/i2pd.conf w,
   deny /home/i2pd/data/tunnels.conf w,
   deny /home/i2pd/data/tunnels.d/** w,
   deny /home/i2pd/data/certificates/** w,
+  # Append-only sink: the router never needs to read back its own log.
   deny /home/i2pd/data/i2pd.log r,
 }

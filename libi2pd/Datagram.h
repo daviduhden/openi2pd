@@ -190,6 +190,10 @@ namespace datagram
 		return protocol == 6 || IsTypedDatagramProtocol (protocol);
 	}
 
+	/// Per-peer routing and send state for an I2P datagram destination.
+	/// The session retains its local destination; its mutex serializes the
+	/// LeaseSet, routing path and bounded send queue across service/SAM threads.
+	/// @see https://i2p.net/en/docs/specs/datagrams/
 	class DatagramSession : public std::enable_shared_from_this<DatagramSession>
 	{
 
@@ -306,6 +310,9 @@ namespace datagram
 	// Mapping). A zero-length Mapping is valid. Exposed for regression tests.
 	bool ParseDatagramOptions (i2p::util::Mapping & options, const uint8_t * buf, size_t len, size_t & offset);
 
+	/// Multiplexes datagram sessions and receiver callbacks by protocol and port.
+	/// Receiver payload/options pointers are borrowed for the callback; a receiver
+	/// that needs them afterwards must copy the data before returning.
 	class DatagramDestination : public std::enable_shared_from_this<DatagramDestination>
 	{
 		typedef std::function<void (const i2p::data::IdentityEx & from, uint16_t fromPort, uint16_t toPort,
@@ -326,6 +333,8 @@ namespace datagram
 		typedef std::shared_ptr<detail::ReceiverSlot<RawReceiver>> RawReceiverSlotPtr;
 
 	public:
+		/// Weak handle to a registered callback; destruction alone does not reset it.
+		/// Call Reset() from outside receiver callbacks when a drain barrier is needed.
 		class ReceiverRegistration
 		{
 		public:

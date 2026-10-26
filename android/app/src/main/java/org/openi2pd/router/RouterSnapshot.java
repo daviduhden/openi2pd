@@ -22,8 +22,9 @@ import java.util.List;
  * Immutable, presentation-safe view of the router.
  *
  * <p>The service publishes this object to the UI on the main thread. It holds
- * counters and status strings only; no native handle, socket, key material or
- * file path is ever part of it.</p>
+ * counters and status strings rather than native handles or sockets. The
+ * diagnostic strings can include exception details; consumers must not
+ * assume they have been redacted.</p>
  */
 public record RouterSnapshot(DaemonWrapper.State state, boolean nativeStarted, boolean online,
         String routerStatus, int routerStatusCode, String routerError, long uptimeSeconds,

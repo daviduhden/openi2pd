@@ -25,11 +25,17 @@ namespace i2p
 {
 namespace tunnel
 {
+	/// Packs delivery instructions and I2NP messages into tunnel-sized cells.
+	/// Large messages span a first fragment and numbered follow-on fragments;
+	/// each completed cell has nonzero padding, a delimiter, IV and checksum.
+	/// @see https://i2p.net/en/docs/specs/tunnel-message/
 	class TunnelGatewayBuffer
 	{
 	public:
 		TunnelGatewayBuffer ();
 		~TunnelGatewayBuffer ();
+		/// Append a message, completing cells as needed.
+		/// @pre block.data is non-null and contains a valid I2NP header.
 		void PutI2NPMsg (const TunnelMessageBlock & block);
 		const std::vector<std::shared_ptr<const I2NPMessage>> & GetTunnelDataMsgs () const { return m_TunnelDataMsgs; };
 		void ClearTunnelDataMsgs ();
@@ -46,6 +52,8 @@ namespace tunnel
 		std::unique_ptr<std::mt19937> m_Rng;
 	};
 
+	/// Buffered sender borrowing the tunnel through which completed cells travel.
+	/// The referenced TunnelBase must outlive the gateway.
 	class TunnelGateway
 	{
 	public:

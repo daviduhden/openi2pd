@@ -70,6 +70,9 @@ executing project code, or inspect a real private key.
 
 ## Conventions
 
+- Apply the [source documentation policy](../../../AGENTS.md#source-documentation-policy)
+  to key ownership, authentication failures and wire-size invariants.
+
 - Use the existing OpenSSL/LibreSSL wrappers and project primitives; do not
   invent a bespoke construction or hand-rolled constant-time code.
 - Fail closed for unsupported algorithms, malformed keys, failed verification,

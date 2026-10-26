@@ -6,7 +6,8 @@
 #
 # Command-line client for the I2PControl JSON-RPC service with exec, raw_info
 # and info subcommands. It uses core Perl modules plus a shell-free openssl
-# s_client fallback for HTTPS and never permits cleartext.
+# s_client fallback. HTTPS is the default; an explicit http:// URL is a
+# documented loopback-only opt-in that sends the password in cleartext.
 #
 
 use strict;
@@ -288,6 +289,9 @@ sub _pretty {
 
 sub _json_encode {
     my ($value) = @_;
+    # ascii keeps the body byte-identical whatever the process locale is;
+    # canonical output makes -j replies reproducible. The depth cap bounds a
+    # hostile or accidental deep structure.
     return JSON::PP->new->ascii->canonical->max_depth(64)->encode($value);
 }
 
@@ -360,6 +364,10 @@ sub _which {
     my ($name) = @_;
     $name .= $Config{_exe}
         if length $Config{_exe} && $name !~ /\Q$Config{_exe}\E\z/;
+    # Only absolute PATH entries are searched. A relative or empty entry could
+    # resolve to whatever sits in the current directory, and the result is
+    # executed without a shell, so the resolved absolute path is returned
+    # instead of the bare name.
     for my $directory (File::Spec->path) {
         next unless length $directory && File::Spec->file_name_is_absolute($directory);
         my $candidate = File::Spec->catfile($directory, $name);
@@ -371,6 +379,9 @@ sub _which {
 }
 
 sub _http_tiny_can_ssl {
+    # can_ssl() reports whether IO::Socket::SSL/Net::SSLeay are usable. The
+    # call is wrapped so an unusable stack is treated as "no TLS available"
+    # instead of aborting, which lets the openssl s_client fallback take over.
     my $can = eval { HTTP::Tiny->can_ssl() };
     return $can ? 1 : 0;
 }
@@ -442,6 +453,8 @@ sub _dechunk {
 sub _parse_http_response {
     my ($raw) = @_;
 
+    # Start at the status line so anything printed before it is skipped instead
+    # of being treated as part of the body or the headers.
     my $start = index($raw, 'HTTP/');
     die "Error: invalid HTTP response from I2PControl\n" if $start < 0;
     my $response = substr($raw, $start);
@@ -490,6 +503,9 @@ sub _reap_child {
     my ($pid, $grace) = @_;
     return unless $pid;
 
+    # A successful exchange still needs a bounded wait, then escalation:
+    # s_client can linger after the response, and a stuck child would otherwise
+    # keep the command alive. Polling keeps the wait interruptible and bounded.
     my $result = waitpid($pid, POSIX::WNOHANG());
     return if $result == -1;
 
@@ -1107,3 +1123,155 @@ sub _run_cli {
 }
 
 exit _run_cli() unless caller;
+
+=head1 NAME
+
+i2pdctl - command-line client for the openi2pd I2PControl service
+
+=head1 SYNOPSIS
+
+    i2pdctl [-h]
+    i2pdctl exec [-h] [-j] METHOD PARAMETERS
+    i2pdctl raw_info [-h] [METHOD ...]
+    i2pdctl info [-h]
+
+=head1 DESCRIPTION
+
+Speaks JSON-RPC 2.0 to the router management endpoint and preserves the
+command line of the former project-maintained script. The first request
+authenticates with the configured password and the returned token is reused
+for the remaining calls of the same invocation. Operator documentation,
+including the security trade-offs of the self-signed certificate, is in
+F<docs/tools/i2pdctl.md>.
+
+=head1 COMMANDS
+
+=over 4
+
+=item exec
+
+C<METHOD> is an I2PControl method name and C<PARAMETERS> must be one JSON
+object. The result is printed in a readable form, or as the raw reply with
+C<-j>.
+
+=item raw_info
+
+Requests the predefined parameter sets for C<RouterInfo> and
+C<ClientServicesInfo> and prints a single JSON object keyed by method name.
+Method names are de-duplicated.
+
+=item info
+
+Prints a human-readable router and interface summary. Every server-supplied
+value is escaped before it reaches the terminal.
+
+=back
+
+=head1 ENVIRONMENT
+
+=over 4
+
+=item I2PCONTROL_URL
+
+Management endpoint; defaults to C<https://127.0.0.1:7650/>. Only C<http://>
+and C<https://> URLs without embedded credentials are accepted. A plain
+C<http://> URL sends the password in cleartext and is only appropriate for a
+service bound to loopback.
+
+=item I2PCONTROL_PASSWORD
+
+Authentication password. It defaults to the well-known I2PControl default,
+which must be changed in the router configuration before the service is
+enabled. The value is never written to a log or an error message.
+
+=item I2PDCTL_TLS_BACKEND
+
+C<auto> (default) or C<openssl>. C<auto> prefers C<IO::Socket::SSL> through
+C<HTTP::Tiny> and falls back to the C<openssl s_client> transport; C<openssl>
+forces the fallback for diagnostics and the regression tests. Any other value
+fails with status 1. No value enables a cleartext downgrade of an C<https://>
+URL.
+
+=back
+
+Proxy variables are removed from a localized copy of the environment, so the
+password and token cannot be forwarded to an environment-selected proxy.
+
+=head1 INPUT AND OUTPUT
+
+Nothing is read from STDIN. Data and the raw C<-j> reply go to STDOUT; usage
+text and diagnostics go to STDERR. Two legacy behaviours are preserved: a
+C<PARAMETERS> value that is not a JSON object, and an unsupported C<raw_info>
+method, print an English message on STDOUT and still return 0.
+
+=head1 EXIT STATUS
+
+=over 4
+
+=item 0
+
+Success, including an explicit help request.
+
+=item 1
+
+Transport or protocol failure, failed authentication, an invalid
+C<I2PDCTL_TLS_BACKEND> value, or an unavailable endpoint (which reports on
+STDOUT rather than STDERR).
+
+=item 2
+
+Usage error: unknown subcommand or option, missing or extra arguments.
+
+=back
+
+=head1 SECURITY
+
+=over 4
+
+=item *
+
+No shell is used. C<openssl> is located through absolute C<PATH> entries only
+and started with an argument vector.
+
+=item *
+
+Credentials are refused in the URL and never logged; the password appears
+only in the JSON authentication body.
+
+=item *
+
+Certificate verification is deliberately disabled for the router's
+self-signed management certificate, so C<https://> protects against a passive
+observer but not against an active man-in-the-middle.
+
+=item *
+
+Requests and responses are capped at 1 MiB each, JSON nesting is capped, and
+every exchange is time-bounded (30 s per socket operation plus a 35 s
+wall-clock alarm) so a stalled peer cannot hang the command.
+
+=item *
+
+Values printed by C<info> are escaped for control, format and non-ASCII
+characters so a spoofed endpoint cannot inject terminal sequences or forge
+output lines.
+
+=back
+
+=head1 DEPENDENCIES
+
+Core modules only (strict, warnings, Config, Cwd, File::Spec, Getopt::Long,
+JSON::PP, HTTP::Tiny, IPC::Open3, IO::Select, POSIX, Symbol, 5.016), plus
+C<IO::Socket::SSL>/C<Net::SSLeay> when the host already provides them and the
+system C<openssl> binary for the fallback. No CPAN install or module download
+is required or attempted.
+
+=head1 PORTABILITY
+
+Runs with the OpenBSD base interpreter and base C<openssl>. C<$Config{_exe}>
+supplies the executable suffix on Windows; the whole-exchange deadlines rely
+on C<alarm>, so they need a platform where SIGALRM is available.
+
+=head1 SEE ALSO
+
+F<docs/tools/i2pdctl.md>, F<daemon/I2PControl.h>.

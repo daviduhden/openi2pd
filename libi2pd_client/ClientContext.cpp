@@ -163,6 +163,13 @@ namespace client
 		return proxy;
 	}
 
+	// Ordered client teardown. Every container is snapshotted and cleared under
+	// its own lock, then the services are stopped outside the lock, because a
+	// stop re-enters the registry (Done()/RemoveHandler). The order matters:
+	// listeners and proxies first, then the protocol servers that own
+	// destinations, then the address book and datagram tunnels, and only then
+	// the destinations themselves. Reversing it would let an acceptor publish a
+	// handler for a destination that is already gone.
 	void ClientContext::Stop ()
 	{
 		auto httpProxy = DetachHttpProxy ();
@@ -538,6 +545,16 @@ namespace client
 		return true;
 	}
 
+	// Live reload protocol. The shared local destination is replaced first
+	// because the address book timers and every service hold it; then the two
+	// proxies are re-created. Server tunnels are handled in three passes:
+	// detach every acceptor (incoming streams wait in the streaming queue
+	// instead of being refused), reset the transient `isUpdated` flag, re-read
+	// the tunnel files (a tunnel that still exists re-installs its own
+	// acceptor and sets the flag again), and finally remove the tunnels that
+	// nobody re-read. Destinations whose reference count dropped to zero are
+	// collected and stopped last, so a tunnel removed in an earlier pass has
+	// already released its destination.
 	void ClientContext::ReloadConfig ()
 	{
 		// TODO: handle config changes
@@ -987,6 +1004,12 @@ namespace client
 		return w;
 	}
 
+	// Reads every tunnel section from the main tunnel file and from
+	// `tunnels.d/*.conf`, in that order. Each section must claim a unique
+	// administrative name before any object is created, so a duplicate is a
+	// configuration error rather than an ambiguous StartTunnel/StopTunnel
+	// target; the registry is cleared first, which is what releases the names of
+	// sections that disappeared.
 	void ClientContext::ReadTunnels ()
 	{
 		int numClientTunnels = 0, numServerTunnels = 0;
@@ -1025,6 +1048,11 @@ namespace client
 		LogPrint (eLogInfo, "Clients: ", numServerTunnels, " I2P server tunnels created");
 	}
 
+	// Append one INI section that was recovered from a file the parser rejected
+	// as a whole. A single malformed line makes read_ini throw and would drop
+	// every tunnel in the file, including the correct sections, so the recovery
+	// path parses each section independently and skips only the ones that are
+	// still unreadable.
 	void ClientContext::AddSection (
 		boost::property_tree::ptree & pt, const std::string & name, const std::string & chunk, int & numSections)
 	{

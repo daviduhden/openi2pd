@@ -74,6 +74,9 @@ namespace client
 	};
 	I2CPAdmissionPolicy MakeI2CPAdmissionPolicy (size_t configuredConnections, size_t configuredSessions);
 
+	/// I2CP message header: four-byte big-endian payload length followed by a
+	/// one-byte type. The connection begins with I2CP_PROTOCOL_BYTE before any
+	/// such header. See https://i2p.net/en/docs/specs/i2cp/.
 	const size_t I2CP_HEADER_LENGTH_OFFSET = 0;
 	const size_t I2CP_HEADER_TYPE_OFFSET = I2CP_HEADER_LENGTH_OFFSET + 4;
 	const size_t I2CP_HEADER_SIZE = I2CP_HEADER_TYPE_OFFSET + 1;
@@ -150,9 +153,10 @@ namespace client
 		std::shared_ptr<const i2p::data::IdentityEx> identity, const std::vector<uint8_t> & options = { },
 		uint8_t result = eI2CPHostReplySuccess);
 
-	// Decoded SEND MESSAGE / SEND MESSAGE EXPIRES request. `flags` and
-	// `expiration` only exist in the expires form; the expiration is a
-	// 48-bit milliseconds-since-epoch value, 0 meaning "does not expire".
+	/// Decoded SEND MESSAGE / SEND MESSAGE EXPIRES payload. Identity and payload
+	/// pointers borrow the input passed to ParseI2CPSendMessage and cannot
+	/// outlive it. Flags and expiration exist only in the expires form; the
+	/// 48-bit expiration is epoch milliseconds, with 0 meaning no expiry.
 	struct I2CPSendMessageRequest
 	{
 		uint16_t sessionID = 0xFFFF;
@@ -262,6 +266,9 @@ namespace client
 	i2p::data::IdentHash GetI2CPRoutingSessionKey (const uint8_t * identity, size_t len);
 
 	class I2CPSession;
+	/// Destination adapter owned by an I2CP session. It holds a shared session
+	/// reference for callbacks; Stop() cancels its timers and releases that
+	/// reference so destination/session ownership can unwind.
 	class I2CPDestination : public LeaseSetDestination
 	{
 	public:
@@ -361,6 +368,9 @@ namespace client
 	};
 
 	class I2CPServer;
+	/// One I2CP control connection. Socket and send queue belong to the server's
+	/// service thread; cross-thread Stop() posts teardown with shared ownership.
+	/// The referenced server must outlive this session and pending callbacks.
 	class I2CPSession : public std::enable_shared_from_this<I2CPSession>
 	{
 	public:
@@ -369,7 +379,16 @@ namespace client
 
 		~I2CPSession ();
 
+		/// Begin the control connection: the first byte on the wire is
+		/// I2CP_PROTOCOL_BYTE, followed by length/type framed messages. Every
+		/// later read is individually deadline-bounded; an established session
+		/// that simply sends nothing stays open, because clients keep the socket
+		/// between messages. The server already charged this connection against
+		/// its admission budget before Start().
 		void Start ();
+		/// Post a teardown request. The socket and the send queue belong to the
+		/// server's service thread, so a caller on another thread only schedules
+		/// the owner-thread teardown; it never closes the socket itself.
 		void Stop ();
 		uint16_t GetSessionID () const { return m_SessionID.load (); };
 		// Only I2CPServer inserts a session, and only after the identifier has
@@ -379,6 +398,12 @@ namespace client
 		std::shared_ptr<const I2CPDestination> GetDestination () const { return m_Destination; };
 
 		// called from I2CPDestination
+		/// Queue one I2CP message to the client. The four-byte big-endian length
+		/// covers the payload only (the type byte is not counted) and the whole
+		/// frame is copied into a caller-independent buffer before it is queued,
+		/// so the caller may release @a payload immediately and a caller on any
+		/// thread is safe. An oversized message is dropped with an error log
+		/// instead of being truncated.
 		void SendI2CPMessage (uint8_t type, const uint8_t * payload, size_t len);
 		void SendMessagePayloadMessage (const uint8_t * payload, size_t len);
 		// `sessionID` defaults to this session's identifier; a BAD_SESSION status
@@ -472,6 +497,8 @@ namespace client
 	};
 	typedef void (I2CPSession::*I2CPMessageHandler) (const uint8_t * buf, size_t len);
 
+	/// I2CP listener and session registry. Connection and session admission are
+	/// separately bounded, while the session map is protected by its mutex.
 	class I2CPServer : private i2p::util::RunnableService
 	{
 	public:

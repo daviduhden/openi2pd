@@ -50,6 +50,17 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
+/**
+ * Manual device-CI contract for the real SAF broker process.
+ *
+ * <p>Hosts nothing itself: it binds {@code :torrent_storage}, checks the
+ * reported generation/API version, that a foreign operation id or wrong owner
+ * is refused, that retirement is one-shot and generation-fenced, and that a
+ * rebind after broker death reaches a fresh generation. Payload IO through a
+ * real tree grant, foreign-UID denial and a provider that ignores cancellation
+ * stay manual scenarios; the provider-boundary cases live in
+ * {@link TorrentSafProviderCancellationTest}.</p>
+ */
 @RunWith(AndroidJUnit4.class)
 public final class TorrentSafBrokerContractTest {
     private static final long BIND_TIMEOUT_MS = 10000;

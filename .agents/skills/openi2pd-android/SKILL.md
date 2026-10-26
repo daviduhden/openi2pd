@@ -84,6 +84,9 @@ run Gradle, install an APK or run a device test.
 
 ## Conventions
 
+- Apply the [source documentation policy](../../../AGENTS.md#source-documentation-policy)
+  to lifecycle, main-thread, JNI and Binder/SAF resource ownership contracts.
+
 - Keep Java source/target 25, exact JDK 25 toolchain, Gradle JVM >=25, AGP
   9.4.1, compile/target 37, `minSdk 29` and NDK r30 unless a deliberate
   toolchain task updates the whole matrix.
@@ -274,6 +277,12 @@ run Gradle, install an APK or run a device test.
   resource ids (`TorrentControl.UserMessageException`), and the log row,
   notification channel and torrent labels are resources. `zh-TW`/`zh-Hant`
   must fall back to English; `LocaleResourceTest` pins both rules.
+
+- Use Javadoc for lifecycle-owning services, Binder/AIDL contracts, SAF
+  authority and JNI reference/exception rules; state main-thread versus
+  executor responsibilities. Follow
+  [`docs/source-documentation.md`](../../../docs/source-documentation.md);
+  doclint runs with warnings as errors in the manual lane.
 
 ## Do not
 

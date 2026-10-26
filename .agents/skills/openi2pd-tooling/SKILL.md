@@ -85,6 +85,9 @@ a TUI client.
 
 ## Conventions
 
+- Apply the [source documentation policy](../../../AGENTS.md#source-documentation-policy)
+  to tool input/output, exit behavior and non-obvious Perl transformations.
+
 - Native tools stay portable C++23 with the existing `tools/common` helpers;
   avoid GNU-only assumptions and platform-specific includes outside guards.
 - Validate addresses, ports, file sizes and option combinations before
@@ -95,8 +98,9 @@ a TUI client.
   additive.
 - Perl uses core modules only unless an approved dependency already exists;
   no CPAN, Python, network install or hidden download.
-- `i2pdctl` remains an HTTPS-only I2PControl JSON-RPC client with a loopback
-  default; do not add cleartext or a browser console.
+- `i2pdctl` defaults to HTTPS with a loopback endpoint; an explicit `http://`
+  URL is a documented loopback-only cleartext opt-in, not a general cleartext
+  mode. Do not add a browser console or a network listener.
 - Preserve upstream provenance/license notices for imported tools.
 - Keep tool names, CLI behavior and install paths unless a migration is
   approved.
@@ -171,6 +175,11 @@ a TUI client.
 - CLI: explicit help is exit 0 on stdout; usage/runtime errors are stderr with
   a documented code; data/machine output stays on stdout; `regaddr_3ld` emits
   one LF-only record. `tools-cli`/`tools-getopt` are the focused tests.
+
+- Perl helpers use a short POD header (purpose, options, I/O, exit codes,
+  dependencies, portability) and inline comments only for non-obvious regex,
+  transforms, retries or atomic writes. Shell helpers follow the POSIX rules in
+  [`docs/source-documentation.md`](../../../docs/source-documentation.md).
 
 ## Do not
 

@@ -182,9 +182,11 @@ systemctl show -p Type -p KillSignal -p TimeoutStopUSec i2pd.service
 systemctl cat i2pd.service
 ```
 
-Logs go to journald by default. The unit sets `LogsDirectory=i2pd` (mode
-0700), so the documented `log = file` opt-in with
-`logfile = /var/log/i2pd/i2pd.log` also works under `ProtectSystem=strict`.
+The packaged `ExecStart` explicitly passes `--log=stdout`, sending output to
+journald. To use `log = file` and `logfile = /var/log/i2pd/i2pd.log`, replace
+`ExecStart` in a systemd drop-in and remove that command-line override as well
+as updating the configuration. `LogsDirectory=i2pd` creates the directory
+with mode 0700 and makes it writable under `ProtectSystem=strict`.
 `SyslogIdentifier=open-i2pd` is a frozen compatibility identifier for journal
 filters; the product name remains `openi2pd` and the unit is `i2pd.service`.
 
@@ -226,9 +228,9 @@ must stay compatible with:
   I2PControl local socket;
 - persistence of keys, netDb, profiles and torrent state under the data
   directory;
-- file logging under `/var/log/i2pd` when `log = file` is selected; the
-  packaged unit uses journald, so add that directory to `ReadWritePaths` and
-  create it with `i2pd` ownership if you opt into file logging;
+- file logging under `/var/log/i2pd` when selected; a custom unit must make
+  that directory writable by `i2pd`, for example with `LogsDirectory` or an
+  appropriately owned directory and `ReadWritePaths`;
 - the router's outbound network access.
 
 Do not set `PrivateNetwork=true` for a router that must reach the I2P network.

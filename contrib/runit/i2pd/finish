@@ -4,10 +4,10 @@
 #
 # openi2pd: finish.
 #
-# runsv records the router exit status and restarts it after a short pause.
-# The delay turns a persistent configuration or account failure into a slow,
-# visible retry loop instead of a busy respawn. Never remove the daemon-owned
-# pidfile here: runsv may already have started a newer instance.
+# runsv invokes this with the router exit code and termination status. If the
+# service is still wanted, the pause slows retries for persistent startup
+# failures. Never remove the daemon-owned pidfile here; its lifetime belongs
+# to the router, not the finish script.
 #
 
 set -eu

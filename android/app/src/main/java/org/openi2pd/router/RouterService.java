@@ -80,9 +80,9 @@ import java.util.function.UnaryOperator;
  * <p><b>Task removal:</b> the manifest declares
  * {@code android:stopWithTask="false"}, so {@link #onTaskRemoved(Intent)} is a
  * UI event and must not stop the daemon or touch the run state;
- * {@link #onDestroy()} is the only place that drops the remaining main-handler
- * messages (including SAF deadlines), so a destroyed owner cannot be kept
- * reachable by a queued callback.</p>
+ * {@link #onDestroy()} removes messages already queued on the main handler,
+ * including SAF deadlines. An in-flight provider operation may still complete
+ * and post after that removal; destroying the service is not a queue drain.</p>
  *
  * <p><b>Process model:</b> the service is intentionally same-process and not
  * exported. {@link LocalBinder} is therefore an in-process Binder, not AIDL.
@@ -353,6 +353,19 @@ public class RouterService extends Service {
         }
     }
 
+    /**
+     * Acquire the owner epoch and reconcile the durable run intent once.
+     *
+     * <p>Runs on the main thread. It creates the owner-scoped view over the
+     * single process FIFO (the gate that fences a stale service owner),
+     * constructs {@link DaemonWrapper} with {@code autoStart=false} and
+     * publishes the first local snapshot. A {@code Stopped} intent does
+     * nothing, a running intent starts the daemon, and a drain is either
+     * finished (its deadline passed while the process was gone) or re-armed
+     * with the remaining wall-clock delay. If the foreground notification
+     * cannot be installed the intent is retained and reported as a deferred
+     * restore; a router is never started without its notification.</p>
+     */
     @Override
     public void onCreate() {
         super.onCreate();
@@ -417,6 +430,20 @@ public class RouterService extends Service {
         }
     }
 
+    /**
+     * Dispatch one {@link RouterCommand} and decide the service stickiness.
+     *
+     * <p>Called on the main thread. The sealed command is decoded by
+     * {@link RouterCommand#fromAction(String, String)} and matched
+     * exhaustively, so a new record fails compilation here instead of being
+     * silently ignored. Commands that need the foreground enter it first and
+     * fail only their own start id, which satisfies the platform's five-second
+     * {@code startForeground()} obligation. Native work is always enqueued on
+     * the control worker; no path blocks the main thread. The result is
+     * {@code START_STICKY} only while the persisted intent or a started daemon
+     * still needs the service, so an explicit stop, an unknown action and a
+     * restore that stays stopped are never sticky.</p>
+     */
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
         String action = intent == null ? null : intent.getAction();
@@ -566,11 +593,21 @@ public class RouterService extends Service {
         }
     }
 
+    /**
+     * Return the in-process binder. Clients must go through
+     * {@link RouterRepository}; this is deliberately not an AIDL interface and
+     * the service is not exported, so no other UID gains router control.
+     */
     @Override
     public IBinder onBind(Intent intent) {
         return binder;
     }
 
+    /**
+     * Safety net for a client that died without unregistering: observation
+     * stops, while the daemon, the notification and the persisted run state
+     * keep running. Returning {@code false} means no rebind callback is wanted.
+     */
     @Override
     public boolean onUnbind(Intent intent) {
         // The repository unregisters explicitly; this is the safety net for a
@@ -603,6 +640,17 @@ public class RouterService extends Service {
         super.onTaskRemoved(rootIntent);
     }
 
+    /**
+     * Tear down this service owner without losing the run intent.
+     *
+     * <p>Runs on the main thread. Retirement and the mandatory native stop are
+     * queued atomically, so work already accepted by this owner drains ahead of
+     * the stop and no later submission from it can run. The SAF lane is shut
+     * down, the pending import cancel hook is invoked and the main-handler
+     * messages are purged: an in-flight provider call may still post after
+     * this point, so destruction is not a queue drain. The persisted run state
+     * is deliberately kept so {@code START_STICKY} can restore the router.</p>
+     */
     @Override
     public void onDestroy() {
         ServiceOwnerEpoch.retireAndQueueStop(ownerEpoch,
@@ -641,10 +689,9 @@ public class RouterService extends Service {
         // still restore the router after a system-initiated destruction.
         releaseMulticastLock();
         stopForegroundCompat();
-        // Destruction only: drop every remaining main-handler message so the
-        // SAF import/export deadlines and their completion posts cannot keep a
-        // destroyed service (or the Activity that called it) reachable. This
-        // must never run on a plain stop, where queued work still has to
+        // Destruction only: remove messages currently in this handler, including
+        // SAF deadlines. An in-flight provider call may still post a completion
+        // after this point. A plain stop keeps the queued callbacks so work can
         // finish and report its outcome.
         mainHandler.removeCallbacksAndMessages(null);
         super.onDestroy();
@@ -671,6 +718,15 @@ public class RouterService extends Service {
     // Binder API (same process, main-thread safe)
     // ---------------------------------------------------------------------
 
+    /**
+     * Register an observation listener and publish the current snapshot and
+     * log list immediately, then start the one-second poll.
+     *
+     * <p>Safe to call from any thread: all work is posted to the main thread,
+     * so the listener callbacks always arrive there. Registering is also the
+     * single documented retry point for a restore that could not reach the
+     * foreground on the first attempt, which keeps a stuck restore bounded.</p>
+     */
     public void registerListener(Listener listener) {
         if (listener == null) {
             return;
@@ -695,6 +751,7 @@ public class RouterService extends Service {
         });
     }
 
+    /** Remove one listener; removing the last one stops status/log polling. */
     public void unregisterListener(Listener listener) {
         if (listener == null) {
             return;
@@ -720,6 +777,11 @@ public class RouterService extends Service {
         runOnMain(this::pollNow);
     }
 
+    /**
+     * Request a start and persist the running intent before the worker is
+     * asked. Main-thread safe; the wrapper rejects a start while one is
+     * already running, so repeated taps cannot create a second daemon.
+     */
     public void startRouter() {
         runOnMain(() -> {
             if (!ensureForeground()) {
@@ -731,6 +793,11 @@ public class RouterService extends Service {
         });
     }
 
+    /**
+     * Terminal stop: persist {@code Stopped}, clear the graceful deadline and
+     * enqueue the native stop on the control worker. The caller is never
+     * blocked and the daemon is never stopped on the main thread.
+     */
     public void stopRouter() {
         runOnMain(() -> {
             persistStopped();
@@ -739,6 +806,7 @@ public class RouterService extends Service {
         });
     }
 
+    /** Restart through the wrapper's ordered stop-then-start path. */
     public void restartRouter() {
         runOnMain(() -> {
             if (!ensureForeground()) {
@@ -1128,10 +1196,17 @@ public class RouterService extends Service {
     // Commands used by receivers/tile without binding.
     // ---------------------------------------------------------------------
 
+    /**
+     * Coarse process-wide mirror for components that cannot bind (Quick
+     * Settings tile, deprecated receivers). It reflects the last published
+     * daemon state and is not a singleton handle: it carries no listener, no
+     * native pointer and no run-state write.
+     */
     public static boolean isRouterRunning() {
         return routerRunning;
     }
 
+    /** Deliver a start intent from a caller that cannot bind its own service. */
     public static boolean requestStart(Context context) {
         return sendCommand(context, ACTION_START, true);
     }
@@ -1730,7 +1805,12 @@ public class RouterService extends Service {
         }
     }
 
-    /** Reads only a user-granted content URI; JNI receives bytes, never its path. */
+    /**
+     * Import bounded metainfo from a user-granted content URI on the SAF worker.
+     * JNI receives the bytes, never the provider path. The deadline requests
+     * cancellation; it cannot force a blocked provider stream to return.
+     * The response is posted to the main handler.
+     */
     public void importTorrent(
             int tunnel, android.net.Uri document, java.util.function.Consumer<String> callback) {
         if (destroyed || tunnel < 0 || document == null || !"content".equals(document.getScheme())
@@ -1814,7 +1894,13 @@ public class RouterService extends Service {
         }
     }
 
-    /** SAF creation exports metadata only; it does not claim the sources are seedable. */
+    /**
+     * Hash a selected SAF source and produce metadata on the SAF worker.
+     * Progress and the final byte array are posted to the main handler; a null
+     * result denotes failure. The 30-minute deadline requests cancellation but
+     * cannot force a provider that ignores cancellation to return. The result
+     * is metadata only and does not establish payload seeding authority.
+     */
     public void createSafTorrent(android.net.Uri source, boolean tree, int pieceLength,
             String[] trackers, boolean privateTorrent, java.util.function.LongConsumer progress,
             java.util.function.Consumer<byte[]> callback) {
@@ -1871,12 +1957,23 @@ public class RouterService extends Service {
         }
     }
 
+    /**
+     * Request cancellation of the SAF import or creation currently in flight.
+     * The hook only signals; the worker still owns the descriptor and closes
+     * it, so cancelling never races a read on another thread.
+     */
     public void cancelSafCreation() {
         Runnable cancel = cancelTorrentImport;
         if (cancel != null)
             cancel.run();
     }
 
+    /**
+     * Export bounded metainfo through the broker's one-shot document grant.
+     * Completion is posted to the main handler. On failure the broker is asked
+     * to truncate the incomplete export, then the handle is closed; the
+     * user-selected document is not deleted and cleanup can itself fail.
+     */
     public void exportTorrent(android.net.Uri target, byte[] metadata,
             java.util.function.Consumer<Boolean> callback) {
         if (target == null || !"content".equals(target.getScheme()) || metadata == null
@@ -2087,7 +2184,12 @@ public class RouterService extends Service {
         }
     }
 
-    /** Persist an already computed state (used when the caller started from a loaded value). */
+    /**
+     * Persist an already computed state. The lock serializes this write, but
+     * the earlier read occurred outside the lock and no generation comparison
+     * rejects a stale state; callers requiring an atomic transition must use
+     * {@link #updateRunState(UnaryOperator)}.
+     */
     private void persistRunState(RouterRunState state) {
         if (state == null) {
             return;

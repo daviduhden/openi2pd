@@ -238,6 +238,11 @@ foreach(required_policy IN ITEMS
     "never perform a blocking read on an event-loop thread"
     "Never chmod a pathname and reopen it for secret output"
     "Do not duplicate normative policy"
+    "Source documentation policy"
+    "Public APIs must state their contracts"
+    "Explain security decisions"
+    "Update affected comments whenever implementation or interfaces change"
+    "Do not retain comments that contradict the code"
     "development task is not complete until the agent has reviewed"
     "even when the correct outcome is \"no skill file changed\"")
   string(FIND "${agents_text}" "${required_policy}" policy_position)

@@ -47,6 +47,15 @@ final class TorrentControl {
     private TorrentControl() {
     }
 
+    /**
+     * Decode a bounded {@code I2PDTUI/1} response into immutable fields.
+     * The frame length is a UTF-8 byte count, not a Java character count;
+     * enforcing it before splitting fields detects truncated or extra payloads.
+     *
+     * @param response complete header and payload from the native control path
+     * @return parsed key/value fields, preserving their wire order
+     * @throws IllegalArgumentException if the frame, fields or operation fail
+     */
     static Map<String, String> fields(String response) {
         if (response == null || response.length() > 262272) {
             throw new IllegalArgumentException("Invalid control response");
@@ -104,6 +113,12 @@ final class TorrentControl {
         return "TORRENT-ADD-MAGNET " + tunnel + " " + magnet;
     }
 
+    /**
+     * Decode the control protocol's field escaping: {@code \n}, {@code \r} and
+     * {@code \\} become their literal characters and any other backslash
+     * sequence is preserved verbatim, so an unknown escape never loses bytes.
+     * The result is still untrusted display text; callers bound and sanitise it.
+     */
     static String unescape(String value) {
         StringBuilder text = new StringBuilder(value.length());
         for (int i = 0; i < value.length(); ++i) {

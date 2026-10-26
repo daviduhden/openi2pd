@@ -12,6 +12,8 @@
 set -e
 
 if [ "$1" = "purge" ]; then
+	# Removal preserves state; purge intentionally deletes configuration, logs
+	# and router data, including any identity keys in the data directory.
 	update-rc.d i2pd remove >/dev/null || true
 	rm -f /etc/default/i2pd
 	rm -rf /etc/i2pd

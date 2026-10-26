@@ -7,6 +7,10 @@
 # process. i2pd logs to stdout; dinit appends that output to the configured log
 # file. Create /var/log/i2pd (0700, i2pd:i2pd) and /var/lib/i2pd before use.
 #
+# Sample only: I2PD_SERVICE_MANAGER selects none, systemd, openrc, runit, s6,
+# s6-rc, shepherd or sysvinit, so CMake does not install this file. Copy it into
+# the dinit service directory and add it to the enable list yourself.
+#
 # Minimum dinit: 0.17 (log-type/logfile/logfile-uid/logfile-gid/
 # logfile-permissions, restart-limit-count/interval, rlimit-nofile and
 # smooth-recovery must all be recognised; an older dinit rejects the file).
@@ -18,33 +22,47 @@
 
 type = process
 run-as = i2pd
+# The account must own /var/lib/i2pd; dinit drops privileges before exec.
 working-dir = /var/lib/i2pd
+# --service selects the system-folder defaults for options left unset; every
+# path this unit depends on is passed explicitly. --foreground keeps a local
+# `daemon = true` from detaching the process dinit is supervising.
 command = /usr/bin/i2pd --conf=/etc/i2pd/i2pd.conf --tunconf=/etc/i2pd/tunnels.conf --tunnelsdir=/etc/i2pd/tunnels.conf.d --certsdir=/usr/share/i2pd/certificates --datadir=/var/lib/i2pd --service --foreground --log=stdout
 
 # dinit captures the daemon's stdout/stderr; the service passes --foreground,
 # not the self-daemonizing mode. No pidfile is used for supervision and no
-# notification readiness protocol is involved. The router still writes its
-# default pidfile inside the data directory for administrative tools.
+# notification readiness protocol is involved, so a successful start means only
+# that the process was executed. The router still writes its default pidfile
+# inside the data directory for administrative tools.
 log-type = file
 logfile = /var/log/i2pd/i2pd.log
+# dinit creates the file with these owners and mode; it does not create the
+# directory, and the router never opens this path itself because it logs to
+# stdout.
 logfile-uid = i2pd
 logfile-gid = i2pd
 logfile-permissions = 0600
 
 restart = on-failure
+# Keep the service considered started across a restart, so dependents are not
+# stopped and started again for every router crash.
 smooth-recovery = true
 restart-delay = 5
+# The same five restarts in 300 s as the packaged systemd unit's start limit.
 restart-limit-count = 5
 restart-limit-interval = 300
 
 # SIGINT is the graceful shutdown signal; allow the same ten-minute tunnel
 # expiry period as the systemd unit, plus a shutdown margin, before dinit
-# escalates to SIGKILL.
+# escalates to SIGKILL. A second SIGINT ends the drain immediately, and SIGTERM
+# would skip it entirely.
 term-signal = INT
 stop-timeout = 660
 
 rlimit-nofile = 8192
 
-# Optional ordering only; dinit does not require ntpd to be installed.
+# Optional ordering only; dinit does not require ntpd to be installed. `after`
+# orders the start actions and provides no readiness signal, so the router still
+# has to tolerate a clock that is not yet synchronised.
 after = ntpd
 # after = yggdrasil

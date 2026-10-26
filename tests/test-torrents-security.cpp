@@ -485,6 +485,15 @@ void TestTorrentFileIO ()
 // constructed.
 void TestUnsafeTorrentPaths ()
 {
+	// A non-string component must invalidate the entire list rather than be
+	// skipped by the generic bencode parser and change the intended path.
+	const auto invalidFile = Dict ({ { "length", "i16384e" }, { "path", "l3:subi1e8:file.bine" } });
+	const auto invalidMeta = Dict ({ { "info",
+		Dict ({ { "files", "l" + invalidFile + "e" }, { "name", Bytes ("root") },
+			{ "piece length", "i16384e" }, { "pieces", Bytes (std::string (SHA_DIGEST_LENGTH, 'A')) } }) } });
+	Torrent invalidComponent (invalidMeta);
+	assert (invalidComponent.GetError () == eTorrentErrorMalformedMetaInfo);
+
 	Torrent traversal (MakeMultiFileTorrent ("root", { "..", "escape.bin" }));
 	assert (traversal.GetError () == eTorrentErrorMalformedMetaInfo);
 
@@ -510,6 +519,18 @@ void TestUnsafeTorrentPaths ()
 	Torrent valid (MakeMultiFileTorrent ("root", { "sub", "file.bin" }));
 	assert (valid.GetError () == eTorrentErrorNoError);
 	assert (!valid.GetFiles ().empty ());
+}
+
+void TestStrictBencodedStringList ()
+{
+	const auto valid = ParseStringList ("l0:1:xe");
+	assert (valid.second == 7 && valid.first.size () == 2);
+	assert (valid.first[0].empty () && valid.first[1] == "x");
+	for (std::string_view bad : { "li1ee", "l1:ai1ee", "ll1:aee", "ld1:a1:bee", "l1:a" })
+	{
+		auto parsed = ParseStringList (bad);
+		assert (!parsed.second && parsed.first.empty ());
+	}
 }
 
 // Lexical containment and symlink rejection used by the session before it
@@ -854,6 +875,7 @@ int main ()
 	TestDHTPeerBounds ();
 	TestTorrentFileIO ();
 	TestUnsafeTorrentPaths ();
+	TestStrictBencodedStringList ();
 	TestPathContainment ();
 #ifndef _WIN32
 	TestTorrentFileSymlinkRejection ();

@@ -99,6 +99,13 @@ public class RouterViewModel extends AndroidViewModel {
         torrentImportResult.setValue(null);
     }
 
+    /**
+     * Start a bounded SAF import and publish its single result.
+     *
+     * <p>Main-thread only. A second import is ignored while one is running, and
+     * the previous result is cleared so the UI cannot act on a stale response.
+     * The repository posts the completion back on the main thread.</p>
+     */
     public void importTorrent(int tunnel, android.net.Uri document) {
         if (importingTorrent)
             return;
@@ -110,11 +117,20 @@ public class RouterViewModel extends AndroidViewModel {
         });
     }
 
+    /** Progress and final metadata of the one SAF creation in progress. */
     public record SafCreation(boolean running, long bytes, byte[] metadata, String error) {}
     private final MutableLiveData<SafCreation> safCreation = new MutableLiveData<>();
     public LiveData<SafCreation> getSafCreation() {
         return safCreation;
     }
+    /**
+     * Hash a user-selected SAF source into metainfo on the service's SAF lane.
+     *
+     * <p>Main-thread only. Progress is published as it is hashed and exactly
+     * one terminal {@link SafCreation} follows; a null result carries a
+     * localized error. The result is metadata only and grants no payload
+     * authority, and a second creation is ignored while one runs.</p>
+     */
     public void createSafTorrent(android.net.Uri source, boolean tree, int pieceLength,
             String[] trackers, boolean privateTorrent) {
         SafCreation old = safCreation.getValue();
@@ -148,6 +164,11 @@ public class RouterViewModel extends AndroidViewModel {
         repository.selectPayloadTree(tunnel, hash, tree, callback);
     }
 
+    /**
+     * Release the payload grant for one torrent on the service's SAF lane.
+     * The callback runs on the main thread and may arrive after the calling
+     * view is gone, so callers must fence it with their own generation.
+     */
     public void detachPayload(
             String tunnel, String hash, java.util.function.Consumer<Boolean> callback) {
         repository.detachPayload(tunnel, hash, callback);
@@ -241,6 +262,11 @@ public class RouterViewModel extends AndroidViewModel {
         repository.setLogFilterLevel(level);
     }
 
+    /**
+     * Clear the service binding when the ViewModel is destroyed. The daemon is
+     * not stopped here: the foreground service owns it, so a rotated or
+     * finished Activity never changes router state.
+     */
     @Override
     protected void onCleared() {
         repository.close();

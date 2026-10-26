@@ -21,6 +21,9 @@ case "$1" in
       if rmdir "$CERTDIR" 2>/dev/null; then
         :
       else
+        # Preserve a previous backup by choosing a timestamped destination.
+        # With set -e, a failed move stops the upgrade before unpacking the
+        # replacement symlink.
         if [ -e "$LEGACY" ]; then
           LEGACY="$CERTDIR.dpkg-old.$(date +%Y%m%d%H%M%S)"
         fi

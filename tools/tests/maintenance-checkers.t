@@ -29,6 +29,8 @@ my $root = File::Spec->rel2abs(
 
 sub write_file {
     my ( $path, $contents ) = @_;
+    # Fixtures are written into a fresh File::Temp tree; create the parent
+    # directory so a nested layout such as res/img/ can be reproduced.
     my ( undef, $dir )      = File::Spec->splitpath($path);
     make_path($dir) unless -d $dir;
     open my $fh, '>', $path or die "open $path: $!\n";
@@ -41,6 +43,9 @@ sub run_checker {
     my $error = gensym;
     my $pid   = open3( my $input, my $output, $error, $^X, $script, @args );
     close $input;
+    # Drain both pipes until EOF. Reading only STDOUT would let a chatty
+    # checker block on a full STDERR pipe, and the 30 s wait keeps a hung
+    # checker from stalling the whole suite.
     my $select = IO::Select->new( $output, $error );
     my $text   = '';
     while ( my @ready = $select->can_read(30) ) {
@@ -168,3 +173,62 @@ my $jni_checker = File::Spec->catfile( $root, 'android', 'tools',
 }
 
 done_testing();
+
+=head1 NAME
+
+maintenance-checkers.t - negative fixtures for the static maintenance checks
+
+=head1 SYNOPSIS
+
+    prove -v tools/tests/maintenance-checkers.t
+
+=head1 DESCRIPTION
+
+Test::More suite that proves the static checkers still detect the defects they
+exist for. Every fixture is written into a private File::Temp tree, so the
+repository is never modified and the assertions do not depend on the current
+documentation, Android or JNI state.
+
+Covered checks:
+
+=over 4
+
+=item *
+
+F<tools/scripts/check-doc-links.pl> must reject a relative link to a missing
+page (exit 1 plus the expected diagnostic) and accept the tree once the
+target exists;
+
+=item *
+
+F<tools/scripts/check-doc-nav.pl> must reject a Markdown page that is not in
+the navigation and accept it after it is listed;
+
+=item *
+
+F<android/tools/check-android-jni-symbols.pl> must accept matching
+declarations, reject a Java native method without a C++ definition, and
+reject a C++ definition without a Java declaration.
+
+=back
+
+=head1 OUTPUT AND EXIT STATUS
+
+TAP on STDOUT; the process exits non-zero when an assertion fails. Each
+checker runs as a child Perl process, and its exit code and combined
+STDOUT/STDERR are captured by C<run_checker>. The exit code is the child's
+status byte, C<<< $? >> 8 >>>, which is 0 for a child that terminated on a
+signal, so a crashing checker can look like a successful one; the diagnostic
+assertion is what catches that case in practice.
+
+=head1 DEPENDENCIES
+
+Core Perl with Test::More, File::Temp, File::Path, File::Spec, File::Basename,
+FindBin, IO::Select, IPC::Open3 and Symbol. No compiler, build or network
+access is used; the only executed programs are the checkers under test.
+
+=head1 PORTABILITY
+
+Uses C<fork>-based C<open3> and POSIX wait semantics through IPC::Open3 and
+C<waitpid>, which the OpenBSD base interpreter provides. The fixture trees are
+removed through C<CLEANUP> even when an assertion fails.

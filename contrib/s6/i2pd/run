@@ -8,6 +8,15 @@
 # i2pd account and executes the router in the foreground. Supervision and
 # restart policy belong to s6-supervise, not to this script.
 #
+# Companion files in this directory: down-signal (INT, the graceful drain),
+# timeout-kill (660000 ms before SIGKILL) and timeout-finish (10000 ms for the
+# finish script). No readiness file is shipped, so s6-svc -u returns before the
+# router has joined the network. This script must start as root because it
+# creates directories and changes user; everything after s6-setuidgid runs as
+# i2pd. Logging goes to syslog, so no log directory or redirect is needed. The
+# daemon argv must stay identical to the s6-rc run script; the static service
+# contract compares the two.
+#
 
 # The system supervision tree normally runs as root. install creates the
 # runtime directory on tmpfs and the data directory with a private mode before

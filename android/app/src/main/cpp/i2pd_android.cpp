@@ -872,6 +872,17 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getABICompiledWith 
 	return JniStringCall (env, [&] () { return NewStringChecked (env, ABI); }, "unknown");
 }
 
+/**
+ * Start the daemon for a process that already claimed the router role.
+ *
+ * A SAF storage-broker process that reaches this entry point is refused with
+ * the fixed PROCESS_ROLE_CONFLICT token before any router state exists. The
+ * whole transition runs under the native-call guard; a start-cancellation
+ * request may still abort it because that token is lock-free.
+ *
+ * @return "ok", a bounded diagnostic, START_CANCELED_RESULT, or the fixed
+ *         role-conflict token
+ */
 JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_startDaemon (JNIEnv * env, jclass clazz)
 {
 	return JniStringCall (
@@ -927,6 +938,12 @@ extern "C" JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_requestStop
 	i2p::android::RequestStartCancel ();
 }
 
+/**
+ * Recorded application data directory of the router.
+ *
+ * Reads only the stateMutex-protected string, so the settings editor can ask
+ * for it without waiting behind a start that is copying packaged assets.
+ */
 JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getDataDir (JNIEnv * env, jclass clazz)
 {
 	return JniStringCall (
@@ -942,6 +959,14 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getDataDir (JNIEnv 
 		"");
 }
 
+/**
+ * Ordered native stop under the native-call guard.
+ *
+ * Java publishes its own "stopping" state first and calls this only from the
+ * RouterService worker. A repeated stop is a no-op, and the remaining SAF
+ * payload capabilities are released on this attached JNI thread so no JNI runs
+ * from a payload destructor.
+ */
 JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_stopDaemon (JNIEnv * env, jclass clazz)
 {
 	JniVoidCall (env,
@@ -1298,6 +1323,13 @@ JNIEXPORT jboolean JNICALL Java_org_openi2pd_router_I2PD_1JNI_setRuntimeLogLevel
 		JNI_FALSE);
 }
 
+/**
+ * Publish the platform connectivity state to the transports.
+ *
+ * Java calls this from the ConnectivityManager callback rather than the
+ * service worker, so the guard is the defensive boundary: it serialises the
+ * update against start/stop and ignores it once the router is not Running.
+ */
 JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_onNetworkStateChanged (
 	JNIEnv * env, jclass clazz, jboolean isConnected)
 {
@@ -1314,6 +1346,13 @@ JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_onNetworkStateChanged 
 		});
 }
 
+/**
+ * Record the application data directory for the next start.
+ *
+ * State-only, bounded to 4096 UTF-16 units by ScopedUtfChars, and deliberately
+ * outside the native-call lock: the daemon start worker sets it while the
+ * router may still be waiting for packaged assets.
+ */
 JNIEXPORT void JNICALL Java_org_openi2pd_router_I2PD_1JNI_setDataDir (JNIEnv * env, jclass clazz, jstring jdataDir)
 {
 	JniVoidCall (env,
@@ -1530,6 +1569,16 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_getBlockedAddresses
 		"");
 }
 
+/**
+ * Run one torrent-only control request from the Android UI.
+ *
+ * The request is a bounded standard-UTF-8 I2PDTUI/1 line, parsed by the
+ * daemon-owned admin queue. Only the torrent types allowed in the switch below
+ * are accepted: filesystem import and router-wide administration are excluded
+ * because SAF import has its own storage broker and the Android surface must
+ * stay a closed typed set. A refused or unknown request is answered with a
+ * protocol error, never an exception, and the router must be Running.
+ */
 JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_torrentCommand (JNIEnv * env, jclass, jbyteArray request)
 {
 	return JniStringCall (
@@ -1588,6 +1637,13 @@ JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_torrentCommand (JNI
 		"I2PDTUI/1 ERR 6 14\ncontrol failed");
 }
 
+/**
+ * Import already-read metainfo bytes into one torrent tunnel.
+ *
+ * The Java side reads the provider document; only the bytes cross here, never a
+ * path or display name. The size is bounded to 8 MiB, a stopped router is
+ * refused with the fixed protocol error, and the result is a protocol response.
+ */
 JNIEXPORT jstring JNICALL Java_org_openi2pd_router_I2PD_1JNI_importTorrent (
 	JNIEnv * env, jclass, jint tunnelIndex, jbyteArray metadata)
 {
@@ -1962,6 +2018,10 @@ SafPayloadRegistry & PayloadRegistry ()
 
 void RegisterSafPayload (const std::shared_ptr<SafPayload> & payload);
 
+/// Adapts one torrent's payload operations to Java SAF capabilities.
+/// The shared bridge keeps JNI method IDs and the class reference alive;
+/// `lock` serializes the cached root and handles with reads, writes and detach.
+/// The paths passed to Java are relative to the selected tree, not local paths.
 class SafPayload final : public i2p::torrents::TorrentPayloadStorage
 {
 	std::shared_ptr<SafBridge> bridge;

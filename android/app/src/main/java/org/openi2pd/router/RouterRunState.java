@@ -5,7 +5,7 @@
  * openi2pd: RouterRunState.
  *
  * Persisted run intent of the router service: stopped, running or draining a
- * graceful stop until a wall-clock deadline, plus a monotonic generation. The
+ * graceful stop until a wall-clock deadline, plus a transition generation. The
  * value type only touches the SharedPreferences interfaces so a plain JVM test
  * exercises the migration, expiry and corruption rules without a device.
  *
@@ -23,8 +23,9 @@ import android.content.SharedPreferences;
  * therefore looked like an ordinary running router and {@code START_STICKY} or
  * the boot receiver resurrected it. This record makes the whole intent durable:
  * the phase says what the operator asked for, the deadline says when a drain
- * ends, and the generation orders the writes so a stale restore cannot
- * overwrite a newer command.</p>
+ * ends, and the generation is advanced from the preceding state. The record
+ * does not compare generations when saved: callers must serialize the complete
+ * read-modify-write if they need to prevent stale updates.</p>
  *
  * <p><b>Persisted schema</b> (inside the existing {@code router_state}
  * preference file, so no file name or migration step changes):</p>
@@ -33,8 +34,8 @@ import android.content.SharedPreferences;
  *       {@code "draining"}.</li>
  *   <li>{@value #KEY_DEADLINE} - absolute wall-clock graceful deadline in
  *       milliseconds, {@code 0} when there is none.</li>
- *   <li>{@value #KEY_GENERATION} - monotonically increasing write
- *       generation.</li>
+ *   <li>{@value #KEY_GENERATION} - generation carried by the saved state;
+ *       transitions that construct a new state advance their input's value.</li>
  *   <li>{@value #KEY_SHOULD_RUN} - the legacy boolean, always mirrored as
  *       {@code phase != Stopped} so an older build or a component that only
  *       knows the boolean keeps working.</li>
@@ -108,7 +109,7 @@ public record RouterRunState(Phase phase, long gracefulDeadlineEpochMs, long gen
     /** Absolute graceful-stop deadline in wall-clock milliseconds. */
     static final String KEY_DEADLINE = "graceful_deadline_epoch_ms";
 
-    /** Monotonic write generation. */
+    /** Transition generation from the state on which the transition was based. */
     static final String KEY_GENERATION = "run_generation";
 
     /**
@@ -177,10 +178,11 @@ public record RouterRunState(Phase phase, long gracefulDeadlineEpochMs, long gen
      * Enter {@link Phase#Running} as a durable transition.
      *
      * <p>This is an instance method, unlike the {@link #stopped()} factory, so
-     * every transition advances {@link #generation()}. A running state never
+     * this transition advances {@link #generation()}. A running state never
      * carries a deadline, so a start also clears a previous drain.</p>
      *
-     * @param nowMs wall-clock observation time
+     * @param nowMs retained for callers that supply an observation time; the
+     *              running transition does not use it
      */
     public RouterRunState running(long nowMs) {
         return new RouterRunState(Phase.Running, 0L, generation + 1);
@@ -205,8 +207,8 @@ public record RouterRunState(Phase phase, long gracefulDeadlineEpochMs, long gen
 
     /**
      * Terminal stop: clear the deadline and advance the generation. Repeating
-     * the stop is harmless and still advances the generation, so an older
-     * writer cannot silently win a read-modify-write race.
+     * the stop still advances the generation; saving a state does not itself
+     * reject an older generation.
      */
     public RouterRunState stop() {
         return new RouterRunState(Phase.Stopped, 0L, generation + 1);

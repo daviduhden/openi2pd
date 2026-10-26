@@ -72,6 +72,9 @@ for my $file (@files) {
         if ( $line =~ /^\s*continue-on-error\s*:/ ) {
             push @errors, "$file: continue-on-error is forbidden";
         }
+        # Only executing invocations are constrained. The two exclusions are
+        # query-only forms: -N lists tests without running them and
+        # --print-labels only reports the label inventory.
         if (   $line =~ /(?:^|\s)ctest\s+--/
             && $line !~ /\s-N(?:\s|$)/
             && $line !~ /--print-labels/ )
@@ -106,3 +109,64 @@ if (@errors) {
 print
 "workflow-static: $checked workflow(s) are manual-only and fail on empty CTest selections\n";
 exit 0;
+
+=head1 NAME
+
+check-workflows.pl - enforce the manual-only GitHub Actions policy
+
+=head1 SYNOPSIS
+
+    perl tools/scripts/check-workflows.pl
+
+No arguments. The script locates the repository from its own path, so it must
+stay at F<tools/scripts/check-workflows.pl> inside a checkout; a relocated copy
+aborts because the workflow directory cannot be opened.
+
+=head1 DESCRIPTION
+
+Read-only contract check for everything under F<.github/workflows/>:
+
+=over 4
+
+=item *
+
+an F<on:> block is required and must declare C<workflow_dispatch>; only
+C<workflow_dispatch> and C<workflow_call> are accepted, so a C<push>,
+C<pull_request> or C<schedule> trigger fails the check;
+
+=item *
+
+C<continue-on-error> is refused at job and step level, because suppressing a
+failure is not a valid way to make a lane green;
+
+=item *
+
+every C<ctest> invocation must pass C<--no-tests=error> and
+C<--output-junit>; C<-N> and C<--print-labels> are exempt because they only
+list tests or labels and never execute a selection.
+
+=back
+
+=head1 FILE FORMAT
+
+Workflows are scanned as text, not parsed as YAML: a third-party YAML module
+would be a non-core dependency. Shell/backtick continuations are joined first
+so a C<ctest> call split over several lines is still seen as one command, and
+lines whose first non-blank character is C<#> are ignored. A trigger list may
+be written as a block or as an inline bracketed list.
+
+=head1 OUTPUT AND EXIT STATUS
+
+Each violation is printed on STDERR as C<< <file>: <message> >> and the script
+exits 1. A clean run prints one summary line on STDOUT and exits 0. An
+unreadable workflow directory or an empty workflow set aborts through C<die>.
+
+=head1 DEPENDENCIES
+
+Core Perl only (strict, warnings, File::Spec, FindBin, 5.016). The OpenBSD
+base interpreter is sufficient.
+
+=head1 SECURITY AND PORTABILITY
+
+Read-only and offline: no workflow is dispatched, no token is read and no
+network request is made. The check is platform-independent text processing.

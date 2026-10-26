@@ -8,6 +8,15 @@
 # ANDROID_JAR are set, dexes the classes with D8 and R8 at --min-api 29 and
 # prints the DEX magic; supplying only one of the two jars is an error.
 #
+# Contract: JAVAC, JAVA and JAVAP override the tools; otherwise they are taken
+# from JAVA_HOME (when it contains bin/javac) and then from PATH. The probe must
+# compile with --release 25 and produce class-file major 69, but it runs on the
+# build JDK, so a successful run is not ART evidence. All artefacts stay in a
+# temporary directory below TMPDIR (default /tmp) that the EXIT/HUP/INT/TERM
+# trap removes; the source tree is never written. Any failed check exits 1, the
+# D8/R8 stage is skipped when neither jar is supplied, and the script itself
+# verifies the DEX version bytes (039) instead of trusting the tool exit status.
+#
 
 set -eu
 

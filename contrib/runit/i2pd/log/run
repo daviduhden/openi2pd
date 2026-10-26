@@ -8,10 +8,20 @@
 # the i2pd account before starting svlogd. The logger is supervised separately
 # from the router and rotates its own `current` file.
 #
+# svlogd reads the router's stdout on stdin; -tt prefixes each line with a
+# TAI64N timestamp and a human-readable timestamp, and log/config supplies the
+# rotation policy (rotate at 1 MiB, keep ten old files). The 027 mask leaves
+# rotated files group-readable but never world-readable, matching the 0750
+# directory. This script needs root only for install; chpst drops to i2pd before
+# svlogd starts. It never creates the router's pidfile and does not stop the
+# router when it exits.
+#
 
 set -eu
 umask 027
 
+# The directory is dedicated to svlogd: install applies this owner and mode
+# even when the directory already exists.
 /usr/bin/install -d -m 0750 -o i2pd -g i2pd /var/log/i2pd
 
 exec 2>&1

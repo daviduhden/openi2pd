@@ -78,6 +78,9 @@ Ask for exact paths and package names. Do not let them run `dpkg-buildpackage`,
 
 ## Conventions
 
+- Apply the [source documentation policy](../../../AGENTS.md#source-documentation-policy)
+  to service signals, permissions, script inputs and cleanup contracts.
+
 - Install exactly one service manager per package. `I2PD_SERVICE_MANAGER=none`
   installs no service; do not add competing units/scripts for the same name.
 - Preserve the unprivileged service identity, `/etc/i2pd`, `/var/i2pd`,
@@ -186,6 +189,12 @@ Ask for exact paths and package names. Do not let them run `dpkg-buildpackage`,
 - Project documentation declares BSD-3-Clause; no standalone CC notice file is
   installed. The static Debian package keeps only the certificate
   compatibility link, not the removed config/tunnel links.
+
+- Service/unit and maintainer scripts state the operational contract in
+  concise comments: signals/stop budget, identity, sandbox paths, cleanup,
+  upgrade/purge safety and platform limits. Follow
+  [`docs/source-documentation.md`](../../../docs/source-documentation.md) and
+  never claim readiness or validation the unit cannot provide.
 
 ## Do not
 

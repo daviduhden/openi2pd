@@ -23,7 +23,29 @@ namespace i2p
 namespace client
 {
 	/**
-	 * client tunnel that uses same OBEP as IBGW of each remote lease for a remote destination
+	 * @brief Client destination whose outbound tunnels end at the inbound
+	 *   gateway of the remote destination's current lease.
+	 *
+	 * Each outbound path is built by the normal pool selection first and then
+	 * has one more hop appended: a gateway taken from a non-expired remote
+	 * lease. The result is a path whose OBEP is the remote IBGW, which keeps
+	 * the round trip on peers the service already uses. Only an inbound tunnel
+	 * is left unmatched, because it has no remote gateway to reuse.
+	 *
+	 * The remote name is resolved through the address book on the destination's
+	 * own io_context; only an ident-hash entry (b32 or base64 destination) is
+	 * accepted, because a blinded b33 name does not name a stable gateway. The
+	 * lease set is refreshed when it expires, and a failed lookup schedules a
+	 * bounded retry instead of blocking the caller.
+	 *
+	 * @warning SelectPeers() reports failure when no reachable ECIES-capable
+	 *   gateway is known. It never falls back to an unmatched path: a silently
+	 *   unmatched tunnel would defeat the purpose of this destination, so the
+	 *   pool records a build failure instead.
+	 *
+	 * Lifetime: the tunnel pool holds this selector weakly, and Stop() clears
+	 * it before cancelling the retry timer; resolve callbacks hold a weak
+	 * reference so a lease set that arrives after shutdown is ignored.
 	 */
 	class MatchedTunnelDestination : public RunnableClientDestination, public i2p::tunnel::ITunnelPeerSelector
 	{

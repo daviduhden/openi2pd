@@ -52,6 +52,23 @@ namespace proxy
 	static const size_t socks_buffer_size = 8192;
 
 	class SOCKSServer;
+	/// One accepted local SOCKS connection and its handshake state machine.
+	///
+	/// The parser is a byte-at-a-time state machine over a fixed buffer; the
+	/// handler is the only owner of m_state, so partial input can never be
+	/// interpreted twice or by two paths. Bytes that arrive in the same read as
+	/// the method list or the credentials are deferred (m_DeferredAuthInput) and
+	/// replayed only after the corresponding reply has been written, because
+	/// every reply reuses m_response and Asio does not allow overlapping writes
+	/// on one socket.
+	///
+	/// Trust boundary: the local client is untrusted. The first version byte
+	/// selects SOCKS4 or SOCKS5, a request is validated (command, address type,
+	/// then a loopback/private/multicast target check) before any destination
+	/// resolution, and local authentication is honoured for both versions: with
+	/// a credential configured, a SOCKS4 request (which has no credential
+	/// exchange) and an unverifiable method list are refused instead of being
+	/// let through. Only the non-secret authentication outcome is logged.
 	class SOCKSHandler : public i2p::client::I2PServiceHandler, public std::enable_shared_from_this<SOCKSHandler>
 	{
 	private:
@@ -555,6 +572,13 @@ namespace proxy
 		m_state = nstate;
 	}
 
+	// Final request checks before any destination work.
+	// IP literals are converted to their textual form first, so the rest of the
+	// path only deals with host names. A CONNECT/UDP request for a name that is
+	// not an `.i2p` host must not reach a loopback, private, link-local or
+	// multicast target: the proxy is an I2P forward proxy and must never become
+	// a local-network pivot. A RESOLVE (torsocks) request is exempt because it
+	// maps the name to a fake 255/8 address and opens nothing.
 	bool SOCKSHandler::ValidateSOCKSRequest ()
 	{
 		if (m_cmd != CMD_CONNECT && m_cmd != CMD_UDP && m_cmd != CMD_RESOLVE)
@@ -603,6 +627,16 @@ namespace proxy
 		return true;
 	}
 
+	// Run the handshake state machine over one read.
+	// Returns true when the request reached the READY state and the caller must
+	// continue (resolve-cache substitution, destination stream request or
+	// upstream forwarding); false when a reply was queued, in which case the
+	// remaining bytes are replayed by the write completion and the caller must
+	// not start another read.
+	// The buffer is consumed incrementally, so a fragment boundary can fall
+	// anywhere in the version, method list, address or port. A refusal ends the
+	// exchange: one status reply is written and the connection is closed, so no
+	// further request bytes are parsed for it.
 	bool SOCKSHandler::HandleData (uint8_t * sock_buff, std::size_t len)
 	{
 		assert (len); // This should always be called with a least a byte left to parse

@@ -30,6 +30,18 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
+/**
+ * In-process {@link DocumentsProvider} used only by the manual device lane.
+ *
+ * <p>Its catalog mirrors the multi-file layout the engine opens by relative
+ * path and every fault is an explicit mode switch, so a regression never
+ * depends on a real provider. Documents live in this app's private cache
+ * directory, the catalog is bounded and no host path is ever accepted. Because
+ * the instrumentation APK declares the provider under
+ * {@code android.permission.MANAGE_DOCUMENTS}, neither the test process nor the
+ * broker can obtain a persisted URI grant for it; these cases therefore cover
+ * the provider boundary, not broker authorization.</p>
+ */
 public final class TorrentSafFixtureProvider extends DocumentsProvider {
     /** Healthy provider: no injected fault. */
     static final int NORMAL = 0;

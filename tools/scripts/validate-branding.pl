@@ -103,6 +103,9 @@ for my $rel (@svgs) {
 sub png_size {
     my ($path) = @_;
     open my $fh, '<:raw', $path or return;
+    # Read only the signature and the first chunk header: IHDR must be the
+    # first chunk, and its payload starts with two big-endian 32-bit sizes.
+    # Parsing the header instead of trusting a tool keeps the check offline.
     read( $fh, my $sig, 8 );
     return unless defined $sig && $sig eq "\x89PNG\r\n\x1a\n";
     read( $fh, my $ihdr, 8 );
@@ -135,6 +138,10 @@ for my $pair (
 sub ico_sizes {
     my ($path) = @_;
     open my $fh, '<:raw', $path or return;
+    # ICONDIR: reserved(0), type(1 = icon), image count. Each 16-byte
+    # ICONDIRENTRY starts with width and height as single bytes, where 0
+    # encodes 256. Only square entries are recorded; the expected lists below
+    # compare the complete sorted set, so an added or dropped size fails.
     read( $fh, my $header, 6 );
     return unless defined $header && length($header) == 6;
     my ( $reserved, $type, $count ) = unpack( 'vvv', $header );
@@ -273,6 +280,9 @@ check_palette_file( 'libi2pd_client/HTTPProxy.cpp',
 
 sub normalize_hex {
     my ($hex) = @_;
+    # Android vectors and SVG fills may spell the same opaque colour as
+    # #AARRGGBB. Collapse an opaque FF alpha prefix onto the 6-digit token
+    # that colors.md declares; a non-opaque value stays distinct and fails.
     $hex = uc $hex;
     $hex =~ s/^#//;
     if ( length($hex) == 8 && substr( $hex, 0, 2 ) eq 'FF' ) {
@@ -397,3 +407,84 @@ if ($failed) {
 print
 "branding validation passed (palette matches $colors_rel; docs copy is identical)\n";
 exit 0;
+
+=head1 NAME
+
+validate-branding.pl - verify the branding inventory, vector rules and palette
+
+=head1 SYNOPSIS
+
+    perl tools/scripts/validate-branding.pl [ROOT]
+
+ROOT defaults to the repository containing the script and must contain
+F<assets/branding/>. Run it from anywhere; paths are resolved against ROOT and
+never against the current directory.
+
+=head1 DESCRIPTION
+
+Read-only validator for the visual identity. It fails when:
+
+=over 4
+
+=item *
+
+a required asset is missing (canonical SVGs and PNGs, the MkDocs mirror under
+F<docs/assets/branding/>, the Windows ICO, the Android adaptive-icon
+descriptors, or the branding pages);
+
+=item *
+
+an SVG embeds a raster image, a font, script content, a remote reference or
+plain text instead of real C<< <path> >> geometry with a C<viewBox>;
+
+=item *
+
+a PNG's IHDR size or an ICO's size set differs from the pinned layout;
+
+=item *
+
+F<contrib/artwork/open-i2pd-icon.svg> or the supplied
+F<assets/branding/logo-original.png> no longer matches its pinned digest (the
+original is the reference artwork and must not be edited);
+
+=item *
+
+a platform colour literal is absent from F<assets/branding/colors.md>, or one
+of the three core tokens is missing from that table; or
+
+=item *
+
+a canonical SVG or the MkDocs mirror drifted (byte-identical copies expected).
+
+=back
+
+All problems are collected before the exit status is decided, so one run
+reports the complete set instead of stopping at the first defect.
+
+=head1 FILE FORMATS
+
+The canonical palette is read from the Markdown table in
+F<assets/branding/colors.md>: a row whose second column is a six-digit hex
+value declares a token. Brand SVG C<fill> values and Android
+C<android:fillColor> values must resolve to one of those tokens; an opaque
+C<#AARRGGBB> spelling is normalised to the same token. Generic UI action icons
+are deliberately not checked because they use a theme tint, not a brand
+colour.
+
+=head1 OUTPUT AND EXIT STATUS
+
+Every defect is printed on STDERR as one line; the last STDERR line summarises
+the failure count. Exit 0 with a one-line summary on STDOUT when clean, 1 when
+any defect was found. A ROOT that cannot be resolved or is not a repository
+root aborts through C<die> (typically status 255).
+
+=head1 DEPENDENCIES
+
+Core Perl only (strict, warnings, File::Spec, Cwd, Digest::SHA, FindBin,
+5.016). No SVG rasteriser, image library or MkDocs run is involved.
+
+=head1 SECURITY AND PORTABILITY
+
+Read-only and offline: nothing is written or fetched, SVG content is never
+rendered or executed, and every digest is computed locally. The OpenBSD base
+interpreter provides all dependencies.

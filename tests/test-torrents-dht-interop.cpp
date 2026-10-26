@@ -13,6 +13,7 @@
 #include <cstring>
 #include <memory>
 #include <string>
+#include <vector>
 #include "TorrentsDHT.h"
 
 #ifndef NO_TORRENTS
@@ -29,6 +30,13 @@ int main ()
 	// secure-NID binding (Java 2.13.0 NodeInfo, not the public UDP DHT).
 	i2p::data::IdentHash peer;
 	std::memset (peer (), 0x42, peer.len);
+	// A mixed-type values list cannot silently drop an integer and accept the
+	// remaining destination. A malformed result clears any previous output.
+	const std::string peerBytes (reinterpret_cast<const char *> (peer.data ()), peer.len);
+	std::vector<i2p::data::IdentHash> decodedPeers;
+	assert (DecodeCompactPeers ("l32:" + peerBytes + "e", decodedPeers) == 1);
+	assert (DecodeCompactPeers ("l32:" + peerBytes + "i1ee", decodedPeers) == 0);
+	assert (decodedPeers.empty ());
 	NodeID id { };
 	std::memcpy (id.data (), peer (), 6);
 	const uint16_t port = 0x1234;

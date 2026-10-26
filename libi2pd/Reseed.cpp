@@ -290,6 +290,13 @@ namespace data
 			return result;
 		}
 
+		// Bootstrap retry budget: each pass draws a bounded number of servers
+		// (ReseedFromServers), and the outer loop repeats only while a retry can
+		// still help. It stops on success, on an explicit stop request, when no
+		// server is configured, or when RESEED_GIVEUP_TIMEOUT of monotonic time
+		// has elapsed. The budget is monotonic, so a wall-clock jump cannot
+		// stretch it, and every wait goes through SleepUnlessStopped() so a
+		// cancellation never waits out the interval.
 		// bootstrap from reseed servers
 		const auto start = i2p::util::GetMonotonicSeconds ();
 		for (;;)
@@ -328,8 +335,20 @@ namespace data
 	}
 
 	/**
-	 * @brief bootstrap from random server, retry 10 times
-	 * @return number of entries added to netDb and the skipped/outdated count
+	 * @brief Download and verify one round of SU3 bundles from randomly chosen reseed servers.
+	 * @param token stop token; honoured before every download and before any
+	 *        further store.
+	 * @return imported and skipped-stale RouterInfo counts, the number of servers
+	 *         that contributed at least one entry, and a non-secret reason token
+	 *         when the round failed or was cancelled. Credentials and URLs are
+	 *         never placed in that reason.
+	 *
+	 * At most MAX_NUM_RESEED_ATTEMPTS servers are tried per round and each list
+	 * entry is removed after its attempt, so a retry never re-downloads the same
+	 * bundle. The round returns as soon as MIN_RESEED_ROUTER_INFOS descriptors
+	 * were accepted from MIN_RESEED_SERVERS independent hosts (Java's
+	 * threshold); otherwise it keeps trying until the attempts are exhausted and
+	 * still reports whatever was imported.
 	 */
 	ReseedResult Reseeder::ReseedFromServers (const std::stop_token & token)
 	{
@@ -680,6 +699,13 @@ namespace data
 		version[versionLength] = 0;
 		if (requireFresh)
 		{
+			// Freshness check for a downloaded bundle. The version field is the
+			// bundle's publication time in epoch seconds, so a mirror cannot
+			// replay an old but validly signed bundle: the value must be a plain
+			// decimal number, at least 1400000000 (2014) and no older than
+			// MAX_FILE_AGE (30 days). A local file named by reseed.file is read
+			// with requireFresh=false because the operator supplied it
+			// deliberately and its age is that operator's decision.
 			char * end = nullptr;
 			const unsigned long long epoch = std::strtoull (version.data (), &end, 10);
 			const auto now = NowMilliseconds ();

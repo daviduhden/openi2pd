@@ -79,6 +79,8 @@ sub _read_http_request {
 
     my $buffer = '';
     my $header_end;
+    # A client that never finishes its header must not make the fixture read
+    # forever; 64 KiB is far more than a real request needs.
     while (1) {
         my $read = sysread( $socket, my $chunk, 4096 );
         return unless defined $read && $read > 0;
@@ -290,6 +292,9 @@ sub _run_command {
 
     waitpid( $pid, 0 );
     my $status = $?;
+    # Normalise the wait status the way a shell would: 255 when the child
+    # could not be reaped, 128+signal for a signal death, otherwise the exit
+    # code. Tests assert on the value the caller of the script would see.
     my $code =
       $status == -1
       ? 255
@@ -924,3 +929,72 @@ SKIP: {
 }
 
 done_testing();
+
+=head1 NAME
+
+i2pdctl.t - regression suite for the I2PControl command-line client
+
+=head1 SYNOPSIS
+
+    prove -v tools/tests/i2pdctl.t
+
+=head1 DESCRIPTION
+
+Drives F<tools/scripts/i2pdctl> as a child process against a forked loopback
+server, so the real option parsing, transport and formatting code is
+exercised rather than a mock. The fake server listens on an ephemeral
+127.0.0.1 port, answers the JSON-RPC methods the client uses and can return a
+deliberately hostile payload (control characters in names, oversized bodies,
+unknown methods and malformed replies).
+
+Coverage:
+
+=over 4
+
+=item *
+
+plain C<http://> path: authentication, C<exec>, C<raw_info>, C<info>,
+terminal escaping, malformed URL rejection, wrong password, non-ASCII
+password, connection failure and exit statuses;
+
+=item *
+
+HTTPS fallback with C<I2PDCTL_TLS_BACKEND=openssl>: a temporary C<openssl>
+shim on the child's C<PATH> records its argument vector and replays canned
+responses selected by C<I2PDCTL_TEST_TLS_MODE> (chunked and
+C<Content-Length> framing, truncation, oversized and malformed bodies,
+unsupported transfer encoding, sanitised stderr and a missing TLS backend).
+
+=back
+
+The suite is skipped entirely on Windows because it needs POSIX C<fork> and
+C<select>, and the openssl shim needs a POSIX shell.
+
+=head1 ENVIRONMENT
+
+The suite sets C<I2PCONTROL_URL>, C<I2PCONTROL_PASSWORD>,
+C<I2PDCTL_TLS_BACKEND>, C<I2PDCTL_TEST_TLS_MODE> and
+C<I2PDCTL_TEST_ARGV_LOG> in a localized copy of the environment for each
+child, and prepends the shim directory to C<PATH> for the fallback cases.
+The values are fixtures, not credentials.
+
+=head1 OUTPUT AND EXIT STATUS
+
+TAP on STDOUT, with a dedicated subtest for the HTTPS fallback transport. The
+process exits non-zero when an assertion fails. The forked server is
+terminated and reaped by an C<END> block, and every temporary directory is
+removed through C<File::Temp> C<CLEANUP>.
+
+=head1 DEPENDENCIES
+
+Core Perl with Test::More, File::Temp, File::Spec, FindBin, IO::Socket::INET,
+IO::Select, IPC::Open3, JSON::PP and Symbol, plus a POSIX shell for the
+C<openssl> shim. No internet access, certificate or installed OpenSSL module
+is required.
+
+=head1 SECURITY AND PORTABILITY
+
+Only loopback sockets are used: the listener is bound to 127.0.0.1 on port 0
+and the shim never opens a connection. Nothing outside the temporary
+directories is written. The suite documents current client behaviour; a live
+TLS exchange with a real router remains a separate manual validation.

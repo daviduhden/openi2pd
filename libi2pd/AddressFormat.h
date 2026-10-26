@@ -37,6 +37,14 @@ namespace util
 		inline std::string FormatAddress (const boost::asio::ip::address_v6 & address);
 		inline std::string FormatAddress (const boost::asio::ip::address & address);
 
+		/// Format a raw address plus scope ID without Boost.Asio's POSIX
+		/// scope-ID formatter (which uses an unsafe sprintf/strcat path).
+		/// @pre source is null or points to 4 (IPv4) / 16 (IPv6) bytes.
+		/// @param scopeId IPv6 zone index; for link-local and link-local
+		/// multicast addresses an interface name is emitted when one can be
+		/// resolved, otherwise the numeric index is appended.
+		/// @return Empty string on a null source or a formatting failure, so a
+		/// caller must not render an empty address as a valid endpoint.
 		inline std::string FormatAddressBytes (bool ipv6, const void * source, std::uint32_t scopeId)
 		{
 			if (!source) return { };

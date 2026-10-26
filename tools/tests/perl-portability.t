@@ -51,6 +51,8 @@ my %skip_directory = map { $_ => 1 } qw(
   .git .cache .gradle .venv __pycache__ build-output dist node_modules
   out target venv
 );
+# Generated and dependency trees are not project sources; scanning them would
+# report third-party files that the project does not maintain.
 my ( @python_files, @python_shebang );
 
 find(
@@ -71,6 +73,9 @@ find(
 
             my $prefix = first_line($path);
             if ( defined $prefix ) {
+                # A shebang must be on the first line, but a BOM or a leading
+                # blank line is tolerated; only the first three lines are
+                # considered so a comment further down cannot match.
                 my @head    = split /\n/, $prefix;
                 my $shebang = join "\n",
                   @head[ 0 .. ( $#head < 2 ? $#head : 2 ) ];
@@ -247,3 +252,68 @@ qr/(?:\bpython[0-9.]*\b|\bpip[0-9.]*\b|\bpy\s+-3\b|\bPYTHON(?:PATH|HOME)\b|\b(?:
 }
 
 done_testing();
+
+=head1 NAME
+
+perl-portability.t - guard the maintained Perl sources and build wiring
+
+=head1 SYNOPSIS
+
+    prove -v tools/tests/perl-portability.t
+
+=head1 DESCRIPTION
+
+Test::More suite (C<done_testing>) that enforces the Perl policy without
+compiling or running the project. It asserts that:
+
+=over 4
+
+=item *
+
+no project-maintained Python source, SCons/setuptools metadata or Python
+shebang exists outside the generated and dependency trees;
+
+=item *
+
+the maintained script inventory equals the scripts discovered under
+F<tools/scripts/>, F<tools/tests/>, F<tests/interop/>, F<android/tools/> and
+F<i18n/>. Adding, renaming or removing a script therefore requires updating
+the C<@scripts> list in this file;
+
+=item *
+
+each script has a portable Perl shebang, enables C<strict> and C<warnings>
+without disabling them again, carries no Python shebang, is executable on
+POSIX hosts where the layout requires it, and loads only modules from the core
+allowlist (which is also what rejects a CPAN or runtime download);
+
+=item *
+
+each script avoids shell invocation, string C<eval>, insecure temporary-name
+helpers, world-writable modes and single-scalar pipe opens;
+
+=item *
+
+F<tools/CMakeLists.txt> installs C<i2pdctl> as a program and discovers the
+Perl interpreter, the optional F<.perlcriticrc> profile is present, and the
+build, packaging and Android wiring files contain no Python invocation.
+
+=back
+
+=head1 OUTPUT AND EXIT STATUS
+
+TAP output on STDOUT. The process exits non-zero when any assertion fails and
+zero when the suite passes. Files are only read; no script, compiler, build or
+network operation is performed by this suite.
+
+=head1 DEPENDENCIES
+
+Core Perl with Test::More, File::Find, File::Spec, File::Basename and FindBin.
+The allowlist doubles as the dependency contract, so it must be extended
+deliberately if a new core module is introduced.
+
+=head1 PORTABILITY
+
+The executable-bit assertion is skipped on Windows, where the mode is not
+meaningful. Everything else is platform-independent text inspection and runs
+with the OpenBSD base interpreter.

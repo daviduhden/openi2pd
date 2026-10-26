@@ -59,8 +59,10 @@ import java.util.List;
  *
  * <p>State is owned by {@link RouterViewModel} and the router service, so
  * recreating the activity (rotation, theme change, font-scale change) never
- * restarts the daemon. The activity only renders snapshots and forwards user
- * actions.</p>
+ * restarts the daemon. The activity renders snapshots and forwards user
+ * actions; its start/stop callbacks enable or pause UI observation, rather
+ * than stopping the router. The first autostart waits for the startup
+ * permission result before requesting service startup.</p>
  */
 public class MainActivity extends AppCompatActivity {
     private static final String STATE_SELECTED_NAV = "selected_nav";
@@ -97,6 +99,16 @@ public class MainActivity extends AppCompatActivity {
     private boolean startAfterPermissionResult;
     private boolean pendingAutostart;
 
+    /**
+     * Build the single-activity shell and decide whether a first launch may
+     * auto-start the router.
+     *
+     * <p>Main thread. The activity only wires the Material 3 toolbar,
+     * navigation bar/rail and service banner to the ViewModel; it never owns
+     * the daemon or native state. A fresh task asks for the startup
+     * permissions first and defers the auto-start until the result arrives,
+     * while a recreated task restores the selected destination instead.</p>
+     */
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -325,6 +337,15 @@ public class MainActivity extends AppCompatActivity {
         return true;
     }
 
+    /**
+     * Show one destination as a single hidden-or-resumed fragment transaction.
+     *
+     * <p>Every known tag is hidden and capped at {@code CREATED} before the
+     * target is added or resumed, so exactly one screen (including a secondary
+     * detail such as logs or I2PSnark) can be visible and only the visible one
+     * keeps a started lifecycle. {@code commitNow} keeps the selection and the
+     * navigation widget consistent within this main-thread call.</p>
+     */
     private void showDestination(int itemId) {
         String tag = tagFor(itemId);
         if (tag == null) {
@@ -652,6 +673,16 @@ public class MainActivity extends AppCompatActivity {
         return true;
     }
 
+    /**
+     * Resolve the startup permission dialog and then release the deferred
+     * first-launch start exactly once.
+     *
+     * <p>Main thread. A denied notification or local-network permission is
+     * reported with a localized toast but never blocks the router: the deferred
+     * start runs after the dialog resolves, so Android 17 does not reject SSDP
+     * before local-network access was decided. The pending flag is cleared from
+     * preferences so a process restart cannot replay it.</p>
+     */
     @Override
     public void onRequestPermissionsResult(
             int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
@@ -706,6 +737,12 @@ public class MainActivity extends AppCompatActivity {
         super.onStop();
     }
 
+    /**
+     * Persist the navigation selection and the permission hand-off flag before
+     * the UI is recreated, so the same destination is shown and the
+     * first-launch auto-start is not replayed. Router state is not saved here;
+     * it belongs to the service and lives in {@link RouterRunState}.
+     */
     @Override
     protected void onSaveInstanceState(@NonNull Bundle outState) {
         outState.putInt(STATE_SELECTED_NAV, selectedItemId);

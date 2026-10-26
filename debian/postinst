@@ -8,6 +8,14 @@
 # log and runtime directories. Service start/stop is left to the debhelper
 # systemd and SysV snippets.
 #
+# Maintainer phases: configure/reconfigure run after unpack or reconfigure and
+# do the work below; abort-upgrade, abort-remove, abort-deconfigure and
+# triggered are no-ops, and an unknown phase is an error. The script is
+# idempotent, runs as root and aborts the whole configuration step on any
+# failure (set -e). This source script never starts, stops or restarts the
+# router; the single service action is generated at the DEBHELPER marker at the
+# end. It performs no network operation and needs no running daemon.
+#
 
 set -e
 

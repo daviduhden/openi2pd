@@ -246,6 +246,9 @@ namespace transport
 	// stores the RouterInfo block data size (flag + RouterInfo) on success.
 	bool ValidateNTCP2SessionConfirmedPayload (const uint8_t * payload, size_t len, size_t & routerInfoDataSize);
 
+	/// Owns the transient Noise transcript and key material for one NTCP2
+	/// handshake. Failed KDF or message processing must abort establishment.
+	/// @see https://i2p.net/en/docs/specs/ntcp2/
 	struct NTCP2Establisher : private i2p::crypto::NoiseSymmetricState
 	{
 		NTCP2Establisher ();
@@ -327,6 +330,10 @@ namespace transport
 	};
 
 	class NTCP2Server;
+	/// TCP transport session spanning NTCP2 establishment and data framing.
+	/// The server must outlive its sessions; data-frame send buffers and message
+	/// owners are retained by completion handlers until their writes complete.
+	/// @see https://i2p.net/en/docs/specs/ntcp2/
 	class NTCP2Session : public TransportSession, public std::enable_shared_from_this<NTCP2Session>
 	{
 	public:
@@ -348,11 +355,21 @@ namespace transport
 		boost::asio::ip::address GetRemoteAddress () const override { return m_RemoteEndpoint.address (); };
 		bool IsTerminated () const { return m_IsTerminated; };
 
+		/// Start the Alice side of the handshake after the TCP connect completed.
+		/// The establishment deadline starts here (not at connect) and the
+		/// SessionRequest is built on the establisher service so key generation
+		/// never blocks the transport thread.
 		void ClientLogin (); // Alice
+		/// Start the Bob side: adopt the version announced in the peer's
+		/// RouterInfo and read the fixed 64-byte SessionRequest prologue.
+		/// @param version negotiated NTCP2 version from the peer advertisement
 		void ServerLogin (int version); // Bob
 
 		void SendLocalRouterInfo (bool update) override; // after handshake or by update
 		void SendI2NPMessages (std::list<std::shared_ptr<I2NPMessage>> & msgs) override;
+		/// Re-offer this session's unsent queue to a replacement session for the
+		/// same peer; expired messages are dropped (their `onDrop` runs) instead
+		/// of being delayed. The source queue is emptied either way.
 		void MoveSendQueue (std::shared_ptr<NTCP2Session> other);
 
 	private:
@@ -474,6 +491,15 @@ namespace transport
 		int m_NextPaddingSize;
 	};
 
+	/// Owns the TCP listeners, the established-session table and the handshake
+	/// replay caches, and runs its own io_context service plus a separate
+	/// establisher service (outbound handshakes only, with its own RNG).
+	///
+	/// `m_NTCP2Sessions` and `m_PendingIncomingSessions` are touched from the
+	/// NTCP2 service thread; the replay caches are the exception and are
+	/// protected by `m_HandshakeReplayMutex` so a connection-attempt thread can
+	/// insert atomically. `GetNTCP2Sessions()` is a diagnostic view only: the
+	/// caller must not mutate or retain entries from another thread.
 	class NTCP2Server : private i2p::util::RunnableServiceWithWork
 	{
 	private:

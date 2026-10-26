@@ -99,6 +99,18 @@ foreach(required IN ITEMS
   endif()
 endforeach()
 
+# The NACK count is written into a one-byte wire field, but accumulation must
+# not wrap before the 256 guard or the saved-packet cap is bypassed.
+foreach(required IN ITEMS
+    "size_t numNacks = 0"
+    "if (numNacks + (seqn - nextSeqn) >= 256)"
+    "static_cast<uint8_t> (numNacks)")
+  string(FIND "${streaming}" "${required}" position)
+  if(position EQUAL -1)
+    message(FATAL_ERROR "Missing Streaming NACK bound contract: ${required}")
+  endif()
+endforeach()
+
 # SAM creates/removes per-port streaming destinations from its control thread.
 foreach(required IN ITEMS
     "m_StreamingDestinationsMutex"
@@ -611,7 +623,8 @@ endforeach()
 foreach(required IN ITEMS
     "GetI2CPBlindingAuthSecret"
     "GetI2CPHostReplyResultForAuth"
-    "RequestDestinationWithEncryptedLeaseSet (blinded, complete")
+    "RequestDestinationWithEncryptedLeaseSet"
+    "blinded, complete")
   string(FIND "${i2cp_source}" "${required}" position)
   if(position EQUAL -1)
     message(FATAL_ERROR "Missing I2CP blinding-info contract: ${required}")

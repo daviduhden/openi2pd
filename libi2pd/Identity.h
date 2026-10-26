@@ -102,6 +102,10 @@ namespace data
 	typedef uint16_t CryptoKeyType;
 
 	const size_t MAX_EXTENDED_BUFFER_SIZE = 8; // cryptoKeyType + signingKeyType + 4 extra bytes of P521
+	/// Parsed I2P identity, including its key certificate and computed hash.
+	/// The certificate may extend the fixed identity with signing-key bytes;
+	/// the verifier and extended storage are owned by this object.
+	/// @see https://i2p.net/en/docs/specs/common-structures/
 	class IdentityEx
 	{
 	public:
@@ -115,7 +119,12 @@ namespace data
 		IdentityEx & operator= (const IdentityEx & other);
 		IdentityEx & operator= (const Identity & standard);
 
+		/// Replace the identity from a bounded serialized input.
+		/// @return Bytes consumed, or zero on malformed/truncated input; on
+		/// failure IsValid() is false and the previous parsed identity is lost.
 		size_t FromBuffer (const uint8_t * buf, size_t len);
+		/// Write the complete serialized identity without partial output.
+		/// @return Bytes written, or zero if invalid or the buffer is too small.
 		size_t ToBuffer (uint8_t * buf, size_t len) const;
 		size_t FromBase64 (std::string_view s);
 		std::string ToBase64 () const;
@@ -131,6 +140,9 @@ namespace data
 		const uint8_t * GetSigningPublicKeyBuffer () const; // returns NULL for P521
 		size_t GetSigningPrivateKeyLen () const;
 		size_t GetSignatureLen () const;
+		/// Verify using this identity's signing key; false also covers an
+		/// unsupported or unavailable verifier. The signature buffer must hold
+		/// GetSignatureLen() bytes.
 		bool Verify (const uint8_t * buf, size_t len, const uint8_t * signature) const;
 		SigningKeyType GetSigningKeyType () const;
 		bool IsRSA () const; // signing key type
@@ -179,6 +191,12 @@ namespace data
 		size_t GetLen () const { return m_Buf.size (); };
 		const uint8_t * GetBuffer () const { return m_Buf.data (); };
 		bool operator== (const B33OfflineKeys & other) const { return m_Buf == other.m_Buf; };
+		/// Adopt a trailing keys-file section.
+		/// The section is accepted only when its version byte matches and the
+		/// embedded identity hash equals `ident`, so a keys file copied from
+		/// another destination cannot introduce foreign per-day signing keys.
+		/// @return Bytes consumed, or zero when rejected; the previous contents
+		/// are cleared before validation, so a rejection leaves no key behind.
 		size_t FromBuffer (const uint8_t * buf, size_t len, const IdentHash & ident);
 		size_t ToBuffer (uint8_t * buf, size_t len) const;
 
@@ -210,9 +228,21 @@ namespace data
 		bool IsOfflineSignature () const { return m_TransientSignatureLen > 0; };
 		uint8_t * GetPadding ();
 		void RecalculateIdentHash (uint8_t * buf = nullptr) { m_Public->RecalculateIdentHash (buf); }
+		/// Sign with the identity's own signer, created on first use.
+		/// A missing identity, an unsupported signing type or a malformed length
+		/// zeroes the signature and returns without signing, because the signer
+		/// interface itself is `void`; a provider failure is therefore only
+		/// visible as an all-zero signature. Callers must not publish a signature
+		/// they did not verify. See `CRY-236` for the planned fallible interface.
 		void Sign (const uint8_t * buf, int len, uint8_t * signature) const;
 
 		size_t GetFullLen () const;
+		/// Parse a complete keys file: identity, crypto private key and signing
+		/// private key, optionally followed by the offline-signature and b33
+		/// sections.
+		/// @return Bytes consumed, or zero for unsupported key types, truncated
+		/// input or an invalid identity. Every intermediate failure path clears
+		/// the partially parsed key material through a scope guard.
 		size_t FromBuffer (const uint8_t * buf, size_t len);
 		size_t ToBuffer (uint8_t * buf, size_t len) const;
 

@@ -7,6 +7,17 @@
 # data, log, pid and runtime paths used by the service while keeping the rest of
 # the filesystem under the distribution profile policy.
 #
+# Debian installs it as /etc/apparmor.d/usr.bin.i2pd and loads it with
+# dh_apparmor, which also creates /etc/apparmor.d/local/usr.bin.i2pd for the
+# site include below. The profile attaches by executable path, so it also
+# confines a router started by an init script, by Upstart or by hand, not only
+# by systemd.
+#
+# attach_disconnected keeps the profile attached when the executable path can
+# no longer be resolved from the process root, as after a chroot or mount
+# namespace setup and for the re-exec'd privsep workers; without the flag such a
+# process could end up unconfined.
+#
 
 # Basic profile for i2pd
 # Should work without modifications with Ubuntu/Debian packages
@@ -19,12 +30,19 @@ profile i2pd /{usr/,}bin/i2pd flags=(attach_disconnected) {
   #include <abstractions/nameservice>
 
   # Path specific (feel free to modify if you use other paths).
+  # Configuration and tunnel definitions are read-only: the router never
+  # rewrites its own policy. A custom tunconf/tunnelsdir needs its own rule.
   /etc/i2pd/** r,
   # Keys, netDb, profiles, torrents and the default TUI socket. `k` is needed
-  # for the pidfile and torrent lock files.
+  # for the pidfile and torrent lock files. This is the StateDirectory= the
+  # packaged unit declares; a custom datadir must be added here as well.
   /var/lib/i2pd/** rwk,
+  # Opt-in file log. The directory rule allows creating the log file and
+  # listing the directory for `logrotate`-style tools.
   /var/log/i2pd/ rw,
   /var/log/i2pd/** rw,
+  # Both spellings are listed because AppArmor matches the path as the daemon
+  # passes it, and /var/run is still a symlink to /run on many hosts.
   /{var/,}run/i2pd/ rw,
   /{var/,}run/i2pd/i2pd.pid rwk,
   /{var/,}run/i2pd/*.sock rw,
@@ -32,11 +50,16 @@ profile i2pd /{usr/,}bin/i2pd flags=(attach_disconnected) {
   # (ix inherits it; `m` is required for the executable mapping). Do not
   # replace this with `mr`, which would deny the exec.
   /{usr/,}bin/i2pd mixr,
+  # Packaged reseed and family certificates, read-only.
   @{system_share_dirs}/i2pd/** r,
 
   # user homedir (if started not by init.d or systemd)
+  # Owner-conditional, so another account's tree stays inaccessible even though
+  # the paths are listed.
   owner @{HOME}/.i2pd/   rw,
   owner @{HOME}/.i2pd/** rwk,
 
+  # Site additions (extra data, log or socket paths) belong in the local
+  # include; keep them narrower than the rules above.
   #include if exists <local/usr.bin.i2pd>
 }

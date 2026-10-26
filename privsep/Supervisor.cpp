@@ -570,6 +570,25 @@ int RunTorrentStorageSupervisor (int fd)
 #endif
 }
 
+/**
+ * Serve the supervisor endpoint: own one log worker, forward framed records and
+ * replace that worker under the shared restart ladder.
+ *
+ * The supervisor never opens the log path itself; the sink descriptor or the
+ * syslog destination is the log worker's capability. On OpenBSD the executable
+ * is resolved and frozen before the x-only unveil and the `stdio proc exec`
+ * pledge, because neither realpath() nor a PATH lookup can succeed afterwards.
+ * On Linux only no-new-privs and the capability drop are applied for the same
+ * inheritance reason as ApplyLinuxSupervisorSandbox().
+ *
+ * Progress is published only in this process's SupervisorStatus snapshot; no
+ * message type was added to expose it, so the core observes the supervisor via
+ * its channel and process liveness.
+ *
+ * @param fd inherited worker channel (descriptor 3 in the exec'ed process).
+ * @return 0 on a requested Shutdown, 1 on any protocol, credential or spawn
+ *         failure; the caller must treat both as the end of this worker.
+ */
 int RunSupervisor (int fd)
 {
 	SanitizeInheritedStdio ();

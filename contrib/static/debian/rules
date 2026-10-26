@@ -7,6 +7,15 @@
 # Debian packaging rules for the prebuilt static i2pd binary; installation is
 # performed directly and compilation, tests and stripping are skipped.
 #
+# This directory is copied into a scratch tree by contrib/static/package.sh,
+# which also provides bin/i2pd-<DEB_HOST_ARCH> and a sibling src/ checkout. The
+# rules themselves need no network and no root: everything is written below
+# debian/i2pd before dh_builddeb archives it.
+#
+# The binary was already built and stripped by contrib/static/build-musl.sh, so
+# every debhelper helper that would compile, link, strip or compute shared
+# library dependencies is disabled below; running dh_auto_configure against the
+# full CMake graph would rebuild from source and defeat the static package.
 
 include /usr/share/dpkg/architecture.mk
 
@@ -15,8 +24,14 @@ PKG := debian/i2pd
 %:
 	dh $@
 
+# No configure/build/test/clean step exists for a prebuilt payload. Overriding
+# them empty keeps debhelper from invoking CMake in a tree that has no build
+# configuration.
 override_dh_auto_build override_dh_auto_test override_dh_auto_clean override_dh_auto_configure:
 
+# The payload is one self-contained executable plus read-only reference data;
+# the daemon writes its state to /var/lib/i2pd at runtime, so no state or
+# runtime directory is pre-created here.
 override_dh_auto_install:
 	install -D -m 0755 bin/i2pd-$(DEB_HOST_ARCH) $(PKG)/usr/bin/i2pd
 	install -D -m 0644 src/contrib/i2pd.conf $(PKG)/etc/i2pd/i2pd.conf
@@ -29,8 +44,13 @@ override_dh_auto_install:
 override_dh_installsystemd:
 	dh_installsystemd --no-start
 
+# The binary is already stripped and statically linked: there is no separate
+# debug info to extract and no shared library dependency list to compute, so
+# these helpers are disabled instead of running against a payload they cannot
+# describe.
 override_dh_strip override_dh_dwz override_dh_shlibdeps override_dh_makeshlibs:
 
+# xz keeps the single large binary small enough for the download budget.
 override_dh_builddeb:
 	dh_builddeb -- -Zxz
 

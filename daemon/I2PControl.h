@@ -180,6 +180,12 @@ namespace client
 	}
 #endif
 
+	/// TLS JSON-RPC service with bounded connection, token and request state.
+	/// A per-connection token owns registry admission until its async chain ends;
+	/// timers and close callbacks let Stop() cancel accepted connections.
+	/// @warning The service owns the event loop and must outlive its callbacks.
+	/// A Stop() invoked on its own service thread does not explicitly drain the
+	/// queued cancellation handlers before returning.
 	class I2PControlService : public I2PControlHandlers
 	{
 	public:
@@ -190,6 +196,8 @@ namespace client
 		void Stop ();
 
 	private:
+		/// Shared with connection-token deleters, so registry cleanup does not
+		/// depend on the lifetime of an individual socket or deadline timer.
 		struct ConnectionRegistry
 		{
 			std::mutex mutex;

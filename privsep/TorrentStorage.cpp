@@ -3,7 +3,26 @@
  * and license details.
  *
  * openi2pd: network-denied torrent storage process.
+ *
  * Opens descendants by descriptor and serves serialized bounded IO requests.
+ *
+ * Every path is interpreted relative to the validated root descriptor with
+ * openat()/fstatat() plus O_NOFOLLOW, and each traversed directory must be owned
+ * by the worker identity without group/world write permission. A final payload
+ * object must be a single-link regular file of the declared size, so a symlink,
+ * hardlink or foreign-owned replacement is refused rather than repaired.
+ *
+ * Atomicity: a promotion links the staging inode into place (atomic no-replace
+ * on Linux and OpenBSD) and only then removes staging, so an interrupted
+ * link/unlink pair can resume for that same inode and never for a new one.
+ * Metadata uses a fixed eight-slot staging namespace with an 8 MiB ceiling
+ * instead of unbounded temporary names. Removal is never recursive.
+ *
+ * Requests are single-flight and strictly increasing in id; a duplicate or
+ * stale id is refused so a replay cannot re-execute a mutation. `Cancel` only
+ * suppresses a request that has not started, because the worker cannot roll back
+ * an IO it already performed. The sandbox is applied after the root is
+ * validated and before the first operation reply.
  */
 #include "TorrentStorage.h"
 #include "Channel.h"
