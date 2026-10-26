@@ -22,7 +22,7 @@
 #include "Transports.h"
 #include "version.h"
 #include "ClientContext.h"
-#include "I2PControlHandlers.h"
+#include "I2PControl.h"
 
 namespace i2p
 {
@@ -76,17 +76,20 @@ namespace client
 
 	void I2PControlHandlers::InsertParam (std::ostringstream & ss, const std::string & name, int value) const
 	{
-		ss << "\"" << name << "\":" << value;
+		ss << json::Quote (name) << ":" << value;
 	}
 
 	void I2PControlHandlers::InsertParam (
 		std::ostringstream & ss, const std::string & name, const std::string & value, bool quotes) const
 	{
-		ss << "\"" << name << "\":";
+		ss << json::Quote (name) << ":";
 		if (value.length () > 0)
 		{
 			if (quotes)
-				ss << "\"" << value << "\"";
+				// Escaped, never interpolated: a caller-supplied string (an
+				// address, nickname or error message) must not be able to end
+				// the value and add its own members to the reply.
+				ss << json::Quote (value);
 			else
 				ss << value;
 		}
@@ -96,7 +99,7 @@ namespace client
 
 	void I2PControlHandlers::InsertParam (std::ostringstream & ss, const std::string & name, double value) const
 	{
-		ss << "\"" << name << "\":" << std::fixed << std::setprecision (2) << value;
+		ss << json::Quote (name) << ":" << std::fixed << std::setprecision (2) << value;
 	}
 
 	void I2PControlHandlers::InsertParam (
@@ -104,7 +107,7 @@ namespace client
 	{
 		std::ostringstream buf;
 		boost::property_tree::write_json (buf, value, false);
-		ss << "\"" << name << "\":" << buf.str ();
+		ss << json::Quote (name) << ":" << buf.str ();
 	}
 
 	// LocalDestinationInfo
@@ -338,13 +341,17 @@ namespace client
 	void I2PControlHandlers::NetworkSettingHandler (
 		const boost::property_tree::ptree & params, std::ostringstream & results)
 	{
+		bool first = true;
 		for (auto it = params.begin (); it != params.end (); it++)
 		{
 			LogPrint (eLogDebug, "I2PControl: NetworkSetting request: ", it->first);
 			auto it1 = m_NetworkSettingHandlers.find (it->first);
 			if (it1 != m_NetworkSettingHandlers.end ())
 			{
-				if (it != params.begin ()) results << ",";
+				if (!first)
+					results << ",";
+				else
+					first = false;
 				(this->*(it1->second)) (it->second.data (), results);
 			}
 			else
@@ -352,16 +359,44 @@ namespace client
 		}
 	}
 
+	// Both directions accept the same bounded operand. i2pd keeps one router
+	// bandwidth limit (RouterContext::SetBandwidth), so the two keys are
+	// validated and applied independently but converge on that single value;
+	// the reply reports the limit the router actually holds.
+	static unsigned ParseNetworkSettingBandwidth (const std::string & value)
+	{
+		unsigned limit = 0;
+		switch (ParseBandwidthLimit (value, limit))
+		{
+		case BandwidthLimitResult::Ok: return limit;
+		case BandwidthLimitResult::OutOfRange: throw I2PControlError (
+			I2P_CONTROL_ERROR_INVALID_PARAMS, "Bandwidth limit out of range");
+		case BandwidthLimitResult::Invalid:
+		default: throw I2PControlError (I2P_CONTROL_ERROR_INVALID_PARAMS, "Invalid bandwidth limit");
+		}
+	}
+
 	void I2PControlHandlers::InboundBandwidthLimit (const std::string & value, std::ostringstream & results)
 	{
-		if (value != "null") i2p::context.SetBandwidth (std::atoi (value.c_str ()));
+		// "null" keeps the current limit, matching the previous no-op branch.
+		if (value != "null")
+		{
+			const auto limit = ParseNetworkSettingBandwidth (value);
+			// Zero leaves the router default in force; SetBandwidth(0) would
+			// otherwise also rewrite the router's bandwidth capability flags.
+			if (limit) i2p::context.SetBandwidth (static_cast<int> (limit));
+		}
 		int bw = static_cast<int> (i2p::context.GetBandwidthLimit ());
 		InsertParam (results, "i2p.router.net.bw.in", bw);
 	}
 
 	void I2PControlHandlers::OutboundBandwidthLimit (const std::string & value, std::ostringstream & results)
 	{
-		if (value != "null") i2p::context.SetBandwidth (std::atoi (value.c_str ()));
+		if (value != "null")
+		{
+			const auto limit = ParseNetworkSettingBandwidth (value);
+			if (limit) i2p::context.SetBandwidth (static_cast<int> (limit));
+		}
 		int bw = static_cast<int> (i2p::context.GetBandwidthLimit ());
 		InsertParam (results, "i2p.router.net.bw.out", bw);
 	}
@@ -394,49 +429,51 @@ namespace client
 		boost::property_tree::ptree pt;
 		boost::property_tree::ptree client_tunnels, server_tunnels;
 
-		for (auto & it : i2p::client::context.GetClientTunnels ())
+		// The control thread must not iterate the live containers: ReloadConfig()
+		// and Stop() replace them while this handler runs. Snapshot them first.
+		for (const auto & entry : i2p::client::context.GetClientTunnelsSnapshot ())
 		{
-			auto & ident = it.second->GetLocalDestination ()->GetIdentHash ();
+			const auto & service = entry.second;
+			if (!service) continue;
+			auto dest = service->GetLocalDestination ();
+			if (!dest) continue;
 			boost::property_tree::ptree ct;
-			ct.put ("address", i2p::client::context.GetAddressBook ().ToAddress (ident));
-			client_tunnels.add_child (it.second->GetName (), ct);
+			ct.put ("address", i2p::client::context.GetAddressBook ().ToAddress (dest->GetIdentHash ()));
+			client_tunnels.add_child (service->GetName (), ct);
 		}
 
-		auto & serverTunnels = i2p::client::context.GetServerTunnels ();
-		if (!serverTunnels.empty ())
+		for (const auto & entry : i2p::client::context.GetServerTunnelsSnapshot ())
 		{
-			for (auto & it : serverTunnels)
-			{
-				auto & ident = it.second->GetLocalDestination ()->GetIdentHash ();
-				boost::property_tree::ptree st;
-				st.put ("address", i2p::client::context.GetAddressBook ().ToAddress (ident));
-				st.put ("port", it.second->GetLocalPort ());
-				server_tunnels.add_child (it.second->GetName (), st);
-			}
+			const auto & service = entry.second;
+			if (!service) continue;
+			auto dest = service->GetLocalDestination ();
+			if (!dest) continue;
+			boost::property_tree::ptree st;
+			st.put ("address", i2p::client::context.GetAddressBook ().ToAddress (dest->GetIdentHash ()));
+			st.put ("port", service->GetLocalPort ());
+			server_tunnels.add_child (service->GetName (), st);
 		}
 
-		auto & clientForwards = i2p::client::context.GetClientForwards ();
-		if (!clientForwards.empty ())
+		for (const auto & entry : i2p::client::context.GetClientForwardsSnapshot ())
 		{
-			for (auto & it : clientForwards)
-			{
-				auto & ident = it.second->GetLocalDestination ()->GetIdentHash ();
-				boost::property_tree::ptree ct;
-				ct.put ("address", i2p::client::context.GetAddressBook ().ToAddress (ident));
-				client_tunnels.add_child (it.second->GetName (), ct);
-			}
+			const auto & service = entry.second;
+			if (!service) continue;
+			auto dest = service->GetLocalDestination ();
+			if (!dest) continue;
+			boost::property_tree::ptree ct;
+			ct.put ("address", i2p::client::context.GetAddressBook ().ToAddress (dest->GetIdentHash ()));
+			client_tunnels.add_child (service->GetName (), ct);
 		}
 
-		auto & serverForwards = i2p::client::context.GetServerForwards ();
-		if (!serverForwards.empty ())
+		for (const auto & entry : i2p::client::context.GetServerForwardsSnapshot ())
 		{
-			for (auto & it : serverForwards)
-			{
-				auto & ident = it.second->GetLocalDestination ()->GetIdentHash ();
-				boost::property_tree::ptree st;
-				st.put ("address", i2p::client::context.GetAddressBook ().ToAddress (ident));
-				server_tunnels.add_child (it.second->GetName (), st);
-			}
+			const auto & service = entry.second;
+			if (!service) continue;
+			auto dest = service->GetLocalDestination ();
+			if (!dest) continue;
+			boost::property_tree::ptree st;
+			st.put ("address", i2p::client::context.GetAddressBook ().ToAddress (dest->GetIdentHash ()));
+			server_tunnels.add_child (service->GetName (), st);
 		}
 
 		pt.add_child ("client", client_tunnels);

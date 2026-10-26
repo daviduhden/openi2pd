@@ -13,9 +13,12 @@
 #ifndef TIMESTAMP_H__
 #define TIMESTAMP_H__
 
+#include <array>
 #include <memory>
 #include <atomic>
 #include <mutex>
+#include <optional>
+#include <span>
 #include <inttypes.h>
 #include <thread>
 #include <vector>
@@ -43,6 +46,74 @@ namespace util
 		uint64_t timestamp, char * date); // timestamp is seconds since epoch, returns date as YYYYMMDD string, 9 bytes
 	void AdjustTimeOffset (int64_t offset); // in seconds from current
 
+	/*
+	 * SNTP request/reply validation.
+	 *
+	 * An unauthenticated UDP reply must never move the router clock on its
+	 * own: the source endpoint, mode, version, leap indicator, stratum, root
+	 * delay/dispersion and the echoed origin timestamp are all checked before
+	 * the transmit timestamp is trusted.
+	 */
+	constexpr size_t NTP_PACKET_SIZE = 48;
+	constexpr uint32_t NTP_UNIX_EPOCH_DELTA = 2208988800U; // 1900-01-01 .. 1970-01-01
+	constexpr uint8_t NTP_MIN_VERSION = 3;
+	constexpr uint8_t NTP_MAX_VERSION = 4;
+	constexpr uint32_t NTP_MAX_ROOT_DELAY_SECONDS = 8;
+	constexpr uint32_t NTP_MAX_ROOT_DISPERSION_SECONDS = 16;
+	// An offset this small is applied from one validated reply.
+	constexpr int64_t NTP_MAX_SINGLE_PACKET_OFFSET = 1; // seconds
+	// A larger offset needs this many replies that agree within the window.
+	constexpr int64_t NTP_AGREEMENT_WINDOW = 2; // seconds
+	constexpr size_t NTP_AGREEMENT_SAMPLES = 3;
+	constexpr uint64_t NTP_AGREEMENT_SAMPLE_LIFETIME = 300; // seconds
+
+	// Encodes the client transmit timestamp (seconds since 1900, 32-bit fraction).
+	uint64_t MakeNTPTransmitTimestamp (uint64_t unixSeconds, uint32_t fraction);
+	// Fills a 48-byte client request (LI 0, VN 3, mode 3, origin in transmit).
+	void BuildNTPRequest (std::span<uint8_t> packet, uint64_t transmitTimestamp);
+
+	enum class NTPReplyError
+	{
+		None = 0,
+		Size,
+		Mode,
+		Version,
+		Leap,
+		Stratum,
+		RootDelay,
+		RootDispersion,
+		Origin,
+		TransmitTime
+	};
+
+	// Validates one reply and extracts the server time as Unix seconds.
+	NTPReplyError ValidateNTPReply (
+		std::span<const uint8_t> packet, uint64_t expectedOrigin, uint32_t & serverSeconds);
+
+	/*
+	 * Majority agreement for clock offsets. Small offsets are returned from a
+	 * single sample; a larger jump requires NTP_AGREEMENT_SAMPLES samples whose
+	 * spread is inside NTP_AGREEMENT_WINDOW. Samples older than
+	 * NTP_AGREEMENT_SAMPLE_LIFETIME are discarded.
+	 */
+	class NTPOffsetAgreement
+	{
+	public:
+		void Reset ();
+		std::optional<int64_t> Add (int64_t offsetSeconds, uint64_t nowSeconds);
+		size_t GetSampleCount () const { return m_Count; }
+
+	private:
+		struct Sample
+		{
+			int64_t offset;
+			uint64_t at;
+		};
+
+		std::array<Sample, NTP_AGREEMENT_SAMPLES> m_Samples { };
+		size_t m_Count { 0 };
+	};
+
 	class NTPTimeSync
 	{
 	public:
@@ -66,6 +137,8 @@ namespace util
 		boost::asio::steady_timer m_Timer;
 		int m_SyncInterval = 1;
 		std::vector<std::string> m_NTPServersList;
+		// Samples collected within one sync cycle; reset before each cycle.
+		NTPOffsetAgreement m_Agreement;
 	};
 }
 }

@@ -11,16 +11,20 @@
  */
 
 #include <time.h>
+#include <algorithm>
+#include <array>
 #include <cstdio>
 #include <inttypes.h>
 #include <string.h>
 #include <chrono>
 #include <future>
+#include <span>
 #include <utility>
 #include <boost/asio.hpp>
 #include <boost/algorithm/string.hpp>
 #include "Config.h"
 #include "Log.h"
+#include "Random.h"
 #include "RouterContext.h"
 #include "I2PEndian.h"
 #include "Timestamp.h"
@@ -57,7 +61,102 @@ namespace util
 
 	static std::atomic<int64_t> g_TimeOffset { 0 }; // in seconds
 
-	static void SyncTimeWithNTP (const std::string & address, const std::atomic<bool> & isRunning)
+	uint64_t MakeNTPTransmitTimestamp (uint64_t unixSeconds, uint32_t fraction)
+	{
+		return ((unixSeconds + NTP_UNIX_EPOCH_DELTA) << 32) | static_cast<uint64_t> (fraction);
+	}
+
+	void BuildNTPRequest (std::span<uint8_t> packet, uint64_t transmitTimestamp)
+	{
+		if (packet.size () < NTP_PACKET_SIZE) return;
+		std::fill (packet.begin (), packet.begin () + NTP_PACKET_SIZE, static_cast<uint8_t> (0));
+		// LI 0 (no warning), VN 3 (RFC 4330), mode 3 (client).
+		packet[0] = static_cast<uint8_t> ((0 << 6) | (NTP_MIN_VERSION << 3) | 3);
+		htobe64buf (packet.data () + 40, transmitTimestamp);
+	}
+
+	NTPReplyError ValidateNTPReply (
+		std::span<const uint8_t> packet, uint64_t expectedOrigin, uint32_t & serverSeconds)
+	{
+		serverSeconds = 0;
+		if (packet.size () < NTP_PACKET_SIZE) return NTPReplyError::Size;
+		const auto leap = static_cast<uint8_t> ((packet[0] >> 6) & 0x03);
+		const auto version = static_cast<uint8_t> ((packet[0] >> 3) & 0x07);
+		const auto mode = static_cast<uint8_t> (packet[0] & 0x07);
+		if (mode != 4) return NTPReplyError::Mode; // server reply, never a request
+		if (version < NTP_MIN_VERSION || version > NTP_MAX_VERSION) return NTPReplyError::Version;
+		// Leap 3 means the server itself is unsynchronized: the reply carries
+		// no authoritative time and must not be applied.
+		if (leap > 2) return NTPReplyError::Leap;
+		// Stratum 0 is a kiss-o'-death or unspecified clock; 16..255 is reserved
+		// or unsynchronized.
+		if (packet[1] == 0 || packet[1] > 15) return NTPReplyError::Stratum;
+		const uint32_t rootDelay = bufbe32toh (packet.data () + 4) >> 16;
+		if (rootDelay > NTP_MAX_ROOT_DELAY_SECONDS) return NTPReplyError::RootDelay;
+		const uint32_t rootDispersion = bufbe32toh (packet.data () + 8) >> 16;
+		if (rootDispersion > NTP_MAX_ROOT_DISPERSION_SECONDS) return NTPReplyError::RootDispersion;
+		// The origin field must echo the transmit timestamp of our request, so
+		// an off-path or delayed reply is not accepted as an answer to it.
+		if (bufbe64toh (packet.data () + 24) != expectedOrigin) return NTPReplyError::Origin;
+		const uint64_t transmit = bufbe64toh (packet.data () + 32);
+		const uint64_t ntpSeconds = transmit >> 32;
+		if (ntpSeconds == 0) return NTPReplyError::TransmitTime;
+		// NTP counts from 1900 in a 32-bit second field: values below the Unix
+		// epoch delta belong to era 1 (after 2036).
+		const uint64_t unixSeconds = ntpSeconds >= NTP_UNIX_EPOCH_DELTA
+			? ntpSeconds - NTP_UNIX_EPOCH_DELTA
+			: ntpSeconds + (uint64_t { 1 } << 32) - NTP_UNIX_EPOCH_DELTA;
+		if (unixSeconds > 0xFFFFFFFFULL) return NTPReplyError::TransmitTime;
+		serverSeconds = static_cast<uint32_t> (unixSeconds);
+		return NTPReplyError::None;
+	}
+
+	void NTPOffsetAgreement::Reset ()
+	{
+		m_Samples = { };
+		m_Count = 0;
+	}
+
+	std::optional<int64_t> NTPOffsetAgreement::Add (int64_t offsetSeconds, uint64_t nowSeconds)
+	{
+		if (offsetSeconds <= NTP_MAX_SINGLE_PACKET_OFFSET && offsetSeconds >= -NTP_MAX_SINGLE_PACKET_OFFSET)
+			return offsetSeconds;
+		// Drop expired samples: they cannot corroborate a current offset.
+		size_t kept = 0;
+		for (size_t i = 0; i < m_Count; ++i)
+		{
+			if (nowSeconds > m_Samples[i].at
+				&& nowSeconds - m_Samples[i].at > NTP_AGREEMENT_SAMPLE_LIFETIME)
+				continue;
+			m_Samples[kept++] = m_Samples[i];
+		}
+		m_Count = kept;
+		if (m_Count < m_Samples.size ()) m_Samples[m_Count++] = { offsetSeconds, nowSeconds };
+		if (m_Count < NTP_AGREEMENT_SAMPLES) return std::nullopt;
+		int64_t lowest = m_Samples[0].offset;
+		int64_t highest = m_Samples[0].offset;
+		int64_t sum = 0;
+		for (size_t i = 0; i < m_Count; ++i)
+		{
+			lowest = std::min (lowest, m_Samples[i].offset);
+			highest = std::max (highest, m_Samples[i].offset);
+			sum += m_Samples[i].offset;
+		}
+		if (highest - lowest > NTP_AGREEMENT_WINDOW)
+		{
+			// Keep collecting samples but never apply a split vote: the oldest
+			// sample is discarded so a stale value cannot pin the decision.
+			m_Samples[0] = m_Samples[m_Count - 1];
+			m_Count = 1;
+			return std::nullopt;
+		}
+		// Apply the mean of the agreeing samples (rounded towards zero).
+		return sum / static_cast<int64_t> (m_Count);
+	}
+
+	// Returns true when an offset was applied to the shared clock.
+	static bool SyncTimeWithNTP (
+		const std::string & address, const std::atomic<bool> & isRunning, NTPOffsetAgreement & agreement)
 	{
 		LogPrint (eLogInfo, "Timestamp: NTP request to ", address);
 		boost::asio::io_context service;
@@ -91,20 +190,25 @@ namespace util
 			if (!found)
 			{
 				LogPrint (eLogError, "Timestamp: can't find compatible address for ", address);
-				return;
+				return false;
 			}
 
 			boost::asio::ip::udp::socket socket (service);
 			socket.open (ep.protocol (), ec);
 			if (!ec)
 			{
-				uint8_t buf[48]; // 48 bytes NTP request/response
-				memset (buf, 0, 48);
-				htobe32buf (buf, (3 << 27) | (3 << 24)); // RFC 4330
+				std::array<uint8_t, NTP_PACKET_SIZE> request { };
+				// A random fraction makes the echoed origin timestamp an
+				// unpredictable nonce for this request.
+				const uint64_t transmit = MakeNTPTransmitTimestamp (
+					GetLocalSecondsSinceEpoch (), i2p::crypto::RandomUInt32 ());
+				BuildNTPRequest (request, transmit);
+				std::array<uint8_t, NTP_PACKET_SIZE> buf { };
 				size_t len = 0;
+				boost::asio::ip::udp::endpoint sender;
 				try
 				{
-					socket.send_to (boost::asio::buffer (buf, 48), ep);
+					socket.send_to (boost::asio::buffer (request), ep);
 					// Poll in short slices so Stop() is not delayed by the full
 					// ten-second NTP timeout. 100 * 100 ms == 10 s.
 					int i = 0;
@@ -114,21 +218,46 @@ namespace util
 						i++;
 					}
 					if (isRunning.load (std::memory_order_relaxed) && socket.available ())
-						len = socket.receive_from (boost::asio::buffer (buf, 48), ep);
+					{
+						len = socket.receive_from (boost::asio::buffer (buf), sender);
+						// The reply must come from the server this request was
+						// sent to; receive_from() rewrites its endpoint argument.
+						if (sender.address () != ep.address () || sender.port () != ep.port ())
+						{
+							LogPrint (eLogWarning, "Timestamp: Ignoring an NTP reply from an unexpected source");
+							return false;
+						}
+					}
 				}
 				catch (std::exception & e)
 				{
 					LogPrint (eLogError, "Timestamp: NTP error: ", e.what ());
 				}
-				if (len >= 8)
+				if (len)
 				{
-					auto ourTs = GetLocalSecondsSinceEpoch ();
-					uint32_t ts = bufbe32toh (buf + 32);
-					if (ts > 2208988800U) ts -= 2208988800U; // 1/1/1970 from 1/1/1900
-					g_TimeOffset.store (
-						static_cast<int64_t> (ts) - static_cast<int64_t> (ourTs), std::memory_order_relaxed);
+					uint32_t serverSeconds = 0;
+					const auto validation = ValidateNTPReply (
+						std::span<const uint8_t> (buf.data (), len), transmit, serverSeconds);
+					if (validation != NTPReplyError::None)
+					{
+						LogPrint (eLogWarning, "Timestamp: Ignoring an invalid NTP reply (reason ",
+							static_cast<int> (validation), ")");
+						return false;
+					}
+					const auto ourTs = GetLocalSecondsSinceEpoch ();
+					const int64_t offset = static_cast<int64_t> (serverSeconds) - static_cast<int64_t> (ourTs);
+					const auto agreed = agreement.Add (offset, ourTs);
+					if (!agreed)
+					{
+						LogPrint (eLogInfo, "Timestamp: NTP reply from ", address, " not applied; waiting for agreement");
+						return false;
+					}
+					// The clock is never moved from a single unauthenticated
+					// packet when the difference is large.
+					g_TimeOffset.store (*agreed, std::memory_order_relaxed);
 					LogPrint (eLogInfo, "Timestamp: ", address, " time offset from system time is ",
 						g_TimeOffset.load (std::memory_order_relaxed), " seconds");
+					return true;
 				}
 			}
 			else
@@ -136,6 +265,7 @@ namespace util
 		}
 		else
 			LogPrint (eLogError, "Timestamp: Couldn't resolve address ", address);
+		return false;
 	}
 
 	NTPTimeSync::NTPTimeSync ()
@@ -228,9 +358,21 @@ namespace util
 	{
 		if (!m_IsRunning.load (std::memory_order_relaxed)) return;
 		if (m_NTPServersList.size () > 0)
-			SyncTimeWithNTP (
-				m_NTPServersList[i2p::crypto::RandomBelow (static_cast<uint32_t> (m_NTPServersList.size ()))],
-				m_IsRunning);
+		{
+			// A large correction needs several independent replies that agree.
+			// Query a random, distinct subset and stop as soon as a reply has
+			// been applied, so one cycle never re-uses one server's answer.
+			m_Agreement.Reset ();
+			const size_t attempts = std::min (m_NTPServersList.size (), NTP_AGREEMENT_SAMPLES);
+			const size_t start = m_NTPServersList.size () > 1
+				? i2p::crypto::RandomBelow (static_cast<uint32_t> (m_NTPServersList.size ()))
+				: 0;
+			for (size_t i = 0; i < attempts && m_IsRunning.load (std::memory_order_relaxed); ++i)
+			{
+				const auto & server = m_NTPServersList[(start + i) % m_NTPServersList.size ()];
+				if (SyncTimeWithNTP (server, m_IsRunning, m_Agreement)) break;
+			}
+		}
 		else
 			m_IsRunning.store (false, std::memory_order_relaxed);
 

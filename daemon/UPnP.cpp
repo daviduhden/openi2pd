@@ -7,7 +7,9 @@
  * Implements IGD discovery, external-address publication and IPv4 port
  * mapping every 20 minutes on a dedicated Boost.Asio thread. Mapping iterates
  * an immutable RouterInfo snapshot so transport address updates cannot race,
- * and Start/Stop support a clean restart.
+ * every mapping is added with a three-hour lease and renewed by the periodic
+ * pass, a same-host IGD is refused, and Start/Stop support a clean restart.
+ * A small status snapshot is published for administrative readers.
  *
  */
 
@@ -38,6 +40,19 @@ namespace transport
 	{
 	}
 
+	void UPnP::SetStatus (bool mapped, int error)
+	{
+		std::lock_guard<std::mutex> lock (m_StatusMutex);
+		m_Status.mapped = mapped;
+		m_Status.lastError = error;
+	}
+
+	UPnPStatus UPnP::GetStatus () const
+	{
+		std::lock_guard<std::mutex> lock (m_StatusMutex);
+		return m_Status;
+	}
+
 	void UPnP::Stop ()
 	{
 		if (m_IsRunning.exchange (false, std::memory_order_relaxed))
@@ -56,6 +71,11 @@ namespace transport
 			m_Timer.cancel ();
 			CloseMapping ();
 			Close ();
+			{
+				std::lock_guard<std::mutex> lock (m_StatusMutex);
+				m_Status.enabled = false;
+				m_Status.mapped = false;
+			}
 		}
 	}
 
@@ -63,6 +83,12 @@ namespace transport
 	{
 		if (m_IsRunning.exchange (true, std::memory_order_relaxed)) return;
 		LogPrint (eLogInfo, "UPnP: Starting");
+		{
+			std::lock_guard<std::mutex> lock (m_StatusMutex);
+			m_Status.enabled = true;
+			m_Status.mapped = false;
+			m_Status.lastError = 0;
+		}
 		// Stop() leaves the io_context stopped; restart it so a second
 		// Start() actually runs discovery again.
 		m_Service.restart ();
@@ -110,6 +136,7 @@ namespace transport
 		if (err != UPNPDISCOVER_SUCCESS)
 		{
 			LogPrint (eLogError, "UPnP: Unable to discover Internet Gateway Devices: error ", err);
+			SetStatus (false, err);
 			return;
 		}
 
@@ -127,6 +154,7 @@ namespace transport
 			if (err != UPNPCOMMAND_SUCCESS)
 			{
 				LogPrint (eLogError, "UPnP: Unable to get external address: error ", err);
+				SetStatus (false, err);
 				return;
 			}
 #endif
@@ -134,12 +162,23 @@ namespace transport
 			if (!m_externalIPAddress[0])
 			{
 				LogPrint (eLogError, "UPnP: Found Internet Gateway Device doesn't know our external address");
+				SetStatus (false, 0);
+				return;
+			}
+			// An IGD that reports this host's own address is either a
+			// misdetected device or the host itself: mapping would be
+			// meaningless and could publish a private listener.
+			if (IsSameHostIGD (m_externalIPAddress, m_NetworkAddr))
+			{
+				LogPrint (eLogWarning, "UPnP: Refusing a same-host Internet Gateway Device");
+				SetStatus (false, UPNP_IGD_INVALID);
 				return;
 			}
 		}
 		else
 		{
 			LogPrint (eLogError, "UPnP: Unable to find valid Internet Gateway Device: error ", err);
+			SetStatus (false, err);
 			return;
 		}
 
@@ -183,35 +222,36 @@ namespace transport
 		std::string strType (GetProto (address)), strPort (std::to_string (address->port));
 		std::string strDesc;
 		i2p::config::GetOption ("upnp.name", strDesc);
-		int err = UPNPCOMMAND_SUCCESS;
 
-		// check for existing mapping
-		err = CheckMapping (strPort.c_str (), strType.c_str ());
-		if (err != UPNPCOMMAND_SUCCESS) // if mapping not found
+		// Inspect the current mapping. A lease-bound mapping is renewed by
+		// re-adding it, but a mapping that points at another host or port must
+		// be deleted first so this router never inherits a stale forward.
+		char intClient[16] = { 0 }, intPort[6] = { 0 }, description[80] = { 0 }, enabled[4] = { 0 };
+		char leaseDuration[16] = { 0 };
+		int err = UPNP_GetSpecificPortMappingEntry (m_upnpUrls.controlURL, m_upnpData.first.servicetype,
+			strPort.c_str (), strType.c_str (), nullptr, intClient, intPort, description, enabled, leaseDuration);
+		if (err == UPNPCOMMAND_SUCCESS && !IsOwnUPnPMapping (intClient, intPort, m_NetworkAddr, strPort))
 		{
+			LogPrint (eLogWarning, "UPnP: Replacing a port mapping owned by another host");
+			UPNP_DeletePortMapping (
+				m_upnpUrls.controlURL, m_upnpData.first.servicetype, strPort.c_str (), strType.c_str (), nullptr);
+			err = UPNPCOMMAND_SUCCESS; // deleted: fall through to a fresh add
+		}
+		if (err != UPNPCOMMAND_SUCCESS)
 			LogPrint (eLogDebug, "UPnP: Port ", strPort, " is possibly not forwarded: return code ", err);
 
-			err = UPNP_AddPortMapping (m_upnpUrls.controlURL, m_upnpData.first.servicetype, strPort.c_str (),
-				strPort.c_str (), m_NetworkAddr, strDesc.c_str (), strType.c_str (), NULL, NULL);
-			if (err != UPNPCOMMAND_SUCCESS)
-			{
-				LogPrint (
-					eLogError, "UPnP: Port forwarding to ", m_NetworkAddr, ":", strPort, " failed: return code ", err);
-				return;
-			}
-			else
-			{
-				LogPrint (eLogInfo, "UPnP: Port successfully forwarded (", m_externalIPAddress, ":", strPort, " type ",
-					strType, " -> ", m_NetworkAddr, ":", strPort, ")");
-				return;
-			}
-		}
-		else
+		const auto lease = FormatUPnPLeaseDuration ();
+		err = UPNP_AddPortMapping (m_upnpUrls.controlURL, m_upnpData.first.servicetype, strPort.c_str (),
+			strPort.c_str (), m_NetworkAddr, strDesc.c_str (), strType.c_str (), nullptr, lease.c_str ());
+		if (err != UPNPCOMMAND_SUCCESS)
 		{
-			LogPrint (eLogDebug, "UPnP: External forward from ", m_NetworkAddr, ":", strPort,
-				" exists on current Internet Gateway Device");
+			LogPrint (eLogError, "UPnP: Port forwarding to ", m_NetworkAddr, ":", strPort, " failed: return code ", err);
+			SetStatus (false, err);
 			return;
 		}
+		LogPrint (eLogInfo, "UPnP: Port successfully forwarded (", m_externalIPAddress, ":", strPort, " type ", strType,
+			" -> ", m_NetworkAddr, ":", strPort, ", lease ", lease, " s)");
+		SetStatus (true, UPNPCOMMAND_SUCCESS);
 	}
 
 	void UPnP::CloseMapping ()
@@ -242,6 +282,7 @@ namespace transport
 				m_upnpUrls.controlURL, m_upnpData.first.servicetype, strPort.c_str (), strType.c_str (), NULL);
 			LogPrint (eLogError, "UPnP: DeletePortMapping() returned : ", err);
 		}
+		SetStatus (false, err);
 	}
 
 	void UPnP::Close ()
