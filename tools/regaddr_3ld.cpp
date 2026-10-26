@@ -22,6 +22,9 @@
 #include "Crypto.h"
 #include "Identity.h"
 #include "common/file.hpp"
+#include "common/key.hpp"
+#include "common/keys.hpp"
+#include "common/crypto.hpp"
 
 namespace
 {
@@ -35,18 +38,23 @@ void Help ()
 
 bool LoadKeys (const char * path, i2p::data::PrivateKeys & keys)
 {
-	auto input = i2p::tools::ReadFile (path);
-	if (!input) return false;
-	const bool ok = keys.FromBuffer (input->data (), input->size ());
-	i2p::tools::Wipe (*input);
-	return ok;
+	return static_cast<bool> (LoadPrivateKeys (path, keys));
 }
 
 i2p::expected<std::string, std::string> ReadText (const char * path)
 {
 	auto input = i2p::tools::ReadFile (path);
 	if (!input) return i2p::unexpected (input.error ());
-	return std::string (reinterpret_cast<const char *> (input->data ()), input->size ());
+	std::string text (reinterpret_cast<const char *> (input->data ()), input->size ());
+	i2p::tools::Wipe (*input);
+	// A step file is exactly one record. Trailing CR/LF is a line terminator,
+	// not signed data; an embedded newline would emit two records from one
+	// invocation and never verify on the other platform.
+	while (!text.empty () && (text.back () == '\n' || text.back () == '\r')) text.pop_back ();
+	if (text.find ('\n') != std::string::npos || text.find ('\r') != std::string::npos)
+		return i2p::unexpected ("step file must contain exactly one line");
+	if (text.empty ()) return i2p::unexpected ("step file is empty");
+	return text;
 }
 
 bool AppendSignature (std::ostringstream & out, i2p::data::PrivateKeys & keys, const char * marker)
@@ -68,21 +76,26 @@ int main (int argc, char * argv[])
 		return 1;
 	}
 
-	i2p::crypto::InitCrypto (false);
+	i2p::tools::CryptoGuard cryptoGuard;
 	i2p::data::PrivateKeys keys;
 	const std::string action (argv[1]);
 	int result = 0;
 
 	if (action == "step1")
 	{
-		if (argc < 4)
+		if (argc != 4)
 		{
 			Help ();
 			result = 1;
 		}
-		else if (!LoadKeys (argv[2], keys))
+		else if (!IsValidRecordName (argv[3]))
 		{
-			std::cout << "Failed to load keyfile " << argv[2] << std::endl;
+			std::cerr << "address must not be empty or contain whitespace, '#' or '='" << std::endl;
+			result = 2;
+		}
+		else if (!LoadKeys (argv[2], keys) || !keys.GetPublic ())
+		{
+			std::cerr << "Failed to load keyfile " << argv[2] << std::endl;
 			result = 2;
 		}
 		else
@@ -92,17 +105,22 @@ int main (int argc, char * argv[])
 	}
 	else if (action == "step2")
 	{
-		if (argc < 5)
+		if (argc != 5)
 		{
 			Help ();
 			result = 1;
 		}
+		else if (!IsValidRecordName (argv[4]))
+		{
+			std::cerr << "old name must not be empty or contain whitespace, '#' or '='" << std::endl;
+			result = 2;
+		}
 		else
 		{
 			auto regtxt = ReadText (argv[2]);
-			if (!regtxt || !LoadKeys (argv[3], keys))
+			if (!regtxt || !LoadKeys (argv[3], keys) || !keys.GetPublic ())
 			{
-				std::cout << "Failed to read step1 output or keyfile" << std::endl;
+				std::cerr << "Failed to read step1 output or keyfile" << std::endl;
 				result = 2;
 			}
 			else
@@ -117,7 +135,7 @@ int main (int argc, char * argv[])
 	}
 	else if (action == "step3")
 	{
-		if (argc < 4)
+		if (argc != 4)
 		{
 			Help ();
 			result = 1;
@@ -125,9 +143,9 @@ int main (int argc, char * argv[])
 		else
 		{
 			auto regtxt = ReadText (argv[2]);
-			if (!regtxt || !LoadKeys (argv[3], keys))
+			if (!regtxt || !LoadKeys (argv[3], keys) || !keys.GetPublic ())
 			{
-				std::cout << "Failed to read step2 output or keyfile" << std::endl;
+				std::cerr << "Failed to read step2 output or keyfile" << std::endl;
 				result = 2;
 			}
 			else
@@ -145,6 +163,5 @@ int main (int argc, char * argv[])
 		result = 1;
 	}
 
-	i2p::crypto::TerminateCrypto ();
 	return result;
 }

@@ -13,7 +13,6 @@ regaddr_3ld.cpp
 regaddralias.cpp
 regaddr.cpp
 routerinfo.cpp
-scripts/i2pdctl
 vain.cpp
 vanity.hpp
 verifyhost.cpp

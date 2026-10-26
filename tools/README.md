@@ -16,7 +16,8 @@ Auxiliary tools imported from
 openi2pd tree.
 
 There is no Git submodule and no external i2pd checkout. The tools link the
-in-tree `libi2pd`/`libi2pdclient` and are built by the main CMake project.
+in-tree `libi2pd` (and `libi2pdlang` for `autoconf_i2pd`) and are built by
+the main CMake project.
 See [docs/tools](../docs/tools/README.md) for the maintained documentation
 and [provenance](../docs/tools/provenance.md) for the pinned upstream files,
 licence notices and per-executable test coverage.
@@ -29,7 +30,8 @@ cmake --build build-output --parallel
 ```
 
 Disable with `-DI2PD_BUILD_TOOLS=OFF`. Binaries are in `build-output/tools/`.
-GNU Make is not used.
+No GNU make is required; the root POSIX Make front-end only invokes
+CMake/Ninja.
 
 ## Security
 

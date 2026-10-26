@@ -18,21 +18,22 @@
 #include "Identity.h"
 #include "common/file.hpp"
 #include "common/key.hpp"
+#include "common/keys.hpp"
 #include "common/crypto.hpp"
 
 int main (int argc, char * argv[])
 {
-	if (argc < 2 || argc > 3 || std::string_view (argv[1]) == "-h" || std::string_view (argv[1]) == "--help")
+	constexpr const char * usage = "Usage: keygen <filename> [<signature type>]\n";
+	if (argc == 2 && (std::string_view (argv[1]) == "-h" || std::string_view (argv[1]) == "--help"))
 	{
-		std::cerr << "Usage: keygen filename <signature type>" << std::endl;
+		std::cout << usage;
+		return 0;
+	}
+	if (argc < 2 || argc > 3 || std::string_view (argv[1]).starts_with ("-"))
+	{
+		std::cerr << usage;
 		return 1;
 	}
-	for (int i = 2; i < argc; ++i)
-		if (std::string_view (argv[i]) == "-h" || std::string_view (argv[i]) == "--help")
-		{
-			std::cerr << "Usage: keygen filename <signature type>" << std::endl;
-			return 1;
-		}
 
 	i2p::tools::CryptoGuard cryptoGuard;
 	i2p::data::SigningKeyType type = i2p::data::SIGNING_KEY_TYPE_EDDSA_SHA512_ED25519;
@@ -55,13 +56,12 @@ int main (int argc, char * argv[])
 		std::cerr << "unsupported signature type " << SigTypeToName (type) << " (" << type << ")" << std::endl;
 		return 2;
 	}
-	std::vector<uint8_t> buffer (keys.GetFullLen ());
+	i2p::tools::SecureBuffer buffer (keys.GetFullLen ());
 	const size_t len = keys.ToBuffer (buffer.data (), buffer.size ());
-	const bool written = len && i2p::tools::WriteFile (argv[1], buffer.data (), len);
-	i2p::tools::Wipe (buffer);
+	const bool written = len && i2p::tools::SavePrivateKeys (argv[1], buffer.span ().first (len));
 	if (!written)
 	{
-		std::cout << "Can't create file " << argv[1] << std::endl;
+		std::cerr << "Can't create " << argv[1] << ": the path must be a writable regular file" << std::endl;
 		return 3;
 	}
 

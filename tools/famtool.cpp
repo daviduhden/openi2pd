@@ -19,23 +19,23 @@
 #include <iostream>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 #include "common/getopt.h"
 #include "Crypto.h"
 #include "RouterInfo.h"
 #include "Base.h"
+#include "FS.h"
 #include "common/file.hpp"
+#include "common/keys.hpp"
+#include "common/crypto.hpp"
 #include <openssl/x509.h>
 #include <openssl/pem.h>
 #include <openssl/evp.h>
 #include <openssl/ec.h>
 #include <openssl/ecdsa.h>
-#include <openssl/ssl.h>
 #if I2PD_HAVE_EVP_PKEY_BN_PARAM && !defined(LIBRESSL_VERSION_NUMBER)
 #include <openssl/core_names.h>
-#endif
-#ifndef _WIN32
-#include <sys/stat.h>
 #endif
 
 using namespace i2p::crypto;
@@ -47,11 +47,36 @@ namespace
 constexpr size_t MAX_FAMILY_SIGNATURE_INPUT = 50;
 constexpr size_t MAX_FAMILY_NAME_LENGTH = MAX_FAMILY_SIGNATURE_INPUT - IdentHash::len;
 
-struct CryptoGuard
+/**
+ * A family name is written into RouterInfo properties and the certificate CN.
+ * Keep it to the documented label alphabet; ';' or a newline would inject an
+ * extra property.
+ */
+bool IsValidFamilyName (std::string_view name)
 {
-	CryptoGuard () { i2p::crypto::InitCrypto (false); }
-	~CryptoGuard () { i2p::crypto::TerminateCrypto (); }
-};
+	if (name.empty () || name.size () > MAX_FAMILY_NAME_LENGTH) return false;
+	for (unsigned char ch : name)
+	{
+		const bool allowed = (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') || (ch >= '0' && ch <= '9')
+			|| ch == '-' || ch == '_' || ch == '.';
+		if (!allowed) return false;
+	}
+	return true;
+}
+
+/** RouterInfo's constructor throws; tools report a value instead. */
+std::unique_ptr<RouterInfo> LoadRouterInfo (const std::string & path)
+{
+	try
+	{
+		return std::make_unique<RouterInfo> (path);
+	}
+	catch (...)
+	{
+		return nullptr;
+	}
+}
+
 
 struct FileCloser
 {
@@ -134,18 +159,12 @@ static bool GetP256PublicKey (EVP_PKEY * pkey, uint8_t * signingKey)
 
 static std::shared_ptr<Verifier> LoadCertificate (const std::string & filename)
 {
-	std::unique_ptr<SSL_CTX, decltype (&SSL_CTX_free)> ctx (SSL_CTX_new (TLS_method ()), SSL_CTX_free);
-	if (!ctx) return nullptr;
-
-	if (SSL_CTX_use_certificate_file (ctx.get (), filename.c_str (), SSL_FILETYPE_PEM) != 1) return nullptr;
-
-	std::unique_ptr<SSL, decltype (&SSL_free)> ssl (SSL_new (ctx.get ()), SSL_free);
-	if (!ssl) return nullptr;
-
-	X509 * cert = SSL_get_certificate (ssl.get ());
+	std::unique_ptr<BIO, decltype (&BIO_free)> bio (BIO_new_file (filename.c_str (), "r"), BIO_free);
+	std::unique_ptr<X509, decltype (&X509_free)> cert (
+		bio ? PEM_read_bio_X509 (bio.get (), nullptr, nullptr, nullptr) : nullptr, X509_free);
 	if (!cert) return nullptr;
 
-	std::unique_ptr<EVP_PKEY, decltype (&EVP_PKEY_free)> pkey (X509_get_pubkey (cert), EVP_PKEY_free);
+	std::unique_ptr<EVP_PKEY, decltype (&EVP_PKEY_free)> pkey (X509_get_pubkey (cert.get ()), EVP_PKEY_free);
 	if (!pkey || !IsP256Key (pkey.get ())) return nullptr;
 
 	uint8_t signingKey[ECDSAP256_KEY_LENGTH];
@@ -162,16 +181,10 @@ static bool CreateFamilySignature (
 	sig.clear ();
 	if (family.size () + IdentHash::len > MAX_FAMILY_SIGNATURE_INPUT) return false;
 
-	std::unique_ptr<SSL_CTX, decltype (&SSL_CTX_free)> ctx (SSL_CTX_new (TLS_method ()), SSL_CTX_free);
-	if (!ctx) return false;
-
-	if (SSL_CTX_use_PrivateKey_file (ctx.get (), filename.c_str (), SSL_FILETYPE_PEM) != 1) return false;
-
-	std::unique_ptr<SSL, decltype (&SSL_free)> ssl (SSL_new (ctx.get ()), SSL_free);
-	if (!ssl) return false;
-
-	EVP_PKEY * pkey = SSL_get_privatekey (ssl.get ());
-	if (!pkey || !IsP256Key (pkey)) return false;
+	std::unique_ptr<BIO, decltype (&BIO_free)> bio (BIO_new_file (filename.c_str (), "r"), BIO_free);
+	std::unique_ptr<EVP_PKEY, decltype (&EVP_PKEY_free)> pkey (
+		bio ? PEM_read_bio_PrivateKey (bio.get (), nullptr, nullptr, nullptr) : nullptr, EVP_PKEY_free);
+	if (!pkey || !IsP256Key (pkey.get ())) return false;
 
 	std::vector<uint8_t> message;
 	message.reserve (family.size () + IdentHash::len);
@@ -182,7 +195,7 @@ static bool CreateFamilySignature (
 	// share the same ownership and error handling. The wire format is still
 	// the two fixed 32-byte r/s values expected by I2P family signatures.
 	std::unique_ptr<EVP_MD_CTX, decltype (&EVP_MD_CTX_free)> mdCtx (EVP_MD_CTX_new (), EVP_MD_CTX_free);
-	if (!mdCtx || EVP_DigestSignInit (mdCtx.get (), nullptr, EVP_sha256 (), nullptr, pkey) != 1) return false;
+	if (!mdCtx || EVP_DigestSignInit (mdCtx.get (), nullptr, EVP_sha256 (), nullptr, pkey.get ()) != 1) return false;
 
 	if (EVP_DigestSignUpdate (mdCtx.get (), message.data (), message.size ()) != 1) return false;
 
@@ -242,9 +255,10 @@ int main (int argc, char * argv[])
 				return 1;
 			}
 			fam = optarg;
-			if (fam.size () > MAX_FAMILY_NAME_LENGTH)
+			if (!IsValidFamilyName (fam))
 			{
-				std::cout << "family name too long" << std::endl;
+				std::cerr << "family name must use letters, digits, '.', '_' or '-' and fit "
+						  << MAX_FAMILY_NAME_LENGTH << " bytes" << std::endl;
 				return 1;
 			}
 			break;
@@ -307,12 +321,18 @@ int main (int argc, char * argv[])
 		return 1;
 	}
 
-	CryptoGuard cryptoGuard;
+	i2p::tools::CryptoGuard cryptoGuard;
 
 	if (!fam.size ())
 	{
 		// no family name
-		std::cout << "no family name specified" << std::endl;
+		std::cerr << "no family name specified" << std::endl;
+		return 1;
+	}
+	if (!gen && !sign && !verify)
+	{
+		std::cerr << "no mode selected: use -g, -s or -V" << std::endl;
+		usage (argv[0]);
 		return 1;
 	}
 	// generate family key code
@@ -401,59 +421,41 @@ int main (int argc, char * argv[])
 			return 1;
 		}
 
-		FilePtr privf (std::fopen (privkey.c_str (), "w"));
-		if (!privf)
+		// Encode both PEM objects in memory and install them through the
+		// validated no-follow/atomic helpers. A direct fopen() follows symlinks,
+		// truncates in place and briefly creates a key with the process umask.
+		using BioPtr = std::unique_ptr<BIO, decltype (&BIO_free)>;
+		BioPtr keyBio (BIO_new (BIO_s_mem ()), BIO_free);
+		BioPtr certBio (BIO_new (BIO_s_mem ()), BIO_free);
+		if (!keyBio || !certBio)
 		{
-			std::fprintf (stderr, "cannot open %s: %s\n", privkey.c_str (), std::strerror (errno));
+			std::cerr << "cannot allocate PEM buffers" << std::endl;
 			return 1;
 		}
-
-#ifndef _WIN32
-		// The private key is unencrypted by design; do not inherit a
-		// world-readable umask for it. A failure here must abort rather than
-		// silently leave the key readable by other users.
-		if (::fchmod (::fileno (privf.get ()), S_IRUSR | S_IWUSR) != 0)
-		{
-			std::fprintf (stderr, "cannot restrict permissions on %s: %s\n", privkey.c_str (), std::strerror (errno));
-			return 1;
-		}
-#endif
-
-		FilePtr certf (std::fopen (certfile.c_str (), "w"));
-		if (!certf)
-		{
-			std::fprintf (stderr, "cannot open %s: %s\n", certfile.c_str (), std::strerror (errno));
-			return 1;
-		}
-
-		if (verbose) std::cout << "wrote private key" << std::endl;
-		// TODO: password protection
 #if I2PD_HAVE_EVP_EC_GEN
-		if (PEM_write_PrivateKey (privf.get (), evKey.get (), nullptr, nullptr, 0, nullptr, nullptr) != 1)
+		const bool keyWritten
+			= PEM_write_bio_PrivateKey (keyBio.get (), evKey.get (), nullptr, nullptr, 0, nullptr, nullptr) == 1;
 #else
-		if (PEM_write_ECPrivateKey (privf.get (), k_priv, nullptr, nullptr, 0, nullptr, nullptr) != 1)
+		const bool keyWritten
+			= PEM_write_bio_ECPrivateKey (keyBio.get (), k_priv, nullptr, nullptr, 0, nullptr, nullptr) == 1;
 #endif
+		const bool certWritten = PEM_write_bio_X509 (certBio.get (), x.get ()) == 1;
+		char * keyData = nullptr;
+		char * certData = nullptr;
+		const long keyLen = keyWritten ? BIO_get_mem_data (keyBio.get (), &keyData) : 0;
+		const long certLen = certWritten ? BIO_get_mem_data (certBio.get (), &certData) : 0;
+		std::string keyPem (keyData ? keyData : "", keyLen > 0 ? static_cast<size_t> (keyLen) : 0);
+		std::string certPem (certData ? certData : "", certLen > 0 ? static_cast<size_t> (certLen) : 0);
+		const bool wrote = keyWritten && certWritten && !keyPem.empty () && !certPem.empty ()
+			&& i2p::fs::AtomicWrite (certfile, certPem)
+			&& i2p::fs::AtomicWritePrivate (privkey, keyPem);
+		if (!keyPem.empty ()) OPENSSL_cleanse (keyPem.data (), keyPem.size ());
+		if (!wrote)
 		{
-			std::cerr << "cannot write private key to " << privkey << std::endl;
+			std::cerr << "cannot write family key/certificate" << std::endl;
 			return 1;
 		}
-		if (std::fclose (privf.release ()) != 0)
-		{
-			std::fprintf (stderr, "cannot close %s: %s\n", privkey.c_str (), std::strerror (errno));
-			return 1;
-		}
-
-		if (verbose) std::cout << "writing certificate" << std::endl;
-		if (PEM_write_X509 (certf.get (), x.get ()) != 1)
-		{
-			std::cerr << "cannot write certificate to " << certfile << std::endl;
-			return 1;
-		}
-		if (std::fclose (certf.release ()) != 0)
-		{
-			std::fprintf (stderr, "cannot close %s: %s\n", certfile.c_str (), std::strerror (errno));
-			return 1;
-		}
+		if (verbose) std::cout << "wrote private key and certificate" << std::endl;
 
 		std::cout << "family " << fam << " made" << std::endl;
 	}
@@ -482,25 +484,20 @@ int main (int argc, char * argv[])
 		if (verbose) std::cout << "load " << infofile << std::endl;
 
 		PrivateKeys keys;
+		if (auto loaded = i2p::tools::LoadPrivateKeys (infile, keys); !loaded)
 		{
-			auto keyData = i2p::tools::ReadFile (infile);
-			if (!keyData)
-			{
-				std::cerr << keyData.error () << std::endl;
-				return 1;
-			}
-			const bool parsed = keys.FromBuffer (keyData->data (), keyData->size ());
-			i2p::tools::Wipe (*keyData);
-			if (!parsed)
-			{
-				std::cerr << "invalid key file " << infile << std::endl;
-				return 1;
-			}
+			std::cerr << "invalid key file " << infile << ": " << loaded.error () << std::endl;
+			return 1;
 		}
 
-		RouterInfo routerInfo (infofile);
-		auto identity = routerInfo.GetRouterIdentity ();
-		if (!identity || !routerInfo.GetBuffer () || !routerInfo.GetBufferLen ())
+		auto routerInfo = LoadRouterInfo (infofile);
+		if (!routerInfo)
+		{
+			std::cerr << "cannot read router info " << infofile << std::endl;
+			return 1;
+		}
+		auto identity = routerInfo->GetRouterIdentity ();
+		if (!identity || !routerInfo->GetBuffer () || !routerInfo->GetBufferLen ())
 		{
 			std::cerr << "cannot read router info " << infofile << std::endl;
 			return 1;
@@ -508,7 +505,7 @@ int main (int argc, char * argv[])
 
 		LocalRouterInfo ri;
 		ri.SetRouterIdentity (identity);
-		if (!ri.Update (routerInfo.GetBuffer (), routerInfo.GetBufferLen ()) || ri.IsUnreachable ())
+		if (!ri.Update (routerInfo->GetBuffer (), routerInfo->GetBufferLen ()) || ri.IsUnreachable ())
 		{
 			std::cerr << "invalid router info " << infofile << std::endl;
 			return 1;
@@ -563,17 +560,22 @@ int main (int argc, char * argv[])
 
 		if (verbose) std::cout << "load " << infofile << std::endl;
 
-		RouterInfo routerInfo (infofile);
-		auto identity = routerInfo.GetRouterIdentity ();
-		if (!identity || !routerInfo.GetBuffer () || !routerInfo.GetBufferLen ())
+		auto routerInfo = LoadRouterInfo (infofile);
+		if (!routerInfo)
 		{
-			std::cout << "cannot read router info " << infofile << std::endl;
+			std::cerr << "cannot read router info " << infofile << std::endl;
+			return 1;
+		}
+		auto identity = routerInfo->GetRouterIdentity ();
+		if (!identity || !routerInfo->GetBuffer () || !routerInfo->GetBufferLen ())
+		{
+			std::cerr << "cannot read router info " << infofile << std::endl;
 			return 1;
 		}
 
 		LocalRouterInfo ri;
 		ri.SetRouterIdentity (identity);
-		if (!ri.Update (routerInfo.GetBuffer (), routerInfo.GetBufferLen ()) || ri.IsUnreachable ())
+		if (!ri.Update (routerInfo->GetBuffer (), routerInfo->GetBufferLen ()) || ri.IsUnreachable ())
 		{
 			std::cout << "invalid router info " << infofile << std::endl;
 			return 1;

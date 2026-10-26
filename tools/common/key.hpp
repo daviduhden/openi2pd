@@ -24,6 +24,7 @@
 
 #include "Identity.h"
 #include "file.hpp"
+#include "keys.hpp"
 
 struct SigTypeName
 {
@@ -61,19 +62,33 @@ inline std::string SigTypeToName (uint16_t keytype)
 }
 
 /**
- * Map a numeric or textual signature type to the protocol constant.
- * Returns std::nullopt for invalid or unknown input; no sentinel value is
- * passed to CreateRandomKeys.
+ * A registration record is `name=destination#!sig=...`; a name carrying a
+ * separator, control byte or whitespace could forge extra fields. The check is
+ * deliberately about the record grammar, not DNS policy.
  */
-inline i2p::expected<void, std::string> LoadPrivateKeys (const std::string & path, i2p::data::PrivateKeys & keys)
+inline bool IsValidRecordName (std::string_view name)
 {
-	auto input = i2p::tools::ReadFile (path);
-	if (!input) return i2p::unexpected (input.error ());
-	const size_t size = input->size ();
-	const size_t consumed = keys.FromBuffer (input->data (), size);
-	i2p::tools::Wipe (*input);
-	if (!consumed || consumed != size) return i2p::unexpected ("bad keys file format");
-	return { };
+	if (name.empty () || name.size () > 255) return false;
+	for (unsigned char ch : name)
+	{
+		if (ch <= 0x20 || ch == 0x7f || ch == '#' || ch == '=' || ch == '\\') return false;
+	}
+	return true;
+}
+
+/**
+ * Parse a complete decimal integer inside a closed range. Trailing characters,
+ * overflow and an empty input are rejected instead of silently truncated.
+ */
+template <typename TValue>
+std::optional<TValue> ParseBounded (std::string_view text, TValue minimum, TValue maximum)
+{
+	if (text.empty ()) return std::nullopt;
+	TValue value { };
+	const auto result = std::from_chars (text.data (), text.data () + text.size (), value);
+	if (result.ec != std::errc () || result.ptr != text.data () + text.size ()) return std::nullopt;
+	if (value < minimum || value > maximum) return std::nullopt;
+	return value;
 }
 
 inline std::optional<uint16_t> NameToSigType (std::string_view keyname)

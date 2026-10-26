@@ -9,6 +9,7 @@
 
 use strict;
 use warnings;
+use 5.016;
 use Getopt::Long qw(GetOptions);
 use Digest::SHA  qw(sha256_hex);
 use JSON::PP;
@@ -326,9 +327,20 @@ sub run_binary {
     my ( $bin, $c, $input ) = @_;
     open my $ph, '-|', $bin, '--case', $c->{id}, $input
       or return ( undef, "cannot execute $bin: $!" );
-    local $/;
-    my $out = <$ph>;
+    my $out       = '';
+    my $too_large = 0;
+    while (1) {
+        my $chunk;
+        my $read = read( $ph, $chunk, 65536 );
+        last if !$read;
+        if ( length($out) + $read > 1048576 ) {
+            $too_large = 1;
+            last;
+        }
+        $out .= $chunk;
+    }
     close $ph;
+    return ( undef, 'harness output is too large' ) if $too_large;
     my $status = $? >> 8;
     return ( undef, "harness exited $status" ) if $status != 0;
     my $got = eval { JSON::PP->new->decode($out) };
@@ -379,6 +391,15 @@ for my $c (@cases) {
     if (@errors) {
         printf "FAIL %s\n", $c->{id} // $c->{_path};
         print "  - $_\n" for @errors;
+        ++$failed;
+        next;
+    }
+    if (  !defined $c->{input}
+        || ref $c->{input}
+        || $c->{input} =~ m{\A/}
+        || $c->{input} =~ m{(?:\A|/)\.\.(?:/|\z)} )
+    {
+        printf "FAIL %s\n  - input path must be relative\n", $c->{id};
         ++$failed;
         next;
     }

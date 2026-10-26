@@ -65,6 +65,7 @@ int Decode (std::istream & input, std::ostream & output)
 	std::array<char, CHUNK_SIZE> inbuf { };
 	std::array<uint8_t, CHUNK_SIZE> outbuf { };
 	std::string pending;
+	bool sawPadding = false;
 	while (true)
 	{
 		input.read (inbuf.data (), static_cast<std::streamsize> (inbuf.size ()));
@@ -72,9 +73,19 @@ int Decode (std::istream & input, std::ostream & output)
 		if (readSize > 0)
 		{
 			for (std::streamsize i = 0; i < readSize; ++i)
-				if (inbuf[static_cast<size_t> (i)] != '\n' && inbuf[static_cast<size_t> (i)] != '\r'
-					&& inbuf[static_cast<size_t> (i)] != ' ' && inbuf[static_cast<size_t> (i)] != '\t')
-					pending.push_back (inbuf[static_cast<size_t> (i)]);
+			{
+				const char ch = inbuf[static_cast<size_t> (i)];
+				if (ch == '\n' || ch == '\r' || ch == ' ' || ch == '\t' || ch == '\v' || ch == '\f')
+					continue;
+				if (sawPadding)
+				{
+					// '=' terminates the encoded stream. Any non-whitespace byte
+					// after it is invalid even when it arrives in a later chunk.
+					std::cerr << "invalid base64 input: data after padding" << std::endl;
+					return 1;
+				}
+				pending.push_back (ch);
+			}
 
 			const size_t complete = pending.size () - pending.size () % 4;
 			if (complete)
@@ -87,12 +98,10 @@ int Decode (std::istream & input, std::ostream & output)
 					return 1;
 				}
 				if (!WriteAll (output, std::span<const uint8_t> (outbuf).first (decoded))) return 1;
+				// Padding is only legal in the final quad; remember it so the
+				// next chunk cannot extend the stream.
+				sawPadding = pending.substr (0, complete).find ('=') != std::string::npos;
 				pending.erase (0, complete);
-			}
-			if (pending.size () > 4)
-			{
-				std::cerr << "invalid base64 input" << std::endl;
-				return 1;
 			}
 		}
 		if (input.bad ())

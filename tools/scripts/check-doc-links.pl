@@ -11,9 +11,10 @@
 
 use strict;
 use warnings;
+use 5.016;
 use File::Find;
 use File::Spec;
-use Cwd qw(abs_path getcwd);
+use Cwd qw(abs_path);
 
 my $docs = shift @ARGV // 'docs';
 $docs =~ s{/+$}{};
@@ -139,7 +140,9 @@ for my $file ( sort @files ) {
             }
             my $resolved = abs_path($path);
             $resolved = File::Spec->canonpath($path) unless defined $resolved;
-            if ( index( $resolved, $repo_prefix ) != 0 ) {
+            if ( $resolved ne $repo_root
+                && index( $resolved, $repo_prefix ) != 0 )
+            {
                 push @missing,
                   "$file:$line_number: $target (escapes repository)";
                 next;
@@ -173,9 +176,10 @@ for my $file ( sort @files ) {
             my $resolved = abs_path($path);
             $resolved = File::Spec->canonpath($path) unless defined $resolved;
             push @missing, "$file:$line_number: $target (escapes repository)"
-              if index( $resolved, $repo_prefix ) != 0;
+              if $resolved ne $repo_root && index( $resolved, $repo_prefix ) != 0;
             push @missing, "$file:$line_number: $target"
-              if index( $resolved, $repo_prefix ) == 0 && !-e $resolved;
+              if ( $resolved eq $repo_root || index( $resolved, $repo_prefix ) == 0 )
+              && !-e $resolved;
         }
     }
     close $fh;

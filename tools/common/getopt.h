@@ -19,7 +19,7 @@
  * subset used by the maintained tools. This is deliberately a compatibility
  * layer, not a new CLI grammar.
  */
-#ifdef _WIN32
+#if defined(_WIN32) || defined(I2PD_TOOLS_GETOPT_TEST)
 
 #ifdef __cplusplus
 extern "C"

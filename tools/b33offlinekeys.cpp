@@ -27,6 +27,7 @@
 #include "Timestamp.h"
 #include "common/file.hpp"
 #include "common/key.hpp"
+#include "common/keys.hpp"
 #include "common/crypto.hpp"
 
 const int kMaxDays = 0xFFFF; // the number of keys in the batch is two bytes
@@ -103,9 +104,21 @@ static std::vector<uint8_t> createB33OfflineKeys (
 
 int main (int argc, char * argv[])
 {
-	if (argc < 3)
+	constexpr const char * usage
+		= "Usage: b33offlinekeys <output offline-keys file> <destination keys file> [<days>]\n";
+	if (argc == 2 && (std::string_view (argv[1]) == "-h" || std::string_view (argv[1]) == "--help"))
 	{
-		std::cerr << "Usage: b33offlinekeys <router keys file> <destination keys file> <days>" << std::endl;
+		std::cout << usage;
+		return 0;
+	}
+	if (argc < 3 || argc > 4)
+	{
+		std::cerr << usage;
+		return 1;
+	}
+	if (i2p::tools::SameFile (argv[1], argv[2]))
+	{
+		std::cerr << "refusing to overwrite the destination key file" << std::endl;
 		return 1;
 	}
 	i2p::tools::CryptoGuard cryptoGuard;
@@ -133,18 +146,13 @@ int main (int argc, char * argv[])
 	int days = 365; // 1 year by default
 	if (argc > 3)
 	{
-		std::string_view input (argv[3]);
-		auto result = std::from_chars (input.data (), input.data () + input.size (), days);
-		if (result.ec != std::errc () || result.ptr != input.data () + input.size ())
+		auto parsed = ParseBounded<int> (argv[3], 1, kMaxDays);
+		if (!parsed)
 		{
-			std::cout << "days must be 1.." << kMaxDays << std::endl;
+			std::cerr << "days must be 1.." << kMaxDays << std::endl;
 			return 6;
 		}
-	}
-	if (days < 1 || days > kMaxDays)
-	{
-		std::cout << "days must be 1.." << kMaxDays << std::endl;
-		return 6;
+		days = *parsed;
 	}
 
 	// The outer layer of an encrypted LeaseSet is built on blinded keys, which are RedDSA
@@ -176,12 +184,12 @@ int main (int argc, char * argv[])
 	}
 	memcpy (out.data () + l, b33Keys.data (), b33Keys.size ());
 	out.resize (l + b33Keys.size ());
-	const bool written = i2p::tools::WriteFile (argv[1], out.data (), out.size ());
+	const bool written = i2p::tools::SavePrivateKeys (argv[1], out);
 	i2p::tools::Wipe (out);
 	i2p::tools::Wipe (b33Keys);
 	if (!written)
 	{
-		std::cout << "Can't create file " << argv[1] << std::endl;
+		std::cerr << "Can't create " << argv[1] << ": the path must be a writable regular file" << std::endl;
 		return 9;
 	}
 

@@ -21,15 +21,10 @@
 #include "Base.h"
 #include "Crypto.h"
 #include "Identity.h"
+#include "common/crypto.hpp"
 
 namespace
 {
-struct CryptoGuard
-{
-	CryptoGuard () { i2p::crypto::InitCrypto (false); }
-	~CryptoGuard () { i2p::crypto::TerminateCrypto (); }
-};
-
 std::optional<std::string_view> FindValue (std::string_view record, std::string_view key)
 {
 	const auto marker = record.find (key);
@@ -51,7 +46,7 @@ int main (int argc, char * argv[])
 		return 1;
 	}
 
-	CryptoGuard guard;
+	i2p::tools::CryptoGuard guard;
 	i2p::data::IdentityEx identity, oldIdentity;
 	std::string record (argv[1]);
 	// CMake and the Windows text-mode tool chain may hand us CRLF while the

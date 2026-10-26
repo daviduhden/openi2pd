@@ -12,6 +12,7 @@
 
 use strict;
 use warnings;
+use 5.016;
 
 use File::Basename qw(basename);
 use File::Find     qw(find);
@@ -92,11 +93,15 @@ my @scripts = (
     'tools/scripts/check-doc-links.pl',
     'tools/scripts/check-doc-nav.pl',
     'tools/scripts/validate-branding.pl',
+    'tools/scripts/check-workflows.pl',
     'tools/tests/i2pdctl.t',
     'tools/tests/validate-branding.t',
     'tools/tests/perl-portability.t',
     'tests/interop/check-vectors.pl',
     'android/tools/check-android-locales.pl',
+    'android/tools/check-android-jni-symbols.pl',
+    'i18n/check-i18n-catalogs.pl',
+    'tools/tests/maintenance-checkers.t',
 );
 
 my @discovered = map { File::Spec->abs2rel( $_, $root ) }
@@ -104,7 +109,8 @@ my @discovered = map { File::Spec->abs2rel( $_, $root ) }
     glob( File::Spec->catfile( $root, 'tools',   'scripts', '*' ) ),
     glob( File::Spec->catfile( $root, 'tools',   'tests',   '*.t' ) ),
     glob( File::Spec->catfile( $root, 'tests',   'interop', '*.pl' ) ),
-    glob( File::Spec->catfile( $root, 'android', 'tools',   '*.pl' ) )
+    glob( File::Spec->catfile( $root, 'android', 'tools',   '*.pl' ) ),
+    glob( File::Spec->catfile( $root, 'i18n',    '*.pl' ) )
   );
 is_deeply(
     [ sort @discovered ],
@@ -116,7 +122,7 @@ is_deeply(
 # accidental CPAN or runtime downloads.
 my %allowed_module = map { $_ => 1 } qw(
   strict warnings
-  Config Cwd Digest::SHA File::Basename File::Find File::Spec File::Temp
+  Config Cwd Digest::SHA File::Basename File::Find File::Path File::Spec File::Temp
   FindBin Getopt::Long HTTP::Tiny IO::Select IO::Socket::INET IPC::Open3
   JSON::PP POSIX Symbol Test::More
 );
@@ -162,7 +168,7 @@ for my $relative (@scripts) {
 
     if (
         $^O ne 'MSWin32'
-        && (   $relative =~ m{\A(?:tools/scripts|android/tools)/}
+        && (   $relative =~ m{\A(?:tools/scripts|android/tools|i18n)/}
             || $relative eq 'tests/interop/check-vectors.pl' )
       )
     {
@@ -223,6 +229,10 @@ my @consumers = (
     'android/build.gradle',
     'android/settings.gradle',
     'tests/check-build-system.cmake',
+    'tests/check-i18n.cmake',
+    'tests/check-tools-inventory.cmake',
+    '.gitignore',
+    '.dockerignore',
 );
 for my $relative (@consumers) {
     my $path = File::Spec->catfile( $root, split m{/}, $relative );

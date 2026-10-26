@@ -23,55 +23,10 @@
 #include <span>
 #include <string>
 #include "Base.h"
+#include "Crypto.h"
+#include "common/crypto.hpp"
 
 constexpr std::size_t KEYSIZE = 32;
-
-struct PkeyCtxDeleter
-{
-	void operator() (EVP_PKEY_CTX * ctx) const noexcept { EVP_PKEY_CTX_free (ctx); }
-};
-
-struct PkeyDeleter
-{
-	void operator() (EVP_PKEY * pkey) const noexcept { EVP_PKEY_free (pkey); }
-};
-
-using PkeyCtxPtr = std::unique_ptr<EVP_PKEY_CTX, PkeyCtxDeleter>;
-using PkeyPtr = std::unique_ptr<EVP_PKEY, PkeyDeleter>;
-
-struct BoxKeys
-{
-	std::array<uint8_t, KEYSIZE> PublicKey { };
-	std::array<uint8_t, KEYSIZE> PrivateKey { };
-};
-
-std::optional<BoxKeys> getKeyPair ()
-{
-	PkeyCtxPtr Ctx (EVP_PKEY_CTX_new_id (NID_X25519, nullptr));
-	if (!Ctx) return std::nullopt;
-
-	if (EVP_PKEY_keygen_init (Ctx.get ()) <= 0) return std::nullopt;
-
-	EVP_PKEY * RawPkey = nullptr;
-	const int generated = EVP_PKEY_keygen (Ctx.get (), &RawPkey);
-	// Own the key as soon as OpenSSL may have produced it, even on failure.
-	PkeyPtr Pkey (RawPkey);
-	if (generated <= 0 || !Pkey) return std::nullopt;
-
-	BoxKeys keys;
-
-	size_t PublicKeyLen = keys.PublicKey.size ();
-	if (EVP_PKEY_get_raw_public_key (Pkey.get (), keys.PublicKey.data (), &PublicKeyLen) <= 0
-		|| PublicKeyLen != keys.PublicKey.size ())
-		return std::nullopt;
-
-	size_t PrivateKeyLen = keys.PrivateKey.size ();
-	if (EVP_PKEY_get_raw_private_key (Pkey.get (), keys.PrivateKey.data (), &PrivateKeyLen) <= 0
-		|| PrivateKeyLen != keys.PrivateKey.size ())
-		return std::nullopt;
-
-	return keys;
-}
 
 int main (int argc, char * argv[])
 {
@@ -102,22 +57,26 @@ int main (int argc, char * argv[])
 		return 1;
 	}
 
-	auto newKeys = getKeyPair ();
-	if (!newKeys)
+	// The core key type fails closed: it never publishes all-zero private or
+	// public material, and the private scalar is owned by the RAII object.
+	i2p::tools::CryptoGuard cryptoGuard;
+	i2p::crypto::X25519Keys keys;
+	if (!keys.GenerateKeys () || !keys.HasPrivateKey ())
 	{
 		std::cerr << "failed to generate an X25519 key pair" << std::endl;
 		return 1;
 	}
+	std::array<uint8_t, KEYSIZE> privateKey { };
+	keys.GetPrivateKey (privateKey.data ());
 
-	auto b64Public = i2p::data::ByteStreamToBase64 (std::span<const uint8_t> (newKeys->PublicKey));
-
+	auto b64Public
+		= i2p::data::ByteStreamToBase64 (std::span<const uint8_t> (keys.GetPublicKey (), KEYSIZE));
 	std::cout << "PublicKey: " << b64Public;
 
-	auto b64Private = i2p::data::ByteStreamToBase64 (std::span<const uint8_t> (newKeys->PrivateKey));
-
+	auto b64Private = i2p::data::ByteStreamToBase64 (std::span<const uint8_t> (privateKey));
 	std::cout << "\nPrivateKey: " << b64Private << std::endl;
 
-	OPENSSL_cleanse (newKeys->PrivateKey.data (), newKeys->PrivateKey.size ());
+	OPENSSL_cleanse (privateKey.data (), privateKey.size ());
 	OPENSSL_cleanse (b64Private.data (), b64Private.size ());
 	return 0;
 }

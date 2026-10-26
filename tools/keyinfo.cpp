@@ -25,36 +25,35 @@
 #include <time.h>
 #include "common/file.hpp"
 #include "common/key.hpp"
-
-namespace
-{
-struct InputWiper
-{
-	std::vector<uint8_t> & data;
-	~InputWiper () { i2p::tools::Wipe (data); }
-};
-
-struct CryptoGuard
-{
-	CryptoGuard () { i2p::crypto::InitCrypto (false); }
-	~CryptoGuard () { i2p::crypto::TerminateCrypto (); }
-};
-}
+#include "common/keys.hpp"
+#include "common/crypto.hpp"
 
 // version || ident hash || number of keys, then per day expires || transient signature type ||
 // transient public key || signature by that day's blinded key || transient private key
-static void printB33OfflineKeys (const i2p::data::PrivateKeys & keys, const i2p::data::BlindedPublicKey & blindedKey)
+static bool printB33OfflineKeys (const i2p::data::PrivateKeys & keys, const i2p::data::BlindedPublicKey & blindedKey)
 {
 	const auto & batch = keys.GetB33OfflineKeys ();
 	const size_t batchLen = batch.GetLen ();
-	if (batchLen < i2p::data::B33_OFFLINE_KEYS_HEADER_LENGTH) return;
+	if (batchLen < i2p::data::B33_OFFLINE_KEYS_HEADER_LENGTH)
+	{
+		std::cerr << "b33 offline keys: no batch in this key file" << std::endl;
+		return false;
+	}
 
 	std::unique_ptr<i2p::crypto::Verifier> blindedVerifier (
 		i2p::data::IdentityEx::CreateVerifier (blindedKey.GetBlindedSigType ()));
-	if (!blindedVerifier) return;
+	if (!blindedVerifier)
+	{
+		std::cerr << "b33 offline keys: unsupported blinded signature type" << std::endl;
+		return false;
+	}
 
 	const uint8_t * buf = batch.GetBuffer ();
-	if (!buf || batch.GetLen () < i2p::data::B33_OFFLINE_KEYS_HEADER_LENGTH) return;
+	if (!buf || batch.GetLen () < i2p::data::B33_OFFLINE_KEYS_HEADER_LENGTH)
+	{
+		std::cerr << "b33 offline keys: missing batch data" << std::endl;
+		return false;
+	}
 
 	size_t offset = i2p::data::B33_OFFLINE_KEYS_HEADER_LENGTH;
 	uint16_t numKeys = bufbe16toh (buf + offset - 2);
@@ -110,10 +109,11 @@ static void printB33OfflineKeys (const i2p::data::PrivateKeys & keys, const i2p:
 
 	if (!complete)
 	{
-		std::cout << "b33 offline keys: invalid or truncated data" << std::endl;
-		return;
+		std::cerr << "b33 offline keys: invalid or truncated data" << std::endl;
+		return false;
 	}
 	std::cout << "b33 offline keys: " << numKeys << " days, " << firstDate << " to " << lastDate << std::endl;
+	return true;
 }
 
 static int printHelp (const char * exe, int exitcode)
@@ -172,21 +172,20 @@ int main (int argc, char * argv[])
 		return printHelp (argv[0], 2);
 	}
 
-	CryptoGuard cryptoGuard;
+	i2p::tools::CryptoGuard cryptoGuard;
 
 	std::string fname (argv[optind]);
 	i2p::data::PrivateKeys keys;
-	auto input = i2p::tools::ReadFile (fname);
-	if (!input)
+	auto loaded = i2p::tools::LoadPrivateKeys (fname, keys);
+	if (!loaded)
 	{
-		std::cout << input.error () << std::endl;
+		if (loaded.error () == "bad keys file format")
+		{
+			std::cerr << "bad key file format" << std::endl;
+			return 3;
+		}
+		std::cerr << loaded.error () << std::endl;
 		return 2;
-	}
-	InputWiper inputWiper { *input };
-	if (!keys.FromBuffer (input->data (), input->size ()))
-	{
-		std::cout << "bad key file format" << std::endl;
-		return 3;
 	}
 
 	auto dest = keys.GetPublic ();
@@ -242,10 +241,13 @@ int main (int argc, char * argv[])
 			i2p::data::BlindedPublicKey blindedKey (dest);
 			std::cout << "b33 address: " << blindedKey.ToB33 () << ".b32.i2p" << std::endl;
 			std::cout << "Today's store hash: " << blindedKey.GetStoreHash ().ToBase64 () << std::endl;
-			printB33OfflineKeys (keys, blindedKey);
+			if (!printB33OfflineKeys (keys, blindedKey)) return 3;
 		}
 		else
-			std::cout << "Invalid signature type " << SigTypeToName (dest->GetSigningKeyType ()) << std::endl;
+		{
+			std::cerr << "Invalid signature type " << SigTypeToName (dest->GetSigningKeyType ()) << std::endl;
+			return 3;
+		}
 	}
 
 	return 0;

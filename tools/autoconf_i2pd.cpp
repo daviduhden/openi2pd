@@ -23,6 +23,10 @@
 #include <regex>
 #include <iomanip>
 #include <cstddef>
+#include <cstring>
+
+#include "I18N.h"
+#include "FS.h"
 
 namespace AutoConf
 {
@@ -76,115 +80,57 @@ namespace PreInitConfigs
 										 "meshnets.yggdrasil=true\r\n";
 }
 
-//	Texts
-using AsksT = std::map<std::string, std::string>;
-const std::map<std::string, AsksT> Texts = // maybe vector better
-	{ { "ru",
-		  { { "WelcomeText", "Привет. Выбери тип конфига\r\n1 - клирнет\r\n2 - только yggdrasil" },
-			  // Without section
-			  { "TunConfYN", "Использовать другой путь для туннелей?" }, { "TunConf", "Введите путь для туннелей" },
-			  { "TunnelsDirYN", "Использовать другой путь для папки туннелей?" },
-			  { "TunnelsDir", "Введите путь для папки с туннелями" },
-			  { "certsdirYN", "Использовать другой путь для папки с сертификатами?" },
-			  { "certsdir", "Введите путь для папки с сертификатами" },
-			  { "pidfileYN", "использовать другой путь для PID файла?" }, { "pidfile", "Введите путь для pidfile" },
-			  { "logYN", "Нужно ли изменить путь лога?" }, { "log", "Введите тип лога(file,stdout,syslog)" },
-			  { "logfileYN", "Нужно ли изменить путь logfile?" }, { "logfile", "Введите путь logfile" },
-			  { "loglevelYN", "Нужно ли изменить стандартный уровень логирования?" },
-			  { "loglevel", "Введите уровень лога(warn,info,none,critical,error,debug)" },
-			  { "logCFLYN", "Использовать полный CFL-форму даты в логах? ПО умолчанию только время" },
-			  { "daemonYN", "Использовать режим демона?" }, { "FamilyUsing", "Введите название фамилии или -" },
-			  //TODO: an another
-			  { "UseIPv6", "Использовать ipv6?" }, { "UseIPv4", "Использовать ipv4?" },
-			  { "BeFloodfillYN", "Быть флудфиллом?" },
-			  { "NoTransitYN", "Отключить транзит? (это уменьшит анонимность)" },
-			  { "Bandwidth",
-				  "Напиши пропускную способность (- для по умолчанию) [L-32kbs,O-256kbs,P-2048kbs,X-unlimited]" },
-			  { "Share", "Процент шары (- для по умолчанию) [0-100]" },
-			  //
-			  { "NTCPEnabledYN", "Использовать NTCP?" }, { "NTCPPublishedYN", "Опубликовать IP В NTCP?" },
-			  { "NTCPPPort", "NTCP Порт. Либо - для пропуска" },
-			  { "NTCPPProxy", "NTCP Proxy, пример (socks://localhost:4545)  или - для по умолчанию (неиспользуется)" },
-			  { "SSUEnabledYN", "Использовать SSU?" }, { "SSUPPort", "SSU Порт. Либо - для пропуска" },
-			  { "SSUProxy", "SSU Proxy, пример (socks://localhost:4545)  или - для по умолчанию (неиспользуется)" } } },
-		{ "en",
-			{ { "WelcomeText", "Hello. Select type of config\r\n1 - clearnet\r\n2 - only yggdrasil" },
-				{ "TunConfYN", "Use a different path for tunnels?" }, { "TunConf", "Enter path for tunnels" },
-				{ "TunnelsDirYN", "Use a different path for the tunnels folder?" },
-				{ "TunnelsDir", "Enter path for the tunnels folder" },
-				{ "certsdirYN", "Use a different path for the certificates folder?" },
-				{ "certsdir", "Enter path for the certificates folder" },
-				{ "pidfileYN", "Use a different path for the PID file?" }, { "pidfile", "Enter path for pidfile" },
-				{ "logYN", "Do you need to change the log path?" }, { "log", "Enter log type (file, stdout, syslog)" },
-				{ "logfileYN", "Do you need to change the logfile path?" }, { "logfile", "Enter path for logfile" },
-				{ "loglevelYN", "Do you need to change the default log level?" },
-				{ "loglevel", "Enter log level (warn, info, none, critical, error, debug)" },
-				{ "logCFLYN", "Use full CFL format for date in logs? Default is only time." },
-				{ "daemonYN", "Use daemon mode?" }, { "FamilyUsing", "Enter your netfamily or just hit -." },
-				//TODO: an another
-				{ "UseIPv6", "Use ipv6?" }, { "UseIPv4", "Use ipv4?" }, { "BeFloodfillYN", "Be a floodfill?" },
-				{ "NoTransitYN", "Disable transit? (this will reduce anonymity)" },
-				{ "Bandwidth", "Write bandwidth (- for default) [L-32kbs,O-256kbs,P-2048kbs,X-unlimited]" },
-				{ "Share", "Share percents (- for default) [0-100]" },
-				//
-				{ "NTCPEnabledYN", "Use NTCP?" }, { "NTCPPublishedYN", "Publish IP in NTCP?" },
-				{ "NTCPPPort", "NTCP Port or - for auto port (random)" },
-				{ "NTCPPProxy", "NTCP Proxy, example (socks://localhost:4545) or - for default" },
-				{ "SSUEnabledYN", "Use SSU?" }, { "SSUPPort", "SSU Port or - for auto port (random)" },
-				{ "SSUProxy", "SSU Proxy, example (socks://localhost:4545) or - for default" }
-
-			} } };
-
 // Functions
 bool AskYN (void) noexcept
 {
 	for (;;)
 	{
-		char answ;
-		std::cout << " ? (y/n) ";
-		if (!(std::cin >> answ))
+		// Read a token rather than one byte: the localized Spanish and Russian
+		// answers are multibyte UTF-8 sequences.
+		std::string answ;
+		std::cout << i2p::i18n::tr (" ? (y/n) ");
+		if (!ReadToken (answ))
 		{
-			ClearInputLine ();
 			return false;
 		}
-		ClearInputLine ();
-		switch (answ)
-		{
-		case 'y':
-		case 'Y': return true;
-		case 'n':
-		case 'N': return false;
-		default:
-			// keep asking instead of consuming the stack with recursion
-			break;
-		}
+		if (answ == "y" || answ == "Y" || answ == "s" || answ == "S" || answ == "д" || answ == "Д")
+			return true;
+		if (answ == "n" || answ == "N" || answ == "н" || answ == "Н")
+			return false;
+		// keep asking instead of consuming the stack with recursion
 	}
 }
-std::string GetLanguage (void) noexcept
+void GetLanguage () noexcept
 {
+	// The shared catalogs carry every supported language, so the tool no
+	// longer ships a private ru/en map. An explicit choice overrides the
+	// environment for this process only.
 	for (;;)
 	{
 		std::string lang;
-		std::cout << "Language/Язык:\r\nru - русский\r\nen - английский\r\n";
+		std::cout << "Language/Язык: ru, en, es, zh-Hans\r\n";
 		if (!ReadToken (lang))
 		{
-			std::cerr << "Input error, using English" << std::endl;
-			return "en";
+			std::cerr << i2p::i18n::tr ("Input error, using English") << std::endl;
+			i2p::i18n::SetLanguage ("en");
+			return;
 		}
-		if (Texts.find (lang) != Texts.end ())
+		if (lang == "ru" || lang == "en" || lang == "es" || lang == "zh" || lang == "zh-Hans")
 		{
-			return lang;
+			i2p::i18n::SetLanguage (lang);
+			return;
 		}
-		std::cerr << "Not correct language, try again" << std::endl;
+		std::cerr << i2p::i18n::tr ("Unsupported language, try again") << std::endl;
 	}
 }
 
-bool IsOnlyYggdrasil (const std::string & lang) noexcept
+bool IsOnlyYggdrasil () noexcept
 {
 	for (;;)
 	{
 		std::string answ;
-		std::cout << AutoConf::Texts.at (lang).at ("WelcomeText") << std::endl;
+		std::cout << i2p::i18n::tr ("Hello. Select type of config\r\n1 - clearnet\r\n2 - only yggdrasil")
+				  << std::endl;
 		if (!ReadToken (answ))
 		{
 			// keep the default clearnet configuration on input failure
@@ -202,8 +148,8 @@ int main (void)
 	std::cout << "https://github.com/daviduhden/openi2pd/blob/main/docs/user-guide/configuration.md\r\n"
 				 "https://github.com/daviduhden/openi2pd/blob/main/contrib/i2pd.conf\r\n";
 	std::ostringstream conf;
-	auto lang = AutoConf::GetLanguage ();
-	auto isOnlyYgg = AutoConf::IsOnlyYggdrasil (lang);
+	AutoConf::GetLanguage ();
+	auto isOnlyYgg = AutoConf::IsOnlyYggdrasil ();
 	if (isOnlyYgg)
 	{
 #ifndef _WIN32
@@ -215,20 +161,20 @@ int main (void)
 	{
 		// Asks
 		using namespace AutoConf;
-		[] (std::ostringstream & conf, const std::string & lang)
+		[] (std::ostringstream & conf)
 		{
 #define ASKYN_MACRO(A, B, C, REGEX)                                                                                    \
 	{                                                                                                                  \
-		std::cout << AutoConf::Texts.at (lang).at (A);                                                                 \
+		std::cout << i2p::i18n::tr (A);                                                                 \
 		if (AskYN ())                                                                                                  \
 		{                                                                                                              \
 			for (;;)                                                                                                   \
 			{                                                                                                          \
-				std::cout << AutoConf::Texts.at (lang).at (B) << "\r\n";                                               \
+				std::cout << i2p::i18n::tr (B) << "\r\n";                                               \
 				std::string inp;                                                                                       \
 				if (!AutoConf::ReadToken (inp))                                                                        \
 				{                                                                                                      \
-					std::cerr << "No correct input" << std::endl;                                                      \
+					std::cerr << i2p::i18n::tr ("No correct input") << std::endl;                                                      \
 					break;                                                                                             \
 				}                                                                                                      \
 				std::smatch bmatch;                                                                                    \
@@ -239,31 +185,31 @@ int main (void)
 				}                                                                                                      \
 				else                                                                                                   \
 				{                                                                                                      \
-					std::cerr << "No correct input" << std::endl;                                                      \
+					std::cerr << i2p::i18n::tr ("No correct input") << std::endl;                                                      \
 				}                                                                                                      \
 			}                                                                                                          \
 		}                                                                                                              \
 	};
-			ASKYN_MACRO ("TunConfYN", "TunConf", "tunconf", AutoConf::Regexps::path);
-			ASKYN_MACRO ("TunnelsDirYN", "TunnelsDir", "tunnelsdir", AutoConf::Regexps::path);
-			ASKYN_MACRO ("certsdirYN", "certsdir", "certsdir", AutoConf::Regexps::path);
-			ASKYN_MACRO ("pidfileYN", "pidfile", "pidfile", AutoConf::Regexps::path);
+			ASKYN_MACRO ("Use a different path for tunnels?", "Enter path for tunnels", "tunconf", AutoConf::Regexps::path);
+			ASKYN_MACRO ("Use a different path for the tunnels folder?", "Enter path for the tunnels folder", "tunnelsdir", AutoConf::Regexps::path);
+			ASKYN_MACRO ("Use a different path for the certificates folder?", "Enter path for the certificates folder", "certsdir", AutoConf::Regexps::path);
+			ASKYN_MACRO ("Use a different path for the PID file?", "Enter path for pidfile", "pidfile", AutoConf::Regexps::path);
 			//ASKYN_MACRO("logYN","log","log",AutoConf::Regexps::any);
-			ASKYN_MACRO ("loglevelYN", "loglevel", "loglevel", AutoConf::Regexps::any); // TODO: word type
+			ASKYN_MACRO ("Do you need to change the default log level?", "Enter log level (warn, info, none, critical, error, debug)", "loglevel", AutoConf::Regexps::any); // TODO: word type
 #define ASK_BOOL(A, B)                                                                                                 \
 	{                                                                                                                  \
-		std::cout << AutoConf::Texts.at (lang).at (A) << std::endl;                                                    \
+		std::cout << i2p::i18n::tr (A) << std::endl;                                                    \
 		bool v = AskYN ();                                                                                             \
 		conf << B "=" << (v ? "true" : "false") << "\r\n";                                                             \
 	}
-			ASK_BOOL ("UseIPv6", "ipv6");
-			ASK_BOOL ("UseIPv4", "ipv4");
-			ASK_BOOL ("logCFLYN", "logclftime");
-			ASK_BOOL ("daemonYN", "daemon");
+			ASK_BOOL ("Use ipv6?", "ipv6");
+			ASK_BOOL ("Use ipv4?", "ipv4");
+			ASK_BOOL ("Use full CFL format for date in logs? Default is only time.", "logclftime");
+			ASK_BOOL ("Use daemon mode?", "daemon");
 // TODO: - to constexpr or just const and use this const in text formating
 #define ASK_TEXT(A, B)                                                                                                 \
 	{                                                                                                                  \
-		std::cout << AutoConf::Texts.at (lang).at (A) << std::endl;                                                    \
+		std::cout << i2p::i18n::tr (A) << std::endl;                                                    \
 		std::string inp;                                                                                               \
 		if (AutoConf::ReadToken (inp))                                                                                 \
 		{                                                                                                              \
@@ -274,30 +220,30 @@ int main (void)
 		}                                                                                                              \
 		else                                                                                                           \
 		{                                                                                                              \
-			std::cerr << "No correct input" << std::endl;                                                              \
+			std::cerr << i2p::i18n::tr ("No correct input") << std::endl;                                                              \
 		}                                                                                                              \
 	}
-			ASK_TEXT ("FamilyUsing", "family");
-			ASK_BOOL ("BeFloodfillYN", "floodfill");
-			ASK_BOOL ("NoTransitYN", "notransit");
-			ASK_TEXT ("Bandwidth", "bandwidth");
-			ASK_TEXT ("Share", "share");
+			ASK_TEXT ("Enter your netfamily or just hit -.", "family");
+			ASK_BOOL ("Be a floodfill?", "floodfill");
+			ASK_BOOL ("Disable transit? (this will reduce anonymity)", "notransit");
+			ASK_TEXT ("Write bandwidth (- for default) [L-32kbs,O-256kbs,P-2048kbs,X-unlimited]", "bandwidth");
+			ASK_TEXT ("Share percents (- for default) [0-100]", "share");
 			///// With sections
 			conf << "[ntcp2]\r\n";
-			ASK_BOOL ("NTCPEnabledYN", "enabled");
-			ASK_BOOL ("NTCPPublishedYN", "published");
-			ASK_TEXT ("NTCPPPort", "port");
-			ASK_TEXT ("NTCPPProxy", "proxy");
+			ASK_BOOL ("Use NTCP?", "enabled");
+			ASK_BOOL ("Publish IP in NTCP?", "published");
+			ASK_TEXT ("NTCP Port or - for auto port (random)", "port");
+			ASK_TEXT ("NTCP Proxy, example (socks://localhost:4545) or - for default", "proxy");
 			conf << "[ssu2]\r\n";
-			ASK_BOOL ("SSUEnabledYN", "enabled");
-			ASK_TEXT ("SSUPPort", "port");
-			ASK_TEXT ("SSUProxy", "proxy");
+			ASK_BOOL ("Use SSU?", "enabled");
+			ASK_TEXT ("SSU Port or - for auto port (random)", "port");
+			ASK_TEXT ("SSU Proxy, example (socks://localhost:4545) or - for default", "proxy");
 #undef ASK_TEXT
 #undef ASK_BOOL
 #undef ASKYN_MACRO
-		}(conf, lang);
+		}(conf);
 	}
-	std::cout << "Config: " << std::endl;
+	std::cout << i2p::i18n::tr ("Config: ") << std::endl;
 	std::cout << conf.str () << std::endl;
 	//TODO: To Constexpr
 	std::cout << "Save File: (\"i2pd_.conf\"):";
@@ -310,27 +256,23 @@ int main (void)
 		return 1;
 	}
 	const auto count = static_cast<size_t> (std::cin.gcount ());
-	std::string outFileName (nameBuffer.data (), count);
+	// gcount() also counts the extracted delimiter, which is not stored in the
+	// buffer. Construct from the actual C string so a trailing NUL never
+	// becomes part of the path or truncates it silently.
+	std::string outFileName (nameBuffer.data (), ::strnlen (nameBuffer.data (), count));
 	while (!outFileName.empty () && (outFileName.back () == '\n' || outFileName.back () == '\r'))
 		outFileName.pop_back ();
-	//TODO: to constxpr
-	if (outFileName.length () == 0) outFileName = "i2pd_.conf";
-	std::ofstream confFile (outFileName, std::ios::binary | std::ios::trunc);
-	if (!confFile)
+	if (outFileName.find ('\0') != std::string::npos)
 	{
-		std::cerr << "cannot open " << outFileName << std::endl;
+		std::cerr << "file name contains a NUL byte" << std::endl;
 		return 1;
 	}
-	confFile << conf.str ();
-	if (!confFile)
+	if (outFileName.empty ()) outFileName = "i2pd_.conf";
+	// Publish the configuration through the same staged writer the daemon uses
+	// instead of truncating an existing file in place.
+	if (!i2p::fs::AtomicWrite (outFileName, conf.str ()))
 	{
 		std::cerr << "cannot write " << outFileName << std::endl;
-		return 1;
-	}
-	confFile.close ();
-	if (!confFile)
-	{
-		std::cerr << "cannot close " << outFileName << std::endl;
 		return 1;
 	}
 	return 0;

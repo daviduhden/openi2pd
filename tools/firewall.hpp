@@ -14,6 +14,7 @@
 #define I2PD_TOOLS_FIREWALL_HPP
 
 #include <algorithm>
+#include <array>
 #include <cctype>
 #include <cstdint>
 #include <optional>
@@ -114,6 +115,15 @@ inline std::optional<Endpoint> MakeEndpoint (std::string_view addressText, int p
 		if (bytes[0] == 0xfe && (bytes[1] & 0xc0) == 0x80) return std::nullopt; // fe80::/10
 		if ((bytes[0] & 0xfe) == 0xfc) return std::nullopt; // fc00::/7 ULA
 		if (bytes[0] == 0xfe && (bytes[1] & 0xc0) == 0xc0) return std::nullopt; // fec0::/10 site-local
+		// Special-purpose IPv6 prefixes that never name a public I2P peer.
+		const bool nat64 = bytes[0] == 0x00 && bytes[1] == 0x64 && bytes[2] == 0xff && bytes[3] == 0x9b
+			&& std::all_of (bytes.begin () + 4, bytes.begin () + 12, [] (unsigned char b) { return b == 0; });
+		const bool sixToFour = bytes[0] == 0x20 && bytes[1] == 0x02;
+		const bool teredo = bytes[0] == 0x20 && bytes[1] == 0x01 && bytes[2] == 0x00 && bytes[3] == 0x00;
+		const bool discard = bytes[0] == 0x01 && bytes[1] == 0x00
+			&& std::all_of (bytes.begin () + 2, bytes.begin () + 8, [] (unsigned char b) { return b == 0; });
+		const bool documentation = bytes[0] == 0x3f && bytes[1] == 0xff && (bytes[2] & 0xf0) == 0;
+		if (nat64 || sixToFour || teredo || discard || documentation) return std::nullopt;
 	}
 	else
 	{
@@ -127,6 +137,9 @@ inline std::optional<Endpoint> MakeEndpoint (std::string_view addressText, int p
 			|| (value & 0xfff00000u) == 0xac100000u // 172.16.0.0/12
 			|| (value & 0xffff0000u) == 0xc0a80000u // 192.168.0.0/16
 			|| (value & 0xffc00000u) == 0x64400000u // 100.64.0.0/10 CGNAT
+			|| (value & 0xfffe0000u) == 0xc6120000u // 198.18.0.0/15 benchmark
+			|| (value & 0xffffff00u) == 0xc0000000u // 192.0.0.0/24 IETF
+			|| (value & 0xffffff00u) == 0xc0586300u // 192.88.99.0/24 6to4 relay
 			|| (value & 0xff000000u) == 0x00000000u // 0.0.0.0/8
 			|| (value & 0xf0000000u) == 0xf0000000u) // 240.0.0.0/4
 			return std::nullopt;
@@ -166,12 +179,26 @@ inline char AsciiLower (unsigned char ch)
 	return (ch >= 'A' && ch <= 'Z') ? static_cast<char> (ch - 'A' + 'a') : static_cast<char> (ch);
 }
 
+inline bool IsReservedNftWord (std::string_view value)
+{
+	static constexpr std::array<std::string_view, 24> reserved { { "add", "chain", "comment", "counter", "ct",
+		"delete", "drop", "flush", "handle", "hook", "inet", "insert", "ip", "ip6", "list", "meta", "policy",
+		"priority", "queue", "reject", "rule", "table", "tcp", "type" } };
+	std::string lower (value.begin (), value.end ());
+	std::transform (lower.begin (), lower.end (), lower.begin (), [] (unsigned char ch) { return AsciiLower (ch); });
+	return std::find (reserved.begin (), reserved.end (), std::string_view (lower)) != reserved.end ();
+}
+
 inline bool IsSafeIdentifier (std::string_view value)
 {
 	if (value.empty () || value.size () > 64) return false;
-	if (!(IsAsciiAlpha (static_cast<unsigned char> (value.front ())) || value.front () == '_')) return false;
-	return std::all_of (value.begin () + 1, value.end (),
-		[] (unsigned char ch) { return IsAsciiAlnum (ch) || ch == '_' || ch == '-' || ch == '.'; });
+	// nft's scanner starts a plain identifier with a letter; a leading
+	// underscore is accepted by our old check but not by nft itself.
+	if (!IsAsciiAlpha (static_cast<unsigned char> (value.front ()))) return false;
+	if (!std::all_of (value.begin () + 1, value.end (),
+			[] (unsigned char ch) { return IsAsciiAlnum (ch) || ch == '_' || ch == '-' || ch == '.'; }))
+		return false;
+	return !IsReservedNftWord (value);
 }
 
 /**
@@ -213,7 +240,7 @@ inline std::string EscapePowerShell (std::string_view value)
 	{
 		if (ch == '\'')
 			escaped += "''";
-		else
+		else if (ch != '\r' && ch != '\n')
 			escaped.push_back (ch);
 	}
 	return escaped;
@@ -237,6 +264,7 @@ inline std::string IptablesCommand (const Endpoint & endpoint)
 
 inline std::optional<std::string> Nftables (const Endpoint & endpoint, const RenderOptions & options)
 {
+	if (!IsValidEndpoint (endpoint)) return std::nullopt;
 	if (!IsSafeIdentifier (options.nftTable) || !IsSafeOutputChain (options.nftChain)
 		|| !IsSafeRuleTag (options.ruleTag))
 		return std::nullopt;
@@ -259,6 +287,7 @@ inline std::optional<std::string> Nftables (const Endpoint & endpoint, const Ren
 
 inline std::optional<std::string> Windows (const Endpoint & endpoint, const RenderOptions & options)
 {
+	if (!IsValidEndpoint (endpoint)) return std::nullopt;
 	if (!IsSafeRuleTag (options.ruleTag)) return std::nullopt;
 	const std::string family = endpoint.ipv6 ? "v6" : "v4";
 	std::string addressId = endpoint.address;
@@ -268,7 +297,8 @@ inline std::optional<std::string> Windows (const Endpoint & endpoint, const Rend
 	std::string tagId = options.ruleTag;
 	std::replace_if (
 		tagId.begin (), tagId.end (),
-		[] (unsigned char ch) { return !(IsAsciiAlnum (ch) || ch == '_' || ch == '-' || ch == '.'); }, '_');
+		[] (unsigned char ch) { return !(IsAsciiAlnum (ch) || ch == '_' || ch == '-' || ch == '.' || ch == '~'); },
+		'_');
 	const std::string ruleName = "openi2pd_" + std::string (TransportName (endpoint.transport)) + "_" + family + "_"
 		+ tagId + "_" + addressId + "_" + std::to_string (endpoint.port);
 	return "New-NetFirewallRule -Name '" + EscapePowerShell (ruleName) + "' -DisplayName '" + EscapePowerShell (name)
@@ -280,7 +310,11 @@ inline std::optional<std::string> Windows (const Endpoint & endpoint, const Rend
 
 inline std::optional<std::string> Pf (const Endpoint & endpoint, const RenderOptions & options)
 {
+	if (!IsValidEndpoint (endpoint)) return std::nullopt;
 	if (!IsSafeRuleTag (options.ruleTag)) return std::nullopt;
+	// PF_RULE_LABEL_SIZE is 64 bytes including the NUL; the prefix is
+	// "openi2pd " + transport + " ".
+	if (!options.ruleTag.empty () && 15 + options.ruleTag.size () > 63) return std::nullopt;
 	std::string rule = std::string ("pass out quick ") + (endpoint.ipv6 ? "inet6" : "inet") + " proto "
 		+ L4Protocol (endpoint.transport) + " to " + endpoint.address + " port " + std::to_string (endpoint.port)
 		+ " keep state";
@@ -295,7 +329,8 @@ inline bool IsSelectedByFamily (const Endpoint & endpoint, const RenderOptions &
 	if (options.backend != Backend::Nftables) return true;
 	if (options.nftFamily == "ip") return !endpoint.ipv6;
 	if (options.nftFamily == "ip6") return endpoint.ipv6;
-	return true;
+	if (options.nftFamily == "inet") return true;
+	return false;
 }
 
 inline std::optional<std::string> Render (const Endpoint & endpoint, const RenderOptions & options)

@@ -196,7 +196,7 @@ run_tool(keygen TRUE mixed-case.keys eDdSa_sHa512_eD25519)
 assert_output_contains("Signature type: ED25519-SHA512" "keygen normalizes case and underscores")
 restrict_secret("${WORK}/mixed-case.keys")
 
-run_tool(keygen FALSE --help)
+run_tool(keygen TRUE --help)
 assert_output_contains("Usage: keygen" "keygen --help")
 if(EXISTS "${WORK}/--help")
   fail("keygen --help created a file named --help")
@@ -264,7 +264,7 @@ endif()
 
 run_tool(keyinfo TRUE -v p256.keys)
 assert_output_matches("Signature Type: ECDSA-P256" "keyinfo -v P-256 signature type")
-run_tool(keyinfo TRUE -b p256.keys)
+run_tool(keyinfo FALSE -b p256.keys)
 assert_output_matches("Invalid signature type ECDSA-P256" "keyinfo -b rejects non-blindable P-256")
 
 run_tool(keyinfo TRUE -h)
@@ -744,17 +744,32 @@ assert_output_contains("Usage: b33address" "b33address help does not read stdin"
 # autoconf_i2pd: deterministic non-interactive transcript. It writes a
 # configuration file below WORK and never touches the real data directory.
 # ---------------------------------------------------------------------------
+# Exactly one answer per prompt: AskYN rejects a '-', so a well-formed
+# transcript is required to keep the save name aligned with the prompt.
 file(WRITE "${WORK}/autoconf.in"
-  "en\n1\n"
-  "n\nn\nn\nn\nn\n"
-  "n\ny\n"
-  "n\nn\n"
-  "-\n"
-  "n\nn\n"
-  "-\n-\n"
-  "n\nn\n-\n-\n"
-  "n\n-\n-\n"
-  "-\n"
+  "en\n"          # language
+  "1\n"           # clearnet
+  "n\n"           # tunconf
+  "n\n"           # tunnelsdir
+  "n\n"           # certsdir
+  "n\n"           # pidfile
+  "n\n"           # loglevel
+  "n\n"           # ipv6
+  "y\n"           # ipv4
+  "n\n"           # logclftime
+  "n\n"           # daemon
+  "-\n"           # family
+  "n\n"           # floodfill
+  "n\n"           # notransit
+  "-\n"           # bandwidth
+  "-\n"           # share
+  "n\n"           # ntcp2 enabled
+  "n\n"           # ntcp2 published
+  "-\n"           # ntcp2 port
+  "-\n"           # ntcp2 proxy
+  "n\n"           # ssu2 enabled
+  "-\n"           # ssu2 port
+  "-\n"           # ssu2 proxy
   "autoconf.conf\n")
 set(TOOL_STDIN "${WORK}/autoconf.in")
 run_tool(autoconf_i2pd TRUE)
@@ -765,6 +780,9 @@ assert_file_contains_literal("${WORK}/autoconf.conf" "[ssu2]" "autoconf ssu2 sec
 assert_file_lacks_literal("${WORK}/autoconf.conf" "[http]" "autoconf removed http section")
 assert_file_lacks_literal("${WORK}/autoconf.conf" "lang=" "autoconf removed web language")
 assert_file_contains_literal("${WORK}/autoconf.conf" "ipv4=true" "autoconf ipv4 answer")
+if(EXISTS "${WORK}/-")
+  fail("autoconf transcript consumed a prompt answer as the save name")
+endif()
 
 file(REMOVE_RECURSE "${WORK}")
 message(STATUS "tools-regressions: all checks passed")

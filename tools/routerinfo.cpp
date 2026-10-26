@@ -17,7 +17,9 @@
 #include <iostream>
 #include <memory>
 #include <optional>
+#include <ostream>
 #include <set>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -25,6 +27,7 @@
 #include "Crypto.h"
 #include "RouterInfo.h"
 #include "common/file.hpp"
+#include "common/crypto.hpp"
 #include "firewall.hpp"
 
 namespace
@@ -48,15 +51,15 @@ struct Options
 	RenderOptions render;
 };
 
-void Usage (const char * program)
+void Usage (const char * program, std::ostream & out)
 {
-	std::cout << "usage: " << program
+	out << "usage: " << program
 			  << " [-6] [-p] [-y] [--firewall=BACKEND] [NFT OPTIONS] routerinfo.dat...\n"
 				 "\n"
 				 "Print addresses from one or more RouterInfo files.\n"
 				 "\n"
 				 "  -6                     include IPv6 addresses\n"
-				 "  -p                     print ports in address listing\n"
+				 "  -p                     print ports in address listing (listing only; ignored with a backend)\n"
 				 "  -y                     include Yggdrasil addresses\n"
 				 "  -f                     print legacy iptables OUTPUT fragments (default backend)\n"
 				 "  --firewall=iptables    print full iptables/ip6tables commands\n"
@@ -109,7 +112,7 @@ void AddAddress (std::vector<std::shared_ptr<const i2p::data::RouterInfo::Addres
 
 bool PrintRules (const std::string & hash,
 	const std::vector<std::shared_ptr<const i2p::data::RouterInfo::Address>> & addresses, const Options & options,
-	std::set<std::string> & seen, size_t & total, bool & fatal)
+	std::set<std::string> & seen, size_t & total, bool & fatal, std::ostream & out)
 {
 	bool valid = true;
 	bool headerPrinted = false;
@@ -132,15 +135,6 @@ bool PrintRules (const std::string & hash,
 			valid = false;
 			continue;
 		}
-		const auto key = i2p::tools::firewall::EndpointKey (*endpoint);
-		if (!seen.insert (key).second) continue;
-		if (++total > MAX_ENDPOINTS)
-		{
-			std::cerr << "routerinfo: too many distinct endpoints (max " << MAX_ENDPOINTS << ")" << std::endl;
-			fatal = true;
-			return false;
-		}
-
 		RenderOptions render = options.render;
 		render.ruleTag = hash.substr (0, 8);
 		if (!i2p::tools::firewall::IsSelectedByFamily (*endpoint, render)) continue;
@@ -152,12 +146,20 @@ bool PrintRules (const std::string & hash,
 			valid = false;
 			continue;
 		}
+		const auto key = i2p::tools::firewall::EndpointKey (*endpoint);
+		if (!seen.insert (key).second) continue;
+		if (++total > MAX_ENDPOINTS)
+		{
+			std::cerr << "routerinfo: too many distinct endpoints (max " << MAX_ENDPOINTS << ")" << std::endl;
+			fatal = true;
+			return false;
+		}
 		if (!headerPrinted)
 		{
-			std::cout << "# " << hash << std::endl;
+			out << "# " << hash << std::endl;
 			headerPrinted = true;
 		}
-		std::cout << *rule << std::endl;
+		out << *rule << std::endl;
 	}
 	return valid;
 }
@@ -209,13 +211,13 @@ int main (int argc, char * argv[])
 			options.render.nftChain = optarg;
 			options.nftOptionsGiven = true;
 			break;
-		default: Usage (argv[0]); return 1;
+		default: Usage (argv[0], std::cerr); return 1;
 		}
 	}
 
 	if (options.help)
 	{
-		Usage (argv[0]);
+		Usage (argv[0], std::cout);
 		return 0;
 	}
 	if (options.legacyFirewall && options.backend)
@@ -230,7 +232,7 @@ int main (int argc, char * argv[])
 	}
 	if (optind >= argc)
 	{
-		Usage (argv[0]);
+		Usage (argv[0], std::cerr);
 		return 1;
 	}
 	if (options.legacyFirewall) options.backend = Backend::IptablesLegacy;
@@ -274,15 +276,14 @@ int main (int argc, char * argv[])
 		return 1;
 	}
 
-	i2p::crypto::InitCrypto (false);
-	struct CryptoGuard
-	{
-		~CryptoGuard () { i2p::crypto::TerminateCrypto (); }
-	} cryptoGuard;
+	i2p::tools::CryptoGuard cryptoGuard;
 
 	std::set<std::string> seen;
 	size_t total = 0;
 	bool inputError = false;
+	// Buffer the whole run. A generator that leaves partial rules on stdout
+	// after a later file fails can be piped into a shell and half-applied.
+	std::ostringstream output;
 	for (int index = optind; index < argc; ++index)
 	{
 		const std::string filename (argv[index]);
@@ -317,7 +318,7 @@ int main (int argc, char * argv[])
 			if (options.backend)
 			{
 				bool fatal = false;
-				if (!PrintRules (hash, addresses, options, seen, total, fatal))
+				if (!PrintRules (hash, addresses, options, seen, total, fatal, output))
 				{
 					inputError = true;
 					if (fatal) return 1;
@@ -326,12 +327,12 @@ int main (int argc, char * argv[])
 			}
 			else
 			{
-				std::cout << "Router Hash: " << hash << std::endl;
+				output << "Router Hash: " << hash << std::endl;
 				for (const auto & address : addresses)
 				{
-					std::cout << AddressStyle (*address) << ": " << i2p::util::net::FormatAddress (address->host);
-					if (options.printPort) std::cout << ":" << address->port;
-					std::cout << std::endl;
+					output << AddressStyle (*address) << ": " << i2p::util::net::FormatAddress (address->host);
+					if (options.printPort) output << ":" << address->port;
+					output << std::endl;
 				}
 			}
 		}
@@ -347,5 +348,9 @@ int main (int argc, char * argv[])
 		}
 	}
 
-	return inputError ? 1 : 0;
+	if (inputError) return 1;
+	if (options.backend && total == 0)
+		std::cerr << "routerinfo: no endpoint matched the selected backend and family" << std::endl;
+	std::cout << output.str ();
+	return 0;
 }

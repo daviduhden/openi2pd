@@ -11,6 +11,7 @@
 
 use strict;
 use warnings;
+use 5.016;
 use File::Spec;
 use Cwd         qw(abs_path);
 use Digest::SHA qw(sha256_hex);

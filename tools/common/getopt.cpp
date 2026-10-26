@@ -10,7 +10,7 @@
  *
  */
 
-#ifdef _WIN32
+#if defined(_WIN32) || defined(I2PD_TOOLS_GETOPT_TEST)
 
 #include "getopt.h"
 

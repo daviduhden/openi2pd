@@ -8,7 +8,7 @@
 # mode. The private prefix is deleted and no system prefix is touched.
 #
 
-foreach(required BUILD_DIR WORK_DIR PERL_EXECUTABLE INSTALL_BINDIR INSTALL_DOCDIR TOOLS)
+foreach(required BUILD_DIR WORK_DIR PERL_EXECUTABLE INSTALL_BINDIR INSTALL_DOCDIR INSTALL_MANDIR TOOLS)
   if(NOT ${required})
     message(FATAL_ERROR "${required} is required")
   endif()
@@ -66,6 +66,11 @@ endforeach()
 set(installed_license "${WORK_DIR}/${INSTALL_DOCDIR}/LICENSE.i2pd-tools")
 if(NOT EXISTS "${installed_license}")
   message(FATAL_ERROR "tools attribution was not installed: ${installed_license}")
+endif()
+
+set(installed_man "${WORK_DIR}/${INSTALL_MANDIR}/man1/i2pdctl.1")
+if(NOT EXISTS "${installed_man}")
+  message(FATAL_ERROR "i2pdctl man page was not installed in the Tools component: ${installed_man}")
 endif()
 
 file(STRINGS "${installed}" shebang LIMIT_COUNT 1)

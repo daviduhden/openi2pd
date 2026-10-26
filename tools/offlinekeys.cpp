@@ -21,27 +21,37 @@
 #include "Timestamp.h"
 #include "common/file.hpp"
 #include "common/key.hpp"
+#include "common/keys.hpp"
 #include "common/crypto.hpp"
 
 namespace
 {
 bool ParseDays (const char * text, int & days)
 {
-	int value = 0;
-	std::string_view input (text);
-	auto result = std::from_chars (input.data (), input.data () + input.size (), value);
-	if (result.ec != std::errc () || result.ptr != input.data () + input.size ()) return false;
-	if (value < 1 || value > 3650) return false;
-	days = value;
+	auto value = ParseBounded<int> (text ? std::string_view (text) : std::string_view (), 1, 3650);
+	if (!value) return false;
+	days = *value;
 	return true;
 }
 }
 
 int main (int argc, char * argv[])
 {
-	if (argc < 3)
+	constexpr const char * usage
+		= "Usage: offlinekeys <output file> <keys file> [<signature type>] [<days>]\n";
+	if (argc == 2 && (std::string_view (argv[1]) == "-h" || std::string_view (argv[1]) == "--help"))
 	{
-		std::cout << "Usage: offlinekeys <output file> <keys file> <signature type> <days>" << std::endl;
+		std::cout << usage;
+		return 0;
+	}
+	if (argc < 3 || argc > 5)
+	{
+		std::cerr << usage;
+		return 1;
+	}
+	if (i2p::tools::SameFile (argv[1], argv[2]))
+	{
+		std::cerr << "refusing to overwrite the destination key file" << std::endl;
 		return 1;
 	}
 
@@ -80,13 +90,12 @@ int main (int argc, char * argv[])
 		std::cerr << "cannot create offline signature keys for " << SigTypeToName (type) << std::endl;
 		return 4;
 	}
-	std::vector<uint8_t> buffer (offlineKeys.GetFullLen ());
+	i2p::tools::SecureBuffer buffer (offlineKeys.GetFullLen ());
 	const size_t len = offlineKeys.ToBuffer (buffer.data (), buffer.size ());
-	const bool written = len && i2p::tools::WriteFile (argv[1], buffer.data (), len);
-	i2p::tools::Wipe (buffer);
+	const bool written = len && i2p::tools::SavePrivateKeys (argv[1], buffer.span ().first (len));
 	if (!written)
 	{
-		std::cout << "Can't create file " << argv[1] << std::endl;
+		std::cerr << "Can't create " << argv[1] << ": the path must be a writable regular file" << std::endl;
 		return 3;
 	}
 

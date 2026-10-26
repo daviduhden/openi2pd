@@ -19,27 +19,35 @@
 #include "Crypto.h"
 #include "Identity.h"
 #include "common/file.hpp"
+#include "common/key.hpp"
+#include "common/keys.hpp"
+#include "common/crypto.hpp"
 
 int main (int argc, char * argv[])
 {
-	if (argc < 3)
+	if (argc != 3)
 	{
-		std::cout << "Usage: regaddr filename address" << std::endl;
+		std::cerr << "Usage: regaddr <filename> <address>" << std::endl;
 		return 1;
 	}
-
-	i2p::crypto::InitCrypto (false);
-	i2p::data::PrivateKeys keys;
-
-	auto input = i2p::tools::ReadFile (argv[1]);
-	if (!input || !keys.FromBuffer (input->data (), input->size ()))
+	if (!IsValidRecordName (argv[2]))
 	{
-		if (input) i2p::tools::Wipe (*input);
-		std::cout << "Failed to load keyfile " << argv[1] << std::endl;
-		i2p::crypto::TerminateCrypto ();
+		std::cerr << "address must not be empty or contain whitespace, '#' or '='" << std::endl;
 		return 2;
 	}
-	i2p::tools::Wipe (*input);
+
+	i2p::tools::CryptoGuard cryptoGuard;
+	i2p::data::PrivateKeys keys;
+	if (auto loaded = LoadPrivateKeys (argv[1], keys); !loaded)
+	{
+		std::cerr << "Failed to load keyfile " << argv[1] << ": " << loaded.error () << std::endl;
+		return 2;
+	}
+	if (!keys.GetPublic ())
+	{
+		std::cerr << "key file has no public identity" << std::endl;
+		return 2;
+	}
 
 	std::ostringstream out;
 	out << argv[2] << "=" << keys.GetPublic ()->ToBase64 ();
@@ -49,6 +57,5 @@ int main (int argc, char * argv[])
 	out << "#!sig=" << i2p::data::ByteStreamToBase64 (signature.data (), signature.size ());
 	std::cout << out.str () << std::endl;
 
-	i2p::crypto::TerminateCrypto ();
 	return 0;
 }

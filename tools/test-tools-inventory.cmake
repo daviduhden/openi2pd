@@ -3,9 +3,10 @@
 #
 # openi2pd: test tools inventory.
 #
-# Compile-free CTest inventory check that every maintained tool executable and
-# shared source exists, and optionally that the pinned upstream manifest names
-# real local files. It does not execute any tool.
+# Build-gated artifact inventory check that every maintained tool executable and
+# shared source exists, and that the pinned upstream manifest names real local
+# files. The compile-free CMake/docs/packaging parity check lives in
+# tests/check-tools-inventory.cmake.
 #
 
 if(NOT DEFINED TOOLS_DIR OR NOT DEFINED TOOLS OR NOT DEFINED TOOLS_SOURCE_DIR)
@@ -32,8 +33,10 @@ set(REQUIRED_SOURCES
   common/getopt.cpp
   common/getopt.h
   common/key.hpp
+  common/keys.hpp
   common/crypto.hpp
   firewall.hpp
+  tests/maintenance-checkers.t
   LICENSE
 )
 foreach(source IN LISTS REQUIRED_SOURCES)
@@ -41,6 +44,13 @@ foreach(source IN LISTS REQUIRED_SOURCES)
     message(FATAL_ERROR "Missing shared tool source: ${TOOLS_SOURCE_DIR}/${source}")
   endif()
 endforeach()
+
+# The installed Perl client must travel with its manual page.
+string(REGEX REPLACE "/contrib/upstream/tools-files\.txt$" "" PROJECT_ROOT
+  "${TOOLS_UPSTREAM_MANIFEST}")
+if(NOT EXISTS "${PROJECT_ROOT}/man/i2pdctl.1")
+  message(FATAL_ERROR "Missing man page: ${PROJECT_ROOT}/man/i2pdctl.1")
+endif()
 
 # Verify the pinned upstream manifest describes real local files. A missing
 # manifest is a provenance failure, not a skipped check.

@@ -34,6 +34,8 @@
 #include "I2PEndian.h"
 #include "common/file.hpp"
 #include "common/key.hpp"
+#include "common/keys.hpp"
+#include "common/crypto.hpp"
 // Included last: it defines single-letter function-like macros (S0/S1/Ch),
 // which must not leak into the standard or libi2pd headers above.
 #include "vanity.hpp"
@@ -489,9 +491,9 @@ Outcome RunSearch (Options & options, std::string_view prefix, const std::regex 
 
 	std::cout << "outpath for a now: " << options.outputpath << std::endl;
 
-	if (!i2p::tools::WriteFile (options.outputpath, keyBuffer.data (), keyFileLen))
+	if (!i2p::tools::SavePrivateKeys (options.outputpath, std::span<const uint8_t> (keyBuffer.data (), keyFileLen)))
 	{
-		std::cout << "Can't create file " << options.outputpath << std::endl;
+		std::cerr << "Can't create " << options.outputpath << std::endl;
 		return Outcome::Failed;
 	}
 
@@ -524,6 +526,16 @@ ParseResult ParseArguments (int argc, char ** argv, Options & options)
 		{ "threads", required_argument, nullptr, 't' }, { "signature", required_argument, nullptr, 's' },
 		{ "output", required_argument, nullptr, 'o' }, { "multiplymode", no_argument, nullptr, 'm' },
 		{ nullptr, 0, nullptr, 0 } };
+
+	// The Windows getopt shim stops at the first operand instead of permuting
+	// like glibc. Move one leading pattern after the options so the documented
+	// "vain pattern [options]" form works on every platform.
+	if (argc > 2 && argv[1] && argv[1][0] != '-' && argv[1][0] != '\0')
+	{
+		char * pattern = argv[1];
+		for (int i = 1; i + 1 < argc; ++i) argv[i] = argv[i + 1];
+		argv[argc - 1] = pattern;
+	}
 
 	int c;
 	while ((c = getopt_long (argc, argv, "hrt:s:o:m", longOptions, &optionIndex)) != -1)
@@ -625,11 +637,7 @@ int main (int argc, char * argv[])
 		options.threads = available ? static_cast<int> (std::min (available, MAX_THREADS)) : 1;
 	}
 
-	i2p::crypto::InitCrypto (false);
-	struct CryptoGuard
-	{
-		~CryptoGuard () { i2p::crypto::TerminateCrypto (); }
-	} cryptoGuard;
+	i2p::tools::CryptoGuard cryptoGuard;
 
 	const std::string defaultOutputPath = options.outputpath;
 	unsigned int attempts = 0;

@@ -19,33 +19,42 @@
 #include "Crypto.h"
 #include "Identity.h"
 #include "common/file.hpp"
+#include "common/key.hpp"
+#include "common/keys.hpp"
+#include "common/crypto.hpp"
 
 namespace
 {
 bool LoadKeys (const char * path, i2p::data::PrivateKeys & keys)
 {
-	auto input = i2p::tools::ReadFile (path);
-	if (!input) return false;
-	const bool ok = keys.FromBuffer (input->data (), input->size ());
-	i2p::tools::Wipe (*input);
-	return ok;
+	return static_cast<bool> (LoadPrivateKeys (path, keys));
 }
 }
 
 int main (int argc, char * argv[])
 {
-	if (argc < 4)
+	if (argc != 4)
 	{
-		std::cout << "Usage: regaddralias oldfilename newfilename address" << std::endl;
+		std::cerr << "Usage: regaddralias <oldfilename> <newfilename> <address>" << std::endl;
 		return 1;
 	}
 
-	i2p::crypto::InitCrypto (false);
+	if (!IsValidRecordName (argv[3]))
+	{
+		std::cerr << "address must not be empty or contain whitespace, '#' or '='" << std::endl;
+		return 2;
+	}
+
+	i2p::tools::CryptoGuard cryptoGuard;
 	i2p::data::PrivateKeys oldKeys, newKeys;
 	if (!LoadKeys (argv[1], oldKeys) || !LoadKeys (argv[2], newKeys))
 	{
-		std::cout << "Failed to load keyfile" << std::endl;
-		i2p::crypto::TerminateCrypto ();
+		std::cerr << "Failed to load keyfile" << std::endl;
+		return 2;
+	}
+	if (!oldKeys.GetPublic () || !newKeys.GetPublic ())
+	{
+		std::cerr << "key file has no public identity" << std::endl;
 		return 2;
 	}
 
@@ -66,6 +75,5 @@ int main (int argc, char * argv[])
 	appendSignature (newKeys, "#sig=");
 	std::cout << out.str () << std::endl;
 
-	i2p::crypto::TerminateCrypto ();
 	return 0;
 }

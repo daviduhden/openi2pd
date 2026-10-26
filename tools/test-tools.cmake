@@ -154,6 +154,81 @@ foreach(expected
   endif()
 endforeach()
 
+# Positive nftables, Windows and PF output, including the hash-derived
+# comment/label and the family-specific fields.
+run_tool(routerinfo --firewall=nftables valid-routerinfo.dat)
+foreach(expected
+    "nft add rule inet filter output ip daddr 192.0.2.10 tcp dport 12345 accept comment \"openi2pd NTCP2 "
+    "nft add rule inet filter output ip daddr 198.51.100.20 udp dport 12346 accept comment \"openi2pd SSU2 ")
+  string(FIND "${LAST_TOOL_OUTPUT}" "${expected}" position)
+  if(position EQUAL -1)
+    message(FATAL_ERROR "routerinfo --firewall=nftables omitted '${expected}': ${LAST_TOOL_OUTPUT}")
+  endif()
+endforeach()
+
+run_tool(routerinfo --firewall=windows valid-routerinfo.dat)
+foreach(expected
+    "New-NetFirewallRule"
+    "-Name 'openi2pd_NTCP2_v4_"
+    "-DisplayName 'openi2pd NTCP2 v4 "
+    "-Direction Outbound"
+    "-Action Allow"
+    "-Protocol TCP"
+    "-RemoteAddress '192.0.2.10'"
+    "-RemotePort 12345")
+  string(FIND "${LAST_TOOL_OUTPUT}" "${expected}" position)
+  if(position EQUAL -1)
+    message(FATAL_ERROR "routerinfo --firewall=windows omitted '${expected}': ${LAST_TOOL_OUTPUT}")
+  endif()
+endforeach()
+
+run_tool(routerinfo --firewall=pf valid-routerinfo.dat)
+foreach(expected
+    "pass out quick inet proto tcp to 192.0.2.10 port 12345 keep state label \"openi2pd NTCP2 "
+    "pass out quick inet proto udp to 198.51.100.20 port 12346 keep state label \"openi2pd SSU2 ")
+  string(FIND "${LAST_TOOL_OUTPUT}" "${expected}" position)
+  if(position EQUAL -1)
+    message(FATAL_ERROR "routerinfo --firewall=pf omitted '${expected}': ${LAST_TOOL_OUTPUT}")
+  endif()
+endforeach()
+
+run_tool(routerinfo -6 --firewall=pf valid-routerinfo.dat)
+foreach(expected
+    "pass out quick inet6 proto tcp to 2001:db8::10 port 12347 keep state label \"openi2pd NTCP2 "
+    "pass out quick inet6 proto udp to 2001:db8::20 port 12348 keep state label \"openi2pd SSU2 ")
+  string(FIND "${LAST_TOOL_OUTPUT}" "${expected}" position)
+  if(position EQUAL -1)
+    message(FATAL_ERROR "routerinfo -6 --firewall=pf omitted '${expected}': ${LAST_TOOL_OUTPUT}")
+  endif()
+endforeach()
+
+# Usage errors go to stderr only; explicit help stays on stdout.
+execute_process(COMMAND "${TOOLS_DIR}/routerinfo${EXE}"
+  RESULT_VARIABLE usage_result OUTPUT_VARIABLE usage_output ERROR_VARIABLE usage_error)
+if(NOT usage_result EQUAL 1)
+  message(FATAL_ERROR "routerinfo without operands exited ${usage_result}")
+endif()
+if(NOT usage_output STREQUAL "")
+  message(FATAL_ERROR "routerinfo usage error wrote to stdout: ${usage_output}")
+endif()
+string(FIND "${usage_error}" "usage: routerinfo" usage_position)
+if(usage_position EQUAL -1)
+  message(FATAL_ERROR "routerinfo usage error did not reach stderr: ${usage_error}")
+endif()
+
+# A later invalid file must not leave earlier rules on stdout.
+file(WRITE "${WORK}/malformed-routerinfo.dat" "not a RouterInfo\n")
+execute_process(COMMAND "${TOOLS_DIR}/routerinfo${EXE}" --firewall=iptables
+  valid-routerinfo.dat "${WORK}/malformed-routerinfo.dat"
+  WORKING_DIRECTORY "${WORK}"
+  RESULT_VARIABLE mixed_result OUTPUT_VARIABLE mixed_output ERROR_VARIABLE mixed_error)
+if(mixed_result EQUAL 0)
+  message(FATAL_ERROR "routerinfo accepted a malformed second RouterInfo")
+endif()
+if(NOT mixed_output STREQUAL "")
+  message(FATAL_ERROR "routerinfo left partial rules on stdout: ${mixed_output}")
+endif()
+
 execute_process(COMMAND "${TOOLS_DIR}/routerinfo${EXE}" --firewall=bogus
   RESULT_VARIABLE bad_backend)
 if(bad_backend EQUAL 0)

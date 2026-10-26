@@ -18,6 +18,7 @@
 #include "Identity.h"
 #include "LeaseSet.h"
 #include "common/key.hpp"
+#include "common/crypto.hpp"
 
 int main (int argc, char * argv[])
 {
@@ -32,25 +33,46 @@ int main (int argc, char * argv[])
 		std::cerr << "Usage: b33address < base64-destination" << std::endl;
 		return 1;
 	}
-	// base64 input, b33 and store key output, 11->11 only. Bound the line
-	// before allocation: a terminal or pipe must not be able to make this
-	// diagnostic tool buffer arbitrary input.
+	// base64 input, b33 and store key output, 11->11 only. Read one byte at a
+	// time so the cap is enforced before allocation and an embedded NUL can
+	// never silently truncate the value the way getline()+string_view did.
 	constexpr size_t MAX_BASE64_INPUT = 4096;
-	std::cout << "Waiting for base64 from stdin..." << std::endl;
-	std::array<char, MAX_BASE64_INPUT + 2> input { };
-	std::cin.getline (input.data (), input.size ());
-	if (std::cin.fail () && !std::cin.eof ())
+	std::cerr << "Waiting for base64 from stdin..." << std::endl;
+	std::string base64;
+	base64.reserve (MAX_BASE64_INPUT);
+	bool tooLong = false;
+	char ch = 0;
+	while (std::cin.get (ch))
+	{
+		if (ch == '\n') break;
+		if (base64.size () >= MAX_BASE64_INPUT)
+		{
+			tooLong = true;
+			break;
+		}
+		base64.push_back (ch);
+	}
+	if (tooLong)
 	{
 		std::cerr << "Invalid base64 address (input too long)" << std::endl;
 		return 1;
 	}
-	std::string_view base64 (input.data ());
-	while (!base64.empty () && (base64.back () == '\r' || base64.back () == '\n')) base64.remove_suffix (1);
-	if (base64.empty () || base64.size () > MAX_BASE64_INPUT)
+	while (!base64.empty () && (base64.back () == '\r' || base64.back () == '\n')) base64.pop_back ();
+	if (base64.empty ())
 	{
 		std::cerr << "Invalid base64 address" << std::endl;
 		return 1;
 	}
+	for (unsigned char byte : base64)
+	{
+		if (byte < 0x20 || byte == 0x7f)
+		{
+			std::cerr << "Invalid base64 address" << std::endl;
+			return 1;
+		}
+	}
+
+	i2p::tools::CryptoGuard cryptoGuard;
 	auto ident = std::make_shared<i2p::data::IdentityEx> ();
 	if (ident->FromBase64 (base64))
 	{

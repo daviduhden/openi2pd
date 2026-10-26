@@ -76,6 +76,21 @@ int main ()
 	assert (!MakeEndpoint ("100.64.0.1", 1234, Transport::NTCP2));
 	assert (!MakeEndpoint ("0.1.2.3", 1234, Transport::NTCP2));
 	assert (!MakeEndpoint ("240.0.0.1", 1234, Transport::NTCP2));
+	// Special-purpose ranges are not public unicast peers. Documentation
+	// ranges below stay accepted because the signed fixture uses them.
+	assert (!MakeEndpoint ("198.18.0.1", 1234, Transport::NTCP2));
+	assert (!MakeEndpoint ("198.19.255.254", 1234, Transport::NTCP2));
+	assert (!MakeEndpoint ("192.0.0.1", 1234, Transport::NTCP2));
+	assert (!MakeEndpoint ("192.88.99.1", 1234, Transport::NTCP2));
+	assert (!MakeEndpoint ("64:ff9b::1", 1234, Transport::NTCP2));
+	assert (!MakeEndpoint ("2002::1", 1234, Transport::NTCP2));
+	assert (!MakeEndpoint ("2001::1", 1234, Transport::NTCP2));
+	assert (!MakeEndpoint ("100::1", 1234, Transport::NTCP2));
+	assert (!MakeEndpoint ("3fff::1", 1234, Transport::NTCP2));
+	assert (MakeEndpoint ("192.0.2.10", 1234, Transport::NTCP2));
+	assert (MakeEndpoint ("198.51.100.20", 1234, Transport::NTCP2));
+	assert (MakeEndpoint ("203.0.113.30", 1234, Transport::NTCP2));
+	assert (MakeEndpoint ("2001:db8::10", 1234, Transport::NTCP2));
 	assert (!MakeEndpoint ("", 1234, Transport::NTCP2));
 	assert (!MakeEndpoint (std::string (65, '1'), 1234, Transport::NTCP2));
 
@@ -152,6 +167,10 @@ int main ()
 	assert (!IsSafeIdentifier ("out put"));
 	assert (!IsSafeIdentifier ("\xC0table"));
 	assert (IsSafeIdentifier ("i2pd_out-1.2"));
+	assert (!IsSafeIdentifier ("_out"));
+	assert (!IsSafeIdentifier ("table"));
+	assert (!IsSafeIdentifier ("accept"));
+	assert (!IsSafeIdentifier ("ip6"));
 	assert (IsSafeOutputChain ("output"));
 	assert (IsSafeOutputChain ("i2pd_out-1.2"));
 	assert (!IsSafeOutputChain ("input"));
@@ -166,6 +185,7 @@ int main ()
 	// Unknown families and unsafe chain names are rejected, not emitted.
 	options.nftFamily = "inet6";
 	assert (Render (ntcp4, options) == std::nullopt);
+	assert (!IsSelectedByFamily (ntcp4, options));
 	options.nftFamily = "inet";
 	options.nftChain = "out;flush ruleset";
 	assert (Render (ntcp4, options) == std::nullopt);
@@ -191,7 +211,18 @@ int main ()
 	assert (windows->find ("-RemoteAddress '192.0.2.10'") != std::string::npos);
 	assert (windows->find ("-RemotePort 12345") != std::string::npos);
 	assert (windows->find ("openi2pd NTCP2 v4 abcdef12") != std::string::npos);
+	assert (*windows
+		== "New-NetFirewallRule -Name 'openi2pd_NTCP2_v4_abcdef12_192.0.2.10_12345' -DisplayName 'openi2pd "
+		   "NTCP2 v4 abcdef12 192.0.2.10:12345' -Group 'openi2pd' -Direction Outbound -Action Allow -Protocol "
+		   "TCP -RemoteAddress '192.0.2.10' -RemotePort 12345 -ErrorAction Stop");
 	AssertSafeRule (windows);
+
+	// Base64 '~' survives in the rule Name so a prefix query still matches.
+	options.ruleTag = "ab~def12";
+	auto windowsTilde = Render (ntcp4, options);
+	assert (windowsTilde.has_value ());
+	assert (windowsTilde->find ("-Name 'openi2pd_NTCP2_v4_ab~def12_192.0.2.10_12345'") != std::string::npos);
+	options.ruleTag = "abcdef12";
 
 	options.backend = Backend::Windows;
 	auto windows6 = Render (ssu6, options);
@@ -223,6 +254,7 @@ int main ()
 	options.ruleTag = "abcdef12";
 
 	assert (EscapePowerShell ("a'b") == "a''b");
+	assert (EscapePowerShell ("a\r\nb") == "ab");
 
 	options.backend = Backend::Pf;
 	assert (Render (ntcp4, options)
@@ -230,6 +262,22 @@ int main ()
 	assert (Render (ssu6, options)
 		== "pass out quick inet6 proto udp to 2001:db8::20 port 4567 keep state label \"openi2pd SSU2 abcdef12\"");
 	AssertSafeRule (Render (ntcp4, options));
+
+	// PF labels are limited to 64 bytes including the NUL.
+	options.ruleTag = std::string (48, 'a');
+	assert (Render (ntcp4, options).has_value ());
+	options.ruleTag = std::string (49, 'a');
+	assert (Render (ntcp4, options) == std::nullopt);
+	options.ruleTag = "abcdef12";
+
+	// Direct renderers still refuse an unvalidated aggregate.
+	Endpoint invalidEndpoint { "not-an-ip", 1234, Transport::NTCP2, false };
+	options.backend = Backend::Nftables;
+	assert (Nftables (invalidEndpoint, options) == std::nullopt);
+	options.backend = Backend::Windows;
+	assert (Windows (invalidEndpoint, options) == std::nullopt);
+	options.backend = Backend::Pf;
+	assert (Pf (invalidEndpoint, options) == std::nullopt);
 
 	// Deduplication is independent of the rendering backend.
 	assert (EndpointKey (ntcp4) == EndpointKey (Make ("192.0.2.10", 12345, Transport::NTCP2)));
